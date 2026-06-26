@@ -16,7 +16,7 @@ import { BotEvalService } from './bot-eval.service';
 import { QualityLogService } from './quality-log.service';
 import { CalisanService } from '../calisan/calisan.service';
 import { claudeTextViaMax, MAX_MODEL_CHEAP } from '../common/max-inference';
-import { buildOwnerStatusReply } from '../moren-ai/monthly-status.shared';
+import { buildOwnerStatusReply, resolveTaxpayerByText, buildTaxpayerSelfReply, buildTaxpayerQuickReply } from '../moren-ai/monthly-status.shared';
 
 type IncomingWhatsAppMessage = {
   from: string;
@@ -31,6 +31,12 @@ type IncomingWhatsAppMessage = {
     filename?: string;
     caption?: string;
   };
+  // KURU-TEST (dry-run): gerçek handleMessage akışını GÖNDERMEDEN çalıştırır; üretilen
+  // cevabı __dryReply'a yakalar. GO_LIVE/automation kapıları dry-run'da atlanır. Müşteriye
+  // mesaj GİTMEZ — gerçek yolu (hızlı-yol + agentic + yargıç) güvenle test etmek için.
+  __dryRun?: boolean;
+  __dryReply?: string;
+  __dryKind?: string;
 };
 
 // Asistanın müşteriye görünen insan ismi. Değiştirmek için MOREN_BOT_NAME env'i.
@@ -139,9 +145,9 @@ export class WhatsAppBotController implements OnModuleInit {
             // GERÇEK MÜKELLEF AKIŞINA SADIK: taxpayer-readonly + mükellef prompt + post-filtre.
             const prompt = [
               "Sen ofisin dijital asistanısın; WhatsApp'tan ofisin MÜKELLEFİYLE (müşterisiyle) yazışıyorsun. Kısa, sıcak, doğal yaz (2-3 cümle, markdown yok).",
-              'Mükellef KENDİ verisini sorarsa (KDV/durum/fatura/beyanname/borç/evrak) get_my_* ile GERÇEK rakamı söyle. Beyanname ödenecek TUTARINI söyleme; "müşavirimiz kesinleştirince paylaşır" de.',
+              'Mükellef KENDİ verisini sorarsa (KDV/durum/fatura/beyanname/borç/evrak) get_my_* ile GERÇEK rakamı söyle. Beyanname ödenecek TUTARINI kendin söyleme.',
               'Genel mevzuat/vergi/SGK sorusunu (fatura kaç günde, kdv oranı, işe giriş süresi, yıllık izin vb.) NET cevapla — "müşavirinize sorun" DEME.',
-              'Veri yoksa "elimde kayıt yok, kontrol edip döneyim" de; "çekiyorum/getiriyorum" deyip yarım bırakma, uydurma.',
+              'Cevaplayamadığın/elinde veri olmayan/emin olmadığın durumda "kontrol edip döneyim/müşavir kesinleştirir" DEME → MÜŞAVİRE ESKALE ET: yanıtın başına [[ESKALE]] koy, sonra SADECE "Konuyu müşavirimiz Muzaffer Bey\'e iletiyorum; en kısa sürede sizinle bu konuda iletişime geçecektir." de. Genel mevzuat ve elinde gerçek verisi olan kendi-verisi sorusu eskale DEĞİL.',
               '═══ MÜKELLEF VERİSİ ═══', tpCtx, '═══',
               `Mükellefin mesajı: ${q}`,
             ].join('\n');
@@ -169,6 +175,43 @@ export class WhatsAppBotController implements OnModuleInit {
       }
     })();
     return { ok: true, tenant: tenant.id, runId, mode, started: questions.length };
+  }
+
+  /**
+   * KURU-TEST: GERÇEK handleMessage akışını (kayıtlı mükellef yolu: hızlı-yol → cache-atla →
+   * agentic → yargıç) bir mükellefin telefonuyla GÖNDERMEDEN çalıştırır; üretilen cevabı + süreyi
+   * botQualityLog'a yazar. Selftest'in aksine controller'ı ATLAMAZ → gerçek üretim yolunu test eder.
+   * Token korumalı; geçici. Body: { token, phone, questions[], runId? }
+   */
+  @Post('dry-run')
+  async dryRun(@Body() body: any) {
+    if (String(body?.token || '') !== (process.env.MOREN_SELFTEST_TOKEN || 'moren-st-7Yq2x')) {
+      return { ok: false, error: 'unauthorized' };
+    }
+    const phone = String(body?.phone || '').trim();
+    const questions: string[] = Array.isArray(body?.questions) ? body.questions.slice(0, 60) : [];
+    if (!phone || !questions.length) return { ok: false, error: 'phone ve questions zorunlu' };
+    const runOne = async (q: string, i: number) => {
+      const msg: IncomingWhatsAppMessage = { from: phone, text: q, id: `dry-${Date.now()}-${i}`, __dryRun: true };
+      const t0 = Date.now();
+      let err = '';
+      try { await this.handleMessage(msg); } catch (e: any) { err = e?.message || String(e); }
+      return {
+        soru: q,
+        cevap: msg.__dryReply || (err ? `HATA: ${err}` : '(cevap üretilmedi — akış başka dalda bitti)'),
+        yol: msg.__dryKind || null,
+        ms: Date.now() - t0,
+      };
+    };
+    // ASYNC mod: hemen dön, arka planda işle (502/timeout olmasın); sonuçlar communicationLog'a
+    // 'TEST' etiketiyle yazılır (Mesajlar'dan + DB'den okunabilir). Büyük batarya için.
+    if (body?.async === true) {
+      void (async () => { for (let i = 0; i < questions.length; i++) await runOne(questions[i], i); })();
+      return { ok: true, mode: 'async', started: questions.length };
+    }
+    const results: any[] = [];
+    for (let i = 0; i < questions.length; i++) results.push(await runOne(String(questions[i]), i));
+    return { ok: true, results };
   }
 
   private extractMessages(body: any): IncomingWhatsAppMessage[] {
@@ -908,7 +951,7 @@ export class WhatsAppBotController implements OnModuleInit {
       '3) Yıldız tabanlı markdown (** __ ` # > ~) YASAK ama WhatsApp doğal formatları SERBEST:',
       '   - Satır arası (\\n\\n) bölüm ayırmak için kullan',
       '   - Liste için • veya - kullan',
-      '   - Emoji bölüm başlığı için: 📊 DURUM, ⚠️ RİSKLİ, 🤖 AJANLAR, 🚗 HGS, ▶️ AKSİYON',
+      '   - Bölüm başlığı BÜYÜK HARF (DURUM, RİSKLİ, AJANLAR, HGS, AKSİYON) — EMOJİ KULLANMA, sade/profesyonel',
       '   - Sayıları Türk formatı: 14.421,50 ₺ (binlik nokta, ondalık virgül)',
       '4) ASLA "Cevap (WhatsApp):" gibi etiketle başlama. Doğrudan cevap yaz.',
       '5) Selamlama mesajına (selam, merhaba, kolay gelsin, sağ ol) SICAK ve PROFESYONEL karşılık ver + yardım teklif et, 1 cümle. Örnek: "Merhaba, buyurun; bugün nasıl yardımcı olabilirim?". ASLA "ne var?", "ne lazım?", "ne istiyorsun?", "nedir bu son haberler?" gibi laubali/savsaklayan/küstah ifade kullanma — karşındaki ofisin SAHİBİ, ona saygılı ve nazik bir asistan gibi konuş.',
@@ -923,12 +966,12 @@ export class WhatsAppBotController implements OnModuleInit {
       '14) KİMLİK & DİL: Kendine "ofisimiz" DEME ("ben ofisimiz" YANLIŞ). Gerek olursa "Ben MOREN AI, ofisinin asistanı/mali müşavir beyni" de. ASLA geliştirici/teknik terim kullanma: "harness, hooks, ortam/env değişkeni, Claude Code, kısayol, konfigürasyon" gibi şeyler mükellef/ofis işiyle ALAKASIZ — bunları söyleme. Sen bir mali müşavir asistanısın, yazılım aracı gibi konuşma.',
       '15) EKSİK CEVAP YASAK: "…getiriyorum / çekiyorum / bir dakika / bulayım / kontrol edeyim / araçlara erişimim var" gibi YAPACAĞINI anlatıp veriyi VERMEDEN cevabı bitirme. Ya gerçek veriyi/sonucu yaz, ya da veri yoksa "elimde … kaydı yok" de. Ara-işlem cümlesini SON cevap olarak gönderme.',
       '',
-      'MALİ TABLO ANALİZİ (gelir tablosu / bilanço / mizan / KDV): düz metin paragraf DEĞİL — kalemleri ALT ALTA yaz, emoji bölüm başlığı (💰 KALEMLER, 📊 YORUM), Türk sayı formatı (1.234.567,89 ₺), sonda 1-2 madde kısa yorum. Tek kalem sorulduysa (örn. net kâr) tek satır cevap ver.',
+      'MALİ TABLO ANALİZİ (gelir tablosu / bilanço / mizan / KDV): düz metin paragraf DEĞİL — kalemleri ALT ALTA yaz, BÜYÜK HARF bölüm başlığı (KALEMLER, YORUM) — EMOJİ YOK, Türk sayı formatı (1.234.567,89 ₺), sonda 1-2 madde kısa yorum. Tek kalem sorulduysa (örn. net kâr) tek satır cevap ver.',
       '',
       '★ UZUN BRİFİNG / DURUM RAPORU formatı:',
-      '   Başlık (emoji + büyük harfle başlık satırı)',
+      '   Başlık (BÜYÜK HARF başlık satırı, emoji yok)',
       '   Boş satır',
-      '   Bölüm başlığı (emoji + BÖLÜM ADI)',
+      '   Bölüm başlığı (BÖLÜM ADI, emoji yok)',
       '   • bullet liste',
       '   Boş satır',
       '   Sonraki bölüm...',
@@ -1660,6 +1703,13 @@ export class WhatsAppBotController implements OnModuleInit {
         return;
       }
 
+      // MÜŞAVİR → MÜKELLEF İLETME: owner "<Mükellef>'e ilet: <cevap>" derse, o mükellefe
+      // "müşavirimize danıştık" çerçevesiyle iletir (eskalasyonun geri dönüşü). İki nokta
+      // ZORUNLU + isim ≥2 ayırt edici kelimeyle çözülür → yanlış müşteriye gitmez.
+      if (await this.maybeHandleOwnerRelayToTaxpayer(ownerTenant, msg)) {
+        return;
+      }
+
       // DURUM LİSTESİ (deterministik): "evrakı gelen/işlenen/kontrol edilen/beyannamesi
       // verilebilecek/evrak bekleyen KİMLER var" → AI'ya BIRAKMA (sürekli "çekemiyorum"
       // halüsinasyonu yapıyordu); aylık durumdan listeyi doğrudan kod hesaplayıp döndür.
@@ -1872,8 +1922,36 @@ export class WhatsAppBotController implements OnModuleInit {
         // eval: "Siz kimsin?" → evasive, skor 4).
         const asksIdentity = /\bkimsin(iz)?\b|kim(ler)?\s*(le|siniz|sin)|kiminle|kim ile|nedir bu( numara| hat)?|hangi (firma|ofis|kurum|numara)|sizi tan[ıi]m[ıi]yorum|kim ar[ıi]yor/i.test(msg.text || '');
 
+        // MÜŞTERİ ADAYI: kayıtlı olmayan biri hizmet/fiyat sorabilir ya da yeni mükellef
+        // olmak/tanışmak isteyebilir. Eskiden bu mesajlar BILGI_SORUSU/GENEL'e düşüp
+        // soğuk "adınızı paylaşın" cevabı alıyordu — bir aday için kötü ilk izlenim.
+        // Bu yüzden ÖNCE sıcak, satış-bilinçli ama yalan/fiyat-taahhüt içermeyen,
+        // lead toplayan cevap veriyoruz.
+        // Mevcut-müşteri eylemi (evrak/ödeme/onay/şikayet) → aday SAYMA, kendi dalına gitsin.
+        const actionIntent = ['EVRAK_TESLIM', 'ODEME_BILDIRIMI', 'BEYANNAME_ONAY_TALEBI', 'SIKAYET'].includes(intentResult.intent);
+        // "kdv borcum ne kadar" gibi KENDİ verisini soran (kayıtsız) biri fiyat sormuyor →
+        // fiyat dalına SOKMA, "sizi tanıyalım"a bırak.
+        // Teslim/eylem fiili (evrak gönderdim vb.) → mevcut müşteri davranışı, aday/fiyat sayma.
+        const looksLikeDelivery = /g[öo]nderdim|yollad[ıi]m|att[ıi]m|ilettim|teslim|b[ıi]rakt[ıi]m|kargo/i.test(msg.text || '');
+        const debtOrData = /bor[çc]|kdv|beyan|tahakkuk|bakiye|vergi|sgk prim|ne zaman|son g[üu]n/i.test(msg.text || '');
+        const explicitPrice = /fiyat|[üu]cret|ka[çc] para|teklif|tarife|maliyet|ne al[ıi]yorsunuz/i.test(msg.text || '');
+        const pricePhrase =
+          /ne kadar|ayl[ıi]k ka[çc]/i.test(msg.text || '') &&
+          /muhasebe|hizmet|defter|m[üu][şs]avir|tut|kurulu[şs]|[şs]irket/i.test(msg.text || '');
+        const asksPricing = !actionIntent && !looksLikeDelivery && !debtOrData && (explicitPrice || pricePhrase);
+        const looksLikeProspect =
+          !actionIntent && !looksLikeDelivery &&
+          /mali m[üu][şs]avir|muhasebeci|m[üu][şs]avir ar|m[üu][şs]teri(niz)? olmak|m[üu]kellef(iniz)? olmak|hizmet|ne i[şs] yap|neler yap|[şs]irket kur|[şs]ah[ıi]s (firma|[şs]irket|i[şs]let)|limited|defter tut|muhasebe|kurulu[şs]|ge[çc]mek isti|de[ğg]i[şs]tirmek isti|tan[ıi][şs]|[çc]al[ıi][şs]mak ister|anla[şs]mak ister/i.test(msg.text || '');
+
         if (asksIdentity) {
           rawReply = `Ben ${OFFICE_NAME} ofisinin WhatsApp asistanıyım; mali müşavirlik işlemlerinizde yardımcı oluyorum. Sizi kayıtlarımızda bulabilmem için adınızı veya firma unvanınızı paylaşır mısınız?`;
+        } else if (asksPricing) {
+          // Fiyat sorusu (kayıtsız/aday): MESAJLA FİYAT VERME (ne rakam ne aralık ne ima).
+          // Nazikçe ofise/görüşmeye davet et + iletişim al. Kullanıcı talimatı 2026-06-23.
+          rawReply = `İlginiz için teşekkür ederiz. Ücret bilgimizi mesaj üzerinden paylaşmıyoruz; sizi ofisimizde ağırlamaktan memnuniyet duyarız — uygun bir zamanda buyurun, mali müşavirimiz işinize özel değerlendirmeyi yüz yüze yapsın. Dilerseniz adınızı/firma unvanınızı ve telefon numaranızı bırakın, en kısa sürede sizi arayıp görüşme için uygun bir zaman ayarlayalım.`;
+        } else if (looksLikeProspect) {
+          // Hizmet/yeni mükellef/tanışma — sıcak karşıla, hizmetleri özetle, lead topla
+          rawReply = `Hoş geldiniz, ilginiz için teşekkür ederiz! ${OFFICE_NAME} olarak muhasebe, beyanname ve vergi işlemleri, SGK & bordro, şirket/şahıs kuruluşu ve mali danışmanlık hizmetleri sunuyoruz. Sizi mali müşavirimizle buluşturmaktan memnuniyet duyarız — adınızı/firma unvanınızı ve kısaca faaliyet konunuzu yazarsanız ekibimiz en kısa sürede size dönüş yapar.`;
         } else if (isFirstContact) {
           // İlk temas — kendini tanıt + kim olduğunu sor
           rawReply = `Merhaba, ${OFFICE_NAME} iletişim hattına hoş geldiniz. Size yardımcı olabilmemiz için adınızı veya firma unvanınızı paylaşır mısınız?`;
@@ -1913,8 +1991,8 @@ export class WhatsAppBotController implements OnModuleInit {
       }
       return;
     }
-    // Otomasyon event'i: müvekkelden WhatsApp mesajı geldi
-    if (this.eventBus) {
+    // Otomasyon event'i: müvekkelden WhatsApp mesajı geldi (dry-run'da tetiklenmez)
+    if (this.eventBus && !msg.__dryRun) {
       const unvan =
         taxpayer.type === 'TUZEL_KISI'
           ? taxpayer.companyName || ''
@@ -1951,7 +2029,7 @@ export class WhatsAppBotController implements OnModuleInit {
     const passiveActionText = clientAutoReplyEnabled
       ? 'Bot pasif modda, otomatik cevap at\u0131lmad\u0131. Manuel cevap i\u00e7in Mesajlar ekran\u0131na git.'
       : 'Musteri botu kapali; mesaj Mesajlar ekranina kaydedildi, otomatik cevap atilmadi.';
-    await this.prisma.notification.create({
+    if (!msg.__dryRun) await this.prisma.notification.create({
       data: {
         tenantId: taxpayer.tenantId,
         type: 'WHATSAPP',
@@ -1973,7 +2051,7 @@ export class WhatsAppBotController implements OnModuleInit {
       },
     }).catch(() => null);
 
-    await this.sendOwnerNotification(
+    if (!msg.__dryRun) await this.sendOwnerNotification(
       taxpayer.tenantId,
       this.buildOwnerNotification({
         title: 'WhatsApp mesajı',
@@ -1988,12 +2066,12 @@ export class WhatsAppBotController implements OnModuleInit {
     const classified = this.intentClassifier.classify(msg.text);
     await this.maybeCreateDocumentRequestTask(taxpayer, msg.text);
 
-    if (!clientAutoReplyEnabled) {
+    if (!clientAutoReplyEnabled && !msg.__dryRun) {
       this.logger.log(`[Musteri botu kapali] kayitli mesaj kaydedildi, otomatik cevap atlanadi: taxpayer=${taxpayer.id} phone=${this.normalize(msg.from)}`);
       return;
     }
 
-    if (!automationActive) {
+    if (!automationActive && !msg.__dryRun) {
       await this.prisma.communicationLog.create({
         data: {
           taxpayerId: taxpayer.id,
@@ -2009,7 +2087,7 @@ export class WhatsAppBotController implements OnModuleInit {
 
     const recentReplies = await this.botContext.getRecentOutgoingReplies(taxpayer.id);
     const rate = this.rateLimiter.registerIncoming(taxpayer.tenantId, taxpayer.id);
-    if (rate.limited) {
+    if (rate.limited && !msg.__dryRun) {
       if (rate.shouldNotify) {
         const filteredRate = this.postFilter.filterTaxpayerReply('Mesajlariniz alindi; yogunluk nedeniyle konuyu siraya aldik.', { recentReplies });
         const limitedReply = await this.qualityGateReply({
@@ -2073,12 +2151,41 @@ export class WhatsAppBotController implements OnModuleInit {
       return;
     }
 
+    // ─── HIZLI-YOL (mükellef own-data) ─────────────────────────────
+    // Sık sorular (borç/bakiye, son ödeme, KDV durumu, beyanname durumu) agentic+LLM-yargıç+
+    // retry zincirini ATLAR → anında + şablonlu + doğru. AKTİF mükellefe kilitli (taxpayer.id),
+    // yanlış mükellef imkânsız. Eşleşmezse null → normal akış (cache/agentic) devam eder.
+    // 1) Veri sorusu (borç/ödeme/KDV/beyanname) → DB'li hızlı-yol; 2) tutmazsa sabit mevzuat/
+    //    selamlama hızlı-yolu (KDV oranı, fatura süresi, izin, SGK, merhaba/teşekkür) → anında.
+    const fast = (await buildTaxpayerSelfReply(this.prisma, taxpayer.tenantId, taxpayer.id, msg.text).catch(() => null))
+      || buildTaxpayerQuickReply(msg.text);
+    if (fast) {
+      const fastReply = this.postFilter.filterTaxpayerReply(fast.reply, { recentReplies });
+      if (fastReply) {
+        // Dry-run: GÖNDERME (müşteriye mesaj gitmesin) ama LOGLA (Mesajlar'da görünsün).
+        const sent = msg.__dryRun ? true : await this.whatsapp.sendMessage(this.replyTarget(msg), fastReply, taxpayer.tenantId);
+        if (!msg.__dryRun) this.botCache.set(taxpayer.tenantId, taxpayer.id, msg.text, fastReply);
+        await this.prisma.communicationLog.create({
+          data: {
+            taxpayerId: taxpayer.id,
+            channel: 'WHATSAPP',
+            subject: msg.__dryRun ? 'WhatsApp bot cevabı (TEST · hızlı-yol)' : (sent ? 'WhatsApp bot cevabı (hızlı-yol)' : 'WhatsApp bot cevabı hızlı-yol (gönderilemedi)'),
+            content: this.withWhatsAppPhone(fastReply, msg.from),
+            occurredAt: new Date(),
+          },
+        });
+        if (msg.__dryRun) { msg.__dryReply = fastReply; msg.__dryKind = 'hizli-yol:' + fast.kind; }
+        else this.refreshTaxpayerMemory(taxpayer.tenantId, taxpayer.id);
+        return;
+      }
+    }
+
     // ─── Cache lookup ──────────────────────────────────────────────
     // Aynı mükelleften son 24 saatte aynı (normalize edilmiş) soru gelmişse
     // AI'ya gitmeden son onaylı cevabı dön. Hata/generic cevaplar shouldNotCache
     // filtresiyle zaten cache'lenmiyor (bkz. bot-cache.service.ts).
     const cachedReply = this.botCache.get(taxpayer.tenantId, taxpayer.id, msg.text);
-    if (cachedReply) {
+    if (cachedReply && !msg.__dryRun) {
       const filteredCached = this.postFilter.filterTaxpayerReply(cachedReply, { recentReplies });
       if (filteredCached) {
         const sent = await this.whatsapp.sendMessage(this.replyTarget(msg), filteredCached, taxpayer.tenantId);
@@ -2109,7 +2216,7 @@ export class WhatsAppBotController implements OnModuleInit {
       '• Robotik/kurumsal kalıplardan KAÇIN: "ilgili kişiye aktarıldı", "kayda alındı", "dönüş yapılacaktır", "talebiniz işleme alınmıştır" gibi şeyler ASLA deme. Bir insan nasıl söylerse öyle söyle.',
       '• Her seferinde aynı kalıbı tekrarlama; cümlelerini değiştir, doğal aksın.',
       '• Doğal bağlaçlar/ifadeler kullanabilirsin ("tabii", "bir bakayım", "şu an şöyle görünüyor", "merak etme") — ama abartma, kısa tut.',
-      '• Emoji: müşteri kullanıyorsa ya da içtenlik katacaksa ara sıra, çok az.',
+      '• Emoji KULLANMA — sade, profesyonel düz metin (mali müşavirlik ciddiyeti).',
       '',
       '— SICAK VE DOĞAL, AMA DÜRÜST —',
       `• Sıcak, insan gibi konuş; adın ${BOT_NAME}, ofisten. KİMSE SORMADAN "ben yapay zekayım/dil modeliyim" diye robotik teknik açıklama YAPMA — gereksiz yere kimlik dökme.`,
@@ -2121,7 +2228,7 @@ export class WhatsAppBotController implements OnModuleInit {
       '• Selam/sohbet gelirse SADECE doğal bir selam ver, "nasıl yardımcı olayım?" de. Selamlamaya karşılık evrak/beyanname/ödeme durumu DÖKME.',
       '• Sorulmayan durumu kendiliğinden duyurma. Mükellef sormadan "evraklarınız geldi/işlendi" gibi cümle kurma.',
       '• Mükellef "ben göndermedim / öyle bir şey yok" diyorsa, veride aksini görsen bile ISRAR ETME; "bir kontrol edeyim, sana netini söylerim" gibi yumuşak geç. Kendinle çelişme.',
-      '• Veri yoksa rakam/tarih/durum UYDURMA — "bir bakıp sana döneyim" de (ama bunu da her seferinde aynı kelimelerle değil).',
+      '• Veri yoksa rakam/tarih/durum UYDURMA. "bir bakıp döneyim" deyip ASMA → cevaplayamıyorsan/elinde veri yoksa MÜŞAVİRE ESKALE ET (sistem-prompt\'taki [[ESKALE]] kuralı: işareti koy + "müşavirimiz … Bey\'e iletiyorum, iletişime geçecek").',
       '• Beyanname gönderme/onaylama gibi kritik işleri ASLA kendi başına onaylama; "müşavirimiz son bir bakınca ilerletiriz" gibi söyle.',
       '',
       '— BİÇİM —',
@@ -2134,13 +2241,14 @@ export class WhatsAppBotController implements OnModuleInit {
       '  KDV/durum → get_my_kdv · faturalar → get_my_invoices · beyanname durumu → get_my_beyanname · borç/bakiye → get_my_balance.',
       '  Evrak listesi → get_my_documents · genel iş durumu → get_my_work_status.',
       '• taxpayerId/başka mükellef bilgisi GÖNDERME — backend aktif mükellefi kendisi bağlar; mükellef sadece kendi verisini görür.',
-      '• BEYANNAME TUTARI: ödenecek/tahakkuk tutarını ASLA söyleme. Beyannamenin verildi/hazır DURUMUNU söyle; tutar sorulursa "müşavirimiz kesinleştirince paylaşır" de.',
-      '• Tool veri döndürmezse/boşsa rakam uydurma; "bir bakıp döneyim" tarzı doğal geç.',
+      '• BEYANNAME TUTARI: ödenecek/tahakkuk tutarını kendin söyleme; verildi/hazır DURUMUNU söyle. Tutar sorulup elinde NET veri yoksa → MÜŞAVİRE ESKALE ET ([[ESKALE]] kuralı), "müşavir kesinleştirince paylaşır" deyip ASMA.',
+      '• Tool veri döndürmezse/boşsa rakam UYDURMA → MÜŞAVİRE ESKALE ET ([[ESKALE]] kuralı), "bir bakıp döneyim" deyip bırakma.',
       '',
       '— GENEL MEVZUAT / VERGİ-SGK SORULARI (ÖNEMLİ) —',
       '• Mükellef GENEL bir mevzuat/vergi/SGK sorusu sorarsa (örn. "işe başlama bildirimi kaç günde yapılır, cezası ne", "KDV oranı kaç", "fatura kaç günde kesilmeli", "hangi belge gerekir") → mali müşavir bilgisiyle KISA ve NET cevap ver. ASLA "müşavirinize/müşavirimize sorun", "müşaviriniz daha doğru söyler" gibi topu atan cümle KURMA — amacımız mükellefin işini BURADA çözmek.',
       '• Güncel tutar/oran/ceza/süre/had için sana SİSTEM resmi kaynak özeti sağlar; ona dayanarak söyle. Kaynak yoksa genel kuralı + neyin teyit gerektiğini söyle; sayı UYDURMA.',
-      '• SADECE KİŞİYE ÖZEL rakam/karar sorulursa (senin KDV tutarın, senin tam cezan, senin beyannamen) → genel kuralı yine açıkla, ama kesin rakam için "durumunuza özel kesini müşavirimiz netleştirir" de.',
+      '• SADECE KİŞİYE ÖZEL rakam/karar sorulursa (senin tam cezan, senin tam tutarın, senin özel durumun) → genel kuralı yine açıkla; kesin kişisel rakam/karar elinde yoksa "müşavirimiz netleştirir" deyip asma → MÜŞAVİRE ESKALE ET ([[ESKALE]] kuralı).',
+      '• İŞLEM/KARAR gerektiren ağır konular (şirket/şahıs KAPANIŞI, vergi dairesi nezdinde İŞLEM/başvuru, geçici/kurumlar vergisi KİŞİSEL hesabı) → genel bilgiyi ver ama kesin işlem/sonuç/tutar GARANTİ ETME; net cevabın yoksa "kontrol edip döneyim/bakıp döneyim" DEME → MÜŞAVİRE ESKALE ET ([[ESKALE]] kuralı).',
       '',
       '═══ MÜKELLEF VERİSİ (cevabı burada ara) ═══',
       taxpayerContext,
@@ -2154,8 +2262,10 @@ export class WhatsAppBotController implements OnModuleInit {
 
     // İşlem boyunca "yazıyor…" göster (müşteri 10-20 sn boş ekrana bakmasın).
     // try/finally: AI hata verse bile gösterge mutlaka kapanır.
-    const stopCustTyping = this.startTypingIndicator(taxpayer.tenantId, this.replyTarget(msg));
+    const stopCustTyping = msg.__dryRun ? () => {} : this.startTypingIndicator(taxpayer.tenantId, this.replyTarget(msg));
     let reply = '';
+    let needsEscalation = false;
+    let answerModel = ''; // degrade fallback (Max/altyapı yanıt vermedi) sinyali — eskalasyon ağı kullanır
     try {
       const answer = await this.morenAi.chat(taxpayer.tenantId, null, {
         taxpayerId: taxpayer.id,
@@ -2168,7 +2278,12 @@ export class WhatsAppBotController implements OnModuleInit {
         source: 'whatsapp-bot',
       });
 
-      const rawAiReply = answer.assistantMessage || '';
+      answerModel = answer.usage?.model || '';
+      let rawAiReply = answer.assistantMessage || '';
+      // ESKALE: AI cevaplayamayıp müşavire devrettiğinde yanıtının başına [[ESKALE]] koyar.
+      // İşareti yakala (owner'a bildirim + ofis görevi için), MÜŞTERİYE gitmeden TEMİZLE.
+      needsEscalation = /\[\[\s*ESKALE\s*\]\]/i.test(rawAiReply);
+      rawAiReply = rawAiReply.replace(/\[\[\s*ESKALE\s*\]\]/gi, '').trim();
       const contextBlock = [taxpayerContext, recentContext].filter(Boolean).join('\n\n');
       // SIRA: önce post-filter, SONRA eval (gönderilecek son metin denetlensin).
       // Retry de aynı sırayı izler: yeni ham cevap → post-filter → tekrar eval.
@@ -2182,7 +2297,13 @@ export class WhatsAppBotController implements OnModuleInit {
         reply: filteredAiReply,
         contextBlock,
         recentReplies,
-        blocking: true, // mükellefe gidecek cevap → LLM-yargıç gönderimden ÖNCE
+        // HIZ: AKILLI mod (varsayılan) — temiz cevap (yerel skor 8+) anında gider; gri-bölge
+        // (6-7) gönderim ÖNCESİ LLM-yargıca sorulur; kötü (<6) retry'a gider. Eskiden HER
+        // cevap bloklayıcı LLM-yargıçtan geçiyordu → +10-15sn/cevap + retry'da +30-90sn (canlı
+        // bulgu). Veri soruları zaten deterministik hızlı-yolda (hatasız), agentic kalan
+        // sohbet/mevzuat cevapları yüksek kaliteli ölçüldü → akıllı mod kalite/hızda en iyi denge.
+        // Kalite sorunu olursa geri sıkılaştır: MOREN_AI_TAXPAYER_BLOCKING=1.
+        blocking: process.env.MOREN_AI_TAXPAYER_BLOCKING === '1',
         retry: async (reasons) => {
           const retryPrompt = this.botEval.buildRetryPrompt(
             rawAiReply,
@@ -2210,23 +2331,145 @@ export class WhatsAppBotController implements OnModuleInit {
     } finally {
       stopCustTyping();
     }
+    // ESKALASYON AĞI (deterministik) — bot cevaplayamadıysa müşteriyi çıkmazda/sızıntıda
+    // BIRAKMA, müşavire devret. Üç tetik: (a) Max/altyapı yanıt vermeyince üretilen degrade
+    // cevap (usage.model işareti), (b) içi-boş "kontrol edeyim" savsaklaması, (c) yanıta sızan
+    // AI-altyapı terimi. Üçünde de owner'a bildirim + müşteriye TEMİZ eskalasyon cümlesi.
+    // (Kullanıcı kararı 2026-06-23: cevaplayamayınca eskalasyon GENEL — tek konu değil.)
+    if (
+      reply &&
+      (answerModel === 'claude-max-unavailable' ||
+        answerModel === 'anthropic-api-cost-cap' ||
+        this.postFilter.isContentFreeStall(reply) ||
+        this.postFilter.mentionsAiInfra(reply))
+    ) {
+      needsEscalation = true;
+      reply = this.escalationReply();
+    }
     if (reply) {
-      // Cache'e yaz — sonraki aynı soru AI'ya gitmeden bu cevapla dönsün.
-      // shouldNotCache filtresi (bot-cache.service.ts) generic/hata cevaplarını eler.
-      this.botCache.set(taxpayer.tenantId, taxpayer.id, msg.text, reply);
+      // Dry-run: GÖNDERME ama LOGLA (Mesajlar'da görünsün); cache/eskalasyon/owner-bildirim YOK.
+      if (!msg.__dryRun) this.botCache.set(taxpayer.tenantId, taxpayer.id, msg.text, reply);
 
-      const sent = await this.whatsapp.sendMessage(this.replyTarget(msg), reply, taxpayer.tenantId);
+      const sent = msg.__dryRun ? true : await this.whatsapp.sendMessage(this.replyTarget(msg), reply, taxpayer.tenantId);
       await this.prisma.communicationLog.create({
         data: {
           taxpayerId: taxpayer.id,
           channel: 'WHATSAPP',
-          subject: sent ? 'WhatsApp bot cevabı (MOREN AI)' : 'WhatsApp bot cevabı (gönderilemedi - master switch veya hata)',
+          subject: msg.__dryRun ? 'WhatsApp bot cevabı (TEST · MOREN AI)' : (sent ? 'WhatsApp bot cevabı (MOREN AI)' : 'WhatsApp bot cevabı (gönderilemedi - master switch veya hata)'),
           content: this.withWhatsAppPhone(reply, msg.from),
           occurredAt: new Date(),
         },
       });
+      if (msg.__dryRun) { msg.__dryReply = reply; msg.__dryKind = needsEscalation ? 'agentic:eskalasyon' : 'agentic'; return; }
+      // ESKALE: bot cevaplayamadı → müşavire (owner) bildir + ofis görevi aç.
+      if (needsEscalation && sent) {
+        await this.escalateToOwner(taxpayer, msg.text, msg.from).catch((e: any) =>
+          this.logger.warn(`Eskalasyon bildirimi başarısız: ${e?.message || e}`),
+        );
+      }
       this.refreshTaxpayerMemory(taxpayer.tenantId, taxpayer.id);
     }
+  }
+
+  /** Eskalasyonda müşteriye giden STANDART cümle (çıkmaz "kontrol edeyim" yerine). */
+  private escalationReply(): string {
+    return `Konuyu müşavirimiz ${this.ownerDisplayName()} Bey'e iletiyorum; en kısa sürede sizinle bu konuda iletişime geçecektir.`;
+  }
+
+  /**
+   * Bot bir mükellef sorusuna cevap veremeyip müşavire devrettiğinde: owner'a WhatsApp
+   * bildirimi gönderir (soru + "yanıt sizden bekleniyor") ve portalda ofis görevi açar.
+   */
+  private async escalateToOwner(taxpayer: any, question: string, fromPhone?: string) {
+    const ad = taxpayer.companyName || `${taxpayer.firstName || ''} ${taxpayer.lastName || ''}`.trim() || 'Mükellef';
+    const tel = this.normalize(fromPhone || '') || '';
+    const owner = this.ownerDisplayName();
+    const soru = String(question || '').replace(/\s+/g, ' ').trim().slice(0, 500);
+    const bildirim =
+      `📩 MÜKELLEF SORUSU — yanıt sizden bekleniyor\n` +
+      `Mükellef: ${ad}${tel ? ' (' + tel + ')' : ''}\n` +
+      `Soru: "${soru}"\n` +
+      `Cevap veremedim; mükellefe "${owner} Bey en kısa sürede iletişime geçecek" dedim. Lütfen siz dönüş yapın.`;
+    await this.sendOwnerNotification(taxpayer.tenantId, bildirim).catch(() => {});
+    // Portalda iz bırak (ofis görevi)
+    const user = await this.prisma.user.findFirst({
+      where: { tenantId: taxpayer.tenantId, isActive: true },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true },
+    }).catch(() => null);
+    if (user) {
+      await (this.prisma as any).task.create({
+        data: {
+          tenantId: taxpayer.tenantId,
+          taxpayerId: taxpayer.id,
+          createdById: user.id,
+          title: `WhatsApp: müşavir yanıtı bekleniyor — ${ad}`,
+          description: soru,
+          category: 'MUKELLEF',
+          priority: 'HIGH',
+          tags: ['whatsapp', 'eskalasyon', 'musavir-yaniti'],
+          notifyInApp: true,
+          notifyBrowser: true,
+        },
+      }).catch(() => null);
+    }
+  }
+
+  /**
+   * Müşavir (owner) WhatsApp'tan "<Mükellef>'e ilet: <cevap>" derse, o mükellefe
+   * "müşavirimize danıştık" çerçevesiyle owner'ın cevabını iletir + owner'a onay döner.
+   * GÜVENLİK: iki nokta ZORUNLU (yanlış-pozitif önler) + isim ≥2 ayırt edici kelimeyle
+   * çözülmeli (resolveTaxpayerByText) → yanlış müşteriye gitmez.
+   */
+  private async maybeHandleOwnerRelayToTaxpayer(ownerTenant: any, msg: any): Promise<boolean> {
+    const text = String(msg?.text || '');
+    // "<isim>'e/'a/ye/ya  ilet|söyle|yaz|bildir|aktar|cevap|geç  :  <mesaj>"
+    const m = text.match(
+      /^\s*(.{2,50}?)['’]?\s*(?:e|a|ye|ya|na|ne)\s+(?:ilet|söyle|soyle|yaz|bildir|aktar|ge[çc]|cevap(?:\s*(?:ver|yaz))?|haber\s*ver)\s*:\s*([\s\S]{2,})$/i,
+    );
+    if (!m) return false;
+    const namePart = m[1].trim();
+    const messagePart = m[2].trim();
+    if (!namePart || messagePart.length < 2) return false;
+
+    const taxpayers = await this.prisma.taxpayer.findMany({
+      where: { tenantId: ownerTenant.id, isActive: true },
+      select: { id: true, companyName: true, firstName: true, lastName: true, phone: true, phones: true },
+    }).catch(() => [] as any[]);
+    const target = resolveTaxpayerByText(taxpayers, namePart);
+    if (!target) {
+      const r = `"${namePart}" için net bir mükellef bulamadım — yanlış kişiye göndermemek için tam unvanı (en az 2 kelime) yazar mısınız? Örn: "Wash Clean'e ilet: ...".`;
+      await this.whatsapp.sendMessage(this.replyTarget(msg), r, ownerTenant.id).catch(() => false);
+      return true;
+    }
+    const phone = [target.phone, ...(Array.isArray(target.phones) ? target.phones : [])]
+      .map((p: any) => this.normalize(p))
+      .filter(Boolean)[0];
+    const ad = this.displayName(target);
+    if (!phone) {
+      await this.whatsapp.sendMessage(this.replyTarget(msg), `${ad} için kayıtlı telefon numarası yok; iletemedim.`, ownerTenant.id).catch(() => false);
+      return true;
+    }
+    const advisor = this.ownerDisplayName();
+    const framed =
+      `Sayın ${ad}, konuyu müşavirimiz ${advisor} Bey'e ilettik — kendisi sizinle ilgili şu bilgiyi paylaştı:\n\n` +
+      `${messagePart}\n\n` +
+      `Başka bir sorunuz olursa yardımcı olmaktan memnuniyet duyarız.`;
+    const sent = await this.whatsapp.sendMessage(phone, framed, ownerTenant.id).catch(() => false);
+    await this.prisma.communicationLog.create({
+      data: {
+        taxpayerId: target.id,
+        channel: 'WHATSAPP',
+        subject: sent ? 'WhatsApp müşavir yanıtı iletildi' : 'WhatsApp müşavir yanıtı (gönderilemedi - şalter/hata)',
+        content: this.withWhatsAppPhone(framed, phone),
+        occurredAt: new Date(),
+      },
+    }).catch(() => null);
+    const confirm = sent
+      ? `✓ ${ad} mükellefine iletildi:\n${messagePart}`
+      : `⚠️ ${ad} mükellefine iletilemedi (WhatsApp bağlantısı/şalter). Lütfen tekrar deneyin.`;
+    await this.whatsapp.sendMessage(this.replyTarget(msg), confirm, ownerTenant.id).catch(() => false);
+    return true;
   }
 
   private async qualityGateReply(input: {

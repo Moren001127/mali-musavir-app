@@ -128,18 +128,22 @@ export function extractTevkifatTotalsFromText(text: string): TevkifatTotals | nu
   // çok-satırlı tevkifat (ör. Zeyrek 158+251,20).
   const distinctLineAmounts = [...new Set(filteredLineAmounts.map((value) => value.toFixed(2)))];
   let tevkifatRaw: number;
-  if (filteredLineAmounts.length > 1 && lineSum > 0) {
-    if (explicitTotal > 0 && Math.abs(explicitTotal - lineSum) <= 0.05) {
-      // Açık tevkifat toplamı = satır toplamı → gerçek çok-satırlı tevkifat.
-      tevkifatRaw = explicitTotal;
-    } else if (distinctLineAmounts.length === 1) {
+  if (explicitTotal > 0) {
+    // ÖZET "Hesaplanan KDV Tevkifat(%X)" satırı = KESİN toplam tevkifat → onu kullan, kalem
+    //   "KDV TEVKİFAT(%X)=Y" satırlarını TOPLAMA. Kalem satırları + özet aynı "KDV TEVK" desenine
+    //   uyup lineTevkifatAmounts'a birlikte giriyor; çok-kalemli faturada lineSum çift sayıyordu
+    //   (ZEF124: kalem+özet = 904 YANLIŞ → doğru 576; ZEF129 1.151,20 → doğru 763,20).
+    tevkifatRaw = explicitTotal;
+  } else if (filteredLineAmounts.length > 1 && lineSum > 0) {
+    if (distinctLineAmounts.length === 1) {
       // Tüm satırlar aynı tutar → eko (tekrar). Toplama bug'ı: 1.064 + 1.064 = 2.128.
       tevkifatRaw = Number(distinctLineAmounts[0]);
     } else {
+      // Gerçek çok-satırlı tevkifat (ör. Zeyrek 158+251,20) — ÖZET satırı yok, kalemleri topla.
       tevkifatRaw = lineSum;
     }
   } else {
-    tevkifatRaw = explicitTotal > 0 ? explicitTotal : lineSum;
+    tevkifatRaw = lineSum;
   }
   const tevkifat = round2(tevkifatRaw);
   if (!(tevkifat > 0) || tevkifat >= tamKdv - 0.05) return null;

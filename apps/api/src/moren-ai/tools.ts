@@ -156,8 +156,8 @@ export const MOREN_AI_TOOLS: ToolDefinition[] = [
   {
     name: 'get_my_balance',
     description:
-      'Taxpayer WhatsApp mode only. Aktif mukellefin KENDI cari bakiyesini ve son hareketlerini read-only getirir. ' +
-      '"Borcum ne kadar", "bakiyem", "odeme gecmisim" gibi sorularda kullan. Backend aktif mukellefi kendisi baglar.',
+      'Taxpayer WhatsApp mode only. Aktif mukellefin KENDI cari bakiyesini, son hareketlerini ve SON ODEMESINI (sonOdeme) read-only getirir. ' +
+      '"Borcum ne kadar", "bakiyem", "odeme gecmisim", "en son ne zaman odeme yaptim", "en son ne kadar odedim" gibi sorularda kullan. Backend aktif mukellefi kendisi baglar.',
     input_schema: {
       type: 'object',
       properties: {},

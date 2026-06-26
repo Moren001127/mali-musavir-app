@@ -5,6 +5,22 @@ import { AppModule } from './app.module';
 import * as cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 
+// libsignal (WhatsApp/Baileys uçtan-uca şifreleme) kütüphanesi, logger'a bağlı OLMADAN doğrudan
+// console.log ile oturum dökümleri basıyor ("Removing old closed session: SessionEntry {…}") —
+// saniyede yüzlerce satır. Bu (1) Railway log limitine takılıp gerçek logları (OCR/hata) boğuyor,
+// (2) şifreleme anahtarı buffer'larını düz metin log'a sızdırıyor. Baileys'in KENDİ logger'ı zaten
+// 'silent'; bu gürültü alttaki libsignal'dan. Kaynakta süz (anahtar güvenliği + log temizliği).
+(() => {
+  const SIGNAL_NOISE = /Removing old closed session|Closing (open )?session|Adding new closed session|Got new session|SessionEntry \{|session for new outgoing|Successfully decrypted message/i;
+  const wrap = (orig: (...a: any[]) => void) => (...args: any[]) => {
+    const first = args[0];
+    if (typeof first === 'string' && SIGNAL_NOISE.test(first)) return; // libsignal gürültüsü → ele
+    orig(...args);
+  };
+  console.log = wrap(console.log.bind(console));
+  console.info = wrap(console.info.bind(console));
+})();
+
 function csv(value?: string | null) {
   return String(value || '')
     .split(',')

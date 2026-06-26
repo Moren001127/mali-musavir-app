@@ -2166,16 +2166,16 @@ export class KdvControlService implements OnApplicationBootstrap {
   }
 
   private async buildContentAuditDecision(image: any, session: any, tenantId: string): Promise<ContentAuditDecision> {
-    const fallback = await this.buildRuleBasedContentAudit(image, session, tenantId);
     // Faaliyet bir kez çözülür; moderasyon "satışta faaliyet bilinmiyorsa uyum
     // belirsizliğini bayraklama" kararını buradan verir.
     const profilFaaliyet = await this.resolveContentAuditFaaliyet(session, tenantId);
-    // AI içerik denetimi SADECE Max aboneliğinden (claudeTextViaMax, saf metin) —
-    // ücretli API (Gemini/Anthropic token) KULLANILMAZ. Metin işi olduğu için hızlı.
+    // İçerik denetimi YALNIZ AI (Max, claudeTextViaMax saf metin) ile yapılır — kullanıcı
+    //   talebiyle KURAL-YEDEĞİ KALDIRILDI: kural fallback satış/alış ayırmadan "KDV indirimi"
+    //   diyordu (satışta KDV indirimi olmaz = yanlış). AI yapılamazsa denetim "tamamlanamadı"
+    //   kalır (kullanıcı tekrar dener); ASLA yanlış kural mesajı üretilmez. Ücretli API yasak.
     const disabled = String(process.env.KDV_CONTENT_AUDIT_AI_DISABLED || '').toLowerCase() === 'true';
     if (!isMaxAvailable() || disabled) {
-      const moderatedFallback = this.moderateContentAuditDecision(fallback, image, session, profilFaaliyet);
-      return { ...fallback, ...moderatedFallback };
+      throw new Error('İçerik denetimi AI (Max) gerektirir; kural-yedeği kapalı. Lütfen tekrar deneyin.');
     }
 
     const model = process.env.KDV_CONTENT_AUDIT_MODEL || MAX_MODEL_DEFAULT;
@@ -2185,8 +2185,8 @@ export class KdvControlService implements OnApplicationBootstrap {
       // (toplu denetim, eşzamanlı OCR) 20sn'yi aşıp timeout'a düşüyordu → belgelerin
       // çoğu kural-fallback'e kalıyordu. Cömert süre + bir kez yeniden deneme ile
       // (yine SADECE Max) yavaş subprocess'ler de tamamlanır.
-      const baseTimeout = Math.max(8000, Math.min(45000, Number(process.env.KDV_CONTENT_AUDIT_TIMEOUT_MS) || 38000));
-      const maxAttempts = Math.max(1, Math.min(3, Number(process.env.KDV_CONTENT_AUDIT_RETRY) || 2));
+      const baseTimeout = Math.max(8000, Math.min(48000, Number(process.env.KDV_CONTENT_AUDIT_TIMEOUT_MS) || 42000));
+      const maxAttempts = Math.max(1, Math.min(4, Number(process.env.KDV_CONTENT_AUDIT_RETRY) || 3));
       const system =
         'Türk muhasebe KDV belge içerik uygunluğu için karar destek asistanısın. Nihai hukuki/mali karar vermezsin; gri alanları KONTROL_ET seviyesinde tutarsın. Her belge için KISA, AÇIK ve ANLAŞILIR bir Türkçe açıklama yaz: belge mükellefin faaliyetiyle uyumlu mu, KDV indirimi açısından dikkat edilmesi gereken bir şey var mı net belirt. SADECE geçerli JSON dön — açıklama/prolog YOK.';
       let res: Awaited<ReturnType<typeof claudeTextViaMax>> | null = null;
@@ -2217,30 +2217,10 @@ export class KdvControlService implements OnApplicationBootstrap {
         usage: { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
       };
     } catch (err: any) {
-      const moderatedFallback = this.moderateContentAuditDecision(fallback, image, session, profilFaaliyet);
-      const providerMessage = String(err?.message || err);
-      const fallbackSummary = moderatedFallback.risk === 'UYGUN'
-        ? 'Kural tabanli on denetimde belirgin icerik riski bulunmadi.'
-        : moderatedFallback.summary;
-      const fallbackSuggestion = moderatedFallback.risk === 'UYGUN'
-        ? 'AI servisi kullanilamadigi icin sonuc kural tabanlidir; olagan disi belgeleri manuel gozden gecirin.'
-        : moderatedFallback.suggestion;
-      return {
-        ...fallback,
-        ...moderatedFallback,
-        summary: fallbackSummary,
-        suggestion: fallbackSuggestion,
-        model: 'rule-fallback',
-        confidence: Math.min(moderatedFallback.confidence, 0.55),
-        findings: [
-          {
-            title: 'AI servis uyarısı',
-            detail: `Kural tabanli on denetim kullanildi: ${providerMessage.slice(0, 180)}`,
-            severity: 'KONTROL_ET' as ContentAuditRisk,
-          },
-          ...moderatedFallback.findings,
-        ].slice(0, 6),
-      };
+      // KURAL-YEDEĞİ YOK (kullanıcı talebi): AI başarısızsa kural sonucu UYDURMA — hatayı yukarı
+      //   fırlat. runContentAuditForImage bunu "İçerik denetimi tamamlanamadı / Tekrar deneyin"
+      //   (contentAuditStatus=FAILED) olarak işaretler; kullanıcı yeniden tetikleyince AI tekrar dener.
+      throw err;
     }
   }
 

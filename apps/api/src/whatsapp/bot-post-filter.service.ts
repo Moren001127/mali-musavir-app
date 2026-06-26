@@ -5,6 +5,11 @@ import { Injectable } from '@nestjs/common';
 const OFFICE_FALLBACK = 'ofisin dijital asistanı';
 // Binlik ayraçtan sonra kaçan boşluğu temizle: "26. 000" → "26.000", "249. 359" → "249.359".
 const fixNumberSpacing = (s: string) => String(s || '').replace(/(\d)\.\s+(\d{3})(?=\D|$)/g, '$1.$2');
+// Emoji/sembol SÜZ — mali müşavirlik için profesyonel/sade dursun (kullanıcı talimatı: "çok fazla
+// emoji"). ₺, •, — gibi gerekli karakterler emoji aralıklarının DIŞINDA, korunur. Emoji + ardındaki
+// tek boşluk birlikte silinir ("🧾 KDV" → "KDV").
+const EMOJI_RE = /[\u{1F000}-\u{1FAFF}\u{2190}-\u{21FF}\u{2300}-\u{23FF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}\u{20E3}]️?[ \t]?/gu;
+const stripEmojis = (s: string) => String(s || '').replace(EMOJI_RE, '').replace(/[ \t]{2,}/g, ' ').replace(/[ \t]+\n/g, '\n').trim();
 
 @Injectable()
 export class WhatsAppBotPostFilterService {
@@ -60,13 +65,45 @@ export class WhatsAppBotPostFilterService {
     return out.replace(/\n{3,}/g, '\n\n').replace(/[ \t]+\n/g, '\n').trim();
   }
 
+  // ── ESKALASYON SİNYALLERİ (controller deterministik ağı kullanır) ──
+  // (1) AI-ALTYAPI terimi yanıta sızmış: müşteriye ASLA gitmemeli. Sızdıysa model iç
+  //     hata anlatıyordur (Max/altyapı yanıt vermedi) → çıkmaz cevap yerine MÜŞAVİRE devret.
+  private static readonly AI_INFRA_RE =
+    /\bclaude\b|\banthropic\b|claude\s*max|\bmax\s+(aboneli|ba[ğg]lant|yan[ıi]t)|[üu]cretli\s*api|api\s*hatt[ıi]|api\s*katman|dil\s*modeli|\bllm\b|\bgpt\b|openai/i;
+
+  // (2) İÇİ BOŞ "kontrol edeyim" savsaklaması: kısa + rakamsız + sadece-erteleme kalıbı.
+  //     Gerçek veri/rakam içeren cevap ("borcunuz 28.750₺, detayını kontrol edeyim")
+  //     TETİKLEMEZ (rakam var). Standart eskalasyon cümlesi de eşleşmez (kalıbı farklı).
+  private static readonly STALL_RE =
+    /(bir\s+)?kontrol\s+ed(ip|eyim)|bak[ıi]p\s+(size\s+)?d[öo]neyim|net\s+bilgiyle\s+d[öo]neyim|m[üu][şs]avir(imiz)?\s+(kesinle[şs]tir|netle[şs]tir|bakacak)/i;
+
+  /** Yanıt müşteriye gitmemesi gereken AI-altyapı terimi içeriyor mu? (eskalasyon sinyali) */
+  mentionsAiInfra(text: string): boolean {
+    return WhatsAppBotPostFilterService.AI_INFRA_RE.test(String(text || ''));
+  }
+
+  /** Yanıt içi-boş "kontrol edeyim" savsaklaması mı? (kısa + rakamsız + erteleme kalıbı) */
+  isContentFreeStall(text: string): boolean {
+    const t = String(text || '').trim();
+    if (!t || t.length > 100) return false; // uzun = içerikli, stall değil
+    if (/\d/.test(t)) return false;          // rakam = gerçek veri/cevap var
+    return WhatsAppBotPostFilterService.STALL_RE.test(t);
+  }
+
   filterTaxpayerReply(raw: string, options?: { recentReplies?: string[]; mode?: 'taxpayer' | 'owner' | 'unknown' }): string {
     let text = String(raw || '').trim();
+
+    // SAVUNMA: dahili ESKALE işareti hiçbir koşulda müşteriye/owner'a SIZMASIN
+    // (controller normalde temizler; bu son güvenlik katmanı).
+    text = text.replace(/\[\[\s*ESKALE\s*\]\]/gi, '').trim();
+
+    // Emoji süz (profesyonel/sade ton).
+    text = stripEmojis(text);
 
     // Owner (mali müşavir) raporları yapı ister: satır sonları, başlıklar, numaralar
     // KORUNMALI. Sohbet için tasarlanan agresif temizlik bunları eziyordu → ayrı yol.
     if (options?.mode === 'owner') {
-      return this.formatOwnerReport(text);
+      return this.formatOwnerReport(stripEmojis(text));
     }
 
     // 1. Code block + markdown formatting sil
@@ -215,7 +252,14 @@ export class WhatsAppBotPostFilterService {
   }
 
   private limitSentences(text: string): string {
-    const sentences = text.match(/[^.!?]+[.!?]?/g)?.map((part) => part.trim()).filter(Boolean) || [];
+    // KRİTİK: "5.000" / "22.05.2026" gibi sayı/tarih içindeki noktayı cümle sonu SAYMA —
+    // yoksa cevap sayının ortasından kesilir ("...tarihinde 5." gibi) ve boşluk eklenir.
+    // Gerçek cümle sonu = noktalama + (boşluk/metin sonu); sayı içindeki noktanın ardında
+    // RAKAM gelir, boşluk değil → bölünmez, kesilmez.
+    const sentences = text
+      .split(/(?<=[.!?])\s+/)
+      .map((part) => part.trim())
+      .filter(Boolean);
     if (sentences.length <= 3) return text;
     return sentences.slice(0, 3).join(' ').trim();
   }

@@ -4,7 +4,29 @@ import { useState, useRef, useEffect, Fragment } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
-import { isletmeRef, ISLETME_ISLEM_TURU, ISLETME_KDV_ORAN, defaultBelgeTuruKod, getKayitAltList, defaultKayitAltKod } from '@mali-musavir/shared';
+import { isletmeRef, ISLETME_ISLEM_TURU, ISLETME_KDV_ORAN, defaultBelgeTuruKod, getKayitAltList, defaultKayitAltKod, kayitAltKisaAd } from '@mali-musavir/shared';
+
+// Entegratör "Sorgula/Çek" sonucunu kullanıcıya GÖSTER. Eskiden onSuccess sadece "çekiliyor" diyordu;
+// backend providers[].reason ("yetkiniz yok" gibi) ve created/fetched sayılarını dönüyor ama yutuluyordu.
+function showFetchResult(d: any) {
+  const provs: any[] = Array.isArray(d?.providers) ? d.providers : [];
+  const failed = provs.filter((p) => p?.status === 'FAILED' || (p?.errors && p.errors.length));
+  const queued = provs.filter((p) => p?.status === 'QUEUED_VIA_LUCA');
+  const skipped = provs.filter((p) => p?.status === 'SKIPPED');
+  if (failed.length) {
+    toast.error('Çekilemedi — ' + failed.map((p) => `${p.label || p.provider}: ${p.reason || p.errors?.[0]?.message || 'hata'}`).join(' · '), { duration: 9000 });
+  } else if (Number(d?.created) > 0) {
+    toast.success(`${d.created} fatura çekildi${Number(d?.alreadyQueued) ? ` · ${d.alreadyQueued} zaten vardı` : ''}`);
+  } else if (queued.length) {
+    toast.success(queued[0].reason || 'Luca kuyruğuna alındı (Agent açıkken 1-3 dk içinde düşer)', { duration: 8000 });
+  } else if (skipped.length) {
+    toast(skipped.map((p) => `${p.label || p.provider}: ${p.reason}`).join(' · '), { duration: 8000 });
+  } else if (Number(d?.fetched) === 0) {
+    toast('Bu dönemde entegratörde fatura bulunamadı');
+  } else {
+    toast.success('Sorgu tamamlandı');
+  }
+}
 
 /**
  * Fatura İşleme Merkezi v2 — ana sayfa (CANLI)
@@ -55,6 +77,7 @@ const I = {
   expand: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3m13-5v3a2 2 0 0 1-2 2h-3"/></svg>',
   compress: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3M3 16h3a2 2 0 0 1 2 2v3m8 0v-3a2 2 0 0 1 2-2h3"/></svg>',
   trash: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M10 11v6M14 11v6"/></svg>',
+  edit: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>',
 };
 
 const COLORS = [
@@ -88,28 +111,47 @@ function periodLabel(p: string): string {
 }
 // Durum: TAM olarak neyin eksik olduğunu söyler (cari/gelir/gider/KDV kodu boş mu).
 // cat = filtreleme kategorisi.
-function deriveDurum(doc: any, isIsletme = false): { k: string; t: string; cat: string } {
+function deriveDurum(doc: any, isIsletme = false, autoKtKod = ''): { k: string; t: string; cat: string } {
   if (doc.status === 'APPROVED') return { k: 'ok', t: 'Onaylandı ✓', cat: 'onayli' };
   if (doc.status === 'PROCESSING') return { k: 'proc', t: 'Okunuyor…', cat: 'okunuyor' };
   if (String(doc.ocrStatus || '').toUpperCase() === 'FAILED') return { k: 'miss', t: 'Okunamadı', cat: 'okunamadi' };
   const lines: any[] = Array.isArray(doc.lines) ? doc.lines : [];
-  const issues = Array.isArray(doc.validationIssues) ? doc.validationIssues : [];
-  // İçerik çelişkisi = denge/sahiplik/toplam hatası (en kritik).
-  const vissue =
-    doc.validationStatus === 'INVALID' ||
-    doc.ocrData?.validationStatus === 'INVALID' ||
-    issues.some((i: any) => i?.code && i.code !== 'INCOMPLETE_AMOUNTS' && i?.severity !== 'WARNING');
+  const issues = Array.isArray(doc.validationIssues) ? doc.validationIssues : (Array.isArray(doc.ocrData?.validationIssues) ? doc.ocrData.validationIssues : []);
+  // ÇELİŞKİ = GÜNCEL SATIRLARDAN hesaplanır. Backend validationIssues ESKİ/ALAKASIZ olabilir: rematch
+  //   satırları düzeltir ama revalidate olmadan eski kayıt kalır (ör. satırlar 202=202 dengeli ama eski
+  //   "yevmiye toplamı 404" mesajı = borç+alacak'ın yanlış toplandığı eski okumadan). TUTAR çelişkisini
+  //   (denge) güncel satırlardan türetiriz; tutar-DIŞI issue'lar (sahiplik/iade/tevkifat/SMM) satır-
+  //   bağımsız olduğundan backend'den alınır.
+  const sumB = lines.reduce((s: number, l: any) => s + Number(l.debit || 0), 0);
+  const sumA = lines.reduce((s: number, l: any) => s + Number(l.credit || 0), 0);
+  const dengesiz = lines.length > 0 && Math.abs(sumB - sumA) > 0.5; // borç ≠ alacak = GERÇEK denge hatası
+  // İADE: 610/611 ters-kayıt satırı KONDUYSA "iade normal kayıt yapılamaz" (RETURN_NEEDS_REVERSAL)
+  //   uyarısı GÜNCEL DEĞİLDİR (610 eklendi/rematch attı, revalidate olmadan eski kayıt kalır). Güncel
+  //   satırdan türet: 610 varsa bu issue'yu yok say → geriye sadece gerçek eksik (cari) kalır.
+  // ALIŞTAN iade matrahı 610 DEĞİL (orijinal stok/gider 153/770) ama KDV "İADE" adlı 391'e işlenir →
+  //   o satır da kaydın iade olduğunu gösterir; RETURN_NEEDS_REVERSAL yanlış alarm vermesin.
+  const hasReturnLine = lines.some((l: any) => {
+    const c = String(l.accountCode || '');
+    return /^61[01]/.test(c) || (/^(191|391)/.test(c) && /İADE|IADE/i.test(String(l.description || '')));
+  });
+  const nonAmountIssues = issues.filter((i: any) => i?.code && i?.severity !== 'WARNING'
+    && !['INCOMPLETE_AMOUNTS', 'TOTAL_MISMATCH', 'BALANCE_MISMATCH'].includes(i.code)
+    && !(i.code === 'RETURN_NEEDS_REVERSAL' && hasReturnLine));
+  // DEMİRBAŞ (sabit kıymet) alış/satışı: otomatik işlenmez → Luca'da manuel. "Çelişki"den AYRI/ÖNCE göster.
+  if (issues.some((i: any) => i?.code === 'FIXED_ASSET_MANUAL')) return { k: 'asset', t: 'Demirbaş — manuel', cat: 'demirbas' };
+  const vissue = dengesiz || nonAmountIssues.length > 0;
   if (vissue) return { k: 'warn', t: 'Çelişki — kontrol et', cat: 'celiski' };
   // İŞLETME DEFTERİ (Defter-Beyan): tek-taraflı — hesap planı/kodu YOK, cari kodu açılmaz.
-  //   Sınıflandırma = Kayıt Türü (Mal/Hizmet Satışı) Muhasebeleştir'de seçilir (varsayılan otomatik).
-  //   Hazır olma şartı: tutarın okunmuş olması. Bilanço'daki "cari/gelir/KDV kodu eksik" UYGULANMAZ.
+  //   Sınıflandırma = Kayıt Türü (Mal/Hizmet Satışı) MÜKELLEFİN FAALİYETİNE göre otomatik belirlenir.
+  //   Tutar okunmuş + kayıt türü çözülmüşse "Eşleşti"; çözülemezse "İncele" (Bilanço kod eksiği UYGULANMAZ).
   if (isIsletme) {
     const p = kdvParts(doc);
     const hasAmt = (Number(p.matrah) || 0) > 0 || (Number(p.kdv) || 0) > 0 || Number(doc.totalAmount) > 0;
     if (!hasAmt) return { k: 'warn', t: 'Tutar okunamadı', cat: 'tutar' };
     const isl = doc.ocrData?.isletme;
-    if (isl && ((Array.isArray(isl.satirlar) && isl.satirlar.length) || isl.kayitTuruKod)) return { k: 'ok', t: 'Kayıtlı ✓', cat: 'ready' };
-    return { k: 'ok', t: 'Hazır', cat: 'ready' };
+    const saved = isl && ((Array.isArray(isl.satirlar) && isl.satirlar.length) || isl.kayitTuruKod);
+    if (saved || autoKtKod) return { k: 'ok', t: 'Eşleşti ✓', cat: 'ready' };
+    return { k: 'warn', t: 'Eşleşmedi', cat: 'incele' };
   }
   // Hiç satır yok → matrah/KDV okunamamış.
   if (!lines.length) return { k: 'warn', t: 'Tutar okunamadı', cat: 'tutar' };
@@ -136,8 +178,10 @@ function deriveDurum(doc: any, isIsletme = false): { k: string; t: string; cat: 
 const DURUM_FILTRELER: Array<{ v: string; l: string }> = [
   { v: 'all', l: 'Hepsi' },
   { v: 'ready', l: 'Eşleşti' },
+  { v: 'incele', l: 'Eşleşmedi' },
   { v: 'eksik', l: 'Kod eksik' },
   { v: 'celiski', l: 'Çelişki' },
+  { v: 'demirbas', l: 'Demirbaş (manuel)' },
   { v: 'tutar', l: 'Tutar okunamadı' },
   { v: 'okunuyor', l: 'Okunuyor' },
   { v: 'okunamadi', l: 'Okunamadı' },
@@ -312,11 +356,23 @@ function RateSelect({ value, onChange }: { value: string; onChange: (v: string) 
 // Genel temiz açılır liste (native siyah select yerine) — Fatura Türü, Belge Türü vb.
 function PlainSelect({ value, options, onChange }: { value: string; options: { value: string; label: string }[]; onChange: (v: string) => void }) {
   const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState<{ top: number; left: number; width: number } | null>(null);
+  const [pos, setPos] = useState<{ left: number; width: number; maxH: number; top?: number; bottom?: number } | null>(null);
   const boxRef = useRef<HTMLDivElement>(null);
   const popRef = useRef<HTMLDivElement>(null);
   const cur = options.find((o) => String(o.value) === String(value));
-  const measure = () => { const el = boxRef.current; if (!el) return; const r = el.getBoundingClientRect(); setPos({ top: r.bottom + 3, left: r.left, width: r.width }); };
+  // Viewport-duyarlı: altta yer yoksa YUKARI aç; her durumda yüksekliği ekrana sığdır (ekrandan taşmaz).
+  const measure = () => {
+    const el = boxRef.current; if (!el) return;
+    const r = el.getBoundingClientRect();
+    const vh = window.innerHeight;
+    const below = vh - r.bottom - 8;
+    const above = r.top - 8;
+    const flipUp = below < 240 && above > below;
+    const maxH = Math.max(140, Math.min(330, flipUp ? above : below));
+    setPos(flipUp
+      ? { left: r.left, width: r.width, maxH, bottom: vh - r.top + 3 }
+      : { left: r.left, width: r.width, maxH, top: r.bottom + 3 });
+  };
   useEffect(() => {
     if (!open) { setPos(null); return; }
     measure();
@@ -333,7 +389,7 @@ function PlainSelect({ value, options, onChange }: { value: string; options: { v
         <span className={cur ? '' : 'ph'}>{cur ? cur.label : '—'}</span><span className="pselcar" />
       </div>
       {open && pos && (
-        <div className="pselpop" ref={popRef} style={{ position: 'fixed', top: pos.top, left: pos.left, minWidth: pos.width }}>
+        <div className="pselpop" ref={popRef} style={{ position: 'fixed', left: pos.left, minWidth: pos.width, maxHeight: pos.maxH, ...(pos.top != null ? { top: pos.top } : { bottom: pos.bottom }) }}>
           {options.map((o) => (
             <div key={o.value} className={`pselopt${String(o.value) === String(value) ? ' sel' : ''}`} onMouseDown={(e) => { e.preventDefault(); onChange(o.value); setOpen(false); }}>{o.label}</div>
           ))}
@@ -596,21 +652,21 @@ export default function FaturaMerkeziPage() {
   const nav = (
     <nav className="nav">
       <div className="ncap">Çalışma</div>
-      <div className={`nitem${screen === 'mukellefler' ? ' on' : ''}`} onClick={() => go('mukellefler')}><Ico html={I.users} /> Mükellefler</div>
+      <div className={`nitem${screen === 'mukellefler' ? ' on' : ''}`} style={{ ['--icc' as any]: '#2563eb' }} onClick={() => go('mukellefler')}><Ico html={I.users} /> Mükellefler</div>
 
       <div className="ncap">Belgeler</div>
-      <div className={`nitem${screen === 'faturalar' || screen === 'satis' ? ' on' : ''}`} onClick={() => go('faturalar')}><Ico html={I.file} /> Gelen Faturalar</div>
+      <div className={`nitem${screen === 'faturalar' || screen === 'satis' ? ' on' : ''}`} style={{ ['--icc' as any]: '#15803d' }} onClick={() => go('faturalar')}><Ico html={I.file} /> Gelen Faturalar</div>
       <div className={`nsub${screen === 'faturalar' ? ' on' : ''}`} onClick={() => go('faturalar')}><span className="d" /> Bekleyen Alış Faturaları {badge(sum.alisPending)}</div>
       <div className={`nsub${screen === 'satis' ? ' on' : ''}`} onClick={() => go('satis')}><span className="d" /> Bekleyen Satış Faturaları {badge(sum.satisPending)}</div>
-      <div className={`nitem${screen === 'muhasebe' ? ' on' : ''}`} onClick={() => go('muhasebe')}><Ico html={I.ledger} /> Muhasebeleştir {badge(sum.pending)}</div>
-      <div className={`nitem${screen === 'aktarilanlar' ? ' on' : ''}`} onClick={() => go('aktarilanlar')}><Ico html={I.check} /> Aktarım {badge(Math.max(0, (Number(sum.approved) || 0) - (Number(sum.posted) || 0)))}</div>
-      <div className={`nitem${screen === 'arsiv' ? ' on' : ''}`} onClick={() => go('arsiv')}><Ico html={I.ledger} /> Arşivim {badge(sum.posted)}</div>
+      <div className={`nitem${screen === 'muhasebe' ? ' on' : ''}`} style={{ ['--icc' as any]: '#7c3aed' }} onClick={() => go('muhasebe')}><Ico html={I.ledger} /> Muhasebeleştir {badge(sum.pending)}</div>
+      <div className={`nitem${screen === 'aktarilanlar' ? ' on' : ''}`} style={{ ['--icc' as any]: '#0891b2' }} onClick={() => go('aktarilanlar')}><Ico html={I.check} /> Aktarım {badge(Math.max(0, (Number(sum.approved) || 0) - (Number(sum.posted) || 0)))}</div>
+      <div className={`nitem${screen === 'arsiv' ? ' on' : ''}`} style={{ ['--icc' as any]: '#d97706' }} onClick={() => go('arsiv')}><Ico html={I.ledger} /> Arşivim {badge(sum.posted)}</div>
 
       <div className="ncap">Kurulum</div>
-      <div className={`nitem${screen === 'kurallar' ? ' on' : ''}`} onClick={() => go('kurallar')}><Ico html={I.rules} /> Eşleştirme Kuralları</div>
-      <div className={`nitem${screen === 'entegrator' ? ' on' : ''}`} onClick={() => go('entegrator')}><Ico html={I.plug} /> Entegratörler</div>
-      <div className={`nitem${screen === 'kdv' ? ' on' : ''}`} onClick={() => go('kdv')}><Ico html={I.chart} /> KDV Raporu</div>
-      <div className={`nitem${screen === 'ayarlar' ? ' on' : ''}`} onClick={() => go('ayarlar')}><Ico html={I.ledger} /> Hesap Planı</div>
+      <div className={`nitem${screen === 'kurallar' ? ' on' : ''}`} style={{ ['--icc' as any]: '#475569' }} onClick={() => go('kurallar')}><Ico html={I.rules} /> Eşleştirme Kuralları</div>
+      <div className={`nitem${screen === 'entegrator' ? ' on' : ''}`} style={{ ['--icc' as any]: '#0d9488' }} onClick={() => go('entegrator')}><Ico html={I.plug} /> Entegratörler</div>
+      <div className={`nitem${screen === 'kdv' ? ' on' : ''}`} style={{ ['--icc' as any]: '#be123c' }} onClick={() => go('kdv')}><Ico html={I.chart} /> KDV Raporu</div>
+      <div className={`nitem${screen === 'ayarlar' ? ' on' : ''}`} style={{ ['--icc' as any]: '#15803d' }} onClick={() => go('ayarlar')}><Ico html={I.ledger} /> Hesap Planı</div>
     </nav>
   );
 
@@ -654,7 +710,7 @@ export default function FaturaMerkeziPage() {
           </div>
 
           <div className="content">
-            {(screen === 'faturalar' || screen === 'satis') && <ScreenFaturalar taxpayerId={taxpayerId} period={period} kind={screen === 'satis' ? 'SATIS' : 'ALIS'} isIsletme={(() => { const t = taxpayers.find((x) => x.id === taxpayerId); return /i[şs]letme|defter.?beyan|basit/i.test(`${t?.defterTuru || ''} ${(t as any)?.mihsapDefterTuru || ''}`); })()} />}
+            {(screen === 'faturalar' || screen === 'satis') && <ScreenFaturalar taxpayerId={taxpayerId} period={period} kind={screen === 'satis' ? 'SATIS' : 'ALIS'} isIsletme={(() => { const t = taxpayers.find((x) => x.id === taxpayerId); return /i[şs]letme|defter.?beyan|basit/i.test(`${t?.defterTuru || ''} ${(t as any)?.mihsapDefterTuru || ''}`); })()} taxpayerNace={(taxpayers.find((t) => t.id === taxpayerId) as any)?.naceKodu || ''} taxpayerFaaliyet={(taxpayers.find((t) => t.id === taxpayerId) as any)?.faaliyetAciklama || ''} onOpenMuhasebe={(id) => { try { localStorage.setItem('fm-open-doc', id); } catch { /* yok say */ } setScreen('muhasebe'); }} />}
             {screen === 'mukellefler' && <ScreenMukellefler taxpayers={taxpayers} period={period} onOpen={(id) => { setTaxpayerId(id); setScreen('faturalar'); }} />}
             {screen === 'kurallar' && <ScreenKurallar taxpayerId={taxpayerId} period={period} />}
             {screen === 'muhasebe' && <ScreenMuhasebe taxpayerId={taxpayerId} period={period} isIsletme={(() => { const t = taxpayers.find((x) => x.id === taxpayerId); return /i[şs]letme|defter.?beyan|basit/i.test(`${t?.defterTuru || ''} ${(t as any)?.mihsapDefterTuru || ''}`); })()} taxpayerNace={(taxpayers.find((t) => t.id === taxpayerId) as any)?.naceKodu || ''} taxpayerFaaliyet={(taxpayers.find((t) => t.id === taxpayerId) as any)?.faaliyetAciklama || ''} taxpayerAd={(() => { const t = taxpayers.find((x) => x.id === taxpayerId); return t ? taxpayerLabel(t) : ''; })()} full={editorFull} onToggleFull={() => setEditorFull((v) => !v)} />}
@@ -685,17 +741,31 @@ function isWaitingTransfer(d: any): boolean {
 function isInAktarim(d: any): boolean {
   return isWaitingTransfer(d) || isArchived(d);
 }
-function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false }: { taxpayerId: string; period: string; kind?: 'ALIS' | 'SATIS'; isIsletme?: boolean }) {
+function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false, taxpayerNace = '', taxpayerFaaliyet = '', onOpenMuhasebe }: { taxpayerId: string; period: string; kind?: 'ALIS' | 'SATIS'; isIsletme?: boolean; taxpayerNace?: string; taxpayerFaaliyet?: string; onOpenMuhasebe?: (id: string) => void }) {
   const qc = useQueryClient();
   const docsQ = useDocuments(taxpayerId, period);
   const all: any[] = docsQ.data || [];
   // Gelen kutusu: yalnız HENÜZ İŞLENMEMİŞ gelen belgeler. Onaylanan/aktarıma alınan/aktarılan
   //   belgeler buradan çıkar (Aktarım arşivinde görünür) — kullanıcı talebi.
   const docsAll = all.filter((d) => (d.invoiceKind || 'ALIS') === kind && !isInAktarim(d));
-  // Durum filtresi (Hepsi / Eşleşti / Kod eksik / Çelişki / …)
+  // İşletme sınıfı = AI'ın fatura OKUMA anında faaliyet+içerikle verdiği karar (ocrData.isletme).
+  //   Kaydedilmiş satır varsa o; yoksa AI'ın sınıfı. AI sınıf vermediyse ok:false → "Eşleşmedi" + boş.
+  const islSinif = (d: any): { ktAd: string; altAd: string; ok: boolean } => {
+    if (!isIsletme) return { ktAd: '', altAd: '', ok: false };
+    const isl = d.ocrData?.isletme;
+    const ktKod = isl?.satirlar?.[0]?.kayitTuruKod || isl?.kayitTuruKod;
+    if (!ktKod) return { ktAd: '', altAd: '', ok: false };
+    return {
+      ktAd: isl?.satirlar?.[0]?.kayitTuruAd || isl?.kayitTuruAd || '',
+      altAd: isl?.satirlar?.[0]?.kayitAltAd || isl?.kayitAltAd || '',
+      ok: true,
+    };
+  };
+  const dd = (d: any) => deriveDurum(d, isIsletme, islSinif(d).ok ? 'x' : '');
+  // Durum filtresi (Hepsi / Eşleşti / İncele / Kod eksik / Çelişki / …)
   const [durumF, setDurumF] = useState('all');
-  const durumCount = (cat: string) => cat === 'all' ? docsAll.length : docsAll.filter((d) => deriveDurum(d, isIsletme).cat === cat).length;
-  const docs = durumF === 'all' ? docsAll : docsAll.filter((d) => deriveDurum(d, isIsletme).cat === durumF);
+  const durumCount = (cat: string) => cat === 'all' ? docsAll.length : docsAll.filter((d) => dd(d).cat === cat).length;
+  const docs = durumF === 'all' ? docsAll : docsAll.filter((d) => dd(d).cat === durumF);
   const [sel, setSel] = useState<Set<string>>(new Set());
   const toggle = (id: string) =>
     setSel((prev) => {
@@ -709,7 +779,7 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false 
 
   const sayac = { ok: 0, miss: 0, warn: 0 };
   docsAll.forEach((d) => {
-    const k = deriveDurum(d, isIsletme).k;
+    const k = dd(d).k;
     if (k === 'miss') sayac.miss++;
     else if (k === 'warn') sayac.warn++;
     else sayac.ok++;
@@ -720,7 +790,7 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false 
       api.post('/fatura-muhasebelestirme/integrations/fetch', {
         taxpayerId, direction: kind, donem: period,
       }),
-    onSuccess: () => { toast.success('Belgeler entegratörden çekiliyor'); qc.invalidateQueries({ queryKey: ['fm2'] }); },
+    onSuccess: (r: any) => { showFetchResult(r?.data); qc.invalidateQueries({ queryKey: ['fm2'] }); },
     onError: (e: any) => toast.error('Çekilemedi: ' + (e?.response?.data?.message || e?.message || 'hata')),
   });
   // Geçici köprü: Mihsap "bekleyen evraklar"daki faturaları portala aktarır
@@ -829,6 +899,55 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false 
     if (prevReadingRef.current > 0 && r === 0) qc.invalidateQueries({ queryKey: ['fm2'] });
     prevReadingRef.current = r;
   }, [ocrProg?.reading, qc]);
+  // Okuma SÜRERKEN listeyi periyodik tazele → "şu an okunan" satır (ocrStatus IN_PROGRESS) canlansın.
+  useEffect(() => {
+    if (!ocrProg?.active) return;
+    const t = setInterval(() => qc.invalidateQueries({ queryKey: ['fm2'] }), 2500);
+    return () => clearInterval(t);
+  }, [ocrProg?.active, qc]);
+  // Okuması YENİ BİTEN satıra kısa "tamamlandı" vurgusu (IN_PROGRESS → değil geçişi yakalanır).
+  const prevOcrRef = useRef<Record<string, string>>({});
+  const [justDone, setJustDone] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    const prev = prevOcrRef.current; const cur: Record<string, string> = {}; const bitti: string[] = [];
+    for (const d of docs) { cur[d.id] = d.ocrStatus || ''; if (prev[d.id] === 'IN_PROGRESS' && (d.ocrStatus || '') !== 'IN_PROGRESS') bitti.push(d.id); }
+    prevOcrRef.current = cur;
+    if (!bitti.length) return;
+    setJustDone((s) => { const n = new Set(s); bitti.forEach((id) => n.add(id)); return n; });
+    const t = setTimeout(() => setJustDone((s) => { const n = new Set(s); bitti.forEach((id) => n.delete(id)); return n; }), 2200);
+    return () => clearTimeout(t);
+  }, [docs]);
+  // Yevmiye fişi / kayıt türü detayı — listede aç-kapa (Muhasebeleştir'e gitmeden NEYLE eşleşti görünür).
+  const [fisDetayId, setFisDetayId] = useState('');
+  const grpLabel = (g: string) => g === 'matrah' ? 'Matrah' : g === 'vergi' ? 'KDV' : g === 'cari' ? 'Cari' : g === 'tevkifat' ? 'Tevkifat' : (g || '—');
+  // ZENGİN AI YORUMU — belge detayı (defter ikonu) açılınca lazy üret. Belgede ocrData.muhasebeNedenZengin
+  //   yoksa tek-belge çağrısı yapılır (eşleştirme SONRASI; yön+hesap kesin → AI yalnız içeriği yorumlar).
+  //   fetchedRef bir kez çağrı garantisi (docs tazelense de yeniden istemez); deterministik muhasebeNeden
+  //   yorum gelene kadar anlık gösterilir.
+  const [richNotes, setRichNotes] = useState<Record<string, { loading?: boolean; text?: string }>>({});
+  const richFetchedRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const id = fisDetayId;
+    if (!id) return;
+    const d = docs.find((x: any) => x.id === id);
+    if (!d) return;
+    if (String((d.ocrData as any)?.muhasebeNedenZengin || '')) return; // DB'de zaten var
+    if (richFetchedRef.current.has(id)) return; // zaten istendi
+    richFetchedRef.current.add(id);
+    setRichNotes((s) => ({ ...s, [id]: { loading: true } }));
+    api.post(`/fatura-muhasebelestirme/documents/${id}/muhasebe-yorum`)
+      .then((r) => {
+        const t = String(r.data?.neden || '');
+        const zengin = r.data?.zengin === true;
+        setRichNotes((s) => ({ ...s, [id]: { loading: false, text: zengin ? t : '' } }));
+      })
+      .catch(() => setRichNotes((s) => ({ ...s, [id]: { loading: false, text: '' } })));
+  }, [fisDetayId, docs]);
+  // "Faaliyet: … / Yorum: …" iki bölümü satır satır, etiketleri vurgulu göster (deterministik tek cümlede düz).
+  const renderNeden = (text: string) => text.split('\n').map((ln, i) => {
+    const m = ln.match(/^\s*(Faaliyet|Yorum)\s*:\s*(.*)$/i);
+    return <div key={i} style={{ marginTop: i ? 3 : 0 }}>{m ? <><b style={{ color: '#6d28d9' }}>{m[1]}:</b> {m[2]}</> : ln}</div>;
+  });
 
   const muhasebelestir = () => {
     // İşletme defteri: hesap kodu YOK — tutarı olan hazır. Bilanço: TÜM satırların kodu dolu (cari dahil).
@@ -849,6 +968,13 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false 
     <section className="screen">
       <div className="h2">{kind === 'SATIS' ? 'Bekleyen Satış Faturaları' : 'Bekleyen Alış Faturaları'}</div>
       <div className="sub">{kind === 'SATIS' ? 'Mükellefin kestiği satış faturaları — kuralla otomatik eşleşir.' : 'Entegratörden çekilen gelen faturalar — kuralla otomatik eşleşir, sadece eksik/çelişkili olana bakarsın.'}</div>
+      <div className="fmstats">
+        <div className="fmstat" style={{ ['--sc' as any]: '#2563eb' }}><span className="fmsl">Bekleyen belge</span><span className="fmsv">{durumCount('all')}</span></div>
+        <div className="fmstat" style={{ ['--sc' as any]: '#15803d' }}><span className="fmsl">Eşleşti</span><span className="fmsv">{durumCount('ready')}</span></div>
+        <div className="fmstat" style={{ ['--sc' as any]: '#d97706' }}><span className="fmsl">Çelişki</span><span className="fmsv">{durumCount('celiski')}</span></div>
+        <div className="fmstat" style={{ ['--sc' as any]: '#7c3aed' }}><span className="fmsl">Demirbaş (manuel)</span><span className="fmsv">{durumCount('demirbas')}</span></div>
+        <div className="fmstat" style={{ ['--sc' as any]: '#e5484d' }}><span className="fmsl">Okunamadı / eksik</span><span className="fmsv">{durumCount('okunamadi') + durumCount('eksik')}</span></div>
+      </div>
       <div className="card">
         <div className="ch">
           <h3>{docsQ.isLoading ? 'Yükleniyor…' : `${docs.length} belge`}</h3><div className="sp" />
@@ -867,18 +993,27 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false 
             <button className="btn sm" onClick={() => docsQ.refetch()}><Ico html={I.sync} size={12} /> Tekrar dene</button>
           </div>
         )}
-        {ocrProg && (ocrProg.active || ocrProg.failed > 0) && (
-          <div className={`ocrstrip${ocrProg.active ? ' scanning' : ''}`}>
-            <div className="ocrbar"><div className="ocrfill" /></div>
-            <div className="ocrtxt">
+        {ocrProg && (ocrProg.active || ocrProg.failed > 0) && (() => {
+          const tot = Math.max(1, (ocrProg.done || 0) + (ocrProg.reading || 0) + (ocrProg.failed || 0));
+          const pct = Math.min(100, Math.round(((ocrProg.done || 0) / tot) * 100));
+          return (
+            <div className={`aibar${ocrProg.active ? '' : ' err'}`}>
               {ocrProg.active ? (
-                <><span className="ocrdot" /> Belgeler okunuyor — <b>{ocrProg.reading}</b> sırada/işleniyor · {ocrProg.done} tamam{ocrProg.failed ? ` · ${ocrProg.failed} okunamadı` : ''} <span className="ocrhint">(sunucuda sürer, sayfa değiştirebilirsin)</span></>
+                <>
+                  <div className="aiscan"><i /><i /><i /><i /><span className="beam" /></div>
+                  <div className="aimid">
+                    <div className="ait">Belgeler yapay zeka ile okunuyor<span className="dots" /></div>
+                    <div className="aisub"><b>{ocrProg.done}</b> / {tot} belge okundu{ocrProg.reading ? ` · ${ocrProg.reading} sırada` : ''}{ocrProg.failed ? ` · ${ocrProg.failed} okunamadı` : ''} · sunucuda işlenir, sayfayı değiştirebilirsin</div>
+                    <div className="aitrack"><div className="aifill" style={{ width: `${pct}%` }} /></div>
+                  </div>
+                  <div className="airight"><div className="aipct">%{pct}</div><small>OKUNDU</small></div>
+                </>
               ) : (
-                <><span className="ocrdot err" /> {ocrProg.failed} belge okunamadı — seçip <b>AI ile oku</b> ile tekrar dene</>
+                <><span className="aidot err" /> <span><b>{ocrProg.failed}</b> belge okunamadı — seçip <b>AI ile oku</b> ile tekrar dene</span></>
               )}
             </div>
-          </div>
-        )}
+          );
+        })()}
         {kind === 'ALIS' && missing.length > 0 && (
           <div className="eksikbelge" title="Bu satıcılar son aylarda düzenli alış faturası gönderdi ama bu dönem henüz yok — eksik belge olabilir.">
             <Ico html={I.info} size={14} />
@@ -901,32 +1036,102 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false 
             <thead><tr><th style={{ width: 30 }}><Check checked={allSelected} onToggle={toggleAll} /></th><th>Tarih</th><th>Fatura No</th><th>Firma Adı</th><th>Tip</th><th className="num">KDV Hariç</th><th className="num">KDV</th><th className="num">Tutar</th><th>{isIsletme ? 'Kayıt Türü' : 'Hesap Kodu'}</th><th>Durum</th><th className="actcol" style={{ width: 40 }} /></tr></thead>
             <tbody>
               {docs.map((d) => {
-                const du = deriveDurum(d, isIsletme);
+                const du = dd(d);
                 const sat = (d.invoiceKind || 'ALIS') === 'SATIS';
-                const islKayit = isIsletme ? (d.ocrData?.isletme?.satirlar?.[0]?.kayitTuruAd || d.ocrData?.isletme?.kayitTuruAd || '') : '';
+                // İşletme "Kayıt Türü" sütunu: içerik = ALT türü (örn. "Elektrik Giderleri"). Seçili ise o,
+                //   değilse satıcı adından otomatik (Elektrik/Yakıt/Doğalgaz/Su/Telefon/Kargo/HGS…); alt yoksa ana türe düşer.
+                // İşletme: içerikten gelen sınıf. ok ise ALT türünü göster (yoksa ana türe düş); değilse boş (Eşleşmedi).
+                const sinif = islSinif(d);
+                const islKayit = isIsletme && sinif.ok ? (kayitAltKisaAd(sinif.altAd) || sinif.ktAd) : '';
+                const islAltFull = sinif.altAd;
+                const islMain = sinif.ktAd;
                 const firma = (sat ? d.customerName : d.vendorName) || '—';
                 const vkn = sat ? d.buyerVkn : d.sellerVkn;
-                const code = (() => { const ls = Array.isArray(d.lines) ? d.lines : []; return (ls.find((l: any) => String(l.group) === 'matrah' && l.accountCode) || ls.find((l: any) => l.accountCode))?.accountCode || ''; })();
+                // HESAP KODU sütunu = SADECE matrah/gider kodu. Gider boşsa KDV/cari koduna DÜŞME →
+                //   boş kalsın (kullanıcı: gider kodu boşsa bu sütun da boş olmalı).
+                const code = (() => { const ls = Array.isArray(d.lines) ? d.lines : []; return ls.find((l: any) => String(l.group) === 'matrah' && l.accountCode)?.accountCode || ''; })();
                 const { matrah, kdv } = kdvParts(d);
+                const ocrCls = d.ocrStatus === 'IN_PROGRESS' ? 'scanning' : justDone.has(d.id) ? 'justdone' : d.ocrStatus === 'PENDING' ? 'queued' : undefined;
+                const fisAcik = fisDetayId === d.id;
+                const fisLines: any[] = Array.isArray(d.lines) ? d.lines : [];
                 return (
-                  <tr key={d.id}>
+                  <Fragment key={d.id}>
+                  <tr className={`${ocrCls || ''}${fisAcik ? ' detay-on' : ''}`.trim() || undefined}>
                     <td><Check checked={sel.has(d.id)} onToggle={() => toggle(d.id)} /></td>
                     <td>{fmtDate(d.faturaTarihi || d.createdAt)}</td>
                     <td>{d.belgeNo || '—'}</td>
-                    <td className="firm"><b>{firma}</b><small>{vkn ? `VKN ${vkn}` : '—'}</small></td>
+                    <td className="firm"><b>{firma}</b><small>{vkn ? `VKN ${vkn}` : '—'}</small>{(d as any).duplicateOfId ? <small style={{ color: '#c0353a', fontWeight: 700 }} title={(d as any).duplicateReason || 'Bu fatura daha önce yüklenmiş'}>⚠ {(d as any).duplicateReason || 'Mükerrer — daha önce yüklenmiş'}</small> : null}</td>
                     <td><span className={`pill ${sat ? 'satis' : 'alis'}`}>{sat ? 'Satış' : 'Alış'}</span></td>
                     <td className="num">{matrah != null ? fmtMoney(matrah) : '—'}</td>
                     <td className="num">{kdv != null ? fmtMoney(kdv) : '—'}</td>
                     <td className="num">{fmtMoney(d.totalAmount)}</td>
                     <td>{isIsletme
-                      ? (islKayit ? <span className="hk">{islKayit}</span> : <span className="hk no" title="İşletme defterinde hesap kodu yok — Kayıt Türü (Mal/Hizmet Satışı) Muhasebeleştir'de seçilir">Muhasebeleştir'de seç</span>)
+                      ? (islKayit ? <span className="hk" title={islAltFull ? `${islMain} › ${islAltFull}` : islMain}>{islKayit}</span> : <span className="hk no" title="Belge içeriğinden tür çıkarılamadı — Muhasebeleştir'de seç">—</span>)
                       : (code ? <span className="hk">{code}</span> : <span className="hk no">— yok —</span>)}</td>
-                    <td><span className={`pill ${du.k}`} title={du.cat === 'okunamadi' && d.lucaErrorMessage ? `Neden: ${d.lucaErrorMessage}` : du.t}>{du.t}</span>{du.cat === 'okunamadi' && d.lucaErrorMessage ? <div className="oneden">{d.lucaErrorMessage}</div> : null}</td>
+                    <td><span className={`pill ${du.k}`} title={du.cat === 'okunamadi' && d.lucaErrorMessage ? `Neden: ${d.lucaErrorMessage}` : du.cat === 'celiski' ? ((Array.isArray(d.validationIssues) ? d.validationIssues : (Array.isArray(d.ocrData?.validationIssues) ? d.ocrData.validationIssues : [])).filter((i: any) => i?.code && i.code !== 'INCOMPLETE_AMOUNTS' && i?.severity !== 'WARNING').map((i: any) => i.message).filter(Boolean).join(' · ') || du.t) : du.t}>{du.t}</span>{du.cat === 'okunamadi' && d.lucaErrorMessage ? <div className="oneden">{d.lucaErrorMessage}</div> : null}{du.cat === 'celiski' ? <div className="oneden" style={{ fontSize: 10.5, opacity: 0.85 }}>↓ sebebi fiş detayında</div> : null}</td>
                     <td className="actcol" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                      <span className="eye" onClick={() => openDocFile(d.id)} title="Belgeyi aç"><Ico html={I.eye} size={15} /></span>
-                      <span className="eye del" title="Belgeyi sil" onClick={() => { if (window.confirm(`Bu belge silinsin mi?\n${firma} · ${fmtMoney(d.totalAmount)} ₺${d.belgeNo ? ' · ' + d.belgeNo : ''}`)) delMut.mutate(d.id); }}><Ico html={I.trash} size={14} /></span>
+                      <span className="eye" onClick={() => setFisDetayId(fisAcik ? '' : d.id)} title={fisAcik ? 'Detayı gizle' : (isIsletme ? 'Kayıt türünü göster' : 'Yevmiye fişini göster')} style={{ color: fisAcik ? 'var(--accent,#2563eb)' : '#2563eb' }}><Ico html={I.ledger} size={15} /></span>
+                      <span className="eye" onClick={() => onOpenMuhasebe?.(d.id)} title="Muhasebeleştir ekranında aç" style={{ color: '#7c3aed' }}><Ico html={I.edit} size={15} /></span>
+                      <span className="eye" onClick={() => openDocFile(d.id)} title="Belgeyi aç" style={{ color: '#0891b2' }}><Ico html={I.eye} size={15} /></span>
+                      <span className="eye del" title="Belgeyi sil" onClick={() => { if (window.confirm(`Bu belge silinsin mi?\n${firma} · ${fmtMoney(d.totalAmount)} ₺${d.belgeNo ? ' · ' + d.belgeNo : ''}`)) delMut.mutate(d.id); }} style={{ color: '#dc2626' }}><Ico html={I.trash} size={14} /></span>
                     </td>
                   </tr>
+                  {fisAcik && (
+                    <tr className="detayrow">
+                      <td colSpan={11}>
+                        <div className="detaybox">
+                          {(() => {
+                            const rn = richNotes[d.id];
+                            // NOT: ham `muhasebeNeden` (AI okuma-anı) SATICI gözünden/yanlış nitelikte olabiliyordu →
+                            //   fallback'ten çıkarıldı. Gösterilen yorum yalnız mükellef-gözü: zengin (rn/muhasebeNedenZengin).
+                            //   Eşleşmeyen belgede lazy fetch deterministik mükellef-gözü özeti getirir (rn.text).
+                            const text = (rn?.text || String((d.ocrData as any)?.muhasebeNedenZengin || '')).trim();
+                            const loading = !!rn?.loading && !text;
+                            if (!text && !loading) return null;
+                            return (
+                              <div style={{ padding: '7px 10px', marginBottom: 8, background: 'rgba(124,58,237,0.08)', borderLeft: '3px solid #7c3aed', borderRadius: 5, fontSize: 12.5, lineHeight: 1.5, whiteSpace: 'normal', wordBreak: 'break-word', overflowWrap: 'anywhere', maxWidth: 940 }}>
+                              <b style={{ color: '#7c3aed' }}>💡 AI değerlendirmesi:</b>{' '}
+                              {loading ? <span style={{ opacity: 0.7 }}>yorumlanıyor…</span> : renderNeden(text)}
+                            </div>
+                            );
+                          })()}
+                          {Array.isArray((d.ocrData as any)?.kalemler) && (d.ocrData as any).kalemler.length > 0 ? (
+                            <div style={{ padding: '6px 10px', marginBottom: 8, background: 'rgba(255,255,255,0.025)', border: '1px solid var(--line)', borderRadius: 5, fontSize: 11.5, maxWidth: 940 }}>
+                              <b style={{ color: 'var(--faint)' }}>📋 Fatura kalemleri</b>
+                              <div style={{ marginTop: 4, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                {(d.ocrData as any).kalemler.map((k: any, i: number) => (
+                                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+                                    <span style={{ whiteSpace: 'normal', wordBreak: 'break-word' }}>{k.ad}{k.oran ? ` · %${k.oran}` : ''}</span>
+                                    <span style={{ fontVariantNumeric: 'tabular-nums', flexShrink: 0, color: 'var(--faint)' }}>{fmtMoney(k.tutar)} ₺</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ) : null}
+                          {isIsletme ? (
+                            <div style={{ padding: '4px 2px', fontSize: 13 }}>{(() => { const s = islSinif(d); return s.ok ? <><b>Kayıt Türü:</b> {s.ktAd}{s.altAd ? <> › {s.altAd}</> : null}</> : <span className="hk no">Kayıt türü belirlenemedi — "AI ile oku" ile yeniden okut ya da Muhasebeleştir'de seç.</span>; })()}</div>
+                          ) : fisLines.length ? (
+                            <table className="detaytbl">
+                              <thead><tr><th>Tür</th><th>Hesap Kodu</th><th>Açıklama</th><th className="num">Borç</th><th className="num">Alacak</th></tr></thead>
+                              <tbody>
+                                {fisLines.map((l: any, i: number) => (
+                                  <tr key={l.id || i}>
+                                    <td>{grpLabel(String(l.group || ''))}{l.rate ? ` %${String(l.rate).replace(/[^0-9.,]/g, '')}` : ''}</td>
+                                    <td>{l.accountCode ? <span className="hk">{l.accountCode}</span> : <span className="hk no">eksik</span>}</td>
+                                    <td>{l.accountCode ? (l.description || '—') : '—'}</td>
+                                    <td className="num">{Number(l.debit) ? fmtMoney(l.debit) : ''}</td>
+                                    <td className="num">{Number(l.credit) ? fmtMoney(l.credit) : ''}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          ) : <div className="empty" style={{ padding: 10 }}>Fiş satırı yok — önce "AI ile oku".</div>}
+                          {(() => { const sB = fisLines.reduce((s: number, l: any) => s + Number(l.debit || 0), 0); const sA = fisLines.reduce((s: number, l: any) => s + Number(l.credit || 0), 0); const msgs: string[] = []; if (fisLines.length > 0 && Math.abs(sB - sA) > 0.5) msgs.push(`Yevmiye dengesiz: Borç ${fmtMoney(sB)} ₺ ≠ Alacak ${fmtMoney(sA)} ₺ (${Math.abs(sB - sA).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ₺ fark) — bir satır eksik/fazla.`); (Array.isArray(d.validationIssues) ? d.validationIssues : (Array.isArray(d.ocrData?.validationIssues) ? d.ocrData.validationIssues : [])).filter((i: any) => i?.code && i?.severity !== 'WARNING' && !['INCOMPLETE_AMOUNTS', 'TOTAL_MISMATCH', 'BALANCE_MISMATCH'].includes(i.code) && !(i.code === 'RETURN_NEEDS_REVERSAL' && fisLines.some((l: any) => /^61[01]/.test(String(l.accountCode || ''))))).forEach((i: any) => i.message && msgs.push(i.message)); return msgs.length ? <div className="celiskibanner"><b>Çelişki sebebi:</b>{msgs.map((m: string, k: number) => <div key={k}>• {m}</div>)}</div> : null; })()}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                 );
               })}
               {!docsQ.isLoading && docs.length === 0 && (
@@ -1319,6 +1524,11 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
   const eksik = allF.filter((d) => d.status !== 'APPROVED' && !ready(d));
 
   const [selId, setSelId] = useState<string>('');
+  // Liste ekranındaki "Muhasebeleştir" ikonu localStorage'a hedef belgeyi yazar → bu ekran
+  //   açılınca o belgeyi otomatik seçer (hatalı belgeyi listede tekrar aramaya gerek kalmaz).
+  useEffect(() => {
+    try { const t = localStorage.getItem('fm-open-doc'); if (t) { setSelId(t); localStorage.removeItem('fm-open-doc'); } } catch { /* yok say */ }
+  }, []);
   const navList = [...hazir, ...eksik];
   const selDoc = navList.find((d) => d.id === selId) || hazir[0] || eksik[0];
   const navIdx = selDoc ? navList.findIndex((d) => d.id === selDoc.id) : -1;
@@ -1478,9 +1688,14 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
   const islRef = isletmeRef(islKind);
   const oranToKdvKod = (oran: any) => { const r = Math.round(Number(oran) || 0); return [20, 10, 1, 0].includes(r) ? `KDV${r}` : 'KDV20'; };
   const mkSatir = (kind: 'SATIS' | 'ALIS', matrah: number, kdvKod: string, kdvTutar: number) => {
-    const ktKod = kind === 'SATIS' ? '2' : '4';
+    // Sınıf = AI'ın okuma anında verdiği karar (ocrData.isletme). AI vermediyse form başlangıcı:
+    //   satış Hizmet, gider İndirilecek (kullanıcı Muhasebeleştir'de değiştirir).
+    const ai = selDoc?.ocrData?.isletme;
+    const ktKod = ai?.kayitTuruKod || (kind === 'SATIS' ? '2' : '4');
+    let altKod = ai?.kayitAltKod || '';
     const ktAd = isletmeRef(kind).kayitTuru.find((x) => x.kod === ktKod)?.ad;
-    return { kayitTuruKod: ktKod, kayitAltKod: defaultKayitAltKod(kind, ktKod, ktAd), matrah: Number(matrah) || 0, kdvOranKod: kdvKod, kdvTutar: Number(kdvTutar) || 0, krediliTutar: 0, hesapKodu: '', tevkifatOrani: '', tevkifatTutar: 0, stopajOrani: '', stopajTutar: 0 };
+    if (!altKod) altKod = defaultKayitAltKod(kind, ktKod, ktAd);
+    return { kayitTuruKod: ktKod, kayitAltKod: altKod, matrah: Number(matrah) || 0, kdvOranKod: kdvKod, kdvTutar: Number(kdvTutar) || 0, krediliTutar: 0, hesapKodu: '', tevkifatOrani: '', tevkifatTutar: 0, stopajOrani: '', stopajTutar: 0 };
   };
   const [isl, setIsl] = useState<any>({ satirlar: [] });
   const [islExp, setIslExp] = useState<Record<string, boolean>>({});
@@ -1690,7 +1905,7 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                     <span className="navpos">{navIdx >= 0 ? `${navIdx + 1}/${navList.length}` : ''}</span>
                     <button type="button" className="navb" disabled={navIdx < 0 || navIdx >= navList.length - 1} onClick={() => goNav(1)} title="Sonraki belge (→)">›</button>
                   </span>
-                  <span className="phname">{isIsletme ? (<>{selDoc.invoiceKind === 'SATIS' ? 'Gelir' : 'Gider'} faturası</>) : (<>{firmaOf(selDoc)} · {selDoc.invoiceKind === 'SATIS' ? 'Satış' : 'Alış'} faturası <span className="mu">{selDoc.belgeNo || ''}</span></>)}</span>
+                  <span className="phname">{isIsletme ? (selDoc.invoiceKind === 'SATIS' ? 'Gelir faturası' : 'Gider faturası') : (selDoc.invoiceKind === 'SATIS' ? 'Satış faturası' : 'Alış faturası')}</span>
                   {!isIsletme && (taxpayerAd || taxpayerNace || taxpayerFaaliyet) && (
                     <span className="nacechip" title={`Mükellef: ${taxpayerAd || '—'}${taxpayerFaaliyet ? ` · faaliyet: ${taxpayerFaaliyet}` : (taxpayerNace ? ` · NACE ${taxpayerNace}` : ' · faaliyet/sektör girilmemiş')} · ${isIsletme ? 'İşletme' : 'Bilanço'} — hesap eşleştirmesi bu işe göre yapılır`}>
                       <Ico html={I.info} size={11} />{taxpayerNace ? `NACE ${taxpayerNace}` : 'sektör?'}
@@ -2190,7 +2405,7 @@ function ScreenEntegrator({ taxpayerId, period }: { taxpayerId: string; period: 
   const fetchMut = useMutation({
     mutationFn: (prov: string) =>
       api.post('/fatura-muhasebelestirme/integrations/fetch', { taxpayerId: taxpayerId || undefined, providers: [prov], direction: 'ALIS', donem: period }),
-    onSuccess: () => { toast.success('Sorgu başlatıldı'); qc.invalidateQueries({ queryKey: ['fm2'] }); },
+    onSuccess: (r: any) => { showFetchResult(r?.data); qc.invalidateQueries({ queryKey: ['fm2'] }); },
     onError: (e: any) => toast.error('Sorgu başarısız: ' + (e?.response?.data?.message || e?.message || 'hata')),
   });
   const talimatMut = useMutation({
@@ -2564,16 +2779,19 @@ const CSS = `
 #fm-root[data-accent="slate"]{--accent:#475569;--accent-soft:#eef1f5;--accent-line:#d6dce4;--th:#f1f4f7;--th-text:#3b4757}
 #fm-root[data-accent="bordo"]{--accent:#b91c1c;--accent-soft:#fbeaea;--accent-line:#f1c9c9;--th:#fbeeee;--th-text:#991b1b}
 #fm-root *{box-sizing:border-box;margin:0;padding:0}
-#fm-root .app{display:flex;min-height:100vh;background:var(--bg)}
-#fm-root .side{width:236px;flex-shrink:0;background:var(--side);border-right:1px solid var(--line);display:flex;flex-direction:column;padding:0 0 14px}
+#fm-root .app{display:flex;min-height:100vh;background:var(--bg);position:relative}
+#fm-root .app::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;z-index:6;background:linear-gradient(90deg,var(--accent),#22c55e,#34d399,#22d3ee,#60a5fa)}
+#fm-root .side{width:236px;flex-shrink:0;background:linear-gradient(180deg,var(--side) 0%,#f6faf7 52%,#edf5ef 100%);border-right:1px solid var(--line);display:flex;flex-direction:column;padding:0 0 14px}
 #fm-root .brand{display:flex;align-items:center;gap:9px;padding:16px 18px;border-bottom:1px solid var(--line)}
-#fm-root .brand .lg{height:30px;width:30px;border-radius:8px;background:var(--accent);display:grid;place-items:center;color:#fff;font-weight:800;font-size:13px}
+#fm-root .brand .lg{height:32px;width:32px;border-radius:9px;background:linear-gradient(135deg,var(--accent),#1aa34a);box-shadow:0 5px 12px color-mix(in srgb,var(--accent) 32%,transparent);display:grid;place-items:center;color:#fff;font-weight:800;font-size:14px}
 #fm-root .brand b{font-size:14px;font-weight:700}
 #fm-root .brand small{display:block;font-size:10px;color:var(--faint);font-weight:600}
 #fm-root .nav{padding:10px 10px 0;overflow:auto}
 #fm-root .ncap{font-size:10px;color:var(--faint);font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:14px 10px 6px}
 #fm-root .nitem{display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:9px;color:var(--muted);font-weight:600;font-size:13px;cursor:pointer;margin-bottom:1px}
 #fm-root .nitem:hover{background:#f7f8fb;color:var(--text)}
+#fm-root .nitem > span:first-child{color:var(--icc,var(--faint));transition:color .12s}
+#fm-root .nitem.on > span:first-child{color:var(--accent)}
 #fm-root .nitem.on{background:var(--accent-soft);color:var(--accent);box-shadow:inset 3px 0 0 var(--accent)}
 #fm-root .nitem .ct{margin-left:auto;font-size:10.5px;font-weight:700;background:#eef1f5;color:var(--muted);border-radius:999px;padding:1px 7px}
 #fm-root .nitem.on .ct{background:#fff;color:var(--accent)}
@@ -2593,6 +2811,12 @@ const CSS = `
 #fm-root .fmsel:focus{outline:none;border-color:var(--accent)}
 #fm-root .empty{padding:34px 16px;text-align:center;color:var(--faint);font-size:12.5px}
 #fm-root .mgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+#fm-root .fmstats{display:grid;grid-template-columns:repeat(auto-fit,minmax(135px,1fr));gap:11px;margin-bottom:15px}
+#fm-root .fmstat{background:#fff;border:1px solid var(--line);border-radius:13px;padding:12px 15px;position:relative;overflow:hidden;box-shadow:0 1px 2px rgba(15,27,45,.04),0 5px 14px rgba(15,27,45,.05)}
+#fm-root .fmstat::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--sc,var(--accent))}
+#fm-root .fmstat .fmsl{font-size:11.5px;color:var(--muted);font-weight:600;display:flex;align-items:center;gap:6px}
+#fm-root .fmstat .fmsl::before{content:'';width:8px;height:8px;border-radius:50%;background:var(--sc,var(--accent))}
+#fm-root .fmstat .fmsv{display:block;font-size:26px;font-weight:800;line-height:1.05;margin-top:6px;font-variant-numeric:tabular-nums;color:var(--text)}
 #fm-root .mcard{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 16px}
 #fm-root .mcard .ml{font-size:12px;color:var(--muted)}
 #fm-root .mcard .mv{font-size:26px;font-weight:700;margin-top:5px}
@@ -2639,7 +2863,7 @@ const CSS = `
 #fm-root .planwrap thead th{position:sticky;top:0;z-index:2;padding:7px 11px;font-size:10px}
 #fm-root .planwrap tbody td{padding:4px 11px;border-bottom:1px solid #f1f3f7}
 #fm-root .planwrap tbody tr:hover td{background:#fafbfc}
-#fm-root .planwrap .hk{font-size:11.5px}
+#fm-root .planwrap .hk{font-size:13px}
 #fm-root .planwrap .pill{padding:1px 7px;font-size:10px}
 #fm-root .ch h3 .cnt{margin-left:8px;padding:1px 8px;border-radius:20px;background:var(--accent-soft);color:var(--accent);font-size:11px;font-weight:700;vertical-align:middle}
 #fm-root tbody tr:hover{background:#fafbfd}
@@ -2647,12 +2871,21 @@ const CSS = `
 #fm-root td.actcol{position:sticky;right:0;background:#fff;box-shadow:-6px 0 6px -6px rgba(0,0,0,.12)}
 #fm-root tr.detay-on > td{background:#f7faff}
 #fm-root .detayrow > td{padding:0;background:#f7faff;border-bottom:1px solid var(--line)}
-#fm-root .detaybox{padding:8px 14px 12px}
-#fm-root .detaytbl{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:8px;overflow:hidden}
-#fm-root .detaytbl th{font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:var(--faint);text-align:left;padding:6px 10px;background:#fbfcfd;border-bottom:1px solid var(--line)}
-#fm-root .detaytbl td{font-size:12px;padding:6px 10px;border-bottom:1px solid var(--line)}
+/* Detay kutusu ana listenin YATAY-KAYAN genişliğinden BAĞIMSIZ — ekran sol kenarına yapışır
+   (position:sticky;left) ve viewport genişliğine sığar; böylece ALACAK sütunu hep görünür, taşmaz. */
+#fm-root .detaybox{position:sticky;left:0;width:calc(100vw - 360px);max-width:1010px;box-sizing:border-box;padding:8px 14px 12px;overflow-x:auto}
+#fm-root .detaytbl{width:100%;max-width:920px;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+#fm-root .celiskibanner{margin-top:8px;max-width:920px;padding:7px 11px;background:#fdf2e0;border:1px solid #f0c987;border-radius:7px;font-size:12px;color:#92400e;line-height:1.55}
+#fm-root .celiskibanner b{display:block;margin-bottom:2px;color:#b45309}
+#fm-root .detaytbl th{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--text);text-align:left;padding:8px 10px;background:#f4f7f9;border-bottom:2px solid var(--line)}
+#fm-root .detaytbl td{font-size:13.5px;padding:8px 10px;border-bottom:1px solid var(--line)}
 #fm-root .detaytbl tr:last-child td{border-bottom:none}
-#fm-root .detaytbl .num{text-align:right;font-variant-numeric:tabular-nums}
+#fm-root .detaytbl .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;padding-right:14px;min-width:96px}
+#fm-root .detaytbl td:nth-child(1){white-space:nowrap}
+#fm-root .detaytbl td:nth-child(2){white-space:nowrap}
+#fm-root .detaytbl td:nth-child(3){max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#fm-root .detayrow td{padding:0}
+#fm-root .detaybox .detaytbl{max-width:100%}
 #fm-root .babs2{display:grid;grid-template-columns:1fr 1fr;gap:14px;padding:8px 14px 14px}
 #fm-root .babscol{border:1px solid var(--line);border-radius:10px;overflow:hidden}
 #fm-root .babsh{font-size:12px;font-weight:700;padding:8px 12px;background:#fbfcfd;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px}
@@ -2666,20 +2899,51 @@ const CSS = `
 #fm-root td.firm{max-width:230px}
 #fm-root .firm b{font-weight:600;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #fm-root .firm small{display:block;color:var(--faint);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#fm-root .hk{font-family:"Consolas",monospace;font-weight:700;color:var(--accent)}
+#fm-root .hk{font-family:"Consolas","SF Mono",ui-monospace,monospace;font-weight:700;color:var(--accent);font-size:13px;letter-spacing:.4px}
 #fm-root .hk.no{color:var(--red)}
 #fm-root .pill{font-size:11px;font-weight:700;padding:3px 9px;border-radius:6px;white-space:nowrap;display:inline-block}
+#fm-root td .pill.miss,#fm-root td .pill.warn,#fm-root td .pill.asset{white-space:normal;max-width:180px;line-height:1.25;text-align:center}
 #fm-root .pill.alis{background:#eaf1ff;color:#2563eb}
 #fm-root .pill.satis{background:#e7f6ec;color:#15803d}
 #fm-root .pill.ok{background:#e7f6ec;color:#15803d}
 #fm-root .pill.miss{background:#fdeaea;color:#c0353a}
 #fm-root .pill.warn{background:#fdf2e0;color:#b45309}
 #fm-root .pill.proc{background:#e6eefc;color:#2563eb}
-#fm-root .ocrstrip{display:flex;flex-direction:column;gap:5px;padding:9px 16px;border-bottom:1px solid var(--line);background:#f7faff}
-#fm-root .ocrbar{height:4px;border-radius:3px;background:#e6eefc;overflow:hidden;position:relative}
-#fm-root .ocrstrip.scanning .ocrfill{position:absolute;top:0;left:-40%;width:40%;height:100%;border-radius:3px;background:linear-gradient(90deg,transparent,var(--accent,#2563eb),transparent);animation:ocrscan 1.1s linear infinite}
-#fm-root .ocrstrip:not(.scanning) .ocrfill{width:100%;height:100%;background:#fdeaea}
-@keyframes ocrscan{0%{left:-40%}100%{left:100%}}
+#fm-root .pill.asset{background:#f3e8ff;color:#7c3aed;border:1px solid #e3d4fb}
+#fm-root .aibar{display:flex;align-items:center;gap:15px;margin:10px 16px 12px;padding:14px 18px;border-radius:14px;background:radial-gradient(150% 130% at 0% 0%, #e9faf0, var(--accent-soft) 60%);border:1px solid var(--accent-line);box-shadow:0 4px 16px rgba(21,128,61,.1)}
+#fm-root .aibar.err{background:#fdeeee;border-color:#f3c9c9;color:#92400e;font-size:12.5px;gap:9px;align-items:center}
+#fm-root .aibar .aidot.err{width:9px;height:9px;border-radius:50%;background:#c0353a;flex-shrink:0}
+#fm-root .aibar .aiscan{height:42px;width:32px;border-radius:6px;border:1.5px solid var(--accent);background:#fff;position:relative;overflow:hidden;flex-shrink:0;box-shadow:0 2px 7px rgba(21,128,61,.2)}
+#fm-root .aibar .aiscan i{position:absolute;left:5px;height:2px;border-radius:2px;background:var(--accent-line)}
+#fm-root .aibar .aiscan i:nth-child(1){top:9px;width:18px}#fm-root .aibar .aiscan i:nth-child(2){top:15px;width:22px}#fm-root .aibar .aiscan i:nth-child(3){top:21px;width:14px}#fm-root .aibar .aiscan i:nth-child(4){top:27px;width:20px}
+#fm-root .aibar .aiscan .beam{position:absolute;left:0;right:0;height:12px;background:linear-gradient(transparent,rgba(21,128,61,.5),transparent);animation:aibeam 1.5s ease-in-out infinite}
+@keyframes aibeam{0%{top:-12px}100%{top:42px}}
+#fm-root .aibar .aimid{flex:1;min-width:0}
+#fm-root .aibar .ait{font-size:13px;font-weight:700;color:var(--accent);display:flex;align-items:center}
+#fm-root .aibar .ait .dots::after{content:'...';animation:aidots 1.5s steps(4,end) infinite;display:inline-block;width:16px;text-align:left}
+@keyframes aidots{0%{content:''}25%{content:'.'}50%{content:'..'}75%{content:'...'}}
+#fm-root .aibar .aisub{font-size:11px;color:var(--muted);margin-top:2px}
+#fm-root .aibar .aisub b{color:var(--text);font-weight:700}
+#fm-root .aibar .aitrack{height:6px;border-radius:5px;background:var(--accent-soft);overflow:hidden;margin-top:8px;position:relative}
+#fm-root .aibar .aifill{height:100%;border-radius:5px;background:linear-gradient(90deg,var(--accent),#22c55e 55%,#34d399);position:relative;overflow:hidden;transition:width .45s cubic-bezier(.4,0,.2,1)}
+#fm-root .aibar .aifill::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.65),transparent);animation:aishim 1.7s ease-in-out infinite}
+@keyframes aishim{0%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
+#fm-root .aibar .airight{text-align:center;flex-shrink:0}
+#fm-root .aibar .aipct{font-size:22px;font-weight:800;color:var(--accent);font-variant-numeric:tabular-nums;letter-spacing:-.5px;line-height:1}
+#fm-root .aibar .airight small{font-size:9px;color:var(--faint);font-weight:700;letter-spacing:.6px}
+/* AI okuma — satır bazlı canlı görsel (genel temayı bozmaz). Okunan: mavi pulse + sol şerit;
+   yeni biten: kısa yeşil flash; sırada bekleyen: hafif soluk. */
+#fm-root tbody tr.queued{opacity:.5}
+#fm-root tbody tr.scanning{animation:fmrowscan 1.2s ease-in-out infinite}
+#fm-root tbody tr.scanning td:first-child{position:relative}
+#fm-root tbody tr.scanning td:first-child::before{content:'';position:absolute;left:0;top:4px;bottom:4px;width:3px;border-radius:3px;background:#2563eb;animation:fmrowpulse 1.2s ease-in-out infinite}
+#fm-root tbody tr.justdone{animation:fmrowdone 2s ease-out}
+@keyframes fmrowscan{0%,100%{background:transparent}50%{background:rgba(37,99,235,.10)}}
+@keyframes fmrowpulse{0%,100%{opacity:.3}50%{opacity:1}}
+@keyframes fmrowdone{0%{background:rgba(34,197,94,.24)}100%{background:transparent}}
+#fm-root .ocrpct{font-weight:700;color:var(--accent,#2563eb);font-variant-numeric:tabular-nums;margin-left:auto}
+@keyframes ocrstripes{from{background-position:0 0}to{background-position:20px 0}}
+@keyframes ocrglow{0%,100%{opacity:.35}50%{opacity:.9}}
 #fm-root .ocrtxt{font-size:11.5px;color:var(--muted);display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 #fm-root .ocrtxt b{color:var(--text)}
 #fm-root .ocrhint{color:var(--faint)}
@@ -2695,8 +2959,8 @@ const CSS = `
 #fm-root .yuklenemedi span{display:inline-flex;align-items:center;gap:6px}
 #fm-root .eksikbelge{display:flex;align-items:flex-start;gap:8px;margin:10px 16px 0;padding:9px 12px;background:#fef6e7;border:1px solid #f0d28a;border-radius:9px;font-size:12px;color:#8a6314}
 #fm-root .eksikbelge b{color:#6b4d0f}
-#fm-root .dfchip .dfn{font-size:10px;font-weight:700;opacity:.7}
-#fm-root .dfchip.on .dfn{opacity:.95}
+#fm-root .dfchip .dfn{font-size:10px;font-weight:800;background:var(--accent-soft);color:var(--accent);border-radius:10px;padding:1px 7px;min-width:18px;text-align:center}
+#fm-root .dfchip.on .dfn{background:rgba(255,255,255,.28);color:#fff}
 #fm-root .pill.n{background:#eef1f5;color:#64748b}
 #fm-root .eye{height:28px;width:28px;border-radius:7px;border:1px solid var(--line2);display:grid;place-items:center;color:var(--muted);cursor:pointer}
 #fm-root .eye:hover{border-color:var(--accent);color:var(--accent)}

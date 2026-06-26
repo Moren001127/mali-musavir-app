@@ -32,8 +32,8 @@
       "lockedBy": "muzaffer"
     },
     "apps/api/src/kdv-control/kdv-control.service.ts": {
-      "sha256": "dd27cad7b931b15f9be83b4afb78a6b4adc9058d9355f79606fd87428035f79c",
-      "reason": "KDV Kontrol service — Luca queueing + reconciliation",
+      "sha256": "d78a6e2a3f227bd8d611f73bc7b12fa8cab5bd2a14e445cb1c15c0801b8258d5",
+      "reason": "KDV Kontrol service — Luca queueing + reconciliation + icerik denetimi HEP-AI (kural fallback kaldirildi, kullanici onayi 2026-06-24)",
       "lockedBy": "muzaffer"
     },
     "apps/api/src/mizan/mizan.controller.ts": {

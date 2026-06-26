@@ -349,6 +349,12 @@ export class FaturaMuhasebelestirmeController {
     return this.service.reopen(req.user.tenantId, id, req.user?.userId);
   }
 
+  /** Zengin AI muhasebe yorumu (Faaliyet + Yorum) — belge açılınca lazy çağrılır, cache'lenir. */
+  @Post('documents/:id/muhasebe-yorum')
+  muhasebeYorum(@Req() req: any, @Param('id') id: string, @Body() body: any) {
+    return this.service.generateRichMuhasebeNeden(req.user.tenantId, id, body?.force === true);
+  }
+
   // v1.38: Luca aktarimi basarisiz olursa veya kullanici manuel tekrarlamak isterse
   @Post('documents/:id/retry-luca')
   retryLuca(@Req() req: any, @Param('id') id: string) {

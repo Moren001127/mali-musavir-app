@@ -393,7 +393,7 @@ export class ToolExecutorService {
     const taxpayer = await this.scopedTaxpayer(ctx);
     if (!taxpayer) return { error: 'Aktif mukellef baglami yok.' };
     const cariClient = (this.prisma as any).cariHareket;
-    const [sonHareketler, tumHareketler] = await Promise.all([
+    const [sonHareketler, tumHareketler, sonOdemeRow] = await Promise.all([
       cariClient.findMany({
         where: { tenantId: ctx.tenantId, taxpayerId: taxpayer.id },
         orderBy: { tarih: 'desc' },
@@ -404,6 +404,13 @@ export class ToolExecutorService {
         where: { tenantId: ctx.tenantId, taxpayerId: taxpayer.id },
         select: { tip: true, tutar: true },
       }).catch(() => []),
+      // "En son ne zaman ödeme yaptım" sorusunu GARANTİLE: son 12 hareket hep tahakkuk
+      // olsa bile en güncel TAHSILAT'ı ayrıca çek (yoksa AI ödeme tarihini uyduramasın).
+      cariClient.findFirst({
+        where: { tenantId: ctx.tenantId, taxpayerId: taxpayer.id, tip: 'TAHSILAT' },
+        orderBy: { tarih: 'desc' },
+        select: { tarih: true, tutar: true, odemeYontemi: true, aciklama: true },
+      }).catch(() => null),
     ]);
     const bakiye = (tumHareketler || []).reduce((sum: number, r: any) => {
       const t = this.toNum(r.tutar);
@@ -414,6 +421,16 @@ export class ToolExecutorService {
     return {
       acikBakiye: bakiye > 0 ? bakiye : 0,
       bakiyeAciklama: bakiye > 0 ? `${bakiye} TL acik bakiye gorunuyor` : 'Acik borc gorunmuyor',
+      // Son ödeme (en güncel tahsilat) — "en son ne zaman/ne kadar ödedim" sorularını cevaplar.
+      sonOdeme: sonOdemeRow
+        ? {
+            tarih: sonOdemeRow.tarih?.toISOString?.().slice(0, 10),
+            tutar: this.toNum(sonOdemeRow.tutar),
+            odemeYontemi: sonOdemeRow.odemeYontemi || '-',
+            aciklama: sonOdemeRow.aciklama || '',
+          }
+        : null,
+      sonOdemeNotu: sonOdemeRow ? undefined : 'Sistemde kayıtlı tahsilat/ödeme görünmüyor.',
       sonHareketler: (sonHareketler || []).map((r: any) => ({
         tarih: r.tarih?.toISOString?.().slice(0, 10),
         tip: r.tip,

@@ -231,6 +231,101 @@ export function defaultKayitAltKod(invoiceKind: string | null | undefined, kayit
   return byName ? byName.kod : '';
 }
 
+// Türkçe metni ascii'ye indir (ş→s, ç→c, ğ→g, ü→u, ö→o, ı→i, İ→i) — anahtar kelime eşleşmesi için.
+function asciiTr(s: string): string {
+  return String(s || '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/ı/g, 'i');
+}
+
+/**
+ * Mükellefin FAALİYETİNE göre İşletme defteri Kayıt Türü'nü otomatik belirler (Bilanço'daki
+ * otomatik eşleşmenin İşletme karşılığı). Satışta: Hizmet Satışı('2') / Mal Satışı('1').
+ * Alışta: en yaygın İndirilecek Giderler('4') varsayılır (Muhasebeleştir'de Mal Alışı'na çevrilebilir).
+ * Belirlenemezse '' döner → "İncele".
+ */
+export function isletmeAutoKayitTuru(invoiceKind?: string | null, nace?: string | null, faaliyet?: string | null): string {
+  const sale = String(invoiceKind || 'ALIS').toUpperCase() === 'SATIS';
+  if (!sale) return '4'; // İndirilecek Giderler — alışta yaygın varsayılan
+  const f = asciiTr(faaliyet || '');
+  const n2 = String(nace || '').replace(/\D/g, '').slice(0, 2);
+  const HIZMET = /(hizmet|tasi|nakliye|lojistik|kargo|danisman|musavir|muhasebe|yemek|restoran|lokanta|kafe|kahve|konaklama|otel|pansiyon|kuafor|berber|guzellik|tamir|onarim|servis|bakim|egitim|kurs|saglik|doktor|dis hek|avukat|hukuk|kiral|reklam|temizlik|guvenlik|organizasyon|fotograf|matbaa|yazilim|bilisim|acente|komisyon|spor|dans|terzi)/;
+  const MAL = /(market|bakkal|bufe|sarkuteri|manav|kasap|firin|imalat|ureti|fabrika|toptan|perakende|magaza|ticaret|alim.?sat|nalbur|hirdavat|tekstil|giyim|konfeksiyon|mobilya|beyaz esya|elektronik|oto yedek|akaryakit|petrol|kirtasiye|eczane|gida|et ve|sebze|meyve)/;
+  if (HIZMET.test(f)) return '2';
+  if (MAL.test(f)) return '1';
+  const HN = new Set(['49','50','51','52','53','55','56','58','59','60','61','62','63','64','65','66','68','69','70','71','72','73','74','75','77','78','79','80','81','82','84','85','86','87','88','90','91','92','93','94','95','96']);
+  const MN = new Set(['01','02','03','05','06','07','08','09','10','11','12','13','14','15','16','17','18','19','20','21','22','23','24','25','26','27','28','29','30','31','32','33','45','46','47']);
+  if (HN.has(n2)) return '2';
+  if (MN.has(n2)) return '1';
+  return ''; // belirlenemedi → İncele
+}
+
+// İndirilecek Giderler (GVK40) ALT türü kuralları. ÖNCELİK: belge içeriği (AI giderTuru: "elektrik","akaryakıt",
+//   "kira"...). Satıcı ünvanı sadece ZAYIF yedek. Sıra önemli (özelden genele).
+const GVK40_ALT_KURAL: Array<[RegExp, string]> = [
+  [/akaryakit|motorin|benzin|\bmazot\b|\blpg\b|\bopet\b|\bshell\b|aytemiz|lukoil|petrol ofisi|\bpetrol\b|\bbp\b|\btotalenergies\b|\bmoil\b|\balpet\b/, '113'], // Taşıt Akaryakıt
+  [/elektrik|enerjisa|\bbedas\b|\bayedas\b|\btedas\b|\buedas\b|\bgdz\b|enerji perakende|elektrik perakende/, '82'], // Elektrik
+  [/dogalgaz|\bigdas\b|baskentgaz|\bizgaz\b|\bagdas\b|\bgazel\b|gaz dagitim|\bgaznet\b|\bbursagaz\b|\bpalgaz\b/, '84'],          // Doğalgaz
+  [/\bsu\b|\biski\b|\baski\b|\bizsu\b|\bbuski\b|\basat\b|\bmuski\b|\bsuski\b|\bkaski\b|su ve kanalizasyon|su idaresi/, '83'],     // Su
+  [/telefon|turkcell|vodafone|turk telekom|\bavea\b/, '87'],                                                                    // Telefon
+  [/internet|\bfaks\b|\bfiber\b|\bttnet\b|superonline|kablonet|d-?smart|\bturknet\b/, '88'],                                     // Haberleşme
+  [/kiralama|arac kira|oto kira|rent.?a.?car|filo kira/, '115'],                                                                // Araç Kiralama
+  [/\bkira\b(?!lama)|kira gider|isyeri kira|dukkan kira/, '165'],                                                               // Kira
+  [/muhasebe|mali musavir|\bsmmm\b|\bymm\b|musavirlik/, '179'],                                                                 // Muhasebe/Mali Müşavirlik
+  [/avukat|hukuk buro|hukuki danis/, '196'],                                                                                   // Avukatlık/Hukuk
+  [/kirtasiye|\btoner\b|kartus/, '95'],                                                                                        // Kırtasiye
+  [/\bkargo\b|\bptt\b|\baras\b|yurtici kargo|\bmng\b|surat kargo|\bups\b|\bdhl\b|fedex|\bsendeo\b|\bhepsijet\b/, '193'],         // Kargo ve Posta
+  [/nakliye|tasimacilik|\bnavlun\b|lojistik/, '205'],                                                                          // Nakliye
+  [/\bhgs\b|\bogs\b|otoyol|gecis ucret|\bkgm\b|koprusu|otoyollari/, '324'],                                                     // Otoyol/Gişe
+  [/\bnoter\b/, '217'],                                                                                                        // Noter
+  [/konaklama|\botel\b|\bhotel\b|\bpansiyon\b/, '111'],                                                                        // Konaklama
+  [/seyahat|otobus bileti|\bucak bileti\b|\bthy\b|pegasus|\bbilet\b/, '189'],                                                  // Seyahat ve Ulaşım
+  [/sigorta|\bkasko\b|\bdask\b|trafik sigorta/, '92'],                                                                         // İşyeri Sigorta
+  [/temizlik/, '89'],                                                                                                          // Ofis (temizlik)
+  [/bakim onarim|bakim-onarim|\bonarim\b|\btamir\b|\bservis bedeli\b/, '85'],                                                  // Normal Bakım Onarım
+  [/reklam|\bilan\b|tanitim/, '96'],                                                                                           // Pazarlama
+  [/danisman|musavirlik hizmet|\bdanismanlik\b/, '194'],                                                                       // Dışarıdan Sağlanan Hizmet
+  [/sarf malzeme|\bsarf\b|tek kullanim|ambalaj|isletme malzeme/, '228'],                                                       // Diğer Sarf Malzeme Giderleri (ambalaj/tek-kullanımlık vb.)
+];
+
+/**
+ * GİDER (İndirilecek Giderler — GVK40) için ALT türü tahmin eder. Metin = AI'ın belge içeriğinden
+ * çıkardığı giderTuru + (yedek) satıcı ünvanı. Bulamazsa '' (zorlama yok).
+ */
+export function isletmeAutoKayitAltKod(invoiceKind?: string | null, kayitTuruKod?: string | null, text?: string | null): string {
+  const sale = String(invoiceKind || 'ALIS').toUpperCase() === 'SATIS';
+  if (sale) return '';
+  if (String(kayitTuruKod || '') !== '4') return ''; // sadece İndirilecek Giderler
+  const t = asciiTr(text || '');
+  if (!t) return '';
+  for (const [re, kod] of GVK40_ALT_KURAL) if (re.test(t)) return kod;
+  return '';
+}
+
+/**
+ * GİDER faturası için İşletme sınıfını BELGE İÇERİĞİNDEN belirler (Kayıt Türü + Alt Türü).
+ *   - matrahKategori (AI, mükellef-faaliyet-bilinçli): ticari_mal/hammadde → Mal Alışı; demirbas → Sabit Kıymet.
+ *   - giderTuru (AI içerik) / satıcı → İndirilecek Giderler + özel alt (Elektrik/Akaryakıt/Kira…).
+ *   - Hiçbir kesin sinyal yok → null (= "Eşleşmedi", körü körüne İndirilecek Gider'e ATILMAZ).
+ * Sadece gider (ALIŞ) için; satış faaliyet-tabanlı isletmeAutoKayitTuru ile ayrı işlenir.
+ */
+export function isletmeGiderSinifi(input: {
+  matrahKategori?: string | null;
+  giderTuru?: string | null;
+  vendorName?: string | null;
+  documentType?: string | null;
+}): { kayitTuruKod: string; kayitAltKod: string } | null {
+  const mk = asciiTr(input.matrahKategori || '');
+  if (mk === 'ticari_mal' || mk === 'hammadde') return { kayitTuruKod: '1', kayitAltKod: '186' }; // Mal Alışı
+  if (mk === 'demirbas' || mk === 'demirbas alimi' || mk === 'sabit kiymet') return { kayitTuruKod: '13', kayitAltKod: '' }; // Sabit Kıymet Alışı
+  const alt = isletmeAutoKayitAltKod('ALIS', '4', `${input.giderTuru || ''} ${input.vendorName || ''} ${input.documentType || ''}`);
+  if (alt) return { kayitTuruKod: '4', kayitAltKod: alt };
+  return null; // kesin sinyal yok → Eşleşmedi
+}
+
+/** "Elektrik Giderleri (GVK 40/1)" → "Elektrik Giderleri" — listede sade gösterim için GVK etiketini at. */
+export function kayitAltKisaAd(ad?: string | null): string {
+  return String(ad || '').replace(/\s*\(GVK[^)]*\)\s*$/i, '').trim();
+}
+
 /** Mihsap-benzeri akıllı varsayılan: belge türü kodu (documentType → İşletme belge kodu) */
 export function defaultBelgeTuruKod(documentType?: string | null, invoiceKind?: string | null): string {
   const sale = String(invoiceKind || 'ALIS').toUpperCase() === 'SATIS';
@@ -242,4 +337,50 @@ export function defaultBelgeTuruKod(documentType?: string | null, invoiceKind?: 
   if (t === 'Z_RAPORU') return '2';
   if (t === 'PERAKENDE' || t === 'PERAKENDE_SATIS') return '3';
   return '1';
+}
+
+/**
+ * İkinci el araç/taşınmaz (özel matrah) tespiti — belge içeriğinden. GİB SSS: ikinci el araç/taşınmaz
+ * satışı Özel Matrah'a ve İşlem Türü 1004/1005'e gider. Belirgin ikinci-el ibaresi yoksa '' (zorlama yok).
+ */
+export function isletmeIkinciElTipi(text?: string | null): 'arac' | 'tasinmaz' | '' {
+  const t = asciiTr(text || '');
+  if (!t) return '';
+  if (!/ikinci el|2\.?\s?el|kullanilmis|\b2el\b/.test(t)) return '';
+  if (/tasinmaz|gayrimenkul|\bdaire\b|\barsa\b|isyeri|\bkonut\b|\bbina\b|\bdukkan\b/.test(t)) return 'tasinmaz';
+  if (/\barac\b|otomobil|\bbinek\b|kamyonet|motosiklet|\btasit\b|vasita|\bplaka\b|\boto\b/.test(t)) return 'arac';
+  return '';
+}
+
+/**
+ * ALIŞ/SATIŞ TÜRÜ otomatik türetimi (GİB Defter-Beyan SSS desenleri — kanıt: defterbeyan.gov.tr SSS v1.3).
+ *   ALIŞ:  iade → Satıştan İade (2); normal → Normal Alım (1).
+ *   SATIŞ: tevkifat → Kısmi Tevkifat (2); ikinci el araç/taşınmaz → Özel Matrah (6); KDV=0 → İSTİSNA mı
+ *          %0 mı BELİRSİZ → '' (İncele, tahmin yok); aksi → Normal Satışlar (1).
+ * Dönen kodlar isletme-referans SATIS_AS/GIDER_AS listelerindeki kodlardır.
+ */
+export function isletmeAlisSatisTuru(
+  invoiceKind: string | null | undefined,
+  opts: { isReturn?: boolean; tevkifat?: boolean; kdvVar?: boolean; text?: string | null },
+): string {
+  const sale = String(invoiceKind || 'ALIS').toUpperCase() === 'SATIS';
+  if (!sale) return opts.isReturn ? '2' : '1';      // Satıştan İade : Normal Alım
+  if (opts.tevkifat) return '2';                      // Kısmi Tevkifat Uygulanan İşlemler
+  if (isletmeIkinciElTipi(opts.text)) return '6';     // Özel Matrah
+  if (opts.kdvVar === false) return '';               // KDV=0 → istisna/%0 belirsiz → İncele
+  return '1';                                          // Normal Satışlar
+}
+
+/**
+ * İŞLEM TÜRÜ otomatik türetimi — SADECE satış (gider tarafında İşlem Türü yoktur).
+ * Varsayılan 1100 Yurtiçi Teslim ve Hizmetleri; ikinci el araç → 1004, ikinci el taşınmaz → 1005.
+ * (Diğer nadir kodlar — ihracat/altın/tütün — araştırmada tam doğrulanmadı, zorlanmaz.)
+ */
+export function isletmeIslemTuru(invoiceKind: string | null | undefined, text?: string | null): string {
+  const sale = String(invoiceKind || 'ALIS').toUpperCase() === 'SATIS';
+  if (!sale) return ''; // İşlem Türü sadece satış formunda görünür
+  const ie = isletmeIkinciElTipi(text);
+  if (ie === 'arac') return '1004';     // İkinci El Araç Ticareti
+  if (ie === 'tasinmaz') return '1005'; // İkinci El Taşınmaz Ticareti
+  return '1100';                        // Yurtiçi Teslim ve Hizmetleri
 }
