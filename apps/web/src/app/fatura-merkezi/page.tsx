@@ -693,17 +693,29 @@ export default function FaturaMerkeziPage() {
           <div className="top">
             <div className="crumb" dangerouslySetInnerHTML={{ __html: TITLES[screen] || '' }} />
             <div className="sp" />
-            <select className="fmsel" value={taxpayerId} onChange={(e) => setTaxpayerId(e.target.value)}>
-              <option value="">Tüm mükellefler</option>
-              {taxpayers.map((t) => (
-                <option key={t.id} value={t.id}>{taxpayerLabel(t)}</option>
-              ))}
-            </select>
-            <select className="fmsel" value={period} onChange={(e) => setPeriod(e.target.value)}>
-              {periodOptions().map((p) => (
-                <option key={p.v} value={p.v}>{p.l}</option>
-              ))}
-            </select>
+            <div className="topselwrap">
+              <span className="topsellbl">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+                Mükellef
+              </span>
+              <select className="fmsel" value={taxpayerId} onChange={(e) => setTaxpayerId(e.target.value)}>
+                <option value="">Tüm mükellefler</option>
+                {taxpayers.map((t) => (
+                  <option key={t.id} value={t.id}>{taxpayerLabel(t)}</option>
+                ))}
+              </select>
+            </div>
+            <div className="topselwrap">
+              <span className="topsellbl">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                Dönem
+              </span>
+              <select className="fmsel" value={period} onChange={(e) => setPeriod(e.target.value)}>
+                {periodOptions().map((p) => (
+                  <option key={p.v} value={p.v}>{p.l}</option>
+                ))}
+              </select>
+            </div>
             <div className="theme">
               <small>Renk</small>
               {COLORS.map((x) => (
@@ -992,8 +1004,8 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
           <button className="btn sm" disabled={!taxpayerId || uploadMut.isPending} onClick={() => fileRef.current?.click()} title={!taxpayerId ? 'Önce mükellef seç' : 'JPEG / PDF / XML belge yükle (elle)'}><Ico html={I.plus} size={13} /> {uploadMut.isPending ? 'Yükleniyor…' : 'Belge Yükle'}</button>
           <button className="btn sm" disabled title="Entegratörden otomatik çekme — yakında. Şimdilik 'Mihsap'tan Aktar' ya da 'Belge Yükle' kullan." style={{ opacity: .55 }}><Ico html={I.download} size={13} /> Belgeleri Getir <span style={{ fontSize: 9, fontWeight: 700, opacity: .8 }}>YAKINDA</span></button>
           <button className="btn sm ghost" disabled={syncMut.isPending} onClick={() => syncMut.mutate()} title="Mükellefe bağlanmamış (sahipsiz) belgeleri VKN/TCKN'ye göre ilgili mükellefe bağlar"><Ico html={I.sync} size={13} /> {syncMut.isPending ? 'Bağlanıyor…' : 'Sahipsiz belgeleri bağla'}</button>
-          <button className="btn sm ghost" disabled={!taxpayerId || recodeMut.isPending} onClick={() => recodeMut.mutate()} title="Belgeleri TEKRAR OKUMADAN hesap kodlarını plana göre yeniden eşleştir — yanlış carileri düzeltir/temizler (saniyeler sürer)"><Ico html={I.sync} size={13} /> {recodeMut.isPending ? 'Düzeltiliyor…' : 'Kodları düzelt'}</button>
-          <button className="btn sm blue" disabled={aiBusy || sel.size === 0} onClick={aiOku} title="Seçili faturaları yapay zeka (Max) ile oku — sunucuda okur, sayfa değişince durmaz">{aiBusy ? 'Başlatılıyor…' : `AI ile oku${sel.size ? ` (${sel.size})` : ''}`}</button>
+          <button className="btn sm teal" disabled={!taxpayerId || recodeMut.isPending} onClick={() => recodeMut.mutate()} title="Belgeleri TEKRAR OKUMADAN hesap kodlarını plana göre yeniden eşleştir — yanlış carileri düzeltir/temizler (saniyeler sürer)"><Ico html={I.sync} size={13} /> {recodeMut.isPending ? 'Düzeltiliyor…' : 'Kodları düzelt'}</button>
+          <button className="btn sm purple" disabled={aiBusy || sel.size === 0} onClick={aiOku} title="Seçili faturaları yapay zeka (Max) ile oku — sunucuda okur, sayfa değişince durmaz">{aiBusy ? 'Başlatılıyor…' : `AI ile oku${sel.size ? ` (${sel.size})` : ''}`}</button>
           <button className="btn sm primary" disabled={approveMut.isPending} onClick={muhasebelestir} title="Seçili, kodu tam olan belgeleri toplu onayla (Luca kuyruğuna alır). Tek tek inceleme için soldaki 'Muhasebeleştir' ekranını kullan."><Ico html={I.checkSm} size={13} /> {approveMut.isPending ? 'İşleniyor…' : `Seçilenleri onayla${sel.size ? ` (${sel.size})` : ''}`}</button>
         </div>
         {docsQ.isError && (
@@ -1188,33 +1200,73 @@ function ScreenMukellefler({ taxpayers, period, onOpen }: { taxpayers: any[]; pe
   return (
     <section className="screen">
       <div className="mgrid">
-        <div className="mcard"><div className="ml">Bekleyen belge</div><div className="mv">{tot.pending}</div></div>
-        <div className="mcard"><div className="ml">Luca'ya aktarılan</div><div className="mv">{tot.posted}</div></div>
-        <div className="mcard"><div className="ml">Sorunlu (kontrol)</div><div className="mv">{tot.issue}</div></div>
-        <div className="mcard"><div className="ml">Dikkat gereken</div><div className="mv">{tot.attention}</div></div>
+        <div className="mcard" style={{ ['--mc' as any]: '#2563eb' }}>
+          <div className="mci" style={{ background: '#eff6ff', color: '#2563eb' }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+          </div>
+          <div className="ml">Bekleyen belge</div><div className="mv">{tot.pending}</div>
+        </div>
+        <div className="mcard" style={{ ['--mc' as any]: '#0d9488' }}>
+          <div className="mci" style={{ background: '#f0fdfa', color: '#0d9488' }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 6 9 17l-5-5"/></svg>
+          </div>
+          <div className="ml">Luca'ya aktarılan</div><div className="mv">{tot.posted}</div>
+        </div>
+        <div className="mcard" style={{ ['--mc' as any]: '#e5484d' }}>
+          <div className="mci" style={{ background: '#fff1f1', color: '#e5484d' }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 9v4m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
+          </div>
+          <div className="ml">Sorunlu (kontrol)</div><div className="mv" style={{ color: tot.issue > 0 ? '#e5484d' : undefined }}>{tot.issue}</div>
+        </div>
+        <div className="mcard" style={{ ['--mc' as any]: '#d97706' }}>
+          <div className="mci" style={{ background: '#fffbeb', color: '#d97706' }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+          </div>
+          <div className="ml">Dikkat gereken</div><div className="mv" style={{ color: tot.attention > 0 ? '#d97706' : undefined }}>{tot.attention}</div>
+        </div>
       </div>
       <div className="card">
-        <div className="ch"><h3>{list.length} mükellef · {periodLabel(period)}</h3><div className="sp" /><input className="fmsel" style={{ maxWidth: 240 }} placeholder="Mükellef ara…" value={q} onChange={(e) => setQ(e.target.value)} /></div>
-        <div className="twrap">
-          <table>
-            <thead><tr><th>Mükellef</th><th className="num">Bek. alış</th><th className="num">Bek. satış</th><th className="num">Onaylı</th><th className="num">Luca'ya</th><th className="num">Sorunlu</th><th style={{ width: 70 }} /></tr></thead>
-            <tbody>
-              {list.map(({ t, s }) => (
-                <tr key={t.id} style={{ cursor: 'pointer' }} onClick={() => onOpen(t.id)}>
-                  <td className="firm"><b>{taxpayerLabel(t)}</b><small>{t.taxNumber ? `VKN ${t.taxNumber}` : ''}</small></td>
-                  <td className="num">{s.pendingAlis || 0}</td>
-                  <td className="num">{s.pendingSatis || 0}</td>
-                  <td className="num">{Number(s.approvedAlis || 0) + Number(s.approvedSatis || 0)}</td>
-                  <td className="num">{s.postedToLuca || 0}</td>
-                  <td className="num">{Number(s.hasIssue || 0) > 0 ? <span className="pill miss">{s.hasIssue}</span> : '0'}</td>
-                  <td><button className="btn ghost sm" onClick={(e) => { e.stopPropagation(); onOpen(t.id); }}>Aç</button></td>
-                </tr>
-              ))}
-              {!sumQ.isLoading && list.length === 0 && (
-                <tr><td colSpan={7}><div className="empty">Mükellef bulunamadı.</div></td></tr>
-              )}
-            </tbody>
-          </table>
+        <div className="ch">
+          <h3>{list.length} mükellef <span style={{ fontWeight: 400, color: 'var(--faint)', fontSize: 12 }}>· {periodLabel(period)}</span></h3>
+          <div className="sp" />
+          <div className="mukara">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+            <input placeholder="Mükellef ara…" value={q} onChange={(e) => setQ(e.target.value)} />
+          </div>
+        </div>
+        <div className="mklist">
+          {list.map(({ t, s }) => {
+            const pending = Number(s.pendingAlis || 0) + Number(s.pendingSatis || 0);
+            const issue = Number(s.hasIssue || 0);
+            const posted = Number(s.postedToLuca || 0);
+            const approved = Number(s.approvedAlis || 0) + Number(s.approvedSatis || 0);
+            const rowState = issue > 0 ? 'issue' : pending > 0 ? 'pending' : 'ok';
+            return (
+              <div key={t.id} className={`mkrow mkrow-${rowState}`} onClick={() => onOpen(t.id)}>
+                <div className="mkava" style={{ background: rowState === 'issue' ? '#fdeaea' : rowState === 'pending' ? '#fef3c7' : '#e7f6ec', color: rowState === 'issue' ? '#e5484d' : rowState === 'pending' ? '#d97706' : '#15803d' }}>
+                  {taxpayerLabel(t).charAt(0).toLocaleUpperCase('tr-TR')}
+                </div>
+                <div className="mkinfo">
+                  <b>{taxpayerLabel(t)}</b>
+                  <small>{t.taxNumber ? `VKN ${t.taxNumber}` : ''}{t.taxNumber && (t.defterTuru || (t as any).mihsapDefterTuru) ? ' · ' : ''}{/i[şs]letme|defter.?beyan|basit/i.test(`${t.defterTuru || ''} ${(t as any)?.mihsapDefterTuru || ''}`) ? 'İşletme' : t.defterTuru ? 'Bilanço' : ''}</small>
+                </div>
+                <div className="mkchips">
+                  {pending > 0 && <span className="mkchip blue">Bek. {pending}</span>}
+                  {approved > 0 && <span className="mkchip green">Onaylı {approved}</span>}
+                  {posted > 0 && <span className="mkchip teal">Luca {posted}</span>}
+                  {issue > 0 && <span className="mkchip red">Sorunlu {issue}</span>}
+                  {pending === 0 && approved === 0 && posted === 0 && issue === 0 && <span className="mkchip muted">Belge yok</span>}
+                </div>
+                <button className="mkbtn" onClick={(e) => { e.stopPropagation(); onOpen(t.id); }}>
+                  Aç
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                </button>
+              </div>
+            );
+          })}
+          {!sumQ.isLoading && list.length === 0 && (
+            <div className="empty">Mükellef bulunamadı.</div>
+          )}
         </div>
       </div>
     </section>
@@ -3162,4 +3214,46 @@ const CSS = `
 #fm-root .docbar b{font-size:13.5px}
 #fm-root .docframe{display:block;width:100%;height:100%;border:none;background:#fff}
 #fm-root .docimg{display:inline-block;max-width:100%;height:auto;vertical-align:top;border-radius:6px;box-shadow:0 3px 16px rgba(0,0,0,.18);background:#fff}
+/* ── Buton renk genişletmeleri ── */
+#fm-root .btn.purple{background:#7c3aed;color:#fff;border-color:#7c3aed}
+#fm-root .btn.purple:hover:not(:disabled){background:#6d28d9;border-color:#6d28d9}
+#fm-root .btn.teal{background:#0d9488;color:#fff;border-color:#0d9488}
+#fm-root .btn.teal:hover:not(:disabled){background:#0f766e;border-color:#0f766e}
+/* ── Header seçici etiket grubu ── */
+#fm-root .topselwrap{display:flex;flex-direction:column;gap:3px}
+#fm-root .topsellbl{display:inline-flex;align-items:center;gap:4px;font-size:10px;color:var(--faint);font-weight:700;text-transform:uppercase;letter-spacing:.5px}
+#fm-root .top .fmsel{min-width:160px;font-weight:700;font-size:13px;border-width:1.5px;border-color:var(--line2);padding:7px 12px}
+#fm-root .top .fmsel:focus{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
+/* ── Özet kart (mcard) — renkli sol şerit + ikon ── */
+#fm-root .mcard{background:#fff;border:1px solid var(--line);border-radius:13px;padding:14px 16px;position:relative;overflow:hidden;box-shadow:0 1px 3px rgba(15,27,45,.05),0 4px 12px rgba(15,27,45,.04);display:flex;flex-direction:column;gap:6px}
+#fm-root .mcard::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;border-radius:13px 0 0 13px;background:var(--mc,var(--accent))}
+#fm-root .mci{width:32px;height:32px;border-radius:9px;display:grid;place-items:center;flex-shrink:0;align-self:flex-start;margin-bottom:2px}
+#fm-root .mcard .ml{font-size:11.5px;color:var(--muted);font-weight:600}
+#fm-root .mcard .mv{font-size:28px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums;letter-spacing:-.5px;color:var(--text)}
+/* ── Mükellef arama kutusu ── */
+#fm-root .mukara{display:flex;align-items:center;gap:8px;border:1.5px solid var(--line2);border-radius:10px;padding:7px 12px;background:#fff;color:var(--muted);min-width:220px}
+#fm-root .mukara:focus-within{border-color:var(--accent);color:var(--accent)}
+#fm-root .mukara input{border:none;outline:none;background:transparent;font-size:13px;font-weight:600;color:var(--text);width:100%;font-family:inherit}
+#fm-root .mukara input::placeholder{color:var(--faint);font-weight:400}
+/* ── Mükellef listesi — kart satırlar ── */
+#fm-root .mklist{display:flex;flex-direction:column;gap:0}
+#fm-root .mkrow{display:flex;align-items:center;gap:13px;padding:13px 18px;border-bottom:1px solid var(--line);cursor:pointer;transition:background .1s;position:relative}
+#fm-root .mkrow:last-child{border-bottom:none}
+#fm-root .mkrow:hover{background:#f8fafc}
+#fm-root .mkrow-issue{border-left:3px solid #e5484d}
+#fm-root .mkrow-pending{border-left:3px solid #d97706}
+#fm-root .mkrow-ok{border-left:3px solid #22c55e}
+#fm-root .mkava{width:36px;height:36px;border-radius:10px;display:grid;place-items:center;font-size:15px;font-weight:800;flex-shrink:0}
+#fm-root .mkinfo{flex:1;min-width:0}
+#fm-root .mkinfo b{font-size:13.5px;font-weight:700;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#fm-root .mkinfo small{font-size:11px;color:var(--faint);display:block;margin-top:1px}
+#fm-root .mkchips{display:flex;align-items:center;gap:5px;flex-shrink:0;flex-wrap:wrap;max-width:300px}
+#fm-root .mkchip{display:inline-flex;align-items:center;height:22px;padding:0 9px;border-radius:11px;font-size:11px;font-weight:700;white-space:nowrap}
+#fm-root .mkchip.blue{background:#eff6ff;color:#2563eb}
+#fm-root .mkchip.green{background:#e7f6ec;color:#15803d}
+#fm-root .mkchip.teal{background:#f0fdfa;color:#0d9488}
+#fm-root .mkchip.red{background:#fdeaea;color:#c0353a}
+#fm-root .mkchip.muted{background:#f1f5f9;color:#94a3b8}
+#fm-root .mkbtn{display:inline-flex;align-items:center;gap:5px;padding:6px 13px;border-radius:8px;border:1.5px solid var(--accent-line);background:var(--accent-soft);color:var(--accent);font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:inherit;flex-shrink:0;transition:background .12s,color .12s}
+#fm-root .mkbtn:hover{background:var(--accent);color:#fff;border-color:var(--accent)}
 `;
