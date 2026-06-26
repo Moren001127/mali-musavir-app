@@ -5905,6 +5905,14 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       return { ok: false, reason: 'belge getirilemedi: ' + (e?.message || '') };
     }
     const isImage = !!imgBuf && imgBuf.length > 200 && /^image\//i.test(imgMedia);
+    // TEŞHİS (geçici): HTML belgenin gerçek doğası — saf HTML mi yoksa gömülü XSLT'li XML mi?
+    //   Bu, "HTML sanılıp Max'e düşen ama aslında UBL parse edilebilecek" belgeleri ortaya çıkarır.
+    if (html && html.length > 80) {
+      try {
+        const _h = html.slice(0, 800);
+        this.logger.log(`[TESHIS-HTML] belge=${d.belgeNo || documentId} len=${html.length} xmlDecl=${/<\?xml/i.test(_h)} ublInvoice=${/<\w*:?(Invoice|CreditNote)[\s>]/i.test(html.slice(0, 4000))} htmlTag=${/<html/i.test(_h)} bas="${_h.slice(0, 160).replace(/\s+/g, ' ')}"`);
+      } catch { /* log opsiyonel */ }
+    }
     // XML e-Arşiv/e-Fatura → UBL PARSE (AI'siz, BİREBİR; okuma asla başarısız olmaz).
     let preParsed: any = null;
     if (!isImage && !(html && html.length > 80) && imgBuf && /xml/i.test(imgMedia)) {
