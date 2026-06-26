@@ -5622,6 +5622,62 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       // Hesap planı çekilmemiş mükellefte bile öğrenilmiş satıcı kodlarını uygula.
       await this.applyLearnedVendorCodes(tenantId, taxpayerId, documentIds).catch(() => {});
     }
+    // İşletme: amounts var ama ocrData.isletme boş (eski okuma / defterTuru geç set) → fallback uygula.
+    await this.applyIsletmeFallbackClassification(tenantId, taxpayerId, documentIds).catch(() => {});
+  }
+
+  /** İşletme mükellefleri için kayıt türü boş belgelerden ocrData.isletme'yi retroaktif doldurur. */
+  private async applyIsletmeFallbackClassification(tenantId: string, taxpayerId: string, documentIds?: string[]) {
+    const tp = await (this.prisma as any).taxpayer.findFirst({
+      where: { id: taxpayerId, tenantId },
+      select: { defterTuru: true, naceKodu: true, faaliyetAciklama: true },
+    }).catch(() => null);
+    if (String(tp?.defterTuru || '').toUpperCase() !== 'ISLETME') return;
+    const nace = String(tp?.naceKodu || '').trim();
+    const faaliyet = String(tp?.faaliyetAciklama || '').trim();
+    const docs: any[] = await (this.prisma as any).invoiceAccountingDocument.findMany({
+      where: {
+        tenantId, taxpayerId,
+        status: { in: ['READY', 'NEEDS_REVIEW', 'DRAFT'] },
+        ...(documentIds?.length ? { id: { in: documentIds } } : {}),
+      },
+      select: { id: true, invoiceKind: true, totalAmount: true, vendorName: true, customerName: true, ocrData: true },
+      take: 500,
+    });
+    for (const doc of docs) {
+      const ocr = (doc.ocrData as any) || {};
+      if (ocr?.isletme?.kayitTuruKod) continue; // zaten sınıflı
+      const hasAmt = Number(ocr?.matrah || 0) > 0 || Number(ocr?.kdvTutari || 0) > 0 || Number(doc.totalAmount || 0) > 0;
+      if (!hasAmt) continue; // okunamadı, atla
+      const kind: 'ALIS' | 'SATIS' = String(doc.invoiceKind || 'ALIS') === 'SATIS' ? 'SATIS' : 'ALIS';
+      const fbKtKod = isletmeAutoKayitTuru(kind, nace || null, faaliyet || null);
+      if (!fbKtKod) continue;
+      const ref = isletmeRef(kind);
+      const fbKt = ref.kayitTuru.find((x: any) => x.kod === fbKtKod);
+      if (!fbKt) continue;
+      const giderTuru = String(ocr?.giderTuru || '').trim();
+      const vendorName = kind === 'ALIS' ? String(doc.vendorName || '') : String(doc.customerName || '');
+      const kalemler = Array.isArray(ocr?.kalemler) ? ocr.kalemler.map((k: any) => String(k?.ad || '')).join(' ') : '';
+      const islText = `${giderTuru} ${vendorName} ${kalemler}`.trim();
+      const fbAltKod = fbKtKod === '4' ? isletmeAutoKayitAltKod(kind, '4', islText) : (defaultKayitAltKod(kind, fbKtKod, fbKt.ad) || '');
+      const altList = getKayitAltList(kind, fbKtKod);
+      const fbAlt = fbAltKod ? altList.find((x: any) => x.kod === fbAltKod) : null;
+      const islIade = ocr?.isReturn === true;
+      const islTevk = ocr?.tevkifatHint === true || Number(ocr?.tevkifatOrani || 0) > 0;
+      const islKdvVar = Number(ocr?.kdvTutari || 0) > 0;
+      const isletme = {
+        kayitTuruKod: fbKtKod, kayitTuruAd: fbKt.ad,
+        kayitAltKod: fbAlt?.kod || '', kayitAltAd: fbAlt?.ad || '',
+        autoMatched: true, neden: 'Faaliyet/içerik tabanlı retroaktif seçim',
+        alisSatisKod: isletmeAlisSatisTuru(kind, { isReturn: islIade, tevkifat: islTevk, kdvVar: islKdvVar, text: islText }),
+        islemTuruKod: isletmeIslemTuru(kind, islText),
+        belgeTuruKod: defaultBelgeTuruKod(String(ocr?.belgeTuru || ''), kind),
+      };
+      await (this.prisma as any).invoiceAccountingDocument.update({
+        where: { id: doc.id },
+        data: { ocrData: { ...ocr, isletme } },
+      });
+    }
   }
 
   /**
@@ -6043,7 +6099,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const res = await claudeTextViaMax(
         (isImage && !useAzureText)
           ? { prompt: callPrompt, images: [{ base64: imgBuf!.toString('base64'), mediaType: imgMedia }], timeoutMs: 48000, model }
-          : { prompt: callPrompt, timeoutMs: 38000, model },
+          : { prompt: callPrompt, timeoutMs: 55000, model },
       );
       if (!res.ok || !res.text) {
         reason = res.error || 'okunamadı';

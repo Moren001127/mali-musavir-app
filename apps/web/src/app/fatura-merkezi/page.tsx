@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, Fragment } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
-import { isletmeRef, ISLETME_ISLEM_TURU, ISLETME_KDV_ORAN, defaultBelgeTuruKod, getKayitAltList, defaultKayitAltKod, kayitAltKisaAd } from '@mali-musavir/shared';
+import { isletmeRef, ISLETME_ISLEM_TURU, ISLETME_KDV_ORAN, defaultBelgeTuruKod, getKayitAltList, defaultKayitAltKod, kayitAltKisaAd, isletmeAutoKayitTuru } from '@mali-musavir/shared';
 
 // Entegratör "Sorgula/Çek" sonucunu kullanıcıya GÖSTER. Eskiden onSuccess sadece "çekiliyor" diyordu;
 // backend providers[].reason ("yetkiniz yok" gibi) ve created/fetched sayılarını dönüyor ama yutuluyordu.
@@ -691,28 +691,24 @@ export default function FaturaMerkeziPage() {
           <div className="top">
             <div className="crumb" dangerouslySetInnerHTML={{ __html: TITLES[screen] || '' }} />
             <div className="sp" />
-            <div className="topselwrap">
-              <span className="topsellbl">
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
-                Mükellef
-              </span>
-              <select className="fmsel" value={taxpayerId} onChange={(e) => setTaxpayerId(e.target.value)}>
-                <option value="">Tüm mükellefler</option>
-                {taxpayers.map((t) => (
-                  <option key={t.id} value={t.id}>{taxpayerLabel(t)}</option>
-                ))}
-              </select>
-            </div>
-            <div className="topselwrap">
-              <span className="topsellbl">
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
-                Dönem
-              </span>
-              <select className="fmsel" value={period} onChange={(e) => setPeriod(e.target.value)}>
-                {periodOptions().map((p) => (
-                  <option key={p.v} value={p.v}>{p.l}</option>
-                ))}
-              </select>
+            <div className="topfiltbar">
+              <div className="topfilt">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+                <select className="filtsel" value={taxpayerId} onChange={(e) => setTaxpayerId(e.target.value)}>
+                  <option value="">Tüm mükellefler</option>
+                  {taxpayers.map((t) => (
+                    <option key={t.id} value={t.id}>{taxpayerLabel(t)}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="topfilt">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                <select className="filtsel" value={period} onChange={(e) => setPeriod(e.target.value)}>
+                  {periodOptions().map((p) => (
+                    <option key={p.v} value={p.v}>{p.l}</option>
+                  ))}
+                </select>
+              </div>
             </div>
             <div className="theme">
               <small>Renk</small>
@@ -773,12 +769,22 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
     if (!isIsletme) return { ktAd: '', altAd: '', ok: false };
     const isl = d.ocrData?.isletme;
     const ktKod = isl?.satirlar?.[0]?.kayitTuruKod || isl?.kayitTuruKod;
-    if (!ktKod) return { ktAd: '', altAd: '', ok: false };
-    return {
-      ktAd: isl?.satirlar?.[0]?.kayitTuruAd || isl?.kayitTuruAd || '',
-      altAd: isl?.satirlar?.[0]?.kayitAltAd || isl?.kayitAltAd || '',
-      ok: true,
-    };
+    if (ktKod) {
+      return {
+        ktAd: isl?.satirlar?.[0]?.kayitTuruAd || isl?.kayitTuruAd || '',
+        altAd: isl?.satirlar?.[0]?.kayitAltAd || isl?.kayitAltAd || '',
+        ok: true,
+      };
+    }
+    // ocrData.isletme boş ama tutar var → frontend fallback (backend retroaktif atamayı bekler)
+    const hasAmt = Number(d.ocrData?.matrah || 0) > 0 || Number(d.totalAmount || 0) > 0;
+    if (!hasAmt) return { ktAd: '', altAd: '', ok: false };
+    const kind = String(d.invoiceKind || 'ALIS').toUpperCase() === 'SATIS' ? 'SATIS' : 'ALIS';
+    const fbKod = isletmeAutoKayitTuru(kind, null, null);
+    if (!fbKod) return { ktAd: '', altAd: '', ok: false };
+    const ref = isletmeRef(kind);
+    const kt = ref.kayitTuru.find((x: any) => x.kod === fbKod);
+    return { ktAd: kt?.ad || '', altAd: '', ok: !!kt };
   };
   const dd = (d: any) => deriveDurum(d, isIsletme, islSinif(d).ok ? 'x' : '');
   // Durum filtresi (Hepsi / Eşleşti / İncele / Kod eksik / Çelişki / …)
@@ -1232,40 +1238,48 @@ function ScreenMukellefler({ taxpayers, period, onOpen }: { taxpayers: any[]; pe
             <input placeholder="Mükellef ara…" value={q} onChange={(e) => setQ(e.target.value)} />
           </div>
         </div>
-        <div className="mklist">
-          {list.map(({ t, s }) => {
-            const pending = Number(s.pendingAlis || 0) + Number(s.pendingSatis || 0);
-            const issue = Number(s.hasIssue || 0);
-            const posted = Number(s.postedToLuca || 0);
-            const approved = Number(s.approvedAlis || 0) + Number(s.approvedSatis || 0);
-            const rowState = issue > 0 ? 'issue' : pending > 0 ? 'pending' : 'ok';
-            return (
-              <div key={t.id} className={`mkrow mkrow-${rowState}`} onClick={() => onOpen(t.id)}>
-                <div className="mkava" style={{ background: rowState === 'issue' ? '#fdeaea' : rowState === 'pending' ? '#fef3c7' : '#e7f6ec', color: rowState === 'issue' ? '#e5484d' : rowState === 'pending' ? '#d97706' : '#15803d' }}>
-                  {taxpayerLabel(t).charAt(0).toLocaleUpperCase('tr-TR')}
-                </div>
-                <div className="mkinfo">
-                  <b>{taxpayerLabel(t)}</b>
-                  <small>{t.taxNumber ? `VKN ${t.taxNumber}` : ''}{t.taxNumber && (t.defterTuru || (t as any).mihsapDefterTuru) ? ' · ' : ''}{/i[şs]letme|defter.?beyan|basit/i.test(`${t.defterTuru || ''} ${(t as any)?.mihsapDefterTuru || ''}`) ? 'İşletme' : t.defterTuru ? 'Bilanço' : ''}</small>
-                </div>
-                <div className="mkchips">
-                  {pending > 0 && <span className="mkchip blue">Bek. {pending}</span>}
-                  {approved > 0 && <span className="mkchip green">Onaylı {approved}</span>}
-                  {posted > 0 && <span className="mkchip teal">Luca {posted}</span>}
-                  {issue > 0 && <span className="mkchip red">Sorunlu {issue}</span>}
-                  {pending === 0 && approved === 0 && posted === 0 && issue === 0 && <span className="mkchip muted">Belge yok</span>}
-                </div>
-                <button className="mkbtn" onClick={(e) => { e.stopPropagation(); onOpen(t.id); }}>
-                  Aç
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-                </button>
-              </div>
-            );
-          })}
-          {!sumQ.isLoading && list.length === 0 && (
-            <div className="empty">Mükellef bulunamadı.</div>
-          )}
-        </div>
+        <table className="mktbl">
+          <thead>
+            <tr>
+              <th style={{ width: 6 }} />
+              <th>Mükellef</th>
+              <th>Defter</th>
+              <th className="num">Bekleyen</th>
+              <th className="num">Onaylı</th>
+              <th className="num">Luca</th>
+              <th className="num">Sorunlu</th>
+              <th style={{ width: 60 }} />
+            </tr>
+          </thead>
+          <tbody>
+            {list.map(({ t, s }) => {
+              const pending = Number(s.pendingAlis || 0) + Number(s.pendingSatis || 0);
+              const issue = Number(s.hasIssue || 0);
+              const posted = Number(s.postedToLuca || 0);
+              const approved = Number(s.approvedAlis || 0) + Number(s.approvedSatis || 0);
+              const rowState = issue > 0 ? 'issue' : pending > 0 ? 'pending' : 'ok';
+              const defterLabel = /i[şs]letme|defter.?beyan|basit/i.test(`${t.defterTuru || ''} ${(t as any)?.mihsapDefterTuru || ''}`) ? 'İşletme' : t.defterTuru ? 'Bilanço' : '';
+              return (
+                <tr key={t.id} className={`mktr mktr-${rowState}`} onClick={() => onOpen(t.id)}>
+                  <td><span className={`mkdot mkdot-${rowState}`} /></td>
+                  <td>
+                    <b className="mkfirma">{taxpayerLabel(t)}</b>
+                    {t.taxNumber ? <small className="mkvkn">VKN {t.taxNumber}</small> : null}
+                  </td>
+                  <td>{defterLabel ? <span className="mkdef">{defterLabel}</span> : null}</td>
+                  <td className="num">{pending > 0 ? <b style={{ color: '#2563eb' }}>{pending}</b> : <span className="faint">—</span>}</td>
+                  <td className="num">{approved > 0 ? <span style={{ color: '#15803d' }}>{approved}</span> : <span className="faint">—</span>}</td>
+                  <td className="num">{posted > 0 ? <span style={{ color: '#0d9488' }}>{posted}</span> : <span className="faint">—</span>}</td>
+                  <td className="num">{issue > 0 ? <b style={{ color: '#e5484d' }}>{issue}</b> : <span className="faint">—</span>}</td>
+                  <td><button className="mkbtn" onClick={(e) => { e.stopPropagation(); onOpen(t.id); }}>Aç →</button></td>
+                </tr>
+              );
+            })}
+            {!sumQ.isLoading && list.length === 0 && (
+              <tr><td colSpan={8}><div className="empty">Mükellef bulunamadı.</div></td></tr>
+            )}
+          </tbody>
+        </table>
       </div>
     </section>
   );
@@ -3217,10 +3231,11 @@ const CSS = `
 #fm-root .btn.teal{background:#0d9488;color:#fff;border-color:#0d9488}
 #fm-root .btn.teal:hover:not(:disabled){background:#0f766e;border-color:#0f766e}
 /* ── Header seçici etiket grubu ── */
-#fm-root .topselwrap{display:flex;flex-direction:column;gap:3px}
-#fm-root .topsellbl{display:inline-flex;align-items:center;gap:4px;font-size:10px;color:var(--faint);font-weight:700;text-transform:uppercase;letter-spacing:.5px}
-#fm-root .top .fmsel{min-width:160px;font-weight:700;font-size:13px;border-width:1.5px;border-color:var(--line2);padding:7px 12px}
-#fm-root .top .fmsel:focus{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
+#fm-root .topfiltbar{display:flex;align-items:center;gap:8px}
+#fm-root .topfilt{display:flex;align-items:center;gap:7px;background:var(--accent-soft);border:1.5px solid var(--accent-line);border-radius:10px;padding:5px 10px 5px 10px}
+#fm-root .topfilt svg{color:var(--accent);flex-shrink:0;opacity:.8}
+#fm-root .filtsel{border:none;background:transparent;font-size:13px;font-weight:700;color:var(--text);cursor:pointer;outline:none;min-width:130px;font-family:inherit}
+#fm-root .topselwrap{display:none}
 /* ── Özet kart (mcard) — renkli sol şerit + ikon ── */
 #fm-root .mcard{background:#fff;border:1px solid var(--line);border-radius:13px;padding:14px 16px;position:relative;overflow:hidden;box-shadow:0 1px 3px rgba(15,27,45,.05),0 4px 12px rgba(15,27,45,.04);display:flex;flex-direction:column;gap:6px}
 #fm-root .mcard::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;border-radius:13px 0 0 13px;background:var(--mc,var(--accent))}
@@ -3233,24 +3248,22 @@ const CSS = `
 #fm-root .mukara input{border:none;outline:none;background:transparent;font-size:13px;font-weight:600;color:var(--text);width:100%;font-family:inherit}
 #fm-root .mukara input::placeholder{color:var(--faint);font-weight:400}
 /* ── Mükellef listesi — kart satırlar ── */
-#fm-root .mklist{display:flex;flex-direction:column;gap:0}
-#fm-root .mkrow{display:flex;align-items:center;gap:13px;padding:13px 18px;border-bottom:1px solid var(--line);cursor:pointer;transition:background .1s;position:relative}
-#fm-root .mkrow:last-child{border-bottom:none}
-#fm-root .mkrow:hover{background:#f8fafc}
-#fm-root .mkrow-issue{border-left:3px solid #e5484d}
-#fm-root .mkrow-pending{border-left:3px solid #d97706}
-#fm-root .mkrow-ok{border-left:3px solid #22c55e}
-#fm-root .mkava{width:36px;height:36px;border-radius:10px;display:grid;place-items:center;font-size:15px;font-weight:800;flex-shrink:0}
-#fm-root .mkinfo{flex:1;min-width:0}
-#fm-root .mkinfo b{font-size:13.5px;font-weight:700;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#fm-root .mkinfo small{font-size:11px;color:var(--faint);display:block;margin-top:1px}
-#fm-root .mkchips{display:flex;align-items:center;gap:5px;flex-shrink:0;flex-wrap:wrap;max-width:300px}
-#fm-root .mkchip{display:inline-flex;align-items:center;height:22px;padding:0 9px;border-radius:11px;font-size:11px;font-weight:700;white-space:nowrap}
-#fm-root .mkchip.blue{background:#eff6ff;color:#2563eb}
-#fm-root .mkchip.green{background:#e7f6ec;color:#15803d}
-#fm-root .mkchip.teal{background:#f0fdfa;color:#0d9488}
-#fm-root .mkchip.red{background:#fdeaea;color:#c0353a}
-#fm-root .mkchip.muted{background:#f1f5f9;color:#94a3b8}
-#fm-root .mkbtn{display:inline-flex;align-items:center;gap:5px;padding:6px 13px;border-radius:8px;border:1.5px solid var(--accent-line);background:var(--accent-soft);color:var(--accent);font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:inherit;flex-shrink:0;transition:background .12s,color .12s}
+#fm-root .mktbl{width:100%;border-collapse:collapse;font-size:13px}
+#fm-root .mktbl thead th{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--faint);padding:8px 12px;border-bottom:1.5px solid var(--line);text-align:left;white-space:nowrap}
+#fm-root .mktbl thead th.num{text-align:right}
+#fm-root .mktr{cursor:pointer;transition:background .1s}
+#fm-root .mktr:hover{background:#f8fafc}
+#fm-root .mktr td{padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:middle}
+#fm-root .mktr:last-child td{border-bottom:none}
+#fm-root .mktr td.num{text-align:right}
+#fm-root .mkdot{display:inline-block;width:8px;height:8px;border-radius:50%;flex-shrink:0}
+#fm-root .mkdot-issue{background:#e5484d}
+#fm-root .mkdot-pending{background:#d97706}
+#fm-root .mkdot-ok{background:#22c55e}
+#fm-root .mkfirma{font-size:13px;font-weight:700;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:320px}
+#fm-root .mkvkn{font-size:11px;color:var(--faint);display:block;margin-top:1px}
+#fm-root .mkdef{display:inline-block;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;background:var(--accent-soft);color:var(--accent)}
+#fm-root .faint{color:var(--faint)}
+#fm-root .mkbtn{display:inline-flex;align-items:center;padding:5px 11px;border-radius:7px;border:1.5px solid var(--accent-line);background:var(--accent-soft);color:var(--accent);font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:inherit;transition:background .12s,color .12s}
 #fm-root .mkbtn:hover{background:var(--accent);color:#fff;border-color:var(--accent)}
 `;
