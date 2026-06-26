@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, Fragment } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
-import { isletmeRef, ISLETME_ISLEM_TURU, ISLETME_KDV_ORAN, defaultBelgeTuruKod, getKayitAltList, defaultKayitAltKod, kayitAltKisaAd, isletmeAutoKayitTuru } from '@mali-musavir/shared';
+import { isletmeRef, ISLETME_ISLEM_TURU, ISLETME_KDV_ORAN, defaultBelgeTuruKod, getKayitAltList, defaultKayitAltKod, kayitAltKisaAd, isletmeAutoKayitTuru, isletmeAutoKayitAltKod } from '@mali-musavir/shared';
 
 // Entegratör "Sorgula/Çek" sonucunu kullanıcıya GÖSTER. Eskiden onSuccess sadece "çekiliyor" diyordu;
 // backend providers[].reason ("yetkiniz yok" gibi) ve created/fetched sayılarını dönüyor ama yutuluyordu.
@@ -1788,6 +1788,10 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
     let altKod = ai?.kayitAltKod || '';
     const ktAd = isletmeRef(kind).kayitTuru.find((x) => x.kod === ktKod)?.ad;
     if (!altKod) altKod = defaultKayitAltKod(kind, ktKod, ktAd);
+    if (!altKod) {
+      const islText = [selDoc?.ocrData?.giderTuru, selDoc?.ocrData?.muhasebeNeden, selDoc?.vendorName, selDoc?.customerName].filter(Boolean).join(' ');
+      if (islText) altKod = isletmeAutoKayitAltKod(kind, ktKod, islText) || '';
+    }
     return { kayitTuruKod: ktKod, kayitAltKod: altKod, matrah: Number(matrah) || 0, kdvOranKod: kdvKod, kdvTutar: Number(kdvTutar) || 0, krediliTutar: 0, hesapKodu: '', tevkifatOrani: '', tevkifatTutar: 0, stopajOrani: '', stopajTutar: 0 };
   };
   const [isl, setIsl] = useState<any>({ satirlar: [] });
