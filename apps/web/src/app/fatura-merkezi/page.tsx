@@ -677,14 +677,12 @@ export default function FaturaMerkeziPage() {
       <div className={`app${editorFull ? ' editorfull' : ''}`}>
         <aside className="side">
           <div className="brand">
-            <div className="brandtxt">
-              <span className="brandco">MOREN Mali Müşavirlik</span>
-              <b className="brandtitle">Fatura Merkezi</b>
-            </div>
-            <a className="backbtn" href="/panel" title="Portala geri dön">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+            <a className="backlink" href="/panel">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
               Portala Dön
             </a>
+            <div className="brandmod">Fatura İşleme Merkezi</div>
+            <div className="brandco">MOREN Mali Müşavirlik</div>
           </div>
           {nav}
         </aside>
@@ -2844,12 +2842,11 @@ const CSS = `
 #fm-root .app{display:flex;min-height:100vh;background:var(--bg);position:relative}
 #fm-root .app::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;z-index:6;background:linear-gradient(90deg,var(--accent),#22c55e,#34d399,#22d3ee,#60a5fa)}
 #fm-root .side{width:236px;flex-shrink:0;background:linear-gradient(180deg,var(--side) 0%,#f6faf7 52%,#edf5ef 100%);border-right:1px solid var(--line);display:flex;flex-direction:column;padding:0 0 14px}
-#fm-root .brand{display:flex;flex-direction:column;gap:10px;padding:16px 18px 14px;border-bottom:1px solid var(--line);background:linear-gradient(160deg,var(--accent-soft) 0%,#fff 100%)}
-#fm-root .brandtxt{display:flex;flex-direction:column;gap:2px}
-#fm-root .brandco{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.9px;color:var(--accent);opacity:.85}
-#fm-root .brandtitle{font-size:15px;font-weight:800;color:var(--text);letter-spacing:-.2px;line-height:1.2}
-#fm-root .backbtn{display:inline-flex;align-items:center;gap:6px;padding:6px 11px;border-radius:8px;border:1px solid var(--accent-line);background:#fff;color:var(--accent);font-size:11.5px;font-weight:700;cursor:pointer;text-decoration:none;transition:background .13s,box-shadow .13s;width:fit-content;font-family:inherit}
-#fm-root .backbtn:hover{background:var(--accent);color:#fff;border-color:var(--accent);box-shadow:0 3px 10px color-mix(in srgb,var(--accent) 30%,transparent)}
+#fm-root .brand{padding:14px 16px 12px;border-bottom:1px solid var(--line)}
+#fm-root .backlink{display:inline-flex;align-items:center;gap:4px;color:var(--muted);font-size:11px;font-weight:500;text-decoration:none;margin-bottom:10px;transition:color .15s;opacity:.7}
+#fm-root .backlink:hover{color:var(--accent);opacity:1}
+#fm-root .brandmod{font-size:15px;font-weight:800;color:var(--text);letter-spacing:-.3px;line-height:1.25;margin-bottom:3px}
+#fm-root .brandco{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--accent);opacity:.75}
 #fm-root .nav{padding:10px 10px 0;overflow:auto}
 #fm-root .ncap{font-size:10px;color:var(--faint);font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:14px 10px 6px}
 #fm-root .nitem{display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:9px;color:var(--muted);font-weight:600;font-size:13px;cursor:pointer;margin-bottom:1px}
