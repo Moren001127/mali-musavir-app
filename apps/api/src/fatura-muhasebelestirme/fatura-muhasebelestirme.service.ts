@@ -5044,13 +5044,17 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const belgeNo = input.belgeNo?.trim();
     const total = money(input.totalAmount);
     const vkns = [input.sellerVkn, input.buyerVkn].map((v) => v?.trim()).filter(Boolean);
-    if (belgeNo && total && vkns.length) {
+    // e-Fatura/e-Arşiv belge no'su BENZERSİZDİR (10+ rakam). Aynı satıcı (VKN) + aynı uzun belge no =
+    //   KESİN aynı fatura → TUTAR şartı arama (iki okuma 0,31 TL fark verebiliyor, mükerrer kaçıyordu).
+    //   Kısa fiş no'su (ÖKC "0049" gibi) gün/satıcı bazında tekrar edebilir → onda tutar şartı KORUNUR.
+    const belgeNoUzun = !!belgeNo && belgeNo.replace(/\D/g, '').length >= 10;
+    if (belgeNo && vkns.length && (belgeNoUzun || total)) {
       const byFields = await (this.prisma as any).invoiceAccountingDocument.findFirst({
         where: {
           tenantId,
           belgeNo,
           ...(input.taxpayerId ? { taxpayerId: input.taxpayerId } : {}),
-          totalAmount: total,
+          ...(belgeNoUzun ? {} : { totalAmount: total }),
           OR: [
             { sellerVkn: { in: vkns } },
             { buyerVkn: { in: vkns } },
@@ -5062,7 +5066,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       if (byFields) {
         return {
           duplicateOfId: byFields.id,
-          duplicateReason: `Belge no/VKN/tutar daha önce eşleşti (${byFields.belgeNo || byFields.vendorName || byFields.customerName})`,
+          duplicateReason: `Aynı belge no/satıcı daha önce yüklendi (${byFields.belgeNo || byFields.vendorName || byFields.customerName})`,
           duplicateSeverity: 'BLOCKING',
         };
       }
