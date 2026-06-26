@@ -328,7 +328,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   //   Çözüm: sınıflandırma Max çağrısını okuma eşzamanlılığından BAĞIMSIZ, düşük bir kapıdan geçir
   //   (KDV Kontrol içerik denetimi de KDV_CONTENT_AUDIT_CONCURRENCY=2 ile sınırlı — aynı kanıt).
   private readonly classifyConcurrency = Math.max(1, Number(process.env.MAX_CLASSIFY_CONCURRENCY || 2));
-  private readonly classifyTimeoutMs = Math.max(8000, Number(process.env.MAX_CLASSIFY_TIMEOUT_MS || 60000));
+  // 90s: Max alt-süreci bu konteynerde ağır (~50-60s/çağrı, fırtına/yük altında daha da); 60s'de
+  //   yavaş-ama-tamamlanan çağrılar timeout'a düşüp NULL veriyordu. 90s tavan margin sağlar (env ile ayarlanır).
+  private readonly classifyTimeoutMs = Math.max(8000, Number(process.env.MAX_CLASSIFY_TIMEOUT_MS || 90000));
   private classifyActive = 0;
   private readonly classifyWaiters: Array<() => void> = [];
   private async acquireClassifySlot(): Promise<() => void> {
