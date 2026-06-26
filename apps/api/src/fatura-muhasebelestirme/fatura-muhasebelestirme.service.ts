@@ -322,6 +322,28 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   // INVOICE_OCR_CONCURRENCY ile ayarlanır. (Daha büyük hız için hızlı-OCR/Azure-öncelik yolu var.)
   private readonly uploadOcrConcurrency = Math.max(1, Number(process.env.INVOICE_OCR_CONCURRENCY || 4));
   private uploadOcrActive = 0;
+  // SINIFLANDIRMA MAX KAPISI: HTML-hızlı okuma Max'i ATLIYOR ama sınıflandırma (aiClassifyAccounting)
+  //   yine Max alt-süreci doğuruyor. 6 belge aynı anda okununca 6 eşzamanlı Max alt-süreci →
+  //   kısıtlı konteynerde 32s'de bitemeyip HEPSİ timeout (sonuc=NULL, kategori/hesap kodu BOŞ).
+  //   Çözüm: sınıflandırma Max çağrısını okuma eşzamanlılığından BAĞIMSIZ, düşük bir kapıdan geçir
+  //   (KDV Kontrol içerik denetimi de KDV_CONTENT_AUDIT_CONCURRENCY=2 ile sınırlı — aynı kanıt).
+  private readonly classifyConcurrency = Math.max(1, Number(process.env.MAX_CLASSIFY_CONCURRENCY || 2));
+  private readonly classifyTimeoutMs = Math.max(8000, Number(process.env.MAX_CLASSIFY_TIMEOUT_MS || 60000));
+  private classifyActive = 0;
+  private readonly classifyWaiters: Array<() => void> = [];
+  private async acquireClassifySlot(): Promise<() => void> {
+    if (this.classifyActive < this.classifyConcurrency) {
+      this.classifyActive++;
+    } else {
+      await new Promise<void>((resolve) => this.classifyWaiters.push(resolve));
+      // slot bekleyene DEVREDİLDİ — sayaç release tarafından korunuyor, burada artırılmaz.
+    }
+    return () => {
+      const next = this.classifyWaiters.shift();
+      if (next) next();              // slotu sıradakine devret (active sabit)
+      else this.classifyActive--;    // bekleyen yok → slotu serbest bırak
+    };
+  }
   private readonly uploadOcrActiveIds = new Set<string>(); // işlenmekte olan belge id'leri (resume çift-işlemesin)
   private ocrResumeTimer: NodeJS.Timeout | null = null;
   private ocrResuming = false;
@@ -6366,10 +6388,17 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       '\nİÇERİK:\n' + contentText.slice(0, 12000),
     ].filter(Boolean).join('\n');
     // 429/hız-limitinde sınıflandırma sessizce düşmesin (matrah buna bağlı) → 1 kez GERİ-ÇEKİLMELİ tekrar dene.
+    // EŞZAMANLILIK KAPISI: 6 belge aynı anda buraya gelip 6 Max alt-süreci doğurunca hepsi timeout'a
+    //   düşüyordu → düşük kapıdan (classifyConcurrency) geçir, her çağrıya yeterli süre (classifyTimeoutMs).
+    const releaseSlot = await this.acquireClassifySlot();
     let res: any = null;
-    for (let att = 1; att <= 2 && (!res || !res.ok || !res.text); att++) {
-      res = await claudeTextViaMax({ prompt, timeoutMs: 32000, model: MAX_MODEL_CHEAP }).catch(() => null);
-      if ((!res || !res.ok || !res.text) && att < 2) await new Promise((r) => setTimeout(r, /rate|429|limit|overload|too many/i.test(String(res?.error || '')) ? 3500 : 600));
+    try {
+      for (let att = 1; att <= 2 && (!res || !res.ok || !res.text); att++) {
+        res = await claudeTextViaMax({ prompt, timeoutMs: this.classifyTimeoutMs, model: MAX_MODEL_CHEAP }).catch(() => null);
+        if ((!res || !res.ok || !res.text) && att < 2) await new Promise((r) => setTimeout(r, /rate|429|limit|overload|too many/i.test(String(res?.error || '')) ? 3500 : 600));
+      }
+    } finally {
+      releaseSlot();
     }
     if (!res || !res.ok || !res.text) return null;
     try {
