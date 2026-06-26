@@ -253,6 +253,12 @@ export class FaturaMuhasebelestirmeController {
     return this.service.aiReadBatch(req.user.tenantId, Array.isArray(body?.documentIds) ? body.documentIds : []);
   }
 
+  /** Okumayı DURDUR: bekleyen belgeleri kuyruktan çıkar + PENDING/IN_PROGRESS → CANCELLED (şerit durur). */
+  @Post('documents/ai-read-cancel')
+  aiReadCancel(@Req() req: any, @Body() body: { taxpayerId?: string }) {
+    return this.service.cancelOcr(req.user.tenantId, body?.taxpayerId);
+  }
+
   /** OCR/okuma ilerlemesi — tarama şeridi için. */
   @Get('ocr-progress')
   ocrProgress(@Req() req: any, @Query('taxpayerId') taxpayerId?: string, @Query('period') period?: string) {

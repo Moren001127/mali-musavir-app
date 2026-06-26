@@ -918,6 +918,19 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
     } catch { toast.error('Okuma başlatılamadı'); }
     finally { setAiBusy(false); }
   };
+  // Okumayı DURDUR — bekleyenleri kuyruktan çıkarır + CANCELLED yapar (şerit durur). Aktif okunan belge biter.
+  const [aiStop, setAiStop] = useState(false);
+  const aiDurdur = async () => {
+    setAiStop(true);
+    try {
+      const r = await api.post('/fatura-muhasebelestirme/documents/ai-read-cancel', { taxpayerId });
+      const c = Number(r?.data?.cancelled || 0);
+      toast.success(c > 0 ? `Okuma durduruldu — ${c} belge sıradan çıkarıldı` : 'Okuma durduruldu');
+      qc.invalidateQueries({ queryKey: ['fm-ocr-progress'] });
+      qc.invalidateQueries({ queryKey: ['fm2'] });
+    } catch { toast.error('Durdurulamadı'); }
+    finally { setAiStop(false); }
+  };
   // OCR/okuma ilerlemesi — sunucudan periyodik çekilir (3sn). Sayfaya dönünce mevcut
   // durumu gösterir; okuma sunucuda sürdüğü için kapanmaz.
   const ocrProgQ = useQuery({
@@ -1048,7 +1061,15 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
                     <div className="aisub"><b>{ocrProg.done}</b> / {tot} belge okundu{ocrProg.reading ? ` · ${ocrProg.reading} sırada` : ''}{ocrProg.failed ? ` · ${ocrProg.failed} okunamadı` : ''} · sunucuda işlenir, sayfayı değiştirebilirsin</div>
                     <div className="aitrack"><div className="aifill" style={{ width: `${pct}%` }} /></div>
                   </div>
-                  <div className="airight"><div className="aipct">%{pct}</div><small>OKUNDU</small></div>
+                  <div className="airight">
+                    <div className="aipct">%{pct}</div><small>OKUNDU</small>
+                    <button
+                      onClick={aiDurdur}
+                      disabled={aiStop}
+                      title="Okumayı durdur — bekleyen belgeler sıradan çıkarılır (okunan biter)"
+                      style={{ marginTop: 6, padding: '3px 12px', fontSize: 12, fontWeight: 600, color: '#e5484d', background: 'rgba(229,72,77,.08)', border: '1px solid rgba(229,72,77,.35)', borderRadius: 7, cursor: aiStop ? 'default' : 'pointer', opacity: aiStop ? .6 : 1 }}
+                    >{aiStop ? 'Durduruluyor…' : 'Durdur'}</button>
+                  </div>
                 </>
               ) : (
                 <><span className="aidot err" /> <span><b>{ocrProg.failed}</b> belge okunamadı — seçip <b>AI ile oku</b> ile tekrar dene</span></>

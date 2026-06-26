@@ -2516,6 +2516,29 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     return { queued: docs.length, skipped: ids.length - docs.length };
   }
 
+  /** Okumayı DURDUR: bekleyen (PENDING/IN_PROGRESS, onaysız) belgeleri kuyruktan çıkar ve CANCELLED yap →
+   *  resume tekrar almaz, tarama şeridi durur. ŞU AN okunmakta olan belge (uploadOcrActiveIds) bitince
+   *  kendi sonucunu yazar (yarıda bırakılmaz). taxpayerId verilirse yalnız o mükellefin belgeleri. */
+  async cancelOcr(tenantId: string, taxpayerId?: string) {
+    const where: any = { tenantId, ocrStatus: { in: ['PENDING', 'IN_PROGRESS'] }, status: { not: 'APPROVED' } };
+    if (taxpayerId) where.taxpayerId = taxpayerId;
+    const docs = await (this.prisma as any).invoiceAccountingDocument.findMany({ where, select: { id: true } }).catch(() => []);
+    const ids = new Set<string>(docs.map((d: any) => d.id));
+    // Kuyruktan henüz başlamamışları çıkar.
+    for (let i = this.uploadOcrQueue.length - 1; i >= 0; i--) {
+      if (ids.has(this.uploadOcrQueue[i].documentId)) this.uploadOcrQueue.splice(i, 1);
+    }
+    // Aktif okunmakta olanlara DOKUNMA (bitince kendi sonucunu yazsın); gerisini CANCELLED yap.
+    const cancelIds = [...ids].filter((id) => !this.uploadOcrActiveIds.has(id));
+    if (cancelIds.length) {
+      await (this.prisma as any).invoiceAccountingDocument.updateMany({
+        where: { tenantId, id: { in: cancelIds } }, data: { ocrStatus: 'CANCELLED' },
+      }).catch(() => {});
+    }
+    this.logger.log(`OCR cancel: ${cancelIds.length} belge durduruldu (CANCELLED), kuyruk temizlendi (tenant=${tenantId}${taxpayerId ? ' taxpayer=' + taxpayerId : ''})`);
+    return { cancelled: cancelIds.length, active: ids.size - cancelIds.length };
+  }
+
   /** OCR/okuma ilerlemesi — tarama şeridi için. ocrStatus'a göre sayar. */
   async ocrProgress(tenantId: string, opts: { taxpayerId?: string; period?: string }) {
     const where: any = {
