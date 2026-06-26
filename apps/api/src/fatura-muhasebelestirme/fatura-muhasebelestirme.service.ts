@@ -30,7 +30,7 @@ function islPromptSeg(): string {
     '3) SATIŞ ise: satılan mal mı (→ "Mal Satışı") hizmet mi (→ "Hizmet Satışı") + uygun alt.',
     'GELİR türleri ve alt türleri:', tx('SATIS'),
     'GİDER türleri ve alt türleri:', tx('ALIS'),
-    'JSON\'A EKLE: "isletmeKayitTuru":"<yukarıdaki TAM kayıt türü adı>","isletmeAltTuru":"<o türün listesinden TAM alt adı>","isletmeNeden":"<tek cümle gerekçe>". NET DEĞİLSEN isletmeKayitTuru="" ve isletmeAltTuru="" (ASLA UYDURMA).',
+    'JSON\'A EKLE: "isletmeKayitTuru":"<yukarıdaki TAM kayıt türü adı>","isletmeAltTuru":"<o türün listesinden TAM alt adı>","isletmeNeden":"<tek cümle gerekçe>". Her zaman EN UYGUN alt türü seç — ASLA boş bırakma. Emin olamıyorsan en yakın mantıklı seçeneği yaz (örn. net bilinmiyorsa "Diğer (GVK 40/1)" yaz).',
   ].filter(Boolean).join('\n');
 }
 function islNorm(s: any): string {
@@ -5322,7 +5322,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       'klima', 'iklimlendirme', 'kombi', 'kazan dair', 'buzdolab', 'dondurucu', 'sogutucu', 'sogutma dolab',
       'davlumbaz', 'set ustu ocak', 'bulasik makin', 'camasir makin', 'kurutma makin', 'kahve makin', 'hamur makin',
       'makine', 'makina', 'jenerator', 'kompresor', 'forklift', 'transpalet', 'celik tezgah', 'vitrin',
-      'bilgisayar', 'laptop', 'dizustu', 'monitor', 'yazici', 'fotokopi', 'tarayici', 'projeksiyon',
+      'bilgisayar', 'laptop', 'dizustu', 'monitor', 'yazici cihaz', 'fotokopi makin', 'tarayici cihaz', 'projeksiyon',
       'televizyon', 'mobilya', 'demirbas', 'sabit kiymet', 'asansor', 'kamera sistem', 'guvenlik kamera',
     ];
     // İÇERİK sinyali ŞART: faturada gerçek cihaz/makine/sabit-kıymet adı geçmeli. AI'ın salt "demirbas"
