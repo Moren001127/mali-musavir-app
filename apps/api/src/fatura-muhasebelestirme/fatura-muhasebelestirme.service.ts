@@ -7026,6 +7026,18 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           categoryMatrah = aiPick;
         }
       }
+      // AI semantik seçim Max/Claude limiti, timeout veya belirsizlik nedeniyle dönmezse belgeyi
+      // "kod yok"ta bırakma. Kategori zaten okunmuşsa o kategorinin ilk gerçek leaf hesabını kontrollü
+      // fallback yap; kullanıcı düzeltirse satıcı+oran hafızası bundan sonra kesinleşir.
+      if (!isSale && !categoryMatrah && categoryGroupLeaves.length && kat && kat !== 'demirbas') {
+        const text = this.norm([giderTuru, kalemContext, vendorName].filter(Boolean).join(' '));
+        const preferred = categoryGroupLeaves.find((a: any) => {
+          const n = this.norm(String(a.accountName || ''));
+          return (text.includes('yemek') || text.includes('gida') || text.includes('ekmek') || text.includes('mutfak'))
+            && (n.includes('yemek') || n.includes('gida') || n.includes('mutfak'));
+        }) || categoryGroupLeaves[0];
+        categoryMatrah = leafOnly(preferred);
+      }
       // KDV hesabı: tevkifatlıda planında ADINDA oranı (ör "2/10") ya da "tevkifat" geçen
       // hesabı tercih et (391.01.004 "HESAPLANAN KDV %20 2/10"), düz 391.01.003 değil.
       const vergiPrefix = isSale ? '391' : '191';

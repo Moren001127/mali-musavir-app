@@ -1346,16 +1346,16 @@ function ScreenMukellefler({ taxpayers, period, onOpen }: { taxpayers: any[]; pe
               const defterLabel = /i[şs]letme|defter.?beyan|basit/i.test(`${t.defterTuru || ''} ${(t as any)?.mihsapDefterTuru || ''}`) ? 'İşletme' : t.defterTuru ? 'Bilanço' : '';
               return (
                 <tr key={t.id} className={`mktr mktr-${rowState}`} onClick={() => onOpen(t.id)}>
-                  <td><span className={`mkdot mkdot-${rowState}`} /></td>
+                  <td><span className={`mkstatus mkstatus-${rowState}`}>{rowState === 'issue' ? '!' : pending > 0 ? pending : '✓'}</span></td>
                   <td>
                     <b className="mkfirma">{taxpayerLabel(t)}</b>
                     {t.taxNumber ? <small className="mkvkn">VKN {t.taxNumber}</small> : null}
                   </td>
                   <td>{defterLabel ? <span className="mkdef">{defterLabel}</span> : null}</td>
-                  <td className="num">{pending > 0 ? <b style={{ color: '#2563eb' }}>{pending}</b> : <span className="faint">—</span>}</td>
-                  <td className="num">{approved > 0 ? <span style={{ color: '#15803d' }}>{approved}</span> : <span className="faint">—</span>}</td>
-                  <td className="num">{posted > 0 ? <span style={{ color: '#0d9488' }}>{posted}</span> : <span className="faint">—</span>}</td>
-                  <td className="num">{issue > 0 ? <b style={{ color: '#e5484d' }}>{issue}</b> : <span className="faint">—</span>}</td>
+                  <td className="num">{pending > 0 ? <span className="mknum mknum-pending">{pending}</span> : <span className="faint">—</span>}</td>
+                  <td className="num">{approved > 0 ? <span className="mknum mknum-ok">{approved}</span> : <span className="faint">—</span>}</td>
+                  <td className="num">{posted > 0 ? <span className="mknum mknum-posted">{posted}</span> : <span className="faint">—</span>}</td>
+                  <td className="num">{issue > 0 ? <span className="mknum mknum-issue">{issue}</span> : <span className="faint">—</span>}</td>
                   <td><button className="mkbtn" onClick={(e) => { e.stopPropagation(); onOpen(t.id); }}>Aç →</button></td>
                 </tr>
               );
@@ -2066,8 +2066,8 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
           </div>
         </div>
       )}
-      <div className="card" style={{ padding: 0, marginTop: 2 }}>
-        <div className="wmain">
+      <div className="card muhcard" style={{ padding: 0, marginTop: 2 }}>
+        <div className="wmain muhmain">
             {selDoc ? (
               <>
                 <div className="fiseditor">
@@ -3424,10 +3424,24 @@ const CSS = `
 #fm-root .mktbl thead th:first-child{border-top-left-radius:8px}
 #fm-root .mktbl thead th:last-child{border-top-right-radius:8px}
 #fm-root .mktr td{background:#fff;border-bottom:1px solid #e7edf3}
+#fm-root .mktr td:first-child{border-left:4px solid transparent}
+#fm-root .mktr-issue td:first-child{border-left-color:#e5484d}
+#fm-root .mktr-pending td:first-child{border-left-color:#2563eb}
+#fm-root .mktr-ok td:first-child{border-left-color:#22c55e}
 #fm-root .mktr:hover td{background:#f7fbf8}
+#fm-root .mktr:hover .mkbtn{background:#15803d;color:#fff;border-color:#15803d}
 #fm-root .mkfirma{font-size:13.5px;color:#172033}
 #fm-root .mkdef{border-radius:999px;background:#e7f4ec;border:1px solid #c6e8d0}
 #fm-root .mkbtn{border-radius:8px;padding:7px 12px}
+#fm-root .mkstatus{width:28px;height:28px;border-radius:8px;display:inline-grid;place-items:center;font-size:12px;font-weight:900;border:1px solid #d8e1ea;background:#f8fafc;color:#475569;font-variant-numeric:tabular-nums}
+#fm-root .mkstatus-issue{background:#fff1f1;border-color:#ffcaca;color:#e5484d}
+#fm-root .mkstatus-pending{background:#eff6ff;border-color:#bfdbfe;color:#2563eb}
+#fm-root .mkstatus-ok{background:#ecfdf5;border-color:#bbf7d0;color:#15803d}
+#fm-root .mknum{display:inline-flex;align-items:center;justify-content:center;min-width:30px;height:24px;padding:0 8px;border-radius:999px;font-size:12px;font-weight:900;font-variant-numeric:tabular-nums;border:1px solid transparent}
+#fm-root .mknum-pending{background:#eff6ff;border-color:#bfdbfe;color:#1d4ed8}
+#fm-root .mknum-ok{background:#ecfdf5;border-color:#bbf7d0;color:#15803d}
+#fm-root .mknum-posted{background:#f0fdfa;border-color:#99f6e4;color:#0f766e}
+#fm-root .mknum-issue{background:#fff1f1;border-color:#ffcaca;color:#e5484d}
 #fm-root .fiseditor{gap:14px;align-items:stretch}
 #fm-root .belgepane{flex:0 0 min(72%,calc(100vw - 540px));max-width:min(72%,calc(100vw - 540px));position:sticky;top:10px}
 #fm-root .app.editorfull .belgepane{flex:0 0 76%;max-width:76%}
@@ -3439,4 +3453,40 @@ const CSS = `
 #fm-root .belgebox .bpframe-h{min-height:100%;box-shadow:0 2px 18px rgba(15,23,42,.12)}
 #fm-root .belgebox .bppdf{height:100%;min-height:0}
 @media(max-width:1100px){#fm-root .belgebox{height:72vh;min-height:520px}#fm-root .belgepane{flex:none;max-width:100%;width:100%}}
+
+/* Muhasebeleştir: tek ekran, düz belge alanı, kompakt sağ panel */
+#fm-root .muhcard{height:calc(100vh - 150px);min-height:700px;border:0;background:transparent;box-shadow:none;display:flex;flex-direction:column;overflow:hidden}
+#fm-root .muhmain{padding:0;flex:1;min-height:0}
+#fm-root .muhmain .fiseditor{height:100%;min-height:0;gap:8px;align-items:stretch}
+#fm-root .muhmain .belgepane{flex:1 1 auto;max-width:none;min-width:0;height:100%;position:sticky;top:0}
+#fm-root .app.editorfull .muhmain .belgepane{flex:1 1 auto;max-width:none}
+#fm-root .muhmain .fispane{flex:0 0 440px;max-width:440px;min-width:400px;height:100%;overflow:auto;padding:0 0 0 8px}
+#fm-root .muhmain .fispane > .ph{order:0;position:sticky;top:0;z-index:6;margin:0;padding:8px 0 6px;background:#fff;border-bottom:1px solid #edf1f5}
+#fm-root .muhmain .fispane > .docmeta{order:1}
+#fm-root .muhmain .fispane > .tevpanel{order:2}
+#fm-root .muhmain .fispane > .twrap{order:3}
+#fm-root .muhmain .fispane > .balance{order:4}
+#fm-root .muhmain .fispane > .wactions{order:5;position:sticky;bottom:0;z-index:5;margin-top:8px;padding:8px 0;background:linear-gradient(180deg,rgba(255,255,255,.88),#fff 35%)}
+#fm-root .muhmain .docmeta{grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;padding:8px;margin:8px 0;border-radius:4px;background:#fff;border:1px solid #d6e0ea}
+#fm-root .muhmain .docmeta .dm{gap:2px;min-width:0}
+#fm-root .muhmain .docmeta .dml{font-size:9.5px;line-height:1;letter-spacing:.35px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#fm-root .muhmain .docmeta .dmi,#fm-root .muhmain .docmeta .psel .pselfield{height:28px;border-radius:5px;font-size:12.5px;padding:0 7px;min-width:0}
+#fm-root .muhmain .docmeta .psel .pselfield span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#fm-root .muhmain .belgebox{height:100%;min-height:0;border:0;border-radius:0;box-shadow:none;background:#e7edf3}
+#fm-root .muhmain .belgebox .bpbar{min-height:36px;padding:6px 10px;background:#fff;border-bottom:1px solid #d7e0ea;text-transform:none;letter-spacing:0}
+#fm-root .muhmain .belgebox .bpview{height:calc(100% - 36px);max-height:none;min-height:0;flex:1;padding:8px;background:#e7edf3;border:0}
+#fm-root .muhmain .belgebox .bpframe-h{min-height:100%;box-shadow:none;background:#fff}
+#fm-root .muhmain .belgebox .bpimg{box-shadow:none;border-radius:0}
+#fm-root .muhmain .belgebox .bppdf{height:100%;min-height:0;background:#fff}
+#fm-root .muhmain .fgrps{gap:6px}
+#fm-root .muhmain .fgrp{border-radius:4px}
+#fm-root .muhmain .fgrp .fgh{padding:4px 9px}
+#fm-root .muhmain .fgrp .frow{padding:4px 8px;gap:5px}
+#fm-root .muhmain .fgrp .fgt{padding:4px 9px}
+#fm-root .muhmain .balance{margin:7px 0 0;padding:7px 10px;border-radius:4px}
+#fm-root .muhmain .balance .bnote{font-size:11.5px}
+#fm-root .muhcard .wstrip{flex:0 0 auto;padding:8px 12px;background:#fff;border-top:1px solid #dde5ee}
+#fm-root .muhcard .auto{flex:0 0 auto;padding:9px 14px;background:#fff;border-top:1px solid #edf1f5}
+@media(max-width:1280px){#fm-root .muhmain .fispane{flex-basis:410px;max-width:410px;min-width:380px}#fm-root .muhmain .docmeta{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:1100px){#fm-root .muhcard{height:auto;min-height:0;overflow:visible}#fm-root .muhmain .fiseditor{height:auto;min-height:0}#fm-root .muhmain .fispane{flex:none;width:100%;max-width:none;min-width:0;height:auto;overflow:visible;padding:0}#fm-root .muhmain .docmeta{grid-template-columns:repeat(2,minmax(0,1fr))}}
 `;
