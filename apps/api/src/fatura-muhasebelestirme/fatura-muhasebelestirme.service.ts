@@ -6186,7 +6186,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   SENKRON çalışır: okuma = tam işlenmiş belge (yarım kalan yok, aynı satıcı hep aynı sonuç).
     if (parsed === preParsed && d.taxpayerId) {
       const contentText = (parsed._azureText || (imgBuf ? imgBuf.toString('utf8') : (html || ''))).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-      const c = await this.aiClassifyAccounting(contentText, mukellefBilgi, isIsletmeMukellef, d.invoiceKind === 'SATIS' ? 'SATIS' : 'ALIS').catch(() => null);
+      const c = await this.aiClassifyAccounting(contentText, mukellefBilgi, isIsletmeMukellef, d.invoiceKind === 'SATIS' ? 'SATIS' : 'ALIS', planAdaylar).catch(() => null);
       if (c) {
         if (!parsed.giderTuru && c.giderTuru) parsed.giderTuru = c.giderTuru;
         if (!parsed.kategori && c.kategori) parsed.kategori = c.kategori;
@@ -6195,6 +6195,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         // HTML/UBL yolunda kalemler okuma adımında YOK → sınıflandırma AI'ından al (kalem dökümü +
         //   kalem-bazlı alt tür için). Zaten kalem varsa dokunma.
         if ((!Array.isArray(parsed.kalemler) || !parsed.kalemler.length) && Array.isArray((c as any).kalemler) && (c as any).kalemler.length) parsed.kalemler = (c as any).kalemler;
+        // HESAP KODU REGRESYONU FIX: Max okuma atlandığında matrahHesapKodu da gelmiyordu → "gider kodu
+        //   boş". Sınıflandırma AI'ı hesap planından kod seçer; mevcut akış (aiMatrahKodu) onu plana göre doğrular.
+        if (!parsed.matrahHesapKodu && (c as any).matrahHesapKodu) parsed.matrahHesapKodu = (c as any).matrahHesapKodu;
       }
     }
 
@@ -6335,7 +6338,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     mukellefBilgi: string,
     isIsletme: boolean,
     invoiceKind?: 'ALIS' | 'SATIS',
-  ): Promise<{ giderTuru: string; kategori: string; isletmeKayitTuru: string; isletmeAltTuru: string; isletmeNeden: string; muhasebeNeden: string; kalemler?: Array<{ ad: string; tutar: number; oran: number }> } | null> {
+    planAdaylar?: string,
+  ): Promise<{ giderTuru: string; kategori: string; isletmeKayitTuru: string; isletmeAltTuru: string; isletmeNeden: string; muhasebeNeden: string; kalemler?: Array<{ ad: string; tutar: number; oran: number }>; matrahHesapKodu?: string } | null> {
     if (!contentText || contentText.length < 20) return null;
     const _yonKesim = invoiceKind === 'SATIS'
       ? 'YÖN KESİN SATIŞ: Mükellef bu faturada SATICI konumundadır. Hasılat/gelir söz konusu.'
@@ -6344,12 +6348,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       'Aşağıda bir Türk e-Fatura/e-Arşiv belgesinin metin içeriği var. İçindeki MAL/HİZMET kalemlerini bir MALİ MÜŞAVİR gibi değerlendir.',
       _yonKesim,
       mukellefBilgi ? `Faturanın tarafı olan mükellef: ${mukellefBilgi}.` : '',
-      'YALNIZCA şu JSON: {"giderTuru":"","kategori":"","isletmeKayitTuru":"","isletmeAltTuru":"","isletmeNeden":"","muhasebeNeden":"","kalemler":[{"ad":"","tutar":0,"oran":0}]}',
+      `YALNIZCA şu JSON: {"giderTuru":"","kategori":"","isletmeKayitTuru":"","isletmeAltTuru":"","isletmeNeden":"","muhasebeNeden":"","kalemler":[{"ad":"","tutar":0,"oran":0}]${planAdaylar ? ',"matrahHesapKodu":""' : ''}}`,
       'giderTuru: ALIŞ ise faturadaki ANA mal/hizmetin kısa adı (yakıt/motorin→"akaryakıt"; ayrıca "elektrik","su","doğalgaz","telefon","internet","kira","kırtasiye","danışmanlık","nakliye","yedek parça","bakım onarım","yemek","temizlik","sigorta","reklam" vb). Net değilse "". SATIŞ ise "".',
       'kategori: mükellefin ANA FAALİYETİNE göre → "ticari_mal" (SADECE mükellefin SATARAK ticaretini yaptığı emtia), "hammadde" (üretim girdisi), "demirbas" (makine/cihaz/sabit kıymet), "pazarlama" (reklam/kargo/nakliye), "genel_gider" (kira/elektrik/sarf/abonelik + satılmayan tüketim/sarf malzemesi). Emin değilsen "genel_gider". ⚠️ KRİTİK — LOKANTA/RESTORAN/KAFE/PASTANE/YEMEK ÜRETİM/CATERING işletmesinin aldığı GIDA / MUTFAK MALZEMESİ (et, tavuk, sebze, meyve, süt, peynir, yumurta, un, yağ, baharat, içecek, ekmek, bakliyat) = "hammadde" (üründe kullanılan girdi); ASLA "genel_gider" DEĞİL. ⚠️ Mükellefin SATMADIĞI cihaz/klima/makine/ekipman/mobilya/bilgisayar = "demirbas", ASLA "ticari_mal" değil (lokanta klima alırsa demirbas). ⚠️ Mükellef MAL TİCARETİ/ÜRETİMİ yapmıyorsa (saf hizmet/eğitim/ofis) aldığı tüketim/sarf malzemesi (ambalaj, tek-kullanımlık, temizlik, kırtasiye, servis) = "genel_gider", ASLA "ticari_mal" değil. Araç/taşıt kiralama = "genel_gider" ama giderTuru "araç kiralama" (kira değil).',
       'kalemler: faturadaki mal/hizmet satırlarını listele (ad + KDV hariç tutar + KDV oranı sayı). ÇOK KALEMLİYSE (>15) KDV oranına ve benzer ürün grubuna göre BİRLEŞTİR — en fazla 15 nesne (ör. "%1 gıda ürünleri", "%20 temizlik"). Okunamazsa [].',
       'muhasebeNeden: Bir mali müşavir ağzından AKICI, DOĞAL Türkçe 1-2 cümlelik değerlendirme (kalıp DEĞİL — gerçekten yorumla). Faturada özetle NE alınmış/satılmış ve mükellefin faaliyetine göre bu NİYE o nitelikte (ticari mal / hammadde / demirbaş / gider). İçerik faaliyetle uyumsuzsa nedenini söyle. ⚠️ "alış"/"satış" kelimesini ve hesap NUMARASINI YAZMA — yönü ve kesin hesabı sistem ekler; sen YALNIZ içeriği ve niteliği yorumla. Örnek: "Faturada ofis için yazıcı ve toner alınmış; işte kullanılan sabit kıymet/demirbaş niteliğindedir."',
       isIsletme ? islPromptSeg(invoiceKind) : 'isletmeKayitTuru ve isletmeAltTuru = "" bırak (mükellef İşletme defteri değil).',
+      planAdaylar ? `\nMÜKELLEFİN HESAP PLANI — matrah/gider için aday hesaplar (matrahHesapKodu'nu SADECE bu listeden seç):\n${planAdaylar}\n→ matrahHesapKodu: bu faturanın matrahını (mal/hizmet/gider tutarını) mükellefin İŞİNE + fatura İÇERİĞİNE göre yukarıdaki listeden EN UYGUN TAM koda ata. Mükellefin SATARAK ticaret yaptığı emtia → stok (15x); ÜRETİMDE kullandığı girdi (LOKANTA gıda/mutfak malzemesi) → ilk madde/üretim maliyeti (15x/74x); kendi işinde tükettiği gider → ilgili gider (7xx/6xx); uzun ömürlü makine/cihaz/demirbaş → sabit kıymet (25x); SATIŞ ise gelir (600). ⚠️ İÇERİĞE GERÇEKTEN uyan hesap yoksa BOŞ bırak — listede OLMAYAN kodu ASLA yazma. ⚠️ TUTARLI OL: aynı tür içerik (ör. gıda) hep aynı mantıkla aynı hesaba gitsin, faturadan faturaya zıplama.` : '',
       '\nİÇERİK:\n' + contentText.slice(0, 12000),
     ].filter(Boolean).join('\n');
     // 429/hız-limitinde sınıflandırma sessizce düşmesin (matrah buna bağlı) → 1 kez GERİ-ÇEKİLMELİ tekrar dene.
@@ -6373,6 +6378,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         kalemler: Array.isArray(j.kalemler)
           ? j.kalemler.slice(0, 15).map((k: any) => ({ ad: String(k?.ad || '').slice(0, 80), tutar: Number(k?.tutar) || 0, oran: Number(k?.oran) || 0 })).filter((k: any) => k.ad)
           : undefined,
+        matrahHesapKodu: typeof j.matrahHesapKodu === 'string' ? String(j.matrahHesapKodu).trim() : undefined,
       };
     } catch { return null; }
   }
