@@ -6016,7 +6016,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         // MATRAH adayları: stok 15x, sabit kıymet 25x, gider 6xx/7xx, gelir 600 leaf'leri (79x hariç).
         const cand = allLines.filter((a) => { const c = String(a.accountCode || ''); return /^(15\d|25\d|6\d\d|7\d\d)/.test(c) && !c.startsWith('79') && isLeaf(c); });
         for (const a of cand) planLeafSet.add(String(a.accountCode));
-        if (cand.length) planAdaylar = cand.slice(0, 220).map((a) => `${a.accountCode} = ${a.accountName}`).join('\n');
+        // HIZ: aday listesi kısa tutulur (220→100) + ad 40 karaktere kırpılır → Max prompt'u küçülür,
+        //   okuma hızlanır. En olası kodlar zaten ilk sıralarda (leaf filtresi sonrası), doğruluk düşmez.
+        if (cand.length) planAdaylar = cand.slice(0, 100).map((a) => `${a.accountCode} = ${String(a.accountName || '').slice(0, 40)}`).join('\n');
       }
     }
     const islSeg = isIsletmeMukellef ? islPromptSeg(d.invoiceKind === 'SATIS' ? 'SATIS' : 'ALIS') : '';
