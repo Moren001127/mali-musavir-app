@@ -773,9 +773,17 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
     const isl = d.ocrData?.isletme;
     const ktKod = isl?.satirlar?.[0]?.kayitTuruKod || isl?.kayitTuruKod;
     if (ktKod) {
+      let altAd = isl?.satirlar?.[0]?.kayitAltAd || isl?.kayitAltAd || '';
+      // Kayıt türü atanmış ama alt boşsa: İndirilecek Giderler'de içerikten alt türü türet (gösterim için).
+      if (!altAd && String(ktKod) === '4') {
+        const kindd = String(d.invoiceKind || 'ALIS').toUpperCase() === 'SATIS' ? 'SATIS' : 'ALIS';
+        const islText = [d.ocrData?.giderTuru, d.ocrData?.muhasebeNeden, d.vendorName, d.customerName].filter(Boolean).join(' ');
+        const altKod = islText ? isletmeAutoKayitAltKod(kindd, '4', islText) : '';
+        if (altKod) altAd = getKayitAltList(kindd, '4').find((x: any) => x.kod === altKod)?.ad || '';
+      }
       return {
         ktAd: isl?.satirlar?.[0]?.kayitTuruAd || isl?.kayitTuruAd || '',
-        altAd: isl?.satirlar?.[0]?.kayitAltAd || isl?.kayitAltAd || '',
+        altAd,
         ok: true,
       };
     }
