@@ -13,7 +13,7 @@ import { claudeTextViaMax, MAX_MODEL_CHEAP } from '../common/max-inference';
 import { buildLucaImportExcel, buildLucaIsletmeHizliFisCsv } from './luca-excel.service';
 import { VendorMemoryService } from '../vendor-memory/vendor-memory.service';
 import { MihsapService } from '../mihsap/mihsap.service';
-import { isletmeRef, getKayitAltList, isletmeAlisSatisTuru, isletmeIslemTuru, defaultBelgeTuruKod, isletmeGiderSinifi, isletmeAutoKayitAltKod, defaultKayitAltKod } from '@mali-musavir/shared';
+import { isletmeRef, getKayitAltList, isletmeAlisSatisTuru, isletmeIslemTuru, defaultBelgeTuruKod, isletmeGiderSinifi, isletmeAutoKayitAltKod, isletmeAutoKayitTuru, defaultKayitAltKod } from '@mali-musavir/shared';
 
 // ── İşletme defteri AI sınıflandırması ──
 // Faturayı okuyan max-vision AI'ına, mükellefin FAALİYETİ + faturanın İÇERİĞİYLE muhakeme ederek
@@ -316,7 +316,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   // 3'e çıkarıyoruz (1.5 kat). Her Max-vision bir Claude Code alt-süreci → çok süreç OOM/rate-limit
   // ("exited code 1") riski; KDV Kontrol de süreç açar. 3 temkinli üst sınır. Re-storm olursa düşür.
   // INVOICE_OCR_CONCURRENCY ile ayarlanır. (Daha büyük hız için hızlı-OCR/Azure-öncelik yolu var.)
-  private readonly uploadOcrConcurrency = Math.max(1, Number(process.env.INVOICE_OCR_CONCURRENCY || 3));
+  private readonly uploadOcrConcurrency = Math.max(1, Number(process.env.INVOICE_OCR_CONCURRENCY || 4));
   private uploadOcrActive = 0;
   private readonly uploadOcrActiveIds = new Set<string>(); // işlenmekte olan belge id'leri (resume çift-işlemesin)
   private ocrResumeTimer: NodeJS.Timeout | null = null;
@@ -2346,6 +2346,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     if (!content || content.length < 20) return;
     let mukellefBilgi = '';
     let isIsletme = false;
+    let qcNace = '';
+    let qcFaaliyet = '';
     if (doc.taxpayerId) {
       const tp = await (this.prisma as any).taxpayer.findFirst({
         where: { id: doc.taxpayerId, tenantId },
@@ -2353,9 +2355,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       }).catch(() => null);
       if (tp) {
         isIsletme = String(tp.defterTuru || '').toUpperCase() === 'ISLETME';
+        qcNace = String(tp.naceKodu || '').trim();
+        qcFaaliyet = String(tp.faaliyetAciklama || '').trim();
         const ad = String(tp.companyName || (String(tp.firstName || '') + ' ' + String(tp.lastName || ''))).trim();
-        const faaliyet = String(tp.faaliyetAciklama || '').trim();
-        mukellefBilgi = [ad && ('ünvanı "' + ad + '"'), faaliyet ? ('faaliyeti: ' + faaliyet) : (tp.naceKodu ? ('NACE ' + tp.naceKodu) : ''), isIsletme ? 'İşletme defteri' : 'Bilanço usulü'].filter(Boolean).join(', ');
+        mukellefBilgi = [ad && ('ünvanı "' + ad + '"'), qcFaaliyet ? ('faaliyeti: ' + qcFaaliyet) : (qcNace ? ('NACE ' + qcNace) : ''), isIsletme ? 'İşletme defteri' : 'Bilanço usulü'].filter(Boolean).join(', ');
       }
     }
     const c = await this.aiClassifyAccounting(content, mukellefBilgi, isIsletme).catch(() => null);
@@ -2365,8 +2368,25 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     if (c) {
       if (c.giderTuru) patch.giderTuru = String(c.giderTuru).slice(0, 40);
       if (c.kategori) patch.matrahKategori = c.kategori;
-      if (isIsletme && (c.isletmeKayitTuru || c.giderTuru || c.kategori)) {
-        let isl = resolveIslAi(kind, { isletmeKayitTuru: c.isletmeKayitTuru, isletmeAltTuru: c.isletmeAltTuru, isletmeNeden: c.isletmeNeden, giderTuru: c.giderTuru, kategori: c.kategori, saticiAd: doc.vendorName });
+      if (isIsletme) {
+        let isl = (c.isletmeKayitTuru || c.giderTuru || c.kategori)
+          ? resolveIslAi(kind, { isletmeKayitTuru: c.isletmeKayitTuru, isletmeAltTuru: c.isletmeAltTuru, isletmeNeden: c.isletmeNeden, giderTuru: c.giderTuru, kategori: c.kategori })
+          : null;
+        // Son çare fallback: faaliyet+NACE tabanlı temel kayıt türü.
+        if (!isl) {
+          const fbKtKod = isletmeAutoKayitTuru(kind, qcNace || null, qcFaaliyet || null);
+          if (fbKtKod) {
+            const ref = isletmeRef(kind);
+            const fbKt = ref.kayitTuru.find((x: any) => x.kod === fbKtKod);
+            if (fbKt) {
+              const islText2 = [c.giderTuru].filter(Boolean).join(' ');
+              const fbAltKod = fbKtKod === '4' ? isletmeAutoKayitAltKod(kind, '4', islText2) : (defaultKayitAltKod(kind, fbKtKod, fbKt.ad) || '');
+              const altList = getKayitAltList(kind, fbKtKod);
+              const fbAlt = fbAltKod ? altList.find((x: any) => x.kod === fbAltKod) : null;
+              isl = { kayitTuruKod: fbKtKod, kayitTuruAd: fbKt.ad, kayitAltKod: fbAlt?.kod || '', kayitAltAd: fbAlt?.ad || '', autoMatched: true, neden: 'Faaliyet/içerik tabanlı ön seçim' };
+            }
+          }
+        }
         if (isl) {
           // GİB Defter-Beyan: Alış/Satış + İşlem + Belge Türü'nü belgenin sinyallerinden türet (XML yolu).
           const islText = [c.giderTuru, isl.kayitAltAd, c.isletmeNeden].filter(Boolean).join(' ');
@@ -5890,6 +5910,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     let mukellefBilgi = '';
     let isIsletmeMukellef = false;
     let ownVkn = ''; // mükellefin kendi VKN/TCKN'si → faturanın YÖNÜNÜ (alış/satış) türetmek için
+    let tpNace = '';      // isletmeAutoKayitTuru için
+    let tpFaaliyet = '';  // isletmeAutoKayitTuru için
     if (d.taxpayerId) {
       const tp = await (this.prisma as any).taxpayer.findFirst({
         where: { id: d.taxpayerId, tenantId },
@@ -5900,11 +5922,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         const ad = String(tp.companyName || `${tp.firstName || ''} ${tp.lastName || ''}`).trim();
         isIsletmeMukellef = String(tp.defterTuru || '').toUpperCase() === 'ISLETME';
         const defter = isIsletmeMukellef ? 'İşletme defteri' : 'Bilanço usulü';
-        const faaliyet = String(tp.faaliyetAciklama || '').trim();
+        tpNace = String(tp.naceKodu || '').trim();
+        tpFaaliyet = String(tp.faaliyetAciklama || '').trim();
         // Öncelik: serbest faaliyet açıklaması (en güvenilir) > NACE kodu > ünvan.
         mukellefBilgi = [
           ad && `ünvanı "${ad}"`,
-          faaliyet ? `faaliyeti: ${faaliyet}` : (tp.naceKodu && `NACE faaliyet kodu ${tp.naceKodu}`),
+          tpFaaliyet ? `faaliyeti: ${tpFaaliyet}` : (tpNace && `NACE faaliyet kodu ${tpNace}`),
           defter,
         ].filter(Boolean).join(', ');
       }
@@ -5984,7 +6007,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       //   yavaş Max-vision'a eskale olur (okuma hızlanır). Yanlış okumayı sonraki denge/KDV-matematik
       //   doğrulaması yakalar. ⚠️ KULLANICI TALİMATI: ocr.service.extractFromImage / KDV Kontrol gibi
       //   DİĞER OCR yerlerindeki eşiklere DOKUNULMADI (extractFromImage'a eşik parametresi geçilmiyor).
-      if (az && /azure/i.test(String(az.engine || '')) && (Number(az.confidence) || 0) >= 0.4 && azHasAmt) {
+      if (az && /azure/i.test(String(az.engine || '')) && (Number(az.confidence) || 0) >= 0.3 && azHasAmt) {
         preParsed = {
           belgeNo: az.belgeNo || null,
           tarih: az.date || null,
@@ -6016,8 +6039,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const model = attempt >= 3 ? undefined : MAX_MODEL_CHEAP; // 3. deneme: Sonnet (varsayılan)
       const res = await claudeTextViaMax(
         (isImage && !useAzureText)
-          ? { prompt: callPrompt, images: [{ base64: imgBuf!.toString('base64'), mediaType: imgMedia }], timeoutMs: 90000, model }
-          : { prompt: callPrompt, timeoutMs: 150000, model }, // büyük/çok-kalemli belge 60sn'de bitmiyordu → "Okunamadı". Kuyruk arka planda, uzun süre sorun değil.
+          ? { prompt: callPrompt, images: [{ base64: imgBuf!.toString('base64'), mediaType: imgMedia }], timeoutMs: 48000, model }
+          : { prompt: callPrompt, timeoutMs: 38000, model },
       );
       if (!res.ok || !res.text) {
         reason = res.error || 'okunamadı';
@@ -6101,10 +6124,25 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     await (this.prisma as any).$transaction(async (tx: any) => {
       await tx.invoiceAccountingLine.deleteMany({ where: { documentId: d.id } });
       if (lines.length) await tx.invoiceAccountingLine.createMany({ data: lines.map((l: any) => ({ ...l, documentId: d.id })) });
-      // İŞLETME: AI'ın faaliyet+içerik muhakemesiyle verdiği kayıt türü + alt türü. Net değilse undefined → Eşleşmedi.
-      // Kayıt türü netse, GİB Defter-Beyan kurallarına göre Alış/Satış Türü + İşlem Türü + Belge Türü'nü de
-      // belgenin sinyallerinden (iade/tevkifat/KDV/ikinci-el/belge tipi) TÜRET. (Araştırma: [[project-isletme-dbs-arastirma]])
+      // İŞLETME: AI'ın faaliyet+içerik muhakemesiyle verdiği kayıt türü + alt türü.
+      // resolveIslAi → undefined ise faaliyet+içerik tabanlı ön seçim (son çare).
       let islSinifAi = isIsletmeMukellef ? resolveIslAi(kind, parsed) : undefined;
+      if (!islSinifAi && isIsletmeMukellef) {
+        // Son çare: faaliyet + NACE tabanlı temel kayıt türü.
+        // Alışta her zaman '4' (İndirilecek Giderler); satışta faaliyet → '1' (Mal) veya '2' (Hizmet).
+        const fbKtKod = isletmeAutoKayitTuru(kind, tpNace || null, tpFaaliyet || null);
+        if (fbKtKod) {
+          const ref = isletmeRef(kind);
+          const fbKt = ref.kayitTuru.find((x: any) => x.kod === fbKtKod);
+          if (fbKt) {
+            const islText2 = [parsed.giderTuru, counterName, ...(Array.isArray(parsed.kalemler) ? parsed.kalemler.map((k: any) => k?.ad) : [])].filter(Boolean).join(' ');
+            const fbAltKod = fbKtKod === '4' ? isletmeAutoKayitAltKod(kind, '4', islText2) : (defaultKayitAltKod(kind, fbKtKod, fbKt.ad) || '');
+            const altList = getKayitAltList(kind, fbKtKod);
+            const fbAlt = fbAltKod ? altList.find((x: any) => x.kod === fbAltKod) : null;
+            islSinifAi = { kayitTuruKod: fbKtKod, kayitTuruAd: fbKt.ad, kayitAltKod: fbAlt?.kod || '', kayitAltAd: fbAlt?.ad || '', autoMatched: true, neden: 'Faaliyet/içerik tabanlı ön seçim' };
+          }
+        }
+      }
       if (islSinifAi) {
         const islIade = parsed.iade === true || /iade|iptal/i.test(String(parsed.belgeTuru || ''));
         const islTevk = parsed.tevkifat === true || tevkifatOrani > 0 || /tevkifat/i.test(String(html || ''));
@@ -6131,7 +6169,14 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           ...(counterName ? (isSale ? { customerName: counterName } : { vendorName: counterName }) : {}),
           status: 'NEEDS_REVIEW',
           ocrEngine: 'max-vision',
-          ocrData: { ...((d.ocrData as any) || {}), matrah, kdvTutari: kdv, kdvOrani: breakdown[0].rate, kdvBreakdown: breakdown.map((b: any) => ({ oran: b.rate, matrah: b.base, tutar: b.amount })), matrahKategori: typeof parsed.kategori === 'string' ? parsed.kategori : undefined, giderTuru: typeof parsed.giderTuru === 'string' ? parsed.giderTuru.slice(0, 40) : undefined, muhasebeNeden: typeof parsed.muhasebeNeden === 'string' ? parsed.muhasebeNeden.slice(0, 300) : undefined, aiYorum: typeof parsed.muhasebeNeden === 'string' ? parsed.muhasebeNeden.slice(0, 400) : undefined, aiMatrahKodu: (typeof parsed.matrahHesapKodu === 'string' && planLeafSet.has(String(parsed.matrahHesapKodu).trim())) ? String(parsed.matrahHesapKodu).trim() : undefined, kalemler: Array.isArray(parsed.kalemler) ? parsed.kalemler.slice(0, 30).map((k: any) => ({ ad: String(k?.ad || '').slice(0, 80), tutar: Number(k?.tutar) || 0, oran: Number(k?.oran) || 0 })).filter((k: any) => k.ad) : undefined, ...(islSinifAi ? { isletme: islSinifAi } : {}), isReturn: parsed.iade === true || /iade|iptal/i.test(String(parsed.belgeTuru || '')), tevkifatHint: parsed.tevkifat === true || tevkifatOrani > 0 || /tevkifat/i.test(String(html || '')), tevkifatOrani: tevkifatOrani || 0, tevkifatKdv: tevkKdv || 0, engine: parsed._azure ? 'azure-read' : (parsed === preParsed ? 'ubl-xml' : 'max-vision'),
+          ocrData: { ...((d.ocrData as any) || {}), matrah, kdvTutari: kdv, kdvOrani: breakdown[0].rate, kdvBreakdown: breakdown.map((b: any) => ({ oran: b.rate, matrah: b.base, tutar: b.amount })), matrahKategori: typeof parsed.kategori === 'string' ? parsed.kategori : undefined, giderTuru: typeof parsed.giderTuru === 'string' ? parsed.giderTuru.slice(0, 40) : undefined, muhasebeNeden: typeof parsed.muhasebeNeden === 'string' ? parsed.muhasebeNeden.slice(0, 300) : undefined, aiYorum: typeof parsed.muhasebeNeden === 'string' ? parsed.muhasebeNeden.slice(0, 400) : undefined, aiMatrahKodu: (() => {
+                const aiKod = typeof parsed.matrahHesapKodu === 'string' ? String(parsed.matrahHesapKodu).trim() : '';
+                if (aiKod && planLeafSet.has(aiKod)) return aiKod;
+                // Plan yoksa veya AI kodu leaf-set'te değilse → kategori tabanlı genel öneri (3 hane).
+                const FALLBACK: Record<string, string> = { ticari_mal: '153', hammadde: '153', demirbas: '255', tasit: '254', pazarlama: '760', genel_gider: '770', hizmet: '770', akaryakit: '770', kira: '770' };
+                const kat = String(parsed.kategori || '').toLowerCase().trim();
+                return FALLBACK[kat] || undefined;
+              })(), kalemler: Array.isArray(parsed.kalemler) ? parsed.kalemler.slice(0, 30).map((k: any) => ({ ad: String(k?.ad || '').slice(0, 80), tutar: Number(k?.tutar) || 0, oran: Number(k?.oran) || 0 })).filter((k: any) => k.ad) : undefined, ...(islSinifAi ? { isletme: islSinifAi } : {}), isReturn: parsed.iade === true || /iade|iptal/i.test(String(parsed.belgeTuru || '')), tevkifatHint: parsed.tevkifat === true || tevkifatOrani > 0 || /tevkifat/i.test(String(html || '')), tevkifatOrani: tevkifatOrani || 0, tevkifatKdv: tevkKdv || 0, engine: parsed._azure ? 'azure-read' : (parsed === preParsed ? 'ubl-xml' : 'max-vision'),
             readMode: parsed === preParsed ? 'ubl-xml' : (isImage ? 'image' : /pdf/i.test(imgMedia) ? 'pdf-text' : /xml/i.test(imgMedia) ? 'xml-text' : 'html'),
             ...(!preParsed && imgBuf && /xml/i.test(imgMedia) ? { xmlHead: imgBuf.toString('utf8').slice(0, 220).replace(/\s+/g, ' ') } : {}) },
         },

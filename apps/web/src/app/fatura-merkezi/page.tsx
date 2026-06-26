@@ -1082,15 +1082,16 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
                         <div className="detaybox">
                           {(() => {
                             const rn = richNotes[d.id];
-                            // NOT: ham `muhasebeNeden` (AI okuma-anı) SATICI gözünden/yanlış nitelikte olabiliyordu →
-                            //   fallback'ten çıkarıldı. Gösterilen yorum yalnız mükellef-gözü: zengin (rn/muhasebeNedenZengin).
-                            //   Eşleşmeyen belgede lazy fetch deterministik mükellef-gözü özeti getirir (rn.text).
-                            const text = (rn?.text || String((d.ocrData as any)?.muhasebeNedenZengin || '')).trim();
+                            // Öncelik: zengin (mükellef-gözü, lazy fetch) > DB'deki zengin > okuma-anı AI yorumu (fallback).
+                            const zengin = rn?.text || String((d.ocrData as any)?.muhasebeNedenZengin || '');
+                            const onYorum = String((d.ocrData as any)?.aiYorum || '').trim();
+                            const text = (zengin || onYorum).trim();
+                            const isOnYorum = !zengin.trim() && !!onYorum;
                             const loading = !!rn?.loading && !text;
                             if (!text && !loading) return null;
                             return (
                               <div style={{ padding: '7px 10px', marginBottom: 8, background: 'rgba(124,58,237,0.08)', borderLeft: '3px solid #7c3aed', borderRadius: 5, fontSize: 12.5, lineHeight: 1.5, whiteSpace: 'normal', wordBreak: 'break-word', overflowWrap: 'anywhere', maxWidth: 940 }}>
-                              <b style={{ color: '#7c3aed' }}>💡 AI değerlendirmesi:</b>{' '}
+                              <b style={{ color: '#7c3aed' }}>💡 AI değerlendirmesi{isOnYorum ? <span style={{ fontWeight: 400, opacity: 0.65, fontSize: 11 }}> · ön yorum</span> : null}:</b>{' '}
                               {loading ? <span style={{ opacity: 0.7 }}>yorumlanıyor…</span> : renderNeden(text)}
                             </div>
                             );
