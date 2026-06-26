@@ -236,6 +236,23 @@ function asciiTr(s: string): string {
   return String(s || '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/ı/g, 'i');
 }
 
+/** Belge turunu tek enum'a indirir: E_ARSIV / E_FATURA / E_SMM / OKC_FIS / Z_RAPORU. */
+export function normalizeDocumentType(documentType?: string | null): string {
+  const raw = String(documentType || '').trim();
+  if (!raw) return '';
+  const enumLike = raw.toUpperCase().replace(/[\s-]+/g, '_');
+  if (['E_ARSIV', 'E_FATURA', 'E_SMM', 'OKC_FIS', 'Z_RAPORU', 'DIGER'].includes(enumLike)) return enumLike;
+  const t = asciiTr(raw).replace(/[^a-z0-9]+/g, '');
+  if (!t) return '';
+  if (/zraporu|zreport/.test(t)) return 'Z_RAPORU';
+  if (/serbestmeslek|esmm|smm/.test(t)) return 'E_SMM';
+  if (/earsiv|earsivfatura|earchive|earchiveinvoice/.test(t)) return 'E_ARSIV';
+  if (/efatura|temelfatura|ticarifatura|einvoice/.test(t)) return 'E_FATURA';
+  if (/okc|yazarkasa|fis|makbuz/.test(t)) return 'OKC_FIS';
+  if (/diger|other/.test(t)) return 'DIGER';
+  return '';
+}
+
 /**
  * Mükellefin FAALİYETİNE göre İşletme defteri Kayıt Türü'nü otomatik belirler (Bilanço'daki
  * otomatik eşleşmenin İşletme karşılığı). Satışta: Hizmet Satışı('2') / Mal Satışı('1').
@@ -358,7 +375,7 @@ export function kayitAltKisaAd(ad?: string | null): string {
 /** Mihsap-benzeri akıllı varsayılan: belge türü kodu (documentType → İşletme belge kodu) */
 export function defaultBelgeTuruKod(documentType?: string | null, invoiceKind?: string | null): string {
   const sale = String(invoiceKind || 'ALIS').toUpperCase() === 'SATIS';
-  const t = String(documentType || '').toUpperCase();
+  const t = normalizeDocumentType(documentType);
   if (t === 'E_FATURA') return sale ? '7' : '9';
   if (t === 'E_ARSIV') return sale ? '8' : '10';
   if (t === 'E_SMM') return sale ? '6' : '13';

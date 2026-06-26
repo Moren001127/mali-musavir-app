@@ -12,7 +12,7 @@
   // v1.42.2 (2026-06-16): Ajan kendini yenilerken (delete __morenAgent) eski async
   // döngü "Cannot read 'stopRequested' of undefined/null" ile ÇÖKÜYORDU → yetim
   // döngü artık nesne yoksa güvenle durur (stopRequested kontrollerine null-guard).
-  const AGENT_VERSION = '1.46.2';
+  const AGENT_VERSION = '1.46.3';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -45,6 +45,34 @@
     `%c🟢 Moren Agent yüklendi · v${AGENT_VERSION}`,
     'background:#22c55e;color:#0f0d0b;padding:4px 10px;border-radius:4px;font-weight:bold;font-size:13px',
   );
+
+  const MOREN_AGENT_DEBUG = (() => {
+    try {
+      return localStorage.getItem('moren_agent_debug') === '1' ||
+        /\bmorenAgentDebug=1\b/i.test(location.search || '');
+    } catch {
+      return false;
+    }
+  })();
+  try { window.__morenAgent.debugLogs = MOREN_AGENT_DEBUG; } catch {}
+  // Mihsap doldurma sırasında dropdown option listeleri ve ara debug objeleri binlerce satır
+  // üretebiliyor. Varsayılan çalışma sessiz; gerektiğinde localStorage.moren_agent_debug=1.
+  try {
+    const originalLog = console.log.bind(console);
+    const originalTable = console.table ? console.table.bind(console) : null;
+    const noisyConsoleRe = /\[Moren\.(debug|fill|pickFirst|typeAndEnter|selectAntOptionByText)\]|\[Moren\] BOS BOLUMLER|\[Moren\] FULL (goster|gonder)/i;
+    console.log = (...args) => {
+      const first = String(args[0] || '');
+      if (!MOREN_AGENT_DEBUG && noisyConsoleRe.test(first)) return;
+      return originalLog(...args);
+    };
+    if (originalTable) {
+      console.table = (...args) => {
+        if (!MOREN_AGENT_DEBUG) return;
+        return originalTable(...args);
+      };
+    }
+  } catch {}
 
   const API = 'https://mali-musavir-app-production.up.railway.app/api/v1';
   const LUCA_LOGIN_ENTRY_URL = 'https://agiris.luca.com.tr/LUCASSO/giris.erp';
@@ -11849,8 +11877,9 @@
   }
 
   function enqueueAgentEvent(payload) {
+    if (agentEventQueue.length > 250) agentEventQueue.splice(0, agentEventQueue.length - 250);
     agentEventQueue.push({ payload, attempts: 0 });
-    scheduleAgentEventFlush(0);
+    scheduleAgentEventFlush(250);
   }
 
   function findBtnExact(label) {
@@ -11885,6 +11914,8 @@
     }
     return null;
   }
+  let lastMihsapEventSignature = '';
+  let lastMihsapEventAt = 0;
   async function logEvent(mukellefId, mukellefAd, status, detail, extra = {}) {
     try {
       // v1.14.1 — action ve tarih de gönderilsin: mükellef özeti backend'i
@@ -11894,12 +11925,23 @@
       // Bu sayede tarih hicbir yerden okunamasa bile log-format.ts meta.donem'den
       // ayin 15'ini turetebilir (yaniltici "kayit ani" yerine gercek donem).
       const currentDonem = window.__morenAgent?.currentDonem || extra.donem || null;
+      const cleanDetail = String(detail || '').replace(/\s+/g, ' ').trim().slice(0, 600);
+      const eventSignature = [
+        currentAction || '',
+        mukellefId || '',
+        status || '',
+        extra?.belgeNo || '',
+        cleanDetail,
+      ].join('|');
+      if (!MOREN_AGENT_DEBUG && eventSignature === lastMihsapEventSignature && Date.now() - lastMihsapEventAt < 2500) return;
+      lastMihsapEventSignature = eventSignature;
+      lastMihsapEventAt = Date.now();
       enqueueAgentEvent({
         agent: 'mihsap',
         action: currentAction,
         mukellef: mukellefAd,
         status,
-        message: detail,
+        message: cleanDetail,
         firma: extra.firma || null,
         fisNo: extra.belgeNo || null,
         tutar: extra.tutar ? Number(extra.tutar) : null,

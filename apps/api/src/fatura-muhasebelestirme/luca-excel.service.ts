@@ -19,6 +19,7 @@
 
 import * as ExcelJS from 'exceljs';
 import * as iconv from 'iconv-lite';
+import { normalizeDocumentType } from '@mali-musavir/shared';
 
 export interface InvoiceLine {
   group?: string | null;
@@ -337,10 +338,9 @@ export function buildLucaIsletmeHizliFisCsv(payload: BatchPayload): Buffer {
 }
 
 function inferIsletmeBelgeTuru(inv: InvoicePayload): string {
-  const t = String(inv.documentType || '').toUpperCase();
+  const t = normalizeDocumentType(inv.documentType);
   if (t === 'E_FATURA') return 'E-Fatura';
   if (t === 'E_ARSIV') return 'E-Arşiv Fatura';
   if (t === 'OKC_FIS') return 'Fiş';
   return 'Fatura';
 }
-

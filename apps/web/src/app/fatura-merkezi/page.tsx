@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, Fragment } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
-import { isletmeRef, ISLETME_ISLEM_TURU, ISLETME_KDV_ORAN, defaultBelgeTuruKod, getKayitAltList, defaultKayitAltKod, kayitAltKisaAd, isletmeAutoKayitTuru, isletmeAutoKayitAltKod } from '@mali-musavir/shared';
+import { isletmeRef, ISLETME_ISLEM_TURU, ISLETME_KDV_ORAN, defaultBelgeTuruKod, normalizeDocumentType, getKayitAltList, defaultKayitAltKod, kayitAltKisaAd, isletmeAutoKayitTuru, isletmeAutoKayitAltKod } from '@mali-musavir/shared';
 
 // Entegratör "Sorgula/Çek" sonucunu kullanıcıya GÖSTER. Eskiden onSuccess sadece "çekiliyor" diyordu;
 // backend providers[].reason ("yetkiniz yok" gibi) ve created/fetched sayılarını dönüyor ama yutuluyordu.
@@ -49,6 +49,7 @@ function showFetchResult(d: any) {
 function Ico({ html, size = 17 }: { html: string; size?: number }) {
   return (
     <span
+      className="ico"
       style={{ display: 'inline-flex', width: size, height: size, flexShrink: 0 }}
       dangerouslySetInnerHTML={{ __html: html }}
     />
@@ -66,7 +67,10 @@ const I = {
   chart: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>',
   gear: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
   download: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>',
+  upload: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M20 16.5V19a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-2.5"/></svg>',
   sync: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>',
+  wand: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m15 4 5 5"/><path d="M14 5 3 16l5 5L19 10"/><path d="M5 3v4"/><path d="M3 5h4"/><path d="M19 17v4"/><path d="M17 19h4"/></svg>',
+  spark: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3z"/><path d="M19 3v4"/><path d="M17 5h4"/><path d="M5 17v4"/><path d="M3 19h4"/></svg>',
   checkSm: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"/></svg>',
   filter: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M22 3H2l8 9.5V19l4 2v-8.5L22 3z"/></svg>',
   eye: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>',
@@ -147,11 +151,10 @@ function deriveDurum(doc: any, isIsletme = false, autoKtKod = ''): { k: string; 
   if (isIsletme) {
     const p = kdvParts(doc);
     const hasAmt = (Number(p.matrah) || 0) > 0 || (Number(p.kdv) || 0) > 0 || Number(doc.totalAmount) > 0;
+    const ready = isletmeDocReady(doc);
     if (!hasAmt) return { k: 'warn', t: 'Tutar okunamadı', cat: 'tutar' };
-    const isl = doc.ocrData?.isletme;
-    const saved = isl && ((Array.isArray(isl.satirlar) && isl.satirlar.length) || isl.kayitTuruKod);
-    if (saved || autoKtKod) return { k: 'ok', t: 'Eşleşti ✓', cat: 'ready' };
-    return { k: 'warn', t: 'Eşleşmedi', cat: 'incele' };
+    if (ready.ok || autoKtKod) return { k: 'ok', t: 'Eşleşti ✓', cat: 'ready' };
+    return { k: 'warn', t: ready.reason || 'Eşleşmedi', cat: 'incele' };
   }
   // Hiç satır yok → matrah/KDV okunamamış.
   if (!lines.length) return { k: 'warn', t: 'Tutar okunamadı', cat: 'tutar' };
@@ -568,6 +571,34 @@ function kdvParts(d: any): { matrah: number | null; kdv: number | null } {
   return { matrah: null, kdv: null };
 }
 
+function isletmeRowReady(kind: 'ALIS' | 'SATIS', row: any): boolean {
+  const kt = String(row?.kayitTuruKod || '').trim();
+  if (!kt) return false;
+  const altList = getKayitAltList(kind, kt);
+  return !altList.length || !!String(row?.kayitAltKod || '').trim();
+}
+
+function isletmeDocReady(d: any): { ok: boolean; hasAmount: boolean; reason: string } {
+  const p = kdvParts(d);
+  const hasAmount = (Number(p.matrah) || 0) > 0 || (Number(p.kdv) || 0) > 0 || Number(d?.totalAmount) > 0;
+  if (!hasAmount) return { ok: false, hasAmount, reason: 'Tutar okunamadı' };
+  const kind: 'ALIS' | 'SATIS' = String(d?.invoiceKind || 'ALIS').toUpperCase() === 'SATIS' ? 'SATIS' : 'ALIS';
+  const isl = d?.ocrData?.isletme || {};
+  const normalizedType = normalizeDocumentType(d?.documentType || d?.ocrData?.belgeTuru || d?.ocrData?.documentType);
+  const belgeTuruKod = String(isl.belgeTuruKod || (normalizedType ? defaultBelgeTuruKod(normalizedType, kind) : '')).trim();
+  if (!belgeTuruKod) return { ok: false, hasAmount, reason: 'Belge türü yok' };
+  const rawRows = Array.isArray(isl.satirlar) && isl.satirlar.length ? isl.satirlar : [isl];
+  const rows = rawRows.filter((r: any) =>
+    !Array.isArray(isl.satirlar) ||
+    Number(r?.matrah || 0) > 0 ||
+    Number(r?.kdvTutar || 0) > 0 ||
+    Number(r?.krediliTutar || 0) > 0,
+  );
+  if (!rows.length) return { ok: false, hasAmount, reason: 'Kayıt satırı yok' };
+  if (!rows.every((r: any) => isletmeRowReady(kind, r))) return { ok: false, hasAmount, reason: 'Kayıt türü eksik' };
+  return { ok: true, hasAmount, reason: '' };
+}
+
 const TITLES: Record<string, string> = {
   faturalar: 'Belgeler · <b>Bekleyen Alış Faturaları</b>',
   satis: 'Belgeler · <b>Bekleyen Satış Faturaları</b>',
@@ -803,7 +834,7 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
     }
     return { ktAd: '', altAd: '', ok: false };
   };
-  const dd = (d: any) => deriveDurum(d, isIsletme, islSinif(d).ok ? 'x' : '');
+  const dd = (d: any) => deriveDurum(d, isIsletme, '');
   // Durum filtresi (Hepsi / Eşleşti / İncele / Kod eksik / Çelişki / …)
   const [durumF, setDurumF] = useState('all');
   const durumCount = (cat: string) => cat === 'all' ? docsAll.length : docsAll.filter((d) => dd(d).cat === cat).length;
@@ -1008,12 +1039,12 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
     // İşletme defteri: hesap kodu YOK — tutarı olan hazır. Bilanço: TÜM satırların kodu dolu (cari dahil).
     const isReadyDoc = (d: any) => {
       if (d.status === 'APPROVED') return false;
-      if (isIsletme) { const p = kdvParts(d); return (Number(p.matrah) || 0) > 0 || (Number(p.kdv) || 0) > 0 || Number(d.totalAmount) > 0; }
+      if (isIsletme) return isletmeDocReady(d).ok;
       return Array.isArray(d.lines) && d.lines.length > 0 && d.lines.every((l: any) => l.accountCode);
     };
     const hazir = docs.filter((d) => sel.has(d.id) && isReadyDoc(d));
     if (hazir.length === 0) {
-      toast.error(sel.size === 0 ? 'Önce belge seç' : (isIsletme ? 'Seçilenlerde tutar okunamamış ya da zaten onaylı' : 'Seçilenlerde eksik hesap kodu var (cari/KDV/gider) ya da zaten onaylı'));
+      toast.error(sel.size === 0 ? 'Önce belge seç' : (isIsletme ? 'Seçilenlerde belge türü/kayıt türü eksik, tutar okunamamış ya da zaten onaylı' : 'Seçilenlerde eksik hesap kodu var (cari/KDV/gider) ya da zaten onaylı'));
       return;
     }
     approveMut.mutate(hazir.map((d) => d.id));
@@ -1035,11 +1066,11 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
           <h3>{docsQ.isLoading ? 'Yükleniyor…' : `${docs.length} belge`}</h3><div className="sp" />
           <button className="btn sm blue" disabled={!taxpayerId || mihsapMut.isPending} onClick={() => mihsapMut.mutate()} title={!taxpayerId ? 'Önce mükellef seç' : "Mihsap 'bekleyen evraklar'daki faturaları portala aktarır"}><Ico html={I.download} size={13} /> {mihsapMut.isPending ? 'Aktarılıyor…' : "Mihsap'tan Aktar"}</button>
           <input ref={fileRef} type="file" multiple accept=".pdf,.jpg,.jpeg,.jpe,.jfif,.png,.webp,.gif,.tif,.tiff,.bmp,.heic,.heif,.avif,.xml,.ubl,.zip" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files; if (f && f.length) uploadMut.mutate(f); e.target.value = ''; }} />
-          <button className="btn sm" disabled={!taxpayerId || uploadMut.isPending} onClick={() => fileRef.current?.click()} title={!taxpayerId ? 'Önce mükellef seç' : 'JPEG / PDF / XML belge yükle (elle)'}><Ico html={I.plus} size={13} /> {uploadMut.isPending ? 'Yükleniyor…' : 'Belge Yükle'}</button>
-          <button className="btn sm" disabled title="Entegratörden otomatik çekme — yakında. Şimdilik 'Mihsap'tan Aktar' ya da 'Belge Yükle' kullan." style={{ opacity: .55 }}><Ico html={I.download} size={13} /> Belgeleri Getir <span style={{ fontSize: 9, fontWeight: 700, opacity: .8 }}>YAKINDA</span></button>
-          <button className="btn sm ghost" disabled={syncMut.isPending} onClick={() => syncMut.mutate()} title="Mükellefe bağlanmamış (sahipsiz) belgeleri VKN/TCKN'ye göre ilgili mükellefe bağlar"><Ico html={I.sync} size={13} /> {syncMut.isPending ? 'Bağlanıyor…' : 'Sahipsiz belgeleri bağla'}</button>
-          <button className="btn sm teal" disabled={!taxpayerId || recodeMut.isPending} onClick={() => recodeMut.mutate()} title="Belgeleri TEKRAR OKUMADAN hesap kodlarını plana göre yeniden eşleştir — yanlış carileri düzeltir/temizler (saniyeler sürer)"><Ico html={I.sync} size={13} /> {recodeMut.isPending ? 'Düzeltiliyor…' : 'Kodları düzelt'}</button>
-          <button className="btn sm purple" disabled={aiBusy || sel.size === 0} onClick={aiOku} title="Seçili faturaları yapay zeka (Max) ile oku — sunucuda okur, sayfa değişince durmaz">{aiBusy ? 'Başlatılıyor…' : `AI ile oku${sel.size ? ` (${sel.size})` : ''}`}</button>
+          <button className="btn sm upload" disabled={!taxpayerId || uploadMut.isPending} onClick={() => fileRef.current?.click()} title={!taxpayerId ? 'Önce mükellef seç' : 'JPEG / PDF / XML belge yükle (elle)'}><Ico html={I.upload} size={13} /> {uploadMut.isPending ? 'Yükleniyor…' : 'Belge Yükle'}</button>
+          <button className="btn sm soon" disabled title="Entegratörden otomatik çekme — yakında. Şimdilik 'Mihsap'tan Aktar' ya da 'Belge Yükle' kullan."><Ico html={I.download} size={13} /> Belgeleri Getir <span className="soonbadge">YAKINDA</span></button>
+          <button className="btn sm ghost soft" disabled={syncMut.isPending} onClick={() => syncMut.mutate()} title="Mükellefe bağlanmamış (sahipsiz) belgeleri VKN/TCKN'ye göre ilgili mükellefe bağlar"><Ico html={I.sync} size={13} /> {syncMut.isPending ? 'Bağlanıyor…' : 'Sahipsiz belgeleri bağla'}</button>
+          <button className="btn sm fix" disabled={!taxpayerId || recodeMut.isPending} onClick={() => recodeMut.mutate()} title="Belgeleri TEKRAR OKUMADAN hesap kodlarını plana göre yeniden eşleştir — yanlış carileri düzeltir/temizler (saniyeler sürer)"><Ico html={I.wand} size={13} /> {recodeMut.isPending ? 'Düzeltiliyor…' : 'Kodları düzelt'}</button>
+          <button className="btn sm ai" disabled={aiBusy || sel.size === 0} onClick={aiOku} title="Seçili faturaları yapay zeka (Max) ile oku — sunucuda okur, sayfa değişince durmaz"><Ico html={I.spark} size={13} /> {aiBusy ? 'Başlatılıyor…' : `AI ile oku${sel.size ? ` (${sel.size})` : ''}`}</button>
           <button className="btn sm primary" disabled={approveMut.isPending} onClick={muhasebelestir} title="Seçili, kodu tam olan belgeleri toplu onayla (Luca kuyruğuna alır). Tek tek inceleme için soldaki 'Muhasebeleştir' ekranını kullan."><Ico html={I.checkSm} size={13} /> {approveMut.isPending ? 'İşleniyor…' : `Seçilenleri onayla${sel.size ? ` (${sel.size})` : ''}`}</button>
         </div>
         {docsQ.isError && (
@@ -1660,9 +1691,7 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
   // HAZIR = TÜM satırların kodu dolu (cari dahil). Eskiden "herhangi bir satır" yeterdi →
   // cari boşken bile "hazır/muhasebeleştirilebilir" görünüyordu (yanlış).
   const hasCode = (d: any) => Array.isArray(d.lines) && d.lines.length > 0 && d.lines.every((l: any) => l.accountCode);
-  const hasAmount = (d: any) => { const p = kdvParts(d); return (Number(p.matrah) || 0) > 0 || (Number(p.kdv) || 0) > 0 || Number(d.totalAmount) > 0; };
-  // İşletme defterinde hesap kodu yok — hazır olma şartı belgenin tutarının olması.
-  const ready = (d: any) => (isIsletme ? hasAmount(d) : hasCode(d));
+  const ready = (d: any) => (isIsletme ? isletmeDocReady(d).ok : hasCode(d));
   const hazir = allF.filter((d) => d.status !== 'APPROVED' && ready(d));
   const eksik = allF.filter((d) => d.status !== 'APPROVED' && !ready(d));
 
@@ -1823,7 +1852,7 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
     onError: (e: any) => toast.error('Kaydedilemedi: ' + (e?.response?.data?.message || e?.message || 'hata')),
   });
   const gg = selDoc ? kdvParts(selDoc) : { matrah: null, kdv: null };
-  const ggReady = isIsletme ? ((Number(gg.matrah) || 0) > 0 || (Number(gg.kdv) || 0) > 0 || Number(selDoc?.totalAmount) > 0) : dengeli;
+  const amountReady = (Number(gg.matrah) || 0) > 0 || (Number(gg.kdv) || 0) > 0 || Number(selDoc?.totalAmount) > 0;
 
   // ── İşletme defteri (Mihsap-birebir, ÇOKLU SATIR) ──
   // faturaTuru = invoiceKind (SATIS=Gelir, ALIS=Gider). Üst bilgi tek; her KDV oranı / gider türü ayrı satır.
@@ -1872,7 +1901,7 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
     else satirlar = [mkSatir(kind, Number(p.matrah) || 0, kdvKod, Number(p.kdv) || 0)];
     setIsl({
       // Belge türü: OKUNDUYSA onu göster; okunmadıysa (documentType boş) BOŞ bırak — VARSAYMA, kullanıcı seçer.
-      belgeTuruKod: saved.belgeTuruKod || (selDoc.documentType ? defaultBelgeTuruKod(selDoc.documentType, kind) : ''),
+      belgeTuruKod: saved.belgeTuruKod || (() => { const dt = normalizeDocumentType(selDoc.documentType || selDoc.ocrData?.belgeTuru || selDoc.ocrData?.documentType); return dt ? defaultBelgeTuruKod(dt, kind) : ''; })(),
       alisSatisKod: saved.alisSatisKod || '1',
       islemTuruKod: saved.islemTuruKod || '1100',
       plakaNo: saved.plakaNo || '',
@@ -1909,6 +1938,8 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
   }, [islMenu]);
   const islTotMatrah = islSatirlar.reduce((a, x) => a + (Number(x.matrah) || 0), 0);
   const islTotKdv = islSatirlar.reduce((a, x) => a + (Number(x.kdvTutar) || 0), 0);
+  const currentIslReady = !!isl.belgeTuruKod && islSatirlar.length > 0 && islSatirlar.every((st: any) => isletmeRowReady(islKind, st));
+  const ggReady = isIsletme ? (amountReady && currentIslReady) : dengeli;
   const expKey = (i: number, sec: string) => `${i}:${sec}`;
   const toggleExp = (i: number, sec: string) => setIslExp((e) => ({ ...e, [expKey(i, sec)]: !e[expKey(i, sec)] }));
   // Fatura Türü (Gelir/Gider) değişince üst + tüm satırların kayıt türünü yeni bağlama göre sıfırla.
@@ -1916,7 +1947,7 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
     if (!isIsletme) return;
     const ktKod = kind === 'SATIS' ? '2' : '4';
     const ktAd = isletmeRef(kind).kayitTuru.find((x) => x.kod === ktKod)?.ad;
-    setIsl((s: any) => ({ ...s, belgeTuruKod: defaultBelgeTuruKod(selDoc?.documentType, kind), alisSatisKod: '1', plakaNo: kind === 'SATIS' ? '' : s.plakaNo, satirlar: (s.satirlar || []).map((x: any) => ({ ...x, kayitTuruKod: ktKod, kayitAltKod: defaultKayitAltKod(kind, ktKod, ktAd) })) }));
+    setIsl((s: any) => ({ ...s, belgeTuruKod: (() => { const dt = normalizeDocumentType(selDoc?.documentType || selDoc?.ocrData?.belgeTuru || selDoc?.ocrData?.documentType); return dt ? defaultBelgeTuruKod(dt, kind) : ''; })(), alisSatisKod: '1', plakaNo: kind === 'SATIS' ? '' : s.plakaNo, satirlar: (s.satirlar || []).map((x: any) => ({ ...x, kayitTuruKod: ktKod, kayitAltKod: defaultKayitAltKod(kind, ktKod, ktAd) })) }));
   };
   // İşletme: aktarıma çıkan değerlerin özeti (alt çubuk).
   const islBelgeAd = islRef.belgeTuru.find((x) => x.kod === isl.belgeTuruKod)?.ad || '—';
@@ -3004,8 +3035,19 @@ const CSS = `
 #fm-root .btn.primary:hover:not(:disabled),#fm-root .btn.blue:hover:not(:disabled),#fm-root .btn.red:hover:not(:disabled){filter:brightness(.94)}
 #fm-root .btn.ghost{background:#fff;color:var(--muted)}
 #fm-root .btn.sm{padding:7px 11px;font-size:12px}
+#fm-root .btn .ico svg{display:block;stroke-linecap:round;stroke-linejoin:round}
+#fm-root .btn.upload{background:#eef6ff;color:#1d4ed8;border-color:#cfe0ff;box-shadow:0 1px 2px rgba(29,78,216,.06)}
+#fm-root .btn.upload:hover:not(:disabled){background:#dbeafe;border-color:#93c5fd;color:#1e40af}
+#fm-root .btn.fix{background:#effaf8;color:#0f766e;border-color:#bfe6e1;box-shadow:0 1px 2px rgba(13,148,136,.07)}
+#fm-root .btn.fix:hover:not(:disabled){background:#ccfbf1;border-color:#5eead4;color:#115e59}
+#fm-root .btn.ai{background:linear-gradient(135deg,#6d5df6,#8b5cf6);color:#fff;border-color:#7c3aed;box-shadow:0 8px 18px -10px rgba(124,58,237,.65)}
+#fm-root .btn.ai:hover:not(:disabled){filter:brightness(.98);box-shadow:0 11px 22px -11px rgba(124,58,237,.75)}
+#fm-root .btn.soft{background:#fbfcfd;border-color:#dce3ec;color:#526070}
+#fm-root .btn.soft:hover:not(:disabled){background:#f3f7fb;color:var(--text);border-color:#cbd5e1}
+#fm-root .btn.soon:disabled{opacity:.72;background:#f8fafc;color:#64748b;border-color:#e2e8f0}
+#fm-root .soonbadge{font-size:9px;font-weight:800;line-height:1;padding:3px 5px;border-radius:999px;background:#e2e8f0;color:#475569;letter-spacing:.2px}
 #fm-root .card{background:#fff;border:1px solid var(--line);border-radius:12px;margin-bottom:16px}
-#fm-root .card .ch{display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+#fm-root .card .ch{display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap;background:linear-gradient(180deg,#fff 0%,#fbfcfd 100%)}
 #fm-root .card .ch h3{font-size:13.5px;font-weight:700}
 #fm-root .mu{font-size:11px;color:var(--faint)}
 #fm-root .filt{display:grid;grid-template-columns:repeat(5,1fr) auto auto;gap:11px;padding:15px 16px;align-items:end}
