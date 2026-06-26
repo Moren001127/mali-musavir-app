@@ -5909,8 +5909,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   Bu, "HTML sanılıp Max'e düşen ama aslında UBL parse edilebilecek" belgeleri ortaya çıkarır.
     if (html && html.length > 80) {
       try {
-        const _h = html.slice(0, 800);
-        this.logger.log(`[TESHIS-HTML] belge=${d.belgeNo || documentId} len=${html.length} xmlDecl=${/<\?xml/i.test(_h)} ublInvoice=${/<\w*:?(Invoice|CreditNote)[\s>]/i.test(html.slice(0, 4000))} htmlTag=${/<html/i.test(_h)} bas="${_h.slice(0, 160).replace(/\s+/g, ' ')}"`);
+        // Düz metin (tag'siz) — tutar tablosu formatını görmek için "KDV"/"Toplam" çevresi.
+        const _plain = html.replace(/<(script|style)[^>]*>[\s\S]*?<\/(script|style)>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/&[a-z#0-9]+;/gi, ' ').replace(/\s+/g, ' ').trim();
+        const _ix = _plain.search(/Hesaplanan\s*KDV|KDV\s*Tutar|Vergiler\s*Dahil|Mal\s*Hizmet\s*Toplam|Ödenecek/i);
+        const _kdvBolge = _ix >= 0 ? _plain.slice(Math.max(0, _ix - 40), _ix + 320) : _plain.slice(0, 300);
+        this.logger.log(`[TESHIS-HTML] belge=${d.belgeNo || documentId} len=${html.length} plainLen=${_plain.length} tutarBolge="${_kdvBolge.replace(/"/g, "'")}"`);
       } catch { /* log opsiyonel */ }
     }
     // XML e-Arşiv/e-Fatura → UBL PARSE (AI'siz, BİREBİR; okuma asla başarısız olmaz).
