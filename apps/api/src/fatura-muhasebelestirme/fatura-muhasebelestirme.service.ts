@@ -2697,6 +2697,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       if (!existing) return;
       const invoiceKind = String(existing.invoiceKind || 'ALIS').toUpperCase() === 'SATIS' ? 'SATIS' : 'ALIS';
       const isSale = invoiceKind === 'SATIS';
+      const ocrDocumentType = this.mapOcrBelgeTipi(ocrResult.belgeTipi) || this.docTypeFromText(ocrResult.rawText || '') || null;
+      const currentDocumentType = String(existing.documentType || '').toUpperCase();
+      const genericUploadType = !currentDocumentType || ['ALIS_FATURA', 'SATIS_FATURA', 'FATURA', 'OKC_FIS', 'DIGER'].includes(currentDocumentType);
+      const documentType = genericUploadType && ocrDocumentType ? ocrDocumentType : (existing.documentType || ocrDocumentType || 'OKC_FIS');
 
       const imageHash = ocrResult.imageHash || existing.imageHash || this.ocr.computeImageHash(buffer);
       const duplicate = await this.findDuplicate(tenantId, {
@@ -2729,7 +2733,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         await tx.invoiceAccountingDocument.update({
           where: { id: documentId },
           data: {
-            documentType: existing.documentType || ocrResult.belgeTipi || 'OKC_FIS',
+            documentType,
             status,
             duplicateOfId,
             duplicateReason: duplicate?.duplicateReason || existing.duplicateReason || null,

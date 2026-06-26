@@ -881,8 +881,10 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
       return api.post('/fatura-muhasebelestirme/documents/upload', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
     },
     onSuccess: (r: any) => {
-      const n = Array.isArray(r?.data) ? r.data.length : (r?.data?.count ?? r?.data?.created ?? null);
+      const n = Array.isArray(r?.data) ? r.data.length : (r?.data?.uploaded ?? r?.data?.count ?? r?.data?.created ?? null);
+      const skipped = Array.isArray(r?.data?.skipped) ? r.data.skipped : [];
       toast.success(`Belge yüklendi${n != null ? ` · ${n}` : ''}. OCR arka planda işleniyor.`);
+      if (skipped.length) toast.warning(`${skipped.length} dosya atlandı: ${skipped.slice(0, 3).map((s: any) => s.name || 'isimsiz').join(', ')}${skipped.length > 3 ? '…' : ''}`);
       qc.invalidateQueries({ queryKey: ['fm2'] });
     },
     onError: (e: any) => toast.error('Yüklenemedi: ' + (e?.response?.data?.message || e?.message || 'hata')),
