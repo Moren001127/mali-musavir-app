@@ -774,12 +774,26 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
     const ktKod = isl?.satirlar?.[0]?.kayitTuruKod || isl?.kayitTuruKod;
     if (ktKod) {
       let altAd = isl?.satirlar?.[0]?.kayitAltAd || isl?.kayitAltAd || '';
-      // Kayıt türü atanmış ama alt boşsa: İndirilecek Giderler'de içerikten alt türü türet (gösterim için).
-      if (!altAd && String(ktKod) === '4') {
+      if (String(ktKod) === '4') {
         const kindd = String(d.invoiceKind || 'ALIS').toUpperCase() === 'SATIS' ? 'SATIS' : 'ALIS';
-        const islText = [d.ocrData?.giderTuru, d.ocrData?.muhasebeNeden, d.vendorName, d.customerName].filter(Boolean).join(' ');
-        const altKod = islText ? isletmeAutoKayitAltKod(kindd, '4', islText) : '';
-        if (altKod) altAd = getKayitAltList(kindd, '4').find((x: any) => x.kod === altKod)?.ad || '';
+        const kalemler = Array.isArray(d.ocrData?.kalemler) ? d.ocrData.kalemler : [];
+        // ÇOK ORANLI fatura (%1 gıda + %20 temizlik gibi): tek tür tüm faturayı temsil edemez →
+        //   EN BÜYÜK matrahlı KDV oranı grubunun içeriğine göre temsili alt tür göster (AI'ın tek
+        //   yanlış türünü ezer; satır bazlı doğru tür Muhasebeleştir'de görünür).
+        const gruplar: Record<string, { tutar: number; ad: string[] }> = {};
+        for (const k of kalemler) { const o = String(Math.round(Number(k?.oran) || 0)); (gruplar[o] = gruplar[o] || { tutar: 0, ad: [] }); gruplar[o].tutar += Number(k?.tutar) || 0; gruplar[o].ad.push(String(k?.ad || '')); }
+        const oranlar = Object.keys(gruplar);
+        if (oranlar.length > 1) {
+          const enBuyuk = oranlar.sort((a, b) => gruplar[b].tutar - gruplar[a].tutar)[0];
+          const altKod = isletmeAutoKayitAltKod(kindd, '4', gruplar[enBuyuk].ad.join(' '));
+          if (altKod) altAd = getKayitAltList(kindd, '4').find((x: any) => x.kod === altKod)?.ad || altAd;
+        }
+        // Hâlâ boşsa: belge metninden içerik türet (gösterim için).
+        if (!altAd) {
+          const islText = [d.ocrData?.giderTuru, d.ocrData?.muhasebeNeden, d.vendorName, d.customerName].filter(Boolean).join(' ');
+          const altKod = islText ? isletmeAutoKayitAltKod(kindd, '4', islText) : '';
+          if (altKod) altAd = getKayitAltList(kindd, '4').find((x: any) => x.kod === altKod)?.ad || '';
+        }
       }
       return {
         ktAd: isl?.satirlar?.[0]?.kayitTuruAd || isl?.kayitTuruAd || '',
@@ -1800,8 +1814,18 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
     //   satış Hizmet, gider İndirilecek (kullanıcı Muhasebeleştir'de değiştirir).
     const ai = selDoc?.ocrData?.isletme;
     const ktKod = ai?.kayitTuruKod || (kind === 'SATIS' ? '2' : '4');
-    let altKod = ai?.kayitAltKod || '';
     const ktAd = isletmeRef(kind).kayitTuru.find((x) => x.kod === ktKod)?.ad;
+    // KALEM-BAZLI ALT TÜR: Çok oranlı faturada (%1 gıda + %20 temizlik gibi) HER SATIR
+    //   KENDİ KDV oranındaki kalemlerin içeriğine göre alt tür alır — tek tür tüm faturaya
+    //   yapışmaz. Sadece İndirilecek Giderler'de (ktKod='4') ve kalem varsa.
+    let altKod = '';
+    const oran = ({ KDV20: 20, KDV10: 10, KDV1: 1, KDV0: 0 } as Record<string, number>)[kdvKod] ?? -1;
+    const kalemler = Array.isArray(selDoc?.ocrData?.kalemler) ? selDoc.ocrData.kalemler : [];
+    const satirText = oran >= 0
+      ? kalemler.filter((k: any) => Math.round(Number(k?.oran)) === oran).map((k: any) => String(k?.ad || '')).join(' ').trim()
+      : '';
+    if (ktKod === '4' && satirText) altKod = isletmeAutoKayitAltKod(kind, '4', satirText) || '';
+    if (!altKod) altKod = ai?.kayitAltKod || '';
     if (!altKod) altKod = defaultKayitAltKod(kind, ktKod, ktAd);
     if (!altKod) {
       const islText = [selDoc?.ocrData?.giderTuru, selDoc?.ocrData?.muhasebeNeden, selDoc?.vendorName, selDoc?.customerName].filter(Boolean).join(' ');
