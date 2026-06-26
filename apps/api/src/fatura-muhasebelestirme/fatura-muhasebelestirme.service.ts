@@ -7007,13 +7007,17 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       //   eşleşmeyince hesabı RASTGELE atama — AI, fatura içeriğini (giderTuru) mükellefin işine +
       //   plandaki gider hesaplarına SEMANTİK eşler; uygun hesap yoksa null = BOŞ. Aynı giderTuru bir
       //   kez sorulur (aiGiderCache) + batch limiti → "Kodları düzelt"te Max fırtınası olmaz, hız korunur.
-      if (!isSale && !categoryMatrah && giderTuru) {
-        const ck = this.norm(giderTuru);
+      const kalemContext = Array.isArray((doc.ocrData as any)?.kalemler)
+        ? (doc.ocrData as any).kalemler.map((k: any) => String(k?.ad || '')).filter(Boolean).slice(0, 8).join(', ')
+        : '';
+      const giderIcerik = giderTuru || [this.kategoriAciklama(kat), vendorName, kalemContext].filter(Boolean).join(' | ');
+      if (!isSale && !categoryMatrah && giderIcerik) {
+        const ck = this.norm(giderIcerik).slice(0, 180);
         if (aiGiderCache.has(ck)) {
           categoryMatrah = aiGiderCache.get(ck);
         } else if (aiAccCalls < AI_GIDER_LIMIT) {
           aiAccCalls++;
-          const aiPick = leafOnly(await this.aiPickGiderAccount(accounts, tpFaaliyet, giderTuru, vendorName));
+          const aiPick = leafOnly(await this.aiPickGiderAccount(accounts, tpFaaliyet, giderIcerik, vendorName));
           aiGiderCache.set(ck, aiPick);
           categoryMatrah = aiPick;
         }
