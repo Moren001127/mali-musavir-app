@@ -2684,6 +2684,34 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     return null;
   }
 
+  /**
+   * e-Arşiv HTML'inin İÇİNE GÖMÜLÜ yapısal tutar verisinden (render JSON'u) matrah/KDV/toplam çıkarır.
+   * Format örn: {'malHizmetKDV(1)':1030.59,'malHizmetKDV(10)':67.27,'hesaplananKDV(1)':10.31,
+   *   'hesaplananKDV(10)':6.73,'malHizmet':1114.90,'vergidahil':'1114.90','odenecek':'1114.90'}
+   * Sayı biçimi NOKTA ondalık (1030.59). HIZ: bu sayede 75KB HTML'i Max'e okutmaya gerek kalmaz
+   *   (60sn → ~anında). GÜVENLİK: yalnız matrah+KDV ≈ toplam DENGESİ tutarsa kullanılır; tutmazsa
+   *   null döner → çağıran Max'e düşer (eski davranış korunur, hiçbir şey bozulmaz).
+   */
+  private parseEarsivHtmlTotals(html: string): { breakdown: Array<{ oran: number; matrah: number; kdv: number }>; toplam: number; kalemler?: Array<{ ad: string; tutar: number; oran: number }> } | null {
+    if (!html || !/malHizmetKDV\(|hesaplananKDV\(/.test(html)) return null;
+    const matrah: Record<string, number> = {};
+    const kdv: Record<string, number> = {};
+    for (const m of html.matchAll(/malHizmetKDV\((\d+)\)['"]?\s*:\s*['"]?([\d.]+)/g)) matrah[m[1]] = parseFloat(m[2]);
+    for (const m of html.matchAll(/hesaplananKDV\((\d+)\)['"]?\s*:\s*['"]?([\d.]+)/g)) kdv[m[1]] = parseFloat(m[2]);
+    const oranlar = Array.from(new Set([...Object.keys(matrah), ...Object.keys(kdv)]));
+    const breakdown = oranlar
+      .map((o) => ({ oran: Number(o), matrah: Math.round((matrah[o] || 0) * 100) / 100, kdv: Math.round((kdv[o] || 0) * 100) / 100 }))
+      .filter((x) => x.matrah > 0 || x.kdv > 0);
+    if (!breakdown.length) return null;
+    const totM = html.match(/vergidahil['"]?\s*:\s*['"]?([\d.]+)/) || html.match(/odenecek['"]?\s*:\s*['"]?([\d.]+)/);
+    const toplam = totM ? parseFloat(totM[1]) : Math.round(breakdown.reduce((s, b) => s + b.matrah + b.kdv, 0) * 100) / 100;
+    // DENGE: matrah + KDV ≈ toplam (1 TL tolerans). Tutmazsa güvenilmez → null (Max'e düş).
+    const mTop = breakdown.reduce((s, b) => s + b.matrah, 0);
+    const kTop = breakdown.reduce((s, b) => s + b.kdv, 0);
+    if (Math.abs(mTop + kTop - toplam) > 1) return null;
+    return { breakdown, toplam };
+  }
+
   private async processMihsapDocumentOcr(
     tenantId: string,
     documentId: string,
@@ -5905,17 +5933,6 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       return { ok: false, reason: 'belge getirilemedi: ' + (e?.message || '') };
     }
     const isImage = !!imgBuf && imgBuf.length > 200 && /^image\//i.test(imgMedia);
-    // TEŞHİS (geçici): HTML belgenin gerçek doğası — saf HTML mi yoksa gömülü XSLT'li XML mi?
-    //   Bu, "HTML sanılıp Max'e düşen ama aslında UBL parse edilebilecek" belgeleri ortaya çıkarır.
-    if (html && html.length > 80) {
-      try {
-        // Düz metin (tag'siz) — tutar tablosu formatını görmek için "KDV"/"Toplam" çevresi.
-        const _plain = html.replace(/<(script|style)[^>]*>[\s\S]*?<\/(script|style)>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/&[a-z#0-9]+;/gi, ' ').replace(/\s+/g, ' ').trim();
-        const _ix = _plain.search(/Hesaplanan\s*KDV|KDV\s*Tutar|Vergiler\s*Dahil|Mal\s*Hizmet\s*Toplam|Ödenecek/i);
-        const _kdvBolge = _ix >= 0 ? _plain.slice(Math.max(0, _ix - 40), _ix + 320) : _plain.slice(0, 300);
-        this.logger.log(`[TESHIS-HTML] belge=${d.belgeNo || documentId} len=${html.length} plainLen=${_plain.length} tutarBolge="${_kdvBolge.replace(/"/g, "'")}"`);
-      } catch { /* log opsiyonel */ }
-    }
     // XML e-Arşiv/e-Fatura → UBL PARSE (AI'siz, BİREBİR; okuma asla başarısız olmaz).
     let preParsed: any = null;
     if (!isImage && !(html && html.length > 80) && imgBuf && /xml/i.test(imgMedia)) {
@@ -5953,6 +5970,31 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     if (!preParsed && !isImage && !(html && html.length > 80) && imgBuf && /xml/i.test(imgMedia)) {
       const xmlText = imgBuf.toString('utf8').replace(/<[^>]+>/g, ' ').replace(/&[a-z]+;/gi, ' ').replace(/\s+/g, ' ').trim();
       if (xmlText.length > 80) html = xmlText;
+    }
+    // e-ARŞİV HTML GÖMÜLÜ TUTAR → preParsed (Max ATLA). 75KB HTML'i Max'e okutmak 30-66sn sürüyordu;
+    //   e-Arşiv HTML'inin içindeki render JSON'unda matrah/KDV/toplam HAZIR. Denge tutarsa onu kullan
+    //   → okuma ~anında. Tutmazsa (parse null) AŞAĞIDA Max-vision'a düşer (eski davranış, bozulmaz).
+    //   Sınıflandırma (giderTuru/kategori/İşletme) preParsed yolunda aiClassifyAccounting ile yapılır.
+    if (!preParsed && html && html.length > 80) {
+      const t = this.parseEarsivHtmlTotals(html);
+      if (t) {
+        const td: any = d.faturaTarihi;
+        const dt = td instanceof Date && !Number.isNaN(td.getTime())
+          ? `${String(td.getUTCDate()).padStart(2, '0')}.${String(td.getUTCMonth() + 1).padStart(2, '0')}.${td.getUTCFullYear()}`
+          : null;
+        preParsed = {
+          belgeNo: d.belgeNo || null, tarih: dt,
+          belgeTuru: 'e-arsiv',
+          saticiAd: d.vendorName || null, saticiVkn: null,
+          aliciAd: d.customerName || null, aliciVkn: null,
+          toplam: t.toplam,
+          iade: /\b(İADE|IADE|İPTAL|IPTAL)\b/i.test(html.slice(0, 6000)),
+          tevkifat: /TEVKIFAT|tevkifat/i.test(html),
+          kdv: t.breakdown.map((b) => ({ oran: b.oran, matrah: b.matrah, kdv: b.kdv })),
+          _htmlText: html.replace(/<(script|style)[^>]*>[\s\S]*?<\/(script|style)>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/&[a-z#0-9]+;/gi, ' ').replace(/\s+/g, ' ').trim().slice(0, 8000),
+        };
+        this.logger.log(`[HTML-HIZLI] belge=${d.belgeNo || documentId} HTML gömülü tutardan okundu (Max ATLANDI) · oran=${t.breakdown.length} toplam=${t.toplam}`);
+      }
     }
     // UBL parse / HTML metni / görsel — üçü de yoksa okunamaz.
     if (!preParsed && !(html && html.length > 80) && !isImage) {
@@ -6150,6 +6192,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         if (!parsed.kategori && c.kategori) parsed.kategori = c.kategori;
         if (!parsed.muhasebeNeden && (c as any).muhasebeNeden) parsed.muhasebeNeden = (c as any).muhasebeNeden;
         if (c.isletmeKayitTuru) { parsed.isletmeKayitTuru = c.isletmeKayitTuru; parsed.isletmeAltTuru = c.isletmeAltTuru; parsed.isletmeNeden = c.isletmeNeden; }
+        // HTML/UBL yolunda kalemler okuma adımında YOK → sınıflandırma AI'ından al (kalem dökümü +
+        //   kalem-bazlı alt tür için). Zaten kalem varsa dokunma.
+        if ((!Array.isArray(parsed.kalemler) || !parsed.kalemler.length) && Array.isArray((c as any).kalemler) && (c as any).kalemler.length) parsed.kalemler = (c as any).kalemler;
       }
     }
 
@@ -6290,7 +6335,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     mukellefBilgi: string,
     isIsletme: boolean,
     invoiceKind?: 'ALIS' | 'SATIS',
-  ): Promise<{ giderTuru: string; kategori: string; isletmeKayitTuru: string; isletmeAltTuru: string; isletmeNeden: string; muhasebeNeden: string } | null> {
+  ): Promise<{ giderTuru: string; kategori: string; isletmeKayitTuru: string; isletmeAltTuru: string; isletmeNeden: string; muhasebeNeden: string; kalemler?: Array<{ ad: string; tutar: number; oran: number }> } | null> {
     if (!contentText || contentText.length < 20) return null;
     const _yonKesim = invoiceKind === 'SATIS'
       ? 'YÖN KESİN SATIŞ: Mükellef bu faturada SATICI konumundadır. Hasılat/gelir söz konusu.'
@@ -6299,9 +6344,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       'Aşağıda bir Türk e-Fatura/e-Arşiv belgesinin metin içeriği var. İçindeki MAL/HİZMET kalemlerini bir MALİ MÜŞAVİR gibi değerlendir.',
       _yonKesim,
       mukellefBilgi ? `Faturanın tarafı olan mükellef: ${mukellefBilgi}.` : '',
-      'YALNIZCA şu JSON: {"giderTuru":"","kategori":"","isletmeKayitTuru":"","isletmeAltTuru":"","isletmeNeden":"","muhasebeNeden":""}',
+      'YALNIZCA şu JSON: {"giderTuru":"","kategori":"","isletmeKayitTuru":"","isletmeAltTuru":"","isletmeNeden":"","muhasebeNeden":"","kalemler":[{"ad":"","tutar":0,"oran":0}]}',
       'giderTuru: ALIŞ ise faturadaki ANA mal/hizmetin kısa adı (yakıt/motorin→"akaryakıt"; ayrıca "elektrik","su","doğalgaz","telefon","internet","kira","kırtasiye","danışmanlık","nakliye","yedek parça","bakım onarım","yemek","temizlik","sigorta","reklam" vb). Net değilse "". SATIŞ ise "".',
-      'kategori: mükellefin ANA FAALİYETİNE göre → "ticari_mal" (SADECE mükellefin SATARAK ticaretini yaptığı emtia), "hammadde" (üretim girdisi), "demirbas" (makine/cihaz/sabit kıymet), "pazarlama" (reklam/kargo/nakliye), "genel_gider" (kira/elektrik/sarf/abonelik + satılmayan tüketim/sarf malzemesi). Emin değilsen "genel_gider". ⚠️ Mükellefin SATMADIĞI cihaz/klima/makine/ekipman/mobilya/bilgisayar = "demirbas", ASLA "ticari_mal" değil (lokanta klima alırsa demirbas). ⚠️ Mükellef MAL TİCARETİ yapmıyorsa (hizmet/eğitim/lokanta/ofis) aldığı tüketim/sarf malzemesi (ambalaj, tek-kullanımlık, temizlik, kırtasiye, servis) = "genel_gider", ASLA "ticari_mal" değil. Araç/taşıt kiralama = "genel_gider" ama giderTuru "araç kiralama" (kira değil).',
+      'kategori: mükellefin ANA FAALİYETİNE göre → "ticari_mal" (SADECE mükellefin SATARAK ticaretini yaptığı emtia), "hammadde" (üretim girdisi), "demirbas" (makine/cihaz/sabit kıymet), "pazarlama" (reklam/kargo/nakliye), "genel_gider" (kira/elektrik/sarf/abonelik + satılmayan tüketim/sarf malzemesi). Emin değilsen "genel_gider". ⚠️ KRİTİK — LOKANTA/RESTORAN/KAFE/PASTANE/YEMEK ÜRETİM/CATERING işletmesinin aldığı GIDA / MUTFAK MALZEMESİ (et, tavuk, sebze, meyve, süt, peynir, yumurta, un, yağ, baharat, içecek, ekmek, bakliyat) = "hammadde" (üründe kullanılan girdi); ASLA "genel_gider" DEĞİL. ⚠️ Mükellefin SATMADIĞI cihaz/klima/makine/ekipman/mobilya/bilgisayar = "demirbas", ASLA "ticari_mal" değil (lokanta klima alırsa demirbas). ⚠️ Mükellef MAL TİCARETİ/ÜRETİMİ yapmıyorsa (saf hizmet/eğitim/ofis) aldığı tüketim/sarf malzemesi (ambalaj, tek-kullanımlık, temizlik, kırtasiye, servis) = "genel_gider", ASLA "ticari_mal" değil. Araç/taşıt kiralama = "genel_gider" ama giderTuru "araç kiralama" (kira değil).',
+      'kalemler: faturadaki mal/hizmet satırlarını listele (ad + KDV hariç tutar + KDV oranı sayı). ÇOK KALEMLİYSE (>15) KDV oranına ve benzer ürün grubuna göre BİRLEŞTİR — en fazla 15 nesne (ör. "%1 gıda ürünleri", "%20 temizlik"). Okunamazsa [].',
       'muhasebeNeden: Bir mali müşavir ağzından AKICI, DOĞAL Türkçe 1-2 cümlelik değerlendirme (kalıp DEĞİL — gerçekten yorumla). Faturada özetle NE alınmış/satılmış ve mükellefin faaliyetine göre bu NİYE o nitelikte (ticari mal / hammadde / demirbaş / gider). İçerik faaliyetle uyumsuzsa nedenini söyle. ⚠️ "alış"/"satış" kelimesini ve hesap NUMARASINI YAZMA — yönü ve kesin hesabı sistem ekler; sen YALNIZ içeriği ve niteliği yorumla. Örnek: "Faturada ofis için yazıcı ve toner alınmış; işte kullanılan sabit kıymet/demirbaş niteliğindedir."',
       isIsletme ? islPromptSeg(invoiceKind) : 'isletmeKayitTuru ve isletmeAltTuru = "" bırak (mükellef İşletme defteri değil).',
       '\nİÇERİK:\n' + contentText.slice(0, 12000),
@@ -6324,6 +6370,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         isletmeAltTuru: String(j.isletmeAltTuru || ''),
         isletmeNeden: String(j.isletmeNeden || ''),
         muhasebeNeden: String(j.muhasebeNeden || '').slice(0, 300),
+        kalemler: Array.isArray(j.kalemler)
+          ? j.kalemler.slice(0, 15).map((k: any) => ({ ad: String(k?.ad || '').slice(0, 80), tutar: Number(k?.tutar) || 0, oran: Number(k?.oran) || 0 })).filter((k: any) => k.ad)
+          : undefined,
       };
     } catch { return null; }
   }
