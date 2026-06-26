@@ -313,6 +313,18 @@ function periodWhere(period?: string | null) {
   };
 }
 
+/** aiClassifyAccounting / Multi çıktısı (tek belge sınıflandırması). */
+type ClassifyResult = {
+  giderTuru: string;
+  kategori: string;
+  isletmeKayitTuru: string;
+  isletmeAltTuru: string;
+  isletmeNeden: string;
+  muhasebeNeden: string;
+  kalemler?: Array<{ ad: string; tutar: number; oran: number }>;
+  matrahHesapKodu?: string;
+};
+
 @Injectable()
 export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(FaturaMuhasebelestirmeService.name);
@@ -346,6 +358,17 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       else this.classifyActive--;    // bekleyen yok → slotu serbest bırak
     };
   }
+  // TOPLU SINIFLANDIRMA: her belge için ayrı ~40-50s'lik Max alt-süreci tabandı (ilk belge bile 43s).
+  //   Aynı mükellef+plan+yön grubundaki bekleyen istekleri kısa pencerede (debounce ya da batch dolunca)
+  //   TEK Max çağrısında topla → alt-süreç sayısı ~N× azalır, en büyük hızlanma. Toplu çağrı başarısız/
+  //   uyumsuz dönerse tek-tek (gate'li) fallback → kategori asla bozulmaz.
+  private readonly classifyBatchSize = Math.max(1, Number(process.env.MAX_CLASSIFY_BATCH || 6));
+  private readonly classifyBatchDebounceMs = Math.max(0, Number(process.env.MAX_CLASSIFY_BATCH_MS || 350));
+  private readonly classifyBatchBuffers = new Map<string, {
+    items: Array<{ contentText: string; resolve: (v: ClassifyResult | null) => void }>;
+    timer: NodeJS.Timeout | null;
+    shared: { mukellefBilgi: string; isIsletme: boolean; invoiceKind?: 'ALIS' | 'SATIS'; planAdaylar?: string };
+  }>();
   private readonly uploadOcrActiveIds = new Set<string>(); // işlenmekte olan belge id'leri (resume çift-işlemesin)
   private ocrResumeTimer: NodeJS.Timeout | null = null;
   private ocrResuming = false;
@@ -6217,7 +6240,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       //   AI'ı 23KB ham HTML gürültüsünde boğuluyordu → NULL/boş kategori). Önce onu kullan; yoksa eski yol.
       const contentText = (parsed._htmlText || parsed._azureText || (imgBuf ? imgBuf.toString('utf8') : (html || ''))).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 9000);
       const _clsT0 = Date.now();
-      const c = await this.aiClassifyAccounting(contentText, mukellefBilgi, isIsletmeMukellef, d.invoiceKind === 'SATIS' ? 'SATIS' : 'ALIS', planAdaylar).catch(() => null);
+      // TOPLU: aynı mükellef+plan+yön grubundaki belgeler tek Max çağrısında sınıflanır (alt-süreç N× azalır).
+      const c = await this.aiClassifyAccountingCoalesced(contentText, mukellefBilgi, isIsletmeMukellef, d.invoiceKind === 'SATIS' ? 'SATIS' : 'ALIS', planAdaylar).catch(() => null);
       this.logger.log(`[TESHIS-CLS] belge=${d.belgeNo || documentId} sonuc=${c ? 'OK' : 'NULL'} sure=${Date.now() - _clsT0}ms neden=${(c as any)?.muhasebeNeden ? 'var' : 'YOK'} matrahKod=${(c as any)?.matrahHesapKodu || 'YOK'} kategori=${c?.kategori || 'YOK'} contentLen=${contentText.length} planVar=${planAdaylar ? 'E' : 'H'}`);
       if (c) {
         if (!parsed.giderTuru && c.giderTuru) parsed.giderTuru = c.giderTuru;
@@ -6365,28 +6389,159 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   // UBL/XML (max-vision AI'ı ATLAYAN) belgeler için MUHASEBE SINIFLANDIRMASI — bir mali müşavir gibi
   // içeriğe + mükellefin faaliyetine bakıp giderTuru/kategori (+ İşletme ise kayıt türü/alt türü) belirler.
   // e-Fatura/e-Arşiv XML'leri AI okumadan geçtiği için sınıf BURADA ayrı çağrıyla üretilir. Max aboneliği.
-  private async aiClassifyAccounting(
-    contentText: string,
-    mukellefBilgi: string,
-    isIsletme: boolean,
-    invoiceKind?: 'ALIS' | 'SATIS',
-    planAdaylar?: string,
-  ): Promise<{ giderTuru: string; kategori: string; isletmeKayitTuru: string; isletmeAltTuru: string; isletmeNeden: string; muhasebeNeden: string; kalemler?: Array<{ ad: string; tutar: number; oran: number }>; matrahHesapKodu?: string } | null> {
-    if (!contentText || contentText.length < 20) return null;
-    const _yonKesim = invoiceKind === 'SATIS'
+  // PAYLAŞILAN SINIFLANDIRMA KURALLARI — tekil (aiClassifyAccounting) ve toplu (aiClassifyAccountingMulti)
+  //   AYNI kuralları kullansın diye TEK kaynak (drift olmasın; kullanıcı bu kuralları sık ayarlıyor).
+  private classifyHeadSegments(mukellefBilgi: string, invoiceKind?: 'ALIS' | 'SATIS'): string[] {
+    const yon = invoiceKind === 'SATIS'
       ? 'YÖN KESİN SATIŞ: Mükellef bu faturada SATICI konumundadır. Hasılat/gelir söz konusu.'
       : 'YÖN KESİN ALIŞ: Mükellef bu faturada ALICI konumundadır — karşı taraftan aldığı hizmet/mal için gider ödüyor. muhasebeNeden\'de "satış geliri", "hizmet sunulması", "faaliyet geliri", "geliridir" ifadeleri YASAK; gider/maliyet bakışıyla yaz.';
-    const prompt = [
-      'Aşağıda bir Türk e-Fatura/e-Arşiv belgesinin metin içeriği var. İçindeki MAL/HİZMET kalemlerini bir MALİ MÜŞAVİR gibi değerlendir.',
-      _yonKesim,
-      mukellefBilgi ? `Faturanın tarafı olan mükellef: ${mukellefBilgi}.` : '',
-      `YALNIZCA şu JSON: {"giderTuru":"","kategori":"","isletmeKayitTuru":"","isletmeAltTuru":"","isletmeNeden":"","muhasebeNeden":"","kalemler":[{"ad":"","tutar":0,"oran":0}]${planAdaylar ? ',"matrahHesapKodu":""' : ''}}`,
+    return [yon, mukellefBilgi ? `Faturanın tarafı olan mükellef: ${mukellefBilgi}.` : ''].filter(Boolean);
+  }
+  private classifyBodySegments(isIsletme: boolean, invoiceKind?: 'ALIS' | 'SATIS', planAdaylar?: string): string[] {
+    return [
       'giderTuru: ALIŞ ise faturadaki ANA mal/hizmetin kısa adı (yakıt/motorin→"akaryakıt"; ayrıca "elektrik","su","doğalgaz","telefon","internet","kira","kırtasiye","danışmanlık","nakliye","yedek parça","bakım onarım","yemek","temizlik","sigorta","reklam" vb). Net değilse "". SATIŞ ise "".',
       'kategori: mükellefin ANA FAALİYETİNE göre → "ticari_mal" (SADECE mükellefin SATARAK ticaretini yaptığı emtia), "hammadde" (üretim girdisi), "demirbas" (makine/cihaz/sabit kıymet), "pazarlama" (reklam/kargo/nakliye), "genel_gider" (kira/elektrik/sarf/abonelik + satılmayan tüketim/sarf malzemesi). Emin değilsen "genel_gider". ⚠️ KRİTİK — LOKANTA/RESTORAN/KAFE/PASTANE/YEMEK ÜRETİM/CATERING işletmesinin aldığı GIDA / MUTFAK MALZEMESİ (et, tavuk, sebze, meyve, süt, peynir, yumurta, un, yağ, baharat, içecek, ekmek, bakliyat) = "hammadde" (üründe kullanılan girdi); ASLA "genel_gider" DEĞİL. ⚠️ Mükellefin SATMADIĞI cihaz/klima/makine/ekipman/mobilya/bilgisayar = "demirbas", ASLA "ticari_mal" değil (lokanta klima alırsa demirbas). ⚠️ Mükellef MAL TİCARETİ/ÜRETİMİ yapmıyorsa (saf hizmet/eğitim/ofis) aldığı tüketim/sarf malzemesi (ambalaj, tek-kullanımlık, temizlik, kırtasiye, servis) = "genel_gider", ASLA "ticari_mal" değil. Araç/taşıt kiralama = "genel_gider" ama giderTuru "araç kiralama" (kira değil).',
       'kalemler: faturadaki mal/hizmet satırlarını listele (ad + KDV hariç tutar + KDV oranı sayı). ÇOK KALEMLİYSE (>15) KDV oranına ve benzer ürün grubuna göre BİRLEŞTİR — en fazla 15 nesne (ör. "%1 gıda ürünleri", "%20 temizlik"). Okunamazsa [].',
       'muhasebeNeden: Bir mali müşavir ağzından AKICI, DOĞAL Türkçe 1-2 cümlelik değerlendirme (kalıp DEĞİL — gerçekten yorumla). Faturada özetle NE alınmış/satılmış ve mükellefin faaliyetine göre bu NİYE o nitelikte (ticari mal / hammadde / demirbaş / gider). İçerik faaliyetle uyumsuzsa nedenini söyle. ⚠️ "alış"/"satış" kelimesini ve hesap NUMARASINI YAZMA — yönü ve kesin hesabı sistem ekler; sen YALNIZ içeriği ve niteliği yorumla. Örnek: "Faturada ofis için yazıcı ve toner alınmış; işte kullanılan sabit kıymet/demirbaş niteliğindedir."',
       isIsletme ? islPromptSeg(invoiceKind) : 'isletmeKayitTuru ve isletmeAltTuru = "" bırak (mükellef İşletme defteri değil).',
       planAdaylar ? `\nMÜKELLEFİN HESAP PLANI — matrah/gider için aday hesaplar (matrahHesapKodu'nu SADECE bu listeden seç):\n${planAdaylar}\n→ matrahHesapKodu: bu faturanın matrahını (mal/hizmet/gider tutarını) mükellefin İŞİNE + fatura İÇERİĞİNE göre yukarıdaki listeden EN UYGUN TAM koda ata. Mükellefin SATARAK ticaret yaptığı emtia → stok (15x); ÜRETİMDE kullandığı girdi (LOKANTA gıda/mutfak malzemesi) → ilk madde/üretim maliyeti (15x/74x); kendi işinde tükettiği gider → ilgili gider (7xx/6xx); uzun ömürlü makine/cihaz/demirbaş → sabit kıymet (25x); SATIŞ ise gelir (600). ⚠️ İÇERİĞE GERÇEKTEN uyan hesap yoksa BOŞ bırak — listede OLMAYAN kodu ASLA yazma. ⚠️ TUTARLI OL: aynı tür içerik (ör. gıda) hep aynı mantıkla aynı hesaba gitsin, faturadan faturaya zıplama.` : '',
+    ].filter(Boolean);
+  }
+  private classifyJsonShape(planAdaylar?: string): string {
+    return `{"giderTuru":"","kategori":"","isletmeKayitTuru":"","isletmeAltTuru":"","isletmeNeden":"","muhasebeNeden":"","kalemler":[{"ad":"","tutar":0,"oran":0}]${planAdaylar ? ',"matrahHesapKodu":""' : ''}}`;
+  }
+  private parseClassifyObject(j: any): ClassifyResult | null {
+    if (!j || typeof j !== 'object') return null;
+    return {
+      giderTuru: String(j.giderTuru || '').slice(0, 40),
+      kategori: String(j.kategori || ''),
+      isletmeKayitTuru: String(j.isletmeKayitTuru || ''),
+      isletmeAltTuru: String(j.isletmeAltTuru || ''),
+      isletmeNeden: String(j.isletmeNeden || ''),
+      muhasebeNeden: String(j.muhasebeNeden || '').slice(0, 300),
+      kalemler: Array.isArray(j.kalemler)
+        ? j.kalemler.slice(0, 15).map((k: any) => ({ ad: String(k?.ad || '').slice(0, 80), tutar: Number(k?.tutar) || 0, oran: Number(k?.oran) || 0 })).filter((k: any) => k.ad)
+        : undefined,
+      matrahHesapKodu: typeof j.matrahHesapKodu === 'string' ? String(j.matrahHesapKodu).trim() : undefined,
+    };
+  }
+
+  /** TOPLU sınıflandırma: aynı mükellef+plan+yön grubundaki N belgeyi TEK Max çağrısında değerlendir.
+   *  Dönen dizi N nesne değilse [] döner → çağıran tek-tek fallback'e geçer (kategori asla bozulmaz). */
+  private async aiClassifyAccountingMulti(
+    contents: string[],
+    mukellefBilgi: string,
+    isIsletme: boolean,
+    invoiceKind?: 'ALIS' | 'SATIS',
+    planAdaylar?: string,
+  ): Promise<Array<ClassifyResult | null>> {
+    const n = contents.length;
+    if (!n) return [];
+    const docBlocks = contents
+      .map((c, i) => `=== BELGE ${i + 1} ===\n${String(c || '').replace(/\s+/g, ' ').trim().slice(0, 6000)}`)
+      .join('\n\n');
+    const prompt = [
+      `Aşağıda ${n} adet Türk e-Fatura/e-Arşiv belgesinin metin içeriği var (1..${n} numaralı). HER BİRİNİ ayrı ayrı, bir MALİ MÜŞAVİR gibi değerlendir. Tüm kurallar HER belge için ayrı geçerlidir.`,
+      ...this.classifyHeadSegments(mukellefBilgi, invoiceKind),
+      `YALNIZCA tam ${n} nesnelik bir JSON DİZİSİ döndür — nesneler belge numarasıyla AYNI sırada (1. belge ilk nesne), başka metin YOK: [${this.classifyJsonShape(planAdaylar)}, ...]`,
+      ...this.classifyBodySegments(isIsletme, invoiceKind, planAdaylar),
+      '\nBELGELER:\n' + docBlocks,
+    ].filter(Boolean).join('\n');
+    const releaseSlot = await this.acquireClassifySlot();
+    let res: any = null;
+    try {
+      // N belgelik yanıt tek belgeden uzun → timeout'u belge sayısına göre biraz büyüt (tavan 150s).
+      const tmo = Math.min(this.classifyTimeoutMs + n * 6000, 150000);
+      for (let att = 1; att <= 2 && (!res || !res.ok || !res.text); att++) {
+        res = await claudeTextViaMax({ prompt, timeoutMs: tmo, model: MAX_MODEL_CHEAP }).catch(() => null);
+        if ((!res || !res.ok || !res.text) && att < 2) await new Promise((r) => setTimeout(r, /rate|429|limit|overload|too many/i.test(String(res?.error || '')) ? 3500 : 600));
+      }
+    } finally {
+      releaseSlot();
+    }
+    if (!res || !res.ok || !res.text) return [];
+    try {
+      const m = res.text.match(/\[[\s\S]*\]/);
+      const arr = m ? JSON.parse(m[0]) : null;
+      if (!Array.isArray(arr)) return [];
+      return arr.map((j: any) => this.parseClassifyObject(j));
+    } catch { return []; }
+  }
+
+  /** Sınıflandırmayı toplu yola sok: aynı grup anahtarındaki istekleri kısa pencerede birleştir. */
+  private aiClassifyAccountingCoalesced(
+    contentText: string,
+    mukellefBilgi: string,
+    isIsletme: boolean,
+    invoiceKind?: 'ALIS' | 'SATIS',
+    planAdaylar?: string,
+  ): Promise<ClassifyResult | null> {
+    if (!contentText || contentText.length < 20) return Promise.resolve(null);
+    if (this.classifyBatchSize <= 1) {
+      return this.aiClassifyAccounting(contentText, mukellefBilgi, isIsletme, invoiceKind, planAdaylar).catch(() => null);
+    }
+    const key = `${isIsletme ? '1' : '0'}|${invoiceKind || 'ALIS'}|${planAdaylar || ''}|${mukellefBilgi}`;
+    return new Promise<ClassifyResult | null>((resolve) => {
+      let buf = this.classifyBatchBuffers.get(key);
+      if (!buf) {
+        buf = { items: [], timer: null, shared: { mukellefBilgi, isIsletme, invoiceKind, planAdaylar } };
+        this.classifyBatchBuffers.set(key, buf);
+      }
+      buf.items.push({ contentText, resolve });
+      if (buf.items.length >= this.classifyBatchSize) {
+        if (buf.timer) { clearTimeout(buf.timer); buf.timer = null; }
+        void this.flushClassifyBatch(key).catch(() => {});
+      } else if (!buf.timer) {
+        buf.timer = setTimeout(() => { void this.flushClassifyBatch(key).catch(() => {}); }, this.classifyBatchDebounceMs);
+      }
+    });
+  }
+
+  /** Bir grup partisini boşalt: tek Max çağrısı; uyumsuz/başarısızsa tek-tek fallback. HER istek MUTLAKA çözülür. */
+  private async flushClassifyBatch(key: string): Promise<void> {
+    const buf = this.classifyBatchBuffers.get(key);
+    if (!buf || !buf.items.length) return;
+    this.classifyBatchBuffers.delete(key); // bu partiyi sahiplen (yeni gelenler ayrı partiye)
+    if (buf.timer) { clearTimeout(buf.timer); buf.timer = null; }
+    const items = buf.items;
+    const resolved = new Set<number>();
+    const resolveAt = (i: number, v: ClassifyResult | null) => { if (!resolved.has(i)) { resolved.add(i); items[i].resolve(v); } };
+    try {
+      const t0 = Date.now();
+      let results: Array<ClassifyResult | null> = [];
+      try {
+        results = await this.aiClassifyAccountingMulti(
+          items.map((i) => i.contentText), buf.shared.mukellefBilgi, buf.shared.isIsletme, buf.shared.invoiceKind, buf.shared.planAdaylar,
+        );
+      } catch { results = []; }
+      if (Array.isArray(results) && results.length === items.length) {
+        this.logger.log(`[CLS-BATCH] grup=${items.length} sonuc=OK sure=${Date.now() - t0}ms (tek Max cagrisi)`);
+        items.forEach((_, i) => resolveAt(i, results[i] || null));
+        return;
+      }
+      this.logger.warn(`[CLS-BATCH] uyumsuz (istenen=${items.length} donen=${Array.isArray(results) ? results.length : 0}) → tek-tek fallback`);
+      await Promise.all(items.map(async (it, i) => {
+        const r = await this.aiClassifyAccounting(it.contentText, buf.shared.mukellefBilgi, buf.shared.isIsletme, buf.shared.invoiceKind, buf.shared.planAdaylar).catch(() => null);
+        resolveAt(i, r);
+      }));
+    } catch {
+      items.forEach((_, i) => resolveAt(i, null)); // beklenmeyen — bekleyenleri ASLA askıda bırakma
+    }
+  }
+
+  private async aiClassifyAccounting(
+    contentText: string,
+    mukellefBilgi: string,
+    isIsletme: boolean,
+    invoiceKind?: 'ALIS' | 'SATIS',
+    planAdaylar?: string,
+  ): Promise<ClassifyResult | null> {
+    if (!contentText || contentText.length < 20) return null;
+    const prompt = [
+      'Aşağıda bir Türk e-Fatura/e-Arşiv belgesinin metin içeriği var. İçindeki MAL/HİZMET kalemlerini bir MALİ MÜŞAVİR gibi değerlendir.',
+      ...this.classifyHeadSegments(mukellefBilgi, invoiceKind),
+      `YALNIZCA şu JSON: ${this.classifyJsonShape(planAdaylar)}`,
+      ...this.classifyBodySegments(isIsletme, invoiceKind, planAdaylar),
       '\nİÇERİK:\n' + contentText.slice(0, 12000),
     ].filter(Boolean).join('\n');
     // 429/hız-limitinde sınıflandırma sessizce düşmesin (matrah buna bağlı) → 1 kez GERİ-ÇEKİLMELİ tekrar dene.
@@ -6406,19 +6561,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     try {
       const m = res.text.match(/\{[\s\S]*\}/);
       const j = m ? JSON.parse(m[0]) : null;
-      if (!j) return null;
-      return {
-        giderTuru: String(j.giderTuru || '').slice(0, 40),
-        kategori: String(j.kategori || ''),
-        isletmeKayitTuru: String(j.isletmeKayitTuru || ''),
-        isletmeAltTuru: String(j.isletmeAltTuru || ''),
-        isletmeNeden: String(j.isletmeNeden || ''),
-        muhasebeNeden: String(j.muhasebeNeden || '').slice(0, 300),
-        kalemler: Array.isArray(j.kalemler)
-          ? j.kalemler.slice(0, 15).map((k: any) => ({ ad: String(k?.ad || '').slice(0, 80), tutar: Number(k?.tutar) || 0, oran: Number(k?.oran) || 0 })).filter((k: any) => k.ad)
-          : undefined,
-        matrahHesapKodu: typeof j.matrahHesapKodu === 'string' ? String(j.matrahHesapKodu).trim() : undefined,
-      };
+      return this.parseClassifyObject(j);
     } catch { return null; }
   }
 
