@@ -1053,7 +1053,7 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
         </div>
         <div className="twrap">
           <table>
-            <thead><tr><th style={{ width: 30 }}><Check checked={allSelected} onToggle={toggleAll} /></th><th>Tarih</th><th>Fatura No</th><th>Firma Adı</th><th>Tip</th><th className="num">KDV Hariç</th><th className="num">KDV</th><th className="num">Tutar</th><th>{isIsletme ? 'Kayıt Türü' : 'Hesap Kodu'}</th><th>Durum</th><th className="actcol" style={{ width: 40 }} /></tr></thead>
+            <thead><tr><th style={{ width: 30 }}><Check checked={allSelected} onToggle={toggleAll} /></th><th>Tarih</th><th>Fatura No</th><th>Firma Adı</th><th>Tip</th><th className="num">KDV Hariç</th><th className="num">KDV</th><th className="num">Tutar</th>{!isIsletme && <th>Hesap Kodu</th>}<th>Durum</th><th className="actcol" style={{ width: 40 }} /></tr></thead>
             <tbody>
               {docs.map((d) => {
                 const du = dd(d);
@@ -1089,9 +1089,7 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
                     <td className="num">{matrah != null ? fmtMoney(matrah) : '—'}</td>
                     <td className="num">{kdv != null ? fmtMoney(kdv) : '—'}</td>
                     <td className="num">{fmtMoney(d.totalAmount)}</td>
-                    <td>{isIsletme
-                      ? (islKayit ? <span className="hk" title={islAltFull ? `${islMain} › ${islAltFull}` : islMain}>{islKayit}</span> : <span className="hk no" title="Belge içeriğinden tür çıkarılamadı — Muhasebeleştir'de seç">—</span>)
-                      : (code ? <span className="hk">{code}</span> : <span className="hk no">— yok —</span>)}</td>
+                    {!isIsletme && <td>{code ? <span className="hk">{code}</span> : <span className="hk no">— yok —</span>}</td>}
                     <td><span className={`pill ${du.k}`} title={du.cat === 'okunamadi' && d.lucaErrorMessage ? `Neden: ${d.lucaErrorMessage}` : du.cat === 'celiski' ? ((Array.isArray(d.validationIssues) ? d.validationIssues : (Array.isArray(d.ocrData?.validationIssues) ? d.ocrData.validationIssues : [])).filter((i: any) => i?.code && i.code !== 'INCOMPLETE_AMOUNTS' && i?.severity !== 'WARNING').map((i: any) => i.message).filter(Boolean).join(' · ') || du.t) : du.t}>{du.t}</span>{du.cat === 'okunamadi' && d.lucaErrorMessage ? <div className="oneden">{d.lucaErrorMessage}</div> : null}{du.cat === 'celiski' ? <div className="oneden" style={{ fontSize: 10.5, opacity: 0.85 }}>↓ sebebi fiş detayında</div> : null}</td>
                     <td className="actcol" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                       {docUyarilar.length > 0 && (
@@ -1107,7 +1105,7 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
                   </tr>
                   {fisAcik && (
                     <tr className="detayrow">
-                      <td colSpan={11}>
+                      <td colSpan={isIsletme ? 10 : 11}>
                         <div className="detaybox">
                           {(() => {
                             const rn = richNotes[d.id];
@@ -1154,7 +1152,16 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
                             </div>
                           ) : null}
                           {isIsletme ? (
-                            <div style={{ padding: '4px 2px', fontSize: 13 }}>{(() => { const s = islSinif(d); return s.ok ? <><b>Kayıt Türü:</b> {s.ktAd}{s.altAd ? <> › {s.altAd}</> : null}</> : <span className="hk no">Kayıt türü belirlenemedi — "AI ile oku" ile yeniden okut ya da Muhasebeleştir'de seç.</span>; })()}</div>
+                            <div style={{ padding: '4px 2px', fontSize: 13 }}>{(() => {
+                              const s = islSinif(d);
+                              if (!s.ok) return <span className="hk no">Kayıt türü belirlenemedi — "AI ile oku" ile yeniden okut ya da Muhasebeleştir'de seç.</span>;
+                              return (
+                                <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap' }}>
+                                  <span><b style={{ opacity: 0.7, fontWeight: 600 }}>Kayıt Türü:</b> {s.ktAd}</span>
+                                  {s.altAd ? <span><b style={{ opacity: 0.7, fontWeight: 600 }}>K. Alt Türü:</b> {s.altAd}</span> : null}
+                                </div>
+                              );
+                            })()}</div>
                           ) : fisLines.length ? (
                             <table className="detaytbl">
                               <thead><tr><th>Tür</th><th>Hesap Kodu</th><th>Açıklama</th><th className="num">Borç</th><th className="num">Alacak</th></tr></thead>
