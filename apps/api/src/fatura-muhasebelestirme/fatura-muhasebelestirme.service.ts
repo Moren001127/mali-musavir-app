@@ -362,7 +362,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   //   Aynı mükellef+plan+yön grubundaki bekleyen istekleri kısa pencerede (debounce ya da batch dolunca)
   //   TEK Max çağrısında topla → alt-süreç sayısı ~N× azalır, en büyük hızlanma. Toplu çağrı başarısız/
   //   uyumsuz dönerse tek-tek (gate'li) fallback → kategori asla bozulmaz.
-  private readonly classifyBatchSize = Math.max(1, Number(process.env.MAX_CLASSIFY_BATCH || 6));
+  // Parti 3: 6 belgelik tek prompt bu yavaş konteynerde 126s'de bitemeyip timeout'a düşüyordu (gözlemlendi);
+  //   3 belge küçük prompt → tek Max çağrısı timeout'a sığar, yine alt-süreç sayısını ~3× azaltır. (env ayarlı)
+  private readonly classifyBatchSize = Math.max(1, Number(process.env.MAX_CLASSIFY_BATCH || 3));
   private readonly classifyBatchDebounceMs = Math.max(0, Number(process.env.MAX_CLASSIFY_BATCH_MS || 350));
   private readonly classifyBatchBuffers = new Map<string, {
     items: Array<{ contentText: string; resolve: (v: ClassifyResult | null) => void }>;
@@ -6450,12 +6452,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const releaseSlot = await this.acquireClassifySlot();
     let res: any = null;
     try {
-      // N belgelik yanıt tek belgeden uzun → timeout'u belge sayısına göre biraz büyüt (tavan 150s).
-      const tmo = Math.min(this.classifyTimeoutMs + n * 6000, 150000);
-      for (let att = 1; att <= 2 && (!res || !res.ok || !res.text); att++) {
-        res = await claudeTextViaMax({ prompt, timeoutMs: tmo, model: MAX_MODEL_CHEAP }).catch(() => null);
-        if ((!res || !res.ok || !res.text) && att < 2) await new Promise((r) => setTimeout(r, /rate|429|limit|overload|too many/i.test(String(res?.error || '')) ? 3500 : 600));
-      }
+      // N belgelik yanıt tek belgeden uzun → timeout'u belge sayısına göre büyüt (tavan 140s).
+      // TEK DENEME: toplu çağrı timeout'a düşerse 2. deneme de düşer (aynı büyük prompt) → çift israf
+      //   (6 belge × 126s × 2 = 256s gözlemlendi). Başarısızsa hemen tek-tek fallback'e geç (o zaten retry).
+      const tmo = Math.min(this.classifyTimeoutMs + n * 10000, 140000);
+      res = await claudeTextViaMax({ prompt, timeoutMs: tmo, model: MAX_MODEL_CHEAP }).catch(() => null);
     } finally {
       releaseSlot();
     }
