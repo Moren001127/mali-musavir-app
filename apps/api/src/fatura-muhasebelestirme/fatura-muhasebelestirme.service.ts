@@ -6189,7 +6189,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // UBL/XML yolu max-vision AI'ı ATLAR → sınıflandırma (giderTuru/kategori/İşletme kayıt türü) BURADA
     //   SENKRON çalışır: okuma = tam işlenmiş belge (yarım kalan yok, aynı satıcı hep aynı sonuç).
     if (parsed === preParsed && d.taxpayerId) {
-      const contentText = (parsed._azureText || (imgBuf ? imgBuf.toString('utf8') : (html || ''))).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      // TEMİZ içerik: HTML-HIZLI yolunda _htmlText zaten script/style atılmış + 8000 char (sınıflandırma
+      //   AI'ı 23KB ham HTML gürültüsünde boğuluyordu → NULL/boş kategori). Önce onu kullan; yoksa eski yol.
+      const contentText = (parsed._htmlText || parsed._azureText || (imgBuf ? imgBuf.toString('utf8') : (html || ''))).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 9000);
       const _clsT0 = Date.now();
       const c = await this.aiClassifyAccounting(contentText, mukellefBilgi, isIsletmeMukellef, d.invoiceKind === 'SATIS' ? 'SATIS' : 'ALIS', planAdaylar).catch(() => null);
       this.logger.log(`[TESHIS-CLS] belge=${d.belgeNo || documentId} sonuc=${c ? 'OK' : 'NULL'} sure=${Date.now() - _clsT0}ms neden=${(c as any)?.muhasebeNeden ? 'var' : 'YOK'} matrahKod=${(c as any)?.matrahHesapKodu || 'YOK'} kategori=${c?.kategori || 'YOK'} contentLen=${contentText.length} planVar=${planAdaylar ? 'E' : 'H'}`);
