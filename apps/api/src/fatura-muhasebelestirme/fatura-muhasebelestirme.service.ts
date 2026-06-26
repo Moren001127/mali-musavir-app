@@ -6190,7 +6190,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   SENKRON çalışır: okuma = tam işlenmiş belge (yarım kalan yok, aynı satıcı hep aynı sonuç).
     if (parsed === preParsed && d.taxpayerId) {
       const contentText = (parsed._azureText || (imgBuf ? imgBuf.toString('utf8') : (html || ''))).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      const _clsT0 = Date.now();
       const c = await this.aiClassifyAccounting(contentText, mukellefBilgi, isIsletmeMukellef, d.invoiceKind === 'SATIS' ? 'SATIS' : 'ALIS', planAdaylar).catch(() => null);
+      this.logger.log(`[TESHIS-CLS] belge=${d.belgeNo || documentId} sonuc=${c ? 'OK' : 'NULL'} sure=${Date.now() - _clsT0}ms neden=${(c as any)?.muhasebeNeden ? 'var' : 'YOK'} matrahKod=${(c as any)?.matrahHesapKodu || 'YOK'} kategori=${c?.kategori || 'YOK'} contentLen=${contentText.length} planVar=${planAdaylar ? 'E' : 'H'}`);
       if (c) {
         if (!parsed.giderTuru && c.giderTuru) parsed.giderTuru = c.giderTuru;
         if (!parsed.kategori && c.kategori) parsed.kategori = c.kategori;
