@@ -6099,7 +6099,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   metni yoksa. Yanlış okumayı denge/KDV-matematik doğrulaması yakalar. (Kullanıcı: "okuma yavaş".)
     const useAzureText = azureText.length > 80;
     const callPrompt = useAzureText ? (prompt + '\n\nBELGE METNİ (OCR ile okundu):\n' + azureText.slice(0, 20000)) : prompt;
+    const _teshisT0 = Date.now();
+    const _teshisYol = preParsed ? 'azure-parsed (Max YOK)' : useAzureText ? 'azure-metni → Max' : (isImage ? 'GÖRÜNTÜ → Max-vision (YAVAŞ)' : 'html → Max');
+    let _teshisAttempt = 0;
     for (let attempt = 1; attempt <= 3 && !parsed; attempt++) {
+      _teshisAttempt = attempt;
       const model = attempt >= 3 ? undefined : MAX_MODEL_CHEAP; // 3. deneme: Sonnet (varsayılan)
       const res = await claudeTextViaMax(
         (isImage && !useAzureText)
@@ -6118,6 +6122,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         if (!parsed) reason = 'AI yanıtı çözülemedi';
       } catch { parsed = null; reason = 'AI yanıtı çözülemedi'; }
     }
+    try { this.logger.log(`[TESHIS-FM] belge=${d.belgeNo || '?'} yol="${_teshisYol}" azureText=${azureText.length}ch isImage=${isImage} attempt=${_teshisAttempt} sure=${Date.now() - _teshisT0}ms parsed=${!!parsed}${parsed ? '' : ' reason=' + reason}`); } catch { /* log opsiyonel */ }
     if (!parsed) return { ok: false, reason };
 
     // UBL/XML yolu max-vision AI'ı ATLAR → sınıflandırma (giderTuru/kategori/İşletme kayıt türü) BURADA
