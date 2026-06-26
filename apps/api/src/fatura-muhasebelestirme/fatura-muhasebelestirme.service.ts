@@ -18,19 +18,23 @@ import { isletmeRef, getKayitAltList, isletmeAlisSatisTuru, isletmeIslemTuru, de
 // ── İşletme defteri AI sınıflandırması ──
 // Faturayı okuyan max-vision AI'ına, mükellefin FAALİYETİ + faturanın İÇERİĞİYLE muhakeme ederek
 // İşletme kayıt türü + alt türünü seçtirmek için prompt segmenti; ve AI'ın verdiği AD'ı koda çözen yardımcı.
-function islPromptSeg(): string {
+function islPromptSeg(kind?: 'ALIS' | 'SATIS'): string {
   const tx = (k: string) => isletmeRef(k).kayitTuru.map((kt: any) =>
     `  • ${kt.ad}: ${getKayitAltList(k, kt.kod).filter((a: any) => !/^99/.test(a.kod)).map((a: any) => a.ad).join(' | ') || '(alt yok)'}`,
   ).join('\n');
+  const yon = kind === 'SATIS'
+    ? '⚡ YÖN KESİN SATIŞ: Mükellef bu belgede SATICI. Hasılat/gelir türü seç — GİDER türü YAZMA.'
+    : '⚡ YÖN KESİN ALIŞ: Mükellef bu belgede ALICI (mal/hizmet SATIN ALIYOR). Gider/maliyet türü seç — "faaliyet geliri", "hizmet sunumu", "geliridir" ifadesi isletmeNeden\'e YAZMA.';
   return [
-    'İŞLETME DEFTERİ SINIFLANDIRMASI — bu mükellef İşletme/Defter-Beyan usulü. Faturayı MÜKELLEFİN İŞİNE + içindeki mal/hizmete göre sınıfla:',
-    '1) Yön: mükellef faturada SATICI mı (→ satış/gelir) yoksa ALICI mı (→ alış/gider)?',
-    '2) ALIŞ ise: alınan şey mükellefin SATTIĞI/ticaretini yaptığı emtia mı → "Mal Alışı". Kendi işinde KULLANDIĞI/tükettiği gider mi → "İndirilecek Giderler (GVK Md. 40)" + en uygun alt. Uzun ömürlü makine/cihaz/taşıt/demirbaş mı → "Sabit Kıymet Alışı".',
-    '   ÖRNEK: NAKLİYECİ kendi aracına yedek parça/lastik/tamir alır → "İndirilecek Giderler" + "Taşıt Bakım Onarım Giderleri" (MAL ALIŞI DEĞİL). Oto yedek parça TİCARETİ yapan satmak için aynı parçayı alır → "Mal Alışı".',
-    '3) SATIŞ ise: satılan mal mı (→ "Mal Satışı") hizmet mi (→ "Hizmet Satışı") + uygun alt.',
-    'GELİR türleri ve alt türleri:', tx('SATIS'),
-    'GİDER türleri ve alt türleri:', tx('ALIS'),
-    'JSON\'A EKLE: "isletmeKayitTuru":"<yukarıdaki TAM kayıt türü adı>","isletmeAltTuru":"<o türün listesinden TAM alt adı>","isletmeNeden":"<tek cümle gerekçe>". Her zaman EN UYGUN alt türü seç — ASLA boş bırakma. Emin olamıyorsan en yakın mantıklı seçeneği yaz (örn. net bilinmiyorsa "Diğer (GVK 40/1)" yaz).',
+    'İŞLETME DEFTERİ SINIFLANDIRMASI — bu mükellef İşletme/Defter-Beyan usulü.',
+    yon,
+    kind === 'ALIS'
+      ? 'ALIŞ kuralı: alınan şey mükellefin SATTIĞI/ticaretini yaptığı emtia mı → "Mal Alışı". Kendi işinde KULLANDIĞI gider mi → "İndirilecek Giderler (GVK Md. 40)" + alt. Uzun ömürlü makine/cihaz/taşıt/demirbaş → "Sabit Kıymet Alışı".'
+      : 'SATIŞ kuralı: satılan mal mı → "Mal Satışı", hizmet mi → "Hizmet Satışı" + uygun alt.',
+    kind === 'ALIS' ? ('GİDER türleri ve alt türleri:\n' + tx('ALIS'))
+      : kind === 'SATIS' ? ('GELİR türleri ve alt türleri:\n' + tx('SATIS'))
+      : ('GELİR türleri ve alt türleri:\n' + tx('SATIS') + '\nGİDER türleri ve alt türleri:\n' + tx('ALIS')),
+    'JSON\'A EKLE: "isletmeKayitTuru":"<yukarıdaki TAM kayıt türü adı>","isletmeAltTuru":"<o türün listesinden TAM alt adı>","isletmeNeden":"<tek cümle gerekçe>". Her zaman EN UYGUN alt türü seç — ASLA boş bırakma.',
   ].filter(Boolean).join('\n');
 }
 function islNorm(s: any): string {
@@ -2361,8 +2365,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         mukellefBilgi = [ad && ('ünvanı "' + ad + '"'), qcFaaliyet ? ('faaliyeti: ' + qcFaaliyet) : (qcNace ? ('NACE ' + qcNace) : ''), isIsletme ? 'İşletme defteri' : 'Bilanço usulü'].filter(Boolean).join(', ');
       }
     }
-    const c = await this.aiClassifyAccounting(content, mukellefBilgi, isIsletme).catch(() => null);
     const kind = doc.invoiceKind === 'SATIS' ? 'SATIS' : 'ALIS';
+    const c = await this.aiClassifyAccounting(content, mukellefBilgi, isIsletme, kind).catch(() => null);
     const patch: any = { ...od };
     delete patch.icerikMetni; delete patch.needsClassify; // snippet'i temizle (DB bloat olmasın)
     if (c) {
@@ -6015,7 +6019,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         if (cand.length) planAdaylar = cand.slice(0, 220).map((a) => `${a.accountCode} = ${a.accountName}`).join('\n');
       }
     }
-    const islSeg = isIsletmeMukellef ? islPromptSeg() : '';
+    const islSeg = isIsletmeMukellef ? islPromptSeg(d.invoiceKind === 'SATIS' ? 'SATIS' : 'ALIS') : '';
     const yonBilgi = d.invoiceKind === 'SATIS'
       ? 'SATIŞ — mükellef bu faturada SATICI konumundadır'
       : 'ALIŞ — mükellef bu faturada ALICI konumundadır';
@@ -6121,7 +6125,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   SENKRON çalışır: okuma = tam işlenmiş belge (yarım kalan yok, aynı satıcı hep aynı sonuç).
     if (parsed === preParsed && d.taxpayerId) {
       const contentText = (parsed._azureText || (imgBuf ? imgBuf.toString('utf8') : (html || ''))).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-      const c = await this.aiClassifyAccounting(contentText, mukellefBilgi, isIsletmeMukellef).catch(() => null);
+      const c = await this.aiClassifyAccounting(contentText, mukellefBilgi, isIsletmeMukellef, d.invoiceKind === 'SATIS' ? 'SATIS' : 'ALIS').catch(() => null);
       if (c) {
         if (!parsed.giderTuru && c.giderTuru) parsed.giderTuru = c.giderTuru;
         if (!parsed.kategori && c.kategori) parsed.kategori = c.kategori;
@@ -6265,16 +6269,21 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     contentText: string,
     mukellefBilgi: string,
     isIsletme: boolean,
+    invoiceKind?: 'ALIS' | 'SATIS',
   ): Promise<{ giderTuru: string; kategori: string; isletmeKayitTuru: string; isletmeAltTuru: string; isletmeNeden: string; muhasebeNeden: string } | null> {
     if (!contentText || contentText.length < 20) return null;
+    const _yonKesim = invoiceKind === 'SATIS'
+      ? 'YÖN KESİN SATIŞ: Mükellef bu faturada SATICI konumundadır. Hasılat/gelir söz konusu.'
+      : 'YÖN KESİN ALIŞ: Mükellef bu faturada ALICI konumundadır — karşı taraftan aldığı hizmet/mal için gider ödüyor. muhasebeNeden\'de "satış geliri", "hizmet sunulması", "faaliyet geliri", "geliridir" ifadeleri YASAK; gider/maliyet bakışıyla yaz.';
     const prompt = [
       'Aşağıda bir Türk e-Fatura/e-Arşiv belgesinin metin içeriği var. İçindeki MAL/HİZMET kalemlerini bir MALİ MÜŞAVİR gibi değerlendir.',
+      _yonKesim,
       mukellefBilgi ? `Faturanın tarafı olan mükellef: ${mukellefBilgi}.` : '',
       'YALNIZCA şu JSON: {"giderTuru":"","kategori":"","isletmeKayitTuru":"","isletmeAltTuru":"","isletmeNeden":"","muhasebeNeden":""}',
       'giderTuru: ALIŞ ise faturadaki ANA mal/hizmetin kısa adı (yakıt/motorin→"akaryakıt"; ayrıca "elektrik","su","doğalgaz","telefon","internet","kira","kırtasiye","danışmanlık","nakliye","yedek parça","bakım onarım","yemek","temizlik","sigorta","reklam" vb). Net değilse "". SATIŞ ise "".',
       'kategori: mükellefin ANA FAALİYETİNE göre → "ticari_mal" (SADECE mükellefin SATARAK ticaretini yaptığı emtia), "hammadde" (üretim girdisi), "demirbas" (makine/cihaz/sabit kıymet), "pazarlama" (reklam/kargo/nakliye), "genel_gider" (kira/elektrik/sarf/abonelik + satılmayan tüketim/sarf malzemesi). Emin değilsen "genel_gider". ⚠️ Mükellefin SATMADIĞI cihaz/klima/makine/ekipman/mobilya/bilgisayar = "demirbas", ASLA "ticari_mal" değil (lokanta klima alırsa demirbas). ⚠️ Mükellef MAL TİCARETİ yapmıyorsa (hizmet/eğitim/lokanta/ofis) aldığı tüketim/sarf malzemesi (ambalaj, tek-kullanımlık, temizlik, kırtasiye, servis) = "genel_gider", ASLA "ticari_mal" değil. Araç/taşıt kiralama = "genel_gider" ama giderTuru "araç kiralama" (kira değil).',
       'muhasebeNeden: Bir mali müşavir ağzından AKICI, DOĞAL Türkçe 1-2 cümlelik değerlendirme (kalıp DEĞİL — gerçekten yorumla). Faturada özetle NE alınmış/satılmış ve mükellefin faaliyetine göre bu NİYE o nitelikte (ticari mal / hammadde / demirbaş / gider). İçerik faaliyetle uyumsuzsa nedenini söyle. ⚠️ "alış"/"satış" kelimesini ve hesap NUMARASINI YAZMA — yönü ve kesin hesabı sistem ekler; sen YALNIZ içeriği ve niteliği yorumla. Örnek: "Faturada ofis için yazıcı ve toner alınmış; işte kullanılan sabit kıymet/demirbaş niteliğindedir."',
-      isIsletme ? islPromptSeg() : 'isletmeKayitTuru ve isletmeAltTuru = "" bırak (mükellef İşletme defteri değil).',
+      isIsletme ? islPromptSeg(invoiceKind) : 'isletmeKayitTuru ve isletmeAltTuru = "" bırak (mükellef İşletme defteri değil).',
       '\nİÇERİK:\n' + contentText.slice(0, 12000),
     ].filter(Boolean).join('\n');
     // 429/hız-limitinde sınıflandırma sessizce düşmesin (matrah buna bağlı) → 1 kez GERİ-ÇEKİLMELİ tekrar dene.

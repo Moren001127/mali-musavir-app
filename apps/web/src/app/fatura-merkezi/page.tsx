@@ -356,10 +356,12 @@ function RateSelect({ value, onChange }: { value: string; onChange: (v: string) 
 // Genel temiz açılır liste (native siyah select yerine) — Fatura Türü, Belge Türü vb.
 function PlainSelect({ value, options, onChange }: { value: string; options: { value: string; label: string }[]; onChange: (v: string) => void }) {
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
   const [pos, setPos] = useState<{ left: number; width: number; maxH: number; top?: number; bottom?: number } | null>(null);
   const boxRef = useRef<HTMLDivElement>(null);
   const popRef = useRef<HTMLDivElement>(null);
   const cur = options.find((o) => String(o.value) === String(value));
+  const filtered = search ? options.filter((o) => o.label.toLocaleLowerCase('tr').includes(search.toLocaleLowerCase('tr'))) : options;
   // Viewport-duyarlı: altta yer yoksa YUKARI aç; her durumda yüksekliği ekrana sığdır (ekrandan taşmaz).
   const measure = () => {
     const el = boxRef.current; if (!el) return;
@@ -374,7 +376,7 @@ function PlainSelect({ value, options, onChange }: { value: string; options: { v
       : { left: r.left, width: r.width, maxH, top: r.bottom + 3 });
   };
   useEffect(() => {
-    if (!open) { setPos(null); return; }
+    if (!open) { setPos(null); setSearch(''); return; }
     measure();
     const onDoc = (e: MouseEvent) => { const t = e.target as Node; if (boxRef.current?.contains(t) || popRef.current?.contains(t)) return; setOpen(false); };
     const reflow = () => measure();
@@ -390,7 +392,8 @@ function PlainSelect({ value, options, onChange }: { value: string; options: { v
       </div>
       {open && pos && (
         <div className="pselpop" ref={popRef} style={{ position: 'fixed', left: pos.left, minWidth: pos.width, maxHeight: pos.maxH, ...(pos.top != null ? { top: pos.top } : { bottom: pos.bottom }) }}>
-          {options.map((o) => (
+          <input className="pselsrch" placeholder="Ara…" value={search} autoFocus onChange={(e) => setSearch(e.target.value)} onMouseDown={(e) => e.stopPropagation()} />
+          {filtered.map((o) => (
             <div key={o.value} className={`pselopt${String(o.value) === String(value) ? ' sel' : ''}`} onMouseDown={(e) => { e.preventDefault(); onChange(o.value); setOpen(false); }}>{o.label}</div>
           ))}
         </div>
@@ -776,15 +779,7 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
         ok: true,
       };
     }
-    // ocrData.isletme boş ama tutar var → frontend fallback (backend retroaktif atamayı bekler)
-    const hasAmt = Number(d.ocrData?.matrah || 0) > 0 || Number(d.totalAmount || 0) > 0;
-    if (!hasAmt) return { ktAd: '', altAd: '', ok: false };
-    const kind = String(d.invoiceKind || 'ALIS').toUpperCase() === 'SATIS' ? 'SATIS' : 'ALIS';
-    const fbKod = isletmeAutoKayitTuru(kind, null, null);
-    if (!fbKod) return { ktAd: '', altAd: '', ok: false };
-    const ref = isletmeRef(kind);
-    const kt = ref.kayitTuru.find((x: any) => x.kod === fbKod);
-    return { ktAd: kt?.ad || '', altAd: '', ok: !!kt };
+    return { ktAd: '', altAd: '', ok: false };
   };
   const dd = (d: any) => deriveDurum(d, isIsletme, islSinif(d).ok ? 'x' : '');
   // Durum filtresi (Hepsi / Eşleşti / İncele / Kod eksik / Çelişki / …)
@@ -1067,7 +1062,8 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
                 //   değilse satıcı adından otomatik (Elektrik/Yakıt/Doğalgaz/Su/Telefon/Kargo/HGS…); alt yoksa ana türe düşer.
                 // İşletme: içerikten gelen sınıf. ok ise ALT türünü göster (yoksa ana türe düş); değilse boş (Eşleşmedi).
                 const sinif = islSinif(d);
-                const islKayit = isIsletme && sinif.ok ? (kayitAltKisaAd(sinif.altAd) || sinif.ktAd) : '';
+                const islKt = sinif.ktAd.replace(/\s*\(.*?\)/g, '').trim();
+                const islKayit = isIsletme && sinif.ok ? (kayitAltKisaAd(sinif.altAd) || islKt) : '';
                 const islAltFull = sinif.altAd;
                 const islMain = sinif.ktAd;
                 const firma = (sat ? d.customerName : d.vendorName) || '—';
@@ -3114,7 +3110,8 @@ const CSS = `
 #fm-root .psel .pselfield .ph{color:#9aa6b2;font-weight:400}
 #fm-root .psel .pselcar{flex:0 0 auto;width:7px;height:7px;border-right:1.6px solid #94a3b2;border-bottom:1.6px solid #94a3b2;transform:rotate(45deg) translateY(-2px);transition:transform .15s,border-color .15s}
 #fm-root .psel .pselfield.on .pselcar{transform:rotate(-135deg) translateY(2px);border-color:var(--accent)}
-#fm-root .psel .pselpop{z-index:9000;background:#fff;border:1px solid var(--line2);border-radius:9px;box-shadow:0 12px 30px rgba(15,23,42,.18);overflow-y:auto;max-height:330px;width:max-content;max-width:min(680px,92vw);padding:4px}
+#fm-root .psel .pselpop{z-index:9000;background:#fff;border:1px solid var(--line2);border-radius:9px;box-shadow:0 12px 30px rgba(15,23,42,.18);overflow-y:auto;max-height:330px;width:max-content;max-width:min(680px,92vw);padding:4px;display:flex;flex-direction:column}
+#fm-root .psel .pselsrch{flex-shrink:0;margin:4px 4px 2px;padding:5px 8px;border:1px solid var(--line2);border-radius:6px;font-size:12px;outline:none;background:var(--bg2,#f8fafc);color:var(--text)}
 #fm-root .psel .pselopt{padding:7px 11px;border-radius:6px;cursor:pointer;font-size:12.5px;font-weight:600;color:var(--text);white-space:nowrap}
 #fm-root .psel .pselopt:hover,#fm-root .psel .pselopt.sel{background:var(--accent-soft);color:var(--accent)}
 /* Aktarılanlar — Luca aktarım barı */
