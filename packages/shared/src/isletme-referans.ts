@@ -260,31 +260,58 @@ export function isletmeAutoKayitTuru(invoiceKind?: string | null, nace?: string 
 
 // İndirilecek Giderler (GVK40) ALT türü kuralları. ÖNCELİK: belge içeriği (AI giderTuru: "elektrik","akaryakıt",
 //   "kira"...). Satıcı ünvanı sadece ZAYIF yedek. Sıra önemli (özelden genele).
+// GİDER (İndirilecek Giderler GVK 40) alt türü deterministik eşleştirme.
+// Kaynak = resmi GIDER_ALT_GVK40 listesi (Mihsap/Defter-Beyan). SIRA ÖNEMLİ: SPESİFİK → GENEL,
+// ilk eşleşen kazanır. Önce araç/taşıt-spesifik, sonra banka, en sonda genel hizmet/sarf.
 const GVK40_ALT_KURAL: Array<[RegExp, string]> = [
-  [/akaryakit|motorin|benzin|\bmazot\b|\blpg\b|\bopet\b|\bshell\b|aytemiz|lukoil|petrol ofisi|\bpetrol\b|\bbp\b|\btotalenergies\b|\bmoil\b|\balpet\b/, '113'], // Taşıt Akaryakıt
-  [/elektrik|enerjisa|\bbedas\b|\bayedas\b|\btedas\b|\buedas\b|\bgdz\b|enerji perakende|elektrik perakende/, '82'], // Elektrik
-  [/dogalgaz|\bigdas\b|baskentgaz|\bizgaz\b|\bagdas\b|\bgazel\b|gaz dagitim|\bgaznet\b|\bbursagaz\b|\bpalgaz\b/, '84'],          // Doğalgaz
-  [/\bsu\b|\biski\b|\baski\b|\bizsu\b|\bbuski\b|\basat\b|\bmuski\b|\bsuski\b|\bkaski\b|su ve kanalizasyon|su idaresi/, '83'],     // Su
-  [/telefon|turkcell|vodafone|turk telekom|\bavea\b/, '87'],                                                                    // Telefon
-  [/internet|\bfaks\b|\bfiber\b|\bttnet\b|superonline|kablonet|d-?smart|\bturknet\b/, '88'],                                     // Haberleşme
-  [/kiralama|arac kira|oto kira|rent.?a.?car|filo kira/, '115'],                                                                // Araç Kiralama
-  [/\bkira\b(?!lama)|kira gider|isyeri kira|dukkan kira/, '165'],                                                               // Kira
-  [/muhasebe|mali musavir|\bsmmm\b|\bymm\b|musavirlik/, '179'],                                                                 // Muhasebe/Mali Müşavirlik
-  [/avukat|hukuk buro|hukuki danis/, '196'],                                                                                   // Avukatlık/Hukuk
-  [/kirtasiye|\btoner\b|kartus/, '95'],                                                                                        // Kırtasiye
-  [/\bkargo\b|\bptt\b|\baras\b|yurtici kargo|\bmng\b|surat kargo|\bups\b|\bdhl\b|fedex|\bsendeo\b|\bhepsijet\b/, '193'],         // Kargo ve Posta
-  [/nakliye|tasimacilik|\bnavlun\b|lojistik/, '205'],                                                                          // Nakliye
-  [/\bhgs\b|\bogs\b|otoyol|gecis ucret|\bkgm\b|koprusu|otoyollari/, '324'],                                                     // Otoyol/Gişe
+  // ── ARAÇ / TAŞIT (spesifik — genel "bakım/sigorta/kira" kurallarından ÖNCE) ──
+  [/akaryakit|motorin|\bbenzin\b|\bmazot\b|\bdizel\b|\blpg\b|\bopet\b|\bshell\b|aytemiz|lukoil|petrol ofisi|\bpetrol\b|totalenergies|\bmoil\b|\balpet\b|akaryakit istasyon|yakit gideri/, '113'], // Taşıt Akaryakıt
+  [/oto servis|oto tamir|oto bakim|arac bakim|tasit bakim|arac tamir|tasit tamir|\blastik\b|yedek parca|oto yedek|\bbalata\b|oto elektrik|oto yikama|rot balans|oto cam|periyodik bakim|\bakumulator\b|oto lastik|motor yagi|fren balata/, '114'], // Taşıt Bakım Onarım
+  [/arac kira|oto kira|rent.?a.?car|filo kira|tasit kira|otomobil kira/, '115'],                                               // Araç Kiralama
+  [/\bkasko\b|trafik sigorta|zorunlu trafik|arac sigorta|tasit sigorta|motorlu tasit sigorta/, '116'],                        // Araç Sigorta (kasko/trafik)
+  [/motorlu tasitlar vergisi|\bmtv\b/, '344'],                                                                                 // Motorlu Taşıtlar Vergisi
+  [/otopark|park ucret|\bvale\b|kapali otopark/, '191'],                                                                       // Otopark
+  [/\bhgs\b|\bogs\b|otoyol|gecis ucret|\bkgm\b|koprusu|otoyollari|otoyol gecis/, '324'],                                       // Otoyol/Gişe (HGS/OGS)
+  // ── İŞYERİ / ENERJİ / HABERLEŞME ──
+  [/elektrik|enerjisa|\bbedas\b|\bayedas\b|\btedas\b|\buedas\b|\bgdz\b|\bedas\b|enerji perakende|elektrik perakende|elektrik dagitim/, '82'], // Elektrik
+  [/dogalgaz|\bigdas\b|baskentgaz|\bizgaz\b|\bagdas\b|\bgazel\b|gaz dagitim|\bgaznet\b|\bbursagaz\b|\bpalgaz\b|\bakmercan\b/, '84'],          // Doğalgaz
+  [/\bsu\b|\biski\b|\baski\b|\bizsu\b|\bbuski\b|\basat\b|\bmuski\b|\bsuski\b|\bkaski\b|su ve kanalizasyon|su idaresi|su tuketim/, '83'],     // Su
+  [/telefon|turkcell|vodafone|turk telekom|\bavea\b|gsm hat|mobil hat/, '87'],                                                 // Telefon
+  [/internet|\bfaks\b|\bfiber\b|\bttnet\b|superonline|kablonet|d-?smart|\bturknet\b|hosting|alan adi|\bdomain\b|web hosting/, '88'], // Haberleşme (internet/faks)
+  [/isi yalitim|enerji tasarruf|mantolama|\byalitim\b/, '117'],                                                                // Isı Yalıtımı/Enerji Tasarrufu
+  [/\baidat\b|site aidat|plaza aidat|yonetim gideri|ortak gider|apartman aidat/, '81'],                                        // İşyeri Aidat
+  [/\bdask\b|isyeri sigorta|yangin sigorta|isyeri paket sigorta|hirsizlik sigorta/, '92'],                                     // İşyeri Sigorta
+  [/\bkira\b(?!lama)|kira gider|isyeri kira|dukkan kira|ofis kira|magaza kira|gayrimenkul kira/, '165'],                       // Kira (işyeri)
+  // ── PROFESYONEL / DIŞARIDAN HİZMET ──
+  [/muhasebe|mali musavir|\bsmmm\b|\bymm\b|musavirlik hizmet|defter tutma/, '179'],                                            // Muhasebe/Mali Müşavirlik
+  [/avukat|hukuk buro|hukuki danis|hukuk musavir|vekalet ucret|hukuk hizmet/, '196'],                                         // Avukatlık/Hukuk
+  [/koruyucu eldiven|is guvenligi ayakkabi|koruyucu gozluk|is elbisesi|koruyucu ekipman|\bbaret\b|reflektif yelek|is ayakkabi|koruyucu kiyafet|is guvenligi malzeme/, '232'], // İşçi Koruyucu Giyim/Ekipman (GVK 27) — iş güvenliği HİZMETİNDEN önce (ayakkabı/eldiven ≠ OSGB hizmeti)
+  [/is sagligi|is guvenligi|\bisg\b|\bosgb\b|isyeri hekim|is yeri hekim|ortak saglik guvenlik/, '322'],                       // İş Güvenliği/Sağlığı HİZMETİ (322 — DİKKAT: 194 değil)
+  [/calisan tedavi|personel saglik|calisan ilac|saglik raporu|\bportor\b|isyeri muayene|personel muayene|saglik tarama/, '100'], // Çalışan Tedavi ve İlaç
+  [/google reklam|google ads|\badwords\b|facebook reklam|meta reklam|instagram reklam|internet reklam|dijital reklam|sponsorlu|online reklam|sosyal medya reklam|youtube reklam/, '327'], // İnternet Reklam
+  [/\breklam\b|\bilan\b|tanitim|billboard|\bafis\b|\bbrosur\b|\bkatalog\b|\bfuar\b|\bstand\b|promosyon|pazarlama/, '96'],       // Pazarlama/Reklam
   [/\bnoter\b/, '217'],                                                                                                        // Noter
+  [/banka masraf|banka komisyon|\beft\b|havale ucret|hesap isletim|\bbsmv\b|banka isletim|pos komisyon|uye isyeri komisyon|kredi karti komisyon/, '206'], // Bankacılık İşlem
+  [/\bkargo\b|\bptt\b|\baras kargo\b|yurtici kargo|\bmng\b|surat kargo|\bups\b|\bdhl\b|fedex|\bsendeo\b|\bhepsijet\b|\bposta\b/, '193'], // Kargo ve Posta
+  [/nakliye|tasimacilik|\bnavlun\b|lojistik|sevkiyat|tasima hizmet/, '205'],                                                   // Nakliye
+  [/ozel guvenlik|guvenlik hizmet|guvenlik personel|koruma hizmet|guvenlik sirket|devriye hizmet/, '93'],                     // Güvenlik Harcamaları
+  [/\bkomisyon\b/, '188'],                                                                                                     // Komisyon
+  [/danisman|musavirlik hizmet|\bdanismanlik\b|disaridan saglanan|\btaseron\b|\bfason\b|yazilim hizmet|bilisim hizmet|teknik destek|yazilim abonelik|lisans bedeli/, '194'], // Dışarıdan Sağlanan Fayda ve Hizmet
+  // ── KONAKLAMA / SEYAHAT ──
   [/konaklama|\botel\b|\bhotel\b|\bpansiyon\b/, '111'],                                                                        // Konaklama
-  [/seyahat|otobus bileti|\bucak bileti\b|\bthy\b|pegasus|\bbilet\b/, '189'],                                                  // Seyahat ve Ulaşım
-  [/sigorta|\bkasko\b|\bdask\b|trafik sigorta/, '92'],                                                                         // İşyeri Sigorta
-  [/temizlik/, '89'],                                                                                                          // Ofis (temizlik)
-  [/bakim onarim|bakim-onarim|\bonarim\b|\btamir\b|\bservis bedeli\b/, '85'],                                                  // Normal Bakım Onarım
-  [/reklam|\bilan\b|tanitim/, '96'],                                                                                           // Pazarlama
-  [/is sagligi|is guvenligi|\bisg\b|\bosgb\b|isyeri hekim|is yeri hekim/, '194'],                                              // İş Sağlığı/Güvenliği → Dışarıdan Sağlanan Hizmet
-  [/danisman|musavirlik hizmet|\bdanismanlik\b/, '194'],                                                                       // Dışarıdan Sağlanan Hizmet
-  [/sarf malzeme|\bsarf\b|tek kullanim|ambalaj|isletme malzeme/, '228'],                                                       // Diğer Sarf Malzeme Giderleri (ambalaj/tek-kullanımlık vb.)
+  [/seyahat|otobus bileti|ucak bileti|\bthy\b|pegasus|\bbilet\b|tren bileti|seyahat gider/, '189'],                           // Seyahat ve Ulaşım
+  // ── OFİS / SARF / GIDA / GİYİM ──
+  [/kirtasiye|\btoner\b|kartus|fotokopi kagidi|yazici kagidi|ofis kagit|\bdosya\b|\bklasor\b|kirtasiye malzeme/, '95'],        // Kırtasiye
+  [/\bgiyim\b|kiyafet|uniforma|\bayakkabi\b|\btekstil\b|konfeksiyon|personel kiyafet/, '101'],                                 // Giyim Giderleri
+  [/is yemegi|\bagirlama\b|\btemsil\b|misafir ikram|toplanti ikram|temsil agirlama/, '97'],                                    // Temsil ve Ağırlama
+  [/temizlik|\bcay\b|\bkahve\b|\bseker\b|deterjan|\bpecete\b|hijyen|kagit havlu|tuvalet kagidi|cop poseti|temizlik malzeme/, '89'], // Ofis (temizlik/çay/kahve)
+  [/\bgida\b|sebze|\bmeyve\b|bakkal|\bmarket\b|\bmanav\b|\bkasap\b|\bfirin\b|bakliyat|\bicecek\b|kuruyemis|gida urun|\berzak\b/, '90'], // Gıda Harcamaları
+  [/ambalaj|\bposet\b|\bstrec\b|\bkoli\b|tek kullanim|sarf malzeme|\bsarf\b|isletme malzeme|\bnaylon\b|paketleme/, '228'],     // Diğer Sarf Malzeme
+  // ── BAKIM/ONARIM (genel — araç-bakım yukarıda öncelikli) ──
+  [/bakim onarim|bakim-onarim|\bonarim\b|\btamir\b|servis bedeli|tadilat|tesisat onarim/, '85'],                              // Normal Bakım Onarım
+  // ── VERGİ / HARÇ / FİNANS ──
+  [/damga vergisi/, '147'],                                                                                                    // Damga Vergisi (tek başına)
+  [/\bfaiz\b|finansman gider|kredi faiz|vade farki|finansman/, '177'],                                                         // Faiz ve Finansman
 ];
 
 /**

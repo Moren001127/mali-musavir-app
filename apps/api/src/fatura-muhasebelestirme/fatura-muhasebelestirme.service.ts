@@ -6028,6 +6028,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       isImage
         ? 'Aşağıdaki görüntü bir Türk faturası veya yazarkasa fişidir. İçindeki bilgileri oku.'
         : 'Aşağıda bir Türk e-Fatura/e-Arşiv belgesinin HTML/metin içeriği var. İçindeki bilgileri oku.',
+      `⚡⚡ KRİTİK YÖN — BU FATURA MÜKELLEF AÇISINDAN: ${yonBilgi}. Tüm yorumu, kategoriyi ve sınıflandırmayı MÜKELLEFİN BU YÖNÜNE göre yap. ⛔ Belgenin üstünde "Fatura Tipi: SATIŞ", "Senaryo: ... SATIŞ" gibi ibareler görebilirsin — bu NORMALDİR ve SATICININ bakışıdır (her satıcı kendi açısından "satış" faturası keser). Bu ibare mükellefin yönünü ASLA değiştirmez. ${yonBilgi.startsWith('ALIŞ') ? 'Mükellef burada ALICIDIR — mal/hizmeti SATIN ALIYOR, ÖDÜYOR; yorumu "almış/gideridir/stoğuna girmiştir" diliyle yaz, ASLA "sattı/geliri/hasılatı" deme.' : 'Mükellef burada SATICIDIR — gelir/hasılat söz konusudur.'}`,
       'YALNIZCA şu JSON\'u döndür — kod bloğu, açıklama, başka metin YOK:',
       `{"belgeNo":"<fatura/fiş no ya da null>","tarih":"<GG.AA.YYYY ya da null>","belgeTuru":"<e-arsiv|e-fatura|fis|diger>","saticiAd":"<satıcı ünvanı ya da null>","saticiVkn":"<satıcının VKN/TCKN ya da null>","aliciAd":"<alıcı ünvanı ya da null>","aliciVkn":"<alıcının VKN/TCKN ya da null>","toplam":<genel toplam KDV dahil sayı ya da null>,"kategori":"<asagidaki tek deger>","giderTuru":"<ALIŞ ise faturadaki ana mal/hizmetin kısa adı — aşağıdaki giderTuru kuralına göre; SATIŞ ya da net değilse boş>"${isIsletmeMukellef ? ',"isletmeKayitTuru":"<aşağıdaki İŞLETME listesinden TAM kayıt türü adı; net değilse boş>","isletmeAltTuru":"<o türün listesinden TAM alt adı; net değilse boş>","isletmeNeden":"<tek cümle gerekçe>"' : ''},"muhasebeNeden":"<1 cümle Türkçe muhasebe gerekçesi — aşağıdaki kurala göre>"${planAdaylar ? ',"matrahHesapKodu":"<aşağıdaki HESAP PLANI listesinden matrah/gider için EN UYGUN TAM kod; emin değilsen boş>"' : ''},"kalemler":[{"ad":"<mal/hizmet kalem adı>","tutar":<o kalemin KDV hariç tutarı sayı>,"oran":<o kalemin KDV oranı sayı>}],"kdv":[{"oran":<KDV yüzdesi sayı>,"matrah":<KDV hariç tutar sayı>,"kdv":<KDV tutarı sayı>}]}`,
       'kalemler: faturadaki mal/hizmet satırlarını listele (kalem adı + KDV hariç tutarı + KDV oranı). ⚠️ ÇOK KALEMLİYSE (>15 satır) MUTLAKA KDV oranına ve benzer ürün grubuna göre BİRLEŞTİR — en fazla 15 nesne döndür (ör. "%1 gıda ürünleri", "%20 temizlik/sarf"). Az kalemliyse her satır ayrı. Bu döküm BİLGİ amaçlıdır (muhasebe satırlarını değiştirmez). Okunamazsa boş dizi [].',
@@ -6174,8 +6175,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       : Math.round((matrah + kdv) * 100) / 100;
     // Karşı taraf (cari) adı: satışta ALICI, alışta SATICI.
     const counterName = String((isSale ? parsed.aliciAd : parsed.saticiAd) || '').trim();
-    // Belge türü: önce GERÇEK METİNDEN (e-Arşiv/e-Fatura ibaresi), yoksa AI'nın dediği.
-    const mappedType = this.docTypeFromText(html) || this.mapOcrBelgeTipi(parsed.belgeTuru);
+    // Belge türü: önce GERÇEK METİNDEN (e-Arşiv/e-Fatura ibaresi). HTML yoksa (resim/JPG fatura)
+    //   Azure'un OKUDUĞU ham metinden ("e-Arşiv Fatura", "Senaryo: EARSIVFATURA" yazısı), son çare AI.
+    const mappedType = this.docTypeFromText(html || azureText || parsed._azureText || '') || this.mapOcrBelgeTipi(parsed.belgeTuru);
 
     const lines = await this.gateCodesByPlan(tenantId, d.taxpayerId, this.linesFromAmounts({
       invoiceKind: kind,
