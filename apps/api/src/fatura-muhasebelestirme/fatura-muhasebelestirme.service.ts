@@ -5096,14 +5096,15 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       'order[0][dir]': 'desc',
     };
     let listPageToken = '';
+    let listPageHtml = '';
     try {
       const listPage = await fetch(BASE + refererPath, {
         headers: { Cookie: cookie, 'User-Agent': 'MorenPortal/1.0', Accept: 'text/html,application/xhtml+xml,*/*' },
         redirect: 'manual',
       });
-      const listHtml = await listPage.text();
-      listPageToken = listHtml.match(/name="__RequestVerificationToken"[^>]*value="([^"]+)"/)?.[1]
-        || listHtml.match(/__RequestVerificationToken[^>]*value="([^"]+)"/)?.[1]
+      listPageHtml = await listPage.text();
+      listPageToken = listPageHtml.match(/name="__RequestVerificationToken"[^>]*value="([^"]+)"/)?.[1]
+        || listPageHtml.match(/__RequestVerificationToken[^>]*value="([^"]+)"/)?.[1]
         || '';
     } catch {
       // Liste ekrani isinma istegi opsiyonel; AJAX denemeleri devam eder.
@@ -5229,6 +5230,26 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       visit(row);
       return [...values];
     };
+    const rowTextValues = (row: any, keys: string[]) => {
+      const wanted = new Set(keys.map((key) => key.toLowerCase()));
+      const values = new Set<string>();
+      const visit = (value: any) => {
+        if (!value || typeof value !== 'object') return;
+        if (Array.isArray(value)) {
+          value.forEach(visit);
+          return;
+        }
+        for (const [key, nested] of Object.entries(value)) {
+          if (wanted.has(key.toLowerCase()) && (typeof nested === 'string' || typeof nested === 'number')) {
+            const text = String(nested).trim();
+            if (text && text.length <= 500) values.add(text);
+          }
+          visit(nested);
+        }
+      };
+      visit(row);
+      return [...values];
+    };
     const turmobCandidateIds = (row: any) => {
       const values = new Set<string>();
       const add = (value: any, keyHint = '') => {
@@ -5265,7 +5286,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     };
     const addTurmobDocumentUrls = (row: any) => {
       const inOrOut = channel === 'IN_EFATURA' ? 'True' : 'False';
+      const channelIdKeys = channel === 'IN_EFATURA'
+        ? ['IdFaturaGelen', 'idFaturaGelen', 'FaturaGelenId', 'IncomingInvoiceId', 'InvoiceId', 'Id']
+        : channel === 'OUT_EARSIV'
+          ? ['IdFaturaArsiv', 'idFaturaArsiv', 'IdFaturaGidenArsiv', 'ArchiveInvoiceId', 'IdFaturaGiden', 'InvoiceId', 'Id']
+          : ['IdFaturaGiden', 'idFaturaGiden', 'FaturaGidenId', 'OutgoingInvoiceId', 'InvoiceId', 'Id'];
       const invoiceIds = [...new Set([
+        ...rowValues(row, channelIdKeys),
         ...rowValues(row, ['InvoiceId', 'InvoiceID', 'invoiceId', 'FaturaId', 'faturaId', 'BelgeId', 'belgeId', 'Id', 'ID', 'id', 'Uuid', 'UUID', 'uuid', 'Ettn', 'ETTN', 'ettn', 'Guid', 'GUID', 'guid']),
         ...turmobCandidateIds(row),
       ])].slice(0, 5);
@@ -5286,6 +5313,40 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           addCandidateUrl(`${prefix}/Print?${io}&${q}`);
         }
       };
+      const addTurmobIdUrlSet = (id: string) => {
+        const idText = encodeURIComponent(id);
+        const prefixes = channel === 'IN_EFATURA'
+          ? ['/IncomingInvoice']
+          : channel === 'OUT_EARSIV'
+            ? ['/ArchiveInvoice', '/OutgoingArchiveInvoice', '/EArchiveInvoice']
+            : ['/OutgoingInvoice'];
+        const paramNames = channel === 'IN_EFATURA'
+          ? ['IdFaturaGelen', 'idFaturaGelen', 'FaturaGelenId', 'InvoiceId', 'id']
+          : channel === 'OUT_EARSIV'
+            ? ['IdFaturaArsiv', 'idFaturaArsiv', 'ArchiveInvoiceId', 'IdFaturaGiden', 'InvoiceId', 'id']
+            : ['IdFaturaGiden', 'idFaturaGiden', 'FaturaGidenId', 'InvoiceId', 'id'];
+        const actions = [
+          'GetInvoiceXml',
+          'GetInvoiceXML',
+          'DownloadXml',
+          'DownloadXML',
+          'DownloadInvoice',
+          'InvoiceDetail',
+          'GetInvoiceDetail',
+          'InvoiceDetailHint',
+          'Print',
+          'Detail',
+        ];
+        for (const prefix of prefixes) {
+          for (const action of actions) {
+            for (const param of paramNames) {
+              addCandidateUrl(`${prefix}/${action}?${param}=${idText}`);
+              addCandidateUrl(`${prefix}/${action}?${param}=${idText}&InOrOut=${inOrOut}`);
+            }
+          }
+        }
+      };
+      for (const id of rowValues(row, channelIdKeys).slice(0, 3)) addTurmobIdUrlSet(id);
       for (const id of invoiceIds) {
         const idText = String(id);
         const keys: Array<'InvoiceId' | 'id' | 'uuid' | 'ettn'> = /^[0-9a-f-]{32,36}$/i.test(idText)
@@ -5308,7 +5369,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           addCandidateUrl(`${prefix}/Detail?ArchiveId=${encodeURIComponent(id)}&IsPrint=True`);
         }
       }
+      for (const path of rowTextValues(row, ['FilePath', 'XmlPath', 'XMLPath', 'PdfPath', 'PDFPath', 'DownloadPath', 'Url', 'URL'])) {
+        addCandidateUrl(path);
+      }
     };
+    for (const m of listPageHtml.matchAll(/["'](\/(?:IncomingInvoice|OutgoingInvoice|ArchiveInvoice|OutgoingArchiveInvoice|EArchiveInvoice|Invoice)\/[^"']*(?:Xml|XML|Download|Invoice|Detail|Print|Ubl|UBL)[^"']*)["']/gi)) {
+      addCandidateUrl(m[1]);
+    }
     for (const row of live) {
       const asText = JSON.stringify(row || {});
       for (const m of asText.matchAll(/https?:\/\/[^"'\\\s<>]+|\/[^"'\\\s<>]*(?:xml|ubl|indir|download|invoice|fatura|belge|goruntule|görüntüle)[^"'\\\s<>]*/gi)) {
@@ -5317,12 +5384,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       addTurmobDocumentUrls(row);
     }
     let downloadAttempts = 0;
-    const maxDownloadAttempts = Math.min(1400, Math.max(220, live.length * 32));
+    const maxDownloadAttempts = Math.min(260, Math.max(80, live.length * 10));
     const targetPayloadCount = Math.min(opts.limit, Math.max(live.length, payloads.length || 1));
     for (const url of seenUrls) {
       if (++downloadAttempts > maxDownloadAttempts) break;
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 1200);
+      const timer = setTimeout(() => controller.abort(), 650);
       try {
         const docRes = await fetch(url, {
           method: 'GET',
