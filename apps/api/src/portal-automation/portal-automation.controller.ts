@@ -113,12 +113,38 @@ export class PortalAutomationController {
     @Query('limit') limit?: string,
     @Query('taxpayerId') taxpayerId?: string,
     @Query('belgeTuru') belgeTuru?: string,
+    @Query('period') period?: string,
   ) {
     return this.service.listDocuments(req.user.tenantId, {
       limit: limit !== undefined && limit !== '' ? Number(limit) : undefined,
       taxpayerId,
       belgeTuru,
+      period,
     });
+  }
+
+  @Get('earsiv/invoices')
+  earsivInvoices(
+    @Req() req: any,
+    @Query('taxpayerId') taxpayerId?: string,
+    @Query('period') period?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.service.listEarsivPortalInvoices(req.user.tenantId, {
+      taxpayerId,
+      period,
+      limit: limit ? Number(limit) : undefined,
+    });
+  }
+
+  @Post('earsiv/accounting-sync')
+  @Roles('ADMIN', 'STAFF')
+  @HttpCode(HttpStatus.OK)
+  syncEarsivAccounting(
+    @Req() req: any,
+    @Body() body: { taxpayerId?: string; period?: string; limit?: number },
+  ) {
+    return this.service.syncEarsivPortalDocumentsToAccounting(req.user.tenantId, body || {});
   }
 
   @Get('documents/:id/view')
@@ -148,6 +174,31 @@ export class PortalAutomationAgentController {
       deviceId,
       limit: limit ? Number(limit) : undefined,
     });
+  }
+
+  @Get('jobs/recent')
+  async recent(
+    @Headers('x-agent-token') agentToken: string,
+    @Query('limit') limit?: string,
+    @Query('jobType') jobType?: string,
+    @Query('taxpayerId') taxpayerId?: string,
+  ) {
+    const tenantId = await this.service.resolveTenantFromAgentToken(agentToken);
+    return this.service.recentJobsForAgent(tenantId, {
+      limit: limit ? Number(limit) : undefined,
+      jobType,
+      taxpayerId,
+    });
+  }
+
+  @Post('earsiv/accounting-sync')
+  @HttpCode(HttpStatus.OK)
+  async syncEarsivAccounting(
+    @Headers('x-agent-token') agentToken: string,
+    @Body() body: { taxpayerId?: string; period?: string; limit?: number },
+  ) {
+    const tenantId = await this.service.resolveTenantFromAgentToken(agentToken);
+    return this.service.syncEarsivPortalDocumentsToAccounting(tenantId, body || {});
   }
 
   @Get('jobs/:id/credential')

@@ -734,7 +734,8 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
 
       if (jobType === 'EARSIV_PORTAL_FETCH' && bundle.job?.payload?.validationOnly !== true) {
         const earsiv = await this.collectEarsivPortalViaApi(page, bundle.job);
-        await this.jobProgress(tenantId, bundle.job, 'earsiv_done', `GIB e-Arsiv sorgusu: ${earsiv.recordCount} belge indirildi.`);
+        const modeLabel = bundle.job?.payload?.earsivMode === 'query' ? 'satir listelendi' : 'belge indirildi';
+        await this.jobProgress(tenantId, bundle.job, 'earsiv_done', `GIB e-Arsiv sorgusu: ${earsiv.recordCount} ${modeLabel}.`);
         await context.close().catch(() => {});
         return earsiv;
       }
@@ -1580,6 +1581,10 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     const rows = Array.isArray(list?.data) ? list.data : [];
     const max = Math.max(1, Math.min(200, Number(process.env.PORTAL_AUTOMATION_EARSIV_MAX_DOWNLOADS || 80)));
     const documents: any[] = [];
+    const mode = job?.payload?.earsivMode === 'query' ? 'query' : 'download';
+    const selectedRefs = new Set((Array.isArray(job?.payload?.selectedRefs) ? job.payload.selectedRefs : [])
+      .map((v: any) => String(v || '').trim())
+      .filter(Boolean));
     const notes: string[] = [`GIB e-Arsiv liste: ${rows.length} satir (${startDate}-${endDate})`];
 
     for (let i = 0; i < rows.length && documents.length < max; i++) {
@@ -1588,8 +1593,44 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       const invoiceNo = this.earsivRead(row, ['belgeNumarasi', 'faturaNo', 'faturaNumarasi', 'belgeNo']);
       const signed = this.earsivRead(row, ['onayDurumu', 'durum']) || 'Onaylandı';
       const referenceNo = invoiceNo || uuid || null;
+      if (selectedRefs.size && !selectedRefs.has(String(referenceNo || '')) && !selectedRefs.has(String(uuid || ''))) {
+        continue;
+      }
       if (!uuid) {
         notes.push(`${i + 1}. satir atlandi: ETTN yok (${this.compact(JSON.stringify(row)).slice(0, 180)})`);
+        continue;
+      }
+      const blocked = /iptal|itiraz|red|reddedil|cancel/i.test(JSON.stringify({
+        onayDurumu: signed,
+        iptalItirazDurumu: this.earsivRead(row, ['iptalItirazDurumu', 'iptalDurumu', 'itirazDurumu']),
+      }));
+      if (blocked && mode !== 'query') {
+        notes.push(`${referenceNo || uuid}: iptal/itiraz/reddedilmis oldugu icin aktarilmadi`);
+        continue;
+      }
+
+      if (mode === 'query') {
+        documents.push({
+          taxpayerId: job.taxpayerId || null,
+          belgeTuru: 'EARSIV_FATURA',
+          title: `GIB e-Arsiv Fatura ${referenceNo || uuid}`,
+          referenceNo: referenceNo || uuid,
+          period: job.donem || this.inferDonem(job.periodEnd),
+          issuedAt: this.earsivIssuedAt(row) || job.periodEnd || null,
+          receivedAt: new Date().toISOString(),
+          mimeType: 'application/json',
+          originalName: `${referenceNo || uuid}.json`,
+          raw: {
+            runner: 'railway',
+            jobType: 'EARSIV_PORTAL_FETCH',
+            source: 'gib-earsiv-api',
+            mode,
+            ettn: uuid,
+            belgeNumarasi: invoiceNo || null,
+            onayDurumu: signed,
+            row,
+          },
+        });
         continue;
       }
 
@@ -1620,6 +1661,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
           runner: 'railway',
           jobType: 'EARSIV_PORTAL_FETCH',
           source: 'gib-earsiv-api',
+          mode,
           ettn: uuid,
           belgeNumarasi: invoiceNo || null,
           onayDurumu: signed,
@@ -1628,13 +1670,14 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       });
     }
 
-    notes.push(`${documents.length} e-Arsiv belge indirildi`);
+    notes.push(mode === 'query' ? `${documents.length} e-Arsiv satiri listelendi` : `${documents.length} e-Arsiv belge indirildi`);
     return {
       documents,
       recordCount: documents.length,
       result: {
         runner: 'railway',
         phase: 'earsiv_api',
+        mode,
         jobType: 'EARSIV_PORTAL_FETCH',
         dateFrom: startDate,
         dateTo: endDate,

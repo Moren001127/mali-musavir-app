@@ -89,6 +89,8 @@ type ManualRunInput = {
   force?: boolean;
   validationOnly?: boolean;
   discover?: boolean;
+  earsivMode?: 'query' | 'download';
+  selectedRefs?: string[];
 };
 
 type JobProgressUpdate = {
@@ -146,8 +148,36 @@ function adFormat(tp: any): string {
 
 function parseDateOrNull(value?: string | null): Date | null {
   if (!value) return null;
-  const d = new Date(value);
+  const text = String(value).trim();
+  const tr = text.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
+  if (tr) {
+    const [, dd, mm, yyyy, hh = '0', min = '0', ss = '0'] = tr;
+    const d = new Date(
+      Date.UTC(
+        Number(yyyy),
+        Number(mm) - 1,
+        Number(dd),
+        Number(hh),
+        Number(min),
+        Number(ss),
+      ),
+    );
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  const d = new Date(text);
   return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function monthRange(period?: string | null) {
+  const match = String(period || '').match(/^(\d{4})-(\d{2})$/);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  if (!year || month < 1 || month > 12) return null;
+  return {
+    start: new Date(Date.UTC(year, month - 1, 1, 0, 0, 0, 0)),
+    end: new Date(Date.UTC(year, month, 1, 0, 0, 0, 0)),
+  };
 }
 
 function normalizeAgentDeclarationStatus(input: AgentDeclarationInput): 'onaylandi' | 'beklemede' | 'hatali' {
@@ -591,9 +621,18 @@ export class PortalAutomationService {
     });
   }
 
-  async listDocuments(tenantId: string, opts: { limit?: number; taxpayerId?: string; belgeTuru?: string } = {}) {
+  async listDocuments(tenantId: string, opts: { limit?: number; taxpayerId?: string; belgeTuru?: string; period?: string } = {}) {
     const where: any = { tenantId };
     if (opts.taxpayerId) where.taxpayerId = opts.taxpayerId;
+    const range = monthRange(opts.period);
+    if (range) {
+      where.OR = [
+        { period: opts.period },
+        { issuedAt: { gte: range.start, lt: range.end } },
+      ];
+    } else if (opts.period) {
+      where.period = opts.period;
+    }
     if (opts.belgeTuru) {
       // virgülle çoklu belgeTürü (örn. SGK_TAHAKKUK,SGK_HIZMET_LISTESI)
       const ts = String(opts.belgeTuru).split(',').map((s) => s.trim()).filter(Boolean);
@@ -629,6 +668,71 @@ export class PortalAutomationService {
     return { url, viewedAt };
   }
 
+  async listEarsivPortalInvoices(
+    tenantId: string,
+    opts: { taxpayerId?: string; period?: string; limit?: number } = {},
+  ) {
+    const docs = await this.listDocuments(tenantId, {
+      taxpayerId: opts.taxpayerId,
+      period: opts.period,
+      belgeTuru: 'EARSIV_FATURA',
+      limit: Math.min(Math.max(Number(opts.limit || 300), 1), 1000),
+    });
+    const refs = new Set<string>();
+    const rows = docs.map((doc: any) => {
+      const raw = doc.raw && typeof doc.raw === 'object' ? doc.raw : {};
+      const portalRow = raw.row && typeof raw.row === 'object' ? raw.row : {};
+      const ettn = String(raw.ettn || portalRow.ettn || portalRow.uuid || '').trim();
+      const belgeNo = String(raw.belgeNumarasi || doc.referenceNo || portalRow.belgeNumarasi || portalRow.faturaNo || '').trim();
+      const sourceRefId = ettn || belgeNo || String(doc.referenceNo || '').trim();
+      if (sourceRefId) refs.add(sourceRefId);
+      const onayDurumu = String(raw.onayDurumu || portalRow.onayDurumu || portalRow.durum || '').trim() || 'Onaylandi';
+      const iptalDurumu = String(portalRow.iptalItirazDurumu || portalRow.iptalDurumu || portalRow.itirazDurumu || raw.iptalDurumu || '').trim();
+      const blocked = /iptal|itiraz|red|reddedil|cancel/i.test(`${onayDurumu} ${iptalDurumu}`);
+      return {
+        id: doc.id,
+        portalDocumentId: doc.id,
+        taxpayerId: doc.taxpayerId,
+        referenceNo: doc.referenceNo,
+        belgeNo,
+        ettn,
+        buyerName: String(portalRow.aliciUnvanAdSoyad || portalRow.aliciUnvan || portalRow.unvan || '').trim(),
+        buyerVkn: String(portalRow.vknTckn || portalRow.aliciVkn || portalRow.aliciTckn || '').replace(/\D/g, ''),
+        issuedAt: doc.issuedAt,
+        period: doc.period,
+        title: doc.title,
+        onayDurumu,
+        iptalDurumu: iptalDurumu || 'Yok',
+        aktarimDurumu: doc.storageKey ? 'indirildi' : 'sorgulandi',
+        isProcessable: !blocked,
+        blockedReason: blocked ? 'Iptal/itiraz/reddedilen fatura islenmez' : null,
+        sourceRefId,
+      };
+    });
+    const accountingRows = refs.size
+      ? await (this.prisma as any).invoiceAccountingDocument.findMany({
+          where: {
+            tenantId,
+            ...(opts.taxpayerId ? { taxpayerId: opts.taxpayerId } : {}),
+            source: 'gib-earsiv-api',
+            sourceRefId: { in: [...refs] },
+          },
+          select: { id: true, sourceRefId: true, status: true, lucaStatus: true },
+        }).catch(() => [])
+      : [];
+    const accByRef = new Map<string, any>(accountingRows.map((r: any) => [String(r.sourceRefId), r]));
+    return rows.map((row: any) => {
+      const acc = accByRef.get(row.sourceRefId);
+      return {
+        ...row,
+        muhasebeBelgeId: acc?.id || null,
+        muhasebeDurumu: acc?.status || null,
+        lucaDurumu: acc?.lucaStatus || null,
+        aktarildi: !!acc,
+      };
+    });
+  }
+
   // "Tümünü Görüntüle": verilen belgeleri (ya da filtreye uyan E_TEBLIGAT'ları) görüntülendi
   // işaretle -> butonlar kalıcı yeşile döner. ids verilirse onlar; verilmezse belgeTuru/taxpayerId
   // kapsamındaki, PDF'i olan (storageKey) ve henüz görüntülenmemiş tüm belgeler.
@@ -662,6 +766,8 @@ export class PortalAutomationService {
       force: input.force === true,
       validationOnly: input.validationOnly === true,
       discover: input.discover === true,
+      earsivMode: input.earsivMode,
+      selectedRefs: input.selectedRefs,
     });
     return {
       ...res,
@@ -694,6 +800,46 @@ export class PortalAutomationService {
       include: { taxpayer: { select: { id: true, companyName: true, firstName: true, lastName: true, taxNumber: true, taxOffice: true } } },
       orderBy: [{ priority: 'desc' }, { createdAt: 'asc' }],
       take: limit,
+    });
+    return jobs.map((job: any) => ({
+      ...job,
+      jobLabel: JOB_META[job.jobType as PortalJobType]?.label || job.jobType,
+      provider: JOB_META[job.jobType as PortalJobType]?.provider || null,
+    }));
+  }
+
+  async recentJobsForAgent(
+    tenantId: string,
+    opts: { limit?: number; jobType?: string; taxpayerId?: string } = {},
+  ) {
+    const limit = Math.min(Math.max(Number(opts.limit || 20), 1), 100);
+    const where: any = { tenantId };
+    if (opts.jobType) where.jobType = { in: String(opts.jobType).split(',').map((s) => s.trim()).filter(Boolean) };
+    if (opts.taxpayerId) where.taxpayerId = opts.taxpayerId;
+    const jobs = await (this.prisma as any).portalAutomationJob.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      select: {
+        id: true,
+        taxpayerId: true,
+        jobType: true,
+        status: true,
+        source: true,
+        donem: true,
+        periodStart: true,
+        periodEnd: true,
+        recordCount: true,
+        attempts: true,
+        targetDeviceId: true,
+        result: true,
+        errorMessage: true,
+        createdAt: true,
+        updatedAt: true,
+        startedAt: true,
+        finishedAt: true,
+        taxpayer: { select: { id: true, companyName: true, firstName: true, lastName: true } },
+      },
     });
     return jobs.map((job: any) => ({
       ...job,
@@ -767,6 +913,80 @@ export class PortalAutomationService {
       documentCount: documents.length,
       documents,
     };
+  }
+
+  async syncEarsivPortalDocumentsToAccounting(
+    tenantId: string,
+    opts: { taxpayerId?: string; period?: string; limit?: number } = {},
+  ) {
+    const limit = Math.min(Math.max(Number(opts.limit || 500), 1), 1000);
+    const where: any = { tenantId, belgeTuru: 'EARSIV_FATURA', storageKey: { not: null } };
+    if (opts.taxpayerId) where.taxpayerId = opts.taxpayerId;
+    const range = monthRange(opts.period);
+    if (opts.period && !range) where.period = opts.period;
+    if (range) {
+      where.OR = [
+        { period: opts.period },
+        { issuedAt: { gte: range.start, lt: range.end } },
+      ];
+    }
+    const docs = await (this.prisma as any).portalDocument.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      select: {
+        id: true,
+        taxpayerId: true,
+        jobId: true,
+        title: true,
+        referenceNo: true,
+        period: true,
+        issuedAt: true,
+        receivedAt: true,
+        mimeType: true,
+        sizeBytes: true,
+        storageKey: true,
+        raw: true,
+      },
+    });
+    let processed = 0;
+    let imported = 0;
+    let skipped = 0;
+    for (const doc of docs) {
+      if (!doc.taxpayerId || !doc.storageKey) {
+        skipped++;
+        continue;
+      }
+      processed++;
+      const before = await (this.prisma as any).invoiceAccountingDocument.count({
+        where: { tenantId, taxpayerId: doc.taxpayerId, source: 'gib-earsiv-api' },
+      }).catch(() => 0);
+      await this.importEarsivPortalDocumentToAccounting(
+        tenantId,
+        doc.jobId || '',
+        {
+          taxpayerId: doc.taxpayerId,
+          belgeTuru: 'EARSIV_FATURA',
+          title: doc.title || 'GIB e-Arsiv Fatura',
+          referenceNo: doc.referenceNo,
+          period: doc.period,
+          issuedAt: doc.issuedAt ? doc.issuedAt.toISOString() : null,
+          receivedAt: doc.receivedAt ? doc.receivedAt.toISOString() : null,
+          mimeType: doc.mimeType,
+          originalName: doc.title || doc.referenceNo || 'earsiv-fatura.json',
+          raw: doc.raw || {},
+        },
+        'EARSIV_PORTAL_FETCH',
+        doc.storageKey,
+        doc.sizeBytes,
+        doc.mimeType || 'application/json',
+      );
+      const after = await (this.prisma as any).invoiceAccountingDocument.count({
+        where: { tenantId, taxpayerId: doc.taxpayerId, source: 'gib-earsiv-api' },
+      }).catch(() => before);
+      if (after > before) imported++;
+    }
+    return { processed, imported, skipped, totalPortalDocuments: docs.length };
   }
 
   async cancelJob(tenantId: string, jobId: string, reason = 'Kullanici iptal etti') {
@@ -1045,6 +1265,8 @@ export class PortalAutomationService {
       validationOnly?: boolean;
       discover?: boolean;
       dedupeAfter?: Date;
+      earsivMode?: 'query' | 'download';
+      selectedRefs?: string[];
     },
   ) {
     const created: any[] = [];
@@ -1104,6 +1326,8 @@ export class PortalAutomationService {
       force?: boolean;
       validationOnly?: boolean;
       discover?: boolean;
+      earsivMode?: 'query' | 'download';
+      selectedRefs?: string[];
     },
   ) {
     const meta = JOB_META[jobType];
@@ -1135,6 +1359,8 @@ export class PortalAutomationService {
           force: opts.force === true,
           validationOnly,
           discover: opts.discover === true,
+          earsivMode: opts.earsivMode || undefined,
+          selectedRefs: Array.isArray(opts.selectedRefs) ? opts.selectedRefs.slice(0, 500) : undefined,
           targetPeriod: opts.targetPeriod || undefined,
           dateFrom: opts.period.start.toISOString(),
           dateTo: opts.period.end.toISOString(),

@@ -216,6 +216,8 @@ type IntegrationFetchInput = {
   direction?: 'ALIS' | 'SATIS';
   providers?: string[];
   limit?: number;
+  mode?: 'query' | 'download';
+  selectedRefs?: string[];
 };
 
 type RuntimeIntegrationConfig = {
@@ -1699,6 +1701,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const taxpayerId = String(input.taxpayerId || '').trim();
     if (!taxpayerId) throw new BadRequestException('taxpayerId gerekli');
     const direction = input.direction === 'SATIS' ? 'SATIS' : 'ALIS';
+    const mode = input.mode === 'query' ? 'query' : 'download';
     const period = this.monthRange(input.donem);
     const limit = Math.min(Math.max(Number(input.limit || 500), 1), 1000);
     const requestedProviders = new Set(
@@ -1759,6 +1762,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             dateTo: period.endDate,
             donem: period.donem,
             force: true,
+            earsivMode: mode,
+            selectedRefs: Array.isArray(input.selectedRefs) ? input.selectedRefs : undefined,
           });
           const createdCount = Array.isArray((portalRun as any).created) ? (portalRun as any).created.length : 0;
           const skippedCount = Array.isArray((portalRun as any).skipped) ? (portalRun as any).skipped.length : 0;
@@ -1769,7 +1774,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             queued: createdCount,
             skipped: skippedCount,
             reason: createdCount > 0
-              ? `GIB e-Arsiv satis cekimi kuyruğa alindi (${period.donem}); portal runner sifreyle girip indirecek`
+              ? (mode === 'query'
+                ? `GIB e-Arsiv satis sorgusu kuyruğa alindi (${period.donem}); liste satirlari ekranda gorunecek`
+                : `GIB e-Arsiv satis aktarimi kuyruğa alindi (${period.donem}); secili/uygun faturalar indirilecek`)
               : ((portalRun as any).skipped?.[0]?.reason || 'GIB portal isi olusturulamadi'),
             jobs: (portalRun as any).created || [],
           });

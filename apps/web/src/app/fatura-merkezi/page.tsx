@@ -599,6 +599,7 @@ const TITLES: Record<string, string> = {
   kdv: 'Kurulum · <b>KDV Raporu</b>',
   ayarlar: 'Kurulum · <b>Hesap Planı</b>',
   mukellefler: 'Çalışma · <b>Mükellefler</b>',
+  sorgu: 'Belgeler · <b>Belge Sorgula</b>',
   genel: '<b>Genel Bakış</b>',
 };
 
@@ -681,6 +682,7 @@ export default function FaturaMerkeziPage() {
       <div className={`nitem${screen === 'faturalar' || screen === 'satis' ? ' on' : ''}`} style={{ ['--icc' as any]: '#15803d' }} onClick={() => go('faturalar')}><Ico html={I.file} /> Gelen Faturalar</div>
       <div className={`nsub${screen === 'faturalar' ? ' on' : ''}`} onClick={() => go('faturalar')}><span className="d" /> Bekleyen Alış Faturaları {badge(sum.alisPending)}</div>
       <div className={`nsub${screen === 'satis' ? ' on' : ''}`} onClick={() => go('satis')}><span className="d" /> Bekleyen Satış Faturaları {badge(sum.satisPending)}</div>
+      <div className={`nitem${screen === 'sorgu' ? ' on' : ''}`} style={{ ['--icc' as any]: '#0f766e' }} onClick={() => go('sorgu')}><Ico html={I.sync} /> Belge Sorgula</div>
       <div className={`nitem${screen === 'muhasebe' ? ' on' : ''}`} style={{ ['--icc' as any]: '#7c3aed' }} onClick={() => go('muhasebe')}><Ico html={I.ledger} /> Muhasebeleştir {badge(sum.pending)}</div>
       <div className={`nitem${screen === 'aktarilanlar' ? ' on' : ''}`} style={{ ['--icc' as any]: '#0891b2' }} onClick={() => go('aktarilanlar')}><Ico html={I.check} /> Aktarım {badge(Math.max(0, (Number(sum.approved) || 0) - (Number(sum.posted) || 0)))}</div>
       <div className={`nitem${screen === 'arsiv' ? ' on' : ''}`} style={{ ['--icc' as any]: '#d97706' }} onClick={() => go('arsiv')}><Ico html={I.ledger} /> Arşivim {badge(sum.posted)}</div>
@@ -754,7 +756,8 @@ export default function FaturaMerkeziPage() {
           </div>
 
           <div className="content">
-            {(screen === 'faturalar' || screen === 'satis') && <ScreenFaturalar taxpayerId={taxpayerId} period={period} kind={screen === 'satis' ? 'SATIS' : 'ALIS'} isIsletme={(() => { const t = taxpayers.find((x) => x.id === taxpayerId); return /i[şs]letme|defter.?beyan|basit/i.test(`${t?.defterTuru || ''} ${(t as any)?.mihsapDefterTuru || ''}`); })()} taxpayerNace={(taxpayers.find((t) => t.id === taxpayerId) as any)?.naceKodu || ''} taxpayerFaaliyet={(taxpayers.find((t) => t.id === taxpayerId) as any)?.faaliyetAciklama || ''} onOpenMuhasebe={(id) => { try { localStorage.setItem('fm-open-doc', id); } catch { /* yok say */ } setScreen('muhasebe'); }} />}
+            {(screen === 'faturalar' || screen === 'satis') && <ScreenFaturalar taxpayerId={taxpayerId} period={period} kind={screen === 'satis' ? 'SATIS' : 'ALIS'} isIsletme={(() => { const t = taxpayers.find((x) => x.id === taxpayerId); return /i[şs]letme|defter.?beyan|basit/i.test(`${t?.defterTuru || ''} ${(t as any)?.mihsapDefterTuru || ''}`); })()} taxpayerNace={(taxpayers.find((t) => t.id === taxpayerId) as any)?.naceKodu || ''} taxpayerFaaliyet={(taxpayers.find((t) => t.id === taxpayerId) as any)?.faaliyetAciklama || ''} onOpenSorgu={() => setScreen('sorgu')} onOpenMuhasebe={(id) => { try { localStorage.setItem('fm-open-doc', id); } catch { /* yok say */ } setScreen('muhasebe'); }} />}
+            {screen === 'sorgu' && <ScreenSorgu taxpayerId={taxpayerId} period={period} />}
             {screen === 'mukellefler' && <ScreenMukellefler taxpayers={taxpayers} period={period} onOpen={(id) => { setTaxpayerId(id); setScreen('faturalar'); }} />}
             {screen === 'kurallar' && <ScreenKurallar taxpayerId={taxpayerId} period={period} />}
             {screen === 'muhasebe' && <ScreenMuhasebe taxpayerId={taxpayerId} period={period} isIsletme={(() => { const t = taxpayers.find((x) => x.id === taxpayerId); return /i[şs]letme|defter.?beyan|basit/i.test(`${t?.defterTuru || ''} ${(t as any)?.mihsapDefterTuru || ''}`); })()} taxpayerNace={(taxpayers.find((t) => t.id === taxpayerId) as any)?.naceKodu || ''} taxpayerFaaliyet={(taxpayers.find((t) => t.id === taxpayerId) as any)?.faaliyetAciklama || ''} taxpayerAd={(() => { const t = taxpayers.find((x) => x.id === taxpayerId); return t ? taxpayerLabel(t) : ''; })()} full={editorFull} onToggleFull={() => setEditorFull((v) => !v)} />}
@@ -785,7 +788,7 @@ function isWaitingTransfer(d: any): boolean {
 function isInAktarim(d: any): boolean {
   return isWaitingTransfer(d) || isArchived(d);
 }
-function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false, taxpayerNace = '', taxpayerFaaliyet = '', onOpenMuhasebe }: { taxpayerId: string; period: string; kind?: 'ALIS' | 'SATIS'; isIsletme?: boolean; taxpayerNace?: string; taxpayerFaaliyet?: string; onOpenMuhasebe?: (id: string) => void }) {
+function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false, taxpayerNace = '', taxpayerFaaliyet = '', onOpenSorgu, onOpenMuhasebe }: { taxpayerId: string; period: string; kind?: 'ALIS' | 'SATIS'; isIsletme?: boolean; taxpayerNace?: string; taxpayerFaaliyet?: string; onOpenSorgu?: () => void; onOpenMuhasebe?: (id: string) => void }) {
   const qc = useQueryClient();
   const docsQ = useDocuments(taxpayerId, period);
   const all: any[] = docsQ.data || [];
@@ -853,14 +856,6 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
     else sayac.ok++;
   });
 
-  const fetchMut = useMutation({
-    mutationFn: () =>
-      api.post('/fatura-muhasebelestirme/integrations/fetch', {
-        taxpayerId, direction: kind, donem: period,
-      }),
-    onSuccess: (r: any) => { showFetchResult(r?.data); qc.invalidateQueries({ queryKey: ['fm2'] }); },
-    onError: (e: any) => toast.error('Çekilemedi: ' + (e?.response?.data?.message || e?.message || 'hata')),
-  });
   // Geçici köprü: Mihsap "bekleyen evraklar"daki faturaları portala aktarır
   // (entegratör çekme tamamlanana kadar Mihsap'ı fatura kaynağı olarak kullanırız).
   const mihsapMut = useMutation({
@@ -1064,7 +1059,7 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
           <button className="btn sm blue" disabled={!taxpayerId || mihsapMut.isPending} onClick={() => mihsapMut.mutate()} title={!taxpayerId ? 'Önce mükellef seç' : "Mihsap 'bekleyen evraklar'daki faturaları portala aktarır"}><Ico html={I.download} size={13} /> {mihsapMut.isPending ? 'Aktarılıyor…' : "Mihsap'tan Aktar"}</button>
           <input ref={fileRef} type="file" multiple accept=".pdf,.jpg,.jpeg,.jpe,.jfif,.png,.webp,.gif,.tif,.tiff,.bmp,.heic,.heif,.avif,.xml,.ubl,.zip" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files; if (f && f.length) uploadMut.mutate(f); e.target.value = ''; }} />
           <button className="btn sm upload" disabled={!taxpayerId || uploadMut.isPending} onClick={() => fileRef.current?.click()} title={!taxpayerId ? 'Önce mükellef seç' : 'JPEG / PDF / XML belge yükle (elle)'}><Ico html={I.upload} size={13} /> {uploadMut.isPending ? 'Yükleniyor…' : 'Belge Yükle'}</button>
-          <button className="btn sm fetch" disabled={!taxpayerId || fetchMut.isPending} onClick={() => fetchMut.mutate()} title={!taxpayerId ? 'Önce mükellef seç' : 'Kayıtlı entegratörleri ve GİB e-Arşiv portal kuyruğunu çalıştır'}><Ico html={I.download} size={13} /> {fetchMut.isPending ? 'Getiriliyor…' : 'Belgeleri Getir'}</button>
+          <button className="btn sm fetch" disabled={!taxpayerId} onClick={() => onOpenSorgu?.()} title={!taxpayerId ? 'Önce mükellef seç' : 'GİB e-Arşiv ve e-Fatura entegratörlerini ayrı sorgu ekranında listele'}><Ico html={I.sync} size={13} /> Sorgu ekranı</button>
           <button className="btn sm ghost soft" disabled={syncMut.isPending} onClick={() => syncMut.mutate()} title="Mükellefe bağlanmamış (sahipsiz) belgeleri VKN/TCKN'ye göre ilgili mükellefe bağlar"><Ico html={I.sync} size={13} /> {syncMut.isPending ? 'Bağlanıyor…' : 'Sahipsiz belgeleri bağla'}</button>
           <button className="btn sm fix" disabled={!taxpayerId || recodeMut.isPending} onClick={() => recodeMut.mutate()} title="Belgeleri TEKRAR OKUMADAN hesap kodlarını plana göre yeniden eşleştir — yanlış carileri düzeltir/temizler (saniyeler sürer)"><Ico html={I.wand} size={13} /> {recodeMut.isPending ? 'Düzeltiliyor…' : 'Kodları düzelt'}</button>
           <button className="btn sm ai" disabled={aiBusy || sel.size === 0} onClick={aiOku} title="Seçili faturaları yapay zeka (Max) ile oku — sunucuda okur, sayfa değişince durmaz"><Ico html={I.spark} size={13} /> {aiBusy ? 'Başlatılıyor…' : `AI ile oku${sel.size ? ` (${sel.size})` : ''}`}</button>
@@ -1274,6 +1269,163 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
 }
 
 /* ===================== EKRAN: MÜKELLEFLER ===================== */
+function ScreenSorgu({ taxpayerId, period }: { taxpayerId: string; period: string }) {
+  const qc = useQueryClient();
+  const [source, setSource] = useState<'earsiv' | 'efatura'>('earsiv');
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const earsivQ = useQuery({
+    queryKey: ['fm-earsiv-sorgu', taxpayerId, period],
+    queryFn: async () => (await api.get('/portal-automation/earsiv/invoices', { params: { taxpayerId, period, limit: 500 } })).data,
+    enabled: !!taxpayerId,
+    refetchInterval: 6000,
+  });
+  const jobsQ = useQuery({
+    queryKey: ['fm-earsiv-jobs', taxpayerId],
+    queryFn: async () => {
+      const r = await api.get('/portal-automation/jobs', { params: { jobType: 'EARSIV_PORTAL_FETCH', limit: 12 } });
+      return Array.isArray(r.data) ? r.data.filter((j: any) => !taxpayerId || j.taxpayerId === taxpayerId) : [];
+    },
+    enabled: !!taxpayerId,
+    refetchInterval: 5000,
+  });
+  const integrationsQ = useQuery({
+    queryKey: ['fm-integrations-sorgu', taxpayerId],
+    queryFn: async () => (await api.get('/fatura-muhasebelestirme/integrations', { params: { taxpayerId: taxpayerId || undefined } })).data,
+    enabled: !!taxpayerId,
+  });
+  const rows: any[] = Array.isArray(earsivQ.data) ? earsivQ.data : [];
+  const activeJob = (jobsQ.data || []).find((j: any) => ['pending', 'running'].includes(String(j.status || '').toLowerCase()));
+  const lastJob = (jobsQ.data || [])[0];
+  const processable = rows.filter((r) => r.isProcessable && !r.aktarildi);
+  const selectedRefs = [...sel];
+  const toggle = (ref: string) => setSel((prev) => { const n = new Set(prev); n.has(ref) ? n.delete(ref) : n.add(ref); return n; });
+  const toggleAll = () => setSel(() => selectedRefs.length === processable.length ? new Set() : new Set(processable.map((r) => r.sourceRefId).filter(Boolean)));
+
+  const sorgulaMut = useMutation({
+    mutationFn: () => api.post('/fatura-muhasebelestirme/integrations/fetch', {
+      taxpayerId,
+      direction: 'SATIS',
+      donem: period,
+      providers: ['GIB_PORTAL'],
+      mode: 'query',
+    }),
+    onSuccess: (r: any) => {
+      showFetchResult(r?.data);
+      qc.invalidateQueries({ queryKey: ['fm-earsiv-jobs'] });
+      qc.invalidateQueries({ queryKey: ['fm-earsiv-sorgu'] });
+    },
+    onError: (e: any) => toast.error('Sorgu başlatılamadı: ' + (e?.response?.data?.message || e?.message || 'hata')),
+  });
+  const aktarMut = useMutation({
+    mutationFn: () => api.post('/fatura-muhasebelestirme/integrations/fetch', {
+      taxpayerId,
+      direction: 'SATIS',
+      donem: period,
+      providers: ['GIB_PORTAL'],
+      mode: 'download',
+      selectedRefs: selectedRefs.length ? selectedRefs : processable.map((r) => r.sourceRefId).filter(Boolean),
+    }),
+    onSuccess: (r: any) => {
+      showFetchResult(r?.data);
+      setSel(new Set());
+      qc.invalidateQueries({ queryKey: ['fm-earsiv-jobs'] });
+      qc.invalidateQueries({ queryKey: ['fm-earsiv-sorgu'] });
+      qc.invalidateQueries({ queryKey: ['fm2'] });
+    },
+    onError: (e: any) => toast.error('Aktarım başlatılamadı: ' + (e?.response?.data?.message || e?.message || 'hata')),
+  });
+  const syncMut = useMutation({
+    mutationFn: () => api.post('/portal-automation/earsiv/accounting-sync', { taxpayerId, period }),
+    onSuccess: (r: any) => {
+      toast.success(`Senkron tamamlandı · ${r?.data?.imported || 0} yeni belge`);
+      qc.invalidateQueries({ queryKey: ['fm-earsiv-sorgu'] });
+      qc.invalidateQueries({ queryKey: ['fm2'] });
+    },
+  });
+
+  const integrations: any[] = Array.isArray(integrationsQ.data) ? integrationsQ.data : [];
+  const efaturaProviders = integrations.filter((p) => String(p.kind || '').toLowerCase() === 'efatura' || /EFATURA|ELOGO|UYUMSOFT|MIKRO|IZIBIZ|KOLAYSOFT|FORIBA|PARASUT|TURMOB/i.test(String(p.provider || '')));
+
+  return (
+    <section className="screen sorgu-screen">
+      <div className="h2">Belge Sorgulama</div>
+      <div className="sub">Kaynaklar ayrı çalışır; sorgu sonucu burada görünür, aktar dediğinde Fatura Merkezi bekleyen listesine düşer.</div>
+      <div className="sourcegrid">
+        <button className={`sourcecard${source === 'earsiv' ? ' on' : ''}`} onClick={() => setSource('earsiv')}>
+          <span className="srcicon"><Ico html={I.file} size={17} /></span>
+          <b>GİB e-Arşiv Portal</b>
+          <small>Firmaların kestiği e-Arşiv satış faturaları</small>
+          <em>{rows.length ? `${rows.length} sorgu satırı` : 'Sorgu bekliyor'}</em>
+        </button>
+        <button className={`sourcecard${source === 'efatura' ? ' on' : ''}`} onClick={() => setSource('efatura')}>
+          <span className="srcicon"><Ico html={I.plug} size={17} /></span>
+          <b>e-Fatura Entegratörleri</b>
+          <small>TÜRMOB, e-Logo, Uyumsoft ve diğerleri</small>
+          <em>{efaturaProviders.filter((p) => p.connected).length} bağlantı hazır</em>
+        </button>
+      </div>
+
+      {source === 'earsiv' ? (
+        <div className="card sourcepanel">
+          <div className="ch sourcehead">
+            <h3>GİB e-Arşiv satış sorgusu</h3>
+            <span className="mu">{activeJob ? 'Sorgu/aktarım çalışıyor' : lastJob ? `Son iş: ${lastJob.status} · ${fmtDate(lastJob.updatedAt || lastJob.createdAt)}` : 'Henüz sorgu yok'}</span>
+            <div className="sp" />
+            <button className="btn sm fetch" disabled={!taxpayerId || sorgulaMut.isPending || !!activeJob} onClick={() => sorgulaMut.mutate()}><Ico html={I.sync} size={13} /> {sorgulaMut.isPending ? 'Sorgulanıyor…' : 'Sorgula'}</button>
+            <button className="btn sm primary" disabled={!taxpayerId || aktarMut.isPending || !!activeJob || processable.length === 0} onClick={() => aktarMut.mutate()}><Ico html={I.download} size={13} /> {aktarMut.isPending ? 'Aktarılıyor…' : `${selectedRefs.length ? selectedRefs.length : processable.length} faturayı aktar`}</button>
+            <button className="btn sm ghost" disabled={!taxpayerId || syncMut.isPending || rows.length === 0} onClick={() => syncMut.mutate()}><Ico html={I.checkSm} size={13} /> Durumu eşitle</button>
+          </div>
+          <div className="sourcehint">İptal, itirazlı veya reddedilmiş faturalar tabloda görünür ama aktarıma alınmaz.</div>
+          <div className="sourcetablewrap">
+            <table className="sourcetable">
+              <thead>
+                <tr>
+                  <th><Check checked={processable.length > 0 && selectedRefs.length === processable.length} onToggle={toggleAll} /></th>
+                  <th>Alıcı</th><th>VKN/TCKN</th><th>Belge No</th><th>Tarih</th><th>ETTN</th><th>Onay</th><th>İptal/İtiraz</th><th>Aktarım</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.id} className={!r.isProcessable ? 'blocked' : r.aktarildi ? 'done' : ''}>
+                    <td>{r.isProcessable && !r.aktarildi ? <Check checked={sel.has(r.sourceRefId)} onToggle={() => toggle(r.sourceRefId)} /> : null}</td>
+                    <td><b>{r.buyerName || '—'}</b></td>
+                    <td>{r.buyerVkn || '—'}</td>
+                    <td>{r.belgeNo || r.referenceNo || '—'}</td>
+                    <td>{fmtDate(r.issuedAt)}</td>
+                    <td className="mono">{r.ettn || '—'}</td>
+                    <td><span className={`pill ${r.isProcessable ? 'ok' : 'warn'}`}>{r.onayDurumu || '—'}</span></td>
+                    <td>{r.iptalDurumu || 'Yok'}</td>
+                    <td>{r.aktarildi ? <span className="pill ok">Aktarıldı</span> : r.aktarimDurumu === 'indirildi' ? <span className="pill warn">İndirildi</span> : <span className="pill">Sorgulandı</span>}</td>
+                  </tr>
+                ))}
+                {!rows.length && (
+                  <tr><td colSpan={9} className="emptyrow">{taxpayerId ? 'Önce Sorgula ile GİB listesini getir.' : 'Önce mükellef seç.'}</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : (
+        <div className="card sourcepanel">
+          <div className="ch sourcehead">
+            <h3>e-Fatura entegratör sorguları</h3>
+            <span className="mu">Bu alan GİB e-Arşiv’den ayrı tutulur; alış/satış e-Fatura sağlayıcıları burada listelenir.</span>
+          </div>
+          <div className="providergrid">
+            {efaturaProviders.map((p) => (
+              <div className="providerrow" key={p.provider}>
+                <div><b>{p.label || p.provider}</b><span>{p.connected ? 'Bağlantı hazır' : 'Kimlik bilgisi eksik'}</span></div>
+                <span className={`pill ${p.connected ? 'ok' : 'warn'}`}>{p.connected ? 'Hazır' : 'Eksik'}</span>
+              </div>
+            ))}
+            {!efaturaProviders.length && <div className="emptyrow">Bu mükellef için tanımlı e-Fatura entegratörü yok.</div>}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function ScreenMukellefler({ taxpayers, period, onOpen }: { taxpayers: any[]; period: string; onOpen: (id: string) => void }) {
   const sumQ = useQuery({
     queryKey: ['fm2', 'per-taxpayer', period],
@@ -3677,4 +3829,28 @@ const CSS = `
 #fm-root .muhmain .fgrp .fgt{padding:5px 9px}
 #fm-root .muhmain .balance{margin:8px 0 0;padding:8px 11px;background:#ecfdf5;border-color:#bbf7d0}
 #fm-root .muhmain .fispane > .wactions{position:sticky;bottom:0;margin-top:8px;padding:8px 0 0;background:linear-gradient(180deg,rgba(255,255,255,0),#fff 35%);min-height:40px}
+#fm-root .sorgu-screen .sourcegrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:12px 0}
+#fm-root .sourcecard{height:104px;text-align:left;border:1px solid #e2e8f0;border-radius:10px;background:#fff;padding:14px;display:grid;grid-template-columns:34px 1fr;grid-template-rows:auto auto auto;column-gap:12px;align-items:center;cursor:pointer}
+#fm-root .sourcecard:hover{border-color:#cbd5e1;background:#fbfefd}
+#fm-root .sourcecard.on{border-color:#1f7a68;box-shadow:inset 0 0 0 1px #1f7a68;background:#f6fcfa}
+#fm-root .sourcecard .srcicon{grid-row:1 / 4;width:34px;height:34px;border-radius:9px;display:grid;place-items:center;background:#eef8f5;color:#1f7a68}
+#fm-root .sourcecard b{font-size:15px;color:#17212f}
+#fm-root .sourcecard small{font-size:12px;color:#64748b}
+#fm-root .sourcecard em{font-style:normal;font-size:11.5px;color:#1f7a68;font-weight:650}
+#fm-root .sourcepanel{overflow:hidden}
+#fm-root .sourcehead{display:flex;align-items:center;gap:9px;padding:12px 14px}
+#fm-root .sourcehead h3{font-size:15px;margin:0}
+#fm-root .sourcehint{padding:9px 14px;border-bottom:1px solid #e5e7eb;background:#fffbeb;color:#805b16;font-size:12px}
+#fm-root .sourcetablewrap{overflow:auto;max-height:calc(100vh - 360px)}
+#fm-root .sourcetable{width:100%;border-collapse:separate;border-spacing:0}
+#fm-root .sourcetable th{height:36px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.25px;white-space:nowrap}
+#fm-root .sourcetable td{height:42px;font-size:12.5px;vertical-align:middle}
+#fm-root .sourcetable .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;color:#64748b;max-width:220px;overflow:hidden;text-overflow:ellipsis}
+#fm-root .sourcetable tr.blocked td{color:#9a5c5c;background:#fffafa}
+#fm-root .sourcetable tr.done td{background:#f8fdfb}
+#fm-root .emptyrow{text-align:center;color:#94a3b8;padding:22px!important}
+#fm-root .providergrid{display:grid;gap:8px;padding:12px}
+#fm-root .providerrow{display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid #e5e7eb;border-radius:9px;padding:10px 12px;background:#fff}
+#fm-root .providerrow b{display:block;font-size:13px}
+#fm-root .providerrow span{display:block;font-size:11.5px;color:#64748b;margin-top:2px}
 `;
