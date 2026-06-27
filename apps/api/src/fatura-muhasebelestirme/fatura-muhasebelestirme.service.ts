@@ -4925,6 +4925,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       ['InvoiceDateStart', 'InvoiceDateEnd'],
       ['IssueDateStart', 'IssueDateEnd'],
       ['ExecutionStartDate', 'ExecutionEndDate'],
+      ['Baslangic', 'Bitis'],
+      ['Start', 'End'],
+      ['fromDate', 'toDate'],
+      ['dateFrom', 'dateTo'],
+      ['minDate', 'maxDate'],
     ];
     const values = [
       { name: 'iso', start: period.startDate, end: period.endDate },
@@ -4992,12 +4997,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // Gelen=alış (/IncomingInvoice), Giden=satış (/OutgoingInvoice). e-Arşiv ucu ilk testte eklenecek.
     const channel = String(opts.channel || (opts.direction === 'SATIS' ? 'OUT_EFATURA' : 'IN_EFATURA')).toUpperCase();
     const refererPath = channel === 'OUT_EARSIV'
-      ? '/OutgoingArchiveInvoice'
+      ? '/ArchiveInvoice'
       : channel === 'OUT_EFATURA'
         ? '/OutgoingInvoice'
-        : '/IncomingInvoice';
+        : '/Inbox';
     const listUrls = channel === 'OUT_EARSIV'
       ? [
+          '/ArchiveInvoice/ArchiveInvoiceList',
           '/OutgoingArchiveInvoice/AllOutgoingArchiveInvoiceByFilter',
           '/ArchiveInvoice/AllArchiveInvoiceByFilter',
           '/EArchiveInvoice/AllEArchiveInvoiceByFilter',
@@ -5005,8 +5011,14 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           '/OutgoingInvoice/AllOutgoingArchiveInvoiceByFilter',
         ]
       : channel === 'OUT_EFATURA'
-        ? ['/OutgoingInvoice/AllOutgoingInvoiceByFilter']
-        : ['/IncomingInvoice/AllIncomingInvoiceByFilter'];
+        ? [
+            '/OutgoingInvoice/OutgoingInvoiceList',
+            '/OutgoingInvoice/AllOutgoingInvoiceByFilter',
+          ]
+        : [
+            '/IncomingInvoice/IncomingInvoiceList',
+            '/IncomingInvoice/AllIncomingInvoiceByFilter',
+          ];
     const baseListParams = {
       draw: '1',
       start: '0',
@@ -5030,39 +5042,44 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     let rows: any[] = [];
     let usedListUrl = listUrls[0];
     let usedProfile = 'none';
+    let usedMethod = 'POST';
     let directPayloads: ProviderInvoicePayload[] = [];
     const profiles = this.turmobDateProfiles(opts.period);
     listAttempt:
     for (const listUrl of listUrls) {
       for (const profile of profiles) {
         const listBody = new URLSearchParams({ ...baseListParams, ...profile.params }).toString();
-        const res = await fetch(BASE + listUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-            Accept: 'application/json, text/javascript, */*; q=0.01',
-            Origin: BASE,
-            Referer: BASE + refererPath,
-            'X-Requested-With': 'XMLHttpRequest',
-            Cookie: cookie,
-            'User-Agent': 'MorenPortal/1.0',
-          },
-          body: listBody,
-        });
-        ct = res.headers.get('content-type') || '';
-        raw = await res.text();
-        data = null;
-        try { data = JSON.parse(raw); } catch { /* HTML = muhtemelen login redirect */ }
-        rows = this.turmobRowsFromListResponse(data);
-        usedListUrl = listUrl;
-        usedProfile = profile.name;
-        directPayloads = await this.extractPayloadsFromProviderResponse(raw, ['xml', 'ubl', 'content', 'data', 'base64', 'DocumentXml', 'InvoiceXml']);
-        if (rows.length || directPayloads.length) break listAttempt;
+        for (const method of ['POST', 'GET'] as const) {
+          const requestUrl = method === 'GET' ? `${BASE}${listUrl}?${listBody}` : BASE + listUrl;
+          const res = await fetch(requestUrl, {
+            method,
+            headers: {
+              ...(method === 'POST' ? { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' } : {}),
+              Accept: 'application/json, text/javascript, */*; q=0.01',
+              Origin: BASE,
+              Referer: BASE + refererPath,
+              'X-Requested-With': 'XMLHttpRequest',
+              Cookie: cookie,
+              'User-Agent': 'MorenPortal/1.0',
+            },
+            body: method === 'POST' ? listBody : undefined,
+          });
+          ct = res.headers.get('content-type') || '';
+          raw = await res.text();
+          data = null;
+          try { data = JSON.parse(raw); } catch { /* HTML = muhtemelen login redirect */ }
+          rows = this.turmobRowsFromListResponse(data);
+          usedListUrl = listUrl;
+          usedProfile = profile.name;
+          usedMethod = method;
+          directPayloads = await this.extractPayloadsFromProviderResponse(raw, ['xml', 'ubl', 'content', 'data', 'base64', 'DocumentXml', 'InvoiceXml']);
+          if (rows.length || directPayloads.length) break listAttempt;
+        }
       }
     }
     const first = raw.trimStart().slice(0, 1); // '<' = HTML/login redirect (cookie yetersiz), '{'/'[' = JSON (parametre/dönem)
     // TEŞHİS: first='<' → oturum liste için yetersiz; '{' ama rows=0 → parametre/dönem filtresi gerekli.
-    this.logger.log(`TURMOB portal ${channel}: url=${usedListUrl} profile=${usedProfile} ct=${ct.slice(0, 40)} len=${raw.length} first=${first} rows=${rows.length} topKeys=${JSON.stringify(Object.keys(data || {})).slice(0, 150)} rowKeys=${JSON.stringify(Object.keys(rows[0] || {})).slice(0, 250)}`);
+    this.logger.log(`TURMOB portal ${channel}: url=${usedListUrl} method=${usedMethod} profile=${usedProfile} ct=${ct.slice(0, 40)} len=${raw.length} first=${first} rows=${rows.length} topKeys=${JSON.stringify(Object.keys(data || {})).slice(0, 150)} rowKeys=${JSON.stringify(Object.keys(rows[0] || {})).slice(0, 250)}`);
     // İPTAL filtresi (durum alanı adı ilk testte netleşecek — "İptal/Iptal/Reddedildi/Cancel" geçeni atla):
     const isCancelled = (r: any) => /iptal|reddedil|cancel/i.test(JSON.stringify(r?.Durum ?? r?.durum ?? r?.Status ?? r?.status ?? ''));
     const live = rows.filter((r) => !isCancelled(r));
@@ -5076,11 +5093,51 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const absolute = clean.startsWith('http') ? clean : BASE + (clean.startsWith('/') ? clean : `/${clean}`);
       seenUrls.add(absolute);
     };
+    const rowValues = (row: any, keys: string[]) => {
+      const wanted = new Set(keys.map((key) => key.toLowerCase()));
+      const values = new Set<string>();
+      const visit = (value: any) => {
+        if (!value || typeof value !== 'object') return;
+        if (Array.isArray(value)) {
+          value.forEach(visit);
+          return;
+        }
+        for (const [key, nested] of Object.entries(value)) {
+          if (wanted.has(key.toLowerCase()) && (typeof nested === 'string' || typeof nested === 'number')) {
+            const text = String(nested).trim();
+            if (/^[A-Za-z0-9_-]{1,80}$/.test(text)) values.add(text);
+          }
+          visit(nested);
+        }
+      };
+      visit(row);
+      return [...values];
+    };
+    const addTurmobDocumentUrls = (row: any) => {
+      const inOrOut = channel === 'IN_EFATURA' ? 'True' : 'False';
+      const invoiceIds = rowValues(row, ['InvoiceId', 'InvoiceID', 'invoiceId', 'FaturaId', 'faturaId', 'BelgeId', 'belgeId']);
+      const archiveIds = rowValues(row, ['ArchiveId', 'ArchiveID', 'archiveId', 'ArsivId', 'arsivId']);
+      for (const id of invoiceIds) {
+        addCandidateUrl(`/Invoice/GetInvoiceXml?InOrOut=${inOrOut}&InvoiceId=${encodeURIComponent(id)}`);
+        addCandidateUrl(`/Invoice/GetInvoiceXML?InOrOut=${inOrOut}&InvoiceId=${encodeURIComponent(id)}`);
+        addCandidateUrl(`/IncomingInvoice/GetInvoiceXml?InOrOut=${inOrOut}&InvoiceId=${encodeURIComponent(id)}`);
+        addCandidateUrl(`/IncomingInvoice/GetInvoiceXML?InOrOut=${inOrOut}&InvoiceId=${encodeURIComponent(id)}`);
+        addCandidateUrl(`/Invoice/Detail?InOrOut=${inOrOut}&InvoiceId=${encodeURIComponent(id)}&IsPrint=True`);
+        addCandidateUrl(`/Invoice/PrintAllInvoice?InOrOut=${inOrOut}&InvoiceId=${encodeURIComponent(id)}&IsPrint=True`);
+      }
+      for (const id of archiveIds) {
+        addCandidateUrl(`/Invoice/GetInvoiceXml?InOrOut=False&ArchiveId=${encodeURIComponent(id)}`);
+        addCandidateUrl(`/Invoice/GetInvoiceXML?InOrOut=False&ArchiveId=${encodeURIComponent(id)}`);
+        addCandidateUrl(`/Invoice/Detail?InOrOut=False&ArchiveId=${encodeURIComponent(id)}&IsPrint=True`);
+        addCandidateUrl(`/Invoice/PrintAllInvoice?InOrOut=False&ArchiveId=${encodeURIComponent(id)}&IsPrint=True`);
+      }
+    };
     for (const row of live) {
       const asText = JSON.stringify(row || {});
       for (const m of asText.matchAll(/https?:\/\/[^"'\\\s<>]+|\/[^"'\\\s<>]*(?:xml|ubl|indir|download|invoice|fatura|belge|goruntule|görüntüle)[^"'\\\s<>]*/gi)) {
         addCandidateUrl(m[0]);
       }
+      addTurmobDocumentUrls(row);
     }
     for (const url of seenUrls) {
       try {
@@ -5090,8 +5147,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         });
         const buf = Buffer.from(await docRes.arrayBuffer());
         if (!docRes.ok || !buf.length) continue;
+        const text = buf.toString('utf8');
+        const nestedPayloads = await this.extractPayloadsFromProviderResponse(text, ['xml', 'ubl', 'content', 'data', 'base64', 'DocumentXml', 'InvoiceXml']);
+        payloads.push(...nestedPayloads);
+        if (nestedPayloads.length) continue;
         await this.addPayloadBuffer(payloads, buf);
-        if (!payloads.length) await this.addPayloadString(payloads, buf.toString('utf8'));
+        if (!payloads.length) await this.addPayloadString(payloads, text);
       } catch (e: any) {
         this.logger.warn(`TURMOB dokuman indirilemedi: ${url} ${e?.message || e}`);
       }
@@ -5103,7 +5164,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     if (!payloads.length && rows.length > 0) {
       throw new Error(`TURMOB liste ${rows.length} satir dondurdu ama XML/UBL indirme linki bulunamadi; response semasi loglandi`);
     }
-    return payloads.slice(0, opts.limit);
+    const uniquePayloads = new Map<string, ProviderInvoicePayload>();
+    for (const payload of payloads) {
+      const key = payload.externalId || createHash('sha1').update(payload.xml).digest('hex');
+      if (!uniquePayloads.has(key)) uniquePayloads.set(key, payload);
+    }
+    return [...uniquePayloads.values()].slice(0, opts.limit);
   }
 
   /**
