@@ -1470,6 +1470,16 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
     onError: (e: any) => toast.error('e-Fatura aktarimi baslatilamadi: ' + (e?.response?.data?.message || e?.message || 'hata')),
   });
   const efaturaStatusRows: any[] = Array.isArray(lastEfaturaSync?.providers) ? lastEfaturaSync.providers : [];
+  const efaturaChannelTitle = efaturaChannel === 'OUT_EARSIV'
+    ? 'Satış e-Arşiv'
+    : efaturaChannel === 'OUT_EFATURA'
+      ? 'Satış e-Fatura'
+      : 'Alış e-Fatura';
+  const efaturaProviderLabel = (p: any = activeEfaturaProvider) => {
+    const provider = String(p?.provider || activeEfaturaProvider?.provider || '').toUpperCase();
+    if (provider === 'TURMOB_EFATURA') return `TURMOB ${efaturaChannelTitle}`;
+    return p?.label || p?.provider || 'Entegrator';
+  };
   const efaturaStatusTone = efaturaStatusRows.some((p) => String(p?.status || '').toUpperCase() === 'FAILED')
     ? 'bad'
     : efaturaStatusRows.some((p) => Number(p?.fetched || 0) === 0)
@@ -1559,7 +1569,7 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
           </div>
           <div className="sourcebar">
             <div>
-              <b>{activeEfaturaProvider?.label || activeEfaturaProvider?.provider || 'Entegrator yok'}</b>
+              <b>{efaturaProviderLabel(activeEfaturaProvider) || 'Entegrator yok'}</b>
               <span>{providerConnected(activeEfaturaProvider) ? 'Kimlik bilgisi hazir' : 'Entegratorler ekranindan sifre tanimlanmali'}</span>
             </div>
             <button className="btn sm fetch" disabled={!taxpayerId || !providerConnected(activeEfaturaProvider) || efaturaFetchMut.isPending || efaturaImportMut.isPending} onClick={() => efaturaFetchMut.mutate({ provider: activeEfaturaProvider.provider })}>
@@ -1574,7 +1584,7 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
               <b>Son sorgu</b>
               {efaturaStatusRows.map((p, i) => (
                 <span key={`${p?.provider || i}-${i}`}>
-                  {(p?.label || p?.provider || 'Entegrator')}: {efaturaStatusText(p)}
+                  {efaturaProviderLabel(p)}: {efaturaStatusText(p)}
                 </span>
               ))}
             </div>
@@ -1617,7 +1627,7 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
                   );
                 })}
                 {!efaturaRows.length && (
-                  <tr><td colSpan={8} className="emptyrow">{taxpayerId ? 'Bu yönde e-Fatura sorgu satırı yok. Entegratör satırından Sorgula ile getir.' : 'Önce mükellef seç.'}</td></tr>
+                  <tr><td colSpan={8} className="emptyrow">{taxpayerId ? `Bu yönde ${efaturaChannelTitle} sorgu satırı yok. Entegratör satırından Sorgula ile getir.` : 'Önce mükellef seç.'}</td></tr>
                 )}
               </tbody>
             </table>
