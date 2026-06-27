@@ -1429,9 +1429,13 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
     return Boolean(r?.hasAccountingDocument || r?.processedAt || r?.isTransferred || r?.documentId);
   };
   const efaturaTransferableRows = efaturaRows.filter((r) => !efaturaIsTransferred(r) && efaturaDocumentReady(r));
+  const efaturaTransferableIds = efaturaTransferableRows.map((r) => String(r.id || '').trim()).filter(Boolean);
+  const efaturaSelectedIds = [...sel].filter((id) => efaturaTransferableIds.includes(id));
+  const toggleEfaturaAll = () => setSel(() => efaturaSelectedIds.length === efaturaTransferableIds.length ? new Set() : new Set(efaturaTransferableIds));
   useEffect(() => {
     setLastEfaturaSync(null);
-  }, [taxpayerId, period, efaturaChannel]);
+    setSel(new Set());
+  }, [source, taxpayerId, period, efaturaChannel]);
   const efaturaFetchMut = useMutation({
     mutationFn: (v: { provider: string }) => api.post('/fatura-muhasebelestirme/efatura-sync', {
       taxpayerId,
@@ -1463,6 +1467,7 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
       direction: efaturaDirection,
       channel: efaturaChannel,
       period,
+      ids: efaturaSelectedIds.length ? efaturaSelectedIds : efaturaTransferableIds,
       limit: 500,
     }),
     onSuccess: (r: any) => {
@@ -1471,6 +1476,7 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
       const failed = Number(r?.data?.failed || 0);
       if (failed > 0) toast.warning(`${imported} fatura aktarildi, ${failed} fatura belge indirilemedigi icin atlandi.`);
       else toast.success(imported > 0 ? `${imported} fatura bekleyen listeye aktarildi.` : `${processed} fatura kontrol edildi; yeni aktarim yok.`);
+      setSel(new Set());
       qc.invalidateQueries({ queryKey: ['fm-efatura-inbox'] });
       qc.invalidateQueries({ queryKey: ['fm2'] });
     },
@@ -1587,7 +1593,7 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
               <Ico html={I.sync} size={13} /> {efaturaFetchMut.isPending ? 'Sorgulaniyor...' : 'Sorgula'}
             </button>
             <button className="btn sm primary" disabled={!taxpayerId || efaturaImportMut.isPending || efaturaFetchMut.isPending || efaturaTransferableRows.length === 0} onClick={() => efaturaImportMut.mutate()}>
-              <Ico html={I.download} size={13} /> {efaturaImportMut.isPending ? 'Aktariliyor...' : `${efaturaTransferableRows.length} faturayi aktar`}
+              <Ico html={I.download} size={13} /> {efaturaImportMut.isPending ? 'Aktariliyor...' : `${efaturaSelectedIds.length ? efaturaSelectedIds.length : efaturaTransferableRows.length} faturayi aktar`}
             </button>
           </div>
           {efaturaStatusRows.length > 0 && (
@@ -1610,6 +1616,7 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
             <table className="sourcetable">
               <thead>
                 <tr>
+                  <th><Check checked={efaturaTransferableIds.length > 0 && efaturaSelectedIds.length === efaturaTransferableIds.length} onToggle={toggleEfaturaAll} /></th>
                   <th>Entegratör</th><th>Unvan</th><th>VKN/TCKN</th><th>Belge No</th><th>Tarih</th><th>Tür</th><th>Onay</th><th>Aktarım</th>
                 </tr>
               </thead>
@@ -1620,8 +1627,11 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
                   const taxNo = efaturaDirection === 'OUT' ? (r.receiverVkn || raw.receiverVkn || raw.aliciVergiNo) : (r.senderVkn || raw.senderVkn || raw.saticiVergiNo);
                   const approval = raw.onayDurumu || raw.approvalStatus || raw.status || raw.invoiceStatus || '—';
                   const transferred = efaturaIsTransferred(r);
+                  const transferable = !transferred && efaturaDocumentReady(r);
+                  const rowId = String(r.id || '').trim();
                   return (
                     <tr key={r.id} className={transferred ? 'done' : ''}>
+                      <td>{transferable && rowId ? <Check checked={sel.has(rowId)} onToggle={() => toggle(rowId)} /> : null}</td>
                       <td>{r.entegrator}</td>
                       <td className="partyname">{title || '—'}</td>
                       <td>{taxNo || '—'}</td>
@@ -1638,7 +1648,7 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
                   );
                 })}
                 {!efaturaRows.length && (
-                  <tr><td colSpan={8} className="emptyrow">{taxpayerId ? `Bu yönde ${efaturaChannelTitle} sorgu satırı yok. Entegratör satırından Sorgula ile getir.` : 'Önce mükellef seç.'}</td></tr>
+                  <tr><td colSpan={9} className="emptyrow">{taxpayerId ? `Bu yönde ${efaturaChannelTitle} sorgu satırı yok. Entegratör satırından Sorgula ile getir.` : 'Önce mükellef seç.'}</td></tr>
                 )}
               </tbody>
             </table>
