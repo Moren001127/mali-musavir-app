@@ -1298,6 +1298,7 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
   });
   const rows: any[] = Array.isArray(earsivQ.data) ? earsivQ.data : [];
   const activeJob = (jobsQ.data || []).find((j: any) => ['pending', 'running'].includes(String(j.status || '').toLowerCase()));
+  const waitForFirstRows = !!activeJob && rows.length === 0;
   const lastJob = (jobsQ.data || [])[0];
   useEffect(() => {
     if (source !== 'earsiv' || !taxpayerId) return;
@@ -1367,6 +1368,7 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
     },
     onError: (e: any) => toast.error('Aktarım başlatılamadı: ' + (e?.response?.data?.message || e?.message || 'hata')),
   });
+  const earsivBusy = sorgulaMut.isPending || aktarMut.isPending || waitForFirstRows;
   const syncMut = useMutation({
     mutationFn: () => api.post('/portal-automation/earsiv/accounting-sync', { taxpayerId, period }),
     onSuccess: (r: any) => {
@@ -1407,20 +1409,20 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
       <div className="sub">{source === 'earsiv' ? 'Firmaların GIB e-Arşiv portalda kestiği satış faturaları burada sorgulanır.' : 'TÜRMOB, e-Logo, Uyumsoft ve diğer e-Fatura entegratörleri bu ekranda ayrı izlenir.'}</div>
 
       {source === 'earsiv' ? (
-        <div className={`card sourcepanel ${(sorgulaMut.isPending || aktarMut.isPending || !!activeJob) ? 'isbusy' : ''}`}>
+        <div className={`card sourcepanel ${earsivBusy ? 'isbusy' : ''}`}>
           <div className="ch sourcehead">
             <h3>GİB e-Arşiv satış sorgusu</h3>
-            <span className="mu">{activeJob ? 'Sorgu/aktarım çalışıyor' : lastJob ? `Son iş: ${lastJob.status} · ${fmtDate(lastJob.updatedAt || lastJob.createdAt)}` : 'Henüz sorgu yok'}</span>
+            <span className="mu">{waitForFirstRows ? 'Sorgu/aktarım çalışıyor' : lastJob ? `Son iş: ${lastJob.status} · ${fmtDate(lastJob.updatedAt || lastJob.createdAt)}` : 'Henüz sorgu yok'}</span>
             <div className="sp" />
-            <button className="btn sm fetch" disabled={!taxpayerId || sorgulaMut.isPending || !!activeJob} onClick={() => sorgulaMut.mutate()}><Ico html={I.sync} size={13} /> {sorgulaMut.isPending ? 'Sorgulanıyor…' : 'Sorgula'}</button>
-            <button className="btn sm primary" disabled={!taxpayerId || aktarMut.isPending || !!activeJob || processable.length === 0} onClick={() => aktarMut.mutate()}><Ico html={I.download} size={13} /> {aktarMut.isPending ? 'Aktarılıyor…' : `${selectedRefs.length ? selectedRefs.length : processable.length} faturayı aktar`}</button>
+            <button className="btn sm fetch" disabled={!taxpayerId || sorgulaMut.isPending || waitForFirstRows} onClick={() => sorgulaMut.mutate()}><Ico html={I.sync} size={13} /> {sorgulaMut.isPending ? 'Sorgulanıyor…' : 'Sorgula'}</button>
+            <button className="btn sm primary" disabled={!taxpayerId || aktarMut.isPending || waitForFirstRows || processable.length === 0} onClick={() => aktarMut.mutate()}><Ico html={I.download} size={13} /> {aktarMut.isPending ? 'Aktarılıyor…' : `${selectedRefs.length ? selectedRefs.length : processable.length} faturayı aktar`}</button>
             <button className="btn sm ghost" disabled={!taxpayerId || syncMut.isPending || rows.length === 0} onClick={() => syncMut.mutate()}><Ico html={I.checkSm} size={13} /> Durumu eşitle</button>
           </div>
           <div className="sourcehint">İptal, itirazlı veya reddedilmiş faturalar tabloda görünür ama aktarıma alınmaz.</div>
           <div className="sourcetablewrap">
-            {(sorgulaMut.isPending || aktarMut.isPending || !!activeJob) && (
+            {earsivBusy && (
               <div className="queryveil">
-                <div className="queryicon"><Ico html={aktarMut.isPending ? I.download : I.sync} size={24} /></div>
+                <div className="querydoc" aria-hidden="true"><span /><i /><i /><i /></div>
                 <b>{aktarMut.isPending ? 'Faturalar aktariliyor...' : 'Faturalar getiriliyor...'}</b>
               </div>
             )}
@@ -1483,7 +1485,7 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
           <div className="sourcetablewrap efatura">
             {efaturaFetchMut.isPending && (
               <div className="queryveil">
-                <div className="queryicon"><Ico html={I.sync} size={24} /></div>
+                <div className="querydoc" aria-hidden="true"><span /><i /><i /><i /></div>
                 <b>Faturalar getiriliyor...</b>
               </div>
             )}
@@ -3970,12 +3972,16 @@ const CSS = `
 #fm-root .transferstate .okico{border:1px solid #bbf7d0;background:#ecfdf5;color:#16a34a}
 #fm-root .sourcetable tr.blocked td{color:#9a5c5c;background:#fffafa}
 #fm-root .sourcetable tr.done td{background:#f8fdfb}
-#fm-root .sourcepanel.isbusy .sourcetable,#fm-root .sourcepanel.isbusy .providergrid{opacity:.28;filter:blur(.6px);pointer-events:none}
-#fm-root .queryveil{position:absolute;inset:0;z-index:8;display:grid;place-items:center;background:rgba(255,255,255,.55);backdrop-filter:blur(1.5px);text-align:center;color:#1f7a68}
-#fm-root .queryveil b{display:block;margin-top:10px;font-size:14px;font-weight:650;color:#1f7a68}
-#fm-root .queryicon{width:54px;height:54px;border-radius:18px;display:grid;place-items:center;background:rgba(31,122,104,.08);color:#1f7a68;box-shadow:0 12px 30px rgba(31,122,104,.12)}
-#fm-root .queryicon .ico{animation:fmspin 1s linear infinite}
-@keyframes fmspin{to{transform:rotate(360deg)}}
+#fm-root .sourcepanel.isbusy .sourcetable,#fm-root .sourcepanel.isbusy .providergrid{opacity:.22;filter:blur(.8px);pointer-events:none}
+#fm-root .queryveil{position:absolute;inset:0;z-index:8;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:rgba(255,255,255,.72);backdrop-filter:blur(1.5px);text-align:center;color:#1f7a68}
+#fm-root .queryveil b{display:block;margin:0;font-size:13.5px;font-weight:650;line-height:1.25;color:#1f7a68}
+#fm-root .querydoc{position:relative;width:54px;height:64px;border:2px solid rgba(31,122,104,.45);border-radius:12px;background:linear-gradient(180deg,#fff,#f4fbf8);box-shadow:0 14px 34px rgba(31,122,104,.12)}
+#fm-root .querydoc span{position:absolute;left:14px;right:14px;top:18px;height:3px;border-radius:999px;background:rgba(31,122,104,.22);box-shadow:0 11px 0 rgba(31,122,104,.18),0 22px 0 rgba(31,122,104,.14)}
+#fm-root .querydoc i{position:absolute;bottom:10px;width:8px;height:8px;border-radius:999px;background:#1f7a68;opacity:.35;animation:fmDot 1.05s ease-in-out infinite}
+#fm-root .querydoc i:nth-of-type(1){left:15px;animation-delay:0s}
+#fm-root .querydoc i:nth-of-type(2){left:24px;animation-delay:.14s}
+#fm-root .querydoc i:nth-of-type(3){left:33px;animation-delay:.28s}
+@keyframes fmDot{0%,80%,100%{transform:translateY(0);opacity:.28}40%{transform:translateY(-5px);opacity:1}}
 #fm-root .emptyrow{text-align:center;color:#94a3b8;padding:22px!important}
 #fm-root .providergrid{display:grid;gap:8px;padding:12px}
 #fm-root .providerrow{display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid #e5e7eb;border-radius:9px;padding:10px 12px;background:#fff}
