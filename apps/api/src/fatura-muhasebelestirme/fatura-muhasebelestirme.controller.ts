@@ -15,7 +15,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
-import { FilesInterceptor } from '@nestjs/platform-express';
+import { AnyFilesInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { FaturaMuhasebelestirmeService } from './fatura-muhasebelestirme.service';
 import { IcerikEslestirmeService } from './icerik-eslestirme.service';
@@ -23,9 +23,9 @@ import { EFaturaSyncService } from '../efatura-adapters/efatura-sync.service';
 import { PortalAutomationRailwayRunnerService } from '../portal-automation/portal-automation-railway-runner.service';
 
 const documentUploadInterceptor = () =>
-  FilesInterceptor('files', 100, {
+  AnyFilesInterceptor({
     storage: memoryStorage(),
-    limits: { fileSize: 25 * 1024 * 1024 },
+    limits: { files: 100, fileSize: 25 * 1024 * 1024 },
     // Tarayicilar bazi JPEG/PDF/ZIP dosyalarini application/octet-stream gonderebiliyor.
     // Dosya tipi denetimini buffer geldikten sonra serviste magic-byte ile yapiyoruz.
     fileFilter: (_req, _file, cb) => cb(null, true),

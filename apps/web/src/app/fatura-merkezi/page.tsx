@@ -1287,6 +1287,7 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
   const qc = useQueryClient();
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [efaturaChannel, setEfaturaChannel] = useState<'IN_EFATURA' | 'OUT_EFATURA' | 'OUT_EARSIV'>('IN_EFATURA');
+  const [lastEfaturaSync, setLastEfaturaSync] = useState<any>(null);
   const efaturaDirection: 'IN' | 'OUT' = efaturaChannel === 'IN_EFATURA' ? 'IN' : 'OUT';
   const earsivQ = useQuery({
     queryKey: ['fm-earsiv-sorgu', taxpayerId, period],
@@ -1387,7 +1388,7 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
     },
     onError: (e: any) => toast.error('Aktarım başlatılamadı: ' + (e?.response?.data?.message || e?.message || 'hata')),
   });
-  const earsivOverlayBusy = aktarMut.isPending || (waitForFirstRows && rows.length === 0) || (sorgulaMut.isPending && rows.length === 0);
+  const earsivOverlayBusy = rows.length === 0 && (aktarMut.isPending || waitForFirstRows || sorgulaMut.isPending);
   const syncMut = useMutation({
     mutationFn: () => api.post('/portal-automation/earsiv/accounting-sync', { taxpayerId, period }),
     onSuccess: (r: any) => {
@@ -1412,6 +1413,9 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
   });
   const efaturaRows: any[] = Array.isArray(efaturaInboxQ.data) ? efaturaInboxQ.data : [];
   const efaturaTransferableRows = efaturaRows.filter((r) => !(r.processedAt || r.isTransferred || r.documentId));
+  useEffect(() => {
+    setLastEfaturaSync(null);
+  }, [taxpayerId, period, efaturaChannel]);
   const efaturaFetchMut = useMutation({
     mutationFn: (v: { provider: string }) => api.post('/fatura-muhasebelestirme/efatura-sync', {
       taxpayerId,
@@ -1422,12 +1426,20 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
       limit: 500,
     }),
     onSuccess: (r: any) => {
+      setLastEfaturaSync(r?.data || null);
       showFetchResult(r?.data);
       qc.invalidateQueries({ queryKey: ['fm-efatura-inbox'] });
       qc.invalidateQueries({ queryKey: ['fm2'] });
     },
     onError: (e: any) => toast.error('e-Fatura sorgusu başlatılamadı: ' + (e?.response?.data?.message || e?.message || 'hata')),
   });
+
+  useEffect(() => {
+    const e: any = efaturaFetchMut.error;
+    if (!e) return;
+    const msg = e?.response?.data?.message || e?.message || 'hata';
+    setLastEfaturaSync({ failed: 1, providers: [{ provider: activeEfaturaProvider?.provider || 'TURMOB_EFATURA', label: activeEfaturaProvider?.label || 'TURMOB e-Fatura', status: 'FAILED', reason: msg }] });
+  }, [efaturaFetchMut.error, activeEfaturaProvider?.provider, activeEfaturaProvider?.label]);
 
   const efaturaImportMut = useMutation({
     mutationFn: () => api.post('/fatura-muhasebelestirme/efatura-inbox/import', {
@@ -1446,6 +1458,24 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
     },
     onError: (e: any) => toast.error('e-Fatura aktarimi baslatilamadi: ' + (e?.response?.data?.message || e?.message || 'hata')),
   });
+  const efaturaStatusRows: any[] = Array.isArray(lastEfaturaSync?.providers) ? lastEfaturaSync.providers : [];
+  const efaturaStatusTone = efaturaStatusRows.some((p) => String(p?.status || '').toUpperCase() === 'FAILED')
+    ? 'bad'
+    : efaturaStatusRows.some((p) => Number(p?.fetched || 0) === 0)
+      ? 'warn'
+      : 'ok';
+  const efaturaStatusText = (p: any) => {
+    const st = String(p?.status || '').toUpperCase();
+    if (st === 'FAILED') return p?.reason || 'Sorgu hatasi';
+    if (st === 'SKIPPED') return p?.reason || 'Atlandi';
+    const parts = [
+      `${Number(p?.fetched || 0)} bulundu`,
+      `${Number(p?.added || 0)} yeni`,
+      `${Number(p?.updated || 0)} guncel`,
+      Number(p?.skipped || 0) ? `${Number(p.skipped)} atlandi` : null,
+    ].filter(Boolean);
+    return parts.join(' · ');
+  };
 
   return (
     <section className="screen sorgu-screen">
@@ -1525,6 +1555,16 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
               <Ico html={I.download} size={13} /> {efaturaImportMut.isPending ? 'Aktariliyor...' : `${efaturaTransferableRows.length} faturayi aktar`}
             </button>
           </div>
+          {efaturaStatusRows.length > 0 && (
+            <div className={`providerdiag ${efaturaStatusTone}`}>
+              <b>Son sorgu</b>
+              {efaturaStatusRows.map((p, i) => (
+                <span key={`${p?.provider || i}-${i}`}>
+                  {(p?.label || p?.provider || 'Entegrator')}: {efaturaStatusText(p)}
+                </span>
+              ))}
+            </div>
+          )}
           <div className="sourcetablewrap efatura">
             {(efaturaImportMut.isPending || (efaturaFetchMut.isPending && efaturaRows.length === 0)) && (
               <div className="queryveil">
@@ -4026,6 +4066,12 @@ const CSS = `
 #fm-root .sourcebar > div:first-child{min-width:0;margin-right:auto}
 #fm-root .sourcebar b{display:block;font-size:13px;color:#17212f;font-weight:650}
 #fm-root .sourcebar span{display:block;margin-top:2px;font-size:11.5px;color:#64748b}
+#fm-root .providerdiag{display:flex;align-items:center;gap:9px;min-height:34px;padding:7px 14px;border-top:1px solid #edf2f7;border-bottom:1px solid #e5e7eb;background:#f8fafc;color:#475569;font-size:11.5px;overflow:hidden}
+#fm-root .providerdiag b{color:#17212f;font-size:12px;white-space:nowrap}
+#fm-root .providerdiag span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#fm-root .providerdiag.ok{background:#f0fdf4;color:#166534}
+#fm-root .providerdiag.warn{background:#fff7ed;color:#9a3412}
+#fm-root .providerdiag.bad{background:#fff1f2;color:#b91c1c}
 #fm-root .providergrid{display:grid;gap:8px;padding:12px}
 #fm-root .providerrow{display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid #e5e7eb;border-radius:9px;padding:10px 12px;background:#fff}
 #fm-root .providerrow b{display:block;font-size:13px}

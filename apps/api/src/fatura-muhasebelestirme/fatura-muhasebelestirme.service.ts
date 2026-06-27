@@ -4025,6 +4025,20 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           content,
         };
       }
+      for (const file of ordered) {
+        const nested = Buffer.from(await file.async('uint8array'));
+        if (nested.length >= 4 && nested[0] === 0x50 && nested[1] === 0x4b) {
+          const nestedPayload = await this.extractStoredInvoiceViewPayload(nested, '');
+          if (nestedPayload) return nestedPayload;
+          continue;
+        }
+        const content = this.decodeXmlEntities(nested.toString('utf8')).trim();
+        if (!content) continue;
+        const jsonPayload = await this.extractInvoicePayloadFromJsonText(content);
+        if (jsonPayload) return jsonPayload;
+        if (/<html[\s>]/i.test(content.slice(0, 1000))) return { kind: 'html', content };
+        if (/<(?:\?xml|[A-Za-z0-9_.-]+:)?(?:Invoice|CreditNote)\b/i.test(content)) return { kind: 'xml', content };
+      }
 
       const payloads: ProviderInvoicePayload[] = [];
       await this.addPayloadBuffer(payloads, buffer);
@@ -5170,6 +5184,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     }
     if (!payloads.length && first === '<') {
       throw new Error('TURMOB oturumu liste ekranina gecemedi; portal login sayfasina geri dondu');
+    }
+    if (!payloads.length && rows.length === 0) {
+      const topKeys = JSON.stringify(Object.keys(data || {})).slice(0, 150);
+      const shape = first === '{' || first === '[' ? 'JSON bos liste' : first === '<' ? 'HTML/login' : 'bos/okunamayan cevap';
+      throw new Error(`TURMOB ${channel} fatura satiri dondurmedi (${shape}; url=${usedListUrl}; method=${usedMethod}; profil=${usedProfile}; ct=${ct.slice(0, 40) || '-'}; len=${raw.length}; keys=${topKeys || '-'})`);
     }
     if (!payloads.length && rows.length > 0) {
       throw new Error(`TURMOB liste ${rows.length} satir dondurdu ama XML/UBL indirme linki bulunamadi; response semasi loglandi`);
