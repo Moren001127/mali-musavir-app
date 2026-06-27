@@ -704,13 +704,6 @@ export default function FaturaMerkeziPage() {
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
               Portala Dön
             </a>
-            <div className="brandplate">
-              <div className="brandmark">FM</div>
-              <div className="brandcopy">
-                <div className="brandmod">Fatura Merkezi</div>
-                <div className="brandco">Oku · eşleştir · aktar</div>
-              </div>
-            </div>
             <div className="sidecontext">
               <div className="ctxlabel">Çalışma bağlamı</div>
               <label className="ctxfield">
@@ -3632,4 +3625,55 @@ const CSS = `
 #fm-root .btn.primary{background:#23665b;border-color:#23665b}
 #fm-root .invactions .btn.primary{background:rgba(35,102,91,.14);border-color:rgba(35,102,91,.28);color:#23665b}
 #fm-root[data-accent="slate"]{--accent:#23665b;--accent-soft:#edf7f3;--accent-line:#cde4dc;--th:#f2f7f3;--th-text:#315c52}
+
+/* Final sade beyaz duzen: tum moduller tutarli, muhasebe ekrani ferah */
+#fm-root{--bg:#fff;--side:#fff;--line:#e7ebef;--line2:#dbe2e8;--text:#1f2937;--muted:#64707a;--faint:#9aa3ad;--accent:#1f7a68;--accent-soft:#eef8f5;--accent-line:#cce6df;--th:#f6faf8;--th-text:#35564f;--blue:#3157d5;--green:#1f7a68;--amber:#c48a2a}
+#fm-root[data-accent="slate"]{--accent:#1f7a68;--accent-soft:#eef8f5;--accent-line:#cce6df;--th:#f6faf8;--th-text:#35564f}
+#fm-root .app,#fm-root .main,#fm-root .content,#fm-root .side,#fm-root .brand,#fm-root .top{background:#fff}
+#fm-root .app::before{background:linear-gradient(90deg,#1f7a68,#3b82f6,#c48a2a)}
+#fm-root .side{width:232px;border-right-color:#e5e7eb;box-shadow:none}
+#fm-root .brand{padding:10px 12px 12px;border-bottom:1px solid #e5e7eb}
+#fm-root .brandplate{display:none!important}
+#fm-root .backlink{height:24px;margin:0 0 8px;font-size:11px;color:#7b8490}
+#fm-root .sidecontext{display:block;margin:0;padding:10px;border:1px solid #e5e7eb;border-radius:10px;background:#fff;box-shadow:none}
+#fm-root .ctxlabel{font-size:10px;font-weight:650;text-transform:uppercase;letter-spacing:.32px;color:#7b8490;margin-bottom:8px}
+#fm-root .ctxfield{gap:4px;margin-top:8px}
+#fm-root .ctxfield span{font-size:9.5px;font-weight:650;color:#8a939d}
+#fm-root .ctxfield select{height:34px;border:1px solid #dbe2e8;border-radius:7px;background:#fff;font-size:12px;font-weight:600;padding:0 8px}
+#fm-root .topfiltbar{display:none!important}
+#fm-root .top{height:38px;min-height:38px;padding:0 18px;border-bottom:1px solid #eef1f4;align-items:center;box-shadow:none;backdrop-filter:none}
+#fm-root .crumb{font-size:12px}
+#fm-root .content{padding:14px 18px}
+#fm-root .card{background:#fff;border-color:#e5e7eb;box-shadow:none}
+#fm-root .card .ch{background:#fff;border-bottom-color:#e5e7eb}
+#fm-root table{background:#fff}
+#fm-root thead th{background:#f6faf8;color:#35564f}
+#fm-root tbody td{border-bottom-color:#eef1f4}
+#fm-root .planwrap{max-height:calc(100vh - 152px)}
+#fm-root .planwrap thead th{background:#f6faf8}
+#fm-root .screen > .fmstats{background:#fff}
+#fm-root .screen > .fmstats .fmstat{background:#fff}
+#fm-root .invcard{background:#fff;border-color:#e5e7eb}
+#fm-root .invactions{background:#fff;border-bottom-color:#e5e7eb}
+#fm-root .screen-muhasebe .top{display:none}
+#fm-root .screen-muhasebe .content{padding:8px 12px;background:#fff}
+#fm-root .screen-muhasebe .muhcard{height:calc(100vh - 16px);min-height:0;background:#fff}
+#fm-root .screen-muhasebe .muhmain .fiseditor{gap:10px;align-items:stretch}
+#fm-root .screen-muhasebe .muhmain .belgebox,
+#fm-root .screen-muhasebe .muhmain .belgebox .bpview,
+#fm-root .screen-muhasebe .muhmain .fispane{background:#fff}
+#fm-root .screen-muhasebe .muhmain .belgebox .bpbar{background:#fff;border-bottom-color:#e5e7eb}
+#fm-root .screen-muhasebe .muhmain .belgebox .bpview{padding:6px}
+#fm-root .screen-muhasebe .muhmain .belgebox .bpframe-h,
+#fm-root .screen-muhasebe .muhmain .belgebox .bpimg{background:#fff;box-shadow:none}
+#fm-root .screen-muhasebe .muhmain .fispane{flex:0 0 430px;max-width:430px;min-width:398px;height:100%;padding-left:10px;overflow:auto}
+#fm-root .muhmain .fispane > .ph{background:#fff;border-bottom-color:#e5e7eb;padding:7px 0}
+#fm-root .muhmain .docmeta{margin:7px 0;padding:8px;background:#fff;border-color:#e5e7eb;gap:7px}
+#fm-root .muhmain .docmeta .dmi,#fm-root .muhmain .docmeta .psel .pselfield{height:29px;font-size:12.5px;background:#fff;border-color:#dbe2e8}
+#fm-root .muhmain .fgrp{background:#fff;border-color:#e5e7eb;border-radius:6px}
+#fm-root .muhmain .fgrp .fgh{padding:6px 9px;background:#f6faf8}
+#fm-root .muhmain .fgrp .frow{padding:5px 8px;gap:6px}
+#fm-root .muhmain .fgrp .fgt{padding:5px 9px}
+#fm-root .muhmain .balance{margin:8px 0 0;padding:8px 11px;background:#ecfdf5;border-color:#bbf7d0}
+#fm-root .muhmain .fispane > .wactions{position:sticky;bottom:0;margin-top:8px;padding:8px 0 0;background:linear-gradient(180deg,rgba(255,255,255,0),#fff 35%);min-height:40px}
 `;
