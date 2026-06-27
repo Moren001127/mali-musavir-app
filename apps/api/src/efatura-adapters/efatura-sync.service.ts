@@ -128,14 +128,14 @@ export class EFaturaSyncService {
     const take = opts.channel ? Math.min(limit * 3, 3000) : limit;
     const rows = await (this.prisma as any).eFaturaInbox.findMany({
       where,
-      orderBy: { createdAt: 'desc' },
+      orderBy: { syncedAt: 'desc' },
       take,
       select: {
         id: true, entegrator: true, uuid: true, faturaNo: true, faturaDate: true,
         senderVkn: true, senderTitle: true, receiverVkn: true,
         matrah: true, kdv: true, toplam: true, paraBirimi: true,
         direction: true, invoiceProfile: true, isTransferred: true, documentId: true,
-        rawJson: true, markedAt: true, processedAt: true, createdAt: true,
+        rawJson: true, markedAt: true, processedAt: true, syncedAt: true,
       },
     });
     const channel = String(opts.channel || '').toUpperCase();
