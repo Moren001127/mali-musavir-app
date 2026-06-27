@@ -2207,37 +2207,89 @@ export class PortalAutomationService {
     };
   }
 
-  private async parseEarsivPayloadBase64(base64?: string | null) {
-    const clean = cleanBase64(base64);
-    if (!clean) return {} as any;
-    const buffer = Buffer.from(clean, 'base64');
-    if (!buffer.length || buffer[0] === 0x25) return {} as any;
-    let text = buffer.toString('utf8');
+  private async extractEarsivPayloadText(buffer: Buffer, depth = 0): Promise<string | null> {
+    if (!buffer.length || depth > 5) return null;
+    if (buffer[0] === 0x25) return null; // PDF: structured total extraction is not reliable here.
     if (buffer[0] === 0x50 && buffer[1] === 0x4b) {
       try {
         const zip = await JSZip.loadAsync(buffer);
         const entries = Object.values(zip.files)
           .filter((entry) => !entry.dir)
           .sort((a, b) => {
-            const aw = /\.(xml|ubl)$/i.test(a.name) ? 0 : /\.html?$/i.test(a.name) ? 1 : 2;
-            const bw = /\.(xml|ubl)$/i.test(b.name) ? 0 : /\.html?$/i.test(b.name) ? 1 : 2;
-            return aw - bw;
+            const rank = (name: string) => /\.(xml|ubl)$/i.test(name) ? 0 : /\.(html?|xhtml)$/i.test(name) ? 1 : /\.json$/i.test(name) ? 2 : 3;
+            return rank(a.name || '') - rank(b.name || '');
           });
         for (const entry of entries) {
-          if (!/\.(xml|ubl|html?)$/i.test(entry.name)) continue;
-          const candidate = await entry.async('string');
-          if (candidate && candidate.length > 20) {
-            text = candidate;
-            break;
+          const name = entry.name || '';
+          const nested = Buffer.from(await entry.async('uint8array'));
+          if (!nested.length) continue;
+          if (nested[0] === 0x50 && nested[1] === 0x4b) {
+            const inner = await this.extractEarsivPayloadText(nested, depth + 1).catch(() => null);
+            if (inner) return inner;
+            continue;
+          }
+          const candidate = this.htmlDecode(nested.toString('utf8')).trim();
+          if (/\.(xml|ubl|html?|xhtml)$/i.test(name) && candidate.length > 20) return candidate;
+          if (/\.json$/i.test(name) || /^[\[{]/.test(candidate)) {
+            const embedded = await this.extractEarsivInvoiceTextFromJson(candidate);
+            if (embedded) return embedded;
+          }
+          const compact = candidate.replace(/^data:[^;]+;base64,/, '').replace(/\s+/g, '');
+          if (/^[A-Za-z0-9+/]+={0,2}$/.test(compact) && compact.length > 120) {
+            const decoded = await this.extractEarsivPayloadText(Buffer.from(compact, 'base64'), depth + 1).catch(() => null);
+            if (decoded) return decoded;
           }
         }
       } catch {
-        return {} as any;
+        return null;
       }
+      return null;
     }
+
+    const text = this.htmlDecode(buffer.toString('utf8')).trim();
+    if (!text || text.length < 20) return null;
+    const embeddedInvoice = await this.extractEarsivInvoiceTextFromJson(text);
+    if (embeddedInvoice) return embeddedInvoice;
+    return text;
+  }
+
+  private parseEarsivPortalHtmlTotals(html: string) {
+    if (!html || !/malHizmetKDV\(|hesaplananKDV\(|vergidahil|odenecek/i.test(html)) return null;
+    const matrahByRate: Record<string, number> = {};
+    const kdvByRate: Record<string, number> = {};
+    for (const m of html.matchAll(/malHizmetKDV\((\d+(?:[.,]\d+)?)\)['"]?\s*:\s*['"]?([\d.,]+)/gi)) {
+      const rate = m[1].replace(',', '.');
+      const value = this.parseEarsivMoney(m[2]);
+      if (value != null) matrahByRate[rate] = (matrahByRate[rate] || 0) + value;
+    }
+    for (const m of html.matchAll(/hesaplananKDV\((\d+(?:[.,]\d+)?)\)['"]?\s*:\s*['"]?([\d.,]+)/gi)) {
+      const rate = m[1].replace(',', '.');
+      const value = this.parseEarsivMoney(m[2]);
+      if (value != null) kdvByRate[rate] = (kdvByRate[rate] || 0) + value;
+    }
+    const rates = Array.from(new Set([...Object.keys(matrahByRate), ...Object.keys(kdvByRate)]));
+    const matrah = this.roundMoney(rates.reduce((sum, rate) => sum + (matrahByRate[rate] || 0), 0));
+    const kdvTutari = this.roundMoney(rates.reduce((sum, rate) => sum + (kdvByRate[rate] || 0), 0));
+    const totalMatch = html.match(/(?:vergidahil|odenecek)['"]?\s*:\s*['"]?([\d.,]+)/i);
+    const total = this.parseEarsivMoney(totalMatch?.[1]) ?? (matrah || kdvTutari ? this.roundMoney(matrah + kdvTutari) : null);
+    if (!total && !matrah && !kdvTutari) return null;
+    return {
+      matrah: matrah || null,
+      kdvTutari: kdvTutari || null,
+      total,
+      kdvOrani: rates.length === 1 ? rates[0] : null,
+    };
+  }
+
+  private async parseEarsivPayloadBase64(base64?: string | null) {
+    const clean = cleanBase64(base64);
+    if (!clean) return {} as any;
+    const buffer = Buffer.from(clean, 'base64');
+    let text = await this.extractEarsivPayloadText(buffer).catch(() => null);
     if (!text || text.length < 20) return {} as any;
     const embeddedInvoice = await this.extractEarsivInvoiceTextFromJson(text);
     if (embeddedInvoice) text = embeddedInvoice;
+    const htmlTotals = this.parseEarsivPortalHtmlTotals(text);
 
     const stripBlocks = (src: string, tag: string) =>
       src.replace(new RegExp(`<[^:>]*(?::)?${tag}\\b[\\s\\S]*?<\\/[^:>]*(?::)?${tag}>`, 'gi'), ' ');
@@ -2256,6 +2308,16 @@ export class PortalAutomationService {
     const monetary = xmlInvoiceOnly.match(/<[^:>]*(?::)?LegalMonetaryTotal\b[\s\S]*?<\/[^:>]*(?::)?LegalMonetaryTotal>/i)?.[0] || xmlInvoiceOnly;
     const taxTotal = xmlTaxOnly.match(/<[^:>]*(?::)?TaxTotal\b[\s\S]*?<\/[^:>]*(?::)?TaxTotal>/i)?.[0] || xmlTaxOnly;
     const taxSubtotal = taxTotal.match(/<[^:>]*(?::)?TaxSubtotal\b[\s\S]*?<\/[^:>]*(?::)?TaxSubtotal>/i)?.[0] || taxTotal;
+    const taxSubtotalBlocks = Array.from(taxTotal.matchAll(/<[^:>]*(?::)?TaxSubtotal\b[\s\S]*?<\/[^:>]*(?::)?TaxSubtotal>/gi)).map((m) => m[0]);
+    const taxBreakdown = taxSubtotalBlocks
+      .map((block) => ({
+        base: amountTag(block, 'TaxableAmount'),
+        amount: amountTag(block, 'TaxAmount'),
+        rate: Number(String(textTag(block, 'Percent') || '').replace(',', '.')),
+      }))
+      .filter((item) => (item.base != null || item.amount != null) && Number.isFinite(item.rate));
+    const breakdownMatrah = taxBreakdown.length ? this.roundMoney(taxBreakdown.reduce((sum, item) => sum + Number(item.base || 0), 0)) : null;
+    const breakdownKdv = taxBreakdown.length ? this.roundMoney(taxBreakdown.reduce((sum, item) => sum + Number(item.amount || 0), 0)) : null;
 
     const plain = this.htmlDecode(text)
       .replace(/<script\b[\s\S]*?<\/script>/gi, ' ')
@@ -2275,13 +2337,18 @@ export class PortalAutomationService {
 
     const matrah = amountTag(monetary, 'TaxExclusiveAmount')
       ?? amountTag(monetary, 'LineExtensionAmount')
+      ?? htmlTotals?.matrah
+      ?? breakdownMatrah
       ?? labelMoney([/mal\s*hizmet\s*toplam\s*tutar/i, /kdv\s*matrah/i, /matrah/i]);
     const kdvTutari = amountTag(taxTotal, 'TaxAmount')
+      ?? htmlTotals?.kdvTutari
+      ?? breakdownKdv
       ?? labelMoney([/hesaplanan\s*kdv/i, /kdv\s*tutar/i, /toplam\s*kdv/i]);
     const total = amountTag(monetary, 'PayableAmount')
       ?? amountTag(monetary, 'TaxInclusiveAmount')
+      ?? htmlTotals?.total
       ?? labelMoney([/(?:o|ö)denecek\s*tutar/i, /vergiler\s*dahil\s*toplam\s*tutar/i, /genel\s*toplam/i]);
-    const kdvOrani = textTag(taxSubtotal, 'Percent') || (plain.match(/KDV\s*Oran[^\d]{0,20}(\d{1,2}(?:[.,]\d+)?)/i)?.[1] || null);
+    const kdvOrani = textTag(taxSubtotal, 'Percent') || htmlTotals?.kdvOrani || (plain.match(/KDV\s*Oran[^\d]{0,20}(\d{1,2}(?:[.,]\d+)?)/i)?.[1] || null);
     const belgeNo = textTag(xmlInvoiceOnly, 'ID') || null;
     const ettn = textTag(xmlInvoiceOnly, 'UUID') || null;
     const issueDate = textTag(xmlInvoiceOnly, 'IssueDate') || null;

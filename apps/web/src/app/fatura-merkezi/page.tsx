@@ -888,15 +888,15 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
   // Manuel belge yükleme (JPEG/PDF/XML/ZIP) — OCR arka planda işler
   const fileRef = useRef<HTMLInputElement>(null);
   const uploadMut = useMutation({
-    mutationFn: async (files: FileList) => {
+    mutationFn: async (files: File[]) => {
       const fd = new FormData();
-      Array.from(files).forEach((f) => fd.append('files', f));
+      files.forEach((f) => fd.append('files', f, f.name || 'belge'));
       fd.append('taxpayerId', taxpayerId);
       fd.append('source', 'fatura-merkezi');
       fd.append('documentType', kind === 'SATIS' ? 'SATIS_FATURA' : 'ALIS_FATURA');
       fd.append('invoiceKind', kind);
       fd.append('period', period);
-      return api.post('/fatura-muhasebelestirme/documents/upload', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      return api.post('/fatura-muhasebelestirme/documents/upload', fd);
     },
     onSuccess: (r: any) => {
       const n = Array.isArray(r?.data) ? r.data.length : (r?.data?.uploaded ?? r?.data?.count ?? r?.data?.created ?? null);
@@ -1068,7 +1068,7 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
         <div className="ch invactions">
           <h3>{docsQ.isLoading ? 'Yükleniyor…' : `${docs.length} belge`}</h3><div className="sp" />
           <button className="btn sm blue" disabled={!taxpayerId || mihsapMut.isPending} onClick={() => mihsapMut.mutate()} title={!taxpayerId ? 'Önce mükellef seç' : "Mihsap 'bekleyen evraklar'daki faturaları portala aktarır"}><Ico html={I.download} size={13} /> {mihsapMut.isPending ? 'Aktarılıyor…' : "Mihsap'tan Aktar"}</button>
-          <input ref={fileRef} type="file" multiple accept=".pdf,.jpg,.jpeg,.jpe,.jfif,.png,.webp,.gif,.tif,.tiff,.bmp,.heic,.heif,.avif,.xml,.ubl,.zip" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files; if (f && f.length) uploadMut.mutate(f); e.target.value = ''; }} />
+          <input ref={fileRef} type="file" multiple accept=".pdf,.jpg,.jpeg,.jpe,.jfif,.png,.webp,.gif,.tif,.tiff,.bmp,.heic,.heif,.avif,.xml,.ubl,.zip" style={{ display: 'none' }} onChange={(e) => { const files = Array.from(e.currentTarget.files || []); e.currentTarget.value = ''; if (files.length) uploadMut.mutate(files); }} />
           <button className="btn sm upload" disabled={!taxpayerId || uploadMut.isPending} onClick={() => fileRef.current?.click()} title={!taxpayerId ? 'Önce mükellef seç' : 'JPEG / PDF / XML belge yükle (elle)'}><Ico html={I.upload} size={13} /> {uploadMut.isPending ? 'Yükleniyor…' : 'Belge Yükle'}</button>
           <button className="btn sm fetch" disabled={!taxpayerId} onClick={() => onOpenSorgu?.()} title={!taxpayerId ? 'Önce mükellef seç' : 'GİB e-Arşiv ve e-Fatura entegratörlerini ayrı sorgu ekranında listele'}><Ico html={I.sync} size={13} /> Sorgu ekranı</button>
           <button className="btn sm ghost soft" disabled={syncMut.isPending} onClick={() => syncMut.mutate()} title="Mükellefe bağlanmamış (sahipsiz) belgeleri VKN/TCKN'ye göre ilgili mükellefe bağlar"><Ico html={I.sync} size={13} /> {syncMut.isPending ? 'Bağlanıyor…' : 'Sahipsiz belgeleri bağla'}</button>
@@ -1387,7 +1387,7 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
     },
     onError: (e: any) => toast.error('Aktarım başlatılamadı: ' + (e?.response?.data?.message || e?.message || 'hata')),
   });
-  const earsivOverlayBusy = aktarMut.isPending || waitForFirstRows || (sorgulaMut.isPending && rows.length === 0);
+  const earsivOverlayBusy = aktarMut.isPending || (waitForFirstRows && rows.length === 0) || (sorgulaMut.isPending && rows.length === 0);
   const syncMut = useMutation({
     mutationFn: () => api.post('/portal-automation/earsiv/accounting-sync', { taxpayerId, period }),
     onSuccess: (r: any) => {
@@ -2363,11 +2363,6 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                     <button type="button" className={dir === 'ALIS' ? 'on' : ''} onClick={() => { setDir('ALIS'); setSelId(''); }}>Alış <b>{cAlis}</b></button>
                     <button type="button" className={dir === 'SATIS' ? 'on' : ''} onClick={() => { setDir('SATIS'); setSelId(''); }}>Satış <b>{cSatis}</b></button>
                   </span>
-                  {!isIsletme && (taxpayerAd || taxpayerNace || taxpayerFaaliyet) && (
-                    <span className="nacechip" title={`Mükellef: ${taxpayerAd || '—'}${taxpayerFaaliyet ? ` · faaliyet: ${taxpayerFaaliyet}` : (taxpayerNace ? ` · NACE ${taxpayerNace}` : ' · faaliyet/sektör girilmemiş')} · ${isIsletme ? 'İşletme' : 'Bilanço'} — hesap eşleştirmesi bu işe göre yapılır`}>
-                      <Ico html={I.info} size={11} />{taxpayerNace ? `NACE ${taxpayerNace}` : 'sektör?'}
-                    </span>
-                  )}
                   <div className="sp" />
                   <button type="button" className="fifull" onClick={() => onToggleFull?.()} title={full ? 'Küçült — menüyü geri getir' : 'Büyüt — menüyü gizle, tam ekran işle'}><Ico html={full ? I.compress : I.expand} size={14} /><span>{full ? 'Küçült' : 'Büyüt'}</span></button>
                 </div>
@@ -4041,4 +4036,28 @@ const CSS = `
 #fm-root .segmini{display:inline-flex;gap:4px;border:1px solid #e2e8f0;border-radius:999px;padding:3px;background:#fff}
 #fm-root .segmini button{height:28px;border:0;background:transparent;border-radius:999px;padding:0 12px;font-weight:650;color:#64748b;cursor:pointer}
 #fm-root .segmini button.on{background:#17212f;color:#fff}
+#fm-root .screen-muhasebe .nacechip{display:none!important}
+#fm-root .screen-muhasebe .muhmain .fispane{flex:0 0 416px;max-width:416px;min-width:390px;padding-left:8px}
+#fm-root .screen-muhasebe .muhmain .fispane > .ph{min-height:40px;gap:7px;padding:5px 0;align-items:center}
+#fm-root .screen-muhasebe .phname{font-size:12.5px;font-weight:650;color:#17212f;white-space:nowrap}
+#fm-root .screen-muhasebe .navbtns{height:32px;display:inline-flex;align-items:center;gap:2px;border:1px solid #dbe3ea;border-radius:999px;background:#fff;box-shadow:0 1px 2px rgba(15,23,42,.05);padding:2px}
+#fm-root .screen-muhasebe .navb{width:28px;height:26px;border-radius:999px;border:0;background:#f6faf8;color:#17212f;font-size:20px;font-weight:650;display:grid;place-items:center;padding:0;line-height:1}
+#fm-root .screen-muhasebe .navb:not(:disabled):hover{background:#e9f5ef;color:#0f766e}
+#fm-root .screen-muhasebe .navb:disabled{opacity:.35}
+#fm-root .screen-muhasebe .navpos{min-width:48px;text-align:center;color:#334155;font-size:12px;font-weight:650;font-variant-numeric:tabular-nums}
+#fm-root .screen-muhasebe .muhfilter{height:32px;border-radius:999px;border:1px solid #cddbd6;background:#f7fbf9;padding:3px;gap:3px;box-shadow:0 1px 2px rgba(15,23,42,.04)}
+#fm-root .screen-muhasebe .muhfilter button{height:24px;border-radius:999px;padding:0 10px;font-size:12px;font-weight:650;color:#64706d}
+#fm-root .screen-muhasebe .muhfilter button.on{background:#1f7a68;color:#fff;box-shadow:0 1px 4px rgba(31,122,104,.16)}
+#fm-root .screen-muhasebe .muhfilter b{margin-left:4px;font-size:10.5px;font-weight:700;opacity:.92}
+#fm-root .screen-muhasebe .ph .fifull{height:32px;border-radius:9px;border-color:#b9dcd1;background:#edf8f4;color:#1f7a68;font-size:12px;font-weight:650;padding:0 11px;box-shadow:0 1px 2px rgba(15,23,42,.05)}
+#fm-root .screen-muhasebe .ph .fifull:hover{background:#1f7a68;color:#fff;border-color:#1f7a68}
+#fm-root .screen-muhasebe .muhmain .balance{min-height:34px;margin:6px 0 0;padding:6px 9px;border-radius:7px;gap:8px}
+#fm-root .screen-muhasebe .muhmain .balance b{font-size:12.5px;line-height:1.1}
+#fm-root .screen-muhasebe .muhmain .balance .bnote{font-size:11px;line-height:1.2}
+#fm-root .screen-muhasebe .muhmain .fgrp .fgt{padding:4px 8px}
+#fm-root .screen-muhasebe .muhmain .fispane > .wactions{margin-top:6px;padding-top:6px;min-height:36px}
+#fm-root .queryveil{gap:8px;justify-content:center;color:#1f7a68}
+#fm-root .queryveil b{font-size:13px;font-weight:650;margin-top:0;color:#1f7a68}
+#fm-root .querydoc{width:46px;height:54px;border-radius:11px;box-shadow:0 12px 28px rgba(31,122,104,.12)}
+#fm-root .querydoc span{left:12px;right:12px;top:15px;height:2px;box-shadow:0 9px 0 rgba(31,122,104,.18),0 18px 0 rgba(31,122,104,.14)}
 `;
