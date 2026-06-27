@@ -3780,31 +3780,6 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       existingDocIds = new Set(existingDocs.map((doc: any) => String(doc.id)));
     }
 
-    const periodForDownload = this.monthRange(opts.period);
-    const providerLookupCache = new Map<string, Promise<ProviderPayloadLookup | null>>();
-    const loadProviderLookup = (provider: string): Promise<ProviderPayloadLookup | null> => {
-      const key = `${provider}:${channel}:${periodForDownload.donem}`;
-      if (!providerLookupCache.has(key)) {
-        providerLookupCache.set(key, (async () => {
-          const cfg = await this.resolveRuntimeConfigForProvider(tenantId, opts.taxpayerId, provider);
-          if (!cfg) return null;
-          try {
-            const payloads = await this.fetchProviderInvoices(cfg, {
-              taxpayer,
-              direction: direction === 'OUT' ? 'SATIS' : 'ALIS',
-              period: periodForDownload,
-              limit: Math.min(Math.max(Number(opts.limit || rows.length || 500), 1), 1000),
-              channel,
-            });
-            return { cfg, payloads, byKey: this.buildProviderPayloadLookup(payloads), error: null };
-          } catch (e: any) {
-            return { cfg, payloads: [], byKey: new Map(), error: e?.message || 'Belge indirilemedi' };
-          }
-        })());
-      }
-      return providerLookupCache.get(key)!;
-    };
-
     let processed = 0, imported = 0, alreadyQueued = 0, skipped = 0, failed = 0, staleReset = 0;
     const errors: any[] = [];
     for (const row of rows) {
@@ -3818,8 +3793,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       }
       processed++;
       const provider = String(row.entegrator || 'TURMOB_EFATURA');
-      const lookup = provider === 'TURMOB_EFATURA' ? await loadProviderLookup(provider) : null;
-      const downloadedPayload = provider === 'TURMOB_EFATURA' ? this.providerPayloadForInboxRow(row, lookup) : null;
+      const runtimeCfg = this.providerStubConfig(provider);
       const transferredWithoutDocument = !row.documentId && (row.processedAt || row.isTransferred);
       const missingLinkedDocument = row.documentId && !existingDocIds.has(String(row.documentId));
       if (transferredWithoutDocument || missingLinkedDocument) {
@@ -3834,14 +3808,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       }
       if (row.documentId || row.processedAt || row.isTransferred) {
         if (row.documentId) {
-          const visualPayload = downloadedPayload
-            || this.providerPayloadFromStoredVisual(String(row.ublXmlRaw || ''), row.uuid, row.faturaNo, raw?.originalVisual);
-          if (downloadedPayload || visualPayload.pdfBuffer || visualPayload.htmlContent) {
+          const visualPayload = this.providerPayloadFromStoredVisual(String(row.ublXmlRaw || ''), row.uuid, row.faturaNo, raw?.originalVisual);
+          if (visualPayload.pdfBuffer || visualPayload.htmlContent) {
             await this.createDocumentFromProviderXml(
               tenantId,
               userId,
               taxpayer,
-              lookup?.cfg || this.providerStubConfig(provider),
+              runtimeCfg,
               direction === 'OUT' ? 'SATIS' : 'ALIS',
               { ...visualPayload, externalId: row.uuid || visualPayload.externalId || row.ettn || row.faturaNo || null },
               { existingDocumentId: row.documentId },
@@ -3852,10 +3825,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         continue;
       }
       if (/iptal|itiraz|red|cancel/i.test(`${raw.approvalStatus || ''} ${raw.iptalItiraz || ''}`)) { skipped++; continue; }
-      const storedVisual = downloadedPayload ? this.providerStoredVisual(downloadedPayload) : raw?.originalVisual;
+      const storedVisual = raw?.originalVisual;
       const savedXml = String(row.ublXmlRaw || '').trim();
       const savedXmlLooksSynthetic = provider === 'TURMOB_EFATURA' && this.isSyntheticTurmobInboxXml(savedXml);
-      let xml = String(downloadedPayload?.xml || (savedXmlLooksSynthetic ? '' : savedXml) || '').trim();
+      let xml = String((savedXmlLooksSynthetic ? '' : savedXml) || '').trim();
       const usedSummaryOnly =
         !xml &&
         provider === 'TURMOB_EFATURA' &&
@@ -3869,7 +3842,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           tenantId,
           userId,
           taxpayer,
-          lookup?.cfg || this.providerStubConfig(provider),
+          runtimeCfg,
           direction === 'OUT' ? 'SATIS' : 'ALIS',
           this.providerPayloadFromStoredVisual(xml, row.uuid, row.faturaNo, storedVisual),
         );
@@ -3887,7 +3860,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         await (this.prisma as any).eFaturaInbox.update({
           where: { id: row.id },
           data: {
-            ...((downloadedPayload || usedSummaryOnly) ? { ublXmlRaw: xml } : {}),
+            ...(usedSummaryOnly ? { ublXmlRaw: xml } : {}),
             ...(parsed?.ettn ? { ettn: parsed.ettn } : {}),
             ...(parsed?.faturaNo ? { faturaNo: parsed.faturaNo } : {}),
             ...(parsed?.faturaTarihi ? { faturaDate: parsed.faturaTarihi } : {}),
@@ -4173,7 +4146,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       if (this.isProviderStoredInvoice(doc)) {
         return {
           url: '',
-          inlineHtml: this.inlinePreviewHtml('Bu belge icin orijinal dosya okunamadi; kayit ozeti gosteriliyor.', doc),
+          inlineHtml: this.inlinePreviewHtml('Bu belge icin orijinal dosya okunamadi. Uydurma belge goruntusu gosterilmiyor. Belgeyi entegratorden yeniden sorgulayip indirin.'),
           mimeType: 'text/html',
           source: 'placeholder' as const,
         };
@@ -4184,7 +4157,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     if (!doc.s3Key) {
       return {
         url: '',
-        inlineHtml: this.inlinePreviewHtml('Bu belge icin dosya kaydi bulunamadi.', doc),
+        inlineHtml: this.inlinePreviewHtml('Bu belge icin orijinal dosya kaydi bulunamadi. Uydurma belge goruntusu gosterilmiyor.'),
         mimeType: 'text/html',
         source: 'placeholder' as const,
       };
@@ -4249,6 +4222,14 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         inlineHtml: this.earsivRender.renderOriginalHtml(raw, { autoPrint: false }),
         mimeType: 'text/html',
         source: 'stored-html' as const,
+      };
+    }
+    if (rawIsInvoiceXml && (this.isSyntheticTurmobInboxXml(raw) || !this.earsivRender.hasEmbeddedXslt(raw))) {
+      return {
+        url: '',
+        inlineHtml: this.inlinePreviewHtml('Bu kayitta orijinal fatura goruntusu yok. Sadece entegrator liste verisiyle muhasebe kaydi olusturulmus; uydurma belge goruntusu gosterilmiyor.'),
+        mimeType: 'text/html',
+        source: 'placeholder' as const,
       };
     }
 
