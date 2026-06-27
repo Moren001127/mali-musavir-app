@@ -3477,6 +3477,96 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       }
 
       try {
+        if (cfg.provider === 'TURMOB_EFATURA') {
+          const listed = await this.fetchTurmobPortalRows(cfg, { direction, period, limit, channel });
+          let providerAdded = 0, providerUpdated = 0, providerSkipped = 0;
+          for (const sourceRow of listed.liveRows.slice(0, limit)) {
+            try {
+              const summary = this.turmobSummaryFromRow(sourceRow, { channel, taxpayer, direction });
+              if (!summary.uuid) {
+                providerSkipped++;
+                continue;
+              }
+              if (channel === 'OUT_EARSIV' && summary.documentType !== 'E_ARSIV') {
+                providerSkipped++;
+                continue;
+              }
+              if ((channel === 'OUT_EFATURA' || channel === 'IN_EFATURA') && summary.documentType === 'E_ARSIV') {
+                providerSkipped++;
+                continue;
+              }
+              const existing = await (this.prisma as any).eFaturaInbox.findUnique({
+                where: { tenantId_taxpayerId_entegrator_uuid: { tenantId, taxpayerId: opts.taxpayerId, entegrator: cfg.provider, uuid: summary.uuid } },
+                select: { id: true, rawJson: true },
+              });
+              const currentRaw = existing?.rawJson && typeof existing.rawJson === 'object' ? existing.rawJson : {};
+              const data = {
+                ettn: summary.ettn || null,
+                senderVkn: summary.senderVkn || null,
+                senderTitle: summary.senderTitle || null,
+                receiverVkn: summary.receiverVkn || null,
+                faturaNo: summary.faturaNo || null,
+                faturaDate: summary.faturaDate || null,
+                matrah: summary.matrah != null ? String(summary.matrah) : null,
+                kdv: summary.kdv != null ? String(summary.kdv) : null,
+                toplam: summary.toplam != null ? String(summary.toplam) : null,
+                paraBirimi: summary.paraBirimi || 'TRY',
+                direction: inboxDirection,
+                invoiceProfile: summary.invoiceProfile,
+                rawJson: {
+                  ...currentRaw,
+                  channel,
+                  documentType: summary.documentType,
+                  source: 'integrator-query',
+                  provider: cfg.provider,
+                  turmobRowId: summary.rowId || null,
+                  turmobSummaryRaw: summary.raw,
+                  approvalStatus: summary.approval || 'Onaylandi',
+                  iptalItiraz: summary.iptal || 'Yok',
+                  senderTitle: summary.senderTitle || null,
+                  receiverTitle: summary.receiverTitle || null,
+                  senderVkn: summary.senderVkn || null,
+                  receiverVkn: summary.receiverVkn || null,
+                  queriedBy: userId || null,
+                  needsDocumentDownload: true,
+                },
+              };
+              if (existing) {
+                await (this.prisma as any).eFaturaInbox.update({ where: { id: existing.id }, data });
+                providerUpdated++;
+              } else {
+                await (this.prisma as any).eFaturaInbox.create({
+                  data: {
+                    tenantId,
+                    taxpayerId: opts.taxpayerId,
+                    entegrator: cfg.provider,
+                    uuid: summary.uuid,
+                    ...data,
+                  },
+                });
+                providerAdded++;
+              }
+            } catch (e: any) {
+              failed++;
+              this.logger.warn(`TURMOB e-Fatura liste satiri yazilamadi: ${e?.message || e}`);
+            }
+          }
+          fetched += listed.liveRows.length;
+          added += providerAdded;
+          updated += providerUpdated;
+          skipped += providerSkipped + Math.max(0, listed.rows.length - listed.liveRows.length);
+          statuses.push({
+            provider: item.provider,
+            label: cfg.label,
+            status: 'SUCCESS',
+            fetched: listed.liveRows.length,
+            added: providerAdded,
+            updated: providerUpdated,
+            skipped: providerSkipped + Math.max(0, listed.rows.length - listed.liveRows.length),
+          });
+          continue;
+        }
+
         const payloads = await this.fetchProviderInvoices(cfg, { taxpayer, direction, period, limit, channel });
         let providerAdded = 0, providerUpdated = 0, providerSkipped = 0;
         for (const payload of payloads) {
@@ -3627,10 +3717,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         continue;
       }
       if (/iptal|itiraz|red|cancel/i.test(`${raw.approvalStatus || ''} ${raw.iptalItiraz || ''}`)) { skipped++; continue; }
-      const xml = String(row.ublXmlRaw || '').trim();
+      const provider = String(row.entegrator || 'TURMOB_EFATURA');
+      const xml = String(row.ublXmlRaw || '').trim()
+        || (provider === 'TURMOB_EFATURA' ? this.syntheticTurmobInboxXml(row, taxpayer, channel) : '');
       if (!xml) { failed++; errors.push({ id: row.id, message: 'XML bulunamadi' }); continue; }
       try {
-        const provider = String(row.entegrator || 'TURMOB_EFATURA');
         const result = await this.createDocumentFromProviderXml(
           tenantId,
           userId,
@@ -5039,6 +5130,343 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       if (Array.isArray(candidate)) return candidate;
     }
     return [];
+  }
+
+  private turmobField(row: any, keys: string[]): string | null {
+    const wanted = new Set(keys.map((key) => key.toLowerCase()));
+    let found: string | null = null;
+    const visit = (value: any) => {
+      if (found || value == null || typeof value !== 'object') return;
+      if (Array.isArray(value)) {
+        for (const nested of value) visit(nested);
+        return;
+      }
+      for (const [key, nested] of Object.entries(value)) {
+        if (wanted.has(key.toLowerCase()) && (typeof nested === 'string' || typeof nested === 'number' || typeof nested === 'boolean')) {
+          const text = String(nested).trim();
+          if (text && text !== 'NaN' && text !== 'null' && text !== 'undefined') {
+            found = text;
+            return;
+          }
+        }
+        visit(nested);
+        if (found) return;
+      }
+    };
+    visit(row);
+    return found;
+  }
+
+  private turmobAmount(row: any, keys: string[]): number | null {
+    const raw = this.turmobField(row, keys);
+    if (!raw) return null;
+    const text = String(raw).replace(/\s+/g, '').replace(/[^\d,.-]/g, '');
+    if (!text) return null;
+    const normalized = text.includes(',')
+      ? text.replace(/\./g, '').replace(',', '.')
+      : text;
+    const n = Number(normalized);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  private turmobDateValue(value: any): Date | null {
+    const raw = String(value || '').trim();
+    if (!raw) return null;
+    const dot = raw.match(/^(\d{1,2})[./](\d{1,2})[./](\d{4})/);
+    if (dot) {
+      const d = new Date(Date.UTC(Number(dot[3]), Number(dot[2]) - 1, Number(dot[1])));
+      return Number.isNaN(d.getTime()) ? null : d;
+    }
+    const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (iso) {
+      const d = new Date(Date.UTC(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3])));
+      return Number.isNaN(d.getTime()) ? null : d;
+    }
+    const d = new Date(raw);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+
+  private turmobIsCancelled(row: any): boolean {
+    const statusKeys = [
+      'Durum',
+      'durum',
+      'Status',
+      'status',
+      'DurumAdi',
+      'DurumAd',
+      'DurumAciklama',
+      'IptalItirazDurumu',
+      'IptalDurumu',
+      'ItirazDurumu',
+      'RedDurumu',
+      'OnayDurumu',
+      'OnayJobDurumu',
+      'Sonuc',
+      'Cevap',
+    ];
+    const values = statusKeys
+      .map((key) => this.turmobField(row, [key]))
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+    if (!values) return false;
+    if (/\byok\b|false|hayir|hayır|onaylandi|onaylandı|alici kabul etti|gonderildi|gönderildi|otomatik/.test(values)) return false;
+    return /iptal|itiraz|reddedil|red edildi|cancel/.test(values);
+  }
+
+  private turmobListPaths(channel: string) {
+    const refererPath = channel === 'OUT_EARSIV'
+      ? '/ArchiveInvoice'
+      : channel === 'OUT_EFATURA'
+        ? '/OutgoingInvoice'
+        : '/Inbox';
+    const listUrls = channel === 'OUT_EARSIV'
+      ? [
+          '/ArchiveInvoice/ArchiveInvoiceList',
+          '/OutgoingArchiveInvoice/AllOutgoingArchiveInvoiceByFilter',
+          '/ArchiveInvoice/AllArchiveInvoiceByFilter',
+          '/EArchiveInvoice/AllEArchiveInvoiceByFilter',
+          '/EArchive/AllOutgoingArchiveInvoiceByFilter',
+          '/OutgoingInvoice/AllOutgoingArchiveInvoiceByFilter',
+        ]
+      : channel === 'OUT_EFATURA'
+        ? [
+            '/OutgoingInvoice/OutgoingInvoiceList',
+            '/OutgoingInvoice/AllOutgoingInvoiceByFilter',
+          ]
+        : [
+            '/IncomingInvoice/IncomingInvoiceList',
+            '/IncomingInvoice/AllIncomingInvoiceByFilter',
+          ];
+    return { refererPath, listUrls };
+  }
+
+  private async fetchTurmobPortalRows(
+    cfg: RuntimeIntegrationConfig,
+    opts: {
+      direction: 'ALIS' | 'SATIS';
+      period: { donem: string; startDate: string; endDate: string };
+      limit: number;
+      channel?: string;
+    },
+  ) {
+    if (!cfg.username || !cfg.password) throw new Error('TURMOB icin TCKN (kullanici adi) ve parola gerekli');
+    const cookie = await this.turmobLogin(cfg.username, cfg.password);
+    const BASE = this.TURMOB_BASE;
+    const channel = String(opts.channel || (opts.direction === 'SATIS' ? 'OUT_EFATURA' : 'IN_EFATURA')).toUpperCase();
+    const { refererPath, listUrls } = this.turmobListPaths(channel);
+    const baseListParams = {
+      draw: '1',
+      start: '0',
+      length: String(Math.min(Math.max(Number(opts.limit) || 500, 1), 1000)),
+      'search[value]': '',
+      'search[regex]': 'false',
+      'order[0][column]': '0',
+      'order[0][dir]': 'desc',
+    };
+    let listPageToken = '';
+    let listPageHtml = '';
+    try {
+      const listPage = await fetch(BASE + refererPath, {
+        headers: { Cookie: cookie, 'User-Agent': 'MorenPortal/1.0', Accept: 'text/html,application/xhtml+xml,*/*' },
+        redirect: 'manual',
+      });
+      listPageHtml = await listPage.text();
+      listPageToken = listPageHtml.match(/name="__RequestVerificationToken"[^>]*value="([^"]+)"/)?.[1]
+        || listPageHtml.match(/__RequestVerificationToken[^>]*value="([^"]+)"/)?.[1]
+        || '';
+    } catch {
+      // Optional warm-up.
+    }
+
+    const profiles = this.turmobDateProfiles(opts.period);
+    let ct = '';
+    let raw = '';
+    let data: any = null;
+    let rows: any[] = [];
+    let usedListUrl = listUrls[0];
+    let usedProfile = 'none';
+    let usedMethod = 'POST';
+
+    listAttempt:
+    for (const listUrl of listUrls) {
+      for (const profile of profiles) {
+        const listBody = new URLSearchParams(
+          listPageToken
+            ? { ...baseListParams, ...profile.params, __RequestVerificationToken: listPageToken }
+            : { ...baseListParams, ...profile.params },
+        ).toString();
+        for (const method of ['POST', 'GET'] as const) {
+          const requestUrl = method === 'GET' ? `${BASE}${listUrl}?${listBody}` : BASE + listUrl;
+          const res = await fetch(requestUrl, {
+            method,
+            headers: {
+              ...(method === 'POST' ? { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' } : {}),
+              Accept: 'application/json, text/javascript, */*; q=0.01',
+              Origin: BASE,
+              Referer: BASE + refererPath,
+              'X-Requested-With': 'XMLHttpRequest',
+              ...(listPageToken ? { RequestVerificationToken: listPageToken, __RequestVerificationToken: listPageToken } : {}),
+              Cookie: cookie,
+              'User-Agent': 'MorenPortal/1.0',
+            },
+            body: method === 'POST' ? listBody : undefined,
+          });
+          ct = res.headers.get('content-type') || '';
+          raw = await res.text();
+          data = null;
+          try { data = JSON.parse(raw); } catch { /* HTML = probably login redirect */ }
+          rows = this.turmobRowsFromListResponse(data);
+          usedListUrl = listUrl;
+          usedProfile = profile.name;
+          usedMethod = method;
+          if (rows.length) break listAttempt;
+        }
+      }
+    }
+    this.logger.log(`TURMOB list ${channel}: url=${usedListUrl} method=${usedMethod} profile=${usedProfile} ct=${ct.slice(0, 40)} len=${raw.length} rows=${rows.length}`);
+    return {
+      cookie,
+      channel,
+      listPageHtml,
+      rows,
+      liveRows: rows.filter((row) => !this.turmobIsCancelled(row)),
+      usedListUrl,
+      usedMethod,
+      usedProfile,
+      raw,
+      data,
+      ct,
+    };
+  }
+
+  private turmobSummaryFromRow(row: any, opts: { channel: string; taxpayer: any; direction: 'ALIS' | 'SATIS' }) {
+    const channel = String(opts.channel || '').toUpperCase();
+    const ownName = this.reportTaxpayerName(opts.taxpayer);
+    const ownTaxNo = this.reportTaxNumber(opts.taxpayer);
+    const faturaNo = this.turmobField(row, ['FaturaNo', 'BelgeNo', 'InvoiceNo', 'InvoiceNumber', 'IadeFaturaNo']);
+    const ettn = this.turmobField(row, ['Ettn', 'ETTN', 'Uuid', 'UUID', 'Guid', 'GUID']);
+    const rowId = this.turmobField(row, [
+      'IdFaturaGelen',
+      'IdFaturaGiden',
+      'IdFaturaArsiv',
+      'FaturaGelenId',
+      'FaturaGidenId',
+      'ArchiveInvoiceId',
+      'InvoiceId',
+      'Id',
+    ]);
+    const date = this.turmobDateValue(this.turmobField(row, ['FaturaTarihi', 'GelirTarihi', 'IssueDate', 'InvoiceDate', 'Tarih']));
+    const total = this.turmobAmount(row, [
+      'OdenecekTutar',
+      'OdenecekTutarFormatted',
+      'OdemeSonucFormatted',
+      'NetteCap',
+      'ToplamTutar',
+      'VergilerDahilToplamTutar',
+      'TaxInclusiveAmount',
+      'PayableAmount',
+    ]);
+    const kdv = this.turmobAmount(row, ['KdvTutari', 'KdvTutar', 'HesaplananKdv', 'HesaplananKDV', 'TaxAmount']);
+    const matrah = this.turmobAmount(row, ['Matrah', 'MalHizmetToplamTutar', 'MalHizmetTutari', 'TaxExclusiveAmount', 'LineExtensionAmount']);
+    const currency = this.turmobField(row, ['DovizKodu', 'DovizKoduDesc', 'ParaBirimi', 'Currency', 'DocumentCurrencyCode']) || 'TRY';
+    const approval = this.turmobField(row, ['DurumAdi', 'OnayDurumu', 'OnayJobDurumu', 'Status', 'Durum']) || 'Onaylandi';
+    const iptal = this.turmobField(row, ['IptalItirazDurumu', 'IptalDurumu', 'ItirazDurumu', 'RedDurumu']) || 'Yok';
+    const counterName = this.turmobField(row, [
+      channel === 'IN_EFATURA' ? 'FirmaAdi' : 'AliciAdi',
+      channel === 'IN_EFATURA' ? 'SaticiAdi' : 'MusteriAdi',
+      'Unvan',
+      'CariUnvan',
+      'PartyName',
+    ]);
+    const counterVkn = this.turmobField(row, [
+      channel === 'IN_EFATURA' ? 'GondericiVkn' : 'AliciVkn',
+      channel === 'IN_EFATURA' ? 'SaticiVkn' : 'MusteriVkn',
+      'VknTckn',
+      'VKN',
+      'TCKN',
+      'KimlikNo',
+    ]);
+    const senderTitle = channel === 'IN_EFATURA' ? counterName : ownName;
+    const senderVkn = channel === 'IN_EFATURA' ? counterVkn : ownTaxNo;
+    const receiverTitle = channel === 'IN_EFATURA' ? ownName : counterName;
+    const receiverVkn = channel === 'IN_EFATURA' ? ownTaxNo : counterVkn;
+    const uuid = String(ettn || rowId || faturaNo || createHash('sha1').update(JSON.stringify(row || {})).digest('hex')).trim();
+    return {
+      uuid,
+      ettn,
+      rowId,
+      faturaNo,
+      faturaDate: date,
+      senderTitle,
+      senderVkn,
+      receiverTitle,
+      receiverVkn,
+      matrah,
+      kdv,
+      toplam: total,
+      paraBirimi: currency === 'TRL' ? 'TRY' : currency,
+      invoiceProfile: channel === 'OUT_EARSIV' ? 'e-Arsiv' : 'e-Fatura',
+      documentType: channel === 'OUT_EARSIV' ? 'E_ARSIV' : 'E_FATURA',
+      approval,
+      iptal,
+      raw: row,
+    };
+  }
+
+  private syntheticTurmobInboxXml(row: any, taxpayer: any, channel: string): string {
+    const raw = row?.rawJson && typeof row.rawJson === 'object' ? row.rawJson : {};
+    const moneyNumber = (value: any): number => {
+      if (value == null || value === '') return 0;
+      if (typeof value === 'object' && typeof value.toNumber === 'function') return value.toNumber();
+      const text = String(value).replace(/\s+/g, '').replace(/[^\d,.-]/g, '');
+      const normalized = text.includes(',') ? text.replace(/\./g, '').replace(',', '.') : text;
+      const n = Number(normalized);
+      return Number.isFinite(n) ? n : 0;
+    };
+    const total = moneyNumber(row?.toplam);
+    const kdv = moneyNumber(row?.kdv);
+    const matrah = moneyNumber(row?.matrah) || Math.max(0, total - kdv);
+    const currency = String(row?.paraBirimi || 'TRY').toUpperCase() === 'TL' ? 'TRY' : String(row?.paraBirimi || 'TRY').toUpperCase();
+    const issueDate = row?.faturaDate ? new Date(row.faturaDate) : null;
+    const issueDateText = issueDate && !Number.isNaN(issueDate.getTime()) ? issueDate.toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
+    const faturaNo = String(row?.faturaNo || raw?.turmobRowId || row?.uuid || 'BILINMIYOR');
+    const uuid = String(row?.ettn || row?.uuid || faturaNo);
+    const incoming = String(channel || raw?.channel || '').toUpperCase() === 'IN_EFATURA';
+    const ownName = this.reportTaxpayerName(taxpayer);
+    const ownTaxNo = this.reportTaxNumber(taxpayer);
+    const supplier = incoming
+      ? { name: row?.senderTitle || raw?.senderTitle || 'BILINMIYOR', taxNo: row?.senderVkn || raw?.senderVkn || '' }
+      : { name: ownName, taxNo: ownTaxNo };
+    const customer = incoming
+      ? { name: ownName, taxNo: ownTaxNo }
+      : { name: row?.receiverTitle || raw?.receiverTitle || 'BILINMIYOR', taxNo: row?.receiverVkn || raw?.receiverVkn || '' };
+    const docType = String(raw?.documentType || '').toUpperCase() === 'E_ARSIV' ? 'EARSIVFATURA' : 'TEMELFATURA';
+    return `<?xml version="1.0" encoding="UTF-8"?>
+<Invoice>
+  <ProfileID>${this.xmlEscape(docType)}</ProfileID>
+  <ID>${this.xmlEscape(faturaNo)}</ID>
+  <UUID>${this.xmlEscape(uuid)}</UUID>
+  <IssueDate>${this.xmlEscape(issueDateText)}</IssueDate>
+  <InvoiceTypeCode>SATIS</InvoiceTypeCode>
+  <DocumentCurrencyCode>${this.xmlEscape(currency)}</DocumentCurrencyCode>
+  ${this.syntheticParasutPartyXml('AccountingSupplierParty', String(supplier.name || 'BILINMIYOR'), String(supplier.taxNo || ''))}
+  ${this.syntheticParasutPartyXml('AccountingCustomerParty', String(customer.name || 'BILINMIYOR'), String(customer.taxNo || ''))}
+  <TaxTotal><TaxAmount currencyID="${this.xmlEscape(currency)}">${this.parasutMoney(kdv)}</TaxAmount></TaxTotal>
+  <LegalMonetaryTotal>
+    <LineExtensionAmount currencyID="${this.xmlEscape(currency)}">${this.parasutMoney(matrah)}</LineExtensionAmount>
+    <TaxExclusiveAmount currencyID="${this.xmlEscape(currency)}">${this.parasutMoney(matrah)}</TaxExclusiveAmount>
+    <TaxInclusiveAmount currencyID="${this.xmlEscape(currency)}">${this.parasutMoney(total || matrah + kdv)}</TaxInclusiveAmount>
+    <PayableAmount currencyID="${this.xmlEscape(currency)}">${this.parasutMoney(total || matrah + kdv)}</PayableAmount>
+  </LegalMonetaryTotal>
+  <InvoiceLine>
+    <ID>1</ID>
+    <InvoicedQuantity unitCode="NIU">1</InvoicedQuantity>
+    <LineExtensionAmount currencyID="${this.xmlEscape(currency)}">${this.parasutMoney(matrah)}</LineExtensionAmount>
+    <Item><Name>Fatura satiri</Name></Item>
+    <Price><PriceAmount currencyID="${this.xmlEscape(currency)}">${this.parasutMoney(matrah)}</PriceAmount></Price>
+  </InvoiceLine>
+</Invoice>`;
   }
 
   /**
