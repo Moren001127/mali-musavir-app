@@ -628,7 +628,7 @@ function useDocuments(taxpayerId: string, period: string) {
 
 export default function FaturaMerkeziPage() {
   const [screen, setScreen] = useState('mukellefler');
-  const accent = 'mor';
+  const accent = 'slate';
   const [taxpayerId, setTaxpayerId] = useState('');
   const nowP = new Date();
   const [period, setPeriod] = useState(`${nowP.getFullYear()}-${String(nowP.getMonth() + 1).padStart(2, '0')}`);
@@ -697,7 +697,7 @@ export default function FaturaMerkeziPage() {
     <div id="fm-root" data-accent={accent}>
       <style dangerouslySetInnerHTML={{ __html: CSS }} />
       <DocModal />
-      <div className={`app${editorFull ? ' editorfull' : ''}`}>
+      <div className={`app screen-${screen}${editorFull ? ' editorfull' : ''}`}>
         <aside className="side">
           <div className="brand">
             <a className="backlink" href="/panel">
@@ -707,11 +707,32 @@ export default function FaturaMerkeziPage() {
             <div className="brandplate">
               <div className="brandmark">FM</div>
               <div className="brandcopy">
-                <div className="brandeyebrow">Canlı iş akışı</div>
                 <div className="brandmod">Fatura Merkezi</div>
-                <div className="brandco">Belge okuma - eşleştirme - aktarım</div>
+                <div className="brandco">Oku · eşleştir · aktar</div>
               </div>
             </div>
+            {screen === 'muhasebe' && (
+              <div className="sidecontext">
+                <div className="ctxlabel">Çalışma bağlamı</div>
+                <label className="ctxfield">
+                  <span>Mükellef</span>
+                  <select value={taxpayerId} onChange={(e) => setTaxpayerId(e.target.value)}>
+                    <option value="">Tüm mükellefler</option>
+                    {taxpayers.map((t) => (
+                      <option key={t.id} value={t.id}>{taxpayerLabel(t)}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="ctxfield">
+                  <span>Dönem</span>
+                  <select value={period} onChange={(e) => setPeriod(e.target.value)}>
+                    {periodOptions().map((p) => (
+                      <option key={p.v} value={p.v}>{p.l}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            )}
           </div>
           {nav}
         </aside>
@@ -3455,4 +3476,73 @@ const CSS = `
 #fm-root .muhcard .auto{flex:0 0 auto;padding:9px 14px;background:#fff;border-top:1px solid #edf1f5}
 @media(max-width:1280px){#fm-root .muhmain .fispane{flex-basis:410px;max-width:410px;min-width:380px}#fm-root .muhmain .docmeta{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:1100px){#fm-root .muhcard{height:auto;min-height:0;overflow:visible}#fm-root .muhmain .fiseditor{height:auto;min-height:0}#fm-root .muhmain .fispane{flex:none;width:100%;max-width:none;min-width:0;height:auto;overflow:visible;padding:0}#fm-root .muhmain .docmeta{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* Son revizyon: mavi tonu kır, üst barı muhasebeleştirmede kaldır, aksiyonları yeniden kur */
+#fm-root{--bg:#f4f5f3;--side:#fbfaf7;--line:#e4e1da;--line2:#d7d2c8;--text:#20242a;--muted:#66706c;--faint:#9aa09b;--accent:#374151;--accent-soft:#eef0ed;--accent-line:#d5dbd4;--th:#f0f2ee;--th-text:#3f4a44;--blue:#334155;--green:#16866a;--amber:#b7791f}
+#fm-root[data-accent="slate"]{--accent:#374151;--accent-soft:#eef0ed;--accent-line:#d5dbd4;--th:#f0f2ee;--th-text:#3f4a44}
+#fm-root .app::before{height:2px;background:linear-gradient(90deg,#1f2937,#0f766e,#c0842b)}
+#fm-root .side{background:linear-gradient(180deg,#fbfaf7 0%,#f5f4f0 100%);border-right-color:#ddd8ce;box-shadow:8px 0 24px rgba(31,41,55,.045)}
+#fm-root .brand{padding:14px 12px;border-bottom:1px solid #ddd8ce;background:#fbfaf7}
+#fm-root .backlink{height:26px;margin:0 0 10px;color:#7a817b;font-size:11px}
+#fm-root .brandplate{position:relative;align-items:flex-start;gap:11px;padding:13px 12px;border:1px solid #d8d2c7;border-radius:10px;background:linear-gradient(145deg,#ffffff,#f2f0ea);box-shadow:0 14px 28px -24px rgba(31,41,55,.5)}
+#fm-root .brandplate::after{content:'';position:absolute;left:12px;right:12px;bottom:8px;height:2px;border-radius:2px;background:linear-gradient(90deg,#1f2937 0 34%,#0f766e 34% 68%,#c0842b 68%)}
+#fm-root .brandmark{width:38px;height:38px;border-radius:9px;background:#1f2937;color:#fff;font-size:12px;letter-spacing:.4px;box-shadow:inset 0 -2px 0 rgba(255,255,255,.08)}
+#fm-root .brandmod{font-size:17px;font-weight:900;color:#161b22;line-height:1.05}
+#fm-root .brandco{font-size:11px;font-weight:800;color:#66706c;margin-top:5px;letter-spacing:.1px}
+#fm-root .sidecontext{margin-top:10px;padding:10px;border:1px solid #ddd8ce;border-radius:10px;background:#fff;box-shadow:0 10px 22px -24px rgba(31,41,55,.45)}
+#fm-root .ctxlabel{font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.45px;color:#7a817b;margin-bottom:8px}
+#fm-root .ctxfield{display:flex;flex-direction:column;gap:4px;margin-top:8px}
+#fm-root .ctxfield span{font-size:9.5px;font-weight:900;text-transform:uppercase;letter-spacing:.35px;color:#9aa09b}
+#fm-root .ctxfield select{height:34px;width:100%;border:1px solid #d7d2c8;border-radius:7px;background:#fbfaf7;color:#20242a;font-family:inherit;font-size:12px;font-weight:800;padding:0 9px;outline:none}
+#fm-root .ctxfield select:focus{border-color:#0f766e;box-shadow:0 0 0 3px rgba(15,118,110,.1)}
+#fm-root .nitem.on{background:#ecefea;color:#1f2937;box-shadow:inset 3px 0 0 #0f766e}
+#fm-root .nitem.on > span:first-child{background:#1f2937;border-color:#1f2937}
+#fm-root .nitem.on .ct{color:#0f766e}
+#fm-root .nsub.on{color:#0f766e}
+#fm-root .top{background:#fbfaf7;border-bottom-color:#ddd8ce;box-shadow:none}
+#fm-root .screen-muhasebe .top{display:none}
+#fm-root .screen-muhasebe .content{padding:10px 12px;overflow:hidden}
+#fm-root .screen-muhasebe .muhcard{height:calc(100vh - 20px);min-height:0}
+#fm-root .screen-muhasebe .muhmain .belgebox{background:#deded8}
+#fm-root .screen-muhasebe .muhmain .belgebox .bpview{background:#deded8;padding:6px}
+#fm-root .screen-muhasebe .muhmain .belgebox .bpbar{min-height:34px;border-bottom-color:#d5d9d6}
+#fm-root .screen-muhasebe .muhmain .fispane{flex-basis:430px;max-width:430px;min-width:398px;padding-left:10px}
+#fm-root .muhfilter{height:28px;border-color:#d7d2c8;background:#f5f4f0;border-radius:999px;padding:3px}
+#fm-root .muhfilter button{height:22px;border-radius:999px;color:#66706c}
+#fm-root .muhfilter button.on{background:#1f2937;color:#fff}
+#fm-root .nacechip{border-color:#d6c9ad;background:#fbf4e5;color:#8a5a12}
+#fm-root .topfilt{background:#f5f4f0;border-color:#d7d2c8;box-shadow:none}
+#fm-root .topfilt svg{color:#0f766e}
+#fm-root .screen > .fmstats{grid-template-columns:repeat(5,minmax(0,1fr));padding:6px;border-radius:10px;background:#fbfaf7;border-color:#ddd8ce;gap:6px;margin:8px 0 12px}
+#fm-root .screen > .fmstats .fmstat{min-height:48px;border-left:0;border-radius:7px;background:#fff;padding:7px 10px;display:flex;align-items:center;justify-content:space-between;gap:8px}
+#fm-root .screen > .fmstats .fmsl{font-size:9.5px;line-height:1.1;white-space:normal;color:#66706c}
+#fm-root .screen > .fmstats .fmsl::before{display:none}
+#fm-root .screen > .fmstats .fmsv{font-size:21px;margin:0;color:#20242a}
+#fm-root .screen > .fmstats .fmstat::after{content:'';display:block;width:4px;align-self:stretch;border-radius:999px;background:var(--sc,var(--accent));order:-1}
+#fm-root .invcard{border:1px solid #ddd8ce;border-radius:10px;background:#fff;box-shadow:none;overflow:hidden}
+#fm-root .invactions{display:grid;grid-template-columns:auto 1fr;gap:10px 12px;padding:12px 14px;background:linear-gradient(180deg,#fff,#fbfaf7);border-bottom-color:#ddd8ce}
+#fm-root .invactions h3{grid-row:1 / span 2;align-self:center;min-width:92px;font-size:19px;line-height:1;font-weight:900;color:#20242a}
+#fm-root .invactions .sp{display:none}
+#fm-root .invactions .btn{height:32px;border-radius:999px;padding:0 12px;font-size:11.5px;font-weight:900;border-width:1px;box-shadow:none;justify-self:start;background:#fff;color:#374151;border-color:#d7d2c8}
+#fm-root .invactions .btn .ico{width:18px;height:18px;border-radius:999px;background:#f0f2ee;color:inherit}
+#fm-root .invactions .btn:hover:not(:disabled){transform:none;border-color:#0f766e;box-shadow:none;color:#0f766e;background:#f7fbfa}
+#fm-root .invactions .btn.blue{background:#1f2937;border-color:#1f2937;color:#fff}
+#fm-root .invactions .btn.upload{background:#fff;border-color:#bfcfc8;color:#0f766e}
+#fm-root .invactions .btn.fix{background:#f2faf7;border-color:#a8d4c8;color:#0f766e}
+#fm-root .invactions .btn.ai{background:#2f3540;border-color:#2f3540;color:#fff}
+#fm-root .invactions .btn.primary{background:#0f766e;border-color:#0f766e;color:#fff}
+#fm-root .invactions .btn.soon:disabled{background:#f5f4f0;border-color:#ddd8ce;color:#9aa09b}
+#fm-root .soonbadge{background:#e8e4dc;color:#66706c}
+#fm-root .dfchip.on{background:#1f2937;border-color:#1f2937}
+#fm-root .dfchip .dfn{background:#eef0ed;color:#374151}
+#fm-root .aibar{background:linear-gradient(135deg,#f2faf7,#fff 58%,#fbf4e5);border-color:#c8ded6;box-shadow:0 18px 42px -32px rgba(15,118,110,.65)}
+#fm-root .aibar::before{background:linear-gradient(90deg,#1f2937,#0f766e,#c0842b)}
+#fm-root .aibar .ait,#fm-root .aibar .aipct{color:#0f766e}
+#fm-root .aibar .aiscan{border-color:#0f766e}
+#fm-root .aibar .aifill{background:linear-gradient(90deg,#1f2937,#0f766e,#c0842b)}
+#fm-root thead th{background:#f0f2ee;color:#3f4a44}
+#fm-root .mktbl thead th{background:#f0f2ee;color:#3f4a44;border-bottom-color:#d7d2c8}
+#fm-root .mktr-pending td:first-child{border-left-color:#0f766e}
+#fm-root .mknum-pending{background:#f2faf7;border-color:#a8d4c8;color:#0f766e}
+#fm-root .mktr:hover .mkbtn{background:#1f2937;border-color:#1f2937}
 `;
