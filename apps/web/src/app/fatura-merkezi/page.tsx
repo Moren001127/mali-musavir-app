@@ -1279,8 +1279,8 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
   const earsivQ = useQuery({
     queryKey: ['fm-earsiv-sorgu', taxpayerId, period],
     queryFn: async () => (await api.get('/portal-automation/earsiv/invoices', { params: { taxpayerId, period, limit: 500 } })).data,
-    enabled: !!taxpayerId,
-    refetchInterval: 6000,
+    enabled: !!taxpayerId && source === 'earsiv',
+    refetchInterval: source === 'earsiv' ? 2000 : false,
   });
   const jobsQ = useQuery({
     queryKey: ['fm-earsiv-jobs', taxpayerId],
@@ -1288,8 +1288,8 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
       const r = await api.get('/portal-automation/jobs', { params: { jobType: 'EARSIV_PORTAL_FETCH', limit: 12 } });
       return Array.isArray(r.data) ? r.data.filter((j: any) => !taxpayerId || j.taxpayerId === taxpayerId) : [];
     },
-    enabled: !!taxpayerId,
-    refetchInterval: 5000,
+    enabled: !!taxpayerId && source === 'earsiv',
+    refetchInterval: source === 'earsiv' ? 1500 : false,
   });
   const integrationsQ = useQuery({
     queryKey: ['fm-integrations-sorgu', taxpayerId],
@@ -1299,6 +1299,13 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
   const rows: any[] = Array.isArray(earsivQ.data) ? earsivQ.data : [];
   const activeJob = (jobsQ.data || []).find((j: any) => ['pending', 'running'].includes(String(j.status || '').toLowerCase()));
   const lastJob = (jobsQ.data || [])[0];
+  useEffect(() => {
+    if (source !== 'earsiv' || !taxpayerId) return;
+    const status = String(lastJob?.status || '').toLowerCase();
+    if (['done', 'success', 'completed', 'failed'].includes(status)) {
+      qc.invalidateQueries({ queryKey: ['fm-earsiv-sorgu', taxpayerId, period] });
+    }
+  }, [source, taxpayerId, period, lastJob?.id, lastJob?.status, lastJob?.updatedAt, qc]);
   const processable = rows.filter((r) => r.isProcessable && !r.aktarildi);
   const selectedRefs = [...sel];
   const toggle = (ref: string) => setSel((prev) => { const n = new Set(prev); n.has(ref) ? n.delete(ref) : n.add(ref); return n; });
@@ -1316,20 +1323,43 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
       showFetchResult(r?.data);
       qc.invalidateQueries({ queryKey: ['fm-earsiv-jobs'] });
       qc.invalidateQueries({ queryKey: ['fm-earsiv-sorgu'] });
+      [1500, 3500, 6500].forEach((ms) => {
+        window.setTimeout(() => {
+          qc.invalidateQueries({ queryKey: ['fm-earsiv-jobs'] });
+          qc.invalidateQueries({ queryKey: ['fm-earsiv-sorgu'] });
+        }, ms);
+      });
     },
     onError: (e: any) => toast.error('Sorgu başlatılamadı: ' + (e?.response?.data?.message || e?.message || 'hata')),
   });
   const aktarMut = useMutation({
-    mutationFn: () => api.post('/fatura-muhasebelestirme/integrations/fetch', {
-      taxpayerId,
-      direction: 'SATIS',
-      donem: period,
-      providers: ['GIB_PORTAL'],
-      mode: 'download',
-      selectedRefs: selectedRefs.length ? selectedRefs : processable.map((r) => r.sourceRefId).filter(Boolean),
-    }),
+    mutationFn: async () => {
+      const refs = selectedRefs.length ? selectedRefs : processable.map((r) => r.sourceRefId).filter(Boolean);
+      const sync = await api.post('/portal-automation/earsiv/accounting-sync', {
+        taxpayerId,
+        period,
+        selectedRefs: refs,
+      });
+      const imported = Number(sync?.data?.imported || 0);
+      const processed = Number(sync?.data?.processed || 0);
+      if (imported === 0 && processed === 0 && refs.length > 0) {
+        const fallback = await api.post('/fatura-muhasebelestirme/integrations/fetch', {
+          taxpayerId,
+          direction: 'SATIS',
+          donem: period,
+          providers: ['GIB_PORTAL'],
+          mode: 'download',
+          selectedRefs: refs,
+        });
+        return { ...sync, data: { ...(sync.data || {}), fallbackQueued: true, fallback: fallback.data } };
+      }
+      return sync;
+    },
     onSuccess: (r: any) => {
-      showFetchResult(r?.data);
+      const imported = Number(r?.data?.imported || 0);
+      const processed = Number(r?.data?.processed || 0);
+      if (r?.data?.fallbackQueued) showFetchResult(r?.data?.fallback);
+      else toast.success(imported > 0 ? `${imported} fatura bekleyen satışa aktarıldı.` : `${processed} fatura kontrol edildi; yeni aktarım yok.`);
       setSel(new Set());
       qc.invalidateQueries({ queryKey: ['fm-earsiv-jobs'] });
       qc.invalidateQueries({ queryKey: ['fm-earsiv-sorgu'] });
@@ -1388,7 +1418,7 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
           </div>
           <div className="sourcehint">İptal, itirazlı veya reddedilmiş faturalar tabloda görünür ama aktarıma alınmaz.</div>
           <div className="sourcetablewrap">
-            <table className="sourcetable">
+            <table className="sourcetable earsivtable">
               <thead>
                 <tr>
                   <th><Check checked={processable.length > 0 && selectedRefs.length === processable.length} onToggle={toggleAll} /></th>
@@ -3907,10 +3937,19 @@ const CSS = `
 #fm-root .sourcehint{padding:9px 14px;border-bottom:1px solid #e5e7eb;background:#fffbeb;color:#805b16;font-size:12px}
 #fm-root .sourcetablewrap{overflow:auto;max-height:none;min-height:0;flex:1}
 #fm-root .sourcetable{width:100%;border-collapse:separate;border-spacing:0}
+#fm-root .sourcetable.earsivtable{table-layout:fixed;min-width:960px}
+#fm-root .sourcetable.earsivtable th:nth-child(1),#fm-root .sourcetable.earsivtable td:nth-child(1){width:42px}
+#fm-root .sourcetable.earsivtable th:nth-child(3),#fm-root .sourcetable.earsivtable td:nth-child(3){width:120px}
+#fm-root .sourcetable.earsivtable th:nth-child(4),#fm-root .sourcetable.earsivtable td:nth-child(4){width:155px}
+#fm-root .sourcetable.earsivtable th:nth-child(5),#fm-root .sourcetable.earsivtable td:nth-child(5){width:110px}
+#fm-root .sourcetable.earsivtable th:nth-child(6),#fm-root .sourcetable.earsivtable td:nth-child(6){width:112px}
+#fm-root .sourcetable.earsivtable th:nth-child(7),#fm-root .sourcetable.earsivtable td:nth-child(7){width:118px}
+#fm-root .sourcetable.earsivtable th:nth-child(8),#fm-root .sourcetable.earsivtable td:nth-child(8){width:74px}
 #fm-root .sourcetable th{height:36px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.25px;white-space:nowrap}
 #fm-root .sourcetable td{height:42px;font-size:12.5px;vertical-align:middle}
+#fm-root .sourcetable.earsivtable td:not(.partyname){white-space:nowrap}
 #fm-root .sourcetable th:last-child,#fm-root .sourcetable td:last-child{text-align:center}
-#fm-root .sourcetable .partyname{font-weight:400;color:#17212f}
+#fm-root .sourcetable .partyname{font-weight:400;color:#17212f;white-space:normal;overflow-wrap:anywhere;word-break:normal;line-height:1.35;padding-right:14px}
 #fm-root .sourcetable .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;color:#64748b;max-width:220px;overflow:hidden;text-overflow:ellipsis}
 #fm-root .sourcetable .plainstatus{color:#334155;font-weight:500}
 #fm-root .transferstate{display:inline-grid;place-items:center;width:24px;height:24px;white-space:nowrap;vertical-align:middle}

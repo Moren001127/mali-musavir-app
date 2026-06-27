@@ -1610,6 +1610,12 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       }
 
       if (mode === 'query') {
+        const payload = await this.downloadEarsivBelge(token, uuid, signed, referenceNo || `earsiv-${i + 1}`)
+          .catch(() => this.fetchEarsivHtml(token, uuid, signed, referenceNo || `earsiv-${i + 1}`))
+          .catch((err: any) => {
+            notes.push(`${referenceNo || uuid}: on indirme yapilamadi, yalniz satir listelendi (${this.compact(err?.message || err)})`);
+            return null;
+          });
         documents.push({
           taxpayerId: job.taxpayerId || null,
           belgeTuru: 'EARSIV_FATURA',
@@ -1618,13 +1624,15 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
           period: job.donem || this.inferDonem(job.periodEnd),
           issuedAt: this.earsivIssuedAt(row) || job.periodEnd || null,
           receivedAt: new Date().toISOString(),
-          mimeType: 'application/json',
-          originalName: `${referenceNo || uuid}.json`,
+          mimeType: payload?.mimeType || 'application/json',
+          originalName: payload?.fileName || `${referenceNo || uuid}.json`,
+          base64: payload?.base64,
           raw: {
             runner: 'railway',
             jobType: 'EARSIV_PORTAL_FETCH',
             source: 'gib-earsiv-api',
             mode,
+            prefetched: !!payload,
             ettn: uuid,
             belgeNumarasi: invoiceNo || null,
             onayDurumu: signed,

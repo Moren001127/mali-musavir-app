@@ -142,7 +142,7 @@ export class PortalAutomationController {
   @HttpCode(HttpStatus.OK)
   syncEarsivAccounting(
     @Req() req: any,
-    @Body() body: { taxpayerId?: string; period?: string; limit?: number },
+    @Body() body: { taxpayerId?: string; period?: string; limit?: number; selectedRefs?: string[] },
   ) {
     return this.service.syncEarsivPortalDocumentsToAccounting(req.user.tenantId, body || {});
   }

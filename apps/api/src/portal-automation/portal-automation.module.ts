@@ -10,6 +10,6 @@ import { NotificationsModule } from '../notifications/notifications.module';
   imports: [StorageModule, BeyanKayitlariModule, NotificationsModule],
   controllers: [PortalAutomationController, PortalAutomationAgentController],
   providers: [PortalAutomationService, PortalAutomationRailwayRunnerService],
-  exports: [PortalAutomationService],
+  exports: [PortalAutomationService, PortalAutomationRailwayRunnerService],
 })
 export class PortalAutomationModule {}

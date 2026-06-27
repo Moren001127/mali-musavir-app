@@ -20,6 +20,7 @@ import { memoryStorage } from 'multer';
 import { FaturaMuhasebelestirmeService } from './fatura-muhasebelestirme.service';
 import { IcerikEslestirmeService } from './icerik-eslestirme.service';
 import { EFaturaSyncService } from '../efatura-adapters/efatura-sync.service';
+import { PortalAutomationRailwayRunnerService } from '../portal-automation/portal-automation-railway-runner.service';
 
 const documentUploadInterceptor = () =>
   FilesInterceptor('files', 100, {
@@ -37,6 +38,7 @@ export class FaturaMuhasebelestirmeController {
     private readonly service: FaturaMuhasebelestirmeService,
     private readonly icerikEslestirme: IcerikEslestirmeService,
     private readonly eFaturaSyncService: EFaturaSyncService,
+    private readonly portalRunner: PortalAutomationRailwayRunnerService,
   ) {}
 
   @Get('documents')
@@ -75,12 +77,17 @@ export class FaturaMuhasebelestirmeController {
   }
 
   @Post('integrations/fetch')
-  fetchIntegrations(@Req() req: any, @Body() body: any) {
-    return this.service.fetchConfiguredIntegrations(
+  async fetchIntegrations(@Req() req: any, @Body() body: any) {
+    const result = await this.service.fetchConfiguredIntegrations(
       req.user.tenantId,
       body || {},
       req.user?.userId || req.user?.sub,
     );
+    const queuedGib = Array.isArray((result as any)?.providers)
+      && (result as any).providers.some((p: any) => p?.status === 'QUEUED_GIB_PORTAL' || Number(p?.queued || 0) > 0);
+    return queuedGib
+      ? { ...(result as any), runnerWake: this.portalRunner.wake('fatura-integrations-fetch') }
+      : result;
   }
 
   /** Talimat ver/kaldır — her gece otomatik fetch. */

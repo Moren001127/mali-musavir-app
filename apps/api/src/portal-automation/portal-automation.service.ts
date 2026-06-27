@@ -927,7 +927,7 @@ export class PortalAutomationService {
 
   async syncEarsivPortalDocumentsToAccounting(
     tenantId: string,
-    opts: { taxpayerId?: string; period?: string; limit?: number } = {},
+    opts: { taxpayerId?: string; period?: string; limit?: number; selectedRefs?: string[] } = {},
   ) {
     const limit = Math.min(Math.max(Number(opts.limit || 500), 1), 1000);
     const where: any = { tenantId, belgeTuru: 'EARSIV_FATURA', storageKey: { not: null } };
@@ -962,12 +962,28 @@ export class PortalAutomationService {
     let processed = 0;
     let imported = 0;
     let skipped = 0;
+    const selectedRefs = new Set((Array.isArray(opts.selectedRefs) ? opts.selectedRefs : [])
+      .map((v) => String(v || '').trim())
+      .filter(Boolean));
     for (const doc of docs) {
       if (!doc.taxpayerId || !doc.storageKey) {
         skipped++;
         continue;
       }
+      const raw: any = doc.raw && typeof doc.raw === 'object' ? doc.raw : {};
+      const portalRow: any = raw.row && typeof raw.row === 'object' ? raw.row : {};
+      const ettn = String(raw.ettn || portalRow.ettn || portalRow.uuid || '').trim();
+      const belgeNo = String(raw.belgeNumarasi || doc.referenceNo || portalRow.belgeNumarasi || portalRow.faturaNo || '').trim();
+      if (selectedRefs.size && !selectedRefs.has(String(doc.referenceNo || '')) && !selectedRefs.has(ettn) && !selectedRefs.has(belgeNo)) {
+        skipped++;
+        continue;
+      }
       processed++;
+      const accountingRaw = { ...raw, mode: 'download', prefetched: raw.prefetched === true };
+      await (this.prisma as any).portalDocument.update({
+        where: { id: doc.id },
+        data: { raw: accountingRaw },
+      }).catch(() => null);
       const before = await (this.prisma as any).invoiceAccountingDocument.count({
         where: { tenantId, taxpayerId: doc.taxpayerId, source: 'gib-earsiv-api' },
       }).catch(() => 0);
@@ -984,7 +1000,7 @@ export class PortalAutomationService {
           receivedAt: doc.receivedAt ? doc.receivedAt.toISOString() : null,
           mimeType: doc.mimeType,
           originalName: doc.title || doc.referenceNo || 'earsiv-fatura.json',
-          raw: doc.raw || {},
+          raw: accountingRaw,
         },
         'EARSIV_PORTAL_FETCH',
         doc.storageKey,
@@ -1974,12 +1990,16 @@ export class PortalAutomationService {
         }
         if (Object.keys(patch).length) {
           const updated = await (this.prisma as any).portalDocument.update({ where: { id: existing.id }, data: patch });
-          await this.importEarsivPortalDocumentToAccounting(tenantId, jobId, input, jobType, storageKey, sizeBytes, mimeType)
-            .catch((err) => this.logger.warn(`e-Arsiv Fatura Merkezi aktarimi yapilamadi: ${err?.message || err}`));
+          if ((input.raw as any)?.mode !== 'query') {
+            await this.importEarsivPortalDocumentToAccounting(tenantId, jobId, input, jobType, storageKey, sizeBytes, mimeType)
+              .catch((err) => this.logger.warn(`e-Arsiv Fatura Merkezi aktarimi yapilamadi: ${err?.message || err}`));
+          }
           return updated;
         }
-        await this.importEarsivPortalDocumentToAccounting(tenantId, jobId, input, jobType, storageKey, sizeBytes, mimeType)
-          .catch((err) => this.logger.warn(`e-Arsiv Fatura Merkezi aktarimi yapilamadi: ${err?.message || err}`));
+        if ((input.raw as any)?.mode !== 'query') {
+          await this.importEarsivPortalDocumentToAccounting(tenantId, jobId, input, jobType, storageKey, sizeBytes, mimeType)
+            .catch((err) => this.logger.warn(`e-Arsiv Fatura Merkezi aktarimi yapilamadi: ${err?.message || err}`));
+        }
         return existing;
       }
     }
@@ -2003,8 +2023,10 @@ export class PortalAutomationService {
         raw: input.raw || null,
       },
     });
-    await this.importEarsivPortalDocumentToAccounting(tenantId, jobId, input, jobType, storageKey, sizeBytes, mimeType)
-      .catch((err) => this.logger.warn(`e-Arsiv Fatura Merkezi aktarimi yapilamadi: ${err?.message || err}`));
+    if ((input.raw as any)?.mode !== 'query') {
+      await this.importEarsivPortalDocumentToAccounting(tenantId, jobId, input, jobType, storageKey, sizeBytes, mimeType)
+        .catch((err) => this.logger.warn(`e-Arsiv Fatura Merkezi aktarimi yapilamadi: ${err?.message || err}`));
+    }
     return created;
   }
 
