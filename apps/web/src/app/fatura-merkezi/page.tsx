@@ -896,7 +896,9 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
       fd.append('documentType', kind === 'SATIS' ? 'SATIS_FATURA' : 'ALIS_FATURA');
       fd.append('invoiceKind', kind);
       fd.append('period', period);
-      return api.post('/fatura-muhasebelestirme/documents/upload', fd);
+      return api.post('/fatura-muhasebelestirme/documents/upload', fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
     },
     onSuccess: (r: any) => {
       const n = Array.isArray(r?.data) ? r.data.length : (r?.data?.uploaded ?? r?.data?.count ?? r?.data?.created ?? null);
@@ -1388,7 +1390,7 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
     },
     onError: (e: any) => toast.error('Aktarım başlatılamadı: ' + (e?.response?.data?.message || e?.message || 'hata')),
   });
-  const earsivOverlayBusy = rows.length === 0 && (aktarMut.isPending || waitForFirstRows || sorgulaMut.isPending);
+  const earsivOverlayBusy = aktarMut.isPending || waitForFirstRows || sorgulaMut.isPending;
   const syncMut = useMutation({
     mutationFn: () => api.post('/portal-automation/earsiv/accounting-sync', { taxpayerId, period }),
     onSuccess: (r: any) => {
@@ -1476,6 +1478,7 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
     ].filter(Boolean);
     return parts.join(' · ');
   };
+  const efaturaOverlayBusy = efaturaFetchMut.isPending || efaturaImportMut.isPending;
 
   return (
     <section className="screen sorgu-screen">
@@ -1532,7 +1535,7 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
           </div>
         </div>
       ) : (
-        <div className={`card sourcepanel ${(efaturaImportMut.isPending || (efaturaFetchMut.isPending && efaturaRows.length === 0)) ? 'isbusy' : ''}`}>
+        <div className={`card sourcepanel ${efaturaOverlayBusy ? 'isbusy' : ''}`}>
           <div className="ch sourcehead">
             <h3>e-Fatura sorguları</h3>
             <span className="mu">GIB e-Arşiv ile karışmaz; sadece e-Fatura entegratörleri ve aktarım durumları.</span>
@@ -1566,7 +1569,7 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
             </div>
           )}
           <div className="sourcetablewrap efatura">
-            {(efaturaImportMut.isPending || (efaturaFetchMut.isPending && efaturaRows.length === 0)) && (
+            {efaturaOverlayBusy && (
               <div className="queryveil">
                 <div className="querydoc" aria-hidden="true"><span /><i /><i /><i /></div>
                 <b>{efaturaImportMut.isPending ? 'Faturalar aktariliyor...' : 'Faturalar getiriliyor...'}</b>

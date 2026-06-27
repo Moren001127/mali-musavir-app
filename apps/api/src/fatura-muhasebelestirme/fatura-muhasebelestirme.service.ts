@@ -241,6 +241,13 @@ type ProviderInvoicePayload = {
   htmlContent?: string | null;
 };
 
+type ProviderStoredVisual = {
+  mimeType?: string | null;
+  originalName?: string | null;
+  base64?: string | null;
+  html?: string | null;
+};
+
 type ParsedProviderInvoice = {
   faturaNo: string;
   faturaTarihi: Date | null;
@@ -3486,6 +3493,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
               where: { tenantId_taxpayerId_entegrator_uuid: { tenantId, taxpayerId: opts.taxpayerId, entegrator: cfg.provider, uuid } },
               select: { id: true, isTransferred: true, documentId: true },
             });
+            const storedVisual = this.providerStoredVisual(payload);
             const data = {
               ettn: parsed.ettn || null,
               senderVkn: parsed.saticiVergiNo || null,
@@ -3506,6 +3514,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
                 source: 'integrator-query',
                 provider: cfg.provider,
                 originalName: payload.originalName || null,
+                originalVisual: storedVisual,
                 approvalStatus: 'Onaylandi',
                 iptalItiraz: 'Yok',
                 queriedBy: userId || null,
@@ -3513,6 +3522,15 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             };
             if (existing) {
               await (this.prisma as any).eFaturaInbox.update({ where: { id: existing.id }, data });
+              if (existing.documentId && storedVisual) {
+                await this.refreshProviderDocumentVisual(
+                  tenantId,
+                  existing.documentId,
+                  taxpayer,
+                  cfg,
+                  payload,
+                ).catch((e: any) => this.logger.warn(`Aktarilmis e-fatura gorseli yenilenemedi: ${e?.message || e}`));
+              }
               providerUpdated++;
             } else {
               await (this.prisma as any).eFaturaInbox.create({
@@ -3580,7 +3598,34 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const raw = row.rawJson || {};
       if (String(raw.channel || '').toUpperCase() !== channel) continue;
       processed++;
-      if (row.documentId || row.processedAt || row.isTransferred) { alreadyQueued++; continue; }
+      if (row.documentId || row.processedAt || row.isTransferred) {
+        if (row.documentId) {
+          const provider = String(row.entegrator || 'TURMOB_EFATURA');
+          const visualPayload = this.providerPayloadFromStoredVisual(String(row.ublXmlRaw || ''), row.uuid, row.faturaNo, raw?.originalVisual);
+          if (visualPayload.pdfBuffer || visualPayload.htmlContent) {
+            await this.refreshProviderDocumentVisual(
+              tenantId,
+              row.documentId,
+              taxpayer,
+              {
+                provider,
+                label: provider,
+                baseUrl: '',
+                username: '',
+                password: '',
+                apiKey: '',
+                apiSecret: '',
+                senderVkn: '',
+                accountId: '',
+                note: '',
+              },
+              visualPayload,
+            ).catch((e: any) => this.logger.warn(`Aktarilmis e-fatura gorseli yenilenemedi: ${e?.message || e}`));
+          }
+        }
+        alreadyQueued++;
+        continue;
+      }
       if (/iptal|itiraz|red|cancel/i.test(`${raw.approvalStatus || ''} ${raw.iptalItiraz || ''}`)) { skipped++; continue; }
       const xml = String(row.ublXmlRaw || '').trim();
       if (!xml) { failed++; errors.push({ id: row.id, message: 'XML bulunamadi' }); continue; }
@@ -3603,7 +3648,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             note: '',
           },
           direction === 'OUT' ? 'SATIS' : 'ALIS',
-          { xml, externalId: row.uuid, originalName: `${row.faturaNo || row.uuid}.xml` },
+          this.providerPayloadFromStoredVisual(xml, row.uuid, row.faturaNo, raw?.originalVisual),
         );
         await (this.prisma as any).eFaturaInbox.update({
           where: { id: row.id },
@@ -4006,18 +4051,26 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const zip = await JSZip.loadAsync(buffer);
       const files = Object.values(zip.files).filter((file) => !file.dir);
       const ordered = files.sort((a, b) => {
-        const rank = (name: string) => /\.(html?|xhtml)$/i.test(name) ? 0 : /\.(xml|ubl)$/i.test(name) ? 1 : 2;
+        const rank = (name: string) =>
+          /\.pdf$/i.test(name) ? 0
+            : /\.(html?|xhtml)$/i.test(name) ? 1
+              : /\.(jpe?g|png|webp)$/i.test(name) ? 2
+                : /\.(xml|ubl)$/i.test(name) ? 3
+                  : 4;
         return rank(a.name || '') - rank(b.name || '');
       });
       for (const file of ordered) {
         const name = file.name || '';
-        if (!/\.(html?|xhtml|xml|ubl)$/i.test(name)) continue;
+        if (!/\.(pdf|html?|xhtml|jpe?g|png|webp|xml|ubl)$/i.test(name)) continue;
         const nested = Buffer.from(await file.async('uint8array'));
         if (nested.length >= 4 && nested[0] === 0x50 && nested[1] === 0x4b) {
           const nestedPayload = await this.extractStoredInvoiceViewPayload(nested, '');
           if (nestedPayload) return nestedPayload;
           continue;
         }
+        if (/\.pdf$/i.test(name)) return { kind: 'pdf', buffer: nested };
+        if (/\.(jpe?g)$/i.test(name)) return { kind: 'image', buffer: nested, mimeType: 'image/jpeg' };
+        if (/\.png$/i.test(name)) return { kind: 'image', buffer: nested, mimeType: 'image/png' };
         const content = this.decodeXmlEntities(nested.toString('utf8')).trim();
         if (!content) continue;
         return {
@@ -5105,11 +5158,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // TEŞHİS: first='<' → oturum liste için yetersiz; '{' ama rows=0 → parametre/dönem filtresi gerekli.
     this.logger.log(`TURMOB portal ${channel}: url=${usedListUrl} method=${usedMethod} profile=${usedProfile} ct=${ct.slice(0, 40)} len=${raw.length} first=${first} rows=${rows.length} topKeys=${JSON.stringify(Object.keys(data || {})).slice(0, 150)} rowKeys=${JSON.stringify(Object.keys(rows[0] || {})).slice(0, 250)}`);
     // İPTAL filtresi (durum alanı adı ilk testte netleşecek — "İptal/Iptal/Reddedildi/Cancel" geçeni atla):
-    const isCancelled = (r: any) => /iptal|reddedil|cancel/i.test(JSON.stringify(r?.Durum ?? r?.durum ?? r?.Status ?? r?.status ?? ''));
+    const isCancelled = (r: any) => /iptal|reddedil|cancel/i.test(JSON.stringify(r?.Durum ?? r?.durum ?? r?.Status ?? r?.status ?? r ?? ''));
     const live = rows.filter((r) => !isCancelled(r));
-    const payloads = directPayloads.length
-      ? directPayloads
-      : await this.extractPayloadsFromProviderResponse(raw, ['xml', 'ubl', 'content', 'data', 'base64', 'DocumentXml', 'InvoiceXml']);
+    const payloads = [...directPayloads];
     const seenUrls = new Set<string>();
     const addCandidateUrl = (candidate: string) => {
       const clean = this.decodeXmlEntities(String(candidate || '').replace(/\\\//g, '/')).trim();
@@ -5147,7 +5198,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         const looksUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(text);
         const looksHex32 = /^[0-9a-f]{32}$/i.test(text);
         const looksOpaqueId = looksUsefulKey && /^[A-Za-z0-9_-]{4,100}$/.test(text);
-        if (looksUuid || looksHex32 || looksOpaqueId) values.add(text);
+        const looksArrayNumericId = !looksUsefulKey && /^\d{6,12}$/.test(text) && text.length !== 10 && text.length !== 11;
+        const looksInvoiceNumber = !looksUsefulKey && /^[A-Z]{2,6}\d{8,24}$/i.test(text);
+        if (looksUuid || looksHex32 || looksOpaqueId || looksArrayNumericId || looksInvoiceNumber) values.add(text);
       };
       const visit = (value: any, keyHint = '') => {
         if (value == null) return;
@@ -5174,34 +5227,32 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const invoiceIds = [...new Set([
         ...rowValues(row, ['InvoiceId', 'InvoiceID', 'invoiceId', 'FaturaId', 'faturaId', 'BelgeId', 'belgeId', 'Id', 'ID', 'id', 'Uuid', 'UUID', 'uuid', 'Ettn', 'ETTN', 'ettn', 'Guid', 'GUID', 'guid']),
         ...turmobCandidateIds(row),
-      ])].slice(0, 24);
-      const archiveIds = [...new Set(rowValues(row, ['ArchiveId', 'ArchiveID', 'archiveId', 'ArsivId', 'arsivId']))].slice(0, 12);
+      ])].slice(0, 5);
+      const archiveIds = [...new Set(rowValues(row, ['ArchiveId', 'ArchiveID', 'archiveId', 'ArsivId', 'arsivId']))].slice(0, 4);
       const addInvoiceUrlSet = (id: string, keyName: 'InvoiceId' | 'id' | 'uuid' | 'ettn') => {
         const q = `${keyName}=${encodeURIComponent(id)}`;
         const io = `InOrOut=${inOrOut}`;
-        for (const prefix of ['/Invoice', '/IncomingInvoice', '/OutgoingInvoice']) {
+        const prefixes = channel === 'IN_EFATURA'
+          ? ['/IncomingInvoice', '/Invoice']
+          : channel === 'OUT_EARSIV'
+            ? ['/ArchiveInvoice', '/OutgoingArchiveInvoice', '/Invoice']
+            : ['/OutgoingInvoice', '/Invoice'];
+        for (const prefix of prefixes) {
           addCandidateUrl(`${prefix}/GetInvoiceXml?${io}&${q}`);
           addCandidateUrl(`${prefix}/GetInvoiceXML?${io}&${q}`);
           addCandidateUrl(`${prefix}/DownloadXml?${io}&${q}`);
-          addCandidateUrl(`${prefix}/DownloadXML?${io}&${q}`);
-          addCandidateUrl(`${prefix}/DownloadInvoiceXml?${io}&${q}`);
-          addCandidateUrl(`${prefix}/GetXml?${io}&${q}`);
-          addCandidateUrl(`${prefix}/GetUbl?${io}&${q}`);
           addCandidateUrl(`${prefix}/Detail?${io}&${q}&IsPrint=True`);
-          addCandidateUrl(`${prefix}/PrintAllInvoice?${io}&${q}&IsPrint=True`);
+          addCandidateUrl(`${prefix}/Print?${io}&${q}`);
         }
       };
       for (const id of invoiceIds) {
-        addCandidateUrl(`/Invoice/GetInvoiceXml?InOrOut=${inOrOut}&InvoiceId=${encodeURIComponent(id)}`);
-        addCandidateUrl(`/Invoice/GetInvoiceXML?InOrOut=${inOrOut}&InvoiceId=${encodeURIComponent(id)}`);
-        addCandidateUrl(`/IncomingInvoice/GetInvoiceXml?InOrOut=${inOrOut}&InvoiceId=${encodeURIComponent(id)}`);
-        addCandidateUrl(`/IncomingInvoice/GetInvoiceXML?InOrOut=${inOrOut}&InvoiceId=${encodeURIComponent(id)}`);
-        addCandidateUrl(`/Invoice/Detail?InOrOut=${inOrOut}&InvoiceId=${encodeURIComponent(id)}&IsPrint=True`);
-        addCandidateUrl(`/Invoice/PrintAllInvoice?InOrOut=${inOrOut}&InvoiceId=${encodeURIComponent(id)}&IsPrint=True`);
-        addInvoiceUrlSet(id, 'InvoiceId');
-        addInvoiceUrlSet(id, 'id');
-        addInvoiceUrlSet(id, 'uuid');
-        addInvoiceUrlSet(id, 'ettn');
+        const idText = String(id);
+        const keys: Array<'InvoiceId' | 'id' | 'uuid' | 'ettn'> = /^[0-9a-f-]{32,36}$/i.test(idText)
+          ? ['uuid', 'ettn', 'InvoiceId']
+          : /^\d+$/.test(idText)
+            ? ['InvoiceId', 'id']
+            : ['InvoiceId', 'id', 'uuid'];
+        for (const key of keys) addInvoiceUrlSet(id, key);
       }
       for (const id of archiveIds) {
         addCandidateUrl(`/Invoice/GetInvoiceXml?InOrOut=False&ArchiveId=${encodeURIComponent(id)}`);
@@ -5225,10 +5276,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       addTurmobDocumentUrls(row);
     }
     let downloadAttempts = 0;
+    const maxDownloadAttempts = Math.min(1400, Math.max(220, live.length * 32));
+    const targetPayloadCount = Math.min(opts.limit, Math.max(live.length, payloads.length || 1));
     for (const url of seenUrls) {
-      if (++downloadAttempts > 240) break;
+      if (++downloadAttempts > maxDownloadAttempts) break;
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 4500);
+      const timer = setTimeout(() => controller.abort(), 1200);
       try {
         const docRes = await fetch(url, {
           method: 'GET',
@@ -5249,7 +5302,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       } finally {
         clearTimeout(timer);
       }
-      if (payloads.length >= opts.limit) break;
+      const uniqueCount = new Set(payloads.map((payload) => payload.externalId || createHash('sha1').update(payload.xml).digest('hex'))).size;
+      if (uniqueCount >= targetPayloadCount) break;
     }
     if (!payloads.length && first === '<') {
       throw new Error('TURMOB oturumu liste ekranina gecemedi; portal login sayfasina geri dondu');
@@ -5632,12 +5686,14 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
 
   private async addPayloadString(payloads: ProviderInvoicePayload[], value: string) {
     const raw = this.decodeXmlEntities(value).trim();
+    const htmlContent = /<(?:!doctype\s+html|html|body)\b/i.test(raw.slice(0, 2000)) ? raw : null;
     const xmlDocs = this.extractXmlDocuments(raw);
     if (xmlDocs.length) {
       xmlDocs.forEach((xml) => payloads.push({
         xml,
         externalId: this.tagText(xml, 'UUID') || this.tagText(xml, 'ID') || null,
         originalName: `${this.tagText(xml, 'ID') || this.tagText(xml, 'UUID') || randomUUID()}.xml`,
+        htmlContent,
       }));
       return;
     }
@@ -5656,17 +5712,39 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     if (buffer.length >= 4 && buffer[0] === 0x50 && buffer[1] === 0x4b) {
       const zip = await JSZip.loadAsync(buffer);
       const files = Object.values(zip.files).filter((file) => !file.dir);
+      let visualPdf: Buffer | null = null;
+      let visualHtml: string | null = null;
+      const attachVisual = (fromIndex: number) => {
+        for (const payload of payloads.slice(fromIndex)) {
+          if (!payload.pdfBuffer && visualPdf) payload.pdfBuffer = visualPdf;
+          if (!payload.htmlContent && visualHtml) payload.htmlContent = visualHtml;
+        }
+      };
       for (const file of files) {
         const name = file.name || '';
         const nested = Buffer.from(await file.async('uint8array'));
+        if (!visualPdf && (/\.pdf$/i.test(name) || (nested.length >= 4 && nested[0] === 0x25 && nested[1] === 0x50 && nested[2] === 0x44 && nested[3] === 0x46))) {
+          visualPdf = nested;
+        }
+        if (!visualHtml && /\.(html?|xhtml)$/i.test(name)) {
+          const html = nested.toString('utf8').trim();
+          if (/<(?:!doctype\s+html|html|body)\b/i.test(html.slice(0, 2000))) visualHtml = html;
+        }
         if (nested.length >= 4 && nested[0] === 0x50 && nested[1] === 0x4b) {
+          const before = payloads.length;
           await this.addPayloadBuffer(payloads, nested);
+          attachVisual(before);
           continue;
         }
         const content = this.decodeXmlEntities(nested.toString('utf8'));
+        if (!visualHtml && /<(?:!doctype\s+html|html|body)\b/i.test(content.slice(0, 2000))) {
+          visualHtml = content.trim();
+        }
         const xmlDocs = this.extractXmlDocuments(content);
         if (!xmlDocs.length) {
+          const before = payloads.length;
           await this.addPayloadString(payloads, content);
+          attachVisual(before);
           continue;
         }
         for (const doc of xmlDocs) {
@@ -5674,9 +5752,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             xml: doc,
             externalId: this.tagText(doc, 'UUID') || this.tagText(doc, 'ID') || null,
             originalName: name.split('/').pop() || `${randomUUID()}.xml`,
+            pdfBuffer: visualPdf,
+            htmlContent: visualHtml,
           });
         }
       }
+      attachVisual(0);
       return;
     }
     const text = buffer.toString('utf8');
@@ -5741,6 +5822,149 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       .replace(/'/g, '&apos;');
   }
 
+  private safeInvoiceFileStem(value: any) {
+    const stem = String(value || randomUUID()).trim().replace(/[^A-Za-z0-9._-]+/g, '_').replace(/^_+|_+$/g, '');
+    return stem || randomUUID();
+  }
+
+  private providerStoredVisual(payload: ProviderInvoicePayload): ProviderStoredVisual | null {
+    const pdf = payload.pdfBuffer && Buffer.isBuffer(payload.pdfBuffer) ? payload.pdfBuffer : null;
+    if (pdf?.length && pdf.length <= 6_000_000) {
+      return {
+        mimeType: 'application/pdf',
+        originalName: payload.originalName || null,
+        base64: pdf.toString('base64'),
+      };
+    }
+    const html = String(payload.htmlContent || '').trim();
+    if (html && /<(?:!doctype\s+html|html|body)\b/i.test(html.slice(0, 2000)) && Buffer.byteLength(html, 'utf8') <= 2_500_000) {
+      return {
+        mimeType: 'text/html',
+        originalName: payload.originalName || null,
+        html,
+      };
+    }
+    return null;
+  }
+
+  private providerPayloadFromStoredVisual(
+    xml: string,
+    externalId?: string | null,
+    faturaNo?: string | null,
+    visual?: ProviderStoredVisual | null,
+  ): ProviderInvoicePayload {
+    const payload: ProviderInvoicePayload = {
+      xml,
+      externalId: externalId || null,
+      originalName: `${faturaNo || externalId || randomUUID()}.xml`,
+    };
+    if (!visual || typeof visual !== 'object') return payload;
+    if (/pdf/i.test(String(visual.mimeType || '')) && visual.base64) {
+      try {
+        const pdfBuffer = Buffer.from(String(visual.base64), 'base64');
+        if (pdfBuffer.length) {
+          payload.pdfBuffer = pdfBuffer;
+          payload.originalName = visual.originalName || `${faturaNo || externalId || randomUUID()}.pdf`;
+        }
+      } catch {
+        // Invalid stored visual; keep XML fallback.
+      }
+    } else if (/html/i.test(String(visual.mimeType || '')) && visual.html) {
+      payload.htmlContent = String(visual.html);
+      payload.originalName = visual.originalName || `${faturaNo || externalId || randomUUID()}.html`;
+    }
+    return payload;
+  }
+
+  private async buildProviderDocumentStorage(
+    tenantId: string,
+    taxpayerId: string,
+    cfg: RuntimeIntegrationConfig,
+    xml: string,
+    payload: ProviderInvoicePayload,
+    parsed: ParsedProviderInvoice,
+    source: string,
+    sourceRefId: string,
+  ) {
+    const xmlBuffer = Buffer.from(xml, 'utf8');
+    const stem = this.safeInvoiceFileStem(parsed.faturaNo || sourceRefId);
+    const html = String(payload.htmlContent || '').trim();
+    const pdf = payload.pdfBuffer && Buffer.isBuffer(payload.pdfBuffer) && payload.pdfBuffer.length
+      ? payload.pdfBuffer
+      : null;
+    const hasHtml = html && /<(?:!doctype\s+html|html|body)\b/i.test(html.slice(0, 2000));
+    if (pdf || hasHtml) {
+      const zip = new JSZip();
+      zip.file('invoice.xml', xmlBuffer);
+      if (pdf) zip.file('original.pdf', pdf);
+      if (hasHtml) zip.file('original.html', html);
+      const buffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+      const s3Key = `invoice-accounting/${tenantId}/${taxpayerId}/${cfg.provider.toLowerCase()}-${randomUUID()}.zip`;
+      await this.storage.putBuffer(s3Key, buffer, 'application/zip', {
+        'tenant-id': tenantId,
+        'taxpayer-id': taxpayerId,
+        provider: cfg.provider,
+        source,
+      });
+      return {
+        buffer,
+        s3Key,
+        mimeType: 'application/zip',
+        originalName: `${stem}.zip`,
+      };
+    }
+
+    const s3Key = `invoice-accounting/${tenantId}/${taxpayerId}/${cfg.provider.toLowerCase()}-${randomUUID()}.xml`;
+    await this.storage.putBuffer(s3Key, xmlBuffer, 'application/xml', {
+      'tenant-id': tenantId,
+      'taxpayer-id': taxpayerId,
+      provider: cfg.provider,
+      source,
+    });
+    return {
+      buffer: xmlBuffer,
+      s3Key,
+      mimeType: 'application/xml',
+      originalName: payload.originalName || `${stem}.xml`,
+    };
+  }
+
+  private async refreshProviderDocumentVisual(
+    tenantId: string,
+    documentId: string,
+    taxpayer: any,
+    cfg: RuntimeIntegrationConfig,
+    payload: ProviderInvoicePayload,
+  ) {
+    if (!payload.pdfBuffer && !payload.htmlContent) return;
+    let xml = String(payload.xml || '').trim();
+    const docs = this.extractXmlDocuments(this.decodeXmlEntities(xml));
+    if (docs.length) xml = docs[0];
+    if (!xml) return;
+    const parsed = this.parseProviderUblInvoice(xml) || this.regexProviderInvoiceFallback(xml);
+    if (!parsed) return;
+    const source = cfg.provider === 'GIB_PORTAL' ? 'gib-portal-api' : `integration-${cfg.provider.toLowerCase()}`;
+    const sourceRefId = payload.externalId || parsed.ettn || parsed.faturaNo || createHash('sha1').update(xml).digest('hex');
+    const stored = await this.buildProviderDocumentStorage(tenantId, taxpayer.id, cfg, xml, payload, parsed, source, sourceRefId);
+    const current = await (this.prisma as any).invoiceAccountingDocument.findFirst({
+      where: { id: documentId, tenantId, taxpayerId: taxpayer.id },
+      select: { s3Key: true, source: true },
+    });
+    if (!current) return;
+    await (this.prisma as any).invoiceAccountingDocument.update({
+      where: { id: documentId },
+      data: {
+        originalName: stored.originalName,
+        mimeType: stored.mimeType,
+        sizeBytes: stored.buffer.length,
+        s3Key: stored.s3Key,
+      },
+    });
+    if (current.s3Key && current.s3Key !== stored.s3Key && !String(current.s3Key).startsWith('earsiv-inline://')) {
+      this.storage.deleteObject(current.s3Key).catch(() => {});
+    }
+  }
+
   private async createDocumentFromProviderXml(
     tenantId: string,
     userId: string | undefined,
@@ -5772,16 +5996,18 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       where: { tenantId, taxpayerId: taxpayer.id, source, sourceRefId },
       include: { lines: { orderBy: { orderNo: 'asc' } } },
     });
-    if (existing) return { created: false, document: existing };
+    if (existing) {
+      if (payload.pdfBuffer || payload.htmlContent) {
+        await this.refreshProviderDocumentVisual(tenantId, existing.id, taxpayer, cfg, {
+          ...payload,
+          xml,
+          externalId: sourceRefId,
+        }).catch((e: any) => this.logger.warn(`Mevcut entegrator belgesi gorseli yenilenemedi: ${e?.message || e}`));
+      }
+      return { created: false, document: existing };
+    }
 
-    const xmlBuffer = Buffer.from(xml, 'utf8');
-    const s3Key = `invoice-accounting/${tenantId}/${taxpayer.id}/${cfg.provider.toLowerCase()}-${randomUUID()}.xml`;
-    await this.storage.putBuffer(s3Key, xmlBuffer, 'application/xml', {
-      'tenant-id': tenantId,
-      'taxpayer-id': taxpayer.id,
-      provider: cfg.provider,
-      source,
-    });
+    const stored = await this.buildProviderDocumentStorage(tenantId, taxpayer.id, cfg, xml, payload, parsed, source, sourceRefId);
 
     const total = parsed.toplamTutar ?? ((parsed.matrah || 0) + (parsed.kdvTutari || 0));
     const duplicate = await this.findDuplicate(tenantId, {
@@ -5812,10 +6038,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         duplicateOfId: duplicate?.duplicateOfId || null,
         duplicateReason: duplicate?.duplicateReason || null,
         duplicateSeverity: duplicate?.duplicateSeverity || null,
-        originalName: payload.originalName || `${parsed.faturaNo || sourceRefId}.xml`,
-        mimeType: 'application/xml',
-        sizeBytes: xmlBuffer.length,
-        s3Key,
+        originalName: stored.originalName,
+        mimeType: stored.mimeType,
+        sizeBytes: stored.buffer.length,
+        s3Key: stored.s3Key,
         currency: parsed.paraBirimi || 'TL',
         belgeNo: parsed.faturaNo || null,
         faturaTarihi: parsed.faturaTarihi || null,
