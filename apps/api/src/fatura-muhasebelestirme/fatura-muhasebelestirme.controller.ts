@@ -432,6 +432,34 @@ export class FaturaMuhasebelestirmeController {
   @Post('efatura-sync')
   async efaturaSync(@Req() req: any, @Body() body: any) {
     const direction = body?.direction === 'OUT' ? 'OUT' : 'IN';
-    return this.eFaturaSyncService.syncAll(req.user.tenantId, { direction });
+    return this.service.syncEfaturaInboxFromIntegrations(
+      req.user.tenantId,
+      req.user?.userId || req.user?.sub,
+      {
+        taxpayerId: body?.taxpayerId,
+        period: body?.period,
+        direction,
+        channel: body?.channel,
+        limit: body?.limit,
+        providers: Array.isArray(body?.providers) ? body.providers : undefined,
+      },
+    );
+  }
+
+  @Post('efatura-inbox/import')
+  async efaturaInboxImport(@Req() req: any, @Body() body: any) {
+    const direction = body?.direction === 'OUT' ? 'OUT' : 'IN';
+    return this.service.importEfaturaInboxToAccounting(
+      req.user.tenantId,
+      req.user?.userId || req.user?.sub,
+      {
+        taxpayerId: body?.taxpayerId,
+        period: body?.period,
+        direction,
+        channel: body?.channel,
+        ids: Array.isArray(body?.ids) ? body.ids : undefined,
+        limit: body?.limit,
+      },
+    );
   }
 }

@@ -1796,7 +1796,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       select: { id: true, provider: true, config: true, isActive: true },
     });
     const byProvider = new Map<string, any>(rows.map((row: any) => [String(row.provider), row]));
-    const providers = INTEGRATOR_CATALOG.filter((item) => {
+    const providers = INTEGRATOR_CATALOG.filter((item: any) => {
       if (item.provider === 'LUCA') return false;
       if (item.provider === 'GIB_PORTAL') return false;
       if (requestedProviders.size && !requestedProviders.has(item.provider)) return false;
@@ -3411,6 +3411,216 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     };
   }
 
+  async syncEfaturaInboxFromIntegrations(
+    tenantId: string,
+    userId: string | undefined,
+    opts: { taxpayerId: string; period?: string; direction?: 'IN' | 'OUT'; channel?: string; limit?: number; providers?: string[] } = {} as any,
+  ) {
+    if (!opts.taxpayerId) throw new BadRequestException('taxpayerId gerekli');
+    const taxpayer = await (this.prisma as any).taxpayer.findFirst({
+      where: { id: opts.taxpayerId, tenantId },
+      select: { id: true, companyName: true, vkn: true, tckn: true },
+    });
+    if (!taxpayer) throw new NotFoundException('Mukellef bulunamadi');
+
+    const channel = String(opts.channel || (opts.direction === 'OUT' ? 'OUT_EFATURA' : 'IN_EFATURA')).toUpperCase();
+    const direction: 'ALIS' | 'SATIS' = channel === 'IN_EFATURA' ? 'ALIS' : 'SATIS';
+    const inboxDirection: 'IN' | 'OUT' = direction === 'ALIS' ? 'IN' : 'OUT';
+    const period = this.monthRange(opts.period);
+    const limit = Math.min(Math.max(Number(opts.limit || 500), 1), 1000);
+    const requested = new Set((Array.isArray(opts.providers) ? opts.providers : []).map((p) => String(p).toUpperCase()));
+
+    const rows = await (this.prisma as any).integrationConnection.findMany({
+      where: {
+        tenantId,
+        isActive: true,
+        provider: {
+          in: INTEGRATOR_CATALOG
+            .filter((item: any) => item.kind === 'efatura' || /EFATURA|ELOGO|UYUMSOFT|MIKRO|IZIBIZ|KOLAYSOFT|FORIBA|PARASUT|NILVERA/i.test(item.provider))
+            .map((item: any) => item.provider) as any,
+        },
+      },
+      select: { id: true, provider: true, config: true, isActive: true },
+    });
+    const byProvider = new Map<string, any>(rows.map((row: any) => [String(row.provider), row]));
+    const providers = INTEGRATOR_CATALOG.filter((item: any) => {
+      if (item.provider === 'LUCA' || item.provider === 'GIB_PORTAL') return false;
+      if (!(item.kind === 'efatura' || /EFATURA|ELOGO|UYUMSOFT|MIKRO|IZIBIZ|KOLAYSOFT|FORIBA|PARASUT|NILVERA/i.test(item.provider))) return false;
+      if (requested.size && !requested.has(item.provider)) return false;
+      return true;
+    });
+
+    const statuses: any[] = [];
+    let fetched = 0, added = 0, updated = 0, skipped = 0, failed = 0;
+    for (const item of providers) {
+      const row = byProvider.get(item.provider);
+      const cfg = this.resolveRuntimeConfig(row, item, opts.taxpayerId);
+      if (!row || !cfg) {
+        statuses.push({ provider: item.provider, label: item.label, status: 'SKIPPED', reason: 'Entegrator kimligi yok' });
+        skipped++;
+        continue;
+      }
+      const credentialCheck = this.providerCredentialProblem(cfg);
+      if (credentialCheck) {
+        statuses.push({ provider: item.provider, label: cfg.label, status: 'SKIPPED', reason: credentialCheck });
+        skipped++;
+        continue;
+      }
+
+      try {
+        const payloads = await this.fetchProviderInvoices(cfg, { taxpayer, direction, period, limit });
+        let providerAdded = 0, providerUpdated = 0, providerSkipped = 0;
+        for (const payload of payloads) {
+          try {
+            const parsed = this.parseProviderUblInvoice(payload.xml) || this.regexProviderInvoiceFallback(payload.xml);
+            if (!parsed) { providerSkipped++; continue; }
+            const docType = this.documentTypeFromProviderXml(payload.xml);
+            if (channel === 'OUT_EARSIV' && docType !== 'E_ARSIV') { providerSkipped++; continue; }
+            if (channel === 'OUT_EFATURA' && docType === 'E_ARSIV') { providerSkipped++; continue; }
+            if (channel === 'IN_EFATURA' && docType === 'E_ARSIV') { providerSkipped++; continue; }
+            const uuid = String(payload.externalId || parsed.ettn || parsed.faturaNo || createHash('sha1').update(payload.xml).digest('hex'));
+            const total = parsed.toplamTutar ?? ((parsed.matrah || 0) + (parsed.kdvTutari || 0));
+            const existing = await (this.prisma as any).eFaturaInbox.findUnique({
+              where: { tenantId_taxpayerId_entegrator_uuid: { tenantId, taxpayerId: opts.taxpayerId, entegrator: cfg.provider, uuid } },
+              select: { id: true, isTransferred: true, documentId: true },
+            });
+            const data = {
+              ettn: parsed.ettn || null,
+              senderVkn: parsed.saticiVergiNo || null,
+              senderTitle: parsed.satici || null,
+              receiverVkn: parsed.aliciVergiNo || null,
+              faturaNo: parsed.faturaNo || null,
+              faturaDate: parsed.faturaTarihi || null,
+              matrah: parsed.matrah != null ? String(parsed.matrah) : null,
+              kdv: parsed.kdvTutari != null ? String(parsed.kdvTutari) : null,
+              toplam: total != null ? String(total) : null,
+              paraBirimi: parsed.paraBirimi || 'TRY',
+              direction: inboxDirection,
+              invoiceProfile: docType === 'E_ARSIV' ? 'e-Arsiv' : ((parsed as any).profileId || 'e-Fatura'),
+              ublXmlRaw: payload.xml,
+              rawJson: {
+                channel,
+                documentType: docType,
+                source: 'integrator-query',
+                provider: cfg.provider,
+                originalName: payload.originalName || null,
+                approvalStatus: 'Onaylandi',
+                iptalItiraz: 'Yok',
+                queriedBy: userId || null,
+              },
+            };
+            if (existing) {
+              await (this.prisma as any).eFaturaInbox.update({ where: { id: existing.id }, data });
+              providerUpdated++;
+            } else {
+              await (this.prisma as any).eFaturaInbox.create({
+                data: {
+                  tenantId,
+                  taxpayerId: opts.taxpayerId,
+                  entegrator: cfg.provider,
+                  uuid,
+                  ...data,
+                },
+              });
+              providerAdded++;
+            }
+          } catch (e: any) {
+            failed++;
+            this.logger.warn(`e-Fatura inbox yazilamadi (${item.provider}): ${e?.message || e}`);
+          }
+        }
+        fetched += payloads.length;
+        added += providerAdded;
+        updated += providerUpdated;
+        skipped += providerSkipped;
+        statuses.push({ provider: item.provider, label: cfg.label, status: 'SUCCESS', fetched: payloads.length, added: providerAdded, updated: providerUpdated, skipped: providerSkipped });
+      } catch (e: any) {
+        failed++;
+        statuses.push({ provider: item.provider, label: cfg.label, status: 'FAILED', reason: e?.message || 'sorgu hatasi' });
+      }
+    }
+
+    return { source: 'efatura-inbox', channel, direction: inboxDirection, fetched, added, updated, skipped, failed, providers: statuses };
+  }
+
+  async importEfaturaInboxToAccounting(
+    tenantId: string,
+    userId: string | undefined,
+    opts: { taxpayerId: string; period?: string; direction?: 'IN' | 'OUT'; channel?: string; ids?: string[]; limit?: number } = {} as any,
+  ) {
+    if (!opts.taxpayerId) throw new BadRequestException('taxpayerId gerekli');
+    const taxpayer = await (this.prisma as any).taxpayer.findFirst({
+      where: { id: opts.taxpayerId, tenantId },
+      select: { id: true, companyName: true, vkn: true, tckn: true },
+    });
+    if (!taxpayer) throw new NotFoundException('Mukellef bulunamadi');
+
+    const channel = String(opts.channel || (opts.direction === 'OUT' ? 'OUT_EFATURA' : 'IN_EFATURA')).toUpperCase();
+    const direction: 'IN' | 'OUT' = channel === 'IN_EFATURA' ? 'IN' : 'OUT';
+    const ids = Array.isArray(opts.ids) ? [...new Set(opts.ids.map((id) => String(id || '').trim()).filter(Boolean))] : [];
+    const where: any = { tenantId, taxpayerId: opts.taxpayerId, direction };
+    if (ids.length) where.id = { in: ids };
+    if (opts.period) {
+      const start = new Date(`${opts.period}-01`);
+      const end = new Date(start);
+      end.setMonth(end.getMonth() + 1);
+      where.faturaDate = { gte: start, lt: end };
+    }
+    const rows = await (this.prisma as any).eFaturaInbox.findMany({
+      where,
+      orderBy: { faturaDate: 'desc' },
+      take: Math.min(Math.max(Number(opts.limit || 500), 1), 1000),
+    });
+
+    let processed = 0, imported = 0, alreadyQueued = 0, skipped = 0, failed = 0;
+    const errors: any[] = [];
+    for (const row of rows) {
+      const raw = row.rawJson || {};
+      if (String(raw.channel || '').toUpperCase() !== channel) continue;
+      processed++;
+      if (row.documentId || row.processedAt || row.isTransferred) { alreadyQueued++; continue; }
+      if (/iptal|itiraz|red|cancel/i.test(`${raw.approvalStatus || ''} ${raw.iptalItiraz || ''}`)) { skipped++; continue; }
+      const xml = String(row.ublXmlRaw || '').trim();
+      if (!xml) { failed++; errors.push({ id: row.id, message: 'XML bulunamadi' }); continue; }
+      try {
+        const provider = String(row.entegrator || 'TURMOB_EFATURA');
+        const result = await this.createDocumentFromProviderXml(
+          tenantId,
+          userId,
+          taxpayer,
+          {
+            provider,
+            label: provider,
+            baseUrl: '',
+            username: '',
+            password: '',
+            apiKey: '',
+            apiSecret: '',
+            senderVkn: '',
+            accountId: '',
+            note: '',
+          },
+          direction === 'OUT' ? 'SATIS' : 'ALIS',
+          { xml, externalId: row.uuid, originalName: `${row.faturaNo || row.uuid}.xml` },
+        );
+        await (this.prisma as any).eFaturaInbox.update({
+          where: { id: row.id },
+          data: {
+            isTransferred: true,
+            documentId: result.document?.id || null,
+            processedAt: new Date(),
+          },
+        });
+        if (result.created) imported++;
+        else alreadyQueued++;
+      } catch (e: any) {
+        failed++;
+        if (errors.length < 10) errors.push({ id: row.id, faturaNo: row.faturaNo, message: e?.message || 'aktarim hatasi' });
+      }
+    }
+    return { processed, imported, alreadyQueued, skipped, failed, errors };
+  }
+
   async importFromMihsap(
     tenantId: string,
     opts: {
@@ -3658,9 +3868,32 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     }
     if (/text\/html|xml/i.test(mimeType)) {
       const buffer = await this.storage.getBuffer(doc.s3Key);
-      const raw = buffer.toString('utf8');
-      const html = mimeType.includes('html') ? raw : this.inlinePreviewHtml(raw, doc);
-      return { url: '', inlineHtml: html, mimeType: 'text/html', source: 'stored-html' as const };
+      let raw = buffer.toString('utf8');
+      if (buffer.length >= 4 && buffer[0] === 0x50 && buffer[1] === 0x4b) {
+        const payloads: ProviderInvoicePayload[] = [];
+        await this.addPayloadBuffer(payloads, buffer);
+        raw = payloads[0]?.xml || raw;
+      }
+      const rawIsInvoiceXml = /<(?:\?xml|[A-Za-z0-9_-]+:)?(?:Invoice|CreditNote)\b/i.test(raw);
+      const html = mimeType.includes('html') && !rawIsInvoiceXml
+        ? raw
+        : this.earsivRender.renderHtml({
+            id: doc.id,
+            faturaNo: doc.belgeNo || '',
+            faturaTarihi: doc.faturaTarihi || doc.createdAt || new Date(),
+            ettn: doc?.ocrData?.ettn || null,
+            satici: doc.vendorName || null,
+            saticiVergiNo: doc.sellerVkn || null,
+            alici: doc.customerName || null,
+            aliciVergiNo: doc.buyerVkn || null,
+            matrah: doc?.ocrData?.matrah,
+            kdvTutari: doc?.ocrData?.kdvTutari,
+            kdvOrani: doc?.ocrData?.kdvOrani,
+            toplamTutar: doc.totalAmount,
+            paraBirimi: doc.currency,
+            xmlContent: raw,
+          }, { autoPrint: false });
+      return { url: '', inlineHtml: html, mimeType: 'text/html', source: mimeType.includes('html') ? ('stored-html' as const) : ('provider-xml' as const) };
     }
     const url = await this.storage.getPresignedInlineUrl(doc.s3Key, doc.originalName, mimeType || undefined);
     return { url, mimeType, source: 'stored-file' as const };
@@ -4424,7 +4657,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     if (I2I_SOAP_PROVIDERS.has(cfg.provider) || /EInvoiceWS/i.test(cfg.baseUrl)) {
       return this.fetchI2iInvoices(cfg, opts);
     }
-    if (cfg.provider === 'TURMOB_EFATURA') return this.fetchTurmobViaLuca(cfg, opts);
+    if (cfg.provider === 'TURMOB_EFATURA') return this.fetchTurmobPortalInvoices(cfg, opts);
     if (cfg.provider === 'PARASUT') return this.fetchParasutInvoices(cfg, opts);
     return this.fetchGenericRestInvoices(cfg, opts);
   }
@@ -4486,7 +4719,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
    * çekimde response'tan netleşecek (loglanır); şimdilik login+liste kanıtı + iskelet. İptal olan satırlar
    * createDocumentFromProviderXml'e GÖNDERİLMEZ.
    */
-  private async fetchTurmobViaLuca(
+  private async fetchTurmobPortalInvoices(
     cfg: RuntimeIntegrationConfig,
     opts: {
       taxpayer: any;
@@ -4927,6 +5160,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       }));
       return;
     }
+    for (const match of raw.matchAll(/[A-Za-z0-9+/]{240,}={0,2}/g)) {
+      const compactCandidate = match[0].replace(/\s+/g, '');
+      if (!this.looksLikeBase64(compactCandidate)) continue;
+      await this.addPayloadBuffer(payloads, Buffer.from(compactCandidate, 'base64'));
+      if (payloads.length) return;
+    }
     const compact = raw.replace(/\s+/g, '');
     if (!this.looksLikeBase64(compact)) return;
     await this.addPayloadBuffer(payloads, Buffer.from(compact, 'base64'));
@@ -4938,10 +5177,18 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const files = Object.values(zip.files).filter((file) => !file.dir);
       for (const file of files) {
         const name = file.name || '';
-        if (!/\.(xml|ubl)$/i.test(name)) continue;
-        const xml = await file.async('string');
-        const xmlDocs = this.extractXmlDocuments(this.decodeXmlEntities(xml));
-        for (const doc of xmlDocs.length ? xmlDocs : [xml]) {
+        const nested = Buffer.from(await file.async('uint8array'));
+        if (nested.length >= 4 && nested[0] === 0x50 && nested[1] === 0x4b) {
+          await this.addPayloadBuffer(payloads, nested);
+          continue;
+        }
+        const content = this.decodeXmlEntities(nested.toString('utf8'));
+        const xmlDocs = this.extractXmlDocuments(content);
+        if (!xmlDocs.length) {
+          await this.addPayloadString(payloads, content);
+          continue;
+        }
+        for (const doc of xmlDocs) {
           payloads.push({
             xml: doc,
             externalId: this.tagText(doc, 'UUID') || this.tagText(doc, 'ID') || null,
@@ -5021,17 +5268,32 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     direction: 'ALIS' | 'SATIS',
     payload: ProviderInvoicePayload,
   ) {
-    const parsed = this.parseProviderUblInvoice(payload.xml) || this.regexProviderInvoiceFallback(payload.xml);
+    let xml = String(payload.xml || '').trim();
+    const unpacked: ProviderInvoicePayload[] = [];
+    const rawBuffer = Buffer.from(xml, 'utf8');
+    if (rawBuffer.length >= 4 && rawBuffer[0] === 0x50 && rawBuffer[1] === 0x4b) {
+      await this.addPayloadBuffer(unpacked, rawBuffer);
+    } else {
+      const docs = this.extractXmlDocuments(this.decodeXmlEntities(xml));
+      if (docs.length) xml = docs[0];
+    }
+    if (!this.extractXmlDocuments(this.decodeXmlEntities(xml)).length && unpacked[0]?.xml) {
+      xml = unpacked[0].xml;
+    }
+    if (!/<(?:\?xml|[A-Za-z0-9_-]+:)?(?:Invoice|CreditNote)\b/i.test(xml)) {
+      throw new Error('UBL/XML fatura bulunamadi');
+    }
+    const parsed = this.parseProviderUblInvoice(xml) || this.regexProviderInvoiceFallback(xml);
     if (!parsed) throw new Error('UBL/XML fatura okunamadi');
     const source = cfg.provider === 'GIB_PORTAL' ? 'gib-portal-api' : `integration-${cfg.provider.toLowerCase()}`;
-    const sourceRefId = payload.externalId || parsed.ettn || parsed.faturaNo || createHash('sha1').update(payload.xml).digest('hex');
+    const sourceRefId = payload.externalId || parsed.ettn || parsed.faturaNo || createHash('sha1').update(xml).digest('hex');
     const existing = await (this.prisma as any).invoiceAccountingDocument.findFirst({
       where: { tenantId, taxpayerId: taxpayer.id, source, sourceRefId },
       include: { lines: { orderBy: { orderNo: 'asc' } } },
     });
     if (existing) return { created: false, document: existing };
 
-    const xmlBuffer = Buffer.from(payload.xml, 'utf8');
+    const xmlBuffer = Buffer.from(xml, 'utf8');
     const s3Key = `invoice-accounting/${tenantId}/${taxpayer.id}/${cfg.provider.toLowerCase()}-${randomUUID()}.xml`;
     await this.storage.putBuffer(s3Key, xmlBuffer, 'application/xml', {
       'tenant-id': tenantId,
@@ -5063,7 +5325,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         taxpayerId: taxpayer.id,
         source,
         sourceRefId,
-        documentType: this.documentTypeFromProviderXml(payload.xml),
+        documentType: this.documentTypeFromProviderXml(xml),
         invoiceKind: direction,
         status: duplicate ? 'NEEDS_REVIEW' : 'READY',
         duplicateOfId: duplicate?.duplicateOfId || null,
