@@ -1275,7 +1275,8 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
 function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; period: string; source: 'earsiv' | 'efatura' }) {
   const qc = useQueryClient();
   const [sel, setSel] = useState<Set<string>>(new Set());
-  const [efaturaDirection, setEfaturaDirection] = useState<'IN' | 'OUT'>('IN');
+  const [efaturaChannel, setEfaturaChannel] = useState<'IN_EFATURA' | 'OUT_EFATURA' | 'OUT_EARSIV'>('IN_EFATURA');
+  const efaturaDirection: 'IN' | 'OUT' = efaturaChannel === 'IN_EFATURA' ? 'IN' : 'OUT';
   const earsivQ = useQuery({
     queryKey: ['fm-earsiv-sorgu', taxpayerId, period],
     queryFn: async () => (await api.get('/portal-automation/earsiv/invoices', { params: { taxpayerId, period, limit: 500 } })).data,
@@ -1379,19 +1380,25 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
   });
 
   const integrations: any[] = Array.isArray(integrationsQ.data) ? integrationsQ.data : [];
-  const efaturaProviders = integrations.filter((p) => String(p.kind || '').toLowerCase() === 'efatura' || /EFATURA|ELOGO|UYUMSOFT|MIKRO|IZIBIZ|KOLAYSOFT|FORIBA|PARASUT|TURMOB/i.test(String(p.provider || '')));
+  const efaturaProviders = integrations
+    .filter((p) => String(p.kind || '').toLowerCase() === 'efatura' || /EFATURA|ELOGO|UYUMSOFT|MIKRO|IZIBIZ|KOLAYSOFT|FORIBA|PARASUT|TURMOB/i.test(String(p.provider || '')))
+    .sort((a, b) => (String(a.provider || '') === 'TURMOB_EFATURA' ? -1 : 0) - (String(b.provider || '') === 'TURMOB_EFATURA' ? -1 : 0));
+  const connectedEfaturaProviders = efaturaProviders.filter((p) => p.connected);
+  const activeEfaturaProvider = connectedEfaturaProviders[0] || efaturaProviders[0];
   const efaturaInboxQ = useQuery({
-    queryKey: ['fm-efatura-inbox', taxpayerId, period, efaturaDirection],
-    queryFn: async () => (await api.get('/fatura-muhasebelestirme/efatura-inbox', { params: { taxpayerId, period, direction: efaturaDirection, limit: 500 } })).data,
+    queryKey: ['fm-efatura-inbox', taxpayerId, period, efaturaDirection, efaturaChannel],
+    queryFn: async () => (await api.get('/fatura-muhasebelestirme/efatura-inbox', { params: { taxpayerId, period, direction: efaturaDirection, channel: efaturaChannel, limit: 500 } })).data,
     enabled: !!taxpayerId && source === 'efatura',
     refetchInterval: 6000,
   });
   const efaturaRows: any[] = Array.isArray(efaturaInboxQ.data) ? efaturaInboxQ.data : [];
+  const efaturaTransferableRows = efaturaRows.filter((r) => !(r.processedAt || r.isTransferred || r.documentId));
   const efaturaFetchMut = useMutation({
-    mutationFn: (v: { provider: string; direction: 'IN' | 'OUT' }) => api.post('/fatura-muhasebelestirme/integrations/fetch', {
+    mutationFn: (v: { provider: string }) => api.post('/fatura-muhasebelestirme/efatura-sync', {
       taxpayerId,
-      direction: v.direction === 'OUT' ? 'SATIS' : 'ALIS',
-      donem: period,
+      direction: efaturaDirection,
+      channel: efaturaChannel,
+      period,
       providers: [v.provider],
       limit: 500,
     }),
@@ -1401,6 +1408,24 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
       qc.invalidateQueries({ queryKey: ['fm2'] });
     },
     onError: (e: any) => toast.error('e-Fatura sorgusu başlatılamadı: ' + (e?.response?.data?.message || e?.message || 'hata')),
+  });
+
+  const efaturaImportMut = useMutation({
+    mutationFn: () => api.post('/fatura-muhasebelestirme/efatura-inbox/import', {
+      taxpayerId,
+      direction: efaturaDirection,
+      channel: efaturaChannel,
+      period,
+      limit: 500,
+    }),
+    onSuccess: (r: any) => {
+      const imported = Number(r?.data?.imported || 0);
+      const processed = Number(r?.data?.processed || 0);
+      toast.success(imported > 0 ? `${imported} fatura bekleyen listeye aktarildi.` : `${processed} fatura kontrol edildi; yeni aktarim yok.`);
+      qc.invalidateQueries({ queryKey: ['fm-efatura-inbox'] });
+      qc.invalidateQueries({ queryKey: ['fm2'] });
+    },
+    onError: (e: any) => toast.error('e-Fatura aktarimi baslatilamadi: ' + (e?.response?.data?.message || e?.message || 'hata')),
   });
 
   return (
@@ -1458,35 +1483,34 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
           </div>
         </div>
       ) : (
-        <div className={`card sourcepanel ${efaturaFetchMut.isPending ? 'isbusy' : ''}`}>
+        <div className={`card sourcepanel ${(efaturaFetchMut.isPending || efaturaImportMut.isPending) ? 'isbusy' : ''}`}>
           <div className="ch sourcehead">
             <h3>e-Fatura sorguları</h3>
             <span className="mu">GIB e-Arşiv ile karışmaz; sadece e-Fatura entegratörleri ve aktarım durumları.</span>
             <div className="sp" />
             <div className="segmini">
-              <button className={efaturaDirection === 'IN' ? 'on' : ''} onClick={() => setEfaturaDirection('IN')}>Alış</button>
-              <button className={efaturaDirection === 'OUT' ? 'on' : ''} onClick={() => setEfaturaDirection('OUT')}>Satış</button>
+              <button className={efaturaChannel === 'IN_EFATURA' ? 'on' : ''} onClick={() => setEfaturaChannel('IN_EFATURA')}>Alış e-Fatura</button>
+              <button className={efaturaChannel === 'OUT_EFATURA' ? 'on' : ''} onClick={() => setEfaturaChannel('OUT_EFATURA')}>Satış e-Fatura</button>
+              <button className={efaturaChannel === 'OUT_EARSIV' ? 'on' : ''} onClick={() => setEfaturaChannel('OUT_EARSIV')}>Satış e-Arşiv</button>
             </div>
           </div>
-          <div className="providergrid">
-            {efaturaProviders.map((p) => (
-              <div className="providerrow" key={p.provider}>
-                <div><b>{p.label || p.provider}</b><span>{p.connected ? 'Bağlantı hazır' : 'Kimlik bilgisi eksik'}</span></div>
-                <div className="provideractions">
-                  <span className={`pill ${p.connected ? 'ok' : 'warn'}`}>{p.connected ? 'Hazır' : 'Eksik'}</span>
-                  <button className="btn sm ghost" disabled={!p.connected || efaturaFetchMut.isPending} onClick={() => efaturaFetchMut.mutate({ provider: p.provider, direction: efaturaDirection })}>
-                    <Ico html={I.sync} size={13} /> Sorgula
-                  </button>
-                </div>
-              </div>
-            ))}
-            {!efaturaProviders.length && <div className="emptyrow">Bu mükellef için tanımlı e-Fatura entegratörü yok.</div>}
+          <div className="sourcebar">
+            <div>
+              <b>{activeEfaturaProvider?.label || activeEfaturaProvider?.provider || 'Entegrator yok'}</b>
+              <span>{activeEfaturaProvider?.connected ? 'Kimlik bilgisi hazir' : 'Entegratorler ekranindan sifre tanimlanmali'}</span>
+            </div>
+            <button className="btn sm fetch" disabled={!taxpayerId || !activeEfaturaProvider?.connected || efaturaFetchMut.isPending || efaturaImportMut.isPending} onClick={() => efaturaFetchMut.mutate({ provider: activeEfaturaProvider.provider })}>
+              <Ico html={I.sync} size={13} /> {efaturaFetchMut.isPending ? 'Sorgulaniyor...' : 'Sorgula'}
+            </button>
+            <button className="btn sm primary" disabled={!taxpayerId || efaturaImportMut.isPending || efaturaFetchMut.isPending || efaturaTransferableRows.length === 0} onClick={() => efaturaImportMut.mutate()}>
+              <Ico html={I.download} size={13} /> {efaturaImportMut.isPending ? 'Aktariliyor...' : `${efaturaTransferableRows.length} faturayi aktar`}
+            </button>
           </div>
           <div className="sourcetablewrap efatura">
-            {efaturaFetchMut.isPending && (
+            {(efaturaFetchMut.isPending || efaturaImportMut.isPending) && (
               <div className="queryveil">
                 <div className="querydoc" aria-hidden="true"><span /><i /><i /><i /></div>
-                <b>Faturalar getiriliyor...</b>
+                <b>{efaturaImportMut.isPending ? 'Faturalar aktariliyor...' : 'Faturalar getiriliyor...'}</b>
               </div>
             )}
             <table className="sourcetable">
@@ -1501,7 +1525,7 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
                   const title = efaturaDirection === 'OUT' ? (raw.receiverTitle || raw.alici || r.receiverVkn) : (r.senderTitle || raw.senderTitle || raw.satici);
                   const taxNo = efaturaDirection === 'OUT' ? (r.receiverVkn || raw.receiverVkn || raw.aliciVergiNo) : (r.senderVkn || raw.senderVkn || raw.saticiVergiNo);
                   const approval = raw.onayDurumu || raw.approvalStatus || raw.status || raw.invoiceStatus || '—';
-                  const transferred = Boolean(r.processedAt || r.isTransferred || r.documentId || r.markedAt);
+                  const transferred = Boolean(r.processedAt || r.isTransferred || r.documentId);
                   return (
                     <tr key={r.id} className={transferred ? 'done' : ''}>
                       <td>{r.entegrator}</td>
@@ -3983,6 +4007,10 @@ const CSS = `
 #fm-root .querydoc i:nth-of-type(3){left:33px;animation-delay:.28s}
 @keyframes fmDot{0%,80%,100%{transform:translateY(0);opacity:.28}40%{transform:translateY(-5px);opacity:1}}
 #fm-root .emptyrow{text-align:center;color:#94a3b8;padding:22px!important}
+#fm-root .sourcebar{display:flex;align-items:center;gap:10px;padding:10px 14px;border-top:1px solid #eef2f7;border-bottom:1px solid #e5e7eb;background:#fff}
+#fm-root .sourcebar > div:first-child{min-width:0;margin-right:auto}
+#fm-root .sourcebar b{display:block;font-size:13px;color:#17212f;font-weight:650}
+#fm-root .sourcebar span{display:block;margin-top:2px;font-size:11.5px;color:#64748b}
 #fm-root .providergrid{display:grid;gap:8px;padding:12px}
 #fm-root .providerrow{display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid #e5e7eb;border-radius:9px;padding:10px 12px;background:#fff}
 #fm-root .providerrow b{display:block;font-size:13px}

@@ -113,7 +113,7 @@ export class EFaturaSyncService {
    */
   async listInbox(
     tenantId: string,
-    opts: { taxpayerId?: string; direction?: string; period?: string; limit?: string } = {},
+    opts: { taxpayerId?: string; direction?: string; period?: string; channel?: string; limit?: string } = {},
   ) {
     const where: Record<string, any> = { tenantId };
     if (opts.taxpayerId) where.taxpayerId = opts.taxpayerId;
@@ -125,10 +125,11 @@ export class EFaturaSyncService {
       where.faturaDate = { gte: start, lt: end };
     }
     const limit = Math.min(parseInt(opts.limit || '200', 10) || 200, 1000);
-    return (this.prisma as any).eFaturaInbox.findMany({
+    const take = opts.channel ? Math.min(limit * 3, 3000) : limit;
+    const rows = await (this.prisma as any).eFaturaInbox.findMany({
       where,
       orderBy: { createdAt: 'desc' },
-      take: limit,
+      take,
       select: {
         id: true, entegrator: true, uuid: true, faturaNo: true, faturaDate: true,
         senderVkn: true, senderTitle: true, receiverVkn: true,
@@ -137,6 +138,11 @@ export class EFaturaSyncService {
         rawJson: true, markedAt: true, processedAt: true, createdAt: true,
       },
     });
+    const channel = String(opts.channel || '').toUpperCase();
+    if (!channel) return rows;
+    return rows
+      .filter((row: any) => String(row?.rawJson?.channel || '').toUpperCase() === channel)
+      .slice(0, limit);
   }
 
   /**

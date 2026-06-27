@@ -3468,7 +3468,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       }
 
       try {
-        const payloads = await this.fetchProviderInvoices(cfg, { taxpayer, direction, period, limit });
+        const payloads = await this.fetchProviderInvoices(cfg, { taxpayer, direction, period, limit, channel });
         let providerAdded = 0, providerUpdated = 0, providerSkipped = 0;
         for (const payload of payloads) {
           try {
@@ -3866,37 +3866,139 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         }
       }
     }
-    if (/text\/html|xml/i.test(mimeType)) {
-      const buffer = await this.storage.getBuffer(doc.s3Key);
-      let raw = buffer.toString('utf8');
-      if (buffer.length >= 4 && buffer[0] === 0x50 && buffer[1] === 0x4b) {
-        const payloads: ProviderInvoicePayload[] = [];
-        await this.addPayloadBuffer(payloads, buffer);
-        raw = payloads[0]?.xml || raw;
-      }
-      const rawIsInvoiceXml = /<(?:\?xml|[A-Za-z0-9_-]+:)?(?:Invoice|CreditNote)\b/i.test(raw);
-      const html = mimeType.includes('html') && !rawIsInvoiceXml
-        ? raw
-        : this.earsivRender.renderHtml({
-            id: doc.id,
-            faturaNo: doc.belgeNo || '',
-            faturaTarihi: doc.faturaTarihi || doc.createdAt || new Date(),
-            ettn: doc?.ocrData?.ettn || null,
-            satici: doc.vendorName || null,
-            saticiVergiNo: doc.sellerVkn || null,
-            alici: doc.customerName || null,
-            aliciVergiNo: doc.buyerVkn || null,
-            matrah: doc?.ocrData?.matrah,
-            kdvTutari: doc?.ocrData?.kdvTutari,
-            kdvOrani: doc?.ocrData?.kdvOrani,
-            toplamTutar: doc.totalAmount,
-            paraBirimi: doc.currency,
-            xmlContent: raw,
-          }, { autoPrint: false });
-      return { url: '', inlineHtml: html, mimeType: 'text/html', source: mimeType.includes('html') ? ('stored-html' as const) : ('provider-xml' as const) };
-    }
+    const renderedStoredInvoice = await this.renderStoredInvoiceFile(doc, mimeType);
+    if (renderedStoredInvoice) return renderedStoredInvoice;
+
     const url = await this.storage.getPresignedInlineUrl(doc.s3Key, doc.originalName, mimeType || undefined);
     return { url, mimeType, source: 'stored-file' as const };
+  }
+
+  private async renderStoredInvoiceFile(doc: any, mimeType: string) {
+    const s3Key = String(doc?.s3Key || '');
+    if (!s3Key) return null;
+
+    const source = String(doc?.source || '').toLowerCase();
+    const originalName = String(doc?.originalName || '').toLowerCase();
+    const shouldInspect =
+      /text\/html|xml|zip|json|octet-stream/i.test(mimeType)
+      || /\.(zip|xml|ubl|html?|json)$/i.test(originalName)
+      || source === 'gib-earsiv-api'
+      || source === 'gib-portal-api'
+      || source.includes('efatura')
+      || source.includes('earsiv');
+    if (!shouldInspect) return null;
+
+    const buffer = await this.storage.getBuffer(s3Key);
+    const payload = await this.extractStoredInvoiceViewPayload(buffer, mimeType);
+    if (!payload) return null;
+
+    if (payload.kind === 'pdf') {
+      return {
+        url: `data:application/pdf;base64,${payload.buffer.toString('base64')}`,
+        mimeType: 'application/pdf',
+        source: 'stored-file' as const,
+      };
+    }
+    if (payload.kind === 'image') {
+      return {
+        url: `data:${payload.mimeType};base64,${payload.buffer.toString('base64')}`,
+        mimeType: payload.mimeType,
+        source: 'stored-file' as const,
+      };
+    }
+
+    const raw = payload.content;
+    const rawHead = raw.slice(0, 1000);
+    const rawIsHtml = payload.kind === 'html' || /<html[\s>]/i.test(rawHead);
+    const rawIsInvoiceXml = /<(?:\?xml|[A-Za-z0-9_.-]+:)?(?:Invoice|CreditNote)\b/i.test(raw);
+    if (rawIsHtml && !rawIsInvoiceXml) {
+      return {
+        url: '',
+        inlineHtml: this.earsivRender.renderOriginalHtml(raw, { autoPrint: false }),
+        mimeType: 'text/html',
+        source: 'stored-html' as const,
+      };
+    }
+
+    const html = rawIsInvoiceXml
+      ? this.earsivRender.renderHtml({
+          id: doc.id,
+          faturaNo: doc.belgeNo || '',
+          faturaTarihi: doc.faturaTarihi || doc.createdAt || new Date(),
+          ettn: doc?.ocrData?.ettn || null,
+          satici: doc.vendorName || null,
+          saticiVergiNo: doc.sellerVkn || null,
+          alici: doc.customerName || null,
+          aliciVergiNo: doc.buyerVkn || null,
+          matrah: doc?.ocrData?.matrah,
+          kdvTutari: doc?.ocrData?.kdvTutari,
+          kdvOrani: doc?.ocrData?.kdvOrani,
+          toplamTutar: doc.totalAmount,
+          paraBirimi: doc.currency,
+          xmlContent: raw,
+        }, { autoPrint: false })
+      : this.inlinePreviewHtml(raw, doc);
+
+    return {
+      url: '',
+      inlineHtml: html,
+      mimeType: 'text/html',
+      source: rawIsInvoiceXml ? ('provider-xml' as const) : ('stored-html' as const),
+    };
+  }
+
+  private async extractStoredInvoiceViewPayload(buffer: Buffer, mimeType: string): Promise<
+    | { kind: 'html' | 'xml' | 'text'; content: string }
+    | { kind: 'pdf'; buffer: Buffer }
+    | { kind: 'image'; buffer: Buffer; mimeType: string }
+    | null
+  > {
+    const isZip = buffer.length >= 4 && buffer[0] === 0x50 && buffer[1] === 0x4b;
+    const isPdf = buffer.length >= 4 && buffer[0] === 0x25 && buffer[1] === 0x50 && buffer[2] === 0x44 && buffer[3] === 0x46;
+    const isJpeg = buffer.length > 2 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
+    const isPng = buffer.length > 7 && buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47;
+    if (isPdf || /pdf/i.test(mimeType)) return { kind: 'pdf', buffer };
+    if (isJpeg || /^image\/jpe?g/i.test(mimeType)) return { kind: 'image', buffer, mimeType: 'image/jpeg' };
+    if (isPng || /^image\/png/i.test(mimeType)) return { kind: 'image', buffer, mimeType: 'image/png' };
+
+    if (isZip) {
+      const zip = await JSZip.loadAsync(buffer);
+      const files = Object.values(zip.files).filter((file) => !file.dir);
+      const ordered = files.sort((a, b) => {
+        const rank = (name: string) => /\.(html?|xhtml)$/i.test(name) ? 0 : /\.(xml|ubl)$/i.test(name) ? 1 : 2;
+        return rank(a.name || '') - rank(b.name || '');
+      });
+      for (const file of ordered) {
+        const name = file.name || '';
+        if (!/\.(html?|xhtml|xml|ubl)$/i.test(name)) continue;
+        const nested = Buffer.from(await file.async('uint8array'));
+        if (nested.length >= 4 && nested[0] === 0x50 && nested[1] === 0x4b) {
+          const nestedPayload = await this.extractStoredInvoiceViewPayload(nested, '');
+          if (nestedPayload) return nestedPayload;
+          continue;
+        }
+        const content = this.decodeXmlEntities(nested.toString('utf8')).trim();
+        if (!content) continue;
+        return {
+          kind: /\.(html?|xhtml)$/i.test(name) ? 'html' : 'xml',
+          content,
+        };
+      }
+
+      const payloads: ProviderInvoicePayload[] = [];
+      await this.addPayloadBuffer(payloads, buffer);
+      if (payloads[0]?.htmlContent) return { kind: 'html', content: payloads[0].htmlContent };
+      if (payloads[0]?.xml) return { kind: 'xml', content: payloads[0].xml };
+      return null;
+    }
+
+    const content = this.decodeXmlEntities(buffer.toString('utf8')).trim();
+    if (!content) return null;
+    if (/<html[\s>]/i.test(content.slice(0, 1000))) return { kind: 'html', content };
+    if (/<(?:\?xml|[A-Za-z0-9_.-]+:)?(?:Invoice|CreditNote)\b/i.test(content)) return { kind: 'xml', content };
+    if (/text\/html/i.test(mimeType)) return { kind: 'html', content };
+    if (/xml/i.test(mimeType)) return { kind: 'xml', content };
+    return { kind: 'text', content };
   }
 
   private inlinePreviewHtml(raw: string, doc?: any) {
@@ -4651,6 +4753,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       direction: 'ALIS' | 'SATIS';
       period: { donem: string; startDate: string; endDate: string };
       limit: number;
+      channel?: string;
     },
   ): Promise<ProviderInvoicePayload[]> {
     if (cfg.provider === 'UYUMSOFT') return this.fetchUyumsoftInvoices(cfg, opts);
@@ -4726,33 +4829,63 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       direction: 'ALIS' | 'SATIS';
       period: { donem: string; startDate: string; endDate: string };
       limit: number;
+      channel?: string;
     },
   ): Promise<ProviderInvoicePayload[]> {
     if (!cfg.username || !cfg.password) throw new Error('TÜRMOB için TCKN (kullanıcı adı) ve parola gerekli');
     const cookie = await this.turmobLogin(cfg.username, cfg.password);
     const BASE = this.TURMOB_BASE;
     // Gelen=alış (/IncomingInvoice), Giden=satış (/OutgoingInvoice). e-Arşiv ucu ilk testte eklenecek.
-    const listUrl = opts.direction === 'SATIS'
-      ? '/OutgoingInvoice/AllOutgoingInvoiceByFilter'
-      : '/IncomingInvoice/AllIncomingInvoiceByFilter';
-    const listBody = `draw=1&start=0&length=${Math.min(Math.max(Number(opts.limit) || 500, 1), 1000)}`;
-    const res = await fetch(BASE + listUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-        'X-Requested-With': 'XMLHttpRequest',
-        Cookie: cookie,
-        'User-Agent': 'MorenPortal/1.0',
-      },
-      body: listBody,
-    });
-    const ct = res.headers.get('content-type') || '';
-    const raw = await res.text();
-    let data: any = null; try { data = JSON.parse(raw); } catch { /* HTML = muhtemelen login redirect */ }
-    const rows: any[] = Array.isArray(data?.data) ? data.data : Array.isArray(data?.Data) ? data.Data : Array.isArray(data) ? data : [];
+    const channel = String(opts.channel || (opts.direction === 'SATIS' ? 'OUT_EFATURA' : 'IN_EFATURA')).toUpperCase();
+    const listUrls = channel === 'OUT_EARSIV'
+      ? [
+          '/OutgoingArchiveInvoice/AllOutgoingArchiveInvoiceByFilter',
+          '/ArchiveInvoice/AllArchiveInvoiceByFilter',
+          '/EArchiveInvoice/AllEArchiveInvoiceByFilter',
+          '/EArchive/AllOutgoingArchiveInvoiceByFilter',
+          '/OutgoingInvoice/AllOutgoingArchiveInvoiceByFilter',
+        ]
+      : channel === 'OUT_EFATURA'
+        ? ['/OutgoingInvoice/AllOutgoingInvoiceByFilter']
+        : ['/IncomingInvoice/AllIncomingInvoiceByFilter'];
+    const listBody = new URLSearchParams({
+      draw: '1',
+      start: '0',
+      length: String(Math.min(Math.max(Number(opts.limit) || 500, 1), 1000)),
+      startDate: opts.period.startDate,
+      endDate: opts.period.endDate,
+      StartDate: opts.period.startDate,
+      EndDate: opts.period.endDate,
+      baslangicTarihi: opts.period.startDate,
+      bitisTarihi: opts.period.endDate,
+    }).toString();
+    let ct = '';
+    let raw = '';
+    let data: any = null;
+    let rows: any[] = [];
+    let usedListUrl = listUrls[0];
+    for (const listUrl of listUrls) {
+      const res = await fetch(BASE + listUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+          'X-Requested-With': 'XMLHttpRequest',
+          Cookie: cookie,
+          'User-Agent': 'MorenPortal/1.0',
+        },
+        body: listBody,
+      });
+      ct = res.headers.get('content-type') || '';
+      raw = await res.text();
+      data = null;
+      try { data = JSON.parse(raw); } catch { /* HTML = muhtemelen login redirect */ }
+      rows = Array.isArray(data?.data) ? data.data : Array.isArray(data?.Data) ? data.Data : Array.isArray(data) ? data : [];
+      usedListUrl = listUrl;
+      if (rows.length || raw.trimStart().slice(0, 1) !== '<') break;
+    }
     const first = raw.trimStart().slice(0, 1); // '<' = HTML/login redirect (cookie yetersiz), '{'/'[' = JSON (parametre/dönem)
     // TEŞHİS: first='<' → oturum liste için yetersiz; '{' ama rows=0 → parametre/dönem filtresi gerekli.
-    this.logger.log(`TÜRMOB portal ${opts.direction}: status=${res.status} ct=${ct.slice(0, 40)} len=${raw.length} first=${first} rows=${rows.length} topKeys=${JSON.stringify(Object.keys(data || {})).slice(0, 150)} rowKeys=${JSON.stringify(Object.keys(rows[0] || {})).slice(0, 250)}`);
+    this.logger.log(`TURMOB portal ${channel}: url=${usedListUrl} ct=${ct.slice(0, 40)} len=${raw.length} first=${first} rows=${rows.length} topKeys=${JSON.stringify(Object.keys(data || {})).slice(0, 150)} rowKeys=${JSON.stringify(Object.keys(rows[0] || {})).slice(0, 250)}`);
     // İPTAL filtresi (durum alanı adı ilk testte netleşecek — "İptal/Iptal/Reddedildi/Cancel" geçeni atla):
     const isCancelled = (r: any) => /iptal|reddedil|cancel/i.test(JSON.stringify(r?.Durum ?? r?.durum ?? r?.Status ?? r?.status ?? ''));
     const live = rows.filter((r) => !isCancelled(r));
