@@ -1399,16 +1399,15 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
                 {rows.map((r) => (
                   <tr key={r.id} className={!r.isProcessable ? 'blocked' : r.aktarildi ? 'done' : ''}>
                     <td>{r.isProcessable && !r.aktarildi ? <Check checked={sel.has(r.sourceRefId)} onToggle={() => toggle(r.sourceRefId)} /> : null}</td>
-                    <td><b>{r.buyerName || '—'}</b></td>
+                    <td className="partyname">{r.buyerName || '—'}</td>
                     <td>{r.buyerVkn || '—'}</td>
                     <td>{r.belgeNo || r.referenceNo || '—'}</td>
                     <td>{fmtDate(r.issuedAt)}</td>
                     <td className="plainstatus">{r.onayDurumu || '—'}</td>
                     <td>{r.iptalDurumu || 'Yok'}</td>
                     <td>
-                      <span className={`transferstate ${r.aktarildi ? 'ok' : 'no'}`}>
-                        {r.aktarildi ? <Ico html={I.checkSm} size={13} /> : <span className="xico">×</span>}
-                        {r.aktarildi ? 'Aktarıldı' : 'Aktarılmadı'}
+                      <span className={`transferstate ${r.aktarildi ? 'ok' : 'no'}`} title={r.aktarildi ? 'Aktarıldı' : 'Aktarılmadı'} aria-label={r.aktarildi ? 'Aktarıldı' : 'Aktarılmadı'}>
+                        {r.aktarildi ? <span className="okico">✓</span> : <span className="xico">×</span>}
                       </span>
                     </td>
                   </tr>
@@ -1458,20 +1457,19 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
                   const title = efaturaDirection === 'OUT' ? (raw.receiverTitle || raw.alici || r.receiverVkn) : (r.senderTitle || raw.senderTitle || raw.satici);
                   const taxNo = efaturaDirection === 'OUT' ? (r.receiverVkn || raw.receiverVkn || raw.aliciVergiNo) : (r.senderVkn || raw.senderVkn || raw.saticiVergiNo);
                   const approval = raw.onayDurumu || raw.approvalStatus || raw.status || raw.invoiceStatus || '—';
-                  const transferred = r.processedAt || r.isTransferred || r.documentId || r.markedAt;
+                  const transferred = Boolean(r.processedAt || r.isTransferred || r.documentId || r.markedAt);
                   return (
                     <tr key={r.id} className={transferred ? 'done' : ''}>
                       <td>{r.entegrator}</td>
-                      <td><b>{title || '—'}</b></td>
+                      <td className="partyname">{title || '—'}</td>
                       <td>{taxNo || '—'}</td>
                       <td>{r.faturaNo || '—'}</td>
                       <td>{fmtDate(r.faturaDate)}</td>
                       <td>{r.invoiceProfile || 'e-Fatura'}</td>
                       <td className="plainstatus">{approval}</td>
                       <td>
-                        <span className={`transferstate ${transferred ? 'ok' : 'no'}`}>
-                          {transferred ? <Ico html={I.checkSm} size={13} /> : <span className="xico">×</span>}
-                          {transferred ? 'Aktarıldı' : 'Aktarılmadı'}
+                        <span className={`transferstate ${transferred ? 'ok' : 'no'}`} title={transferred ? 'Aktarıldı' : 'Aktarılmadı'} aria-label={transferred ? 'Aktarıldı' : 'Aktarılmadı'}>
+                          {transferred ? <span className="okico">✓</span> : <span className="xico">×</span>}
                         </span>
                       </td>
                     </tr>
@@ -3892,6 +3890,9 @@ const CSS = `
 #fm-root .muhmain .fgrp .fgt{padding:5px 9px}
 #fm-root .muhmain .balance{margin:8px 0 0;padding:8px 11px;background:#ecfdf5;border-color:#bbf7d0}
 #fm-root .muhmain .fispane > .wactions{position:sticky;bottom:0;margin-top:8px;padding:8px 0 0;background:linear-gradient(180deg,rgba(255,255,255,0),#fff 35%);min-height:40px}
+#fm-root .screen-earsivSorgu .content,#fm-root .screen-efaturaSorgu .content{overflow:hidden}
+#fm-root .sorgu-screen{height:calc(100vh - 92px);display:flex;flex-direction:column;min-height:0}
+#fm-root .sorgu-screen > .h2,#fm-root .sorgu-screen > .sub{flex:0 0 auto}
 #fm-root .sorgu-screen .sourcegrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:12px 0}
 #fm-root .sourcecard{height:104px;text-align:left;border:1px solid #e2e8f0;border-radius:10px;background:#fff;padding:14px;display:grid;grid-template-columns:34px 1fr;grid-template-rows:auto auto auto;column-gap:12px;align-items:center;cursor:pointer}
 #fm-root .sourcecard:hover{border-color:#cbd5e1;background:#fbfefd}
@@ -3900,20 +3901,22 @@ const CSS = `
 #fm-root .sourcecard b{font-size:15px;color:#17212f}
 #fm-root .sourcecard small{font-size:12px;color:#64748b}
 #fm-root .sourcecard em{font-style:normal;font-size:11.5px;color:#1f7a68;font-weight:650}
-#fm-root .sourcepanel{overflow:hidden}
+#fm-root .sourcepanel{overflow:hidden;display:flex;flex-direction:column;min-height:0;flex:1}
 #fm-root .sourcehead{display:flex;align-items:center;gap:9px;padding:12px 14px}
 #fm-root .sourcehead h3{font-size:15px;margin:0}
 #fm-root .sourcehint{padding:9px 14px;border-bottom:1px solid #e5e7eb;background:#fffbeb;color:#805b16;font-size:12px}
-#fm-root .sourcetablewrap{overflow:auto;max-height:calc(100vh - 360px)}
+#fm-root .sourcetablewrap{overflow:auto;max-height:none;min-height:0;flex:1}
 #fm-root .sourcetable{width:100%;border-collapse:separate;border-spacing:0}
 #fm-root .sourcetable th{height:36px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.25px;white-space:nowrap}
 #fm-root .sourcetable td{height:42px;font-size:12.5px;vertical-align:middle}
+#fm-root .sourcetable th:last-child,#fm-root .sourcetable td:last-child{text-align:center}
+#fm-root .sourcetable .partyname{font-weight:400;color:#17212f}
 #fm-root .sourcetable .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;color:#64748b;max-width:220px;overflow:hidden;text-overflow:ellipsis}
 #fm-root .sourcetable .plainstatus{color:#334155;font-weight:500}
-#fm-root .transferstate{display:inline-flex;align-items:center;gap:6px;font-weight:600;white-space:nowrap;color:#475569}
-#fm-root .transferstate.ok{color:#15803d}
-#fm-root .transferstate.no{color:#dc2626}
-#fm-root .transferstate .xico{width:16px;height:16px;border-radius:999px;display:inline-grid;place-items:center;border:1px solid #fecaca;background:#fff1f2;color:#dc2626;font-size:14px;line-height:1;font-weight:700}
+#fm-root .transferstate{display:inline-grid;place-items:center;width:24px;height:24px;white-space:nowrap;vertical-align:middle}
+#fm-root .transferstate .xico,#fm-root .transferstate .okico{width:22px;height:22px;border-radius:999px;display:inline-grid;place-items:center;font-size:16px;line-height:1;font-weight:700}
+#fm-root .transferstate .xico{border:1px solid #fecaca;background:#fff1f2;color:#ef4444}
+#fm-root .transferstate .okico{border:1px solid #bbf7d0;background:#ecfdf5;color:#16a34a}
 #fm-root .sourcetable tr.blocked td{color:#9a5c5c;background:#fffafa}
 #fm-root .sourcetable tr.done td{background:#f8fdfb}
 #fm-root .emptyrow{text-align:center;color:#94a3b8;padding:22px!important}
