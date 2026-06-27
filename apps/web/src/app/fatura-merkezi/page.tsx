@@ -4084,4 +4084,39 @@ const CSS = `
 #fm-root .screen-muhasebe .muhmain .docmeta-bottom .psel .pselfield{height:28px;font-size:12px}
 #fm-root .screen-muhasebe .muhmain .balance{min-height:30px;margin:6px 0 0;padding:5px 9px;border-radius:7px}
 #fm-root .screen-muhasebe .muhmain .fispane > .wactions{margin-top:6px;padding-top:6px;min-height:34px}
+
+/* Sağ muhasebe paneli belge yüksekliğinde kalır; çoklu kod satırları sadece orta bölümde kayar. */
+#fm-root .screen-muhasebe .muhmain .fiseditor{min-height:0}
+#fm-root .screen-muhasebe .muhmain .belgepane,
+#fm-root .screen-muhasebe .muhmain .fispane{min-height:0}
+#fm-root .screen-muhasebe .muhmain .fispane{
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+  scrollbar-gutter:stable;
+}
+#fm-root .screen-muhasebe .muhmain .fispane > .ph,
+#fm-root .screen-muhasebe .muhmain .fispane > .tevpanel,
+#fm-root .screen-muhasebe .muhmain .fispane > .docmeta,
+#fm-root .screen-muhasebe .muhmain .fispane > .balance,
+#fm-root .screen-muhasebe .muhmain .fispane > .wactions{
+  flex:0 0 auto;
+  position:relative;
+  top:auto;
+  bottom:auto;
+}
+#fm-root .screen-muhasebe .muhmain .fispane > .twrap{
+  flex:1 1 auto;
+  min-height:0;
+  overflow:auto;
+  padding-right:2px;
+  margin-right:-2px;
+  border-radius:8px;
+}
+#fm-root .screen-muhasebe .muhmain .fgrps{gap:9px}
+#fm-root .screen-muhasebe .muhmain .fgrp{border-radius:8px}
+#fm-root .screen-muhasebe .muhmain .fgrp .fgh{padding:7px 10px}
+#fm-root .screen-muhasebe .muhmain .fgrp .frow{padding:6px 9px}
+#fm-root .screen-muhasebe .muhmain .fgrp .frowadd{padding:5px 10px}
+#fm-root .screen-muhasebe .muhmain .fgrp .fgt{padding:6px 10px}
 `;
