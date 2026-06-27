@@ -3421,7 +3421,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     if (!opts.taxpayerId) throw new BadRequestException('taxpayerId gerekli');
     const taxpayer = await (this.prisma as any).taxpayer.findFirst({
       where: { id: opts.taxpayerId, tenantId },
-      select: { id: true, companyName: true, taxNumber: true, tckn: true },
+      select: { id: true, companyName: true, taxNumber: true },
     });
     if (!taxpayer) throw new NotFoundException('Mukellef bulunamadi');
 
@@ -3553,7 +3553,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     if (!opts.taxpayerId) throw new BadRequestException('taxpayerId gerekli');
     const taxpayer = await (this.prisma as any).taxpayer.findFirst({
       where: { id: opts.taxpayerId, tenantId },
-      select: { id: true, companyName: true, taxNumber: true, tckn: true },
+      select: { id: true, companyName: true, taxNumber: true },
     });
     if (!taxpayer) throw new NotFoundException('Mukellef bulunamadi');
 
