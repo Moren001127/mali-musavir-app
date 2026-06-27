@@ -3500,16 +3500,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
                 select: { id: true, rawJson: true },
               });
               const currentRaw = existing?.rawJson && typeof existing.rawJson === 'object' ? existing.rawJson : {};
-              const data = {
-                ettn: summary.ettn || null,
-                senderVkn: summary.senderVkn || null,
-                senderTitle: summary.senderTitle || null,
-                receiverVkn: summary.receiverVkn || null,
-                faturaNo: summary.faturaNo || null,
-                faturaDate: summary.faturaDate || null,
-                matrah: summary.matrah != null ? String(summary.matrah) : null,
-                kdv: summary.kdv != null ? String(summary.kdv) : null,
-                toplam: summary.toplam != null ? String(summary.toplam) : null,
+              const data: any = {
                 paraBirimi: summary.paraBirimi || 'TRY',
                 direction: inboxDirection,
                 invoiceProfile: summary.invoiceProfile,
@@ -3531,6 +3522,15 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
                   needsDocumentDownload: true,
                 },
               };
+              if (summary.ettn) data.ettn = summary.ettn;
+              if (summary.senderVkn) data.senderVkn = summary.senderVkn;
+              if (summary.senderTitle) data.senderTitle = summary.senderTitle;
+              if (summary.receiverVkn) data.receiverVkn = summary.receiverVkn;
+              if (summary.faturaNo) data.faturaNo = summary.faturaNo;
+              if (summary.faturaDate) data.faturaDate = summary.faturaDate;
+              if (summary.matrah != null) data.matrah = String(summary.matrah);
+              if (summary.kdv != null) data.kdv = String(summary.kdv);
+              if (summary.toplam != null) data.toplam = String(summary.toplam);
               if (existing) {
                 await (this.prisma as any).eFaturaInbox.update({ where: { id: existing.id }, data });
                 providerUpdated++;
@@ -5172,6 +5172,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   private turmobDateValue(value: any): Date | null {
     const raw = String(value || '').trim();
     if (!raw) return null;
+    const msDate = raw.match(/\/Date\((\d+)(?:[+-]\d+)?\)\//i);
+    if (msDate) {
+      const d = new Date(Number(msDate[1]));
+      return Number.isNaN(d.getTime()) ? null : d;
+    }
     const dot = raw.match(/^(\d{1,2})[./](\d{1,2})[./](\d{4})/);
     if (dot) {
       const d = new Date(Date.UTC(Number(dot[3]), Number(dot[2]) - 1, Number(dot[1])));
@@ -5356,7 +5361,17 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       'InvoiceId',
       'Id',
     ]);
-    const date = this.turmobDateValue(this.turmobField(row, ['FaturaTarihi', 'GelirTarihi', 'IssueDate', 'InvoiceDate', 'Tarih']));
+    const date = this.turmobDateValue(this.turmobField(row, [
+      'FaturaTarihiFormatted',
+      'FaturaTarihi',
+      'GelirTarihiFormatted',
+      'GelirTarihi',
+      'GelisTarihiFormatted',
+      'GelisTarihi',
+      'IssueDate',
+      'InvoiceDate',
+      'Tarih',
+    ]));
     const total = this.turmobAmount(row, [
       'OdenecekTutar',
       'OdenecekTutarFormatted',
