@@ -688,6 +688,13 @@ export class PortalAutomationService {
       if (sourceRefId) refs.add(sourceRefId);
       const onayDurumu = String(raw.onayDurumu || portalRow.onayDurumu || portalRow.durum || '').trim() || 'Onaylandi';
       const iptalDurumu = String(portalRow.iptalItirazDurumu || portalRow.iptalDurumu || portalRow.itirazDurumu || raw.iptalDurumu || '').trim();
+      const issuedAt = doc.issuedAt || parseDateOrNull(String(
+        portalRow.belgeTarihi ||
+        portalRow.faturaTarihi ||
+        portalRow.duzenlemeTarihi ||
+        portalRow.tarih ||
+        '',
+      ));
       const blocked = /iptal|itiraz|red|reddedil|cancel/i.test(`${onayDurumu} ${iptalDurumu}`);
       return {
         id: doc.id,
@@ -697,8 +704,8 @@ export class PortalAutomationService {
         belgeNo,
         ettn,
         buyerName: String(portalRow.aliciUnvanAdSoyad || portalRow.aliciUnvan || portalRow.unvan || '').trim(),
-        buyerVkn: String(portalRow.vknTckn || portalRow.aliciVkn || portalRow.aliciTckn || '').replace(/\D/g, ''),
-        issuedAt: doc.issuedAt,
+        buyerVkn: String(portalRow.vknTckn || portalRow.aliciVknTckn || portalRow.aliciVkn || portalRow.aliciTckn || portalRow.aliciVergiNo || portalRow.kimlikNo || '').replace(/\D/g, ''),
+        issuedAt,
         period: doc.period,
         title: doc.title,
         onayDurumu,
