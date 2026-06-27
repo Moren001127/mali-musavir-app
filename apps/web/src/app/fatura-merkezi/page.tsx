@@ -628,7 +628,7 @@ function useDocuments(taxpayerId: string, period: string) {
 
 export default function FaturaMerkeziPage() {
   const [screen, setScreen] = useState('mukellefler');
-  const accent = 'yesil';
+  const accent = 'mor';
   const [taxpayerId, setTaxpayerId] = useState('');
   const nowP = new Date();
   const [period, setPeriod] = useState(`${nowP.getFullYear()}-${String(nowP.getMonth() + 1).padStart(2, '0')}`);
@@ -1046,8 +1046,8 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
         <div className="fmstat" style={{ ['--sc' as any]: '#7c3aed' }}><span className="fmsl">Demirbaş (manuel)</span><span className="fmsv">{durumCount('demirbas')}</span></div>
         <div className="fmstat" style={{ ['--sc' as any]: '#e5484d' }}><span className="fmsl">Okunamadı / eksik</span><span className="fmsv">{durumCount('okunamadi') + durumCount('eksik')}</span></div>
       </div>
-      <div className="card">
-        <div className="ch">
+      <div className="card invcard">
+        <div className="ch invactions">
           <h3>{docsQ.isLoading ? 'Yükleniyor…' : `${docs.length} belge`}</h3><div className="sp" />
           <button className="btn sm blue" disabled={!taxpayerId || mihsapMut.isPending} onClick={() => mihsapMut.mutate()} title={!taxpayerId ? 'Önce mükellef seç' : "Mihsap 'bekleyen evraklar'daki faturaları portala aktarır"}><Ico html={I.download} size={13} /> {mihsapMut.isPending ? 'Aktarılıyor…' : "Mihsap'tan Aktar"}</button>
           <input ref={fileRef} type="file" multiple accept=".pdf,.jpg,.jpeg,.jpe,.jfif,.png,.webp,.gif,.tif,.tiff,.bmp,.heic,.heif,.avif,.xml,.ubl,.zip" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files; if (f && f.length) uploadMut.mutate(f); e.target.value = ''; }} />
@@ -1669,10 +1669,10 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
   const docsQ = useDocuments(taxpayerId, period);
   const all: any[] = docsQ.data || [];
   const dirOf = (d: any) => (String(d.invoiceKind || '').includes('SATIS') ? 'SATIS' : 'ALIS');
-  const [dir, setDir] = useState<'ALL' | 'ALIS' | 'SATIS'>('ALL');
+  const [dir, setDir] = useState<'ALIS' | 'SATIS'>('ALIS');
   const cAlis = all.filter((d) => dirOf(d) === 'ALIS').length;
   const cSatis = all.filter((d) => dirOf(d) === 'SATIS').length;
-  const allF = dir === 'ALL' ? all : all.filter((d) => dirOf(d) === dir);
+  const allF = all.filter((d) => dirOf(d) === dir);
   // HAZIR = TÜM satırların kodu dolu (cari dahil). Eskiden "herhangi bir satır" yeterdi →
   // cari boşken bile "hazır/muhasebeleştirilebilir" görünüyordu (yanlış).
   const hasCode = (d: any) => Array.isArray(d.lines) && d.lines.length > 0 && d.lines.every((l: any) => l.accountCode);
@@ -1940,25 +1940,6 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
 
   // Gerçek hesap kodunu elle ver — o satıcının tüm faturalarına uygulanır + öğrenilir (770 tahmini yerine)
   // Talimat (gece otomatik) — entegratör kayıtlarından türetilir
-  const intQ = useQuery({
-    queryKey: ['fm2', 'integrations', taxpayerId],
-    queryFn: () =>
-      api.get('/fatura-muhasebelestirme/integrations', { params: { taxpayerId: taxpayerId || undefined } })
-        .then((r) => (Array.isArray(r.data) ? r.data : [])).catch(() => []),
-    enabled: !!taxpayerId,
-  });
-  const configured: any[] = (intQ.data || []).filter((x: any) => x.configured);
-  const talimatliVar = configured.some((c: any) => c.talimat);
-  const talimatMut = useMutation({
-    mutationFn: async (active: boolean) => {
-      for (const c of configured) {
-        try { await api.post('/fatura-muhasebelestirme/integrations/talimat', { taxpayerId: taxpayerId || undefined, provider: c.provider, active }); } catch { /* atla */ }
-      }
-    },
-    onSuccess: (_d, active) => { toast.success(active ? 'Gece otomatik çekim açıldı' : 'Gece otomatik çekim kapatıldı'); qc.invalidateQueries({ queryKey: ['fm2', 'integrations'] }); },
-    onError: () => toast.error('Talimat güncellenemedi'),
-  });
-
   const approveMut = useMutation({
     mutationFn: (id: string) => api.post(`/fatura-muhasebelestirme/documents/${id}/approve`),
     onSuccess: () => { toast.success('Onaylandı — Luca kuyruğuna alındı'); qc.invalidateQueries({ queryKey: ['fm2'] }); },
@@ -1993,18 +1974,6 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
     return () => window.removeEventListener('keydown', onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selDoc?.id, navIdx, navList.length, ggReady, isIsletme, meta, lineDraft]);
-  const bulkMut = useMutation({
-    mutationFn: async () => {
-      let ok = 0;
-      for (const d of hazir) {
-        try { await api.post(`/fatura-muhasebelestirme/documents/${d.id}/approve`); ok++; } catch { /* tek tek atla */ }
-      }
-      return ok;
-    },
-    onSuccess: (ok) => { toast.success(`${ok} belge fişlendi — Luca kuyruğuna alındı`); qc.invalidateQueries({ queryKey: ['fm2'] }); },
-    onError: () => toast.error('Toplu fişleme başarısız'),
-  });
-
   // v2.3: Onaylı (QUEUED/FAILED) belgeleri tek toplu işle Luca'ya GÖNDER.
   // approve sadece kuyruğa alır; gerçek aktarım bu butonla (batch-post-to-luca) tetiklenir.
   if (!taxpayerId) {
@@ -2016,8 +1985,6 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
       </section>
     );
   }
-
-  const firmaOf = (d: any) => (d.invoiceKind === 'SATIS' ? d.customerName : d.vendorName) || '—';
 
   return (
     <section className="screen">
@@ -2080,6 +2047,10 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                     <button type="button" className="navb" disabled={navIdx < 0 || navIdx >= navList.length - 1} onClick={() => goNav(1)} title="Sonraki belge (→)">›</button>
                   </span>
                   <span className="phname">{isIsletme ? (selDoc.invoiceKind === 'SATIS' ? 'Gelir faturası' : 'Gider faturası') : (selDoc.invoiceKind === 'SATIS' ? 'Satış faturası' : 'Alış faturası')}</span>
+                  <span className="muhfilter" aria-label="Fatura yönü filtresi">
+                    <button type="button" className={dir === 'ALIS' ? 'on' : ''} onClick={() => { setDir('ALIS'); setSelId(''); }}>Alış <b>{cAlis}</b></button>
+                    <button type="button" className={dir === 'SATIS' ? 'on' : ''} onClick={() => { setDir('SATIS'); setSelId(''); }}>Satış <b>{cSatis}</b></button>
+                  </span>
                   {!isIsletme && (taxpayerAd || taxpayerNace || taxpayerFaaliyet) && (
                     <span className="nacechip" title={`Mükellef: ${taxpayerAd || '—'}${taxpayerFaaliyet ? ` · faaliyet: ${taxpayerFaaliyet}` : (taxpayerNace ? ` · NACE ${taxpayerNace}` : ' · faaliyet/sektör girilmemiş')} · ${isIsletme ? 'İşletme' : 'Bilanço'} — hesap eşleştirmesi bu işe göre yapılır`}>
                       <Ico html={I.info} size={11} />{taxpayerNace ? `NACE ${taxpayerNace}` : 'sektör?'}
@@ -2315,35 +2286,6 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
               <div className="empty">Hazır belge yok ya da soldan bir belge seç.</div>
             )}
           </div>
-        <div className="wstrip">
-          <div className="wfilter">
-            <button className={dir === 'ALL' ? 'on' : ''} onClick={() => setDir('ALL')}>Tümü ({all.length})</button>
-            <button className={dir === 'ALIS' ? 'on' : ''} onClick={() => setDir('ALIS')}>Alış ({cAlis})</button>
-            <button className={dir === 'SATIS' ? 'on' : ''} onClick={() => setDir('SATIS')}>Satış ({cSatis})</button>
-          </div>
-          {[...hazir.map((d: any) => ({ d, ready: true })), ...eksik.slice(0, 40).map((d: any) => ({ d, ready: false }))].map(({ d, ready }) => {
-            const code = (Array.isArray(d.lines) ? d.lines.find((l: any) => l.accountCode) : null)?.accountCode || '';
-            return (
-              <div key={d.id} className={`wchip${selDoc?.id === d.id ? ' on' : ''}${ready ? '' : ' miss'}`} onClick={() => setSelId(d.id)} title={firmaOf(d)}>
-                <b>{firmaOf(d)}</b>
-                <small>{fmtMoney(d.totalAmount)} ₺ · {isIsletme ? 'G/G' : (ready ? (code || '—') : 'kod yok')}</small>
-              </div>
-            );
-          })}
-          {hazir.length === 0 && eksik.length === 0 && <div className="empty" style={{ padding: 14 }}>Belge yok.</div>}
-        </div>
-        <div className="auto">
-          <Ico html={I.clock} size={20} />
-          <div><div className="at">Gece otomatik çekim</div><div className="as">Entegratörden faturalar her gece otomatik çekilsin — sen girmeden hazır olsun.</div></div>
-          <div className="seg autoseg">
-            <button className={!talimatliVar ? 'on' : ''} disabled={talimatMut.isPending || configured.length === 0} onClick={() => talimatMut.mutate(false)}>Kapalı</button>
-            <button className={talimatliVar ? 'on' : ''} disabled={talimatMut.isPending || configured.length === 0} onClick={() => talimatMut.mutate(true)}>Açık (her gece)</button>
-          </div>
-          <button className="btn sm primary" disabled={bulkMut.isPending || hazir.length === 0} onClick={() => bulkMut.mutate()}>
-            <Ico html={I.checkSm} size={13} /> {bulkMut.isPending ? 'Onaylanıyor…' : `${hazir.length} belgeyi toplu onayla`}
-          </button>
-          <span className="amini">Luca'ya aktarım → <b>Aktarım</b> ekranından</span>
-        </div>
       </div>
     </section>
   );
@@ -2943,7 +2885,7 @@ function ScreenGenel({ taxpayers, period, onOpen }: { taxpayers: any[]; period: 
 
 /* ===================== CSS (#fm-root scope) ===================== */
 const CSS = `
-#fm-root{--bg:#f4f6f5;--side:#fff;--line:#ebedf2;--line2:#e0e3ea;--text:#1f2937;--muted:#6b7280;--faint:#9aa3b2;--accent:#15803d;--accent-soft:#e7f4ec;--accent-line:#c2e6cf;--th:#edf6f0;--th-text:#166534;--blue:#2563eb;--red:#e5484d;--green:#16a34a;--amber:#d97706;font-family:"Segoe UI",system-ui,-apple-system,sans-serif;font-size:13.5px;line-height:1.5;color:var(--text)}
+#fm-root{--bg:#f5f7fb;--side:#fff;--line:#ebedf2;--line2:#e0e3ea;--text:#1f2937;--muted:#6b7280;--faint:#9aa3b2;--accent:#3157d5;--accent-soft:#eef3ff;--accent-line:#cdd9ff;--th:#eef3ff;--th-text:#2741a8;--blue:#3157d5;--red:#e5484d;--green:#16a34a;--amber:#d97706;font-family:"Segoe UI",system-ui,-apple-system,sans-serif;font-size:13.5px;line-height:1.5;color:var(--text)}
 #fm-root[data-accent="yesil"]{--accent:#15803d;--accent-soft:#e7f4ec;--accent-line:#c2e6cf;--th:#edf6f0;--th-text:#166534}
 #fm-root[data-accent="lacivert"]{--accent:#1e3a8a;--accent-soft:#eaecf7;--accent-line:#c7cdeb;--th:#eef0f8;--th-text:#27408b}
 #fm-root[data-accent="mavi"]{--accent:#2563eb;--accent-soft:#e8f0ff;--accent-line:#cfe0ff;--th:#eef4ff;--th-text:#1d4ed8}
@@ -2954,24 +2896,24 @@ const CSS = `
 #fm-root[data-accent="bordo"]{--accent:#b91c1c;--accent-soft:#fbeaea;--accent-line:#f1c9c9;--th:#fbeeee;--th-text:#991b1b}
 #fm-root *{box-sizing:border-box;margin:0;padding:0}
 #fm-root .app{display:flex;min-height:100vh;background:var(--bg);position:relative}
-#fm-root .app::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;z-index:6;background:linear-gradient(90deg,var(--accent),#22c55e,#34d399,#22d3ee,#60a5fa)}
-#fm-root .side{width:246px;flex-shrink:0;background:linear-gradient(180deg,#ffffff 0%,#f7fbf8 48%,#eef7f1 100%);border-right:1px solid #dde7e0;display:flex;flex-direction:column;padding:0 0 14px;box-shadow:8px 0 28px rgba(15,23,42,.035)}
-#fm-root .brand{padding:14px 14px 13px;border-bottom:1px solid #e2ebe5;background:linear-gradient(180deg,#fff,#fbfdfc)}
+#fm-root .app::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;z-index:6;background:linear-gradient(90deg,#5b5bd6,#3157d5,#38bdf8)}
+#fm-root .side{width:246px;flex-shrink:0;background:linear-gradient(180deg,#ffffff 0%,#f8faff 55%,#f2f5fb 100%);border-right:1px solid #dfe6f0;display:flex;flex-direction:column;padding:0 0 14px;box-shadow:8px 0 28px rgba(15,23,42,.035)}
+#fm-root .brand{padding:12px 12px 11px;border-bottom:1px solid #e2e8f0;background:#fff}
 #fm-root .backlink{display:inline-flex;align-items:center;gap:4px;color:var(--muted);font-size:11px;font-weight:700;text-decoration:none;margin-bottom:10px;transition:color .15s;opacity:.78}
 #fm-root .backlink:hover{color:var(--accent);opacity:1}
-#fm-root .brandplate{display:flex;align-items:center;gap:11px;padding:11px 10px;border:1px solid #cfe8d8;border-radius:8px;background:linear-gradient(135deg,#f3fbf6,#ffffff 66%);box-shadow:0 10px 24px -18px rgba(21,128,61,.65)}
-#fm-root .brandmark{width:42px;height:42px;border-radius:8px;display:grid;place-items:center;background:#15803d;color:#fff;font-size:14px;font-weight:900;letter-spacing:.4px;box-shadow:0 9px 18px -12px rgba(21,128,61,.85)}
+#fm-root .brandplate{display:flex;align-items:center;gap:10px;padding:9px 8px;border:1px solid #dbe3ef;border-radius:8px;background:#f8fafc;box-shadow:none}
+#fm-root .brandmark{width:34px;height:34px;border-radius:7px;display:grid;place-items:center;background:#111827;color:#fff;font-size:12px;font-weight:900;letter-spacing:.3px;box-shadow:none}
 #fm-root .brandcopy{min-width:0}
-#fm-root .brandeyebrow{font-size:9.5px;font-weight:900;text-transform:uppercase;letter-spacing:.8px;color:#64748b;line-height:1;margin-bottom:5px}
-#fm-root .brandmod{font-size:16px;font-weight:900;color:#0f172a;letter-spacing:0;line-height:1.15;margin-bottom:3px}
-#fm-root .brandco{font-size:10.5px;font-weight:700;color:#15803d;opacity:.9;white-space:normal;line-height:1.25}
+#fm-root .brandeyebrow{font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:.7px;color:#64748b;line-height:1;margin-bottom:4px}
+#fm-root .brandmod{font-size:15px;font-weight:900;color:#0f172a;letter-spacing:0;line-height:1.1;margin-bottom:2px}
+#fm-root .brandco{font-size:10.5px;font-weight:700;color:#526070;opacity:.95;white-space:normal;line-height:1.25}
 #fm-root .nav{padding:10px 10px 0;overflow:auto}
 #fm-root .ncap{font-size:10px;color:var(--faint);font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:14px 10px 6px}
 #fm-root .nitem{display:flex;align-items:center;gap:10px;padding:8px 9px;border-radius:8px;color:#566273;font-weight:700;font-size:13px;cursor:pointer;margin-bottom:3px;transition:background .14s,color .14s,box-shadow .14s}
-#fm-root .nitem:hover{background:#f2f7f4;color:#172033}
+#fm-root .nitem:hover{background:#f4f7fb;color:#172033}
 #fm-root .nitem > span:first-child{width:29px;height:29px;border-radius:8px;display:grid;place-items:center;color:var(--icc,var(--faint));background:color-mix(in srgb,var(--icc,var(--faint)) 11%,#fff);border:1px solid color-mix(in srgb,var(--icc,var(--faint)) 18%,#fff);transition:color .12s,background .12s,border-color .12s}
 #fm-root .nitem.on > span:first-child{color:#fff;background:var(--accent);border-color:var(--accent);box-shadow:0 7px 16px -11px var(--accent)}
-#fm-root .nitem.on{background:#eef8f1;color:var(--accent);box-shadow:inset 3px 0 0 var(--accent),0 8px 18px -18px rgba(21,128,61,.7)}
+#fm-root .nitem.on{background:var(--accent-soft);color:var(--accent);box-shadow:inset 3px 0 0 var(--accent),0 8px 18px -18px rgba(91,91,214,.55)}
 #fm-root .nitem .ct{margin-left:auto;font-size:10.5px;font-weight:700;background:#eef1f5;color:var(--muted);border-radius:999px;padding:1px 7px}
 #fm-root .nitem.on .ct{background:#fff;color:var(--accent)}
 #fm-root .nsub{display:flex;align-items:center;gap:10px;padding:7px 11px 7px 38px;border-radius:8px;color:var(--muted);font-size:12.5px;font-weight:600;cursor:pointer}
@@ -3391,7 +3333,7 @@ const CSS = `
 
 /* Fatura merkezi son görsel katman */
 #fm-root .topfiltbar{gap:10px}
-#fm-root .topfilt{height:38px;border-radius:8px;background:#eef8f1;border-color:#bfe4cc;box-shadow:inset 0 1px 0 rgba(255,255,255,.8)}
+#fm-root .topfilt{height:38px;border-radius:8px;background:#eef3ff;border-color:#cdd9ff;box-shadow:inset 0 1px 0 rgba(255,255,255,.8)}
 #fm-root .filtsel{font-size:13.5px;font-weight:800;min-width:170px}
 #fm-root .btn .ico{width:20px;height:20px;border-radius:6px;display:grid;place-items:center;background:rgba(255,255,255,.55)}
 #fm-root .btn.primary,#fm-root .btn.blue,#fm-root .btn.red,#fm-root .btn.ai,#fm-root .btn.teal,#fm-root .btn.purple{box-shadow:0 12px 22px -16px currentColor}
@@ -3399,28 +3341,31 @@ const CSS = `
 #fm-root .btn.fix{background:linear-gradient(180deg,#effaf8,#e4f7f3);border-color:#99d8cf;color:#0f766e}
 #fm-root .btn.upload{background:linear-gradient(180deg,#eef6ff,#e6f0ff);border-color:#b8d3ff;color:#1d4ed8}
 #fm-root .dfchip{height:32px;border-radius:999px;padding:0 14px;border-color:#d8e1ea;background:linear-gradient(180deg,#fff,#f8fafc);font-weight:800}
-#fm-root .dfchip .dfn{margin-left:4px;background:#e7f4ec;color:#15803d;border-radius:999px;padding:2px 8px;min-width:24px}
-#fm-root .dfchip.on{background:#15803d;color:#fff;border-color:#15803d;box-shadow:0 10px 20px -16px rgba(21,128,61,.8)}
+#fm-root .dfchip .dfn{margin-left:4px;background:#eef3ff;color:#3157d5;border-radius:999px;padding:2px 8px;min-width:24px}
+#fm-root .dfchip.on{background:#3157d5;color:#fff;border-color:#3157d5;box-shadow:0 10px 20px -16px rgba(49,87,213,.8)}
 #fm-root .dfchip.on .dfn{background:rgba(255,255,255,.22);color:#fff}
-#fm-root .aibar{position:relative;align-items:center;gap:18px;margin:18px 18px 16px;padding:18px 20px;border-radius:8px;background:linear-gradient(135deg,#ecfdf5 0%,#f8fffb 58%,#eef6ff 100%);border:1px solid #bde8ca;box-shadow:0 18px 42px -32px rgba(21,128,61,.75)}
-#fm-root .aibar::before{content:'';position:absolute;left:0;right:0;top:0;height:4px;background:linear-gradient(90deg,#15803d,#22c55e,#60a5fa)}
-#fm-root .aibar .aiscan{width:48px;height:58px;border-radius:8px;border:2px solid #15803d;box-shadow:0 12px 24px -16px rgba(21,128,61,.85)}
-#fm-root .aibar .aiscan i{left:10px;height:3px;background:#a7f3d0}
+#fm-root .aibar{position:relative;align-items:center;gap:18px;margin:18px 18px 16px;padding:18px 20px;border-radius:8px;background:linear-gradient(135deg,#eef3ff 0%,#fbfcff 58%,#f0f7ff 100%);border:1px solid #cdd9ff;box-shadow:0 18px 42px -32px rgba(49,87,213,.75)}
+#fm-root .aibar::before{content:'';position:absolute;left:0;right:0;top:0;height:4px;background:linear-gradient(90deg,#3157d5,#6d5df6,#38bdf8)}
+#fm-root .aibar .aiscan{width:48px;height:58px;border-radius:8px;border:2px solid #3157d5;box-shadow:0 12px 24px -16px rgba(49,87,213,.85)}
+#fm-root .aibar .aiscan i{left:10px;height:3px;background:#bfdbfe}
 #fm-root .aibar .aiscan i:nth-child(1){top:15px;width:24px}#fm-root .aibar .aiscan i:nth-child(2){top:24px;width:28px}#fm-root .aibar .aiscan i:nth-child(3){top:33px;width:22px}#fm-root .aibar .aiscan i:nth-child(4){top:42px;width:28px}
-#fm-root .aibar .aiscan .beam{height:16px;background:linear-gradient(transparent,rgba(21,128,61,.5),transparent)}
-#fm-root .aibar .ait{font-size:16px;font-weight:900;color:#116a35}
+#fm-root .aibar .aiscan .beam{height:16px;background:linear-gradient(transparent,rgba(49,87,213,.45),transparent)}
+#fm-root .aibar .ait{font-size:16px;font-weight:900;color:#2741a8}
 #fm-root .aibar .aisub{font-size:12.5px;color:#64748b}
-#fm-root .aibar .aitrack{height:9px;border-radius:999px;background:#dff3e6}
-#fm-root .aibar .aifill{background:linear-gradient(90deg,#15803d,#22c55e,#60a5fa)}
-#fm-root .aibar .aipct{font-size:32px;font-weight:950;color:#116a35;letter-spacing:0}
+#fm-root .aibar .aitrack{height:9px;border-radius:999px;background:#dbe6ff}
+#fm-root .aibar .aifill{background:linear-gradient(90deg,#3157d5,#6d5df6,#38bdf8)}
+#fm-root .aibar .aipct{font-size:32px;font-weight:950;color:#2741a8;letter-spacing:0}
 #fm-root .aibar .airight small{font-size:10px;font-weight:900;color:#94a3b8}
 #fm-root .aibar.err{background:#fff7f7;border-color:#f3c4c4;box-shadow:none}
-#fm-root .mgrid{grid-template-columns:repeat(4,minmax(0,1fr));gap:13px}
-#fm-root .mcard{border-radius:8px;background:linear-gradient(180deg,#fff,#fbfdff);border-color:#dfe7ef}
-#fm-root .mcard::before{width:5px;border-radius:8px 0 0 8px}
+#fm-root .mgrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:8px 0 12px;padding:8px;background:#fff;border:1px solid #dde5ef;border-radius:8px}
+#fm-root .mcard{min-height:58px;border:0;border-left:3px solid var(--mc,var(--accent));border-radius:5px;background:#f8fafc;padding:8px 10px;box-shadow:none;gap:4px}
+#fm-root .mcard::before{display:none}
+#fm-root .mci{display:none}
+#fm-root .mcard .ml{font-size:10.5px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.25px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#fm-root .mcard .mv{font-size:23px;font-weight:900;line-height:1.05;margin-top:4px;letter-spacing:0}
 #fm-root .mukara{height:38px;border-radius:8px;background:#f8fafc;border-color:#dce5ee}
 #fm-root .mktbl{border-collapse:separate;border-spacing:0}
-#fm-root .mktbl thead th{position:sticky;top:0;z-index:1;background:#f1f7f3;color:#14532d;border-top:1px solid #dfe7ef;border-bottom:1px solid #cfe4d6}
+#fm-root .mktbl thead th{position:sticky;top:0;z-index:1;background:#eef3ff;color:#2741a8;border-top:1px solid #dfe7ef;border-bottom:1px solid #cdd9ff}
 #fm-root .mktbl thead th:first-child{border-top-left-radius:8px}
 #fm-root .mktbl thead th:last-child{border-top-right-radius:8px}
 #fm-root .mktr td{background:#fff;border-bottom:1px solid #e7edf3}
@@ -3442,6 +3387,27 @@ const CSS = `
 #fm-root .mknum-ok{background:#ecfdf5;border-color:#bbf7d0;color:#15803d}
 #fm-root .mknum-posted{background:#f0fdfa;border-color:#99f6e4;color:#0f766e}
 #fm-root .mknum-issue{background:#fff1f1;border-color:#ffcaca;color:#e5484d}
+#fm-root .screen > .fmstats{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin:12px 0 14px;padding:9px;background:#fff;border:1px solid #dde5ef;border-radius:8px;box-shadow:none}
+#fm-root .screen > .fmstats .fmstat{min-height:58px;border:0;border-left:3px solid var(--sc,var(--accent));border-radius:5px;padding:8px 10px;background:#f8fafc;box-shadow:none}
+#fm-root .screen > .fmstats .fmstat::before,#fm-root .screen > .fmstats .fmstat::after{display:none}
+#fm-root .screen > .fmstats .fmsl{font-size:10px;letter-spacing:.25px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#fm-root .screen > .fmstats .fmsl::before{width:6px;height:6px;border-radius:999px}
+#fm-root .screen > .fmstats .fmsv{font-size:23px;margin-top:5px;color:#111827;letter-spacing:0}
+#fm-root .invcard{border-radius:8px;box-shadow:none}
+#fm-root .invactions{gap:8px;padding:10px 12px;background:#fff;align-items:center}
+#fm-root .invactions h3{font-size:13px;font-weight:800;margin-right:4px}
+#fm-root .invactions .btn{height:34px;border-radius:6px;padding:0 11px;font-size:12px;box-shadow:none}
+#fm-root .invactions .btn .ico{width:17px;height:17px;border-radius:4px;background:transparent}
+#fm-root .invactions .btn.blue{background:#3157d5;border-color:#3157d5}
+#fm-root .invactions .btn.primary{background:#173b8f;border-color:#173b8f}
+#fm-root .invactions .btn.ai{background:#6d5df6;border-color:#6d5df6}
+#fm-root .invactions .btn.fix{background:#f5fbfb;border-color:#b9e1dc;color:#0f766e}
+#fm-root .invactions .btn.upload{background:#f4f7ff;border-color:#c8d6ff;color:#2741a8}
+#fm-root .invactions .btn.soon:disabled{background:#f8fafc;border-color:#e2e8f0;color:#94a3b8}
+#fm-root .muhfilter{display:inline-flex;align-items:center;gap:3px;height:26px;padding:3px;border:1px solid #dbe3ee;border-radius:7px;background:#f8fafc;flex-shrink:0}
+#fm-root .muhfilter button{height:20px;border:0;border-radius:5px;background:transparent;color:#64748b;font-size:11px;font-weight:800;padding:0 8px;cursor:pointer;font-family:inherit}
+#fm-root .muhfilter button.on{background:#3157d5;color:#fff}
+#fm-root .muhfilter b{font-size:10px;font-weight:900;margin-left:4px;opacity:.9}
 #fm-root .fiseditor{gap:14px;align-items:stretch}
 #fm-root .belgepane{flex:0 0 min(72%,calc(100vw - 540px));max-width:min(72%,calc(100vw - 540px));position:sticky;top:10px}
 #fm-root .app.editorfull .belgepane{flex:0 0 76%;max-width:76%}
