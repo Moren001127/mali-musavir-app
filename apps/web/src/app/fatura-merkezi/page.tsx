@@ -689,8 +689,8 @@ export default function FaturaMerkeziPage() {
 
       <div className="ncap">Belgeler</div>
       <div className={`nitem${screen === 'faturalar' || screen === 'satis' ? ' on' : ''}`} style={{ ['--icc' as any]: '#15803d' }} onClick={() => go('faturalar')}><Ico html={I.file} /> Gelen Faturalar</div>
-      <div className={`nsub${screen === 'faturalar' ? ' on' : ''}`} onClick={() => go('faturalar')}><span className="d" /> Bekleyen Alış Faturaları {badge(sum.alisPending)}</div>
-      <div className={`nsub${screen === 'satis' ? ' on' : ''}`} onClick={() => go('satis')}><span className="d" /> Bekleyen Satış Faturaları {badge(sum.satisPending)}</div>
+      <div className={`nsub${screen === 'faturalar' ? ' on' : ''}`} onClick={() => go('faturalar')}><span className="d" /> Alış Faturaları {badge(sum.alisPending)}</div>
+      <div className={`nsub${screen === 'satis' ? ' on' : ''}`} onClick={() => go('satis')}><span className="d" /> Satış Faturaları {badge(sum.satisPending)}</div>
       <div className={`nitem${screen === 'earsivSorgu' ? ' on' : ''}`} style={{ ['--icc' as any]: '#0f766e' }} onClick={() => go('earsivSorgu')}><Ico html={I.file} /> GIB e-Arşiv Sorgu</div>
       <div className={`nitem${screen === 'efaturaSorgu' ? ' on' : ''}`} style={{ ['--icc' as any]: '#2563eb' }} onClick={() => go('efaturaSorgu')}><Ico html={I.plug} /> e-Fatura Sorgu</div>
       <div className={`nitem${screen === 'muhasebe' ? ' on' : ''}`} style={{ ['--icc' as any]: '#7c3aed' }} onClick={() => go('muhasebe')}><Ico html={I.ledger} /> Muhasebeleştir {badge(sum.pending)}</div>
@@ -2363,38 +2363,9 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                     <button type="button" className={dir === 'ALIS' ? 'on' : ''} onClick={() => { setDir('ALIS'); setSelId(''); }}>Alış <b>{cAlis}</b></button>
                     <button type="button" className={dir === 'SATIS' ? 'on' : ''} onClick={() => { setDir('SATIS'); setSelId(''); }}>Satış <b>{cSatis}</b></button>
                   </span>
-                  <div className="sp" />
                   <button type="button" className="fifull" onClick={() => onToggleFull?.()} title={full ? 'Küçült — menüyü geri getir' : 'Büyüt — menüyü gizle, tam ekran işle'}><Ico html={full ? I.compress : I.expand} size={14} /><span>{full ? 'Küçült' : 'Büyüt'}</span></button>
+                  <div className="sp" />
                 </div>
-                {!isIsletme && (
-                <div className="docmeta">
-                  <div className="dm"><span className="dml">Tarih</span><input className="dmi" type="date" value={meta.faturaTarihi || ''} onChange={(e) => setMeta({ ...meta, faturaTarihi: e.target.value })} /></div>
-                  <div className="dm"><span className="dml">Fatura Türü</span>
-                    <PlainSelect value={`${meta.invoiceKind || 'ALIS'}${meta.tevkifatli ? '_TEV' : ''}`} onChange={(v) => { const k = v.startsWith('SATIS') ? 'SATIS' : 'ALIS'; setMeta({ ...meta, invoiceKind: k, tevkifatli: v.endsWith('_TEV') }); setIslKind(k); }} options={[
-                      { value: 'ALIS', label: 'Alış' },
-                      { value: 'ALIS_TEV', label: 'Tevkifatlı Alış' },
-                      { value: 'SATIS', label: 'Satış' },
-                      { value: 'SATIS_TEV', label: 'Tevkifatlı Satış' },
-                    ]} />
-                  </div>
-                  {!isIsletme && (
-                  <div className="dm"><span className="dml">Belge Türü</span>
-                    <PlainSelect value={meta.documentType || ''} onChange={(v) => setMeta({ ...meta, documentType: v })} options={[
-                      { value: '', label: '—' },
-                      { value: 'E_FATURA', label: 'e-Fatura' },
-                      { value: 'E_ARSIV', label: 'e-Arşiv' },
-                      { value: 'E_SMM', label: 'e-SMM (Serbest Meslek)' },
-                      { value: 'OKC_FIS', label: 'ÖKC Fiş' },
-                      { value: 'Z_RAPORU', label: 'Z Raporu' },
-                      { value: 'DIGER', label: 'Diğer' },
-                    ]} />
-                  </div>
-                  )}
-                  <div className="dm"><span className="dml">Belge No</span><input className="dmi" value={meta.belgeNo || ''} onChange={(e) => setMeta({ ...meta, belgeNo: e.target.value })} /></div>
-                  <div className="dm"><span className="dml">{String(meta.invoiceKind).includes('SATIS') ? 'Alıcı VKN' : 'Satıcı VKN'}</span><input className="dmi" value={meta.vkn || ''} onChange={(e) => setMeta({ ...meta, vkn: e.target.value })} /></div>
-                  <div className="dm"><span className="dml">Cari Ünvanı</span><input className="dmi" value={meta.cariUnvan || ''} placeholder="satıcı/alıcı ünvanı" onChange={(e) => setMeta({ ...meta, cariUnvan: e.target.value })} /></div>
-                </div>
-                )}
                 {meta.tevkifatli && !isIsletme && !String(meta.invoiceKind || '').includes('SATIS') && (
                   <div className="tevpanel">
                     <span className="tlbl">Tevkifat (alış)</span>
@@ -2565,6 +2536,33 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                     </div>
                   )}
                 </div>
+                {!isIsletme && (
+                <div className="docmeta docmeta-bottom">
+                  <div className="dm"><span className="dml">Tarih</span><input className="dmi" type="date" value={meta.faturaTarihi || ''} onChange={(e) => setMeta({ ...meta, faturaTarihi: e.target.value })} /></div>
+                  <div className="dm"><span className="dml">Fatura Türü</span>
+                    <PlainSelect value={`${meta.invoiceKind || 'ALIS'}${meta.tevkifatli ? '_TEV' : ''}`} onChange={(v) => { const k = v.startsWith('SATIS') ? 'SATIS' : 'ALIS'; setMeta({ ...meta, invoiceKind: k, tevkifatli: v.endsWith('_TEV') }); setIslKind(k); }} options={[
+                      { value: 'ALIS', label: 'Alış' },
+                      { value: 'ALIS_TEV', label: 'Tevkifatlı Alış' },
+                      { value: 'SATIS', label: 'Satış' },
+                      { value: 'SATIS_TEV', label: 'Tevkifatlı Satış' },
+                    ]} />
+                  </div>
+                  <div className="dm"><span className="dml">Belge Türü</span>
+                    <PlainSelect value={meta.documentType || ''} onChange={(v) => setMeta({ ...meta, documentType: v })} options={[
+                      { value: '', label: '—' },
+                      { value: 'E_FATURA', label: 'e-Fatura' },
+                      { value: 'E_ARSIV', label: 'e-Arşiv' },
+                      { value: 'E_SMM', label: 'e-SMM (Serbest Meslek)' },
+                      { value: 'OKC_FIS', label: 'ÖKC Fiş' },
+                      { value: 'Z_RAPORU', label: 'Z Raporu' },
+                      { value: 'DIGER', label: 'Diğer' },
+                    ]} />
+                  </div>
+                  <div className="dm"><span className="dml">Belge No</span><input className="dmi" value={meta.belgeNo || ''} onChange={(e) => setMeta({ ...meta, belgeNo: e.target.value })} /></div>
+                  <div className="dm"><span className="dml">{String(meta.invoiceKind).includes('SATIS') ? 'Alıcı VKN' : 'Satıcı VKN'}</span><input className="dmi" value={meta.vkn || ''} onChange={(e) => setMeta({ ...meta, vkn: e.target.value })} /></div>
+                  <div className="dm"><span className="dml">Cari Ünvanı</span><input className="dmi" value={meta.cariUnvan || ''} placeholder="satıcı/alıcı ünvanı" onChange={(e) => setMeta({ ...meta, cariUnvan: e.target.value })} /></div>
+                </div>
+                )}
                 {isIsletme ? (
                   <div className="balance">
                     <Ico html={I.checkSm} size={16} /><b>{islKind === 'SATIS' ? 'Gelir' : 'Gider'} · {islBelgeAd}</b>
@@ -4060,4 +4058,30 @@ const CSS = `
 #fm-root .queryveil b{font-size:13px;font-weight:650;margin-top:0;color:#1f7a68}
 #fm-root .querydoc{width:46px;height:54px;border-radius:11px;box-shadow:0 12px 28px rgba(31,122,104,.12)}
 #fm-root .querydoc span{left:12px;right:12px;top:15px;height:2px;box-shadow:0 9px 0 rgba(31,122,104,.18),0 18px 0 rgba(31,122,104,.14)}
+
+/* Muhasebeleştirme son yerleşim: sol dar, sağ panel geniş, belge+kod alanı tek çerçeve */
+#fm-root .side{width:212px}
+#fm-root .brand{padding:8px 10px 10px}
+#fm-root .sidecontext{padding:9px}
+#fm-root .ctxfield select{font-size:11.5px}
+#fm-root .screen-muhasebe .muhmain{height:100%;padding:0}
+#fm-root .screen-muhasebe .muhmain .fiseditor{height:100%;gap:10px;align-items:stretch;border:1px solid #e4eaee;border-radius:12px;background:#fff;padding:8px;box-shadow:0 1px 4px rgba(15,23,42,.04)}
+#fm-root .screen-muhasebe .muhmain .belgepane{flex:1 1 auto;max-width:none;min-width:0;position:relative;top:auto}
+#fm-root .screen-muhasebe .muhmain .belgebox{height:100%;border-color:#dfe7ec;border-radius:9px}
+#fm-root .screen-muhasebe .muhmain .belgebox .bpview{flex:1;min-height:0;max-height:none}
+#fm-root .screen-muhasebe .muhmain .fispane{flex:0 0 452px;max-width:452px;min-width:430px;height:100%;padding-left:10px;border-left:1px solid #eef2f4;overflow:auto}
+#fm-root .screen-muhasebe .muhmain .fispane > .ph{order:1;min-height:36px;flex-wrap:nowrap;gap:7px;padding:0 0 7px;margin-bottom:8px;border-bottom:1px solid #edf1f4}
+#fm-root .screen-muhasebe .muhmain .fispane > .tevpanel{order:2}
+#fm-root .screen-muhasebe .muhmain .fispane > .twrap{order:3}
+#fm-root .screen-muhasebe .muhmain .fispane > .docmeta{order:4}
+#fm-root .screen-muhasebe .muhmain .fispane > .balance{order:5}
+#fm-root .screen-muhasebe .muhmain .fispane > .wactions{order:6}
+#fm-root .screen-muhasebe .phname{font-size:12px;font-weight:650;min-width:auto}
+#fm-root .screen-muhasebe .ph .fifull{height:32px;border-radius:9px;border-color:#edc783;background:#fff8ec;color:#9a5d0a;font-size:12px;font-weight:650;padding:0 10px;box-shadow:0 1px 2px rgba(154,93,10,.08)}
+#fm-root .screen-muhasebe .ph .fifull:hover{background:#b66b08;color:#fff;border-color:#b66b08}
+#fm-root .screen-muhasebe .muhmain .docmeta-bottom{grid-template-columns:repeat(3,minmax(0,1fr));margin:7px 0 0;padding:7px;background:#fff;border-color:#e4eaee;border-radius:8px;gap:6px}
+#fm-root .screen-muhasebe .muhmain .docmeta-bottom .dmi,
+#fm-root .screen-muhasebe .muhmain .docmeta-bottom .psel .pselfield{height:28px;font-size:12px}
+#fm-root .screen-muhasebe .muhmain .balance{min-height:30px;margin:6px 0 0;padding:5px 9px;border-radius:7px}
+#fm-root .screen-muhasebe .muhmain .fispane > .wactions{margin-top:6px;padding-top:6px;min-height:34px}
 `;
