@@ -99,6 +99,7 @@ const JOB_TYPES_DEFAULT: PortalJobType[] = [
   'SGK_TAHAKKUK',
   'SGK_ISE_GIRIS_CIKIS',
   'SGK_ISGOREMEZLIK',
+  'EARSIV_PORTAL_FETCH',
   'GALERI_HGS',
 ];
 
@@ -197,6 +198,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       'SGK_TAHAKKUK',
       'SGK_ISE_GIRIS_CIKIS',
       'SGK_ISGOREMEZLIK',
+      'EARSIV_PORTAL_FETCH',
       'GALERI_HGS',
     ]);
     const parsed = raw
@@ -502,7 +504,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         this.logger.log(`[PortalRailwayRunner] job tamam: ${job.id} count=${result.recordCount || 0}`);
         return;
       }
-      if (job.jobType === 'E_TEBLIGAT_CHECK' || job.jobType.startsWith('SGK_')) {
+      if (job.jobType === 'E_TEBLIGAT_CHECK' || job.jobType === 'EARSIV_PORTAL_FETCH' || job.jobType.startsWith('SGK_')) {
         const result = await this.runPortalDocumentJob(job.tenantId, bundle);
         await this.portalAutomation.completeJob(job.tenantId, job.id, result);
         this.logger.log(`[PortalRailwayRunner] job tamam: ${job.id} count=${result.recordCount || 0}`);
@@ -795,6 +797,9 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     if (jobType === 'E_TEBLIGAT_CHECK') {
       return process.env.PORTAL_AUTOMATION_GIB_IVD_LOGIN_URL || DEFAULT_GIB_IVD_LOGIN_URL;
     }
+    if (jobType === 'EARSIV_PORTAL_FETCH') {
+      return process.env.PORTAL_AUTOMATION_EARSIV_LOGIN_URL || 'https://earsivportal.efatura.gov.tr/intragiris.html';
+    }
     // Onaylı hizmet listesi + tahakkuk -> e-Bildirge V2 (ayrı sistem). Diğer SGK işleri
     // (işe giriş-çıkış, işgöremezlik) İşveren Sistemi'nde kalır (Faz 2).
     if (jobType === 'SGK_HIZMET_LISTESI' || jobType === 'SGK_TAHAKKUK') {
@@ -809,6 +814,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
   private targetUrlForJob(jobType: PortalJobType) {
     const envKey = ({
       E_TEBLIGAT_CHECK: 'PORTAL_AUTOMATION_ETEBLIGAT_LIST_URL',
+      EARSIV_PORTAL_FETCH: 'PORTAL_AUTOMATION_EARSIV_LIST_URL',
       SGK_HIZMET_LISTESI: 'PORTAL_AUTOMATION_SGK_HIZMET_LISTESI_URL',
       SGK_TAHAKKUK: 'PORTAL_AUTOMATION_SGK_TAHAKKUK_URL',
       SGK_ISE_GIRIS_CIKIS: 'PORTAL_AUTOMATION_SGK_ISE_GIRIS_CIKIS_URL',
@@ -891,6 +897,8 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     switch (jobType) {
       case 'E_TEBLIGAT_CHECK':
         return ['e-Tebligat', 'Elektronik Tebligat', 'Tebligatlarim', 'Tebligatlarım', 'Gelen Tebligatlar'];
+      case 'EARSIV_PORTAL_FETCH':
+        return ['Belge Islemleri', 'Fatura Islemleri', 'Fatura Sorgula', 'Duzenlenen Belgeler', 'e-Arsiv', 'e-Arsiv Portal'];
       case 'SGK_HIZMET_LISTESI':
         return ['Hizmet Listesi', 'Aylik Prim', 'Aylık Prim', 'Sigortali Hizmet', 'Sigortalı Hizmet'];
       case 'SGK_TAHAKKUK':
@@ -1548,6 +1556,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
 
   private downloadRegexForJob(jobType: PortalJobType) {
     if (jobType === 'E_TEBLIGAT_CHECK') return /indir|pdf|tebligat|g[oö]r[uü]nt[uü]le|download/i;
+    if (jobType === 'EARSIV_PORTAL_FETCH') return /indir|xml|pdf|zip|html|fatura|belge|download/i;
     if (jobType === 'SGK_TAHAKKUK') return /indir|pdf|tahakkuk|makbuz|download/i;
     if (jobType === 'SGK_HIZMET_LISTESI') return /indir|pdf|hizmet|liste|ayl[iı]k prim|download/i;
     if (jobType === 'SGK_ISE_GIRIS_CIKIS') return /indir|pdf|giri[sş]|[cç][iı]k[iı][sş]|bildirge|download/i;
@@ -1558,6 +1567,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
   private documentTypeForJob(jobType: PortalJobType) {
     switch (jobType) {
       case 'E_TEBLIGAT_CHECK': return 'E_TEBLIGAT';
+      case 'EARSIV_PORTAL_FETCH': return 'EARSIV_FATURA';
       case 'SGK_HIZMET_LISTESI': return 'SGK_HIZMET_LISTESI';
       case 'SGK_TAHAKKUK': return 'SGK_TAHAKKUK';
       case 'SGK_ISE_GIRIS_CIKIS': return 'SGK_ISE_GIRIS_CIKIS';
@@ -1569,6 +1579,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
   private documentTitleForJob(jobType: PortalJobType) {
     switch (jobType) {
       case 'E_TEBLIGAT_CHECK': return 'e-Tebligat';
+      case 'EARSIV_PORTAL_FETCH': return 'GIB e-Arsiv Fatura';
       case 'SGK_HIZMET_LISTESI': return 'SGK Hizmet Listesi';
       case 'SGK_TAHAKKUK': return 'SGK Tahakkuk';
       case 'SGK_ISE_GIRIS_CIKIS': return 'SGK Ise Giris/Cikis';

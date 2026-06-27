@@ -11,7 +11,7 @@ import { isletmeRef, ISLETME_ISLEM_TURU, ISLETME_KDV_ORAN, defaultBelgeTuruKod, 
 function showFetchResult(d: any) {
   const provs: any[] = Array.isArray(d?.providers) ? d.providers : [];
   const failed = provs.filter((p) => p?.status === 'FAILED' || (p?.errors && p.errors.length));
-  const queued = provs.filter((p) => p?.status === 'QUEUED_VIA_LUCA');
+  const queued = provs.filter((p) => p?.status === 'QUEUED_VIA_LUCA' || p?.status === 'QUEUED_GIB_PORTAL');
   const skipped = provs.filter((p) => p?.status === 'SKIPPED');
   if (failed.length) {
     toast.error('Çekilemedi — ' + failed.map((p) => `${p.label || p.provider}: ${p.reason || p.errors?.[0]?.message || 'hata'}`).join(' · '), { duration: 9000 });
@@ -1064,7 +1064,7 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
           <button className="btn sm blue" disabled={!taxpayerId || mihsapMut.isPending} onClick={() => mihsapMut.mutate()} title={!taxpayerId ? 'Önce mükellef seç' : "Mihsap 'bekleyen evraklar'daki faturaları portala aktarır"}><Ico html={I.download} size={13} /> {mihsapMut.isPending ? 'Aktarılıyor…' : "Mihsap'tan Aktar"}</button>
           <input ref={fileRef} type="file" multiple accept=".pdf,.jpg,.jpeg,.jpe,.jfif,.png,.webp,.gif,.tif,.tiff,.bmp,.heic,.heif,.avif,.xml,.ubl,.zip" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files; if (f && f.length) uploadMut.mutate(f); e.target.value = ''; }} />
           <button className="btn sm upload" disabled={!taxpayerId || uploadMut.isPending} onClick={() => fileRef.current?.click()} title={!taxpayerId ? 'Önce mükellef seç' : 'JPEG / PDF / XML belge yükle (elle)'}><Ico html={I.upload} size={13} /> {uploadMut.isPending ? 'Yükleniyor…' : 'Belge Yükle'}</button>
-          <button className="btn sm soon" disabled title="Entegratörden otomatik çekme — yakında. Şimdilik 'Mihsap'tan Aktar' ya da 'Belge Yükle' kullan."><Ico html={I.download} size={13} /> Belgeleri Getir <span className="soonbadge">YAKINDA</span></button>
+          <button className="btn sm fetch" disabled={!taxpayerId || fetchMut.isPending} onClick={() => fetchMut.mutate()} title={!taxpayerId ? 'Önce mükellef seç' : 'Kayıtlı entegratörleri ve GİB e-Arşiv portal kuyruğunu çalıştır'}><Ico html={I.download} size={13} /> {fetchMut.isPending ? 'Getiriliyor…' : 'Belgeleri Getir'}</button>
           <button className="btn sm ghost soft" disabled={syncMut.isPending} onClick={() => syncMut.mutate()} title="Mükellefe bağlanmamış (sahipsiz) belgeleri VKN/TCKN'ye göre ilgili mükellefe bağlar"><Ico html={I.sync} size={13} /> {syncMut.isPending ? 'Bağlanıyor…' : 'Sahipsiz belgeleri bağla'}</button>
           <button className="btn sm fix" disabled={!taxpayerId || recodeMut.isPending} onClick={() => recodeMut.mutate()} title="Belgeleri TEKRAR OKUMADAN hesap kodlarını plana göre yeniden eşleştir — yanlış carileri düzeltir/temizler (saniyeler sürer)"><Ico html={I.wand} size={13} /> {recodeMut.isPending ? 'Düzeltiliyor…' : 'Kodları düzelt'}</button>
           <button className="btn sm ai" disabled={aiBusy || sel.size === 0} onClick={aiOku} title="Seçili faturaları yapay zeka (Max) ile oku — sunucuda okur, sayfa değişince durmaz"><Ico html={I.spark} size={13} /> {aiBusy ? 'Başlatılıyor…' : `AI ile oku${sel.size ? ` (${sel.size})` : ''}`}</button>
@@ -3566,6 +3566,7 @@ const CSS = `
 #fm-root .invactions .btn .ico{width:16px;height:16px;border-radius:5px;background:rgba(255,255,255,.42)}
 #fm-root .invactions .btn:hover:not(:disabled){transform:none;box-shadow:none;filter:none}
 #fm-root .invactions .btn.blue{background:rgba(31,41,55,.11);border-color:rgba(31,41,55,.2);color:#1f2937}
+#fm-root .invactions .btn.fetch{background:rgba(196,138,42,.10);border-color:rgba(196,138,42,.24);color:#785a16}
 #fm-root .invactions .btn.upload{background:rgba(15,118,110,.08);border-color:rgba(15,118,110,.22);color:#0f766e}
 #fm-root .invactions .btn.fix{background:rgba(13,148,136,.09);border-color:rgba(13,148,136,.24);color:#0f766e}
 #fm-root .invactions .btn.ai{background:rgba(71,85,105,.14);border-color:rgba(71,85,105,.22);color:#374151}

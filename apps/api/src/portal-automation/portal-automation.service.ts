@@ -20,6 +20,7 @@ export const PORTAL_JOB_TYPES = [
   'SGK_TAHAKKUK',
   'SGK_ISE_GIRIS_CIKIS',
   'SGK_ISGOREMEZLIK',
+  'EARSIV_PORTAL_FETCH',
   // Galeri HGS: Dijital Vergi Dairesi'nden araç plakalarını çek + KGM ihlal sorgusu.
   // ownerType TAXPAYER (galeri mükellefinin GIB_IVD girişi). Gece cron'una DAHIL DEĞİL —
   // yalnızca galeri ekranındaki butondan / HGS cron'undan tetiklenir.
@@ -64,6 +65,11 @@ const JOB_META: Record<PortalJobType, { provider: PortalProvider; ownerType: 'TE
     provider: 'SGK_EBILDIRGE',
     ownerType: 'TAXPAYER',
     label: 'Isgoremezlik raporu sorgu',
+  },
+  EARSIV_PORTAL_FETCH: {
+    provider: 'GIB_IVD',
+    ownerType: 'TAXPAYER',
+    label: 'GIB e-Arsiv fatura cekimi',
   },
   GALERI_HGS: {
     provider: 'GIB_IVD',
@@ -2001,6 +2007,8 @@ export class PortalAutomationService {
         return 'Mali musavir e-Beyanname kullanici kodu ve sifresi ile onceki gun verilen beyannameleri, tahakkuklari ve varsa XML dosyalarini indir; BeyanKaydi olarak teslim et.';
       case 'E_TEBLIGAT_CHECK':
         return 'Mukellefin vergi dairesi kullanici kodu ve sifresi ile e-Tebligat kutusunu kontrol et; yeni tebligat varsa PDF ve metadata olarak teslim et.';
+      case 'EARSIV_PORTAL_FETCH':
+        return 'Mukellefin vergi dairesi kullanici kodu ve sifresi ile GIB e-Arsiv portalina gir; secili donemde kestigi e-Arsiv satis faturalarini indir ve Fatura Merkezi is akisi icin teslim et.';
       case 'SGK_HIZMET_LISTESI':
         return 'Mukellefin SGK kullanici adi/e-kod, sistem sifresi ve isyeri sifresi ile hizmet listesini indir ve portal belgesi olarak teslim et.';
       case 'SGK_TAHAKKUK':

@@ -13,6 +13,7 @@ import { claudeTextViaMax, MAX_MODEL_CHEAP } from '../common/max-inference';
 import { buildLucaImportExcel, buildLucaIsletmeHizliFisCsv } from './luca-excel.service';
 import { VendorMemoryService } from '../vendor-memory/vendor-memory.service';
 import { MihsapService } from '../mihsap/mihsap.service';
+import { PortalAutomationService } from '../portal-automation/portal-automation.service';
 import { isletmeRef, getKayitAltList, isletmeAlisSatisTuru, isletmeIslemTuru, defaultBelgeTuruKod, normalizeDocumentType, isletmeGiderSinifi, isletmeAutoKayitAltKod, isletmeAutoKayitTuru, defaultKayitAltKod, denetimUyariOlustur } from '@mali-musavir/shared';
 
 // ── İşletme defteri AI sınıflandırması ──
@@ -452,6 +453,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     private readonly earsivRender: EarsivRenderService,
     private readonly vendorMemory: VendorMemoryService,
     private readonly mihsapService: MihsapService,
+    private readonly portalAutomation: PortalAutomationService,
   ) {}
 
   onModuleInit() {
@@ -1718,11 +1720,70 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     });
     if (!taxpayer) throw new NotFoundException('Mukellef bulunamadi');
 
+    const totals = { created: 0, alreadyQueued: 0, failed: 0, skipped: 0, fetched: 0 };
+    const shouldTryGibPortal = !requestedProviders.size || requestedProviders.has('GIB_PORTAL');
+    const gibPortalStatus: any[] = [];
+    if (shouldTryGibPortal) {
+      if (direction !== 'SATIS') {
+        gibPortalStatus.push({
+          provider: 'GIB_PORTAL',
+          label: 'GIB Portal',
+          status: 'SKIPPED',
+          reason: 'GIB e-Arsiv portal cekimi simdilik firmalarin kestigi satis faturalarini indirir',
+        });
+        totals.skipped++;
+      } else {
+        const gibCred = await (this.prisma as any).portalCredential.findFirst({
+          where: {
+            tenantId,
+            provider: 'GIB_IVD',
+            ownerType: 'TAXPAYER',
+            ownerId: taxpayerId,
+            isActive: true,
+          },
+          select: { id: true, userCode: true, encryptedPassword: true, encryptedSecondaryPassword: true },
+        });
+        if (!gibCred || !gibCred.userCode || !(gibCred.encryptedSecondaryPassword || gibCred.encryptedPassword)) {
+          gibPortalStatus.push({
+            provider: 'GIB_PORTAL',
+            label: 'GIB Portal',
+            status: 'SKIPPED',
+            reason: 'Mukellef kartinda GIB vergi dairesi kullanici kodu/sifresi yok',
+          });
+          totals.skipped++;
+        } else {
+          const portalRun = await this.portalAutomation.manualRun(tenantId, userId || null, {
+            jobTypes: ['EARSIV_PORTAL_FETCH'],
+            taxpayerIds: [taxpayerId],
+            dateFrom: period.startDate,
+            dateTo: period.endDate,
+            donem: period.donem,
+            force: true,
+          });
+          const createdCount = Array.isArray((portalRun as any).created) ? (portalRun as any).created.length : 0;
+          const skippedCount = Array.isArray((portalRun as any).skipped) ? (portalRun as any).skipped.length : 0;
+          gibPortalStatus.push({
+            provider: 'GIB_PORTAL',
+            label: 'GIB Portal',
+            status: createdCount > 0 ? 'QUEUED_GIB_PORTAL' : 'SKIPPED',
+            queued: createdCount,
+            skipped: skippedCount,
+            reason: createdCount > 0
+              ? `GIB e-Arsiv satis cekimi kuyruğa alindi (${period.donem}); portal runner sifreyle girip indirecek`
+              : ((portalRun as any).skipped?.[0]?.reason || 'GIB portal isi olusturulamadi'),
+            jobs: (portalRun as any).created || [],
+          });
+          if (createdCount > 0) totals.fetched += createdCount;
+          else totals.skipped++;
+        }
+      }
+    }
+
     const rows = await (this.prisma as any).integrationConnection.findMany({
       where: {
         tenantId,
         provider: {
-          in: INTEGRATOR_CATALOG.filter((item) => item.provider !== 'LUCA').map((item) => item.provider) as any,
+          in: INTEGRATOR_CATALOG.filter((item) => item.provider !== 'LUCA' && item.provider !== 'GIB_PORTAL').map((item) => item.provider) as any,
         },
       },
       select: { id: true, provider: true, config: true, isActive: true },
@@ -1730,12 +1791,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const byProvider = new Map<string, any>(rows.map((row: any) => [String(row.provider), row]));
     const providers = INTEGRATOR_CATALOG.filter((item) => {
       if (item.provider === 'LUCA') return false;
+      if (item.provider === 'GIB_PORTAL') return false;
       if (requestedProviders.size && !requestedProviders.has(item.provider)) return false;
       return true;
     });
 
-    const statuses: any[] = [];
-    const totals = { created: 0, alreadyQueued: 0, failed: 0, skipped: 0, fetched: 0 };
+    const statuses: any[] = [...gibPortalStatus];
 
     for (const item of providers) {
       const row = byProvider.get(item.provider);
@@ -4455,10 +4516,42 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // İPTAL filtresi (durum alanı adı ilk testte netleşecek — "İptal/Iptal/Reddedildi/Cancel" geçeni atla):
     const isCancelled = (r: any) => /iptal|reddedil|cancel/i.test(JSON.stringify(r?.Durum ?? r?.durum ?? r?.Status ?? r?.status ?? ''));
     const live = rows.filter((r) => !isCancelled(r));
-    // TODO(ilk-test): live satırlardan ETTN/ID al → XML indir ucu (İndir(Xml) butonunun URL'i) → payload.xml.
-    // Şimdilik login+liste doğrulandı; XML indirme uç URL'i gerçek response/test ile eklenecek.
-    void live;
-    return [];
+    const payloads = await this.extractPayloadsFromProviderResponse(raw, ['xml', 'ubl', 'content', 'data', 'base64', 'DocumentXml', 'InvoiceXml']);
+    const seenUrls = new Set<string>();
+    const addCandidateUrl = (candidate: string) => {
+      const clean = this.decodeXmlEntities(String(candidate || '').replace(/\\\//g, '/')).trim();
+      if (!clean || !/(xml|ubl|indir|download|invoice|fatura|belge|goruntule|görüntüle)/i.test(clean)) return;
+      const absolute = clean.startsWith('http') ? clean : BASE + (clean.startsWith('/') ? clean : `/${clean}`);
+      seenUrls.add(absolute);
+    };
+    for (const row of live) {
+      const asText = JSON.stringify(row || {});
+      for (const m of asText.matchAll(/https?:\/\/[^"'\\\s<>]+|\/[^"'\\\s<>]*(?:xml|ubl|indir|download|invoice|fatura|belge|goruntule|görüntüle)[^"'\\\s<>]*/gi)) {
+        addCandidateUrl(m[0]);
+      }
+    }
+    for (const url of seenUrls) {
+      try {
+        const docRes = await fetch(url, {
+          method: 'GET',
+          headers: { Cookie: cookie, 'User-Agent': 'MorenPortal/1.0', Accept: 'application/xml,text/xml,application/zip,application/pdf,text/html,*/*' },
+        });
+        const buf = Buffer.from(await docRes.arrayBuffer());
+        if (!docRes.ok || !buf.length) continue;
+        await this.addPayloadBuffer(payloads, buf);
+        if (!payloads.length) await this.addPayloadString(payloads, buf.toString('utf8'));
+      } catch (e: any) {
+        this.logger.warn(`TURMOB dokuman indirilemedi: ${url} ${e?.message || e}`);
+      }
+      if (payloads.length >= opts.limit) break;
+    }
+    if (!payloads.length && first === '<') {
+      throw new Error('TURMOB oturumu liste ekranina gecemedi; portal login sayfasina geri dondu');
+    }
+    if (!payloads.length && rows.length > 0) {
+      throw new Error(`TURMOB liste ${rows.length} satir dondurdu ama XML/UBL indirme linki bulunamadi; response semasi loglandi`);
+    }
+    return payloads.slice(0, opts.limit);
   }
 
   /**
