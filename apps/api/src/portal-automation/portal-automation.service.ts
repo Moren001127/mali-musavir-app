@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, Logger, NotFoundException } from '@nes
 import { Cron } from '@nestjs/schedule';
 import { randomUUID } from 'crypto';
 import { PDFParse } from 'pdf-parse';
+import JSZip from 'jszip';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { encrypt, tryDecrypt } from '../common/crypto';
@@ -1000,6 +1001,7 @@ export class PortalAutomationService {
           receivedAt: doc.receivedAt ? doc.receivedAt.toISOString() : null,
           mimeType: doc.mimeType,
           originalName: doc.title || doc.referenceNo || 'earsiv-fatura.json',
+          base64: await this.storage.getBuffer(doc.storageKey).then((b) => b.toString('base64')).catch(() => undefined),
           raw: accountingRaw,
         },
         'EARSIV_PORTAL_FETCH',
@@ -2053,14 +2055,13 @@ export class PortalAutomationService {
     });
     if (!taxpayer) return null;
 
-    const parsed = this.parseEarsivPortalAccounting(input);
+    const parsed = await this.parseEarsivPortalAccounting(input);
     const sourceRefId = parsed.ettn || parsed.belgeNo || input.referenceNo;
     if (!sourceRefId) return null;
     const existing = await (this.prisma as any).invoiceAccountingDocument.findFirst({
       where: { tenantId, taxpayerId, source: 'gib-earsiv-api', sourceRefId },
-      select: { id: true },
+      include: { lines: { orderBy: { orderNo: 'asc' } } },
     });
-    if (existing) return existing;
 
     const taxpayerName = String(taxpayer.companyName || [taxpayer.firstName, taxpayer.lastName].filter(Boolean).join(' ')).trim();
     const taxpayerVkn = String(tryDecrypt(taxpayer.taxNumber) || taxpayer.taxNumber || '').replace(/\D/g, '');
@@ -2069,6 +2070,70 @@ export class PortalAutomationService {
     const total = parsed.total ?? (matrah != null && kdv != null ? this.roundMoney(matrah + kdv) : null);
     const status = total != null && matrah != null ? 'READY' : 'NEEDS_REVIEW';
     const lines = this.earsivAccountingLines({ matrah, kdv, total, rate: parsed.kdvOrani, customerName: parsed.customerName });
+
+    if (existing) {
+      const currentOcr: any = existing.ocrData && typeof existing.ocrData === 'object' ? existing.ocrData : {};
+      const existingHasAmounts =
+        Number(existing.totalAmount || 0) > 0 &&
+        Number(currentOcr.matrah || 0) > 0 &&
+        Number(currentOcr.kdvTutari || 0) >= 0 &&
+        Array.isArray(existing.lines) &&
+        existing.lines.length > 0;
+      if (existingHasAmounts || (total == null && !lines.length)) return existing;
+
+      await (this.prisma as any).$transaction(async (tx: any) => {
+        await tx.invoiceAccountingLine.deleteMany({ where: { documentId: existing.id } });
+        if (lines.length) {
+          await tx.invoiceAccountingLine.createMany({
+            data: lines.map((line, index) => ({
+              documentId: existing.id,
+              group: line.group || 'matrah',
+              accountCode: line.accountCode || null,
+              description: line.description || null,
+              rate: line.rate || null,
+              debit: line.debit || 0,
+              credit: line.credit || 0,
+              orderNo: index + 1,
+            })),
+          });
+        }
+        await tx.invoiceAccountingDocument.update({
+          where: { id: existing.id },
+          data: {
+            status,
+            mimeType,
+            sizeBytes: sizeBytes || existing.sizeBytes || 0,
+            s3Key: storageKey,
+            currency: parsed.currency || existing.currency || 'TL',
+            belgeNo: parsed.belgeNo || input.referenceNo || existing.belgeNo || null,
+            faturaTarihi: parseDateOrNull(parsed.faturaTarihi || input.issuedAt) || existing.faturaTarihi || null,
+            sellerVkn: taxpayerVkn || existing.sellerVkn || null,
+            buyerVkn: parsed.buyerVkn || existing.buyerVkn || null,
+            vendorName: taxpayerName || existing.vendorName || null,
+            customerName: parsed.customerName || existing.customerName || null,
+            totalAmount: total,
+            ocrStatus: 'SUCCESS',
+            ocrEngine: 'gib-earsiv-api',
+            ocrConfidence: 1,
+            ocrData: {
+              ...currentOcr,
+              provider: 'GIB_PORTAL',
+              source: 'gib-earsiv-api',
+              direction: 'SATIS',
+              matrah,
+              kdvTutari: kdv,
+              kdvOrani: parsed.kdvOrani,
+              ettn: parsed.ettn,
+              portalReferenceNo: input.referenceNo || null,
+            },
+          },
+        });
+      });
+      return (this.prisma as any).invoiceAccountingDocument.findFirst({
+        where: { id: existing.id, tenantId },
+        include: { lines: { orderBy: { orderNo: 'asc' } } },
+      });
+    }
 
     return (this.prisma as any).invoiceAccountingDocument.create({
       data: {
@@ -2111,22 +2176,23 @@ export class PortalAutomationService {
     });
   }
 
-  private parseEarsivPortalAccounting(input: AgentDocumentInput) {
+  private async parseEarsivPortalAccounting(input: AgentDocumentInput) {
     const raw: any = input.raw && typeof input.raw === 'object' ? input.raw : {};
     const row: any = raw.row && typeof raw.row === 'object' ? raw.row : {};
     const json = this.tryParseJsonBase64(input.base64);
     const root = (json?.data && typeof json.data === 'object') ? json.data : (json && typeof json === 'object' ? json : {});
+    const payload = await this.parseEarsivPayloadBase64(input.base64);
     const read = (keys: RegExp[]) => this.findEarsivValue(root, keys) || this.findEarsivValue(row, keys);
-    const belgeNo = String(raw.belgeNumarasi || input.referenceNo || read([/^(belgeNumarasi|faturaNumarasi|faturaNo|belgeNo)$/i]) || '').trim();
-    const ettn = String(raw.ettn || read([/^(ettn|uuid|faturaUuid|belgeUuid)$/i]) || '').trim();
-    const buyerVkn = String(read([/^(vknTckn|aliciVkn|aliciVknTckn|aliciTckn|aliciVergiNo)$/i]) || '').replace(/\D/g, '');
-    const customerName = String(read([/^(aliciUnvanAdSoyad|aliciUnvan|aliciAdiSoyadi|aliciAdSoyad|musteriUnvan|unvan)$/i]) || '').trim();
-    const faturaTarihi = String(read([/^(belgeTarihi|faturaTarihi|duzenlemeTarihi|tarih)$/i]) || '').trim();
-    const currency = String(read([/^(paraBirimi|dovizCinsi|currency)$/i]) || 'TL').trim() || 'TL';
-    const total = this.parseEarsivMoney(read([/^(odenecekTutar|vergilerDahilToplamTutar|genelToplam|toplamTutar)$/i]));
-    const matrah = this.parseEarsivMoney(read([/^(malHizmetToplamTutari|malHizmetToplamTutar|kdvMatrahi|matrah)$/i]));
-    const kdvTutari = this.parseEarsivMoney(read([/^(hesaplananKdv|hesaplananKDV|kdvTutari|toplamKdv|vergiTutari)$/i]));
-    const kdvOrani = String(read([/^(kdvOrani|kdvOran)$/i]) || '').replace(/[^\d.,]/g, '').replace(',', '.');
+    const belgeNo = String(raw.belgeNumarasi || input.referenceNo || read([/^(belgeNumarasi|faturaNumarasi|faturaNo|belgeNo)$/i]) || payload.belgeNo || '').trim();
+    const ettn = String(raw.ettn || read([/^(ettn|uuid|faturaUuid|belgeUuid)$/i]) || payload.ettn || '').trim();
+    const buyerVkn = String(read([/^(vknTckn|aliciVkn|aliciVknTckn|aliciTckn|aliciVergiNo)$/i]) || payload.buyerVkn || '').replace(/\D/g, '');
+    const customerName = String(read([/^(aliciUnvanAdSoyad|aliciUnvan|aliciAdiSoyadi|aliciAdSoyad|musteriUnvan|unvan)$/i]) || payload.customerName || '').trim();
+    const faturaTarihi = String(read([/^(belgeTarihi|faturaTarihi|duzenlemeTarihi|tarih)$/i]) || payload.faturaTarihi || '').trim();
+    const currency = String(read([/^(paraBirimi|dovizCinsi|currency)$/i]) || payload.currency || 'TL').trim() || 'TL';
+    const total = this.parseEarsivMoney(read([/^(odenecekTutar|vergilerDahilToplamTutar|genelToplam|toplamTutar)$/i])) ?? payload.total;
+    const matrah = this.parseEarsivMoney(read([/^(malHizmetToplamTutari|malHizmetToplamTutar|kdvMatrahi|matrah)$/i])) ?? payload.matrah;
+    const kdvTutari = this.parseEarsivMoney(read([/^(hesaplananKdv|hesaplananKDV|kdvTutari|toplamKdv|vergiTutari)$/i])) ?? payload.kdvTutari;
+    const kdvOrani = String(read([/^(kdvOrani|kdvOran)$/i]) || payload.kdvOrani || '').replace(/[^\d.,]/g, '').replace(',', '.');
     return {
       belgeNo,
       ettn,
@@ -2139,6 +2205,109 @@ export class PortalAutomationService {
       kdvTutari,
       kdvOrani: kdvOrani || null,
     };
+  }
+
+  private async parseEarsivPayloadBase64(base64?: string | null) {
+    const clean = cleanBase64(base64);
+    if (!clean) return {} as any;
+    const buffer = Buffer.from(clean, 'base64');
+    if (!buffer.length || buffer[0] === 0x25) return {} as any;
+    let text = buffer.toString('utf8');
+    if (buffer[0] === 0x50 && buffer[1] === 0x4b) {
+      try {
+        const zip = await JSZip.loadAsync(buffer);
+        const entries = Object.values(zip.files)
+          .filter((entry) => !entry.dir)
+          .sort((a, b) => {
+            const aw = /\.(xml|ubl)$/i.test(a.name) ? 0 : /\.html?$/i.test(a.name) ? 1 : 2;
+            const bw = /\.(xml|ubl)$/i.test(b.name) ? 0 : /\.html?$/i.test(b.name) ? 1 : 2;
+            return aw - bw;
+          });
+        for (const entry of entries) {
+          if (!/\.(xml|ubl|html?)$/i.test(entry.name)) continue;
+          const candidate = await entry.async('string');
+          if (candidate && candidate.length > 20) {
+            text = candidate;
+            break;
+          }
+        }
+      } catch {
+        return {} as any;
+      }
+    }
+    if (!text || text.length < 20) return {} as any;
+
+    const stripBlocks = (src: string, tag: string) =>
+      src.replace(new RegExp(`<[^:>]*(?::)?${tag}\\b[\\s\\S]*?<\\/[^:>]*(?::)?${tag}>`, 'gi'), ' ');
+    const amountTag = (src: string, tag: string) => {
+      const m = src.match(new RegExp(`<[^:>]*(?::)?${tag}\\b[^>]*>([^<]+)<\\/[^:>]*(?::)?${tag}>`, 'i'));
+      return m ? this.parseEarsivMoney(m[1]) : null;
+    };
+    const textTag = (src: string, tag: string) => {
+      const m = src.match(new RegExp(`<[^:>]*(?::)?${tag}\\b[^>]*>([^<]+)<\\/[^:>]*(?::)?${tag}>`, 'i'));
+      return m ? this.htmlDecode(m[1]).trim() : null;
+    };
+
+    let xmlInvoiceOnly = stripBlocks(text, 'InvoiceLine');
+    xmlInvoiceOnly = stripBlocks(xmlInvoiceOnly, 'CreditNoteLine');
+    const xmlTaxOnly = stripBlocks(xmlInvoiceOnly, 'WithholdingTaxTotal');
+    const monetary = xmlInvoiceOnly.match(/<[^:>]*(?::)?LegalMonetaryTotal\b[\s\S]*?<\/[^:>]*(?::)?LegalMonetaryTotal>/i)?.[0] || xmlInvoiceOnly;
+    const taxTotal = xmlTaxOnly.match(/<[^:>]*(?::)?TaxTotal\b[\s\S]*?<\/[^:>]*(?::)?TaxTotal>/i)?.[0] || xmlTaxOnly;
+    const taxSubtotal = taxTotal.match(/<[^:>]*(?::)?TaxSubtotal\b[\s\S]*?<\/[^:>]*(?::)?TaxSubtotal>/i)?.[0] || taxTotal;
+
+    const plain = this.htmlDecode(text)
+      .replace(/<script\b[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<style\b[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const labelMoney = (labels: RegExp[]) => {
+      for (const label of labels) {
+        const re = new RegExp(`${label.source}.{0,120}?(\\d{1,3}(?:[.\\s]\\d{3})*(?:,\\d{2})|\\d+(?:[.,]\\d{2}))\\s*(?:TL|TRY)?`, 'i');
+        const m = plain.match(re);
+        const v = m ? this.parseEarsivMoney(m[1]) : null;
+        if (v != null) return v;
+      }
+      return null;
+    };
+
+    const matrah = amountTag(monetary, 'TaxExclusiveAmount')
+      ?? amountTag(monetary, 'LineExtensionAmount')
+      ?? labelMoney([/mal\s*hizmet\s*toplam\s*tutar/i, /kdv\s*matrah/i, /matrah/i]);
+    const kdvTutari = amountTag(taxTotal, 'TaxAmount')
+      ?? labelMoney([/hesaplanan\s*kdv/i, /kdv\s*tutar/i, /toplam\s*kdv/i]);
+    const total = amountTag(monetary, 'PayableAmount')
+      ?? amountTag(monetary, 'TaxInclusiveAmount')
+      ?? labelMoney([/(?:o|ö)denecek\s*tutar/i, /vergiler\s*dahil\s*toplam\s*tutar/i, /genel\s*toplam/i]);
+    const kdvOrani = textTag(taxSubtotal, 'Percent') || (plain.match(/KDV\s*Oran[^\d]{0,20}(\d{1,2}(?:[.,]\d+)?)/i)?.[1] || null);
+    const belgeNo = textTag(xmlInvoiceOnly, 'ID') || null;
+    const ettn = textTag(xmlInvoiceOnly, 'UUID') || null;
+    const issueDate = textTag(xmlInvoiceOnly, 'IssueDate') || null;
+
+    return {
+      belgeNo,
+      ettn,
+      faturaTarihi: issueDate,
+      currency: text.match(/currencyID=["']([^"']+)["']/i)?.[1] || null,
+      matrah,
+      kdvTutari,
+      total,
+      kdvOrani,
+    };
+  }
+
+  private htmlDecode(value: string) {
+    return String(value || '')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&amp;/gi, '&')
+      .replace(/&lt;/gi, '<')
+      .replace(/&gt;/gi, '>')
+      .replace(/&quot;/gi, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&#(\d+);/g, (_m, n) => {
+        const code = Number(n);
+        return Number.isFinite(code) ? String.fromCharCode(code) : '';
+      });
   }
 
   private tryParseJsonBase64(base64?: string | null) {
