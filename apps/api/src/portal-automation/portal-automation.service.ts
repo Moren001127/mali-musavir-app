@@ -702,6 +702,73 @@ export class PortalAutomationService {
     }));
   }
 
+  async getJobStatusForAgent(tenantId: string, jobId: string) {
+    const job = await (this.prisma as any).portalAutomationJob.findFirst({
+      where: { id: jobId, tenantId },
+      select: {
+        id: true,
+        tenantId: true,
+        taxpayerId: true,
+        jobType: true,
+        status: true,
+        source: true,
+        periodStart: true,
+        periodEnd: true,
+        donem: true,
+        payload: true,
+        result: true,
+        errorMessage: true,
+        recordCount: true,
+        attempts: true,
+        targetDeviceId: true,
+        createdAt: true,
+        updatedAt: true,
+        startedAt: true,
+        finishedAt: true,
+        taxpayer: {
+          select: {
+            id: true,
+            companyName: true,
+            firstName: true,
+            lastName: true,
+            taxNumber: true,
+            taxOffice: true,
+          },
+        },
+      },
+    });
+    if (!job) throw new NotFoundException('Job bulunamadi');
+    const documents = await (this.prisma as any).portalDocument.findMany({
+      where: { tenantId, jobId },
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+      select: {
+        id: true,
+        taxpayerId: true,
+        belgeTuru: true,
+        sourceProvider: true,
+        title: true,
+        referenceNo: true,
+        period: true,
+        issuedAt: true,
+        receivedAt: true,
+        mimeType: true,
+        sizeBytes: true,
+        storageKey: true,
+        documentId: true,
+        createdAt: true,
+      },
+    });
+    const meta = JOB_META[job.jobType as PortalJobType];
+    return {
+      ...job,
+      jobLabel: meta?.label || job.jobType,
+      provider: meta?.provider || null,
+      documentCount: documents.length,
+      documents,
+    };
+  }
+
   async cancelJob(tenantId: string, jobId: string, reason = 'Kullanici iptal etti') {
     const job = await (this.prisma as any).portalAutomationJob.findFirst({
       where: { id: jobId, tenantId },

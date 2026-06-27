@@ -156,6 +156,12 @@ export class PortalAutomationAgentController {
     return this.service.getCredentialForJob(tenantId, id);
   }
 
+  @Get('jobs/:id/status')
+  async status(@Headers('x-agent-token') agentToken: string, @Param('id') id: string) {
+    const tenantId = await this.service.resolveTenantFromAgentToken(agentToken);
+    return this.service.getJobStatusForAgent(tenantId, id);
+  }
+
   @Post('jobs/:id/running')
   @HttpCode(HttpStatus.OK)
   async running(
