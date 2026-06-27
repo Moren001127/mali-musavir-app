@@ -729,6 +729,13 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         return sgk;
       }
 
+      if (jobType === 'EARSIV_PORTAL_FETCH' && bundle.job?.payload?.validationOnly !== true) {
+        const earsiv = await this.collectEarsivPortalViaApi(page, bundle.job);
+        await this.jobProgress(tenantId, bundle.job, 'earsiv_done', `GIB e-Arsiv sorgusu: ${earsiv.recordCount} belge indirildi.`);
+        await context.close().catch(() => {});
+        return earsiv;
+      }
+
       if (this.isCredentialValidationOnlyJob(bundle.job, jobType)) {
         const providerLabel = isSgk ? 'SGK' : 'Vergi dairesi';
         const url = this.safeUrl(page.url());
@@ -1552,6 +1559,186 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
 
     notes.push(`${clicked} belge indirildi`);
     return { documents, notes };
+  }
+
+  private async collectEarsivPortalViaApi(page: any, job: any) {
+    const token = await this.earsivTokenFromPage(page);
+    if (!token) throw new Error('GIB e-Arsiv token alinamadi');
+
+    const startDate = this.earsivDateInput(job.periodStart);
+    const endDate = this.earsivDateInput(job.periodEnd);
+    if (!startDate || !endDate) throw new Error('GIB e-Arsiv tarih araligi hazirlanamadi');
+
+    const list = await this.earsivDispatch(token, 'EARSIV_PORTAL_TASLAKLARI_GETIR', 'RG_TASLAKLAR', {
+      baslangic: startDate,
+      bitis: endDate,
+      hangiTip: '5000/30000',
+    });
+    const rows = Array.isArray(list?.data) ? list.data : [];
+    const max = Math.max(1, Math.min(200, Number(process.env.PORTAL_AUTOMATION_EARSIV_MAX_DOWNLOADS || 80)));
+    const documents: any[] = [];
+    const notes: string[] = [`GIB e-Arsiv liste: ${rows.length} satir (${startDate}-${endDate})`];
+
+    for (let i = 0; i < rows.length && documents.length < max; i++) {
+      const row = rows[i] || {};
+      const uuid = this.earsivRead(row, ['ettn', 'uuid', 'faturaUuid', 'belgeUuid']);
+      const invoiceNo = this.earsivRead(row, ['belgeNumarasi', 'faturaNo', 'faturaNumarasi', 'belgeNo']);
+      const signed = this.earsivRead(row, ['onayDurumu', 'durum']) || 'Onaylandı';
+      const referenceNo = invoiceNo || uuid || null;
+      if (!uuid) {
+        notes.push(`${i + 1}. satir atlandi: ETTN yok (${this.compact(JSON.stringify(row)).slice(0, 180)})`);
+        continue;
+      }
+
+      let payload = await this.downloadEarsivBelge(token, uuid, signed, referenceNo || `earsiv-${i + 1}`).catch((err: any) => {
+        notes.push(`${referenceNo || uuid}: indirme basarisiz, HTML deneniyor (${this.compact(err?.message || err)})`);
+        return null;
+      });
+      if (!payload) {
+        payload = await this.fetchEarsivHtml(token, uuid, signed, referenceNo || `earsiv-${i + 1}`).catch((err: any) => {
+          notes.push(`${referenceNo || uuid}: HTML alinamadi (${this.compact(err?.message || err)})`);
+          return null;
+        });
+      }
+      if (!payload) continue;
+
+      documents.push({
+        taxpayerId: job.taxpayerId || null,
+        belgeTuru: 'EARSIV_FATURA',
+        title: `GIB e-Arsiv Fatura ${referenceNo || uuid}`,
+        referenceNo: referenceNo || uuid,
+        period: job.donem || this.inferDonem(job.periodEnd),
+        issuedAt: this.earsivIssuedAt(row) || job.periodEnd || null,
+        receivedAt: new Date().toISOString(),
+        mimeType: payload.mimeType,
+        originalName: payload.fileName,
+        base64: payload.base64,
+        raw: {
+          runner: 'railway',
+          jobType: 'EARSIV_PORTAL_FETCH',
+          source: 'gib-earsiv-api',
+          ettn: uuid,
+          belgeNumarasi: invoiceNo || null,
+          onayDurumu: signed,
+          row,
+        },
+      });
+    }
+
+    notes.push(`${documents.length} e-Arsiv belge indirildi`);
+    return {
+      documents,
+      recordCount: documents.length,
+      result: {
+        runner: 'railway',
+        phase: 'earsiv_api',
+        jobType: 'EARSIV_PORTAL_FETCH',
+        dateFrom: startDate,
+        dateTo: endDate,
+        rows: rows.length,
+        documents: documents.length,
+        notes,
+      },
+    };
+  }
+
+  private async earsivTokenFromPage(page: any): Promise<string | null> {
+    const url = String(page.url?.() || '');
+    try {
+      const token = new URL(url).searchParams.get('token');
+      if (token) return token;
+    } catch {
+      // Fallback below.
+    }
+    const token = await page.evaluate(() => {
+      const w = window as any;
+      return String(w.sideToken || localStorage.getItem('token') || '').trim();
+    }).catch(() => '');
+    return token || null;
+  }
+
+  private async earsivDispatch(token: string, cmd: string, pageName: string, payload: Record<string, any> = {}) {
+    const body = new URLSearchParams();
+    body.set('callid', randomUUID());
+    body.set('token', token);
+    body.set('cmd', cmd);
+    body.set('pageName', pageName);
+    body.set('jp', JSON.stringify(payload && Object.keys(payload).length ? payload : {}));
+    const response = await fetch('https://earsivportal.efatura.gov.tr/earsiv-services/dispatch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+      body,
+    });
+    const text = await response.text();
+    let parsed: any = null;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      throw new Error(`GIB e-Arsiv dispatch JSON donmedi: HTTP ${response.status} ${this.compact(text).slice(0, 180)}`);
+    }
+    if (!response.ok || parsed?.error || parsed?.data?.hata) {
+      const msg = parsed?.messages?.[0]?.text || parsed?.data?.hata || parsed?.message || text;
+      throw new Error(`GIB e-Arsiv dispatch hata (${cmd}): ${this.compact(String(msg)).slice(0, 300)}`);
+    }
+    return parsed;
+  }
+
+  private async downloadEarsivBelge(token: string, uuid: string, signed: string, fallbackName: string) {
+    const url = `https://earsivportal.efatura.gov.tr/earsiv-services/download?${new URLSearchParams({
+      token,
+      ettn: uuid,
+      onayDurumu: signed,
+      belgeTip: 'FATURA',
+      cmd: 'EARSIV_PORTAL_BELGE_INDIR',
+    }).toString()}`;
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      },
+    });
+    const buffer = Buffer.from(await response.arrayBuffer());
+    const headers = {
+      'content-type': response.headers.get('content-type') || '',
+      'content-disposition': response.headers.get('content-disposition') || '',
+    };
+    const preview = buffer.subarray(0, Math.min(buffer.length, 250)).toString('utf8');
+    if (!response.ok || buffer.length < 100 || /Oturum ge[cç]ersiz|token yok|hata/i.test(preview)) {
+      throw new Error(`download HTTP ${response.status} bytes=${buffer.length} ${this.compact(preview).slice(0, 160)}`);
+    }
+    const fileName = this.safeFileName(this.fileNameFromResponse(url, headers, fallbackName));
+    const mimeType = headers['content-type'] || this.mimeFromName(fileName);
+    return { base64: buffer.toString('base64'), fileName, mimeType };
+  }
+
+  private async fetchEarsivHtml(token: string, uuid: string, signed: string, fallbackName: string) {
+    const html = await this.earsivDispatch(token, 'EARSIV_PORTAL_FATURA_GOSTER', 'RG_TASLAKLAR', {
+      ettn: uuid,
+      onayDurumu: signed,
+    });
+    const content = typeof html?.data === 'string' ? html.data : JSON.stringify(html?.data || {});
+    if (!content || content.length < 100) throw new Error('HTML icerigi bos');
+    const fileName = this.safeFileName(`${fallbackName || uuid}.html`);
+    return {
+      base64: Buffer.from(content, 'utf8').toString('base64'),
+      fileName,
+      mimeType: 'text/html; charset=utf-8',
+    };
+  }
+
+  private earsivDateInput(value?: string | Date | null) {
+    return this.formatDateInput(value)?.replace(/\./g, '/') || null;
+  }
+
+  private earsivRead(row: any, keys: string[]) {
+    for (const key of keys) {
+      const value = row?.[key];
+      if (value !== undefined && value !== null && String(value).trim()) return String(value).trim();
+    }
+    return '';
+  }
+
+  private earsivIssuedAt(row: any) {
+    return this.earsivRead(row, ['belgeTarihi', 'faturaTarihi', 'tarih', 'duzenlemeTarihi']);
   }
 
   private downloadRegexForJob(jobType: PortalJobType) {

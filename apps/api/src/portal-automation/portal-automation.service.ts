@@ -1713,7 +1713,7 @@ export class PortalAutomationService {
 
     // E-Tebligat + SGK (tahakkuk/hizmet) mukerrer engelle (belge no + belgeTuru benzersiz).
     // Varsa: eksik mukellefi / PDF'i geri doldur, kopya olusturma.
-    const DEDUP_BELGE_TURU = ['E_TEBLIGAT', 'SGK_TAHAKKUK', 'SGK_HIZMET_LISTESI'];
+    const DEDUP_BELGE_TURU = ['E_TEBLIGAT', 'EARSIV_FATURA', 'SGK_TAHAKKUK', 'SGK_HIZMET_LISTESI'];
     if (DEDUP_BELGE_TURU.includes(String(input.belgeTuru)) && input.referenceNo) {
       const existing = await (this.prisma as any).portalDocument.findFirst({
         where: { tenantId, belgeTuru: String(input.belgeTuru), referenceNo: String(input.referenceNo) },
