@@ -693,13 +693,15 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         scopedConfig?.hasPassword ||
           (taxpayerKey === 'global' && globalConfig?.hasPassword)
       );
+      const isActive = row?.isActive !== false && taxpayerConfig?.isActive !== false;
       return {
         provider: item.provider,
         label: config.label || item.label,
         kind: item.kind,
         tone: item.tone,
-        isActive: row?.isActive !== false && taxpayerConfig?.isActive !== false,
+        isActive,
         configured,
+        connected: Boolean(configured && isActive),
         taxpayerScoped: Boolean(scopedConfig),
         baseUrl: taxpayerConfig?.baseUrl || '',
         username: taxpayerConfig?.username || '',

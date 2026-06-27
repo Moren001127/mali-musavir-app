@@ -1383,7 +1383,8 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
   const efaturaProviders = integrations
     .filter((p) => String(p.kind || '').toLowerCase() === 'efatura' || /EFATURA|ELOGO|UYUMSOFT|MIKRO|IZIBIZ|KOLAYSOFT|FORIBA|PARASUT|TURMOB/i.test(String(p.provider || '')))
     .sort((a, b) => (String(a.provider || '') === 'TURMOB_EFATURA' ? -1 : 0) - (String(b.provider || '') === 'TURMOB_EFATURA' ? -1 : 0));
-  const connectedEfaturaProviders = efaturaProviders.filter((p) => p.connected);
+  const providerConnected = (p: any) => Boolean(p?.connected ?? p?.configured);
+  const connectedEfaturaProviders = efaturaProviders.filter(providerConnected);
   const activeEfaturaProvider = connectedEfaturaProviders[0] || efaturaProviders[0];
   const efaturaInboxQ = useQuery({
     queryKey: ['fm-efatura-inbox', taxpayerId, period, efaturaDirection, efaturaChannel],
@@ -1497,9 +1498,9 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
           <div className="sourcebar">
             <div>
               <b>{activeEfaturaProvider?.label || activeEfaturaProvider?.provider || 'Entegrator yok'}</b>
-              <span>{activeEfaturaProvider?.connected ? 'Kimlik bilgisi hazir' : 'Entegratorler ekranindan sifre tanimlanmali'}</span>
+              <span>{providerConnected(activeEfaturaProvider) ? 'Kimlik bilgisi hazir' : 'Entegratorler ekranindan sifre tanimlanmali'}</span>
             </div>
-            <button className="btn sm fetch" disabled={!taxpayerId || !activeEfaturaProvider?.connected || efaturaFetchMut.isPending || efaturaImportMut.isPending} onClick={() => efaturaFetchMut.mutate({ provider: activeEfaturaProvider.provider })}>
+            <button className="btn sm fetch" disabled={!taxpayerId || !providerConnected(activeEfaturaProvider) || efaturaFetchMut.isPending || efaturaImportMut.isPending} onClick={() => efaturaFetchMut.mutate({ provider: activeEfaturaProvider.provider })}>
               <Ico html={I.sync} size={13} /> {efaturaFetchMut.isPending ? 'Sorgulaniyor...' : 'Sorgula'}
             </button>
             <button className="btn sm primary" disabled={!taxpayerId || efaturaImportMut.isPending || efaturaFetchMut.isPending || efaturaTransferableRows.length === 0} onClick={() => efaturaImportMut.mutate()}>
