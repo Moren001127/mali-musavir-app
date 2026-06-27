@@ -3631,4 +3631,5 @@ const CSS = `
 #fm-root .muhmain .wactions .btn:not(.primary){background:#fff;border-color:#d8cbb8}
 #fm-root .btn.primary{background:#23665b;border-color:#23665b}
 #fm-root .invactions .btn.primary{background:rgba(35,102,91,.14);border-color:rgba(35,102,91,.28);color:#23665b}
+#fm-root[data-accent="slate"]{--accent:#23665b;--accent-soft:#edf7f3;--accent-line:#cde4dc;--th:#f2f7f3;--th-text:#315c52}
 `;
