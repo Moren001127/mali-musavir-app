@@ -5171,11 +5171,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     };
     const addTurmobDocumentUrls = (row: any) => {
       const inOrOut = channel === 'IN_EFATURA' ? 'True' : 'False';
-      const invoiceIds = [
+      const invoiceIds = [...new Set([
         ...rowValues(row, ['InvoiceId', 'InvoiceID', 'invoiceId', 'FaturaId', 'faturaId', 'BelgeId', 'belgeId', 'Id', 'ID', 'id', 'Uuid', 'UUID', 'uuid', 'Ettn', 'ETTN', 'ettn', 'Guid', 'GUID', 'guid']),
         ...turmobCandidateIds(row),
-      ];
-      const archiveIds = rowValues(row, ['ArchiveId', 'ArchiveID', 'archiveId', 'ArsivId', 'arsivId']);
+      ])].slice(0, 24);
+      const archiveIds = [...new Set(rowValues(row, ['ArchiveId', 'ArchiveID', 'archiveId', 'ArsivId', 'arsivId']))].slice(0, 12);
       const addInvoiceUrlSet = (id: string, keyName: 'InvoiceId' | 'id' | 'uuid' | 'ettn') => {
         const q = `${keyName}=${encodeURIComponent(id)}`;
         const io = `InOrOut=${inOrOut}`;
@@ -5224,10 +5224,15 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       }
       addTurmobDocumentUrls(row);
     }
+    let downloadAttempts = 0;
     for (const url of seenUrls) {
+      if (++downloadAttempts > 240) break;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 4500);
       try {
         const docRes = await fetch(url, {
           method: 'GET',
+          signal: controller.signal,
           headers: { Cookie: cookie, 'User-Agent': 'MorenPortal/1.0', Accept: 'application/xml,text/xml,application/zip,application/pdf,text/html,*/*' },
         });
         const buf = Buffer.from(await docRes.arrayBuffer());
@@ -5239,7 +5244,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         await this.addPayloadBuffer(payloads, buf);
         if (!payloads.length) await this.addPayloadString(payloads, text);
       } catch (e: any) {
-        this.logger.warn(`TURMOB dokuman indirilemedi: ${url} ${e?.message || e}`);
+        const message = e?.name === 'AbortError' ? 'timeout' : (e?.message || e);
+        this.logger.warn(`TURMOB dokuman indirilemedi: ${url} ${message}`);
+      } finally {
+        clearTimeout(timer);
       }
       if (payloads.length >= opts.limit) break;
     }
@@ -5257,7 +5265,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         ? sample.map((value: any, index: number) => `${index}:${typeof value}`).slice(0, 40).join(',')
         : Object.keys(sample || {}).slice(0, 80).join(',');
       const scalars = turmobCandidateIds(sample).slice(0, 20).join(',');
-      throw new Error(`TURMOB liste ${rows.length} satir dondurdu ama XML/UBL indirme linki bulunamadi; rowKeys=${rowKeys || '-'}; ids=${scalars || '-'}`);
+      throw new Error(`TURMOB liste ${rows.length} satir dondurdu ama XML/UBL indirme linki bulunamadi; attempts=${downloadAttempts}; rowKeys=${rowKeys || '-'}; ids=${scalars || '-'}`);
     }
     const uniquePayloads = new Map<string, ProviderInvoicePayload>();
     for (const payload of payloads) {
