@@ -3835,6 +3835,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           const isJpeg = buf.length > 2 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff;
           const isPng = buf.length > 7 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47;
           const isPdf = buf.length > 4 && buf[0] === 0x25 && buf[1] === 0x50 && buf[2] === 0x44 && buf[3] === 0x46;
+          const isZip = buf.length > 4 && buf[0] === 0x50 && buf[1] === 0x4b;
+          if (isZip) {
+            const payload = await this.extractStoredInvoiceViewPayload(buf, 'application/zip');
+            const rendered = this.renderStoredInvoiceViewPayload(payload, doc);
+            if (rendered) return { ...rendered, source: 'mihsap' as const };
+          }
           if (isJpeg || /^image\/jpe?g/.test(ct)) {
             return { url: `data:image/jpeg;base64,${buf.toString('base64')}`, mimeType: 'image/jpeg', source: 'mihsap' as const };
           }
@@ -3922,6 +3928,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const payload = await this.extractStoredInvoiceViewPayload(buffer, mimeType);
     if (!payload) return null;
 
+    return this.renderStoredInvoiceViewPayload(payload, doc);
+  }
+
+  private renderStoredInvoiceViewPayload(payload: any, doc: any) {
+    if (!payload) return null;
     if (payload.kind === 'pdf') {
       return {
         url: `data:application/pdf;base64,${payload.buffer.toString('base64')}`,
@@ -5855,11 +5866,20 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
    *  plan kodu kalır. Okuma + rematch sonradan doğru kodu yazar. */
   private async gateCodesByPlan(tenantId: string, taxpayerId: string | null | undefined, lines: any[]): Promise<any[]> {
     const planCodes = await this.getPlanCodeSet(tenantId, taxpayerId);
-    if (!planCodes) return (lines || []).map((l) => ({ ...l, accountCode: null }));
-    return (lines || []).map((l) => {
+    const normalized = (lines || []).map((l) => ({ ...l, accountCode: this.accountCodeOnly(l.accountCode) || null }));
+    if (!planCodes) return normalized.map((l) => ({ ...l, accountCode: null }));
+    return normalized.map((l) => {
       const c = String(l.accountCode || '').trim();
       return c && !planCodes.has(c) ? { ...l, accountCode: null } : l;
     });
+  }
+
+  private accountCodeOnly(value: any): string {
+    const raw = String(value || '').trim();
+    if (!raw || /^[-—–\s]*(yok|eksik)?[-—–\s]*$/i.test(raw)) return '';
+    const match = raw.match(/^([0-9]{1,3}(?:[.\-][A-Za-z0-9]+)*)/);
+    if (match?.[1]) return match[1].trim();
+    return raw.split(/\s+[—–-]\s+|=/)[0].trim();
   }
 
   private linesFromAmounts(opts: {

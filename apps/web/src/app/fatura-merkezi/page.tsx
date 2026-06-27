@@ -560,6 +560,14 @@ function kdvParts(d: any): { matrah: number | null; kdv: number | null } {
   return { matrah: null, kdv: null };
 }
 
+function accountCodeOnly(value: any): string {
+  const raw = String(value || '').trim();
+  if (!raw || /^[-—–\s]*(yok|eksik)?[-—–\s]*$/i.test(raw)) return '';
+  const m = raw.match(/^([0-9]{1,3}(?:[.\-][A-Za-z0-9]+)*)/);
+  if (m?.[1]) return m[1].trim();
+  return raw.split(/\s+[—–-]\s+|=/)[0].trim();
+}
+
 function isletmeRowReady(kind: 'ALIS' | 'SATIS', row: any): boolean {
   const kt = String(row?.kayitTuruKod || '').trim();
   if (!kt) return false;
@@ -1139,7 +1147,10 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
                 const vkn = sat ? d.buyerVkn : d.sellerVkn;
                 // HESAP KODU sütunu = SADECE matrah/gider kodu. Gider boşsa KDV/cari koduna DÜŞME →
                 //   boş kalsın (kullanıcı: gider kodu boşsa bu sütun da boş olmalı).
-                const code = (() => { const ls = Array.isArray(d.lines) ? d.lines : []; return ls.find((l: any) => String(l.group) === 'matrah' && l.accountCode)?.accountCode || ''; })();
+                const code = (() => {
+                  const ls = Array.isArray(d.lines) ? d.lines : [];
+                  return accountCodeOnly(ls.find((l: any) => String(l.group) === 'matrah' && l.accountCode)?.accountCode || '');
+                })();
                 const { matrah, kdv } = kdvParts(d);
                 const ocrCls = d.ocrStatus === 'IN_PROGRESS' ? 'scanning' : justDone.has(d.id) ? 'justdone' : d.ocrStatus === 'PENDING' ? 'queued' : undefined;
                 const fisAcik = fisDetayId === d.id;
@@ -1238,7 +1249,7 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
                                 {fisLines.map((l: any, i: number) => (
                                   <tr key={l.id || i}>
                                     <td>{grpLabel(String(l.group || ''))}{l.rate ? ` %${String(l.rate).replace(/[^0-9.,]/g, '')}` : ''}</td>
-                                    <td>{l.accountCode ? <span className="hk">{l.accountCode}</span> : <span className="hk no">eksik</span>}</td>
+                                    <td>{accountCodeOnly(l.accountCode) ? <span className="hk">{accountCodeOnly(l.accountCode)}</span> : <span className="hk no">eksik</span>}</td>
                                     <td>{l.accountCode ? (l.description || '—') : '—'}</td>
                                     <td className="num">{Number(l.debit) ? fmtMoney(l.debit) : ''}</td>
                                     <td className="num">{Number(l.credit) ? fmtMoney(l.credit) : ''}</td>
@@ -1298,7 +1309,14 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
     enabled: !!taxpayerId,
   });
   const rows: any[] = Array.isArray(earsivQ.data) ? earsivQ.data : [];
-  const activeJob = (jobsQ.data || []).find((j: any) => ['pending', 'running'].includes(String(j.status || '').toLowerCase()));
+  const activeJob = (jobsQ.data || []).find((j: any) => {
+    const status = String(j.status || '').toLowerCase();
+    if (!['pending', 'running'].includes(status)) return false;
+    const jobPeriod = String(j?.payload?.donem || j?.donem || '').trim();
+    if (jobPeriod && jobPeriod !== period) return false;
+    const updated = new Date(j.updatedAt || j.createdAt || 0).getTime();
+    return !updated || Date.now() - updated < 10 * 60 * 1000;
+  });
   const waitForFirstRows = !!activeJob && rows.length === 0;
   const lastJob = (jobsQ.data || [])[0];
   useEffect(() => {
@@ -2630,7 +2648,10 @@ function ScreenAktarilanlar({ taxpayerId, period, mode = 'bekleyen' }: { taxpaye
   const renderRow = (d: any) => {
     const sat = (d.invoiceKind || 'ALIS') === 'SATIS';
     const firma = (sat ? d.customerName : d.vendorName) || '—';
-    const code = (() => { const ls = Array.isArray(d.lines) ? d.lines : []; return (ls.find((l: any) => String(l.group) === 'matrah' && l.accountCode) || ls.find((l: any) => l.accountCode))?.accountCode || ''; })();
+    const code = (() => {
+      const ls = Array.isArray(d.lines) ? d.lines : [];
+      return accountCodeOnly((ls.find((l: any) => String(l.group) === 'matrah' && l.accountCode) || ls.find((l: any) => l.accountCode))?.accountCode || '');
+    })();
     const acik = detayId === d.id;
     const lines: any[] = Array.isArray(d.lines) ? d.lines : [];
     return (
@@ -2664,7 +2685,7 @@ function ScreenAktarilanlar({ taxpayerId, period, mode = 'bekleyen' }: { taxpaye
                       {lines.map((l: any, i: number) => (
                         <tr key={l.id || i}>
                           <td>{grpLabel(String(l.group || ''))}{l.rate ? ` %${String(l.rate).replace(/[^0-9.,]/g, '')}` : ''}</td>
-                          <td>{l.accountCode ? <span className="hk">{l.accountCode}</span> : <span className="hk no">eksik</span>}</td>
+                          <td>{accountCodeOnly(l.accountCode) ? <span className="hk">{accountCodeOnly(l.accountCode)}</span> : <span className="hk no">eksik</span>}</td>
                           <td>{l.description || '—'}</td>
                           <td className="num">{Number(l.debit) ? fmtMoney(l.debit) : ''}</td>
                           <td className="num">{Number(l.credit) ? fmtMoney(l.credit) : ''}</td>
