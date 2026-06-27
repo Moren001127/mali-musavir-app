@@ -5137,10 +5137,60 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       visit(row);
       return [...values];
     };
+    const turmobCandidateIds = (row: any) => {
+      const values = new Set<string>();
+      const add = (value: any, keyHint = '') => {
+        const text = String(value ?? '').trim();
+        if (!text || text.length > 120) return;
+        const key = keyHint.toLowerCase();
+        const looksUsefulKey = /id|uuid|ettn|guid|oid|pk|xml|belge|fatura|invoice|arsiv|archive/.test(key);
+        const looksUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(text);
+        const looksHex32 = /^[0-9a-f]{32}$/i.test(text);
+        const looksOpaqueId = looksUsefulKey && /^[A-Za-z0-9_-]{4,100}$/.test(text);
+        if (looksUuid || looksHex32 || looksOpaqueId) values.add(text);
+      };
+      const visit = (value: any, keyHint = '') => {
+        if (value == null) return;
+        if (typeof value === 'string' || typeof value === 'number') {
+          add(value, keyHint);
+          const text = String(value);
+          for (const m of text.matchAll(/(?:data-)?(?:invoice|fatura|belge|archive|arsiv)?(?:id|uuid|ettn|guid|oid)\s*=\s*["']?([A-Za-z0-9_-]{4,100})/gi)) add(m[1], 'id');
+          for (const m of text.matchAll(/(?:InvoiceId|InvoiceID|FaturaId|BelgeId|ArchiveId|ArsivId|ETTN|UUID|Guid|GUID)["'\s:=]+([A-Za-z0-9_-]{4,100})/g)) add(m[1], 'id');
+          return;
+        }
+        if (Array.isArray(value)) {
+          value.forEach((nested, index) => visit(nested, `${keyHint}.${index}`));
+          return;
+        }
+        if (typeof value === 'object') {
+          for (const [key, nested] of Object.entries(value)) visit(nested, key);
+        }
+      };
+      visit(row);
+      return [...values];
+    };
     const addTurmobDocumentUrls = (row: any) => {
       const inOrOut = channel === 'IN_EFATURA' ? 'True' : 'False';
-      const invoiceIds = rowValues(row, ['InvoiceId', 'InvoiceID', 'invoiceId', 'FaturaId', 'faturaId', 'BelgeId', 'belgeId']);
+      const invoiceIds = [
+        ...rowValues(row, ['InvoiceId', 'InvoiceID', 'invoiceId', 'FaturaId', 'faturaId', 'BelgeId', 'belgeId', 'Id', 'ID', 'id', 'Uuid', 'UUID', 'uuid', 'Ettn', 'ETTN', 'ettn', 'Guid', 'GUID', 'guid']),
+        ...turmobCandidateIds(row),
+      ];
       const archiveIds = rowValues(row, ['ArchiveId', 'ArchiveID', 'archiveId', 'ArsivId', 'arsivId']);
+      const addInvoiceUrlSet = (id: string, keyName: 'InvoiceId' | 'id' | 'uuid' | 'ettn') => {
+        const q = `${keyName}=${encodeURIComponent(id)}`;
+        const io = `InOrOut=${inOrOut}`;
+        for (const prefix of ['/Invoice', '/IncomingInvoice', '/OutgoingInvoice']) {
+          addCandidateUrl(`${prefix}/GetInvoiceXml?${io}&${q}`);
+          addCandidateUrl(`${prefix}/GetInvoiceXML?${io}&${q}`);
+          addCandidateUrl(`${prefix}/DownloadXml?${io}&${q}`);
+          addCandidateUrl(`${prefix}/DownloadXML?${io}&${q}`);
+          addCandidateUrl(`${prefix}/DownloadInvoiceXml?${io}&${q}`);
+          addCandidateUrl(`${prefix}/GetXml?${io}&${q}`);
+          addCandidateUrl(`${prefix}/GetUbl?${io}&${q}`);
+          addCandidateUrl(`${prefix}/Detail?${io}&${q}&IsPrint=True`);
+          addCandidateUrl(`${prefix}/PrintAllInvoice?${io}&${q}&IsPrint=True`);
+        }
+      };
       for (const id of invoiceIds) {
         addCandidateUrl(`/Invoice/GetInvoiceXml?InOrOut=${inOrOut}&InvoiceId=${encodeURIComponent(id)}`);
         addCandidateUrl(`/Invoice/GetInvoiceXML?InOrOut=${inOrOut}&InvoiceId=${encodeURIComponent(id)}`);
@@ -5148,12 +5198,23 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         addCandidateUrl(`/IncomingInvoice/GetInvoiceXML?InOrOut=${inOrOut}&InvoiceId=${encodeURIComponent(id)}`);
         addCandidateUrl(`/Invoice/Detail?InOrOut=${inOrOut}&InvoiceId=${encodeURIComponent(id)}&IsPrint=True`);
         addCandidateUrl(`/Invoice/PrintAllInvoice?InOrOut=${inOrOut}&InvoiceId=${encodeURIComponent(id)}&IsPrint=True`);
+        addInvoiceUrlSet(id, 'InvoiceId');
+        addInvoiceUrlSet(id, 'id');
+        addInvoiceUrlSet(id, 'uuid');
+        addInvoiceUrlSet(id, 'ettn');
       }
       for (const id of archiveIds) {
         addCandidateUrl(`/Invoice/GetInvoiceXml?InOrOut=False&ArchiveId=${encodeURIComponent(id)}`);
         addCandidateUrl(`/Invoice/GetInvoiceXML?InOrOut=False&ArchiveId=${encodeURIComponent(id)}`);
         addCandidateUrl(`/Invoice/Detail?InOrOut=False&ArchiveId=${encodeURIComponent(id)}&IsPrint=True`);
         addCandidateUrl(`/Invoice/PrintAllInvoice?InOrOut=False&ArchiveId=${encodeURIComponent(id)}&IsPrint=True`);
+        for (const prefix of ['/ArchiveInvoice', '/OutgoingArchiveInvoice', '/EArchiveInvoice', '/Invoice']) {
+          addCandidateUrl(`${prefix}/GetInvoiceXml?ArchiveId=${encodeURIComponent(id)}`);
+          addCandidateUrl(`${prefix}/GetInvoiceXML?ArchiveId=${encodeURIComponent(id)}`);
+          addCandidateUrl(`${prefix}/DownloadXml?ArchiveId=${encodeURIComponent(id)}`);
+          addCandidateUrl(`${prefix}/DownloadXML?ArchiveId=${encodeURIComponent(id)}`);
+          addCandidateUrl(`${prefix}/Detail?ArchiveId=${encodeURIComponent(id)}&IsPrint=True`);
+        }
       }
     };
     for (const row of live) {
@@ -5191,7 +5252,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       throw new Error(`TURMOB ${channel} fatura satiri dondurmedi (${shape}; url=${usedListUrl}; method=${usedMethod}; profil=${usedProfile}; ct=${ct.slice(0, 40) || '-'}; len=${raw.length}; keys=${topKeys || '-'})`);
     }
     if (!payloads.length && rows.length > 0) {
-      throw new Error(`TURMOB liste ${rows.length} satir dondurdu ama XML/UBL indirme linki bulunamadi; response semasi loglandi`);
+      const sample = rows[0];
+      const rowKeys = Array.isArray(sample)
+        ? sample.map((value: any, index: number) => `${index}:${typeof value}`).slice(0, 40).join(',')
+        : Object.keys(sample || {}).slice(0, 80).join(',');
+      const scalars = turmobCandidateIds(sample).slice(0, 20).join(',');
+      throw new Error(`TURMOB liste ${rows.length} satir dondurdu ama XML/UBL indirme linki bulunamadi; rowKeys=${rowKeys || '-'}; ids=${scalars || '-'}`);
     }
     const uniquePayloads = new Map<string, ProviderInvoicePayload>();
     for (const payload of payloads) {
