@@ -241,6 +241,13 @@ type ProviderInvoicePayload = {
   htmlContent?: string | null;
 };
 
+type ProviderPayloadLookup = {
+  cfg: RuntimeIntegrationConfig;
+  payloads: ProviderInvoicePayload[];
+  byKey: Map<string, ProviderInvoicePayload>;
+  error?: string | null;
+};
+
 type ProviderStoredVisual = {
   mimeType?: string | null;
   originalName?: string | null;
@@ -3479,7 +3486,16 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       try {
         if (cfg.provider === 'TURMOB_EFATURA') {
           const listed = await this.fetchTurmobPortalRows(cfg, { direction, period, limit, channel });
+          let turmobLookup: ProviderPayloadLookup | null = null;
+          try {
+            const payloads = await this.fetchTurmobPortalInvoices(cfg, { taxpayer, direction, period, limit, channel });
+            turmobLookup = { cfg, payloads, byKey: this.buildProviderPayloadLookup(payloads), error: null };
+          } catch (e: any) {
+            turmobLookup = { cfg, payloads: [], byKey: new Map(), error: e?.message || 'TURMOB belge indirilemedi' };
+            this.logger.warn(`TURMOB belge indirme es gecildi: ${turmobLookup.error}`);
+          }
           let providerAdded = 0, providerUpdated = 0, providerSkipped = 0;
+          let providerDownloaded = 0, providerMissingDocument = 0;
           for (const sourceRow of listed.liveRows.slice(0, limit)) {
             try {
               const summary = this.turmobSummaryFromRow(sourceRow, { channel, taxpayer, direction });
@@ -3495,19 +3511,35 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
                 providerSkipped++;
                 continue;
               }
+              const payload = this.providerPayloadForInboxRow(
+                {
+                  uuid: summary.uuid,
+                  ettn: summary.ettn,
+                  faturaNo: summary.faturaNo,
+                  toplam: summary.toplam,
+                  rawJson: { turmobRowId: summary.rowId, turmobSummaryRaw: summary.raw },
+                },
+                turmobLookup,
+              );
+              const parsed = payload
+                ? (this.parseProviderUblInvoice(payload.xml) || this.regexProviderInvoiceFallback(payload.xml))
+                : null;
+              const storedVisual = payload ? this.providerStoredVisual(payload) : null;
+              if (payload) providerDownloaded++;
               const existing = await (this.prisma as any).eFaturaInbox.findUnique({
                 where: { tenantId_taxpayerId_entegrator_uuid: { tenantId, taxpayerId: opts.taxpayerId, entegrator: cfg.provider, uuid: summary.uuid } },
-                select: { id: true, rawJson: true },
+                select: { id: true, rawJson: true, documentId: true, isTransferred: true, processedAt: true, ublXmlRaw: true },
               });
               const currentRaw = existing?.rawJson && typeof existing.rawJson === 'object' ? existing.rawJson : {};
+              if (!payload) providerMissingDocument++;
               const data: any = {
-                paraBirimi: summary.paraBirimi || 'TRY',
+                paraBirimi: parsed?.paraBirimi || summary.paraBirimi || 'TRY',
                 direction: inboxDirection,
-                invoiceProfile: summary.invoiceProfile,
+                invoiceProfile: parsed ? this.documentTypeFromProviderXml(payload!.xml) === 'E_ARSIV' ? 'e-Arsiv' : 'e-Fatura' : summary.invoiceProfile,
                 rawJson: {
                   ...currentRaw,
                   channel,
-                  documentType: summary.documentType,
+                  documentType: payload ? this.documentTypeFromProviderXml(payload.xml) : summary.documentType,
                   source: 'integrator-query',
                   provider: cfg.provider,
                   turmobRowId: summary.rowId || null,
@@ -3522,20 +3554,38 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
                   senderVkn: summary.senderVkn || null,
                   receiverVkn: summary.receiverVkn || null,
                   queriedBy: userId || null,
-                  needsDocumentDownload: true,
+                  needsDocumentDownload: !payload,
+                  documentDownloadStatus: payload ? 'READY' : 'MISSING',
+                  documentDownloadError: payload ? null : (turmobLookup?.error || 'TURMOB XML/UBL/PDF indirme linki bulunamadi'),
+                  originalVisual: storedVisual,
                 },
               };
-              if (summary.ettn) data.ettn = summary.ettn;
-              if (summary.senderVkn) data.senderVkn = summary.senderVkn;
-              if (summary.senderTitle) data.senderTitle = summary.senderTitle;
-              if (summary.receiverVkn) data.receiverVkn = summary.receiverVkn;
-              if (summary.faturaNo) data.faturaNo = summary.faturaNo;
-              if (summary.faturaDate) data.faturaDate = summary.faturaDate;
-              if (summary.matrah != null) data.matrah = String(summary.matrah);
-              if (summary.kdv != null) data.kdv = String(summary.kdv);
-              if (summary.toplam != null) data.toplam = String(summary.toplam);
+              if (payload) data.ublXmlRaw = payload.xml;
+              else if (this.isSyntheticTurmobInboxXml(existing?.ublXmlRaw)) data.ublXmlRaw = null;
+              if (parsed?.ettn || summary.ettn) data.ettn = parsed?.ettn || summary.ettn;
+              if (parsed?.saticiVergiNo || summary.senderVkn) data.senderVkn = parsed?.saticiVergiNo || summary.senderVkn;
+              if (parsed?.satici || summary.senderTitle) data.senderTitle = parsed?.satici || summary.senderTitle;
+              if (parsed?.aliciVergiNo || summary.receiverVkn) data.receiverVkn = parsed?.aliciVergiNo || summary.receiverVkn;
+              if (parsed?.alici || summary.receiverTitle) data.receiverTitle = parsed?.alici || summary.receiverTitle;
+              if (parsed?.faturaNo || summary.faturaNo) data.faturaNo = parsed?.faturaNo || summary.faturaNo;
+              if (parsed?.faturaTarihi || summary.faturaDate) data.faturaDate = parsed?.faturaTarihi || summary.faturaDate;
+              if (parsed?.matrah != null || summary.matrah != null) data.matrah = String(parsed?.matrah ?? summary.matrah);
+              if (parsed?.kdvTutari != null || summary.kdv != null) data.kdv = String(parsed?.kdvTutari ?? summary.kdv);
+              const parsedTotal = parsed ? (parsed.toplamTutar ?? ((parsed.matrah || 0) + (parsed.kdvTutari || 0))) : null;
+              if (parsedTotal != null || summary.toplam != null) data.toplam = String(parsedTotal ?? summary.toplam);
               if (existing) {
                 await (this.prisma as any).eFaturaInbox.update({ where: { id: existing.id }, data });
+                if (payload && existing.documentId) {
+                  await this.createDocumentFromProviderXml(
+                    tenantId,
+                    userId,
+                    taxpayer,
+                    cfg,
+                    direction,
+                    { ...payload, externalId: summary.uuid || payload.externalId || parsed?.ettn || parsed?.faturaNo || null },
+                    { existingDocumentId: existing.documentId },
+                  ).catch((e: any) => this.logger.warn(`TURMOB aktarilmis belge yenilenemedi: ${e?.message || e}`));
+                }
                 providerUpdated++;
               } else {
                 await (this.prisma as any).eFaturaInbox.create({
@@ -3563,9 +3613,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             label: cfg.label,
             status: 'SUCCESS',
             fetched: listed.liveRows.length,
+            downloaded: providerDownloaded,
             added: providerAdded,
             updated: providerUpdated,
-            skipped: providerSkipped + Math.max(0, listed.rows.length - listed.liveRows.length),
+            skipped: providerSkipped + providerMissingDocument + Math.max(0, listed.rows.length - listed.liveRows.length),
+            missingDocument: providerMissingDocument,
           });
           continue;
         }
@@ -3692,6 +3744,31 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       take: Math.min(Math.max(Number(opts.limit || 500), 1), 1000),
     });
 
+    const periodForDownload = this.monthRange(opts.period);
+    const providerLookupCache = new Map<string, Promise<ProviderPayloadLookup | null>>();
+    const loadProviderLookup = (provider: string): Promise<ProviderPayloadLookup | null> => {
+      const key = `${provider}:${channel}:${periodForDownload.donem}`;
+      if (!providerLookupCache.has(key)) {
+        providerLookupCache.set(key, (async () => {
+          const cfg = await this.resolveRuntimeConfigForProvider(tenantId, opts.taxpayerId, provider);
+          if (!cfg) return null;
+          try {
+            const payloads = await this.fetchProviderInvoices(cfg, {
+              taxpayer,
+              direction: direction === 'OUT' ? 'SATIS' : 'ALIS',
+              period: periodForDownload,
+              limit: Math.min(Math.max(Number(opts.limit || rows.length || 500), 1), 1000),
+              channel,
+            });
+            return { cfg, payloads, byKey: this.buildProviderPayloadLookup(payloads), error: null };
+          } catch (e: any) {
+            return { cfg, payloads: [], byKey: new Map(), error: e?.message || 'Belge indirilemedi' };
+          }
+        })());
+      }
+      return providerLookupCache.get(key)!;
+    };
+
     let processed = 0, imported = 0, alreadyQueued = 0, skipped = 0, failed = 0;
     const errors: any[] = [];
     for (const row of rows) {
@@ -3704,62 +3781,67 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         if (!dateMatches && !rawPeriodMatches) continue;
       }
       processed++;
+      const provider = String(row.entegrator || 'TURMOB_EFATURA');
+      const lookup = provider === 'TURMOB_EFATURA' ? await loadProviderLookup(provider) : null;
+      const downloadedPayload = provider === 'TURMOB_EFATURA' ? this.providerPayloadForInboxRow(row, lookup) : null;
       if (row.documentId || row.processedAt || row.isTransferred) {
         if (row.documentId) {
-          const provider = String(row.entegrator || 'TURMOB_EFATURA');
-          const visualPayload = this.providerPayloadFromStoredVisual(String(row.ublXmlRaw || ''), row.uuid, row.faturaNo, raw?.originalVisual);
-          if (visualPayload.pdfBuffer || visualPayload.htmlContent) {
-            await this.refreshProviderDocumentVisual(
+          const visualPayload = downloadedPayload
+            || this.providerPayloadFromStoredVisual(String(row.ublXmlRaw || ''), row.uuid, row.faturaNo, raw?.originalVisual);
+          if (downloadedPayload || visualPayload.pdfBuffer || visualPayload.htmlContent) {
+            await this.createDocumentFromProviderXml(
               tenantId,
-              row.documentId,
+              userId,
               taxpayer,
-              {
-                provider,
-                label: provider,
-                baseUrl: '',
-                username: '',
-                password: '',
-                apiKey: '',
-                apiSecret: '',
-                senderVkn: '',
-                accountId: '',
-                note: '',
-              },
-              visualPayload,
-            ).catch((e: any) => this.logger.warn(`Aktarilmis e-fatura gorseli yenilenemedi: ${e?.message || e}`));
+              lookup?.cfg || this.providerStubConfig(provider),
+              direction === 'OUT' ? 'SATIS' : 'ALIS',
+              { ...visualPayload, externalId: row.uuid || visualPayload.externalId || row.ettn || row.faturaNo || null },
+              { existingDocumentId: row.documentId },
+            ).catch((e: any) => this.logger.warn(`Aktarilmis e-fatura belgesi yenilenemedi: ${e?.message || e}`));
           }
         }
         alreadyQueued++;
         continue;
       }
       if (/iptal|itiraz|red|cancel/i.test(`${raw.approvalStatus || ''} ${raw.iptalItiraz || ''}`)) { skipped++; continue; }
-      const provider = String(row.entegrator || 'TURMOB_EFATURA');
-      const xml = String(row.ublXmlRaw || '').trim()
-        || (provider === 'TURMOB_EFATURA' ? this.syntheticTurmobInboxXml(row, taxpayer, channel) : '');
+      const storedVisual = downloadedPayload ? this.providerStoredVisual(downloadedPayload) : raw?.originalVisual;
+      const savedXml = String(row.ublXmlRaw || '').trim();
+      const savedXmlLooksSynthetic = provider === 'TURMOB_EFATURA' && this.isSyntheticTurmobInboxXml(savedXml);
+      const xml = String(downloadedPayload?.xml || (savedXmlLooksSynthetic ? '' : savedXml) || '').trim();
       if (!xml) { failed++; errors.push({ id: row.id, message: 'XML bulunamadi' }); continue; }
       try {
         const result = await this.createDocumentFromProviderXml(
           tenantId,
           userId,
           taxpayer,
-          {
-            provider,
-            label: provider,
-            baseUrl: '',
-            username: '',
-            password: '',
-            apiKey: '',
-            apiSecret: '',
-            senderVkn: '',
-            accountId: '',
-            note: '',
-          },
+          lookup?.cfg || this.providerStubConfig(provider),
           direction === 'OUT' ? 'SATIS' : 'ALIS',
-          this.providerPayloadFromStoredVisual(xml, row.uuid, row.faturaNo, raw?.originalVisual),
+          this.providerPayloadFromStoredVisual(xml, row.uuid, row.faturaNo, storedVisual),
         );
+        const parsed = this.parseProviderUblInvoice(xml) || this.regexProviderInvoiceFallback(xml);
+        const updateRaw = {
+          ...raw,
+          needsDocumentDownload: false,
+          documentDownloadStatus: 'READY',
+          documentDownloadError: null,
+          originalVisual: storedVisual || raw?.originalVisual || null,
+        };
+        const total = parsed ? (parsed.toplamTutar ?? ((parsed.matrah || 0) + (parsed.kdvTutari || 0))) : null;
         await (this.prisma as any).eFaturaInbox.update({
           where: { id: row.id },
           data: {
+            ...(downloadedPayload ? { ublXmlRaw: xml } : {}),
+            ...(parsed?.ettn ? { ettn: parsed.ettn } : {}),
+            ...(parsed?.faturaNo ? { faturaNo: parsed.faturaNo } : {}),
+            ...(parsed?.faturaTarihi ? { faturaDate: parsed.faturaTarihi } : {}),
+            ...(parsed?.saticiVergiNo ? { senderVkn: parsed.saticiVergiNo } : {}),
+            ...(parsed?.satici ? { senderTitle: parsed.satici } : {}),
+            ...(parsed?.aliciVergiNo ? { receiverVkn: parsed.aliciVergiNo } : {}),
+            ...(parsed?.alici ? { receiverTitle: parsed.alici } : {}),
+            ...(parsed?.matrah != null ? { matrah: String(parsed.matrah) } : {}),
+            ...(parsed?.kdvTutari != null ? { kdv: String(parsed.kdvTutari) } : {}),
+            ...(total != null ? { toplam: String(total) } : {}),
+            rawJson: updateRaw,
             isTransferred: true,
             documentId: result.document?.id || null,
             processedAt: new Date(),
@@ -4994,6 +5076,114 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     return null;
   }
 
+  private providerStubConfig(provider: string): RuntimeIntegrationConfig {
+    return {
+      provider,
+      label: provider,
+      baseUrl: PROVIDER_DEFAULT_BASE_URL[provider] || '',
+      username: '',
+      password: '',
+      apiKey: '',
+      apiSecret: '',
+      senderVkn: '',
+      accountId: '',
+      note: '',
+    };
+  }
+
+  private async resolveRuntimeConfigForProvider(
+    tenantId: string,
+    taxpayerId: string,
+    provider: string,
+  ): Promise<RuntimeIntegrationConfig | null> {
+    const catalog = INTEGRATOR_CATALOG.find((item) => item.provider === provider)
+      || INTEGRATOR_CATALOG.find((item) => item.provider === 'TURMOB_EFATURA');
+    if (!catalog) return null;
+    const row = await (this.prisma as any).integrationConnection.findFirst({
+      where: { tenantId, provider, isActive: true },
+      select: { id: true, provider: true, config: true, isActive: true },
+    });
+    const cfg = this.resolveRuntimeConfig(row, catalog as any, taxpayerId);
+    return cfg && !this.providerCredentialProblem(cfg) ? cfg : null;
+  }
+
+  private cleanProviderText(value: any): string | null {
+    const text = String(value ?? '').trim();
+    if (!text || /^(nan|null|undefined|-)$/i.test(text)) return null;
+    return text;
+  }
+
+  private numericProviderAmount(value: any): number | null {
+    if (value == null || value === '') return null;
+    if (typeof value === 'object' && typeof value.toNumber === 'function') {
+      const n = value.toNumber();
+      return Number.isFinite(n) ? n : null;
+    }
+    if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+    const text = String(value).replace(/\s+/g, '').replace(/[^\d,.-]/g, '');
+    if (!text) return null;
+    const normalized = text.includes(',') ? text.replace(/\./g, '').replace(',', '.') : text;
+    const n = Number(normalized);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  private providerKey(value: any): string | null {
+    const text = this.cleanProviderText(value);
+    if (!text) return null;
+    const normalized = text.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    return normalized || null;
+  }
+
+  private providerAmountKey(value: any): string | null {
+    const n = this.numericProviderAmount(value);
+    return n == null ? null : n.toFixed(2);
+  }
+
+  private addProviderLookupKey(map: Map<string, ProviderInvoicePayload>, key: any, payload: ProviderInvoicePayload) {
+    const normalized = this.providerKey(key);
+    if (normalized && !map.has(normalized)) map.set(normalized, payload);
+  }
+
+  private buildProviderPayloadLookup(payloads: ProviderInvoicePayload[]): Map<string, ProviderInvoicePayload> {
+    const byKey = new Map<string, ProviderInvoicePayload>();
+    for (const payload of payloads) {
+      const parsed = this.parseProviderUblInvoice(payload.xml) || this.regexProviderInvoiceFallback(payload.xml);
+      this.addProviderLookupKey(byKey, payload.externalId, payload);
+      this.addProviderLookupKey(byKey, parsed?.ettn, payload);
+      this.addProviderLookupKey(byKey, parsed?.faturaNo, payload);
+      const totalKey = this.providerAmountKey(parsed?.toplamTutar ?? ((parsed?.matrah || 0) + (parsed?.kdvTutari || 0)));
+      const faturaKey = this.providerKey(parsed?.faturaNo);
+      if (faturaKey && totalKey) this.addProviderLookupKey(byKey, `${faturaKey}:${totalKey}`, payload);
+    }
+    return byKey;
+  }
+
+  private providerPayloadForInboxRow(row: any, lookup: ProviderPayloadLookup | null | undefined): ProviderInvoicePayload | null {
+    if (!lookup?.byKey?.size) return null;
+    const raw = row?.rawJson && typeof row.rawJson === 'object' ? row.rawJson : {};
+    const rawSummary = raw?.turmobSummaryRaw && typeof raw.turmobSummaryRaw === 'object' ? raw.turmobSummaryRaw : {};
+    const totalKey = this.providerAmountKey(row?.toplam ?? rawSummary?.OdenecekTutar ?? rawSummary?.OdenecekTutarFormatted);
+    const candidates = [
+      row?.ettn,
+      row?.uuid,
+      row?.faturaNo,
+      raw?.turmobRowId,
+      rawSummary?.Ettn,
+      rawSummary?.FaturaNo,
+      rawSummary?.IadeFaturaNo,
+      rawSummary?.IdFaturaGelen,
+      rawSummary?.IdFaturaGiden,
+      rawSummary?.IdFaturaArsiv,
+    ];
+    for (const candidate of candidates) {
+      const key = this.providerKey(candidate);
+      if (key && lookup.byKey.has(key)) return lookup.byKey.get(key)!;
+      const keyWithAmount = key && totalKey ? this.providerKey(`${key}:${totalKey}`) : null;
+      if (keyWithAmount && lookup.byKey.has(keyWithAmount)) return lookup.byKey.get(keyWithAmount)!;
+    }
+    return null;
+  }
+
   private monthRange(value?: string) {
     const raw = String(value || '').trim();
     const match = raw.match(/^(\d{4})-(\d{2})$/);
@@ -5516,6 +5706,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     <Price><PriceAmount currencyID="${this.xmlEscape(currency)}">${this.parasutMoney(matrah)}</PriceAmount></Price>
   </InvoiceLine>
 </Invoice>`;
+  }
+
+  private isSyntheticTurmobInboxXml(xml: any): boolean {
+    const text = String(xml || '');
+    if (!text.trim()) return false;
+    return /<Item>\s*<Name>Fatura satiri<\/Name>\s*<\/Item>/i.test(text)
+      || (/<Invoice>\s*<ProfileID>/i.test(text) && !/\sxmlns[:=]/i.test(text));
   }
 
   /**
@@ -6558,6 +6755,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     cfg: RuntimeIntegrationConfig,
     direction: 'ALIS' | 'SATIS',
     payload: ProviderInvoicePayload,
+    opts: { existingDocumentId?: string } = {},
   ) {
     let xml = String(payload.xml || '').trim();
     const unpacked: ProviderInvoicePayload[] = [];
@@ -6579,18 +6777,90 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const source = cfg.provider === 'GIB_PORTAL' ? 'gib-portal-api' : `integration-${cfg.provider.toLowerCase()}`;
     const sourceRefId = payload.externalId || parsed.ettn || parsed.faturaNo || createHash('sha1').update(xml).digest('hex');
     const existing = await (this.prisma as any).invoiceAccountingDocument.findFirst({
-      where: { tenantId, taxpayerId: taxpayer.id, source, sourceRefId },
+      where: opts.existingDocumentId
+        ? { id: opts.existingDocumentId, tenantId, taxpayerId: taxpayer.id }
+        : { tenantId, taxpayerId: taxpayer.id, source, sourceRefId },
       include: { lines: { orderBy: { orderNo: 'asc' } } },
     });
     if (existing) {
-      if (payload.pdfBuffer || payload.htmlContent) {
-        await this.refreshProviderDocumentVisual(tenantId, existing.id, taxpayer, cfg, {
-          ...payload,
-          xml,
-          externalId: sourceRefId,
-        }).catch((e: any) => this.logger.warn(`Mevcut entegrator belgesi gorseli yenilenemedi: ${e?.message || e}`));
+      const stored = await this.buildProviderDocumentStorage(tenantId, taxpayer.id, cfg, xml, {
+        ...payload,
+        xml,
+        externalId: sourceRefId,
+      }, parsed, source, sourceRefId);
+      const total = parsed.toplamTutar ?? ((parsed.matrah || 0) + (parsed.kdvTutari || 0));
+      const shouldRewriteAccounting = String(existing.status || '').toUpperCase() !== 'APPROVED';
+      const lines = shouldRewriteAccounting
+        ? await this.gateCodesByPlan(tenantId, taxpayer.id, this.linesFromAmounts({
+          invoiceKind: direction,
+          matrah: parsed.matrah,
+          kdvTutari: parsed.kdvTutari,
+          kdvOrani: parsed.kdvOrani,
+          total,
+          vendorName: direction === 'SATIS' ? parsed.alici : parsed.satici,
+        }))
+        : [];
+
+      const updated = await (this.prisma as any).$transaction(async (tx: any) => {
+        if (shouldRewriteAccounting) {
+          await tx.invoiceAccountingLine.deleteMany({ where: { documentId: existing.id } });
+          if (lines.length) {
+            await tx.invoiceAccountingLine.createMany({
+              data: lines.map((line: any, index: number) => ({
+                documentId: existing.id,
+                group: line.group || 'matrah',
+                accountCode: line.accountCode || null,
+                description: line.description || null,
+                rate: line.rate || null,
+                debit: line.debit || new Prisma.Decimal(0),
+                credit: line.credit || new Prisma.Decimal(0),
+                orderNo: index,
+              })),
+            });
+          }
+        }
+        return tx.invoiceAccountingDocument.update({
+          where: { id: existing.id },
+          data: {
+            source,
+            sourceRefId,
+            documentType: this.documentTypeFromProviderXml(xml),
+            invoiceKind: direction,
+            originalName: stored.originalName,
+            mimeType: stored.mimeType,
+            sizeBytes: stored.buffer.length,
+            s3Key: stored.s3Key,
+            ...(shouldRewriteAccounting ? {
+              currency: parsed.paraBirimi || 'TL',
+              belgeNo: parsed.faturaNo || null,
+              faturaTarihi: parsed.faturaTarihi || null,
+              sellerVkn: parsed.saticiVergiNo || null,
+              buyerVkn: parsed.aliciVergiNo || null,
+              vendorName: parsed.satici || null,
+              customerName: parsed.alici || null,
+              totalAmount: money(total),
+              ocrStatus: 'SUCCESS',
+              ocrEngine: `${cfg.provider.toLowerCase()}-api`,
+              ocrConfidence: 1,
+              ocrData: {
+                provider: cfg.provider,
+                source: 'provider-api',
+                direction,
+                matrah: parsed.matrah,
+                kdvTutari: parsed.kdvTutari,
+                kdvOrani: parsed.kdvOrani,
+                ettn: parsed.ettn,
+              },
+            } : {}),
+          },
+          include: { lines: { orderBy: { orderNo: 'asc' } } },
+        });
+      });
+      if (existing.s3Key && existing.s3Key !== stored.s3Key && !String(existing.s3Key).startsWith('earsiv-inline://')) {
+        this.storage.deleteObject(existing.s3Key).catch(() => {});
       }
-      return { created: false, document: existing };
+      if (shouldRewriteAccounting) await this.revalidateDocument(tenantId, updated.id).catch(() => null);
+      return { created: false, document: updated, refreshed: true };
     }
 
     const stored = await this.buildProviderDocumentStorage(tenantId, taxpayer.id, cfg, xml, payload, parsed, source, sourceRefId);
@@ -7065,33 +7335,34 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const rateNumber = opts.kdvOrani ? Number(opts.kdvOrani) : undefined;
     const rate = rateNumber ? `%${rateNumber.toLocaleString('tr-TR')}` : undefined;
 
-    return [
-      {
-        group: 'matrah',
-        accountCode: matrahCode,
-        description: isSale ? 'Satış matrahı' : 'Gider / matrah',
-        debit: isSale ? zero() : matrah,
-        credit: isSale ? matrah : zero(),
-        orderNo: 0,
-      },
-      {
+    const singleRateLines: any[] = [{
+      group: 'matrah',
+      accountCode: matrahCode,
+      description: isSale ? 'Satış matrahı' : 'Gider / matrah',
+      debit: isSale ? zero() : matrah,
+      credit: isSale ? matrah : zero(),
+      orderNo: 0,
+    }];
+    if (kdv.gt(0)) {
+      singleRateLines.push({
         group: 'vergi',
         accountCode: this.kdvAccountCode(isSale, rateNumber),
         description: isSale ? 'Hesaplanan KDV' : 'İndirilecek KDV',
         rate,
         debit: isSale ? zero() : kdv,
         credit: isSale ? kdv : zero(),
-        orderNo: 1,
-      },
-      {
-        group: 'cari',
-        accountCode: cariCode,
-        description: opts.vendorName || 'Cari hesap',
-        debit: isSale ? total : zero(),
-        credit: isSale ? zero() : total,
-        orderNo: 2,
-      },
-    ];
+        orderNo: singleRateLines.length,
+      });
+    }
+    singleRateLines.push({
+      group: 'cari',
+      accountCode: cariCode,
+      description: opts.vendorName || 'Cari hesap',
+      debit: isSale ? total : zero(),
+      credit: isSale ? zero() : total,
+      orderNo: singleRateLines.length,
+    });
+    return singleRateLines;
   }
 
   /**

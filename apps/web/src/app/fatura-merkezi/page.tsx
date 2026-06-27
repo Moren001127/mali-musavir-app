@@ -1414,7 +1414,14 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
     refetchInterval: 6000,
   });
   const efaturaRows: any[] = Array.isArray(efaturaInboxQ.data) ? efaturaInboxQ.data : [];
-  const efaturaTransferableRows = efaturaRows.filter((r) => !(r.processedAt || r.isTransferred || r.documentId));
+  const efaturaDocumentReady = (r: any) => {
+    const raw = r?.rawJson && typeof r.rawJson === 'object' ? r.rawJson : {};
+    const provider = String(r?.entegrator || raw?.provider || '').toUpperCase();
+    if (provider !== 'TURMOB_EFATURA') return true;
+    const status = String(raw?.documentDownloadStatus || '').toUpperCase();
+    return status !== 'MISSING' && raw?.needsDocumentDownload !== true;
+  };
+  const efaturaTransferableRows = efaturaRows.filter((r) => !(r.processedAt || r.isTransferred || r.documentId) && efaturaDocumentReady(r));
   useEffect(() => {
     setLastEfaturaSync(null);
   }, [taxpayerId, period, efaturaChannel]);
@@ -1454,7 +1461,9 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
     onSuccess: (r: any) => {
       const imported = Number(r?.data?.imported || 0);
       const processed = Number(r?.data?.processed || 0);
-      toast.success(imported > 0 ? `${imported} fatura bekleyen listeye aktarildi.` : `${processed} fatura kontrol edildi; yeni aktarim yok.`);
+      const failed = Number(r?.data?.failed || 0);
+      if (failed > 0) toast.warning(`${imported} fatura aktarildi, ${failed} fatura belge indirilemedigi icin atlandi.`);
+      else toast.success(imported > 0 ? `${imported} fatura bekleyen listeye aktarildi.` : `${processed} fatura kontrol edildi; yeni aktarim yok.`);
       qc.invalidateQueries({ queryKey: ['fm-efatura-inbox'] });
       qc.invalidateQueries({ queryKey: ['fm2'] });
     },
@@ -1472,8 +1481,10 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
     if (st === 'SKIPPED') return p?.reason || 'Atlandi';
     const parts = [
       `${Number(p?.fetched || 0)} bulundu`,
+      p?.downloaded != null ? `${Number(p.downloaded || 0)} indirildi` : null,
       `${Number(p?.added || 0)} yeni`,
       `${Number(p?.updated || 0)} guncel`,
+      Number(p?.missingDocument || 0) ? `${Number(p.missingDocument)} belge yok` : null,
       Number(p?.skipped || 0) ? `${Number(p.skipped)} atlandi` : null,
     ].filter(Boolean);
     return parts.join(' · ');
