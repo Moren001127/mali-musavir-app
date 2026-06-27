@@ -711,28 +711,26 @@ export default function FaturaMerkeziPage() {
                 <div className="brandco">Oku · eşleştir · aktar</div>
               </div>
             </div>
-            {screen === 'muhasebe' && (
-              <div className="sidecontext">
-                <div className="ctxlabel">Çalışma bağlamı</div>
-                <label className="ctxfield">
-                  <span>Mükellef</span>
-                  <select value={taxpayerId} onChange={(e) => setTaxpayerId(e.target.value)}>
-                    <option value="">Tüm mükellefler</option>
-                    {taxpayers.map((t) => (
-                      <option key={t.id} value={t.id}>{taxpayerLabel(t)}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className="ctxfield">
-                  <span>Dönem</span>
-                  <select value={period} onChange={(e) => setPeriod(e.target.value)}>
-                    {periodOptions().map((p) => (
-                      <option key={p.v} value={p.v}>{p.l}</option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-            )}
+            <div className="sidecontext">
+              <div className="ctxlabel">Çalışma bağlamı</div>
+              <label className="ctxfield">
+                <span>Mükellef</span>
+                <select value={taxpayerId} onChange={(e) => setTaxpayerId(e.target.value)}>
+                  <option value="">Tüm mükellefler</option>
+                  {taxpayers.map((t) => (
+                    <option key={t.id} value={t.id}>{taxpayerLabel(t)}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="ctxfield">
+                <span>Dönem</span>
+                <select value={period} onChange={(e) => setPeriod(e.target.value)}>
+                  {periodOptions().map((p) => (
+                    <option key={p.v} value={p.v}>{p.l}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
           </div>
           {nav}
         </aside>
@@ -1577,7 +1575,7 @@ function InlineBelge({ id }: { id: string }) {
       //    önizlemeyle tutarlı (kullanıcı isteği). Daha büyük için zoom (+) kullanılır.
       contentWRef.current = cw;
       const paneW = (w.clientWidth || 600) - 16;
-      setFit(Math.min(1, Math.max(0.3, paneW / cw)));
+      setFit(Math.min(2.4, Math.max(0.3, paneW / cw)));
     } catch { /* cross-origin */ }
   };
   // Panel yeniden boyutlanınca (Büyüt/Küçült/pencere) ölçülen içerik genişliğine göre yeniden sığdır.
@@ -1585,7 +1583,7 @@ function InlineBelge({ id }: { id: string }) {
     const w = wrapRef.current, cw = contentWRef.current;
     if (!w || !cw) { measure(); return; }
     const paneW = (w.clientWidth || 600) - 16;
-    setFit(Math.min(1, Math.max(0.3, paneW / cw)));
+    setFit(Math.min(2.4, Math.max(0.3, paneW / cw)));
   };
   // Resim de genişliğe sığdırılır ama DAR fiş BÜYÜTÜLMEZ (en çok %100) — tam-ekran önizlemeyle
   // tutarlı; geniş resim panoya küçültülür. Daha büyük için zoom (+).
@@ -1596,7 +1594,7 @@ function InlineBelge({ id }: { id: string }) {
     setImgW(Math.ceil(nw));
     contentWRef.current = nw;
     const paneW = (w.clientWidth || 600) - 16;
-    setFit(Math.min(1, Math.max(0.3, paneW / nw)));
+    setFit(Math.min(2.4, Math.max(0.3, paneW / nw)));
   };
   // Görseller geç yüklendiğinden birkaç kez yeniden ölç.
   const onFrameLoad = () => { measure(); setTimeout(measure, 250); setTimeout(measure, 900); setTimeout(measure, 2000); };
@@ -3545,4 +3543,92 @@ const CSS = `
 #fm-root .mktr-pending td:first-child{border-left-color:#0f766e}
 #fm-root .mknum-pending{background:#f2faf7;border-color:#a8d4c8;color:#0f766e}
 #fm-root .mktr:hover .mkbtn{background:#1f2937;border-color:#1f2937}
+
+/* İnce ayar: seçiciler tutarlı üstte, butonlar ve sayaçlar daha hafif/şeffaf */
+#fm-root .screen-muhasebe .top{display:flex}
+#fm-root .screen-muhasebe .content{padding:10px 18px;overflow:hidden}
+#fm-root .screen-muhasebe .muhcard{height:calc(100vh - 112px);min-height:0}
+#fm-root .sidecontext{display:none}
+#fm-root .top{padding:10px 22px;background:rgba(251,250,247,.86);backdrop-filter:blur(8px)}
+#fm-root .topfiltbar{gap:10px}
+#fm-root .topfilt{height:34px;border-radius:8px;background:rgba(15,118,110,.045);border:1px solid rgba(15,118,110,.18);padding:4px 10px;box-shadow:none}
+#fm-root .topfilt svg{color:#0f766e;opacity:.72}
+#fm-root .filtsel{font-size:12.5px;font-weight:600;letter-spacing:0;min-width:150px;color:#20242a}
+#fm-root .brandplate{padding:12px 12px;border-radius:10px;background:rgba(255,255,255,.72);border-color:rgba(31,41,55,.16)}
+#fm-root .brandmark{width:34px;height:34px;border-radius:8px;font-size:11px;font-weight:700}
+#fm-root .brandmod{font-size:15px;font-weight:700;letter-spacing:0}
+#fm-root .brandco{font-size:10.5px;font-weight:500;color:#72796f}
+#fm-root .nitem{font-weight:600}
+#fm-root .nitem .ct{font-weight:600}
+#fm-root .screen > .fmstats{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin:8px 0 12px;padding:0;background:transparent;border:0}
+#fm-root .screen > .fmstats .fmstat{min-height:58px;border:1px solid color-mix(in srgb,var(--sc,var(--accent)) 24%,transparent);border-radius:9px;background:color-mix(in srgb,var(--sc,var(--accent)) 8%,#fff);padding:10px 12px;display:grid;grid-template-columns:1fr auto;align-items:end;box-shadow:none}
+#fm-root .screen > .fmstats .fmstat::after{content:'';display:block;grid-column:1 / 3;width:28px;height:3px;margin-top:7px;border-radius:999px;background:color-mix(in srgb,var(--sc,var(--accent)) 70%,transparent);order:3}
+#fm-root .screen > .fmstats .fmsl{font-size:10.5px;font-weight:600;line-height:1.12;color:#66706c;text-transform:uppercase;letter-spacing:.28px;white-space:normal}
+#fm-root .screen > .fmstats .fmsv{font-size:24px;font-weight:650;line-height:1;color:#20242a;letter-spacing:0;margin:0;font-variant-numeric:tabular-nums}
+#fm-root .invcard{border-color:#e1ddd4;background:rgba(255,255,255,.82);box-shadow:none}
+#fm-root .invactions{display:flex;align-items:center;gap:8px;padding:12px 14px;background:rgba(255,255,255,.68);border-bottom:1px solid #e1ddd4;flex-wrap:wrap}
+#fm-root .invactions h3{font-size:14px;font-weight:650;line-height:1;color:#20242a;min-width:94px;margin:0}
+#fm-root .invactions .sp{display:block;flex:1 1 10px}
+#fm-root .invactions .btn{height:30px;border-radius:8px;padding:0 10px;font-size:11.5px;font-weight:600;letter-spacing:0;border:1px solid rgba(31,41,55,.14);box-shadow:none;background:rgba(255,255,255,.62);color:#374151}
+#fm-root .invactions .btn .ico{width:16px;height:16px;border-radius:5px;background:rgba(255,255,255,.42)}
+#fm-root .invactions .btn:hover:not(:disabled){transform:none;box-shadow:none;filter:none}
+#fm-root .invactions .btn.blue{background:rgba(31,41,55,.11);border-color:rgba(31,41,55,.2);color:#1f2937}
+#fm-root .invactions .btn.upload{background:rgba(15,118,110,.08);border-color:rgba(15,118,110,.22);color:#0f766e}
+#fm-root .invactions .btn.fix{background:rgba(13,148,136,.09);border-color:rgba(13,148,136,.24);color:#0f766e}
+#fm-root .invactions .btn.ai{background:rgba(71,85,105,.14);border-color:rgba(71,85,105,.22);color:#374151}
+#fm-root .invactions .btn.primary{background:rgba(15,118,110,.14);border-color:rgba(15,118,110,.28);color:#0f766e}
+#fm-root .invactions .btn.soon:disabled{background:rgba(148,163,184,.10);border-color:rgba(148,163,184,.20);color:#8a918b}
+#fm-root .soonbadge{font-size:9px;font-weight:600;background:rgba(31,41,55,.08);color:#7a817b}
+#fm-root .dfchip{height:28px;border-radius:9px;padding:0 10px;font-size:11.5px;font-weight:600;background:rgba(255,255,255,.62);border-color:rgba(31,41,55,.13);color:#66706c}
+#fm-root .dfchip .dfn{font-size:10.5px;font-weight:600;background:rgba(31,41,55,.08);color:#66706c;border-radius:999px;padding:1px 7px}
+#fm-root .dfchip.on{background:rgba(31,41,55,.12);border-color:rgba(31,41,55,.22);color:#1f2937;box-shadow:none}
+#fm-root .dfchip.on .dfn{background:rgba(31,41,55,.12);color:#1f2937}
+#fm-root .muhfilter button{font-weight:600}
+#fm-root .muhfilter b{font-weight:600}
+
+/* Bağlam seçimi tüm modüllerde solda; üstteki seçim barı kullanılmaz */
+#fm-root .sidecontext{display:block;margin-top:10px;padding:10px;border:1px solid rgba(31,41,55,.14);border-radius:10px;background:rgba(255,255,255,.68);box-shadow:0 10px 22px -24px rgba(31,41,55,.45)}
+#fm-root .ctxlabel{font-size:10px;font-weight:650;text-transform:uppercase;letter-spacing:.35px;color:#7a817b;margin-bottom:8px}
+#fm-root .ctxfield{display:flex;flex-direction:column;gap:4px;margin-top:8px}
+#fm-root .ctxfield span{font-size:9.5px;font-weight:650;text-transform:uppercase;letter-spacing:.3px;color:#8b928c}
+#fm-root .ctxfield select{height:36px;width:100%;border:1px solid rgba(31,41,55,.16);border-radius:7px;background:rgba(255,255,255,.7);color:#20242a;font-family:inherit;font-size:12.5px;font-weight:600;padding:0 9px;outline:none}
+#fm-root .ctxfield select:focus{border-color:rgba(15,118,110,.38);box-shadow:0 0 0 3px rgba(15,118,110,.08)}
+#fm-root .topfiltbar{display:none}
+#fm-root .top{min-height:38px;padding:8px 22px;background:rgba(251,250,247,.72)}
+#fm-root .screen-muhasebe .top{display:none}
+#fm-root .screen-muhasebe .content{padding:10px 18px;overflow:hidden}
+#fm-root .screen-muhasebe .muhcard{height:calc(100vh - 20px);min-height:0}
+
+/* Belge/kod ekranı son sıkıştırma: boşluk yok, sıcak zemin, sağ panel daha rahat */
+#fm-root{--bg:#f7f4ec;--line:#e2d8c8;--line2:#d8cbb8;--accent:#23665b;--accent-soft:#edf7f3;--accent-line:#cde4dc;--th:#f2f7f3;--th-text:#315c52}
+#fm-root .app::before{background:linear-gradient(90deg,#23665b,#d19b45,#7b8f69)}
+#fm-root .side{background:linear-gradient(180deg,#fffdf8 0%,#f6f1e7 100%);border-right-color:#ded3c1}
+#fm-root .brand{background:#fffdf8;border-bottom-color:#ded3c1}
+#fm-root .brandplate{background:rgba(255,255,255,.78);border-color:rgba(113,86,45,.18)}
+#fm-root .brandplate::after{background:linear-gradient(90deg,#23665b 0 45%,#d19b45 45% 78%,#7b8f69 78%)}
+#fm-root .brandmark{background:#24342f}
+#fm-root .top{background:rgba(255,253,248,.72);border-bottom-color:#ded3c1}
+#fm-root .content{background:#f7f4ec}
+#fm-root .screen-muhasebe .content{padding:8px 14px}
+#fm-root .screen-muhasebe .muhmain .fiseditor{gap:10px}
+#fm-root .screen-muhasebe .muhmain .belgebox{background:#f2eee4}
+#fm-root .screen-muhasebe .muhmain .belgebox .bpbar{background:#fffdf8;border-bottom-color:#ded3c1}
+#fm-root .screen-muhasebe .muhmain .belgebox .bpview{background:#f2eee4;padding:6px;justify-content:center}
+#fm-root .screen-muhasebe .muhmain .belgebox .bpframe-h{background:#fff;box-shadow:0 0 0 1px rgba(113,86,45,.12)}
+#fm-root .screen-muhasebe .muhmain .belgebox .bpimg{background:#fff;box-shadow:0 0 0 1px rgba(113,86,45,.12)}
+#fm-root .screen-muhasebe .muhmain .fispane{flex-basis:430px;max-width:430px;min-width:398px;padding-left:10px;overflow:auto;scrollbar-gutter:stable;background:#f7f4ec}
+#fm-root .muhmain .fispane > .ph{background:#fffdf8;border-bottom-color:#e3dacb;padding:6px 0 5px}
+#fm-root .muhmain .docmeta{margin:6px 0;border-color:#d9e3df;background:#fbfefa;padding:7px;gap:5px}
+#fm-root .muhmain .docmeta .dmi,#fm-root .muhmain .docmeta .psel .pselfield{height:26px;font-size:12px;border-color:#d9d0c0;background:#fff}
+#fm-root .muhmain .fgrp{border-color:#ded5c6;background:#fff}
+#fm-root .muhmain .fgrp .fgh{padding:4px 8px;background:#f4f8f4}
+#fm-root .muhmain .fgrp .frow{padding:3px 7px}
+#fm-root .muhmain .fgrp .fgt{padding:3px 8px}
+#fm-root .muhmain .balance{margin:6px 0 0;padding:7px 10px;background:#e9f8ef;border-color:#bfe5ca}
+#fm-root .muhmain .fispane > .wactions{position:sticky;bottom:0;margin-top:6px;padding:6px 0 0;background:linear-gradient(180deg,rgba(247,244,236,0),#f7f4ec 34%);min-height:42px}
+#fm-root .muhmain .wactions .btn{height:30px;border-radius:8px;font-size:12px;font-weight:600}
+#fm-root .muhmain .wactions .btn.primary{background:#24342f;border-color:#24342f;color:#fff}
+#fm-root .muhmain .wactions .btn:not(.primary){background:#fff;border-color:#d8cbb8}
+#fm-root .btn.primary{background:#23665b;border-color:#23665b}
+#fm-root .invactions .btn.primary{background:rgba(35,102,91,.14);border-color:rgba(35,102,91,.28);color:#23665b}
 `;
