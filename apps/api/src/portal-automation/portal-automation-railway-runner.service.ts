@@ -691,6 +691,9 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       } else if (isSgk) {
         await page.goto(loginUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 });
         await this.loginSgkWithCaptcha(page, credential, loginUrl, jobType);
+      } else if (jobType === 'EARSIV_PORTAL_FETCH') {
+        await page.goto(loginUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+        await this.loginEarsivPortalDirect(page, credential);
       } else {
         await page.goto(loginUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 });
         await this.fillGenericPortalLogin(page, this.loginValuesForJob(jobType, credential));
@@ -3083,6 +3086,56 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       }
     }
     await page.keyboard.press('Enter');
+  }
+
+  private async loginEarsivPortalDirect(page: any, credential: RunnerCredential) {
+    const userCode = credential.userCode || credential.username || '';
+    if (!userCode) throw new Error('GIB e-Arsiv kullanici kodu eksik');
+    const passwords = [credential.secondaryPassword, credential.password]
+      .map((v) => String(v || '').trim())
+      .filter((v, idx, arr) => v && arr.indexOf(v) === idx);
+    if (!passwords.length) throw new Error('GIB e-Arsiv sifresi eksik');
+
+    let lastError = '';
+    for (const pass of passwords) {
+      const body = new URLSearchParams();
+      body.set('assoscmd', 'anologin');
+      body.set('rtype', 'json');
+      body.set('userid', userCode);
+      body.set('sifre', pass);
+      body.set('sifre2', pass);
+      body.set('parola', '1');
+      const response = await fetch('https://earsivportal.efatura.gov.tr/earsiv-services/assos-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=utf-8' },
+        body,
+      });
+      const text = await response.text();
+      let data: any = null;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        lastError = `GIB e-Arsiv login JSON donmedi: HTTP ${response.status} ${this.compact(text).slice(0, 160)}`;
+        continue;
+      }
+      if (!response.ok || data?.error || !data?.token || !data?.redirectUrl) {
+        lastError = data?.messages?.[0]?.text || data?.message || `HTTP ${response.status}`;
+        continue;
+      }
+      const targetUrl = this.buildEarsivRedirectUrl(data.redirectUrl, data.token);
+      await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+      await page.waitForTimeout(1000);
+      return;
+    }
+    throw new Error(`Portal sifresi reddedildi: ${this.compact(lastError || 'GIB e-Arsiv login basarisiz')}`);
+  }
+
+  private buildEarsivRedirectUrl(redirectUrl: string, token: string) {
+    const base = 'https://earsivportal.efatura.gov.tr/';
+    const url = new URL(String(redirectUrl || 'index.jsp'), base);
+    url.searchParams.set('token', token);
+    url.searchParams.set('v', String(Date.now()));
+    return url.toString();
   }
 
   private async finishLoginAfterFill(page: any) {
