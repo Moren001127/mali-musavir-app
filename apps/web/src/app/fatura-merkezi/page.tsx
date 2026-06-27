@@ -11,10 +11,13 @@ import { isletmeRef, ISLETME_ISLEM_TURU, ISLETME_KDV_ORAN, defaultBelgeTuruKod, 
 function showFetchResult(d: any) {
   const provs: any[] = Array.isArray(d?.providers) ? d.providers : [];
   const failed = provs.filter((p) => p?.status === 'FAILED' || (p?.errors && p.errors.length));
+  const partialFailed = provs.filter((p) => Number(p?.failed || 0) > 0);
   const queued = provs.filter((p) => p?.status === 'QUEUED_VIA_LUCA' || p?.status === 'QUEUED_GIB_PORTAL');
   const skipped = provs.filter((p) => p?.status === 'SKIPPED');
   if (failed.length) {
     toast.error('Çekilemedi — ' + failed.map((p) => `${p.label || p.provider}: ${p.reason || p.errors?.[0]?.message || 'hata'}`).join(' · '), { duration: 9000 });
+  } else if (partialFailed.length) {
+    toast.warning(partialFailed.map((p) => `${p.label || p.provider}: ${Number(p.failed || 0)} satir yazilamadi`).join(' · '), { duration: 9000 });
   } else if (Number(d?.created) > 0) {
     toast.success(`${d.created} fatura çekildi${Number(d?.alreadyQueued) ? ` · ${d.alreadyQueued} zaten vardı` : ''}`);
   } else if (queued.length) {
@@ -1421,7 +1424,11 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
     const status = String(raw?.documentDownloadStatus || '').toUpperCase();
     return status !== 'MISSING' && raw?.needsDocumentDownload !== true;
   };
-  const efaturaTransferableRows = efaturaRows.filter((r) => !(r.processedAt || r.isTransferred || r.documentId) && efaturaDocumentReady(r));
+  const efaturaIsTransferred = (r: any) => {
+    if (r?.hasAccountingDocument === false) return false;
+    return Boolean(r?.hasAccountingDocument || r?.processedAt || r?.isTransferred || r?.documentId);
+  };
+  const efaturaTransferableRows = efaturaRows.filter((r) => !efaturaIsTransferred(r) && efaturaDocumentReady(r));
   useEffect(() => {
     setLastEfaturaSync(null);
   }, [taxpayerId, period, efaturaChannel]);
@@ -1480,7 +1487,7 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
     if (provider === 'TURMOB_EFATURA') return `TURMOB ${efaturaChannelTitle}`;
     return p?.label || p?.provider || 'Entegrator';
   };
-  const efaturaStatusTone = efaturaStatusRows.some((p) => String(p?.status || '').toUpperCase() === 'FAILED')
+  const efaturaStatusTone = efaturaStatusRows.some((p) => String(p?.status || '').toUpperCase() === 'FAILED' || Number(p?.failed || 0) > 0)
     ? 'bad'
     : efaturaStatusRows.some((p) => Number(p?.fetched || 0) === 0)
       ? 'warn'
@@ -1489,13 +1496,17 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
     const st = String(p?.status || '').toUpperCase();
     if (st === 'FAILED') return p?.reason || 'Sorgu hatasi';
     if (st === 'SKIPPED') return p?.reason || 'Atlandi';
+    const missingDocument = Number(p?.missingDocument || 0);
+    const failedCount = Number(p?.failed || 0);
+    const skippedCount = Math.max(0, Number(p?.skipped || 0) - missingDocument);
     const parts = [
       `${Number(p?.fetched || 0)} bulundu`,
       p?.downloaded != null ? `${Number(p.downloaded || 0)} indirildi` : null,
       `${Number(p?.added || 0)} yeni`,
       `${Number(p?.updated || 0)} guncel`,
-      Number(p?.missingDocument || 0) ? `${Number(p.missingDocument)} belge yok` : null,
-      Number(p?.skipped || 0) ? `${Number(p.skipped)} atlandi` : null,
+      missingDocument ? `${missingDocument} belge indirilemedi` : null,
+      skippedCount ? `${skippedCount} atlandi` : null,
+      failedCount ? `${failedCount} hata` : null,
     ].filter(Boolean);
     return parts.join(' · ');
   };
@@ -1608,7 +1619,7 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
                   const title = efaturaDirection === 'OUT' ? (raw.receiverTitle || raw.alici || r.receiverVkn) : (r.senderTitle || raw.senderTitle || raw.satici);
                   const taxNo = efaturaDirection === 'OUT' ? (r.receiverVkn || raw.receiverVkn || raw.aliciVergiNo) : (r.senderVkn || raw.senderVkn || raw.saticiVergiNo);
                   const approval = raw.onayDurumu || raw.approvalStatus || raw.status || raw.invoiceStatus || '—';
-                  const transferred = Boolean(r.processedAt || r.isTransferred || r.documentId);
+                  const transferred = efaturaIsTransferred(r);
                   return (
                     <tr key={r.id} className={transferred ? 'done' : ''}>
                       <td>{r.entegrator}</td>

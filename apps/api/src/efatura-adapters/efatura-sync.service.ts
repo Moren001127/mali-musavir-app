@@ -142,6 +142,30 @@ export class EFaturaSyncService {
         rawJson: true, markedAt: true, processedAt: true, syncedAt: true,
       },
     });
+    const docIds = [...new Set(rows.map((row: any) => String(row.documentId || '').trim()).filter(Boolean))];
+    let existingDocIds = new Set<string>();
+    if (docIds.length) {
+      const docWhere: any = { tenantId, id: { in: docIds } };
+      if (opts.taxpayerId) docWhere.taxpayerId = opts.taxpayerId;
+      const docs = await (this.prisma as any).invoiceAccountingDocument.findMany({
+        where: docWhere,
+        select: { id: true },
+      });
+      existingDocIds = new Set(docs.map((doc: any) => String(doc.id)));
+    }
+
+    const staleRows = rows.filter((row: any) => (
+      (row.documentId && !existingDocIds.has(String(row.documentId))) ||
+      (!row.documentId && (row.isTransferred || row.processedAt))
+    ));
+    if (staleRows.length) {
+      await (this.prisma as any).eFaturaInbox.updateMany({
+        where: { tenantId, id: { in: staleRows.map((row: any) => row.id) } },
+        data: { documentId: null, isTransferred: false, processedAt: null },
+      });
+    }
+    const staleIds = new Set(staleRows.map((row: any) => row.id));
+
     const channel = String(opts.channel || '').toUpperCase();
     return rows
       .filter((row: any) => {
@@ -155,7 +179,14 @@ export class EFaturaSyncService {
         }
         return true;
       })
-      .slice(0, limit);
+      .slice(0, limit)
+      .map((row: any) => {
+        const hasAccountingDocument = !!row.documentId && existingDocIds.has(String(row.documentId));
+        if (staleIds.has(row.id)) {
+          return { ...row, documentId: null, isTransferred: false, processedAt: null, hasAccountingDocument: false };
+        }
+        return { ...row, hasAccountingDocument };
+      });
   }
 
   /**

@@ -3494,7 +3494,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             turmobLookup = { cfg, payloads: [], byKey: new Map(), error: e?.message || 'TURMOB belge indirilemedi' };
             this.logger.warn(`TURMOB belge indirme es gecildi: ${turmobLookup.error}`);
           }
-          let providerAdded = 0, providerUpdated = 0, providerSkipped = 0;
+          let providerAdded = 0, providerUpdated = 0, providerSkipped = 0, providerFailed = 0;
           let providerDownloaded = 0, providerMissingDocument = 0;
           for (const sourceRow of listed.liveRows.slice(0, limit)) {
             try {
@@ -3525,17 +3525,16 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
                 ? (this.parseProviderUblInvoice(payload.xml) || this.regexProviderInvoiceFallback(payload.xml))
                 : null;
               const storedVisual = payload ? this.providerStoredVisual(payload) : null;
-              if (payload) providerDownloaded++;
               const existing = await (this.prisma as any).eFaturaInbox.findUnique({
                 where: { tenantId_taxpayerId_entegrator_uuid: { tenantId, taxpayerId: opts.taxpayerId, entegrator: cfg.provider, uuid: summary.uuid } },
                 select: { id: true, rawJson: true, documentId: true, isTransferred: true, processedAt: true, ublXmlRaw: true },
               });
               const currentRaw = existing?.rawJson && typeof existing.rawJson === 'object' ? existing.rawJson : {};
-              if (!payload) providerMissingDocument++;
               const data: any = {
                 paraBirimi: parsed?.paraBirimi || summary.paraBirimi || 'TRY',
                 direction: inboxDirection,
                 invoiceProfile: parsed ? this.documentTypeFromProviderXml(payload!.xml) === 'E_ARSIV' ? 'e-Arsiv' : 'e-Fatura' : summary.invoiceProfile,
+                syncedAt: new Date(),
                 rawJson: {
                   ...currentRaw,
                   channel,
@@ -3599,7 +3598,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
                 });
                 providerAdded++;
               }
+              if (payload) providerDownloaded++;
+              else providerMissingDocument++;
             } catch (e: any) {
+              providerFailed++;
               failed++;
               this.logger.warn(`TURMOB e-Fatura liste satiri yazilamadi: ${e?.message || e}`);
             }
@@ -3616,8 +3618,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             downloaded: providerDownloaded,
             added: providerAdded,
             updated: providerUpdated,
-            skipped: providerSkipped + providerMissingDocument + Math.max(0, listed.rows.length - listed.liveRows.length),
+            skipped: providerSkipped + Math.max(0, listed.rows.length - listed.liveRows.length),
             missingDocument: providerMissingDocument,
+            failed: providerFailed,
           });
           continue;
         }
@@ -3653,6 +3656,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
               direction: inboxDirection,
               invoiceProfile: docType === 'E_ARSIV' ? 'e-Arsiv' : ((parsed as any).profileId || 'e-Fatura'),
               ublXmlRaw: payload.xml,
+              syncedAt: new Date(),
               rawJson: {
                 channel,
                 documentType: docType,
@@ -3743,6 +3747,15 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       orderBy: { faturaDate: 'desc' },
       take: Math.min(Math.max(Number(opts.limit || 500), 1), 1000),
     });
+    const referencedDocIds = [...new Set(rows.map((row: any) => String(row.documentId || '').trim()).filter(Boolean))];
+    let existingDocIds = new Set<string>();
+    if (referencedDocIds.length) {
+      const existingDocs = await (this.prisma as any).invoiceAccountingDocument.findMany({
+        where: { tenantId, taxpayerId: opts.taxpayerId, id: { in: referencedDocIds } },
+        select: { id: true },
+      });
+      existingDocIds = new Set(existingDocs.map((doc: any) => String(doc.id)));
+    }
 
     const periodForDownload = this.monthRange(opts.period);
     const providerLookupCache = new Map<string, Promise<ProviderPayloadLookup | null>>();
@@ -3769,7 +3782,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       return providerLookupCache.get(key)!;
     };
 
-    let processed = 0, imported = 0, alreadyQueued = 0, skipped = 0, failed = 0;
+    let processed = 0, imported = 0, alreadyQueued = 0, skipped = 0, failed = 0, staleReset = 0;
     const errors: any[] = [];
     for (const row of rows) {
       const raw = row.rawJson || {};
@@ -3784,6 +3797,18 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const provider = String(row.entegrator || 'TURMOB_EFATURA');
       const lookup = provider === 'TURMOB_EFATURA' ? await loadProviderLookup(provider) : null;
       const downloadedPayload = provider === 'TURMOB_EFATURA' ? this.providerPayloadForInboxRow(row, lookup) : null;
+      const transferredWithoutDocument = !row.documentId && (row.processedAt || row.isTransferred);
+      const missingLinkedDocument = row.documentId && !existingDocIds.has(String(row.documentId));
+      if (transferredWithoutDocument || missingLinkedDocument) {
+        await (this.prisma as any).eFaturaInbox.update({
+          where: { id: row.id },
+          data: { documentId: null, isTransferred: false, processedAt: null },
+        });
+        row.documentId = null;
+        row.isTransferred = false;
+        row.processedAt = null;
+        staleReset++;
+      }
       if (row.documentId || row.processedAt || row.isTransferred) {
         if (row.documentId) {
           const visualPayload = downloadedPayload
@@ -3854,7 +3879,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         if (errors.length < 10) errors.push({ id: row.id, faturaNo: row.faturaNo, message: e?.message || 'aktarim hatasi' });
       }
     }
-    return { processed, imported, alreadyQueued, skipped, failed, errors };
+    return { processed, imported, alreadyQueued, skipped, failed, staleReset, errors };
   }
 
   async importFromMihsap(
@@ -6058,7 +6083,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       addTurmobDocumentUrls(row);
     }
     let downloadAttempts = 0;
-    const maxDownloadAttempts = Math.min(260, Math.max(80, live.length * 10));
+    const maxDownloadAttempts = Math.min(2400, Math.max(240, live.length * 30));
     const targetPayloadCount = Math.min(opts.limit, Math.max(live.length, payloads.length || 1));
     for (const url of seenUrls) {
       if (++downloadAttempts > maxDownloadAttempts) break;
