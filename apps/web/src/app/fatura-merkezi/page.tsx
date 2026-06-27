@@ -1369,7 +1369,7 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
     },
     onError: (e: any) => toast.error('Aktarım başlatılamadı: ' + (e?.response?.data?.message || e?.message || 'hata')),
   });
-  const earsivBusy = sorgulaMut.isPending || aktarMut.isPending || waitForFirstRows;
+  const earsivOverlayBusy = aktarMut.isPending || waitForFirstRows || (sorgulaMut.isPending && rows.length === 0);
   const syncMut = useMutation({
     mutationFn: () => api.post('/portal-automation/earsiv/accounting-sync', { taxpayerId, period }),
     onSuccess: (r: any) => {
@@ -1434,7 +1434,7 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
       <div className="sub">{source === 'earsiv' ? 'Firmaların GIB e-Arşiv portalda kestiği satış faturaları burada sorgulanır.' : 'TÜRMOB, e-Logo, Uyumsoft ve diğer e-Fatura entegratörleri bu ekranda ayrı izlenir.'}</div>
 
       {source === 'earsiv' ? (
-        <div className={`card sourcepanel ${earsivBusy ? 'isbusy' : ''}`}>
+        <div className={`card sourcepanel ${earsivOverlayBusy ? 'isbusy' : ''}`}>
           <div className="ch sourcehead">
             <h3>GİB e-Arşiv satış sorgusu</h3>
             <span className="mu">{waitForFirstRows ? 'Sorgu/aktarım çalışıyor' : lastJob ? `Son iş: ${lastJob.status} · ${fmtDate(lastJob.updatedAt || lastJob.createdAt)}` : 'Henüz sorgu yok'}</span>
@@ -1445,7 +1445,7 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
           </div>
           <div className="sourcehint">İptal, itirazlı veya reddedilmiş faturalar tabloda görünür ama aktarıma alınmaz.</div>
           <div className="sourcetablewrap">
-            {earsivBusy && (
+            {earsivOverlayBusy && (
               <div className="queryveil">
                 <div className="querydoc" aria-hidden="true"><span /><i /><i /><i /></div>
                 <b>{aktarMut.isPending ? 'Faturalar aktariliyor...' : 'Faturalar getiriliyor...'}</b>
@@ -1483,7 +1483,7 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
           </div>
         </div>
       ) : (
-        <div className={`card sourcepanel ${(efaturaFetchMut.isPending || efaturaImportMut.isPending) ? 'isbusy' : ''}`}>
+        <div className={`card sourcepanel ${(efaturaImportMut.isPending || (efaturaFetchMut.isPending && efaturaRows.length === 0)) ? 'isbusy' : ''}`}>
           <div className="ch sourcehead">
             <h3>e-Fatura sorguları</h3>
             <span className="mu">GIB e-Arşiv ile karışmaz; sadece e-Fatura entegratörleri ve aktarım durumları.</span>
@@ -1507,7 +1507,7 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
             </button>
           </div>
           <div className="sourcetablewrap efatura">
-            {(efaturaFetchMut.isPending || efaturaImportMut.isPending) && (
+            {(efaturaImportMut.isPending || (efaturaFetchMut.isPending && efaturaRows.length === 0)) && (
               <div className="queryveil">
                 <div className="querydoc" aria-hidden="true"><span /><i /><i /><i /></div>
                 <b>{efaturaImportMut.isPending ? 'Faturalar aktariliyor...' : 'Faturalar getiriliyor...'}</b>

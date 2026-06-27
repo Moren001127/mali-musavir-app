@@ -2236,6 +2236,8 @@ export class PortalAutomationService {
       }
     }
     if (!text || text.length < 20) return {} as any;
+    const embeddedInvoice = await this.extractEarsivInvoiceTextFromJson(text);
+    if (embeddedInvoice) text = embeddedInvoice;
 
     const stripBlocks = (src: string, tag: string) =>
       src.replace(new RegExp(`<[^:>]*(?::)?${tag}\\b[\\s\\S]*?<\\/[^:>]*(?::)?${tag}>`, 'gi'), ' ');
@@ -2294,6 +2296,75 @@ export class PortalAutomationService {
       total,
       kdvOrani,
     };
+  }
+
+  private async extractEarsivInvoiceTextFromJson(text: string): Promise<string | null> {
+    const source = String(text || '').trim();
+    if (!/^[\[{]/.test(source)) return null;
+    let json: any;
+    try {
+      json = JSON.parse(source);
+    } catch {
+      return null;
+    }
+    const strings: string[] = [];
+    const visit = (node: any, key = '', depth = 0) => {
+      if (node == null || depth > 8) return;
+      if (typeof node === 'string') {
+        const value = node.trim();
+        if (value.length > 20 && (/xml|ubl|html|content|data|base64|document|invoice|fatura|belge/i.test(key) || /<html[\s>]|<(?:\?xml|[A-Za-z0-9_.-]+:)?(?:Invoice|CreditNote)\b/i.test(value) || /^[A-Za-z0-9+/=\s]{240,}$/.test(value))) {
+          strings.push(value);
+        }
+        return;
+      }
+      if (Array.isArray(node)) {
+        node.forEach((item) => visit(item, key, depth + 1));
+        return;
+      }
+      if (typeof node === 'object') {
+        for (const [childKey, childValue] of Object.entries(node)) visit(childValue, childKey, depth + 1);
+      }
+    };
+    visit(json);
+
+    const unpackBuffer = async (buffer: Buffer): Promise<string | null> => {
+      if (!buffer.length) return null;
+      if (buffer[0] === 0x50 && buffer[1] === 0x4b) {
+        const zip = await JSZip.loadAsync(buffer);
+        const entries = Object.values(zip.files)
+          .filter((entry) => !entry.dir)
+          .sort((a, b) => {
+            const rank = (name: string) => /\.(xml|ubl)$/i.test(name) ? 0 : /\.(html?|xhtml)$/i.test(name) ? 1 : 2;
+            return rank(a.name || '') - rank(b.name || '');
+          });
+        for (const entry of entries) {
+          if (!/\.(xml|ubl|html?|xhtml)$/i.test(entry.name || '')) continue;
+          const nested = Buffer.from(await entry.async('uint8array'));
+          if (nested[0] === 0x50 && nested[1] === 0x4b) {
+            const inner = await unpackBuffer(nested);
+            if (inner) return inner;
+            continue;
+          }
+          const candidate = this.htmlDecode(nested.toString('utf8')).trim();
+          if (candidate.length > 20) return candidate;
+        }
+        return null;
+      }
+      const candidate = this.htmlDecode(buffer.toString('utf8')).trim();
+      return candidate.length > 20 ? candidate : null;
+    };
+
+    for (const raw of strings) {
+      const candidate = this.htmlDecode(raw).trim();
+      if (/<html[\s>]/i.test(candidate.slice(0, 1000)) || /<(?:\?xml|[A-Za-z0-9_.-]+:)?(?:Invoice|CreditNote)\b/i.test(candidate)) {
+        return candidate;
+      }
+      const compact = candidate.replace(/^data:[^;]+;base64,/, '').replace(/\s+/g, '');
+      if (!/^[A-Za-z0-9+/]+={0,2}$/.test(compact) || compact.length < 80) continue;
+      const decoded = await unpackBuffer(Buffer.from(compact, 'base64')).catch(() => null);
+      if (decoded) return decoded;
+    }
+    return null;
   }
 
   private htmlDecode(value: string) {

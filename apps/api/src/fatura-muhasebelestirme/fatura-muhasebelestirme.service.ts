@@ -3866,11 +3866,42 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         }
       }
     }
-    const renderedStoredInvoice = await this.renderStoredInvoiceFile(doc, mimeType);
+    let renderedStoredInvoice: any = null;
+    try {
+      renderedStoredInvoice = await this.renderStoredInvoiceFile(doc, mimeType);
+    } catch (e: any) {
+      this.logger.warn(`Belge onizleme dosyasi okunamadi (${id}): ${e?.message || e}`);
+      if (this.isProviderStoredInvoice(doc)) {
+        return {
+          url: '',
+          inlineHtml: this.inlinePreviewHtml('Bu belge icin orijinal dosya okunamadi; kayit ozeti gosteriliyor.', doc),
+          mimeType: 'text/html',
+          source: 'placeholder' as const,
+        };
+      }
+    }
     if (renderedStoredInvoice) return renderedStoredInvoice;
 
+    if (!doc.s3Key) {
+      return {
+        url: '',
+        inlineHtml: this.inlinePreviewHtml('Bu belge icin dosya kaydi bulunamadi.', doc),
+        mimeType: 'text/html',
+        source: 'placeholder' as const,
+      };
+    }
     const url = await this.storage.getPresignedInlineUrl(doc.s3Key, doc.originalName, mimeType || undefined);
     return { url, mimeType, source: 'stored-file' as const };
+  }
+
+  private isProviderStoredInvoice(doc: any) {
+    const source = String(doc?.source || '').toLowerCase();
+    const name = String(doc?.originalName || '').toLowerCase();
+    return source === 'gib-earsiv-api'
+      || source === 'gib-portal-api'
+      || source.includes('efatura')
+      || source.includes('earsiv')
+      || /\.(zip|xml|ubl|html?|json)$/i.test(name);
   }
 
   private async renderStoredInvoiceFile(doc: any, mimeType: string) {
@@ -3882,10 +3913,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const shouldInspect =
       /text\/html|xml|zip|json|octet-stream/i.test(mimeType)
       || /\.(zip|xml|ubl|html?|json)$/i.test(originalName)
-      || source === 'gib-earsiv-api'
-      || source === 'gib-portal-api'
-      || source.includes('efatura')
-      || source.includes('earsiv');
+      || this.isProviderStoredInvoice(doc);
     if (!shouldInspect) return null;
 
     const buffer = await this.storage.getBuffer(s3Key);
@@ -3994,11 +4022,60 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
 
     const content = this.decodeXmlEntities(buffer.toString('utf8')).trim();
     if (!content) return null;
+    const jsonPayload = await this.extractInvoicePayloadFromJsonText(content);
+    if (jsonPayload) return jsonPayload;
     if (/<html[\s>]/i.test(content.slice(0, 1000))) return { kind: 'html', content };
     if (/<(?:\?xml|[A-Za-z0-9_.-]+:)?(?:Invoice|CreditNote)\b/i.test(content)) return { kind: 'xml', content };
     if (/text\/html/i.test(mimeType)) return { kind: 'html', content };
     if (/xml/i.test(mimeType)) return { kind: 'xml', content };
     return { kind: 'text', content };
+  }
+
+  private async extractInvoicePayloadFromJsonText(text: string): Promise<
+    | { kind: 'html' | 'xml' | 'text'; content: string }
+    | { kind: 'pdf'; buffer: Buffer }
+    | { kind: 'image'; buffer: Buffer; mimeType: string }
+    | null
+  > {
+    const source = String(text || '').trim();
+    if (!/^[\[{]/.test(source)) return null;
+    let json: any;
+    try {
+      json = JSON.parse(source);
+    } catch {
+      return null;
+    }
+
+    const candidates: string[] = [];
+    const visit = (node: any, key = '', depth = 0) => {
+      if (node == null || depth > 8) return;
+      if (typeof node === 'string') {
+        const value = node.trim();
+        if (value.length > 20 && (/xml|ubl|html|content|data|base64|pdf|document|invoice|fatura/i.test(key) || this.looksLikeXmlOrBase64(value) || /<html[\s>]|<(?:\?xml|[A-Za-z0-9_.-]+:)?(?:Invoice|CreditNote)\b/i.test(value))) {
+          candidates.push(value);
+        }
+        return;
+      }
+      if (Array.isArray(node)) {
+        node.forEach((item) => visit(item, key, depth + 1));
+        return;
+      }
+      if (typeof node === 'object') {
+        for (const [childKey, childValue] of Object.entries(node)) visit(childValue, childKey, depth + 1);
+      }
+    };
+    visit(json);
+
+    for (const candidate of candidates) {
+      const decoded = this.decodeXmlEntities(candidate).trim();
+      if (/<html[\s>]/i.test(decoded.slice(0, 1000))) return { kind: 'html', content: decoded };
+      if (/<(?:\?xml|[A-Za-z0-9_.-]+:)?(?:Invoice|CreditNote)\b/i.test(decoded)) return { kind: 'xml', content: decoded };
+      const compact = decoded.replace(/\s+/g, '');
+      if (!this.looksLikeBase64(compact)) continue;
+      const payload = await this.extractStoredInvoiceViewPayload(Buffer.from(compact, 'base64'), '');
+      if (payload) return payload;
+    }
+    return null;
   }
 
   private inlinePreviewHtml(raw: string, doc?: any) {
