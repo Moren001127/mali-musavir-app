@@ -118,11 +118,15 @@ export class EFaturaSyncService {
     const where: Record<string, any> = { tenantId };
     if (opts.taxpayerId) where.taxpayerId = opts.taxpayerId;
     if (opts.direction) where.direction = opts.direction.toUpperCase();
+    let periodStart: Date | null = null;
+    let periodEnd: Date | null = null;
     if (opts.period) {
       const start = new Date(`${opts.period}-01`);
       const end = new Date(start);
       end.setMonth(end.getMonth() + 1);
-      where.faturaDate = { gte: start, lt: end };
+      periodStart = start;
+      periodEnd = end;
+      if (!opts.channel) where.faturaDate = { gte: start, lt: end };
     }
     const limit = Math.min(parseInt(opts.limit || '200', 10) || 200, 1000);
     const take = opts.channel ? Math.min(limit * 3, 3000) : limit;
@@ -139,9 +143,18 @@ export class EFaturaSyncService {
       },
     });
     const channel = String(opts.channel || '').toUpperCase();
-    if (!channel) return rows;
     return rows
-      .filter((row: any) => String(row?.rawJson?.channel || '').toUpperCase() === channel)
+      .filter((row: any) => {
+        const raw = row?.rawJson && typeof row.rawJson === 'object' ? row.rawJson : {};
+        if (channel && String(raw?.channel || '').toUpperCase() !== channel) return false;
+        if (periodStart && periodEnd) {
+          const rowDate = row.faturaDate ? new Date(row.faturaDate) : null;
+          const dateMatches = rowDate && rowDate >= periodStart && rowDate < periodEnd;
+          const rawPeriodMatches = String(raw?.period || '') === opts.period;
+          if (!dateMatches && !rawPeriodMatches) return false;
+        }
+        return true;
+      })
       .slice(0, limit);
   }
 

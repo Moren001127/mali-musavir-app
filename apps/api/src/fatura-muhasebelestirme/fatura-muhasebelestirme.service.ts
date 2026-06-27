@@ -3512,6 +3512,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
                   provider: cfg.provider,
                   turmobRowId: summary.rowId || null,
                   turmobSummaryRaw: summary.raw,
+                  period: period.donem,
+                  queryPeriodStart: period.startDate,
+                  queryPeriodEnd: period.endDate,
                   approvalStatus: summary.approval || 'Onaylandi',
                   iptalItiraz: summary.iptal || 'Yok',
                   senderTitle: summary.senderTitle || null,
@@ -3605,6 +3608,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
                 provider: cfg.provider,
                 originalName: payload.originalName || null,
                 originalVisual: storedVisual,
+                period: period.donem,
+                queryPeriodStart: period.startDate,
+                queryPeriodEnd: period.endDate,
                 approvalStatus: 'Onaylandi',
                 iptalItiraz: 'Yok',
                 queriedBy: userId || null,
@@ -3670,11 +3676,15 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const ids = Array.isArray(opts.ids) ? [...new Set(opts.ids.map((id) => String(id || '').trim()).filter(Boolean))] : [];
     const where: any = { tenantId, taxpayerId: opts.taxpayerId, direction };
     if (ids.length) where.id = { in: ids };
+    let periodStart: Date | null = null;
+    let periodEnd: Date | null = null;
     if (opts.period) {
       const start = new Date(`${opts.period}-01`);
       const end = new Date(start);
       end.setMonth(end.getMonth() + 1);
-      where.faturaDate = { gte: start, lt: end };
+      periodStart = start;
+      periodEnd = end;
+      if (!opts.channel) where.faturaDate = { gte: start, lt: end };
     }
     const rows = await (this.prisma as any).eFaturaInbox.findMany({
       where,
@@ -3687,6 +3697,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     for (const row of rows) {
       const raw = row.rawJson || {};
       if (String(raw.channel || '').toUpperCase() !== channel) continue;
+      if (periodStart && periodEnd) {
+        const rowDate = row.faturaDate ? new Date(row.faturaDate) : null;
+        const dateMatches = rowDate && rowDate >= periodStart && rowDate < periodEnd;
+        const rawPeriodMatches = String(raw.period || '') === opts.period;
+        if (!dateMatches && !rawPeriodMatches) continue;
+      }
       processed++;
       if (row.documentId || row.processedAt || row.isTransferred) {
         if (row.documentId) {
