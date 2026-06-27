@@ -1407,7 +1407,7 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
       <div className="sub">{source === 'earsiv' ? 'Firmaların GIB e-Arşiv portalda kestiği satış faturaları burada sorgulanır.' : 'TÜRMOB, e-Logo, Uyumsoft ve diğer e-Fatura entegratörleri bu ekranda ayrı izlenir.'}</div>
 
       {source === 'earsiv' ? (
-        <div className="card sourcepanel">
+        <div className={`card sourcepanel ${(sorgulaMut.isPending || aktarMut.isPending || !!activeJob) ? 'isbusy' : ''}`}>
           <div className="ch sourcehead">
             <h3>GİB e-Arşiv satış sorgusu</h3>
             <span className="mu">{activeJob ? 'Sorgu/aktarım çalışıyor' : lastJob ? `Son iş: ${lastJob.status} · ${fmtDate(lastJob.updatedAt || lastJob.createdAt)}` : 'Henüz sorgu yok'}</span>
@@ -1418,6 +1418,12 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
           </div>
           <div className="sourcehint">İptal, itirazlı veya reddedilmiş faturalar tabloda görünür ama aktarıma alınmaz.</div>
           <div className="sourcetablewrap">
+            {(sorgulaMut.isPending || aktarMut.isPending || !!activeJob) && (
+              <div className="queryveil">
+                <div className="queryicon"><Ico html={aktarMut.isPending ? I.download : I.sync} size={24} /></div>
+                <b>{aktarMut.isPending ? 'Faturalar aktariliyor...' : 'Faturalar getiriliyor...'}</b>
+              </div>
+            )}
             <table className="sourcetable earsivtable">
               <thead>
                 <tr>
@@ -1450,7 +1456,7 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
           </div>
         </div>
       ) : (
-        <div className="card sourcepanel">
+        <div className={`card sourcepanel ${efaturaFetchMut.isPending ? 'isbusy' : ''}`}>
           <div className="ch sourcehead">
             <h3>e-Fatura sorguları</h3>
             <span className="mu">GIB e-Arşiv ile karışmaz; sadece e-Fatura entegratörleri ve aktarım durumları.</span>
@@ -1475,6 +1481,12 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
             {!efaturaProviders.length && <div className="emptyrow">Bu mükellef için tanımlı e-Fatura entegratörü yok.</div>}
           </div>
           <div className="sourcetablewrap efatura">
+            {efaturaFetchMut.isPending && (
+              <div className="queryveil">
+                <div className="queryicon"><Ico html={I.sync} size={24} /></div>
+                <b>Faturalar getiriliyor...</b>
+              </div>
+            )}
             <table className="sourcetable">
               <thead>
                 <tr>
@@ -3935,7 +3947,7 @@ const CSS = `
 #fm-root .sourcehead{display:flex;align-items:center;gap:9px;padding:12px 14px}
 #fm-root .sourcehead h3{font-size:15px;margin:0}
 #fm-root .sourcehint{padding:9px 14px;border-bottom:1px solid #e5e7eb;background:#fffbeb;color:#805b16;font-size:12px}
-#fm-root .sourcetablewrap{overflow:auto;max-height:none;min-height:0;flex:1}
+#fm-root .sourcetablewrap{overflow:auto;max-height:none;min-height:0;flex:1;position:relative}
 #fm-root .sourcetable{width:100%;border-collapse:separate;border-spacing:0}
 #fm-root .sourcetable.earsivtable{table-layout:fixed;min-width:960px}
 #fm-root .sourcetable.earsivtable th:nth-child(1),#fm-root .sourcetable.earsivtable td:nth-child(1){width:42px}
@@ -3958,6 +3970,12 @@ const CSS = `
 #fm-root .transferstate .okico{border:1px solid #bbf7d0;background:#ecfdf5;color:#16a34a}
 #fm-root .sourcetable tr.blocked td{color:#9a5c5c;background:#fffafa}
 #fm-root .sourcetable tr.done td{background:#f8fdfb}
+#fm-root .sourcepanel.isbusy .sourcetable,#fm-root .sourcepanel.isbusy .providergrid{opacity:.28;filter:blur(.6px);pointer-events:none}
+#fm-root .queryveil{position:absolute;inset:0;z-index:8;display:grid;place-items:center;background:rgba(255,255,255,.55);backdrop-filter:blur(1.5px);text-align:center;color:#1f7a68}
+#fm-root .queryveil b{display:block;margin-top:10px;font-size:14px;font-weight:650;color:#1f7a68}
+#fm-root .queryicon{width:54px;height:54px;border-radius:18px;display:grid;place-items:center;background:rgba(31,122,104,.08);color:#1f7a68;box-shadow:0 12px 30px rgba(31,122,104,.12)}
+#fm-root .queryicon .ico{animation:fmspin 1s linear infinite}
+@keyframes fmspin{to{transform:rotate(360deg)}}
 #fm-root .emptyrow{text-align:center;color:#94a3b8;padding:22px!important}
 #fm-root .providergrid{display:grid;gap:8px;padding:12px}
 #fm-root .providerrow{display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid #e5e7eb;border-radius:9px;padding:10px 12px;background:#fff}
