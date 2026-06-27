@@ -34,6 +34,26 @@ export class EarsivService {
     return String(value || '').replace(/\D/g, '');
   }
 
+  private decimalChanged(current: any, next: any): boolean {
+    if (next === null || next === undefined || next === '') return false;
+    const toNumber = (value: any): number | null => {
+      if (value === null || value === undefined || value === '') return null;
+      if (typeof value === 'object' && typeof value.toNumber === 'function') {
+        const n = value.toNumber();
+        return Number.isFinite(n) ? n : null;
+      }
+      if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+      const text = String(value).replace(/\s+/g, '').replace(/[^\d,.-]/g, '');
+      const normalized = text.includes(',') ? text.replace(/\./g, '').replace(',', '.') : text;
+      const n = Number(normalized);
+      return Number.isFinite(n) ? n : null;
+    };
+    const nextNumber = toNumber(next);
+    if (nextNumber === null) return false;
+    const currentNumber = toNumber(current);
+    return currentNumber === null || Math.abs(currentNumber - nextNumber) > 0.005;
+  }
+
   private taxNoFromZipFileName(value: string | null | undefined): string {
     const match = String(value || '').match(/#(\d{10,11})(?:\D|$)/);
     return match?.[1] || '';
@@ -440,6 +460,7 @@ export class EarsivService {
               select: {
                 id: true, faturaNo: true, donem: true, faturaTarihi: true, pdfStorageKey: true, htmlStorageKey: true,
                 satici: true, saticiVergiNo: true, alici: true, aliciVergiNo: true,
+                matrah: true, kdvTutari: true, kdvOrani: true, toplamTutar: true, paraBirimi: true,
               },
             })
           : null;
@@ -456,6 +477,13 @@ export class EarsivService {
           if (!existing.alici && f.alici) updateData.alici = f.alici;
           if (!existing.saticiVergiNo && f.saticiVergiNo) updateData.saticiVergiNo = this.normalizeTaxNo(f.saticiVergiNo);
           if (!existing.aliciVergiNo && f.aliciVergiNo) updateData.aliciVergiNo = this.normalizeTaxNo(f.aliciVergiNo);
+          if (this.decimalChanged(existing.matrah, f.matrah)) updateData.matrah = f.matrah;
+          if (this.decimalChanged(existing.kdvTutari, f.kdvTutari)) updateData.kdvTutari = f.kdvTutari;
+          if (this.decimalChanged(existing.kdvOrani, f.kdvOrani)) updateData.kdvOrani = f.kdvOrani;
+          if (this.decimalChanged(existing.toplamTutar, f.toplamTutar)) updateData.toplamTutar = f.toplamTutar;
+          if (f.paraBirimi && f.paraBirimi !== existing.paraBirimi) updateData.paraBirimi = f.paraBirimi;
+          if (f.xmlContent) updateData.xmlContent = f.xmlContent;
+          if (f.kdvBreakdown !== undefined) updateData.kdvBreakdown = f.kdvBreakdown ?? null;
           if (!existing.pdfStorageKey && f.pdfBuffer?.length) {
             let pdfStorageKey: string | null = null;
             try {

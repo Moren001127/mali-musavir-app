@@ -3273,8 +3273,31 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       existing.mimeType !== (f.pdfStorageKey ? 'application/pdf' : f.htmlStorageKey ? 'text/html' : 'application/xml') ||
       existing.originalName !== originalName ||
       Number(existing.sizeBytes || 0) !== Number(sizeBytes || 0);
+    const toNumber = (value: any): number | null => {
+      if (value === null || value === undefined || value === '') return null;
+      if (typeof value === 'object' && typeof value.toNumber === 'function') {
+        const n = value.toNumber();
+        return Number.isFinite(n) ? n : null;
+      }
+      if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+      const text = String(value).replace(/\s+/g, '').replace(/[^\d,.-]/g, '');
+      const normalized = text.includes(',') ? text.replace(/\./g, '').replace(',', '.') : text;
+      const n = Number(normalized);
+      return Number.isFinite(n) ? n : null;
+    };
+    const amountChanged = (current: any, next: any): boolean => {
+      const nextNumber = toNumber(next);
+      if (nextNumber === null) return false;
+      const currentNumber = toNumber(current);
+      return currentNumber === null || Math.abs(currentNumber - nextNumber) > 0.005;
+    };
+    const needsAmountRefresh =
+      amountChanged(existing.totalAmount, f.toplamTutar) ||
+      amountChanged(currentOcrData.matrah, f.matrah) ||
+      amountChanged(currentOcrData.kdvTutari, f.kdvTutari) ||
+      amountChanged(currentOcrData.kdvOrani, f.kdvOrani);
 
-    if (!needsLineRefresh && !needsBreakdownRefresh && !needsPreviewRefresh) return null;
+    if (!needsLineRefresh && !needsBreakdownRefresh && !needsPreviewRefresh && !needsAmountRefresh) return null;
 
     const validation = await this.runValidation({
       tenantId,
@@ -3832,7 +3855,14 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const storedVisual = downloadedPayload ? this.providerStoredVisual(downloadedPayload) : raw?.originalVisual;
       const savedXml = String(row.ublXmlRaw || '').trim();
       const savedXmlLooksSynthetic = provider === 'TURMOB_EFATURA' && this.isSyntheticTurmobInboxXml(savedXml);
-      const xml = String(downloadedPayload?.xml || (savedXmlLooksSynthetic ? '' : savedXml) || '').trim();
+      let xml = String(downloadedPayload?.xml || (savedXmlLooksSynthetic ? '' : savedXml) || '').trim();
+      const usedSummaryOnly =
+        !xml &&
+        provider === 'TURMOB_EFATURA' &&
+        (!!row.faturaNo || row.toplam != null || row.matrah != null || row.kdv != null);
+      if (usedSummaryOnly) {
+        xml = this.syntheticTurmobInboxXml(row, taxpayer, channel);
+      }
       if (!xml) { failed++; errors.push({ id: row.id, message: 'XML bulunamadi' }); continue; }
       try {
         const result = await this.createDocumentFromProviderXml(
@@ -3846,16 +3876,18 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         const parsed = this.parseProviderUblInvoice(xml) || this.regexProviderInvoiceFallback(xml);
         const updateRaw = {
           ...raw,
-          needsDocumentDownload: false,
-          documentDownloadStatus: 'READY',
-          documentDownloadError: null,
+          needsDocumentDownload: usedSummaryOnly ? true : false,
+          documentDownloadStatus: usedSummaryOnly ? 'SUMMARY_ONLY' : 'READY',
+          documentDownloadError: usedSummaryOnly
+            ? 'TURMOB orijinal XML indirilemedi; liste ozetiyle muhasebe kaydi olusturuldu.'
+            : null,
           originalVisual: storedVisual || raw?.originalVisual || null,
         };
         const total = parsed ? (parsed.toplamTutar ?? ((parsed.matrah || 0) + (parsed.kdvTutari || 0))) : null;
         await (this.prisma as any).eFaturaInbox.update({
           where: { id: row.id },
           data: {
-            ...(downloadedPayload ? { ublXmlRaw: xml } : {}),
+            ...((downloadedPayload || usedSummaryOnly) ? { ublXmlRaw: xml } : {}),
             ...(parsed?.ettn ? { ettn: parsed.ettn } : {}),
             ...(parsed?.faturaNo ? { faturaNo: parsed.faturaNo } : {}),
             ...(parsed?.faturaTarihi ? { faturaDate: parsed.faturaTarihi } : {}),
