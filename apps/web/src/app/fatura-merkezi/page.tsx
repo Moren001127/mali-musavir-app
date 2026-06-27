@@ -616,9 +616,14 @@ const TITLES: Record<string, string> = {
 };
 
 /** Kontrollü onay kutusu */
-function Check({ checked, onToggle }: { checked?: boolean; onToggle?: () => void }) {
+function Check({ checked, onToggle, disabled, title }: { checked?: boolean; onToggle?: () => void; disabled?: boolean; title?: string }) {
   return (
-    <span className={`cb${checked ? ' on' : ''}`} onClick={(e) => { e.stopPropagation(); onToggle?.(); }}>
+    <span
+      className={`cb${checked ? ' on' : ''}${disabled ? ' disabled' : ''}`}
+      title={title}
+      aria-disabled={disabled || undefined}
+      onClick={(e) => { e.stopPropagation(); if (!disabled) onToggle?.(); }}
+    >
       {checked ? <Ico html={I.checkSm} size={11} /> : null}
     </span>
   );
@@ -1418,18 +1423,12 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
     refetchInterval: source === 'efatura' && efaturaPollUntil > Date.now() ? 2500 : 6000,
   });
   const efaturaRows: any[] = Array.isArray(efaturaInboxQ.data) ? efaturaInboxQ.data : [];
-  const efaturaDocumentReady = (r: any) => {
-    const raw = r?.rawJson && typeof r.rawJson === 'object' ? r.rawJson : {};
-    const provider = String(r?.entegrator || raw?.provider || '').toUpperCase();
-    if (provider !== 'TURMOB_EFATURA') return true;
-    const status = String(raw?.documentDownloadStatus || '').toUpperCase();
-    return status !== 'MISSING' && raw?.needsDocumentDownload !== true;
-  };
   const efaturaIsTransferred = (r: any) => {
+    if (r?.hasAccountingDocument === true) return true;
     if (r?.hasAccountingDocument === false) return false;
-    return Boolean(r?.hasAccountingDocument || r?.processedAt || r?.isTransferred || r?.documentId);
+    return Boolean(r?.documentId);
   };
-  const efaturaTransferableRows = efaturaRows.filter((r) => !efaturaIsTransferred(r) && efaturaDocumentReady(r));
+  const efaturaTransferableRows = efaturaRows.filter((r) => !efaturaIsTransferred(r));
   const efaturaTransferableIds = efaturaTransferableRows.map((r) => String(r.id || '').trim()).filter(Boolean);
   const efaturaSelectedIds = [...sel].filter((id) => efaturaTransferableIds.includes(id));
   const toggleEfaturaAll = () => setSel(() => efaturaSelectedIds.length === efaturaTransferableIds.length ? new Set() : new Set(efaturaTransferableIds));
@@ -1639,7 +1638,7 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
             <table className="sourcetable">
               <thead>
                 <tr>
-                  <th><Check checked={efaturaTransferableIds.length > 0 && efaturaSelectedIds.length === efaturaTransferableIds.length} onToggle={toggleEfaturaAll} /></th>
+                  <th><Check checked={efaturaTransferableIds.length > 0 && efaturaSelectedIds.length === efaturaTransferableIds.length} disabled={efaturaTransferableIds.length === 0} onToggle={toggleEfaturaAll} /></th>
                   <th>Entegratör</th><th>Unvan</th><th>VKN/TCKN</th><th>Belge No</th><th>Tarih</th><th>Tür</th><th>Onay</th><th>Aktarım</th>
                 </tr>
               </thead>
@@ -1650,11 +1649,18 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
                   const taxNo = efaturaDirection === 'OUT' ? (r.receiverVkn || raw.receiverVkn || raw.aliciVergiNo) : (r.senderVkn || raw.senderVkn || raw.saticiVergiNo);
                   const approval = raw.onayDurumu || raw.approvalStatus || raw.status || raw.invoiceStatus || '—';
                   const transferred = efaturaIsTransferred(r);
-                  const transferable = !transferred && efaturaDocumentReady(r);
                   const rowId = String(r.id || '').trim();
+                  const selectable = !transferred && !!rowId;
                   return (
                     <tr key={r.id} className={transferred ? 'done' : ''}>
-                      <td>{transferable && rowId ? <Check checked={sel.has(rowId)} onToggle={() => toggle(rowId)} /> : null}</td>
+                      <td>
+                        <Check
+                          checked={selectable && sel.has(rowId)}
+                          disabled={!selectable}
+                          title={transferred ? 'Zaten aktarilmis' : selectable ? 'Aktarim icin sec' : 'Satir kimligi yok'}
+                          onToggle={() => toggle(rowId)}
+                        />
+                      </td>
                       <td>{r.entegrator}</td>
                       <td className="partyname">{title || '—'}</td>
                       <td>{taxNo || '—'}</td>
@@ -3448,6 +3454,8 @@ const CSS = `
 #fm-root .num{text-align:right;font-variant-numeric:tabular-nums}
 #fm-root .cb{height:16px;width:16px;border-radius:4px;border:1.5px solid var(--line2);display:inline-grid;place-items:center;cursor:pointer;background:#fff;vertical-align:middle;color:#fff}
 #fm-root .cb.on{background:var(--accent);border-color:var(--accent)}
+#fm-root .cb.disabled{cursor:not-allowed;opacity:.42;background:#f8fafc}
+#fm-root .cb.disabled:hover{border-color:var(--line2)}
 #fm-root td.firm{max-width:230px}
 #fm-root .firm b{font-weight:600;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #fm-root .firm small{display:block;color:var(--faint);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

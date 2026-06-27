@@ -5043,6 +5043,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     await this.logAudit(tenantId, userId, 'DELETE', id,
       { belgeNo: doc.belgeNo, invoiceKind: doc.invoiceKind, totalAmount: String(doc.totalAmount ?? ''), status: doc.status }, null);
     await (this.prisma as any).invoiceAccountingDocument.delete({ where: { id } });
+    await (this.prisma as any).eFaturaInbox.updateMany({
+      where: { tenantId, documentId: id },
+      data: { documentId: null, isTransferred: false, processedAt: null },
+    }).catch(() => {});
     if (String((doc as any).source || '') !== 'earsiv' && !String(doc.s3Key || '').startsWith('earsiv-inline://')) {
       this.storage.deleteObject(doc.s3Key).catch(() => {});
     }
