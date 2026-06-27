@@ -4905,6 +4905,70 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     return cookieHeader();
   }
 
+  private turmobDateProfiles(period: { startDate: string; endDate: string }) {
+    const parts = (value: string) => {
+      const [year, month, day] = String(value || '').slice(0, 10).split('-');
+      return { year, month, day };
+    };
+    const start = parts(period.startDate);
+    const end = parts(period.endDate);
+    const dateKeys = [
+      ['startDate', 'endDate'],
+      ['StartDate', 'EndDate'],
+      ['baslangicTarihi', 'bitisTarihi'],
+      ['BaslangicTarihi', 'BitisTarihi'],
+      ['ilkTarih', 'sonTarih'],
+      ['IlkTarih', 'SonTarih'],
+      ['tarih1', 'tarih2'],
+      ['TarihBaslangic', 'TarihBitis'],
+      ['FaturaBaslangicTarihi', 'FaturaBitisTarihi'],
+      ['InvoiceDateStart', 'InvoiceDateEnd'],
+      ['IssueDateStart', 'IssueDateEnd'],
+      ['ExecutionStartDate', 'ExecutionEndDate'],
+    ];
+    const values = [
+      { name: 'iso', start: period.startDate, end: period.endDate },
+      { name: 'dot', start: `${start.day}.${start.month}.${start.year}`, end: `${end.day}.${end.month}.${end.year}` },
+      { name: 'slash', start: `${start.day}/${start.month}/${start.year}`, end: `${end.day}/${end.month}/${end.year}` },
+      { name: 'compact', start: `${start.year}${start.month}${start.day}`, end: `${end.year}${end.month}${end.day}` },
+      { name: 'iso-datetime', start: `${period.startDate}T00:00:00`, end: `${period.endDate}T23:59:59` },
+    ];
+    return values.map((variant) => {
+      const params: Record<string, string> = {};
+      for (const [fromKey, toKey] of dateKeys) {
+        params[fromKey] = variant.start;
+        params[toKey] = variant.end;
+      }
+      return { name: variant.name, params };
+    });
+  }
+
+  private turmobRowsFromListResponse(data: any): any[] {
+    const candidates = [
+      data,
+      data?.data,
+      data?.Data,
+      data?.aaData,
+      data?.AAData,
+      data?.rows,
+      data?.Rows,
+      data?.items,
+      data?.Items,
+      data?.list,
+      data?.List,
+      data?.result,
+      data?.Result,
+      data?.result?.data,
+      data?.Result?.Data,
+      data?.data?.data,
+      data?.Data?.Data,
+    ];
+    for (const candidate of candidates) {
+      if (Array.isArray(candidate)) return candidate;
+    }
+    return [];
+  }
+
   /**
    * TÜRMOB e-Belge portalından fatura çek — OTOMATİK login (TCKN=cfg.username, parola=cfg.password),
    * sonra gelen/giden liste (DataTables AJAX). Asistan PDF veriyordu; biz portal XML'ini alıyoruz (OCR yok).
@@ -4927,6 +4991,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const BASE = this.TURMOB_BASE;
     // Gelen=alış (/IncomingInvoice), Giden=satış (/OutgoingInvoice). e-Arşiv ucu ilk testte eklenecek.
     const channel = String(opts.channel || (opts.direction === 'SATIS' ? 'OUT_EFATURA' : 'IN_EFATURA')).toUpperCase();
+    const refererPath = channel === 'OUT_EARSIV'
+      ? '/OutgoingArchiveInvoice'
+      : channel === 'OUT_EFATURA'
+        ? '/OutgoingInvoice'
+        : '/IncomingInvoice';
     const listUrls = channel === 'OUT_EARSIV'
       ? [
           '/OutgoingArchiveInvoice/AllOutgoingArchiveInvoiceByFilter',
@@ -4938,48 +5007,68 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       : channel === 'OUT_EFATURA'
         ? ['/OutgoingInvoice/AllOutgoingInvoiceByFilter']
         : ['/IncomingInvoice/AllIncomingInvoiceByFilter'];
-    const listBody = new URLSearchParams({
+    const baseListParams = {
       draw: '1',
       start: '0',
       length: String(Math.min(Math.max(Number(opts.limit) || 500, 1), 1000)),
-      startDate: opts.period.startDate,
-      endDate: opts.period.endDate,
-      StartDate: opts.period.startDate,
-      EndDate: opts.period.endDate,
-      baslangicTarihi: opts.period.startDate,
-      bitisTarihi: opts.period.endDate,
-    }).toString();
+      'search[value]': '',
+      'search[regex]': 'false',
+      'order[0][column]': '0',
+      'order[0][dir]': 'desc',
+    };
+    try {
+      await fetch(BASE + refererPath, {
+        headers: { Cookie: cookie, 'User-Agent': 'MorenPortal/1.0', Accept: 'text/html,application/xhtml+xml,*/*' },
+        redirect: 'manual',
+      });
+    } catch {
+      // Liste ekrani isinma istegi opsiyonel; AJAX denemeleri devam eder.
+    }
     let ct = '';
     let raw = '';
     let data: any = null;
     let rows: any[] = [];
     let usedListUrl = listUrls[0];
+    let usedProfile = 'none';
+    let directPayloads: ProviderInvoicePayload[] = [];
+    const profiles = this.turmobDateProfiles(opts.period);
+    listAttempt:
     for (const listUrl of listUrls) {
-      const res = await fetch(BASE + listUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-          'X-Requested-With': 'XMLHttpRequest',
-          Cookie: cookie,
-          'User-Agent': 'MorenPortal/1.0',
-        },
-        body: listBody,
-      });
-      ct = res.headers.get('content-type') || '';
-      raw = await res.text();
-      data = null;
-      try { data = JSON.parse(raw); } catch { /* HTML = muhtemelen login redirect */ }
-      rows = Array.isArray(data?.data) ? data.data : Array.isArray(data?.Data) ? data.Data : Array.isArray(data) ? data : [];
-      usedListUrl = listUrl;
-      if (rows.length || raw.trimStart().slice(0, 1) !== '<') break;
+      for (const profile of profiles) {
+        const listBody = new URLSearchParams({ ...baseListParams, ...profile.params }).toString();
+        const res = await fetch(BASE + listUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+            Accept: 'application/json, text/javascript, */*; q=0.01',
+            Origin: BASE,
+            Referer: BASE + refererPath,
+            'X-Requested-With': 'XMLHttpRequest',
+            Cookie: cookie,
+            'User-Agent': 'MorenPortal/1.0',
+          },
+          body: listBody,
+        });
+        ct = res.headers.get('content-type') || '';
+        raw = await res.text();
+        data = null;
+        try { data = JSON.parse(raw); } catch { /* HTML = muhtemelen login redirect */ }
+        rows = this.turmobRowsFromListResponse(data);
+        usedListUrl = listUrl;
+        usedProfile = profile.name;
+        directPayloads = await this.extractPayloadsFromProviderResponse(raw, ['xml', 'ubl', 'content', 'data', 'base64', 'DocumentXml', 'InvoiceXml']);
+        if (rows.length || directPayloads.length) break listAttempt;
+      }
     }
     const first = raw.trimStart().slice(0, 1); // '<' = HTML/login redirect (cookie yetersiz), '{'/'[' = JSON (parametre/dönem)
     // TEŞHİS: first='<' → oturum liste için yetersiz; '{' ama rows=0 → parametre/dönem filtresi gerekli.
-    this.logger.log(`TURMOB portal ${channel}: url=${usedListUrl} ct=${ct.slice(0, 40)} len=${raw.length} first=${first} rows=${rows.length} topKeys=${JSON.stringify(Object.keys(data || {})).slice(0, 150)} rowKeys=${JSON.stringify(Object.keys(rows[0] || {})).slice(0, 250)}`);
+    this.logger.log(`TURMOB portal ${channel}: url=${usedListUrl} profile=${usedProfile} ct=${ct.slice(0, 40)} len=${raw.length} first=${first} rows=${rows.length} topKeys=${JSON.stringify(Object.keys(data || {})).slice(0, 150)} rowKeys=${JSON.stringify(Object.keys(rows[0] || {})).slice(0, 250)}`);
     // İPTAL filtresi (durum alanı adı ilk testte netleşecek — "İptal/Iptal/Reddedildi/Cancel" geçeni atla):
     const isCancelled = (r: any) => /iptal|reddedil|cancel/i.test(JSON.stringify(r?.Durum ?? r?.durum ?? r?.Status ?? r?.status ?? ''));
     const live = rows.filter((r) => !isCancelled(r));
-    const payloads = await this.extractPayloadsFromProviderResponse(raw, ['xml', 'ubl', 'content', 'data', 'base64', 'DocumentXml', 'InvoiceXml']);
+    const payloads = directPayloads.length
+      ? directPayloads
+      : await this.extractPayloadsFromProviderResponse(raw, ['xml', 'ubl', 'content', 'data', 'base64', 'DocumentXml', 'InvoiceXml']);
     const seenUrls = new Set<string>();
     const addCandidateUrl = (candidate: string) => {
       const clean = this.decodeXmlEntities(String(candidate || '').replace(/\\\//g, '/')).trim();
