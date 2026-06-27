@@ -711,6 +711,7 @@ export class PortalAutomationService {
         onayDurumu,
         iptalDurumu: iptalDurumu || 'Yok',
         aktarimDurumu: doc.storageKey ? 'indirildi' : 'sorgulandi',
+        sorguMode: String(raw.mode || portalRow.mode || 'query'),
         isProcessable: !blocked,
         blockedReason: blocked ? 'Iptal/itiraz/reddedilen fatura islenmez' : null,
         sourceRefId,
@@ -730,12 +731,14 @@ export class PortalAutomationService {
     const accByRef = new Map<string, any>(accountingRows.map((r: any) => [String(r.sourceRefId), r]));
     return rows.map((row: any) => {
       const acc = accByRef.get(row.sourceRefId);
+      const importedByDownload = !!acc && row.aktarimDurumu === 'indirildi' && row.sorguMode === 'download';
       return {
         ...row,
         muhasebeBelgeId: acc?.id || null,
         muhasebeDurumu: acc?.status || null,
         lucaDurumu: acc?.lucaStatus || null,
-        aktarildi: !!acc,
+        zatenVar: !!acc,
+        aktarildi: importedByDownload,
       };
     });
   }
@@ -1965,6 +1968,9 @@ export class PortalAutomationService {
         const newRaw: any = input.raw || {};
         if (newRaw.metaVersion || newRaw.metaParsed || newRaw.kanunNo || newRaw.belgeMahiyeti || newRaw.tutar) {
           patch.raw = input.raw;
+        }
+        if (String(input.belgeTuru) === 'EARSIV_FATURA' && newRaw.mode) {
+          patch.raw = { ...(existing.raw && typeof existing.raw === 'object' ? existing.raw : {}), ...newRaw };
         }
         if (Object.keys(patch).length) {
           const updated = await (this.prisma as any).portalDocument.update({ where: { id: existing.id }, data: patch });

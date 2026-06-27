@@ -599,7 +599,8 @@ const TITLES: Record<string, string> = {
   kdv: 'Kurulum · <b>KDV Raporu</b>',
   ayarlar: 'Kurulum · <b>Hesap Planı</b>',
   mukellefler: 'Çalışma · <b>Mükellefler</b>',
-  sorgu: 'Belgeler · <b>Belge Sorgula</b>',
+  earsivSorgu: 'Belgeler · <b>GIB e-Arşiv Sorgu</b>',
+  efaturaSorgu: 'Belgeler · <b>e-Fatura Sorgu</b>',
   genel: '<b>Genel Bakış</b>',
 };
 
@@ -642,7 +643,7 @@ export default function FaturaMerkeziPage() {
     try {
       const t = localStorage.getItem('fm-taxpayerId'); if (t) setTaxpayerId(t);
       const p = localStorage.getItem('fm-period'); if (p) setPeriod(p);
-      const s = localStorage.getItem('fm-screen'); if (s) setScreen(s);
+      const s = localStorage.getItem('fm-screen'); if (s) setScreen(s === 'sorgu' ? 'earsivSorgu' : s);
     } catch { /* localStorage yoksa atla */ }
   }, []);
   useEffect(() => { try { localStorage.setItem('fm-taxpayerId', taxpayerId); } catch {} }, [taxpayerId]);
@@ -682,7 +683,8 @@ export default function FaturaMerkeziPage() {
       <div className={`nitem${screen === 'faturalar' || screen === 'satis' ? ' on' : ''}`} style={{ ['--icc' as any]: '#15803d' }} onClick={() => go('faturalar')}><Ico html={I.file} /> Gelen Faturalar</div>
       <div className={`nsub${screen === 'faturalar' ? ' on' : ''}`} onClick={() => go('faturalar')}><span className="d" /> Bekleyen Alış Faturaları {badge(sum.alisPending)}</div>
       <div className={`nsub${screen === 'satis' ? ' on' : ''}`} onClick={() => go('satis')}><span className="d" /> Bekleyen Satış Faturaları {badge(sum.satisPending)}</div>
-      <div className={`nitem${screen === 'sorgu' ? ' on' : ''}`} style={{ ['--icc' as any]: '#0f766e' }} onClick={() => go('sorgu')}><Ico html={I.sync} /> Belge Sorgula</div>
+      <div className={`nitem${screen === 'earsivSorgu' ? ' on' : ''}`} style={{ ['--icc' as any]: '#0f766e' }} onClick={() => go('earsivSorgu')}><Ico html={I.file} /> GIB e-Arşiv Sorgu</div>
+      <div className={`nitem${screen === 'efaturaSorgu' ? ' on' : ''}`} style={{ ['--icc' as any]: '#2563eb' }} onClick={() => go('efaturaSorgu')}><Ico html={I.plug} /> e-Fatura Sorgu</div>
       <div className={`nitem${screen === 'muhasebe' ? ' on' : ''}`} style={{ ['--icc' as any]: '#7c3aed' }} onClick={() => go('muhasebe')}><Ico html={I.ledger} /> Muhasebeleştir {badge(sum.pending)}</div>
       <div className={`nitem${screen === 'aktarilanlar' ? ' on' : ''}`} style={{ ['--icc' as any]: '#0891b2' }} onClick={() => go('aktarilanlar')}><Ico html={I.check} /> Aktarım {badge(Math.max(0, (Number(sum.approved) || 0) - (Number(sum.posted) || 0)))}</div>
       <div className={`nitem${screen === 'arsiv' ? ' on' : ''}`} style={{ ['--icc' as any]: '#d97706' }} onClick={() => go('arsiv')}><Ico html={I.ledger} /> Arşivim {badge(sum.posted)}</div>
@@ -756,8 +758,9 @@ export default function FaturaMerkeziPage() {
           </div>
 
           <div className="content">
-            {(screen === 'faturalar' || screen === 'satis') && <ScreenFaturalar taxpayerId={taxpayerId} period={period} kind={screen === 'satis' ? 'SATIS' : 'ALIS'} isIsletme={(() => { const t = taxpayers.find((x) => x.id === taxpayerId); return /i[şs]letme|defter.?beyan|basit/i.test(`${t?.defterTuru || ''} ${(t as any)?.mihsapDefterTuru || ''}`); })()} taxpayerNace={(taxpayers.find((t) => t.id === taxpayerId) as any)?.naceKodu || ''} taxpayerFaaliyet={(taxpayers.find((t) => t.id === taxpayerId) as any)?.faaliyetAciklama || ''} onOpenSorgu={() => setScreen('sorgu')} onOpenMuhasebe={(id) => { try { localStorage.setItem('fm-open-doc', id); } catch { /* yok say */ } setScreen('muhasebe'); }} />}
-            {screen === 'sorgu' && <ScreenSorgu taxpayerId={taxpayerId} period={period} />}
+            {(screen === 'faturalar' || screen === 'satis') && <ScreenFaturalar taxpayerId={taxpayerId} period={period} kind={screen === 'satis' ? 'SATIS' : 'ALIS'} isIsletme={(() => { const t = taxpayers.find((x) => x.id === taxpayerId); return /i[şs]letme|defter.?beyan|basit/i.test(`${t?.defterTuru || ''} ${(t as any)?.mihsapDefterTuru || ''}`); })()} taxpayerNace={(taxpayers.find((t) => t.id === taxpayerId) as any)?.naceKodu || ''} taxpayerFaaliyet={(taxpayers.find((t) => t.id === taxpayerId) as any)?.faaliyetAciklama || ''} onOpenSorgu={() => setScreen(screen === 'satis' ? 'earsivSorgu' : 'efaturaSorgu')} onOpenMuhasebe={(id) => { try { localStorage.setItem('fm-open-doc', id); } catch { /* yok say */ } setScreen('muhasebe'); }} />}
+            {screen === 'earsivSorgu' && <ScreenSorgu taxpayerId={taxpayerId} period={period} source="earsiv" />}
+            {screen === 'efaturaSorgu' && <ScreenSorgu taxpayerId={taxpayerId} period={period} source="efatura" />}
             {screen === 'mukellefler' && <ScreenMukellefler taxpayers={taxpayers} period={period} onOpen={(id) => { setTaxpayerId(id); setScreen('faturalar'); }} />}
             {screen === 'kurallar' && <ScreenKurallar taxpayerId={taxpayerId} period={period} />}
             {screen === 'muhasebe' && <ScreenMuhasebe taxpayerId={taxpayerId} period={period} isIsletme={(() => { const t = taxpayers.find((x) => x.id === taxpayerId); return /i[şs]letme|defter.?beyan|basit/i.test(`${t?.defterTuru || ''} ${(t as any)?.mihsapDefterTuru || ''}`); })()} taxpayerNace={(taxpayers.find((t) => t.id === taxpayerId) as any)?.naceKodu || ''} taxpayerFaaliyet={(taxpayers.find((t) => t.id === taxpayerId) as any)?.faaliyetAciklama || ''} taxpayerAd={(() => { const t = taxpayers.find((x) => x.id === taxpayerId); return t ? taxpayerLabel(t) : ''; })()} full={editorFull} onToggleFull={() => setEditorFull((v) => !v)} />}
@@ -1269,10 +1272,10 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
 }
 
 /* ===================== EKRAN: MÜKELLEFLER ===================== */
-function ScreenSorgu({ taxpayerId, period }: { taxpayerId: string; period: string }) {
+function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; period: string; source: 'earsiv' | 'efatura' }) {
   const qc = useQueryClient();
-  const [source, setSource] = useState<'earsiv' | 'efatura'>('earsiv');
   const [sel, setSel] = useState<Set<string>>(new Set());
+  const [efaturaDirection, setEfaturaDirection] = useState<'IN' | 'OUT'>('IN');
   const earsivQ = useQuery({
     queryKey: ['fm-earsiv-sorgu', taxpayerId, period],
     queryFn: async () => (await api.get('/portal-automation/earsiv/invoices', { params: { taxpayerId, period, limit: 500 } })).data,
@@ -1345,25 +1348,33 @@ function ScreenSorgu({ taxpayerId, period }: { taxpayerId: string; period: strin
 
   const integrations: any[] = Array.isArray(integrationsQ.data) ? integrationsQ.data : [];
   const efaturaProviders = integrations.filter((p) => String(p.kind || '').toLowerCase() === 'efatura' || /EFATURA|ELOGO|UYUMSOFT|MIKRO|IZIBIZ|KOLAYSOFT|FORIBA|PARASUT|TURMOB/i.test(String(p.provider || '')));
+  const efaturaInboxQ = useQuery({
+    queryKey: ['fm-efatura-inbox', taxpayerId, period, efaturaDirection],
+    queryFn: async () => (await api.get('/fatura-muhasebelestirme/efatura-inbox', { params: { taxpayerId, period, direction: efaturaDirection, limit: 500 } })).data,
+    enabled: !!taxpayerId && source === 'efatura',
+    refetchInterval: 6000,
+  });
+  const efaturaRows: any[] = Array.isArray(efaturaInboxQ.data) ? efaturaInboxQ.data : [];
+  const efaturaFetchMut = useMutation({
+    mutationFn: (v: { provider: string; direction: 'IN' | 'OUT' }) => api.post('/fatura-muhasebelestirme/integrations/fetch', {
+      taxpayerId,
+      direction: v.direction === 'OUT' ? 'SATIS' : 'ALIS',
+      donem: period,
+      providers: [v.provider],
+      limit: 500,
+    }),
+    onSuccess: (r: any) => {
+      showFetchResult(r?.data);
+      qc.invalidateQueries({ queryKey: ['fm-efatura-inbox'] });
+      qc.invalidateQueries({ queryKey: ['fm2'] });
+    },
+    onError: (e: any) => toast.error('e-Fatura sorgusu başlatılamadı: ' + (e?.response?.data?.message || e?.message || 'hata')),
+  });
 
   return (
     <section className="screen sorgu-screen">
-      <div className="h2">Belge Sorgulama</div>
-      <div className="sub">Kaynaklar ayrı çalışır; sorgu sonucu burada görünür, aktar dediğinde Fatura Merkezi bekleyen listesine düşer.</div>
-      <div className="sourcegrid">
-        <button className={`sourcecard${source === 'earsiv' ? ' on' : ''}`} onClick={() => setSource('earsiv')}>
-          <span className="srcicon"><Ico html={I.file} size={17} /></span>
-          <b>GİB e-Arşiv Portal</b>
-          <small>Firmaların kestiği e-Arşiv satış faturaları</small>
-          <em>{rows.length ? `${rows.length} sorgu satırı` : 'Sorgu bekliyor'}</em>
-        </button>
-        <button className={`sourcecard${source === 'efatura' ? ' on' : ''}`} onClick={() => setSource('efatura')}>
-          <span className="srcicon"><Ico html={I.plug} size={17} /></span>
-          <b>e-Fatura Entegratörleri</b>
-          <small>TÜRMOB, e-Logo, Uyumsoft ve diğerleri</small>
-          <em>{efaturaProviders.filter((p) => p.connected).length} bağlantı hazır</em>
-        </button>
-      </div>
+      <div className="h2">{source === 'earsiv' ? 'GIB e-Arşiv Portal Sorgusu' : 'e-Fatura Entegratör Sorgusu'}</div>
+      <div className="sub">{source === 'earsiv' ? 'Firmaların GIB e-Arşiv portalda kestiği satış faturaları burada sorgulanır.' : 'TÜRMOB, e-Logo, Uyumsoft ve diğer e-Fatura entegratörleri bu ekranda ayrı izlenir.'}</div>
 
       {source === 'earsiv' ? (
         <div className="card sourcepanel">
@@ -1381,7 +1392,7 @@ function ScreenSorgu({ taxpayerId, period }: { taxpayerId: string; period: strin
               <thead>
                 <tr>
                   <th><Check checked={processable.length > 0 && selectedRefs.length === processable.length} onToggle={toggleAll} /></th>
-                  <th>Alıcı</th><th>VKN/TCKN</th><th>Belge No</th><th>Tarih</th><th>ETTN</th><th>Onay</th><th>İptal/İtiraz</th><th>Aktarım</th>
+                  <th>Alıcı</th><th>VKN/TCKN</th><th>Belge No</th><th>Tarih</th><th>Onay</th><th>İptal/İtiraz</th><th>Aktarım</th>
                 </tr>
               </thead>
               <tbody>
@@ -1392,14 +1403,18 @@ function ScreenSorgu({ taxpayerId, period }: { taxpayerId: string; period: strin
                     <td>{r.buyerVkn || '—'}</td>
                     <td>{r.belgeNo || r.referenceNo || '—'}</td>
                     <td>{fmtDate(r.issuedAt)}</td>
-                    <td className="mono">{r.ettn || '—'}</td>
-                    <td><span className={`pill ${r.isProcessable ? 'ok' : 'warn'}`}>{r.onayDurumu || '—'}</span></td>
+                    <td className="plainstatus">{r.onayDurumu || '—'}</td>
                     <td>{r.iptalDurumu || 'Yok'}</td>
-                    <td>{r.aktarildi ? <span className="pill ok">Aktarıldı</span> : r.aktarimDurumu === 'indirildi' ? <span className="pill warn">İndirildi</span> : <span className="pill">Sorgulandı</span>}</td>
+                    <td>
+                      <span className={`transferstate ${r.aktarildi ? 'ok' : 'no'}`}>
+                        {r.aktarildi ? <Ico html={I.checkSm} size={13} /> : <span className="xico">×</span>}
+                        {r.aktarildi ? 'Aktarıldı' : 'Aktarılmadı'}
+                      </span>
+                    </td>
                   </tr>
                 ))}
                 {!rows.length && (
-                  <tr><td colSpan={9} className="emptyrow">{taxpayerId ? 'Önce Sorgula ile GİB listesini getir.' : 'Önce mükellef seç.'}</td></tr>
+                  <tr><td colSpan={8} className="emptyrow">{taxpayerId ? 'Önce Sorgula ile GIB listesini getir.' : 'Önce mükellef seç.'}</td></tr>
                 )}
               </tbody>
             </table>
@@ -1408,17 +1423,65 @@ function ScreenSorgu({ taxpayerId, period }: { taxpayerId: string; period: strin
       ) : (
         <div className="card sourcepanel">
           <div className="ch sourcehead">
-            <h3>e-Fatura entegratör sorguları</h3>
-            <span className="mu">Bu alan GİB e-Arşiv’den ayrı tutulur; alış/satış e-Fatura sağlayıcıları burada listelenir.</span>
+            <h3>e-Fatura sorguları</h3>
+            <span className="mu">GIB e-Arşiv ile karışmaz; sadece e-Fatura entegratörleri ve aktarım durumları.</span>
+            <div className="sp" />
+            <div className="segmini">
+              <button className={efaturaDirection === 'IN' ? 'on' : ''} onClick={() => setEfaturaDirection('IN')}>Alış</button>
+              <button className={efaturaDirection === 'OUT' ? 'on' : ''} onClick={() => setEfaturaDirection('OUT')}>Satış</button>
+            </div>
           </div>
           <div className="providergrid">
             {efaturaProviders.map((p) => (
               <div className="providerrow" key={p.provider}>
                 <div><b>{p.label || p.provider}</b><span>{p.connected ? 'Bağlantı hazır' : 'Kimlik bilgisi eksik'}</span></div>
-                <span className={`pill ${p.connected ? 'ok' : 'warn'}`}>{p.connected ? 'Hazır' : 'Eksik'}</span>
+                <div className="provideractions">
+                  <span className={`pill ${p.connected ? 'ok' : 'warn'}`}>{p.connected ? 'Hazır' : 'Eksik'}</span>
+                  <button className="btn sm ghost" disabled={!p.connected || efaturaFetchMut.isPending} onClick={() => efaturaFetchMut.mutate({ provider: p.provider, direction: efaturaDirection })}>
+                    <Ico html={I.sync} size={13} /> Sorgula
+                  </button>
+                </div>
               </div>
             ))}
             {!efaturaProviders.length && <div className="emptyrow">Bu mükellef için tanımlı e-Fatura entegratörü yok.</div>}
+          </div>
+          <div className="sourcetablewrap efatura">
+            <table className="sourcetable">
+              <thead>
+                <tr>
+                  <th>Entegratör</th><th>Unvan</th><th>VKN/TCKN</th><th>Belge No</th><th>Tarih</th><th>Tür</th><th>Onay</th><th>Aktarım</th>
+                </tr>
+              </thead>
+              <tbody>
+                {efaturaRows.map((r) => {
+                  const raw = r.rawJson || {};
+                  const title = efaturaDirection === 'OUT' ? (raw.receiverTitle || raw.alici || r.receiverVkn) : (r.senderTitle || raw.senderTitle || raw.satici);
+                  const taxNo = efaturaDirection === 'OUT' ? (r.receiverVkn || raw.receiverVkn || raw.aliciVergiNo) : (r.senderVkn || raw.senderVkn || raw.saticiVergiNo);
+                  const approval = raw.onayDurumu || raw.approvalStatus || raw.status || raw.invoiceStatus || '—';
+                  const transferred = r.processedAt || r.isTransferred || r.documentId || r.markedAt;
+                  return (
+                    <tr key={r.id} className={transferred ? 'done' : ''}>
+                      <td>{r.entegrator}</td>
+                      <td><b>{title || '—'}</b></td>
+                      <td>{taxNo || '—'}</td>
+                      <td>{r.faturaNo || '—'}</td>
+                      <td>{fmtDate(r.faturaDate)}</td>
+                      <td>{r.invoiceProfile || 'e-Fatura'}</td>
+                      <td className="plainstatus">{approval}</td>
+                      <td>
+                        <span className={`transferstate ${transferred ? 'ok' : 'no'}`}>
+                          {transferred ? <Ico html={I.checkSm} size={13} /> : <span className="xico">×</span>}
+                          {transferred ? 'Aktarıldı' : 'Aktarılmadı'}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {!efaturaRows.length && (
+                  <tr><td colSpan={8} className="emptyrow">{taxpayerId ? 'Bu yönde e-Fatura sorgu satırı yok. Entegratör satırından Sorgula ile getir.' : 'Önce mükellef seç.'}</td></tr>
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
@@ -3846,6 +3909,11 @@ const CSS = `
 #fm-root .sourcetable th{height:36px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.25px;white-space:nowrap}
 #fm-root .sourcetable td{height:42px;font-size:12.5px;vertical-align:middle}
 #fm-root .sourcetable .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;color:#64748b;max-width:220px;overflow:hidden;text-overflow:ellipsis}
+#fm-root .sourcetable .plainstatus{color:#334155;font-weight:500}
+#fm-root .transferstate{display:inline-flex;align-items:center;gap:6px;font-weight:600;white-space:nowrap;color:#475569}
+#fm-root .transferstate.ok{color:#15803d}
+#fm-root .transferstate.no{color:#dc2626}
+#fm-root .transferstate .xico{width:16px;height:16px;border-radius:999px;display:inline-grid;place-items:center;border:1px solid #fecaca;background:#fff1f2;color:#dc2626;font-size:14px;line-height:1;font-weight:700}
 #fm-root .sourcetable tr.blocked td{color:#9a5c5c;background:#fffafa}
 #fm-root .sourcetable tr.done td{background:#f8fdfb}
 #fm-root .emptyrow{text-align:center;color:#94a3b8;padding:22px!important}
@@ -3853,4 +3921,8 @@ const CSS = `
 #fm-root .providerrow{display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid #e5e7eb;border-radius:9px;padding:10px 12px;background:#fff}
 #fm-root .providerrow b{display:block;font-size:13px}
 #fm-root .providerrow span{display:block;font-size:11.5px;color:#64748b;margin-top:2px}
+#fm-root .provideractions{display:flex;align-items:center;gap:8px}
+#fm-root .segmini{display:inline-flex;gap:4px;border:1px solid #e2e8f0;border-radius:999px;padding:3px;background:#fff}
+#fm-root .segmini button{height:28px;border:0;background:transparent;border-radius:999px;padding:0 12px;font-weight:650;color:#64748b;cursor:pointer}
+#fm-root .segmini button.on{background:#17212f;color:#fff}
 `;

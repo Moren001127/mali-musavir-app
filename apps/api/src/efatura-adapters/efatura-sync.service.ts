@@ -133,7 +133,8 @@ export class EFaturaSyncService {
         id: true, entegrator: true, uuid: true, faturaNo: true, faturaDate: true,
         senderVkn: true, senderTitle: true, receiverVkn: true,
         matrah: true, kdv: true, toplam: true, paraBirimi: true,
-        direction: true, invoiceProfile: true, markedAt: true, createdAt: true,
+        direction: true, invoiceProfile: true, isTransferred: true, documentId: true,
+        rawJson: true, markedAt: true, processedAt: true, createdAt: true,
       },
     });
   }
