@@ -5028,11 +5028,16 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       'order[0][column]': '0',
       'order[0][dir]': 'desc',
     };
+    let listPageToken = '';
     try {
-      await fetch(BASE + refererPath, {
+      const listPage = await fetch(BASE + refererPath, {
         headers: { Cookie: cookie, 'User-Agent': 'MorenPortal/1.0', Accept: 'text/html,application/xhtml+xml,*/*' },
         redirect: 'manual',
       });
+      const listHtml = await listPage.text();
+      listPageToken = listHtml.match(/name="__RequestVerificationToken"[^>]*value="([^"]+)"/)?.[1]
+        || listHtml.match(/__RequestVerificationToken[^>]*value="([^"]+)"/)?.[1]
+        || '';
     } catch {
       // Liste ekrani isinma istegi opsiyonel; AJAX denemeleri devam eder.
     }
@@ -5048,7 +5053,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     listAttempt:
     for (const listUrl of listUrls) {
       for (const profile of profiles) {
-        const listBody = new URLSearchParams({ ...baseListParams, ...profile.params }).toString();
+        const listBody = new URLSearchParams(
+          listPageToken
+            ? { ...baseListParams, ...profile.params, __RequestVerificationToken: listPageToken }
+            : { ...baseListParams, ...profile.params },
+        ).toString();
         for (const method of ['POST', 'GET'] as const) {
           const requestUrl = method === 'GET' ? `${BASE}${listUrl}?${listBody}` : BASE + listUrl;
           const res = await fetch(requestUrl, {
@@ -5059,6 +5068,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
               Origin: BASE,
               Referer: BASE + refererPath,
               'X-Requested-With': 'XMLHttpRequest',
+              ...(listPageToken ? { RequestVerificationToken: listPageToken, __RequestVerificationToken: listPageToken } : {}),
               Cookie: cookie,
               'User-Agent': 'MorenPortal/1.0',
             },
