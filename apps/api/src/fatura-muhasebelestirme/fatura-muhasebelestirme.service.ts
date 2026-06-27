@@ -5157,8 +5157,49 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const first = raw.trimStart().slice(0, 1); // '<' = HTML/login redirect (cookie yetersiz), '{'/'[' = JSON (parametre/dönem)
     // TEŞHİS: first='<' → oturum liste için yetersiz; '{' ama rows=0 → parametre/dönem filtresi gerekli.
     this.logger.log(`TURMOB portal ${channel}: url=${usedListUrl} method=${usedMethod} profile=${usedProfile} ct=${ct.slice(0, 40)} len=${raw.length} first=${first} rows=${rows.length} topKeys=${JSON.stringify(Object.keys(data || {})).slice(0, 150)} rowKeys=${JSON.stringify(Object.keys(rows[0] || {})).slice(0, 250)}`);
-    // İPTAL filtresi (durum alanı adı ilk testte netleşecek — "İptal/Iptal/Reddedildi/Cancel" geçeni atla):
-    const isCancelled = (r: any) => /iptal|reddedil|cancel/i.test(JSON.stringify(r?.Durum ?? r?.durum ?? r?.Status ?? r?.status ?? r ?? ''));
+    // Iptal filtresi sadece alan DEGERLERINE bakmali. TURMOB satirinda
+    // "IptalItirazDurumu" gibi alan adlari her normal faturada da var; tum
+    // JSON'a regex atarsak onayli satirlar da iptal sayilip hic indirilmiyor.
+    const statusValueKeys = [
+      'Durum',
+      'durum',
+      'Status',
+      'status',
+      'DurumAdi',
+      'DurumAd',
+      'DurumAciklama',
+      'IptalItirazDurumu',
+      'IptalDurumu',
+      'ItirazDurumu',
+      'RedDurumu',
+      'OnayDurumu',
+      'OnayJobDurumu',
+      'Sonuc',
+      'Cevap',
+    ];
+    const isCancelled = (r: any) => {
+      const values: string[] = [];
+      const visit = (value: any) => {
+        if (!value || typeof value !== 'object') return;
+        if (Array.isArray(value)) {
+          value.forEach(visit);
+          return;
+        }
+        for (const [key, nested] of Object.entries(value)) {
+          if (statusValueKeys.some((candidate) => candidate.toLowerCase() === key.toLowerCase())) {
+            if (typeof nested === 'string' || typeof nested === 'number' || typeof nested === 'boolean') {
+              values.push(String(nested));
+            }
+          }
+          visit(nested);
+        }
+      };
+      visit(r);
+      const text = values.join(' ').toLowerCase();
+      if (!text) return false;
+      if (/\byok\b|false|hayir|hayır|onaylandi|onaylandı|alici kabul etti|gonderildi|gönderildi|otomatik/.test(text)) return false;
+      return /iptal|itiraz|reddedil|red edildi|cancel/.test(text);
+    };
     const live = rows.filter((r) => !isCancelled(r));
     const payloads = [...directPayloads];
     const seenUrls = new Set<string>();
@@ -5319,7 +5360,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         ? sample.map((value: any, index: number) => `${index}:${typeof value}`).slice(0, 40).join(',')
         : Object.keys(sample || {}).slice(0, 80).join(',');
       const scalars = turmobCandidateIds(sample).slice(0, 20).join(',');
-      throw new Error(`TURMOB liste ${rows.length} satir dondurdu ama XML/UBL indirme linki bulunamadi; attempts=${downloadAttempts}; rowKeys=${rowKeys || '-'}; ids=${scalars || '-'}`);
+      this.logger.warn(`TURMOB indirme linki cozumlenemedi: channel=${channel} rows=${rows.length} attempts=${downloadAttempts} rowKeys=${rowKeys || '-'} ids=${scalars || '-'}`);
+      throw new Error(`TURMOB liste ${rows.length} satir dondurdu ama belge indirme baglantisi cozumlenemedi`);
     }
     const uniquePayloads = new Map<string, ProviderInvoicePayload>();
     for (const payload of payloads) {
