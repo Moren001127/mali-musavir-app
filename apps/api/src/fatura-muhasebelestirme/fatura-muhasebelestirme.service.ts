@@ -3768,9 +3768,16 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     let periodStart: Date | null = null;
     let periodEnd: Date | null = null;
     if (opts.period) {
-      const start = new Date(`${opts.period}-01`);
-      const end = new Date(start);
-      end.setMonth(end.getMonth() + 1);
+      const match = String(opts.period).match(/^(\d{4})-(\d{2})$/);
+      const year = match ? Number(match[1]) : Number.NaN;
+      const month = match ? Number(match[2]) : Number.NaN;
+      const start = Number.isFinite(year) && Number.isFinite(month)
+        ? new Date(Date.UTC(year, month - 1, 1))
+        : new Date(`${opts.period}-01T00:00:00.000Z`);
+      const end = Number.isFinite(year) && Number.isFinite(month)
+        ? new Date(Date.UTC(year, month, 1))
+        : new Date(start);
+      if (!Number.isFinite(year) || !Number.isFinite(month)) end.setUTCMonth(end.getUTCMonth() + 1);
       periodStart = start;
       periodEnd = end;
       if (!opts.channel) where.faturaDate = { gte: start, lt: end };
@@ -3825,6 +3832,55 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         runtimeConfigCache.set(key, await this.resolveRuntimeConfigForProvider(tenantId, opts.taxpayerId, key));
       }
       return runtimeConfigCache.get(key) || null;
+    };
+    const rowInCurrentImportPeriod = (row: any) => {
+      if (!periodStart || !periodEnd) return true;
+      const rowDate = row.faturaDate ? new Date(row.faturaDate) : null;
+      const validRowDate = rowDate && !Number.isNaN(rowDate.getTime());
+      const raw = row.rawJson && typeof row.rawJson === 'object' ? row.rawJson : {};
+      const dateMatches = validRowDate && rowDate >= periodStart && rowDate < periodEnd;
+      const rawPeriodMatches = String(raw.period || '') === opts.period;
+      return validRowDate ? Boolean(dateMatches) : rawPeriodMatches;
+    };
+    const turmobBatchLookupCache = new Map<string, Promise<ProviderPayloadLookup | null>>();
+    const turmobBatchLookupFor = (provider: string, cfg: RuntimeIntegrationConfig) => {
+      const key = `${String(provider || '').toUpperCase()}::${channel}::${opts.period || ''}`;
+      if (!turmobBatchLookupCache.has(key)) {
+        turmobBatchLookupCache.set(key, (async () => {
+          const targets = rows.filter((candidate: any) => {
+            const raw = candidate.rawJson && typeof candidate.rawJson === 'object' ? candidate.rawJson : {};
+            if (String(candidate.entegrator || 'TURMOB_EFATURA').toUpperCase() !== String(provider || '').toUpperCase()) return false;
+            if (String(raw.channel || '').toUpperCase() !== channel) return false;
+            if (!rowInCurrentImportPeriod(candidate)) return false;
+            const xml = String(candidate.ublXmlRaw || '').trim();
+            const status = String(raw.documentDownloadStatus || '').toUpperCase();
+            return !xml
+              || this.isSyntheticTurmobInboxXml(xml)
+              || !this.hasOriginalProviderVisual(raw.originalVisual, provider)
+              || status === 'MISSING'
+              || status === 'SUMMARY_ONLY';
+          });
+          if (!targets.length) return { cfg, payloads: [], byKey: new Map(), error: null };
+          try {
+            const sampleDate = targets.find((candidate: any) => candidate.faturaDate)?.faturaDate;
+            const samplePeriod = opts.period || (sampleDate ? new Date(sampleDate).toISOString().slice(0, 7) : undefined);
+            const payloads = await this.fetchTurmobPortalInvoices(cfg, {
+              taxpayer,
+              direction: direction === 'OUT' ? 'SATIS' : 'ALIS',
+              period: this.monthRange(samplePeriod),
+              limit: Math.min(Math.max(targets.length, 1), 1000),
+              channel,
+              targetRows: targets,
+            });
+            return { cfg, payloads, byKey: this.buildProviderPayloadLookup(payloads), error: null };
+          } catch (e: any) {
+            const message = e?.message || String(e);
+            this.logger.warn(`TURMOB toplu belge indirme basarisiz: ${channel} ${message}`);
+            return { cfg, payloads: [], byKey: new Map(), error: message };
+          }
+        })());
+      }
+      return turmobBatchLookupCache.get(key)!;
     };
 
     let processed = 0, imported = 0, alreadyQueued = 0, skipped = 0, failed = 0, staleReset = 0;
@@ -3901,19 +3957,24 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         const cfgForDownload = await runtimeConfigFor(provider);
         if (cfgForDownload) {
           try {
-            const rowDate = row.faturaDate ? new Date(row.faturaDate) : null;
-            const rowPeriod = opts.period || (rowDate && !Number.isNaN(rowDate.getTime()) ? rowDate.toISOString().slice(0, 7) : undefined);
-            const downloadPeriod = this.monthRange(rowPeriod);
-            const payloads = await this.fetchTurmobPortalInvoices(cfgForDownload, {
-              taxpayer,
-              direction: direction === 'OUT' ? 'SATIS' : 'ALIS',
-              period: downloadPeriod,
-              limit: 1,
-              channel,
-              targetRows: [row],
-            });
-            const lookup = { cfg: cfgForDownload, payloads, byKey: this.buildProviderPayloadLookup(payloads), error: null };
-            const downloaded = this.providerPayloadForInboxRow(row, lookup) || payloads[0] || null;
+            const batchLookup = await turmobBatchLookupFor(provider, cfgForDownload);
+            let downloaded = batchLookup ? this.providerPayloadForInboxRow(row, batchLookup) : null;
+            if (!downloaded && ids.length === 1 && rows.length === 1) {
+              const rowDate = row.faturaDate ? new Date(row.faturaDate) : null;
+              const rowPeriod = opts.period || (rowDate && !Number.isNaN(rowDate.getTime()) ? rowDate.toISOString().slice(0, 7) : undefined);
+              const downloadPeriod = this.monthRange(rowPeriod);
+              const payloads = await this.fetchTurmobPortalInvoices(cfgForDownload, {
+                taxpayer,
+                direction: direction === 'OUT' ? 'SATIS' : 'ALIS',
+                period: downloadPeriod,
+                limit: 1,
+                channel,
+                targetRows: [row],
+              });
+              const lookup = { cfg: cfgForDownload, payloads, byKey: this.buildProviderPayloadLookup(payloads), error: null };
+              downloaded = this.providerPayloadForInboxRow(row, lookup) || payloads[0] || null;
+            }
+            if (!downloaded && batchLookup?.error) downloadError = batchLookup.error;
             if (downloaded) {
               xml = String(downloaded.xml || '').trim();
               storedVisual = this.providerStoredVisual(downloaded);
@@ -5501,7 +5562,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   }
 
   private turmobRowsFromListResponse(data: any): any[] {
-    const candidates = [
+    const directCandidates = [
       data,
       data?.data,
       data?.Data,
@@ -5519,11 +5580,63 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       data?.Result?.Data,
       data?.data?.data,
       data?.Data?.Data,
-    ];
-    for (const candidate of candidates) {
-      if (Array.isArray(candidate)) return candidate;
-    }
-    return [];
+    ].filter(Array.isArray);
+    const arrays: any[][] = [];
+    const seen = new WeakSet<object>();
+    const rememberArray = (arr: any[]) => {
+      if (!arrays.includes(arr)) arrays.push(arr);
+    };
+    for (const candidate of directCandidates) rememberArray(candidate);
+    const visit = (value: any, depth = 0) => {
+      if (value == null || depth > 8 || typeof value !== 'object') return;
+      if (seen.has(value)) return;
+      seen.add(value);
+      if (Array.isArray(value)) {
+        rememberArray(value);
+        for (const item of value.slice(0, 100)) visit(item, depth + 1);
+        return;
+      }
+      for (const nested of Object.values(value)) visit(nested, depth + 1);
+    };
+    visit(data);
+    if (!arrays.length) return [];
+
+    const rowSignal = (row: any) => {
+      if (row == null) return 0;
+      let text = '';
+      let keys = '';
+      try {
+        text = JSON.stringify(row).slice(0, 12000);
+        keys = Array.isArray(row) ? '' : Object.keys(row || {}).join(' ');
+      } catch {
+        text = String(row).slice(0, 12000);
+      }
+      const haystack = `${keys} ${text}`;
+      let score = 0;
+      if (/(FaturaNo|BelgeNo|InvoiceNo|InvoiceNumber|IadeFaturaNo|Ettn|ETTN|UUID|Guid)/i.test(haystack)) score += 8;
+      if (/(IdFaturaGelen|IdFaturaGiden|IdFaturaArsiv|InvoiceId|FaturaId|ActionButtons|FilePath)/i.test(haystack)) score += 6;
+      if (/(FaturaTarihi|GelirTarihi|GelisTarihi|InvoiceDate|IssueDate|Tarih)/i.test(haystack)) score += 4;
+      if (/(OdenecekTutar|Toplam|Kdv|KDV|Tutar|Net|Matrah)/i.test(haystack)) score += 3;
+      if (/[A-Z]{2,6}\d{8,24}/.test(haystack)) score += 4;
+      if (/\b\d{1,2}[./]\d{1,2}[./]\d{4}\b/.test(haystack) || /\b\d{4}-\d{2}-\d{2}\b/.test(haystack)) score += 2;
+      return score;
+    };
+    const scored = arrays
+      .filter((arr) => arr.length > 0)
+      .map((arr) => {
+        const sample = arr.slice(0, 80);
+        const signals = sample.map(rowSignal);
+        const rowLike = signals.filter((score) => score >= 6).length;
+        const totalSignal = signals.reduce((sum, score) => sum + score, 0);
+        return {
+          arr,
+          rowLike,
+          totalSignal,
+          score: rowLike * 10000 + Math.min(arr.length, 3000) * 8 + totalSignal,
+        };
+      })
+      .sort((a, b) => b.score - a.score);
+    return scored[0]?.arr || directCandidates[0] || [];
   }
 
   private turmobField(row: any, keys: string[]): string | null {
@@ -6289,8 +6402,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           const text = String(value);
           for (const m of text.matchAll(/(?:data-)?(?:invoice|fatura|belge|archive|arsiv)?(?:id|uuid|ettn|guid|oid)\s*=\s*["']?([A-Za-z0-9_-]{4,100})/gi)) add(m[1], 'id');
           for (const m of text.matchAll(/(?:InvoiceId|InvoiceID|FaturaId|BelgeId|ArchiveId|ArsivId|ETTN|UUID|Guid|GUID)["'\s:=]+([A-Za-z0-9_-]{4,100})/g)) add(m[1], 'id');
+          for (const m of text.matchAll(/\b([A-Za-z][A-Za-z0-9_]*(?:Invoice|Fatura|Belge|Detail|Hint|Xml|XML|Download|Print)[A-Za-z0-9_]*)\s*\(([^)]{1,500})\)/g)) {
+            for (const arg of m[2].matchAll(/["']?([A-Za-z0-9_-]{4,120})["']?/g)) add(arg[1], 'id');
+          }
           if (/action|button|html|hint|link/i.test(keyHint)) {
             for (const m of text.matchAll(/["']([A-Za-z0-9_-]{4,120})["']/g)) add(m[1], 'id');
+            for (const m of text.matchAll(/\b([A-Z]{2,6}\d{8,24})\b/g)) add(m[1], 'invoice');
+            for (const m of text.matchAll(/\b(\d{6,9}|\d{12,16})\b/g)) add(m[1], 'id');
           }
           return;
         }
@@ -6451,8 +6569,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       addTurmobDocumentUrls(row);
     }
     let downloadAttempts = 0;
+    const targetRowCount = targetRows.length || live.length;
     const maxDownloadAttempts = targetKeys.size
-      ? Math.min(180, Math.max(40, live.length * 36))
+      ? (targetRowCount > 1
+          ? Math.min(520, Math.max(80, targetRowCount * 16))
+          : Math.min(60, Math.max(20, live.length * 18)))
       : Math.min(2600, Math.max(260, live.length * 36));
     const targetPayloadCount = Math.min(opts.limit, Math.max(live.length, payloads.length || 1));
     const requestQueue: TurmobDownloadRequest[] = [];
@@ -6465,8 +6586,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     };
     const drainCandidateRequests = () => {
       for (const url of priorityUrls) enqueueRequest({ url, method: 'GET' });
-      for (const url of seenUrls) enqueueRequest({ url, method: 'GET' });
       for (const request of postRequests) enqueueRequest(request);
+      for (const url of seenUrls) enqueueRequest({ url, method: 'GET' });
     };
     const canReuseStandaloneVisual = targetKeys.size === 1 || live.length <= 1;
     let standalonePdf: Buffer | null = null;
@@ -6510,7 +6631,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const request = requestQueue.shift()!;
       downloadAttempts++;
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 2500);
+      const timer = setTimeout(() => controller.abort(), targetKeys.size ? 1200 : 2500);
       try {
         const docRes = await fetch(request.url, {
           method: request.method,

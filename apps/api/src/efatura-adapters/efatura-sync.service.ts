@@ -121,9 +121,16 @@ export class EFaturaSyncService {
     let periodStart: Date | null = null;
     let periodEnd: Date | null = null;
     if (opts.period) {
-      const start = new Date(`${opts.period}-01`);
-      const end = new Date(start);
-      end.setMonth(end.getMonth() + 1);
+      const match = String(opts.period).match(/^(\d{4})-(\d{2})$/);
+      const year = match ? Number(match[1]) : Number.NaN;
+      const month = match ? Number(match[2]) : Number.NaN;
+      const start = Number.isFinite(year) && Number.isFinite(month)
+        ? new Date(Date.UTC(year, month - 1, 1))
+        : new Date(`${opts.period}-01T00:00:00.000Z`);
+      const end = Number.isFinite(year) && Number.isFinite(month)
+        ? new Date(Date.UTC(year, month, 1))
+        : new Date(start);
+      if (!Number.isFinite(year) || !Number.isFinite(month)) end.setUTCMonth(end.getUTCMonth() + 1);
       periodStart = start;
       periodEnd = end;
       if (!opts.channel) where.faturaDate = { gte: start, lt: end };
@@ -147,7 +154,9 @@ export class EFaturaSyncService {
       if (!text) return false;
       return /<cbc:Note>\s*TURMOB_SUMMARY_ONLY\s*<\/cbc:Note>/i.test(text)
         || /<cbc:Name>\s*TURMOB_LISTE_OZETI\s*<\/cbc:Name>/i.test(text)
-        || /<cbc:ID>\s*TURMOB-SUMMARY/i.test(text);
+        || /<cbc:ID>\s*TURMOB-SUMMARY/i.test(text)
+        || /<Item>\s*<Name>Fatura satiri<\/Name>\s*<\/Item>/i.test(text)
+        || (/<Invoice>\s*<ProfileID>/i.test(text) && !/\sxmlns[:=]/i.test(text));
     };
     const missingOriginalDocument = (row: any) => {
       if (String(row?.entegrator || '').toUpperCase() !== 'TURMOB_EFATURA') return false;
