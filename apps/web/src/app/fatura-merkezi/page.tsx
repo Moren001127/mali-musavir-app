@@ -1447,8 +1447,8 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
   };
   const efaturaCanImport = (r: any) => {
     if (efaturaIsTransferred(r)) return false;
-    const status = efaturaDocumentStatus(r);
-    return status !== 'MISSING' && status !== 'SUMMARY_ONLY';
+    const raw = r?.rawJson && typeof r.rawJson === 'object' ? r.rawJson : {};
+    return !/iptal|itiraz|red|cancel/i.test(`${raw?.approvalStatus || ''} ${raw?.iptalItiraz || ''}`);
   };
   const efaturaTransferableRows = efaturaRows.filter(efaturaCanImport);
   const efaturaTransferableIds = efaturaTransferableRows.map((r) => String(r.id || '').trim()).filter(Boolean);
@@ -1711,7 +1711,7 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
                         <Check
                           checked={selectable && sel.has(rowId)}
                           disabled={!selectable}
-                          title={transferred ? 'Zaten aktarilmis' : missingOriginal ? 'Orijinal belge indirilemedi; tekrar Sorgula ile dene' : selectable ? 'Aktarim icin sec' : 'Satir kimligi yok'}
+                          title={transferred ? 'Zaten aktarilmis' : missingOriginal ? 'Aktarimda orijinal belge yeniden indirilecek' : selectable ? 'Aktarim icin sec' : 'Satir kimligi yok'}
                           onToggle={() => toggle(rowId)}
                         />
                       </td>

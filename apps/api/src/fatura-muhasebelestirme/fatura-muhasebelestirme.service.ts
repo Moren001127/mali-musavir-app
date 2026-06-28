@@ -3509,14 +3509,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       try {
         if (cfg.provider === 'TURMOB_EFATURA') {
           const listed = await this.fetchTurmobPortalRows(cfg, { direction, period, limit, channel });
-          let turmobLookup: ProviderPayloadLookup | null = null;
-          try {
-            const payloads = await this.fetchTurmobPortalInvoices(cfg, { taxpayer, direction, period, limit, channel });
-            turmobLookup = { cfg, payloads, byKey: this.buildProviderPayloadLookup(payloads), error: null };
-          } catch (e: any) {
-            turmobLookup = { cfg, payloads: [], byKey: new Map(), error: e?.message || 'TURMOB belge indirilemedi' };
-            this.logger.warn(`TURMOB belge indirme es gecildi: ${turmobLookup.error}`);
-          }
+          const turmobLookup: ProviderPayloadLookup | null = null;
           let providerAdded = 0, providerUpdated = 0, providerSkipped = 0, providerFailed = 0;
           let providerDownloaded = 0, providerMissingDocument = 0;
           for (const sourceRow of listed.liveRows.slice(0, limit)) {
@@ -3592,12 +3585,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
                   receiverVkn: summary.receiverVkn || null,
                   queriedBy: userId || null,
                   needsDocumentDownload: !documentReady,
-                  documentDownloadStatus: documentReady ? 'READY' : 'MISSING',
+                  documentDownloadStatus: documentReady ? 'READY' : 'PENDING_DOWNLOAD',
                   documentDownloadError: documentReady
                     ? null
-                    : (!effectivePayload
-                        ? (turmobLookup?.error || 'TURMOB XML/UBL/PDF indirme linki bulunamadi')
-                        : 'TURMOB orijinal fatura goruntusu indirilemedi'),
+                    : 'Orijinal belge aktarim sirasinda indirilecek.',
                   originalVisual: effectiveStoredVisual,
                 },
               };
@@ -3827,10 +3818,19 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       }
     }
 
+    const runtimeConfigCache = new Map<string, RuntimeIntegrationConfig | null>();
+    const runtimeConfigFor = async (provider: string) => {
+      const key = String(provider || '').toUpperCase();
+      if (!runtimeConfigCache.has(key)) {
+        runtimeConfigCache.set(key, await this.resolveRuntimeConfigForProvider(tenantId, opts.taxpayerId, key));
+      }
+      return runtimeConfigCache.get(key) || null;
+    };
+
     let processed = 0, imported = 0, alreadyQueued = 0, skipped = 0, failed = 0, staleReset = 0;
     const errors: any[] = [];
     for (const row of rows) {
-      const raw = row.rawJson || {};
+      let raw = row.rawJson || {};
       if (String(raw.channel || '').toUpperCase() !== channel) continue;
       if (periodStart && periodEnd) {
         const rowDate = row.faturaDate ? new Date(row.faturaDate) : null;
@@ -3841,7 +3841,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       }
       processed++;
       const provider = String(row.entegrator || 'TURMOB_EFATURA');
-      const runtimeCfg = this.providerStubConfig(provider);
+      const runtimeCfg = (await runtimeConfigFor(provider)) || this.providerStubConfig(provider);
       const sourceRef = rowSourceRef(row);
       const existingBySourceRef = existingDocsBySourceRef.get(`${providerSource(row)}::${sourceRef}`);
       const savedXml = String(row.ublXmlRaw || '').trim();
@@ -3893,12 +3893,53 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         continue;
       }
       if (/iptal|itiraz|red|cancel/i.test(`${raw.approvalStatus || ''} ${raw.iptalItiraz || ''}`)) { skipped++; continue; }
-      const storedVisual = raw?.originalVisual;
-      const hasOriginalVisual = storedVisual && typeof storedVisual === 'object' && (
+      let storedVisual = raw?.originalVisual;
+      let hasOriginalVisual = storedVisual && typeof storedVisual === 'object' && (
         (/pdf/i.test(String(storedVisual.mimeType || '')) && Boolean(storedVisual.base64)) ||
         (/html/i.test(String(storedVisual.mimeType || '')) && Boolean(storedVisual.html))
       );
       let xml = String((savedXmlLooksSynthetic ? '' : savedXml) || '').trim();
+      let downloadError: string | null = null;
+      if (provider === 'TURMOB_EFATURA' && (!xml || !hasOriginalVisual)) {
+        const cfgForDownload = await runtimeConfigFor(provider);
+        if (cfgForDownload) {
+          try {
+            const rowDate = row.faturaDate ? new Date(row.faturaDate) : null;
+            const rowPeriod = opts.period || (rowDate && !Number.isNaN(rowDate.getTime()) ? rowDate.toISOString().slice(0, 7) : undefined);
+            const downloadPeriod = this.monthRange(rowPeriod);
+            const payloads = await this.fetchTurmobPortalInvoices(cfgForDownload, {
+              taxpayer,
+              direction: direction === 'OUT' ? 'SATIS' : 'ALIS',
+              period: downloadPeriod,
+              limit: 1,
+              channel,
+              targetRows: [row],
+            });
+            const lookup = { cfg: cfgForDownload, payloads, byKey: this.buildProviderPayloadLookup(payloads), error: null };
+            const downloaded = this.providerPayloadForInboxRow(row, lookup) || payloads[0] || null;
+            if (downloaded) {
+              xml = String(downloaded.xml || '').trim();
+              storedVisual = this.providerStoredVisual(downloaded);
+              hasOriginalVisual = storedVisual && typeof storedVisual === 'object' && (
+                (/pdf/i.test(String(storedVisual.mimeType || '')) && Boolean(storedVisual.base64)) ||
+                (/html/i.test(String(storedVisual.mimeType || '')) && Boolean(storedVisual.html))
+              );
+              raw = {
+                ...raw,
+                needsDocumentDownload: !hasOriginalVisual,
+                documentDownloadStatus: hasOriginalVisual ? 'READY' : 'MISSING',
+                documentDownloadError: hasOriginalVisual ? null : 'TURMOB orijinal fatura goruntusu indirilemedi.',
+                originalVisual: storedVisual || raw?.originalVisual || null,
+              };
+            }
+          } catch (e: any) {
+            downloadError = e?.message || 'TURMOB belge indirilemedi';
+            this.logger.warn(`TURMOB hedefli belge indirilemedi: ${row.faturaNo || row.uuid || row.id} ${downloadError}`);
+          }
+        } else {
+          downloadError = 'TURMOB kimlik bilgisi bulunamadi';
+        }
+      }
       if (provider === 'TURMOB_EFATURA' && (!xml || !hasOriginalVisual)) {
         await (this.prisma as any).eFaturaInbox.update({
           where: { id: row.id },
@@ -3911,8 +3952,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
               needsDocumentDownload: true,
               documentDownloadStatus: 'MISSING',
               documentDownloadError: !xml
-                ? 'TURMOB orijinal XML/UBL/PDF indirilemedi; sentetik belge olusturulmadan atlandi.'
-                : 'TURMOB orijinal fatura goruntusu indirilemedi; sentetik belge olusturulmadan atlandi.',
+                ? (downloadError || 'TURMOB orijinal XML/UBL/PDF indirilemedi; sentetik belge olusturulmadan atlandi.')
+                : (downloadError || 'TURMOB orijinal fatura goruntusu indirilemedi; sentetik belge olusturulmadan atlandi.'),
             },
           },
         });
@@ -3948,7 +3989,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         await (this.prisma as any).eFaturaInbox.update({
           where: { id: row.id },
           data: {
-            ...(usedSummaryOnly ? { ublXmlRaw: xml } : {}),
+            ublXmlRaw: xml,
             ...(parsed?.ettn ? { ettn: parsed.ettn } : {}),
             ...(parsed?.faturaNo ? { faturaNo: parsed.faturaNo } : {}),
             ...(parsed?.faturaTarihi ? { faturaDate: parsed.faturaTarihi } : {}),
@@ -5338,6 +5379,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       period: { donem: string; startDate: string; endDate: string };
       limit: number;
       channel?: string;
+      targetRows?: any[];
     },
   ): Promise<ProviderInvoicePayload[]> {
     if (cfg.provider === 'UYUMSOFT') return this.fetchUyumsoftInvoices(cfg, opts);
@@ -5935,6 +5977,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       period: { donem: string; startDate: string; endDate: string };
       limit: number;
       channel?: string;
+      targetRows?: any[];
     },
   ): Promise<ProviderInvoicePayload[]> {
     if (!cfg.username || !cfg.password) throw new Error('TÜRMOB için TCKN (kullanıcı adı) ve parola gerekli');
@@ -6058,7 +6101,58 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       if (/\byok\b|false|hayir|hayır|onaylandi|onaylandı|alici kabul etti|gonderildi|gönderildi|otomatik/.test(text)) return false;
       return /iptal|itiraz|reddedil|red edildi|cancel/.test(text);
     };
-    const live = rows.filter((r) => !isCancelled(r) && this.turmobRowInPeriod(r, opts.period));
+    const liveAll = rows.filter((r) => !isCancelled(r) && this.turmobRowInPeriod(r, opts.period));
+    const targetRows = Array.isArray(opts.targetRows) ? opts.targetRows : [];
+    const targetKeys = new Set<string>();
+    const addTargetKey = (value: any) => {
+      const key = this.providerKey(value);
+      if (key) targetKeys.add(key);
+    };
+    for (const target of targetRows) {
+      const raw = target?.rawJson && typeof target.rawJson === 'object' ? target.rawJson : {};
+      const summaryRaw = raw?.turmobSummaryRaw && typeof raw.turmobSummaryRaw === 'object' ? raw.turmobSummaryRaw : {};
+      addTargetKey(target?.uuid);
+      addTargetKey(target?.ettn);
+      addTargetKey(target?.faturaNo);
+      addTargetKey(raw?.turmobRowId);
+      addTargetKey(summaryRaw?.Ettn);
+      addTargetKey(summaryRaw?.FaturaNo);
+      addTargetKey(summaryRaw?.IadeFaturaNo);
+      addTargetKey(summaryRaw?.IdFaturaGelen);
+      addTargetKey(summaryRaw?.IdFaturaGiden);
+      addTargetKey(summaryRaw?.IdFaturaArsiv);
+      const amountKey = this.providerAmountKey(target?.toplam ?? summaryRaw?.OdenecekTutar ?? summaryRaw?.OdenecekTutarFormatted);
+      const faturaKey = this.providerKey(target?.faturaNo || summaryRaw?.FaturaNo || summaryRaw?.IadeFaturaNo);
+      if (faturaKey && amountKey) addTargetKey(`${faturaKey}:${amountKey}`);
+    }
+    const rowMatchesTarget = (row: any) => {
+      if (!targetKeys.size) return true;
+      const summary = this.turmobSummaryFromRow(row, { channel, taxpayer: opts.taxpayer, direction: opts.direction });
+      const candidates = [
+        summary.uuid,
+        summary.ettn,
+        summary.faturaNo,
+        summary.rowId,
+        summary.raw?.Ettn,
+        summary.raw?.FaturaNo,
+        summary.raw?.IadeFaturaNo,
+        summary.raw?.IdFaturaGelen,
+        summary.raw?.IdFaturaGiden,
+        summary.raw?.IdFaturaArsiv,
+      ];
+      for (const candidate of candidates) {
+        const key = this.providerKey(candidate);
+        if (key && targetKeys.has(key)) return true;
+        const amountKey = this.providerAmountKey(summary.toplam);
+        const keyWithAmount = key && amountKey ? this.providerKey(`${key}:${amountKey}`) : null;
+        if (keyWithAmount && targetKeys.has(keyWithAmount)) return true;
+      }
+      return false;
+    };
+    const live = targetKeys.size ? liveAll.filter(rowMatchesTarget) : liveAll;
+    if (targetKeys.size && !live.length && liveAll.length) {
+      this.logger.warn(`TURMOB hedef satir listede bulunamadi: channel=${channel} targets=${targetKeys.size} rows=${liveAll.length}`);
+    }
     const payloads = [...directPayloads];
     const priorityUrls = new Set<string>();
     const seenUrls = new Set<string>();
@@ -6282,7 +6376,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       addTurmobDocumentUrls(row);
     }
     let downloadAttempts = 0;
-    const maxDownloadAttempts = Math.min(2400, Math.max(240, live.length * 30));
+    const maxDownloadAttempts = targetKeys.size
+      ? Math.min(100, Math.max(24, live.length * 24))
+      : Math.min(2400, Math.max(240, live.length * 30));
     const targetPayloadCount = Math.min(opts.limit, Math.max(live.length, payloads.length || 1));
     for (const url of [...priorityUrls, ...seenUrls]) {
       if (++downloadAttempts > maxDownloadAttempts) break;
