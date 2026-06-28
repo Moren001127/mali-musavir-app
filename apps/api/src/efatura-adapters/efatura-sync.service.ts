@@ -142,16 +142,6 @@ export class EFaturaSyncService {
         ublXmlRaw: true, rawJson: true, markedAt: true, processedAt: true, syncedAt: true,
       },
     });
-    const providerSource = (row: any) => {
-      const provider = String(row?.entegrator || '').trim().toLowerCase();
-      return provider ? `integration-${provider}` : '';
-    };
-    const rowSourceRef = (row: any) => String(row.uuid || row.ettn || row.faturaNo || '').trim();
-    const rowSourceKey = (row: any) => {
-      const source = providerSource(row);
-      const sourceRef = rowSourceRef(row);
-      return source && sourceRef ? `${source}::${sourceRef}` : '';
-    };
     const isSyntheticTurmobInboxXml = (xml: any) => {
       const text = String(xml || '').trim();
       if (!text) return false;
@@ -163,16 +153,18 @@ export class EFaturaSyncService {
       if (String(row?.entegrator || '').toUpperCase() !== 'TURMOB_EFATURA') return false;
       const raw = row?.rawJson && typeof row.rawJson === 'object' ? row.rawJson : {};
       const downloadStatus = String(raw?.documentDownloadStatus || '').toUpperCase();
+      const visual = raw?.originalVisual && typeof raw.originalVisual === 'object' ? raw.originalVisual : null;
+      const hasOriginalVisual = !!visual && (
+        (/pdf/i.test(String(visual.mimeType || '')) && Boolean(visual.base64)) ||
+        (/html/i.test(String(visual.mimeType || '')) && Boolean(visual.html))
+      );
       return downloadStatus === 'MISSING'
         || downloadStatus === 'SUMMARY_ONLY'
-        || isSyntheticTurmobInboxXml(row?.ublXmlRaw);
+        || isSyntheticTurmobInboxXml(row?.ublXmlRaw)
+        || (!!row?.ublXmlRaw && !hasOriginalVisual);
     };
-    const sourceRefs = rows
-      .map(rowSourceRef)
-      .filter(Boolean);
     const docIds = [...new Set(rows.map((row: any) => String(row.documentId || '').trim()).filter(Boolean))];
     let existingDocIds = new Set<string>();
-    const existingDocsBySourceRef = new Map<string, any>();
     if (docIds.length) {
       const docWhere: any = { tenantId, id: { in: docIds } };
       if (opts.taxpayerId) docWhere.taxpayerId = opts.taxpayerId;
@@ -181,33 +173,11 @@ export class EFaturaSyncService {
         select: { id: true, source: true, sourceRefId: true },
       });
       existingDocIds = new Set(docs.map((doc: any) => String(doc.id)));
-      for (const doc of docs) {
-        const key = `${String(doc.source || '').toLowerCase()}::${String(doc.sourceRefId || '').trim()}`;
-        if (doc.sourceRefId) existingDocsBySourceRef.set(key, doc);
-      }
-    }
-    const sources = [...new Set(rows.map(providerSource).filter(Boolean))];
-    if (sourceRefs.length && sources.length) {
-      const docWhere: any = {
-        tenantId,
-        source: { in: sources },
-        sourceRefId: { in: [...new Set(sourceRefs)] },
-      };
-      if (opts.taxpayerId) docWhere.taxpayerId = opts.taxpayerId;
-      const docs = await (this.prisma as any).invoiceAccountingDocument.findMany({
-        where: docWhere,
-        select: { id: true, source: true, sourceRefId: true },
-      });
-      for (const doc of docs) {
-        existingDocIds.add(String(doc.id));
-        const key = `${String(doc.source || '').toLowerCase()}::${String(doc.sourceRefId || '').trim()}`;
-        if (doc.sourceRefId) existingDocsBySourceRef.set(key, doc);
-      }
     }
 
     const staleRows = rows.filter((row: any) => (
-      (row.documentId && !existingDocIds.has(String(row.documentId)) && !existingDocsBySourceRef.has(rowSourceKey(row))) ||
-      (!row.documentId && (row.isTransferred || row.processedAt) && !existingDocsBySourceRef.has(rowSourceKey(row))) ||
+      (row.documentId && !existingDocIds.has(String(row.documentId))) ||
+      (!row.documentId && (row.isTransferred || row.processedAt)) ||
       (missingOriginalDocument(row) && (row.documentId || row.isTransferred || row.processedAt))
     ));
     if (staleRows.length) {
@@ -234,8 +204,7 @@ export class EFaturaSyncService {
       })
       .slice(0, limit)
       .map((row: any) => {
-        const refDoc = existingDocsBySourceRef.get(rowSourceKey(row));
-        const linkedDocId = row.documentId && existingDocIds.has(String(row.documentId)) ? String(row.documentId) : (refDoc?.id || null);
+        const linkedDocId = row.documentId && existingDocIds.has(String(row.documentId)) ? String(row.documentId) : null;
         const hasAccountingDocument = !!linkedDocId;
         if (staleIds.has(row.id) || missingOriginalDocument(row)) {
           return { ...row, documentId: null, isTransferred: false, processedAt: null, hasAccountingDocument: false };

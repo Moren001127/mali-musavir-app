@@ -3563,6 +3563,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
                 ? (this.parseProviderUblInvoice(effectivePayload.xml) || this.regexProviderInvoiceFallback(effectivePayload.xml))
                 : null;
               const effectiveStoredVisual = payload ? this.providerStoredVisual(payload) : ((currentRaw as any)?.originalVisual || null);
+              const hasEffectiveOriginalVisual = effectiveStoredVisual && typeof effectiveStoredVisual === 'object' && (
+                (/pdf/i.test(String((effectiveStoredVisual as any).mimeType || '')) && Boolean((effectiveStoredVisual as any).base64)) ||
+                (/html/i.test(String((effectiveStoredVisual as any).mimeType || '')) && Boolean((effectiveStoredVisual as any).html))
+              );
+              const documentReady = !!effectivePayload && hasEffectiveOriginalVisual;
               const data: any = {
                 paraBirimi: effectiveParsed?.paraBirimi || summary.paraBirimi || 'TRY',
                 direction: inboxDirection,
@@ -3586,9 +3591,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
                   senderVkn: summary.senderVkn || null,
                   receiverVkn: summary.receiverVkn || null,
                   queriedBy: userId || null,
-                  needsDocumentDownload: !effectivePayload,
-                  documentDownloadStatus: effectivePayload ? 'READY' : 'MISSING',
-                  documentDownloadError: effectivePayload ? null : (turmobLookup?.error || 'TURMOB XML/UBL/PDF indirme linki bulunamadi'),
+                  needsDocumentDownload: !documentReady,
+                  documentDownloadStatus: documentReady ? 'READY' : 'MISSING',
+                  documentDownloadError: documentReady
+                    ? null
+                    : (!effectivePayload
+                        ? (turmobLookup?.error || 'TURMOB XML/UBL/PDF indirme linki bulunamadi')
+                        : 'TURMOB orijinal fatura goruntusu indirilemedi'),
                   originalVisual: effectiveStoredVisual,
                 },
               };
@@ -3631,7 +3640,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
                 });
                 providerAdded++;
               }
-              if (effectivePayload) providerDownloaded++;
+              if (documentReady) providerDownloaded++;
               else providerMissingDocument++;
             } catch (e: any) {
               providerFailed++;
@@ -3885,8 +3894,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       }
       if (/iptal|itiraz|red|cancel/i.test(`${raw.approvalStatus || ''} ${raw.iptalItiraz || ''}`)) { skipped++; continue; }
       const storedVisual = raw?.originalVisual;
+      const hasOriginalVisual = storedVisual && typeof storedVisual === 'object' && (
+        (/pdf/i.test(String(storedVisual.mimeType || '')) && Boolean(storedVisual.base64)) ||
+        (/html/i.test(String(storedVisual.mimeType || '')) && Boolean(storedVisual.html))
+      );
       let xml = String((savedXmlLooksSynthetic ? '' : savedXml) || '').trim();
-      if (!xml && provider === 'TURMOB_EFATURA') {
+      if (provider === 'TURMOB_EFATURA' && (!xml || !hasOriginalVisual)) {
         await (this.prisma as any).eFaturaInbox.update({
           where: { id: row.id },
           data: {
@@ -3897,7 +3910,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
               ...raw,
               needsDocumentDownload: true,
               documentDownloadStatus: 'MISSING',
-              documentDownloadError: 'TURMOB orijinal XML/UBL/PDF indirilemedi; sentetik belge olusturulmadan atlandi.',
+              documentDownloadError: !xml
+                ? 'TURMOB orijinal XML/UBL/PDF indirilemedi; sentetik belge olusturulmadan atlandi.'
+                : 'TURMOB orijinal fatura goruntusu indirilemedi; sentetik belge olusturulmadan atlandi.',
             },
           },
         });
@@ -3905,7 +3920,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         row.isTransferred = false;
         row.processedAt = null;
         failed++;
-        if (errors.length < 10) errors.push({ id: row.id, faturaNo: row.faturaNo, message: 'TURMOB orijinal belge indirilemedi' });
+        if (errors.length < 10) errors.push({ id: row.id, faturaNo: row.faturaNo, message: hasOriginalVisual ? 'TURMOB orijinal XML indirilemedi' : 'TURMOB orijinal fatura goruntusu indirilemedi' });
         continue;
       }
       const usedSummaryOnly = false;
@@ -6885,9 +6900,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       ? payload.pdfBuffer
       : null;
     const hasHtml = html && /<(?:!doctype\s+html|html|body)\b/i.test(html.slice(0, 2000));
-    const isSyntheticTurmobVisual = cfg.provider === 'TURMOB_EFATURA' && this.isSyntheticTurmobInboxXml(xml) && !pdf && !hasHtml;
-    if (isSyntheticTurmobVisual) {
-      throw new Error('TURMOB orijinal XML/UBL/PDF olmadan sentetik belge kaydedilmedi.');
+    if (cfg.provider === 'TURMOB_EFATURA' && !pdf && !hasHtml) {
+      throw new Error('TURMOB orijinal fatura goruntusu olmadan belge kaydedilmedi.');
     }
     if (pdf || hasHtml) {
       const zip = new JSZip();

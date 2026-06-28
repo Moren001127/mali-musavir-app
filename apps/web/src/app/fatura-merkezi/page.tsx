@@ -1464,17 +1464,16 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
       direction: efaturaDirection,
       channel: efaturaChannel,
       period,
-      async: true,
       providers: [v.provider],
       limit: 500,
     }),
     onSuccess: (r: any) => {
       setLastEfaturaSync(r?.data || null);
       showFetchResult(r?.data);
-      if (r?.data?.queued) setEfaturaPollUntil(Date.now() + 120000);
+      setEfaturaPollUntil(0);
       qc.invalidateQueries({ queryKey: ['fm-efatura-inbox'] });
       qc.invalidateQueries({ queryKey: ['fm2'] });
-      [2500, 6000, 12000, 24000, 45000, 75000, 110000].forEach((ms) => {
+      [1200, 3000, 7000].forEach((ms) => {
         window.setTimeout(() => {
           qc.invalidateQueries({ queryKey: ['fm-efatura-inbox'] });
           qc.invalidateQueries({ queryKey: ['fm2'] });
@@ -1484,8 +1483,8 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
     onError: (e: any) => {
       const msg = e?.response?.data?.message || e?.message || 'hata';
       if (/network error|failed to fetch|timeout|aborted/i.test(String(msg))) {
-        setEfaturaPollUntil(Date.now() + 60000);
-        toast.warning('Sorgu baglantisi koptu; tablo yine de otomatik yenilenecek.');
+        setEfaturaPollUntil(0);
+        toast.error('Sorgu tamamlanamadi: baglanti koptu. Tekrar Sorgula ile deneyin.');
         qc.invalidateQueries({ queryKey: ['fm-efatura-inbox'] });
         return;
       }
@@ -1498,7 +1497,7 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
     if (!e) return;
     const msg = e?.response?.data?.message || e?.message || 'hata';
     if (/network error|failed to fetch|timeout|aborted/i.test(String(msg))) {
-      setLastEfaturaSync({ providers: [{ provider: activeEfaturaProvider?.provider || 'TURMOB_EFATURA', label: activeEfaturaProvider?.label || 'TURMOB e-Fatura', status: 'QUEUED_EFATURA_SYNC', reason: 'Baglanti koptu; tablo otomatik yenileniyor.' }] });
+      setLastEfaturaSync({ failed: 1, providers: [{ provider: activeEfaturaProvider?.provider || 'TURMOB_EFATURA', label: activeEfaturaProvider?.label || 'TURMOB e-Fatura', status: 'FAILED', reason: 'Baglanti koptu; sorgu tamamlanmadi.' }] });
       return;
     }
     setLastEfaturaSync({ failed: 1, providers: [{ provider: activeEfaturaProvider?.provider || 'TURMOB_EFATURA', label: activeEfaturaProvider?.label || 'TURMOB e-Fatura', status: 'FAILED', reason: msg }] });
@@ -1512,23 +1511,9 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
       period,
       ids: efaturaSelectedIds.length ? efaturaSelectedIds : efaturaTransferableIds,
       limit: 500,
-      async: true,
     }),
     onSuccess: (r: any) => {
-      if (r?.data?.queued) {
-        toast.success('Aktarim arka planda basladi; liste otomatik yenilenecek.');
-        setEfaturaPollUntil(Date.now() + 120000);
-        setSel(new Set());
-        qc.invalidateQueries({ queryKey: ['fm-efatura-inbox'] });
-        qc.invalidateQueries({ queryKey: ['fm2'] });
-        [2500, 6000, 12000, 24000, 45000, 75000, 110000].forEach((ms) => {
-          window.setTimeout(() => {
-            qc.invalidateQueries({ queryKey: ['fm-efatura-inbox'] });
-            qc.invalidateQueries({ queryKey: ['fm2'] });
-          }, ms);
-        });
-        return;
-      }
+      setEfaturaPollUntil(0);
       const imported = Number(r?.data?.imported || 0);
       const processed = Number(r?.data?.processed || 0);
       const failed = Number(r?.data?.failed || 0);
