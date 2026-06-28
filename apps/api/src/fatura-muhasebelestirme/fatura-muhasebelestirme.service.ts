@@ -3829,13 +3829,29 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const savedXml = String(row.ublXmlRaw || '').trim();
       const savedXmlLooksSynthetic = provider === 'TURMOB_EFATURA' && this.isSyntheticTurmobInboxXml(savedXml);
       let xml = String((savedXmlLooksSynthetic ? '' : savedXml) || '').trim();
-      const usedSummaryOnly =
-        !xml &&
-        provider === 'TURMOB_EFATURA' &&
-        (!!row.faturaNo || row.toplam != null || row.matrah != null || row.kdv != null);
-      if (usedSummaryOnly) {
-        xml = this.syntheticTurmobInboxXml(row, taxpayer, channel);
+      if (!xml && provider === 'TURMOB_EFATURA') {
+        await (this.prisma as any).eFaturaInbox.update({
+          where: { id: row.id },
+          data: {
+            isTransferred: false,
+            processedAt: null,
+            documentId: null,
+            rawJson: {
+              ...raw,
+              needsDocumentDownload: true,
+              documentDownloadStatus: 'MISSING',
+              documentDownloadError: 'TURMOB orijinal XML/UBL/PDF indirilemedi; sentetik belge olusturulmadan atlandi.',
+            },
+          },
+        });
+        row.documentId = null;
+        row.isTransferred = false;
+        row.processedAt = null;
+        failed++;
+        if (errors.length < 10) errors.push({ id: row.id, faturaNo: row.faturaNo, message: 'TURMOB orijinal belge indirilemedi' });
+        continue;
       }
+      const usedSummaryOnly = false;
       if (!xml) { failed++; errors.push({ id: row.id, message: 'XML bulunamadi' }); continue; }
       try {
         const result = await this.createDocumentFromProviderXml(

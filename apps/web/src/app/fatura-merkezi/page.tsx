@@ -1503,8 +1503,23 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
       period,
       ids: efaturaSelectedIds.length ? efaturaSelectedIds : efaturaTransferableIds,
       limit: 500,
+      async: true,
     }),
     onSuccess: (r: any) => {
+      if (r?.data?.queued) {
+        toast.success('Aktarim arka planda basladi; liste otomatik yenilenecek.');
+        setEfaturaPollUntil(Date.now() + 120000);
+        setSel(new Set());
+        qc.invalidateQueries({ queryKey: ['fm-efatura-inbox'] });
+        qc.invalidateQueries({ queryKey: ['fm2'] });
+        [2500, 6000, 12000, 24000, 45000, 75000, 110000].forEach((ms) => {
+          window.setTimeout(() => {
+            qc.invalidateQueries({ queryKey: ['fm-efatura-inbox'] });
+            qc.invalidateQueries({ queryKey: ['fm2'] });
+          }, ms);
+        });
+        return;
+      }
       const imported = Number(r?.data?.imported || 0);
       const processed = Number(r?.data?.processed || 0);
       const failed = Number(r?.data?.failed || 0);

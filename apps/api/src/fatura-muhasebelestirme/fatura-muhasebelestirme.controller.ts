@@ -472,6 +472,25 @@ export class FaturaMuhasebelestirmeController {
   @Post('efatura-inbox/import')
   async efaturaInboxImport(@Req() req: any, @Body() body: any) {
     const direction = body?.direction === 'OUT' ? 'OUT' : 'IN';
+    if (body?.async === true || body?.background === true) {
+      const tenantId = req.user.tenantId;
+      const userId = req.user?.userId || req.user?.sub;
+      const input = {
+        taxpayerId: body?.taxpayerId,
+        period: body?.period,
+        direction: direction as 'IN' | 'OUT',
+        channel: body?.channel,
+        ids: Array.isArray(body?.ids) ? body.ids : undefined,
+        limit: body?.limit,
+      };
+      void this.service.importEfaturaInboxToAccounting(tenantId, userId, input)
+        .catch((e: any) => console.warn('[efatura-inbox/import] background failed:', e?.message || e));
+      return {
+        source: 'efatura-import-queued',
+        queued: true,
+        reason: 'Aktarim arka planda calisiyor; tablo otomatik yenilenecek.',
+      };
+    }
     return this.service.importEfaturaInboxToAccounting(
       req.user.tenantId,
       req.user?.userId || req.user?.sub,
