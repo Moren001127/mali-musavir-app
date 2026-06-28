@@ -1833,6 +1833,20 @@ model EDefterFinding {
   @@map("edefter_findings")
 }
 
+model EDefterControlRuleSetting {
+  id        String   @id @default(cuid())
+  tenantId  String
+  code      String
+  active    Boolean  @default(true)
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, code])
+  @@index([tenantId, active])
+  @@map("edefter_control_rule_settings")
+}
+
 model GelirTablosu {
   id           String   @id @default(cuid())
   tenantId     String

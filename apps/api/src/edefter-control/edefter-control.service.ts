@@ -33,6 +33,42 @@ type VoucherMeta = {
   isVatAccrual: boolean;
 };
 
+const DEFAULT_DISABLED_CATEGORIES = new Set([
+  'SIFIR_TUTARLI_SATIR',
+  'SATIRDA_BORC_ALACAK_BIRLIKTE',
+  '191_TERS_CALISMA',
+  '391_TERS_CALISMA',
+  'KDV_ODENECEK_360_UYUMSUZ',
+  'KDV_DEVREDEN_190_UYUMSUZ',
+  'KDV_TAHAKKUK_MUKERRER',
+  'KDV_TAHAKKUK_AY_SONU_DEGIL',
+  'KDV_TAHAKKUK_191_TUTAR_UYUMSUZ',
+  'KDV_TAHAKKUK_391_TUTAR_UYUMSUZ',
+  'KDV_ORANI_OLAGAN_DISI',
+  'KDV_MATRAH_KARSILIK_YOK',
+  'MUKERRER_EVRAK_NO',
+  'FATURA_KARSILIK_HESAP_EKSIK',
+  'BELGE_TURU_DIGER_ACIKLAMA_EKSIK',
+  'ANA_HESAPTA_KAYIT',
+  'YEVMIYE_NO_FORMAT_SUPHELI',
+  'TEK_FISTE_BIRDEN_COK_BELGE',
+  'AYNI_FISTE_BELGE_ALANLARI_FARKLI',
+  'GELIR_HESABI_BORC_CALISMA',
+  'GIDER_HESABI_ALACAK_CALISMA',
+  'ORTAK_CARI_KASA_KULLANIMI',
+  'AVANS_KASA_ORTAK_CARI_KAPAMA',
+  'CARI_KAPAMA_KARSILIK_KONTROL',
+  'BORDRO_TAHAKKUK_HESAP_KONTROL',
+  'UCRET_SGK_TAHAKKUK_KONTROL',
+  'AMORTISMAN_KAYDI_KONTROL',
+  'REESKONT_SIMETRI_KONTROL',
+  'DONEMSELLIK_GIDER_KONTROL',
+  'MALIYET_YANSITMA_EKSIK_KONTROL',
+  'ACILIS_FISI_TARIH_KONTROL',
+  'KAPANIS_FISI_TARIH_KONTROL',
+  'KASA_30000_TEVSIK_RISKI',
+]);
+
 @Injectable()
 export class EDefterControlService {
   private readonly logger = new Logger(EDefterControlService.name);
@@ -88,6 +124,53 @@ export class EDefterControlService {
       ),
     ]);
     return { ...session, taxpayer: taxpayer || null, companionMizan };
+  }
+
+  async getRuleSettings(tenantId: string) {
+    const rows = await (this.prisma as any).eDefterControlRuleSetting.findMany({
+      where: { tenantId },
+      orderBy: { code: 'asc' },
+    });
+    return {
+      settings: rows.map((r: any) => ({
+        code: r.code,
+        active: Boolean(r.active),
+        updatedAt: r.updatedAt,
+        updatedBy: r.updatedBy || null,
+      })),
+      defaultDisabledCodes: [...DEFAULT_DISABLED_CATEGORIES].sort(),
+    };
+  }
+
+  async setRuleSetting(params: {
+    tenantId: string;
+    code: string;
+    active: boolean;
+    userId?: string | null;
+  }) {
+    const code = String(params.code || '').trim().toUpperCase();
+    if (!/^[A-Z0-9_]+$/.test(code)) throw new BadRequestException('Kural kodu gecersiz');
+    return (this.prisma as any).eDefterControlRuleSetting.upsert({
+      where: { tenantId_code: { tenantId: params.tenantId, code } },
+      create: {
+        tenantId: params.tenantId,
+        code,
+        active: params.active,
+        updatedBy: params.userId || null,
+      },
+      update: {
+        active: params.active,
+        updatedBy: params.userId || null,
+      },
+    });
+  }
+
+  private async getRuleSettingMap(tenantId: string): Promise<Map<string, boolean>> {
+    const rows = await (this.prisma as any).eDefterControlRuleSetting.findMany({
+      where: { tenantId },
+      select: { code: true, active: true },
+    });
+    return new Map(rows.map((r: any) => [String(r.code || '').toUpperCase(), Boolean(r.active)]));
   }
 
   async createFetchJob(params: {
@@ -255,7 +338,8 @@ export class EDefterControlService {
       await (this.prisma as any).eDefterVoucherLine.createMany({ data: chunk });
     }
 
-    const findings = this.analyze(rows, range, donemTipi);
+    const ruleSettings = await this.getRuleSettingMap(params.tenantId);
+    const findings = this.analyze(rows, range, donemTipi, ruleSettings);
     if (findings.length) {
       for (const chunk of this.chunks(findings, 700)) {
         await (this.prisma as any).eDefterFinding.createMany({
@@ -343,7 +427,8 @@ export class EDefterControlService {
     const rows = this.parser.parse(rawExcelBytes, { defaultYear: range?.start.getUTCFullYear() });
     this.correctTahakkukDates(rows);
     const voucherCount = new Set(rows.map((r) => r.voucherKey)).size;
-    const findings = this.analyze(rows, range, donemTipi);
+    const ruleSettings = await this.getRuleSettingMap(tenantId);
+    const findings = this.analyze(rows, range, donemTipi, ruleSettings);
     const lineRows = rows.map((r) => ({
       sessionId: session.id,
       rowIndex: r.rowIndex,
@@ -513,7 +598,12 @@ export class EDefterControlService {
     };
   }
 
-  private analyze(rows: ParsedEDefterFisLine[], range: { start: Date; end: Date } | null, donemTipi?: EDefterDonemTipi): FindingDraft[] {
+  private analyze(
+    rows: ParsedEDefterFisLine[],
+    range: { start: Date; end: Date } | null,
+    donemTipi?: EDefterDonemTipi,
+    ruleSettings: Map<string, boolean> = new Map(),
+  ): FindingDraft[] {
     const findings: FindingDraft[] = [];
     // Yil-sonu / acilis / donem-sonu kurallari yalnizca YILLIK defterde anlamlidir.
     // Ceyrek (gecici vergi) ve aylik defterlerde bu kurallar yanlis alarm uretir.
@@ -674,48 +764,12 @@ export class EDefterControlService {
       });
     }
 
-    // False-positive cikaran kurallari filtrele (kullanici geri bildirimine gore kapatildi).
-    const DISABLED_CATEGORIES = new Set([
-      'SIFIR_TUTARLI_SATIR',
-      'SATIRDA_BORC_ALACAK_BIRLIKTE',
-      '191_TERS_CALISMA',
-      '391_TERS_CALISMA',
-      // KDV_TAHAKKUK_EKSIK aktif (ay sonu tahakkuk yoksa onemli).
-      // KDV_ODENECEK_360 / DEVREDEN_190 KAPATILDI: basit "hesaplanan - indirilecek" formulu
-      // tevkifati (sorumlu sifatiyla 191.02, tevkifatli 391.01.007/008, odenecek KDV 2 = 360.02)
-      // ve onceki donem devredenini modellemedigi icin yanlis tutar uretiyordu (yanlis alarm).
-      'KDV_ODENECEK_360_UYUMSUZ',
-      'KDV_DEVREDEN_190_UYUMSUZ',
-      // Asagidakiler hala kapali (gurultu):
-      'KDV_TAHAKKUK_MUKERRER',
-      'KDV_TAHAKKUK_AY_SONU_DEGIL',
-      'KDV_TAHAKKUK_191_TUTAR_UYUMSUZ',
-      'KDV_TAHAKKUK_391_TUTAR_UYUMSUZ',
-      'KDV_ORANI_OLAGAN_DISI',
-      'KDV_MATRAH_KARSILIK_YOK',
-      'MUKERRER_EVRAK_NO',
-      'FATURA_KARSILIK_HESAP_EKSIK',
-      'BELGE_TURU_DIGER_ACIKLAMA_EKSIK',
-      'ANA_HESAPTA_KAYIT',
-      'YEVMIYE_NO_FORMAT_SUPHELI',
-      'TEK_FISTE_BIRDEN_COK_BELGE',
-      'AYNI_FISTE_BELGE_ALANLARI_FARKLI',
-      'GELIR_HESABI_BORC_CALISMA',
-      'GIDER_HESABI_ALACAK_CALISMA',
-      'ORTAK_CARI_KASA_KULLANIMI',
-      'AVANS_KASA_ORTAK_CARI_KAPAMA',
-      'CARI_KAPAMA_KARSILIK_KONTROL',
-      'BORDRO_TAHAKKUK_HESAP_KONTROL',
-      'UCRET_SGK_TAHAKKUK_KONTROL',
-      'AMORTISMAN_KAYDI_KONTROL',
-      'REESKONT_SIMETRI_KONTROL',
-      'DONEMSELLIK_GIDER_KONTROL',
-      'MALIYET_YANSITMA_EKSIK_KONTROL',
-      'ACILIS_FISI_TARIH_KONTROL',
-      'KAPANIS_FISI_TARIH_KONTROL',
-      'KASA_30000_TEVSIK_RISKI',
-    ]);
-    const filtered = findings.filter((f) => !DISABLED_CATEGORIES.has(f.category));
+    const filtered = findings.filter((f) => {
+      const explicit = ruleSettings.get(f.category);
+      if (explicit === false) return false;
+      if (explicit === true) return true;
+      return !DEFAULT_DISABLED_CATEGORIES.has(f.category);
+    });
 
     return filtered.slice(0, 10000);
   }
@@ -2178,16 +2232,19 @@ export class EDefterControlService {
     });
     for (const personelRow of personelOdeme) {
       const voucherRows = byVoucher.get(personelRow.voucherKey) || [];
-      if (this.isMinimumWagePayrollExemptionLikely(voucherRows)) continue;
+      const minimumWageExemptionLikely = this.isMinimumWagePayrollExemptionLikely(voucherRows);
       const hasDamga = voucherRows.some((r) => /^360\.01\.002/.test(r.hesapKodu || '') || (/^360/.test(r.hesapKodu || '') && /damga/.test(this.rowText(r))));
       if (!hasDamga) {
         findings.push({
           severity: 'INFO',
           category: 'DAMGA_VERGISI_KONTROL',
-          message: `Personel ucret odemesi var ama 360.01.002 damga vergisi hesabi bos. Ucret damga vergisi binde 7.59 kontrol edilmeli.`,
+          message: minimumWageExemptionLikely
+            ? `Personel ucret/bordro kaydi var; 360.01.002 damga vergisi hesabi gorunmuyor. Asgari ucret istisnasi nedeniyle damga vergisi dogmayabilir; bordroda istisna uygulanip uygulanmadigi veya damga kaydinin ayri fiste olup olmadigi kontrol edilmeli.`
+            : `Personel ucret/bordro kaydi var; 360.01.002 damga vergisi hesabi gorunmuyor. Ucret damga vergisi istisna/asgari ucret durumu ve varsa ayri fisteki 360 damga kaydi kontrol edilmeli.`,
           voucherKey: personelRow.voucherKey,
           rowIndex: personelRow.rowIndex,
           hesapKodu: personelRow.hesapKodu,
+          detail: { minimumWageExemptionLikely },
         });
         break;
       }

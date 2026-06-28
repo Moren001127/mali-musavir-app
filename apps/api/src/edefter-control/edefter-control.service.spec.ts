@@ -33,11 +33,12 @@ describe('EDefterControlService tevsik kasa kontrolleri', () => {
     service = new EDefterControlService(null as any, null as any, null as any);
   });
 
-  function analyze(rows: ParsedEDefterFisLine[]) {
+  function analyze(rows: ParsedEDefterFisLine[], ruleSettings = new Map<string, boolean>()) {
     return (service as any).analyze(
       rows,
       { start: d('2026-01-01'), end: d('2026-03-31') },
       'GECICI_Q1',
+      ruleSettings,
     ) as Array<{ category: string; message: string }>;
   }
 
@@ -215,6 +216,73 @@ describe('EDefterControlService tevsik kasa kontrolleri', () => {
     ]);
 
     expect(findings.map((f) => f.category)).not.toContain('KASA_HAREKET_30000_TEVSIK_RISKI');
+  });
+
+  it('kullanici tarafindan pasife alinan kural bulgu uretmez', () => {
+    const findings = analyze([
+      row({
+        rowIndex: 60,
+        voucherKey: 'nakit-odeme',
+        fisNo: '8',
+        yevmiyeNo: '8',
+        aciklama: 'Nakit tedarikci odemesi',
+        hesapKodu: '100.01.001',
+        alacak: 35000,
+        vknTckn: '1234567890',
+      }),
+      row({
+        rowIndex: 61,
+        voucherKey: 'nakit-odeme',
+        fisNo: '8',
+        yevmiyeNo: '8',
+        aciklama: 'Nakit tedarikci odemesi',
+        hesapKodu: '320.01.001',
+        hesapAdi: 'Saticilar',
+        borc: 35000,
+        vknTckn: '1234567890',
+      }),
+    ], new Map([['KASA_HAREKET_30000_TEVSIK_RISKI', false]]));
+
+    expect(findings.map((f) => f.category)).not.toContain('KASA_HAREKET_30000_TEVSIK_RISKI');
+  });
+
+  it('asgari ucret istisnasi olasi bordroda damga kontrolunu aciklayici bilgi olarak uretir', () => {
+    const findings = analyze([
+      row({
+        rowIndex: 70,
+        voucherKey: 'bordro',
+        fisNo: '9',
+        yevmiyeNo: '9',
+        hesapKodu: '770.01.001',
+        hesapAdi: 'Brut ucret gideri',
+        aciklama: 'Personel bordro maas',
+        borc: 26005.5,
+      }),
+      row({
+        rowIndex: 71,
+        voucherKey: 'bordro',
+        fisNo: '9',
+        yevmiyeNo: '9',
+        hesapKodu: '335.01.001',
+        hesapAdi: 'Personele borclar',
+        aciklama: 'Net ucret',
+        alacak: 22104.68,
+      }),
+      row({
+        rowIndex: 72,
+        voucherKey: 'bordro',
+        fisNo: '9',
+        yevmiyeNo: '9',
+        hesapKodu: '361.01.001',
+        hesapAdi: 'Odenecek SGK',
+        aciklama: 'SGK primi',
+        alacak: 3900.82,
+      }),
+    ]);
+
+    const damga = findings.find((f) => f.category === 'DAMGA_VERGISI_KONTROL');
+    expect(damga?.message).toContain('Asgari ucret istisnasi');
+    expect(damga?.message).toContain('ayri fiste');
   });
 
   it('fis kimligi ve hesap kodu olmayan rapor ozet satirlarini tarih hatasi saymaz', () => {

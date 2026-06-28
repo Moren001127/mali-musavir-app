@@ -94,6 +94,29 @@ export class EDefterControlController {
     return { job, session, mizanJob, mizan };
   }
 
+  @Get('edefter-control/rule-settings')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  getRuleSettings(@Req() req: any) {
+    return this.service.getRuleSettings(req.user.tenantId);
+  }
+
+  @Patch('edefter-control/rule-settings/:code')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('ADMIN', 'STAFF')
+  updateRuleSetting(
+    @Req() req: any,
+    @Param('code') code: string,
+    @Body() body: { active?: boolean },
+  ) {
+    if (typeof body?.active !== 'boolean') throw new BadRequestException('active boolean olmali');
+    return this.service.setRuleSetting({
+      tenantId: req.user.tenantId,
+      code,
+      active: body.active,
+      userId: req.user.sub,
+    });
+  }
+
   @Get('edefter-control/:id')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   getOne(@Req() req: any, @Param('id') id: string) {

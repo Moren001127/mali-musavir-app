@@ -15,6 +15,13 @@ export const edefterControlApi = {
       .then((r) => r.data),
   get: (id: string) => api.get(`/edefter-control/${id}`).then((r) => r.data),
   reanalyze: (id: string) => api.post(`/edefter-control/${id}/reanalyze`).then((r) => r.data),
+  getRuleSettings: () =>
+    api.get('/edefter-control/rule-settings').then((r) => r.data as {
+      settings: Array<{ code: string; active: boolean; updatedAt?: string; updatedBy?: string | null }>;
+      defaultDisabledCodes: string[];
+    }),
+  setRuleActive: (code: string, active: boolean) =>
+    api.patch(`/edefter-control/rule-settings/${encodeURIComponent(code)}`, { active }).then((r) => r.data),
   fetchFromLucaAgent: (data: {
     mukellefId: string;
     donem: string;

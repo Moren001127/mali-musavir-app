@@ -247,7 +247,7 @@ function categoryLabel(code: string) {
     KIRA_STOPAJI_EKSIK: 'Kira stopajı kesilmemiş',
     KIRA_STOPAJI_ORAN: 'Kira stopaj oranı sapma',
     SMM_STOPAJI_KONTROL: 'Serbest meslek stopaj eksik',
-    DAMGA_VERGISI_KONTROL: 'Damga vergisi eksik',
+    DAMGA_VERGISI_KONTROL: 'Damga vergisi kontrolü',
     ACILIS_FISI_YOK: 'Açılış fişi yok',
     ACILIS_FISINDE_GELIR_GIDER: 'Açılış fişinde gelir/gider hesabı',
     YILLIK_KAPANIS_690_EKSIK: 'Yıllık kapanış 690 eksik',
@@ -300,16 +300,21 @@ const MEVZUAT_REF: Record<string, string> = {
   KASA_GUNLUK_30000_TEVSIK_RISKI: 'VUK 459', KASA_HAREKET_30000_TEVSIK_RISKI: 'VUK 459',
   KASA_TEVSIK_PARCALAMA: 'VUK 459', KASA_TEVSIK_BOLUNMUS_ISLEM: 'VUK 459',
   FIS_DENGESIZ: 'VUK 219', DEFTER_GENELI_DENGESIZ: 'VUK 219', DONEM_DISI_TARIH: 'VUK 219',
+  HESAP_KODU_EKSIK: 'VUK 219', FIS_TARIHI_PARSE_HATASI: 'VUK 219',
   YEVMIYE_NO_MUKERRER: 'VUK 219', YEVMIYE_NO_ATLAMA: 'VUK 219', YEVMIYE_TARIH_SIRASI: 'VUK 219',
+  BOS_FIS: 'VUK 219', TEK_SATIRLI_FIS: 'VUK 219',
   BELGE_TARIHI_FIS_TARIHINDEN_SONRA: 'VUK 219', BELGE_TARIHI_DONEM_DISI: 'VUK 219',
   HAVADA_KDV_KAYDI: 'KDVK 29', KDV_TAHAKKUK_EKSIK: 'KDVK 41', KDV_ODENECEK_360_UYUMSUZ: 'KDVK 41',
   KDV_DEVREDEN_190_UYUMSUZ: 'KDVK 29', DONEM_SONU_191_BAKIYE: 'KDVK 29', DONEM_SONU_391_BAKIYE: 'KDVK 41',
   KIRA_STOPAJI_EKSIK: 'GVK 94', KIRA_STOPAJI_ORAN: 'GVK 94', SMM_STOPAJI_KONTROL: 'GVK 94', DAMGA_VERGISI_KONTROL: 'Damga V.K.',
   VKN_FORMAT_HATALI: 'VUK 230', VKN_ALGORITMA_HATALI: 'VUK 230',
   GERCEK_MUKERRER_FATURA: 'KDVK 29', AYNI_GUN_AYNI_TUTAR_AYNI_TARAF: 'BDS 240',
+  CARI_TERS_BAKIYE_120: 'TDHP', CARI_TERS_BAKIYE_320: 'TDHP',
   ORTAK_ALACAK_FAIZ_RISKI: 'KVK 13', KKEG_689_KONTROL: 'KVK 11',
-  BANKA_EKSI_BAKIYE_102: 'TDHP', YILSONU_AMORTISMAN_EKSIK: 'VUK 313/333',
-  ACILIS_FISINDE_GELIR_GIDER: 'TDHP', YILLIK_KAPANIS_690_EKSIK: 'TDHP', VERGI_KARSILIGI_370_YOK: 'KVK 32',
+  BANKA_EKSI_BAKIYE_102: 'TDHP', POS_VALOR_108_BAKIYE: 'TDHP', YUKSEK_TUTAR_ACIKLAMA_EKSIK: 'BDS 230',
+  BORDRO_TAHAKKUK_EKSIK: '5510 / GVK 94',
+  YILSONU_AMORTISMAN_EKSIK: 'VUK 313/333',
+  ACILIS_FISI_YOK: 'TDHP', ACILIS_FISINDE_GELIR_GIDER: 'TDHP', YILLIK_KAPANIS_690_EKSIK: 'TDHP', VERGI_KARSILIGI_370_YOK: 'KVK 32',
   BENFORD_SAPMA: 'Benford · VEDAS', YUVARLAK_TUTAR_YIGILMASI: 'Forensic', HAFTA_SONU_KAYDI: 'BDS 240', SUPHELI_ACIKLAMA: 'BDS 240',
 };
 
@@ -1265,7 +1270,7 @@ const STANDART_KURALLAR: KuralDef[] = [
   { kod: 'KIRA_STOPAJI_EKSIK', ad: 'Kira stopajı eksik', aciklama: 'Kira gideri var ama 360 altında kira stopajı kaydı yok. %20 stopaj (GVK 94) ayrı fişte/dönemde olabilir; kontrol edilmeli.', severity: 'WARN', grup: 'Stopaj', aktif: true },
   { kod: 'KIRA_STOPAJI_ORAN', ad: 'Kira stopaj oranı sapma', aciklama: 'Kira/stopaj oranı %20 dışında — brüt/net hesaplama hatalı olabilir.', severity: 'WARN', grup: 'Stopaj', aktif: true },
   { kod: 'SMM_STOPAJI_KONTROL', ad: 'Serbest meslek stopajı eksik', aciklama: 'SMM/avukat/noter/tercüme ödemesi var ama 360.01.007 boş. %20 tevkifat zorunlu.', severity: 'WARN', grup: 'Stopaj', aktif: true },
-  { kod: 'DAMGA_VERGISI_KONTROL', ad: 'Damga vergisi eksik', aciklama: 'Personel ücret ödemesi var ama 360.01.002 damga vergisi boş.', severity: 'INFO', grup: 'Stopaj', aktif: true },
+  { kod: 'DAMGA_VERGISI_KONTROL', ad: 'Damga vergisi kontrolü', aciklama: 'Personel ücret/bordro kaydı var ama 360.01.002 veya 360 altında damga kaydı görünmüyorsa bilgi verir. Asgari ücret istisnası veya ayrı fiş ihtimali nedeniyle kesin hata sayılmaz.', severity: 'INFO', grup: 'Stopaj', aktif: true },
   { kod: 'ACILIS_FISI_YOK', ad: 'Açılış fişi yok', aciklama: 'Dönem başında (1 Ocak) açılış kaydı bulunamadı; geçen yıl kapanış mizanıyla bire bir olmalı.', severity: 'WARN', grup: 'Açılış / Kapanış', aktif: true },
   { kod: 'ACILIS_FISINDE_GELIR_GIDER', ad: 'Açılış fişinde 5/6/7xx', aciklama: 'Açılış fişinde gelir-gider-maliyet (5xx/6xx/7xx) hesabı olmamalı.', severity: 'ERROR', grup: 'Açılış / Kapanış', aktif: true },
   { kod: 'YILLIK_KAPANIS_690_EKSIK', ad: 'Yıllık kapanış 690 eksik', aciklama: 'Yıl sonunda 6xx/7xx var ama 690 Dönem Kârı/Zararı hesabı kullanılmamış.', severity: 'WARN', grup: 'Açılış / Kapanış', aktif: true },
@@ -1286,11 +1291,72 @@ const STANDART_KURALLAR: KuralDef[] = [
   { kod: 'SUPHELI_ACIKLAMA', ad: 'Şüpheli açıklama', aciklama: 'Açıklamada "düzeltme, iptal, hata, sehven, geri alma" gibi riskli ifadeler. Düzeltme/iptal kayıtları denetimde önceliklidir.', severity: 'INFO', grup: 'Forensic / Anomali', aktif: true },
 ];
 
+const EK_KAPALI_KURALLAR: KuralDef[] = [
+  { kod: 'SIFIR_TUTARLI_SATIR', ad: 'Sıfır tutarlı satır', aciklama: 'Hesap kodu olduğu halde borç/alacak tutarı sıfır olan satırları yakalar. Rapor formatından çok gürültü üretebildiği için varsayılan pasif.', severity: 'INFO', grup: 'Temel Bütünlük', aktif: false },
+  { kod: 'SATIRDA_BORC_ALACAK_BIRLIKTE', ad: 'Satırda borç/alacak birlikte', aciklama: 'Aynı satırda hem borç hem alacak tutarı varsa uyarır. Bazı aktarım formatlarında teknik satır olabildiği için varsayılan pasif.', severity: 'WARN', grup: 'Temel Bütünlük', aktif: false },
+  { kod: '191_TERS_CALISMA', ad: '191 ters çalışma', aciklama: '191 İndirilecek KDV hesabının alacak çalıştığı satırları yakalar; KDV tahakkuk fişleri ayrıştırılamazsa gürültü üretebilir.', severity: 'WARN', grup: 'KDV', aktif: false },
+  { kod: '391_TERS_CALISMA', ad: '391 ters çalışma', aciklama: '391 Hesaplanan KDV hesabının borç çalıştığı satırları yakalar; KDV tahakkuk fişleri ayrıştırılamazsa gürültü üretebilir.', severity: 'WARN', grup: 'KDV', aktif: false },
+  { kod: 'KDV_ODENECEK_360_UYUMSUZ', ad: 'Ödenecek KDV 360 uyumsuz', aciklama: 'Basit 191/391 netleştirme sonucuna göre 360 aktarımını kontrol eder. Tevkifat ve devreden KDV nedeniyle varsayılan pasif.', severity: 'WARN', grup: 'KDV', aktif: false },
+  { kod: 'KDV_DEVREDEN_190_UYUMSUZ', ad: 'Devreden KDV 190 uyumsuz', aciklama: 'Basit 191/391 netleştirme sonucuna göre 190 aktarımını kontrol eder. Önceki dönem devreden ve tevkifatları modellemediği için varsayılan pasif.', severity: 'WARN', grup: 'KDV', aktif: false },
+  { kod: 'KDV_TAHAKKUK_MUKERRER', ad: 'KDV tahakkuk mükerrer', aciklama: 'Aynı ay içinde birden fazla KDV tahakkuk fişi sinyali varsa uyarır. Düzeltme fişleri nedeniyle varsayılan pasif.', severity: 'WARN', grup: 'KDV', aktif: false },
+  { kod: 'KDV_TAHAKKUK_AY_SONU_DEGIL', ad: 'KDV tahakkuk ay sonu değil', aciklama: 'KDV tahakkuk fişinin ay sonu dışında kesilmesini kontrol eder. Uygulama farklılıkları nedeniyle varsayılan pasif.', severity: 'INFO', grup: 'KDV', aktif: false },
+  { kod: 'KDV_TAHAKKUK_191_TUTAR_UYUMSUZ', ad: '191 tahakkuk tutar uyumsuz', aciklama: 'Tahakkuk fişindeki 191 tutarı ile ay içi 191 hareketini karşılaştırır; iade/tevkifat/istisna ayrımı olmadığı için varsayılan pasif.', severity: 'WARN', grup: 'KDV', aktif: false },
+  { kod: 'KDV_TAHAKKUK_391_TUTAR_UYUMSUZ', ad: '391 tahakkuk tutar uyumsuz', aciklama: 'Tahakkuk fişindeki 391 tutarı ile ay içi 391 hareketini karşılaştırır; iade/tevkifat/istisna ayrımı olmadığı için varsayılan pasif.', severity: 'WARN', grup: 'KDV', aktif: false },
+  { kod: 'KDV_ORANI_OLAGAN_DISI', ad: 'KDV oranı olağan dışı', aciklama: 'Matrah/KDV oranı olağan sınırların dışındaysa uyarır. Karma oranlı belgeler nedeniyle varsayılan pasif.', severity: 'INFO', grup: 'KDV', aktif: false },
+  { kod: 'KDV_MATRAH_KARSILIK_YOK', ad: 'KDV matrah karşılık yok', aciklama: 'KDV satırı var ama aynı fişte matrah hesabı bulunamazsa uyarır. Bazı toplu/mahsup fişleri nedeniyle varsayılan pasif.', severity: 'WARN', grup: 'KDV', aktif: false },
+  { kod: 'MUKERRER_EVRAK_NO', ad: 'Evrak no mükerrer', aciklama: 'Aynı evrak numarasının birden fazla fişte geçmesini kontrol eder. Belge no formatları temiz değilse gürültü üretir.', severity: 'WARN', grup: 'Mükerrer Kayıt', aktif: false },
+  { kod: 'FATURA_KARSILIK_HESAP_EKSIK', ad: 'Fatura karşılık hesap eksik', aciklama: 'Fatura kayıtlarında cari/kasa/banka karşılık hesabı aranır. Mahsup ve toplu fişler nedeniyle varsayılan pasif.', severity: 'WARN', grup: 'Belge', aktif: false },
+  { kod: 'BELGE_TURU_DIGER_ACIKLAMA_EKSIK', ad: 'Belge türü diğer açıklama eksik', aciklama: 'Belge türü Diğer ise açıklama alanının yeterli olup olmadığını kontrol eder.', severity: 'INFO', grup: 'Belge', aktif: false },
+  { kod: 'ANA_HESAPTA_KAYIT', ad: 'Ana hesapta kayıt', aciklama: 'Alt kırılım yerine 100/120/320 gibi ana hesapta kayıt olup olmadığını kontrol eder. Ofis hesap planı farkları nedeniyle varsayılan pasif.', severity: 'INFO', grup: 'Hesap Planı', aktif: false },
+  { kod: 'YEVMIYE_NO_FORMAT_SUPHELI', ad: 'Yevmiye no format şüpheli', aciklama: 'Yevmiye numarası formatı olağan dışıysa uyarır. Luca rapor formatı değişiklikleri nedeniyle varsayılan pasif.', severity: 'INFO', grup: 'Yevmiye', aktif: false },
+  { kod: 'TEK_FISTE_BIRDEN_COK_BELGE', ad: 'Tek fişte birden çok belge', aciklama: 'Aynı fişte birden fazla belge sinyali varsa uyarır. Toplu kayıt alışkanlıkları nedeniyle varsayılan pasif.', severity: 'INFO', grup: 'Belge', aktif: false },
+  { kod: 'AYNI_FISTE_BELGE_ALANLARI_FARKLI', ad: 'Aynı fişte belge alanları farklı', aciklama: 'Aynı fişte belge tarihi/no/tür alanları tutarsızsa uyarır.', severity: 'INFO', grup: 'Belge', aktif: false },
+  { kod: 'GELIR_HESABI_BORC_CALISMA', ad: 'Gelir hesabı borç çalışma', aciklama: '6xx gelir hesaplarının borç çalışmasını kontrol eder. İade/düzeltme fişleri nedeniyle varsayılan pasif.', severity: 'WARN', grup: 'Gelir / Gider', aktif: false },
+  { kod: 'GIDER_HESABI_ALACAK_CALISMA', ad: 'Gider hesabı alacak çalışma', aciklama: '7xx gider hesaplarının alacak çalışmasını kontrol eder. İade/düzeltme fişleri nedeniyle varsayılan pasif.', severity: 'WARN', grup: 'Gelir / Gider', aktif: false },
+  { kod: 'ORTAK_CARI_KASA_KULLANIMI', ad: 'Ortak cari/kasa kullanımı', aciklama: 'Ortak hesapları ile kasa/cari kapama riskini kontrol eder.', severity: 'INFO', grup: 'Ortak / Cari', aktif: false },
+  { kod: 'AVANS_KASA_ORTAK_CARI_KAPAMA', ad: 'Avans-kasa-ortak kapama', aciklama: 'Avans, kasa ve ortak/cari hesapların aynı fişte kapanmasını riskli işlem olarak işaretler.', severity: 'INFO', grup: 'Avans', aktif: false },
+  { kod: 'CARI_KAPAMA_KARSILIK_KONTROL', ad: 'Cari kapama karşılık kontrolü', aciklama: 'Cari hesap kapamalarında karşılık hesabının kasa/banka/avans gibi uygun hesap olup olmadığını kontrol eder.', severity: 'INFO', grup: 'Cari Hesap', aktif: false },
+  { kod: 'BORDRO_TAHAKKUK_HESAP_KONTROL', ad: 'Bordro hesap bacakları', aciklama: 'Bordro fişinde 335/360/361 hesaplarının birlikte bulunmasını kontrol eder. Hesap planı farkları nedeniyle varsayılan pasif.', severity: 'INFO', grup: 'Bordro / SGK', aktif: false },
+  { kod: 'UCRET_SGK_TAHAKKUK_KONTROL', ad: 'Ücret SGK tahakkuk kontrolü', aciklama: 'Ücret/bordro sinyali varken SGK tahakkuk bacaklarını kontrol eder.', severity: 'WARN', grup: 'Bordro / SGK', aktif: false },
+  { kod: 'AMORTISMAN_KAYDI_KONTROL', ad: 'Amortisman kayıt kontrolü', aciklama: 'Sabit kıymet hesabı varken amortisman kaydı aranır. Dönemsel farklılıklar nedeniyle varsayılan pasif.', severity: 'INFO', grup: 'Açılış / Kapanış', aktif: false },
+  { kod: 'REESKONT_SIMETRI_KONTROL', ad: 'Reeskont simetri kontrolü', aciklama: 'Reeskont gelir/gider ve karşılık hesaplarının simetrisini kontrol eder.', severity: 'INFO', grup: 'Dönemsellik', aktif: false },
+  { kod: 'DONEMSELLIK_GIDER_KONTROL', ad: 'Dönemsellik gider kontrolü', aciklama: 'Giderin ilgili döneme ait olup olmadığını açıklama ve tarih sinyallerinden kontrol eder.', severity: 'INFO', grup: 'Dönemsellik', aktif: false },
+  { kod: 'MALIYET_YANSITMA_EKSIK_KONTROL', ad: 'Maliyet yansıtma eksik', aciklama: '7/A maliyet hesaplarında dönem sonu yansıtma fişi aranır. Ara dönemlerde varsayılan pasif.', severity: 'INFO', grup: 'Maliyet', aktif: false },
+  { kod: 'ACILIS_FISI_TARIH_KONTROL', ad: 'Açılış fişi tarih kontrolü', aciklama: 'Açılış fişinin dönem başı tarihiyle uyumunu kontrol eder.', severity: 'WARN', grup: 'Açılış / Kapanış', aktif: false },
+  { kod: 'KAPANIS_FISI_TARIH_KONTROL', ad: 'Kapanış fişi tarih kontrolü', aciklama: 'Kapanış fişinin dönem sonu tarihiyle uyumunu kontrol eder.', severity: 'WARN', grup: 'Açılış / Kapanış', aktif: false },
+  { kod: 'KASA_30000_TEVSIK_RISKI', ad: 'Eski kasa günlük tevsik', aciklama: 'Eski günlük toplam yaklaşımıdır; hareket bazlı yeni tevsik kontrolleri geldiği için varsayılan pasif.', severity: 'WARN', grup: 'Tevsik', aktif: false },
+];
+
+const TUM_KURALLAR: KuralDef[] = [...STANDART_KURALLAR, ...EK_KAPALI_KURALLAR];
+
 function KurallarTab() {
+  const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [manuel, setManuel] = useState<ManuelKural[]>([]);
   const [form, setForm] = useState<{ ad: string; aciklama: string; severity: 'ERROR' | 'WARN' | 'INFO'; hesapKoduPrefix: string; tutarEsigi: string }>({ ad: '', aciklama: '', severity: 'WARN', hesapKoduPrefix: '', tutarEsigi: '' });
+
+  const { data: ruleSettings } = useQuery({
+    queryKey: ['edefter-rule-settings'],
+    queryFn: () => edefterControlApi.getRuleSettings(),
+  });
+
+  const settingMap = useMemo(() => {
+    const map = new Map<string, boolean>();
+    for (const row of ruleSettings?.settings || []) map.set(row.code, row.active);
+    return map;
+  }, [ruleSettings]);
+
+  const ruleActive = (k: KuralDef) => settingMap.has(k.kod) ? Boolean(settingMap.get(k.kod)) : k.aktif;
+
+  const ruleMut = useMutation({
+    mutationFn: ({ code, active }: { code: string; active: boolean }) => edefterControlApi.setRuleActive(code, active),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ['edefter-rule-settings'] });
+      toast.success(`${vars.code} ${vars.active ? 'aktif' : 'pasif'} yapıldı. Mevcut oturum için Yeniden Analiz çalıştırın.`);
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || e?.message || 'Kural ayarı kaydedilemedi'),
+  });
 
   useEffect(() => {
     try { const raw = localStorage.getItem('edefter-manuel-kurallar'); if (raw) setManuel(JSON.parse(raw)); } catch {}
@@ -1321,7 +1387,7 @@ function KurallarTab() {
   const sil = (id: string) => saveManuel(manuel.filter((k) => k.id !== id));
 
   const q = search.trim().toLocaleLowerCase('tr-TR');
-  const filtered = STANDART_KURALLAR.filter((k) => !q || `${k.kod} ${k.ad} ${k.aciklama} ${k.grup}`.toLocaleLowerCase('tr-TR').includes(q));
+  const filtered = TUM_KURALLAR.filter((k) => !q || `${k.kod} ${k.ad} ${k.aciklama} ${k.grup}`.toLocaleLowerCase('tr-TR').includes(q));
   const byGroup = new Map<string, KuralDef[]>();
   for (const k of filtered) { if (!byGroup.has(k.grup)) byGroup.set(k.grup, []); byGroup.get(k.grup)!.push(k); }
 
@@ -1334,7 +1400,7 @@ function KurallarTab() {
           <Search size={14} />
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Kural ara..." className="bg-transparent outline-none text-sm w-full" style={{ color: TEXT }} />
         </div>
-        <span className="text-xs tabular-nums" style={{ color: MUTED }}>{STANDART_KURALLAR.length} standart · {manuel.length} manuel</span>
+        <span className="text-xs tabular-nums" style={{ color: MUTED }}>{TUM_KURALLAR.length} standart · {manuel.length} manuel</span>
         <button onClick={() => setShowForm(!showForm)} className="h-10 px-4 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5" style={{ background: NAVY_SOFT, color: NAVY, border: '1px solid rgba(91,141,239,.3)' }}>
           {showForm ? <XCircle size={13} /> : <Sparkles size={13} />} {showForm ? 'Vazgeç' : 'Manuel Kural Ekle'}
         </button>
@@ -1394,7 +1460,9 @@ function KurallarTab() {
               <span className="text-xs tabular-nums ml-2" style={{ color: MUTED }}>{kurallar.length}</span>
             </div>
             <div className="divide-y" style={{ borderColor: BORDER }}>
-              {kurallar.map((k) => (
+              {kurallar.map((k) => {
+                const active = ruleActive(k);
+                return (
                 <div key={k.kod} className="px-4 py-3 flex items-start gap-3" style={{ borderColor: BORDER }}>
                   <Severity value={k.severity} />
                   <div className="flex-1 min-w-0">
@@ -1404,9 +1472,22 @@ function KurallarTab() {
                     </div>
                     <div className="text-xs" style={{ color: 'rgba(250,250,249,.65)' }}>{k.aciklama}</div>
                   </div>
-                  <span className="text-[10px] uppercase tracking-wider font-bold" style={{ color: OK }}>AKTİF</span>
+                  <button
+                    disabled={ruleMut.isPending}
+                    onClick={() => ruleMut.mutate({ code: k.kod, active: !active })}
+                    className="h-8 px-3 rounded-md text-[10px] uppercase tracking-wider font-bold inline-flex items-center gap-1.5 disabled:opacity-50"
+                    style={{
+                      background: active ? 'rgba(92,191,138,.12)' : 'rgba(226,112,111,.10)',
+                      color: active ? OK : ERR,
+                      border: `1px solid ${active ? 'rgba(92,191,138,.24)' : 'rgba(226,112,111,.22)'}`,
+                    }}
+                    title={active ? 'Bu kuralı pasif yap' : 'Bu kuralı aktif yap'}
+                  >
+                    {active ? <CheckCircle2 size={13} /> : <EyeOff size={13} />}
+                    {active ? 'AKTİF' : 'PASİF'}
+                  </button>
                 </div>
-              ))}
+              );})}
             </div>
           </div>
         ))}
