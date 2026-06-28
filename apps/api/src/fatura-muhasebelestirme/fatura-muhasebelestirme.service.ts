@@ -3772,12 +3772,40 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     });
     const referencedDocIds = [...new Set(rows.map((row: any) => String(row.documentId || '').trim()).filter(Boolean))];
     let existingDocIds = new Set<string>();
+    const providerSource = (row: any) => {
+      const provider = String(row?.entegrator || 'TURMOB_EFATURA').trim().toLowerCase();
+      return provider ? `integration-${provider}` : '';
+    };
+    const rowSourceRef = (row: any) => String(row?.uuid || row?.ettn || row?.faturaNo || '').trim();
+    const existingDocsBySourceRef = new Map<string, any>();
     if (referencedDocIds.length) {
       const existingDocs = await (this.prisma as any).invoiceAccountingDocument.findMany({
         where: { tenantId, taxpayerId: opts.taxpayerId, id: { in: referencedDocIds } },
-        select: { id: true },
+        select: { id: true, source: true, sourceRefId: true },
       });
       existingDocIds = new Set(existingDocs.map((doc: any) => String(doc.id)));
+      for (const doc of existingDocs) {
+        const key = `${String(doc.source || '').toLowerCase()}::${String(doc.sourceRefId || '').trim()}`;
+        if (doc.sourceRefId) existingDocsBySourceRef.set(key, doc);
+      }
+    }
+    const sourceRefs = [...new Set(rows.map(rowSourceRef).filter(Boolean))];
+    const sources = [...new Set(rows.map(providerSource).filter(Boolean))];
+    if (sourceRefs.length && sources.length) {
+      const existingDocs = await (this.prisma as any).invoiceAccountingDocument.findMany({
+        where: {
+          tenantId,
+          taxpayerId: opts.taxpayerId,
+          source: { in: sources },
+          sourceRefId: { in: sourceRefs },
+        },
+        select: { id: true, source: true, sourceRefId: true },
+      });
+      for (const doc of existingDocs) {
+        existingDocIds.add(String(doc.id));
+        const key = `${String(doc.source || '').toLowerCase()}::${String(doc.sourceRefId || '').trim()}`;
+        if (doc.sourceRefId) existingDocsBySourceRef.set(key, doc);
+      }
     }
 
     let processed = 0, imported = 0, alreadyQueued = 0, skipped = 0, failed = 0, staleReset = 0;
@@ -3794,8 +3822,23 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       processed++;
       const provider = String(row.entegrator || 'TURMOB_EFATURA');
       const runtimeCfg = this.providerStubConfig(provider);
-      const transferredWithoutDocument = !row.documentId && (row.processedAt || row.isTransferred);
-      const missingLinkedDocument = row.documentId && !existingDocIds.has(String(row.documentId));
+      const sourceRef = rowSourceRef(row);
+      const existingBySourceRef = existingDocsBySourceRef.get(`${providerSource(row)}::${sourceRef}`);
+      if (!row.documentId && existingBySourceRef?.id) {
+        await (this.prisma as any).eFaturaInbox.update({
+          where: { id: row.id },
+          data: {
+            documentId: existingBySourceRef.id,
+            isTransferred: true,
+            processedAt: row.processedAt || new Date(),
+          },
+        });
+        row.documentId = existingBySourceRef.id;
+        row.isTransferred = true;
+        row.processedAt = row.processedAt || new Date();
+      }
+      const transferredWithoutDocument = !row.documentId && (row.processedAt || row.isTransferred) && !existingBySourceRef?.id;
+      const missingLinkedDocument = row.documentId && !existingDocIds.has(String(row.documentId)) && !existingBySourceRef?.id;
       if (transferredWithoutDocument || missingLinkedDocument) {
         await (this.prisma as any).eFaturaInbox.update({
           where: { id: row.id },
@@ -6743,23 +6786,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const hasHtml = html && /<(?:!doctype\s+html|html|body)\b/i.test(html.slice(0, 2000));
     const isSyntheticTurmobVisual = cfg.provider === 'TURMOB_EFATURA' && this.isSyntheticTurmobInboxXml(xml) && !pdf && !hasHtml;
     if (isSyntheticTurmobVisual) {
-      const zip = new JSZip();
-      zip.file('invoice.xml', xmlBuffer);
-      zip.file('original.html', this.missingOriginalInvoiceHtml(parsed));
-      const buffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
-      const s3Key = `invoice-accounting/${tenantId}/${taxpayerId}/${cfg.provider.toLowerCase()}-${randomUUID()}.zip`;
-      await this.storage.putBuffer(s3Key, buffer, 'application/zip', {
-        'tenant-id': tenantId,
-        'taxpayer-id': taxpayerId,
-        provider: cfg.provider,
-        source,
-      });
-      return {
-        buffer,
-        s3Key,
-        mimeType: 'application/zip',
-        originalName: `${stem}.zip`,
-      };
+      throw new Error('TURMOB orijinal XML/UBL/PDF olmadan sentetik belge kaydedilmedi.');
     }
     if (pdf || hasHtml) {
       const zip = new JSZip();
