@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, Fragment } from 'react';
+import { useState, useRef, useEffect, Fragment, type KeyboardEvent, type MouseEvent } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
@@ -617,12 +617,25 @@ const TITLES: Record<string, string> = {
 
 /** Kontrollü onay kutusu */
 function Check({ checked, onToggle, disabled, title }: { checked?: boolean; onToggle?: () => void; disabled?: boolean; title?: string }) {
+  const toggle = (e: MouseEvent | KeyboardEvent) => {
+    e.stopPropagation();
+    if (!disabled) onToggle?.();
+  };
   return (
     <span
       className={`cb${checked ? ' on' : ''}${disabled ? ' disabled' : ''}`}
       title={title}
+      role="checkbox"
+      aria-checked={!!checked}
       aria-disabled={disabled || undefined}
-      onClick={(e) => { e.stopPropagation(); if (!disabled) onToggle?.(); }}
+      tabIndex={disabled ? -1 : 0}
+      onClick={toggle}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          toggle(e);
+        }
+      }}
     >
       {checked ? <Ico html={I.checkSm} size={11} /> : null}
     </span>
