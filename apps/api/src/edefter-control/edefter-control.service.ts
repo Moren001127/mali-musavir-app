@@ -624,12 +624,13 @@ export class EDefterControlService {
     findings.push(...this.analyzeMonthlyVat(rows, range, voucherMeta));
     findings.push(...this.analyzeDuplicateDocuments(rows, voucherMeta));
     findings.push(...this.analyzeParentAccountUsage(rows));
-    findings.push(...this.analyzeDailyCash(rows));
+    findings.push(...this.analyzeCashTevsik(rows, voucherMeta));
     findings.push(...this.analyzeCostReflectionPeriod(rows));
     findings.push(...this.analyzePeriodAccountingRisks(rows, range, voucherMeta));
     findings.push(...this.analyzeDocumentDates(rows, range));
     findings.push(...this.analyzeLedgerNumbering(rows));
-    findings.push(...this.analyzeTevsikParcalama(rows));
+    findings.push(...this.analyzeTevsikParcalama(rows, voucherMeta));
+    findings.push(...this.analyzeTevsikBolunmusIslem(rows, voucherMeta));
     findings.push(...this.analyzeEmptyOrSingleLineVouchers(byVoucher));
     findings.push(...this.analyzeVknValidity(rows));
     findings.push(...this.analyzeRealDuplicateInvoices(rows, voucherMeta));
@@ -658,7 +659,10 @@ export class EDefterControlService {
     findings.push(...this.analyzeSuspiciousDescriptions(rows));
 
     // FIS_TARIHI_EKSIK ozeti: tek bilgi olarak topla
-    const tarihEksik = rows.filter((r) => !r.fisTarihi && !voucherMeta.get(r.voucherKey)?.date);
+    const tarihEksik = rows.filter((r) => {
+      if (r.fisTarihi || voucherMeta.get(r.voucherKey)?.date) return false;
+      return this.isDateRequiredVoucherRow(r);
+    });
     if (tarihEksik.length > 0) {
       findings.push({
         severity: tarihEksik.length > rows.length * 0.5 ? 'ERROR' : 'WARN',
@@ -1148,6 +1152,22 @@ export class EDefterControlService {
       meta.rows.some((r) => /^(335|360|361|369)/.test(r.hesapKodu || ''));
   }
 
+  private isTevsikCashCandidate(row: ParsedEDefterFisLine, meta?: VoucherMeta | null) {
+    if (!row.fisTarihi || !/^100/.test(row.hesapKodu || '')) return false;
+    if (this.amountOf(row) <= 0) return false;
+    if (!meta) return true;
+    if (meta.rows.some((r) => /^(102|103|108)/.test(r.hesapKodu || ''))) return false;
+    if (meta.isVatAccrual || this.isOpeningLikeVoucher(meta) || this.isClosingLikeVoucher(meta) || this.isCostReflectionVoucher(meta)) {
+      return false;
+    }
+    return true;
+  }
+
+  private isDateRequiredVoucherRow(row: ParsedEDefterFisLine) {
+    if (row.fisNo || row.yevmiyeNo) return true;
+    return this.isValidAccountCode(row.hesapKodu) && this.amountOf(row) > 0;
+  }
+
   private requiresDocumentFields(row: ParsedEDefterFisLine, meta?: VoucherMeta | null) {
     if (!row.hesapKodu) return false;
     if (meta && (meta.isVatAccrual || this.isOpeningLikeVoucher(meta) || this.isClosingLikeVoucher(meta) || this.isCostReflectionVoucher(meta) || this.isPayrollVoucher(meta))) {
@@ -1458,34 +1478,26 @@ export class EDefterControlService {
     return findings;
   }
 
-  private analyzeDailyCash(rows: ParsedEDefterFisLine[]): FindingDraft[] {
-    // Banka/POS bacagi (102/103/108) olan fisler zaten banka uzerinden tevsik edilmistir;
-    // o fislerin kasa satirlarini gunluk toplama katma (yanlis alarmi onler).
-    const bankVouchers = new Set<string>();
-    for (const r of rows) {
-      if (/^(102|103|108)/.test(r.hesapKodu || '')) bankVouchers.add(r.voucherKey);
-    }
-    const byDay = new Map<string, ParsedEDefterFisLine[]>();
-    for (const row of rows) {
-      if (!row.fisTarihi || !/^100/.test(row.hesapKodu || '')) continue;
-      if (bankVouchers.has(row.voucherKey)) continue;
-      const key = row.fisTarihi.toISOString().slice(0, 10);
-      if (!byDay.has(key)) byDay.set(key, []);
-      byDay.get(key)!.push(row);
-    }
+  private analyzeCashTevsik(
+    rows: ParsedEDefterFisLine[],
+    voucherMeta: Map<string, VoucherMeta>,
+  ): FindingDraft[] {
     const findings: FindingDraft[] = [];
-    for (const [day, cashRows] of byDay.entries()) {
-      const total = cashRows.reduce((sum, r) => sum + this.amountOf(r), 0);
-      if (total <= 30000) continue;
-      const first = cashRows[0];
+    const limit = 30000;
+    for (const row of rows) {
+      const meta = voucherMeta.get(row.voucherKey);
+      if (!this.isTevsikCashCandidate(row, meta)) continue;
+      const amount = this.amountOf(row);
+      if (amount <= limit) continue;
+      const side = Number(row.borc || 0) >= Number(row.alacak || 0) ? 'borc' : 'alacak';
       findings.push({
         severity: 'WARN',
-        category: 'KASA_GUNLUK_30000_TEVSIK_RISKI',
-        message: `${this.fmtDate(new Date(`${day}T00:00:00.000Z`))} tarihinde 100 Kasa hareket toplamı ${this.fmt(total)} TL. 30.000 TL tevsik siniri icin detay kontrol edilmeli.`,
-        voucherKey: first.voucherKey,
-        rowIndex: first.rowIndex,
-        hesapKodu: first.hesapKodu,
-        detail: { day, total, limit: 30000 },
+        category: 'KASA_HAREKET_30000_TEVSIK_RISKI',
+        message: `Satir ${row.rowIndex}: 100 Kasa ${side} hareketi ${this.fmt(amount)} TL. Tahsilat/odeme mahiyetindeyse VUK 459 tevsik siniri asiliyor; banka, PTT veya araci finansal kurum belgesiyle kontrol edilmeli.`,
+        voucherKey: row.voucherKey,
+        rowIndex: row.rowIndex,
+        hesapKodu: row.hesapKodu,
+        detail: { amount, limit, side, voucher: this.voucherLabel(row) },
       });
     }
     return findings;
@@ -1652,15 +1664,19 @@ export class EDefterControlService {
     return findings;
   }
 
-  private analyzeTevsikParcalama(rows: ParsedEDefterFisLine[]): FindingDraft[] {
+  private analyzeTevsikParcalama(
+    rows: ParsedEDefterFisLine[],
+    voucherMeta: Map<string, VoucherMeta>,
+  ): FindingDraft[] {
     const findings: FindingDraft[] = [];
     const byPartyDay = new Map<string, ParsedEDefterFisLine[]>();
+    const limit = 30000;
     for (const row of rows) {
-      if (!row.fisTarihi) continue;
-      if (!/^100/.test(row.hesapKodu || '')) continue;
+      const meta = voucherMeta.get(row.voucherKey);
+      if (!this.isTevsikCashCandidate(row, meta)) continue;
       const vkn = String(row.vknTckn || '').replace(/\D/g, '');
       if (!vkn || (vkn.length !== 10 && vkn.length !== 11)) continue;
-      const day = row.fisTarihi.toISOString().slice(0, 10);
+      const day = row.fisTarihi!.toISOString().slice(0, 10);
       const key = `${vkn}|${day}`;
       if (!byPartyDay.has(key)) byPartyDay.set(key, []);
       byPartyDay.get(key)!.push(row);
@@ -1668,17 +1684,59 @@ export class EDefterControlService {
     for (const [key, partyRows] of byPartyDay.entries()) {
       if (partyRows.length < 2) continue;
       const total = partyRows.reduce((sum, r) => sum + this.amountOf(r), 0);
-      if (total <= 30000) continue;
+      if (total <= limit) continue;
+      if (partyRows.some((r) => this.amountOf(r) > limit)) continue;
       const [vkn, day] = key.split('|');
       const first = partyRows[0];
       findings.push({
         severity: 'WARN',
         category: 'KASA_TEVSIK_PARCALAMA',
-        message: `${this.fmtDate(new Date(`${day}T00:00:00.000Z`))} tarihinde ${vkn} VKN/TCKN icin ${partyRows.length} ayri 100 Kasa hareketi toplam ${this.fmt(total)} TL; VUK 459 acisindan parcalama riski.`,
+        message: `${this.fmtDate(new Date(`${day}T00:00:00.000Z`))} tarihinde ${vkn} VKN/TCKN ile ${partyRows.length} ayri 100 Kasa hareketi toplam ${this.fmt(total)} TL. Ayni gun ayni taraf islemleri tevsik sinirinda birlikte degerlendirilir; parcalama riski kontrol edilmeli.`,
         voucherKey: first.voucherKey,
         rowIndex: first.rowIndex,
         hesapKodu: first.hesapKodu,
-        detail: { vknTckn: vkn, day, parcaSayisi: partyRows.length, toplam: total, limit: 30000 },
+        detail: { vknTckn: vkn, day, parcaSayisi: partyRows.length, toplam: total, limit },
+      });
+    }
+    return findings;
+  }
+
+  private analyzeTevsikBolunmusIslem(
+    rows: ParsedEDefterFisLine[],
+    voucherMeta: Map<string, VoucherMeta>,
+  ): FindingDraft[] {
+    const findings: FindingDraft[] = [];
+    const byPartyDocument = new Map<string, ParsedEDefterFisLine[]>();
+    const limit = 30000;
+    for (const row of rows) {
+      const meta = voucherMeta.get(row.voucherKey);
+      if (!this.isTevsikCashCandidate(row, meta)) continue;
+      const vkn = String(row.vknTckn || '').replace(/\D/g, '');
+      if (!vkn || (vkn.length !== 10 && vkn.length !== 11)) continue;
+      const documentNo = this.normalizeDocumentNo(row.evrakNo);
+      if (!documentNo || /^(MUHTELIF|NAKIT|BELGESIZ|YOK|DIGER|OTHER)$/.test(documentNo)) continue;
+      const key = `${vkn}|${documentNo}`;
+      if (!byPartyDocument.has(key)) byPartyDocument.set(key, []);
+      byPartyDocument.get(key)!.push(row);
+    }
+
+    for (const [key, documentRows] of byPartyDocument.entries()) {
+      const voucherKeys = [...new Set(documentRows.map((r) => r.voucherKey))];
+      const days = [...new Set(documentRows.map((r) => r.fisTarihi!.toISOString().slice(0, 10)))].sort();
+      if (voucherKeys.length < 2 || days.length < 2) continue;
+      const total = documentRows.reduce((sum, r) => sum + this.amountOf(r), 0);
+      if (total <= limit) continue;
+      if (documentRows.some((r) => this.amountOf(r) > limit)) continue;
+      const [vkn, documentNo] = key.split('|');
+      const first = documentRows[0];
+      findings.push({
+        severity: 'WARN',
+        category: 'KASA_TEVSIK_BOLUNMUS_ISLEM',
+        message: `${documentNo} belge no / ${vkn} VKN-TCKN icin ${days.length} farkli gunde ${voucherKeys.length} kasa kaydi toplam ${this.fmt(total)} TL. Ayni isleme ait kismi tahsilat/odemeler de tevsik kapsaminda birlikte kontrol edilmeli.`,
+        voucherKey: first.voucherKey,
+        rowIndex: first.rowIndex,
+        hesapKodu: first.hesapKodu,
+        detail: { vknTckn: vkn, documentNo, days, voucherCount: voucherKeys.length, toplam: total, limit },
       });
     }
     return findings;

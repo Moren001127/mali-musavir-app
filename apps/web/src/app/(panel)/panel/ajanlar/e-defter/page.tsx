@@ -218,8 +218,10 @@ function categoryLabel(code: string) {
   const dict: Record<string, string> = {
     HESAP_KODU_EKSIK: 'Hesap kodu eksik', FIS_TARIHI_EKSIK: 'Fiş tarihi eksik',
     DONEM_DISI_TARIH: 'Dönem dışı tarih', FIS_DENGESIZ: 'Fiş dengesiz',
-    KASA_GUNLUK_30000_TEVSIK_RISKI: 'Kasa günlük 30.000 TL tevsik',
+    KASA_GUNLUK_30000_TEVSIK_RISKI: 'Kasa 30.000 TL tevsik',
+    KASA_HAREKET_30000_TEVSIK_RISKI: 'Kasa hareket 30.000 TL tevsik',
     KASA_TEVSIK_PARCALAMA: 'Tevsik parçalama riski',
+    KASA_TEVSIK_BOLUNMUS_ISLEM: 'Tevsik bölünmüş işlem',
     YEVMIYE_NO_MUKERRER: 'Yevmiye no mükerrer', YEVMIYE_NO_ATLAMA: 'Yevmiye no atlama',
     YEVMIYE_TARIH_SIRASI: 'Yevmiye tarih sırası',
     BELGE_TARIHI_FIS_TARIHINDEN_SONRA: 'Belge tarihi > fiş tarihi',
@@ -295,7 +297,8 @@ function categoryGroup(code: string): { id: string; label: string; order: number
 
 // Bulgu kategorisi → mevzuat dayanağı (müşteri raporu güveni; salt görsel, kod ↔ referans haritası)
 const MEVZUAT_REF: Record<string, string> = {
-  KASA_GUNLUK_30000_TEVSIK_RISKI: 'VUK 459', KASA_TEVSIK_PARCALAMA: 'VUK 459',
+  KASA_GUNLUK_30000_TEVSIK_RISKI: 'VUK 459', KASA_HAREKET_30000_TEVSIK_RISKI: 'VUK 459',
+  KASA_TEVSIK_PARCALAMA: 'VUK 459', KASA_TEVSIK_BOLUNMUS_ISLEM: 'VUK 459',
   FIS_DENGESIZ: 'VUK 219', DEFTER_GENELI_DENGESIZ: 'VUK 219', DONEM_DISI_TARIH: 'VUK 219',
   YEVMIYE_NO_MUKERRER: 'VUK 219', YEVMIYE_NO_ATLAMA: 'VUK 219', YEVMIYE_TARIH_SIRASI: 'VUK 219',
   BELGE_TARIHI_FIS_TARIHINDEN_SONRA: 'VUK 219', BELGE_TARIHI_DONEM_DISI: 'VUK 219',
@@ -1243,8 +1246,9 @@ const STANDART_KURALLAR: KuralDef[] = [
   { kod: 'CARI_TERS_BAKIYE_120', ad: '120 ters bakiye', aciklama: '120 Alıcılar dönem hareketinde alacak (ters) bakiye veriyor (eşik 5.000 TL, açılış hariç). Müşteri avansı olabilir ya da bir alış satıcı hesabı (320) yerine 120\'ye işlenmiş olabilir.', severity: 'WARN', grup: 'Cari Hesap', aktif: true },
   { kod: 'CARI_TERS_BAKIYE_320', ad: '320 ters bakiye', aciklama: '320 Satıcılar dönem hareketinde borç (ters) bakiye veriyor (eşik 5.000 TL, açılış hariç). Satıcıya avans olabilir ya da bir satış müşteri hesabı (120) yerine 320\'ye işlenmiş olabilir.', severity: 'WARN', grup: 'Cari Hesap', aktif: true },
   { kod: 'ORTAK_ALACAK_FAIZ_RISKI', ad: '131 ortak alacağı', aciklama: '131 Ortaklardan Alacaklar net bakiyesi 100.000+ TL. KKEG faiz hesaplaması gerekebilir.', severity: 'INFO', grup: 'KKEG', aktif: true },
-  { kod: 'KASA_GUNLUK_30000_TEVSIK_RISKI', ad: 'Kasa günlük 30.000 TL', aciklama: 'Bir günde 100 Kasa hareket toplamı 30.000 TL üzerinde — VUK 459 tevsik zorunluluğu.', severity: 'WARN', grup: 'Tevsik', aktif: true },
-  { kod: 'KASA_TEVSIK_PARCALAMA', ad: 'Tevsik parçalama riski', aciklama: 'Aynı VKN için bir günde birden fazla kasa hareketi toplamı 30.000 TL üstü — parçalama (smurfing).', severity: 'WARN', grup: 'Tevsik', aktif: true },
+  { kod: 'KASA_HAREKET_30000_TEVSIK_RISKI', ad: 'Kasa hareket 30.000 TL', aciklama: 'Tek 100 Kasa hareketi 30.000 TL sınırını aşıyorsa ödeme/tahsilat mahiyeti ve banka/finans kurumu belgesi kontrol edilir.', severity: 'WARN', grup: 'Tevsik', aktif: true },
+  { kod: 'KASA_TEVSIK_PARCALAMA', ad: 'Aynı gün aynı taraf kasa toplamı', aciklama: 'Aynı VKN/TCKN için aynı gün yapılan birden fazla kasa hareketi birlikte 30.000 TL sınırını aşıyorsa parçalama riski kontrol edilir.', severity: 'WARN', grup: 'Tevsik', aktif: true },
+  { kod: 'KASA_TEVSIK_BOLUNMUS_ISLEM', ad: 'Kısım kısım kasa işlemi', aciklama: 'Aynı VKN/TCKN ve aynı belge no için farklı günlerdeki kasa hareketleri toplamı 30.000 TL sınırını aşıyorsa kısmi ödeme/tahsilat tevsiki kontrol edilir.', severity: 'WARN', grup: 'Tevsik', aktif: true },
   { kod: 'FIS_DENGESIZ', ad: 'Fiş dengesiz', aciklama: 'Tek fişin borç ve alacak toplamları eşit değil.', severity: 'ERROR', grup: 'Yevmiye', aktif: true },
   { kod: 'YEVMIYE_NO_MUKERRER', ad: 'Yevmiye no mükerrer', aciklama: 'Aynı yevmiye numarası farklı tarihlerde / farklı fişlerde kullanılmış.', severity: 'ERROR', grup: 'Yevmiye', aktif: true },
   { kod: 'YEVMIYE_NO_ATLAMA', ad: 'Yevmiye no atlama', aciklama: 'Yevmiye numarası sırasında atlanmış aralık var (tek özet). Genelde iptal edilen fişlerden kaynaklanır.', severity: 'INFO', grup: 'Yevmiye', aktif: true },

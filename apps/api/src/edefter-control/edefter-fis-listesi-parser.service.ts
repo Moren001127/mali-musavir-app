@@ -125,6 +125,13 @@ export class EDefterFisListesiParserService {
 
       const hasMovement = Boolean(hesapKodu || hesapAdi || borc !== 0 || alacak !== 0);
       const rowVoucherId = yevmiyeNo || fisNo;
+      if (!rowVoucherId && !fisTarihi && !this.isAccountCode(hesapKodu) && !hesapAdi) {
+        // Luca raporlarinin sayfa/rapor sonlarinda bazen yalnizca tutar kolonlari dolu
+        // ozet satirlari gelir. Carry-forward devreye girmeden once bunlari at;
+        // yoksa onceki fisin tarihi bu satirlara tasinip sahte hareket olusur.
+        carryVoucher = null;
+        continue;
+      }
       const carry = carryVoucher as CarryVoucherContext | null;
       const carryVoucherId = carry ? carry.yevmiyeNo || carry.fisNo : null;
       const canCarryVoucher = Boolean(
@@ -147,7 +154,6 @@ export class EDefterFisListesiParserService {
         carryVoucher = null;
         continue;
       }
-
       const voucherKey = fisNo || yevmiyeNo
         ? this.buildVoucherKey({ fisNo, yevmiyeNo, fisTarihi, rowIndex: r + 1 })
         : `BLOCK|${reportBlockNo}`;
@@ -295,7 +301,7 @@ export class EDefterFisListesiParserService {
     const desc = this.normalizeHeader(row.aciklama);
     const label = `${code} ${name} ${desc}`.trim();
     if (!label) return false;
-    if (/fis toplam|sayfa toplam|genel toplam/.test(label)) return true;
+    if (/fis toplam|sayfa toplam|genel toplam|rapor toplam/.test(label)) return true;
     if (/^tarih(?:\s+mahsup)?$/.test(label) || /^mahsup$/.test(label)) return true;
     if (/hesap kodu|hesap adi|aciklama/.test(label)) return true;
     if (row.borc === 0 && row.alacak === 0 && !this.isAccountCode(row.hesapKodu) && !row.fisNo && !row.yevmiyeNo) {
@@ -314,7 +320,7 @@ export class EDefterFisListesiParserService {
       this.normalizeHeader(row.hesapAdi),
       this.normalizeHeader(row.aciklama),
     ].filter(Boolean).join(' ');
-    return /fis toplam|sayfa toplam|genel toplam/.test(label);
+    return /fis toplam|sayfa toplam|genel toplam|rapor toplam/.test(label);
   }
 
   private isAccountCode(value?: string | null) {
