@@ -5920,9 +5920,14 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const live = rows.filter((r) => !isCancelled(r));
     const payloads = [...directPayloads];
     const seenUrls = new Set<string>();
-    const addCandidateUrl = (candidate: string) => {
+    const addCandidateUrl = (candidate: string, trustedPath = false) => {
       const clean = this.decodeXmlEntities(String(candidate || '').replace(/\\\//g, '/')).trim();
-      if (!clean || !/(xml|ubl|indir|download|invoice|fatura|belge|goruntule|görüntüle)/i.test(clean)) return;
+      const hasDocumentKeyword = /(xml|ubl|indir|download|invoice|fatura|belge|goruntule|görüntüle)/i.test(clean);
+      const looksLikePath = /^(https?:\/\/|\/)/i.test(clean)
+        || /[\\/]/.test(clean)
+        || /\.[a-z0-9]{2,5}(?:$|[?#])/i.test(clean)
+        || /[?&][A-Za-z0-9_%-]+=/.test(clean);
+      if (!clean || (!hasDocumentKeyword && !(trustedPath && looksLikePath))) return;
       const absolute = clean.startsWith('http') ? clean : BASE + (clean.startsWith('/') ? clean : `/${clean}`);
       seenUrls.add(absolute);
     };
@@ -6086,7 +6091,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         }
       }
       for (const path of rowTextValues(row, ['FilePath', 'XmlPath', 'XMLPath', 'PdfPath', 'PDFPath', 'DownloadPath', 'Url', 'URL'])) {
-        addCandidateUrl(path);
+        addCandidateUrl(path, true);
       }
     };
     for (const m of listPageHtml.matchAll(/["'](\/(?:IncomingInvoice|OutgoingInvoice|ArchiveInvoice|OutgoingArchiveInvoice|EArchiveInvoice|Invoice)\/[^"']*(?:Xml|XML|Download|Invoice|Detail|Print|Ubl|UBL)[^"']*)["']/gi)) {
