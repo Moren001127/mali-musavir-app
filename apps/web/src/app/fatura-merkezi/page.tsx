@@ -1532,8 +1532,8 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
       p?.downloaded != null ? `${Number(p.downloaded || 0)} indirildi` : null,
       `${Number(p?.added || 0)} yeni`,
       `${Number(p?.updated || 0)} guncel`,
-      missingDocument ? `${missingDocument} belge indirilemedi` : null,
-      skippedCount ? `${skippedCount} atlandi` : null,
+      missingDocument ? `${missingDocument} orijinal dosya bekliyor` : null,
+      skippedCount ? `${skippedCount} zaten kayitli` : null,
       failedCount ? `${failedCount} hata` : null,
     ].filter(Boolean);
     return parts.join(' · ');
@@ -1573,7 +1573,13 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
               <tbody>
                 {rows.map((r) => (
                   <tr key={r.id} className={!r.isProcessable ? 'blocked' : r.aktarildi ? 'done' : ''}>
-                    <td>{r.isProcessable && !r.aktarildi ? <Check checked={sel.has(r.sourceRefId)} onToggle={() => toggle(r.sourceRefId)} /> : null}</td>
+                    <td>
+                      {r.isProcessable && !r.aktarildi ? (
+                        <Check checked={sel.has(r.sourceRefId)} onToggle={() => toggle(r.sourceRefId)} />
+                      ) : (
+                        <Check checked={false} disabled title={r.aktarildi ? 'Zaten aktarilmis' : 'Aktarima alinmaz'} />
+                      )}
+                    </td>
                     <td className="partyname">{r.buyerName || '—'}</td>
                     <td>{r.buyerVkn || '—'}</td>
                     <td>{r.belgeNo || r.referenceNo || '—'}</td>
@@ -3454,7 +3460,8 @@ const CSS = `
 #fm-root .num{text-align:right;font-variant-numeric:tabular-nums}
 #fm-root .cb{height:16px;width:16px;border-radius:4px;border:1.5px solid var(--line2);display:inline-grid;place-items:center;cursor:pointer;background:#fff;vertical-align:middle;color:#fff}
 #fm-root .cb.on{background:var(--accent);border-color:var(--accent)}
-#fm-root .cb.disabled{cursor:not-allowed;opacity:.42;background:#f8fafc}
+#fm-root .cb.disabled{cursor:not-allowed;opacity:1;background:#f8fafc;border-color:#d8e1ea}
+#fm-root .cb.disabled:not(.on)::after{content:'';width:5px;height:5px;border-radius:999px;background:#cbd5e1}
 #fm-root .cb.disabled:hover{border-color:var(--line2)}
 #fm-root td.firm{max-width:230px}
 #fm-root .firm b{font-weight:600;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

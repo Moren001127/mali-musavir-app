@@ -6718,6 +6718,26 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       ? payload.pdfBuffer
       : null;
     const hasHtml = html && /<(?:!doctype\s+html|html|body)\b/i.test(html.slice(0, 2000));
+    const isSyntheticTurmobVisual = cfg.provider === 'TURMOB_EFATURA' && this.isSyntheticTurmobInboxXml(xml) && !pdf && !hasHtml;
+    if (isSyntheticTurmobVisual) {
+      const zip = new JSZip();
+      zip.file('invoice.xml', xmlBuffer);
+      zip.file('original.html', this.missingOriginalInvoiceHtml(parsed));
+      const buffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+      const s3Key = `invoice-accounting/${tenantId}/${taxpayerId}/${cfg.provider.toLowerCase()}-${randomUUID()}.zip`;
+      await this.storage.putBuffer(s3Key, buffer, 'application/zip', {
+        'tenant-id': tenantId,
+        'taxpayer-id': taxpayerId,
+        provider: cfg.provider,
+        source,
+      });
+      return {
+        buffer,
+        s3Key,
+        mimeType: 'application/zip',
+        originalName: `${stem}.zip`,
+      };
+    }
     if (pdf || hasHtml) {
       const zip = new JSZip();
       zip.file('invoice.xml', xmlBuffer);
@@ -6752,6 +6772,40 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       mimeType: 'application/xml',
       originalName: payload.originalName || `${stem}.xml`,
     };
+  }
+
+  private missingOriginalInvoiceHtml(parsed: ParsedProviderInvoice): string {
+    const invoiceNo = this.xmlEscape(parsed.faturaNo || 'Belge');
+    const date = parsed.faturaTarihi && !Number.isNaN(parsed.faturaTarihi.getTime())
+      ? parsed.faturaTarihi.toISOString().slice(0, 10)
+      : '';
+    const total = parsed.toplamTutar ?? ((parsed.matrah || 0) + (parsed.kdvTutari || 0));
+    const totalText = Number(total || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return `<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8" />
+  <style>
+    body{margin:0;background:#fff;color:#172033;font-family:Arial,sans-serif}
+    .wrap{max-width:760px;margin:72px auto;padding:32px;border:1px solid #d9e2ec;border-radius:14px}
+    h1{font-size:22px;margin:0 0 12px}
+    p{font-size:15px;line-height:1.55;color:#536174;margin:0 0 18px}
+    dl{display:grid;grid-template-columns:150px 1fr;gap:10px 18px;margin:0;font-size:14px}
+    dt{color:#7a8798}dd{margin:0;font-weight:700}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Orijinal belge goruntusu indirilemedi</h1>
+    <p>TURMOB liste verisiyle muhasebe bilgileri olusturuldu; ancak orijinal PDF/HTML/XML goruntusu entegratorden indirilemedi. Bu ekranda uydurma fatura goruntusu gosterilmez.</p>
+    <dl>
+      <dt>Belge no</dt><dd>${invoiceNo}</dd>
+      <dt>Tarih</dt><dd>${this.xmlEscape(date || '-')}</dd>
+      <dt>Toplam</dt><dd>${this.xmlEscape(totalText)} TL</dd>
+    </dl>
+  </div>
+</body>
+</html>`;
   }
 
   private async refreshProviderDocumentVisual(
