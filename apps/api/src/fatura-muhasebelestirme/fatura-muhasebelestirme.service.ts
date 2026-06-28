@@ -3544,24 +3544,34 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
                 },
                 turmobLookup,
               );
-              const parsed = payload
-                ? (this.parseProviderUblInvoice(payload.xml) || this.regexProviderInvoiceFallback(payload.xml))
-                : null;
-              const storedVisual = payload ? this.providerStoredVisual(payload) : null;
               const existing = await (this.prisma as any).eFaturaInbox.findUnique({
                 where: { tenantId_taxpayerId_entegrator_uuid: { tenantId, taxpayerId: opts.taxpayerId, entegrator: cfg.provider, uuid: summary.uuid } },
                 select: { id: true, rawJson: true, documentId: true, isTransferred: true, processedAt: true, ublXmlRaw: true },
               });
               const currentRaw = existing?.rawJson && typeof existing.rawJson === 'object' ? existing.rawJson : {};
+              const existingXml = String(existing?.ublXmlRaw || '').trim();
+              const existingXmlReady = !!existingXml && !this.isSyntheticTurmobInboxXml(existingXml);
+              const effectivePayload = payload || (existingXmlReady
+                ? this.providerPayloadFromStoredVisual(
+                    existingXml,
+                    summary.uuid || summary.ettn || summary.faturaNo || null,
+                    summary.faturaNo || summary.uuid || null,
+                    (currentRaw as any)?.originalVisual || null,
+                  )
+                : null);
+              const effectiveParsed = effectivePayload
+                ? (this.parseProviderUblInvoice(effectivePayload.xml) || this.regexProviderInvoiceFallback(effectivePayload.xml))
+                : null;
+              const effectiveStoredVisual = payload ? this.providerStoredVisual(payload) : ((currentRaw as any)?.originalVisual || null);
               const data: any = {
-                paraBirimi: parsed?.paraBirimi || summary.paraBirimi || 'TRY',
+                paraBirimi: effectiveParsed?.paraBirimi || summary.paraBirimi || 'TRY',
                 direction: inboxDirection,
-                invoiceProfile: parsed ? this.documentTypeFromProviderXml(payload!.xml) === 'E_ARSIV' ? 'e-Arsiv' : 'e-Fatura' : summary.invoiceProfile,
+                invoiceProfile: effectivePayload ? this.documentTypeFromProviderXml(effectivePayload.xml) === 'E_ARSIV' ? 'e-Arsiv' : 'e-Fatura' : summary.invoiceProfile,
                 syncedAt: new Date(),
                 rawJson: {
                   ...currentRaw,
                   channel,
-                  documentType: payload ? this.documentTypeFromProviderXml(payload.xml) : summary.documentType,
+                  documentType: effectivePayload ? this.documentTypeFromProviderXml(effectivePayload.xml) : summary.documentType,
                   source: 'integrator-query',
                   provider: cfg.provider,
                   turmobRowId: summary.rowId || null,
@@ -3576,24 +3586,24 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
                   senderVkn: summary.senderVkn || null,
                   receiverVkn: summary.receiverVkn || null,
                   queriedBy: userId || null,
-                  needsDocumentDownload: !payload,
-                  documentDownloadStatus: payload ? 'READY' : 'MISSING',
-                  documentDownloadError: payload ? null : (turmobLookup?.error || 'TURMOB XML/UBL/PDF indirme linki bulunamadi'),
-                  originalVisual: storedVisual,
+                  needsDocumentDownload: !effectivePayload,
+                  documentDownloadStatus: effectivePayload ? 'READY' : 'MISSING',
+                  documentDownloadError: effectivePayload ? null : (turmobLookup?.error || 'TURMOB XML/UBL/PDF indirme linki bulunamadi'),
+                  originalVisual: effectiveStoredVisual,
                 },
               };
               if (payload) data.ublXmlRaw = payload.xml;
               else if (this.isSyntheticTurmobInboxXml(existing?.ublXmlRaw)) data.ublXmlRaw = null;
-              if (parsed?.ettn || summary.ettn) data.ettn = parsed?.ettn || summary.ettn;
-              if (parsed?.saticiVergiNo || summary.senderVkn) data.senderVkn = parsed?.saticiVergiNo || summary.senderVkn;
-              if (parsed?.satici || summary.senderTitle) data.senderTitle = parsed?.satici || summary.senderTitle;
-              if (parsed?.aliciVergiNo || summary.receiverVkn) data.receiverVkn = parsed?.aliciVergiNo || summary.receiverVkn;
-              if (parsed?.alici || summary.receiverTitle) data.receiverTitle = parsed?.alici || summary.receiverTitle;
-              if (parsed?.faturaNo || summary.faturaNo) data.faturaNo = parsed?.faturaNo || summary.faturaNo;
-              if (parsed?.faturaTarihi || summary.faturaDate) data.faturaDate = parsed?.faturaTarihi || summary.faturaDate;
-              if (parsed?.matrah != null || summary.matrah != null) data.matrah = String(parsed?.matrah ?? summary.matrah);
-              if (parsed?.kdvTutari != null || summary.kdv != null) data.kdv = String(parsed?.kdvTutari ?? summary.kdv);
-              const parsedTotal = parsed ? (parsed.toplamTutar ?? ((parsed.matrah || 0) + (parsed.kdvTutari || 0))) : null;
+              if (effectiveParsed?.ettn || summary.ettn) data.ettn = effectiveParsed?.ettn || summary.ettn;
+              if (effectiveParsed?.saticiVergiNo || summary.senderVkn) data.senderVkn = effectiveParsed?.saticiVergiNo || summary.senderVkn;
+              if (effectiveParsed?.satici || summary.senderTitle) data.senderTitle = effectiveParsed?.satici || summary.senderTitle;
+              if (effectiveParsed?.aliciVergiNo || summary.receiverVkn) data.receiverVkn = effectiveParsed?.aliciVergiNo || summary.receiverVkn;
+              if (effectiveParsed?.alici || summary.receiverTitle) data.receiverTitle = effectiveParsed?.alici || summary.receiverTitle;
+              if (effectiveParsed?.faturaNo || summary.faturaNo) data.faturaNo = effectiveParsed?.faturaNo || summary.faturaNo;
+              if (effectiveParsed?.faturaTarihi || summary.faturaDate) data.faturaDate = effectiveParsed?.faturaTarihi || summary.faturaDate;
+              if (effectiveParsed?.matrah != null || summary.matrah != null) data.matrah = String(effectiveParsed?.matrah ?? summary.matrah);
+              if (effectiveParsed?.kdvTutari != null || summary.kdv != null) data.kdv = String(effectiveParsed?.kdvTutari ?? summary.kdv);
+              const parsedTotal = effectiveParsed ? (effectiveParsed.toplamTutar ?? ((effectiveParsed.matrah || 0) + (effectiveParsed.kdvTutari || 0))) : null;
               if (parsedTotal != null || summary.toplam != null) data.toplam = String(parsedTotal ?? summary.toplam);
               if (existing) {
                 await (this.prisma as any).eFaturaInbox.update({ where: { id: existing.id }, data });
@@ -3604,7 +3614,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
                     taxpayer,
                     cfg,
                     direction,
-                    { ...payload, externalId: summary.uuid || payload.externalId || parsed?.ettn || parsed?.faturaNo || null },
+                    { ...payload, externalId: summary.uuid || payload.externalId || effectiveParsed?.ettn || effectiveParsed?.faturaNo || null },
                     { existingDocumentId: existing.documentId },
                   ).catch((e: any) => this.logger.warn(`TURMOB aktarilmis belge yenilenemedi: ${e?.message || e}`));
                 }
@@ -3621,7 +3631,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
                 });
                 providerAdded++;
               }
-              if (payload) providerDownloaded++;
+              if (effectivePayload) providerDownloaded++;
               else providerMissingDocument++;
             } catch (e: any) {
               providerFailed++;
@@ -3824,7 +3834,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const runtimeCfg = this.providerStubConfig(provider);
       const sourceRef = rowSourceRef(row);
       const existingBySourceRef = existingDocsBySourceRef.get(`${providerSource(row)}::${sourceRef}`);
-      if (!row.documentId && existingBySourceRef?.id) {
+      const savedXml = String(row.ublXmlRaw || '').trim();
+      const savedXmlLooksSynthetic = provider === 'TURMOB_EFATURA' && this.isSyntheticTurmobInboxXml(savedXml);
+      const turmobDownloadStatus = String(raw?.documentDownloadStatus || '').toUpperCase();
+      const turmobOriginalMissing = provider === 'TURMOB_EFATURA'
+        && (!savedXml || savedXmlLooksSynthetic || turmobDownloadStatus === 'MISSING' || turmobDownloadStatus === 'SUMMARY_ONLY');
+      if (!turmobOriginalMissing && !row.documentId && existingBySourceRef?.id) {
         await (this.prisma as any).eFaturaInbox.update({
           where: { id: row.id },
           data: {
@@ -3839,7 +3854,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       }
       const transferredWithoutDocument = !row.documentId && (row.processedAt || row.isTransferred) && !existingBySourceRef?.id;
       const missingLinkedDocument = row.documentId && !existingDocIds.has(String(row.documentId)) && !existingBySourceRef?.id;
-      if (transferredWithoutDocument || missingLinkedDocument) {
+      if (transferredWithoutDocument || missingLinkedDocument || (turmobOriginalMissing && (row.documentId || row.isTransferred || row.processedAt))) {
         await (this.prisma as any).eFaturaInbox.update({
           where: { id: row.id },
           data: { documentId: null, isTransferred: false, processedAt: null },
@@ -3869,8 +3884,6 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       }
       if (/iptal|itiraz|red|cancel/i.test(`${raw.approvalStatus || ''} ${raw.iptalItiraz || ''}`)) { skipped++; continue; }
       const storedVisual = raw?.originalVisual;
-      const savedXml = String(row.ublXmlRaw || '').trim();
-      const savedXmlLooksSynthetic = provider === 'TURMOB_EFATURA' && this.isSyntheticTurmobInboxXml(savedXml);
       let xml = String((savedXmlLooksSynthetic ? '' : savedXml) || '').trim();
       if (!xml && provider === 'TURMOB_EFATURA') {
         await (this.prisma as any).eFaturaInbox.update({
@@ -5545,10 +5558,24 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         ? [
             '/OutgoingInvoice/OutgoingInvoiceList',
             '/OutgoingInvoice/AllOutgoingInvoiceByFilter',
+            '/OutgoingInvoice/AllOutGoingInvoiceByFilter',
+            '/OutgoingInvoice/AllOutgoingInvoice',
+            '/OutgoingInvoice/GetOutgoingInvoiceList',
+            '/OutgoingInvoice/GetInvoicesByFilter',
+            '/Invoice/AllOutgoingInvoiceByFilter',
+            '/Invoice/OutgoingInvoiceList',
+            '/Invoice/GetOutgoingInvoiceList',
           ]
         : [
             '/IncomingInvoice/IncomingInvoiceList',
             '/IncomingInvoice/AllIncomingInvoiceByFilter',
+            '/IncomingInvoice/AllInComingInvoiceByFilter',
+            '/IncomingInvoice/AllIncomingInvoice',
+            '/IncomingInvoice/GetIncomingInvoiceList',
+            '/IncomingInvoice/GetInvoicesByFilter',
+            '/Invoice/AllIncomingInvoiceByFilter',
+            '/Invoice/IncomingInvoiceList',
+            '/Invoice/GetIncomingInvoiceList',
           ];
     return { refererPath, listUrls };
   }
@@ -5838,29 +5865,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const BASE = this.TURMOB_BASE;
     // Gelen=alış (/IncomingInvoice), Giden=satış (/OutgoingInvoice). e-Arşiv ucu ilk testte eklenecek.
     const channel = String(opts.channel || (opts.direction === 'SATIS' ? 'OUT_EFATURA' : 'IN_EFATURA')).toUpperCase();
-    const refererPath = channel === 'OUT_EARSIV'
-      ? '/ArchiveInvoice'
-      : channel === 'OUT_EFATURA'
-        ? '/OutgoingInvoice'
-        : '/Inbox';
-    const listUrls = channel === 'OUT_EARSIV'
-      ? [
-          '/ArchiveInvoice/ArchiveInvoiceList',
-          '/OutgoingArchiveInvoice/AllOutgoingArchiveInvoiceByFilter',
-          '/ArchiveInvoice/AllArchiveInvoiceByFilter',
-          '/EArchiveInvoice/AllEArchiveInvoiceByFilter',
-          '/EArchive/AllOutgoingArchiveInvoiceByFilter',
-          '/OutgoingInvoice/AllOutgoingArchiveInvoiceByFilter',
-        ]
-      : channel === 'OUT_EFATURA'
-        ? [
-            '/OutgoingInvoice/OutgoingInvoiceList',
-            '/OutgoingInvoice/AllOutgoingInvoiceByFilter',
-          ]
-        : [
-            '/IncomingInvoice/IncomingInvoiceList',
-            '/IncomingInvoice/AllIncomingInvoiceByFilter',
-          ];
+    const { refererPath, listUrls } = this.turmobListPaths(channel);
     const baseListParams = {
       draw: '1',
       start: '0',
@@ -6053,6 +6058,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           const text = String(value);
           for (const m of text.matchAll(/(?:data-)?(?:invoice|fatura|belge|archive|arsiv)?(?:id|uuid|ettn|guid|oid)\s*=\s*["']?([A-Za-z0-9_-]{4,100})/gi)) add(m[1], 'id');
           for (const m of text.matchAll(/(?:InvoiceId|InvoiceID|FaturaId|BelgeId|ArchiveId|ArsivId|ETTN|UUID|Guid|GUID)["'\s:=]+([A-Za-z0-9_-]{4,100})/g)) add(m[1], 'id');
+          if (/action|button|html|hint|link/i.test(keyHint)) {
+            for (const m of text.matchAll(/["']([A-Za-z0-9_-]{4,120})["']/g)) add(m[1], 'id');
+          }
           return;
         }
         if (Array.isArray(value)) {
@@ -6068,8 +6076,39 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     };
     const addTurmobDocumentUrls = (row: any) => {
       const inOrOut = channel === 'IN_EFATURA' ? 'True' : 'False';
+      const pathPrefixes = channel === 'IN_EFATURA'
+        ? ['/IncomingInvoice', '/Invoice']
+        : channel === 'OUT_EARSIV'
+          ? ['/ArchiveInvoice', '/OutgoingArchiveInvoice', '/EArchiveInvoice', '/Invoice']
+          : ['/OutgoingInvoice', '/Invoice'];
+      const pathActions = [
+        'DownloadFile',
+        'Download',
+        'DownloadDocument',
+        'DownloadInvoice',
+        'DownloadXml',
+        'DownloadXML',
+        'GetFile',
+        'GetDocument',
+        'GetInvoiceFile',
+        'GetInvoiceDocument',
+        'GetInvoiceXml',
+        'GetInvoiceXML',
+        'Print',
+        'Detail',
+      ];
+      const pathParams = ['filePath', 'FilePath', 'path', 'Path', 'fileName', 'FileName', 'documentPath', 'DocumentPath'];
       for (const path of rowTextValues(row, ['FilePath', 'XmlPath', 'XMLPath', 'PdfPath', 'PDFPath', 'DownloadPath', 'Url', 'URL'])) {
         addCandidateUrl(path, true);
+        const encoded = encodeURIComponent(path);
+        for (const prefix of pathPrefixes) {
+          for (const action of pathActions) {
+            for (const param of pathParams) {
+              addCandidateUrl(`${prefix}/${action}?${param}=${encoded}`, true);
+              addCandidateUrl(`${prefix}/${action}?${param}=${encoded}&InOrOut=${inOrOut}`, true);
+            }
+          }
+        }
       }
       const channelIdKeys = channel === 'IN_EFATURA'
         ? ['IdFaturaGelen', 'idFaturaGelen', 'FaturaGelenId', 'IncomingInvoiceId', 'InvoiceId', 'Id']

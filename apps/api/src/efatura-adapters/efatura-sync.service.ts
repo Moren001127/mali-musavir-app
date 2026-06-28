@@ -139,7 +139,7 @@ export class EFaturaSyncService {
         senderVkn: true, senderTitle: true, receiverVkn: true,
         matrah: true, kdv: true, toplam: true, paraBirimi: true,
         direction: true, invoiceProfile: true, isTransferred: true, documentId: true,
-        rawJson: true, markedAt: true, processedAt: true, syncedAt: true,
+        ublXmlRaw: true, rawJson: true, markedAt: true, processedAt: true, syncedAt: true,
       },
     });
     const providerSource = (row: any) => {
@@ -151,6 +151,21 @@ export class EFaturaSyncService {
       const source = providerSource(row);
       const sourceRef = rowSourceRef(row);
       return source && sourceRef ? `${source}::${sourceRef}` : '';
+    };
+    const isSyntheticTurmobInboxXml = (xml: any) => {
+      const text = String(xml || '').trim();
+      if (!text) return false;
+      return /<cbc:Note>\s*TURMOB_SUMMARY_ONLY\s*<\/cbc:Note>/i.test(text)
+        || /<cbc:Name>\s*TURMOB_LISTE_OZETI\s*<\/cbc:Name>/i.test(text)
+        || /<cbc:ID>\s*TURMOB-SUMMARY/i.test(text);
+    };
+    const missingOriginalDocument = (row: any) => {
+      if (String(row?.entegrator || '').toUpperCase() !== 'TURMOB_EFATURA') return false;
+      const raw = row?.rawJson && typeof row.rawJson === 'object' ? row.rawJson : {};
+      const downloadStatus = String(raw?.documentDownloadStatus || '').toUpperCase();
+      return downloadStatus === 'MISSING'
+        || downloadStatus === 'SUMMARY_ONLY'
+        || isSyntheticTurmobInboxXml(row?.ublXmlRaw);
     };
     const sourceRefs = rows
       .map(rowSourceRef)
@@ -192,7 +207,8 @@ export class EFaturaSyncService {
 
     const staleRows = rows.filter((row: any) => (
       (row.documentId && !existingDocIds.has(String(row.documentId)) && !existingDocsBySourceRef.has(rowSourceKey(row))) ||
-      (!row.documentId && (row.isTransferred || row.processedAt) && !existingDocsBySourceRef.has(rowSourceKey(row)))
+      (!row.documentId && (row.isTransferred || row.processedAt) && !existingDocsBySourceRef.has(rowSourceKey(row))) ||
+      (missingOriginalDocument(row) && (row.documentId || row.isTransferred || row.processedAt))
     ));
     if (staleRows.length) {
       await (this.prisma as any).eFaturaInbox.updateMany({
@@ -220,7 +236,7 @@ export class EFaturaSyncService {
         const refDoc = existingDocsBySourceRef.get(rowSourceKey(row));
         const linkedDocId = row.documentId && existingDocIds.has(String(row.documentId)) ? String(row.documentId) : (refDoc?.id || null);
         const hasAccountingDocument = !!linkedDocId;
-        if (staleIds.has(row.id)) {
+        if (staleIds.has(row.id) || missingOriginalDocument(row)) {
           return { ...row, documentId: null, isTransferred: false, processedAt: null, hasAccountingDocument: false };
         }
         return { ...row, documentId: linkedDocId || null, isTransferred: hasAccountingDocument, hasAccountingDocument };

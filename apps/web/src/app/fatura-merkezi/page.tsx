@@ -1441,7 +1441,16 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
     if (r?.hasAccountingDocument === false) return false;
     return Boolean(r?.documentId);
   };
-  const efaturaTransferableRows = efaturaRows.filter((r) => !efaturaIsTransferred(r));
+  const efaturaDocumentStatus = (r: any) => {
+    const raw = r?.rawJson && typeof r.rawJson === 'object' ? r.rawJson : {};
+    return String(raw?.documentDownloadStatus || (r?.ublXmlRaw ? 'READY' : '')).toUpperCase();
+  };
+  const efaturaCanImport = (r: any) => {
+    if (efaturaIsTransferred(r)) return false;
+    const status = efaturaDocumentStatus(r);
+    return status !== 'MISSING' && status !== 'SUMMARY_ONLY';
+  };
+  const efaturaTransferableRows = efaturaRows.filter(efaturaCanImport);
   const efaturaTransferableIds = efaturaTransferableRows.map((r) => String(r.id || '').trim()).filter(Boolean);
   const efaturaSelectedIds = [...sel].filter((id) => efaturaTransferableIds.includes(id));
   const toggleEfaturaAll = () => setSel(() => efaturaSelectedIds.length === efaturaTransferableIds.length ? new Set() : new Set(efaturaTransferableIds));
@@ -1560,7 +1569,7 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
       p?.downloaded != null ? `${Number(p.downloaded || 0)} indirildi` : null,
       `${Number(p?.added || 0)} yeni`,
       `${Number(p?.updated || 0)} guncel`,
-      missingDocument ? `${missingDocument} orijinal dosya bekliyor` : null,
+      missingDocument ? `${missingDocument} orijinal dosya indirilemedi` : null,
       skippedCount ? `${skippedCount} zaten kayitli` : null,
       failedCount ? `${failedCount} hata` : null,
     ].filter(Boolean);
@@ -1707,15 +1716,17 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
                   const taxNo = efaturaDirection === 'OUT' ? (r.receiverVkn || raw.receiverVkn || raw.aliciVergiNo) : (r.senderVkn || raw.senderVkn || raw.saticiVergiNo);
                   const approval = raw.onayDurumu || raw.approvalStatus || raw.status || raw.invoiceStatus || '—';
                   const transferred = efaturaIsTransferred(r);
+                  const docStatus = efaturaDocumentStatus(r);
+                  const missingOriginal = docStatus === 'MISSING' || docStatus === 'SUMMARY_ONLY';
                   const rowId = String(r.id || '').trim();
-                  const selectable = !transferred && !!rowId;
+                  const selectable = efaturaCanImport(r) && !!rowId;
                   return (
-                    <tr key={r.id} className={transferred ? 'done' : ''}>
+                    <tr key={r.id} className={`${transferred ? 'done' : ''}${missingOriginal ? ' missingdoc' : ''}`}>
                       <td>
                         <Check
                           checked={selectable && sel.has(rowId)}
                           disabled={!selectable}
-                          title={transferred ? 'Zaten aktarilmis' : selectable ? 'Aktarim icin sec' : 'Satir kimligi yok'}
+                          title={transferred ? 'Zaten aktarilmis' : missingOriginal ? 'Orijinal belge indirilemedi; tekrar Sorgula ile dene' : selectable ? 'Aktarim icin sec' : 'Satir kimligi yok'}
                           onToggle={() => toggle(rowId)}
                         />
                       </td>
@@ -1727,7 +1738,7 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
                       <td>{r.invoiceProfile || 'e-Fatura'}</td>
                       <td className="plainstatus">{approval}</td>
                       <td>
-                        <span className={`transferstate ${transferred ? 'ok' : 'no'}`} title={transferred ? 'Aktarıldı' : 'Aktarılmadı'} aria-label={transferred ? 'Aktarıldı' : 'Aktarılmadı'}>
+                        <span className={`transferstate ${transferred ? 'ok' : 'no'}`} title={transferred ? 'Aktarıldı' : missingOriginal ? 'Orijinal belge indirilemedi' : 'Aktarılmadı'} aria-label={transferred ? 'Aktarıldı' : 'Aktarılmadı'}>
                           {transferred ? <span className="okico">✓</span> : <span className="xico">×</span>}
                         </span>
                       </td>
@@ -4186,6 +4197,9 @@ const CSS = `
 #fm-root .transferstate .okico{border:1px solid #bbf7d0;background:#ecfdf5;color:#16a34a}
 #fm-root .sourcetable tr.blocked td{color:#9a5c5c;background:#fffafa}
 #fm-root .sourcetable tr.done td{background:#f8fdfb}
+#fm-root .sourcetable tr.missingdoc td{background:#fffdf7}
+#fm-root .sourcetable tr.missingdoc .cb.disabled{background:#fff7ed;border-color:#fed7aa}
+#fm-root .sourcetable tr.missingdoc .cb.disabled:not(.on)::after{background:#f59e0b}
 #fm-root .sourcepanel.isbusy .sourcetable,#fm-root .sourcepanel.isbusy .providergrid{opacity:.22;filter:blur(.8px);pointer-events:none}
 #fm-root .queryveil{position:absolute;inset:0;z-index:8;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;background:rgba(255,255,255,.72);backdrop-filter:blur(1.5px);text-align:center;color:#1f7a68}
 #fm-root .queryveil b{display:block;margin:0;font-size:13.5px;font-weight:650;line-height:1.25;color:#1f7a68}
