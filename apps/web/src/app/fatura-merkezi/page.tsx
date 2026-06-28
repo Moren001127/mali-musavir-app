@@ -206,7 +206,7 @@ function CodeSelect({ value, accounts, onChange, onAddNew }: { value: string; ac
   useEffect(() => {
     if (!open) { setPos(null); return; }
     measure();
-    const onDoc = (e: MouseEvent) => {
+    const onDoc = (e: globalThis.MouseEvent) => {
       const t = e.target as Node;
       if (boxRef.current && boxRef.current.contains(t)) return;
       if (popRef.current && popRef.current.contains(t)) return;
@@ -322,7 +322,7 @@ function RateSelect({ value, onChange }: { value: string; onChange: (v: string) 
   useEffect(() => {
     if (!open) { setPos(null); return; }
     measure();
-    const onDoc = (e: MouseEvent) => {
+    const onDoc = (e: globalThis.MouseEvent) => {
       const t = e.target as Node;
       if (boxRef.current?.contains(t) || popRef.current?.contains(t)) return;
       setOpen(false);
@@ -373,7 +373,7 @@ function PlainSelect({ value, options, onChange }: { value: string; options: { v
   useEffect(() => {
     if (!open) { setPos(null); setSearch(''); return; }
     measure();
-    const onDoc = (e: MouseEvent) => { const t = e.target as Node; if (boxRef.current?.contains(t) || popRef.current?.contains(t)) return; setOpen(false); };
+    const onDoc = (e: globalThis.MouseEvent) => { const t = e.target as Node; if (boxRef.current?.contains(t) || popRef.current?.contains(t)) return; setOpen(false); };
     const reflow = () => measure();
     document.addEventListener('mousedown', onDoc);
     window.addEventListener('scroll', reflow, true);
@@ -438,7 +438,7 @@ function DocModal() {
 
   useEffect(() => {
     const onView = (e: any) => { setDoc(e.detail || null); setScale(1); setDim({ w: 0, h: 0 }); fittedRef.current = false; };
-    const onKey = (e: KeyboardEvent) => {
+    const onKey = (e: globalThis.KeyboardEvent) => {
       if (e.key === 'Escape') setDoc(null);
       if (e.key === '+' || e.key === '=') setScale((s) => Math.min(4, +(s + 0.2).toFixed(2)));
       if (e.key === '-' || e.key === '_') setScale((s) => Math.max(0.3, +(s - 0.2).toFixed(2)));
@@ -2180,7 +2180,7 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
   };
   // Klavye ok tuşlarıyla önceki/sonraki belgeye geç (form alanındayken serbest bırak).
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
+    const onKey = (e: globalThis.KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
       if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
       if (e.key === 'ArrowLeft') goNav(-1);
@@ -2447,7 +2447,7 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
   };
   // Faz E: klavye kısayolları — Ctrl+S Kaydet, Ctrl+Enter Kaydet+Onayla (form alanında da çalışır).
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
+    const onKey = (e: globalThis.KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
         e.preventDefault(); saveAll().catch(() => {});
       } else if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
