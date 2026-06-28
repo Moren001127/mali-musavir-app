@@ -3509,27 +3509,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       try {
         if (cfg.provider === 'TURMOB_EFATURA') {
           const listed = await this.fetchTurmobPortalRows(cfg, { direction, period, limit, channel });
-          let turmobLookup: ProviderPayloadLookup | null = null;
-          try {
-            const payloads = await this.fetchTurmobPortalInvoices(cfg, {
-              taxpayer,
-              direction,
-              period,
-              limit,
-              channel,
-              targetRows: listed.liveRows.slice(0, limit),
-            });
-            turmobLookup = {
-              cfg,
-              payloads,
-              byKey: this.buildProviderPayloadLookup(payloads),
-              error: null,
-            };
-          } catch (e: any) {
-            const message = e?.message || 'TURMOB orijinal belge indirilemedi';
-            this.logger.warn(`TURMOB sorgu sirasinda belge indirilemedi: ${message}`);
-            turmobLookup = { cfg, payloads: [], byKey: new Map(), error: message };
-          }
+          const turmobLookup: ProviderPayloadLookup = { cfg, payloads: [], byKey: new Map(), error: null };
           let providerFetched = 0, providerAdded = 0, providerUpdated = 0, providerSkipped = 0, providerFailed = 0;
           let providerDownloaded = 0, providerMissingDocument = 0;
           for (const sourceRow of listed.liveRows.slice(0, limit)) {
