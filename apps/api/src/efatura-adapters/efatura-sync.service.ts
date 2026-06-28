@@ -154,12 +154,15 @@ export class EFaturaSyncService {
       const raw = row?.rawJson && typeof row.rawJson === 'object' ? row.rawJson : {};
       const downloadStatus = String(raw?.documentDownloadStatus || '').toUpperCase();
       const visual = raw?.originalVisual && typeof raw.originalVisual === 'object' ? raw.originalVisual : null;
+      const visualHtml = String(visual?.html || '');
+      const fakeTurmobVisual = /TURMOB liste verisiyle|Orijinal belge goruntusu indirilemedi|Fatura satiri/i.test(visualHtml);
       const hasOriginalVisual = !!visual && (
         (/pdf/i.test(String(visual.mimeType || '')) && Boolean(visual.base64)) ||
-        (/html/i.test(String(visual.mimeType || '')) && Boolean(visual.html))
+        (/html/i.test(String(visual.mimeType || '')) && Boolean(visual.html) && !fakeTurmobVisual)
       );
       return downloadStatus === 'MISSING'
         || downloadStatus === 'SUMMARY_ONLY'
+        || fakeTurmobVisual
         || isSyntheticTurmobInboxXml(row?.ublXmlRaw)
         || (!!row?.ublXmlRaw && !hasOriginalVisual);
     };

@@ -432,29 +432,6 @@ export class FaturaMuhasebelestirmeController {
   @Post('efatura-sync')
   async efaturaSync(@Req() req: any, @Body() body: any) {
     const direction: 'IN' | 'OUT' = body?.direction === 'OUT' ? 'OUT' : 'IN';
-    if (body?.async === true || body?.background === true) {
-      const tenantId = req.user.tenantId;
-      const userId = req.user?.userId || req.user?.sub;
-      const input = {
-        taxpayerId: body?.taxpayerId,
-        period: body?.period,
-        direction,
-        channel: body?.channel,
-        limit: body?.limit,
-        providers: Array.isArray(body?.providers) ? body.providers : undefined,
-      };
-      void this.service.syncEfaturaInboxFromIntegrations(tenantId, userId, input)
-        .catch((e: any) => console.warn('[efatura-sync] background failed:', e?.message || e));
-      return {
-        source: 'efatura-sync-queued',
-        queued: true,
-        providers: (input.providers || ['TURMOB_EFATURA']).map((provider: string) => ({
-          provider,
-          status: 'QUEUED_EFATURA_SYNC',
-          reason: 'Sorgu arka planda calisiyor; tablo otomatik yenilenecek.',
-        })),
-      };
-    }
     return this.service.syncEfaturaInboxFromIntegrations(
       req.user.tenantId,
       req.user?.userId || req.user?.sub,

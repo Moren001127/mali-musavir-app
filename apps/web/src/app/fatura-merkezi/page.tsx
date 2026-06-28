@@ -1464,7 +1464,6 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
       period,
       providers: [v.provider],
       limit: 500,
-      background: true,
     }),
     onSuccess: (r: any) => {
       const data = r?.data || null;

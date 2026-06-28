@@ -3557,10 +3557,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
                 ? (this.parseProviderUblInvoice(effectivePayload.xml) || this.regexProviderInvoiceFallback(effectivePayload.xml))
                 : null;
               const effectiveStoredVisual = payload ? this.providerStoredVisual(payload) : ((currentRaw as any)?.originalVisual || null);
-              const hasEffectiveOriginalVisual = effectiveStoredVisual && typeof effectiveStoredVisual === 'object' && (
-                (/pdf/i.test(String((effectiveStoredVisual as any).mimeType || '')) && Boolean((effectiveStoredVisual as any).base64)) ||
-                (/html/i.test(String((effectiveStoredVisual as any).mimeType || '')) && Boolean((effectiveStoredVisual as any).html))
-              );
+              const hasEffectiveOriginalVisual = this.hasOriginalProviderVisual(effectiveStoredVisual, cfg.provider);
               const documentReady = !!effectivePayload && hasEffectiveOriginalVisual;
               const data: any = {
                 paraBirimi: effectiveParsed?.paraBirimi || summary.paraBirimi || 'TRY',
@@ -3895,10 +3892,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       }
       if (/iptal|itiraz|red|cancel/i.test(`${raw.approvalStatus || ''} ${raw.iptalItiraz || ''}`)) { skipped++; continue; }
       let storedVisual = raw?.originalVisual;
-      let hasOriginalVisual = storedVisual && typeof storedVisual === 'object' && (
-        (/pdf/i.test(String(storedVisual.mimeType || '')) && Boolean(storedVisual.base64)) ||
-        (/html/i.test(String(storedVisual.mimeType || '')) && Boolean(storedVisual.html))
-      );
+      let hasOriginalVisual = this.hasOriginalProviderVisual(storedVisual, provider);
       let xml = String((savedXmlLooksSynthetic ? '' : savedXml) || '').trim();
       let downloadError: string | null = null;
       if (provider === 'TURMOB_EFATURA' && (!xml || !hasOriginalVisual)) {
@@ -3921,10 +3915,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             if (downloaded) {
               xml = String(downloaded.xml || '').trim();
               storedVisual = this.providerStoredVisual(downloaded);
-              hasOriginalVisual = storedVisual && typeof storedVisual === 'object' && (
-                (/pdf/i.test(String(storedVisual.mimeType || '')) && Boolean(storedVisual.base64)) ||
-                (/html/i.test(String(storedVisual.mimeType || '')) && Boolean(storedVisual.html))
-              );
+              hasOriginalVisual = this.hasOriginalProviderVisual(storedVisual, provider);
               raw = {
                 ...raw,
                 needsDocumentDownload: !hasOriginalVisual,
@@ -7070,6 +7061,21 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     return null;
   }
 
+  private isFakeTurmobVisualHtml(html: any): boolean {
+    return /TURMOB liste verisiyle|Orijinal belge goruntusu indirilemedi|Fatura satiri/i.test(String(html || ''));
+  }
+
+  private hasOriginalProviderVisual(visual: any, provider?: string): boolean {
+    if (!visual || typeof visual !== 'object') return false;
+    const mimeType = String(visual.mimeType || '');
+    if (/pdf/i.test(mimeType) && Boolean(visual.base64)) return true;
+    const html = String(visual.html || '');
+    if (/html/i.test(mimeType) && html) {
+      return String(provider || '').toUpperCase() !== 'TURMOB_EFATURA' || !this.isFakeTurmobVisualHtml(html);
+    }
+    return false;
+  }
+
   private providerPayloadFromStoredVisual(
     xml: string,
     externalId?: string | null,
@@ -7116,14 +7122,15 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       ? payload.pdfBuffer
       : null;
     const hasHtml = html && /<(?:!doctype\s+html|html|body)\b/i.test(html.slice(0, 2000));
-    if (cfg.provider === 'TURMOB_EFATURA' && !pdf && !hasHtml) {
+    const hasOriginalHtml = !!hasHtml && !(cfg.provider === 'TURMOB_EFATURA' && this.isFakeTurmobVisualHtml(html));
+    if (cfg.provider === 'TURMOB_EFATURA' && !pdf && !hasOriginalHtml) {
       throw new Error('TURMOB orijinal fatura goruntusu olmadan belge kaydedilmedi.');
     }
-    if (pdf || hasHtml) {
+    if (pdf || hasOriginalHtml) {
       const zip = new JSZip();
       zip.file('invoice.xml', xmlBuffer);
       if (pdf) zip.file('original.pdf', pdf);
-      if (hasHtml) zip.file('original.html', html);
+      if (hasOriginalHtml) zip.file('original.html', html);
       const buffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
       const s3Key = `invoice-accounting/${tenantId}/${taxpayerId}/${cfg.provider.toLowerCase()}-${randomUUID()}.zip`;
       await this.storage.putBuffer(s3Key, buffer, 'application/zip', {
