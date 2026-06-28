@@ -1576,13 +1576,15 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
     if (st === 'QUEUED_EFATURA_SYNC') return p?.reason || 'Sorgu arka planda calisiyor; tablo otomatik yenilenecek.';
     if (st === 'QUEUED_EFATURA_IMPORT') return p?.reason || 'Aktarim arka planda calisiyor; tablo otomatik yenilenecek.';
     const missingDocument = Number(p?.missingDocument || 0);
+    const pendingDocument = Number(p?.pendingDocument || 0);
     const failedCount = Number(p?.failed || 0);
-    const skippedCount = Math.max(0, Number(p?.skipped || 0) - missingDocument);
+    const skippedCount = Math.max(0, Number(p?.skipped || 0) - missingDocument - pendingDocument);
     const parts = [
       `${Number(p?.fetched || 0)} bulundu`,
       p?.downloaded != null ? `${Number(p.downloaded || 0)} indirildi` : null,
       `${Number(p?.added || 0)} yeni`,
       `${Number(p?.updated || 0)} guncel`,
+      pendingDocument ? `${pendingDocument} aktarimda indirilecek` : null,
       missingDocument ? `${missingDocument} orijinal dosya indirilemedi` : null,
       skippedCount ? `${skippedCount} zaten kayitli` : null,
       failedCount ? `${failedCount} hata` : null,

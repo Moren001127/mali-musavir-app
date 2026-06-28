@@ -3557,6 +3557,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
                 ? (this.parseProviderUblInvoice(effectivePayload.xml) || this.regexProviderInvoiceFallback(effectivePayload.xml))
                 : null;
               const effectiveStoredVisual = payload ? this.providerStoredVisual(payload) : ((currentRaw as any)?.originalVisual || null);
+              const safeOriginalVisual = effectiveStoredVisual ?? null;
               const hasEffectiveOriginalVisual = this.hasOriginalProviderVisual(effectiveStoredVisual, cfg.provider);
               const documentReady = !!effectivePayload && hasEffectiveOriginalVisual;
               const data: any = {
@@ -3587,7 +3588,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
                   documentDownloadError: documentReady
                     ? null
                     : 'Orijinal belge aktarim sirasinda indirilecek.',
-                  originalVisual: effectiveStoredVisual,
+                  originalVisual: safeOriginalVisual,
                 },
               };
               if (payload) data.ublXmlRaw = payload.xml;
@@ -3650,7 +3651,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             added: providerAdded,
             updated: providerUpdated,
             skipped: providerSkipped + Math.max(0, listed.liveRows.length - providerFetched),
-            missingDocument: providerMissingDocument,
+            pendingDocument: providerMissingDocument,
+            missingDocument: 0,
             failed: providerFailed,
           });
           continue;
@@ -5749,12 +5751,16 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     let raw = '';
     let data: any = null;
     let rows: any[] = [];
+    let liveRows: any[] = [];
+    let selectedCt = '';
+    let selectedRaw = '';
+    let selectedData: any = null;
     let usedListUrl = listUrls[0];
     let usedProfile = 'none';
     let usedMethod = 'POST';
 
-    listAttempt:
     for (const listUrl of listUrls) {
+      let urlReturnedRows = false;
       for (const profile of profiles) {
         const listBody = new URLSearchParams(
           listPageToken
@@ -5781,27 +5787,39 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           raw = await res.text();
           data = null;
           try { data = JSON.parse(raw); } catch { /* HTML = probably login redirect */ }
-          rows = this.turmobRowsFromListResponse(data);
-          usedListUrl = listUrl;
-          usedProfile = profile.name;
-          usedMethod = method;
-          if (rows.length) break listAttempt;
+          const candidateRows = this.turmobRowsFromListResponse(data);
+          const candidateLiveRows = candidateRows.filter((row) => !this.turmobIsCancelled(row) && this.turmobRowInPeriod(row, opts.period));
+          if (candidateRows.length) urlReturnedRows = true;
+          if (
+            candidateLiveRows.length > liveRows.length
+            || (!liveRows.length && candidateRows.length > rows.length)
+          ) {
+            rows = candidateRows;
+            liveRows = candidateLiveRows;
+            selectedCt = ct;
+            selectedRaw = raw;
+            selectedData = data;
+            usedListUrl = listUrl;
+            usedProfile = profile.name;
+            usedMethod = method;
+          }
         }
       }
+      if (urlReturnedRows) break;
     }
-    this.logger.log(`TURMOB list ${channel}: url=${usedListUrl} method=${usedMethod} profile=${usedProfile} ct=${ct.slice(0, 40)} len=${raw.length} rows=${rows.length}`);
+    this.logger.log(`TURMOB list ${channel}: url=${usedListUrl} method=${usedMethod} profile=${usedProfile} ct=${selectedCt.slice(0, 40)} len=${selectedRaw.length} rows=${rows.length} live=${liveRows.length}`);
     return {
       cookie,
       channel,
       listPageHtml,
       rows,
-      liveRows: rows.filter((row) => !this.turmobIsCancelled(row) && this.turmobRowInPeriod(row, opts.period)),
+      liveRows,
       usedListUrl,
       usedMethod,
       usedProfile,
-      raw,
-      data,
-      ct,
+      raw: selectedRaw,
+      data: selectedData,
+      ct: selectedCt,
     };
   }
 
