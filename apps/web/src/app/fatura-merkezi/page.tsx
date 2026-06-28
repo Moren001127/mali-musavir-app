@@ -1539,6 +1539,30 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
     return parts.join(' · ');
   };
   const efaturaOverlayBusy = efaturaFetchMut.isPending || efaturaImportMut.isPending;
+  useEffect(() => {
+    const queued = efaturaStatusRows.some((p) => String(p?.status || '').toUpperCase() === 'QUEUED_EFATURA_SYNC');
+    if (!queued || efaturaFetchMut.isPending || efaturaImportMut.isPending || efaturaRows.length === 0) return;
+    setLastEfaturaSync({
+      providers: [{
+        provider: activeEfaturaProvider?.provider || 'TURMOB_EFATURA',
+        label: activeEfaturaProvider?.label || 'TURMOB e-Fatura',
+        status: 'SUCCESS',
+        fetched: efaturaRows.length,
+        downloaded: efaturaRows.filter((row: any) => {
+          const raw = row?.rawJson && typeof row.rawJson === 'object' ? row.rawJson : {};
+          return String(raw?.documentDownloadStatus || '').toUpperCase() === 'READY';
+        }).length,
+        added: 0,
+        updated: 0,
+        skipped: efaturaRows.filter((row: any) => efaturaIsTransferred(row)).length,
+        missingDocument: efaturaRows.filter((row: any) => {
+          const raw = row?.rawJson && typeof row.rawJson === 'object' ? row.rawJson : {};
+          return String(raw?.documentDownloadStatus || '').toUpperCase() === 'MISSING';
+        }).length,
+        failed: 0,
+      }],
+    });
+  }, [efaturaRows, efaturaStatusRows, efaturaFetchMut.isPending, efaturaImportMut.isPending, activeEfaturaProvider?.provider, activeEfaturaProvider?.label]);
 
   return (
     <section className="screen sorgu-screen">
