@@ -5760,7 +5760,6 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     let usedMethod = 'POST';
 
     for (const listUrl of listUrls) {
-      let urlReturnedRows = false;
       for (const profile of profiles) {
         const listBody = new URLSearchParams(
           listPageToken
@@ -5789,7 +5788,6 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           try { data = JSON.parse(raw); } catch { /* HTML = probably login redirect */ }
           const candidateRows = this.turmobRowsFromListResponse(data);
           const candidateLiveRows = candidateRows.filter((row) => !this.turmobIsCancelled(row) && this.turmobRowInPeriod(row, opts.period));
-          if (candidateRows.length) urlReturnedRows = true;
           if (
             candidateLiveRows.length > liveRows.length
             || (!liveRows.length && candidateRows.length > rows.length)
@@ -5805,7 +5803,6 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           }
         }
       }
-      if (urlReturnedRows) break;
     }
     this.logger.log(`TURMOB list ${channel}: url=${usedListUrl} method=${usedMethod} profile=${usedProfile} ct=${selectedCt.slice(0, 40)} len=${selectedRaw.length} rows=${rows.length} live=${liveRows.length}`);
     return {
@@ -6038,12 +6035,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     let raw = '';
     let data: any = null;
     let rows: any[] = [];
+    let selectedLiveRows: any[] = [];
     let usedListUrl = listUrls[0];
     let usedProfile = 'none';
     let usedMethod = 'POST';
     let directPayloads: ProviderInvoicePayload[] = [];
     const profiles = this.turmobDateProfiles(opts.period);
-    listAttempt:
     for (const listUrl of listUrls) {
       for (const profile of profiles) {
         const listBody = new URLSearchParams(
@@ -6067,16 +6064,28 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             },
             body: method === 'POST' ? listBody : undefined,
           });
-          ct = res.headers.get('content-type') || '';
-          raw = await res.text();
-          data = null;
-          try { data = JSON.parse(raw); } catch { /* HTML = muhtemelen login redirect */ }
-          rows = this.turmobRowsFromListResponse(data);
-          usedListUrl = listUrl;
-          usedProfile = profile.name;
-          usedMethod = method;
-          directPayloads = await this.extractPayloadsFromProviderResponse(raw, ['xml', 'ubl', 'content', 'data', 'base64', 'DocumentXml', 'InvoiceXml']);
-          if (rows.length || directPayloads.length) break listAttempt;
+          const candidateCt = res.headers.get('content-type') || '';
+          const candidateRaw = await res.text();
+          let candidateData: any = null;
+          try { candidateData = JSON.parse(candidateRaw); } catch { /* HTML = muhtemelen login redirect */ }
+          const candidateRows = this.turmobRowsFromListResponse(candidateData);
+          const candidateLiveRows = candidateRows.filter((row) => !this.turmobIsCancelled(row) && this.turmobRowInPeriod(row, opts.period));
+          const candidateDirectPayloads = await this.extractPayloadsFromProviderResponse(candidateRaw, ['xml', 'ubl', 'content', 'data', 'base64', 'DocumentXml', 'InvoiceXml']);
+          if (
+            candidateDirectPayloads.length > directPayloads.length
+            || candidateLiveRows.length > selectedLiveRows.length
+            || (!selectedLiveRows.length && candidateRows.length > rows.length)
+          ) {
+            raw = candidateRaw;
+            data = candidateData;
+            ct = candidateCt;
+            rows = candidateRows;
+            selectedLiveRows = candidateLiveRows;
+            usedListUrl = listUrl;
+            usedProfile = profile.name;
+            usedMethod = method;
+            directPayloads = candidateDirectPayloads;
+          }
         }
       }
     }
@@ -6171,6 +6180,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         const amountKey = this.providerAmountKey(summary.toplam);
         const keyWithAmount = key && amountKey ? this.providerKey(`${key}:${amountKey}`) : null;
         if (keyWithAmount && targetKeys.has(keyWithAmount)) return true;
+      }
+      const rowTextKey = this.providerKey(JSON.stringify(row || {}));
+      if (rowTextKey) {
+        for (const targetKey of targetKeys) {
+          if (targetKey.length >= 6 && rowTextKey.includes(targetKey)) return true;
+        }
       }
       return false;
     };
