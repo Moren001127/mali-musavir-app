@@ -5824,10 +5824,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       channel,
       listPageHtml,
       rows,
-      // TURMOB list endpoint already receives the selected date range. Applying a
-      // second local date filter hides rows when the portal formats boundary
-      // dates differently, which makes query/import counts drift.
-      liveRows: rows.filter((row) => !this.turmobIsCancelled(row)),
+      liveRows: rows.filter((row) => !this.turmobIsCancelled(row) && this.turmobRowInPeriod(row, opts.period)),
       usedListUrl,
       usedMethod,
       usedProfile,
@@ -6140,7 +6137,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       if (/\byok\b|false|hayir|hayır|onaylandi|onaylandı|alici kabul etti|gonderildi|gönderildi|otomatik/.test(text)) return false;
       return /iptal|itiraz|reddedil|red edildi|cancel/.test(text);
     };
-    const liveAll = rows.filter((r) => !isCancelled(r));
+    const liveAll = rows.filter((r) => !isCancelled(r) && this.turmobRowInPeriod(r, opts.period));
     const targetRows = Array.isArray(opts.targetRows) ? opts.targetRows : [];
     const targetKeys = new Set<string>();
     const addTargetKey = (value: any) => {
