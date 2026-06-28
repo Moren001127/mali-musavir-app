@@ -3858,7 +3858,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         const validRowDate = rowDate && !Number.isNaN(rowDate.getTime());
         const dateMatches = validRowDate && rowDate >= periodStart && rowDate < periodEnd;
         const rawPeriodMatches = String(raw.period || '') === opts.period;
-        if (!(dateMatches || rawPeriodMatches)) continue;
+        if (validRowDate ? !dateMatches : !rawPeriodMatches) continue;
       }
       processed++;
       const provider = String(row.entegrator || 'TURMOB_EFATURA');
