@@ -5919,6 +5919,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     };
     const live = rows.filter((r) => !isCancelled(r));
     const payloads = [...directPayloads];
+    const priorityUrls = new Set<string>();
     const seenUrls = new Set<string>();
     const addCandidateUrl = (candidate: string, trustedPath = false) => {
       const clean = this.decodeXmlEntities(String(candidate || '').replace(/\\\//g, '/')).trim();
@@ -5929,7 +5930,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         || /[?&][A-Za-z0-9_%-]+=/.test(clean);
       if (!clean || (!hasDocumentKeyword && !(trustedPath && looksLikePath))) return;
       const absolute = clean.startsWith('http') ? clean : BASE + (clean.startsWith('/') ? clean : `/${clean}`);
-      seenUrls.add(absolute);
+      if (trustedPath) priorityUrls.add(absolute);
+      else seenUrls.add(absolute);
     };
     const rowValues = (row: any, keys: string[]) => {
       const wanted = new Set(keys.map((key) => key.toLowerCase()));
@@ -6007,6 +6009,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     };
     const addTurmobDocumentUrls = (row: any) => {
       const inOrOut = channel === 'IN_EFATURA' ? 'True' : 'False';
+      for (const path of rowTextValues(row, ['FilePath', 'XmlPath', 'XMLPath', 'PdfPath', 'PDFPath', 'DownloadPath', 'Url', 'URL'])) {
+        addCandidateUrl(path, true);
+      }
       const channelIdKeys = channel === 'IN_EFATURA'
         ? ['IdFaturaGelen', 'idFaturaGelen', 'FaturaGelenId', 'IncomingInvoiceId', 'InvoiceId', 'Id']
         : channel === 'OUT_EARSIV'
@@ -6090,9 +6095,6 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           addCandidateUrl(`${prefix}/Detail?ArchiveId=${encodeURIComponent(id)}&IsPrint=True`);
         }
       }
-      for (const path of rowTextValues(row, ['FilePath', 'XmlPath', 'XMLPath', 'PdfPath', 'PDFPath', 'DownloadPath', 'Url', 'URL'])) {
-        addCandidateUrl(path, true);
-      }
     };
     for (const m of listPageHtml.matchAll(/["'](\/(?:IncomingInvoice|OutgoingInvoice|ArchiveInvoice|OutgoingArchiveInvoice|EArchiveInvoice|Invoice)\/[^"']*(?:Xml|XML|Download|Invoice|Detail|Print|Ubl|UBL)[^"']*)["']/gi)) {
       addCandidateUrl(m[1]);
@@ -6107,10 +6109,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     let downloadAttempts = 0;
     const maxDownloadAttempts = Math.min(2400, Math.max(240, live.length * 30));
     const targetPayloadCount = Math.min(opts.limit, Math.max(live.length, payloads.length || 1));
-    for (const url of seenUrls) {
+    for (const url of [...priorityUrls, ...seenUrls]) {
       if (++downloadAttempts > maxDownloadAttempts) break;
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 650);
+      const timer = setTimeout(() => controller.abort(), 2000);
       try {
         const docRes = await fetch(url, {
           method: 'GET',
