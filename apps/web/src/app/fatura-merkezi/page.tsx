@@ -917,9 +917,7 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
       fd.append('documentType', kind === 'SATIS' ? 'SATIS_FATURA' : 'ALIS_FATURA');
       fd.append('invoiceKind', kind);
       fd.append('period', period);
-      return api.post('/fatura-muhasebelestirme/documents/upload', fd, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
+      return api.post('/fatura-muhasebelestirme/documents/upload', fd);
     },
     onSuccess: (r: any) => {
       const n = Array.isArray(r?.data) ? r.data.length : (r?.data?.uploaded ?? r?.data?.count ?? r?.data?.created ?? null);
@@ -1466,14 +1464,21 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
       period,
       providers: [v.provider],
       limit: 500,
+      background: true,
     }),
     onSuccess: (r: any) => {
-      setLastEfaturaSync(r?.data || null);
-      showFetchResult(r?.data);
-      setEfaturaPollUntil(0);
+      const data = r?.data || null;
+      setLastEfaturaSync(data);
+      if (data?.queued) {
+        setEfaturaPollUntil(Date.now() + 5 * 60 * 1000);
+        toast.success('Sorgu arka planda basladi; tablo otomatik yenilenecek.');
+      } else {
+        showFetchResult(data);
+        setEfaturaPollUntil(0);
+      }
       qc.invalidateQueries({ queryKey: ['fm-efatura-inbox'] });
       qc.invalidateQueries({ queryKey: ['fm2'] });
-      [1200, 3000, 7000].forEach((ms) => {
+      [1200, 3000, 7000, 15000, 30000, 60000, 120000].forEach((ms) => {
         window.setTimeout(() => {
           qc.invalidateQueries({ queryKey: ['fm-efatura-inbox'] });
           qc.invalidateQueries({ queryKey: ['fm2'] });
@@ -1511,8 +1516,32 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
       period,
       ids: efaturaSelectedIds.length ? efaturaSelectedIds : efaturaTransferableIds,
       limit: 500,
+      background: true,
     }),
     onSuccess: (r: any) => {
+      const data = r?.data || {};
+      if (data?.queued) {
+        setEfaturaPollUntil(Date.now() + 5 * 60 * 1000);
+        setLastEfaturaSync({
+          providers: [{
+            provider: activeEfaturaProvider?.provider || 'TURMOB_EFATURA',
+            label: activeEfaturaProvider?.label || 'TURMOB e-Fatura',
+            status: 'QUEUED_EFATURA_IMPORT',
+            reason: data?.reason || 'Aktarim arka planda calisiyor; tablo otomatik yenilenecek.',
+          }],
+        });
+        toast.success('Aktarim arka planda basladi; liste otomatik yenilenecek.');
+        setSel(new Set());
+        qc.invalidateQueries({ queryKey: ['fm-efatura-inbox'] });
+        qc.invalidateQueries({ queryKey: ['fm2'] });
+        [1200, 3000, 7000, 15000, 30000, 60000, 120000].forEach((ms) => {
+          window.setTimeout(() => {
+            qc.invalidateQueries({ queryKey: ['fm-efatura-inbox'] });
+            qc.invalidateQueries({ queryKey: ['fm2'] });
+          }, ms);
+        });
+        return;
+      }
       setEfaturaPollUntil(0);
       const imported = Number(r?.data?.imported || 0);
       const processed = Number(r?.data?.processed || 0);
@@ -1546,6 +1575,7 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
     if (st === 'FAILED') return p?.reason || 'Sorgu hatasi';
     if (st === 'SKIPPED') return p?.reason || 'Atlandi';
     if (st === 'QUEUED_EFATURA_SYNC') return p?.reason || 'Sorgu arka planda calisiyor; tablo otomatik yenilenecek.';
+    if (st === 'QUEUED_EFATURA_IMPORT') return p?.reason || 'Aktarim arka planda calisiyor; tablo otomatik yenilenecek.';
     const missingDocument = Number(p?.missingDocument || 0);
     const failedCount = Number(p?.failed || 0);
     const skippedCount = Math.max(0, Number(p?.skipped || 0) - missingDocument);
@@ -1560,10 +1590,14 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
     ].filter(Boolean);
     return parts.join(' · ');
   };
-  const efaturaOverlayBusy = efaturaFetchMut.isPending || efaturaImportMut.isPending;
+  const efaturaQueuedSync = efaturaStatusRows.some((p) => String(p?.status || '').toUpperCase() === 'QUEUED_EFATURA_SYNC');
+  const efaturaQueuedImport = efaturaStatusRows.some((p) => String(p?.status || '').toUpperCase() === 'QUEUED_EFATURA_IMPORT');
+  const efaturaQueuedActive = efaturaPollUntil > Date.now() && (efaturaQueuedSync || efaturaQueuedImport);
+  const efaturaOverlayBusy = efaturaFetchMut.isPending || efaturaImportMut.isPending || efaturaQueuedActive;
   useEffect(() => {
     const queued = efaturaStatusRows.some((p) => String(p?.status || '').toUpperCase() === 'QUEUED_EFATURA_SYNC');
     if (!queued || efaturaFetchMut.isPending || efaturaImportMut.isPending || efaturaRows.length === 0) return;
+    setEfaturaPollUntil(0);
     setLastEfaturaSync({
       providers: [{
         provider: activeEfaturaProvider?.provider || 'TURMOB_EFATURA',
@@ -1585,6 +1619,29 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
       }],
     });
   }, [efaturaRows, efaturaStatusRows, efaturaFetchMut.isPending, efaturaImportMut.isPending, activeEfaturaProvider?.provider, activeEfaturaProvider?.label]);
+
+  useEffect(() => {
+    if (!efaturaQueuedImport || efaturaFetchMut.isPending || efaturaImportMut.isPending || efaturaInboxQ.isFetching) return;
+    if (efaturaRows.length === 0) return;
+    const transferred = efaturaRows.filter((row: any) => efaturaIsTransferred(row)).length;
+    const missingDocument = efaturaRows.filter((row: any) => efaturaDocumentStatus(row) === 'MISSING').length;
+    if (transferred === 0 && missingDocument === 0) return;
+    setEfaturaPollUntil(0);
+    setLastEfaturaSync({
+      providers: [{
+        provider: activeEfaturaProvider?.provider || 'TURMOB_EFATURA',
+        label: activeEfaturaProvider?.label || 'TURMOB e-Fatura',
+        status: 'SUCCESS',
+        fetched: efaturaRows.length,
+        downloaded: transferred,
+        added: 0,
+        updated: 0,
+        skipped: transferred,
+        missingDocument,
+        failed: 0,
+      }],
+    });
+  }, [efaturaQueuedImport, efaturaRows, efaturaFetchMut.isPending, efaturaImportMut.isPending, efaturaInboxQ.isFetching, activeEfaturaProvider?.provider, activeEfaturaProvider?.label]);
 
   return (
     <section className="screen sorgu-screen">
@@ -1663,11 +1720,11 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
               <b>{efaturaProviderLabel(activeEfaturaProvider) || 'Entegrator yok'}</b>
               <span>{providerConnected(activeEfaturaProvider) ? 'Kimlik bilgisi hazir' : 'Entegratorler ekranindan sifre tanimlanmali'}</span>
             </div>
-            <button className="btn sm fetch" disabled={!taxpayerId || !providerConnected(activeEfaturaProvider) || efaturaFetchMut.isPending || efaturaImportMut.isPending} onClick={() => efaturaFetchMut.mutate({ provider: activeEfaturaProvider.provider })}>
-              <Ico html={I.sync} size={13} /> {efaturaFetchMut.isPending ? 'Sorgulaniyor...' : 'Sorgula'}
+            <button className="btn sm fetch" disabled={!taxpayerId || !providerConnected(activeEfaturaProvider) || efaturaOverlayBusy} onClick={() => efaturaFetchMut.mutate({ provider: activeEfaturaProvider.provider })}>
+              <Ico html={I.sync} size={13} /> {(efaturaFetchMut.isPending || efaturaQueuedSync) ? 'Sorgulaniyor...' : 'Sorgula'}
             </button>
-            <button className="btn sm primary" disabled={!taxpayerId || efaturaImportMut.isPending || efaturaFetchMut.isPending || efaturaTransferableRows.length === 0} onClick={() => efaturaImportMut.mutate()}>
-              <Ico html={I.download} size={13} /> {efaturaImportMut.isPending ? 'Aktariliyor...' : `${efaturaSelectedIds.length ? efaturaSelectedIds.length : efaturaTransferableRows.length} faturayi aktar`}
+            <button className="btn sm primary" disabled={!taxpayerId || efaturaOverlayBusy || efaturaTransferableRows.length === 0} onClick={() => efaturaImportMut.mutate()}>
+              <Ico html={I.download} size={13} /> {(efaturaImportMut.isPending || efaturaQueuedImport) ? 'Aktariliyor...' : `${efaturaSelectedIds.length ? efaturaSelectedIds.length : efaturaTransferableRows.length} faturayi aktar`}
             </button>
           </div>
           {efaturaStatusRows.length > 0 && (
@@ -1684,7 +1741,7 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
             {efaturaOverlayBusy && (
               <div className="queryveil">
                 <div className="querydoc" aria-hidden="true"><span /><i /><i /><i /></div>
-                <b>{efaturaImportMut.isPending ? 'Faturalar aktariliyor...' : 'Faturalar getiriliyor...'}</b>
+                <b>{(efaturaImportMut.isPending || efaturaQueuedImport) ? 'Faturalar aktariliyor...' : 'Faturalar getiriliyor...'}</b>
               </div>
             )}
             <table className="sourcetable">

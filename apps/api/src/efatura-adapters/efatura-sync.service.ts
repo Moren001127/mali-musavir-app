@@ -198,7 +198,7 @@ export class EFaturaSyncService {
           const validRowDate = rowDate && !Number.isNaN(rowDate.getTime());
           const dateMatches = validRowDate && rowDate >= periodStart && rowDate < periodEnd;
           const rawPeriodMatches = String(raw?.period || '') === opts.period;
-          if (validRowDate ? !dateMatches : !rawPeriodMatches) return false;
+          if (!(dateMatches || rawPeriodMatches)) return false;
         }
         return true;
       })

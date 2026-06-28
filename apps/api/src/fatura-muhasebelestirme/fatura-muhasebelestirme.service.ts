@@ -3509,8 +3509,28 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       try {
         if (cfg.provider === 'TURMOB_EFATURA') {
           const listed = await this.fetchTurmobPortalRows(cfg, { direction, period, limit, channel });
-          const turmobLookup: ProviderPayloadLookup | null = null;
-          let providerAdded = 0, providerUpdated = 0, providerSkipped = 0, providerFailed = 0;
+          let turmobLookup: ProviderPayloadLookup | null = null;
+          try {
+            const payloads = await this.fetchTurmobPortalInvoices(cfg, {
+              taxpayer,
+              direction,
+              period,
+              limit,
+              channel,
+              targetRows: listed.liveRows.slice(0, limit),
+            });
+            turmobLookup = {
+              cfg,
+              payloads,
+              byKey: this.buildProviderPayloadLookup(payloads),
+              error: null,
+            };
+          } catch (e: any) {
+            const message = e?.message || 'TURMOB orijinal belge indirilemedi';
+            this.logger.warn(`TURMOB sorgu sirasinda belge indirilemedi: ${message}`);
+            turmobLookup = { cfg, payloads: [], byKey: new Map(), error: message };
+          }
+          let providerFetched = 0, providerAdded = 0, providerUpdated = 0, providerSkipped = 0, providerFailed = 0;
           let providerDownloaded = 0, providerMissingDocument = 0;
           for (const sourceRow of listed.liveRows.slice(0, limit)) {
             try {
@@ -3527,6 +3547,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
                 providerSkipped++;
                 continue;
               }
+              providerFetched++;
               const payload = this.providerPayloadForInboxRow(
                 {
                   uuid: summary.uuid,
@@ -3639,19 +3660,19 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
               this.logger.warn(`TURMOB e-Fatura liste satiri yazilamadi: ${e?.message || e}`);
             }
           }
-          fetched += listed.liveRows.length;
+          fetched += providerFetched;
           added += providerAdded;
           updated += providerUpdated;
-          skipped += providerSkipped + Math.max(0, listed.rows.length - listed.liveRows.length);
+          skipped += providerSkipped + Math.max(0, listed.liveRows.length - providerFetched);
           statuses.push({
             provider: item.provider,
             label: cfg.label,
             status: 'SUCCESS',
-            fetched: listed.liveRows.length,
+            fetched: providerFetched,
             downloaded: providerDownloaded,
             added: providerAdded,
             updated: providerUpdated,
-            skipped: providerSkipped + Math.max(0, listed.rows.length - listed.liveRows.length),
+            skipped: providerSkipped + Math.max(0, listed.liveRows.length - providerFetched),
             missingDocument: providerMissingDocument,
             failed: providerFailed,
           });
@@ -3837,7 +3858,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         const validRowDate = rowDate && !Number.isNaN(rowDate.getTime());
         const dateMatches = validRowDate && rowDate >= periodStart && rowDate < periodEnd;
         const rawPeriodMatches = String(raw.period || '') === opts.period;
-        if (validRowDate ? !dateMatches : !rawPeriodMatches) continue;
+        if (!(dateMatches || rawPeriodMatches)) continue;
       }
       processed++;
       const provider = String(row.entegrator || 'TURMOB_EFATURA');
@@ -5189,6 +5210,21 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       where: { tenantId, documentId: id },
       data: { documentId: null, isTransferred: false, processedAt: null },
     }).catch(() => {});
+    const sourceRef = String((doc as any).sourceRefId || '').trim();
+    if (sourceRef) {
+      await (this.prisma as any).eFaturaInbox.updateMany({
+        where: {
+          tenantId,
+          taxpayerId: (doc as any).taxpayerId,
+          OR: [
+            { uuid: sourceRef },
+            { ettn: sourceRef },
+            { faturaNo: sourceRef },
+          ],
+        },
+        data: { documentId: null, isTransferred: false, processedAt: null },
+      }).catch(() => {});
+    }
     if (String((doc as any).source || '') !== 'earsiv' && !String(doc.s3Key || '').startsWith('earsiv-inline://')) {
       this.storage.deleteObject(doc.s3Key).catch(() => {});
     }
@@ -5788,7 +5824,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       channel,
       listPageHtml,
       rows,
-      liveRows: rows.filter((row) => !this.turmobIsCancelled(row) && this.turmobRowInPeriod(row, opts.period)),
+      // TURMOB list endpoint already receives the selected date range. Applying a
+      // second local date filter hides rows when the portal formats boundary
+      // dates differently, which makes query/import counts drift.
+      liveRows: rows.filter((row) => !this.turmobIsCancelled(row)),
       usedListUrl,
       usedMethod,
       usedProfile,
@@ -6101,7 +6140,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       if (/\byok\b|false|hayir|hayır|onaylandi|onaylandı|alici kabul etti|gonderildi|gönderildi|otomatik/.test(text)) return false;
       return /iptal|itiraz|reddedil|red edildi|cancel/.test(text);
     };
-    const liveAll = rows.filter((r) => !isCancelled(r) && this.turmobRowInPeriod(r, opts.period));
+    const liveAll = rows.filter((r) => !isCancelled(r));
     const targetRows = Array.isArray(opts.targetRows) ? opts.targetRows : [];
     const targetKeys = new Set<string>();
     const addTargetKey = (value: any) => {
@@ -6156,6 +6195,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const payloads = [...directPayloads];
     const priorityUrls = new Set<string>();
     const seenUrls = new Set<string>();
+    type TurmobDownloadRequest = { url: string; method: 'GET' | 'POST'; body?: string };
+    const postRequests: TurmobDownloadRequest[] = [];
+    const postKeys = new Set<string>();
     const addCandidateUrl = (candidate: string, trustedPath = false) => {
       const clean = this.decodeXmlEntities(String(candidate || '').replace(/\\\//g, '/')).trim();
       const hasDocumentKeyword = /(xml|ubl|indir|download|invoice|fatura|belge|goruntule|görüntüle)/i.test(clean);
@@ -6167,6 +6209,23 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const absolute = clean.startsWith('http') ? clean : BASE + (clean.startsWith('/') ? clean : `/${clean}`);
       if (trustedPath) priorityUrls.add(absolute);
       else seenUrls.add(absolute);
+    };
+    const addCandidatePost = (candidate: string, params: Record<string, string | null | undefined>) => {
+      const clean = this.decodeXmlEntities(String(candidate || '').replace(/\\\//g, '/')).trim();
+      if (!clean) return;
+      const absolute = clean.startsWith('http') ? clean : BASE + (clean.startsWith('/') ? clean : `/${clean}`);
+      if (!/turmobefatura\.luca\.com\.tr\/(?:IncomingInvoice|OutgoingInvoice|ArchiveInvoice|OutgoingArchiveInvoice|EArchiveInvoice|Invoice)\//i.test(absolute)) return;
+      const body = new URLSearchParams();
+      for (const [key, value] of Object.entries(params)) {
+        const text = String(value || '').trim();
+        if (text) body.set(key, text);
+      }
+      const serialized = body.toString();
+      if (!serialized) return;
+      const requestKey = `${absolute}::${serialized}`;
+      if (postKeys.has(requestKey)) return;
+      postKeys.add(requestKey);
+      postRequests.push({ url: absolute, method: 'POST', body: serialized });
     };
     const rowValues = (row: any, keys: string[]) => {
       const wanted = new Set(keys.map((key) => key.toLowerCase()));
@@ -6306,6 +6365,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           addCandidateUrl(`${prefix}/DownloadXml?${io}&${q}`);
           addCandidateUrl(`${prefix}/Detail?${io}&${q}&IsPrint=True`);
           addCandidateUrl(`${prefix}/Print?${io}&${q}`);
+          addCandidatePost(`${prefix}/GetInvoiceXml`, { [keyName]: id, InOrOut: inOrOut });
+          addCandidatePost(`${prefix}/GetInvoiceXML`, { [keyName]: id, InOrOut: inOrOut });
+          addCandidatePost(`${prefix}/DownloadXml`, { [keyName]: id, InOrOut: inOrOut });
+          addCandidatePost(`${prefix}/DownloadXML`, { [keyName]: id, InOrOut: inOrOut });
+          addCandidatePost(`${prefix}/InvoiceDetailHint`, { [keyName]: id, InOrOut: inOrOut });
+          addCandidatePost(`${prefix}/GetInvoiceDetail`, { [keyName]: id, InOrOut: inOrOut });
+          addCandidatePost(`${prefix}/Detail`, { [keyName]: id, InOrOut: inOrOut, IsPrint: 'True' });
         }
       };
       const addTurmobIdUrlSet = (id: string) => {
@@ -6337,6 +6403,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             for (const param of paramNames) {
               addCandidateUrl(`${prefix}/${action}?${param}=${idText}`);
               addCandidateUrl(`${prefix}/${action}?${param}=${idText}&InOrOut=${inOrOut}`);
+              addCandidatePost(`${prefix}/${action}`, { [param]: id, InOrOut: inOrOut });
             }
           }
         }
@@ -6356,12 +6423,19 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         addCandidateUrl(`/Invoice/GetInvoiceXML?InOrOut=False&ArchiveId=${encodeURIComponent(id)}`);
         addCandidateUrl(`/Invoice/Detail?InOrOut=False&ArchiveId=${encodeURIComponent(id)}&IsPrint=True`);
         addCandidateUrl(`/Invoice/PrintAllInvoice?InOrOut=False&ArchiveId=${encodeURIComponent(id)}&IsPrint=True`);
+        addCandidatePost('/Invoice/GetInvoiceXml', { ArchiveId: id, InOrOut: 'False' });
+        addCandidatePost('/Invoice/GetInvoiceXML', { ArchiveId: id, InOrOut: 'False' });
+        addCandidatePost('/Invoice/Detail', { ArchiveId: id, InOrOut: 'False', IsPrint: 'True' });
         for (const prefix of ['/ArchiveInvoice', '/OutgoingArchiveInvoice', '/EArchiveInvoice', '/Invoice']) {
           addCandidateUrl(`${prefix}/GetInvoiceXml?ArchiveId=${encodeURIComponent(id)}`);
           addCandidateUrl(`${prefix}/GetInvoiceXML?ArchiveId=${encodeURIComponent(id)}`);
           addCandidateUrl(`${prefix}/DownloadXml?ArchiveId=${encodeURIComponent(id)}`);
           addCandidateUrl(`${prefix}/DownloadXML?ArchiveId=${encodeURIComponent(id)}`);
           addCandidateUrl(`${prefix}/Detail?ArchiveId=${encodeURIComponent(id)}&IsPrint=True`);
+          addCandidatePost(`${prefix}/GetInvoiceXml`, { ArchiveId: id });
+          addCandidatePost(`${prefix}/GetInvoiceXML`, { ArchiveId: id });
+          addCandidatePost(`${prefix}/DownloadXml`, { ArchiveId: id });
+          addCandidatePost(`${prefix}/Detail`, { ArchiveId: id, IsPrint: 'True' });
         }
       }
     };
@@ -6377,30 +6451,99 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     }
     let downloadAttempts = 0;
     const maxDownloadAttempts = targetKeys.size
-      ? Math.min(100, Math.max(24, live.length * 24))
-      : Math.min(2400, Math.max(240, live.length * 30));
+      ? Math.min(180, Math.max(40, live.length * 36))
+      : Math.min(2600, Math.max(260, live.length * 36));
     const targetPayloadCount = Math.min(opts.limit, Math.max(live.length, payloads.length || 1));
-    for (const url of [...priorityUrls, ...seenUrls]) {
-      if (++downloadAttempts > maxDownloadAttempts) break;
+    const requestQueue: TurmobDownloadRequest[] = [];
+    const queuedRequests = new Set<string>();
+    const enqueueRequest = (request: TurmobDownloadRequest) => {
+      const key = `${request.method}:${request.url}:${request.body || ''}`;
+      if (queuedRequests.has(key)) return;
+      queuedRequests.add(key);
+      requestQueue.push(request);
+    };
+    const drainCandidateRequests = () => {
+      for (const url of priorityUrls) enqueueRequest({ url, method: 'GET' });
+      for (const url of seenUrls) enqueueRequest({ url, method: 'GET' });
+      for (const request of postRequests) enqueueRequest(request);
+    };
+    const canReuseStandaloneVisual = targetKeys.size === 1 || live.length <= 1;
+    let standalonePdf: Buffer | null = null;
+    let standaloneHtml: string | null = null;
+    const attachStandaloneVisual = (fromIndex: number, localPdf?: Buffer | null, localHtml?: string | null) => {
+      const pdf = localPdf || (canReuseStandaloneVisual ? standalonePdf : null);
+      const html = localHtml || (canReuseStandaloneVisual ? standaloneHtml : null);
+      for (let i = fromIndex; i < payloads.length; i++) {
+        if (pdf && !payloads[i].pdfBuffer) payloads[i].pdfBuffer = pdf;
+        if (html && !payloads[i].htmlContent) payloads[i].htmlContent = html;
+      }
+    };
+    const rememberStandaloneVisual = (buf: Buffer, text: string, contentType: string) => {
+      let localPdf: Buffer | null = null;
+      let localHtml: string | null = null;
+      if (!standalonePdf && (/pdf/i.test(contentType) || (buf.length > 4 && buf[0] === 0x25 && buf[1] === 0x50 && buf[2] === 0x44 && buf[3] === 0x46))) {
+        localPdf = buf;
+        if (canReuseStandaloneVisual) standalonePdf = buf;
+      }
+      const head = text.slice(0, 3000);
+      if (!standaloneHtml
+        && /(?:html|xhtml)/i.test(contentType + head)
+        && /<(?:!doctype\s+html|html|body)\b/i.test(head)
+        && !/account\/login|name=["']password["']/i.test(text)
+        && /(Invoice|Fatura|e-Fatura|e-Arsiv|e-Arşiv)/i.test(text.slice(0, 30000))) {
+        localHtml = text.trim();
+        if (canReuseStandaloneVisual) standaloneHtml = localHtml;
+      }
+      return { pdf: localPdf, html: localHtml };
+    };
+    const collectCandidateUrls = (text: string) => {
+      for (const m of text.matchAll(/https?:\/\/[^"'\\\s<>]+|\/(?:IncomingInvoice|OutgoingInvoice|ArchiveInvoice|OutgoingArchiveInvoice|EArchiveInvoice|Invoice)\/[^"'\\\s<>]+/gi)) {
+        addCandidateUrl(m[0], /(?:Xml|XML|Ubl|UBL|Download|Print|Detail)/.test(m[0]));
+      }
+      for (const m of text.matchAll(/(?:href|src|data-url|data-href|url)\s*=\s*["']([^"']+)["']/gi)) {
+        addCandidateUrl(m[1], /(?:Xml|XML|Ubl|UBL|Download|Print|Detail)/.test(m[1]));
+      }
+    };
+    drainCandidateRequests();
+    while (requestQueue.length && downloadAttempts < maxDownloadAttempts) {
+      const request = requestQueue.shift()!;
+      downloadAttempts++;
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 2000);
+      const timer = setTimeout(() => controller.abort(), 2500);
       try {
-        const docRes = await fetch(url, {
-          method: 'GET',
+        const docRes = await fetch(request.url, {
+          method: request.method,
           signal: controller.signal,
-          headers: { Cookie: cookie, 'User-Agent': 'MorenPortal/1.0', Accept: 'application/xml,text/xml,application/zip,application/pdf,text/html,*/*' },
+          headers: {
+            ...(request.method === 'POST' ? { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'X-Requested-With': 'XMLHttpRequest' } : {}),
+            Cookie: cookie,
+            'User-Agent': 'MorenPortal/1.0',
+            Accept: 'application/xml,text/xml,application/zip,application/pdf,text/html,application/json,*/*',
+            Origin: BASE,
+            Referer: BASE + refererPath,
+          },
+          body: request.method === 'POST' ? request.body : undefined,
         });
         const buf = Buffer.from(await docRes.arrayBuffer());
         if (!docRes.ok || !buf.length) continue;
+        const contentType = String(docRes.headers.get('content-type') || '');
         const text = buf.toString('utf8');
+        const localVisual = rememberStandaloneVisual(buf, text, contentType);
+        collectCandidateUrls(text);
+        drainCandidateRequests();
+        const before = payloads.length;
         const nestedPayloads = await this.extractPayloadsFromProviderResponse(text, ['xml', 'ubl', 'content', 'data', 'base64', 'DocumentXml', 'InvoiceXml']);
         payloads.push(...nestedPayloads);
-        if (nestedPayloads.length) continue;
-        await this.addPayloadBuffer(payloads, buf);
-        if (!payloads.length) await this.addPayloadString(payloads, text);
+        if (payloads.length === before) {
+          await this.addPayloadBuffer(payloads, buf);
+        }
+        if (payloads.length === before) {
+          await this.addPayloadString(payloads, text);
+        }
+        attachStandaloneVisual(before, localVisual.pdf, localVisual.html);
       } catch (e: any) {
         const message = e?.name === 'AbortError' ? 'timeout' : (e?.message || e);
-        this.logger.warn(`TURMOB dokuman indirilemedi: ${url} ${message}`);
+        this.logger.warn(`TURMOB dokuman indirilemedi: ${request.method} ${request.url} ${message}`);
       } finally {
         clearTimeout(timer);
       }
@@ -7370,12 +7513,30 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const issueDate = issueDateRaw ? new Date(issueDateRaw) : null;
       const supplier = get(['AccountingSupplierParty', 'Party']);
       const customer = get(['AccountingCustomerParty', 'Party']);
-      const monetaryTotal = get(['LegalMonetaryTotal']) || get(['RequestedMonetaryTotal']);
+      const monetaryTotal = get(['LegalMonetaryTotal']) || get(['RequestedMonetaryTotal']) || {};
       const taxTotalRaw = get(['TaxTotal']);
-      const taxTotal = Array.isArray(taxTotalRaw) ? taxTotalRaw[0] : taxTotalRaw;
-      const matrah = num(monetaryTotal?.TaxExclusiveAmount) ?? num(monetaryTotal?.LineExtensionAmount);
-      const kdvTutari = num(taxTotal?.TaxAmount);
-      const toplamTutar = num(monetaryTotal?.TaxInclusiveAmount) ?? num(monetaryTotal?.PayableAmount);
+      const taxTotals = asArray(taxTotalRaw);
+      const taxAmounts = taxTotals
+        .map((taxTotal) => num(taxTotal?.TaxAmount))
+        .filter((amount): amount is number => amount != null);
+      const lineNodes = [...asArray(get(['InvoiceLine'])), ...asArray(get(['CreditNoteLine']))];
+      const lineMatrah = lineNodes
+        .map((line) => num(line?.LineExtensionAmount))
+        .filter((amount): amount is number => amount != null)
+        .reduce((sum, amount) => sum + amount, 0);
+      const lineTax = lineNodes
+        .flatMap((line) => asArray(line?.TaxTotal))
+        .map((taxTotal) => num(taxTotal?.TaxAmount))
+        .filter((amount): amount is number => amount != null)
+        .reduce((sum, amount) => sum + amount, 0);
+      const matrah = num(monetaryTotal?.TaxExclusiveAmount)
+        ?? num(monetaryTotal?.LineExtensionAmount)
+        ?? (lineMatrah || undefined);
+      const kdvTutari = (taxAmounts.length ? taxAmounts.reduce((sum, amount) => sum + amount, 0) : undefined)
+        ?? (lineTax || undefined);
+      const toplamTutar = num(monetaryTotal?.PayableAmount)
+        ?? num(monetaryTotal?.TaxInclusiveAmount)
+        ?? ((matrah != null || kdvTutari != null) ? (matrah || 0) + (kdvTutari || 0) : undefined);
       return {
         faturaNo: faturaNo || ettn || 'BILINMIYOR',
         faturaTarihi: issueDate && !Number.isNaN(issueDate.getTime()) ? issueDate : null,

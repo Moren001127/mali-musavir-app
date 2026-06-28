@@ -2182,16 +2182,35 @@ export class PortalAutomationService {
     const json = this.tryParseJsonBase64(input.base64);
     const root = (json?.data && typeof json.data === 'object') ? json.data : (json && typeof json === 'object' ? json : {});
     const payload = await this.parseEarsivPayloadBase64(input.base64);
-    const read = (keys: RegExp[]) => this.findEarsivValue(root, keys) || this.findEarsivValue(row, keys);
+    const read = (keys: RegExp[]) => this.findEarsivValue(root, keys) || this.findEarsivValue(row, keys) || this.findEarsivValue(raw, keys);
     const belgeNo = String(raw.belgeNumarasi || input.referenceNo || read([/^(belgeNumarasi|faturaNumarasi|faturaNo|belgeNo)$/i]) || payload.belgeNo || '').trim();
     const ettn = String(raw.ettn || read([/^(ettn|uuid|faturaUuid|belgeUuid)$/i]) || payload.ettn || '').trim();
     const buyerVkn = String(read([/^(vknTckn|aliciVkn|aliciVknTckn|aliciTckn|aliciVergiNo)$/i]) || payload.buyerVkn || '').replace(/\D/g, '');
     const customerName = String(read([/^(aliciUnvanAdSoyad|aliciUnvan|aliciAdiSoyadi|aliciAdSoyad|musteriUnvan|unvan)$/i]) || payload.customerName || '').trim();
     const faturaTarihi = String(read([/^(belgeTarihi|faturaTarihi|duzenlemeTarihi|tarih)$/i]) || payload.faturaTarihi || '').trim();
     const currency = String(read([/^(paraBirimi|dovizCinsi|currency)$/i]) || payload.currency || 'TL').trim() || 'TL';
-    const total = this.parseEarsivMoney(read([/^(odenecekTutar|vergilerDahilToplamTutar|genelToplam|toplamTutar)$/i])) ?? payload.total;
-    const matrah = this.parseEarsivMoney(read([/^(malHizmetToplamTutari|malHizmetToplamTutar|kdvMatrahi|matrah)$/i])) ?? payload.matrah;
-    const kdvTutari = this.parseEarsivMoney(read([/^(hesaplananKdv|hesaplananKDV|kdvTutari|toplamKdv|vergiTutari)$/i])) ?? payload.kdvTutari;
+    const total = payload.total ?? this.parseEarsivMoney(read([
+      /^(odenecek|ödenecek).*tutar/i,
+      /^vergiler.*dahil.*toplam/i,
+      /^genel.*toplam/i,
+      /^toplam.*tutar/i,
+      /^net.*tutar/i,
+      /^tutar(?:Formatted|Formatli|Text)?$/i,
+    ]));
+    const matrah = payload.matrah ?? this.parseEarsivMoney(read([
+      /^mal.*hizmet.*toplam.*tutar/i,
+      /^kdv.*matrah/i,
+      /^matrah/i,
+      /^vergi.*haric/i,
+      /^vergisiz.*tutar/i,
+    ]));
+    const kdvTutari = payload.kdvTutari ?? this.parseEarsivMoney(read([
+      /^hesaplanan.*kdv/i,
+      /^kdv.*tutar/i,
+      /^toplam.*kdv/i,
+      /^vergi.*tutar/i,
+      /^tax.*amount/i,
+    ]));
     const kdvOrani = String(read([/^(kdvOrani|kdvOran)$/i]) || payload.kdvOrani || '').replace(/[^\d.,]/g, '').replace(',', '.');
     return {
       belgeNo,
