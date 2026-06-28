@@ -3825,9 +3825,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       if (String(raw.channel || '').toUpperCase() !== channel) continue;
       if (periodStart && periodEnd) {
         const rowDate = row.faturaDate ? new Date(row.faturaDate) : null;
-        const dateMatches = rowDate && rowDate >= periodStart && rowDate < periodEnd;
+        const validRowDate = rowDate && !Number.isNaN(rowDate.getTime());
+        const dateMatches = validRowDate && rowDate >= periodStart && rowDate < periodEnd;
         const rawPeriodMatches = String(raw.period || '') === opts.period;
-        if (!dateMatches && !rawPeriodMatches) continue;
+        if (validRowDate ? !dateMatches : !rawPeriodMatches) continue;
       }
       processed++;
       const provider = String(row.entegrator || 'TURMOB_EFATURA');
@@ -5400,8 +5401,15 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       ['tarih1', 'tarih2'],
       ['TarihBaslangic', 'TarihBitis'],
       ['FaturaBaslangicTarihi', 'FaturaBitisTarihi'],
+      ['FaturaTarihiBaslangic', 'FaturaTarihiBitis'],
+      ['FaturaTarihBaslangic', 'FaturaTarihBitis'],
+      ['BaslangicTarih', 'BitisTarih'],
+      ['IlkFaturaTarihi', 'SonFaturaTarihi'],
+      ['firstDate', 'lastDate'],
       ['InvoiceDateStart', 'InvoiceDateEnd'],
       ['IssueDateStart', 'IssueDateEnd'],
+      ['InvoiceStartDate', 'InvoiceEndDate'],
+      ['IssueStartDate', 'IssueEndDate'],
       ['ExecutionStartDate', 'ExecutionEndDate'],
       ['Baslangic', 'Bitis'],
       ['Start', 'End'],
@@ -5511,6 +5519,30 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     return Number.isNaN(d.getTime()) ? null : d;
   }
 
+  private turmobInvoiceDateFromRow(row: any): Date | null {
+    return this.turmobDateValue(this.turmobField(row, [
+      'FaturaTarihiFormatted',
+      'FaturaTarihi',
+      'GelirTarihiFormatted',
+      'GelirTarihi',
+      'GelisTarihiFormatted',
+      'GelisTarihi',
+      'IssueDate',
+      'InvoiceDate',
+      'Tarih',
+      'Date',
+    ]));
+  }
+
+  private turmobRowInPeriod(row: any, period: { startDate: string; endDate: string }): boolean {
+    const rowDate = this.turmobInvoiceDateFromRow(row);
+    if (!rowDate) return true;
+    const start = new Date(`${period.startDate}T00:00:00.000Z`);
+    const end = new Date(`${period.endDate}T23:59:59.999Z`);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return true;
+    return rowDate >= start && rowDate <= end;
+  }
+
   private turmobIsCancelled(row: any): boolean {
     const statusKeys = [
       'Durum',
@@ -5548,34 +5580,64 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const listUrls = channel === 'OUT_EARSIV'
       ? [
           '/ArchiveInvoice/ArchiveInvoiceList',
+          '/ArchiveInvoice/GetArchiveInvoiceList',
           '/OutgoingArchiveInvoice/AllOutgoingArchiveInvoiceByFilter',
+          '/OutgoingArchiveInvoice/OutgoingArchiveInvoiceList',
+          '/OutgoingArchiveInvoice/GetOutgoingArchiveInvoiceList',
           '/ArchiveInvoice/AllArchiveInvoiceByFilter',
+          '/ArchiveInvoice/AllOutgoingArchiveInvoiceByFilter',
           '/EArchiveInvoice/AllEArchiveInvoiceByFilter',
+          '/EArchiveInvoice/ArchiveInvoiceList',
+          '/EArchiveInvoice/GetArchiveInvoiceList',
           '/EArchive/AllOutgoingArchiveInvoiceByFilter',
+          '/EArchive/ArchiveInvoiceList',
           '/OutgoingInvoice/AllOutgoingArchiveInvoiceByFilter',
         ]
       : channel === 'OUT_EFATURA'
         ? [
+            '/Outbox/OutboxList',
+            '/Outbox/GetOutboxList',
+            '/Outbox/AllOutboxByFilter',
+            '/Outbox/AllOutgoingInvoiceByFilter',
+            '/SentInvoice/SentInvoiceList',
+            '/SentInvoice/GetSentInvoiceList',
+            '/SentInvoice/AllSentInvoiceByFilter',
             '/OutgoingInvoice/OutgoingInvoiceList',
             '/OutgoingInvoice/AllOutgoingInvoiceByFilter',
             '/OutgoingInvoice/AllOutGoingInvoiceByFilter',
             '/OutgoingInvoice/AllOutgoingInvoice',
             '/OutgoingInvoice/GetOutgoingInvoiceList',
             '/OutgoingInvoice/GetInvoicesByFilter',
+            '/GidenFatura/GidenFaturaList',
+            '/GidenFatura/GetGidenFaturaList',
+            '/GidenFatura/AllGidenFaturaByFilter',
             '/Invoice/AllOutgoingInvoiceByFilter',
             '/Invoice/OutgoingInvoiceList',
             '/Invoice/GetOutgoingInvoiceList',
+            '/Invoice/AllOutboxInvoiceByFilter',
+            '/Invoice/OutboxInvoiceList',
+            '/Invoice/GetOutboxInvoiceList',
           ]
         : [
+            '/Inbox/InboxList',
+            '/Inbox/GetInboxList',
+            '/Inbox/AllInboxByFilter',
+            '/Inbox/AllIncomingInvoiceByFilter',
             '/IncomingInvoice/IncomingInvoiceList',
             '/IncomingInvoice/AllIncomingInvoiceByFilter',
             '/IncomingInvoice/AllInComingInvoiceByFilter',
             '/IncomingInvoice/AllIncomingInvoice',
             '/IncomingInvoice/GetIncomingInvoiceList',
             '/IncomingInvoice/GetInvoicesByFilter',
+            '/GelenFatura/GelenFaturaList',
+            '/GelenFatura/GetGelenFaturaList',
+            '/GelenFatura/AllGelenFaturaByFilter',
             '/Invoice/AllIncomingInvoiceByFilter',
             '/Invoice/IncomingInvoiceList',
             '/Invoice/GetIncomingInvoiceList',
+            '/Invoice/AllInboxInvoiceByFilter',
+            '/Invoice/InboxInvoiceList',
+            '/Invoice/GetInboxInvoiceList',
           ];
     return { refererPath, listUrls };
   }
@@ -5669,7 +5731,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       channel,
       listPageHtml,
       rows,
-      liveRows: rows.filter((row) => !this.turmobIsCancelled(row)),
+      liveRows: rows.filter((row) => !this.turmobIsCancelled(row) && this.turmobRowInPeriod(row, opts.period)),
       usedListUrl,
       usedMethod,
       usedProfile,
@@ -5981,7 +6043,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       if (/\byok\b|false|hayir|hayır|onaylandi|onaylandı|alici kabul etti|gonderildi|gönderildi|otomatik/.test(text)) return false;
       return /iptal|itiraz|reddedil|red edildi|cancel/.test(text);
     };
-    const live = rows.filter((r) => !isCancelled(r));
+    const live = rows.filter((r) => !isCancelled(r) && this.turmobRowInPeriod(r, opts.period));
     const payloads = [...directPayloads];
     const priorityUrls = new Set<string>();
     const seenUrls = new Set<string>();

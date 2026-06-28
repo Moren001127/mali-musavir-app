@@ -225,9 +225,10 @@ export class EFaturaSyncService {
         if (channel && String(raw?.channel || '').toUpperCase() !== channel) return false;
         if (periodStart && periodEnd) {
           const rowDate = row.faturaDate ? new Date(row.faturaDate) : null;
-          const dateMatches = rowDate && rowDate >= periodStart && rowDate < periodEnd;
+          const validRowDate = rowDate && !Number.isNaN(rowDate.getTime());
+          const dateMatches = validRowDate && rowDate >= periodStart && rowDate < periodEnd;
           const rawPeriodMatches = String(raw?.period || '') === opts.period;
-          if (!dateMatches && !rawPeriodMatches) return false;
+          if (validRowDate ? !dateMatches : !rawPeriodMatches) return false;
         }
         return true;
       })
