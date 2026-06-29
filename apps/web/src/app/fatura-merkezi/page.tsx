@@ -3831,8 +3831,8 @@ const CSS = `
 /* ── Buton renk genişletmeleri ── */
 #fm-root .btn.purple{background:#7c3aed;color:#fff;border-color:#7c3aed}
 #fm-root .btn.purple:hover:not(:disabled){background:#6d28d9;border-color:#6d28d9}
-#fm-root .btn.teal{background:#0d9488;color:#fff;border-color:#0d9488}
-#fm-root .btn.teal:hover:not(:disabled){background:#0f766e;border-color:#0f766e}
+#fm-root .btn.teal{background:var(--accent);color:#fff;border-color:var(--accent)}
+#fm-root .btn.teal:hover:not(:disabled){filter:brightness(.94)}
 /* ── Header seçici etiket grubu ── */
 #fm-root .topfiltbar{display:flex;align-items:center;gap:8px}
 #fm-root .topfilt{display:flex;align-items:center;gap:7px;background:var(--accent-soft);border:1.5px solid var(--accent-line);border-radius:10px;padding:5px 10px 5px 10px}
@@ -3878,7 +3878,7 @@ const CSS = `
 #fm-root .btn .ico{width:20px;height:20px;border-radius:6px;display:grid;place-items:center;background:rgba(255,255,255,.55)}
 #fm-root .btn.primary,#fm-root .btn.blue,#fm-root .btn.red,#fm-root .btn.ai,#fm-root .btn.teal,#fm-root .btn.purple{box-shadow:0 12px 22px -16px currentColor}
 #fm-root .btn.ai{background:linear-gradient(135deg,#7c3aed 0%,#a855f7 54%,#60a5fa 100%);border-color:#8b5cf6}
-#fm-root .btn.fix{background:linear-gradient(180deg,#effaf8,#e4f7f3);border-color:#99d8cf;color:#0f766e}
+#fm-root .btn.fix{background:var(--accent-soft);border-color:var(--accent-line);color:var(--accent)}
 #fm-root .btn.upload{background:linear-gradient(180deg,#eef6ff,#e6f0ff);border-color:#b8d3ff;color:#1d4ed8}
 #fm-root .dfchip{height:32px;border-radius:999px;padding:0 14px;border-color:#d8e1ea;background:linear-gradient(180deg,#fff,#f8fafc);font-weight:800}
 #fm-root .dfchip .dfn{margin-left:4px;background:#eef3ff;color:#3157d5;border-radius:999px;padding:2px 8px;min-width:24px}
@@ -3941,7 +3941,7 @@ const CSS = `
 #fm-root .invactions .btn.blue{background:#3157d5;border-color:#3157d5}
 #fm-root .invactions .btn.primary{background:#173b8f;border-color:#173b8f}
 #fm-root .invactions .btn.ai{background:#6d5df6;border-color:#6d5df6}
-#fm-root .invactions .btn.fix{background:#f5fbfb;border-color:#b9e1dc;color:#0f766e}
+#fm-root .invactions .btn.fix{background:var(--accent-soft);border-color:var(--accent-line);color:var(--accent)}
 #fm-root .invactions .btn.upload{background:#f4f7ff;border-color:#c8d6ff;color:#2741a8}
 #fm-root .invactions .btn.soon:disabled{background:#f8fafc;border-color:#e2e8f0;color:#94a3b8}
 #fm-root .muhfilter{display:inline-flex;align-items:center;gap:3px;height:26px;padding:3px;border:1px solid #dbe3ee;border-radius:7px;background:#f8fafc;flex-shrink:0}
@@ -4004,7 +4004,7 @@ const CSS = `
 #fm-root .brand{padding:14px 12px;border-bottom:1px solid var(--line);background:#fff}
 #fm-root .backlink{height:26px;margin:0 0 10px;color:#7a817b;font-size:11px}
 #fm-root .brandplate{position:relative;align-items:flex-start;gap:11px;padding:13px 12px;border:1px solid #d8d2c7;border-radius:10px;background:linear-gradient(145deg,#ffffff,#f2f0ea);box-shadow:0 14px 28px -24px rgba(31,41,55,.5)}
-#fm-root .brandplate::after{content:'';position:absolute;left:12px;right:12px;bottom:8px;height:2px;border-radius:2px;background:linear-gradient(90deg,#1f2937 0 34%,#0f766e 34% 68%,#c0842b 68%)}
+#fm-root .brandplate::after{content:'';position:absolute;left:12px;right:12px;bottom:8px;height:2px;border-radius:2px;background:linear-gradient(90deg,#1f2937 0 34%,var(--accent) 34% 68%,#c0842b 68%)}
 #fm-root .brandmark{width:38px;height:38px;border-radius:9px;background:#1f2937;color:#fff;font-size:12px;letter-spacing:.4px;box-shadow:inset 0 -2px 0 rgba(255,255,255,.08)}
 #fm-root .brandmod{font-size:17px;font-weight:900;color:#161b22;line-height:1.05}
 #fm-root .brandco{font-size:11px;font-weight:800;color:#66706c;margin-top:5px;letter-spacing:.1px}
@@ -4031,7 +4031,7 @@ const CSS = `
 #fm-root .muhfilter button.on{background:#1f2937;color:#fff}
 #fm-root .nacechip{border-color:#d6c9ad;background:#fbf4e5;color:#8a5a12}
 #fm-root .topfilt{background:#f5f4f0;border-color:#d7d2c8;box-shadow:none}
-#fm-root .topfilt svg{color:#0f766e}
+#fm-root .topfilt svg{color:var(--accent)}
 #fm-root .screen > .fmstats{grid-template-columns:repeat(5,minmax(0,1fr));padding:0;border:0;background:transparent;gap:12px;margin:8px 0 16px}
 #fm-root .screen > .fmstats .fmstat{min-height:48px;border-left:0;border-radius:7px;background:#fff;padding:7px 10px;display:flex;align-items:center;justify-content:space-between;gap:8px}
 #fm-root .screen > .fmstats .fmsl{font-size:9.5px;line-height:1.1;white-space:normal;color:#66706c}
@@ -4095,10 +4095,10 @@ const CSS = `
 #fm-root .invactions .btn:hover:not(:disabled){transform:none;box-shadow:none;filter:none}
 #fm-root .invactions .btn.blue{background:rgba(31,41,55,.11);border-color:rgba(31,41,55,.2);color:#1f2937}
 #fm-root .invactions .btn.fetch{background:rgba(196,138,42,.10);border-color:rgba(196,138,42,.24);color:#785a16}
-#fm-root .invactions .btn.upload{background:rgba(15,118,110,.08);border-color:rgba(15,118,110,.22);color:#0f766e}
-#fm-root .invactions .btn.fix{background:rgba(13,148,136,.09);border-color:rgba(13,148,136,.24);color:#0f766e}
+#fm-root .invactions .btn.upload{background:var(--accent-soft);border-color:var(--accent-line);color:var(--accent)}
+#fm-root .invactions .btn.fix{background:var(--accent-soft);border-color:var(--accent-line);color:var(--accent)}
 #fm-root .invactions .btn.ai{background:rgba(71,85,105,.14);border-color:rgba(71,85,105,.22);color:#374151}
-#fm-root .invactions .btn.primary{background:rgba(15,118,110,.14);border-color:rgba(15,118,110,.28);color:#0f766e}
+#fm-root .invactions .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
 #fm-root .invactions .btn.soon:disabled{background:rgba(148,163,184,.10);border-color:rgba(148,163,184,.20);color:#8a918b}
 #fm-root .soonbadge{font-size:9px;font-weight:600;background:rgba(31,41,55,.08);color:#7a817b}
 #fm-root .dfchip{height:28px;border-radius:9px;padding:0 10px;font-size:11.5px;font-weight:600;background:rgba(255,255,255,.62);border-color:rgba(31,41,55,.13);color:#66706c}
@@ -4212,10 +4212,10 @@ const CSS = `
 #fm-root .sourcecard{height:104px;text-align:left;border:1px solid #e2e8f0;border-radius:10px;background:#fff;padding:14px;display:grid;grid-template-columns:34px 1fr;grid-template-rows:auto auto auto;column-gap:12px;align-items:center;cursor:pointer}
 #fm-root .sourcecard:hover{border-color:#cbd5e1;background:#fbfefd}
 #fm-root .sourcecard.on{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent);background:var(--accent-soft)}
-#fm-root .sourcecard .srcicon{grid-row:1 / 4;width:34px;height:34px;border-radius:9px;display:grid;place-items:center;background:#eef8f5;color:#1f7a68}
+#fm-root .sourcecard .srcicon{grid-row:1 / 4;width:34px;height:34px;border-radius:9px;display:grid;place-items:center;background:var(--accent-soft);color:var(--accent)}
 #fm-root .sourcecard b{font-size:15px;color:#17212f}
 #fm-root .sourcecard small{font-size:12px;color:#64748b}
-#fm-root .sourcecard em{font-style:normal;font-size:11.5px;color:#1f7a68;font-weight:650}
+#fm-root .sourcecard em{font-style:normal;font-size:11.5px;color:var(--accent);font-weight:650}
 #fm-root .sourcepanel{overflow:hidden;display:flex;flex-direction:column;min-height:0;flex:1}
 #fm-root .sourcehead{display:flex;align-items:center;gap:9px;padding:12px 14px}
 #fm-root .sourcehead h3{font-size:15px;margin:0}
