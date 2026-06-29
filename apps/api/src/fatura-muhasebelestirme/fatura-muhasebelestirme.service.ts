@@ -6294,10 +6294,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         const keyWithAmount = key && amountKey ? this.providerKey(`${key}:${amountKey}`) : null;
         if (keyWithAmount && targetKeys.has(keyWithAmount)) return true;
       }
+      // SON ÇARE substring eşleşmesi YALNIZ benzersiz kimliklerle (fatura no=16, ETTN=32 karakter).
+      //   Eski eşik (>=6) tutar(6)/tarih(8)/VKN(10) gibi KISA parçaların başka satırın JSON'unda rastgele
+      //   geçmesiyle YANLIŞ faturaya bağlanmaya yol açıyordu (yanlış belge indirme). 16 = tam fatura no boyu.
       const rowTextKey = this.providerKey(JSON.stringify(row || {}));
       if (rowTextKey) {
         for (const targetKey of targetKeys) {
-          if (targetKey.length >= 6 && rowTextKey.includes(targetKey)) return true;
+          if (targetKey.length >= 16 && rowTextKey.includes(targetKey)) return true;
         }
       }
       return false;
