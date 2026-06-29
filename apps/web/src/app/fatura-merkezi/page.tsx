@@ -1445,6 +1445,13 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
   const efaturaTransferableRows = efaturaRows.filter(efaturaCanImport);
   const efaturaTransferableIds = efaturaTransferableRows.map((r) => String(r.id || '').trim()).filter(Boolean);
   const efaturaSelectedIds = [...sel].filter((id) => efaturaTransferableIds.includes(id));
+  // Aktarım (import) sayacı — satırların "aktarıldı mı" durumundan türetilir (indirme sayacı gibi).
+  //   Aktar arka planda kademeli çalışır; bu sayaç "X / Y aktarıldı" diye dolar. Hedef = aktarılabilir
+  //   (görseli READY olan) satırlar; görseli inmeyen (MISSING) satırlar transfer olamaz → hedefe katılmaz
+  //   (yoksa sayaç 41/43'te takılırdı). Onlar "Durum"da "inemedi" olarak ayrı görünür.
+  const efaturaTransferredCount = efaturaRows.filter((r) => efaturaIsTransferred(r)).length;
+  const efaturaPendingImportable = efaturaTransferableRows.filter((r) => efaturaDocumentStatus(r) === 'READY').length;
+  const efaturaTransferTotal = efaturaTransferredCount + efaturaPendingImportable;
   const toggleEfaturaAll = () => setSel(() => efaturaSelectedIds.length === efaturaTransferableIds.length ? new Set() : new Set(efaturaTransferableIds));
   useEffect(() => {
     setLastEfaturaSync(null);
@@ -1615,6 +1622,9 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
   useEffect(() => {
     if (!efaturaQueuedImport || efaturaFetchMut.isPending || efaturaImportMut.isPending || efaturaInboxQ.isFetching) return;
     if (efaturaRows.length === 0) return;
+    // Import BİTENE kadar "aktarılıyor" kalsın: aktarılabilir (görseli READY, henüz aktarılmamış) satır
+    //   varsa daha bitmedi → sayaç dolmaya devam etsin (erken SUCCESS'e geçip kapanmasın).
+    if (efaturaPendingImportable > 0) return;
     const transferred = efaturaRows.filter((row: any) => efaturaIsTransferred(row)).length;
     const missingDocument = efaturaRows.filter((row: any) => efaturaDocumentStatus(row) === 'MISSING').length;
     if (transferred === 0 && missingDocument === 0) return;
@@ -1727,6 +1737,13 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
               <span className="efspin" aria-hidden="true" />
               <span className="eftext">Belgeler indiriliyor… <b>{efaturaDownloadReady}</b> / {efaturaDownloadTotal} hazır{efaturaDownloadMissing ? ` · ${efaturaDownloadMissing} inemedi` : ''}</span>
               <span className="eftrack"><span className="effill" style={{ width: `${efaturaDownloadTotal ? Math.round((efaturaDownloadReady / efaturaDownloadTotal) * 100) : 0}%` }} /></span>
+            </div>
+          )}
+          {!efaturaDownloading && (efaturaImportMut.isPending || efaturaQueuedImport) && (
+            <div className="efdownbar import">
+              <span className="efspin" aria-hidden="true" />
+              <span className="eftext">Faturalar aktarılıyor… <b>{efaturaTransferredCount}</b> / {efaturaTransferTotal} muhasebeye geçti</span>
+              <span className="eftrack"><span className="effill" style={{ width: `${efaturaTransferTotal ? Math.round((efaturaTransferredCount / efaturaTransferTotal) * 100) : 0}%` }} /></span>
             </div>
           )}
           {efaturaStatusRows.length > 0 && (
@@ -4390,5 +4407,10 @@ const CSS = `
 #fm-root .efdownbar .efspin{width:15px;height:15px;border-radius:50%;border:2px solid var(--accent-line);border-top-color:var(--accent);animation:efspin .7s linear infinite;flex-shrink:0}
 #fm-root .efdownbar .eftrack{flex:1;min-width:80px;height:6px;border-radius:99px;background:var(--accent-line);overflow:hidden}
 #fm-root .efdownbar .effill{display:block;height:100%;border-radius:99px;background:var(--accent);transition:width .4s ease}
+#fm-root .efdownbar.import{border-color:#bbf7d0;background:#f0fdf4}
+#fm-root .efdownbar.import .eftext b{color:#15803d}
+#fm-root .efdownbar.import .efspin{border-color:#bbf7d0;border-top-color:#15803d}
+#fm-root .efdownbar.import .eftrack{background:#bbf7d0}
+#fm-root .efdownbar.import .effill{background:#15803d}
 @keyframes efspin{to{transform:rotate(360deg)}}
 `;
