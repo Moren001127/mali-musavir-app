@@ -5589,8 +5589,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         if (parsed?.saticiVergiNo) data.senderVkn = parsed.saticiVergiNo;
         if (parsed?.satici) data.senderTitle = parsed.satici;
         if (parsed?.aliciVergiNo) data.receiverVkn = parsed.aliciVergiNo;
-        // Bozuk (NaN/bos) parse degeri MEVCUT dogru belge no'yu EZMESIN (MENGERLER satiri "NaN" idi).
+        // Bozuk (NaN/bos) parse degeri MEVCUT dogru belge no'yu EZMESIN; mevcut da "NaN" ise (eski bozuk
+        //   indirme) TEMIZLE → "—" goster ("NaN" yerine). (MENGERLER gibi belge no'su olmayan e-arsiv.)
         if (parsed?.faturaNo && !/^nan$/i.test(String(parsed.faturaNo).trim())) data.faturaNo = parsed.faturaNo;
+        else if (/^nan$/i.test(String(row.faturaNo || '').trim())) data.faturaNo = null;
         if (parsed?.faturaTarihi) data.faturaDate = parsed.faturaTarihi;
         if (parsed?.matrah != null && Number.isFinite(Number(parsed.matrah))) data.matrah = String(parsed.matrah);
         if (parsed?.kdvTutari != null && Number.isFinite(Number(parsed.kdvTutari))) data.kdv = String(parsed.kdvTutari);
@@ -6057,7 +6059,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       limit: number;
       channel?: string;
     },
-  ) {
+    attempt = 0,
+  ): Promise<any> {
     if (!cfg.username || !cfg.password) throw new Error('TURMOB icin TCKN (kullanici adi) ve parola gerekli');
     const cookie = await this.turmobLogin(cfg.username, cfg.password);
     const BASE = this.TURMOB_BASE;
@@ -6147,6 +6150,24 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       }
     }
     this.logger.log(`TURMOB list ${channel}: url=${usedListUrl} method=${usedMethod} profile=${usedProfile} ct=${selectedCt.slice(0, 40)} len=${selectedRaw.length} rows=${rows.length} live=${liveRows.length}`);
+    // EKSIK YANIT (throttle): TURMOB toplam-kayit > aldigimiz satir → yanit kesik gelmis. Kisa bekleyip
+    //   BIR KEZ daha dene (yeni login + sorgu); daha fazla satir gelirse onu dondur. Boylece tek sorgu da
+    //   portaldaki tam sayiyi (orn 43) getirir, "39 geldi" eksikligi giderilir. (en fazla 2 ek deneme)
+    const reportedTotal = Number(
+      selectedData?.recordsFiltered ?? selectedData?.recordsTotal
+      ?? selectedData?.RecordsFiltered ?? selectedData?.RecordsTotal
+      ?? selectedData?.iTotalDisplayRecords ?? selectedData?.iTotalRecords ?? 0,
+    );
+    if (attempt < 2 && Number.isFinite(reportedTotal) && reportedTotal > rows.length && reportedTotal < 5000) {
+      this.logger.warn(`TURMOB liste EKSIK geldi (${rows.length}/${reportedTotal}) → tekrar deneniyor (#${attempt + 1}): ${channel}`);
+      await new Promise((r) => setTimeout(r, 1500));
+      try {
+        const retry = await this.fetchTurmobPortalRows(cfg, opts, attempt + 1);
+        if ((retry?.liveRows?.length || 0) > liveRows.length) return retry;
+      } catch (e: any) {
+        this.logger.warn(`TURMOB liste retry hatasi: ${e?.message || e}`);
+      }
+    }
     return {
       cookie,
       channel,
@@ -7940,7 +7961,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         const n = Number(normalized);
         return Number.isFinite(n) ? n : undefined;
       };
-      const faturaNo = txt(get(['ID'])) || '';
+      // Belge no = HAM XML'deki ILK <cbc:ID> (fatura no; ProfileID/party-ID degil). Parser sayisal/uzun
+      //   ID'yi number'a cevirip "NaN"/bilimsel-gosterime bozabiliyor (ANPA/MENGERLER "NaN" idi) → regex
+      //   ile aynen string al; parser sonucu yedek. "NaN"/bos asla yazilmaz.
+      const faturaNoRegex = xml.match(/<(?:cbc:)?ID>\s*([^<]+?)\s*<\/(?:cbc:)?ID>/i)?.[1];
+      const faturaNoRaw = (faturaNoRegex || txt(get(['ID'])) || '').trim();
+      const faturaNo = /^nan$/i.test(faturaNoRaw) ? '' : faturaNoRaw;
       const ettn = txt(get(['UUID']));
       const issueDateRaw = txt(get(['IssueDate']));
       const issueDate = issueDateRaw ? new Date(issueDateRaw) : null;
@@ -8021,7 +8047,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const kdvTutari = amount('TaxAmount');
     const toplamTutar = amount('TaxInclusiveAmount') ?? amount('PayableAmount');
     return {
-      faturaNo: id || uuid || 'BILINMIYOR',
+      faturaNo: (id && !/^nan$/i.test(String(id).trim()) ? id : (uuid || 'BILINMIYOR')),
       faturaTarihi: issueDate && !Number.isNaN(issueDate.getTime()) ? issueDate : null,
       ettn: uuid || null,
       matrah,
