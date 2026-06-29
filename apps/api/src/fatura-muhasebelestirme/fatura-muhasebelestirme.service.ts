@@ -4083,6 +4083,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         if (errors.length < 10) errors.push({ id: row.id, faturaNo: row.faturaNo, message: e?.message || 'aktarim hatasi' });
       }
     }
+    // OTOMATİK EŞLEŞTİRME: aktarılan e-faturalara hesap kodlarını ("Kodları düzelt" ile AYNI:
+    //   cari VKN→320, KDV 191/391, plan/öğrenilmiş gider) kendiliğinden ata → kullanıcı elle basmasın.
+    //   Fire-and-forget (HTTP yanıtını bekletmez); frontend poll ile kodlar dolar.
+    if (imported > 0) {
+      void this.reapplyAccountCodes(tenantId, opts.taxpayerId)
+        .catch((e: any) => this.logger.warn(`Aktar sonrasi otomatik eslestirme hatasi: ${e?.message || e}`));
+    }
     return { processed, imported, alreadyQueued, skipped, failed, staleReset, errors };
   }
 
