@@ -6320,6 +6320,44 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       this.logger.warn(`TURMOB hedef satir listede bulunamadi: channel=${channel} targets=${targetKeys.size} rows=${liveAll.length}`);
     }
     const payloads = [...directPayloads];
+    // ════ HIZLI YOL — TÜRMOB doğrudan uçlar (brute-force YOK; Mihsap gibi hızlı) ════
+    //   Her satır için XML(veri)+görsel DİREKT + EŞZAMANLI iner; eşleştirme satır-bazlı (off-by-one yok).
+    //   GetInvoiceXml → UBL XML · Detail&IsPrint → orijinal görsel HTML (TÜRMOB portalında doğrulandı 2026-06-29).
+    //   IdFatura olan tüm satırlar bu yoldan iner → 520-URL brute-force çoğu zaman HİÇ çalışmaz.
+    const directInOrOut = channel === 'IN_EFATURA' ? 'True' : 'False';
+    const directHeaders = { Cookie: cookie, 'User-Agent': 'MorenPortal/1.0', Accept: 'application/xml,text/xml,text/html,*/*', Origin: BASE, Referer: BASE + refererPath };
+    const directRows = live
+      .map((row) => ({ row, id: String(this.turmobField(row, ['IdFatura', 'idFatura', 'IdFaturaEk']) || '').replace(/\D/g, '') }))
+      .filter((x) => x.id);
+    let directOk = 0;
+    if (directRows.length) {
+      const CONC = 6;
+      for (let i = 0; i < directRows.length; i += CONC) {
+        await Promise.all(directRows.slice(i, i + CONC).map(async ({ row, id }) => {
+          const ctl = new AbortController();
+          const tm = setTimeout(() => { try { ctl.abort(); } catch { /* */ } }, 9000);
+          try {
+            const [xmlRes, visRes] = await Promise.all([
+              fetch(`${BASE}/Invoice/GetInvoiceXml?InOrOut=${directInOrOut}&InvoiceId=${id}`, { headers: directHeaders, signal: ctl.signal }),
+              fetch(`${BASE}/Invoice/Detail?InOrOut=${directInOrOut}&InvoiceId=${id}&IsPrint=True`, { headers: directHeaders, signal: ctl.signal }).catch(() => null),
+            ]);
+            const xml = await xmlRes.text();
+            if (!/^\s*<\?xml|<[\w:]*Invoice\b/i.test(xml.slice(0, 400))) return; // geçerli UBL değil → atla
+            const summary = this.turmobSummaryFromRow(row, { channel, taxpayer: opts.taxpayer, direction: opts.direction });
+            const payload: ProviderInvoicePayload = { xml, externalId: summary.ettn || summary.faturaNo || summary.uuid || id, originalName: `${this.safeInvoiceFileStem(summary.faturaNo || id)}.xml` };
+            if (visRes && visRes.ok) {
+              const vis = await visRes.text();
+              if (vis && /<(?:!doctype\s+html|html|body)\b/i.test(vis.slice(0, 3000)) && !/account\/login|name=["']password["']/i.test(vis) && /(Invoice|Fatura)/i.test(vis.slice(0, 30000))) {
+                payload.htmlContent = vis; // orijinal görsel — bu faturanın payload'ına EŞLEŞTİ
+              }
+            }
+            payloads.push(payload);
+            directOk++;
+          } catch { /* bu fatura direkt inemedi → brute-force fallback dener */ } finally { clearTimeout(tm); }
+        }));
+      }
+      this.logger.log(`[TURMOB-FAST] ${channel} direkt indirme: ${directOk}/${directRows.length} fatura (XML+gorsel, eszamanli)`);
+    }
     const priorityUrls = new Set<string>();
     const seenUrls = new Set<string>();
     type TurmobDownloadRequest = { url: string; method: 'GET' | 'POST'; body?: string };
@@ -6586,7 +6624,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     for (const m of listPageHtml.matchAll(/["'](\/(?:IncomingInvoice|OutgoingInvoice|ArchiveInvoice|OutgoingArchiveInvoice|EArchiveInvoice|Invoice)\/[^"']*(?:Xml|XML|Download|Invoice|Detail|Print|Ubl|UBL)[^"']*)["']/gi)) {
       addCandidateUrl(m[1]);
     }
-    for (const row of live) {
+    // Brute-force SADECE hızlı yol bazı faturaları indiremediyse (fallback). Hepsi indiyse hiç çalışmaz → HIZLI.
+    if (payloads.length < Math.max(live.length, 1)) for (const row of live) {
       const asText = JSON.stringify(row || {});
       for (const m of asText.matchAll(/https?:\/\/[^"'\\\s<>]+|\/[^"'\\\s<>]*(?:xml|ubl|indir|download|invoice|fatura|belge|goruntule|görüntüle)[^"'\\\s<>]*/gi)) {
         addCandidateUrl(m[0]);
