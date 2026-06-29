@@ -214,7 +214,10 @@ export class TaxpayersService {
           tenantId,
           taxpayerId: { in: taxpayerIds },
           donem: beyannameDonem,
-          beyanTipi: { in: ['KDV1', 'KDV2', 'KDV'] },
+          // SADECE KDV1 (1 No'lu / normal KDV). KDV2 (tevkifat) AYRI bir beyanname → indirilmiş olması
+          //   normal KDV'nin verildiği ANLAMINA GELMEZ. KDV2'yi de sayınca, yalnız KDV2 veren mükellef
+          //   (ör. ÖZELA/YORGUN/ZEYREK Mayıs) Aylık Takip + İş Akışı'nda yanlışlıkla "verildi/TAMAM" görünüyordu.
+          beyanTipi: { in: ['KDV1', 'KDV'] },
           OR: [{ beyannameUrl: { not: null } }, { pdfUrl: { not: null } }],
         },
         select: { taxpayerId: true },
@@ -583,7 +586,10 @@ export class TaxpayersService {
           tenantId,
           taxpayerId: { in: taxpayerIds },
           donem: beyannameDonem,
-          beyanTipi: { in: ['KDV1', 'KDV2', 'KDV'] },
+          // SADECE KDV1 (1 No'lu / normal KDV). KDV2 (tevkifat) AYRI bir beyanname → indirilmiş olması
+          //   normal KDV'nin verildiği ANLAMINA GELMEZ. KDV2'yi de sayınca, yalnız KDV2 veren mükellef
+          //   (ör. ÖZELA/YORGUN/ZEYREK Mayıs) Aylık Takip + İş Akışı'nda yanlışlıkla "verildi/TAMAM" görünüyordu.
+          beyanTipi: { in: ['KDV1', 'KDV'] },
           OR: [{ beyannameUrl: { not: null } }, { pdfUrl: { not: null } }],
         },
         select: { taxpayerId: true },
