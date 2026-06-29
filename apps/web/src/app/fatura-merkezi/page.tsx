@@ -3429,7 +3429,7 @@ const CSS = `
 #fm-root[data-accent="petrol"]{--accent:#0d9488;--accent-soft:#e3f4f2;--accent-line:#bfe6e1;--th:#ecf7f5;--th-text:#0f766e}
 #fm-root[data-accent="mor"]{--accent:#5b5bd6;--accent-soft:#eef0fc;--accent-line:#dadcfb;--th:#f4f3fc;--th-text:#5a4fa3}
 #fm-root[data-accent="amber"]{--accent:#c2710c;--accent-soft:#fbf1e2;--accent-line:#f0d6ad;--th:#fbf4e9;--th-text:#a85d08}
-#fm-root[data-accent="slate"]{--accent:#475569;--accent-soft:#eef1f5;--accent-line:#d6dce4;--th:#f1f4f7;--th-text:#3b4757}
+#fm-root[data-accent="slate"]{--accent:#2f54d6;--accent-soft:#eef1fe;--accent-line:#d2dbfb;--th:#f1f4fb;--th-text:#3a4673}
 #fm-root[data-accent="bordo"]{--accent:#b91c1c;--accent-soft:#fbeaea;--accent-line:#f1c9c9;--th:#fbeeee;--th-text:#991b1b}
 #fm-root *{box-sizing:border-box;margin:0;padding:0}
 #fm-root .app{display:flex;min-height:100vh;background:var(--bg);position:relative}
