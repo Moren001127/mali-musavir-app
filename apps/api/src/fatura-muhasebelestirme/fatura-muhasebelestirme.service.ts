@@ -5589,12 +5589,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         if (parsed?.saticiVergiNo) data.senderVkn = parsed.saticiVergiNo;
         if (parsed?.satici) data.senderTitle = parsed.satici;
         if (parsed?.aliciVergiNo) data.receiverVkn = parsed.aliciVergiNo;
-        if (parsed?.faturaNo) data.faturaNo = parsed.faturaNo;
+        // Bozuk (NaN/bos) parse degeri MEVCUT dogru belge no'yu EZMESIN (MENGERLER satiri "NaN" idi).
+        if (parsed?.faturaNo && !/^nan$/i.test(String(parsed.faturaNo).trim())) data.faturaNo = parsed.faturaNo;
         if (parsed?.faturaTarihi) data.faturaDate = parsed.faturaTarihi;
-        if (parsed?.matrah != null) data.matrah = String(parsed.matrah);
-        if (parsed?.kdvTutari != null) data.kdv = String(parsed.kdvTutari);
+        if (parsed?.matrah != null && Number.isFinite(Number(parsed.matrah))) data.matrah = String(parsed.matrah);
+        if (parsed?.kdvTutari != null && Number.isFinite(Number(parsed.kdvTutari))) data.kdv = String(parsed.kdvTutari);
         const total = parsed ? (parsed.toplamTutar ?? ((parsed.matrah || 0) + (parsed.kdvTutari || 0))) : null;
-        if (total != null) data.toplam = String(total);
+        if (total != null && Number.isFinite(Number(total))) data.toplam = String(total);
         await (this.prisma as any).eFaturaInbox.update({ where: { id: row.id }, data });
         return hasVisual;
       };

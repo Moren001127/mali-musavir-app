@@ -1572,19 +1572,13 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
     if (st === 'SKIPPED') return p?.reason || 'Atlandi';
     if (st === 'QUEUED_EFATURA_SYNC') return p?.reason || 'Sorgu arka planda calisiyor; tablo otomatik yenilenecek.';
     if (st === 'QUEUED_EFATURA_IMPORT') return p?.reason || 'Aktarim arka planda calisiyor; tablo otomatik yenilenecek.';
-    const missingDocument = Number(p?.missingDocument || 0);
-    const pendingDocument = Number(p?.pendingDocument || 0);
-    const failedCount = Number(p?.failed || 0);
-    const skippedCount = Math.max(0, Number(p?.skipped || 0) - missingDocument - pendingDocument);
+    // CANLI durum — satirlardan turetilir (sync-anindaki "0 indirildi" yanıltıcısı yerine gercek sayilar;
+    //   liste (efaturaRows) ve "X faturayi aktar" butonu ile AYNI kumeyi sayar → tutarli).
     const parts = [
-      `${Number(p?.fetched || 0)} bulundu`,
-      p?.downloaded != null ? `${Number(p.downloaded || 0)} indirildi` : null,
-      `${Number(p?.added || 0)} yeni`,
-      `${Number(p?.updated || 0)} guncel`,
-      pendingDocument ? `${pendingDocument} aktarimda indirilecek` : null,
-      missingDocument ? `${missingDocument} orijinal dosya indirilemedi` : null,
-      skippedCount ? `${skippedCount} zaten kayitli` : null,
-      failedCount ? `${failedCount} hata` : null,
+      `${efaturaRows.length} fatura listede`,
+      `${efaturaDownloadReady} belge hazir`,
+      efaturaDownloadPending ? `${efaturaDownloadPending} indiriliyor` : null,
+      efaturaDownloadMissing ? `${efaturaDownloadMissing} inemedi` : null,
     ].filter(Boolean);
     return parts.join(' · ');
   };
@@ -1737,7 +1731,7 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
           )}
           {efaturaStatusRows.length > 0 && (
             <div className={`providerdiag ${efaturaStatusTone}`}>
-              <b>Son sorgu</b>
+              <b>Durum</b>
               {efaturaStatusRows.map((p, i) => (
                 <span key={`${p?.provider || i}-${i}`}>
                   {efaturaProviderLabel(p)}: {efaturaStatusText(p)}
