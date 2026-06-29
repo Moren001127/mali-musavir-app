@@ -3458,7 +3458,7 @@ const CSS = `
 #fm-root .nsub.on{color:var(--accent);font-weight:700}
 #fm-root .nsub .d{height:6px;width:6px;border-radius:50%;background:currentColor;opacity:.5}
 #fm-root .main{flex:1;min-width:0;display:flex;flex-direction:column}
-#fm-root .top{display:flex;align-items:center;gap:12px;padding:12px 22px;background:linear-gradient(180deg,#fff,#fbfcfd);border-bottom:1px solid #e4e9ef;flex-wrap:wrap;box-shadow:0 1px 0 rgba(15,23,42,.02)}
+#fm-root .top{display:flex;align-items:center;gap:12px;padding:12px 22px;background:#fff;border-bottom:1px solid var(--line);flex-wrap:wrap;box-shadow:none}
 #fm-root .crumb{font-size:12px;color:var(--faint)}
 #fm-root .crumb b{color:var(--text);font-weight:600}
 #fm-root .sp{flex:1}
@@ -4072,8 +4072,8 @@ const CSS = `
 #fm-root .sidecontext{display:none}
 #fm-root .top{padding:10px 22px;background:rgba(251,250,247,.86);backdrop-filter:blur(8px)}
 #fm-root .topfiltbar{gap:10px}
-#fm-root .topfilt{height:34px;border-radius:8px;background:rgba(15,118,110,.045);border:1px solid rgba(15,118,110,.18);padding:4px 10px;box-shadow:none}
-#fm-root .topfilt svg{color:#0f766e;opacity:.72}
+#fm-root .topfilt{height:34px;border-radius:9px;background:var(--accent-soft);border:1px solid var(--accent-line);padding:4px 10px;box-shadow:none}
+#fm-root .topfilt svg{color:var(--accent);opacity:.8}
 #fm-root .filtsel{font-size:12.5px;font-weight:600;letter-spacing:0;min-width:150px;color:#20242a}
 #fm-root .brandplate{padding:12px 12px;border-radius:10px;background:rgba(255,255,255,.72);border-color:rgba(31,41,55,.16)}
 #fm-root .brandmark{width:34px;height:34px;border-radius:8px;font-size:11px;font-weight:700}
