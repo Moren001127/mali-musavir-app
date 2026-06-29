@@ -5753,10 +5753,14 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   }
 
   private turmobListPaths(channel: string) {
+    // Referer = anti-forgery TOKEN'ın okunduğu sayfa. Token YOKSA OUT POST 822-hata döner → 0 satır
+    //   (satışlar "görünmüyor"du). TÜRMOB'da test edildi: '/OutgoingInvoice' ve '/ArchiveInvoice' 302
+    //   redirect (token YOK); '.../OutgoingInvoiceList' ve '.../ArchiveInvoiceList' 200 + token VAR.
+    //   Alış '/Inbox' zaten token veriyor (o yüzden Alış çalışıyordu).
     const refererPath = channel === 'OUT_EARSIV'
-      ? '/ArchiveInvoice'
+      ? '/ArchiveInvoice/ArchiveInvoiceList'
       : channel === 'OUT_EFATURA'
-        ? '/OutgoingInvoice'
+        ? '/OutgoingInvoice/OutgoingInvoiceList'
         : '/Inbox';
     const listUrls = channel === 'OUT_EARSIV'
       ? [
@@ -5857,6 +5861,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       listPageToken = listPageHtml.match(/name="__RequestVerificationToken"[^>]*value="([^"]+)"/)?.[1]
         || listPageHtml.match(/__RequestVerificationToken[^>]*value="([^"]+)"/)?.[1]
         || '';
+      // [TESHIS-OUT] GEÇİCİ: referer sayfası token verdi mi (OUT'ta boş cevabın kökü token/referer olabilir).
+      if (channel !== 'IN_EFATURA') {
+        this.logger.log(`[TESHIS-OUT] referer=${refererPath} st=${listPage.status} htmlLen=${listPageHtml.length} token=${listPageToken ? 'VAR' : 'YOK'} login=${/account\/login|name=["']password["']/i.test(listPageHtml) ? 'E' : 'H'}`);
+      }
     } catch {
       // Optional warm-up.
     }
@@ -6464,11 +6472,14 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           }
         }
       }
+      // 'IdFatura' = TÜRMOB liste satırındaki SAYISAL fatura kimliği (her kanalda var; kanal-özel
+      //   IdFaturaGelen/Giden bu sürümde YOK). Görsel ucu bunu ister: /Invoice/Detail?InvoiceId=<IdFatura>&IsPrint
+      //   → 42KB fatura HTML'i (TÜRMOB portalında doğrulandı). Eskiden IdFatura çıkarılmadığından görsel hep MISSING'di.
       const channelIdKeys = channel === 'IN_EFATURA'
-        ? ['IdFaturaGelen', 'idFaturaGelen', 'FaturaGelenId', 'IncomingInvoiceId', 'InvoiceId', 'Id']
+        ? ['IdFatura', 'idFatura', 'IdFaturaGelen', 'idFaturaGelen', 'FaturaGelenId', 'IncomingInvoiceId', 'InvoiceId', 'Id']
         : channel === 'OUT_EARSIV'
-          ? ['IdFaturaArsiv', 'idFaturaArsiv', 'IdFaturaGidenArsiv', 'ArchiveInvoiceId', 'IdFaturaGiden', 'InvoiceId', 'Id']
-          : ['IdFaturaGiden', 'idFaturaGiden', 'FaturaGidenId', 'OutgoingInvoiceId', 'InvoiceId', 'Id'];
+          ? ['IdFatura', 'idFatura', 'IdFaturaArsiv', 'idFaturaArsiv', 'IdFaturaGidenArsiv', 'ArchiveInvoiceId', 'IdFaturaGiden', 'InvoiceId', 'Id']
+          : ['IdFatura', 'idFatura', 'IdFaturaGiden', 'idFaturaGiden', 'FaturaGidenId', 'OutgoingInvoiceId', 'InvoiceId', 'Id'];
       const invoiceIds = [...new Set([
         ...rowValues(row, channelIdKeys),
         ...rowValues(row, ['InvoiceId', 'InvoiceID', 'invoiceId', 'FaturaId', 'faturaId', 'BelgeId', 'belgeId', 'Id', 'ID', 'id', 'Uuid', 'UUID', 'uuid', 'Ettn', 'ETTN', 'ettn', 'Guid', 'GUID', 'guid']),
