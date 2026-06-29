@@ -4403,9 +4403,16 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const rawIsHtml = payload.kind === 'html' || /<html[\s>]/i.test(rawHead);
     const rawIsInvoiceXml = /<(?:\?xml|[A-Za-z0-9_.-]+:)?(?:Invoice|CreditNote)\b/i.test(raw);
     if (rawIsHtml && !rawIsInvoiceXml) {
+      // TÜRMOB görseli /Invoice/Detail?IsPrint=True YAZDIRMA görünümü → önizleme açılınca otomatik
+      //   yazdırmaya çalışıyordu. renderOriginalHtml autoPrint:false KENDİ print eklemiyor ama girdideki
+      //   MEVCUT window.print()'i temizlemiyor → burada (gösterimde) temizle: mevcut görsellerde de düzelir.
+      const noPrintRaw = String(raw)
+        .replace(/<script[^>]*>[\s\S]*?(?:window\.)?print\s*\([\s\S]*?<\/script>/gi, '')
+        .replace(/(?:window\.)?print\s*\(\s*\)/gi, 'void 0')
+        .replace(/\bonload\s*=\s*(["'])[^"']*?print[^"']*?\1/gi, '');
       return {
         url: '',
-        inlineHtml: this.earsivRender.renderOriginalHtml(raw, { autoPrint: false }),
+        inlineHtml: this.earsivRender.renderOriginalHtml(noPrintRaw, { autoPrint: false }),
         mimeType: 'text/html',
         source: 'stored-html' as const,
       };
@@ -6348,7 +6355,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             if (visRes && visRes.ok) {
               const vis = await visRes.text();
               if (vis && /<(?:!doctype\s+html|html|body)\b/i.test(vis.slice(0, 3000)) && !/account\/login|name=["']password["']/i.test(vis) && /(Invoice|Fatura)/i.test(vis.slice(0, 30000))) {
-                payload.htmlContent = vis; // orijinal görsel — bu faturanın payload'ına EŞLEŞTİ
+                // /Invoice/Detail?IsPrint=True YAZDIRMA görünümüdür → önizlemede AÇILINCA otomatik yazdırmaya
+                //   çalışıyordu. Yazdırma tetikleyicilerini temizle (içerik/görsel aynen kalır, sadece oto-print gider).
+                payload.htmlContent = vis
+                  .replace(/<script[^>]*>[\s\S]*?(?:window\.)?print\s*\([\s\S]*?<\/script>/gi, '')
+                  .replace(/(?:window\.)?print\s*\(\s*\)/gi, 'void 0')
+                  .replace(/\bonload\s*=\s*(["'])[^"']*?print[^"']*?\1/gi, '');
               }
             }
             payloads.push(payload);
