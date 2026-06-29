@@ -7735,6 +7735,24 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     }
     const parsed = this.parseProviderUblInvoice(xml) || this.regexProviderInvoiceFallback(xml);
     if (!parsed) throw new Error('UBL/XML fatura okunamadi');
+    // CARİ YÖN DÜZELTME: ALIŞ faturasında SATICI (cari) MÜKELLEF OLAMAZ. Bazı XML'lerde satıcı/alıcı
+    //   tarafları ters geliyor → parse mükellefi satıcı sanıp cari=mükellef yapıyor ("Yorgun Nakliyat"
+    //   cari, hesap boş). Mükellef satıcı tarafına düşmüşse GERÇEK satıcı = alıcı tarafındaki firmadır →
+    //   çevir. SATIŞ'ta satıcı=mükellef DOĞRU olduğu için yalnız ALIŞ'ta uygulanır. Satıcısı zaten
+    //   mükellef olmayan (TÜVTÜRK/Çetaş gibi) doğru faturalar ETKİLENMEZ.
+    {
+      const ownVkn = String((taxpayer as any)?.taxNumber || '').replace(/\D/g, '');
+      if (ownVkn && direction === 'ALIS') {
+        const sVkn = String(parsed.saticiVergiNo || '').replace(/\D/g, '');
+        const aVkn = String(parsed.aliciVergiNo || '').replace(/\D/g, '');
+        if (sVkn && sVkn === ownVkn && (aVkn ? aVkn !== ownVkn : !!parsed.alici)) {
+          const ts = parsed.satici, tsv = parsed.saticiVergiNo;
+          parsed.satici = parsed.alici; parsed.saticiVergiNo = parsed.aliciVergiNo;
+          parsed.alici = ts; parsed.aliciVergiNo = tsv;
+          this.logger.warn(`[CARI-DUZELT] ALIS'ta satici=mukellef idi, ters cevrildi → cari=${parsed.satici} (${parsed.saticiVergiNo}) belge=${parsed.faturaNo}`);
+        }
+      }
+    }
     const source = cfg.provider === 'GIB_PORTAL' ? 'gib-portal-api' : `integration-${cfg.provider.toLowerCase()}`;
     const sourceRefId = payload.externalId || parsed.ettn || parsed.faturaNo || createHash('sha1').update(xml).digest('hex');
     const existing = await (this.prisma as any).invoiceAccountingDocument.findFirst({
@@ -8680,6 +8698,31 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
    *  yeniden eşleştirir — yanlış carileri (KAYIKÇI→AYDE) temizler/doğrular. Saniyeler sürer. */
   async reapplyAccountCodes(tenantId: string, taxpayerId: string) {
     if (!taxpayerId) throw new BadRequestException('Mükellef seçilmeli');
+    // RETROAKTİF CARİ DÜZELTME: ALIŞ'ta satıcı (sellerVkn/vendorName) = MÜKELLEF olan belgeler hatalı
+    //   (cari=mükellef, "Yorgun Nakliyat" cari + hesap boş). Taraflar ters okunmuş → satıcı↔alıcı çevir
+    //   ki cari gerçek karşı taraf olsun; sonraki rematch cariyi doğru hesaba bağlar. APPROVED'a dokunma.
+    try {
+      const tpv = await (this.prisma as any).taxpayer.findFirst({ where: { id: taxpayerId, tenantId }, select: { taxNumber: true } });
+      const ownVkn = String(tpv?.taxNumber || '').replace(/\D/g, '');
+      if (ownVkn) {
+        const bad = await (this.prisma as any).invoiceAccountingDocument.findMany({
+          where: { tenantId, taxpayerId, invoiceKind: 'ALIS', sellerVkn: ownVkn, status: { in: ['READY', 'NEEDS_REVIEW', 'DRAFT'] } },
+          select: { id: true, sellerVkn: true, buyerVkn: true, vendorName: true, customerName: true },
+          take: 2000,
+        }).catch(() => []);
+        let fixed = 0;
+        for (const d of bad) {
+          const bV = String(d.buyerVkn || '').replace(/\D/g, '');
+          if (bV ? bV !== ownVkn : !!d.customerName) {
+            await (this.prisma as any).invoiceAccountingDocument.update({
+              where: { id: d.id },
+              data: { sellerVkn: d.buyerVkn || null, buyerVkn: d.sellerVkn || null, vendorName: d.customerName || null, customerName: d.vendorName || null },
+            }).then(() => { fixed++; }).catch(() => {});
+          }
+        }
+        if (fixed) this.logger.warn(`[CARI-DUZELT] ${fixed} ALIS belgesinde satici=mukellef idi, taraflar ters cevrildi: tp=${taxpayerId}`);
+      }
+    } catch (e: any) { this.logger.warn(`[CARI-DUZELT] retro hata: ${e?.message || e}`); }
     await this.gateExistingDocsIfNoPlan(tenantId, taxpayerId);
     await this.rematchDocumentsWithLatestAccountPlan(tenantId, taxpayerId);
     // ÇELİŞKİ TAZELE: rematch satır/kodları güncelledi → ESKİ validation kayıtlarını (artık
