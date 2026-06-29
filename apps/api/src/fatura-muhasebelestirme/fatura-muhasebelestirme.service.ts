@@ -3658,6 +3658,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             missingDocument: 0,
             failed: providerFailed,
           });
+          // Görsel+XML'i ARKA PLANDA indir — sorguyu BEKLETME. (Senkron indirince istek zaman
+          //   aşımına uğrayıp "bağlantı koptu" veriyordu.) Yalnız EKSİK satırlar iner; UI poll
+          //   ile dolar, "Aktar" XML+görsel hazır bulunca tekrar indirmez → anında biter.
+          void this.prefetchTurmobInboxDocuments(tenantId, cfg, taxpayer, { direction, channel, period })
+            .catch((e: any) => this.logger.warn(`TURMOB prefetch arka plan basarisiz: ${e?.message || e}`));
           continue;
         }
 
@@ -3749,6 +3754,91 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     }
 
     return { source: 'efatura-inbox', channel, direction: inboxDirection, fetched, added, updated, skipped, failed, providers: statuses };
+  }
+
+  /**
+   * TÜRMOB sorgusu sonrası ARKA PLANDA görsel+XML indir (sorguyu bekletmeden).
+   * - Yalnız EKSİK satırlar iner (XML+görsel zaten varsa atlanır) → tekrar sorguda neredeyse anında.
+   * - İndirilen XML/görsel/VKN/tutar inbox satırına yazılır; "Aktar" hazır bulunca tekrar indirmez.
+   * Hata olursa sessiz geçer (eski davranış: o satır aktar sırasında iner) → regresyon yok.
+   */
+  private async prefetchTurmobInboxDocuments(
+    tenantId: string,
+    cfg: RuntimeIntegrationConfig,
+    taxpayer: any,
+    opts: { direction: 'ALIS' | 'SATIS'; channel: string; period: { donem: string; startDate: string; endDate: string } },
+  ) {
+    const { direction, channel, period } = opts;
+    const inboxDirection: 'IN' | 'OUT' = direction === 'ALIS' ? 'IN' : 'OUT';
+    const allRows = await (this.prisma as any).eFaturaInbox.findMany({
+      where: { tenantId, taxpayerId: taxpayer.id, entegrator: cfg.provider, direction: inboxDirection },
+      select: { id: true, uuid: true, ettn: true, faturaNo: true, toplam: true, ublXmlRaw: true, rawJson: true, faturaDate: true },
+      take: 1000,
+    });
+    const start = new Date(period.startDate);
+    const end = new Date(period.endDate);
+    const inPeriod = (r: any) => {
+      const d = r.faturaDate ? new Date(r.faturaDate) : null;
+      if (d && !Number.isNaN(d.getTime())) return d >= start && d < end;
+      return String((r.rawJson as any)?.period || '') === period.donem;
+    };
+    const missing = allRows.filter((r: any) => {
+      if (String((r.rawJson as any)?.channel || '').toUpperCase() !== channel) return false;
+      if (!inPeriod(r)) return false;
+      const xml = String(r.ublXmlRaw || '').trim();
+      const hasXml = !!xml && !this.isSyntheticTurmobInboxXml(xml);
+      const hasVisual = this.hasOriginalProviderVisual((r.rawJson as any)?.originalVisual, cfg.provider);
+      return !(hasXml && hasVisual);
+    });
+    if (!missing.length) return;
+    const payloads = await this.fetchTurmobPortalInvoices(cfg, {
+      taxpayer,
+      direction,
+      period,
+      limit: Math.min(Math.max(missing.length, 1), 1000),
+      channel,
+      targetRows: missing,
+    });
+    if (!payloads.length) return;
+    const lookup: ProviderPayloadLookup = { cfg, payloads, byKey: this.buildProviderPayloadLookup(payloads), error: null };
+    let filled = 0;
+    for (const row of missing) {
+      try {
+        const payload = this.providerPayloadForInboxRow(row, lookup);
+        if (!payload) continue;
+        const parsed = this.parseProviderUblInvoice(payload.xml) || this.regexProviderInvoiceFallback(payload.xml);
+        const storedVisual = this.providerStoredVisual(payload);
+        const hasVisual = this.hasOriginalProviderVisual(storedVisual, cfg.provider);
+        const curRaw = row.rawJson && typeof row.rawJson === 'object' ? row.rawJson : {};
+        const total = parsed ? (parsed.toplamTutar ?? ((parsed.matrah || 0) + (parsed.kdvTutari || 0))) : null;
+        const data: any = {
+          ublXmlRaw: payload.xml,
+          syncedAt: new Date(),
+          rawJson: {
+            ...curRaw,
+            documentType: this.documentTypeFromProviderXml(payload.xml),
+            needsDocumentDownload: !hasVisual,
+            documentDownloadStatus: hasVisual ? 'READY' : 'PENDING_DOWNLOAD',
+            documentDownloadError: hasVisual ? null : 'Orijinal gorsel inmedi; aktarimda yeniden denenecek.',
+            originalVisual: storedVisual || (curRaw as any).originalVisual || null,
+          },
+        };
+        if (parsed?.ettn) data.ettn = parsed.ettn;
+        if (parsed?.saticiVergiNo) data.senderVkn = parsed.saticiVergiNo;
+        if (parsed?.satici) data.senderTitle = parsed.satici;
+        if (parsed?.aliciVergiNo) data.receiverVkn = parsed.aliciVergiNo;
+        if (parsed?.faturaNo) data.faturaNo = parsed.faturaNo;
+        if (parsed?.faturaTarihi) data.faturaDate = parsed.faturaTarihi;
+        if (parsed?.matrah != null) data.matrah = String(parsed.matrah);
+        if (parsed?.kdvTutari != null) data.kdv = String(parsed.kdvTutari);
+        if (total != null) data.toplam = String(total);
+        await (this.prisma as any).eFaturaInbox.update({ where: { id: row.id }, data });
+        filled++;
+      } catch (e: any) {
+        this.logger.warn(`TURMOB prefetch satir guncellenemedi: ${e?.message || e}`);
+      }
+    }
+    this.logger.log(`TURMOB prefetch tamam: ${filled}/${missing.length} eksik belge indirildi (${channel} ${period.donem})`);
   }
 
   async importEfaturaInboxToAccounting(
