@@ -5616,29 +5616,38 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             await Promise.all(targets.slice(i, i + CONC).map(async (row: any) => {
               const id = idOf(row);
               if (!id) { fallback.push(row); return; }
-              const ctl = new AbortController();
-              const tm = setTimeout(() => { try { ctl.abort(); } catch { /* */ } }, 12000);
-              try {
-                const [xmlRes, visRes] = await Promise.all([
-                  fetch(`${BASE}/Invoice/GetInvoiceXml?InOrOut=${directInOrOut}&InvoiceId=${id}`, { headers, signal: ctl.signal }),
-                  fetch(`${BASE}/Invoice/Detail?InOrOut=${directInOrOut}&InvoiceId=${id}&IsPrint=True`, { headers, signal: ctl.signal }).catch(() => null),
-                ]);
-                const xml = await xmlRes.text();
-                if (!/^\s*<\?xml|<[\w:]*Invoice\b/i.test(xml.slice(0, 400))) { fallback.push(row); return; }
-                const payload: any = { xml };
-                if (visRes && visRes.ok) {
-                  const vis = await visRes.text();
-                  if (vis && /<(?:!doctype\s+html|html|body)\b/i.test(vis.slice(0, 3000)) && !/account\/login|name=["']password["']/i.test(vis) && /(Invoice|Fatura)/i.test(vis.slice(0, 30000))) {
-                    payload.htmlContent = vis
-                      .replace(/<script[^>]*>[\s\S]*?(?:window\.)?print\s*\([\s\S]*?<\/script>/gi, '')
-                      .replace(/(?:window\.)?print\s*\(\s*\)/gi, 'void 0')
-                      .replace(/\bonload\s*=\s*(["'])[^"']*?print[^"']*?\1/gi, '');
+              // XML (veri) — ayri timeout.
+              let xml = '';
+              const xctl = new AbortController();
+              const xtm = setTimeout(() => { try { xctl.abort(); } catch { /* */ } }, 15000);
+              try { xml = await (await fetch(`${BASE}/Invoice/GetInvoiceXml?InOrOut=${directInOrOut}&InvoiceId=${id}`, { headers, signal: xctl.signal })).text(); }
+              catch { /* xml inmedi */ }
+              finally { clearTimeout(xtm); }
+              if (!/^\s*<\?xml|<[\w:]*Invoice\b/i.test(xml.slice(0, 400))) { fallback.push(row); return; }
+              const payload: any = { xml };
+              // GORSEL (orijinal fatura) — AYRI timeout + 2 DENEME (throttle'da gorsel agir, kolay duser →
+              //   "veri var gorsel yok" (sari satir) azalsin). Inmezse satir fallback'e gider.
+              for (let a = 0; a < 2 && !payload.htmlContent; a++) {
+                const vctl = new AbortController();
+                const vtm = setTimeout(() => { try { vctl.abort(); } catch { /* */ } }, 15000);
+                try {
+                  const vr = await fetch(`${BASE}/Invoice/Detail?InOrOut=${directInOrOut}&InvoiceId=${id}&IsPrint=True`, { headers, signal: vctl.signal });
+                  if (vr.ok) {
+                    const vis = await vr.text();
+                    if (vis && /<(?:!doctype\s+html|html|body)\b/i.test(vis.slice(0, 3000)) && !/account\/login|name=["']password["']/i.test(vis) && /(Invoice|Fatura)/i.test(vis.slice(0, 30000))) {
+                      payload.htmlContent = vis
+                        .replace(/<script[^>]*>[\s\S]*?(?:window\.)?print\s*\([\s\S]*?<\/script>/gi, '')
+                        .replace(/(?:window\.)?print\s*\(\s*\)/gi, 'void 0')
+                        .replace(/\bonload\s*=\s*(["'])[^"']*?print[^"']*?\1/gi, '');
+                    }
                   }
-                }
+                } catch { /* tekrar dene */ }
+                finally { clearTimeout(vtm); }
+              }
+              try {
                 if (await applyDownloaded(row, payload)) { ok++; handled.add(row.id); }
                 else { fallback.push(row); }
               } catch { fallback.push(row); }
-              finally { clearTimeout(tm); }
             }));
             this.logger.log(`TURMOB dogrudan indirme ilerleme: ${ok}/${targets.length} indirildi · fallback ${fallback.length} · ${channel} ${period.donem}`);
           }
