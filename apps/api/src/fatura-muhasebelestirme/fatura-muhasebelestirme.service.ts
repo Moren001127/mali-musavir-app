@@ -8707,20 +8707,34 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       if (ownVkn) {
         const bad = await (this.prisma as any).invoiceAccountingDocument.findMany({
           where: { tenantId, taxpayerId, invoiceKind: 'ALIS', sellerVkn: ownVkn, status: { in: ['READY', 'NEEDS_REVIEW', 'DRAFT'] } },
-          select: { id: true, sellerVkn: true, buyerVkn: true, vendorName: true, customerName: true },
+          select: { id: true, belgeNo: true, sellerVkn: true, buyerVkn: true, vendorName: true, customerName: true },
           take: 2000,
         }).catch(() => []);
         let fixed = 0;
         for (const d of bad) {
           const bV = String(d.buyerVkn || '').replace(/\D/g, '');
-          if (bV ? bV !== ownVkn : !!d.customerName) {
+          // 1) XML'de gecerli alici tarafi varsa onu satici yap (taraflar ters).
+          let newVkn: string | null = (bV && bV !== ownVkn) ? d.buyerVkn : null;
+          let newName: string | null = newVkn ? (d.customerName || null) : null;
+          // 2) XML'de karsi taraf yok/mukellef → INBOX satirindan gercek satici (liste senderVkn/senderTitle).
+          if (!newVkn && d.belgeNo) {
+            const inbox = await (this.prisma as any).eFaturaInbox.findFirst({
+              where: { tenantId, taxpayerId, faturaNo: d.belgeNo },
+              select: { senderVkn: true, senderTitle: true, rawJson: true },
+            }).catch(() => null);
+            const raw = inbox?.rawJson && typeof inbox.rawJson === 'object' ? inbox.rawJson : {};
+            const sv = String(inbox?.senderVkn || raw?.senderVkn || '').trim();
+            const st = String(inbox?.senderTitle || raw?.senderTitle || '').trim();
+            if (sv && sv.replace(/\D/g, '') !== ownVkn) { newVkn = sv; newName = st || null; }
+          }
+          if (newVkn) {
             await (this.prisma as any).invoiceAccountingDocument.update({
               where: { id: d.id },
-              data: { sellerVkn: d.buyerVkn || null, buyerVkn: d.sellerVkn || null, vendorName: d.customerName || null, customerName: d.vendorName || null },
+              data: { sellerVkn: newVkn, vendorName: newName, buyerVkn: d.sellerVkn || ownVkn, customerName: d.vendorName || null },
             }).then(() => { fixed++; }).catch(() => {});
           }
         }
-        if (fixed) this.logger.warn(`[CARI-DUZELT] ${fixed} ALIS belgesinde satici=mukellef idi, taraflar ters cevrildi: tp=${taxpayerId}`);
+        if (fixed) this.logger.warn(`[CARI-DUZELT] ${fixed} ALIS belgesinde satici=mukellef idi, gercek satici (XML alici / inbox sender) ile duzeltildi: tp=${taxpayerId}`);
       }
     } catch (e: any) { this.logger.warn(`[CARI-DUZELT] retro hata: ${e?.message || e}`); }
     await this.gateExistingDocsIfNoPlan(tenantId, taxpayerId);
