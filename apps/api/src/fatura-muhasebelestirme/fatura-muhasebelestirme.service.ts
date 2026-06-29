@@ -268,6 +268,7 @@ type ParsedProviderInvoice = {
   kdvOrani?: number | null;
   toplamTutar?: number | null;
   paraBirimi?: string | null;
+  kalemler?: Array<{ ad: string; tutar: number; oran: number }>;
 };
 
 const INTEGRATOR_CATALOG = [
@@ -7755,6 +7756,17 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const toplamTutar = num(monetaryTotal?.PayableAmount)
         ?? num(monetaryTotal?.TaxInclusiveAmount)
         ?? ((matrah != null || kdvTutari != null) ? (matrah || 0) + (kdvTutari || 0) : undefined);
+      // UBL satır kalemleri: ad (Item/Name veya Description) + tutar + KDV oranı.
+      // preParsed.kalemler olarak aktarılır → sınıflandırma AI'ı tekrar çıkarmak zorunda kalmaz.
+      const rawKalemler = lineNodes
+        .map((line) => {
+          const ad = String(txt(line?.Item?.Name) || txt(line?.Item?.Description) || '').trim();
+          const tutar = num(line?.LineExtensionAmount);
+          const lineSubs = asArray(asArray(line?.TaxTotal)[0]?.TaxSubtotal || line?.TaxTotal);
+          const oran = num(lineSubs[0]?.TaxCategory?.Percent) ?? num(lineSubs[0]?.Percent);
+          return ad && tutar != null ? { ad, tutar, oran: oran ?? 0 } : null;
+        })
+        .filter((k): k is { ad: string; tutar: number; oran: number } => k !== null);
       return {
         faturaNo: faturaNo || ettn || 'BILINMIYOR',
         faturaTarihi: issueDate && !Number.isNaN(issueDate.getTime()) ? issueDate : null,
@@ -7768,6 +7780,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         kdvOrani: matrah && kdvTutari ? Math.round((kdvTutari / matrah) * 100) : null,
         toplamTutar,
         paraBirimi: (txt(get(['DocumentCurrencyCode'])) || 'TRY') === 'TRY' ? 'TL' : txt(get(['DocumentCurrencyCode'])) || 'TL',
+        kalemler: rawKalemler.length ? rawKalemler : undefined,
       };
     } catch (e: any) {
       this.logger.warn(`Provider XML parse hata: ${e?.message || e}`);
@@ -8766,6 +8779,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           // TEVKİFAT: belgede tevkifat/WithholdingTax geçiyorsa (e-Arşiv "Fatura Tipi: TEVKIFAT").
           tevkifat: /TEVKIFAT|WithholdingTax/i.test(xml),
           kdv: [{ oran: ubl.kdvOrani || 0, matrah: ubl.matrah || 0, kdv: ubl.kdvTutari || 0 }],
+          kalemler: ubl.kalemler,
         };
       }
     }
