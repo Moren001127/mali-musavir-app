@@ -3999,9 +3999,9 @@ const CSS = `
 /* Son revizyon: mavi tonu kır, üst barı muhasebeleştirmede kaldır, aksiyonları yeniden kur */
 #fm-root{--bg:#f4f5f3;--side:#fbfaf7;--line:#e4e1da;--line2:#d7d2c8;--text:#20242a;--muted:#66706c;--faint:#9aa09b;--accent:#374151;--accent-soft:#eef0ed;--accent-line:#d5dbd4;--th:#f0f2ee;--th-text:#3f4a44;--blue:#334155;--green:#16866a;--amber:#b7791f}
 #fm-root[data-accent="slate"]{--accent:#374151;--accent-soft:#eef0ed;--accent-line:#d5dbd4;--th:#f0f2ee;--th-text:#3f4a44}
-#fm-root .app::before{height:2px;background:linear-gradient(90deg,#1f2937,#0f766e,#c0842b)}
-#fm-root .side{background:linear-gradient(180deg,#fbfaf7 0%,#f5f4f0 100%);border-right-color:#ddd8ce;box-shadow:8px 0 24px rgba(31,41,55,.045)}
-#fm-root .brand{padding:14px 12px;border-bottom:1px solid #ddd8ce;background:#fbfaf7}
+#fm-root .app::before{height:3px;background:var(--accent)}
+#fm-root .side{background:#fff;border-right-color:var(--line);box-shadow:none}
+#fm-root .brand{padding:14px 12px;border-bottom:1px solid var(--line);background:#fff}
 #fm-root .backlink{height:26px;margin:0 0 10px;color:#7a817b;font-size:11px}
 #fm-root .brandplate{position:relative;align-items:flex-start;gap:11px;padding:13px 12px;border:1px solid #d8d2c7;border-radius:10px;background:linear-gradient(145deg,#ffffff,#f2f0ea);box-shadow:0 14px 28px -24px rgba(31,41,55,.5)}
 #fm-root .brandplate::after{content:'';position:absolute;left:12px;right:12px;bottom:8px;height:2px;border-radius:2px;background:linear-gradient(90deg,#1f2937 0 34%,#0f766e 34% 68%,#c0842b 68%)}
@@ -4012,12 +4012,12 @@ const CSS = `
 #fm-root .ctxlabel{font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.45px;color:#7a817b;margin-bottom:8px}
 #fm-root .ctxfield{display:flex;flex-direction:column;gap:4px;margin-top:8px}
 #fm-root .ctxfield span{font-size:9.5px;font-weight:900;text-transform:uppercase;letter-spacing:.35px;color:#9aa09b}
-#fm-root .ctxfield select{height:34px;width:100%;border:1px solid #d7d2c8;border-radius:7px;background:#fbfaf7;color:#20242a;font-family:inherit;font-size:12px;font-weight:800;padding:0 9px;outline:none}
-#fm-root .ctxfield select:focus{border-color:#0f766e;box-shadow:0 0 0 3px rgba(15,118,110,.1)}
-#fm-root .nitem.on{background:#ecefea;color:#1f2937;box-shadow:inset 3px 0 0 #0f766e}
+#fm-root .ctxfield select{height:34px;width:100%;border:1px solid var(--line2);border-radius:8px;background:#fff;color:var(--text);font-family:inherit;font-size:12px;font-weight:700;padding:0 9px;outline:none}
+#fm-root .ctxfield select:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+#fm-root .nitem.on{background:var(--accent-soft);color:var(--accent);box-shadow:inset 3px 0 0 var(--accent)}
 #fm-root .nitem.on > span:first-child{background:#1f2937;border-color:#1f2937}
-#fm-root .nitem.on .ct{color:#0f766e}
-#fm-root .nsub.on{color:#0f766e}
+#fm-root .nitem.on .ct{color:var(--accent)}
+#fm-root .nsub.on{color:var(--accent)}
 #fm-root .top{background:#fbfaf7;border-bottom-color:#ddd8ce;box-shadow:none}
 #fm-root .screen-muhasebe .top{display:none}
 #fm-root .screen-muhasebe .content{padding:10px 12px;overflow:hidden}
@@ -4032,7 +4032,7 @@ const CSS = `
 #fm-root .nacechip{border-color:#d6c9ad;background:#fbf4e5;color:#8a5a12}
 #fm-root .topfilt{background:#f5f4f0;border-color:#d7d2c8;box-shadow:none}
 #fm-root .topfilt svg{color:#0f766e}
-#fm-root .screen > .fmstats{grid-template-columns:repeat(5,minmax(0,1fr));padding:6px;border-radius:10px;background:#fbfaf7;border-color:#ddd8ce;gap:6px;margin:8px 0 12px}
+#fm-root .screen > .fmstats{grid-template-columns:repeat(5,minmax(0,1fr));padding:0;border:0;background:transparent;gap:12px;margin:8px 0 16px}
 #fm-root .screen > .fmstats .fmstat{min-height:48px;border-left:0;border-radius:7px;background:#fff;padding:7px 10px;display:flex;align-items:center;justify-content:space-between;gap:8px}
 #fm-root .screen > .fmstats .fmsl{font-size:9.5px;line-height:1.1;white-space:normal;color:#66706c}
 #fm-root .screen > .fmstats .fmsl::before{display:none}
@@ -4156,10 +4156,10 @@ const CSS = `
 #fm-root[data-accent="slate"]{--accent:#23665b;--accent-soft:#edf7f3;--accent-line:#cde4dc;--th:#f2f7f3;--th-text:#315c52}
 
 /* Final sade beyaz duzen: tum moduller tutarli, muhasebe ekrani ferah */
-#fm-root{--bg:#fff;--side:#fff;--line:#e7ebef;--line2:#dbe2e8;--text:#1f2937;--muted:#64707a;--faint:#9aa3ad;--accent:#1f7a68;--accent-soft:#eef8f5;--accent-line:#cce6df;--th:#f6faf8;--th-text:#35564f;--blue:#3157d5;--green:#1f7a68;--amber:#c48a2a}
-#fm-root[data-accent="slate"]{--accent:#1f7a68;--accent-soft:#eef8f5;--accent-line:#cce6df;--th:#f6faf8;--th-text:#35564f}
+#fm-root{--bg:#eef1f7;--side:#fff;--line:#e6eaf1;--line2:#d8dfe9;--text:#0e1726;--muted:#566379;--faint:#94a0b2;--accent:#2f54d6;--accent-soft:#eef1fe;--accent-line:#d2dbfb;--th:#f1f4fb;--th-text:#3a4673;--blue:#2f54d6;--green:#15924f;--amber:#cf7a0e}
+#fm-root[data-accent="slate"]{--accent:#2f54d6;--accent-soft:#eef1fe;--accent-line:#d2dbfb;--th:#f1f4fb;--th-text:#3a4673}
 #fm-root .app,#fm-root .main,#fm-root .content,#fm-root .side,#fm-root .brand,#fm-root .top{background:#fff}
-#fm-root .app::before{background:linear-gradient(90deg,#1f7a68,#3b82f6,#c48a2a)}
+#fm-root .app::before{background:var(--accent)}
 #fm-root .side{width:232px;border-right-color:#e5e7eb;box-shadow:none}
 #fm-root .brand{padding:10px 12px 12px;border-bottom:1px solid #e5e7eb}
 #fm-root .brandplate{display:none!important}
@@ -4211,7 +4211,7 @@ const CSS = `
 #fm-root .sorgu-screen .sourcegrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:12px 0}
 #fm-root .sourcecard{height:104px;text-align:left;border:1px solid #e2e8f0;border-radius:10px;background:#fff;padding:14px;display:grid;grid-template-columns:34px 1fr;grid-template-rows:auto auto auto;column-gap:12px;align-items:center;cursor:pointer}
 #fm-root .sourcecard:hover{border-color:#cbd5e1;background:#fbfefd}
-#fm-root .sourcecard.on{border-color:#1f7a68;box-shadow:inset 0 0 0 1px #1f7a68;background:#f6fcfa}
+#fm-root .sourcecard.on{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent);background:var(--accent-soft)}
 #fm-root .sourcecard .srcicon{grid-row:1 / 4;width:34px;height:34px;border-radius:9px;display:grid;place-items:center;background:#eef8f5;color:#1f7a68}
 #fm-root .sourcecard b{font-size:15px;color:#17212f}
 #fm-root .sourcecard small{font-size:12px;color:#64748b}
