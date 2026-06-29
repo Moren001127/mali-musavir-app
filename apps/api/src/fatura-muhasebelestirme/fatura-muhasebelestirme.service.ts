@@ -6654,10 +6654,18 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         const contentType = String(docRes.headers.get('content-type') || '');
         const text = buf.toString('utf8');
         const localVisual = rememberStandaloneVisual(buf, text, contentType);
+        // [TESHIS-TURMOB-DL] GEÇİCİ: hangi uç GERÇEK görsel (PDF/HTML) döndürüyor — brute-force'u doğru
+        //   uçla değiştirmek için canlı veri. Sadece BAŞARI loglanır (başarısızlar 6671'de). Bittiğinde KALDIR.
+        if (localVisual.pdf || localVisual.html) {
+          this.logger.log(`[TESHIS-TURMOB-DL] GORSEL ${request.method} ${request.url.slice(0, 170)} ct=${contentType.slice(0, 40)} bytes=${buf.length} yield=${localVisual.pdf ? 'PDF' : 'HTML'}`);
+        }
         collectCandidateUrls(text);
         drainCandidateRequests();
         const before = payloads.length;
         const nestedPayloads = await this.extractPayloadsFromProviderResponse(text, ['xml', 'ubl', 'content', 'data', 'base64', 'DocumentXml', 'InvoiceXml']);
+        if (nestedPayloads.length) {
+          this.logger.log(`[TESHIS-TURMOB-DL] XML ${request.method} ${request.url.slice(0, 170)} ct=${contentType.slice(0, 40)} bytes=${buf.length} payloads=${nestedPayloads.length}`);
+        }
         payloads.push(...nestedPayloads);
         if (payloads.length === before) {
           await this.addPayloadBuffer(payloads, buf);
@@ -6675,6 +6683,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const uniqueCount = new Set(payloads.map((payload) => payload.externalId || createHash('sha1').update(payload.xml).digest('hex'))).size;
       if (uniqueCount >= targetPayloadCount) break;
     }
+    // [TESHIS-TURMOB-DL] GEÇİCİ özet — kaç satır için kaç PDF/HTML/XML indi (görsel isabeti). Bittiğinde KALDIR.
+    this.logger.log(`[TESHIS-TURMOB-DL] OZET channel=${channel} satir=${live.length} payload=${payloads.length} pdf=${payloads.filter((p) => p.pdfBuffer).length} html=${payloads.filter((p) => p.htmlContent).length} attempts=${downloadAttempts}/${maxDownloadAttempts}`);
     if (!payloads.length && first === '<') {
       throw new Error('TURMOB oturumu liste ekranina gecemedi; portal login sayfasina geri dondu');
     }
@@ -7280,6 +7290,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       : null;
     const hasHtml = html && /<(?:!doctype\s+html|html|body)\b/i.test(html.slice(0, 2000));
     const hasOriginalHtml = !!hasHtml && !(cfg.provider === 'TURMOB_EFATURA' && this.isFakeTurmobVisualHtml(html));
+    // [TESHIS-TURMOB-VIS] GEÇİCİ: belge başına orijinal görsel sonucu (kaç belge MISSING + neden). Bittiğinde KALDIR.
+    this.logger.log(`[TESHIS-TURMOB-VIS] belge=${(parsed.faturaNo || sourceRefId || '').toString().slice(0, 24)} provider=${cfg.provider} pdf=${pdf ? 'E' : 'H'} html=${hasHtml ? (hasOriginalHtml ? 'E' : 'FAKE') : 'H'} → ${(cfg.provider === 'TURMOB_EFATURA' && !pdf && !hasOriginalHtml) ? 'MISSING' : 'OK'}`);
     if (cfg.provider === 'TURMOB_EFATURA' && !pdf && !hasOriginalHtml) {
       throw new Error('TURMOB orijinal fatura goruntusu olmadan belge kaydedilmedi.');
     }
