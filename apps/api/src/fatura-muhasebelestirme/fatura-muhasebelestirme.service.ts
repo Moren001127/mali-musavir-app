@@ -6438,6 +6438,15 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     };
     const addTurmobDocumentUrls = (row: any) => {
       const inOrOut = channel === 'IN_EFATURA' ? 'True' : 'False';
+      // KESİN UÇLAR — TÜRMOB portalında ağ izlenerek doğrulandı (2026-06-29): sayısal IdFatura ile
+      //   XML (veri) ve görsel (HTML) DİREKT iniyor. Brute-force bunları 520 aday arasında geç deneyip
+      //   attempt-cap'e takılıyordu (payload=0 → "indirme linki çözümlenemedi"). Öncelikli (trusted) ekle.
+      //   GetInvoiceXml → 325KB UBL XML; Detail&IsPrint → 42KB orijinal fatura HTML'i.
+      const idFaturaDirect = String(this.turmobField(row, ['IdFatura', 'idFatura', 'IdFaturaEk']) || '').replace(/\D/g, '');
+      if (idFaturaDirect) {
+        addCandidateUrl(`/Invoice/GetInvoiceXml?InOrOut=${inOrOut}&InvoiceId=${idFaturaDirect}`, true);
+        addCandidateUrl(`/Invoice/Detail?InOrOut=${inOrOut}&InvoiceId=${idFaturaDirect}&IsPrint=True`, true);
+      }
       const pathPrefixes = channel === 'IN_EFATURA'
         ? ['/IncomingInvoice', '/Invoice']
         : channel === 'OUT_EARSIV'
