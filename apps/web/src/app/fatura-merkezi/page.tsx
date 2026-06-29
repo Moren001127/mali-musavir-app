@@ -1647,12 +1647,10 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
   return (
     <section className="screen sorgu-screen">
       <div className="h2">{source === 'earsiv' ? 'GIB e-Arşiv Portal Sorgusu' : 'e-Fatura Entegratör Sorgusu'}</div>
-      <div className="sub">{source === 'earsiv' ? 'Firmaların GIB e-Arşiv portalda kestiği satış faturaları burada sorgulanır.' : 'TÜRMOB, e-Logo, Uyumsoft ve diğer e-Fatura entegratörleri bu ekranda ayrı izlenir.'}</div>
 
       {source === 'earsiv' ? (
         <div className={`card sourcepanel ${earsivOverlayBusy ? 'isbusy' : ''}`}>
           <div className="ch sourcehead">
-            <h3>GİB e-Arşiv satış sorgusu</h3>
             <span className="mu">{waitForFirstRows ? 'Sorgu/aktarım çalışıyor' : lastJob ? `Son iş: ${lastJob.status} · ${fmtDate(lastJob.updatedAt || lastJob.createdAt)}` : 'Henüz sorgu yok'}</span>
             <div className="sp" />
             <button className="btn sm fetch" disabled={!taxpayerId || sorgulaMut.isPending || waitForFirstRows} onClick={() => sorgulaMut.mutate()}><Ico html={I.sync} size={13} /> {sorgulaMut.isPending ? 'Sorgulanıyor…' : 'Sorgula'}</button>
@@ -1715,9 +1713,6 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
       ) : (
         <div className={`card sourcepanel ${efaturaOverlayBusy ? 'isbusy' : ''}`}>
           <div className="ch sourcehead">
-            <h3>e-Fatura sorguları</h3>
-            <span className="mu">GIB e-Arşiv ile karışmaz; sadece e-Fatura entegratörleri ve aktarım durumları.</span>
-            <div className="sp" />
             <div className="segmini">
               <button className={efaturaChannel === 'IN_EFATURA' ? 'on' : ''} onClick={() => setEfaturaChannel('IN_EFATURA')}>Alış e-Fatura</button>
               <button className={efaturaChannel === 'OUT_EFATURA' ? 'on' : ''} onClick={() => setEfaturaChannel('OUT_EFATURA')}>Satış e-Fatura</button>
