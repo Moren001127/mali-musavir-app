@@ -5868,10 +5868,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       listPageToken = listPageHtml.match(/name="__RequestVerificationToken"[^>]*value="([^"]+)"/)?.[1]
         || listPageHtml.match(/__RequestVerificationToken[^>]*value="([^"]+)"/)?.[1]
         || '';
-      // [TESHIS-OUT] GEÇİCİ: referer sayfası token verdi mi (OUT'ta boş cevabın kökü token/referer olabilir).
-      if (channel !== 'IN_EFATURA') {
-        this.logger.log(`[TESHIS-OUT] referer=${refererPath} st=${listPage.status} htmlLen=${listPageHtml.length} token=${listPageToken ? 'VAR' : 'YOK'} login=${/account\/login|name=["']password["']/i.test(listPageHtml) ? 'E' : 'H'}`);
-      }
+
     } catch {
       // Optional warm-up.
     }
@@ -6368,7 +6365,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           } catch { /* bu fatura direkt inemedi → brute-force fallback dener */ } finally { clearTimeout(tm); }
         }));
       }
-      this.logger.log(`[TURMOB-FAST] ${channel} direkt indirme: ${directOk}/${directRows.length} fatura (XML+gorsel, eszamanli)`);
+
     }
     const priorityUrls = new Set<string>();
     const seenUrls = new Set<string>();
@@ -6727,18 +6724,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         const contentType = String(docRes.headers.get('content-type') || '');
         const text = buf.toString('utf8');
         const localVisual = rememberStandaloneVisual(buf, text, contentType);
-        // [TESHIS-TURMOB-DL] GEÇİCİ: hangi uç GERÇEK görsel (PDF/HTML) döndürüyor — brute-force'u doğru
-        //   uçla değiştirmek için canlı veri. Sadece BAŞARI loglanır (başarısızlar 6671'de). Bittiğinde KALDIR.
-        if (localVisual.pdf || localVisual.html) {
-          this.logger.log(`[TESHIS-TURMOB-DL] GORSEL ${request.method} ${request.url.slice(0, 170)} ct=${contentType.slice(0, 40)} bytes=${buf.length} yield=${localVisual.pdf ? 'PDF' : 'HTML'}`);
-        }
+
         collectCandidateUrls(text);
         drainCandidateRequests();
         const before = payloads.length;
         const nestedPayloads = await this.extractPayloadsFromProviderResponse(text, ['xml', 'ubl', 'content', 'data', 'base64', 'DocumentXml', 'InvoiceXml']);
-        if (nestedPayloads.length) {
-          this.logger.log(`[TESHIS-TURMOB-DL] XML ${request.method} ${request.url.slice(0, 170)} ct=${contentType.slice(0, 40)} bytes=${buf.length} payloads=${nestedPayloads.length}`);
-        }
         payloads.push(...nestedPayloads);
         if (payloads.length === before) {
           await this.addPayloadBuffer(payloads, buf);
@@ -6756,8 +6746,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const uniqueCount = new Set(payloads.map((payload) => payload.externalId || createHash('sha1').update(payload.xml).digest('hex'))).size;
       if (uniqueCount >= targetPayloadCount) break;
     }
-    // [TESHIS-TURMOB-DL] GEÇİCİ özet — kaç satır için kaç PDF/HTML/XML indi (görsel isabeti). Bittiğinde KALDIR.
-    this.logger.log(`[TESHIS-TURMOB-DL] OZET channel=${channel} satir=${live.length} payload=${payloads.length} pdf=${payloads.filter((p) => p.pdfBuffer).length} html=${payloads.filter((p) => p.htmlContent).length} attempts=${downloadAttempts}/${maxDownloadAttempts}`);
+
     if (!payloads.length && first === '<') {
       throw new Error('TURMOB oturumu liste ekranina gecemedi; portal login sayfasina geri dondu');
     }
@@ -7363,8 +7352,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       : null;
     const hasHtml = html && /<(?:!doctype\s+html|html|body)\b/i.test(html.slice(0, 2000));
     const hasOriginalHtml = !!hasHtml && !(cfg.provider === 'TURMOB_EFATURA' && this.isFakeTurmobVisualHtml(html));
-    // [TESHIS-TURMOB-VIS] GEÇİCİ: belge başına orijinal görsel sonucu (kaç belge MISSING + neden). Bittiğinde KALDIR.
-    this.logger.log(`[TESHIS-TURMOB-VIS] belge=${(parsed.faturaNo || sourceRefId || '').toString().slice(0, 24)} provider=${cfg.provider} pdf=${pdf ? 'E' : 'H'} html=${hasHtml ? (hasOriginalHtml ? 'E' : 'FAKE') : 'H'} → ${(cfg.provider === 'TURMOB_EFATURA' && !pdf && !hasOriginalHtml) ? 'MISSING' : 'OK'}`);
+
     if (cfg.provider === 'TURMOB_EFATURA' && !pdf && !hasOriginalHtml) {
       throw new Error('TURMOB orijinal fatura goruntusu olmadan belge kaydedilmedi.');
     }
@@ -8974,11 +8962,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   metni yoksa. Yanlış okumayı denge/KDV-matematik doğrulaması yakalar. (Kullanıcı: "okuma yavaş".)
     const useAzureText = azureText.length > 80;
     const callPrompt = useAzureText ? (prompt + '\n\nBELGE METNİ (OCR ile okundu):\n' + azureText.slice(0, 20000)) : prompt;
-    const _teshisT0 = Date.now();
-    const _teshisYol = preParsed ? 'azure-parsed (Max YOK)' : useAzureText ? 'azure-metni → Max' : (isImage ? 'GÖRÜNTÜ → Max-vision (YAVAŞ)' : 'html → Max');
-    let _teshisAttempt = 0;
     for (let attempt = 1; attempt <= 3 && !parsed; attempt++) {
-      _teshisAttempt = attempt;
       const model = attempt >= 3 ? undefined : MAX_MODEL_CHEAP; // 3. deneme: Sonnet (varsayılan)
       const res = await claudeTextViaMax(
         (isImage && !useAzureText)
@@ -8997,7 +8981,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         if (!parsed) reason = 'AI yanıtı çözülemedi';
       } catch { parsed = null; reason = 'AI yanıtı çözülemedi'; }
     }
-    try { this.logger.log(`[TESHIS-FM] belge=${d.belgeNo || '?'} yol="${_teshisYol}" azureText=${azureText.length}ch isImage=${isImage} attempt=${_teshisAttempt} sure=${Date.now() - _teshisT0}ms parsed=${!!parsed}${parsed ? '' : ' reason=' + reason}`); } catch { /* log opsiyonel */ }
+
     if (!parsed) return { ok: false, reason };
 
     // UBL/XML yolu max-vision AI'ı ATLAR → sınıflandırma (giderTuru/kategori/İşletme kayıt türü) BURADA
@@ -9008,10 +8992,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       // TEMİZ içerik: HTML-HIZLI yolunda _htmlText zaten script/style atılmış + 8000 char (sınıflandırma
       //   AI'ı 23KB ham HTML gürültüsünde boğuluyordu → NULL/boş kategori). Önce onu kullan; yoksa eski yol.
       const contentText = (parsed._htmlText || parsed._azureText || (imgBuf ? imgBuf.toString('utf8') : (html || ''))).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 9000);
-      const _clsT0 = Date.now();
       // TOPLU: aynı mükellef+plan+yön grubundaki belgeler tek Max çağrısında sınıflanır (alt-süreç N× azalır).
       const c = await this.aiClassifyAccountingCoalesced(contentText, mukellefBilgi, isIsletmeMukellef, d.invoiceKind === 'SATIS' ? 'SATIS' : 'ALIS', planAdaylar).catch(() => null);
-      this.logger.log(`[TESHIS-CLS] belge=${d.belgeNo || documentId} sonuc=${c ? 'OK' : 'NULL'} sure=${Date.now() - _clsT0}ms neden=${(c as any)?.muhasebeNeden ? 'var' : 'YOK'} matrahKod=${(c as any)?.matrahHesapKodu || 'YOK'} kategori=${c?.kategori || 'YOK'} contentLen=${contentText.length} planVar=${planAdaylar ? 'E' : 'H'}`);
       if (c) {
         if (!parsed.giderTuru && c.giderTuru) parsed.giderTuru = c.giderTuru;
         if (!parsed.kategori && c.kategori) parsed.kategori = c.kategori;
