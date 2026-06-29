@@ -170,17 +170,6 @@ function deriveDurum(doc: any, isIsletme = false, autoKtKod = ''): { k: string; 
   if (incomplete) return { k: 'warn', t: 'Tutar okunamadı', cat: 'tutar' };
   return { k: 'ok', t: 'Eşleşti ✓', cat: 'ready' };
 }
-const DURUM_FILTRELER: Array<{ v: string; l: string }> = [
-  { v: 'all', l: 'Hepsi' },
-  { v: 'ready', l: 'Eşleşti' },
-  { v: 'incele', l: 'Eşleşmedi' },
-  { v: 'eksik', l: 'Kod eksik' },
-  { v: 'celiski', l: 'Çelişki' },
-  { v: 'demirbas', l: 'Demirbaş (manuel)' },
-  { v: 'tutar', l: 'Tutar okunamadı' },
-  { v: 'okunuyor', l: 'Okunuyor' },
-  { v: 'okunamadi', l: 'Okunamadı' },
-];
 function taxpayerLabel(t: any): string {
   return t?.companyName || [t?.firstName, t?.lastName].filter(Boolean).join(' ') || t?.taxNumber || 'Mükellef';
 }
@@ -737,25 +726,12 @@ export default function FaturaMerkeziPage() {
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
               Portala Dön
             </a>
-            <div className="sidecontext">
-              <div className="ctxlabel">Çalışma bağlamı</div>
-              <label className="ctxfield">
-                <span>Mükellef</span>
-                <select value={taxpayerId} onChange={(e) => setTaxpayerId(e.target.value)}>
-                  <option value="">Tüm mükellefler</option>
-                  {taxpayers.map((t) => (
-                    <option key={t.id} value={t.id}>{taxpayerLabel(t)}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="ctxfield">
-                <span>Dönem</span>
-                <select value={period} onChange={(e) => setPeriod(e.target.value)}>
-                  {periodOptions().map((p) => (
-                    <option key={p.v} value={p.v}>{p.l}</option>
-                  ))}
-                </select>
-              </label>
+            <div className="brandrow">
+              <div className="brandmk">FM</div>
+              <div className="brandtx">
+                <div className="brandmod">Fatura Merkezi</div>
+                <div className="brandsub">Belge · Muhasebe · Luca aktarım</div>
+              </div>
             </div>
           </div>
           {nav}
@@ -765,24 +741,30 @@ export default function FaturaMerkeziPage() {
           <div className="top">
             <div className="crumb" dangerouslySetInnerHTML={{ __html: TITLES[screen] || '' }} />
             <div className="sp" />
-            <div className="topfiltbar">
-              <div className="topfilt">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
-                <select className="filtsel" value={taxpayerId} onChange={(e) => setTaxpayerId(e.target.value)}>
-                  <option value="">Tüm mükellefler</option>
-                  {taxpayers.map((t) => (
-                    <option key={t.id} value={t.id}>{taxpayerLabel(t)}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="topfilt">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
-                <select className="filtsel" value={period} onChange={(e) => setPeriod(e.target.value)}>
-                  {periodOptions().map((p) => (
-                    <option key={p.v} value={p.v}>{p.l}</option>
-                  ))}
-                </select>
-              </div>
+            <div className="ctxbar">
+              <label className="ctxpick">
+                <span className="ctxpick-l">Mükellef</span>
+                <div className="ctxpick-f">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+                  <select value={taxpayerId} onChange={(e) => setTaxpayerId(e.target.value)}>
+                    <option value="">Tüm mükellefler</option>
+                    {taxpayers.map((t) => (
+                      <option key={t.id} value={t.id}>{taxpayerLabel(t)}</option>
+                    ))}
+                  </select>
+                </div>
+              </label>
+              <label className="ctxpick">
+                <span className="ctxpick-l">Dönem</span>
+                <div className="ctxpick-f">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                  <select value={period} onChange={(e) => setPeriod(e.target.value)}>
+                    {periodOptions().map((p) => (
+                      <option key={p.v} value={p.v}>{p.l}</option>
+                    ))}
+                  </select>
+                </div>
+              </label>
             </div>
           </div>
 
@@ -1078,12 +1060,27 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
     <section className="screen">
       <div className="h2">{kind === 'SATIS' ? 'Bekleyen Satış Faturaları' : 'Bekleyen Alış Faturaları'}</div>
       <div className="sub">{kind === 'SATIS' ? 'Mükellefin kestiği satış faturaları — kuralla otomatik eşleşir.' : 'Entegratörden çekilen gelen faturalar — kuralla otomatik eşleşir, sadece eksik/çelişkili olana bakarsın.'}</div>
-      <div className="fmstats">
-        <div className="fmstat" style={{ ['--sc' as any]: '#2563eb' }}><span className="fmsl">Bekleyen belge</span><span className="fmsv">{durumCount('all')}</span></div>
-        <div className="fmstat" style={{ ['--sc' as any]: '#15803d' }}><span className="fmsl">Eşleşti</span><span className="fmsv">{durumCount('ready')}</span></div>
-        <div className="fmstat" style={{ ['--sc' as any]: '#d97706' }}><span className="fmsl">Çelişki</span><span className="fmsv">{durumCount('celiski')}</span></div>
-        <div className="fmstat" style={{ ['--sc' as any]: '#7c3aed' }}><span className="fmsl">Demirbaş (manuel)</span><span className="fmsv">{durumCount('demirbas')}</span></div>
-        <div className="fmstat" style={{ ['--sc' as any]: '#e5484d' }}><span className="fmsl">Okunamadı / eksik</span><span className="fmsv">{durumCount('okunamadi') + durumCount('eksik')}</span></div>
+      <div className="filttiles">
+        {([
+          { v: 'all', l: 'Tümü', c: 'var(--accent)' },
+          { v: 'ready', l: 'Eşleşti', c: '#15803d' },
+          { v: 'eksik', l: 'Kod eksik', c: '#d97706' },
+          { v: 'incele', l: 'Eşleşmedi', c: '#c2710c' },
+          { v: 'celiski', l: 'Çelişki', c: '#e5484d' },
+          { v: 'tutar', l: 'Tutar okunamadı', c: '#db6e1e' },
+          { v: 'demirbas', l: 'Demirbaş', c: '#7c3aed' },
+          { v: 'okunuyor', l: 'Okunuyor', c: '#0891b2' },
+          { v: 'okunamadi', l: 'Okunamadı', c: '#e5484d' },
+        ] as Array<{ v: string; l: string; c: string }>).map((t) => {
+          const n = durumCount(t.v);
+          if (t.v !== 'all' && n === 0) return null;
+          return (
+            <button key={t.v} type="button" className={`ftile${durumF === t.v ? ' on' : ''}`} style={{ ['--tc' as any]: t.c }} onClick={() => setDurumF(t.v)}>
+              <span className="ftn">{n}</span>
+              <span className="ftl">{t.l}</span>
+            </button>
+          );
+        })}
       </div>
       <div className="card invcard">
         <div className="ch invactions">
@@ -1138,17 +1135,6 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
             <span><b>{missing.length}</b> satıcıdan bu dönem belge gelmemiş olabilir (düzenli geliyordu): {missing.slice(0, 8).map((m: any) => m.name).join(', ')}{missing.length > 8 ? ` +${missing.length - 8}` : ''}</span>
           </div>
         )}
-        <div className="durumfiltre">
-          {DURUM_FILTRELER.map((f) => {
-            const n = durumCount(f.v);
-            if (f.v !== 'all' && n === 0) return null;
-            return (
-              <button key={f.v} className={`dfchip${durumF === f.v ? ' on' : ''}`} onClick={() => setDurumF(f.v)}>
-                {f.l} <span className="dfn">{n}</span>
-              </button>
-            );
-          })}
-        </div>
         <div className="twrap">
           <table>
             <thead><tr><th style={{ width: 30 }}><Check checked={allSelected} onToggle={toggleAll} /></th><th>Tarih</th><th>Fatura No</th><th>Firma Adı</th><th>Tip</th><th className="num">KDV Hariç</th><th className="num">KDV</th><th className="num">Tutar</th>{!isIsletme && <th>Hesap Kodu</th>}<th>Durum</th><th className="actcol" style={{ width: 40 }} /></tr></thead>
@@ -4358,4 +4344,31 @@ const CSS = `
 #fm-root .screen-muhasebe .muhmain .fgrp .frow{padding:6px 9px}
 #fm-root .screen-muhasebe .muhmain .fgrp .frowadd{padding:5px 10px}
 #fm-root .screen-muhasebe .muhmain .fgrp .fgt{padding:6px 10px}
+
+/* ===================== YENİ YAPISAL DİL (2026-06-29 baştan tasarım) ===================== */
+/* Üst bağlam barı — mükellef + dönem seçimi belirgin, etiketli (sol kenardaki tekrar kaldırıldı) */
+#fm-root .top{height:auto;min-height:62px;padding:11px 24px;background:#fff;border-bottom:1px solid var(--line);gap:16px;align-items:center;backdrop-filter:none;flex-wrap:wrap}
+#fm-root .top .crumb{font-size:13.5px;font-weight:750;color:var(--text)}
+#fm-root .top .crumb b{color:var(--text);font-weight:800}
+#fm-root .ctxbar{display:flex;align-items:stretch;gap:10px}
+#fm-root .ctxpick{display:flex;flex-direction:column;gap:3px}
+#fm-root .ctxpick-l{font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--faint);padding-left:3px}
+#fm-root .ctxpick-f{display:flex;align-items:center;gap:7px;height:36px;padding:0 11px;border:1.5px solid var(--accent-line);background:var(--accent-soft);border-radius:9px;transition:border-color .12s,box-shadow .12s}
+#fm-root .ctxpick-f:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+#fm-root .ctxpick-f svg{color:var(--accent);flex-shrink:0;opacity:.85}
+#fm-root .ctxpick-f select{border:none;background:transparent;font-size:13px;font-weight:700;color:var(--text);cursor:pointer;outline:none;min-width:148px;max-width:240px;font-family:inherit}
+/* Kenar çubuğu marka bloğu */
+#fm-root .brandrow{display:flex;align-items:center;gap:10px;margin-top:11px}
+#fm-root .brandmk{width:38px;height:38px;border-radius:10px;background:var(--accent);color:#fff;display:grid;place-items:center;font-size:13px;font-weight:900;letter-spacing:.5px;flex-shrink:0;box-shadow:0 8px 18px -12px var(--accent)}
+#fm-root .brandtx .brandmod{font-size:15px;font-weight:900;color:var(--text);line-height:1.1}
+#fm-root .brandtx .brandsub{font-size:10.5px;font-weight:600;color:var(--faint);letter-spacing:.2px;margin-top:2px}
+/* İşlevsel filtre kutucukları — sayaç + filtre TEK satır (eski pasif kartlar + ayrı çipler birleşti) */
+#fm-root .filttiles{display:flex;flex-wrap:wrap;gap:9px;margin:4px 0 16px}
+#fm-root .ftile{display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-width:108px;padding:11px 15px 10px 16px;border:1px solid var(--line);border-radius:12px;background:#fff;cursor:pointer;position:relative;overflow:hidden;text-align:left;transition:border-color .12s,box-shadow .12s,transform .08s,background .12s;box-shadow:0 1px 2px rgba(16,24,40,.05)}
+#fm-root .ftile::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--tc,var(--accent));opacity:.9}
+#fm-root .ftile:hover{border-color:var(--tc,var(--accent));transform:translateY(-1px);box-shadow:0 8px 18px -11px var(--tc,var(--accent))}
+#fm-root .ftile.on{border-color:var(--tc,var(--accent));background:color-mix(in srgb,var(--tc,var(--accent)) 9%,#fff);box-shadow:inset 0 0 0 1px var(--tc,var(--accent))}
+#fm-root .ftile .ftn{font-size:24px;font-weight:800;line-height:1;color:var(--text);font-variant-numeric:tabular-nums;letter-spacing:-.6px}
+#fm-root .ftile .ftl{font-size:11px;font-weight:650;color:var(--muted);white-space:nowrap}
+#fm-root .ftile.on .ftl{color:var(--tc,var(--accent));font-weight:750}
 `;
