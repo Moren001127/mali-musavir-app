@@ -3597,7 +3597,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
               if (effectiveParsed?.saticiVergiNo || summary.senderVkn) data.senderVkn = effectiveParsed?.saticiVergiNo || summary.senderVkn;
               if (effectiveParsed?.satici || summary.senderTitle) data.senderTitle = effectiveParsed?.satici || summary.senderTitle;
               if (effectiveParsed?.aliciVergiNo || summary.receiverVkn) data.receiverVkn = effectiveParsed?.aliciVergiNo || summary.receiverVkn;
-              if (effectiveParsed?.alici || summary.receiverTitle) data.receiverTitle = effectiveParsed?.alici || summary.receiverTitle;
+              // NOT: receiverTitle Prisma alanı EFaturaInbox şemasında YOK → yazınca "Unknown argument
+              //   receiverTitle" ile TÜM liste satırı yazımı patlıyordu (TÜRMOB tamamen kırıktı). Alıcı
+              //   ünvanı zaten rawJson.receiverTitle'da saklanıyor (yukarıda) → veri kaybı yok.
               if (effectiveParsed?.faturaNo || summary.faturaNo) data.faturaNo = effectiveParsed?.faturaNo || summary.faturaNo;
               if (effectiveParsed?.faturaTarihi || summary.faturaDate) data.faturaDate = effectiveParsed?.faturaTarihi || summary.faturaDate;
               if (effectiveParsed?.matrah != null || summary.matrah != null) data.matrah = String(effectiveParsed?.matrah ?? summary.matrah);
@@ -4051,7 +4053,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             ...(parsed?.saticiVergiNo ? { senderVkn: parsed.saticiVergiNo } : {}),
             ...(parsed?.satici ? { senderTitle: parsed.satici } : {}),
             ...(parsed?.aliciVergiNo ? { receiverVkn: parsed.aliciVergiNo } : {}),
-            ...(parsed?.alici ? { receiverTitle: parsed.alici } : {}),
+            // receiverTitle alanı şemada YOK (yukarıdaki nottaki gibi) → aktarımda da yazılmaz; rawJson'da var.
             ...(parsed?.matrah != null ? { matrah: String(parsed.matrah) } : {}),
             ...(parsed?.kdvTutari != null ? { kdv: String(parsed.kdvTutari) } : {}),
             ...(total != null ? { toplam: String(total) } : {}),
