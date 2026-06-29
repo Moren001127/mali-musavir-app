@@ -3492,6 +3492,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
 
     const statuses: any[] = [];
     let fetched = 0, added = 0, updated = 0, skipped = 0, failed = 0;
+    let turmobNeedsPrefetch = false;
     for (const item of providers) {
       const row = byProvider.get(item.provider);
       const cfg = this.resolveRuntimeConfig(row, item, opts.taxpayerId);
@@ -3509,7 +3510,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
 
       try {
         if (cfg.provider === 'TURMOB_EFATURA') {
-          const listed = await this.fetchTurmobPortalRows(cfg, { direction, period, limit, channel });
+          const listed = await this.withTurmobAccess(cfg.username, () => this.fetchTurmobPortalRows(cfg, { direction, period, limit, channel }));
           const turmobLookup: ProviderPayloadLookup = { cfg, payloads: [], byKey: new Map(), error: null };
           let providerFetched = 0, providerAdded = 0, providerUpdated = 0, providerSkipped = 0, providerFailed = 0;
           let providerDownloaded = 0, providerMissingDocument = 0;
@@ -3658,6 +3659,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             missingDocument: 0,
             failed: providerFailed,
           });
+          if (providerMissingDocument > 0) turmobNeedsPrefetch = true;
           continue;
         }
 
@@ -3748,6 +3750,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       }
     }
 
+    // TÜRMOB: liste yazıldı, ANINDA dön. Eksik belgeleri (PENDING_DOWNLOAD) ARKA PLANDA
+    //   indir (tek-oturum kilidiyle). UI satırların documentDownloadStatus'undan sayaç gösterir;
+    //   indirme bitince Aktar pasiflikten çıkar ve hazır görseli tekrar indirmeden aktarır.
+    if (turmobNeedsPrefetch) {
+      void this.prefetchTurmobInboxDocuments(tenantId, opts.taxpayerId, { direction: inboxDirection, channel, period: opts.period })
+        .catch((e: any) => this.logger.warn(`TURMOB arka plan indirme tetiklenemedi: ${e?.message || e}`));
+    }
     return { source: 'efatura-inbox', channel, direction: inboxDirection, fetched, added, updated, skipped, failed, providers: statuses };
   }
 
@@ -3867,14 +3876,14 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           try {
             const sampleDate = targets.find((candidate: any) => candidate.faturaDate)?.faturaDate;
             const samplePeriod = opts.period || (sampleDate ? new Date(sampleDate).toISOString().slice(0, 7) : undefined);
-            const payloads = await this.fetchTurmobPortalInvoices(cfg, {
+            const payloads = await this.withTurmobAccess(cfg.username, () => this.fetchTurmobPortalInvoices(cfg, {
               taxpayer,
               direction: direction === 'OUT' ? 'SATIS' : 'ALIS',
               period: this.monthRange(samplePeriod),
               limit: Math.min(Math.max(targets.length, 1), 1000),
               channel,
               targetRows: targets,
-            });
+            }));
             return { cfg, payloads, byKey: this.buildProviderPayloadLookup(payloads), error: null };
           } catch (e: any) {
             const message = e?.message || String(e);
@@ -3966,14 +3975,14 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
               const rowDate = row.faturaDate ? new Date(row.faturaDate) : null;
               const rowPeriod = opts.period || (rowDate && !Number.isNaN(rowDate.getTime()) ? rowDate.toISOString().slice(0, 7) : undefined);
               const downloadPeriod = this.monthRange(rowPeriod);
-              const payloads = await this.fetchTurmobPortalInvoices(cfgForDownload, {
+              const payloads = await this.withTurmobAccess(cfgForDownload.username, () => this.fetchTurmobPortalInvoices(cfgForDownload, {
                 taxpayer,
                 direction: direction === 'OUT' ? 'SATIS' : 'ALIS',
                 period: downloadPeriod,
                 limit: 1,
                 channel,
                 targetRows: [row],
-              });
+              }));
               const lookup = { cfg: cfgForDownload, payloads, byKey: this.buildProviderPayloadLookup(payloads), error: null };
               downloaded = this.providerPayloadForInboxRow(row, lookup) || payloads[0] || null;
             }
@@ -5479,6 +5488,144 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
    * POST login → başarı 302 redirect + auth cookie. Hatalı kimlik 200 (login sayfası tekrar).
    */
   private readonly TURMOB_BASE = 'https://turmobefatura.luca.com.tr';
+  // TÜRMOB TEK-OTURUM: portal aynı TCKN ile ikinci kez login olunca öncekini düşürür.
+  //   Bu kilit, aynı TCKN'ye ait tüm TÜRMOB işlemlerini (liste sorgu, arka plan indirme,
+  //   Aktar indirmesi) SIRAYLA çalıştırır → eşzamanlı login = oturum çakışması olmaz.
+  //   Farklı TCKN'ler birbirini bloklamaz (anahtar = TCKN).
+  private turmobAccessLocks = new Map<string, Promise<void>>();
+  private async withTurmobAccess<T>(key: string, fn: () => Promise<T>): Promise<T> {
+    const k = String(key || 'turmob-global');
+    const prev = this.turmobAccessLocks.get(k) || Promise.resolve();
+    let release!: () => void;
+    const gate = new Promise<void>((r) => { release = r; });
+    this.turmobAccessLocks.set(k, prev.then(() => gate));
+    await prev.catch(() => undefined);
+    try {
+      return await fn();
+    } finally {
+      release();
+    }
+  }
+
+  /**
+   * TÜRMOB sorgusundan SONRA çalışan ARKA PLAN indirme: PENDING_DOWNLOAD durumundaki
+   * satırların XML+görselini TEK login ile toplu indirir, satırları READY/MISSING yapar.
+   * "Aktar" bu satırları hazır bulur → tekrar indirmez (iki kere iş yok). withTurmobAccess
+   * ile serileştirilir → Aktar/sorgu ile eşzamanlı login olmaz (tek-oturum çakışması yok).
+   * İlerleme ayrı tabloda tutulmaz; satırların documentDownloadStatus'undan türetilir
+   * (frontend sayacı bunu okur). Hata = sessiz (satır MISSING kalır, Aktar tekrar dener).
+   */
+  async prefetchTurmobInboxDocuments(
+    tenantId: string,
+    taxpayerId: string,
+    opts: { direction: 'IN' | 'OUT'; channel: string; period?: string },
+  ): Promise<void> {
+    try {
+      const channel = String(opts.channel || '').toUpperCase();
+      const direction: 'ALIS' | 'SATIS' = opts.direction === 'IN' ? 'ALIS' : 'SATIS';
+      const cfg = await this.resolveRuntimeConfigForProvider(tenantId, taxpayerId, 'TURMOB_EFATURA');
+      if (!cfg || !cfg.username || !cfg.password) return;
+      const taxpayer = await (this.prisma as any).taxpayer.findFirst({
+        where: { id: taxpayerId, tenantId },
+        select: { id: true, companyName: true, taxNumber: true },
+      });
+      if (!taxpayer) return;
+      const period = this.monthRange(opts.period);
+      const candidates = await (this.prisma as any).eFaturaInbox.findMany({
+        where: { tenantId, taxpayerId, entegrator: 'TURMOB_EFATURA', direction: opts.direction },
+        select: { id: true, uuid: true, ettn: true, faturaNo: true, faturaDate: true, ublXmlRaw: true, rawJson: true },
+      });
+      const targets = candidates.filter((row: any) => {
+        const raw = row.rawJson && typeof row.rawJson === 'object' ? row.rawJson : {};
+        if (String(raw.channel || '').toUpperCase() !== channel) return false;
+        if (opts.period && String(raw.period || '') !== opts.period) return false;
+        const xml = String(row.ublXmlRaw || '').trim();
+        const status = String(raw.documentDownloadStatus || '').toUpperCase();
+        return !xml
+          || this.isSyntheticTurmobInboxXml(xml)
+          || !this.hasOriginalProviderVisual(raw.originalVisual, 'TURMOB_EFATURA')
+          || status === 'PENDING_DOWNLOAD'
+          || status === 'MISSING'
+          || status === 'SUMMARY_ONLY';
+      });
+      if (!targets.length) return;
+      this.logger.log(`TURMOB arka plan indirme basladi: ${channel} ${period.donem} · ${targets.length} belge`);
+      // İndirme hatasında FIRLATMA: payloads boş kalır → her satır MISSING işaretlenir →
+      //   PENDING_DOWNLOAD takılı kalmaz (Aktar pasiflikten çıkar, kendi içinde yeniden dener).
+      let payloads: ProviderInvoicePayload[] = [];
+      let fetchError: string | null = null;
+      try {
+        payloads = await this.withTurmobAccess(cfg.username, () =>
+          this.fetchTurmobPortalInvoices(cfg, {
+            taxpayer,
+            direction,
+            period,
+            limit: Math.min(Math.max(targets.length, 1), 1000),
+            channel,
+            targetRows: targets,
+          }),
+        );
+      } catch (e: any) {
+        fetchError = e?.message || 'TURMOB belge indirilemedi';
+        this.logger.warn(`TURMOB arka plan toplu indirme hatasi: ${fetchError}`);
+      }
+      const lookup: any = { cfg, payloads, byKey: this.buildProviderPayloadLookup(payloads), error: fetchError };
+      let ok = 0, miss = 0;
+      for (const row of targets) {
+        const raw = row.rawJson && typeof row.rawJson === 'object' ? row.rawJson : {};
+        try {
+          const downloaded = this.providerPayloadForInboxRow(row, lookup);
+          if (downloaded) {
+            const parsed = this.parseProviderUblInvoice(downloaded.xml) || this.regexProviderInvoiceFallback(downloaded.xml);
+            const storedVisual = this.providerStoredVisual(downloaded);
+            const hasVisual = this.hasOriginalProviderVisual(storedVisual, 'TURMOB_EFATURA');
+            const data: any = {
+              ublXmlRaw: downloaded.xml,
+              rawJson: {
+                ...raw,
+                needsDocumentDownload: !hasVisual,
+                documentDownloadStatus: hasVisual ? 'READY' : 'MISSING',
+                documentDownloadError: hasVisual ? null : 'TURMOB orijinal fatura goruntusu indirilemedi.',
+                originalVisual: storedVisual || raw.originalVisual || null,
+              },
+            };
+            if (parsed?.ettn) data.ettn = parsed.ettn;
+            if (parsed?.saticiVergiNo) data.senderVkn = parsed.saticiVergiNo;
+            if (parsed?.satici) data.senderTitle = parsed.satici;
+            if (parsed?.aliciVergiNo) data.receiverVkn = parsed.aliciVergiNo;
+            if (parsed?.faturaNo) data.faturaNo = parsed.faturaNo;
+            if (parsed?.faturaTarihi) data.faturaDate = parsed.faturaTarihi;
+            if (parsed?.matrah != null) data.matrah = String(parsed.matrah);
+            if (parsed?.kdvTutari != null) data.kdv = String(parsed.kdvTutari);
+            const total = parsed ? (parsed.toplamTutar ?? ((parsed.matrah || 0) + (parsed.kdvTutari || 0))) : null;
+            if (total != null) data.toplam = String(total);
+            await (this.prisma as any).eFaturaInbox.update({ where: { id: row.id }, data });
+            if (hasVisual) ok++; else miss++;
+          } else {
+            miss++;
+            await (this.prisma as any).eFaturaInbox.update({
+              where: { id: row.id },
+              data: {
+                rawJson: {
+                  ...raw,
+                  needsDocumentDownload: true,
+                  documentDownloadStatus: 'MISSING',
+                  documentDownloadError: lookup.error || 'TURMOB belge indirilemedi.',
+                },
+              },
+            });
+          }
+        } catch (e: any) {
+          miss++;
+          this.logger.warn(`TURMOB arka plan satir indirme hatasi: ${row.faturaNo || row.uuid || row.id} ${e?.message || e}`);
+        }
+      }
+      this.logger.log(`TURMOB arka plan indirme bitti: ${channel} ${period.donem} · ${ok} indirildi · ${miss} eksik`);
+    } catch (e: any) {
+      this.logger.warn(`TURMOB arka plan indirme genel hata: ${e?.message || e}`);
+    }
+  }
+
   private async turmobLogin(vknTckn: string, password: string): Promise<string> {
     const BASE = this.TURMOB_BASE;
     const pick = (res: Response): string[] => {

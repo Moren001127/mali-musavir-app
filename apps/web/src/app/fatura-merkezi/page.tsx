@@ -1429,6 +1429,14 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
     const raw = r?.rawJson && typeof r.rawJson === 'object' ? r.rawJson : {};
     return String(raw?.documentDownloadStatus || (r?.ublXmlRaw ? 'READY' : '')).toUpperCase();
   };
+  // Arka plan belge indirme sayacı — satırların documentDownloadStatus'undan türetilir.
+  //   PENDING_DOWNLOAD = TÜRMOB sorgusundan sonra arka planda iniyor. Bitene kadar (pending>0)
+  //   "Aktar" pasif → TÜRMOB tek-oturum çakışması olmaz, görsel önceden iner → Aktar anında.
+  const efaturaDownloadTotal = efaturaRows.length;
+  const efaturaDownloadReady = efaturaRows.filter((r) => efaturaDocumentStatus(r) === 'READY').length;
+  const efaturaDownloadPending = efaturaRows.filter((r) => efaturaDocumentStatus(r) === 'PENDING_DOWNLOAD').length;
+  const efaturaDownloadMissing = efaturaRows.filter((r) => efaturaDocumentStatus(r) === 'MISSING').length;
+  const efaturaDownloading = efaturaDownloadPending > 0;
   const efaturaCanImport = (r: any) => {
     if (efaturaIsTransferred(r)) return false;
     const raw = r?.rawJson && typeof r.rawJson === 'object' ? r.rawJson : {};
@@ -1459,7 +1467,10 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
         toast.success('Sorgu arka planda basladi; tablo otomatik yenilenecek.');
       } else {
         showFetchResult(data);
-        setEfaturaPollUntil(0);
+        // TÜRMOB sorgu listeyi anında döndürür; belgeler ARKA PLANDA iniyorsa hızlı poll'u
+        //   koru (sayaç canlı dolsun, indirme bitince Aktar pasiflikten çıksın).
+        const hasPending = Array.isArray(data?.providers) && data.providers.some((p: any) => Number(p?.pendingDocument || 0) > 0);
+        setEfaturaPollUntil(hasPending ? Date.now() + 5 * 60 * 1000 : 0);
       }
       qc.invalidateQueries({ queryKey: ['fm-efatura-inbox'] });
       qc.invalidateQueries({ queryKey: ['fm2'] });
@@ -1713,10 +1724,17 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
             <button className="btn sm fetch" disabled={!taxpayerId || !providerConnected(activeEfaturaProvider) || efaturaOverlayBusy} onClick={() => efaturaFetchMut.mutate({ provider: activeEfaturaProvider.provider })}>
               <Ico html={I.sync} size={13} /> {(efaturaFetchMut.isPending || efaturaQueuedSync) ? 'Sorgulaniyor...' : 'Sorgula'}
             </button>
-            <button className="btn sm primary" disabled={!taxpayerId || efaturaOverlayBusy || efaturaTransferableRows.length === 0} onClick={() => efaturaImportMut.mutate()}>
-              <Ico html={I.download} size={13} /> {(efaturaImportMut.isPending || efaturaQueuedImport) ? 'Aktariliyor...' : `${efaturaSelectedIds.length ? efaturaSelectedIds.length : efaturaTransferableRows.length} faturayi aktar`}
+            <button className="btn sm primary" disabled={!taxpayerId || efaturaOverlayBusy || efaturaDownloading || efaturaTransferableRows.length === 0} onClick={() => efaturaImportMut.mutate()} title={efaturaDownloading ? 'Belgeler iniyor; bitince aktarabilirsin (görseller önceden inecek)' : undefined}>
+              <Ico html={I.download} size={13} /> {efaturaDownloading ? 'Belgeler iniyor…' : (efaturaImportMut.isPending || efaturaQueuedImport) ? 'Aktariliyor...' : `${efaturaSelectedIds.length ? efaturaSelectedIds.length : efaturaTransferableRows.length} faturayi aktar`}
             </button>
           </div>
+          {efaturaDownloading && (
+            <div className="efdownbar">
+              <span className="efspin" aria-hidden="true" />
+              <span className="eftext">Belgeler indiriliyor… <b>{efaturaDownloadReady}</b> / {efaturaDownloadTotal} hazır{efaturaDownloadMissing ? ` · ${efaturaDownloadMissing} inemedi` : ''}</span>
+              <span className="eftrack"><span className="effill" style={{ width: `${efaturaDownloadTotal ? Math.round((efaturaDownloadReady / efaturaDownloadTotal) * 100) : 0}%` }} /></span>
+            </div>
+          )}
           {efaturaStatusRows.length > 0 && (
             <div className={`providerdiag ${efaturaStatusTone}`}>
               <b>Son sorgu</b>
@@ -4371,4 +4389,12 @@ const CSS = `
 #fm-root .ftile .ftn{font-size:24px;font-weight:800;line-height:1;color:var(--text);font-variant-numeric:tabular-nums;letter-spacing:-.6px}
 #fm-root .ftile .ftl{font-size:11px;font-weight:650;color:var(--muted);white-space:nowrap}
 #fm-root .ftile.on .ftl{color:var(--tc,var(--accent));font-weight:750}
+/* e-Fatura arka plan indirme sayacı (TÜRMOB) */
+#fm-root .efdownbar{display:flex;align-items:center;gap:10px;margin:10px 0 2px;padding:9px 13px;border:1px solid var(--accent-line);background:var(--accent-soft);border-radius:10px;font-size:12.5px;color:var(--text)}
+#fm-root .efdownbar .eftext{font-weight:600}
+#fm-root .efdownbar .eftext b{font-weight:800;color:var(--accent)}
+#fm-root .efdownbar .efspin{width:15px;height:15px;border-radius:50%;border:2px solid var(--accent-line);border-top-color:var(--accent);animation:efspin .7s linear infinite;flex-shrink:0}
+#fm-root .efdownbar .eftrack{flex:1;min-width:80px;height:6px;border-radius:99px;background:var(--accent-line);overflow:hidden}
+#fm-root .efdownbar .effill{display:block;height:100%;border-radius:99px;background:var(--accent);transition:width .4s ease}
+@keyframes efspin{to{transform:rotate(360deg)}}
 `;
