@@ -3575,6 +3575,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
                   provider: cfg.provider,
                   turmobRowId: summary.rowId || null,
                   turmobSummaryRaw: summary.raw,
+                  // Belge indirme icin IdFatura'yi ACIKCA sakla (canli listeden) → arka plan indirme
+                  //   listeyi tekrar cekmeden DOGRUDAN indirir (GetInvoiceXml/Detail).
+                  turmobIdFatura: String(this.turmobField(summary.raw, ['IdFatura', 'idFatura', 'IdFaturaEk']) || '').replace(/\D/g, '') || null,
                   period: period.donem,
                   queryPeriodStart: period.startDate,
                   queryPeriodEnd: period.endDate,
@@ -5550,19 +5553,27 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       });
       if (!targets.length) return;
       this.logger.log(`TURMOB arka plan indirme basladi: ${channel} ${period.donem} · ${targets.length} belge`);
-      // KANITLANMIS YOL: Aktar'in da kullandigi fetchTurmobPortalInvoices (CANLI listeyi tazeler →
-      //   IdFatura'yi oradan alir; DB'deki bayat/eksik IdFatura'ya bagimli DEGIL → 0-indirme regresyonu
-      //   bunu kullanmamaktan kaynaklaniyordu). GRUPLARA bolerek cagrilir: her grup bitince satirlar
-      //   yazilir → sayac KADEMELI dolar + bir grup takilirsa digerleri ilerler. Hata=satir MISSING (takilmaz).
-      const applyDownloaded = async (row: any, downloaded: any, lookupError: string | null) => {
+      // TEK login (mutex tum is boyunca → Aktar/sorgu ile eszamanli oturum yok). IdFatura DB'de ACIKCA
+      //   sakli (rawJson.turmobIdFatura; eski satirlarda turmobSummaryRaw'dan turetilir) → liste TEKRAR
+      //   CEKILMEZ, belge DOGRUDAN iner (GetInvoiceXml + Detail). 5'erli gruplar → sayac KADEMELI dolar.
+      //   Her belge icin TESHIS logu (idsiz / oturum dustu / HTTP) → bir daha 0 inerse sebep loglu.
+      const BASE = this.TURMOB_BASE;
+      const directInOrOut = opts.direction === 'IN' ? 'True' : 'False';
+      const refererPath = channel === 'IN_EFATURA' ? '/Inbox'
+        : channel === 'OUT_EARSIV' ? '/ArchiveInvoice/ArchiveInvoiceList'
+        : '/OutgoingInvoice/OutgoingInvoiceList';
+      const idOf = (row: any): string => {
         const raw = row.rawJson && typeof row.rawJson === 'object' ? row.rawJson : {};
-        if (!downloaded) {
-          await (this.prisma as any).eFaturaInbox.update({
-            where: { id: row.id },
-            data: { rawJson: { ...raw, needsDocumentDownload: true, documentDownloadStatus: 'MISSING', documentDownloadError: lookupError || 'TURMOB belge indirilemedi.' } },
-          });
-          return false;
-        }
+        let id = String(raw.turmobIdFatura || '').replace(/\D/g, '');
+        if (!id) id = String(this.turmobField(raw.turmobSummaryRaw || {}, ['IdFatura', 'idFatura', 'IdFaturaEk']) || '').replace(/\D/g, '');
+        return id;
+      };
+      const markMissing = (row: any, msg: string) => {
+        const raw = row.rawJson && typeof row.rawJson === 'object' ? row.rawJson : {};
+        return (this.prisma as any).eFaturaInbox.update({ where: { id: row.id }, data: { rawJson: { ...raw, needsDocumentDownload: true, documentDownloadStatus: 'MISSING', documentDownloadError: msg } } });
+      };
+      const applyDownloaded = async (row: any, downloaded: any) => {
+        const raw = row.rawJson && typeof row.rawJson === 'object' ? row.rawJson : {};
         const parsed = this.parseProviderUblInvoice(downloaded.xml) || this.regexProviderInvoiceFallback(downloaded.xml);
         const storedVisual = this.providerStoredVisual(downloaded);
         const hasVisual = this.hasOriginalProviderVisual(storedVisual, 'TURMOB_EFATURA');
@@ -5589,42 +5600,62 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         await (this.prisma as any).eFaturaInbox.update({ where: { id: row.id }, data });
         return hasVisual;
       };
-      let ok = 0, miss = 0;
-      // fetchTurmobPortalInvoices her cagrida TAM listeyi (min 500) ceker → grup sayisi = pahali kisim.
-      //   CHUNK buyuk tutulur (az liste-cekme, az TURMOB yuku) ama yine kademeli sayac (0→20→39…).
-      const CHUNK = 20;
-      for (let i = 0; i < targets.length; i += CHUNK) {
-        const group = targets.slice(i, i + CHUNK);
-        let payloads: ProviderInvoicePayload[] = [];
-        let fetchError: string | null = null;
-        try {
-          payloads = await this.withTurmobAccess(cfg.username, () =>
-            this.fetchTurmobPortalInvoices(cfg, {
-              taxpayer,
-              direction,
-              period,
-              limit: Math.min(Math.max(group.length, 1), 1000),
-              channel,
-              targetRows: group,
-            }),
-          );
-        } catch (e: any) {
-          fetchError = e?.message || 'TURMOB belge indirilemedi';
-          this.logger.warn(`TURMOB arka plan grup indirme hatasi: ${fetchError}`);
-        }
-        const lookup: any = { cfg, payloads, byKey: this.buildProviderPayloadLookup(payloads), error: fetchError };
-        for (const row of group) {
-          try {
-            const downloaded = this.providerPayloadForInboxRow(row, lookup);
-            if (await applyDownloaded(row, downloaded, fetchError)) ok++; else miss++;
-          } catch (e: any) {
-            miss++;
-            this.logger.warn(`TURMOB arka plan satir yazilamadi: ${row.faturaNo || row.uuid || row.id} ${e?.message || e}`);
+      let ok = 0, miss = 0, noId = 0;
+      try {
+        await this.withTurmobAccess(cfg.username, async () => {
+          const cookie = await this.turmobLogin(cfg.username, cfg.password);
+          const headers = { Cookie: cookie, 'User-Agent': 'MorenPortal/1.0', Accept: 'application/xml,text/xml,text/html,*/*', Origin: BASE, Referer: BASE + refererPath };
+          const CONC = 5;
+          for (let i = 0; i < targets.length; i += CONC) {
+            await Promise.all(targets.slice(i, i + CONC).map(async (row: any) => {
+              const id = idOf(row);
+              try {
+                if (!id) { miss++; noId++; await markMissing(row, 'TURMOB IdFatura yok — satiri yeniden Sorgula'); return; }
+                const ctl = new AbortController();
+                const tm = setTimeout(() => { try { ctl.abort(); } catch { /* */ } }, 12000);
+                try {
+                  const [xmlRes, visRes] = await Promise.all([
+                    fetch(`${BASE}/Invoice/GetInvoiceXml?InOrOut=${directInOrOut}&InvoiceId=${id}`, { headers, signal: ctl.signal }),
+                    fetch(`${BASE}/Invoice/Detail?InOrOut=${directInOrOut}&InvoiceId=${id}&IsPrint=True`, { headers, signal: ctl.signal }).catch(() => null),
+                  ]);
+                  const xml = await xmlRes.text();
+                  if (!/^\s*<\?xml|<[\w:]*Invoice\b/i.test(xml.slice(0, 400))) {
+                    miss++;
+                    const why = /account\/login|name=["']password["']/i.test(xml.slice(0, 2000)) ? 'oturum dustu (login sayfasi)' : `gecersiz yanit (HTTP ${xmlRes.status})`;
+                    this.logger.warn(`TURMOB belge inmedi: id=${id} → ${why}`);
+                    await markMissing(row, `TURMOB belge indirilemedi: ${why}`);
+                    return;
+                  }
+                  const payload: any = { xml };
+                  if (visRes && visRes.ok) {
+                    const vis = await visRes.text();
+                    if (vis && /<(?:!doctype\s+html|html|body)\b/i.test(vis.slice(0, 3000)) && !/account\/login|name=["']password["']/i.test(vis) && /(Invoice|Fatura)/i.test(vis.slice(0, 30000))) {
+                      payload.htmlContent = vis
+                        .replace(/<script[^>]*>[\s\S]*?(?:window\.)?print\s*\([\s\S]*?<\/script>/gi, '')
+                        .replace(/(?:window\.)?print\s*\(\s*\)/gi, 'void 0')
+                        .replace(/\bonload\s*=\s*(["'])[^"']*?print[^"']*?\1/gi, '');
+                    }
+                  }
+                  if (await applyDownloaded(row, payload)) ok++; else miss++;
+                } finally { clearTimeout(tm); }
+              } catch (e: any) {
+                miss++;
+                await markMissing(row, e?.message || 'TURMOB belge indirilemedi').catch(() => undefined);
+              }
+            }));
+            this.logger.log(`TURMOB arka plan indirme ilerleme: ${ok}/${targets.length} indirildi (eksik ${miss}, idsiz ${noId}) · ${channel} ${period.donem}`);
+          }
+        });
+      } catch (e: any) {
+        this.logger.warn(`TURMOB arka plan indirme oturum hatasi: ${e?.message || e}`);
+        for (const row of targets) {
+          const raw = row.rawJson && typeof row.rawJson === 'object' ? row.rawJson : {};
+          if (String(raw.documentDownloadStatus || '').toUpperCase() === 'PENDING_DOWNLOAD') {
+            await markMissing(row, e?.message || 'TURMOB oturum acilamadi').catch(() => undefined);
           }
         }
-        this.logger.log(`TURMOB arka plan indirme ilerleme: ${ok}/${targets.length} indirildi (eksik ${miss}) · ${channel} ${period.donem}`);
       }
-      this.logger.log(`TURMOB arka plan indirme bitti: ${channel} ${period.donem} · ${ok} indirildi · ${miss} eksik`);
+      this.logger.log(`TURMOB arka plan indirme bitti: ${channel} ${period.donem} · ${ok} indirildi · ${miss} eksik (idsiz ${noId})`);
     } catch (e: any) {
       this.logger.warn(`TURMOB arka plan indirme genel hata: ${e?.message || e}`);
     }
