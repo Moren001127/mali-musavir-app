@@ -3510,25 +3510,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       try {
         if (cfg.provider === 'TURMOB_EFATURA') {
           const listed = await this.fetchTurmobPortalRows(cfg, { direction, period, limit, channel });
-          // TEK TUR: sorgu sirasinda gorsel+XML'i de indir. Eskiden TURMOB'da indirme tamamen
-          //   "Aktar"a birakiliyordu ("0 indirildi · N aktarimda indirilecek") -> 2 tur + yavaslik.
-          //   Artik liste VKN/tutar/gorselle dolu gelir; "Aktar" yalnizca muhasebe adimina iner
-          //   (XML+gorsel zaten varsa tekrar INDIRMEZ -> aninda biter). Diger entegratorler bunu
-          //   zaten yapiyordu. Indirme basarisiz olursa lookup bos kalir -> eski davranisa (aktar'da
-          //   indir) duser, regresyon yok.
-          let turmobLookup: ProviderPayloadLookup = { cfg, payloads: [], byKey: new Map(), error: null };
-          try {
-            const downloadedPayloads = await this.fetchTurmobPortalInvoices(cfg, {
-              taxpayer,
-              direction,
-              period,
-              limit,
-              channel,
-            });
-            turmobLookup = { cfg, payloads: downloadedPayloads, byKey: this.buildProviderPayloadLookup(downloadedPayloads), error: null };
-          } catch (e: any) {
-            this.logger.warn(`TURMOB sorguda belge indirme atlandi (aktarima birakildi): ${e?.message || e}`);
-          }
+          const turmobLookup: ProviderPayloadLookup = { cfg, payloads: [], byKey: new Map(), error: null };
           let providerFetched = 0, providerAdded = 0, providerUpdated = 0, providerSkipped = 0, providerFailed = 0;
           let providerDownloaded = 0, providerMissingDocument = 0;
           for (const sourceRow of listed.liveRows.slice(0, limit)) {
