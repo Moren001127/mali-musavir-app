@@ -3491,8 +3491,8 @@ const CSS = `
 #fm-root .tsw:hover{transform:scale(1.12)}
 #fm-root .tsw.on{outline:2px solid var(--text)}
 #fm-root .content{padding:12px 22px;flex:1}
-#fm-root .h2{font-size:16px;font-weight:700;margin-bottom:1px}
-#fm-root .sub{font-size:12px;color:var(--muted);margin-bottom:9px}
+#fm-root .h2{font-size:21px;font-weight:800;letter-spacing:-.3px;color:#0e1726;margin-bottom:3px}
+#fm-root .sub{font-size:12.5px;color:var(--muted);margin-bottom:14px}
 #fm-root .ph-empty{padding:10px 0}
 #fm-root .btn{display:inline-flex;align-items:center;gap:8px;border-radius:9px;padding:9px 14px;font-size:12.5px;font-weight:700;border:1px solid #e3e8f0;background:#fff;color:#283242;cursor:pointer;box-shadow:0 1px 1.5px rgba(16,24,40,.04);transition:color .14s ease,border-color .14s ease,background .14s ease,box-shadow .14s ease}
 #fm-root .btn:hover:not(:disabled){border-color:var(--accent-line);background:var(--accent-soft);color:var(--accent);box-shadow:0 1px 2px rgba(16,24,40,.05)}
@@ -3586,7 +3586,7 @@ const CSS = `
 #fm-root .pill.warn{background:#fdf2e0;color:#b45309}
 #fm-root .pill.proc{background:#e6eefc;color:#2563eb}
 #fm-root .pill.asset{background:#f3e8ff;color:#7c3aed;border:1px solid #e3d4fb}
-#fm-root .aibar{display:flex;align-items:center;gap:15px;margin:10px 16px 12px;padding:14px 18px;border-radius:14px;background:radial-gradient(150% 130% at 0% 0%, #e9faf0, var(--accent-soft) 60%);border:1px solid var(--accent-line);box-shadow:0 4px 16px rgba(21,128,61,.1)}
+#fm-root .aibar{display:flex;align-items:center;gap:15px;margin:10px 16px 12px;padding:14px 18px;border-radius:14px;background:var(--accent-soft);border:1px solid var(--accent-line);box-shadow:none}
 #fm-root .aibar.err{background:#fdeeee;border-color:#f3c9c9;color:#92400e;font-size:12.5px;gap:9px;align-items:center}
 #fm-root .aibar .aidot.err{width:9px;height:9px;border-radius:50%;background:#c0353a;flex-shrink:0}
 #fm-root .aibar .aiscan{height:42px;width:32px;border-radius:6px;border:1.5px solid var(--accent);background:#fff;position:relative;overflow:hidden;flex-shrink:0;box-shadow:0 2px 7px rgba(21,128,61,.2)}
@@ -4255,7 +4255,7 @@ const CSS = `
 @keyframes fmBar{0%{left:-42%}100%{left:100%}}
 @keyframes fmDot{0%,80%,100%{transform:translateY(0);opacity:.28}40%{transform:translateY(-5px);opacity:1}}
 #fm-root .emptyrow{text-align:center;color:#94a3b8;padding:22px!important}
-#fm-root .sourcebar{display:flex;align-items:center;gap:10px;padding:10px 14px;border-top:1px solid #eef2f7;border-bottom:1px solid #e5e7eb;background:#fff}
+#fm-root .sourcebar{display:flex;align-items:center;gap:10px;padding:12px 16px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);background:#fbfcfe}
 #fm-root .sourcebar > div:first-child{min-width:0;margin-right:auto}
 #fm-root .sourcebar b{display:block;font-size:13px;color:#17212f;font-weight:650}
 #fm-root .sourcebar span{display:block;margin-top:2px;font-size:11.5px;color:#64748b}
@@ -4270,9 +4270,9 @@ const CSS = `
 #fm-root .providerrow b{display:block;font-size:13px}
 #fm-root .providerrow span{display:block;font-size:11.5px;color:#64748b;margin-top:2px}
 #fm-root .provideractions{display:flex;align-items:center;gap:8px}
-#fm-root .segmini{display:inline-flex;gap:4px;border:1px solid #e2e8f0;border-radius:999px;padding:3px;background:#fff}
-#fm-root .segmini button{height:28px;border:0;background:transparent;border-radius:999px;padding:0 12px;font-weight:650;color:#64748b;cursor:pointer}
-#fm-root .segmini button.on{background:#17212f;color:#fff}
+#fm-root .segmini{display:inline-flex;gap:3px;border:1px solid var(--line2);border-radius:999px;padding:3px;background:#f6f8fc}
+#fm-root .segmini button{height:29px;border:0;background:transparent;border-radius:999px;padding:0 14px;font-weight:700;color:var(--muted);cursor:pointer;transition:color .12s,background .12s}
+#fm-root .segmini button.on{background:var(--accent);color:#fff;box-shadow:0 2px 6px -2px rgba(47,84,214,.5)}
 #fm-root .screen-muhasebe .nacechip{display:none!important}
 #fm-root .screen-muhasebe .muhmain .fispane{flex:0 0 416px;max-width:416px;min-width:390px;padding-left:8px}
 #fm-root .screen-muhasebe .muhmain .fispane > .ph{min-height:40px;gap:7px;padding:5px 0;align-items:center}
