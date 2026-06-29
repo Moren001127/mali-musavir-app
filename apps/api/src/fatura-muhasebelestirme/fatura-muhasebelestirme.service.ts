@@ -6135,10 +6135,14 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // Gelen=alış (/IncomingInvoice), Giden=satış (/OutgoingInvoice). e-Arşiv ucu ilk testte eklenecek.
     const channel = String(opts.channel || (opts.direction === 'SATIS' ? 'OUT_EFATURA' : 'IN_EFATURA')).toUpperCase();
     const { refererPath, listUrls } = this.turmobListPaths(channel);
+    // Liste çekme boyutu: hedef satır aramasında küçük limit gelirse (ör. 8 PENDING), TÜRMOB yalnızca
+    //   ilk N satırı döndürür ve hedefler bulunamaz. Her zaman en az 500 satır iste; gerçek dönüş
+    //   limiti (opts.limit) aşağıda slice() ile uygulanır.
+    const listFetchLimit = String(Math.min(Math.max(Number(opts.limit) || 500, 500), 1000));
     const baseListParams = {
       draw: '1',
       start: '0',
-      length: String(Math.min(Math.max(Number(opts.limit) || 500, 1), 1000)),
+      length: listFetchLimit,
       'search[value]': '',
       'search[regex]': 'false',
       'order[0][column]': '0',
