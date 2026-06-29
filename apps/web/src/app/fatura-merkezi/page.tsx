@@ -1671,7 +1671,7 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
               <thead>
                 <tr>
                   <th><Check checked={processable.length > 0 && selectedRefs.length === processable.length} onToggle={toggleAll} /></th>
-                  <th>Alıcı</th><th>VKN/TCKN</th><th>Belge No</th><th>Tarih</th><th>Onay</th><th>İptal/İtiraz</th><th>Aktarım</th>
+                  <th>Alıcı</th><th>VKN/TCKN</th><th>Belge No</th><th>Tarih</th><th className="num">KDV Hariç</th><th className="num">KDV</th><th className="num">Genel Toplam</th><th>Onay</th><th>İptal/İtiraz</th><th>Görsel</th><th>Aktarım</th>
                 </tr>
               </thead>
               <tbody>
@@ -1688,8 +1688,16 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
                     <td>{r.buyerVkn || '—'}</td>
                     <td>{r.belgeNo || r.referenceNo || '—'}</td>
                     <td>{fmtDate(r.issuedAt)}</td>
+                    <td className="num">{r.kdvHaric != null ? fmtMoney(r.kdvHaric) : '—'}</td>
+                    <td className="num">{r.kdv != null ? fmtMoney(r.kdv) : '—'}</td>
+                    <td className="num">{r.toplam != null ? fmtMoney(r.toplam) : '—'}</td>
                     <td className="plainstatus">{r.onayDurumu || '—'}</td>
                     <td>{r.iptalDurumu || 'Yok'}</td>
+                    <td>
+                      {r.muhasebeBelgeId ? (
+                        <span className="eye" onClick={() => openDocFile(r.muhasebeBelgeId)} title="Fatura görselini aç" style={{ color: '#0891b2' }}><Ico html={I.eye} size={15} /></span>
+                      ) : '—'}
+                    </td>
                     <td>
                       <span className={`transferstate ${r.aktarildi ? 'ok' : 'no'}`} title={r.aktarildi ? 'Aktarıldı' : 'Aktarılmadı'} aria-label={r.aktarildi ? 'Aktarıldı' : 'Aktarılmadı'}>
                         {r.aktarildi ? <span className="okico">✓</span> : <span className="xico">×</span>}
@@ -1698,7 +1706,7 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
                   </tr>
                 ))}
                 {!rows.length && (
-                  <tr><td colSpan={8} className="emptyrow">{taxpayerId ? 'Önce Sorgula ile GIB listesini getir.' : 'Önce mükellef seç.'}</td></tr>
+                  <tr><td colSpan={12} className="emptyrow">{taxpayerId ? 'Önce Sorgula ile GIB listesini getir.' : 'Önce mükellef seç.'}</td></tr>
                 )}
               </tbody>
             </table>

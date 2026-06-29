@@ -726,18 +726,28 @@ export class PortalAutomationService {
             source: 'gib-earsiv-api',
             sourceRefId: { in: [...refs] },
           },
-          select: { id: true, sourceRefId: true, status: true, lucaStatus: true },
+          select: { id: true, sourceRefId: true, status: true, lucaStatus: true, totalAmount: true, ocrData: true },
         }).catch(() => [])
       : [];
     const accByRef = new Map<string, any>(accountingRows.map((r: any) => [String(r.sourceRefId), r]));
+    const num = (v: any): number | null => {
+      if (v == null) return null;
+      const n = Number(v);
+      return Number.isFinite(n) ? n : null;
+    };
     return rows.map((row: any) => {
       const acc = accByRef.get(row.sourceRefId);
       const importedByDownload = !!acc && row.aktarimDurumu === 'indirildi' && row.sorguMode === 'download';
+      // Muhasebe belgesinden tutar (matrah / KDV / genel toplam) — listede göstermek için.
+      const ocr = acc?.ocrData && typeof acc.ocrData === 'object' ? acc.ocrData : null;
       return {
         ...row,
         muhasebeBelgeId: acc?.id || null,
         muhasebeDurumu: acc?.status || null,
         lucaDurumu: acc?.lucaStatus || null,
+        kdvHaric: ocr ? num(ocr.matrah) : null,
+        kdv: ocr ? num(ocr.kdvTutari) : null,
+        toplam: acc ? num(acc.totalAmount) : null,
         zatenVar: !!acc,
         aktarildi: importedByDownload,
       };
