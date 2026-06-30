@@ -10476,8 +10476,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         if (!grp.length) {
           result = this.pickAccount(accounts, [vergiPrefix], null);
         } else {
-          // Tevkifatlı: adında oran ("2/10") ya da "tevkifat" geçen hesabı tercih et.
-          if (tevkPay >= 1 && tevkPay <= 9) {
+          // Tevkifatlı SATIŞ (391, tek satır = net tevkifat-sonrası KDV): adında oran ("2/10") ya da
+          //   "tevkifat" geçen hesabı tercih et. ALIŞ'ta (191) BU BLOK ÇALIŞMAZ — artık normal-191 ve
+          //   sorumlu-191 AYRI satırlar (bkz. sorumluKdvMatch); normal-191 araması "2/10"/"tevkifat"
+          //   İÇEREN hesabı SEÇMEMELİ (kullanıcı bulgusu: normal KDV satırı yanlışlıkla "SORUMLU
+          //   SIF.İND.KDV. 2/10" hesabına atanmıştı — aşağıdaki normals filtresi zaten bu hesapları
+          //   eler, ALIŞ'ta direkt oraya düşmeli).
+          if (vergiPrefix === '391' && tevkPay >= 1 && tevkPay <= 9) {
             result = grp.find((a: any) => { const n = String(a.accountName || ''); return n.includes(`${tevkPay}/10`) || /tevk[iı]fat/i.test(n); }) || null;
           }
           if (!result) {
@@ -10798,11 +10803,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       //   satırının açıklaması GÜNCEL hesap kodunun plandaki ADI olmalı ("Gider / matrah" /
       //   "Satış matrahı" gibi standart metin DEĞİL — kullanıcı defalarca istedi; dolu/doğru
       //   hesapta da geçerli). Hesap kodu boşsa açıklama da boş. Cari satırı zaten karşı taraf adını yazar.
+      //   vergi-sorumlu + tevkifat DA dahil: kullanıcı bulgusu — bu iki satırın açıklaması rematch'te
+      //   GÜNCELLENMİYORDU, linesFromAmounts'taki SABİT metin (gerçek plan adı değil) kalıcı kalıyordu.
       {
         const freshLines = await (this.prisma as any).invoiceAccountingLine.findMany({ where: { documentId: doc.id } });
         for (const ln of freshLines) {
           const g = String(ln.group || '');
-          if (g !== 'matrah' && g !== 'vergi') continue;
+          if (g !== 'matrah' && g !== 'vergi' && g !== 'vergi-sorumlu' && g !== 'tevkifat') continue;
           const code = String(ln.accountCode || '');
           const acc = code ? accounts.find((a: any) => String(a.accountCode || '') === code) : null;
           const wantDesc = acc ? String(acc.accountName || '') : '';
