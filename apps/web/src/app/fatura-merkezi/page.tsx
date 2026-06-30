@@ -701,6 +701,55 @@ function FmSelect({ value, onChange, options, icon, search = false, searchPlaceh
   );
 }
 
+// Takvim tarzı dönem seçici — yıl gezinme + 3×4 ay kutusu (uzun liste yerine).
+const AYLAR_KISA = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'];
+function FmPeriod({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const opts = periodOptions();
+  const avail = new Set(opts.map((o) => o.v));
+  const years = [...new Set(opts.map((o) => Number(o.v.slice(0, 4))))].sort((a, b) => a - b);
+  const minY = years[0], maxY = years[years.length - 1];
+  const cur = value || opts[0].v;
+  const [open, setOpen] = useState(false);
+  const [viewY, setViewY] = useState(Number(cur.slice(0, 4)));
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (open) setViewY(Number((value || opts[0].v).slice(0, 4))); }, [open]); // eslint-disable-line
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: any) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    const onKey = (e: any) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('mousedown', onDoc); document.removeEventListener('keydown', onKey); };
+  }, [open]);
+  const label = opts.find((o) => o.v === value)?.l || value;
+  return (
+    <div className={`fmdd fmper${open ? ' open' : ''}`} ref={ref}>
+      <button type="button" className="fmdd-btn" style={{ minWidth: 150 }} onClick={() => setOpen((o) => !o)}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /></svg>
+        <span className="fmdd-val">{label}</span>
+        <svg className="fmdd-chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4"><path d="M6 9l6 6 6-6" /></svg>
+      </button>
+      {open && (
+        <div className="fmdd-pop fmper-pop">
+          <div className="fmper-head">
+            <button type="button" className="fmper-nav" disabled={viewY <= minY} onClick={() => setViewY((y) => Math.max(minY, y - 1))} aria-label="Önceki yıl">‹</button>
+            <span className="fmper-y">{viewY}</span>
+            <button type="button" className="fmper-nav" disabled={viewY >= maxY} onClick={() => setViewY((y) => Math.min(maxY, y + 1))} aria-label="Sonraki yıl">›</button>
+          </div>
+          <div className="fmper-grid">
+            {AYLAR_KISA.map((ad, i) => {
+              const v = `${viewY}-${String(i + 1).padStart(2, '0')}`;
+              return (
+                <button type="button" key={v} className={`fmper-m${v === value ? ' sel' : ''}`} disabled={!avail.has(v)} onClick={() => { onChange(v); setOpen(false); }}>{ad}</button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function FaturaMerkeziPage() {
   const [screen, setScreen] = useState('mukellefler');
   const accent = 'slate';
@@ -811,13 +860,7 @@ export default function FaturaMerkeziPage() {
               </div>
               <div className="ctxpick">
                 <span className="ctxpick-l">Dönem</span>
-                <FmSelect
-                  value={period}
-                  onChange={setPeriod}
-                  options={periodOptions().map((p) => ({ v: p.v, l: p.l }))}
-                  minWidth={150}
-                  icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /></svg>}
-                />
+                <FmPeriod value={period} onChange={setPeriod} />
               </div>
             </div>
           </div>
@@ -4576,4 +4619,24 @@ const CSS = `
 #fm-root .fmdd-optl{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #fm-root .fmdd-ok{color:var(--accent);flex-shrink:0}
 #fm-root .fmdd-empty{padding:14px 12px;text-align:center;color:var(--faint);font-size:12.5px}
+/* ── Takvim tarzı dönem seçici (yıl + ay kutusu) ── */
+#fm-root .fmper-pop{min-width:250px;padding:11px}
+#fm-root .fmper-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:9px}
+#fm-root .fmper-y{font-size:15px;font-weight:800;color:var(--text);letter-spacing:.4px}
+#fm-root .fmper-nav{width:30px;height:30px;border-radius:8px;border:1px solid var(--line);background:#fff;color:var(--accent);font-size:19px;line-height:1;cursor:pointer;display:grid;place-items:center;transition:background .12s,border-color .12s}
+#fm-root .fmper-nav:hover:not(:disabled){background:var(--accent-soft);border-color:var(--accent-line)}
+#fm-root .fmper-nav:disabled{opacity:.32;cursor:not-allowed}
+#fm-root .fmper-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}
+#fm-root .fmper-m{height:42px;border-radius:9px;border:1px solid var(--line);background:#fff;font-size:13px;font-weight:700;color:var(--text);cursor:pointer;transition:background .12s,border-color .12s,color .12s,box-shadow .12s}
+#fm-root .fmper-m:hover:not(:disabled){border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
+#fm-root .fmper-m.sel{background:var(--accent);border-color:var(--accent);color:#fff;box-shadow:0 6px 14px -8px var(--accent)}
+#fm-root .fmper-m:disabled{opacity:.3;cursor:not-allowed}
+/* ── Sol panel (nav) yenileme: biraz büyük yazı + hover'da büyüme/renk ── */
+#fm-root .ncap{font-size:10.5px}
+#fm-root .nitem{font-size:14px;font-weight:700;padding:9px 10px;transition:background .14s,color .14s,transform .13s,box-shadow .14s}
+#fm-root .nitem > span:first-child{transition:transform .14s,color .12s,background .12s,border-color .12s}
+#fm-root .nitem:hover:not(.on){color:var(--accent);transform:translateX(2px)}
+#fm-root .nitem:hover:not(.on) > span:first-child{transform:scale(1.08)}
+#fm-root .nsub{font-size:13.5px;font-weight:600;transition:color .14s,transform .13s}
+#fm-root .nsub:hover:not(.on){color:var(--accent);transform:translateX(2px)}
 `;
