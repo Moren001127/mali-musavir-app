@@ -727,10 +727,9 @@ export default function FaturaMerkeziPage() {
               Portala Dön
             </a>
             <div className="brandrow">
-              <div className="brandmk">FM</div>
               <div className="brandtx">
+                <div className="brandlogo">Moren</div>
                 <div className="brandmod">Fatura Merkezi</div>
-                <div className="brandsub">Belge · Muhasebe · Luca aktarım</div>
               </div>
             </div>
           </div>
@@ -3486,6 +3485,7 @@ function ScreenGenel({ taxpayers, period, onOpen }: { taxpayers: any[]; period: 
 
 /* ===================== CSS (#fm-root scope) ===================== */
 const CSS = `
+@import url('https://fonts.googleapis.com/css2?family=Kaushan+Script&family=Cormorant+Garamond:ital,wght@1,600&display=swap');
 #fm-root{--bg:#eef1f7;--side:#ffffff;--line:#e6eaf1;--line2:#d8dfe9;--text:#0e1726;--muted:#566379;--faint:#94a0b2;--accent:#2f54d6;--accent-soft:#eef1fe;--accent-line:#d2dbfb;--th:#f1f4fb;--th-text:#3a4673;--blue:#2f54d6;--red:#e0394a;--green:#15924f;--amber:#cf7a0e;font-family:"Segoe UI",system-ui,-apple-system,sans-serif;font-size:13.5px;line-height:1.5;color:var(--text)}
 #fm-root[data-accent="yesil"]{--accent:#15803d;--accent-soft:#e7f4ec;--accent-line:#c2e6cf;--th:#edf6f0;--th-text:#166534}
 #fm-root[data-accent="lacivert"]{--accent:#1e3a8a;--accent-soft:#eaecf7;--accent-line:#c7cdeb;--th:#eef0f8;--th-text:#27408b}
@@ -4452,7 +4452,8 @@ const CSS = `
 /* Kenar çubuğu marka bloğu */
 #fm-root .brandrow{display:flex;align-items:center;gap:10px;margin-top:11px}
 #fm-root .brandmk{width:38px;height:38px;border-radius:10px;background:var(--accent);color:#fff;display:grid;place-items:center;font-size:13px;font-weight:900;letter-spacing:.5px;flex-shrink:0;box-shadow:0 8px 18px -12px var(--accent)}
-#fm-root .brandtx .brandmod{font-size:15px;font-weight:900;color:var(--text);line-height:1.1}
+#fm-root .brandtx .brandlogo{font-family:'Kaushan Script',cursive;font-weight:400;font-size:27px;color:var(--accent);line-height:1;letter-spacing:.3px}
+#fm-root .brandtx .brandmod{font-family:'Cormorant Garamond',Georgia,serif;font-style:italic;font-weight:600;font-size:16px;color:var(--muted);letter-spacing:.3px;line-height:1.15;margin-top:2px}
 #fm-root .brandtx .brandsub{font-size:10.5px;font-weight:600;color:var(--faint);letter-spacing:.2px;margin-top:2px}
 /* İşlevsel filtre kutucukları — sayaç + filtre TEK satır (eski pasif kartlar + ayrı çipler birleşti) */
 #fm-root .filttiles{display:flex;flex-wrap:wrap;gap:9px;margin:4px 0 16px}
