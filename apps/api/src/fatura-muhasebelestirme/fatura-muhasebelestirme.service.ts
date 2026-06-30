@@ -4230,6 +4230,30 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
 
   async fileUrl(tenantId: string, id: string) {
     const doc = await this.get(tenantId, id);
+    // ENTEGRATÖR / UBL belge → ORİJİNAL fatura GÖRÜNTÜSÜNÜ UBL XML'in GÖMÜLÜ XSLT'sinden (resmi e-Fatura
+    //   tasarımı; SATICI logosu/başlığı DAHİL) üret. TÜRMOB'un yazdırma görünümü satıcı başlığını render
+    //   ETMİYORDU → mükellefe "boş satıcılı / yarım" bozuk fatura görünüyordu. XML'de gömülü XSLT varsa
+    //   resmi görünüm çıkar; XSLT tarayıcıda apply edilir, başarısızsa parse'tan dolu özet fallback gösterilir.
+    try {
+      const provXml = await this.loadProviderUblXml(tenantId, doc);
+      if (provXml && this.earsivRender.hasEmbeddedXslt(provXml)) {
+        const p: any = this.parseProviderUblInvoice(provXml) || {};
+        const fatura: any = {
+          id,
+          xmlContent: provXml,
+          faturaNo: p.faturaNo || (doc as any).belgeNo || '',
+          faturaTarihi: p.faturaTarihi || (doc as any).faturaTarihi || new Date(),
+          ettn: p.ettn || null,
+          satici: p.satici || (doc as any).vendorName || null,
+          saticiVergiNo: p.saticiVergiNo || (doc as any).sellerVkn || null,
+          alici: p.alici || (doc as any).customerName || null,
+          aliciVergiNo: p.aliciVergiNo || (doc as any).buyerVkn || null,
+          matrah: p.matrah, kdvTutari: p.kdvTutari, kdvOrani: p.kdvOrani, toplamTutar: p.toplamTutar,
+          paraBirimi: p.paraBirimi || (doc as any).currency || 'TL',
+        };
+        return { url: '', inlineHtml: this.earsivRender.renderHtml(fatura, { autoPrint: false }), mimeType: 'text/html', source: 'original-xslt' as const };
+      }
+    } catch { /* XML yok / render hatası → aşağıdaki mevcut akış */ }
     const mimeType = String(doc.mimeType || '');
     const inlineRefId = String(doc.s3Key || '').startsWith('earsiv-inline://')
       ? String(doc.s3Key || '').slice('earsiv-inline://'.length)
