@@ -7851,7 +7851,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       if (existing.s3Key && existing.s3Key !== stored.s3Key && !String(existing.s3Key).startsWith('earsiv-inline://')) {
         this.storage.deleteObject(existing.s3Key).catch(() => {});
       }
-      if (shouldRewriteAccounting) await this.revalidateDocument(tenantId, updated.id).catch(() => null);
+      if (shouldRewriteAccounting) {
+        // Oto-eşleştirme (KDV/cari/gider) + doğrulama — aktarılmış belge yenilenince de kodlansın.
+        await this.rematchDocumentsWithLatestAccountPlan(tenantId, taxpayer.id, [updated.id]).catch(() => null);
+        await this.revalidateDocument(tenantId, updated.id).catch(() => null);
+      }
       return { created: false, document: updated, refreshed: true };
     }
 
@@ -7918,6 +7922,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       },
       include: { lines: { orderBy: { orderNo: 'asc' } } },
     });
+    // OTOMATİK EŞLEŞTİRME: entegratör belgesi oluşur oluşmaz hesap kodlarını ATA — KDV 191/391
+    //   (orana göre, deterministik), cari (VKN→320 öğrenilmiş/plan), gider (plan/kural). Kullanıcı:
+    //   "XML fatura eşleştirmeyi otomatik çalıştırmadı". Önce kodla, SONRA doğrula (demirbaş/denge).
+    if (taxpayer?.id) await this.rematchDocumentsWithLatestAccountPlan(tenantId, taxpayer.id, [doc.id]).catch(() => {});
     // DEMİRBAŞ + sahiplik/denge doğrulaması: demirbaş alış/satışı INVALID → otomatik aktarım engellenir,
     //   "Luca sabit kıymet modülünden işle" uyarısı kalır. (Provider-XML belgede de validation çalışsın.)
     await this.revalidateDocument(tenantId, doc.id).catch(() => {});
