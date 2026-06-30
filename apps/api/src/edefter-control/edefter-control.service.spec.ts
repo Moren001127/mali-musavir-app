@@ -335,4 +335,42 @@ describe('EDefterControlService tevsik kasa kontrolleri', () => {
     ]);
     expect(findings.map((f) => f.category)).not.toContain('KASA_GUNLUK_NEGATIF_BAKIYE');
   });
+
+  it('stok (153) gun sonu negatif olursa WARN bulgu uretir', () => {
+    const findings = analyze([
+      row({ rowIndex: 100, voucherKey: 'ac', fisTipi: 'Acilis', aciklama: 'Acilis fisi', fisTarihi: d('2026-01-01'), hesapKodu: '153.01.001', hesapAdi: 'Ticari mallar', borc: 1000 }),
+      row({ rowIndex: 101, voucherKey: 'ac', fisTipi: 'Acilis', aciklama: 'Acilis fisi', fisTarihi: d('2026-01-01'), hesapKodu: '500.01.001', hesapAdi: 'Sermaye', alacak: 1000 }),
+      row({ rowIndex: 102, voucherKey: 'satis', fisNo: '30', yevmiyeNo: '30', fisTarihi: d('2026-02-10'), hesapKodu: '153.01.001', hesapAdi: 'Ticari mallar', alacak: 3000 }),
+      row({ rowIndex: 103, voucherKey: 'satis', fisNo: '30', yevmiyeNo: '30', fisTarihi: d('2026-02-10'), hesapKodu: '621.01.001', hesapAdi: 'STMM', borc: 3000 }),
+    ]);
+    const stok = findings.find((f) => f.category === 'STOK_NEGATIF_BAKIYE');
+    expect(stok).toBeDefined();
+    expect((stok as any).severity).toBe('WARN');
+  });
+
+  it('banka (102) gun sonu eksi bakiye verirse WARN bulgu uretir', () => {
+    const findings = analyze([
+      row({ rowIndex: 110, voucherKey: 'ac', fisTipi: 'Acilis', aciklama: 'Acilis fisi', fisTarihi: d('2026-01-01'), hesapKodu: '102.01.001', hesapAdi: 'Banka', borc: 2000 }),
+      row({ rowIndex: 111, voucherKey: 'ac', fisTipi: 'Acilis', aciklama: 'Acilis fisi', fisTarihi: d('2026-01-01'), hesapKodu: '500.01.001', hesapAdi: 'Sermaye', alacak: 2000 }),
+      row({ rowIndex: 112, voucherKey: 'odeme', fisNo: '31', yevmiyeNo: '31', fisTarihi: d('2026-02-12'), hesapKodu: '102.01.001', hesapAdi: 'Banka', alacak: 5000 }),
+      row({ rowIndex: 113, voucherKey: 'odeme', fisNo: '31', yevmiyeNo: '31', fisTarihi: d('2026-02-12'), hesapKodu: '320.01.001', hesapAdi: 'Saticilar', borc: 5000 }),
+    ]);
+    expect(findings.map((f) => f.category)).toContain('BANKA_GUNLUK_EKSI_BAKIYE');
+  });
+
+  it('acilis fisi varken yevmiye kapanisi Mizan ile tutmuyorsa MIZAN_FIS_UYUMSUZ uretir', () => {
+    const rows = [
+      row({ rowIndex: 120, voucherKey: 'ac', fisTipi: 'Acilis', aciklama: 'Acilis fisi', fisTarihi: d('2026-01-01'), hesapKodu: '100.01.001', borc: 3000 }),
+      row({ rowIndex: 121, voucherKey: 'ac', fisTipi: 'Acilis', aciklama: 'Acilis fisi', fisTarihi: d('2026-01-01'), hesapKodu: '500.01.001', hesapAdi: 'Sermaye', alacak: 3000 }),
+    ];
+    const mizanCtx = { bakiyeByCode: new Map([['100.01.001', 9999], ['500.01.001', -3000]]), found: true };
+    const findings = (service as any).analyze(
+      rows,
+      { start: d('2026-01-01'), end: d('2026-12-31') },
+      'YILLIK',
+      new Map(),
+      mizanCtx,
+    ) as Array<{ category: string; message: string }>;
+    expect(findings.map((f) => f.category)).toContain('MIZAN_FIS_UYUMSUZ');
+  });
 });

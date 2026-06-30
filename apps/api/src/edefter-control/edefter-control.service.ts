@@ -65,6 +65,10 @@ const DEFAULT_DISABLED_CATEGORIES = new Set([
   'MALIYET_YANSITMA_EKSIK_KONTROL',
 ]);
 
+// Mizan baglami: hesap kodu → kapanis bakiyesi (borcBakiye − alacakBakiye). Kasa/stok/banka acilis
+//   turetiminde ve Mizan↔fis mutabakatinda kullanilir. Mizan READ-ONLY okunur, asla yazilmaz.
+type MizanCtx = { bakiyeByCode: Map<string, number>; found: boolean };
+
 @Injectable()
 export class EDefterControlService {
   private readonly logger = new Logger(EDefterControlService.name);
@@ -335,8 +339,8 @@ export class EDefterControlService {
     }
 
     const ruleSettings = await this.getRuleSettingMap(params.tenantId);
-    const kasaAcilis = await this.getKasaMizanAcilis(params.tenantId, params.taxpayerId, params.donem, donemTipi, rows);
-    const findings = this.analyze(rows, range, donemTipi, ruleSettings, kasaAcilis);
+    const mizanCtx = await this.getMizanContext(params.tenantId, params.taxpayerId, params.donem, donemTipi);
+    const findings = this.analyze(rows, range, donemTipi, ruleSettings, mizanCtx);
     if (findings.length) {
       for (const chunk of this.chunks(findings, 700)) {
         await (this.prisma as any).eDefterFinding.createMany({
@@ -425,8 +429,8 @@ export class EDefterControlService {
     this.correctTahakkukDates(rows);
     const voucherCount = new Set(rows.map((r) => r.voucherKey)).size;
     const ruleSettings = await this.getRuleSettingMap(tenantId);
-    const kasaAcilis = await this.getKasaMizanAcilis(tenantId, session.taxpayerId, session.donem, donemTipi, rows);
-    const findings = this.analyze(rows, range, donemTipi, ruleSettings, kasaAcilis);
+    const mizanCtx = await this.getMizanContext(tenantId, session.taxpayerId, session.donem, donemTipi);
+    const findings = this.analyze(rows, range, donemTipi, ruleSettings, mizanCtx);
     const lineRows = rows.map((r) => ({
       sessionId: session.id,
       rowIndex: r.rowIndex,
@@ -601,7 +605,7 @@ export class EDefterControlService {
     range: { start: Date; end: Date } | null,
     donemTipi?: EDefterDonemTipi,
     ruleSettings: Map<string, boolean> = new Map(),
-    kasaAcilis: { value: number; known: boolean } | null = null,
+    mizanCtx: MizanCtx | null = null,
   ): FindingDraft[] {
     const findings: FindingDraft[] = [];
     // Yil-sonu / acilis / donem-sonu kurallari yalnizca YILLIK defterde anlamlidir.
@@ -737,7 +741,11 @@ export class EDefterControlService {
     findings.push(...this.analyzeAvansKapanmamis(rows));
     findings.push(...this.analyzeVadesiGecmisCekSenet(rows, range));
     findings.push(...this.analyzeBankaEksiBakiye(rows));
+    const kasaAcilis = this.deriveAcilisFromMizan(rows, mizanCtx, '100', /^100(?:[.\-]|$)/);
     findings.push(...this.analyzeKasaGunlukNegatif(rows, kasaAcilis));
+    findings.push(...this.analyzeStokNegatif(rows, mizanCtx));
+    findings.push(...this.analyzeBankaGunlukNegatif(rows, mizanCtx));
+    findings.push(...this.analyzeMizanMutabakat(rows, mizanCtx));
     findings.push(...this.analyzePOSValor108(rows));
     findings.push(...this.analyzeKKEG689(rows));
     findings.push(...this.analyzeAmortismanYilSonu(rows, range, isYillik));
@@ -2452,46 +2460,207 @@ export class EDefterControlService {
     return findings;
   }
 
-  // Kasa (100) acilis bakiyesi Mizan'dan: acilis = kapanis - donem hareketi. Mizan KUMULATIF (yil
-  //   basindan donem sonuna kadar) → fis listesinin donem netini cikarinca donem BASI bakiye kalir.
-  //   Mizan yoksa/eslesmezse known=false (kural "acilis haric" WARN ile calisir). Mizan READ-ONLY.
-  private async getKasaMizanAcilis(
+  // MIZAN baglami (READ-ONLY): ilgili donemin READY Mizan'ini bir kez cekip hesap kodu → kapanis
+  //   bakiyesi (borcBakiye − alacakBakiye) haritasi dondurur. Kasa/stok/banka acilis turetimi + Mizan
+  //   mutabakati bunu kullanir. Mizan yoksa/eslesmezse null (kurallar "acilis haric" ile calisir).
+  private async getMizanContext(
     tenantId: string,
     taxpayerId: string | null | undefined,
     donem: string,
     donemTipi: string | undefined,
-    rows: ParsedEDefterFisLine[],
-  ): Promise<{ value: number; known: boolean }> {
-    if (!taxpayerId) return { value: 0, known: false };
-    const periodNet = rows
-      .filter((r) => /^100(?:[.\-]|$)/.test(String(r.hesapKodu || '')))
-      .reduce((s, r) => s + Number(r.borc || 0) - Number(r.alacak || 0), 0);
+  ): Promise<MizanCtx | null> {
+    if (!taxpayerId) return null;
     const mizan = await (this.prisma as any).mizan
       .findFirst({
         where: { tenantId, taxpayerId, donem, ...(donemTipi ? { donemTipi } : {}), status: 'READY' },
         orderBy: { createdAt: 'desc' },
-        include: {
-          hesaplar: {
-            where: { hesapKodu: { startsWith: '100' } },
-            select: { hesapKodu: true, seviye: true, borcBakiye: true, alacakBakiye: true },
-          },
-        },
+        include: { hesaplar: { select: { hesapKodu: true, borcBakiye: true, alacakBakiye: true } } },
       })
       .catch(() => null);
     const hesaplar: any[] = mizan?.hesaplar || [];
-    if (!hesaplar.length) return { value: 0, known: false };
-    // Kasa kapanis bakiyesi: ana hesap "100" varsa onu (toplam); yoksa cift-sayim olmadan en derin seviye.
-    const ana = hesaplar.find((h) => String(h.hesapKodu) === '100');
-    let kapanis: number;
-    if (ana) {
-      kapanis = Number(ana.borcBakiye) - Number(ana.alacakBakiye);
-    } else {
-      const maxSeviye = Math.max(...hesaplar.map((h) => Number(h.seviye) || 0));
-      kapanis = hesaplar
-        .filter((h) => (Number(h.seviye) || 0) === maxSeviye)
-        .reduce((s, h) => s + Number(h.borcBakiye) - Number(h.alacakBakiye), 0);
+    if (!hesaplar.length) return null;
+    const bakiyeByCode = new Map<string, number>();
+    for (const h of hesaplar) {
+      bakiyeByCode.set(String(h.hesapKodu || '').trim(), (Number(h.borcBakiye) || 0) - (Number(h.alacakBakiye) || 0));
     }
+    return { bakiyeByCode, found: true };
+  }
+
+  // Bir hesap grubunun ( on ek) acilis bakiyesini Mizan'dan turet: acilis = kapanis − donem hareketi.
+  //   Mizan KUMULATIF (yil basi→donem sonu) oldugundan donem netini cikarinca donem BASI bakiye kalir.
+  //   Kapanis = Mizan'da ana hesap (prefix3, or "100") varsa onu; yoksa cift-sayim olmadan leaf'lerin toplami.
+  private deriveAcilisFromMizan(
+    rows: ParsedEDefterFisLine[],
+    mizanCtx: MizanCtx | null,
+    prefix3: string,
+    prefixRegex: RegExp,
+  ): { value: number; known: boolean } {
+    if (!mizanCtx?.found) return { value: 0, known: false };
+    const periodNet = rows
+      .filter((r) => prefixRegex.test(String(r.hesapKodu || '')))
+      .reduce((s, r) => s + Number(r.borc || 0) - Number(r.alacak || 0), 0);
+    let kapanis: number | null = null;
+    if (mizanCtx.bakiyeByCode.has(prefix3)) {
+      kapanis = mizanCtx.bakiyeByCode.get(prefix3)!;
+    } else {
+      const codes = [...mizanCtx.bakiyeByCode.keys()];
+      let sum = 0;
+      let any = false;
+      for (const c of codes) {
+        if (!prefixRegex.test(c)) continue;
+        const isLeaf = !codes.some((o) => o !== c && o.startsWith(`${c}.`));
+        if (isLeaf) { sum += mizanCtx.bakiyeByCode.get(c)!; any = true; }
+      }
+      if (any) kapanis = sum;
+    }
+    if (kapanis == null) return { value: 0, known: false };
     return { value: kapanis - periodNet, known: true };
+  }
+
+  // PAYLASILAN: bir hesabin satirlarindan gun-sonu negatif bakiye gunlerini bulur (acilis + kumulatif
+  //   borc−alacak, tarih sirali). esik: kasa/stok -1 (kesin), banka -1000 (maddi; kredili calisma olabilir).
+  private gunlukNegatifGunler(
+    accRows: ParsedEDefterFisLine[],
+    opening: number,
+    esik = -1,
+  ): { date: Date; bakiye: number; first: ParsedEDefterFisLine }[] {
+    const dated = accRows.filter((r) => r.fisTarihi instanceof Date && !Number.isNaN(r.fisTarihi.getTime()));
+    if (!dated.length) return [];
+    const byDay = new Map<string, { net: number; first: ParsedEDefterFisLine }>();
+    for (const r of dated) {
+      const key = r.fisTarihi!.toISOString().slice(0, 10);
+      if (!byDay.has(key)) byDay.set(key, { net: 0, first: r });
+      byDay.get(key)!.net += Number(r.borc || 0) - Number(r.alacak || 0);
+    }
+    const days = [...byDay.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+    const neg: { date: Date; bakiye: number; first: ParsedEDefterFisLine }[] = [];
+    let running = opening;
+    for (const [key, info] of days) {
+      running += info.net;
+      if (running < esik) neg.push({ date: new Date(`${key}T00:00:00Z`), bakiye: running, first: info.first });
+    }
+    return neg;
+  }
+
+  // STOK (150-153) NEGATIF BAKIYE: stok eksiye dusemez (elde olmayan mal satilamaz). HER stok hesabi
+  //   AYRI yurutulur (farkli urunler). Negatif = alis/giris kaydi eksik/gec, maliyet/miktar hatasi.
+  //   Acilis: acilis fisi defterde varsa kesin; yoksa Mizan'dan; ikisi de yoksa "acilis haric".
+  private analyzeStokNegatif(rows: ParsedEDefterFisLine[], mizanCtx: MizanCtx | null): FindingDraft[] {
+    const isStok = (c?: string | null) => /^15[0-3](?:[.\-]|$)/.test(String(c || ''));
+    return this.analyzePerAccountNegatif(rows, mizanCtx, {
+      filter: isStok,
+      category: 'STOK_NEGATIF_BAKIYE',
+      esik: -1,
+      sev: () => 'WARN',
+      mesaj: (code, gun, bakiye, not) =>
+        `${code} stok hesabi ${gun} gunu ${bakiye} TL NEGATIF bakiye veriyor; elde olmayan mal satilamaz. Alis/giris kaydi eksik ya da gec girilmis, maliyet/miktar hatasi olabilir.${not}`,
+    });
+  }
+
+  // BANKA (102) GUNLUK EKSI BAKIYE: banka mevduati gun sonu eksiye dusmemeli. HER banka hesabi AYRI.
+  //   Eksi cikiyorsa: gercekten kredili calisma ise 300 Banka Kredileri'nde izlenmeli; degilse eksik
+  //   tahsilat/yanlis hesap. Esik -1000 TL (maddi; kucuk valor farklari gurultu yapmasin), seviye WARN.
+  private analyzeBankaGunlukNegatif(rows: ParsedEDefterFisLine[], mizanCtx: MizanCtx | null): FindingDraft[] {
+    const isBanka = (c?: string | null) => /^102(?:[.\-]|$)/.test(String(c || ''));
+    return this.analyzePerAccountNegatif(rows, mizanCtx, {
+      filter: isBanka,
+      category: 'BANKA_GUNLUK_EKSI_BAKIYE',
+      esik: -1000,
+      sev: () => 'WARN',
+      mesaj: (code, gun, bakiye, not) =>
+        `${code} banka hesabi ${gun} gunu ${bakiye} TL EKSI bakiye veriyor. Gercekten kredili mevduat ise 300 Banka Kredileri'nde izlenmeli; degilse eksik tahsilat ya da yanlis hesap olabilir.${not}`,
+    });
+  }
+
+  // Ortak: prefix'e uyan HER hesap kodunu ayri yurutup en dusuk negatif gunu raporlar (hesap basina 1 bulgu).
+  private analyzePerAccountNegatif(
+    rows: ParsedEDefterFisLine[],
+    mizanCtx: MizanCtx | null,
+    opts: {
+      filter: (c?: string | null) => boolean;
+      category: string;
+      esik: number;
+      sev: (known: boolean) => 'WARN' | 'ERROR';
+      mesaj: (code: string, gun: string, bakiye: string, acilisNot: string) => string;
+    },
+  ): FindingDraft[] {
+    const matched = rows.filter((r) => opts.filter(r.hesapKodu));
+    if (!matched.length) return [];
+    const acilisVeride = rows.some((r) => this.isOpeningLikeText(this.rowText(r)));
+    const byCode = new Map<string, ParsedEDefterFisLine[]>();
+    for (const r of matched) {
+      const c = String(r.hesapKodu || '').trim();
+      if (!byCode.has(c)) byCode.set(c, []);
+      byCode.get(c)!.push(r);
+    }
+    const findings: FindingDraft[] = [];
+    for (const [code, accRows] of byCode.entries()) {
+      const periodNet = accRows.reduce((s, r) => s + Number(r.borc || 0) - Number(r.alacak || 0), 0);
+      let opening = 0;
+      let known = false;
+      if (acilisVeride) { opening = 0; known = true; }
+      else if (mizanCtx?.found && mizanCtx.bakiyeByCode.has(code)) {
+        opening = (mizanCtx.bakiyeByCode.get(code) || 0) - periodNet;
+        known = true;
+      }
+      const neg = this.gunlukNegatifGunler(accRows, opening, opts.esik);
+      if (!neg.length) continue;
+      const enDusuk = neg.reduce((m, d) => (d.bakiye < m.bakiye ? d : m), neg[0]);
+      const not = known
+        ? acilisVeride ? '' : ` (acilis bakiyesi ${this.fmt(opening)} TL Mizan'dan alindi)`
+        : ' (acilis bakiyesi haric hesaplandi; ilgili donemin Mizani cekilirse kesinlesir)';
+      const cokGun = neg.length > 1 ? ` Toplam ${neg.length} gun negatif.` : '';
+      findings.push({
+        severity: opts.sev(known),
+        category: opts.category,
+        message: opts.mesaj(code, this.fmtDate(enDusuk.date), this.fmt(enDusuk.bakiye), not) + cokGun,
+        voucherKey: enDusuk.first.voucherKey,
+        rowIndex: enDusuk.first.rowIndex,
+        hesapKodu: code,
+        detail: { enDusukGun: enDusuk.date.toISOString(), enDusukBakiye: enDusuk.bakiye, negatifGun: neg.length, acilis: opening, acilisKnown: known },
+      });
+    }
+    return findings;
+  }
+
+  // MIZAN ↔ FIS MUTABAKATI: yalnizca TAM defterde (acilis fisi veride) calisir — o zaman fis listesinden
+  //   hesaplanan kapanis bakiyesi = gercek kapanistir ve Mizan bakiyesiyle bire bir tutmali. Tutmuyorsa
+  //   yevmiyede eksik/fazla fis var ya da Mizan guncel degildir. Kismi donemde (acilis yok) tautoloji olur,
+  //   o yuzden CALISTIRILMAZ. Yalniz iki tarafta da bulunan hesaplar karsilastirilir.
+  private analyzeMizanMutabakat(rows: ParsedEDefterFisLine[], mizanCtx: MizanCtx | null): FindingDraft[] {
+    if (!mizanCtx?.found) return [];
+    const acilisVeride = rows.some((r) => this.isOpeningLikeText(this.rowText(r)));
+    if (!acilisVeride) return [];
+    const fisByCode = new Map<string, number>();
+    for (const r of rows) {
+      const c = String(r.hesapKodu || '').trim();
+      if (!c) continue;
+      fisByCode.set(c, (fisByCode.get(c) || 0) + Number(r.borc || 0) - Number(r.alacak || 0));
+    }
+    const diffs: { code: string; fis: number; mizan: number; fark: number }[] = [];
+    for (const [code, fisClose] of fisByCode.entries()) {
+      if (!mizanCtx.bakiyeByCode.has(code)) continue;
+      const mizanBal = mizanCtx.bakiyeByCode.get(code) || 0;
+      const fark = fisClose - mizanBal;
+      if (Math.abs(fark) > 1) diffs.push({ code, fis: fisClose, mizan: mizanBal, fark });
+    }
+    if (!diffs.length) return [];
+    diffs.sort((a, b) => Math.abs(b.fark) - Math.abs(a.fark));
+    const findings: FindingDraft[] = diffs.slice(0, 25).map((d) => ({
+      severity: 'WARN' as const,
+      category: 'MIZAN_FIS_UYUMSUZ',
+      message: `${d.code} hesabi: yevmiye/fis kapanis bakiyesi ${this.fmt(d.fis)} TL ama Mizan bakiyesi ${this.fmt(d.mizan)} TL (fark ${this.fmt(d.fark)} TL). Yevmiyede eksik/fazla fis ya da Mizan guncel degil.`,
+      hesapKodu: d.code,
+      detail: { fis: d.fis, mizan: d.mizan, fark: d.fark },
+    }));
+    if (diffs.length > 25) {
+      findings.push({
+        severity: 'INFO',
+        category: 'MIZAN_FIS_UYUMSUZ',
+        message: `Toplam ${diffs.length} hesapta yevmiye-Mizan bakiye farki var; en buyuk 25'i listelendi.`,
+      });
+    }
+    return findings;
   }
 
   // Banka eksi bakiye = kredi mi, dogru hesapta mi (102 negatif olamaz, 300 olmali)
