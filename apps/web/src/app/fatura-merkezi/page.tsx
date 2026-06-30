@@ -2882,7 +2882,7 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                         const rows = lineDraft.map((l: any, i: number) => ({ l, i })).filter(({ l }) => (l.group || 'matrah') === g.key);
                         const tot = rows.reduce((s, { l }) => s + (Number(g.side === 'debit' ? l.debit : l.credit) || 0), 0);
                         return (
-                          <div key={g.key} className="fgrp">
+                          <div key={g.key} className="fgrp" data-g={g.key}>
                             <div className="fgh"><span>{g.label}</span><span className="fgs">{g.side === 'debit' ? 'Borç' : 'Alacak'}</span></div>
                             {rows.map(({ l, i }) => (
                               <div key={i} className="frow">
@@ -4639,4 +4639,33 @@ const CSS = `
 #fm-root .nitem:hover:not(.on) > span:first-child{transform:scale(1.08)}
 #fm-root .nsub{font-size:13.5px;font-weight:600;transition:color .14s,transform .13s}
 #fm-root .nsub:hover:not(.on){color:var(--accent);transform:translateX(2px)}
+/* ── Muhasebeleştir ekranı cilalama: üst butonlar aktif, zoom renkli, bölüm tonları, rakamlar ── */
+#fm-root .navb{width:28px;height:28px;border-radius:8px;border:1px solid var(--accent-line);background:var(--accent-soft);color:var(--accent);font-size:17px;transition:background .12s,color .12s,border-color .12s}
+#fm-root .navb:hover:not(:disabled){background:var(--accent);color:#fff;border-color:var(--accent)}
+#fm-root .navb:disabled{opacity:.4;cursor:not-allowed}
+#fm-root .navpos{font-size:12px;font-weight:700;color:var(--text);min-width:42px}
+#fm-root .phname{font-size:13px;font-weight:800;color:#0e1726;letter-spacing:-.2px}
+#fm-root .muhfilter{height:30px;border:1px solid var(--accent-line);background:var(--accent-soft);border-radius:9px;padding:3px}
+#fm-root .muhfilter button{height:24px;border-radius:7px;color:var(--accent);font-size:11.5px;font-weight:800;padding:0 11px;transition:background .12s,color .12s}
+#fm-root .muhfilter button.on{background:var(--accent);color:#fff;box-shadow:0 5px 12px -7px var(--accent)}
+#fm-root .muhfilter b{font-weight:900;margin-left:4px}
+#fm-root .fifull{display:inline-flex;align-items:center;gap:5px;height:30px;padding:0 13px;border-radius:9px;border:1px solid #f0c878;background:#fff8ec;color:#a85d08;font-size:12px;font-weight:800;cursor:pointer;transition:background .12s,border-color .12s}
+#fm-root .fifull:hover{background:#fdeecf;border-color:#e3a948}
+#fm-root .zbtn{min-width:32px;height:30px;border:1px solid var(--accent-line);background:var(--accent-soft);color:var(--accent);border-radius:8px;font-weight:700;transition:background .12s,color .12s,border-color .12s}
+#fm-root .zbtn:hover{background:var(--accent);color:#fff;border-color:var(--accent)}
+#fm-root .zbtn.zreset{font-size:12px;font-weight:700;padding:0 12px}
+#fm-root .fgrp{border-radius:11px}
+#fm-root .fgrp .fgh{padding:7px 12px;font-size:12.5px;font-weight:800;letter-spacing:-.1px}
+#fm-root .fgrp .fgh .fgs{font-size:9.5px;font-weight:800;opacity:.8}
+#fm-root .fgrp[data-g="matrah"]{border-color:#d6defb}
+#fm-root .fgrp[data-g="matrah"] .fgh{background:#eef2ff;color:#2740a8}
+#fm-root .fgrp[data-g="vergi"]{border-color:#f0d9b3}
+#fm-root .fgrp[data-g="vergi"] .fgh{background:#fff4e3;color:#a85d08}
+#fm-root .fgrp[data-g="cari"]{border-color:#c4e6d1}
+#fm-root .fgrp[data-g="cari"] .fgh{background:#e9f6ee;color:#15803d}
+#fm-root .fgrp[data-g="tevkifat"]{border-color:#dcd3f5}
+#fm-root .fgrp[data-g="tevkifat"] .fgh{background:#f1edff;color:#5a3fc0}
+#fm-root .fgrp .frow .money{font-size:14px;font-weight:800;letter-spacing:-.2px;color:#0e1726}
+#fm-root .fgrp .fgt{padding:6px 12px;font-size:12.5px}
+#fm-root .fgrp .fgt b{font-size:14px;color:#0e1726;letter-spacing:-.2px}
 `;
