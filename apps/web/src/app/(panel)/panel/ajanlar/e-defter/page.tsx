@@ -266,6 +266,19 @@ function categoryLabel(code: string) {
     YUVARLAK_TUTAR_YIGILMASI: 'Yuvarlak tutar yığılması',
     HAFTA_SONU_KAYDI: 'Hafta sonu kaydı',
     SUPHELI_ACIKLAMA: 'Şüpheli açıklama',
+    KASA_GUNLUK_NEGATIF_BAKIYE: 'Kasa günlük negatif bakiye',
+    STOK_NEGATIF_BAKIYE: 'Stok negatif bakiye',
+    BANKA_GUNLUK_EKSI_BAKIYE: 'Banka günlük eksi bakiye',
+    MIZAN_FIS_UYUMSUZ: 'Mizan ↔ fiş uyumsuz',
+    '191_TERS_CALISMA': '191 İndirilecek KDV ters çalışma',
+    '391_TERS_CALISMA': '391 Hesaplanan KDV ters çalışma',
+    KDV_TAHAKKUK_MUKERRER: 'KDV tahakkuk mükerrer',
+    KDV_TAHAKKUK_191_TUTAR_UYUMSUZ: '191 tahakkuk tutar uyumsuz',
+    KDV_TAHAKKUK_391_TUTAR_UYUMSUZ: '391 tahakkuk tutar uyumsuz',
+    ANA_HESAPTA_KAYIT: 'Ana hesapta kayıt (alt hesap yok)',
+    GELIR_HESABI_BORC_CALISMA: 'Gelir hesabı borç çalışma',
+    GIDER_HESABI_ALACAK_CALISMA: 'Gider hesabı alacak çalışma',
+    ORTAK_CARI_KASA_KULLANIMI: 'Ortak cari + kasa birlikte',
   };
   return dict[code] || code.replace(/_/g, ' ').toLocaleLowerCase('tr-TR');
 }
@@ -277,6 +290,8 @@ function categoryGroup(code: string): { id: string; label: string; order: number
   if (code === 'HAVADA_KDV_KAYDI' || code.startsWith('KDV_') || code === 'DONEM_SONU_191_BAKIYE' || code === 'DONEM_SONU_391_BAKIYE') return { id: 'kdv', label: 'KDV Kontrolleri', order: 3, icon: '🧾' };
   if (code.startsWith('CARI_TERS_BAKIYE')) return { id: 'cari', label: 'Cari Hesap Tutarlılığı', order: 4, icon: '👥' };
   if (code === 'ORTAK_ALACAK_FAIZ_RISKI') return { id: 'ortak', label: 'Ortak Alacakları / KKEG', order: 5, icon: '⚖️' };
+  if (code === 'KASA_GUNLUK_NEGATIF_BAKIYE' || code === 'STOK_NEGATIF_BAKIYE' || code === 'BANKA_GUNLUK_EKSI_BAKIYE') return { id: 'bakiye', label: 'Bakiye Kontrolü', order: 6, icon: '⚖️' };
+  if (code === 'MIZAN_FIS_UYUMSUZ') return { id: 'mizan', label: 'Mizan Mutabakatı', order: 1, icon: '🔗' };
   if (code.startsWith('KASA_')) return { id: 'tevsik', label: 'Tevsik / Kasa', order: 6, icon: '💰' };
   if (code.startsWith('YEVMIYE_') || code === 'FIS_DENGESIZ' || code === 'BOS_FIS' || code === 'TEK_SATIRLI_FIS')
     return { id: 'yevmiye', label: 'Yevmiye / Fiş Bütünlüğü', order: 7, icon: '📋' };
@@ -316,6 +331,11 @@ const MEVZUAT_REF: Record<string, string> = {
   YILSONU_AMORTISMAN_EKSIK: 'VUK 313/333',
   ACILIS_FISI_YOK: 'TDHP', ACILIS_FISINDE_GELIR_GIDER: 'TDHP', YILLIK_KAPANIS_690_EKSIK: 'TDHP', VERGI_KARSILIGI_370_YOK: 'KVK 32',
   BENFORD_SAPMA: 'Benford · VEDAS', YUVARLAK_TUTAR_YIGILMASI: 'Forensic', HAFTA_SONU_KAYDI: 'BDS 240', SUPHELI_ACIKLAMA: 'BDS 240',
+  KASA_GUNLUK_NEGATIF_BAKIYE: 'TDHP · VUK', STOK_NEGATIF_BAKIYE: 'TDHP', BANKA_GUNLUK_EKSI_BAKIYE: 'TDHP',
+  MIZAN_FIS_UYUMSUZ: 'VUK 219', ANA_HESAPTA_KAYIT: 'TDHP',
+  GELIR_HESABI_BORC_CALISMA: 'TDHP', GIDER_HESABI_ALACAK_CALISMA: 'TDHP', ORTAK_CARI_KASA_KULLANIMI: 'KVK 13',
+  KDV_TAHAKKUK_MUKERRER: 'KDVK 41', KDV_TAHAKKUK_191_TUTAR_UYUMSUZ: 'KDVK 29', KDV_TAHAKKUK_391_TUTAR_UYUMSUZ: 'KDVK 41',
+  '191_TERS_CALISMA': 'KDVK 29', '391_TERS_CALISMA': 'KDVK 41',
 };
 
 // Mizan denetimi tip kodu → okunur Türkçe etiket (ham kod göstermemek için)
@@ -1289,6 +1309,10 @@ const STANDART_KURALLAR: KuralDef[] = [
   { kod: 'YUVARLAK_TUTAR_YIGILMASI', ad: 'Yuvarlak tutar yığılması', aciklama: '1.000 TL ve üzeri tutarların aşırı yüksek oranı tam yuvarlak (1.000/10.000 katı). Tahmini/uydurma kayıt işareti.', severity: 'WARN', grup: 'Forensic / Anomali', aktif: true },
   { kod: 'HAFTA_SONU_KAYDI', ad: 'Hafta sonu kaydı', aciklama: 'Cumartesi/Pazar tarihli fişler. Mesai dışı kayıtlar BDS 240 kapsamında denetimde gözden geçirilir.', severity: 'INFO', grup: 'Forensic / Anomali', aktif: true },
   { kod: 'SUPHELI_ACIKLAMA', ad: 'Şüpheli açıklama', aciklama: 'Açıklamada "düzeltme, iptal, hata, sehven, geri alma" gibi riskli ifadeler. Düzeltme/iptal kayıtları denetimde önceliklidir.', severity: 'INFO', grup: 'Forensic / Anomali', aktif: true },
+  { kod: 'KASA_GUNLUK_NEGATIF_BAKIYE', ad: 'Kasa günlük negatif bakiye', aciklama: 'Kasa (100) gün sonu bakiyesi eksiye düşemez (fiziki nakit). Açılış fişi/Mizan ile kesin (ERROR), yoksa açılış hariç (WARN). Negatif = eksik tahsilat/gelir, ortaklardan ödeme (131) ya da fiş tarihi hatası.', severity: 'ERROR', grup: 'Bakiye Kontrolü', aktif: true },
+  { kod: 'STOK_NEGATIF_BAKIYE', ad: 'Stok negatif bakiye', aciklama: 'Stok (150-153) gün sonu eksiye düşemez — elde olmayan mal satılamaz. Her stok hesabı ayrı yürütülür. Negatif = alış/giriş kaydı eksik/geç, maliyet/miktar hatası.', severity: 'WARN', grup: 'Bakiye Kontrolü', aktif: true },
+  { kod: 'BANKA_GUNLUK_EKSI_BAKIYE', ad: 'Banka günlük eksi bakiye', aciklama: 'Banka (102) gün sonu eksi (alacak) bakiye veriyor (eşik 1.000 TL, her hesap ayrı). Gerçekten kredili mevduat ise 300 Banka Kredileri\'nde izlenmeli; değilse eksik tahsilat/yanlış hesap.', severity: 'WARN', grup: 'Bakiye Kontrolü', aktif: true },
+  { kod: 'MIZAN_FIS_UYUMSUZ', ad: 'Mizan ↔ fiş uyumsuz', aciklama: 'Tam defterde (açılış fişi var) yevmiyeden hesaplanan kapanış bakiyesi ile Mizan bakiyesi tutmuyor — yevmiyede eksik/fazla fiş ya da Mizan güncel değil. Kısmi dönemde (açılış yok) çalışmaz.', severity: 'WARN', grup: 'Mizan Mutabakatı', aktif: true },
 ];
 
 const EK_KAPALI_KURALLAR: KuralDef[] = [
@@ -1347,7 +1371,11 @@ function KurallarTab() {
     return map;
   }, [ruleSettings]);
 
-  const ruleActive = (k: KuralDef) => settingMap.has(k.kod) ? Boolean(settingMap.get(k.kod)) : k.aktif;
+  // Aktif/pasif: önce tenant ayarı; yoksa backend'in GERÇEK varsayılanı (defaultDisabledCodes) —
+  //   katalogdaki statik `aktif` bayrağı bayatlamasın diye (backend bir kuralı açtığında ekran da görsün).
+  const defaultDisabled = useMemo(() => new Set(ruleSettings?.defaultDisabledCodes || []), [ruleSettings]);
+  const ruleActive = (k: KuralDef) =>
+    settingMap.has(k.kod) ? Boolean(settingMap.get(k.kod)) : (ruleSettings ? !defaultDisabled.has(k.kod) : k.aktif);
 
   const ruleMut = useMutation({
     mutationFn: ({ code, active }: { code: string; active: boolean }) => edefterControlApi.setRuleActive(code, active),
