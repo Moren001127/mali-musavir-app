@@ -1172,8 +1172,8 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
           if (t.v !== 'all' && n === 0) return null;
           return (
             <button key={t.v} type="button" className={`ftile${durumF === t.v ? ' on' : ''}`} style={{ ['--tc' as any]: t.c }} onClick={() => setDurumF(t.v)}>
-              <span className="ftn">{n}</span>
-              <span className="ftl">{t.l}</span>
+              <span className="ftdot" />
+              <span className="fttx"><span className="ftn">{n}</span><span className="ftl">{t.l}</span></span>
             </button>
           );
         })}
@@ -4559,24 +4559,26 @@ const CSS = `
 #fm-root .screen > .h2{font-size:23px;font-weight:800;letter-spacing:-.45px;color:#0d1626}
 #fm-root .screen > .sub{font-size:13px;color:#67718a;margin-bottom:6px;line-height:1.5}
 #fm-root .filttiles{gap:10px;margin:8px 0 18px}
-#fm-root .ftile{min-width:98px;padding:12px 16px;border-radius:14px;border:1.5px solid color-mix(in srgb,var(--tc,var(--accent)) 26%,#eef1f6);background:color-mix(in srgb,var(--tc,var(--accent)) 7%,#fff);gap:3px;box-shadow:none;transition:transform .12s,box-shadow .14s,border-color .12s,background .12s}
+#fm-root .ftile{flex-direction:row;align-items:center;gap:11px;min-width:auto;padding:11px 17px 11px 14px;border-radius:14px;border:1.5px solid color-mix(in srgb,var(--tc,var(--accent)) 26%,#eef1f6);background:color-mix(in srgb,var(--tc,var(--accent)) 7%,#fff);box-shadow:none;transition:transform .12s,box-shadow .14s,border-color .12s,background .12s}
 #fm-root .ftile::before,#fm-root .ftile::after{display:none;content:none}
-#fm-root .ftile .ftn{font-size:25px;font-weight:800;letter-spacing:-.5px;color:var(--tc,var(--accent));line-height:1}
-#fm-root .ftile .ftl{font-size:11.5px;font-weight:700;color:#5a6678}
+#fm-root .ftile .ftdot{width:9px;height:9px;border-radius:50%;background:var(--tc,var(--accent));flex-shrink:0}
+#fm-root .ftile .fttx{display:flex;flex-direction:column;gap:2px;align-items:flex-start}
+#fm-root .ftile .ftn{font-size:23px;font-weight:800;letter-spacing:-.5px;color:var(--tc,var(--accent));line-height:1}
+#fm-root .ftile .ftl{font-size:11px;font-weight:700;color:color-mix(in srgb,var(--tc,var(--accent)) 58%,#475569)}
 #fm-root .ftile:hover{transform:translateY(-2px);border-color:var(--tc,var(--accent));box-shadow:0 11px 22px -12px var(--tc,var(--accent))}
 #fm-root .ftile.on{background:color-mix(in srgb,var(--tc,var(--accent)) 15%,#fff);border-color:var(--tc,var(--accent));box-shadow:inset 0 0 0 2px var(--tc,var(--accent))}
-#fm-root .ftile.on .ftl{color:var(--tc,var(--accent))}
 #fm-root .invactions{display:flex;align-items:center;gap:9px;padding:13px 16px;flex-wrap:wrap;background:#fff}
 #fm-root .invactions h3{font-size:13.5px;font-weight:800;color:#0d1626;letter-spacing:-.2px}
-#fm-root .invactions .btn{height:36px;border-radius:10px;padding:0 14px;font-size:12.5px;font-weight:700;border:1px solid #e4eaf3;background:#fff;color:#34415a;box-shadow:0 1px 2px rgba(16,24,40,.04);transition:background .14s,border-color .14s,box-shadow .14s,filter .14s}
-#fm-root .invactions .btn:hover:not(:disabled){border-color:#cfd9e8;background:#f7f9fc}
-#fm-root .invactions .btn.upload{background:var(--accent-soft);border-color:var(--accent-line);color:var(--accent)}
+#fm-root .invactions .btn{height:38px;border-radius:11px;padding:0 16px;font-size:12.5px;font-weight:700;border:1px solid #e4eaf3;background:#fff;color:#34415a;box-shadow:0 1px 2px rgba(16,24,40,.05);transition:transform .12s,box-shadow .14s,background .14s,border-color .14s,filter .14s}
+#fm-root .invactions .btn:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 9px 18px -11px rgba(16,24,40,.35)}
+#fm-root .invactions .btn.upload{background:#eef4ff;border-color:#cfe0ff;color:#2f54d6}
+#fm-root .invactions .btn.upload:hover:not(:disabled){background:#e4eeff;box-shadow:0 9px 18px -10px rgba(47,84,214,.5)}
 #fm-root .invactions .btn.fix{background:#fff;border-color:#e4eaf3;color:#34415a}
-#fm-root .invactions .btn.ai{background:linear-gradient(135deg,#6d5df6,#8b7bff);border-color:#6d5df6;color:#fff;box-shadow:0 8px 16px -10px rgba(109,93,246,.65)}
-#fm-root .invactions .btn.ai:hover:not(:disabled){filter:brightness(1.05)}
-#fm-root .invactions .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;box-shadow:0 8px 16px -10px var(--accent)}
-#fm-root .invactions .btn.primary:hover:not(:disabled){filter:brightness(.96)}
-#fm-root .invactions .btn:disabled{opacity:.5;cursor:not-allowed;box-shadow:none}
+#fm-root .invactions .btn.ai{background:linear-gradient(135deg,#7c3aed 0%,#6d5df6 52%,#4f7cf0 100%);border:none;color:#fff;box-shadow:0 8px 18px -9px rgba(109,93,246,.75)}
+#fm-root .invactions .btn.ai:hover:not(:disabled){filter:brightness(1.06);transform:translateY(-1px);box-shadow:0 13px 24px -10px rgba(109,93,246,.85)}
+#fm-root .invactions .btn.primary{background:linear-gradient(135deg,#15803d,#1aa050);border:none;color:#fff;box-shadow:0 8px 18px -9px rgba(21,128,61,.72)}
+#fm-root .invactions .btn.primary:hover:not(:disabled){filter:brightness(1.05);transform:translateY(-1px);box-shadow:0 13px 24px -10px rgba(21,128,61,.82)}
+#fm-root .invactions .btn:disabled{opacity:.5;cursor:not-allowed;box-shadow:none;transform:none}
 /* ── Hesap Planı görsel yenileme: KOD büyük+net, butonlar, satır okunurluğu ── */
 #fm-root .planwrap table{font-size:13px}
 #fm-root .planwrap thead th{font-size:11px;padding:9px 13px;letter-spacing:.4px;color:#5a6678}
