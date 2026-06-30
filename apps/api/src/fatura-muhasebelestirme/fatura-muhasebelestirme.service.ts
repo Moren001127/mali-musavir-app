@@ -14,7 +14,7 @@ import { buildLucaImportExcel, buildLucaIsletmeHizliFisCsv } from './luca-excel.
 import { VendorMemoryService } from '../vendor-memory/vendor-memory.service';
 import { MihsapService } from '../mihsap/mihsap.service';
 import { PortalAutomationService } from '../portal-automation/portal-automation.service';
-import { isletmeRef, getKayitAltList, isletmeAlisSatisTuru, isletmeIslemTuru, defaultBelgeTuruKod, normalizeDocumentType, isletmeGiderSinifi, isletmeAutoKayitAltKod, isletmeAutoKayitTuru, defaultKayitAltKod, denetimUyariOlustur } from '@mali-musavir/shared';
+import { isletmeRef, getKayitAltList, isletmeAlisSatisTuru, isletmeIslemTuru, defaultBelgeTuruKod, normalizeDocumentType, isletmeGiderSinifi, isletmeAutoKayitAltKod, isletmeAutoKayitTuru, defaultKayitAltKod, denetimUyariOlustur, giderIcerikSinifla } from '@mali-musavir/shared';
 
 // ── İşletme defteri AI sınıflandırması ──
 // Faturayı okuyan max-vision AI'ına, mükellefin FAALİYETİ + faturanın İÇERİĞİYLE muhakeme ederek
@@ -8486,12 +8486,20 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       'makine', 'makina', 'jenerator', 'kompresor', 'forklift', 'transpalet', 'celik tezgah', 'vitrin',
       'bilgisayar', 'laptop', 'dizustu', 'monitor', 'yazici cihaz', 'fotokopi makin', 'tarayici cihaz', 'projeksiyon',
       'televizyon', 'mobilya', 'demirbas', 'sabit kiymet', 'asansor', 'kamera sistem', 'guvenlik kamera',
+      // Taşıt/araç SATIN ALIMI (sabit kıymet) — yarı römork/treyler/dorse gibi. Servis/bakım faturaları
+      //   yukarıda giderIcerikSinifla ile ELENDİĞİ için bunlar yalnız GERÇEK alımda kalır.
+      'romork', 'treyler', 'dorse', 'cekici dorse',
     ];
     // İÇERİK sinyali ŞART: faturada gerçek cihaz/makine/sabit-kıymet adı geçmeli. AI'ın salt "demirbas"
     //   KATEGORİSİ TEK BAŞINA güvenilmez — AI, mükellefin faaliyet açıklamasındaki cihaz isimlerine
     //   kapılıp HİZMET/onarım gelirini bile "demirbas" diyebiliyordu (beyaz eşya TAMİRCİSİNİN onarım
     //   SATIŞLARI yanlışlıkla demirbaş işaretleniyordu — gerçek prod verisinde 23 belge). Bu yüzden
     //   yalnız fatura İÇERİĞİNDEKİ (kalem/giderTuru) gerçek mala bakılır.
+    // ⚠️ ÖNCE: içerik bir GİDER/HİZMET kuralına uyuyorsa (yedek parça, bakım, onarım, diagnostik,
+    //   akaryakıt, nakliye, müşavirlik, lastik…) bu SABİT KIYMET DEĞİLDİR → demirbaş YANLIŞ-POZİTİFİNİ
+    //   engelle. (Çetaş "diagnostik/elektrik", MENGERLER "yedek parça filtre", TORA akaryakıt servis/sarf
+    //   faturaları demirbaş işaretleniyordu.) Ham içerik (kalem + giderTuru); bozuk muhasebeNeden'e bakma.
+    if (giderIcerikSinifla(`${kalemAd} ${ocr.giderTuru || ''}`)) return { is: false, reason: '' };
     const hitWord = ASSET.find((w) => blob.includes(w)) || '';
     if (!hitWord) return { is: false, reason: '' };
     // Mükellef bu ürünü TİCARETEN satıyor / üretiyor / ONARIYORSA (faaliyet/ünvan/NACE'de ürün KÖKÜ
@@ -10049,6 +10057,14 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       //   ile bloklu (manuel Luca) — kategori/hesap da artık tutarlı görünür. Yalnız ALIŞ (satış demirbaş ayrı).
       const faDet = !isSale ? this.detectFixedAsset(doc.ocrData, tpRow) : { is: false, reason: '' };
       if (faDet.is && kat !== 'demirbas') kat = 'demirbas';
+      // DETERMİNİSTİK İÇERİK SINIFLANDIRMA (evrensel kural, AI'sız): kalem+giderTuru'ndan gider kategorisi
+      //   + plan-adı ipucu. AI'ın TUTARSIZ/SAÇMA kategorisini EZER → aynı içerik HER ZAMAN aynı hesaba
+      //   (nakliye→nakliye, akaryakıt→akaryakıt, yedek-parça/bakım→araç bakım). Demirbaş ise dokunma (faDet);
+      //   iade ise alış-kategorisi (153/770) kuralları zaten geçerli. Hint, pickAccount'ta plan-adıyla eşleşir.
+      const _kalemAd = Array.isArray((doc.ocrData as any)?.kalemler) ? (doc.ocrData as any).kalemler.map((k: any) => String(k?.ad || '')).join(' ') : '';
+      const _giderTuruRaw = String((doc.ocrData as any)?.giderTuru || '').trim();
+      const detIcerik = (!isSale && kat !== 'demirbas') ? giderIcerikSinifla(`${_kalemAd} ${_giderTuruRaw}`) : null;
+      if (detIcerik) kat = detIcerik.kategori;
       const KAT_PREFIX: Record<string, string[]> = {
         ticari_mal: ['153', '150', '770'],       // stok yoksa gidere düş
         hammadde: ['153', '730', '740', '770'],   // 150 KULLANILMAZ → 153 (kullanıcı: "150 kullanma 153 olacak")
@@ -10059,7 +10075,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const alisMatrahPrefixes = KAT_PREFIX[kat] || ['770', '760', '740', '730', ' gider '];
       // GİDER hesabı: faturanın İÇERİĞİNE göre. Eskiden satıcı adıyla eşleşmeyince en DÜŞÜK 770
       // (= planın ilk hesabı, ör. "MUTFAK VE YEMEKHANE") seçiliyordu → yakıt fişi mutfağa gidiyordu.
-      const giderTuru = String((doc.ocrData as any)?.giderTuru || '').trim();
+      // DETERMİNİSTİK hint VARSA onu kullan (plan-adıyla eşleşir, tutarlı); yoksa AI'ın giderTuru'su.
+      const giderTuru = detIcerik?.hint || _giderTuruRaw;
       // GİDER/STOK hesabı içerikten seçilir. Öncelik (her biri EMİN olunca atar, değilse boş):
       //   1) giderTuru ADIYLA birebir eşleşen hesap (en spesifik).
       //   2) matrahKategori → plandaki o grupta TEK leaf varsa KESİN ata (ticari_mal→153,
