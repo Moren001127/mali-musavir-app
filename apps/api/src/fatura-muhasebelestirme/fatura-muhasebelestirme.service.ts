@@ -9625,7 +9625,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const prompt = [
       `Aşağıda ${n} adet Türk e-Fatura/e-Arşiv belgesinin metin içeriği var (1..${n} numaralı). HER BİRİNİ ayrı ayrı, bir MALİ MÜŞAVİR gibi değerlendir. Tüm kurallar HER belge için ayrı geçerlidir.`,
       ...this.classifyHeadSegments(mukellefBilgi, invoiceKind),
-      `YALNIZCA tam ${n} nesnelik bir JSON DİZİSİ döndür — nesneler belge numarasıyla AYNI sırada (1. belge ilk nesne), başka metin YOK: [${this.classifyJsonShape(planAdaylar)}, ...]`,
+      `YALNIZCA tam ${n} nesnelik bir JSON DİZİSİ döndür, başka metin YOK. ⚠️ HER nesneye "no" alanı EKLE = o nesnenin değerlendirdiği BELGE NUMARASI (1..${n}) — "=== BELGE X ===" başlığındaki X. Böylece hangi sonucun hangi belgeye ait olduğu KESİN belli olur; sırayı karıştırma riski için "no" MUTLAKA doğru. Nesne biçimi: {"no":<belge numarası>, ...şu alanlar: ${this.classifyJsonShape(planAdaylar)}}`,
       ...this.classifyBodySegments(isIsletme, invoiceKind, planAdaylar),
       '\nBELGELER:\n' + docBlocks,
     ].filter(Boolean).join('\n');
@@ -9645,7 +9645,22 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const m = res.text.match(/\[[\s\S]*\]/);
       const arr = m ? JSON.parse(m[0]) : null;
       if (!Array.isArray(arr)) return [];
-      return arr.map((j: any) => this.parseClassifyObject(j));
+      // ⚠️ BELGE-SONUÇ KARIŞMASINI ÖNLE: sonucu DİZİ SIRASINA göre DEĞİL, AI'ın döndürdüğü "no" alanına
+      //   göre belgeye hizala. AI N belgeyi farklı sırada döndürünce bir belgenin sonucu başkasına yapışıp
+      //   yanlış hesap/yorum üretiyordu (nakliye bedeli → "yazılım lisans" + MALİ MÜŞAVİRLİK 770.01.008).
+      const nos = arr.map((j: any) => Number(j?.no));
+      const allValidUnique = arr.length === n
+        && nos.every((x) => Number.isInteger(x) && x >= 1 && x <= n)
+        && new Set(nos).size === arr.length;
+      if (allValidUnique) {
+        const aligned: Array<ClassifyResult | null> = new Array(n).fill(null);
+        for (const j of arr) aligned[Number(j.no) - 1] = this.parseClassifyObject(j);
+        return aligned;
+      }
+      // "no" eksik/çakışık/aralık-dışı → SIRALI eşleme GÜVENSİZ (karışma riski). Boş dön → çağıran
+      //   HER belgeyi tek-tek sınıflandırır (karışma imkânsız). Doğruluk > hız.
+      this.logger.warn(`[CLS-BATCH] no-alani guvenilmez (n=${n}, donen=${arr.length}) → tek-tek fallback`);
+      return [];
     } catch { return []; }
   }
 
