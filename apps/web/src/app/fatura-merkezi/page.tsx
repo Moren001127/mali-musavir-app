@@ -984,6 +984,14 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
     enabled: !!taxpayerId && kind === 'ALIS',
   });
   const missing: any[] = missingQ.data?.missing || [];
+  // HESAP PLANI durumu — bilanço mükellefinde plan aktarılmamışsa eşleştirme yapılamaz; net uyarı için.
+  //   (İşletme defterinde plan olmaz → sorgu çalıştırma.)
+  const planSumQ = useQuery({
+    queryKey: ['fm-plan-sum', taxpayerId, period],
+    queryFn: async () => (await api.get('/fatura-muhasebelestirme/summary', { params: { taxpayerId, period } })).data,
+    enabled: !!taxpayerId && !isIsletme,
+  });
+  const planMissing = !isIsletme && !!planSumQ.data?.accountPlanMissing;
   // Okuma bitince listeyi tazele (yeni veriler insin).
   const prevReadingRef = useRef(0);
   useEffect(() => {
@@ -1108,6 +1116,15 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
           <div className="yuklenemedi">
             <span><Ico html={I.info} size={14} /> Belgeler yüklenemedi (bağlantı/sunucu hatası) — "veri yok" değil.</span>
             <button className="btn sm" onClick={() => docsQ.refetch()}><Ico html={I.sync} size={12} /> Tekrar dene</button>
+          </div>
+        )}
+        {!!taxpayerId && planMissing && (
+          <div className="planuyari">
+            <Ico html={I.info} size={17} />
+            <div>
+              <b>Bu mükellefin hesap planı aktarılmamış.</b> Eşleştirilecek hesap olmadığı için kodlar (gelir/gider, cari, KDV) atanamıyor — bu yüzden belgeler "eksik" görünüyor.
+              <br /><b>Çözüm:</b> Luca'dan bu mükellefin <b>hesap planını çekin</b> (Hesap Planı ekranı), sonra "Kodları düzelt" ile otomatik eşleşir.
+            </div>
           </div>
         )}
         {ocrProg && (ocrProg.active || ocrProg.failed > 0) && (() => {
@@ -3674,6 +3691,9 @@ const CSS = `
 #fm-root .yuklenemedi span{display:inline-flex;align-items:center;gap:6px}
 #fm-root .eksikbelge{display:flex;align-items:flex-start;gap:8px;margin:10px 16px 0;padding:9px 12px;background:#fef6e7;border:1px solid #f0d28a;border-radius:9px;font-size:12px;color:#8a6314}
 #fm-root .eksikbelge b{color:#6b4d0f}
+#fm-root .planuyari{display:flex;align-items:flex-start;gap:11px;margin:11px 16px 0;padding:13px 16px;background:linear-gradient(135deg,#fff4e0,#fff9f0);border:1.5px solid #f0c878;border-radius:12px;font-size:12.5px;line-height:1.5;color:#7a5410;box-shadow:0 4px 14px -8px rgba(180,120,20,.35)}
+#fm-root .planuyari svg{flex-shrink:0;margin-top:1px;color:#c8881a}
+#fm-root .planuyari b{color:#5c3f08;font-weight:800}
 #fm-root .dfchip .dfn{font-size:10px;font-weight:800;background:var(--accent-soft);color:var(--accent);border-radius:10px;padding:1px 7px;min-width:18px;text-align:center}
 #fm-root .dfchip.on .dfn{background:rgba(255,255,255,.28);color:#fff}
 #fm-root .pill.n{background:#eef1f5;color:#64748b}

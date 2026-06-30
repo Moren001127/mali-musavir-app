@@ -887,11 +887,24 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       if (vStatus === 'INVALID' || vStatus === 'INCOMPLETE') invalidCount++;
     }
 
+    // HESAP PLANI DURUMU: bilanço mükellefinde hesap planı AKTARILMAMIŞSA eşleştirilecek hesap yoktur →
+    //   her şey "eksik" görünür ama SEBEBİ belirsiz kalır. Kullanıcıya NET söyleyelim (banner). İşletme
+    //   defterinde hesap planı OLMAZ (tek düzen muhasebe değil) → uyarı gösterme.
+    let accountPlanMissing = false;
+    if (opts.taxpayerId) {
+      const tp = await (this.prisma as any).taxpayer.findFirst({ where: { id: opts.taxpayerId, tenantId }, select: { defterTuru: true, mihsapDefterTuru: true } }).catch(() => null);
+      if (!isIsletmeLedger(tp?.defterTuru, tp?.mihsapDefterTuru)) {
+        accountPlanMissing = !(await this.hasAccountPlan(tenantId, opts.taxpayerId));
+      }
+    }
+
     return {
       total: docs.length,
       pending,
       alisPending,
       satisPending,
+      // Bilanço mükellefinde hesap planı yok → eşleştirme yapılamaz (frontend uyarı banner'ı gösterir).
+      accountPlanMissing,
       // Sidebar'da gösterilen: gerçekten mukellefe bağlı bekleyenler
       pendingWithTaxpayer,
       // Mukellef seçilmediği için tabloda görünmeyen belgeler
