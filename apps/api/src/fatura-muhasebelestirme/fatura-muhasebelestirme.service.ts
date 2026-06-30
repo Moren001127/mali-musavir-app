@@ -9442,6 +9442,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     let mukellefBilgi = '';
     let isIsletmeMukellef = false;
     let ownVkn = ''; // mükellefin kendi VKN/TCKN'si → faturanın YÖNÜNÜ (alış/satış) türetmek için
+    let ownAd = '';  // mükellefin kendi ünvanı → "satıcı/alıcı adı mükellefin kendisi mi" güvenlik ağı için
     let tpNace = '';      // isletmeAutoKayitTuru için
     let tpFaaliyet = '';  // isletmeAutoKayitTuru için
     if (d.taxpayerId) {
@@ -9452,6 +9453,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       if (tp) {
         ownVkn = String(tryDecrypt(tp.taxNumber) || tp.taxNumber || tryDecrypt(tp.identityNumber) || tp.identityNumber || '').replace(/\D/g, '');
         const ad = String(tp.companyName || `${tp.firstName || ''} ${tp.lastName || ''}`).trim();
+        ownAd = ad;
         isIsletmeMukellef = isIsletmeLedger(tp.defterTuru, tp.mihsapDefterTuru);
         const defter = isIsletmeMukellef ? 'İşletme defteri' : 'Bilanço usulü';
         tpNace = String(tp.naceKodu || '').trim();
@@ -9659,8 +9661,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
 
     const matrah = Math.round(breakdown.reduce((s: number, b: any) => s + b.base, 0) * 100) / 100;
     const kdv = Math.round(breakdown.reduce((s: number, b: any) => s + b.amount, 0) * 100) / 100;
-    const aiSaticiVkn = String(parsed.saticiVkn || '').replace(/\D/g, '');
-    const aiAliciVkn = String(parsed.aliciVkn || '').replace(/\D/g, '');
+    // let: aşağıdaki taraf-tutarlılık (ters-UBL / kendi-kendine-fatura) swap'larından SONRA yeniden
+    //   senkronize edilir — DB'ye STALE (swap-öncesi) VKN yazılmasın diye (bkz. swap bloklarının sonu).
+    let aiSaticiVkn = String(parsed.saticiVkn || '').replace(/\D/g, '');
+    let aiAliciVkn = String(parsed.aliciVkn || '').replace(/\D/g, '');
     const vknOk = (v: string) => v.length === 10 || v.length === 11;
     // YÖN GÖRÜNTÜDEN: mükellef VKN'si satıcıyla eşleşirse SATIŞ, alıcıyla eşleşirse ALIŞ.
     // Mihsap'ın sekme/etiket bilgisine güvenmeyiz — fatura kimin adına kesilmiş, ona bakarız.
@@ -9681,6 +9685,25 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       }
     }
     const isSale = kind === 'SATIS';
+    // AD-BAZLI GÜVENLİK AĞI (kullanıcı bulgusu — "Yorgun Nakliyat" ALIŞ faturasında cari sütununda
+    //   kendi ünvanı görünüyordu): VKN doğru okunup yön (kind) doğru çıksa bile, AI/OCR satıcı↔alıcı
+    //   AD bloklarını (VKN'den BAĞIMSIZ bir alan olduğu için) birbirine karıştırabiliyor — yöne göre
+    //   "biz" olması gereken taraf (ALIŞ→satıcı, SATIŞ→alıcı) mükellefin KENDİ adıyla eşleşiyorsa bu
+    //   mantıksal-imkansız (mükellef kendi kendine fatura kesemez) → AD'ları (VKN'lerle TUTARLI kalsın
+    //   diye birlikte) swap et. kind/yöne DOKUNMA, sadece TARAF bilgisi düzelir.
+    if (ownAd) {
+      const expectOwnSide = isSale ? parsed.aliciAd : parsed.saticiAd;
+      if (expectOwnSide && this.nameMatchScore(ownAd, String(expectOwnSide)) > 0) {
+        const ts = parsed.saticiAd, tsv = parsed.saticiVkn;
+        parsed.saticiAd = parsed.aliciAd; parsed.saticiVkn = parsed.aliciVkn;
+        parsed.aliciAd = ts; parsed.aliciVkn = tsv;
+      }
+    }
+    // VKN RESENKRONİZASYONU: yukarıdaki swap'lardan SONRA aiSaticiVkn/aiAliciVkn'i parsed'ten yeniden
+    //   oku — aksi halde DB'ye (sellerVkn/buyerVkn, aşağıda) swap-ÖNCESİ STALE VKN yazılırdı (AD doğru
+    //   ama VKN yanlış kalan bir tutarsızlık; mevcut koddaki gizli bir bug'dı, burada da düzeltildi).
+    aiSaticiVkn = String(parsed.saticiVkn || '').replace(/\D/g, '');
+    aiAliciVkn = String(parsed.aliciVkn || '').replace(/\D/g, '');
     // TEVKİFAT: okunan tevkifat KDV tutarından oran çıkar (520/2600=0.2). linesFromAmounts'un
     // tevkifat yolu NET KDV + ÖDENECEK cariyi doğru üretir (tam KDV/tam toplam değil).
     const tevkKdv = Number(parsed.tevkifatKdv) || 0;
@@ -9694,7 +9717,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const total = tevkifatOrani > 0
       ? Math.round((matrah + kdv * (1 - tevkifatOrani)) * 100) / 100
       : Math.round((matrah + kdv) * 100) / 100;
-    // Karşı taraf (cari) adı: satışta ALICI, alışta SATICI.
+    // Karşı taraf (cari) adı: satışta ALICI, alışta SATICI (yukarıdaki AD-bazlı güvenlik ağı taraf
+    //   bilgisini zaten tutarlı hale getirdi — parsed.saticiAd/aliciAd artık mükellefle çakışmaz).
     const counterName = String((isSale ? parsed.aliciAd : parsed.saticiAd) || '').trim();
     // Belge türü: önce GERÇEK METİNDEN (e-Arşiv/e-Fatura ibaresi). HTML yoksa (resim/JPG fatura)
     //   Azure'un OKUDUĞU ham metinden ("e-Arşiv Fatura", "Senaryo: EARSIVFATURA" yazısı), son çare AI.
