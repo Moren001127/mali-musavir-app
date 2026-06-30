@@ -415,14 +415,14 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   // Eş zamanlı okuma: her Max-vision bir Claude Code alt-süreci açıyor. 4 belge aynı anda
   // çalışınca log/alt-süreç fırtınası ve timeout riski büyüyor; varsayılanı 2 tut, gerekirse env ile yükselt.
   // INVOICE_OCR_CONCURRENCY ile ayarlanır. (Daha büyük hız için hızlı-OCR/Azure-öncelik yolu var.)
-  private readonly uploadOcrConcurrency = Math.max(1, Number(process.env.INVOICE_OCR_CONCURRENCY || 2));
+  private readonly uploadOcrConcurrency = Math.max(1, Number(process.env.INVOICE_OCR_CONCURRENCY || 6));
   private uploadOcrActive = 0;
   // SINIFLANDIRMA MAX KAPISI: HTML-hızlı okuma Max'i ATLIYOR ama sınıflandırma (aiClassifyAccounting)
   //   yine Max alt-süreci doğuruyor. 6 belge aynı anda okununca 6 eşzamanlı Max alt-süreci →
   //   kısıtlı konteynerde 32s'de bitemeyip HEPSİ timeout (sonuc=NULL, kategori/hesap kodu BOŞ).
   //   Çözüm: sınıflandırma Max çağrısını okuma eşzamanlılığından BAĞIMSIZ, düşük bir kapıdan geçir
   //   (KDV Kontrol içerik denetimi de KDV_CONTENT_AUDIT_CONCURRENCY=2 ile sınırlı — aynı kanıt).
-  private readonly classifyConcurrency = Math.max(1, Number(process.env.MAX_CLASSIFY_CONCURRENCY || 2));
+  private readonly classifyConcurrency = Math.max(1, Number(process.env.MAX_CLASSIFY_CONCURRENCY || 1));
   // 90s: Max alt-süreci bu konteynerde ağır (~50-60s/çağrı, fırtına/yük altında daha da); 60s'de
   //   yavaş-ama-tamamlanan çağrılar timeout'a düşüp NULL veriyordu. 90s tavan margin sağlar (env ile ayarlanır).
   private readonly classifyTimeoutMs = Math.max(8000, Number(process.env.MAX_CLASSIFY_TIMEOUT_MS || 90000));
@@ -451,7 +451,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   //   (aiClassifyAccountingMulti) → daha az çağrı = belirgin hız. Batch eşzamanlılıkla dolduğundan
   //   (uploadOcrConcurrency) ikisi birlikte yükseltildi. Uyumsuz/timeout'ta tek-tek fallback güvenli.
   private readonly classifyBatchSize = Math.max(1, Number(process.env.MAX_CLASSIFY_BATCH || 6));
-  private readonly classifyBatchDebounceMs = Math.max(0, Number(process.env.MAX_CLASSIFY_BATCH_MS || 700));
+  private readonly classifyBatchDebounceMs = Math.max(0, Number(process.env.MAX_CLASSIFY_BATCH_MS || 1500));
   private readonly classifyBatchBuffers = new Map<string, {
     items: Array<{ contentText: string; resolve: (v: ClassifyResult | null) => void }>;
     timer: NodeJS.Timeout | null;
