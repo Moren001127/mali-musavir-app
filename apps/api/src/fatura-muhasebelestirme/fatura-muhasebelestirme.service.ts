@@ -9031,9 +9031,63 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   }
 
   /**
+   * Entegratör (TÜRMOB/e-Fatura/e-Arşiv) belgesinin ORİJİNAL UBL XML'ini getirir — ZIP içindeki
+   * invoice.xml, düz .xml, eFaturaInbox.ublXmlRaw ya da earsivFatura.xmlContent. Sentetik/liste-özeti
+   * XML ve UBL olmayan içerik ELENİR (null döner). Bu belgeler "AI ile oku" yerine doğrudan XML'den
+   * okunur (görsel özel XSLT'de satıcı render olmuyor + "Fatura Tipi: SATIS" yazıyor → yön ters dönüyordu).
+   */
+  private async loadProviderUblXml(tenantId: string, doc: any): Promise<string | null> {
+    const valid = (xml: string | null | undefined): string | null => {
+      const s = String(xml || '').trim();
+      if (!s) return null;
+      if (this.isSyntheticTurmobInboxXml(s)) return null;
+      if (!/<(?:\?xml|[A-Za-z0-9_.-]+:)?(?:Invoice|CreditNote)\b/i.test(s)) return null;
+      return s;
+    };
+    // 1) s3Key — ZIP içinde invoice.xml (öncelik) ya da düz .xml
+    const s3Key = String(doc?.s3Key || '');
+    if (s3Key && !s3Key.startsWith('earsiv-inline://')) {
+      try {
+        const buffer = await this.storage.getBuffer(s3Key);
+        if (buffer?.length) {
+          const isZip = buffer.length >= 4 && buffer[0] === 0x50 && buffer[1] === 0x4b;
+          if (isZip) {
+            const zip = await JSZip.loadAsync(buffer);
+            const files = Object.values(zip.files).filter((f: any) => !f.dir && /\.(xml|ubl)$/i.test(f.name || ''));
+            files.sort((a: any, b: any) => (/(invoice|ubl)\.xml$/i.test(a.name) ? 0 : 1) - (/(invoice|ubl)\.xml$/i.test(b.name) ? 0 : 1));
+            for (const f of files) {
+              const v = valid(this.decodeXmlEntities(Buffer.from(await f.async('uint8array')).toString('utf8')));
+              if (v) return v;
+            }
+          } else {
+            const v = valid(this.decodeXmlEntities(buffer.toString('utf8')));
+            if (v) return v;
+          }
+        }
+      } catch { /* aşağıdaki yedeklere düş */ }
+    }
+    // 2) eFaturaInbox.ublXmlRaw (documentId bağıyla)
+    try {
+      const inbox = await (this.prisma as any).eFaturaInbox.findFirst({ where: { tenantId, documentId: doc.id }, select: { ublXmlRaw: true } });
+      const v = valid(inbox?.ublXmlRaw);
+      if (v) return v;
+    } catch { /* */ }
+    // 3) earsivFatura.xmlContent (earsiv kaynaklı belgede sourceRefId bağıyla)
+    if (String(doc?.source || '') === 'earsiv' && doc?.sourceRefId) {
+      try {
+        const f = await (this.prisma as any).earsivFatura.findFirst({ where: { tenantId, id: doc.sourceRefId }, select: { xmlContent: true } });
+        const v = valid(f?.xmlContent);
+        if (v) return v;
+      } catch { /* */ }
+    }
+    return null;
+  }
+
+  /**
    * Bir belgeyi Max-vision (claudeTextViaMax görsel) ile OKUR — Azure/ücretli API GEREKMEZ,
    * Max aboneliğinden çalışır (Max-only kuralına uygun). KDV kırılımını çıkarıp fiş satırlarını üretir.
    * Kilitli KDV/OCR modülüne DOKUNMAZ. Tek belge (frontend sırayla çağırır → HTTP timeout yok).
+   * ENTEGRATÖR (UBL XML) belge → görsel OKUNMAZ, içerik+yön+satıcı XML'den; yön ters dönmez.
    */
   async aiReadDocument(tenantId: string, documentId: string) {
     const d = await (this.prisma as any).invoiceAccountingDocument.findFirst({
@@ -9049,17 +9103,27 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     let html = '';
     let imgBuf: Buffer | null = null;
     let imgMedia = '';
-    try {
-      const fu: any = await this.fileUrl(tenantId, documentId);
-      if (fu?.inlineHtml) {
-        html = String(fu.inlineHtml);
-      } else if (typeof fu?.url === 'string' && fu.url) {
-        const dm = fu.url.match(/^data:([^;]+);base64,(.+)$/);
-        if (dm) { imgMedia = dm[1]; imgBuf = Buffer.from(dm[2], 'base64'); }
-        else if (/^https?:/i.test(fu.url)) { const r = await fetch(fu.url); imgBuf = Buffer.from(await r.arrayBuffer()); imgMedia = String(fu.mimeType || r.headers.get('content-type') || ''); }
+    // ENTEGRATÖR / UBL XML BELGE → içerik+yön+satıcı XML'den gelir; GÖRSEL OKUNMAZ. TÜRMOB/e-Fatura
+    //   özel XSLT görselinde satıcı başlığı render OLMUYOR + "Fatura Tipi: SATIS" yazıyor → Max görseli
+    //   okuyunca mükellefi satıcı sanıp YÖNÜ TERS çeviriyordu (alış→satış, cari boş). Kullanıcı yönergesi:
+    //   "aktarılan faturalar zaten XML; AI ile oku YOK — sadece elle yüklenen JPEG/PDF OCR ile okunur."
+    const provXml = await this.loadProviderUblXml(tenantId, d).catch(() => null);
+    if (provXml) {
+      imgBuf = Buffer.from(provXml, 'utf8');
+      imgMedia = 'application/xml';
+    } else {
+      try {
+        const fu: any = await this.fileUrl(tenantId, documentId);
+        if (fu?.inlineHtml) {
+          html = String(fu.inlineHtml);
+        } else if (typeof fu?.url === 'string' && fu.url) {
+          const dm = fu.url.match(/^data:([^;]+);base64,(.+)$/);
+          if (dm) { imgMedia = dm[1]; imgBuf = Buffer.from(dm[2], 'base64'); }
+          else if (/^https?:/i.test(fu.url)) { const r = await fetch(fu.url); imgBuf = Buffer.from(await r.arrayBuffer()); imgMedia = String(fu.mimeType || r.headers.get('content-type') || ''); }
+        }
+      } catch (e: any) {
+        return { ok: false, reason: 'belge getirilemedi: ' + (e?.message || '') };
       }
-    } catch (e: any) {
-      return { ok: false, reason: 'belge getirilemedi: ' + (e?.message || '') };
     }
     const isImage = !!imgBuf && imgBuf.length > 200 && /^image\//i.test(imgMedia);
     // XML e-Arşiv/e-Fatura → UBL PARSE (AI'siz, BİREBİR; okuma asla başarısız olmaz).
@@ -9351,9 +9415,22 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const vknOk = (v: string) => v.length === 10 || v.length === 11;
     // YÖN GÖRÜNTÜDEN: mükellef VKN'si satıcıyla eşleşirse SATIŞ, alıcıyla eşleşirse ALIŞ.
     // Mihsap'ın sekme/etiket bilgisine güvenmeyiz — fatura kimin adına kesilmiş, ona bakarız.
+    // ENTEGRATÖR XML'inde yön zaten kanaldan KESİN (d.invoiceKind) — görüntü/VKN tahmini ile EZME
+    //   (özel XSLT görselinde mükellef satıcı gibi görünüp yönü ters çeviriyordu).
     let kind: 'ALIS' | 'SATIS' = (String(d.invoiceKind || 'ALIS') === 'SATIS' ? 'SATIS' : 'ALIS');
-    if (ownVkn && vknOk(aiSaticiVkn) && ownVkn === aiSaticiVkn) kind = 'SATIS';
-    else if (ownVkn && vknOk(aiAliciVkn) && ownVkn === aiAliciVkn) kind = 'ALIS';
+    if (!provXml) {
+      if (ownVkn && vknOk(aiSaticiVkn) && ownVkn === aiSaticiVkn) kind = 'SATIS';
+      else if (ownVkn && vknOk(aiAliciVkn) && ownVkn === aiAliciVkn) kind = 'ALIS';
+    } else if (kind === 'ALIS' && ownVkn) {
+      // Ters UBL koruması: ALIŞ'ta satıcı=mükellef geldiyse gerçek cari = alıcı tarafıdır → çevir.
+      const sV = String(parsed.saticiVkn || '').replace(/\D/g, '');
+      const aV = String(parsed.aliciVkn || '').replace(/\D/g, '');
+      if (sV && sV === ownVkn && (aV ? aV !== ownVkn : !!parsed.aliciAd)) {
+        const ts = parsed.saticiAd, tsv = parsed.saticiVkn;
+        parsed.saticiAd = parsed.aliciAd; parsed.saticiVkn = parsed.aliciVkn;
+        parsed.aliciAd = ts; parsed.aliciVkn = tsv;
+      }
+    }
     const isSale = kind === 'SATIS';
     // TEVKİFAT: okunan tevkifat KDV tutarından oran çıkar (520/2600=0.2). linesFromAmounts'un
     // tevkifat yolu NET KDV + ÖDENECEK cariyi doğru üretir (tam KDV/tam toplam değil).
