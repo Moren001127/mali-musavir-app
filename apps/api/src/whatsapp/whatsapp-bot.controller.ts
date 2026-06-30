@@ -1703,6 +1703,13 @@ export class WhatsAppBotController implements OnModuleInit {
         return;
       }
 
+      // OWNER → SERBEST NUMARAYA MESAJ: owner "0532… numarasına 'X' gönder" derse o numaraya
+      // doğrudan WhatsApp mesajı yollar (numara + gönderme fiili + mesaj-niyeti şart → karışmaz).
+      // İsim-relay'den ÖNCE: numara varsa serbest-mesaj, yoksa isim-relay çalışır.
+      if (await this.maybeHandleOwnerSendToNumber(ownerTenant, msg)) {
+        return;
+      }
+
       // MÜŞAVİR → MÜKELLEF İLETME: owner "<Mükellef>'e ilet: <cevap>" derse, o mükellefe
       // "müşavirimize danıştık" çerçevesiyle iletir (eskalasyonun geri dönüşü). İki nokta
       // ZORUNLU + isim ≥2 ayırt edici kelimeyle çözülür → yanlış müşteriye gitmez.
@@ -2469,6 +2476,64 @@ export class WhatsAppBotController implements OnModuleInit {
       ? `✓ ${ad} mükellefine iletildi:\n${messagePart}`
       : `⚠️ ${ad} mükellefine iletilemedi (WhatsApp bağlantısı/şalter). Lütfen tekrar deneyin.`;
     await this.whatsapp.sendMessage(this.replyTarget(msg), confirm, ownerTenant.id).catch(() => false);
+    return true;
+  }
+
+  /**
+   * OWNER → SERBEST NUMARAYA MESAJ: owner "0532… numarasına 'merhaba' gönder" / "şu numaraya …
+   * mesajını gönder" derse, o numaraya doğrudan WhatsApp mesajı yollar. Owner kendi aracını
+   * kullanıyor → komutun kendisi onaydır; gönderim sonrası NE gönderildiği owner'a teyit edilir.
+   * TETİK ŞARTI (üçü birden): metinde geçerli telefon + gönderme fiili + (tırnak / "mesaj" / "yaz")
+   * → normal sorular ve "X belgesini gönder" / isim-relay komutlarıyla KARIŞMAZ.
+   */
+  private async maybeHandleOwnerSendToNumber(ownerTenant: any, msg: any): Promise<boolean> {
+    const text = String(msg?.text || '').trim();
+    if (!text) return false;
+    if (!/(g[öo]nder|yolla|at[ıi]ver|mesaj\s*at)/i.test(text)) return false;
+    // Serbest-mesaj niyeti: tırnaklı metin VEYA "mesaj"/"yaz" kelimesi olmalı (belge-gönderden ayrışsın).
+    const hasMsgIntent = /["'“”‘’«»]/.test(text) || /mesaj/i.test(text) || /yaz[ıi]p?\b/i.test(text);
+    if (!hasMsgIntent) return false;
+    // Telefon adayı: rakam+ayraç runı (≥10 hane çekirdek). normalize → 90XXXXXXXXXX (11-13 hane).
+    const cands = text.match(/\+?\d[\d\s().\-]{8,}\d/g) || [];
+    let phone = '';
+    let phoneRaw = '';
+    for (const c of cands) {
+      const n = this.normalize(c);
+      if (n.length >= 11 && n.length <= 13) { phone = n; phoneRaw = c; break; }
+    }
+    if (!phone) return false; // numara yok → bu komut değil, AI'ya bırak
+
+    // Mesaj metni: önce tırnak içi; yoksa numara + komut kelimelerini eleyip kalan.
+    let message = '';
+    // Tırnaklı mesaj: AYNI tür tırnak çiftiyle eşle (içerideki kesme işareti "10'da" çift tırnağı
+    //   erken kapatmasın). Sıra: düz çift → akıllı çift → «» → düz tek → akıllı tek.
+    const q = text.match(/"([^"]{2,})"/) || text.match(/[“”]([^“”]{2,})[“”]/) || text.match(/«([^»]{2,})»/) || text.match(/'([^']{2,})'/) || text.match(/[‘’]([^‘’]{2,})[‘’]/);
+    if (q) message = q[1].trim();
+    if (!message) {
+      const TR = 'a-zA-ZçğıöşüÇĞİıÖŞÜ'; // Türkçe harf kuyruğu (\w "ı/ş/ğ…" kapsamaz)
+      message = text
+        .replace(phoneRaw, ' ')
+        .replace(new RegExp(`(şu|bu)\\s+(numara|mesaj|yaz|metn)[${TR}]*`, 'gi'), ' ')
+        .replace(new RegExp(`numara[${TR}]*`, 'gi'), ' ')
+        .replace(new RegExp(`(mesaj|metn|yaz[ıi]s)[${TR}]*`, 'gi'), ' ')
+        .replace(/\b(g[öo]nder\w*|yolla\w*|ilet\w*|at[ıi]ver\w*|yaz[ıi]p)\b/gi, ' ')
+        .replace(/[:>«»]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+    const disp = phone.replace(/^90/, '0');
+    if (message.length < 2) {
+      await this.whatsapp.sendMessage(this.replyTarget(msg),
+        `Numarayı (${disp}) anladım ama gönderilecek mesajı çıkaramadım. Şu biçimde yazar mısın: «${disp} numarasına: merhaba, …».`,
+        ownerTenant.id).catch(() => false);
+      return true;
+    }
+    const sent = await this.whatsapp.sendMessage(phone, message, ownerTenant.id).catch(() => false);
+    await this.whatsapp.sendMessage(this.replyTarget(msg),
+      sent
+        ? `✓ ${disp} numarasına gönderildi:\n${message}`
+        : `⚠️ ${disp} numarasına gönderilemedi (WhatsApp bağlantısı/şalter kapalı olabilir). Tekrar dener misin?`,
+      ownerTenant.id).catch(() => false);
     return true;
   }
 
