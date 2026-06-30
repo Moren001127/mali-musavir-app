@@ -4665,7 +4665,7 @@ const CSS = `
 #fm-root .fgrp[data-g="cari"] .fgh{background:#e9f6ee;color:#15803d}
 #fm-root .fgrp[data-g="tevkifat"]{border-color:#dcd3f5}
 #fm-root .fgrp[data-g="tevkifat"] .fgh{background:#f1edff;color:#5a3fc0}
-#fm-root .fgrp .frow .money{font-size:14px;font-weight:800;letter-spacing:-.2px;color:#0e1726}
+#fm-root .fgrp .frow .money{font-size:13.5px;font-weight:600;letter-spacing:-.1px;color:#1f2a3c}
 #fm-root .fgrp .fgt{padding:6px 12px;font-size:12.5px}
-#fm-root .fgrp .fgt b{font-size:14px;color:#0e1726;letter-spacing:-.2px}
+#fm-root .fgrp .fgt b{font-size:13.5px;font-weight:700;color:#0e1726;letter-spacing:-.1px}
 `;
