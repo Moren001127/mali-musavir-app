@@ -737,7 +737,16 @@ export class PortalAutomationService {
     };
     return rows.map((row: any) => {
       const acc = accByRef.get(row.sourceRefId);
-      const importedByDownload = !!acc && row.aktarimDurumu === 'indirildi' && row.sorguMode === 'download';
+      // "Aktarıldı mı" GERÇEK kaynaktan (invoiceAccountingDocument.lucaStatus) okunur — kullanıcı
+      //   bulgusu: önceki mantık (aktarimDurumu==='indirildi' && sorguMode==='download') SON sorgunun
+      //   moduna bağlıydı; "Sorgula" (mode='query') TEKRAR basılınca bu eski "download" bilgisi
+      //   EZİLİYOR, gerçekten Luca'ya gönderilmiş (POSTED) bir fatura YANLIŞLIKLA "aktarılmadı" (X)
+      //   görünüyordu — mükerrer aktarım riski. lucaStatus='POSTED'/'POSTING' GERÇEK durumdur, sorgu
+      //   moduna bakmaz; eski 'download' sinyali YEDEK olarak OR'a bırakıldı (geriye dönük uyum).
+      const importedByDownload = !!acc && (
+        ['POSTED', 'POSTING'].includes(String(acc.lucaStatus || ''))
+        || (row.aktarimDurumu === 'indirildi' && row.sorguMode === 'download')
+      );
       // Muhasebe belgesinden tutar (matrah / KDV / genel toplam) — listede göstermek için.
       const ocr = acc?.ocrData && typeof acc.ocrData === 'object' ? acc.ocrData : null;
       return {
