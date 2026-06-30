@@ -10488,7 +10488,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           if (!result) {
             // tevkifat/iade/ihrac/istisna GEÇMEYEN düz hesaplar (matrahla simetrik).
             const normals = grp.filter((a: any) => !this.isTevkifatAccountName(a.accountName || '') && !/(iade|ihrac|istisna)/i.test(String(a.accountName || '')));
-            const pool = normals.length ? normals : grp;
+            // ALIŞ'ta (191) normals BOŞSA (planda yalnız "sorumlu/tevkifat" adlı 191 hesabı varsa, normal
+            //   İndirilecek KDV hesabı YOKSA) grp'ye (sorumlu dahil) DÜŞME — normal-191 satırı SORUMLU
+            //   hesaba ASLA zorla atanmasın (kullanıcı bulgusu: planda sadece "191.02.001 SORUMLU
+            //   SIF.İND.KDV" varken normal+sorumlu satırların İKİSİ DE oraya gitmişti). BOŞ kalsın
+            //   ("Eksik hesap kodu" görünür, kullanıcı 1 kez seçer/Luca'da açar → öğrenilir). SATIŞ'ta
+            //   (391, tek-satır tevkifat-sonrası net) eski davranış (grp'ye düş) KORUNUR.
+            const pool = normals.length ? normals : (vergiPrefix === '391' ? grp : []);
             // ORANA göre: adındaki sayılar arasında satırın KDV oranı geçen hesabı seç (%20→"20").
             if (rateDigits) {
               result = pool.find((a: any) => (this.norm(String(a.accountName || '')).match(/\d+/g) || ([] as string[])).includes(rateDigits)) || null;
