@@ -135,11 +135,16 @@ export function denetimUyariOlustur(p: DenetimGirdi): DenetimUyari[] {
 
   // Geniş arama metni: giderTuru + kalem adları + muhasebe yorumu
   const aramaMetni = [p.giderTuru, ...p.kalemAciklamalari, p.muhasebeNeden].filter(Boolean).join(' ');
+  // TEVKİFAT için YALNIZ satın alınan şeyin metni (giderTuru + kalemler). muhasebeNeden
+  //   MÜKELLEFİN SEKTÖRÜNÜ anlatıyor ("Nakliyat işletmesinin araçları için lastik…") → içindeki
+  //   "nakliye/nakliyat" kelimesi LASTİK ALIMINI "nakliye hizmeti" sanıp YANLIŞ tevkifat uyarısı
+  //   üretiyordu. Tevkifat satın alınan HİZMETE bağlıdır, alıcının sektörüne değil.
+  const hizmetMetni = [p.giderTuru, ...p.kalemAciklamalari].filter(Boolean).join(' ');
 
   // ─── 1. TEVKİFAT DENETİMİ ──────────────────────────────────────────────
   // KDV dahil eşik aşıldı + içerik tevkifatlı hizmet türüne uyuyor + belgede tevkifat yok
   for (const kural of TEVKIFAT) {
-    if (totalKdvDahil >= kural.esikKdvDahil && iceriyor(aramaMetni, kural.anahtar)) {
+    if (totalKdvDahil >= kural.esikKdvDahil && iceriyor(hizmetMetni, kural.anahtar)) {
       if (!p.tevkifatVar) {
         uyarilar.push({
           kod: kural.kod + '_EKSIK',
