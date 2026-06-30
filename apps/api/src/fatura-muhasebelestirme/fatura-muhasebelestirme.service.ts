@@ -10043,10 +10043,14 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
               const byName = giderTuru ? leaves.find((a: any) => this.nameMatchScore(giderTuru, String(a.accountName || '')) > 0) : null;
               if (byName) {
                 categoryMatrah = byName; // içerik ↔ hesap adı birebir → kesin ata
-              } else if (/^(15|25)/.test(key)) {
-                // HOMOJEN stok/sabit-kıymet grubu (153 TİCARİ MALLAR / 255 DEMİRBAŞLAR): tüm leaf'ler
-                //   aynı semantik, yalnız KDV oranı farkı → içerik-uyuşması kategoriyle zaten sağlandı.
-                //   En genel leaf güvenli; matrahForRate çok-oranlı faturada satırın oranına göre düzeltir.
+              } else if (/^15/.test(key)) {
+                // HOMOJEN stok grubu (153 TİCARİ MALLAR): tüm leaf'ler aynı semantik, yalnız KDV oranı
+                //   farkı → içerik-uyuşması kategoriyle zaten sağlandı. En genel leaf güvenli; matrahForRate
+                //   çok-oranlı faturada satırın oranına göre düzeltir.
+                // ⚠️ 25x (DEMİRBAŞ) BURAYA GİRMEZ: sabit kıymet alt-hesapları HETEROJEN — her biri AYRI
+                //   varlık ("IPHONE TELEFON", "TAŞIT", "MOBİLYA"…). leaves[0] atamak YARI RÖMORK'u
+                //   "IPHONE TELEFON" hesabına yazıyordu. Ad eşleşmesi yoksa BOŞ kalır → müşavir o sabit
+                //   kıymete özel alt-hesabı açar/seçer (her demirbaş kendi hesabına kaydedilir).
                 categoryMatrah = leaves[0];
               }
               // HETEROJEN gider havuzu (770/760/730/740): leaf'ler FARKLI amaçlı (mutfak/demirbaş/kira).
@@ -10079,7 +10083,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         ? (doc.ocrData as any).kalemler.map((k: any) => String(k?.ad || '')).filter(Boolean).slice(0, 8).join(', ')
         : '';
       const giderIcerik = giderTuru || [this.kategoriAciklama(kat), vendorName, kalemContext].filter(Boolean).join(' | ');
-      if (!isSale && !categoryMatrah && giderIcerik) {
+      // DEMİRBAŞ'ta AI gider tahmini de YANLIŞ: mevcut sabit-kıymet hesaplarından (IPHONE/araç/mobilya)
+      //   birini seçmeye zorlar; oysa her demirbaş kendi hesabına gider. Ad eşleşmedi → BOŞ kalsın,
+      //   müşavir o varlığa özel alt-hesabı açar. (kat==='demirbas' iken AI matrah seçimine girme.)
+      if (!isSale && !categoryMatrah && giderIcerik && kat !== 'demirbas') {
         const ck = this.norm(giderIcerik).slice(0, 180);
         if (aiGiderCache.has(ck)) {
           categoryMatrah = aiGiderCache.get(ck);
