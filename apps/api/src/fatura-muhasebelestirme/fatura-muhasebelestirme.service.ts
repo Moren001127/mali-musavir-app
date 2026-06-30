@@ -9401,11 +9401,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   ayrı çalışır; e-Fatura/e-Arşiv de "mali müşavir gibi" içerik+faaliyetle sınıflansın.
     // UBL/XML yolu max-vision AI'ı ATLAR → sınıflandırma (giderTuru/kategori/İşletme kayıt türü) BURADA
     //   SENKRON çalışır: okuma = tam işlenmiş belge (yarım kalan yok, aynı satıcı hep aynı sonuç).
-    // ENTEGRATÖR XML: SINIFLANDIRMA AI'I DA ÇALIŞMAZ (kullanıcı: "aktarılan faturalarda AI YOK,
-    //   bunlar zaten XML"). Hesap kodu deterministik gelir — gider/cari: Eşleştirme Kuralları +
-    //   öğrenilmiş VKN cari (rematchDocumentsWithLatestAccountPlan, aşağıda). Bilinmeyen satıcıda
-    //   "Kod eksik" görünür; müşavir 1 kez seçer → VKN bazında öğrenilir. (Hız: Max çağrısı YOK.)
-    if (parsed === preParsed && d.taxpayerId && !provXml) {
+    // ENTEGRATÖR XML'de GÖRÜNTÜ okunmaz (yukarıda XML'den geldi), AMA İÇERİK SINIFLANDIRMASI ÇALIŞIR:
+    //   AI, faturanın XML KALEMLERİNE (metin) bakıp giderTuru/kategori/hesabı seçer → eşleştirme içeriğe
+    //   göre yapılır. Bu bir METİN çağrısıdır (görüntü-vision DEĞİL) → hızlı. (Kullanıcı: "OCR yapma ama
+    //   AI çalışsın, eşleştirmeyi içeriğe göre yapsın.") 632/IPHONE/demirbaş yanlışları ayrı korumalarda.
+    if (parsed === preParsed && d.taxpayerId) {
       // TEMİZ içerik: HTML-HIZLI yolunda _htmlText zaten script/style atılmış + 8000 char (sınıflandırma
       //   AI'ı 23KB ham HTML gürültüsünde boğuluyordu → NULL/boş kategori). Önce onu kullan; yoksa eski yol.
       const contentText = (parsed._htmlText || parsed._azureText || (imgBuf ? imgBuf.toString('utf8') : (html || ''))).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 9000);
@@ -10002,13 +10002,6 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
 
     for (const doc of docs) {
       const isSale = doc.invoiceKind === 'SATIS';
-      // ENTEGRATÖR / UBL-XML belge → eşleştirmede AI (aiPickGiderAccount) ÇALIŞMAZ. Kullanıcı:
-      //   "bunlar zaten XML, AI ile okuma/eşleştirme YOK; hızlı deterministik eşleşsin." Gider/cari
-      //   Eşleştirme Kuralları + öğrenilmiş VKN cari + plan adından gelir; bulunmazsa BOŞ (müşavir seçer).
-      const _src = String(doc.source || '');
-      const _eng = String(doc.ocrEngine || '');
-      const isProviderXml = _src.startsWith('integration-') || _src === 'gib-portal-api' || _src === 'gib-earsiv-api'
-        || /-api$/.test(_eng) || (doc.ocrData as any)?.source === 'provider-api' || String((doc.ocrData as any)?.engine || '') === 'ubl-xml';
       // İADE/İPTAL faturası (CreditNote / "İADE"): normal 600/770/191'e ATANMAZ (ciro/KDV şişer).
       //   Bunun yerine planında VARSA iade-özel hesaplara eşle — satıştan iade matrahı 610 (SATIŞTAN
       //   İADELER), KDV adında "İADE" geçen 191/391 ("SATIŞTAN İADE İNDİRİLECEK KDV"). Kullanıcı:
@@ -10120,11 +10113,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         ? (doc.ocrData as any).kalemler.map((k: any) => String(k?.ad || '')).filter(Boolean).slice(0, 8).join(', ')
         : '';
       const giderIcerik = giderTuru || [this.kategoriAciklama(kat), vendorName, kalemContext].filter(Boolean).join(' | ');
-      // DEMİRBAŞ'ta AI gider tahmini de YANLIŞ: mevcut sabit-kıymet hesaplarından (IPHONE/araç/mobilya)
-      //   birini seçmeye zorlar; oysa her demirbaş kendi hesabına gider. Ad eşleşmedi → BOŞ kalsın,
-      //   müşavir o varlığa özel alt-hesabı açar. (kat==='demirbas' iken AI matrah seçimine girme.)
-      // ENTEGRATÖR/UBL-XML belgede AI YOK (hız + kullanıcı kuralı): deterministik bulamadıysa BOŞ kalır.
-      if (!isSale && !categoryMatrah && giderIcerik && kat !== 'demirbas' && !isProviderXml) {
+      // DEMİRBAŞ'ta AI gider tahmini YANLIŞ: mevcut sabit-kıymet hesaplarından (IPHONE/araç/mobilya)
+      //   birini seçmeye zorlar; oysa her demirbaş kendi hesabına gider → BOŞ kalsın (müşavir açar).
+      //   Demirbaş HARİCİNDE AI içerik-bazlı gider seçer (entegratör XML dahil — kalemlere bakar).
+      if (!isSale && !categoryMatrah && giderIcerik && kat !== 'demirbas') {
         const ck = this.norm(giderIcerik).slice(0, 180);
         if (aiGiderCache.has(ck)) {
           categoryMatrah = aiGiderCache.get(ck);
