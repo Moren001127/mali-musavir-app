@@ -541,6 +541,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     '191.01.001', '191.01.010', '191.01.020',
     '391.01.001', '391.01.010', '391.01.020',
     '320.01.001', '120.01.001', '360.01.001',
+    '191.02.001', // Sorumlu Sıfatıyla İndirilecek KDV (tevkifatlı ALIŞ — ikinci 191 satırı)
   ];
   private async gateExistingDocsIfNoPlan(tenantId: string, taxpayerId?: string) {
     if (!taxpayerId) return;
@@ -1099,7 +1100,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
 
     const missingAccountCodeCount = accountingDocs.filter((doc: any) => {
       const lines = Array.isArray(doc.lines) ? doc.lines : [];
-      const relevant = lines.filter((line: any) => ['matrah', 'vergi'].includes(String(line.group || '').toLowerCase()));
+      const relevant = lines.filter((line: any) => ['matrah', 'vergi', 'vergi-sorumlu'].includes(String(line.group || '').toLowerCase()));
       return relevant.length === 0 || relevant.some((line: any) => !String(line.accountCode || '').trim());
     }).length;
     const validationIssueCount = accountingDocs.filter((doc: any) => {
@@ -4723,7 +4724,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     for (const l of (Array.isArray(doc?.lines) ? doc.lines : [])) {
       const amt = Number(isSale ? l.credit : l.debit) || 0;
       if (l.group === 'matrah') { dMatrah += amt; hasLine = true; }
-      else if (l.group === 'vergi') { dKdv += amt; hasLine = true; }
+      else if (l.group === 'vergi' || l.group === 'vergi-sorumlu') { dKdv += amt; hasLine = true; }
     }
     if (!hasLine) { dMatrah = Number(doc?.ocrData?.matrah) || 0; dKdv = Number(doc?.ocrData?.kdvTutari) || 0; }
     const kb = Array.isArray(doc?.ocrData?.kdvBreakdown) ? doc.ocrData.kdvBreakdown : [];
@@ -4949,7 +4950,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // Boş hesap kodu (ör. cari) ile onaylama YASAK — Luca'ya eksik fiş gitmesin.
     const blankLine = (doc.lines || []).find((l: any) => !String(l.accountCode || '').trim());
     if (blankLine) {
-      const grpAd = String(blankLine.group) === 'cari' ? 'Cari hesap' : String(blankLine.group) === 'vergi' ? 'KDV hesabı' : 'Gelir/gider hesabı';
+      const grpAd = String(blankLine.group) === 'cari' ? 'Cari hesap' : String(blankLine.group) === 'vergi' ? 'KDV hesabı' : String(blankLine.group) === 'vergi-sorumlu' ? 'Sorumlu sıfatıyla KDV hesabı' : 'Gelir/gider hesabı';
       throw new BadRequestException(`Bu belge onaylanamaz — ${grpAd} boş. Önce hesap kodunu seç.`);
     }
 
@@ -8464,16 +8465,21 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const rl = primaryRate ? `%${primaryRate}` : undefined;
       const net = m.plus(normalK);
       if (!isSale) {
-        // ALIŞ tevkifat (KDV2): alıcı TAM KDV'yi indirir (191), satıcıya NET öder (320),
-        // tevkifat kısmını sorumlu sıfatıyla 360'a yazıp KDV2 beyannamesiyle bildirir.
-        //   770 matrah (Borç) · 191 TAM KDV (Borç) · 320 net cari (Alacak) · 360 tevkifat (Alacak)
-        // 360 ayrı 'tevkifat' grubunda → cari eşleştirme onu satıcı carisine EZMESİN; plandaki
-        // gerçek 360 hesabına bağlanır (bkz. rematch 'tevkifat' kolu).
+        // ALIŞ tevkifat (KDV2 — kullanıcı kuralı, Mihsap birebir): 191 İKİ AYRI satıra bölünür:
+        //   (a) NORMAL İndirilecek KDV = tevkifat-dışı kısım (k − tevk) — satıcıya fiilen ödenen KDV.
+        //   (b) Sorumlu Sıfatıyla İndirilecek KDV = tevkifat tutarı (tevk) — alıcı bu kısmı KDV2 ile
+        //       sorumlu sıfatıyla beyan/ödedikten SONRA aynı tutarı indirim hakkı olarak GERİ ALIR,
+        //       o yüzden AYRI bir 191 alt-hesabına (adında "sorumlu" geçen) borç yazılır. Toplam 191
+        //       borcu yine k'dir (normalK + tevk = k) — denge/toplam DEĞİŞMEZ, yalnız iki hesaba bölünür.
+        //   770 matrah (B) · 191 normal KDV (B) · 191 sorumlu sıf. KDV (B) · 320 net cari (A) · 360 tevkifat (A)
+        // 191-sorumlu ve 360 AYRI gruplarda → cari/oran eşleştirme onları EZMESİN; plandaki gerçek
+        // hesaplara (adında "sorumlu"/"kdv"/"tevkifat" geçen) bağlanır (bkz. rematch 'vergi-sorumlu'/'tevkifat' kolu).
         return [
           { group: 'matrah', accountCode: matrahCode, description: 'Gider / matrah', debit: m, credit: zero(), orderNo: 0 },
-          { group: 'vergi', accountCode: this.kdvAccountCode(false, primaryRate), description: `İndirilecek KDV ${rl || ''}`.trim(), rate: rl, debit: k, credit: zero(), orderNo: 1 },
-          { group: 'cari', accountCode: cariCode, description: opts.vendorName || 'Cari hesap', debit: zero(), credit: net, orderNo: 2 },
-          { group: 'tevkifat', accountCode: '360.01.001', description: 'Ödenecek KDV (sorumlu sıf. — KDV2 ile beyan)', rate: rl, debit: zero(), credit: tevk, orderNo: 3 },
+          { group: 'vergi', accountCode: this.kdvAccountCode(false, primaryRate), description: `İndirilecek KDV ${rl || ''}`.trim(), rate: rl, debit: normalK, credit: zero(), orderNo: 1 },
+          { group: 'vergi-sorumlu', accountCode: '191.02.001', description: `Sorumlu Sıfatıyla İndirilecek KDV ${rl || ''}`.trim(), rate: rl, debit: tevk, credit: zero(), orderNo: 2 },
+          { group: 'cari', accountCode: cariCode, description: opts.vendorName || 'Cari hesap', debit: zero(), credit: net, orderNo: 3 },
+          { group: 'tevkifat', accountCode: '360.01.001', description: 'Ödenecek KDV (sorumlu sıf. — KDV2 ile beyan)', rate: rl, debit: zero(), credit: tevk, orderNo: 4 },
         ];
       }
       return [
@@ -8779,7 +8785,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   (yoksa A101 gibi çok-oranlı belgeler kuruş farkıyla boş yere "çelişki"ye düşüyordu).
     if (totalAmount > 0) {
       const yevmiyeToplam = Math.max(sumDebit, sumCredit);
-      const rateLineCount = opts.lines.filter((l) => ['matrah', 'vergi'].includes(String((l as any).group || ''))).length;
+      const rateLineCount = opts.lines.filter((l) => ['matrah', 'vergi', 'vergi-sorumlu'].includes(String((l as any).group || ''))).length;
       // KURUŞ yuvarlama toleransı: Türk e-faturasında her kalemin KDV'si AYRI yuvarlanıp toplanır →
       //   kalem toplamı, faturanın "genel toplam" satırından birkaç kuruş sapabilir (okuma hatası DEĞİL,
       //   muhasebe yuvarlaması). 50 kuruşa kadar tolere; gerçek hata (TL-seviyesi fark) + KDV-matematik
@@ -10470,6 +10476,15 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         const mx = g360.reduce((mxv: number, a: any) => Math.max(mxv, depth(String(a.accountCode || ''))), 0);
         return g360.filter((a: any) => depth(String(a.accountCode || '')) === mx)[0] || g360[0];
       })();
+      // SORUMLU SIFATIYLA İNDİRİLECEK KDV (191 — kullanıcı kuralı, Mihsap birebir): ALIŞ tevkifatta
+      //   normal İndirilecek KDV'den AYRI bir 191 alt-hesabına (adında "sorumlu" geçen) tevkifat
+      //   tutarı borç yazılır. Plan'da böyle bir alt-hesap YOKSA uydurma — boş bırak ("Eksik hesap
+      //   kodu" görünür; müşavir 1 kez ekler/seçer, sahte kod asla yazılmaz).
+      const sorumluKdvMatch = (() => {
+        const g191 = accounts.filter((a: any) => { const c = String(a.accountCode || ''); return c.startsWith('191') && !c.startsWith('79') && isPostableLeaf(c); });
+        if (!g191.length) return null;
+        return g191.find((a: any) => this.norm(String(a.accountName || '')).includes('sorumlu')) || null;
+      })();
       // SATIŞ matrahı TEVKİFAT-FARKINDA (KDV hesabıyla simetrik): tevkifatlı satış → adında
       // "tevkifat" geçen 600; NORMAL satış → "tevkifat/iade/ihrac/istisna" GEÇMEYEN normal 600.
       // Eskiden isim eşleşmesi olmayınca EN DÜŞÜK 600 leaf seçiliyordu → planın ilk hesabı
@@ -10554,7 +10569,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       };
 
       for (const line of doc.lines || []) {
-        const group = String(line.group || '') as 'matrah' | 'vergi' | 'cari' | 'tevkifat';
+        const group = String(line.group || '') as 'matrah' | 'vergi' | 'vergi-sorumlu' | 'cari' | 'tevkifat';
         const lineRate = String(line.rate || '').replace(/[^0-9]/g, '');
         // İADE/İPTAL: matrah → 610 (satıştan iade), vergi → iade-KDV (191/391 "İADE"). Plandaki gerçek
         //   iade hesabı varsa ata (RETURN_NEEDS_REVERSAL uyarısı da kalkar), yoksa boş bırak (kullanıcı
@@ -10579,6 +10594,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         const match = group === 'matrah'
           ? await matrahForRate(lineRate)
           : group === 'vergi' ? vergiForRate(lineRate)
+          : group === 'vergi-sorumlu' ? sorumluKdvMatch
           : group === 'cari' ? cariMatch
           : null;
         const current = String(line.accountCode || '');
@@ -10590,6 +10606,21 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
               await (this.prisma as any).invoiceAccountingLine.update({
                 where: { id: line.id },
                 data: { accountCode: (tevkMatch as any).accountCode },
+              });
+            }
+          } else if (current) {
+            await (this.prisma as any).invoiceAccountingLine.update({ where: { id: line.id }, data: { accountCode: '', description: '' } });
+          }
+          continue;
+        }
+        // SORUMLU SIFATIYLA İNDİRİLECEK KDV özel (191): satıcı carisine/orana EZME. Plandaki "sorumlu"
+        // adlı 191 alt-hesabına bağlanır; yoksa boşalt (sahte placeholder asla canlı kalmaz).
+        if (group === 'vergi-sorumlu') {
+          if (sorumluKdvMatch) {
+            if (current !== String((sorumluKdvMatch as any).accountCode)) {
+              await (this.prisma as any).invoiceAccountingLine.update({
+                where: { id: line.id },
+                data: { accountCode: (sorumluKdvMatch as any).accountCode, description: (sorumluKdvMatch as any).accountName },
               });
             }
           } else if (current) {

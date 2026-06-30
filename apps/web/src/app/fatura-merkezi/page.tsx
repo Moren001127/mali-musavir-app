@@ -157,6 +157,7 @@ function deriveDurum(doc: any, isIsletme = false, autoKtKod = ''): { k: string; 
   if (blank('cari')) missing.push('cari hesap');
   if (blank('matrah')) missing.push(sale ? 'gelir kodu' : 'gider kodu');
   if (blank('vergi')) missing.push('KDV kodu');
+  if (blank('vergi-sorumlu')) missing.push('sorumlu sıf. KDV hesabı');
   if (blank('tevkifat')) missing.push('tevkifat 360 hesabı');
   if (missing.length) {
     const cap = (s: string) => s.charAt(0).toLocaleUpperCase('tr-TR') + s.slice(1);
@@ -534,7 +535,7 @@ function kdvParts(d: any): { matrah: number | null; kdv: number | null } {
   for (const l of lines) {
     const amt = Number(sale ? l.credit : l.debit) || 0;
     if (l.group === 'matrah') { matrah += amt; has = true; }
-    else if (l.group === 'vergi') { kdv += amt; has = true; }
+    else if (l.group === 'vergi' || l.group === 'vergi-sorumlu') { kdv += amt; has = true; }
   }
   if (has) return { matrah, kdv };
   const om = d.ocrData?.matrah, ok = d.ocrData?.kdvTutari;
@@ -1111,7 +1112,7 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
   }, [docs]);
   // Yevmiye fişi / kayıt türü detayı — listede aç-kapa (Muhasebeleştir'e gitmeden NEYLE eşleşti görünür).
   const [fisDetayId, setFisDetayId] = useState('');
-  const grpLabel = (g: string) => g === 'matrah' ? 'Matrah' : g === 'vergi' ? 'KDV' : g === 'cari' ? 'Cari' : g === 'tevkifat' ? 'Tevkifat' : (g || '—');
+  const grpLabel = (g: string) => g === 'matrah' ? 'Matrah' : g === 'vergi' ? 'KDV' : g === 'vergi-sorumlu' ? 'Sorumlu Sıf. KDV' : g === 'cari' ? 'Cari' : g === 'tevkifat' ? 'Tevkifat' : (g || '—');
   // ZENGİN AI YORUMU — belge detayı (defter ikonu) açılınca lazy üret. Belgede ocrData.muhasebeNedenZengin
   //   yoksa tek-belge çağrısı yapılır (eşleştirme SONRASI; yön+hesap kesin → AI yalnız içeriği yorumlar).
   //   fetchedRef bir kez çağrı garantisi (docs tazelense de yeniden istemez); deterministik muhasebeNeden
@@ -2892,10 +2893,14 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                             { key: 'cari', label: 'Cari Hesap', side: 'debit' as const },
                           ]
                         : [
-                            // ALIŞ: matrah+KDV BORÇ, cari ALACAK. Tevkifatlıda 360 (KDV2 sorumlu sıf.)
-                            // AYRI bölüm — Mihsap gibi (Matrah · Vergi · Tevkifat · Cari).
+                            // ALIŞ: matrah+KDV BORÇ, cari ALACAK. Tevkifatlıda 191 İKİYE bölünür (normal +
+                            // sorumlu sıf.) + 360 (KDV2) AYRI bölüm — Mihsap birebir (Matrah · Vergi ·
+                            // Sorumlu Sıf. KDV · Tevkifat · Cari).
                             { key: 'matrah', label: 'Matrah', side: 'debit' as const },
                             { key: 'vergi', label: 'İndirilecek KDV', side: 'debit' as const },
+                            ...((Number(selDoc?.ocrData?.tevkifatOrani) > 0 || lineDraft.some((l: any) => (l.group) === 'vergi-sorumlu'))
+                              ? [{ key: 'vergi-sorumlu', label: 'Sorumlu Sıfatıyla İndirilecek KDV', side: 'debit' as const }]
+                              : []),
                             ...((Number(selDoc?.ocrData?.tevkifatOrani) > 0 || lineDraft.some((l: any) => (l.group) === 'tevkifat'))
                               ? [{ key: 'tevkifat', label: 'Tevkifat — Ödenecek KDV (360 · KDV2)', side: 'credit' as const }]
                               : []),
@@ -3026,7 +3031,7 @@ function ScreenAktarilanlar({ taxpayerId, period, mode = 'bekleyen' }: { taxpaye
     if (s === 'FAILED' || s === 'ERROR') return <span className="pill miss" title={d.lucaErrorMessage || ''}>Hata</span>;
     return <span className="pill n">Aktarıma hazır</span>;
   };
-  const grpLabel = (g: string) => g === 'matrah' ? 'Matrah' : g === 'vergi' ? 'KDV' : g === 'cari' ? 'Cari' : g === 'tevkifat' ? 'Tevkifat' : (g || '—');
+  const grpLabel = (g: string) => g === 'matrah' ? 'Matrah' : g === 'vergi' ? 'KDV' : g === 'vergi-sorumlu' ? 'Sorumlu Sıf. KDV' : g === 'cari' ? 'Cari' : g === 'tevkifat' ? 'Tevkifat' : (g || '—');
   const renderRow = (d: any) => {
     const sat = (d.invoiceKind || 'ALIS') === 'SATIS';
     const firma = (sat ? d.customerName : d.vendorName) || '—';
