@@ -752,7 +752,7 @@ function FmPeriod({ value, onChange }: { value: string; onChange: (v: string) =>
 
 export default function FaturaMerkeziPage() {
   const [screen, setScreen] = useState('mukellefler');
-  const accent = 'slate';
+  const accent = 'petrol';
   const [taxpayerId, setTaxpayerId] = useState('');
   const nowP = new Date();
   const [period, setPeriod] = useState(`${nowP.getFullYear()}-${String(nowP.getMonth() + 1).padStart(2, '0')}`);
@@ -4571,8 +4571,8 @@ const CSS = `
 #fm-root .invactions h3{font-size:13.5px;font-weight:800;color:#0d1626;letter-spacing:-.2px}
 #fm-root .invactions .btn{height:38px;border-radius:11px;padding:0 16px;font-size:12.5px;font-weight:700;border:1px solid #e4eaf3;background:#fff;color:#34415a;box-shadow:0 1px 2px rgba(16,24,40,.05);transition:transform .12s,box-shadow .14s,background .14s,border-color .14s,filter .14s}
 #fm-root .invactions .btn:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 9px 18px -11px rgba(16,24,40,.35)}
-#fm-root .invactions .btn.upload{background:#eef4ff;border-color:#cfe0ff;color:#2f54d6}
-#fm-root .invactions .btn.upload:hover:not(:disabled){background:#e4eeff;box-shadow:0 9px 18px -10px rgba(47,84,214,.5)}
+#fm-root .invactions .btn.upload{background:var(--accent-soft);border-color:var(--accent-line);color:var(--accent)}
+#fm-root .invactions .btn.upload:hover:not(:disabled){filter:brightness(.98);box-shadow:0 9px 18px -10px color-mix(in srgb,var(--accent) 50%,transparent)}
 #fm-root .invactions .btn.fix{background:#fff;border-color:#e4eaf3;color:#34415a}
 #fm-root .invactions .btn.ai{background:linear-gradient(135deg,#7c3aed 0%,#6d5df6 52%,#4f7cf0 100%);border:none;color:#fff;box-shadow:0 8px 18px -9px rgba(109,93,246,.75)}
 #fm-root .invactions .btn.ai:hover:not(:disabled){filter:brightness(1.06);transform:translateY(-1px);box-shadow:0 13px 24px -10px rgba(109,93,246,.85)}
@@ -4667,4 +4667,14 @@ const CSS = `
 #fm-root .fgrp .frow .money{font-size:13.5px;font-weight:600;letter-spacing:-.1px;color:#1f2a3c}
 #fm-root .fgrp .fgt{padding:6px 12px;font-size:12.5px}
 #fm-root .fgrp .fgt b{font-size:13.5px;font-weight:700;color:#0e1726;letter-spacing:-.1px}
+/* ── Renk/tipografi yenileme: nötr seçiciler + ince başlıklar (accent petrol/zümrüt) ── */
+#fm-root .fmdd-btn{border:1.5px solid #dfe4ec;background:#fff}
+#fm-root .fmdd-btn:hover{border-color:#c4cdda}
+#fm-root .fmdd.open .fmdd-btn{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 13%,transparent)}
+#fm-root .fmdd-btn > svg:first-child{color:#7a8699;opacity:1}
+#fm-root .fmdd-chev{color:#9aa6b6}
+#fm-root .ctxpick-l{color:#94a0b2}
+#fm-root .h2,#fm-root .screen > .h2{font-weight:600;letter-spacing:-.3px;color:#1b2532}
+#fm-root .crumb{font-weight:600;color:#46515f}
+#fm-root .crumb b{font-weight:700;color:#1b2532}
 `;
