@@ -2888,33 +2888,43 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                       {(String(selDoc.invoiceKind || '').includes('SATIS')
                         ? [
                             // SATIŞ: matrah(600)+KDV(391) ALACAK, cari(120) BORÇ
-                            { key: 'matrah', label: 'Matrah (Gelir)', side: 'credit' as const },
-                            { key: 'vergi', label: 'Hesaplanan KDV', side: 'credit' as const },
-                            { key: 'cari', label: 'Cari Hesap', side: 'debit' as const },
+                            { key: 'matrah', keys: ['matrah'], label: 'Matrah (Gelir)', side: 'credit' as const },
+                            { key: 'vergi', keys: ['vergi'], label: 'Hesaplanan KDV', side: 'credit' as const },
+                            { key: 'cari', keys: ['cari'], label: 'Cari Hesap', side: 'debit' as const },
                           ]
                         : [
-                            // ALIŞ: matrah+KDV BORÇ, cari ALACAK. Tevkifatlıda 191 İKİYE bölünür (normal +
-                            // sorumlu sıf.) + 360 (KDV2) AYRI bölüm — Mihsap birebir (Matrah · Vergi ·
-                            // Sorumlu Sıf. KDV · Tevkifat · Cari).
-                            { key: 'matrah', label: 'Matrah', side: 'debit' as const },
-                            { key: 'vergi', label: 'İndirilecek KDV', side: 'debit' as const },
-                            ...((Number(selDoc?.ocrData?.tevkifatOrani) > 0 || lineDraft.some((l: any) => (l.group) === 'vergi-sorumlu'))
-                              ? [{ key: 'vergi-sorumlu', label: 'Sorumlu Sıfatıyla İndirilecek KDV', side: 'debit' as const }]
-                              : []),
+                            // ALIŞ: matrah+KDV BORÇ, cari ALACAK. Tevkifatlıda "İndirilecek KDV" kutusu
+                            // İÇİNDE normal+sorumlu sıf. satırları BİRLİKTE (kullanıcı: ayrı kutu olmasın,
+                            // "+ satır ekle" ile aynı yerde) — hangi satırın "sorumlu" olduğu SEÇİLEN HESAP
+                            // KODUNA göre otomatik belirlenir (bkz. CodeSelect onChange). 360 (KDV2) AYRI
+                            // bölüm kalır — Mihsap'taki gibi gerçekten farklı bir hesap/işlem.
+                            { key: 'matrah', keys: ['matrah'], label: 'Matrah', side: 'debit' as const },
+                            { key: 'vergi', keys: ['vergi', 'vergi-sorumlu'], label: 'İndirilecek KDV', side: 'debit' as const },
                             ...((Number(selDoc?.ocrData?.tevkifatOrani) > 0 || lineDraft.some((l: any) => (l.group) === 'tevkifat'))
-                              ? [{ key: 'tevkifat', label: 'Tevkifat — Ödenecek KDV (360 · KDV2)', side: 'credit' as const }]
+                              ? [{ key: 'tevkifat', keys: ['tevkifat'], label: 'Tevkifat — Ödenecek KDV (360 · KDV2)', side: 'credit' as const }]
                               : []),
-                            { key: 'cari', label: 'Cari Hesap', side: 'credit' as const },
+                            { key: 'cari', keys: ['cari'], label: 'Cari Hesap', side: 'credit' as const },
                           ]
                       ).map((g) => {
-                        const rows = lineDraft.map((l: any, i: number) => ({ l, i })).filter(({ l }) => (l.group || 'matrah') === g.key);
+                        const rows = lineDraft.map((l: any, i: number) => ({ l, i })).filter(({ l }) => g.keys.includes(l.group || 'matrah'));
                         const tot = rows.reduce((s, { l }) => s + (Number(g.side === 'debit' ? l.debit : l.credit) || 0), 0);
                         return (
                           <div key={g.key} className="fgrp" data-g={g.key}>
                             <div className="fgh"><span>{g.label}</span><span className="fgs">{g.side === 'debit' ? 'Borç' : 'Alacak'}</span></div>
                             {rows.map(({ l, i }) => (
                               <div key={i} className="frow">
-                                <CodeSelect value={l.accountCode || ''} accounts={accountPlan} onChange={(code) => setLine(i, 'accountCode', code)} onAddNew={(code) => openAddAccount(code)} />
+                                <CodeSelect value={l.accountCode || ''} accounts={accountPlan} onChange={(code) => {
+                                  setLine(i, 'accountCode', code);
+                                  // "İndirilecek KDV" kutusu birden fazla backend-grup kapsıyorsa (vergi +
+                                  //   vergi-sorumlu): seçilen hesabın ADI "sorumlu" içeriyorsa satırı OTOMATİK
+                                  //   vergi-sorumlu grubuna taşı — rematch'in 191-normal/191-sorumlu hesabını
+                                  //   doğru ayırt etmesi (ve yevmiyenin doğru kurulması) buna bağlı.
+                                  if (g.keys.length > 1) {
+                                    const acc = (accountPlan || []).find((a: any) => String(a.accountCode) === String(code));
+                                    const isResp = !!acc && /sorumlu/i.test(String((acc as any).accountName || ''));
+                                    setLine(i, 'group', isResp ? 'vergi-sorumlu' : 'vergi');
+                                  }
+                                }} onAddNew={(code) => openAddAccount(code)} />
                                 {g.key !== 'cari' && g.key !== 'tevkifat'
                                   ? <RateSelect value={String(l.rate || '').replace(/[^0-9]/g, '')} onChange={(v) => setLine(i, 'rate', v ? `%${v}` : '')} />
                                   : null}
@@ -2922,7 +2932,7 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                                 <button type="button" className="frowdel" title="Satırı sil" onClick={() => delLine(i)}>×</button>
                               </div>
                             ))}
-                            <div className="frowadd" onClick={() => addLine(g.key)}>+ satır ekle</div>
+                            <div className="frowadd" onClick={() => addLine(g.keys[0])}>+ satır ekle</div>
                             <div className="fgt"><span>Toplam</span><b>{fmtMoney(tot)} ₺</b></div>
                           </div>
                         );
