@@ -3073,6 +3073,7 @@ function ScreenEntegrator({ taxpayerId, period }: { taxpayerId: string; period: 
   const [apiKey, setApiKey] = useState('');
   const [apiSecret, setApiSecret] = useState('');
   const [accountId, setAccountId] = useState('');
+  const [showAddForm, setShowAddForm] = useState(false);
   const isParasut = provider === 'PARASUT';
 
   const saveMut = useMutation({
@@ -3155,7 +3156,11 @@ function ScreenEntegrator({ taxpayerId, period }: { taxpayerId: string; period: 
             </div>
           )}
           <div style={{ marginTop: 16 }}>
-            <div className="ph" style={{ marginBottom: 10 }}>Yeni entegratör ekle</div>
+            {!showAddForm && (
+              <button className="btn primary entadd" type="button" onClick={() => setShowAddForm(true)}><span className="entplus">+</span> Yeni entegratör ekle</button>
+            )}
+            {showAddForm && (<>
+            <div className="ph entaddhead" style={{ marginBottom: 10 }}>Yeni entegratör ekle<button className="entclose" type="button" onClick={() => setShowAddForm(false)}>Vazgeç</button></div>
             <div className="eform">
               <div className="erw">
                 <div className="fld"><label>Entegratör</label>
@@ -3180,7 +3185,7 @@ function ScreenEntegrator({ taxpayerId, period }: { taxpayerId: string; period: 
                   </button>
                 </div>
               </div>
-            </div>
+            </div></>)}
           </div>
         </div>
       </div>
@@ -3362,7 +3367,7 @@ function ScreenAyarlar({ taxpayerId }: { taxpayerId: string }) {
       <div className="h2">Hesap Planı</div>
       <div className="sub">Mükellefin hesap planı — Luca'dan çekilir, yerel açılan hesaplar Luca'ya gönderilebilir.</div>
       <div className="card">
-        <div className="ch">
+        <div className="ch planhead">
           <h3>Hesap Planı{accounts.length ? <span className="cnt">{accounts.length}{q ? ' eşleşme' : ' hesap'}</span> : null}</h3>
           <div className="sp" />
           <input className="fmsel" style={{ maxWidth: 220 }} placeholder="Kod / ad ara…" value={q} onChange={(e) => setQ(e.target.value)} />
@@ -3371,19 +3376,17 @@ function ScreenAyarlar({ taxpayerId }: { taxpayerId: string }) {
         </div>
         <div className="twrap planwrap">
           <table>
-            <thead><tr><th>Kod</th><th>Hesap Adı</th><th className="num">Borç Bakiye</th><th className="num">Alacak Bakiye</th><th>Durum</th></tr></thead>
+            <thead><tr><th>Kod</th><th>Hesap Adı</th><th>Durum</th></tr></thead>
             <tbody>
               {accounts.map((a) => (
                 <tr key={a.id || a.code}>
                   <td><span className="hk">{a.code}</span></td>
                   <td>{a.name || '—'}</td>
-                  <td className="num">{a.debitBalance ? fmtMoney(a.debitBalance) : '—'}</td>
-                  <td className="num">{a.creditBalance ? fmtMoney(a.creditBalance) : '—'}</td>
                   <td>{a.local && !a.syncedToLuca ? <span className="pill warn">yerel · gönderilmedi</span> : <span className="pill ok">Luca'da</span>}</td>
                 </tr>
               ))}
               {!planQ.isLoading && accounts.length === 0 && (
-                <tr><td colSpan={5}><div className="empty">Hesap planı yok. "Luca'dan yenile" ile çek.</div></td></tr>
+                <tr><td colSpan={3}><div className="empty">Hesap planı yok. "Luca'dan yenile" ile çek.</div></td></tr>
               )}
             </tbody>
           </table>
@@ -4479,4 +4482,22 @@ const CSS = `
 #fm-root .invactions .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;box-shadow:0 8px 16px -10px var(--accent)}
 #fm-root .invactions .btn.primary:hover:not(:disabled){filter:brightness(.96)}
 #fm-root .invactions .btn:disabled{opacity:.5;cursor:not-allowed;box-shadow:none}
+/* ── Hesap Planı görsel yenileme: KOD büyük+net, butonlar, satır okunurluğu ── */
+#fm-root .planwrap table{font-size:13px}
+#fm-root .planwrap thead th{font-size:11px;padding:9px 13px;letter-spacing:.4px;color:#5a6678}
+#fm-root .planwrap tbody td{padding:7px 13px;border-bottom:1px solid #eef1f6}
+#fm-root .planwrap .hk{font-family:'Cascadia Mono','Consolas','SF Mono',ui-monospace,monospace;font-size:15px;font-weight:700;letter-spacing:.7px;color:#1e3a8a}
+#fm-root .planhead .btn{height:36px;border-radius:10px;padding:0 15px;font-size:12.5px;font-weight:700;transition:background .14s,border-color .14s,filter .14s,box-shadow .14s}
+#fm-root .planhead .btn.ghost{background:#fff;border:1px solid #cfe3d6;color:#15803d;box-shadow:0 1px 2px rgba(16,24,40,.04)}
+#fm-root .planhead .btn.ghost:hover:not(:disabled){background:#eef7f1;border-color:#a9d4ba}
+#fm-root .planhead .btn.primary{background:#15803d;border-color:#15803d;color:#fff;box-shadow:0 8px 16px -10px rgba(21,128,61,.55)}
+#fm-root .planhead .btn.primary:hover:not(:disabled){filter:brightness(.95)}
+#fm-root .planhead .btn:disabled{opacity:.5;cursor:not-allowed;box-shadow:none}
+/* ── Entegratör: ekleme formu "Ekle" butonu arkasında ── */
+#fm-root .entadd{height:40px;border-radius:11px;padding:0 18px;font-size:13px;font-weight:700;background:var(--accent);border:1px solid var(--accent);color:#fff;box-shadow:0 8px 18px -10px var(--accent)}
+#fm-root .entadd:hover{filter:brightness(.96)}
+#fm-root .entadd .entplus{font-size:17px;line-height:1;margin-right:5px;font-weight:400}
+#fm-root .entaddhead{display:flex;align-items:center;justify-content:space-between}
+#fm-root .entclose{background:none;border:none;color:var(--muted);font-size:12px;font-weight:700;cursor:pointer;padding:4px 8px;border-radius:6px}
+#fm-root .entclose:hover{color:var(--text);background:#f1f4f9}
 `;
