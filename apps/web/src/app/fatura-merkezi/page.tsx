@@ -989,9 +989,11 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
   const planSumQ = useQuery({
     queryKey: ['fm-plan-sum', taxpayerId, period],
     queryFn: async () => (await api.get('/fatura-muhasebelestirme/summary', { params: { taxpayerId, period } })).data,
-    enabled: !!taxpayerId && !isIsletme,
+    enabled: !!taxpayerId,
   });
-  const planMissing = !isIsletme && !!planSumQ.data?.accountPlanMissing;
+  // accountPlanMissing'i backend belirler (İşletme defterinde zaten false döner) → frontend isIsletme
+  //   kapısına GÜVENME (frontend/backend İşletme tespiti İ harfi normalizasyonunda ayrışabiliyordu).
+  const planMissing = !!planSumQ.data?.accountPlanMissing;
   // Okuma bitince listeyi tazele (yeni veriler insin).
   const prevReadingRef = useRef(0);
   useEffect(() => {
@@ -1237,9 +1239,15 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
                         <div className="detaybox">
                           {(() => {
                             const rn = richNotes[d.id];
+                            // AI'ın "içerik şifreli/okunamadı/nitelik belirlenemedi" gibi YANILTICI mazeret
+                            //   yorumlarını gösterme (kalem zaten okunmuş, belge eşleşmiş olabiliyor). Eski
+                            //   belgelerde DB'de kalmış olabilir → tekrar-okumadan ekranda da süz.
+                            const isBahane = (s: string) => /şifre|şifrel|encrypt|decode|okunama|açıklanama|aciklanama|belirlenem|tespit edilem|anlaşılam|anlasilam|çözülem|cozulem|deşifre/i.test(s || '');
                             // Öncelik: zengin (mükellef-gözü, lazy fetch) > DB'deki zengin > okuma-anı AI yorumu (fallback).
-                            const zengin = rn?.text || String((d.ocrData as any)?.muhasebeNedenZengin || '');
-                            const onYorum = String((d.ocrData as any)?.aiYorum || '').trim();
+                            const zenginRaw = rn?.text || String((d.ocrData as any)?.muhasebeNedenZengin || '');
+                            const zengin = isBahane(zenginRaw) ? '' : zenginRaw;
+                            const onYorumRaw = String((d.ocrData as any)?.aiYorum || '').trim();
+                            const onYorum = isBahane(onYorumRaw) ? '' : onYorumRaw;
                             const text = (zengin || onYorum).trim();
                             const isOnYorum = !zengin.trim() && !!onYorum;
                             const loading = !!rn?.loading && !text;
