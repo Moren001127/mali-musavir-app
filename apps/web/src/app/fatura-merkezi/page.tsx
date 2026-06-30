@@ -1245,7 +1245,7 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
                     <div className="ait">Belgeler yapay zeka ile okunuyor<span className="dots" /></div>
                     <div className="aisub">
                       <b>{ocrProg.done}</b> / {tot} belge okundu
-                      {ocrProg.reading ? <> <span className="aichip">{ocrProg.reading} sırada</span></> : null}
+                      {ocrProg.reading ? <> <span className="aichip"><span className="qdot" />{ocrProg.reading} sırada</span></> : null}
                       {etaText ? <> <span className="aichip eta">⏱ {etaText}</span></> : null}
                       {ocrProg.failed ? <> <span className="aichip warn">{ocrProg.failed} okunamadı</span></> : null}
                     </div>
@@ -4067,9 +4067,11 @@ const CSS = `
 /* AI okuma — chip'ler (sırada / tahmini süre / okunamadı), not satırı, düzgün Durdur butonu */
 #fm-root .aibar .airight{display:flex;flex-direction:column;align-items:center;gap:1px;flex-shrink:0;min-width:86px}
 #fm-root .aibar .aisub{display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin-top:3px}
-#fm-root .aibar .aichip{display:inline-flex;align-items:center;gap:3px;padding:2px 10px;border-radius:999px;font-size:11px;font-weight:800;background:#eef3ff;color:#3157d5;line-height:1.5}
-#fm-root .aibar .aichip.eta{background:#ecebff;color:#5b4fe0}
-#fm-root .aibar .aichip.warn{background:#fdf2e0;color:#b45309}
+#fm-root .aibar .aichip{display:inline-flex;align-items:center;gap:5px;padding:3px 11px;border-radius:999px;font-size:11px;font-weight:700;background:var(--accent-soft);color:var(--th-text);border:1px solid var(--accent-line);line-height:1.5;font-variant-numeric:tabular-nums}
+#fm-root .aibar .aichip.eta{background:#fff;color:var(--accent)}
+#fm-root .aibar .aichip.warn{background:#fdf2e0;color:#b45309;border-color:#f3dcab}
+#fm-root .aibar .aichip .qdot{width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 0 var(--accent);animation:aiqpulse 1.5s ease-out infinite}
+@keyframes aiqpulse{0%{box-shadow:0 0 0 0 rgba(13,148,136,.45)}70%{box-shadow:0 0 0 5px rgba(13,148,136,0)}100%{box-shadow:0 0 0 0 rgba(13,148,136,0)}}
 #fm-root .aibar .ainote{font-size:11px;color:#9aa6b8;margin-top:8px;font-weight:600}
 #fm-root .aibar .aistop{margin-top:11px;display:inline-flex;align-items:center;gap:5px;padding:6px 16px;font-size:12.5px;font-weight:800;color:#dc2626;background:#fff;border:1.5px solid #f1c6c6;border-radius:10px;cursor:pointer;transition:all .16s ease;box-shadow:0 2px 6px -1px rgba(220,38,38,.14)}
 #fm-root .aibar .aistop:hover:not(:disabled){background:#dc2626;color:#fff;border-color:#dc2626;box-shadow:0 7px 18px -5px rgba(220,38,38,.55);transform:translateY(-1px)}
