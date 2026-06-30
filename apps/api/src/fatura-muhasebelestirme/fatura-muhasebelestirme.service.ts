@@ -268,6 +268,8 @@ type ParsedProviderInvoice = {
   kdvOrani?: number | null;
   /** Çok-oranlı KDV kırılımı (her oran ayrı): %10 ve %20 gibi karma faturada şart. */
   kdvBreakdown?: Array<{ rate: number; base: number; amount: number }>;
+  /** Tevkif edilen (alıkonan) KDV tutarı — UBL WithholdingTaxTotal. Satışta 391'e NET KDV gider. */
+  tevkifatKdv?: number;
   toplamTutar?: number | null;
   paraBirimi?: string | null;
   kalemler?: Array<{ ad: string; tutar: number; oran: number }>;
@@ -8103,6 +8105,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const monetaryTotal = get(['LegalMonetaryTotal']) || get(['RequestedMonetaryTotal']) || {};
       const taxTotalRaw = get(['TaxTotal']);
       const taxTotals = asArray(taxTotalRaw);
+      // TEVKİFAT: belge düzeyi cac:WithholdingTaxTotal/TaxAmount = tevkif edilen (alıkonan) KDV. Satışta
+      //   391'e NET KDV (hesaplanan − tevkifat) gider; bu tutar çıkarılmazsa tevkifatlı fatura "tevkifat
+      //   tutarı okunamadı, KDV TAM görünüyor" çelişkisi veriyordu (TEVKIFAT_NET_NEEDED). Birden çok varsa toplanır.
+      const tevkifatKdvUbl = asArray(get(['WithholdingTaxTotal']))
+        .map((w: any) => num(w?.TaxAmount))
+        .filter((x: any): x is number => x != null && x > 0)
+        .reduce((s: number, x: number) => s + x, 0);
       const taxAmounts = taxTotals
         .map((taxTotal) => num(taxTotal?.TaxAmount))
         .filter((amount): amount is number => amount != null);
@@ -8174,6 +8183,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         kdvTutari,
         kdvOrani: matrah && kdvTutari ? Math.round((kdvTutari / matrah) * 100) : null,
         kdvBreakdown: kdvBreakdown.length ? kdvBreakdown : undefined,
+        tevkifatKdv: tevkifatKdvUbl > 0 ? Math.round(tevkifatKdvUbl * 100) / 100 : undefined,
         toplamTutar,
         paraBirimi: (txt(get(['DocumentCurrencyCode'])) || 'TRY') === 'TRY' ? 'TL' : txt(get(['DocumentCurrencyCode'])) || 'TL',
         kalemler: rawKalemler.length ? rawKalemler : undefined,
@@ -9349,6 +9359,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           iade: /<\w*:?CreditNote[\s>]/i.test(xml) || /\b(İADE|IADE|İPTAL|IPTAL)\b/i.test(xml.slice(0, 4000)),
           // TEVKİFAT: belgede tevkifat/WithholdingTax geçiyorsa (e-Arşiv "Fatura Tipi: TEVKIFAT").
           tevkifat: /TEVKIFAT|WithholdingTax/i.test(xml),
+          // TEVKİFAT TUTARI (UBL WithholdingTaxTotal): satışta 391'e NET KDV (hesaplanan − tevkifat) gider;
+          //   tevkifatOrani buradan çıkar → "tevkifat tutarı okunamadı" çelişkisi (TEVKIFAT_NET_NEEDED) biter.
+          tevkifatKdv: ubl.tevkifatKdv,
           // ÇOK-ORANLI: kırılım varsa her oranı AYRI ver (karma %10/%20 faturada şart). Yoksa tek satır.
           kdv: (Array.isArray(ubl.kdvBreakdown) && ubl.kdvBreakdown.length)
             ? ubl.kdvBreakdown.map((b) => ({ oran: b.rate, matrah: b.base, kdv: b.amount }))
