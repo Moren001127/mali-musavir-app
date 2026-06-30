@@ -513,6 +513,20 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       throw new Error(`${job.jobType} icin Railway runner tanimli degil`);
     } catch (err: any) {
       const message = this.publicError(err);
+      // KISMİ SONUÇ KORUMASI (kullanıcı bulgusu — "bazen takılıyor, belge getirmiyor"): bir sorgu
+      //   (örn. GİB e-Arşiv) yarıda kesilirse (token süresi dolması, ağ kopması vb.) o ana kadar
+      //   toplanan belgeler eskiden TAMAMEN kayboluyordu — hiçbir yere kaydedilmeden job FAILED
+      //   oluyordu. collectEarsivPortalViaApi artık böyle bir hatada documents'ı hata objesine
+      //   ekliyor (err.partialDocuments); burada job HALA 'running' iken (markFailed'den ÖNCE)
+      //   kaydedilir. Dedup zaten referenceNo bazlı (storePortalDocumentFromAgent) — tekrar
+      //   denendiğinde aynı belgeler ikinci kez oluşturulmaz, sadece eksikler tamamlanır.
+      const partialDocuments = Array.isArray((err as any)?.partialDocuments) ? (err as any).partialDocuments : [];
+      if (partialDocuments.length) {
+        await this.portalAutomation.savePartialJobResults(job.tenantId, job.id, { documents: partialDocuments }).catch((saveErr: any) => {
+          this.logger.warn(`[PortalRailwayRunner] kismi sonuc kaydedilemedi: ${job.id} ${saveErr?.message || saveErr}`);
+        });
+        this.logger.log(`[PortalRailwayRunner] job yarida kesildi ama ${partialDocuments.length} belge kaydedildi: ${job.id}`);
+      }
       await this.portalAutomation.markFailed(job.tenantId, job.id, message).catch(() => {});
       this.logger.warn(`[PortalRailwayRunner] job fail: ${job.id} ${message}`);
     }
@@ -1579,43 +1593,102 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       hangiTip: '5000/30000',
     });
     const rows = Array.isArray(list?.data) ? list.data : [];
-    const max = Math.max(1, Math.min(200, Number(process.env.PORTAL_AUTOMATION_EARSIV_MAX_DOWNLOADS || 80)));
+    // SINIR (kullanıcı bulgusu — "bazı faturalar gelmiyor"): varsayılan 80'den GİB'in tek seferde
+    //   döndürdüğü listeyi büyük ölçüde karşılayan 200'e çıkarıldı (kod zaten üst tavan olarak 200'ü
+    //   uyguluyordu — env ile bile aşılamıyordu). Sınır yine de aşılırsa (200'den fazla satır) artık
+    //   notes'a GÖRÜNÜR bir uyarı düşülüyor — eskiden kalan satırlar hiçbir iz bırakmadan atlanıyordu.
+    const max = Math.max(1, Math.min(200, Number(process.env.PORTAL_AUTOMATION_EARSIV_MAX_DOWNLOADS || 200)));
     const documents: any[] = [];
     const mode = job?.payload?.earsivMode === 'query' ? 'query' : 'download';
     const selectedRefs = new Set((Array.isArray(job?.payload?.selectedRefs) ? job.payload.selectedRefs : [])
       .map((v: any) => String(v || '').trim())
       .filter(Boolean));
     const notes: string[] = [`GIB e-Arsiv liste: ${rows.length} satir (${startDate}-${endDate})`];
+    if (rows.length > max) {
+      notes.push(`⚠ GIB listesi ${rows.length} satir dondu, sistem siniri ${max} oldugu icin sadece ilk ${max} belge islendi. Kalan ${rows.length - max} belge icin tarih araligini daraltip tekrar sorgulayin.`);
+    }
 
-    for (let i = 0; i < rows.length && documents.length < max; i++) {
-      const row = rows[i] || {};
-      const uuid = this.earsivRead(row, ['ettn', 'uuid', 'faturaUuid', 'belgeUuid']);
-      const invoiceNo = this.earsivRead(row, ['belgeNumarasi', 'faturaNo', 'faturaNumarasi', 'belgeNo']);
-      const signed = this.earsivRead(row, ['onayDurumu', 'durum']) || 'Onaylandı';
-      const referenceNo = invoiceNo || uuid || null;
-      if (selectedRefs.size && !selectedRefs.has(String(referenceNo || '')) && !selectedRefs.has(String(uuid || ''))) {
-        continue;
-      }
-      if (!uuid) {
-        notes.push(`${i + 1}. satir atlandi: ETTN yok (${this.compact(JSON.stringify(row)).slice(0, 180)})`);
-        continue;
-      }
-      const blocked = /iptal|itiraz|red|reddedil|cancel/i.test(JSON.stringify({
-        onayDurumu: signed,
-        iptalItirazDurumu: this.earsivRead(row, ['iptalItirazDurumu', 'iptalDurumu', 'itirazDurumu']),
-      }));
-      if (blocked && mode !== 'query') {
-        notes.push(`${referenceNo || uuid}: iptal/itiraz/reddedilmis oldugu icin aktarilmadi`);
-        continue;
-      }
+    // KISMİ SONUÇ KORUMASI (kullanıcı bulgusu — "sonradan bir şeyler oluyor, belge getirmiyor"):
+    //   eskiden döngü ortasında beklenmeyen bir hata (örn. token süresi dolması) olursa o ana kadar
+    //   toplanan TÜM belgeler kaybolurdu (fonksiyon hiç return etmeden throw ediyordu). Artık döngü
+    //   try/catch ile sarılı — hata olursa o ana kadar toplanan documents, hata objesine eklenip
+    //   (err.partialDocuments) çağıran tarafa (runOne) taşınır, oradan kaydedilir.
+    try {
+      for (let i = 0; i < rows.length && documents.length < max; i++) {
+        const row = rows[i] || {};
+        const uuid = this.earsivRead(row, ['ettn', 'uuid', 'faturaUuid', 'belgeUuid']);
+        const invoiceNo = this.earsivRead(row, ['belgeNumarasi', 'faturaNo', 'faturaNumarasi', 'belgeNo']);
+        const signed = this.earsivRead(row, ['onayDurumu', 'durum']) || 'Onaylandı';
+        const referenceNo = invoiceNo || uuid || null;
+        if (selectedRefs.size && !selectedRefs.has(String(referenceNo || '')) && !selectedRefs.has(String(uuid || ''))) {
+          continue;
+        }
+        if (!uuid) {
+          notes.push(`${i + 1}. satir atlandi: ETTN yok (${this.compact(JSON.stringify(row)).slice(0, 180)})`);
+          continue;
+        }
+        const blocked = /iptal|itiraz|red|reddedil|cancel/i.test(JSON.stringify({
+          onayDurumu: signed,
+          iptalItirazDurumu: this.earsivRead(row, ['iptalItirazDurumu', 'iptalDurumu', 'itirazDurumu']),
+        }));
+        if (blocked && mode !== 'query') {
+          notes.push(`${referenceNo || uuid}: iptal/itiraz/reddedilmis oldugu icin aktarilmadi`);
+          continue;
+        }
 
-      if (mode === 'query') {
-        const payload = await this.downloadEarsivBelge(token, uuid, signed, referenceNo || `earsiv-${i + 1}`)
-          .catch(() => this.fetchEarsivHtml(token, uuid, signed, referenceNo || `earsiv-${i + 1}`))
-          .catch((err: any) => {
-            notes.push(`${referenceNo || uuid}: on indirme yapilamadi, yalniz satir listelendi (${this.compact(err?.message || err)})`);
+        if (mode === 'query') {
+          const payload = await this.downloadEarsivBelge(token, uuid, signed, referenceNo || `earsiv-${i + 1}`)
+            .catch(() => this.fetchEarsivHtml(token, uuid, signed, referenceNo || `earsiv-${i + 1}`))
+            .catch((err: any) => {
+              notes.push(`${referenceNo || uuid}: on indirme yapilamadi, yalniz satir listelendi (${this.compact(err?.message || err)})`);
+              return null;
+            });
+          documents.push({
+            taxpayerId: job.taxpayerId || null,
+            belgeTuru: 'EARSIV_FATURA',
+            title: `GIB e-Arsiv Fatura ${referenceNo || uuid}`,
+            referenceNo: referenceNo || uuid,
+            period: job.donem || this.inferDonem(job.periodEnd),
+            issuedAt: this.earsivIssuedAt(row) || job.periodEnd || null,
+            receivedAt: new Date().toISOString(),
+            mimeType: payload?.mimeType || 'application/json',
+            originalName: payload?.fileName || `${referenceNo || uuid}.json`,
+            base64: payload?.base64,
+            raw: {
+              runner: 'railway',
+              jobType: 'EARSIV_PORTAL_FETCH',
+              source: 'gib-earsiv-api',
+              mode,
+              prefetched: !!payload,
+              ettn: uuid,
+              belgeNumarasi: invoiceNo || null,
+              onayDurumu: signed,
+              row,
+            },
+          });
+          continue;
+        }
+
+        let payload = await this.downloadEarsivBelge(token, uuid, signed, referenceNo || `earsiv-${i + 1}`).catch((err: any) => {
+          notes.push(`${referenceNo || uuid}: indirme basarisiz, HTML deneniyor (${this.compact(err?.message || err)})`);
+          return null;
+        });
+        if (!payload) {
+          payload = await this.fetchEarsivHtml(token, uuid, signed, referenceNo || `earsiv-${i + 1}`).catch((err: any) => {
+            notes.push(`${referenceNo || uuid}: HTML alinamadi (${this.compact(err?.message || err)})`);
             return null;
           });
+        }
+        // SESSİZ KAYIP FIX (kullanıcı bulgusu): eskiden indirme+HTML ikisi de basarisiz olunca
+        //   "continue" ile bu belge TAMAMEN atlanıyordu — hic bir yere kaydedilmiyordu, kullanıcı
+        //   sadece "X kayit yazildi" sayisindan eksik oldugunu anlayabilirdi, HANGI belgenin
+        //   eksik oldugunu goremezdi. Artik 'query' modundaki gibi REFERANS KAYDI (belgesiz)
+        //   yine de eklenir — kullanici en azindan "bu fatura var ama inmedi" gorur, tekrar
+        //   sorgulayip indirebilir.
+        if (!payload) {
+          notes.push(`${referenceNo || uuid}: indirme/HTML basarisiz, sadece referans kaydedildi (kullanici tekrar deneyebilir)`);
+        }
+
         documents.push({
           taxpayerId: job.taxpayerId || null,
           belgeTuru: 'EARSIV_FATURA',
@@ -1639,43 +1712,11 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
             row,
           },
         });
-        continue;
       }
-
-      let payload = await this.downloadEarsivBelge(token, uuid, signed, referenceNo || `earsiv-${i + 1}`).catch((err: any) => {
-        notes.push(`${referenceNo || uuid}: indirme basarisiz, HTML deneniyor (${this.compact(err?.message || err)})`);
-        return null;
-      });
-      if (!payload) {
-        payload = await this.fetchEarsivHtml(token, uuid, signed, referenceNo || `earsiv-${i + 1}`).catch((err: any) => {
-          notes.push(`${referenceNo || uuid}: HTML alinamadi (${this.compact(err?.message || err)})`);
-          return null;
-        });
-      }
-      if (!payload) continue;
-
-      documents.push({
-        taxpayerId: job.taxpayerId || null,
-        belgeTuru: 'EARSIV_FATURA',
-        title: `GIB e-Arsiv Fatura ${referenceNo || uuid}`,
-        referenceNo: referenceNo || uuid,
-        period: job.donem || this.inferDonem(job.periodEnd),
-        issuedAt: this.earsivIssuedAt(row) || job.periodEnd || null,
-        receivedAt: new Date().toISOString(),
-        mimeType: payload.mimeType,
-        originalName: payload.fileName,
-        base64: payload.base64,
-        raw: {
-          runner: 'railway',
-          jobType: 'EARSIV_PORTAL_FETCH',
-          source: 'gib-earsiv-api',
-          mode,
-          ettn: uuid,
-          belgeNumarasi: invoiceNo || null,
-          onayDurumu: signed,
-          row,
-        },
-      });
+    } catch (err: any) {
+      const wrapped = new Error(`GIB e-Arsiv sorgusu yarida kesildi (${documents.length} belge bu ana kadar toplandi): ${err?.message || err}`);
+      (wrapped as any).partialDocuments = documents;
+      throw wrapped;
     }
 
     notes.push(mode === 'query' ? `${documents.length} e-Arsiv satiri listelendi` : `${documents.length} e-Arsiv belge indirildi`);
@@ -1718,10 +1759,15 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     body.set('cmd', cmd);
     body.set('pageName', pageName);
     body.set('jp', JSON.stringify(payload && Object.keys(payload).length ? payload : {}));
+    // TIMEOUT (kullanıcı bulgusu — "takılıyor"): native fetch'in varsayılan zaman aşımı yok; GİB
+    //   sunucusu bağlantıyı açık tutup yanıt vermezse bu istek eskiden süresiz asılı kalabiliyordu
+    //   (en kötü ihtimalle 45dk'lık genel stale-job temizliğine kadar). 30sn sonra AbortError fırlatır,
+    //   çağıran yerler bunu zaten try/catch ile yakalıyor.
     const response = await fetch('https://earsivportal.efatura.gov.tr/earsiv-services/dispatch', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
       body,
+      signal: AbortSignal.timeout(30_000),
     });
     const text = await response.text();
     let parsed: any = null;
@@ -1749,6 +1795,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
       },
+      signal: AbortSignal.timeout(30_000),
     });
     const buffer = Buffer.from(await response.arrayBuffer());
     const headers = {
