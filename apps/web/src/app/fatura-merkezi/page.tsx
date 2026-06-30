@@ -4450,7 +4450,8 @@ const CSS = `
 #fm-root .ctxpick-f svg{color:var(--accent);flex-shrink:0;opacity:.85}
 #fm-root .ctxpick-f select{border:none;background:transparent;font-size:13px;font-weight:700;color:var(--text);cursor:pointer;outline:none;min-width:148px;max-width:240px;font-family:inherit}
 /* Kenar çubuğu marka bloğu */
-#fm-root .brandrow{display:flex;align-items:center;gap:10px;margin-top:11px}
+#fm-root .brandrow{display:flex;align-items:center;justify-content:center;gap:10px;margin-top:11px}
+#fm-root .brandtx{text-align:center}
 #fm-root .brandmk{width:38px;height:38px;border-radius:10px;background:var(--accent);color:#fff;display:grid;place-items:center;font-size:13px;font-weight:900;letter-spacing:.5px;flex-shrink:0;box-shadow:0 8px 18px -12px var(--accent)}
 #fm-root .brandtx .brandlogo{font-family:'Kaushan Script',cursive;font-weight:400;font-size:36px;color:var(--accent);line-height:1.05;letter-spacing:.3px}
 #fm-root .brandtx .brandmod{font-family:'Cormorant Garamond',Georgia,serif;font-style:italic;font-weight:600;font-size:17.5px;color:var(--muted);letter-spacing:.3px;line-height:1.15;margin-top:3px}
