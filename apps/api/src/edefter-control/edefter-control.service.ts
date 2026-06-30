@@ -339,7 +339,7 @@ export class EDefterControlService {
     }
 
     const ruleSettings = await this.getRuleSettingMap(params.tenantId);
-    const mizanCtx = await this.getMizanContext(params.tenantId, params.taxpayerId, params.donem, donemTipi);
+    const mizanCtx = await this.getMizanContext(params.tenantId, params.taxpayerId, params.donem, donemTipi, params.createdBy);
     const findings = this.analyze(rows, range, donemTipi, ruleSettings, mizanCtx);
     if (findings.length) {
       for (const chunk of this.chunks(findings, 700)) {
@@ -429,7 +429,7 @@ export class EDefterControlService {
     this.correctTahakkukDates(rows);
     const voucherCount = new Set(rows.map((r) => r.voucherKey)).size;
     const ruleSettings = await this.getRuleSettingMap(tenantId);
-    const mizanCtx = await this.getMizanContext(tenantId, session.taxpayerId, session.donem, donemTipi);
+    const mizanCtx = await this.getMizanContext(tenantId, session.taxpayerId, session.donem, donemTipi, session.createdBy);
     const findings = this.analyze(rows, range, donemTipi, ruleSettings, mizanCtx);
     const lineRows = rows.map((r) => ({
       sessionId: session.id,
@@ -2468,11 +2468,21 @@ export class EDefterControlService {
     taxpayerId: string | null | undefined,
     donem: string,
     donemTipi: string | undefined,
+    companionMarker?: string | null,
   ): Promise<MizanCtx | null> {
     if (!taxpayerId) return null;
+    // SIRALAMA/BAYAT MIZAN FIX: Luca'dan çekilen oturumun companion marker'ı (edefter-control:<jobId>)
+    //   varsa, mutabakatı YALNIZ bu oturumun companion Mizan'ıyla yap. Companion henüz READY değilse null
+    //   dön (BAYAT aynı-dönem Mizan'a düşme!) — yoksa ilk analizde eski/ilgisiz Mizan'la yanlış
+    //   MIZAN_FIS_UYUMSUZ çıkıp "yeniden analiz"e kadar kalıyordu. Manuel Excel'de (marker yok) en güncel
+    //   aynı-dönem READY Mizan'a düşülür (best-effort).
+    const marker = String(companionMarker || '').trim();
+    const where = /^edefter-control:/.test(marker)
+      ? { tenantId, taxpayerId, createdBy: marker, status: 'READY' }
+      : { tenantId, taxpayerId, donem, ...(donemTipi ? { donemTipi } : {}), status: 'READY' };
     const mizan = await (this.prisma as any).mizan
       .findFirst({
-        where: { tenantId, taxpayerId, donem, ...(donemTipi ? { donemTipi } : {}), status: 'READY' },
+        where,
         orderBy: { createdAt: 'desc' },
         include: { hesaplar: { select: { hesapKodu: true, borcBakiye: true, alacakBakiye: true } } },
       })
