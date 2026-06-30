@@ -343,6 +343,11 @@ const MIZAN_TIP_LABEL: Record<string, string> = {
   KASA_NEGATIF: 'Kasa negatif', BANKA_NEGATIF: 'Banka negatif', STOK_NEGATIF: 'Stok negatif',
   ZIT_BAKIYE: 'Ters bakiye', KDV_INDIRIM_YAPILMAMIS: 'KDV indirimi yapılmamış',
   KURUMLAR_VERGISI_TAHAKKUKU: 'Kurumlar vergisi tahakkuku', DONEM_KARI_DEVREDILMEMIS: 'Dönem kârı devredilmemiş',
+  DONEM_ZARARI_DEVREDILMEMIS: 'Dönem zararı devredilmemiş (591→580)',
+  ORTULU_SERMAYE_RISKI: 'Örtülü sermaye riski (KVK 12)',
+  TTK376_TEKNIK_IFLAS: 'TTK 376 teknik iflas (özsermaye negatif)',
+  TTK376_SERMAYE_KAYBI: 'TTK 376 sermaye kaybı',
+  ORTAK_CARI_CIFT_YONLU: 'Ortakla çift yönlü cari (131+331)',
 };
 function mizanTipLabel(tip?: string | null) {
   const t = String(tip || '').trim();

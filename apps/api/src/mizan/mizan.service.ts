@@ -727,6 +727,105 @@ export class MizanService {
     }
 
     // ────────────────────────────────────────────────────────────────
+    // 10b) DÖNEM NET ZARARI (591) — geçmiş yıl zararlarına (580) devredilmeli (590→570'in eşi)
+    // ────────────────────────────────────────────────────────────────
+    const donemZarari = hesaplar.find((h: any) => h.hesapKodu === '591');
+    const donemZarariBakiye = donemZarari
+      ? Number(donemZarari.borcBakiye || 0) + Number(donemZarari.alacakBakiye || 0)
+      : 0;
+    if (donemZarari && donemZarariBakiye > 0) {
+      anomaliler.push({
+        hesapKodu: '591',
+        tip: 'DONEM_ZARARI_DEVREDILMEMIS',
+        seviye: 'WARN',
+        mesaj: `591 "Dönem Net Zararı" hesabında ${this.fmt(donemZarariBakiye)} bakiye var — geçmiş yıl zararlarına (580) devredilmemiş.`,
+        detay: { borcBakiye: donemZarari.borcBakiye, alacakBakiye: donemZarari.alacakBakiye },
+      });
+    }
+
+    // 10c) KONTRA ÖZKAYNAK İŞARET KONTROLÜ — 580/591 ZARAR hesabıdır, normalde BORÇ bakiyesi verir.
+    //   Genel ZIT_BAKIYE bunları kontra-muaf bıraktığından (doğru: borç bakiye uyarı VERMEZ), ters yön
+    //   burada ayrıca denetlenir: bu hesaplar ALACAK bakiyesi verirse kayıt/virman hatasıdır.
+    for (const [kod, ad] of [['580', 'Geçmiş Yıllar Zararları'], ['591', 'Dönem Net Zararı']] as const) {
+      const hz = hesaplar.find((h: any) => h.hesapKodu === kod);
+      if (hz && Number(hz.alacakBakiye || 0) > 0 && Number(hz.borcBakiye || 0) === 0) {
+        anomaliler.push({
+          hesapKodu: kod,
+          tip: 'ZIT_BAKIYE',
+          seviye: 'WARN',
+          mesaj: `${kod} "${ad}" bir zarar hesabıdır, normalde BORÇ bakiyesi verir ama alacak bakiyesi var — kayıt/virman hatası olabilir.`,
+          detay: { alacakBakiye: hz.alacakBakiye },
+        });
+      }
+    }
+
+    // ────────────────────────────────────────────────────────────────
+    // 10d) ÖZKAYNAK RİSKLERİ — örtülü sermaye (KVK 12) + sermaye kaybı (TTK 376)
+    // ────────────────────────────────────────────────────────────────
+    // Özsermaye = 5xx ana hesapların net bakiyesi (alacak − borç); kontra (501/580/591) borç tarafıyla
+    //   otomatik düşülür. Yalnız 3 haneli ana hesaplar toplanır (alt kırılım çift sayılmasın). Mizanda
+    //   ana 5xx yoksa 0 kalır → oran kontrolleri tetiklenmez (yanlış alarm yok).
+    const ozsermaye = hesaplar
+      .filter((h: any) => /^5\d{2}$/.test(String(h.hesapKodu)))
+      .reduce((s: number, h: any) => s + Number(h.alacakBakiye || 0) - Number(h.borcBakiye || 0), 0);
+    const nominalSermayeHesap = hesaplar.find((h: any) => h.hesapKodu === '500');
+    const nominalSermaye = nominalSermayeHesap
+      ? Number(nominalSermayeHesap.alacakBakiye || 0) - Number(nominalSermayeHesap.borcBakiye || 0)
+      : 0;
+
+    // ÖRTÜLÜ SERMAYE (KVK 12): ortaklara borçlar (331 + 431) özsermayenin 3 KATINI aşarsa, aşan kısma
+    //   isabet eden faiz/kur farkı/vade farkı KKEG sayılır. Özsermaye pozitifken oran anlamlıdır.
+    const ortakBorc = ['331', '431'].reduce((s: number, k: string) => {
+      const h = hesaplar.find((x: any) => x.hesapKodu === k);
+      return s + (h ? Math.max(0, Number(h.alacakBakiye || 0) - Number(h.borcBakiye || 0)) : 0);
+    }, 0);
+    if (ozsermaye > 0 && ortakBorc > 3 * ozsermaye) {
+      anomaliler.push({
+        hesapKodu: '331',
+        tip: 'ORTULU_SERMAYE_RISKI',
+        seviye: 'WARN',
+        mesaj: `Ortaklara borçlar (331/431 = ${this.fmt(ortakBorc)}) özsermayenin (${this.fmt(ozsermaye)}) 3 katını (${this.fmt(3 * ozsermaye)}) aşıyor — KVK 12 örtülü sermaye riski; aşan kısma isabet eden faiz/kur farkı/vade farkı KKEG olarak değerlendirilmeli.`,
+        detay: { ortakBorc, ozsermaye, esik: 3 * ozsermaye },
+      });
+    }
+
+    // SERMAYE KAYBI / BORCA BATIKLIK (TTK 376): yıl sonunda değerlendirilir (ara dönemde dönem kâr/zararı
+    //   kısmi → yanlış alarm olmasın). Özsermaye < sermayenin yarısı → sermaye kaybı; negatif → teknik iflas.
+    if (yilSonu && nominalSermaye > 0) {
+      if (ozsermaye < 0) {
+        anomaliler.push({
+          hesapKodu: '500',
+          tip: 'TTK376_TEKNIK_IFLAS',
+          seviye: 'ERROR',
+          mesaj: `Özsermaye NEGATİF (${this.fmt(ozsermaye)}) — TTK 376 borca batıklık (teknik iflas); yönetim genel kurulu toplayıp tedbir almakla yükümlü.`,
+          detay: { ozsermaye, nominalSermaye },
+        });
+      } else if (ozsermaye < nominalSermaye / 2) {
+        anomaliler.push({
+          hesapKodu: '500',
+          tip: 'TTK376_SERMAYE_KAYBI',
+          seviye: 'WARN',
+          mesaj: `Özsermaye (${this.fmt(ozsermaye)}) sermayenin yarısının (${this.fmt(nominalSermaye / 2)}) altında — TTK 376 sermaye kaybı; genel kurulu bilgilendirme ve iyileştirme tedbirleri gerekir.`,
+          detay: { ozsermaye, nominalSermaye },
+        });
+      }
+    }
+
+    // 10e) ORTAKLA ÇİFT YÖNLÜ CARİ — hem 131 (alacak) hem 331 (borç) bakiye veriyorsa örtülü kazanç /
+    //   transfer fiyatlandırması ve adat faizi yönünden incelenmeli (netleştirilmeden iki yönlü çalışma).
+    const var131 = hesaplar.some((h: any) => /^131/.test(String(h.hesapKodu)) && Number(h.borcBakiye || 0) > 0);
+    const var331 = hesaplar.some((h: any) => /^331/.test(String(h.hesapKodu)) && Number(h.alacakBakiye || 0) > 0);
+    if (var131 && var331) {
+      anomaliler.push({
+        hesapKodu: '131',
+        tip: 'ORTAK_CARI_CIFT_YONLU',
+        seviye: 'INFO',
+        mesaj: `Hem 131 "Ortaklardan Alacaklar" hem 331 "Ortaklara Borçlar" bakiye veriyor — aynı dönemde çift yönlü ortak cari; örtülü kazanç dağıtımı / transfer fiyatlandırması ve adat faizi yönünden kontrol edilmeli.`,
+        detay: {},
+      });
+    }
+
+    // ────────────────────────────────────────────────────────────────
     // 11) KURUMLAR VERGİSİ TAHAKKUKU (370 / 371)
     // ────────────────────────────────────────────────────────────────
     // 370 = Dönem Kârı Vergi ve Yasal Yükümlülük Karşılıkları (alacak bakiyeli)
