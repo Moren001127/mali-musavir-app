@@ -10131,7 +10131,14 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       //   iade ise alış-kategorisi (153/770) kuralları zaten geçerli. Hint, pickAccount'ta plan-adıyla eşleşir.
       const _kalemAd = Array.isArray((doc.ocrData as any)?.kalemler) ? (doc.ocrData as any).kalemler.map((k: any) => String(k?.ad || '')).join(' ') : '';
       const _giderTuruRaw = String((doc.ocrData as any)?.giderTuru || '').trim();
-      const detIcerik = (!isSale && kat !== 'demirbas') ? giderIcerikSinifla(`${_kalemAd} ${_giderTuruRaw}`) : null;
+      // K3 (içerik-faaliyet tutarlılığı): AI 'ticari_mal' (mükellefin SATTIĞI emtia) ya da 'hammadde'
+      //   (üretim girdisi) dediyse → deterministik gider sınıflandırması bunu EZMESİN. giderIcerikSinifla
+      //   FAALİYET-KÖRÜDÜR: yalnız "içerik bir gidere benziyor mu"ya bakar; mükellefin o malı satıp
+      //   satmadığını bilmez. Toptancının deterjan/temizlik ALIŞINI "temizlik gideri"ne çevirip stok (153)
+      //   yerine gidere (770) atıyordu. Deterministik katman yalnız GİDER-nitelikli/boş kategoriyi
+      //   netleştirsin (nakliye→nakliye, akaryakıt→akaryakıt); AI'ın stok/hammadde kararına dokunmasın.
+      const aiStokKat = kat === 'ticari_mal' || kat === 'hammadde';
+      const detIcerik = (!isSale && kat !== 'demirbas' && !aiStokKat) ? giderIcerikSinifla(`${_kalemAd} ${_giderTuruRaw}`) : null;
       if (detIcerik) kat = detIcerik.kategori;
       const KAT_PREFIX: Record<string, string[]> = {
         ticari_mal: ['153', '150', '770'],       // stok yoksa gidere düş
