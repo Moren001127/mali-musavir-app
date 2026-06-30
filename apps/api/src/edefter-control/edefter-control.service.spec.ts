@@ -303,4 +303,36 @@ describe('EDefterControlService tevsik kasa kontrolleri', () => {
 
     expect(findings.map((f) => f.category)).not.toContain('FIS_TARIHI_PARSE_HATASI');
   });
+
+  it('kasa gun sonu eksi bakiye verirse (acilis yok) WARN bulgu uretir', () => {
+    const findings = analyze([
+      row({ rowIndex: 80, voucherKey: 'odeme', fisNo: '20', yevmiyeNo: '20', fisTarihi: d('2026-01-05'), hesapKodu: '100.01.001', alacak: 5000 }),
+      row({ rowIndex: 81, voucherKey: 'odeme', fisNo: '20', yevmiyeNo: '20', fisTarihi: d('2026-01-05'), hesapKodu: '320.01.001', hesapAdi: 'Saticilar', borc: 5000 }),
+    ]);
+    const kasa = findings.find((f) => f.category === 'KASA_GUNLUK_NEGATIF_BAKIYE');
+    expect(kasa).toBeDefined();
+    expect((kasa as any).severity).toBe('WARN');
+  });
+
+  it('acilis fisi defterde varsa kasa eksi gunu ERROR olur (kesin bakiye)', () => {
+    const findings = analyze([
+      row({ rowIndex: 90, voucherKey: 'ac', fisNo: '1', yevmiyeNo: '1', fisTarihi: d('2026-01-01'), fisTipi: 'Acilis', aciklama: 'Acilis fisi', hesapKodu: '100.01.001', borc: 3000 }),
+      row({ rowIndex: 91, voucherKey: 'ac', fisNo: '1', yevmiyeNo: '1', fisTarihi: d('2026-01-01'), fisTipi: 'Acilis', aciklama: 'Acilis fisi', hesapKodu: '500.01.001', hesapAdi: 'Sermaye', alacak: 3000 }),
+      row({ rowIndex: 92, voucherKey: 'odeme', fisNo: '21', yevmiyeNo: '21', fisTarihi: d('2026-01-05'), hesapKodu: '100.01.001', alacak: 5000 }),
+      row({ rowIndex: 93, voucherKey: 'odeme', fisNo: '21', yevmiyeNo: '21', fisTarihi: d('2026-01-05'), hesapKodu: '320.01.001', hesapAdi: 'Saticilar', borc: 5000 }),
+    ]);
+    const kasa = findings.find((f) => f.category === 'KASA_GUNLUK_NEGATIF_BAKIYE');
+    expect(kasa).toBeDefined();
+    expect((kasa as any).severity).toBe('ERROR');
+  });
+
+  it('kasa gun sonu pozitif kalirsa bulgu uretmez', () => {
+    const findings = analyze([
+      row({ rowIndex: 94, voucherKey: 'ac', fisNo: '1', yevmiyeNo: '1', fisTarihi: d('2026-01-01'), fisTipi: 'Acilis', aciklama: 'Acilis fisi', hesapKodu: '100.01.001', borc: 10000 }),
+      row({ rowIndex: 95, voucherKey: 'ac', fisNo: '1', yevmiyeNo: '1', fisTarihi: d('2026-01-01'), fisTipi: 'Acilis', aciklama: 'Acilis fisi', hesapKodu: '500.01.001', hesapAdi: 'Sermaye', alacak: 10000 }),
+      row({ rowIndex: 96, voucherKey: 'odeme', fisNo: '22', yevmiyeNo: '22', fisTarihi: d('2026-01-05'), hesapKodu: '100.01.001', alacak: 5000 }),
+      row({ rowIndex: 97, voucherKey: 'odeme', fisNo: '22', yevmiyeNo: '22', fisTarihi: d('2026-01-05'), hesapKodu: '320.01.001', hesapAdi: 'Saticilar', borc: 5000 }),
+    ]);
+    expect(findings.map((f) => f.category)).not.toContain('KASA_GUNLUK_NEGATIF_BAKIYE');
+  });
 });

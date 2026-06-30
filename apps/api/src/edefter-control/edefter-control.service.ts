@@ -33,40 +33,36 @@ type VoucherMeta = {
   isVatAccrual: boolean;
 };
 
+// Varsayilan KAPALI kurallar (gurultu/yinelenen/nis). Tenant rule-settings ile tek tek acilabilir.
+//   NOT: Asagidakiler 2026-06'da DEGERLI bulunup AKTIF edildi (listeden cikarildi): KDV_TAHAKKUK_MUKERRER,
+//   KDV_ODENECEK_360_UYUMSUZ, KDV_DEVREDEN_190_UYUMSUZ, KDV_TAHAKKUK_191/391_TUTAR_UYUMSUZ, 191/391_TERS_CALISMA,
+//   GELIR_HESABI_BORC_CALISMA, GIDER_HESABI_ALACAK_CALISMA, ANA_HESAPTA_KAYIT, ORTAK_CARI_KASA_KULLANIMI.
 const DEFAULT_DISABLED_CATEGORIES = new Set([
+  // Gurultulu / dusuk degerli
   'SIFIR_TUTARLI_SATIR',
   'SATIRDA_BORC_ALACAK_BIRLIKTE',
-  '191_TERS_CALISMA',
-  '391_TERS_CALISMA',
-  'KDV_ODENECEK_360_UYUMSUZ',
-  'KDV_DEVREDEN_190_UYUMSUZ',
-  'KDV_TAHAKKUK_MUKERRER',
   'KDV_TAHAKKUK_AY_SONU_DEGIL',
-  'KDV_TAHAKKUK_191_TUTAR_UYUMSUZ',
-  'KDV_TAHAKKUK_391_TUTAR_UYUMSUZ',
   'KDV_ORANI_OLAGAN_DISI',
-  'KDV_MATRAH_KARSILIK_YOK',
-  'MUKERRER_EVRAK_NO',
+  'KDV_MATRAH_KARSILIK_YOK',          // HAVADA_KDV_KAYDI (aktif) bunu zaten kapsar
   'FATURA_KARSILIK_HESAP_EKSIK',
   'BELGE_TURU_DIGER_ACIKLAMA_EKSIK',
-  'ANA_HESAPTA_KAYIT',
   'YEVMIYE_NO_FORMAT_SUPHELI',
   'TEK_FISTE_BIRDEN_COK_BELGE',
   'AYNI_FISTE_BELGE_ALANLARI_FARKLI',
-  'GELIR_HESABI_BORC_CALISMA',
-  'GIDER_HESABI_ALACAK_CALISMA',
-  'ORTAK_CARI_KASA_KULLANIMI',
+  // Yinelenen — aktif/daha kesin surumu var
+  'MUKERRER_EVRAK_NO',                // GERCEK_MUKERRER_FATURA (aktif) daha kesin
+  'KASA_30000_TEVSIK_RISKI',          // KASA_HAREKET_30000 + parcalama (aktif)
+  'AMORTISMAN_KAYDI_KONTROL',         // YILSONU_AMORTISMAN_EKSIK (aktif)
+  'BORDRO_TAHAKKUK_HESAP_KONTROL',    // BORDRO_TAHAKKUK_EKSIK (aktif)
+  'UCRET_SGK_TAHAKKUK_KONTROL',
+  'ACILIS_FISI_TARIH_KONTROL',        // ACILIS_FISI_YOK (aktif)
+  'KAPANIS_FISI_TARIH_KONTROL',
   'AVANS_KASA_ORTAK_CARI_KAPAMA',
   'CARI_KAPAMA_KARSILIK_KONTROL',
-  'BORDRO_TAHAKKUK_HESAP_KONTROL',
-  'UCRET_SGK_TAHAKKUK_KONTROL',
-  'AMORTISMAN_KAYDI_KONTROL',
+  // Nis / sektore ozel (uretim disinda yanlis alarm)
   'REESKONT_SIMETRI_KONTROL',
   'DONEMSELLIK_GIDER_KONTROL',
   'MALIYET_YANSITMA_EKSIK_KONTROL',
-  'ACILIS_FISI_TARIH_KONTROL',
-  'KAPANIS_FISI_TARIH_KONTROL',
-  'KASA_30000_TEVSIK_RISKI',
 ]);
 
 @Injectable()
@@ -339,7 +335,8 @@ export class EDefterControlService {
     }
 
     const ruleSettings = await this.getRuleSettingMap(params.tenantId);
-    const findings = this.analyze(rows, range, donemTipi, ruleSettings);
+    const kasaAcilis = await this.getKasaMizanAcilis(params.tenantId, params.taxpayerId, params.donem, donemTipi, rows);
+    const findings = this.analyze(rows, range, donemTipi, ruleSettings, kasaAcilis);
     if (findings.length) {
       for (const chunk of this.chunks(findings, 700)) {
         await (this.prisma as any).eDefterFinding.createMany({
@@ -428,7 +425,8 @@ export class EDefterControlService {
     this.correctTahakkukDates(rows);
     const voucherCount = new Set(rows.map((r) => r.voucherKey)).size;
     const ruleSettings = await this.getRuleSettingMap(tenantId);
-    const findings = this.analyze(rows, range, donemTipi, ruleSettings);
+    const kasaAcilis = await this.getKasaMizanAcilis(tenantId, session.taxpayerId, session.donem, donemTipi, rows);
+    const findings = this.analyze(rows, range, donemTipi, ruleSettings, kasaAcilis);
     const lineRows = rows.map((r) => ({
       sessionId: session.id,
       rowIndex: r.rowIndex,
@@ -603,6 +601,7 @@ export class EDefterControlService {
     range: { start: Date; end: Date } | null,
     donemTipi?: EDefterDonemTipi,
     ruleSettings: Map<string, boolean> = new Map(),
+    kasaAcilis: { value: number; known: boolean } | null = null,
   ): FindingDraft[] {
     const findings: FindingDraft[] = [];
     // Yil-sonu / acilis / donem-sonu kurallari yalnizca YILLIK defterde anlamlidir.
@@ -738,6 +737,7 @@ export class EDefterControlService {
     findings.push(...this.analyzeAvansKapanmamis(rows));
     findings.push(...this.analyzeVadesiGecmisCekSenet(rows, range));
     findings.push(...this.analyzeBankaEksiBakiye(rows));
+    findings.push(...this.analyzeKasaGunlukNegatif(rows, kasaAcilis));
     findings.push(...this.analyzePOSValor108(rows));
     findings.push(...this.analyzeKKEG689(rows));
     findings.push(...this.analyzeAmortismanYilSonu(rows, range, isYillik));
@@ -2370,6 +2370,128 @@ export class EDefterControlService {
     calc(/^322/, '322', 'Verilen Cekler');
     calc(/^323/, '323', 'Verilen Senetler');
     return findings;
+  }
+
+  // KASA (100) GUNLUK BAKIYE: kasa fiziki nakittir, gun sonu EKSI bakiye veremez. Gunluk yurutme:
+  //   acilis + o gune kadar kumulatif (borc - alacak). Bir gun sonu < 0 ise → gelir/tahsilat kaydi
+  //   eksik/gec, odeme aslinda ortaklardan (131) yapilmis ya da fis tarihi yanlistir.
+  //   Acilis bakiyesi: (a) acilis fisi defterde varsa kumulatif zaten MUTLAK bakiyedir (kesin);
+  //   (b) yoksa Mizan'dan turetilir (getKasaMizanAcilis); (c) hicbiri yoksa "acilis haric" (WARN).
+  private analyzeKasaGunlukNegatif(
+    rows: ParsedEDefterFisLine[],
+    kasaAcilis: { value: number; known: boolean } | null,
+  ): FindingDraft[] {
+    const isKasa = (c?: string | null) => /^100(?:[.\-]|$)/.test(String(c || ''));
+    const dated = rows.filter(
+      (r) => isKasa(r.hesapKodu) && r.fisTarihi instanceof Date && !Number.isNaN(r.fisTarihi.getTime()),
+    );
+    if (!dated.length) return [];
+
+    // Acilis fisi defterde mi? Varsa kumulatif = mutlak bakiye (ek acilis = 0, kesin).
+    const acilisFisiVeride = rows.some((r) => this.isOpeningLikeText(this.rowText(r)));
+    let opening = 0;
+    let known = false;
+    if (acilisFisiVeride) {
+      opening = 0;
+      known = true;
+    } else if (kasaAcilis) {
+      opening = kasaAcilis.value;
+      known = kasaAcilis.known;
+    }
+
+    // Gune gore net (borc - alacak), tarih sirali yurutme.
+    const byDay = new Map<string, { net: number; first: ParsedEDefterFisLine }>();
+    for (const r of dated) {
+      const key = r.fisTarihi!.toISOString().slice(0, 10);
+      if (!byDay.has(key)) byDay.set(key, { net: 0, first: r });
+      byDay.get(key)!.net += Number(r.borc || 0) - Number(r.alacak || 0);
+    }
+    const days = [...byDay.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+    const negDays: { date: Date; bakiye: number; first: ParsedEDefterFisLine }[] = [];
+    let running = opening;
+    for (const [key, info] of days) {
+      running += info.net;
+      if (running < -1) negDays.push({ date: new Date(`${key}T00:00:00Z`), bakiye: running, first: info.first });
+    }
+    if (!negDays.length) return [];
+
+    const sev: 'ERROR' | 'WARN' = known ? 'ERROR' : 'WARN';
+    const acilisNot = known
+      ? acilisFisiVeride
+        ? ''
+        : ` (acilis bakiyesi ${this.fmt(opening)} TL Mizan'dan alindi)`
+      : ' (acilis bakiyesi haric hesaplandi; ilgili donemin Mizani cekilirse kesinlesir)';
+    const ipucu = ' Eksik tahsilat/gelir kaydi, ortaklardan odeme (131) ya da fis tarihi hatasi olabilir.';
+    const findings: FindingDraft[] = [];
+    const enDusuk = negDays.reduce((m, d) => (d.bakiye < m.bakiye ? d : m), negDays[0]);
+
+    // Cok gun varsa spam yapma: tek ozet + en kritik gun.
+    if (negDays.length > 12) {
+      findings.push({
+        severity: sev,
+        category: 'KASA_GUNLUK_NEGATIF_BAKIYE',
+        message: `Kasa (100) ${negDays.length} farkli gun sonunda EKSI bakiye veriyor; kasa eksi bakiye veremez. En dusuk: ${this.fmtDate(enDusuk.date)} gunu ${this.fmt(enDusuk.bakiye)} TL.${acilisNot}${ipucu}`,
+        voucherKey: enDusuk.first.voucherKey,
+        rowIndex: enDusuk.first.rowIndex,
+        hesapKodu: '100',
+        detail: { negatifGunSayisi: negDays.length, enDusukBakiye: enDusuk.bakiye, enDusukGun: enDusuk.date.toISOString(), acilis: opening, acilisKnown: known },
+      });
+      return findings;
+    }
+    for (const d of negDays) {
+      findings.push({
+        severity: sev,
+        category: 'KASA_GUNLUK_NEGATIF_BAKIYE',
+        message: `Kasa (100) ${this.fmtDate(d.date)} gunu sonunda ${this.fmt(d.bakiye)} TL EKSI bakiye veriyor; kasa eksi bakiye veremez.${acilisNot}${ipucu}`,
+        voucherKey: d.first.voucherKey,
+        rowIndex: d.first.rowIndex,
+        hesapKodu: '100',
+        detail: { gun: d.date.toISOString(), bakiye: d.bakiye, acilis: opening, acilisKnown: known },
+      });
+    }
+    return findings;
+  }
+
+  // Kasa (100) acilis bakiyesi Mizan'dan: acilis = kapanis - donem hareketi. Mizan KUMULATIF (yil
+  //   basindan donem sonuna kadar) → fis listesinin donem netini cikarinca donem BASI bakiye kalir.
+  //   Mizan yoksa/eslesmezse known=false (kural "acilis haric" WARN ile calisir). Mizan READ-ONLY.
+  private async getKasaMizanAcilis(
+    tenantId: string,
+    taxpayerId: string | null | undefined,
+    donem: string,
+    donemTipi: string | undefined,
+    rows: ParsedEDefterFisLine[],
+  ): Promise<{ value: number; known: boolean }> {
+    if (!taxpayerId) return { value: 0, known: false };
+    const periodNet = rows
+      .filter((r) => /^100(?:[.\-]|$)/.test(String(r.hesapKodu || '')))
+      .reduce((s, r) => s + Number(r.borc || 0) - Number(r.alacak || 0), 0);
+    const mizan = await (this.prisma as any).mizan
+      .findFirst({
+        where: { tenantId, taxpayerId, donem, ...(donemTipi ? { donemTipi } : {}), status: 'READY' },
+        orderBy: { createdAt: 'desc' },
+        include: {
+          hesaplar: {
+            where: { hesapKodu: { startsWith: '100' } },
+            select: { hesapKodu: true, seviye: true, borcBakiye: true, alacakBakiye: true },
+          },
+        },
+      })
+      .catch(() => null);
+    const hesaplar: any[] = mizan?.hesaplar || [];
+    if (!hesaplar.length) return { value: 0, known: false };
+    // Kasa kapanis bakiyesi: ana hesap "100" varsa onu (toplam); yoksa cift-sayim olmadan en derin seviye.
+    const ana = hesaplar.find((h) => String(h.hesapKodu) === '100');
+    let kapanis: number;
+    if (ana) {
+      kapanis = Number(ana.borcBakiye) - Number(ana.alacakBakiye);
+    } else {
+      const maxSeviye = Math.max(...hesaplar.map((h) => Number(h.seviye) || 0));
+      kapanis = hesaplar
+        .filter((h) => (Number(h.seviye) || 0) === maxSeviye)
+        .reduce((s, h) => s + Number(h.borcBakiye) - Number(h.alacakBakiye), 0);
+    }
+    return { value: kapanis - periodNet, known: true };
   }
 
   // Banka eksi bakiye = kredi mi, dogru hesapta mi (102 negatif olamaz, 300 olmali)
