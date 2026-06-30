@@ -537,14 +537,24 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       select: { id: true },
     }).catch(() => []);
     if (!docs.length) return;
-    // Plan YOK → tüm placeholder kodları boşalt. Plan VAR → yalnız planda OLMAYAN placeholder'ları
-    //   boşalt (191.01.020 mükellefte yoksa temizle; gerçekten planda olan 320.01.001 vb. KORUNUR).
-    const toClear = planCodes
-      ? this.PLACEHOLDER_CODES.filter((c) => !planCodes.has(c))
-      : this.PLACEHOLDER_CODES;
+    const docIds = docs.map((d: any) => d.id);
+    // Plan YOK → HİÇBİR kod geçerli olamaz (olmayan hesaba fiş kesilmez) → belgelerin TÜM kodlarını
+    //   boşalt. Bu, yalnız sabit placeholder listesini değil, AI'ın plan-yokken ürettiği SAHTE/BİRLEŞMİŞ
+    //   kodları da (ör. "153.01.001-TİCARİ MAL %20" — kod+ad yapışmış) temizler. Frontend "Hesap planı
+    //   aktarılmamış" banner'ı sebebi açıklar; plan çekilip "Kodları düzelt" denince gerçek kodlar gelir.
+    if (!planCodes) {
+      await (this.prisma as any).invoiceAccountingLine.updateMany({
+        where: { documentId: { in: docIds }, NOT: { accountCode: null } },
+        data: { accountCode: null },
+      }).catch(() => {});
+      return;
+    }
+    // Plan VAR → yalnız planda OLMAYAN placeholder'ları boşalt (191.01.020 mükellefte yoksa temizle;
+    //   gerçekten planda olan 320.01.001 vb. KORUNUR).
+    const toClear = this.PLACEHOLDER_CODES.filter((c) => !planCodes.has(c));
     if (!toClear.length) return;
     await (this.prisma as any).invoiceAccountingLine.updateMany({
-      where: { documentId: { in: docs.map((d: any) => d.id) }, accountCode: { in: toClear } },
+      where: { documentId: { in: docIds }, accountCode: { in: toClear } },
       data: { accountCode: null },
     }).catch(() => {});
   }
