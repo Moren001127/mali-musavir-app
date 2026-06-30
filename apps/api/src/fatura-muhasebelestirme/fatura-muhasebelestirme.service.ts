@@ -316,6 +316,12 @@ const GOODS_ACCOUNT_PREFIXES = ['150', '151', '152', '153', '157'];
 const EXPENSE_ACCOUNT_PREFIXES = ['7'];
 const SALES_ACCOUNT_PREFIXES = ['600', '601', '602'];
 const REPORT_EPSILON = 0.005;
+// VUK haddi (yeniden değerlemeyle YILLIK değişir; 2026 = 12.000 TL). Aynı had iki kuralda kullanılır:
+//   (1) Demirbaş doğrudan-gider sınırı (VUK 313): bir iktisadi kıymetin KDV HARİÇ bedeli bu haddin
+//       ALTINDAysa demirbaş (255) değil DOĞRUDAN GİDER (770) yazılabilir. Üstündeyse demirbaş.
+//   (2) Tevkifat alt sınırı: kısmi tevkifata tabi içerikli işlemin KDV DAHİL bedeli bu haddi aşıyorsa
+//       tevkifatlı düzenlenmelidir. Yeni yıl haddi değişince burayı GÜNCELLE.
+const VUK_HAD_TL = 12_000;
 
 function parseDecimal(value: any, fallback = '0') {
   if (value === null || value === undefined || value === '') return new Prisma.Decimal(fallback);
@@ -4853,7 +4859,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const tpForAsset = doc.taxpayerId
       ? await (this.prisma as any).taxpayer.findFirst({ where: { id: doc.taxpayerId, tenantId }, select: { faaliyetAciklama: true, naceKodu: true, companyName: true } }).catch(() => null)
       : null;
-    const fixedAsset = this.detectFixedAsset(ocrData, tpForAsset);
+    let fixedAsset = this.detectFixedAsset(ocrData, tpForAsset);
+    // DEMİRBAŞ HADDİ: bedel KDV hariç haddin altındaysa demirbaş uyarısı (FIXED_ASSET_MANUAL) verme —
+    //   doğrudan gider yazılır (matcher de 770'e yönlendirir; ikisi tutarlı).
+    if (fixedAsset.is && this.demirbasHaddiAltinda(ocrData)) fixedAsset = { is: false, reason: '' };
 
     const validation = await this.runValidation({
       tenantId,
@@ -8558,6 +8567,34 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     return { is: true, reason: hitWord };
   }
 
+  /** Faturanın KDV HARİÇ matrah toplamı (TL). Demirbaş haddi (VUK 313) karşılaştırması için.
+   *  Sıra: kdvBreakdown matrahları → ocr.matrah → (toplam − KDV). Bilinmiyorsa 0. */
+  private matrahHaricTL(ocr: any): number {
+    const o = ocr || {};
+    const bd = Array.isArray(o.kdvBreakdown) ? o.kdvBreakdown : [];
+    let base = 0;
+    for (const b of bd) {
+      const m = Number(b?.matrah ?? b?.base) || 0;
+      if (m > 0) { base += m; continue; }
+      const t = Number(b?.tutar ?? b?.amount) || 0;
+      const r = Number(b?.oran ?? b?.rate) || 0;
+      if (t > 0 && r > 0) base += t / (r / 100);
+    }
+    if (base > 0) return Math.round(base * 100) / 100;
+    const m = Number(o.matrah) || 0;
+    if (m > 0) return m;
+    const total = Number(o.totalTutari ?? o.total) || 0;
+    const kdv = Number(o.kdvTutari) || 0;
+    return total > 0 ? Math.max(total - kdv, 0) : 0;
+  }
+
+  /** Demirbaş içeriği var AMA KDV hariç matrah VUK haddinin ALTINDA → doğrudan gider (770), demirbaş(255)
+   *  DEĞİL ("770'te gider yazılan demirbaş"). Tutar bilinmiyorsa (0) false döner → demirbaş kalır (güvenli). */
+  private demirbasHaddiAltinda(ocr: any): boolean {
+    const m = this.matrahHaricTL(ocr);
+    return m > 0 && m < VUK_HAD_TL;
+  }
+
   /**
    * v2.1 — Belge validation pipeline.
    * 3 tip kontrol yapar:
@@ -10123,8 +10160,15 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       //   geçer → is=false). Bu içerik-sinyali AI kategorisini EZER → klima 153 TİCARİ MAL yerine 255 DEMİRBAŞ'a
       //   (yoksa BOŞ; KAT_PREFIX[demirbas]=255/253/254, gider prefix'i YOK) gider. Belge zaten FIXED_ASSET_MANUAL
       //   ile bloklu (manuel Luca) — kategori/hesap da artık tutarlı görünür. Yalnız ALIŞ (satış demirbaş ayrı).
-      const faDet = !isSale ? this.detectFixedAsset(doc.ocrData, tpRow) : { is: false, reason: '' };
+      const faContent = !isSale ? this.detectFixedAsset(doc.ocrData, tpRow) : { is: false, reason: '' };
+      // DEMİRBAŞ HADDİ (VUK 313, KDV hariç matrah): içerik demirbaş olsa da bedel haddin ALTINDAysa
+      //   doğrudan GİDER (770) yazılır, demirbaş (255) DEĞİL — kullanıcı "770'te gider yazılan demirbaş"
+      //   diye açıyor. Eşik üstü → demirbaş (manuel/amortisman). Bedel bilinmiyorsa demirbaş kalır (güvenli).
+      const faAltinda = faContent.is && this.demirbasHaddiAltinda(doc.ocrData);
+      const faDet = faAltinda ? { is: false, reason: '' } : faContent;
       if (faDet.is && kat !== 'demirbas') kat = 'demirbas';
+      // Eşik-altı demirbaş içeriği: AI 'demirbas' kategorisi vermiş olsa bile gidere çevir (255 değil 770).
+      if (faAltinda && kat === 'demirbas') kat = 'genel_gider';
       // DETERMİNİSTİK İÇERİK SINIFLANDIRMA (evrensel kural, AI'sız): kalem+giderTuru'ndan gider kategorisi
       //   + plan-adı ipucu. AI'ın TUTARSIZ/SAÇMA kategorisini EZER → aynı içerik HER ZAMAN aynı hesaba
       //   (nakliye→nakliye, akaryakıt→akaryakıt, yedek-parça/bakım→araç bakım). Demirbaş ise dokunma (faDet);
