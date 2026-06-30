@@ -9773,6 +9773,14 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const faDetForUyari = (kind !== 'SATIS')
         ? this.detectFixedAsset({ kalemler: parsed.kalemler, giderTuru: parsed.giderTuru, muhasebeNeden: parsed.muhasebeNeden }, tpForAsset)
         : { is: false, reason: '' };
+      // İADE GÜVENLİK AĞI (kullanıcı bulgusu — UBL "Fatura Tipi: IADE" yazan bir belge normal ALIŞ gibi
+      //   işlenmişti): görüntü/PDF yolunda iade tespiti SADECE AI'nin "iade" JSON alanına dayanıyordu
+      //   (XML/HTML yollarındaki gibi deterministik regex YOKTU). Azure'un OKUDUĞU HAM METİN (azureText/
+      //   parsed._azureText) — vision-modelin "önemli" sandığı kısma odaklanma sorunu olmayan, OCR ile
+      //   çıkarılmış TÜM metin — üzerinde de "İADE/IPTAL" arandığında bu tür kaçırmaları yakalar.
+      const isReturnDet = parsed.iade === true
+        || /iade|iptal/i.test(String(parsed.belgeTuru || ''))
+        || /\b(İADE|IADE|İPTAL|IPTAL)\b/i.test(String(azureText || (parsed as any)._azureText || ''));
       const _uyarilar = denetimUyariOlustur({
         invoiceKind: kind,
         matrah,
@@ -9802,7 +9810,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           ocrData: { ...((d.ocrData as any) || {}), matrah, kdvTutari: kdv, kdvOrani: breakdown[0].rate, kdvBreakdown: breakdown.map((b: any) => ({ oran: b.rate, matrah: b.base, tutar: b.amount })), matrahKategori: typeof parsed.kategori === 'string' ? parsed.kategori : undefined, giderTuru: typeof parsed.giderTuru === 'string' ? parsed.giderTuru.slice(0, 40) : undefined, muhasebeNeden: this.cleanBaseNeden(parsed.muhasebeNeden).slice(0, 300) || undefined, aiYorum: this.cleanBaseNeden(parsed.muhasebeNeden).slice(0, 400) || undefined, aiMatrahKodu: (() => {
                 const aiKod = typeof parsed.matrahHesapKodu === 'string' ? String(parsed.matrahHesapKodu).trim() : '';
                 return (aiKod && planLeafSet.has(aiKod)) ? aiKod : undefined;
-              })(), kalemler: Array.isArray(parsed.kalemler) ? parsed.kalemler.slice(0, 30).map((k: any) => ({ ad: String(k?.ad || '').slice(0, 80), tutar: Number(k?.tutar) || 0, oran: Number(k?.oran) || 0 })).filter((k: any) => k.ad) : undefined, ...(islSinifAi ? { isletme: islSinifAi } : {}), isReturn: parsed.iade === true || /iade|iptal/i.test(String(parsed.belgeTuru || '')), tevkifatHint: parsed.tevkifat === true || tevkifatOrani > 0 || /tevkifat/i.test(String(html || '')), tevkifatOrani: tevkifatOrani || 0, tevkifatKdv: tevkKdv || 0, engine: parsed._azure ? 'azure-read' : (parsed === preParsed ? 'ubl-xml' : 'max-vision'),
+              })(), kalemler: Array.isArray(parsed.kalemler) ? parsed.kalemler.slice(0, 30).map((k: any) => ({ ad: String(k?.ad || '').slice(0, 80), tutar: Number(k?.tutar) || 0, oran: Number(k?.oran) || 0 })).filter((k: any) => k.ad) : undefined, ...(islSinifAi ? { isletme: islSinifAi } : {}), isReturn: isReturnDet, tevkifatHint: parsed.tevkifat === true || tevkifatOrani > 0 || /tevkifat/i.test(String(html || '')), tevkifatOrani: tevkifatOrani || 0, tevkifatKdv: tevkKdv || 0, engine: parsed._azure ? 'azure-read' : (parsed === preParsed ? 'ubl-xml' : 'max-vision'),
             readMode: parsed === preParsed ? 'ubl-xml' : (isImage ? 'image' : /pdf/i.test(imgMedia) ? 'pdf-text' : /xml/i.test(imgMedia) ? 'xml-text' : 'html'),
             ...(!preParsed && imgBuf && /xml/i.test(imgMedia) ? { xmlHead: imgBuf.toString('utf8').slice(0, 220).replace(/\s+/g, ' ') } : {}),
             ...(_uyarilar.length ? { uyarilar: _uyarilar } : {}) },
