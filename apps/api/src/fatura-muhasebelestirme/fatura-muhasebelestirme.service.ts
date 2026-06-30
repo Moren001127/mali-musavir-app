@@ -2591,7 +2591,18 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       }
     }
     const kind = doc.invoiceKind === 'SATIS' ? 'SATIS' : 'ALIS';
-    const c = await this.aiClassifyAccounting(content, mukellefBilgi, isIsletme, kind).catch(() => null);
+    // ⚡ DETERMİNİSTİK ATLAMA (bkz. aiReadDocument): kalemlerin HEPSİ tanınan gider ise ~100s Max'i atla.
+    let detC: any = null;
+    {
+      const detAdlar = (Array.isArray(od.kalemler) ? od.kalemler : []).map((k: any) => String(k?.ad || '').trim()).filter(Boolean);
+      if (!isIsletme && kind !== 'SATIS' && detAdlar.length) {
+        let cat = ''; let ok = true;
+        for (const ad of detAdlar) { const r = giderIcerikSinifla(ad); if (!r) { ok = false; break; } if (!cat) cat = r.kategori; else if (cat !== r.kategori) { ok = false; break; } }
+        if (ok) { const whole = giderIcerikSinifla(detAdlar.join(' ')); if (whole) detC = { giderTuru: whole.hint, kategori: whole.kategori }; }
+      }
+    }
+    const c = detC || await this.aiClassifyAccounting(content, mukellefBilgi, isIsletme, kind).catch(() => null);
+    if (detC) this.logger.log(`[CLS-SKIP] det icerik=${detC.kategori} → Max ATLANDI doc=${documentId}`);
     const patch: any = { ...od };
     delete patch.icerikMetni; delete patch.needsClassify; // snippet'i temizle (DB bloat olmasın)
     if (c) {
@@ -9577,8 +9588,28 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       // TEMİZ içerik: HTML-HIZLI yolunda _htmlText zaten script/style atılmış + 8000 char (sınıflandırma
       //   AI'ı 23KB ham HTML gürültüsünde boğuluyordu → NULL/boş kategori). Önce onu kullan; yoksa eski yol.
       const contentText = (parsed._htmlText || parsed._azureText || (imgBuf ? imgBuf.toString('utf8') : (html || ''))).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 9000);
+      // ⚡ HIZ — DETERMİNİSTİK ATLAMA: e-Fatura/e-Arşiv'de kalemler AI'sız (XML/HTML) okunuyor. İÇERİK
+      //   net bir gider türüne (nakliye/akaryakıt/elektrik/kira/kargo/müşavirlik…) uyuyorsa, ~100s'lik
+      //   Max sınıflandırma çağrısını YAPMA — hesabı içerikten zaten biliyoruz (matcher'ın kullandığı
+      //   giderIcerikSinifla ile aynı kural). GÜVENLİK (kullanıcı kuralı: içeriğe bakmadan atlama yok):
+      //   yalnız HER kalem tanınan bir gider ise (HOMOJEN) atlanır → tek belirsiz/ticari-mal/demirbaş
+      //   kalem varsa AI çalışır. İşletme defteri (kayıt türü gerekir) ve SATIŞ bu hızlı-yoldan HARİÇ.
+      const detAdlar = (Array.isArray(parsed.kalemler) ? parsed.kalemler : []).map((k: any) => String(k?.ad || '').trim()).filter(Boolean);
+      let detHit: { giderTuru: string; kategori: string } | null = null;
+      if (!isIsletmeMukellef && d.invoiceKind !== 'SATIS' && detAdlar.length) {
+        let cat = ''; let ok = true;
+        for (const ad of detAdlar) {
+          const r = giderIcerikSinifla(ad);
+          if (!r) { ok = false; break; }                       // tanınmayan kalem → AI'ya bırak
+          if (!cat) cat = r.kategori; else if (cat !== r.kategori) { ok = false; break; } // karışık → AI
+        }
+        if (ok) { const whole = giderIcerikSinifla(detAdlar.join(' ')); if (whole) detHit = { giderTuru: whole.hint, kategori: whole.kategori }; }
+      }
       // TOPLU: aynı mükellef+plan+yön grubundaki belgeler tek Max çağrısında sınıflanır (alt-süreç N× azalır).
-      const c = await this.aiClassifyAccountingCoalesced(contentText, mukellefBilgi, isIsletmeMukellef, d.invoiceKind === 'SATIS' ? 'SATIS' : 'ALIS', planAdaylar).catch(() => null);
+      const c: any = detHit
+        ? { giderTuru: detHit.giderTuru, kategori: detHit.kategori }
+        : await this.aiClassifyAccountingCoalesced(contentText, mukellefBilgi, isIsletmeMukellef, d.invoiceKind === 'SATIS' ? 'SATIS' : 'ALIS', planAdaylar).catch(() => null);
+      if (detHit) this.logger.log(`[CLS-SKIP] det icerik=${detHit.kategori} (${detAdlar.length} kalem) → Max ATLANDI belge=${d.belgeNo || d.id}`);
       if (c) {
         if (!parsed.giderTuru && c.giderTuru) parsed.giderTuru = c.giderTuru;
         if (!parsed.kategori && c.kategori) parsed.kategori = c.kategori;
