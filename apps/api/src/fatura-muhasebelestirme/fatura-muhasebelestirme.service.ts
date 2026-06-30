@@ -9445,12 +9445,14 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     let ownAd = '';  // mükellefin kendi ünvanı → "satıcı/alıcı adı mükellefin kendisi mi" güvenlik ağı için
     let tpNace = '';      // isletmeAutoKayitTuru için
     let tpFaaliyet = '';  // isletmeAutoKayitTuru için
+    let tpForAsset: any = null; // detectFixedAsset için (demirbaş↔tevkifat çelişkisini önlemek üzere aşağıda kullanılır)
     if (d.taxpayerId) {
       const tp = await (this.prisma as any).taxpayer.findFirst({
         where: { id: d.taxpayerId, tenantId },
         select: { companyName: true, firstName: true, lastName: true, naceKodu: true, faaliyetAciklama: true, defterTuru: true, mihsapDefterTuru: true, taxNumber: true, identityNumber: true },
       }).catch(() => null);
       if (tp) {
+        tpForAsset = tp;
         ownVkn = String(tryDecrypt(tp.taxNumber) || tp.taxNumber || tryDecrypt(tp.identityNumber) || tp.identityNumber || '').replace(/\D/g, '');
         const ad = String(tp.companyName || `${tp.firstName || ''} ${tp.lastName || ''}`).trim();
         ownAd = ad;
@@ -9765,6 +9767,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           belgeTuruKod: defaultBelgeTuruKod(mappedType || parsed.belgeTuru, kind),
         };
       }
+      // DEMİRBAŞ↔TEVKİFAT ÇELİŞKİSİ (kullanıcı bulgusu): okuma anında demirbaş tespiti SATIŞ HARİÇ
+      //   yapılır (detectFixedAsset rematch'teki kullanımıyla aynı kural) — demirbaşsa tevkifat
+      //   kontrolü denetimUyariOlustur içinde atlanır (bkz. isFixedAsset).
+      const faDetForUyari = (kind !== 'SATIS')
+        ? this.detectFixedAsset({ kalemler: parsed.kalemler, giderTuru: parsed.giderTuru, muhasebeNeden: parsed.muhasebeNeden }, tpForAsset)
+        : { is: false, reason: '' };
       const _uyarilar = denetimUyariOlustur({
         invoiceKind: kind,
         matrah,
@@ -9774,6 +9782,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         muhasebeNeden: typeof parsed.muhasebeNeden === 'string' ? parsed.muhasebeNeden : '',
         kdvOrani: breakdown[0]?.rate ?? 0,
         tevkifatVar: parsed.tevkifat === true || tevkifatOrani > 0 || /tevkifat/i.test(String(html || '')),
+        isFixedAsset: faDetForUyari.is,
       });
       await tx.invoiceAccountingDocument.update({
         where: { id: d.id },

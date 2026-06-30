@@ -21,6 +21,10 @@ export interface DenetimGirdi {
   muhasebeNeden: string;    // AI yorumu
   kdvOrani: number;         // 1, 10, 20 gibi (yüzde)
   tevkifatVar: boolean;     // belgede tevkifat tespiti var mı?
+  /** Demirbaş/sabit kıymet ALIMI (detectFixedAsset). Kısmi tevkifat YALNIZ hizmet ifalarında uygulanır;
+   *  bir sabit kıymetin (taşıt/makine/ekipman) SATIN ALINMASI mal teslimidir, tevkifata tabi DEĞİLDİR —
+   *  TEVKİFAT kontrolü atlanır (demirbaş + "tevkifat eksik" uyarısı birlikte çıkmasın, mantıksal çelişki). */
+  isFixedAsset?: boolean;
 }
 
 interface TevkifatKural {
@@ -143,7 +147,10 @@ export function denetimUyariOlustur(p: DenetimGirdi): DenetimUyari[] {
 
   // ─── 1. TEVKİFAT DENETİMİ ──────────────────────────────────────────────
   // KDV dahil eşik aşıldı + içerik tevkifatlı hizmet türüne uyuyor + belgede tevkifat yok
-  for (const kural of TEVKIFAT) {
+  // DEMİRBAŞ/SABİT KIYMET ALIMI ise kısmi tevkifat UYGULANMAZ (mal teslimi, hizmet ifası değil) —
+  //   "demirbaş + tevkifat eksik" mantıksal çelişkisi (kullanıcı bulgusu: yarı römork SATIN ALIMI
+  //   "kara taşımacılığı hizmeti" sanılıp tevkifat istenmişti) → kontrolü baştan atla.
+  for (const kural of !p.isFixedAsset ? TEVKIFAT : []) {
     if (totalKdvDahil >= kural.esikKdvDahil && iceriyor(hizmetMetni, kural.anahtar)) {
       if (!p.tevkifatVar) {
         uyarilar.push({
