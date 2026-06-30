@@ -7839,6 +7839,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
                 kdvTutari: parsed.kdvTutari,
                 kdvOrani: parsed.kdvOrani,
                 ettn: parsed.ettn,
+                // Kalemler → DEMİRBAŞ tespiti (detectFixedAsset) içeriği görsün; demirbaş alış/satışı
+                //   FIXED_ASSET_MANUAL ile INVALID → Luca'ya aktarılmaz, "manuel işle" uyarısı kalır.
+                kalemler: Array.isArray(parsed.kalemler) ? parsed.kalemler.slice(0, 30).map((k: any) => ({ ad: String(k?.ad || '').slice(0, 80), tutar: Number(k?.tutar) || 0, oran: Number(k?.oran) || 0 })).filter((k: any) => k.ad) : undefined,
               },
             } : {}),
           },
@@ -7906,12 +7909,18 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           kdvTutari: parsed.kdvTutari,
           kdvOrani: parsed.kdvOrani,
           ettn: parsed.ettn,
+          // Kalemler → DEMİRBAŞ tespiti (detectFixedAsset) için; demirbaş alış/satışı FIXED_ASSET_MANUAL
+          //   ile INVALID olur → Luca'ya aktarılmaz, "Luca sabit kıymet modülünden işle" uyarısı kalır.
+          kalemler: Array.isArray(parsed.kalemler) ? parsed.kalemler.slice(0, 30).map((k: any) => ({ ad: String(k?.ad || '').slice(0, 80), tutar: Number(k?.tutar) || 0, oran: Number(k?.oran) || 0 })).filter((k: any) => k.ad) : undefined,
         },
         createdBy: userId || null,
         lines: { create: lines },
       },
       include: { lines: { orderBy: { orderNo: 'asc' } } },
     });
+    // DEMİRBAŞ + sahiplik/denge doğrulaması: demirbaş alış/satışı INVALID → otomatik aktarım engellenir,
+    //   "Luca sabit kıymet modülünden işle" uyarısı kalır. (Provider-XML belgede de validation çalışsın.)
+    await this.revalidateDocument(tenantId, doc.id).catch(() => {});
     return { created: true, document: doc };
   }
 
@@ -9904,8 +9913,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     giderTuru: string,
     vendorName: string,
   ): Promise<{ accountCode: string; accountName: string } | null> {
-    // Aday hesaplar: stok (15x), sabit kıymet (25x), gider (6xx/7xx) leaf'leri.
-    const cand = accounts.filter((a) => /^(15\d|25\d|6\d\d|7\d\d)/.test(String(a.accountCode || '')));
+    // Aday hesaplar: stok (15x), sabit kıymet (25x), MALİYET gideri (7xx) leaf'leri.
+    //   6xx HARİÇ: 60x gelir, 62x maliyet ÖZETİ, 63x faaliyet gideri GELİR TABLOSU/YANSITMA hesabı —
+    //   fatura DOĞRUDAN buraya işlenmez (gider 770'e gider, dönem sonu 771 ile 632'ye yansıtılır).
+    //   Ad benzerliği "632 GENEL YÖNETİM GİDERLERİ"yi seçtiriyordu → yalnız 7xx maliyet hesabı aday.
+    const cand = accounts.filter((a) => /^(15\d|25\d|7\d\d)/.test(String(a.accountCode || '')));
     if (!cand.length) return null;
     const codes = cand.map((a) => String(a.accountCode));
     const leaves = cand.filter((a) => { const c = String(a.accountCode); return !codes.some((o) => o !== c && o.startsWith(c + '.')); });
@@ -9982,6 +9994,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
 
     for (const doc of docs) {
       const isSale = doc.invoiceKind === 'SATIS';
+      // ENTEGRATÖR / UBL-XML belge → eşleştirmede AI (aiPickGiderAccount) ÇALIŞMAZ. Kullanıcı:
+      //   "bunlar zaten XML, AI ile okuma/eşleştirme YOK; hızlı deterministik eşleşsin." Gider/cari
+      //   Eşleştirme Kuralları + öğrenilmiş VKN cari + plan adından gelir; bulunmazsa BOŞ (müşavir seçer).
+      const _src = String(doc.source || '');
+      const _eng = String(doc.ocrEngine || '');
+      const isProviderXml = _src.startsWith('integration-') || _src === 'gib-portal-api' || _src === 'gib-earsiv-api'
+        || /-api$/.test(_eng) || (doc.ocrData as any)?.source === 'provider-api' || String((doc.ocrData as any)?.engine || '') === 'ubl-xml';
       // İADE/İPTAL faturası (CreditNote / "İADE"): normal 600/770/191'e ATANMAZ (ciro/KDV şişer).
       //   Bunun yerine planında VARSA iade-özel hesaplara eşle — satıştan iade matrahı 610 (SATIŞTAN
       //   İADELER), KDV adında "İADE" geçen 191/391 ("SATIŞTAN İADE İNDİRİLECEK KDV"). Kullanıcı:
@@ -10096,7 +10115,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       // DEMİRBAŞ'ta AI gider tahmini de YANLIŞ: mevcut sabit-kıymet hesaplarından (IPHONE/araç/mobilya)
       //   birini seçmeye zorlar; oysa her demirbaş kendi hesabına gider. Ad eşleşmedi → BOŞ kalsın,
       //   müşavir o varlığa özel alt-hesabı açar. (kat==='demirbas' iken AI matrah seçimine girme.)
-      if (!isSale && !categoryMatrah && giderIcerik && kat !== 'demirbas') {
+      // ENTEGRATÖR/UBL-XML belgede AI YOK (hız + kullanıcı kuralı): deterministik bulamadıysa BOŞ kalır.
+      if (!isSale && !categoryMatrah && giderIcerik && kat !== 'demirbas' && !isProviderXml) {
         const ck = this.norm(giderIcerik).slice(0, 180);
         if (aiGiderCache.has(ck)) {
           categoryMatrah = aiGiderCache.get(ck);
