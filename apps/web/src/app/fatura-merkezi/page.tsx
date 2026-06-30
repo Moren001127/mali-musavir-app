@@ -4452,8 +4452,8 @@ const CSS = `
 /* Kenar çubuğu marka bloğu */
 #fm-root .brandrow{display:flex;align-items:center;gap:10px;margin-top:11px}
 #fm-root .brandmk{width:38px;height:38px;border-radius:10px;background:var(--accent);color:#fff;display:grid;place-items:center;font-size:13px;font-weight:900;letter-spacing:.5px;flex-shrink:0;box-shadow:0 8px 18px -12px var(--accent)}
-#fm-root .brandtx .brandlogo{font-family:'Kaushan Script',cursive;font-weight:400;font-size:27px;color:var(--accent);line-height:1;letter-spacing:.3px}
-#fm-root .brandtx .brandmod{font-family:'Cormorant Garamond',Georgia,serif;font-style:italic;font-weight:600;font-size:16px;color:var(--muted);letter-spacing:.3px;line-height:1.15;margin-top:2px}
+#fm-root .brandtx .brandlogo{font-family:'Kaushan Script',cursive;font-weight:400;font-size:36px;color:var(--accent);line-height:1.05;letter-spacing:.3px}
+#fm-root .brandtx .brandmod{font-family:'Cormorant Garamond',Georgia,serif;font-style:italic;font-weight:600;font-size:17.5px;color:var(--muted);letter-spacing:.3px;line-height:1.15;margin-top:3px}
 #fm-root .brandtx .brandsub{font-size:10.5px;font-weight:600;color:var(--faint);letter-spacing:.2px;margin-top:2px}
 /* İşlevsel filtre kutucukları — sayaç + filtre TEK satır (eski pasif kartlar + ayrı çipler birleşti) */
 #fm-root .filttiles{display:flex;flex-wrap:wrap;gap:9px;margin:4px 0 16px}
