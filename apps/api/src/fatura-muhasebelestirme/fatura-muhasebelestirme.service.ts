@@ -213,6 +213,8 @@ type IntegrationSaveInput = {
 type IntegrationFetchInput = {
   taxpayerId?: string;
   donem?: string;
+  dateFrom?: string;
+  dateTo?: string;
   direction?: 'ALIS' | 'SATIS';
   providers?: string[];
   limit?: number;
@@ -1756,7 +1758,14 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     if (!taxpayerId) throw new BadRequestException('taxpayerId gerekli');
     const direction = input.direction === 'SATIS' ? 'SATIS' : 'ALIS';
     const mode = input.mode === 'query' ? 'query' : 'download';
-    const period = this.monthRange(input.donem);
+    // SERBEST TARİH ARALIĞI (Mihsap örneği — kullanıcı talebi): dateFrom/dateTo verildiyse AY bazlı
+    //   monthRange'i (1 ayla sınırlı) bypass et — sorgu gerçek başlangıç/bitiş gününe göre çalışır.
+    //   period.donem yalnız ETİKETLEME amaçlı (job payload/log mesajı); aralık startDate/endDate'ten gelir.
+    const dateFromOk = /^\d{4}-\d{2}-\d{2}$/.test(String(input.dateFrom || ''));
+    const dateToOk = /^\d{4}-\d{2}-\d{2}$/.test(String(input.dateTo || ''));
+    const period = (dateFromOk && dateToOk && String(input.dateFrom) <= String(input.dateTo))
+      ? { donem: `${input.dateFrom}_${input.dateTo}`, startDate: String(input.dateFrom), endDate: String(input.dateTo) }
+      : this.monthRange(input.donem);
     const limit = Math.min(Math.max(Number(input.limit || 500), 1), 1000);
     const requestedProviders = new Set(
       (input.providers || [])
@@ -2970,6 +2979,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
    */
   private parseEarsivHtmlTotals(html: string): { breakdown: Array<{ oran: number; matrah: number; kdv: number }>; toplam: number; kalemler?: Array<{ ad: string; tutar: number; oran: number }> } | null {
     if (!html || !/malHizmetKDV\(|hesaplananKDV\(/.test(html)) return null;
+    // TEVKİFATLI faturada bu hızlı-yol KDV'yi TAM (tevkifat-öncesi) okur — "vergidahil/odenecek" alanı
+    //   genelde Vergiler Dahil TOPLAM tutardır, tevkifatı YANSITMAZ; matrah+TAM-KDV=toplam dengesi
+    //   YANLIŞLIKLA tutar ve TAM KDV ile devam edilir (kullanıcı bulgusu: tevkifatlı SATIŞ'ta KDV
+    //   tutarı NET değil TAM görünüyordu). Tevkifat varsa Max-vision'a düş — orada "tevkifatKdv" AI
+    //   tarafından belgeden okunur, NET KDV/tevkifat oranı doğru hesaplanır.
+    if (/TEVKIFAT|WithholdingTax/i.test(html)) return null;
     const matrah: Record<string, number> = {};
     const kdv: Record<string, number> = {};
     for (const m of html.matchAll(/malHizmetKDV\((\d+)\)['"]?\s*:\s*['"]?([\d.]+)/g)) matrah[m[1]] = parseFloat(m[2]);
@@ -3506,7 +3521,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   async syncEfaturaInboxFromIntegrations(
     tenantId: string,
     userId: string | undefined,
-    opts: { taxpayerId: string; period?: string; direction?: 'IN' | 'OUT'; channel?: string; limit?: number; providers?: string[] } = {} as any,
+    opts: { taxpayerId: string; period?: string; dateFrom?: string; dateTo?: string; direction?: 'IN' | 'OUT'; channel?: string; limit?: number; providers?: string[] } = {} as any,
   ) {
     if (!opts.taxpayerId) throw new BadRequestException('taxpayerId gerekli');
     const taxpayer = await (this.prisma as any).taxpayer.findFirst({
@@ -3518,7 +3533,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const channel = String(opts.channel || (opts.direction === 'OUT' ? 'OUT_EFATURA' : 'IN_EFATURA')).toUpperCase();
     const direction: 'ALIS' | 'SATIS' = channel === 'IN_EFATURA' ? 'ALIS' : 'SATIS';
     const inboxDirection: 'IN' | 'OUT' = direction === 'ALIS' ? 'IN' : 'OUT';
-    const period = this.monthRange(opts.period);
+    // SERBEST TARİH ARALIĞI (Mihsap örneği — kullanıcı talebi): bkz. fetchConfiguredIntegrations'taki aynı mantık.
+    const dateFromOk = /^\d{4}-\d{2}-\d{2}$/.test(String(opts.dateFrom || ''));
+    const dateToOk = /^\d{4}-\d{2}-\d{2}$/.test(String(opts.dateTo || ''));
+    const period = (dateFromOk && dateToOk && String(opts.dateFrom) <= String(opts.dateTo))
+      ? { donem: `${opts.dateFrom}_${opts.dateTo}`, startDate: String(opts.dateFrom), endDate: String(opts.dateTo) }
+      : this.monthRange(opts.period);
     const limit = Math.min(Math.max(Number(opts.limit || 500), 1), 1000);
     const requested = new Set((Array.isArray(opts.providers) ? opts.providers : []).map((p) => String(p).toUpperCase()));
 
@@ -9513,7 +9533,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       'belgeTuru: belgenin üstündeki ibareye göre → "e-arsiv" (e-Arşiv Fatura), "e-fatura" (e-Fatura), "e-smm" (Serbest Meslek Makbuzu / SMM), "fis" (yazarkasa/ÖKC fişi), yoksa "diger".',
       'JSON\'a "iade": true/false ekle — belge bir İADE FATURASI / İPTAL / CreditNote ise true (üstte "İADE", "İADE FATURASI" yazar ya da senaryo İADE/IPTAL\'dir), normal satış/alış faturasıysa false.',
       'JSON\'a "tevkifat": true/false ekle — belgede KDV TEVKİFATI varsa true (Fatura Tipi: TEVKIFAT, ya da "KDV TEVKİFAT (%..)=... TL" satırı/Diğer Vergiler\'de tevkifat), yoksa false.',
-      'JSON\'a "tevkifatKdv": <tevkifata düşen KDV tutarı (TL) sayı, yoksa 0> ekle — belgede "Hesaplanan KDV Tevkifat", "KDV TEVKİFAT(%..)=... TL" ya da "Tevkifata Tabi İşlem Üzerinden Hes. KDV"den ALIKONAN/tevkif edilen KDV kısmı. Örn "KDV TEVKİFAT(%20,00)=520,00 TL" → 520. Tevkifat yoksa 0.',
+      'JSON\'a "tevkifatKdv": <tevkifata düşen KDV tutarı (TL) sayı, yoksa 0> ekle — belgede "Hesaplanan KDV Tevkifat", "KDV TEVKİFAT(%..)=... TL" ya da "Tevkifata Tabi İşlem Üzerinden Hes. KDV"den ALIKONAN/tevkif edilen KDV kısmı. Örn "KDV TEVKİFAT(%20,00)=520,00 TL" → 520. ⚠️ Belgede bu kalıp YOKSA ama "Hesaplanan KDV" (TAM) ile "Ödenecek KDV" (ya da "Ödenecek Tutar"daki net KDV) AYRI AYRI yazıyorsa, tevkifatKdv = Hesaplanan KDV − Ödenecek KDV (her iki tutarı da belgede GERÇEKTEN gördüysen; tahmin etme). Tevkifat yoksa 0.',
       'saticiAd/aliciAd: SATICI (faturayı kesen) ve ALICI (SAYIN/müşteri) ünvanları. saticiVkn/aliciVkn: bu tarafların VKN (10 hane) ya da TC (11 hane) — SADECE rakam. Yazarkasa fişinde satıcı = mağaza. toplam: genel/ödenecek toplam (KDV dahil). Bulamazsan null, UYDURMA.',
       'KURALLAR: Türk sayı biçimi "1.234,56" = 1234.56 (tümünü ondalıklı sayıya çevir). Birden çok KDV oranı varsa her oran ayrı nesne. matrah=KDV hariç tutar, kdv=o orana ait KDV. ÖTV/ÖİV/tevkifat varsa matrahı şişirme — gerçek mal/hizmet matrahını ver. Okunamayan alanı null bırak, UYDURMA.',
       'kategori: mükellefin İŞİNE + fatura içeriğine göre TEK kelime seç → "ticari_mal" (SADECE mükellefin alıp AYNEN SATARAK ticaretini yaptığı emtia/stok), "hammadde" (üretimde kullanılan ilk madde/malzeme), "demirbas" (makine/cihaz/ekipman/mobilya/bilgisayar gibi sabit kıymet alımı), "pazarlama" (reklam/ilan/kargo-nakliye/pazarlama), "genel_gider" (kira/elektrik/su/doğalgaz/telefon/internet/akaryakıt/danışmanlık/kırtasiye/yemek/abonelik VE mükellefin satmadığı tüketim/SARF malzemesi: ambalaj, tek-kullanımlık, temizlik, servis malzemesi). EMİN DEĞİLSEN "genel_gider". ⚠️ Mükellef MAL TİCARETİ yapmıyorsa (hizmet/eğitim/lokanta/ofis) aldığı malzeme "ticari_mal" DEĞİLDİR — bunları satmıyor, kendi işinde tüketiyor → "genel_gider" (üretim girdisiyse "hammadde").',

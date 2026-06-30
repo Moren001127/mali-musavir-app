@@ -1439,6 +1439,10 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
 function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; period: string; source: 'earsiv' | 'efatura' }) {
   const qc = useQueryClient();
   const [sel, setSel] = useState<Set<string>>(new Set());
+  // SERBEST TARİH ARALIĞI (Mihsap örneği — kullanıcı talebi): boş bırakılırsa eski davranış (üstteki
+  //   ay/dönem seçici) geçerli kalır; doldurulursa Sorgula bu aralığa göre çalışır.
+  const [rangeFrom, setRangeFrom] = useState('');
+  const [rangeTo, setRangeTo] = useState('');
   const [efaturaChannel, setEfaturaChannel] = useState<'IN_EFATURA' | 'OUT_EFATURA' | 'OUT_EARSIV'>('IN_EFATURA');
   const [lastEfaturaSync, setLastEfaturaSync] = useState<any>(null);
   const [efaturaPollUntil, setEfaturaPollUntil] = useState(0);
@@ -1491,6 +1495,7 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
       taxpayerId,
       direction: 'SATIS',
       donem: period,
+      ...(rangeFrom && rangeTo ? { dateFrom: rangeFrom, dateTo: rangeTo } : {}),
       providers: ['GIB_PORTAL'],
       mode: 'query',
     }),
@@ -1609,6 +1614,7 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
       direction: efaturaDirection,
       channel: efaturaChannel,
       period,
+      ...(rangeFrom && rangeTo ? { dateFrom: rangeFrom, dateTo: rangeTo } : {}),
       providers: [v.provider],
       limit: 500,
     }),
@@ -1794,6 +1800,17 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
   return (
     <section className="screen sorgu-screen">
       <div className="h2">{source === 'earsiv' ? 'GIB e-Arşiv Portal Sorgusu' : 'e-Fatura Entegratör Sorgusu'}</div>
+
+      <div className="card" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', marginBottom: 10 }}>
+        <span className="mu">Tarih aralığı</span>
+        <input className="dmi" type="date" value={rangeFrom} onChange={(e) => setRangeFrom(e.target.value)} />
+        <span className="mu">—</span>
+        <input className="dmi" type="date" value={rangeTo} onChange={(e) => setRangeTo(e.target.value)} />
+        {(rangeFrom || rangeTo) && (
+          <button type="button" className="btn sm ghost" onClick={() => { setRangeFrom(''); setRangeTo(''); }}>Temizle</button>
+        )}
+        <span className="sourcehint" style={{ margin: 0 }}>Boş bırakılırsa üstteki dönem (ay) kullanılır.</span>
+      </div>
 
       {source === 'earsiv' ? (
         <div className={`card sourcepanel ${earsivOverlayBusy ? 'isbusy' : ''}`}>

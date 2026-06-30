@@ -438,6 +438,8 @@ export class FaturaMuhasebelestirmeController {
       {
         taxpayerId: body?.taxpayerId,
         period: body?.period,
+        dateFrom: body?.dateFrom,
+        dateTo: body?.dateTo,
         direction,
         channel: body?.channel,
         limit: body?.limit,
