@@ -21,12 +21,31 @@ import { RolesGuard } from '../auth/guards/roles.guard';
  *   PUT    /system/locked-modules/:id/unlock      → kilidi kaldır
  *   DELETE /system/locked-modules/:id        → hard delete
  */
+// Süreç boot zamanı — her redeploy'da sıfırlanır → deploy bittiğini SHA + bootTime'dan anlarız.
+const BOOT_AT = new Date().toISOString();
+
 @Controller('system')
 export class SystemHealthController {
   constructor(
     private readonly health: SystemHealthService,
     private readonly locked: LockedModulesService,
   ) {}
+
+  // === VERSION (PUBLIC) — deploy izleme: çalışan commit SHA + boot zamanı ===
+  @Get('version')
+  getVersion() {
+    const sha = process.env.RAILWAY_GIT_COMMIT_SHA
+      || process.env.RAILWAY_GIT_COMMIT
+      || process.env.GIT_COMMIT_SHA
+      || process.env.SOURCE_VERSION
+      || null;
+    return {
+      sha,
+      shaShort: sha ? String(sha).slice(0, 7) : null,
+      bootAt: BOOT_AT,
+      branch: process.env.RAILWAY_GIT_BRANCH || null,
+    };
+  }
 
   // === HEALTH ===
 
