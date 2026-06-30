@@ -218,9 +218,16 @@ const SISTEM_DENETIM_KRITERLERI = [
   {
     tip: 'KAPANIS_YAPILMAMIS',
     seviye: 'WARN',
-    hesap: '690 / 691 / 692',
+    hesap: '6xx / 690-692',
     kosul: 'Yıl sonunda bakiye > 0',
-    aciklama: 'Yıl sonu kapanış hesaplarının dönem sonunda bakiye vermemesi gerektiğini kontrol eder.',
+    aciklama: 'Yıl sonunda tüm gelir/gider (6xx) hesaplarının 690 Dönem Kârı/Zararı\'na aktarılıp kapatılmış, kapanış hesaplarının (690/691/692) da sıfırlanmış olması gerektiğini kontrol eder.',
+  },
+  {
+    tip: 'MALIYET_KAPANMAMIS',
+    seviye: 'WARN',
+    hesap: '7xx (net)',
+    kosul: 'Her dönem sonu 7xx net bakiye ≠ 0',
+    aciklama: 'Maliyet (7xx) hesapları HER geçici vergi ve yıl sonu döneminde yansıtma (7x1) ile kapatılmalı; tüm 7xx net bakiyesi (borç−alacak) sıfır değilse gider hesaplarda asılı kalmış, dönem maliyeti/matrahı eksik demektir. Gider ve yansıtma ayrı hesap olduğundan tek tek değil net kontrol edilir.',
   },
   {
     tip: 'DONEM_KARI_DEVREDILMEMIS',

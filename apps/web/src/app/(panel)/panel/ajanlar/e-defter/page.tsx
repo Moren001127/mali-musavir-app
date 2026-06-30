@@ -348,6 +348,8 @@ const MIZAN_TIP_LABEL: Record<string, string> = {
   TTK376_TEKNIK_IFLAS: 'TTK 376 teknik iflas (özsermaye negatif)',
   TTK376_SERMAYE_KAYBI: 'TTK 376 sermaye kaybı',
   ORTAK_CARI_CIFT_YONLU: 'Ortakla çift yönlü cari (131+331)',
+  KAPANIS_YAPILMAMIS: 'Yıl sonu kapanış yapılmamış (6xx/690)',
+  MALIYET_KAPANMAMIS: 'Maliyet (7xx) kapatılmamış — yansıtma eksik',
 };
 function mizanTipLabel(tip?: string | null) {
   const t = String(tip || '').trim();

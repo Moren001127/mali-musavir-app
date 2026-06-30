@@ -104,6 +104,27 @@ describe('MizanService ozkaynak / sermaye anomalileri', () => {
     expect(captured.map((a) => a.tip)).toContain('ORTAK_CARI_CIFT_YONLU');
   });
 
+  it('gecici donem sonunda 7xx net acik kalirsa (yansitma eksik) maliyet kapanmamis uyarisi uretir', async () => {
+    const { service, captured } = makeService(
+      [hesap({ hesapKodu: '740', hesapAdi: 'Hizmet Uretim Maliyeti', borcBakiye: 25000 })],
+      interim,
+    );
+    await service.analyzeAccounts('m1');
+    expect(captured.map((a) => a.tip)).toContain('MALIYET_KAPANMAMIS');
+  });
+
+  it('gider (740) ve yansitma (741) birbirini kapatiyorsa (net 0) maliyet uyarisi VERMEZ', async () => {
+    const { service, captured } = makeService(
+      [
+        hesap({ hesapKodu: '740', hesapAdi: 'Hizmet Uretim Maliyeti', borcBakiye: 25000 }),
+        hesap({ hesapKodu: '741', hesapAdi: 'Hizmet Uretim Maliyeti Yansitma', alacakBakiye: 25000 }),
+      ],
+      interim,
+    );
+    await service.analyzeAccounts('m1');
+    expect(captured.map((a) => a.tip)).not.toContain('MALIYET_KAPANMAMIS');
+  });
+
   it('saglikli ozkaynakta yeni ozkaynak uyarilari CIKMAZ', async () => {
     const { service, captured } = makeService(
       [

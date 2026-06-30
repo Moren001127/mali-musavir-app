@@ -707,6 +707,42 @@ export class MizanService {
           });
         }
       }
+
+      // 9b) GELİR/GİDER (6xx) hesapları YIL SONUNDA 690 Dönem Kârı/Zararı'na aktarılıp SIFIRLANMALI.
+      //   (690/691/692 yukarıda; 7xx ayrı — yansıtma her dönem sonunda yapıldığından AŞAĞIDA, yıl-sonu dışı dahil.)
+      const acik6 = hesaplar.filter((h: any) => {
+        const k = String(h.hesapKodu || '');
+        return /^6\d{2}$/.test(k) && !['690', '691', '692'].includes(k)
+          && Math.abs(Number(h.borcBakiye || 0) - Number(h.alacakBakiye || 0)) > 0.5;
+      });
+      for (const h of acik6.slice(0, 40)) {
+        const k = String(h.hesapKodu);
+        const net = Math.abs(Number(h.borcBakiye || 0) - Number(h.alacakBakiye || 0));
+        anomaliler.push({
+          hesapKodu: k,
+          tip: 'KAPANIS_YAPILMAMIS',
+          seviye: 'WARN',
+          mesaj: `${k} "${h.hesapAdi}" gelir/gider hesabı yıl sonunda ${this.fmt(net)} bakiye veriyor — 690 Dönem Kârı/Zararı'na aktarılıp kapatılmamış; defter kapanışı eksik.`,
+          detay: { borcBakiye: h.borcBakiye, alacakBakiye: h.alacakBakiye },
+        });
+      }
+    }
+
+    // 9c) MALİYET (7xx) HER DÖNEM SONUNDA kapalı olmalı (geçici vergi Q1-Q4 + yıl sonu): gider (7x0), yansıtma
+    //   (7x1) ile maliyete/gelir tablosuna aktarılır → tüm 7xx'in NET'i (borç−alacak) ≈ 0 olmalı. Net 0 değilse
+    //   yansıtma eksiktir (gider hesaplarda asılı kalmış); geçici vergi matrahı/dönem maliyeti hatalı olur.
+    //   NOT: gider ve yansıtma AYRI hesaplardır (740 borç ↔ 741 alacak) → tek tek DEĞİL, NET bakılır (yanlış alarm önlenir).
+    const net7 = hesaplar
+      .filter((h: any) => /^7\d{2}$/.test(String(h.hesapKodu || '')))
+      .reduce((s: number, h: any) => s + Number(h.borcBakiye || 0) - Number(h.alacakBakiye || 0), 0);
+    if (Math.abs(net7) > 1) {
+      anomaliler.push({
+        hesapKodu: '7',
+        tip: 'MALIYET_KAPANMAMIS',
+        seviye: 'WARN',
+        mesaj: `Maliyet (7xx) hesapları dönem sonunda net ${this.fmt(net7)} bakiye veriyor — gider hesapları yansıtma (7x1) ile aktarılıp kapatılmamış. 7'li hesaplar her geçici vergi ve yıl sonu döneminde kapalı (net sıfır) olmalı; aksi halde dönem maliyeti/matrahı eksik.`,
+        detay: { net7 },
+      });
     }
 
     // ────────────────────────────────────────────────────────────────
