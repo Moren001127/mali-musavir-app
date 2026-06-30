@@ -997,6 +997,16 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
     const t = setInterval(() => qc.invalidateQueries({ queryKey: ['fm2'] }), 2500);
     return () => clearInterval(t);
   }, [ocrProg?.active, qc]);
+  // AI okuma — geçen süre + TAHMİNİ kalan süre (ETA). Aktif başlayınca başlangıç anını + o anki "okundu"
+  //   sayısını sakla; hız = (o andan beri okunan / geçen süre) → kalan = sıradaki / hız. Saniyelik tik ile canlı.
+  const readStartRef = useRef<{ ms: number; done: number } | null>(null);
+  const [, setEtaTick] = useState(0);
+  useEffect(() => {
+    if (!ocrProg?.active) { readStartRef.current = null; return; }
+    if (!readStartRef.current) readStartRef.current = { ms: Date.now(), done: Number(ocrProg?.done || 0) };
+    const t = setInterval(() => setEtaTick((x) => x + 1), 1000);
+    return () => clearInterval(t);
+  }, [ocrProg?.active]);
   // Okuması YENİ BİTEN satıra kısa "tamamlandı" vurgusu (IN_PROGRESS → değil geçişi yakalanır).
   const prevOcrRef = useRef<Record<string, string>>({});
   const [justDone, setJustDone] = useState<Set<string>>(new Set());
@@ -1103,6 +1113,14 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
         {ocrProg && (ocrProg.active || ocrProg.failed > 0) && (() => {
           const tot = Math.max(1, (ocrProg.done || 0) + (ocrProg.reading || 0) + (ocrProg.failed || 0));
           const pct = Math.min(100, Math.round(((ocrProg.done || 0) / tot) * 100));
+          // TAHMİNİ kalan süre (ETA): başlangıçtan beri okunan / geçen süre = hız; kalan = sıradaki / hız.
+          const st = readStartRef.current;
+          const elapsed = st ? (Date.now() - st.ms) / 1000 : 0;
+          const doneSince = st ? Math.max(0, (ocrProg.done || 0) - st.done) : 0;
+          const rate = doneSince > 0 && elapsed > 1.5 ? doneSince / elapsed : 0; // belge/sn
+          const remaining = Number(ocrProg.reading || 0);
+          const etaSec = rate > 0 ? Math.round(remaining / rate) : 0;
+          const etaText = remaining <= 0 ? '' : etaSec > 0 ? (etaSec < 60 ? `~${etaSec} sn` : `~${Math.round(etaSec / 60)} dk`) : 'hesaplanıyor…';
           return (
             <div className={`aibar${ocrProg.active ? '' : ' err'}`}>
               {ocrProg.active ? (
@@ -1110,17 +1128,23 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
                   <div className="aiscan"><i /><i /><i /><i /><span className="beam" /></div>
                   <div className="aimid">
                     <div className="ait">Belgeler yapay zeka ile okunuyor<span className="dots" /></div>
-                    <div className="aisub"><b>{ocrProg.done}</b> / {tot} belge okundu{ocrProg.reading ? ` · ${ocrProg.reading} sırada` : ''}{ocrProg.failed ? ` · ${ocrProg.failed} okunamadı` : ''} · sunucuda işlenir, sayfayı değiştirebilirsin</div>
+                    <div className="aisub">
+                      <b>{ocrProg.done}</b> / {tot} belge okundu
+                      {ocrProg.reading ? <> <span className="aichip">{ocrProg.reading} sırada</span></> : null}
+                      {etaText ? <> <span className="aichip eta">⏱ {etaText}</span></> : null}
+                      {ocrProg.failed ? <> <span className="aichip warn">{ocrProg.failed} okunamadı</span></> : null}
+                    </div>
                     <div className="aitrack"><div className="aifill" style={{ width: `${pct}%` }} /></div>
+                    <div className="ainote">Sunucuda işlenir — sayfayı değiştirebilir, başka işe geçebilirsin</div>
                   </div>
                   <div className="airight">
                     <div className="aipct">%{pct}</div><small>OKUNDU</small>
                     <button
+                      className="aistop"
                       onClick={aiDurdur}
                       disabled={aiStop}
                       title="Okumayı durdur — bekleyen belgeler sıradan çıkarılır (okunan biter)"
-                      style={{ marginTop: 6, padding: '3px 12px', fontSize: 12, fontWeight: 600, color: '#e5484d', background: 'rgba(229,72,77,.08)', border: '1px solid rgba(229,72,77,.35)', borderRadius: 7, cursor: aiStop ? 'default' : 'pointer', opacity: aiStop ? .6 : 1 }}
-                    >{aiStop ? 'Durduruluyor…' : 'Durdur'}</button>
+                    >{aiStop ? 'Durduruluyor…' : <>✕ Durdur</>}</button>
                   </div>
                 </>
               ) : (
@@ -3912,6 +3936,17 @@ const CSS = `
 #fm-root .aibar .aipct{font-size:32px;font-weight:950;color:#2741a8;letter-spacing:0}
 #fm-root .aibar .airight small{font-size:10px;font-weight:900;color:#94a3b8}
 #fm-root .aibar.err{background:#fff7f7;border-color:#f3c4c4;box-shadow:none}
+/* AI okuma — chip'ler (sırada / tahmini süre / okunamadı), not satırı, düzgün Durdur butonu */
+#fm-root .aibar .airight{display:flex;flex-direction:column;align-items:center;gap:1px;flex-shrink:0;min-width:86px}
+#fm-root .aibar .aisub{display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin-top:3px}
+#fm-root .aibar .aichip{display:inline-flex;align-items:center;gap:3px;padding:2px 10px;border-radius:999px;font-size:11px;font-weight:800;background:#eef3ff;color:#3157d5;line-height:1.5}
+#fm-root .aibar .aichip.eta{background:#ecebff;color:#5b4fe0}
+#fm-root .aibar .aichip.warn{background:#fdf2e0;color:#b45309}
+#fm-root .aibar .ainote{font-size:11px;color:#9aa6b8;margin-top:8px;font-weight:600}
+#fm-root .aibar .aistop{margin-top:11px;display:inline-flex;align-items:center;gap:5px;padding:6px 16px;font-size:12.5px;font-weight:800;color:#dc2626;background:#fff;border:1.5px solid #f1c6c6;border-radius:10px;cursor:pointer;transition:all .16s ease;box-shadow:0 2px 6px -1px rgba(220,38,38,.14)}
+#fm-root .aibar .aistop:hover:not(:disabled){background:#dc2626;color:#fff;border-color:#dc2626;box-shadow:0 7px 18px -5px rgba(220,38,38,.55);transform:translateY(-1px)}
+#fm-root .aibar .aistop:active:not(:disabled){transform:translateY(0)}
+#fm-root .aibar .aistop:disabled{opacity:.55;cursor:default}
 #fm-root .mgrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:8px 0 12px;padding:8px;background:#fff;border:1px solid #dde5ef;border-radius:8px}
 #fm-root .mcard{min-height:58px;border:0;border-left:3px solid var(--mc,var(--accent));border-radius:5px;background:#f8fafc;padding:8px 10px;box-shadow:none;gap:4px}
 #fm-root .mcard::before{display:none}
