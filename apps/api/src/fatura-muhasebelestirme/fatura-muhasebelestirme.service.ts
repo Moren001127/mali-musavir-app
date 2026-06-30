@@ -266,6 +266,8 @@ type ParsedProviderInvoice = {
   matrah?: number | null;
   kdvTutari?: number | null;
   kdvOrani?: number | null;
+  /** Çok-oranlı KDV kırılımı (her oran ayrı): %10 ve %20 gibi karma faturada şart. */
+  kdvBreakdown?: Array<{ rate: number; base: number; amount: number }>;
   toplamTutar?: number | null;
   paraBirimi?: string | null;
   kalemler?: Array<{ ad: string; tutar: number; oran: number }>;
@@ -8119,6 +8121,33 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           return ad && tutar != null ? { ad, tutar, oran: oran ?? 0 } : null;
         })
         .filter((k): k is { ad: string; tutar: number; oran: number } => k !== null);
+      // ÇOK-ORANLI KDV KIRILIMI: belge TaxTotal/TaxSubtotal'larını orana göre topla (UBL standardı:
+      //   her TaxSubtotal = bir oran; TaxableAmount=matrah, TaxAmount=KDV, Percent=oran). Karma %10/%20
+      //   faturada bu olmazsa tek harmanlanmış orana (5245/29825≈%18 SAHTE) düşüyordu.
+      const round2 = (n: number) => Math.round(n * 100) / 100;
+      const taxSubs = taxTotals.flatMap((tt) => asArray(tt?.TaxSubtotal));
+      const subMap = new Map<number, { base: number; amount: number }>();
+      for (const sub of taxSubs) {
+        const r = num(sub?.TaxCategory?.Percent) ?? num(sub?.Percent);
+        if (r == null) continue;
+        const key = Math.round(r);
+        const cur = subMap.get(key) || { base: 0, amount: 0 };
+        const b = num(sub?.TaxableAmount); const a = num(sub?.TaxAmount);
+        if (b != null) cur.base += b;
+        if (a != null) cur.amount += a;
+        subMap.set(key, cur);
+      }
+      let kdvBreakdown = [...subMap.entries()]
+        .filter(([, v]) => v.base > 0 || v.amount > 0)
+        .map(([rate, v]) => ({ rate, base: round2(v.base), amount: round2(v.amount) }));
+      // Belge TaxSubtotal tek-oran döndü ama KALEMLERDE birden çok oran var → kalemleri oran-bazlı topla
+      //   (çok-oranlı faturanın tek harmanlanmış orana düşmesini kesin engeller). amount = base×oran/100.
+      const kalemRates = new Set(rawKalemler.map((k) => Math.round(Number(k.oran) || 0)).filter((r) => r > 0));
+      if (kdvBreakdown.length < 2 && kalemRates.size >= 2) {
+        const km = new Map<number, number>();
+        for (const k of rawKalemler) { const r = Math.round(Number(k.oran) || 0); if (r <= 0) continue; km.set(r, (km.get(r) || 0) + (Number(k.tutar) || 0)); }
+        kdvBreakdown = [...km.entries()].map(([rate, base]) => ({ rate, base: round2(base), amount: round2(base * rate / 100) }));
+      }
       return {
         faturaNo: faturaNo || ettn || 'BILINMIYOR',
         faturaTarihi: issueDate && !Number.isNaN(issueDate.getTime()) ? issueDate : null,
@@ -8130,6 +8159,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         matrah,
         kdvTutari,
         kdvOrani: matrah && kdvTutari ? Math.round((kdvTutari / matrah) * 100) : null,
+        kdvBreakdown: kdvBreakdown.length ? kdvBreakdown : undefined,
         toplamTutar,
         paraBirimi: (txt(get(['DocumentCurrencyCode'])) || 'TRY') === 'TRY' ? 'TL' : txt(get(['DocumentCurrencyCode'])) || 'TL',
         kalemler: rawKalemler.length ? rawKalemler : undefined,
@@ -9305,7 +9335,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           iade: /<\w*:?CreditNote[\s>]/i.test(xml) || /\b(İADE|IADE|İPTAL|IPTAL)\b/i.test(xml.slice(0, 4000)),
           // TEVKİFAT: belgede tevkifat/WithholdingTax geçiyorsa (e-Arşiv "Fatura Tipi: TEVKIFAT").
           tevkifat: /TEVKIFAT|WithholdingTax/i.test(xml),
-          kdv: [{ oran: ubl.kdvOrani || 0, matrah: ubl.matrah || 0, kdv: ubl.kdvTutari || 0 }],
+          // ÇOK-ORANLI: kırılım varsa her oranı AYRI ver (karma %10/%20 faturada şart). Yoksa tek satır.
+          kdv: (Array.isArray(ubl.kdvBreakdown) && ubl.kdvBreakdown.length)
+            ? ubl.kdvBreakdown.map((b) => ({ oran: b.rate, matrah: b.base, kdv: b.amount }))
+            : [{ oran: ubl.kdvOrani || 0, matrah: ubl.matrah || 0, kdv: ubl.kdvTutari || 0 }],
           kalemler: ubl.kalemler,
         };
       }
