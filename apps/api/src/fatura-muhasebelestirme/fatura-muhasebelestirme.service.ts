@@ -9374,7 +9374,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   ayrı çalışır; e-Fatura/e-Arşiv de "mali müşavir gibi" içerik+faaliyetle sınıflansın.
     // UBL/XML yolu max-vision AI'ı ATLAR → sınıflandırma (giderTuru/kategori/İşletme kayıt türü) BURADA
     //   SENKRON çalışır: okuma = tam işlenmiş belge (yarım kalan yok, aynı satıcı hep aynı sonuç).
-    if (parsed === preParsed && d.taxpayerId) {
+    // ENTEGRATÖR XML: SINIFLANDIRMA AI'I DA ÇALIŞMAZ (kullanıcı: "aktarılan faturalarda AI YOK,
+    //   bunlar zaten XML"). Hesap kodu deterministik gelir — gider/cari: Eşleştirme Kuralları +
+    //   öğrenilmiş VKN cari (rematchDocumentsWithLatestAccountPlan, aşağıda). Bilinmeyen satıcıda
+    //   "Kod eksik" görünür; müşavir 1 kez seçer → VKN bazında öğrenilir. (Hız: Max çağrısı YOK.)
+    if (parsed === preParsed && d.taxpayerId && !provXml) {
       // TEMİZ içerik: HTML-HIZLI yolunda _htmlText zaten script/style atılmış + 8000 char (sınıflandırma
       //   AI'ı 23KB ham HTML gürültüsünde boğuluyordu → NULL/boş kategori). Önce onu kullan; yoksa eski yol.
       const contentText = (parsed._htmlText || parsed._azureText || (imgBuf ? imgBuf.toString('utf8') : (html || ''))).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 9000);
