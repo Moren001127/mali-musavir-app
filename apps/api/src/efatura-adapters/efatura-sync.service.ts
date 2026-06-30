@@ -169,11 +169,16 @@ export class EFaturaSyncService {
         (/pdf/i.test(String(visual.mimeType || '')) && Boolean(visual.base64)) ||
         (/html/i.test(String(visual.mimeType || '')) && Boolean(visual.html) && !fakeTurmobVisual)
       );
+      // SAĞLAM UBL XML = orijinal belge VAR (görsel opsiyonel). Görsel inmese de belge XML'den
+      //   oluşur/okunur → "inemedi" sayma. (TORA PETROL gibi 372KB çok-kalemli faturalarda XML
+      //   iniyor, Detay görseli inmiyordu → eskiden eksik sayılıp aktarım geri alınıyordu.)
+      const hasValidXml = !!String(row?.ublXmlRaw || '').trim() && !isSyntheticTurmobInboxXml(row?.ublXmlRaw);
+      if (hasValidXml) return false;
       return downloadStatus === 'MISSING'
         || downloadStatus === 'SUMMARY_ONLY'
         || fakeTurmobVisual
         || isSyntheticTurmobInboxXml(row?.ublXmlRaw)
-        || (!!row?.ublXmlRaw && !hasOriginalVisual);
+        || !hasOriginalVisual;
     };
     const docIds = [...new Set(rows.map((row: any) => String(row.documentId || '').trim()).filter(Boolean))];
     let existingDocIds = new Set<string>();

@@ -3917,9 +3917,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const existingBySourceRef = existingDocsBySourceRef.get(`${providerSource(row)}::${sourceRef}`);
       const savedXml = String(row.ublXmlRaw || '').trim();
       const savedXmlLooksSynthetic = provider === 'TURMOB_EFATURA' && this.isSyntheticTurmobInboxXml(savedXml);
-      const turmobDownloadStatus = String(raw?.documentDownloadStatus || '').toUpperCase();
+      // ORİJİNAL EKSİK = yalnız sağlam UBL XML YOKSA (sentetik/liste-özeti dahil). Görsel/stale
+      //   "MISSING" durumu sağlam XML'i geçersiz kılmaz (görsel opsiyonel; belge XML'den oluşur) —
+      //   aksi halde XML'i olan TORA PETROL aktarılınca bir sonraki sync onu geri MISSING'e atıyordu.
       const turmobOriginalMissing = provider === 'TURMOB_EFATURA'
-        && (!savedXml || savedXmlLooksSynthetic || turmobDownloadStatus === 'MISSING' || turmobDownloadStatus === 'SUMMARY_ONLY');
+        && (!savedXml || savedXmlLooksSynthetic);
       if (!turmobOriginalMissing && !row.documentId && existingBySourceRef?.id) {
         await (this.prisma as any).eFaturaInbox.update({
           where: { id: row.id },
@@ -4010,7 +4012,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           downloadError = 'TURMOB kimlik bilgisi bulunamadi';
         }
       }
-      if (provider === 'TURMOB_EFATURA' && (!xml || !hasOriginalVisual)) {
+      // SADECE XML YOKSA atla. GÖRSEL eksik olsa da SAĞLAM UBL XML varsa belge XML'den oluşturulur
+      //   (kullanıcı: "bunlar zaten XML, görsele gerek yok"). TORA PETROL gibi çok-kalemli (372KB)
+      //   faturalarda XML iniyordu ama Detay görseli inmiyordu → görsel-zorunlu kapısı belgeyi
+      //   MISSING'e düşürüyordu. Görsel artık opsiyonel; veri/okuma XML'den (loadProviderUblXml).
+      if (provider === 'TURMOB_EFATURA' && !xml) {
         await (this.prisma as any).eFaturaInbox.update({
           where: { id: row.id },
           data: {
@@ -4021,9 +4027,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
               ...raw,
               needsDocumentDownload: true,
               documentDownloadStatus: 'MISSING',
-              documentDownloadError: !xml
-                ? (downloadError || 'TURMOB orijinal XML/UBL/PDF indirilemedi; sentetik belge olusturulmadan atlandi.')
-                : (downloadError || 'TURMOB orijinal fatura goruntusu indirilemedi; sentetik belge olusturulmadan atlandi.'),
+              documentDownloadError: downloadError || 'TURMOB orijinal XML/UBL/PDF indirilemedi; sentetik belge olusturulmadan atlandi.',
             },
           },
         });
@@ -4031,7 +4035,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         row.isTransferred = false;
         row.processedAt = null;
         failed++;
-        if (errors.length < 10) errors.push({ id: row.id, faturaNo: row.faturaNo, message: hasOriginalVisual ? 'TURMOB orijinal XML indirilemedi' : 'TURMOB orijinal fatura goruntusu indirilemedi' });
+        if (errors.length < 10) errors.push({ id: row.id, faturaNo: row.faturaNo, message: 'TURMOB orijinal XML indirilemedi' });
         continue;
       }
       const usedSummaryOnly = false;
@@ -5582,13 +5586,18 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         const parsed = this.parseProviderUblInvoice(downloaded.xml) || this.regexProviderInvoiceFallback(downloaded.xml);
         const storedVisual = this.providerStoredVisual(downloaded);
         const hasVisual = this.hasOriginalProviderVisual(storedVisual, 'TURMOB_EFATURA');
+        // SAĞLAM UBL XML = belge HAZIR (görsel opsiyonel). Görsel inmese de XML'den belge oluşur,
+        //   okuma/yön/satıcı XML'den gelir → "inemedi" değil "hazır". (TORA PETROL: 372KB XML iniyor,
+        //   Detay görseli inmiyordu → eskiden MISSING; artık READY.) Sentetik liste-özeti XML hariç.
+        const hasXml = !!String(downloaded.xml || '').trim() && !this.isSyntheticTurmobInboxXml(downloaded.xml);
+        const ready = hasVisual || hasXml;
         const data: any = {
           ublXmlRaw: downloaded.xml,
           rawJson: {
             ...raw,
-            needsDocumentDownload: !hasVisual,
-            documentDownloadStatus: hasVisual ? 'READY' : 'MISSING',
-            documentDownloadError: hasVisual ? null : 'TURMOB orijinal fatura goruntusu indirilemedi.',
+            needsDocumentDownload: !ready,
+            documentDownloadStatus: ready ? 'READY' : 'MISSING',
+            documentDownloadError: ready ? null : 'TURMOB orijinal XML/goruntu indirilemedi.',
             originalVisual: storedVisual || raw.originalVisual || null,
           },
         };
@@ -5606,7 +5615,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         const total = parsed ? (parsed.toplamTutar ?? ((parsed.matrah || 0) + (parsed.kdvTutari || 0))) : null;
         if (total != null && Number.isFinite(Number(total))) data.toplam = String(total);
         await (this.prisma as any).eFaturaInbox.update({ where: { id: row.id }, data });
-        return hasVisual;
+        return ready;
       };
       const markMissing = (row: any, msg: string) => {
         const raw = row.rawJson && typeof row.rawJson === 'object' ? row.rawJson : {};
@@ -7600,9 +7609,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const hasHtml = html && /<(?:!doctype\s+html|html|body)\b/i.test(html.slice(0, 2000));
     const hasOriginalHtml = !!hasHtml && !(cfg.provider === 'TURMOB_EFATURA' && this.isFakeTurmobVisualHtml(html));
 
-    if (cfg.provider === 'TURMOB_EFATURA' && !pdf && !hasOriginalHtml) {
-      throw new Error('TURMOB orijinal fatura goruntusu olmadan belge kaydedilmedi.');
-    }
+    // GÖRSEL ZORUNLU DEĞİL: TÜRMOB e-Fatura'da görsel inmese de SAĞLAM UBL XML varsa belge XML'den
+    //   saklanır (aşağıdaki XML-only yolu). Veri+okuma+yön XML'den gelir; önizleme XML'den render edilir.
+    //   (Eskiden görsel yoksa fırlatıyordu → çok-kalemli faturalar — TORA PETROL 372KB — MISSING kalıyordu.)
+    //   Sentetik XML zaten üst akışta (savedXmlLooksSynthetic) elendiği için burada xml gerçektir.
     if (pdf || hasOriginalHtml) {
       const zip = new JSZip();
       zip.file('invoice.xml', xmlBuffer);
