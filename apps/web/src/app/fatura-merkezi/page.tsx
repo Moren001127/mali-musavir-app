@@ -831,7 +831,7 @@ export default function FaturaMerkeziPage() {
               Portala Dön
             </a>
             <div className="brandrow">
-              <div className="brandtx">
+              <div className="brandtx" role="button" title="Ana sayfa — Mükellefler" onClick={() => go('mukellefler')} style={{ cursor: 'pointer' }}>
                 <div className="brandlogo">Moren</div>
                 <div className="brandmod">Fatura Merkezi</div>
               </div>
@@ -4559,16 +4559,13 @@ const CSS = `
 #fm-root .screen > .h2{font-size:23px;font-weight:800;letter-spacing:-.45px;color:#0d1626}
 #fm-root .screen > .sub{font-size:13px;color:#67718a;margin-bottom:6px;line-height:1.5}
 #fm-root .filttiles{gap:10px;margin:8px 0 18px}
-#fm-root .ftile{min-width:106px;padding:13px 17px 12px;border-radius:14px;border:1px solid #e7edf6;background:#fff;gap:4px;box-shadow:0 1px 2px rgba(16,24,40,.04)}
-#fm-root .ftile::before{width:0}
-#fm-root .ftile::after{content:'';position:absolute;left:15px;right:15px;bottom:0;height:2.5px;border-radius:3px 3px 0 0;background:var(--tc,var(--accent));opacity:0;transition:opacity .15s}
-#fm-root .ftile .ftn{font-size:27px;font-weight:800;letter-spacing:-.6px;color:#0d1626;line-height:1}
-#fm-root .ftile .ftl{font-size:11.5px;font-weight:600;color:#6b7588;letter-spacing:.1px}
-#fm-root .ftile:hover{border-color:color-mix(in srgb,var(--tc,var(--accent)) 42%,#e7edf6);transform:translateY(-1px);box-shadow:0 11px 22px -14px var(--tc,var(--accent))}
-#fm-root .ftile.on{border-color:var(--tc,var(--accent));background:color-mix(in srgb,var(--tc,var(--accent)) 6%,#fff);box-shadow:0 9px 20px -13px var(--tc,var(--accent))}
-#fm-root .ftile.on::after{opacity:1}
-#fm-root .ftile.on .ftn{color:var(--tc,var(--accent))}
-#fm-root .ftile.on .ftl{color:var(--tc,var(--accent));font-weight:700}
+#fm-root .ftile{min-width:98px;padding:12px 16px;border-radius:14px;border:1.5px solid color-mix(in srgb,var(--tc,var(--accent)) 26%,#eef1f6);background:color-mix(in srgb,var(--tc,var(--accent)) 7%,#fff);gap:3px;box-shadow:none;transition:transform .12s,box-shadow .14s,border-color .12s,background .12s}
+#fm-root .ftile::before,#fm-root .ftile::after{display:none;content:none}
+#fm-root .ftile .ftn{font-size:25px;font-weight:800;letter-spacing:-.5px;color:var(--tc,var(--accent));line-height:1}
+#fm-root .ftile .ftl{font-size:11.5px;font-weight:700;color:#5a6678}
+#fm-root .ftile:hover{transform:translateY(-2px);border-color:var(--tc,var(--accent));box-shadow:0 11px 22px -12px var(--tc,var(--accent))}
+#fm-root .ftile.on{background:color-mix(in srgb,var(--tc,var(--accent)) 15%,#fff);border-color:var(--tc,var(--accent));box-shadow:inset 0 0 0 2px var(--tc,var(--accent))}
+#fm-root .ftile.on .ftl{color:var(--tc,var(--accent))}
 #fm-root .invactions{display:flex;align-items:center;gap:9px;padding:13px 16px;flex-wrap:wrap;background:#fff}
 #fm-root .invactions h3{font-size:13.5px;font-weight:800;color:#0d1626;letter-spacing:-.2px}
 #fm-root .invactions .btn{height:36px;border-radius:10px;padding:0 14px;font-size:12.5px;font-weight:700;border:1px solid #e4eaf3;background:#fff;color:#34415a;box-shadow:0 1px 2px rgba(16,24,40,.04);transition:background .14s,border-color .14s,box-shadow .14s,filter .14s}
@@ -4584,7 +4581,7 @@ const CSS = `
 #fm-root .planwrap table{font-size:13px}
 #fm-root .planwrap thead th{font-size:11px;padding:9px 13px;letter-spacing:.4px;color:#5a6678}
 #fm-root .planwrap tbody td{padding:7px 13px;border-bottom:1px solid #eef1f6}
-#fm-root .planwrap .hk{font-family:'Cascadia Mono','Consolas','SF Mono',ui-monospace,monospace;font-size:15px;font-weight:700;letter-spacing:.7px;color:#1e3a8a}
+#fm-root .planwrap .hk{font-family:inherit;font-size:14px;font-weight:700;letter-spacing:0;color:#1e3a8a}
 #fm-root .planhead .btn{height:36px;border-radius:10px;padding:0 15px;font-size:12.5px;font-weight:700;transition:background .14s,border-color .14s,filter .14s,box-shadow .14s}
 #fm-root .planhead .btn.ghost{background:#fff;border:1px solid #cfe3d6;color:#15803d;box-shadow:0 1px 2px rgba(16,24,40,.04)}
 #fm-root .planhead .btn.ghost:hover:not(:disabled){background:#eef7f1;border-color:#a9d4ba}
