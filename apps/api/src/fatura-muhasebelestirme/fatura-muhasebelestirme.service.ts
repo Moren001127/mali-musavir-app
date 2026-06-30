@@ -2809,12 +2809,15 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         },
       });
       if (!existing) return;
-      const invoiceKind = String(existing.invoiceKind || 'ALIS').toUpperCase() === 'SATIS' ? 'SATIS' : 'ALIS';
-      const isSale = invoiceKind === 'SATIS';
+      const requestedKind: 'ALIS' | 'SATIS' = String(existing.invoiceKind || 'ALIS').toUpperCase() === 'SATIS' ? 'SATIS' : 'ALIS';
       const ocrDocumentType = this.mapOcrBelgeTipi(ocrResult.belgeTipi) || this.docTypeFromText(ocrResult.rawText || '') || null;
       const currentDocumentType = String(existing.documentType || '').toUpperCase();
       const genericUploadType = !currentDocumentType || ['ALIS_FATURA', 'SATIS_FATURA', 'FATURA', 'OKC_FIS', 'DIGER'].includes(currentDocumentType);
       const documentType = genericUploadType && ocrDocumentType ? ocrDocumentType : (existing.documentType || ocrDocumentType || 'OKC_FIS');
+      // Z RAPORU daima mükellefin günlük SATIŞ özetidir → yanlışlıkla "Gider" seçilse bile yönü Satış'a çevir
+      //   (güvenlik ağı; kullanıcının Gelir/Gider seçimi diğer belgelerde geçerli kalır).
+      const invoiceKind: 'ALIS' | 'SATIS' = documentType === 'Z_RAPORU' ? 'SATIS' : requestedKind;
+      const isSale = invoiceKind === 'SATIS';
 
       const imageHash = ocrResult.imageHash || existing.imageHash || this.ocr.computeImageHash(buffer);
       const duplicate = await this.findDuplicate(tenantId, {
@@ -2848,6 +2851,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           where: { id: documentId },
           data: {
             documentType,
+            invoiceKind,
             status,
             duplicateOfId,
             duplicateReason: duplicate?.duplicateReason || existing.duplicateReason || null,

@@ -971,14 +971,18 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
   // (entegratör çekme tamamlanana kadar Mihsap'ı fatura kaynağı olarak kullanırız).
   // Manuel belge yükleme (JPEG/PDF/XML/ZIP) — OCR arka planda işler
   const fileRef = useRef<HTMLInputElement>(null);
+  // Yükleme yönü: "Belge Yükle"ye basınca Gelir(Satış)/Gider(Alış) seçilir, dosya seçici ona göre açılır.
+  //   Yön artık aktif sekmeye değil kullanıcı seçimine bağlı (ref → mutate sırasında okunur).
+  const uploadDirRef = useRef<'ALIS' | 'SATIS'>(kind);
+  const [uploadPick, setUploadPick] = useState(false);
   const uploadMut = useMutation({
     mutationFn: async (files: File[]) => {
       const fd = new FormData();
       files.forEach((f) => fd.append('files', f, f.name || 'belge'));
       fd.append('taxpayerId', taxpayerId);
       fd.append('source', 'fatura-merkezi');
-      fd.append('documentType', kind === 'SATIS' ? 'SATIS_FATURA' : 'ALIS_FATURA');
-      fd.append('invoiceKind', kind);
+      fd.append('documentType', uploadDirRef.current === 'SATIS' ? 'SATIS_FATURA' : 'ALIS_FATURA');
+      fd.append('invoiceKind', uploadDirRef.current);
       fd.append('period', period);
       return api.post('/fatura-muhasebelestirme/documents/upload', fd);
     },
@@ -1182,7 +1186,26 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
         <div className="ch invactions">
           <h3>{docsQ.isLoading ? 'Yükleniyor…' : `${docs.length} belge`}</h3><div className="sp" />
           <input ref={fileRef} type="file" multiple accept=".pdf,.jpg,.jpeg,.jpe,.jfif,.png,.webp,.gif,.tif,.tiff,.bmp,.heic,.heif,.avif,.xml,.ubl,.zip" style={{ display: 'none' }} onChange={(e) => { const files = Array.from(e.currentTarget.files || []); e.currentTarget.value = ''; if (files.length) uploadMut.mutate(files); }} />
-          <button className="btn sm upload" disabled={!taxpayerId || uploadMut.isPending} onClick={() => fileRef.current?.click()} title={!taxpayerId ? 'Önce mükellef seç' : 'JPEG / PDF / XML belge yükle (elle)'}><Ico html={I.upload} size={13} /> {uploadMut.isPending ? 'Yükleniyor…' : 'Belge Yükle'}</button>
+          <button className="btn sm upload" disabled={!taxpayerId || uploadMut.isPending} onClick={() => setUploadPick(true)} title={!taxpayerId ? 'Önce mükellef seç' : 'Gelir/Gider seç, sonra JPEG / PDF / XML belge yükle'}><Ico html={I.upload} size={13} /> {uploadMut.isPending ? 'Yükleniyor…' : 'Belge Yükle'}</button>
+          {uploadPick && (
+            <div onMouseDown={() => setUploadPick(false)} style={{ position: 'fixed', inset: 0, zIndex: 10000, background: 'rgba(15,23,42,0.55)', display: 'grid', placeItems: 'center', padding: 16 }}>
+              <div onMouseDown={(e) => e.stopPropagation()} style={{ width: 'min(440px, 96vw)', background: '#fff', color: '#1a1a1a', borderRadius: 16, padding: '24px 26px', boxShadow: '0 24px 70px rgba(0,0,0,0.45)' }}>
+                <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 6 }}>Yüklenecek belgeler ne?</div>
+                <div style={{ fontSize: 12.5, color: '#64748b', marginBottom: 18 }}>Seçimine göre yön (gelir/gider) belirlenir. Z raporu seçilince otomatik gelir işlenir.</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <button
+                    onClick={() => { uploadDirRef.current = 'SATIS'; fileRef.current?.click(); setUploadPick(false); }}
+                    style={{ padding: '16px 10px', borderRadius: 12, border: '1.5px solid #b7e4c7', background: 'linear-gradient(135deg,#eafaf0,#f3fdf7)', color: '#15803d', fontWeight: 800, fontSize: 14, cursor: 'pointer' }}
+                  >Gelir<div style={{ fontSize: 11.5, fontWeight: 600, opacity: 0.8, marginTop: 3 }}>Satış faturası / Z raporu</div></button>
+                  <button
+                    onClick={() => { uploadDirRef.current = 'ALIS'; fileRef.current?.click(); setUploadPick(false); }}
+                    style={{ padding: '16px 10px', borderRadius: 12, border: '1.5px solid #c7d6ef', background: 'linear-gradient(135deg,#eef3fb,#f5f8fd)', color: '#1d4ed8', fontWeight: 800, fontSize: 14, cursor: 'pointer' }}
+                  >Gider<div style={{ fontSize: 11.5, fontWeight: 600, opacity: 0.8, marginTop: 3 }}>Alış faturası / ÖKC fişi</div></button>
+                </div>
+                <button onClick={() => setUploadPick(false)} style={{ marginTop: 16, width: '100%', padding: '9px', borderRadius: 10, border: '1px solid #e2e8f0', background: '#fff', color: '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>Vazgeç</button>
+              </div>
+            </div>
+          )}
           <button className="btn sm fix" disabled={!taxpayerId || recodeMut.isPending} onClick={() => recodeMut.mutate()} title="Belgeleri TEKRAR OKUMADAN hesap kodlarını plana göre yeniden eşleştir — yanlış carileri düzeltir/temizler (saniyeler sürer)"><Ico html={I.wand} size={13} /> {recodeMut.isPending ? 'Düzeltiliyor…' : 'Kodları düzelt'}</button>
           <button className="btn sm ai" disabled={aiBusy || sel.size === 0} onClick={aiOku} title="Seçili faturaları yapay zeka (Max) ile oku — sunucuda okur, sayfa değişince durmaz"><Ico html={I.spark} size={13} /> {aiBusy ? 'Başlatılıyor…' : `AI ile oku${sel.size ? ` (${sel.size})` : ''}`}</button>
           <button className="btn sm primary" disabled={approveMut.isPending} onClick={muhasebelestir} title="Seçili, kodu tam olan belgeleri toplu onayla (Luca kuyruğuna alır). Tek tek inceleme için soldaki 'Muhasebeleştir' ekranını kullan."><Ico html={I.checkSm} size={13} /> {approveMut.isPending ? 'İşleniyor…' : `Seçilenleri onayla${sel.size ? ` (${sel.size})` : ''}`}</button>
