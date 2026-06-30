@@ -871,22 +871,6 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
 
   // Geçici köprü: Mihsap "bekleyen evraklar"daki faturaları portala aktarır
   // (entegratör çekme tamamlanana kadar Mihsap'ı fatura kaynağı olarak kullanırız).
-  const mihsapMut = useMutation({
-    mutationFn: () =>
-      api.post('/fatura-muhasebelestirme/import-from-mihsap', { taxpayerId, donem: period, faturaTuru: kind }),
-    onSuccess: (r: any) => {
-      const d = r?.data || {};
-      const parts = [
-        d.created != null ? `${d.created} yeni` : null,
-        d.reprocessed ? `${d.reprocessed} güncellendi` : null,
-        d.skipped ? `${d.skipped} atlandı` : null,
-        d.failed ? `${d.failed} hata` : null,
-      ].filter(Boolean);
-      toast.success(`Mihsap'tan aktarıldı${parts.length ? ' · ' + parts.join(', ') : ''}. OCR arka planda işleniyor.`);
-      qc.invalidateQueries({ queryKey: ['fm2'] });
-    },
-    onError: (e: any) => toast.error("Mihsap'tan aktarılamadı: " + (e?.response?.data?.message || e?.message || 'hata')),
-  });
   // Manuel belge yükleme (JPEG/PDF/XML/ZIP) — OCR arka planda işler
   const fileRef = useRef<HTMLInputElement>(null);
   const uploadMut = useMutation({
@@ -913,11 +897,6 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
     mutationFn: (id: string) => api.delete(`/fatura-muhasebelestirme/documents/${id}`),
     onSuccess: () => { toast.success('Belge silindi'); qc.invalidateQueries({ queryKey: ['fm2'] }); },
     onError: (e: any) => toast.error('Silinemedi: ' + (e?.response?.data?.message || e?.message || 'hata')),
-  });
-  const syncMut = useMutation({
-    mutationFn: () => api.post('/fatura-muhasebelestirme/documents/match-orphans', { period }),
-    onSuccess: (r: any) => { toast.success(`Eşitlendi${r?.data?.matched != null ? ` · ${r.data.matched} belge bağlandı` : ''}`); qc.invalidateQueries({ queryKey: ['fm2'] }); },
-    onError: () => toast.error('Eşitleme başarısız'),
   });
   // Hızlı: belgeleri tekrar OKUMADAN hesap kodlarını plana göre yeniden eşleştir (yanlış cari temizlenir).
   const recodeMut = useMutation({
@@ -1104,11 +1083,8 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
       <div className="card invcard">
         <div className="ch invactions">
           <h3>{docsQ.isLoading ? 'Yükleniyor…' : `${docs.length} belge`}</h3><div className="sp" />
-          <button className="btn sm blue" disabled={!taxpayerId || mihsapMut.isPending} onClick={() => mihsapMut.mutate()} title={!taxpayerId ? 'Önce mükellef seç' : "Mihsap 'bekleyen evraklar'daki faturaları portala aktarır"}><Ico html={I.download} size={13} /> {mihsapMut.isPending ? 'Aktarılıyor…' : "Mihsap'tan Aktar"}</button>
           <input ref={fileRef} type="file" multiple accept=".pdf,.jpg,.jpeg,.jpe,.jfif,.png,.webp,.gif,.tif,.tiff,.bmp,.heic,.heif,.avif,.xml,.ubl,.zip" style={{ display: 'none' }} onChange={(e) => { const files = Array.from(e.currentTarget.files || []); e.currentTarget.value = ''; if (files.length) uploadMut.mutate(files); }} />
           <button className="btn sm upload" disabled={!taxpayerId || uploadMut.isPending} onClick={() => fileRef.current?.click()} title={!taxpayerId ? 'Önce mükellef seç' : 'JPEG / PDF / XML belge yükle (elle)'}><Ico html={I.upload} size={13} /> {uploadMut.isPending ? 'Yükleniyor…' : 'Belge Yükle'}</button>
-          <button className="btn sm fetch" disabled={!taxpayerId} onClick={() => onOpenSorgu?.()} title={!taxpayerId ? 'Önce mükellef seç' : 'GİB e-Arşiv ve e-Fatura entegratörlerini ayrı sorgu ekranında listele'}><Ico html={I.sync} size={13} /> Sorgu ekranı</button>
-          <button className="btn sm ghost soft" disabled={syncMut.isPending} onClick={() => syncMut.mutate()} title="Mükellefe bağlanmamış (sahipsiz) belgeleri VKN/TCKN'ye göre ilgili mükellefe bağlar"><Ico html={I.sync} size={13} /> {syncMut.isPending ? 'Bağlanıyor…' : 'Sahipsiz belgeleri bağla'}</button>
           <button className="btn sm fix" disabled={!taxpayerId || recodeMut.isPending} onClick={() => recodeMut.mutate()} title="Belgeleri TEKRAR OKUMADAN hesap kodlarını plana göre yeniden eşleştir — yanlış carileri düzeltir/temizler (saniyeler sürer)"><Ico html={I.wand} size={13} /> {recodeMut.isPending ? 'Düzeltiliyor…' : 'Kodları düzelt'}</button>
           <button className="btn sm ai" disabled={aiBusy || sel.size === 0} onClick={aiOku} title="Seçili faturaları yapay zeka (Max) ile oku — sunucuda okur, sayfa değişince durmaz"><Ico html={I.spark} size={13} /> {aiBusy ? 'Başlatılıyor…' : `AI ile oku${sel.size ? ` (${sel.size})` : ''}`}</button>
           <button className="btn sm primary" disabled={approveMut.isPending} onClick={muhasebelestir} title="Seçili, kodu tam olan belgeleri toplu onayla (Luca kuyruğuna alır). Tek tek inceleme için soldaki 'Muhasebeleştir' ekranını kullan."><Ico html={I.checkSm} size={13} /> {approveMut.isPending ? 'İşleniyor…' : `Seçilenleri onayla${sel.size ? ` (${sel.size})` : ''}`}</button>
@@ -4478,4 +4454,29 @@ const CSS = `
 #fm-root .efdownbar.import .eftrack{background:#bbf7d0}
 #fm-root .efdownbar.import .effill{background:#15803d}
 @keyframes efspin{to{transform:rotate(360deg)}}
+/* ── Faturalar ekranı görsel yenileme (2026-06-30) — sayaç kartları + toolbar + başlık ── */
+#fm-root .screen > .h2{font-size:23px;font-weight:800;letter-spacing:-.45px;color:#0d1626}
+#fm-root .screen > .sub{font-size:13px;color:#67718a;margin-bottom:6px;line-height:1.5}
+#fm-root .filttiles{gap:10px;margin:8px 0 18px}
+#fm-root .ftile{min-width:106px;padding:13px 17px 12px;border-radius:14px;border:1px solid #e7edf6;background:#fff;gap:4px;box-shadow:0 1px 2px rgba(16,24,40,.04)}
+#fm-root .ftile::before{width:0}
+#fm-root .ftile::after{content:'';position:absolute;left:15px;right:15px;bottom:0;height:2.5px;border-radius:3px 3px 0 0;background:var(--tc,var(--accent));opacity:0;transition:opacity .15s}
+#fm-root .ftile .ftn{font-size:27px;font-weight:800;letter-spacing:-.6px;color:#0d1626;line-height:1}
+#fm-root .ftile .ftl{font-size:11.5px;font-weight:600;color:#6b7588;letter-spacing:.1px}
+#fm-root .ftile:hover{border-color:color-mix(in srgb,var(--tc,var(--accent)) 42%,#e7edf6);transform:translateY(-1px);box-shadow:0 11px 22px -14px var(--tc,var(--accent))}
+#fm-root .ftile.on{border-color:var(--tc,var(--accent));background:color-mix(in srgb,var(--tc,var(--accent)) 6%,#fff);box-shadow:0 9px 20px -13px var(--tc,var(--accent))}
+#fm-root .ftile.on::after{opacity:1}
+#fm-root .ftile.on .ftn{color:var(--tc,var(--accent))}
+#fm-root .ftile.on .ftl{color:var(--tc,var(--accent));font-weight:700}
+#fm-root .invactions{display:flex;align-items:center;gap:9px;padding:13px 16px;flex-wrap:wrap;background:#fff}
+#fm-root .invactions h3{font-size:13.5px;font-weight:800;color:#0d1626;letter-spacing:-.2px}
+#fm-root .invactions .btn{height:36px;border-radius:10px;padding:0 14px;font-size:12.5px;font-weight:700;border:1px solid #e4eaf3;background:#fff;color:#34415a;box-shadow:0 1px 2px rgba(16,24,40,.04);transition:background .14s,border-color .14s,box-shadow .14s,filter .14s}
+#fm-root .invactions .btn:hover:not(:disabled){border-color:#cfd9e8;background:#f7f9fc}
+#fm-root .invactions .btn.upload{background:var(--accent-soft);border-color:var(--accent-line);color:var(--accent)}
+#fm-root .invactions .btn.fix{background:#fff;border-color:#e4eaf3;color:#34415a}
+#fm-root .invactions .btn.ai{background:linear-gradient(135deg,#6d5df6,#8b7bff);border-color:#6d5df6;color:#fff;box-shadow:0 8px 16px -10px rgba(109,93,246,.65)}
+#fm-root .invactions .btn.ai:hover:not(:disabled){filter:brightness(1.05)}
+#fm-root .invactions .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff;box-shadow:0 8px 16px -10px var(--accent)}
+#fm-root .invactions .btn.primary:hover:not(:disabled){filter:brightness(.96)}
+#fm-root .invactions .btn:disabled{opacity:.5;cursor:not-allowed;box-shadow:none}
 `;
