@@ -8252,6 +8252,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       : this.numFromOcr(ocrResult?.kdvTutari);
     const matrah = Math.max(totalNum - kdvTotal, 0);
 
+    // Z RAPORU (yazarkasa günlük satış özeti): karşı taraf MÜŞTERİ (120) DEĞİL — nakit/kart tahsilatıdır.
+    //   rawText'ten NAKİT + KREDİ KARTI tutarını ayıkla → 100 Kasa + 108 POS ayrımı (linesFromAmounts).
+    const isZ = /Z[\s_]?RAPOR/i.test(String(ocrResult?.belgeTipi || '')) || /Z[\s_]?RAPOR/i.test(String(ocrResult?.rawText || '').slice(0, 400));
+    const zPay = isZ ? this.parseZPayments(ocrResult?.rawText || '', totalNum) : { nakit: 0, kart: 0 };
     return this.linesFromAmounts({
       invoiceKind,
       matrah,
@@ -8260,7 +8264,31 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       total: totalNum,
       vendorName: ocrResult?.satici || null,
       kdvBreakdown: breakdown.length ? breakdown : null,
+      zRaporu: isZ,
+      nakit: zPay.nakit,
+      kart: zPay.kart,
     });
+  }
+
+  /** Z raporu rawText'inden NAKİT ve KREDİ KARTI tahsilat tutarlarını ayıkla (TL formatı "1.234,56").
+   *  Okunamaz / toplamla tutmazsa {0,0} döner → çağıran tümünü 100 Kasa'ya yazar (güvenli; Z raporu
+   *  asla müşteri 120 carisine yazılmaz, "Eksik cari" oluşmaz). */
+  private parseZPayments(rawText: string, totalKdvDahil: number): { nakit: number; kart: number } {
+    const t = String(rawText || '');
+    const amt = (re: RegExp): number => {
+      const m = t.match(re);
+      if (!m) return 0;
+      const n = Number(String(m[1]).replace(/\./g, '').replace(',', '.'));
+      return Number.isFinite(n) && n > 0 ? n : 0;
+    };
+    const nakit = amt(/NAK[İI]T[^0-9-]{0,24}([0-9][0-9.]*,[0-9]{2})/i);
+    const kart = amt(/(?:KRED[İI]\s*KART|BANKA\s*KART|KART(?:\s*[İI]LE)?|\bPOS\b)[^0-9-]{0,24}([0-9][0-9.]*,[0-9]{2})/i);
+    // Tutarlılık: nakit+kart toplam ile uyuşmuyorsa (okuma şüpheli) → {0,0} (100 Kasa fallback).
+    if (nakit + kart > 0 && totalKdvDahil > 0) {
+      const diff = Math.abs((nakit + kart) - totalKdvDahil);
+      if (diff > Math.max(0.5, totalKdvDahil * 0.02)) return { nakit: 0, kart: 0 };
+    }
+    return { nakit, kart };
   }
 
   /** Mükellefin Luca hesap planı (READY snapshot, en az 1 kod) çekilmiş mi? */
@@ -8334,11 +8362,33 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     kdvBreakdown?: Array<{ rate: number; base: number; amount: number }> | null;
     // v2.4: KDV tevkifat oranı (KDV'nin sorumlu sıfatıyla beyan edilen kesri, 0..1; örn 5/10=0.5)
     tevkifatOrani?: number | null;
+    // Z RAPORU satışı: karşı taraf müşteri (120) değil nakit/kart tahsilatıdır → 100 Kasa + 108 POS.
+    zRaporu?: boolean;
+    nakit?: number;
+    kart?: number;
   }) {
     const isSale = opts.invoiceKind === 'SATIS';
     const cariCode = isSale ? '120.01.001' : '320.01.001';
     const matrahCode = isSale ? '600.01.001' : '770.01.010';
     const zero = () => new Prisma.Decimal(0);
+    // Karşı taraf (cari) satır(lar)ı üreticisi. NORMAL: tek cari (satış 120 borç / alış 320 alacak).
+    //   Z RAPORU satışı: müşteri carisi YOK → 100 Kasa (nakit) + 108 POS (kart); ayrım okunamadıysa
+    //   tümü 100 Kasa (asla 120 → "Eksik cari" oluşmaz). Plandaki gerçek 100/108'e rematch bağlar.
+    const cariLinesFor = (totalAmt: any, startOrder: number): any[] => {
+      const t = money(totalAmt) || zero();
+      if (isSale && opts.zRaporu) {
+        const nakit = money(opts.nakit) || zero();
+        const kart = money(opts.kart) || zero();
+        if (nakit.gt(0) && kart.gt(0)) {
+          return [
+            { group: 'cari', accountCode: '100.01.001', description: 'Kasa (nakit tahsilat)', debit: nakit, credit: zero(), orderNo: startOrder },
+            { group: 'cari', accountCode: '108.01.001', description: 'POS / kredi kartı tahsilat', debit: kart, credit: zero(), orderNo: startOrder + 1 },
+          ];
+        }
+        return [{ group: 'cari', accountCode: '100.01.001', description: 'Kasa (günlük tahsilat)', debit: t, credit: zero(), orderNo: startOrder }];
+      }
+      return [{ group: 'cari', accountCode: cariCode, description: opts.vendorName || 'Cari hesap', debit: isSale ? t : zero(), credit: isSale ? zero() : t, orderNo: startOrder }];
+    };
 
     // Breakdown geçerli mi? — En az bir satırda base veya amount > 0 olmalı
     const breakdown = this.normalizeKdvBreakdown(opts.kdvBreakdown);
@@ -8418,14 +8468,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         }
       }
       const total = totalBase.plus(totalKdv);
-      lines.push({
-        group: 'cari',
-        accountCode: cariCode,
-        description: opts.vendorName || 'Cari hesap',
-        debit: isSale ? total : zero(),
-        credit: isSale ? zero() : total,
-        orderNo: orderNo++,
-      });
+      for (const cl of cariLinesFor(total, orderNo)) lines.push({ ...cl, orderNo: orderNo++ });
       return lines;
     }
 
@@ -8455,14 +8498,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         orderNo: singleRateLines.length,
       });
     }
-    singleRateLines.push({
-      group: 'cari',
-      accountCode: cariCode,
-      description: opts.vendorName || 'Cari hesap',
-      debit: isSale ? total : zero(),
-      credit: isSale ? zero() : total,
-      orderNo: singleRateLines.length,
-    });
+    for (const cl of cariLinesFor(total, singleRateLines.length)) singleRateLines.push({ ...cl, orderNo: singleRateLines.length });
     return singleRateLines;
   }
 
@@ -10392,6 +10428,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         : null;
       // ÖKC/yazarkasa fişi NAKİT işlemdir → karşı taraf cari değil, 100 KASA.
       const okcFis = String(doc.documentType || '').toUpperCase() === 'OKC_FIS';
+      // Z RAPORU satışı: karşı taraf müşteri (120) DEĞİL → nakit 100 Kasa + kart 108 POS.
+      const zRaporu = String(doc.documentType || '').toUpperCase() === 'Z_RAPORU';
+      const zKasaAcc = (okcFis || zRaporu) ? leafOnly(this.pickAccount(accounts, ['100'], null)) : null;
+      const zPosAcc = zRaporu ? (leafOnly(this.pickAccount(accounts, ['108'], null)) || zKasaAcc) : null;
       // İADE carisi YÖN-belirsiz: satıştan iade → MÜŞTERİ (120), alıştan iade → SATICI (320). İade
       //   ALIŞ görünüp cari 120'de olunca 320'de aranıp bulunamıyordu (kullanıcı: "carisi Luca'da
       //   var ama eşleştirmedi"). İade'de her iki grubu + her iki tarafın adını dene.
@@ -10481,6 +10521,19 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         // bile) karşı tarafı içermiyorsa ve VKN-hafızasından gelmiyorsa → YANLIŞ otomatik
         // eşleşme (ör. KAYIKÇI faturasına AYDE cari); doğrusuyla değiştir ya da BOŞALT.
         if (group === 'cari') {
+          // Z RAPORU satışı → nakit satırı 100 Kasa, kart satırı 108 POS. Satır hedefi: mevcut kod öneki
+          //   (100/108) ya da açıklama işareti (POS/kart). Cari açıklaması rematch'te ezilmez → kararlı.
+          if (zRaporu) {
+            const wantPos = current.startsWith('108') || /pos|kart|kredi/i.test(String(line.description || ''));
+            const want = wantPos ? zPosAcc : zKasaAcc;
+            if (want && current !== String((want as any).accountCode)) {
+              await (this.prisma as any).invoiceAccountingLine.update({
+                where: { id: line.id },
+                data: { accountCode: (want as any).accountCode, description: (want as any).accountName },
+              });
+            }
+            continue;
+          }
           // ÖKC/yazarkasa fişi → HER ZAMAN 100 Kasa (nakit). İsim/VKN eşleşmesi aranmaz.
           if (okcFis) {
             if (cariMatch && !current.startsWith('100')) {
