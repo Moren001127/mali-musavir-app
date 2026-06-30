@@ -2230,7 +2230,7 @@ function InlineBelge({ id }: { id: string }) {
       </div>
       <div ref={wrapRef} className="bpview" style={{ overflow: 'auto' }} onDoubleClick={() => openDocFile(id)}>
         {html
-          ? <iframe ref={frameRef} onLoad={onFrameLoad} className="bpframe-h" srcDoc={htmlDoc} title="Belge" sandbox="allow-same-origin" scrolling="no" style={{ zoom: appliedScale } as any} />
+          ? <iframe ref={frameRef} onLoad={onFrameLoad} className="bpframe-h" srcDoc={htmlDoc} title="Belge" sandbox="allow-same-origin allow-scripts" scrolling="no" style={{ zoom: appliedScale } as any} />
           : isImg
             ? <img className="bpimg" src={url} alt="Belge" onLoad={onImgLoad} style={{ zoom: appliedScale, ...(imgW ? { width: imgW, maxWidth: 'none' } : {}) } as any} />
             : isXml
