@@ -646,6 +646,61 @@ function useDocuments(taxpayerId: string, period: string) {
   });
 }
 
+// Profesyonel özel dropdown (native <select>'in OS-render açılır listesi yerine) — Mükellef/Dönem seçici.
+function FmSelect({ value, onChange, options, icon, search = false, searchPlaceholder = 'Ara…', emptyLabel = '—', minWidth = 150 }: {
+  value: string;
+  onChange: (v: string) => void;
+  options: Array<{ v: string; l: string }>;
+  icon?: JSX.Element;
+  search?: boolean;
+  searchPlaceholder?: string;
+  emptyLabel?: string;
+  minWidth?: number;
+}) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: any) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    const onKey = (e: any) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('mousedown', onDoc); document.removeEventListener('keydown', onKey); };
+  }, [open]);
+  const cur = options.find((o) => o.v === value);
+  const nq = q.trim().toLocaleLowerCase('tr-TR');
+  const filtered = search && nq ? options.filter((o) => o.l.toLocaleLowerCase('tr-TR').includes(nq)) : options;
+  return (
+    <div className={`fmdd${open ? ' open' : ''}`} ref={ref}>
+      <button type="button" className="fmdd-btn" style={{ minWidth }} onClick={() => setOpen((o) => !o)}>
+        {icon}
+        <span className="fmdd-val">{cur ? cur.l : emptyLabel}</span>
+        <svg className="fmdd-chev" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4"><path d="M6 9l6 6 6-6" /></svg>
+      </button>
+      {open && (
+        <div className="fmdd-pop">
+          {search && (
+            <div className="fmdd-search">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></svg>
+              <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder={searchPlaceholder} />
+            </div>
+          )}
+          <div className="fmdd-list">
+            {filtered.map((o) => (
+              <button type="button" key={o.v || '__all'} className={`fmdd-opt${o.v === value ? ' on' : ''}`} onClick={() => { onChange(o.v); setOpen(false); setQ(''); }}>
+                <span className="fmdd-optl">{o.l}</span>
+                {o.v === value && <svg className="fmdd-ok" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6"><path d="M20 6L9 17l-5-5" /></svg>}
+              </button>
+            ))}
+            {filtered.length === 0 && <div className="fmdd-empty">Sonuç yok</div>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function FaturaMerkeziPage() {
   const [screen, setScreen] = useState('mukellefler');
   const accent = 'slate';
@@ -741,29 +796,29 @@ export default function FaturaMerkeziPage() {
             <div className="crumb" dangerouslySetInnerHTML={{ __html: TITLES[screen] || '' }} />
             <div className="sp" />
             <div className="ctxbar">
-              <label className="ctxpick">
+              <div className="ctxpick">
                 <span className="ctxpick-l">Mükellef</span>
-                <div className="ctxpick-f">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
-                  <select value={taxpayerId} onChange={(e) => setTaxpayerId(e.target.value)}>
-                    <option value="">Tüm mükellefler</option>
-                    {taxpayers.map((t) => (
-                      <option key={t.id} value={t.id}>{taxpayerLabel(t)}</option>
-                    ))}
-                  </select>
-                </div>
-              </label>
-              <label className="ctxpick">
+                <FmSelect
+                  value={taxpayerId}
+                  onChange={setTaxpayerId}
+                  options={[{ v: '', l: 'Tüm mükellefler' }, ...taxpayers.map((t) => ({ v: t.id, l: taxpayerLabel(t) }))]}
+                  search
+                  searchPlaceholder="Mükellef ara…"
+                  emptyLabel="Tüm mükellefler"
+                  minWidth={210}
+                  icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /></svg>}
+                />
+              </div>
+              <div className="ctxpick">
                 <span className="ctxpick-l">Dönem</span>
-                <div className="ctxpick-f">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
-                  <select value={period} onChange={(e) => setPeriod(e.target.value)}>
-                    {periodOptions().map((p) => (
-                      <option key={p.v} value={p.v}>{p.l}</option>
-                    ))}
-                  </select>
-                </div>
-              </label>
+                <FmSelect
+                  value={period}
+                  onChange={setPeriod}
+                  options={periodOptions().map((p) => ({ v: p.v, l: p.l }))}
+                  minWidth={150}
+                  icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /></svg>}
+                />
+              </div>
             </div>
           </div>
 
@@ -4500,4 +4555,25 @@ const CSS = `
 #fm-root .entaddhead{display:flex;align-items:center;justify-content:space-between}
 #fm-root .entclose{background:none;border:none;color:var(--muted);font-size:12px;font-weight:700;cursor:pointer;padding:4px 8px;border-radius:6px}
 #fm-root .entclose:hover{color:var(--text);background:#f1f4f9}
+/* ── Mükellef/Dönem özel dropdown (profesyonel açılır liste) ── */
+#fm-root .fmdd{position:relative}
+#fm-root .fmdd-btn{display:flex;align-items:center;gap:7px;height:36px;padding:0 11px;border:1.5px solid var(--accent-line);background:var(--accent-soft);border-radius:9px;cursor:pointer;font-family:inherit;transition:border-color .12s,box-shadow .12s}
+#fm-root .fmdd-btn:hover{border-color:var(--accent)}
+#fm-root .fmdd.open .fmdd-btn{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 14%,transparent)}
+#fm-root .fmdd-btn > svg:first-child{color:var(--accent);flex-shrink:0;opacity:.85}
+#fm-root .fmdd-val{flex:1;text-align:left;font-size:13px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#fm-root .fmdd-chev{color:var(--accent);flex-shrink:0;transition:transform .15s}
+#fm-root .fmdd.open .fmdd-chev{transform:rotate(180deg)}
+#fm-root .fmdd-pop{position:absolute;top:calc(100% + 6px);right:0;min-width:248px;max-width:360px;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 18px 42px -16px rgba(16,24,40,.34),0 4px 12px -8px rgba(16,24,40,.18);z-index:60;overflow:hidden;animation:fmddin .12s ease}
+@keyframes fmddin{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+#fm-root .fmdd-search{display:flex;align-items:center;gap:7px;padding:9px 11px;border-bottom:1px solid var(--line)}
+#fm-root .fmdd-search svg{color:var(--faint);flex-shrink:0}
+#fm-root .fmdd-search input{border:none;outline:none;background:none;font-size:13px;font-family:inherit;color:var(--text);width:100%}
+#fm-root .fmdd-list{max-height:330px;overflow:auto;padding:6px}
+#fm-root .fmdd-opt{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;text-align:left;padding:8px 10px;border:none;background:none;border-radius:8px;font-size:13px;font-weight:600;color:var(--text);cursor:pointer;font-family:inherit;line-height:1.3}
+#fm-root .fmdd-opt:hover{background:var(--accent-soft)}
+#fm-root .fmdd-opt.on{background:var(--accent-soft);color:var(--accent);font-weight:700}
+#fm-root .fmdd-optl{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#fm-root .fmdd-ok{color:var(--accent);flex-shrink:0}
+#fm-root .fmdd-empty{padding:14px 12px;text-align:center;color:var(--faint);font-size:12.5px}
 `;
