@@ -8233,11 +8233,19 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       //   (indirilemeyen vergi maliyet/gider unsurudur) → toplam ve cari doğru kalır.
       const isKdvSub = (sub: any): boolean => {
         const scheme: any = sub?.TaxCategory?.TaxScheme || sub?.TaxScheme || null;
-        const code = String(txt(scheme?.TaxTypeCode) || '').trim();
-        if (code) return code === '0015';
-        const name = String(txt(scheme?.Name) || '');
-        if (name) return /kdv|katma\s*de/i.test(name);
-        return true; // tür bilgisi yoksa eski davranış (KDV say)
+        // ⚠️ XMLParser sayısal metni Number'a çevirir: "0015" → 15. Kod başındaki sıfırlar atılarak
+        //   karşılaştırılır — `code === '0015'` şartı bu yüzden TÜM KDV'leri vergi-dışı sayıp KDV=0
+        //   okutmuştu (Gökhan Akgöz satışları). Mantık tersine kuruldu: yalnız POZİTİF tanınan
+        //   KDV-DIŞI vergiler (ÖİV/ÖTV/damga/konaklama/BSMV) hariç tutulur, gerisi KDV sayılır.
+        const codeNorm = String(txt(scheme?.TaxTypeCode) ?? '').trim().replace(/^0+/, '');
+        const nameFold = String(txt(scheme?.Name) || '').toLowerCase()
+          .normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/ı/g, 'i');
+        if (codeNorm === '15') return true; // 0015 = Gerçek usulde KDV
+        if (/kdv|katma\s*deger/.test(nameFold)) return true;
+        const NON_KDV_CODES = new Set(['4080', '4081', '71', '73', '74', '75', '76', '77', '9077', '59']);
+        if (codeNorm && NON_KDV_CODES.has(codeNorm)) return false;
+        if (/ozel iletisim|ozel tuketim|damga verg|konaklama verg|banka ve sigorta|\bbsmv\b/.test(nameFold)) return false;
+        return true; // tanınmayan/eksik tür → KDV say (güvenli varsayılan)
       };
       let otherTaxTotal = 0;
       const subMap = new Map<number, { base: number; amount: number }>();

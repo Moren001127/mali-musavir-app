@@ -1148,7 +1148,7 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
   //   yoksa tek-belge çağrısı yapılır (eşleştirme SONRASI; yön+hesap kesin → AI yalnız içeriği yorumlar).
   //   fetchedRef bir kez çağrı garantisi (docs tazelense de yeniden istemez); deterministik muhasebeNeden
   //   yorum gelene kadar anlık gösterilir.
-  const [richNotes, setRichNotes] = useState<Record<string, { loading?: boolean; text?: string }>>({});
+  const [richNotes, setRichNotes] = useState<Record<string, { loading?: boolean; text?: string; zengin?: boolean }>>({});
   const richFetchedRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     const id = fisDetayId;
@@ -1163,9 +1163,11 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
       .then((r) => {
         const t = String(r.data?.neden || '');
         const zengin = r.data?.zengin === true;
-        setRichNotes((s) => ({ ...s, [id]: { loading: false, text: zengin ? t : '' } }));
+        // Zengin olmayan (deterministik) yorum da GÖSTERİLİR ("ön yorum" etiketiyle) — eskiden
+        //   çöpe atılıyordu; okuma-anı yorumu da boşsa kutu sonsuz "yorumlanıyor…" kalıyordu.
+        setRichNotes((s) => ({ ...s, [id]: { loading: false, text: t, zengin } }));
       })
-      .catch(() => setRichNotes((s) => ({ ...s, [id]: { loading: false, text: '' } })));
+      .catch(() => setRichNotes((s) => ({ ...s, [id]: { loading: false, text: '', zengin: false } })));
   }, [fisDetayId, docs]);
   // "Faaliyet: … / Yorum: …" iki bölümü satır satır, etiketleri vurgulu göster (deterministik tek cümlede düz).
   const renderNeden = (text: string) => text.split('\n').map((ln, i) => {
@@ -1372,9 +1374,10 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
                             //   belgelerde DB'de kalmış olabilir → tekrar-okumadan ekranda da süz.
                             const isBahane = (s: string) => /şifre|şifrel|encrypt|decode|okunama|açıklanama|aciklanama|belirlenem|tespit edilem|anlaşılam|anlasilam|çözülem|cozulem|deşifre/i.test(s || '');
                             // Öncelik: zengin (mükellef-gözü, lazy fetch) > DB'deki zengin > okuma-anı AI yorumu (fallback).
-                            const zenginRaw = rn?.text || String((d.ocrData as any)?.muhasebeNedenZengin || '');
+                            const zenginRaw = (rn?.zengin ? String(rn?.text || '') : '') || String((d.ocrData as any)?.muhasebeNedenZengin || '');
                             const zengin = isBahane(zenginRaw) ? '' : zenginRaw;
-                            const onYorumRaw = String((d.ocrData as any)?.aiYorum || '').trim();
+                            // Deterministik (zengin olmayan) lazy yanıt da "ön yorum" olarak gösterilir.
+                            const onYorumRaw = (String((d.ocrData as any)?.aiYorum || '').trim()) || (!rn?.zengin ? String(rn?.text || '').trim() : '');
                             const onYorum = isBahane(onYorumRaw) ? '' : onYorumRaw;
                             const text = (zengin || onYorum).trim();
                             const isOnYorum = !zengin.trim() && !!onYorum;
