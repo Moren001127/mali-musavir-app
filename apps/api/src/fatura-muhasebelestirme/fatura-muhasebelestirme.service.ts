@@ -5928,6 +5928,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       ['TarihBaslangic', 'TarihBitis'],
       ['FaturaBaslangicTarihi', 'FaturaBitisTarihi'],
       ['FaturaTarihiBaslangic', 'FaturaTarihiBitis'],
+      ['FaturaIlkTarihi', 'FaturaSonTarihi'], // Giden e-Arşiv sayfasının GERÇEK alan adları (ağ izleme)
       ['FaturaTarihBaslangic', 'FaturaTarihBitis'],
       ['BaslangicTarih', 'BitisTarih'],
       ['IlkFaturaTarihi', 'SonFaturaTarihi'],
@@ -5943,7 +5944,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       ['dateFrom', 'dateTo'],
       ['minDate', 'maxDate'],
     ];
+    // TÜRMOB Giden e-Arşiv sayfası tarihleri TR uzun biçimde yollar ("Nisan 1, 2026" / "Temmuz 4, 2026 23:59:59").
+    const AY = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
+    const trText = (p: { year: string; month: string; day: string }) => `${AY[Math.max(0, Math.min(11, Number(p.month) - 1))]} ${Number(p.day)}, ${p.year}`;
     const values = [
+      { name: 'tr-text', start: trText(start), end: `${trText(end)} 23:59:59` },
       { name: 'iso', start: period.startDate, end: period.endDate },
       { name: 'dot', start: `${start.day}.${start.month}.${start.year}`, end: `${end.day}.${end.month}.${end.year}` },
       { name: 'slash', start: `${start.day}/${start.month}/${start.year}`, end: `${end.day}/${end.month}/${end.year}` },
@@ -6154,13 +6159,19 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   (satışlar "görünmüyor"du). TÜRMOB'da test edildi: '/OutgoingInvoice' ve '/ArchiveInvoice' 302
     //   redirect (token YOK); '.../OutgoingInvoiceList' ve '.../ArchiveInvoiceList' 200 + token VAR.
     //   Alış '/Inbox' zaten token veriyor (o yüzden Alış çalışıyordu).
+    // OUT_EARSIV GERÇEK YOL (2026-07-04, TÜRMOB portalında AĞ İZLEMEYLE doğrulandı — Gökhan Akgöz
+    //   canlı oturumu): "Gönderilen E-Arşiv Faturaları" sayfası /OutgoingInvoice/OutgoingArchiveList,
+    //   veri ucu e-Fatura ile AYNI (/OutgoingInvoice/AllOutgoingInvoiceByFilter) ama gövdede
+    //   IsArchive=true + IsArchiveInvoice=true ayırt ediyor (bkz. turmobEarsivParams). Eski
+    //   /ArchiveInvoice/* uçları "Arşivlenmiş Faturalar" (BAŞKA modül) — hep boş dönüyordu (0/18 vakası).
     const refererPath = channel === 'OUT_EARSIV'
-      ? '/ArchiveInvoice/ArchiveInvoiceList'
+      ? '/OutgoingInvoice/OutgoingArchiveList'
       : channel === 'OUT_EFATURA'
         ? '/OutgoingInvoice/OutgoingInvoiceList'
         : '/Inbox';
     const listUrls = channel === 'OUT_EARSIV'
       ? [
+          '/OutgoingInvoice/AllOutgoingInvoiceByFilter',
           '/ArchiveInvoice/ArchiveInvoiceList',
           '/ArchiveInvoice/GetArchiveInvoiceList',
           '/OutgoingArchiveInvoice/AllOutgoingArchiveInvoiceByFilter',
@@ -6247,6 +6258,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       'search[regex]': 'false',
       'order[0][column]': '0',
       'order[0][dir]': 'desc',
+      // e-ARŞİV AYIRICI (ağ izlemeyle doğrulandı): AllOutgoingInvoiceByFilter bu iki bayrakla
+      //   e-Arşiv satırlarını döndürür; bayraksız aynı uç yalnız e-Fatura verir (0/18'in kökü).
+      ...(channel === 'OUT_EARSIV' ? { IsArchive: 'true', IsArchiveInvoice: 'true', EArsivDurumu: '-1', EArsivRaporGonderimDurumu: '-1', AliciId: '0' } : {}),
     };
     let listPageToken = '';
     let listPageHtml = '';
@@ -6272,12 +6286,17 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       for (const m of listPageHtml.matchAll(/(?:ajax|url|href|action)\s*[:=]\s*["']((?:https?:\/\/[^"']+)?\/[A-Za-z0-9/_.-]*(?:Invoice|Arsiv|Archive|Fatura)[A-Za-z0-9/_.-]*)["']/gi)) {
         let u = String(m[1] || '');
         if (/\.(js|css|png|jpg|svg|ico)(\?|$)/i.test(u)) continue;
+        // YAN ETKİ KORUMASI: Create/Delete/Send gibi eylem uçlarına liste POST'u atma (CreateQuick vakası);
+        //   yalnız liste/filtre görünümlü uçlar denenir.
+        if (/create|delete|update|edit|cancel|send|iptal|sil|olustur|kaydet|upload/i.test(u)) continue;
+        if (!/list|filter|byfilter|ara|search/i.test(u)) continue;
         u = u.replace(/^https?:\/\/[^/]+/i, '');
         if (!u.startsWith('/') || u.length > 120) continue;
         if (!discoveredUrls.includes(u)) discoveredUrls.push(u);
       }
     }
-    const allListUrls = [...discoveredUrls.filter((u) => !listUrls.includes(u)), ...listUrls];
+    // Bilinen (doğrulanmış) uçlar ÖNCE; sayfadan keşfedilenler yedek olarak SONRA denenir.
+    const allListUrls = [...listUrls, ...discoveredUrls.filter((u) => !listUrls.includes(u))];
     if (discoveredUrls.length) this.logger.log(`TURMOB list ${channel}: sayfadan kesfedilen uclar: ${discoveredUrls.slice(0, 6).join(' , ')}`);
 
     const profiles = this.turmobDateProfiles(opts.period);
