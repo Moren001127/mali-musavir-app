@@ -10792,6 +10792,14 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           const pool = (isSale && !isReturn) ? saleGroupLeaves : categoryGroupLeaves;
           const hit = (pool || []).find((a: any) => (this.norm(String(a.accountName || '')).match(/\d+/g) || ([] as string[])).includes(rate));
           if (hit) m = leafOnly(hit);
+          // SATIŞ + oran BELLİ + plandaki 600 leaf'leri ORAN ETİKETLİ ama bu oran YOK → yanlış-oranlı
+          //   varsayılana (%10 satış → "TİCARİ MAL %20") DÜŞME, BOŞ bırak (kullanıcı doğru oran
+          //   hesabını ekler/seçer; vergiForRate'in "rastgele orana düşürme" kuralıyla simetrik).
+          else if (isSale && !isReturn
+            && (pool || []).some((a: any) => (this.norm(String(a.accountName || '')).match(/\d+/g) || []).length > 0)) {
+            matrahCache.set(rate, null);
+            return null;
+          }
         }
         if (!m) m = leafOnly(saleMatrahDefault);
         matrahCache.set(rate, m);
