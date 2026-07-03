@@ -9934,6 +9934,42 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   Azure'un OKUDUĞU ham metinden ("e-Arşiv Fatura", "Senaryo: EARSIVFATURA" yazısı), son çare AI.
     const mappedType = this.docTypeFromText(html || azureText || parsed._azureText || '') || this.mapOcrBelgeTipi(parsed.belgeTuru) || normalizeDocumentType((d as any).documentType);
 
+    // SATICI-EMSAL TUTARLILIĞI (kullanıcı kuralı: "aynı satıcı hep aynı sonuç"): aynı mükellef + aynı
+    //   satıcı VKN'nin KALEM-ÖRTÜŞEN önceki belgesinde hangi matrahKategori'ye karar verildiyse yeni
+    //   okuma da AYNI kategoriye çekilir (ONAYLI belge öncelikli, yoksa en yeni). AI'ın gün farkıyla
+    //   ticari_mal ↔ genel_gider salınımı (SIRDAŞ kaşe/mürekkep: bir fatura 153, diğeri 770) biter.
+    //   Kullanıcı yanlışsa bir kez düzeltir → onayda öğrenilir, emsal de ona döner.
+    if (kind === 'ALIS' && d.taxpayerId && vknOk(aiSaticiVkn) && Array.isArray(parsed.kalemler) && parsed.kalemler.length) {
+      try {
+        const foldTok = (s: string) => String(s || '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/ı/g, 'i');
+        const tokSet = (ks: any[]) => new Set(
+          (ks || []).flatMap((k: any) => foldTok(String(k?.ad || '')).split(/[^a-z0-9]+/)).filter((t: string) => t.length >= 4),
+        );
+        const curToks = tokSet(parsed.kalemler);
+        if (curToks.size) {
+          const emsaller = await (this.prisma as any).invoiceAccountingDocument.findMany({
+            where: { tenantId, taxpayerId: d.taxpayerId, invoiceKind: 'ALIS', sellerVkn: aiSaticiVkn, id: { not: d.id } },
+            orderBy: { updatedAt: 'desc' },
+            select: { id: true, status: true, ocrData: true },
+            take: 12,
+          }).catch(() => []);
+          const adaylar = (emsaller || []).map((e: any) => {
+            const eo = (e.ocrData as any) || {};
+            const kat = String(eo.matrahKategori || eo.kategori || '').trim();
+            if (!kat) return null;
+            const et = tokSet(eo.kalemler || []);
+            const ortusen = [...et].some((tk) => curToks.has(tk as string));
+            return ortusen ? { kat, giderTuru: String(eo.giderTuru || '').trim(), approved: e.status === 'APPROVED' } : null;
+          }).filter(Boolean) as Array<{ kat: string; giderTuru: string; approved: boolean }>;
+          const emsal = adaylar.find((a) => a.approved) || adaylar[0];
+          if (emsal && emsal.kat && String(parsed.kategori || '') !== emsal.kat) {
+            this.logger.log(`[EMSAL] belge=${d.belgeNo || d.id} satici=${aiSaticiVkn} kategori '${parsed.kategori || 'boş'}' → '${emsal.kat}' (satıcı-emsal${emsal.approved ? ', onaylı' : ''})`);
+            parsed.kategori = emsal.kat;
+            if (!parsed.giderTuru && emsal.giderTuru) parsed.giderTuru = emsal.giderTuru;
+          }
+        }
+      } catch { /* emsal bakılamadıysa mevcut karar kalır */ }
+    }
     // Z RAPORU: karşı taraf müşteri (120) DEĞİL, 100 Kasa (+108 POS) — bayrak geçilmeyince "AI ile
     //   oku" yeniden okumada nakit/kart ayrımı kaybolup normal cari satırı kuruluyordu.
     const zRep = kind === 'SATIS' && String(mappedType || d.documentType || '').toUpperCase() === 'Z_RAPORU';
@@ -10030,7 +10066,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
               })(), kalemler: Array.isArray(parsed.kalemler) ? parsed.kalemler.slice(0, 30).map((k: any) => ({ ad: String(k?.ad || '').slice(0, 80), tutar: Number(k?.tutar) || 0, oran: Number(k?.oran) || 0 })).filter((k: any) => k.ad) : undefined, ...(islSinifAi ? { isletme: islSinifAi } : {}), isReturn: isReturnDet, tevkifatHint: parsed.tevkifat === true || tevkifatOrani > 0 || /tevkifat/i.test(String(html || '')), tevkifatOrani: tevkifatOrani || 0, tevkifatKdv: tevkKdv || 0, engine: parsed._azure ? 'azure-read' : (parsed === preParsed ? 'ubl-xml' : 'max-vision'),
             readMode: parsed === preParsed ? 'ubl-xml' : (isImage ? 'image' : /pdf/i.test(imgMedia) ? 'pdf-text' : /xml/i.test(imgMedia) ? 'xml-text' : 'html'),
             ...(!preParsed && imgBuf && /xml/i.test(imgMedia) ? { xmlHead: imgBuf.toString('utf8').slice(0, 220).replace(/\s+/g, ' ') } : {}),
-            ...(_uyarilar.length ? { uyarilar: _uyarilar } : {}) },
+            // uyarilar KOŞULSUZ yazılır: yeni okuma uyarı üretmediyse ESKİ okumanın bayat uyarısı
+            //   (ör. yanlış TEV_NAKL) spread'ten sağ çıkıp silinemez hale geliyordu (İDEAL PASAJ vakası).
+            uyarilar: _uyarilar.length ? _uyarilar : undefined },
         },
       });
     });
