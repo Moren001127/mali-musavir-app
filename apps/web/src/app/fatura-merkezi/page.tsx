@@ -1777,7 +1777,8 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
       efaturaDownloadPending ? `${efaturaDownloadPending} indiriliyor` : null,
       efaturaDownloadMissing ? `${efaturaDownloadMissing} inemedi` : null,
     ].filter(Boolean);
-    return parts.join(' · ');
+    // Backend teşhis uyarısı (0-sonuç: liste boş mu döndü, süzgeç mi eledi) varsa GÖSTER.
+    return [String(p?.warning || '') || null, parts.join(' · ')].filter(Boolean).join(' — ');
   };
   const efaturaQueuedSync = efaturaStatusRows.some((p) => String(p?.status || '').toUpperCase() === 'QUEUED_EFATURA_SYNC');
   const efaturaQueuedImport = efaturaStatusRows.some((p) => String(p?.status || '').toUpperCase() === 'QUEUED_EFATURA_IMPORT');

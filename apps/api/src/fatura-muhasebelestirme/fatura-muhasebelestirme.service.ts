@@ -3762,6 +3762,16 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             pendingDocument: providerMissingDocument,
             missingDocument: 0,
             failed: providerFailed,
+            // TEŞHİS (0-sonuç vakaları için): liste kaç satır döndürdü, süzgeç sonrası kaç kaldı,
+            //   hangi uç kullanıldı — kullanıcı/destek Railway loguna bakmadan ekranda görsün.
+            listRows: listed.rows.length,
+            liveRows: listed.liveRows.length,
+            listUrl: listed.usedListUrl,
+            ...(listed.liveRows.length === 0 ? {
+              warning: listed.rows.length > 0
+                ? `TÜRMOB listesi ${listed.rows.length} satır döndürdü ama dönem/iptal süzgeci sonrası 0 kaldı (uç: ${listed.usedListUrl}) — tarih aralığını kontrol edin.`
+                : `TÜRMOB listesi BOŞ döndü (uç: ${listed.usedListUrl}, yöntem: ${listed.usedMethod}) — bu kanalın liste ucu değişmiş olabilir; portalda fatura göründüğü halde boşsa desteğe bu mesajı iletin.`,
+            } : {}),
           });
           if (providerMissingDocument > 0) turmobNeedsPrefetch = true;
           continue;
@@ -6254,6 +6264,22 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       // Optional warm-up.
     }
 
+    // LİSTE UCU KEŞFİ: sayfanın HTML'inde DataTables/ajax veri ucu YAZILIDIR — uç adı TÜRMOB
+    //   sürümüyle değişebildiği için sabit tahmin listesi boş dönebiliyor (Satış e-Arşiv 0/18 vakası).
+    //   Sayfadan çıkarılan uçlar İLK aday olarak denenir; bulunamazsa mevcut tahmin listesi aynen çalışır.
+    const discoveredUrls: string[] = [];
+    if (listPageHtml) {
+      for (const m of listPageHtml.matchAll(/(?:ajax|url|href|action)\s*[:=]\s*["']((?:https?:\/\/[^"']+)?\/[A-Za-z0-9/_.-]*(?:Invoice|Arsiv|Archive|Fatura)[A-Za-z0-9/_.-]*)["']/gi)) {
+        let u = String(m[1] || '');
+        if (/\.(js|css|png|jpg|svg|ico)(\?|$)/i.test(u)) continue;
+        u = u.replace(/^https?:\/\/[^/]+/i, '');
+        if (!u.startsWith('/') || u.length > 120) continue;
+        if (!discoveredUrls.includes(u)) discoveredUrls.push(u);
+      }
+    }
+    const allListUrls = [...discoveredUrls.filter((u) => !listUrls.includes(u)), ...listUrls];
+    if (discoveredUrls.length) this.logger.log(`TURMOB list ${channel}: sayfadan kesfedilen uclar: ${discoveredUrls.slice(0, 6).join(' , ')}`);
+
     const profiles = this.turmobDateProfiles(opts.period);
     let ct = '';
     let raw = '';
@@ -6263,11 +6289,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     let selectedCt = '';
     let selectedRaw = '';
     let selectedData: any = null;
-    let usedListUrl = listUrls[0];
+    let usedListUrl = allListUrls[0];
     let usedProfile = 'none';
     let usedMethod = 'POST';
 
-    for (const listUrl of listUrls) {
+    for (const listUrl of allListUrls) {
       for (const profile of profiles) {
         const listBody = new URLSearchParams(
           listPageToken
