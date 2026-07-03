@@ -6144,14 +6144,20 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       'Sonuc',
       'Cevap',
     ];
-    const values = statusKeys
-      .map((key) => this.turmobField(row, [key]))
-      .filter(Boolean)
-      .join(' ')
-      .toLowerCase();
-    if (!values) return false;
-    if (/\byok\b|false|hayir|hayır|onaylandi|onaylandı|alici kabul etti|gonderildi|gönderildi|otomatik/.test(values)) return false;
-    return /iptal|itiraz|reddedil|red edildi|cancel/.test(values);
+    // ALAN-BAZLI kontrol: eskiden tüm durum alanları BİRLEŞTİRİLİP tek metinde bakılıyordu —
+    //   "OnayDurumu=Onaylandı" + "IptalItirazDurumu=İptal Edildi" (önce onaylanıp SONRA iptal edilen
+    //   e-Arşiv) birleşik metinde 'onaylandı' kelimesiyle erken çıkıp İPTALİ KAÇIRIYORDU. Artık her
+    //   alan kendi içinde değerlendirilir: "Yok/Hayır" yazan alan temiz sayılır, iptal/itiraz/red
+    //   yazan HERHANGİ bir alan satırı iptal işaretler. (Aktarımdaki 2. emniyet — rawJson
+    //   approvalStatus/iptalItiraz süzgeci — aynen durur.)
+    for (const key of statusKeys) {
+      const v = String(this.turmobField(row, [key]) || '').toLowerCase();
+      if (!v) continue;
+      if (/\byok\b|false|hayir|hayır/.test(v)) continue; // "İptal İtiraz Durumu: Yok" → temiz
+      if (/iptal talebi redded|itiraz redded/.test(v)) continue; // iptal/itiraz TALEBİ reddedilmiş = fatura geçerli
+      if (/iptal|itiraz|reddedil|red edildi|cancel/.test(v)) return true;
+    }
+    return false;
   }
 
   private turmobListPaths(channel: string) {
