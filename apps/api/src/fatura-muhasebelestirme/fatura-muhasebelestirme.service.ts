@@ -1761,8 +1761,20 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // SERBEST TARİH ARALIĞI (Mihsap örneği — kullanıcı talebi): dateFrom/dateTo verildiyse AY bazlı
     //   monthRange'i (1 ayla sınırlı) bypass et — sorgu gerçek başlangıç/bitiş gününe göre çalışır.
     //   period.donem yalnız ETİKETLEME amaçlı (job payload/log mesajı); aralık startDate/endDate'ten gelir.
-    const dateFromOk = /^\d{4}-\d{2}-\d{2}$/.test(String(input.dateFrom || ''));
-    const dateToOk = /^\d{4}-\d{2}-\d{2}$/.test(String(input.dateTo || ''));
+    const ymdOk = (s: any) => {
+      const v = String(s || '');
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
+      const dd = new Date(`${v}T00:00:00.000Z`); // gerçek takvim kontrolü (2026-13-45 elensin)
+      return !Number.isNaN(dd.getTime()) && dd.toISOString().slice(0, 10) === v;
+    };
+    const dateFromOk = ymdOk(input.dateFrom);
+    const dateToOk = ymdOk(input.dateTo);
+    // Aralık VERİLDİYSE ama geçersizse (tek alan / bozuk biçim / ters aralık) SESSİZCE aya düşme —
+    //   kullanıcı 15-20 Mayıs istemişken habersizce içinde bulunulan ay sorgulanıyordu.
+    if ((String(input.dateFrom || '').trim() || String(input.dateTo || '').trim())
+      && !(dateFromOk && dateToOk && String(input.dateFrom) <= String(input.dateTo))) {
+      throw new BadRequestException('Tarih aralığı geçersiz: başlangıç ve bitiş YYYY-AA-GG biçiminde olmalı ve başlangıç bitişten büyük olamaz.');
+    }
     const period = (dateFromOk && dateToOk && String(input.dateFrom) <= String(input.dateTo))
       ? { donem: `${input.dateFrom}_${input.dateTo}`, startDate: String(input.dateFrom), endDate: String(input.dateTo) }
       : this.monthRange(input.donem);
@@ -2984,7 +2996,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   YANLIŞLIKLA tutar ve TAM KDV ile devam edilir (kullanıcı bulgusu: tevkifatlı SATIŞ'ta KDV
     //   tutarı NET değil TAM görünüyordu). Tevkifat varsa Max-vision'a düş — orada "tevkifatKdv" AI
     //   tarafından belgeden okunur, NET KDV/tevkifat oranı doğru hesaplanır.
-    if (/TEVKIFAT|WithholdingTax/i.test(html)) return null;
+    // NOT: /i bayrağı Türkçe 'İ'yi (U+0130) I/i'ye katlamaz — "TEVKİFAT" yazan HTML yakalanmıyordu.
+    if (/TEVK[İIiı]FAT|WithholdingTax/i.test(html)) return null;
     const matrah: Record<string, number> = {};
     const kdv: Record<string, number> = {};
     for (const m of html.matchAll(/malHizmetKDV\((\d+)\)['"]?\s*:\s*['"]?([\d.]+)/g)) matrah[m[1]] = parseFloat(m[2]);
@@ -3135,9 +3148,15 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
     const raw = String(value).trim();
     if (!raw) return 0;
+    // Virgül yoksa TÜRK BİNLİK deseni kontrol edilir: "1.234" / "12.345.678" (nokta + tam 3 hane
+    //   grupları) OCR metninde binlik ayraçtır (1.234 TL ≠ 1,234 TL) — nokta ondalık sanılıp
+    //   1000 kat küçük okunuyordu. "1234.56" (2 hane ondalık) etkilenmez.
+    const digitsOnly = raw.replace(/[^\d.]/g, '');
     const normalized = raw.includes(',')
       ? raw.replace(/\./g, '').replace(',', '.')
-      : raw.replace(/[^\d.-]/g, '');
+      : (/^[1-9]\d{0,2}(\.\d{3})+$/.test(digitsOnly)
+        ? raw.replace(/[^\d-]/g, '')
+        : raw.replace(/[^\d.-]/g, ''));
     const n = Number(normalized);
     return Number.isFinite(n) ? n : 0;
   }
@@ -3534,8 +3553,18 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const direction: 'ALIS' | 'SATIS' = channel === 'IN_EFATURA' ? 'ALIS' : 'SATIS';
     const inboxDirection: 'IN' | 'OUT' = direction === 'ALIS' ? 'IN' : 'OUT';
     // SERBEST TARİH ARALIĞI (Mihsap örneği — kullanıcı talebi): bkz. fetchConfiguredIntegrations'taki aynı mantık.
-    const dateFromOk = /^\d{4}-\d{2}-\d{2}$/.test(String(opts.dateFrom || ''));
-    const dateToOk = /^\d{4}-\d{2}-\d{2}$/.test(String(opts.dateTo || ''));
+    const ymdOk2 = (s: any) => {
+      const v = String(s || '');
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
+      const dd = new Date(`${v}T00:00:00.000Z`);
+      return !Number.isNaN(dd.getTime()) && dd.toISOString().slice(0, 10) === v;
+    };
+    const dateFromOk = ymdOk2(opts.dateFrom);
+    const dateToOk = ymdOk2(opts.dateTo);
+    if ((String(opts.dateFrom || '').trim() || String(opts.dateTo || '').trim())
+      && !(dateFromOk && dateToOk && String(opts.dateFrom) <= String(opts.dateTo))) {
+      throw new BadRequestException('Tarih aralığı geçersiz: başlangıç ve bitiş YYYY-AA-GG biçiminde olmalı ve başlangıç bitişten büyük olamaz.');
+    }
     const period = (dateFromOk && dateToOk && String(opts.dateFrom) <= String(opts.dateTo))
       ? { donem: `${opts.dateFrom}_${opts.dateTo}`, startDate: String(opts.dateFrom), endDate: String(opts.dateTo) }
       : this.monthRange(opts.period);
@@ -3818,7 +3847,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         added += providerAdded;
         updated += providerUpdated;
         skipped += providerSkipped;
-        statuses.push({ provider: item.provider, label: cfg.label, status: 'SUCCESS', fetched: payloads.length, added: providerAdded, updated: providerUpdated, skipped: providerSkipped });
+        statuses.push({
+          provider: item.provider, label: cfg.label, status: 'SUCCESS', fetched: payloads.length, added: providerAdded, updated: providerUpdated, skipped: providerSkipped,
+          // Sayfalama yok: dönen adet limite ULAŞTIYSA dönemde daha fazla fatura olabilir — sessiz
+          //   kırpma yerine görünür uyarı (kullanıcı limiti artırır ya da aralığı böler).
+          ...(payloads.length >= limit ? { truncated: true, warning: `Sağlayıcı ${limit} kayıt sınırına ulaştı — dönemde daha fazla fatura olabilir; tarih aralığını bölerek tekrar sorgulayın.` } : {}),
+        });
       } catch (e: any) {
         failed++;
         statuses.push({ provider: item.provider, label: cfg.label, status: 'FAILED', reason: e?.message || 'sorgu hatasi' });
@@ -3829,7 +3863,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   indir (tek-oturum kilidiyle). UI satırların documentDownloadStatus'undan sayaç gösterir;
     //   indirme bitince Aktar pasiflikten çıkar ve hazır görseli tekrar indirmeden aktarır.
     if (turmobNeedsPrefetch) {
-      void this.prefetchTurmobInboxDocuments(tenantId, opts.taxpayerId, { direction: inboxDirection, channel, period: opts.period })
+      // periodLabel: satırlar rawJson.period'a SORGUNUN etiketini yazar (ay "2026-05" YA DA serbest
+      //   aralık "2026-05-15_2026-05-20"). Prefetch filtresi ay etiketiyle karşılaştırınca aralıklı
+      //   sorgunun satırları hedefe girmiyor, PENDING_DOWNLOAD'da takılıyordu → gerçek etiketi geçir.
+      void this.prefetchTurmobInboxDocuments(tenantId, opts.taxpayerId, { direction: inboxDirection, channel, period: opts.period, periodLabel: period.donem })
         .catch((e: any) => this.logger.warn(`TURMOB arka plan indirme tetiklenemedi: ${e?.message || e}`));
     }
     return { source: 'efatura-inbox', channel, direction: inboxDirection, fetched, added, updated, skipped, failed, providers: statuses };
@@ -3926,7 +3963,14 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const validRowDate = rowDate && !Number.isNaN(rowDate.getTime());
       const raw = row.rawJson && typeof row.rawJson === 'object' ? row.rawJson : {};
       const dateMatches = validRowDate && rowDate >= periodStart && rowDate < periodEnd;
-      const rawPeriodMatches = String(raw.period || '') === opts.period;
+      // Serbest tarih aralığıyla sorgulanan satırlarda raw.period "from_to" biçimindedir — ay etiketiyle
+      //   birebir eşleşmez; queryPeriodStart/End ay ile KESİŞİYORSA satır bu dönemin importuna girer
+      //   (eskiden faturaDate'siz satır sessizce dışlanıyordu).
+      const startYmd = periodStart.toISOString().slice(0, 10);
+      const endYmd = periodEnd.toISOString().slice(0, 10);
+      const rawPeriodMatches = String(raw.period || '') === opts.period
+        || (!!raw.queryPeriodStart && !!raw.queryPeriodEnd
+          && String(raw.queryPeriodStart) < endYmd && String(raw.queryPeriodEnd) >= startYmd);
       return validRowDate ? Boolean(dateMatches) : rawPeriodMatches;
     };
     const turmobBatchLookupCache = new Map<string, Promise<ProviderPayloadLookup | null>>();
@@ -4884,7 +4928,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const breakdown = Array.isArray(ocrData?.kdvBreakdown) ? ocrData.kdvBreakdown : null;
     // K7: tevkifat tespiti — fatura tevkifatlı (OCR'da tevkifat tutarı/oranı) ama tevkifat
     // fişi (360/KDV2 sorumlu sıfatı) kurulmamışsa onayda blokla (düz KDV ile gitmesin).
-    const tevkifatli = Number(ocrData?.kdvTevkifat || 0) > 0 || Number(ocrData?.tevkifatOrani || 0) > 0 || ocrData?.tevkifatHint === true;
+    // numFromOcr: upload-OCR yolunda kdvTevkifat TR-biçimli STRING gelir ("1.894,00") — Number() NaN
+    //   verip tevkifatlı belgeyi kontrolden kaçırıyordu.
+    const tevkifatli = this.numFromOcr(ocrData?.kdvTevkifat) > 0 || Number(ocrData?.tevkifatOrani || 0) > 0 || ocrData?.tevkifatHint === true;
     const tevkifatOrani = Number(ocrData?.tevkifatOrani || 0);
     const hasTevkifatLine = (doc.lines || []).some((l: any) => String(l.accountCode || '').startsWith('360'));
     // Faz D/1: iade/iptal — normal kayıt yapılmasın (ters kayıt/610 gerekli). 610 satırı
@@ -4905,7 +4951,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     let fixedAsset = this.detectFixedAsset(ocrData, tpForAsset);
     // DEMİRBAŞ HADDİ: bedel KDV hariç haddin altındaysa demirbaş uyarısı (FIXED_ASSET_MANUAL) verme —
     //   doğrudan gider yazılır (matcher de 770'e yönlendirir; ikisi tutarlı).
-    if (fixedAsset.is && this.demirbasHaddiAltinda(ocrData)) fixedAsset = { is: false, reason: '' };
+    if (fixedAsset.is && this.demirbasHaddiAltinda(ocrData, fixedAsset.reason)) fixedAsset = { is: false, reason: '' };
 
     const validation = await this.runValidation({
       tenantId,
@@ -5631,7 +5677,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   async prefetchTurmobInboxDocuments(
     tenantId: string,
     taxpayerId: string,
-    opts: { direction: 'IN' | 'OUT'; channel: string; period?: string },
+    opts: { direction: 'IN' | 'OUT'; channel: string; period?: string; periodLabel?: string },
   ): Promise<void> {
     try {
       const channel = String(opts.channel || '').toUpperCase();
@@ -5651,7 +5697,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const targets = candidates.filter((row: any) => {
         const raw = row.rawJson && typeof row.rawJson === 'object' ? row.rawJson : {};
         if (String(raw.channel || '').toUpperCase() !== channel) return false;
-        if (opts.period && String(raw.period || '') !== opts.period) return false;
+        // periodLabel (varsa) gerçek sorgu etiketi — serbest tarih aralığında "from_to" biçimindedir.
+        const wantLabel = String(opts.periodLabel || opts.period || '');
+        if (wantLabel && String(raw.period || '') !== wantLabel) return false;
         const xml = String(row.ublXmlRaw || '').trim();
         const status = String(raw.documentDownloadStatus || '').toUpperCase();
         return !xml
@@ -7425,10 +7473,18 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       'User-Agent': 'MorenPortal/1.0',
     };
     if (soapAction) headers.SOAPAction = `"${soapAction}"`;
-    const res = await fetch(url, { method: 'POST', headers, body: envelope });
+    // Timeout: sağlayıcı bağlantıyı açık tutup yanıt vermezse istek süresiz asılı kalıyordu.
+    const res = await fetch(url, { method: 'POST', headers, body: envelope, signal: AbortSignal.timeout(60_000) });
     const text = await res.text();
     if (!res.ok) throw new Error(`SOAP ${res.status}: ${text.slice(0, 400)}`);
     if (/<(?:[^:>]+:)?Fault\b/i.test(text)) throw new Error(this.tagText(text, 'faultstring') || 'SOAP Fault');
+    // GÖVDE-İÇİ hata: Uyumsoft HTTP 200 dönüp IsSucceded="false" yazabiliyor — eskiden bu sessizce
+    //   "SUCCESS, 0 fatura" oluyordu (bayat oturum / yanlış şifre "bu ay fatura yok" gibi görünüyordu).
+    const suc = text.match(/IsSucceded\s*=\s*["'](true|false)["']/i);
+    if (suc && suc[1].toLowerCase() === 'false') {
+      const msg = text.match(/Message\s*=\s*["']([^"']{1,300})["']/i)?.[1] || this.tagText(text, 'Message') || 'saglayici islemi basarisiz (IsSucceded=false)';
+      throw new Error(`Saglayici hatasi: ${msg}`);
+    }
     return text;
   }
 
@@ -8146,10 +8202,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         .map((taxTotal) => num(taxTotal?.TaxAmount))
         .filter((amount): amount is number => amount != null)
         .reduce((sum, amount) => sum + amount, 0);
-      const matrah = num(monetaryTotal?.TaxExclusiveAmount)
+      let matrah = num(monetaryTotal?.TaxExclusiveAmount)
         ?? num(monetaryTotal?.LineExtensionAmount)
         ?? (lineMatrah || undefined);
-      const kdvTutari = (taxAmounts.length ? taxAmounts.reduce((sum, amount) => sum + amount, 0) : undefined)
+      let kdvTutari = (taxAmounts.length ? taxAmounts.reduce((sum, amount) => sum + amount, 0) : undefined)
         ?? (lineTax || undefined);
       const toplamTutar = num(monetaryTotal?.PayableAmount)
         ?? num(monetaryTotal?.TaxInclusiveAmount)
@@ -8170,8 +8226,23 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       //   faturada bu olmazsa tek harmanlanmış orana (5245/29825≈%18 SAHTE) düşüyordu.
       const round2 = (n: number) => Math.round(n * 100) / 100;
       const taxSubs = taxTotals.flatMap((tt) => asArray(tt?.TaxSubtotal));
+      // VERGİ TÜRÜ SÜZGECİ: TaxSubtotal ÖİV (4080) / ÖTV (0071/9077) da içerebilir — tür bakılmadan
+      //   hepsi KDV sanılınca matrah ÇİFT sayılıyor, ÖİV/ÖTV 191'e (İndirilecek KDV) karışıyordu
+      //   (telekom: KDV %20 + ÖİV %10, aynı matrah iki oranda). Tür bilgisi varsa yalnız 0015/KDV
+      //   kırılıma girer; KDV-dışı vergiler aşağıda GİDERE (en büyük matrah kırılımına) eklenir
+      //   (indirilemeyen vergi maliyet/gider unsurudur) → toplam ve cari doğru kalır.
+      const isKdvSub = (sub: any): boolean => {
+        const scheme: any = sub?.TaxCategory?.TaxScheme || sub?.TaxScheme || null;
+        const code = String(txt(scheme?.TaxTypeCode) || '').trim();
+        if (code) return code === '0015';
+        const name = String(txt(scheme?.Name) || '');
+        if (name) return /kdv|katma\s*de/i.test(name);
+        return true; // tür bilgisi yoksa eski davranış (KDV say)
+      };
+      let otherTaxTotal = 0;
       const subMap = new Map<number, { base: number; amount: number }>();
       for (const sub of taxSubs) {
+        if (!isKdvSub(sub)) { otherTaxTotal += num(sub?.TaxAmount) || 0; continue; }
         const r = num(sub?.TaxCategory?.Percent) ?? num(sub?.Percent);
         if (r == null) continue;
         const key = Math.round(r);
@@ -8191,6 +8262,18 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         const km = new Map<number, number>();
         for (const k of rawKalemler) { const r = Math.round(Number(k.oran) || 0); if (r <= 0) continue; km.set(r, (km.get(r) || 0) + (Number(k.tutar) || 0)); }
         kdvBreakdown = [...km.entries()].map(([rate, base]) => ({ rate, base: round2(base), amount: round2(base * rate / 100) }));
+      }
+      // KDV-dışı vergi (ÖİV/ÖTV) varsa: KDV tutarı yalnız KDV kırılımından; ÖİV/ÖTV gidere eklenir
+      //   (en büyük matrah kırılımına, kırılım yoksa matraha) → toplam (matrah'+KDV) belge toplamıyla tutar.
+      if (otherTaxTotal > 0) {
+        const kdvOnly = [...subMap.values()].reduce((s, v) => s + v.amount, 0);
+        kdvTutari = kdvOnly > 0 ? round2(kdvOnly) : undefined;
+        if (kdvBreakdown.length) {
+          const mx = kdvBreakdown.reduce((a, b) => (b.base > a.base ? b : a));
+          mx.base = round2(mx.base + otherTaxTotal);
+        } else if (matrah != null) {
+          matrah = round2(matrah + otherTaxTotal);
+        }
       }
       return {
         faturaNo: faturaNo || ettn || 'BILINMIYOR',
@@ -8472,7 +8555,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // v2.4: TEVKİFATLI fatura — alışta 2×191 (normal + sorumlu sıf.) + net cari + 360;
     // satışta hesaplanan KDV yalnız tevkifat-dışı kısımdır (kalanı alıcı sorumlu sıf. beyan eder).
     const tk = Number(opts.tevkifatOrani) || 0;
-    if (tk > 0 && tk < 1) {
+    if (tk > 0 && tk <= 1) { // tk=1 (10/10 TAM tevkifat) dahil — normal KDV satırı 0 olur, aşağıda elenir
       const m = hasBreakdown
         ? breakdown.reduce((s, b) => s.plus(money(b.base) || zero()), zero())
         : (money(opts.matrah) || zero());
@@ -8494,19 +8577,22 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         //   770 matrah (B) · 191 normal KDV (B) · 191 sorumlu sıf. KDV (B) · 320 net cari (A) · 360 tevkifat (A)
         // 191-sorumlu ve 360 AYRI gruplarda → cari/oran eşleştirme onları EZMESİN; plandaki gerçek
         // hesaplara (adında "sorumlu"/"kdv"/"tevkifat" geçen) bağlanır (bkz. rematch 'vergi-sorumlu'/'tevkifat' kolu).
-        return [
+        const alisRows = [
           { group: 'matrah', accountCode: matrahCode, description: 'Gider / matrah', debit: m, credit: zero(), orderNo: 0 },
           { group: 'vergi', accountCode: this.kdvAccountCode(false, primaryRate), description: `İndirilecek KDV ${rl || ''}`.trim(), rate: rl, debit: normalK, credit: zero(), orderNo: 1 },
           { group: 'vergi-sorumlu', accountCode: '191.02.001', description: `Sorumlu Sıfatıyla İndirilecek KDV ${rl || ''}`.trim(), rate: rl, debit: tevk, credit: zero(), orderNo: 2 },
           { group: 'cari', accountCode: cariCode, description: opts.vendorName || 'Cari hesap', debit: zero(), credit: net, orderNo: 3 },
           { group: 'tevkifat', accountCode: '360.01.001', description: 'Ödenecek KDV (sorumlu sıf. — KDV2 ile beyan)', rate: rl, debit: zero(), credit: tevk, orderNo: 4 },
         ];
+        // TAM tevkifatta (tk=1) normal KDV 0 → boş satır bırakma.
+        return normalK.gt(0) ? alisRows : alisRows.filter((l) => l.group !== 'vergi');
       }
-      return [
+      const satisRows = [
         { group: 'cari', accountCode: cariCode, description: opts.vendorName || 'Cari hesap', debit: net, credit: zero(), orderNo: 0 },
         { group: 'matrah', accountCode: matrahCode, description: 'Satış matrahı', debit: zero(), credit: m, orderNo: 1 },
         { group: 'vergi', accountCode: this.kdvAccountCode(true, primaryRate), description: `Hesaplanan KDV (tevkifat sonrası) ${rl || ''}`.trim(), rate: rl, debit: zero(), credit: normalK, orderNo: 2 },
       ];
+      return normalK.gt(0) ? satisRows : satisRows.filter((l) => l.group !== 'vergi');
     }
 
     const lines: any[] = [];
@@ -8708,10 +8794,22 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     return total > 0 ? Math.max(total - kdv, 0) : 0;
   }
 
-  /** Demirbaş içeriği var AMA KDV hariç matrah VUK haddinin ALTINDA → doğrudan gider (770), demirbaş(255)
-   *  DEĞİL ("770'te gider yazılan demirbaş"). Tutar bilinmiyorsa (0) false döner → demirbaş kalır (güvenli). */
-  private demirbasHaddiAltinda(ocr: any): boolean {
-    const m = this.matrahHaricTL(ocr);
+  /** Demirbaş içeriği var AMA KDV hariç bedel VUK haddinin ALTINDA → doğrudan gider (770), demirbaş(255)
+   *  DEĞİL ("770'te gider yazılan demirbaş"). Tutar bilinmiyorsa (0) false döner → demirbaş kalır (güvenli).
+   *  VUK 313 haddi İKTİSADİ KIYMET BAŞINAdır: karışık faturada (demirbaş + sarf aynı belgede) fatura
+   *  TOPLAMI değil, demirbaş KALEMİNİN tutarı esas alınır — hitWord (detectFixedAsset.reason) verilir
+   *  ve kalem eşleşirse o kalemlerin toplamı kullanılır; eşleşmezse eski toplam-matrah davranışı. */
+  private demirbasHaddiAltinda(ocr: any, hitWord?: string): boolean {
+    const o = ocr || {};
+    if (hitWord) {
+      const fold = (s: string) => this.norm(s).replace(/ş/g, 's').replace(/ğ/g, 'g').replace(/ı/g, 'i').replace(/ç/g, 'c').replace(/ö/g, 'o').replace(/ü/g, 'u');
+      let sum = 0;
+      for (const k of (Array.isArray(o.kalemler) ? o.kalemler : [])) {
+        if (fold(String(k?.ad || '')).includes(hitWord)) sum += Number(k?.tutar) || 0;
+      }
+      if (sum > 0) return sum < VUK_HAD_TL;
+    }
+    const m = this.matrahHaricTL(o);
     return m > 0 && m < VUK_HAD_TL;
   }
 
@@ -8761,12 +8859,18 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // ── 1) INCOMPLETE_AMOUNTS — toplam var ama matrah/KDV eksik
     const matrahN = Number(opts.matrah || 0);
     const kdvN = Number(opts.kdvTutari || 0);
-    const breakdownSumBase = Array.isArray(opts.kdvBreakdown)
-      ? opts.kdvBreakdown.reduce((s, b) => s + Number(b.base || 0), 0)
-      : 0;
-    const breakdownSumKdv = Array.isArray(opts.kdvBreakdown)
-      ? opts.kdvBreakdown.reduce((s, b) => s + Number(b.amount || 0), 0)
-      : 0;
+    // ŞEMA NORMALİZASYONU: kdvBreakdown iki biçimde geliyor — {rate,base,amount} (entegratör/ensure)
+    //   ve {oran,matrah,tutar} (aiReadDocument ocrData'sı). Yalnız İngilizce anahtar okununca
+    //   ana (AI-okuma) yoldaki belgelerde toplamlar 0 kalıyor → KDV_MATH hiç ateşlenmiyordu.
+    const kdvBreakdownNorm = Array.isArray(opts.kdvBreakdown)
+      ? (opts.kdvBreakdown as any[]).map((b: any) => ({
+          rate: Number(b?.rate ?? b?.oran ?? 0),
+          base: Number(b?.base ?? b?.matrah ?? 0),
+          amount: Number(b?.amount ?? b?.tutar ?? 0),
+        }))
+      : null;
+    const breakdownSumBase = kdvBreakdownNorm ? kdvBreakdownNorm.reduce((s, b) => s + (b.base || 0), 0) : 0;
+    const breakdownSumKdv = kdvBreakdownNorm ? kdvBreakdownNorm.reduce((s, b) => s + (b.amount || 0), 0) : 0;
     // Yevmiye satirlarindan matrah: "matrah" grubundaki satirlarin tutari (OCR matrah'i
     // bos olsa da satirlar dolu olabilir — Azure rawText verir ama matrah'i yapilandirmaz).
     const linesMatrah = opts.lines
@@ -8853,7 +8957,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //     faturada yanlış alarm vermez. Bu, "yanlış ama dengeli" sessiz KDV hatasını yakalar
     //     (ör. matrah 900 %20 iken KDV 280 okunmuşsa: beklenen 180, fazla → hata).
     const stdRates = new Set([1, 8, 10, 18, 20]);
-    for (const b of (opts.kdvBreakdown || [])) {
+    for (const b of (kdvBreakdownNorm || [])) {
       const rate = Number(b?.rate || 0);
       const base = Number(b?.base || 0);
       const amount = Number(b?.amount || 0);
@@ -8984,16 +9088,29 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   nedeni güncel. Böylece "Kodları düzelt" çelişki kayıtlarını da tazeler (yeniden okuma şart değil).
     const docs = await (this.prisma as any).invoiceAccountingDocument.findMany({
       where: { tenantId, taxpayerId, status: { in: ['READY', 'NEEDS_REVIEW', 'DRAFT'] } },
-      select: { id: true, totalAmount: true, lines: { select: { debit: true, credit: true } } }, take: 1000,
+      select: { id: true, totalAmount: true, lines: { select: { debit: true, credit: true, group: true } } }, take: 1000,
     }).catch(() => []);
     for (const d of docs) {
       // Yevmiye DENGELİYSE belge toplamını YEVMİYEDEN (matrah+kdv) düzelt — eski parsed.toplam KDV
       //   HARİÇ olabilir (858 vs 858,50) → TOTAL_MISMATCH. Denge bozuksa dokunma (gerçek sorun, kalsın).
+      //   SINIR: eskiden fark ne olursa olsun ezerdi → OCR'ın YANLIŞ okuduğu tutar da "düzeltilip"
+      //   gerçek TOTAL_MISMATCH kalıcı maskeleniyordu. Artık yalnız AÇIKLANABİLİR farklar ezilir:
+      //   (a) kuruş/yuvarlama, (b) toplam=matrah okunmuş (KDV hariç), (c) tevkifatlı net yazılmış.
       const sumD = (d.lines || []).reduce((s: number, l: any) => s + Number(l.debit || 0), 0);
       const sumC = (d.lines || []).reduce((s: number, l: any) => s + Number(l.credit || 0), 0);
       if (Math.abs(sumD - sumC) <= 0.02) {
         const yev = Math.round(Math.max(sumD, sumC) * 100) / 100;
-        if (yev > 0 && Math.abs(yev - Number(d.totalAmount || 0)) > 0.02) {
+        const cur = Number(d.totalAmount || 0);
+        const matrahSum = (d.lines || []).filter((l: any) => String(l.group || '') === 'matrah')
+          .reduce((s: number, l: any) => s + Number(l.debit || 0) + Number(l.credit || 0), 0);
+        const tevkSum = (d.lines || []).filter((l: any) => String(l.group || '') === 'tevkifat')
+          .reduce((s: number, l: any) => s + Number(l.debit || 0) + Number(l.credit || 0), 0);
+        const smallTol = Math.max(1, cur * 0.005);
+        const aciklanabilir = cur <= 0
+          || Math.abs(yev - cur) <= smallTol
+          || Math.abs(cur - matrahSum) <= smallTol
+          || (tevkSum > 0 && Math.abs(cur - (yev - tevkSum)) <= 1);
+        if (yev > 0 && Math.abs(yev - cur) > 0.02 && aciklanabilir) {
           await (this.prisma as any).invoiceAccountingDocument.update({ where: { id: d.id }, data: { totalAmount: yev } }).catch(() => {});
         }
       }
@@ -9381,10 +9498,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           saticiAd: ubl.satici, saticiVkn: ubl.saticiVergiNo,
           aliciAd: ubl.alici, aliciVkn: ubl.aliciVergiNo,
           toplam: ubl.toplamTutar,
-          // İADE faturası: UBL kök öğesi CreditNote ise ya da belgede İADE/İPTAL geçiyorsa.
-          iade: /<\w*:?CreditNote[\s>]/i.test(xml) || /\b(İADE|IADE|İPTAL|IPTAL)\b/i.test(xml.slice(0, 4000)),
+          // İADE faturası: UBL kök öğesi CreditNote ya da InvoiceTypeCode=IADE/IPTAL (deterministik).
+          //   NOT: eski /\bİADE\b/ deseni JS'te HİÇ eşleşmiyordu ('İ' \w değil → \b Türkçe harfte
+          //   çalışmaz); serbest metin "iade" araması da nottaki "iade edilemez" gibi ifadelerde
+          //   yanlış-pozitif veriyordu → tip koduna bağlandı.
+          iade: /<\w*:?CreditNote[\s>]/i.test(xml) || /<[^>]*InvoiceTypeCode[^>]*>\s*[İI](ADE|PTAL)/i.test(xml),
           // TEVKİFAT: belgede tevkifat/WithholdingTax geçiyorsa (e-Arşiv "Fatura Tipi: TEVKIFAT").
-          tevkifat: /TEVKIFAT|WithholdingTax/i.test(xml),
+          tevkifat: /TEVK[İIiı]FAT|WithholdingTax/i.test(xml),
           // TEVKİFAT TUTARI (UBL WithholdingTaxTotal): satışta 391'e NET KDV (hesaplanan − tevkifat) gider;
           //   tevkifatOrani buradan çıkar → "tevkifat tutarı okunamadı" çelişkisi (TEVKIFAT_NET_NEEDED) biter.
           tevkifatKdv: ubl.tevkifatKdv,
@@ -9427,8 +9547,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           saticiAd: d.vendorName || null, saticiVkn: null,
           aliciAd: d.customerName || null, aliciVkn: null,
           toplam: t.toplam,
-          iade: /\b(İADE|IADE|İPTAL|IPTAL)\b/i.test(html.slice(0, 6000)),
-          tevkifat: /TEVKIFAT|tevkifat/i.test(html),
+          // İADE: "Fatura Tipi: İADE" gibi BAĞLAMLI desen aranır (Türkçe İ→I katlanarak; eski \bİADE\b
+          //   hiç eşleşmiyordu, bağlamsız "iade" ise "iade edilemez" notlarında yanlış-pozitifti).
+          iade: (() => {
+            const t = html.slice(0, 8000).replace(/İ/g, 'I').toUpperCase();
+            return /(FATURA\s*T[IU]P[IU]?|SENARYO)\s*:?[\s\S]{0,80}?\b(IADE|IPTAL)\b/.test(t) || /\bIADE\s+FATURAS?I?\b/.test(t);
+          })(),
+          tevkifat: /TEVK[İIiı]FAT/i.test(html),
           kdv: t.breakdown.map((b) => ({ oran: b.oran, matrah: b.matrah, kdv: b.kdv })),
           _htmlText: html.replace(/<(script|style)[^>]*>[\s\S]*?<\/(script|style)>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/&[a-z#0-9]+;/gi, ' ').replace(/\s+/g, ' ').trim().slice(0, 8000),
         };
@@ -9650,7 +9775,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       }
       // TOPLU: aynı mükellef+plan+yön grubundaki belgeler tek Max çağrısında sınıflanır (alt-süreç N× azalır).
       const c: any = detHit
-        ? { giderTuru: detHit.giderTuru, kategori: detHit.kategori }
+        ? {
+            giderTuru: detHit.giderTuru,
+            kategori: detHit.kategori,
+            // Hızlı-yol (Max atlanır) muhasebeNeden'siz kalıyordu → kullanıcıya yorum boş görünüyordu;
+            //   deterministik kısa gerekçe yaz (zengin yorum istenirse lazy generateRichMuhasebeNeden var).
+            muhasebeNeden: `Fatura kalemleri "${detHit.giderTuru}" niteliğinde — içerik kuralıyla otomatik sınıflandırıldı.`,
+          }
         : await this.aiClassifyAccountingCoalesced(contentText, mukellefBilgi, isIsletmeMukellef, d.invoiceKind === 'SATIS' ? 'SATIS' : 'ALIS', planAdaylar).catch(() => null);
       if (detHit) this.logger.log(`[CLS-SKIP] det icerik=${detHit.kategori} (${detAdlar.length} kalem) → Max ATLANDI belge=${d.belgeNo || d.id}`);
       if (c) {
@@ -9729,14 +9860,18 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // TEVKİFAT: okunan tevkifat KDV tutarından oran çıkar (520/2600=0.2). linesFromAmounts'un
     // tevkifat yolu NET KDV + ÖDENECEK cariyi doğru üretir (tam KDV/tam toplam değil).
     const tevkKdv = Number(parsed.tevkifatKdv) || 0;
-    const tevkifatOrani = (tevkKdv > 0 && kdv > 0 && tevkKdv < kdv) ? Math.round((tevkKdv / kdv) * 1000) / 1000 : 0;
+    // NOT: tevkKdv === kdv (10/10 TAM tevkifat) de geçerli → <= (eskiden < ile tam tevkifat 0 sayılıp
+    //   belge düz KDV'li gibi işleniyordu: 360/191-sorumlu satırı hiç kurulmuyordu).
+    const tevkifatOrani = (tevkKdv > 0 && kdv > 0 && tevkKdv <= kdv) ? Math.round((tevkKdv / kdv) * 1000) / 1000 : 0;
     // Toplam = matrah + KDV (yevmiye DENGESİ: cari satırı = matrah + kdv toplamı). AI'nın okuduğu
     //   parsed.toplam KDV HARİÇ tutarı verebiliyordu → cari/totalAmount yanlış → BALANCE_MISMATCH /
     //   TOTAL_MISMATCH (EDELER'de 31 belge "çelişki"; örn total=matrah=641.82 ama gerçek 648.33).
     //   ARTIK satırlardan türetilir → yevmiye her zaman dengeli. Matrah/KDV okuma hatasını
     //   (kdv > matrah×oran) zaten KDV_MATH doğrulaması yakalar → sessiz yanlış kalmaz.
-    //   Tevkifatlıda ödenecek = matrah + NET KDV (tevkifat sorumlu sıfatıyla beyan, cariye girmez).
-    const total = tevkifatOrani > 0
+    //   Tevkifatlı SATIŞTA ödenecek = matrah + NET KDV (tevkifat sorumlu sıfatıyla beyan, cariye girmez).
+    //   Tevkifatlı ALIŞTA yevmiye TAM KDV ile kurulur (191 normal+sorumlu borç, 320 net + 360 tevkifat
+    //   alacak → toplam = matrah + TAM KDV); total net yazılırsa TOTAL_MISMATCH sahte çelişkisi doğar.
+    const total = (tevkifatOrani > 0 && isSale)
       ? Math.round((matrah + kdv * (1 - tevkifatOrani)) * 100) / 100
       : Math.round((matrah + kdv) * 100) / 100;
     // Karşı taraf (cari) adı: satışta ALICI, alışta SATICI (yukarıdaki AD-bazlı güvenlik ağı taraf
@@ -9746,12 +9881,17 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   Azure'un OKUDUĞU ham metinden ("e-Arşiv Fatura", "Senaryo: EARSIVFATURA" yazısı), son çare AI.
     const mappedType = this.docTypeFromText(html || azureText || parsed._azureText || '') || this.mapOcrBelgeTipi(parsed.belgeTuru) || normalizeDocumentType((d as any).documentType);
 
+    // Z RAPORU: karşı taraf müşteri (120) DEĞİL, 100 Kasa (+108 POS) — bayrak geçilmeyince "AI ile
+    //   oku" yeniden okumada nakit/kart ayrımı kaybolup normal cari satırı kuruluyordu.
+    const zRep = kind === 'SATIS' && String(mappedType || d.documentType || '').toUpperCase() === 'Z_RAPORU';
+    const zPay = zRep ? this.parseZPayments(String(azureText || (parsed as any)._azureText || (parsed as any)._htmlText || html || ''), total) : null;
     const lines = await this.gateCodesByPlan(tenantId, d.taxpayerId, this.linesFromAmounts({
       invoiceKind: kind,
       matrah, kdvTutari: kdv, kdvOrani: breakdown[0].rate, total,
       vendorName: counterName || (isSale ? d.customerName : d.vendorName),
       kdvBreakdown: breakdown,
       tevkifatOrani: tevkifatOrani || null,
+      ...(zRep ? { zRaporu: true, nakit: zPay?.nakit || 0, kart: zPay?.kart || 0 } : {}),
     }));
     await (this.prisma as any).$transaction(async (tx: any) => {
       await tx.invoiceAccountingLine.deleteMany({ where: { documentId: d.id } });
@@ -9778,7 +9918,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       }
       if (islSinifAi) {
         const islIade = parsed.iade === true || /iade|iptal/i.test(String(parsed.belgeTuru || ''));
-        const islTevk = parsed.tevkifat === true || tevkifatOrani > 0 || /tevkifat/i.test(String(html || ''));
+        const islTevk = parsed.tevkifat === true || tevkifatOrani > 0 || /TEVK[İIiı]FAT/i.test(String(html || ''));
         const islText = [parsed.giderTuru, islSinifAi.kayitAltAd, parsed.muhasebeNeden, ...(Array.isArray(parsed.kalemler) ? parsed.kalemler.map((k: any) => k?.ad) : [])].filter(Boolean).join(' ');
         islSinifAi = {
           ...islSinifAi,
@@ -9798,9 +9938,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       //   (XML/HTML yollarındaki gibi deterministik regex YOKTU). Azure'un OKUDUĞU HAM METİN (azureText/
       //   parsed._azureText) — vision-modelin "önemli" sandığı kısma odaklanma sorunu olmayan, OCR ile
       //   çıkarılmış TÜM metin — üzerinde de "İADE/IPTAL" arandığında bu tür kaçırmaları yakalar.
+      const azNormForIade = String(azureText || (parsed as any)._azureText || '').replace(/İ/g, 'I').toUpperCase();
       const isReturnDet = parsed.iade === true
         || /iade|iptal/i.test(String(parsed.belgeTuru || ''))
-        || /\b(İADE|IADE|İPTAL|IPTAL)\b/i.test(String(azureText || (parsed as any)._azureText || ''));
+        // BAĞLAMLI iade deseni: eski \bİADE\b JS'te hiç eşleşmiyordu ('İ' \w değil); bağlamsız "iade"
+        //   ise "iade edilemez / iade ve değişim şartları" notlarında yanlış-pozitif veriyordu.
+        || /(FATURA\s*T[IU]P[IU]?|SENARYO)\s*:?\s*\b(IADE|IPTAL)\b/.test(azNormForIade)
+        || /\bIADE\s+FATURAS?I?\b/.test(azNormForIade);
       const _uyarilar = denetimUyariOlustur({
         invoiceKind: kind,
         matrah,
@@ -10291,6 +10435,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       }),
     ]);
     if (!accounts.length || !docs.length) return;
+    // Sessiz tavan uyarısı: 500'den fazla bekleyen belge varsa kalanı bu turda eşleştirilmez.
+    if (docs.length === 500 && !documentIds?.length) this.logger.warn(`[REMATCH] tavan: tp=${taxpayerId} bekleyen belge >= 500 — kalanlar bu turda eşleştirilmedi (tekrar 'Kodları düzelt' gerekir)`);
 
     // Mükellefin faaliyeti — AI gider-hesabı eşleştirmesinde "ne iş yapıyor" bağlamı.
     const tpRow: any = await (this.prisma as any).taxpayer.findFirst({ where: { id: taxpayerId, tenantId }, select: { companyName: true, firstName: true, lastName: true, naceKodu: true, faaliyetAciklama: true } }).catch(() => null);
@@ -10351,7 +10497,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       // DEMİRBAŞ HADDİ (VUK 313, KDV hariç matrah): içerik demirbaş olsa da bedel haddin ALTINDAysa
       //   doğrudan GİDER (770) yazılır, demirbaş (255) DEĞİL — kullanıcı "770'te gider yazılan demirbaş"
       //   diye açıyor. Eşik üstü → demirbaş (manuel/amortisman). Bedel bilinmiyorsa demirbaş kalır (güvenli).
-      const faAltinda = faContent.is && this.demirbasHaddiAltinda(doc.ocrData);
+      const faAltinda = faContent.is && this.demirbasHaddiAltinda(doc.ocrData, faContent.reason);
       const faDet = faAltinda ? { is: false, reason: '' } : faContent;
       if (faDet.is && kat !== 'demirbas') kat = 'demirbas';
       // Eşik-altı demirbaş içeriği: AI 'demirbas' kategorisi vermiş olsa bile gidere çevir (255 değil 770).
@@ -10491,7 +10637,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const vergiForRate = (rateDigits: string) => {
         const key = rateDigits || '';
         if (vergiCache.has(key)) return vergiCache.get(key);
-        const grp = accounts.filter((a: any) => { const c = String(a.accountCode || ''); return c.startsWith(vergiPrefix) && !c.startsWith('79'); });
+        const grp = accounts.filter((a: any) => { const c = String(a.accountCode || ''); return c.startsWith(vergiPrefix) && !c.startsWith('79') && isPostableLeaf(c); });
         let result: any = null;
         if (!grp.length) {
           result = this.pickAccount(accounts, [vergiPrefix], null);
@@ -10506,8 +10652,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             result = grp.find((a: any) => { const n = String(a.accountName || ''); return n.includes(`${tevkPay}/10`) || /tevk[iı]fat/i.test(n); }) || null;
           }
           if (!result) {
-            // tevkifat/iade/ihrac/istisna GEÇMEYEN düz hesaplar (matrahla simetrik).
-            const normals = grp.filter((a: any) => !this.isTevkifatAccountName(a.accountName || '') && !/(iade|ihrac|istisna)/i.test(String(a.accountName || '')));
+            // tevkifat/iade/ihrac/istisna/SORUMLU GEÇMEYEN düz hesaplar (matrahla simetrik).
+            //   "sorumlu" da elenir: adında tevkifat/"2-10" geçmeyen "191.02.001 SORUMLU SIFATIYLA
+            //   İND.KDV" hesabı normals'a sızıp normal KDV satırına atanıyordu (sorumluKdvMatch simetriği).
+            const normals = grp.filter((a: any) => !this.isTevkifatAccountName(a.accountName || '') && !/(iade|ihrac|istisna|sorumlu)/i.test(String(a.accountName || '')));
             // ALIŞ'ta (191) normals BOŞSA (planda yalnız "sorumlu/tevkifat" adlı 191 hesabı varsa, normal
             //   İndirilecek KDV hesabı YOKSA) grp'ye (sorumlu dahil) DÜŞME — normal-191 satırı SORUMLU
             //   hesaba ASLA zorla atanmasın (kullanıcı bulgusu: planda sadece "191.02.001 SORUMLU
@@ -10563,7 +10711,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       // "600.01.003 TEVKİFATLI GELİRLER" ise NORMAL satışlar da oraya düşüyordu (kullanıcı bildirdi).
       const saleMatrahDefault = (() => {
         if (!isSale || isReturn) return categoryMatrah; // alıştan iade: 600 değil, orijinal stok/gider
-        const g600 = accounts.filter((a: any) => { const c = String(a.accountCode || ''); return c.startsWith('600') && !c.startsWith('79'); });
+        const g600 = accounts.filter((a: any) => { const c = String(a.accountCode || ''); return c.startsWith('600') && !c.startsWith('79') && isPostableLeaf(c); });
         if (!g600.length) return categoryMatrah;
         if (tevkPay >= 1) {
           // önce TAM oran ("2/10"), sonra "tevkifat" kelimesi ya da herhangi "X/10" deseni.
@@ -10580,7 +10728,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       })();
       // SATIŞ oran-bazlı pool: 600 grubu (tevkifat-farkında) leaf'leri — matrahForRate satırın oranına
       //   göre seçer (600.01.001 %1 / .002 %10 / .003 %20). saleMatrahDefault tek-değer fallback'tir.
-      const saleGroupLeaves: any[] = isSale ? (() => {
+      const saleGroupLeaves: any[] = (isSale && !isReturn) ? (() => {
         const g600 = accounts.filter((a: any) => { const c = String(a.accountCode || ''); return c.startsWith('600') && !c.startsWith('79') && isPostableLeaf(c); });
         if (!g600.length) return [];
         if (tevkPay >= 1) return g600.filter((a: any) => this.isTevkifatAccountName(a.accountName || '') || String(a.accountName || '').includes(`${tevkPay}/10`));
@@ -10631,7 +10779,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         //   genel leaf (153.01.001=%1) atanıyordu → çok-oranlı faturada %10 matrahı da %1 hesabına
         //   gidiyordu (kullanıcı: "aynı faturada birden fazla oran var, niye orana dikkat etmiyor").
         if (!m && rate) {
-          const pool = isSale ? saleGroupLeaves : categoryGroupLeaves;
+          // ALIŞTAN iade (isSale && isReturn): oran-eşleşmesi 600'e (ciro) SIZMASIN — matrah orijinal
+          //   stok/gider grubunda (categoryGroupLeaves) aranır (saleMatrahDefault zaten öyle döner).
+          const pool = (isSale && !isReturn) ? saleGroupLeaves : categoryGroupLeaves;
           const hit = (pool || []).find((a: any) => (this.norm(String(a.accountName || '')).match(/\d+/g) || ([] as string[])).includes(rate));
           if (hit) m = leafOnly(hit);
         }
@@ -11017,6 +11167,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // (Eski "İLK kelime ZORUNLU" kuralı A101 gibi marka-önekli carileri kaçırıyordu — kullanıcı
     //  "kabak gibi planında var ama eşleştirmiyor" dedi; VKN plan'da boş → isim tek dayanak.)
     if (h.length >= 2 && shared < 2) return 0;
+    // TEK-TOKEN kuralı sıkılaştırıldı: hint tek ayırt edici kelimeye İNDİYSE (UNOX), karşı taraf da
+    //   AYNI tek kelimeye inmeli (UNOX GIDA SAN. → {unox} ✓). Aksi halde "ANADOLU LOJİSTİK" ({anadolu})
+    //   plandaki HERHANGİ "ANADOLU …" carisiyle (ANADOLU SİGORTA, ANADOLU EFES) eşleşiyordu —
+    //   yanlış cariden İYİDİR boş kalması (kullanıcı seçer → VKN hafızasına öğrenilir).
+    if (h.length === 1 && nameSet.size > 1) return 0;
     return shared * 100;
   }
 

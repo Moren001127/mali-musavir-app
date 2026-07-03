@@ -20,6 +20,10 @@ async function uyumsoftSoap(url: string, action: string, bodyXml: string): Promi
   return res.text();
 }
 
+function xmlEsc(s: any): string {
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+}
+
 function extractTag(xml: string, tag: string): string | null {
   const m = xml.match(new RegExp(`<(?:[^:>]+:)?${tag}[^>]*>([\\s\\S]*?)<\\/(?:[^:>]+:)?${tag}>`, 'i'));
   return m ? m[1].trim() : null;
@@ -46,8 +50,8 @@ export class UyumsoftAdapter implements EFaturaAdapter {
       'Login',
       `<Login xmlns="http://uyumsoft.com.tr">
         <request>
-          <UserName>${credentials.username}</UserName>
-          <Password>${credentials.password}</Password>
+          <UserName>${xmlEsc(credentials.username)}</UserName>
+          <Password>${xmlEsc(credentials.password)}</Password>
         </request>
       </Login>`,
     );

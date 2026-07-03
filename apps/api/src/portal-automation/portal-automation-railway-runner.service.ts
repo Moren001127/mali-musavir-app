@@ -747,7 +747,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       }
 
       if (jobType === 'EARSIV_PORTAL_FETCH' && bundle.job?.payload?.validationOnly !== true) {
-        const earsiv = await this.collectEarsivPortalViaApi(page, bundle.job);
+        const earsiv = await this.collectEarsivPortalViaApi(page, bundle.job, tenantId);
         const modeLabel = bundle.job?.payload?.earsivMode === 'query' ? 'satir listelendi' : 'belge indirildi';
         await this.jobProgress(tenantId, bundle.job, 'earsiv_done', `GIB e-Arsiv sorgusu: ${earsiv.recordCount} ${modeLabel}.`);
         await context.close().catch(() => {});
@@ -1579,7 +1579,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     return { documents, notes };
   }
 
-  private async collectEarsivPortalViaApi(page: any, job: any) {
+  private async collectEarsivPortalViaApi(page: any, job: any, tenantId: string) {
     const token = await this.earsivTokenFromPage(page);
     if (!token) throw new Error('GIB e-Arsiv token alinamadi');
 
@@ -1615,6 +1615,13 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     //   (err.partialDocuments) çağıran tarafa (runOne) taşınır, oradan kaydedilir.
     try {
       for (let i = 0; i < rows.length && documents.length < max; i++) {
+        // KALP ATIŞI (denetim bulgusu): uzun indirme döngüsünde job'ın updatedAt'i hiç tazelenmiyordu;
+        //   45dk'lık stale-watchdog (failStaleRunnerJobs) işi 'failed' yapıp kısmi kayıt korumasını
+        //   boşa çıkarıyordu. Her 10 satırda bir ilerleme yazılır → updatedAt tazelenir.
+        //   jobProgress hataları içeride yutar, döngüyü durdurmaz.
+        if (i > 0 && i % 10 === 0) {
+          await this.jobProgress(tenantId, job, 'earsiv_progress', `GIB e-Arsiv: ${i}/${rows.length} satir islendi, ${documents.length} belge toplandi.`);
+        }
         const row = rows[i] || {};
         const uuid = this.earsivRead(row, ['ettn', 'uuid', 'faturaUuid', 'belgeUuid']);
         const invoiceNo = this.earsivRead(row, ['belgeNumarasi', 'faturaNo', 'faturaNumarasi', 'belgeNo']);
@@ -1816,8 +1823,11 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       ettn: uuid,
       onayDurumu: signed,
     });
-    const content = typeof html?.data === 'string' ? html.data : JSON.stringify(html?.data || {});
-    if (!content || content.length < 100) throw new Error('HTML icerigi bos');
+    // HTML DOGRULAMA (denetim bulgusu): data string degilse eskiden JSON.stringify edilip ".html" /
+    //   text-html diye saklaniyordu — bozuk yedek. Icerik string degilse ya da hic '<' icermiyorsa
+    //   (HTML degilse) yedek OLUSTURMA; throw ile belgesiz referans kaydi yoluna dusulur.
+    const content = typeof html?.data === 'string' ? html.data : '';
+    if (!content || content.length < 100 || !/</.test(content)) throw new Error('HTML icerigi bos ya da HTML degil');
     const fileName = this.safeFileName(`${fallbackName || uuid}.html`);
     return {
       base64: Buffer.from(content, 'utf8').toString('base64'),

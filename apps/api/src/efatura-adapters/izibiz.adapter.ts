@@ -64,8 +64,8 @@ export class IzibizAdapter implements EFaturaAdapter {
       'Login',
       `<Login xmlns="http://login.izibiz.com.tr">
         <REQUEST_HEADER><SESSION_ID></SESSION_ID><APPLICATION_NAME>moren-portal</APPLICATION_NAME></REQUEST_HEADER>
-        <USER_NAME>${credentials.username}</USER_NAME>
-        <PASSWORD>${credentials.password}</PASSWORD>
+        <USER_NAME>${String(credentials.username ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;')}</USER_NAME>
+        <PASSWORD>${String(credentials.password ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;')}</PASSWORD>
       </Login>`,
     );
     const sessionId = extractTag(xml, 'SESSION_ID');

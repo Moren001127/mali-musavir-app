@@ -121,6 +121,18 @@ function deriveDurum(doc: any, isIsletme = false, autoKtKod = ''): { k: string; 
   const sumB = lines.reduce((s: number, l: any) => s + Number(l.debit || 0), 0);
   const sumA = lines.reduce((s: number, l: any) => s + Number(l.credit || 0), 0);
   const dengesiz = lines.length > 0 && Math.abs(sumB - sumA) > 0.5; // borç ≠ alacak = GERÇEK denge hatası
+  // TOPLAM UYUMU: satırlar kendi içinde dengeli olsa da yevmiye toplamı belge tutarından sapabilir —
+  //   backend approve'da TOTAL_MISMATCH ile reddeder ama liste "Eşleşti" derdi. Backend'le AYNI mantık:
+  //   yevmiye toplamı = max(borç, alacak); tolerans = Math.max(0.5, oranSatırıSayısı*0.05) (çok-oranlı
+  //   kuruş yuvarlaması). totalAmount 0/boşsa kontrol atlanır. İşletme defteri tek-taraflı → uygulanmaz.
+  const totalAmt = Number(doc.totalAmount || 0);
+  let toplamUyumsuz = false;
+  if (!isIsletme && lines.length > 0 && totalAmt > 0) {
+    const yevmiyeToplam = Math.max(sumB, sumA);
+    const rateLineCount = lines.filter((l: any) => ['matrah', 'vergi', 'vergi-sorumlu'].includes(String(l.group || ''))).length;
+    const totalTol = Math.max(0.5, rateLineCount * 0.05);
+    toplamUyumsuz = Math.abs(yevmiyeToplam - totalAmt) > totalTol;
+  }
   // İADE: 610/611 ters-kayıt satırı KONDUYSA "iade normal kayıt yapılamaz" (RETURN_NEEDS_REVERSAL)
   //   uyarısı GÜNCEL DEĞİLDİR (610 eklendi/rematch attı, revalidate olmadan eski kayıt kalır). Güncel
   //   satırdan türet: 610 varsa bu issue'yu yok say → geriye sadece gerçek eksik (cari) kalır.
@@ -135,8 +147,8 @@ function deriveDurum(doc: any, isIsletme = false, autoKtKod = ''): { k: string; 
     && !(i.code === 'RETURN_NEEDS_REVERSAL' && hasReturnLine));
   // DEMİRBAŞ (sabit kıymet) alış/satışı: otomatik işlenmez → Luca'da manuel. "Çelişki"den AYRI/ÖNCE göster.
   if (issues.some((i: any) => i?.code === 'FIXED_ASSET_MANUAL')) return { k: 'asset', t: 'Demirbaş — manuel', cat: 'demirbas' };
-  const vissue = dengesiz || nonAmountIssues.length > 0;
-  if (vissue) return { k: 'warn', t: 'Çelişki — kontrol et', cat: 'celiski' };
+  const vissue = dengesiz || toplamUyumsuz || nonAmountIssues.length > 0;
+  if (vissue) return { k: 'warn', t: toplamUyumsuz && !dengesiz && !nonAmountIssues.length ? 'Çelişki — toplam belge tutarından farklı' : 'Çelişki — kontrol et', cat: 'celiski' };
   // İŞLETME DEFTERİ (Defter-Beyan): tek-taraflı — hesap planı/kodu YOK, cari kodu açılmaz.
   //   Sınıflandırma = Kayıt Türü (Mal/Hizmet Satışı) MÜKELLEFİN FAALİYETİNE göre otomatik belirlenir.
   //   Tutar okunmuş + kayıt türü çözülmüşse "Eşleşti"; çözülemezse "İncele" (Bilanço kod eksiği UYGULANMAZ).
@@ -782,6 +794,13 @@ export default function FaturaMerkeziPage() {
         .catch(() => []),
   });
   const taxpayers: any[] = taxpayersQ.data || [];
+  // localStorage'dan gelen mükellef id'si listede YOKSA (silinmiş/pasif) temizle — yoksa etiket
+  //   "Tüm mükellefler" görünür ama sorgular ölü id ile filtrelenir → her ekran boş kalır.
+  //   Liste boşken dokunma (geçici yükleme/hata durumunda seçimi kaybetme).
+  useEffect(() => {
+    if (!taxpayerId || !Array.isArray(taxpayersQ.data) || taxpayersQ.data.length === 0) return;
+    if (!taxpayersQ.data.some((t: any) => String(t.id) === String(taxpayerId))) setTaxpayerId('');
+  }, [taxpayerId, taxpayersQ.data]);
 
   // Menü rozetleri için canlı özet (mükellef + dönem)
   const summaryQ = useQuery({
@@ -950,6 +969,9 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
   const durumCount = (cat: string) => cat === 'all' ? docsAll.length : docsAll.filter((d) => dd(d).cat === cat).length;
   const docs = durumF === 'all' ? docsAll : docsAll.filter((d) => dd(d).cat === durumF);
   const [sel, setSel] = useState<Set<string>>(new Set());
+  // Mükellef/dönem/sekme değişince ESKİ seçim ve durum filtresi taşınmasın — yoksa "AI ile oku"
+  //   önceki ekranda seçilmiş (artık görünmeyen) belgeleri de okuturdu.
+  useEffect(() => { setSel(new Set()); setDurumF('all'); }, [taxpayerId, period, kind]);
   const toggle = (id: string) =>
     setSel((prev) => {
       const n = new Set(prev);
@@ -1009,13 +1031,20 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
   });
   const approveMut = useMutation({
     mutationFn: async (ids: string[]) => {
-      let ok = 0;
+      let ok = 0, fail = 0, firstErr = '';
       for (const id of ids) {
-        try { await api.post(`/fatura-muhasebelestirme/documents/${id}/approve`); ok++; } catch { /* atla */ }
+        try { await api.post(`/fatura-muhasebelestirme/documents/${id}/approve`); ok++; }
+        catch (e: any) { fail++; if (!firstErr) firstErr = e?.response?.data?.message || e?.message || 'hata'; }
       }
-      return ok;
+      return { ok, fail, firstErr };
     },
-    onSuccess: (ok) => { toast.success(`${ok} belge muhasebeleştirildi`); setSel(new Set()); qc.invalidateQueries({ queryKey: ['fm2'] }); },
+    onSuccess: ({ ok, fail, firstErr }) => {
+      // Başarısızları YUTMA: "0 belge muhasebeleştirildi" yeşil toast yalan olur.
+      if (ok > 0) toast.success(`${ok} belge muhasebeleştirildi`);
+      if (fail > 0) toast.warning(`${fail} belge onaylanamadı${firstErr ? `: ${firstErr}` : ''}`, { duration: 9000 });
+      if (ok > 0) setSel(new Set()); // hepsi başarısızsa seçim kalsın — kullanıcı düzeltip tekrar dener
+      qc.invalidateQueries({ queryKey: ['fm2'] });
+    },
     onError: () => toast.error('Muhasebeleştirme başarısız'),
   });
 
@@ -1025,7 +1054,9 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
   // İlerleme aşağıdaki tarama şeridinden izlenir.
   const [aiBusy, setAiBusy] = useState(false);
   const aiOku = async () => {
-    const ids = [...sel];
+    // Çifte emniyet: yalnız ŞU AN görünür listedeki seçimler okunur (bayat/başka sekme seçimi gitmesin).
+    const visibleIds = new Set(docs.map((d: any) => d.id));
+    const ids = [...sel].filter((id) => visibleIds.has(id));
     if (!ids.length) { toast.error('Önce belge seç'); return; }
     setAiBusy(true);
     try {
@@ -1443,6 +1474,10 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
   //   ay/dönem seçici) geçerli kalır; doldurulursa Sorgula bu aralığa göre çalışır.
   const [rangeFrom, setRangeFrom] = useState('');
   const [rangeTo, setRangeTo] = useState('');
+  // Aralık doğrulama: başlangıç > bitiş = sorgu YAPILMAZ (buton kilitli + uyarı). Tek alan doluysa
+  //   aralık sorguya GİTMEZ (backend ay dönemine düşer) — kullanıcıya sessizce değil, açıkça söyle.
+  const rangeInvalid = !!rangeFrom && !!rangeTo && rangeFrom > rangeTo;
+  const rangePartial = !rangeInvalid && (!!rangeFrom !== !!rangeTo);
   const [efaturaChannel, setEfaturaChannel] = useState<'IN_EFATURA' | 'OUT_EFATURA' | 'OUT_EARSIV'>('IN_EFATURA');
   const [lastEfaturaSync, setLastEfaturaSync] = useState<any>(null);
   const [efaturaPollUntil, setEfaturaPollUntil] = useState(0);
@@ -1809,7 +1844,13 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
         {(rangeFrom || rangeTo) && (
           <button type="button" className="btn sm ghost" onClick={() => { setRangeFrom(''); setRangeTo(''); }}>Temizle</button>
         )}
-        <span className="sourcehint" style={{ margin: 0 }}>Boş bırakılırsa üstteki dönem (ay) kullanılır.</span>
+        {rangeInvalid ? (
+          <span style={{ margin: 0, fontSize: 12, fontWeight: 700, color: '#dc2626' }}>Başlangıç tarihi bitişten sonra olamaz — düzeltmeden sorgulanamaz.</span>
+        ) : rangePartial ? (
+          <span style={{ margin: 0, fontSize: 12, fontWeight: 700, color: '#b45309' }}>Aralık için İKİ tarih de gerekli — tek tarihle aralık sorguya gitmez, üstteki dönem (ay) kullanılır.</span>
+        ) : (
+          <span className="sourcehint" style={{ margin: 0 }}>Boş bırakılırsa üstteki dönem (ay) kullanılır.</span>
+        )}
       </div>
 
       {source === 'earsiv' ? (
@@ -1817,7 +1858,7 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
           <div className="ch sourcehead">
             <span className="mu">{waitForFirstRows ? 'Sorgu/aktarım çalışıyor' : lastJob ? `Son iş: ${lastJob.status} · ${fmtDate(lastJob.updatedAt || lastJob.createdAt)}` : 'Henüz sorgu yok'}</span>
             <div className="sp" />
-            <button className="btn sm fetch" disabled={!taxpayerId || sorgulaMut.isPending || waitForFirstRows} onClick={() => sorgulaMut.mutate()}><Ico html={I.sync} size={13} /> {sorgulaMut.isPending ? 'Sorgulanıyor…' : 'Sorgula'}</button>
+            <button className="btn sm fetch" disabled={!taxpayerId || rangeInvalid || sorgulaMut.isPending || waitForFirstRows} title={rangeInvalid ? 'Tarih aralığı hatalı: başlangıç bitişten sonra' : undefined} onClick={() => sorgulaMut.mutate()}><Ico html={I.sync} size={13} /> {sorgulaMut.isPending ? 'Sorgulanıyor…' : 'Sorgula'}</button>
             <button className="btn sm primary" disabled={!taxpayerId || aktarMut.isPending || waitForFirstRows || processable.length === 0} onClick={() => aktarMut.mutate()}><Ico html={I.download} size={13} /> {aktarMut.isPending ? 'Aktarılıyor…' : `${selectedRefs.length ? selectedRefs.length : processable.length} faturayı aktar`}</button>
             <button className="btn sm ghost" disabled={!taxpayerId || syncMut.isPending || rows.length === 0} onClick={() => syncMut.mutate()}><Ico html={I.checkSm} size={13} /> Durumu eşitle</button>
           </div>
@@ -1888,7 +1929,7 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
               <b>{efaturaProviderLabel(activeEfaturaProvider) || 'Entegrator yok'}</b>
               <span>{providerConnected(activeEfaturaProvider) ? 'Kimlik bilgisi hazir' : 'Entegratorler ekranindan sifre tanimlanmali'}</span>
             </div>
-            <button className="btn sm fetch" disabled={!taxpayerId || !providerConnected(activeEfaturaProvider) || efaturaOverlayBusy} onClick={() => efaturaFetchMut.mutate({ provider: activeEfaturaProvider.provider })}>
+            <button className="btn sm fetch" disabled={!taxpayerId || rangeInvalid || !providerConnected(activeEfaturaProvider) || efaturaOverlayBusy} title={rangeInvalid ? 'Tarih aralığı hatalı: başlangıç bitişten sonra' : undefined} onClick={() => efaturaFetchMut.mutate({ provider: activeEfaturaProvider.provider })}>
               <Ico html={I.sync} size={13} /> {(efaturaFetchMut.isPending || efaturaQueuedSync) ? 'Sorgulaniyor...' : 'Sorgula'}
             </button>
             <button className="btn sm primary" disabled={!taxpayerId || efaturaOverlayBusy || efaturaDownloading || efaturaTransferableRows.length === 0} onClick={() => efaturaImportMut.mutate()} title={efaturaDownloading ? 'Belgeler iniyor; bitince aktarabilirsin (görseller önceden inecek)' : undefined}>
@@ -2937,9 +2978,13 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                                   //   vergi-sorumlu grubuna taşı — rematch'in 191-normal/191-sorumlu hesabını
                                   //   doğru ayırt etmesi (ve yevmiyenin doğru kurulması) buna bağlı.
                                   if (g.keys.length > 1) {
-                                    const acc = (accountPlan || []).find((a: any) => String(a.accountCode) === String(code));
-                                    const isResp = !!acc && /sorumlu/i.test(String((acc as any).accountName || ''));
-                                    setLine(i, 'group', isResp ? 'vergi-sorumlu' : 'vergi');
+                                    // Hesap planı {code, name} döner (accountCode/accountName DEĞİL). Kod planda
+                                    //   yoksa mevcut grubu KORU — vergi-sorumlu satırını körlemesine vergi'ye düşürme.
+                                    const acc = (accountPlan || []).find((a: any) => String(a.code) === String(code));
+                                    if (acc) {
+                                      const isResp = /sorumlu/i.test(String(acc.name || ''));
+                                      setLine(i, 'group', isResp ? 'vergi-sorumlu' : 'vergi');
+                                    }
                                   }
                                 }} onAddNew={(code) => openAddAccount(code)} />
                                 {g.key !== 'cari' && g.key !== 'tevkifat'

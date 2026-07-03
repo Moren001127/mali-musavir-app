@@ -269,7 +269,7 @@ export function buildLucaIsletmeHizliFisCsv(payload: BatchPayload): Buffer {
     for (const l of inv.lines || []) {
       const amt = Number(isSale ? l.credit : l.debit) || 0;
       if (l.group === 'matrah') lineMatrah += amt;
-      else if (l.group === 'vergi') { lineKdv += amt; if (!rate && l.rate) rate = String(l.rate).replace(/[%\s]/g, ''); }
+      else if (l.group === 'vergi' || l.group === 'vergi-sorumlu') { lineKdv += amt; if (!rate && l.rate) rate = String(l.rate).replace(/[%\s]/g, ''); }
     }
     const fatTarihi = parseDate(inv.faturaTarihi);
     const tarihStr = fatTarihi ? fmtTr(fatTarihi) : '';

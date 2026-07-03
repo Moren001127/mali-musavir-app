@@ -29,7 +29,10 @@ export interface GiderIcerikSonuc {
 const ICERIK_KURAL: Array<[RegExp, string, string]> = [
   // ── ARAÇ / TAŞIT (spesifik — genel bakım/sigorta/kira'dan ÖNCE) ──
   [/akaryakit|motorin|\bbenzin\b|\bmazot\b|\bdizel\b|\blpg\b|\bopet\b|\bshell\b|aytemiz|petrol ofisi|\bpetrol\b|totalenergies|yakit gideri|\byakit\b/, 'akaryakıt yakıt taşıt', 'genel_gider'],
-  [/oto servis|oto tamir|oto bakim|arac bakim|tasit bakim|arac tamir|tasit tamir|\blastik\b|yedek parca|oto yedek|\bbalata\b|oto elektrik|oto yikama|rot balans|rot ayari|balans ayari|sokme takma|oto cam|periyodik bakim|\bakumulator\b|oto lastik|motor yagi|fren balata|\bfiltre\b|diagnostik|teshis|agir vasita|\biscilik\b|arac muayene|tasit muayene|\bmuayene\b|tuvturk/, 'araç taşıt bakım onarım', 'genel_gider'],
+  // NOT: eski hâlinde \bfiltre\b / \biscilik\b / \bmuayene\b / teshis TEK BAŞINA eşleşiyordu —
+  //   "FİLTRE KAHVE", "MONTAJ İŞÇİLİĞİ" (inşaat), doktor "muayene" ücreti yanlışlıkla araç-bakım
+  //   sayılıp CLS-SKIP ile AI'ı da atlatıyordu → bağlam şartına bağlandı.
+  [/oto servis|oto tamir|oto bakim|arac bakim|tasit bakim|arac tamir|tasit tamir|\blastik\b|yedek parca|oto yedek|\bbalata\b|oto elektrik|oto yikama|rot balans|rot ayari|balans ayari|sokme takma|oto cam|periyodik bakim|\bakumulator\b|oto lastik|motor yagi|fren balata|(yag|hava|polen|yakit|klima|kabin)\s*filtre|filtre\s*(degisim|bakim)|diagnostik|ariza teshis|agir vasita|(oto|arac|tasit|motor|kaporta|boya)\s*iscilik|arac muayene|tasit muayene|fenni muayene|tuvturk/, 'araç taşıt bakım onarım', 'genel_gider'],
   [/arac kira|oto kira|rent.?a.?car|filo kira|tasit kira|otomobil kira/, 'araç taşıt kiralama', 'genel_gider'],
   [/\bkasko\b|trafik sigorta|zorunlu trafik|arac sigorta|tasit sigorta|motorlu tasit sigorta/, 'araç taşıt sigorta kasko', 'genel_gider'],
   [/otopark|park ucret|\bvale\b|kapali otopark/, 'otopark', 'genel_gider'],
@@ -38,7 +41,9 @@ const ICERIK_KURAL: Array<[RegExp, string, string]> = [
   // ── ENERJİ / HABERLEŞME / İŞYERİ ──
   [/elektrik|enerjisa|\bbedas\b|\bayedas\b|\btedas\b|\buedas\b|enerji perakende|elektrik dagitim/, 'elektrik enerji', 'genel_gider'],
   [/dogalgaz|\bigdas\b|baskentgaz|\bizgaz\b|gaz dagitim|\bbursagaz\b/, 'doğalgaz gaz', 'genel_gider'],
-  [/(?:^|\W)su(?:\W|$)|\biski\b|\baski\b|\bizsu\b|\bbuski\b|su ve kanalizasyon|su idaresi|su tuketim/, 'su', 'genel_gider'],
+  // NOT: eski hâlinde tek başına "su" kelimesi eşleşiyordu → "SU POMPASI/SU DEPOSU" İSKİ gideri
+  //   sanılıyordu; artık kurum adı ya da fatura bağlamı şart (damacana/içme suyu ofis gideri sayılır).
+  [/\biski\b|\baski\b|\bizsu\b|\bbuski\b|su ve kanalizasyon|su idaresi|su tuketim|su fatura|su bedeli|sebeke suyu|damacana|icme suyu/, 'su', 'genel_gider'],
   [/telefon|turkcell|vodafone|turk telekom|\bgsm\b|mobil hat/, 'telefon iletişim haberleşme', 'genel_gider'],
   [/internet|\bfaks\b|\bfiber\b|\bttnet\b|superonline|hosting|alan adi|\bdomain\b|web hosting/, 'internet haberleşme', 'genel_gider'],
   [/\baidat\b|site aidat|yonetim gideri|ortak gider|apartman aidat/, 'aidat ortak gider', 'genel_gider'],

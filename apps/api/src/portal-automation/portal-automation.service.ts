@@ -737,16 +737,12 @@ export class PortalAutomationService {
     };
     return rows.map((row: any) => {
       const acc = accByRef.get(row.sourceRefId);
-      // "Aktarıldı mı" GERÇEK kaynaktan (invoiceAccountingDocument.lucaStatus) okunur — kullanıcı
-      //   bulgusu: önceki mantık (aktarimDurumu==='indirildi' && sorguMode==='download') SON sorgunun
-      //   moduna bağlıydı; "Sorgula" (mode='query') TEKRAR basılınca bu eski "download" bilgisi
-      //   EZİLİYOR, gerçekten Luca'ya gönderilmiş (POSTED) bir fatura YANLIŞLIKLA "aktarılmadı" (X)
-      //   görünüyordu — mükerrer aktarım riski. lucaStatus='POSTED'/'POSTING' GERÇEK durumdur, sorgu
-      //   moduna bakmaz; eski 'download' sinyali YEDEK olarak OR'a bırakıldı (geriye dönük uyum).
-      const importedByDownload = !!acc && (
-        ['POSTED', 'POSTING'].includes(String(acc.lucaStatus || ''))
-        || (row.aktarimDurumu === 'indirildi' && row.sorguMode === 'download')
-      );
+      // "Aktarıldı mı" YALNIZ GERÇEK kaynaktan (invoiceAccountingDocument.lucaStatus) okunur.
+      //   Denetim bulgusu: eski YEDEK OR bacağı (aktarimDurumu==='indirildi' && sorguMode==='download')
+      //   YANLIŞ-POZİTİF üretiyordu — belge indirilmiş ama Luca'ya HİÇ gönderilmemişken (lucaStatus
+      //   null) AKTARIM sütunu ✓ görünüyor, kullanıcı Luca'ya aktarıldı sanıyordu. Bacak kaldırıldı;
+      //   lucaStatus='POSTED'/'POSTING' tek doğru kaynaktır.
+      const importedByDownload = !!acc && ['POSTED', 'POSTING'].includes(String(acc.lucaStatus || ''));
       // Muhasebe belgesinden tutar (matrah / KDV / genel toplam) — listede göstermek için.
       const ocr = acc?.ocrData && typeof acc.ocrData === 'object' ? acc.ocrData : null;
       return {
@@ -1175,10 +1171,16 @@ export class PortalAutomationService {
     const job = await (this.prisma as any).portalAutomationJob.findFirst({ where: { id: jobId, tenantId } });
     if (!job) throw new NotFoundException('Job bulunamadi');
     if (job.status === 'cancelled') return job;
+    // Watchdog uzun süren işi 'failed' işaretlemiş olabilir; indirme aslında başarılıysa sonuçları
+    // yine de kaydet, ama iz bırak (denetim bulgusu).
+    if (job.status === 'failed') {
+      this.logger.warn(`completeJob: job ${jobId} durumu 'failed' (watchdog olabilir); sonuclar yine de kaydediliyor.`);
+    }
 
     let recordCount = 0;
     const declarations = Array.isArray(input?.declarations) ? input.declarations : [];
     const documents = Array.isArray(input?.documents) ? input.documents : [];
+    const saveErrors: string[] = [];
 
     // E_TEBLIGAT: PDF'i BU sorguda ILK KEZ inen tebligatlari belirlemek icin, saklamadan
     // ONCE mevcut (storageKey'li) belge no'lari snapshot al. Boylece her re-query'de owner'a
@@ -1194,27 +1196,51 @@ export class PortalAutomationService {
       etbAlreadyBacked = new Set(prevBacked.map((p: any) => String(p.referenceNo)));
     }
 
+    // TOPLU KAYIP KORUMASI (denetim bulgusu): k'ıncı belgede hata fırlarsa k+1..n belgeler HİÇ
+    // saklanmıyor ve job failed oluyordu (indirme başarılıyken). Belge-başına try/catch: hatalı
+    // belge loglanır + result.saveErrors'a işlenir, kalanlar kaydedilmeye devam eder.
     for (const decl of declarations) {
-      await this.storeDeclarationFromAgent(tenantId, jobId, decl);
-      recordCount++;
+      try {
+        await this.storeDeclarationFromAgent(tenantId, jobId, decl);
+        recordCount++;
+      } catch (err: any) {
+        const msg = `Beyanname kaydedilemedi (${(decl as any)?.donem || (decl as any)?.beyannameTuru || '?'}): ${err?.message || err}`;
+        saveErrors.push(msg.slice(0, 300));
+        this.logger.warn(`completeJob ${jobId}: ${msg}`);
+      }
     }
     for (const doc of documents) {
-      await this.storePortalDocumentFromAgent(tenantId, jobId, doc, job.jobType);
-      recordCount++;
+      try {
+        await this.storePortalDocumentFromAgent(tenantId, jobId, doc, job.jobType);
+        recordCount++;
+      } catch (err: any) {
+        const msg = `Belge kaydedilemedi (${doc?.referenceNo || doc?.title || doc?.originalName || '?'}): ${err?.message || err}`;
+        saveErrors.push(msg.slice(0, 300));
+        this.logger.warn(`completeJob ${jobId}: ${msg}`);
+      }
     }
 
     const finalCount = Number.isFinite(Number(input?.recordCount)) ? Number(input.recordCount) : recordCount;
     await this.markCredentialSuccess(job).catch(() => {});
-    const doneMessage = input?.result?.validationOnly
+    let doneMessage = input?.result?.validationOnly
       ? 'Portal girisi dogrulandi.'
       : finalCount > 0
       ? `${finalCount} kayit portala yazildi.`
       : 'GIB sorgusu tamamlandi, indirilecek kayit bulunamadi.';
+    let resultData: any = input?.result || { declarations: declarations.length, documents: documents.length };
+    if (saveErrors.length) {
+      resultData = resultData && typeof resultData === 'object' && !Array.isArray(resultData) ? { ...resultData } : { value: resultData };
+      resultData.saveErrors = saveErrors.slice(0, 50);
+      if (Array.isArray(resultData.notes)) {
+        resultData.notes = [...resultData.notes, `⚠ ${saveErrors.length} kayit saklanirken hata oldu (detay: saveErrors)`];
+      }
+      doneMessage = `${doneMessage} (${saveErrors.length} kayit saklanamadi)`;
+    }
     const updated = await (this.prisma as any).portalAutomationJob.update({
       where: { id: jobId },
       data: {
         status: 'done',
-        result: input?.result || { declarations: declarations.length, documents: documents.length },
+        result: resultData,
         recordCount: finalCount,
         finishedAt: new Date(),
         payload: this.withJobProgress(job.payload, {
@@ -1261,7 +1287,12 @@ export class PortalAutomationService {
     const job = await (this.prisma as any).portalAutomationJob.findFirst({ where: { id: jobId, tenantId } });
     if (!job) throw new NotFoundException('Job bulunamadi');
     if (job.status === 'cancelled') return job;
-    if (job.status !== 'running') throw new BadRequestException(`Job ara kayit icin running degil: ${job.status}`);
+    // 'failed' de kabul edilir (denetim bulgusu): stale-watchdog uzun süren işi 'failed' işaretlemiş
+    //   olabilir; runner o ana kadar topladığı belgeleri yine de kaydedebilmeli. Yalnız cancelled
+    //   (yukarıda) ve done/pending gibi durumlar reddedilir.
+    if (!['running', 'failed'].includes(String(job.status))) {
+      throw new BadRequestException(`Job ara kayit icin uygun durumda degil (running/failed bekleniyor): ${job.status}`);
+    }
 
     let recordCount = 0;
     const declarations = Array.isArray(input?.declarations) ? input.declarations : [];
@@ -1924,12 +1955,27 @@ export class PortalAutomationService {
       const tp = await (this.prisma as any).taxpayer.findFirst({ where: { id: taxpayerId, tenantId }, select: { id: true } });
       if (!tp) throw new NotFoundException('Belge mukellefi bulunamadi');
     }
+    // MÜKERRER ÖNLEME (denetim bulgusu): dedup kontrolü eskiden blob upload + Document/DocumentVersion
+    //   olusturmadan SONRA yapiliyordu — tekrar sorguda ayni fatura icin her seferinde yeni blob ve
+    //   yeni Document (Evrak) olusuyor, dedup "existing" dondugu icin bunlar OKSUZ birikiyordu.
+    //   Kontrol EN BASA alindi: mevcut kayitta storageKey VARSA upload + Document/Version olusturma
+    //   tamamen atlanir. Kayit var ama storageKey YOKSA (dosya ilk kez geldi) olusturma yapilir ve
+    //   asagidaki patch ile mevcut kayda baglanir (eski davranis korunur).
+    const DEDUP_BELGE_TURU = ['E_TEBLIGAT', 'EARSIV_FATURA', 'SGK_TAHAKKUK', 'SGK_HIZMET_LISTESI'];
+    let existingDedup: any = null;
+    if (DEDUP_BELGE_TURU.includes(String(input.belgeTuru)) && input.referenceNo) {
+      existingDedup = await (this.prisma as any).portalDocument.findFirst({
+        where: { tenantId, belgeTuru: String(input.belgeTuru), referenceNo: String(input.referenceNo) },
+        select: { id: true, taxpayerId: true, storageKey: true, sizeBytes: true, mimeType: true, raw: true },
+      });
+    }
+    const skipBlobCreate = !!existingDedup?.storageKey;
     const mimeType = input.mimeType || 'application/pdf';
     const sourceProvider = JOB_META[jobType as PortalJobType]?.provider || 'GIB_IVD';
     let storageKey: string | null = null;
     let sizeBytes: number | null = null;
     const base64 = cleanBase64(input.base64);
-    if (base64) {
+    if (base64 && !skipBlobCreate) {
       const buffer = Buffer.from(base64, 'base64');
       sizeBytes = buffer.length;
       const ext = this.extensionFromMime(mimeType, input.originalName);
@@ -1985,44 +2031,44 @@ export class PortalAutomationService {
     }
 
     // E-Tebligat + SGK (tahakkuk/hizmet) mukerrer engelle (belge no + belgeTuru benzersiz).
-    // Varsa: eksik mukellefi / PDF'i geri doldur, kopya olusturma.
-    const DEDUP_BELGE_TURU = ['E_TEBLIGAT', 'EARSIV_FATURA', 'SGK_TAHAKKUK', 'SGK_HIZMET_LISTESI'];
-    if (DEDUP_BELGE_TURU.includes(String(input.belgeTuru)) && input.referenceNo) {
-      const existing = await (this.prisma as any).portalDocument.findFirst({
-        where: { tenantId, belgeTuru: String(input.belgeTuru), referenceNo: String(input.referenceNo) },
-        select: { id: true, taxpayerId: true, storageKey: true, raw: true },
-      });
-      if (existing) {
-        const patch: any = {};
-        if (!existing.taxpayerId && taxpayerId) patch.taxpayerId = taxpayerId;
-        if (!existing.storageKey && storageKey) {
-          patch.storageKey = storageKey;
-          patch.sizeBytes = sizeBytes;
-          patch.mimeType = mimeType;
-          if (documentId) patch.documentId = documentId;
-        }
-        // SGK meta backfill: PDF'ten meta işlendiyse mevcut raw'ı güncelle (eksik alanları/tutarı doldurur).
-        const newRaw: any = input.raw || {};
-        if (newRaw.metaVersion || newRaw.metaParsed || newRaw.kanunNo || newRaw.belgeMahiyeti || newRaw.tutar) {
-          patch.raw = input.raw;
-        }
-        if (String(input.belgeTuru) === 'EARSIV_FATURA' && newRaw.mode) {
-          patch.raw = { ...(existing.raw && typeof existing.raw === 'object' ? existing.raw : {}), ...newRaw };
-        }
-        if (Object.keys(patch).length) {
-          const updated = await (this.prisma as any).portalDocument.update({ where: { id: existing.id }, data: patch });
-          if ((input.raw as any)?.mode !== 'query') {
-            await this.importEarsivPortalDocumentToAccounting(tenantId, jobId, input, jobType, storageKey, sizeBytes, mimeType)
-              .catch((err) => this.logger.warn(`e-Arsiv Fatura Merkezi aktarimi yapilamadi: ${err?.message || err}`));
-          }
-          return updated;
-        }
+    // Varsa: eksik mukellefi / PDF'i geri doldur, kopya olusturma. (Lookup yukarida, blob upload'dan
+    // ONCE yapildi — existingDedup.)
+    if (existingDedup) {
+      const existing = existingDedup;
+      // Fatura Merkezi aktarimi icin etkin depolama bilgisi: bu cagride yeni blob olusturulduysa o,
+      // olusturulmadiysa (skipBlobCreate) mevcut kayittaki — eski davranistaki gibi import calisir.
+      const effStorageKey = storageKey || existing.storageKey || null;
+      const effSizeBytes = storageKey ? sizeBytes : (existing.sizeBytes ?? null);
+      const effMimeType = storageKey ? mimeType : (existing.mimeType || mimeType);
+      const patch: any = {};
+      if (!existing.taxpayerId && taxpayerId) patch.taxpayerId = taxpayerId;
+      if (!existing.storageKey && storageKey) {
+        patch.storageKey = storageKey;
+        patch.sizeBytes = sizeBytes;
+        patch.mimeType = mimeType;
+        if (documentId) patch.documentId = documentId;
+      }
+      // SGK meta backfill: PDF'ten meta işlendiyse mevcut raw'ı güncelle (eksik alanları/tutarı doldurur).
+      const newRaw: any = input.raw || {};
+      if (newRaw.metaVersion || newRaw.metaParsed || newRaw.kanunNo || newRaw.belgeMahiyeti || newRaw.tutar) {
+        patch.raw = input.raw;
+      }
+      if (String(input.belgeTuru) === 'EARSIV_FATURA' && newRaw.mode) {
+        patch.raw = { ...(existing.raw && typeof existing.raw === 'object' ? existing.raw : {}), ...newRaw };
+      }
+      if (Object.keys(patch).length) {
+        const updated = await (this.prisma as any).portalDocument.update({ where: { id: existing.id }, data: patch });
         if ((input.raw as any)?.mode !== 'query') {
-          await this.importEarsivPortalDocumentToAccounting(tenantId, jobId, input, jobType, storageKey, sizeBytes, mimeType)
+          await this.importEarsivPortalDocumentToAccounting(tenantId, jobId, input, jobType, effStorageKey, effSizeBytes, effMimeType)
             .catch((err) => this.logger.warn(`e-Arsiv Fatura Merkezi aktarimi yapilamadi: ${err?.message || err}`));
         }
-        return existing;
+        return updated;
       }
+      if ((input.raw as any)?.mode !== 'query') {
+        await this.importEarsivPortalDocumentToAccounting(tenantId, jobId, input, jobType, effStorageKey, effSizeBytes, effMimeType)
+          .catch((err) => this.logger.warn(`e-Arsiv Fatura Merkezi aktarimi yapilamadi: ${err?.message || err}`));
+      }
+      return existing;
     }
 
     const created = await (this.prisma as any).portalDocument.create({
