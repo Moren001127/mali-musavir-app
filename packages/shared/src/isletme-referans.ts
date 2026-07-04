@@ -292,7 +292,7 @@ const GVK40_ALT_KURAL: Array<[RegExp, string]> = [
   // ── İŞYERİ / ENERJİ / HABERLEŞME ──
   [/elektrik|enerjisa|\bbedas\b|\bayedas\b|\btedas\b|\buedas\b|\bgdz\b|\bedas\b|enerji perakende|elektrik perakende|elektrik dagitim/, '82'], // Elektrik
   [/dogalgaz|\bigdas\b|baskentgaz|\bizgaz\b|\bagdas\b|\bgazel\b|gaz dagitim|\bgaznet\b|\bbursagaz\b|\bpalgaz\b|\bakmercan\b/, '84'],          // Doğalgaz
-  [/\bsu\b|\biski\b|\baski\b|\bizsu\b|\bbuski\b|\basat\b|\bmuski\b|\bsuski\b|\bkaski\b|su ve kanalizasyon|su idaresi|su tuketim/, '83'],     // Su
+  [/\biski\b|\baski\b|\bizsu\b|\bbuski\b|\basat\b|\bmuski\b|\bsuski\b|\bkaski\b|su ve kanalizasyon|su idaresi|su tuketim|su faturasi|su bedeli|sebeke suyu|damacana|icme suyu/, '83'],     // Su (bare "su" KALDIRILDI — "su bazlı boya" yanlış-pozitifti; kurum/bağlam şart)
   [/telefon|turkcell|vodafone|turk telekom|\bavea\b|gsm hat|mobil hat/, '87'],                                                 // Telefon
   [/internet|\bfaks\b|\bfiber\b|\bttnet\b|superonline|kablonet|d-?smart|\bturknet\b|hosting|alan adi|\bdomain\b|web hosting/, '88'], // Haberleşme (internet/faks)
   [/isi yalitim|enerji tasarruf|mantolama|\byalitim\b/, '117'],                                                                // Isı Yalıtımı/Enerji Tasarrufu
@@ -311,7 +311,7 @@ const GVK40_ALT_KURAL: Array<[RegExp, string]> = [
   [/banka masraf|banka komisyon|\beft\b|havale ucret|hesap isletim|\bbsmv\b|banka isletim|pos komisyon|uye isyeri komisyon|kredi karti komisyon/, '206'], // Bankacılık İşlem
   [/\bkargo\b|\bptt\b|\baras kargo\b|yurtici kargo|\bmng\b|surat kargo|\bups\b|\bdhl\b|fedex|\bsendeo\b|\bhepsijet\b|\bposta\b/, '193'], // Kargo ve Posta
   [/nakliye|tasimacilik|\bnavlun\b|lojistik|sevkiyat|tasima hizmet/, '205'],                                                   // Nakliye
-  [/ozel guvenlik|guvenlik hizmet|guvenlik personel|koruma hizmet|guvenlik sirket|devriye hizmet/, '93'],                     // Güvenlik Harcamaları
+  [/ozel guvenlik|guvenlik hizmet|guvenlik personel|koruma hizmet|guvenlik sirket|devriye hizmet|alarm izleme|alarm hizmet|kamera izleme|\bcctv\b|guvenlik kamera|guvenlik sistem/, '93'],                     // Güvenlik Harcamaları
   [/\bkomisyon\b/, '188'],                                                                                                     // Komisyon
   [/\babonelik\b|\buyelik\b|\bpremium\b|membership|e-?ticaret platform|platform hizmet|dijital hizmet|bulut hizmet|yazilim abonelik|lisans bedeli/, '194'], // Abonelik/üyelik/platform hizmeti → Dışarıdan Sağlanan Hizmet (gıdadan ÖNCE — "premium abonelik" gıdaya düşmesin)
   [/danisman|musavirlik hizmet|\bdanismanlik\b|disaridan saglanan|\btaseron\b|\bfason\b|yazilim hizmet|bilisim hizmet|teknik destek/, '194'], // Dışarıdan Sağlanan Fayda ve Hizmet
@@ -323,7 +323,7 @@ const GVK40_ALT_KURAL: Array<[RegExp, string]> = [
   [/\bgiyim\b|kiyafet|uniforma|\bayakkabi\b|\btekstil\b|konfeksiyon|personel kiyafet/, '101'],                                 // Giyim Giderleri
   [/is yemegi|\bagirlama\b|\btemsil\b|misafir ikram|toplanti ikram|temsil agirlama/, '97'],                                    // Temsil ve Ağırlama
   [/temizlik|\bcay\b|\bkahve\b|\bseker\b|deterjan|\bpecete\b|hijyen|kagit havlu|tuvalet kagidi|cop poseti|temizlik malzeme/, '89'], // Ofis (temizlik/çay/kahve)
-  [/gida urun|gida malzeme|\bsebze\b|\bmeyve\b|\bet urun\b|sut urun|\bekmek\b|bakliyat|kuruyemis|\berzak\b|\bbaharat\b|\bzeytin\b|\bpeynir\b/, '90'], // Gıda Harcamaları (İÇERİK kelimeleri — "market/bakkal" gibi SATICI TİPİ değil, vendor adı yanlış pozitif yapıyordu: "D-MARKET")
+  [/gida urun|gida malzeme|\bsebze\b|\bmeyve\b|\bet urun\b|sut urun|\bekmek\b|bakliyat|kuruyemis|\berzak\b|\bbaharat\b|\bzeytin\b|\bpeynir\b|\brestoran\b|\blokanta\b|\byemek\b|catering|yemek servis|tabldot|\bicecek\b|mesrubat/, '90'], // Gıda Harcamaları (İÇERİK kelimeleri — "market/bakkal" gibi SATICI TİPİ değil, vendor adı yanlış pozitif yapıyordu: "D-MARKET"). "is yemegi/temsil" ZATEN YUKARIDA (97) önce eşleşir.
   [/ambalaj|\bposet\b|\bstrec\b|\bkoli\b|tek kullanim|sarf malzeme|\bsarf\b|isletme malzeme|\bnaylon\b|paketleme/, '228'],     // Diğer Sarf Malzeme
   // ── BAKIM/ONARIM (genel — araç-bakım yukarıda öncelikli) ──
   [/bakim onarim|bakim-onarim|\bonarim\b|\btamir\b|servis bedeli|tadilat|tesisat onarim/, '85'],                              // Normal Bakım Onarım
@@ -360,7 +360,8 @@ export function isletmeGiderSinifi(input: {
   documentType?: string | null;
 }): { kayitTuruKod: string; kayitAltKod: string } | null {
   const mk = asciiTr(input.matrahKategori || '');
-  if (mk === 'ticari_mal' || mk === 'hammadde') return { kayitTuruKod: '1', kayitAltKod: '186' }; // Mal Alışı
+  // AI kategoriyi "ticari mal" (boşluklu), "emtia", "mal" gibi varyantla dönebiliyor → tolere et.
+  if (mk === 'ticari_mal' || mk === 'ticari mal' || mk === 'hammadde' || mk === 'emtia' || mk === 'mal' || mk.includes('ticari')) return { kayitTuruKod: '1', kayitAltKod: '186' }; // Mal Alışı
   if (mk === 'demirbas' || mk === 'demirbas alimi' || mk === 'sabit kiymet') return { kayitTuruKod: '13', kayitAltKod: '' }; // Sabit Kıymet Alışı
   const alt = isletmeAutoKayitAltKod('ALIS', '4', `${input.giderTuru || ''} ${input.vendorName || ''} ${input.documentType || ''}`);
   if (alt) return { kayitTuruKod: '4', kayitAltKod: alt };

@@ -19,7 +19,7 @@
 
 import * as ExcelJS from 'exceljs';
 import * as iconv from 'iconv-lite';
-import { normalizeDocumentType } from '@mali-musavir/shared';
+import { normalizeDocumentType, isletmeRef, getKayitAltList } from '@mali-musavir/shared';
 
 export interface InvoiceLine {
   group?: string | null;
@@ -283,15 +283,26 @@ export function buildLucaIsletmeHizliFisCsv(payload: BatchPayload): Buffer {
       ? isl.satirlar
       : [{ kayitTuruAd: isl.kayitTuruAd, kayitAltAd: isl.kayitAltAd, kdvOranKod: isl.kdvOranKod, matrah: isl.matrah ?? lineMatrah, kdvTutar: isl.kdvTutar ?? lineKdv, krediliTutar: isl.krediliTutar, donem: isl.donem, hesapKodu: isl.hesapKodu, tevkifatOrani: isl.tevkifatOrani, stopajOrani: isl.stopajOrani, stopajTutar: isl.stopajTutar }];
 
+    // KOD→AD ÇÖZÜMÜ: belge Muhasebeleştir formunda AÇILMADAN otomatik sınıflanıp onaylandıysa
+    //   ...Ad alanları BOŞ olur; eskiden CSV bunları sabit "Normal Alım/Satış" ya da boş yazıyordu
+    //   (doğru KOD üretilse bile Luca'ya YANLIŞ etiket gidiyordu). Artık koddan ad çözülür.
+    const ref = isletmeRef(inv.invoiceKind);
+    const adOf = (list: any[], kod: any) => (list || []).find((x: any) => String(x.kod) === String(kod || ''))?.ad || '';
+    const alisSatisAdResolved = isl.alisSatisAd || adOf(ref.alisSatisTuru, isl.alisSatisKod) || (isSale ? 'Normal Satış' : 'Normal Alım');
+    const belgeTuruAdResolved = isl.belgeTuruAd || adOf(ref.belgeTuru, isl.belgeTuruKod) || inferIsletmeBelgeTuru(inv);
+
     for (const st of satirlar) {
       const kdvOranNum = ({ KDV20: '20', KDV10: '10', KDV1: '1', KDV0: '0' } as Record<string, string>)[String(st.kdvOranKod || '')] || rate || '';
+      // Satır KATEGORİ/ALT ad'ı da koddan çözülür (auto-sınıfta boş kalmasın).
+      const kayitTuruAdResolved = st.kayitTuruAd || adOf(ref.kayitTuru, st.kayitTuruKod);
+      const kayitAltAdResolved = st.kayitAltAd || adOf(getKayitAltList(inv.invoiceKind, String(st.kayitTuruKod || '')) as any, st.kayitAltKod);
       const stMatrah = Number(st.matrah) || 0;
       const stKdv = Number(st.kdvTutar) || 0;
       // 37 sutun — sirayla. Üst bilgi (isl) tüm satırlarda aynı; satıra özgü alanlar (st).
       const row = [
         isSale ? 'Gelir' : 'Gider',                  // 1 İŞLEM
-        st.kayitTuruAd || '',                         // 2 KATEGORİ
-        isl.belgeTuruAd || inferIsletmeBelgeTuru(inv),// 3 BELGE TÜRÜ
+        kayitTuruAdResolved,                          // 2 KATEGORİ
+        belgeTuruAdResolved,                          // 3 BELGE TÜRÜ
         tarihStr,                                     // 4 EVRAK TARİHİ
         islKayitTarih,                                // 5 KAYIT TARİHİ
         inv.seriNo || '',                             // 6 SERİ NO
@@ -305,8 +316,8 @@ export function buildLucaIsletmeHizliFisCsv(payload: BatchPayload): Buffer {
         '',                                           // 14 KDV İSTİSNASI
         isl.islemTuruKod || '',                       // 15 KOD (İşlem Türü)
         isl.belgeTuruKod || '',                       // 16 BELGE TÜRÜ(DB)
-        isl.alisSatisAd || (isSale ? 'Normal Satış' : 'Normal Alım'), // 17 ALIŞ/SATIŞ TÜRÜ
-        st.kayitAltAd || '',                          // 18 KAYIT ALT TÜRÜ
+        alisSatisAdResolved,                          // 17 ALIŞ/SATIŞ TÜRÜ
+        kayitAltAdResolved,                           // 18 KAYIT ALT TÜRÜ
         isl.plakaNo || '',                            // 19 PLAKA NO
         '',                                           // 20 MAL VE HİZMET KODU
         counterpartyName || '',                       // 21 AÇIKLAMA

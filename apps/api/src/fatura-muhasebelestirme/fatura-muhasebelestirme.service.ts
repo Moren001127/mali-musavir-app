@@ -4916,7 +4916,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // İşletme defteri sınıflandırması — yerleşik desen: ekstra veriyi ocrData JSON'a yaz (migration yok).
     if ('isletme' in body && body.isletme && typeof body.isletme === 'object') {
       const curOcr: any = (before as any)?.ocrData || {};
-      data.ocrData = { ...curOcr, isletme: body.isletme };
+      // userEdited=true: kullanıcı elle düzeltti → rematch/Yeniden Analiz bu belgenin işletme
+      //   sınıfını ARTIK EZMESİN (auto-sınıf tazelenir, elle-düzeltme korunur).
+      data.ocrData = { ...curOcr, isletme: { ...body.isletme, userEdited: true } };
     }
     const duplicate = await this.findDuplicate(tenantId, {
       taxpayerId: body.taxpayerId,
@@ -9308,7 +9310,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     });
     for (const doc of docs) {
       const ocr = (doc.ocrData as any) || {};
-      if (ocr?.isletme?.kayitTuruKod) continue; // zaten sınıflı
+      // KULLANICI ELLE dokunduysa (userEdited) DOKUNMA. OTOMATİK sınıflıysa (autoMatched) TAZELE —
+      //   eskiden "kayitTuruKod varsa continue" ile auto-sınıf da atlanıyordu → okuma/faaliyet/iade
+      //   düzeltmeleri işletme alanlarına GERİ-YAYILMIYORDU (kullanıcı güvensizliğinin kökü).
+      if (ocr?.isletme?.kayitTuruKod && ocr?.isletme?.userEdited === true) continue;
       const hasAmt = Number(ocr?.matrah || 0) > 0 || Number(ocr?.kdvTutari || 0) > 0 || Number(doc.totalAmount || 0) > 0;
       if (!hasAmt) continue; // okunamadı, atla
       const kind: 'ALIS' | 'SATIS' = String(doc.invoiceKind || 'ALIS') === 'SATIS' ? 'SATIS' : 'ALIS';
