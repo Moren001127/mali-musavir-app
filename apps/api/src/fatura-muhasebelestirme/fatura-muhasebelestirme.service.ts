@@ -11127,6 +11127,16 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       let cariIsim: any = null;
       if (!okcFis && !cariByVkn && !cariMemory) { for (const nm of cariNames) { cariIsim = this.pickAccount(accounts, cariPrefixes, nm, { requireHint: true }); if (cariIsim) break; } }
       let cariPick: any = cariByVkn || cariMemory || cariIsim;
+      // DOĞRULANAMAYAN HAFIZA CARİSİ reddi (canlı test bulgusu 2026-07-04): plan hesaplarında VKN
+      //   kayıtlı olmayabiliyor → poisoned hafıza (VKN→yanlış cari) VKN ile elenemiyordu. Hafızadan
+      //   gelen cari NE VKN'yle NE de satıcı adıyla doğrulanamıyorsa GÜVENME → boş bırak ("Eksik cari").
+      //   (MERT REKLAM faturası → hafızadan "AKILLI KARTUŞ ERCAN EREOL"; ikisinde de ortak yok.)
+      if (cariPick && cariPick === cariMemory) {
+        const pv = normVkn((cariPick as any).vkn);
+        const vknOk = !!pv && !!svkn && pv === svkn;
+        const nameOk = cariNames.some((nm: any) => nm && this.nameMatchScore(String(nm), String((cariPick as any).accountName || '')) > 0);
+        if (!vknOk && !nameOk) cariPick = null;
+      }
       // VKN-ÇELİŞKİ reddi: seçilen carinin plandaki VKN'si VARSA ve satıcı VKN'siyle farklıysa → yanlış.
       if (cariPick && svkn) { const pv = normVkn((cariPick as any).vkn); if (pv && pv !== svkn) cariPick = null; }
       const cariMatch = leafOnly(okcFis
