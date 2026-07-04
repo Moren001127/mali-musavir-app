@@ -9261,7 +9261,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const cariCode = String(cariLine?.accountCode || '').trim();
       if (cariCode && /^(120|320|329|331)\.\d+$/.test(cariCode)) {
         const planCodes = opts.taxpayerId ? await this.getPlanCodeSet(opts.tenantId, opts.taxpayerId) : null;
-        const hasThreeLevelCari = !!planCodes && [...planCodes].some((c) => /^(120|320|329|331)\.\d+\.\d+/.test(c));
+        // 3. parça HARF ya da rakamla başlayabilir (120.01.A001 / 120.01.İ027) → \d değil ".+" ile ara.
+        const hasThreeLevelCari = !!planCodes && [...planCodes].some((c) => /^(120|320|329|331)\.\d+\..+/.test(c));
         issues.push({
           code: 'CARI_SHALLOW_CODE',
           severity: hasThreeLevelCari ? 'ERROR' : 'WARNING',
