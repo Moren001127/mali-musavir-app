@@ -11271,9 +11271,14 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             continue;
           }
           const curAcc = current ? accounts.find((a: any) => String(a.accountCode || '') === current) : null;
-          const fromMemory = !!cariMemory && !!curAcc && String(curAcc.accountCode) === String((cariMemory as any).accountCode);
-          const nameOk = !!curAcc && this.nameMatchScore(vendorName || '', String(curAcc.accountName || '')) > 0;
-          if (current && (fromMemory || nameOk)) continue; // doğru cari — dokunma
+          // Mevcut cariyi KORU sadece DOĞRULANMIŞSA: VKN birebir tutuyor VEYA satıcı adıyla eşleşiyor
+          //   VEYA bu rematch'in (doğrulanmış) seçtiği cariyle aynı. "Sadece hafızadan geldi" YETMEZ —
+          //   poisoned hafıza (VKN→yanlış cari) böyle korunup kalıyordu (canlı bulgu 2026-07-04:
+          //   MERT REKLAM faturası → AKILLI KARTUŞ; ne VKN ne isim tutuyordu ama fromMemory koruyordu).
+          const curVknOk = !!curAcc && !!svkn && normVkn((curAcc as any).vkn) === svkn;
+          const curNameOk = !!curAcc && cariNames.some((nm: any) => nm && this.nameMatchScore(String(nm), String((curAcc as any).accountName || '')) > 0);
+          const curIsPick = !!curAcc && !!cariMatch && String((curAcc as any).accountCode) === String((cariMatch as any).accountCode);
+          if (current && (curVknOk || curNameOk || curIsPick)) continue; // doğrulanmış cari — dokunma
           await (this.prisma as any).invoiceAccountingLine.update({
             where: { id: line.id },
             data: cariMatch
