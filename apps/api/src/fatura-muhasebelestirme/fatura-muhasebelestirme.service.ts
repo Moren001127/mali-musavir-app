@@ -3678,7 +3678,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
                   turmobSummaryRaw: summary.raw,
                   // Belge indirme icin IdFatura'yi ACIKCA sakla (canli listeden) → arka plan indirme
                   //   listeyi tekrar cekmeden DOGRUDAN indirir (GetInvoiceXml/Detail).
-                  turmobIdFatura: String(this.turmobField(summary.raw, ['IdFatura', 'idFatura', 'IdFaturaEk']) || '').replace(/\D/g, '') || null,
+                  turmobIdFatura: String(this.turmobField(summary.raw, ['IdFatura', 'idFatura', 'IdFaturaEk', 'IdArsiv', 'idArsiv', 'IdArsivEk']) || '').replace(/\D/g, '') || null,
                   period: period.donem,
                   queryPeriodStart: period.startDate,
                   queryPeriodEnd: period.endDate,
@@ -5735,7 +5735,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const idOf = (row: any): string => {
         const raw = row.rawJson && typeof row.rawJson === 'object' ? row.rawJson : {};
         let id = String(raw.turmobRowId || raw.turmobIdFatura || '').replace(/\D/g, '');
-        if (!id) id = String(this.turmobField(raw.turmobSummaryRaw || {}, ['IdFaturaGelen', 'IdFaturaGiden', 'IdFaturaArsiv', 'InvoiceId', 'IdFatura', 'Id']) || '').replace(/\D/g, '');
+        if (!id) id = String(this.turmobField(raw.turmobSummaryRaw || {}, ['IdFaturaGelen', 'IdFaturaGiden', 'IdFaturaArsiv', 'IdArsiv', 'IdArsivEk', 'InvoiceId', 'IdFatura', 'Id']) || '').replace(/\D/g, '');
         return id;
       };
       const applyDownloaded = async (row: any, downloaded: any) => {
@@ -6157,6 +6157,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       if (/iptal talebi redded|itiraz redded/.test(v)) continue; // iptal/itiraz TALEBİ reddedilmiş = fatura geçerli
       if (/iptal|itiraz|reddedil|red edildi|cancel/.test(v)) return true;
     }
+    // BOOLEAN bayraklar (Giden e-Arşiv satırında canlı görüldü: IptalEdildi/ItirazEdildi=true/false) —
+    //   anahtar adı iptali söylüyor, değer yalnız true/false; üstteki kelime-bazlı kontrol yakalayamaz.
+    for (const key of ['IptalEdildi', 'ItirazEdildi', 'IsCancelled', 'Cancelled']) {
+      if (String(this.turmobField(row, [key]) ?? '').toLowerCase() === 'true') return true;
+    }
     return false;
   }
 
@@ -6318,8 +6323,14 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     let usedProfile = 'none';
     let usedMethod = 'POST';
 
+    // ERKEN ÇIKIŞ: satırlar bulunup sunucunun bildirdiği toplam sayıya ULAŞILDIYSA kalan
+    //   uç×profil×yöntem kombinasyonlarını deneme — eskiden ilk kombinasyonda 18/18 satır gelse bile
+    //   ~150+ istek daha atılıyordu (kullanıcı: "sorgu neden bu kadar uzun sürüyor").
+    let tamamlandi = false;
     for (const listUrl of allListUrls) {
+      if (tamamlandi) break;
       for (const profile of profiles) {
+        if (tamamlandi) break;
         const listBody = new URLSearchParams(
           listPageToken
             ? { ...baseListParams, ...profile.params, __RequestVerificationToken: listPageToken }
@@ -6359,6 +6370,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             usedListUrl = listUrl;
             usedProfile = profile.name;
             usedMethod = method;
+          }
+          // Satır geldi ve sunucunun bildirdiği toplam kadar → yeter, kalan kombinasyonları deneme.
+          if (candidateLiveRows.length > 0) {
+            const bildirilen = Number(data?.recordsFiltered ?? data?.RecordsFiltered ?? data?.recordsTotal ?? data?.RecordsTotal ?? NaN);
+            if (!Number.isFinite(bildirilen) || candidateRows.length >= bildirilen) { tamamlandi = true; break; }
           }
         }
       }
@@ -6407,6 +6423,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       'IdFaturaGelen',
       'IdFaturaGiden',
       'IdFaturaArsiv',
+      'IdArsiv',       // Giden e-Arşiv satırının GERÇEK kimlik alanı (canlı satırda doğrulandı: IdArsiv=25463188)
+      'IdArsivEk',
       'FaturaGelenId',
       'FaturaGidenId',
       'ArchiveInvoiceId',
@@ -6943,7 +6961,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       //   XML (veri) ve görsel (HTML) DİREKT iniyor. Brute-force bunları 520 aday arasında geç deneyip
       //   attempt-cap'e takılıyordu (payload=0 → "indirme linki çözümlenemedi"). Öncelikli (trusted) ekle.
       //   GetInvoiceXml → 325KB UBL XML; Detail&IsPrint → 42KB orijinal fatura HTML'i.
-      const idFaturaDirect = String(this.turmobField(row, ['IdFatura', 'idFatura', 'IdFaturaEk']) || '').replace(/\D/g, '');
+      const idFaturaDirect = String(this.turmobField(row, ['IdFatura', 'idFatura', 'IdFaturaEk', 'IdArsiv', 'idArsiv', 'IdArsivEk']) || '').replace(/\D/g, '');
       if (idFaturaDirect) {
         addCandidateUrl(`/Invoice/GetInvoiceXml?InOrOut=${inOrOut}&InvoiceId=${idFaturaDirect}`, true);
         addCandidateUrl(`/Invoice/Detail?InOrOut=${inOrOut}&InvoiceId=${idFaturaDirect}&IsPrint=True`, true);
@@ -6951,7 +6969,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const pathPrefixes = channel === 'IN_EFATURA'
         ? ['/IncomingInvoice', '/Invoice']
         : channel === 'OUT_EARSIV'
-          ? ['/ArchiveInvoice', '/OutgoingArchiveInvoice', '/EArchiveInvoice', '/Invoice']
+          // e-Arşiv modülü GERÇEKTE /OutgoingInvoice altında (OutgoingArchiveList) → o prefix ÖNCE.
+          ? ['/OutgoingInvoice', '/ArchiveInvoice', '/OutgoingArchiveInvoice', '/EArchiveInvoice', '/Invoice']
           : ['/OutgoingInvoice', '/Invoice'];
       const pathActions = [
         'DownloadFile',
@@ -6970,7 +6989,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         'Detail',
       ];
       const pathParams = ['filePath', 'FilePath', 'path', 'Path', 'fileName', 'FileName', 'documentPath', 'DocumentPath'];
-      for (const path of rowTextValues(row, ['FilePath', 'XmlPath', 'XMLPath', 'PdfPath', 'PDFPath', 'DownloadPath', 'Url', 'URL'])) {
+      for (const path of rowTextValues(row, ['FilePath', 'XmlPath', 'XMLPath', 'XmlFilePath', 'PdfFilePath', 'HtmlFilePath', 'PdfPath', 'PDFPath', 'DownloadPath', 'Url', 'URL'])) {
         addCandidateUrl(path, true);
         const encoded = encodeURIComponent(path);
         for (const prefix of pathPrefixes) {
@@ -6988,7 +7007,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const channelIdKeys = channel === 'IN_EFATURA'
         ? ['IdFatura', 'idFatura', 'IdFaturaGelen', 'idFaturaGelen', 'FaturaGelenId', 'IncomingInvoiceId', 'InvoiceId', 'Id']
         : channel === 'OUT_EARSIV'
-          ? ['IdFatura', 'idFatura', 'IdFaturaArsiv', 'idFaturaArsiv', 'IdFaturaGidenArsiv', 'ArchiveInvoiceId', 'IdFaturaGiden', 'InvoiceId', 'Id']
+          ? ['IdArsiv', 'idArsiv', 'IdArsivEk', 'IdFatura', 'idFatura', 'IdFaturaArsiv', 'idFaturaArsiv', 'IdFaturaGidenArsiv', 'ArchiveInvoiceId', 'IdFaturaGiden', 'InvoiceId', 'Id']
           : ['IdFatura', 'idFatura', 'IdFaturaGiden', 'idFaturaGiden', 'FaturaGidenId', 'OutgoingInvoiceId', 'InvoiceId', 'Id'];
       const invoiceIds = [...new Set([
         ...rowValues(row, channelIdKeys),
@@ -7002,7 +7021,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         const prefixes = channel === 'IN_EFATURA'
           ? ['/IncomingInvoice', '/Invoice']
           : channel === 'OUT_EARSIV'
-            ? ['/ArchiveInvoice', '/OutgoingArchiveInvoice', '/Invoice']
+            ? ['/OutgoingInvoice', '/ArchiveInvoice', '/OutgoingArchiveInvoice', '/Invoice']
             : ['/OutgoingInvoice', '/Invoice'];
         for (const prefix of prefixes) {
           addCandidateUrl(`${prefix}/GetInvoiceXml?${io}&${q}`);
@@ -7024,12 +7043,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         const prefixes = channel === 'IN_EFATURA'
           ? ['/IncomingInvoice']
           : channel === 'OUT_EARSIV'
-            ? ['/ArchiveInvoice', '/OutgoingArchiveInvoice', '/EArchiveInvoice']
+            ? ['/OutgoingInvoice', '/ArchiveInvoice', '/OutgoingArchiveInvoice', '/EArchiveInvoice']
             : ['/OutgoingInvoice'];
         const paramNames = channel === 'IN_EFATURA'
           ? ['IdFaturaGelen', 'idFaturaGelen', 'FaturaGelenId', 'InvoiceId', 'id']
           : channel === 'OUT_EARSIV'
-            ? ['IdFaturaArsiv', 'idFaturaArsiv', 'ArchiveInvoiceId', 'IdFaturaGiden', 'InvoiceId', 'id']
+            ? ['IdArsiv', 'idArsiv', 'ArsivId', 'IdFaturaArsiv', 'idFaturaArsiv', 'ArchiveInvoiceId', 'IdFaturaGiden', 'InvoiceId', 'id']
             : ['IdFaturaGiden', 'idFaturaGiden', 'FaturaGidenId', 'InvoiceId', 'id'];
         const actions = [
           'GetInvoiceXml',
