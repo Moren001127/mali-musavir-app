@@ -75,7 +75,6 @@ const PORTAL_ROUTES: PortalRoute[] = [
   { label: 'Tüm Ajanlar', path: '/panel/ajanlar', aliases: ['ajanlar', 'tüm ajanlar'] },
   { label: 'Luca Oturumu', path: '/panel/ajanlar/luca', aliases: ['luca'] },
   { label: 'Sağlık Panosu', path: '/panel/ajan-saglik', aliases: ['sağlık', 'ajan sağlık'] },
-  { label: 'Yapılan İşlemler', path: '/panel/ajanlar/loglar', aliases: ['loglar', 'işlem geçmişi'] },
   { label: 'Ayarlar', path: '/panel/ayarlar', aliases: ['ayar'] },
   { label: 'Denetim Günlüğü', path: '/panel/ayarlar/denetim', aliases: ['denetim'] },
   { label: 'Kilitli Modüller', path: '/panel/sistem/kilitli-moduller', aliases: ['kilitli'] },

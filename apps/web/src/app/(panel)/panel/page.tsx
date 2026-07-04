@@ -16,7 +16,6 @@ import {
   Download,
   FileCheck2,
   Search as SearchIcon,
-  Settings,
   BellRing,
   BrainCircuit,
   Building2,
@@ -437,13 +436,6 @@ function ToplubeyannamePanel() {
             >
               <SearchIcon size={13} /> Sorgula
             </button>
-            <Link
-              href="/panel/ayarlar/beyanname-takip"
-              className="inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-[12px] font-semibold transition-all"
-              style={{ background: 'rgba(244,239,229,0.025)', border: `1px solid ${BEYAN_TONE.borderSoft}`, color: BEYAN_TONE.muted }}
-            >
-              <Settings size={13} /> Ayarlar
-            </Link>
           </div>
         </div>
 
@@ -871,13 +863,6 @@ function ToplubeyannameTableLegacy() {
           >
             <SearchIcon size={11} /> Sorgula
           </button>
-          <Link
-            href="/panel/ayarlar/beyanname-takip"
-            className="text-[11px] font-medium px-3 py-1.5 rounded-md transition-all inline-flex items-center gap-1.5"
-            style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.75)' }}
-          >
-            <Settings size={11} /> Ayarlar
-          </Link>
         </div>
       </div>
 

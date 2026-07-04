@@ -4,10 +4,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { agentsApi } from '@/lib/agents';
 import { pendingDecisionsApi } from '@/lib/pending-decisions';
 import { api } from '@/lib/api';
-import Link from 'next/link';
 import {
   Play, Pause, Calendar, Users, Search, CheckCircle2, AlertCircle, Loader2, Clock,
-  Receipt, ArrowRight, Zap, ChevronDown, X, AlertTriangle, Edit3, ThumbsUp, ThumbsDown,
+  Receipt, Zap, ChevronDown, X, AlertTriangle, Edit3, ThumbsUp, ThumbsDown,
   PlayCircle, Download, Bot,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -656,13 +655,6 @@ export default function MihsapAgentPage() {
               {exportingReport ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
               {selectedIds.length === 0 ? 'Tüm Dönem Excel' : 'Seçili Excel'}
             </button>
-            <Link
-              href="/panel/ajanlar/loglar?agent=mihsap"
-              className="text-xs inline-flex items-center gap-1"
-              style={{ color: 'rgba(250,250,249,0.45)' }}
-            >
-              Tümü <ArrowRight size={11} />
-            </Link>
           </div>
         </div>
         <div className="p-2 space-y-2 max-h-[680px] overflow-y-auto">

@@ -22,7 +22,6 @@ import {
   Gauge,
   Gavel,
   HandCoins,
-  History,
   Landmark,
   LockKeyhole,
   LogOut,
@@ -48,7 +47,6 @@ import {
   UserRoundSearch,
   WandSparkles,
   Workflow,
-  Coins,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { pendingDecisionsApi } from '@/lib/pending-decisions';
@@ -149,10 +147,8 @@ const navGroups = [
       { href: '/panel/bot-kalite', label: 'Bot Kalite', icon: ShieldCheck },
       { href: '/panel/masaustu', label: 'Masaüstü Uygulaması', icon: MonitorDown },
       { href: '/panel/ajanlar', label: 'Tüm Ajanlar', icon: Cpu },
-      { href: '/panel/maliyet', label: 'AI Maliyet', icon: Coins },
       { href: '/panel/ajanlar/luca', label: 'Luca Oturumu', icon: ShieldCheck },
       { href: '/panel/ajan-saglik', label: 'Sağlık Panosu', icon: Stethoscope },
-      { href: '/panel/ajanlar/loglar', label: 'Yapılan İşlemler', icon: History },
       { href: '/panel/ayarlar', label: 'Ayarlar', icon: Settings2 },
       { href: '/panel/ayarlar/denetim', label: 'Denetim Günlüğü', icon: Shield },
       { href: '/panel/sistem/kilitli-moduller', label: 'Kilitli Modüller', icon: LockKeyhole },

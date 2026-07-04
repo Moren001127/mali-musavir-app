@@ -12,7 +12,7 @@ import {
 import AgentControlCard from './_components/AgentControlCard';
 
 const AGENT_VISUALS: Record<string, any> = {
-  'agent-core-orchestrator': { href: '/panel/ajanlar/loglar', icon: Cpu, gradient: 'linear-gradient(135deg, #64748b, #334155)' },
+  'agent-core-orchestrator': { href: '/panel/ajan-saglik', icon: Cpu, gradient: 'linear-gradient(135deg, #64748b, #334155)' },
   'mihsap-fatura-isleme-agent': { href: '/panel/ajanlar/mihsap', icon: Receipt, gradient: 'linear-gradient(135deg, #b8a06f, #8b7649)' },
   'mihsap-supervised-agent': { href: '/panel/ajanlar/mihsap', icon: Receipt, gradient: 'linear-gradient(135deg, #b8a06f, #8b7649)' },
   'mihsap-invoice-sync-agent': { href: '/panel/faturalar', icon: FileInput, gradient: 'linear-gradient(135deg, #0ea5e9, #0369a1)' },
@@ -142,13 +142,6 @@ export default function AjanlarDashboard() {
             </span>
             Otomasyon Ajanları
           </h1>
-          <Link
-            href="/panel/ajanlar/loglar"
-            className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12px] font-semibold transition-colors"
-            style={{ background: 'rgba(99,102,241,0.16)', color: '#818cf8', border: '1px solid rgba(99,102,241,0.35)' }}
-          >
-            <Activity size={14} /> Yapılan İşlemler <ArrowRight size={12} />
-          </Link>
         </div>
         <p className="mt-2 max-w-2xl text-[13px]" style={{ color: 'rgba(250,250,249,0.6)' }}>
           Mali müşavirlik işleyişinin tekrarlayan kısımlarını otomasyon ajanlarına bırakın
@@ -183,13 +176,6 @@ export default function AjanlarDashboard() {
               Mevcut motorlar korunarak yeni dijital calisanlara gecis haritasi
             </p>
           </div>
-          <Link
-            href="/panel/ajanlar/loglar"
-            className="inline-flex items-center gap-1 text-sm"
-            style={{ color: 'rgba(250,250,249,0.45)' }}
-          >
-            <Activity size={13} /> Yapılan İşlemler <ArrowRight size={12} />
-          </Link>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {liveAgents.map((agent) => (
@@ -518,7 +504,7 @@ function StatBox({ label, value, color, icon: Icon }: any) {
 
 function AgentRegistryTile({ agent, statusInfo }: { agent: AgentDefinition; statusInfo: any }) {
   const visual = AGENT_VISUALS[agent.id] || {
-    href: '/panel/ajanlar/loglar',
+    href: '/panel/ajan-saglik',
     icon: Bot,
     gradient: 'linear-gradient(135deg, #64748b, #334155)',
   };

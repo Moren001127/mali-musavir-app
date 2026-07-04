@@ -90,12 +90,10 @@ export default function EntegrasyonlarPage() {
         </p>
       </header>
 
-      <div className="grid gap-5 lg:grid-cols-2">
+      <div className="grid items-start gap-5 lg:grid-cols-2">
         <EmailCard />
         <WhatsAppCard />
       </div>
-
-      <WhatsAppQrCard />
     </div>
   );
 }
@@ -335,15 +333,26 @@ function EmailCard() {
 }
 
 // ============================================================
-// WHATSAPP KARTI
+// WHATSAPP KARTI — master switch + QR bağlantısı tek kartta
 // ============================================================
 
 function WhatsAppCard() {
   const qc = useQueryClient();
+  const [polling, setPolling] = useState(false);
+
   const { data } = useQuery({
     queryKey: ['integration-whatsapp'],
     queryFn: () => api.get('/integrations/whatsapp').then((r) => r.data as WhatsAppConfigShape),
   });
+
+  const { data: qr } = useQuery({
+    queryKey: ['integration-whatsapp-qr'],
+    queryFn: () => api.get('/integrations/whatsapp/qr/status').then((r) => r.data as QrStatusShape),
+    // Bağlanma sürerken 3 sn'de bir QR/durumu tazele.
+    refetchInterval: polling ? 3000 : false,
+  });
+
+  const connected = !!qr?.connected;
 
   const toggleMut = useMutation({
     mutationFn: (active: boolean) => api.put('/integrations/whatsapp/toggle', { active }).then((r) => r.data),
@@ -354,6 +363,31 @@ function WhatsAppCard() {
     },
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Durum degistirilemedi'),
   });
+
+  const connectMut = useMutation({
+    mutationFn: () => api.post('/integrations/whatsapp/qr/connect').then((r) => r.data as QrStatusShape),
+    onSuccess: () => {
+      setPolling(true);
+      toast.success('QR üretiliyor — telefonunuzdan okutun.');
+      qc.invalidateQueries({ queryKey: ['integration-whatsapp-qr'] });
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Bağlantı başlatılamadı'),
+  });
+
+  const logoutMut = useMutation({
+    mutationFn: () => api.post('/integrations/whatsapp/qr/logout').then((r) => r.data),
+    onSuccess: () => {
+      setPolling(false);
+      toast.success('QR oturumu kapatıldı.');
+      qc.invalidateQueries({ queryKey: ['integration-whatsapp-qr'] });
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Çıkış yapılamadı'),
+  });
+
+  // Bağlanınca pollingi durdur.
+  useEffect(() => {
+    if (connected && polling) setPolling(false);
+  }, [connected, polling]);
 
   return (
     <section className="rounded-lg border bg-[#0f0d0b]/80 p-5" style={{ borderColor: LINE }}>
@@ -366,15 +400,26 @@ function WhatsAppCard() {
         </div>
         <div className="flex-1">
           <h2 className="text-[17px] font-semibold" style={{ color: TEXT }}>
-            WhatsApp Bot
+            WhatsApp
           </h2>
           <p className="mt-1 text-[12px]" style={{ color: MUTED }}>
-            Bağlantı aşağıdaki QR kartıyla yapılır. Bu anahtar tüm WhatsApp gönderimlerini açar/kapatır.
+            Numaranızı QR okutarak bağlayın; gönderimler tek anahtarla açılıp kapanır.
           </p>
+        </div>
+        <div
+          className="flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-semibold"
+          style={{
+            borderColor: connected ? 'rgba(74,222,128,0.4)' : 'rgba(248,113,113,0.4)',
+            color: connected ? GREEN : RED,
+            background: connected ? 'rgba(74,222,128,0.06)' : 'rgba(248,113,113,0.06)',
+          }}
+        >
+          {connected ? <CheckCircle2 size={12} /> : <XCircle size={12} />} {connected ? 'Bağlı' : 'Bağlı değil'}
         </div>
       </div>
 
       <div className="mt-4 space-y-3">
+        {/* Master switch */}
         <div
           className="flex items-center justify-between gap-3 rounded-md border p-3"
           style={{
@@ -383,9 +428,9 @@ function WhatsAppCard() {
           }}
         >
           <div>
-            <div className="text-[12.5px] font-semibold" style={{ color: TEXT }}>Master Switch</div>
+            <div className="text-[12.5px] font-semibold" style={{ color: TEXT }}>Gönderim Anahtarı</div>
             <div className="text-[11px]" style={{ color: MUTED }}>
-              QR ve otomasyon WhatsApp gonderimlerini tek yerden acar/kapatir.
+              Tüm WhatsApp gönderimlerini tek yerden açar/kapatır.
             </div>
           </div>
           <button
@@ -404,6 +449,77 @@ function WhatsAppCard() {
           </button>
         </div>
 
+        {/* QR / bağlantı durumu */}
+        <div
+          className="flex min-h-[190px] flex-col items-center justify-center rounded-md border p-4 text-center"
+          style={{ borderColor: LINE, background: SOFT }}
+        >
+          {connected ? (
+            <>
+              <CheckCircle2 size={36} style={{ color: GREEN }} />
+              <div className="mt-3 text-[14px] font-semibold" style={{ color: TEXT }}>WhatsApp bağlı</div>
+              <div className="mt-1 text-[12px]" style={{ color: MUTED }}>
+                Bot artık bu numara üzerinden mesaj alıp gönderiyor.
+              </div>
+            </>
+          ) : qr?.hasQr && qr?.qrDataUrl ? (
+            <>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={qr.qrDataUrl} alt="WhatsApp QR" className="h-[200px] w-[200px] rounded bg-white p-2" />
+              <div className="mt-2 text-[11px]" style={{ color: MUTED }}>
+                Telefon → WhatsApp → Ayarlar → Bağlı Cihazlar → Cihaz Bağla
+              </div>
+            </>
+          ) : connectMut.isPending || qr?.connecting || polling ? (
+            <>
+              <Loader2 size={30} className="animate-spin" style={{ color: GOLD }} />
+              <div className="mt-3 text-[12px]" style={{ color: MUTED }}>QR hazırlanıyor…</div>
+            </>
+          ) : (
+            <>
+              <Smartphone size={32} style={{ color: MUTED }} />
+              <div className="mt-3 text-[12px]" style={{ color: MUTED }}>
+                Başlatmak için "QR ile Bağlan"a basın. Bağlantı kalıcıdır; deploy sonrası yeniden okutmaya gerek yok.
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {!connected && (
+            <button
+              onClick={() => connectMut.mutate()}
+              disabled={connectMut.isPending}
+              className="inline-flex items-center gap-1.5 rounded-md px-3.5 py-2 text-[12.5px] font-semibold"
+              style={{ background: GOLD, color: '#1a1408' }}
+            >
+              {connectMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <QrCode size={14} />}
+              QR ile Bağlan
+            </button>
+          )}
+          <button
+            onClick={() => qc.invalidateQueries({ queryKey: ['integration-whatsapp-qr'] })}
+            className="inline-flex items-center gap-1.5 rounded-md border px-3.5 py-2 text-[12.5px] font-semibold"
+            style={{ borderColor: LINE, color: TEXT }}
+          >
+            <RefreshCw size={14} /> Yenile
+          </button>
+          {(connected || qr?.hasQr) && (
+            <button
+              onClick={() => logoutMut.mutate()}
+              disabled={logoutMut.isPending}
+              className="inline-flex items-center gap-1.5 rounded-md border px-3.5 py-2 text-[12.5px] font-semibold"
+              style={{ borderColor: 'rgba(248,113,113,0.4)', color: RED }}
+            >
+              {logoutMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <LogOut size={14} />}
+              Bağlantıyı Kes
+            </button>
+          )}
+        </div>
+
+        {qr?.error && !connected && (
+          <p className="text-[11px]" style={{ color: RED }}>Son durum: {qr.error}</p>
+        )}
       </div>
     </section>
   );
@@ -458,7 +574,7 @@ function StatusBadge({ ok, source }: { ok: boolean; source: 'db' | 'env' | 'none
 }
 
 // ============================================================
-// WHATSAPP QR (BAILEYS) KARTI — Meta'sız, telefondan QR okutarak bağlanma
+// WHATSAPP QR durum tipi (Baileys — Meta'sız, telefondan QR okutma)
 // ============================================================
 
 type QrStatusShape = {
@@ -469,156 +585,3 @@ type QrStatusShape = {
   qrDataUrl: string | null;
   error?: string;
 };
-
-function WhatsAppQrCard() {
-  const qc = useQueryClient();
-  const [polling, setPolling] = useState(false);
-
-  const { data } = useQuery({
-    queryKey: ['integration-whatsapp-qr'],
-    queryFn: () => api.get('/integrations/whatsapp/qr/status').then((r) => r.data as QrStatusShape),
-    // Bağlanma sürerken 3 sn'de bir QR/durumu tazele.
-    refetchInterval: polling ? 3000 : false,
-  });
-
-  const connected = !!data?.connected;
-
-  const connectMut = useMutation({
-    mutationFn: () => api.post('/integrations/whatsapp/qr/connect').then((r) => r.data as QrStatusShape),
-    onSuccess: () => {
-      setPolling(true);
-      toast.success('QR üretiliyor — telefonunuzdan okutun.');
-      qc.invalidateQueries({ queryKey: ['integration-whatsapp-qr'] });
-    },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Bağlantı başlatılamadı'),
-  });
-
-  const logoutMut = useMutation({
-    mutationFn: () => api.post('/integrations/whatsapp/qr/logout').then((r) => r.data),
-    onSuccess: () => {
-      setPolling(false);
-      toast.success('QR oturumu kapatıldı.');
-      qc.invalidateQueries({ queryKey: ['integration-whatsapp-qr'] });
-    },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Çıkış yapılamadı'),
-  });
-
-  // Bağlanınca pollingi durdur.
-  useEffect(() => {
-    if (connected && polling) setPolling(false);
-  }, [connected, polling]);
-
-  return (
-    <section className="rounded-lg border bg-[#0f0d0b]/80 p-5" style={{ borderColor: LINE }}>
-      <div className="flex items-start gap-3">
-        <div
-          className="flex h-11 w-11 items-center justify-center rounded-lg border"
-          style={{ borderColor: LINE, color: GREEN, background: SOFT }}
-        >
-          <QrCode size={20} />
-        </div>
-        <div className="flex-1">
-          <h2 className="text-[17px] font-semibold" style={{ color: TEXT }}>
-            WhatsApp QR Bağlantısı
-          </h2>
-          <p className="mt-1 text-[12px]" style={{ color: MUTED }}>
-            Mevcut numaranızı telefondan QR okutarak bağlayın. Resmi olmayan yöntemdir; düşük hacim önerilir.
-          </p>
-        </div>
-        <div
-          className="flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-semibold"
-          style={{
-            borderColor: connected ? 'rgba(74,222,128,0.4)' : 'rgba(248,113,113,0.4)',
-            color: connected ? GREEN : RED,
-            background: connected ? 'rgba(74,222,128,0.06)' : 'rgba(248,113,113,0.06)',
-          }}
-        >
-          {connected ? <CheckCircle2 size={12} /> : <XCircle size={12} />} {connected ? 'Bağlı' : 'Bağlı değil'}
-        </div>
-      </div>
-
-      <div className="mt-4 grid gap-4 md:grid-cols-2">
-        {/* Sol: durum / QR */}
-        <div
-          className="flex min-h-[260px] flex-col items-center justify-center rounded-md border p-4 text-center"
-          style={{ borderColor: LINE, background: SOFT }}
-        >
-          {connected ? (
-            <>
-              <CheckCircle2 size={40} style={{ color: GREEN }} />
-              <div className="mt-3 text-[14px] font-semibold" style={{ color: TEXT }}>WhatsApp bağlı</div>
-              <div className="mt-1 text-[12px]" style={{ color: MUTED }}>
-                Bot artık bu numara üzerinden mesaj alıp gönderiyor.
-              </div>
-            </>
-          ) : data?.hasQr && data?.qrDataUrl ? (
-            <>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={data.qrDataUrl} alt="WhatsApp QR" className="h-[220px] w-[220px] rounded bg-white p-2" />
-              <div className="mt-2 text-[11px]" style={{ color: MUTED }}>
-                Telefon → WhatsApp → Ayarlar → Bağlı Cihazlar → Cihaz Bağla
-              </div>
-            </>
-          ) : connectMut.isPending || data?.connecting || polling ? (
-            <>
-              <Loader2 size={32} className="animate-spin" style={{ color: GOLD }} />
-              <div className="mt-3 text-[12px]" style={{ color: MUTED }}>QR hazırlanıyor…</div>
-            </>
-          ) : (
-            <>
-              <Smartphone size={36} style={{ color: MUTED }} />
-              <div className="mt-3 text-[12px]" style={{ color: MUTED }}>
-                Başlatmak için "QR ile Bağlan"a basın.
-              </div>
-            </>
-          )}
-        </div>
-
-        {/* Sağ: adımlar + butonlar */}
-        <div className="flex flex-col justify-between">
-          <ol className="space-y-2 text-[12.5px]" style={{ color: MUTED }}>
-            <li><span style={{ color: TEXT }}>1.</span> Numarayı bir telefonda WhatsApp / WhatsApp Business'a kurun.</li>
-            <li><span style={{ color: TEXT }}>2.</span> "QR ile Bağlan"a basın, soldaki QR'ı telefondan okutun.</li>
-            <li><span style={{ color: TEXT }}>3.</span> Bağlantı kalıcıdır; deploy sonrası yeniden okutmaya gerek yok.</li>
-          </ol>
-
-          <div className="mt-4 flex flex-wrap gap-2">
-            {!connected && (
-              <button
-                onClick={() => connectMut.mutate()}
-                disabled={connectMut.isPending}
-                className="inline-flex items-center gap-1.5 rounded-md px-3.5 py-2 text-[12.5px] font-semibold"
-                style={{ background: GOLD, color: '#1a1408' }}
-              >
-                {connectMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <QrCode size={14} />}
-                QR ile Bağlan
-              </button>
-            )}
-            <button
-              onClick={() => qc.invalidateQueries({ queryKey: ['integration-whatsapp-qr'] })}
-              className="inline-flex items-center gap-1.5 rounded-md border px-3.5 py-2 text-[12.5px] font-semibold"
-              style={{ borderColor: LINE, color: TEXT }}
-            >
-              <RefreshCw size={14} /> Yenile
-            </button>
-            {(connected || data?.hasQr) && (
-              <button
-                onClick={() => logoutMut.mutate()}
-                disabled={logoutMut.isPending}
-                className="inline-flex items-center gap-1.5 rounded-md border px-3.5 py-2 text-[12.5px] font-semibold"
-                style={{ borderColor: 'rgba(248,113,113,0.4)', color: RED }}
-              >
-                {logoutMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <LogOut size={14} />}
-                Bağlantıyı Kes
-              </button>
-            )}
-          </div>
-
-          {data?.error && !connected && (
-            <p className="mt-2 text-[11px]" style={{ color: RED }}>Son durum: {data.error}</p>
-          )}
-        </div>
-      </div>
-    </section>
-  );
-}

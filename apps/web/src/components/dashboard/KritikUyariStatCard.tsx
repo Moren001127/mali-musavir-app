@@ -245,13 +245,6 @@ export function KritikUyariStatCard() {
                           altMesaj={e.mukellef || undefined}
                         />
                       ))}
-                      <Link
-                        href="/panel/ajanlar/loglar"
-                        className="inline-flex items-center gap-1 text-[11.5px] font-semibold mt-2"
-                        style={{ color: GOLD }}
-                      >
-                        Tüm ajan loglarını gör <ChevronRight size={12} />
-                      </Link>
                     </UyariBolumu>
                   )}
 

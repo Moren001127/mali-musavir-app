@@ -12,18 +12,13 @@ import {
   CheckCircle2,
   Copy,
   ExternalLink,
-  FileCheck2,
   KeyRound,
   Loader2,
-  Mail,
-  MessageCircle,
   MessageSquareText,
   Plug,
-  Save,
   Settings2,
   ShieldCheck,
   UsersRound,
-  XCircle,
 } from 'lucide-react';
 import Link from 'next/link';
 import { AdvisorPortalCredentialCard } from '@/components/portal-automation/PortalCredentialCards';
@@ -50,7 +45,6 @@ export default function AyarlarPage() {
   return (
     <div className="mx-auto max-w-6xl space-y-5 pb-12">
         <PageHeader />
-        <StatusStrip />
         <SettingsGrid />
         <CollapsibleSection
           id="portal-creds"
@@ -62,7 +56,6 @@ export default function AyarlarPage() {
           <AdvisorPortalCredentialCard />
         </CollapsibleSection>
         <TwoFactorSection />
-        <MessageTemplatesSection />
         <CollapsibleSection
           id="agent"
           icon={Bot}
@@ -110,17 +103,19 @@ function PageHeader() {
         </h1>
       </div>
       <p className="mt-2 max-w-2xl text-[13px]" style={{ color: MUTED }}>
-        Erişim, entegrasyonlar, portal şifreleri ve mesaj metinleri.
+        Erişim, entegrasyonlar ve portal şifreleri.
       </p>
     </header>
   );
 }
 
 // =====================================================================
-// HIZLI DURUM ŞERİDİ
+// AYAR KATEGORİLERİ — tile grid
+// (E-posta/WhatsApp bağlantı durumu Entegrasyonlar kartında nokta olarak
+//  gösterilir — eski üçlü durum şeridi kaldırıldı, tek giriş noktası.)
 // =====================================================================
 
-function StatusStrip() {
+function SettingsGrid() {
   const { data: emailCfg } = useQuery({
     queryKey: ['integration-email-status'],
     queryFn: () => api.get('/integrations/email').then((r) => r.data),
@@ -129,99 +124,20 @@ function StatusStrip() {
     queryKey: ['integration-whatsapp-status'],
     queryFn: () => api.get('/integrations/whatsapp').then((r) => r.data),
   });
-  const { data: agentInfo } = useQuery({
-    queryKey: ['agent-me-token-status'],
-    queryFn: () => api.get('/agent/me/token').then((r) => r.data),
-  });
 
-  const items = [
-    {
-      label: 'E-posta',
-      ok: !!emailCfg?.configured,
-      icon: Mail,
-      detail: emailCfg?.config?.host || 'Bağlı değil',
-      href: '/panel/ayarlar/entegrasyonlar',
-    },
-    {
-      label: 'WhatsApp',
-      ok: !!waCfg?.configured,
-      icon: MessageCircle,
-      detail: waCfg?.phoneNumberId ? `${waCfg.phoneNumberId.slice(0, 12)}…` : 'Bağlı değil',
-      href: '/panel/ayarlar/entegrasyonlar',
-    },
-    {
-      label: 'Moren Agent',
-      ok: !!agentInfo?.token,
-      icon: Bot,
-      detail: agentInfo?.tenantName || 'Token yok',
-      href: '#agent',
-    },
+  const entegrasyonDurum = [
+    { label: 'E-posta', ok: !!emailCfg?.configured },
+    { label: 'WhatsApp', ok: !!waCfg?.configured },
   ];
 
-  return (
-    <div className="grid gap-2.5 sm:grid-cols-3">
-      {items.map((it) => {
-        const fg = it.ok ? GREEN : RED;
-        const Inner = (
-          <div
-            className="relative flex items-center gap-3 overflow-hidden rounded-xl border px-4 py-3 transition"
-            style={{
-              borderColor: it.ok ? 'rgba(74,222,128,0.28)' : 'rgba(248,113,113,0.28)',
-              background: `linear-gradient(135deg, ${fg}1f, rgba(255,255,255,0.02)), ${CARD}`,
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = `linear-gradient(135deg, ${fg}2e, rgba(255,255,255,0.03)), ${CARD_HOVER}`)}
-            onMouseLeave={(e) => (e.currentTarget.style.background = `linear-gradient(135deg, ${fg}1f, rgba(255,255,255,0.02)), ${CARD}`)}
-          >
-            <div
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border"
-              style={{
-                borderColor: it.ok ? 'rgba(74,222,128,0.35)' : 'rgba(248,113,113,0.35)',
-                color: it.ok ? '#0f0d0b' : '#1a0f0f',
-                background: it.ok
-                  ? 'linear-gradient(135deg, #4ade80, #16a34a)'
-                  : 'linear-gradient(135deg, #f87171, #dc2626)',
-                boxShadow: `0 4px 12px ${fg}33`,
-              }}
-            >
-              <it.icon size={16} />
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-1.5 text-[13px] font-semibold" style={{ color: TEXT }}>
-                {it.label}
-                {it.ok ? (
-                  <CheckCircle2 size={12} style={{ color: GREEN }} />
-                ) : (
-                  <XCircle size={12} style={{ color: RED }} />
-                )}
-              </div>
-              <div className="truncate text-[11.5px]" style={{ color: MUTED }}>
-                {it.detail}
-              </div>
-            </div>
-          </div>
-        );
-        return it.href.startsWith('#') ? (
-          <a key={it.label} href={it.href}>{Inner}</a>
-        ) : (
-          <Link key={it.label} href={it.href}>{Inner}</Link>
-        );
-      })}
-    </div>
-  );
-}
-
-// =====================================================================
-// AYAR KATEGORİLERİ — tile grid
-// =====================================================================
-
-function SettingsGrid() {
-  const links: Array<{ href: string; title: string; text: string; icon: any; tone: 'blue'|'purple'|'green'|'teal'|'amber'|'pink' }> = [
+  const links: Array<{ href: string; title: string; text: string; icon: any; tone: 'blue'|'purple'|'green'|'teal'|'amber'|'pink'; status?: Array<{ label: string; ok: boolean }> }> = [
     {
       href: '/panel/ayarlar/entegrasyonlar',
       title: 'Entegrasyonlar',
-      text: 'E-posta (SMTP) + WhatsApp Cloud API',
+      text: 'E-posta (SMTP) + WhatsApp bağlantısı',
       icon: Plug,
       tone: 'blue',
+      status: entegrasyonDurum,
     },
     {
       href: '/panel/ayarlar/kullanicilar',
@@ -231,25 +147,11 @@ function SettingsGrid() {
       tone: 'purple',
     },
     {
-      href: '/panel/ayarlar/beyanname-takip',
-      title: 'Beyanname Takip',
-      text: 'Beyan türleri ve dönem ayarları',
-      icon: FileCheck2,
-      tone: 'green',
-    },
-    {
       href: '/panel/hatirlatmalar',
       title: 'WhatsApp Otomasyonu',
       text: 'Evrak ve tahsilat hatırlatma akışları',
       icon: MessageSquareText,
       tone: 'teal',
-    },
-    {
-      href: '/panel/ayarlar/denetim',
-      title: 'Denetim Günlüğü',
-      text: 'Sistem kayıtları ve izler',
-      icon: ShieldCheck,
-      tone: 'amber',
     },
   ];
 
@@ -268,12 +170,14 @@ function SettingsTile({
   text,
   icon: Icon,
   tone = 'gold',
+  status,
 }: {
   href: string;
   title: string;
   text: string;
   icon: React.ElementType;
   tone?: 'gold' | 'blue' | 'purple' | 'green' | 'teal' | 'amber' | 'pink' | 'violet';
+  status?: Array<{ label: string; ok: boolean }>;
 }) {
   const TONES: Record<string, { fg: string; bg: string; bd: string }> = {
     gold:   { fg: '#d4b876', bg: 'rgba(212,184,118,0.10)', bd: 'rgba(212,184,118,0.32)' },
@@ -314,6 +218,19 @@ function SettingsTile({
           <p className="mt-0.5 truncate text-[12px]" style={{ color: MUTED }}>
             {text}
           </p>
+          {status && status.length > 0 && (
+            <div className="mt-1.5 flex flex-wrap items-center gap-3">
+              {status.map((s) => (
+                <span key={s.label} className="inline-flex items-center gap-1.5 text-[11px]" style={{ color: s.ok ? GREEN : RED }}>
+                  <span
+                    className="h-1.5 w-1.5 rounded-full"
+                    style={{ background: s.ok ? GREEN : RED, boxShadow: `0 0 6px ${s.ok ? GREEN : RED}66` }}
+                  />
+                  {s.label} {s.ok ? 'bağlı' : 'bağlı değil'}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
         <ArrowRight size={15} className="transition group-hover:translate-x-0.5" style={{ color: t.fg }} />
       </div>
@@ -544,111 +461,6 @@ function TwoFactorSection() {
 }
 
 // =====================================================================
-// MESAJ ŞABLONLARI
-// =====================================================================
-
-function MessageTemplatesSection() {
-  const qc = useQueryClient();
-  const { data, isLoading } = useQuery({
-    queryKey: ['sms-templates'],
-    queryFn: () => api.get('/sms-templates').then((res) => res.data),
-  });
-
-  const [evrakTalep, setEvrakTalep] = useState('');
-  const [evrakGeldi, setEvrakGeldi] = useState('');
-  const [tahsilat, setTahsilat] = useState('');
-  const [editing, setEditing] = useState(false);
-
-  const { mutate: save, isPending } = useMutation({
-    mutationFn: (payload: any) => api.patch('/sms-templates', payload),
-    onSuccess: () => {
-      toast.success('Mesaj şablonları kaydedildi');
-      qc.invalidateQueries({ queryKey: ['sms-templates'] });
-      setEditing(false);
-    },
-    onError: () => toast.error('Kayıt hatası'),
-  });
-
-  const handleEdit = () => {
-    setEvrakTalep(data?.evrakTalepMesaji || '');
-    setEvrakGeldi(data?.evrakGeldiMesaji || '');
-    setTahsilat(data?.tahsilatHatirlatmaMesaji || '');
-    setEditing(true);
-  };
-
-  return (
-    <section
-      className="relative overflow-hidden rounded-xl border p-5"
-      style={{ borderColor: 'rgba(244,114,182,0.28)', background: 'linear-gradient(135deg, rgba(244,114,182,0.14), rgba(255,255,255,0.015)), ' + CARD }}
-    >
-      <div
-        className="absolute inset-x-0 top-0 h-[3px]"
-        style={{ background: 'linear-gradient(90deg, #f472b6, rgba(244,114,182,0.20))' }}
-      />
-      <SectionHeader
-        icon={MessageSquareText}
-        title="Mesaj Şablonları"
-        subtitle="WhatsApp/SMS otomasyonlarında kullanılan metinler"
-        tone="pink"
-        action={
-          !editing ? (
-            <SmallButton onClick={handleEdit}>
-              <Settings2 size={13} /> Düzenle
-            </SmallButton>
-          ) : null
-        }
-      />
-
-      {isLoading ? (
-        <LoadingLine />
-      ) : editing ? (
-        <div className="space-y-3">
-          <div className="flex flex-wrap gap-1.5 text-[11px]" style={{ color: MUTED }}>
-            <span>Değişkenler:</span>
-            {['{ad}', '{dönem}', '{bakiye}'].map((tag) => (
-              <code
-                key={tag}
-                className="rounded-md border px-1.5 py-0.5"
-                style={{ borderColor: LINE, background: SOFT, color: GOLD }}
-              >
-                {tag}
-              </code>
-            ))}
-          </div>
-          <TemplateTextarea label="Evrak talebi" value={evrakTalep} onChange={setEvrakTalep} />
-          <TemplateTextarea label="İşleme başlama onayı" value={evrakGeldi} onChange={setEvrakGeldi} />
-          <TemplateTextarea label="Tahsilat hatırlatma" value={tahsilat} onChange={setTahsilat} />
-          <div className="flex justify-end gap-2">
-            <SmallButton onClick={() => setEditing(false)}>İptal</SmallButton>
-            <button
-              type="button"
-              disabled={isPending}
-              onClick={() =>
-                save({
-                  evrakTalepMesaji: evrakTalep,
-                  evrakGeldiMesaji: evrakGeldi,
-                  tahsilatHatirlatmaMesaji: tahsilat,
-                })
-              }
-              className="inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-[12px] font-bold disabled:opacity-50"
-              style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_DEEP})`, color: '#0f0d0b' }}
-            >
-              {isPending ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />} Kaydet
-            </button>
-          </div>
-        </div>
-      ) : (
-        <div className="grid gap-2.5 sm:grid-cols-3">
-          <TemplatePreview label="Evrak Talebi" value={data?.evrakTalepMesaji || '—'} />
-          <TemplatePreview label="İşleme Başlama" value={data?.evrakGeldiMesaji || '—'} />
-          <TemplatePreview label="Tahsilat" value={data?.tahsilatHatirlatmaMesaji || '—'} />
-        </div>
-      )}
-    </section>
-  );
-}
-
-// =====================================================================
 // MOREN AGENT — token + bookmarklet (CollapsibleSection içine giriyor)
 // =====================================================================
 
@@ -741,47 +553,6 @@ function AgentContent() {
 // YARDIMCI BİLEŞENLER
 // =====================================================================
 
-function SectionHeader({
-  icon: Icon,
-  title,
-  subtitle,
-  action,
-  tone = 'gold',
-}: {
-  icon: React.ElementType;
-  title: string;
-  subtitle: string;
-  action?: React.ReactNode;
-  tone?: 'gold' | 'blue' | 'purple' | 'green' | 'teal' | 'amber' | 'pink' | 'violet';
-}) {
-  const TONES: Record<string, { fg: string; bg: string; bd: string }> = {
-    gold:   { fg: '#d4b876', bg: 'rgba(212,184,118,0.10)', bd: 'rgba(212,184,118,0.32)' },
-    blue:   { fg: '#60a5fa', bg: 'rgba(96,165,250,0.10)',  bd: 'rgba(96,165,250,0.32)' },
-    purple: { fg: '#c084fc', bg: 'rgba(192,132,252,0.10)', bd: 'rgba(192,132,252,0.32)' },
-    green:  { fg: '#4ade80', bg: 'rgba(74,222,128,0.10)',  bd: 'rgba(74,222,128,0.32)' },
-    teal:   { fg: '#2dd4bf', bg: 'rgba(45,212,191,0.10)',  bd: 'rgba(45,212,191,0.32)' },
-    amber:  { fg: '#fbbf24', bg: 'rgba(251,191,36,0.10)',  bd: 'rgba(251,191,36,0.32)' },
-    pink:   { fg: '#f472b6', bg: 'rgba(244,114,182,0.10)', bd: 'rgba(244,114,182,0.32)' },
-    violet: { fg: '#a78bfa', bg: 'rgba(167,139,250,0.10)', bd: 'rgba(167,139,250,0.32)' },
-  };
-  const t = TONES[tone] || TONES.gold;
-  return (
-    <div className="mb-4 flex items-start gap-3">
-      <div
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
-        style={{ background: `linear-gradient(135deg, ${t.fg}, ${t.fg}aa)`, color: '#0f0d0b', boxShadow: `0 4px 12px ${t.fg}33` }}
-      >
-        <Icon size={16} />
-      </div>
-      <div className="min-w-0 flex-1">
-        <h2 className="text-[15px] font-semibold" style={{ color: TEXT }}>{title}</h2>
-        <p className="mt-0.5 text-[12px]" style={{ color: MUTED }}>{subtitle}</p>
-      </div>
-      {action}
-    </div>
-  );
-}
-
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
@@ -815,43 +586,6 @@ function SmallButton({
     >
       {children}
     </button>
-  );
-}
-
-function TemplateTextarea({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <label className="block">
-      <span className="mb-1 block text-[11px] font-medium uppercase tracking-wider" style={{ color: MUTED }}>
-        {label}
-      </span>
-      <textarea
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="h-20 w-full resize-none rounded-md border px-2.5 py-2 text-[13px] outline-none"
-        style={{ background: SOFT, borderColor: LINE, color: TEXT }}
-      />
-    </label>
-  );
-}
-
-function TemplatePreview({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-md border p-3" style={{ borderColor: LINE, background: SOFT }}>
-      <p className="text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: GOLD }}>
-        {label}
-      </p>
-      <p className="mt-2 min-h-[48px] text-[12.5px] leading-relaxed" style={{ color: TEXT }}>
-        {value}
-      </p>
-    </div>
   );
 }
 
