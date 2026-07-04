@@ -237,50 +237,43 @@ export default function GorevlerPage() {
         </div>
       )}
 
-      {/* Filtreler */}
-      <div className="rounded-xl p-4 space-y-3" style={{ background: BG_CARD, border: `1px solid ${BORDER}` }}>
-        <div className="flex flex-wrap gap-3 items-end">
-          <div>
-            <label className="text-[10.5px] uppercase font-bold tracking-[.12em] block mb-1.5" style={{ color: 'rgba(250,250,249,0.5)' }}>
-              Görünüm
-            </label>
-            <div className="flex p-1 rounded-lg" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
-              {[
-                { key: 'list', label: 'Liste', icon: List },
-                { key: 'kanban', label: 'Kanban', icon: LayoutGrid },
-              ].map((opt) => {
-                const Icon = opt.icon;
-                const active = viewMode === opt.key;
-                return (
-                  <button
-                    key={opt.key}
-                    type="button"
-                    onClick={() => setViewMode(opt.key as 'list' | 'kanban')}
-                    className="px-3 py-1.5 rounded-md text-[12px] font-semibold inline-flex items-center gap-1.5"
-                    style={{ background: active ? 'rgba(212,184,118,0.16)' : 'transparent', color: active ? GOLD : 'rgba(250,250,249,0.55)' }}
-                  >
-                    <Icon size={12} /> {opt.label}
-                  </button>
-                );
-              })}
-            </div>
+      {/* Araç çubuğu: görünüm + arama + filtreler tek satır, altta hızlı ekle */}
+      <div className="rounded-xl p-3" style={{ background: BG_CARD, border: `1px solid ${BORDER}` }}>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex p-1 rounded-lg" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
+            {[
+              { key: 'list', label: 'Liste', icon: List },
+              { key: 'kanban', label: 'Kanban', icon: LayoutGrid },
+            ].map((opt) => {
+              const Icon = opt.icon;
+              const active = viewMode === opt.key;
+              return (
+                <button
+                  key={opt.key}
+                  type="button"
+                  onClick={() => setViewMode(opt.key as 'list' | 'kanban')}
+                  className="px-3 py-1.5 rounded-md text-[12px] font-semibold inline-flex items-center gap-1.5"
+                  style={{ background: active ? 'rgba(212,184,118,0.16)' : 'transparent', color: active ? GOLD : 'rgba(250,250,249,0.55)' }}
+                >
+                  <Icon size={12} /> {opt.label}
+                </button>
+              );
+            })}
           </div>
-          <div className="flex-1 min-w-[200px]">
-            <label className="text-[10.5px] uppercase font-bold tracking-[.12em] block mb-1.5" style={{ color: 'rgba(250,250,249,0.5)' }}>
-              <Search size={10} className="inline mr-1" /> Ara
-            </label>
+          <div className="relative min-w-[200px] flex-1">
+            <Search size={13} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(250,250,249,0.4)' }} />
             <input
               type="text"
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
-              placeholder="başlık veya açıklama..."
-              className="w-full px-3 py-2 rounded-lg text-sm border outline-none"
+              placeholder="Görev ara — başlık veya açıklama..."
+              className="w-full rounded-lg border py-2 pl-9 pr-3 text-sm outline-none"
               style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' }}
             />
           </div>
           <SelectField label="Durum" value={filterStatus} onChange={setFilterStatus}
             options={[
-              { value: '', label: 'Tümü' },
+              { value: '', label: 'Durum: Tümü' },
               { value: 'OPEN', label: 'Açık' },
               { value: 'IN_PROGRESS', label: 'Devam Ediyor' },
               { value: 'DONE', label: 'Tamamlandı' },
@@ -288,31 +281,32 @@ export default function GorevlerPage() {
               { value: 'MISSED', label: 'Kaçırıldı' },
             ]} />
           <SelectField label="Kategori" value={filterCategory} onChange={setFilterCategory}
-            options={[{ value: '', label: 'Tümü' }, ...CATEGORY_OPTIONS]} />
+            options={[{ value: '', label: 'Kategori: Tümü' }, ...CATEGORY_OPTIONS]} />
           <SelectField label="Öncelik" value={filterPriority} onChange={setFilterPriority}
             options={[
-              { value: '', label: 'Tümü' },
+              { value: '', label: 'Öncelik: Tümü' },
               { value: 'URGENT', label: 'ACİL' },
               { value: 'HIGH', label: 'Yüksek' },
               { value: 'MEDIUM', label: 'Orta' },
               { value: 'LOW', label: 'Düşük' },
             ]} />
         </div>
-      </div>
-
-      {/* Görev grupları */}
-      <div className="flex flex-wrap gap-2">
-        {quickTemplates.map((tpl) => (
-          <button
-            key={tpl.title}
-            onClick={() => quickTaskMut.mutate(tpl)}
-            disabled={quickTaskMut.isPending}
-            className="px-3 py-1.5 rounded-md text-[11.5px] font-semibold disabled:opacity-50"
-            style={{ background: 'rgba(212,184,118,0.10)', color: GOLD, border: '1px solid rgba(212,184,118,0.24)' }}
-          >
-            <Plus size={12} className="inline mr-1" /> {tpl.title}
-          </button>
-        ))}
+        <div className="mt-2.5 flex flex-wrap items-center gap-2 border-t pt-2.5" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+          <span className="text-[10.5px] font-bold uppercase tracking-[.12em]" style={{ color: 'rgba(250,250,249,0.42)' }}>
+            Hızlı ekle
+          </span>
+          {quickTemplates.map((tpl) => (
+            <button
+              key={tpl.title}
+              onClick={() => quickTaskMut.mutate(tpl)}
+              disabled={quickTaskMut.isPending}
+              className="px-3 py-1.5 rounded-md text-[11.5px] font-semibold transition hover:bg-white/[0.05] disabled:opacity-50"
+              style={{ background: 'rgba(212,184,118,0.10)', color: GOLD, border: '1px solid rgba(212,184,118,0.24)' }}
+            >
+              <Plus size={12} className="inline mr-1" /> {tpl.title}
+            </button>
+          ))}
+        </div>
       </div>
 
       {isLoading ? (
@@ -510,22 +504,24 @@ interface SelectFieldProps {
   options: SelectOption[];
 }
 function SelectField({ label, value, onChange, options }: SelectFieldProps) {
+  const active = value !== '';
   return (
-    <div>
-      <label className="text-[10.5px] uppercase font-bold tracking-[.12em] block mb-1.5" style={{ color: 'rgba(250,250,249,0.5)' }}>
-        {label}
-      </label>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="px-3 py-2 rounded-lg text-sm border outline-none"
-        style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9', minWidth: 140 }}
-      >
-        {options.map((o) => (
-          <option key={o.value} value={o.value} style={{ background: '#0f0d0b' }}>{o.label}</option>
-        ))}
-      </select>
-    </div>
+    <select
+      title={label}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="cursor-pointer rounded-lg border px-3 py-2 text-[12.5px] outline-none"
+      style={{
+        background: active ? 'rgba(212,184,118,0.08)' : 'rgba(255,255,255,0.03)',
+        borderColor: active ? 'rgba(212,184,118,0.3)' : 'rgba(255,255,255,0.08)',
+        color: active ? GOLD : '#fafaf9',
+        minWidth: 130,
+      }}
+    >
+      {options.map((o) => (
+        <option key={o.value} value={o.value} style={{ background: '#0f0d0b', color: '#fafaf9' }}>{o.label}</option>
+      ))}
+    </select>
   );
 }
 
@@ -699,9 +695,9 @@ function TaskRow({ task, onComplete, onReopen, onStart, onCancel, onSnooze, onAd
       <button
         onClick={() => isDone ? onReopen(task.id) : onComplete(task.id)}
         title={isDone ? 'Tekrar aç (geri al)' : 'Tamamla'}
-        className="mt-0.5 w-5 h-5 rounded-md border flex items-center justify-center shrink-0 transition hover:scale-110"
+        className="mt-0.5 flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full border transition hover:scale-110"
         style={{
-          borderColor: isDone ? '#22c55e' : 'rgba(250,250,249,0.3)',
+          borderColor: isDone ? '#22c55e' : 'rgba(212,184,118,0.45)',
           background: isDone ? 'rgba(34,197,94,0.18)' : 'transparent',
         }}
       >
