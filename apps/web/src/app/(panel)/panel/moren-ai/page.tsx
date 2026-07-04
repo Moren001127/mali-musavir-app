@@ -6,7 +6,6 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { toast } from 'sonner';
 import {
-  Bot,
   Brain,
   CheckCircle2,
   DollarSign,
@@ -1360,24 +1359,6 @@ type ToolView = {
   result?: any;
 };
 
-const TOOL_LABELS: Record<string, string> = {
-  get_operation_briefing: 'Ofis brifingi',
-  get_taxpayer_work_status: 'Mükellef durumu',
-  get_beyanname_readiness_summary: 'Beyan hazırlığı',
-  get_collection_risk_summary: 'Tahsilat riski',
-  get_invoice_summary: 'Fatura özeti',
-  list_invoices: 'İşlenen faturalar',
-  list_taxpayers: 'Mükellef arama',
-  search_ai_memory: 'Hafıza',
-  save_ai_memory: 'Hafıza kaydı',
-  get_agent_status: 'Ajan durumu',
-  get_luca_agent_jobs: 'Luca işleri',
-  get_mihsap_agent_jobs: 'Mihsap işleri',
-  preview_agent_command: 'Aksiyon önizleme',
-  create_confirmed_agent_command: 'Onaylı aksiyon',
-  research_official_sources: 'Resmi kaynak',
-};
-
 function parseJsonish(value: any) {
   if (!value) return value;
   if (typeof value !== 'string') return value;
@@ -1455,26 +1436,8 @@ function MessageBubble({
         <div className="moren-md text-[13px] leading-[1.6]">
           <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
         </div>
-        {!isUser && tools.length > 0 ? (
-          <div className="mt-3 rounded-lg border px-3 py-2" style={{ borderColor: LINE, background: 'rgba(0,0,0,0.16)' }}>
-            <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.12em]" style={{ color: 'rgba(250,250,249,0.38)' }}>
-              Kullanılan veri ve araçlar
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              {tools.map((tool, index) => (
-                <span
-                  key={`${tool.name}-${index}`}
-                  className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[10.5px] font-semibold"
-                  style={{ borderColor: LINE_GOLD, color: GOLD, background: 'rgba(212,184,118,0.07)' }}
-                >
-                  <Bot size={10} />
-                  {TOOL_LABELS[tool.name] || tool.name}
-                </span>
-              ))}
-            </div>
-          </div>
-        ) : null}
-
+        {/* "Kullanılan veri ve araçlar" rozeti kaldırıldı (kullanıcı kararı 2026-07-04) —
+            teknik araç listesi sekreter sohbetinde görünmesin. previews için tools hâlâ okunuyor. */}
         {!isUser && previews.length > 0 ? (
           <div className="mt-3 space-y-2">
             {previews.map((preview: any, index: number) => (
