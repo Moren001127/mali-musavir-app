@@ -212,7 +212,9 @@ export default function MorenAIPage() {
   const [realtimeSessionTokens, setRealtimeSessionTokens] = useState(0);
   const [memoryText, setMemoryText] = useState('');
   const [leftCollapsed, setLeftCollapsed] = useState(false);
-  const [rightCollapsed, setRightCollapsed] = useState(false);
+  // Sağdaki "Ofis Beyni" paneli kaldırıldı (kullanıcı kararı 2026-07-04) —
+  // içeriği başlıktaki küçük "Hızlı menü" açılırına taşındı.
+  const [quickMenuOpen, setQuickMenuOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -791,16 +793,27 @@ export default function MorenAIPage() {
     : recorder.recording
       ? 'Dinliyorum...'
       : voiceStatus === 'speaking'
-        ? 'MOREN AI konuşuyor...'
+        ? 'Elif konuşuyor...'
         : voiceStatus === 'transcribing'
           ? 'Ses yazıya çevriliyor...'
           : 'Mali tablo, mükellef veya ofis akışı sor...';
 
   const voiceActive = voiceMode || realtimeActiveRef.current || ['listening', 'transcribing', 'thinking', 'speaking'].includes(voiceStatus);
 
+  const sekreterDurum = sendMutation.isPending
+    ? 'yazıyor…'
+    : recorder.recording
+      ? 'dinliyor…'
+      : voiceStatus === 'speaking'
+        ? 'konuşuyor…'
+        : realtimeActiveRef.current
+          ? 'canlı ses açık'
+          : 'çevrimiçi';
+  const sekreterMesgul = sendMutation.isPending || recorder.recording || voiceStatus === 'speaking';
+
   return (
-    <div className="flex h-full min-h-0 max-w-none flex-col gap-3 overflow-hidden">
-      {/* ── İmza başlık (gül+altın radial + renk şeridi, yapışkan değil) ── */}
+    <div className="relative flex h-full min-h-0 max-w-none flex-col gap-3 overflow-hidden">
+      {/* ── Sekreter başlığı: Elif — gerçek biriyle yazışıyormuş havası ── */}
       <header
         className="relative shrink-0 overflow-hidden rounded-2xl border px-5 py-3.5"
         style={{
@@ -812,12 +825,23 @@ export default function MorenAIPage() {
         <div className="absolute inset-x-0 top-0 h-1" style={{ background: 'linear-gradient(90deg,#f09aa8,#e7b6a0,#d4b876,#c8a25e,#f09aa8)' }} />
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <span className="grid h-11 w-11 place-items-center rounded-2xl" style={{ background: 'linear-gradient(135deg,#f09aa8,#d4b876)', boxShadow: '0 6px 18px rgba(240,154,168,0.34)', color: '#1a1410' }}>
-              <Brain size={21} />
+            <span className="relative grid h-12 w-12 place-items-center rounded-full text-[19px] font-bold" style={{ background: 'linear-gradient(135deg,#f09aa8,#d4b876)', boxShadow: '0 6px 18px rgba(240,154,168,0.34)', color: '#1a1410', fontFamily: 'Fraunces, serif' }}>
+              E
+              <span
+                className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2"
+                style={{
+                  borderColor: '#0f0d0b',
+                  background: sekreterMesgul ? '#fbbf24' : '#4ade80',
+                  boxShadow: `0 0 8px ${sekreterMesgul ? 'rgba(251,191,36,0.8)' : 'rgba(74,222,128,0.8)'}`,
+                }}
+              />
             </span>
             <div>
-              <h1 className="text-[22px] font-bold leading-tight" style={{ color: TEXT }}>MOREN AI</h1>
-              <p className="text-[12px]" style={{ color: MUTED }}>Ofisin aklı — konuş, sor, yönet.</p>
+              <h1 className="text-[21px] font-bold leading-tight" style={{ color: TEXT, fontFamily: 'Fraunces, serif' }}>Elif</h1>
+              <p className="flex items-center gap-1.5 text-[12px]" style={{ color: sekreterMesgul ? GOLD : MUTED }}>
+                {sekreterDurum}
+                <span style={{ color: 'rgba(250,250,249,0.35)' }}>· MOREN AI Ofis Sekreteri</span>
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -846,16 +870,101 @@ export default function MorenAIPage() {
             </button>
             <button
               type="button"
-              onClick={() => setRightCollapsed((value) => !value)}
-              className="hidden h-10 items-center gap-2 rounded-xl border px-3 text-[12.5px] font-semibold transition hover:bg-white/[0.06] xl:flex"
-              style={{ borderColor: rightCollapsed ? LINE : LINE_GOLD, color: rightCollapsed ? MUTED : GOLD }}
-              title="Ofis Beyni panelini gizle/göster"
+              onClick={() => setQuickMenuOpen((value) => !value)}
+              className="flex h-10 items-center gap-2 rounded-xl border px-3 text-[12.5px] font-semibold transition hover:bg-white/[0.06]"
+              style={{ borderColor: quickMenuOpen ? LINE_GOLD : LINE, color: quickMenuOpen ? GOLD : MUTED }}
+              title="Hızlı sorular, canlı özet ve hafıza notu"
             >
-              <Brain size={15} /> Ofis Beyni
+              <Sparkles size={15} /> Hızlı menü
             </button>
           </div>
         </div>
       </header>
+
+      {/* ── Hızlı menü açılırı (eski Ofis Beyni içeriği, kompakt) ── */}
+      {quickMenuOpen && (
+        <div
+          className="absolute right-0 top-[84px] z-40 flex max-h-[72vh] w-[320px] flex-col overflow-hidden rounded-xl border shadow-2xl"
+          style={{ borderColor: LINE_GOLD, background: '#141210' }}
+        >
+          <div className="flex items-center gap-2 border-b px-4 py-2.5" style={{ borderColor: LINE }}>
+            <Sparkles size={14} style={{ color: GOLD }} />
+            <span className="flex-1 text-[13px] font-semibold" style={{ color: TEXT }}>Hızlı menü</span>
+            <button type="button" onClick={() => refetchBrain()} className="flex h-7 w-7 items-center justify-center rounded-lg border transition hover:bg-white/[0.06]" style={{ borderColor: LINE, color: GOLD }} title="Yenile">
+              {brainLoading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+            </button>
+            <button type="button" onClick={() => setQuickMenuOpen(false)} className="flex h-7 w-7 items-center justify-center rounded-lg border transition hover:bg-white/[0.06]" style={{ borderColor: LINE, color: MUTED }} title="Kapat">
+              ×
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3">
+            <div className="grid grid-cols-2 gap-1.5">
+              {[
+                { label: 'Evrak bekleyen', value: officeBrain?.briefing?.ozet?.evrakEksik ?? 0 },
+                { label: 'Beyan riski', value: officeBrain?.briefing?.ozet?.kdvKontrolEksik ?? 0 },
+                { label: 'Banka aksiyonu', value: (officeBrain?.briefing?.ozet?.bankaEksik ?? 0) + (officeBrain?.briefing?.ozet?.bankaHesapsiz ?? 0) },
+                { label: 'Cari borçlu', value: officeBrain?.briefing?.ozet?.borcluMukellef ?? 0 },
+              ].map((metric) => (
+                <div key={metric.label} className="rounded-lg border px-2.5 py-2" style={{ borderColor: LINE, background: SOFT }}>
+                  <p className="text-[10px]" style={{ color: MUTED }}>{metric.label}</p>
+                  <p className="mt-0.5 text-[18px] font-semibold leading-none tabular-nums" style={{ color: TEXT }}>{metric.value}</p>
+                </div>
+              ))}
+            </div>
+            <p className="mb-1.5 mt-3 text-[10.5px] font-semibold uppercase tracking-[0.12em]" style={{ color: 'rgba(250,250,249,0.42)' }}>Hazır sorular</p>
+            <div className="space-y-1.5">
+              {[
+                'Bugün önce neye bakmalıyım?',
+                'Beyana hazır olmayanları risk sırasına koy.',
+                'Agent hatalarında acil bir şey var mı?',
+                'Evrak bekleyenler için WhatsApp taslakları hazırla.',
+                'Tahsilat riski yüksek olanlara WhatsApp mesajı öner.',
+              ].map((quick) => (
+                <button
+                  key={quick}
+                  type="button"
+                  onClick={() => { askQuick(quick); setQuickMenuOpen(false); }}
+                  className="w-full rounded-lg border px-3 py-2 text-left text-[12px] transition hover:bg-white/[0.05]"
+                  style={{ borderColor: LINE, color: TEXT, background: 'rgba(255,255,255,0.02)' }}
+                >
+                  {quick}
+                </button>
+              ))}
+            </div>
+            <p className="mb-1.5 mt-3 text-[10.5px] font-semibold uppercase tracking-[0.12em]" style={{ color: 'rgba(250,250,249,0.42)' }}>Son hafıza</p>
+            <div className="space-y-1.5">
+              {(memoryData?.memories || []).slice(0, 3).map((memory: any) => (
+                <div key={memory.id} className="rounded-lg border px-3 py-2" style={{ borderColor: LINE, background: 'rgba(255,255,255,0.02)' }}>
+                  <p className="truncate text-[12px] font-semibold" style={{ color: TEXT }}>{memory.title}</p>
+                  <p className="mt-0.5 line-clamp-2 text-[11px] leading-relaxed" style={{ color: MUTED }}>{memory.content}</p>
+                </div>
+              ))}
+              {!(memoryData?.memories || []).length && <p className="text-[12px]" style={{ color: MUTED }}>Henüz kayıtlı not yok.</p>}
+            </div>
+          </div>
+          <div className="border-t p-3" style={{ borderColor: LINE }}>
+            <div className="flex gap-2">
+              <input
+                value={memoryText}
+                onChange={(event) => setMemoryText(event.target.value)}
+                placeholder="Hafızaya kısa not..."
+                className="h-9 min-w-0 flex-1 rounded-lg border px-3 text-[12px]"
+                style={{ background: SOFT, borderColor: LINE, color: TEXT }}
+              />
+              <button
+                type="button"
+                disabled={!memoryText.trim() || saveMemoryMut.isPending}
+                onClick={() => saveMemoryMut.mutate()}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border transition disabled:opacity-40"
+                style={{ borderColor: LINE_GOLD, color: GOLD, background: 'rgba(212,184,118,0.08)' }}
+                title="Kaydet"
+              >
+                {saveMemoryMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={15} />}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Gövde: sohbet listesi · konuşma · ofis beyni ── */}
       <div className="flex min-h-0 flex-1 gap-3 overflow-hidden">
@@ -866,8 +975,8 @@ export default function MorenAIPage() {
             <Brain size={18} />
           </div>
           <div className="min-w-0 flex-1">
-            <h1 className="text-[15px] font-semibold leading-tight" style={{ color: TEXT }}>MOREN AI</h1>
-            <p className="truncate text-[11px]" style={{ color: MUTED }}>Ofis hafızası ve sohbetler</p>
+            <h1 className="text-[15px] font-semibold leading-tight" style={{ color: TEXT }}>Sohbetler</h1>
+            <p className="truncate text-[11px]" style={{ color: MUTED }}>Elif ile geçmiş konuşmalar</p>
           </div>
           <button
             type="button"
@@ -1126,9 +1235,20 @@ export default function MorenAIPage() {
                 />
               ))}
               {sendMutation.isPending && (
-                <div className="flex items-center gap-2 text-[12px]" style={{ color: GOLD }}>
-                  <Loader2 size={14} className="animate-spin" />
-                  MOREN AI verileri topluyor...
+                <div className="flex items-center gap-2.5">
+                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-[13px] font-bold" style={{ background: 'linear-gradient(135deg,#f09aa8,#d4b876)', color: '#1a1410', fontFamily: 'Fraunces, serif' }}>
+                    E
+                  </span>
+                  <div className="flex items-center gap-1 rounded-2xl border px-3.5 py-2.5" style={{ borderColor: LINE, background: SOFT }}>
+                    {[0, 1, 2].map((i) => (
+                      <span
+                        key={i}
+                        className="h-1.5 w-1.5 animate-bounce rounded-full"
+                        style={{ background: GOLD, animationDelay: `${i * 0.15}s` }}
+                      />
+                    ))}
+                    <span className="ml-2 text-[11.5px]" style={{ color: MUTED }}>Elif yazıyor…</span>
+                  </div>
                 </div>
               )}
             </div>
@@ -1188,19 +1308,6 @@ export default function MorenAIPage() {
         </div>
       </section>
 
-      {!rightCollapsed && (
-      <OfficeBrainPanel
-        data={officeBrain}
-        loading={brainLoading}
-        memoryText={memoryText}
-        setMemoryText={setMemoryText}
-        saveMemory={() => saveMemoryMut.mutate()}
-        savingMemory={saveMemoryMut.isPending}
-        memories={memoryData?.memories || []}
-        refetch={() => refetchBrain()}
-        askQuick={askQuick}
-      />
-      )}
       </div>
 
       <audio ref={audioRef} />
@@ -1220,12 +1327,13 @@ function EmptyChatState({ askQuick }: { askQuick: (text: string) => void }) {
     <div className="flex h-full flex-col justify-center">
       <div className="mx-auto w-full max-w-2xl">
         <div className="mb-6 flex items-center gap-4">
-          <div className="flex h-12 w-12 items-center justify-center rounded-lg border" style={{ borderColor: LINE_GOLD, background: 'rgba(212,184,118,0.10)', color: GOLD }}>
-            <Sparkles size={22} />
-          </div>
+          <span className="relative grid h-14 w-14 shrink-0 place-items-center rounded-full text-[22px] font-bold" style={{ background: 'linear-gradient(135deg,#f09aa8,#d4b876)', boxShadow: '0 6px 18px rgba(240,154,168,0.34)', color: '#1a1410', fontFamily: 'Fraunces, serif' }}>
+            E
+            <span className="absolute bottom-0.5 right-0.5 h-3 w-3 rounded-full border-2" style={{ borderColor: '#0f0d0b', background: '#4ade80', boxShadow: '0 0 8px rgba(74,222,128,0.8)' }} />
+          </span>
           <div>
-            <h3 className="text-[22px] font-semibold" style={{ color: TEXT }}>Ofis aklını tek yerde topla</h3>
-            <p className="mt-1 text-sm" style={{ color: MUTED }}>Mükellef, beyan, evrak, agent ve tahsilat verileri aynı konuşma içinde.</p>
+            <h3 className="text-[22px] font-semibold" style={{ color: TEXT, fontFamily: 'Fraunces, serif' }}>Merhaba, ben Elif 👋</h3>
+            <p className="mt-1 text-sm" style={{ color: MUTED }}>Ofisin sekreteriyim — mükellef, beyan, evrak, tahsilat… ne lazımsa yazman yeterli.</p>
           </div>
         </div>
         <div className="grid gap-2 sm:grid-cols-2">
@@ -1243,140 +1351,6 @@ function EmptyChatState({ askQuick }: { askQuick: (text: string) => void }) {
         </div>
       </div>
     </div>
-  );
-}
-
-function OfficeBrainPanel({
-  data,
-  loading,
-  memoryText,
-  setMemoryText,
-  saveMemory,
-  savingMemory,
-  memories,
-  refetch,
-  askQuick,
-}: {
-  data: any;
-  loading: boolean;
-  memoryText: string;
-  setMemoryText: (value: string) => void;
-  saveMemory: () => void;
-  savingMemory: boolean;
-  memories: any[];
-  refetch: () => void;
-  askQuick: (text: string) => void;
-}) {
-  const summary = data?.briefing?.ozet || {};
-  const agents = data?.agentCatalog || [];
-  const metrics = [
-    { label: 'Evrak bekleyen', value: summary.evrakEksik ?? 0 },
-    { label: 'Beyan riski', value: summary.kdvKontrolEksik ?? 0 },
-    { label: 'Banka aksiyonu', value: (summary.bankaEksik ?? 0) + (summary.bankaHesapsiz ?? 0) },
-    { label: 'Cari borçlu', value: summary.borcluMukellef ?? 0 },
-  ];
-  const quicks = [
-    'Bugün önce neye bakmalıyım?',
-    'Beyana hazır olmayanları risk sırasına koy.',
-    'Agent hatalarında acil bir şey var mı?',
-    'Evrak bekleyenler için WhatsApp taslakları hazırla.',
-    'Tahsilat riski yüksek olanlara WhatsApp mesajı öner.',
-  ];
-
-  return (
-    <aside className="hidden w-[292px] shrink-0 flex-col overflow-hidden rounded-lg border bg-[#0f0d0b]/80 xl:flex" style={{ borderColor: LINE }}>
-      <div className="flex items-center gap-3 border-b px-4 py-3" style={{ borderColor: LINE }}>
-        <div className="flex h-9 w-9 items-center justify-center rounded-lg" style={{ background: 'rgba(212,184,118,0.10)', color: GOLD }}>
-          <Brain size={17} />
-        </div>
-        <div className="min-w-0 flex-1">
-          <h2 className="text-[14px] font-semibold" style={{ color: TEXT }}>Ofis Beyni</h2>
-          <p className="text-[11px]" style={{ color: MUTED }}>Canlı özet ve hafıza</p>
-        </div>
-        <button type="button" onClick={refetch} className="flex h-8 w-8 items-center justify-center rounded-lg border transition hover:bg-white/[0.06]" style={{ borderColor: LINE, color: GOLD }} title="Yenile">
-          {loading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-        </button>
-      </div>
-
-      <div className="flex-1 overflow-y-auto p-4">
-        <div className="grid grid-cols-2 gap-2">
-          {metrics.map((metric) => (
-            <div key={metric.label} className="rounded-lg border p-3" style={{ borderColor: LINE, background: SOFT }}>
-              <p className="text-[10.5px]" style={{ color: MUTED }}>{metric.label}</p>
-              <p className="mt-1 text-[24px] font-semibold leading-none tabular-nums" style={{ color: TEXT }}>{metric.value}</p>
-            </div>
-          ))}
-        </div>
-
-        <div className="mt-5">
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color: 'rgba(250,250,249,0.42)' }}>Hızlı analiz</p>
-          <div className="space-y-2">
-            {quicks.map((quick) => (
-              <button
-                key={quick}
-                type="button"
-                onClick={() => askQuick(quick)}
-                className="w-full rounded-lg border px-3 py-2 text-left text-[12px] transition hover:bg-white/[0.05]"
-                style={{ borderColor: LINE, color: TEXT, background: 'rgba(255,255,255,0.02)' }}
-              >
-                {quick}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="mt-5">
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color: 'rgba(250,250,249,0.42)' }}>Aktif ajanlar</p>
-          <div className="flex flex-wrap gap-1.5">
-            {agents.slice(0, 10).map((agent: any) => (
-              <span key={agent.id} className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[10.5px]" style={{ borderColor: LINE, color: MUTED }}>
-                <Bot size={10} style={{ color: GOLD }} />
-                {agent.ad}
-              </span>
-            ))}
-            {agents.length === 0 && <span className="text-[12px]" style={{ color: MUTED }}>Ajan bilgisi yok.</span>}
-          </div>
-        </div>
-
-        <div className="mt-5">
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color: 'rgba(250,250,249,0.42)' }}>Son hafıza</p>
-          <div className="space-y-2">
-            {memories.slice(0, 4).map((memory: any) => (
-              <div key={memory.id} className="rounded-lg border px-3 py-2" style={{ borderColor: LINE, background: 'rgba(255,255,255,0.02)' }}>
-                <p className="truncate text-[12px] font-semibold" style={{ color: TEXT }}>{memory.title}</p>
-                <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed" style={{ color: MUTED }}>{memory.content}</p>
-              </div>
-            ))}
-            {memories.length === 0 && <p className="text-[12px]" style={{ color: MUTED }}>Henüz kayıtlı not yok.</p>}
-          </div>
-        </div>
-      </div>
-
-      <div className="border-t p-4" style={{ borderColor: LINE }}>
-        <label className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color: 'rgba(250,250,249,0.42)' }}>
-          Hafızaya not
-        </label>
-        <div className="flex gap-2">
-          <input
-            value={memoryText}
-            onChange={(event) => setMemoryText(event.target.value)}
-            placeholder="Kısa not..."
-            className="h-9 rounded-lg border px-3 text-[12px]"
-            style={{ background: SOFT, borderColor: LINE, color: TEXT }}
-          />
-          <button
-            type="button"
-            disabled={!memoryText.trim() || savingMemory}
-            onClick={saveMemory}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border transition disabled:opacity-40"
-            style={{ borderColor: LINE_GOLD, color: GOLD, background: 'rgba(212,184,118,0.08)' }}
-            title="Kaydet"
-          >
-            {savingMemory ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={15} />}
-          </button>
-        </div>
-      </div>
-    </aside>
   );
 }
 
@@ -1460,7 +1434,16 @@ function MessageBubble({
   const previews = getActionPreviews(tools);
 
   return (
-    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
+    <div className={`flex ${isUser ? 'justify-end' : 'items-end justify-start gap-2.5'}`}>
+      {!isUser && (
+        <span
+          className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-[13px] font-bold"
+          style={{ background: 'linear-gradient(135deg,#f09aa8,#d4b876)', color: '#1a1410', fontFamily: 'Fraunces, serif' }}
+          title="Elif — MOREN AI Ofis Sekreteri"
+        >
+          E
+        </span>
+      )}
       <div
         className="max-w-[78%] rounded-lg border px-4 py-3 text-sm"
         style={{
