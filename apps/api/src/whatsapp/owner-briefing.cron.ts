@@ -108,6 +108,15 @@ export class OwnerBriefingCron {
     await this.run(tur, true);
   }
 
+  /** Cevap gerçekten brifing mi? Zorunlu başlıklardan en az biri + makul uzunluk. */
+  private brifingFormatindaMi(tur: 'sabah' | 'aksam', text: string): boolean {
+    const t = String(text || '');
+    if (t.length < 80) return false;
+    return tur === 'sabah'
+      ? /BUGÜNÜN DURUMU|BUGUN ÖNCELİK|BUGÜN ÖNCELİK/i.test(t)
+      : /BUGÜN İLERLEYEN|YARIN ÖNCELİK/i.test(t);
+  }
+
   private async run(tur: 'sabah' | 'aksam', force = false): Promise<void> {
     if (!force && process.env.MOREN_OWNER_BRIEFING_ENABLED !== '1') return;
     const phones = this.getOwnerPhones();
@@ -127,15 +136,25 @@ export class OwnerBriefingCron {
     for (const t of tenants) {
       try {
         if (!(await this.whatsapp.isAutomationActive(t.id))) continue;
-        const answer: any = await this.morenAi.chat(t.id, null, {
-          message: prompt,
-          toolMode: 'owner',
-          source: 'owner-briefing-cron',
-          currentPath: '/panel/mesajlar',
-        } as any);
-        const text = this.postFilter.filterTaxpayerReply(String(answer?.assistantMessage || ''), { mode: 'owner' });
+        // KALİTE BEKÇİSİ (2026-07-04): model bazen boş final bırakıyor → araç-şablonu
+        // yedeği (ör. "💰 TAHSİLAT RİSKİ" dökümü) brifing diye gidiyordu. Cevap brifing
+        // formatında değilse BİR kez yeniden dene; yine değilse HİÇ gönderme (standart
+        // dışı mesaj owner'a gitmesin — kullanıcı kararı).
+        let text = '';
+        for (let deneme = 1; deneme <= 2; deneme++) {
+          const answer: any = await this.morenAi.chat(t.id, null, {
+            message: prompt,
+            toolMode: 'owner',
+            source: 'owner-briefing-cron',
+            currentPath: '/panel/mesajlar',
+          } as any);
+          text = this.postFilter.filterTaxpayerReply(String(answer?.assistantMessage || ''), { mode: 'owner' });
+          if (this.brifingFormatindaMi(tur, text)) break;
+          this.logger.warn(`[OwnerBriefing] ${t.id} ${tur}: cevap brifing formatında değil (deneme ${deneme}/2)`);
+          text = '';
+        }
         if (!text || text === '—') {
-          this.logger.warn(`[OwnerBriefing] ${t.id} ${tur}: bos brifing uretildi, atlandi`);
+          this.logger.warn(`[OwnerBriefing] ${t.id} ${tur}: standart brifing uretilemedi, GONDERILMEDI`);
           continue;
         }
         for (const phone of phones) {
