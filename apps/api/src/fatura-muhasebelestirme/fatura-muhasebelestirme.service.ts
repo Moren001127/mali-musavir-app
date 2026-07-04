@@ -10586,15 +10586,17 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     tenantId: string,
     docId: string,
     force = false,
-  ): Promise<{ ok: boolean; neden: string; zengin: boolean }> {
+  ): Promise<{ ok: boolean; neden: string; zengin: boolean; denetim?: any }> {
     const doc: any = await (this.prisma as any).invoiceAccountingDocument
       .findFirst({ where: { id: docId, tenantId }, include: { lines: { orderBy: { orderNo: 'asc' } } } })
       .catch(() => null);
     if (!doc) return { ok: false, neden: '', zengin: false };
     const ocr = (doc.ocrData as any) || {};
+    // Katman 2 — AI Denetçi kararı (varsa cache'ten). Yanıtta hep döndürülür (frontend rozeti buradan).
+    const cachedDenetim = ocr.denetim && typeof ocr.denetim === 'object' ? ocr.denetim : null;
     // Cache: zaten üretilmiş zengin yorum varsa (ve zorlanmadıysa) onu döndür — AI çağrısı yok.
     const cached = String(ocr.muhasebeNedenZengin || '').trim();
-    if (!force && cached) return { ok: true, neden: cached, zengin: true };
+    if (!force && cached) return { ok: true, neden: cached, zengin: true, denetim: cachedDenetim };
 
     // KESİN yön (rematch ile aynı türetim) + iade.
     const isSale = String(doc.invoiceKind || 'ALIS').toUpperCase() === 'SATIS';
@@ -10639,7 +10641,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const det = this.buildMuhasebeNeden(tpFaaliyet, isSale, kat, giderTuru, matrahAccForNeden, isReturn);
     // Hesap atanmamışsa zengin yorum anlamsız → deterministik özet (AI çağırma).
     if (!hesapStr || !matrahAccForNeden) {
-      return { ok: true, neden: det, zengin: false };
+      return { ok: true, neden: det, zengin: false, denetim: cachedDenetim };
     }
 
     const yonText = isReturn
@@ -10665,29 +10667,70 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       'KURALLAR: Yönü MÜKELLEF gözünden anlat (ALIŞ ise "mükellef almış"; satıcının ne sattığı önemli değil). Hesap kodunu (' + hesapStr + ') Yorum cümlesinde AYNEN kullan. Faturada olmayan şey UYDURMA. Toplam ~60 kelimeyi geçme.',
     ].join('\n');
 
-    // Zengin AI yorumunu üret + cache'le (ortak iç fonksiyon).
-    const uretVeCachele = async (): Promise<string> => {
-      const res = await claudeTextViaMax({ prompt, timeoutMs: 30000, model: MAX_MODEL_CHEAP }).catch(() => null);
-      const text = this.cleanRichMuhasebeNeden(res && res.ok && res.text ? String(res.text) : '', hesapStr, isSale, isReturn);
-      if (text) {
-        // Cache (üstüne yaz). Deterministik muhasebeNeden'e DOKUNMA (anlık fallback olarak kalsın).
+    // KATMAN 2 — AI DENETÇİ: seçilen hesabın NİTELİĞİ (adındaki tür) faturanın içeriğine + mükellef
+    //   faaliyetine uyuyor mu? Sadece görünür KARAR üretir (dogru/supheli/yanlis) — sessizce değiştirmez.
+    const denetimPrompt = [
+      'Sen titiz bir Türk mali müşavirisin. Bir faturanın seçilen muhasebe hesabına DOĞRU eşleştirilip eşleştirilmediğini DENETLE.',
+      `Mükellefin işi: ${tpFaaliyet || 'belirtilmemiş'}.`,
+      `Fatura yönü: ${isSale ? 'SATIŞ (mükellef bunu SATMIŞ)' : 'ALIŞ (mükellef bunu ALMIŞ)'}${isReturn ? ' — İADE (ters kayıt)' : ''}.`,
+      kalemStr ? `Faturadaki kalemler: ${kalemStr}.` : `Fatura içeriği: ${giderTuru || kat || 'belirsiz'}.`,
+      `Sistemin seçtiği hesap: ${hesapStr}.`,
+      'SORU: Hesabın ADINDAKİ nitelik (ör. TİCARİ MAL / DEMİRBAŞ / İLK MADDE / gider / 600 satış geliri) faturanın İÇERİĞİNE ve mükellefin faaliyetine UYUYOR MU?',
+      'YANLIŞ örnekleri: araç kiralama hizmeti → 255 DEMİRBAŞ; danışmanlık gideri → 153 TİCARİ MAL; mükellefin ana malını sattığı fatura → yanlış 600 alt kırılımı.',
+      'DOĞRU örnekleri: kırtasiyecinin kırtasiye alışı → 153 TİCARİ MAL; ofise alınan yazıcı → 255 DEMİRBAŞ.',
+      'YALNIZCA şu JSON formatında yanıt ver, başka HİÇBİR metin yazma:',
+      '{"sonuc":"dogru","guven":85,"gerekce":"kısa tek cümle Türkçe","oneri":""}',
+      'Kurallar: nitelik açıkça UYUMLUYSA "dogru"; açıkça ÇELİŞİYORSA "yanlis" ve "oneri"ye hangi tür hesaba işlenmeli yaz (kod uydurma, tür yaz: "demirbaş/255", "gider/770" gibi); emin değilsen "supheli". guven 0-100. İçeriğin "okunamadığını" ASLA yazma.',
+    ].join('\n');
+
+    // Zengin AI yorumu + denetim kararını üret + cache'le (ortak iç fonksiyon, ikisi paralel).
+    const uretVeCachele = async (): Promise<{ text: string; denetim: any }> => {
+      const [yRes, dRes] = await Promise.all([
+        claudeTextViaMax({ prompt, timeoutMs: 30000, model: MAX_MODEL_CHEAP }).catch(() => null),
+        claudeTextViaMax({ prompt: denetimPrompt, timeoutMs: 30000, model: MAX_MODEL_CHEAP }).catch(() => null),
+      ]);
+      const text = this.cleanRichMuhasebeNeden(yRes && yRes.ok && yRes.text ? String(yRes.text) : '', hesapStr, isSale, isReturn);
+      const denetim = this.parseDenetimKarari(dRes && dRes.ok && dRes.text ? String(dRes.text) : '');
+      const patch: any = {};
+      if (text) patch.muhasebeNedenZengin = text; // Deterministik muhasebeNeden'e DOKUNMA (anlık fallback).
+      if (denetim) patch.denetim = denetim;
+      if (Object.keys(patch).length) {
         await (this.prisma as any).invoiceAccountingDocument
-          .update({ where: { id: doc.id }, data: { ocrData: { ...ocr, muhasebeNedenZengin: text } } })
+          .update({ where: { id: doc.id }, data: { ocrData: { ...ocr, ...patch } } })
           .catch(() => {});
       }
-      return text;
+      return { text, denetim };
     };
 
-    // "AI ile yeniden yorumla" (force) → senkron üret, zengini döndür.
+    // "AI ile yeniden yorumla" (force) → senkron üret, zengini + denetimi döndür.
     if (force) {
-      const text = await uretVeCachele();
-      return text ? { ok: true, neden: text, zengin: true } : { ok: true, neden: det, zengin: false };
+      const { text, denetim } = await uretVeCachele();
+      return { ok: true, neden: text || det, zengin: !!text, denetim: denetim || cachedDenetim };
     }
 
-    // Normal açılış → kullanıcı ANINDA deterministik yorumu görsün; zengin yorumu ARKA PLANDA
+    // Normal açılış → kullanıcı ANINDA deterministik yorumu görsün; zengin yorum + denetim ARKA PLANDA
     //   üret + cache'le (sonraki açılışta / kısa gecikmeli yeniden istekte gelir). Max BEKLETMEZ.
     void uretVeCachele().catch(() => {});
-    return { ok: true, neden: det, zengin: false };
+    return { ok: true, neden: det, zengin: false, denetim: cachedDenetim };
+  }
+
+  /** Katman 2 — AI denetçinin JSON kararını güvenli ayrıştır. Geçersizse null. */
+  private parseDenetimKarari(raw: string): { sonuc: 'dogru' | 'supheli' | 'yanlis'; guven: number; gerekce: string; oneri: string } | null {
+    const s = String(raw || '').trim();
+    if (!s) return null;
+    const m = s.match(/\{[\s\S]*\}/);
+    if (!m) return null;
+    let j: any;
+    try { j = JSON.parse(m[0]); } catch { return null; }
+    const sonuc = String(j?.sonuc || '').toLowerCase().trim();
+    if (!['dogru', 'supheli', 'yanlis'].includes(sonuc)) return null;
+    let guven = Number(j?.guven);
+    if (!Number.isFinite(guven)) guven = sonuc === 'dogru' ? 70 : 50;
+    guven = Math.max(0, Math.min(100, Math.round(guven)));
+    const bahane = /okunama|şifrel|sifrel|belirlenem|tespit edilem|anlaşılam|anlasilam/i;
+    const gerekce = bahane.test(String(j?.gerekce || '')) ? '' : String(j?.gerekce || '').slice(0, 260).trim();
+    const oneri = String(j?.oneri || '').slice(0, 160).trim();
+    return { sonuc: sonuc as any, guven, gerekce, oneri };
   }
 
   private async aiPickGiderAccount(

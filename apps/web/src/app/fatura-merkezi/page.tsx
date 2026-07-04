@@ -1148,7 +1148,7 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
   //   yoksa tek-belge çağrısı yapılır (eşleştirme SONRASI; yön+hesap kesin → AI yalnız içeriği yorumlar).
   //   fetchedRef bir kez çağrı garantisi (docs tazelense de yeniden istemez); deterministik muhasebeNeden
   //   yorum gelene kadar anlık gösterilir.
-  const [richNotes, setRichNotes] = useState<Record<string, { loading?: boolean; text?: string; zengin?: boolean }>>({});
+  const [richNotes, setRichNotes] = useState<Record<string, { loading?: boolean; text?: string; zengin?: boolean; denetim?: any }>>({});
   const richFetchedRef = useRef<Set<string>>(new Set());
   const richUpgradeRef = useRef<Set<string>>(new Set());
   useEffect(() => {
@@ -1167,10 +1167,11 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
         .then((r) => {
           const t = String(r.data?.neden || '');
           const zengin = r.data?.zengin === true;
-          // Upgrade isteğinde yalnız ZENGİN geldiyse üstüne yaz; gelmediyse deterministik kalsın (silme).
-          if (isUpgrade && !zengin) return;
-          setRichNotes((s) => ({ ...s, [id]: { loading: false, text: t, zengin } }));
-          if (!zengin && !isUpgrade && !richUpgradeRef.current.has(id)) {
+          const denetim = r.data?.denetim || undefined;
+          // Upgrade isteğinde: zengin de denetim de gelmediyse dokunma (deterministik + varsa eski denetim kalsın).
+          if (isUpgrade && !zengin && !denetim) return;
+          setRichNotes((s) => ({ ...s, [id]: { loading: false, text: t, zengin, denetim: denetim || s[id]?.denetim } }));
+          if ((!zengin || !denetim) && !isUpgrade && !richUpgradeRef.current.has(id)) {
             richUpgradeRef.current.add(id);
             setTimeout(() => { iste(true).catch(() => {}); }, 14000);
           }
@@ -1397,6 +1398,25 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
                               <b style={{ color: '#7c3aed' }}>💡 AI değerlendirmesi{isOnYorum ? <span style={{ fontWeight: 400, opacity: 0.65, fontSize: 11 }}> · ön yorum</span> : null}:</b>{' '}
                               {loading ? <span style={{ opacity: 0.7 }}>yorumlanıyor…</span> : renderNeden(text)}
                             </div>
+                            );
+                          })()}
+                          {(() => {
+                            // KATMAN 2 — AI Denetçi kararı rozeti. Kaynak: lazy fetch (richNotes) > DB (ocrData.denetim).
+                            const den = (richNotes[d.id]?.denetim as any) || (d.ocrData as any)?.denetim || null;
+                            if (!den || !den.sonuc) return null;
+                            const map: Record<string, { renk: string; bg: string; ik: string; et: string }> = {
+                              dogru: { renk: '#15803d', bg: 'rgba(21,128,61,0.08)', ik: '✓', et: 'Eşleştirme doğru' },
+                              supheli: { renk: '#b45309', bg: 'rgba(217,119,6,0.09)', ik: '⚠', et: 'Şüpheli — kontrol et' },
+                              yanlis: { renk: '#dc2626', bg: 'rgba(220,38,38,0.09)', ik: '✗', et: 'Yanlış olabilir' },
+                            };
+                            const c = map[String(den.sonuc)] || map.supheli;
+                            const guven = Number(den.guven);
+                            return (
+                              <div style={{ padding: '7px 10px', marginBottom: 8, background: c.bg, borderLeft: `3px solid ${c.renk}`, borderRadius: 5, fontSize: 12.5, lineHeight: 1.5, maxWidth: 940 }}>
+                                <b style={{ color: c.renk }}>{c.ik} AI denetçi: {c.et}{Number.isFinite(guven) ? <span style={{ fontWeight: 400, opacity: 0.7 }}> · %{guven} güven</span> : null}</b>
+                                {den.gerekce ? <div style={{ marginTop: 2, color: '#334155' }}>{String(den.gerekce)}</div> : null}
+                                {den.oneri && String(den.sonuc) !== 'dogru' ? <div style={{ marginTop: 2, color: c.renk }}><b>Öneri:</b> {String(den.oneri)}</div> : null}
+                              </div>
                             );
                           })()}
                           {docUyarilar.length > 0 && (
