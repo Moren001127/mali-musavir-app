@@ -12,7 +12,7 @@
   // v1.42.2 (2026-06-16): Ajan kendini yenilerken (delete __morenAgent) eski async
   // döngü "Cannot read 'stopRequested' of undefined/null" ile ÇÖKÜYORDU → yetim
   // döngü artık nesne yoksa güvenle durur (stopRequested kontrollerine null-guard).
-  const AGENT_VERSION = '1.46.3';
+  const AGENT_VERSION = '1.46.4';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
