@@ -568,7 +568,7 @@ function kdvParts(d: any): { matrah: number | null; kdv: number | null } {
 function accountCodeOnly(value: any): string {
   const raw = String(value || '').trim();
   if (!raw || /^[-—–\s]*(yok|eksik)?[-—–\s]*$/i.test(raw)) return '';
-  const m = raw.match(/^([0-9]{1,3}(?:[.\-][A-Za-z0-9]+)*)/);
+  const m = raw.match(/^([0-9]{1,3}(?:[.\-][\p{L}\p{N}]+)*)/u);
   if (m?.[1]) return m[1].trim();
   return raw.split(/\s+[—–-]\s+|=/)[0].trim();
 }
