@@ -533,7 +533,12 @@ export class MorenAiService {
     // Efektif owner = mükellef-readonly ve none DIŞINDAKİ her şey (sayfa toolMode GÖNDERMEZ
     // → undefined; audience hesabı da bunu 'owner' kabul eder). Mükellef/none HARİÇ.
     const ownerEfektif = body.toolMode !== 'taxpayer-readonly' && body.toolMode !== 'none';
-    if (ownerEfektif) {
+    // Brifing cron'unun uzun TALİMAT prompt'u kısayol tetik kelimelerine yanlışlıkla
+    // takılabiliyor (ör. "EN FAZLA ... madde" + "borçlu" → borç sıralaması kısayolu
+    // brifing yerine borçlu listesi gönderdi, 2026-07-04). Brifing istekleri kısayolları
+    // ATLAR, her zaman gerçek AI'ya gider.
+    const briefingKaynak = String((body as any).source || '').startsWith('owner-briefing');
+    if (ownerEfektif && !briefingKaynak) {
       // Aynı kaynaktan deterministik kısayollar: durum-listesi + vergi-ödeme + ciro sıralaması.
       const shortcut = async (): Promise<{ reply: string; model: string } | null> => {
         const statusRes = await buildOwnerStatusReply(this.prisma, tenantId, userMessage).catch(() => null);
