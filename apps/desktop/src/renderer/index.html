@@ -66,20 +66,23 @@
     </aside>
 
     <section class="main">
-      <div class="topbar">
-        <div class="htxt"><h2 id="page-title">Kısayollar</h2><p id="page-sub">Bir firma seçin, ardından portala tek tıkla otomatik girin</p></div>
-      </div>
-
       <!-- KISAYOLLAR -->
       <div class="content" id="page-kisayollar">
         <div class="firma-bar">
           <div class="firma-sel" id="firma-sel">
-            <div class="fav" id="firma-av">MÖ</div>
-            <div class="fn"><b id="firma-name">Firma seçin</b><span id="firma-meta">Devlet portallarına girmek için önce firma seçin</span></div>
-            <span class="car">&#9662;</span>
+            <div class="fav" id="firma-av">?</div>
+            <div class="fn">
+              <span class="fl" id="firma-label">Firma seçilmedi</span>
+              <b id="firma-name">Portala girmek için firma seçin</b>
+              <span class="fmeta" id="firma-meta">Aşağıdaki listeden mükellef seçin — şifreler otomatik eşleşir</span>
+            </div>
+            <span class="fbtn" id="firma-btn">Firma Seç <span class="car">&#9662;</span></span>
           </div>
           <div class="firma-dd" id="firma-dd">
-            <div class="search"><input id="firma-search" type="text" placeholder="Firma ara…"></div>
+            <div class="search">
+              <span class="sic">&#128269;</span>
+              <input id="firma-search" type="text" placeholder="Firma adı veya VKN ile ara…">
+            </div>
             <div id="firma-list"></div>
           </div>
         </div>

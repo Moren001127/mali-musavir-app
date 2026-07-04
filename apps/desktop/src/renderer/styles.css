@@ -72,46 +72,53 @@ body{background:var(--bg);color:var(--txt);font-family:var(--font);overflow:hidd
     radial-gradient(700px 300px at 80% -80px,rgba(212,184,118,.06),transparent 60%),
     var(--content-bg);
   height:100vh;overflow:hidden}
-.topbar{padding:18px 28px;background:rgba(255,255,255,.015);border-bottom:1px solid var(--line-soft);display:flex;align-items:center;gap:18px;flex-shrink:0}
-.topbar .htxt h2{font-size:20px;font-weight:750;color:var(--txt);letter-spacing:-.2px}
-.topbar .htxt p{font-size:12.5px;color:var(--txt-3);margin-top:3px}
+/* (Üst başlık bandı kaldırıldı — 2026-07-05; firma seçimi en üstte, alan içeriğe kaldı.) */
 
-/* Firma seçici */
+/* Firma seçici — vurgulu kart + altın "Firma Seç" düğmesi + avatarlı liste */
 .firma-bar{position:relative;margin-bottom:20px}
-.firma-sel{width:100%;background:var(--card);border:1px solid var(--card-line);border-radius:14px;padding:13px 17px;display:flex;align-items:center;gap:14px;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.25)}
+.firma-sel{width:100%;background:
+    radial-gradient(420px 120px at 0% 0%,rgba(212,184,118,.10),transparent 60%),
+    linear-gradient(165deg,var(--card-2),var(--card));
+  border:1px solid var(--card-line);border-radius:16px;padding:15px 18px;display:flex;align-items:center;gap:15px;cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.3);transition:border-color .15s}
 .firma-sel:hover{border-color:var(--gold)}
-.firma-sel .fav{width:42px;height:42px;border-radius:11px;background:linear-gradient(145deg,#e8cf8f,#b18f43);color:#231a06;display:grid;place-items:center;font-weight:800;font-size:15px}
+.firma-sel .fav{width:48px;height:48px;border-radius:13px;background:linear-gradient(145deg,#e8cf8f,#b18f43);color:#231a06;display:grid;place-items:center;font-weight:800;font-size:16px;box-shadow:0 6px 16px rgba(212,184,118,.25);flex-shrink:0}
 .firma-sel .fn{flex:1;min-width:0}
-.firma-sel .fn b{font-size:15.5px;font-weight:600;display:block;color:var(--txt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.firma-sel .fn span{font-size:12.5px;color:var(--txt-3)}
-.firma-sel .car{color:var(--gold);font-size:14px}
-.firma-dd{position:absolute;top:calc(100% + 6px);left:0;right:0;max-height:440px;overflow:auto;background:#161310;border:1px solid var(--card-line);border-radius:14px;box-shadow:0 20px 50px rgba(0,0,0,.55);z-index:30;display:none}
+.firma-sel .fn .fl{display:block;font-size:10.5px;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;color:var(--gold);margin-bottom:3px}
+.firma-sel .fn b{font-size:16.5px;font-weight:700;display:block;color:var(--txt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.2px}
+.firma-sel .fn .fmeta{font-size:12px;color:var(--txt-3);display:block;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.firma-sel .fbtn{display:inline-flex;align-items:center;gap:8px;background:linear-gradient(145deg,#e8cf8f,#c2a052);color:#221903;font-size:13px;font-weight:700;border-radius:10px;padding:10px 16px;white-space:nowrap;box-shadow:0 6px 16px rgba(212,184,118,.2)}
+.firma-sel .fbtn .car{font-size:11px}
+.firma-dd{position:absolute;top:calc(100% + 8px);left:0;right:0;max-height:460px;overflow:auto;background:#161310;border:1px solid var(--card-line);border-radius:16px;box-shadow:0 24px 60px rgba(0,0,0,.65);z-index:30;display:none}
 .firma-dd.open{display:block}
-.firma-dd .search{padding:12px;border-bottom:1px solid var(--line-soft);position:sticky;top:0;background:#161310}
-.firma-dd .search input{width:100%;background:#0e0c09;border:1px solid var(--line-soft);border-radius:9px;padding:10px 12px;color:var(--txt);font-size:13px;outline:none;font-family:var(--font)}
-.firma-dd .opt{padding:11px 16px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.035)}
-.firma-dd .opt:hover{background:rgba(212,184,118,.07)}
-.firma-dd .opt b{font-size:13.5px;display:block;color:var(--txt)}
-.firma-dd .opt span{font-size:11.5px;color:var(--txt-3)}
+.firma-dd .search{padding:12px;border-bottom:1px solid var(--line-soft);position:sticky;top:0;background:#161310;display:flex;align-items:center;gap:9px}
+.firma-dd .search .sic{color:var(--txt-3);font-size:13px}
+.firma-dd .search input{flex:1;background:#0e0c09;border:1px solid var(--line-soft);border-radius:9px;padding:10px 12px;color:var(--txt);font-size:13px;outline:none;font-family:var(--font)}
+.firma-dd .search input:focus{border-color:var(--gold)}
+.firma-dd .opt{display:flex;align-items:center;gap:12px;padding:10px 14px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.035)}
+.firma-dd .opt:hover{background:rgba(212,184,118,.08)}
+.firma-dd .opt.secili{background:rgba(212,184,118,.10)}
+.firma-dd .opt .oav{width:34px;height:34px;border-radius:9px;background:rgba(212,184,118,.14);border:1px solid var(--line);color:var(--gold);display:grid;place-items:center;font-weight:800;font-size:12px;flex-shrink:0}
+.firma-dd .opt .otx{flex:1;min-width:0}
+.firma-dd .opt .otx b{font-size:13.5px;display:block;color:var(--txt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.firma-dd .opt .otx span{font-size:11.5px;color:var(--txt-3)}
+.firma-dd .opt .otik{color:var(--gold);font-size:14px;font-weight:800}
 
 .content{padding:24px 28px;overflow:auto;flex:1}
 
-/* Kısayol kartları — koyu kart + beyaz logo yuvası (logolar okunur kalır) */
+/* Kısayol kartları — koyu kart + GENİŞ beyaz logo yuvası; durum köşede nokta */
 .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
-.kart{background:linear-gradient(165deg,var(--card-2),var(--card));border:1px solid var(--card-line);border-radius:16px;padding:14px 12px 13px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;box-shadow:0 4px 14px rgba(0,0,0,.3);min-height:200px;transition:transform .16s,box-shadow .16s,border-color .16s;position:relative;cursor:pointer}
+.kart{background:linear-gradient(165deg,var(--card-2),var(--card));border:1px solid var(--card-line);border-radius:16px;padding:12px 12px 12px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;box-shadow:0 4px 14px rgba(0,0,0,.3);min-height:212px;transition:transform .16s,box-shadow .16s,border-color .16s;position:relative;cursor:pointer}
 .kart:hover{transform:translateY(-4px);box-shadow:0 18px 36px rgba(0,0,0,.5);border-color:var(--gold)}
 .kart.dim{opacity:.45}
-.kart .klogo{display:grid;place-items:center;width:100%;min-height:118px;background:#fdfdfb;border-radius:12px;padding:10px}
-.kart .klogo img{width:100%;height:100px;object-fit:contain}
+.kart .klogo{display:grid;place-items:center;width:100%;min-height:150px;background:#fdfdfb;border-radius:12px;padding:8px}
+.kart .klogo img{width:100%;height:138px;object-fit:contain}
 .kart .kname{font-size:13.5px;font-weight:650;color:var(--txt);text-align:center;line-height:1.3}
-.earsiv-box{background:linear-gradient(145deg,#e2402f,#c92a1c);border-radius:10px;width:100%;height:100px;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff}
+.earsiv-box{background:linear-gradient(145deg,#e2402f,#c92a1c);border-radius:10px;width:100%;height:138px;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff}
 .earsiv-box b{font-size:24px;font-weight:800;line-height:1}
 .earsiv-box small{font-size:11px;font-weight:600;margin-top:5px;opacity:.95}
-.stat{display:flex;align-items:center;gap:6px;font-size:12px;padding:4px 12px;border-radius:999px;font-weight:600}
-.stat.ok{background:rgba(95,174,126,.14);color:#7fce9e;border:1px solid rgba(95,174,126,.3)}
-.stat.ok .d{width:6px;height:6px;border-radius:50%;background:#5fae7e}
-.stat.no{background:rgba(211,104,95,.12);color:#eaa198;border:1px solid rgba(211,104,95,.3)}
-.stat.no .d{width:6px;height:6px;border-radius:50%;background:#d3685f}
+.stat-dot{position:absolute;top:11px;right:11px;width:13px;height:13px;border-radius:50%;border:2px solid rgba(0,0,0,.35);z-index:2}
+.stat-dot.ok{background:#37b46f;box-shadow:0 0 10px rgba(55,180,111,.8)}
+.stat-dot.no{background:#e0554a;box-shadow:0 0 10px rgba(224,85,74,.8)}
 
 /* Liste araç çubuğu (Bildirimler / Tebligatlar / Raporlar) */
 .list-tools{display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap}

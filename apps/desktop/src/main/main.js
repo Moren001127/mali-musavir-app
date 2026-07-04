@@ -2,6 +2,7 @@
 
 const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const path = require('path');
+const fs = require('fs');
 const api = require('./api');
 const store = require('./store');
 const { chromium } = require('playwright-core');
@@ -125,6 +126,9 @@ async function openPortalWindow(portal, taxpayer, creds) {
     'tarayici-profilleri',
     `${portal.key}-${taxpayer ? taxpayer.id : 'tenant'}`,
   );
+  // Chrome'un "Şifre kaydedilsin mi?" balonunu profil tercihinden kapat —
+  // her otomatik girişte çıkıp kullanıcıyı rahatsız ediyordu (istek 2026-07-05).
+  disablePasswordBubble(profileDir);
   const launchArgs = ['--no-first-run', '--no-default-browser-check', '--start-maximized'];
   let context = null;
   for (const channel of ['chrome', 'msedge']) {
@@ -134,6 +138,9 @@ async function openPortalWindow(portal, taxpayer, creds) {
         headless: false,
         viewport: null,
         args: launchArgs,
+        // --no-sandbox playwright varsayılanından geliyordu → Chrome üstte
+        // "Desteklenmeyen komut satırı işareti" bandı gösteriyordu; kaldır.
+        ignoreDefaultArgs: ['--no-sandbox', '--enable-automation'],
       });
       console.log('[PORTAL] tarayici acildi: ' + channel);
       break;
@@ -150,6 +157,7 @@ async function openPortalWindow(portal, taxpayer, creds) {
     await page.goto(portal.url, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await autoLoginPortal(page, portal, creds);
   } catch (e) {
+    console.log('[PORTAL] ' + portal.key + ' otomatik giris hatasi: ' + (e && e.message || e));
     sendPortalEvent(portal.key, 'warn', portal.label + ': otomatik giriş tamamlanamadı, tarayıcı açık — elle devam edebilirsiniz.');
   }
 }
@@ -211,6 +219,21 @@ async function autoLoginPortal(page, portal, creds) {
   }
   await hidePageOverlay(page);
   sendPortalEvent(portal.key, 'warn', portal.label + ': güvenlik kodu otomatik çözülemedi. Tarayıcı açık — kodu elle girip giriş yapabilirsiniz.');
+}
+
+// Chrome profil tercihi: yerleşik şifre yöneticisini kapat (kaydet balonu çıkmasın).
+function disablePasswordBubble(profileDir) {
+  try {
+    const defDir = path.join(profileDir, 'Default');
+    fs.mkdirSync(defDir, { recursive: true });
+    const prefPath = path.join(defDir, 'Preferences');
+    let prefs = {};
+    try { prefs = JSON.parse(fs.readFileSync(prefPath, 'utf8')); } catch (e) { /* yeni profil */ }
+    prefs.credentials_enable_service = false;
+    prefs.credentials_enable_autosignin = false;
+    prefs.profile = Object.assign({}, prefs.profile, { password_manager_enabled: false });
+    fs.writeFileSync(prefPath, JSON.stringify(prefs));
+  } catch (e) { /* önemsiz — balon çıkarsa da giriş çalışır */ }
 }
 
 // Portal sayfasının köşesinde küçük Moren durum kutusu — kullanıcı ne beklediğini görür.

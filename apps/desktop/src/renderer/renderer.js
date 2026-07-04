@@ -151,14 +151,15 @@ function renderGrid() {
     const cred = hasCredential(portal);
     const card = document.createElement('div');
     card.className = 'kart' + (cred === false ? ' dim' : '');
+    // Yazı yok — köşede renkli nokta: yeşil=şifre kayıtlı, kırmızı=eksik (istek 2026-07-05).
     let statHtml = '';
     if (state.selected || portal.provider === 'GIB_EBEYANNAME') {
       statHtml = cred
-        ? '<span class="stat ok"><span class="d"></span>Şifre kayıtlı</span>'
-        : '<span class="stat no"><span class="d"></span>Şifre eksik</span>';
+        ? '<span class="stat-dot ok" title="Şifre kayıtlı"></span>'
+        : '<span class="stat-dot no" title="Şifre kayıtlı değil"></span>';
     }
-    card.innerHTML = '<div class="klogo">' + logoHtml(portal) + '</div>'
-      + '<div class="kname">' + portal.label + '</div>' + statHtml;
+    card.innerHTML = statHtml + '<div class="klogo">' + logoHtml(portal) + '</div>'
+      + '<div class="kname">' + portal.label + '</div>';
     card.addEventListener('click', () => openPortal(portal));
     grid.appendChild(card);
   }
@@ -198,9 +199,12 @@ function renderFirmaList(filter) {
     return;
   }
   for (const t of rows) {
+    const secili = state.selected && state.selected.id === t.id;
     const opt = document.createElement('div');
-    opt.className = 'opt';
-    opt.innerHTML = '<b>' + t.ad + '</b><span>VKN ' + (t.vkn || '—') + (t.vergiDairesi ? ' · ' + t.vergiDairesi : '') + '</span>';
+    opt.className = 'opt' + (secili ? ' secili' : '');
+    opt.innerHTML = '<div class="oav">' + initials(t.ad) + '</div>'
+      + '<div class="otx"><b>' + t.ad + '</b><span>VKN ' + (t.vkn || '—') + (t.vergiDairesi ? ' · ' + t.vergiDairesi : '') + '</span></div>'
+      + (secili ? '<span class="otik">&#10003;</span>' : '');
     opt.addEventListener('click', () => selectFirma(t));
     list.appendChild(opt);
   }
@@ -208,9 +212,11 @@ function renderFirmaList(filter) {
 
 function selectFirma(t) {
   state.selected = t;
+  $('firma-label').textContent = 'Seçili firma';
   $('firma-name').textContent = t.ad;
   $('firma-meta').textContent = 'VKN ' + (t.vkn || '—') + (t.vergiDairesi ? ' · ' + t.vergiDairesi : '');
   $('firma-av').textContent = initials(t.ad);
+  $('firma-btn').innerHTML = 'Değiştir <span class="car">&#9662;</span>';
   $('firma-dd').classList.remove('open');
   // Seçimi hatırla — pencere yenilense/yeniden odaklansa da firma seçili kalsın.
   try { localStorage.setItem('moren-selected-firma', t.id); } catch { /* yoksay */ }
@@ -260,10 +266,7 @@ function goPage(page) {
     const el = $('page-' + p);
     if (el) el.classList.toggle('hidden', p !== page);
   });
-  const meta = PAGES[page];
-  $('page-title').textContent = meta.title;
-  $('page-sub').textContent = meta.sub;
-
+  // Üst başlık bandı kaldırıldı (kullanıcı isteği 2026-07-05) — alan içeriğe kaldı.
   if (page === 'whatsapp') startWaPoll();
   else stopWaPoll();
   if (page === 'bildirimler' || page === 'tebligatlar' || page === 'raporlar') refreshInbox();
