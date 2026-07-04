@@ -5025,6 +5025,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       matrah: ocrData?.matrah,
       kdvTutari: ocrData?.kdvTutari,
       kdvBreakdown: breakdown,
+      kalemler: Array.isArray(ocrData?.kalemler) ? ocrData.kalemler : null,  // denetim: çok-oranlı çökme
     });
 
     // v2.2: validation kolonlarını raw SQL ile yaz — Prisma client tanımıyor olabilir
@@ -8625,7 +8626,14 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
    *  plan yoksa (ya da boşsa) null. Placeholder / planda-olmayan kod süzmede kullanılır —
    *  KULLANICI KURALI: "yalnız Luca'dan çekilen gerçek hesap planındaki kodlar; olmayan
    *  hesabı var gibi yazmak yok." */
-  private planCodeCache = new Map<string, { at: number; codes: Set<string> | null }>();
+  private planCodeCache = new Map<string, { at: number; codes: Set<string> | null; groups: Set<string> | null }>();
+  /** Plandaki GRUP (ara) kodları: başka bir kodun ATASIolan (ör "120.01" altında "120.01.001" varsa
+   *  "120.01" gruptur → fiş kesilemez). Denetim katmanı (crossCheck) bunu kullanır. */
+  private async getPlanGroupSet(tenantId: string, taxpayerId?: string | null): Promise<Set<string> | null> {
+    await this.getPlanCodeSet(tenantId, taxpayerId); // cache'i doldurur (groups da hesaplanır)
+    const hit = this.planCodeCache.get(`${tenantId}:${taxpayerId}`);
+    return hit?.groups ?? null;
+  }
   private async getPlanCodeSet(tenantId: string, taxpayerId?: string | null): Promise<Set<string> | null> {
     if (!taxpayerId) return null;
     const key = `${tenantId}:${taxpayerId}`;
@@ -8637,14 +8645,27 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       select: { id: true },
     }).catch(() => null);
     let codes: Set<string> | null = null;
+    let groups: Set<string> | null = null;
     if (snap) {
       const lines = await (this.prisma as any).lucaAccountPlanLine.findMany({
         where: { snapshotId: snap.id },
         select: { accountCode: true },
       }).catch(() => []);
-      if (lines.length) codes = new Set(lines.map((l: any) => String(l.accountCode || '').trim()).filter(Boolean));
+      if (lines.length) {
+        codes = new Set(lines.map((l: any) => String(l.accountCode || '').trim()).filter(Boolean));
+        // GRUP tespiti: bir kod, başka bir kodun ATASIysa (o kod + '.' ile başlayan başka kod varsa)
+        //   gruptur. codes sıralanıp komşu karşılaştırmayla O(n log n).
+        groups = new Set<string>();
+        const arr = [...codes].sort();
+        for (let i = 0; i < arr.length; i++) {
+          const pref = arr[i] + '.';
+          for (let j = i + 1; j < arr.length && arr[j].startsWith(arr[i]); j++) {
+            if (arr[j].startsWith(pref)) { groups.add(arr[i]); break; }
+          }
+        }
+      }
     }
-    this.planCodeCache.set(key, { at: Date.now(), codes });
+    this.planCodeCache.set(key, { at: Date.now(), codes, groups });
     return codes;
   }
 
@@ -8996,7 +9017,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     tenantId: string;
     taxpayerId?: string | null;
     invoiceKind: string;
-    lines: Array<{ debit: any; credit: any; group?: string }>;
+    lines: Array<{ debit: any; credit: any; group?: string; accountCode?: string | null; rate?: string | null }>;
     totalAmount?: any;
     sellerVkn?: string | null;
     buyerVkn?: string | null;
@@ -9010,6 +9031,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     hasReturnLine?: boolean;
     documentType?: string | null;
     fixedAsset?: { is: boolean; reason: string };
+    kalemler?: Array<{ ad?: string; tutar?: number; oran?: number }> | null;  // denetim: çok-oranlı çökme tespiti
   }): Promise<{
     status: 'OK' | 'INCOMPLETE' | 'INVALID';
     issues: Array<{ code: string; severity: 'WARNING' | 'ERROR'; message: string; expected?: any; actual?: any }>;
@@ -9193,6 +9215,56 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         severity: 'ERROR',
         message: `Demirbaş / sabit kıymet ${sale ? 'satışı' : 'alışı'}${r && r !== 'demirbaş' ? ` (${r})` : ''} — otomatik muhasebeleştirilmez. Amortisman ve özel kayıt gerektirir; Luca'dan manuel işleyin.`,
       });
+    }
+
+    // ── ÇAPRAZ DENETİM KATMANI (Katman 1 — kural bazlı "ikinci göz", AI'sız/anlık; kullanıcı talebi
+    //    "eşleştirmeleri benim gibi kontrol edecek yapı"). "Eşleşti ✓" yalanını keser: matematik tutsa
+    //    da MANTIKSAL hatayı yakalar. Gösterilen gerçek 3 vakayı hedefler:
+    //    A) grup/geçersiz hesap kodu (İSTANBUL KİLİT 120.01), B) çok-oranlı fatura tek orana çökme (MHD %18),
+    //    C) cari 2-seviyeli grup şüphesi (bayat planda A kaçarsa yedek). ]
+    try {
+      const postLines = (opts.lines || []).filter((l: any) => String(l.accountCode || '').trim());
+      // A) GRUP / GEÇERSİZ HESAP KODU — plandaki grup (çocuğu olan) koda fiş kesilemez.
+      if (opts.taxpayerId && postLines.length) {
+        const groups = await this.getPlanGroupSet(opts.tenantId, opts.taxpayerId);
+        if (groups && groups.size) {
+          const grpHit = [...new Set(postLines.map((l: any) => String(l.accountCode).trim()))].filter((c) => groups.has(c));
+          if (grpHit.length) {
+            issues.push({
+              code: 'ACCOUNT_IS_GROUP',
+              severity: 'ERROR',
+              message: `Grup (ara) hesabına fiş kesilemez: ${grpHit.join(', ')}. Alt (en derin) hesabı seçin.`,
+            });
+          }
+        }
+      }
+      // B) ÇOK-ORANLI FATURA TEK ORANA ÇÖKMÜŞ — kalemlerde ≥2 farklı KDV oranı var ama yevmiyede
+      //    daha az oran işlenmiş (MHD: %20+%10 → tek "%18" harmanı). Sahte harman oran = beyan hatası.
+      const kalemOranlar = new Set((opts.kalemler || []).map((k: any) => Math.round(Number(k?.oran) || 0)).filter((r: number) => r > 0));
+      const fisOranlar = new Set(
+        (opts.lines || []).filter((l: any) => ['matrah', 'vergi'].includes(String(l.group || '')))
+          .map((l: any) => Math.round(Number(String(l.rate || '').replace(/[^0-9]/g, '')) || 0)).filter((r: number) => r > 0),
+      );
+      if (kalemOranlar.size >= 2 && fisOranlar.size < kalemOranlar.size) {
+        issues.push({
+          code: 'MULTI_RATE_COLLAPSED',
+          severity: 'ERROR',
+          message: `Fatura ${kalemOranlar.size} farklı KDV oranı içeriyor (${[...kalemOranlar].sort((a, b) => a - b).map((r) => '%' + r).join(', ')}) ama fiş ${fisOranlar.size || 1} orana çökmüş. "AI ile oku" ile yeniden okuyun — her oran ayrı satır olmalı.`,
+        });
+      }
+      // C) CARİ 2-SEVİYELİ (GRUP ŞÜPHESİ) — cari kodu tek noktalı (120.01 gibi). Plandan grup tespiti
+      //    bayat/eksik plan yüzünden kaçarsa (İSTANBUL KİLİT vakası) YEDEK yumuşak uyarı.
+      const cariLine = (opts.lines || []).find((l: any) => String(l.group || '') === 'cari' && String(l.accountCode || '').trim());
+      const cariCode = String(cariLine?.accountCode || '').trim();
+      if (cariCode && /^(120|320|329|331)\.\d+$/.test(cariCode)) {
+        issues.push({
+          code: 'CARI_SHALLOW_CODE',
+          severity: 'WARNING',
+          message: `Cari hesap kodu ${cariCode} 2 seviyeli — grup (ara) hesabı olabilir. Doğru müşteri/satıcı alt hesabını (ör. ${cariCode}.001) kontrol edin.`,
+        });
+      }
+    } catch (e: any) {
+      this.logger.warn(`crossCheck denetim hatasi: ${e?.message || e}`);
     }
 
     // Sonuç durumu
