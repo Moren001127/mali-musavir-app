@@ -79,7 +79,6 @@ const moduleGroups: ModuleGroup[] = [
     icon: BrainCircuit,
     items: [
       { href: '/panel/moren-ai', label: 'MOREN AI', icon: BrainCircuit },
-      { href: '/panel/otomasyonlar', label: 'Otomasyonlar', icon: WandSparkles },
     ],
   },
   {
@@ -148,6 +147,7 @@ const moduleGroups: ModuleGroup[] = [
     color: GROUP_COLORS.system,
     icon: Settings2,
     items: [
+      { href: '/panel/otomasyonlar', label: 'Otomasyonlar', icon: WandSparkles },
       { href: '/panel/hatirlatmalar', label: 'WhatsApp Otomasyonu', icon: MessageSquareText },
       { href: '/panel/ajanlar', label: 'Tüm Ajanlar', icon: Cpu },
       { href: '/panel/ajanlar/luca', label: 'Luca Oturumu', icon: ShieldCheck },

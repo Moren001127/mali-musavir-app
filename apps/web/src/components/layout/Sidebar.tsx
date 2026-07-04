@@ -71,8 +71,7 @@ const navGroups = [
     icon: BrainCircuit,
     items: [
       { href: '/panel/moren-ai', label: 'MOREN AI', icon: BrainCircuit },
-      { href: '/panel/luca-operator', label: 'Luca Operatörü', icon: BotMessageSquare },
-      { href: '/panel/otomasyonlar', label: 'Otomasyonlar', icon: WandSparkles },
+      { href: '/panel/mesajlar', label: 'WhatsApp Mesajlar', icon: MessageCircle },
     ],
   },
   {
@@ -83,9 +82,6 @@ const navGroups = [
       { href: '/panel', label: 'Gösterge Paneli', icon: Gauge },
       { href: '/panel/mukellef-listesi', label: 'Mükellef Listesi', icon: UserRoundSearch },
       { href: '/panel/mukellefler', label: 'Aylık Takip Listesi', icon: ClipboardCheck },
-      { href: '/panel/mesajlar', label: 'WhatsApp Mesajlar', icon: MessageCircle },
-      { href: '/panel/sablonlar', label: 'Mesaj Şablonları', icon: MessageCircle },
-      { href: '/panel/bot-kalite', label: 'Bot Kalite', icon: ShieldCheck },
       { href: '/panel/is-yuku', label: 'İş Akışı', icon: Workflow },
       { href: '/panel/gorevler', label: 'Görevler & Notlar', icon: ClipboardCheck },
       { href: '/panel/bildirimler', label: 'Bildirimler', icon: BellRing },
@@ -146,7 +142,11 @@ const navGroups = [
     color: STEEL,
     icon: Settings2,
     items: [
+      { href: '/panel/luca-operator', label: 'Luca Operatörü', icon: BotMessageSquare },
+      { href: '/panel/otomasyonlar', label: 'Otomasyonlar', icon: WandSparkles },
       { href: '/panel/hatirlatmalar', label: 'WhatsApp Otomasyonu', icon: MessageSquareText },
+      { href: '/panel/sablonlar', label: 'Mesaj Şablonları', icon: MessageCircle },
+      { href: '/panel/bot-kalite', label: 'Bot Kalite', icon: ShieldCheck },
       { href: '/panel/masaustu', label: 'Masaüstü Uygulaması', icon: MonitorDown },
       { href: '/panel/ajanlar', label: 'Tüm Ajanlar', icon: Cpu },
       { href: '/panel/maliyet', label: 'AI Maliyet', icon: Coins },
