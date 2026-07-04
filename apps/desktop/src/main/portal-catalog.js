@@ -54,7 +54,11 @@ const PORTAL_CATALOG = [
   // IdP broker=dijital) üzerinden Dijital Vergi Dairesi giriş formuna yönlenir —
   // aynı #userid/#sifre/#dk formu, gibRecipe uyar. (state tek kullanımlık, sabitlenmez.)
   { key: 'edefter',       label: 'e-Defter',                 group: 'Muhasebe',    provider: 'GIB_IVD',        logo: 'EDefter.svg',                 url: 'https://edefter.gib.gov.tr/default/home', recipe: gibRecipe },
-  { key: 'sgk_ebildirge',   label: 'e-Bildirge',        group: 'SGK', provider: 'SGK_EBILDIRGE', logo: 'sgk_ebildirge.png',     url: 'https://ebildirge.sgk.gov.tr/WPEB/amp/loginldap', recipe: sgkRecipe },
+  // e-Bildirge (eski WPEB /loginldap formu) SGK'da emekliye ayrıldı: sanal klavye +
+  // /PG servlet captcha'sı otomatik girişe uygun değil (2026-07-05 canlı test: timeout).
+  // Gerçek e-Bildirge girişi artık EBildirgeV2 üzerinden — üretimdeki çekme runner'ı da
+  // bu adresi kullanıyor. İki kısayol da aynı çalışan V2 formuna gider.
+  { key: 'sgk_ebildirge',   label: 'e-Bildirge',        group: 'SGK', provider: 'SGK_EBILDIRGE', logo: 'sgk_ebildirge.png',     url: 'https://ebildirge.sgk.gov.tr/EBildirgeV2', recipe: sgkRecipe },
   { key: 'sgk_ebildirgev2', label: 'e-Bildirge V2',     group: 'SGK', provider: 'SGK_EBILDIRGE', logo: 'sgk_ebildirgev2.png',   url: 'https://ebildirge.sgk.gov.tr/EBildirgeV2', recipe: sgkRecipe },
   { key: 'sgk_isveren',     label: 'İşveren Sistemi',   group: 'SGK', provider: 'SGK_EBILDIRGE', logo: 'sgk_isveren.png',       url: 'https://uyg.sgk.gov.tr/IsverenSistemi', recipe: sgkRecipe },
   { key: 'sgk_erapor',      label: 'e-Rapor',           group: 'SGK', provider: 'SGK_EBILDIRGE', logo: 'sgk_erapor.png',        url: 'https://uyg.sgk.gov.tr/vizite/welcome.do', recipe: sgkRecipe },
