@@ -5786,8 +5786,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const BASE = this.TURMOB_BASE;
       const directInOrOut = opts.direction === 'IN' ? 'True' : 'False';
       const refererPath = channel === 'IN_EFATURA' ? '/Inbox'
-        : channel === 'OUT_EARSIV' ? '/ArchiveInvoice/ArchiveInvoiceList'
+        : channel === 'OUT_EARSIV' ? '/OutgoingInvoice/OutgoingArchiveList' // GERÇEK e-Arşiv sayfası (ağ izleme)
         : '/OutgoingInvoice/OutgoingInvoiceList';
+      // e-ARŞİV indirme param adı FARKLI: ?ArchiveId=<IdArsiv> (e-Fatura ?InvoiceId=<IdFatura>).
+      //   TÜRMOB'da fetch ile doğrulandı: GetInvoiceXml?InOrOut=False&ArchiveId=<IdArsiv> → 200 UBL.
+      const idParam = channel === 'OUT_EARSIV' ? 'ArchiveId' : 'InvoiceId';
       const idOf = (row: any): string => {
         const raw = row.rawJson && typeof row.rawJson === 'object' ? row.rawJson : {};
         let id = String(raw.turmobRowId || raw.turmobIdFatura || '').replace(/\D/g, '');
@@ -5851,7 +5854,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
               let xml = '';
               const xctl = new AbortController();
               const xtm = setTimeout(() => { try { xctl.abort(); } catch { /* */ } }, 15000);
-              try { xml = await (await fetch(`${BASE}/Invoice/GetInvoiceXml?InOrOut=${directInOrOut}&InvoiceId=${id}`, { headers, signal: xctl.signal })).text(); }
+              try { xml = await (await fetch(`${BASE}/Invoice/GetInvoiceXml?InOrOut=${directInOrOut}&${idParam}=${id}`, { headers, signal: xctl.signal })).text(); }
               catch { /* xml inmedi */ }
               finally { clearTimeout(xtm); }
               if (!/^\s*<\?xml|<[\w:]*Invoice\b/i.test(xml.slice(0, 400))) { fallback.push(row); return; }
@@ -5862,7 +5865,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
                 const vctl = new AbortController();
                 const vtm = setTimeout(() => { try { vctl.abort(); } catch { /* */ } }, 15000);
                 try {
-                  const vr = await fetch(`${BASE}/Invoice/Detail?InOrOut=${directInOrOut}&InvoiceId=${id}&IsPrint=True`, { headers, signal: vctl.signal });
+                  const vr = await fetch(`${BASE}/Invoice/Detail?InOrOut=${directInOrOut}&${idParam}=${id}&IsPrint=True`, { headers, signal: vctl.signal });
                   if (vr.ok) {
                     const vis = await vr.text();
                     if (vis && /<(?:!doctype\s+html|html|body)\b/i.test(vis.slice(0, 3000)) && !/account\/login|name=["']password["']/i.test(vis) && /(Invoice|Fatura)/i.test(vis.slice(0, 30000))) {
