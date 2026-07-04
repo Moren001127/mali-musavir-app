@@ -248,6 +248,9 @@ export class GelirTablosuService {
     if (existing?.locked) {
       throw new BadRequestException('Bu mizandan üretilmiş kesin kayıtlı gelir tablosu var. Yeniden oluşturmak için önce kilidi açın.');
     }
+    // v1.36.53: yeniden üretimde kullanıcının elle girdiği düzeltmeleri KORU.
+    // (ör. 1. dönem Satılan Ticari Mallar Maliyeti manuel girişi tablo tekrar üretilince silinmesin)
+    const preservedDuzeltmeler = (existing?.duzeltmeler as any) || null;
     if (existing) {
       await (this.prisma as any).gelirTablosu.delete({ where: { id: existing.id } });
     }
@@ -279,6 +282,16 @@ export class GelirTablosuService {
         createdBy: params.createdBy || null,
       },
     });
+
+    // v1.36.53: önceki manuel düzeltmeleri yeni kayda taşı + türevleri (brütKar, satışMaliyeti…)
+    // updateDuzeltmeler'in test edilmiş mantığıyla yeniden hesapla. Taşınamazsa ham tablo döner (veri kaybı yok).
+    if (preservedDuzeltmeler && Object.keys(preservedDuzeltmeler).length > 0) {
+      try {
+        return await this.updateDuzeltmeler(gt.id, params.tenantId, preservedDuzeltmeler);
+      } catch {
+        return gt;
+      }
+    }
 
     return gt;
   }
