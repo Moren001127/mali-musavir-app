@@ -5,8 +5,6 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   Check,
-  CheckCircle2,
-  Circle,
   Coins,
   Download,
   Eye,
@@ -256,6 +254,23 @@ export function CariTahsilatWorkspace({ onSelect }: { onSelect: (id: string) => 
     }
   };
 
+  // Tek mükellefe WhatsApp tahsilat hatırlatması (satır butonu — eskiden
+  // yanlışlıkla tahsilat penceresi açıyordu).
+  const sendReminderSingle = async (row: WorkspaceRow) => {
+    if (!row.whatsappUygun) {
+      toast.warning('Bu mükellef için WhatsApp uygun değil (telefon/izin yok)');
+      return;
+    }
+    if (!confirm(`${row.ad} mükellefine tahsilat WhatsApp mesajı gönderilsin mi?`)) return;
+    try {
+      const resp = await api.post('/cari-kasa/tahsilat-hatirlatma/send', { taxpayerIds: [row.id] });
+      toast.success(`${resp.data.basarili || 0} WhatsApp gönderildi`);
+      refreshAll();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || 'WhatsApp gönderilemedi');
+    }
+  };
+
   // ===== WhatsApp gönder (KORUNDU) =====
   const sendReminder = async () => {
     if (!targetIds.length) {
@@ -389,8 +404,8 @@ export function CariTahsilatWorkspace({ onSelect }: { onSelect: (id: string) => 
 
         {view === 'tahsilat' && (
           <>
-            {/* ===== METRİKLER (4) — KUTUSUZ, ince dikey ayraçlı ===== */}
-            <div className="mt-8 grid grid-cols-2 lg:grid-cols-4">
+            {/* ===== METRİKLER (4) — kutulu kartlar; alacak/risk kartları tıklanınca filtreler ===== */}
+            <div className="mt-8 grid grid-cols-2 gap-3 lg:grid-cols-4">
               <MetricCard index={0} label="Toplam Alacak" value={`${fmt(stats.bakiye)} ₺`} color={DEBT} active={filter === 'debt'} onClick={() => setFilter(filter === 'debt' ? 'all' : 'debt')} />
               <MetricCard index={1} label="Aylık Ücret (Top.)" value={`${fmt(stats.monthlyTarget)} ₺`} color={GOLD} />
               <MetricCard index={2} label="Tahsilat Oranı" value={`%${stats.tahsilatOrani.toFixed(0)}`} color={OK} />
@@ -431,6 +446,7 @@ export function CariTahsilatWorkspace({ onSelect }: { onSelect: (id: string) => 
               isLoading={isLoading || ajandaLoading}
               onOpen={onSelect}
               onQuickTahsilat={setQuickTahsilat}
+              onWhatsAppRow={sendReminderSingle}
             />
 
             <p className="mt-5 text-center text-[12px]" style={{ color: '#52525b' }}>
@@ -455,7 +471,7 @@ export function CariTahsilatWorkspace({ onSelect }: { onSelect: (id: string) => 
 }
 
 function MetricCard({
-  index,
+  index: _index,
   label,
   value,
   color,
@@ -470,16 +486,19 @@ function MetricCard({
   onClick?: () => void;
 }) {
   const Component = onClick ? 'button' : 'div';
-  // İlk metrik hariç sol kenarda ince dikey ayraç (lg ekran); kutu yok
-  const dividerClass = index % 4 === 0 ? '' : 'lg:border-l lg:border-white/[0.05]';
   return (
     <Component
       onClick={onClick as any}
-      className={`px-1 lg:px-6 ${index === 0 ? 'lg:pl-0' : ''} ${dividerClass} py-1 text-left transition`}
-      style={{ opacity: active ? 1 : undefined }}
+      title={onClick ? (active ? 'Filtreyi kaldır' : 'Bu kalemi filtrele') : undefined}
+      className="rounded-2xl px-5 py-4 text-left transition"
+      style={{
+        background: active ? `${color}14` : CARD_BG,
+        border: `1px solid ${active ? `${color}55` : CARD_BORDER}`,
+        cursor: onClick ? 'pointer' : 'default',
+      }}
     >
-      <div className="text-[11px] font-medium uppercase tracking-wider" style={{ color: active ? GOLD : SOFT }}>{label}</div>
-      <div className="mt-2 text-[28px] font-bold" style={{ color, fontVariantNumeric: 'tabular-nums' }}>
+      <div className="text-[11px] font-medium uppercase tracking-wider" style={{ color: active ? color : SOFT }}>{label}</div>
+      <div className="mt-2 text-[26px] font-bold" style={{ color, fontVariantNumeric: 'tabular-nums' }}>
         {value}
       </div>
     </Component>
@@ -507,11 +526,13 @@ function TahsilatTable({
   isLoading,
   onOpen,
   onQuickTahsilat,
+  onWhatsAppRow,
 }: {
   rows: WorkspaceRow[];
   isLoading: boolean;
   onOpen: (id: string) => void;
   onQuickTahsilat: (row: WorkspaceRow) => void;
+  onWhatsAppRow: (row: WorkspaceRow) => void;
 }) {
   if (isLoading) {
     return (
@@ -530,17 +551,17 @@ function TahsilatTable({
   }
 
   return (
-    <div className="mt-6">
+    <div className="mt-6 overflow-hidden rounded-2xl" style={{ border: `1px solid ${CARD_BORDER}`, background: 'rgba(255,255,255,0.012)' }}>
       <div className="overflow-x-auto">
         <table className="w-full text-[14px]">
           <thead>
-            <tr className="text-[11px] uppercase tracking-wider" style={{ color: SOFT }}>
-              <th className="px-2 pb-3 text-left font-medium">Mükellef</th>
-              <th className="px-3 pb-3 text-right font-medium">Aylık Ücret</th>
-              <th className="px-3 pb-3 text-center font-medium">Bu Ay</th>
-              <th className="px-3 pb-3 text-right font-medium">Bakiye</th>
-              <th className="px-4 pb-3 text-left font-medium">Borç Yaşı</th>
-              <th className="px-2 pb-3 text-right font-medium"></th>
+            <tr className="text-[11px] uppercase tracking-wider" style={{ color: SOFT, background: 'rgba(255,255,255,0.03)' }}>
+              <th className="px-5 py-3.5 text-left font-medium">Mükellef</th>
+              <th className="px-3 py-3.5 text-right font-medium">Aylık Ücret</th>
+              <th className="px-3 py-3.5 text-center font-medium">Bu Ay</th>
+              <th className="px-3 py-3.5 text-right font-medium">Bakiye</th>
+              <th className="px-4 py-3.5 text-left font-medium">Borç Yaşı</th>
+              <th className="px-5 py-3.5 text-right font-medium">İşlem</th>
             </tr>
           </thead>
           <tbody style={{ color: TEXT }}>
@@ -557,21 +578,12 @@ function TahsilatTable({
                   onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.015)')}
                   onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
                 >
-                  {/* Mükellef + bu ay durumu */}
-                  <td className="px-2 py-4">
+                  {/* Mükellef (bu-ay durumu yalnız "Bu Ay" sütununda — çift bilgi kalktı) */}
+                  <td className="px-5 py-4">
                     <button onClick={() => onOpen(row.id)} className="block w-full text-left">
                       <div className="font-semibold" style={{ color: '#fff' }}>{row.ad}</div>
-                      <div className="mt-1 flex items-center gap-2 text-[12px]" style={{ color: SOFT }}>
-                        <span>{lastPayment ? `son tahsilat ${lastPayment}` : 'son tahsilat yok'}</span>
-                        {odendi ? (
-                          <span className="inline-flex items-center gap-1 text-[11.5px] font-semibold" style={{ color: OK }}>
-                            <CheckCircle2 size={13} strokeWidth={1.9} /> Bu ay ödendi
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 text-[11.5px] font-medium" style={{ color: '#9a6b73' }}>
-                            <Circle size={13} strokeWidth={1.9} /> Bu ay ödenmedi
-                          </span>
-                        )}
+                      <div className="mt-1 text-[12px]" style={{ color: SOFT }}>
+                        {lastPayment ? `son tahsilat ${lastPayment}` : 'son tahsilat yok'}
                       </div>
                     </button>
                   </td>
@@ -602,8 +614,8 @@ function TahsilatTable({
                     </span>
                     {borclu && <AgingBar aging={row.aging} />}
                   </td>
-                  {/* Aksiyonlar: modern yuvarlak butonlar */}
-                  <td className="px-2 py-4">
+                  {/* Aksiyonlar: detay · WhatsApp hatırlat (tekli gerçek gönderim) · tahsilat gir */}
+                  <td className="px-5 py-4">
                     <div className="flex items-center justify-end gap-2">
                       <button
                         onClick={() => onOpen(row.id)}
@@ -614,9 +626,9 @@ function TahsilatTable({
                         <FileText size={17} strokeWidth={1.7} />
                       </button>
                       <button
-                        onClick={() => onQuickTahsilat(row)}
-                        disabled={!borclu}
-                        title="WhatsApp hatırlat"
+                        onClick={() => onWhatsAppRow(row)}
+                        disabled={!borclu || !row.whatsappUygun}
+                        title={row.whatsappUygun ? 'WhatsApp tahsilat hatırlatması gönder' : 'WhatsApp uygun değil (telefon/izin yok)'}
                         className="grid h-[34px] w-[34px] place-items-center rounded-[10px] transition hover:-translate-y-px disabled:opacity-30 disabled:hover:translate-y-0"
                         style={{ background: 'rgba(63,206,111,0.12)', color: '#3fce6f' }}
                       >
