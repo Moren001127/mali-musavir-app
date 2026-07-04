@@ -58,6 +58,12 @@ export class OwnerDigestService {
     }
   }
 
+  /** Canlı test: cron'u beklemeden özeti hemen gönder (controller'dan, yalnız owner). */
+  async triggerNow(): Promise<void> {
+    this.logger.log('[OwnerDigest] elle tetiklendi (canlı test)');
+    await this.run();
+  }
+
   private async run(): Promise<void> {
     const tenants: Array<{ id: string; name?: string | null; email?: string | null }> = await (this.prisma as any).tenant
       .findMany({ select: { id: true, name: true, email: true } })

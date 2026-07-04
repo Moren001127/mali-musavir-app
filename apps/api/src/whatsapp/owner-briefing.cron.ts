@@ -103,8 +103,13 @@ export class OwnerBriefingCron {
     });
   }
 
-  private async run(tur: 'sabah' | 'aksam'): Promise<void> {
-    if (process.env.MOREN_OWNER_BRIEFING_ENABLED !== '1') return;
+  /** Canlı test: cron'u ve env kapısını beklemeden brifingi hemen gönder (yalnız owner ucu çağırır). */
+  async triggerNow(tur: 'sabah' | 'aksam'): Promise<void> {
+    await this.run(tur, true);
+  }
+
+  private async run(tur: 'sabah' | 'aksam', force = false): Promise<void> {
+    if (!force && process.env.MOREN_OWNER_BRIEFING_ENABLED !== '1') return;
     const phones = this.getOwnerPhones();
     if (!phones.length) {
       this.logger.warn('[OwnerBriefing] MOREN_OWNER_WHATSAPP_PHONES tanimli degil, brifing atlandi');

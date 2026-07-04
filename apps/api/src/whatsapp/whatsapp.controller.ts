@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post, Query, Req, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Delete, ForbiddenException, Get, Param, Post, Query, Req, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { randomBytes, randomUUID } from 'crypto';
@@ -7,6 +7,8 @@ import { WhatsAppService } from './whatsapp.service';
 import { BaileysService } from './baileys.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
+import { OwnerDigestService } from './owner-digest.service';
+import { OwnerBriefingCron } from './owner-briefing.cron';
 
 type EvrakReminderBody = {
   taxpayerIds?: string[];
@@ -77,7 +79,32 @@ export class WhatsAppController {
     private prisma: PrismaService,
     private storage: StorageService,
     private baileys: BaileysService,
+    private ownerDigest: OwnerDigestService,
+    private ownerBriefing: OwnerBriefingCron,
   ) {}
+
+  /**
+   * CANLI TEST: sabah 09:00 gece-özetini cron'u beklemeden HEMEN gönderir
+   * (WhatsApp + e-posta + gece tebligat PDF'leri). Yalnız owner tetikleyebilir.
+   */
+  @Post('owner-digest/simdi-gonder')
+  async triggerOwnerDigest(@Req() req: any) {
+    if (!this.viewerIsOwner(req)) throw new ForbiddenException('Yalnız ofis sahibi tetikleyebilir');
+    await this.ownerDigest.triggerNow();
+    return { ok: true, mesaj: 'Gece özeti gönderildi (WhatsApp + e-posta)' };
+  }
+
+  /**
+   * CANLI TEST: sabah/akşam AI brifingini cron'u beklemeden HEMEN gönderir.
+   * Yalnız owner tetikleyebilir. Body: { tur: 'sabah' | 'aksam' }
+   */
+  @Post('owner-briefing/simdi-gonder')
+  async triggerOwnerBriefing(@Req() req: any, @Body() body: { tur?: 'sabah' | 'aksam' }) {
+    if (!this.viewerIsOwner(req)) throw new ForbiddenException('Yalnız ofis sahibi tetikleyebilir');
+    const tur = body?.tur === 'aksam' ? 'aksam' : 'sabah';
+    await this.ownerBriefing.triggerNow(tur);
+    return { ok: true, tur };
+  }
 
   @Get('status')
   getStatus(@Req() req: any) {
