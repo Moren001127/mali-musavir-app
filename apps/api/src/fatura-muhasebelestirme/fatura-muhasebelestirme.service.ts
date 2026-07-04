@@ -8085,6 +8085,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           matrah: parsed.matrah,
           kdvTutari: parsed.kdvTutari,
           kdvOrani: parsed.kdvOrani,
+          // ÇOK-ORANLI KIRILIM: parser %20+%10 ayrı çıkarıyor; geçirilmezse tek harmanlanmış "%18"
+          //   sahte satırına çöküyordu (MHD MÜHENDİSLİK vakası). Her oran AYRI matrah+KDV satırı olur.
+          kdvBreakdown: Array.isArray(parsed.kdvBreakdown) ? parsed.kdvBreakdown : undefined,
           total,
           vendorName: direction === 'SATIS' ? parsed.alici : parsed.satici,
         }))
@@ -8138,6 +8141,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
                 matrah: parsed.matrah,
                 kdvTutari: parsed.kdvTutari,
                 kdvOrani: parsed.kdvOrani,
+                // Çok-oranlı kırılım ocrData'ya da yazılır (ekran + doğrulama + "Kodları düzelt" bunu okur).
+                kdvBreakdown: Array.isArray(parsed.kdvBreakdown) ? parsed.kdvBreakdown.map((b: any) => ({ oran: b.rate, matrah: b.base, tutar: b.amount })) : undefined,
                 ettn: parsed.ettn,
                 // Kalemler → DEMİRBAŞ tespiti (detectFixedAsset) içeriği görsün; demirbaş alış/satışı
                 //   FIXED_ASSET_MANUAL ile INVALID → Luca'ya aktarılmaz, "manuel işle" uyarısı kalır.
@@ -8174,6 +8179,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       matrah: parsed.matrah,
       kdvTutari: parsed.kdvTutari,
       kdvOrani: parsed.kdvOrani,
+      // ÇOK-ORANLI KIRILIM (bkz. yukarıdaki mevcut-belge dalı): tek sahte "%18"e çökmesin.
+      kdvBreakdown: Array.isArray(parsed.kdvBreakdown) ? parsed.kdvBreakdown : undefined,
       total,
       vendorName: direction === 'SATIS' ? parsed.alici : parsed.satici,
     }));
@@ -8212,6 +8219,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           matrah: parsed.matrah,
           kdvTutari: parsed.kdvTutari,
           kdvOrani: parsed.kdvOrani,
+          kdvBreakdown: Array.isArray(parsed.kdvBreakdown) ? parsed.kdvBreakdown.map((b: any) => ({ oran: b.rate, matrah: b.base, tutar: b.amount })) : undefined,
           ettn: parsed.ettn,
           // Kalemler → DEMİRBAŞ tespiti (detectFixedAsset) için; demirbaş alış/satışı FIXED_ASSET_MANUAL
           //   ile INVALID olur → Luca'ya aktarılmaz, "Luca sabit kıymet modülünden işle" uyarısı kalır.
