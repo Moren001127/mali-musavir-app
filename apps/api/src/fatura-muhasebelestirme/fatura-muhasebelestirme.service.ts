@@ -3641,10 +3641,19 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
                 },
                 turmobLookup,
               );
-              const existing = await (this.prisma as any).eFaturaInbox.findUnique({
+              let existing = await (this.prisma as any).eFaturaInbox.findUnique({
                 where: { tenantId_taxpayerId_entegrator_uuid: { tenantId, taxpayerId: opts.taxpayerId, entegrator: cfg.provider, uuid: summary.uuid } },
                 select: { id: true, rawJson: true, documentId: true, isTransferred: true, processedAt: true, ublXmlRaw: true },
               });
+              // MÜKERRER KORUMASI: uuid türetimi (ettn||rowId||faturaNo) zaman içinde değişebiliyor
+              //   (IdArsiv tanınınca rowId dolmaya başladı → aynı fatura yeni uuid'le İKİNCİ satır
+              //   oldu, kullanıcı 18→36 gördü). uuid tutmazsa FATURA NO ile de mevcut satır aranır.
+              if (!existing && String(summary.faturaNo || '').trim()) {
+                existing = await (this.prisma as any).eFaturaInbox.findFirst({
+                  where: { tenantId, taxpayerId: opts.taxpayerId, entegrator: cfg.provider, faturaNo: String(summary.faturaNo).trim() },
+                  select: { id: true, rawJson: true, documentId: true, isTransferred: true, processedAt: true, ublXmlRaw: true },
+                });
+              }
               const currentRaw = existing?.rawJson && typeof existing.rawJson === 'object' ? existing.rawJson : {};
               const existingXml = String(existing?.ublXmlRaw || '').trim();
               const existingXmlReady = !!existingXml && !this.isSyntheticTurmobInboxXml(existingXml);
@@ -3745,6 +3754,39 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
               failed++;
               this.logger.warn(`TURMOB e-Fatura liste satiri yazilamadi: ${e?.message || e}`);
             }
+          }
+          // MÜKERRER SÜPÜRME: geçmişte uuid türetimi değiştiği için aynı faturanın birden çok inbox
+          //   satırı oluşmuş olabilir (18→36 vakası). Aynı kanal+faturaNo grubunda EN İYİ satır tutulur
+          //   (belgeye bağlı > gerçek XML'li > en yeni), kalanlar silinir.
+          try {
+            const tumu = await (this.prisma as any).eFaturaInbox.findMany({
+              where: { tenantId, taxpayerId: opts.taxpayerId, entegrator: cfg.provider, direction: inboxDirection },
+              select: { id: true, faturaNo: true, documentId: true, ublXmlRaw: true, syncedAt: true, rawJson: true },
+            });
+            const noGrup = new Map<string, any[]>();
+            for (const satir of tumu) {
+              const sraw = satir.rawJson && typeof satir.rawJson === 'object' ? satir.rawJson : {};
+              if (String((sraw as any).channel || '').toUpperCase() !== channel) continue;
+              const no = String(satir.faturaNo || '').trim();
+              if (!no) continue;
+              const liste = noGrup.get(no) || [];
+              liste.push(satir);
+              noGrup.set(no, liste);
+            }
+            let silinen = 0;
+            for (const [, grup] of noGrup) {
+              if (grup.length < 2) continue;
+              const skor = (s: any) => (s.documentId ? 4 : 0)
+                + ((String(s.ublXmlRaw || '').trim() && !this.isSyntheticTurmobInboxXml(s.ublXmlRaw)) ? 2 : 0)
+                + (s.syncedAt ? new Date(s.syncedAt).getTime() / 1e15 : 0);
+              grup.sort((a: any, b: any) => skor(b) - skor(a));
+              for (const fazla of grup.slice(1)) {
+                await (this.prisma as any).eFaturaInbox.delete({ where: { id: fazla.id } }).then(() => { silinen++; }).catch(() => {});
+              }
+            }
+            if (silinen) this.logger.warn(`TURMOB ${channel}: ${silinen} mukerrer inbox satiri temizlendi (uuid turetim degisimi)`);
+          } catch (e: any) {
+            this.logger.warn(`TURMOB ${channel}: mukerrer supurme hatasi: ${e?.message || e}`);
           }
           fetched += providerFetched;
           added += providerAdded;
