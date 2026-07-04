@@ -132,9 +132,11 @@ Yanlış ipucuna uyup yanlış karar vermek, ipucu olmamasından DAHA KÖTÜDÜR
     kararTipi: 'fatura' | 'isletme';
     kategori: string;
     altKategori?: string | null;
-    taxpayerId?: string | null;   // YENİ: hangi mükellef bu kararı verdi
+    icerikImza?: string | null;   // YENİ: kalem-içerik imzası (içerik-bazlı öğrenme); null = satıcı-geneli
+    taxpayerId?: string | null;   // hangi mükellef bu kararı verdi
   }): Promise<void> {
     const { tenantId, firmaKimlikNo, firmaUnvan, kararTipi, kategori, altKategori, taxpayerId } = params;
+    const icerikImza = params.icerikImza ? String(params.icerikImza).slice(0, 200) : null;
     if (!firmaKimlikNo) return;
     if (!taxpayerId) return;
     // K5: VKN/TCKN NORMALİZE + hane doğrulaması — geçersiz/kısmi VKN'de farklı satıcılar
@@ -159,7 +161,8 @@ Yanlış ipucuna uyup yanlış karar vermek, ipucu olmamasından DAHA KÖTÜDÜR
       },
     });
 
-    // VendorMemoryDecision — (vendorMemoryId + taxpayerId + kategori + altKategori) anahtar
+    // VendorMemoryDecision — (vendorMemoryId + taxpayerId + kategori + altKategori + icerikImza) anahtar.
+    //   icerikImza ekliyle aynı satıcının farklı içerikli faturaları AYRI sayaçta öğrenilir.
     const existing = await (this.prisma as any).vendorMemoryDecision.findFirst({
       where: {
         vendorMemoryId: memory.id,
@@ -167,6 +170,7 @@ Yanlış ipucuna uyup yanlış karar vermek, ipucu olmamasından DAHA KÖTÜDÜR
         kararTipi,
         kategori,
         altKategori: altKategori || null,
+        icerikImza: icerikImza || null,
       },
     });
 
@@ -186,11 +190,28 @@ Yanlış ipucuna uyup yanlış karar vermek, ipucu olmamasından DAHA KÖTÜDÜR
           kararTipi,
           kategori,
           altKategori: altKategori || null,
+          icerikImza: icerikImza || null,
           onayAdedi: 1,
           sonKullanim: new Date(),
         },
       });
     }
+  }
+
+  /** Kalem adlarından KARARLI içerik imzası: ascii-katlı, ≥4 harfli, jenerik/sayı elenmiş token'lar,
+   *  sıralı-tekil, en fazla 6 tanesi '|' ile. Yazma (approve) ve okuma (rematch) AYNI fonksiyonu
+   *  kullanmalı ki aynı fatura aynı imzayı üretsin. Kalem yoksa null (satıcı-geneli davranış). */
+  static buildIcerikImza(kalemAdlari: Array<string | null | undefined> | null | undefined): string | null {
+    const STOP = new Set(['adet', 'kutu', 'paket', 'urun', 'urunler', 'mamul', 'fiyat', 'tutar', 'birim', 'siyah', 'beyaz', 'renk', 'model', 'seti', 'takim', 'parca', 'kalem', 'malzeme', 'hizmet', 'genel', 'toplam', 'iskonto', 'bedeli', 'bedel']);
+    const fold = (s: string) => String(s || '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/ı/g, 'i');
+    const toks = new Set<string>();
+    for (const ad of (kalemAdlari || [])) {
+      for (const t of fold(String(ad || '')).split(/[^a-z0-9]+/)) {
+        if (t.length >= 4 && !/^\d+$/.test(t) && !STOP.has(t)) toks.add(t);
+      }
+    }
+    if (!toks.size) return null;
+    return [...toks].sort().slice(0, 6).join('|');
   }
 
   /** AI kararı geçmişle eşleşiyor mu? Sapma tespit. */

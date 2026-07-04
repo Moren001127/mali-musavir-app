@@ -5149,6 +5149,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // altKategori=null (genel kural).
     const blocked = (code: string) => ['191', '391', '120', '320', '321', '322', '329', '331'].some((p) => code.startsWith(p));
     const matrahLines = (doc.lines || []).filter((l: any) => String(l.group || '').toLowerCase() === 'matrah');
+    // İÇERİK İMZASI: bu faturanın kalem içeriğinden türet (VendorMemoryService.buildIcerikImza — okuma
+    //   tarafıyla AYNI fonksiyon). Böylece "bu satıcıdan + bu içerikten → bu hesap" öğrenilir; aynı
+    //   satıcının farklı içerikli faturası ayrı kayda düşer (kullanıcı talebi: içeriğe göre hafıza).
+    const kalemAdlari = Array.isArray((doc.ocrData as any)?.kalemler) ? (doc.ocrData as any).kalemler.map((k: any) => k?.ad) : [];
+    const icerikImza = VendorMemoryService.buildIcerikImza(kalemAdlari);
     const seen = new Set<string>();
     for (const l of matrahLines) {
       const code = String(l.accountCode || '').trim();
@@ -5157,10 +5162,17 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const key = `${code}|${rate || ''}`;
       if (seen.has(key)) continue;
       seen.add(key);
+      // Hem içerik-imzalı (spesifik) HEM satıcı-geneli (imzasız) kayıt yaz → geriye-uyum + içerik-öğrenme.
       await this.vendorMemory.recordDecision({
         tenantId, firmaKimlikNo, firmaUnvan, kararTipi: 'fatura',
-        kategori: code, altKategori: rate, taxpayerId: doc.taxpayerId,
+        kategori: code, altKategori: rate, icerikImza, taxpayerId: doc.taxpayerId,
       });
+      if (icerikImza) {
+        await this.vendorMemory.recordDecision({
+          tenantId, firmaKimlikNo, firmaUnvan, kararTipi: 'fatura',
+          kategori: code, altKategori: rate, icerikImza: null, taxpayerId: doc.taxpayerId,
+        }).catch(() => {});
+      }
     }
 
     // CARI ÖĞRENME: müşavirin seçtiği cari hesabı (120/320/329/331) VKN'ye bağla.
@@ -10678,6 +10690,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       ) : null;
       const vendorName = isSale ? doc.customerName : doc.vendorName;
       const vendorVkn = String((isSale ? doc.buyerVkn : doc.sellerVkn) || '').replace(/\D/g, '');
+      // İÇERİK İMZASI (içerik-bazlı hafıza okuması): belgenin kalemlerinden — approve'daki yazma ile
+      //   AYNI fonksiyon → aynı fatura aynı imza. "Bu satıcı + bu içerik → bu hesap" öğrenilmişse çeker.
+      const docIcerikImza = VendorMemoryService.buildIcerikImza(Array.isArray((doc.ocrData as any)?.kalemler) ? (doc.ocrData as any).kalemler.map((k: any) => k?.ad) : []);
       // Kalem-bazlı kategori (AI ile oku'dan): stok/masraf/demirbaş ayrımını plana eşle.
       let kat = String((doc.ocrData as any)?.matrahKategori || '').toLowerCase().trim();
       // İÇERİK-FAALİYET TUTARLILIK DENETİMİ (kullanıcı kuralı: prompt yetmiyor, KOD da garanti etmeli):
@@ -10957,7 +10972,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const matrahCache = new Map<string, any>();
       const matrahForRate = async (rate: string) => {
         if (matrahCache.has(rate)) return matrahCache.get(rate);
-        const learned = vendorVkn ? await this.pickVendorMemoryAccount(tenantId, taxpayerId, vendorVkn, accounts, rate) : null;
+        const learned = vendorVkn ? await this.pickVendorMemoryAccount(tenantId, taxpayerId, vendorVkn, accounts, rate, docIcerikImza) : null;
         let m = leafOnly(learned);
         if (m && !this.learnedMatrahCompatibleWithContent(String((m as any).accountCode || ''), kat, giderTuru, faDet.is)) {
           m = null;
@@ -11231,6 +11246,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     firmaKimlikNo: string,
     accounts: Array<{ accountCode: string; accountName: string }>,
     rate?: string | null,
+    icerikImza?: string | null,   // YENİ: belgenin kalem-içerik imzası (içerik-bazlı öğrenme okuması)
   ) {
     if (!firmaKimlikNo || !taxpayerId || !accounts.length) return null;
     const accountByCode = new Map(accounts.map((account) => [String(account.accountCode || '').trim(), account]));
@@ -11240,7 +11256,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         decisions: {
           where: { taxpayerId, kararTipi: 'fatura' },
           orderBy: [{ onayAdedi: 'desc' }, { sonKullanim: 'desc' }],
-          take: 16,
+          take: 40,
         },
       },
     });
@@ -11249,10 +11265,16 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       // Cari (altKategori='CARI') kararları matrah/gider kodu DEĞİLDİR — dışla.
       .filter((d: any) => String(d.altKategori || '').trim().toUpperCase() !== 'CARI');
     const r = String(rate || '').replace(/[^0-9]/g, '');
-    // Öncelik: bu orana özel kural → orana bağsız (genel) → en çok onaylanan (plana uyan).
-    const byRate = r ? decisions.find((d: any) => String(d.altKategori || '').replace(/[^0-9]/g, '') === r) : null;
-    const general = decisions.find((d: any) => !String(d.altKategori || '').trim());
-    const pick = byRate || general || decisions[0];
+    const imza = String(icerikImza || '').trim();
+    // ÖNCELİK: (1) BU içerik+oran → (2) BU içerik → (3) orana özel (içerik-genel) → (4) tamamen genel →
+    //   (5) en çok onaylanan. İçerik-imza eşleşmesi orandan ÖNCE gelir: "bu satıcıdan bu içerik hep şu
+    //   hesap" kullanıcının düzelttiği kararı en sadık yansıtır. İmza yoksa eski davranış birebir.
+    const imzaEsit = (d: any) => imza && String(d.icerikImza || '').trim() === imza;
+    const byImzaRate = imza && r ? decisions.find((d: any) => imzaEsit(d) && String(d.altKategori || '').replace(/[^0-9]/g, '') === r) : null;
+    const byImza = imza ? decisions.find((d: any) => imzaEsit(d)) : null;
+    const byRate = r ? decisions.find((d: any) => !String(d.icerikImza || '').trim() && String(d.altKategori || '').replace(/[^0-9]/g, '') === r) : null;
+    const general = decisions.find((d: any) => !String(d.icerikImza || '').trim() && !String(d.altKategori || '').trim());
+    const pick = byImzaRate || byImza || byRate || general || decisions[0];
     return pick ? accountByCode.get(String(pick.kategori).trim()) : null;
   }
 

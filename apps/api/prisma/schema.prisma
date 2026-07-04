@@ -2314,6 +2314,11 @@ model VendorMemoryDecision {
   kararTipi       String   // "fatura" | "isletme"
   kategori        String   // fatura: hesapKodu; isletme: kayitTuru
   altKategori     String?  // sadece isletme: altTuru
+  // İÇERİK-BAZLI ÖĞRENME (2026-07-04): kalem içeriğinden türetilen kararlı imza
+  //   (ör. "kase|kirtasiye|murekkep"). null = eski/satıcı-geneli kayıt (geriye-uyumlu). Aynı satıcının
+  //   FARKLI içerikli faturaları (biri kase, biri baska) ayrı öğrenilir; "sadece cariye göre değil
+  //   içeriğe göre de hafıza" (kullanıcı talebi).
+  icerikImza      String?
   onayAdedi       Int      @default(0)
   sonKullanim     DateTime @default(now())
   createdAt       DateTime @default(now())
@@ -2325,6 +2330,7 @@ model VendorMemoryDecision {
   // COALESCE indexi oluşturuldu. Burada indeksleme yalnızca performans için:
   @@index([vendorMemoryId, onayAdedi])
   @@index([vendorMemoryId, taxpayerId])
+  @@index([vendorMemoryId, icerikImza])
   @@index([taxpayerId])
   @@map("vendor_memory_decisions")
 }
