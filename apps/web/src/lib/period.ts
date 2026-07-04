@@ -58,7 +58,10 @@ export function getDonemDateRange(
   const qMatch = part.match(/^Q([1-4])$/i) || normalized.match(/^GECICI_Q([1-4])$/);
   if (qMatch) {
     const q = Number(qMatch[1]);
-    const startMonth = (q - 1) * 3 + 1;
+    // GEÇİCİ VERGİ KÜMÜLATİF: dönemler yılbaşından itibaren birikir — başlangıç HEP Ocak.
+    //   Q1=Ocak-Mart, Q2=Ocak-Haziran, Q3=Ocak-Eylül, Q4=Ocak-Aralık. (Eskiden (q-1)*3+1 ile
+    //   Q2=Nisan başlıyordu → 2. dönem mizanı devamı niteliğinde değil, yanlıştı.)
+    const startMonth = 1;
     const endMonth = q * 3;
     const endDay = new Date(year, endMonth, 0).getDate();
     return {

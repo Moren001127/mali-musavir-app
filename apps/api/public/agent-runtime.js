@@ -9402,7 +9402,10 @@
     if (qMatch) {
       const yil = +qMatch[1];
       const ceyrek = +qMatch[2];
-      const basAy = (ceyrek - 1) * 3 + 1;
+      // GEÇİCİ VERGİ KÜMÜLATİF: her dönem yılbaşından birikir → başlangıç HEP Ocak (basAy=1).
+      //   Q2 mizanı Nisan-Haziran değil OCAK-Haziran çekilmeli (devamı niteliğinde). Q sadece geçici
+      //   vergi çekimlerinde tetiklenir (aylık KDV bu dala girmez) → yan etki yok.
+      const basAy = 1;
       const bitAy = ceyrek * 3;
       const basMM = String(basAy).padStart(2, '0');
       const bitMM = String(bitAy).padStart(2, '0');
@@ -9429,9 +9432,9 @@
           bit: `${lastDay}.${mm}.${yil}`,
         };
       }
-      // donemTipi quarter ama format aylık verilmiş → ayın bulunduğu çeyreği al
+      // donemTipi quarter ama format aylık verilmiş → ayın bulunduğu çeyreği al (KÜMÜLATİF: bas=Ocak)
       const ceyrek = Math.ceil(ayMo / 3);
-      const basAy = (ceyrek - 1) * 3 + 1;
+      const basAy = 1;
       const bitAy = ceyrek * 3;
       const basMM = String(basAy).padStart(2, '0');
       const bitMM = String(bitAy).padStart(2, '0');

@@ -113,9 +113,9 @@ function taxpayerName(t: Taxpayer): string {
 const DONEM_TIPLERI = [
   { value: 'AYLIK',     label: 'Aylık' },
   { value: 'GECICI_Q1', label: '1. Dönem (Ocak – Mart)' },
-  { value: 'GECICI_Q2', label: '2. Dönem (Nisan – Haziran)' },
-  { value: 'GECICI_Q3', label: '3. Dönem (Temmuz – Eylül)' },
-  { value: 'GECICI_Q4', label: '4. Dönem (Ekim – Aralık)' },
+  { value: 'GECICI_Q2', label: '2. Dönem (Ocak – Haziran)' },
+  { value: 'GECICI_Q3', label: '3. Dönem (Ocak – Eylül)' },
+  { value: 'GECICI_Q4', label: '4. Dönem (Ocak – Aralık)' },
   { value: 'YILLIK',    label: 'Yıllık' },
 ] as const;
 
