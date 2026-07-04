@@ -8876,14 +8876,18 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const ocr = ocrData || {};
     const fold = (s: string) => this.norm(s).replace(/ş/g, 's').replace(/ğ/g, 'g').replace(/ı/g, 'i').replace(/ç/g, 'c').replace(/ö/g, 'o').replace(/ü/g, 'u');
     const kalemAd = Array.isArray(ocr.kalemler) ? ocr.kalemler.map((k: any) => String(k?.ad || '')).join(' ') : '';
-    const blob = fold(`${kalemAd} ${ocr.giderTuru || ''} ${ocr.muhasebeNeden || ''}`);
-    // Güçlü sabit-kıymet anahtarları (asciiFold edilmiş, kök biçimde). Sarf/gıda/hizmet bunlara girmez.
+    // blob YALNIZ kalem + giderTuru (fatura İÇERİĞİ). muhasebeNeden ÇIKARILDI: o AI yorumu; "…demirbaş
+    //   niteliğindedir" gibi bir cümle blob'a girince engellemek istediğimiz "AI kelimesine kapılma"
+    //   davranışı geri sızıyordu (beyaz eşya tamircisinin onarım geliri yanlış demirbaş oluyordu).
+    const blob = fold(`${kalemAd} ${ocr.giderTuru || ''}`);
+    // Güçlü sabit-kıymet anahtarları (asciiFold, kök biçim). YALNIZ SOMUT cihaz/makine adları — soyut
+    //   'demirbas'/'sabit kiymet' KELİMELERİ ÇIKARILDI (bunlar AI çıktısı olabilir, içerik kanıtı değil).
     const ASSET = [
       'klima', 'iklimlendirme', 'kombi', 'kazan dair', 'buzdolab', 'dondurucu', 'sogutucu', 'sogutma dolab',
       'davlumbaz', 'set ustu ocak', 'bulasik makin', 'camasir makin', 'kurutma makin', 'kahve makin', 'hamur makin',
       'makine', 'makina', 'jenerator', 'kompresor', 'forklift', 'transpalet', 'celik tezgah', 'vitrin',
       'bilgisayar', 'laptop', 'dizustu', 'monitor', 'yazici cihaz', 'fotokopi makin', 'tarayici cihaz', 'projeksiyon',
-      'televizyon', 'mobilya', 'demirbas', 'sabit kiymet', 'asansor', 'kamera sistem', 'guvenlik kamera',
+      'televizyon', 'mobilya', 'asansor', 'kamera sistem', 'guvenlik kamera',
       // Taşıt/araç SATIN ALIMI (sabit kıymet) — yarı römork/treyler/dorse gibi. Servis/bakım faturaları
       //   yukarıda giderIcerikSinifla ile ELENDİĞİ için bunlar yalnız GERÇEK alımda kalır.
       'romork', 'treyler', 'dorse', 'cekici dorse',
@@ -9901,13 +9905,21 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const detAdlar = (Array.isArray(parsed.kalemler) ? parsed.kalemler : []).map((k: any) => String(k?.ad || '').trim()).filter(Boolean);
       let detHit: { giderTuru: string; kategori: string } | null = null;
       if (!isIsletmeMukellef && d.invoiceKind !== 'SATIS' && detAdlar.length) {
-        let cat = ''; let ok = true;
+        // HER kalem tanınmalı VE hepsi AYNI hint'i vermeli (yalnız kategori-eşitliği YETMEZ — İDEAL PASAJ:
+        //   "komisyon" + "telefon" ikisi de genel_gider ama farklı hint; birleşince ilk-eşleşen kurala
+        //   düşüp 10.833TL telefon "komisyon gideri" oluyordu). Farklı hint → detHit YOK → AI/kullanıcı.
+        const hintler = new Set<string>();
+        let ok = true;
         for (const ad of detAdlar) {
           const r = giderIcerikSinifla(ad);
-          if (!r) { ok = false; break; }                       // tanınmayan kalem → AI'ya bırak
-          if (!cat) cat = r.kategori; else if (cat !== r.kategori) { ok = false; break; } // karışık → AI
+          if (!r) { ok = false; break; }
+          hintler.add(r.hint);
+          if (hintler.size > 1) { ok = false; break; }
         }
-        if (ok) { const whole = giderIcerikSinifla(detAdlar.join(' ')); if (whole) detHit = { giderTuru: whole.hint, kategori: whole.kategori }; }
+        if (ok && hintler.size === 1) {
+          const only = giderIcerikSinifla(detAdlar[0]);
+          if (only) detHit = { giderTuru: only.hint, kategori: only.kategori };
+        }
       }
       // TOPLU: aynı mükellef+plan+yön grubundaki belgeler tek Max çağrısında sınıflanır (alt-süreç N× azalır).
       const c: any = detHit
@@ -10018,37 +10030,46 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const mappedType = this.docTypeFromText(html || azureText || parsed._azureText || '') || this.mapOcrBelgeTipi(parsed.belgeTuru) || normalizeDocumentType((d as any).documentType);
 
     // SATICI-EMSAL TUTARLILIĞI (kullanıcı kuralı: "aynı satıcı hep aynı sonuç"): aynı mükellef + aynı
-    //   satıcı VKN'nin KALEM-ÖRTÜŞEN önceki belgesinde hangi matrahKategori'ye karar verildiyse yeni
-    //   okuma da AYNI kategoriye çekilir (ONAYLI belge öncelikli, yoksa en yeni). AI'ın gün farkıyla
-    //   ticari_mal ↔ genel_gider salınımı (SIRDAŞ kaşe/mürekkep: bir fatura 153, diğeri 770) biter.
-    //   Kullanıcı yanlışsa bir kez düzeltir → onayda öğrenilir, emsal de ona döner.
+    //   satıcı VKN'nin KALEM-ÖRTÜŞEN önceki belgesindeki kategoriyi yeni okumaya uygula. AMA GÜVENLİ:
+    //   (1) yalnız ONAYLI emsale güven (kullanıcı düzeltip onayladıysa = gerçek); onaysız emsal AI'ın
+    //       kendi salınımı olabilir, ona kilitlenmek "yanlışı sabitler" → onaysız-yoksa DOKUNMA.
+    //   (2) örtüşme ≥2 AYIRT EDİCİ ortak token (jenerik/STOP kelimeler elenir) — tek "kutu/adet/2024"
+    //       ortaklığı emsal saymaz. (3) onaylılar arasında kategori ÇOĞUNLUK; çoğunluk yoksa dokunma.
+    //   (4) tie-break deterministik (id) → aynı belge iki okumada aynı sonuç.
     if (kind === 'ALIS' && d.taxpayerId && vknOk(aiSaticiVkn) && Array.isArray(parsed.kalemler) && parsed.kalemler.length) {
       try {
+        const EMSAL_STOP = new Set(['adet', 'kutu', 'paket', 'urun', 'urunler', 'mamul', 'fiyat', 'tutar', 'birim', 'siyah', 'beyaz', 'renk', 'model', 'seti', 'takim', 'parca', 'kalem', 'malzeme', 'hizmet', 'genel', 'toplam', 'iskonto']);
         const foldTok = (s: string) => String(s || '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/ı/g, 'i');
         const tokSet = (ks: any[]) => new Set(
-          (ks || []).flatMap((k: any) => foldTok(String(k?.ad || '')).split(/[^a-z0-9]+/)).filter((t: string) => t.length >= 4),
+          (ks || []).flatMap((k: any) => foldTok(String(k?.ad || '')).split(/[^a-z0-9]+/))
+            .filter((t: string) => t.length >= 4 && !/^\d+$/.test(t) && !EMSAL_STOP.has(t)),
         );
         const curToks = tokSet(parsed.kalemler);
         if (curToks.size) {
           const emsaller = await (this.prisma as any).invoiceAccountingDocument.findMany({
-            where: { tenantId, taxpayerId: d.taxpayerId, invoiceKind: 'ALIS', sellerVkn: aiSaticiVkn, id: { not: d.id } },
-            orderBy: { updatedAt: 'desc' },
-            select: { id: true, status: true, ocrData: true },
-            take: 12,
+            where: { tenantId, taxpayerId: d.taxpayerId, invoiceKind: 'ALIS', sellerVkn: aiSaticiVkn, id: { not: d.id }, status: 'APPROVED' },
+            orderBy: { id: 'asc' }, // deterministik (updatedAt değil → aynı belge hep aynı emsal kümesi)
+            select: { id: true, ocrData: true },
+            take: 40,
           }).catch(() => []);
           const adaylar = (emsaller || []).map((e: any) => {
             const eo = (e.ocrData as any) || {};
             const kat = String(eo.matrahKategori || eo.kategori || '').trim();
             if (!kat) return null;
             const et = tokSet(eo.kalemler || []);
-            const ortusen = [...et].some((tk) => curToks.has(tk as string));
-            return ortusen ? { kat, giderTuru: String(eo.giderTuru || '').trim(), approved: e.status === 'APPROVED' } : null;
-          }).filter(Boolean) as Array<{ kat: string; giderTuru: string; approved: boolean }>;
-          const emsal = adaylar.find((a) => a.approved) || adaylar[0];
-          if (emsal && emsal.kat && String(parsed.kategori || '') !== emsal.kat) {
-            this.logger.log(`[EMSAL] belge=${d.belgeNo || d.id} satici=${aiSaticiVkn} kategori '${parsed.kategori || 'boş'}' → '${emsal.kat}' (satıcı-emsal${emsal.approved ? ', onaylı' : ''})`);
-            parsed.kategori = emsal.kat;
-            if (!parsed.giderTuru && emsal.giderTuru) parsed.giderTuru = emsal.giderTuru;
+            const ortak = [...et].filter((tk) => curToks.has(tk as string)).length;
+            return ortak >= 2 ? { kat, giderTuru: String(eo.giderTuru || '').trim() } : null;
+          }).filter(Boolean) as Array<{ kat: string; giderTuru: string }>;
+          // Onaylı emsaller arasında kategori ÇOĞUNLUĞU (tek net kazanan yoksa dokunma).
+          const say = new Map<string, { n: number; giderTuru: string }>();
+          for (const a of adaylar) { const p = say.get(a.kat) || { n: 0, giderTuru: a.giderTuru }; p.n++; if (!p.giderTuru && a.giderTuru) p.giderTuru = a.giderTuru; say.set(a.kat, p); }
+          const sirali = [...say.entries()].sort((x, y) => y[1].n - x[1].n || (x[0] < y[0] ? -1 : 1));
+          const kazanan = sirali[0];
+          const netKazanan = kazanan && (sirali.length === 1 || kazanan[1].n > sirali[1][1].n);
+          if (netKazanan && kazanan[0] && String(parsed.kategori || '') !== kazanan[0]) {
+            this.logger.log(`[EMSAL] belge=${d.belgeNo || d.id} satici=${aiSaticiVkn} kategori '${parsed.kategori || 'boş'}' → '${kazanan[0]}' (${kazanan[1].n} onaylı emsal)`);
+            parsed.kategori = kazanan[0];
+            if (!parsed.giderTuru && kazanan[1].giderTuru) parsed.giderTuru = kazanan[1].giderTuru;
           }
         }
       } catch { /* emsal bakılamadıysa mevcut karar kalır */ }
