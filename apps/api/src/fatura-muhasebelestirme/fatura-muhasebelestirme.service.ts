@@ -8686,7 +8686,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   private accountCodeOnly(value: any): string {
     const raw = String(value || '').trim();
     if (!raw || /^[-—–\s]*(yok|eksik)?[-—–\s]*$/i.test(raw)) return '';
-    const match = raw.match(/^([0-9]{1,3}(?:[.\-][A-Za-z0-9]+)*)/);
+    // \p{L}\p{N} (Unicode): cari alt hesapları TÜRKÇE harf içerir (120.01.İ027 / 120.01.Ç005). Eski
+    //   [A-Za-z0-9] deseni "İ"yi tanımayıp kodu "120.01"de KESİYORDU → cari GRUP koduna çöküyor,
+    //   "AI ile oku" sonrası bayat/yanlış kalıyordu (kullanıcı bulgusu; "Kodları düzelt" başka yoldan düzeltiyordu).
+    const match = raw.match(/^([0-9]{1,3}(?:[.\-][\p{L}\p{N}]+)*)/u);
     if (match?.[1]) return match[1].trim();
     return raw.split(/\s+[—–-]\s+|=/)[0].trim();
   }
