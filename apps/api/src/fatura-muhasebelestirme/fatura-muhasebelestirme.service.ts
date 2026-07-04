@@ -10780,7 +10780,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       (this.prisma as any).lucaAccountPlanLine.findMany({
         where: { snapshotId },
         orderBy: [{ accountCode: 'asc' }],
-        select: { accountCode: true, accountName: true },
+        select: { accountCode: true, accountName: true, vkn: true },
       }),
       (this.prisma as any).invoiceAccountingDocument.findMany({
         where: {
@@ -11097,12 +11097,6 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         const normals = g600.filter((a: any) => !this.isTevkifatAccountName(a.accountName || '') && !/(iade|ihrac|istisna)/i.test(String(a.accountName || '')));
         return normals.length ? normals : g600;
       })() : [];
-      // CARI: önce VKN bazlı öğrenilmiş cari (kesin), yoksa KATI isim eşleşmesi. İsim de
-      // tutmazsa null → placeholder boşaltılır ("Eksik cari"). Eskiden plandaki İLK cari
-      // (ör. ALTEKS) sessizce seçiliyordu — yanlış eşleştirmenin ana kaynağıydı.
-      const cariMemory = vendorVkn
-        ? await this.pickCariMemoryAccount(tenantId, taxpayerId, vendorVkn, accounts)
-        : null;
       // ÖKC/yazarkasa fişi NAKİT işlemdir → karşı taraf cari değil, 100 KASA.
       const okcFis = String(doc.documentType || '').toUpperCase() === 'OKC_FIS';
       // Z RAPORU satışı: karşı taraf müşteri (120) DEĞİL → nakit 100 Kasa + kart 108 POS.
@@ -11114,11 +11108,30 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       //   var ama eşleştirmedi"). İade'de her iki grubu + her iki tarafın adını dene.
       const cariPrefixes = isReturn ? ['120', '320', '329', '331'] : (isSale ? ['120'] : ['320', '329', '331']);
       const cariNames = isReturn ? [doc.customerName, doc.vendorName].filter(Boolean) : [vendorName];
+      // CARI seçim ÖNCELİĞİ (kullanıcı bulgusu: MERT REKLAM faturası → yanlış "AKILLI KARTUŞ" cari):
+      //   1) Plandaki cari hesaplar arasında VKN'si satıcının VKN'siyle BİREBİR tutan (yön öneki uygun)
+      //      → EN GÜVENİLİR, hafızayı da ezer. 2) VKN bazlı öğrenilmiş hafıza. 3) KATI isim eşleşmesi.
+      //   Seçilen carinin plandaki VKN'si satıcıyla ÇELİŞİYORSA (poisoned hafıza / isim çakışması)
+      //   REDDEDİLİR → null ("Eksik cari"; müşavir 1 kez seçer → VKN bazında doğru öğrenilir).
+      const normVkn = (v: any) => String(v || '').replace(/\D/g, '');
+      const svkn = normVkn(vendorVkn);
+      const cariByVkn = (!okcFis && svkn)
+        ? (accounts.find((a: any) => {
+            const c = String(a.accountCode || '');
+            return cariPrefixes.some((p) => c.startsWith(p)) && isPostableLeaf(c) && normVkn((a as any).vkn) === svkn;
+          }) || null)
+        : null;
+      const cariMemory = (!cariByVkn && !okcFis && vendorVkn)
+        ? await this.pickCariMemoryAccount(tenantId, taxpayerId, vendorVkn, accounts)
+        : null;
       let cariIsim: any = null;
-      if (!okcFis) { for (const nm of cariNames) { cariIsim = this.pickAccount(accounts, cariPrefixes, nm, { requireHint: true }); if (cariIsim) break; } }
+      if (!okcFis && !cariByVkn && !cariMemory) { for (const nm of cariNames) { cariIsim = this.pickAccount(accounts, cariPrefixes, nm, { requireHint: true }); if (cariIsim) break; } }
+      let cariPick: any = cariByVkn || cariMemory || cariIsim;
+      // VKN-ÇELİŞKİ reddi: seçilen carinin plandaki VKN'si VARSA ve satıcı VKN'siyle farklıysa → yanlış.
+      if (cariPick && svkn) { const pv = normVkn((cariPick as any).vkn); if (pv && pv !== svkn) cariPick = null; }
       const cariMatch = leafOnly(okcFis
         ? this.pickAccount(accounts, ['100'], null)
-        : (cariMemory || cariIsim));
+        : cariPick);
       // ORAN-BAZLI matrah: her matrah satırı KENDİ KDV oranına göre öğrenilmiş kodu alır;
       // yoksa kategori/varsayılan. Öğrenilmiş kod (satıcı+oran) her zaman önceliklidir.
       const matrahCache = new Map<string, any>();
