@@ -333,17 +333,16 @@ export default function GelirTablosuPage() {
   /** Bir kalem için manuel düzeltme dahil efektif tutar */
   const effectiveVal = (gt: any, key: string): number => {
     const base = key === 'satisMaliyeti' ? baseSatisMaliyeti(gt) : Number(gt[key]) || 0;
-    // v1.36.52: satisMaliyeti için ÖZEL OVERRİDE mantığı.
-    // Manuel SMM input SADECE 621 (Satılan Ticari Mallar Maliyeti) yerine geçer.
-    // Diğer kalemler (620, 622, 623, 740) otomatik kalır.
-    // Formül: gt.satisMaliyeti (auto 620+621+622+623+740) - gt.detay.satisMaliyeti621 + manuel
+    // v1.36.54: Manuel SMM input 621'in ÜSTÜNE eklenir (yerine geçmez).
+    // Kullanıcı modeli: 621 hesap bakiyesi = önceki dönem maliyeti (mizanda duran),
+    // Manuel = bu dönemin maliyeti. Kümülatif dönemde ikisi toplanır.
+    // Formül: base (auto 620+621+622+623+740) + manuel
     if (key === 'satisMaliyeti') {
       const draftManuel = duzeltmelerDraft[gt.id]?.satisMaliyetiManuel;
       const savedManuel = gt.duzeltmeler?.satisMaliyetiManuel;
       const manuelVal = typeof draftManuel === 'number' ? draftManuel : (typeof savedManuel === 'number' ? savedManuel : 0);
       if (manuelVal > 0) {
-        const auto621 = Number(gt?.detay?.satisMaliyeti621) || 0;
-        return base - auto621 + manuelVal;
+        return base + manuelVal;
       }
     }
     const draft = duzeltmelerDraft[gt.id]?.[key];
