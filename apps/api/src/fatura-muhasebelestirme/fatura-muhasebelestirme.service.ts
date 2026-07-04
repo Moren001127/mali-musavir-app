@@ -10634,10 +10634,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const giderTuru = String(ocr.giderTuru || '').trim();
     const kat = String(ocr.matrahKategori || ocr.kategori || '').trim();
 
-    // Hesap atanmamışsa zengin yorum anlamsız → deterministik özet (AI çağırma).
+    // Deterministik özet — HER ZAMAN anında hazır (kullanıcı tıkladığı an bunu görür).
     const matrahAccForNeden = matrahLines.length ? { accountCode: String(matrahLines[0].accountCode).trim(), accountName: String(matrahLines[0].description || '').trim() } : null;
+    const det = this.buildMuhasebeNeden(tpFaaliyet, isSale, kat, giderTuru, matrahAccForNeden, isReturn);
+    // Hesap atanmamışsa zengin yorum anlamsız → deterministik özet (AI çağırma).
     if (!hesapStr || !matrahAccForNeden) {
-      const det = this.buildMuhasebeNeden(tpFaaliyet, isSale, kat, giderTuru, matrahAccForNeden, isReturn);
       return { ok: true, neden: det, zengin: false };
     }
 
@@ -10664,18 +10665,29 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       'KURALLAR: Yönü MÜKELLEF gözünden anlat (ALIŞ ise "mükellef almış"; satıcının ne sattığı önemli değil). Hesap kodunu (' + hesapStr + ') Yorum cümlesinde AYNEN kullan. Faturada olmayan şey UYDURMA. Toplam ~60 kelimeyi geçme.',
     ].join('\n');
 
-    const res = await claudeTextViaMax({ prompt, timeoutMs: 30000, model: MAX_MODEL_CHEAP }).catch(() => null);
-    let text = this.cleanRichMuhasebeNeden(res && res.ok && res.text ? String(res.text) : '', hesapStr, isSale, isReturn);
-    if (!text) {
-      // AI boş/başarısız → deterministik özet (cache'leme, sonra tekrar denenebilsin).
-      const det = this.buildMuhasebeNeden(tpFaaliyet, isSale, kat, giderTuru, matrahAccForNeden, isReturn);
-      return { ok: true, neden: det, zengin: false };
+    // Zengin AI yorumunu üret + cache'le (ortak iç fonksiyon).
+    const uretVeCachele = async (): Promise<string> => {
+      const res = await claudeTextViaMax({ prompt, timeoutMs: 30000, model: MAX_MODEL_CHEAP }).catch(() => null);
+      const text = this.cleanRichMuhasebeNeden(res && res.ok && res.text ? String(res.text) : '', hesapStr, isSale, isReturn);
+      if (text) {
+        // Cache (üstüne yaz). Deterministik muhasebeNeden'e DOKUNMA (anlık fallback olarak kalsın).
+        await (this.prisma as any).invoiceAccountingDocument
+          .update({ where: { id: doc.id }, data: { ocrData: { ...ocr, muhasebeNedenZengin: text } } })
+          .catch(() => {});
+      }
+      return text;
+    };
+
+    // "AI ile yeniden yorumla" (force) → senkron üret, zengini döndür.
+    if (force) {
+      const text = await uretVeCachele();
+      return text ? { ok: true, neden: text, zengin: true } : { ok: true, neden: det, zengin: false };
     }
-    // Cache (üstüne yaz). Deterministik muhasebeNeden'e DOKUNMA (anlık fallback olarak kalsın).
-    await (this.prisma as any).invoiceAccountingDocument
-      .update({ where: { id: doc.id }, data: { ocrData: { ...ocr, muhasebeNedenZengin: text } } })
-      .catch(() => {});
-    return { ok: true, neden: text, zengin: true };
+
+    // Normal açılış → kullanıcı ANINDA deterministik yorumu görsün; zengin yorumu ARKA PLANDA
+    //   üret + cache'le (sonraki açılışta / kısa gecikmeli yeniden istekte gelir). Max BEKLETMEZ.
+    void uretVeCachele().catch(() => {});
+    return { ok: true, neden: det, zengin: false };
   }
 
   private async aiPickGiderAccount(

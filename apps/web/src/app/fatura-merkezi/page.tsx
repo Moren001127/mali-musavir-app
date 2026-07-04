@@ -1150,6 +1150,7 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
   //   yorum gelene kadar anlık gösterilir.
   const [richNotes, setRichNotes] = useState<Record<string, { loading?: boolean; text?: string; zengin?: boolean }>>({});
   const richFetchedRef = useRef<Set<string>>(new Set());
+  const richUpgradeRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     const id = fisDetayId;
     if (!id) return;
@@ -1159,15 +1160,23 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
     if (richFetchedRef.current.has(id)) return; // zaten istendi
     richFetchedRef.current.add(id);
     setRichNotes((s) => ({ ...s, [id]: { loading: true } }));
-    api.post(`/fatura-muhasebelestirme/documents/${id}/muhasebe-yorum`)
-      .then((r) => {
-        const t = String(r.data?.neden || '');
-        const zengin = r.data?.zengin === true;
-        // Zengin olmayan (deterministik) yorum da GÖSTERİLİR ("ön yorum" etiketiyle) — eskiden
-        //   çöpe atılıyordu; okuma-anı yorumu da boşsa kutu sonsuz "yorumlanıyor…" kalıyordu.
-        setRichNotes((s) => ({ ...s, [id]: { loading: false, text: t, zengin } }));
-      })
-      .catch(() => setRichNotes((s) => ({ ...s, [id]: { loading: false, text: '', zengin: false } })));
+    // Backend deterministik yorumu ANINDA döndürür (zengin=false), zengin AI yorumunu arka planda üretir.
+    //   İlk yanıtta deterministik gösterilir; zengin gelmediyse 14 sn sonra BİR KEZ tekrar istenir (upgrade).
+    const iste = (isUpgrade: boolean) =>
+      api.post(`/fatura-muhasebelestirme/documents/${id}/muhasebe-yorum`)
+        .then((r) => {
+          const t = String(r.data?.neden || '');
+          const zengin = r.data?.zengin === true;
+          // Upgrade isteğinde yalnız ZENGİN geldiyse üstüne yaz; gelmediyse deterministik kalsın (silme).
+          if (isUpgrade && !zengin) return;
+          setRichNotes((s) => ({ ...s, [id]: { loading: false, text: t, zengin } }));
+          if (!zengin && !isUpgrade && !richUpgradeRef.current.has(id)) {
+            richUpgradeRef.current.add(id);
+            setTimeout(() => { iste(true).catch(() => {}); }, 14000);
+          }
+        })
+        .catch(() => { if (!isUpgrade) setRichNotes((s) => ({ ...s, [id]: { loading: false, text: '', zengin: false } })); });
+    iste(false);
   }, [fisDetayId, docs]);
   // "Faaliyet: … / Yorum: …" iki bölümü satır satır, etiketleri vurgulu göster (deterministik tek cümlede düz).
   const renderNeden = (text: string) => text.split('\n').map((ln, i) => {
