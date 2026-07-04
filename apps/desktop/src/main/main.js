@@ -187,10 +187,15 @@ async function autoLoginPortal(page, portal, creds) {
 
     // HIZ: güvenlik kodu çözümü (2captcha turu ~5-20 sn, bekletenin ta kendisi)
     // alan doldurma ile PARALEL başlar; kullanıcı tarayıcıda durumu overlay'den görür.
+    // .catch: captcha görseli/servisi bu turda patlarsa TÜM giriş çökmesin (eskiden
+    // e-Bildirge'de paralel captcha hatası "otomatik giriş tamamlanamadı"ya düşürüyordu).
     await page.waitForSelector('input', { state: 'visible', timeout: 20000 }).catch(() => {});
     await showPageOverlay(page, 'Moren: alanlar dolduruluyor…');
-    const captchaPromise = solveCaptchaIfPresent(page, recipe, portal);
-    await fillLoginFields(page, recipe, creds, isSgk);
+    const captchaPromise = solveCaptchaIfPresent(page, recipe, portal).catch((e) => {
+      console.log('[PORTAL] ' + portal.key + ' captcha turu hatasi: ' + (e && e.message || e));
+      return null;
+    });
+    await fillLoginFields(page, recipe, creds, isSgk).catch(() => {});
     await showPageOverlay(page, 'Moren: güvenlik kodu çözülüyor… (5-20 sn)');
     const captcha = await captchaPromise;
     await showPageOverlay(page, 'Moren: giriş yapılıyor…');
