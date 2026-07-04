@@ -9723,6 +9723,11 @@
     const forceReportFormat = Boolean(options.raporTur || options.forceReportFormat || skipDates);
     const tarih = skipDates ? null : donemToTarihAraligi(job.donem, job.donemTipi);
     if (!skipDates && !tarih) throw new Error(`Tarih hesaplanamadı: ${job.donem}`);
+    // TEŞHİS (kullanıcı: "mizan alanına hangi tarihleri giriyorsun"): Başlangıç/Bitiş Fiş Tarihi'ne
+    //   YAZILAN değeri + kaynağı (dönem/tip) açıkça iş kaydına yaz — geçici vergi Q2 = 01.01→30.06 olmalı.
+    if (!skipDates && tarih) {
+      try { await log(`📅 MİZAN tarih girişi → Başlangıç Fiş Tarihi=${tarih.bas} · Bitiş Fiş Tarihi=${tarih.bit}  (dönem=${job.donem} · tip=${job.donemTipi || '-'})`); } catch (e) {}
+    }
 
     const setNative = (inp, value) => {
       if (!inp) return;
