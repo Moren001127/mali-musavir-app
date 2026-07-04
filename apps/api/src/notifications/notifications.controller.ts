@@ -17,6 +17,12 @@ export class NotificationsController {
     return this.notificationsService.getUnreadCount(req.user.tenantId, req.user.sub);
   }
 
+  /** Okunmamış özet: { total, critical } — Kritik Uyarı kartı critical'ı kullanır */
+  @Get('unread-summary')
+  getUnreadSummary(@Req() req: any) {
+    return this.notificationsService.getUnreadSummary(req.user.tenantId, req.user.sub);
+  }
+
   /** Kullanicinin bildirim tercihleri (mute edilmis tipler) */
   @Get('preferences')
   getPreferences(@Req() req: any) {

@@ -32,6 +32,24 @@ export class OwnerNotifierService implements OnModuleInit {
     'KDV_RESULT', 'MIHSAP_RESULT',
   ]);
 
+  // SESSİZ SAAT (kullanıcı kararı 2026-07-04): gece 22:00–09:00 arası owner'a
+  // anlık WhatsApp GİTMEZ (gece tebligat/beyanname sorguları tek tek mesaj
+  // atıp uyandırıyordu). Bildirimler zaten DB'de birikir; sabah 09:00'da
+  // OwnerDigestService tek toplu özet mesajı gönderir. İSTİSNA: güvenlik
+  // (yeni cihaz girişi) gece de anında gider.
+  private static readonly NIGHT_INSTANT_TYPES = new Set<string>(['AUTH_NEW_DEVICE']);
+
+  /** Europe/Istanbul saatine göre sessiz saat penceresi içinde miyiz? */
+  static isQuietHours(now: Date = new Date()): boolean {
+    const start = Number(process.env.OWNER_NOTIFY_QUIET_START || 22); // saat (dahil)
+    const end = Number(process.env.OWNER_NOTIFY_QUIET_END || 9);      // saat (hariç)
+    if (Number.isNaN(start) || Number.isNaN(end) || start === end) return false;
+    const hour = Number(
+      new Intl.DateTimeFormat('tr-TR', { hour: '2-digit', hour12: false, timeZone: 'Europe/Istanbul' }).format(now),
+    );
+    return start > end ? hour >= start || hour < end : hour >= start && hour < end;
+  }
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly whatsapp: WhatsAppService,
@@ -68,6 +86,12 @@ export class OwnerNotifierService implements OnModuleInit {
     if (OwnerNotifierService.DEFAULT_DISABLED_TYPES.has(n.type)) return;
     const disabledTypes = String(process.env.OWNER_NOTIFY_DISABLE_TYPES || '').split(',').map((s) => s.trim()).filter(Boolean);
     if (disabledTypes.includes(n.type)) return;
+
+    // Sessiz saat: gece anlık gönderme (güvenlik hariç) — sabah 09:00 özetine kalır.
+    if (OwnerNotifierService.isQuietHours() && !OwnerNotifierService.NIGHT_INSTANT_TYPES.has(n.type)) {
+      this.logger.debug(`Owner notify sessiz saat: ${n.type} sabah özetine ertelendi`);
+      return;
+    }
 
     // Debounce — ayni tip son 10 sn icinde gonderildiyse atla. E_TEBLIGAT MUAF: her bildirim
     // farkli mukellefin/tebligatin PDF'ini tasir, gece toplu is bitisinde kaybolmamali.
@@ -135,7 +159,8 @@ export class OwnerNotifierService implements OnModuleInit {
    * e-Tebligat bildirimi: metadata.newDocIds'teki her tebligat icin owner'a firma ismi
    * basligiyla + PDF dosyasi (S3 presigned URL) WhatsApp medya mesaji gonderir.
    */
-  private async sendETebligatToOwner(n: any, ownerPhones: string[]): Promise<void> {
+  // OwnerDigestService sabah özeti sonrası gece tebligat PDF'lerini de bu yolla yollar.
+  async sendETebligatToOwner(n: any, ownerPhones: string[]): Promise<void> {
     const meta = n.metadata && typeof n.metadata === 'object' ? n.metadata : {};
     const ids: string[] = Array.isArray(meta.newDocIds) ? meta.newDocIds.filter(Boolean) : [];
     if (!ids.length) return;
@@ -273,7 +298,7 @@ export class OwnerNotifierService implements OnModuleInit {
     return map[type] || { emoji: '🔔', label: 'Bildirim' };
   }
 
-  private getOwnerPhones(): string[] {
+  getOwnerPhones(): string[] {
     const raw = String(process.env.MOREN_OWNER_WHATSAPP_PHONES || process.env.MOREN_OWNER_WHATSAPP_PHONE || '').trim();
     if (!raw) return [];
     return raw.split(',').map((p) => this.normalize(p)).filter(Boolean);

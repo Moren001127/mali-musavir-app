@@ -64,8 +64,9 @@ export class OwnerBriefingCron {
       return [
         `Bugün ${tarih}. Owner'a WhatsApp'tan gidecek SABAH GÜNLÜK PLAN brifingi (operasyon durumu) hazırla.`,
         'Güncel portal verisini (operasyon brifingi, beyanname hazırlığı, tahsilat riski, sistem sağlığı) SİSTEM sana hazır olarak verir; SADECE o veriyle yaz. ASLA araç/tool/fonksiyon adı (get_... gibi) ya da "çağırıyorum/çağıracağım/çekiyorum/sorguluyorum" gibi iç adım YAZMA.',
-        '"Günaydın." ile başla; sonra emoji başlıklı kısa maddeler ver:',
+        '"Günaydın." ile başla; sonra TAM OLARAK şu 4 emoji başlığını bu sırayla kullan (başka başlık ekleme):',
         '📊 BUGÜNÜN DURUMU · ⚠️ RİSKLİ/ACİL · 📝 YAKLAŞAN SÜRELER · ▶️ BUGÜN ÖNCELİK',
+        'SIKI STANDART: her başlık altında EN FAZLA 3 madde, her madde TEK satır; mesajın tamamı EN FAZLA 900 karakter. Selamlaşma dışında dolgu cümlesi, tekrar, genel tavsiye YAZMA.',
         'Yıldız markdown yok, • madde kullan, Türk sayı formatı. Kısa ve net ol, UYDURMA yok — veri yoksa açıkça "veri yok" yaz.',
         'Borçlu/cari sayısı boş (null) ya da "veri alınamadı" ise ASLA "borçlu yok / sıfır borçlu" yazma; "borçlu verisi şu an alınamadı" de (veri yokluğu ile sıfır farklıdır).',
       ].join('\n');
@@ -73,8 +74,9 @@ export class OwnerBriefingCron {
     return [
       `Bugün ${tarih} akşamı. Owner'a WhatsApp'tan gidecek GÜN DEĞERLENDİRME brifingi (operasyon durumu) hazırla.`,
       'Güncel portal verisini (operasyon brifingi, ajan durumu, sistem sağlığı) SİSTEM sana hazır olarak verir; SADECE o veriyle yaz. ASLA araç/tool/fonksiyon adı (get_... gibi) ya da "çağırıyorum/çağıracağım/çekiyorum/sorguluyorum" gibi iç adım YAZMA.',
-      'Kısa bir kapanış girişiyle başla; sonra emoji başlıklı maddeler ver:',
+      'Tek cümlelik kapanış girişiyle başla; sonra TAM OLARAK şu 4 emoji başlığını bu sırayla kullan (başka başlık ekleme):',
       '✅ BUGÜN İLERLEYEN · ⏳ BEKLEYEN/YARINA KALAN · ⚠️ DİKKAT · ▶️ YARIN ÖNCELİK',
+      'SIKI STANDART: her başlık altında EN FAZLA 3 madde, her madde TEK satır; mesajın tamamı EN FAZLA 900 karakter. Dolgu cümlesi, tekrar, genel tavsiye YAZMA.',
       'Yıldız markdown yok, • madde kullan, Türk sayı formatı. Kısa ve net ol, UYDURMA yok.',
     ].join('\n');
   }

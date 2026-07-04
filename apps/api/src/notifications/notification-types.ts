@@ -40,6 +40,20 @@ export const NOTIFICATION_TYPES = {
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[keyof typeof NOTIFICATION_TYPES];
 
+/**
+ * GERÇEKTEN kritik bildirim tipleri — pano "Kritik Uyarı" kartı ve gece
+ * anında-uyandırma kararları YALNIZ bu listeye bakar. Geri kalan her tip
+ * normal bilgilendirmedir (zil/bildirimler ekranında kalır).
+ */
+export const CRITICAL_TYPES = new Set<NotificationType>([
+  NOTIFICATION_TYPES.PORTAL_CREDENTIAL_FAIL,
+  NOTIFICATION_TYPES.LUCA_SYNC_ERROR,
+  NOTIFICATION_TYPES.AI_COST_LIMIT,
+  NOTIFICATION_TYPES.AUTH_NEW_DEVICE,
+  NOTIFICATION_TYPES.E_TEBLIGAT,
+  NOTIFICATION_TYPES.TAX_DEADLINE,
+]);
+
 /** Hangi tipler tenant geneli (userId=null) varsayılan olarak atılır? */
 export const TENANT_WIDE_TYPES = new Set<NotificationType>([
   NOTIFICATION_TYPES.WHATSAPP,

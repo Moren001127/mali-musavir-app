@@ -49,9 +49,11 @@ export function KritikUyariStatCard() {
     refetchInterval: 30_000,
   });
 
-  const { data: unread } = useQuery<number>({
-    queryKey: ['notifications', 'unread'],
-    queryFn: () => api.get('/notifications/unread-count').then((r) => r.data).catch(() => 0),
+  // Yalnız KRİTİK tipteki okunmamışlar bu karta sayılır — rutin bildirimler
+  // zilde kalır (eskiden tüm okunmamışlar kritik görünüyordu).
+  const { data: unreadSummary } = useQuery<{ total: number; critical: number }>({
+    queryKey: ['notifications', 'unread-summary'],
+    queryFn: () => api.get('/notifications/unread-summary').then((r) => r.data).catch(() => ({ total: 0, critical: 0 })),
     refetchInterval: 30_000,
   });
 
@@ -97,10 +99,11 @@ export function KritikUyariStatCard() {
   const warning = regularHealthChecks.filter((c) => c.severity === 'WARNING').length;
   const moduleHashCritical = moduleHashCheck?.severity === 'CRITICAL' ? 1 : 0;
   const moduleHashWarning = moduleHashCheck && moduleHashCheck.severity !== 'CRITICAL' ? 1 : 0;
-  const unreadCount = typeof unread === 'number' ? unread : ((unread as any)?.count ?? 0);
+  const criticalNotifCount = unreadSummary?.critical ?? 0;
 
-  const criticalCount = critical + moduleHashCritical + todayErrors.length;
-  const totalUyari = criticalCount + warning + moduleHashWarning + unreadCount;
+  // Ajan hataları "uyarı" seviyesidir (kritik değil) — kart her gün kırmızı yanmasın.
+  const criticalCount = critical + moduleHashCritical + criticalNotifCount;
+  const totalUyari = criticalCount + warning + moduleHashWarning + todayErrors.length;
   const hasIssue = totalUyari > 0;
 
   return (
@@ -143,7 +146,7 @@ export function KritikUyariStatCard() {
               {warning > 0 && <span>{warning} sistem uyarı · </span>}
               {moduleHashCheck && <span>1 kilit drift · </span>}
               {todayErrors.length > 0 && <span>{todayErrors.length} ajan hata · </span>}
-              {unreadCount > 0 && <span>{unreadCount} okunmamış</span>}
+              {criticalNotifCount > 0 && <span>{criticalNotifCount} kritik bildirim</span>}
             </>
           )}
         </p>
@@ -248,13 +251,13 @@ export function KritikUyariStatCard() {
                     </UyariBolumu>
                   )}
 
-                  {/* Okunmamış Bildirimler */}
-                  {unreadCount > 0 && (
+                  {/* Kritik Bildirimler (yalnız kritik tipler — şifre hatası, Luca hatası, e-Tebligat, vergi süresi, yeni cihaz, AI tavan) */}
+                  {criticalNotifCount > 0 && (
                     <UyariBolumu
                       icon={Bell}
-                      baslik="Okunmamış Bildirimler"
-                      sayi={unreadCount}
-                      renk="#3b82f6"
+                      baslik="Kritik Bildirimler"
+                      sayi={criticalNotifCount}
+                      renk="#f43f5e"
                     >
                       <Link
                         href="/panel/bildirimler"

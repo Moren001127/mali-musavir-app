@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import {
+  CRITICAL_TYPES,
   DEFAULT_LINK_BY_TYPE,
   NOTIFICATION_TYPES,
   NotificationType,
@@ -44,6 +45,26 @@ export class NotificationsService {
         OR: [{ userId }, { userId: null }],
       },
     });
+  }
+
+  /**
+   * Okunmamış bildirim özeti: toplam + yalnız KRİTİK tipler.
+   * Pano "Kritik Uyarı" kartı critical'ı kullanır; rutin bildirimler
+   * bu karta karışmaz (kullanıcı şikayeti: her şey kritik görünüyordu).
+   */
+  async getUnreadSummary(tenantId: string, userId: string): Promise<{ total: number; critical: number }> {
+    const baseWhere = () => ({
+      tenantId,
+      isRead: false,
+      OR: [{ userId }, { userId: null }],
+    });
+    const [total, critical] = await Promise.all([
+      this.prisma.notification.count({ where: baseWhere() }),
+      this.prisma.notification.count({
+        where: { ...baseWhere(), type: { in: Array.from(CRITICAL_TYPES) } },
+      }),
+    ]);
+    return { total, critical };
   }
 
   async markRead(id: string, tenantId: string, userId: string) {
