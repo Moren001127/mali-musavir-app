@@ -20,6 +20,14 @@ contextBridge.exposeInMainWorld('moren', {
   // Otomatik giriş durumu (çözülüyor / giriş yapıldı / hata) bildirimleri
   onPortalEvent: (cb) => ipcRenderer.on('portal-event', (_e, data) => cb(data)),
 
+  // Bildirimler / Tebligatlar / SGK Raporları (portal API'sinden)
+  getDocuments: (belgeTuru, limit) => ipcRenderer.invoke('docs:list', { belgeTuru, limit }),
+  openDocument: (id) => ipcRenderer.invoke('docs:open', { id }),
+  markDocsViewed: (body) => ipcRenderer.invoke('docs:mark-viewed', body),
+  getNotifications: () => ipcRenderer.invoke('notif:list'),
+  markNotifRead: (id) => ipcRenderer.invoke('notif:read', { id }),
+  markAllNotifsRead: () => ipcRenderer.invoke('notif:read-all'),
+
   // WhatsApp QR
   waStatus: () => ipcRenderer.invoke('wa:status'),
   waConnect: () => ipcRenderer.invoke('wa:connect'),

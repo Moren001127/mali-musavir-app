@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const path = require('path');
 const api = require('./api');
 const store = require('./store');
@@ -177,35 +177,69 @@ async function autoLoginPortal(page, portal, creds) {
       await page.waitForTimeout(800);
     }
 
+    // HIZ: güvenlik kodu çözümü (2captcha turu ~5-20 sn, bekletenin ta kendisi)
+    // alan doldurma ile PARALEL başlar; kullanıcı tarayıcıda durumu overlay'den görür.
+    await page.waitForSelector('input', { state: 'visible', timeout: 20000 }).catch(() => {});
+    await showPageOverlay(page, 'Moren: alanlar dolduruluyor…');
+    const captchaPromise = solveCaptchaIfPresent(page, recipe, portal);
     await fillLoginFields(page, recipe, creds, isSgk);
-    const captcha = await solveCaptchaIfPresent(page, recipe, portal);
+    await showPageOverlay(page, 'Moren: güvenlik kodu çözülüyor… (5-20 sn)');
+    const captcha = await captchaPromise;
+    await showPageOverlay(page, 'Moren: giriş yapılıyor…');
     await submitLogin(page, recipe);
     await page.waitForLoadState('domcontentloaded', { timeout: 20000 }).catch(() => {});
     await page.waitForTimeout(2200);
 
     const res = await evaluateLoginResult(page, recipe);
     if (res.ok) {
+      await hidePageOverlay(page);
       sendPortalEvent(portal.key, 'ok', portal.label + ': giriş yapıldı ✓');
       return;
     }
     // Bu denemede çözülen captcha yanlış çıktıysa 2captcha'ya bildir (iade).
     if (captcha && captcha.captchaId) api.reportBadCaptcha(captcha.captchaId).catch(() => {});
     if (res.passwordRejected) {
+      await hidePageOverlay(page);
       sendPortalEvent(portal.key, 'err', portal.label + ': portal şifresi/kullanıcı kodu reddedildi. Kayıtlı bilgileri kontrol edin.');
       return; // ŞİFRE yanlış → tekrar DENEME YOK (hesap kilidi riski)
     }
     // captcha yanlış / belirsiz → yeniden dene
     if (attempt < maxAttempts) {
+      await showPageOverlay(page, 'Moren: güvenlik kodu tutmadı, yeniden deneniyor… (' + attempt + '/' + maxAttempts + ')');
       sendPortalEvent(portal.key, 'info', portal.label + ': güvenlik kodu tutmadı, yeniden deneniyor…');
     }
   }
+  await hidePageOverlay(page);
   sendPortalEvent(portal.key, 'warn', portal.label + ': güvenlik kodu otomatik çözülemedi. Tarayıcı açık — kodu elle girip giriş yapabilirsiniz.');
+}
+
+// Portal sayfasının köşesinde küçük Moren durum kutusu — kullanıcı ne beklediğini görür.
+async function showPageOverlay(page, text) {
+  await page.evaluate((t) => {
+    let el = document.getElementById('moren-durum');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'moren-durum';
+      el.style.cssText = 'position:fixed;top:14px;right:14px;z-index:2147483647;background:#15120c;color:#e8cf8f;'
+        + 'border:1px solid rgba(212,184,118,.55);border-radius:10px;padding:10px 16px;'
+        + 'font:600 13px "Segoe UI",sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.45);pointer-events:none';
+      (document.body || document.documentElement).appendChild(el);
+    }
+    el.textContent = '🔐 ' + t;
+  }, text).catch(() => {});
+}
+
+async function hidePageOverlay(page) {
+  await page.evaluate(() => {
+    const el = document.getElementById('moren-durum');
+    if (el) el.remove();
+  }).catch(() => {});
 }
 
 // Kullanıcı/şifre alanlarını doldurur. GİB: kullanıcı kodu + şifre (şifre çoğunlukla
 // secondaryPassword'da). SGK: kullanıcı adı + e-kod + sistem şifresi + işyeri şifresi.
 async function fillLoginFields(page, recipe, creds, isSgk) {
-  await page.waitForSelector('input', { state: 'visible', timeout: 20000 }).catch(() => {});
+  // NOT: input görünürlük beklemesi autoLoginPortal'da (captcha çözümüyle paralellik için).
   if (isSgk) {
     await fillField(page, recipe.user, creds.username || creds.userCode);
     if (recipe.workplace) await fillField(page, recipe.workplace, creds.workplaceCode || creds.officeCode);
@@ -238,10 +272,14 @@ async function solveCaptchaIfPresent(page, recipe, portal) {
   const inputSelectors = recipe.captcha || [];
   if (!imgSelectors.length || !inputSelectors.length) return null;
 
+  // Görsel geç render edilebilir (paralel çağrıldığımız için) — 3 sn'ye kadar bekle.
   let imgLoc = null;
-  for (const sel of imgSelectors) {
-    const loc = page.locator(sel).first();
-    if (await loc.isVisible().catch(() => false)) { imgLoc = loc; break; }
+  for (let tur = 0; tur < 6 && !imgLoc; tur++) {
+    for (const sel of imgSelectors) {
+      const loc = page.locator(sel).first();
+      if (await loc.isVisible().catch(() => false)) { imgLoc = loc; break; }
+    }
+    if (!imgLoc) await page.waitForTimeout(500);
   }
   if (!imgLoc) return null; // bu portalda captcha yok
 
@@ -350,6 +388,42 @@ async function visibleAlertText(page) {
   }
   return pieces.join(' | ').slice(0, 500);
 }
+
+// ─────────────── BİLDİRİMLER / TEBLİGATLAR / SGK RAPORLARI ───────────────
+// Veri kaynağı portal API'si (gece çekilen e-Tebligat + SGK belgeleri + portal
+// bildirimleri). Masaüstü ayrı sorgu YAPMAZ; portalla aynı kayıtları gösterir.
+
+ipcMain.handle('docs:list', async (_e, { belgeTuru, limit } = {}) => {
+  const qs = new URLSearchParams();
+  if (belgeTuru) qs.set('belgeTuru', belgeTuru);
+  qs.set('limit', String(limit || 200));
+  return api.apiFetch('/portal-automation/documents?' + qs.toString());
+});
+
+// Belgeyi (tebligat PDF'i) varsayılan tarayıcıda açar; sunucu ilk açılışta
+// "görüntülendi" damgası vurur (buton kalıcı yeşile döner).
+ipcMain.handle('docs:open', async (_e, { id }) => {
+  const res = await api.apiFetch('/portal-automation/documents/' + encodeURIComponent(id) + '/view');
+  const url = res && res.url;
+  if (url) await shell.openExternal(url);
+  return { ok: !!url, viewedAt: res && res.viewedAt };
+});
+
+ipcMain.handle('docs:mark-viewed', async (_e, body) => {
+  return api.apiFetch('/portal-automation/documents/mark-viewed', { method: 'POST', body: body || {} });
+});
+
+ipcMain.handle('notif:list', async () => {
+  return api.apiFetch('/notifications');
+});
+
+ipcMain.handle('notif:read-all', async () => {
+  return api.apiFetch('/notifications/read-all', { method: 'PATCH', body: {} });
+});
+
+ipcMain.handle('notif:read', async (_e, { id }) => {
+  return api.apiFetch('/notifications/' + encodeURIComponent(id) + '/read', { method: 'PATCH', body: {} });
+});
 
 // ─────────────────────────── WHATSAPP QR ───────────────────────────
 ipcMain.handle('wa:status', async () => {

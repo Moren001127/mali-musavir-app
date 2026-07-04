@@ -50,8 +50,15 @@
   <div id="app-view" class="view hidden">
     <aside class="side">
       <div class="brandbar"><img src="../../assets/portal-logolari/moren-logo-gold.png" alt="Moren" /></div>
+      <div class="me">
+        <div class="av" id="me-av">M</div>
+        <div class="who"><b id="me-name">Moren</b><span id="me-mail">—</span></div>
+      </div>
       <nav class="nav">
         <button class="nv on" data-page="kisayollar"><span class="i">&#9783;</span>Kısayollar</button>
+        <button class="nv" data-page="bildirimler"><span class="i">&#128276;</span>Bildirimler<span class="badge hidden" id="badge-bildirimler">0</span></button>
+        <button class="nv" data-page="tebligatlar"><span class="i">&#128232;</span>Tebligatlar<span class="badge hidden" id="badge-tebligatlar">0</span></button>
+        <button class="nv" data-page="raporlar"><span class="i">&#128203;</span>SGK Raporları<span class="badge hidden" id="badge-raporlar">0</span></button>
         <button class="nv" data-page="whatsapp"><span class="i">&#128241;</span>WhatsApp</button>
         <button class="nv" data-page="ayarlar"><span class="i">&#9881;</span>Ayarlar</button>
       </nav>
@@ -77,6 +84,51 @@
           </div>
         </div>
         <div class="grid" id="portal-grid"></div>
+      </div>
+
+      <!-- BİLDİRİMLER -->
+      <div class="content hidden" id="page-bildirimler">
+        <div class="list-tools">
+          <div class="counters" id="bil-counters"></div>
+          <select id="bil-filter" class="sel">
+            <option value="">Tümü</option>
+            <option value="unread">Okunmamış</option>
+            <option value="read">Okunmuş</option>
+          </select>
+          <button class="btn btn-primary" id="bil-readall">Hepsini Oku</button>
+          <button class="btn btn-ghost" id="bil-refresh">&#8635; Yenile</button>
+        </div>
+        <div class="doc-list" id="bil-list"><div class="empty">Yükleniyor…</div></div>
+      </div>
+
+      <!-- TEBLİGATLAR -->
+      <div class="content hidden" id="page-tebligatlar">
+        <div class="list-tools">
+          <div class="counters" id="teb-counters"></div>
+          <select id="teb-filter" class="sel">
+            <option value="">Tümü</option>
+            <option value="unread">Görülmemiş</option>
+            <option value="read">Görülmüş</option>
+          </select>
+          <button class="btn btn-primary" id="teb-readall">Hepsini Görüldü Say</button>
+          <button class="btn btn-ghost" id="teb-refresh">&#8635; Yenile</button>
+        </div>
+        <div class="doc-list" id="teb-list"><div class="empty">Yükleniyor…</div></div>
+      </div>
+
+      <!-- SGK RAPORLARI -->
+      <div class="content hidden" id="page-raporlar">
+        <div class="list-tools">
+          <div class="counters" id="rap-counters"></div>
+          <select id="rap-filter" class="sel">
+            <option value="">Tümü</option>
+            <option value="unread">Görülmemiş</option>
+            <option value="read">Görülmüş</option>
+          </select>
+          <button class="btn btn-primary" id="rap-readall">Hepsini Görüldü Say</button>
+          <button class="btn btn-ghost" id="rap-refresh">&#8635; Yenile</button>
+        </div>
+        <div class="doc-list" id="rap-list"><div class="empty">Yükleniyor…</div></div>
       </div>
 
       <!-- WHATSAPP -->

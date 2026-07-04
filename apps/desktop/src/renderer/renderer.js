@@ -10,6 +10,11 @@ const state = {
   credentials: { tenant: {}, byTaxpayer: {} },
   selected: null, // seçili firma
   waTimer: null,
+  inboxTimer: null,
+  tebligatlar: [],
+  raporlar: [],
+  bildirimler: [],
+  filters: { teb: '', rap: '', bil: '' },
 };
 
 // ───────── yardımcılar ─────────
@@ -93,10 +98,20 @@ async function enterApp(user) {
 
   const setUser = $('set-user');
   if (setUser && user && user.email) setUser.textContent = user.email;
+  const meMail = $('me-mail');
+  if (meMail && user && user.email) meMail.textContent = user.email;
+  const meName = $('me-name');
+  const adSoyad = user && (user.name || user.fullName || (user.firstName ? (user.firstName + ' ' + (user.lastName || '')).trim() : ''));
+  if (meName && adSoyad) meName.textContent = adSoyad;
+  const meAv = $('me-av');
+  if (meAv) meAv.textContent = initials(adSoyad || (user && user.email) || 'M');
 
   try { $('set-version').textContent = 'v' + (await api.appVersion()); } catch { /* yoksay */ }
 
   await loadShortcuts();
+  refreshInbox(); // bildirim/tebligat/rapor rozetleri (arka planda)
+  if (state.inboxTimer) clearInterval(state.inboxTimer);
+  state.inboxTimer = setInterval(refreshInbox, 5 * 60 * 1000);
 }
 
 // ───────── kısayollar ─────────
@@ -225,9 +240,13 @@ function setupFirmaPicker() {
 // ───────── navigasyon ─────────
 const PAGES = {
   kisayollar: { title: 'Kısayollar', sub: 'Bir firma seçin, ardından portala tek tıkla otomatik girin', firma: true },
+  bildirimler: { title: 'Bildirimler', sub: 'Portala düşen tüm bildirimler — okunmamışlar işaretli', firma: false },
+  tebligatlar: { title: 'Tebligatlar', sub: 'Gece sorgularında bulunan e-Tebligatlar — belgeye tıklayınca PDF açılır', firma: false },
+  raporlar: { title: 'SGK Raporları', sub: 'SGK vizite / iş göremezlik raporları', firma: false },
   whatsapp: { title: 'WhatsApp', sub: 'Telefonunuzu okutarak gönderimleri uygulama üzerinden yapın', firma: false },
   ayarlar: { title: 'Ayarlar', sub: 'Uygulama bilgisi ve güvenlik', firma: false },
 };
+const PAGE_KEYS = Object.keys(PAGES);
 
 function setupNav() {
   document.querySelectorAll('.nv[data-page]').forEach((btn) => {
@@ -237,8 +256,9 @@ function setupNav() {
 
 function goPage(page) {
   document.querySelectorAll('.nv[data-page]').forEach((b) => b.classList.toggle('on', b.dataset.page === page));
-  ['kisayollar', 'whatsapp', 'ayarlar'].forEach((p) => {
-    $('page-' + p).classList.toggle('hidden', p !== page);
+  PAGE_KEYS.forEach((p) => {
+    const el = $('page-' + p);
+    if (el) el.classList.toggle('hidden', p !== page);
   });
   const meta = PAGES[page];
   $('page-title').textContent = meta.title;
@@ -246,6 +266,217 @@ function goPage(page) {
 
   if (page === 'whatsapp') startWaPoll();
   else stopWaPoll();
+  if (page === 'bildirimler' || page === 'tebligatlar' || page === 'raporlar') refreshInbox();
+}
+
+// ───────── Bildirimler / Tebligatlar / SGK Raporları ─────────
+// Yalnız gerçek rapor/vizite türleri — SGK_TAHAKKUK ve SGK_HIZMET_LISTESI aylık
+// yüzlerce belge üretip sekmeyi boğuyordu (canlı test 2026-07-05); onlar portalda.
+const RAPOR_TURLERI = 'SGK_ISGOREMEZLIK,SGK_ISE_GIRIS,SGK_ISTEN_CIKIS';
+
+function fmtTarih(v) {
+  if (!v) return '—';
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return String(v);
+  return d.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+function taxpayerAd(t) {
+  if (!t) return 'Mükellef';
+  return t.companyName || [t.firstName, t.lastName].filter(Boolean).join(' ').trim() || t.taxNumber || 'Mükellef';
+}
+
+async function refreshInbox() {
+  try {
+    const [teb, rap, bil] = await Promise.all([
+      api.getDocuments('E_TEBLIGAT', 200).catch(() => []),
+      api.getDocuments(RAPOR_TURLERI, 200).catch(() => []),
+      api.getNotifications().catch(() => []),
+    ]);
+    state.tebligatlar = Array.isArray(teb) ? teb : [];
+    state.raporlar = Array.isArray(rap) ? rap : [];
+    state.bildirimler = Array.isArray(bil) ? bil : [];
+  } catch { /* ağ hatası — rozetler eski kalır */ }
+  updateBadges();
+  renderTebligatlar();
+  renderRaporlar();
+  renderBildirimler();
+}
+
+function setBadge(id, count) {
+  const el = $(id);
+  if (!el) return;
+  el.textContent = count > 99 ? '99+' : String(count);
+  el.classList.toggle('hidden', !(count > 0));
+}
+
+function updateBadges() {
+  setBadge('badge-tebligatlar', state.tebligatlar.filter((d) => !d.viewedAt).length);
+  setBadge('badge-raporlar', state.raporlar.filter((d) => !d.viewedAt).length);
+  setBadge('badge-bildirimler', state.bildirimler.filter((n) => !n.isRead).length);
+}
+
+function counterHtml(total, okunmus, okunmamis) {
+  return '<span class="cnt c-tot">+' + total + '</span>'
+    + '<span class="cnt c-ok">&#128065; ' + okunmus + '</span>'
+    + '<span class="cnt c-no">&#10060; ' + okunmamis + '</span>';
+}
+
+function applyReadFilter(rows, filter, isReadFn) {
+  if (filter === 'unread') return rows.filter((r) => !isReadFn(r));
+  if (filter === 'read') return rows.filter((r) => isReadFn(r));
+  return rows;
+}
+
+// Tebligat + SGK raporu kartları aynı iskelet: kurum rozeti + mükellef + tarihler + göz.
+function docCardHtml(d, tur) {
+  const raw = d.raw && typeof d.raw === 'object' ? d.raw : {};
+  const okundu = !!d.viewedAt;
+  const kurum = raw.kurumAciklama || raw.altKurum || (tur === 'teb' ? 'e-Tebligat' : 'SGK');
+  const firma = taxpayerAd(d.taxpayer);
+  const satirlar = [];
+  if (tur === 'teb') {
+    satirlar.push(['V.D. gönderilme', fmtTarih(d.issuedAt)]);
+    if (raw.tebligZamani) satirlar.push(['Tebliğ tarihi', String(raw.tebligZamani)]);
+    satirlar.push(['Açıklama', d.title || raw.belgeTuruAciklama || 'Tebligat']);
+    if (d.referenceNo) satirlar.push(['Belge no', d.referenceNo]);
+  } else {
+    satirlar.push(['Belge', d.title || d.belgeTuru]);
+    if (raw.vaka || raw.vakaAdi) satirlar.push(['Vaka', raw.vaka || raw.vakaAdi]);
+    if (raw.tcKimlikNo || raw.adSoyad) satirlar.push(['Kişi', [raw.tcKimlikNo, raw.adSoyad].filter(Boolean).join(' — ')]);
+    if (raw.raporBaslangic || raw.raporBaslamaTarihi) satirlar.push(['Rapor başlama', fmtTarih(raw.raporBaslangic || raw.raporBaslamaTarihi)]);
+    if (raw.isBasiKontrol || raw.isBasiKontrolTarihi) satirlar.push(['İş başı kontrol', fmtTarih(raw.isBasiKontrol || raw.isBasiKontrolTarihi)]);
+    if (d.period) satirlar.push(['Dönem', d.period]);
+    satirlar.push(['Tarih', fmtTarih(d.issuedAt || d.receivedAt || d.createdAt)]);
+  }
+  const rowsHtml = satirlar
+    .map(([k, v]) => '<div class="dr"><span>' + k + ':</span><b>' + String(v) + '</b></div>')
+    .join('');
+  return '<div class="doc-card' + (okundu ? '' : ' unread') + '" data-id="' + d.id + '">'
+    + '<div class="doc-head">'
+    +   '<span class="kbadge">' + kurum + '</span>'
+    +   '<button class="eye ' + (okundu ? 'seen' : 'new') + '" data-act="' + (d.storageKey ? 'open' : 'seen') + '" data-id="' + d.id + '" title="'
+    +     (d.storageKey ? 'Belgeyi aç (PDF)' : 'Görüldü işaretle') + '">' + (okundu ? '&#128065;' : '&#128064;') + '</button>'
+    + '</div>'
+    + '<div class="doc-firma">' + firma + '</div>'
+    + '<div class="doc-rows">' + rowsHtml + '</div>'
+    + '</div>';
+}
+
+function bindDocActions(listEl) {
+  listEl.querySelectorAll('.eye').forEach((btn) => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const id = btn.dataset.id;
+      try {
+        if (btn.dataset.act === 'open') {
+          btn.innerHTML = '&#8987;';
+          await api.openDocument(id); // sunucu görüntülendi damgası vurur + PDF açılır
+        } else {
+          await api.markDocsViewed({ ids: [id] });
+        }
+        await refreshInbox();
+      } catch (err) {
+        toast(err.message || 'Belge açılamadı', 'err');
+        refreshInbox();
+      }
+    });
+  });
+}
+
+function renderTebligatlar() {
+  const list = $('teb-list');
+  if (!list) return;
+  const rows = applyReadFilter(state.tebligatlar, state.filters.teb, (d) => !!d.viewedAt);
+  $('teb-counters').innerHTML = counterHtml(
+    state.tebligatlar.length,
+    state.tebligatlar.filter((d) => d.viewedAt).length,
+    state.tebligatlar.filter((d) => !d.viewedAt).length,
+  );
+  list.innerHTML = rows.length
+    ? rows.map((d) => docCardHtml(d, 'teb')).join('')
+    : '<div class="empty">Bu filtrede tebligat yok. Gece sorguları yeni tebligat bulursa burada görünür.</div>';
+  bindDocActions(list);
+}
+
+function renderRaporlar() {
+  const list = $('rap-list');
+  if (!list) return;
+  const rows = applyReadFilter(state.raporlar, state.filters.rap, (d) => !!d.viewedAt);
+  $('rap-counters').innerHTML = counterHtml(
+    state.raporlar.length,
+    state.raporlar.filter((d) => d.viewedAt).length,
+    state.raporlar.filter((d) => !d.viewedAt).length,
+  );
+  list.innerHTML = rows.length
+    ? rows.map((d) => docCardHtml(d, 'rap')).join('')
+    : '<div class="empty">Bu filtrede SGK kaydı yok.</div>';
+  bindDocActions(list);
+}
+
+const BIL_TIP_ETIKET = {
+  E_TEBLIGAT: ['📨', 'e-Tebligat'],
+  TAX_DEADLINE: ['⏰', 'Vergi süresi'],
+  PORTAL_CREDENTIAL_FAIL: ['🔑', 'Şifre hatası'],
+  LUCA_SYNC_ERROR: ['🔴', 'Luca'],
+  AI_COST_LIMIT: ['💰', 'AI maliyet'],
+  AUTH_NEW_DEVICE: ['🖥️', 'Yeni cihaz'],
+  PENDING_DECISION: ['❓', 'Onay bekliyor'],
+  BANK_TRANSACTION_ALERT: ['🏦', 'Banka'],
+  INVOICE_OVERDUE: ['🧾', 'Fatura'],
+  TASK_DUE: ['📌', 'Görev'],
+  WHATSAPP: ['💬', 'WhatsApp'],
+};
+
+function renderBildirimler() {
+  const list = $('bil-list');
+  if (!list) return;
+  const rows = applyReadFilter(state.bildirimler, state.filters.bil, (n) => !!n.isRead);
+  $('bil-counters').innerHTML = counterHtml(
+    state.bildirimler.length,
+    state.bildirimler.filter((n) => n.isRead).length,
+    state.bildirimler.filter((n) => !n.isRead).length,
+  );
+  list.innerHTML = rows.length
+    ? rows.map((n) => {
+        const [emoji, etiket] = BIL_TIP_ETIKET[n.type] || ['🔔', n.type || 'Bildirim'];
+        const zaman = new Date(n.createdAt).toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+        return '<div class="notif-row' + (n.isRead ? '' : ' unread') + '" data-id="' + n.id + '">'
+          + '<span class="ntip">' + emoji + ' ' + etiket + '</span>'
+          + '<div class="ntxt"><b>' + (n.title || '') + '</b><span>' + (n.body || '') + '</span></div>'
+          + '<span class="nzaman">' + zaman + '</span>'
+          + '</div>';
+      }).join('')
+    : '<div class="empty">Bu filtrede bildirim yok.</div>';
+  list.querySelectorAll('.notif-row.unread').forEach((row) => {
+    row.addEventListener('click', async () => {
+      try { await api.markNotifRead(row.dataset.id); refreshInbox(); } catch { /* yoksay */ }
+    });
+  });
+}
+
+function setupInbox() {
+  const bind = (id, fn) => { const el = $(id); if (el) el.addEventListener('click', fn); };
+  const bindSel = (id, key) => {
+    const el = $(id);
+    if (el) el.addEventListener('change', () => { state.filters[key] = el.value; refreshInbox(); });
+  };
+  bindSel('teb-filter', 'teb'); bindSel('rap-filter', 'rap'); bindSel('bil-filter', 'bil');
+  bind('teb-refresh', refreshInbox); bind('rap-refresh', refreshInbox); bind('bil-refresh', refreshInbox);
+  bind('teb-readall', async () => {
+    try { await api.markDocsViewed({ belgeTuru: 'E_TEBLIGAT' }); toast('Tüm tebligatlar görüldü sayıldı', 'ok'); refreshInbox(); }
+    catch (err) { toast(err.message || 'İşlem başarısız', 'err'); }
+  });
+  bind('rap-readall', async () => {
+    try {
+      for (const t of RAPOR_TURLERI.split(',')) await api.markDocsViewed({ belgeTuru: t });
+      toast('Tüm SGK kayıtları görüldü sayıldı', 'ok'); refreshInbox();
+    } catch (err) { toast(err.message || 'İşlem başarısız', 'err'); }
+  });
+  bind('bil-readall', async () => {
+    try { await api.markAllNotifsRead(); toast('Tüm bildirimler okundu', 'ok'); refreshInbox(); }
+    catch (err) { toast(err.message || 'İşlem başarısız', 'err'); }
+  });
 }
 
 // ───────── WhatsApp ─────────
@@ -314,6 +545,7 @@ function setupPortalEvents() {
 setupLogin();
 setupFirmaPicker();
 setupNav();
+setupInbox();
 setupWa();
 setupLogout();
 setupPortalEvents();
