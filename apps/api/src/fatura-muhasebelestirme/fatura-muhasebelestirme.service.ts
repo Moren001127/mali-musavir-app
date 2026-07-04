@@ -9253,14 +9253,19 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         });
       }
       // C) CARİ 2-SEVİYELİ (GRUP ŞÜPHESİ) — cari kodu tek noktalı (120.01 gibi). Plandan grup tespiti
-      //    bayat/eksik plan yüzünden kaçarsa (İSTANBUL KİLİT vakası) YEDEK yumuşak uyarı.
+      //    bayat/eksik plan yüzünden kaçarsa (İTO/ARNAVUTKÖY: farklı müşteriler AYNI 120.01'e düşmüş)
+      //    YAKALA. Planın CARİ normu 3-seviyeliyse (120.xx.xxx var) 2-seviyeli cari KESİN yanlış → ERROR
+      //    ("Eşleşti" yalanını keser, onayı bloklar). Plan 2-seviyeli cari kullanıyorsa (firma konvansiyonu)
+      //    yalnız yumuşak WARNING.
       const cariLine = (opts.lines || []).find((l: any) => String(l.group || '') === 'cari' && String(l.accountCode || '').trim());
       const cariCode = String(cariLine?.accountCode || '').trim();
       if (cariCode && /^(120|320|329|331)\.\d+$/.test(cariCode)) {
+        const planCodes = opts.taxpayerId ? await this.getPlanCodeSet(opts.tenantId, opts.taxpayerId) : null;
+        const hasThreeLevelCari = !!planCodes && [...planCodes].some((c) => /^(120|320|329|331)\.\d+\.\d+/.test(c));
         issues.push({
           code: 'CARI_SHALLOW_CODE',
-          severity: 'WARNING',
-          message: `Cari hesap kodu ${cariCode} 2 seviyeli — grup (ara) hesabı olabilir. Doğru müşteri/satıcı alt hesabını (ör. ${cariCode}.001) kontrol edin.`,
+          severity: hasThreeLevelCari ? 'ERROR' : 'WARNING',
+          message: `Cari hesap kodu ${cariCode} 2 seviyeli — grup (ara) hesabına fiş kesilmiş olabilir. Bu müşteri/satıcı için doğru alt hesabı (ör. ${cariCode}.001) seçin.`,
         });
       }
     } catch (e: any) {
