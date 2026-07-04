@@ -7005,8 +7005,20 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       //   GetInvoiceXml → 325KB UBL XML; Detail&IsPrint → 42KB orijinal fatura HTML'i.
       const idFaturaDirect = String(this.turmobField(row, ['IdFatura', 'idFatura', 'IdFaturaEk', 'IdArsiv', 'idArsiv', 'IdArsivEk']) || '').replace(/\D/g, '');
       if (idFaturaDirect) {
-        addCandidateUrl(`/Invoice/GetInvoiceXml?InOrOut=${inOrOut}&InvoiceId=${idFaturaDirect}`, true);
-        addCandidateUrl(`/Invoice/Detail?InOrOut=${inOrOut}&InvoiceId=${idFaturaDirect}&IsPrint=True`, true);
+        if (channel === 'OUT_EARSIV') {
+          // KESİN e-ARŞİV UÇLARI — TÜRMOB portalında ağ izlenip fetch ile DOĞRULANDI (2026-07-04):
+          //   satır menüsü xmlArchive(IdArsiv) → GET /Invoice/GetInvoiceXml?InOrOut=false&ArchiveId=<IdArsiv>
+          //   (200, 280KB gerçek UBL). Param adı InvoiceId DEĞİL **ArchiveId**; bu yüzden e-Arşiv indirmesi
+          //   hiç çözülemiyordu ("belge inmedi"). PDF=GetInvoicePdf, görsel=Detail (hepsi ArchiveId).
+          addCandidateUrl(`/Invoice/GetInvoiceXml?InOrOut=${inOrOut}&ArchiveId=${idFaturaDirect}`, true);
+          addCandidateUrl(`/Invoice/GetInvoicePdf?InOrOut=${inOrOut}&ArchiveId=${idFaturaDirect}`, true);
+          addCandidateUrl(`/Invoice/Detail?InOrOut=${inOrOut}&ArchiveId=${idFaturaDirect}&IsPrint=True`, true);
+          // Geriye-uyum: InvoiceId varyantları da bırak (başka sürüm/kanal).
+          addCandidateUrl(`/Invoice/GetInvoiceXml?InOrOut=${inOrOut}&InvoiceId=${idFaturaDirect}`, true);
+        } else {
+          addCandidateUrl(`/Invoice/GetInvoiceXml?InOrOut=${inOrOut}&InvoiceId=${idFaturaDirect}`, true);
+          addCandidateUrl(`/Invoice/Detail?InOrOut=${inOrOut}&InvoiceId=${idFaturaDirect}&IsPrint=True`, true);
+        }
       }
       const pathPrefixes = channel === 'IN_EFATURA'
         ? ['/IncomingInvoice', '/Invoice']
@@ -7056,7 +7068,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         ...rowValues(row, ['InvoiceId', 'InvoiceID', 'invoiceId', 'FaturaId', 'faturaId', 'BelgeId', 'belgeId', 'Id', 'ID', 'id', 'Uuid', 'UUID', 'uuid', 'Ettn', 'ETTN', 'ettn', 'Guid', 'GUID', 'guid']),
         ...turmobCandidateIds(row),
       ])].slice(0, 5);
-      const archiveIds = [...new Set(rowValues(row, ['ArchiveId', 'ArchiveID', 'archiveId', 'ArsivId', 'arsivId']))].slice(0, 4);
+      // IdArsiv = e-Arşiv satırının GERÇEK arşiv kimliği (GetInvoiceXml?ArchiveId=<IdArsiv>). Alan adı
+      //   'ArchiveId' değil 'IdArsiv' olduğundan bu yedek blok hiç tetiklenmiyordu → eklendi.
+      const archiveIds = [...new Set(rowValues(row, ['IdArsiv', 'idArsiv', 'IdArsivEk', 'ArchiveId', 'ArchiveID', 'archiveId', 'ArsivId', 'arsivId']))].slice(0, 4);
       const addInvoiceUrlSet = (id: string, keyName: 'InvoiceId' | 'id' | 'uuid' | 'ettn') => {
         const q = `${keyName}=${encodeURIComponent(id)}`;
         const io = `InOrOut=${inOrOut}`;
@@ -7125,6 +7139,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         for (const key of keys) addInvoiceUrlSet(id, key);
       }
       for (const id of archiveIds) {
+        addCandidateUrl(`/Invoice/GetInvoiceXml?InOrOut=${inOrOut}&ArchiveId=${encodeURIComponent(id)}`, true);
+        addCandidateUrl(`/Invoice/GetInvoicePdf?InOrOut=${inOrOut}&ArchiveId=${encodeURIComponent(id)}`, true);
         addCandidateUrl(`/Invoice/GetInvoiceXml?InOrOut=False&ArchiveId=${encodeURIComponent(id)}`);
         addCandidateUrl(`/Invoice/GetInvoiceXML?InOrOut=False&ArchiveId=${encodeURIComponent(id)}`);
         addCandidateUrl(`/Invoice/Detail?InOrOut=False&ArchiveId=${encodeURIComponent(id)}&IsPrint=True`);
