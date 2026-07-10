@@ -11464,10 +11464,27 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         //   Deterministik muhasebeNeden anlık fallback olarak güncel kalır.
         const hadZengin = !!String(prevOcr.muhasebeNedenZengin || '');
         const nedenChanged = neden && String(prevOcr.muhasebeNeden || '') !== neden;
-        if (nedenChanged || hadZengin) {
+        // MEVZUAT DENETİMİ (Katman 1) HER EŞLEŞTİRMEDE TAZELE (2026-07-05, kullanıcı: "sadece eşleştirme
+        //   yapmasın, tevkifat gibi konuları da kontrol etsin"). Eskiden denetimUyariOlustur YALNIZ okuma
+        //   anında çalışıyordu → "Kodları düzelt" sonrası tevkifat/KDV uyarıları güncellenmiyordu. Girdiler
+        //   ocrData'dan (matrah/kdv/gider/kalem/tevkifat) — okuma tekrarı GEREKMEZ, kural anlık koşar.
+        const _uy = denetimUyariOlustur({
+          invoiceKind: isSale ? 'SATIS' : 'ALIS',
+          matrah: Number(prevOcr.matrah || 0),
+          kdvTutari: Number(prevOcr.kdvTutari || 0),
+          giderTuru: String(prevOcr.giderTuru || giderTuru || ''),
+          kalemAciklamalari: Array.isArray(prevOcr.kalemler) ? prevOcr.kalemler.map((k: any) => String(k?.ad || '')) : [],
+          muhasebeNeden: neden || String(prevOcr.muhasebeNeden || ''),
+          kdvOrani: Number(prevOcr.kdvOrani || (Array.isArray(prevOcr.kdvBreakdown) && prevOcr.kdvBreakdown[0]?.oran) || 0),
+          tevkifatVar: prevOcr.tevkifatHint === true || Number(prevOcr.tevkifatOrani || 0) > 0,
+          isFixedAsset: !!faDet.is,
+        });
+        const prevUy = Array.isArray(prevOcr.uyarilar) ? prevOcr.uyarilar : [];
+        const uyChanged = JSON.stringify(_uy) !== JSON.stringify(prevUy);
+        if (nedenChanged || hadZengin || uyChanged) {
           await (this.prisma as any).invoiceAccountingDocument.update({
             where: { id: doc.id },
-            data: { ocrData: { ...prevOcr, ...(neden ? { muhasebeNeden: neden } : {}), muhasebeNedenZengin: '' } },
+            data: { ocrData: { ...prevOcr, ...(neden ? { muhasebeNeden: neden } : {}), muhasebeNedenZengin: '', uyarilar: _uy.length ? _uy : undefined } },
           });
         }
       }
