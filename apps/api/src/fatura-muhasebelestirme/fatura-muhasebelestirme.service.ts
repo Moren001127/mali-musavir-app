@@ -11187,6 +11187,16 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         if (m && !this.learnedMatrahCompatibleWithContent(String((m as any).accountCode || ''), kat, giderTuru, faDet.is)) {
           m = null;
         }
+        // ARAÇ-ÇELİŞKİ (2026-07-05): ÖĞRENİLMİŞ kod bile araç-adlı hesap (740 ARAÇ BAKIM) ise ve mükellef+
+        //   fatura araç-dışıysa (_aracBaglamYok) REDDET. Öğrenilmiş kod aiMatrahAcc'tan ÖNCE geliyordu →
+        //   aiMatrahAcc reddini by-pass ediyordu (SERİOFİS toneri, VKN'ye 740 öğrenilmiş kalmıştı).
+        if (m && _aracBaglamYok && _aracHesapAdRe.test(this.norm(String((m as any).accountName || '')))) {
+          m = null;
+        }
+        // 6xx REDDİ öğrenilmiş kod için de: alışta doğrudan 632/62x/60x'e yazma (dönem-sonu/gelir hesabı).
+        if (m && !isSale && /^6/.test(String((m as any).accountCode || ''))) {
+          m = null;
+        }
         // ③ AI doğrudan seçim (öğrenilmiş kod YOKSA): AI'ın okuma anında plandan seçtiği matrah
         //   hesabı. Çok-oranlı faturada AI grubunun bu orana ait varyantı (153.01.001 %1 / .003 %20)
         //   varsa onu, yoksa AI'ın seçtiği kodu. Mekanik kategori/varsayılandan ÖNCE gelir.
