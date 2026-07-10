@@ -177,9 +177,13 @@ export function extractOkcFisToplam(
     const line = lines[i];
     if (!toplamLabelRe.test(line) || badLabelRe.test(line)) continue;
     const isGenel = /GENEL/i.test(line);
-    // KDV'den kucuk-esit adaylar TOPLAM olamaz (Azure sutun-ayirma kalibi:
-    // "TOPKDV\nTOPLAM\n*2,54\n*256,78" — ilk deger TOPKDV'nin, atla, sonrakine bak).
-    const acceptable = (v: number) => v > 0 && !(kdvNum && kdvNum > 0 && v <= kdvNum);
+    // KDV verildiyse gecerli toplam KDV'nin en az ~5 katidir: en yuksek oran %20'de
+    // bile toplam = matrah + KDV = KDV*6 (dusuk oranlarda daha da buyuk). KDV'ye yakin
+    // "TOPLAM" degerleri POS ara-slibi / kalem satiri / sutun-kaymasidir → ele.
+    // (KOÇYİĞİTER 9417: gercek TOPLAM 8.450,77 ama POS slibinde sahte "TOPLAM 1.604,95";
+    //  eskiden "son TOPLAM kazanir" ile yanlisi aliniyordu → matrah 196,49 saçmaligi.)
+    const acceptable = (v: number) =>
+      v > 0 && (!kdvNum || kdvNum <= 0 ? true : v >= kdvNum * 5);
     let tutar = lastAmount(line);
     if (!acceptable(tutar)) {
       tutar = 0;

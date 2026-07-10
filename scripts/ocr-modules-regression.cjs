@@ -1176,7 +1176,21 @@ const tahirToplam = okcFis.extractOkcFisToplam(okcTahir0095Text, okcDeps, 2.54);
 approx(ublDeps.parseAmount(tahirToplam), 256.78, 0.01, `sutun-ayirma: KDV degeri atlanir, toplam 256,78 (gercek=${tahirToplam})`);
 // Guvenlik: ARA TOPLAM / KDV satirlari toplam sanilmaz
 eq(okcFis.extractOkcFisToplam('ARA TOPLAM *100,00\nKDV TOPLAM *20,00', okcDeps, null), null, 'ARA TOPLAM / KDV TOPLAM alinmaz');
-ok('azure/okc-fis.ts extractOkcFisToplam (4 assertion)');
+// GERCEK bug (KOÇYİĞİTER 9417): fisin devaminda POS slibinde SAHTE ikinci "TOPLAM
+// *1.604,95" var; "son TOPLAM kazanir" ile yanlisi aliniyordu (matrah 196,49 saçmaligi).
+// Gecerli toplam KDV'nin >=5 kati olmali → sahte kucuk deger elenir, gercek 8.450,77 kalir.
+const okc9417Text = [
+  'FIS NO', ': 9417',
+  'YEDEK PARÇA %20', '*8.450,77',
+  'KDV %20', '*1.408,46',
+  'TOPLAM', '*8.450,77',
+  'KREDI KARTI', '*8.450,77',
+  'ISYERI NO: 666486212',
+  'TOPLAM', '*1.604,95',
+].join('\n');
+approx(ublDeps.parseAmount(okcFis.extractOkcFisToplam(okc9417Text, okcDeps, 1408.46)), 8450.77, 0.01,
+  `sahte POS "TOPLAM 1.604,95" elenir, gercek toplam 8.450,77 (gercek=${okcFis.extractOkcFisToplam(okc9417Text, okcDeps, 1408.46)})`);
+ok('azure/okc-fis.ts extractOkcFisToplam (5 assertion)');
 
 const okcCrossText = [
   'FIS NO : 0276',
