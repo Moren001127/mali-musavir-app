@@ -10760,6 +10760,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       `Bu bir ALIŞ (gider) faturası. İçindeki ana mal/hizmet: "${giderTuru}"${vendorName ? `, satıcı: "${vendorName}"` : ''}.`,
       'Aşağıdaki mükellefin GERÇEK hesap planından, bu gideri MÜKELLEFİN İŞİNE göre yazacağın EN UYGUN TEK hesabı seç.',
       'KURAL: Alınan şey mükellefin SATTIĞI emtia ise stok (15x). Kendi işinde KULLANDIĞI gider ise ilgili gider hesabı (7xx/6xx). Uzun ömürlü makine/cihaz/taşıt/demirbaş ise sabit kıymet (25x).',
+      'İŞİN GİRDİSİ KURALI (önemli — boş bırakmadan önce düşün): Fatura, mükellefin ÜRETTİĞİ/SATTIĞI işin HAM ya da YARI malzemesi/girdisi ise BOŞ bırakma → hizmet/üretim maliyeti (740 HİZMET ÜRETİM MALİYETİ) veya ilk madde (150) veya ticari mal (153) hesabına yaz. ÖRNEK: reklamcı/tabelacı reklam malzemesi-baskı-folyo-levha alır → 740 HİZMET ÜRETİM MALİYETİ (ya da 153 hazır satıyorsa); matbaa kağıt/mürekkep alır → 150/153; terzi kumaş alır → 150/153; inşaatçı demir/çimento → 150/153. Bu bir "genel işletme gideri" (elektrik/telefon/kira) DEĞİL, işin doğrudan girdisidir.',
+      'AMA genel işletme gideri (elektrik/su/telefon/kira/kırtasiye/temizlik) → 770; bunları 740/150/153 SANMA.',
       'ÖRNEK: NAKLİYECİ kendi aracına yedek parça/lastik/tamir alır → taşıt giderleri / bakım-onarım gider hesabı (STOK DEĞİL). Oto yedek parça TİCARETİ yapan satmak için alır → ticari mal stok (153).',
       'ÖRNEK 2: ARAÇ/TAŞIT KİRALAMA bedeli → "KİRA GİDERİ" (işyeri/gayrimenkul kirası) hesabına ASLA yazma — araç kirası işyeri kirası DEĞİLDİR. Plandaki uygun bir araç/taşıt kira hesabı yoksa kod null.',
       'GENEL KURAL: seçtiğin hesabın ADI faturanın İÇERİĞİYLE SEMANTİK uyuşmalı. Yüzeysel kelime benzerliği (kiralama≈kira) ya da "planda tek/uygun-gibi hesap kalmış" YETMEZ. İçeriğe gerçekten uyan hesap yoksa kod null = BOŞ (kullanıcı 1 kez seçer, öğrenilir).',
@@ -10807,7 +10809,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const tpRow: any = await (this.prisma as any).taxpayer.findFirst({ where: { id: taxpayerId, tenantId }, select: { companyName: true, firstName: true, lastName: true, naceKodu: true, faaliyetAciklama: true } }).catch(() => null);
     const tpFaaliyet = tpRow ? [String(tpRow.companyName || (String(tpRow.firstName || '') + ' ' + String(tpRow.lastName || ''))).trim(), String(tpRow.faaliyetAciklama || '').trim() || (tpRow.naceKodu ? ('NACE ' + tpRow.naceKodu) : '')].filter(Boolean).join(' — ') : '';
     let aiAccCalls = 0; // batch'te AI eskalasyonunu sınırla
-    const AI_GIDER_LIMIT = 40; // "Kodları düzelt" batch'inde AI semantik eşleştirme tavanı (Max yükü)
+    const AI_GIDER_LIMIT = 50; // "Kodları düzelt" batch'inde AI semantik eşleştirme tavanı (Max yükü). Cache aynı içeriği 1 kez sorar → 50 benzersiz gider çoğu mükellefe yeter.
     const aiGiderCache = new Map<string, any>(); // norm(giderTuru) → hesap|null; aynı gider 1 kez sorulur
     // SADECE GERÇEK ALT HESAP: bir kod ATANABİLİR ancak plan'da varsa + 1-2 haneli sınıf/grup DEĞİLSE
     //   (ana segmenti >=3 hane) + noktalı alt-hesabı YOKSA. "1 DÖNEN VARLIKLAR"/"320" gibi gruplar ASLA atanmaz.
