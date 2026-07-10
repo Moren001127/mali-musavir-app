@@ -10887,6 +10887,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       //   servis satıcısı) varsa geçerli. Aksi halde araç ipucunu DÜŞÜR → genel gider + AI semantik
       //   doğru hesabı seçer. Nakliyeciyi (araç-yoğun faaliyet) ETKİLEMEZ.
       let _giderTuruEfektif = _giderTuruRaw;
+      // araç bağlamı yok → araç ipucu VE araç-adlı AI/öğrenilmiş hesap kodu reddedilir (aşağıda kullanılır).
+      let _aracBaglamYok = false;
+      const _aracHesapAdRe = /\b(arac|tasit|yakit|akaryak|otoyol|otopark|kasko|motorlu tas|nakliy|tasima|\blastik\b|balata|motor yag)\b/;
       {
         const aracHintRe = /\b(arac|tasit|yakit|akaryak|otoyol|otopark|kasko|motorlu tas|mtv)\b/;
         const detAracHint = detIcerik ? aracHintRe.test(this.norm(detIcerik.hint || '')) : false;
@@ -10896,6 +10899,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           const aracYogunFaal = /(nakliy|tasima|tasimacilik|lojistik|kargo|kurye|petrol|akaryak|filo|otomotiv|oto tamir|oto servis|arac kirala|servis istasyon|kamyon|\btir\b|dorse|treyler)/.test(faalN);
           const faturaAracSinyal = /(oto|petrol|akaryak|lastik|otomotiv|motorlu|tuvturk|muayene|motorin|\bbenzin\b|balata|opet|shell|aytemiz|mengerler)/.test(this.norm(`${_kalemAd} ${vendorName || ''}`));
           if (!aracYogunFaal && !faturaAracSinyal) {
+            _aracBaglamYok = true;
             if (detAracHint) { detIcerik = null; kat = 'genel_gider'; }
             if (aiAracHint) _giderTuruEfektif = '';
           }
@@ -10968,9 +10972,17 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const aiKod = String((doc.ocrData as any)?.aiMatrahKodu || '').trim();
       // Sabit-kıymet tespit edildiyse (faDet.is) AI'ın okuma anında seçtiği 153/770 gibi stok/gider kodu
       //   GEÇERSİZ — yalnız 25x (demirbaş) kabul; aksi halde AI seçimi düşer, kategori-düzeltmesi (255/BOŞ) geçerli.
-      const aiMatrahAcc = (!isSale && aiKod && !aiKod.startsWith('60') && isPostableLeaf(aiKod)
+      // 6xx REDDİ (2026-07-05): alış faturası DOĞRUDAN 6xx'e yazılmaz — 60x gelir, 62x satılan-maliyeti,
+      //   63x (630/631/632) dönem-sonu yansıtma hesaplarıdır. Gider faturası 7xx'e (7/A) gider; dönem sonu
+      //   771 ile 632'ye yansıtılır. AI "GENEL YÖNETİM GİDERLERİ" ad-benzerliğiyle 632'yi seçiyordu
+      //   (İstanbul Gaz/Turkcell → 632 saçmalığı). Alışta yalnız 15x/25x/7xx kabul.
+      const _aiCand = (!isSale && aiKod && !/^6/.test(aiKod) && isPostableLeaf(aiKod)
         && !(faDet.is && !/^25/.test(aiKod)))
         ? accounts.find((a: any) => String(a.accountCode || '') === aiKod) : null;
+      // ARAÇ-ÇELİŞKİ: AI okuma anında araç-adlı hesap (740 ARAÇ BAKIM) seçmiş olsa da, mükellef+fatura
+      //   araç-dışıysa (_aracBaglamYok) bu kodu REDDET → AI semantik/boş doğru hesabı bulur. (SERİOFİS toneri.)
+      const aiMatrahAcc = (_aiCand && _aracBaglamYok && _aracHesapAdRe.test(this.norm(String((_aiCand as any).accountName || ''))))
+        ? null : _aiCand;
       const aiGroupLeaves = aiMatrahAcc
         ? accounts.filter((a: any) => { const c = String(a.accountCode || ''); return c.startsWith(aiKod.split('.').slice(0, 2).join('.') + '.') && isPostableLeaf(c); })
         : [];
