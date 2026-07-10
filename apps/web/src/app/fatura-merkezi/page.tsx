@@ -4820,19 +4820,32 @@ const CSS = `
 #fm-root .crumb b{font-weight:700;color:#1b2532}
 /* ── 2026-07-10 revizyon: sidebar tek ekrana sığar, marka bloğu lacivert-petrol degrade,
    "Portala Dön" ikon-buton, e-Fatura/e-Arşiv sorgu tarih aralığı kartı ── */
+/* Sidebar: tek ekrana sigar (100vh sticky, nav kendi icinde kayar) */
 #fm-root .side{height:100vh;position:sticky;top:0;overflow:hidden}
-#fm-root .nav{flex:1;min-height:0;overflow:auto;padding-bottom:10px}
-#fm-root .brand{position:relative;padding:12px 10px 13px;border-bottom:none;background:linear-gradient(150deg,#0f2b5b 0%,#16407c 55%,#0d9488 145%)}
-#fm-root .brand::after{content:'';position:absolute;left:0;right:0;bottom:0;height:2px;background:linear-gradient(90deg,var(--accent),rgba(13,148,136,0))}
-#fm-root .brandrow{margin-top:0}
-#fm-root .brandtx .brandlogo{font-size:29px;color:#fff;text-shadow:0 1px 10px rgba(4,18,44,.45)}
-#fm-root .brandtx .brandmod{font-size:13px;color:#c8dbe4;margin-top:1px}
-#fm-root .backlink{position:absolute;top:9px;left:9px;margin:0;width:27px;height:27px;border-radius:8px;display:grid;place-items:center;color:#e8f0f4;background:rgba(255,255,255,.13);border:1px solid rgba(255,255,255,.22);opacity:1}
-#fm-root .backlink:hover{background:rgba(255,255,255,.27);color:#fff}
-#fm-root .ncap{padding:10px 10px 4px}
-#fm-root .nitem{padding:6px 9px;margin-bottom:2px}
-#fm-root .nitem > span:first-child{width:26px;height:26px}
-#fm-root .nsub{padding:5px 11px 5px 36px}
+#fm-root .nav{flex:1;min-height:0;overflow:auto;padding:10px 12px 14px}
+/* KOMPLE sol sutun koyu lacivert→petrol degrade + BUYUK marka blogu */
+#fm-root .side{background:linear-gradient(168deg,#0e2a58 0%,#123a74 46%,#0d7d73 122%);border-right:1px solid rgba(9,22,50,.55);box-shadow:2px 0 20px -14px rgba(9,22,50,.7)}
+#fm-root .app > .side{background:linear-gradient(168deg,#0e2a58 0%,#123a74 46%,#0d7d73 122%)}
+#fm-root .brand{position:relative;padding:22px 14px 18px;border-bottom:1px solid rgba(255,255,255,.13);background:transparent}
+#fm-root .brand::after{content:none}
+#fm-root .brandrow{margin-top:2px}
+#fm-root .brandtx .brandlogo{font-size:47px;line-height:1;color:#fff;text-shadow:0 2px 16px rgba(3,14,38,.5)}
+#fm-root .brandtx .brandmod{font-size:17px;color:#bcd6e0;margin-top:5px;font-style:italic}
+#fm-root .backlink{position:absolute;top:12px;left:12px;margin:0;width:28px;height:28px;border-radius:9px;display:grid;place-items:center;color:#eaf2f6;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.24);opacity:1}
+#fm-root .backlink:hover{background:rgba(255,255,255,.28);color:#fff}
+/* Bolum basliklari + menu ogeleri koyu zemine gore acildi (rahat aralikli) */
+#fm-root .ncap{color:rgba(206,226,238,.6);padding:15px 10px 6px}
+#fm-root .nitem{color:#d7e4ef;padding:9px 10px;margin-bottom:3px;font-size:13px}
+#fm-root .nitem:hover{background:rgba(255,255,255,.10);color:#fff}
+#fm-root .nitem > span:first-child{width:29px;height:29px;color:#fff;background:rgba(255,255,255,.13);border-color:rgba(255,255,255,.2)}
+#fm-root .nitem.on{background:rgba(255,255,255,.15);color:#fff;box-shadow:inset 3px 0 0 #5eead4}
+#fm-root .nitem.on > span:first-child{background:#5eead4;color:#0e2a58;border-color:#5eead4;box-shadow:none}
+#fm-root .nitem .ct{background:rgba(255,255,255,.22);color:#fff}
+#fm-root .nitem.on .ct{background:#fff;color:#0e2a58}
+#fm-root .nsub{color:rgba(203,223,236,.82);padding:6px 11px 6px 40px}
+#fm-root .nsub:hover{background:rgba(255,255,255,.08);color:#fff}
+#fm-root .nsub.on{color:#5eead4;font-weight:700}
+#fm-root .nsub .d{opacity:.65}
 #fm-root .daterange{display:flex;align-items:center;gap:12px;padding:9px 14px;margin-bottom:10px;flex-wrap:wrap;border:1px solid #e5e7eb}
 #fm-root .daterange .drlabel{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#64748b}
 #fm-root .daterange .drlabel svg{color:var(--accent)}
