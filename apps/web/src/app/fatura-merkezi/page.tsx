@@ -4826,23 +4826,23 @@ const CSS = `
 /* KOMPLE sol sutun koyu lacivert→petrol degrade + BUYUK marka blogu */
 #fm-root .side{background:linear-gradient(168deg,#0e2a58 0%,#123a74 46%,#0d7d73 122%);border-right:1px solid rgba(9,22,50,.55);box-shadow:2px 0 20px -14px rgba(9,22,50,.7)}
 #fm-root .app > .side{background:linear-gradient(168deg,#0e2a58 0%,#123a74 46%,#0d7d73 122%)}
-#fm-root .brand{position:relative;padding:22px 14px 18px;border-bottom:1px solid rgba(255,255,255,.13);background:transparent}
+#fm-root .brand{position:relative;padding:14px 14px 12px;border-bottom:1px solid rgba(255,255,255,.13);background:transparent}
 #fm-root .brand::after{content:none}
 #fm-root .brandrow{margin-top:2px}
 #fm-root .brandtx .brandlogo{font-size:47px;line-height:1;color:#fff;text-shadow:0 2px 16px rgba(3,14,38,.5)}
-#fm-root .brandtx .brandmod{font-size:17px;color:#bcd6e0;margin-top:5px;font-style:italic}
+#fm-root .brandtx .brandmod{font-size:17px;color:#bcd6e0;margin-top:4px;font-style:italic}
 #fm-root .backlink{position:absolute;top:12px;left:12px;margin:0;width:28px;height:28px;border-radius:9px;display:grid;place-items:center;color:#eaf2f6;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.24);opacity:1}
 #fm-root .backlink:hover{background:rgba(255,255,255,.28);color:#fff}
 /* Bolum basliklari + menu ogeleri koyu zemine gore acildi (rahat aralikli) */
-#fm-root .ncap{color:rgba(206,226,238,.6);padding:15px 10px 6px}
-#fm-root .nitem{color:#d7e4ef;padding:9px 10px;margin-bottom:3px;font-size:13px}
+#fm-root .ncap{color:rgba(206,226,238,.6);padding:10px 10px 5px}
+#fm-root .nitem{color:#d7e4ef;padding:9px 10px;margin-bottom:2px;font-size:13px}
 #fm-root .nitem:hover{background:rgba(255,255,255,.10);color:#fff}
 #fm-root .nitem > span:first-child{width:29px;height:29px;color:#fff;background:rgba(255,255,255,.13);border-color:rgba(255,255,255,.2)}
 #fm-root .nitem.on{background:rgba(255,255,255,.15);color:#fff;box-shadow:inset 3px 0 0 #5eead4}
 #fm-root .nitem.on > span:first-child{background:#5eead4;color:#0e2a58;border-color:#5eead4;box-shadow:none}
 #fm-root .nitem .ct{background:rgba(255,255,255,.22);color:#fff}
 #fm-root .nitem.on .ct{background:#fff;color:#0e2a58}
-#fm-root .nsub{color:rgba(203,223,236,.82);padding:6px 11px 6px 40px}
+#fm-root .nsub{color:rgba(203,223,236,.82);padding:5px 11px 5px 40px}
 #fm-root .nsub:hover{background:rgba(255,255,255,.08);color:#fff}
 #fm-root .nsub.on{color:#5eead4;font-weight:700}
 #fm-root .nsub .d{opacity:.65}
