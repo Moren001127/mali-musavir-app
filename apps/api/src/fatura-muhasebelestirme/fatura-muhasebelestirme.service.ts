@@ -10895,15 +10895,18 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       let _giderTuruEfektif = _giderTuruRaw;
       // araç bağlamı yok → araç ipucu VE araç-adlı AI/öğrenilmiş hesap kodu reddedilir (aşağıda kullanılır).
       let _aracBaglamYok = false;
-      const _aracHesapAdRe = /\b(arac|tasit|yakit|akaryak|otoyol|otopark|kasko|motorlu tas|nakliy|tasima|\blastik\b|balata|motor yag)\b/;
+      // KRİTİK: this.norm() Türkçe karakteri KORUR ("araç"→"araç"); regex'ler ASCII ("arac"). Bu yüzden
+      //   ASCII-fold (_af) ŞART — yoksa araç denetimi hiç eşleşmez (ilk fix'lerin SERİOFİS'te çalışmama nedeni).
+      const _af = (s: string) => this.norm(s).replace(/ş/g, 's').replace(/ğ/g, 'g').replace(/ı/g, 'i').replace(/ç/g, 'c').replace(/ö/g, 'o').replace(/ü/g, 'u');
+      const _aracHesapAdRe = /\b(arac|tasit|yakit|akaryak|otoyol|otopark|kasko|motorlu tas|nakliy|tasima|lastik|balata|motor yag)\b/;
       {
-        const aracHintRe = /\b(arac|tasit|yakit|akaryak|otoyol|otopark|kasko|motorlu tas|mtv)\b/;
-        const detAracHint = detIcerik ? aracHintRe.test(this.norm(detIcerik.hint || '')) : false;
-        const aiAracHint = aracHintRe.test(this.norm(_giderTuruRaw));
+        const aracHintRe = /\b(arac|tasit|yakit|akaryak|otoyol|otopark|kasko|motorlu tas|mtv|bakim onarim)\b/;
+        const detAracHint = detIcerik ? aracHintRe.test(_af(detIcerik.hint || '')) : false;
+        const aiAracHint = aracHintRe.test(_af(_giderTuruRaw));
         if (!isSale && (detAracHint || aiAracHint)) {
-          const faalN = this.norm(tpFaaliyet);
+          const faalN = _af(tpFaaliyet);
           const aracYogunFaal = /(nakliy|tasima|tasimacilik|lojistik|kargo|kurye|petrol|akaryak|filo|otomotiv|oto tamir|oto servis|arac kirala|servis istasyon|kamyon|\btir\b|dorse|treyler)/.test(faalN);
-          const faturaAracSinyal = /(oto|petrol|akaryak|lastik|otomotiv|motorlu|tuvturk|muayene|motorin|\bbenzin\b|balata|opet|shell|aytemiz|mengerler)/.test(this.norm(`${_kalemAd} ${vendorName || ''}`));
+          const faturaAracSinyal = /(\boto\b|otomotiv|\bpetrol\b|akaryak|\blastik\b|motorlu tas|tuvturk|arac muayene|tasit muayene|motorin|\bbenzin\b|\bbalata\b|\bopet\b|\bshell\b|aytemiz|mengerler|oto yedek|arac yedek)/.test(_af(`${_kalemAd} ${vendorName || ''}`));
           if (!aracYogunFaal && !faturaAracSinyal) {
             _aracBaglamYok = true;
             if (detAracHint) { detIcerik = null; kat = 'genel_gider'; }
@@ -10987,7 +10990,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         ? accounts.find((a: any) => String(a.accountCode || '') === aiKod) : null;
       // ARAÇ-ÇELİŞKİ: AI okuma anında araç-adlı hesap (740 ARAÇ BAKIM) seçmiş olsa da, mükellef+fatura
       //   araç-dışıysa (_aracBaglamYok) bu kodu REDDET → AI semantik/boş doğru hesabı bulur. (SERİOFİS toneri.)
-      const aiMatrahAcc = (_aiCand && _aracBaglamYok && _aracHesapAdRe.test(this.norm(String((_aiCand as any).accountName || ''))))
+      const aiMatrahAcc = (_aiCand && _aracBaglamYok && _aracHesapAdRe.test(_af(String((_aiCand as any).accountName || ''))))
         ? null : _aiCand;
       const aiGroupLeaves = aiMatrahAcc
         ? accounts.filter((a: any) => { const c = String(a.accountCode || ''); return c.startsWith(aiKod.split('.').slice(0, 2).join('.') + '.') && isPostableLeaf(c); })
@@ -11196,7 +11199,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         // ARAÇ-ÇELİŞKİ (2026-07-05): ÖĞRENİLMİŞ kod bile araç-adlı hesap (740 ARAÇ BAKIM) ise ve mükellef+
         //   fatura araç-dışıysa (_aracBaglamYok) REDDET. Öğrenilmiş kod aiMatrahAcc'tan ÖNCE geliyordu →
         //   aiMatrahAcc reddini by-pass ediyordu (SERİOFİS toneri, VKN'ye 740 öğrenilmiş kalmıştı).
-        if (m && _aracBaglamYok && _aracHesapAdRe.test(this.norm(String((m as any).accountName || '')))) {
+        if (m && _aracBaglamYok && _aracHesapAdRe.test(_af(String((m as any).accountName || '')))) {
           m = null;
         }
         // 6xx REDDİ öğrenilmiş kod için de: alışta doğrudan 632/62x/60x'e yazma (dönem-sonu/gelir hesabı).
