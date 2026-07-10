@@ -1173,7 +1173,9 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
           setRichNotes((s) => ({ ...s, [id]: { loading: false, text: t, zengin, denetim: denetim || s[id]?.denetim } }));
           if ((!zengin || !denetim) && !isUpgrade && !richUpgradeRef.current.has(id)) {
             richUpgradeRef.current.add(id);
-            setTimeout(() => { iste(true).catch(() => {}); }, 14000);
+            // Zengin AI yorumu + denetçi arka planda üretilir; süresi değişken (Max). Tek 14sn denemesi
+            //   yavaş üretimi KAÇIRIYORDU → belge açık kalsa da boş görünüyordu. Birkaç kez yokla (6/13/22 sn).
+            [6000, 13000, 22000].forEach((ms) => setTimeout(() => { iste(true).catch(() => {}); }, ms));
           }
         })
         .catch(() => { if (!isUpgrade) setRichNotes((s) => ({ ...s, [id]: { loading: false, text: '', zengin: false } })); });

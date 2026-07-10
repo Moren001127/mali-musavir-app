@@ -11460,10 +11460,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         //   aiYorum yoksa (eski/okunamayan belge) eski deterministik cümleye düşülür (fallback).
         const aiYorum = String(prevOcr.aiYorum || '').trim();
         const neden = this.composeMuhasebeNeden(tpFaaliyet, isSale, isReturn, aiYorum, matrahAccForNeden, kat, giderTuru);
-        // ZENGİN AI YORUMU (ocrData.muhasebeNedenZengin) bayatlamasın: rematch kodları/yönü yeniden
-        //   eşledi → daha önce üretilmiş zengin yorum eski hesap/içeriğe ait olabilir. KOŞULSUZ temizle;
-        //   kullanıcı belgeyi tekrar açınca lazy yeniden üretilir (tek belge = tek Max çağrısı, ucuz).
-        //   Deterministik muhasebeNeden anlık fallback olarak güncel kalır.
+        // ZENGİN AI YORUMU + DENETÇİ (Katman 2): eskiden HER reapply'da KOŞULSUZ siliniyordu → hesap kodu
+        //   DEĞİŞMESE bile yorum uçuyor, belge açılınca 14sn yeniden üretiliyordu (kullanıcı: "AI değerlendirmesi/
+        //   denetçi hemen düşmüyor"). ARTIK yalnız MATRAH HESABI GERÇEKTEN DEĞİŞTİYSE bayat sayılıp silinir;
+        //   kod aynıysa yorum+denetçi KORUNUR → tekrar açılışta ANINDA görünür, gereksiz Max çağrısı da olmaz.
+        const eskiMatrahKod = String((doc.lines || []).find((l: any) => String(l.group || '') === 'matrah' && String(l.accountCode || '').trim())?.accountCode || '').trim();
+        const yeniMatrahKod = String((matrahAccForNeden as any)?.accountCode || '').trim();
+        const kodDegisti = eskiMatrahKod !== yeniMatrahKod;
         const hadZengin = !!String(prevOcr.muhasebeNedenZengin || '');
         const nedenChanged = neden && String(prevOcr.muhasebeNeden || '') !== neden;
         // MEVZUAT DENETİMİ (Katman 1) HER EŞLEŞTİRMEDE TAZELE (2026-07-05, kullanıcı: "sadece eşleştirme
@@ -11483,10 +11486,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         });
         const prevUy = Array.isArray(prevOcr.uyarilar) ? prevOcr.uyarilar : [];
         const uyChanged = JSON.stringify(_uy) !== JSON.stringify(prevUy);
-        if (nedenChanged || hadZengin || uyChanged) {
+        // Kod değiştiyse zengin yorum + denetçiyi sil (bayat); değişmediyse ELLEME (koru).
+        const zenginDenetimPatch = kodDegisti ? { muhasebeNedenZengin: '', denetim: null } : {};
+        if (nedenChanged || (hadZengin && kodDegisti) || uyChanged) {
           await (this.prisma as any).invoiceAccountingDocument.update({
             where: { id: doc.id },
-            data: { ocrData: { ...prevOcr, ...(neden ? { muhasebeNeden: neden } : {}), muhasebeNedenZengin: '', uyarilar: _uy.length ? _uy : undefined } },
+            data: { ocrData: { ...prevOcr, ...(neden ? { muhasebeNeden: neden } : {}), ...zenginDenetimPatch, uyarilar: _uy.length ? _uy : undefined } },
           });
         }
       }
