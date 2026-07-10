@@ -129,6 +129,13 @@ eq(
   '3',
   'belgeNo blank FIS NO POS fallback',
 );
+// GERCEK bug (GÜRSET fisi, YORGUN NAKLIYAT 2026-05): etiket ve deger AYRI satirlarda
+// "FIS NO\n:\n1546" — [:#. \t]* newline icermedigi icin belge no BOS kaliyordu.
+eq(
+  belgeNoParser.extractBelgeNo('FIS NO\n:\n1546\nYEDEK PARCA', 'FIS NO\n:\n1546\nYEDEK PARCA'),
+  '1546',
+  'belgeNo cok-satirli FIS NO\\n:\\ndeger',
+);
 // isRandomDbId: cuid dosya adı belge no DEĞİL (Ömer Özen "Luca'da yok" fix); gerçek
 // belge no'lar korunmalı. (Dosya adı cuid olunca OCR'daki FİŞ NO kullanılmalı.)
 assert(belgeNoParser.isRandomDbId('cmqgpx7xd0d7swns6sw3am42o') === true, 'cuid filename belge no degildir');
@@ -136,7 +143,7 @@ assert(belgeNoParser.isRandomDbId('cmqgpx84s0d9xwns6kcuo8xle') === true, 'cuid (
 assert(belgeNoParser.isRandomDbId('gib2026000000045') === false, 'gercek e-belge no cuid sanilmamali');
 assert(belgeNoParser.isRandomDbId('8359') === false, 'kisa fis no cuid sanilmamali');
 assert(belgeNoParser.isRandomDbId('1EA2026000003213') === false, 'e-fatura no cuid sanilmamali');
-ok('belge-no.ts (5 assertion) + isRandomDbId cuid (5 assertion)');
+ok('belge-no.ts (6 assertion) + isRandomDbId cuid (5 assertion)');
 
 // ─── vendor.ts ───
 const foldTr = (s) => azureHelpers.foldTurkishAscii(s);

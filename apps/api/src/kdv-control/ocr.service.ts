@@ -1221,6 +1221,35 @@ export class OcrService {
     return extractBelgeNoPure(text, this.foldTurkishAscii(text));
   }
 
+  /**
+   * Kayitli OKC fis HAM METNINDEN (ocrData.rawText) alanlari yeniden turetir —
+   * Azure'a TEKRAR GITMEZ (maliyet yok). Deploy oncesi eski parser'la okunmus,
+   * TOPLAM/matrah/VKN/belge-no bos kalan fisleri backfill etmek icin.
+   * Yalnizca hesaplanabilen alanlari doner; caller bos olanlari doldurur (ezmez).
+   */
+  reparseOkcFieldsFromRawText(rawText: string): {
+    totalTutari: string | null;
+    matrah: number | null;
+    saticiVkn: string | null;
+    belgeNo: string | null;
+  } {
+    if (!rawText) return { totalTutari: null, matrah: null, saticiVkn: null, belgeNo: null };
+    const okc = this.extractOkcFisKdvFromAzure(rawText);
+    const kdvNum = okc?.kdvTutari ? this.parseAmount(okc.kdvTutari) : 0;
+    const totalTutari = this.extractOkcFisToplamFromAzure(rawText, kdvNum || null);
+    let matrah: number | null = null;
+    if (totalTutari && kdvNum > 0) {
+      const t = this.parseAmount(totalTutari);
+      if (t > kdvNum) matrah = Math.round((t - kdvNum) * 100) / 100;
+    }
+    return {
+      totalTutari,
+      matrah,
+      saticiVkn: this.extractSaticiVknFromAzure(rawText),
+      belgeNo: this.extractBelgeNo(rawText),
+    };
+  }
+
   private extractKdvTotal(text: string): string | null {
     const cleanText = this.stripMatrahFragments(text);
 

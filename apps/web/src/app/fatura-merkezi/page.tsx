@@ -4834,10 +4834,11 @@ const CSS = `
 #fm-root .backlink{position:absolute;top:12px;left:12px;margin:0;width:28px;height:28px;border-radius:9px;display:grid;place-items:center;color:#eaf2f6;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.24);opacity:1}
 #fm-root .backlink:hover{background:rgba(255,255,255,.28);color:#fff}
 /* Bolum basliklari + menu ogeleri koyu zemine gore acildi (rahat aralikli) */
-#fm-root .ncap{color:rgba(206,226,238,.6);padding:10px 10px 5px}
-#fm-root .nitem{color:#d7e4ef;padding:9px 10px;margin-bottom:2px;font-size:13px}
+#fm-root .ncap{color:rgba(206,226,238,.58);padding:9px 10px 4px}
+#fm-root .nitem{color:#d7e4ef;padding:8px 10px;margin-bottom:2px;font-size:13px}
 #fm-root .nitem:hover{background:rgba(255,255,255,.10);color:#fff}
-#fm-root .nitem > span:first-child{width:29px;height:29px;color:#fff;background:rgba(255,255,255,.13);border-color:rgba(255,255,255,.2)}
+/* Betimleme: her modulun kendi rengi (--icc) koyu zeminde parlak "chip" olarak korunur */
+#fm-root .nitem > span:first-child{width:28px;height:28px;color:#fff;background:color-mix(in srgb,var(--icc,#9fb2c9) 82%,#0a1f42);border:1px solid color-mix(in srgb,var(--icc,#9fb2c9) 55%,#fff)}
 #fm-root .nitem.on{background:rgba(255,255,255,.15);color:#fff;box-shadow:inset 3px 0 0 #5eead4}
 #fm-root .nitem.on > span:first-child{background:#5eead4;color:#0e2a58;border-color:#5eead4;box-shadow:none}
 #fm-root .nitem .ct{background:rgba(255,255,255,.22);color:#fff}

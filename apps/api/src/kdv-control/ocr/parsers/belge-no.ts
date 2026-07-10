@@ -59,6 +59,13 @@ export function extractBelgeNo(text: string, foldedText: string): string | null 
   if (fisNo?.[1] && /\d/.test(fisNo[1]) && !headerWordRe.test(fisNo[1])) {
     return fisNo[1].trim().toUpperCase();
   }
+  // Bazi yazarkasalar (ör. GÜRSET) etiketi ve degeri AYRI satirlara basar:
+  // "FIS NO\n:\n1546". Ust desende [:#. \t]* newline icermedigi icin kaciriyordu.
+  // Deger rakamla baslamali (TARIH/SAAT gibi header satirlarina takilmasin).
+  const fisNoMultiline = foldedText.match(/(?:^|\n)\s*fis\s*no\s*[:#.\s]*?(\d[A-Z0-9]{0,11})\b/im);
+  if (fisNoMultiline?.[1] && !headerWordRe.test(fisNoMultiline[1])) {
+    return fisNoMultiline[1].trim().toUpperCase();
+  }
 
   // Some OKC slips print "FIS NO:" empty but include the real receipt number
   // in the POS line as "ISLEM NO:0003/KP0807".

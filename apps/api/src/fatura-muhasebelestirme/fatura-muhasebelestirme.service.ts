@@ -9285,6 +9285,90 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
 
   /** HIZLI düzeltme: belgeleri TEKRAR OKUMADAN (Max-vision yok) hesap kodlarını plana göre
    *  yeniden eşleştirir — yanlış carileri (KAYIKÇI→AYDE) temizler/doğrular. Saniyeler sürer. */
+  /**
+   * OKC fis backfill — deploy oncesi eski parser'la okunmus fislerde TOPLAM tutar,
+   * matrah, satici VKN ve belge no bos kalmis olabilir. Kayitli HAM METINDEN
+   * (ocrData.rawText) yeniden turetir; Azure'a GITMEZ (maliyet yok).
+   * SADECE BOS alanlari doldurur (mevcut degerleri ezmez). dryRun=true → yazmaz,
+   * ne degisecegini ornekleriyle doner.
+   */
+  async reparseOkcFisFields(
+    tenantId: string,
+    opts: { taxpayerId?: string; period?: string; dryRun?: boolean; documentIds?: string[] },
+  ) {
+    const where: any = { tenantId, documentType: 'OKC_FIS' };
+    if (opts.taxpayerId) where.taxpayerId = opts.taxpayerId;
+    if (opts.documentIds?.length) where.id = { in: opts.documentIds };
+    if (opts.period && /^\d{4}-\d{2}$/.test(opts.period)) {
+      const [y, m] = opts.period.split('-').map((n) => parseInt(n, 10));
+      const start = new Date(Date.UTC(y, m - 1, 1, 0, 0, 0));
+      const end = new Date(Date.UTC(y, m, 1, 0, 0, 0));
+      where.OR = [
+        { faturaTarihi: { gte: start, lt: end } },
+        { AND: [{ faturaTarihi: null }, { createdAt: { gte: start, lt: end } }] },
+      ];
+    }
+    const docs = await (this.prisma as any).invoiceAccountingDocument.findMany({
+      where,
+      select: { id: true, belgeNo: true, sellerVkn: true, totalAmount: true, ocrData: true },
+      take: 5000,
+    });
+
+    let scanned = 0;
+    let changed = 0;
+    const samples: any[] = [];
+    for (const d of docs) {
+      const raw = (d.ocrData && typeof d.ocrData === 'object') ? String(d.ocrData.rawText || '') : '';
+      if (!raw) continue;
+      scanned++;
+      const r = this.ocr.reparseOkcFieldsFromRawText(raw);
+
+      const data: any = {};
+      const ocr: any = { ...(d.ocrData || {}) };
+      let ocrTouched = false;
+      const before: any = {};
+      const after: any = {};
+
+      // TOPLAM tutar (totalAmount kolonu + ocrData.totalTutari) — sadece bos ise
+      if ((d.totalAmount == null) && r.totalTutari && this.numFromOcr(r.totalTutari) > 0) {
+        data.totalAmount = this.numFromOcr(r.totalTutari);
+        ocr.totalTutari = r.totalTutari; ocrTouched = true;
+        before.total = null; after.total = r.totalTutari;
+      }
+      // matrah — kdvBreakdown[0].matrah bos ise
+      if (r.matrah != null && Array.isArray(ocr.kdvBreakdown) && ocr.kdvBreakdown.length === 1
+          && ocr.kdvBreakdown[0] && ocr.kdvBreakdown[0].matrah == null) {
+        ocr.kdvBreakdown = [{ ...ocr.kdvBreakdown[0], matrah: r.matrah }];
+        ocrTouched = true;
+        before.matrah = null; after.matrah = r.matrah;
+      }
+      // satici VKN — bos ise
+      if (!String(d.sellerVkn || '').trim() && r.saticiVkn) {
+        data.sellerVkn = r.saticiVkn;
+        ocr.saticiVkn = r.saticiVkn; ocrTouched = true;
+        before.vkn = null; after.vkn = r.saticiVkn;
+      }
+      // belge no — bos ise
+      if (!String(d.belgeNo || '').trim() && r.belgeNo) {
+        data.belgeNo = r.belgeNo;
+        before.belgeNo = null; after.belgeNo = r.belgeNo;
+      }
+
+      if (ocrTouched) data.ocrData = ocr;
+      if (Object.keys(data).length === 0) continue;
+      changed++;
+      if (samples.length < 12) samples.push({ id: d.id, before, after });
+      if (!opts.dryRun) {
+        await (this.prisma as any).invoiceAccountingDocument.update({
+          where: { id: d.id },
+          data,
+        }).catch((e: any) => this.logger.warn(`reparse-okc update basarisiz (${d.id}): ${e?.message || e}`));
+      }
+    }
+
+    return { ok: true, dryRun: !!opts.dryRun, scanned, changed, samples };
+  }
+
   async reapplyAccountCodes(tenantId: string, taxpayerId: string, documentIds?: string[]) {
     if (!taxpayerId) throw new BadRequestException('Mükellef seçilmeli');
     // documentIds verilirse SADECE o belgeleri yeniden eşle (tek/az belge → hızlı, HTTP timeout yok).

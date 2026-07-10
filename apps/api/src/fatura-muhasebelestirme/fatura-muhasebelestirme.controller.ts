@@ -294,6 +294,24 @@ export class FaturaMuhasebelestirmeController {
     return this.service.ensureFromEarsivFatura(req.user.tenantId, faturaId);
   }
 
+  /**
+   * OKC fis backfill: deploy oncesi eski parser'la okunmus fislerde TOPLAM/matrah/VKN/
+   * belge-no bos kalmis. Kayitli HAM METINDEN (ocrData.rawText) yeniden turetir —
+   * Azure'a GITMEZ. dryRun=true ise DB'ye yazmaz, sadece ne degisecegini doner.
+   */
+  @Post('documents/reparse-okc')
+  reparseOkc(
+    @Req() req: any,
+    @Body() body: { taxpayerId?: string; period?: string; dryRun?: boolean; documentIds?: string[] },
+  ) {
+    return this.service.reparseOkcFisFields(req.user.tenantId, {
+      taxpayerId: body?.taxpayerId,
+      period: body?.period,
+      dryRun: body?.dryRun !== false,
+      documentIds: Array.isArray(body?.documentIds) ? body.documentIds : undefined,
+    });
+  }
+
   @Post('documents/backfill-earsiv')
   backfillEarsiv(
     @Req() req: any,
