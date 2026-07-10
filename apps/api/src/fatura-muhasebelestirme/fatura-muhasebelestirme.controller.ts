@@ -281,8 +281,12 @@ export class FaturaMuhasebelestirmeController {
   /** Hızlı düzeltme: belgeleri tekrar okumadan hesap kodlarını plana göre yeniden eşleştir
    *  (yanlış carileri temizler). */
   @Post('documents/reapply-codes')
-  reapplyCodes(@Req() req: any, @Body() body: { taxpayerId?: string }) {
-    return this.service.reapplyAccountCodes(req.user.tenantId, String(body?.taxpayerId || ''));
+  reapplyCodes(@Req() req: any, @Body() body: { taxpayerId?: string; documentIds?: string[] }) {
+    return this.service.reapplyAccountCodes(
+      req.user.tenantId,
+      String(body?.taxpayerId || ''),
+      Array.isArray(body?.documentIds) ? body.documentIds : undefined,
+    );
   }
 
   @Post('documents/from-earsiv/:faturaId')

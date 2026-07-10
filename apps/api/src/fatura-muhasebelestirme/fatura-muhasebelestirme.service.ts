@@ -9285,8 +9285,14 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
 
   /** HIZLI düzeltme: belgeleri TEKRAR OKUMADAN (Max-vision yok) hesap kodlarını plana göre
    *  yeniden eşleştirir — yanlış carileri (KAYIKÇI→AYDE) temizler/doğrular. Saniyeler sürer. */
-  async reapplyAccountCodes(tenantId: string, taxpayerId: string) {
+  async reapplyAccountCodes(tenantId: string, taxpayerId: string, documentIds?: string[]) {
     if (!taxpayerId) throw new BadRequestException('Mükellef seçilmeli');
+    // documentIds verilirse SADECE o belgeleri yeniden eşle (tek/az belge → hızlı, HTTP timeout yok).
+    //   Boşsa tüm mükellef (eski davranış). Retro-cari + gate tüm mükellefte kalır (ucuz), rematch filtreli.
+    if (documentIds && documentIds.length) {
+      await this.rematchDocumentsWithLatestAccountPlan(tenantId, taxpayerId, documentIds).catch(() => {});
+      return { ok: true, scope: 'documents', count: documentIds.length };
+    }
     // RETROAKTİF CARİ DÜZELTME: ALIŞ'ta satıcı (sellerVkn/vendorName) = MÜKELLEF olan belgeler hatalı
     //   (cari=mükellef, "Yorgun Nakliyat" cari + hesap boş). Taraflar ters okunmuş → satıcı↔alıcı çevir
     //   ki cari gerçek karşı taraf olsun; sonraki rematch cariyi doğru hesaba bağlar. APPROVED'a dokunma.
