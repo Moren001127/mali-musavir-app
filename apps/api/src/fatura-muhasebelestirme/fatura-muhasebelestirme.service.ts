@@ -10877,7 +10877,30 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       //   yerine gidere (770) atıyordu. Deterministik katman yalnız GİDER-nitelikli/boş kategoriyi
       //   netleştirsin (nakliye→nakliye, akaryakıt→akaryakıt); AI'ın stok/hammadde kararına dokunmasın.
       const aiStokKat = kat === 'ticari_mal' || kat === 'hammadde';
-      const detIcerik = (!isSale && kat !== 'demirbas' && !aiStokKat) ? giderIcerikSinifla(`${_kalemAd} ${_giderTuruRaw}`) : null;
+      let detIcerik = (!isSale && kat !== 'demirbas' && !aiStokKat) ? giderIcerikSinifla(`${_kalemAd} ${_giderTuruRaw}`) : null;
+      // ── FAALİYET-ÇELİŞKİ DENETİMİ (2026-07-05, kullanıcı: "mantıksız eşleştirme") ──
+      //   "araç/taşıt/yakıt/otoyol" gider ipucu FAALİYET-KÖRÜ üretiliyordu: giderIcerikSinifla
+      //   "yedek parça" gibi belirsiz terimleri araç bakıma bağlıyor + AI giderTuru'yu "araç
+      //   bakım" halüsine edebiliyor. Reklamcının "YEDEK PARÇA LAZER TÜPÜ" (yazıcı toneri) → 740
+      //   Araç Bakım'a düşüyordu. Kural: araç-ailesi ipucu SADECE mükellef araç-yoğun iş yapıyorsa
+      //   (nakliye/lojistik/oto/petrol…) VEYA faturada somut araç sinyali (oto/lastik/motorin/
+      //   servis satıcısı) varsa geçerli. Aksi halde araç ipucunu DÜŞÜR → genel gider + AI semantik
+      //   doğru hesabı seçer. Nakliyeciyi (araç-yoğun faaliyet) ETKİLEMEZ.
+      let _giderTuruEfektif = _giderTuruRaw;
+      {
+        const aracHintRe = /\b(arac|tasit|yakit|akaryak|otoyol|otopark|kasko|motorlu tas|mtv)\b/;
+        const detAracHint = detIcerik ? aracHintRe.test(this.norm(detIcerik.hint || '')) : false;
+        const aiAracHint = aracHintRe.test(this.norm(_giderTuruRaw));
+        if (!isSale && (detAracHint || aiAracHint)) {
+          const faalN = this.norm(tpFaaliyet);
+          const aracYogunFaal = /(nakliy|tasima|tasimacilik|lojistik|kargo|kurye|petrol|akaryak|filo|otomotiv|oto tamir|oto servis|arac kirala|servis istasyon|kamyon|\btir\b|dorse|treyler)/.test(faalN);
+          const faturaAracSinyal = /(oto|petrol|akaryak|lastik|otomotiv|motorlu|tuvturk|muayene|motorin|\bbenzin\b|balata|opet|shell|aytemiz|mengerler)/.test(this.norm(`${_kalemAd} ${vendorName || ''}`));
+          if (!aracYogunFaal && !faturaAracSinyal) {
+            if (detAracHint) { detIcerik = null; kat = 'genel_gider'; }
+            if (aiAracHint) _giderTuruEfektif = '';
+          }
+        }
+      }
       if (detIcerik) kat = detIcerik.kategori;
       const KAT_PREFIX: Record<string, string[]> = {
         ticari_mal: ['153', '150', '770'],       // stok yoksa gidere düş
@@ -10890,7 +10913,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       // GİDER hesabı: faturanın İÇERİĞİNE göre. Eskiden satıcı adıyla eşleşmeyince en DÜŞÜK 770
       // (= planın ilk hesabı, ör. "MUTFAK VE YEMEKHANE") seçiliyordu → yakıt fişi mutfağa gidiyordu.
       // DETERMİNİSTİK hint VARSA onu kullan (plan-adıyla eşleşir, tutarlı); yoksa AI'ın giderTuru'su.
-      const giderTuru = detIcerik?.hint || _giderTuruRaw;
+      const giderTuru = detIcerik?.hint || _giderTuruEfektif;
       // GİDER/STOK hesabı içerikten seçilir. Öncelik (her biri EMİN olunca atar, değilse boş):
       //   1) giderTuru ADIYLA birebir eşleşen hesap (en spesifik).
       //   2) matrahKategori → plandaki o grupta TEK leaf varsa KESİN ata (ticari_mal→153,
