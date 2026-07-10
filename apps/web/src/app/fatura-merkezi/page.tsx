@@ -846,9 +846,8 @@ export default function FaturaMerkeziPage() {
       <div className={`app screen-${screen}${editorFull ? ' editorfull' : ''}`}>
         <aside className="side">
           <div className="brand">
-            <a className="backlink" href="/panel">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
-              Portala Dön
+            <a className="backlink" href="/panel" title="Portala Dön" aria-label="Portala Dön">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
             </a>
             <div className="brandrow">
               <div className="brandtx" role="button" title="Ana sayfa — Mükellefler" onClick={() => go('mukellefler')} style={{ cursor: 'pointer' }}>
@@ -1871,20 +1870,25 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
     <section className="screen sorgu-screen">
       <div className="h2">{source === 'earsiv' ? 'GIB e-Arşiv Portal Sorgusu' : 'e-Fatura Entegratör Sorgusu'}</div>
 
-      <div className="card" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', marginBottom: 10 }}>
-        <span className="mu">Tarih aralığı</span>
-        <input className="dmi" type="date" value={rangeFrom} onChange={(e) => setRangeFrom(e.target.value)} />
-        <span className="mu">—</span>
-        <input className="dmi" type="date" value={rangeTo} onChange={(e) => setRangeTo(e.target.value)} />
+      <div className="card daterange">
+        <span className="drlabel">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+          Tarih aralığı
+        </span>
+        <div className="drio">
+          <input className="dmi" type="date" value={rangeFrom} onChange={(e) => setRangeFrom(e.target.value)} />
+          <span className="drsep">—</span>
+          <input className="dmi" type="date" value={rangeTo} onChange={(e) => setRangeTo(e.target.value)} />
+        </div>
         {(rangeFrom || rangeTo) && (
           <button type="button" className="btn sm ghost" onClick={() => { setRangeFrom(''); setRangeTo(''); }}>Temizle</button>
         )}
         {rangeInvalid ? (
-          <span style={{ margin: 0, fontSize: 12, fontWeight: 700, color: '#dc2626' }}>Başlangıç tarihi bitişten sonra olamaz — düzeltmeden sorgulanamaz.</span>
+          <span className="drmsg err">Başlangıç tarihi bitişten sonra olamaz — düzeltmeden sorgulanamaz.</span>
         ) : rangePartial ? (
-          <span style={{ margin: 0, fontSize: 12, fontWeight: 700, color: '#b45309' }}>Aralık için İKİ tarih de gerekli — tek tarihle aralık sorguya gitmez, üstteki dönem (ay) kullanılır.</span>
+          <span className="drmsg warn">Aralık için İKİ tarih de gerekli — tek tarihle aralık sorguya gitmez, üstteki dönem (ay) kullanılır.</span>
         ) : (
-          <span className="sourcehint" style={{ margin: 0 }}>Boş bırakılırsa üstteki dönem (ay) kullanılır.</span>
+          <span className="drmsg hint">Boş bırakılırsa üstteki dönem (ay) kullanılır.</span>
         )}
       </div>
 
@@ -4814,4 +4818,30 @@ const CSS = `
 #fm-root .h2,#fm-root .screen > .h2{font-weight:600;letter-spacing:-.3px;color:#1b2532}
 #fm-root .crumb{font-weight:600;color:#46515f}
 #fm-root .crumb b{font-weight:700;color:#1b2532}
+/* ── 2026-07-10 revizyon: sidebar tek ekrana sığar, marka bloğu lacivert-petrol degrade,
+   "Portala Dön" ikon-buton, e-Fatura/e-Arşiv sorgu tarih aralığı kartı ── */
+#fm-root .side{height:100vh;position:sticky;top:0;overflow:hidden}
+#fm-root .nav{flex:1;min-height:0;overflow:auto;padding-bottom:10px}
+#fm-root .brand{position:relative;padding:12px 10px 13px;border-bottom:none;background:linear-gradient(150deg,#0f2b5b 0%,#16407c 55%,#0d9488 145%)}
+#fm-root .brand::after{content:'';position:absolute;left:0;right:0;bottom:0;height:2px;background:linear-gradient(90deg,var(--accent),rgba(13,148,136,0))}
+#fm-root .brandrow{margin-top:0}
+#fm-root .brandtx .brandlogo{font-size:29px;color:#fff;text-shadow:0 1px 10px rgba(4,18,44,.45)}
+#fm-root .brandtx .brandmod{font-size:13px;color:#c8dbe4;margin-top:1px}
+#fm-root .backlink{position:absolute;top:9px;left:9px;margin:0;width:27px;height:27px;border-radius:8px;display:grid;place-items:center;color:#e8f0f4;background:rgba(255,255,255,.13);border:1px solid rgba(255,255,255,.22);opacity:1}
+#fm-root .backlink:hover{background:rgba(255,255,255,.27);color:#fff}
+#fm-root .ncap{padding:10px 10px 4px}
+#fm-root .nitem{padding:6px 9px;margin-bottom:2px}
+#fm-root .nitem > span:first-child{width:26px;height:26px}
+#fm-root .nsub{padding:5px 11px 5px 36px}
+#fm-root .daterange{display:flex;align-items:center;gap:12px;padding:9px 14px;margin-bottom:10px;flex-wrap:wrap;border:1px solid #e5e7eb}
+#fm-root .daterange .drlabel{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#64748b}
+#fm-root .daterange .drlabel svg{color:var(--accent)}
+#fm-root .daterange .drio{display:flex;align-items:center;gap:8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:3px 10px;transition:border-color .15s,box-shadow .15s}
+#fm-root .daterange .drio:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);background:#fff}
+#fm-root .daterange .dmi{height:29px;border:none;background:transparent;font:inherit;font-size:12.5px;font-weight:600;color:var(--text);outline:none;cursor:pointer}
+#fm-root .daterange .drsep{color:#94a3b8;font-weight:700}
+#fm-root .daterange .drmsg{font-size:12px;font-weight:600;padding:4px 10px;border-radius:8px}
+#fm-root .daterange .drmsg.err{color:#b91c1c;background:#fef2f2;border:1px solid #fecaca}
+#fm-root .daterange .drmsg.warn{color:#92400e;background:#fffbeb;border:1px solid #fde68a}
+#fm-root .daterange .drmsg.hint{color:#8a6a1f;background:#fffdf5;border:1px solid #f3e7c4}
 `;

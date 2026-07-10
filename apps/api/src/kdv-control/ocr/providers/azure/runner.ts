@@ -50,6 +50,7 @@ export interface AzureRunnerDeps {
     kdvTutari: string | null;
     breakdown: KdvBreakdownItem[];
   } | null;
+  extractOkcFisToplamFromAzure: (text: string, kdvNum?: number | null) => string | null;
   extractTevkifatliFaturaFromAzure: (text: string) =>
     { tamKdv: number; tevkifat: number; netKdv: number } | null;
   extractKdvFromInvoiceTotalsAzure: (text: string) =>
@@ -105,6 +106,7 @@ export async function runAzureOcr(
     extractSaticiVknFromAzure,
     extractZRaporuKdvFromAzure,
     extractOkcFisKdvFromAzure,
+    extractOkcFisToplamFromAzure,
     extractTevkifatliFaturaFromAzure,
     extractKdvFromInvoiceTotalsAzure,
     extractKdvTotal,
@@ -163,7 +165,12 @@ export async function runAzureOcr(
       );
     }
   }
-  const toplam = extractToplam(fullText);
+  // OKC fislerinde toplam "*" onekli basilir ("TOPLAM *6.922,80") ve generic
+  // extractToplam bunu yakalayamaz → fise ozel cikarici oncelikli.
+  const toplam = belgeTipi === 'OKC_FIS'
+    ? (extractOkcFisToplamFromAzure(fullText, kdv ? parseAmount(String(kdv)) : null)
+        ?? extractToplam(fullText))
+    : extractToplam(fullText);
   if (!zRaporu?.kdvTutari && !tevkifatli && kdv && toplam) {
     const kdvNum = parseAmount(String(kdv));
     const toplamNum = parseAmount(String(toplam));
@@ -230,6 +237,18 @@ export async function runAzureOcr(
       tutar: invoiceTotalsKdv.kdv,
       matrah: invoiceTotalsKdv.matrah,
     }];
+  }
+
+  // OKC fis tek-oranli kirilimda matrah = toplam − KDV (toplam KDV-dahildir).
+  if (
+    belgeTipi === 'OKC_FIS' && toplam && kdv &&
+    result.kdvBreakdown?.length === 1 && result.kdvBreakdown[0].matrah == null
+  ) {
+    const toplamNum = parseAmount(String(toplam));
+    const kdvNum = parseAmount(String(kdv));
+    if (toplamNum > kdvNum && kdvNum > 0) {
+      result.kdvBreakdown[0].matrah = Math.round((toplamNum - kdvNum) * 100) / 100;
+    }
   }
 
   postProcessOcrResult(result, belgeNoFromFilename, originalName);

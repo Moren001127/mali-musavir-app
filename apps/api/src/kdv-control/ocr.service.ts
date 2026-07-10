@@ -41,6 +41,7 @@ import {
 import {
   extractOkcFisKdv as extractOkcFisKdvPure,
   extractOkcFisItemRateBreakdown as extractOkcFisItemRateBreakdownPure,
+  extractOkcFisToplam as extractOkcFisToplamPure,
 } from './ocr/providers/azure/okc-fis';
 import {
   parseTevkifatRate as parseTevkifatRatePure,
@@ -931,7 +932,12 @@ export class OcrService {
         );
       }
     }
-    const toplam = this.extractToplam(fullText);
+    // OKC fislerinde toplam "*" onekli basilir ("TOPLAM *6.922,80") ve generic
+    // extractToplam bunu yakalayamaz → fise ozel cikarici oncelikli.
+    const toplam = belgeTipi === 'OKC_FIS'
+      ? (this.extractOkcFisToplamFromAzure(fullText, kdv ? this.parseAmount(String(kdv)) : null)
+          ?? this.extractToplam(fullText))
+      : this.extractToplam(fullText);
     if (!zRaporu?.kdvTutari && !tevkifatli && kdv && toplam) {
       const kdvNum = this.parseAmount(String(kdv));
       const toplamNum = this.parseAmount(String(toplam));
@@ -1000,6 +1006,18 @@ export class OcrService {
         tutar: invoiceTotalsKdv.kdv,
         matrah: invoiceTotalsKdv.matrah,
       }];
+    }
+
+    // OKC fis tek-oranli kirilimda matrah = toplam − KDV (toplam KDV-dahildir).
+    if (
+      belgeTipi === 'OKC_FIS' && toplam && kdv &&
+      result.kdvBreakdown?.length === 1 && result.kdvBreakdown[0].matrah == null
+    ) {
+      const toplamNum = this.parseAmount(String(toplam));
+      const kdvNum = this.parseAmount(String(kdv));
+      if (toplamNum > kdvNum && kdvNum > 0) {
+        result.kdvBreakdown[0].matrah = Math.round((toplamNum - kdvNum) * 100) / 100;
+      }
     }
 
     // Oran-okuma güçlendirme: breakdown'da oranı 0/geçersiz kalan satırları,
@@ -1293,6 +1311,18 @@ export class OcrService {
       isMatrahOrRateLine: (v) => this.isMatrahOrRateLine(v),
       logger: { warn: (m) => this.logger.warn(m) },
     });
+  }
+
+  /** OKC fise ozel toplam ("TOPLAM *6.922,80") — saf provider'a delege. */
+  private extractOkcFisToplamFromAzure(text: string, kdvNum?: number | null): string | null {
+    return extractOkcFisToplamPure(text, {
+      parseAmount: (s) => this.parseAmount(s),
+      formatAmount: (n) => this.formatAmount(n),
+      normalizeAzureText: (t) => this.normalizeAzureText(t),
+      stripMatrahFragments: (t) => this.stripMatrahFragments(t),
+      isMatrahOrRateLine: (v) => this.isMatrahOrRateLine(v),
+      logger: { warn: (m) => this.logger.warn(m) },
+    }, kdvNum ?? null);
   }
 
   private extractToplam(text: string): string | null {

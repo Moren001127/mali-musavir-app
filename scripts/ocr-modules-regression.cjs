@@ -145,7 +145,14 @@ eq(vendorParser.extractSaticiVkn(vknText, foldTr), '1234567890', 'vendor VKN lab
 const vknBare = 'XYZ ANONIM SIRKETI\n9876543210\nSAYIN MUSTERI';
 eq(vendorParser.extractSaticiVkn(vknBare, foldTr), '9876543210', 'vendor VKN bare');
 eq(vendorParser.extractSaticiUnvan(vknText, foldTr), 'ACME TICARET LTD STI', 'vendor unvan LTD STI');
-ok('vendor.ts (3 assertion)');
+// GERCEK bug (ARS OTOMOBIL fisi, YORGUN NAKLIYAT 2026-05): VKN vergi dairesi
+// satirinda "IKITELI VD:0800371588" — (1) "VD" etiketi taninmiyordu,
+// (2) "IKITELI" icindeki "TEL" alt-dizisi satiri telefon sanip atlatiyordu.
+const vknVdText = 'ARS OTOMOBIL YEDEK PARÇA\nSAN.VE TIC.LTD.STI\nIKITELI VD:0800371588\nTEL:0212 671 98 01\nFİŞ NO\n: 4280';
+eq(vendorParser.extractSaticiVkn(vknVdText, foldTr), '0800371588', 'vendor VKN "VD:" etiketi (IKITELI TEL-tuzagi)');
+const vknTelText = 'ABC GIDA\nTEL:02126719801\nSAYIN MUSTERI';
+eq(vendorParser.extractSaticiVkn(vknTelText, foldTr), null, 'vendor telefon satiri hala VKN sanilmaz');
+ok('vendor.ts (5 assertion)');
 
 // ─── text-classifiers.ts ───
 eq(textClassifiers.isLikelyStandaloneTaxRate('20', foldTr), true, 'classifier rate 20');
@@ -1132,6 +1139,37 @@ const okcTopKdv = okcFis.extractOkcFisKdv(okcTopKdvText, okcDeps);
 assert(okcTopKdv !== null, 'okc TOPKDV result not null');
 approx(ublDeps.parseAmount(okcTopKdv.kdvTutari), 23.89, 0.05, `TOPKDV yetkili 23,89 (stray KDV TUTARI 6,48 toplanmamali), gercek=${JSON.stringify(okcTopKdv)}`);
 ok('azure/okc-fis.ts (33 assertion)');
+
+// ─── azure/okc-fis.ts extractOkcFisToplam (2026-07-10, ARS OTOMOBIL / YORGUN NAKLIYAT) ───
+// GERCEK bug: OKC fisinde "TOPLAM *6.922,80" ("*" onekli, etiket AYRI satirda) generic
+// extractToplam ile yakalanamiyordu → totalTutari BOS → matrah (toplam−KDV) da BOS →
+// belge muhasebelestirilemiyordu.
+const okcArsText = [
+  'ARS OTOMOBIL YEDEK PARÇA',
+  'SAN.VE TIC.LTD.STI',
+  'IKITELI VD:0800371588',
+  'TEL:0212 671 98 01',
+  'TARİH', ':05.05.2026',
+  'FİŞ NO', ': 4280',
+  'SAAT', ': 18:06',
+  'YEDEK PARÇA %20 *6.922,80',
+  'KDV %20', '*1.153,80',
+  'TOPLAM', '*6.922,80',
+  'NAKIT', '*6.922,80',
+  'EKÜ NO:1', 'Z NO:00001',
+].join('\n');
+const arsToplam = okcFis.extractOkcFisToplam(okcArsText, okcDeps, 1153.8);
+approx(ublDeps.parseAmount(arsToplam), 6922.8, 0.01, `ARS fisi TOPLAM alt-satir "*" onekli = 6.922,80 (gercek=${arsToplam})`);
+// Ayni satirda tutar (FATIH HOME kalibi)
+const fatihToplam = okcFis.extractOkcFisToplam(okcSingleRatePctText, okcDeps, 1225.34);
+approx(ublDeps.parseAmount(fatihToplam), 7352.05, 0.01, 'ayni-satir "TOPLAM *7.352,05" yakalanir');
+// Sutun-ayirma kalibi: TOPKDV+TOPLAM etiketleri ust uste, degerler sonra sirayla —
+// ilk deger (2,54 = KDV) atlanip 256,78 alinmali
+const tahirToplam = okcFis.extractOkcFisToplam(okcTahir0095Text, okcDeps, 2.54);
+approx(ublDeps.parseAmount(tahirToplam), 256.78, 0.01, `sutun-ayirma: KDV degeri atlanir, toplam 256,78 (gercek=${tahirToplam})`);
+// Guvenlik: ARA TOPLAM / KDV satirlari toplam sanilmaz
+eq(okcFis.extractOkcFisToplam('ARA TOPLAM *100,00\nKDV TOPLAM *20,00', okcDeps, null), null, 'ARA TOPLAM / KDV TOPLAM alinmaz');
+ok('azure/okc-fis.ts extractOkcFisToplam (4 assertion)');
 
 const okcCrossText = [
   'FIS NO : 0276',

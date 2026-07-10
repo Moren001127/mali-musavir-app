@@ -29,10 +29,18 @@ export function extractSaticiVkn(text: string, foldFn: FoldFn): string | null {
   const folded = foldFn(top);
   const labeled = folded.match(/\b(?:VKN|TCKN|VERGI\s*NO|MUKELLEF(?:LER)?\s*NO)\b[^0-9]{0,30}(\d{10,11})/);
   if (labeled?.[1]) return labeled[1];
+  // OKC fislerinde VKN cogunlukla vergi dairesi satirinda yazar:
+  // "IKITELI VD:0800371588" veya "V.D. : 0800371588" — "VD" etiketi de VKN kaynagidir
+  // (gercek vaka: ARS OTOMOBIL fisi, VKN bos kaliyordu).
+  const vdLabeled = folded.match(/\bV\.?\s*D\.?\b[^0-9\n]{0,25}(\d{10,11})\b/);
+  if (vdLabeled?.[1]) return vdLabeled[1];
   // K10: Etiketsiz son-care — telefon/IBAN/fatura-no'yu VKN SANMA. Numarasinin gectigi
   // satirda TEL/GSM/FAX/IBAN/TR../FATURA/BELGE/MERSIS/SICIL ipucu varsa o satiri atla.
+  // Kelime-siniri sart: "IKITELI VD:0800371588" satiri "TEL" alt-dizisi yuzunden
+  // telefon sanilip atlaniyordu (IKI-TEL-I) → \b(TEL\w*)\b yalnizca gercek
+  // TEL/TELEFON etiketini eler, kelime icindeki "tel"e takilmaz.
   for (const ln of top.split('\n')) {
-    if (/\b\d{10,11}\b/.test(ln) && !/TEL|GSM|FAX|IBAN|\bTR\d|FATURA|BELGE|SIRA|MERSIS|SICIL/i.test(foldFn(ln))) {
+    if (/\b\d{10,11}\b/.test(ln) && !/\b(?:TEL\w*|GSM|FAX|FAKS|IBAN|FATURA|BELGE|SIRA|MERSIS|SICIL)\b|\bTR\d/i.test(foldFn(ln))) {
       return ln.match(/\b(\d{10,11})\b/)![1];
     }
   }

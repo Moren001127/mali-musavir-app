@@ -149,6 +149,18 @@ export class EFaturaSyncService {
         ublXmlRaw: true, rawJson: true, markedAt: true, processedAt: true, syncedAt: true,
       },
     });
+    // Legacy "NaN" onarimi: eski parser tamamen-rakam fatura no'yu Number'a cevirip
+    // literal "NaN" yazmisti (ANPA GROSS vb.). Yazma yolu korumali ama DB'de bayat
+    // kayitlar kaldi → okuma sirasinda null'a cek ve DB'yi kalici temizle.
+    const badFaturaNoRe = /^(?:nan|null|undefined)$/i;
+    const nanRows = rows.filter((row: any) => row.faturaNo && badFaturaNoRe.test(String(row.faturaNo).trim()));
+    if (nanRows.length) {
+      await (this.prisma as any).eFaturaInbox.updateMany({
+        where: { tenantId, id: { in: nanRows.map((row: any) => row.id) } },
+        data: { faturaNo: null },
+      });
+      nanRows.forEach((row: any) => { row.faturaNo = null; });
+    }
     const isSyntheticTurmobInboxXml = (xml: any) => {
       const text = String(xml || '').trim();
       if (!text) return false;

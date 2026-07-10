@@ -138,6 +138,66 @@ export function extractOkcFisKdv(
 }
 
 /**
+ * OKC fisinden KDV-DAHIL genel toplami cikarir.
+ *
+ * Yazarkasa fislerinde tutar cogunlukla "*" onekiyle basilir ve "TOPLAM"
+ * etiketi ile tutar AYNI satirda VEYA bir ALT satirda olabilir:
+ *   "TOPLAM *6.922,80"        → ayni satir
+ *   "TOPLAM" + "\n*6.922,80"  → alt satir (Azure Read sutunlari ayirir)
+ * Generic extractToplam deseni "*" onekini yakalayamadigi icin OKC fislerinde
+ * toplam BOS kaliyordu; matrah da (toplam − KDV) turetildiginden bos kaliyordu
+ * (gercek vaka: ARS OTOMOBIL 2026-05, YORGUN NAKLIYAT).
+ *
+ * Guvenlik: "ARA TOPLAM" / "KUM TOPLAM" (kumulatif) / KDV gecen satirlar
+ * alinmaz; alt-satir aramasi NAKIT/KREDI gibi odeme satirina carpinca durur.
+ * "GENEL TOPLAM" varsa yetkilidir; yoksa SON "TOPLAM" satiri kullanilir.
+ * `kdvNum` verilirse toplam <= KDV olan yakalama reddedilir (yanlis okuma).
+ */
+export function extractOkcFisToplam(
+  text: string,
+  deps: OkcFisDeps,
+  kdvNum?: number | null,
+): string | null {
+  const { parseAmount, formatAmount, normalizeAzureText } = deps;
+  if (!text) return null;
+  const lines = normalizeAzureText(text).split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const toplamLabelRe = /^(?:GENEL\s*)?T[O0]PLAM\b/i;
+  const badLabelRe = /ARA\s*T[O0]PLAM|\bKUM\b|K\.?\s*D\.?\s*V|T[O0]PKDV|MATRAH/i;
+  const hardStopRe = /NAK[Iİ]T|KRED[Iİ]|KART|PARA\s*[UÜ]ST[UÜ]|KAS[Iİ]YER|M[UÜ][SŞ]TER[Iİ]|EK[UÜ]\s*NO|Z\s*NO|F[Iİ][SŞ]\s*NO/i;
+  const amountRe = /[\*₺¥]?\s*(\d{1,3}(?:\s*[.,]\s*\d{3})*\s*[.,]\s*\d{2}|\d+\s*[.,]\s*\d{2})\s*(?:TL|TRY|₺)?/g;
+  const lastAmount = (raw: string): number => {
+    const values = [...raw.matchAll(amountRe)]
+      .map((m) => parseAmount(m[1]))
+      .filter((v) => v > 0 && v < 100_000_000);
+    return values.length ? values[values.length - 1] : 0;
+  };
+  let found = 0;
+  let foundGenel = false;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (!toplamLabelRe.test(line) || badLabelRe.test(line)) continue;
+    const isGenel = /GENEL/i.test(line);
+    // KDV'den kucuk-esit adaylar TOPLAM olamaz (Azure sutun-ayirma kalibi:
+    // "TOPKDV\nTOPLAM\n*2,54\n*256,78" — ilk deger TOPKDV'nin, atla, sonrakine bak).
+    const acceptable = (v: number) => v > 0 && !(kdvNum && kdvNum > 0 && v <= kdvNum);
+    let tutar = lastAmount(line);
+    if (!acceptable(tutar)) {
+      tutar = 0;
+      for (let j = 1; j <= 2 && i + j < lines.length; j++) {
+        const next = lines[i + j];
+        if (hardStopRe.test(next) || badLabelRe.test(next)) break;
+        const candidate = lastAmount(next);
+        if (acceptable(candidate)) { tutar = candidate; break; }
+      }
+    }
+    if (tutar <= 0) continue;
+    if (isGenel) { found = tutar; foundGenel = true; }
+    else if (!foundGenel) { found = tutar; }
+  }
+  return found > 0 ? formatAmount(found) : null;
+}
+
+/**
  * OKC fislerde bazen sadece TOPKDV toplam yazilir; oran bazli KDV ise urun
  * satirlarindaki %01/%10/%20 brut tutarlardan turetilmelidir.
  *
