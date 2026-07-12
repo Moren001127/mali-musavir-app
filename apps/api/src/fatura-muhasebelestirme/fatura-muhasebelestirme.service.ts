@@ -11336,6 +11336,18 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           }
         }
         if (!m) m = leafOnly(saleMatrahDefault);
+        // SON GÜVENLİK (yağ ≠ yakıt): hangi yoldan gelirse gelsin (AI-kod / öğrenilmiş /
+        //   içerik-sınıf / varsayılan), içerik madeni/motor yağı iken seçilen hesap ARAÇ YAKIT/
+        //   AKARYAKIT ise plandaki ARAÇ BAKIM ONARIM'a çevir; bakım hesabı yoksa BOŞ bırak (yakıta
+        //   ASLA yazma). Deterministik gider-icerik düzeltmesi canlıya yansımasa bile bu api-içi
+        //   koruma motor yağını yakıt hesabından uzak tutar. (ELİT PETROLCÜLÜK "MOTOR YAĞI" vakası.)
+        if (m && _yagIcerik && _isYakitHesapAd(String((m as any).accountName || ''))) {
+          const bakim = accounts.find((a: any) => {
+            const ad = _af(String(a.accountName || ''));
+            return /\b(bakim|onarim)\b/.test(ad) && /\b(arac|tasit|motor)\b/.test(ad) && isPostableLeaf(String(a.accountCode || ''));
+          });
+          m = bakim ? leafOnly(bakim) : null;
+        }
         matrahCache.set(rate, m);
         return m;
       };
