@@ -10985,6 +10985,16 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       //   ASCII-fold (_af) ŞART — yoksa araç denetimi hiç eşleşmez (ilk fix'lerin SERİOFİS'te çalışmama nedeni).
       const _af = (s: string) => this.norm(s).replace(/ş/g, 's').replace(/ğ/g, 'g').replace(/ı/g, 'i').replace(/ç/g, 'c').replace(/ö/g, 'o').replace(/ü/g, 'u');
       const _aracHesapAdRe = /\b(arac|tasit|yakit|akaryak|otoyol|otopark|kasko|motorlu tas|nakliy|tasima|lastik|balata|motor yag)\b/;
+      // MADENİ/MOTOR YAĞI özel çelişki: araç-yoğun mükellefte (nakliyeci) araç bağlamı MEŞRUdur
+      //   (_aracBaglamYok=false → araç-çelişki reddi çalışmaz), AMA "motor yağı" YAKIT değil BAKIM'dır.
+      //   OCR bazı fişlerde giderTuru="akaryakıt" etiketleyip AI-kod/öğrenilmiş-kod'u 740 ARAÇ YAKIT'a
+      //   bağlıyor; deterministik gider-icerik düzeltmesi bu ÜST yollara ulaşmıyor. Kural: içerik madeni/
+      //   motor yağı ise ve seçilen hesap "ARAÇ YAKIT/AKARYAKIT" ise REDDET → giderIcerikSinifla'nın
+      //   "araç bakım onarım" hint'i doğru hesabı (740 BAKIM ONARIM) bulur. (Kullanıcı: ELİT PETROLCÜLÜK
+      //   "MOTOR YAĞI" → 740.01.001 YAKIT'a gidiyordu; doğrusu 740.01.002 ARAÇ BAKIM ONARIM.)
+      const _yagIcerik = /\b(motor yag|madeni yag|sanziman yag|vites yag|hidrolik yag|dislibox yag)\b|\bgres\b/.test(_af(_kalemAd))
+        && !/\b(motorin|benzin|mazot|dizel|akaryakit yakit|yakit gideri)\b/.test(_af(_kalemAd));
+      const _isYakitHesapAd = (ad: string) => /\b(yakit|akaryak)\b/.test(_af(ad)) && !/\b(bakim|onarim|servis|tamir)\b/.test(_af(ad));
       {
         const aracHintRe = /\b(arac|tasit|yakit|akaryak|otoyol|otopark|kasko|motorlu tas|mtv|bakim onarim)\b/;
         const detAracHint = detIcerik ? aracHintRe.test(_af(detIcerik.hint || '')) : false;
@@ -11076,7 +11086,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         ? accounts.find((a: any) => String(a.accountCode || '') === aiKod) : null;
       // ARAÇ-ÇELİŞKİ: AI okuma anında araç-adlı hesap (740 ARAÇ BAKIM) seçmiş olsa da, mükellef+fatura
       //   araç-dışıysa (_aracBaglamYok) bu kodu REDDET → AI semantik/boş doğru hesabı bulur. (SERİOFİS toneri.)
-      const aiMatrahAcc = (_aiCand && _aracBaglamYok && _aracHesapAdRe.test(_af(String((_aiCand as any).accountName || ''))))
+      const aiMatrahAcc = (_aiCand && (
+          (_aracBaglamYok && _aracHesapAdRe.test(_af(String((_aiCand as any).accountName || ''))))
+          || (_yagIcerik && _isYakitHesapAd(String((_aiCand as any).accountName || '')))
+        ))
         ? null : _aiCand;
       const aiGroupLeaves = aiMatrahAcc
         ? accounts.filter((a: any) => { const c = String(a.accountCode || ''); return c.startsWith(aiKod.split('.').slice(0, 2).join('.') + '.') && isPostableLeaf(c); })
@@ -11286,6 +11299,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         //   fatura araç-dışıysa (_aracBaglamYok) REDDET. Öğrenilmiş kod aiMatrahAcc'tan ÖNCE geliyordu →
         //   aiMatrahAcc reddini by-pass ediyordu (SERİOFİS toneri, VKN'ye 740 öğrenilmiş kalmıştı).
         if (m && _aracBaglamYok && _aracHesapAdRe.test(_af(String((m as any).accountName || '')))) {
+          m = null;
+        }
+        // MADENİ/MOTOR YAĞI çelişkisi: öğrenilmiş kod ARAÇ YAKIT hesabına bağlıysa (poisoned) reddet.
+        if (m && _yagIcerik && _isYakitHesapAd(String((m as any).accountName || ''))) {
           m = null;
         }
         // 6xx REDDİ öğrenilmiş kod için de: alışta doğrudan 632/62x/60x'e yazma (dönem-sonu/gelir hesabı).
