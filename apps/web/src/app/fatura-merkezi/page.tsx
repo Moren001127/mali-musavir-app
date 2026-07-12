@@ -822,11 +822,11 @@ export default function FaturaMerkeziPage() {
       <div className={`nitem${screen === 'mukellefler' ? ' on' : ''}`} style={{ ['--icc' as any]: '#2563eb' }} onClick={() => go('mukellefler')}><Ico html={I.users} /> Mükellefler</div>
 
       <div className="ncap">Belgeler</div>
+      <div className={`nitem${screen === 'earsivSorgu' ? ' on' : ''}`} style={{ ['--icc' as any]: '#0f766e' }} onClick={() => go('earsivSorgu')}><Ico html={I.file} /> GIB e-Arşiv Sorgu</div>
+      <div className={`nitem${screen === 'efaturaSorgu' ? ' on' : ''}`} style={{ ['--icc' as any]: '#2563eb' }} onClick={() => go('efaturaSorgu')}><Ico html={I.plug} /> e-Fatura Sorgu</div>
       <div className={`nitem${screen === 'faturalar' || screen === 'satis' ? ' on' : ''}`} style={{ ['--icc' as any]: '#15803d' }} onClick={() => go('faturalar')}><Ico html={I.file} /> Gelen Faturalar</div>
       <div className={`nsub${screen === 'faturalar' ? ' on' : ''}`} onClick={() => go('faturalar')}><span className="d" /> Alış Faturaları {badge(sum.alisPending)}</div>
       <div className={`nsub${screen === 'satis' ? ' on' : ''}`} onClick={() => go('satis')}><span className="d" /> Satış Faturaları {badge(sum.satisPending)}</div>
-      <div className={`nitem${screen === 'earsivSorgu' ? ' on' : ''}`} style={{ ['--icc' as any]: '#0f766e' }} onClick={() => go('earsivSorgu')}><Ico html={I.file} /> GIB e-Arşiv Sorgu</div>
-      <div className={`nitem${screen === 'efaturaSorgu' ? ' on' : ''}`} style={{ ['--icc' as any]: '#2563eb' }} onClick={() => go('efaturaSorgu')}><Ico html={I.plug} /> e-Fatura Sorgu</div>
       <div className={`nitem${screen === 'muhasebe' ? ' on' : ''}`} style={{ ['--icc' as any]: '#7c3aed' }} onClick={() => go('muhasebe')}><Ico html={I.ledger} /> Muhasebeleştir {badge(sum.pending)}</div>
       <div className={`nitem${screen === 'aktarilanlar' ? ' on' : ''}`} style={{ ['--icc' as any]: '#0891b2' }} onClick={() => go('aktarilanlar')}><Ico html={I.check} /> Aktarım {badge(Math.max(0, (Number(sum.approved) || 0) - (Number(sum.posted) || 0)))}</div>
       <div className={`nitem${screen === 'arsiv' ? ' on' : ''}`} style={{ ['--icc' as any]: '#d97706' }} onClick={() => go('arsiv')}><Ico html={I.ledger} /> Arşivim {badge(sum.posted)}</div>
