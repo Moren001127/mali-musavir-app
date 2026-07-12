@@ -158,26 +158,37 @@ export class OwnerDigestService {
     const htmlRows: string[] = [];
     const knownTypes = new Set(OwnerDigestService.TYPE_LABELS.map((m) => m.type));
 
+    // Bildirim başlığından, digest'in kendi etiketiyle üst üste binen öneki soy.
+    // (n.title genelde "🔑 Portal şifre hatası: GIB IVD — MÜCAHİT GÖKTAŞ" gibi zaten
+    //  etiket+emoji içerir; digest ayrıca "🔑 Portal şifre hatası:" eklerse etiket
+    //  iki kez yazılıp karışık görünüyordu.) Etiket başta ise sonrasını al; yoksa
+    //  title zaten açıklayıcıdır (ör. "838 alış faturası …"), olduğu gibi kalır.
+    const detayCikar = (title: any, label: string): string => {
+      let t = String(title || '').replace(/\s+/g, ' ').trim();
+      const idx = t.indexOf(label);
+      if (idx >= 0 && idx <= 4) t = t.slice(idx + label.length).replace(/^[\s:：—–\-]+/, '').trim();
+      return t.slice(0, 72);
+    };
+
     for (const meta of OwnerDigestService.TYPE_LABELS) {
       const arr = byType.get(meta.type);
       if (!arr?.length) continue;
-      const detay = arr
-        .slice(0, 3)
-        .map((n) => String(n.title || '').replace(/\s+/g, ' ').trim().slice(0, 60))
-        .filter(Boolean)
-        .join(' | ');
-      lines.push(`${meta.emoji} ${meta.label}: ${arr.length}${detay ? ' — ' + detay : ''}${arr.length > 3 ? ' …' : ''}`);
+      const detaylar = arr.slice(0, 4).map((n) => detayCikar(n.title, meta.label)).filter(Boolean);
+      // Nizami blok: başlık (etiket + adet), altında madde madde detay.
+      lines.push(`${meta.emoji} ${meta.label} (${arr.length})`);
+      for (const d of detaylar) lines.push(`   • ${d}`);
+      if (detaylar.length && arr.length > detaylar.length) lines.push(`   • +${arr.length - detaylar.length} tane daha`);
       htmlRows.push(
         `<tr><td style="padding:6px 10px;border-bottom:1px solid #eee">${meta.emoji} ${meta.label}</td>` +
         `<td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:center"><b>${arr.length}</b></td>` +
-        `<td style="padding:6px 10px;border-bottom:1px solid #eee;color:#555">${detay}${arr.length > 3 ? ' …' : ''}</td></tr>`,
+        `<td style="padding:6px 10px;border-bottom:1px solid #eee;color:#555">${detaylar.join(' · ')}${arr.length > detaylar.length ? ' …' : ''}</td></tr>`,
       );
     }
 
     // Haritada olmayan tipler tek satırda "Diğer" olarak
     const otherCount = items.filter((n) => !knownTypes.has(String(n.type))).length;
     if (otherCount > 0) {
-      lines.push(`🔔 Diğer: ${otherCount}`);
+      lines.push(`🔔 Diğer (${otherCount})`);
       htmlRows.push(
         `<tr><td style="padding:6px 10px;border-bottom:1px solid #eee">🔔 Diğer</td>` +
         `<td style="padding:6px 10px;border-bottom:1px solid #eee;text-align:center"><b>${otherCount}</b></td>` +
