@@ -2997,9 +2997,10 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                             // bölüm kalır — Mihsap'taki gibi gerçekten farklı bir hesap/işlem.
                             { key: 'matrah', keys: ['matrah'], label: 'Matrah', side: 'debit' as const },
                             { key: 'vergi', keys: ['vergi', 'vergi-sorumlu'], label: 'İndirilecek KDV', side: 'debit' as const },
-                            ...((Number(selDoc?.ocrData?.tevkifatOrani) > 0 || lineDraft.some((l: any) => (l.group) === 'tevkifat'))
-                              ? [{ key: 'tevkifat', keys: ['tevkifat'], label: 'Tevkifat — Ödenecek KDV (360 · KDV2)', side: 'credit' as const }]
-                              : []),
+                            // Tevkifat (360 · KDV2) grubu ALIŞ'ta HER ZAMAN sabit görünür (kullanıcı: Mihsap
+                            // gibi alan hep dursun). Tevkifatlı faturada satırlar otomatik dolar; tevkifatsızda
+                            // boş kalır (satır yoksa denge/toplam'a etki etmez, "+ satır ekle" ile elle girilir).
+                            { key: 'tevkifat', keys: ['tevkifat'], label: 'Tevkifat — Ödenecek KDV (360 · KDV2)', side: 'credit' as const },
                             { key: 'cari', keys: ['cari'], label: 'Cari Hesap', side: 'credit' as const },
                           ]
                       ).map((g) => {
