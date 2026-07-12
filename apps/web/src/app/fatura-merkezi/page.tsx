@@ -73,7 +73,7 @@ const I = {
   upload: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M20 16.5V19a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-2.5"/></svg>',
   sync: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>',
   wand: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m15 4 5 5"/><path d="M14 5 3 16l5 5L19 10"/><path d="M5 3v4"/><path d="M3 5h4"/><path d="M19 17v4"/><path d="M17 19h4"/></svg>',
-  spark: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3z"/><path d="M19 3v4"/><path d="M17 5h4"/><path d="M5 17v4"/><path d="M3 19h4"/></svg>',
+  spark: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9.4 3.4l1.55 4.25 4.25 1.55-4.25 1.55L9.4 15l-1.55-4.25L3.6 9.2l4.25-1.55z"/><path d="M17.8 4.6l.7 1.9 1.9.7-1.9.7-.7 1.9-.7-1.9-1.9-.7 1.9-.7z"/><path d="M17.3 14.4l.55 1.5 1.5.55-1.5.55-.55 1.5-.55-1.5-1.5-.55 1.5-.55z"/></svg>',
   checkSm: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"/></svg>',
   filter: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M22 3H2l8 9.5V19l4 2v-8.5L22 3z"/></svg>',
   eye: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>',
@@ -1229,7 +1229,7 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
       </div>
       <div className="card invcard">
         <div className="ch invactions">
-          <h3>{docsQ.isLoading ? 'Yükleniyor…' : `${docs.length} belge`}</h3><div className="sp" />
+          <h3>{docsQ.isLoading ? 'Yükleniyor…' : <>{docs.length} belge{sel.size > 0 ? <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--accent)' }}>· {sel.size} seçili</span> : null}</>}</h3><div className="sp" />
           <input ref={fileRef} type="file" multiple accept=".pdf,.jpg,.jpeg,.jpe,.jfif,.png,.webp,.gif,.tif,.tiff,.bmp,.heic,.heif,.avif,.xml,.ubl,.zip" style={{ display: 'none' }} onChange={(e) => { const files = Array.from(e.currentTarget.files || []); e.currentTarget.value = ''; if (files.length) uploadMut.mutate(files); }} />
           <button className="btn sm upload" disabled={!taxpayerId || uploadMut.isPending} onClick={() => setUploadPick(true)} title={!taxpayerId ? 'Önce mükellef seç' : 'Gelir/Gider seç, sonra JPEG / PDF / XML belge yükle'}><Ico html={I.upload} size={13} /> {uploadMut.isPending ? 'Yükleniyor…' : 'Belge Yükle'}</button>
           {uploadPick && (
@@ -4708,16 +4708,21 @@ const CSS = `
 #fm-root .ftile .ftl{font-size:11px;font-weight:700;color:color-mix(in srgb,var(--tc,var(--accent)) 58%,#475569)}
 #fm-root .ftile:hover{transform:translateY(-2px);border-color:var(--tc,var(--accent));box-shadow:0 11px 22px -12px var(--tc,var(--accent))}
 #fm-root .ftile.on{background:color-mix(in srgb,var(--tc,var(--accent)) 15%,#fff);border-color:var(--tc,var(--accent));box-shadow:inset 0 0 0 2px var(--tc,var(--accent))}
-#fm-root .invactions{display:flex;align-items:center;gap:9px;padding:13px 16px;flex-wrap:wrap;background:#fff}
-#fm-root .invactions h3{font-size:13.5px;font-weight:800;color:#0d1626;letter-spacing:-.2px}
-#fm-root .invactions .btn{height:38px;border-radius:11px;padding:0 16px;font-size:12.5px;font-weight:700;border:1px solid #e4eaf3;background:#fff;color:#34415a;box-shadow:0 1px 2px rgba(16,24,40,.05);transition:transform .12s,box-shadow .14s,background .14s,border-color .14s,filter .14s}
+#fm-root .invactions{display:flex;align-items:center;gap:8px;padding:12px 16px;flex-wrap:wrap;background:#fff}
+#fm-root .invactions h3{font-size:14px;font-weight:800;color:#0d1626;letter-spacing:-.2px;display:flex;align-items:baseline;gap:7px}
+#fm-root .invactions .btn{height:38px;border-radius:10px;padding:0 15px;font-size:12.5px;font-weight:700;border:1px solid #e4eaf3;background:#fff;color:#34415a;box-shadow:0 1px 2px rgba(16,24,40,.05);transition:transform .12s,box-shadow .14s,background .14s,border-color .14s,filter .14s}
 #fm-root .invactions .btn:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 9px 18px -11px rgba(16,24,40,.35)}
-#fm-root .invactions .btn.upload{background:var(--accent-soft);border-color:var(--accent-line);color:var(--accent)}
-#fm-root .invactions .btn.upload:hover:not(:disabled){filter:brightness(.98);box-shadow:0 9px 18px -10px color-mix(in srgb,var(--accent) 50%,transparent)}
-#fm-root .invactions .btn.fix{background:#fff;border-color:#e4eaf3;color:#34415a}
-#fm-root .invactions .btn.ai{background:linear-gradient(135deg,#7c3aed 0%,#6d5df6 52%,#4f7cf0 100%);border:none;color:#fff;box-shadow:0 8px 18px -9px rgba(109,93,246,.75)}
-#fm-root .invactions .btn.ai:hover:not(:disabled){filter:brightness(1.06);transform:translateY(-1px);box-shadow:0 13px 24px -10px rgba(109,93,246,.85)}
-#fm-root .invactions .btn.primary{background:linear-gradient(135deg,#15803d,#1aa050);border:none;color:#fff;box-shadow:0 8px 18px -9px rgba(21,128,61,.72)}
+/* Yardımcı grup (Belge Yükle · Kodları düzelt) — nötr, sakin */
+#fm-root .invactions .btn.upload{background:#fff;border-color:#dbe3ef;color:#334155}
+#fm-root .invactions .btn.upload:hover:not(:disabled){border-color:var(--accent-line);color:var(--accent);background:var(--accent-soft)}
+#fm-root .invactions .btn.fix{background:#fff;border-color:#dbe3ef;color:#334155}
+/* Ana grup ayracı: "AI ile oku" öncesi ince dikey çizgi + boşluk */
+#fm-root .invactions .btn.ai{margin-left:8px;position:relative}
+#fm-root .invactions .btn.ai::before{content:'';position:absolute;left:-9px;top:7px;bottom:7px;width:1px;background:#e4eaf3}
+/* AI ile oku — marka imzası (lacivert→petrol, sidebar ile uyumlu; mor kaldırıldı) */
+#fm-root .invactions .btn.ai{background:linear-gradient(135deg,#123a6b 0%,#12717c 55%,#0d9488 100%);border:none;color:#fff;box-shadow:0 7px 16px -9px rgba(13,148,136,.65)}
+#fm-root .invactions .btn.ai:hover:not(:disabled){filter:brightness(1.08);transform:translateY(-1px);box-shadow:0 13px 24px -10px rgba(13,148,136,.75)}
+#fm-root .invactions .btn.primary{background:linear-gradient(135deg,#15803d,#1aa050);border:none;color:#fff;box-shadow:0 7px 16px -9px rgba(21,128,61,.7)}
 #fm-root .invactions .btn.primary:hover:not(:disabled){filter:brightness(1.05);transform:translateY(-1px);box-shadow:0 13px 24px -10px rgba(21,128,61,.82)}
 #fm-root .invactions .btn:disabled{opacity:.5;cursor:not-allowed;box-shadow:none;transform:none}
 /* ── Hesap Planı görsel yenileme: KOD büyük+net, butonlar, satır okunurluğu ── */
