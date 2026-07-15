@@ -129,8 +129,11 @@ export function extractElectricityKdv(text: string, deps: ElectricityDeps): numb
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     if (!/\bK\.?\s*D\.?\s*V\.?\b/.test(line)) continue;
-    // MATRAH: "Fatura Kdv Matrahi" satirinin altindaki tutar KDV DEGIL, matrahtir.
-    if (/TEVKIFAT|MATRAH/.test(line)) continue;
+    if (/TEVKIFAT/.test(line)) continue;
+    // MATRAH ayrimi: "Fatura Kdv Matrahi" = matrah ETIKETI (KDV degil) → atla.
+    // AMA "KDV (Matrah 2.636,94)" = parantez ici matrah BILGISI olan gercek KDV
+    // satiri (elektrik faturasi; KDV degeri sonraki satirda 527,39) → ATLAMA.
+    if (/MATRAH/.test(line) && !/\(\s*MATRAH/i.test(line)) continue;
 
     const sameLine = parseLastKdvAmount(line.replace(/\bK\.?\s*D\.?\s*V\.?\b/, ' '));
     if (sameLine != null) return sameLine;

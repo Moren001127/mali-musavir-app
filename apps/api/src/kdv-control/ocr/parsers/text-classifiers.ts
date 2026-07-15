@@ -58,6 +58,11 @@ export function isKdvTableHeaderLine(value: string, foldFn: FoldFn): boolean {
 export function isForbiddenKdvAmountLine(value: string, foldFn: FoldFn): boolean {
   const folded = foldFn(value || '');
   if (!folded) return false;
+  // KANUN NUMARASI tuzağı: "KDV : 3065 Sayılı Katma Değer Vergisi Kanunu gereği...",
+  // "Elektrik Tüketim Vergisi (BTV) : 2464 sayılı Belediye Gelirleri Kanunu" — buradaki
+  // sayı (3065/2464) KANUN NO'sudur, KDV TUTARI DEĞİL. Satır KDV etiketi taşısa bile
+  // reddedilir (elektrik faturası dipnotu bu tuzağı kuruyordu → 3065,00 yanlış KDV).
+  if (/\b\d{3,4}\s*SAYILI\b|\bSAYILI\s+(?:KANUN|KATMA\s+DEGER|BELEDIYE|VERGI|GELIRLER)/.test(folded)) return true;
   if (isMatrahOrRateLine(folded, foldFn) || isKdvTableHeaderLine(folded, foldFn)) return true;
 
   const explicitKdvLabel =
