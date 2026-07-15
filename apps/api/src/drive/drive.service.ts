@@ -428,12 +428,28 @@ export class DriveService implements OnModuleInit, OnModuleDestroy {
       throw new BadRequestException(`Fatura kaydi bulunamadi (${invoiceId})`);
     }
 
-    // Drive yedegi var mi?
-    const backup = inv.mihsapId
-      ? await (this.prisma as any).driveBackup.findUnique({
-          where: { tenantId_mihsapId: { tenantId, mihsapId: inv.mihsapId } },
-        })
-      : null;
+    // ANA KAYNAK = DRIVE (Mihsap kaldırılıyor). Belge, Drive yedeğinden FATURA NO
+    // ile bulunur — yedek dosya adı/yolu fatura no içerir ("01.06.2026 -
+    // LB32026007893564 - LIFECELL...jpg"). mihsapId'ye güvenilmez (KDV Kontrol
+    // import'unda boş kalıyor). mihsapId varsa yalnız hızlı yol; asıl eşleşme fatura no.
+    let backup =
+      inv.faturaNo
+        ? await (this.prisma as any).driveBackup.findFirst({
+            where: {
+              tenantId,
+              OR: [
+                { fileName: { contains: String(inv.faturaNo) } },
+                { filePath: { contains: String(inv.faturaNo) } },
+              ],
+            },
+            orderBy: { backedUpAt: 'desc' },
+          }).catch(() => null)
+        : null;
+    if (!backup?.driveFileId && inv.mihsapId) {
+      backup = await (this.prisma as any).driveBackup.findUnique({
+        where: { tenantId_mihsapId: { tenantId, mihsapId: inv.mihsapId } },
+      }).catch(() => null);
+    }
     const acc = backup?.driveFileId ? await this.getAccount(tenantId) : null;
 
     if (backup?.driveFileId && acc?.isActive) {
