@@ -16,6 +16,11 @@ const nextConfig = {
           { key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate' },
           { key: 'Pragma', value: 'no-cache' },
           { key: 'Expires', value: '0' },
+          // CORS: eklenti bu dosyayı MIHSAP/Luca sayfalarından (farklı origin) MAIN world'de
+          // fetch ediyor. Vercel'de otomatik gelen CORS header'ı Railway'e taşınınca kayboldu →
+          // app.mihsap.com'dan "Failed to fetch" → MIHSAP token senkronizasyonu 25.06'da durdu.
+          // ACAO:* ile cross-origin fetch tekrar açılır (credentials:'omit' ile uyumlu).
+          { key: 'Access-Control-Allow-Origin', value: '*' },
         ],
       },
     ];
