@@ -5174,8 +5174,14 @@ ${JSON.stringify(payload, null, 2)}`;
     if (tip !== 'Z_RAPORU' && tip !== 'OKC_FIS') return;
     const dm = String(img?.ocrDate || '').match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
     if (!dm) return;
-    if (+dm[2] !== periodMonth) return;
-    if (+dm[3] === periodYear || Math.abs(+dm[3] - periodYear) !== 1) return;
+    const gun = +dm[1];
+    if (!(gun >= 1 && gun <= 31)) return; // bozuk gün (ör. "93") — dokunma
+    if (+dm[2] !== periodMonth) return; // ay dönem ayına uymuyorsa dokunma
+    if (+dm[3] === periodYear) return; // yıl zaten doğru
+    // Termal Z raporu / ÖKC fişinde YIL rakamları çok bozuk okunuyor
+    // ("19.06.2020", "02.06.2025", "01.06.2876"). Gün.ay dönem ayına uyuyor VE gün
+    // geçerliyse yıl fark ne olursa olsun DÖNEM yılına çekilir (±1 sınırı kalktı;
+    // yalnız Z_RAPORU/OKC_FIS — e-belgelere dokunulmuyor, tip kontrolü yukarıda).
     const fixed = `${dm[1]}.${dm[2]}.${periodYear}`;
     await this.prisma.receiptImage.update({ where: { id: imageId }, data: { ocrDate: fixed } as any });
     this.logger.warn(`[tarih-yil-duzeltme] ${imageId}: ${img.ocrDate} → ${fixed} (dönem ${periodLabel})`);
