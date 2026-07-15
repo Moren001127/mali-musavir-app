@@ -295,17 +295,17 @@ export default function Sidebar() {
       </div>
 
       {/* === NAVIGASYON === */}
-      <nav className={collapsed ? 'flex-1 px-1.5 pt-2.5 pb-4 space-y-2.5 overflow-y-auto relative' : 'flex-1 px-2.5 pt-3 pb-4 space-y-3 overflow-y-auto relative'}>
+      <nav className={collapsed ? 'flex-1 px-1.5 pt-2.5 pb-4 space-y-2.5 overflow-y-auto relative' : 'flex-1 px-2.5 pt-3 pb-4 space-y-2 overflow-y-auto relative'}>
         {navGroups.map((group) => {
           const GIcon = group.icon;
           return (
             <div key={group.label}>
               {/* Grup Başlığı */}
-              <div className={collapsed ? 'mb-1 flex justify-center px-0' : 'px-1 mb-1.5'}>
+              <div className={collapsed ? 'mb-1 flex justify-center px-0' : 'px-1 mb-1'}>
                 <div
                   className={collapsed
                     ? 'flex h-8 w-8 items-center justify-center rounded-lg border'
-                    : 'flex items-center gap-1.5 rounded-lg border px-2 py-1.5'
+                    : 'flex items-center gap-1.5 rounded-lg border px-2 py-1'
                   }
                   onMouseEnter={(e) => showCollapsedTooltip(e, group.label, group.color)}
                   onMouseLeave={hideCollapsedTooltip}
@@ -365,7 +365,7 @@ export default function Sidebar() {
                       href={href}
                       className={collapsed
                         ? 'group relative flex items-center justify-center rounded-xl border py-2.5 text-[13px] overflow-hidden'
-                        : 'group relative flex items-center gap-3 px-3 py-[9px] rounded-xl border text-[13.5px] overflow-hidden'
+                        : 'group relative flex items-center gap-3 px-3 py-[6px] rounded-xl border text-[13.5px] overflow-hidden'
                       }
                       style={{
                         color: baseColor,
