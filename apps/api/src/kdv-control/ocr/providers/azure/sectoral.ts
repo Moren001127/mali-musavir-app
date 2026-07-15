@@ -12,6 +12,8 @@
  * Bu modul `this` kullanmaz; bagimliliklari `deps` ile alir.
  */
 
+import { stripDateFragments } from './kdv-breakdown';
+
 type FoldFn = (s: string) => string;
 
 export interface TelekomDeps {
@@ -56,8 +58,10 @@ export function extractKdvOnlyFromTelekom(text: string, deps: TelekomDeps): numb
     if (isMatrahOrRateLine(line)) continue;
 
     // 1) Ayni satirda label'den sonra
+    // stripDateFragments: "01.06.2026 - 01.07.2026" gibi hizmet donemi
+    // tarihleri "1,06" tutari sanilmasin (lifebox vakasi).
     const afterLabel = line.replace(kdvLabelRe, '');
-    const noMatrah = stripMatrahFragments(afterLabel);
+    const noMatrah = stripMatrahFragments(stripDateFragments(afterLabel));
     const inlineAmount = noMatrah.match(amountRe);
     if (inlineAmount) {
       const val = parseAmount(inlineAmount[1]);
@@ -71,7 +75,7 @@ export function extractKdvOnlyFromTelekom(text: string, deps: TelekomDeps): numb
       if (otherTaxRe.test(nextLine)) break;
       if (/MAL\s*HIZMET|GENEL\s*TOPLAM|FATURA\s*TUTARI|ODENECEK\s*TUTAR|TOPLAM\s+TUTAR/i.test(nextLine)) break;
       if (isMatrahOrRateLine(nextLine)) continue;
-      const cleaned = stripMatrahFragments(nextLine);
+      const cleaned = stripMatrahFragments(stripDateFragments(nextLine));
       if (!cleaned) continue;
       if (/^[%]\s*\d/.test(cleaned) || isLikelyStandaloneTaxRate(cleaned)) continue;
       const m = cleaned.match(amountRe);
@@ -100,8 +104,12 @@ export function extractElectricityKdv(text: string, deps: ElectricityDeps): numb
 
   if (!text) return null;
   const normalized = foldFn(text);
+  // Ciplak "ELEKTRIK" kelimesi YETMEZ: araba servis faturasindaki "ELEKTRIK
+  // ISCILIGI" kalemi bile bu adapteri tetikleyip yanlis satirdan KDV okutuyordu
+  // (MEZCAR CHS2026000001375: "Fatura Kdv Matrahi" 23.553,13 KDV sanildi).
+  // Gercek elektrik faturasi belirtileri sart: kWh / tesisat / enerji bedeli.
   const looksElectricityInvoice =
-    /\bELEKTRIK\s+FATURASI\b|\bKWH\b|\bTUKETIM\s*\(KWH\)|\bTESISAT\b|\bENERJI\s+BEDELI\b|\bELEKTRIK\b/.test(normalized);
+    /\bELEKTRIK\s+FATURASI\b|\bKWH\b|\bTUKETIM\s*\(KWH\)|\bTESISAT\b|\bENERJI\s+BEDELI\b/.test(normalized);
   if (!looksElectricityInvoice) return null;
 
   const lines = normalized.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
@@ -121,7 +129,8 @@ export function extractElectricityKdv(text: string, deps: ElectricityDeps): numb
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     if (!/\bK\.?\s*D\.?\s*V\.?\b/.test(line)) continue;
-    if (/TEVKIFAT/.test(line)) continue;
+    // MATRAH: "Fatura Kdv Matrahi" satirinin altindaki tutar KDV DEGIL, matrahtir.
+    if (/TEVKIFAT|MATRAH/.test(line)) continue;
 
     const sameLine = parseLastKdvAmount(line.replace(/\bK\.?\s*D\.?\s*V\.?\b/, ' '));
     if (sameLine != null) return sameLine;

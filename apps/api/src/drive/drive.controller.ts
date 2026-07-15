@@ -111,9 +111,17 @@ export class DriveController {
   @UseGuards(AuthGuard('jwt'))
   async file(@Req() req: any, @Param('id') id: string, @Res() res: any) {
     const data = await this.service.serveInvoiceFile(req.user.tenantId, id);
+    // HTTP basligina Turkce karakter YAZILAMAZ: Drive yedek dosya adlari unvan
+    // icerir ("... LIFECELL DIJITAL ...") ve non-latin1 karakter res.set'i
+    // "Invalid character in header content" ile patlatiyordu -> her fatura icin
+    // jenerik 500 (belge gorseli hic acilmiyordu). ASCII fallback + RFC 5987.
+    const asciiName = String(data.filename || 'belge')
+      .replace(/[^\x20-\x7E]/g, '_')
+      .replace(/["\\]/g, "'");
     res.set({
       'Content-Type': data.contentType,
-      'Content-Disposition': `inline; filename="${data.filename}"`,
+      'Content-Disposition':
+        `inline; filename="${asciiName}"; filename*=UTF-8''${encodeURIComponent(String(data.filename || 'belge'))}`,
       'Content-Length': String(data.buffer.length),
       'Cache-Control': 'private, max-age=3600',
     });

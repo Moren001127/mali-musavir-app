@@ -297,4 +297,54 @@ approx(echoTevkifat.tamKdv, 5320, 'eko tam KDV');
 approx(echoTevkifat.tevkifat, 1064, 'eko tevkifat tek deger (2x echo toplanmamali)');
 approx(echoTevkifat.netKdv, 4256, 'eko net KDV');
 
-console.log('OK ocr-tax-regression');
+// ── TAM BORU HATTI PINLERI (2026-07-15) ─────────────────────────────────────
+// Tekil cikaricilar dogruyken TAM boru hatti (override/adapter zinciri) yanlis
+// deger uretebiliyor — iki gercek vaka pipeline seviyesinde pinlenir:
+//   1) lifebox LB32026007893564: sutun-basorlikli tablo; "Turkcell" gectigi icin
+//      telekom override tetiklenir ve tarih parcasini (01.06) KDV sanardi.
+//      Matematiksel kanitli sonuc (29,16 x %20 = 5,83) EZILMEMELI.
+//   2) MEZCAR CHS2026000001375: araba servis faturasindaki "ELEKTRIK ISCILIGI"
+//      kalemi elektrik adapterini tetikleyip "Fatura Kdv Matrahi" 23.553,13'u
+//      KDV sanardi. Dogru: Hesaplanan KDV 4.710,61.
+
+const lifeboxFullText = [
+  'lifebox', 'Hayata Yer Aç', 'Fatura Tarihi / Saati:', '01.06.2026/17:10',
+  'Fatura No:', 'LB32026007893564', 'e-Arşiv Fatura',
+  'Paket Adı', 'Hizmet Dönemi', 'Fiyat', 'KDV (%20.0)', 'Toplam Fiyat',
+  'lifebox Kampanyalı 100 GB İçerik', '01.06.2026 - 01.07.2026',
+  '29,16 TL', '5,83 TL', '34,99 TL', 'Toplam Tutar', '34,99 TL',
+  '* Bu fatura bilgilendirme amaçli gönderilmistir, tutar Turkcell faturaniz üzerinden tahsil edilecektir.',
+  'Vergi No: 6081249503',
+  'Lifecell Dijital Servisler ve Çözümler Anonim',
+].join('\n');
+
+const mezcarServiceText = [
+  'MEZCAR OTOMOTIV İNŞ.TEKS. VE GIDA SAN.TİC.LTD.ŞTİ.',
+  'e-Arşiv Fatura', 'Fatura No:', 'CHS2026000001375', 'Fatura Tarihi:', '16-06-2026',
+  'Sıra', 'Malzeme / Hizmet', 'Miktar', 'Birim Fiyat', 'iskonto Oranı', 'İskonto Tutarı', 'KDV Oranı', 'KDV Tutarı',
+  'CAM', '78000500TR', 'TEMİZLEYİCİ', '1,0 Adet', '190,0000 TL', '% 5,00', '9,50 TL', '% 20,00', '36,10 TL', '180,50', 'TL',
+  '14', '03', 'ELEKTRİK', '170,00', 'İŞÇİLİĞİ', ',05 Adet', '3.400,0000 TL', '% 20,00', '34,00 TL', 'TI',
+  'Mal / Hizmet Toplam Tutarı', '25.268,57 TL',
+  'Toplam İskonto', '1.715,44 TL',
+  'Fatura Ara Toplamı', '23.553,13 TL',
+  'Fatura Kdv Matrahı', '23.553,13 TL',
+  'Hesaplanan KDV (% 20,00 )', '4.710,61 TL',
+  'Toplam Tutar', '28.263,74 TL',
+].join('\n');
+
+(async () => {
+  const lifeboxSvc = new OcrService();
+  lifeboxSvc.getAzureRawText = async () => lifeboxFullText;
+  const lifeboxResult = await lifeboxSvc.runAzureOcr(Buffer.from('stub'), 'LB32026007893564', 'LB32026007893564.html');
+  approx(parseTrAmount(lifeboxResult.kdvTutari), 5.83, 'lifebox tam-pipeline: telekom override matematiksel kanitli 5,83 KDV yi ezmemeli');
+
+  const mezcarSvc = new OcrService();
+  mezcarSvc.getAzureRawText = async () => mezcarServiceText;
+  const mezcarResult = await mezcarSvc.runAzureOcr(Buffer.from('stub'), 'CHS2026000001375', 'CHS2026000001375.html');
+  approx(parseTrAmount(mezcarResult.kdvTutari), 4710.61, 'MEZCAR tam-pipeline: ELEKTRIK ISCILIGI kalemi elektrik adapterini tetiklememeli, KDV=4.710,61');
+
+  console.log('OK ocr-tax-regression');
+})().catch((e) => {
+  console.error(e && e.message ? e.message : e);
+  process.exit(1);
+});

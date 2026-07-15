@@ -383,9 +383,23 @@ export function crossCheckWithAzure(
   if (isTelekomFatura) {
     const kdvOnlyAmount = extractKdvOnlyFromTelekomAzure(azureText);
     if (kdvOnlyAmount != null && kdvOnlyAmount > 0) {
+      // Mevcut sonuc MATEMATIKSEL kanitliysa (tek kalem, matrah × oran ≈ tutar —
+      // ornek lifebox: 29,16 × %20 = 5,83) telekom yakinlik sezgisi onu EZEMEZ.
+      // Sutun-basligli tablolarda telekom cikaricisi yanlis sutunu/tarihi tutar
+      // saniyordu ve dogru degeri 1,06 ile eziyordu (LB32026007893564 vakasi).
+      const bd0 = result.kdvBreakdown && result.kdvBreakdown.length === 1 ? result.kdvBreakdown[0] : null;
+      const mathProvenKdv =
+        !!bd0 && bd0.matrah != null && Number(bd0.matrah) > 0 && Number(bd0.tutar) > 0 &&
+        [1, 10, 20].includes(Number(bd0.oran)) &&
+        Math.abs((Number(bd0.matrah) * Number(bd0.oran)) / 100 - Number(bd0.tutar)) <=
+          Math.max(0.05, Number(bd0.tutar) * 0.02);
       if (isLikelyRateEcho(kdvOnlyAmount)) {
         logger.warn(
           `Telekom KDV override iptal: ${kdvOnlyAmount} salt KDV orani gibi gorunuyor (rate echo, ${originalName})`,
+        );
+      } else if (mathProvenKdv && Math.abs(Number(bd0!.tutar) - kdvOnlyAmount) > 0.05) {
+        logger.warn(
+          `Telekom KDV override iptal: mevcut sonuc matematiksel kanitli (matrah=${bd0!.matrah} × %${bd0!.oran} = ${bd0!.tutar}), telekom adayi ${formatAmount(kdvOnlyAmount)} yok sayildi (${originalName})`,
         );
       } else {
         const claudeKdv = result.kdvTutari ? parseAmount(result.kdvTutari) : 0;
