@@ -1855,7 +1855,13 @@ export class KdvControlService implements OnApplicationBootstrap {
       include: { session: true },
     });
     if (!image) throw new NotFoundException('Görsel bulunamadı');
-    this.assertSessionUnlocked(image.session);
+    // NOT: Belge görseli GÖSTERMEK salt-okuma bir islem — kilit yalnizca
+    // MUDAHALE'yi (deger degistirme) engellemeli. Kilitli (tamamlanmis) onceki
+    // donem oturumlarina "tekrar bakmak" isteyen kullanici, assertSessionUnlocked
+    // burada 400 firlattigi icin gorseli goremiyordu ("cari donem aciliyor ama
+    // onceki donem acilmiyor" sikayetinin koku). Gorsel URL'i uretmek hicbir sey
+    // degistirmedigi icin kilit kontrolu BURADA KALDIRILDI (mutasyon metodlarinda
+    // korunuyor).
 
     // Mihsap kaynaklı görsel → ANA KAYNAK DRIVE (kullanıcı talebi 2026-07-15):
     // faturalar zaten Drive'a PDF yedekleniyor; MIHSAP CDN'e (token/oturum
