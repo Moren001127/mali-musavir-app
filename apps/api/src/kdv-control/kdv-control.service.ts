@@ -5015,6 +5015,31 @@ ${JSON.stringify(payload, null, 2)}`;
    *     Aksi halde "Yenile" aynı buggy sonucu geri yapıştırır, yeni düzeltmeler
    *     hiçbir zaman uygulanmaz.
    */
+  /**
+   * Z raporu / ÖKC fişinde OCR yılı bozuk okunduysa (termal baskı: "02.06.2025"
+   * ← gerçek 2026) dönem yılına çeker. Yalnız: gün.ay dönem AYINA uyuyor + yıl
+   * dönem yılından tam ±1 sapıyor. E-belgelere (EARSIV/EFATURA) dokunmaz.
+   */
+  private async snapReceiptDateYearToPeriod(imageId: string, periodLabel?: string | null) {
+    const pm = String(periodLabel || '').match(/^(\d{4})[\/\-.](\d{1,2})$/);
+    if (!pm) return;
+    const periodYear = +pm[1];
+    const periodMonth = +pm[2];
+    const img: any = await this.prisma.receiptImage.findUnique({
+      where: { id: imageId },
+      select: { ocrDate: true, ocrBelgeTipi: true } as any,
+    });
+    const tip = String(img?.ocrBelgeTipi || '');
+    if (tip !== 'Z_RAPORU' && tip !== 'OKC_FIS') return;
+    const dm = String(img?.ocrDate || '').match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+    if (!dm) return;
+    if (+dm[2] !== periodMonth) return;
+    if (+dm[3] === periodYear || Math.abs(+dm[3] - periodYear) !== 1) return;
+    const fixed = `${dm[1]}.${dm[2]}.${periodYear}`;
+    await this.prisma.receiptImage.update({ where: { id: imageId }, data: { ocrDate: fixed } as any });
+    this.logger.warn(`[tarih-yil-duzeltme] ${imageId}: ${img.ocrDate} → ${fixed} (dönem ${periodLabel})`);
+  }
+
   async startOcrForSession(
     sessionId: string,
     tenantId: string,
@@ -5178,6 +5203,20 @@ ${JSON.stringify(payload, null, 2)}`;
 
     const queue = [...toQueue];
     let queued = 0;
+    // İçerik denetimi ANLIK (kullanıcı isteği): her belge OKUNUR OKUNMAZ kendi
+    // denetimi seri zincire (processContentAuditQueue mutex) eklenir — tüm OCR
+    // kuyruğunun bitmesi BEKLENMEZ. Zincir seri çalıştığı için Max çağrıları
+    // çakışmaz; OCR bitişindeki toplu çağrı needsRedo sayesinde yalnız kaçanları
+    // tamamlar (DONE olanlar atlanır, çift denetim yok).
+    const autoAuditAnlik = String(process.env.KDV_CONTENT_AUDIT_AUTO ?? '1').trim().toLowerCase();
+    const anlikDenetim = autoAuditAnlik !== '0' && autoAuditAnlik !== 'false';
+    const auditCtx = {
+      sessionId,
+      period: session.periodLabel,
+      type: session.type,
+      taxpayerId: session.taxpayerId,
+      mukellef: this.formatMukellefAdi(session),
+    };
     const workers = Array.from({ length: CONCURRENCY }, async (_, workerIdx) => {
       // Worker'ları stagger et — hepsi aynı anda başlamasın (rate limit jitter)
       if (workerIdx > 0) {
@@ -5193,6 +5232,18 @@ ${JSON.stringify(payload, null, 2)}`;
             await this.runOcrForMihsapInvoice(img.id, invoiceId, tenantId, { forceClaude, forceFresh });
           } else {
             await this.runOcrForImage(img.id, img.s3Key, { forceClaude, forceFresh });
+          }
+          // Termal fişte yıl rakamı bozuk okunabilir ("02.06.2025" ← 2026): gün.ay
+          // dönem ayına uyarken yıl dönemden ±1 sapıyorsa dönem yılına çekilir
+          // (yalnız Z raporu/ÖKC; e-belgelere dokunulmaz).
+          await this.snapReceiptDateYearToPeriod(img.id, session.periodLabel).catch(() => {});
+          if (anlikDenetim) {
+            await this.prisma.receiptImage
+              .update({ where: { id: img.id }, data: { contentAuditStatus: 'PROCESSING' } as any })
+              .catch(() => {});
+            void this.processContentAuditQueue([img.id], tenantId, undefined, auditCtx).catch((e: any) =>
+              this.logger.warn(`Anlık içerik denetimi hata [${img.id}]: ${e?.message || e}`),
+            );
           }
         } catch (e: any) {
           this.logger.error(`OCR worker ${workerIdx} hata [${img.id}]: ${e?.message}`);

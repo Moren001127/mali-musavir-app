@@ -6,6 +6,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { canSpendOnApiGlobal } from '../common/ai-usage-logger';
 import {
   extractDate as extractDatePure,
+  extractDateWithOcrRepair as extractDateWithOcrRepairPure,
   normalizeOcrYear as normalizeOcrYearPure,
 } from './ocr/parsers/date';
 import { extractBelgeNo as extractBelgeNoPure, isRandomDbId } from './ocr/parsers/belge-no';
@@ -886,7 +887,14 @@ export class OcrService {
 
     // Alanları çıkar
     const belgeTipi = this.detectBelgeTipiFromAzure(fullText, originalName);
-    const date = this.extractPreferredInvoiceDate(fullText) ?? this.extractDate(fullText);
+    // Termal fişlerde (Z raporu/ÖKC) rakam karışması ("01.96.2826" ← 01.06.2026)
+    // tarihi düşürüyordu — normal çıkarım boş dönerse onarımlı geçiş dener.
+    const date =
+      this.extractPreferredInvoiceDate(fullText) ??
+      this.extractDate(fullText) ??
+      (belgeTipi === 'Z_RAPORU' || belgeTipi === 'OKC_FIS'
+        ? extractDateWithOcrRepairPure(fullText)
+        : null);
     // v1.37.75 - Z raporu icin body'deki "Z NO" mutlak oncelikli.
     // Dosya adi sikca FIS NO veya tarih-bazli string olabilir; Z raporlarinda
     // belge kimligi SADECE "Z NO" / "Z SAYAC" alanidir, asla FIS NO/EKU NO degil.
@@ -1547,7 +1555,7 @@ export class OcrService {
   }
 
   /** @deprecated Faz 2 — saf provider'a delege. */
-  private extractKdvFromInvoiceTotalsAzure(text: string): { kdv: number; matrah: null; oran: number | null } | null {
+  private extractKdvFromInvoiceTotalsAzure(text: string): { kdv: number; matrah: number | null; oran: number | null } | null {
     return extractKdvFromInvoiceTotalsPure(text, {
       parseAmount: (s) => this.parseAmount(s),
       normalizeAzureText: (t) => this.normalizeAzureText(t),

@@ -15,6 +15,17 @@ import type { KdvBreakdownItem } from '../../types';
 
 type FoldFn = (s: string) => string;
 
+/**
+ * Tarih parçaları tutar sanılmasın: "01.06.2026 - 01.07.2026" (hizmet dönemi)
+ * satırında amountRe "01.06"yı yakalayıp KDV=1,06 üretiyordu (gerçek vaka:
+ * lifebox e-Arşiv, LB32026007893564 — gerçek KDV 5,83). dd.mm.yyyy / dd-mm-yy /
+ * dd/mm/yyyy kalıplarını tutar aramadan ÖNCE sil. Tutarlara dokunmaz:
+ * "1.234,56" deseninde ardışık iki [sep]+1-2 hane grubu yoktur.
+ */
+export function stripDateFragments(s: string): string {
+  return String(s || '').replace(/\b\d{1,2}[.\/-]\d{1,2}[.\/-]\d{2,4}\b/g, ' ');
+}
+
 export interface KdvBreakdownDeps {
   parseAmount: (s: string) => number;
   normalizeAzureText: (text: string) => string;
@@ -74,7 +85,7 @@ export function extractMultiRateKdv(text: string, deps: KdvBreakdownDeps): KdvBr
 
     // 1) Ayni satirda label'den SONRA amount ara
     let tutar: number | null = null;
-    const afterLabel = stripMatrahFragments(line.slice(labelMatch.index! + labelMatch[0].length));
+    const afterLabel = stripMatrahFragments(stripDateFragments(line.slice(labelMatch.index! + labelMatch[0].length)));
     const inlineAmountMatch = afterLabel.match(amountRe);
     if (inlineAmountMatch) {
       const parsed = parseAmount(inlineAmountMatch[1]);
@@ -92,7 +103,7 @@ export function extractMultiRateKdv(text: string, deps: KdvBreakdownDeps): KdvBr
         if (j > 1 && isForbiddenKdvAmountLine(lines[i + j - 1] || '')) continue;
         if (/^[\(\)%\s]*$/.test(nextLine)) continue;
         if (/^%\s*\d{1,2}(?:[,.]\d{1,2})?\s*\)?$/.test(nextLine)) continue;
-        const cleanedNext = stripMatrahFragments(nextLine);
+        const cleanedNext = stripMatrahFragments(stripDateFragments(nextLine));
         if (!cleanedNext) continue;
         const m = cleanedNext.match(amountRe);
         if (m) {
@@ -113,7 +124,7 @@ export function extractMultiRateKdv(text: string, deps: KdvBreakdownDeps): KdvBr
         if (labelRe.test(prevLine)) break;
         if (/ÖZEL\s*İLETİŞİM|ÖIV|OIV|TELSİZ|TELSIZ|ÖTV|OTV|DAMGA|BSMV|KKDF/i.test(prevLine)) break;
         if (isForbiddenKdvAmountLine(prevLine)) continue;
-        const cleanedPrev = stripMatrahFragments(prevLine);
+        const cleanedPrev = stripMatrahFragments(stripDateFragments(prevLine));
         if (!cleanedPrev) continue;
         const m = cleanedPrev.match(amountRe);
         if (m) {
@@ -153,7 +164,7 @@ export function extractMultiRateKdv(text: string, deps: KdvBreakdownDeps): KdvBr
 export function extractKdvFromInvoiceTotals(
   text: string,
   deps: KdvBreakdownDeps,
-): { kdv: number; matrah: null; oran: number | null } | null {
+): { kdv: number; matrah: number | null; oran: number | null } | null {
   const {
     parseAmount,
     normalizeAzureText,
@@ -180,7 +191,7 @@ export function extractKdvFromInvoiceTotals(
   const parseLineAmount = (line: string, opts: { allowMatrah?: boolean } = {}): number | null => {
     if (!opts.allowMatrah && isMatrahOrRateLine(line)) return null;
     if (!opts.allowMatrah && isForbiddenKdvAmountLine(line)) return null;
-    const m = line.match(amountRe);
+    const m = stripDateFragments(line).match(amountRe);
     if (!m) return null;
     if (!opts.allowMatrah && isLikelyStandaloneTaxRate(m[1]) && /%|ORAN|KDV\s*ORAN/i.test(foldTurkishAscii(line))) {
       return null;
@@ -191,7 +202,7 @@ export function extractKdvFromInvoiceTotals(
   const parseLastAmount = (line: string, opts: { allowMatrah?: boolean } = {}): number | null => {
     if (!opts.allowMatrah && isMatrahOrRateLine(line)) return null;
     if (!opts.allowMatrah && isForbiddenKdvAmountLine(line)) return null;
-    const matches = [...line.matchAll(amountGlobalRe)];
+    const matches = [...stripDateFragments(line).matchAll(amountGlobalRe)];
     if (matches.length === 0) return null;
     if (!opts.allowMatrah && matches.length === 1 && isLikelyStandaloneTaxRate(matches[0][1]) && /%|ORAN|KDV\s*ORAN/i.test(foldTurkishAscii(line))) {
       return null;
@@ -200,7 +211,7 @@ export function extractKdvFromInvoiceTotals(
     return n > 0 && n < 100_000_000 ? n : null;
   };
   const extractAmounts = (line: string): number[] =>
-    [...line.matchAll(amountGlobalRe)]
+    [...stripDateFragments(line).matchAll(amountGlobalRe)]
       .map((m) => parseAmount(m[1]))
       .filter((n) => n > 0 && n < 100_000_000);
 
@@ -361,12 +372,44 @@ export function extractKdvFromInvoiceTotals(
     return null;
   };
 
+  // Sütun-başlıklı tablolarda (lifebox: "Fiyat / KDV (%20.0) / Toplam Fiyat"
+  // başlıkları AYRI satırlar, değerler aşağıda ayrı satırlarda) "etikete yakın
+  // ilk tutar" yanlış sütunu (Fiyat=29,16) veya tarihi verir. Güçlü matematik
+  // kanıtı ara: KDV(%X) etiketinden sonraki pencerede tek-tutarlı satırlar
+  // a,b,c olarak birikirken a+b=c (±0,02) ve b<a sağlanırsa KDV=b, matrah=a
+  // (29,16 + 5,83 = 34,99 → KDV 5,83). Kanıt matematiksel olduğundan yanlış
+  // pozitif üretmez; bulunamazsa zincir eski stratejilerle devam eder.
+  const findKdvFromConsecutiveMathTriple = (): { kdv: number; matrah: number } | null => {
+    for (let i = 0; i < lines.length; i++) {
+      if (!/K\.?\s*D\.?\s*V\.?\s*\(\s*%\s*\d{1,2}(?:[.,]\d{1,2})?\s*\)?/i.test(lines[i])) continue;
+      const seq: number[] = [];
+      for (let j = 1; j <= 10 && i + j < lines.length; j++) {
+        const vals = extractAmounts(lines[i + j]);
+        if (vals.length > 1) break; // çok-sütunlu okuma — bu strateji tek-sütun akışı için
+        if (vals.length === 1) {
+          seq.push(vals[0]);
+          if (seq.length >= 3) {
+            const [a, b, c] = seq.slice(-3);
+            if (b < a && Math.abs(a + b - c) <= 0.02) return { kdv: b, matrah: a };
+          }
+        }
+      }
+    }
+    return null;
+  };
+
+  let mathTripleMatrah: number | null = null;
   const explicitKdv =
     // "Hesaplanan KDV(%NN)" en güvenilir toplam KDV etiketi — önce o (table-header
     // ürün satırından "1,0 Adet" miktarını KDV sanıp 1 dönmesin diye öne alındı).
     findExplicitKdvAmount() ??
     findKdvFromSummaryMathLine() ??
     findKdvFromTableHeader() ??
+    (() => {
+      const t = findKdvFromConsecutiveMathTriple();
+      if (t) { mathTripleMatrah = t.matrah; return t.kdv; }
+      return null;
+    })() ??
     findAmountNear(
       /HESAPLANAN\s+K\.?\s*D\.?\s*V\.?|KATMA\s*DE[ĞG]ER\s*VERG[İI]S[İI]|KDV\s*TUTARI|K\.?\s*D\.?\s*V\.?(?:\s*[-/]?\s*VAT)?\s*\(\s*%?\s*\d{1,2}(?:[.,]\d{1,2})?\s*\)/i,
       { skipMatrah: true },
@@ -378,7 +421,7 @@ export function extractKdvFromInvoiceTotals(
   const oran = oranMatch ? parseInt(oranMatch[1], 10) : null;
 
   if (explicitKdv != null && explicitKdv > 0) {
-    return { kdv: explicitKdv, matrah: null, oran };
+    return { kdv: explicitKdv, matrah: mathTripleMatrah, oran };
   }
   return null;
 }

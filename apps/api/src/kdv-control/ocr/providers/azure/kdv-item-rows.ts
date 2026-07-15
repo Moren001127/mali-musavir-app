@@ -105,8 +105,25 @@ export function extractMultiRateKdvFromItemRows(text: string, deps: KdvItemRowsD
     if (marker.isSummary) oranCoveredBySummary.add(marker.oran);
   }
 
+  // İSKONTO SÜTUNU KORUMASI: Belgede "İskonto Oranı/Tutarı" sütunu varsa, kalem
+  // satırlarındaki "%5,00" gibi işaretler İSKONTO oranı olabilir (Azure sütunları
+  // ayrı satırlara böler; işaret satırında "İskonto" kelimesi GEÇMEZ). Özet
+  // ("Hesaplanan KDV(%X)") satırlarıyla doğrulanmış EN AZ BİR oran varken, hiçbir
+  // özette geçmeyen kalem-içi oranlar atılır. (Gerçek vaka: MEZCAR CHS2026000001375
+  // — kalem iskonto %5/%10 KDV kırılımı sanılıp toplam 4.710,61 yerine 5.958,88
+  // yazıldı; gerçek fatura TEK oran %20.)
+  const hasIskontoHeader = lines.some(
+    (l) => /[İI]SKONTO\s*(ORAN|TUTAR)|\b[İI]SK\.?\s*(ORAN|TUTAR)|[İI]ND[İI]R[İI]M\s*(ORAN|TUTAR)/i.test(l),
+  );
+
   for (const marker of markers) {
     if (!marker.isSummary && oranCoveredBySummary.has(marker.oran)) continue;
+    if (
+      !marker.isSummary &&
+      hasIskontoHeader &&
+      oranCoveredBySummary.size > 0 &&
+      !oranCoveredBySummary.has(marker.oran)
+    ) continue;
 
     let tutar: number | null = null;
 

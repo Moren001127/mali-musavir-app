@@ -113,7 +113,13 @@ eq(dateParser.extractDate('Tarih: 15/04/2026'), '15.04.2026', 'extractDate DD/MM
 eq(dateParser.extractDate('2026-04-15'), '15.04.2026', 'extractDate YYYY-MM-DD');
 eq(dateParser.extractDate('15 - 04 - 2026'), '15.04.2026', 'extractDate DD - MM - YYYY');
 eq(dateParser.extractDate('Hicbir tarih yok'), null, 'extractDate no match');
-ok('date.ts (9 assertion)');
+// GERCEK bug (ASEL ELEKTRONİK Z raporu): termal baskıda 0→9/8 okunuyor,
+// "01.96.2826" (gerçek 01.06.2026) geçersiz sayılıp tarih BOŞ kalıyordu →
+// belge "tarih okunamadı" ile teyit kuyruğuna düşüyordu. Onarımlı geçiş düzeltir.
+eq(dateParser.extractDateWithOcrRepair('Z RAPORU\n01.96.2826\nSaat: 29:12'), '01.06.2026', 'OCR onarim: 01.96.2826 -> 01.06.2026');
+eq(dateParser.extractDateWithOcrRepair('Fis 15.04.2026'), '15.04.2026', 'OCR onarim: gecerli tarih AYNEN doner');
+eq(dateParser.extractDateWithOcrRepair('tutar 1.99 TL baska bir sey yok'), null, 'OCR onarim: uydurma tarih uretmez');
+ok('date.ts (12 assertion)');
 
 // ─── belge-no.ts ───
 const foldNoop = (s) => s.toUpperCase(); // Test icin minimal fold
@@ -900,6 +906,40 @@ eq(itemRowResult.length, 2, 'item-rows cift-sayim: 2 oran');
 approx(itemRowResult.find((b) => b.oran === 10).tutar, 1176, 0.01, 'item-rows %10 cift-saymaz (1.176, 2.352 degil)');
 approx(itemRowResult.find((b) => b.oran === 20).tutar, 500, 0.01, 'item-rows %20 cift-saymaz (500, 1.000 degil)');
 ok('azure/kdv-item-rows.ts cift-sayim regresyonu (3 assertion)');
+
+// ─── GERCEK bug (MEZCAR CHS2026000001375, Celal Kabakçı alış): kalem satırlarındaki
+// İSKONTO oranları (%5/%10) KDV kırılımı sanılıp gerçek KDV 4.710,61 yerine
+// 5.958,88 yazılıyordu. İskonto sütunu başlığı + özet (Hesaplanan KDV %20) varken
+// özetle doğrulanmamış kalem-içi oranlar atılmalı → yalnız %20 kalır → size<2 → [].
+const iskontoText = [
+  'Sıra No', 'Malzeme / Hizmet Kodu', 'Miktar', 'Birim Fiyat',
+  'İskonto Oranı', 'İskonto Tutarı', 'KDV Oranı', 'KDV Tutarı', 'Malzeme / Hizmet Tutarı',
+  'CAM TEMİZLEYİCİ 500 ML', '1,0 Adet', '190,0000 TL', '% 5,00', '9,50 TL', '% 20,00', '36,10 TL', '180,50 TL',
+  'Sanziman Yagi-7 DCT', '4,5 Adet', '2.076,3200 TL', '% 5,00', '467,17 TL', '% 20,00', '1.775,25 TL', '8.876,27 TL',
+  '60.000 KM Bakım İşçiliği', '3,0 Adet', '3.000,0000 TL', '% 10,00', '900,00 TL', '% 20,00', '1.620,00 TL', '8.100,00 TL',
+  'Mal Hizmet Toplam Tutarı', '25.268,57 TL', 'Toplam İskonto', '1.715,44 TL',
+  'Fatura Kdv Matrahı', '23.553,13 TL', 'Hesaplanan KDV (%20,0)', '4.710,61 TL',
+  'Toplam Tutar', '28.263,74 TL',
+].join('\n');
+const iskontoResult = kdvItemRows.extractMultiRateKdvFromItemRows(iskontoText, itemRowDeps);
+eq(iskontoResult.length, 0, `iskonto oranlari KDV kirilimi sanilmaz (gercek=${JSON.stringify(iskontoResult)})`);
+ok('azure/kdv-item-rows.ts iskonto-sutunu korumasi (1 assertion)');
+
+// ─── GERCEK bug (lifebox LB32026007893564, Ertaç Budak alış): sütun başlıkları ayrı
+// satırlarda ("Fiyat / KDV (%20.0) / Toplam Fiyat"), değerler aşağıda. Eski kod
+// (a) tarih satırındaki "01.06"yı tutar sanıp KDV=1,06 yazıyordu. Yeni: tarih
+// parçaları silinir + ardışık a+b=c matematik kanıtı (29,16+5,83=34,99) → KDV=5,83.
+const lifeboxText = [
+  'Paket Adı', 'Hizmet Dönemi', 'Fiyat', 'KDV (%20.0)', 'Toplam Fiyat',
+  'lifebox Kampanyalı 100 GB İçerik', '01.06.2026 - 01.07.2026',
+  '29,16 TL', '5,83 TL', '34,99 TL',
+  'Toplam Tutar', '34,99 TL',
+].join('\n');
+const lifeboxKdv = kdvBreakdown.extractKdvFromInvoiceTotals(lifeboxText, breakdownDeps);
+assert(lifeboxKdv && Math.abs(lifeboxKdv.kdv - 5.83) < 0.01, `lifebox KDV 5,83 okunmali, 1,06/29,16 degil (gercek=${JSON.stringify(lifeboxKdv)})`);
+assert(kdvBreakdown.stripDateFragments('1.234,56 TL').includes('1.234,56'), 'stripDateFragments tutari BOZMAZ');
+assert(!/\d{1,2}\.\d{1,2}\.\d{4}/.test(kdvBreakdown.stripDateFragments('01.06.2026 - 01.07.2026')), 'stripDateFragments tarihi siler');
+ok('azure/kdv-breakdown.ts tarih-tutar karismasi + math-triple (3 assertion)');
 
 // ─── azure/okc-fis.ts ───
 const okcDeps = {

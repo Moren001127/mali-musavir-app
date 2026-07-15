@@ -120,7 +120,7 @@ export interface CrossCheckDeps {
   } | null;
   extractKdvOnlyFromTelekomAzure: (text: string) => number | null;
   extractKdvFromInvoiceTotalsAzure: (text: string) =>
-    { kdv: number; matrah: null; oran: number | null } | null;
+    { kdv: number; matrah: number | null; oran: number | null } | null;
   extractMultiRateKdvFromAzure: (text: string) => KdvBreakdownItem[];
   extractMultiRateKdvFromItemRows: (text: string) => KdvBreakdownItem[];
   extractHesMatrahKdvTable: (text: string) =>
