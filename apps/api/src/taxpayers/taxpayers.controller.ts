@@ -109,6 +109,13 @@ export class TaxpayersController {
     return this.taxpayersService.softDelete(id, req.user.tenantId);
   }
 
+  /** defterTuru boş mükellefleri Mihsap defter türünden bir kez doldur (KDV Kontrol filtresi için). */
+  @Post('backfill-defter-turu')
+  @Roles('ADMIN', 'STAFF')
+  backfillDefterTuru(@Req() req: any) {
+    return this.taxpayersService.backfillDefterTuruFromMihsap(req.user.tenantId);
+  }
+
   // ── Aylık Durum Endpoint'leri ──────────────────────────────
 
   @Get(':id/monthly-status')

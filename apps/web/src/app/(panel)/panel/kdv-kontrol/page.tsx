@@ -101,7 +101,7 @@ interface Taxpayer {
   companyName?: string | null;
   taxNumber?: string | null;
   mihsapId?: string | null;
-  /** Mükellef kartından gelen defter türü — 'BILANCO' | 'ISLETME' | null */
+  /** Mükellef kartından gelen defter türü — 'BILANCO' | 'ISLETME' | null (ESAS kaynak) */
   defterTuru?: 'BILANCO' | 'ISLETME' | null;
 }
 
@@ -109,7 +109,7 @@ interface Taxpayer {
  * Bir KDV aksiyonu, mükellefin defter türüyle uyumlu mu?
  * - defterTuru BILANCO → sadece BILANCO_* aksiyonları
  * - defterTuru ISLETME → sadece ISLETME_* aksiyonları
- * - defterTuru null/undefined → hepsi geçerli (kart doldurulmamış)
+ * - defterTuru null → hepsi geçerli (esas kaynak; backend backfill ile hep dolu tutulur)
  */
 function isActionCompatible(action: KdvAction, defterTuru?: 'BILANCO' | 'ISLETME' | null): boolean {
   if (!defterTuru) return true;

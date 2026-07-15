@@ -40,6 +40,30 @@ export class TaxpayersService {
     return data as T;
   }
 
+  /**
+   * defterTuru (ESAS defter türü — Bilanço/İşletme) BOŞ kalmış mükellefleri, Mihsap'tan
+   * gelen mihsapDefterTuru'ndan bir kez doldurur. Import edilmiş mükelleflerde defterTuru
+   * NULL kalıyordu → KDV Kontrol'de defter/işlem butonları filtrelenemiyordu. Esas kaynak
+   * hep defterTuru olsun diye boşları burada kalıcı dolduruyoruz (Mihsap runtime bağımlılığı yok).
+   */
+  async backfillDefterTuruFromMihsap(tenantId: string) {
+    const rows = await this.prisma.taxpayer.findMany({
+      where: { tenantId, mihsapDefterTuru: { not: null }, OR: [{ defterTuru: null }, { defterTuru: '' }] },
+      select: { id: true, defterTuru: true, mihsapDefterTuru: true },
+    });
+    let fixed = 0;
+    for (const t of rows) {
+      const n = this.normalizeDefterFields({ defterTuru: t.defterTuru, mihsapDefterTuru: t.mihsapDefterTuru });
+      if (n.defterTuru && n.defterTuru !== t.defterTuru) {
+        await this.prisma.taxpayer
+          .update({ where: { id: t.id }, data: { defterTuru: n.defterTuru } })
+          .catch(() => {});
+        fixed++;
+      }
+    }
+    return { scanned: rows.length, fixed };
+  }
+
   async findAll(
     tenantId: string,
     search?: string,
