@@ -130,7 +130,7 @@ export function extractZRaporuKdv(
   const nextLineMoney = (idx: number): number => {
     for (let j = idx + 1; j < Math.min(idx + 7, foldedLines.length); j++) {
       const next = foldedLines[j] || '';
-      if (!next || /\bKUM\b/.test(next)) return 0;
+      if (!next || /\bKUM/.test(next)) return 0;
       if (topKdvLabel.test(next) || /^\s*T[O0]PLAM\b/.test(next)) return 0;
       if (/\bGENEL\b|\bNAKIT\b|\bKREDI\b|\bKART\b/.test(next)) return 0;
       const values = extractMoneyValues(lines[j]);
@@ -181,7 +181,7 @@ export function extractZRaporuKdv(
 
   for (let i = 0; i < foldedLines.length; i++) {
     const line = foldedLines[i];
-    if (/\bKUM\b/.test(line)) break;
+    if (/\bKUM/.test(line)) break;
 
     const isKdvLabel = topKdvLabel.test(line);
     const isCounterTotalLine =
@@ -271,7 +271,7 @@ export function extractZRaporuKdv(
       // boylece "$10 TOPLAM" icindeki "10" yanlislikla tutar sayilmaz.
       const amountBelow = (idx: number): number => {
         for (let j = idx + 1; j < Math.min(idx + 4, foldedLines.length); j++) {
-          if (/\bKUM\b/.test(foldedLines[j])) break;
+          if (/\bKUM/.test(foldedLines[j])) break;
           const vals = extractMoneyValues(lines[j] ?? foldedLines[j]);
           if (vals.length > 0) return vals[vals.length - 1];
         }
@@ -280,7 +280,7 @@ export function extractZRaporuKdv(
 
       for (let i = startIdx + 1; i < foldedLines.length; i++) {
         const l = foldedLines[i];
-        if (/\bKUM\b/.test(l)) break;
+        if (/\bKUM/.test(l)) break;
         if (/\bMALI\s*[VY]ER[I1]\b/.test(l) || /^\s*T[O0]P\s*$/.test(l)) {
           inGrandTotal = true;
           currentRate = null;
