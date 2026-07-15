@@ -214,12 +214,21 @@ export function OcrReviewPanel({
       kdvApi.getImageUrl(id)
         .then(async (r: any) => {
           if (cancelled) return;
+          // Drive-öncelikli: proxyPath'i blob olarak çek (İşlenen Faturalar ile
+          // birebir aynı akış). Proxy başarısızsa (Drive yedeği bulunamazsa)
+          // doğrudan MIHSAP CDN linkine (r.url) düş — böylece görüntü İşlenen
+          // Faturalar'daki gibi yine gelir, "yüklenemedi" ekranı çıkmaz.
           if (r?.proxyPath) {
-            const resp = await api.get(r.proxyPath, { responseType: 'blob' });
-            if (cancelled) return;
-            objectUrl = URL.createObjectURL(resp.data);
-            setPreviewUrl(objectUrl);
-          } else if (r?.url) {
+            try {
+              const resp = await api.get(r.proxyPath, { responseType: 'blob' });
+              if (cancelled) return;
+              objectUrl = URL.createObjectURL(resp.data);
+              setPreviewUrl(objectUrl);
+              return;
+            } catch { /* proxy başarısız → CDN fallback */ }
+          }
+          if (cancelled) return;
+          if (r?.url) {
             setPreviewUrl(r.url);
           } else {
             throw new Error('görsel url yok');
