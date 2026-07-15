@@ -276,6 +276,41 @@ export class KdvControlService implements OnApplicationBootstrap {
   }
 
   /**
+   * "Faturalari Cek" (startOcrForSession) OCR yapacak yeni belge bulamayinca
+   * (hepsi zaten SUCCESS ya da cache HIT) erken donuyordu; bu yolda icerik
+   * denetimi HIC baslamiyordu (kullanici "denetleniyor" gorup null'da kalmis
+   * belgeler goruyordu). Denetlenmemis (contentAuditStatus null/PENDING) okunmus
+   * belge varsa icerik denetimini fire-forget baslatir. force:false → zaten
+   * DONE olanlar tekrar denetlenmez (needsRedo), cift denetim olmaz.
+   */
+  private async maybeAutoStartContentAudit(sessionId: string, tenantId: string) {
+    const auto = String(process.env.KDV_CONTENT_AUDIT_AUTO ?? '1').trim().toLowerCase();
+    if (auto === '0' || auto === 'false') return;
+    try {
+      const bekleyen = await this.prisma.receiptImage.count({
+        where: {
+          sessionId,
+          ocrStatus: { in: ['SUCCESS', 'NEEDS_REVIEW', 'LOW_CONFIDENCE'] as any },
+          OR: [
+            { contentAuditStatus: null },
+            { contentAuditStatus: 'PENDING' },
+            { contentAuditModel: { in: ['rule-fallback', 'failed'] } },
+          ],
+        } as any,
+      });
+      if (bekleyen === 0) return;
+      this.logger.log(
+        `[autoAudit] OCR'da yeni is yok ama ${bekleyen} denetlenmemis belge var — icerik denetimi baslatiliyor (session ${sessionId})`,
+      );
+      void this.startContentAuditForSession(sessionId, tenantId, undefined, { force: false }).catch(
+        (e: any) => this.logger.warn(`[autoAudit] baslatilamadi: ${e?.message || e}`),
+      );
+    } catch (e: any) {
+      this.logger.warn(`[autoAudit] kontrol hatasi: ${e?.message || e}`);
+    }
+  }
+
+  /**
    * İçerik denetimi kuyruğu BELLEKTE (void fire-forget) çalışır; deploy/restart
    * sırasında ölürse belgeler PROCESSING'de ÖKSÜZ kalır (kullanıcı "yapmıyor" görür).
    * Açılışta TÜM PROCESSING belgeler öksüzdür (kuyruğu kuran süreç öldü) — bunları
@@ -5145,6 +5180,11 @@ ${JSON.stringify(payload, null, 2)}`;
     });
 
     if (pending.length === 0) {
+      // OCR yapacak yeni belge yok AMA belgeler zaten okunmus olabilir; kullanici
+      // "Faturalari Cek" dediginde icerik denetiminin de otomatik yurumesini bekler.
+      // Denetlenmemis (null/PENDING) SUCCESS belge varsa denetimi burada baslat —
+      // aksi halde bu erken return icerik denetimini komple atliyordu.
+      await this.maybeAutoStartContentAudit(sessionId, tenantId);
       return { queued: 0, message: 'Bekleyen görsel yok' };
     }
 
@@ -5246,6 +5286,11 @@ ${JSON.stringify(payload, null, 2)}`;
     }
 
     if (toQueue.length === 0) {
+      // Hepsi cache'den geldi (yeni Claude cagrisi yok) — ama cache HIT belgeler
+      // worker'dan gecmediginden anlik denetim tetiklenmedi. Denetlenmemis
+      // belgeler icin icerik denetimini yine de baslat (Faturalari Cek → otomatik
+      // icerik denetimi beklentisi).
+      await this.maybeAutoStartContentAudit(sessionId, tenantId);
       return {
         queued: 0,
         cacheHits,
