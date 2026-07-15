@@ -878,10 +878,16 @@ export class ReconciliationEngine {
         'Ayni belge no/tarihte birden fazla firma var; satici/VKN dogrulanmadan tam eslesme verilmedi',
       );
     }
+    // TERMAL Z RAPORU / ÖKC FİŞİ: tarih fişte çoğu zaman bozuk basılıp OCR'da HİÇ
+    // okunamıyor ("93.05.2876"). Belge no (Z No — ÖKC içinde benzersiz) + KDV
+    // kuruşu kuruşuna eşleşiyorsa bu KESİN eşleşmedir; tarih YOKLUĞU (okunamadı)
+    // eşleşmeyi partial'a düşürmemeli. DİKKAT: tarih UYUMSUZ (farklı okundu) ise
+    // bu istisna girmez — o gerçek uyumsuzluktur (imgDate dolu → dateExact yolu).
+    const dateUnreadableButRest = isOkcFisi && !imgDate && belgeNoExact && kdvExact;
     const strictMatch =
       belgeNoExact &&
       kdvExact &&
-      (dateExact || !isOkcFisi) &&
+      (dateExact || !isOkcFisi || dateUnreadableButRest) &&
       !rateMismatched &&
       !sellerMismatchBlocksStrict &&
       !ambiguousSellerHard;
