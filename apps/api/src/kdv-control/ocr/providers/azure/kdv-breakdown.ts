@@ -12,6 +12,7 @@
  */
 
 import type { KdvBreakdownItem } from '../../types';
+import { isValidKdvRate } from './helpers';
 
 type FoldFn = (s: string) => string;
 
@@ -81,7 +82,8 @@ export function extractMultiRateKdv(text: string, deps: KdvBreakdownDeps): KdvBr
     if (!labelMatch) continue;
 
     const oran = parseInt(labelMatch[1], 10);
-    if (!(oran > 0 && oran <= 30) || seen.has(oran)) continue;
+    // TR'de gecerli KDV orani degilse (or. %23/%26 iskonto orani) breakdown'a alma.
+    if (!isValidKdvRate(oran) || seen.has(oran)) continue;
 
     // 1) Ayni satirda label'den SONRA amount ara
     let tutar: number | null = null;

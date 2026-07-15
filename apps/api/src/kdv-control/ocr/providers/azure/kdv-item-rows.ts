@@ -14,6 +14,7 @@
  */
 
 import type { KdvBreakdownItem } from '../../types';
+import { isValidKdvRate } from './helpers';
 
 export interface KdvItemRowsDeps {
   parseAmount: (s: string) => number;
@@ -92,7 +93,8 @@ export function extractMultiRateKdvFromItemRows(text: string, deps: KdvItemRowsD
     let m: RegExpExecArray | null;
     while ((m = rateMarkerRe.exec(line)) !== null) {
       const oran = parseInt(m[1], 10);
-      if (!(oran > 0 && oran <= 30)) continue;
+      // TR'de gecerli KDV orani degilse (or. %23/%26 = iskonto orani sutunu) atla.
+      if (!isValidKdvRate(oran)) continue;
       const decimalPart = m[2];
       if (decimalPart && parseInt(decimalPart, 10) > 0) continue;
       const afterLabel = stripMatrahFragments(line.slice(m.index + m[0].length));
@@ -279,7 +281,7 @@ export function extractHesMatrahKdvTable(
 
     if (isToplam) {
       if (kdvAmount > 0) totalKdv = kdvAmount;
-    } else if (oran && oran > 0 && oran <= 30) {
+    } else if (oran && isValidKdvRate(oran)) {
       if (kdvAmount > 0) breakdown.set(oran, kdvAmount);
     }
   }

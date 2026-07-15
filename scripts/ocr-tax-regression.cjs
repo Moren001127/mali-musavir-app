@@ -343,6 +343,36 @@ const mezcarServiceText = [
   const mezcarResult = await mezcarSvc.runAzureOcr(Buffer.from('stub'), 'CHS2026000001375', 'CHS2026000001375.html');
   approx(parseTrAmount(mezcarResult.kdvTutari), 4710.61, 'MEZCAR tam-pipeline: ELEKTRIK ISCILIGI kalemi elektrik adapterini tetiklememeli, KDV=4.710,61');
 
+  // OZH2026000003080 (2026-07-15): tevkifatli alis; kalemlerdeki ISKONTO ORANI
+  // sutunu (%23, %26) KDV orani sanilip tam KDV 3.647,46 yerine 6.297,05'e
+  // sisiyordu. TR gecerli KDV orani filtresi (%1/%8/%10/%18/%20) %23/%26'yi eler.
+  // Net KDV = 1.823,73 (tevkifat dusulmus), tevkifat = 1.823,73, tam = 3.647,46.
+  const ozhText = [
+    'ÖZMUTLU DEMİR', 'VKN: 7030033123', 'e-FATURA', 'Fatura Tipi:', 'TEVKIFAT',
+    'Fatura No:', 'OZH2026000003080', 'Fatura Tarihi:', '08-06-2026',
+    'Sıra', 'İskonto', 'İskonto', 'KDV', 'Mal Hizmet',
+    'No', 'Miktar', 'Birim Fiyat', 'Oranı', 'Tutarı', 'Oranı', 'KDV Tutarı',
+    '1', '40X40X1,50.mm.BOYALI Profil', '60 m', '78,47 TL', '%23,00', '1.082,89 TL', '%20', '725,06 TL', 'KDV TEVKİFAT', '(%50,00)=362,53 TL', '3.625,31 TL',
+    '2', '30X30X1,50.mm.Profil Boru.', '60 m', '59,29 TL', '%26,00', '924,92 TL', '%20', '526,50 TL', 'KDV TEVKIFAT', '(%50,00)=263,25 TL', '2.632,48 TL',
+    '4', '20X20X1,50.mm.Profil Boru.', '60 m', '41,14 TL', '%26,00', '641,78 TL', '%20', '365,32 TL', 'KDV TEVKIFAT', '(%50,00)=182,66 TL', '1.826,62 TL',
+    'Mal Hizmet Toplam Tutarı', '24.454,14 TL',
+    'Hesaplanan KDV(%20', '3.647,46 TL',
+    'Hesaplanan KDV Tevkifat(%50)', '1.823,73 TL',
+    'Ödenecek Tutar', '20.061,04 TL',
+  ].join('\n');
+  const ozhSvc = new OcrService();
+  ozhSvc.getAzureRawText = async () => ozhText;
+  const ozhResult = await ozhSvc.runAzureOcr(Buffer.from('stub'), 'OZH2026000003080', 'OZH2026000003080.html');
+  const ozhOranlar = (ozhResult.kdvBreakdown || []).map((b) => b.oran).sort((a, b) => a - b);
+  assert(
+    !ozhOranlar.includes(23) && !ozhOranlar.includes(26),
+    `OZH tevkifatli: gecersiz KDV orani (%23/%26 iskonto orani) breakdown'a girmemeli, geldi: ${JSON.stringify(ozhOranlar)}`,
+  );
+  assert(
+    ozhOranlar.every((o) => [1, 8, 10, 18, 20].includes(o)),
+    `OZH tevkifatli: breakdown yalniz gecerli TR KDV orani icermeli, geldi: ${JSON.stringify(ozhOranlar)}`,
+  );
+
   console.log('OK ocr-tax-regression');
 })().catch((e) => {
   console.error(e && e.message ? e.message : e);

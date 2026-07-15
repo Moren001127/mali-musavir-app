@@ -4588,16 +4588,23 @@ ${JSON.stringify(payload, null, 2)}`;
     }
 
     const uyarilar: Array<{ tip: string; mesaj: string }> = [];
-    const parseZNo = (no: string | null | undefined): number | null => {
+    // Z raporu numarasi + SERI IMZASI. Farkli ÖKC (yazar kasa) cihazlari farkli
+    // format verir: "0680" (4 hane, sifir dolgulu) ile "757" (3 hane) AYRI seridir.
+    // Eski kod leading-zero'yu atip ikisini ayni sayi-uzayinda toplayinca aralarinda
+    // SAHTE "eksik Z raporu" boslugu cikiyordu. key = hane sayisi + leading-zero
+    // isareti; sira/duplicate takibi HER SERI icin AYRI yapilir.
+    const parseZNo = (no: string | null | undefined): { num: number; key: string } | null => {
       const raw = String(no || '').trim().toUpperCase();
       if (!raw || /[A-Z]/.test(raw)) return null;
       const digits = raw.replace(/\D/g, '');
       if (!digits || digits.length > 8) return null;
       const num = parseInt(digits, 10);
-      return Number.isFinite(num) && num > 0 ? num : null;
+      if (!Number.isFinite(num) || num <= 0) return null;
+      const key = `${digits.length}${digits.startsWith('0') ? 'Z' : 'N'}`;
+      return { num, key };
     };
 
-    const collectZNumbers = async (targetSessionId: string): Promise<number[]> => {
+    const collectZEntries = async (targetSessionId: string): Promise<Array<{ num: number; key: string }>> => {
       const zImages = await this.prisma.receiptImage.findMany({
         where: {
           sessionId: targetSessionId,
@@ -4611,7 +4618,7 @@ ${JSON.stringify(payload, null, 2)}`;
       });
       return zImages
         .map((img) => parseZNo(img.confirmedBelgeNo || img.ocrBelgeNo))
-        .filter((num): num is number => num !== null);
+        .filter((e): e is { num: number; key: string } => e !== null);
     };
 
     // Bu oturum içi gap kontrolü
@@ -4642,49 +4649,51 @@ ${JSON.stringify(payload, null, 2)}`;
     }
 
     // Z raporu sıra takibi: sadece OCR'ın Z_RAPORU diye etiketlediği satış belgeleri.
-    const zNumbers = await collectZNumbers(sessionId);
-    if (zNumbers.length > 0) {
-      const duplicateMap = zNumbers.reduce((acc, num) => {
-        acc[num] = (acc[num] || 0) + 1;
-        return acc;
-      }, {} as Record<number, number>);
-      const duplicateNos = Object.entries(duplicateMap)
-        .filter(([, count]) => count > 1)
-        .map(([num]) => Number(num))
-        .sort((a, b) => a - b);
-      if (duplicateNos.length > 0) {
-        const duplicateStr = duplicateNos.slice(0, 10).map((n) => `Z No ${n}`).join(', ');
-        const fazla = duplicateNos.length > 10 ? ` (+${duplicateNos.length - 10} tane daha)` : '';
+    // HER SERI (ÖKC cihazı) AYRI takip edilir — farklı serilerin numaraları
+    // birbiriyle "eksik/mükerrer" ilişkisine sokulmaz (0'lı ve 0'sız seri karışmaz).
+    const zEntries = await collectZEntries(sessionId);
+    if (zEntries.length > 0) {
+      const bySeri = new Map<string, number[]>();
+      for (const e of zEntries) {
+        const arr = bySeri.get(e.key) || [];
+        arr.push(e.num);
+        bySeri.set(e.key, arr);
+      }
+      const MAX_GAP = Number(process.env.KDV_SERI_MAX_GAP) || 10;
+      const tumEksikler: number[] = [];
+      const tumDuplicate: number[] = [];
+      for (const nums of bySeri.values()) {
+        // Bu seri içinde mükerrer
+        const dupMap = nums.reduce((acc, num) => { acc[num] = (acc[num] || 0) + 1; return acc; }, {} as Record<number, number>);
+        for (const [num, count] of Object.entries(dupMap)) {
+          if (count > 1) tumDuplicate.push(Number(num));
+        }
+        // Bu seri içinde boşluk (küçük boşluk = atlanmış Z raporu; büyük = kasa/dönem sınırı)
+        const sorted = [...new Set(nums)].sort((a, b) => a - b);
+        for (let i = 1; i < sorted.length; i++) {
+          const start = sorted[i - 1] + 1;
+          const end = sorted[i] - 1;
+          if (end < start || end - start + 1 > MAX_GAP) continue;
+          for (let n = start; n <= end; n++) tumEksikler.push(n);
+        }
+      }
+      tumDuplicate.sort((a, b) => a - b);
+      tumEksikler.sort((a, b) => a - b);
+      if (tumDuplicate.length > 0) {
+        const duplicateStr = tumDuplicate.slice(0, 10).map((n) => `Z No ${n}`).join(', ');
+        const fazla = tumDuplicate.length > 10 ? ` (+${tumDuplicate.length - 10} tane daha)` : '';
         uyarilar.push({
           tip: 'z_duplicate',
           mesaj: `Z raporu sıra takibinde aynı Z No birden fazla kez göründü: ${duplicateStr}${fazla}`,
         });
       }
-
-      const sortedZ = [...new Set(zNumbers)].sort((a, b) => a - b);
-      if (sortedZ.length >= 2) {
-        const eksikler: number[] = [];
-        // Büyük kesintisiz boşluk = ayrı yazar kasa (ÖKC) / seri / dönem sınırı.
-        // 2 kasa farklı Z No serisi verir (ör. 1380-1404 ve 1506-1518); aradaki
-        // ~100 numara GERÇEK eksik değildir. Sadece küçük boşlukları (gerçekten
-        // atlanmış Z raporu) işaretle. KDV_SERI_MAX_GAP ile ayarlanır.
-        const MAX_GAP = Number(process.env.KDV_SERI_MAX_GAP) || 10;
-        for (let i = 1; i < sortedZ.length; i++) {
-          const start = sortedZ[i - 1] + 1;
-          const end = sortedZ[i] - 1;
-          if (end < start || end - start + 1 > MAX_GAP) continue;
-          for (let n = start; n <= end; n++) {
-            eksikler.push(n);
-          }
-        }
-        if (eksikler.length > 0) {
-          const eksikStr = eksikler.slice(0, 20).map((n) => `Z No ${n}`).join(', ');
-          const fazla = eksikler.length > 20 ? ` (+${eksikler.length - 20} tane daha)` : '';
-          uyarilar.push({
-            tip: 'z_gap',
-            mesaj: `Z raporu sıra takibinde ${eksikler.length} eksik numara tespit edildi: ${eksikStr}${fazla}`,
-          });
-        }
+      if (tumEksikler.length > 0) {
+        const eksikStr = tumEksikler.slice(0, 20).map((n) => `Z No ${n}`).join(', ');
+        const fazla = tumEksikler.length > 20 ? ` (+${tumEksikler.length - 20} tane daha)` : '';
+        uyarilar.push({
+          tip: 'z_gap',
+          mesaj: `Z raporu sıra takibinde ${tumEksikler.length} eksik numara tespit edildi: ${eksikStr}${fazla}`,
+        });
       }
     }
 
@@ -4744,15 +4753,27 @@ ${JSON.stringify(payload, null, 2)}`;
             }
           }
 
-          const oncekiZNumbers = await collectZNumbers(oncekiSession.id);
-          if (oncekiZNumbers.length > 0 && zNumbers.length > 0) {
-            const oncekiSonZ = Math.max(...oncekiZNumbers);
-            const buDonemIlkZ = Math.min(...zNumbers);
-            if (buDonemIlkZ > oncekiSonZ + 1) {
-              uyarilar.push({
-                tip: 'z_cross_break',
-                mesaj: `Önceki dönem (${oncekiSession.periodLabel}) son Z No ${oncekiSonZ} → bu dönem ilk Z No ${buDonemIlkZ}. Aralarda ${buDonemIlkZ - oncekiSonZ - 1} Z raporu atlanmış.`,
-              });
+          // Cross-month Z kontrolü de SERI BAZLI: aynı ÖKC serisinin önceki dönem
+          // son numarası ile bu dönem ilk numarası karşılaştırılır (farklı seriler
+          // birbirinin "devamı" sanılıp sahte atlama uyarısı üretmesin).
+          const oncekiZEntries = await collectZEntries(oncekiSession.id);
+          if (oncekiZEntries.length > 0 && zEntries.length > 0) {
+            const buSonBySeri = new Map<string, number>();
+            for (const e of zEntries) {
+              buSonBySeri.set(e.key, Math.min(e.num, buSonBySeri.get(e.key) ?? Infinity));
+            }
+            const oncekiSonBySeri = new Map<string, number>();
+            for (const e of oncekiZEntries) {
+              oncekiSonBySeri.set(e.key, Math.max(e.num, oncekiSonBySeri.get(e.key) ?? -Infinity));
+            }
+            for (const [key, buIlkZ] of buSonBySeri) {
+              const oncekiSonZ = oncekiSonBySeri.get(key);
+              if (oncekiSonZ != null && buIlkZ > oncekiSonZ + 1 && buIlkZ - oncekiSonZ - 1 <= (Number(process.env.KDV_SERI_MAX_GAP) || 10)) {
+                uyarilar.push({
+                  tip: 'z_cross_break',
+                  mesaj: `Önceki dönem (${oncekiSession.periodLabel}) son Z No ${oncekiSonZ} → bu dönem ilk Z No ${buIlkZ}. Aralarda ${buIlkZ - oncekiSonZ - 1} Z raporu atlanmış.`,
+                });
+              }
             }
           }
         }

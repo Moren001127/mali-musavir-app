@@ -17,6 +17,19 @@
 
 type FoldFn = (s: string) => string;
 
+/**
+ * Turkiye'de GECERLI KDV oranlari. Guncel: %0, %1, %10, %20; eski/gecis: %8, %18.
+ * Bunlarin DISINDA bir oran ( or. %23, %26) KDV orani DEGILDIR — cogu zaman
+ * fatura kalemindeki "Iskonto Orani" sutunu KDV orani sanildiginda ortaya cikar
+ * (gercek vaka: OZH2026000003080 tevkifatli alis — %23/%26 iskonto oranlari KDV
+ * kirilimina girip tam KDV'yi 3.647,46 yerine 6.297,05'e sisirdi). breakdown'a
+ * yalniz bu set icindeki oranlar alinir.
+ */
+export const VALID_KDV_RATES = [1, 8, 10, 18, 20];
+export function isValidKdvRate(oran: number): boolean {
+  return VALID_KDV_RATES.includes(oran);
+}
+
 /** NBSP, figure-space, narrow no-break, full-width % normalize + tr-TR uppercase. */
 export function normalizeAzureText(text: string): string {
   if (!text) return '';
