@@ -3067,6 +3067,10 @@ ${JSON.stringify(payload, null, 2)}`;
         } else {
           await this.runOcrForImage(image.id, image.s3Key, { ...opts, forceFresh: true });
         }
+        // Tekil reocr'da da termal Z/ÖKC yıl düzeltmesi uygulanmalı (session
+        // forceFresh worker'ında zaten var; buraya eklenmeyince "19.06.2020"
+        // gibi bozuk yıl tekil reocr sonrası kalıyordu).
+        await this.snapReceiptDateYearToPeriod(image.id, image.session?.periodLabel).catch(() => {});
       } catch (err: any) {
         this.logger.error(`reocrSingleImage [${imageId}]: ${err?.message}`);
       }
