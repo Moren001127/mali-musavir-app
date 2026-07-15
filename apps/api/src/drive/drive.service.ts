@@ -2,6 +2,7 @@ import {
   Injectable,
   Logger,
   BadRequestException,
+  BadGatewayException,
   OnModuleInit,
   OnModuleDestroy,
   Optional,
@@ -428,6 +429,10 @@ export class DriveService implements OnModuleInit, OnModuleDestroy {
       throw new BadRequestException(`Fatura kaydi bulunamadi (${invoiceId})`);
     }
 
+    // Her yol denendiginde iz birakilir; hepsi tukenirse hata mesajinda gosterilir
+    // (canli 500'lerin nedeni yanit govdesinden okunabilsin).
+    const steps: string[] = [];
+
     // ANA KAYNAK = DRIVE (Mihsap kaldırılıyor). Belge, Drive yedeğinden FATURA NO
     // ile bulunur — yedek dosya adı/yolu fatura no içerir ("01.06.2026 -
     // LB32026007893564 - LIFECELL...jpg"). mihsapId'ye güvenilmez (KDV Kontrol
@@ -450,37 +455,90 @@ export class DriveService implements OnModuleInit, OnModuleDestroy {
         where: { tenantId_mihsapId: { tenantId, mihsapId: inv.mihsapId } },
       }).catch(() => null);
     }
-    const acc = backup?.driveFileId ? await this.getAccount(tenantId) : null;
+    if (!backup?.driveFileId) steps.push('kutuk-kaydi-yok');
 
-    if (backup?.driveFileId && acc?.isActive) {
+    const acc = await this.getAccount(tenantId).catch(() => null);
+    let token: string | null = null;
+    if (acc?.isActive) {
       try {
-        const token = await this.getValidAccessToken(tenantId);
-        const res = await fetch(
-          `https://www.googleapis.com/drive/v3/files/${backup.driveFileId}?alt=media&supportsAllDrives=true`,
-          { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(60000) },
-        );
-        if (res.ok) {
-          const buffer = Buffer.from(await res.arrayBuffer());
-          const contentType =
-            res.headers.get('content-type') || 'application/octet-stream';
+        token = await this.getValidAccessToken(tenantId);
+      } catch (e: any) {
+        steps.push(`drive-token: ${e?.message || e}`);
+      }
+    } else {
+      steps.push('drive-hesabi-pasif');
+    }
+
+    if (token && backup?.driveFileId) {
+      try {
+        const file = await this.driveGetFile(token, backup.driveFileId);
+        if (file) {
           return {
-            buffer,
-            contentType,
+            ...file,
             filename: backup.fileName || `${inv.faturaNo || invoiceId}`,
           };
         }
-        this.logger.warn(
-          `Drive'dan ${invoiceId} okunamadi (${res.status}) — MIHSAP'a dusuluyor`,
-        );
+        steps.push('drive-get: dosya okunamadi');
       } catch (e: any) {
-        this.logger.warn(
-          `Drive serve hatasi ${invoiceId}: ${e?.message || e} — MIHSAP fallback`,
+        steps.push(`drive-get: ${e?.message || e}`);
+      }
+    }
+
+    // Kutuk kaydi yok/bozuksa Drive'da FATURA NO ile ara (dosya adi fatura no icerir);
+    // bulunursa kutugu iyilestir ki sonraki okumalar hizli yoldan gitsin.
+    if (token && inv.faturaNo) {
+      try {
+        const foundId = await this.driveFindFirst(
+          token,
+          `name contains '${this.escapeQ(String(inv.faturaNo))}' and trashed=false`,
         );
+        if (foundId && foundId !== backup?.driveFileId) {
+          const file = await this.driveGetFile(token, foundId);
+          if (file) {
+            if (backup?.id) {
+              await (this.prisma as any).driveBackup
+                .update({ where: { id: backup.id }, data: { driveFileId: foundId } })
+                .catch(() => null);
+            }
+            this.logger.log(
+              `serveInvoiceFile ${invoiceId}: kutuk disi Drive eslesmesi (fatura no ${inv.faturaNo})`,
+            );
+            return { ...file, filename: `${inv.faturaNo || invoiceId}` };
+          }
+        }
+        if (!foundId) steps.push('drive-arama: bulunamadi');
+      } catch (e: any) {
+        steps.push(`drive-arama: ${e?.message || e}`);
       }
     }
 
     // Fallback: MIHSAP proxy (mevcut davranis)
-    return this.mihsap.getInvoiceFile(tenantId, invoiceId);
+    try {
+      return await this.mihsap.getInvoiceFile(tenantId, invoiceId);
+    } catch (e: any) {
+      steps.push(`mihsap: ${e?.response?.message || e?.message || e}`);
+      const detay = steps.join(' | ').slice(0, 350);
+      this.logger.error(`serveInvoiceFile ${invoiceId} tum yollar tukendi: ${detay}`);
+      throw new BadGatewayException(`Belge dosyasi alinamadi — ${detay}`);
+    }
+  }
+
+  /** Drive'dan dosya icerigini indirir; !ok ise null (status log'a duser). */
+  private async driveGetFile(
+    token: string,
+    fileId: string,
+  ): Promise<{ buffer: Buffer; contentType: string } | null> {
+    const res = await fetch(
+      `${DRIVE_FILES_URL}/${fileId}?alt=media&supportsAllDrives=true`,
+      { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(60000) },
+    );
+    if (!res.ok) {
+      this.logger.warn(`Drive dosya indirme ${fileId}: HTTP ${res.status}`);
+      return null;
+    }
+    const buffer = Buffer.from(await res.arrayBuffer());
+    const contentType = res.headers.get('content-type') || 'application/octet-stream';
+    return { buffer, contentType };
   }
 
   // ==================== YEDEKLEME ====================

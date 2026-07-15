@@ -9,6 +9,7 @@ import { ReconciliationEngine } from './reconciliation';
 import { LucaModule } from '../luca/luca.module';
 import { AgentEventsModule } from '../agent-events/agent-events.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { DriveModule } from '../drive/drive.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     forwardRef(() => LucaModule),
     AgentEventsModule,
     NotificationsModule,
+    DriveModule,
   ],
   providers: [KdvControlService, ExcelParserService, OcrService, ReconciliationEngine],
   controllers: [KdvControlController, KdvAgentController],

@@ -19,6 +19,7 @@ import { compareKdvExportRows } from './export/export-row-order';
 import { replaceSessionLucaRecordsInDb } from './session/session-record-replacement';
 import { LucaService } from '../luca/luca.service';
 import { LucaAutoScraperService } from '../luca/luca-auto-scraper.service';
+import { DriveService } from '../drive/drive.service';
 import { AgentEventsService } from '../agent-events/agent-events.service';
 import { AutomationEventBus } from '../automations/automation-event-bus.service';
 import { computeCostUsd, logAiUsage } from '../common/ai-usage-logger';
@@ -206,6 +207,8 @@ export class KdvControlService implements OnApplicationBootstrap {
     private agentEvents: AgentEventsService,
     private notifications: NotificationsService,
     @Optional() private readonly automationEventBus?: AutomationEventBus,
+    // Belge görüntüsünün ANA KAYNAĞI Drive (Mihsap kalkıyor); yoksa CDN'e düşülür
+    @Optional() private readonly drive?: DriveService,
   ) {}
 
   /**
@@ -214,7 +217,62 @@ export class KdvControlService implements OnApplicationBootstrap {
    */
   onApplicationBootstrap() {
     setTimeout(() => this.autoFixMissingBreakdowns(), 15_000); // Uygulama tam açılsın, 15s bekle
+    setTimeout(() => this.recoverOrphanedOcr(), 20_000); // Restart'ta PROCESSING'de asılı kalan OCR'ları kurtar
     setTimeout(() => this.recoverOrphanedContentAudits(), 25_000); // Restart'ta ölen içerik denetimi kuyruğunu kurtar
+  }
+
+  /**
+   * OCR kuyruğu da BELLEKTE çalışır; deploy/restart (veya erişilemeyen MIHSAP
+   * CDN'e zaman aşımsız fetch) belgeleri ocrStatus=PROCESSING'de öksüz bırakır —
+   * liste filtreleri PROCESSING'i göstermediği için kullanıcı belgeyi "kayboldu"
+   * görür. Açılışta TÜM PROCESSING OCR'lar öksüzdür (kuyruğu kuran süreç öldü);
+   * son 7 günün oturumlarındakiler otomatik yeniden okunur. Görüntü artık
+   * Drive-öncelikli geldiği için MIHSAP CDN erişilemese de tamamlanır; yine de
+   * başarısız olursa FAILED'a düşer (asılı kalmaz, "Yenile" ile tekrar denenir).
+   */
+  private async recoverOrphanedOcr() {
+    try {
+      const recentSince = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      const orphans = await this.prisma.receiptImage.findMany({
+        where: { ocrStatus: 'PROCESSING', session: { updatedAt: { gte: recentSince } } },
+        select: {
+          id: true,
+          s3Key: true,
+          session: { select: { tenantId: true, periodLabel: true } },
+        },
+        take: 100,
+      });
+      if (orphans.length === 0) {
+        this.logger.log('[ocrRecover] Öksüz PROCESSING OCR yok.');
+        return;
+      }
+      this.logger.warn(
+        `[ocrRecover] ${orphans.length} öksüz PROCESSING OCR — restart kurtarma, yeniden okunuyor`,
+      );
+      for (const img of orphans) {
+        const tenantId: string | undefined = (img as any).session?.tenantId;
+        if (!tenantId || !img.s3Key) continue;
+        try {
+          if (img.s3Key.startsWith('mihsap://')) {
+            const invoiceId = img.s3Key.slice('mihsap://'.length);
+            await this.runOcrForMihsapInvoice(img.id, invoiceId, tenantId, { forceFresh: true });
+          } else {
+            await this.runOcrForImage(img.id, img.s3Key, { forceFresh: true });
+          }
+          const periodLabel: string | undefined = (img as any).session?.periodLabel;
+          if (periodLabel) {
+            await this.snapReceiptDateYearToPeriod(img.id, periodLabel).catch(() => {});
+          }
+          // forceFresh içerik denetimini PENDING'e çeker — seri kuyrukla tamamla
+          void this.processContentAuditQueue([img.id], tenantId).catch(() => {});
+        } catch (e: any) {
+          this.logger.warn(`[ocrRecover] ${img.id}: ${e?.message || e}`);
+        }
+      }
+      this.logger.log('[ocrRecover] bitti.');
+    } catch (err: any) {
+      this.logger.error(`[ocrRecover] hata: ${err?.message || err}`);
+    }
   }
 
   /**
@@ -2865,6 +2923,7 @@ ${JSON.stringify(payload, null, 2)}`;
               Referer: 'https://app.mihsap.com/',
             },
             redirect: 'follow',
+            signal: AbortSignal.timeout(30000),
           });
           if (!cdnRes.ok) {
             diag.cdnFail++;
@@ -5331,23 +5390,36 @@ ${JSON.stringify(payload, null, 2)}`;
         throw new Error('Mihsap invoice kaydı bulunamadı');
       }
 
-      const url = inv.mihsapFileLink;
-      if (!url) throw new Error('mihsapFileLink boş — görsel çekilmemiş');
-
-      const res = await fetch(url, {
-        headers: {
-          'User-Agent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/121.0',
-          Accept: 'image/*,application/pdf,application/xml,*/*',
-          Referer: 'https://app.mihsap.com/',
-        },
-        redirect: 'follow',
-      });
-      if (!res.ok) throw new Error(`Mihsap CDN ${res.status}`);
-      const contentType = res.headers.get('content-type') || '';
-      const buffer = Buffer.from(await res.arrayBuffer());
+      // ANA KAYNAK = DRIVE (Mihsap kalkıyor; Railway sunucusu MIHSAP CDN'e
+      // erişemiyordu ve zaman aşımsız fetch belgeyi sonsuz PROCESSING'de
+      // bırakıyordu). serveInvoiceFile sırayla dener: Drive yedeği (kütük →
+      // fatura-no araması) → MIHSAP proxy (45sn zaman aşımılı). Hepsi biterse
+      // anlamlı hata fırlatır → catch FAILED işaretler, belge asılı kalmaz.
+      let buffer: Buffer;
+      let contentType: string;
+      if (this.drive) {
+        const file = await this.drive.serveInvoiceFile(tenantId, mihsapInvoiceId);
+        buffer = file.buffer;
+        contentType = file.contentType || '';
+      } else {
+        const url = inv.mihsapFileLink;
+        if (!url) throw new Error('mihsapFileLink boş — görsel çekilmemiş');
+        const res = await fetch(url, {
+          headers: {
+            'User-Agent':
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/121.0',
+            Accept: 'image/*,application/pdf,application/xml,*/*',
+            Referer: 'https://app.mihsap.com/',
+          },
+          redirect: 'follow',
+          signal: AbortSignal.timeout(45000),
+        });
+        if (!res.ok) throw new Error(`Mihsap CDN ${res.status}`);
+        contentType = res.headers.get('content-type') || '';
+        buffer = Buffer.from(await res.arrayBuffer());
+      }
       this.logger.log(
-        `Mihsap OCR [${imageId}] CDN: ${res.status} · ${contentType} · ${buffer.byteLength}B · ${inv.faturaNo || inv.id}`,
+        `Mihsap OCR [${imageId}] kaynak=${this.drive ? 'drive-öncelik' : 'cdn'}: ${contentType} · ${buffer.byteLength}B · ${inv.faturaNo || inv.id}`,
       );
 
       // PRENSİP: Mihsap'ın ham verisine (faturaNo, faturaTarihi vb.) güvenme.
