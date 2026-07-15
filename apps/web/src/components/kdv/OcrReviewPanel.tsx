@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, AlertTriangle, XCircle, Eye, Loader2, ZoomIn, ZoomOut, X as XIcon, Maximize2, RefreshCw } from 'lucide-react';
 import { kdvApi } from '@/lib/kdv';
+import { api } from '@/lib/api';
 import { toast } from 'sonner';
 
 const GOLD = '#b8a06f';
@@ -199,15 +200,31 @@ export function OcrReviewPanel({
       kdvTevkifat: activeImg.confirmedKdvTevkifat ?? activeImg.ocrKdvTevkifat ?? '',
       breakdown: (activeImg.confirmedKdvBreakdown ?? activeImg.ocrKdvBreakdown ?? null) as KdvBreakdownItem[] | null,
     });
-    // Presigned URL'i yükle — hata yakalama + retry; takılırsa sonsuz spinner kalmasın.
+    // Görsel kaynağı — ANA KAYNAK DRIVE (proxyPath: kimlikli backend akışı,
+    // Drive-öncelik + MIHSAP fallback). proxyPath varsa blob olarak çekilir
+    // (img src'ye Authorization eklenemez); yoksa eski davranış (presigned/CDN url).
+    // Hata yakalama + retry; takılırsa sonsuz spinner kalmasın.
     let cancelled = false;
+    let objectUrl: string | null = null;
     const id = activeImg.id;
     setPreviewUrl(null);
     setPreviewError(false);
     let tries = 0;
     const attempt = () => {
       kdvApi.getImageUrl(id)
-        .then((r: any) => { if (!cancelled) setPreviewUrl(r.url); })
+        .then(async (r: any) => {
+          if (cancelled) return;
+          if (r?.proxyPath) {
+            const resp = await api.get(r.proxyPath, { responseType: 'blob' });
+            if (cancelled) return;
+            objectUrl = URL.createObjectURL(resp.data);
+            setPreviewUrl(objectUrl);
+          } else if (r?.url) {
+            setPreviewUrl(r.url);
+          } else {
+            throw new Error('görsel url yok');
+          }
+        })
         .catch(() => {
           if (cancelled) return;
           tries += 1;
@@ -218,6 +235,7 @@ export function OcrReviewPanel({
     attempt();
     return () => {
       cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [activeImg?.id, previewNonce]);
 

@@ -1764,7 +1764,11 @@ export class KdvControlService implements OnApplicationBootstrap {
     if (!image) throw new NotFoundException('Görsel bulunamadı');
     this.assertSessionUnlocked(image.session);
 
-    // Mihsap kaynaklı görsel → CDN link
+    // Mihsap kaynaklı görsel → ANA KAYNAK DRIVE (kullanıcı talebi 2026-07-15):
+    // faturalar zaten Drive'a PDF yedekleniyor; MIHSAP CDN'e (token/oturum
+    // kırılgan) bağlı kalınmaz. proxyPath = /agent/drive/invoices/:id/file
+    // (Drive-öncelikli, MIHSAP fallback'li mevcut kimlikli akış). Eski frontend
+    // için `url` (CDN) da dönülür — yeni frontend proxyPath'i tercih eder.
     if (image.s3Key?.startsWith('mihsap://')) {
       const invoiceId = image.s3Key.slice('mihsap://'.length);
       const inv = await (this.prisma as any).mihsapInvoice.findUnique({
@@ -1773,10 +1777,10 @@ export class KdvControlService implements OnApplicationBootstrap {
       if (!inv || inv.tenantId !== tenantId) {
         throw new NotFoundException('Mihsap faturası bulunamadı');
       }
-      if (!inv.mihsapFileLink) {
-        throw new BadRequestException('Mihsap CDN link boş — fatura henüz çekilmemiş');
-      }
-      return { url: inv.mihsapFileLink as string };
+      return {
+        url: (inv.mihsapFileLink as string) || null,
+        proxyPath: `/agent/drive/invoices/${invoiceId}/file`,
+      };
     }
 
     const url = await this.storage.getPresignedDownloadUrl(
