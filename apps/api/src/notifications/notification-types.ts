@@ -22,6 +22,9 @@ export const NOTIFICATION_TYPES = {
   TASK_DUE: 'TASK_DUE',
   PORTAL_CREDENTIAL_FAIL: 'PORTAL_CREDENTIAL_FAIL',
   LUCA_SYNC_ERROR: 'LUCA_SYNC_ERROR',
+  // Güvenlik kodu (captcha) çözücü servis hatası — 2captcha bakiye bitti / anahtar geçersiz.
+  // Bu bitince SGK/beyanname/HGS/e-Tebligat gibi TÜM güvenlik-kodlu otomasyonlar durur.
+  CAPTCHA_SOLVER_ERROR: 'CAPTCHA_SOLVER_ERROR',
 
   // === Yeni: Orta Öncelik (Sprint 2) ===
   TAX_DEADLINE: 'TAX_DEADLINE',
@@ -52,6 +55,7 @@ export const CRITICAL_TYPES = new Set<NotificationType>([
   NOTIFICATION_TYPES.AUTH_NEW_DEVICE,
   NOTIFICATION_TYPES.E_TEBLIGAT,
   NOTIFICATION_TYPES.TAX_DEADLINE,
+  NOTIFICATION_TYPES.CAPTCHA_SOLVER_ERROR,
 ]);
 
 /** Hangi tipler tenant geneli (userId=null) varsayılan olarak atılır? */
@@ -61,6 +65,7 @@ export const TENANT_WIDE_TYPES = new Set<NotificationType>([
   NOTIFICATION_TYPES.E_TEBLIGAT,
   NOTIFICATION_TYPES.PORTAL_CREDENTIAL_FAIL,
   NOTIFICATION_TYPES.LUCA_SYNC_ERROR,
+  NOTIFICATION_TYPES.CAPTCHA_SOLVER_ERROR,
   NOTIFICATION_TYPES.SYSTEM,
   NOTIFICATION_TYPES.MOREN_AI_ALERT,
 ]);

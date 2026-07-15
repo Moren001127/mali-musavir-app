@@ -1148,6 +1148,7 @@ export class PortalAutomationService {
     if (!job) throw new NotFoundException('Job bulunamadi');
     if (job.status === 'cancelled') return job;
     await this.markCredentialError(job, errorMessage).catch(() => {});
+    await this.maybeAlert2captchaAccountIssue(tenantId, errorMessage).catch(() => {});
     return (this.prisma as any).portalAutomationJob.update({
       where: { id: jobId },
       data: {
@@ -1161,6 +1162,41 @@ export class PortalAutomationService {
         }),
       },
     });
+  }
+
+  // 2captcha HESAP hatasi (bakiye bitti / anahtar gecersiz) tenant basina son uyari zamani —
+  // ayni hatada her basarisiz iste degil, 6 saatte 1 kez owner'a bildirim (spam yok).
+  private static readonly last2captchaAlertAt = new Map<string, number>();
+
+  /**
+   * Job hata mesaji 2captcha HESAP-seviyesi hata iceriyorsa (bakiye 0, anahtar gecersiz/yasakli)
+   * owner'a KRITIK bildirim yazar. Bu servis bitince SGK/beyanname/HGS/e-Tebligat gibi guvenlik-kodlu
+   * TUM otomasyonlar sessizce basarisiz oluyordu; artik ilk hatada net uyari gider.
+   * Dedup: tenant+kod basina 6 saat.
+   */
+  private async maybeAlert2captchaAccountIssue(tenantId: string, errorMessage: string) {
+    const m = /ERROR_ZERO_BALANCE|ERROR_WRONG_USER_KEY|ERROR_KEY_DOES_NOT_EXIST|IP_BANNED|ERROR_NO_SLOT_AVAILABLE/i.exec(
+      String(errorMessage || ''),
+    );
+    if (!m) return;
+    const code = m[0].toUpperCase();
+    const key = `${tenantId}:${code}`;
+    const now = Date.now();
+    const last = PortalAutomationService.last2captchaAlertAt.get(key) || 0;
+    if (now - last < 6 * 60 * 60 * 1000) return; // 6 saat dedup
+    PortalAutomationService.last2captchaAlertAt.set(key, now);
+
+    const isBalance = /ZERO_BALANCE|NO_SLOT/i.test(code);
+    const title = isBalance
+      ? '🔴 2captcha bakiyesi bitti — otomasyonlar durdu'
+      : '🔴 2captcha güvenlik kodu servisi hatası — otomasyonlar durdu';
+    const body = isBalance
+      ? 'Güvenlik kodu (captcha) çözücü servisin bakiyesi bitti. SGK, beyanname, HGS gibi güvenlik kodu isteyen TÜM otomasyonlar başarısız oluyor. 2captcha.com hesabına bakiye yükleyin — yükleyince otomasyonlar kendiliğinden çalışır.'
+      : `2captcha servisi "${code}" hatası veriyor (anahtar geçersiz/yasaklı olabilir). Güvenlik kodu isteyen tüm otomasyonlar duruyor. TWOCAPTCHA_API_KEY ayarını kontrol edin.`;
+    await (this.prisma as any).notification
+      .create({ data: { tenantId, title, body, type: 'CAPTCHA_SOLVER_ERROR', metadata: { code } } })
+      .catch(() => {});
+    this.logger.warn(`[2captcha] hesap hatasi (${code}) → owner uyarildi (tenant ${tenantId})`);
   }
 
   async completeJob(
