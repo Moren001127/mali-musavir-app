@@ -433,27 +433,42 @@ export class DriveService implements OnModuleInit, OnModuleDestroy {
     // (canli 500'lerin nedeni yanit govdesinden okunabilsin).
     const steps: string[] = [];
 
-    // ANA KAYNAK = DRIVE (Mihsap kaldırılıyor). Belge, Drive yedeğinden FATURA NO
-    // ile bulunur — yedek dosya adı/yolu fatura no içerir ("01.06.2026 -
-    // LB32026007893564 - LIFECELL...jpg"). mihsapId'ye güvenilmez (KDV Kontrol
-    // import'unda boş kalıyor). mihsapId varsa yalnız hızlı yol; asıl eşleşme fatura no.
-    let backup =
-      inv.faturaNo
-        ? await (this.prisma as any).driveBackup.findFirst({
-            where: {
-              tenantId,
-              OR: [
-                { fileName: { contains: String(inv.faturaNo) } },
-                { filePath: { contains: String(inv.faturaNo) } },
-              ],
-            },
-            orderBy: { backedUpAt: 'desc' },
-          }).catch(() => null)
-        : null;
-    if (!backup?.driveFileId && inv.mihsapId) {
-      backup = await (this.prisma as any).driveBackup.findUnique({
-        where: { tenantId_mihsapId: { tenantId, mihsapId: inv.mihsapId } },
-      }).catch(() => null);
+    // ANA KAYNAK = DRIVE. Belge, AİT OLDUĞU KLASÖRDEN gelir:
+    // FATURALAR/{mükellef}/{yıl}/{ay}/{Alış|Satış}. Yani önce mükellef+dönem+yön
+    // ile DriveBackup DARALTILIR, sonra fatura no ile TAM eşleşme aranır.
+    // KÖK BUG (2026-07-15): eski kod tüm tenant'ta `fileName contains faturaNo`
+    // yapıyordu → KISA Z raporu no'su ("1523") başka mükellefin uzun belge no'lu
+    // dosyasında ("BEY2026000081523") substring geçince YANLIŞ belge açılıyordu.
+    // 1) mihsapId varsa → kesin unique (en güvenilir yol).
+    let backup = inv.mihsapId
+      ? await (this.prisma as any).driveBackup.findUnique({
+          where: { tenantId_mihsapId: { tenantId, mihsapId: inv.mihsapId } },
+        }).catch(() => null)
+      : null;
+
+    // 2) mihsapId yoksa/bulunamadıysa: KLASÖR (mükellef+dönem+yön) daraltması içinde
+    //    fatura no'nun RAKAM-SINIRLI tam eşleşmesi. Klasör alanları boşsa daraltma
+    //    yapılmaz ama boundary-match yine yanlış-substring eşleşmesini engeller.
+    if (!backup?.driveFileId && inv.faturaNo) {
+      const faturaNo = String(inv.faturaNo).trim();
+      const where: any = { tenantId };
+      if (inv.mukellefId) where.mukellefId = inv.mukellefId;
+      if (inv.donem) where.donem = inv.donem;
+      if (inv.faturaTuru) where.faturaTuru = inv.faturaTuru;
+      const klasorAdaylari: any[] = await (this.prisma as any).driveBackup
+        .findMany({ where, orderBy: { backedUpAt: 'desc' }, take: 1000 })
+        .catch(() => []);
+      backup =
+        klasorAdaylari.find(
+          (b) =>
+            this.faturaNoBoundaryMatch(b.fileName, faturaNo) ||
+            this.faturaNoBoundaryMatch(b.filePath, faturaNo),
+        ) || null;
+      if (!backup) {
+        steps.push(
+          `klasor-eslesme-yok(mukellef=${inv.mukellefId ? 'var' : 'yok'},donem=${inv.donem || '-'},yon=${inv.faturaTuru || '-'},aday=${klasorAdaylari.length})`,
+        );
+      }
     }
     if (!backup?.driveFileId) steps.push('kutuk-kaydi-yok');
 
@@ -484,35 +499,12 @@ export class DriveService implements OnModuleInit, OnModuleDestroy {
       }
     }
 
-    // Kutuk kaydi yok/bozuksa Drive'da FATURA NO ile ara (dosya adi fatura no icerir);
-    // bulunursa kutugu iyilestir ki sonraki okumalar hizli yoldan gitsin.
-    if (token && inv.faturaNo) {
-      try {
-        const foundId = await this.driveFindFirst(
-          token,
-          `name contains '${this.escapeQ(String(inv.faturaNo))}' and trashed=false`,
-        );
-        if (foundId && foundId !== backup?.driveFileId) {
-          const file = await this.driveGetFile(token, foundId);
-          if (file) {
-            if (backup?.id) {
-              await (this.prisma as any).driveBackup
-                .update({ where: { id: backup.id }, data: { driveFileId: foundId } })
-                .catch(() => null);
-            }
-            this.logger.log(
-              `serveInvoiceFile ${invoiceId}: kutuk disi Drive eslesmesi (fatura no ${inv.faturaNo})`,
-            );
-            return { ...file, filename: `${inv.faturaNo || invoiceId}` };
-          }
-        }
-        if (!foundId) steps.push('drive-arama: bulunamadi');
-      } catch (e: any) {
-        steps.push(`drive-arama: ${e?.message || e}`);
-      }
-    }
+    // NOT: Eski "Drive'da fatura no ile serbest arama" (name contains) bloğu
+    // KALDIRILDI — Google Drive araması sınır kontrolü yapamadığı için kısa Z
+    // raporu no'ları yanlış belge getiriyordu. Kütükte (mükellef+dönem+yön klasörü)
+    // güvenli eşleşme bulunamazsa YANLIŞ belge göstermek yerine MIHSAP'a düşülür.
 
-    // Fallback: MIHSAP proxy (mevcut davranis)
+    // Fallback: MIHSAP proxy (invoiceId ile DOĞRU belge; CDN erişilebilirse)
     try {
       return await this.mihsap.getInvoiceFile(tenantId, invoiceId);
     } catch (e: any) {
@@ -801,6 +793,23 @@ export class DriveService implements OnModuleInit, OnModuleDestroy {
 
   private escapeQ(s: string): string {
     return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  }
+
+  /**
+   * Fatura no'nun dosya adında/yolunda TAM (sınırlı) geçip geçmediği. Kısa Z raporu
+   * numaraları ("1523") uzun belge no'lu başka dosyanın İÇİNDE ("BEY2026000081523")
+   * substring olarak geçince YANLIŞ belge açılıyordu — bu yüzden fatura no'nun
+   * öncesi/sonrası harf-rakam OLMAMALI (ayraç/boşluk/başlangıç/son ile çevrili).
+   */
+  private faturaNoBoundaryMatch(name: string | null | undefined, faturaNo: string): boolean {
+    if (!name || !faturaNo) return false;
+    const esc = String(faturaNo).trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (!esc) return false;
+    try {
+      return new RegExp(`(^|[^0-9A-Za-z])${esc}([^0-9A-Za-z]|$)`).test(String(name));
+    } catch {
+      return false;
+    }
   }
 
   private async driveFindFolder(

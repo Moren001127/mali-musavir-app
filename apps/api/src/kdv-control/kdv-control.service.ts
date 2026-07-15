@@ -4670,11 +4670,23 @@ ${JSON.stringify(payload, null, 2)}`;
         }
         // Bu seri içinde boşluk (küçük boşluk = atlanmış Z raporu; büyük = kasa/dönem sınırı)
         const sorted = [...new Set(nums)].sort((a, b) => a - b);
+        const seriEksik: number[] = [];
         for (let i = 1; i < sorted.length; i++) {
           const start = sorted[i - 1] + 1;
           const end = sorted[i] - 1;
           if (end < start || end - start + 1 > MAX_GAP) continue;
-          for (let n = start; n <= end; n++) tumEksikler.push(n);
+          for (let n = start; n <= end; n++) seriEksik.push(n);
+        }
+        // SEYREK SERİ FİLTRESİ: Bir ÖKC serisinde numaraların büyük kısmı boşsa
+        // (ör. 16 rapor, 15 boşluk) bu seri "her gün çekilmeyen kasa / eksik
+        // yükleme" demektir — tek tek "eksik Z No" listelemek yanlış alarmdır
+        // (kullanıcı: iki kasa iç içe, boşluk normal). Yalnız YOĞUN seride
+        // (numaralar çoğunlukla ardışık, boşluk oranı ≤%40) gerçek atlanmış
+        // raporları göster. KDV_SERI_SPARSE_RATIO ile ayarlanır.
+        const boslukOrani = seriEksik.length / (seriEksik.length + sorted.length || 1);
+        const SPARSE = Number(process.env.KDV_SERI_SPARSE_RATIO) || 0.4;
+        if (seriEksik.length > 0 && boslukOrani <= SPARSE) {
+          tumEksikler.push(...seriEksik);
         }
       }
       tumDuplicate.sort((a, b) => a - b);
@@ -4757,7 +4769,11 @@ ${JSON.stringify(payload, null, 2)}`;
           // son numarası ile bu dönem ilk numarası karşılaştırılır (farklı seriler
           // birbirinin "devamı" sanılıp sahte atlama uyarısı üretmesin).
           const oncekiZEntries = await collectZEntries(oncekiSession.id);
-          if (oncekiZEntries.length > 0 && zEntries.length > 0) {
+          // Birden fazla ÖKC serisi (iki kasa iç içe) varsa dönem geçişi
+          // güvenilmez — hangi kasanın hangi dönemde nerede kaldığı karışır,
+          // sahte "atlanmış" üretir. Yalnız TEK seride cross-break kontrol edilir.
+          const buSeriSayisi = new Set(zEntries.map((e) => e.key)).size;
+          if (oncekiZEntries.length > 0 && zEntries.length > 0 && buSeriSayisi <= 1) {
             const buSonBySeri = new Map<string, number>();
             for (const e of zEntries) {
               buSonBySeri.set(e.key, Math.min(e.num, buSonBySeri.get(e.key) ?? Infinity));
