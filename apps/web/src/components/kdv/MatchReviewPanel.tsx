@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, XCircle, AlertTriangle, Loader2, ChevronDown, ChevronRight, Maximize2, FileText } from 'lucide-react';
 import { kdvApi } from '@/lib/kdv';
+import { api } from '@/lib/api';
 import { toast } from 'sonner';
 
 const GOLD = '#b8a06f';
@@ -138,11 +139,27 @@ function MatchRow({
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   useEffect(() => {
-    if (!open || !r.image?.id || isXmlFile) return;
+    // XML e-fatura OLSA BİLE görseli çek: fatura Drive'a PDF/JPG olarak yedekleniyor
+    // (FATURALAR/{mükellef}/{yıl}/{ay}/{Alış|Satış}). Eskiden isXmlFile'da görsel hiç
+    // istenmiyordu → panelde yalnız "XML parse edildi" yazıp belge gösterilmiyordu.
+    if (!open || !r.image?.id) return;
     let cancelled = false;
+    let objectUrl: string | null = null;
     kdvApi
       .getImageUrl(r.image.id)
-      .then((resp: any) => {
+      .then(async (resp: any) => {
+        if (cancelled) return;
+        // Drive-öncelikli kimlikli uç (proxyPath) blob olarak çekilir; img src'ye
+        // Authorization eklenemediği için. Başarısızsa CDN url'ine düşülür.
+        if (resp?.proxyPath) {
+          try {
+            const blobResp = await api.get(resp.proxyPath, { responseType: 'blob' });
+            if (cancelled) return;
+            objectUrl = URL.createObjectURL(blobResp.data);
+            setImageUrl(objectUrl);
+            return;
+          } catch { /* proxy başarısız → CDN fallback */ }
+        }
         if (!cancelled) setImageUrl(resp?.url || null);
       })
       .catch(() => {
@@ -150,8 +167,9 @@ function MatchRow({
       });
     return () => {
       cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [open, r.image?.id, isXmlFile]);
+  }, [open, r.image?.id]);
 
   const reasons: string[] = r.mismatchReasons ?? [];
   const statusLabel = r.status === 'PARTIAL_MATCH' ? 'Kısmi Eşleşme' : 'İnceleme Gerekli';
@@ -243,15 +261,17 @@ function MatchRow({
               )}
             </div>
 
-            {/* Görsel önizleme */}
-            {isXmlFile ? (
-              <div className="mb-3 flex items-center gap-2 px-3 py-2 rounded" style={{ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.2)' }}>
+            {/* Görsel önizleme — XML e-faturada da BELGE GÖSTERİLİR (Drive yedeği).
+                XML notu yalnız bilgi amaçlı; görselin yerini ALMAZ. */}
+            {isXmlFile && (
+              <div className="mb-2 flex items-center gap-2 px-3 py-2 rounded" style={{ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.2)' }}>
                 <FileText size={14} style={{ color: '#22c55e' }} />
                 <span className="text-[11px]" style={{ color: '#22c55e' }}>
-                  XML e-Fatura — doğrudan parse edildi (OCR yok)
+                  XML e-Fatura — tutarlar XML'den doğrudan okundu (OCR yok)
                 </span>
               </div>
-            ) : imageUrl ? (
+            )}
+            {imageUrl ? (
               <div
                 className="mb-3 rounded overflow-hidden cursor-zoom-in"
                 style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.05)', maxHeight: 200 }}
