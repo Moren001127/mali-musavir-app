@@ -152,7 +152,16 @@ export function extractZRaporuKdv(
 
   const addBreakdown = (oran: number, tutar: number): void => {
     if (!(oran > 0 && oran <= 30 && tutar > 0)) return;
-    const gross = result.matrahByOran[oran] ?? null;
+    let gross = result.matrahByOran[oran] ?? null;
+    // GÜVENLİK: KDV, kendi oranının BRÜT satışına EŞİT ya da ONDAN BÜYÜK olamaz.
+    // Termal Z raporunda OCR "TOPKDV /10" satırının altına brütü tekrar basabiliyor
+    // (gerçek vaka 770: TOPLAM %10 = 4.044,00 · TOPKDV /10 → 4.044,00 alınıp KDV
+    // sanıldı; gerçek KDV 367,67) ya da kümülatif değeri taşıyabiliyor (1531:
+    // 450.196,31). Bu durumda KDV brütten oran payıyla türetilir.
+    if (gross != null && gross > 0 && tutar >= gross - 0.01) {
+      const derived = Math.round(((gross * oran) / (100 + oran)) * 100) / 100;
+      if (derived > 0) tutar = derived;
+    }
     const matrah = gross != null && gross > tutar
       ? Math.round((gross - tutar) * 100) / 100
       : gross;
