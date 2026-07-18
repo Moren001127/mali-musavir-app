@@ -2916,7 +2916,15 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     }).catch(() => []);
     for (const r of earsiv as any[]) { const n = String(r.faturaNo || '').trim().toUpperCase(); if (n) nolar.add(n); }
     const docs = await (this.prisma as any).invoiceAccountingDocument.findMany({
-      where: { tenantId, taxpayerId, invoiceKind: 'SATIS', faturaTarihi: { gte: start, lt: end }, belgeNo: { not: null } },
+      where: {
+        tenantId, taxpayerId, invoiceKind: 'SATIS', belgeNo: { not: null },
+        // faturaTarihi henüz okunmamış belge dönem dışı kalıp SAHTE boşluk üretmesin → createdAt yedeği
+        //   (isabetOzeti ile aynı desen).
+        OR: [
+          { faturaTarihi: { gte: start, lt: end } },
+          { AND: [{ faturaTarihi: null }, { createdAt: { gte: start, lt: end } }] },
+        ],
+      },
       select: { belgeNo: true },
       take: 20000,
     }).catch(() => []);
@@ -2949,9 +2957,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         //   yanlış alarmla listeyi boğmasın diye kapsam dışı.
         if (adet > 1000) continue;
         eksikToplam += adet;
-        if (bosluklar.length < 20) bosluklar.push({ baslangic: fmt(sirali[i - 1] + 1), bitis: fmt(sirali[i] - 1), adet });
+        if (bosluklar.length < 60) bosluklar.push({ baslangic: fmt(sirali[i - 1] + 1), bitis: fmt(sirali[i] - 1), adet });
       }
-      if (!eksikToplam) continue;
+      // Boşluğu olmayan seri de listelenir (eksikToplam=0) — kullanıcı hangi serilerin tarandığını
+      //   ve tam aralığı görsün ("serileri tam göster" talebi); şerit yalnız toplamEksik>0 iken çıkar.
       toplamEksik += eksikToplam;
       seriler.push({ seri: key, adet: g.siralar.size, ilk: fmt(sirali[0]), son: fmt(sirali[sirali.length - 1]), eksikToplam, bosluklar });
     }

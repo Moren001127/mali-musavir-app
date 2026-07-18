@@ -1425,7 +1425,16 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
         {kind === 'SATIS' && noGaps && noGaps.toplamEksik > 0 && (
           <div className="eksikbelge" title="Satış faturası numaraları ardışık gitmeli — aradaki boşluk kesilmemiş, iptal edilmiş ya da sisteme gelmemiş fatura demek olabilir.">
             <Ico html={I.info} size={14} />
-            <span><b>{noGaps.toplamEksik}</b> satış belge numarası boşluğu var: {(noGaps.seriler || []).slice(0, 3).map((s: any) => `${s.bosluklar.slice(0, 3).map((b: any) => b.adet === 1 ? b.baslangic : `${b.baslangic}–${b.bitis} (${b.adet})`).join(', ')}${s.bosluklar.length > 3 ? '…' : ''}`).join(' · ')}</span>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              <span><b>{noGaps.toplamEksik}</b> satış belge numarası boşluğu var{ocrProg?.active ? ' — okuma sürüyor, liste okuma bitince netleşir' : ''}:</span>
+              {(noGaps.seriler || []).map((s: any) => (
+                <span key={s.seri}>
+                  <b>{s.seri}</b> · {s.adet} belge ({s.ilk} – {s.son}){s.eksikToplam > 0
+                    ? <> · eksik: {s.bosluklar.map((b: any) => b.adet === 1 ? b.baslangic : `${b.baslangic}–${b.bitis} (${b.adet})`).join(', ')}</>
+                    : ' · boşluk yok'}
+                </span>
+              ))}
+            </div>
           </div>
         )}
         <div className="twrap">
