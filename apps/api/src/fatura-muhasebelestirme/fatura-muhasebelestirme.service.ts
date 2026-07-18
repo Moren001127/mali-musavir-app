@@ -2626,7 +2626,50 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           this.uploadOcrActive = Math.max(0, this.uploadOcrActive - 1);
           if (job.documentId) this.uploadOcrActiveIds.delete(job.documentId);
           this.drainUploadedOcrQueue();
+          // OKUMA KUYRUĞU BOŞALINCA yorum+denetçi ÖN-ÜRETİMİ: kullanıcı belgeyi açmadan hazır olsun
+          //   (kullanıcı: "detaya tıklayınca değerlendirmeyi/denetçiyi hemen göremiyorum").
+          if (this.uploadOcrActive === 0 && this.uploadOcrQueue.length === 0) {
+            void this.sweepRichYorum(job.tenantId).catch(() => {});
+          }
         });
+    }
+  }
+
+  /** YORUM + DENETÇİ ÖN-ÜRETİMİ (arka plan): zengin AI değerlendirmesi ve Katman-2 denetçi kararı
+   *  eskiden yalnız belge AÇILINCA (lazy) üretiliyordu → toplu okuma sonrası her belgede ~15sn
+   *  bekleme. Artık okuma kuyruğu boşalınca ve "Kodları düzelt" sonrası eksik olanlar arka planda
+   *  SIRAYLA üretilir (Max yükü için eşzamanlılık 1; okuma kuyruğuna yeni iş gelirse süpürme durur,
+   *  okuma biter bitmez kaldığı yerden tetiklenir). */
+  private richSweepBusy = new Set<string>();
+  private async sweepRichYorum(tenantId: string) {
+    if (this.richSweepBusy.has(tenantId)) return;
+    this.richSweepBusy.add(tenantId);
+    try {
+      const docs: any[] = await (this.prisma as any).invoiceAccountingDocument.findMany({
+        where: { tenantId, status: { in: ['READY', 'NEEDS_REVIEW'] } },
+        select: { id: true, ocrData: true, lines: { select: { group: true, accountCode: true } } },
+        orderBy: [{ updatedAt: 'desc' }],
+        take: 300,
+      }).catch(() => []);
+      const bekleyen = docs.filter((d) => {
+        const ocr: any = d.ocrData || {};
+        const zenginVar = !!String(ocr.muhasebeNedenZengin || '').trim();
+        const denetimVar = !!(ocr.denetim && typeof ocr.denetim === 'object');
+        const matrahVar = (d.lines || []).some((l: any) => String(l.group || '') === 'matrah' && String(l.accountCode || '').trim());
+        return matrahVar && (!zenginVar || !denetimVar);
+      });
+      if (!bekleyen.length) return;
+      this.logger.log(`[YORUM-SWEEP] ${bekleyen.length} belge için zengin yorum+denetçi arka planda üretiliyor (tenant=${tenantId})`);
+      let uretilen = 0;
+      for (const d of bekleyen) {
+        // Okuma kuyruğuna yeni iş geldiyse ona yol ver — süpürme sonraki boşalmada devam eder.
+        if (this.uploadOcrQueue.length || this.uploadOcrActive) break;
+        await this.generateRichMuhasebeNeden(tenantId, d.id, true).catch(() => {});
+        uretilen++;
+      }
+      this.logger.log(`[YORUM-SWEEP] ${uretilen}/${bekleyen.length} belge tamamlandı (tenant=${tenantId})`);
+    } finally {
+      this.richSweepBusy.delete(tenantId);
     }
   }
 
@@ -9753,6 +9796,30 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       }
       await this.revalidateDocument(tenantId, d.id).catch(() => {});
     }
+    // RETROAKTİF ALICI ADI (SATIŞ): listede firma "—" görünen belgeler — alıcı ünvanı okunamadı ama
+    //   GİB e-Arşiv/e-Fatura listesinde (earsiv_faturalar.alici) mevcut. Boş olanlar oradan doldurulur.
+    try {
+      const adsiz = await (this.prisma as any).invoiceAccountingDocument.findMany({
+        where: { tenantId, taxpayerId, invoiceKind: 'SATIS', belgeNo: { not: null }, OR: [{ customerName: null }, { customerName: '' }] },
+        select: { id: true, belgeNo: true },
+        take: 1000,
+      }).catch(() => []);
+      let adDoldu = 0;
+      for (const d of adsiz as any[]) {
+        const ef = await (this.prisma as any).earsivFatura.findFirst({
+          where: { tenantId, taxpayerId, tip: 'SATIS', faturaNo: String(d.belgeNo) },
+          select: { alici: true },
+        }).catch(() => null);
+        const ad = String(ef?.alici || '').trim();
+        if (ad) {
+          await (this.prisma as any).invoiceAccountingDocument.update({ where: { id: d.id }, data: { customerName: ad } }).catch(() => {});
+          adDoldu++;
+        }
+      }
+      if (adDoldu) this.logger.log(`[ALICI-AD] ${adDoldu} satış belgesine alıcı ünvanı GİB listesinden dolduruldu: tp=${taxpayerId}`);
+    } catch { /* isim doldurma opsiyonel — akışı bozma */ }
+    // Kodlar tazelendi → eksik zengin yorum + denetçiyi arka planda hazırla (belge açılmadan görünsün).
+    void this.sweepRichYorum(tenantId).catch(() => {});
     return { ok: true };
   }
 
