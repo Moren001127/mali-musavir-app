@@ -28,8 +28,10 @@ import {
 import { lucaCredentialApi } from '@/lib/kdv';
 
 const GOLD = '#d4b876';
-const SHOW_LUCA_WORKER_ACCOUNTS =
-  process.env.NEXT_PUBLIC_LUCA_WORKER_ACCOUNTS_ENABLED === 'true';
+// Çoklu Luca hesabı havuzu (paralel işçiler için) her zaman görünür.
+// Eskiden NEXT_PUBLIC_LUCA_WORKER_ACCOUNTS_ENABLED env'ine bağlıydı ve canlıda
+// kapalı olduğundan panel hiç açılmıyordu; kullanıcı hesap ekleyemiyordu.
+const SHOW_LUCA_WORKER_ACCOUNTS = true;
 type LucaDevice = LucaSessionManagerStatus['devices'][number];
 
 function isClassicLucaUrl(url?: string | null) {
