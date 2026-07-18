@@ -2787,6 +2787,15 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
     })));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selDoc?.id]);
+  // Tevkifat bölümü Mihsap'taki gibi KATLANIR: tevkifatsız belgede KAPALI tek başlık (ok ile açılır);
+  //   tevkifatlı belgede (dolu satır varsa) otomatik AÇIK gelir.
+  const [tevkAcik, setTevkAcik] = useState(false);
+  useEffect(() => {
+    const dolu = (selDoc?.lines || []).some((l: any) => String(l.group || '') === 'tevkifat'
+      && (String(l.accountCode || '').trim() || Number(l.credit || 0) > 0 || Number(l.debit || 0) > 0));
+    setTevkAcik(!!dolu);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selDoc?.id]);
   const lines: any[] = lineDraft;
   const setLine = (i: number, k: string, v: any) => setLineDraft((arr) => arr.map((l, j) => (j === i ? { ...l, [k]: v } : l)));
   const addLine = (group: string) => setLineDraft((arr) => [...arr, { group, accountCode: '', description: '', rate: '', debit: 0, credit: 0 }]);
@@ -3231,16 +3240,24 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                             { key: 'cari', keys: ['cari'], label: 'Cari Hesap', side: 'credit' as const },
                           ]
                       ).map((g) => {
-                        const rows = lineDraft.map((l: any, i: number) => ({ l, i })).filter(({ l }) => g.keys.includes(l.group || 'matrah'))
-                          // Tevkifatsız faturada BOŞ tevkifat satırı GÖSTERİLMEZ (kapalı görünüm — kullanıcı
-                          //   tercihi): kod/oran/tutar tümü boşsa satır gizli kalır, "+ satır ekle" ile açılır.
-                          .filter(({ l }) => g.key !== 'tevkifat'
-                            || !!String(l.accountCode || '').trim() || !!String(l.rate || '').trim()
-                            || Number(l.credit || 0) > 0 || Number(l.debit || 0) > 0);
+                        // Tevkifat bölümü KATLANIR (Mihsap tarzı): kapalıyken gövde hiç çizilmez; açıkken
+                        //   boş satır dahil her şey görünür — süzgece gerek yok.
+                        const rows = lineDraft.map((l: any, i: number) => ({ l, i })).filter(({ l }) => g.keys.includes(l.group || 'matrah'));
                         const tot = rows.reduce((s, { l }) => s + (Number(g.side === 'debit' ? l.debit : l.credit) || 0), 0);
                         return (
                           <div key={g.key} className="fgrp" data-g={g.key}>
-                            <div className="fgh"><span>{g.label}</span><span className="fgs">{g.side === 'debit' ? 'Borç' : 'Alacak'}</span></div>
+                            <div
+                              className={g.key === 'tevkifat' ? 'fgh fgh-tgl' : 'fgh'}
+                              onClick={g.key === 'tevkifat' ? () => setTevkAcik((v) => !v) : undefined}
+                              title={g.key === 'tevkifat' ? (tevkAcik ? 'Bölümü kapat' : 'Bölümü aç') : undefined}
+                            >
+                              <span>{g.label}</span>
+                              <span className="fgs">
+                                {g.side === 'debit' ? 'Borç' : 'Alacak'}
+                                {g.key === 'tevkifat' && <span className={tevkAcik ? 'fgchev up' : 'fgchev'}>⌄</span>}
+                              </span>
+                            </div>
+                            {(g.key !== 'tevkifat' || tevkAcik) && (<>
                             {rows.map(({ l, i }) => (
                               <div key={i} className="frow">
                                 <CodeSelect value={l.accountCode || ''} accounts={accountPlan} onChange={(code) => {
@@ -3299,6 +3316,7 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                             )}
                             <div className="frowadd" onClick={() => addLine(g.keys[0])}>+ satır ekle</div>
                             <div className="fgt"><span>Toplam</span><b>{fmtMoney(tot)} ₺</b></div>
+                            </>)}
                           </div>
                         );
                       })}
@@ -5077,6 +5095,11 @@ const CSS = `
 #fm-root .fgrp[data-g="cari"] .fgh{background:#eef7f0;color:#2f6b46}
 #fm-root .fgrp[data-g="tevkifat"]{border-color:#c6dedc}
 #fm-root .fgrp[data-g="tevkifat"] .fgh{background:#e9f4f3;color:#0f6b66}
+/* Katlanır tevkifat başlığı: tıklanır + ok (açıkken yukarı döner). */
+#fm-root .fgrp .fgh.fgh-tgl{cursor:pointer;user-select:none}
+#fm-root .fgrp .fgh.fgh-tgl:hover{filter:brightness(.97)}
+#fm-root .fgrp .fgh .fgchev{display:inline-block;margin-left:7px;font-size:13px;line-height:1;transition:transform .15s;transform:translateY(-1px)}
+#fm-root .fgrp .fgh .fgchev.up{transform:rotate(180deg) translateY(-2px)}
 /* TEK EKRAN: fiş paneli dikeyde sıkılaştırıldı — kaydırmadan sığsın (ne sıkışık ne gevşek). */
 #fm-root .muhmain .fgrps{gap:5px}
 #fm-root .muhmain .fgrp .fgh{padding:3px 8px;font-size:11px}
