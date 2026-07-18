@@ -2454,6 +2454,7 @@ model InvoiceAccountingLine {
   accountCode String?
   description String?
   rate        String?
+  kaynak      String?  // kodun kaynağı: KULLANICI | HAFIZA | AI | KURAL | VKN | ISIM | VARSAYILAN (öğrenme yalnız güvenilir kaynaktan)
   debit       Decimal  @default(0) @db.Decimal(14, 2)
   credit      Decimal  @default(0) @db.Decimal(14, 2)
   orderNo     Int      @default(0)

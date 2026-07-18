@@ -4946,19 +4946,32 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     });
 
     if (Array.isArray(body.lines)) {
+      // KAYNAK DAMGASI (öğrenme kapısı için): kullanıcı editörde kodu DEĞİŞTİRDİYSE → KULLANICI
+      //   (en güvenilir kaynak; öğrenme yalnız bundan + hafızadan yapılır). Kod aynı kaldıysa eski
+      //   satırın kaynağı taşınır (otomatik atanmış kod, salt kaydetmekle "kullanıcı seçimi" OLMAZ —
+      //   toplu-onay zehirlenmesinin editör versiyonunu önler).
+      const oldLines: any[] = Array.isArray((before as any)?.lines) ? (before as any).lines : [];
       await (this.prisma as any).invoiceAccountingLine.deleteMany({ where: { documentId: id } });
       if (body.lines.length) {
         await (this.prisma as any).invoiceAccountingLine.createMany({
-          data: body.lines.map((line, index) => ({
-            documentId: id,
-            group: line.group || 'matrah',
-            accountCode: line.accountCode || null,
-            description: line.description || null,
-            rate: line.rate || null,
-            debit: parseDecimal(line.debit),
-            credit: parseDecimal(line.credit),
-            orderNo: index,
-          })),
+          data: body.lines.map((line, index) => {
+            const grp = line.group || 'matrah';
+            const old = oldLines.find((o: any) => String(o.group || '') === String(grp) && Number(o.orderNo) === index) || oldLines[index] || null;
+            const oldCode = String(old?.accountCode || '').trim();
+            const newCode = String(line.accountCode || '').trim();
+            const kaynak = !newCode ? null : (oldCode === newCode ? (old?.kaynak ?? null) : 'KULLANICI');
+            return {
+              documentId: id,
+              group: grp,
+              accountCode: line.accountCode || null,
+              description: line.description || null,
+              rate: line.rate || null,
+              kaynak,
+              debit: parseDecimal(line.debit),
+              credit: parseDecimal(line.credit),
+              orderNo: index,
+            };
+          }),
         });
       }
     }
@@ -5169,6 +5182,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     for (const l of matrahLines) {
       const code = String(l.accountCode || '').trim();
       if (!code || blocked(code)) continue;
+      // ÖĞRENME KAPISI (R4 — zehirli hafızanın ana musluğu): kodun KAYNAĞINA bakılır. Yalnız
+      //   KULLANICI (editörde elle seçilen/değiştirilen) ve HAFIZA (zaten öğrenilmiş kararın
+      //   pekişmesi) öğrenilir. AI/KURAL/VARSAYILAN atamaları toplu onayda fark edilmeden geçerse
+      //   hafızaya YAZILMAZ — sistemin kendi tahminini kendine "öğrenilmiş" diye geri beslemesi biter.
+      //   (kaynak=null eski satırlar da öğrenilmez; kullanıcı editörden ya da Kurallar'dan öğretir.)
+      const src = String((l as any).kaynak || '').toUpperCase();
+      if (src !== 'KULLANICI' && src !== 'HAFIZA') continue;
       const rate = String(l.rate || '').replace(/[^0-9]/g, '') || null;
       const key = `${code}|${rate || ''}`;
       if (seen.has(key)) continue;
@@ -5191,7 +5211,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // pickCariMemoryAccount bu kodu otomatik getirir → isim tahmini gerekmez.
     const cariLine = (doc.lines || []).find((l: any) => String(l.group || '').toLowerCase() === 'cari');
     const cariCode = String(cariLine?.accountCode || '').trim();
-    if (cariCode && /^(120|320|329|331)/.test(cariCode)) {
+    // Cari öğrenme kapısı: KULLANICI/HAFIZA + VKN (plandaki VKN birebir eşleşmesi kesin bilgidir).
+    //   İSİM tahmini ve kural atamaları öğrenilmez — poisoned cari vakalarının (MERT REKLAM) girişi buydu.
+    const cariSrc = String((cariLine as any)?.kaynak || '').toUpperCase();
+    if (cariCode && /^(120|320|329|331)/.test(cariCode) && ['KULLANICI', 'HAFIZA', 'VKN'].includes(cariSrc)) {
       await this.vendorMemory.recordDecision({
         tenantId, firmaKimlikNo, firmaUnvan, kararTipi: 'fatura',
         kategori: cariCode, altKategori: 'CARI', taxpayerId: doc.taxpayerId,
@@ -8828,7 +8851,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       }
       const total = totalBase.plus(totalKdv);
       for (const cl of cariLinesFor(total, orderNo)) lines.push({ ...cl, orderNo: orderNo++ });
-      return lines;
+      // İlk kurulum satırları yer-tutucudur → kaynak VARSAYILAN (öğrenme bu satırlardan yapılmaz).
+      return lines.map((l: any) => ({ ...l, kaynak: 'VARSAYILAN' }));
     }
 
     // Tek-oran fallback (eski davranış)
@@ -8858,7 +8882,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       });
     }
     for (const cl of cariLinesFor(total, singleRateLines.length)) singleRateLines.push({ ...cl, orderNo: singleRateLines.length });
-    return singleRateLines;
+    // İlk kurulum satırları yer-tutucudur → kaynak VARSAYILAN (öğrenme bu satırlardan yapılmaz).
+    return singleRateLines.map((l: any) => ({ ...l, kaynak: 'VARSAYILAN' }));
   }
 
   /**
@@ -9563,12 +9588,15 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const decisions = (memory?.decisions || [])
       .filter((d: any) => /^\d/.test(String(d.kategori || '').trim()))
       // Cari (altKategori='CARI') kararları matrah/gider kodu DEĞİLDİR — dışla.
-      .filter((d: any) => String(d.altKategori || '').trim().toUpperCase() !== 'CARI');
+      .filter((d: any) => String(d.altKategori || '').trim().toUpperCase() !== 'CARI')
+      // ÖĞRENME EŞİĞİ (R2) — pickVendorMemoryAccount ile aynı: tek onaylı karar otomatik uygulanmaz.
+      .filter((d: any) => (d.onayAdedi || 0) >= 2);
     const r = String(rate || '').replace(/[^0-9]/g, '');
-    // Öncelik: 1) bu KDV oranına özel kural, 2) orana bağsız (genel) kural, 3) en çok onaylanan.
+    // Öncelik: 1) bu KDV oranına özel kural, 2) orana bağsız (genel) kural. "En çok onaylanan"
+    //   son çaresi (R5) KALDIRILDI — başka oran için öğrenilmiş kod sessizce uygulanıyordu.
     const byRate = r ? decisions.find((d: any) => String(d.altKategori || '').replace(/[^0-9]/g, '') === r) : null;
     const general = decisions.find((d: any) => !String(d.altKategori || '').trim());
-    const pick = byRate || general || decisions[0];
+    const pick = byRate || general;
     const code = String(pick?.kategori || '').trim();
     return code && /^\d/.test(code) ? code : null;
   }
@@ -9609,7 +9637,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         if (!learned || String(l.accountCode || '').trim() === learned) continue;
         await (this.prisma as any).invoiceAccountingLine.update({
           where: { id: l.id },
-          data: { accountCode: learned },
+          data: { accountCode: learned, kaynak: 'HAFIZA' },
         });
         applied++;
       }
@@ -9641,6 +9669,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       kategori: accountCode,
       altKategori: rate,
       taxpayerId,
+      // Elle öğretilen kural = açık kullanıcı iradesi → öğrenme eşiğini (≥2) beklemeden uygulanır.
+      onayBoost: 3,
     });
     const applied = await this.applyLearnedVendorCodes(tenantId, taxpayerId);
     return { ok: true, vendorVkn, accountCode, rate, applied };
@@ -11176,9 +11206,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             //   ("Eksik hesap kodu" görünür, kullanıcı 1 kez seçer/Luca'da açar → öğrenilir). SATIŞ'ta
             //   (391, tek-satır tevkifat-sonrası net) eski davranış (grp'ye düş) KORUNUR.
             const pool = normals.length ? normals : (vergiPrefix === '391' ? grp : []);
-            // ORANA göre: adındaki sayılar arasında satırın KDV oranı geçen hesabı seç (%20→"20").
+            // ORANA göre: adındaki ORAN-token'ları (≤2 hane; "2024"/kod parçası oran sanılmaz — R7)
+            // arasında satırın KDV oranı geçen hesabı seç (%20→"20").
             if (rateDigits) {
-              result = pool.find((a: any) => (this.norm(String(a.accountName || '')).match(/\d+/g) || ([] as string[])).includes(rateDigits)) || null;
+              result = pool.find((a: any) => this.rateTokenInName(String(a.accountName || ''), rateDigits)) || null;
             }
             // Oran eşleşmedi: TEK aday varsa (planın tek KDV hesabı) onu kullan; ya da adında HİÇ
             // oran-sayısı olmayan TEK genel "İNDİRİLECEK/HESAPLANAN KDV" hesabı varsa onu. Aksi
@@ -11187,7 +11218,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             if (!result) {
               if (pool.length === 1) result = pool[0];
               else {
-                const noRate = pool.filter((a: any) => (this.norm(String(a.accountName || '')).match(/\d+/g) || []).length === 0);
+                const noRate = pool.filter((a: any) => this.rateTokensOf(String(a.accountName || '')).length === 0);
                 result = noRate.length === 1 ? noRate[0] : null;
               }
             }
@@ -11293,6 +11324,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const cariMatch = leafOnly(okcFis
         ? this.pickAccount(accounts, ['100'], null)
         : cariPick);
+      // Cari kodunun kaynağı (satır kaynak alanına yazılır; öğrenme kapısı VKN/HAFIZA/KULLANICI kabul eder).
+      const cariKaynak: string | null = okcFis
+        ? 'KURAL'
+        : cariPick && cariPick === cariByVkn ? 'VKN'
+        : cariPick && cariPick === cariMemory ? 'HAFIZA'
+        : cariPick ? 'ISIM'
+        : null;
       // ORAN-BAZLI matrah: her matrah satırı KENDİ KDV oranına göre öğrenilmiş kodu alır;
       // yoksa kategori/varsayılan. Öğrenilmiş kod (satıcı+oran) her zaman önceliklidir.
       const matrahCache = new Map<string, any>();
@@ -11300,6 +11338,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         if (matrahCache.has(rate)) return matrahCache.get(rate);
         const learned = vendorVkn ? await this.pickVendorMemoryAccount(tenantId, taxpayerId, vendorVkn, accounts, rate, docIcerikImza) : null;
         let m = leafOnly(learned);
+        // KAYNAK İZİ: satıra yazılan kodun nereden geldiği (HAFIZA/AI/KURAL/VARSAYILAN) satırın
+        //   kaynak alanına işlenir — öğrenme kapısı ve arayüz rozeti bunu kullanır.
+        let mKaynak: string | null = m ? 'HAFIZA' : null;
         if (m && !this.learnedMatrahCompatibleWithContent(String((m as any).accountCode || ''), kat, giderTuru, faDet.is)) {
           m = null;
         }
@@ -11321,8 +11362,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         //   hesabı. Çok-oranlı faturada AI grubunun bu orana ait varyantı (153.01.001 %1 / .003 %20)
         //   varsa onu, yoksa AI'ın seçtiği kodu. Mekanik kategori/varsayılandan ÖNCE gelir.
         if (!m && aiMatrahAcc) {
-          if (rate) { const v = aiGroupLeaves.find((a: any) => (this.norm(String(a.accountName || '')).match(/\d+/g) || ([] as string[])).includes(rate)); m = leafOnly(v) || leafOnly(aiMatrahAcc); }
+          if (rate) { const v = aiGroupLeaves.find((a: any) => this.rateTokenInName(String(a.accountName || ''), rate)); m = leafOnly(v) || leafOnly(aiMatrahAcc); }
           else m = leafOnly(aiMatrahAcc);
+          if (m) mKaynak = 'AI';
         }
         // ORAN-bazlı matrah (KDV gibi orana DUYARLI): kategori/600 grubunda adında satırın oranı geçen
         //   leaf'i seç (153.01.001 "%1" / .002 "%10" / .003 "%20"; satışta 600 aynı). Eskiden hep en
@@ -11332,18 +11374,18 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           // ALIŞTAN iade (isSale && isReturn): oran-eşleşmesi 600'e (ciro) SIZMASIN — matrah orijinal
           //   stok/gider grubunda (categoryGroupLeaves) aranır (saleMatrahDefault zaten öyle döner).
           const pool = (isSale && !isReturn) ? saleGroupLeaves : categoryGroupLeaves;
-          const hit = (pool || []).find((a: any) => (this.norm(String(a.accountName || '')).match(/\d+/g) || ([] as string[])).includes(rate));
-          if (hit) m = leafOnly(hit);
+          const hit = (pool || []).find((a: any) => this.rateTokenInName(String(a.accountName || ''), rate));
+          if (hit) { m = leafOnly(hit); if (m) mKaynak = 'KURAL'; }
           // SATIŞ + oran BELLİ + plandaki 600 leaf'leri ORAN ETİKETLİ ama bu oran YOK → yanlış-oranlı
           //   varsayılana (%10 satış → "TİCARİ MAL %20") DÜŞME, BOŞ bırak (kullanıcı doğru oran
           //   hesabını ekler/seçer; vergiForRate'in "rastgele orana düşürme" kuralıyla simetrik).
           else if (isSale && !isReturn
-            && (pool || []).some((a: any) => (this.norm(String(a.accountName || '')).match(/\d+/g) || []).length > 0)) {
+            && (pool || []).some((a: any) => this.rateTokensOf(String(a.accountName || '')).length > 0)) {
             matrahCache.set(rate, null);
             return null;
           }
         }
-        if (!m) m = leafOnly(saleMatrahDefault);
+        if (!m) { m = leafOnly(saleMatrahDefault); if (m) mKaynak = 'VARSAYILAN'; }
         // SON GÜVENLİK (yağ ≠ yakıt): hangi yoldan gelirse gelsin (AI-kod / öğrenilmiş /
         //   içerik-sınıf / varsayılan), içerik madeni/motor yağı iken seçilen hesap ARAÇ YAKIT/
         //   AKARYAKIT ise plandaki ARAÇ BAKIM ONARIM'a çevir; bakım hesabı yoksa BOŞ bırak (yakıta
@@ -11355,9 +11397,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             return /\b(bakim|onarim)\b/.test(ad) && /\b(arac|tasit|motor)\b/.test(ad) && isPostableLeaf(String(a.accountCode || ''));
           });
           m = bakim ? leafOnly(bakim) : null;
+          if (m) mKaynak = 'KURAL';
         }
-        matrahCache.set(rate, m);
-        return m;
+        const mOut = m ? { ...(m as any), _kaynak: mKaynak || 'KURAL' } : null;
+        matrahCache.set(rate, mOut);
+        return mOut;
       };
 
       for (const line of doc.lines || []) {
@@ -11376,7 +11420,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             if (String(line.accountCode || '') !== want) {
               await (this.prisma as any).invoiceAccountingLine.update({
                 where: { id: line.id },
-                data: want ? { accountCode: want, description: (ret as any).accountName } : { accountCode: '', description: '' },
+                data: want ? { accountCode: want, description: (ret as any).accountName, kaynak: 'KURAL' } : { accountCode: '', description: '', kaynak: null },
               });
             }
             continue;
@@ -11397,11 +11441,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             if (current !== String((tevkMatch as any).accountCode)) {
               await (this.prisma as any).invoiceAccountingLine.update({
                 where: { id: line.id },
-                data: { accountCode: (tevkMatch as any).accountCode },
+                data: { accountCode: (tevkMatch as any).accountCode, kaynak: 'KURAL' },
               });
             }
           } else if (current) {
-            await (this.prisma as any).invoiceAccountingLine.update({ where: { id: line.id }, data: { accountCode: '', description: '' } });
+            await (this.prisma as any).invoiceAccountingLine.update({ where: { id: line.id }, data: { accountCode: '', description: '', kaynak: null } });
           }
           continue;
         }
@@ -11412,11 +11456,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             if (current !== String((sorumluKdvMatch as any).accountCode)) {
               await (this.prisma as any).invoiceAccountingLine.update({
                 where: { id: line.id },
-                data: { accountCode: (sorumluKdvMatch as any).accountCode, description: (sorumluKdvMatch as any).accountName },
+                data: { accountCode: (sorumluKdvMatch as any).accountCode, description: (sorumluKdvMatch as any).accountName, kaynak: 'KURAL' },
               });
             }
           } else if (current) {
-            await (this.prisma as any).invoiceAccountingLine.update({ where: { id: line.id }, data: { accountCode: '', description: '' } });
+            await (this.prisma as any).invoiceAccountingLine.update({ where: { id: line.id }, data: { accountCode: '', description: '', kaynak: null } });
           }
           continue;
         }
@@ -11432,7 +11476,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             if (want && current !== String((want as any).accountCode)) {
               await (this.prisma as any).invoiceAccountingLine.update({
                 where: { id: line.id },
-                data: { accountCode: (want as any).accountCode, description: (want as any).accountName },
+                data: { accountCode: (want as any).accountCode, description: (want as any).accountName, kaynak: 'KURAL' },
               });
             }
             continue;
@@ -11442,7 +11486,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             if (cariMatch && !current.startsWith('100')) {
               await (this.prisma as any).invoiceAccountingLine.update({
                 where: { id: line.id },
-                data: { accountCode: (cariMatch as any).accountCode, description: (cariMatch as any).accountName },
+                data: { accountCode: (cariMatch as any).accountCode, description: (cariMatch as any).accountName, kaynak: 'KURAL' },
               });
             }
             continue;
@@ -11459,8 +11503,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           await (this.prisma as any).invoiceAccountingLine.update({
             where: { id: line.id },
             data: cariMatch
-              ? { accountCode: (cariMatch as any).accountCode, description: (cariMatch as any).accountName }
-              : { accountCode: '', description: '' },
+              ? { accountCode: (cariMatch as any).accountCode, description: (cariMatch as any).accountName, kaynak: cariKaynak || 'KURAL' }
+              : { accountCode: '', description: '', kaynak: null },
           });
           continue;
         }
@@ -11473,7 +11517,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           if (curAcc && curIsTevk !== (tevkPay >= 1) && current !== String((saleMatrahDefault as any).accountCode)) {
             await (this.prisma as any).invoiceAccountingLine.update({
               where: { id: line.id },
-              data: { accountCode: (saleMatrahDefault as any).accountCode },
+              data: { accountCode: (saleMatrahDefault as any).accountCode, kaynak: 'VARSAYILAN' },
             });
             continue;
           }
@@ -11490,7 +11534,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             if (current !== matchCode && !typeOk) {
               await (this.prisma as any).invoiceAccountingLine.update({
                 where: { id: line.id },
-                data: matchCode ? { accountCode: matchCode } : { accountCode: '', description: '' },
+                data: matchCode ? { accountCode: matchCode, kaynak: (match as any)?._kaynak || 'KURAL' } : { accountCode: '', description: '', kaynak: null },
               });
             }
             continue;
@@ -11504,13 +11548,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           const curAcc = current ? accounts.find((a: any) => String(a.accountCode || '') === current) : null;
           if (want && curAcc) {
             const curIsTevk = this.isTevkifatAccountName(String(curAcc.accountName || ''));
-            const curRates = this.norm(String(curAcc.accountName || '')).match(/\d+/g) || ([] as string[]);
+            const curRates = this.rateTokensOf(String(curAcc.accountName || ''));
             const rateOk = !lineRate || curRates.length === 0 || curRates.includes(lineRate);
             const tevkOk = curIsTevk === (tevkPay >= 1);
             if ((!rateOk || !tevkOk) && current !== String((want as any).accountCode)) {
               await (this.prisma as any).invoiceAccountingLine.update({
                 where: { id: line.id },
-                data: { accountCode: (want as any).accountCode },
+                data: { accountCode: (want as any).accountCode, kaynak: 'KURAL' },
               });
               continue;
             }
@@ -11539,14 +11583,14 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           //   "TİCARİ MALLAR %20" görünür. match accounts'tan gelir (accountName dolu).
           await (this.prisma as any).invoiceAccountingLine.update({
             where: { id: line.id },
-            data: { accountCode: match.accountCode, ...((match as any).accountName ? { description: String((match as any).accountName) } : {}) },
+            data: { accountCode: match.accountCode, kaynak: (match as any)?._kaynak || 'KURAL', ...((match as any).accountName ? { description: String((match as any).accountName) } : {}) },
           });
         } else if (current) {
           // Planda uygun kod YOK → var olmayan placeholder'ı (ör. 770.01.010) BOŞALT.
           // "Eksik hesap kodu" görünür; kullanıcı 1 kez seçer → satıcı için öğrenilir.
           await (this.prisma as any).invoiceAccountingLine.update({
             where: { id: line.id },
-            data: { accountCode: '', description: '' },
+            data: { accountCode: '', description: '', kaynak: null },
           });
         }
       }
@@ -11619,6 +11663,20 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     }
   }
 
+  /** Hesap adındaki ORAN-token'ları: yalnız 1-2 haneli sayılar (KDV oranları 1..20). "2024" gibi
+   *  yıllar ve "770"/"010" gibi kod parçaları oran SANILMAZ (R7 — kırılgan "adındaki herhangi bir
+   *  sayı = oran" varsayımının sertleştirilmesi). */
+  private rateTokensOf(accountName: string): string[] {
+    return (this.norm(String(accountName || '')).match(/\d+/g) || []).filter((t) => t.length <= 2);
+  }
+
+  /** Hesap adında verilen KDV oranı token'ı geçiyor mu (≤2 haneli birebir eşleşme)? */
+  private rateTokenInName(accountName: string, rateDigits: string): boolean {
+    const r = String(rateDigits || '').replace(/[^0-9]/g, '');
+    if (!r) return false;
+    return this.rateTokensOf(accountName).includes(r);
+  }
+
   private async pickVendorMemoryAccount(
     tenantId: string,
     taxpayerId: string,
@@ -11642,18 +11700,25 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const decisions = (memory?.decisions || [])
       .filter((d: any) => accountByCode.has(String(d.kategori || '').trim()))
       // Cari (altKategori='CARI') kararları matrah/gider kodu DEĞİLDİR — dışla.
-      .filter((d: any) => String(d.altKategori || '').trim().toUpperCase() !== 'CARI');
+      .filter((d: any) => String(d.altKategori || '').trim().toUpperCase() !== 'CARI')
+      // ÖĞRENME EŞİĞİ (R2): tek onaylık karar OTOMATİK uygulanmaz — tek yanlış onay satıcının
+      //   tüm gelecek faturalarını çekiyordu. En az 2 onay (elle öğretilen kural onayBoost=3 ile
+      //   eşiği anında geçer). Tek onaylı karar "aday" olarak durur, ikinci onayla devreye girer.
+      .filter((d: any) => (d.onayAdedi || 0) >= 2);
     const r = String(rate || '').replace(/[^0-9]/g, '');
     const imza = String(icerikImza || '').trim();
-    // ÖNCELİK: (1) BU içerik+oran → (2) BU içerik → (3) orana özel (içerik-genel) → (4) tamamen genel →
-    //   (5) en çok onaylanan. İçerik-imza eşleşmesi orandan ÖNCE gelir: "bu satıcıdan bu içerik hep şu
-    //   hesap" kullanıcının düzelttiği kararı en sadık yansıtır. İmza yoksa eski davranış birebir.
+    // ÖNCELİK: (1) BU içerik+oran → (2) BU içerik → (3) orana özel (içerik-genel) → (4) tamamen genel.
+    //   İçerik-imza eşleşmesi orandan ÖNCE gelir: "bu satıcıdan bu içerik hep şu hesap" kullanıcının
+    //   düzelttiği kararı en sadık yansıtır.
+    //   NOT (R5): eski "|| decisions[0]" son çaresi KALDIRILDI — ne imzası ne oranı tutan, bambaşka
+    //   içerik için öğrenilmiş kod sessizce uygulanıyordu (çapraz bulaşma). Kriter tutmuyorsa null →
+    //   sonraki katmanlar (AI/kural) devreye girer.
     const imzaEsit = (d: any) => imza && String(d.icerikImza || '').trim() === imza;
     const byImzaRate = imza && r ? decisions.find((d: any) => imzaEsit(d) && String(d.altKategori || '').replace(/[^0-9]/g, '') === r) : null;
     const byImza = imza ? decisions.find((d: any) => imzaEsit(d)) : null;
     const byRate = r ? decisions.find((d: any) => !String(d.icerikImza || '').trim() && String(d.altKategori || '').replace(/[^0-9]/g, '') === r) : null;
     const general = decisions.find((d: any) => !String(d.icerikImza || '').trim() && !String(d.altKategori || '').trim());
-    const pick = byImzaRate || byImza || byRate || general || decisions[0];
+    const pick = byImzaRate || byImza || byRate || general;
     return pick ? accountByCode.get(String(pick.kategori).trim()) : null;
   }
 

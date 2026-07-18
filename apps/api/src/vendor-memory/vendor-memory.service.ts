@@ -134,8 +134,11 @@ Yanlış ipucuna uyup yanlış karar vermek, ipucu olmamasından DAHA KÖTÜDÜR
     altKategori?: string | null;
     icerikImza?: string | null;   // YENİ: kalem-içerik imzası (içerik-bazlı öğrenme); null = satıcı-geneli
     taxpayerId?: string | null;   // hangi mükellef bu kararı verdi
+    onayBoost?: number;           // AÇIK ÖĞRETME ağırlığı: Kurallar ekranından elle öğretilen kural
+                                  //   eşiği beklemeden uygulansın diye sayaç bu değerle artar (varsayılan 1)
   }): Promise<void> {
     const { tenantId, firmaKimlikNo, firmaUnvan, kararTipi, kategori, altKategori, taxpayerId } = params;
+    const boost = Math.max(1, Math.min(Number(params.onayBoost || 1), 10));
     const icerikImza = params.icerikImza ? String(params.icerikImza).slice(0, 200) : null;
     if (!firmaKimlikNo) return;
     if (!taxpayerId) return;
@@ -178,7 +181,7 @@ Yanlış ipucuna uyup yanlış karar vermek, ipucu olmamasından DAHA KÖTÜDÜR
       await (this.prisma as any).vendorMemoryDecision.update({
         where: { id: existing.id },
         data: {
-          onayAdedi: { increment: 1 },
+          onayAdedi: { increment: boost },
           sonKullanim: new Date(),
         },
       });
@@ -191,7 +194,7 @@ Yanlış ipucuna uyup yanlış karar vermek, ipucu olmamasından DAHA KÖTÜDÜR
           kategori,
           altKategori: altKategori || null,
           icerikImza: icerikImza || null,
-          onayAdedi: 1,
+          onayAdedi: boost,
           sonKullanim: new Date(),
         },
       });
