@@ -2,27 +2,27 @@
   "_meta": {
     "description": "Kilitli modul SHA256 hash baseline. Backend SystemHealth her 5 dk hash kontrol eder.",
     "how_to_unlock": "Eger kasitli degisiklik yaptiysan: yeni hash hesapla ve buraya yaz. Aksi halde MODULE_HASH alarmi calar.",
-    "baseline_date": "2026-06-17",
+    "baseline_date": "2026-07-18",
     "baseline_version": "v1.36.16"
   },
   "modules": {
     "apps/web/src/app/(panel)/panel/mizan/page.tsx": {
-      "sha256": "46dfc8ccf3906799f0ab4987ac4d2bf39318c281fdab17ecf06e0440b254f713",
+      "sha256": "c85bd64d455470a6e8bb7f50317f9932af5cfbfa808dab55c7a3067366c3881f",
       "reason": "Mizan modulu — tam otomasyon, dokunma",
       "lockedBy": "muzaffer"
     },
     "apps/web/src/app/(panel)/panel/kdv-kontrol/page.tsx": {
-      "sha256": "a24d66d491cb4038ab971b1f22ecc2d03b12a6dc5411317115027eabb7521ea9",
+      "sha256": "49c44b953a5cb54eb8d01828e8a58fdb2635a947dd191f17a7bda5744c2b7f58",
       "reason": "KDV Kontrol modulu — tam otomasyon, dokunma",
       "lockedBy": "muzaffer"
     },
     "apps/api/public/agent-runtime.js": {
-      "sha256": "aba2e5cfbd28b19c83c038a52527246ec4a70e05c6f38f83fbeb0e07fea69d9d",
+      "sha256": "3a7a52a7be7b414e2e5d5b334880f237fedf36f4c7b25b64e2123eee6a3e3eee",
       "reason": "Moren Agent v1.36.64 - log denetim uyarilari + Claude Vision maliyet optimizasyonu",
       "lockedBy": "muzaffer"
     },
     "apps/web/public/moren-agent.js": {
-      "sha256": "aba2e5cfbd28b19c83c038a52527246ec4a70e05c6f38f83fbeb0e07fea69d9d",
+      "sha256": "3a7a52a7be7b414e2e5d5b334880f237fedf36f4c7b25b64e2123eee6a3e3eee",
       "reason": "Moren Agent v1.36.64 (web ayna kopya) - log denetim uyarilari + Claude Vision maliyet optimizasyonu",
       "lockedBy": "muzaffer"
     },
@@ -32,7 +32,7 @@
       "lockedBy": "muzaffer"
     },
     "apps/api/src/kdv-control/kdv-control.service.ts": {
-      "sha256": "d78a6e2a3f227bd8d611f73bc7b12fa8cab5bd2a14e445cb1c15c0801b8258d5",
+      "sha256": "a236ec27cf112380338430ac0ed3ddff743b8190bec209d99fea03f584837aa7",
       "reason": "KDV Kontrol service — Luca queueing + reconciliation + icerik denetimi HEP-AI (kural fallback kaldirildi, kullanici onayi 2026-06-24)",
       "lockedBy": "muzaffer"
     },
@@ -42,7 +42,7 @@
       "lockedBy": "muzaffer"
     },
     "apps/api/src/mizan/mizan.service.ts": {
-      "sha256": "6adb2f9c8f42f9dcff830516741625add27ec678bfd43f70b979687e39f7adf0",
+      "sha256": "f0ac5e242f60e7694239a70473e482bb405844730b5db151b9bdd7f6ef0d22c8",
       "reason": "Mizan service — Luca import logic",
       "lockedBy": "muzaffer"
     },
@@ -52,7 +52,7 @@
       "lockedBy": "muzaffer"
     },
     "apps/api/src/earsiv/earsiv.service.ts": {
-      "sha256": "8354028cc2f50fae4e60ae785471d537fb867aeddfa16e4f6b4f2b3f96301255",
+      "sha256": "b1f54b97bd7a4c55f3162b8f3fafb234ef128be7544aa6295dcf4ae23fea9fbf",
       "reason": "E-Arsiv service — uploadFaturasToMihsap",
       "lockedBy": "muzaffer"
     }

@@ -12,7 +12,7 @@
   // v1.42.2 (2026-06-16): Ajan kendini yenilerken (delete __morenAgent) eski async
   // döngü "Cannot read 'stopRequested' of undefined/null" ile ÇÖKÜYORDU → yetim
   // döngü artık nesne yoksa güvenle durur (stopRequested kontrollerine null-guard).
-  const AGENT_VERSION = '1.46.4';
+  const AGENT_VERSION = '1.46.5';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -8383,10 +8383,16 @@
     // temizlendiği için bloke etmek yerine deneyip doğrulamak daha güvenli.
     const cached = getCachedLucaMenuHit(label);
     if (!cached?.code) return false;
+    // ÖNEMLİ: cache, Luca'nın CANLI menüsünden "e-Arşiv Alış Faturaları" gibi
+    // METİN → GÜNCEL ID eşlemesi tutar (cacheVisibleLucaMenuIds). Bu, Luca menüye
+    // yeni modül (ör. Damga Vergisi) ekleyip sıra kaysa BİLE doğru olandır.
+    // Hard-coded expectedCode ise ESKİ pozisyona gömülü ID'dir ve kayınca YANLIŞ
+    // menüyü (damga vergisi) açıyordu. Eskiden expectedCode ile uyuşmayan güncel
+    // cache kodu REDDEDİLİP hard-coded ID'ye düşülüyordu (KÖK BUG). Artık güncel
+    // cache kodu ESAS alınır; expectedCode yalnız bilgi/log amaçlı karşılaştırılır.
     const expectedCode = opts?.expectedCode ? String(opts.expectedCode) : '';
-    if (expectedCode && String(cached.code) !== expectedCode) {
-      if (log) await log(`ℹ "${label}" cache ID uyumsuz (${cached.code} != ${expectedCode}); metin kesfine dusulecek`);
-      return false;
+    if (expectedCode && String(cached.code) !== expectedCode && log) {
+      await log(`ℹ "${label}" güncel menü ID ${cached.code} (hard-coded ${expectedCode}'dan farklı) — Luca menüsü değişmiş, GÜNCEL kod kullanılıyor`);
     }
     const opened = await callLucaMenuCode(cached.label || label, cached.code, log, settleMs);
     if (!opened && log) await log(`ℹ "${label}" için cache ID bulundu ama II1a hazır değil; metin keşfine düşülecek`);
