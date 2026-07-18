@@ -611,39 +611,39 @@ function resolveBeyanState(
   donem: string,
   donemTuru: DonemTuru,
 ) {
-  // DURUM ÖNCELİĞİ (kullanıcı kuralı): aynı beyanname birden çok dönem/durumda
-  // olabilir (or. aylık "2026-06" HATALI + çeyrek "2026-Q2" ONAYLANDI — hatalı verip
-  // sonra düzeltilmiş). En YÜKSEK durum geçerlidir:
-  //   ONAYLANDI > ONAY BEKLİYOR > HATALI > MUAF > KALAN
-  // Eskiden İLK eşleşen candidate'ın durumu dönüyordu (2026-06 hatalı önce gelince
-  // onaylı gizleniyordu). Artık TÜM candidate'lar gezilir, en yüksek durum döner.
-  const RANK: Record<string, number> = { onaylandi: 5, beklemede: 4, hatali: 3, muaf: 2 };
-  let best: any = null;
-  const consider = (durum: string, durumKaydi: any, beyanKaydi: any, matchedDonem: string) => {
-    const rank = RANK[durum] ?? 1;
-    if (!best || rank > best.rank) best = { durum, durumKaydi, beyanKaydi, matchedDonem, rank };
-  };
+  // EN GÜNCEL GERÇEK DURUM (kullanıcı kuralı): aynı beyanname birden çok dönem/durumda
+  // olabilir (aylık "2026-06" + çeyrek "2026-Q2"; hatalı verip sonra düzeltilir).
+  //   1) ONAYLI kesin kazanır: indirilmiş beyanname (BeyanKaydı) VEYA durum=onaylandi.
+  //      Onaylanan beyanname iptal edilemez; eski hatalı/beklemede denemesi onu düşürmez.
+  //   2) Onaylı yoksa, beklemede/hatalı/muaf içinde EN SON GÜNCELLENEN (updatedAt) geçerli.
+  //      Böylece "eski beklemede + yeni hatalı" durumunda GÜNCEL hatalı gösterilir
+  //      (eski 'en yüksek rank' mantığı beklemede'yi yükseltip stale gösteriyordu — YILMAZ).
+  let onayli: any = null;
+  let guncel: any = null; // beklemede/hatali/muaf içinde en yeni updatedAt
+  const zaman = (k: any) => { const t = k?.updatedAt || k?.onayTarihi || k?.createdAt; return t ? new Date(t).getTime() : 0; };
   for (const candidate of lookupKeysForExpected(tip, yil, ay, donem, donemTuru)) {
     const key = `${taxpayerId}::${candidate.tip}::${candidate.donem}`;
     const durumKaydi = durumIndex.get(key);
     const beyanKaydi = kayitIndex.get(key);
-    if (durumKaydi) {
-      if (durumKaydi.durum === 'beklemede') {
-        // "beklemede" (elle işaret) + indirilmiş beyanname VARSA = onaylandı.
-        if (beyanKaydi) consider('onaylandi', durumKaydi, beyanKaydi, candidate.donem);
-        else if (isEDeclarationApprovalPending(durumKaydi)) consider('beklemede', durumKaydi, beyanKaydi, candidate.donem);
-        // aksi halde bu kaydı yok say (aday olarak da eklemiyoruz)
-      } else {
-        consider(durumKaydi.durum, durumKaydi, beyanKaydi, candidate.donem);
-      }
-    } else if (beyanKaydi) {
-      // Durum kaydı yok ama beyanname indirilmiş (BeyanKaydı) → onaylandı.
-      consider('onaylandi', null, beyanKaydi, candidate.donem);
+    if (beyanKaydi) {
+      // İndirilmiş beyanname = kesin onaylı (en güvenilir kanıt).
+      onayli = onayli || { durum: 'onaylandi', durumKaydi: durumKaydi || null, beyanKaydi, matchedDonem: candidate.donem };
+      continue;
     }
+    if (!durumKaydi) continue;
+    if (durumKaydi.durum === 'onaylandi') {
+      onayli = onayli || { durum: 'onaylandi', durumKaydi, beyanKaydi: null, matchedDonem: candidate.donem };
+      continue;
+    }
+    // beklemede: yalnız gerçek e-beyanname onay-bekliyor işaretiyse say (sızıntı değil).
+    let eff: string | null = durumKaydi.durum;
+    if (durumKaydi.durum === 'beklemede' && !isEDeclarationApprovalPending(durumKaydi)) eff = null;
+    if (!eff) continue;
+    const cand = { durum: eff, durumKaydi, beyanKaydi: null, matchedDonem: candidate.donem };
+    if (!guncel || zaman(durumKaydi) > zaman(guncel.durumKaydi)) guncel = cand;
   }
-  if (best) {
-    return { durum: best.durum, durumKaydi: best.durumKaydi, beyanKaydi: best.beyanKaydi, matchedDonem: best.matchedDonem };
-  }
+  if (onayli) return onayli;
+  if (guncel) return guncel;
   return { durum: 'kalan', durumKaydi: null, beyanKaydi: null, matchedDonem: null };
 }
 
