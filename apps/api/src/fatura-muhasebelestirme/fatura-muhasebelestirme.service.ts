@@ -2678,13 +2678,23 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       });
       if (!bekleyen.length) return;
       this.logger.log(`[YORUM-SWEEP] ${bekleyen.length} belge için zengin yorum+denetçi arka planda üretiliyor (tenant=${tenantId})`);
+      // 4 PARALEL üretim (kullanıcı: "o kadar bekleyemem") — içerik-denetimi deneyimi: kısa tek-belge
+      //   Max çağrılarında CONCURRENCY=4 güvenli; batch'leme ters tepmişti, o yüzden çağrılar tekil kalır.
+      const ESZAMANLI = 4;
+      let idx = 0;
       let uretilen = 0;
-      for (const d of bekleyen) {
-        // Okuma kuyruğuna yeni iş geldiyse ona yol ver — süpürme sonraki boşalmada devam eder.
-        if (this.uploadOcrQueue.length || this.uploadOcrActive) break;
-        await this.generateRichMuhasebeNeden(tenantId, d.id, true).catch(() => {});
-        uretilen++;
-      }
+      let durdu = false;
+      const isci = async () => {
+        while (!durdu) {
+          // Okuma kuyruğuna yeni iş geldiyse ona yol ver — süpürme sonraki tetikte devam eder.
+          if (this.uploadOcrQueue.length || this.uploadOcrActive) { durdu = true; break; }
+          const i = idx++;
+          if (i >= bekleyen.length) break;
+          await this.generateRichMuhasebeNeden(tenantId, bekleyen[i].id, true).catch(() => {});
+          uretilen++;
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(ESZAMANLI, bekleyen.length) }, () => isci()));
       this.logger.log(`[YORUM-SWEEP] ${uretilen}/${bekleyen.length} belge tamamlandı (tenant=${tenantId})`);
     } finally {
       this.richSweepBusy.delete(tenantId);
