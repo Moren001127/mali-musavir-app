@@ -567,7 +567,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         }).catch(() => []);
         for (const d of adaylar as any[]) {
           const o: any = d.ocrData || {};
-          if (!String(o.icerikMetni || '').trim()) continue; // sınıflanacak içerik yok
+          // Sınıflanacak içerik: icerikMetni YA DA kalem adları (entegratör-XML'de icerikMetni yok).
+          if (!String(o.icerikMetni || '').trim() && !(Array.isArray(o.kalemler) && o.kalemler.length)) continue;
           if (String(o.matrahKategori || o.kategori || '').trim() || String(o.giderTuru || '').trim()) continue; // zaten sınıflı
           if (this.clsRescued.has(d.id) || queued.has(d.id) || this.uploadOcrActiveIds.has(d.id)) continue;
           this.clsRescued.add(d.id);
@@ -2746,7 +2747,16 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     }).catch(() => null);
     if (!doc) return;
     const od: any = doc.ocrData || {};
-    const content = String(od.icerikMetni || '');
+    let content = String(od.icerikMetni || '');
+    if (!content || content.length < 20) {
+      // İÇERİK YEDEĞİ: entegratör-XML belgelerinde icerikMetni yazılmıyor (okuma Max'i atlıyor) —
+      //   sınıflandırma hiç çalışmadan çıkıyordu (Gökhan Akgöz: kategori/giderTuru kalıcı boş).
+      //   Kalem adları + satıcı ünvanından içerik kurulur; sınıflandırma bunlarla çalışır.
+      const kalemAd = (Array.isArray(od.kalemler) ? od.kalemler : [])
+        .map((k: any) => String(k?.ad || '').trim()).filter(Boolean).slice(0, 30).join('; ');
+      const taraf = String(doc.vendorName || doc.customerName || '').trim();
+      content = [taraf ? `Satıcı: ${taraf}` : '', kalemAd ? `Fatura kalemleri: ${kalemAd}` : ''].filter(Boolean).join('\n');
+    }
     if (!content || content.length < 20) return;
     let mukellefBilgi = '';
     let isIsletme = false;
