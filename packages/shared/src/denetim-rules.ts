@@ -82,7 +82,7 @@ const TEVKIFAT: TevkifatKural[] = [
     ad: 'Makine / teçhizat bakım-onarım',
     anahtar: ['bakım onarım hizmet','makine bakım','teçhizat bakım','teknik servis hizmet','revizyon hizmet','periyodik bakım','klima bakım','asansör bakım','jeneratör bakım','ekipman bakım'],
     esikKdvDahil: 12000,
-    oran: '5/10',
+    oran: '7/10', // BDP/Mihsap resmî liste teyidi 2026-07-18 (kod 203)
     madde: 'KDVGUT I/C-2.1.3.2.5',
   },
   {
@@ -90,7 +90,7 @@ const TEVKIFAT: TevkifatKural[] = [
     ad: 'Temizlik / çevre bakım',
     anahtar: ['temizlik hizmeti','temizlik şirket','bahçe bakım hizmeti','çevre bakım hizmeti','dezenfeksiyon hizmeti','haşere ilaçlama'],
     esikKdvDahil: 12000,
-    oran: '7/10',
+    oran: '9/10', // BDP/Mihsap resmî liste teyidi 2026-07-18 (kod 212/213)
     madde: 'KDVGUT I/C-2.1.3.2.1',
   },
   {
@@ -98,7 +98,7 @@ const TEVKIFAT: TevkifatKural[] = [
     ad: 'Özel güvenlik',
     anahtar: ['güvenlik hizmeti','özel güvenlik','güvenlik personel','koruma hizmeti'],
     esikKdvDahil: 12000,
-    oran: '7/10',
+    oran: '9/10', // BDP/Mihsap resmî liste teyidi 2026-07-18 (kod 207)
     madde: 'KDVGUT I/C-2.1.3.2.1',
   },
   {

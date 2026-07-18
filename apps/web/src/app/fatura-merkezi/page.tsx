@@ -191,10 +191,15 @@ function taxpayerLabel(t: any): string {
 // tevkifat satırlarının oranı boşsa otomatik dolar; kullanıcı oranı ayrıca değiştirebilir.
 // İlk 8 kayıt (201-208) kullanıcının Mihsap ekranından birebir alındı.
 // 209 ve sonrası için varsayılan oranlar BDP'den (Beyanname Düzenleme Programı) TEYİT EDİLMELİ.
+// Mihsap/BDP resmî tevkifat kod listesiyle BİREBİR eşitlendi (kullanıcı ekran görüntüleriyle
+//   teyit, 2026-07-18). ESKİ LİSTE 217 sonrası BİR KOD KAYIKTI (Yük Taşımacılığı 223 değil 224,
+//   Reklam 225, Demir-Çelik 227) ve 201/203 oranları eskiydi — beyannameye yanlış kod gidiyordu.
+//   2xx = kısmi tevkifat (alış), 1xx = tam tevkifat (10/10), 250 = diğer (oran elle),
+//   3xx = satış bildirim kodları (oran belge oranından gelir).
 const TEVKIFAT_KODLARI: { kod: string; oran: string; ad: string }[] = [
-  { kod: '201', oran: '3/10', ad: 'Yapım İşleri ile Bu İşlerle Birlikte İfa Edilen Mühendislik-Mimarlık ve Etüt-Proje Hizmetleri' },
+  { kod: '201', oran: '4/10', ad: 'Yapım İşleri ile Bu İşlerle Birlikte İfa Edilen Mühendislik-Mimarlık ve Etüt-Proje Hizmetleri' },
   { kod: '202', oran: '9/10', ad: 'Etüt, Plan-Proje, Danışmanlık, Denetim ve Benzeri Hizmetler' },
-  { kod: '203', oran: '5/10', ad: 'Makine, Teçhizat, Demirbaş ve Taşıtlara Ait Tadil, Bakım ve Onarım Hizmetleri' },
+  { kod: '203', oran: '7/10', ad: 'Makine, Teçhizat, Demirbaş ve Taşıtlara Ait Tadil, Bakım ve Onarım Hizmetleri' },
   { kod: '204', oran: '5/10', ad: 'Yemek Servis Hizmeti' },
   { kod: '205', oran: '5/10', ad: 'Organizasyon Hizmeti' },
   { kod: '206', oran: '9/10', ad: 'İşgücü Temin Hizmetleri' },
@@ -207,16 +212,50 @@ const TEVKIFAT_KODLARI: { kod: string; oran: string; ad: string }[] = [
   { kod: '213', oran: '9/10', ad: 'Çevre ve Bahçe Bakım Hizmetleri' },
   { kod: '214', oran: '5/10', ad: 'Servis Taşımacılığı Hizmeti' },
   { kod: '215', oran: '7/10', ad: 'Her Türlü Baskı ve Basım Hizmetleri' },
-  { kod: '216', oran: '5/10', ad: 'Diğer Hizmetler (5018 Kapsamındaki İdarelere)' },
-  { kod: '217', oran: '7/10', ad: 'Külçe Metal Teslimleri' },
-  { kod: '218', oran: '7/10', ad: 'Bakır, Çinko, Alüminyum ve Kurşun Ürünlerinin Teslimi' },
-  { kod: '219', oran: '7/10', ad: 'Hurda ve Atık Teslimi' },
-  { kod: '220', oran: '9/10', ad: 'Metal, Plastik, Lastik, Kauçuk, Kâğıt, Cam Hurda ve Atıklarından Elde Edilen Hammadde Teslimi' },
-  { kod: '221', oran: '9/10', ad: 'Pamuk, Tiftik, Yün ve Yapağı ile Ham Post ve Deri Teslimleri' },
-  { kod: '222', oran: '5/10', ad: 'Ağaç ve Orman Ürünleri Teslimi' },
-  { kod: '223', oran: '2/10', ad: 'Yük Taşımacılığı Hizmeti' },
-  { kod: '224', oran: '3/10', ad: 'Ticari Reklam Hizmetleri' },
-  { kod: '225', oran: '5/10', ad: 'Demir-Çelik Ürünlerinin Teslimi' },
+  { kod: '216', oran: '5/10', ad: 'Diğer Hizmetler (5018 Sayılı Kanuna Ekli Cetveller Kapsamındaki İdare, Kurum ve Kuruluşlara)' },
+  { kod: '217', oran: '7/10', ad: 'Hurda Metalden Elde Edilen Külçe Teslimleri' },
+  { kod: '218', oran: '7/10', ad: 'Hurda Metalden Elde Edilenler Dışındaki Bakır, Çinko, Alüminyum ve Kurşun Külçe Teslimleri' },
+  { kod: '219', oran: '7/10', ad: 'Bakır, Çinko, Alüminyum ve Kurşun Ürünlerinin Teslimi' },
+  { kod: '220', oran: '7/10', ad: 'İstisnadan Vazgeçenlerin Hurda ve Atık Teslimi' },
+  { kod: '221', oran: '9/10', ad: 'Metal, Plastik, Lastik, Kauçuk, Kâğıt ve Cam Hurda ve Atıklarından Elde Edilen Hammadde Teslimi' },
+  { kod: '222', oran: '9/10', ad: 'Pamuk, Tiftik, Yün ve Yapağı ile Ham Post ve Deri Teslimleri' },
+  { kod: '223', oran: '5/10', ad: 'Ağaç ve Orman Ürünleri Teslimi' },
+  { kod: '224', oran: '2/10', ad: 'Yük Taşımacılığı Hizmeti' },
+  { kod: '225', oran: '3/10', ad: 'Ticari Reklam Hizmetleri' },
+  { kod: '226', oran: '2/10', ad: 'Diğer Teslimler' },
+  { kod: '227', oran: '5/10', ad: 'Demir-Çelik Ürünlerinin Teslimi' },
+  { kod: '250', oran: '', ad: 'DİĞERLERİ (oranı elle seç)' },
+  { kod: '101', oran: '10/10', ad: 'İkametgâhı, İşyeri, Kanuni Merkezi ve İş Merkezi Türkiye\'de Bulunmayanlarca Yapılan İşlemler' },
+  { kod: '102', oran: '10/10', ad: 'Serbest Meslek Faaliyeti Çerçevesinde Yapılan Teslim ve Hizmetler' },
+  { kod: '103', oran: '10/10', ad: 'Kiralama İşlemleri' },
+  { kod: '104', oran: '10/10', ad: 'Reklam Verme İşlemleri' },
+  { kod: '106', oran: '10/10', ad: 'İthal Edilen Malın Bedelinde Sonradan Ortaya Çıkan Ödemeler' },
+  { kod: '150', oran: '10/10', ad: 'Diğerleri (Tam Tevkifat)' },
+  { kod: '301', oran: '', ad: 'Yapım İşleri ile Bu İşlerle Birlikte İfa Edilen Mühendislik-Mimarlık ve Etüt-Proje Hizmetleri (Satış)' },
+  { kod: '302', oran: '', ad: 'Etüt, Plan-Proje, Danışmanlık, Denetim ve Benzeri Hizmetler (Satış)' },
+  { kod: '303', oran: '', ad: 'Makine, Teçhizat, Demirbaş ve Taşıtlara Ait Tadil, Bakım ve Onarım Hizmetleri (Satış)' },
+  { kod: '304', oran: '', ad: 'Yemek Servis Hizmeti (Satış)' },
+  { kod: '305', oran: '', ad: 'Organizasyon Hizmeti (Satış)' },
+  { kod: '306', oran: '', ad: 'İşgücü Temin Hizmetleri (Satış)' },
+  { kod: '307', oran: '', ad: 'Özel Güvenlik Hizmeti (Satış)' },
+  { kod: '308', oran: '', ad: 'Yapı Denetim Hizmetleri (Satış)' },
+  { kod: '309', oran: '', ad: 'Fason Olarak Yaptırılan Tekstil ve Konfeksiyon İşleri (Satış)' },
+  { kod: '310', oran: '', ad: 'Turistik Mağazalara Verilen Müşteri Bulma/Götürme Hizmetleri (Satış)' },
+  { kod: '311', oran: '', ad: 'Spor Kulüplerinin Yayın, Reklâm ve İsim Hakkı Gelirlerine Konu İşlemleri (Satış)' },
+  { kod: '312', oran: '', ad: 'Temizlik Hizmeti (Satış)' },
+  { kod: '313', oran: '', ad: 'Çevre ve Bahçe Bakım Hizmetleri (Satış)' },
+  { kod: '314', oran: '', ad: 'Servis Taşımacılığı Hizmeti (Satış)' },
+  { kod: '315', oran: '', ad: 'Her Türlü Baskı ve Basım Hizmetleri (Satış)' },
+  { kod: '316', oran: '', ad: 'Hurda Metalden Elde Edilen Külçe Teslimi (Satış)' },
+  { kod: '317', oran: '', ad: 'Hurda Metalden Elde Edilenler Dışındaki Bakır, Çinko, Alüminyum ve Kurşun Külçe Teslimleri (Satış)' },
+  { kod: '318', oran: '', ad: 'Bakır, Çinko, Alüminyum ve Kurşun Ürünlerinin Teslimi (Satış)' },
+  { kod: '319', oran: '', ad: 'İstisnadan Vazgeçenlerin Hurda ve Atık Teslimi (Satış)' },
+  { kod: '320', oran: '', ad: 'Metal, Plastik, Lastik, Kauçuk, Kâğıt ve Cam Hurda ve Atıkları Teslimi (Satış)' },
+  { kod: '321', oran: '', ad: 'Pamuk, Tiftik, Yün ve Yapağı ile Ham Post ve Deri Teslimleri (Satış)' },
+  { kod: '322', oran: '', ad: 'Ağaç ve Orman Ürünleri Teslimi (Satış)' },
+  { kod: '323', oran: '', ad: 'Yük Taşımacılığı Hizmeti (Satış)' },
+  { kod: '324', oran: '', ad: 'Ticari Reklam Hizmetleri (Satış)' },
+  { kod: '325', oran: '', ad: 'Demir-Çelik Ürünlerinin Teslimi (Satış)' },
 ];
 // Hesap kodu seçici — Mihsap gibi: KUTUNUN İÇİNE doğrudan yazılır (ayrı arama kutusu yok),
 // yazdıkça altta kod/isim listesi filtrelenir; tıkla seç ya da Enter. Tek temiz ok.
@@ -3249,7 +3288,7 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                                     setTevkifatKodu(kod);
                                     const oran = TEVKIFAT_KODLARI.find((k) => k.kod === kod)?.oran || '';
                                     if (kod && oran) setLineDraft((arr) => arr.map((l: any) => (l.group === 'tevkifat' && !l.rate ? { ...l, rate: oran } : l)));
-                                  }} options={[{ value: '', label: '—' }, ...TEVKIFAT_KODLARI.map((k) => ({ value: k.kod, label: `${k.kod} - (${k.oran}) ${k.ad}` }))]} />
+                                  }} options={[{ value: '', label: '—' }, ...TEVKIFAT_KODLARI.map((k) => ({ value: k.kod, label: k.oran ? `${k.kod} - (${k.oran}) ${k.ad}` : `${k.kod} - ${k.ad}` }))]} />
                                 </div>
                               </div>
                             )}
