@@ -4211,6 +4211,11 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     }
 
     const rows = await this.collectStatusOnlyEBeyannamePages(page, status, notes);
+    // [EBROWDBG] Teşhis: durum filtresi gerçekten uygulanıyor mu + satırda DURUM hücresi var mı?
+    // (Üç sorgu da 40'ar satır okuyunca aynı listeyi okuduğu şüphesi doğdu — YILMAZ vakası.)
+    rows.slice(0, 2).forEach((row, i) => {
+      notes.push(`[EBROWDBG] ${status} r${i + 1}: durum="${this.compact(row.statusText || '-')}" vkn=${row.taxNumber || '-'} yuklenme=${this.compact(row.uploadTime || '-')} cells=${this.compact(JSON.stringify(row.cells)).slice(0, 200)}`);
+    });
     let duzeltilen = 0;
     let onayliAtlanan = 0;
     for (const row of rows) {
