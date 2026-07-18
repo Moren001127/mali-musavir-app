@@ -548,6 +548,8 @@ function LucaWorkerAccountRow({
           <input
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
+            autoComplete="off"
+            name={`luca-worker-name-${slotIndex}`}
             className="w-full px-2.5 py-2 rounded-md text-xs outline-none"
             style={inputStyle()}
           />
@@ -556,14 +558,20 @@ function LucaWorkerAccountRow({
           <input
             value={uyeNo}
             onChange={(e) => setUyeNo(e.target.value)}
+            autoComplete="off"
+            name={`luca-worker-uyeno-${slotIndex}`}
             className="w-full px-2.5 py-2 rounded-md text-xs outline-none"
             style={inputStyle()}
           />
         </CompactField>
         <CompactField label="Kullanici Adi">
+          {/* autoComplete=off + login-disi name → Chrome portal e-postasini otomatik
+              doldurmasin (kullanici Luca hesabi yerine portal bilgisini kaydetmesin) */}
           <input
             value={username}
             onChange={(e) => setUsername(e.target.value)}
+            autoComplete="off"
+            name={`luca-worker-user-${slotIndex}`}
             className="w-full px-2.5 py-2 rounded-md text-xs outline-none"
             style={inputStyle()}
           />
@@ -574,6 +582,8 @@ function LucaWorkerAccountRow({
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               type={showPassword ? 'text' : 'password'}
+              autoComplete="new-password"
+              name={`luca-worker-pass-${slotIndex}`}
               placeholder={account?.hasPassword ? 'mevcut korunur' : ''}
               className="w-full px-2.5 py-2 rounded-l-md text-xs outline-none"
               style={inputStyle()}
