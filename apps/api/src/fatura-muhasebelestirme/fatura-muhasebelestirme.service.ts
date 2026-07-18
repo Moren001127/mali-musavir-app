@@ -2633,10 +2633,33 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     if (c) {
       if (c.giderTuru) patch.giderTuru = String(c.giderTuru).slice(0, 40);
       if (c.kategori) patch.matrahKategori = c.kategori;
-      if (isIsletme) {
+      // userEdited korunur: kullanıcı işletme sınıfını elle düzelttiyse sınıflandırma yeniden EZMEZ
+      //   (backfill'deki korumanın buradaki simetriği — eksikti, elle düzeltme kaybolabiliyordu).
+      if (isIsletme && od?.isletme?.userEdited !== true) {
         let isl = (c.isletmeKayitTuru || c.giderTuru || c.kategori)
           ? resolveIslAi(kind, { isletmeKayitTuru: c.isletmeKayitTuru, isletmeAltTuru: c.isletmeAltTuru, isletmeNeden: c.isletmeNeden, giderTuru: c.giderTuru, kategori: c.kategori })
           : null;
+        // ÖĞRENİLMİŞ İŞLETME SINIFI (kullanıcı-teyitli, eşikli) — AI/kural tahminini ezer.
+        {
+          const islVkn = String((kind === 'ALIS' ? (doc as any).sellerVkn : (doc as any).buyerVkn) || '').replace(/\D/g, '');
+          const islMemImza = VendorMemoryService.buildIcerikImza(Array.isArray(od?.kalemler) ? od.kalemler.map((k: any) => k?.ad) : []);
+          const islMem = (islVkn && (doc as any).taxpayerId)
+            ? await this.pickIsletmeMemory(tenantId, (doc as any).taxpayerId, islVkn, islMemImza).catch(() => null)
+            : null;
+          if (islMem) {
+            const memRef = isletmeRef(kind);
+            const memKt = memRef.kayitTuru.find((x: any) => x.kod === islMem.kayitTuruKod);
+            if (memKt) {
+              const memAltList = getKayitAltList(kind, islMem.kayitTuruKod);
+              const memAlt = islMem.kayitAltKod ? memAltList.find((x: any) => x.kod === islMem.kayitAltKod) : null;
+              isl = {
+                kayitTuruKod: memKt.kod, kayitTuruAd: memKt.ad,
+                kayitAltKod: memAlt?.kod || '', kayitAltAd: memAlt?.ad || '',
+                autoMatched: true, neden: 'Bu satıcı için öğrenilmiş sınıf (müşavir onaylı)',
+              };
+            }
+          }
+        }
         // Son care fallback: alista yalniz icerik sinyaliyle; satista faaliyet+NACE ile.
         if (!isl) {
           const firma = kind === 'ALIS' ? String((doc as any).vendorName || '') : String((doc as any).customerName || '');
@@ -5218,6 +5241,20 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       await this.vendorMemory.recordDecision({
         tenantId, firmaKimlikNo, firmaUnvan, kararTipi: 'fatura',
         kategori: cariCode, altKategori: 'CARI', taxpayerId: doc.taxpayerId,
+      }).catch(() => {});
+    }
+
+    // İŞLETME DEFTERİ ÖĞRENME: kullanıcı işletme sınıfını (Kayıt Türü/Alt Türü) ELLE düzelttiyse
+    //   (userEdited işareti editörden gelir) satıcıya öğret — sonraki faturalarda pickIsletmeMemory
+    //   AI/kural tahmininden ÖNCE bunu uygular. Elle düzeltme açık irade → boost ile eşik anında geçer.
+    const islObj: any = (doc.ocrData as any)?.isletme;
+    if (islObj && islObj.userEdited === true && String(islObj.kayitTuruKod || '').trim()) {
+      await this.vendorMemory.recordDecision({
+        tenantId, firmaKimlikNo, firmaUnvan, kararTipi: 'isletme',
+        kategori: String(islObj.kayitTuruKod).trim(),
+        altKategori: String(islObj.kayitAltKod || '').trim() || null,
+        icerikImza, taxpayerId: doc.taxpayerId,
+        onayBoost: 2,
       }).catch(() => {});
     }
   }
@@ -10329,6 +10366,26 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       // İŞLETME: AI'ın faaliyet+içerik muhakemesiyle verdiği kayıt türü + alt türü.
       // resolveIslAi → undefined ise faaliyet+içerik tabanlı ön seçim (son çare).
       let islSinifAi = isIsletmeMukellef ? resolveIslAi(kind, parsed) : undefined;
+      // ÖĞRENİLMİŞ İŞLETME SINIFI (kullanıcı-teyitli, eşikli) AI tahmininden ÖNCE gelir:
+      //   müşavir bu satıcının kayıt türünü bir kez düzelttiyse sonraki faturalar hafızadan sınıflanır.
+      if (isIsletmeMukellef && d.taxpayerId) {
+        const islVkn = String((kind === 'ALIS' ? d.sellerVkn : d.buyerVkn) || '').replace(/\D/g, '');
+        const islMemImza = VendorMemoryService.buildIcerikImza(Array.isArray(parsed.kalemler) ? parsed.kalemler.map((k: any) => k?.ad) : []);
+        const islMem = islVkn ? await this.pickIsletmeMemory(tenantId, d.taxpayerId, islVkn, islMemImza).catch(() => null) : null;
+        if (islMem) {
+          const memRef = isletmeRef(kind);
+          const memKt = memRef.kayitTuru.find((x: any) => x.kod === islMem.kayitTuruKod);
+          if (memKt) {
+            const memAltList = getKayitAltList(kind, islMem.kayitTuruKod);
+            const memAlt = islMem.kayitAltKod ? memAltList.find((x: any) => x.kod === islMem.kayitAltKod) : null;
+            islSinifAi = {
+              kayitTuruKod: memKt.kod, kayitTuruAd: memKt.ad,
+              kayitAltKod: memAlt?.kod || '', kayitAltAd: memAlt?.ad || '',
+              autoMatched: true, neden: 'Bu satıcı için öğrenilmiş sınıf (müşavir onaylı)',
+            };
+          }
+        }
+      }
       if (!islSinifAi && isIsletmeMukellef) {
         const gs = kind === 'ALIS'
           ? isletmeGiderSinifi({ matrahKategori: parsed.kategori, giderTuru: parsed.giderTuru, vendorName: counterName, documentType: mappedType || parsed.belgeTuru })
@@ -11661,6 +11718,38 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         }
       }
     }
+  }
+
+  /** İŞLETME DEFTERİ hafızası: satıcı VKN + mükellef için öğrenilmiş Kayıt Türü / Alt Türü.
+   *  kararTipi='isletme', kategori=kayitTuruKod, altKategori=kayitAltKod; içerik-imza öncelikli.
+   *  Matrah hafızasıyla aynı eşik (>=2; elle düzeltme onayBoost ile anında geçer). */
+  private async pickIsletmeMemory(
+    tenantId: string,
+    taxpayerId: string,
+    vendorVkn: string,
+    icerikImza?: string | null,
+  ): Promise<{ kayitTuruKod: string; kayitAltKod: string } | null> {
+    const vkn = String(vendorVkn || '').replace(/\D/g, '');
+    if (!vkn || !taxpayerId) return null;
+    const memory = await (this.prisma as any).vendorMemory.findUnique({
+      where: { tenantId_firmaKimlikNo: { tenantId, firmaKimlikNo: vkn } },
+      include: {
+        decisions: {
+          where: { taxpayerId, kararTipi: 'isletme' },
+          orderBy: [{ onayAdedi: 'desc' }, { sonKullanim: 'desc' }],
+          take: 16,
+        },
+      },
+    });
+    const decisions = (memory?.decisions || [])
+      .filter((d: any) => /^\d+$/.test(String(d.kategori || '').trim()))
+      .filter((d: any) => (d.onayAdedi || 0) >= 2);
+    const imza = String(icerikImza || '').trim();
+    const byImza = imza ? decisions.find((d: any) => String(d.icerikImza || '').trim() === imza) : null;
+    const general = decisions.find((d: any) => !String(d.icerikImza || '').trim());
+    const pick = byImza || general;
+    if (!pick) return null;
+    return { kayitTuruKod: String(pick.kategori).trim(), kayitAltKod: String(pick.altKategori || '').trim() };
   }
 
   /** Hesap adındaki ORAN-token'ları: yalnız 1-2 haneli sayılar (KDV oranları 1..20). "2024" gibi
