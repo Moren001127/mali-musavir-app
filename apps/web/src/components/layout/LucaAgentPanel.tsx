@@ -308,11 +308,21 @@ export default function LucaAgentPanel() {
               style={{ background: 'rgba(15,13,11,0.92)', color: '#fafaf9', border: '1px solid rgba(255,255,255,0.1)' }}
             >
               <option value="">Otomatik (tek ajan varsa o)</option>
-              {allDevices.map((d) => (
-                <option key={d.deviceId} value={d.deviceId}>
-                  {(d.workerName || d.deviceId) + (d.stale ? ' · çevrimdışı' : ' · çevrimiçi')}
-                </option>
-              ))}
+              {allDevices
+                // ESKİ KAYIT GİZLEME: 48 saattir sinyal atmayan cihazlar (terk edilmiş
+                // slot denemeleri vb.) listeyi kalabalıklaştırmasın. Çevrimiçi olanlar,
+                // yakınlarda görülenler ve o an SEÇİLİ olan her zaman görünür.
+                .filter((d) => {
+                  if (!d.stale) return true;
+                  if (d.deviceId === preferredIdRaw) return true;
+                  const ping = new Date(d.lastPing).getTime();
+                  return Number.isFinite(ping) && Date.now() - ping < 48 * 60 * 60 * 1000;
+                })
+                .map((d) => (
+                  <option key={d.deviceId} value={d.deviceId}>
+                    {(d.workerName || d.deviceId) + (d.stale ? ' · çevrimdışı' : ' · çevrimiçi')}
+                  </option>
+                ))}
             </select>
             <p className="mt-1.5 text-[10.5px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
               {onlineDevices.length > 1 && !preferredIdRaw
