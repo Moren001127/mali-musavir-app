@@ -11493,13 +11493,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           //   SIF.İND.KDV. 2/10" hesabına atanmıştı — aşağıdaki normals filtresi zaten bu hesapları
           //   eler, ALIŞ'ta direkt oraya düşmeli).
           if (vergiPrefix === '391' && tevkPay >= 1 && tevkPay <= 9) {
-            result = grp.find((a: any) => { const n = String(a.accountName || ''); return n.includes(`${tevkPay}/10`) || /tevk[iı]fat/i.test(n); }) || null;
+            result = grp.find((a: any) => { const n = String(a.accountName || ''); return n.includes(`${tevkPay}/10`) || /tevk[iıİ]fat/i.test(n); }) || null;
           }
           if (!result) {
             // tevkifat/iade/ihrac/istisna/SORUMLU GEÇMEYEN düz hesaplar (matrahla simetrik).
             //   "sorumlu" da elenir: adında tevkifat/"2-10" geçmeyen "191.02.001 SORUMLU SIFATIYLA
             //   İND.KDV" hesabı normals'a sızıp normal KDV satırına atanıyordu (sorumluKdvMatch simetriği).
-            const normals = grp.filter((a: any) => !this.isTevkifatAccountName(a.accountName || '') && !/(iade|ihrac|istisna|sorumlu)/i.test(String(a.accountName || '')));
+            const normals = grp.filter((a: any) => !this.isTevkifatAccountName(a.accountName || '') && !/([iİ]ade|[iİ]hrac|[iİ]stisna|sorumlu)/i.test(String(a.accountName || '')));
             // ALIŞ'ta (191) normals BOŞSA (planda yalnız "sorumlu/tevkifat" adlı 191 hesabı varsa, normal
             //   İndirilecek KDV hesabı YOKSA) grp'ye (sorumlu dahil) DÜŞME — normal-191 satırı SORUMLU
             //   hesaba ASLA zorla atanmasın (kullanıcı bulgusu: planda sadece "191.02.001 SORUMLU
@@ -11569,7 +11569,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           //   tevkifatı doğru yakalayınca 72 satış "Gelir kodu boş" kaldı).
         }
         // NORMAL satış → tevkifat (KELİME ya da "X/10" ORAN) / iade / ihrac / istisna GEÇMEYEN 600.
-        const normals = g600.filter((a: any) => !this.isTevkifatAccountName(a.accountName || '') && !/(iade|ihrac|istisna)/i.test(String(a.accountName || '')));
+        const normals = g600.filter((a: any) => !this.isTevkifatAccountName(a.accountName || '') && !/([iİ]ade|[iİ]hrac|[iİ]stisna)/i.test(String(a.accountName || '')));
         const pool = normals.length ? normals : g600;
         const depth = (c: string) => (String(c || '').match(/\./g) || []).length;
         const mx = pool.reduce((m: number, a: any) => Math.max(m, depth(String(a.accountCode || ''))), 0);
@@ -11585,7 +11585,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           // Tevkifat-adlı 600 yoksa normal-600 havuzuna düş (saleMatrahDefault ile simetrik).
           if (tevk.length) return tevk;
         }
-        const normals = g600.filter((a: any) => !this.isTevkifatAccountName(a.accountName || '') && !/(iade|ihrac|istisna)/i.test(String(a.accountName || '')));
+        const normals = g600.filter((a: any) => !this.isTevkifatAccountName(a.accountName || '') && !/([iİ]ade|[iİ]hrac|[iİ]stisna)/i.test(String(a.accountName || '')));
         return normals.length ? normals : g600;
       })() : [];
       // ÖKC/yazarkasa fişi NAKİT işlemdir → karşı taraf cari değil, 100 KASA.
@@ -12308,7 +12308,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
    *  satış yanlışlıkla tevkifat hesabına düşmesin. */
   private isTevkifatAccountName(name: string): boolean {
     const n = String(name || '');
-    if (/tevk[iı]fat/i.test(n)) return true;
+    // Türkçe-İ ölüsü: JS'te /i bayrağı 'İ' (U+0130) harfini 'i' ile EŞLEMEZ — "TEVKİFATLI NAKLİYE
+    //   GELİRLERİ" adlı plan hesabı tanınmıyordu (Yorgun Nakliyat: matrah 600.01.002 yerine
+    //   600.01.001'e düştü). Sınıfa 'İ' açıkça eklendi.
+    if (/tevk[iıİ]fat/i.test(n)) return true;
     if (/\b(?:10|[1-9])\s*\/\s*10\b/.test(n)) return true; // 2/10, 5/10, 9/10, 10/10 …
     return false;
   }

@@ -1423,17 +1423,25 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
           </div>
         )}
         {kind === 'SATIS' && noGaps && noGaps.toplamEksik > 0 && (
-          <div className="eksikbelge" title="Satış faturası numaraları ardışık gitmeli — aradaki boşluk kesilmemiş, iptal edilmiş ya da sisteme gelmemiş fatura demek olabilir.">
+          <div className="eksikbelge" title="Satış faturası numaraları ardışık gitmeli — listede olmayan numara kesilmemiş, iptal edilmiş ya da sisteme gelmemiş fatura demek olabilir.">
             <Ico html={I.info} size={14} />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-              <span><b>{noGaps.toplamEksik}</b> satış belge numarası boşluğu var{ocrProg?.active ? ' — okuma sürüyor, liste okuma bitince netleşir' : ''}:</span>
-              {(noGaps.seriler || []).map((s: any) => (
-                <span key={s.seri}>
-                  <b>{s.seri}</b> · {s.adet} belge ({s.ilk} – {s.son}){s.eksikToplam > 0
-                    ? <> · eksik: {s.bosluklar.map((b: any) => b.adet === 1 ? b.baslangic : `${b.baslangic}–${b.bitis} (${b.adet})`).join(', ')}</>
-                    : ' · boşluk yok'}
-                </span>
-              ))}
+              {(noGaps.seriler || []).filter((s: any) => s.eksikToplam > 0).map((s: any) => {
+                // Sade gösterim: numaraları TEK TEK yaz (30'a kadar aç; fazlasında aralık kısaltması).
+                const kuyruk = (v: any) => String(parseInt(String(v).slice(String(s.seri).length), 10) || v);
+                const nolar: string[] = [];
+                for (const b of (s.bosluklar || [])) {
+                  const bas = parseInt(String(b.baslangic).slice(String(s.seri).length), 10);
+                  if (s.eksikToplam <= 30 && Number.isFinite(bas)) { for (let n = bas; n < bas + b.adet; n++) nolar.push(String(n)); }
+                  else nolar.push(b.adet === 1 ? kuyruk(b.baslangic) : `${kuyruk(b.baslangic)}–${kuyruk(b.bitis)} arası ${b.adet} adet`);
+                }
+                return (
+                  <span key={s.seri}>
+                    <b>{s.eksikToplam} satış faturası eksik görünüyor</b> ({s.seri} serisinde şu numaralar yok): <b>{nolar.join(', ')}</b>
+                    {ocrProg?.active ? ' — okuma sürüyor, bitince kesinleşir.' : ' — kesilmemiş, iptal edilmiş ya da sisteme gelmemiş olabilir.'}
+                  </span>
+                );
+              })}
             </div>
           </div>
         )}

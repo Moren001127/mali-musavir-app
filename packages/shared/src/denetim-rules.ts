@@ -31,7 +31,7 @@ interface TevkifatKural {
   kod: string;
   ad: string;
   anahtar: string[];       // giderTuru/kalemler/muhasebe yorumunda aranır
-  esikKdvDahil: number;   // TL — bu eşik ve üzerinde tevkifat zorunlu
+  esikKdvDahil: number;   // TL — bu eşiği AŞAN (tam eşik HARİÇ; 12.000,00 muaf, 12.000,01+ zorunlu) tutarda tevkifat
   oran: string;            // '2/10', '9/10' vb. — gösterimde kullanılır
   madde: string;           // KDVGUT maddesi
 }
@@ -151,7 +151,8 @@ export function denetimUyariOlustur(p: DenetimGirdi): DenetimUyari[] {
   //   "demirbaş + tevkifat eksik" mantıksal çelişkisi (kullanıcı bulgusu: yarı römork SATIN ALIMI
   //   "kara taşımacılığı hizmeti" sanılıp tevkifat istenmişti) → kontrolü baştan atla.
   for (const kural of !p.isFixedAsset ? TEVKIFAT : []) {
-    if (totalKdvDahil >= kural.esikKdvDahil && iceriyor(hizmetMetni, kural.anahtar)) {
+    // KDVGUT: sınır "12.000 TL'yi AŞAN" — tam 12.000,00 tevkifata tabi DEĞİL (kullanıcı teyidi 2026-07-18).
+    if (totalKdvDahil > kural.esikKdvDahil && iceriyor(hizmetMetni, kural.anahtar)) {
       if (!p.tevkifatVar) {
         uyarilar.push({
           kod: kural.kod + '_EKSIK',
