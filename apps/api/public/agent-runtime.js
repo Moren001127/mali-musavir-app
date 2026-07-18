@@ -12,7 +12,7 @@
   // v1.42.2 (2026-06-16): Ajan kendini yenilerken (delete __morenAgent) eski async
   // döngü "Cannot read 'stopRequested' of undefined/null" ile ÇÖKÜYORDU → yetim
   // döngü artık nesne yoksa güvenle durur (stopRequested kontrollerine null-guard).
-  const AGENT_VERSION = '1.46.6';
+  const AGENT_VERSION = '1.46.7';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -2323,18 +2323,34 @@
           }
 
           await log(`⬆️ Upload basliyor: ${uploadUrl.split('?')[0].replace(API, '')}`);
-          const uploadController = new AbortController();
-          const uploadTimeout = setTimeout(() => uploadController.abort(), 120000);
+          // v1.46.7: 120sn sabit zaman aşımı BÜYÜK ZIP'lerde (4-5MB e-arşiv paketi) ofis
+          // yükleme hızına yetmiyordu → "signal is aborted"/"Failed to fetch" ile iş
+          // düşüyordu (EDELER 4.8MB, 2 kez üst üste). Süre 10 dk + kopmada 1 tekrar.
           let uploadRes;
-          try {
-            uploadRes = await fetch(uploadUrl, {
-              method: 'POST',
-              headers: { 'X-Agent-Token': TOKEN },
-              body: fd,
-              signal: uploadController.signal,
-            });
-          } finally {
-            clearTimeout(uploadTimeout);
+          {
+            const UPLOAD_TIMEOUT_MS = 600000;
+            let lastErr = null;
+            for (let attempt = 1; attempt <= 2; attempt++) {
+              const uploadController = new AbortController();
+              const uploadTimeout = setTimeout(() => uploadController.abort(), UPLOAD_TIMEOUT_MS);
+              try {
+                uploadRes = await fetch(uploadUrl, {
+                  method: 'POST',
+                  headers: { 'X-Agent-Token': TOKEN },
+                  body: fd,
+                  signal: uploadController.signal,
+                });
+                lastErr = null;
+                break;
+              } catch (e) {
+                lastErr = e;
+                await log(`⚠ Upload denemesi ${attempt}/2 başarısız: ${String(e?.message || e).slice(0, 80)}${attempt < 2 ? ' — 5sn sonra tekrar' : ''}`);
+                if (attempt < 2) await sleep(5000);
+              } finally {
+                clearTimeout(uploadTimeout);
+              }
+            }
+            if (lastErr) throw lastErr;
           }
           if (!uploadRes.ok) {
             const errText = await uploadRes.text().catch(() => '');

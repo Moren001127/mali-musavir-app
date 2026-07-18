@@ -17,12 +17,12 @@
       "lockedBy": "muzaffer"
     },
     "apps/api/public/agent-runtime.js": {
-      "sha256": "0cd834e0b6c8dc9c503075e181b4f86960b9458d5ded1a7df001c44632f292c4",
+      "sha256": "68819b8c58cc79a72d5b26bd53432ee99128a5ba48f1501ab1227e2e641f58f0",
       "reason": "Moren Agent v1.36.64 - log denetim uyarilari + Claude Vision maliyet optimizasyonu",
       "lockedBy": "muzaffer"
     },
     "apps/web/public/moren-agent.js": {
-      "sha256": "0cd834e0b6c8dc9c503075e181b4f86960b9458d5ded1a7df001c44632f292c4",
+      "sha256": "68819b8c58cc79a72d5b26bd53432ee99128a5ba48f1501ab1227e2e641f58f0",
       "reason": "Moren Agent v1.36.64 (web ayna kopya) - log denetim uyarilari + Claude Vision maliyet optimizasyonu",
       "lockedBy": "muzaffer"
     },
