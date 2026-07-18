@@ -2621,9 +2621,21 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
   const [selId, setSelId] = useState<string>('');
   // Liste ekranındaki "Muhasebeleştir" ikonu localStorage'a hedef belgeyi yazar → bu ekran
   //   açılınca o belgeyi otomatik seçer (hatalı belgeyi listede tekrar aramaya gerek kalmaz).
+  const hedefDocRef = useRef<string>('');
   useEffect(() => {
-    try { const t = localStorage.getItem('fm-open-doc'); if (t) { setSelId(t); localStorage.removeItem('fm-open-doc'); } } catch { /* yok say */ }
+    try { const t = localStorage.getItem('fm-open-doc'); if (t) { setSelId(t); hedefDocRef.current = t; localStorage.removeItem('fm-open-doc'); } } catch { /* yok say */ }
   }, []);
+  // HEDEF BELGENİN YÖNÜNE GEÇ: ekran hep ALIŞ sekmesiyle açılıyordu — hedef SATIŞ belgesiyse
+  //   listede bulunamayıp İLK ALIŞ belgesi gösteriliyordu (kullanıcı: "ilgili faturayı açmıyor").
+  //   Belgeler yüklenince hedefin yönü neyse sekme oraya çevrilir (tek seferlik; sonra elle geçiş serbest).
+  useEffect(() => {
+    if (!hedefDocRef.current || !all.length) return;
+    const hedef = all.find((d) => d.id === hedefDocRef.current);
+    if (!hedef) return;
+    const yon = dirOf(hedef) as 'ALIS' | 'SATIS';
+    if (yon !== dir) setDir(yon);
+    hedefDocRef.current = '';
+  }, [all, dir]);
   const navList = [...hazir, ...eksik];
   const selDoc = navList.find((d) => d.id === selId) || hazir[0] || eksik[0];
   const navIdx = selDoc ? navList.findIndex((d) => d.id === selDoc.id) : -1;
