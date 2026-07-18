@@ -16,7 +16,9 @@ import { BeyanKayitlariModule } from '../beyan-kayitlari/beyan-kayitlari.module'
 import { WhatsAppModule } from '../whatsapp/whatsapp.module';
 
 @Module({
-  imports: [PrismaModule, StorageModule, forwardRef(() => KdvControlModule), VendorMemoryModule, MihsapModule, PortalAutomationModule, NotificationsModule, BeyanKayitlariModule, WhatsAppModule],
+  // WhatsAppModule forwardRef ŞART: Fatura → WhatsApp → Calisan → Luca → Fatura modül DÖNGÜSÜ var —
+  // düz import açılışta "module is undefined" ile Railway'i çökertti (2026-07-19).
+  imports: [PrismaModule, StorageModule, forwardRef(() => KdvControlModule), VendorMemoryModule, MihsapModule, PortalAutomationModule, NotificationsModule, BeyanKayitlariModule, forwardRef(() => WhatsAppModule)],
   controllers: [FaturaMuhasebelestirmeController],
   providers: [FaturaMuhasebelestirmeService, EarsivRenderService, FaturaMuhasebelestirmeCron, EFaturaSyncService, IcerikEslestirmeService],
   exports: [FaturaMuhasebelestirmeService, EFaturaSyncService, IcerikEslestirmeService],

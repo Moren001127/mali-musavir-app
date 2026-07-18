@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { BadRequestException, forwardRef, Inject, Injectable, Logger, NotFoundException, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { createHash, randomUUID } from 'crypto';
 import { Prisma } from '@prisma/client';
 import * as JSZip from 'jszip';
@@ -493,7 +493,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     private readonly portalAutomation: PortalAutomationService,
     // KDV Raporu: devreden KDV önceki dönem BEYANNAMESİNDEN okunur + WhatsApp bilgilendirme.
     private readonly beyanKayitlari: BeyanKayitlariService,
-    private readonly whatsapp: WhatsAppService,
+    // forwardRef ŞART — Fatura↔WhatsApp modül döngüsü (Calisan→Luca üzerinden).
+    @Inject(forwardRef(() => WhatsAppService)) private readonly whatsapp: WhatsAppService,
   ) {}
 
   onModuleInit() {
