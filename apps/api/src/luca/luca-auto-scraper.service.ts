@@ -199,9 +199,13 @@ export class LucaAutoScraperService {
   // ==================== LUCA KULLANICI HAVUZU ====================
 
   private isWorkerAccountsEnabled() {
+    // Çoklu Luca hesabı havuzu (paralel işçiler) her zaman açık. Eskiden
+    // LUCA_WORKER_ACCOUNTS_ENABLED env'ine bağlıydı ve canlıda set edilmediğinden
+    // kullanıcı hesap kaydedemiyordu ("Luca kullanici havuzu kapali"). Kapatmak
+    // istenirse env'i 'false' yapmak yeterli.
     return (
-      process.env.LUCA_WORKER_ACCOUNTS_ENABLED === 'true' ||
-      process.env.LUCA_PORTAL_WORKER_ACCOUNTS_ENABLED === 'true'
+      process.env.LUCA_WORKER_ACCOUNTS_ENABLED !== 'false' &&
+      process.env.LUCA_PORTAL_WORKER_ACCOUNTS_ENABLED !== 'false'
     );
   }
 
