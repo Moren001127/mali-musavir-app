@@ -3076,16 +3076,6 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                     <button type="button" className={dir === 'ALIS' ? 'on' : ''} onClick={() => { setDir('ALIS'); setSelId(''); }}>Alış <b>{cAlis}</b></button>
                     <button type="button" className={dir === 'SATIS' ? 'on' : ''} onClick={() => { setDir('SATIS'); setSelId(''); }}>Satış <b>{cSatis}</b></button>
                   </span>
-                  {isabet && (Number(isabet.toplam) > 0 || Number(isabet.boslukVar) > 0) ? (
-                    // KOMPAKT pil — üst bara sığmıyordu (kullanıcı: "tam sığmamış, düzgün görünmüyor").
-                    //   Ekranda yalnız "Dokunmasız %X"; sayıların tamamı ipucu balonunda.
-                    <span
-                      title={`İsabet panosu (bu dönem):\nDokunmasız: %${Number(isabet.dokunmasizOran) || 0} (${Number(isabet.dokunmasiz) || 0}/${Number(isabet.toplam) || 0}) — hiçbir satırı elle düzeltilmeden onaylanan\nElle düzeltilen: ${Number(isabet.kullaniciDuzeltmeli) || 0}\nEksik kodlu (bekleyen): ${Number(isabet.boslukVar) || 0}`}
-                      style={{ display: 'inline-flex', alignItems: 'center', flex: '0 1 auto', minWidth: 0, padding: '3px 9px', borderRadius: 999, background: 'rgba(21,128,61,0.07)', border: '1px solid rgba(21,128,61,0.22)', fontSize: 11, fontWeight: 600, color: '#15803d', whiteSpace: 'nowrap' }}
-                    >
-                      Dokunmasız %{Number(isabet.dokunmasizOran) || 0}
-                    </span>
-                  ) : null}
                   <button type="button" className="fifull" onClick={() => onToggleFull?.()} title={full ? 'Küçült — menüyü geri getir' : 'Büyüt — menüyü gizle, tam ekran işle'}><Ico html={full ? I.compress : I.expand} size={14} /><span>{full ? 'Küçült' : 'Büyüt'}</span></button>
                   <div className="sp" />
                 </div>
@@ -3368,6 +3358,16 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                   </div>
                 )}
                 <div className="wactions">
+                  {isabet && (Number(isabet.toplam) > 0 || Number(isabet.boslukVar) > 0) ? (
+                    // İSABET PİLİ — üst bara sığmıyordu; Kaydet satırının SOL boşluğuna taşındı
+                    //   (kullanıcı isteği). Detay sayılar ipucu balonunda.
+                    <span
+                      title={`İsabet panosu (bu dönem):\nDokunmasız: %${Number(isabet.dokunmasizOran) || 0} (${Number(isabet.dokunmasiz) || 0}/${Number(isabet.toplam) || 0}) — hiçbir satırı elle düzeltilmeden onaylanan\nElle düzeltilen: ${Number(isabet.kullaniciDuzeltmeli) || 0}\nEksik kodlu (bekleyen): ${Number(isabet.boslukVar) || 0}`}
+                      style={{ display: 'inline-flex', alignItems: 'center', flex: '0 1 auto', minWidth: 0, padding: '3px 10px', borderRadius: 999, background: 'rgba(21,128,61,0.07)', border: '1px solid rgba(21,128,61,0.22)', fontSize: 11.5, fontWeight: 700, color: '#15803d', whiteSpace: 'nowrap' }}
+                    >
+                      Dokunmasız %{Number(isabet.dokunmasizOran) || 0} · Elle {Number(isabet.kullaniciDuzeltmeli) || 0} · Eksik {Number(isabet.boslukVar) || 0}
+                    </span>
+                  ) : null}
                   <div className="sp" />
                   <button className="btn sm" disabled={saveMetaMut.isPending || saveLinesMut.isPending} title="Bilgileri ve satırları kaydet — Luca'ya GÖNDERMEZ (kısayol: Ctrl+S)"
                     onClick={() => { saveAll().catch(() => {}); }}>
