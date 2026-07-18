@@ -14,6 +14,8 @@ import { buildLucaImportExcel, buildLucaIsletmeHizliFisCsv } from './luca-excel.
 import { VendorMemoryService } from '../vendor-memory/vendor-memory.service';
 import { MihsapService } from '../mihsap/mihsap.service';
 import { PortalAutomationService } from '../portal-automation/portal-automation.service';
+import { BeyanKayitlariService } from '../beyan-kayitlari/beyan-kayitlari.service';
+import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import { isletmeRef, getKayitAltList, isletmeAlisSatisTuru, isletmeIslemTuru, defaultBelgeTuruKod, normalizeDocumentType, isletmeGiderSinifi, isletmeAutoKayitAltKod, isletmeAutoKayitTuru, defaultKayitAltKod, denetimUyariOlustur, giderIcerikSinifla } from '@mali-musavir/shared';
 
 // ── İşletme defteri AI sınıflandırması ──
@@ -489,6 +491,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     private readonly vendorMemory: VendorMemoryService,
     private readonly mihsapService: MihsapService,
     private readonly portalAutomation: PortalAutomationService,
+    // KDV Raporu: devreden KDV önceki dönem BEYANNAMESİNDEN okunur + WhatsApp bilgilendirme.
+    private readonly beyanKayitlari: BeyanKayitlariService,
+    private readonly whatsapp: WhatsAppService,
   ) {}
 
   onModuleInit() {
@@ -1199,6 +1204,61 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       }
     }
 
+    // ── BELGE-TABLOSU BİRLEŞTİRME: rapor eskiden YALNIZ e-Arşiv sorgu tablosundan (earsiv_faturalar)
+    //    besleniyordu — entegratör (TÜRMOB/Uyumsoft) kaynaklı mükelleflerde tablo boş kalıp rapor
+    //    "0 belge" gösteriyordu (Gökhan Akgöz vakası). Sorgu tablosunda OLMAYAN muhasebe belgeleri
+    //    de aynı toplamlara katılır (fatura-no/kaynak eşleşenler ÇİFT sayılmaz). ──
+    let mergedDocCount = 0;
+    {
+      const earsivIdSet = new Set(invoices.map((i: any) => String(i.id)));
+      const earsivNoSet = new Set(invoices.map((i: any) => `${String(i.tip || '').toUpperCase() === 'SATIS' ? 'SATIS' : 'ALIS'}|${String(i.faturaNo || '').trim().toUpperCase()}`));
+      for (const doc of accountingDocs) {
+        const kind = String(doc.invoiceKind || '').toUpperCase() === 'SATIS' ? 'SATIS' : 'ALIS';
+        const belgeNo = String(doc.belgeNo || '').trim().toUpperCase();
+        const sourceRefId = String(doc.sourceRefId || '').trim();
+        const inlineRefId = String(doc.s3Key || '').startsWith('earsiv-inline://') ? String(doc.s3Key || '').slice('earsiv-inline://'.length) : '';
+        if ((sourceRefId && earsivIdSet.has(sourceRefId)) || (inlineRefId && earsivIdSet.has(inlineRefId))) continue;
+        if (belgeNo && earsivNoSet.has(`${kind}|${belgeNo}`)) continue;
+        const od: any = doc.ocrData || {};
+        const vergiSum = (doc.lines || []).filter((l: any) => ['vergi', 'vergi-sorumlu'].includes(String(l.group || '').toLowerCase()))
+          .reduce((s: number, l: any) => s + this.reportNumber(l.debit) + this.reportNumber(l.credit), 0);
+        const matrahSum = (doc.lines || []).filter((l: any) => String(l.group || '').toLowerCase() === 'matrah')
+          .reduce((s: number, l: any) => s + this.reportNumber(l.debit) + this.reportNumber(l.credit), 0);
+        const base = this.reportNumber(od.matrah) || matrahSum;
+        const vat = this.reportNumber(od.kdvTutari) || vergiSum;
+        const total = this.reportNumber(doc.totalAmount) || base + vat;
+        if (!(base > 0 || vat > 0 || total > 0)) continue;
+        mergedDocCount += 1;
+        const breakdown = this.normalizeReportBreakdown(od.kdvBreakdown, od.kdvOrani, base, vat);
+        this.addReportVatBreakdown(vatByRate, kind, breakdown, base, vat);
+        if (kind === 'SATIS') {
+          sourceCounts.sales += 1;
+          salesBase += base; salesVat += vat; salesTotal += total;
+          this.addReportBucket(categories.sales, base, vat, total);
+          this.addReportCounterparty(topCustomers, { name: doc.customerName || 'Bilinmeyen alıcı', taxNo: doc.buyerVkn, base, vat, total });
+        } else {
+          sourceCounts.purchase += 1;
+          purchaseBase += base; purchaseVat += vat; purchaseTotal += total;
+          this.addReportCounterparty(topSuppliers, { name: doc.vendorName || 'Bilinmeyen satıcı', taxNo: doc.sellerVkn, base, vat, total });
+          const classified = this.classifyPurchaseInvoiceForReport(doc, { base, vat, total });
+          for (const row of classified) this.addReportBucket(categories[row.key], row.base, row.vat, row.total, row.count);
+          if (classified.some((row) => row.key === 'unclassified' && Math.abs(row.base) > REPORT_EPSILON)) unclassifiedPurchaseInvoiceCount += 1;
+        }
+      }
+    }
+
+    // ── ÖNCEKİ DÖNEMDEN DEVREDEN KDV — kaynak: önceki dönemin GERÇEK KDV1 BEYANNAMESİ
+    //    ("Sonraki Döneme Devreden KDV" satırı, Beyannameler modülü PDF'inden). Bulunamazsa null
+    //    (uydurulmaz); değerlendirme notu düşülür. ──
+    const oncekiDonem = (() => { const [y, m] = period.split('-').map(Number); const d = new Date(Date.UTC(y, m - 2, 1)); return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`; })();
+    let devredenOnceki: { tutar: number; donem: string; kaynak: string } | null = null;
+    try {
+      const dv = await this.beyanKayitlari.getSonrakiDonemeDevreden(tenantId, taxpayerId, oncekiDonem);
+      if (dv) devredenOnceki = { tutar: this.roundReportMoney(dv.tutar), donem: oncekiDonem, kaynak: 'beyanname' };
+    } catch (e: any) {
+      this.logger.warn(`KDV raporu devreden okunamadı (tp=${taxpayerId} donem=${oncekiDonem}): ${e?.message || e}`);
+    }
+
     const missingAccountCodeCount = accountingDocs.filter((doc: any) => {
       const lines = Array.isArray(doc.lines) ? doc.lines : [];
       const relevant = lines.filter((line: any) => ['matrah', 'vergi', 'vergi-sorumlu'].includes(String(line.group || '').toLowerCase()));
@@ -1237,8 +1297,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       deductibleVat: this.roundReportMoney(purchaseVat),
       calculatedVat: this.roundReportMoney(salesVat),
       periodVatDifference: this.roundReportMoney(salesVat - purchaseVat),
-      payableVat: null,
-      carryForwardVat: null,
+      // Önceki dönem beyannamesindeki devreden bulunduysa TAHMİNİ sonuç hesaplanır
+      // (fark − devreden): pozitif = ödenecek yönü, negatif = sonraki döneme devreden.
+      prevCarryForwardVat: devredenOnceki ? devredenOnceki.tutar : null,
+      payableVat: devredenOnceki ? this.roundReportMoney(Math.max(0, salesVat - purchaseVat - devredenOnceki.tutar)) : null,
+      carryForwardVat: devredenOnceki ? this.roundReportMoney(Math.max(0, -(salesVat - purchaseVat - devredenOnceki.tutar))) : null,
     };
 
     const categoryRows = [
@@ -1273,7 +1336,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     ];
 
     const quality = {
-      invoiceCount: invoices.length,
+      // invoiceCount = sorgu tablosu satırları + oradan gelmeyen (entegratör) muhasebe belgeleri.
+      invoiceCount: invoices.length + mergedDocCount,
+      mergedDocCount,
       accountingDocCount: accountingDocs.length,
       missingAccountCodeCount,
       unclassifiedCount: unclassifiedPurchaseInvoiceCount,
@@ -1293,6 +1358,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       period,
       periodLabel: this.reportPeriodLabel(period),
       generatedAt: new Date().toISOString(),
+      // Önceki dönem KDV1 beyannamesinden okunan devreden (kaynak: beyanname PDF'i).
+      devreden: devredenOnceki,
       totals,
       categoryRows,
       vatByRate: Array.from(vatByRate.values())
@@ -1317,6 +1384,49 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
 
     report.assessment = this.buildKdvClientAssessment(report);
     return report;
+  }
+
+  /** KDV Raporu → mükellefe WHATSAPP bilgilendirme. dryRun=true: göndermez, mesaj+telefon önizlemesi
+   *  döner (kullanıcı modalda görüp ONAYLAR — onaysız mükellefe mesaj gitmez). Telefon: mükellef
+   *  kartındaki phone/phones; yoksa 400. */
+  async kdvRaporuWhatsapp(tenantId: string, opts: { taxpayerId?: string; period?: string; dryRun?: boolean; telefon?: string }) {
+    const report: any = await this.kdvClientReport(tenantId, { taxpayerId: opts.taxpayerId, period: opts.period });
+    const tp = await (this.prisma as any).taxpayer.findFirst({
+      where: { id: String(opts.taxpayerId || ''), tenantId },
+      select: { phone: true, phones: true },
+    });
+    const telefon = String(opts.telefon || tp?.phone || (Array.isArray(tp?.phones) ? tp.phones[0] : '') || '').trim();
+    if (!telefon) throw new BadRequestException('Mükellef kartında telefon numarası yok — önce mükellef kartına telefon ekleyin.');
+
+    const t = report.totals || {};
+    const para = (n: any) => this.formatReportMoney(this.reportNumber(n));
+    const satirlar: string[] = [
+      '*MOREN MALİ MÜŞAVİRLİK*',
+      `📊 *KDV Bilgilendirme — ${report.periodLabel}*`,
+      '',
+      `Sayın *${report.taxpayer?.name || 'Mükellefimiz'}*,`,
+      `${report.periodLabel} dönemi fatura kayıtlarınıza göre ön KDV durumunuz:`,
+      '',
+      `🧾 Satış: *${report.quality?.sourceCounts?.sales ?? 0} fatura* · Matrah ${para(t.salesBase)} ₺ · KDV ${para(t.salesVat)} ₺`,
+      `📥 Alış/Gider: *${report.quality?.sourceCounts?.purchase ?? 0} fatura* · Matrah ${para(t.purchaseBase)} ₺ · KDV ${para(t.purchaseVat)} ₺`,
+    ];
+    if (report.devreden) {
+      satirlar.push(`↪️ Önceki dönemden devreden KDV (beyanname): ${para(report.devreden.tutar)} ₺`);
+      const pay = this.reportNumber(t.payableVat);
+      satirlar.push('', pay > 0
+        ? `💰 *Bu dönem tahmini ödenecek KDV: ~${para(pay)} ₺*`
+        : `↪️ *Bu dönem tahmini devreden KDV: ~${para(t.carryForwardVat)} ₺* (ödeme çıkmıyor)`);
+    } else {
+      satirlar.push('', `📌 Dönem KDV farkı: ${para(t.periodVatDifference)} ₺ (devreden KDV beyanname kaydı olmadığından hesaba katılmadı)`);
+    }
+    satirlar.push('', 'ℹ️ Bu bilgilendirme beyan öncesi *taslaktır*; kesin tutarlar beyanname ile netleşir.', 'Sorularınız için bize yazabilirsiniz. 🙏');
+    const mesaj = satirlar.join('\n');
+
+    if (opts.dryRun) return { ok: true, dryRun: true, telefon, mesaj };
+    const sonuc = await this.whatsapp.sendMessageDetailed(telefon, mesaj, tenantId);
+    this.logger.log(`[KDV-RAPOR-WA] tp=${opts.taxpayerId} donem=${report.period} tel=${telefon.slice(0, 4)}*** ok=${sonuc.ok}${sonuc.ok ? '' : ' hata=' + (sonuc.error || sonuc.errorCode || '?')}`);
+    if (!sonuc.ok) throw new BadRequestException(`WhatsApp gönderilemedi: ${sonuc.error || sonuc.errorCode || 'bilinmeyen hata'}`);
+    return { ok: true, telefon };
   }
 
   private normalizeReportPeriod(period?: string | null) {
@@ -1646,13 +1756,32 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       ];
     }
 
-    lines.push(`Genel tablo: Bu dönem ${this.formatReportMoney(sales)} TL satış, ${this.formatReportMoney(purchase)} TL alış ve gider faturası görünmektedir.`);
+    lines.push(`Genel tablo: Bu dönem ${quality.invoiceCount} fatura işlendi — ${this.formatReportMoney(sales)} TL satış, ${this.formatReportMoney(purchase)} TL alış ve gider faturası görünmektedir.`);
     if (diff > REPORT_EPSILON) {
       lines.push(`KDV yönü: Fatura kayıtlarına göre hesaplanan KDV, indirilecek KDV'den ${this.formatReportMoney(diff)} TL fazla; dönem içi ödeme yönü oluşmaktadır.`);
     } else if (diff < -REPORT_EPSILON) {
       lines.push(`KDV yönü: Fatura kayıtlarına göre indirilecek KDV, hesaplanan KDV'den ${this.formatReportMoney(Math.abs(diff))} TL fazla; dönem içi devreden yönü oluşmaktadır.`);
     } else {
       lines.push('KDV yönü: Fatura kayıtlarına göre hesaplanan ve indirilecek KDV birbirine çok yakın görünmektedir.');
+    }
+
+    // Devreden KDV — önceki dönem BEYANNAMESİNDEN okunur; bulunduysa tahmini sonuç cümlesi kurulur.
+    if (report.devreden) {
+      const pay = this.reportNumber(totals.payableVat);
+      const carry = this.reportNumber(totals.carryForwardVat);
+      const sonucCumle = pay > REPORT_EPSILON
+        ? `bu dönem için TAHMİNİ ödenecek KDV ${this.formatReportMoney(pay)} TL yönündedir`
+        : `devreden KDV büyüyerek TAHMİNİ ${this.formatReportMoney(carry)} TL olarak sonraki döneme taşınmaktadır`;
+      lines.push(`Devreden KDV: Önceki dönem (${this.reportPeriodLabel(report.devreden.donem)}) beyannamesinden devreden ${this.formatReportMoney(report.devreden.tutar)} TL dikkate alındığında ${sonucCumle}.`);
+    } else {
+      lines.push('Devreden KDV: Önceki dönem KDV beyannamesi sistemde bulunamadığından devreden tutar hesaba katılamadı; kesin sonuç için beyanname kaydı gereklidir.');
+    }
+
+    // KDV oran kırılımı — satış tarafının orana dağılımı tek cümlede.
+    const satisOranlar = (report.vatByRate || []).filter((r: any) => r.side === 'SATIS' && this.reportNumber(r.vat) > REPORT_EPSILON);
+    if (satisOranlar.length > 1) {
+      const parcalar = satisOranlar.map((r: any) => `%${r.rate}: ${this.formatReportMoney(this.reportNumber(r.vat))} TL`).join(', ');
+      lines.push(`Oran kırılımı: Hesaplanan KDV oranlara göre ${parcalar} şeklinde dağılmaktadır.`);
     }
 
     const goods = this.reportNumber(totals.purchaseGoodsTotal);
@@ -1664,15 +1793,24 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const customer = report.topCustomers?.[0]?.name;
       lines.push(`Cari yoğunluk: En yüksek alış ${supplier || 'belirlenemeyen firma'}, en yüksek satış ${customer || 'belirlenemeyen müşteri'} tarafında yoğunlaşmaktadır.`);
     }
-    if (unclassified > REPORT_EPSILON || quality.missingAccountCodeCount > 0) {
-      lines.push(`Hesap kodu kontrolü: ${quality.missingAccountCodeCount || 0} belgede hesap kodu eksikliği, ${quality.unclassifiedCount || 0} alış faturasında sınıflandırma ihtiyacı vardır.`);
+    // Ba/Bs eşiği — 5.000 TL üstü cari sayısı (bildirim hazırlığı sinyali).
+    if ((report.formBa || []).length || (report.formBs || []).length) {
+      lines.push(`Ba/Bs hazırlığı: 5.000 TL eşiğini aşan ${(report.formBa || []).length} alış carisi (Form Ba) ve ${(report.formBs || []).length} satış carisi (Form Bs) görünmektedir.`);
+    }
+    // İş kalitesi — bekleyen onay + eksik kod + sınıflandırma tek cümlede (varsa).
+    if (quality.pendingReviewCount > 0 || quality.missingAccountCodeCount > 0 || unclassified > REPORT_EPSILON) {
+      const parcalar: string[] = [];
+      if (quality.pendingReviewCount > 0) parcalar.push(`${quality.pendingReviewCount} belge onay bekliyor`);
+      if (quality.missingAccountCodeCount > 0) parcalar.push(`${quality.missingAccountCodeCount} belgede hesap kodu eksik`);
+      if (quality.unclassifiedCount > 0) parcalar.push(`${quality.unclassifiedCount} alış faturası sınıflandırma bekliyor`);
+      lines.push(`İş kalitesi: ${parcalar.join(', ')} — rakamlar bu belgeler tamamlandığında değişebilir.`);
     }
     if ((controls.warnings || []).length > 0) {
       lines.push(`KDV kontrol notu: ${controls.warnings[0]} Bu uyarılar netleşmeden rapor nihai beyan sonucu gibi değerlendirilmemelidir.`);
     } else {
-      lines.push('KDV kontrol notu: Bu rapor fatura kayıtlarına göre hazırlanmıştır; devreden KDV, tevkifat, istisna ve beyanname düzeltmeleri ayrıca kontrol edilmelidir.');
+      lines.push('Not: Bu rapor fatura kayıtlarına göre hazırlanan BEYAN ÖNCESİ taslaktır; tevkifat, istisna ve beyanname düzeltmeleri kesin beyanla netleşir.');
     }
-    return lines.slice(0, 6);
+    return lines.slice(0, 9);
   }
 
   private formatReportMoney(value: number) {

@@ -148,6 +148,21 @@ export class FaturaMuhasebelestirmeController {
     return this.service.kdvClientReport(req.user.tenantId, { taxpayerId, period });
   }
 
+  /** KDV Raporu → mükellefe WhatsApp bilgilendirme. dryRun=true mesaj önizlemesi döner (göndermez);
+   *  gerçek gönderim kullanıcı modalda onaylayınca dryRun'suz ikinci çağrıyla yapılır. */
+  @Post('kdv-raporu/whatsapp')
+  kdvRaporuWhatsapp(
+    @Req() req: any,
+    @Body() body: { taxpayerId?: string; period?: string; dryRun?: boolean; telefon?: string },
+  ) {
+    return this.service.kdvRaporuWhatsapp(req.user.tenantId, {
+      taxpayerId: body?.taxpayerId,
+      period: body?.period,
+      dryRun: body?.dryRun !== false,  // varsayılan ÖNIZLEME — yanlışlıkla gönderim olmasın
+      telefon: body?.telefon,
+    });
+  }
+
   /** Her mukellef için bekleyen/onaylanan sayıları tek scan'de döner. */
   @Get('per-taxpayer-summary')
   perTaxpayerSummary(@Req() req: any, @Query('period') period?: string) {

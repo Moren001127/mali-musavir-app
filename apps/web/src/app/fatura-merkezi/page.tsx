@@ -3730,6 +3730,75 @@ function ScreenKdv({ taxpayerId, period }: { taxpayerId: string; period: string 
   });
   const rep: any = repQ.data;
 
+  // WhatsApp bilgilendirme — önce ÖNIZLEME (dryRun), kullanıcı modalda ONAYLAYINCA gönderilir.
+  const [waAcik, setWaAcik] = useState(false);
+  const [waYukleniyor, setWaYukleniyor] = useState(false);
+  const [waOnizleme, setWaOnizleme] = useState<{ telefon: string; mesaj: string } | null>(null);
+  const [waTelefon, setWaTelefon] = useState('');
+  const waOnizle = async () => {
+    setWaYukleniyor(true);
+    try {
+      const r = await api.post('/fatura-muhasebelestirme/kdv-raporu/whatsapp', { taxpayerId, period, dryRun: true });
+      setWaOnizleme({ telefon: r.data?.telefon || '', mesaj: r.data?.mesaj || '' });
+      setWaTelefon(r.data?.telefon || '');
+      setWaAcik(true);
+    } catch (e: any) { toast.error(e?.response?.data?.message || 'Önizleme hazırlanamadı'); }
+    finally { setWaYukleniyor(false); }
+  };
+  const waGonder = async () => {
+    setWaYukleniyor(true);
+    try {
+      await api.post('/fatura-muhasebelestirme/kdv-raporu/whatsapp', { taxpayerId, period, dryRun: false, telefon: waTelefon.trim() });
+      toast.success('WhatsApp bilgilendirme gönderildi ✅');
+      setWaAcik(false);
+    } catch (e: any) { toast.error(e?.response?.data?.message || 'Gönderilemedi'); }
+    finally { setWaYukleniyor(false); }
+  };
+  // PDF çıktı — markalı temiz yazdırma penceresi (tarayıcının "PDF olarak kaydet"i ile PDF alınır).
+  const pdfYazdir = () => {
+    if (!rep) return;
+    const p = (n: any) => (Number(n) || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const kat = (rep.categoryRows || []).map((c: any) => `<tr><td>${c.label}</td><td>${c.side === 'SATIS' ? 'Satış' : 'Alış'}</td><td class="n">${p(c.base)}</td><td class="n">${p(c.vat)}</td><td class="n">${p(c.total)}</td><td class="n">${c.count ?? ''}</td></tr>`).join('');
+    const oran = (rep.vatByRate || []).map((v: any) => `<tr><td>${v.side === 'SATIS' ? 'Satış' : 'Alış'}</td><td class="n">${v.rate == null ? 'Diğer' : '%' + v.rate}</td><td class="n">${p(v.base)}</td><td class="n">${p(v.vat)}</td></tr>`).join('');
+    const notlar = (rep.assessment || []).map((s: string) => `<li>${s}</li>`).join('');
+    const dv = rep.devreden;
+    const sonuc = dv
+      ? (Number(rep.totals?.payableVat) > 0
+        ? `Tahmini Ödenecek KDV: <b>${p(rep.totals.payableVat)} ₺</b>`
+        : `Tahmini Devreden KDV: <b>${p(rep.totals?.carryForwardVat)} ₺</b> (ödeme çıkmıyor)`)
+      : 'Devreden KDV: önceki dönem beyanname kaydı bulunamadığından hesaba katılmadı.';
+    const w = window.open('', '_blank', 'width=920,height=720');
+    if (!w) { toast.error('Açılır pencere engellendi — tarayıcı iznini kontrol et'); return; }
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>KDV Raporu — ${rep.taxpayer?.name || ''} ${rep.periodLabel || ''}</title><style>
+      body{font-family:'Segoe UI',Arial,sans-serif;color:#1c2733;margin:28px}
+      .hd{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #1f3a5f;padding-bottom:10px;margin-bottom:6px}
+      .hd h1{margin:0;font-size:20px;color:#1f3a5f} .hd .alt{color:#8a6410;font-weight:700;font-size:12px;letter-spacing:.6px;text-align:right}
+      .mt{font-size:12.5px;color:#4c5a68;margin:2px 0 12px}
+      .kartlar{display:flex;gap:10px;margin:12px 0 14px} .k{flex:1;border:1px solid #d8e0e8;border-radius:8px;padding:8px 12px}
+      .k .l{font-size:10px;font-weight:700;color:#6b7885;text-transform:uppercase;letter-spacing:.5px} .k .v{font-size:16px;font-weight:800;margin-top:2px;color:#1f3a5f}
+      .sonuc{font-size:13.5px;font-weight:700;color:#1f3a5f;background:#eef4f9;border:1px solid #d8e0e8;border-radius:8px;padding:8px 12px}
+      h2{font-size:13px;color:#1f3a5f;margin:16px 0 6px} table{width:100%;border-collapse:collapse;font-size:11.5px}
+      th{background:#eef4f9;color:#1f3a5f;text-align:left;padding:5px 8px;border:1px solid #d8e0e8} td{padding:5px 8px;border:1px solid #e3e9ef} td.n,th.n{text-align:right}
+      ul{font-size:11.5px;color:#374553;margin:6px 0;padding-left:18px} li{margin-bottom:4px}
+      .not{margin-top:14px;font-size:10.5px;color:#8a94a0;border-top:1px solid #e3e9ef;padding-top:8px}
+    </style></head><body>
+      <div class="hd"><div><h1>KDV Raporu — ${rep.periodLabel || ''}</h1><div class="mt">${rep.taxpayer?.name || ''}${rep.taxpayer?.taxNumber ? ' · VKN/TCKN: ' + rep.taxpayer.taxNumber : ''}</div></div><div class="alt">MOREN<br/>MALİ MÜŞAVİRLİK</div></div>
+      <div class="kartlar">
+        <div class="k"><div class="l">Hesaplanan KDV (Satış)</div><div class="v">${p(rep.totals?.calculatedVat)} ₺</div></div>
+        <div class="k"><div class="l">İndirilecek KDV (Alış)</div><div class="v">${p(rep.totals?.deductibleVat)} ₺</div></div>
+        <div class="k"><div class="l">Önceki Dönem Devreden</div><div class="v">${dv ? p(dv.tutar) + ' ₺' : '—'}</div></div>
+        <div class="k"><div class="l">Belge Sayısı</div><div class="v">${rep.quality?.invoiceCount ?? 0}</div></div>
+      </div>
+      <div class="sonuc">${sonuc}</div>
+      <h2>Kategori Dağılımı</h2><table><tr><th>Kategori</th><th>Yön</th><th class="n">Matrah</th><th class="n">KDV</th><th class="n">Toplam</th><th class="n">Adet</th></tr>${kat}</table>
+      ${oran ? `<h2>Orana Göre KDV</h2><table><tr><th>Yön</th><th class="n">Oran</th><th class="n">Matrah</th><th class="n">KDV</th></tr>${oran}</table>` : ''}
+      ${notlar ? `<h2>Değerlendirme</h2><ul>${notlar}</ul>` : ''}
+      <div class="not">Bu rapor fatura kayıtlarına göre hazırlanan beyan öncesi taslaktır; kesin tutarlar beyanname ile netleşir. · Üretim: ${new Date().toLocaleString('tr-TR')}</div>
+    </body></html>`);
+    w.document.close();
+    setTimeout(() => { try { w.focus(); w.print(); } catch { /* pencere kapatıldıysa */ } }, 350);
+  };
+
   if (!taxpayerId) {
     return (
       <section className="screen">
@@ -3743,8 +3812,14 @@ function ScreenKdv({ taxpayerId, period }: { taxpayerId: string; period: string 
   const t = rep?.totals || {};
   return (
     <section className="screen">
-      <div className="h2">KDV Raporu</div>
-      <div className="sub">{rep?.taxpayer?.name || ''} · {rep?.periodLabel || period} — fatura kayıtlarına göre (beyan öncesi taslak).</div>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="h2">KDV Raporu</div>
+          <div className="sub">{rep?.taxpayer?.name || ''} · {rep?.periodLabel || period} — fatura kayıtlarına göre (beyan öncesi taslak).</div>
+        </div>
+        <button className="btn sm" disabled={!rep} onClick={pdfYazdir} title="Markalı yazdırma görünümü açılır — yazıcıdan 'PDF olarak kaydet' ile PDF alırsın">🖨️ PDF çıktı al</button>
+        <button className="btn sm primary" disabled={!rep || waYukleniyor} onClick={waOnizle} title="Mükellefe WhatsApp'tan dönem KDV bilgilendirmesi — önce önizleme görürsün, onayınla gönderilir">💬 {waYukleniyor && !waAcik ? 'Hazırlanıyor…' : 'WhatsApp bilgi ver'}</button>
+      </div>
 
       {repQ.isLoading ? (
         <div className="card"><div className="empty">Yükleniyor…</div></div>
@@ -3756,6 +3831,16 @@ function ScreenKdv({ taxpayerId, period }: { taxpayerId: string; period: string 
             <div className="mcard"><div className="ml">Hesaplanan KDV (satış)</div><div className="mv">{fmtMoney(t.calculatedVat)}</div></div>
             <div className="mcard"><div className="ml">İndirilecek KDV (alış)</div><div className="mv">{fmtMoney(t.deductibleVat)}</div></div>
             <div className="mcard"><div className="ml">Dönem KDV farkı</div><div className="mv" style={{ color: Number(t.periodVatDifference) >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtMoney(t.periodVatDifference)}</div></div>
+            <div className="mcard" title={rep?.devreden ? `Kaynak: ${rep.devreden.donem} dönemi KDV1 beyannamesi (Beyannameler modülü)` : 'Önceki dönem KDV1 beyannamesi sistemde bulunamadı'}>
+              <div className="ml">Devreden ({rep?.devreden ? 'beyannameden' : 'beyanname yok'})</div>
+              <div className="mv">{rep?.devreden ? fmtMoney(rep.devreden.tutar) : '—'}</div>
+            </div>
+            <div className="mcard">
+              <div className="ml">{rep?.devreden ? (Number(t.payableVat) > 0 ? 'Tahmini ödenecek KDV' : 'Tahmini devreden KDV') : 'Tahmini sonuç'}</div>
+              <div className="mv" style={{ color: rep?.devreden ? (Number(t.payableVat) > 0 ? 'var(--red)' : 'var(--green)') : undefined }}>
+                {rep?.devreden ? fmtMoney(Number(t.payableVat) > 0 ? t.payableVat : t.carryForwardVat) : '—'}
+              </div>
+            </div>
             <div className="mcard"><div className="ml">Belge sayısı</div><div className="mv">{rep?.quality?.invoiceCount ?? '—'}</div></div>
           </div>
 
@@ -3846,6 +3931,23 @@ function ScreenKdv({ taxpayerId, period }: { taxpayerId: string; period: string 
             </div>
           )}
         </>
+      )}
+
+      {waAcik && waOnizleme && (
+        // WhatsApp ÖNIZLEME + ONAY modali — mesaj mükellefe YALNIZ "Onayla ve Gönder" ile gider.
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,.45)', zIndex: 1000, display: 'grid', placeItems: 'center' }} onClick={() => !waYukleniyor && setWaAcik(false)}>
+          <div style={{ width: 540, maxWidth: '92vw', maxHeight: '86vh', overflow: 'auto', background: '#fff', borderRadius: 12, padding: '16px 18px', boxShadow: '0 18px 50px rgba(0,0,0,.25)' }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ fontWeight: 800, fontSize: 15, color: '#1f3a5f', marginBottom: 4 }}>💬 WhatsApp bilgilendirme — önizleme</div>
+            <div style={{ fontSize: 12, color: '#64748b', marginBottom: 10 }}>Mesaj aşağıdaki numaraya gönderilecek; numarayı düzenleyebilirsin. Onaylamadan hiçbir şey gönderilmez.</div>
+            <label style={{ fontSize: 11, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '.4px' }}>Telefon</label>
+            <input value={waTelefon} onChange={(e) => setWaTelefon(e.target.value)} style={{ width: '100%', height: 32, border: '1px solid #cbd5e1', borderRadius: 8, padding: '0 10px', margin: '4px 0 10px', fontSize: 13, fontFamily: 'inherit' }} />
+            <div style={{ whiteSpace: 'pre-wrap', fontSize: 12.5, lineHeight: 1.55, background: '#ecfdf3', border: '1px solid #bbe5c8', borderRadius: 10, padding: '10px 12px', color: '#14532d' }}>{waOnizleme.mesaj}</div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
+              <button className="btn sm" disabled={waYukleniyor} onClick={() => setWaAcik(false)}>Vazgeç</button>
+              <button className="btn sm primary" disabled={waYukleniyor || !waTelefon.trim()} onClick={waGonder}>{waYukleniyor ? 'Gönderiliyor…' : 'Onayla ve Gönder'}</button>
+            </div>
+          </div>
+        </div>
       )}
     </section>
   );
