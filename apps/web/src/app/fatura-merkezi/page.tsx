@@ -3363,9 +3363,9 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                     //   (kullanıcı isteği). Detay sayılar ipucu balonunda.
                     <span
                       title={`İsabet panosu (bu dönem):\nDokunmasız: %${Number(isabet.dokunmasizOran) || 0} (${Number(isabet.dokunmasiz) || 0}/${Number(isabet.toplam) || 0}) — hiçbir satırı elle düzeltilmeden onaylanan\nElle düzeltilen: ${Number(isabet.kullaniciDuzeltmeli) || 0}\nEksik kodlu (bekleyen): ${Number(isabet.boslukVar) || 0}`}
-                      style={{ display: 'inline-flex', alignItems: 'center', flex: '0 1 auto', minWidth: 0, padding: '3px 10px', borderRadius: 999, background: 'rgba(21,128,61,0.07)', border: '1px solid rgba(21,128,61,0.22)', fontSize: 11.5, fontWeight: 700, color: '#15803d', whiteSpace: 'nowrap' }}
+                      style={{ display: 'inline-flex', alignItems: 'center', flex: '0 1 auto', minWidth: 0, maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', padding: '3px 10px', borderRadius: 999, background: 'rgba(21,128,61,0.07)', border: '1px solid rgba(21,128,61,0.22)', fontSize: 11.5, fontWeight: 700, color: '#15803d', whiteSpace: 'nowrap' }}
                     >
-                      Dokunmasız %{Number(isabet.dokunmasizOran) || 0} · Elle {Number(isabet.kullaniciDuzeltmeli) || 0} · Eksik {Number(isabet.boslukVar) || 0}
+                      Dokunmasız %{Number(isabet.dokunmasizOran) || 0}
                     </span>
                   ) : null}
                   <div className="sp" />
