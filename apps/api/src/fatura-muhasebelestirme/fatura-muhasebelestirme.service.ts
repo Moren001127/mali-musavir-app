@@ -525,6 +525,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   /** Restart sonrası öksüz kalan PENDING/IN_PROGRESS belgeleri yeniden kuyruğa alır. Kuyrukta
    *  ya da işlenmekte olanları atlar (çift-işleme yok). FAILED (gerçek hata) belgelere dokunmaz →
    *  sonsuz döngü olmaz. Eş zamanlılık sınırı doğal throttle eder. */
+  /** CLASSIFY kurtarmasında süreç başına belge başı tek deneme (boş dönen belge döngüye girmesin). */
+  private clsRescued = new Set<string>();
   async resumeStuckOcr(): Promise<number> {
     if (this.ocrResuming) return 0;
     this.ocrResuming = true;
@@ -550,7 +552,35 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         this.logger.log(`OCR resume: ${n} oksuz PENDING belge yeniden kuyruga alindi (restart kurtarma)`);
         this.drainUploadedOcrQueue();
       }
-      return n;
+      // CLASSIFY KURTARMA: restart bellek-içi kuyruğu silince XML-okuma sonrası 'classify' işleri
+      //   (arka plan sınıflandırma) KAYBOLUYORDU — belge "okundu" ama kategori/giderTuru boş kalıp
+      //   hesap eşleşmiyordu (Gökhan Akgöz: 3 okuma turu da deploy restart'ına denk geldi, 26 belge
+      //   kategorisiz kaldı). Okunmuş ama SINIFLANMAMIŞ ALIŞ belgeleri yeniden classify kuyruğuna
+      //   alınır. Süreç başına belge başı 1 deneme (clsRescued) — boş dönen belge döngüye girmesin.
+      let c = 0;
+      if (this.uploadOcrQueue.length < this.uploadOcrConcurrency) {
+        const adaylar = await (this.prisma as any).invoiceAccountingDocument.findMany({
+          where: { status: { in: ['READY', 'NEEDS_REVIEW'] }, invoiceKind: 'ALIS' },
+          orderBy: { updatedAt: 'desc' },
+          select: { id: true, tenantId: true, ocrData: true },
+          take: 200,
+        }).catch(() => []);
+        for (const d of adaylar as any[]) {
+          const o: any = d.ocrData || {};
+          if (!String(o.icerikMetni || '').trim()) continue; // sınıflanacak içerik yok
+          if (String(o.matrahKategori || o.kategori || '').trim() || String(o.giderTuru || '').trim()) continue; // zaten sınıflı
+          if (this.clsRescued.has(d.id) || queued.has(d.id) || this.uploadOcrActiveIds.has(d.id)) continue;
+          this.clsRescued.add(d.id);
+          this.uploadOcrQueue.push({ tenantId: d.tenantId, documentId: d.id, kind: 'classify' });
+          c++;
+          if (c >= 30) break;
+        }
+        if (c) {
+          this.logger.log(`CLASSIFY resume: ${c} okunmus-ama-siniflanmamis belge yeniden siniflandirma kuyruguna alindi`);
+          this.drainUploadedOcrQueue();
+        }
+      }
+      return n + c;
     } finally {
       this.ocrResuming = false;
     }
