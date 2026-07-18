@@ -79,6 +79,38 @@ describe('resolveBeyanState güncellik (gibTarih)', () => {
     expect(resolveMuhsgkTemmuz([hatali, beklemede]).durum).toBe('beklemede');
   });
 
+  it('gibTarihsiz ESKİ GİB beklemede kaydı (updatedAt daha yeni olsa da) gibTarihli hatalıyı ezemez', () => {
+    const eskiBeklemede = durumKaydi({
+      donem: '2026-06',
+      durum: 'beklemede',
+      notlar: 'GIB agent onay bekliyor', // düzeltme öncesi kayıt — gibTarih yok
+      updatedAt: new Date('2026-07-18T08:19:00Z'), // sabah koşusu tazeledi
+    });
+    const hatali = durumKaydi({
+      donem: '2026-Q2',
+      durum: 'hatali',
+      notlar: 'GIB agent hata | gibTarih=2026-07-14T10:00:00.000Z',
+      updatedAt: new Date('2026-07-18T07:00:00Z'),
+    });
+    expect(resolveMuhsgkTemmuz([eskiBeklemede, hatali]).durum).toBe('hatali');
+  });
+
+  it('elle işaretlenen durum GİB kayıtlarına karşı korunur', () => {
+    const elleHatali = durumKaydi({
+      donem: '2026-06',
+      durum: 'hatali',
+      notlar: 'muhasebeci elle işaretledi',
+      updatedAt: new Date('2026-07-12T09:00:00Z'),
+    });
+    const gibBeklemede = durumKaydi({
+      donem: '2026-Q2',
+      durum: 'beklemede',
+      notlar: 'GIB agent onay bekliyor | gibTarih=2026-07-16T09:30:00.000Z',
+      updatedAt: new Date('2026-07-18T06:00:00Z'),
+    });
+    expect(resolveMuhsgkTemmuz([elleHatali, gibBeklemede]).durum).toBe('hatali');
+  });
+
   it('gibTarih yoksa eski davranış: updatedAt yeni olan geçerli', () => {
     const beklemede = durumKaydi({
       donem: '2026-06',

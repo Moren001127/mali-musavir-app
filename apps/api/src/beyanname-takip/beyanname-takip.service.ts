@@ -621,13 +621,21 @@ export function resolveBeyanState(
   //      yazdığı için beklemede'nin updatedAt'i aynı koşuda hep daha yeni çıkıyordu —
   //      YILMAZ'ın GİB'de hatalı beyannamesi panelde "onay bekliyor" görünüyordu.
   let onayli: any = null;
-  let guncel: any = null; // beklemede/hatali/muaf içinde en güncel (gibTarih > updatedAt)
-  const zaman = (k: any) => {
+  let guncel: any = null; // beklemede/hatali/muaf içinde en güncel (katman + tarih)
+  // Katmanlı kıyas: elle işaret (2) > GİB gibTarih'li (1) > GİB gibTarih'siz eski kayıt (0).
+  // GİB kayıtlarında updatedAt yazım zamanıdır (her koşuda tazelenir) — paket tarihi
+  // (gibTarih) ile karşılaştırılamaz; gibTarih'siz eski GİB kaydı en alta düşer ki
+  // taze gibTarih'li durumu (or. hatalı) ezemesin. Elle işaret her zaman korunur.
+  const zaman = (k: any): { tier: number; ms: number } => {
     const gib = gibTarihFromNotlar(k?.notlar);
-    if (gib) return gib.getTime();
+    if (gib) return { tier: 1, ms: gib.getTime() };
     const t = k?.updatedAt || k?.onayTarihi || k?.createdAt;
-    return t ? new Date(t).getTime() : 0;
+    const ms = t ? new Date(t).getTime() : 0;
+    const gibAgentKaydi = /gib agent|portal-automation/i.test(String(k?.notlar || ''));
+    return { tier: gibAgentKaydi ? 0 : 2, ms };
   };
+  const dahaGuncel = (a: { tier: number; ms: number }, b: { tier: number; ms: number }) =>
+    a.tier !== b.tier ? a.tier > b.tier : a.ms > b.ms;
   for (const candidate of lookupKeysForExpected(tip, yil, ay, donem, donemTuru)) {
     const key = `${taxpayerId}::${candidate.tip}::${candidate.donem}`;
     const durumKaydi = durumIndex.get(key);
@@ -647,7 +655,7 @@ export function resolveBeyanState(
     if (durumKaydi.durum === 'beklemede' && !isEDeclarationApprovalPending(durumKaydi)) eff = null;
     if (!eff) continue;
     const cand = { durum: eff, durumKaydi, beyanKaydi: null, matchedDonem: candidate.donem };
-    if (!guncel || zaman(durumKaydi) > zaman(guncel.durumKaydi)) guncel = cand;
+    if (!guncel || dahaGuncel(zaman(durumKaydi), zaman(guncel.durumKaydi))) guncel = cand;
   }
   if (onayli) return onayli;
   if (guncel) return guncel;
