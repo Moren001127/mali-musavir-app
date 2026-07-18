@@ -4178,6 +4178,13 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       page.off('dialog', dialogHandler);
     }
 
+    // [EBREQDBG] Teşhis: bu durum sorgusunda GİB'e giden GERÇEK istek — durum parametresi
+    // gidiyor mu? (Üç sorgu da aynı listeyi okuyor; radyo seçimi isteğe yansımıyor şüphesi.)
+    if (this.ebeyannameCapturedListReq) {
+      const req = this.ebeyannameCapturedListReq;
+      notes.push(`[EBREQDBG] ${status}: ${req.method} ${this.safeUrl(req.url)} post=${this.safeDebugText(String(req.postData || '')).slice(0, 300)}`);
+    }
+
     if (dialogMessages.length) {
       notes.push(`${status}: GIB uyarisi: ${this.compact(dialogMessages.join(' | '))}`);
       await this.jobProgress(tenantId, job, `status_${status}_empty`, `${this.ebeyanStatusLabel(status)} icin GIB kayit bulamadi.`);
