@@ -2,11 +2,13 @@ import { EFaturaAdapter } from './efatura-adapter.interface';
 import { NilveraAdapter } from './nilvera.adapter';
 import { IzibizAdapter } from './izibiz.adapter';
 import { UyumsoftAdapter } from './uyumsoft.adapter';
+import { ElogoAdapter } from './elogo.adapter';
 
 const ADAPTERS: Record<string, EFaturaAdapter> = {
   NILVERA: new NilveraAdapter(),
   IZIBIZ: new IzibizAdapter(),
   UYUMSOFT: new UyumsoftAdapter(),
+  ELOGO: new ElogoAdapter(),
 };
 
 export function getEFaturaAdapter(provider: string): EFaturaAdapter | null {

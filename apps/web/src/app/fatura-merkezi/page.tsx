@@ -2511,6 +2511,17 @@ function InlineBelge({ id }: { id: string }) {
 function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = '', taxpayerFaaliyet = '', taxpayerAd = '', full = false, onToggleFull }: { taxpayerId: string; period: string; isIsletme?: boolean; taxpayerNace?: string; taxpayerFaaliyet?: string; taxpayerAd?: string; full?: boolean; onToggleFull?: () => void }) {
   const qc = useQueryClient();
   const docsQ = useDocuments(taxpayerId, period);
+  // İSABET PANOSU — dokunmasız işleme oranı (dönem bazlı; sayılar backend'te hazırlanır).
+  const isabetQ = useQuery({
+    queryKey: ['fm2', 'isabet-ozeti', taxpayerId, period],
+    queryFn: () =>
+      api
+        .get('/fatura-muhasebelestirme/isabet-ozeti', { params: { taxpayerId: taxpayerId || undefined, period } })
+        .then((r) => r.data || null)
+        .catch(() => null),
+    enabled: !!taxpayerId,
+  });
+  const isabet: any = isabetQ.data;
   const all: any[] = docsQ.data || [];
   const dirOf = (d: any) => (String(d.invoiceKind || '').includes('SATIS') ? 'SATIS' : 'ALIS');
   const [dir, setDir] = useState<'ALIS' | 'SATIS'>('ALIS');
@@ -2910,6 +2921,16 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                     <button type="button" className={dir === 'ALIS' ? 'on' : ''} onClick={() => { setDir('ALIS'); setSelId(''); }}>Alış <b>{cAlis}</b></button>
                     <button type="button" className={dir === 'SATIS' ? 'on' : ''} onClick={() => { setDir('SATIS'); setSelId(''); }}>Satış <b>{cSatis}</b></button>
                   </span>
+                  {isabet && (Number(isabet.toplam) > 0 || Number(isabet.boslukVar) > 0) ? (
+                    <span
+                      title="İsabet panosu (bu dönem): Dokunmasız = hiçbir satırı elle düzeltilmeden onaylanan belge · Elle düzeltilen = en az bir satırı kullanıcı düzeltti · Eksik kodlu = bekleyenlerde hesap kodu boş satırı olan belge"
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 9px', borderRadius: 999, background: 'rgba(21,128,61,0.07)', border: '1px solid rgba(21,128,61,0.22)', fontSize: 11, fontWeight: 600, color: '#15803d', whiteSpace: 'nowrap' }}
+                    >
+                      Dokunmasız: %{Number(isabet.dokunmasizOran) || 0} ({Number(isabet.dokunmasiz) || 0}/{Number(isabet.toplam) || 0})
+                      <span style={{ color: '#b45309' }}>· Elle düzeltilen: {Number(isabet.kullaniciDuzeltmeli) || 0}</span>
+                      <span style={{ color: '#d97706' }}>· Eksik kodlu: {Number(isabet.boslukVar) || 0}</span>
+                    </span>
+                  ) : null}
                   <button type="button" className="fifull" onClick={() => onToggleFull?.()} title={full ? 'Küçült — menüyü geri getir' : 'Büyüt — menüyü gizle, tam ekran işle'}><Ico html={full ? I.compress : I.expand} size={14} /><span>{full ? 'Küçült' : 'Büyüt'}</span></button>
                   <div className="sp" />
                 </div>

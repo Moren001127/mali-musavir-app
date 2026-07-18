@@ -950,6 +950,53 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   }
 
   /**
+   * İSABET PANOSU — dokunmasız işleme oranı. Dönem (faturaTarihi, YYYY-MM) bazlı:
+   *   dokunmasiz          = hiçbir satırında kaynak='KULLANICI' olmayan ONAYLI belge (sistem tek başına bitirdi)
+   *   kullaniciDuzeltmeli = en az bir KULLANICI satırlı onaylı belge (elle düzeltildi)
+   *   boslukVar           = bekleyen (READY/NEEDS_REVIEW) belgelerden en az bir hesap kodu BOŞ satırı olan
+   * Tek sorgu (belge + satır select), bellek içi sayım; take 5000 emniyet tavanı.
+   */
+  async isabetOzeti(
+    tenantId: string,
+    opts: { period?: string; taxpayerId?: string } = {},
+  ) {
+    const where: any = { tenantId, status: { in: ['APPROVED', 'READY', 'NEEDS_REVIEW'] } };
+    if (opts.taxpayerId) where.taxpayerId = opts.taxpayerId;
+    if (opts.period && /^\d{4}-\d{2}$/.test(opts.period)) {
+      const [y, m] = opts.period.split('-').map((n) => parseInt(n, 10));
+      const start = new Date(Date.UTC(y, m - 1, 1, 0, 0, 0));
+      const end = new Date(Date.UTC(y, m, 1, 0, 0, 0));
+      where.OR = [
+        { faturaTarihi: { gte: start, lt: end } },
+        { AND: [{ faturaTarihi: null }, { createdAt: { gte: start, lt: end } }] },
+      ];
+    }
+    const docs = await (this.prisma as any).invoiceAccountingDocument.findMany({
+      where,
+      select: { status: true, lines: { select: { accountCode: true, kaynak: true } } },
+      take: 5000,
+    });
+    let dokunmasiz = 0, kullaniciDuzeltmeli = 0, boslukVar = 0;
+    for (const d of docs) {
+      const lines: any[] = Array.isArray(d.lines) ? d.lines : [];
+      if (String(d.status) === 'APPROVED') {
+        if (lines.some((l) => String(l.kaynak || '') === 'KULLANICI')) kullaniciDuzeltmeli++;
+        else dokunmasiz++;
+      } else if (lines.some((l) => !String(l.accountCode || '').trim())) {
+        boslukVar++;
+      }
+    }
+    const toplam = dokunmasiz + kullaniciDuzeltmeli;
+    return {
+      toplam,
+      dokunmasiz,
+      kullaniciDuzeltmeli,
+      boslukVar,
+      dokunmasizOran: toplam ? Math.round((dokunmasiz / toplam) * 100) : 0,
+    };
+  }
+
+  /**
    * Her mukellef için bekleyen/onaylanan/banka sayılarını tek scan'de döner.
    * Mihsap'ın "Gelen Belgeler" tablosunda gösterdiği verinin karşılığı.
    */
@@ -11065,6 +11112,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       return (c.split('.')[0].replace(/\D/g, '').length >= 3);
     };
     const leafOnly = (acc: any) => (acc && isPostableLeaf(String(acc.accountCode || '')) ? acc : null);
+    // KATMAN-1 ANOMALİ emsal önbelleği (satıcı VKN → bu mükellefteki son ONAYLI alış tutarları):
+    //   aynı satıcının birden çok bekleyen belgesi varsa DB'ye 1 kez gidilir (belge başına ≤1 hafif sorgu).
+    const emsalTutarCache = new Map<string, number[]>();
 
     for (const doc of docs) {
       const isSale = doc.invoiceKind === 'SATIS';
@@ -11765,6 +11815,42 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           tevkifatVar: prevOcr.tevkifatHint === true || Number(prevOcr.tevkifatOrani || 0) > 0,
           isFixedAsset: !!faDet.is,
         });
+        // ── KATMAN-1 ANOMALİ (DB-tabanlı, Xero "Bill Protection" benzeri) — yalnız ALIŞ + VKN'li ──
+        //   1) ANORMAL_TUTAR: satıcının bu mükellefteki son 12 ONAYLI/Luca'ya gitmiş faturasının
+        //      ORTANCASINA göre bu belge 5 kat fazla / 1/5'ten azsa uyarı (en az 4 emsal şart).
+        //   2) ILK_KEZ_SATICI: bu satıcıdan daha önce HİÇ onaylı belge yoksa bilgi notu.
+        //   Sorgu satıcı başına 1 kez (emsalTutarCache) + yalnız totalAmount select (hafif).
+        if (!isSale && vendorVkn) {
+          let emsal = emsalTutarCache.get(vendorVkn);
+          if (!emsal) {
+            const emsalRows = await (this.prisma as any).invoiceAccountingDocument.findMany({
+              where: {
+                tenantId,
+                taxpayerId,
+                sellerVkn: vendorVkn,
+                invoiceKind: 'ALIS',
+                totalAmount: { not: null },
+                OR: [{ status: 'APPROVED' }, { lucaStatus: 'POSTED' }],
+              },
+              orderBy: [{ faturaTarihi: 'desc' }],
+              select: { totalAmount: true },
+              take: 12,
+            }).catch(() => []);
+            emsal = (emsalRows as any[]).map((r: any) => Number(r.totalAmount)).filter((n: number) => Number.isFinite(n) && n > 0);
+            emsalTutarCache.set(vendorVkn, emsal);
+          }
+          const belgeTutar = Number(doc.totalAmount || 0);
+          if (emsal.length === 0) {
+            _uy.push({ kod: 'ILK_KEZ_SATICI', baslik: 'Bu satıcıdan ilk fatura', mesaj: 'Bu satıcıdan daha önce onaylanmış belge yok — cari ve hesap eşleştirmesini bir kez gözden geçir.', siddet: 'bilgi' });
+          } else if (emsal.length >= 4 && belgeTutar > 0) {
+            const sirali = [...emsal].sort((a, b) => a - b);
+            const ortanca = sirali.length % 2 ? sirali[(sirali.length - 1) / 2] : (sirali[sirali.length / 2 - 1] + sirali[sirali.length / 2]) / 2;
+            if (ortanca > 0 && (belgeTutar > ortanca * 5 || belgeTutar < ortanca / 5)) {
+              const tl = (n: number) => n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+              _uy.push({ kod: 'ANORMAL_TUTAR', baslik: 'Olağan dışı tutar', mesaj: `Bu satıcının olağan tutarından çok farklı (ortanca ₺${tl(ortanca)}, bu belge ₺${tl(belgeTutar)}) — tutarı ve belgeyi kontrol et.`, siddet: 'uyari' });
+            }
+          }
+        }
         const prevUy = Array.isArray(prevOcr.uyarilar) ? prevOcr.uyarilar : [];
         const uyChanged = JSON.stringify(_uy) !== JSON.stringify(prevUy);
         // Kod değiştiyse zengin yorum + denetçiyi sil (bayat); değişmediyse ELLEME (koru).

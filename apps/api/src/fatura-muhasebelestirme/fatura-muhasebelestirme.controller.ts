@@ -119,6 +119,16 @@ export class FaturaMuhasebelestirmeController {
     return this.service.summary(req.user.tenantId, { period, taxpayerId });
   }
 
+  /** İsabet panosu — dokunmasız işleme oranı (dönem faturaTarihi bazlı; taxpayerId opsiyonel). */
+  @Get('isabet-ozeti')
+  isabetOzeti(
+    @Req() req: any,
+    @Query('period') period?: string,
+    @Query('taxpayerId') taxpayerId?: string,
+  ) {
+    return this.service.isabetOzeti(req.user.tenantId, { period, taxpayerId });
+  }
+
   @Get('kdv-client-report')
   kdvClientReport(
     @Req() req: any,
