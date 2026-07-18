@@ -569,8 +569,18 @@ function accountCodeOnly(value: any): string {
   const raw = String(value || '').trim();
   if (!raw || /^[-—–\s]*(yok|eksik)?[-—–\s]*$/i.test(raw)) return '';
   const m = raw.match(/^([0-9]{1,3}(?:[.\-][\p{L}\p{N}]+)*)/u);
-  if (m?.[1]) return m[1].trim();
-  return raw.split(/\s+[—–-]\s+|=/)[0].trim();
+  const code = (m?.[1] || raw.split(/\s+[—–-]\s+|=/)[0]).trim();
+  // HESAP ADI BULAŞMASI (kullanıcı bulgusu: "740.01.002-ARAÇ", "770.01.005-MUTFAK"): rakam
+  //   içermeyen kuyruk segmentleri hesap ADIdır, at. Türkçe karakterli GERÇEK cari segmentleri
+  //   (120.01.İ027 — rakam içerir) korunur.
+  const parts = code.split(/([.\-])/);
+  let out = parts[0] || '';
+  for (let i = 1; i + 1 < parts.length; i += 2) {
+    const seg = parts[i + 1] || '';
+    if (!/\d/.test(seg)) break;
+    out += parts[i] + seg;
+  }
+  return out;
 }
 
 // Fiş satırı hesap kodu KAYNAK rozeti — kod nereden geldi? (fiş editöründe kodun yanında küçük pill)
@@ -1407,7 +1417,9 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
                     <td className="num">{fmtMoney(d.totalAmount)}</td>
                     {!isIsletme && <td>{code ? <span className="hk">{code}</span> : <span className="hk no">— yok —</span>}</td>}
                     <td><span className={`pill ${du.k}`} title={du.cat === 'okunamadi' && d.lucaErrorMessage ? `Neden: ${d.lucaErrorMessage}` : du.cat === 'celiski' ? ((Array.isArray(d.validationIssues) ? d.validationIssues : (Array.isArray(d.ocrData?.validationIssues) ? d.ocrData.validationIssues : [])).filter((i: any) => i?.code && i.code !== 'INCOMPLETE_AMOUNTS' && i?.severity !== 'WARNING').map((i: any) => i.message).filter(Boolean).join(' · ') || du.t) : du.t}>{du.t}</span>{du.cat === 'okunamadi' && d.lucaErrorMessage ? <div className="oneden">{d.lucaErrorMessage}</div> : null}{du.cat === 'celiski' ? <div className="oneden" style={{ fontSize: 10.5, opacity: 0.85 }}>↓ sebebi fiş detayında</div> : null}</td>
-                    <td className="actcol" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    {/* DİKKAT: td'ye display:flex verme — hücre tablo düzeninden çıkıp durum sütununun
+                        üstüne biniyordu (kullanıcı bulgusu). Flex hizalama İÇ div'de. */}
+                    <td className="actcol"><div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                       {docUyarilar.length > 0 && (
                         <span className="dnt-bdg" style={{ color: docUyariRenk, borderColor: docUyariRenk }} title={docUyarilar.map((u: any) => `⚠ ${u.baslik}: ${u.mesaj}`).join('\n\n')} onClick={() => setFisDetayId(fisAcik ? '' : d.id)}>
                           ⚠{docUyarilar.length}
@@ -1417,7 +1429,7 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
                       <span className="eye" onClick={() => onOpenMuhasebe?.(d.id)} title="Muhasebeleştir ekranında aç" style={{ color: '#7c3aed' }}><Ico html={I.edit} size={15} /></span>
                       <span className="eye" onClick={() => openDocFile(d.id)} title="Belgeyi aç" style={{ color: '#0891b2' }}><Ico html={I.eye} size={15} /></span>
                       <span className="eye del" title="Belgeyi sil" onClick={() => { if (window.confirm(`Bu belge silinsin mi?\n${firma} · ${fmtMoney(d.totalAmount)} ₺${d.belgeNo ? ' · ' + d.belgeNo : ''}`)) delMut.mutate(d.id); }} style={{ color: '#dc2626' }}><Ico html={I.trash} size={14} /></span>
-                    </td>
+                    </div></td>
                   </tr>
                   {fisAcik && (
                     <tr className="detayrow">
