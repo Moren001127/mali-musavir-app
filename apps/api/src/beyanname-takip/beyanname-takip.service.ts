@@ -362,7 +362,9 @@ export class BeyannameTakipService {
           return {
             beyanTipi: tip,
             durum,
-            vergiDonem: vergiDonemForTip(tip, yil, ay, donem, donemTuru),
+            // Eşleşen beyanname VARSA onun GERÇEK dönemi (or. 3 aylık muhtasar
+            // "2026-Q2") gösterilir; yoksa (kalan) hesaplanan dönem.
+            vergiDonem: resolved.matchedDonem ?? vergiDonemForTip(tip, yil, ay, donem, donemTuru),
             tahakkukTutari: resolved.durumKaydi?.tahakkukTutari || resolved.beyanKaydi?.tahakkukTutari || null,
             onayTarihi: resolved.durumKaydi?.onayTarihi || resolved.beyanKaydi?.beyanTarihi || null,
           };
@@ -615,16 +617,16 @@ function resolveBeyanState(
     const beyanKaydi = kayitIndex.get(key);
     if (durumKaydi) {
       if (durumKaydi.durum === 'beklemede') {
-        if (beyanKaydi) return { durum: 'onaylandi', durumKaydi, beyanKaydi };
-        if (isEDeclarationApprovalPending(durumKaydi)) return { durum: 'beklemede', durumKaydi, beyanKaydi };
+        if (beyanKaydi) return { durum: 'onaylandi', durumKaydi, beyanKaydi, matchedDonem: candidate.donem };
+        if (isEDeclarationApprovalPending(durumKaydi)) return { durum: 'beklemede', durumKaydi, beyanKaydi, matchedDonem: candidate.donem };
         continue;
       }
       const durum = durumKaydi.durum;
-      return { durum, durumKaydi, beyanKaydi };
+      return { durum, durumKaydi, beyanKaydi, matchedDonem: candidate.donem };
     }
-    if (beyanKaydi) return { durum: 'onaylandi', durumKaydi: null, beyanKaydi };
+    if (beyanKaydi) return { durum: 'onaylandi', durumKaydi: null, beyanKaydi, matchedDonem: candidate.donem };
   }
-  return { durum: 'kalan', durumKaydi: null, beyanKaydi: null };
+  return { durum: 'kalan', durumKaydi: null, beyanKaydi: null, matchedDonem: null };
 }
 
 function isEDeclarationApprovalPending(durumKaydi: any): boolean {
@@ -644,7 +646,16 @@ function lookupKeysForExpected(tip: BeyanTipi, yil: number, ay: number, donem: s
   } else if (tip === 'GGECICI' || tip === 'KGECICI') {
     donemler.add(geciciVergiQuarter(yil, ay, donemTuru));
   } else {
+    // Aylık dönem anahtarı (aylık beyanname beyanKaydi.donem = "2026-06").
     donemler.add(donemTuru === 'VERGI' ? donem : monthDonem(prev.yil, prev.ay));
+    // GENEL KURAL (yalnız muhtasara özel DEĞİL): yıllık (KURUMLAR/GELIR/GMSI) ve geçici
+    // vergi (GGECICI/KGECICI) DIŞINDAKİ HER beyanname mükellef config'inde ÜÇ AYLIK
+    // seçilmiş olabilir; o zaman beyanKaydi ÇEYREK dönemle kayıtlıdır (or. "2026-Q2").
+    // Bu fonksiyon config'i almadığından hem tek-ay HEM çeyrek anahtarı aranır —
+    // aylıksa "2026-06", üç aylıksa "2026-Q2" ile eşleşir. Farklı tip karışmaz
+    // (anahtar taxpayerId::tip::donem). Kök bug: 3 aylık beyannameler sadece "2026-06"
+    // aranıp bulunamıyor, indirilmiş olsa da "kalan" görünüyordu (muhtasar + tümü).
+    donemler.add(donemTuru === 'VERGI' ? quarterDonem(yil, ay) : quarterDonem(prev.yil, prev.ay));
   }
 
   const keys: Array<{ tip: string; donem: string }> = [];
