@@ -199,8 +199,20 @@ function agentDeclarationStatusNote(input: AgentDeclarationInput, status: 'bekle
   const prefix = status === 'beklemede'
     ? 'GIB agent onay bekliyor'
     : 'GIB agent hata';
+  // gibTarih EN BAŞTA: raw JSON 1000 karakterde kırpılıyor, tarih kırpılmaya kurban gitmesin.
+  // Beyanname-takip güncellik kıyası (resolveBeyanState) ve aşağıdaki ezme koruması bunu okur.
+  const gibTarih = parseDateOrNull(input.beyanTarihi || null);
+  const tarihPart = gibTarih ? ` | gibTarih=${gibTarih.toISOString()}` : '';
   const raw = input.raw ? JSON.stringify({ source: 'portal-automation', raw: input.raw }) : '';
-  return raw ? `${prefix} | ${raw}`.slice(0, 1000) : prefix;
+  return `${prefix}${tarihPart}${raw ? ` | ${raw}` : ''}`.slice(0, 1000);
+}
+
+/** Nottaki gibTarih=<ISO> değerini geri oku (beyanname-takip'teki eşleniğiyle aynı biçim). */
+function gibTarihFromDurumNote(notlar?: string | null): Date | null {
+  const m = String(notlar || '').match(/gibTarih=([0-9T:.Z+-]+)/);
+  if (!m) return null;
+  const d = new Date(m[1]);
+  return Number.isNaN(d.getTime()) ? null : d;
 }
 
 function parseIstanbulDateBoundary(value: string | undefined, boundary: 'start' | 'end'): Date | null {
@@ -1794,6 +1806,27 @@ export class PortalAutomationService {
         await (this.prisma as any).beyanKaydi.deleteMany({
           where: { tenantId, taxpayerId: taxpayer.id, beyanTipi, donem, kaynak: 'gib_agent', tahakkukTutari: null, pdfUrl: null },
         }).catch(() => {});
+      }
+      // GÜNCELLİK KORUMASI: aynı beyannamenin iki paketi iki listede olabilir
+      // (eski deneme "onay bekliyor"da takılı + güncel paket "hatalı" ya da tersi).
+      // Sorgu sırası hatalı→onay-bekliyor olduğu için sonra yazılan eskiyi ezebiliyordu;
+      // GİB satır tarihi (gibTarih) daha yeni olan kayıt korunur.
+      const incomingGibTarih = parseDateOrNull(input.beyanTarihi || null);
+      const existingDurum = await (this.prisma as any).beyanDurumu.findUnique({
+        where: {
+          tenantId_taxpayerId_beyanTipi_donem: { tenantId, taxpayerId: taxpayer.id, beyanTipi, donem },
+        },
+        select: { id: true, durum: true, notlar: true },
+      }).catch(() => null);
+      const existingGibTarih = gibTarihFromDurumNote(existingDurum?.notlar);
+      if (
+        existingDurum
+        && existingDurum.durum !== declarationStatus
+        && incomingGibTarih
+        && existingGibTarih
+        && existingGibTarih.getTime() > incomingGibTarih.getTime()
+      ) {
+        return existingDurum;
       }
       return (this.prisma as any).beyanDurumu.upsert({
         where: {

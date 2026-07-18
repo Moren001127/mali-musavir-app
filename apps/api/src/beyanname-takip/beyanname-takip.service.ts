@@ -601,7 +601,7 @@ function donemCandidatesForLookup(yil: number, ay: number, donem: string) {
   ]));
 }
 
-function resolveBeyanState(
+export function resolveBeyanState(
   durumIndex: Map<string, any>,
   kayitIndex: Map<string, any>,
   taxpayerId: string,
@@ -615,12 +615,19 @@ function resolveBeyanState(
   // olabilir (aylık "2026-06" + çeyrek "2026-Q2"; hatalı verip sonra düzeltilir).
   //   1) ONAYLI kesin kazanır: indirilmiş beyanname (BeyanKaydı) VEYA durum=onaylandi.
   //      Onaylanan beyanname iptal edilemez; eski hatalı/beklemede denemesi onu düşürmez.
-  //   2) Onaylı yoksa, beklemede/hatalı/muaf içinde EN SON GÜNCELLENEN (updatedAt) geçerli.
-  //      Böylece "eski beklemede + yeni hatalı" durumunda GÜNCEL hatalı gösterilir
-  //      (eski 'en yüksek rank' mantığı beklemede'yi yükseltip stale gösteriyordu — YILMAZ).
+  //   2) Onaylı yoksa, beklemede/hatalı/muaf içinde EN GÜNCEL geçerli. Güncellik
+  //      GİB'in kendi satır tarihine göre (notlardaki gibTarih); yoksa updatedAt.
+  //      updatedAt tek başına yanıltıcı: GİB sorgusu hatalı→onay-bekliyor SIRAYLA
+  //      yazdığı için beklemede'nin updatedAt'i aynı koşuda hep daha yeni çıkıyordu —
+  //      YILMAZ'ın GİB'de hatalı beyannamesi panelde "onay bekliyor" görünüyordu.
   let onayli: any = null;
-  let guncel: any = null; // beklemede/hatali/muaf içinde en yeni updatedAt
-  const zaman = (k: any) => { const t = k?.updatedAt || k?.onayTarihi || k?.createdAt; return t ? new Date(t).getTime() : 0; };
+  let guncel: any = null; // beklemede/hatali/muaf içinde en güncel (gibTarih > updatedAt)
+  const zaman = (k: any) => {
+    const gib = gibTarihFromNotlar(k?.notlar);
+    if (gib) return gib.getTime();
+    const t = k?.updatedAt || k?.onayTarihi || k?.createdAt;
+    return t ? new Date(t).getTime() : 0;
+  };
   for (const candidate of lookupKeysForExpected(tip, yil, ay, donem, donemTuru)) {
     const key = `${taxpayerId}::${candidate.tip}::${candidate.donem}`;
     const durumKaydi = durumIndex.get(key);
@@ -650,6 +657,14 @@ function resolveBeyanState(
 function isEDeclarationApprovalPending(durumKaydi: any): boolean {
   const note = String(durumKaydi?.notlar || '').toLowerCase();
   return /gib agent onay bekliyor|e-beyanname onay bekliyor|portal-automation.*onay/.test(note);
+}
+
+/** Notlardaki GİB satır tarihi (gibTarih=<ISO>) — portal-automation yazıyor. */
+export function gibTarihFromNotlar(notlar?: string | null): Date | null {
+  const m = String(notlar || '').match(/gibTarih=([0-9T:.Z+-]+)/);
+  if (!m) return null;
+  const d = new Date(m[1]);
+  return Number.isNaN(d.getTime()) ? null : d;
 }
 
 function lookupKeysForExpected(tip: BeyanTipi, yil: number, ay: number, donem: string, donemTuru: DonemTuru) {
