@@ -6629,6 +6629,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     return { refererPath, listUrls };
   }
 
+  /** TÜRMOB liste sorgusu KEŞİF HAFIZASI: kanal → en son çalışan uç+profil+yöntem.
+   *  Sonraki sorgular 168-264'lük deneme matrisini atlayıp bu kombinasyonla başlar. */
+  private static turmobComboCache = new Map<string, { listUrl: string; profileName: string; method: 'POST' | 'GET' }>();
+
   private async fetchTurmobPortalRows(
     cfg: RuntimeIntegrationConfig,
     opts: {
@@ -6710,55 +6714,74 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   uç×profil×yöntem kombinasyonlarını deneme — eskiden ilk kombinasyonda 18/18 satır gelse bile
     //   ~150+ istek daha atılıyordu (kullanıcı: "sorgu neden bu kadar uzun sürüyor").
     let tamamlandi = false;
+    // KEŞİF HAFIZASI (kanal başına): en son ÇALIŞAN uç+profil+yöntem ÖNCE denenir → tipik sorgu
+    //   1-2 istekte biter (kullanıcı: "sorgu hızlı olsun, boşuna beklemesin"). Tutmazsa tam matris
+    //   taranır ve yeni çalışan kombinasyon hafızaya yazılır. Süreç içi hafıza; restart'ta sıfırlanır.
+    const hatirlanan = FaturaMuhasebelestirmeService.turmobComboCache.get(channel);
+    const kombinasyonlar: Array<{ listUrl: string; profile: any; method: 'POST' | 'GET' }> = [];
+    if (hatirlanan) {
+      const p = profiles.find((x) => x.name === hatirlanan.profileName);
+      if (p && allListUrls.includes(hatirlanan.listUrl)) kombinasyonlar.push({ listUrl: hatirlanan.listUrl, profile: p, method: hatirlanan.method });
+    }
     for (const listUrl of allListUrls) {
-      if (tamamlandi) break;
       for (const profile of profiles) {
-        if (tamamlandi) break;
-        const listBody = new URLSearchParams(
-          listPageToken
-            ? { ...baseListParams, ...profile.params, __RequestVerificationToken: listPageToken }
-            : { ...baseListParams, ...profile.params },
-        ).toString();
-        for (const method of ['POST', 'GET'] as const) {
-          const requestUrl = method === 'GET' ? `${BASE}${listUrl}?${listBody}` : BASE + listUrl;
-          const res = await fetch(requestUrl, {
-            method,
-            headers: {
-              ...(method === 'POST' ? { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' } : {}),
-              Accept: 'application/json, text/javascript, */*; q=0.01',
-              Origin: BASE,
-              Referer: BASE + refererPath,
-              'X-Requested-With': 'XMLHttpRequest',
-              ...(listPageToken ? { RequestVerificationToken: listPageToken, __RequestVerificationToken: listPageToken } : {}),
-              Cookie: cookie,
-              'User-Agent': 'MorenPortal/1.0',
-            },
-            body: method === 'POST' ? listBody : undefined,
-          });
-          ct = res.headers.get('content-type') || '';
-          raw = await res.text();
-          data = null;
-          try { data = JSON.parse(raw); } catch { /* HTML = probably login redirect */ }
-          const candidateRows = this.turmobRowsFromListResponse(data);
-          const candidateLiveRows = candidateRows.filter((row) => !this.turmobIsCancelled(row) && this.turmobRowInPeriod(row, opts.period));
-          if (
-            candidateLiveRows.length > liveRows.length
-            || (!liveRows.length && candidateRows.length > rows.length)
-          ) {
-            rows = candidateRows;
-            liveRows = candidateLiveRows;
-            selectedCt = ct;
-            selectedRaw = raw;
-            selectedData = data;
-            usedListUrl = listUrl;
-            usedProfile = profile.name;
-            usedMethod = method;
-          }
-          // Satır geldi ve sunucunun bildirdiği toplam kadar → yeter, kalan kombinasyonları deneme.
-          if (candidateLiveRows.length > 0) {
-            const bildirilen = Number(data?.recordsFiltered ?? data?.RecordsFiltered ?? data?.recordsTotal ?? data?.RecordsTotal ?? NaN);
-            if (!Number.isFinite(bildirilen) || candidateRows.length >= bildirilen) { tamamlandi = true; break; }
-          }
+        for (const method of ['POST', 'GET'] as const) kombinasyonlar.push({ listUrl, profile, method });
+      }
+    }
+    for (const kombo of kombinasyonlar) {
+      if (tamamlandi) break;
+      const { listUrl, profile, method } = kombo;
+      const listBody = new URLSearchParams(
+        listPageToken
+          ? { ...baseListParams, ...profile.params, __RequestVerificationToken: listPageToken }
+          : { ...baseListParams, ...profile.params },
+      ).toString();
+      const requestUrl = method === 'GET' ? `${BASE}${listUrl}?${listBody}` : BASE + listUrl;
+      let res: any;
+      try {
+        res = await fetch(requestUrl, {
+          method,
+          headers: {
+            ...(method === 'POST' ? { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' } : {}),
+            Accept: 'application/json, text/javascript, */*; q=0.01',
+            Origin: BASE,
+            Referer: BASE + refererPath,
+            'X-Requested-With': 'XMLHttpRequest',
+            ...(listPageToken ? { RequestVerificationToken: listPageToken, __RequestVerificationToken: listPageToken } : {}),
+            Cookie: cookie,
+            'User-Agent': 'MorenPortal/1.0',
+          },
+          body: method === 'POST' ? listBody : undefined,
+          // TEK İSTEK TAVANI (8sn): eskiden timeout YOKTU — portal yavaşladığında matris sınırsız
+          //   bekliyordu. Takılan kombinasyon atlanır, sıradaki denenir.
+          signal: (AbortSignal as any).timeout ? (AbortSignal as any).timeout(8000) : undefined,
+        });
+      } catch { continue; }
+      ct = res.headers.get('content-type') || '';
+      raw = await res.text().catch(() => '');
+      data = null;
+      try { data = JSON.parse(raw); } catch { /* HTML = probably login redirect */ }
+      const candidateRows = this.turmobRowsFromListResponse(data);
+      const candidateLiveRows = candidateRows.filter((row) => !this.turmobIsCancelled(row) && this.turmobRowInPeriod(row, opts.period));
+      if (
+        candidateLiveRows.length > liveRows.length
+        || (!liveRows.length && candidateRows.length > rows.length)
+      ) {
+        rows = candidateRows;
+        liveRows = candidateLiveRows;
+        selectedCt = ct;
+        selectedRaw = raw;
+        selectedData = data;
+        usedListUrl = listUrl;
+        usedProfile = profile.name;
+        usedMethod = method;
+      }
+      // Satır geldi ve sunucunun bildirdiği toplam kadar → yeter, kalan kombinasyonları deneme.
+      if (candidateLiveRows.length > 0) {
+        const bildirilen = Number(data?.recordsFiltered ?? data?.RecordsFiltered ?? data?.recordsTotal ?? data?.RecordsTotal ?? NaN);
+        if (!Number.isFinite(bildirilen) || candidateRows.length >= bildirilen) {
+          tamamlandi = true;
+          FaturaMuhasebelestirmeService.turmobComboCache.set(channel, { listUrl, profileName: profile.name, method });
         }
       }
     }
