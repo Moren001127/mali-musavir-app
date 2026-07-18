@@ -374,8 +374,17 @@ export class FaturaMuhasebelestirmeController {
   }
 
   @Post('documents/:id/approve')
-  approve(@Req() req: any, @Param('id') id: string) {
-    return this.service.approve(req.user.tenantId, id, req.user?.userId);
+  approve(@Req() req: any, @Param('id') id: string, @Body() body: any) {
+    // body.force=true → AI denetçi "yanlis" dese de bilinçli onay (varsayılan engelli).
+    return this.service.approve(req.user.tenantId, id, req.user?.userId, body?.force === true);
+  }
+
+  /** Toplu onay — tek HTTP çağrısı (belge-başına 50 ayrı istek yerine). En fazla 200 id.
+   *  Denetimsiz belgeler atlanır + denetim arka planda tetiklenir; denetçi "yanlis" dedikleri atlanır.
+   *  Body: { ids: string[]; force?: boolean } → { approved, skipped: [{id, belgeNo?, reason}] } */
+  @Post('documents/approve-batch')
+  approveBatch(@Req() req: any, @Body() body: { ids: string[]; force?: boolean }) {
+    return this.service.approveBatch(req.user.tenantId, body?.ids || [], req.user?.userId, body?.force === true);
   }
 
   /** Faz C: onayı geri al (Luca'ya gitmemişse) — tekrar düzenlenebilir. */

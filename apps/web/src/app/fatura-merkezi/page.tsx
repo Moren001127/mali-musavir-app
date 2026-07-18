@@ -573,6 +573,24 @@ function accountCodeOnly(value: any): string {
   return raw.split(/\s+[—–-]\s+|=/)[0].trim();
 }
 
+// Fiş satırı hesap kodu KAYNAK rozeti — kod nereden geldi? (fiş editöründe kodun yanında küçük pill)
+const KAYNAK_ROZET: Record<string, { t: string; bg: string; fg: string }> = {
+  KULLANICI: { t: 'Siz seçtiniz', bg: '#e7f6ec', fg: '#15803d' },
+  HAFIZA: { t: 'Öğrenilmiş', bg: '#eaf1ff', fg: '#2563eb' },
+  VKN: { t: 'VKN eşleşmesi', bg: '#e7f6ec', fg: '#15803d' },
+  AI: { t: 'AI tahmini', bg: '#fdf2e0', fg: '#b45309' },
+  KURAL: { t: 'Kural', bg: '#eef1f5', fg: '#64748b' },
+  ISIM: { t: 'İsim eşleşmesi', bg: '#eef1f5', fg: '#64748b' },
+  VARSAYILAN: { t: 'Varsayılan', bg: '#eef1f5', fg: '#64748b' },
+};
+function KaynakRozet({ kaynak }: { kaynak?: string | null }) {
+  const r = kaynak ? KAYNAK_ROZET[String(kaynak)] : null;
+  if (!r) return null;
+  return (
+    <span title={`Hesap kodu kaynağı: ${r.t}`} style={{ flex: '0 0 auto', fontSize: 9.5, fontWeight: 800, lineHeight: 1.2, padding: '2px 6px', borderRadius: 999, background: r.bg, color: r.fg, whiteSpace: 'nowrap', letterSpacing: '.2px' }}>{r.t}</span>
+  );
+}
+
 function isletmeRowReady(kind: 'ALIS' | 'SATIS', row: any): boolean {
   const kt = String(row?.kayitTuruKod || '').trim();
   if (!kt) return false;
@@ -1028,23 +1046,24 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
     onSuccess: () => { toast.success('Hesap kodları yeniden eşleştirildi — yanlış cariler düzeltildi/temizlendi'); qc.invalidateQueries({ queryKey: ['fm2'] }); },
     onError: () => toast.error('Yeniden eşleştirme başarısız'),
   });
+  // Toplu onay TEK istekte (approve-batch) — belge-başına döngü yok; Katman-2 denetçi kararları
+  // sunucuda uygulanır, atlananlar sebep gruplarıyla aşağıdaki panelde gösterilir.
+  const [skipInfo, setSkipInfo] = useState<Array<{ id: string; belgeNo?: string; reason: string }> | null>(null);
   const approveMut = useMutation({
-    mutationFn: async (ids: string[]) => {
-      let ok = 0, fail = 0, firstErr = '';
-      for (const id of ids) {
-        try { await api.post(`/fatura-muhasebelestirme/documents/${id}/approve`); ok++; }
-        catch (e: any) { fail++; if (!firstErr) firstErr = e?.response?.data?.message || e?.message || 'hata'; }
-      }
-      return { ok, fail, firstErr };
+    mutationFn: async (p: { ids: string[]; force?: boolean }) => {
+      const r = await api.post('/fatura-muhasebelestirme/documents/approve-batch', { ids: p.ids, ...(p.force ? { force: true } : {}) });
+      return (r?.data || {}) as { approved: number; skipped: Array<{ id: string; belgeNo?: string; reason: string }> };
     },
-    onSuccess: ({ ok, fail, firstErr }) => {
+    onSuccess: ({ approved, skipped }) => {
+      const sk = Array.isArray(skipped) ? skipped : [];
       // Başarısızları YUTMA: "0 belge muhasebeleştirildi" yeşil toast yalan olur.
-      if (ok > 0) toast.success(`${ok} belge muhasebeleştirildi`);
-      if (fail > 0) toast.warning(`${fail} belge onaylanamadı${firstErr ? `: ${firstErr}` : ''}`, { duration: 9000 });
-      if (ok > 0) setSel(new Set()); // hepsi başarısızsa seçim kalsın — kullanıcı düzeltip tekrar dener
+      if (Number(approved) > 0) toast.success(`${approved} belge muhasebeleştirildi`);
+      if (sk.length > 0) toast.warning(`${sk.length} belge onaylanmadı — sebepler listede`, { duration: 7000 });
+      setSkipInfo(sk.length > 0 ? sk : null);
+      if (Number(approved) > 0) setSel(new Set()); // hepsi atlandıysa seçim kalsın — kullanıcı düzeltip tekrar dener
       qc.invalidateQueries({ queryKey: ['fm2'] });
     },
-    onError: () => toast.error('Muhasebeleştirme başarısız'),
+    onError: (e: any) => toast.error('Muhasebeleştirme başarısız: ' + (e?.response?.data?.message || e?.message || 'hata')),
   });
 
   // Matrah/KDV kırılımı çıkmamış belgelere (ör. Mihsap'tan yalnız toplamı gelen satışlar) oranla fiş üret
@@ -1198,7 +1217,7 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
       toast.error(sel.size === 0 ? 'Önce belge seç' : (isIsletme ? 'Seçilenlerde belge türü/kayıt türü eksik, tutar okunamamış ya da zaten onaylı' : 'Seçilenlerde eksik hesap kodu var (cari/KDV/gider) ya da zaten onaylı'));
       return;
     }
-    approveMut.mutate(hazir.map((d) => d.id));
+    approveMut.mutate({ ids: hazir.map((d) => d.id) });
   };
 
   return (
@@ -1255,6 +1274,32 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
           <button className="btn sm ai" disabled={aiBusy || sel.size === 0} onClick={aiOku} title="Seçili faturaları yapay zeka (Max) ile oku — sunucuda okur, sayfa değişince durmaz"><Ico html={I.spark} size={13} /> {aiBusy ? 'Başlatılıyor…' : `AI ile oku${sel.size ? ` (${sel.size})` : ''}`}</button>
           <button className="btn sm primary" disabled={approveMut.isPending} onClick={muhasebelestir} title="Seçili, kodu tam olan belgeleri toplu onayla (Luca kuyruğuna alır). Tek tek inceleme için soldaki 'Muhasebeleştir' ekranını kullan."><Ico html={I.checkSm} size={13} /> {approveMut.isPending ? 'İşleniyor…' : `Seçilenleri onayla${sel.size ? ` (${sel.size})` : ''}`}</button>
         </div>
+        {skipInfo && skipInfo.length > 0 && (() => {
+          // Toplu onayda atlananlar — sebep gruplarıyla (denetim bekliyor / denetçi YANLIŞ / diğer hata)
+          const bekleyen = skipInfo.filter((s) => s.reason === 'denetim-bekleniyor');
+          const yanlis = skipInfo.filter((s) => String(s.reason || '').startsWith('denetim-yanlis'));
+          const diger = skipInfo.filter((s) => !bekleyen.includes(s) && !yanlis.includes(s));
+          const noLabel = (arr: typeof skipInfo) => { const ns = arr.map((s) => s.belgeNo).filter(Boolean); return ns.length ? ` (${ns.slice(0, 5).join(', ')}${ns.length > 5 ? '…' : ''})` : ''; };
+          return (
+            <div style={{ margin: '8px 12px 0', padding: '9px 12px', border: '1px solid #f0d9b3', borderRadius: 9, background: '#fff9ef', fontSize: 12.5, color: '#7c4a03', display: 'flex', flexDirection: 'column', gap: 5 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <b style={{ fontSize: 13 }}>Toplu onayda atlanan belgeler ({skipInfo.length})</b>
+                <div className="sp" />
+                <button className="btn sm" onClick={() => setSkipInfo(null)}>Kapat</button>
+              </div>
+              {bekleyen.length > 0 && <div>• <b>{bekleyen.length} belge denetim bekliyor</b> — denetim arka planda çalışıyor, az sonra tekrar deneyin{noLabel(bekleyen)}.</div>}
+              {yanlis.length > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <span>• <b>{yanlis.length} belge denetçi tarafından YANLIŞ işaretli</b> — belgeleri açıp kontrol edin{noLabel(yanlis)}.</span>
+                  <button className="btn sm" style={{ borderColor: '#e0b4b4', color: '#c0353a' }} disabled={approveMut.isPending}
+                    onClick={() => approveMut.mutate({ ids: yanlis.map((s) => s.id), force: true })}
+                    title="Denetçi kararını görmezden gel, yalnız bu belgeleri force ile onayla">Yine de onayla ({yanlis.length})</button>
+                </div>
+              )}
+              {diger.length > 0 && <div>• {diger.length} belge onaylanamadı: {diger.slice(0, 3).map((s) => `${s.belgeNo ? s.belgeNo + ' — ' : ''}${s.reason}`).join(' · ')}{diger.length > 3 ? ' …' : ''}</div>}
+            </div>
+          );
+        })()}
         {docsQ.isError && (
           <div className="yuklenemedi">
             <span><Ico html={I.info} size={14} /> Belgeler yüklenemedi (bağlantı/sunucu hatası) — "veri yok" değil.</span>
@@ -2581,6 +2626,7 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
     setLineDraft((selDoc?.lines || []).map((l: any) => ({
       group: l.group, accountCode: l.accountCode || '', description: l.description || '',
       rate: l.rate || '', debit: Number(l.debit) || 0, credit: Number(l.credit) || 0,
+      kaynak: l.kaynak || null, // hesap kodunun nereden geldiği (KULLANICI/HAFIZA/AI/…) — rozet için
     })));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selDoc?.id]);
@@ -2740,9 +2786,14 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
   // Gerçek hesap kodunu elle ver — o satıcının tüm faturalarına uygulanır + öğrenilir (770 tahmini yerine)
   // Talimat (gece otomatik) — entegratör kayıtlarından türetilir
   const approveMut = useMutation({
-    mutationFn: (id: string) => api.post(`/fatura-muhasebelestirme/documents/${id}/approve`),
+    mutationFn: (p: { id: string; force?: boolean }) => api.post(`/fatura-muhasebelestirme/documents/${p.id}/approve`, p.force ? { force: true } : undefined),
     onSuccess: () => { toast.success('Onaylandı — Luca kuyruğuna alındı'); qc.invalidateQueries({ queryKey: ['fm2'] }); },
-    onError: (e: any) => toast.error('Onay başarısız: ' + (e?.response?.data?.message || e?.message || 'hata')),
+    onError: (e: any) => {
+      // Denetçi (Katman-2) reddi 400: toast basma — saveApprove confirm ile "Yine de onayla" soruyor.
+      const msg = String(e?.response?.data?.message || e?.message || 'hata');
+      if (e?.response?.status === 400 && /denet/i.test(msg)) return;
+      toast.error('Onay başarısız: ' + msg);
+    },
   });
   // Faz E: TEK kaydet (bilgi+satır birlikte, tek bildirim). Ctrl+S buna bağlı.
   const saveAll = async (silent = false) => {
@@ -2756,7 +2807,16 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
     try {
       await saveAll(true);
       const nextId = navList[navIdx + 1]?.id;
-      await approveMut.mutateAsync(selDoc.id);
+      try {
+        await approveMut.mutateAsync({ id: selDoc.id });
+      } catch (e: any) {
+        // Denetçi (Katman-2) "yanlis" kararı 400 döner — kullanıcıya sor, isterse force ile onayla.
+        const msg = String(e?.response?.data?.message || e?.message || '');
+        if (e?.response?.status === 400 && /denet/i.test(msg)) {
+          if (!window.confirm(`Denetçi uyarısı: ${msg}\n\nYine de onaylansın mı?`)) return;
+          await approveMut.mutateAsync({ id: selDoc.id, force: true });
+        } else throw e;
+      }
       if (nextId) setSelId(nextId);
     } catch { /* mutasyon hatasını gösterir */ }
   };
@@ -3013,6 +3073,8 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                               <div key={i} className="frow">
                                 <CodeSelect value={l.accountCode || ''} accounts={accountPlan} onChange={(code) => {
                                   setLine(i, 'accountCode', code);
+                                  setLine(i, 'kaynak', 'KULLANICI'); // elle seçildi — rozet "Siz seçtiniz" olsun
+
                                   // "İndirilecek KDV" kutusu birden fazla backend-grup kapsıyorsa (vergi +
                                   //   vergi-sorumlu): seçilen hesabın ADI "sorumlu" içeriyorsa satırı OTOMATİK
                                   //   vergi-sorumlu grubuna taşı — rematch'in 191-normal/191-sorumlu hesabını
@@ -3027,6 +3089,7 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                                     }
                                   }
                                 }} onAddNew={(code) => openAddAccount(code)} />
+                                <KaynakRozet kaynak={l.kaynak} />
                                 {g.key !== 'cari' && g.key !== 'tevkifat'
                                   ? <RateSelect value={String(l.rate || '').replace(/[^0-9]/g, '')} onChange={(v) => setLine(i, 'rate', v ? `%${v}` : '')} />
                                   : null}

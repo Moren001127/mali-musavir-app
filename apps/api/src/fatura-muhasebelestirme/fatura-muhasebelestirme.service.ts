@@ -5088,8 +5088,20 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     return validation;
   }
 
-  async approve(tenantId: string, id: string, userId?: string) {
+  async approve(tenantId: string, id: string, userId?: string, force?: boolean) {
     const doc = await this.get(tenantId, id);
+
+    // KATMAN 2 — AI DENETÇİ KAPISI: denetçi "yanlis" dediyse onay VARSAYILAN engelli.
+    //   Kullanıcı bilerek onaylamak isterse force=true ile geçer (sessizce yutulmaz, bilinçli karar olur).
+    const denetimKarari: any = ((doc as any).ocrData as any)?.denetim;
+    if (force !== true && denetimKarari && typeof denetimKarari === 'object'
+      && String(denetimKarari.sonuc || denetimKarari.karar || '') === 'yanlis') {
+      const gerekce = String(denetimKarari.gerekce || '').trim();
+      const oneri = String(denetimKarari.oneri || '').trim();
+      throw new BadRequestException(
+        `Bu belge onaylanamaz — AI denetçi hesap eşleştirmesini YANLIŞ buldu${gerekce ? `: ${gerekce}` : '.'}${oneri ? ` Öneri: ${oneri}.` : ''} Yine de onaylamak istersen "force" ile tekrar dene.`,
+      );
+    }
 
     // İşletme defteri mi? (tek-taraflı — hesap planı/kodu YOK, denge aranmaz)
     const tp: any = (doc as any).taxpayerId
@@ -5155,6 +5167,53 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     await this.logAudit(tenantId, userId, 'APPROVE', id, { status: doc.status }, { status: 'APPROVED' });
 
     return this.get(tenantId, id);
+  }
+
+  /** TOPLU ONAY (tek HTTP çağrısı) — frontend'in belge-başına 50 ayrı istek atmasının yerini alır.
+   *  Her belge sırayla mevcut approve'dan geçer (tüm kontroller aynen). Denetimi HİÇ olmayan belge
+   *  onaylanmadan atlanır (sebep 'denetim-bekleniyor') ve denetim üretimi ARKA PLANDA tetiklenir;
+   *  denetçi "yanlis" dediyse atlanır (sebep 'denetim-yanlis'). force=true her ikisini de geçer. */
+  async approveBatch(tenantId: string, ids: string[], userId?: string, force?: boolean) {
+    const list = Array.from(new Set((Array.isArray(ids) ? ids : []).map((v: any) => String(v || '').trim()).filter(Boolean)));
+    if (!list.length) throw new BadRequestException('Onaylanacak belge listesi boş.');
+    if (list.length > 200) throw new BadRequestException('Tek seferde en fazla 200 belge onaylanabilir.');
+    let approved = 0;
+    const skipped: Array<{ id: string; belgeNo?: string; reason: string }> = [];
+    for (const id of list) {
+      let belgeNo: string | undefined;
+      try {
+        const doc: any = await this.get(tenantId, id);
+        belgeNo = String(doc.belgeNo || '').trim() || undefined;
+        if (String(doc.status) === 'APPROVED') {
+          skipped.push({ id, belgeNo, reason: 'zaten onaylı' });
+          continue;
+        }
+        const ocr: any = doc.ocrData || {};
+        const denetim: any = ocr.denetim && typeof ocr.denetim === 'object' ? ocr.denetim : null;
+        // Denetim yalnız ÜRETİLEBİLİR belgelerde beklenir: matrah hesabı atanmamış belgede (ör. işletme
+        //   defteri) generateRichMuhasebeNeden denetçiyi hiç çalıştırmaz → sonsuza dek bekletme.
+        const denetimUretilebilir = (doc.lines || []).some(
+          (l: any) => String(l.group || '') === 'matrah' && String(l.accountCode || '').trim(),
+        );
+        if (!denetim && force !== true && denetimUretilebilir) {
+          // Arka planda denetçiyi tetikle — BEKLEME. force=true şart: zengin yorum cache'i doluysa
+          //   normal çağrı cache'ten döner ve denetim hiç üretilmezdi.
+          void this.generateRichMuhasebeNeden(tenantId, id, true).catch(() => {});
+          skipped.push({ id, belgeNo, reason: 'denetim-bekleniyor' });
+          continue;
+        }
+        if (denetim && force !== true && String(denetim.sonuc || denetim.karar || '') === 'yanlis') {
+          const gerekce = String(denetim.gerekce || '').trim();
+          skipped.push({ id, belgeNo, reason: `denetim-yanlis${gerekce ? `: ${gerekce}` : ''}` });
+          continue;
+        }
+        await this.approve(tenantId, id, userId, force);
+        approved++;
+      } catch (e: any) {
+        skipped.push({ id, belgeNo, reason: String(e?.message || e || 'onay hatası') });
+      }
+    }
+    return { approved, skipped };
   }
 
   /** Faz C: denetim izi — değişiklikleri AuditLog'a yaz (kim/ne zaman/eski→yeni). */
