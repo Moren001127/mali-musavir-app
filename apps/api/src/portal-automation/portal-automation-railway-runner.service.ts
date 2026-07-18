@@ -4045,6 +4045,26 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       await this.openEBeyannameSearch(page, []).catch(() => {});
     }
     const target = await this.findEBeyannameSearchTarget(page) || page;
+
+    // BİRİNCİL YOL — GERÇEK Playwright tıklaması. EBREQDBG kanıtı: sentetik event yolu
+    // POST'a "sorguTipiZ=1 + durum=BOŞ" gönderiyordu (checkbox toggle'ı geri dönüyor,
+    // GİB'in kendi handler'ı tetiklenmiyor) → üç durum sorgusu da AYNI filtresiz listeyi
+    // okuyordu (YILMAZ hatalı beyanname "onay bekliyor" görünüyordu). Gerçek tıklama
+    // GİB'in kendi kodunu çalıştırır; durum parametresi isteğe gerçekten yazılır.
+    const durumValue = status === 'hatali' ? '0' : status === 'beklemede' ? '1' : '2';
+    try {
+      const cb = target.locator('#sorguTipiD');
+      if (await cb.count()) {
+        const checked = await cb.isChecked().catch(() => false);
+        if (!checked) await cb.click({ timeout: 3000 });
+      }
+      const radio = target.locator(`input[name="durum"][value="${durumValue}"]`);
+      if (await radio.count()) {
+        await radio.click({ timeout: 3000, force: true });
+        if (await radio.isChecked().catch(() => false)) return;
+      }
+    } catch { /* sentetik yedek yola düş */ }
+
     const result = await target.evaluate((status: EBeyannameStatus) => {
       const wanted = status === 'hatali'
         ? 'HATALI'
@@ -4083,16 +4103,18 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
           })),
       });
 
+      // NOT: "checked=true YAP + click DISPATCH ET" kalıbı checkbox'ı GERİ çeviriyordu
+      // (sentetik click de toggle uygular) → sorguTipiD POST'a hiç gitmiyordu.
+      // Doğrusu: durumu ELLE SETLEME, yalnız click() çağır (toggle + handler birlikte).
       const directStatusCheckbox = document.querySelector<HTMLInputElement>('#sorguTipiD');
       if (directStatusCheckbox && !directStatusCheckbox.checked) {
-        directStatusCheckbox.checked = true;
-        fire(directStatusCheckbox);
+        directStatusCheckbox.click();
       }
       const directRadio = document.querySelector<HTMLInputElement>(`input[name="durum"][value="${value}"]`);
       if (directRadio) {
         directRadio.removeAttribute('disabled');
-        directRadio.checked = true;
-        fire(directRadio);
+        if (!directRadio.checked) directRadio.click();
+        if (!directRadio.checked) { directRadio.checked = true; fire(directRadio); }
         return directRadio.checked ? { ok: true, inspect: inspect() } : { ok: false, inspect: inspect() };
       }
 
@@ -4110,8 +4132,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
           return text.includes('DURUM') && !text.includes('YUKLEME');
         });
       if (statusCheckbox && !statusCheckbox.checked) {
-        statusCheckbox.checked = true;
-        fire(statusCheckbox);
+        statusCheckbox.click();
       }
 
       const radios = Array.from(scope.querySelectorAll<HTMLInputElement>('input[type="radio"]')).filter(isVisible);
@@ -4136,8 +4157,8 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       if (!radio && radios[order]) radio = radios[order];
       if (!radio) return { ok: false, inspect: inspect() };
       radio.removeAttribute('disabled');
-      radio.checked = true;
-      fire(radio);
+      if (!radio.checked) radio.click();
+      if (!radio.checked) { radio.checked = true; fire(radio); }
       return radio.checked ? { ok: true, inspect: inspect() } : { ok: false, inspect: inspect() };
     }, status).catch((err: any) => ({ ok: false, error: String(err?.message || err) }));
 
