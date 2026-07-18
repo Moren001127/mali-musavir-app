@@ -11562,7 +11562,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           // önce TAM oran ("2/10"), sonra "tevkifat" kelimesi ya da herhangi "X/10" deseni.
           const exact = g600.find((a: any) => String(a.accountName || '').includes(`${tevkPay}/10`));
           const hit = exact || g600.find((a: any) => this.isTevkifatAccountName(a.accountName || ''));
-          return hit || categoryMatrah;
+          if (hit) return hit;
+          // Planda tevkifat-adlı 600 YOKSA gelir yine 600'e işlenir (tevkifat KDV/cari tarafında
+          //   ele alınır) → aşağıdaki NORMAL-600 seçimine düş. Eskiden categoryMatrah'a düşüyordu;
+          //   satışta kategori 600 üretmediğinden matrah BOŞ kalıyordu (Yorgun Nakliyat: okuma
+          //   tevkifatı doğru yakalayınca 72 satış "Gelir kodu boş" kaldı).
         }
         // NORMAL satış → tevkifat (KELİME ya da "X/10" ORAN) / iade / ihrac / istisna GEÇMEYEN 600.
         const normals = g600.filter((a: any) => !this.isTevkifatAccountName(a.accountName || '') && !/(iade|ihrac|istisna)/i.test(String(a.accountName || '')));
@@ -11576,7 +11580,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const saleGroupLeaves: any[] = (isSale && !isReturn) ? (() => {
         const g600 = accounts.filter((a: any) => { const c = String(a.accountCode || ''); return c.startsWith('600') && !c.startsWith('79') && isPostableLeaf(c); });
         if (!g600.length) return [];
-        if (tevkPay >= 1) return g600.filter((a: any) => this.isTevkifatAccountName(a.accountName || '') || String(a.accountName || '').includes(`${tevkPay}/10`));
+        if (tevkPay >= 1) {
+          const tevk = g600.filter((a: any) => this.isTevkifatAccountName(a.accountName || '') || String(a.accountName || '').includes(`${tevkPay}/10`));
+          // Tevkifat-adlı 600 yoksa normal-600 havuzuna düş (saleMatrahDefault ile simetrik).
+          if (tevk.length) return tevk;
+        }
         const normals = g600.filter((a: any) => !this.isTevkifatAccountName(a.accountName || '') && !/(iade|ihrac|istisna)/i.test(String(a.accountName || '')));
         return normals.length ? normals : g600;
       })() : [];
@@ -11815,7 +11823,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         if (group === 'matrah' && isSale && saleMatrahDefault) {
           const curAcc = current ? accounts.find((a: any) => String(a.accountCode || '') === current) : null;
           const curIsTevk = !!curAcc && this.isTevkifatAccountName(String(curAcc.accountName || ''));
-          if (curAcc && curIsTevk !== (tevkPay >= 1) && current !== String((saleMatrahDefault as any).accountCode)) {
+          // Planda tevkifat-adlı 600 yoksa (saleMatrahDefault tevkifatlı belgede bile normal-600 döner)
+          //   tevkifatlı satışın normal-600'ü ÇELİŞKİ DEĞİLDİR — zorla değiştirme.
+          const tevkCelieskisiVar = tevkPay >= 1
+            ? this.isTevkifatAccountName(String((saleMatrahDefault as any).accountName || '')) && !curIsTevk
+            : curIsTevk;
+          if (curAcc && tevkCelieskisiVar && current !== String((saleMatrahDefault as any).accountCode)) {
             await (this.prisma as any).invoiceAccountingLine.update({
               where: { id: line.id },
               data: { accountCode: (saleMatrahDefault as any).accountCode, kaynak: 'VARSAYILAN' },
