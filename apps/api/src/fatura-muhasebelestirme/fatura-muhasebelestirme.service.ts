@@ -2894,6 +2894,71 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     return { missing, period: curKey };
   }
 
+  /** EKSİK BELGE AVCISI (Faz4): mükellefin SATIŞ faturalarında belge-no ardışıklık boşlukları.
+   *  Kaynak: earsiv_faturalar (GİB/entegratörden çekilen liste, tip=SATIS, donem=YYYY-MM) +
+   *  invoice_accounting_documents (işlenen satışlar, faturaTarihi dönem içi). Belge no deseni
+   *  kdv-control/belge-no-check ile aynı: SERİ(2-4 harf) + YIL(20xx) + SIRA(6-14 hane).
+   *  Seri+yıl grubunda sıralı numaralar arasındaki boşluklar raporlanır — boşluk "kesilmemiş,
+   *  iptal edilmiş ya da sisteme gelmemiş fatura olabilir" sinyalidir, kesin hüküm değil.
+   *  Dönem sınırındaki boşluk (önceki ayın son numarası ile bu ayın ilki arası) bilerek kapsam dışı. */
+  async eksikBelgeler(tenantId: string, opts: { taxpayerId?: string; period?: string }) {
+    const taxpayerId = String(opts.taxpayerId || '').trim();
+    const period = String(opts.period || '').trim();
+    if (!taxpayerId || !/^\d{4}-\d{2}$/.test(period)) return { seriler: [], toplamEksik: 0, period };
+    const [y, m] = period.split('-').map((n) => parseInt(n, 10));
+    const start = new Date(Date.UTC(y, m - 1, 1));
+    const end = new Date(Date.UTC(y, m, 1));
+    const nolar = new Set<string>();
+    const earsiv = await (this.prisma as any).earsivFatura.findMany({
+      where: { tenantId, taxpayerId, tip: 'SATIS', donem: period },
+      select: { faturaNo: true },
+      take: 20000,
+    }).catch(() => []);
+    for (const r of earsiv as any[]) { const n = String(r.faturaNo || '').trim().toUpperCase(); if (n) nolar.add(n); }
+    const docs = await (this.prisma as any).invoiceAccountingDocument.findMany({
+      where: { tenantId, taxpayerId, invoiceKind: 'SATIS', faturaTarihi: { gte: start, lt: end }, belgeNo: { not: null } },
+      select: { belgeNo: true },
+      take: 20000,
+    }).catch(() => []);
+    for (const r of docs as any[]) { const n = String(r.belgeNo || '').trim().toUpperCase(); if (n) nolar.add(n); }
+    // Seri+yıl bazında sıra numaralarını topla.
+    const gruplar = new Map<string, { pad: number; siralar: Set<number> }>();
+    for (const no of nolar) {
+      const m2 = no.match(/^([A-Z]{2,4})(20\d{2})(\d{6,14})$/);
+      if (!m2) continue;
+      const key = `${m2[1]}${m2[2]}`;
+      const sira = parseInt(m2[3], 10);
+      if (!Number.isFinite(sira)) continue;
+      const g = gruplar.get(key) || { pad: m2[3].length, siralar: new Set<number>() };
+      g.pad = Math.max(g.pad, m2[3].length);
+      g.siralar.add(sira);
+      gruplar.set(key, g);
+    }
+    const seriler: Array<{ seri: string; adet: number; ilk: string; son: string; eksikToplam: number; bosluklar: Array<{ baslangic: string; bitis: string; adet: number }> }> = [];
+    let toplamEksik = 0;
+    for (const [key, g] of gruplar) {
+      if (g.siralar.size < 2) continue;
+      const sirali = [...g.siralar].sort((a, b) => a - b);
+      const fmt = (n: number) => `${key}${String(n).padStart(g.pad, '0')}`;
+      const bosluklar: Array<{ baslangic: string; bitis: string; adet: number }> = [];
+      let eksikToplam = 0;
+      for (let i = 1; i < sirali.length; i++) {
+        const adet = sirali[i] - sirali[i - 1] - 1;
+        if (adet <= 0) continue;
+        // 1000+ numaralık sıçrama gerçek eksik fatura değil, numaralandırma/seri değişikliğidir —
+        //   yanlış alarmla listeyi boğmasın diye kapsam dışı.
+        if (adet > 1000) continue;
+        eksikToplam += adet;
+        if (bosluklar.length < 20) bosluklar.push({ baslangic: fmt(sirali[i - 1] + 1), bitis: fmt(sirali[i] - 1), adet });
+      }
+      if (!eksikToplam) continue;
+      toplamEksik += eksikToplam;
+      seriler.push({ seri: key, adet: g.siralar.size, ilk: fmt(sirali[0]), son: fmt(sirali[sirali.length - 1]), eksikToplam, bosluklar });
+    }
+    seriler.sort((a, b) => b.eksikToplam - a.eksikToplam);
+    return { seriler, toplamEksik, period };
+  }
+
   private async processUploadedDocumentOcr(
     tenantId: string,
     documentId: string,
@@ -5232,7 +5297,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   /** TOPLU ONAY (tek HTTP çağrısı) — frontend'in belge-başına 50 ayrı istek atmasının yerini alır.
    *  Her belge sırayla mevcut approve'dan geçer (tüm kontroller aynen). Denetimi HİÇ olmayan belge
    *  onaylanmadan atlanır (sebep 'denetim-bekleniyor') ve denetim üretimi ARKA PLANDA tetiklenir;
-   *  denetçi "yanlis" dediyse atlanır (sebep 'denetim-yanlis'). force=true her ikisini de geçer. */
+   *  denetçi "yanlis" dediyse atlanır (sebep 'denetim-yanlis'); öğrenilmiş hafızayla çelişen belge
+  *  atlanır (sebep 'hafiza-celiski'). force=true hepsini geçer. */
   async approveBatch(tenantId: string, ids: string[], userId?: string, force?: boolean) {
     const list = Array.from(new Set((Array.isArray(ids) ? ids : []).map((v: any) => String(v || '').trim()).filter(Boolean)));
     if (!list.length) throw new BadRequestException('Onaylanacak belge listesi boş.');
@@ -5265,6 +5331,15 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         if (denetim && force !== true && String(denetim.sonuc || denetim.karar || '') === 'yanlis') {
           const gerekce = String(denetim.gerekce || '').trim();
           skipped.push({ id, belgeNo, reason: `denetim-yanlis${gerekce ? `: ${gerekce}` : ''}` });
+          continue;
+        }
+        // SAPMA KUYRUĞU: rematch'in yazdığı HAFIZA_CELISKI uyarılı belge toplu onayda atlanır —
+        //   öğrenilmiş güçlü hafızayla çelişen eşleştirme sessizce Luca'ya gitmesin. Tekil onay
+        //   (kullanıcı belgeyi açıp bakarak) engellenmez; force=true toplu geçişi de açar.
+        const uyList: any[] = Array.isArray(ocr.uyarilar) ? ocr.uyarilar : [];
+        const celiski = uyList.find((u: any) => String(u?.kod || '') === 'HAFIZA_CELISKI');
+        if (celiski && force !== true) {
+          skipped.push({ id, belgeNo, reason: 'hafiza-celiski' });
           continue;
         }
         await this.approve(tenantId, id, userId, force);
@@ -11164,6 +11239,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // KATMAN-1 ANOMALİ emsal önbelleği (satıcı VKN → bu mükellefteki son ONAYLI alış tutarları):
     //   aynı satıcının birden çok bekleyen belgesi varsa DB'ye 1 kez gidilir (belge başına ≤1 hafif sorgu).
     const emsalTutarCache = new Map<string, number[]>();
+    // SAPMA KUYRUĞU: satıcı başına öğrenilmiş matrah kararları (CARI hariç) 1 kez çekilir.
+    const sapmaMemCache = new Map<string, any[]>();
 
     for (const doc of docs) {
       const isSale = doc.invoiceKind === 'SATIS';
@@ -11897,6 +11974,48 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             if (ortanca > 0 && (belgeTutar > ortanca * 5 || belgeTutar < ortanca / 5)) {
               const tl = (n: number) => n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
               _uy.push({ kod: 'ANORMAL_TUTAR', baslik: 'Olağan dışı tutar', mesaj: `Bu satıcının olağan tutarından çok farklı (ortanca ₺${tl(ortanca)}, bu belge ₺${tl(belgeTutar)}) — tutarı ve belgeyi kontrol et.`, siddet: 'uyari' });
+            }
+          }
+        }
+        // ── SAPMA KUYRUĞU (portal yolu, Faz4): bu satıcı için GÜÇLÜ öğrenilmiş hafıza varken
+        //    eşleştirme FARKLI bir matrah kodu seçtiyse belge sessiz geçmesin. Mihsap yolundaki
+        //    detectDeviation/PendingDecision'ın portal karşılığı: uyarı yazılır; approveBatch bu
+        //    belgeyi 'hafiza-celiski' sebebiyle atlar (tekil onay engellenmez — kullanıcı belgeyi
+        //    açıp bakarak onaylar; onay hafızayı besler, rakip-düşürme yanlış öğrenmeyi söndürür).
+        //    Hafıza ZATEN uygulandıysa (kaynak=HAFIZA) ya da kullanıcı elle seçtiyse çelişki yok.
+        if (!isSale && !isReturn && vendorVkn) {
+          const uygulanan = [...matrahCache.values()].filter(Boolean) as any[];
+          const hafizadan = uygulanan.some((m: any) => String(m._kaynak || '') === 'HAFIZA');
+          const elleSecili = (doc.lines || []).some((l: any) => String(l.group || '') === 'matrah' && String(l.kaynak || '') === 'KULLANICI');
+          if (uygulanan.length && !hafizadan && !elleSecili) {
+            let kararlar = sapmaMemCache.get(vendorVkn);
+            if (!kararlar) {
+              const mem = await (this.prisma as any).vendorMemory.findUnique({
+                where: { tenantId_firmaKimlikNo: { tenantId, firmaKimlikNo: vendorVkn } },
+                include: { decisions: { where: { taxpayerId, kararTipi: 'fatura' }, orderBy: [{ onayAdedi: 'desc' }, { sonKullanim: 'desc' }], take: 40 } },
+              }).catch(() => null);
+              kararlar = ((mem?.decisions || []) as any[]).filter((d: any) => String(d.altKategori || '').trim().toUpperCase() !== 'CARI');
+              sapmaMemCache.set(vendorVkn, kararlar);
+            }
+            // İçerik-imzalı kararlar yalnız BU belgenin imzasına uyuyorsa sayılır (farklı içerik için
+            //   öğrenilmiş kod çelişki DEĞİLDİR); imzasız (satıcı-geneli) kararlar her belgeye bakar.
+            const imza = String(docIcerikImza || '').trim();
+            const ilgili = kararlar.filter((d: any) => {
+              const dImza = String(d.icerikImza || '').trim();
+              return dImza ? (!!imza && dImza === imza) : true;
+            });
+            const kodlar = new Set(uygulanan.map((m: any) => String(m.accountCode || '').trim()).filter(Boolean));
+            // Hafıza uygulanan kodlardan birini ≥2 onayla ZATEN destekliyorsa çelişki yok.
+            const hafizaDestekliyor = ilgili.some((d: any) => (d.onayAdedi || 0) >= 2 && kodlar.has(String(d.kategori || '').trim()));
+            // Güçlü karar eşiği = 3 (getHintForVendor MIN_ONAY_FOR_HINT ile aynı).
+            const guclu = ilgili.find((d: any) => (d.onayAdedi || 0) >= 3);
+            if (kodlar.size && guclu && !hafizaDestekliyor && !kodlar.has(String(guclu.kategori || '').trim())) {
+              _uy.push({
+                kod: 'HAFIZA_CELISKI',
+                baslik: 'Öğrenilmiş hesapla çelişki',
+                mesaj: `Bu satıcı için geçmişte ${guclu.onayAdedi} kez "${String(guclu.kategori).trim()}" onaylanmış; bu belgede "${[...kodlar].join(', ')}" seçildi. Toplu onayda atlanır — belgeyi açıp doğru hesabı bilerek onayla.`,
+                siddet: 'uyari',
+              });
             }
           }
         }

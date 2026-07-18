@@ -129,6 +129,16 @@ export class FaturaMuhasebelestirmeController {
     return this.service.isabetOzeti(req.user.tenantId, { period, taxpayerId });
   }
 
+  /** Eksik belge avcısı — satış belge-no ardışıklık boşlukları (mükellef+dönem). */
+  @Get('eksik-belgeler')
+  eksikBelgeler(
+    @Req() req: any,
+    @Query('period') period?: string,
+    @Query('taxpayerId') taxpayerId?: string,
+  ) {
+    return this.service.eksikBelgeler(req.user.tenantId, { period, taxpayerId });
+  }
+
   @Get('kdv-client-report')
   kdvClientReport(
     @Req() req: any,

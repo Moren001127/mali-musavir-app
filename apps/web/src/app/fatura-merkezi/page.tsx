@@ -1156,6 +1156,13 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
     enabled: !!taxpayerId && kind === 'ALIS',
   });
   const missing: any[] = missingQ.data?.missing || [];
+  // Faz4: eksik belge avcısı — Satış'ta belge-no ardışıklık boşlukları (kesilmemiş/gelmemiş fatura sinyali).
+  const gapsQ = useQuery({
+    queryKey: ['fm-eksik-no', taxpayerId, period, kind],
+    queryFn: async () => (await api.get('/fatura-muhasebelestirme/eksik-belgeler', { params: { taxpayerId, period } })).data,
+    enabled: !!taxpayerId && kind === 'SATIS',
+  });
+  const noGaps: any = gapsQ.data;
   // HESAP PLANI durumu — bilanço mükellefinde plan aktarılmamışsa eşleştirme yapılamaz; net uyarı için.
   //   (İşletme defterinde plan olmaz → sorgu çalıştırma.)
   const planSumQ = useQuery({
@@ -1320,7 +1327,8 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
           // Toplu onayda atlananlar — sebep gruplarıyla (denetim bekliyor / denetçi YANLIŞ / diğer hata)
           const bekleyen = skipInfo.filter((s) => s.reason === 'denetim-bekleniyor');
           const yanlis = skipInfo.filter((s) => String(s.reason || '').startsWith('denetim-yanlis'));
-          const diger = skipInfo.filter((s) => !bekleyen.includes(s) && !yanlis.includes(s));
+          const celiski = skipInfo.filter((s) => String(s.reason || '').startsWith('hafiza-celiski'));
+          const diger = skipInfo.filter((s) => !bekleyen.includes(s) && !yanlis.includes(s) && !celiski.includes(s));
           const noLabel = (arr: typeof skipInfo) => { const ns = arr.map((s) => s.belgeNo).filter(Boolean); return ns.length ? ` (${ns.slice(0, 5).join(', ')}${ns.length > 5 ? '…' : ''})` : ''; };
           return (
             <div style={{ margin: '8px 12px 0', padding: '9px 12px', border: '1px solid #f0d9b3', borderRadius: 9, background: '#fff9ef', fontSize: 12.5, color: '#7c4a03', display: 'flex', flexDirection: 'column', gap: 5 }}>
@@ -1336,6 +1344,14 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
                   <button className="btn sm" style={{ borderColor: '#e0b4b4', color: '#c0353a' }} disabled={approveMut.isPending}
                     onClick={() => approveMut.mutate({ ids: yanlis.map((s) => s.id), force: true })}
                     title="Denetçi kararını görmezden gel, yalnız bu belgeleri force ile onayla">Yine de onayla ({yanlis.length})</button>
+                </div>
+              )}
+              {celiski.length > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <span>• <b>{celiski.length} belge öğrenilmiş hesapla çelişiyor</b> — bu satıcılar için geçmişte hep farklı hesap onaylanmış; belgeleri açıp kontrol edin{noLabel(celiski)}.</span>
+                  <button className="btn sm" style={{ borderColor: '#e0b4b4', color: '#c0353a' }} disabled={approveMut.isPending}
+                    onClick={() => approveMut.mutate({ ids: celiski.map((s) => s.id), force: true })}
+                    title="Hafıza çelişkisi uyarısını görmezden gel, yalnız bu belgeleri force ile onayla">Yine de onayla ({celiski.length})</button>
                 </div>
               )}
               {diger.length > 0 && <div>• {diger.length} belge onaylanamadı: {diger.slice(0, 3).map((s) => `${s.belgeNo ? s.belgeNo + ' — ' : ''}${s.reason}`).join(' · ')}{diger.length > 3 ? ' …' : ''}</div>}
@@ -1404,6 +1420,12 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
           <div className="eksikbelge" title="Bu satıcılar son aylarda düzenli alış faturası gönderdi ama bu dönem henüz yok — eksik belge olabilir.">
             <Ico html={I.info} size={14} />
             <span><b>{missing.length}</b> satıcıdan bu dönem belge gelmemiş olabilir (düzenli geliyordu): {missing.slice(0, 8).map((m: any) => m.name).join(', ')}{missing.length > 8 ? ` +${missing.length - 8}` : ''}</span>
+          </div>
+        )}
+        {kind === 'SATIS' && noGaps && noGaps.toplamEksik > 0 && (
+          <div className="eksikbelge" title="Satış faturası numaraları ardışık gitmeli — aradaki boşluk kesilmemiş, iptal edilmiş ya da sisteme gelmemiş fatura demek olabilir.">
+            <Ico html={I.info} size={14} />
+            <span><b>{noGaps.toplamEksik}</b> satış belge numarası boşluğu var: {(noGaps.seriler || []).slice(0, 3).map((s: any) => `${s.bosluklar.slice(0, 3).map((b: any) => b.adet === 1 ? b.baslangic : `${b.baslangic}–${b.bitis} (${b.adet})`).join(', ')}${s.bosluklar.length > 3 ? '…' : ''}`).join(' · ')}</span>
           </div>
         )}
         <div className="twrap">
