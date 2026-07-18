@@ -186,6 +186,38 @@ function deriveDurum(doc: any, isIsletme = false, autoKtKod = ''): { k: string; 
 function taxpayerLabel(t: any): string {
   return t?.companyName || [t?.firstName, t?.lastName].filter(Boolean).join(' ') || t?.taxNumber || 'Mükellef';
 }
+// KDV tevkifatı işlem türü kodları (GİB / KDV2 beyannamesi) — Muhasebeleştir'deki
+// "Tevkifat Kodu" seçici bunu kullanır (Mihsap'taki yapıya birebir). Kod seçilince
+// tevkifat satırlarının oranı boşsa otomatik dolar; kullanıcı oranı ayrıca değiştirebilir.
+// İlk 8 kayıt (201-208) kullanıcının Mihsap ekranından birebir alındı.
+// 209 ve sonrası için varsayılan oranlar BDP'den (Beyanname Düzenleme Programı) TEYİT EDİLMELİ.
+const TEVKIFAT_KODLARI: { kod: string; oran: string; ad: string }[] = [
+  { kod: '201', oran: '3/10', ad: 'Yapım İşleri ile Bu İşlerle Birlikte İfa Edilen Mühendislik-Mimarlık ve Etüt-Proje Hizmetleri' },
+  { kod: '202', oran: '9/10', ad: 'Etüt, Plan-Proje, Danışmanlık, Denetim ve Benzeri Hizmetler' },
+  { kod: '203', oran: '5/10', ad: 'Makine, Teçhizat, Demirbaş ve Taşıtlara Ait Tadil, Bakım ve Onarım Hizmetleri' },
+  { kod: '204', oran: '5/10', ad: 'Yemek Servis Hizmeti' },
+  { kod: '205', oran: '5/10', ad: 'Organizasyon Hizmeti' },
+  { kod: '206', oran: '9/10', ad: 'İşgücü Temin Hizmetleri' },
+  { kod: '207', oran: '9/10', ad: 'Özel Güvenlik Hizmeti' },
+  { kod: '208', oran: '9/10', ad: 'Yapı Denetim Hizmetleri' },
+  { kod: '209', oran: '7/10', ad: 'Fason Olarak Yaptırılan Tekstil ve Konfeksiyon İşleri, Çanta ve Ayakkabı Dikim İşleri ve Bu İşlere Aracılık Hizmetleri' },
+  { kod: '210', oran: '9/10', ad: 'Turistik Mağazalara Verilen Müşteri Bulma/Götürme Hizmetleri' },
+  { kod: '211', oran: '9/10', ad: 'Spor Kulüplerinin Yayın, Reklâm ve İsim Hakkı Gelirlerine Konu İşlemleri' },
+  { kod: '212', oran: '9/10', ad: 'Temizlik Hizmeti' },
+  { kod: '213', oran: '9/10', ad: 'Çevre ve Bahçe Bakım Hizmetleri' },
+  { kod: '214', oran: '5/10', ad: 'Servis Taşımacılığı Hizmeti' },
+  { kod: '215', oran: '7/10', ad: 'Her Türlü Baskı ve Basım Hizmetleri' },
+  { kod: '216', oran: '5/10', ad: 'Diğer Hizmetler (5018 Kapsamındaki İdarelere)' },
+  { kod: '217', oran: '7/10', ad: 'Külçe Metal Teslimleri' },
+  { kod: '218', oran: '7/10', ad: 'Bakır, Çinko, Alüminyum ve Kurşun Ürünlerinin Teslimi' },
+  { kod: '219', oran: '7/10', ad: 'Hurda ve Atık Teslimi' },
+  { kod: '220', oran: '9/10', ad: 'Metal, Plastik, Lastik, Kauçuk, Kâğıt, Cam Hurda ve Atıklarından Elde Edilen Hammadde Teslimi' },
+  { kod: '221', oran: '9/10', ad: 'Pamuk, Tiftik, Yün ve Yapağı ile Ham Post ve Deri Teslimleri' },
+  { kod: '222', oran: '5/10', ad: 'Ağaç ve Orman Ürünleri Teslimi' },
+  { kod: '223', oran: '2/10', ad: 'Yük Taşımacılığı Hizmeti' },
+  { kod: '224', oran: '3/10', ad: 'Ticari Reklam Hizmetleri' },
+  { kod: '225', oran: '5/10', ad: 'Demir-Çelik Ürünlerinin Teslimi' },
+];
 // Hesap kodu seçici — Mihsap gibi: KUTUNUN İÇİNE doğrudan yazılır (ayrı arama kutusu yok),
 // yazdıkça altta kod/isim listesi filtrelenir; tıkla seç ya da Enter. Tek temiz ok.
 function CodeSelect({ value, accounts, onChange, onAddNew }: { value: string; accounts: any[]; onChange: (code: string) => void; onAddNew?: (code: string) => void }) {
@@ -2575,8 +2607,12 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
 
   // Belge bilgileri elle düzenleme (tarih/tür/belge türü/belge no/VKN) — PATCH ile kaydeder.
   const [meta, setMeta] = useState<any>({});
+  // Tevkifat işlem türü kodu (GİB, Mihsap'taki "Tevkifat Kodu" alanı) — TEVKIFAT_KODLARI'ndan
+  // seçilir, kaydette PATCH gövdesine `tevkifat: { kod, oran }` olarak gider.
+  const [tevkifatKodu, setTevkifatKodu] = useState<string>('');
   useEffect(() => {
     const d = selDoc;
+    setTevkifatKodu(String(d?.ocrData?.tevkifat?.kod || ''));
     setMeta(d ? {
       faturaTarihi: d.faturaTarihi ? String(d.faturaTarihi).slice(0, 10) : '',
       invoiceKind: String(d.invoiceKind || 'ALIS').includes('SATIS') ? 'SATIS' : 'ALIS',
@@ -2638,6 +2674,14 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
           ? { buyerVkn: meta.vkn || undefined, customerName: meta.cariUnvan || undefined }
           : { sellerVkn: meta.vkn || undefined, vendorName: meta.cariUnvan || undefined }),
         ...(islPayload ? { isletme: islPayload } : {}),
+        // Tevkifat işlem türü (GİB kodu) — backend bu alanı yakında kalıcılaştıracak
+        // (ocrData.tevkifat); şimdiden göndermek zararsız. Oran: kullanıcı satırda
+        // değiştirdiyse o (X/10), yoksa kodun varsayılanı.
+        ...(!isIsletme && !isSale && tevkifatKodu ? (() => {
+          const kd = TEVKIFAT_KODLARI.find((k) => k.kod === tevkifatKodu);
+          const rowRate = String(lineDraft.find((l: any) => l.group === 'tevkifat' && /^\d+\/10$/.test(String(l.rate || '')))?.rate || '');
+          return { tevkifat: { kod: tevkifatKodu, oran: rowRate || kd?.oran || '' } };
+        })() : {}),
       });
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['fm2'] }); },
@@ -3126,10 +3170,38 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                                 {g.key !== 'cari' && g.key !== 'tevkifat'
                                   ? <RateSelect value={String(l.rate || '').replace(/[^0-9]/g, '')} onChange={(v) => setLine(i, 'rate', v ? `%${v}` : '')} />
                                   : null}
+                                {g.key === 'tevkifat' ? (
+                                  // Tevkifat oranı — Mihsap'taki gibi X/10 seçici (satır rate'inde saklanır,
+                                  // PATCH lines ile zaten kaydediliyor). Eski kayıtlarda rate '%20' gibi
+                                  // gelebilir — listede yoksa mevcut değeri koru (RateSelect deseni).
+                                  <div style={{ flex: '0 0 68px', width: 68 }}>
+                                    <PlainSelect value={String(l.rate || '')} onChange={(v) => setLine(i, 'rate', v)} options={(() => {
+                                      const opts = ['1/10', '2/10', '3/10', '4/10', '5/10', '6/10', '7/10', '8/10', '9/10', '10/10'];
+                                      const cur = String(l.rate || '');
+                                      const all = cur && !opts.includes(cur) ? [...opts, cur] : opts;
+                                      return [{ value: '', label: '—' }, ...all.map((o) => ({ value: o, label: o }))];
+                                    })()} />
+                                  </div>
+                                ) : null}
                                 <MoneyInput value={Number((g.side === 'debit' ? l.debit : l.credit) || 0)} onChange={(n) => setLine(i, g.side, n)} />
                                 <button type="button" className="frowdel" title="Satırı sil" onClick={() => delLine(i)}>×</button>
                               </div>
                             ))}
+                            {g.key === 'tevkifat' && (
+                              // Mihsap'taki "Tevkifat Kodu" alanı — GİB işlem türü kodu (aranabilir).
+                              // Kod seçilince oranı BOŞ olan tevkifat satırlarına kodun oranı yazılır
+                              // (dolu oranlara dokunulmaz — kullanıcı oranı ayrıca değiştirebilir).
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 10px', borderTop: '1px dashed var(--line2)' }}>
+                                <span style={{ flex: '0 0 auto', fontSize: 11.5, fontWeight: 700, color: '#5a3fc0' }}>Tevkifat Kodu</span>
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <PlainSelect value={tevkifatKodu} onChange={(kod) => {
+                                    setTevkifatKodu(kod);
+                                    const oran = TEVKIFAT_KODLARI.find((k) => k.kod === kod)?.oran || '';
+                                    if (kod && oran) setLineDraft((arr) => arr.map((l: any) => (l.group === 'tevkifat' && !l.rate ? { ...l, rate: oran } : l)));
+                                  }} options={[{ value: '', label: '—' }, ...TEVKIFAT_KODLARI.map((k) => ({ value: k.kod, label: `${k.kod} - (${k.oran}) ${k.ad}` }))]} />
+                                </div>
+                              </div>
+                            )}
                             <div className="frowadd" onClick={() => addLine(g.keys[0])}>+ satır ekle</div>
                             <div className="fgt"><span>Toplam</span><b>{fmtMoney(tot)} ₺</b></div>
                           </div>

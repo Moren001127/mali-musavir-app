@@ -44,6 +44,8 @@ export interface InvoicePayload {
   customerName?: string | null;
   totalAmount?: string | null;
   currency?: string | null;
+  /** Belge kuru (invoiceAccountingDocument.exchangeRate) — döviz faturasında Kur/Döviz Tutar kolonları için. */
+  exchangeRate?: string | number | null;
   lines: InvoiceLine[];
   /** İşletme defteri (Defter-Beyan) sınıflandırması — ocrData.isletme'den gelir. */
   isletme?: {
@@ -158,6 +160,14 @@ export async function buildLucaImportExcel(payload: BatchPayload): Promise<Buffe
     const evrakTarihi = fatTarihi ? fmtTr(fatTarihi) : fisTarihi;
     const belgeTuru = inferBelgeTuru(inv);
     const paraBirimi = inv.currency || 'TL';
+    // DÖVİZLİ FATURA: belge tutarları BELGE PARA BİRİMİNDE tutulur (UBL LegalMonetaryTotal —
+    //   DocumentCurrencyCode; TL'ye çevrilmez). Kur, belgeye kullanıcı/DB'den gelen exchangeRate'tir.
+    //   Kur GEÇERLİYSE (>0 ve DB varsayılanı 1 DEĞİL): Kur kolonu = kur, Döviz Tutar = satırın
+    //   döviz cinsinden tutarı (Borç/Alacak zaten döviz cinsindedir). Kur yoksa/varsayılansa
+    //   MEVCUT davranış korunur (Kur='1', Döviz Tutar boş).
+    const isTlPara = paraBirimi === 'TL' || String(paraBirimi).toUpperCase() === 'TRY';
+    const kurNum = Number(String(inv.exchangeRate ?? '').replace(',', '.'));
+    const kurGecerli = !isTlPara && Number.isFinite(kurNum) && kurNum > 0 && kurNum !== 1;
     const detayBase = inv.vendorName || inv.customerName || '-';
 
     for (const line of (inv.lines || [])) {
@@ -182,8 +192,8 @@ export async function buildLucaImportExcel(payload: BatchPayload): Promise<Buffe
         '', // Miktar — fatura satırlarında genelde boş
         belgeTuru,
         paraBirimi,
-        paraBirimi === 'TL' ? '' : '1', // Kur (TL ise boş)
-        '', // Döviz Tutar
+        isTlPara ? '' : (kurGecerli ? kurNum : '1'), // Kur (TL ise boş; döviz + geçerli kur varsa kur)
+        kurGecerli ? (debit > 0 ? debit : credit) : '', // Döviz Tutar (satırın döviz cinsinden tutarı)
       ]);
     }
   }

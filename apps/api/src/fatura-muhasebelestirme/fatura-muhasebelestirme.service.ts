@@ -162,6 +162,8 @@ type UpdateDocumentInput = {
   lines?: AccountingLineInput[];
   /** İşletme defteri (Defter-Beyan) sınıflandırması — ocrData.isletme'ye yazılır (migration yok). */
   isletme?: any;
+  /** Tevkifat işlem türü (Mihsap tarzı editör) — ocrData.tevkifat'a yazılır: { kod: '203', oran: '5/10' }. */
+  tevkifat?: { kod?: string; oran?: string } | null;
 };
 
 type AccountPlanQuery = {
@@ -4998,6 +5000,17 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       //   sınıfını ARTIK EZMESİN (auto-sınıf tazelenir, elle-düzeltme korunur).
       data.ocrData = { ...curOcr, isletme: { ...body.isletme, userEdited: true } };
     }
+    // Tevkifat işlem türü (Mihsap tarzı editör): kullanıcının seçtiği resmi kod + oran kalıcılaşır.
+    if ('tevkifat' in body && body.tevkifat && typeof body.tevkifat === 'object') {
+      const curOcr2: any = data.ocrData || (before as any)?.ocrData || {};
+      data.ocrData = {
+        ...curOcr2,
+        tevkifat: {
+          kod: String((body.tevkifat as any).kod || '').trim(),
+          oran: String((body.tevkifat as any).oran || '').trim(),
+        },
+      };
+    }
     const duplicate = await this.findDuplicate(tenantId, {
       taxpayerId: body.taxpayerId,
       belgeNo: body.belgeNo,
@@ -5423,6 +5436,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       seriNo: d.seriNo, faturaTarihi: d.faturaTarihi ? d.faturaTarihi.toISOString() : null,
       sellerVkn: d.sellerVkn, buyerVkn: d.buyerVkn, vendorName: d.vendorName, customerName: d.customerName,
       totalAmount: d.totalAmount ? String(d.totalAmount) : null, currency: d.currency || 'TL',
+      exchangeRate: d.exchangeRate != null ? String(d.exchangeRate) : null,
       isletme: isIsletme ? isletmeWithBelgeDefaults(d) : (d.ocrData?.isletme || null),
       lines: (d.lines || []).map((line: any) => ({
         group: line.group, accountCode: line.accountCode, description: line.description, rate: line.rate,
@@ -5536,6 +5550,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       customerName: d.customerName,
       totalAmount: d.totalAmount ? String(d.totalAmount) : null,
       currency: d.currency || 'TL',
+      exchangeRate: d.exchangeRate != null ? String(d.exchangeRate) : null,
       isletme: isIsletme ? isletmeWithBelgeDefaults(d) : (d.ocrData?.isletme || null),
       lines: (d.lines || []).map((line: any) => ({
         group: line.group,
@@ -8883,6 +8898,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     zRaporu?: boolean;
     nakit?: number;
     kart?: number;
+    // SMM (E_SMM ALIŞ): okunan gelir vergisi stopajı tutarı (TL). >0 ise cari (320) NET yazılır
+    //   (brüt+KDV − stopaj) ve ayrı 'kesinti' grubunda 360 satırı üretilir. 0/yok → mevcut davranış.
+    smmStopaj?: number | null;
   }) {
     const isSale = opts.invoiceKind === 'SATIS';
     const cariCode = isSale ? '120.01.001' : '320.01.001';
@@ -8905,6 +8923,25 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         return [{ group: 'cari', accountCode: '100.01.001', description: 'Kasa (günlük tahsilat)', debit: t, credit: zero(), orderNo: startOrder }];
       }
       return [{ group: 'cari', accountCode: cariCode, description: opts.vendorName || 'Cari hesap', debit: isSale ? t : zero(), credit: isSale ? zero() : t, orderNo: startOrder }];
+    };
+
+    // SMM STOPAJI (E_SMM ALIŞ — GVK 94 %20): stopaj OKUNDUYSA fiş otomatik kurulur: cari (320)
+    //   NET (brüt+KDV − stopaj) alacak + ayrı 'kesinti' grubunda 360 alacak (placeholder 360.01.001;
+    //   gateCodesByPlan planda yoksa boşaltır, kullanıcı gerçek stopaj-360'ını seçer). DENGE korunur:
+    //   borç (matrah+KDV) = alacak (net cari + stopaj). 'kesinti' rematch'in tevkifat-360 (KDV2)
+    //   bağlamasına BİLEREK dahil edilmez — o kol adında "kdv/sorumlu/tevkifat" geçen 360'ı seçer,
+    //   stopaj 360'ı o değildir. Stopaj okunamadıysa (0) hiçbir şey değişmez (SMM_STOPAJ_NEEDED kalır).
+    const applySmmStopaj = (rows: any[]): any[] => {
+      const st = money(opts.smmStopaj) || zero();
+      if (isSale || !st.gt(0)) return rows;
+      const cari = rows.find((l: any) => l.group === 'cari' && l.credit && l.credit.gt && l.credit.gt(0));
+      if (!cari) return rows;
+      const net = cari.credit.minus(st);
+      if (!net.gt(0)) return rows; // stopaj ≥ cari toplamı → okuma şüpheli, dokunma (mevcut davranış)
+      cari.credit = net;
+      const nextOrder = rows.reduce((m: number, l: any) => Math.max(m, Number(l.orderNo) || 0), -1) + 1;
+      rows.push({ group: 'kesinti', accountCode: '360.01.001', description: 'Gelir vergisi stopajı (SMM)', debit: zero(), credit: st, orderNo: nextOrder, kaynak: 'KURAL' });
+      return rows;
     };
 
     // Breakdown geçerli mi? — En az bir satırda base veya amount > 0 olmalı
@@ -8944,7 +8981,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           { group: 'tevkifat', accountCode: '360.01.001', description: 'Ödenecek KDV (sorumlu sıf. — KDV2 ile beyan)', rate: rl, debit: zero(), credit: tevk, orderNo: 4 },
         ];
         // TAM tevkifatta (tk=1) normal KDV 0 → boş satır bırakma.
-        return normalK.gt(0) ? alisRows : alisRows.filter((l) => l.group !== 'vergi');
+        return applySmmStopaj(normalK.gt(0) ? alisRows : alisRows.filter((l) => l.group !== 'vergi'));
       }
       const satisRows = [
         { group: 'cari', accountCode: cariCode, description: opts.vendorName || 'Cari hesap', debit: net, credit: zero(), orderNo: 0 },
@@ -8995,7 +9032,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const total = totalBase.plus(totalKdv);
       for (const cl of cariLinesFor(total, orderNo)) lines.push({ ...cl, orderNo: orderNo++ });
       // İlk kurulum satırları yer-tutucudur → kaynak VARSAYILAN (öğrenme bu satırlardan yapılmaz).
-      return lines.map((l: any) => ({ ...l, kaynak: 'VARSAYILAN' }));
+      // (SMM stopajı 'kesinti' satırı applySmmStopaj'da kaynak='KURAL' ile eklenir — map'ten SONRA.)
+      return applySmmStopaj(lines.map((l: any) => ({ ...l, kaynak: 'VARSAYILAN' })));
     }
 
     // Tek-oran fallback (eski davranış)
@@ -9026,7 +9064,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     }
     for (const cl of cariLinesFor(total, singleRateLines.length)) singleRateLines.push({ ...cl, orderNo: singleRateLines.length });
     // İlk kurulum satırları yer-tutucudur → kaynak VARSAYILAN (öğrenme bu satırlardan yapılmaz).
-    return singleRateLines.map((l: any) => ({ ...l, kaynak: 'VARSAYILAN' }));
+    return applySmmStopaj(singleRateLines.map((l: any) => ({ ...l, kaynak: 'VARSAYILAN' })));
   }
 
   /**
@@ -9352,9 +9390,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
 
     // ── 8) SMM_STOPAJ_NEEDED — alınan Serbest Meslek Makbuzu'nda gelir vergisi stopajı
     //     (%20 → 360 sorumlu) yoksa onaylanamaz. İşletme/bilanço fark etmez, alışta stopaj şart.
+    //     Satır ARTIK OTOMATİK üretilebiliyor (linesFromAmounts 'kesinti' grubu): 360'lı satır YA DA
+    //     'kesinti' grubu satırı varsa (plan-gate kodu boşaltmış olsa bile stopaj fişte ayrılmış) uyarı verme.
     if (String(opts.documentType || '').toUpperCase() === 'E_SMM'
       && String(opts.invoiceKind || '').toUpperCase() !== 'SATIS'
-      && !(opts.lines || []).some((l: any) => String((l as any).accountCode || '').startsWith('360'))) {
+      && !(opts.lines || []).some((l: any) => String((l as any).accountCode || '').startsWith('360')
+        || String((l as any).group || '') === 'kesinti')) {
       issues.push({
         code: 'SMM_STOPAJ_NEEDED',
         severity: 'ERROR',
@@ -10179,6 +10220,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       'JSON\'a "iade": true/false ekle — belge bir İADE FATURASI / İPTAL / CreditNote ise true (üstte "İADE", "İADE FATURASI" yazar ya da senaryo İADE/IPTAL\'dir), normal satış/alış faturasıysa false.',
       'JSON\'a "tevkifat": true/false ekle — belgede KDV TEVKİFATI varsa true (Fatura Tipi: TEVKIFAT, ya da "KDV TEVKİFAT (%..)=... TL" satırı/Diğer Vergiler\'de tevkifat), yoksa false.',
       'JSON\'a "tevkifatKdv": <tevkifata düşen KDV tutarı (TL) sayı, yoksa 0> ekle — belgede "Hesaplanan KDV Tevkifat", "KDV TEVKİFAT(%..)=... TL" ya da "Tevkifata Tabi İşlem Üzerinden Hes. KDV"den ALIKONAN/tevkif edilen KDV kısmı. Örn "KDV TEVKİFAT(%20,00)=520,00 TL" → 520. ⚠️ Belgede bu kalıp YOKSA ama "Hesaplanan KDV" (TAM) ile "Ödenecek KDV" (ya da "Ödenecek Tutar"daki net KDV) AYRI AYRI yazıyorsa, tevkifatKdv = Hesaplanan KDV − Ödenecek KDV (her iki tutarı da belgede GERÇEKTEN gördüysen; tahmin etme). Tevkifat yoksa 0.',
+      'JSON\'a "stopajTutari": <sayı, yoksa 0> ekle — belge bir SERBEST MESLEK MAKBUZU (SMM) ise üzerindeki "Gelir Vergisi Stopajı" / "GV Stopajı" / "Stopaj (%20)" KESİNTİ tutarı (TL). Belgede bu tutarı GERÇEKTEN görmediysen ya da belge SMM değilse 0 — tahmin etme, brütten hesaplama.',
       'saticiAd/aliciAd: SATICI (faturayı kesen) ve ALICI (SAYIN/müşteri) ünvanları. saticiVkn/aliciVkn: bu tarafların VKN (10 hane) ya da TC (11 hane) — SADECE rakam. Yazarkasa fişinde satıcı = mağaza. toplam: genel/ödenecek toplam (KDV dahil). Bulamazsan null, UYDURMA.',
       'KURALLAR: Türk sayı biçimi "1.234,56" = 1234.56 (tümünü ondalıklı sayıya çevir). Birden çok KDV oranı varsa her oran ayrı nesne. matrah=KDV hariç tutar, kdv=o orana ait KDV. ÖTV/ÖİV/tevkifat varsa matrahı şişirme — gerçek mal/hizmet matrahını ver. Okunamayan alanı null bırak, UYDURMA.',
       'kategori: mükellefin İŞİNE + fatura içeriğine göre TEK kelime seç → "ticari_mal" (SADECE mükellefin alıp AYNEN SATARAK ticaretini yaptığı emtia/stok), "hammadde" (üretimde kullanılan ilk madde/malzeme), "demirbas" (makine/cihaz/ekipman/mobilya/bilgisayar gibi sabit kıymet alımı), "pazarlama" (reklam/ilan/kargo-nakliye/pazarlama), "genel_gider" (kira/elektrik/su/doğalgaz/telefon/internet/akaryakıt/danışmanlık/kırtasiye/yemek/abonelik VE mükellefin satmadığı tüketim/SARF malzemesi: ambalaj, tek-kullanımlık, temizlik, servis malzemesi). EMİN DEĞİLSEN "genel_gider". ⚠️ Mükellef MAL TİCARETİ yapmıyorsa (hizmet/eğitim/lokanta/ofis) aldığı malzeme "ticari_mal" DEĞİLDİR — bunları satmıyor, kendi işinde tüketiyor → "genel_gider" (üretim girdisiyse "hammadde").',
@@ -10408,6 +10450,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // Belge türü: önce GERÇEK METİNDEN (e-Arşiv/e-Fatura ibaresi). HTML yoksa (resim/JPG fatura)
     //   Azure'un OKUDUĞU ham metinden ("e-Arşiv Fatura", "Senaryo: EARSIVFATURA" yazısı), son çare AI.
     const mappedType = this.docTypeFromText(html || azureText || parsed._azureText || '') || this.mapOcrBelgeTipi(parsed.belgeTuru) || normalizeDocumentType((d as any).documentType);
+    // SMM STOPAJI (E_SMM ALIŞ): AI'nın okuduğu (ya da önceki okumada ocrData'ya yazılmış) gelir
+    //   vergisi stopajı → linesFromAmounts cari'yi NET yazar + 'kesinti' 360 satırı üretir.
+    //   Okunamadıysa 0 → satır üretilmez, SMM_STOPAJ_NEEDED engeli mevcut davranışıyla kalır.
+    const smmStopaj = (!isSale && String(mappedType || '').toUpperCase() === 'E_SMM')
+      ? (Number(parsed.stopajTutari) || Number((d.ocrData as any)?.stopajTutari) || 0)
+      : 0;
 
     // SATICI-EMSAL TUTARLILIĞI (kullanıcı kuralı: "aynı satıcı hep aynı sonuç"): aynı mükellef + aynı
     //   satıcı VKN'nin KALEM-ÖRTÜŞEN önceki belgesindeki kategoriyi yeni okumaya uygula. AMA GÜVENLİ:
@@ -10464,6 +10512,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       vendorName: counterName || (isSale ? d.customerName : d.vendorName),
       kdvBreakdown: breakdown,
       tevkifatOrani: tevkifatOrani || null,
+      smmStopaj: smmStopaj > 0 ? smmStopaj : null,
       ...(zRep ? { zRaporu: true, nakit: zPay?.nakit || 0, kart: zPay?.kart || 0 } : {}),
     }));
     await (this.prisma as any).$transaction(async (tx: any) => {
@@ -10567,7 +10616,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           ocrData: { ...((d.ocrData as any) || {}), matrah, kdvTutari: kdv, kdvOrani: breakdown[0].rate, kdvBreakdown: breakdown.map((b: any) => ({ oran: b.rate, matrah: b.base, tutar: b.amount })), matrahKategori: typeof parsed.kategori === 'string' ? parsed.kategori : undefined, giderTuru: typeof parsed.giderTuru === 'string' ? parsed.giderTuru.slice(0, 40) : undefined, muhasebeNeden: this.cleanBaseNeden(parsed.muhasebeNeden).slice(0, 300) || undefined, aiYorum: this.cleanBaseNeden(parsed.muhasebeNeden).slice(0, 400) || undefined, aiMatrahKodu: (() => {
                 const aiKod = typeof parsed.matrahHesapKodu === 'string' ? String(parsed.matrahHesapKodu).trim() : '';
                 return (aiKod && planLeafSet.has(aiKod)) ? aiKod : undefined;
-              })(), kalemler: Array.isArray(parsed.kalemler) ? parsed.kalemler.slice(0, 30).map((k: any) => ({ ad: String(k?.ad || '').slice(0, 80), tutar: Number(k?.tutar) || 0, oran: Number(k?.oran) || 0 })).filter((k: any) => k.ad) : undefined, ...(islSinifAi ? { isletme: islSinifAi } : {}), isReturn: isReturnDet, tevkifatHint: parsed.tevkifat === true || tevkifatOrani > 0 || /tevkifat/i.test(String(html || '')), tevkifatOrani: tevkifatOrani || 0, tevkifatKdv: tevkKdv || 0, engine: parsed._azure ? 'azure-read' : (parsed === preParsed ? 'ubl-xml' : 'max-vision'),
+              })(), kalemler: Array.isArray(parsed.kalemler) ? parsed.kalemler.slice(0, 30).map((k: any) => ({ ad: String(k?.ad || '').slice(0, 80), tutar: Number(k?.tutar) || 0, oran: Number(k?.oran) || 0 })).filter((k: any) => k.ad) : undefined, ...(islSinifAi ? { isletme: islSinifAi } : {}), isReturn: isReturnDet, tevkifatHint: parsed.tevkifat === true || tevkifatOrani > 0 || /tevkifat/i.test(String(html || '')), tevkifatOrani: tevkifatOrani || 0, tevkifatKdv: tevkKdv || 0, ...(smmStopaj > 0 ? { stopajTutari: smmStopaj } : {}), engine: parsed._azure ? 'azure-read' : (parsed === preParsed ? 'ubl-xml' : 'max-vision'),
             readMode: parsed === preParsed ? 'ubl-xml' : (isImage ? 'image' : /pdf/i.test(imgMedia) ? 'pdf-text' : /xml/i.test(imgMedia) ? 'xml-text' : 'html'),
             ...(!preParsed && imgBuf && /xml/i.test(imgMedia) ? { xmlHead: imgBuf.toString('utf8').slice(0, 220).replace(/\s+/g, ' ') } : {}),
             // uyarilar KOŞULSUZ yazılır: yeni okuma uyarı üretmediyse ESKİ okumanın bayat uyarısı
