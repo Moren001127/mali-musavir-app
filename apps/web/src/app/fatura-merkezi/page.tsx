@@ -3077,13 +3077,13 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                     <button type="button" className={dir === 'SATIS' ? 'on' : ''} onClick={() => { setDir('SATIS'); setSelId(''); }}>Satış <b>{cSatis}</b></button>
                   </span>
                   {isabet && (Number(isabet.toplam) > 0 || Number(isabet.boslukVar) > 0) ? (
+                    // KOMPAKT pil — üst bara sığmıyordu (kullanıcı: "tam sığmamış, düzgün görünmüyor").
+                    //   Ekranda yalnız "Dokunmasız %X"; sayıların tamamı ipucu balonunda.
                     <span
-                      title="İsabet panosu (bu dönem): Dokunmasız = hiçbir satırı elle düzeltilmeden onaylanan belge · Elle düzeltilen = en az bir satırı kullanıcı düzeltti · Eksik kodlu = bekleyenlerde hesap kodu boş satırı olan belge"
-                      style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 9px', borderRadius: 999, background: 'rgba(21,128,61,0.07)', border: '1px solid rgba(21,128,61,0.22)', fontSize: 11, fontWeight: 600, color: '#15803d', whiteSpace: 'nowrap' }}
+                      title={`İsabet panosu (bu dönem):\nDokunmasız: %${Number(isabet.dokunmasizOran) || 0} (${Number(isabet.dokunmasiz) || 0}/${Number(isabet.toplam) || 0}) — hiçbir satırı elle düzeltilmeden onaylanan\nElle düzeltilen: ${Number(isabet.kullaniciDuzeltmeli) || 0}\nEksik kodlu (bekleyen): ${Number(isabet.boslukVar) || 0}`}
+                      style={{ display: 'inline-flex', alignItems: 'center', flex: '0 1 auto', minWidth: 0, padding: '3px 9px', borderRadius: 999, background: 'rgba(21,128,61,0.07)', border: '1px solid rgba(21,128,61,0.22)', fontSize: 11, fontWeight: 600, color: '#15803d', whiteSpace: 'nowrap' }}
                     >
-                      Dokunmasız: %{Number(isabet.dokunmasizOran) || 0} ({Number(isabet.dokunmasiz) || 0}/{Number(isabet.toplam) || 0})
-                      <span style={{ color: '#b45309' }}>· Elle düzeltilen: {Number(isabet.kullaniciDuzeltmeli) || 0}</span>
-                      <span style={{ color: '#d97706' }}>· Eksik kodlu: {Number(isabet.boslukVar) || 0}</span>
+                      Dokunmasız %{Number(isabet.dokunmasizOran) || 0}
                     </span>
                   ) : null}
                   <button type="button" className="fifull" onClick={() => onToggleFull?.()} title={full ? 'Küçült — menüyü geri getir' : 'Büyüt — menüyü gizle, tam ekran işle'}><Ico html={full ? I.compress : I.expand} size={14} /><span>{full ? 'Küçült' : 'Büyüt'}</span></button>
