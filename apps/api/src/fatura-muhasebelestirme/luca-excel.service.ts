@@ -125,6 +125,7 @@ function inferBelgeTuru(invoice: InvoicePayload): string {
   if (t === 'E_ARSIV') return 'EA';
   if (t === 'E_FATURA') return 'EF';
   if (t === 'OKC_FIS') return 'PS';
+  if (t === 'E_SMM') return 'SM';
   return 'FT';
 }
 
@@ -295,7 +296,12 @@ export function buildLucaIsletmeHizliFisCsv(payload: BatchPayload): Buffer {
       const kdvOranNum = ({ KDV20: '20', KDV10: '10', KDV1: '1', KDV0: '0' } as Record<string, string>)[String(st.kdvOranKod || '')] || rate || '';
       // Satır KATEGORİ/ALT ad'ı da koddan çözülür (auto-sınıfta boş kalmasın).
       const kayitTuruAdResolved = st.kayitTuruAd || adOf(ref.kayitTuru, st.kayitTuruKod);
-      const kayitAltAdResolved = st.kayitAltAd || adOf(getKayitAltList(inv.invoiceKind, String(st.kayitTuruKod || '')) as any, st.kayitAltKod);
+      const kayitAltList = getKayitAltList(inv.invoiceKind, String(st.kayitTuruKod || '')) as any[];
+      const kayitAltItem = (kayitAltList || []).find((x: any) => String(x.kod) === String(st.kayitAltKod || ''));
+      const kayitAltAdResolved = st.kayitAltAd || kayitAltItem?.ad || '';
+      // DÖNEMSELLİK: üretim yolları st.donem'i hiç doldurmuyordu → kolon 35 hep boştu.
+      //   Referans listesindeki alt-tür kaydının donem bayrağından türet (elle set edilen değer önde).
+      const donemFlag = st.donem != null ? !!st.donem : !!kayitAltItem?.donem;
       const stMatrah = Number(st.matrah) || 0;
       const stKdv = Number(st.kdvTutar) || 0;
       // 37 sutun — sirayla. Üst bilgi (isl) tüm satırlarda aynı; satıra özgü alanlar (st).
@@ -334,7 +340,7 @@ export function buildLucaIsletmeHizliFisCsv(payload: BatchPayload): Buffer {
         st.krediliTutar ? trAmount(Number(st.krediliTutar)) : '', // 32 KREDİLİ TUTAR
         st.stopajOrani || '',                         // 33 STOPAJ KODU
         st.stopajTutar ? trAmount(Number(st.stopajTutar)) : '',   // 34 STOPAJ TUTARI
-        st.donem ? 'Evet' : '',                       // 35 DÖNEMSELLİK İLKESİ
+        donemFlag ? 'Evet' : '',                      // 35 DÖNEMSELLİK İLKESİ
         '',                                           // 36 FAALIYET KODU
         '',                                           // 37 ÖDEME TÜRÜ
       ].map(csvCell).join(';');
@@ -353,5 +359,7 @@ function inferIsletmeBelgeTuru(inv: InvoicePayload): string {
   if (t === 'E_FATURA') return 'E-Fatura';
   if (t === 'E_ARSIV') return 'E-Arşiv Fatura';
   if (t === 'OKC_FIS') return 'Fiş';
+  if (t === 'E_SMM') return 'Serbest Meslek Makbuzu';
+  if (t === 'Z_RAPORU') return 'Z Raporu';
   return 'Fatura';
 }

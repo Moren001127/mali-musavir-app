@@ -87,11 +87,14 @@ export class UyumsoftAdapter implements EFaturaAdapter {
       startDate?: Date;
       endDate?: Date;
       limit?: number;
+      page?: number;
       deltaState?: DeltaState;
     },
   ): Promise<{ invoices: RawEFatura[]; nextState: DeltaState; hasMore: boolean }> {
     const { sessionId, newState } = await this.ensureSession(credentials, opts.deltaState);
     const isGelen = opts.direction !== 'OUT';
+    const pageIndex = Math.max(0, opts.page || 0);
+    const pageSize = Math.min(opts.limit || 100, 100);
 
     const startDateStr =
       opts.startDate?.toISOString() ||
@@ -106,8 +109,8 @@ export class UyumsoftAdapter implements EFaturaAdapter {
         <request>
           <SessionInfo><SessionId>${sessionId}</SessionId></SessionInfo>
           <OnlyNewestInvoices>true</OnlyNewestInvoices>
-          <PageIndex>0</PageIndex>
-          <PageSize>${Math.min(opts.limit || 100, 100)}</PageSize>
+          <PageIndex>${pageIndex}</PageIndex>
+          <PageSize>${pageSize}</PageSize>
           <CreateStartDate>${startDateStr}</CreateStartDate>
           <CreateEndDate>${endDateStr}</CreateEndDate>
         </request>
@@ -141,6 +144,8 @@ export class UyumsoftAdapter implements EFaturaAdapter {
         paraBirimi: extractTag(block, 'CurrencyCode') || 'TRY',
         direction: isGelen ? 'IN' : 'OUT',
         invoiceProfile: extractTag(block, 'ProfileId') || null,
+        // SetInvoicesTaken UUID degil InvoiceId bekler — mark icin dogru kimlik
+        markId: invoiceId || null,
         rawJson: { invoiceId, blockRaw: block.substring(0, 400) },
       };
     });
@@ -148,7 +153,7 @@ export class UyumsoftAdapter implements EFaturaAdapter {
     return {
       invoices,
       nextState: { ...newState, lastSyncAt: new Date() } as DeltaState,
-      hasMore: invoices.length >= 100,
+      hasMore: invoices.length >= pageSize,
     };
   }
 
@@ -159,7 +164,7 @@ export class UyumsoftAdapter implements EFaturaAdapter {
   ): Promise<void> {
     if (ids.length === 0) return;
     const { sessionId } = await this.ensureSession(credentials, deltaState);
-    const idsXml = ids.map((id) => `<string>${id}</string>`).join('');
+    const idsXml = ids.map((id) => `<string>${xmlEsc(id)}</string>`).join('');
     await uyumsoftSoap(
       this.serviceUrl(credentials),
       'SetInvoicesTaken',

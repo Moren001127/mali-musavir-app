@@ -29,6 +29,10 @@ async function soapCall(url: string, action: string, bodyXml: string): Promise<s
   return res.text();
 }
 
+function xmlEsc(s: any): string {
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+}
+
 function extractTag(xml: string, tag: string): string | null {
   const m = xml.match(new RegExp(`<(?:[^:>]+:)?${tag}[^>]*>([\\s\\S]*?)<\\/(?:[^:>]+:)?${tag}>`, 'i'));
   return m ? m[1].trim() : null;
@@ -104,6 +108,8 @@ export class IzibizAdapter implements EFaturaAdapter {
   ): Promise<{ invoices: RawEFatura[]; nextState: DeltaState; hasMore: boolean }> {
     const { sessionId, newState } = await this.ensureSession(credentials, opts.deltaState);
     const direction = opts.direction === 'OUT' ? 'OUT' : 'IN';
+    // Not: İzibiz GetInvoice'ta sayfa parametresi yok; READ işareti delta'yı ilerletir.
+    const pageSize = Math.min(opts.limit || 100, 100);
 
     const startDateStr = opts.startDate
       ? opts.startDate.toISOString().split('T')[0]
@@ -124,7 +130,7 @@ export class IzibizAdapter implements EFaturaAdapter {
           <DATE_TYPE>CREATE</DATE_TYPE>
           <START_DATE>${startDateStr}</START_DATE>
           <END_DATE>${endDateStr}</END_DATE>
-          <LIMIT>${Math.min(opts.limit || 100, 100)}</LIMIT>
+          <LIMIT>${pageSize}</LIMIT>
         </INVOICE_SEARCH_KEY>
       </GetInvoice>`,
     );
@@ -174,7 +180,7 @@ export class IzibizAdapter implements EFaturaAdapter {
     return {
       invoices,
       nextState: { ...newState, lastSyncAt: new Date(), lastCdate } as DeltaState,
-      hasMore: invoices.length >= 100,
+      hasMore: invoices.length >= pageSize,
     };
   }
 
@@ -186,7 +192,7 @@ export class IzibizAdapter implements EFaturaAdapter {
     if (uuids.length === 0) return;
     const { sessionId } = await this.ensureSession(credentials, deltaState);
     const invoiceItems = uuids
-      .map((u) => `<INVOICE><UUID>${u}</UUID><MARK><value>READ</value></MARK></INVOICE>`)
+      .map((u) => `<INVOICE><UUID>${xmlEsc(u)}</UUID><MARK><value>READ</value></MARK></INVOICE>`)
       .join('');
     await soapCall(
       `${this.invoiceUrl(credentials)}?wsdl`,

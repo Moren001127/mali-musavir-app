@@ -416,9 +416,10 @@ type ClassifyResult = {
 @Injectable()
 export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(FaturaMuhasebelestirmeService.name);
-  // Eş zamanlı okuma: her Max-vision bir Claude Code alt-süreci açıyor. 4 belge aynı anda
-  // çalışınca log/alt-süreç fırtınası ve timeout riski büyüyor; varsayılanı 2 tut, gerekirse env ile yükselt.
-  // INVOICE_OCR_CONCURRENCY ile ayarlanır. (Daha büyük hız için hızlı-OCR/Azure-öncelik yolu var.)
+  // Eş zamanlı okuma: her Max-vision bir Claude Code alt-süreci açıyor; fırtına riskine karşı
+  // sınıflandırma Max çağrısı ayrı, düşük bir kapıdan geçiyor (aşağıda classifyConcurrency).
+  // Varsayılan 6 (HTML-hızlı/Azure-öncelik yolu Max'i çoğu belgede atladığı için yükseltildi).
+  // INVOICE_OCR_CONCURRENCY ile ayarlanır.
   private readonly uploadOcrConcurrency = Math.max(1, Number(process.env.INVOICE_OCR_CONCURRENCY || 6));
   private uploadOcrActive = 0;
   // SINIFLANDIRMA MAX KAPISI: HTML-hızlı okuma Max'i ATLIYOR ama sınıflandırma (aiClassifyAccounting)
@@ -2693,6 +2694,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           await this.processMihsapDocumentOcr(
             tenantId, documentId, String(inv.id),
             (doc.invoiceKind === 'SATIS' ? 'SATIS' : 'ALIS') as 'ALIS' | 'SATIS',
+            true, // Max-vision az önce denendi ve başarısız → tekrar deneme, Azure'a in
           ).catch(() => {});
           // processMihsapDocumentOcr ocrStatus'u kendi içinde yazar (SUCCESS/NEEDS_REVIEW/FAILED).
           const after = await (this.prisma as any).invoiceAccountingDocument.findFirst({
@@ -3021,6 +3023,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     documentId: string,
     mihsapInvoiceId: string,
     invoiceKind: 'ALIS' | 'SATIS',
+    // runQueuedAiRead fallback'i için: Max-vision ZATEN denendi ve çöktü → burada bir daha
+    // deneme, doğrudan Azure yedeğine in (aynı belgeye iki pahalı Max denemesi olmasın).
+    skipAiRead = false,
   ) {
     await (this.prisma as any).invoiceAccountingDocument.updateMany({
       where: { id: documentId, tenantId },
@@ -3041,7 +3046,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       // KURAL (kullanıcı): Mihsap'tan yalnız GÖRÜNTÜ alınır; BİLGİYİ biz okuruz.
       // BİRİNCİL okuyucu = Max-vision (tam okur: belge türü + iki taraf ad/VKN + tutar
       // + yönü mükellef VKN'sinden türetir). Başarılıysa bitti; değilse aşağıda Azure'a düşer.
-      const aiOk = await this.aiReadDocument(tenantId, documentId).then((r: any) => !!r?.ok).catch(() => false);
+      // skipAiRead=true iken (fallback çağrısı) Max zaten denendi → doğrudan Azure.
+      const aiOk = skipAiRead
+        ? false
+        : await this.aiReadDocument(tenantId, documentId).then((r: any) => !!r?.ok).catch(() => false);
       if (aiOk) {
         await (this.prisma as any).invoiceAccountingDocument.updateMany({
           where: { id: documentId, tenantId },

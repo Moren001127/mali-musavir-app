@@ -196,6 +196,34 @@ Yanlış ipucuna uyup yanlış karar vermek, ipucu olmamasından DAHA KÖTÜDÜR
         },
       });
     }
+
+    // UNUTMA (zehirli hafızanın R3 kökü): sayaç eskiden yalnız ARTIYORDU — kullanıcı kodu
+    //   düzeltip onaylayınca yeni karar sayaç=1 ile açılıyor ama eski yanlış karar yüksek
+    //   sayaçla önde kalıyor, yeni kod ancak sayıca geçince kazanıyordu (MERT REKLAM vakası).
+    //   Artık aynı bağlam (mükellef + karar tipi + içerik imzası + altKategori) için FARKLI
+    //   koda sahip kararlar her onayda 1 zayıflar; 0'a düşen silinir. Böylece düzeltme eski
+    //   öğrenmeyi kendiliğinden söndürür, elle silme gerekmez.
+    const rakipler = await (this.prisma as any).vendorMemoryDecision.findMany({
+      where: {
+        vendorMemoryId: memory.id,
+        taxpayerId: taxpayerId || null,
+        kararTipi,
+        icerikImza: icerikImza || null,
+        altKategori: altKategori || null,
+        NOT: { kategori },
+      },
+      select: { id: true, onayAdedi: true },
+    });
+    for (const rakip of rakipler) {
+      if ((rakip.onayAdedi || 0) <= 1) {
+        await (this.prisma as any).vendorMemoryDecision.delete({ where: { id: rakip.id } }).catch(() => null);
+      } else {
+        await (this.prisma as any).vendorMemoryDecision.update({
+          where: { id: rakip.id },
+          data: { onayAdedi: { decrement: 1 } },
+        }).catch(() => null);
+      }
+    }
   }
 
   /** Kalem adlarından KARARLI içerik imzası: ascii-katlı, ≥4 harfli, jenerik/sayı elenmiş token'lar,

@@ -70,7 +70,7 @@ export class IcerikEslestirmeService {
       akaryakit: { kod: '770', ad: 'Genel Yönetim Giderleri' },
       kira: { kod: '770', ad: 'Genel Yönetim Giderleri' },
       tasit: { kod: '254', ad: 'Taşıtlar' },
-      demirbase: { kod: '255', ad: 'Demirbaşlar' },
+      demirbas: { kod: '255', ad: 'Demirbaşlar' },
       diger: { kod: '770', ad: 'Genel Yönetim Giderleri' },
     };
 
@@ -79,18 +79,28 @@ export class IcerikEslestirmeService {
     const amortismanaTabi = isAmortismanaTabiTur(isletmeGiderTuru || '');
 
     // 3. VKN geçmiş kontrolü (sadece ipucu)
+    // Firma hafızası: VendorMemory (tenant+VKN) altındaki VendorMemoryDecision
+    // kayıtlarından bu mükellef için en çok onaylanan 'fatura' kararı alınır
+    // (kararTipi='fatura' → kategori alanı = hesap kodu).
     let gecmisHesapKodu: string | null = null;
-    let gecmisKategori: string | null = null;
     let celisiki = false;
 
     if (senderVkn) {
-      const gecmis = await (this.prisma as any).vendorMemory.findFirst({
-        where: { tenantId, taxpayerId, vendorVkn: senderVkn },
-        select: { defaultAccountCode: true, defaultCategory: true },
+      const gecmisMemory = await this.prisma.vendorMemory.findUnique({
+        where: {
+          tenantId_firmaKimlikNo: { tenantId, firmaKimlikNo: senderVkn.trim() },
+        },
+        include: {
+          decisions: {
+            where: { kararTipi: 'fatura', taxpayerId },
+            orderBy: { onayAdedi: 'desc' },
+            take: 1,
+          },
+        },
       });
-      if (gecmis) {
-        gecmisHesapKodu = gecmis.defaultAccountCode || null;
-        gecmisKategori = gecmis.defaultCategory || null;
+      const enCokOnaylanan = gecmisMemory?.decisions?.[0];
+      if (enCokOnaylanan) {
+        gecmisHesapKodu = enCokOnaylanan.kategori || null;
         // Çelişki: geçmiş farklı bir TDHP grubu öneriyorsa uyar
         if (gecmisHesapKodu && !gecmisHesapKodu.startsWith(onerilen.kod.slice(0, 1))) {
           celisiki = true;

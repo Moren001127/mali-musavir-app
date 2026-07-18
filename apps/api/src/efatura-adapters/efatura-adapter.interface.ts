@@ -14,6 +14,7 @@ export interface RawEFatura {
   direction: 'IN' | 'OUT';
   invoiceProfile?: string | null;
   ublXmlRaw?: string | null; // UBL-TR XML string (varsa)
+  markId?: string | null; // markAsTransferred'a gidecek entegratör kimliği (Uyumsoft: InvoiceId); yoksa uuid kullanılır
   rawJson?: Record<string, any> | null;
 }
 
@@ -54,6 +55,7 @@ export interface EFaturaAdapter {
       startDate?: Date;
       endDate?: Date;
       limit?: number;
+      page?: number; // 0-tabanlı sayfa (sayfalama destekleyen adapter'lar için)
       deltaState?: DeltaState;
     },
   ): Promise<{
@@ -65,6 +67,7 @@ export interface EFaturaAdapter {
   /**
    * Faturaları "aktarıldı" olarak işaretle.
    * Delta sync'in kalbi — bu çağrılmadan aynı faturalar tekrar gelir.
+   * Kimlik olarak RawEFatura.markId (varsa) yoksa uuid gönderilir.
    */
   markAsTransferred(
     credentials: EFaturaCredentials,

@@ -44,18 +44,20 @@ export class NilveraAdapter implements EFaturaAdapter {
       startDate?: Date;
       endDate?: Date;
       limit?: number;
+      page?: number;
       deltaState?: DeltaState;
     },
   ): Promise<{ invoices: RawEFatura[]; nextState: DeltaState; hasMore: boolean }> {
     const base = credentials.baseUrl || DEFAULT_BASE;
     const direction = opts.direction === 'OUT' ? 'OUT' : 'IN';
     const endpoint = direction === 'OUT' ? '/einvoice/Sales' : '/einvoice/Purchase';
+    const pageSize = Math.min(opts.limit || 100, 100);
 
     const params = new URLSearchParams({
       IsTransfer: 'false', // sadece aktarılmamışları getir
       DateFilterType: 'CreatedDate', // güvenilir delta için
-      Page: '1',
-      PageSize: String(Math.min(opts.limit || 100, 100)),
+      Page: String(Math.max(0, opts.page || 0) + 1), // Nilvera 1-tabanlı
+      PageSize: String(pageSize),
     });
 
     if (opts.startDate) {
@@ -83,7 +85,7 @@ export class NilveraAdapter implements EFaturaAdapter {
       nextState: {
         lastSyncAt: new Date(),
       } as DeltaState,
-      hasMore: invoices.length >= 100,
+      hasMore: invoices.length >= pageSize,
     };
   }
 

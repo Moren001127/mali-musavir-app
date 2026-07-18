@@ -11,9 +11,10 @@ import { EFaturaSyncService } from '../efatura-adapters/efatura-sync.service';
 import { IcerikEslestirmeService } from './icerik-eslestirme.service';
 import { MihsapModule } from '../mihsap/mihsap.module';
 import { PortalAutomationModule } from '../portal-automation/portal-automation.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
-  imports: [PrismaModule, StorageModule, forwardRef(() => KdvControlModule), VendorMemoryModule, MihsapModule, PortalAutomationModule],
+  imports: [PrismaModule, StorageModule, forwardRef(() => KdvControlModule), VendorMemoryModule, MihsapModule, PortalAutomationModule, NotificationsModule],
   controllers: [FaturaMuhasebelestirmeController],
   providers: [FaturaMuhasebelestirmeService, EarsivRenderService, FaturaMuhasebelestirmeCron, EFaturaSyncService, IcerikEslestirmeService],
   exports: [FaturaMuhasebelestirmeService, EFaturaSyncService, IcerikEslestirmeService],

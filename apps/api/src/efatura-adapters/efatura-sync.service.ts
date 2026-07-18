@@ -35,61 +35,86 @@ export class EFaturaSyncService {
 
     try {
       const startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000); // son 30 gün
+      const pageSize = opts.limit || 100;
+      const MAX_PAGES = 50; // sonsuz döngü koruması — üst sınır
 
-      const { invoices } = await adapter.fetchInvoices(credentials, {
-        direction,
-        startDate,
-        limit: opts.limit || 100,
-      });
+      const seenUuids = new Set<string>(); // bu çalıştırmada görülen uuid'ler (aynı sayfa tekrarına karşı)
+      const newUuids: string[] = []; // DB'de markedAt işaretlenecekler
+      const newMarkIds: string[] = []; // entegratöre gidecek kimlikler (Uyumsoft: InvoiceId)
 
-      const markedUuids: string[] = [];
+      for (let page = 0; page < MAX_PAGES; page++) {
+        const { invoices, hasMore } = await adapter.fetchInvoices(credentials, {
+          direction,
+          startDate,
+          limit: pageSize,
+          page,
+        });
 
-      for (const inv of invoices) {
-        if (!inv.uuid) continue;
-        try {
-          await (this.prisma as any).eFaturaInbox.upsert({
-            where: { tenantId_taxpayerId_entegrator_uuid: { tenantId, taxpayerId, entegrator: providerUpper, uuid: inv.uuid } },
-            create: {
-              tenantId,
-              taxpayerId,
-              entegrator: providerUpper,
-              uuid: inv.uuid,
-              ettn: inv.ettn,
-              senderVkn: inv.senderVkn,
-              senderTitle: inv.senderTitle,
-              receiverVkn: inv.receiverVkn,
-              faturaNo: inv.faturaNo,
-              faturaDate: inv.faturaDate,
-              matrah: inv.matrah != null ? String(inv.matrah) : null,
-              kdv: inv.kdv != null ? String(inv.kdv) : null,
-              toplam: inv.toplam != null ? String(inv.toplam) : null,
-              paraBirimi: inv.paraBirimi || 'TRY',
-              direction,
-              invoiceProfile: inv.invoiceProfile,
-              ublXmlRaw: inv.ublXmlRaw,
-              rawJson: inv.rawJson || {},
-            },
-            update: {}, // zaten varsa hiçbir şeyi değiştirme
-          });
-          added++;
-          markedUuids.push(inv.uuid);
-        } catch (err: any) {
-          if (err?.code === 'P2002') {
-            skipped++; // unique constraint — zaten var
-          } else {
-            errors.push(`${inv.uuid}: ${err?.message}`);
+        const batch = invoices.filter((inv) => inv.uuid && !seenUuids.has(inv.uuid));
+        if (batch.length === 0) break; // boş sayfa ya da aynı sayfa tekrar geldi
+        batch.forEach((inv) => seenUuids.add(inv.uuid));
+
+        // Gerçek yeni/mevcut ayrımı: mevcut uuid'leri tek sorguyla çek
+        const existingRows = await (this.prisma as any).eFaturaInbox.findMany({
+          where: { tenantId, taxpayerId, entegrator: providerUpper, uuid: { in: batch.map((inv) => inv.uuid) } },
+          select: { uuid: true },
+        });
+        const existingUuids = new Set<string>(existingRows.map((row: any) => row.uuid));
+
+        for (const inv of batch) {
+          if (existingUuids.has(inv.uuid)) {
+            skipped++; // zaten var — yeniden yazma, yeniden mark'lama
+            continue;
+          }
+          try {
+            await (this.prisma as any).eFaturaInbox.upsert({
+              where: { tenantId_taxpayerId_entegrator_uuid: { tenantId, taxpayerId, entegrator: providerUpper, uuid: inv.uuid } },
+              create: {
+                tenantId,
+                taxpayerId,
+                entegrator: providerUpper,
+                uuid: inv.uuid,
+                ettn: inv.ettn,
+                senderVkn: inv.senderVkn,
+                senderTitle: inv.senderTitle,
+                receiverVkn: inv.receiverVkn,
+                faturaNo: inv.faturaNo,
+                faturaDate: inv.faturaDate,
+                matrah: inv.matrah != null ? String(inv.matrah) : null,
+                kdv: inv.kdv != null ? String(inv.kdv) : null,
+                toplam: inv.toplam != null ? String(inv.toplam) : null,
+                paraBirimi: inv.paraBirimi || 'TRY',
+                direction,
+                invoiceProfile: inv.invoiceProfile,
+                ublXmlRaw: inv.ublXmlRaw,
+                rawJson: inv.rawJson || {},
+              },
+              update: {}, // yarış durumunda zaten varsa hiçbir şeyi değiştirme
+            });
+            added++;
+            newUuids.push(inv.uuid);
+            newMarkIds.push(inv.markId || inv.uuid);
+          } catch (err: any) {
+            if (err?.code === 'P2002') {
+              skipped++; // unique constraint — zaten var
+            } else {
+              errors.push(`${inv.uuid}: ${err?.message}`);
+            }
           }
         }
+
+        if (!hasMore) break;
       }
 
-      // Entegratöre "aktarıldı" bayrağı at — Delta sync için kritik
-      if (markedUuids.length > 0) {
+      // Entegratöre "aktarıldı" bayrağı at — Delta sync için kritik.
+      // Yalnız bu çalıştırmada YENİ alınanlar gönderilir; mevcutlar tekrar mark'lanmaz.
+      if (newMarkIds.length > 0) {
         try {
-          await adapter.markAsTransferred(credentials, markedUuids);
+          await adapter.markAsTransferred(credentials, newMarkIds);
           await (this.prisma as any).eFaturaInbox.updateMany({
             // tenant+taxpayer scope: aynı UUID başka mükellefte de olabilir,
             // yalnız bu mükellefin satırları işaretlensin.
-            where: { tenantId, taxpayerId, entegrator: providerUpper, uuid: { in: markedUuids } },
+            where: { tenantId, taxpayerId, entegrator: providerUpper, uuid: { in: newUuids } },
             data: { markedAt: new Date() },
           });
         } catch (markErr: any) {
