@@ -377,8 +377,11 @@ function ToplubeyannamePanel() {
     const now = new Date();
     const arr: { value: string; label: string }[] = [];
     const aylar = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
-    for (let i = 0; i < 12; i++) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    // İLERİ + GERİ: gelecek 15 ay + geçmiş 24 ay. Kurumlar (ertesi yıl Nisan) / gelir
+    // (ertesi yıl Mart) gibi GELECEK dönem beyannameleri seçilip görülebilsin —
+    // eskiden yalnız geriye gidiliyordu, ileri dönem seçilemiyordu.
+    for (let offset = 15; offset >= -24; offset--) {
+      const d = new Date(now.getFullYear(), now.getMonth() + offset, 1);
       const v = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       arr.push({ value: v, label: `${d.getFullYear()}/${aylar[d.getMonth()]}` });
     }
@@ -824,14 +827,14 @@ function ToplubeyannameTableLegacy() {
   const bildirgeRow = rows.find((r) => r.beyanTipi === 'BILDIRGE' && r.toplam > 0);
   const edefterRow = rows.find((r) => r.beyanTipi === 'EDEFTER' && r.toplam > 0);
 
-  // Dönem seçenekleri: son 12 ay
+  // Dönem seçenekleri: gelecek 15 ay + geçmiş 24 ay (ileri dönem de seçilebilsin).
   const donemOptions = useMemo(() => {
     const now = new Date();
     const arr: { value: string; label: string }[] = [];
-    for (let i = 0; i < 12; i++) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const aylar = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
+    for (let offset = 15; offset >= -24; offset--) {
+      const d = new Date(now.getFullYear(), now.getMonth() + offset, 1);
       const v = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      const aylar = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
       arr.push({ value: v, label: `${d.getFullYear()}/${aylar[d.getMonth()]}` });
     }
     return arr;
