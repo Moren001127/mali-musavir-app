@@ -498,6 +498,24 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     setTimeout(() => { this.resumeStuckOcr().catch(() => {}); }, 35000);
     this.ocrResumeTimer = setInterval(() => { this.resumeStuckOcr().catch(() => {}); }, 300000);
     if (this.ocrResumeTimer.unref) this.ocrResumeTimer.unref();
+    // YORUM/DENETÇİ SÜPÜRMESİ RESTART'TA DEVAM ETSİN: deploy her restartta çalışan süpürmeyi
+    //   öldürüyordu ve yeni tetik (okuma bitişi / Kodları düzelt) gelene dek üretim DURUYORDU
+    //   (kullanıcı: "hâlâ denetçi yorumunu göremiyorum"). Açılıştan 90sn sonra + her 10dk'da
+    //   eksik kalanlar kaldığı yerden taranır (busy-kilidi ve okuma-kuyruğuna-yol-verme sweep'te).
+    setTimeout(() => { void this.sweepRichYorumAllTenants().catch(() => {}); }, 90000);
+    const sweepTimer = setInterval(() => { void this.sweepRichYorumAllTenants().catch(() => {}); }, 600000);
+    if (sweepTimer.unref) sweepTimer.unref();
+  }
+
+  /** Eksik zengin-yorum/denetçisi olan belgeleri barındıran TÜM tenant'lar için süpürmeyi tetikler. */
+  private async sweepRichYorumAllTenants() {
+    const grup: any[] = await (this.prisma as any).invoiceAccountingDocument.groupBy({
+      by: ['tenantId'],
+      where: { status: { in: ['READY', 'NEEDS_REVIEW'] } },
+    }).catch(() => []);
+    for (const g of grup) {
+      await this.sweepRichYorum(String(g.tenantId)).catch(() => {});
+    }
   }
 
   onModuleDestroy() {
