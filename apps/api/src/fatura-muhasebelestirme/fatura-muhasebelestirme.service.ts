@@ -8783,13 +8783,22 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           matrah = round2(matrah + otherTaxTotal);
         }
       }
+      // ŞAHIS taraf: ünvan PartyName/PartyLegalEntity'de değil <cac:Person> (Ad+Soyad) altında —
+      //   TCKN'li müşterilerde alıcı adı boş kalıp listede "—" görünüyordu (Yorgun Nakliyat 10 satış;
+      //   earsiv-zip-parser'daki personAdi yedeğinin buradaki karşılığı).
+      const kisiAdi = (party: any): string | null => {
+        const p = party?.Person;
+        if (!p) return null;
+        const parcalar = [txt(p.Title), txt(p.FirstName), txt(p.MiddleName), txt(p.FamilyName)].filter((x: any) => x && String(x).trim());
+        return parcalar.length ? parcalar.join(' ').replace(/\s+/g, ' ').trim() : null;
+      };
       return {
         faturaNo: faturaNo || ettn || 'BILINMIYOR',
         faturaTarihi: issueDate && !Number.isNaN(issueDate.getTime()) ? issueDate : null,
         ettn,
-        satici: txt(supplier?.PartyName?.Name) || txt(supplier?.PartyLegalEntity?.RegistrationName) || null,
+        satici: txt(supplier?.PartyName?.Name) || txt(supplier?.PartyLegalEntity?.RegistrationName) || kisiAdi(supplier) || null,
         saticiVergiNo: taxNoFromParty(supplier) || taxNoFromXmlBlock('AccountingSupplierParty') || null,
-        alici: txt(customer?.PartyName?.Name) || txt(customer?.PartyLegalEntity?.RegistrationName) || null,
+        alici: txt(customer?.PartyName?.Name) || txt(customer?.PartyLegalEntity?.RegistrationName) || kisiAdi(customer) || null,
         aliciVergiNo: taxNoFromParty(customer) || taxNoFromXmlBlock('AccountingCustomerParty') || null,
         matrah,
         kdvTutari,
