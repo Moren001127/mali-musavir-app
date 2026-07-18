@@ -9345,9 +9345,14 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       'makine', 'makina', 'jenerator', 'kompresor', 'forklift', 'transpalet', 'celik tezgah', 'vitrin',
       'bilgisayar', 'laptop', 'dizustu', 'monitor', 'yazici cihaz', 'fotokopi makin', 'tarayici cihaz', 'projeksiyon',
       'televizyon', 'mobilya', 'asansor', 'kamera sistem', 'guvenlik kamera',
-      // Taşıt/araç SATIN ALIMI (sabit kıymet) — yarı römork/treyler/dorse gibi. Servis/bakım faturaları
-      //   yukarıda giderIcerikSinifla ile ELENDİĞİ için bunlar yalnız GERÇEK alımda kalır.
+      // Taşıt/araç SATIN ALIMI/SATIŞI (sabit kıymet) — yarı römork/treyler/dorse gibi. Servis/bakım/
+      //   nakliye-hizmet faturaları yukarıda giderIcerikSinifla ile ELENDİĞİ için bunlar yalnız GERÇEK
+      //   alım/satımda kalır. MOTORLU TAŞITLAR eklendi (kullanıcı 2026-07-18: "demirbaş alış/satışını
+      //   ayırt edip uyarsın, Luca'dan ayrıca işleniyor") — nakliyecinin kamyon/otomobil satışı kaçmasın.
+      //   'cekici' TEK BAŞINA bilerek YOK (oto kurtarma "çekici ücreti" hizmetiyle karışır).
       'romork', 'treyler', 'dorse', 'cekici dorse',
+      'kamyon', 'kamyonet', 'otomobil', 'binek arac', 'minibus', 'otobus',
+      'traktor', 'ekskavator', 'yukleyici kepce', 'is makine',
     ];
     // İÇERİK sinyali ŞART: faturada gerçek cihaz/makine/sabit-kıymet adı geçmeli. AI'ın salt "demirbas"
     //   KATEGORİSİ TEK BAŞINA güvenilmez — AI, mükellefin faaliyet açıklamasındaki cihaz isimlerine
