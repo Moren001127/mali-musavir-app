@@ -15,7 +15,7 @@ import { VendorMemoryService } from '../vendor-memory/vendor-memory.service';
 import { MihsapService } from '../mihsap/mihsap.service';
 import { PortalAutomationService } from '../portal-automation/portal-automation.service';
 import { BeyanKayitlariService } from '../beyan-kayitlari/beyan-kayitlari.service';
-import { WhatsAppService } from '../whatsapp/whatsapp.service';
+import { ModuleRef } from '@nestjs/core';
 import { isletmeRef, getKayitAltList, isletmeAlisSatisTuru, isletmeIslemTuru, defaultBelgeTuruKod, normalizeDocumentType, isletmeGiderSinifi, isletmeAutoKayitAltKod, isletmeAutoKayitTuru, defaultKayitAltKod, denetimUyariOlustur, giderIcerikSinifla } from '@mali-musavir/shared';
 
 // ── İşletme defteri AI sınıflandırması ──
@@ -491,10 +491,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     private readonly vendorMemory: VendorMemoryService,
     private readonly mihsapService: MihsapService,
     private readonly portalAutomation: PortalAutomationService,
-    // KDV Raporu: devreden KDV önceki dönem BEYANNAMESİNDEN okunur + WhatsApp bilgilendirme.
+    // KDV Raporu: devreden KDV önceki dönem BEYANNAMESİNDEN okunur.
     private readonly beyanKayitlari: BeyanKayitlariService,
-    // forwardRef ŞART — Fatura↔WhatsApp modül döngüsü (Calisan→Luca üzerinden).
-    @Inject(forwardRef(() => WhatsAppService)) private readonly whatsapp: WhatsAppService,
+    // WhatsApp servisi ÇAĞRI ANINDA çözülür (modül-düzeyi import DÖNGÜ yaratıp açılışı çökertiyordu).
+    private readonly moduleRef: ModuleRef,
   ) {}
 
   onModuleInit() {
@@ -1424,7 +1424,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const mesaj = satirlar.join('\n');
 
     if (opts.dryRun) return { ok: true, dryRun: true, telefon, mesaj };
-    const sonuc = await this.whatsapp.sendMessageDetailed(telefon, mesaj, tenantId);
+    // WhatsApp servisi ÇAĞRI ANINDA çözülür — statik import Fatura→WhatsApp→Calisan→Luca→Fatura
+    //   dosya döngüsü yaratıp açılışı çökertiyordu (2026-07-19 Railway kesintisi).
+    const { WhatsAppService } = await import('../whatsapp/whatsapp.service');
+    const whatsapp = this.moduleRef.get(WhatsAppService, { strict: false });
+    const sonuc = await whatsapp.sendMessageDetailed(telefon, mesaj, tenantId);
     this.logger.log(`[KDV-RAPOR-WA] tp=${opts.taxpayerId} donem=${report.period} tel=${telefon.slice(0, 4)}*** ok=${sonuc.ok}${sonuc.ok ? '' : ' hata=' + (sonuc.error || sonuc.errorCode || '?')}`);
     if (!sonuc.ok) throw new BadRequestException(`WhatsApp gönderilemedi: ${sonuc.error || sonuc.errorCode || 'bilinmeyen hata'}`);
     return { ok: true, telefon };

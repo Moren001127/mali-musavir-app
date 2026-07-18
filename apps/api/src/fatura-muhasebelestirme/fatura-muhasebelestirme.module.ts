@@ -13,12 +13,12 @@ import { MihsapModule } from '../mihsap/mihsap.module';
 import { PortalAutomationModule } from '../portal-automation/portal-automation.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { BeyanKayitlariModule } from '../beyan-kayitlari/beyan-kayitlari.module';
-import { WhatsAppModule } from '../whatsapp/whatsapp.module';
 
 @Module({
-  // WhatsAppModule forwardRef ŞART: Fatura → WhatsApp → Calisan → Luca → Fatura modül DÖNGÜSÜ var —
-  // düz import açılışta "module is undefined" ile Railway'i çökertti (2026-07-19).
-  imports: [PrismaModule, StorageModule, forwardRef(() => KdvControlModule), VendorMemoryModule, MihsapModule, PortalAutomationModule, NotificationsModule, BeyanKayitlariModule, forwardRef(() => WhatsAppModule)],
+  // ⚠️ WhatsAppModule BURAYA IMPORT EDİLMEZ: Fatura → WhatsApp → Calisan → Luca → Fatura modül
+  // DÖNGÜSÜ açılışı çökertiyor (2026-07-19 Railway kesintisi; forwardRef de yetmedi — dosya-düzeyi
+  // döngü). WhatsApp gönderimi serviste ÇAĞRI ANINDA ModuleRef + dinamik import ile çözülür.
+  imports: [PrismaModule, StorageModule, forwardRef(() => KdvControlModule), VendorMemoryModule, MihsapModule, PortalAutomationModule, NotificationsModule, BeyanKayitlariModule],
   controllers: [FaturaMuhasebelestirmeController],
   providers: [FaturaMuhasebelestirmeService, EarsivRenderService, FaturaMuhasebelestirmeCron, EFaturaSyncService, IcerikEslestirmeService],
   exports: [FaturaMuhasebelestirmeService, EFaturaSyncService, IcerikEslestirmeService],
