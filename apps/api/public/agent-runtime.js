@@ -12,7 +12,7 @@
   // v1.42.2 (2026-06-16): Ajan kendini yenilerken (delete __morenAgent) eski async
   // döngü "Cannot read 'stopRequested' of undefined/null" ile ÇÖKÜYORDU → yetim
   // döngü artık nesne yoksa güvenle durur (stopRequested kontrollerine null-guard).
-  const AGENT_VERSION = '1.46.5';
+  const AGENT_VERSION = '1.46.6';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -3731,9 +3731,15 @@
           }
         } catch {}
       }
-      // Önce II1a dene; başarısız olursa text-based menü click fallback
+      // HIZ + DOĞRULUK (v1.46.6): ÖNCE menüden YAZIYA göre gerçek hedefi keşfet.
+      // Sabit II1a kodları Luca menüsü değişince (yeni Damga Vergisi girişi) KAYIYOR;
+      // yanlış ekran (damga) açılıp her denemede 8sn beklendiği için iş çok uzuyordu.
+      // Keşif hedefi bulursa doğrudan onu açar; sabit kod yalnız keşif boş kalırsa denenir.
       let ii1aTreeNotReady = false;
-      if (!__navSkip && II1aFn) {
+      if (!__navSkip && !basariliAcildi) {
+        basariliAcildi = await tryOpenByDiscoveredMenuTargets('yaziya-gore birincil');
+      }
+      if (!__navSkip && !basariliAcildi && II1aFn) {
         await log(`🧭 II1a bulundu (${II1aSrc}) — ${ii1aId} çağrılıyor`);
         // Luca II1a'nın iç implementasyonu tree.indexOf(code) çağırıyor; tree
         // henüz init olmadıysa "Cannot read properties of undefined (reading 'indexOf')"

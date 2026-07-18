@@ -2825,6 +2825,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         ? { ocrStatus: 'SUCCESS' }
         : { ocrStatus: 'FAILED', lucaErrorMessage: String(r?.reason || 'okunamadı').slice(0, 300) },
     }).catch(() => {});
+    // OKUMANIN PARÇASI olarak zengin AI değerlendirmesi + Katman-2 denetçi HEMEN üretilir —
+    //   kullanıcı: "AI ile oku dediğimde anlık yorumunu da yapsın, bir de onu mu bekleyeceğim".
+    //   ocrStatus yazıldıktan SONRA çağrılır (okuma şeridi belge okundu saysın); kuyruk yuvası
+    //   yorum bitene dek bu belgede kalır → belge listede göründüğünde yorum+denetçi hazırdır.
+    if (r?.ok) {
+      await this.generateRichMuhasebeNeden(tenantId, documentId, true).catch(() => {});
+    }
   }
 
   /** Seçili belgeleri SUNUCU kuyruğunda AI ile oku (frontend döngüsü değil → sayfa
