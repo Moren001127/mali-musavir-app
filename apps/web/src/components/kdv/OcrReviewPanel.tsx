@@ -1039,14 +1039,9 @@ function KdvBreakdownEditor({
                 />
                 <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] pointer-events-none" style={{ color: 'rgba(250,250,249,0.4)' }}>%</span>
               </div>
-              <input
-                type="text"
-                inputMode="decimal"
-                placeholder="0,00"
-                value={fmtNum(b.tutar)}
-                onChange={(e) => setItem(idx, { tutar: parseNum(e.target.value) })}
-                className="w-full px-2 py-1 text-[12px] rounded text-right font-mono outline-none"
-                style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(34,197,94,0.2)', color: '#22c55e' }}
+              <KirilimTutarInput
+                value={b.tutar}
+                onCommit={(n) => setItem(idx, { tutar: n })}
               />
               <button
                 type="button"
@@ -1071,6 +1066,34 @@ function KdvBreakdownEditor({
         </>
       )}
     </div>
+  );
+}
+
+/** KDV kırılımı TUTAR girişi — İMLEÇ ZIPLAMASI FIX: eski hali her tuşta değeri "1,00" biçimine
+ *  çevirip inputa geri basıyordu → imleç başa dönüyor, yazı yazılamıyordu. Artık odaktayken HAM
+ *  metin korunur (toplam yine anlık güncellenir), biçimlendirme yalnız kutudan çıkınca yapılır. */
+function KirilimTutarInput({ value, onCommit }: { value: number | null | undefined; onCommit: (n: number) => void }) {
+  const fmt = (n: number | null | undefined) => (n == null ? '' : Number(n).toFixed(2).replace('.', ','));
+  const parse = (s: string): number => {
+    const c = String(s || '').trim().replace(/\./g, '').replace(',', '.');
+    const n = parseFloat(c);
+    return Number.isFinite(n) ? n : 0;
+  };
+  const [txt, setTxt] = useState<string>(fmt(value));
+  const [odak, setOdak] = useState(false);
+  useEffect(() => { if (!odak) setTxt(fmt(value)); }, [value, odak]); // dışarıdan değişirse (odak yokken) tazele
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      placeholder="0,00"
+      value={txt}
+      onFocus={() => setOdak(true)}
+      onChange={(e) => { setTxt(e.target.value); onCommit(parse(e.target.value)); }}
+      onBlur={() => { setOdak(false); setTxt(fmt(parse(txt))); }}
+      className="w-full px-2 py-1 text-[12px] rounded text-right font-mono outline-none"
+      style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(34,197,94,0.2)', color: '#22c55e' }}
+    />
   );
 }
 
