@@ -611,20 +611,38 @@ function resolveBeyanState(
   donem: string,
   donemTuru: DonemTuru,
 ) {
+  // DURUM ÖNCELİĞİ (kullanıcı kuralı): aynı beyanname birden çok dönem/durumda
+  // olabilir (or. aylık "2026-06" HATALI + çeyrek "2026-Q2" ONAYLANDI — hatalı verip
+  // sonra düzeltilmiş). En YÜKSEK durum geçerlidir:
+  //   ONAYLANDI > ONAY BEKLİYOR > HATALI > MUAF > KALAN
+  // Eskiden İLK eşleşen candidate'ın durumu dönüyordu (2026-06 hatalı önce gelince
+  // onaylı gizleniyordu). Artık TÜM candidate'lar gezilir, en yüksek durum döner.
+  const RANK: Record<string, number> = { onaylandi: 5, beklemede: 4, hatali: 3, muaf: 2 };
+  let best: any = null;
+  const consider = (durum: string, durumKaydi: any, beyanKaydi: any, matchedDonem: string) => {
+    const rank = RANK[durum] ?? 1;
+    if (!best || rank > best.rank) best = { durum, durumKaydi, beyanKaydi, matchedDonem, rank };
+  };
   for (const candidate of lookupKeysForExpected(tip, yil, ay, donem, donemTuru)) {
     const key = `${taxpayerId}::${candidate.tip}::${candidate.donem}`;
     const durumKaydi = durumIndex.get(key);
     const beyanKaydi = kayitIndex.get(key);
     if (durumKaydi) {
       if (durumKaydi.durum === 'beklemede') {
-        if (beyanKaydi) return { durum: 'onaylandi', durumKaydi, beyanKaydi, matchedDonem: candidate.donem };
-        if (isEDeclarationApprovalPending(durumKaydi)) return { durum: 'beklemede', durumKaydi, beyanKaydi, matchedDonem: candidate.donem };
-        continue;
+        // "beklemede" (elle işaret) + indirilmiş beyanname VARSA = onaylandı.
+        if (beyanKaydi) consider('onaylandi', durumKaydi, beyanKaydi, candidate.donem);
+        else if (isEDeclarationApprovalPending(durumKaydi)) consider('beklemede', durumKaydi, beyanKaydi, candidate.donem);
+        // aksi halde bu kaydı yok say (aday olarak da eklemiyoruz)
+      } else {
+        consider(durumKaydi.durum, durumKaydi, beyanKaydi, candidate.donem);
       }
-      const durum = durumKaydi.durum;
-      return { durum, durumKaydi, beyanKaydi, matchedDonem: candidate.donem };
+    } else if (beyanKaydi) {
+      // Durum kaydı yok ama beyanname indirilmiş (BeyanKaydı) → onaylandı.
+      consider('onaylandi', null, beyanKaydi, candidate.donem);
     }
-    if (beyanKaydi) return { durum: 'onaylandi', durumKaydi: null, beyanKaydi, matchedDonem: candidate.donem };
+  }
+  if (best) {
+    return { durum: best.durum, durumKaydi: best.durumKaydi, beyanKaydi: best.beyanKaydi, matchedDonem: best.matchedDonem };
   }
   return { durum: 'kalan', durumKaydi: null, beyanKaydi: null, matchedDonem: null };
 }
