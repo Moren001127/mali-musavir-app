@@ -630,6 +630,11 @@ export class PortalAutomationService {
       where.OR = [
         { period: opts.period },
         { issuedAt: { gte: range.start, lt: range.end } },
+        // ESKİ-BOZUK DÖNEM KAYDI (Ercan Haziran bulgusu): ilk kaydeden iş dönem/tarihi yanlış
+        //   yazmışsa (örn. '2026-05' etiketi) mükerrer-önleme sonraki doğru sorgularda da
+        //   düzeltmiyordu → belge dönem filtresinde hiç görünmüyordu. GİB'in kendi satırındaki
+        //   belge tarihi (dd/MM/yyyy) raw.row'da durur; onunla da eşleştir.
+        { raw: { path: ['row', 'belgeTarihi'], string_contains: `/${String(opts.period).slice(5, 7)}/${String(opts.period).slice(0, 4)}` } },
       ];
     } else if (opts.period) {
       where.period = opts.period;
@@ -718,25 +723,43 @@ export class PortalAutomationService {
         sourceRefId,
       };
     });
-    const accountingRows = refs.size
+    // KAYNAKLAR-ARASI EŞLEŞME (Gülşen Haziran bulgusu): ayni fatura Fatura Merkezi'ne GİB yerine
+    //   entegratör yolundan (örn. TÜRMOB) gelmiş ve işlenmiş/Luca'ya aktarılmış olabilir. Eski
+    //   sorgu yalnız source='gib-earsiv-api' kayıtlarına baktığından bu belgeler AKTARIM sütununda
+    //   ✗ görünüyor, tutarlar boş kalıyordu (yanlış-negatif) ve "aktar" mükerrer içe aktarım riski
+    //   doğuruyordu. ETTN ve belge no ile KAYNAKTAN BAĞIMSIZ eşleştir.
+    const belgeNos = [...new Set(rows.map((r: any) => String(r.belgeNo || '').trim()).filter(Boolean))];
+    const accountingRows = (refs.size || belgeNos.length)
       ? await (this.prisma as any).invoiceAccountingDocument.findMany({
           where: {
             tenantId,
             ...(opts.taxpayerId ? { taxpayerId: opts.taxpayerId } : {}),
-            source: 'gib-earsiv-api',
-            sourceRefId: { in: [...refs] },
+            OR: [
+              ...(refs.size ? [{ sourceRefId: { in: [...refs] } }] : []),
+              ...(belgeNos.length ? [{ belgeNo: { in: belgeNos } }] : []),
+            ],
           },
-          select: { id: true, sourceRefId: true, status: true, lucaStatus: true, totalAmount: true, ocrData: true },
+          select: { id: true, taxpayerId: true, sourceRefId: true, belgeNo: true, status: true, lucaStatus: true, totalAmount: true, ocrData: true },
         }).catch(() => [])
       : [];
-    const accByRef = new Map<string, any>(accountingRows.map((r: any) => [String(r.sourceRefId), r]));
+    const accByRef = new Map<string, any>();
+    const accByBelgeNo = new Map<string, any>();
+    for (const r of accountingRows) {
+      if (r.sourceRefId && !accByRef.has(String(r.sourceRefId))) accByRef.set(String(r.sourceRefId), r);
+      const bn = String(r.belgeNo || '').trim();
+      if (bn) {
+        const key = `${r.taxpayerId || ''}|${bn}`;
+        if (!accByBelgeNo.has(key)) accByBelgeNo.set(key, r);
+      }
+    }
     const num = (v: any): number | null => {
       if (v == null) return null;
       const n = Number(v);
       return Number.isFinite(n) ? n : null;
     };
     return rows.map((row: any) => {
-      const acc = accByRef.get(row.sourceRefId);
+      const acc = accByRef.get(row.sourceRefId)
+        || (row.belgeNo ? accByBelgeNo.get(`${row.taxpayerId || ''}|${String(row.belgeNo).trim()}`) : undefined);
       // "Aktarıldı mı" YALNIZ GERÇEK kaynaktan (invoiceAccountingDocument.lucaStatus) okunur.
       //   Denetim bulgusu: eski YEDEK OR bacağı (aktarimDurumu==='indirildi' && sorguMode==='download')
       //   YANLIŞ-POZİTİF üretiyordu — belge indirilmiş ama Luca'ya HİÇ gönderilmemişken (lucaStatus
@@ -954,6 +977,8 @@ export class PortalAutomationService {
       where.OR = [
         { period: opts.period },
         { issuedAt: { gte: range.start, lt: range.end } },
+        // listDocuments'taki eski-bozuk dönem kaydı düzeltmesiyle aynı (Ercan Haziran bulgusu).
+        { raw: { path: ['row', 'belgeTarihi'], string_contains: `/${String(opts.period).slice(5, 7)}/${String(opts.period).slice(0, 4)}` } },
       ];
     }
     const docs = await (this.prisma as any).portalDocument.findMany({
@@ -993,6 +1018,28 @@ export class PortalAutomationService {
       if (selectedRefs.size && !selectedRefs.has(String(doc.referenceNo || '')) && !selectedRefs.has(ettn) && !selectedRefs.has(belgeNo)) {
         skipped++;
         continue;
+      }
+      // MÜKERRER İÇE AKTARIM ENGELİ (Gülşen Haziran bulgusu): aynı fatura Fatura Merkezi'ne
+      //   entegratör yolundan (örn. TÜRMOB) zaten gelmişse GİB kopyasını ikinci kez açma.
+      //   (gib-earsiv-api kaynaklı mevcut kayıt importEarsivPortalDocumentToAccounting içinde
+      //   zaten güncelleme olarak ele alınıyor; burada yalnız FARKLI kaynaktan olanı atlıyoruz.)
+      if (ettn || belgeNo) {
+        const dupOther = await (this.prisma as any).invoiceAccountingDocument.findFirst({
+          where: {
+            tenantId,
+            taxpayerId: doc.taxpayerId,
+            source: { not: 'gib-earsiv-api' },
+            OR: [
+              ...(ettn ? [{ sourceRefId: ettn }] : []),
+              ...(belgeNo ? [{ belgeNo }] : []),
+            ],
+          },
+          select: { id: true },
+        }).catch(() => null);
+        if (dupOther) {
+          skipped++;
+          continue;
+        }
       }
       processed++;
       const accountingRaw = { ...raw, mode: 'download', prefetched: raw.prefetched === true };
@@ -2002,7 +2049,7 @@ export class PortalAutomationService {
     if (DEDUP_BELGE_TURU.includes(String(input.belgeTuru)) && input.referenceNo) {
       existingDedup = await (this.prisma as any).portalDocument.findFirst({
         where: { tenantId, belgeTuru: String(input.belgeTuru), referenceNo: String(input.referenceNo) },
-        select: { id: true, taxpayerId: true, storageKey: true, sizeBytes: true, mimeType: true, raw: true },
+        select: { id: true, taxpayerId: true, storageKey: true, sizeBytes: true, mimeType: true, raw: true, period: true, issuedAt: true },
       });
     }
     const skipBlobCreate = !!existingDedup?.storageKey;
@@ -2091,6 +2138,17 @@ export class PortalAutomationService {
       }
       if (String(input.belgeTuru) === 'EARSIV_FATURA' && newRaw.mode) {
         patch.raw = { ...(existing.raw && typeof existing.raw === 'object' ? existing.raw : {}), ...newRaw };
+      }
+      // DÖNEM/TARİH TAZELEME (Ercan Haziran bulgusu): ilk kayıt yanlış dönem-tarih ile oluşmuşsa
+      //   mükerrer-önleme sonraki doğru sorgularda düzeltmiyordu → belge dönem filtresinde (liste +
+      //   aktarım) hiç görünmüyordu. Taze sorgudaki dönem işin kendi tarih aralığından, tarih GİB
+      //   satırından gelir; farklıysa güncelle.
+      if (String(input.belgeTuru) === 'EARSIV_FATURA') {
+        const freshPeriod = String(input.period || '').trim();
+        if (/^\d{4}-\d{2}$/.test(freshPeriod) && existing.period !== freshPeriod) patch.period = freshPeriod;
+        const freshIssued = parseDateOrNull(input.issuedAt);
+        const oldIssued = existing.issuedAt ? new Date(existing.issuedAt).getTime() : null;
+        if (freshIssued && (oldIssued == null || Math.abs(oldIssued - freshIssued.getTime()) > 1000)) patch.issuedAt = freshIssued;
       }
       if (Object.keys(patch).length) {
         const updated = await (this.prisma as any).portalDocument.update({ where: { id: existing.id }, data: patch });
