@@ -1658,7 +1658,7 @@ async function fetchPortalWorkerAccounts() {
   }
 }
 
-function startPortalWorkerChild(account, index, poolSize = 1) {
+function startPortalWorkerChild(account, index, poolSize = 1, opts = {}) {
   const key = account.id || `${account.username}-${index}`;
   const label = account.displayName || account.username || `Luca ${index + 1}`;
   const deviceSlug = slugify(account.id || account.username || label);
@@ -1681,19 +1681,62 @@ function startPortalWorkerChild(account, index, poolSize = 1) {
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
   });
-  portalChildWorkers.set(key, { child, account, index });
-  log.info(`Portal Luca worker basladi: ${label} (${payload.deviceId})`);
+  // alwaysOn=true → daim açık worker (çökerse geri gelir). intentionalStop → iş
+  // bitince BİLEREK kapattığımız on-demand worker; geri açılmaz (monitor gerekirse açar).
+  const entry = { child, account, index, alwaysOn: !!opts.alwaysOn, intentionalStop: false };
+  portalChildWorkers.set(key, entry);
+  log.info(`Portal Luca worker basladi: ${label} (${payload.deviceId})${opts.alwaysOn ? ' [daim açık]' : ' [iş talebiyle]'}`);
   pipeChildOutput(child.stdout, label, (line) => log.info(line));
   pipeChildOutput(child.stderr, label, (line) => log.warn(line));
   child.on('exit', (code, signal) => {
+    const wasIntentional = entry.intentionalStop;
     portalChildWorkers.delete(key);
-    log.warn(`Portal Luca worker kapandi: ${label} (code=${code ?? '-'}, signal=${signal ?? '-'})`);
-    if (!stopped) {
+    log.warn(`Portal Luca worker kapandi: ${label} (code=${code ?? '-'}, signal=${signal ?? '-'})${wasIntentional ? ' [boşta kapatıldı]' : ''}`);
+    // Yalnız daim-açık worker çökerse otomatik geri gelir. On-demand worker'lar
+    // bilerek kapatıldıysa geri açılmaz; iş gelirse monitor döngüsü yeniden açar.
+    if (!stopped && !wasIntentional && entry.alwaysOn) {
       setTimeout(() => {
-        if (!stopped) startPortalWorkerChild(account, index, poolSize);
+        if (!stopped) startPortalWorkerChild(account, index, poolSize, { alwaysOn: true });
       }, 10_000);
     }
   });
+}
+
+/** Boşta olan en yüksek index'li on-demand worker'ı bilerek kapatır. */
+function closeOneOnDemandWorker() {
+  let target = null;
+  for (const [, e] of portalChildWorkers) {
+    if (e.alwaysOn) continue;
+    if (!target || e.index > target.index) target = e;
+  }
+  if (target) {
+    target.intentionalStop = true;
+    try { target.child.kill('SIGTERM'); } catch {}
+    log.info(`Boşta ek Luca worker kapatiliyor: ${target.account.displayName || target.index}`);
+  }
+}
+
+/** Bekleyen işlerdeki AYRI mükellef sayısı (paralelleştirilebilir iş ölçüsü). */
+async function countPendingMukellefs() {
+  try {
+    const { data } = await api.get('/agent/luca/jobs/pending', {
+      params: {
+        deviceId: BASE_DEVICE_ID,
+        version: getCurrentRuntimeVersionForApi(),
+        agentVersion: getCurrentRuntimeVersionForApi(),
+        ...(OWNER_EMAIL ? { ownerEmail: OWNER_EMAIL } : {}),
+        ...(ALSO_UNOWNED ? { alsoUnowned: '1' } : {}),
+      },
+      timeout: 20_000,
+    });
+    const jobs = Array.isArray(data) ? data : data?.jobs || [];
+    const ids = new Set(
+      jobs.filter((j) => JOB_TYPES.has(j.tip || j.type)).map((j) => j.mukellefId || j.id),
+    );
+    return ids.size;
+  } catch {
+    return 0;
+  }
 }
 
 async function startPortalWorkerPoolIfAvailable() {
@@ -1714,11 +1757,41 @@ async function startPortalWorkerPoolIfAvailable() {
     .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0))
     .slice(0, limit);
 
-  log.info(`Portal Luca havuzu aktif: ${selected.length} worker paralel baslatiliyor.`);
-  selected.forEach((account, index) => startPortalWorkerChild(account, index, selected.length));
+  // ON-DEMAND HAVUZ (kullanıcı talebi): sadece 1 worker DAİM açık; diğerleri iş
+  // gelince (bekleyen farklı mükellef sayısına göre) açılır, boşta kalınca kapanır.
+  // Böylece durduk yere 5 tarayıcı açılıp 5 captcha çözülmez.
+  const ON_DEMAND_IDLE_MS = Math.max(2, Number(cfg.worker?.onDemandIdleMinutes || 5)) * 60_000;
+  log.info(`Portal Luca havuzu ON-DEMAND: 1 daim açık, en çok ${selected.length} paralel (iş talebine göre).`);
+  startPortalWorkerChild(selected[0], 0, selected.length, { alwaysOn: true });
 
+  let idleSince = 0;
   while (!stopped) {
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    await new Promise((resolve) => setTimeout(resolve, 8000));
+    try {
+      const distinct = await countPendingMukellefs();
+      const active = portalChildWorkers.size;
+      const desired = Math.min(selected.length, Math.max(1, distinct));
+      if (desired > active) {
+        // Sıradaki hesabı aç (index = mevcut aktif sayısı).
+        const idx = active;
+        if (idx < selected.length) {
+          startPortalWorkerChild(selected[idx], idx, selected.length, { alwaysOn: idx === 0 });
+          log.info(`İş talebi arttı (${distinct} mükellef bekliyor); ek Luca worker açıldı (${active + 1}/${selected.length}).`);
+        }
+        idleSince = 0;
+      } else if (distinct === 0 && active > 1) {
+        // Boşta: idle süresi dolunca fazla worker'lardan birini kapat.
+        if (!idleSince) idleSince = Date.now();
+        else if (Date.now() - idleSince >= ON_DEMAND_IDLE_MS) {
+          closeOneOnDemandWorker();
+          idleSince = Date.now();
+        }
+      } else {
+        idleSince = 0;
+      }
+    } catch (err) {
+      log.warn(`Havuz monitor hatasi: ${err?.message || err}`);
+    }
   }
 
   for (const { child } of portalChildWorkers.values()) {

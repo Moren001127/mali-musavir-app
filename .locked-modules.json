@@ -32,7 +32,7 @@
       "lockedBy": "muzaffer"
     },
     "apps/api/src/kdv-control/kdv-control.service.ts": {
-      "sha256": "a236ec27cf112380338430ac0ed3ddff743b8190bec209d99fea03f584837aa7",
+      "sha256": "efe31655e22ad4a5fa3d26665b83347c2376eef8dd82e78dc04e6b5ab90773f8",
       "reason": "KDV Kontrol service — Luca queueing + reconciliation + icerik denetimi HEP-AI (kural fallback kaldirildi, kullanici onayi 2026-06-24)",
       "lockedBy": "muzaffer"
     },

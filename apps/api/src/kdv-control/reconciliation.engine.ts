@@ -301,13 +301,20 @@ export class ReconciliationEngine {
     // Virtual record kullandığımız için rawRecords üzerinden yürüyoruz.
     for (const record of rawRecords) {
       if (usedRecordIds.has(record.id)) continue;
+      // KDV 0 satırı (istisna / %0 oran / KDV'siz kayıt): eşleştirilecek KDV yok.
+      // Orphan olsa bile "hatalı/eşleşmedi" sayma — kontrol dışı nötr geç, hata
+      // sayısını şişirmesin (kullanıcı talebi 2026-07-18).
+      const recordKdvNum = parseFloat(String(record.kdvTutari ?? 0));
+      const isZeroKdv = !Number.isFinite(recordKdvNum) || Math.abs(recordKdvNum) < 0.005;
       createData.push({
         sessionId,
         kdvRecordId: record.id,
         imageId: null,
-        status: 'UNMATCHED',
+        status: isZeroKdv ? 'MATCHED' : 'UNMATCHED',
         matchScore: 0,
-        mismatchReasons: ['Eşleşen görsel bulunamadı (skor eşiği altında)'],
+        mismatchReasons: isZeroKdv
+          ? ['KDV 0 — kontrol dışı (eşleştirilecek KDV yok)']
+          : ['Eşleşen görsel bulunamadı (skor eşiği altında)'],
       });
     }
 

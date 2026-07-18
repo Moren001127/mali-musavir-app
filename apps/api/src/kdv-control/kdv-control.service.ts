@@ -4113,9 +4113,11 @@ ${JSON.stringify(payload, null, 2)}`;
       const noteSuffix = r.notes ? ` · Not: ${r.notes}` : '';
       const formattedReasons = this.formatKdvExportReasons(r.mismatchReasons || []);
       const aciklama = !r.image && r.kdvRecord
-        ? (lucaEvrak === '—'
-            ? `Luca satırında belge no/tarih yok; görselle eşleşemedi (${fmtTl(Number(r.kdvRecord.kdvTutari || 0))})`
-            : `Fatura görseli yok: ${lucaEvrak} (${fmtTl(Number(r.kdvRecord.kdvTutari || 0))})`)
+        ? (Math.abs(Number(r.kdvRecord.kdvTutari || 0)) < 0.005
+            ? 'KDV 0 — kontrol dışı (eşleştirilecek KDV yok)'
+            : lucaEvrak === '—'
+              ? `Luca satırında belge no/tarih yok; görselle eşleşemedi (${fmtTl(Number(r.kdvRecord.kdvTutari || 0))})`
+              : `Fatura görseli yok: ${lucaEvrak} (${fmtTl(Number(r.kdvRecord.kdvTutari || 0))})`)
         : !r.kdvRecord && r.image
           ? `Luca kaydı yok: ${faturaBelgeNo}`
           : (formattedReasons || (isMatchedStatus(r.status) ? 'Tam eşleşme' : 'İncele')) + noteSuffix;
