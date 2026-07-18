@@ -3231,7 +3231,12 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                             { key: 'cari', keys: ['cari'], label: 'Cari Hesap', side: 'credit' as const },
                           ]
                       ).map((g) => {
-                        const rows = lineDraft.map((l: any, i: number) => ({ l, i })).filter(({ l }) => g.keys.includes(l.group || 'matrah'));
+                        const rows = lineDraft.map((l: any, i: number) => ({ l, i })).filter(({ l }) => g.keys.includes(l.group || 'matrah'))
+                          // Tevkifatsız faturada BOŞ tevkifat satırı GÖSTERİLMEZ (kapalı görünüm — kullanıcı
+                          //   tercihi): kod/oran/tutar tümü boşsa satır gizli kalır, "+ satır ekle" ile açılır.
+                          .filter(({ l }) => g.key !== 'tevkifat'
+                            || !!String(l.accountCode || '').trim() || !!String(l.rate || '').trim()
+                            || Number(l.credit || 0) > 0 || Number(l.debit || 0) > 0);
                         const tot = rows.reduce((s, { l }) => s + (Number(g.side === 'debit' ? l.debit : l.credit) || 0), 0);
                         return (
                           <div key={g.key} className="fgrp" data-g={g.key}>
@@ -3282,7 +3287,7 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                               // Kod seçilince oranı BOŞ olan tevkifat satırlarına kodun oranı yazılır
                               // (dolu oranlara dokunulmaz — kullanıcı oranı ayrıca değiştirebilir).
                               <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 10px', borderTop: '1px dashed var(--line2)' }}>
-                                <span style={{ flex: '0 0 auto', fontSize: 11.5, fontWeight: 700, color: '#5a3fc0' }}>Tevkifat Kodu</span>
+                                <span style={{ flex: '0 0 auto', fontSize: 11.5, fontWeight: 700, color: '#0f6b66' }}>Tevkifat Kodu</span>
                                 <div style={{ flex: 1, minWidth: 0 }}>
                                   <PlainSelect value={tevkifatKodu} onChange={(kod) => {
                                     setTevkifatKodu(kod);
@@ -5061,14 +5066,26 @@ const CSS = `
 #fm-root .fgrp{border-radius:11px}
 #fm-root .fgrp .fgh{padding:7px 12px;font-size:12.5px;font-weight:800;letter-spacing:-.1px}
 #fm-root .fgrp .fgh .fgs{font-size:9.5px;font-weight:800;opacity:.8}
-#fm-root .fgrp[data-g="matrah"]{border-color:#d6defb}
-#fm-root .fgrp[data-g="matrah"] .fgh{background:#eef2ff;color:#2740a8}
-#fm-root .fgrp[data-g="vergi"]{border-color:#f0d9b3}
-#fm-root .fgrp[data-g="vergi"] .fgh{background:#fff4e3;color:#a85d08}
-#fm-root .fgrp[data-g="cari"]{border-color:#c4e6d1}
-#fm-root .fgrp[data-g="cari"] .fgh{background:#e9f6ee;color:#15803d}
-#fm-root .fgrp[data-g="tevkifat"]{border-color:#dcd3f5}
-#fm-root .fgrp[data-g="tevkifat"] .fgh{background:#f1edff;color:#5a3fc0}
+/* GRUP RENKLERİ — kurumsal uyumlu aile (marka lacivert-petrol + altın; aynı doygunluk/açıklıkta
+   dört ton, takım gibi görünsün — kullanıcı: "renkler hoşuma gitmiyor, uyumlu yap"):
+   Matrah=lacivert · İndirilecek KDV=altın · Tevkifat=petrol · Cari=derin yeşil */
+#fm-root .fgrp[data-g="matrah"]{border-color:#cdd9e5}
+#fm-root .fgrp[data-g="matrah"] .fgh{background:#eef4f9;color:#1f4e79}
+#fm-root .fgrp[data-g="vergi"]{border-color:#e4d7ba}
+#fm-root .fgrp[data-g="vergi"] .fgh{background:#faf4e4;color:#8a6410}
+#fm-root .fgrp[data-g="cari"]{border-color:#cfe2d4}
+#fm-root .fgrp[data-g="cari"] .fgh{background:#eef7f0;color:#2f6b46}
+#fm-root .fgrp[data-g="tevkifat"]{border-color:#c6dedc}
+#fm-root .fgrp[data-g="tevkifat"] .fgh{background:#e9f4f3;color:#0f6b66}
+/* TEK EKRAN: fiş paneli dikeyde sıkılaştırıldı — kaydırmadan sığsın (ne sıkışık ne gevşek). */
+#fm-root .muhmain .fgrps{gap:5px}
+#fm-root .muhmain .fgrp .fgh{padding:3px 8px;font-size:11px}
+#fm-root .muhmain .fgrp .frow{padding:3px 8px}
+#fm-root .muhmain .fgrp .frow .li{height:24px}
+#fm-root .muhmain .fgrp .frowadd{padding:2px 8px;font-size:11px}
+#fm-root .muhmain .fgrp .fgt{padding:3px 8px;font-size:11.5px}
+#fm-root .muhmain .docmeta{margin:6px 0;padding:6px;gap:4px 8px}
+#fm-root .muhmain .docmeta .dmi,#fm-root .muhmain .docmeta .psel .pselfield{height:25px;font-size:12px}
 #fm-root .fgrp .frow .money{font-size:13.5px;font-weight:600;letter-spacing:-.1px;color:#1f2a3c}
 #fm-root .fgrp .fgt{padding:6px 12px;font-size:12.5px}
 #fm-root .fgrp .fgt b{font-size:13.5px;font-weight:700;color:#0e1726;letter-spacing:-.1px}
