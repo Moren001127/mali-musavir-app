@@ -3764,8 +3764,8 @@ function ScreenKdv({ taxpayerId, period }: { taxpayerId: string; period: string 
     const dv = rep.devreden;
     const sonuc = dv
       ? (Number(rep.totals?.payableVat) > 0
-        ? `Tahmini Ödenecek KDV: <b>${p(rep.totals.payableVat)} ₺</b>`
-        : `Tahmini Devreden KDV: <b>${p(rep.totals?.carryForwardVat)} ₺</b> (ödeme çıkmıyor)`)
+        ? `Ödenecek KDV (tahmini): <b>${p(rep.totals.payableVat)} ₺</b>`
+        : `Sonraki Döneme Devreden KDV (tahmini): <b>${p(rep.totals?.carryForwardVat)} ₺</b> (ödeme çıkmıyor)`)
       : 'Devreden KDV: önceki dönem beyanname kaydı bulunamadığından hesaba katılmadı.';
     const w = window.open('', '_blank', 'width=920,height=720');
     if (!w) { toast.error('Açılır pencere engellendi — tarayıcı iznini kontrol et'); return; }
@@ -3827,21 +3827,24 @@ function ScreenKdv({ taxpayerId, period }: { taxpayerId: string; period: string 
         <div className="card"><div className="empty">Bu dönem için veri bulunamadı.</div></div>
       ) : (
         <>
-          <div className="mgrid">
-            <div className="mcard"><div className="ml">Hesaplanan KDV (satış)</div><div className="mv">{fmtMoney(t.calculatedVat)}</div></div>
-            <div className="mcard"><div className="ml">İndirilecek KDV (alış)</div><div className="mv">{fmtMoney(t.deductibleVat)}</div></div>
-            <div className="mcard"><div className="ml">Dönem KDV farkı</div><div className="mv" style={{ color: Number(t.periodVatDifference) >= 0 ? 'var(--green)' : 'var(--red)' }}>{fmtMoney(t.periodVatDifference)}</div></div>
-            <div className="mcard" title={rep?.devreden ? `Kaynak: ${rep.devreden.donem} dönemi KDV1 beyannamesi (Beyannameler modülü)` : 'Önceki dönem KDV1 beyannamesi sistemde bulunamadı'}>
-              <div className="ml">Devreden ({rep?.devreden ? 'beyannameden' : 'beyanname yok'})</div>
-              <div className="mv">{rep?.devreden ? fmtMoney(rep.devreden.tutar) : '—'}</div>
+          {/* KDV özet kartları — tasarım imzası: sol renk şeridi + yumuşak degrade + alt açıklama.
+              Sonuç kartı DİNAMİK: devir çıkıyorsa "Sonraki Döneme Devreden KDV", ödeme çıkıyorsa
+              "Ödenecek KDV" (kullanıcı isteği). */}
+          <div className="kdvstats">
+            <div className="kdvst kdvst-hes"><div className="kl">Hesaplanan KDV</div><div className="kv">{fmtMoney(t.calculatedVat)}</div><div className="ka">satış faturaları</div></div>
+            <div className="kdvst kdvst-ind"><div className="kl">İndirilecek KDV</div><div className="kv">{fmtMoney(t.deductibleVat)}</div><div className="ka">alış / gider faturaları</div></div>
+            <div className="kdvst kdvst-frk"><div className="kl">Dönem KDV Farkı</div><div className="kv" style={{ color: Number(t.periodVatDifference) < 0 ? '#b02a37' : undefined }}>{fmtMoney(t.periodVatDifference)}</div><div className="ka">hesaplanan − indirilecek</div></div>
+            <div className="kdvst kdvst-dev" title={rep?.devreden ? `Kaynak: ${rep.devreden.donem} dönemi KDV1 beyannamesindeki "Sonraki Döneme Devreden KDV" satırı` : 'Önceki dönem KDV1 beyannamesi sistemde bulunamadı'}>
+              <div className="kl">Önceki Dönemden Devreden</div>
+              <div className="kv">{rep?.devreden ? fmtMoney(rep.devreden.tutar) : '—'}</div>
+              <div className="ka">{rep?.devreden ? 'beyannameden okundu ✓' : 'beyanname kaydı yok'}</div>
             </div>
-            <div className="mcard">
-              <div className="ml">{rep?.devreden ? (Number(t.payableVat) > 0 ? 'Tahmini ödenecek KDV' : 'Tahmini devreden KDV') : 'Tahmini sonuç'}</div>
-              <div className="mv" style={{ color: rep?.devreden ? (Number(t.payableVat) > 0 ? 'var(--red)' : 'var(--green)') : undefined }}>
-                {rep?.devreden ? fmtMoney(Number(t.payableVat) > 0 ? t.payableVat : t.carryForwardVat) : '—'}
-              </div>
-            </div>
-            <div className="mcard"><div className="ml">Belge sayısı</div><div className="mv">{rep?.quality?.invoiceCount ?? '—'}</div></div>
+            {rep?.devreden && Number(t.payableVat) > 0 ? (
+              <div className="kdvst kdvst-ode"><div className="kl">Ödenecek KDV (tahmini)</div><div className="kv">{fmtMoney(t.payableVat)}</div><div className="ka">fark − devreden · beyanla netleşir</div></div>
+            ) : (
+              <div className="kdvst kdvst-son"><div className="kl">Sonraki Döneme Devreden (tahmini)</div><div className="kv">{rep?.devreden ? fmtMoney(t.carryForwardVat) : '—'}</div><div className="ka">{rep?.devreden ? 'ödeme çıkmıyor' : 'devreden bilinmeden hesaplanamaz'}</div></div>
+            )}
+            <div className="kdvst kdvst-bel"><div className="kl">Belge</div><div className="kv">{rep?.quality?.invoiceCount ?? '—'}</div><div className="ka">{rep?.quality?.sourceCounts?.sales ?? 0} satış · {rep?.quality?.sourceCounts?.purchase ?? 0} alış</div></div>
           </div>
 
           <div className="card">
@@ -3887,36 +3890,7 @@ function ScreenKdv({ taxpayerId, period }: { taxpayerId: string; period: string 
             </div>
           )}
 
-          {(Array.isArray(rep.formBa) || Array.isArray(rep.formBs)) && ((rep.formBa?.length || 0) + (rep.formBs?.length || 0) > 0) && (
-            <div className="card">
-              <div className="ch"><h3>Ba/Bs Taslağı</h3><span className="mu">cari bazında KDV hariç toplam ≥ {fmtMoney(rep.formBaBsThreshold || 5000)} ₺ · müşavir kontrol eder, resmi beyan değildir</span></div>
-              <div className="babs2">
-                {[{ t: 'Form Ba — Alışlar', rows: rep.formBa || [] }, { t: 'Form Bs — Satışlar', rows: rep.formBs || [] }].map((blk, bi) => (
-                  <div className="babscol" key={bi}>
-                    <div className="babsh">{blk.t} <span className="mu">{blk.rows.length} cari</span></div>
-                    <div className="twrap">
-                      <table>
-                        <thead><tr><th>Cari</th><th>VKN/TCKN</th><th className="num">Belge</th><th className="num">KDV Hariç</th><th className="num">KDV</th></tr></thead>
-                        <tbody>
-                          {blk.rows.map((r: any, i: number) => (
-                            <tr key={i}>
-                              <td className="firm"><b>{r.name}</b></td>
-                              <td>{r.taxNo || '—'}</td>
-                              <td className="num">{r.count ?? '—'}</td>
-                              <td className="num">{fmtMoney(r.base)}</td>
-                              <td className="num">{fmtMoney(r.vat)}</td>
-                            </tr>
-                          ))}
-                          {blk.rows.length === 0 && <tr><td colSpan={5}><div className="empty">Eşik üstü cari yok.</div></td></tr>}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
+          {/* Ba/Bs taslağı KALDIRILDI — Ba/Bs bildirimi artık verilmiyor (kullanıcı, 2026-07-19). */}
           {Array.isArray(rep.assessment) && rep.assessment.length > 0 && (
             <div className="card">
               <div className="ch"><h3>Değerlendirme</h3></div>
@@ -5203,6 +5177,22 @@ const CSS = `
 #fm-root .fgrp[data-g="cari"] .fgh{background:#eef7f0;color:#2f6b46}
 #fm-root .fgrp[data-g="tevkifat"]{border-color:#e3ccd2}
 #fm-root .fgrp[data-g="tevkifat"] .fgh{background:#f8eef1;color:#8a3341}
+/* KDV RAPORU özet kartları — tasarım imzası: sol renk şeridi + yumuşak degrade + alt açıklama. */
+#fm-root .kdvstats{display:grid;grid-template-columns:repeat(auto-fit,minmax(185px,1fr));gap:10px;margin:12px 0 14px}
+#fm-root .kdvst{position:relative;border-radius:12px;padding:11px 14px 9px 16px;border:1px solid var(--line2);background:#fff;overflow:hidden}
+#fm-root .kdvst::before{content:'';position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--ks,#94a3b8)}
+#fm-root .kdvst .kl{font-size:10.5px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:var(--ks,#475569);line-height:1.25}
+#fm-root .kdvst .kv{font-size:21px;font-weight:800;margin-top:4px;color:#1c2733;font-variant-numeric:tabular-nums}
+#fm-root .kdvst .ka{font-size:10.5px;color:#8a94a0;margin-top:3px}
+#fm-root .kdvst-hes{--ks:#1f4e79;background:linear-gradient(135deg,#f2f7fb,#fff 55%)}
+#fm-root .kdvst-ind{--ks:#8a6410;background:linear-gradient(135deg,#faf5e6,#fff 55%)}
+#fm-root .kdvst-frk{--ks:#475569;background:linear-gradient(135deg,#f4f6f8,#fff 55%)}
+#fm-root .kdvst-dev{--ks:#0f6b66;background:linear-gradient(135deg,#eaf5f4,#fff 55%)}
+#fm-root .kdvst-son{--ks:#15803d;background:linear-gradient(135deg,#edf8f0,#fff 55%)}
+#fm-root .kdvst-son .kv{color:#15803d}
+#fm-root .kdvst-ode{--ks:#b02a37;background:linear-gradient(135deg,#fbeeee,#fff 55%)}
+#fm-root .kdvst-ode .kv{color:#b02a37}
+#fm-root .kdvst-bel{--ks:#64748b;background:linear-gradient(135deg,#f4f6f8,#fff 55%)}
 /* Katlanır tevkifat başlığı: tıklanır + ok (açıkken yukarı döner). */
 #fm-root .fgrp .fgh.fgh-tgl{cursor:pointer;user-select:none}
 #fm-root .fgrp .fgh.fgh-tgl:hover{filter:brightness(.97)}

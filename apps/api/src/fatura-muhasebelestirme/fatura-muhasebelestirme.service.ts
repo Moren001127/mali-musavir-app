@@ -1372,11 +1372,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         }),
       topSuppliers: this.topReportCounterparties(topSuppliers),
       topCustomers: this.topReportCounterparties(topCustomers),
-      // Ba/Bs TASLAĞI: cari (VKN) bazında dönem KDV-hariç toplamı eşik (5.000 ₺) üstü olanlar.
-      // Form Ba = alışlar, Form Bs = satışlar. Müşavir kontrol eder; resmi beyan değildir.
-      formBaBsThreshold: 5000,
-      formBa: this.formBaBsList(topSuppliers, 5000),
-      formBs: this.formBaBsList(topCustomers, 5000),
+      // NOT: Ba/Bs taslağı KALDIRILDI — Ba/Bs bildirimi artık verilmiyor (kullanıcı, 2026-07-19).
       quality,
       controls,
       warnings: controls.warnings,
@@ -1415,8 +1411,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       satirlar.push(`↪️ Önceki dönemden devreden KDV (beyanname): ${para(report.devreden.tutar)} ₺`);
       const pay = this.reportNumber(t.payableVat);
       satirlar.push('', pay > 0
-        ? `💰 *Bu dönem tahmini ödenecek KDV: ~${para(pay)} ₺*`
-        : `↪️ *Bu dönem tahmini devreden KDV: ~${para(t.carryForwardVat)} ₺* (ödeme çıkmıyor)`);
+        ? `💰 *Ödenecek KDV (tahmini): ~${para(pay)} ₺*`
+        : `↪️ *Sonraki döneme devreden KDV (tahmini): ~${para(t.carryForwardVat)} ₺* (ödeme çıkmıyor)`);
     } else {
       satirlar.push('', `📌 Dönem KDV farkı: ${para(t.periodVatDifference)} ₺ (devreden KDV beyanname kaydı olmadığından hesaba katılmadı)`);
     }
@@ -1797,10 +1793,6 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const supplier = report.topSuppliers?.[0]?.name;
       const customer = report.topCustomers?.[0]?.name;
       lines.push(`Cari yoğunluk: En yüksek alış ${supplier || 'belirlenemeyen firma'}, en yüksek satış ${customer || 'belirlenemeyen müşteri'} tarafında yoğunlaşmaktadır.`);
-    }
-    // Ba/Bs eşiği — 5.000 TL üstü cari sayısı (bildirim hazırlığı sinyali).
-    if ((report.formBa || []).length || (report.formBs || []).length) {
-      lines.push(`Ba/Bs hazırlığı: 5.000 TL eşiğini aşan ${(report.formBa || []).length} alış carisi (Form Ba) ve ${(report.formBs || []).length} satış carisi (Form Bs) görünmektedir.`);
     }
     // İş kalitesi — bekleyen onay + eksik kod + sınıflandırma tek cümlede (varsa).
     if (quality.pendingReviewCount > 0 || quality.missingAccountCodeCount > 0 || unclassified > REPORT_EPSILON) {
