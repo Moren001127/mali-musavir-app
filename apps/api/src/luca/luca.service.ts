@@ -361,6 +361,9 @@ export class LucaService {
     let canClaimUnassigned = this.canClaimUnassignedLucaJob(deviceId);
     // EKRAN_OKU/LUCA_ACTION görünür ekranda çalışır → browser-ext de atamasız alabilsin.
     if (job.tip === 'EKRAN_OKU' || job.tip === 'LUCA_ACTION') canClaimUnassigned = true;
+    // Slot işçisi temel cihaza atanmış işi de üstlenebilir (aynı bilgisayar havuzu).
+    const slotBaseDeviceId =
+      deviceId && /-slot\d+-/.test(deviceId) ? deviceId.split('-slot')[0] : null;
     const where: any = {
       id: jobId,
       status: 'pending',
@@ -369,6 +372,7 @@ export class LucaService {
       where.OR = [
         ...(canClaimUnassigned ? [{ targetDeviceId: null }] : []),
         { targetDeviceId: deviceId },
+        ...(slotBaseDeviceId ? [{ targetDeviceId: slotBaseDeviceId }] : []),
       ];
     } else {
       where.targetDeviceId = null;
@@ -940,6 +944,12 @@ export class LucaService {
   ) {
     const canClaimUnassigned = this.canClaimUnassignedLucaJob(deviceId);
     const agentKind = this.agentKindForDeviceId(deviceId);
+    // AYNI BİLGİSAYAR HAVUZU: paralel işçilerin cihaz adı `<base>-slotN-<uuid>`
+    // biçiminde. İş genelde temel cihaza (`<base>`) atanır; slot işçileri de AYNI
+    // fiziksel makine olduğundan o işi alabilmeli. Böylece 2 farklı mükellefin işi
+    // aynı bilgisayarda 2 slot'ta PARALEL çalışır (aynı mükellef seri kuralıyla korunur).
+    const slotBaseDeviceId =
+      deviceId && /-slot\d+-/.test(deviceId) ? deviceId.split('-slot')[0] : null;
     // ÇOKLU BİLGİSAYAR YÖNLENDİRME: worker "ownerUserId" bildirirse, SADECE o panel
     // kullanıcısının (createdBy) oluşturduğu işleri görür → her bilgisayar kendi
     // komutunu yapar, başkasınınkini kapamaz. alsoUnowned=true ise sahipsiz
@@ -1003,6 +1013,8 @@ export class LucaService {
             OR: [
               ...(canClaimUnassigned ? [{ targetDeviceId: null }] : []),
               ...(deviceId ? [{ targetDeviceId: deviceId }] : []),
+              // Slot işçisi, temel cihaza atanmış işi de alır (aynı makine).
+              ...(slotBaseDeviceId ? [{ targetDeviceId: slotBaseDeviceId }] : []),
               // EKRAN_OKU/LUCA_ACTION görünür ekranda çalışır → atamasız olsa da
               // browser-ext görür (affinity 'browser-ext' yerel worker'ı dışlar).
               { tip: { in: ['EKRAN_OKU', 'LUCA_ACTION'] }, targetDeviceId: null },
