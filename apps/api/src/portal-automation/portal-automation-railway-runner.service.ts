@@ -4211,11 +4211,22 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     }
 
     const rows = await this.collectStatusOnlyEBeyannamePages(page, status, notes);
+    let duzeltilen = 0;
+    let onayliAtlanan = 0;
     for (const row of rows) {
-      const declaration = this.declarationFromEBeyannameRow(row, status, taxpayers, job);
+      // GERÇEK DURUM = satırın kendi DURUM hücresi (GİB durum filtresi radyosu her zaman
+      // uygulanmıyor; üç sorgu da aynı listeyi okuyabiliyor — YILMAZ: hatalı beyanname
+      // "onay bekliyor" sorgu etiketiyle yazılıp panelde yanlış görünüyordu).
+      const rowStatus = this.ebeyannameRowStatusFromCell(row);
+      if (rowStatus === 'onaylandi') { onayliAtlanan++; continue; } // onaylılar indirme sorgusunda işlenir
+      const effective = rowStatus || status;
+      if (rowStatus && rowStatus !== status) duzeltilen++;
+      const declaration = this.declarationFromEBeyannameRow(row, effective, taxpayers, job);
       if (declaration) declarations.push(declaration);
     }
-    notes.push(`${status}: ${rows.length} satir okundu, ${declarations.length} takip kaydi eslendi`);
+    notes.push(`${status}: ${rows.length} satir okundu, ${declarations.length} takip kaydi eslendi`
+      + (duzeltilen ? `, ${duzeltilen} satir DURUM hucresinden duzeltildi` : '')
+      + (onayliAtlanan ? `, ${onayliAtlanan} onayli satir atlandi` : ''));
     return { declarations, documents, persistedCount: 0 };
   }
 
@@ -4362,6 +4373,16 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
    *     kaynağı; sadece beyannamesi iner, tahakkuku inmez) → indirilmez.
    * (DOM yedek yolunda tahakkukOid bilinmez; orada yalnızca durum metni denetlenir.)
    */
+  /** Satırın kendi DURUM hücresinden gerçek durumu türet; hücre yok/belirsizse null. */
+  private ebeyannameRowStatusFromCell(row: EBeyannameResultRow): EBeyannameStatus | null {
+    const key = this.normalizeTextKey(row?.statusText || '');
+    if (!key) return null;
+    if (/ONAY BEKL|BEKLIYOR|BEKLEMEDE/.test(key)) return 'beklemede';
+    if (/HATALI/.test(key)) return 'hatali';
+    if (/ONAYLANDI/.test(key)) return 'onaylandi';
+    return null;
+  }
+
   private isApprovedDownloadableRow(row: EBeyannameResultRow, tahakkukOid?: string | null): boolean {
     const status = this.normalizeTextKey(row?.statusText || '');
     if (/BEKL/.test(status)) return false;
