@@ -729,14 +729,16 @@ export class PortalAutomationService {
     //   ✗ görünüyor, tutarlar boş kalıyordu (yanlış-negatif) ve "aktar" mükerrer içe aktarım riski
     //   doğuruyordu. ETTN ve belge no ile KAYNAKTAN BAĞIMSIZ eşleştir.
     const belgeNos = [...new Set(rows.map((r: any) => String(r.belgeNo || '').trim()).filter(Boolean))];
+    // ETTN/belge no iki tarafta farklı harf biçimiyle (büyük/küçük ETTN) tutulmuş olabilir —
+    //   birebir IN sorgusu bu yüzden kaçırıyordu; hem sorgu hem harita harf-duyarsız yapıldı.
     const accountingRows = (refs.size || belgeNos.length)
       ? await (this.prisma as any).invoiceAccountingDocument.findMany({
           where: {
             tenantId,
             ...(opts.taxpayerId ? { taxpayerId: opts.taxpayerId } : {}),
             OR: [
-              ...(refs.size ? [{ sourceRefId: { in: [...refs] } }] : []),
-              ...(belgeNos.length ? [{ belgeNo: { in: belgeNos } }] : []),
+              ...(refs.size ? [{ sourceRefId: { in: [...refs], mode: 'insensitive' } }] : []),
+              ...(belgeNos.length ? [{ belgeNo: { in: belgeNos, mode: 'insensitive' } }] : []),
             ],
           },
           select: { id: true, taxpayerId: true, sourceRefId: true, belgeNo: true, status: true, lucaStatus: true, totalAmount: true, ocrData: true },
@@ -745,8 +747,9 @@ export class PortalAutomationService {
     const accByRef = new Map<string, any>();
     const accByBelgeNo = new Map<string, any>();
     for (const r of accountingRows) {
-      if (r.sourceRefId && !accByRef.has(String(r.sourceRefId))) accByRef.set(String(r.sourceRefId), r);
-      const bn = String(r.belgeNo || '').trim();
+      const ref = String(r.sourceRefId || '').trim().toUpperCase();
+      if (ref && !accByRef.has(ref)) accByRef.set(ref, r);
+      const bn = String(r.belgeNo || '').trim().toUpperCase();
       if (bn) {
         const key = `${r.taxpayerId || ''}|${bn}`;
         if (!accByBelgeNo.has(key)) accByBelgeNo.set(key, r);
@@ -758,8 +761,8 @@ export class PortalAutomationService {
       return Number.isFinite(n) ? n : null;
     };
     return rows.map((row: any) => {
-      const acc = accByRef.get(row.sourceRefId)
-        || (row.belgeNo ? accByBelgeNo.get(`${row.taxpayerId || ''}|${String(row.belgeNo).trim()}`) : undefined);
+      const acc = accByRef.get(String(row.sourceRefId || '').trim().toUpperCase())
+        || (row.belgeNo ? accByBelgeNo.get(`${row.taxpayerId || ''}|${String(row.belgeNo).trim().toUpperCase()}`) : undefined);
       // "Aktarıldı mı" YALNIZ GERÇEK kaynaktan (invoiceAccountingDocument.lucaStatus) okunur.
       //   Denetim bulgusu: eski YEDEK OR bacağı (aktarimDurumu==='indirildi' && sorguMode==='download')
       //   YANLIŞ-POZİTİF üretiyordu — belge indirilmiş ama Luca'ya HİÇ gönderilmemişken (lucaStatus
@@ -1030,8 +1033,8 @@ export class PortalAutomationService {
             taxpayerId: doc.taxpayerId,
             source: { not: 'gib-earsiv-api' },
             OR: [
-              ...(ettn ? [{ sourceRefId: ettn }] : []),
-              ...(belgeNo ? [{ belgeNo }] : []),
+              ...(ettn ? [{ sourceRefId: { equals: ettn, mode: 'insensitive' } }] : []),
+              ...(belgeNo ? [{ belgeNo: { equals: belgeNo, mode: 'insensitive' } }] : []),
             ],
           },
           select: { id: true },
