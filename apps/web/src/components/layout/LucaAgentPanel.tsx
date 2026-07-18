@@ -18,9 +18,10 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { Bot, X, Loader2, AlertCircle, CheckCircle2, KeyRound } from 'lucide-react';
+import { Bot, X, Loader2, AlertCircle, CheckCircle2, KeyRound, Laptop } from 'lucide-react';
 import { toast } from 'sonner';
 import { lucaSessionApi } from '@/lib/luca-session';
+import { useLucaAgent } from '@/hooks/useLucaAgent';
 
 const GOLD = '#d4b876';
 
@@ -124,6 +125,7 @@ export default function LucaAgentPanel() {
   const [open, setOpen] = useState(false);
   const [captchaText, setCaptchaText] = useState('');
   const wrapperRef = useRef<HTMLDivElement | null>(null);
+  const { preferredIdRaw, allDevices, onlineDevices, setPreferred } = useLucaAgent();
 
   const { data: jobs = [] } = useQuery<LucaJob[]>({
     queryKey: ['luca-agent-jobs'],
@@ -282,6 +284,41 @@ export default function LucaAgentPanel() {
             >
               <X size={13} />
             </button>
+          </div>
+
+          {/* BU BİLGİSAYARIN AJANI — çoklu bilgisayar: her tarayıcı kendi makinesinin
+              Luca ajanını seçer (localStorage); e-Arşiv/Mizan/e-Defter/KDV sorguları
+              targetDeviceId ile YALNIZ o ajana gider. Seçilmezse ve birden çok ajan
+              çevrimiçiyse iş serbest kuyruğa düşer (herhangi biri alabilir). */}
+          <div className="px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+            <div className="flex items-center gap-2 mb-2">
+              <Laptop size={13} style={{ color: GOLD }} />
+              <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: GOLD, letterSpacing: '0.1em' }}>
+                Bu bilgisayarın Luca ajanı
+              </span>
+            </div>
+            <select
+              value={preferredIdRaw ?? ''}
+              onChange={(e) => {
+                const v = e.target.value || null;
+                setPreferred(v);
+                toast.success(v ? 'Bu bilgisayarın sorguları artık seçili ajandan yapılacak' : 'Ajan seçimi kaldırıldı (otomatik)');
+              }}
+              className="w-full px-2.5 py-2 rounded-md text-[12px] outline-none"
+              style={{ background: 'rgba(15,13,11,0.92)', color: '#fafaf9', border: '1px solid rgba(255,255,255,0.1)' }}
+            >
+              <option value="">Otomatik (tek ajan varsa o)</option>
+              {allDevices.map((d) => (
+                <option key={d.deviceId} value={d.deviceId}>
+                  {(d.workerName || d.deviceId) + (d.stale ? ' · çevrimdışı' : ' · çevrimiçi')}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1.5 text-[10.5px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
+              {onlineDevices.length > 1 && !preferredIdRaw
+                ? '⚠ Birden çok ajan çevrimiçi — seçim yapılmazsa sorgu herhangi bir bilgisayardan çalışabilir.'
+                : 'Seçim yalnız bu tarayıcı için geçerlidir; her bilgisayarda bir kez seçilir.'}
+            </p>
           </div>
 
           {activeChallenge && (

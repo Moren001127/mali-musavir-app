@@ -4,6 +4,9 @@ import { useQuery } from '@tanstack/react-query';
 import { agentsApi, type AgentHealthDevice } from '@/lib/agents';
 
 const LS_KEY = 'preferred_luca_agent_deviceId';
+// Aynı sekmede localStorage değişikliği 'storage' event'i üretmez;
+// TopBar'daki seçici ile açık sayfalar senkron kalsın diye kendi event'imiz.
+const CHANGE_EVENT = 'luca-agent-preferred-changed';
 
 export interface LucaAgentInfo {
   deviceId: string;
@@ -17,6 +20,13 @@ export function useLucaAgent() {
 
   useEffect(() => {
     setPreferredId(localStorage.getItem(LS_KEY));
+    const sync = () => setPreferredId(localStorage.getItem(LS_KEY));
+    window.addEventListener(CHANGE_EVENT, sync);
+    window.addEventListener('storage', sync);
+    return () => {
+      window.removeEventListener(CHANGE_EVENT, sync);
+      window.removeEventListener('storage', sync);
+    };
   }, []);
 
   const { data: health } = useQuery({
@@ -48,11 +58,14 @@ export function useLucaAgent() {
     if (deviceId) localStorage.setItem(LS_KEY, deviceId);
     else localStorage.removeItem(LS_KEY);
     setPreferredId(deviceId);
+    window.dispatchEvent(new Event(CHANGE_EVENT));
   }
 
   return {
     /** Şu an kullanılacak agent'ın deviceId'si (veya null — hiç online yok / seçilmedi) */
     preferredDeviceId: activeDevice?.deviceId ?? null,
+    /** localStorage'daki HAM seçim (fallback uygulanmadan) — seçici UI bunun üstünde çalışır */
+    preferredIdRaw: preferredId,
     activeDevice,
     onlineDevices,
     allDevices: localDevices,
