@@ -3248,7 +3248,13 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                           <div key={g.key} className="fgrp" data-g={g.key}>
                             <div
                               className={g.key === 'tevkifat' ? 'fgh fgh-tgl' : 'fgh'}
-                              onClick={g.key === 'tevkifat' ? () => setTevkAcik((v) => !v) : undefined}
+                              onClick={g.key === 'tevkifat' ? () => setTevkAcik((v) => {
+                                const acilacak = !v;
+                                // Mihsap gibi: bölüm açılınca hesap kodu + oran + tutar satırı DİREKT görünür —
+                                //   satır yoksa boş bir tane eklenir (Tevkifat Kodu seçilince oranı otomatik dolar).
+                                if (acilacak && !lineDraft.some((l: any) => (l.group || '') === 'tevkifat')) addLine('tevkifat');
+                                return acilacak;
+                              }) : undefined}
                               title={g.key === 'tevkifat' ? (tevkAcik ? 'Bölümü kapat' : 'Bölümü aç') : undefined}
                             >
                               <span>{g.label}</span>
@@ -3304,7 +3310,7 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                               // Kod seçilince oranı BOŞ olan tevkifat satırlarına kodun oranı yazılır
                               // (dolu oranlara dokunulmaz — kullanıcı oranı ayrıca değiştirebilir).
                               <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 10px', borderTop: '1px dashed var(--line2)' }}>
-                                <span style={{ flex: '0 0 auto', fontSize: 11.5, fontWeight: 700, color: '#0f6b66' }}>Tevkifat Kodu</span>
+                                <span style={{ flex: '0 0 auto', fontSize: 11.5, fontWeight: 700, color: '#8a3341' }}>Tevkifat Kodu</span>
                                 <div style={{ flex: 1, minWidth: 0 }}>
                                   <PlainSelect value={tevkifatKodu} onChange={(kod) => {
                                     setTevkifatKodu(kod);
@@ -5093,8 +5099,8 @@ const CSS = `
 #fm-root .fgrp[data-g="vergi"] .fgh{background:#faf4e4;color:#8a6410}
 #fm-root .fgrp[data-g="cari"]{border-color:#cfe2d4}
 #fm-root .fgrp[data-g="cari"] .fgh{background:#eef7f0;color:#2f6b46}
-#fm-root .fgrp[data-g="tevkifat"]{border-color:#c6dedc}
-#fm-root .fgrp[data-g="tevkifat"] .fgh{background:#e9f4f3;color:#0f6b66}
+#fm-root .fgrp[data-g="tevkifat"]{border-color:#e3ccd2}
+#fm-root .fgrp[data-g="tevkifat"] .fgh{background:#f8eef1;color:#8a3341}
 /* Katlanır tevkifat başlığı: tıklanır + ok (açıkken yukarı döner). */
 #fm-root .fgrp .fgh.fgh-tgl{cursor:pointer;user-select:none}
 #fm-root .fgrp .fgh.fgh-tgl:hover{filter:brightness(.97)}
