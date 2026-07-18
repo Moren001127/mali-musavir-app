@@ -1358,7 +1358,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       // metaVersion>=5 ile işlenmiş kayıtları atla.
       // v1-v4 (yanlış tutar: net prim/toplam prim alıyordu) yeniden çekilip düzeltilir.
       alreadyHave = new Set((have || [])
-        .filter((h: any) => { const r: any = h.raw || {}; return (r.metaVersion ?? 0) >= 5; })
+        .filter((h: any) => { const r: any = h.raw || {}; return (r.metaVersion ?? 0) >= 6; })
         .map((h: any) => `${h.belgeTuru}|${h.referenceNo}`));
     }
 
@@ -1498,7 +1498,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
             mimeType: 'application/pdf',
             originalName: `${t.belgeTuru}_${row.refNo}.pdf`,
             base64: b64,
-            raw: { donem: periodText, bildirgeRefNo: row.refNo, belgeMahiyeti: meta.belgeMahiyeti, kanunNo: meta.kanunNo, calisan: meta.calisan, tutar: meta.tutar, metaVersion: 5 },
+            raw: { donem: periodText, bildirgeRefNo: row.refNo, belgeMahiyeti: meta.belgeMahiyeti, kanunNo: meta.kanunNo, calisan: meta.calisan, tutar: meta.tutar, metaVersion: 6 },
           });
           alreadyHave.add(key);
         }
@@ -5267,13 +5267,33 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       const allMoney: string[] = tahText.match(/\d{1,3}(?:\.\d{3})*,\d{2}/g) || [];
       let dogrulandi = false;
       if (allMoney.length) {
-        const last = allMoney[allMoney.length - 1];
-        meta.tutar = last;
-        if (allMoney.length >= 3) {
-          const a = toNum(allMoney[allMoney.length - 3]);
-          const b = toNum(allMoney[allMoney.length - 2]);
-          const c = toNum(last);
-          dogrulandi = Math.abs((a + b) - c) <= 0.02;
+        // ÖDENECEK NET TUTAR = NET PRİM TUTARI + İŞSİZLİK TUTARI (SGK fişi matematiği).
+        // "SON para değeri" varsayımı GÜVENİLMEZ: pdf-parse değer sırası KANUN KODUNA göre
+        // değişiyor — 6111 kanunlu fişte son değer "05510 SAYILI KANUNDAN DOĞAN PRİM İNDİRİMİ
+        // %2" (or. 660,60) olup ödenecek net (5.615,10) yerine yazılıyordu. ÇÖZÜM: iki değerin
+        // toplamına EŞİT olan EN BÜYÜK değeri (a+b≈c) ödenecek net tutar kabul et. Kanun kodu
+        // ne olursa olsun ÖDENECEK NET TUTAR = en alttaki net + işsizlik toplamıdır.
+        const nums = allMoney.map(toNum);
+        let bestIdx = -1;
+        let bestVal = -1;
+        for (let k = 0; k < nums.length; k++) {
+          for (let i = 0; i < nums.length; i++) {
+            if (i === k) continue;
+            for (let j = i + 1; j < nums.length; j++) {
+              if (j === k) continue;
+              if (Math.abs(nums[i] + nums[j] - nums[k]) <= 0.02 && nums[k] > bestVal) {
+                bestVal = nums[k];
+                bestIdx = k;
+              }
+            }
+          }
+        }
+        if (bestIdx >= 0) {
+          meta.tutar = allMoney[bestIdx];
+          dogrulandi = true;
+        } else {
+          // a+b=c bulunamadı (bozuk/eksik metin) → eski davranış: son para değeri.
+          meta.tutar = allMoney[allMoney.length - 1];
         }
       }
 
