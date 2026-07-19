@@ -3817,8 +3817,16 @@ function ScreenKdv({ taxpayerId, period }: { taxpayerId: string; period: string 
           <div className="h2">KDV Raporu</div>
           <div className="sub">{rep?.taxpayer?.name || ''} · {rep?.periodLabel || period} — fatura kayıtlarına göre (beyan öncesi taslak).</div>
         </div>
-        <button className="btn sm" disabled={!rep} onClick={pdfYazdir} title="Markalı yazdırma görünümü açılır — yazıcıdan 'PDF olarak kaydet' ile PDF alırsın">🖨️ PDF çıktı al</button>
-        <button className="btn sm primary" disabled={!rep || waYukleniyor} onClick={waOnizle} title="Mükellefe WhatsApp'tan dönem KDV bilgilendirmesi — önce önizleme görürsün, onayınla gönderilir">💬 {waYukleniyor && !waAcik ? 'Hazırlanıyor…' : 'WhatsApp bilgi ver'}</button>
+        <button className="btn sm" disabled={!rep} onClick={pdfYazdir} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }} title="Markalı yazdırma görünümü açılır — yazıcıdan 'PDF olarak kaydet' ile PDF alırsın">
+          {/* Kırmızı PDF belge ikonu */}
+          <svg width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><path fill="#d93025" d="M6 2h9l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z" /><path fill="#ffffff" opacity=".35" d="M15 2v5h5z" /><text x="12" y="17.5" textAnchor="middle" fontSize="7" fontWeight="800" fill="#fff">PDF</text></svg>
+          PDF çıktı al
+        </button>
+        <button className="btn sm" disabled={!rep || waYukleniyor} onClick={waOnizle} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#25D366', borderColor: '#1ebe57', color: '#fff', fontWeight: 700 }} title="Mükellefe WhatsApp'tan dönem KDV bilgilendirmesi — önce önizleme görürsün, onayınla gönderilir">
+          {/* Resmi WhatsApp logosu */}
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="#ffffff" aria-hidden="true"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" /></svg>
+          {waYukleniyor && !waAcik ? 'Hazırlanıyor…' : 'WhatsApp bilgi ver'}
+        </button>
       </div>
 
       {repQ.isLoading ? (
@@ -5177,22 +5185,21 @@ const CSS = `
 #fm-root .fgrp[data-g="cari"] .fgh{background:#eef7f0;color:#2f6b46}
 #fm-root .fgrp[data-g="tevkifat"]{border-color:#e3ccd2}
 #fm-root .fgrp[data-g="tevkifat"] .fgh{background:#f8eef1;color:#8a3341}
-/* KDV RAPORU özet kartları — tasarım imzası: sol renk şeridi + yumuşak degrade + alt açıklama. */
+/* KDV RAPORU özet kartları — tasarım imzası: sol renk şeridi + DOYGUN degrade + renkli değer
+   (kullanıcı: "sayaçları biraz daha renklendirelim"). Her kartın kenarı ve tutarı kendi ailesinde. */
 #fm-root .kdvstats{display:grid;grid-template-columns:repeat(auto-fit,minmax(185px,1fr));gap:10px;margin:12px 0 14px}
-#fm-root .kdvst{position:relative;border-radius:12px;padding:11px 14px 9px 16px;border:1px solid var(--line2);background:#fff;overflow:hidden}
-#fm-root .kdvst::before{content:'';position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--ks,#94a3b8)}
+#fm-root .kdvst{position:relative;border-radius:12px;padding:11px 14px 9px 17px;border:1px solid var(--kb,#c9d2da);background:#fff;overflow:hidden;box-shadow:0 1px 3px rgba(16,42,67,.06)}
+#fm-root .kdvst::before{content:'';position:absolute;left:0;top:0;bottom:0;width:6px;background:var(--ks,#94a3b8)}
 #fm-root .kdvst .kl{font-size:10.5px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:var(--ks,#475569);line-height:1.25}
-#fm-root .kdvst .kv{font-size:21px;font-weight:800;margin-top:4px;color:#1c2733;font-variant-numeric:tabular-nums}
-#fm-root .kdvst .ka{font-size:10.5px;color:#8a94a0;margin-top:3px}
-#fm-root .kdvst-hes{--ks:#1f4e79;background:linear-gradient(135deg,#f2f7fb,#fff 55%)}
-#fm-root .kdvst-ind{--ks:#8a6410;background:linear-gradient(135deg,#faf5e6,#fff 55%)}
-#fm-root .kdvst-frk{--ks:#475569;background:linear-gradient(135deg,#f4f6f8,#fff 55%)}
-#fm-root .kdvst-dev{--ks:#0f6b66;background:linear-gradient(135deg,#eaf5f4,#fff 55%)}
-#fm-root .kdvst-son{--ks:#15803d;background:linear-gradient(135deg,#edf8f0,#fff 55%)}
-#fm-root .kdvst-son .kv{color:#15803d}
-#fm-root .kdvst-ode{--ks:#b02a37;background:linear-gradient(135deg,#fbeeee,#fff 55%)}
-#fm-root .kdvst-ode .kv{color:#b02a37}
-#fm-root .kdvst-bel{--ks:#64748b;background:linear-gradient(135deg,#f4f6f8,#fff 55%)}
+#fm-root .kdvst .kv{font-size:21px;font-weight:800;margin-top:4px;color:var(--kv,#1c2733);font-variant-numeric:tabular-nums}
+#fm-root .kdvst .ka{font-size:10.5px;color:#7c8794;margin-top:3px;font-weight:600}
+#fm-root .kdvst-hes{--ks:#1f4e79;--kb:#b9d2ea;--kv:#1f4e79;background:linear-gradient(135deg,#dcebfa,#f6fafd 60%)}
+#fm-root .kdvst-ind{--ks:#9a6d06;--kb:#e0ca8e;--kv:#7c5a0a;background:linear-gradient(135deg,#f7ecc9,#fdf9ec 60%)}
+#fm-root .kdvst-frk{--ks:#475569;--kb:#c2cedb;--kv:#334155;background:linear-gradient(135deg,#e5ebf2,#f8fafc 60%)}
+#fm-root .kdvst-dev{--ks:#0d6b66;--kb:#a3d4cf;--kv:#0b5f5a;background:linear-gradient(135deg,#d3ecea,#f0faf9 60%)}
+#fm-root .kdvst-son{--ks:#15803d;--kb:#a5dcba;--kv:#15803d;background:linear-gradient(135deg,#d4f1de,#f0fbf4 60%)}
+#fm-root .kdvst-ode{--ks:#b02a37;--kb:#e8b3b8;--kv:#b02a37;background:linear-gradient(135deg,#f9dcdf,#fdf2f3 60%)}
+#fm-root .kdvst-bel{--ks:#5b6b7c;--kb:#c6cfd8;--kv:#42505f;background:linear-gradient(135deg,#e6ebf0,#f7f9fa 60%)}
 /* Katlanır tevkifat başlığı: tıklanır + ok (açıkken yukarı döner). */
 #fm-root .fgrp .fgh.fgh-tgl{cursor:pointer;user-select:none}
 #fm-root .fgrp .fgh.fgh-tgl:hover{filter:brightness(.97)}
