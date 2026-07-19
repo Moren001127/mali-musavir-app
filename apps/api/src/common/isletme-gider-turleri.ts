@@ -36,10 +36,21 @@ export function getIsletmeTurleri(taraf: IsletmeTaraf) {
 
 /** OCR/AI kalem kategorisinden işletme gider türü tahmini */
 export function icerikKategoridenGiderTuru(icerikKategori: string | null | undefined): IsletmeGiderTuruKod {
-  switch (icerikKategori) {
+  // AI/OCR bazen 'demirbaş' (Türkçe ş) bazen 'demirbas' (ascii) üretiyor; eşleşmeyi sağlamlaştırmak
+  // için önce Türkçe karakterleri ascii'ye indirip küçük harfe çeviriyoruz (İ/ş/ç/ğ/ü/ö).
+  const norm = String(icerikKategori ?? '')
+    .trim()
+    .replace(/[İIı]/g, 'i')
+    .replace(/[şŞ]/g, 's')
+    .replace(/[çÇ]/g, 'c')
+    .replace(/[ğĞ]/g, 'g')
+    .replace(/[üÜ]/g, 'u')
+    .replace(/[öÖ]/g, 'o')
+    .toLowerCase();
+  switch (norm) {
     case 'ticari_mal':  return 'MAL_ALISI';
     case 'tasit':       return 'TASIT';
-    case 'demirbaş':    return 'DEMIRBAŞ';
+    case 'demirbas':    return 'DEMIRBAŞ';
     case 'hizmet':      return 'HIZMET_ALISI';
     case 'akaryakit':   return 'AKARYAKIT';
     case 'kira':        return 'KIRA';

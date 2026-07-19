@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, Fragment, type KeyboardEvent, type MouseEvent } from 'react';
+import { useState, useRef, useEffect, useMemo, Fragment, type KeyboardEvent, type MouseEvent } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
@@ -508,10 +508,17 @@ function DocModal() {
   const [dim, setDim] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
   const viewRef = useRef<HTMLDivElement>(null);
   const fittedRef = useRef(false);
+  // Klavye kısayolu, modalın açık olup olmadığını güncel görsün diye ref (efekt tek kez bağlanır).
+  const docRef = useRef(doc);
+  docRef.current = doc;
 
   useEffect(() => {
     const onView = (e: any) => { setDoc(e.detail || null); setScale(1); setDim({ w: 0, h: 0 }); fittedRef.current = false; };
     const onKey = (e: globalThis.KeyboardEvent) => {
+      // Modal KAPALIYKEN veya bir input/textarea/contenteditable odaktayken kısayolları yok say.
+      if (!docRef.current) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable)) return;
       if (e.key === 'Escape') setDoc(null);
       if (e.key === '+' || e.key === '=') setScale((s) => Math.min(4, +(s + 0.2).toFixed(2)));
       if (e.key === '-' || e.key === '_') setScale((s) => Math.max(0.3, +(s - 0.2).toFixed(2)));
@@ -598,11 +605,14 @@ function DocModal() {
         </div>
         <div className="docview" ref={viewRef}>
           {doc.html
-            ? <iframe className="docframe" style={{ ...zoomStyle, ...sizeStyle }} srcDoc={doc.html} title="Belge" onLoad={onFrameLoad} />
+            // GÜVENLİK: belge HTML'i entegratörden gelir → sandbox ile script ÇALIŞTIRMA yok
+            //   (allow-same-origin var, allow-scripts YOK). Sadece HTML+CSS render olur, JS engellenir.
+            ? <iframe className="docframe" style={{ ...zoomStyle, ...sizeStyle }} srcDoc={doc.html} title="Belge" sandbox="allow-same-origin" onLoad={onFrameLoad} />
             : isImg
               ? <img className="docimg" style={{ ...zoomStyle, ...sizeStyle }} src={rawUrl} alt="Belge" onLoad={onImgLoad} />
               : frameSrc
-                ? <iframe className="docframe" style={{ ...zoomStyle, ...sizeStyle }} src={frameSrc} title="Belge" onLoad={onFrameLoad} />
+                // GÜVENLİK: blob/data belge içeriği — script engelli sandbox (XSLT/HTML render devam eder).
+                ? <iframe className="docframe" style={{ ...zoomStyle, ...sizeStyle }} src={frameSrc} title="Belge" sandbox="allow-same-origin" onLoad={onFrameLoad} />
                 : <div className="empty">Belge yok</div>}
         </div>
       </div>
@@ -1023,7 +1033,12 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
   const all: any[] = docsQ.data || [];
   // Gelen kutusu: yalnız HENÜZ İŞLENMEMİŞ gelen belgeler. Onaylanan/aktarıma alınan/aktarılan
   //   belgeler buradan çıkar (Aktarım arşivinde görünür) — kullanıcı talebi.
-  const docsAll = all.filter((d) => (d.invoiceKind || 'ALIS') === kind && !isInAktarim(d));
+  // useMemo: docsAll/docs referansı her render'da yenilenmesin → justDone/richNotes efektleri
+  //   (bağımlılığı docs) gereksiz yere her render koşmaz.
+  const docsAll = useMemo(
+    () => all.filter((d) => (d.invoiceKind || 'ALIS') === kind && !isInAktarim(d)),
+    [all, kind],
+  );
   // İşletme sınıfı = AI'ın fatura OKUMA anında faaliyet+içerikle verdiği karar (ocrData.isletme).
   //   Kaydedilmiş satır varsa o; yoksa AI'ın sınıfı. AI sınıf vermediyse ok:false → "Eşleşmedi" + boş.
   const islSinif = (d: any): { ktAd: string; altAd: string; ok: boolean } => {
@@ -1065,7 +1080,10 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
   // Durum filtresi (Hepsi / Eşleşti / İncele / Kod eksik / Çelişki / …)
   const [durumF, setDurumF] = useState('all');
   const durumCount = (cat: string) => cat === 'all' ? docsAll.length : docsAll.filter((d) => dd(d).cat === cat).length;
-  const docs = durumF === 'all' ? docsAll : docsAll.filter((d) => dd(d).cat === durumF);
+  const docs = useMemo(
+    () => durumF === 'all' ? docsAll : docsAll.filter((d) => deriveDurum(d, isIsletme, '').cat === durumF),
+    [docsAll, durumF, isIsletme],
+  );
   const [sel, setSel] = useState<Set<string>>(new Set());
   // Mükellef/dönem/sekme değişince ESKİ seçim ve durum filtresi taşınmasın — yoksa "AI ile oku"
   //   önceki ekranda seçilmiş (artık görünmeyen) belgeleri de okuturdu.
@@ -1185,7 +1203,12 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
     queryKey: ['fm-ocr-progress', taxpayerId, period],
     queryFn: async () => (await api.get('/fatura-muhasebelestirme/ocr-progress', { params: { taxpayerId, period } })).data,
     enabled: !!taxpayerId,
-    refetchInterval: 3000,
+    // Okuma AKTİFKEN hızlı (3sn); boştayken seyrelt (15sn) → çoklu bilgisayarda gereksiz yük düşer,
+    //   başka makinede başlayan okuma yine (15sn içinde) yakalanır. Cache'ten güncel duruma bakılır.
+    refetchInterval: () => {
+      const d: any = qc.getQueryData(['fm-ocr-progress', taxpayerId, period]);
+      return d?.active ? 3000 : 15000;
+    },
   });
   const ocrProg: any = ocrProgQ.data;
   // Faz F/6: eksik belge takibi — sadece Alış'ta, düzenli gelip bu dönem gelmeyen satıcılar.
@@ -1266,6 +1289,8 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
     if (richFetchedRef.current.has(id)) return; // zaten istendi
     richFetchedRef.current.add(id);
     setRichNotes((s) => ({ ...s, [id]: { loading: true } }));
+    // Unmount / belge değişince iptal edebilmek için zamanlayıcı id'lerini topla (cleanup'ta temizlenir).
+    const timers: number[] = [];
     // Backend deterministik yorumu ANINDA döndürür (zengin=false), zengin AI yorumunu arka planda üretir.
     //   İlk yanıtta deterministik gösterilir; zengin gelmediyse 14 sn sonra BİR KEZ tekrar istenir (upgrade).
     const iste = (isUpgrade: boolean) =>
@@ -1281,11 +1306,12 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
             richUpgradeRef.current.add(id);
             // Zengin AI yorumu + denetçi arka planda üretilir; süresi değişken (Max). Tek 14sn denemesi
             //   yavaş üretimi KAÇIRIYORDU → belge açık kalsa da boş görünüyordu. Birkaç kez yokla (6/13/22 sn).
-            [6000, 13000, 22000].forEach((ms) => setTimeout(() => { iste(true).catch(() => {}); }, ms));
+            [6000, 13000, 22000].forEach((ms) => timers.push(window.setTimeout(() => { iste(true).catch(() => {}); }, ms)));
           }
         })
         .catch(() => { if (!isUpgrade) setRichNotes((s) => ({ ...s, [id]: { loading: false, text: '', zengin: false } })); });
     iste(false);
+    return () => { timers.forEach((t) => clearTimeout(t)); };
   }, [fisDetayId, docs]);
   // "Faaliyet: … / Yorum: …" iki bölümü satır satır, etiketleri vurgulu göster (deterministik tek cümlede düz).
   const renderNeden = (text: string) => text.split('\n').map((ln, i) => {
@@ -1682,11 +1708,17 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
   const [lastEfaturaSync, setLastEfaturaSync] = useState<any>(null);
   const [efaturaPollUntil, setEfaturaPollUntil] = useState(0);
   const efaturaDirection: 'IN' | 'OUT' = efaturaChannel === 'IN_EFATURA' ? 'IN' : 'OUT';
+  // Aktif (pending/running) e-Arşiv işi var mı? Cache'teki iş listesinden bakılır → polling hızını ayarlar.
+  const isEarsivJobActive = (jobs: any): boolean =>
+    Array.isArray(jobs) && jobs.some((j: any) => ['pending', 'running'].includes(String(j.status || '').toLowerCase()));
   const earsivQ = useQuery({
     queryKey: ['fm-earsiv-sorgu', taxpayerId, period],
     queryFn: async () => (await api.get('/portal-automation/earsiv/invoices', { params: { taxpayerId, period, limit: 500 } })).data,
     enabled: !!taxpayerId && source === 'earsiv',
-    refetchInterval: source === 'earsiv' ? 2000 : false,
+    // Aktif iş varken hızlı (2sn) → satırlar canlı insin; iş yokken seyrelt (10sn) → boş yük olmasın.
+    refetchInterval: () => source === 'earsiv'
+      ? (isEarsivJobActive(qc.getQueryData(['fm-earsiv-jobs', taxpayerId])) ? 2000 : 10000)
+      : false,
   });
   const jobsQ = useQuery({
     queryKey: ['fm-earsiv-jobs', taxpayerId],
@@ -1695,7 +1727,10 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
       return Array.isArray(r.data) ? r.data.filter((j: any) => !taxpayerId || j.taxpayerId === taxpayerId) : [];
     },
     enabled: !!taxpayerId && source === 'earsiv',
-    refetchInterval: source === 'earsiv' ? 1500 : false,
+    // Aktif iş varken hızlı (1.5sn); iş yokken seyrelt (8sn). Yeni iş sorgulanınca onSuccess invalidate eder.
+    refetchInterval: () => source === 'earsiv'
+      ? (isEarsivJobActive(qc.getQueryData(['fm-earsiv-jobs', taxpayerId])) ? 1500 : 8000)
+      : false,
   });
   const integrationsQ = useQuery({
     queryKey: ['fm-integrations-sorgu', taxpayerId],
@@ -2069,6 +2104,12 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
             <button className="btn sm ghost" disabled={!taxpayerId || syncMut.isPending || rows.length === 0} onClick={() => syncMut.mutate()}><Ico html={I.checkSm} size={13} /> Durumu eşitle</button>
           </div>
           <div className="sourcehint">İptal, itirazlı veya reddedilmiş faturalar tabloda görünür ama aktarıma alınmaz.</div>
+          {(earsivQ.isError || jobsQ.isError) && (
+            <div className="yuklenemedi">
+              <span><Ico html={I.info} size={14} /> Liste alınamadı (bağlantı/sunucu hatası) — "kayıt yok" demek değil.</span>
+              <button className="btn sm" onClick={() => { earsivQ.refetch(); jobsQ.refetch(); }}><Ico html={I.sync} size={12} /> Tekrar dene</button>
+            </div>
+          )}
           <div className="sourcetablewrap">
             {earsivOverlayBusy && (
               <div className="queryveil">
@@ -2164,6 +2205,12 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
                   {efaturaProviderLabel(p)}: {efaturaStatusText(p)}
                 </span>
               ))}
+            </div>
+          )}
+          {efaturaInboxQ.isError && (
+            <div className="yuklenemedi">
+              <span><Ico html={I.info} size={14} /> Liste alınamadı (bağlantı/sunucu hatası) — "kayıt yok" demek değil.</span>
+              <button className="btn sm" onClick={() => efaturaInboxQ.refetch()}><Ico html={I.sync} size={12} /> Tekrar dene</button>
             </div>
           )}
           <div className="sourcetablewrap efatura">
@@ -2616,7 +2663,9 @@ function InlineBelge({ id }: { id: string }) {
       </div>
       <div ref={wrapRef} className="bpview" style={{ overflow: 'auto' }} onDoubleClick={() => openDocFile(id)}>
         {html
-          ? <iframe ref={frameRef} onLoad={onFrameLoad} className="bpframe-h" srcDoc={htmlDoc} title="Belge" sandbox="allow-same-origin allow-scripts" scrolling="no" style={{ zoom: appliedScale } as any} />
+          // GÜVENLİK: allow-scripts KALDIRILDI — allow-same-origin ile birlikte olması sandbox'ı
+          //   etkisiz kılıyordu. Belge sadece görüntüleniyor; JS gerekmez, HTML+CSS render devam eder.
+          ? <iframe ref={frameRef} onLoad={onFrameLoad} className="bpframe-h" srcDoc={htmlDoc} title="Belge" sandbox="allow-same-origin" scrolling="no" style={{ zoom: appliedScale } as any} />
           : isImg
             ? <img className="bpimg" src={url} alt="Belge" onLoad={onImgLoad} style={{ zoom: appliedScale, ...(imgW ? { width: imgW, maxWidth: 'none' } : {}) } as any} />
             : isXml
@@ -2683,17 +2732,23 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
     const next = navList[navIdx + delta];
     if (next) setSelId(next.id);
   };
+  // Ok tuşu handler'ı GÜNCEL liste/konuma gitsin diye ref'te tut — içerik değişince (aynı uzunlukta
+  //   bile) eski navList'e kapanma sorunu (stale closure) böylece olmaz; efekt tek kez bağlanır.
+  const navRef = useRef({ list: navList, idx: navIdx });
+  navRef.current = { list: navList, idx: navIdx };
   // Klavye ok tuşlarıyla önceki/sonraki belgeye geç (form alanındayken serbest bırak).
   useEffect(() => {
     const onKey = (e: globalThis.KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
       if (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)) return;
-      if (e.key === 'ArrowLeft') goNav(-1);
-      else if (e.key === 'ArrowRight') goNav(1);
+      const { list, idx } = navRef.current;
+      if (idx < 0) return;
+      if (e.key === 'ArrowLeft') { const p = list[idx - 1]; if (p) setSelId(p.id); }
+      else if (e.key === 'ArrowRight') { const n = list[idx + 1]; if (n) setSelId(n.id); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [navIdx, navList.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   // Belge bilgileri elle düzenleme (tarih/tür/belge türü/belge no/VKN) — PATCH ile kaydeder.
   const [meta, setMeta] = useState<any>({});
@@ -2963,6 +3018,8 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
   });
   // Faz E: TEK kaydet (bilgi+satır birlikte, tek bildirim). Ctrl+S buna bağlı.
   const saveAll = async (silent = false) => {
+    // Seçili belge yoksa Ctrl+S sessizce patlıyordu (selDoc.id undefined) → kısa uyarı ver, erken çık.
+    if (!selDoc) { if (!silent) toast.error('Kaydedilecek belge seçili değil'); return; }
     await saveMetaMut.mutateAsync();
     if (!isIsletme) await saveLinesMut.mutateAsync();
     if (!silent) toast.success('Kaydedildi');
@@ -3208,7 +3265,9 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                     </div>
                   ) : (
                     <div className="fgrps">
-                      {(String(selDoc.invoiceKind || '').includes('SATIS')
+                      {/* Fiş grup/yön: düzenlenmekte olan meta.invoiceKind'i izle (kaydı beklemeden
+                          ALIŞ↔SATIŞ dönsün); meta yoksa selDoc.invoiceKind'e düş. */}
+                      {(String(meta.invoiceKind || selDoc.invoiceKind || '').includes('SATIS')
                         ? [
                             // SATIŞ: matrah(600)+KDV(391) ALACAK, cari(120) BORÇ
                             { key: 'matrah', keys: ['matrah'], label: 'Matrah (Gelir)', side: 'credit' as const },
@@ -3449,7 +3508,8 @@ function ScreenAktarilanlar({ taxpayerId, period, mode = 'bekleyen' }: { taxpaye
           <td className="num">{fmtMoney(d.totalAmount)}</td>
           <td>{code ? <span className="hk">{code}</span> : <span className="hk no">—</span>}</td>
           <td>{lucaPill(d)}</td>
-          <td className="actcol" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          {/* td'ye display:flex VERME (hücre tablo düzeninden çıkar) — flex'i içteki div'e koy. */}
+          <td className="actcol"><div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
             {(d.lucaStatus === 'FAILED' || d.lucaStatus === 'ERROR') && (
               <button className="btn ghost sm" disabled={retryMut.isPending} onClick={() => retryMut.mutate(d.id)} title={d.lucaErrorMessage || "Luca'ya tekrar gönder"}><Ico html={I.sync} size={12} /></button>
             )}
@@ -3458,7 +3518,7 @@ function ScreenAktarilanlar({ taxpayerId, period, mode = 'bekleyen' }: { taxpaye
             )}
             <button className="btn ghost sm" onClick={() => setDetayId(acik ? '' : d.id)} title={acik ? 'Fiş detayını gizle' : 'Fiş (yevmiye) detayını göster'}>{acik ? '▾' : '▸'}</button>
             <span className="eye" onClick={() => openDocFile(d.id)}><Ico html={I.eye} size={15} /></span>
-          </td>
+          </div></td>
         </tr>
         {acik && (
           <tr className="detayrow">
@@ -4037,7 +4097,8 @@ function ScreenGenel({ taxpayers, period, onOpen }: { taxpayers: any[]; period: 
   return (
     <section className="screen">
       <div className="h2">Genel Bakış</div>
-      <div className="sub" dangerouslySetInnerHTML={{ __html: `${period} döneminin özeti ve dikkat gerektiren mükellefler. Tüm mükellef listesi ve arama için sol menüden <b>Mükellefler</b>'e geç.` }} />
+      {/* period localStorage'dan gelebildiği için dangerouslySetInnerHTML YOK — düz JSX (period metin olarak). */}
+      <div className="sub">{period} döneminin özeti ve dikkat gerektiren mükellefler. Tüm mükellef listesi ve arama için sol menüden <b>Mükellefler</b>&apos;e geç.</div>
       <div className="mgrid">
         <div className="mcard"><div className="ml">Bekleyen belge</div><div className="mv">{tot.pending}</div></div>
         <div className="mcard"><div className="ml">Luca'ya aktarılan</div><div className="mv">{tot.posted}</div></div>

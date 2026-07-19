@@ -363,7 +363,6 @@ export class FaturaMuhasebelestirmeController {
   }
 
   @Post('import-from-mihsap')
-  @UseGuards(AuthGuard('jwt'))
   importFromMihsap(
     @Req() req: any,
     @Body() body: { taxpayerId: string; donem: string; faturaTuru?: 'ALIS' | 'SATIS' },
@@ -458,15 +457,22 @@ export class FaturaMuhasebelestirmeController {
     @Query('direction') direction: string,
     @Res() res: any,
   ) {
-    const out = await this.service.buildBatchExcel(req.user.tenantId, {
-      taxpayerId,
-      period,
-      direction: direction === 'ALIS' || direction === 'SATIS' ? (direction as 'ALIS' | 'SATIS') : undefined,
-    });
-    res.setHeader('Content-Type', out.contentType);
-    res.setHeader('Content-Disposition', `attachment; filename="${out.filename}"`);
-    res.setHeader('Content-Length', out.buffer.length.toString());
-    res.end(out.buffer);
+    try {
+      const out = await this.service.buildBatchExcel(req.user.tenantId, {
+        taxpayerId,
+        period,
+        direction: direction === 'ALIS' || direction === 'SATIS' ? (direction as 'ALIS' | 'SATIS') : undefined,
+      });
+      res.setHeader('Content-Type', out.contentType);
+      res.setHeader('Content-Disposition', `attachment; filename="${out.filename}"`);
+      res.setHeader('Content-Length', out.buffer.length.toString());
+      res.end(out.buffer);
+    } catch (err: any) {
+      // @Res() kullanıldığı için hata JSON olarak elle dönülür; aksi halde frontend jenerik
+      // "Excel indirilemedi" gösterip gerçek nedeni (ör. belge yok / yükleme hatası) kaybediyordu.
+      const status = Number(err?.status) || 500;
+      res.status(status).json({ message: err?.message || 'Excel oluşturulamadı' });
+    }
   }
 
   @Delete('documents/:id')

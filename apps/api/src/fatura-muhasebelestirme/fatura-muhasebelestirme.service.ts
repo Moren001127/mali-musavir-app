@@ -473,6 +473,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     tenantId: string;
     documentId: string;
     buffer?: Buffer;
+    // Bellek tavanı aşıldığında buffer kuyrukta tutulmaz; iş sırasında bu s3Key'den (depodan) okunur.
+    s3Key?: string;
+    // Bu işin bellekte tuttuğu buffer boyutu (varsa) — iş bitince bütçeden düşülür.
+    bufferBytes?: number;
     originalName?: string;
     forceClaude?: boolean;
     // Mihsap'tan çekilen belgeler: buffer CDN'den lazy indirilir (210 buffer'i
@@ -481,6 +485,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     mihsapInvoiceId?: string;
     invoiceKind?: 'ALIS' | 'SATIS';
   }> = [];
+  // OCR kuyruğunda BELLEKTE tutulan toplam buffer boyutu + tavanı. Tavan aşılınca yeni buffer'lar
+  //   bellekte tutulmaz, iş sırasında depodan (s3Key) okunur → 200×25MB gibi yüklerde OOM olmaz.
+  private uploadOcrBufferedBytes = 0;
+  private readonly uploadOcrBufferBudget = 512 * 1024 * 1024; // 512 MB
 
   constructor(
     private readonly prisma: PrismaService,
@@ -577,6 +585,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           if (!String(o.icerikMetni || '').trim() && !(Array.isArray(o.kalemler) && o.kalemler.length)) continue;
           if (String(o.matrahKategori || o.kategori || '').trim() || String(o.giderTuru || '').trim()) continue; // zaten sınıflı
           if (this.clsRescued.has(d.id) || queued.has(d.id) || this.uploadOcrActiveIds.has(d.id)) continue;
+          // Sınırsız büyümesin (uzun süren süreçte bellek sızıntısı) — tavana ulaşınca sıfırla; en
+          //   kötü ihtimalle birkaç belge tekrar denenir (zararsız, boş dönenler yine elenecek).
+          if (this.clsRescued.size >= 5000) this.clsRescued.clear();
           this.clsRescued.add(d.id);
           this.uploadOcrQueue.push({ tenantId: d.tenantId, documentId: d.id, kind: 'classify' });
           c++;
@@ -675,7 +686,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         },
       }),
       (this.prisma as any).invoiceAccountingDocument.groupBy({
-        by: ['taxpayerId', 'invoiceKind', 'status'],
+        // documentType da grupla → BANKA belgeleri alış/satış sayımından ayrılıp banka rozetlerine gider
+        //   (eskiden invoiceKind SATIS olmadığı için hepsi pendingPurchase'a düşüyordu).
+        by: ['taxpayerId', 'invoiceKind', 'status', 'documentType'],
         where: { tenantId, taxpayerId: { not: null }, ...periodWhere(opts.period) },
         _count: { _all: true },
       }),
@@ -692,9 +705,17 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         approvedBank: 0,
       };
       const count = row._count?._all || 0;
-      if (row.status === 'APPROVED') current.approvedInvoice += count;
-      else if (row.invoiceKind === 'SATIS') current.pendingSale += count;
-      else current.pendingPurchase += count;
+      const isBank = String(row.documentType || '').toUpperCase().includes('BANKA');
+      if (row.status === 'APPROVED') {
+        if (isBank) current.approvedBank += count;
+        else current.approvedInvoice += count;
+      } else if (isBank) {
+        current.pendingBank += count;
+      } else if (row.invoiceKind === 'SATIS') {
+        current.pendingSale += count;
+      } else {
+        current.pendingPurchase += count;
+      }
       counters.set(taxpayerId, current);
     }
 
@@ -861,22 +882,24 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const taxpayerKey = input.taxpayerId || 'global';
     const active = input.active === undefined ? true : Boolean(input.active);
 
-    const existing = await (this.prisma as any).integrationConnection.findUnique({
-      where: { tenantId_provider: { tenantId, provider } },
-    });
-    if (!existing) throw new BadRequestException('Entegratör tanımlı değil. Önce kaydet.');
-
-    const config = (existing.config || {}) as any;
-    config.taxpayers = config.taxpayers || {};
-    config.taxpayers[taxpayerKey] = {
-      ...(config.taxpayers[taxpayerKey] || {}),
-      talimat: active,
-      talimatUpdatedAt: new Date().toISOString(),
-    };
-
-    await (this.prisma as any).integrationConnection.update({
-      where: { tenantId_provider: { tenantId, provider } },
-      data: { config },
+    // config.taxpayers oku-değiştir-yaz: farklı mükelleflerin eşzamanlı düzenlemesinde kayıp güncelleme
+    //   olmaması için transaction içinde config'i TAZE oku, yalnız bu mükellefin alanını birleştir, yaz.
+    await (this.prisma as any).$transaction(async (tx: any) => {
+      const existing = await tx.integrationConnection.findUnique({
+        where: { tenantId_provider: { tenantId, provider } },
+      });
+      if (!existing) throw new BadRequestException('Entegratör tanımlı değil. Önce kaydet.');
+      const config = (existing.config || {}) as any;
+      config.taxpayers = config.taxpayers || {};
+      config.taxpayers[taxpayerKey] = {
+        ...(config.taxpayers[taxpayerKey] || {}),
+        talimat: active,
+        talimatUpdatedAt: new Date().toISOString(),
+      };
+      await tx.integrationConnection.update({
+        where: { tenantId_provider: { tenantId, provider } },
+        data: { config },
+      });
     });
     return { ok: true, provider, taxpayerId: input.taxpayerId || null, talimat: active };
   }
@@ -893,28 +916,31 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     if (!provider) throw new BadRequestException('Sağlayıcı belirtilmedi');
     const taxpayerKey = input.taxpayerId || 'global';
 
-    const existing = await (this.prisma as any).integrationConnection.findUnique({
-      where: { tenantId_provider: { tenantId, provider } },
+    // Eşzamanlı başka mükellef düzenlemesini ezmemek için transaction içinde TAZE oku → sil → yaz.
+    return await (this.prisma as any).$transaction(async (tx: any) => {
+      const existing = await tx.integrationConnection.findUnique({
+        where: { tenantId_provider: { tenantId, provider } },
+      });
+      if (!existing) return { ok: true, deleted: false };
+
+      const config = (existing.config || {}) as any;
+      if (config.taxpayers && config.taxpayers[taxpayerKey]) {
+        delete config.taxpayers[taxpayerKey];
+      }
+
+      const remaining = Object.keys(config.taxpayers || {});
+      if (remaining.length === 0) {
+        await tx.integrationConnection.delete({
+          where: { tenantId_provider: { tenantId, provider } },
+        });
+      } else {
+        await tx.integrationConnection.update({
+          where: { tenantId_provider: { tenantId, provider } },
+          data: { config },
+        });
+      }
+      return { ok: true, deleted: true };
     });
-    if (!existing) return { ok: true, deleted: false };
-
-    const config = (existing.config || {}) as any;
-    if (config.taxpayers && config.taxpayers[taxpayerKey]) {
-      delete config.taxpayers[taxpayerKey];
-    }
-
-    const remaining = Object.keys(config.taxpayers || {});
-    if (remaining.length === 0) {
-      await (this.prisma as any).integrationConnection.delete({
-        where: { tenantId_provider: { tenantId, provider } },
-      });
-    } else {
-      await (this.prisma as any).integrationConnection.update({
-        where: { tenantId_provider: { tenantId, provider } },
-        data: { config },
-      });
-    }
-    return { ok: true, deleted: true };
   }
 
   /**
@@ -1033,6 +1059,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       select: { status: true, lines: { select: { accountCode: true, kaynak: true } } },
       take: 5000,
     });
+    // Tavan dolduysa sonuç SESSİZCE eksik olur → en azından uyar (belge sayısı 5000'i aşan dönem/mükellef).
+    if (docs.length >= 5000) {
+      this.logger.warn(`isabetOzeti: 5000 belge tavanına ulaşıldı (tenant=${tenantId}${opts.taxpayerId ? ' tp=' + opts.taxpayerId : ''}${opts.period ? ' donem=' + opts.period : ''}) — oran eksik hesaplanmış olabilir.`);
+    }
     let dokunmasiz = 0, kullaniciDuzeltmeli = 0, boslukVar = 0;
     for (const d of docs) {
       const lines: any[] = Array.isArray(d.lines) ? d.lines : [];
@@ -1940,24 +1970,33 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         }
       : currentGlobal;
 
-    const config = {
-      version: 1,
-      provider,
-      label: String(input.label || currentConfig.label || catalog.label).trim(),
-      kind: catalog.kind,
-      taxpayers: {
-        ...(currentConfig.taxpayers || {}),
-        ...(provider === 'PARASUT' && (apiKey || apiSecret) ? { global: nextGlobal } : {}),
-        [taxpayerKey]: nextTaxpayer,
-      },
-      updatedAt: new Date().toISOString(),
-      updatedBy: updatedBy || null,
-    };
-
-    await (this.prisma as any).integrationConnection.upsert({
-      where: { tenantId_provider: { tenantId, provider } },
-      update: { config, isActive: input.isActive !== false },
-      create: { tenantId, provider, config, isActive: input.isActive !== false },
+    // Eşzamanlı iki mükellef kaydı config.taxpayers'ı oku-değiştir-yaz yaparken birbirini eziyordu.
+    //   Transaction içinde config'i TAZE oku, DİĞER mükelleflerin taxpayers girdilerini koruyarak
+    //   yalnız bu mükellefin (ve gerekiyorsa global) girdisini birleştir, sonra yaz.
+    await (this.prisma as any).$transaction(async (tx: any) => {
+      const fresh = await tx.integrationConnection.findUnique({
+        where: { tenantId_provider: { tenantId, provider } },
+        select: { config: true },
+      });
+      const freshConfig = ((fresh?.config || {}) as any) || {};
+      const config = {
+        version: 1,
+        provider,
+        label: String(input.label || freshConfig.label || currentConfig.label || catalog.label).trim(),
+        kind: catalog.kind,
+        taxpayers: {
+          ...(freshConfig.taxpayers || {}),
+          ...(provider === 'PARASUT' && (apiKey || apiSecret) ? { global: nextGlobal } : {}),
+          [taxpayerKey]: nextTaxpayer,
+        },
+        updatedAt: new Date().toISOString(),
+        updatedBy: updatedBy || null,
+      };
+      await tx.integrationConnection.upsert({
+        where: { tenantId_provider: { tenantId, provider } },
+        update: { config, isActive: input.isActive !== false },
+        create: { tenantId, provider, config, isActive: input.isActive !== false },
+      });
     });
 
     const [saved] = await this.listIntegrations(tenantId, { taxpayerId: input.taxpayerId || null });
@@ -2537,23 +2576,42 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         creditBalance: new Prisma.Decimal(Number(r.alacakBakiye || 0).toFixed(2)),
       }));
 
-    const snapshot = await (this.prisma as any).lucaAccountPlanSnapshot.create({
-      data: {
-        tenantId: params.tenantId,
-        taxpayerId: params.taxpayerId,
-        sourceJobId: params.jobId || null,
-        status: 'READY',
-        accountCount: rows.length,
-        createdBy: params.createdBy || null,
-      },
-      select: { id: true },
-    });
-    if (rows.length) {
-      await (this.prisma as any).lucaAccountPlanLine.createMany({
-        data: rows.map((r) => ({ ...r, snapshotId: snapshot.id })),
+    // Boş plan → READY YAZMA. Aksi halde "hazır ama 0 satır" snapshot getPlanCodeSet'te seçilip
+    //   bir daha çekilmez; kodlar hiç eşleşmez. status='EMPTY' (READY dışı) → sorgular seçmez.
+    if (!rows.length) {
+      const empty = await (this.prisma as any).lucaAccountPlanSnapshot.create({
+        data: {
+          tenantId: params.tenantId,
+          taxpayerId: params.taxpayerId,
+          sourceJobId: params.jobId || null,
+          status: 'EMPTY',
+          accountCount: 0,
+          createdBy: params.createdBy || null,
+        },
+        select: { id: true },
       });
-      await this.rematchPendingDocumentsWithAccountPlan(params.tenantId, params.taxpayerId, snapshot.id);
+      return { snapshotId: empty.id, accountCount: 0 };
     }
+    // Satırları snapshot ile TEK transaction'da yaz: createMany patlarsa snapshot da geri alınır →
+    //   yarım/0-satırlı READY plan kalmaz (eskiden READY snapshot önce, satırlar sonra yazılıyordu).
+    const snapshot = await (this.prisma as any).$transaction(async (tx: any) => {
+      const snap = await tx.lucaAccountPlanSnapshot.create({
+        data: {
+          tenantId: params.tenantId,
+          taxpayerId: params.taxpayerId,
+          sourceJobId: params.jobId || null,
+          status: 'READY',
+          accountCount: rows.length,
+          createdBy: params.createdBy || null,
+        },
+        select: { id: true },
+      });
+      await tx.lucaAccountPlanLine.createMany({
+        data: rows.map((r) => ({ ...r, snapshotId: snap.id })),
+      });
+      return snap;
+    });
+    await this.rematchPendingDocumentsWithAccountPlan(params.tenantId, params.taxpayerId, snapshot.id);
     return { snapshotId: snapshot.id, accountCount: rows.length };
   }
 
@@ -2756,7 +2814,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       created.push(doc);
 
       if (isOcrSupported) {
-        this.enqueueUploadedDocumentOcr(tenantId, doc.id, file.buffer, file.originalname, opts.forceClaude);
+        this.enqueueUploadedDocumentOcr(tenantId, doc.id, file.buffer, file.originalname, opts.forceClaude, s3Key);
       }
     }
 
@@ -2773,8 +2831,18 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     buffer: Buffer,
     originalName: string,
     forceClaude?: boolean,
+    s3Key?: string,
   ) {
-    this.uploadOcrQueue.push({ tenantId, documentId, buffer, originalName, forceClaude });
+    const size = buffer?.length || 0;
+    // Buffer zaten depoya (s3Key) yazıldı. Bellek bütçesi varsa hızlı yol (buffer'ı kuyrukta tut);
+    //   tavan aşılırsa buffer'ı TUTMA → iş sırasında depodan lazy oku (OOM koruması).
+    if (s3Key && this.uploadOcrBufferedBytes + size > this.uploadOcrBufferBudget) {
+      this.logger.warn(`OCR kuyruğu bellek tavanı (${Math.round(this.uploadOcrBufferBudget / 1e6)}MB) aşıldı → ${documentId} buffer'ı bellekte tutulmuyor, depodan okunacak`);
+      this.uploadOcrQueue.push({ tenantId, documentId, originalName, forceClaude, s3Key });
+    } else {
+      this.uploadOcrBufferedBytes += size;
+      this.uploadOcrQueue.push({ tenantId, documentId, buffer, bufferBytes: size, originalName, forceClaude, s3Key });
+    }
     this.drainUploadedOcrQueue();
   }
 
@@ -2798,15 +2866,18 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         : this.processUploadedDocumentOcr(
             job.tenantId,
             job.documentId,
-            job.buffer as Buffer,
+            job.buffer,
             String(job.originalName || ''),
             job.forceClaude,
+            job.s3Key,
           );
       void work
         .catch((e: any) => {
           this.logger.error(`Belge OCR arka plan islemi basarisiz (${job.documentId}): ${e?.message || e}`);
         })
         .finally(() => {
+          // Bu işin bellekte tuttuğu buffer bütçesini serbest bırak.
+          if (job.bufferBytes) this.uploadOcrBufferedBytes = Math.max(0, this.uploadOcrBufferedBytes - job.bufferBytes);
           this.uploadOcrActive = Math.max(0, this.uploadOcrActive - 1);
           if (job.documentId) this.uploadOcrActiveIds.delete(job.documentId);
           this.drainUploadedOcrQueue();
@@ -3050,10 +3121,14 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     });
     // ÖNCELİK: kullanıcının elle "AI ile oku" isteği kuyruğun ÖNÜNE (unshift) → arka plan
     // kurtarma (push, arkada) onu bekletmesin; seçtiğin mükellefin belgeleri hemen sıraya geçer.
-    for (const d of docs) {
+    const docIds = docs.map((d: any) => d.id);
+    if (docIds.length) {
+      // Döngü içi tek-tek updateMany yerine TEK toplu updateMany (N tur DB gidiş-gelişi → 1).
       await (this.prisma as any).invoiceAccountingDocument.updateMany({
-        where: { id: d.id, tenantId }, data: { ocrStatus: 'PENDING' },
+        where: { id: { in: docIds }, tenantId }, data: { ocrStatus: 'PENDING' },
       }).catch(() => {});
+    }
+    for (const d of docs) {
       this.uploadOcrQueue.unshift({ tenantId, documentId: d.id, kind: 'ai-read' });
     }
     this.drainUploadedOcrQueue();
@@ -3226,17 +3301,32 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   private async processUploadedDocumentOcr(
     tenantId: string,
     documentId: string,
-    buffer: Buffer,
+    buffer: Buffer | undefined,
     originalName: string,
     forceClaude?: boolean,
+    s3Key?: string,
   ) {
+    // Bellek tavanı aşıldığında buffer kuyrukta tutulmadı → depodan (s3Key ya da belge kaydı) oku.
+    let buf: Buffer | undefined = buffer;
+    if (!buf?.length) {
+      const key = s3Key
+        || (await (this.prisma as any).invoiceAccountingDocument.findFirst({ where: { id: documentId, tenantId }, select: { s3Key: true } }).catch(() => null))?.s3Key;
+      if (key) buf = await this.storage.getBuffer(key).catch(() => undefined as any);
+    }
+    if (!buf?.length) {
+      await (this.prisma as any).invoiceAccountingDocument.updateMany({
+        where: { id: documentId, tenantId },
+        data: { ocrStatus: 'FAILED', ocrRawText: 'Belge içeriği okunamadı (buffer/depo boş)' },
+      }).catch(() => {});
+      return;
+    }
     await (this.prisma as any).invoiceAccountingDocument.updateMany({
       where: { id: documentId, tenantId },
       data: { ocrStatus: 'IN_PROGRESS' },
     });
 
     try {
-      const ocrResult = await this.ocr.extractFromImage(buffer, originalName, { forceClaude });
+      const ocrResult = await this.ocr.extractFromImage(buf, originalName, { forceClaude });
       const existing = await (this.prisma as any).invoiceAccountingDocument.findFirst({
         where: { id: documentId, tenantId },
         select: {
@@ -3262,7 +3352,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const invoiceKind: 'ALIS' | 'SATIS' = documentType === 'Z_RAPORU' ? 'SATIS' : requestedKind;
       const isSale = invoiceKind === 'SATIS';
 
-      const imageHash = ocrResult.imageHash || existing.imageHash || this.ocr.computeImageHash(buffer);
+      const imageHash = ocrResult.imageHash || existing.imageHash || this.ocr.computeImageHash(buf);
       const duplicate = await this.findDuplicate(tenantId, {
         taxpayerId: existing.taxpayerId || null,
         belgeNo: ocrResult.belgeNo || null,
@@ -4170,7 +4260,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           try {
             const tumu = await (this.prisma as any).eFaturaInbox.findMany({
               where: { tenantId, taxpayerId: opts.taxpayerId, entegrator: cfg.provider, direction: inboxDirection },
-              select: { id: true, faturaNo: true, documentId: true, ublXmlRaw: true, syncedAt: true, rawJson: true },
+              select: { id: true, faturaNo: true, senderVkn: true, documentId: true, ublXmlRaw: true, syncedAt: true, rawJson: true },
             });
             const noGrup = new Map<string, any[]>();
             for (const satir of tumu) {
@@ -4178,9 +4268,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
               if (String((sraw as any).channel || '').toUpperCase() !== channel) continue;
               const no = String(satir.faturaNo || '').trim();
               if (!no) continue;
-              const liste = noGrup.get(no) || [];
+              // GRUP ANAHTARI = faturaNo + satıcı VKN. Yalnız faturaNo ile anahtarlanınca FARKLI
+              //   satıcıların aynı fatura numarasına sahip belgeleri tek grup sanılıp biri siliniyordu.
+              const svkn = String(satir.senderVkn || (sraw as any).senderVkn || '').replace(/\D/g, '');
+              const key = `${no}|${svkn}`;
+              const liste = noGrup.get(key) || [];
               liste.push(satir);
-              noGrup.set(no, liste);
+              noGrup.set(key, liste);
             }
             let silinen = 0;
             for (const [, grup] of noGrup) {
@@ -5037,7 +5131,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         .replace(/\bonload\s*=\s*(["'])[^"']*?print[^"']*?\1/gi, '');
       return {
         url: '',
-        inlineHtml: this.earsivRender.renderOriginalHtml(noPrintRaw, { autoPrint: false }),
+        // XSS: entegratör HTML'i sanitize edilir (script/on*/javascript: sökülür) — sonra render.
+        inlineHtml: this.earsivRender.renderOriginalHtml(this.sanitizePreviewHtml(noPrintRaw), { autoPrint: false }),
         mimeType: 'text/html',
         source: 'stored-html' as const,
       };
@@ -5203,9 +5298,24 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     return null;
   }
 
+  // Entegratörden gelen HTML önizlemeye girmeden önce AKTİF içeriği söker (derinlemesine savunma —
+  //   iframe frontend'de sandbox'lı olsa da backend de temizler). Görsel/stil (style, img data:) korunur.
+  private sanitizePreviewHtml(html: string): string {
+    return String(html || '')
+      // <script>...</script> ve tek satırlık <script .../>
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, '')
+      .replace(/<script\b[^>]*\/?>/gi, '')
+      // inline event handler'lar: onclick=".." onload='..' onerror=.. (tırnaklı/tırnaksız)
+      .replace(/\son[a-z0-9_-]+\s*=\s*"[^"]*"/gi, '')
+      .replace(/\son[a-z0-9_-]+\s*=\s*'[^']*'/gi, '')
+      .replace(/\son[a-z0-9_-]+\s*=\s*[^\s>]+/gi, '')
+      // javascript: URI'lerini etkisizleştir (href/src vb.)
+      .replace(/javascript\s*:/gi, 'void:');
+  }
+
   private inlinePreviewHtml(raw: string, doc?: any) {
     const source = String(raw || '');
-    if (/<html[\s>]/i.test(source)) return source;
+    if (/<html[\s>]/i.test(source)) return this.sanitizePreviewHtml(source);
 
     const escEarly = (v: string) => String(v || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     // XML/UBL degilse (or. hata mesaji): duz mesaj goster, bos sablon degil
@@ -5269,7 +5379,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         }</tbody></table>`
       : kb.length
         ? `<table><thead><tr><th>KDV Oranı</th><th class="num">Matrah</th><th class="num">KDV</th></tr></thead><tbody>${
-            kb.map((b: any) => `<tr><td>%${esc(String(b.oran ?? 0))}</td><td class="num">${esc(fmtTL(b.matrah))}</td><td class="num">${esc(fmtTL(b.tutar))}</td></tr>`).join('')
+            kb.map((b: any) => `<tr><td>%${esc(String(b.oran ?? b.rate ?? 0))}</td><td class="num">${esc(fmtTL(b.matrah ?? b.base))}</td><td class="num">${esc(fmtTL(b.tutar ?? b.amount))}</td></tr>`).join('')
           }</tbody></table>`
         : `<div class="note">Belgenin orijinal görüntüsü entegratörden gelmedi. Aşağıda kayıttaki özet bilgiler var; tutarları "AI ile oku" ile doğrulayabilirsin.</div>`;
 
@@ -5340,17 +5450,24 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         },
       };
     }
-    const duplicate = await this.findDuplicate(tenantId, {
-      taxpayerId: body.taxpayerId,
-      belgeNo: body.belgeNo,
-      sellerVkn: body.sellerVkn,
-      buyerVkn: body.buyerVkn,
-      totalAmount: body.totalAmount,
-    }, id);
-    data.duplicateOfId = duplicate?.duplicateOfId || null;
-    data.duplicateReason = duplicate?.duplicateReason || null;
-    data.duplicateSeverity = duplicate?.duplicateSeverity || null;
-    if (duplicate && data.status === 'READY') data.status = 'NEEDS_REVIEW';
+    // MÜKERRER İŞARETİNİ YALNIZ mükerrer-alanları gelince yeniden hesapla. Kullanıcı sadece satırları
+    //   (lines) düzenlediğinde belgeNo/VKN body'de gelmez → eskiden duplicate null dönüp mükerrer işareti
+    //   SESSİZCE siliniyordu. Bu alanlar body'de yoksa mevcut işareti KORU (data'ya hiç yazma).
+    const dedupFieldsPresent = ['belgeNo', 'sellerVkn', 'buyerVkn', 'totalAmount', 'taxpayerId']
+      .some((k) => k in body);
+    if (dedupFieldsPresent) {
+      const duplicate = await this.findDuplicate(tenantId, {
+        taxpayerId: 'taxpayerId' in body ? body.taxpayerId : (before as any).taxpayerId,
+        belgeNo: 'belgeNo' in body ? body.belgeNo : (before as any).belgeNo,
+        sellerVkn: 'sellerVkn' in body ? body.sellerVkn : (before as any).sellerVkn,
+        buyerVkn: 'buyerVkn' in body ? body.buyerVkn : (before as any).buyerVkn,
+        totalAmount: 'totalAmount' in body ? body.totalAmount : (before as any).totalAmount,
+      }, id);
+      data.duplicateOfId = duplicate?.duplicateOfId || null;
+      data.duplicateReason = duplicate?.duplicateReason || null;
+      data.duplicateSeverity = duplicate?.duplicateSeverity || null;
+      if (duplicate && data.status === 'READY') data.status = 'NEEDS_REVIEW';
+    }
 
     await (this.prisma as any).invoiceAccountingDocument.update({
       where: { id },
@@ -5957,8 +6074,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         },
       });
 
-      await (this.prisma as any).invoiceAccountingDocument.updateMany({
-        where: { id: { in: g.docs.map((d: any) => d.id) } },
+      // ÇİFT-TIK KİLİDİ: Belgeleri ancak HÂLÂ aktarıma uygunsalar (QUEUED/FAILED/NOT_STARTED) atomik
+      //   olarak bu job'a bağla. Eşzamanlı ikinci tık aynı belgeleri POSTING'de bulur → count 0 döner,
+      //   o job boşa üretilmiştir (silinir). Böylece aynı fatura için iki job üretilmez.
+      const claim = await (this.prisma as any).invoiceAccountingDocument.updateMany({
+        where: { id: { in: g.docs.map((d: any) => d.id) }, lucaStatus: { in: ['QUEUED', 'FAILED', 'NOT_STARTED'] } },
         data: {
           lucaStatus: 'POSTING',
           lucaJobId: job.id,
@@ -5966,8 +6086,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           lucaAttemptCount: { increment: 1 },
         },
       });
+      if (!claim || claim.count === 0) {
+        // Bu grubun tüm belgeleri başka bir eşzamanlı aktarımca kapılmış → boş job'u geri al.
+        await (this.prisma as any).lucaFetchJob.delete({ where: { id: job.id } }).catch(() => {});
+        continue;
+      }
 
-      jobs.push({ jobId: job.id, kind: g.kind, period: dominantPeriod, documentCount: g.docs.length });
+      jobs.push({ jobId: job.id, kind: g.kind, period: dominantPeriod, documentCount: claim.count });
     }
 
     return {
@@ -6000,6 +6125,14 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       });
     }
 
+    // Belgenin lucaStatus'unu FAILED'a çek + eski job bağını kopar. POSTING'de takılı kalmış belge
+    //   batchPostToLuca filtresine (QUEUED/FAILED/NOT_STARTED) girmezdi → "aktarılabilir belge yok"
+    //   hatası veriyordu. Sıfırlayınca tekrar aktarıma girer.
+    await (this.prisma as any).invoiceAccountingDocument.updateMany({
+      where: { id, tenantId },
+      data: { lucaStatus: 'FAILED', lucaJobId: null, lucaErrorMessage: null },
+    }).catch(() => {});
+
     return this.batchPostToLuca(
       tenantId,
       { taxpayerId: doc.taxpayerId, documentIds: [id] },
@@ -6009,6 +6142,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
 
   async remove(tenantId: string, id: string, userId?: string) {
     const doc = await this.get(tenantId, id);
+    // Luca'ya aktarılmış/aktarılıyor belge silinemez (reopen ile aynı koruma) — aksi halde Luca'da
+    //   fiş kalır, portalda kayıt gider → mutabakat bozulur. Önce geri al, sonra sil.
+    if (['POSTED', 'POSTING'].includes(String((doc as any).lucaStatus || ''))) {
+      throw new BadRequestException('Luca\'ya aktarılmış belge silinemez, önce geri alın');
+    }
     // Faz C: denetim izi — silinen belgenin künyesini sakla (kim/ne sildi).
     await this.logAudit(tenantId, userId, 'DELETE', id,
       { belgeNo: doc.belgeNo, invoiceKind: doc.invoiceKind, totalAmount: String(doc.totalAmount ?? ''), status: doc.status }, null);
@@ -6073,6 +6211,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   }
 
   private providerCredentialProblem(cfg: RuntimeIntegrationConfig): string | null {
+    // Mükellef-özel isActive:false → resolveRuntimeConfig note'u '__inactive__' yapar. Bunu PASİF say
+    //   (kimlik bilgisi tam olsa bile çekim yapılmasın) — eskiden yalnız not yazılıyor, kimse bakmıyordu.
+    if (cfg.note === '__inactive__') return 'Bu mükellef için entegratör pasif (kapatılmış)';
     if (cfg.provider === 'PARASUT') {
       const missing: string[] = [];
       if (!cfg.apiKey) missing.push('client_id');
@@ -6991,6 +7132,72 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       }
     }
     this.logger.log(`TURMOB list ${channel}: url=${usedListUrl} method=${usedMethod} profile=${usedProfile} ct=${selectedCt.slice(0, 40)} len=${selectedRaw.length} rows=${rows.length} live=${liveRows.length}`);
+
+    // SAYFALAMA: TÜRMOB tek sayfada en çok `length` (≤1000) satır döndürür. Toplam bundan büyükse
+    //   (1000+ faturalı mükellef) ÜST faturalar sessizce inmiyordu. Kazanan kombinasyonla start'ı artırıp
+    //   sonraki sayfaları çek ve birleştir. Üst sınır 20 sayfa (güvenlik). Yalnız combo başarılı + sunucu
+    //   daha fazla toplam bildiriyorsa çalışır (küçük mükellefte hiç tetiklenmez).
+    const pageLen = Number(baseListParams.length) || 0;
+    const bildirilenToplam = Number(
+      selectedData?.recordsFiltered ?? selectedData?.recordsTotal
+      ?? selectedData?.RecordsFiltered ?? selectedData?.RecordsTotal
+      ?? selectedData?.iTotalDisplayRecords ?? selectedData?.iTotalRecords ?? NaN,
+    );
+    if (rows.length > 0 && pageLen > 0 && Number.isFinite(bildirilenToplam) && bildirilenToplam > rows.length && rows.length >= pageLen) {
+      const rowKey = (r: any): string => this.providerKey(
+        this.turmobField(r, ['Ettn', 'ETTN', 'Uuid', 'UUID', 'Guid', 'GUID'])
+        || this.turmobField(r, ['IdFaturaGelen', 'IdFaturaGiden', 'IdFaturaArsiv', 'IdArsiv', 'InvoiceId', 'Id'])
+        || this.turmobField(r, ['FaturaNo', 'BelgeNo', 'InvoiceNo', 'InvoiceNumber']),
+      ) || JSON.stringify(r).slice(0, 200);
+      const seen = new Set(rows.map(rowKey));
+      const winProfile = profiles.find((p) => p.name === usedProfile) || profiles[0];
+      let start = rows.length;
+      let sayfa = 1;
+      const MAX_SAYFA = 20;
+      while (start < bildirilenToplam && sayfa < MAX_SAYFA) {
+        const pageParams: any = { ...baseListParams, ...(winProfile?.params || {}), start: String(start) };
+        if (listPageToken) pageParams.__RequestVerificationToken = listPageToken;
+        const pageBody = new URLSearchParams(pageParams).toString();
+        const pageUrl = usedMethod === 'GET' ? `${BASE}${usedListUrl}?${pageBody}` : BASE + usedListUrl;
+        let pres: any;
+        try {
+          pres = await fetch(pageUrl, {
+            method: usedMethod,
+            headers: {
+              ...(usedMethod === 'POST' ? { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' } : {}),
+              Accept: 'application/json, text/javascript, */*; q=0.01',
+              Origin: BASE,
+              Referer: BASE + refererPath,
+              'X-Requested-With': 'XMLHttpRequest',
+              ...(listPageToken ? { RequestVerificationToken: listPageToken, __RequestVerificationToken: listPageToken } : {}),
+              Cookie: cookie,
+              'User-Agent': 'MorenPortal/1.0',
+            },
+            body: usedMethod === 'POST' ? pageBody : undefined,
+            signal: (AbortSignal as any).timeout ? (AbortSignal as any).timeout(8000) : undefined,
+          });
+        } catch { break; }
+        const praw = await pres.text().catch(() => '');
+        let pdata: any = null;
+        try { pdata = JSON.parse(praw); } catch { break; }
+        const prows = this.turmobRowsFromListResponse(pdata);
+        if (!prows.length) break;
+        let eklenen = 0;
+        for (const pr of prows) {
+          const k = rowKey(pr);
+          if (seen.has(k)) continue;
+          seen.add(k);
+          rows.push(pr);
+          eklenen++;
+        }
+        start += prows.length;
+        sayfa++;
+        if (eklenen === 0) break; // yeni satır gelmedi → dur (sonsuz döngü koruması)
+      }
+      liveRows = rows.filter((r) => !this.turmobIsCancelled(r) && this.turmobRowInPeriod(r, opts.period));
+      if (sayfa >= MAX_SAYFA) this.logger.warn(`TURMOB ${channel}: sayfalama ${MAX_SAYFA} sayfa sınırına ulaştı (${rows.length}/${bildirilenToplam}) — bazı üst faturalar hâlâ inmemiş olabilir.`);
+      this.logger.log(`TURMOB ${channel}: sayfalama ${rows.length}/${bildirilenToplam} (${sayfa} sayfa)`);
+    }
     // EKSIK YANIT (throttle): TURMOB toplam-kayit > aldigimiz satir → yanit kesik gelmis. Kisa bekleyip
     //   BIR KEZ daha dene (yeni login + sorgu); daha fazla satir gelirse onu dondur. Boylece tek sorgu da
     //   portaldaki tam sayiyi (orn 43) getirir, "39 geldi" eksikligi giderilir. (en fazla 2 ek deneme)
@@ -7251,8 +7458,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     let usedMethod = 'POST';
     let directPayloads: ProviderInvoicePayload[] = [];
     const profiles = this.turmobDateProfiles(opts.period);
+    let done = false; // erken çıkış: canlı satırlar sunucunun bildirdiği toplama ulaşınca kalan kombinasyonları deneme
     for (const listUrl of listUrls) {
+      if (done) break;
       for (const profile of profiles) {
+        if (done) break;
         const listBody = new URLSearchParams(
           listPageToken
             ? { ...baseListParams, ...profile.params, __RequestVerificationToken: listPageToken }
@@ -7260,22 +7470,28 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         ).toString();
         for (const method of ['POST', 'GET'] as const) {
           const requestUrl = method === 'GET' ? `${BASE}${listUrl}?${listBody}` : BASE + listUrl;
-          const res = await fetch(requestUrl, {
-            method,
-            headers: {
-              ...(method === 'POST' ? { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' } : {}),
-              Accept: 'application/json, text/javascript, */*; q=0.01',
-              Origin: BASE,
-              Referer: BASE + refererPath,
-              'X-Requested-With': 'XMLHttpRequest',
-              ...(listPageToken ? { RequestVerificationToken: listPageToken, __RequestVerificationToken: listPageToken } : {}),
-              Cookie: cookie,
-              'User-Agent': 'MorenPortal/1.0',
-            },
-            body: method === 'POST' ? listBody : undefined,
-          });
+          let res: any;
+          try {
+            res = await fetch(requestUrl, {
+              method,
+              headers: {
+                ...(method === 'POST' ? { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' } : {}),
+                Accept: 'application/json, text/javascript, */*; q=0.01',
+                Origin: BASE,
+                Referer: BASE + refererPath,
+                'X-Requested-With': 'XMLHttpRequest',
+                ...(listPageToken ? { RequestVerificationToken: listPageToken, __RequestVerificationToken: listPageToken } : {}),
+                Cookie: cookie,
+                'User-Agent': 'MorenPortal/1.0',
+              },
+              body: method === 'POST' ? listBody : undefined,
+              // TEK İSTEK TAVANI (8sn): portal yavaşladığında kombinasyon matrisi sınırsız beklemesin
+              //   (fetchTurmobPortalRows'daki ile aynı korumanın ikiz döngüye taşınması).
+              signal: (AbortSignal as any).timeout ? (AbortSignal as any).timeout(8000) : undefined,
+            });
+          } catch { continue; }
           const candidateCt = res.headers.get('content-type') || '';
-          const candidateRaw = await res.text();
+          const candidateRaw = await res.text().catch(() => '');
           let candidateData: any = null;
           try { candidateData = JSON.parse(candidateRaw); } catch { /* HTML = muhtemelen login redirect */ }
           const candidateRows = this.turmobRowsFromListResponse(candidateData);
@@ -7296,56 +7512,21 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             usedMethod = method;
             directPayloads = candidateDirectPayloads;
           }
+          // Satır geldi ve sunucunun bildirdiği toplam kadar → yeter, kalan kombinasyonları deneme.
+          if (candidateLiveRows.length > 0) {
+            const bildirilen = Number(candidateData?.recordsFiltered ?? candidateData?.RecordsFiltered ?? candidateData?.recordsTotal ?? candidateData?.RecordsTotal ?? NaN);
+            if (!Number.isFinite(bildirilen) || candidateRows.length >= bildirilen) { done = true; break; }
+          }
         }
       }
     }
     const first = raw.trimStart().slice(0, 1); // '<' = HTML/login redirect (cookie yetersiz), '{'/'[' = JSON (parametre/dönem)
     // TEŞHİS: first='<' → oturum liste için yetersiz; '{' ama rows=0 → parametre/dönem filtresi gerekli.
     this.logger.log(`TURMOB portal ${channel}: url=${usedListUrl} method=${usedMethod} profile=${usedProfile} ct=${ct.slice(0, 40)} len=${raw.length} first=${first} rows=${rows.length} topKeys=${JSON.stringify(Object.keys(data || {})).slice(0, 150)} rowKeys=${JSON.stringify(Object.keys(rows[0] || {})).slice(0, 250)}`);
-    // Iptal filtresi sadece alan DEGERLERINE bakmali. TURMOB satirinda
-    // "IptalItirazDurumu" gibi alan adlari her normal faturada da var; tum
-    // JSON'a regex atarsak onayli satirlar da iptal sayilip hic indirilmiyor.
-    const statusValueKeys = [
-      'Durum',
-      'durum',
-      'Status',
-      'status',
-      'DurumAdi',
-      'DurumAd',
-      'DurumAciklama',
-      'IptalItirazDurumu',
-      'IptalDurumu',
-      'ItirazDurumu',
-      'RedDurumu',
-      'OnayDurumu',
-      'OnayJobDurumu',
-      'Sonuc',
-      'Cevap',
-    ];
-    const isCancelled = (r: any) => {
-      const values: string[] = [];
-      const visit = (value: any) => {
-        if (!value || typeof value !== 'object') return;
-        if (Array.isArray(value)) {
-          value.forEach(visit);
-          return;
-        }
-        for (const [key, nested] of Object.entries(value)) {
-          if (statusValueKeys.some((candidate) => candidate.toLowerCase() === key.toLowerCase())) {
-            if (typeof nested === 'string' || typeof nested === 'number' || typeof nested === 'boolean') {
-              values.push(String(nested));
-            }
-          }
-          visit(nested);
-        }
-      };
-      visit(r);
-      const text = values.join(' ').toLowerCase();
-      if (!text) return false;
-      if (/\byok\b|false|hayir|hayır|onaylandi|onaylandı|alici kabul etti|gonderildi|gönderildi|otomatik/.test(text)) return false;
-      return /iptal|itiraz|reddedil|red edildi|cancel/.test(text);
-    };
-    const liveAll = rows.filter((r) => !isCancelled(r) && this.turmobRowInPeriod(r, opts.period));
+    // İptal filtresi ALAN-BAZLI olmalı (sınıftaki turmobIsCancelled). Eskiden yerel isCancelled tüm
+    //   durum alanlarını tek metne birleştirip bakıyordu → "önce onaylandı SONRA iptal edilen" fatura
+    //   'onaylandı' kelimesiyle temiz sanılıyordu. turmobIsCancelled her alanı kendi içinde değerlendirir.
+    const liveAll = rows.filter((r) => !this.turmobIsCancelled(r) && this.turmobRowInPeriod(r, opts.period));
     const targetRows = Array.isArray(opts.targetRows) ? opts.targetRows : [];
     const targetKeys = new Set<string>();
     const addTargetKey = (value: any) => {
@@ -8360,7 +8541,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   }
 
   private tagText(xml: string, tag: string) {
-    const re = new RegExp(`<[^:>]*(?::)?${tag}\\b[^>]*>([\\s\\S]*?)<\\/[^:>]*(?::)?${tag}>`, 'i');
+    // Etiket adı '<' ya da namespace ön-ekinden (':') HEMEN sonra gelmeli. Eski [^:>]* deseni araya harf
+    //   girmesine izin verdiği için 'ID' araması UBLVersionID/CustomizationID/ProfileID ile eşleşip belge
+    //   no'yu yanlış okuyordu. Artık yalnız <ID> veya <ns:ID> eşleşir.
+    const re = new RegExp(`<(?:[a-zA-Z][\\w.-]*:)?${tag}\\b[^>]*>([\\s\\S]*?)<\\/(?:[a-zA-Z][\\w.-]*:)?${tag}>`, 'i');
     return (String(xml || '').match(re)?.[1] || '').replace(/<[^>]+>/g, '').trim();
   }
 
@@ -9975,7 +10159,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   ki cari gerçek karşı taraf olsun; sonraki rematch cariyi doğru hesaba bağlar. APPROVED'a dokunma.
     try {
       const tpv = await (this.prisma as any).taxpayer.findFirst({ where: { id: taxpayerId, tenantId }, select: { taxNumber: true } });
-      const ownVkn = String(tpv?.taxNumber || '').replace(/\D/g, '');
+      // taxNumber ŞİFRELİ tutulabilir → komşu metodlarla birebir aynı desen: önce tryDecrypt.
+      //   Şifreli VKN'yi ham okuyunca eşleşme olmuyor, retro-cari düzeltmesi çalışmıyordu.
+      const ownVkn = String(tryDecrypt(tpv?.taxNumber) || tpv?.taxNumber || '').replace(/\D/g, '');
       if (ownVkn) {
         const bad = await (this.prisma as any).invoiceAccountingDocument.findMany({
           where: { tenantId, taxpayerId, invoiceKind: 'ALIS', sellerVkn: ownVkn, status: { in: ['READY', 'NEEDS_REVIEW', 'DRAFT'] } },
@@ -10203,6 +10389,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       take: 1000,
     });
     if (!docs.length) return 0;
+    // Öğrenilen kod, plan varsa plana karşı doğrulanır (plansız mükellefte serbest — sıfır risk).
+    const planCodes = await this.getPlanCodeSet(tenantId, taxpayerId);
     // (vkn|rate) → öğrenilmiş kod önbelleği. Her matrah satırı KENDİ oranına göre kodlanır.
     const cache = new Map<string, string | null>();
     let applied = 0;
@@ -10219,6 +10407,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         }
         if (learned && !this.learnedMatrahCompatibleWithContent(learned, String((doc.ocrData as any)?.matrahKategori || ''), String((doc.ocrData as any)?.giderTuru || ''), String((doc.ocrData as any)?.matrahKategori || '').toLowerCase().trim() === 'demirbas')) continue;
         if (!learned || String(l.accountCode || '').trim() === learned) continue;
+        if (planCodes && !planCodes.has(learned)) continue; // öğrenilen kod planda yok → uygulama (plan varsa doğrula)
         await (this.prisma as any).invoiceAccountingLine.update({
           where: { id: l.id },
           data: { accountCode: learned, kaynak: 'HAFIZA' },
@@ -10245,6 +10434,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     if (!taxpayerId) throw new BadRequestException('Mükellef seçilmeli');
     if (!vendorVkn) throw new BadRequestException('Satıcı VKN/TCKN gerekli');
     if (!/^\d/.test(accountCode)) throw new BadRequestException('Geçerli bir hesap kodu girin (rakamla başlamalı)');
+    // Hesap kodu mükellefin hesap planına karşı DOĞRULANIR — plan varsa ve kod planda yoksa öğretme
+    //   reddedilir (yalnız "rakamla başlıyor" yeterli değil; olmayan koda cari sabitlenmesin).
+    const planCodes = await this.getPlanCodeSet(tenantId, taxpayerId);
+    if (planCodes && !planCodes.has(accountCode)) {
+      throw new BadRequestException(`Hesap kodu (${accountCode}) mükellefin hesap planında yok — önce Luca'dan güncel planı çekin ya da plandaki geçerli bir kodu girin.`);
+    }
     await this.vendorMemory.recordDecision({
       tenantId,
       firmaKimlikNo: vendorVkn,

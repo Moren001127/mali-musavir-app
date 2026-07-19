@@ -21,6 +21,20 @@ import { NOTIFICATION_TYPES } from '../notifications/notification-types';
 export class FaturaMuhasebelestirmeCron {
   private readonly logger = new Logger(FaturaMuhasebelestirmeCron.name);
   private running = false;
+  /** Tek çağrı için üst süre sınırı — asılan bir entegratör çağrısı tüm gece akışını kilitlemesin (10 dk). */
+  private static readonly OP_TIMEOUT_MS = 10 * 60 * 1000;
+
+  /** Bir promise'i üst süre ile sar; sürede bitmezse reddet (sonsuz askıyı önler, süreyi kısaltmaz). */
+  private withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+    let timer: NodeJS.Timeout;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new Error(`zaman aşımı (${label}, ${Math.round(ms / 60000)} dk)`)),
+        ms,
+      );
+    });
+    return Promise.race([p, timeout]).finally(() => clearTimeout(timer)) as Promise<T>;
+  }
 
   constructor(
     private readonly prisma: PrismaService,
@@ -66,8 +80,16 @@ export class FaturaMuhasebelestirmeCron {
       // Yeni adapter tabanlı inbox sync (efatura_inbox tablosuna yazar)
       let syncFailed = 0;
       try {
-        await this.eFaturaSyncService.syncAll(tenant.id, { direction: 'IN' });
-        await this.eFaturaSyncService.syncAll(tenant.id, { direction: 'OUT' });
+        await this.withTimeout(
+          this.eFaturaSyncService.syncAll(tenant.id, { direction: 'IN' }),
+          FaturaMuhasebelestirmeCron.OP_TIMEOUT_MS,
+          `sync IN ${tenant.id}`,
+        );
+        await this.withTimeout(
+          this.eFaturaSyncService.syncAll(tenant.id, { direction: 'OUT' }),
+          FaturaMuhasebelestirmeCron.OP_TIMEOUT_MS,
+          `sync OUT ${tenant.id}`,
+        );
       } catch (err: any) {
         syncFailed = 1;
         this.logger.error(`[Tenant ${tenant.id}] EFatura adapter sync hata: ${err?.message}`);
@@ -152,16 +174,22 @@ export class FaturaMuhasebelestirmeCron {
       for (const item of plan) {
         for (const direction of ['ALIS', 'SATIS'] as const) {
           try {
-            await this.service.fetchConfiguredIntegrations(
-              tenantId,
-              {
-                taxpayerId: item.taxpayerId,
-                providers: [item.provider],
-                direction,
-                donem,
-                limit: 500,
-              },
-              'scheduler',
+            // Tek entegratör çağrısı asılırsa timeout ile kesilir; catch bloğu bunu 'failed' sayıp
+            // döngüye devam eder — gece akışı bir mükellefte sonsuza kilitlenmesin.
+            await this.withTimeout(
+              this.service.fetchConfiguredIntegrations(
+                tenantId,
+                {
+                  taxpayerId: item.taxpayerId,
+                  providers: [item.provider],
+                  direction,
+                  donem,
+                  limit: 500,
+                },
+                'scheduler',
+              ),
+              FaturaMuhasebelestirmeCron.OP_TIMEOUT_MS,
+              `${item.provider}/${item.taxpayerId}/${direction}/${donem}`,
             );
             if (direction === 'ALIS') alisOk++;
             else satisOk++;
