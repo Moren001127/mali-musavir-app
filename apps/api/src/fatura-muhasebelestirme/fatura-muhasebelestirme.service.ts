@@ -5131,8 +5131,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         .replace(/\bonload\s*=\s*(["'])[^"']*?print[^"']*?\1/gi, '');
       return {
         url: '',
-        // XSS: entegratör HTML'i sanitize edilir (script/on*/javascript: sökülür) — sonra render.
-        inlineHtml: this.earsivRender.renderOriginalHtml(this.sanitizePreviewHtml(noPrintRaw), { autoPrint: false }),
+        inlineHtml: this.earsivRender.renderOriginalHtml(noPrintRaw, { autoPrint: false }),
         mimeType: 'text/html',
         source: 'stored-html' as const,
       };
@@ -5300,22 +5299,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
 
   // Entegratörden gelen HTML önizlemeye girmeden önce AKTİF içeriği söker (derinlemesine savunma —
   //   iframe frontend'de sandbox'lı olsa da backend de temizler). Görsel/stil (style, img data:) korunur.
-  private sanitizePreviewHtml(html: string): string {
-    return String(html || '')
-      // <script>...</script> ve tek satırlık <script .../>
-      .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, '')
-      .replace(/<script\b[^>]*\/?>/gi, '')
-      // inline event handler'lar: onclick=".." onload='..' onerror=.. (tırnaklı/tırnaksız)
-      .replace(/\son[a-z0-9_-]+\s*=\s*"[^"]*"/gi, '')
-      .replace(/\son[a-z0-9_-]+\s*=\s*'[^']*'/gi, '')
-      .replace(/\son[a-z0-9_-]+\s*=\s*[^\s>]+/gi, '')
-      // javascript: URI'lerini etkisizleştir (href/src vb.)
-      .replace(/javascript\s*:/gi, 'void:');
-  }
-
   private inlinePreviewHtml(raw: string, doc?: any) {
     const source = String(raw || '');
-    if (/<html[\s>]/i.test(source)) return this.sanitizePreviewHtml(source);
+    if (/<html[\s>]/i.test(source)) return source;
 
     const escEarly = (v: string) => String(v || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     // XML/UBL degilse (or. hata mesaji): duz mesaj goster, bos sablon degil

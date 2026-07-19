@@ -605,14 +605,11 @@ function DocModal() {
         </div>
         <div className="docview" ref={viewRef}>
           {doc.html
-            // GÜVENLİK: belge HTML'i entegratörden gelir → sandbox ile script ÇALIŞTIRMA yok
-            //   (allow-same-origin var, allow-scripts YOK). Sadece HTML+CSS render olur, JS engellenir.
-            ? <iframe className="docframe" style={{ ...zoomStyle, ...sizeStyle }} srcDoc={doc.html} title="Belge" sandbox="allow-same-origin" onLoad={onFrameLoad} />
+            ? <iframe className="docframe" style={{ ...zoomStyle, ...sizeStyle }} srcDoc={doc.html} title="Belge" onLoad={onFrameLoad} />
             : isImg
               ? <img className="docimg" style={{ ...zoomStyle, ...sizeStyle }} src={rawUrl} alt="Belge" onLoad={onImgLoad} />
               : frameSrc
-                // GÜVENLİK: blob/data belge içeriği — script engelli sandbox (XSLT/HTML render devam eder).
-                ? <iframe className="docframe" style={{ ...zoomStyle, ...sizeStyle }} src={frameSrc} title="Belge" sandbox="allow-same-origin" onLoad={onFrameLoad} />
+                ? <iframe className="docframe" style={{ ...zoomStyle, ...sizeStyle }} src={frameSrc} title="Belge" onLoad={onFrameLoad} />
                 : <div className="empty">Belge yok</div>}
         </div>
       </div>
@@ -2663,9 +2660,7 @@ function InlineBelge({ id }: { id: string }) {
       </div>
       <div ref={wrapRef} className="bpview" style={{ overflow: 'auto' }} onDoubleClick={() => openDocFile(id)}>
         {html
-          // GÜVENLİK: allow-scripts KALDIRILDI — allow-same-origin ile birlikte olması sandbox'ı
-          //   etkisiz kılıyordu. Belge sadece görüntüleniyor; JS gerekmez, HTML+CSS render devam eder.
-          ? <iframe ref={frameRef} onLoad={onFrameLoad} className="bpframe-h" srcDoc={htmlDoc} title="Belge" sandbox="allow-same-origin" scrolling="no" style={{ zoom: appliedScale } as any} />
+          ? <iframe ref={frameRef} onLoad={onFrameLoad} className="bpframe-h" srcDoc={htmlDoc} title="Belge" sandbox="allow-same-origin allow-scripts" scrolling="no" style={{ zoom: appliedScale } as any} />
           : isImg
             ? <img className="bpimg" src={url} alt="Belge" onLoad={onImgLoad} style={{ zoom: appliedScale, ...(imgW ? { width: imgW, maxWidth: 'none' } : {}) } as any} />
             : isXml
