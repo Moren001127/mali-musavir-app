@@ -521,6 +521,23 @@ function vergiDonemAraligi(anahtar: string): { baslangic: Date; bitis: Date } {
  * Mükellef, bir beyanname tipinin kapsadığı vergi döneminde aktif miydi?
  * Süzme artık verilme ayına göre değil, beyannamenin GERÇEK vergi dönemine göre.
  */
+/**
+ * Bu mükellefte bu beyan tipi 3 AYLIK mı? (config'e göre). Poşet her zaman 3 aylık.
+ * 3 aylık beyanlarda aktiflik kontrolü tek aya değil, ÇEYREĞE bakmalı — aksi halde
+ * çeyrek başında işi bırakan (ör. 01.04'te kapanan) mükellef, o çeyreğin son ayında
+ * aktif olmadığı için yanlışlıkla eleniyor ve verilecek muhtasarı takibe düşmüyordu.
+ */
+function isUcaylikForTip(cfg: any, tip: BeyanTipi): boolean {
+  if (tip === 'POSET') return true; // poşet mevzuaten 3 aylık
+  const period =
+    tip === 'MUHSGK' ? cfg?.muhtasarPeriod :
+    tip === 'KDV1' ? cfg?.kdv1Period :
+    tip === 'TURIZM' ? cfg?.turizmPeriod :
+    tip === 'EDEFTER' ? cfg?.eDefterPeriod :
+    null;
+  return period === 'UCAYLIK';
+}
+
 function aktifMiBeyanDoneminde(
   tp: any,
   tip: BeyanTipi,
@@ -529,9 +546,14 @@ function aktifMiBeyanDoneminde(
   donem: string,
   donemTuru: DonemTuru,
 ): boolean {
-  const { baslangic, bitis } = vergiDonemAraligi(
-    vergiDonemForTip(tip, yil, ay, donem, donemTuru),
-  );
+  let anahtar = vergiDonemForTip(tip, yil, ay, donem, donemTuru);
+  // 3 aylık beyanda aylık anahtarı (yyyy-mm) çeyreğe (yyyy-Qn) çevir → aktiflik
+  // çeyrek boyunca kontrol edilsin (çeyrek başında aktif olan kapanmış firma dahil).
+  const mm = /^(\d{4})-(\d{2})$/.exec(anahtar);
+  if (mm && isUcaylikForTip(effectiveBeyanConfig(tp), tip)) {
+    anahtar = quarterDonem(+mm[1], +mm[2]);
+  }
+  const { baslangic, bitis } = vergiDonemAraligi(anahtar);
   return aktifMiAralikta(tp, baslangic, bitis);
 }
 
