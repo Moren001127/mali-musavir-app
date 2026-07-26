@@ -312,12 +312,14 @@ export default function BeyannamelerPage() {
     queryFn: () => portalAutomationApi.summary(),
     // Aktif iş varken 3 sn (ilerleme için), boştayken 15 sn — sayfa açık dururken sunucuyu yormasın.
     refetchInterval: (query) => {
-      const job = query.state.data?.latestJobs?.find((j) => j.jobType === 'EBEYANNAME_DAILY_DOWNLOAD');
+      const job = query.state.data?.latestJobs?.find((j) => j.jobType === 'EBEYANNAME_DAILY_DOWNLOAD' || j.jobType === 'EBEYAN_NEW_DOWNLOAD');
       return job?.status === 'running' || job?.status === 'pending' ? 3000 : 15000;
     },
   });
 
-  const latestBeyanJob = portalSummary?.latestJobs?.find((job) => job.jobType === 'EBEYANNAME_DAILY_DOWNLOAD');
+  // Son iş: eski (EBEYANNAME_DAILY_DOWNLOAD) VEYA yeni e-Beyan (EBEYAN_NEW_DOWNLOAD) —
+  // hangisi daha yeniyse onun ilerlemesini göster (latestJobs recency sırasında).
+  const latestBeyanJob = portalSummary?.latestJobs?.find((job) => job.jobType === 'EBEYANNAME_DAILY_DOWNLOAD' || job.jobType === 'EBEYAN_NEW_DOWNLOAD');
   const isBeyanJobRunning = latestBeyanJob?.status === 'running';
   const isBeyanJobActive = latestBeyanJob?.status === 'running' || latestBeyanJob?.status === 'pending';
 
