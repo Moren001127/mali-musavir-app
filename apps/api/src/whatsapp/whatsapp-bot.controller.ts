@@ -133,48 +133,84 @@ export class WhatsAppBotController implements OnModuleInit {
     const runId = String(body?.runId || ('st-' + Date.now()));
     const mode = String(body?.mode || 'owner') === 'taxpayer' ? 'taxpayer' : 'owner';
     const taxpayerId = mode === 'taxpayer' ? String(body?.taxpayerId || 'cmnydmger001leazy6moim5b2') : null;
-    // Fire-and-forget: cevap beklemeden çalış, her soruyu botQualityLog'a yaz.
-    void (async () => {
-      const tpCtx = taxpayerId ? await this.botContext.buildTaxpayerContextBlock(tenant.id, taxpayerId).catch(() => '') : '';
-      for (let i = 0; i < questions.length; i++) {
-        const q = String(questions[i]);
-        const t0 = Date.now();
-        let answer = '', err = '';
-        try {
-          if (mode === 'taxpayer') {
-            // GERÇEK MÜKELLEF AKIŞINA SADIK: taxpayer-readonly + mükellef prompt + post-filtre.
-            const prompt = [
-              "Sen ofisin dijital asistanısın; WhatsApp'tan ofisin MÜKELLEFİYLE (müşterisiyle) yazışıyorsun. Kısa, sıcak, doğal yaz (2-3 cümle, markdown yok).",
-              'Mükellef KENDİ verisini sorarsa (KDV/durum/fatura/beyanname/borç/evrak) get_my_* ile GERÇEK rakamı söyle. Beyanname ödenecek TUTARINI kendin söyleme.',
-              'Genel mevzuat/vergi/SGK sorusunu (fatura kaç günde, kdv oranı, işe giriş süresi, yıllık izin vb.) NET cevapla — "müşavirinize sorun" DEME.',
-              'Cevaplayamadığın/elinde veri olmayan/emin olmadığın durumda "kontrol edip döneyim/müşavir kesinleştirir" DEME → MÜŞAVİRE ESKALE ET: yanıtın başına [[ESKALE]] koy, sonra SADECE "Konuyu müşavirimiz Muzaffer Bey\'e iletiyorum; en kısa sürede sizinle bu konuda iletişime geçecektir." de. Genel mevzuat ve elinde gerçek verisi olan kendi-verisi sorusu eskale DEĞİL.',
-              '═══ MÜKELLEF VERİSİ ═══', tpCtx, '═══',
-              `Mükellefin mesajı: ${q}`,
-            ].join('\n');
-            const a = await this.morenAi.chat(tenant.id, null, {
-              taxpayerId: taxpayerId!, message: prompt, taxpayerText: q, voiceMode: false,
-              toolMode: 'taxpayer-readonly', source: 'whatsapp-bot',
-            } as any);
-            answer = this.postFilter.filterTaxpayerReply(a.assistantMessage || '', {});
-          } else {
-            const prompt = this.buildOwnerWhatsAppPrompt(this.ownerDisplayName(), tenant.name || '', '', q, false);
-            const a = await this.calisan.runViaMorenAi({
-              tenantId: tenant.id, message: prompt, originalMessage: q, source: 'owner-selftest',
-            });
-            answer = this.postFilter.filterTaxpayerReply(a.assistantMessage || '', { mode: 'owner' });
-          }
-        } catch (e: any) { err = e?.message || String(e); }
-        await this.prisma.botQualityLog.create({
-          data: {
-            tenantId: tenant.id, source: 'SELFTEST', status: err ? 'SYNTHETIC_FAIL' : 'EVAL_WARN',
-            score: 0, scenarioKey: runId, intent: q.slice(0, 190),
-            finalReply: (answer || ('HATA: ' + err)).slice(0, 4000),
-            metadata: { idx: i, ms: Date.now() - t0, err: err || undefined, mode },
-          },
-        }).catch(() => null);
-      }
-    })();
+    const tpCtx = taxpayerId ? await this.botContext.buildTaxpayerContextBlock(tenant.id, taxpayerId).catch(() => '') : '';
+    // Tek soruyu GERÇEK yoldan çalıştırır (mükellef: taxpayer-readonly; owner: calisan→MorenAI),
+    // botQualityLog'a yazar ve {soru,cevap,ms} döndürür.
+    const runOne = async (q: string, i: number): Promise<{ soru: string; cevap: string; ms: number; err?: string }> => {
+      const t0 = Date.now();
+      let answer = '', err = '';
+      try {
+        if (mode === 'taxpayer') {
+          // GERÇEK MÜKELLEF AKIŞINA SADIK: taxpayer-readonly + mükellef prompt + post-filtre.
+          const prompt = [
+            "Sen ofisin dijital asistanısın; WhatsApp'tan ofisin MÜKELLEFİYLE (müşterisiyle) yazışıyorsun. Kısa, sıcak, doğal yaz (2-3 cümle, markdown yok).",
+            'Mükellef KENDİ verisini sorarsa (KDV/durum/fatura/beyanname/borç/evrak) get_my_* ile GERÇEK rakamı söyle. Beyanname ödenecek TUTARINI kendin söyleme.',
+            'Genel mevzuat/vergi/SGK sorusunu (fatura kaç günde, kdv oranı, işe giriş süresi, yıllık izin vb.) NET cevapla — "müşavirinize sorun" DEME.',
+            'Cevaplayamadığın/elinde veri olmayan/emin olmadığın durumda "kontrol edip döneyim/müşavir kesinleştirir" DEME → MÜŞAVİRE ESKALE ET: yanıtın başına [[ESKALE]] koy, sonra SADECE "Konuyu müşavirimiz Muzaffer Bey\'e iletiyorum; en kısa sürede sizinle bu konuda iletişime geçecektir." de. Genel mevzuat ve elinde gerçek verisi olan kendi-verisi sorusu eskale DEĞİL.',
+            '═══ MÜKELLEF VERİSİ ═══', tpCtx, '═══',
+            `Mükellefin mesajı: ${q}`,
+          ].join('\n');
+          const a = await this.morenAi.chat(tenant.id, null, {
+            taxpayerId: taxpayerId!, message: prompt, taxpayerText: q, voiceMode: false,
+            toolMode: 'taxpayer-readonly', source: 'whatsapp-bot',
+          } as any);
+          answer = this.postFilter.filterTaxpayerReply(a.assistantMessage || '', {});
+        } else {
+          const prompt = this.buildOwnerWhatsAppPrompt(this.ownerDisplayName(), tenant.name || '', '', q, false);
+          const a = await this.calisan.runViaMorenAi({
+            tenantId: tenant.id, message: prompt, originalMessage: q, source: 'owner-selftest',
+          });
+          answer = this.postFilter.filterTaxpayerReply(a.assistantMessage || '', { mode: 'owner' });
+        }
+      } catch (e: any) { err = e?.message || String(e); }
+      await this.prisma.botQualityLog.create({
+        data: {
+          tenantId: tenant.id, source: 'SELFTEST', status: err ? 'SYNTHETIC_FAIL' : 'EVAL_WARN',
+          score: 0, scenarioKey: runId, intent: q.slice(0, 190),
+          finalReply: (answer || ('HATA: ' + err)).slice(0, 4000),
+          metadata: { idx: i, ms: Date.now() - t0, err: err || undefined, mode },
+        },
+      }).catch(() => null);
+      return { soru: q, cevap: answer || ('HATA: ' + err), ms: Date.now() - t0, err: err || undefined };
+    };
+    // SYNC mod: cevapları satır içinde döndür (harness DB'ye erişmeden okur). Küçük batch şart
+    // (her soru ~10-30sn; büyük batch HTTP timeout olur).
+    if (body?.sync === true) {
+      const results: Array<{ soru: string; cevap: string; ms: number; err?: string }> = [];
+      for (let i = 0; i < questions.length; i++) results.push(await runOne(String(questions[i]), i));
+      return { ok: true, tenant: tenant.id, runId, mode, results };
+    }
+    // ASYNC (varsayılan): fire-and-forget, her soruyu botQualityLog'a yaz.
+    void (async () => { for (let i = 0; i < questions.length; i++) await runOne(String(questions[i]), i); })();
     return { ok: true, tenant: tenant.id, runId, mode, started: questions.length };
+  }
+
+  // GEÇİCİ: denetim harness'i için aktif mükellef örneklemi (id/isim/tip/telefon/vkn).
+  // Sanal WhatsApp kişilerini hariç tutar. Token korumalı; iş bitince KALDIRILACAK.
+  @Post('selftest-taxpayers')
+  async selftestTaxpayers(@Body() body: any) {
+    if (String(body?.token || '') !== (process.env.MOREN_SELFTEST_TOKEN || 'moren-st-7Yq2x')) {
+      return { ok: false, error: 'unauthorized' };
+    }
+    const ownerPhone = String(process.env.MOREN_OWNER_WHATSAPP_PHONES || process.env.MOREN_OWNER_WHATSAPP_PHONE || '')
+      .split(',')[0]?.trim();
+    const tenant = ownerPhone ? await this.findOwnerTenantByPhone(ownerPhone) : null;
+    if (!tenant) return { ok: false, error: 'owner tenant bulunamadi' };
+    const take = Math.min(Number(body?.take) || 40, 200);
+    const rows = await this.prisma.taxpayer.findMany({
+      where: { tenantId: tenant.id, isActive: true, NOT: { taxNumber: { startsWith: 'WHATSAPP-' } } },
+      select: { id: true, companyName: true, firstName: true, lastName: true, type: true, phone: true, phones: true, taxNumber: true },
+      orderBy: [{ companyName: 'asc' }, { firstName: 'asc' }],
+      take,
+    });
+    const list = rows.map((t: any) => ({
+      id: t.id,
+      isim: (t.companyName || `${t.firstName || ''} ${t.lastName || ''}`).trim(),
+      tip: t.type || null,
+      phone: this.normalize(t.phone) || (Array.isArray(t.phones) && t.phones[0] ? this.normalize(t.phones[0]) : ''),
+      vkn: t.taxNumber || null,
+    })).filter((t: any) => t.phone);
+    return { ok: true, tenant: tenant.id, count: list.length, taxpayers: list };
   }
 
   /**
