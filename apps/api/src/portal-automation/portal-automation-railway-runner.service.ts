@@ -3801,46 +3801,49 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     // ekran dışı klona düşüyor, kaydırılamıyor. ÇÖZÜM: "Geçiş Yapılabilecek" bölümünü
     // kaydır, sonra VIEWPORT İÇİNDEKİ görünür "e-Beyan" kutucuğunun MERKEZİNE GERÇEK
     // fare tıklaması (manuel testte çalışan yöntem). Sentetik .click() SSO tetiklemiyor.
+    // Carousel KLON kutucukları (aria-hidden / .slick-cloned) işlevsiz — gerçek SSO'yu
+    // tetiklemiyor. ÇÖZÜM: KLON OLMAYAN "e-Beyan" kutucuğunun tıklanabilir atasını
+    // işaretle → Playwright GERÇEK click (event dizisi düzgün gönderilir).
     let tileClicked = false;
     try {
-      await portalPage.evaluate(() => {
+      const marked = await portalPage.evaluate(() => {
         const sec = Array.from(document.querySelectorAll<HTMLElement>('*'))
           .find((el) => /Ge[cç]i[sş] Yap[iı]labilecek/i.test(el.textContent || '') && el.getClientRects().length);
         if (sec) sec.scrollIntoView({ block: 'center', inline: 'nearest' });
-      }).catch(() => {});
-      await portalPage.waitForTimeout(1000);
-      const box = await portalPage.evaluate(() => {
+        const isClone = (el: HTMLElement) => {
+          let n: HTMLElement | null = el;
+          while (n) { const c = String(n.className || ''); if (/clone/i.test(c) || n.getAttribute?.('aria-hidden') === 'true') return true; n = n.parentElement; }
+          return false;
+        };
         const cands = Array.from(document.querySelectorAll<HTMLElement>('p,span,div,a,button'))
-          .filter((el) => (el.textContent || '').trim() === 'e-Beyan');
-        for (const el of cands) {
-          const r = el.getBoundingClientRect();
-          const inView = r.width > 2 && r.height > 2 && r.top >= 0 && r.left >= 0
-            && r.bottom <= (window.innerHeight || 0) && r.right <= (window.innerWidth || 0);
-          if (!inView) continue;
-          let node: HTMLElement | null = el;
-          for (let i = 0; i < 4 && node; i++) { if ((node.textContent || '').trim().length > 40) break; node = node.parentElement; }
-          const cr = (node || el).getBoundingClientRect();
-          return { x: Math.round(cr.left + cr.width / 2), y: Math.round(cr.top + cr.height / 2) };
+          .filter((el) => (el.textContent || '').trim() === 'e-Beyan' && el.getClientRects().length && !isClone(el));
+        const inView = (el: HTMLElement) => { const r = el.getBoundingClientRect(); return r.width > 2 && r.top >= 0 && r.bottom <= (window.innerHeight || 0) && r.left >= 0 && r.right <= (window.innerWidth || 0); };
+        const el = cands.find(inView) || cands[0];
+        if (!el) return { ok: false, count: cands.length };
+        let node: HTMLElement | null = el, best: HTMLElement = el;
+        for (let i = 0; i < 6 && node; i++) {
+          const cls = String(node.className || '');
+          let ptr = false; try { ptr = getComputedStyle(node).cursor === 'pointer'; } catch {}
+          if (node.tagName === 'A' || node.tagName === 'BUTTON' || node.getAttribute('role') === 'button' || /MuiButtonBase|CardActionArea/i.test(cls) || ptr) { best = node; break; }
+          if ((node.textContent || '').trim().length > 60) break;
+          node = node.parentElement;
         }
-        return null;
+        best.setAttribute('data-ebeyan-open', '1');
+        best.scrollIntoView({ block: 'center', inline: 'center' });
+        return { ok: true, count: cands.length };
       });
-      if (box) {
-        this.logger.warn(`[EBEYANNEW] gorunur e-Beyan kutucugu bulundu, fare click (${box.x},${box.y})`);
-        await portalPage.mouse.click(box.x, box.y);
+      if (marked && (marked as any).ok) {
+        await portalPage.waitForTimeout(500);
+        this.logger.warn(`[EBEYANNEW] klon-olmayan e-Beyan kutucugu isaretlendi (aday=${(marked as any).count}), Playwright click`);
+        await portalPage.click('[data-ebeyan-open="1"]', { timeout: 8_000 }).catch(async () => {
+          await portalPage.click('[data-ebeyan-open="1"]', { timeout: 5_000, force: true }).catch(() => {});
+        });
         tileClicked = true;
       } else {
-        this.logger.warn('[EBEYANNEW] viewport icinde gorunur e-Beyan kutucugu YOK — getByText force deneniyor');
+        this.logger.warn(`[EBEYANNEW] klon-olmayan gorunur e-Beyan kutucugu YOK (aday=${(marked as any)?.count ?? 0})`);
       }
     } catch (e: any) {
-      this.logger.warn(`[EBEYANNEW] koordinat tiklama hata: ${this.compact(e?.message || e)}`);
-    }
-    if (!tileClicked) {
-      try {
-        const tile = portalPage.getByText('e-Beyan', { exact: true }).first();
-        await tile.evaluate((el: any) => el.scrollIntoView({ block: 'center' })).catch(() => {});
-        await tile.click({ timeout: 6_000, force: true });
-        tileClicked = true;
-      } catch { /* aşağıda hata fırlatılır */ }
+      this.logger.warn(`[EBEYANNEW] tile isaretleme/click hata: ${this.compact(e?.message || e)}`);
     }
     if (!tileClicked) {
       throw new Error(`Dijital Vergi Dairesi'nde "e-Beyan" kutucugu bulunamadi/tiklanamadi. Gorunen: ${await this.visibleActionSnapshot(portalPage)}`);
