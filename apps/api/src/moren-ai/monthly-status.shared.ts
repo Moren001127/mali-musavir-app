@@ -158,9 +158,34 @@ export async function computeMonthlyStatusList(prisma: any, opts: ComputeOpts): 
       },
       orderBy: [{ companyName: 'asc' }, { firstName: 'asc' }],
     });
+
+    // OTORİTER BEYAN İŞARETİ (panel Aylık Takip ile AYNI mantık — taxpayers.service):
+    // Aylık checklist'teki elle 'beyannameVerildi' kutusu bayat kalabiliyor; bu yüzden
+    // bot/brifing "52 verilmedi" derken panel/Beyanname Takip "~14 kalan" diyordu.
+    // Düzeltme: beyanname dönemi (= işlem ayı − 1) için KDV1 BeyanKaydı'nda PDF/URL
+    // varsa beyanname GİB'e VERİLMİŞ say (otoriter kayıt), elle kutu boş olsa bile.
+    const byY = m === 1 ? y - 1 : y;
+    const byM = m === 1 ? 12 : m - 1;
+    const beyannameDonem = `${byY}-${String(byM).padStart(2, '0')}`;
+    const autoVerildi = new Set<string>();
+    try {
+      const kayitlar = await (prisma as any).beyanKaydi.findMany({
+        where: {
+          tenantId: opts.tenantId,
+          taxpayerId: { in: taxpayers.map((t: any) => t.id) },
+          donem: beyannameDonem,
+          beyanTipi: { in: ['KDV1', 'KDV'] }, // KDV2 (tevkifat) ayrı beyanname → sayma
+          OR: [{ beyannameUrl: { not: null } }, { pdfUrl: { not: null } }],
+        },
+        select: { taxpayerId: true },
+      });
+      for (const k of kayitlar) if (k?.taxpayerId) autoVerildi.add(k.taxpayerId);
+    } catch { /* beyan kaydı sorgusu başarısızsa otomatik işaret atlanır, akış bozulmaz */ }
+
     const rows: MonthlyStatusRow[] = taxpayers.map((t: any) => {
       const s = t.monthlyStatuses?.[0] || null;
       const kontrolBitti = !!(s?.indirilecekKdvKontrol && s?.hesaplananKdvKontrol && s?.eArsivKontrol);
+      const beyannameVerildi = (s?.beyannameVerildi ?? false) || autoVerildi.has(t.id);
       return {
         id: t.id,
         isim: displayName(t),
@@ -172,8 +197,8 @@ export async function computeMonthlyStatusList(prisma: any, opts: ComputeOpts): 
         kontrolEdildi: s?.kontrolEdildi ?? false,
         kontrolBitti,
         kdvKontrolEdildi: s?.kdvKontrolEdildi ?? false,
-        beyannameVerildi: s?.beyannameVerildi ?? false,
-        beyannameHazir: !!(s?.evraklarGeldi && s?.evraklarIslendi && kontrolBitti) && !(s?.beyannameVerildi ?? false),
+        beyannameVerildi,
+        beyannameHazir: !!(s?.evraklarGeldi && s?.evraklarIslendi && kontrolBitti) && !beyannameVerildi,
         kayitVar: !!s,
       };
     });
