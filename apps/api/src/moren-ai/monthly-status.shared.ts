@@ -129,6 +129,11 @@ export async function computeMonthlyStatusList(prisma: any, opts: ComputeOpts): 
   // 3) Mükellefler + o işlem ayındaki durum kaydı
   const whereTaxpayer: any = { tenantId: opts.tenantId };
   if (opts.onlyActive !== false) whereTaxpayer.isActive = true;
+  // SANAL WHATSAPP KİŞİLERİNİ HARİÇ TUT: owner'ın kendi WhatsApp kaydı
+  // (taxNumber 'WHATSAPP-OWNER-*', companyName "Moren Mali Müşavirlik") ve
+  // kayıtsız gelen numaralar (taxNumber 'WHATSAPP-*') gerçek mükellef değildir;
+  // durum listelerine ve "aktif mükellef sayısı"na girmemeli.
+  whereTaxpayer.NOT = { taxNumber: { startsWith: 'WHATSAPP-' } };
 
   const queryRows = async (y: number, m: number) => {
     const taxpayers = await prisma.taxpayer.findMany({
@@ -324,8 +329,12 @@ export async function buildOwnerStatusReply(
       baslik = 'Beyannamesi verilmiş';
       break;
     case 'verilmedi':
-      filtered = rows.filter((r) => !r.beyannameVerildi);
-      baslik = 'Beyannamesi henüz verilmemiş';
+      // "beyannamesi verilmeyen / kalan / eksik kimler" = müşavirin İŞ KUYRUĞU:
+      // kontrolü bitmiş ama henüz verilmemiş (verilmeye HAZIR) mükellefler.
+      // Ham "hiç verilmemiş herkes" (evrakı bile gelmemişler dahil) değil —
+      // o liste eyleme dönük değil ve tüm portföyü dökerdi.
+      filtered = rows.filter((r) => r.evraklarGeldi && r.evraklarIslendi && r.kontrolBitti && !r.beyannameVerildi);
+      baslik = 'Beyannamesi verilmeye hazır — kalan iş (kontrolü bitmiş, henüz verilmemiş)';
       break;
     default:
       return null;
