@@ -634,6 +634,23 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       const eBeyannamePage = await this.openEBeyannameApplication(context, page);
       await this.jobProgress(tenantId, bundle.job, 'search_form', 'Beyanname Ara ekrani hazirlaniyor.');
       const collection = await this.collectEBeyannameDownloads(tenantId, eBeyannamePage, bundle.job, downloadsPath);
+
+      // YENİ e-Beyan zinciri (2026 geçiş) — eski sistem bitti, AYNI girişli oturumdan
+      // "e-Beyan" uygulamasına SSO ile geç, oradan da çek. Hata olursa eski sistemin
+      // sonucunu BOZMAZ (try/catch → notes). Sonuçlar aynı listeye eklenir.
+      try {
+        await this.jobProgress(tenantId, bundle.job, 'ebeyan_new', 'Yeni e-Beyan sistemine geciliyor.');
+        const ebeyanNewPage = await this.openEBeyanNewApplication(context, eBeyannamePage);
+        const taxpayersForNew = await this.loadTaxpayers(tenantId);
+        const newColl = await this.collectEBeyanNewDownloads(tenantId, ebeyanNewPage, bundle.job, taxpayersForNew, collection.notes);
+        collection.declarations.push(...newColl.declarations);
+        collection.documents.push(...newColl.documents);
+        await this.jobProgress(tenantId, bundle.job, 'ebeyan_new_done', `Yeni e-Beyan tamamlandi: ${newColl.declarations.length} kayit, ${newColl.documents.length} belge.`);
+      } catch (newErr: any) {
+        collection.notes.push(`Yeni e-Beyan cekme atlandi/hata: ${this.compact(newErr?.message || newErr)}`);
+        this.logger.warn(`[EBEYANNEW] zincir hata: ${this.compact(newErr?.message || newErr)}`);
+      }
+
       await this.jobProgress(tenantId, bundle.job, 'logout', 'GIB sekmeleri kapatiliyor ve guvenli cikis yapiliyor.');
       await this.safeLogoutFromDigitalTaxOffice(context, page, eBeyannamePage, collection.notes).catch((err) => {
         collection.notes.push(`GIB guvenli cikis tamamlanamadi: ${this.compact(err?.message || err)}`);
@@ -3618,6 +3635,275 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     };
     } finally {
       ctx?.off?.('request', listReqHandler);
+    }
+  }
+
+  // ============================================================
+  // YENİ e-Beyan SİSTEMİ (ebeyan.gib.gov.tr) — 2026 geçiş
+  // Bir kısım beyanname eski sistemde (e-Beyanname/BDP), bir kısmı yeni
+  // e-Beyan'da. "Beyannameleri Çek" eski sistemi bitirince BU zincir çalışır:
+  // aynı girişli oturumdan (Dijital Vergi Dairesi) "e-Beyan" uygulamasına SSO ile
+  // geçilir, /beyannameler filtrele API'sinden liste + pdf/tahakkuk uçlarından
+  // PDF indirilir. Endpoint'ler canlı oturumdan yakalandı (2026-07-26).
+  // Kimlik = tarayıcı oturum çerezi (token/entegratör/IP GEREKMEZ — bu web app).
+  // ============================================================
+  private static readonly EBEYAN_NEW_HOST = 'ebeyan.gib.gov.tr';
+
+  /** "0015 - KDV1" → "kdv1" ; API tür segmentini beyanname kodunun kısa adından türetir. */
+  private ebeyanNewTurFromKod(kod: string | null | undefined): string | null {
+    const s = String(kod || '').trim();
+    if (!s) return null;
+    // Kısa ad genelde tire sonrası: "0015 - KDV1" → "KDV1"
+    const kisa = (s.split('-').pop() || s).trim().toUpperCase();
+    const map: Record<string, string> = {
+      KDV1: 'kdv1', KDV2: 'kdv2', KDV2B: 'kdv2', KDV4: 'kdv4', KDV9015: 'kdv1',
+      DAMGA: 'damga', DAMGAKK: 'damgakk', MUH67: 'muh67', MUHSGK: 'muhsgk',
+      KONAKLAMA: 'konaklama', TURIZM: 'turizm', GELIR: 'gelir', KURUMLAR: 'kurumlar',
+      BANKA: 'banka', SIGORTA: 'sigorta', YATV: 'yatv',
+    };
+    if (map[kisa]) return map[kisa];
+    // Bilinmeyen: harf-rakam sadeleştir (canlı koşuda log'dan tamamlanır).
+    const slug = kisa.toLocaleLowerCase('tr-TR').replace(/[^a-z0-9]/g, '');
+    return slug || null;
+  }
+
+  /** Yeni e-Beyan "Durumu" metni → mevcut sistemdeki EBeyannameStatus. */
+  private ebeyanNewStatusFromDurum(durum: string | null | undefined): EBeyannameStatus {
+    const s = String(durum || '')
+      .toLocaleLowerCase('tr-TR')
+      .normalize('NFD').replace(/[̀-ͯ]/g, '');
+    if (s.includes('onayla')) return 'onaylandi';
+    if (s.includes('bekl')) return 'beklemede';
+    if (s.includes('hatal')) return 'hatali';
+    return 'onaylandi';
+  }
+
+  /** Dijital Vergi Dairesi'nden "e-Beyan" (yeni sistem) uygulamasına SSO ile geç. */
+  private async openEBeyanNewApplication(context: any, page: any) {
+    const HOST = PortalAutomationRailwayRunnerService.EBEYAN_NEW_HOST;
+    const already = this.findOpenPageByHost(context, HOST);
+    if (already) return already;
+
+    // Dijital Vergi Dairesi ana sayfasına dön (e-Beyanname sekmesi kapanmış olabilir).
+    let portalPage = (context.pages?.() || []).find((p: any) => /dijital\.gib\.gov\.tr/i.test(String(p.url?.() || ''))) || page;
+    if (!portalPage || portalPage.isClosed?.() || !/dijital\.gib\.gov\.tr/i.test(String(portalPage.url?.() || ''))) {
+      portalPage = await context.newPage();
+      await portalPage.goto(DEFAULT_GIB_IVD_LOGIN_URL, { waitUntil: 'domcontentloaded', timeout: 30_000 }).catch(() => {});
+    }
+    await portalPage.bringToFront().catch(() => {});
+    await portalPage.waitForLoadState('domcontentloaded', { timeout: 15_000 }).catch(() => {});
+
+    // "e-Beyan" kutucuğu — TAM metin eşleşmesi ("e-Beyanname" ile karışmasın!).
+    const popupAfterTile = context.waitForEvent('page', { timeout: 8_000 }).catch(() => null);
+    const tileClicked = await portalPage.evaluate(() => {
+      const isVisible = (el: Element) => {
+        const a = el as HTMLElement;
+        return !!(a.offsetWidth || a.offsetHeight || a.getClientRects().length);
+      };
+      const els = Array.from(document.querySelectorAll<HTMLElement>('a,button,div,span,p'));
+      const exact = els.find((el) => isVisible(el) && (el.textContent || '').trim() === 'e-Beyan');
+      if (!exact) return false;
+      // Tıklanabilir en yakın ata (küçük metinli kutu) — tile'ın kendisi.
+      let node: HTMLElement | null = exact;
+      for (let i = 0; i < 4 && node; i++) {
+        const t = (node.textContent || '').trim();
+        if (t.length > 40) break;
+        node = node.parentElement;
+      }
+      (node || exact).click();
+      return true;
+    }).catch(() => false);
+    if (!tileClicked) {
+      throw new Error(`Dijital Vergi Dairesi'nde "e-Beyan" (yeni sistem) kutucuğu bulunamadı. Görünen: ${await this.visibleActionSnapshot(portalPage)}`);
+    }
+
+    // Doğrudan popup?
+    const directPopup = await Promise.race([popupAfterTile, portalPage.waitForTimeout(900).then(() => null)]);
+    if (directPopup && new RegExp(HOST, 'i').test(String(directPopup.url?.() || ''))) {
+      await directPopup.waitForLoadState('domcontentloaded', { timeout: 20_000 }).catch(() => {});
+      return directPopup;
+    }
+
+    // "Yönlendirmeyi Onaylıyor Musunuz?" → ONAYLA
+    if (await this.isAnyTextVisible(portalPage, ['ONAYLA', 'Onayla', 'Yönlendirmeyi'])) {
+      const popupAfterConfirm = context.waitForEvent('page', { timeout: 25_000 }).catch(() => null);
+      await this.clickVisibleText(portalPage, ['ONAYLA', 'Onayla']);
+      const popup = await popupAfterConfirm;
+      if (popup) {
+        await popup.waitForLoadState('domcontentloaded', { timeout: 20_000 }).catch(() => {});
+        await popup.bringToFront().catch(() => {});
+        return popup;
+      }
+    }
+
+    // Yeni sekme host ile açıldı mı diye bekle.
+    for (let i = 0; i < 15; i++) {
+      const opened = this.findOpenPageByHost(context, HOST);
+      if (opened) {
+        await opened.waitForLoadState('domcontentloaded', { timeout: 20_000 }).catch(() => {});
+        return opened;
+      }
+      await portalPage.waitForTimeout(1000);
+    }
+    throw new Error('Yeni e-Beyan sekmesi açılmadı.');
+  }
+
+  /**
+   * Yeni e-Beyan'dan beyanname + tahakkuk PDF'lerini çek. Mevcut kayıt altyapısını
+   * (declarationFromEBeyannameRow + documents) yeniden kullanır; sonuçları çağırana
+   * döndürür (persist downstream, eski akışla aynı yoldan).
+   * İLK CANLI KOŞU: filtrele yanıt şekli [EBEYANNEW] ile loglanır; alan adları
+   * ona göre kesinleşir. Tarih aralığı filtresi + durum sekmeleri sonraki adım.
+   */
+  private async collectEBeyanNewDownloads(
+    tenantId: string,
+    page: any,
+    job: any,
+    taxpayers: TaxpayerMatch[],
+    notes: string[],
+  ): Promise<{ declarations: any[]; documents: any[] }> {
+    const HOST = PortalAutomationRailwayRunnerService.EBEYAN_NEW_HOST;
+    const declarations: any[] = [];
+    const documents: any[] = [];
+
+    // filtrele yanıtlarını yakala (sayfa /beyannameler yüklenince kendisi çağırıyor).
+    const captured: any[] = [];
+    const respHandler = async (resp: any) => {
+      try {
+        const u = String(resp.url?.() || '');
+        if (!/\/api\/kullanici\/beyanname\/filtrele/i.test(u)) return;
+        const json = await resp.json().catch(() => null);
+        if (json) captured.push(json);
+      } catch { /* yoksay */ }
+    };
+    page.on('response', respHandler);
+    try {
+      await page.goto(`https://${HOST}/beyannameler`, { waitUntil: 'domcontentloaded', timeout: 45_000 }).catch(() => {});
+      // Liste + filtrele çağrısı otursun.
+      await page.waitForTimeout(4000);
+
+      // Yanıttan beyanname kalemlerini çıkar (savunmacı — çeşitli olası anahtarlar).
+      const items: any[] = [];
+      for (const j of captured) {
+        const arr = Array.isArray(j) ? j
+          : Array.isArray(j?.content) ? j.content
+          : Array.isArray(j?.data) ? j.data
+          : Array.isArray(j?.data?.content) ? j.data.content
+          : Array.isArray(j?.beyannameler) ? j.beyannameler
+          : Array.isArray(j?.liste) ? j.liste
+          : [];
+        items.push(...arr);
+      }
+      if (items.length) {
+        this.logger.warn(`[EBEYANNEW] filtrele ${items.length} kalem; ornek anahtarlar=${Object.keys(items[0] || {}).join(',').slice(0, 300)}`);
+      } else {
+        notes.push('Yeni e-Beyan: filtrele yanitindan kalem cikarilamadi (yanit sekli loglandi).');
+        this.logger.warn(`[EBEYANNEW] filtrele bos/taninmadi. yakalanan=${captured.length} ornek=${this.safeDebugText(JSON.stringify(captured[0] || {})).slice(0, 400)}`);
+      }
+
+      const pick = (o: any, keys: string[]) => {
+        for (const k of keys) {
+          const v = o?.[k];
+          if (v !== undefined && v !== null && String(v).trim() !== '') return v;
+        }
+        return null;
+      };
+
+      let indexed = 0;
+      for (const it of items) {
+        const beyannameId = pick(it, ['beyannameId', 'beyannameID', 'id', 'beyanId']);
+        const kod = pick(it, ['beyannameKodu', 'beyannameKodAd', 'beyannameKod', 'kod', 'beyannameKoduKisaAd']);
+        const vkn = pick(it, ['vergiKimlikNo', 'vergiKimlikNumarasi', 'vkn', 'tcKimlikNo', 'tckn', 'kimlikNo']);
+        const unvan = pick(it, ['unvan', 'adSoyadUnvan', 'adiSoyadiUnvani', 'adSoyad', 'mukellefAdi', 'mukellefUnvan']);
+        const donemStr = pick(it, ['beyannameDonemi', 'donem', 'donemAralik', 'vergilendirmeDonemi']);
+        const durum = pick(it, ['durum', 'durumu', 'beyannameDurum', 'beyannameDurumu']);
+        if (!beyannameId) continue;
+
+        const tur = this.ebeyanNewTurFromKod(kod);
+        const status = this.ebeyanNewStatusFromDurum(durum);
+
+        // Sentetik satır — mevcut builder/eşleştirme altyapısını beslemek için.
+        const row: EBeyannameResultRow = {
+          rowIndex: indexed++,
+          cells: [String(kod || ''), String(vkn || ''), String(unvan || ''), String(donemStr || ''), String(durum || '')],
+          rowText: [kod, vkn, unvan, donemStr, durum].filter(Boolean).join(' '),
+          beyanTipiRaw: (String(kod || '').split('-').pop() || '').trim() || null,
+          mahiyetText: null,
+          isCorrection: false,
+          taxNumber: vkn ? String(vkn) : null,
+          taxpayerName: unvan ? String(unvan) : null,
+          taxOffice: null,
+          taxPeriod: donemStr ? String(donemStr) : null,
+          uploadTime: null,
+          statusText: durum ? String(durum) : null,
+        };
+
+        // PDF'ler yalnız onaylanmışta anlamlı (tahakkuk onayla oluşur). Diğer
+        // durumlarda kayıt sadece takip için (PDF'siz) — mevcut sistemle aynı.
+        let beyanname: EBeyannameFilePayload | null = null;
+        let tahakkuk: EBeyannameFilePayload | null = null;
+        if (status === 'onaylandi' && tur) {
+          beyanname = await this.ebeyanNewFetchPdf(page, tur, String(beyannameId), 'pdf', unvan, kod, notes);
+          tahakkuk = await this.ebeyanNewFetchPdf(page, tur, String(beyannameId), 'pdf/tahakkuk', unvan, kod, notes);
+        }
+
+        const declaration = this.declarationFromEBeyannameRow(row, status, taxpayers, job, { beyanname, tahakkuk });
+        if (declaration) {
+          (declaration as any).raw = { ...((declaration as any).raw || {}), source: 'ebeyan-new-filtrele', beyannameId, beyannameKodu: kod, tur };
+          declarations.push(declaration);
+        } else if (beyanname || tahakkuk) {
+          for (const item of [{ file: beyanname, kind: 'beyanname' as const }, { file: tahakkuk, kind: 'tahakkuk' as const }]) {
+            if (!item.file) continue;
+            documents.push({
+              taxpayerId: null,
+              belgeTuru: item.kind === 'tahakkuk' ? 'GIB_TAHAKKUK' : 'GIB_BEYANNAME',
+              title: item.file.fileName,
+              period: donemStr || job.periodEnd || null,
+              issuedAt: job.periodEnd || null,
+              receivedAt: new Date().toISOString(),
+              mimeType: item.file.mimeType,
+              originalName: item.file.fileName,
+              base64: item.file.base64,
+              raw: { runner: 'railway', source: 'ebeyan-new-filtrele', matchedTaxpayer: false, beyannameId, beyannameKodu: kod, tur, vkn, unvan },
+            });
+          }
+        }
+      }
+
+      notes.push(`Yeni e-Beyan: ${items.length} kalem tarandi, ${declarations.length} takip kaydi, ${documents.length} eslesmeyen belge.`);
+    } finally {
+      page.off?.('response', respHandler);
+    }
+    return { declarations, documents };
+  }
+
+  /** Yeni e-Beyan PDF ucundan (GET, çerez oturumuyla) tek PDF indir → base64. */
+  private async ebeyanNewFetchPdf(
+    page: any,
+    tur: string,
+    beyannameId: string,
+    suffix: 'pdf' | 'pdf/tahakkuk',
+    unvan: any,
+    kod: any,
+    notes: string[],
+  ): Promise<EBeyannameFilePayload | null> {
+    const HOST = PortalAutomationRailwayRunnerService.EBEYAN_NEW_HOST;
+    const url = `https://${HOST}/api/${tur}/beyanname/${suffix}?beyannameId=${encodeURIComponent(beyannameId)}`;
+    try {
+      const resp = await page.request.get(url, { timeout: 60_000 });
+      if (!resp.ok()) {
+        notes.push(`Yeni e-Beyan PDF alinamadi (${resp.status()}): ${tur}/${suffix} id=${beyannameId}`);
+        return null;
+      }
+      const buf = await resp.body();
+      if (!buf || buf.length < 500) return null;
+      const kindTr = suffix === 'pdf/tahakkuk' ? 'Tahakkuk' : 'Beyanname';
+      const safeUnvan = String(unvan || 'Mukellef').replace(/[^\p{L}\p{N}]+/gu, '_').slice(0, 40);
+      const fileName = `${safeUnvan}_${String(kod || '').replace(/[^A-Za-z0-9]+/g, '')}_${beyannameId}_${kindTr}.pdf`;
+      return { base64: Buffer.from(buf).toString('base64'), fileName, mimeType: 'application/pdf' };
+    } catch (e: any) {
+      notes.push(`Yeni e-Beyan PDF hata: ${tur}/${suffix} id=${beyannameId}: ${this.compact(e?.message || e)}`);
+      return null;
     }
   }
 
