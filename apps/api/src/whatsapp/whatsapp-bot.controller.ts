@@ -1434,8 +1434,11 @@ export class WhatsAppBotController implements OnModuleInit {
     }
 
     // ── ADIM 1: "mükellefe/kendisine/<isim>'e ... gönder" isteği ──
-    const deliveryMarker = /(kendisine|m[üu]kellefe|m[üu][şs]teriye|sahibine|firmas[ıi]na|mukellefine)\s*[a-zçğıöşü ]{0,20}(g[öo]nder|ilet|at|yolla)/.test(n);
-    const nameDative = /['’](a|e|ya|ye|na|ne)\b[^\n]{0,40}(g[öo]nder|ilet|yolla)/i.test(text);
+    // "bana/kendime gönder" = owner'a → bu handler DEĞİL (kendine-gönder akışına bırak).
+    if (/\bbana\b|\bbende\b|kendime|\bbize\b|benim.*g[öo]nder/.test(n)) return false;
+    const hasSend = /(g[öo]nder|ilet|yolla)/.test(n);
+    const deliveryMarker = hasSend && /(kendisine|m[üu]kellefe|mukellefine|m[üu][şs]teriye|musteriye|sahibine|firmas[ıi]na)/.test(n);
+    const nameDative = hasSend && /['’](a|e|ya|ye)\b/i.test(text);
     if (!deliveryMarker && !nameDative) return false;
     if (!/(beyan|tahakkuk|kdv|muhsgk|gecici|geçici|damga|kurumlar|gelir|belge|evrak|ekstre|fatura|tebligat|sgk)/.test(n)) return false;
 
