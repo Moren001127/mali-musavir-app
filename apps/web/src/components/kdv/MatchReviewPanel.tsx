@@ -207,9 +207,12 @@ function MatchRow({
 
   return (
     <div>
-      <button
+      <div
+        role="button"
+        tabIndex={0}
         onClick={onToggle}
-        className="w-full text-left px-5 py-3 transition hover:bg-white/[0.02]"
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onToggle(); } }}
+        className="w-full text-left px-5 py-3 transition hover:bg-white/[0.02] cursor-pointer"
       >
         <div className="flex items-center gap-3 flex-wrap">
           <span
@@ -229,9 +232,23 @@ function MatchRow({
           <span className="text-[11.5px] ml-auto" style={{ color: 'rgba(250,250,249,0.6)' }}>
             {reasons.length > 0 ? reasons.join(' · ') : 'Alan farkı var'}
           </span>
+          {r.image?.id && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                window.dispatchEvent(new CustomEvent('kdv-goto-ocr', { detail: { imageId: r.image.id } }));
+              }}
+              className="text-[10.5px] font-semibold flex items-center gap-1 px-2.5 py-1 rounded-md"
+              style={{ background: 'rgba(96,165,250,0.12)', color: '#60a5fa', border: '1px solid rgba(96,165,250,0.3)' }}
+              title="Bu belgeyi OCR Teyit Paneli'nde aç"
+            >
+              <FileText size={11} /> OCR'da aç
+            </button>
+          )}
           {open ? <ChevronDown size={14} style={{ color: 'rgba(250,250,249,0.4)' }} /> : <ChevronRight size={14} style={{ color: 'rgba(250,250,249,0.4)' }} />}
         </div>
-      </button>
+      </div>
 
       {open && (
         <div className="px-5 pb-4 grid grid-cols-1 md:grid-cols-2 gap-4">

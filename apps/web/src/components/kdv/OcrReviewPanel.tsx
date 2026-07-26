@@ -95,6 +95,7 @@ export function OcrReviewPanel({
 }) {
   const qc = useQueryClient();
   const [activeId, setActiveId] = useState<string | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState(false);
   const [previewNonce, setPreviewNonce] = useState(0);
@@ -184,6 +185,28 @@ export function OcrReviewPanel({
   }, [images]);
 
   const activeImg = pending.find((i) => i.id === activeId) ?? pending[0] ?? null;
+
+  // Eşleşme İnceleme Paneli'ndeki "OCR'da aç" butonu bu paneli hedefler:
+  // filtreyi "hepsi" yapıp belgeyi seçer ve görünüme kaydırır (kullanıcı isteği
+  // 2026-07-26 — belgeyi tek tek aramak yerine tek tıkla gelsin).
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const id = (e as CustomEvent).detail?.imageId as string | undefined;
+      if (!id || !images.some((i) => i.id === id)) return;
+      setFilter('all');
+      setActiveId(id);
+      setTimeout(() => {
+        rootRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        const el =
+          typeof document !== 'undefined'
+            ? (document.querySelector(`[data-ocr-id="${id}"]`) as HTMLElement | null)
+            : null;
+        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 140);
+    };
+    window.addEventListener('kdv-goto-ocr', handler as EventListener);
+    return () => window.removeEventListener('kdv-goto-ocr', handler as EventListener);
+  }, [images]);
 
   // Aktif görsel değişince formu doldur
   useEffect(() => {
@@ -366,7 +389,8 @@ export function OcrReviewPanel({
 
   return (
     <div
-      className="rounded-2xl overflow-hidden"
+      ref={rootRef}
+      className="rounded-2xl overflow-hidden scroll-mt-24"
       style={{
         background: 'rgba(245,158,11,0.04)',
         border: '1px solid rgba(245,158,11,0.22)',
@@ -538,7 +562,8 @@ export function OcrReviewPanel({
             return (
               <div
                 key={img.id}
-                className="w-full transition relative"
+                data-ocr-id={img.id}
+                className="w-full transition relative scroll-mt-24"
                 style={{
                   background: active
                     ? `${accentColor}1a`
