@@ -3797,48 +3797,69 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     // Popup dinleyicisini tıklamadan ÖNCE kur (tile'dan doğrudan ya da ONAYLA'dan sonra gelebilir).
     const popupListener = context.waitForEvent('page', { timeout: 30_000 }).catch(() => null);
 
-    // "e-Beyan" kutucuğu FOLD ALTINDA (canlı log: "element is outside of the viewport").
-    // ÖNCE native scrollIntoView(center) ile görünüme kaydır (Playwright'ın kendi
-    // scrollIntoViewIfNeeded'i yetmedi), SONRA gerçek tıkla — sentetik click SSO'yu
-    // tetiklemiyor, gerçek Playwright click gerekiyor.
+    // "e-Beyan" kutucuğu FOLD ALTINDA + carousel KLONLARI var → getByren().first()
+    // ekran dışı klona düşüyor, kaydırılamıyor. ÇÖZÜM: "Geçiş Yapılabilecek" bölümünü
+    // kaydır, sonra VIEWPORT İÇİNDEKİ görünür "e-Beyan" kutucuğunun MERKEZİNE GERÇEK
+    // fare tıklaması (manuel testte çalışan yöntem). Sentetik .click() SSO tetiklemiyor.
     let tileClicked = false;
     try {
-      const tile = portalPage.getByText('e-Beyan', { exact: true }).first();
-      await tile.waitFor({ timeout: 12_000 });
-      await tile.evaluate((el: any) => el.scrollIntoView({ block: 'center', inline: 'center' })).catch(() => {});
-      await portalPage.waitForTimeout(700);
-      try {
-        await tile.click({ timeout: 8_000 });
-      } catch {
-        await tile.click({ timeout: 6_000, force: true });
+      await portalPage.evaluate(() => {
+        const sec = Array.from(document.querySelectorAll<HTMLElement>('*'))
+          .find((el) => /Ge[cç]i[sş] Yap[iı]labilecek/i.test(el.textContent || '') && el.getClientRects().length);
+        if (sec) sec.scrollIntoView({ block: 'center', inline: 'nearest' });
+      }).catch(() => {});
+      await portalPage.waitForTimeout(1000);
+      const box = await portalPage.evaluate(() => {
+        const cands = Array.from(document.querySelectorAll<HTMLElement>('p,span,div,a,button'))
+          .filter((el) => (el.textContent || '').trim() === 'e-Beyan');
+        for (const el of cands) {
+          const r = el.getBoundingClientRect();
+          const inView = r.width > 2 && r.height > 2 && r.top >= 0 && r.left >= 0
+            && r.bottom <= (window.innerHeight || 0) && r.right <= (window.innerWidth || 0);
+          if (!inView) continue;
+          let node: HTMLElement | null = el;
+          for (let i = 0; i < 4 && node; i++) { if ((node.textContent || '').trim().length > 40) break; node = node.parentElement; }
+          const cr = (node || el).getBoundingClientRect();
+          return { x: Math.round(cr.left + cr.width / 2), y: Math.round(cr.top + cr.height / 2) };
+        }
+        return null;
+      });
+      if (box) {
+        this.logger.warn(`[EBEYANNEW] gorunur e-Beyan kutucugu bulundu, fare click (${box.x},${box.y})`);
+        await portalPage.mouse.click(box.x, box.y);
+        tileClicked = true;
+      } else {
+        this.logger.warn('[EBEYANNEW] viewport icinde gorunur e-Beyan kutucugu YOK — getByText force deneniyor');
       }
-      tileClicked = true;
     } catch (e: any) {
-      this.logger.warn(`[EBEYANNEW] tile getByText basarisiz (${this.compact(e?.message || e)}) — evaluate fallback deneniyor`);
-      tileClicked = await portalPage.evaluate(() => {
-        const isVis = (el: Element) => !!(el as HTMLElement).getClientRects().length;
-        const el = Array.from(document.querySelectorAll<HTMLElement>('a,button,div,span,p'))
-          .find((n) => isVis(n) && (n.textContent || '').trim() === 'e-Beyan');
-        if (!el) return false;
-        let node: HTMLElement | null = el;
-        for (let i = 0; i < 4 && node; i++) { if ((node.textContent || '').trim().length > 40) break; node = node.parentElement; }
-        const target = (node || el) as HTMLElement;
-        target.scrollIntoView({ block: 'center', inline: 'center' });
-        target.click();
-        return true;
-      }).catch(() => false);
+      this.logger.warn(`[EBEYANNEW] koordinat tiklama hata: ${this.compact(e?.message || e)}`);
+    }
+    if (!tileClicked) {
+      try {
+        const tile = portalPage.getByText('e-Beyan', { exact: true }).first();
+        await tile.evaluate((el: any) => el.scrollIntoView({ block: 'center' })).catch(() => {});
+        await tile.click({ timeout: 6_000, force: true });
+        tileClicked = true;
+      } catch { /* aşağıda hata fırlatılır */ }
     }
     if (!tileClicked) {
       throw new Error(`Dijital Vergi Dairesi'nde "e-Beyan" kutucugu bulunamadi/tiklanamadi. Gorunen: ${await this.visibleActionSnapshot(portalPage)}`);
     }
     this.logger.warn('[EBEYANNEW] e-Beyan tile tiklandi');
 
-    // "Yönlendirmeyi Onaylıyor Musunuz?" → ONAYLA (varsa; ~8sn bekle).
+    // "Yönlendirmeyi Onaylıyor Musunuz?" → ONAYLA (modal; ~12sn bekle, gerçek+force tıkla).
+    // Kullanıcı bulgusu: tile açılınca onay dialogu çıkıyor ama tıklanamıyor olabilir.
     try {
       const onayla = portalPage.getByText('ONAYLA', { exact: false }).first();
-      await onayla.waitFor({ timeout: 8_000 });
+      await onayla.waitFor({ timeout: 12_000 });
       this.logger.warn('[EBEYANNEW] ONAYLA dialogu goruldu, tiklaniyor');
-      await onayla.click({ timeout: 6_000 }).catch(() => {});
+      await onayla.click({ timeout: 5_000 }).catch(async () => {
+        this.logger.warn('[EBEYANNEW] ONAYLA normal click basarisiz — force + koordinat deneniyor');
+        await onayla.click({ timeout: 4_000, force: true }).catch(async () => {
+          const b = await onayla.boundingBox().catch(() => null);
+          if (b) await portalPage.mouse.click(Math.round(b.x + b.width / 2), Math.round(b.y + b.height / 2)).catch(() => {});
+        });
+      });
     } catch {
       this.logger.warn('[EBEYANNEW] ONAYLA dialogu gorunmedi (dogrudan acilmis olabilir)');
     }
