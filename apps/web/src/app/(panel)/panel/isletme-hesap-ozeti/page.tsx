@@ -1190,9 +1190,6 @@ function KarsilastirmaTablosu({
           borderTop: `1px solid ${GRID_LINE_STRONG}`,
           borderLeft: `1px solid ${GRID_LINE_STRONG}`,
           borderRight: `1px solid ${GRID_LINE_STRONG}`,
-          // Alt kenar çizgisi — dikey sütun ayraçları buraya oturup birleşsin
-          // (yoksa çizgiler boşlukta asılı kalıp "kopuk" görünüyordu, kullanıcı bildirimi).
-          borderBottom: `1px solid ${GRID_LINE_STRONG}`,
           boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
         }}
       >
@@ -1203,16 +1200,27 @@ function KarsilastirmaTablosu({
             gridTemplateColumns: `24% repeat(${tersDonemler.length}, ${COL_WIDTH})`,
           }}
         >
-          {/* Sol AÇIKLAMA placeholder — tablonun ilk kolonuyla aynı genişlik */}
+          {/* Sol başlık — KAR/ZARAR ÖZETİ (tam-genişlik bant kaldırıldı, buraya taşındı;
+              tablonun ilk kolonuyla aynı genişlik, dikey çizgiler kesintisiz iner) */}
           <div
-            className="px-3 py-3 flex items-center"
-            style={{ borderRight: `1px solid ${GRID_LINE_STRONG}` }}
+            className="px-3 py-3 flex items-center gap-2"
+            style={{ borderRight: `1px solid ${GRID_LINE}` }}
           >
             <span
-              className="text-[10px] uppercase font-bold tracking-[.18em]"
-              style={{ color: 'rgba(250,250,249,0.4)' }}
+              className="inline-flex h-6 w-6 items-center justify-center rounded-md flex-shrink-0"
+              style={{
+                background: 'rgba(212,184,118,0.16)',
+                color: AMOUNT_ACCENT,
+                border: `1px solid ${GRID_LINE_STRONG}`,
+              }}
             >
-              Dönem Aksiyonları
+              <TrendingUp className="h-3.5 w-3.5" />
+            </span>
+            <span
+              className="text-[10.5px] uppercase font-bold tracking-[.14em]"
+              style={{ color: AMOUNT_ACCENT }}
+            >
+              Kar / Zarar Özeti
             </span>
           </div>
           {tersDonemler.map((d, idx) => {
@@ -1227,7 +1235,7 @@ function KarsilastirmaTablosu({
                 className="px-3 py-3 text-center"
                 style={{
                   background: locked ? 'rgba(212,184,118,0.10)' : 'transparent',
-                  borderRight: !isLast ? `1px solid ${GRID_LINE_STRONG}` : 'none',
+                  borderRight: !isLast ? `1px solid ${GRID_LINE}` : 'none',
                 }}
               >
                 {/* Dönem başlığı */}
@@ -1363,6 +1371,7 @@ function KarsilastirmaTablosu({
         icon={<TrendingUp className="h-4 w-4" />}
         accent="emerald"
         attached
+        hideHeader
       >
         <table className="w-full text-sm" style={REPORT_TABLE_STYLE}>
           <colgroup>
@@ -1675,12 +1684,14 @@ function BlockCard({
   accent,
   children,
   attached,
+  hideHeader,
 }: {
   title: string;
   icon: React.ReactNode;
   accent: 'emerald' | 'amber' | 'indigo';
   children: React.ReactNode;
   attached?: boolean; // v1.36.26: üstteki kutuya bitişikse top-rounded ve top-border kaldır
+  hideHeader?: boolean; // başlık bandını gizle (başlık dönem barına taşındığında)
 }) {
   const accentColors: Record<string, { headerBg: string; border: string; text: string; iconBg: string; iconText: string }> = {
     emerald: {
@@ -1728,36 +1739,38 @@ function BlockCard({
           }}
         />
       )}
-      <div
-        className="flex items-center gap-3 px-5 py-3"
-        style={{
-          background: attached ? TABLE_SECTION_BG : c.headerBg,
-          borderBottom: `1px solid ${c.border}`,
-        }}
-      >
-        <span
-          className="inline-flex h-7 w-7 items-center justify-center rounded-lg"
+      {!hideHeader && (
+        <div
+          className="flex items-center gap-3 px-5 py-3"
           style={{
-            background: c.iconBg,
-            color: c.iconText,
-            border: `1px solid ${GRID_LINE_STRONG}`,
-            boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.05)',
+            background: attached ? TABLE_SECTION_BG : c.headerBg,
+            borderBottom: `1px solid ${c.border}`,
           }}
         >
-          {icon}
-        </span>
-        <h2
-          className="text-[11px] font-bold uppercase"
-          style={{
-            color: c.text,
-            letterSpacing: '0.18em',
-            fontFamily: NUM_FONT,
-            fontWeight: 700,
-          }}
-        >
-          {title}
-        </h2>
-      </div>
+          <span
+            className="inline-flex h-7 w-7 items-center justify-center rounded-lg"
+            style={{
+              background: c.iconBg,
+              color: c.iconText,
+              border: `1px solid ${GRID_LINE_STRONG}`,
+              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.05)',
+            }}
+          >
+            {icon}
+          </span>
+          <h2
+            className="text-[11px] font-bold uppercase"
+            style={{
+              color: c.text,
+              letterSpacing: '0.18em',
+              fontFamily: NUM_FONT,
+              fontWeight: 700,
+            }}
+          >
+            {title}
+          </h2>
+        </div>
+      )}
       <div className="overflow-x-auto">{children}</div>
     </div>
   );
