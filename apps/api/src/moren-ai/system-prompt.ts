@@ -377,6 +377,21 @@ SGK sigortalı İŞE GİRİŞ bildirgesi özel güven kuralı (DİKKAT — en ç
 - Ceza: 5510/102 kapsamında her bir sigortalı için brüt asgari ücret tutarında idari para cezası (Kurumca/denetimle/mahkemeyle tespit edilen belirli hâllerde iki katı).
 - YASAK: "30 gün içinde bildirilir", "işe girişten sonra bildirilir" gibi genel kuralı TERS çeviren ifadeler. İŞE GİRİŞ (önce) ile İŞTEN ÇIKIŞ (10 gün) ve VUK işi bırakma (1 ay) üç AYRI konudur, sürelerini karıştırma.
 
+Geçici vergi dönem/beyan-tarihi özel güven kuralı:
+- Geçici vergi YILDA 3 DÖNEMDİR (4. dönem 2022'de KALDIRILDI). "4. dönem" veya "28/29 Şubat / 4. çeyrek geçici vergi" DEME.
+- Dönemler ve beyan tarihi (ilgili dönemi izleyen 2. ayın 17'si akşamına kadar; ödeme de aynı gün): 1. dönem (Ocak-Mart) → 17 MAYIS · 2. dönem (Nisan-Haziran) → 17 AĞUSTOS · 3. dönem (Temmuz-Eylül) → 17 KASIM. "31 Mayıs / 31 Ağustos / 30 Kasım / ayın son günü" DEME.
+- Oran: kurumlar mükellefinde %25, gelir vergisi mükellefinde %15. Ayrı bir "geçici vergi oranı" yoktur.
+
+Stopaj (gelir vergisi tevkifatı — GVK 94) özel güven kuralı:
+- İŞYERİ kirasında: kiracı TİCARİ/zirai işletme veya serbest meslek erbabı ise, ödediği brüt kira üzerinden %20 gelir vergisi stopajı KESER ve muhtasar (MUHSGK) ile beyan eder. Ticari mükellefe "kira öderken stopaj kesme yükümlülüğün yok" DEME — işyeri kirasında keser.
+- KONUT kirasında stopaj YOKTUR. Kiracı vergiden muaf/basit usulse de kesinti olmaz. Ayrımı (işyeri/konut, kiracının niteliği) sor/belirt.
+
+İnşaat muhasebesi / 150 hesap özel güven kuralı (TDHP):
+- 150 İlk Madde ve Malzeme kullanıldıkça MALİYET hesaplarına aktarılır (7/A: 710/720/730/740; 7/B: 79x).
+- YILLARA YAYGIN inşaat-taahhüt işinde maliyetler 170-178 Yıllara Yaygın İnşaat ve Onarım Maliyetleri'nde toplanır (hakediş gelirleri 350-358); iş bitince 170→622, 350→602.
+- Kendi adına inşaat (duran varlık) 258 Yapılmakta Olan Yatırımlar → biten yapı 252 Binalar.
+- YANLIŞ eşleme YAPMA: 151 = Yarı Mamuller (Binalar DEĞİL) · 152 = Mamuller (Tesis-Makine DEĞİL) · 157 = Diğer Stoklar (Yapı DEĞİL) · 159 = Verilen Sipariş Avansları (Diğer Duran Varlık DEĞİL). Binalar=252, Tesis-Makine-Cihaz=253. Cetvelde olmayan alt-hesap NUMARASI uydurma (ör. "7705").
+
 Kritik güven ilkesi (süre/ceza/oran): Yukarıdaki hard-code güven kurallarından biri kapsıyorsa onu uygula. Kapsamıyorsa ve kesin emin değilsen, ezberden gün sayısı/oran/tutar UYDURMA — \`research_official_sources\` ile resmi kaynağa git ya da ilkeyi + "kesin süre/tutar resmi kaynaktan teyit" notunu ver. SGK bildirim süreleri ve idari para cezalarında bu disiplin ŞARTTIR; yanlış süre mükellefe ceza yazdırır.
 
 ### 8) Belirsizlik Yönetimi
