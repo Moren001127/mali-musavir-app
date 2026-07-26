@@ -3940,10 +3940,12 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       // Yanıttan beyanname kalemlerini çıkar (savunmacı — çeşitli olası anahtarlar).
       const items: any[] = [];
       for (const j of captured) {
-        const arr = Array.isArray(j) ? j
-          : Array.isArray(j?.content) ? j.content
-          : Array.isArray(j?.data) ? j.data
+        const arr = Array.isArray(j?.data?.beyannamePage?.content) ? j.data.beyannamePage.content
+          : Array.isArray(j?.beyannamePage?.content) ? j.beyannamePage.content
           : Array.isArray(j?.data?.content) ? j.data.content
+          : Array.isArray(j?.content) ? j.content
+          : Array.isArray(j) ? j
+          : Array.isArray(j?.data) ? j.data
           : Array.isArray(j?.beyannameler) ? j.beyannameler
           : Array.isArray(j?.liste) ? j.liste
           : [];
@@ -3966,12 +3968,15 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
 
       let indexed = 0;
       for (const it of items) {
-        const beyannameId = pick(it, ['beyannameId', 'beyannameID', 'id', 'beyanId']);
-        const kod = pick(it, ['beyannameKodu', 'beyannameKodAd', 'beyannameKod', 'kod', 'beyannameKoduKisaAd']);
-        const vkn = pick(it, ['vergiKimlikNo', 'vergiKimlikNumarasi', 'vkn', 'tcKimlikNo', 'tckn', 'kimlikNo']);
-        const unvan = pick(it, ['unvan', 'adSoyadUnvan', 'adiSoyadiUnvani', 'adSoyad', 'mukellefAdi', 'mukellefUnvan']);
-        const donemStr = pick(it, ['beyannameDonemi', 'donem', 'donemAralik', 'vergilendirmeDonemi']);
-        const durum = pick(it, ['durum', 'durumu', 'beyannameDurum', 'beyannameDurumu']);
+        // beyannameId (65395911) — PDF ucu bunu kullanır; iç "id" (10989401) DEĞİL.
+        const beyannameId = pick(it, ['beyannameId', 'beyannameID', 'beyanId', 'id']);
+        // Tür kodu iç içe: beyannameTuru.kod ("KDV1") / .kisaAd
+        const kod = it?.beyannameTuru?.kod || it?.beyannameTuru?.kisaAd
+          || pick(it, ['beyannameKodu', 'beyannameKod', 'kod', 'beyannameKoduKisaAd']);
+        const vkn = pick(it, ['mukellefVkn', 'mukellefTckn', 'vergiKimlikNo', 'vkn', 'tcKimlikNo', 'tckn', 'kimlikNo']);
+        const unvan = pick(it, ['mukellefUnvan', 'unvan', 'adSoyadUnvan', 'adiSoyadiUnvani', 'adSoyad', 'mukellefAdi']);
+        const donemStr = pick(it, ['beyannameDonemi', 'vergilendirmeDonemi', 'donem', 'donemAralik', 'donemStr', 'donemBilgisi']);
+        const durum = pick(it, ['durum', 'durumu', 'beyannameDurum', 'beyannameDurumu', 'beyanDurum', 'beyannameDurumAd']);
         if (!beyannameId) continue;
 
         const tur = this.ebeyanNewTurFromKod(kod);
