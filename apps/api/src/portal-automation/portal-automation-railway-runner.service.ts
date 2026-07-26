@@ -3952,7 +3952,9 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         items.push(...arr);
       }
       if (items.length) {
-        this.logger.warn(`[EBEYANNEW] filtrele ${items.length} kalem; ornek anahtarlar=${Object.keys(items[0] || {}).join(',').slice(0, 300)}`);
+        const durumlar = Array.from(new Set(items.map((x) => String(x?.beyannameDurum ?? '')).filter(Boolean))).slice(0, 12);
+        const ornekDonem = `${items[0]?.donemTip ?? ''}|${items[0]?.donemBaslangicTarih ?? ''}|${items[0]?.donemBitisTarih ?? ''}`;
+        this.logger.warn(`[EBEYANNEW] filtrele ${items.length} kalem; anahtarlar=${Object.keys(items[0] || {}).join(',').slice(0, 300)}; durumlar=[${durumlar.join(' | ')}]; donemOrnek=${ornekDonem}`);
       } else {
         notes.push('Yeni e-Beyan: filtrele yanitindan kalem cikarilamadi (yanit sekli loglandi).');
         this.logger.warn(`[EBEYANNEW] filtrele bos/taninmadi. yakalanan=${captured.length} ornek=${this.safeDebugText(JSON.stringify(captured[0] || {})).slice(0, 400)}`);
