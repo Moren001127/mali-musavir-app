@@ -3797,13 +3797,21 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     // Popup dinleyicisini tıklamadan ÖNCE kur (tile'dan doğrudan ya da ONAYLA'dan sonra gelebilir).
     const popupListener = context.waitForEvent('page', { timeout: 30_000 }).catch(() => null);
 
-    // "e-Beyan" kutucuğu — TAM metin ("e-Beyanname" DEĞİL). Playwright gerçek tıklama.
+    // "e-Beyan" kutucuğu FOLD ALTINDA (canlı log: "element is outside of the viewport").
+    // ÖNCE native scrollIntoView(center) ile görünüme kaydır (Playwright'ın kendi
+    // scrollIntoViewIfNeeded'i yetmedi), SONRA gerçek tıkla — sentetik click SSO'yu
+    // tetiklemiyor, gerçek Playwright click gerekiyor.
     let tileClicked = false;
     try {
       const tile = portalPage.getByText('e-Beyan', { exact: true }).first();
-      await tile.waitFor({ timeout: 10_000 });
-      await tile.scrollIntoViewIfNeeded().catch(() => {});
-      await tile.click({ timeout: 8_000 });
+      await tile.waitFor({ timeout: 12_000 });
+      await tile.evaluate((el: any) => el.scrollIntoView({ block: 'center', inline: 'center' })).catch(() => {});
+      await portalPage.waitForTimeout(700);
+      try {
+        await tile.click({ timeout: 8_000 });
+      } catch {
+        await tile.click({ timeout: 6_000, force: true });
+      }
       tileClicked = true;
     } catch (e: any) {
       this.logger.warn(`[EBEYANNEW] tile getByText basarisiz (${this.compact(e?.message || e)}) — evaluate fallback deneniyor`);
@@ -3814,7 +3822,9 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         if (!el) return false;
         let node: HTMLElement | null = el;
         for (let i = 0; i < 4 && node; i++) { if ((node.textContent || '').trim().length > 40) break; node = node.parentElement; }
-        (node || el).click();
+        const target = (node || el) as HTMLElement;
+        target.scrollIntoView({ block: 'center', inline: 'center' });
+        target.click();
         return true;
       }).catch(() => false);
     }
