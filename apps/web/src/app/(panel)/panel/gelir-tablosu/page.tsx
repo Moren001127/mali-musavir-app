@@ -5,6 +5,7 @@ import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/rea
 import { mizanApi, gelirTablosuApi, fmtTRY } from '@/lib/mizan';
 import { api } from '@/lib/api';
 import { formatDonemLabel, formatDonemRangeLabel, formatDonemTipiLabel } from '@/lib/period';
+import { MaliYorumKutusu } from '@/components/MaliYorumKutusu';
 import { toast } from 'sonner';
 import {
   Download, Search, X, ChevronDown, Users, Calendar, Sparkles, Loader2,
@@ -1835,6 +1836,10 @@ export default function GelirTablosuPage() {
               </tbody>
             </table>
           </div>
+        )}
+
+        {latestQuarter?.id && (
+          <MaliYorumKutusu kaynak="GELIR_TABLOSU" kaynakId={latestQuarter.id} accent="#6bbf8a" />
         )}
       </div>
 

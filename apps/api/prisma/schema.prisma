@@ -3420,3 +3420,27 @@ model EFaturaInbox {
   @@index([tenantId, entegrator, syncedAt])
   @@map("efatura_inbox")
 }
+
+// ============================================================
+// MALİ YORUM — Yapay zeka değerlendirmesi (Max / Sonnet)
+// Mizan · Bilanço · Gelir Tablosu · İşletme Hesap Özeti için
+// bir mali müşavir gözüyle üretilmiş sade değerlendirme.
+// Bir kez üretilir, kaydedilir, "yenile" ile tazelenir.
+// Kaynak veriye/mantığa DOKUNMAZ; yalnızca okur ve yorumlar.
+// ============================================================
+model MaliYorum {
+  id         String   @id @default(cuid())
+  tenantId   String
+  taxpayerId String
+  kaynak     String   // MIZAN | BILANCO | GELIR_TABLOSU | IHO
+  kaynakId   String   // ilgili kaydın id'si (IHO için "taxpayerId:yil")
+  donem      String?  // görüntüleme için dönem etiketi
+  ozet       String   @db.Text // serbest metin değerlendirme
+  model      String   // üreten model
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([tenantId, kaynak, kaynakId])
+  @@index([tenantId, taxpayerId, kaynak])
+  @@map("mali_yorum")
+}

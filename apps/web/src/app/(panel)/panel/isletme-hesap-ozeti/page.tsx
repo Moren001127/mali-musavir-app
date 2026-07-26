@@ -3,6 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { LucaInlineCaptchaPanel } from '@/components/luca/LucaInlineCaptchaPanel';
+import { MaliYorumKutusu } from '@/components/MaliYorumKutusu';
 import {
   isletmeHesapOzetiApi,
   fmtTRY,
@@ -826,6 +827,10 @@ export default function IsletmeHesapOzetiPage() {
           }}
           lucaJobs={lucaJobs}
         />
+      )}
+
+      {taxpayerId && yilData && (
+        <MaliYorumKutusu kaynak="IHO" kaynakId={`${taxpayerId}:${yil}`} accent="#5bb9b0" />
       )}
     </div>
   );

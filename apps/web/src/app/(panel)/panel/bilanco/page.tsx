@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { mizanApi, bilancoApi, fmtTRY } from '@/lib/mizan';
 import { api } from '@/lib/api';
 import { formatDonemLabel, formatDonemRangeLabel } from '@/lib/period';
+import { MaliYorumKutusu } from '@/components/MaliYorumKutusu';
 import { toast } from 'sonner';
 import {
   Search, X, ChevronDown, Users, Calendar, Sparkles, Loader2,
@@ -674,6 +675,10 @@ export default function BilancoPage() {
               </tbody>
             </table>
           </div>
+        )}
+
+        {latest?.id && (
+          <MaliYorumKutusu kaynak="BILANCO" kaynakId={latest.id} accent="#7ca8e6" />
         )}
       </div>
 

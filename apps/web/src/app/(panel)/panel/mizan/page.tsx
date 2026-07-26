@@ -7,6 +7,7 @@ import { api } from '@/lib/api';
 import { lucaSessionApi } from '@/lib/luca-session';
 import { useLucaAgent } from '@/hooks/useLucaAgent';
 import { formatDonemLabel, formatDonemTipiLabel, getDonemDateRange, normalizeDonemTipi } from '@/lib/period';
+import { MaliYorumKutusu } from '@/components/MaliYorumKutusu';
 import { toast } from 'sonner';
 import {
   Download, Search, X, ChevronDown, Users, Calendar, Sparkles, AlertTriangle,
@@ -1456,6 +1457,11 @@ export default function MizanPage() {
             Yukarıdan <strong style={{ color: GOLD }}>Mizan Yükle</strong> veya <strong style={{ color: GOLD }}>Luca'dan Çek</strong> ile başla.
           </p>
         </div>
+      )}
+
+      {/* Yapay Zeka Değerlendirmesi — denetim uyarılarını mali müşavir gözüyle yorumlar */}
+      {mizan?.id && hesaplar.length > 0 && (
+        <MaliYorumKutusu kaynak="MIZAN" kaynakId={mizan.id} accent={GOLD} />
       )}
 
       {/* Hesap Listesi */}
