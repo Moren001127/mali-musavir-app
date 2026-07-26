@@ -62,6 +62,31 @@ export class CalisanService {
     private readonly morenAi: MorenAiService,
   ) {}
 
+  // ── OWNER KİMLİK GÜVENLİĞİ (Buse halüsinasyonu) ──
+  // Owner samimi/flörtöz/selam mesajı yazınca ucuz model asistan rolünden çıkıp
+  // uydurma kimliğe ("Buse") kayıyordu; prompt talimatı YETMEDİ. Çözüm: iş içeriği
+  // OLMAYAN kısa sohbet/selam/samimiyet mesajlarını modele HİÇ göndermeden sabit,
+  // profesyonel, owner'ı doğru isimle anan bir cevapla karşıla (deterministik).
+  private static readonly OWNER_BUSINESS_RE = /(kdv|beyan|tahakkuk|bor[cç]|fatura|mizan|m[uü]kellef|g[oö]nder|kontrol|oran|ceza|s[uü]re|hesap|vergi|sgk|ekstre|cari|evrak|defter|liste|analiz|rapor|durum|ka[cç]|hangi|ne kadar|\bkim\b|ba[sş]lat|bakiye|[oö]deme|damga|stopaj|izin|asgari|geçici|gecici|bilan[cç]o|gelir tablo)/i;
+  private static readonly OWNER_GREETING_RE = /^(merhaba|selam|selamlar|g[uü]nayd[iı]n|iyi\s*(g[uü]nler|ak[sş]amlar|geceler|sabahlar)|kolay gelsin|hay[iı]rl[iı]\s*(sabahlar|g[uü]nler|ak[sş]amlar)|selam[uü]n aleyk[uü]m)[\s!.,?]*$/i;
+  private static readonly OWNER_SMALLTALK_RE = /(can[iı]m|a[sş]k[iı]m|sevgilim|hayat[iı]m|[oö]zledin|g[uü]zellik getir|[oö]pt[uü]m|seni sev|iyi ki vars[iı]n|hasret|nas[iı]ls[iı]n|naber|ne haber|nap[iı]yorsun|nap[iı]yon)/i;
+
+  private isOwnerSmallTalk(text: string): boolean {
+    const t = String(text || '').trim();
+    if (!t || t.length > 60) return false;
+    if (CalisanService.OWNER_BUSINESS_RE.test(t)) return false;
+    if (CalisanService.OWNER_GREETING_RE.test(t)) return true;
+    return t.split(/\s+/).length <= 8 && CalisanService.OWNER_SMALLTALK_RE.test(t);
+  }
+
+  private ownerDisplayName(): string {
+    return String(process.env.MOREN_OWNER_DISPLAY_NAME || 'Muzaffer').trim() || 'Muzaffer';
+  }
+
+  private ownerSmallTalkReply(): string {
+    return `Merhaba ${this.ownerDisplayName()} Bey, buyurun. Mükellef durumu, beyanname, KDV, borç, belge ya da mevzuat konusunda hemen yardımcı olabilirim.`;
+  }
+
   /**
    * Owner WhatsApp köprüsü: cevabı mevcut TOOL'LU MorenAI beyninden üretir
    * (mizan/KDV/beyan sorgulayabilir), ama model yönlendirme (kritik→Opus 4.8,
@@ -75,6 +100,11 @@ export class CalisanService {
     source?: string;
   }): Promise<{ assistantMessage: string; model: string }> {
     const ownerMessage = String(params.originalMessage || params.message || '').trim();
+    // KİMLİK GÜVENLİĞİ: iş içeriği olmayan selam/samimiyet mesajını modele gönderme →
+    // "Buse" halüsinasyonu imkânsız. Sabit, owner'ı doğru isimle anan profesyonel cevap.
+    if (this.isOwnerSmallTalk(ownerMessage)) {
+      return { assistantMessage: this.ownerSmallTalkReply(), model: 'deterministik-smalltalk' };
+    }
     const critical = this.isCritical(ownerMessage || params.message);
     const model = critical ? MODEL_CRITICAL : MODEL_DEFAULT;
     if (this.shouldTryPortalTools(ownerMessage) && process.env.CALISAN_OWNER_TOOL_FALLBACK !== '0') {

@@ -90,6 +90,16 @@ export class WhatsAppBotPostFilterService {
     return WhatsAppBotPostFilterService.STALL_RE.test(t);
   }
 
+  /**
+   * OWNER KİMLİK GÜVENLİK AĞI: model owner'a yanlış isimle ("Buse") hitap ederse
+   * (bilinen halüsinasyon) owner'ın gerçek adına çevir. Birincil çözüm calisan'daki
+   * kısa-devre; bu, iş cevaplarına sızan artıkları yakalayan son katman.
+   */
+  private guardOwnerIdentity(text: string): string {
+    const ownerFirst = String(process.env.MOREN_OWNER_DISPLAY_NAME || 'Muzaffer').trim().split(/\s+/)[0] || 'Muzaffer';
+    return String(text || '').replace(/\bBuse\b/gi, ownerFirst);
+  }
+
   filterTaxpayerReply(raw: string, options?: { recentReplies?: string[]; mode?: 'taxpayer' | 'owner' | 'unknown' }): string {
     let text = String(raw || '').trim();
 
@@ -103,7 +113,7 @@ export class WhatsAppBotPostFilterService {
     // Owner (mali müşavir) raporları yapı ister: satır sonları, başlıklar, numaralar
     // KORUNMALI. Sohbet için tasarlanan agresif temizlik bunları eziyordu → ayrı yol.
     if (options?.mode === 'owner') {
-      return this.formatOwnerReport(stripEmojis(text));
+      return this.formatOwnerReport(this.guardOwnerIdentity(stripEmojis(text)));
     }
 
     // 1. Code block + markdown formatting sil
