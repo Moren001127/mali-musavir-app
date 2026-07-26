@@ -3975,8 +3975,29 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
           || pick(it, ['beyannameKodu', 'beyannameKod', 'kod', 'beyannameKoduKisaAd']);
         const vkn = pick(it, ['mukellefVkn', 'mukellefTckn', 'vergiKimlikNo', 'vkn', 'tcKimlikNo', 'tckn', 'kimlikNo']);
         const unvan = pick(it, ['mukellefUnvan', 'unvan', 'adSoyadUnvan', 'adiSoyadiUnvani', 'adSoyad', 'mukellefAdi']);
-        const donemStr = pick(it, ['beyannameDonemi', 'vergilendirmeDonemi', 'donem', 'donemAralik', 'donemStr', 'donemBilgisi']);
-        const durum = pick(it, ['durum', 'durumu', 'beyannameDurum', 'beyannameDurumu', 'beyanDurum', 'beyannameDurumAd']);
+        // Dönem alanı ikiye bölünmüş (donemBaslangicTarih / donemBitisTarih) ve tarih
+        // formatında (ISO "2026-06-01" vb.) geliyor. İşlem/onay tarihi (islemTarihi)
+        // DEĞİL; vergilendirme dönemi budur. ebeyannameDonemFromRow "AY/YIL - AY/YIL"
+        // slash formatını beklediği için o forma çeviriyoruz — aksi halde fallback
+        // olarak işin dönemi (Temmuz) yazılıyordu.
+        const parseYm = (v: any): { y: number; m: number } | null => {
+          if (v === undefined || v === null) return null;
+          const s = String(v).trim();
+          let mm = s.match(/^(\d{4})-(\d{1,2})/); // 2026-06-01 / 2026-6
+          if (mm) return { y: Number(mm[1]), m: Number(mm[2]) };
+          mm = s.match(/^(\d{1,2})[.\/](\d{1,2})[.\/](\d{4})/); // 01.06.2026 / 1/6/2026
+          if (mm) return { y: Number(mm[3]), m: Number(mm[2]) };
+          mm = s.match(/^(\d{4})[.\/](\d{1,2})/); // 2026/06
+          if (mm) return { y: Number(mm[1]), m: Number(mm[2]) };
+          return null;
+        };
+        const ymStart = parseYm(it?.donemBaslangicTarih);
+        const ymEnd = parseYm(it?.donemBitisTarih) || ymStart;
+        let donemStr = pick(it, ['beyannameDonemi', 'vergilendirmeDonemi', 'donem', 'donemAralik', 'donemStr', 'donemBilgisi']);
+        if (!donemStr && ymStart && ymEnd) {
+          donemStr = `${String(ymStart.m).padStart(2, '0')}/${ymStart.y} - ${String(ymEnd.m).padStart(2, '0')}/${ymEnd.y}`;
+        }
+        const durum = pick(it, ['beyannameDurum', 'durum', 'durumu', 'beyannameDurumu', 'beyanDurum', 'beyannameDurumAd']);
         if (!beyannameId) continue;
 
         const tur = this.ebeyanNewTurFromKod(kod);
