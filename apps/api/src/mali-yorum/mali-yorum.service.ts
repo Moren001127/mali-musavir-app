@@ -73,7 +73,7 @@ export class MaliYorumService {
       prompt,
       system,
       model: MAX_MODEL_DEFAULT, // Sonnet — mali müşavir seviyesinde akıl yürütme
-      timeoutMs: 150_000, // mizan tüm hesaplarıyla geniş — tam tarama için süre
+      timeoutMs: 90_000, // kompakt özet prompt — kısa sürede biter
     });
 
     if (!sonuc.ok || !sonuc.text.trim()) {
@@ -175,25 +175,30 @@ export class MaliYorumService {
       )}`,
     );
 
-    // TÜM hesaplar — bakiyesi olan her hesap (ana + detay), kod sırasıyla.
-    // Modelin mizanın TAMAMINI görmesi şart; özet slice yapılmaz (aksi halde
-    // 549 gibi hesaplar atlanıp eksik denetim çıkıyordu).
+    // ANA HESAP ÖZETİ — bakiyesi olan sınıf/grup/ana hesaplar (kod ≤ 3 hane).
+    // Mali müşavir mizanı bu seviyede değerlendirir; 549 gibi ana hesaplar burada
+    // görünür. Tüm 600 detay (100.01.001) leaf'i GÖNDERMEYİZ — gereksiz büyük prompt
+    // limiti yer ve zaman aşımına sokar; tespiti zaten kural motoru + bu özet sağlar.
+    // Sınır yok (cap yüksek) — hiçbir ana hesap atlanmaz.
     const hesaplar: any[] = Array.isArray(m.hesaplar) ? m.hesaplar : [];
-    const dolu = hesaplar
-      .filter((h) => this.n(h.borcBakiye) !== 0 || this.n(h.alacakBakiye) !== 0)
+    const ana = hesaplar
+      .filter((h) => {
+        const bb = this.n(h.borcBakiye);
+        const ab = this.n(h.alacakBakiye);
+        return (bb !== 0 || ab !== 0) && String(h.hesapKodu || '').replace(/\D/g, '').length <= 3;
+      })
       .sort((a, b) => String(a.hesapKodu || '').localeCompare(String(b.hesapKodu || ''), 'tr'));
-    if (dolu.length) {
+    if (ana.length) {
       L.push(
-        `\nTÜM HESAPLAR — bakiyesi olan ${dolu.length} hesap. Kod hiyerarşiktir ` +
-          `(100=ana hesap, 100.01=grup, 100.01.001=detay; ana hesap alt kırılımların ` +
-          `TOPLAMIDIR — çift sayma). Biçim: kod · ad · Borç bakiye / Alacak bakiye:`,
+        `\nANA HESAP ÖZETİ — bakiyesi olan ${ana.length} hesap (kod hiyerarşik: ` +
+          `1=sınıf, 10=grup, 100=ana hesap; üst kod alt kırılımların TOPLAMIDIR — çift sayma). ` +
+          `Biçim: kod · ad · Borç bakiye / Alacak bakiye:`,
       );
-      for (const h of dolu.slice(0, 600)) {
+      for (const h of ana.slice(0, 250)) {
         L.push(
           `${h.hesapKodu} · ${h.hesapAdi} · ${this.tl(h.borcBakiye)} / ${this.tl(h.alacakBakiye)}`,
         );
       }
-      if (dolu.length > 600) L.push(`…(+${dolu.length - 600} hesap daha)`);
     }
 
     // Denetim bulguları
@@ -206,8 +211,7 @@ export class MaliYorumService {
     } else {
       L.push('\nSİSTEMİN DENETİM BULGULARI: yok.');
     }
-    // Mizan tüm hesaplarıyla geniş — geniş kırpma sınırı (600 hesap sığsın).
-    return this.kirp(L.join('\n'), 40000);
+    return this.kirp(L.join('\n'), 15000);
   }
 
   private bilancoMetni(b: any): string {
@@ -367,6 +371,7 @@ export class MaliYorumService {
       '- Vergi/mevzuat konusunda kesin hüküm verme; “dikkat edilmeli / kontrol edilmeli” diye işaret et.',
       '- Sistemin denetim bulguları verildiyse onları da değerlendir, önemlileri öne çıkar.',
       '- Bulguları önem sırasına göre yaz ve ÖNEMLİ olanların HEPSİNİ yaz — sayıyla sınırlama.',
+      '- Çıktın KISA ve öz olsun: hesapları tek tek listeleme, düşünce adımlarını yazma; SADECE bulgu ve önerileri ver.',
       '- Dönemi ASLA "Q1/Q2" diye yazma; "1. dönem, 2. dönem" biçimini kullan.',
     ];
 
