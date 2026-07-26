@@ -3917,8 +3917,24 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     };
     page.on('response', respHandler);
     try {
+      // SSO login sayfası (/dijital-login?token=) token'ı işleyip ana sayfaya yönlendirsin
+      // — oturum oturmadan /beyannameler'e gidersek login'e döner, filtrele hiç çağrılmaz.
+      await page.waitForURL((u: any) => !/\/login|dijital-login/i.test(String(u)), { timeout: 25_000 }).catch(() => {});
+      await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
+      this.logger.warn(`[EBEYANNEW] e-Beyan oturum hazir: ${this.safeUrl(page.url())}`);
+
+      // /beyannameler'e git ve filtrele yanıtını AÇIKÇA bekle (on('response') yedek).
+      const filtrelePromise = page.waitForResponse(
+        (r: any) => /\/api\/kullanici\/beyanname\/filtrele/i.test(String(r.url?.() || '')),
+        { timeout: 25_000 },
+      ).catch(() => null);
       await page.goto(`https://${HOST}/beyannameler`, { waitUntil: 'domcontentloaded', timeout: 45_000 }).catch(() => {});
-      // Liste + filtrele çağrısı otursun.
+      const directResp = await filtrelePromise;
+      if (directResp) {
+        const j = await directResp.json().catch(() => null);
+        if (j) { captured.push(j); this.logger.warn('[EBEYANNEW] filtrele yaniti waitForResponse ile yakalandi'); }
+      }
+      // Geç gelen / ek filtrele çağrıları için biraz daha bekle.
       await page.waitForTimeout(4000);
 
       // Yanıttan beyanname kalemlerini çıkar (savunmacı — çeşitli olası anahtarlar).
