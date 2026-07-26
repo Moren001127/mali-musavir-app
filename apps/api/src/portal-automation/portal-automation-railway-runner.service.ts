@@ -3790,60 +3790,67 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     }
     await portalPage.bringToFront().catch(() => {});
     await portalPage.waitForLoadState('domcontentloaded', { timeout: 15_000 }).catch(() => {});
+    // "Geçiş Yapılabilecek Uygulamalar" kutucukları render olsun (async yükleniyor).
+    await portalPage.getByText('Yapılabilecek', { exact: false }).first().waitFor({ timeout: 15_000 }).catch(() => {});
+    await portalPage.waitForTimeout(1800);
 
-    // "e-Beyan" kutucuğu — TAM metin eşleşmesi ("e-Beyanname" ile karışmasın!).
-    const popupAfterTile = context.waitForEvent('page', { timeout: 8_000 }).catch(() => null);
-    const tileClicked = await portalPage.evaluate(() => {
-      const isVisible = (el: Element) => {
-        const a = el as HTMLElement;
-        return !!(a.offsetWidth || a.offsetHeight || a.getClientRects().length);
-      };
-      const els = Array.from(document.querySelectorAll<HTMLElement>('a,button,div,span,p'));
-      const exact = els.find((el) => isVisible(el) && (el.textContent || '').trim() === 'e-Beyan');
-      if (!exact) return false;
-      // Tıklanabilir en yakın ata (küçük metinli kutu) — tile'ın kendisi.
-      let node: HTMLElement | null = exact;
-      for (let i = 0; i < 4 && node; i++) {
-        const t = (node.textContent || '').trim();
-        if (t.length > 40) break;
-        node = node.parentElement;
-      }
-      (node || exact).click();
-      return true;
-    }).catch(() => false);
+    // Popup dinleyicisini tıklamadan ÖNCE kur (tile'dan doğrudan ya da ONAYLA'dan sonra gelebilir).
+    const popupListener = context.waitForEvent('page', { timeout: 30_000 }).catch(() => null);
+
+    // "e-Beyan" kutucuğu — TAM metin ("e-Beyanname" DEĞİL). Playwright gerçek tıklama.
+    let tileClicked = false;
+    try {
+      const tile = portalPage.getByText('e-Beyan', { exact: true }).first();
+      await tile.waitFor({ timeout: 10_000 });
+      await tile.scrollIntoViewIfNeeded().catch(() => {});
+      await tile.click({ timeout: 8_000 });
+      tileClicked = true;
+    } catch (e: any) {
+      this.logger.warn(`[EBEYANNEW] tile getByText basarisiz (${this.compact(e?.message || e)}) — evaluate fallback deneniyor`);
+      tileClicked = await portalPage.evaluate(() => {
+        const isVis = (el: Element) => !!(el as HTMLElement).getClientRects().length;
+        const el = Array.from(document.querySelectorAll<HTMLElement>('a,button,div,span,p'))
+          .find((n) => isVis(n) && (n.textContent || '').trim() === 'e-Beyan');
+        if (!el) return false;
+        let node: HTMLElement | null = el;
+        for (let i = 0; i < 4 && node; i++) { if ((node.textContent || '').trim().length > 40) break; node = node.parentElement; }
+        (node || el).click();
+        return true;
+      }).catch(() => false);
+    }
     if (!tileClicked) {
-      throw new Error(`Dijital Vergi Dairesi'nde "e-Beyan" (yeni sistem) kutucuğu bulunamadı. Görünen: ${await this.visibleActionSnapshot(portalPage)}`);
+      throw new Error(`Dijital Vergi Dairesi'nde "e-Beyan" kutucugu bulunamadi/tiklanamadi. Gorunen: ${await this.visibleActionSnapshot(portalPage)}`);
+    }
+    this.logger.warn('[EBEYANNEW] e-Beyan tile tiklandi');
+
+    // "Yönlendirmeyi Onaylıyor Musunuz?" → ONAYLA (varsa; ~8sn bekle).
+    try {
+      const onayla = portalPage.getByText('ONAYLA', { exact: false }).first();
+      await onayla.waitFor({ timeout: 8_000 });
+      this.logger.warn('[EBEYANNEW] ONAYLA dialogu goruldu, tiklaniyor');
+      await onayla.click({ timeout: 6_000 }).catch(() => {});
+    } catch {
+      this.logger.warn('[EBEYANNEW] ONAYLA dialogu gorunmedi (dogrudan acilmis olabilir)');
     }
 
-    // Doğrudan popup?
-    const directPopup = await Promise.race([popupAfterTile, portalPage.waitForTimeout(900).then(() => null)]);
-    if (directPopup && new RegExp(HOST, 'i').test(String(directPopup.url?.() || ''))) {
-      await directPopup.waitForLoadState('domcontentloaded', { timeout: 20_000 }).catch(() => {});
-      return directPopup;
+    // Popup / host bekle (~25sn).
+    const popup = await popupListener;
+    if (popup && new RegExp(HOST, 'i').test(String(popup.url?.() || ''))) {
+      await popup.waitForLoadState('domcontentloaded', { timeout: 20_000 }).catch(() => {});
+      await popup.bringToFront().catch(() => {});
+      this.logger.warn(`[EBEYANNEW] e-Beyan popup acildi: ${this.safeUrl(popup.url())}`);
+      return popup;
     }
-
-    // "Yönlendirmeyi Onaylıyor Musunuz?" → ONAYLA
-    if (await this.isAnyTextVisible(portalPage, ['ONAYLA', 'Onayla', 'Yönlendirmeyi'])) {
-      const popupAfterConfirm = context.waitForEvent('page', { timeout: 25_000 }).catch(() => null);
-      await this.clickVisibleText(portalPage, ['ONAYLA', 'Onayla']);
-      const popup = await popupAfterConfirm;
-      if (popup) {
-        await popup.waitForLoadState('domcontentloaded', { timeout: 20_000 }).catch(() => {});
-        await popup.bringToFront().catch(() => {});
-        return popup;
-      }
-    }
-
-    // Yeni sekme host ile açıldı mı diye bekle.
-    for (let i = 0; i < 15; i++) {
+    for (let i = 0; i < 20; i++) {
       const opened = this.findOpenPageByHost(context, HOST);
       if (opened) {
         await opened.waitForLoadState('domcontentloaded', { timeout: 20_000 }).catch(() => {});
+        this.logger.warn('[EBEYANNEW] e-Beyan sekmesi host ile bulundu');
         return opened;
       }
       await portalPage.waitForTimeout(1000);
     }
-    throw new Error('Yeni e-Beyan sekmesi açılmadı.');
+    throw new Error(`Yeni e-Beyan sekmesi acilmadi. portalUrl=${this.safeUrl(portalPage.url())} gorunen=${await this.visibleActionSnapshot(portalPage)}`);
   }
 
   /**
