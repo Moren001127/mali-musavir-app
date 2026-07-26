@@ -2363,6 +2363,8 @@ export class MorenAiService {
       where: {
         tenantId,
         isActive: true,
+        // Sanal WhatsApp kişilerini (owner + kayıtsız) hariç tut → "aktif mükellef" şişmesin.
+        NOT: { taxNumber: { startsWith: 'WHATSAPP-' } },
         OR: [{ startDate: null }, { startDate: { lte: lastDay } }],
         AND: [{ OR: [{ endDate: null }, { endDate: { gte: firstDay } }] }],
       },
@@ -2373,6 +2375,29 @@ export class MorenAiService {
           where: { tenantId, year, month, taxpayerId: { in: taxpayers.map((t) => t.id) } },
         })
       : [];
+    // OTORİTER BEYAN İŞARETİ (computeMonthlyStatusList + panel Aylık Takip ile AYNI):
+    // beyanname dönemi (= bu işlem ayı − 1) için KDV1 BeyanKaydı'nda PDF/URL varsa
+    // beyanname GİB'e VERİLMİŞ say. Elle 'beyannameVerildi' kutusu bayat kalınca
+    // brifing "52 hazırlanacak" derken gerçek ~14 idi; bu, o tutarsızlığı giderir.
+    const briefingByY = month === 1 ? year - 1 : year;
+    const briefingByM = month === 1 ? 12 : month - 1;
+    const briefingBeyanDonem = `${briefingByY}-${String(briefingByM).padStart(2, '0')}`;
+    const autoVerildiSet = new Set<string>();
+    if (taxpayers.length) {
+      try {
+        const kayitlar = await (this.prisma as any).beyanKaydi.findMany({
+          where: {
+            tenantId,
+            taxpayerId: { in: taxpayers.map((t) => t.id) },
+            donem: briefingBeyanDonem,
+            beyanTipi: { in: ['KDV1', 'KDV'] },
+            OR: [{ beyannameUrl: { not: null } }, { pdfUrl: { not: null } }],
+          },
+          select: { taxpayerId: true },
+        });
+        for (const k of kayitlar) if (k?.taxpayerId) autoVerildiSet.add(k.taxpayerId);
+      } catch { /* beyan kaydı yoksa/hatasında otomatik işaret atlanır */ }
+    }
     const statusMap = new Map(monthlyStatuses.map((s: any) => [s.taxpayerId, s]));
     const aktif = taxpayers.map((taxpayer: any) => ({
       ...(statusMap.get(taxpayer.id) || {
@@ -2394,8 +2419,9 @@ export class MorenAiService {
     const eskiBeklemeler: Array<{ ad: string; gun: number; stage: string }> = [];
     for (const s of aktif as any[]) {
       const kdvHepsi = s.indirilecekKdvKontrol && s.hesaplananKdvKontrol && s.eArsivKontrol;
+      const beyanVerildi = s.beyannameVerildi || autoVerildiSet.has(s.taxpayer?.id);
       let stage: string;
-      if (s.beyannameVerildi) { stage = 'TAMAM'; tamam++; }
+      if (beyanVerildi) { stage = 'TAMAM'; tamam++; }
       else if (s.kontrolEdildi || kdvHepsi) { stage = 'BEYAN'; beyan++; }
       else if (s.evraklarIslendi) { stage = 'KONTROL'; kontrol++; }
       else if (s.evraklarGeldi) { stage = 'ISLENIYOR'; isleniyor++; }
