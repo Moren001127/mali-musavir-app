@@ -27,6 +27,12 @@ export class BeyannameTakipController {
     return this.svc.listConfigs(req.user.tenantId);
   }
 
+  // Tek mükellefin ayarı — işi-bırakma/pasif filtresi UYGULANMAZ (kart bunu kullanır).
+  @Get('configs/:taxpayerId')
+  getConfig(@Req() req: any, @Param('taxpayerId') taxpayerId: string) {
+    return this.svc.getConfig(req.user.tenantId, taxpayerId);
+  }
+
   @Put('configs/:taxpayerId')
   upsertConfig(@Req() req: any, @Param('taxpayerId') taxpayerId: string, @Body() body: any) {
     return this.svc.upsertConfig(req.user.tenantId, taxpayerId, body);

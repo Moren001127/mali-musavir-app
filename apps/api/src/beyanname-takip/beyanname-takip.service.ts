@@ -84,6 +84,25 @@ export class BeyannameTakipService {
     }));
   }
 
+  // Tek mükellefin mükellefiyet ayarı — AKTİF/PASİF ve işi-bırakma (endDate) FİLTRESİZ.
+  // listConfigs "işi bırakmış" mükellefi gizlediği için kapanmış firmada ayarlar geri
+  // gelmiyordu (kaydedildiği halde "silinmiş" görünüyordu). Kart bu ucu kullanır.
+  async getConfig(tenantId: string, taxpayerId: string) {
+    const tp = await (this.prisma as any).taxpayer.findFirst({
+      where: { id: taxpayerId, tenantId },
+      include: { beyanConfig: true, portalCredentials: sgkCredentialInclude() },
+    });
+    if (!tp) throw new NotFoundException('Mükellef bulunamadı');
+    return {
+      taxpayerId: tp.id,
+      ad: adFormat(tp),
+      startDate: tp.startDate,
+      endDate: tp.endDate,
+      isActive: tp.isActive,
+      config: effectiveBeyanConfig(tp),
+    };
+  }
+
   async upsertConfig(
     tenantId: string,
     taxpayerId: string,

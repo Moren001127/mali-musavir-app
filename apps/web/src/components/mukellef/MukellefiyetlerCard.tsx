@@ -118,12 +118,16 @@ export function MukellefiyetlerCard({
 }) {
   const qc = useQueryClient();
 
-  const { data: configData = [], isLoading } = useQuery<any[]>({
-    queryKey: ['beyan-config-list'],
-    queryFn: () => api.get('/beyanname-takip/configs').then((r) => Array.isArray(r.data) ? r.data : (r.data?.items || [])).catch(() => []),
+  // ÖNEMLI: config'i TEK mükellef ucundan (filtresiz) oku. Eski liste ucu
+  // "işi bırakmış" (endDate geçmiş) mükellefi gizliyordu → kapanan firmada
+  // ayarlar kaydedildiği halde geri gelmiyor, "silinmiş" görünüyordu.
+  const { data: cfgResp, isLoading } = useQuery<any>({
+    queryKey: ['beyan-config', taxpayerId],
+    queryFn: () => api.get(`/beyanname-takip/configs/${taxpayerId}`).then((r) => r.data).catch(() => null),
+    enabled: !!taxpayerId,
   });
 
-  const existingConfig = configData.find((i: any) => i.taxpayerId === taxpayerId)?.config;
+  const existingConfig = cfgResp?.config;
   const [form, setForm] = useState<BeyanConfig>(DEFAULT);
 
   useEffect(() => {
@@ -165,6 +169,7 @@ export function MukellefiyetlerCard({
     mutationFn: () => api.put(`/beyanname-takip/configs/${taxpayerId}`, form),
     onSuccess: () => {
       toast.success('Mükellefiyetler kaydedildi');
+      qc.invalidateQueries({ queryKey: ['beyan-config', taxpayerId] });
       qc.invalidateQueries({ queryKey: ['beyan-config-list'] });
       qc.invalidateQueries({ queryKey: ['beyanname-takip'] });
       qc.invalidateQueries({ queryKey: ['beyanname-takip-configs'] });
