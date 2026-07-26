@@ -84,7 +84,7 @@ export class CalisanService {
   }
 
   private ownerSmallTalkReply(): string {
-    return `Merhaba ${this.ownerDisplayName()} Bey, buyurun. Mükellef durumu, beyanname, KDV, borç, belge ya da mevzuat konusunda hemen yardımcı olabilirim.`;
+    return `Merhaba ${this.ownerDisplayName()} Bey, hoş geldiniz. Size nasıl yardımcı olabilirim? Mükellef durumu, beyanname, KDV, borç, belge veya mevzuat — ne gerekiyorsa buradayım.`;
   }
 
   /**
