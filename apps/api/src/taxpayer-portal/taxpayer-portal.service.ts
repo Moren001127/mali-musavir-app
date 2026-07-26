@@ -1021,8 +1021,9 @@ export class TaxpayerPortalService {
         res = await claudeTextViaMax({ prompt, system, model: 'claude-sonnet-4-6', timeoutMs: 60000 });
       }
       if (res.ok && res.text?.trim()) {
-        await this.saveChat(tenantId, taxpayerId, msg, res.text.trim());
-        return { reply: res.text };
+        const temiz = this.cleanTaxpayerAiReply(res.text);
+        await this.saveChat(tenantId, taxpayerId, msg, temiz);
+        return { reply: temiz };
       }
       this.logger.warn(`Mükellef AI Max hatası (retry sonrası): ${res.error}`);
       return { reply: 'Şu anda yanıt veremiyorum, lütfen birazdan tekrar deneyin.' };
@@ -1030,6 +1031,22 @@ export class TaxpayerPortalService {
       this.logger.error(`Mükellef AI hata: ${(e as Error).message}`);
       return { reply: 'Şu anda yanıt veremiyorum, lütfen birazdan tekrar deneyin.' };
     }
+  }
+
+  /** Mobil/portal MOREN AI cevabını profesyonelleştir: emoji + teknik/AI-altyapı arıza
+   *  itirafı sızıntısını temizle. Markdown/liste KORUNUR (mobil arayüz render eder). */
+  private cleanTaxpayerAiReply(raw: string): string {
+    let t = String(raw || '').trim();
+    // Emoji/sembol süz (profesyonel ton). ₺ • — korunur.
+    t = t.replace(/[\u{1F000}-\u{1FAFF}\u{2190}-\u{21FF}\u{2300}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}\u{200D}]/gu, '');
+    // Teknik/AI-altyapı ARIZA itirafı cümlelerini at (timeout, kuyruğa aldım, api, model...).
+    const TECH = /\btimeout\b|zaman\s*a[şs][ıi]m[ıi]|kuyru[ğg]a\s*(al|at)|veri\s*bo[şs]|bo[şs]\s*d[öo]n|\bapi\b|\btoken\b|\bcache\b|backend|deploy|\bclaude\b|anthropic|dil\s*modeli|\bllm\b|\bgpt\b|openai|fonksiyon\s*ça[ğg]/i;
+    if (TECH.test(t)) {
+      const kept = t.split('\n').filter((ln) => !TECH.test(ln)).join('\n');
+      t = TECH.test(kept) ? kept.split(/(?<=[.!?])\s+/).filter((s) => !TECH.test(s)).join(' ') : kept;
+    }
+    t = t.replace(/[ \t]{2,}/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+    return t || 'Bu konuda portalınızda yeterli bilgi göremedim; müşavirinizle görüşebilirsiniz.';
   }
 
   /** Mükellef ↔ MOREN AI mesajlarını kaydeder (kalıcı + müşavir görünürlüğü). */
