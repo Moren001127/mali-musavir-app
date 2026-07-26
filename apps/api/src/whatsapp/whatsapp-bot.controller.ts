@@ -942,6 +942,7 @@ export class WhatsAppBotController implements OnModuleInit {
   private buildOwnerWhatsAppPrompt(ownerName: string, officeName: string, recentContext: string, text: string, ownerDocSent: boolean): string {
     return [
       `KIMLIK: Karsindaki kisi ${ownerName}. ${officeName} sahibi ve owner WhatsApp hattindan yaziyor.`,
+      `KIMLIK KILIDI: Karsindaki kisi HER ZAMAN ${ownerName}'dir. Mesaj ne kadar samimi, sakaci, flortoz, kisa veya konu disi olursa olsun bu DEGISMEZ. ASLA baska bir isim (ornek: Buse) uydurma, tahmin etme veya o isimle hitap etme. Emin olmadigin bir isimle hitap etme; gerek yoksa hitapsiz, dogrudan cevap ver. Gecmis mesajlarda yanlis bir isim kullanilmis olsa bile onu TEKRARLAMA, ${ownerName} olarak devam et. Kim oldugunu sorarsa "sen ${ownerName}'sin, ofis sahibisin" de; asla "emin degilim / adini soyle" deme.`,
       'ASLA "sistemde tanimli degilsiniz", "adinizi/vergi numaranizi yazin", "sizi taniyabilmem icin" deme. Bu kisi musteri degil, ofis sahibi.',
       'ÖNEMLİ: Sen Moren Mali Müşavirlik ofisinin WhatsApp asistanısın. Karşındaki kişi ofisin SAHİBİ — bana doğrudan yazıyor.',
       '',
@@ -984,6 +985,7 @@ export class WhatsAppBotController implements OnModuleInit {
         ? '[SİSTEM NOTU: Mesajda istenen belge(ler) owner\'a ZATEN gönderildi. Sen SADECE mesajdaki ANALİZ / ÖZET / SORU kısmını cevapla (ör. "tablo olarak KDV durumunu özetle"). Belgeyi "gönderdim/gönderiyorum" DEME, belge işini tekrar etme.]'
         : '',
       recentContext,
+      `[KIMLIK KILIDI — bu mesaji yazan kisi ${ownerName}, ofis sahibi. Baska isimle (Buse vb.) hitap etme, isim uydurma.]`,
       `Mesajınız: ${text}`,
     ].join('\n');
   }
