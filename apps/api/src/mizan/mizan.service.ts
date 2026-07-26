@@ -539,10 +539,12 @@ export class MizanService {
       // 3) Zıt bakiye — 120 (alıcılar) alacak bakiye verirse yanlış, 320 (satıcılar) borç bakiye verirse yanlış
       // Filtreler:
       //   a) KONTRA hesaplar (amortisman, karşılık, sermaye düzeltmeleri) muaf
-      //   b) Ana hesap (seviye 0) VEYA detay leaf (seviye 2+ ve leaf) — orta grup atlanır.
-      //      Örn: 100 uyarır, 100.01 atlanır, 100.01.001 uyarır.
+      //   b) SADECE detay (leaf) hesap uyarır — ana/grup (10, 100 gibi) satırları
+      //      TEKRAR uyarı üretmesin (kullanıcı talebi 2026-07-26). Örn: 10 ve 100
+      //      atlanır, sadece 100.01.001 uyarır. Alt kırılımı olmayan ana hesap
+      //      (ör. tek satır "500") kendisi leaf olduğu için yine uyarır.
       const isKontra = KONTRA_HESAPLAR.has(anaKod);
-      if (!isKontra && uyarVer) {
+      if (!isKontra && leaf) {
         const beklenen = this.beklenenBakiyeTipi(anaKod);
         if (beklenen === 'borç' && Number(h.alacakBakiye) > 0 && Number(h.borcBakiye) === 0) {
           anomaliler.push({

@@ -342,6 +342,9 @@ export default function MizanPage() {
   const { data: mizanList = [] } = useQuery<any[]>({
     queryKey: ['mizan-list', taxpayerId],
     queryFn: () => mizanApi.list(taxpayerId || undefined),
+    // Mükellef seçilmeden liste çekilmesin — aksi halde mizanList[0] fallback'i
+    // başka mükellefin mizanını ekrana basıyordu (kullanıcı bildirimi 2026-07-26).
+    enabled: !!taxpayerId,
     refetchInterval: 5000,
   });
 

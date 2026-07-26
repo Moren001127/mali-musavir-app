@@ -73,7 +73,7 @@ export class MaliYorumService {
       prompt,
       system,
       model: MAX_MODEL_DEFAULT, // Sonnet — mali müşavir seviyesinde akıl yürütme
-      timeoutMs: 90_000,
+      timeoutMs: 150_000, // mizan tüm hesaplarıyla geniş — tam tarama için süre
     });
 
     if (!sonuc.ok || !sonuc.text.trim()) {
@@ -175,22 +175,25 @@ export class MaliYorumService {
       )}`,
     );
 
-    // Ana hesaplar (seviye 0 / üç basamaklı) — bakiyesi olanlar
+    // TÜM hesaplar — bakiyesi olan her hesap (ana + detay), kod sırasıyla.
+    // Modelin mizanın TAMAMINI görmesi şart; özet slice yapılmaz (aksi halde
+    // 549 gibi hesaplar atlanıp eksik denetim çıkıyordu).
     const hesaplar: any[] = Array.isArray(m.hesaplar) ? m.hesaplar : [];
-    const ana = hesaplar
-      .filter((h) => {
-        const bb = this.n(h.borcBakiye);
-        const ab = this.n(h.alacakBakiye);
-        return (bb !== 0 || ab !== 0) && String(h.hesapKodu || '').replace(/\D/g, '').length <= 3;
-      })
-      .slice(0, 90);
-    if (ana.length) {
-      L.push('\nANA HESAPLAR (kod · ad · borç bakiye / alacak bakiye):');
-      for (const h of ana) {
+    const dolu = hesaplar
+      .filter((h) => this.n(h.borcBakiye) !== 0 || this.n(h.alacakBakiye) !== 0)
+      .sort((a, b) => String(a.hesapKodu || '').localeCompare(String(b.hesapKodu || ''), 'tr'));
+    if (dolu.length) {
+      L.push(
+        `\nTÜM HESAPLAR — bakiyesi olan ${dolu.length} hesap. Kod hiyerarşiktir ` +
+          `(100=ana hesap, 100.01=grup, 100.01.001=detay; ana hesap alt kırılımların ` +
+          `TOPLAMIDIR — çift sayma). Biçim: kod · ad · Borç bakiye / Alacak bakiye:`,
+      );
+      for (const h of dolu.slice(0, 600)) {
         L.push(
           `${h.hesapKodu} · ${h.hesapAdi} · ${this.tl(h.borcBakiye)} / ${this.tl(h.alacakBakiye)}`,
         );
       }
+      if (dolu.length > 600) L.push(`…(+${dolu.length - 600} hesap daha)`);
     }
 
     // Denetim bulguları
@@ -203,7 +206,8 @@ export class MaliYorumService {
     } else {
       L.push('\nSİSTEMİN DENETİM BULGULARI: yok.');
     }
-    return this.kirp(L.join('\n'));
+    // Mizan tüm hesaplarıyla geniş — geniş kırpma sınırı (600 hesap sığsın).
+    return this.kirp(L.join('\n'), 40000);
   }
 
   private bilancoMetni(b: any): string {
@@ -211,11 +215,25 @@ export class MaliYorumService {
     L.push('BİLANÇO ÖZETİ:');
     L.push(`Dönen Varlıklar: ${this.tl(b.donenVarliklar)}`);
     L.push(`Duran Varlıklar: ${this.tl(b.duranVarliklar)}`);
-    L.push(`Aktif Toplamı: ${this.tl(b.aktifToplami)}`);
+    L.push(`AKTİF TOPLAMI: ${this.tl(b.aktifToplami)}`);
     L.push(`Kısa Vadeli Yabancı Kaynak: ${this.tl(b.kvYabanciKaynak)}`);
     L.push(`Uzun Vadeli Yabancı Kaynak: ${this.tl(b.uvYabanciKaynak)}`);
     L.push(`Özkaynaklar: ${this.tl(b.ozkaynaklar)}`);
-    L.push(`Pasif Toplamı: ${this.tl(b.pasifToplami)}`);
+    L.push(`PASİF TOPLAMI: ${this.tl(b.pasifToplami)}`);
+    const fark = this.n(b.aktifToplami) - this.n(b.pasifToplami);
+    L.push(`Denklik farkı (aktif−pasif): ${this.tl(fark)}`);
+
+    // AKTİF ve PASİF kalemleri — her grubun toplamı + altındaki hesaplar
+    const aktifSat = this.bilancoBolum(b.aktif);
+    if (aktifSat.length) {
+      L.push('\nAKTİF (grup · toplam; altında hesaplar):');
+      L.push(...aktifSat);
+    }
+    const pasifSat = this.bilancoBolum(b.pasif);
+    if (pasifSat.length) {
+      L.push('\nPASİF (grup · toplam; altında hesaplar):');
+      L.push(...pasifSat);
+    }
 
     const o = b.oranlar || {};
     if (o && typeof o === 'object') {
@@ -239,30 +257,71 @@ export class MaliYorumService {
       }
     }
     if (b.genelYorum) L.push(`\nSİSTEMİN OTOMATİK NOTU: ${b.genelYorum}`);
-    return this.kirp(L.join('\n'));
+    return this.kirp(L.join('\n'), 30000);
+  }
+
+  /** Bilanço aktif/pasif nesnesini (grup → {grup,toplam,hesaplar[]}) satırlara döker. */
+  private bilancoBolum(obj: any): string[] {
+    const L: string[] = [];
+    if (!obj || typeof obj !== 'object') return L;
+    for (const v of Object.values(obj) as any[]) {
+      if (!v || typeof v !== 'object') continue;
+      const toplam = this.n(v.toplam);
+      const hesaplar = Array.isArray(v.hesaplar) ? v.hesaplar : [];
+      if (toplam === 0 && hesaplar.length === 0) continue;
+      L.push(`  ${v.grup || v.kodRange || ''} · ${this.tl(toplam)}`);
+      for (const h of hesaplar) {
+        L.push(`      ${h.kod} ${h.ad} · ${this.tl(h.tutar)}`);
+      }
+    }
+    return L;
   }
 
   private gelirMetni(g: any): string {
     const L: string[] = [];
-    L.push('GELİR TABLOSU ÖZETİ:');
+    L.push('GELİR TABLOSU (tüm satırlar):');
     L.push(`Brüt Satışlar: ${this.tl(g.brutSatislar)}`);
+    L.push(`Satış İndirimleri (−): ${this.tl(g.satisIndirimleri)}`);
     L.push(`Net Satışlar: ${this.tl(g.netSatislar)}`);
-    L.push(`Satışların Maliyeti: ${this.tl(g.satisMaliyeti)}`);
-    L.push(`Brüt Satış Kârı: ${this.tl(g.brutKar ?? g.brutSatisKari)}`);
+    L.push(`Satışların Maliyeti (−): ${this.tl(g.satisMaliyeti)}`);
+    L.push(`Brüt Satış Kârı: ${this.tl(g.brutSatisKari ?? g.brutKar)}`);
+    L.push(`Faaliyet Giderleri (−): ${this.tl(g.faaliyetGiderleri)}`);
     L.push(`Faaliyet Kârı: ${this.tl(g.faaliyetKari)}`);
+    L.push(`Diğer Faaliyetlerden Gelirler: ${this.tl(g.digerGelirler)}`);
+    L.push(`Diğer Faaliyetlerden Giderler (−): ${this.tl(g.digerGiderler)}`);
+    L.push(`Finansman Giderleri (−): ${this.tl(g.finansmanGiderleri)}`);
+    L.push(`Olağan Kâr: ${this.tl(g.olaganKar)}`);
+    L.push(`Olağandışı Gelir: ${this.tl(g.olaganDisiGelir)}`);
+    L.push(`Olağandışı Gider (−): ${this.tl(g.olaganDisiGider)}`);
     L.push(`Dönem Kârı: ${this.tl(g.donemKari)}`);
-    L.push(`Dönem Net Kârı: ${this.tl(g.donemNetKari)}`);
+    L.push(`Dönem Vergi Karşılığı (−): ${this.tl(g.vergiKarsiligi)}`);
+    L.push(`DÖNEM NET KÂRI: ${this.tl(g.donemNetKari)}`);
+
+    // KKEG (varsa detay içinde)
+    const detay = g.detay || {};
+    if (detay.kkeg !== undefined && this.n(detay.kkeg) !== 0) {
+      L.push(`Kanunen Kabul Edilmeyen Giderler (KKEG): ${this.tl(detay.kkeg)}`);
+    }
+    // Satışların maliyeti kaynağı (621 manuel vs otomatik)
+    if (g.stokMaliyetOzet && typeof g.stokMaliyetOzet === 'object') {
+      const s = g.stokMaliyetOzet;
+      if (s.toplamStok !== undefined) L.push(`Toplam Stok: ${this.tl(s.toplamStok)}`);
+      if (s.satisMaliyeti !== undefined) L.push(`Manuel SMM: ${this.tl(s.satisMaliyeti)}`);
+    }
 
     const gv = g.geciciVergiHesabi || {};
     if (gv && typeof gv === 'object') {
       L.push('\nGEÇİCİ VERGİ:');
+      if (gv.donemNetKari !== undefined) L.push(`Dönem net kârı: ${this.tl(gv.donemNetKari)}`);
       if (gv.matrah !== undefined) L.push(`Matrah: ${this.tl(gv.matrah)}`);
       if (gv.hesaplananGecVergi !== undefined)
         L.push(`Hesaplanan geçici vergi: ${this.tl(gv.hesaplananGecVergi)}`);
+      if (gv.oncekiOdenenGecVergi !== undefined)
+        L.push(`Önceki dönem ödenen: ${this.tl(gv.oncekiOdenenGecVergi)}`);
       if (gv.odenecekGecVergi !== undefined)
         L.push(`Ödenecek geçici vergi: ${this.tl(gv.odenecekGecVergi)}`);
     }
-    return this.kirp(L.join('\n'));
+    return this.kirp(L.join('\n'), 20000);
   }
 
   private ihoMetni(y: any, yil: number): string {
@@ -280,34 +339,84 @@ export class MaliYorumService {
       L.push(`  Diğer gelir: ${this.tl(c.digerGelir)}`);
       L.push(`  Mal alışı: ${this.tl(c.malAlisi)}`);
       L.push(`  Dönem başı stok: ${this.tl(c.donemBasiStok)}`);
-      L.push(`  Satılan mal maliyeti: ${this.tl(c.satilanMalMaliyeti)}`);
+      L.push(`  Toplam stok (dönem başı+alış): ${this.tl(c.toplamStok)}`);
+      L.push(`  Satılan malın maliyeti: ${this.tl(c.satilanMalMaliyeti)}`);
       L.push(`  Kalan stok: ${this.tl(c.kalanStok)}`);
+      L.push(`  Net satışlar: ${this.tl(c.netSatislar)}`);
       L.push(`  Dönem içi giderler: ${this.tl(c.donemIciGiderler)}`);
       L.push(`  Dönem kârı: ${this.tl(c.donemKari)}`);
+      L.push(`  Geçmiş yıl zararı (mahsup): ${this.tl(c.gecmisYilZarari)}`);
       L.push(`  Geçici vergi matrahı: ${this.tl(c.gecVergiMatrahi)}`);
+      L.push(`  Hesaplanan geçici vergi: ${this.tl(c.hesaplananGecVergi)}`);
+      L.push(`  Önceki dönem ödenen geçici vergi: ${this.tl(c.oncekiOdenenGecVergi)}`);
       L.push(`  Ödenecek geçici vergi: ${this.tl(c.odenecekGecVergi)}`);
     });
-    return this.kirp(L.join('\n'));
+    return this.kirp(L.join('\n'), 20000);
   }
 
   // ==================== PROMPT ====================
 
   private sistemPromptu(tabloAdi: string): string {
-    return [
+    const L = [
       'Sen Türkiye’de çalışan, deneyimli bir Serbest Muhasebeci Mali Müşavirsin (SMMM).',
-      `Sana bir mükellefin ${tabloAdi} verisi veriliyor. Bütün rakamlara bakıp gerçek bir mali müşavir gibi kısa ve sade bir değerlendirme yaz.`,
+      `Sana bir mükellefin ${tabloAdi} verisi veriliyor. Gerçek bir mali müşavir titizliğiyle değerlendir.`,
       '',
       'Kurallar:',
       '- Sade Türkçe kullan, gereksiz jargon yok; mükellefe/patrona anlatır gibi net konuş.',
       '- SADECE sana verilen rakamlara dayan. Olmayan hesabı/veriyi varmış gibi yorumlama, uydurma.',
       '- Vergi/mevzuat konusunda kesin hüküm verme; “dikkat edilmeli / kontrol edilmeli” diye işaret et.',
       '- Sistemin denetim bulguları verildiyse onları da değerlendir, önemlileri öne çıkar.',
-      '- Kısa tut. Şu üç başlıkla, madde madde yaz:',
+      '- Bulguları önem sırasına göre yaz ve ÖNEMLİ olanların HEPSİNİ yaz — sayıyla sınırlama.',
+    ];
+
+    if (tabloAdi === 'mizan') {
+      L.push(
+        '- MİZANI BAŞTAN SONA, hesap grubu grubu tara — sadece göze çarpanları değil, verilen TÜM bakiyeli hesapları geç.',
+        '- Bakiyesi olan her hesap için o hesaba ÖZGÜ kontrolü yap. Uygun düştükçe şunları KAÇIRMA:',
+        '   • Kasa (100) negatif/alacak bakiye, banka (102) ters bakiye',
+        '   • 120/320 alıcı-satıcı: dönem satışına göre büyükse yaşlandırma; şüpheli alacak (128/129) karşılığı gerekli mi',
+        '   • 131/331 ortaklar cari: örtülü sermaye (KVK 12) ve örtülü kazanç riski, ortağa para verilmiş mi',
+        '   • 15x stok tutarlılığı (alacak/negatif stok)',
+        '   • 25x sabit kıymet + 257 birikmiş amortisman ayrılmış mı',
+        '   • 191/391 KDV mahsup/beyan tamamlanmış mı',
+        '   • 7’li maliyet hesapları (70x-78x) dönem sonunda yansıtma ile kapanmış mı (net sıfır)',
+        '   • 360/361/368 vergi-SGK ve 335 personel borçları: birikmiş/gecikmiş yükümlülük',
+        '   • Karşılıklar: kıdem tazminatı (472/372), şüpheli ticari alacak karşılığı',
+        '   • 549 ÖZEL FONLAR / yenileme fonu: yenileme fonu ayrıldığı yıldan itibaren 3 YIL içinde kullanılmazsa dönem kârına eklenir (VUK 328) — süre dolmuş mu, uyar',
+        '   • 5xx özkaynak: sermaye (500/501 ödenmemiş), geçmiş yıl kâr/zarar devri, TTK 376 sermaye kaybı/teknik iflas',
+        '   • 18x/28x/38x/48x peşin ödenen/tahsil edilen gelir-gider, reeskont ve dönemsellik',
+        '- Mizan hesap kodları hiyerarşiktir; ana hesap alt kırılımların toplamıdır, aynı tutarı iki kez sayma.',
+      );
+    }
+
+    if (tabloAdi === 'işletme hesap özeti') {
+      L.push(
+        '- Çeyrekleri kümülatif oku (işletme defteri/basit usul mükellef); dört çeyreği birlikte değerlendir.',
+        '- Şunları KONTROL ET: dönem kârı negatif/zarar mı; stok mantığı tutuyor mu (kalan stok = dönem başı stok + mal alışı − satılan malın maliyeti); dönem içi giderler satışa göre orantılı mı; geçmiş yıl zararı mahsubu (kurumlarda 5 yıl kuralı) doğru mu; geçici vergi zinciri (matrah → hesaplanan → önceki ödenen → ödenecek) çeyrekler arası tutarlı mı.',
+      );
+    }
+
+    if (tabloAdi === 'bilanço') {
+      L.push(
+        '- Verilen aktif/pasif kalemlerini tek tek geç; likidite, borç/özkaynak dengesi, ortaklar cari, karşılıklar ve dönem kâr/zarar aktarımına bak.',
+      );
+    }
+
+    if (tabloAdi === 'gelir tablosu') {
+      L.push(
+        '- Brüt kâr marjı, faaliyet gideri oranı, finansman yükü ve dönem net kârını değerlendir; geçici vergi matrahı ve hesabı tutarlı mı bak.',
+      );
+    }
+
+    L.push(
       '',
-      'Genel durum: (1-2 cümle)',
-      'Dikkat çekenler: (en fazla 5 madde; gerçekten bir sorun yoksa “belirgin bir sorun görünmüyor” yaz)',
-      'Öneri: (en fazla 4 madde)',
-    ].join('\n');
+      'Şu üç başlıkla, madde madde yaz:',
+      '',
+      'Genel durum: (2-3 cümle)',
+      'Dikkat çekenler: (önemli bulguların HEPSİ, önem sırasıyla; gerçekten sorun yoksa “belirgin bir sorun görünmüyor” yaz)',
+      'Öneri: (yapılması gerekenler, madde madde)',
+    );
+    return L.join('\n');
   }
 
   // ==================== YARDIMCILAR ====================
