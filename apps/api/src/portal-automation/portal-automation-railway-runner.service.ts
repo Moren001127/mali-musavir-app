@@ -634,23 +634,6 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       const eBeyannamePage = await this.openEBeyannameApplication(context, page);
       await this.jobProgress(tenantId, bundle.job, 'search_form', 'Beyanname Ara ekrani hazirlaniyor.');
       const collection = await this.collectEBeyannameDownloads(tenantId, eBeyannamePage, bundle.job, downloadsPath);
-
-      // YENİ e-Beyan zinciri (2026 geçiş) — eski sistem bitti, AYNI girişli oturumdan
-      // "e-Beyan" uygulamasına SSO ile geç, oradan da çek. Hata olursa eski sistemin
-      // sonucunu BOZMAZ (try/catch → notes). Sonuçlar aynı listeye eklenir.
-      try {
-        await this.jobProgress(tenantId, bundle.job, 'ebeyan_new', 'Yeni e-Beyan sistemine geciliyor.');
-        const ebeyanNewPage = await this.openEBeyanNewApplication(context, eBeyannamePage);
-        const taxpayersForNew = await this.loadTaxpayers(tenantId);
-        const newColl = await this.collectEBeyanNewDownloads(tenantId, ebeyanNewPage, bundle.job, taxpayersForNew, collection.notes);
-        collection.declarations.push(...newColl.declarations);
-        collection.documents.push(...newColl.documents);
-        await this.jobProgress(tenantId, bundle.job, 'ebeyan_new_done', `Yeni e-Beyan tamamlandi: ${newColl.declarations.length} kayit, ${newColl.documents.length} belge.`);
-      } catch (newErr: any) {
-        collection.notes.push(`Yeni e-Beyan cekme atlandi/hata: ${this.compact(newErr?.message || newErr)}`);
-        this.logger.warn(`[EBEYANNEW] zincir hata: ${this.compact(newErr?.message || newErr)}`);
-      }
-
       await this.jobProgress(tenantId, bundle.job, 'logout', 'GIB sekmeleri kapatiliyor ve guvenli cikis yapiliyor.');
       await this.safeLogoutFromDigitalTaxOffice(context, page, eBeyannamePage, collection.notes).catch((err) => {
         collection.notes.push(`GIB guvenli cikis tamamlanamadi: ${this.compact(err?.message || err)}`);
