@@ -267,6 +267,10 @@ function normalizeForIntent(value: string): string {
 /** Owner mesajından durum-listesi niyetini çıkarır; durum sorusu değilse null. */
 export function detectOwnerStatusIntent(text: string): OwnerStatusIntent | null {
   const n = normalizeForIntent(text);
+  // MEVZUAT/TARİH/ORAN sorusu = portföy listesi DEĞİL. "beyanname hangi tarihe kadar
+  // verilir", "kaç gün", "hangi oran", "ne zaman", "yüzde kaç" gibi sorular mükellef
+  // listesi istemez; AI cevaplamalı. ("hangi" tek başına listeyi yanlış tetikliyordu.)
+  if (/\bne zaman\b|hangi tarih|son tarih|kaca kadar|hangi oran|yuzde kac|hangi hesap|hangi kod|\bnasil\b|ne kadar sure|kac gun|kac ay|kac saat|hangi gun/.test(n)) return null;
   const isList = /\b(kim|kimler|kac|listele|hangi|kimlerin|olanlar)\b/.test(n) || /\bvar m[ıi]\b/.test(n);
   if (!isList) return null;
 
@@ -663,6 +667,11 @@ export async function buildOwnerDebtRankingReply(
 
 export function detectTaxTotalIntent(text: string): boolean {
   const n = normalizeForIntent(text);
+  // TEK MÜKELLEF sorusu → portföy TOPLAM tahakkuku ÜRETME (tek-mükellef şablonu/AI cevaplasın).
+  // Aksi halde "Sultan Osman İnşaat'a ne kadar geçici vergi çıkar" gibi soruya 91-beyannamelik
+  // portföy toplamı dökülüyordu. Sinyal: (a) şirket türü eki, (b) özel isme yönelme/tamlama eki.
+  if (/(limited|\bltd\b|anonim|insaat|ticaret|nakliye|lojistik|\bgida\b|sanayi|otomotiv|mimarl|veteriner|klinik)/.test(n)) return false;
+  if (/['’](a|e|ya|ye|na|ne|n[ıi]n|n[uü]n|[ıi]n|[uü]n)\b/i.test(text)) return false;
   const toplam = /(toplam|ne kadar|kac tl|kac para|genel toplam|hepsi)/.test(n);
   const vergi = /(vergi|tahakkuk|ödeme|odeme|beyanname)/.test(n);
   const liste = /(kim|kimler|hangi mukellef|listele)/.test(n); // liste sorusu DEĞİL (o tax-payable)
