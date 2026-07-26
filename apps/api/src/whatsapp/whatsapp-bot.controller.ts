@@ -1385,6 +1385,120 @@ export class WhatsAppBotController implements OnModuleInit {
     return true;
   }
 
+  private isOwnerConfirm(text: string): boolean {
+    const n = this.normalizeForIntent(text);
+    return /^(onayliyorum|onayladim|onayla|onay|evet|evet gonder|tamam gonder|gonder onaylandi|olur gonder|gonderebilirsin)$/.test(n)
+      || /\bonayliyorum\b/.test(n);
+  }
+
+  /** En son (10 dk içinde) "mükellefe gönder" ONAY BEKLEYEN işi bulur (yürütülmemişse). */
+  private async findPendingTaxpayerSend(ownerContactId: string): Promise<any | null> {
+    const since = new Date(Date.now() - 10 * 60 * 1000);
+    const rows = await this.prisma.communicationLog.findMany({
+      where: { taxpayerId: ownerContactId, channel: 'WHATSAPP', occurredAt: { gte: since }, subject: { contains: 'mukellefe-gonder' } },
+      orderBy: { occurredAt: 'desc' }, take: 3,
+      select: { subject: true, content: true },
+    }).catch(() => [] as any[]);
+    for (const r of rows) {
+      if (/gonderildi|iptal/i.test(r.subject || '')) return null; // en son iş bitmiş → bekleyen yok
+      const m = (r.content || '').match(/\[\[send_tp_pending:([^\]]+)\]\]/);
+      if (m) { try { return JSON.parse(Buffer.from(m[1], 'base64').toString('utf8')); } catch { return null; } }
+    }
+    return null;
+  }
+
+  /**
+   * OWNER → MÜKELLEFE BELGE GÖNDERME (yeni): owner "X mükellefine/kendisine <belge> gönder"
+   * derse, belgeyi doğrudan O MÜKELLEFİN WhatsApp'ına iletir. Gerçek kişiye vergi belgesi
+   * gittiği için ZORUNLU önizleme + ONAYLIYORUM kapısı var (yanlış mükellefe gitmesin).
+   * handled=true dönerse normal AI akışı atlanır.
+   */
+  private async maybeHandleOwnerSendDocToTaxpayer(ownerTenant: any, ownerContactId: string, msg: IncomingWhatsAppMessage): Promise<boolean> {
+    if (!this.storage) return false;
+    const text = String(msg.text || '');
+    const n = this.normalizeForIntent(text);
+
+    const sendOwner = async (reply: string, subject: string) => {
+      const sent = msg.__dryRun ? true : await this.whatsapp.sendMessage(this.replyTarget(msg), reply, ownerTenant.id);
+      if (msg.__dryRun) { msg.__dryReply = reply; msg.__dryKind = 'owner:mukellefe-gonder'; }
+      await this.prisma.communicationLog.create({
+        data: { taxpayerId: ownerContactId, channel: 'WHATSAPP', subject: sent ? subject : subject + ' (gonderilemedi)', content: this.withWhatsAppPhone(reply, msg.from), occurredAt: new Date() },
+      }).catch(() => null);
+    };
+
+    // ── ADIM 2: ONAY → bekleyen işi yürüt ──
+    if (this.isOwnerConfirm(text)) {
+      const pending = await this.findPendingTaxpayerSend(ownerContactId);
+      if (!pending?.taxpayerId || !pending?.phone) return false; // bekleyen yok → başka akışa bırak
+      return await this.executeTaxpayerDocSend(ownerTenant, ownerContactId, msg, pending, sendOwner);
+    }
+
+    // ── ADIM 1: "mükellefe/kendisine/<isim>'e ... gönder" isteği ──
+    const deliveryMarker = /(kendisine|m[üu]kellefe|m[üu][şs]teriye|sahibine|firmas[ıi]na|mukellefine)\s*[a-zçğıöşü ]{0,20}(g[öo]nder|ilet|at|yolla)/.test(n);
+    const nameDative = /['’](a|e|ya|ye|na|ne)\b[^\n]{0,40}(g[öo]nder|ilet|yolla)/i.test(text);
+    if (!deliveryMarker && !nameDative) return false;
+    if (!/(beyan|tahakkuk|kdv|muhsgk|gecici|geçici|damga|kurumlar|gelir|belge|evrak|ekstre|fatura|tebligat|sgk)/.test(n)) return false;
+
+    const base = await this.findTaxpayerInOwnerText(ownerTenant.id, text);
+    if (!base) return false; // mükellef çözülemedi → AI'ya bırak
+    const tp = await this.prisma.taxpayer.findUnique({
+      where: { id: base.id }, select: { id: true, companyName: true, firstName: true, lastName: true, phone: true, phones: true },
+    });
+    const adi = (tp?.companyName || `${tp?.firstName || ''} ${tp?.lastName || ''}`).trim();
+    const phone = this.normalize(tp?.phone) || (Array.isArray(tp?.phones) && tp!.phones[0] ? this.normalize(tp!.phones[0] as any) : '');
+    if (!phone) { await sendOwner(`${adi} için kayıtlı telefon numarası yok; belgeyi iletemem.`, 'WhatsApp owner mukellefe-gonder (telefon yok)'); return true; }
+
+    const tipler = this.inferBeyanTipiFromOwnerText(text);
+    const donem = this.extractPeriodFromOwnerText(text) || '';
+    const belge = this.inferBelgeKindFromText(text);
+    const etiket = tipler?.length
+      ? tipler.map((t) => `${donem ? donem + ' ' : ''}${this.beyanLabel(t)}${belge === 'ikisi' ? ' (beyanname+tahakkuk)' : belge === 'tahakkuk' ? ' (tahakkuk)' : ''}`).join(', ')
+      : (this.inferDocCategory(text) ? this.inferDocCategory(text)!.toLowerCase() : 'belge');
+
+    const pending = { taxpayerId: tp!.id, phone, adi, items: tipler?.length ? [{ tipler, donem: donem || null, belge }] : null, kategori: tipler?.length ? null : this.inferDocCategory(text), etiket };
+    const marker = `[[send_tp_pending:${Buffer.from(JSON.stringify(pending), 'utf8').toString('base64')}]]`;
+    await sendOwner(
+      `${adi} mükellefine şu gönderilecek: ${etiket}.\nOnaylıyorsanız ONAYLIYORUM yazın (5 dk geçerli). Vazgeçerseniz görmezden gelin.\n${marker}`,
+      'WhatsApp owner mukellefe-gonder onay bekliyor',
+    );
+    return true;
+  }
+
+  /** Onaylanan "mükellefe gönder" işini yürütür: belgeyi mükellefin telefonuna iletir. */
+  private async executeTaxpayerDocSend(ownerTenant: any, ownerContactId: string, msg: IncomingWhatsAppMessage, pending: any, sendOwner: (r: string, s: string) => Promise<void>): Promise<boolean> {
+    const target = pending.phone;
+    const adi = pending.adi || 'Mükellef';
+    const sendDoc = async (s3Key: string, mimeType: string, filename: string, caption: string): Promise<boolean> => {
+      try {
+        const url = await this.storage!.getPresignedDownloadUrl(s3Key, filename);
+        if (msg.__dryRun) return true; // kuru-test: gerçekten gönderme
+        await this.whatsapp.sendMessage(target, `📎 ${caption}`, ownerTenant.id);
+        return await this.baileys.sendMedia(ownerTenant.id, target, { url, mimeType, filename, caption: null });
+      } catch (e: any) { this.logger.warn(`[MukellefeGonder] gonderim hatasi: ${e?.message || e}`); return false; }
+    };
+
+    const tp = { id: pending.taxpayerId };
+    let gonderilen = 0; const bulunamayan: string[] = [];
+    if (Array.isArray(pending.items) && pending.items.length) {
+      const r = await this.sendBeyanItemsLoop(ownerTenant.id, tp, adi, pending.items, sendDoc);
+      if (r.sentAny) gonderilen++; bulunamayan.push(...(r.bulunamayan || []));
+    } else {
+      // Mükellef kartına yüklü belge (kategori filtreli)
+      const where: any = { taxpayerId: pending.taxpayerId, isDeleted: false };
+      if (pending.kategori) where.category = pending.kategori;
+      const docs = await this.prisma.document.findMany({ where, orderBy: { createdAt: 'desc' }, take: 1, select: { title: true, mimeType: true, s3Key: true } });
+      if (docs[0]) { if (await sendDoc(docs[0].s3Key, docs[0].mimeType, this.docFilename(docs[0] as any), `${adi} · ${docs[0].title}`)) gonderilen++; }
+      else bulunamayan.push(pending.etiket || 'belge');
+    }
+
+    if (gonderilen > 0) {
+      await sendOwner(`✓ ${adi} mükellefine gönderildi: ${pending.etiket}.${bulunamayan.length ? ` (Bulunamayan: ${bulunamayan.join(', ')})` : ''}`, 'WhatsApp owner mukellefe-gonder gonderildi');
+    } else {
+      await sendOwner(`${adi} için ${pending.etiket} bulunamadı; iletemedim.`, 'WhatsApp owner mukellefe-gonder gonderildi');
+    }
+    return true;
+  }
+
   /**
    * Owner belge gönderme akışı. handled=true dönerse normal AI akışı atlanır.
    * Mükellef bulunamazsa false döner → AI cevaplasın (yanlış yakalama olmasın).
@@ -1761,6 +1875,13 @@ export class WhatsAppBotController implements OnModuleInit {
       // verilebilecek/evrak bekleyen KİMLER var" → AI'ya BIRAKMA (sürekli "çekemiyorum"
       // halüsinasyonu yapıyordu); aylık durumdan listeyi doğrudan kod hesaplayıp döndür.
       if (await this.maybeHandleOwnerStatusQuery(ownerTenant, ownerContact.id, msg)) {
+        return;
+      }
+
+      // OWNER → MÜKELLEFE GÖNDER: "X mükellefine/kendisine <belge> gönder" → belgeyi
+      // doğrudan O MÜKELLEFE ilet (önizleme + ONAYLIYORUM kapısı). Kendine-gönderden ÖNCE
+      // gelmeli ki "mükellefe gönder" yanlışlıkla owner'a gitmesin.
+      if (await this.maybeHandleOwnerSendDocToTaxpayer(ownerTenant, ownerContact.id, msg)) {
         return;
       }
 
