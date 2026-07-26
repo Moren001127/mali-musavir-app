@@ -16,6 +16,10 @@ export type PortalProvider = (typeof PORTAL_PROVIDERS)[number];
 
 export const PORTAL_JOB_TYPES = [
   'EBEYANNAME_DAILY_DOWNLOAD',
+  // YENİ GİB e-Beyan sistemi (ebeyan.gib.gov.tr) — AYRI iş (eski sistemle karışmasın).
+  // "Yeni Beyanname Sitesinden Çek" butonundan tetiklenir; tenant-owner, gece cron'una
+  // DAHIL DEĞİL. Aynı GIB_EBEYANNAME (mali müşavir) girişini kullanır.
+  'EBEYAN_NEW_DOWNLOAD',
   'E_TEBLIGAT_CHECK',
   'SGK_HIZMET_LISTESI',
   'SGK_TAHAKKUK',
@@ -41,6 +45,11 @@ const JOB_META: Record<PortalJobType, { provider: PortalProvider; ownerType: 'TE
     provider: 'GIB_EBEYANNAME',
     ownerType: 'TENANT',
     label: 'e-Beyanname onceki gun indirme',
+  },
+  EBEYAN_NEW_DOWNLOAD: {
+    provider: 'GIB_EBEYANNAME',
+    ownerType: 'TENANT',
+    label: 'Yeni e-Beyan sisteminden indirme',
   },
   E_TEBLIGAT_CHECK: {
     provider: 'GIB_IVD',

@@ -387,6 +387,26 @@ export default function BeyannamelerPage() {
     onError: (e: any) => toast.error(e?.message || 'e-Beyanname çekme işi başlatılamadı'),
   });
 
+  // YENİ e-Beyan sistemi (ebeyan.gib.gov.tr) — AYRI iş. Eski sistemle karışmaz.
+  const pullNewMut = useMutation({
+    mutationFn: (force?: boolean) => portalAutomationApi.manualRun({
+      jobTypes: ['EBEYAN_NEW_DOWNLOAD'],
+      dateFrom: pullFrom,
+      dateTo: pullTo,
+      force: force === true,
+    }),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ['portal-automation-summary'] });
+      const created = res.created?.length || 0;
+      if (created > 0) {
+        toast.success(`Yeni e-Beyan işi kuyruğa alındı${res.runnerWake ? ' ve sunucu uyandırıldı' : ''}.`);
+      } else {
+        toast.info(res.message || 'Yeni e-Beyan işi oluşmadı.');
+      }
+    },
+    onError: (e: any) => toast.error(e?.message || 'Yeni e-Beyan çekme işi başlatılamadı'),
+  });
+
   const cancelJobMut = useMutation({
     mutationFn: (id: string) => portalAutomationApi.cancelJob(id, 'Kullanici Beyannameler ekranindan iptal etti'),
     onSuccess: () => {
@@ -753,6 +773,17 @@ export default function BeyannamelerPage() {
               >
                 {pullMut.isPending ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
                 Beyannameleri Çek
+              </button>
+              <button
+                type="button"
+                onClick={() => pullNewMut.mutate(false)}
+                disabled={pullNewMut.isPending}
+                title="Yeni GİB e-Beyan sisteminden (ebeyan.gib.gov.tr) çeker — eski sistemden ayrı"
+                className="inline-flex h-[46px] items-center justify-center gap-2 rounded-[11px] px-[18px] text-[13.5px] font-bold"
+                style={{ background: 'linear-gradient(135deg, #34d399, #10b981)', color: '#052e1a', boxShadow: '0 12px 26px -12px rgba(52,211,153,0.55)', opacity: pullNewMut.isPending ? 0.65 : 1 }}
+              >
+                {pullNewMut.isPending ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+                Yeni Beyanname Sitesinden Çek
               </button>
               <button
                 type="button"

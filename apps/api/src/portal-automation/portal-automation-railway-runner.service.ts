@@ -94,6 +94,7 @@ const DEFAULT_SGK_EBILDIRGE_LOGIN_URL = 'https://ebildirge.sgk.gov.tr/EBildirgeV
 
 const JOB_TYPES_DEFAULT: PortalJobType[] = [
   'EBEYANNAME_DAILY_DOWNLOAD',
+  'EBEYAN_NEW_DOWNLOAD',
   'E_TEBLIGAT_CHECK',
   'SGK_HIZMET_LISTESI',
   'SGK_TAHAKKUK',
@@ -193,6 +194,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     if (!raw) return JOB_TYPES_DEFAULT;
     const allowed = new Set<PortalJobType>([
       'EBEYANNAME_DAILY_DOWNLOAD',
+      'EBEYAN_NEW_DOWNLOAD',
       'E_TEBLIGAT_CHECK',
       'SGK_HIZMET_LISTESI',
       'SGK_TAHAKKUK',
@@ -504,6 +506,12 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         this.logger.log(`[PortalRailwayRunner] job tamam: ${job.id} count=${result.recordCount || 0}`);
         return;
       }
+      if (job.jobType === 'EBEYAN_NEW_DOWNLOAD') {
+        const result = await this.runEBeyanNew(job.tenantId, bundle);
+        await this.portalAutomation.completeJob(job.tenantId, job.id, result);
+        this.logger.log(`[PortalRailwayRunner] job tamam: ${job.id} EBEYAN_NEW count=${result.recordCount || 0}`);
+        return;
+      }
       if (job.jobType === 'E_TEBLIGAT_CHECK' || job.jobType === 'EARSIV_PORTAL_FETCH' || job.jobType.startsWith('SGK_')) {
         const result = await this.runPortalDocumentJob(job.tenantId, bundle);
         await this.portalAutomation.completeJob(job.tenantId, job.id, result);
@@ -653,6 +661,113 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
           declarations: collection.declarations.length,
           documents: collection.documents.length,
           notes: collection.notes,
+        },
+      };
+    } finally {
+      await context?.close?.().catch(() => {});
+      await browser?.close?.().catch(() => {});
+      await rm(downloadsPath, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+
+  /**
+   * YENİ e-Beyan sistemi (ebeyan.gib.gov.tr) — AYRI iş. Taze Dijital Vergi Dairesi
+   * girişi → "e-Beyan" uygulaması → /beyannameler filtrele + PDF/tahakkuk indir.
+   * Eski sistemden BAĞIMSIZ (fresh login → tile temiz açılır, "sekmesi açılmadı" çözülür).
+   */
+  private async runEBeyanNew(tenantId: string, bundle: RunnerJobBundle) {
+    const credential = bundle.credential;
+    await this.jobProgress(tenantId, bundle.job, 'credential', 'e-Beyanname sifresi kontrol ediliyor.');
+    const ebeyannameSifre = credential.secondaryPassword || credential.password;
+    if (!credential.userCode || !ebeyannameSifre) {
+      throw new Error('Mali musavir e-Beyanname kullanici kodu ve sifre eksik');
+    }
+    const loginUrl = process.env.PORTAL_AUTOMATION_EBEYANNAME_LOGIN_URL || DEFAULT_EBEYANNAME_LOGIN_URL;
+    const downloadsPath = join(tmpdir(), `moren-ebeyan-new-${randomUUID()}`);
+    await mkdir(downloadsPath, { recursive: true });
+    await this.jobProgress(tenantId, bundle.job, 'browser', 'Sunucu tarayicisi baslatiliyor.');
+
+    let browser: any = null;
+    let context: any = null;
+    try {
+      const contextOptions = {
+        acceptDownloads: true,
+        viewport: { width: 1440, height: 950 },
+        locale: 'tr-TR',
+        timezoneId: 'Europe/Istanbul',
+        userAgent:
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      };
+      const persistentDir = this.ebeyannameBrowserUserDataDir();
+      if (persistentDir) {
+        await mkdir(persistentDir, { recursive: true });
+        context = await pwChromium.launchPersistentContext(persistentDir, {
+          ...contextOptions,
+          executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || process.env.CHROMIUM_PATH,
+          headless: this.browserHeadless(),
+          downloadsPath,
+          args: this.browserLaunchArgs(),
+        });
+      } else {
+        browser = await pwChromium.launch({
+          executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || process.env.CHROMIUM_PATH,
+          headless: this.browserHeadless(),
+          downloadsPath,
+          args: this.browserLaunchArgs(),
+        });
+        context = await browser.newContext(contextOptions);
+      }
+      await this.applyBrowserStealth(context);
+      const page = context.pages?.()[0] || await context.newPage();
+      page.setDefaultTimeout(15_000);
+
+      const MAX_LOGIN_ATTEMPTS = Math.max(3, Math.min(8, Number(process.env.PORTAL_AUTOMATION_EBEYANNAME_LOGIN_ATTEMPTS || 5)));
+      for (let attempt = 1; attempt <= MAX_LOGIN_ATTEMPTS; attempt++) {
+        try {
+          await this.jobProgress(tenantId, bundle.job, 'login', `GIB login denemesi ${attempt}/${MAX_LOGIN_ATTEMPTS}: sayfa aciliyor.`, { current: attempt, total: MAX_LOGIN_ATTEMPTS });
+          await page.goto(loginUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+          await this.waitForEBeyannameLoginForm(page);
+          await this.jobProgress(tenantId, bundle.job, 'login', `GIB login denemesi ${attempt}/${MAX_LOGIN_ATTEMPTS}: bilgiler ve CAPTCHA dolduruluyor.`, { current: attempt, total: MAX_LOGIN_ATTEMPTS });
+          await this.fillEBeyannameLogin(page, credential.userCode, ebeyannameSifre);
+          await this.fillEBeyannameCaptcha(page);
+          await this.submitLogin(page);
+          await page.waitForLoadState('domcontentloaded', { timeout: 20_000 }).catch(() => {});
+          await page.waitForTimeout(2000);
+          await this.assertLoggedIn(page);
+          await this.jobProgress(tenantId, bundle.job, 'login', 'Dijital Vergi Dairesi girisi basarili.');
+          break;
+        } catch (loginErr: any) {
+          const msg = String(loginErr?.message || loginErr).slice(0, 200);
+          await this.jobProgress(tenantId, bundle.job, 'login_retry', `Login denemesi basarisiz, tekrar denenecek: ${msg}`, { current: attempt, total: MAX_LOGIN_ATTEMPTS });
+          if (attempt === MAX_LOGIN_ATTEMPTS) throw new Error('Yeni e-Beyan login ' + MAX_LOGIN_ATTEMPTS + ' denemede basarisiz. Son hata: ' + msg);
+        }
+      }
+
+      await this.jobProgress(tenantId, bundle.job, 'open_app', 'Yeni e-Beyan uygulamasi aciliyor.');
+      const ebeyanPage = await this.openEBeyanNewApplication(context, page);
+      const taxpayers = await this.loadTaxpayers(tenantId);
+      const notes: string[] = [];
+      await this.jobProgress(tenantId, bundle.job, 'ebeyan_new_list', 'Beyanname listesi cekiliyor.');
+      const coll = await this.collectEBeyanNewDownloads(tenantId, ebeyanPage, bundle.job, taxpayers, notes);
+
+      await this.jobProgress(tenantId, bundle.job, 'logout', 'GIB sekmeleri kapatiliyor ve guvenli cikis yapiliyor.');
+      await this.safeLogoutFromDigitalTaxOffice(context, page, ebeyanPage, notes).catch((err) => {
+        notes.push(`GIB guvenli cikis tamamlanamadi: ${this.compact(err?.message || err)}`);
+      });
+      await context.close().catch(() => {});
+      context = null;
+
+      return {
+        declarations: coll.declarations,
+        documents: coll.documents,
+        recordCount: coll.declarations.length + coll.documents.length,
+        result: {
+          runner: 'railway',
+          phase: 'ebeyan_new',
+          system: 'yeni-e-beyan',
+          declarations: coll.declarations.length,
+          documents: coll.documents.length,
+          notes,
         },
       };
     } finally {

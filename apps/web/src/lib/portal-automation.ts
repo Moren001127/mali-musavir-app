@@ -4,6 +4,7 @@ export type PortalProvider = 'GIB_EBEYANNAME' | 'GIB_IVD' | 'SGK_EBILDIRGE';
 
 export type PortalJobType =
   | 'EBEYANNAME_DAILY_DOWNLOAD'
+  | 'EBEYAN_NEW_DOWNLOAD'
   | 'E_TEBLIGAT_CHECK'
   | 'EARSIV_PORTAL_FETCH'
   | 'SGK_HIZMET_LISTESI'
@@ -150,6 +151,7 @@ export interface PortalSummary {
 
 export const PORTAL_JOB_LABEL: Record<PortalJobType, string> = {
   EBEYANNAME_DAILY_DOWNLOAD: 'e-Beyanname indir',
+  EBEYAN_NEW_DOWNLOAD: 'Yeni e-Beyan indir',
   E_TEBLIGAT_CHECK: 'e-Tebligat kontrol',
   EARSIV_PORTAL_FETCH: 'GIB e-Arsiv fatura cekimi',
   SGK_HIZMET_LISTESI: 'SGK hizmet listesi',
