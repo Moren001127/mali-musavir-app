@@ -1457,10 +1457,17 @@ export class WhatsAppBotController implements OnModuleInit {
 
     const pending = { taxpayerId: tp!.id, phone, adi, items: tipler?.length ? [{ tipler, donem: donem || null, belge }] : null, kategori: tipler?.length ? null : this.inferDocCategory(text), etiket };
     const marker = `[[send_tp_pending:${Buffer.from(JSON.stringify(pending), 'utf8').toString('base64')}]]`;
-    await sendOwner(
-      `${adi} mükellefine şu gönderilecek: ${etiket}.\nOnaylıyorsanız ONAYLIYORUM yazın (5 dk geçerli). Vazgeçerseniz görmezden gelin.\n${marker}`,
-      'WhatsApp owner mukellefe-gonder onay bekliyor',
-    );
+    const onizleme = `📤 ${adi} mükellefine şu gönderilecek: ${etiket}.\nOnaylıyorsanız ONAYLIYORUM yazın (5 dk geçerli). Vazgeçerseniz görmezden gelin.`;
+    const sent = msg.__dryRun ? true : await this.whatsapp.sendMessage(this.replyTarget(msg), onizleme, ownerTenant.id);
+    if (msg.__dryRun) { msg.__dryReply = onizleme; msg.__dryKind = 'owner:mukellefe-gonder-onizleme'; }
+    // GİZLİ bekleyen-iş işareti YALNIZ log'a yazılır; owner'a giden mesajda GÖRÜNMEZ.
+    await this.prisma.communicationLog.create({
+      data: {
+        taxpayerId: ownerContactId, channel: 'WHATSAPP',
+        subject: sent ? 'WhatsApp owner mukellefe-gonder onay bekliyor' : 'WhatsApp owner mukellefe-gonder onay bekliyor (gonderilemedi)',
+        content: this.withWhatsAppPhone(`${onizleme}\n${marker}`, msg.from), occurredAt: new Date(),
+      },
+    }).catch(() => null);
     return true;
   }
 
