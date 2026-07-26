@@ -1464,7 +1464,7 @@ export default function MizanPage() {
 
       {/* Yapay Zeka Değerlendirmesi — denetim uyarılarını mali müşavir gözüyle yorumlar */}
       {mizan?.id && hesaplar.length > 0 && (
-        <MaliYorumKutusu kaynak="MIZAN" kaynakId={mizan.id} accent={GOLD} autoGenerate />
+        <MaliYorumKutusu kaynak="MIZAN" kaynakId={mizan.id} accent={GOLD} />
       )}
 
       {/* Hesap Listesi */}

@@ -678,7 +678,7 @@ export default function BilancoPage() {
         )}
 
         {latest?.id && (
-          <MaliYorumKutusu kaynak="BILANCO" kaynakId={latest.id} accent="#7ca8e6" autoGenerate />
+          <MaliYorumKutusu kaynak="BILANCO" kaynakId={latest.id} accent="#7ca8e6" />
         )}
       </div>
 
