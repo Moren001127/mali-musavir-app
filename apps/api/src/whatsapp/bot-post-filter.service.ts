@@ -53,6 +53,21 @@ export class WhatsAppBotPostFilterService {
     return out.replace(/\n{3,}/g, '\n\n').replace(/[ \t]+\n/g, '\n').trim();
   }
 
+  // Owner cevabına sızan teknik/AI-altyapı ARIZA itirafını kes: "timeout", "kuyruğa
+  // aldım", "veri boş döndü", "portal araçlarını çalıştırırken", api/token/cache...
+  // Bunlar müşavire yazılım dili gibi gidiyor (kural: teknik terim yok) → cümleyi ayıkla.
+  private static readonly OWNER_TECH_LEAK_RE =
+    /\btimeout\b|zaman\s*a[şs][ıi]m[ıi]|veri\s*bo[şs]|bo[şs]\s*d[öo]nm?[üu]?[şs]?|kuyru[ğg]a\s*(al|at)|araçlar[ıi]?n?[ıi]?\s*çal[ıi][şs]t[ıi]r|portal\s*araç|\bapi\b|\btoken\b|\bcache\b|backend|deploy|fonksiyon\s*ça[ğg]|\btool\b/i;
+
+  private stripOwnerTechLeak(text: string): string {
+    if (!text || !WhatsAppBotPostFilterService.OWNER_TECH_LEAK_RE.test(text)) return text;
+    let out = text.split('\n').filter((ln) => !WhatsAppBotPostFilterService.OWNER_TECH_LEAK_RE.test(ln)).join('\n');
+    if (WhatsAppBotPostFilterService.OWNER_TECH_LEAK_RE.test(out)) {
+      out = out.split(/(?<=[.!?])\s+/).filter((sn) => !WhatsAppBotPostFilterService.OWNER_TECH_LEAK_RE.test(sn)).join(' ');
+    }
+    return out.replace(/\n{3,}/g, '\n\n').replace(/[ \t]+\n/g, '\n').trim();
+  }
+
   /** Araç-anlatımı içeren satır/cümleleri ayıkla. Geriye sağlam, kullanıcıya
    *  gösterilebilir metin döner; her şey araç-anlatımıysa boş string döner. */
   private stripToolNarration(text: string): string {
@@ -201,6 +216,8 @@ export class WhatsAppBotPostFilterService {
     t = this.stripToolNarration(t);
     // İç hata/debug jargonu (ok:false, previewId, "uyumlu agent bulunamadı") sızmasın.
     t = this.stripInternalDebug(t);
+    // Teknik/AI-altyapı arıza itirafı (timeout, kuyruğa aldım, veri boş döndü...) sızmasın.
+    t = this.stripOwnerTechLeak(t);
     if (!t) return 'Bu işi şu an tamamlayamadım; birazdan tekrar deneyip net bilgiyle döneyim.';
 
     if (this.looksRisky(t)) {
