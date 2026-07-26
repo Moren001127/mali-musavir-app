@@ -215,6 +215,7 @@ export default function GelirTablosuPage() {
   const { data: gtList = [] } = useQuery<any[]>({
     queryKey: ['gt-list', taxpayerId],
     queryFn: () => gelirTablosuApi.list(taxpayerId || undefined),
+    enabled: !!taxpayerId,
   });
 
   // Seçilen yılın 4 çeyreğini slot'lara yerleştir: Q1/Q2/Q3/Q4

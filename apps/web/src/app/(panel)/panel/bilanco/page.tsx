@@ -51,6 +51,7 @@ export default function BilancoPage() {
   const { data: bilancoList = [] } = useQuery<any[]>({
     queryKey: ['bilanco-list', taxpayerId],
     queryFn: () => bilancoApi.list(taxpayerId || undefined),
+    enabled: !!taxpayerId,
   });
 
   const latest = viewBilanco || bilancoList[0];
