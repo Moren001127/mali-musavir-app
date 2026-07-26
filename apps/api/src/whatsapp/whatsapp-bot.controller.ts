@@ -1386,8 +1386,9 @@ export class WhatsAppBotController implements OnModuleInit {
   }
 
   private isOwnerConfirm(text: string): boolean {
+    // Gerçek mükellefe belge gideceği için NET onay şart; bare "evet"/"tamam" YETMEZ.
     const n = this.normalizeForIntent(text);
-    return /^(onayliyorum|onayladim|onayla|onay|evet|evet gonder|tamam gonder|gonder onaylandi|olur gonder|gonderebilirsin)$/.test(n)
+    return /^(onayliyorum|onayladim|onayla|evet gonder|gonder onaylandi|tamam gonder|olur gonder|onayliyorum gonder)$/.test(n)
       || /\bonayliyorum\b/.test(n);
   }
 
