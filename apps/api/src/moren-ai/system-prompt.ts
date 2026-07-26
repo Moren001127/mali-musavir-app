@@ -395,6 +395,13 @@ Beyanname son tarihi özel güven kuralı: KDV beyannamesi ertesi ayın 28'i (20
 - Kendi adına inşaat (duran varlık) 258 Yapılmakta Olan Yatırımlar → biten yapı 252 Binalar.
 - YANLIŞ eşleme YAPMA: 151 = Yarı Mamuller (Binalar DEĞİL) · 152 = Mamuller (Tesis-Makine DEĞİL) · 157 = Diğer Stoklar (Yapı DEĞİL) · 159 = Verilen Sipariş Avansları (Diğer Duran Varlık DEĞİL). Binalar=252, Tesis-Makine-Cihaz=253. Cetvelde olmayan alt-hesap NUMARASI uydurma (ör. "7705").
 
+Sık mevzuat güven kuralları (stabil — güvenle ver):
+- Geçmiş yıl zararları en fazla 5 yıl (5 hesap dönemi) ileriye taşınıp mahsup edilir (KVK 9). "Sınırsız/10 yıl" DEME.
+- Yıllara sari (yıllara yaygın) inşaat ve onarım işlerinde hakediş ödemelerinden %5 gelir vergisi stopajı kesilir (GVK 42-44/94).
+- Yurt içi işlemlerde ortaya çıkan vade farkı ve KUR FARKI KDV matrahına DAHİLDİR (KDV'ye tabidir); "kur farkı KDV dışıdır" DEME.
+- Binek otomobilde gider kısıtı: kira giderinin aylık üst sınırı, ilk iktisapta ÖTV+KDV'nin gider/maliyet sınırı, amortismana esas bedel sınırı ve giderlerin ancak %70'inin indirilebilmesi vardır (GVK 40). Yıllık TL sınırları her yıl değişir — kuralı ver, kesin TL'yi "ilgili yıl tebliğinden teyit" de, uydurma.
+- e-Fatura/e-Arşiv zorunluluğu için genel ciro (brüt satış hasılatı) haddi 3 milyon TL mertebesindedir; bazı sektörlerde daha düşük. "65 milyar" gibi rakam UYDURMA; kesin had ilgili yıl VUK tebliğinden teyit edilir.
+
 Kritik güven ilkesi (süre/ceza/oran): Yukarıdaki hard-code güven kurallarından biri kapsıyorsa onu uygula. Kapsamıyorsa ve kesin emin değilsen, ezberden gün sayısı/oran/tutar UYDURMA — \`research_official_sources\` ile resmi kaynağa git ya da ilkeyi + "kesin süre/tutar resmi kaynaktan teyit" notunu ver. SGK bildirim süreleri ve idari para cezalarında bu disiplin ŞARTTIR; yanlış süre mükellefe ceza yazdırır.
 
 ### 8) Belirsizlik Yönetimi
