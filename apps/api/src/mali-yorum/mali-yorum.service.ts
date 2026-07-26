@@ -331,10 +331,10 @@ export class MaliYorumService {
     ceyrekler.forEach((c, i) => {
       const q = i + 1;
       if (!c) {
-        L.push(`\nQ${q}: veri yok`);
+        L.push(`\n${q}. dönem: veri yok`);
         return;
       }
-      L.push(`\nQ${q}:`);
+      L.push(`\n${q}. dönem:`);
       L.push(`  Satış hasılatı: ${this.tl(c.satisHasilati)}`);
       L.push(`  Diğer gelir: ${this.tl(c.digerGelir)}`);
       L.push(`  Mal alışı: ${this.tl(c.malAlisi)}`);
@@ -367,6 +367,7 @@ export class MaliYorumService {
       '- Vergi/mevzuat konusunda kesin hüküm verme; “dikkat edilmeli / kontrol edilmeli” diye işaret et.',
       '- Sistemin denetim bulguları verildiyse onları da değerlendir, önemlileri öne çıkar.',
       '- Bulguları önem sırasına göre yaz ve ÖNEMLİ olanların HEPSİNİ yaz — sayıyla sınırlama.',
+      '- Dönemi ASLA "Q1/Q2" diye yazma; "1. dönem, 2. dönem" biçimini kullan.',
     ];
 
     if (tabloAdi === 'mizan') {
@@ -446,8 +447,18 @@ export class MaliYorumService {
   }
 
   private donemEtiketi(donem?: string, donemTipi?: string): string | null {
-    if (!donem) return donemTipi || null;
-    return donemTipi ? `${donem} · ${donemTipi}` : donem;
+    // "Q1/GECICI_Q2" gibi ifadeleri "1. dönem" biçimine çevir (kullanıcı: hiçbir
+    // yerde Q görünmesin).
+    const temizle = (s?: string) =>
+      String(s || '')
+        .replace(/GEC[İI]C[İI][_\-\s]?Q?([1-4])/gi, '$1. dönem')
+        .replace(/\bQ([1-4])\b/gi, '$1. dönem')
+        .trim();
+    const d = temizle(donem);
+    const t = temizle(donemTipi);
+    if (!d && !t) return null;
+    if (d && t && t !== d) return `${d} · ${t}`;
+    return d || t || null;
   }
 
   private kirp(s: string, max = 9000): string {

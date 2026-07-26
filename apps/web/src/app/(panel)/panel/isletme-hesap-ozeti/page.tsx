@@ -31,8 +31,9 @@ const TABLE_SURFACE = '#181613';
 const TABLE_SURFACE_ALT = '#1d1a16';
 const TABLE_HEADER_BG = '#221d16';
 const TABLE_SECTION_BG = '#1d1a16';
-const GRID_LINE = 'rgba(245,240,230,0.10)';
-const GRID_LINE_STRONG = 'rgba(212,184,118,0.28)';
+// Çizgiler Gelir Tablosu ile aynı netlikte (kullanıcı: gelir tablosundaki gibi olsun)
+const GRID_LINE = 'rgba(245,240,230,0.24)';
+const GRID_LINE_STRONG = 'rgba(212,184,118,0.50)';
 const REPORT_TEXT = 'rgba(250,250,249,0.95)';
 const REPORT_MUTED = 'rgba(231,229,228,0.78)';
 const REPORT_DIM = 'rgba(214,211,209,0.45)';
