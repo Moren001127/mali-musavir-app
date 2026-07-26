@@ -1839,7 +1839,7 @@ export default function GelirTablosuPage() {
         )}
 
         {latestQuarter?.id && (
-          <MaliYorumKutusu kaynak="GELIR_TABLOSU" kaynakId={latestQuarter.id} accent="#6bbf8a" />
+          <MaliYorumKutusu kaynak="GELIR_TABLOSU" kaynakId={latestQuarter.id} accent="#6bbf8a" autoGenerate />
         )}
       </div>
 

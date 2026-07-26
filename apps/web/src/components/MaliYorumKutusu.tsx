@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { maliYorumApi, MaliYorumKaynak } from '@/lib/mali-yorum';
@@ -15,10 +15,13 @@ export function MaliYorumKutusu({
   kaynak,
   kaynakId,
   accent = '#d4b876',
+  autoGenerate = false,
 }: {
   kaynak: MaliYorumKaynak;
   kaynakId?: string | null;
   accent?: string;
+  /** true ise: kayıtlı değerlendirme yoksa açılışta otomatik üretilir (bir kez). */
+  autoGenerate?: boolean;
 }) {
   const qc = useQueryClient();
   const enabled = !!kaynakId;
@@ -39,9 +42,24 @@ export function MaliYorumKutusu({
       toast.error(e?.response?.data?.message || 'Değerlendirme üretilemedi'),
   });
 
+  // Otomatik başlatma: mizan çekilince / bilanço-gelir tablosu üretilince kayıt
+  // yoksa bir kez otomatik üret. Hata olursa tekrar denemez (kullanıcı elle "Yenile").
+  const autoFiredRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!autoGenerate || !enabled || isLoading) return;
+    if (yorum || uretMut.isPending) return;
+    if (autoFiredRef.current === kaynakId) return;
+    autoFiredRef.current = kaynakId as string;
+    uretMut.mutate(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoGenerate, enabled, isLoading, yorum, kaynakId]);
+
   if (!enabled) return null;
 
   const uretiliyor = uretMut.isPending;
+  const hataMesaj = uretMut.isError
+    ? ((uretMut.error as any)?.response?.data?.message || 'Değerlendirme üretilemedi')
+    : '';
 
   const zaman = (() => {
     if (!yorum?.updatedAt) return '';
@@ -88,7 +106,7 @@ export function MaliYorumKutusu({
           </div>
           <div>
             <div style={{ fontWeight: 700, color: '#f5efe3', fontSize: 15, letterSpacing: 0.2 }}>
-              Yapay Zeka Değerlendirmesi
+              MOREN MALİ MÜŞAVİRLİK AI Değerlendirmesi
             </div>
             <div style={{ fontSize: 12, color: 'rgba(245,239,227,0.55)' }}>
               Bir mali müşavir gözüyle otomatik yorum
@@ -132,6 +150,25 @@ export function MaliYorumKutusu({
               </div>
             )}
           </>
+        ) : hataMesaj ? (
+          <div
+            style={{
+              border: '1px solid rgba(244,63,94,0.35)',
+              background: 'rgba(244,63,94,0.06)',
+              borderRadius: 12,
+              padding: 14,
+            }}
+          >
+            <div style={{ color: '#fca5a5', fontWeight: 700, fontSize: 13.5, marginBottom: 4 }}>
+              Değerlendirme yapılamadı
+            </div>
+            <div style={{ color: 'rgba(245,239,227,0.8)', fontSize: 13, lineHeight: 1.55 }}>
+              {hataMesaj}
+            </div>
+            <div style={{ color: 'rgba(245,239,227,0.5)', fontSize: 12, marginTop: 8 }}>
+              Tekrar denemek için yukarıdaki <b>Değerlendir</b> düğmesine basın.
+            </div>
+          </div>
         ) : (
           <p style={{ color: 'rgba(245,239,227,0.6)', fontSize: 13.5, lineHeight: 1.6 }}>
             Bu tabloyu yapay zeka mali müşavir gözüyle değerlendirsin — güçlü/zayıf

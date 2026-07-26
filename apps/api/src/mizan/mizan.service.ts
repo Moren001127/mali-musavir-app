@@ -501,6 +501,18 @@ export class MizanService {
       }
       return true;
     };
+    // "Gerçek detay hesap" = altında BAŞKA hesap OLMAYAN en uç kod.
+    // Not: isLeaf yalnızca NOKTA ile ayrılan alt kırılımı sayar; ama TDHP'de
+    // grup→ana geçişi NOKTASIZDIR (10 → 100). Bu yüzden isLeaf("10")=true çıkıp
+    // "10 HAZIR DEĞERLER" grubu detay sanılıyor ve ZIT_BAKIYE tekrar uyarı üretiyordu.
+    // Burada string-önek ile gerçek uç hesabı buluruz: "100" kodu "10" ile başladığı
+    // için "10" detay sayılmaz; yalnız "100.01.001" gibi en uç kodlar detaydır.
+    const isDetayHesap = (kod: string): boolean => {
+      for (const k of tumKodlar) {
+        if (k !== kod && k.startsWith(kod)) return false;
+      }
+      return true;
+    };
 
     for (const h of hesaplar) {
       const anaKod = h.hesapKodu.split('.')[0];
@@ -544,7 +556,7 @@ export class MizanService {
       //      atlanır, sadece 100.01.001 uyarır. Alt kırılımı olmayan ana hesap
       //      (ör. tek satır "500") kendisi leaf olduğu için yine uyarır.
       const isKontra = KONTRA_HESAPLAR.has(anaKod);
-      if (!isKontra && leaf) {
+      if (!isKontra && isDetayHesap(h.hesapKodu)) {
         const beklenen = this.beklenenBakiyeTipi(anaKod);
         if (beklenen === 'borç' && Number(h.alacakBakiye) > 0 && Number(h.borcBakiye) === 0) {
           anomaliler.push({
