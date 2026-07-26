@@ -33,7 +33,8 @@ export function MaliYorumKutusu({
   });
 
   const uretMut = useMutation({
-    mutationFn: (force: boolean) => maliYorumApi.uret(kaynak, kaynakId as string, force),
+    mutationFn: (opts: { force: boolean; derin: boolean }) =>
+      maliYorumApi.uret(kaynak, kaynakId as string, opts.force, opts.derin),
     onSuccess: (data) => {
       qc.setQueryData(['mali-yorum', kaynak, kaynakId], data);
       toast.success('Değerlendirme hazır');
@@ -50,13 +51,14 @@ export function MaliYorumKutusu({
     if (yorum || uretMut.isPending) return;
     if (autoFiredRef.current === kaynakId) return;
     autoFiredRef.current = kaynakId as string;
-    uretMut.mutate(false);
+    uretMut.mutate({ force: false, derin: false }); // otomatik = ucuz model
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoGenerate, enabled, isLoading, yorum, kaynakId]);
 
   if (!enabled) return null;
 
   const uretiliyor = uretMut.isPending;
+  const derinPending = uretiliyor && (uretMut.variables as any)?.derin === true;
   const hataMesaj = uretMut.isError
     ? ((uretMut.error as any)?.response?.data?.message || 'Değerlendirme üretilemedi')
     : '';
@@ -114,23 +116,43 @@ export function MaliYorumKutusu({
           </div>
         </div>
 
-        <button
-          onClick={() => uretMut.mutate(!!yorum)}
-          disabled={uretiliyor}
-          style={{
-            padding: '8px 16px',
-            borderRadius: 10,
-            border: `1px solid ${hexA(accent, 0.5)}`,
-            background: uretiliyor ? 'rgba(255,255,255,0.04)' : hexA(accent, 0.14),
-            color: uretiliyor ? 'rgba(245,239,227,0.5)' : accent,
-            fontWeight: 600,
-            fontSize: 13.5,
-            cursor: uretiliyor ? 'wait' : 'pointer',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          {uretiliyor ? 'İnceleniyor…' : yorum ? '↻ Yenile' : '✨ Değerlendir'}
-        </button>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button
+            onClick={() => uretMut.mutate({ force: !!yorum, derin: false })}
+            disabled={uretiliyor}
+            style={{
+              padding: '8px 16px',
+              borderRadius: 10,
+              border: `1px solid ${hexA(accent, 0.5)}`,
+              background: uretiliyor ? 'rgba(255,255,255,0.04)' : hexA(accent, 0.14),
+              color: uretiliyor ? 'rgba(245,239,227,0.5)' : accent,
+              fontWeight: 600,
+              fontSize: 13.5,
+              cursor: uretiliyor ? 'wait' : 'pointer',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {uretiliyor && !derinPending ? 'İnceleniyor…' : yorum ? '↻ Yenile' : '✨ Değerlendir'}
+          </button>
+          <button
+            onClick={() => uretMut.mutate({ force: true, derin: true })}
+            disabled={uretiliyor}
+            title="Güçlü model (Sonnet) ile daha derin inceleme — normalden biraz daha çok limit yer"
+            style={{
+              padding: '8px 14px',
+              borderRadius: 10,
+              border: '1px solid rgba(168,85,247,0.5)',
+              background: uretiliyor ? 'rgba(255,255,255,0.04)' : 'rgba(168,85,247,0.14)',
+              color: uretiliyor ? 'rgba(245,239,227,0.5)' : '#c084fc',
+              fontWeight: 600,
+              fontSize: 13.5,
+              cursor: uretiliyor ? 'wait' : 'pointer',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {derinPending ? 'Derin inceleniyor…' : '🔬 Derin Analiz'}
+          </button>
+        </div>
       </div>
 
       {/* Gövde */}

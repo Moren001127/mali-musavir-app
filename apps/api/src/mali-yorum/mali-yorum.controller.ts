@@ -18,15 +18,26 @@ export class MaliYorumController {
     return this.service.get(req.user.tenantId, kaynak, decodeURIComponent(kaynakId));
   }
 
-  /** Değerlendirme üret. ?force=1 verilirse yeniden üretir, aksi halde kayıtlıyı döner. */
+  /**
+   * Değerlendirme üret. ?force=1 yeniden üretir; ?derin=1 güçlü model (Sonnet,
+   * "Derin Analiz") kullanır, aksi halde ucuz model (Haiku) — limit dostu.
+   */
   @Post(':kaynak/:kaynakId/uret')
   generate(
     @Req() req: any,
     @Param('kaynak') kaynak: string,
     @Param('kaynakId') kaynakId: string,
     @Query('force') force?: string,
+    @Query('derin') derin?: string,
   ) {
     const yenile = force === '1' || force === 'true';
-    return this.service.generate(req.user.tenantId, kaynak, decodeURIComponent(kaynakId), yenile);
+    const derinMi = derin === '1' || derin === 'true';
+    return this.service.generate(
+      req.user.tenantId,
+      kaynak,
+      decodeURIComponent(kaynakId),
+      yenile || derinMi, // derin analiz her zaman yeniden üretir
+      derinMi,
+    );
   }
 }

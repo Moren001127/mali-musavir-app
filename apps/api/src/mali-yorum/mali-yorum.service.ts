@@ -4,7 +4,7 @@ import { MizanService } from '../mizan/mizan.service';
 import { BilancoService } from '../mizan/bilanco.service';
 import { GelirTablosuService } from '../mizan/gelir-tablosu.service';
 import { IsletmeHesapOzetiService } from '../isletme-hesap-ozeti/isletme-hesap-ozeti.service';
-import { claudeTextViaMax, MAX_MODEL_DEFAULT, isMaxAvailable } from '../common/max-inference';
+import { claudeTextViaMax, MAX_MODEL_DEFAULT, MAX_MODEL_CHEAP, isMaxAvailable } from '../common/max-inference';
 
 export type MaliYorumKaynak = 'MIZAN' | 'BILANCO' | 'GELIR_TABLOSU' | 'IHO';
 const GECERLI_KAYNAKLAR: MaliYorumKaynak[] = ['MIZAN', 'BILANCO', 'GELIR_TABLOSU', 'IHO'];
@@ -48,8 +48,12 @@ export class MaliYorumService {
   /**
    * Değerlendirme üret. force=false ve kayıt varsa mevcut kaydı döner (hızlı
    * açılış). force=true her seferinde yeniden üretir.
+   *
+   * derin=false (varsayılan/otomatik): ucuz model (Haiku) — az Max limiti yer.
+   * derin=true ("Derin Analiz" butonu): güçlü model (Sonnet) — daha derin yorum,
+   * yalnız kullanıcı elle isteyince çalışır.
    */
-  async generate(tenantId: string, kaynak: string, kaynakId: string, force = false) {
+  async generate(tenantId: string, kaynak: string, kaynakId: string, force = false, derin = false) {
     const k = this.normKaynak(kaynak);
 
     if (!force) {
@@ -72,8 +76,9 @@ export class MaliYorumService {
     const sonuc = await claudeTextViaMax({
       prompt,
       system,
-      model: MAX_MODEL_DEFAULT, // Sonnet — mali müşavir seviyesinde akıl yürütme
-      timeoutMs: 90_000, // kompakt özet prompt — kısa sürede biter
+      // Otomatik/normal = Haiku (ucuz, limit dostu); Derin Analiz = Sonnet.
+      model: derin ? MAX_MODEL_DEFAULT : MAX_MODEL_CHEAP,
+      timeoutMs: derin ? 180_000 : 90_000,
     });
 
     if (!sonuc.ok || !sonuc.text.trim()) {
