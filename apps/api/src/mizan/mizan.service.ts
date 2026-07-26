@@ -555,8 +555,13 @@ export class MizanService {
       //      TEKRAR uyarı üretmesin (kullanıcı talebi 2026-07-26). Örn: 10 ve 100
       //      atlanır, sadece 100.01.001 uyarır. Alt kırılımı olmayan ana hesap
       //      (ör. tek satır "500") kendisi leaf olduğu için yine uyarır.
+      //   c) ÖZEL kuralı olan hesaplar (100 kasa → KASA_NEGATIF, 150/152/153 stok →
+      //      STOK_NEGATIF) genel ZIT_BAKIYE üretmez — aksi halde kasa için iki
+      //      uyarı çıkıyordu (kullanıcı bildirimi 2026-07-26). Özel kural zaten
+      //      daha açıklayıcı (tutarı da verir).
+      const ZIT_BAKIYE_MUAF_ANA = new Set(['100', '150', '152', '153']);
       const isKontra = KONTRA_HESAPLAR.has(anaKod);
-      if (!isKontra && isDetayHesap(h.hesapKodu)) {
+      if (!isKontra && !ZIT_BAKIYE_MUAF_ANA.has(anaKod) && isDetayHesap(h.hesapKodu)) {
         const beklenen = this.beklenenBakiyeTipi(anaKod);
         if (beklenen === 'borç' && Number(h.alacakBakiye) > 0 && Number(h.borcBakiye) === 0) {
           anomaliler.push({

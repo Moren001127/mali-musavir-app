@@ -1413,28 +1413,28 @@ export default function MizanPage() {
               {anomaliler.length} uyarı
             </span>
           </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
             {anomaliler.map((a, i) => (
               <div
                 key={a.id || i}
-                className="rounded-lg p-4 flex gap-3"
+                className="rounded-lg px-3 py-2.5 flex gap-2.5"
                 style={{
                   background: 'rgba(255,255,255,0.02)',
-                  border: `1px solid ${a.seviye === 'ERROR' ? 'rgba(244,63,94,0.3)' : 'rgba(245,158,11,0.3)'}`,
+                  border: `1px solid ${a.seviye === 'ERROR' ? 'rgba(244,63,94,0.28)' : 'rgba(245,158,11,0.26)'}`,
                 }}
               >
                 <div
-                  className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 font-bold"
+                  className="w-5 h-5 rounded-md flex items-center justify-center flex-shrink-0 mt-[1px]"
                   style={{
                     background: a.seviye === 'ERROR' ? 'rgba(244,63,94,0.15)' : 'rgba(245,158,11,0.15)',
                     color: a.seviye === 'ERROR' ? '#f43f5e' : '#f59e0b',
                   }}
                 >
-                  {a.seviye === 'ERROR' ? <XCircle size={15} /> : <AlertTriangle size={15} />}
+                  {a.seviye === 'ERROR' ? <XCircle size={12} /> : <AlertTriangle size={12} />}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-[12.5px] font-semibold mb-1" style={{ color: '#fafaf9' }}>{a.tip.replace(/_/g, ' ')}</p>
-                  <p className="text-[11.5px] leading-snug" style={{ color: 'rgba(250,250,249,0.65)' }}>{a.mesaj}</p>
+                  <p className="text-[11.5px] font-semibold mb-0.5 tracking-wide" style={{ color: a.seviye === 'ERROR' ? '#fca5a5' : '#fcd34d' }}>{a.tip.replace(/_/g, ' ')}</p>
+                  <p className="text-[11px] leading-snug" style={{ color: 'rgba(250,250,249,0.62)' }}>{a.mesaj}</p>
                 </div>
               </div>
             ))}
