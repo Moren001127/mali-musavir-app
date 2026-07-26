@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { LucaInlineCaptchaPanel } from '@/components/luca/LucaInlineCaptchaPanel';
@@ -770,6 +770,22 @@ export default function IsletmeHesapOzetiPage() {
               {yil} Yılını Başlat (4 Dönem Aç)
             </button>
           )}
+
+          {taxpayerId && !hicKayitYok && (
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new CustomEvent('iho-print'))}
+              className="ml-auto inline-flex items-center gap-2 rounded-lg px-3 py-2 text-[12.5px] font-bold"
+              style={{
+                background: 'rgba(212,184,118,0.12)',
+                border: '1px solid rgba(212,184,118,0.32)',
+                color: AMOUNT_ACCENT,
+              }}
+            >
+              <Printer className="h-4 w-4" />
+              Mükellef Çıktısı
+            </button>
+          )}
         </div>
       </div>
 
@@ -1152,24 +1168,18 @@ function KarsilastirmaTablosu({
     }, 750);
   };
 
+  // "Mükellef Çıktısı" butonu artık ÜST seçici satırında (ana bileşen); buradan
+  // window olayı ile tetiklenir — böylece butonla tablo arası boşluk kalkar.
+  const printRef = useRef(handleClientOutput);
+  printRef.current = handleClientOutput;
+  useEffect(() => {
+    const h = () => printRef.current();
+    window.addEventListener('iho-print', h);
+    return () => window.removeEventListener('iho-print', h);
+  }, []);
+
   return (
-    <div className="space-y-3">
-      <div className="flex justify-end">
-        <button
-          type="button"
-          onClick={handleClientOutput}
-          disabled={!clientReportPeriods.length}
-          className="inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-[12.5px] font-bold disabled:opacity-40"
-          style={{
-            background: 'rgba(212,184,118,0.12)',
-            border: '1px solid rgba(212,184,118,0.32)',
-            color: AMOUNT_ACCENT,
-          }}
-        >
-          <Printer className="h-4 w-4" />
-          Mükellef Çıktısı
-        </button>
-      </div>
+    <div>
       {/* v1.36.26: Dönem Aksiyonları + KAR/ZARAR ÖZETİ tek bağlı blok — boşluk yok */}
       <div className="space-y-0">
       {/* Üst dönem barı — tablonun sütun genişlikleriyle birebir hizalı */}
@@ -1180,6 +1190,9 @@ function KarsilastirmaTablosu({
           borderTop: `1px solid ${GRID_LINE_STRONG}`,
           borderLeft: `1px solid ${GRID_LINE_STRONG}`,
           borderRight: `1px solid ${GRID_LINE_STRONG}`,
+          // Alt kenar çizgisi — dikey sütun ayraçları buraya oturup birleşsin
+          // (yoksa çizgiler boşlukta asılı kalıp "kopuk" görünüyordu, kullanıcı bildirimi).
+          borderBottom: `1px solid ${GRID_LINE_STRONG}`,
           boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
         }}
       >
