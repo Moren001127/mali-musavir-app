@@ -197,9 +197,11 @@ export class WhatsAppBotController implements OnModuleInit {
     const tenant = ownerPhone ? await this.findOwnerTenantByPhone(ownerPhone) : null;
     if (!tenant) return { ok: false, error: 'owner tenant bulunamadi' };
     const take = Math.min(Number(body?.take) || 40, 200);
+    // Sadece denetim için gereken alan: id + isim + tip. TELEFON/VKN gibi PII DÖNDÜRÜLMEZ.
+    // Mükellef testleri taxpayerId ile (owner-selftest taxpayer modu) yürütülür; gönderim yok.
     const rows = await this.prisma.taxpayer.findMany({
       where: { tenantId: tenant.id, isActive: true, NOT: { taxNumber: { startsWith: 'WHATSAPP-' } } },
-      select: { id: true, companyName: true, firstName: true, lastName: true, type: true, phone: true, phones: true, taxNumber: true },
+      select: { id: true, companyName: true, firstName: true, lastName: true, type: true },
       orderBy: [{ companyName: 'asc' }, { firstName: 'asc' }],
       take,
     });
@@ -207,9 +209,7 @@ export class WhatsAppBotController implements OnModuleInit {
       id: t.id,
       isim: (t.companyName || `${t.firstName || ''} ${t.lastName || ''}`).trim(),
       tip: t.type || null,
-      phone: this.normalize(t.phone) || (Array.isArray(t.phones) && t.phones[0] ? this.normalize(t.phones[0]) : ''),
-      vkn: t.taxNumber || null,
-    })).filter((t: any) => t.phone);
+    }));
     return { ok: true, tenant: tenant.id, count: list.length, taxpayers: list };
   }
 
