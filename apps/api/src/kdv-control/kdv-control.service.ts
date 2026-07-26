@@ -284,8 +284,12 @@ export class KdvControlService implements OnApplicationBootstrap {
    * DONE olanlar tekrar denetlenmez (needsRedo), cift denetim olmaz.
    */
   private async maybeAutoStartContentAudit(sessionId: string, tenantId: string) {
-    const auto = String(process.env.KDV_CONTENT_AUDIT_AUTO ?? '1').trim().toLowerCase();
-    if (auto === '0' || auto === 'false') return;
+    // Varsayılan KAPALI (kullanıcı talebi 2026-07-26): içerik denetimi Max limiti
+    // yediği için KDV kontrolü bitince OTOMATİK başlamasın; yalnız kullanıcı
+    // "İçerik Denetimi" butonuna basınca çalışsın. Otomatiği geri açmak için
+    // env KDV_CONTENT_AUDIT_AUTO=1 verilir.
+    const auto = String(process.env.KDV_CONTENT_AUDIT_AUTO ?? '0').trim().toLowerCase();
+    if (auto !== '1' && auto !== 'true') return;
     try {
       const bekleyen = await this.prisma.receiptImage.count({
         where: {
