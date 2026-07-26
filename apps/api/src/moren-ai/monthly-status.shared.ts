@@ -672,6 +672,9 @@ export function detectTaxTotalIntent(text: string): boolean {
   // portföy toplamı dökülüyordu. Sinyal: (a) şirket türü eki, (b) özel isme yönelme/tamlama eki.
   if (/(limited|\bltd\b|anonim|insaat|ticaret|nakliye|lojistik|\bgida\b|sanayi|otomotiv|mimarl|veteriner|klinik)/.test(n)) return false;
   if (/['’](a|e|ya|ye|na|ne|n[ıi]n|n[uü]n|[ıi]n|[uü]n)\b/i.test(text)) return false;
+  // HİPOTETİK HESAP sorusu (verilen rakamlarla "…ise ne kadar") → portföy TOPLAMI değil.
+  // "kurum kazancı 5.000.000, kkeg 200.000 ise kurumlar vergisi ne kadar" gibi.
+  if (/\bise\b|kkeg|matrah|kazanc|\d{1,3}[.,]\d{3}/.test(n)) return false;
   const toplam = /(toplam|ne kadar|kac tl|kac para|genel toplam|hepsi)/.test(n);
   const vergi = /(vergi|tahakkuk|ödeme|odeme|beyanname)/.test(n);
   const liste = /(kim|kimler|hangi mukellef|listele)/.test(n); // liste sorusu DEĞİL (o tax-payable)

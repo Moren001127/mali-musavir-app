@@ -547,8 +547,10 @@ export class MorenAiService {
         // en çok/sırala" portföy sorularına çalışmalı.
         const nm = String(userMessage || '').toLocaleLowerCase('tr-TR').replace(/ı/g, 'i').normalize('NFD').replace(/[̀-ͯ]/g, '');
         const mevzuatSoru = /ne zaman|hangi tarih|son tarih|kaca kadar|kac gun|hangi oran|yuzde kac|\bnasil\b|fark[ıi]?\s*(ne|nedir)|ne demek|\bnedir\b|hangi hesap|hangi kod|hangi belge|ne kadar sure/.test(nm);
+        // Hipotetik HESAP sorusu (verilen rakamlarla "…ise …ne kadar") → portföy kısayolu değil.
+        const hesapSoru = /\bise\b|kkeg|matrah|kazanc|hesapla|\d{1,3}[.,]\d{3}/.test(nm);
         const portfoyListe = /(kimler|\bkime\b|en (cok|yuksek|buyuk|dusuk)|sirala|listele|hangi mukellef)/.test(nm);
-        if (mevzuatSoru && !portfoyListe) return null;
+        if ((mevzuatSoru || hesapSoru) && !portfoyListe) return null;
         const statusRes = await buildOwnerStatusReply(this.prisma, tenantId, userMessage).catch(() => null);
         if (statusRes) return { reply: statusRes.reply, model: 'moren-ai-status-shortcut' };
         // "kimlere kdv/muhtasar/geçici/damga ödemesi çıkıyor" → portföy vergi listesi.
