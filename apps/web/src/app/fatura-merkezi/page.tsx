@@ -2689,6 +2689,18 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
     if (yon !== dir) setDir(yon);
     hedefDocRef.current = '';
   }, [all, dir]);
+  // SOL MENÜDEN DİREKT GİRİŞ: hedef belge yokken ekran hep ALIŞ sekmesiyle açılıyordu; o yönde
+  //   bekleyen belge yoksa (ör. tüm belgeler SATIŞ) "Hazır belge yok" boş ekranı çıkıyordu.
+  //   İlk yüklemede aktif yön boş ama diğer yön doluysa oraya geç (tek seferlik; sonra elle geçiş serbest).
+  const dirAutoRef = useRef(false);
+  useEffect(() => {
+    if (dirAutoRef.current || hedefDocRef.current || !all.length) return;
+    const bekleyen = (d: any) => d.status !== 'APPROVED';
+    if (all.some((d) => dirOf(d) === dir && bekleyen(d))) { dirAutoRef.current = true; return; }
+    const oteki: 'ALIS' | 'SATIS' = dir === 'ALIS' ? 'SATIS' : 'ALIS';
+    if (all.some((d) => dirOf(d) === oteki && bekleyen(d))) setDir(oteki);
+    dirAutoRef.current = true;
+  }, [all, dir]);
   const navList = [...hazir, ...eksik];
   const selDoc = navList.find((d) => d.id === selId) || hazir[0] || eksik[0];
   const navIdx = selDoc ? navList.findIndex((d) => d.id === selDoc.id) : -1;
