@@ -431,7 +431,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   //   kısıtlı konteynerde 32s'de bitemeyip HEPSİ timeout (sonuc=NULL, kategori/hesap kodu BOŞ).
   //   Çözüm: sınıflandırma Max çağrısını okuma eşzamanlılığından BAĞIMSIZ, düşük bir kapıdan geçir
   //   (KDV Kontrol içerik denetimi de KDV_CONTENT_AUDIT_CONCURRENCY=2 ile sınırlı — aynı kanıt).
-  private readonly classifyConcurrency = Math.max(1, Number(process.env.MAX_CLASSIFY_CONCURRENCY || 1));
+  //   1→3 (kullanıcı: "AI ile oku çok yavaş"): e-Fatura/e-Arşiv okuması UBL/HTML parse + Azure ile
+  //   Max'i zaten atladığından okuma tarafı yükü düşük → sınıflandırmaya 3 slot açmak güvenli ve
+  //   belirgin hızlanma sağlar. Konteyner zorlanır/timeout görülürse MAX_CLASSIFY_CONCURRENCY=1 yap.
+  private readonly classifyConcurrency = Math.max(1, Number(process.env.MAX_CLASSIFY_CONCURRENCY || 3));
   // 90s: Max alt-süreci bu konteynerde ağır (~50-60s/çağrı, fırtına/yük altında daha da); 60s'de
   //   yavaş-ama-tamamlanan çağrılar timeout'a düşüp NULL veriyordu. 90s tavan margin sağlar (env ile ayarlanır).
   private readonly classifyTimeoutMs = Math.max(8000, Number(process.env.MAX_CLASSIFY_TIMEOUT_MS || 90000));
