@@ -6567,7 +6567,17 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const addCookies = (arr: string[]) => { for (const c of arr) { const kv = c.split(';')[0]; const k = kv.split('=')[0]; if (k) cookieMap.set(k, kv); } };
     const cookieHeader = () => [...cookieMap.values()].join('; ');
     // 1) GET login → antiforgery token + cookie
-    const page = await fetch(BASE + '/account/login', { headers: { 'User-Agent': 'MorenPortal/1.0' } });
+    //    Native fetch bağlantı kuramazsa "fetch failed" (TypeError) fırlatır — ekranda tek başına
+    //    anlamsız. Gerçek nedeni (ETIMEDOUT/ECONNREFUSED/ENOTFOUND/TLS) ve hedef adresi göster ki
+    //    "sunucudan Luca'ya çıkış engelli mi" ayırt edilebilsin (kök teşhis).
+    let page: Response;
+    try {
+      page = await fetch(BASE + '/account/login', { headers: { 'User-Agent': 'MorenPortal/1.0' } });
+    } catch (e: any) {
+      const host = BASE.replace(/^https?:\/\//, '');
+      const code = String(e?.cause?.code || e?.code || '').trim();
+      throw new Error(`TÜRMOB sunucusuna ulaşılamadı (${host})${code ? ` — ${code}` : ' — bağlantı kurulamadı'}. Sunucunun bu adrese ağ erişimi engellenmiş olabilir.`);
+    }
     addCookies(pick(page));
     const html = await page.text();
     const token = html.match(/name="__RequestVerificationToken"[^>]*value="([^"]+)"/)?.[1]
