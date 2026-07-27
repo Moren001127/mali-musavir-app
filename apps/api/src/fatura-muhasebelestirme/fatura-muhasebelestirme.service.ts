@@ -2909,12 +2909,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const bekleyen = docs.filter((d) => {
         const ocr: any = d.ocrData || {};
         const zenginVar = !!String(ocr.muhasebeNedenZengin || '').trim();
-        const denetimVar = !!(ocr.denetim && typeof ocr.denetim === 'object');
         const matrahVar = (d.lines || []).some((l: any) => String(l.group || '') === 'matrah' && String(l.accountCode || '').trim());
-        return matrahVar && (!zenginVar || !denetimVar);
+        return matrahVar && !zenginVar; // (AI denetçi kaldırıldı — yalnız zengin yorum eksikse üret.)
       });
       if (!bekleyen.length) return;
-      this.logger.log(`[YORUM-SWEEP] ${bekleyen.length} belge için zengin yorum+denetçi arka planda üretiliyor (tenant=${tenantId})`);
+      this.logger.log(`[YORUM-SWEEP] ${bekleyen.length} belge için zengin yorum arka planda üretiliyor (tenant=${tenantId})`);
       // 4 PARALEL üretim (kullanıcı: "o kadar bekleyemem") — içerik-denetimi deneyimi: kısa tek-belge
       //   Max çağrılarında CONCURRENCY=4 güvenli; batch'leme ters tepmişti, o yüzden çağrılar tekil kalır.
       const ESZAMANLI = 4;
@@ -5583,17 +5582,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   async approve(tenantId: string, id: string, userId?: string, force?: boolean) {
     const doc = await this.get(tenantId, id);
 
-    // KATMAN 2 — AI DENETÇİ KAPISI: denetçi "yanlis" dediyse onay VARSAYILAN engelli.
-    //   Kullanıcı bilerek onaylamak isterse force=true ile geçer (sessizce yutulmaz, bilinçli karar olur).
-    const denetimKarari: any = ((doc as any).ocrData as any)?.denetim;
-    if (force !== true && denetimKarari && typeof denetimKarari === 'object'
-      && String(denetimKarari.sonuc || denetimKarari.karar || '') === 'yanlis') {
-      const gerekce = String(denetimKarari.gerekce || '').trim();
-      const oneri = String(denetimKarari.oneri || '').trim();
-      throw new BadRequestException(
-        `Bu belge onaylanamaz — AI denetçi hesap eşleştirmesini YANLIŞ buldu${gerekce ? `: ${gerekce}` : '.'}${oneri ? ` Öneri: ${oneri}.` : ''} Yine de onaylamak istersen "force" ile tekrar dene.`,
-      );
-    }
+    // (AI denetçi kapısı kaldırıldı — kullanıcı talebi 2026-07-27.)
 
     // İşletme defteri mi? (tek-taraflı — hesap planı/kodu YOK, denge aranmaz)
     const tp: any = (doc as any).taxpayerId
@@ -5682,24 +5671,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           continue;
         }
         const ocr: any = doc.ocrData || {};
-        const denetim: any = ocr.denetim && typeof ocr.denetim === 'object' ? ocr.denetim : null;
-        // Denetim yalnız ÜRETİLEBİLİR belgelerde beklenir: matrah hesabı atanmamış belgede (ör. işletme
-        //   defteri) generateRichMuhasebeNeden denetçiyi hiç çalıştırmaz → sonsuza dek bekletme.
-        const denetimUretilebilir = (doc.lines || []).some(
-          (l: any) => String(l.group || '') === 'matrah' && String(l.accountCode || '').trim(),
-        );
-        if (!denetim && force !== true && denetimUretilebilir) {
-          // Arka planda denetçiyi tetikle — BEKLEME. force=true şart: zengin yorum cache'i doluysa
-          //   normal çağrı cache'ten döner ve denetim hiç üretilmezdi.
-          void this.generateRichMuhasebeNeden(tenantId, id, true).catch(() => {});
-          skipped.push({ id, belgeNo, reason: 'denetim-bekleniyor' });
-          continue;
-        }
-        if (denetim && force !== true && String(denetim.sonuc || denetim.karar || '') === 'yanlis') {
-          const gerekce = String(denetim.gerekce || '').trim();
-          skipped.push({ id, belgeNo, reason: `denetim-yanlis${gerekce ? `: ${gerekce}` : ''}` });
-          continue;
-        }
+        // (AI denetçi kaldırıldı — 'denetim-bekleniyor' ve 'denetim-yanlis' kapıları çıkarıldı, 2026-07-27.)
         // SAPMA KUYRUĞU: rematch'in yazdığı HAFIZA_CELISKI uyarılı belge toplu onayda atlanır —
         //   öğrenilmiş güçlü hafızayla çelişen eşleştirme sessizce Luca'ya gitmesin. Tekil onay
         //   (kullanıcı belgeyi açıp bakarak) engellenmez; force=true toplu geçişi de açar.
@@ -9356,7 +9328,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
    *  plan yoksa (ya da boşsa) null. Placeholder / planda-olmayan kod süzmede kullanılır —
    *  KULLANICI KURALI: "yalnız Luca'dan çekilen gerçek hesap planındaki kodlar; olmayan
    *  hesabı var gibi yazmak yok." */
-  private planCodeCache = new Map<string, { at: number; codes: Set<string> | null; groups: Set<string> | null }>();
+  private planCodeCache = new Map<string, { at: number; codes: Set<string> | null; groups: Set<string> | null; names: Map<string, string> | null }>();
   /** Plandaki GRUP (ara) kodları: başka bir kodun ATASIolan (ör "120.01" altında "120.01.001" varsa
    *  "120.01" gruptur → fiş kesilemez). Denetim katmanı (crossCheck) bunu kullanır. */
   private async getPlanGroupSet(tenantId: string, taxpayerId?: string | null): Promise<Set<string> | null> {
@@ -9376,13 +9348,22 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     }).catch(() => null);
     let codes: Set<string> | null = null;
     let groups: Set<string> | null = null;
+    let names: Map<string, string> | null = null;
     if (snap) {
       const lines = await (this.prisma as any).lucaAccountPlanLine.findMany({
         where: { snapshotId: snap.id },
-        select: { accountCode: true },
+        select: { accountCode: true, accountName: true },
       }).catch(() => []);
       if (lines.length) {
         codes = new Set(lines.map((l: any) => String(l.accountCode || '').trim()).filter(Boolean));
+        // Kod → hesap ADI haritası: fiş satırı AÇIKLAMASI, sabit metin ("Satış matrahı") yerine
+        //   plandaki GERÇEK hesap adını göstersin (kullanıcı talebi). gateCodesByPlan bunu kullanır.
+        names = new Map<string, string>();
+        for (const l of lines) {
+          const c = String(l.accountCode || '').trim();
+          const n = String(l.accountName || '').trim();
+          if (c && n) names.set(c, n);
+        }
         // GRUP tespiti: bir kod, başka bir kodun ATASIysa (o kod + '.' ile başlayan başka kod varsa)
         //   gruptur. codes sıralanıp komşu karşılaştırmayla O(n log n).
         groups = new Set<string>();
@@ -9395,7 +9376,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         }
       }
     }
-    this.planCodeCache.set(key, { at: Date.now(), codes, groups });
+    this.planCodeCache.set(key, { at: Date.now(), codes, groups, names });
     return codes;
   }
 
@@ -9405,11 +9386,26 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
    *  plan kodu kalır. Okuma + rematch sonradan doğru kodu yazar. */
   private async gateCodesByPlan(tenantId: string, taxpayerId: string | null | undefined, lines: any[]): Promise<any[]> {
     const planCodes = await this.getPlanCodeSet(tenantId, taxpayerId);
+    const names = this.planCodeCache.get(`${tenantId}:${taxpayerId}`)?.names ?? null;
+    // AÇIKLAMA = HESAP ADI: matrah/vergi/vergi-sorumlu/tevkifat satırının açıklaması, sabit metin
+    //   ("Satış matrahı (KDV %20)") DEĞİL, GÜNCEL hesap kodunun plandaki ADI olsun (kullanıcı talebi).
+    //   Cari/kasa/pos satırı karşı taraf adını yazar; onlara dokunma. rematch:12418-12423 ile aynı kural,
+    //   fark: burada ÜRETİM anında (her create yolunda) çalışır → plan çekiliyse hemen doğru görünür.
+    const DESC_GROUPS = new Set(['matrah', 'vergi', 'vergi-sorumlu', 'tevkifat']);
+    const applyName = (l: any): any => {
+      if (!names) return l;
+      if (!DESC_GROUPS.has(String(l.group || ''))) return l;
+      const c = String(l.accountCode || '').trim();
+      if (!c) return String(l.description || '') ? { ...l, description: '' } : l; // kod boş → açıklama boş
+      const nm = names.get(c);
+      return nm && nm !== String(l.description || '') ? { ...l, description: nm } : l;
+    };
     const normalized = (lines || []).map((l) => ({ ...l, accountCode: this.accountCodeOnly(l.accountCode) || null }));
     if (!planCodes) return normalized.map((l) => ({ ...l, accountCode: null }));
     return normalized.map((l) => {
       const c = String(l.accountCode || '').trim();
-      return c && !planCodes.has(c) ? { ...l, accountCode: null } : l;
+      const gated = c && !planCodes.has(c) ? { ...l, accountCode: null } : l;
+      return applyName(gated);
     });
   }
 
@@ -11588,33 +11584,15 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       'KURALLAR: Yönü MÜKELLEF gözünden anlat (ALIŞ ise "mükellef almış"; satıcının ne sattığı önemli değil). Hesap kodunu (' + hesapStr + ') Yorum cümlesinde AYNEN kullan. Faturada olmayan şey UYDURMA. Toplam ~60 kelimeyi geçme.',
     ].join('\n');
 
-    // KATMAN 2 — AI DENETÇİ: seçilen hesabın NİTELİĞİ (adındaki tür) faturanın içeriğine + mükellef
-    //   faaliyetine uyuyor mu? Sadece görünür KARAR üretir (dogru/supheli/yanlis) — sessizce değiştirmez.
-    const denetimPrompt = [
-      'Sen titiz bir Türk mali müşavirisin. Bir faturanın seçilen muhasebe hesabına DOĞRU eşleştirilip eşleştirilmediğini DENETLE.',
-      `Mükellefin işi: ${tpFaaliyet || 'belirtilmemiş'}.`,
-      `Fatura yönü: ${isSale ? 'SATIŞ (mükellef bunu SATMIŞ)' : 'ALIŞ (mükellef bunu ALMIŞ)'}${isReturn ? ' — İADE (ters kayıt)' : ''}.`,
-      kalemStr ? `Faturadaki kalemler: ${kalemStr}.` : `Fatura içeriği: ${giderTuru || kat || 'belirsiz'}.`,
-      `Sistemin seçtiği hesap: ${hesapStr}.`,
-      'SORU: Hesabın ADINDAKİ nitelik (ör. TİCARİ MAL / DEMİRBAŞ / İLK MADDE / gider / 600 satış geliri) faturanın İÇERİĞİNE ve mükellefin faaliyetine UYUYOR MU?',
-      'YANLIŞ örnekleri: araç kiralama hizmeti → 255 DEMİRBAŞ; danışmanlık gideri → 153 TİCARİ MAL; mükellefin ana malını sattığı fatura → yanlış 600 alt kırılımı.',
-      'DOĞRU örnekleri: kırtasiyecinin kırtasiye alışı → 153 TİCARİ MAL; ofise alınan yazıcı → 255 DEMİRBAŞ.',
-      'YALNIZCA şu JSON formatında yanıt ver, başka HİÇBİR metin yazma:',
-      '{"sonuc":"dogru","guven":85,"gerekce":"kısa tek cümle Türkçe","oneri":""}',
-      'Kurallar: nitelik açıkça UYUMLUYSA "dogru"; açıkça ÇELİŞİYORSA "yanlis" ve "oneri"ye hangi tür hesaba işlenmeli yaz (kod uydurma, tür yaz: "demirbaş/255", "gider/770" gibi); emin değilsen "supheli". guven 0-100. İçeriğin "okunamadığını" ASLA yazma.',
-    ].join('\n');
-
-    // Zengin AI yorumu + denetim kararını üret + cache'le (ortak iç fonksiyon, ikisi paralel).
+    // AI DENETÇİ KALDIRILDI (kullanıcı talebi 2026-07-27): yalnız "AI değerlendirmesi" (zengin yorum)
+    //   üretilir; denetim kararı artık üretilmez (denetim = null). Onay kapıları da bu null'a göre pasif.
+    // Zengin AI yorumunu üret + cache'le (ortak iç fonksiyon).
     const uretVeCachele = async (): Promise<{ text: string; denetim: any }> => {
-      const [yRes, dRes] = await Promise.all([
-        claudeTextViaMax({ prompt, timeoutMs: 30000, model: MAX_MODEL_CHEAP }).catch(() => null),
-        claudeTextViaMax({ prompt: denetimPrompt, timeoutMs: 30000, model: MAX_MODEL_CHEAP }).catch(() => null),
-      ]);
+      const yRes = await claudeTextViaMax({ prompt, timeoutMs: 30000, model: MAX_MODEL_CHEAP }).catch(() => null);
       const text = this.cleanRichMuhasebeNeden(yRes && yRes.ok && yRes.text ? String(yRes.text) : '', hesapStr, isSale, isReturn);
-      const denetim = this.parseDenetimKarari(dRes && dRes.ok && dRes.text ? String(dRes.text) : '');
+      const denetim = null;
       const patch: any = {};
       if (text) patch.muhasebeNedenZengin = text; // Deterministik muhasebeNeden'e DOKUNMA (anlık fallback).
-      if (denetim) patch.denetim = denetim;
       if (Object.keys(patch).length) {
         await (this.prisma as any).invoiceAccountingDocument
           .update({ where: { id: doc.id }, data: { ocrData: { ...ocr, ...patch } } })
@@ -11633,25 +11611,6 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   üret + cache'le (sonraki açılışta / kısa gecikmeli yeniden istekte gelir). Max BEKLETMEZ.
     void uretVeCachele().catch(() => {});
     return { ok: true, neden: det, zengin: false, denetim: cachedDenetim };
-  }
-
-  /** Katman 2 — AI denetçinin JSON kararını güvenli ayrıştır. Geçersizse null. */
-  private parseDenetimKarari(raw: string): { sonuc: 'dogru' | 'supheli' | 'yanlis'; guven: number; gerekce: string; oneri: string } | null {
-    const s = String(raw || '').trim();
-    if (!s) return null;
-    const m = s.match(/\{[\s\S]*\}/);
-    if (!m) return null;
-    let j: any;
-    try { j = JSON.parse(m[0]); } catch { return null; }
-    const sonuc = String(j?.sonuc || '').toLowerCase().trim();
-    if (!['dogru', 'supheli', 'yanlis'].includes(sonuc)) return null;
-    let guven = Number(j?.guven);
-    if (!Number.isFinite(guven)) guven = sonuc === 'dogru' ? 70 : 50;
-    guven = Math.max(0, Math.min(100, Math.round(guven)));
-    const bahane = /okunama|şifrel|sifrel|belirlenem|tespit edilem|anlaşılam|anlasilam/i;
-    const gerekce = bahane.test(String(j?.gerekce || '')) ? '' : String(j?.gerekce || '').slice(0, 260).trim();
-    const oneri = String(j?.oneri || '').slice(0, 160).trim();
-    return { sonuc: sonuc as any, guven, gerekce, oneri };
   }
 
   private async aiPickGiderAccount(

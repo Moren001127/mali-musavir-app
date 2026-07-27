@@ -1274,7 +1274,7 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
   //   yoksa tek-belge çağrısı yapılır (eşleştirme SONRASI; yön+hesap kesin → AI yalnız içeriği yorumlar).
   //   fetchedRef bir kez çağrı garantisi (docs tazelense de yeniden istemez); deterministik muhasebeNeden
   //   yorum gelene kadar anlık gösterilir.
-  const [richNotes, setRichNotes] = useState<Record<string, { loading?: boolean; text?: string; zengin?: boolean; denetim?: any }>>({});
+  const [richNotes, setRichNotes] = useState<Record<string, { loading?: boolean; text?: string; zengin?: boolean }>>({});
   const richFetchedRef = useRef<Set<string>>(new Set());
   const richUpgradeRef = useRef<Set<string>>(new Set());
   useEffect(() => {
@@ -1295,14 +1295,13 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
         .then((r) => {
           const t = String(r.data?.neden || '');
           const zengin = r.data?.zengin === true;
-          const denetim = r.data?.denetim || undefined;
-          // Upgrade isteğinde: zengin de denetim de gelmediyse dokunma (deterministik + varsa eski denetim kalsın).
-          if (isUpgrade && !zengin && !denetim) return;
-          setRichNotes((s) => ({ ...s, [id]: { loading: false, text: t, zengin, denetim: denetim || s[id]?.denetim } }));
-          if ((!zengin || !denetim) && !isUpgrade && !richUpgradeRef.current.has(id)) {
+          // Upgrade isteğinde zengin gelmediyse dokunma (deterministik ön yorum kalsın).
+          if (isUpgrade && !zengin) return;
+          setRichNotes((s) => ({ ...s, [id]: { loading: false, text: t, zengin } }));
+          if (!zengin && !isUpgrade && !richUpgradeRef.current.has(id)) {
             richUpgradeRef.current.add(id);
-            // Zengin AI yorumu + denetçi arka planda üretilir; süresi değişken (Max). Tek 14sn denemesi
-            //   yavaş üretimi KAÇIRIYORDU → belge açık kalsa da boş görünüyordu. Birkaç kez yokla (6/13/22 sn).
+            // Zengin AI yorumu arka planda üretilir; süresi değişken (Max). Tek 14sn denemesi yavaş üretimi
+            //   KAÇIRIYORDU → belge açık kalsa da boş görünüyordu. Birkaç kez yokla (6/13/22 sn).
             [6000, 13000, 22000].forEach((ms) => timers.push(window.setTimeout(() => { iste(true).catch(() => {}); }, ms)));
           }
         })
@@ -1386,11 +1385,9 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
           <button className="btn sm primary" disabled={approveMut.isPending} onClick={muhasebelestir} title="Seçili, kodu tam olan belgeleri toplu onayla (Luca kuyruğuna alır). Tek tek inceleme için soldaki 'Muhasebeleştir' ekranını kullan."><Ico html={I.checkSm} size={13} /> {approveMut.isPending ? 'İşleniyor…' : `Seçilenleri onayla${sel.size ? ` (${sel.size})` : ''}`}</button>
         </div>
         {skipInfo && skipInfo.length > 0 && (() => {
-          // Toplu onayda atlananlar — sebep gruplarıyla (denetim bekliyor / denetçi YANLIŞ / diğer hata)
-          const bekleyen = skipInfo.filter((s) => s.reason === 'denetim-bekleniyor');
-          const yanlis = skipInfo.filter((s) => String(s.reason || '').startsWith('denetim-yanlis'));
+          // Toplu onayda atlananlar — sebep gruplarıyla (hafıza çelişki / diğer hata). (AI denetçi kaldırıldı.)
           const celiski = skipInfo.filter((s) => String(s.reason || '').startsWith('hafiza-celiski'));
-          const diger = skipInfo.filter((s) => !bekleyen.includes(s) && !yanlis.includes(s) && !celiski.includes(s));
+          const diger = skipInfo.filter((s) => !celiski.includes(s));
           const noLabel = (arr: typeof skipInfo) => { const ns = arr.map((s) => s.belgeNo).filter(Boolean); return ns.length ? ` (${ns.slice(0, 5).join(', ')}${ns.length > 5 ? '…' : ''})` : ''; };
           return (
             <div style={{ margin: '8px 12px 0', padding: '9px 12px', border: '1px solid #f0d9b3', borderRadius: 9, background: '#fff9ef', fontSize: 12.5, color: '#7c4a03', display: 'flex', flexDirection: 'column', gap: 5 }}>
@@ -1399,15 +1396,6 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
                 <div className="sp" />
                 <button className="btn sm" onClick={() => setSkipInfo(null)}>Kapat</button>
               </div>
-              {bekleyen.length > 0 && <div>• <b>{bekleyen.length} belge denetim bekliyor</b> — denetim arka planda çalışıyor, az sonra tekrar deneyin{noLabel(bekleyen)}.</div>}
-              {yanlis.length > 0 && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                  <span>• <b>{yanlis.length} belge denetçi tarafından YANLIŞ işaretli</b> — belgeleri açıp kontrol edin{noLabel(yanlis)}.</span>
-                  <button className="btn sm" style={{ borderColor: '#e0b4b4', color: '#c0353a' }} disabled={approveMut.isPending}
-                    onClick={() => approveMut.mutate({ ids: yanlis.map((s) => s.id), force: true })}
-                    title="Denetçi kararını görmezden gel, yalnız bu belgeleri force ile onayla">Yine de onayla ({yanlis.length})</button>
-                </div>
-              )}
               {celiski.length > 0 && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                   <span>• <b>{celiski.length} belge öğrenilmiş hesapla çelişiyor</b> — bu satıcılar için geçmişte hep farklı hesap onaylanmış; belgeleri açıp kontrol edin{noLabel(celiski)}.</span>
@@ -1591,25 +1579,7 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
                             </div>
                             );
                           })()}
-                          {(() => {
-                            // KATMAN 2 — AI Denetçi kararı rozeti. Kaynak: lazy fetch (richNotes) > DB (ocrData.denetim).
-                            const den = (richNotes[d.id]?.denetim as any) || (d.ocrData as any)?.denetim || null;
-                            if (!den || !den.sonuc) return null;
-                            const map: Record<string, { renk: string; bg: string; ik: string; et: string }> = {
-                              dogru: { renk: '#15803d', bg: 'rgba(21,128,61,0.08)', ik: '✓', et: 'Eşleştirme doğru' },
-                              supheli: { renk: '#b45309', bg: 'rgba(217,119,6,0.09)', ik: '⚠', et: 'Şüpheli — kontrol et' },
-                              yanlis: { renk: '#dc2626', bg: 'rgba(220,38,38,0.09)', ik: '✗', et: 'Yanlış olabilir' },
-                            };
-                            const c = map[String(den.sonuc)] || map.supheli;
-                            const guven = Number(den.guven);
-                            return (
-                              <div style={{ padding: '7px 10px', marginBottom: 8, background: c.bg, borderLeft: `3px solid ${c.renk}`, borderRadius: 5, fontSize: 12.5, lineHeight: 1.5, maxWidth: 940 }}>
-                                <b style={{ color: c.renk }}>{c.ik} AI denetçi: {c.et}{Number.isFinite(guven) ? <span style={{ fontWeight: 400, opacity: 0.7 }}> · %{guven} güven</span> : null}</b>
-                                {den.gerekce ? <div style={{ marginTop: 2, color: '#334155' }}>{String(den.gerekce)}</div> : null}
-                                {den.oneri && String(den.sonuc) !== 'dogru' ? <div style={{ marginTop: 2, color: c.renk }}><b>Öneri:</b> {String(den.oneri)}</div> : null}
-                              </div>
-                            );
-                          })()}
+                          {/* AI denetçi rozeti kaldırıldı (kullanıcı talebi 2026-07-27) — yalnız AI değerlendirmesi gösterilir. */}
                           {docUyarilar.length > 0 && (
                             <div style={{ marginBottom: 8 }}>
                               {docUyarilar.map((u: any, i: number) => {
@@ -3005,9 +2975,7 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
     mutationFn: (p: { id: string; force?: boolean }) => api.post(`/fatura-muhasebelestirme/documents/${p.id}/approve`, p.force ? { force: true } : undefined),
     onSuccess: () => { toast.success('Onaylandı — Luca kuyruğuna alındı'); qc.invalidateQueries({ queryKey: ['fm2'] }); },
     onError: (e: any) => {
-      // Denetçi (Katman-2) reddi 400: toast basma — saveApprove confirm ile "Yine de onayla" soruyor.
       const msg = String(e?.response?.data?.message || e?.message || 'hata');
-      if (e?.response?.status === 400 && /denet/i.test(msg)) return;
       toast.error('Onay başarısız: ' + msg);
     },
   });
@@ -3025,16 +2993,7 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
     try {
       await saveAll(true);
       const nextId = navList[navIdx + 1]?.id;
-      try {
-        await approveMut.mutateAsync({ id: selDoc.id });
-      } catch (e: any) {
-        // Denetçi (Katman-2) "yanlis" kararı 400 döner — kullanıcıya sor, isterse force ile onayla.
-        const msg = String(e?.response?.data?.message || e?.message || '');
-        if (e?.response?.status === 400 && /denet/i.test(msg)) {
-          if (!window.confirm(`Denetçi uyarısı: ${msg}\n\nYine de onaylansın mı?`)) return;
-          await approveMut.mutateAsync({ id: selDoc.id, force: true });
-        } else throw e;
-      }
+      await approveMut.mutateAsync({ id: selDoc.id });
       if (nextId) setSelId(nextId);
     } catch { /* mutasyon hatasını gösterir */ }
   };
