@@ -29,12 +29,7 @@ export class TaxpayerPortalController {
     return this.service.login(String(body?.email || ''), String(body?.password || ''));
   }
 
-  // GEÇİCİ: mobil MOREN AI (chat) denetimi için token-korumalı test ucu (girişsiz). İş bitince KALDIR.
-  @Post('selftest-chat')
-  @HttpCode(HttpStatus.OK)
-  selftestChat(@Body() body: { token?: string; taxpayerId?: string; message?: string }) {
-    return this.service.selftestChat(String(body?.token || ''), String(body?.taxpayerId || ''), String(body?.message || ''));
-  }
+  // (Geçici selftest-chat test ucu — lansman öncesi kaldırıldı 2026-07-27.)
 
   // ============ MÜKELLEFE KİLİTLİ UÇLAR (taxpayer-jwt) ============
   @UseGuards(AuthGuard('taxpayer-jwt'))

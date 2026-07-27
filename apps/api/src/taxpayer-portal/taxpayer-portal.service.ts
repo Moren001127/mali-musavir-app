@@ -1034,14 +1034,7 @@ export class TaxpayerPortalService {
     }
   }
 
-  /** GEÇİCİ: mobil MOREN AI (chat) yolunu token'la, girişsiz test etmek için. İş bitince KALDIR. */
-  async selftestChat(token: string, taxpayerId: string, message: string): Promise<any> {
-    if (String(token) !== (process.env.MOREN_SELFTEST_TOKEN || 'moren-st-7Yq2x')) return { ok: false, error: 'unauthorized' };
-    const tp = await this.prisma.taxpayer.findUnique({ where: { id: taxpayerId }, select: { tenantId: true } });
-    if (!tp) return { ok: false, error: 'taxpayer bulunamadi' };
-    const r = await this.chat(taxpayerId, tp.tenantId, message, []).catch((e: any) => ({ reply: 'HATA: ' + (e?.message || e) }));
-    return { ok: true, reply: (r as any).reply };
-  }
+  // (Geçici selftestChat test metodu — lansman öncesi kaldırıldı 2026-07-27.)
 
   /** Mobil/portal MOREN AI cevabını profesyonelleştir: emoji + teknik/AI-altyapı arıza
    *  itirafı sızıntısını temizle. Markdown/liste KORUNUR (mobil arayüz render eder). */
