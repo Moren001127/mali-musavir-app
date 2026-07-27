@@ -1706,8 +1706,19 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       baslangic: startDate,
       bitis: endDate,
       hangiTip: '5000/30000',
+      // onayDurumu (kullanıcı bulgusu — "hepsinde boş"): portalın kendi grid'i bu alanı gönderiyor;
+      //   eksikken GİB listeyi daraltıp onaylı/imzalı faturaları elemiş olabilir → "Hepsi" ile tümü gelir.
+      onayDurumu: 'Hepsi',
     });
     const rows = Array.isArray(list?.data) ? list.data : [];
+    // TEŞHİS (kullanıcı bulgusu — "boş = arıza mı, 0 kayıt mı belli değil"): GİB 200 + boş data dönünce
+    //   eskiden hiçbir iz kalmıyordu. Ham yanıtın özetini (satır sayısı + GİB mesajı + data tipi) log'a
+    //   ve notes'a yaz → neden boş olduğu ekrandan görünür.
+    const gibMsg = Array.isArray((list as any)?.messages)
+      ? (list as any).messages.map((m: any) => String(m?.text || '').trim()).filter(Boolean).join(' | ')
+      : '';
+    const dataTip = Array.isArray(list?.data) ? `dizi(${(list as any).data.length})` : ((list as any)?.data == null ? 'null' : typeof (list as any).data);
+    this.logger.log(`[EARSIV-SORGU] GIB yanit: rows=${rows.length} data=${dataTip} error=${JSON.stringify((list as any)?.error ?? null)} mesaj="${gibMsg}" (${startDate}-${endDate})`);
     // SINIR (kullanıcı bulgusu — "bazı faturalar gelmiyor"): varsayılan 80'den GİB'in tek seferde
     //   döndürdüğü listeyi büyük ölçüde karşılayan 200'e çıkarıldı (kod zaten üst tavan olarak 200'ü
     //   uyguluyordu — env ile bile aşılamıyordu). Sınır yine de aşılırsa (200'den fazla satır) artık
@@ -1718,7 +1729,10 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     const selectedRefs = new Set((Array.isArray(job?.payload?.selectedRefs) ? job.payload.selectedRefs : [])
       .map((v: any) => String(v || '').trim())
       .filter(Boolean));
-    const notes: string[] = [`GIB e-Arsiv liste: ${rows.length} satir (${startDate}-${endDate})`];
+    const notes: string[] = [`GIB e-Arsiv liste: ${rows.length} satir (${startDate}-${endDate})${gibMsg ? ` — GIB mesaji: ${gibMsg}` : ''}`];
+    if (rows.length === 0) {
+      notes.push(`GIB bu donem icin 0 e-Arsiv faturasi dondu. Mukellef bu donemde GIB portali uzerinden e-Arsiv kesmediyse (entegrator/e-Fatura ise) bu normaldir; kesmisse tarih araligini/onay durumunu kontrol edin.${gibMsg ? ` GIB mesaji: ${gibMsg}` : ''}`);
+    }
     if (rows.length > max) {
       notes.push(`⚠ GIB listesi ${rows.length} satir dondu, sistem siniri ${max} oldugu icin sadece ilk ${max} belge islendi. Kalan ${rows.length - max} belge icin tarih araligini daraltip tekrar sorgulayin.`);
     }

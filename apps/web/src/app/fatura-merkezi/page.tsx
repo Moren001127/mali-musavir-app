@@ -2123,7 +2123,15 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
                   </tr>
                 ))}
                 {!rows.length && (
-                  <tr><td colSpan={12} className="emptyrow">{taxpayerId ? 'Önce Sorgula ile GIB listesini getir.' : 'Önce mükellef seç.'}</td></tr>
+                  <tr><td colSpan={12} className="emptyrow">{
+                    !taxpayerId
+                      ? 'Önce mükellef seç.'
+                      : lastJob && /fail/i.test(String(lastJob.status || ''))
+                        ? `Son sorgu başarısız oldu${(lastJob as any)?.errorMessage ? `: ${(lastJob as any).errorMessage}` : ''} — GİB'e ulaşılamamış olabilir, tekrar deneyin.`
+                        : lastJob && /done|success/i.test(String(lastJob.status || ''))
+                          ? 'GİB bu dönem için e-Arşiv faturası döndürmedi (0 kayıt). Mükellef bu dönemde GİB portalından e-Arşiv kesmediyse (entegratör/e-Fatura kullanıyorsa) bu normaldir; kestiyse tarih aralığını kontrol edip tekrar deneyin.'
+                          : 'Önce Sorgula ile GIB listesini getir.'
+                  }</td></tr>
                 )}
               </tbody>
             </table>
