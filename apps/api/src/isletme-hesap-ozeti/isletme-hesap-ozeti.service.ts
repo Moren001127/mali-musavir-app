@@ -88,14 +88,14 @@ export class IsletmeHesapOzetiService {
       `Sayın *${taxpayerAd}*,`,
       `${ozet.yil} yılı ${donem}. geçici vergi dönemi (${range}) itibarıyla işletmenizin özet mali durumu aşağıdadır:`,
       '',
-      `💵 Satışlar: ${P(satis)}`,
+      `🪙 Satışlar: ${P(satis)}`,
     ];
     if (digerGelir > 0) satirlar.push(`➕ Diğer Gelirler: ${P(digerGelir)}`);
     if (stoklu) satirlar.push(`📦 Satılan Malın Maliyeti: ${P(smm)}`);
     satirlar.push(`🧾 Giderler: ${P(giderler)}`);
     satirlar.push(kar >= 0 ? `📈 Dönem Kârı: ${P(kar)}` : `📉 Dönem Zararı: ${P(Math.abs(kar))}`);
     satirlar.push(`↪️ Önceki Dönem Ödenen Geçici Vergi: ${P(oncekiOdenen)}`);
-    satirlar.push(`💰 Bu Dönem Ödenecek Geçici Vergi: ${P(odenecek)}`);
+    satirlar.push(`🏛️ Bu Dönem Ödenecek Geçici Vergi: ${P(odenecek)}`);
     if (stoklu) satirlar.push(`📦 Dönem Sonu Stok: ${P(kalanStok)}`);
 
     const vade = this.odemeVadesi(donem, Number(ozet.yil));
