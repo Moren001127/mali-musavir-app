@@ -6366,6 +6366,28 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
    * POST login → başarı 302 redirect + auth cookie. Hatalı kimlik 200 (login sayfası tekrar).
    */
   private readonly TURMOB_BASE = 'https://turmobefatura.luca.com.tr';
+
+  // TÜRMOB portalı (turmobefatura.luca.com.tr) yurtdışı IP'yi (Railway) ENGELLİYOR → CONNECT_TIMEOUT.
+  //   Bu yüzden TÜRMOB istekleri Türkiye'deki çıkış proxy'sinden (TURMOB_PROXY_URL) geçirilir; istek
+  //   Türkiye IP'den çıkar, cevap Railway'e döner. Proxy yoksa (env boş) doğrudan gider (yerelde çalışır).
+  private _turmobDispatcher: any;
+  private turmobFetch(url: string, init: any = {}): Promise<Response> {
+    if (this._turmobDispatcher === undefined) {
+      const purl = String(process.env.TURMOB_PROXY_URL || '').trim();
+      if (purl) {
+        try {
+          this._turmobDispatcher = new (require('undici').ProxyAgent)(purl);
+          this.logger.log('TÜRMOB proxy aktif (Türkiye çıkış)');
+        } catch (e: any) {
+          this.logger.warn(`TÜRMOB proxy kurulamadı: ${e?.message}`);
+          this._turmobDispatcher = null;
+        }
+      } else {
+        this._turmobDispatcher = null;
+      }
+    }
+    return fetch(url, this._turmobDispatcher ? { ...init, dispatcher: this._turmobDispatcher } : init) as any;
+  }
   // TÜRMOB TEK-OTURUM: portal aynı TCKN ile ikinci kez login olunca öncekini düşürür.
   //   Bu kilit, aynı TCKN'ye ait tüm TÜRMOB işlemlerini (liste sorgu, arka plan indirme,
   //   Aktar indirmesi) SIRAYLA çalıştırır → eşzamanlı login = oturum çakışması olmaz.
@@ -6507,7 +6529,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
               let xml = '';
               const xctl = new AbortController();
               const xtm = setTimeout(() => { try { xctl.abort(); } catch { /* */ } }, 15000);
-              try { xml = await (await fetch(`${BASE}/Invoice/GetInvoiceXml?InOrOut=${directInOrOut}&${idParam}=${id}`, { headers, signal: xctl.signal })).text(); }
+              try { xml = await (await this.turmobFetch(`${BASE}/Invoice/GetInvoiceXml?InOrOut=${directInOrOut}&${idParam}=${id}`, { headers, signal: xctl.signal })).text(); }
               catch { /* xml inmedi */ }
               finally { clearTimeout(xtm); }
               if (!/^\s*<\?xml|<[\w:]*Invoice\b/i.test(xml.slice(0, 400))) { fallback.push(row); return; }
@@ -6518,7 +6540,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
                 const vctl = new AbortController();
                 const vtm = setTimeout(() => { try { vctl.abort(); } catch { /* */ } }, 15000);
                 try {
-                  const vr = await fetch(`${BASE}/Invoice/Detail?InOrOut=${directInOrOut}&${idParam}=${id}&IsPrint=True`, { headers, signal: vctl.signal });
+                  const vr = await this.turmobFetch(`${BASE}/Invoice/Detail?InOrOut=${directInOrOut}&${idParam}=${id}&IsPrint=True`, { headers, signal: vctl.signal });
                   if (vr.ok) {
                     const vis = await vr.text();
                     if (vis && /<(?:!doctype\s+html|html|body)\b/i.test(vis.slice(0, 3000)) && !/account\/login|name=["']password["']/i.test(vis) && /(Invoice|Fatura)/i.test(vis.slice(0, 30000))) {
@@ -6597,7 +6619,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //    "sunucudan Luca'ya çıkış engelli mi" ayırt edilebilsin (kök teşhis).
     let page: Response;
     try {
-      page = await fetch(BASE + '/account/login', { headers: { 'User-Agent': 'MorenPortal/1.0' } });
+      page = await this.turmobFetch(BASE +'/account/login', { headers: { 'User-Agent': 'MorenPortal/1.0' } });
     } catch (e: any) {
       const host = BASE.replace(/^https?:\/\//, '');
       const code = String(e?.cause?.code || e?.code || '').trim();
@@ -6610,7 +6632,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     if (!token) throw new Error('TÜRMOB giriş sayfası okunamadı (antiforgery token yok)');
     // 2) POST login
     const body = new URLSearchParams({ VknTckn: String(vknTckn).trim(), Password: password, __RequestVerificationToken: token, RememberMe: 'true' }).toString();
-    const loginRes = await fetch(BASE + '/Account/Login', {
+    const loginRes = await this.turmobFetch(BASE +'/Account/Login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded', Cookie: cookieHeader(), 'User-Agent': 'MorenPortal/1.0' },
       body,
@@ -6625,7 +6647,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //    (redirect izlenmezse liste isteği login'e geri atılıp 0 kayıt döner.)
     const loc = loginRes.headers.get('location') || '/';
     try {
-      const home = await fetch(loc.startsWith('http') ? loc : BASE + loc, { headers: { Cookie: cookieHeader(), 'User-Agent': 'MorenPortal/1.0' }, redirect: 'manual' });
+      const home = await this.turmobFetch(loc.startsWith('http') ? loc : BASE + loc, { headers: { Cookie: cookieHeader(), 'User-Agent': 'MorenPortal/1.0' }, redirect: 'manual' });
       addCookies(pick(home));
     } catch { /* redirect izlenemese de eldeki çerezle devam */ }
     if (!cookieMap.size) throw new Error('TÜRMOB oturum çerezi alınamadı');
@@ -7002,7 +7024,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     let listPageToken = '';
     let listPageHtml = '';
     try {
-      const listPage = await fetch(BASE + refererPath, {
+      const listPage = await this.turmobFetch(BASE +refererPath, {
         headers: { Cookie: cookie, 'User-Agent': 'MorenPortal/1.0', Accept: 'text/html,application/xhtml+xml,*/*' },
         redirect: 'manual',
       });
@@ -7078,7 +7100,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const requestUrl = method === 'GET' ? `${BASE}${listUrl}?${listBody}` : BASE + listUrl;
       let res: any;
       try {
-        res = await fetch(requestUrl, {
+        res = await this.turmobFetch(requestUrl, {
           method,
           headers: {
             ...(method === 'POST' ? { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' } : {}),
@@ -7154,7 +7176,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         const pageUrl = usedMethod === 'GET' ? `${BASE}${usedListUrl}?${pageBody}` : BASE + usedListUrl;
         let pres: any;
         try {
-          pres = await fetch(pageUrl, {
+          pres = await this.turmobFetch(pageUrl, {
             method: usedMethod,
             headers: {
               ...(usedMethod === 'POST' ? { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' } : {}),
@@ -7430,7 +7452,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     let listPageToken = '';
     let listPageHtml = '';
     try {
-      const listPage = await fetch(BASE + refererPath, {
+      const listPage = await this.turmobFetch(BASE +refererPath, {
         headers: { Cookie: cookie, 'User-Agent': 'MorenPortal/1.0', Accept: 'text/html,application/xhtml+xml,*/*' },
         redirect: 'manual',
       });
@@ -7465,7 +7487,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           const requestUrl = method === 'GET' ? `${BASE}${listUrl}?${listBody}` : BASE + listUrl;
           let res: any;
           try {
-            res = await fetch(requestUrl, {
+            res = await this.turmobFetch(requestUrl, {
               method,
               headers: {
                 ...(method === 'POST' ? { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' } : {}),
@@ -7980,7 +8002,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), targetKeys.size ? 1200 : 2500);
       try {
-        const docRes = await fetch(request.url, {
+        const docRes = await this.turmobFetch(request.url, {
           method: request.method,
           signal: controller.signal,
           headers: {
