@@ -6754,14 +6754,21 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     return null;
   }
 
-  private turmobDateProfiles(period: { startDate: string; endDate: string }) {
+  private turmobDateProfiles(period: { startDate: string; endDate: string }, channel?: string) {
     const parts = (value: string) => {
       const [year, month, day] = String(value || '').slice(0, 10).split('-');
       return { year, month, day };
     };
     const start = parts(period.startDate);
     const end = parts(period.endDate);
-    const dateKeys = [
+    // SATIŞ (OUT) TUZAĞI (canlı kanıt, Gökhan SEL faturası): Giden fatura sayfasında IlkTarih/SonTarih
+    //   FATURA tarihine göre DEĞİL, GÖNDERİLME tarihine göre filtreliyor. Gönderilme tarihi boş olan
+    //   fatura (AKG2026000000189, 01.07) bu filtreyle sessizce eleniyordu (26 yerine 25 satır). Giden
+    //   fatura tarihi filtresinin GERÇEK alanı FaturaIlkTarihi/FaturaSonTarihi. Bu yüzden OUT kanalında
+    //   IlkTarih/SonTarih (gönderilme) çiftini GÖNDERME → tüm fatura-tarihi satırları gelir. ALIŞ (IN)
+    //   sayfası bu çifti farklı kullandığı ve mevcut halde doğru çalıştığı için IN'de dokunulmuyor.
+    const isOut = String(channel || '').toUpperCase().startsWith('OUT');
+    const dateKeys = ([
       ['startDate', 'endDate'],
       ['StartDate', 'EndDate'],
       ['baslangicTarihi', 'bitisTarihi'],
@@ -6787,7 +6794,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       ['fromDate', 'toDate'],
       ['dateFrom', 'dateTo'],
       ['minDate', 'maxDate'],
-    ];
+    ] as string[][]).filter(([fromKey]) => !(isOut && /^ilktarih$/i.test(String(fromKey))));
     // TÜRMOB Giden e-Arşiv sayfası tarihleri TR uzun biçimde yollar ("Nisan 1, 2026" / "Temmuz 4, 2026 23:59:59").
     const AY = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
     const trText = (p: { year: string; month: string; day: string }) => `${AY[Math.max(0, Math.min(11, Number(p.month) - 1))]} ${Number(p.day)}, ${p.year}`;
@@ -7175,7 +7182,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const allListUrls = [...listUrls, ...discoveredUrls.filter((u) => !listUrls.includes(u))];
     if (discoveredUrls.length) this.logger.log(`TURMOB list ${channel}: sayfadan kesfedilen uclar: ${discoveredUrls.slice(0, 6).join(' , ')}`);
 
-    const profiles = this.turmobDateProfiles(opts.period);
+    const profiles = this.turmobDateProfiles(opts.period, channel);
     let ct = '';
     let raw = '';
     let data: any = null;
@@ -7654,7 +7661,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     let usedProfile = 'none';
     let usedMethod = 'POST';
     let directPayloads: ProviderInvoicePayload[] = [];
-    const profiles = this.turmobDateProfiles(opts.period);
+    const profiles = this.turmobDateProfiles(opts.period, channel);
     let done = false; // erken çıkış: canlı satırlar sunucunun bildirdiği toplama ulaşınca kalan kombinasyonları deneme
     for (const listUrl of listUrls) {
       if (done) break;
