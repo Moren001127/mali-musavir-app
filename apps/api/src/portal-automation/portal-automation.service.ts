@@ -705,6 +705,7 @@ export class PortalAutomationService {
       belgeTuru: 'EARSIV_FATURA',
       limit: Math.min(Math.max(Number(opts.limit || 300), 1), 1000),
     });
+    this.logger.log(`[EARSIV-READ] taxpayerId=${opts.taxpayerId} period=${opts.period} -> DB'de ${docs.length} EARSIV_FATURA belge bulundu`);
     const refs = new Set<string>();
     const rows = docs.map((doc: any) => {
       const raw = doc.raw && typeof doc.raw === 'object' ? doc.raw : {};
@@ -2096,6 +2097,9 @@ export class PortalAutomationService {
         where: { tenantId, belgeTuru: String(input.belgeTuru), referenceNo: String(input.referenceNo) },
         select: { id: true, taxpayerId: true, storageKey: true, sizeBytes: true, mimeType: true, raw: true, period: true, issuedAt: true },
       });
+    }
+    if (String(input.belgeTuru) === 'EARSIV_FATURA') {
+      this.logger.log(`[EARSIV-STORE] taxpayerId=${taxpayerId} period=${input.period} ref=${input.referenceNo} mode=${(input.raw as any)?.mode} dedup=${existingDedup ? `VAR(tp=${existingDedup.taxpayerId}/period=${existingDedup.period})` : 'yok'}`);
     }
     const skipBlobCreate = !!existingDedup?.storageKey;
     const mimeType = input.mimeType || 'application/pdf';
