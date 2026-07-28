@@ -7267,6 +7267,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         let pdata: any = null;
         try { pdata = JSON.parse(praw); } catch { break; }
         const prows = this.turmobRowsFromListResponse(pdata);
+        this.logger.log(`TURMOB ${channel} SAYFADBG#${sayfa}: gonderilen[start=${start} len=${(baseListParams as any).length}] status=${pres.status} donen=${prows.length} recFilt=${pdata?.recordsFiltered ?? pdata?.RecordsFiltered ?? '?'} recTot=${pdata?.recordsTotal ?? pdata?.RecordsTotal ?? '?'} ilkYeni=${prows[0] ? rowKey(prows[0]).slice(0, 18) : '-'} sayfa1ilk=${rowKey(rows[0]).slice(0, 18)}`);
         if (!prows.length) break;
         let eklenen = 0;
         for (const pr of prows) {
