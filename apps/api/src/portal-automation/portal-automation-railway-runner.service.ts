@@ -129,9 +129,6 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
   // GIB iki PDF goruntuleme arasinda EN AZ ~1 sn ister. Tum IMAJ/PDF cekimleri arasinda global gecit;
   // cok hizli gidersen GIB 354 "1 sn bekleyin" HTML'i ya da 500 doner ve belge inmez.
   private ebeyannameLastImajAt = 0;
-  // GIB e-Arsiv Turkiye cikis proxy'si (TURMOB ile ayni tinyproxy). undici ProxyAgent tek sefer kurulur;
-  //   TURMOB_PROXY_URL yoksa direkt cikis (davranis degismez). turmobFetch ile ayni desen.
-  private _earsivDispatcher: any = undefined;
 
   constructor(
     private prisma: PrismaService,
@@ -785,13 +782,6 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     const credential = bundle.credential;
     const isSgk = jobType.startsWith('SGK_');
 
-    // GIB e-Arsiv: TARAYICISIZ yol (TURMOB gibi). assos-login token verir; liste/indirme zaten
-    //   token'li dispatch/download API'si — headless chromium sadece token'i tasimak icin aciliyordu,
-    //   bosa yuktu. Kaldirildi; tum istekler Turkiye proxy'sinden (earsivFetch) cikar.
-    if (jobType === 'EARSIV_PORTAL_FETCH') {
-      return this.runEarsivPortalJobHttp(tenantId, bundle);
-    }
-
     if (isSgk) {
       if (!(credential.username || credential.userCode) || !credential.workplaceCode || !credential.password || !credential.secondaryPassword) {
         throw new Error('SGK kullanici adi, e-kod, sistem sifresi ve isyeri sifresi eksik');
@@ -830,6 +820,9 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       } else if (isSgk) {
         await page.goto(loginUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 });
         await this.loginSgkWithCaptcha(page, credential, loginUrl, jobType);
+      } else if (jobType === 'EARSIV_PORTAL_FETCH') {
+        await page.goto(loginUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+        await this.loginEarsivPortalDirect(page, credential);
       } else {
         await page.goto(loginUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 });
         await this.fillGenericPortalLogin(page, this.loginValuesForJob(jobType, credential));
@@ -866,6 +859,14 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         await this.jobProgress(tenantId, bundle.job, 'sgk_done', `SGK onaylı belge sorgusu: ${sgk.recordCount} belge indirildi.`);
         await context.close().catch(() => {});
         return sgk;
+      }
+
+      if (jobType === 'EARSIV_PORTAL_FETCH' && bundle.job?.payload?.validationOnly !== true) {
+        const earsiv = await this.collectEarsivPortalViaApi(page, bundle.job, tenantId);
+        const modeLabel = bundle.job?.payload?.earsivMode === 'query' ? 'satir listelendi' : 'belge indirildi';
+        await this.jobProgress(tenantId, bundle.job, 'earsiv_done', `GIB e-Arsiv sorgusu: ${earsiv.recordCount} ${modeLabel}.`);
+        await context.close().catch(() => {});
+        return earsiv;
       }
 
       if (this.isCredentialValidationOnlyJob(bundle.job, jobType)) {
@@ -1693,7 +1694,8 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     return { documents, notes };
   }
 
-  private async collectEarsivPortalViaApi(token: string, job: any, tenantId: string) {
+  private async collectEarsivPortalViaApi(page: any, job: any, tenantId: string) {
+    const token = await this.earsivTokenFromPage(page);
     if (!token) throw new Error('GIB e-Arsiv token alinamadi');
 
     const startDate = this.earsivDateInput(job.periodStart);
@@ -1876,27 +1878,19 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     };
   }
 
-  // GIB e-Arsiv istekleri DIREKT cikar (proxy YOK). Kanit (2026-07-28 canli): GIB earsivportal
-  //   yurtdisi IP'yi engellemiyor (Railway'den direkt zaten calisiyordu); TURMOB proxy'sine (tinyproxy)
-  //   sokunca GIB'e CONNECT 30sn timeout veriyordu ("aborted due to timeout" — iki mukellefte de).
-  //   TURMOB'un aksine GIB proxy GEREKTIRMEZ. Ileride GIB yurtdisi IP'yi kisitlarsa EARSIV_PROXY_URL
-  //   (ayri env, varsayilan bos) ile acilir; TURMOB_PROXY_URL'e BAGLAMA (o TURMOB'a ozel).
-  private earsivFetch(url: string, init: any = {}): Promise<Response> {
-    if (this._earsivDispatcher === undefined) {
-      const purl = String(process.env.EARSIV_PROXY_URL || '').trim();
-      if (purl) {
-        try {
-          this._earsivDispatcher = new (require('undici').ProxyAgent)(purl);
-          this.logger.log('GIB e-Arsiv proxy aktif (EARSIV_PROXY_URL)');
-        } catch (e: any) {
-          this.logger.warn(`GIB e-Arsiv proxy kurulamadi: ${e?.message}`);
-          this._earsivDispatcher = null;
-        }
-      } else {
-        this._earsivDispatcher = null;
-      }
+  private async earsivTokenFromPage(page: any): Promise<string | null> {
+    const url = String(page.url?.() || '');
+    try {
+      const token = new URL(url).searchParams.get('token');
+      if (token) return token;
+    } catch {
+      // Fallback below.
     }
-    return fetch(url, this._earsivDispatcher ? { ...init, dispatcher: this._earsivDispatcher } : init) as any;
+    const token = await page.evaluate(() => {
+      const w = window as any;
+      return String(w.sideToken || localStorage.getItem('token') || '').trim();
+    }).catch(() => '');
+    return token || null;
   }
 
   private async earsivDispatch(token: string, cmd: string, pageName: string, payload: Record<string, any> = {}) {
@@ -1910,7 +1904,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     //   sunucusu bağlantıyı açık tutup yanıt vermezse bu istek eskiden süresiz asılı kalabiliyordu
     //   (en kötü ihtimalle 45dk'lık genel stale-job temizliğine kadar). 30sn sonra AbortError fırlatır,
     //   çağıran yerler bunu zaten try/catch ile yakalıyor.
-    const response = await this.earsivFetch('https://earsivportal.efatura.gov.tr/earsiv-services/dispatch', {
+    const response = await fetch('https://earsivportal.efatura.gov.tr/earsiv-services/dispatch', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
       body,
@@ -1938,7 +1932,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       belgeTip: 'FATURA',
       cmd: 'EARSIV_PORTAL_BELGE_INDIR',
     }).toString()}`;
-    const response = await this.earsivFetch(url, {
+    const response = await fetch(url, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
       },
@@ -3336,9 +3330,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     await page.keyboard.press('Enter');
   }
 
-  // GIB e-Arsiv girisi — TARAYICISIZ, sadece token doner. assos-login token'i verir; liste/indirme
-  //   API'si bu token'i kullanir (tarayici oturum cerezi GEREKMEZ). earsivFetch = Turkiye proxy cikisi.
-  private async earsivLoginHttp(credential: RunnerCredential): Promise<string> {
+  private async loginEarsivPortalDirect(page: any, credential: RunnerCredential) {
     const userCode = credential.userCode || credential.username || '';
     if (!userCode) throw new Error('GIB e-Arsiv kullanici kodu eksik');
     const passwords = [credential.secondaryPassword, credential.password]
@@ -3355,11 +3347,10 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       body.set('sifre', pass);
       body.set('sifre2', pass);
       body.set('parola', '1');
-      const response = await this.earsivFetch('https://earsivportal.efatura.gov.tr/earsiv-services/assos-login', {
+      const response = await fetch('https://earsivportal.efatura.gov.tr/earsiv-services/assos-login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=utf-8' },
         body,
-        signal: AbortSignal.timeout(30_000),
       });
       const text = await response.text();
       let data: any = null;
@@ -3369,44 +3360,24 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         lastError = `GIB e-Arsiv login JSON donmedi: HTTP ${response.status} ${this.compact(text).slice(0, 160)}`;
         continue;
       }
-      if (!response.ok || data?.error || !data?.token) {
+      if (!response.ok || data?.error || !data?.token || !data?.redirectUrl) {
         lastError = data?.messages?.[0]?.text || data?.message || `HTTP ${response.status}`;
         continue;
       }
-      return String(data.token);
+      const targetUrl = this.buildEarsivRedirectUrl(data.redirectUrl, data.token);
+      await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+      await page.waitForTimeout(1000);
+      return;
     }
     throw new Error(`Portal sifresi reddedildi: ${this.compact(lastError || 'GIB e-Arsiv login basarisiz')}`);
   }
 
-  // GIB e-Arsiv isi — tarayici acmadan (chromium yuku YOK): login token al -> liste/indirme API.
-  private async runEarsivPortalJobHttp(tenantId: string, bundle: RunnerJobBundle) {
-    const credential = bundle.credential;
-    if (!credential.userCode || !(credential.secondaryPassword || credential.password)) {
-      throw new Error('GIB e-Arsiv kullanici kodu ve sifre eksik');
-    }
-    this.logger.log('[EARSIV-ADIM] assos-login basliyor');
-    const token = await this.earsivLoginHttp(credential);
-    this.logger.log(`[EARSIV-ADIM] login OK, token alindi (${token ? token.length : 0} karakter), liste sorgusu basliyor`);
-
-    if (bundle.job?.payload?.validationOnly === true) {
-      await this.jobProgress(tenantId, bundle.job, 'validated', 'GIB e-Arsiv girisi dogrulandi.');
-      return {
-        documents: [],
-        recordCount: 0,
-        result: {
-          runner: 'railway',
-          phase: 'credential_validation',
-          validationOnly: true,
-          jobType: 'EARSIV_PORTAL_FETCH',
-          notes: ['GIB e-Arsiv girisi basarili; belge taramasi yapilmadi'],
-        },
-      };
-    }
-
-    const earsiv = await this.collectEarsivPortalViaApi(token, bundle.job, tenantId);
-    const modeLabel = bundle.job?.payload?.earsivMode === 'query' ? 'satir listelendi' : 'belge indirildi';
-    await this.jobProgress(tenantId, bundle.job, 'earsiv_done', `GIB e-Arsiv sorgusu: ${earsiv.recordCount} ${modeLabel}.`);
-    return earsiv;
+  private buildEarsivRedirectUrl(redirectUrl: string, token: string) {
+    const base = 'https://earsivportal.efatura.gov.tr/';
+    const url = new URL(String(redirectUrl || 'index.jsp'), base);
+    url.searchParams.set('token', token);
+    url.searchParams.set('v', String(Date.now()));
+    return url.toString();
   }
 
   private async finishLoginAfterFill(page: any) {
