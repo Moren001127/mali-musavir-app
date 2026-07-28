@@ -6639,9 +6639,37 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       redirect: 'manual',
     });
     addCookies(pick(loginRes));
-    // Başarılı giriş = redirect (302/301). 200 dönerse kimlik hatalı (login sayfası tekrar geldi).
+    // Başarılı giriş = redirect (302/301). Redirect DIŞI (çoğunlukla 200) dönerse eskiden körlemesine
+    //   "TCKN/parola hatalı" deniyordu — bu güven kırıyordu ve GERÇEK nedeni (kontör bitti / hesap
+    //   kilitli / captcha / parola değişti) gizliyordu. Ayrıca bazı hesaplarda giriş 302 yerine 200
+    //   render dönebiliyor; o mükellefler boş yere reddediliyordu. Artık GÖVDE analiz edilir.
     if (loginRes.status !== 302 && loginRes.status !== 301) {
-      throw new Error(`TÜRMOB girişi başarısız — TCKN/parola hatalı olabilir (HTTP ${loginRes.status})`);
+      const body = await loginRes.text().catch(() => '');
+      const low = body.toLowerCase();
+      // İki alan (VknTckn + Password) birlikte varsa login sayfası TEKRAR gelmiş = giriş reddedildi.
+      const loginFormuVar = /name="?password"?/i.test(body) && /name="?vkntckn"?/i.test(body);
+      const authCerezVar = [...cookieMap.keys()].some((k) => /auth|session|aspnet|aspxauth|luca/i.test(k));
+      // TÜRMOB'un ekranda gösterdiği gerçek uyarı metnini çıkar.
+      const msg = (
+        body.match(/validation-summary[^>]*>[\s\S]*?<li[^>]*>\s*([^<]{3,200})/i)?.[1]
+        || body.match(/class="[^"]*(?:field-validation-error|text-danger|alert-danger|error-message)[^"]*"[^>]*>\s*([^<]{3,200})/i)?.[1]
+        || ''
+      ).replace(/\s+/g, ' ').trim();
+      if (/kontör|kontor|yetersiz kredi|kredi.*yeters|yeters.*kont/i.test(low)) {
+        throw new Error(`TÜRMOB girişi engellendi — KONTÖR yetersiz görünüyor${msg ? ` (${msg})` : ''}. TÜRMOB portalına girip kontör yükleyin.`);
+      }
+      if (/captcha|güvenlik kodu|robot değil|resimdeki karakter/i.test(low)) {
+        throw new Error(`TÜRMOB girişte güvenlik kodu (captcha) istiyor${msg ? ` — ${msg}` : ''}. Bu hesapta otomatik çekim şu an mümkün değil.`);
+      }
+      if (/hesab.*kilit|kilitlen|bloke|too many|çok fazla deneme|geçici olarak engel/i.test(low)) {
+        throw new Error(`TÜRMOB hesabı geçici KİLİTLİ/engelli olabilir${msg ? ` — ${msg}` : ''}. Bir süre bekleyip tekrar deneyin.`);
+      }
+      // Giriş formu YOK + oturum çerezi VAR → giriş aslında olmuş (redirect yerine 200). Devam et.
+      if (!loginFormuVar && authCerezVar && cookieMap.size) {
+        this.logger.log('TÜRMOB giriş 200 döndü ama oturum çerezi alındı — başarılı sayılıyor');
+        return cookieHeader();
+      }
+      throw new Error(`TÜRMOB girişi başarısız${msg ? ` — ${msg}` : ' — TCKN/parola hatalı olabilir'} (HTTP ${loginRes.status})`);
     }
     // 3) Redirect hedefini İZLE — ASP.NET'te auth/session çerezi çoğu zaman bu adımda tamamlanır.
     //    (redirect izlenmezse liste isteği login'e geri atılıp 0 kayıt döner.)
@@ -6864,10 +6892,18 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   private turmobRowInPeriod(row: any, period: { startDate: string; endDate: string }): boolean {
     const rowDate = this.turmobInvoiceDateFromRow(row);
     if (!rowDate) return true;
-    const start = new Date(`${period.startDate}T00:00:00.000Z`);
-    const end = new Date(`${period.endDate}T23:59:59.999Z`);
-    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return true;
-    return rowDate >= start && rowDate <= end;
+    // Fatura tarihi TÜRKİYE tarihidir (TÜRMOB TR saatiyle üretir). Mutlak an'ı UTC dönem
+    //   sınırıyla karşılaştırmak, AYIN 1'inde kesilen faturayı bir önceki aya kaydırıp
+    //   DÖNEM DIŞI eliyordu: 01.07 00:00 TR = 30.06 21:00 UTC < dönem başı 01.07 00:00 UTC.
+    //   (Canlı kanıt: YORGUN NAKLİYAT Temmuz'da 01.07 tarihli AYSAN faturası inmedi; rows=28
+    //   live=27.) Türkiye sabit UTC+3 → rowDate'i +3 saat kaydırıp TAKVİM GÜNÜNE indirgeyip
+    //   gün-bazlı (saat/timezone'suz) karşılaştırıyoruz. Her iki tarih formatı da (/Date(ms)/
+    //   ve gg.aa.yyyy) bu shift'le doğru güne oturur; hiçbir fatura yanlışlıkla dışlanmaz.
+    const trGun = new Date(rowDate.getTime() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const startGun = String(period.startDate || '').slice(0, 10);
+    const endGun = String(period.endDate || '').slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(startGun) || !/^\d{4}-\d{2}-\d{2}$/.test(endGun)) return true;
+    return trGun >= startGun && trGun <= endGun;
   }
 
   private turmobIsCancelled(row: any): boolean {
