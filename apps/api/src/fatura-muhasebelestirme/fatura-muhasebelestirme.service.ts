@@ -7238,10 +7238,15 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const seen = new Set(rows.map(rowKey));
       const winProfile = profiles.find((p) => p.name === usedProfile) || profiles[0];
       let start = rows.length;
+      // TÜRMOB satış ucu (OutgoingInvoice) length=500'ü YOK SAYIP sabit 25 döndürüyor VE start'ı
+      //   düzgün işlemiyordu (canlı debug: start=25 → yine ilk 25). Sayfa boyutunu TÜRMOB'un GERÇEKTEN
+      //   döndürdüğü ilk-sayfa boyutuna (ör. 25) sabitleyip start'ı ona göre kaydırınca uç düzgün
+      //   sayfalıyor. (Alış ucu 500'ü kabul edip tek sayfada verdiği için orada zaten tek istek.)
+      const pageSize = Math.max(1, rows.length);
       let sayfa = 1;
       const MAX_SAYFA = 40;
       while (sayfa < MAX_SAYFA) {
-        const pageParams: any = { ...baseListParams, ...(winProfile?.params || {}), start: String(start) };
+        const pageParams: any = { ...baseListParams, ...(winProfile?.params || {}), start: String(start), length: String(pageSize) };
         if (listPageToken) pageParams.__RequestVerificationToken = listPageToken;
         const pageBody = new URLSearchParams(pageParams).toString();
         const pageUrl = usedMethod === 'GET' ? `${BASE}${usedListUrl}?${pageBody}` : BASE + usedListUrl;
