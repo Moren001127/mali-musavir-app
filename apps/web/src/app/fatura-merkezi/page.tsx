@@ -5324,4 +5324,30 @@ const CSS = `
 #fm-root .daterange .drmsg.err{color:#b91c1c;background:#fef2f2;border:1px solid #fecaca}
 #fm-root .daterange .drmsg.warn{color:#92400e;background:#fffbeb;border:1px solid #fde68a}
 #fm-root .daterange .drmsg.hint{color:#8a6a1f;background:#fffdf5;border:1px solid #f3e7c4}
+
+/* ═══════════ MUHASEBE FİŞ — GÖRSEL CİLA v1 ═══════════
+   Kullanıcı isteği: sağ panel fişi (Matrah/KDV/Cari) daha sade, belirgin, profesyonel dursun.
+   YALNIZ görünüm (renk/çerçeve/boşluk/tipografi). Yapı, düzen, mantık AYNEN korunur.
+   BEĞENİLMEZSE: bu blok (bu yorumdan aşağıdaki kurallara kadar) SİLİNİR → birebir eski hale döner. */
+#fm-root .muhmain .fgrps{gap:14px}
+#fm-root .muhmain .fgrp{position:relative;background:#fff;border:1px solid #e6ebf2;border-left-width:3px;border-radius:12px;box-shadow:0 1px 3px rgba(16,32,64,.055),0 1px 2px rgba(16,32,64,.03);overflow:hidden;padding:0}
+#fm-root .muhmain .fgrp::before{content:none !important}
+#fm-root .muhmain .fgrp[data-g="matrah"]{border-left-color:#2f5b8f}
+#fm-root .muhmain .fgrp[data-g="vergi"]{border-left-color:#b1802a}
+#fm-root .muhmain .fgrp[data-g="vergi-sorumlu"]{border-left-color:#b1802a}
+#fm-root .muhmain .fgrp[data-g="cari"]{border-left-color:#2f8f5f}
+#fm-root .muhmain .fgrp[data-g="tevkifat"]{border-left-color:#a14152}
+#fm-root .muhmain .fgh{padding:11px 15px 9px;background:#fbfcfe;border-bottom:1px solid #eef1f6}
+#fm-root .muhmain .fgh > *:first-child{font-size:12.5px;font-weight:800;letter-spacing:.2px;color:#1f2d45}
+#fm-root .muhmain .fgs{margin-left:auto;font-size:9.5px;font-weight:800;letter-spacing:.7px;padding:2px 9px;border-radius:20px;background:#eef2f7;color:#5c6c86;text-transform:uppercase}
+#fm-root .muhmain .frow{padding:9px 15px;gap:10px;align-items:center;border-bottom:1px solid #f4f6fa}
+#fm-root .muhmain .frow:hover{background:#fafbfd}
+#fm-root .muhmain .money{font-variant-numeric:tabular-nums;font-weight:700;color:#17233b}
+#fm-root .muhmain .fgt{padding:10px 15px;background:#fbfcfe;border-top:1px solid #eef1f6;font-size:12px;color:#5c6c86}
+#fm-root .muhmain .fgt b{font-variant-numeric:tabular-nums;font-size:14px;color:#0f1c33;font-weight:800}
+#fm-root .muhmain .frowadd{padding:8px 15px;color:#6b7a95;font-weight:600;font-size:12px;background:transparent;border-top:1px dashed #eef1f6}
+#fm-root .muhmain .frowadd:hover{color:#2f5b8f;background:#f7f9fc}
+#fm-root .muhmain .frowdel{opacity:.5;transition:opacity .15s,color .15s}
+#fm-root .muhmain .frowdel:hover{opacity:1;color:#c0353a}
+/* ═══════════ /MUHASEBE FİŞ GÖRSEL CİLA v1 ═══════════ */
 `;
