@@ -6645,31 +6645,36 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   render dönebiliyor; o mükellefler boş yere reddediliyordu. Artık GÖVDE analiz edilir.
     if (loginRes.status !== 302 && loginRes.status !== 301) {
       const body = await loginRes.text().catch(() => '');
-      const low = body.toLowerCase();
       // İki alan (VknTckn + Password) birlikte varsa login sayfası TEKRAR gelmiş = giriş reddedildi.
       const loginFormuVar = /name="?password"?/i.test(body) && /name="?vkntckn"?/i.test(body);
       const authCerezVar = [...cookieMap.keys()].some((k) => /auth|session|aspnet|aspxauth|luca/i.test(k));
-      // TÜRMOB'un ekranda gösterdiği gerçek uyarı metnini çıkar.
-      const msg = (
-        body.match(/validation-summary[^>]*>[\s\S]*?<li[^>]*>\s*([^<]{3,200})/i)?.[1]
-        || body.match(/class="[^"]*(?:field-validation-error|text-danger|alert-danger|error-message)[^"]*"[^>]*>\s*([^<]{3,200})/i)?.[1]
+      // TÜRMOB'un ekranda gösterdiği GERÇEK uyarı metni (validation-summary / hata kutusu). Kontör/kilit/
+      //   captcha teşhisi YALNIZ bu metinden yapılır — TÜRMOB login sayfasının GENEL içeriğinde "kontör"
+      //   kelimesi zaten 3 kez geçiyor (menü/tanıtım). Sayfa geneline bakmak YANLIŞ-POZİTİF verir: canlı
+      //   kanıt — İLGİ OTO kimlik hatasında sayfadaki 'kontör' yüzünden yanlışlıkla "kontör yetersiz"
+      //   deniyordu. Artık sadece TÜRMOB'un kendi uyarı cümlesine bakılır.
+      const uyari = (
+        body.match(/validation-summary[^>]*>[\s\S]*?<li[^>]*>\s*([^<]{3,220})/i)?.[1]
+        || body.match(/class="[^"]*(?:field-validation-error|text-danger|alert-danger|error-message)[^"]*"[^>]*>\s*([^<]{3,220})/i)?.[1]
         || ''
       ).replace(/\s+/g, ' ').trim();
-      if (/kontör|kontor|yetersiz kredi|kredi.*yeters|yeters.*kont/i.test(low)) {
-        throw new Error(`TÜRMOB girişi engellendi — KONTÖR yetersiz görünüyor${msg ? ` (${msg})` : ''}. TÜRMOB portalına girip kontör yükleyin.`);
+      const uyariLow = uyari.toLowerCase();
+      if (/kont[oö]r/.test(uyariLow) && /yeters|bitti|kalmad|yükle|satın|tükendi/.test(uyariLow)) {
+        throw new Error(`TÜRMOB: ${uyari} — kontör yükleyip tekrar deneyin.`);
       }
-      if (/captcha|güvenlik kodu|robot değil|resimdeki karakter/i.test(low)) {
-        throw new Error(`TÜRMOB girişte güvenlik kodu (captcha) istiyor${msg ? ` — ${msg}` : ''}. Bu hesapta otomatik çekim şu an mümkün değil.`);
+      if (/captcha|güvenlik kodu|robot|resimdeki/.test(uyariLow)) {
+        throw new Error(`TÜRMOB girişte güvenlik kodu (captcha) istiyor — ${uyari}`);
       }
-      if (/hesab.*kilit|kilitlen|bloke|too many|çok fazla deneme|geçici olarak engel/i.test(low)) {
-        throw new Error(`TÜRMOB hesabı geçici KİLİTLİ/engelli olabilir${msg ? ` — ${msg}` : ''}. Bir süre bekleyip tekrar deneyin.`);
+      if (/kilit|bloke|çok fazla|too many|engellendi|donduruldu/.test(uyariLow)) {
+        throw new Error(`TÜRMOB hesabı geçici kilitli/engelli olabilir — ${uyari}`);
       }
-      // Giriş formu YOK + oturum çerezi VAR → giriş aslında olmuş (redirect yerine 200). Devam et.
+      // Giriş formu YOK + oturum çerezi VAR → giriş aslında olmuş (redirect yerine 200 render). Devam et.
       if (!loginFormuVar && authCerezVar && cookieMap.size) {
         this.logger.log('TÜRMOB giriş 200 döndü ama oturum çerezi alındı — başarılı sayılıyor');
         return cookieHeader();
       }
-      throw new Error(`TÜRMOB girişi başarısız${msg ? ` — ${msg}` : ' — TCKN/parola hatalı olabilir'} (HTTP ${loginRes.status})`);
+      // Kimlik reddi: TÜRMOB'un kendi uyarısını göster; yoksa TCKN/parola işaret et.
+      throw new Error(`TÜRMOB girişi başarısız${uyari ? ` — ${uyari}` : ' — TCKN/parola hatalı olabilir'} (HTTP ${loginRes.status})`);
     }
     // 3) Redirect hedefini İZLE — ASP.NET'te auth/session çerezi çoğu zaman bu adımda tamamlanır.
     //    (redirect izlenmezse liste isteği login'e geri atılıp 0 kayıt döner.)
