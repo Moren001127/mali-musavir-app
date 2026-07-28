@@ -2119,9 +2119,13 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
                       ) : '—'}
                     </td>
                     <td>
-                      <span className={`transferstate ${r.aktarildi ? 'ok' : 'no'}`} title={r.aktarildi ? 'Aktarıldı' : 'Aktarılmadı'} aria-label={r.aktarildi ? 'Aktarıldı' : 'Aktarılmadı'}>
-                        {r.aktarildi ? <span className="okico">✓</span> : <span className="xico">×</span>}
-                      </span>
+                      {r.aktarildi ? (
+                        <span className="transferstate ok" title="Luca'ya aktarıldı" aria-label="Luca'ya aktarıldı"><span className="okico">✓</span></span>
+                      ) : r.zatenVar ? (
+                        <span className="transferstate" title="Muhasebeleştirildi — Luca'ya henüz aktarılmadı" aria-label="Muhasebeleştirildi" style={{ color: '#b8862b', fontWeight: 800, fontSize: 15 }}>◐</span>
+                      ) : (
+                        <span className="transferstate no" title="Aktarılmadı" aria-label="Aktarılmadı"><span className="xico">×</span></span>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -5350,4 +5354,11 @@ const CSS = `
 #fm-root .muhmain .frowdel{opacity:.5;transition:opacity .15s,color .15s}
 #fm-root .muhmain .frowdel:hover{opacity:1;color:#c0353a}
 /* ═══════════ /MUHASEBE FİŞ GÖRSEL CİLA v1 ═══════════ */
+
+/* e-Arşiv "Faturalar çekiliyor" belirgin animasyonlu gösterge (kullanıcı: şerit çıksın) */
+#fm-root .sourcepanel.isbusy{position:relative}
+#fm-root .sourcepanel.isbusy::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,transparent 0%,#0891b2 50%,transparent 100%);background-size:45% 100%;background-repeat:no-repeat;animation:fmshimmer 1.15s linear infinite;z-index:6;border-radius:12px 12px 0 0}
+@keyframes fmshimmer{0%{background-position:-45% 0}100%{background-position:145% 0}}
+#fm-root .qspin{width:12px;height:12px;border:2px solid rgba(8,145,178,.28);border-top-color:#0891b2;border-radius:50%;display:inline-block;animation:fmspin .7s linear infinite;flex:none}
+@keyframes fmspin{to{transform:rotate(360deg)}}
 `;
