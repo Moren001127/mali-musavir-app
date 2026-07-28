@@ -3984,9 +3984,22 @@ function ScreenAyarlar({ taxpayerId }: { taxpayerId: string }) {
   const accounts: any[] = planQ.data || [];
   const localCount = accounts.filter((a) => a.local && !a.syncedToLuca).length;
 
+  // İŞ DURUMU (kullanıcı bulgusu — "ne yapıyor bilmiyorum, sonuçlandığını görmüyorum"): "Luca'dan yenile"
+  //   fire-and-forget'ti; çekme dakikalarca sürerken ekranda hiçbir gösterge yoktu. ACCOUNT_PLAN job'ını
+  //   poll et → bu mükellef için pending/running iş varsa "çekiliyor" şeridi göster, bitince kalksın.
+  const jobsQ = useQuery({
+    queryKey: ['fm2', 'account-plan-jobs', taxpayerId],
+    queryFn: () => api.get('/luca/jobs', { params: { tip: 'ACCOUNT_PLAN', limit: 5 } }).then((r) => (Array.isArray(r.data) ? r.data : [])).catch(() => []),
+    enabled: !!taxpayerId,
+    refetchInterval: 3000,
+  });
+  const planBusy = (jobsQ.data || []).some((j: any) =>
+    String(j.tip) === 'ACCOUNT_PLAN' && String(j.mukellefId) === String(taxpayerId) &&
+    ['pending', 'running'].includes(String(j.status || '').toLowerCase()));
+
   const refreshMut = useMutation({
     mutationFn: () => api.post('/fatura-muhasebelestirme/account-plan/refresh', { taxpayerId }),
-    onSuccess: () => { toast.success('Hesap planı yenileme Luca kuyruğuna alındı'); qc.invalidateQueries({ queryKey: ['fm2', 'account-plan'] }); },
+    onSuccess: () => { toast.success('Hesap planı yenileme Luca kuyruğuna alındı'); qc.invalidateQueries({ queryKey: ['fm2', 'account-plan'] }); jobsQ.refetch(); },
     onError: (e: any) => toast.error('Yenilenemedi: ' + (e?.response?.data?.message || e?.message || 'hata')),
   });
   const pushMut = useMutation({
@@ -4014,10 +4027,16 @@ function ScreenAyarlar({ taxpayerId }: { taxpayerId: string }) {
           <h3>Hesap Planı{accounts.length ? <span className="cnt">{accounts.length}{q ? ' eşleşme' : ' hesap'}</span> : null}</h3>
           <div className="sp" />
           <input className="fmsel" style={{ maxWidth: 220 }} placeholder="Kod / ad ara…" value={q} onChange={(e) => setQ(e.target.value)} />
-          <button className="btn sm ghost" disabled={refreshMut.isPending} onClick={() => refreshMut.mutate()}><Ico html={I.sync} size={13} /> {refreshMut.isPending ? 'Yenileniyor…' : "Luca'dan yenile"}</button>
+          <button className="btn sm ghost" disabled={refreshMut.isPending || planBusy} onClick={() => refreshMut.mutate()}><Ico html={I.sync} size={13} /> {(refreshMut.isPending || planBusy) ? 'Çekiliyor…' : "Luca'dan yenile"}</button>
           <button className="btn sm primary" disabled={pushMut.isPending || localCount === 0} onClick={() => pushMut.mutate()} title={localCount === 0 ? 'Gönderilecek yerel hesap yok' : ''}><Ico html={I.send} size={13} /> {pushMut.isPending ? 'Gönderiliyor…' : `Yerelleri gönder${localCount ? ` (${localCount})` : ''}`}</button>
         </div>
-        <div className="twrap planwrap">
+        <div className="twrap planwrap" style={{ position: 'relative' }}>
+          {planBusy && (
+            <div className="queryveil">
+              <div className="querydoc" aria-hidden="true"><span /><i /><i /><i /></div>
+              <b>Hesap planı Luca'dan çekiliyor…</b>
+            </div>
+          )}
           <table>
             <thead><tr><th>Kod</th><th>Hesap Adı</th><th>Durum</th></tr></thead>
             <tbody>

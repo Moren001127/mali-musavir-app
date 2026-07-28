@@ -2614,7 +2614,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       });
       return snap;
     });
-    await this.rematchPendingDocumentsWithAccountPlan(params.tenantId, params.taxpayerId, snapshot.id);
+    // AI-EŞLEŞTİRME ARKA PLANDA (kullanıcı bulgusu — "hesap planı çekildiği halde iş bitmiyor"):
+    //   rematch, bekleyen fatura başına Max çağrısı yapıyor (50'ye kadar × ~saniyeler) → eskiden
+    //   upload isteğini await ile DAKİKALARCA blokluyordu; upload dönmeyince job 'done' işaretlenmiyor,
+    //   Luca ajanı panelinde iş "çalışıyor" kalıyordu (hatta 10dk upload timeout'una düşebiliyordu).
+    //   Snapshot zaten READY yazıldı → HEMEN dön (job biter), eşleştirme arka planda sürsün.
+    void this.rematchPendingDocumentsWithAccountPlan(params.tenantId, params.taxpayerId, snapshot.id).catch(() => undefined);
     return { snapshotId: snapshot.id, accountCount: rows.length };
   }
 
