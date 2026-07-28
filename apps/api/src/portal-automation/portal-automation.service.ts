@@ -2094,7 +2094,12 @@ export class PortalAutomationService {
     let existingDedup: any = null;
     if (DEDUP_BELGE_TURU.includes(String(input.belgeTuru)) && input.referenceNo) {
       existingDedup = await (this.prisma as any).portalDocument.findFirst({
-        where: { tenantId, belgeTuru: String(input.belgeTuru), referenceNo: String(input.referenceNo) },
+        // taxpayerId ile SCOPE (KRİTİK kök — Hanife/Hüseyin bulgusu, DB'den kanıtlı): GİB e-Arşiv belge
+        //   numaraları MÜKELLEF-BAZINDA sıralıdır (her mükellef GIB2026000000001'den başlar) → farklı
+        //   mükelleflerin AYNI belge numarası olur. taxpayerId'siz dedup, bir mükellefin faturasını aynı
+        //   numaralı BAŞKA mükellefin belgesiyle eşleştirip onun ÜSTÜNE yazıyor, gerçek mükellefe HİÇ
+        //   kaydetmiyordu → ekranda "0 kayıt" (tüm mükelleflerde). taxpayerId biliniyorsa dedup'ı onunla sınırla.
+        where: { tenantId, belgeTuru: String(input.belgeTuru), referenceNo: String(input.referenceNo), ...(taxpayerId ? { taxpayerId } : {}) },
         select: { id: true, taxpayerId: true, storageKey: true, sizeBytes: true, mimeType: true, raw: true, period: true, issuedAt: true },
       });
     }
