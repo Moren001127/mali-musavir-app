@@ -56,17 +56,19 @@ export class IsletmeHesapOzetiService {
     });
     if (existing) return existing;
 
-    // Önceki çeyreğin kalan stoğunu dönem başı stok olarak getir (Q1 hariç)
+    // Geçici vergi KÜMÜLATİF: her dönemin başı = YIL BAŞI stok (Q1'in dönem başı stoğu),
+    //   önceki çeyreğin kalan stoğu DEĞİL. Q1 kaydı henüz yoksa 0 kalır (Luca çekimi veya
+    //   kullanıcı sonradan doldurur). Luca kümülatif çekiminde de yıl başı stok satırı gelir.
     let donemBasiStok = 0;
     let oncekiOdenenGecVergi = 0;
     if (donem > 1) {
-      const oncekiCeyrek = await (this.prisma as any).isletmeHesapOzeti.findUnique({
+      const ilkCeyrek = await (this.prisma as any).isletmeHesapOzeti.findUnique({
         where: {
-          tenantId_taxpayerId_yil_donem: { tenantId, taxpayerId, yil, donem: donem - 1 },
+          tenantId_taxpayerId_yil_donem: { tenantId, taxpayerId, yil, donem: 1 },
         },
       });
-      if (oncekiCeyrek) {
-        donemBasiStok = Number(oncekiCeyrek.kalanStok || 0);
+      if (ilkCeyrek) {
+        donemBasiStok = Number(ilkCeyrek.donemBasiStok || 0);
       }
       // Önceki dönemlerde hesaplanan geçici vergilerin toplamı
       const oncekiDonemler = await (this.prisma as any).isletmeHesapOzeti.findMany({
@@ -484,12 +486,13 @@ export class IsletmeHesapOzetiService {
       [taxpayer?.firstName, taxpayer?.lastName].filter(Boolean).join(' ') ||
       taxpayer?.taxNumber || '';
 
-    // Çeyreğin başlangıç-bitiş tarihleri (DD/MM/YYYY için backend'den YYYY-MM-DD_YYYY-MM-DD)
-    const baslangicAyi = (ozet.donem - 1) * 3 + 1;
+    // Geçici vergi KÜMÜLATİF hesaplanır: her dönem yıl başından (01 Ocak) dönem sonuna kadar.
+    //   Q1: 01.01-31.03 · Q2: 01.01-30.06 · Q3: 01.01-30.09 · Q4: 01.01-31.12
+    // (Önceki dönemde ödenen geçici vergi ayrıca oncekiOdenenGecVergi ile mahsup edilir.)
     const bitisAyi = ozet.donem * 3;
-    const sonGun = new Date(ozet.yil, bitisAyi, 0).getDate(); // ay sonu
+    const sonGun = new Date(ozet.yil, bitisAyi, 0).getDate(); // dönem sonu ayının son günü
     const ay = (n: number) => String(n).padStart(2, '0');
-    const donemAralik = `${ozet.yil}-${ay(baslangicAyi)}-01_${ozet.yil}-${ay(bitisAyi)}-${ay(sonGun)}`;
+    const donemAralik = `${ozet.yil}-01-01_${ozet.yil}-${ay(bitisAyi)}-${ay(sonGun)}`;
 
     const job = await this.luca.createFetchJob({
       tenantId: params.tenantId,
@@ -543,10 +546,11 @@ export class IsletmeHesapOzetiService {
     // Excel parse — gelir, mal alışı, gider, dönem başı stok ayrı ayrı
     // YENİ: Çeyreğin tarih aralığını parser'a geçir — Luca cumulative dönerse filtrele.
     const yil = Number(ozet.yil);
-    const cYrl = Number(ozet.donem); // 1=Q1(Oca-Mar), 2=Q2(Nis-Haz), 3=Q3(Tem-Eyl), 4=Q4(Eki-Ara)
-    const startMonth = (cYrl - 1) * 3; // 0,3,6,9
-    const start = new Date(yil, startMonth, 1);
-    const end = new Date(yil, startMonth + 3, 0); // ay sonu (sonraki ayın 0'ı)
+    const cYrl = Number(ozet.donem); // 1=Q1, 2=Q2, 3=Q3, 4=Q4
+    // Geçici vergi KÜMÜLATİF: filtre yıl başından (01 Ocak) dönem sonuna. Luca kümülatif
+    //   dönmese bile Excel'de dönem dışı satır kalırsa bu aralık yıl-içi hepsini kapsar.
+    const start = new Date(yil, 0, 1);
+    const end = new Date(yil, cYrl * 3, 0); // dönem sonu ayının son günü
     const parsed = this.excelParser.parseIsletmeExcelDetayli(params.buffer, { start, end });
 
     this.logger.log(
