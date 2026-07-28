@@ -6649,15 +6649,20 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   bul → CompanyId ile TEKRAR gir. Tek-firmalı hesaplar ilk POST'ta 302 alıp buraya HİÇ girmez
     //   (sıfır regresyon). GetCompanyList başarısız/belirsizse aşağıdaki mevcut hata akışına düşer.
     if (loginRes.status !== 302 && loginRes.status !== 301 && matchVkn) {
-      const companyId = await this.turmobResolveCompanyId(BASE, cookieHeader(), token, matchVkn).catch(() => null);
+      this.logger.log(`[TURMOB-COMPANY] ilk giriş ${loginRes.status} (çok-firma olabilir); GetCompanyList deneniyor matchVkn=${matchVkn}`);
+      const companyId = await this.turmobResolveCompanyId(BASE, cookieHeader(), token, matchVkn).catch((e) => { this.logger.warn(`[TURMOB-COMPANY] resolve hata: ${e?.message || e}`); return null; });
+      this.logger.log(`[TURMOB-COMPANY] resolve sonucu CompanyId=${companyId ?? 'YOK'}`);
       if (companyId) {
         const retry = await postLogin(companyId);
         addCookies(pick(retry));
+        this.logger.log(`[TURMOB-COMPANY] CompanyId ile 2. giriş status=${retry.status}`);
         if (retry.status === 302 || retry.status === 301) {
           this.logger.log(`TÜRMOB çok-firma girişi: CompanyId=${companyId} ile giriş başarılı`);
           loginRes = retry;
         }
       }
+    } else if (loginRes.status !== 302 && loginRes.status !== 301) {
+      this.logger.log(`[TURMOB-COMPANY] ilk giriş ${loginRes.status} ama matchVkn YOK (çok-firma denenmedi) — senderVkn boş olabilir`);
     }
     // Başarılı giriş = redirect (302/301). Redirect DIŞI (çoğunlukla 200) dönerse eskiden körlemesine
     //   "TCKN/parola hatalı" deniyordu — bu güven kırıyordu ve GERÇEK nedeni (kontör bitti / hesap
@@ -6733,8 +6738,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     for (const a of attempts) {
       try {
         const res = await this.turmobFetch(a.url, { method: a.method, headers, ...(a.body ? { body: a.body } : {}) });
-        if (!res.ok) continue;
         const text = await res.text();
+        this.logger.log(`[TURMOB-COMPANY] ${a.method} ${a.url.replace(BASE, '')} -> HTTP${res.status} len=${text.length} ilk=${text.slice(0, 160).replace(/\s+/g, ' ')}`);
+        if (!res.ok) continue;
         let data: any = null;
         try { data = JSON.parse(text); } catch { continue; }
         const list: any[] = Array.isArray(data) ? data

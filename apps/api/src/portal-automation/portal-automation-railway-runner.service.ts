@@ -3384,7 +3384,9 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     if (!credential.userCode || !(credential.secondaryPassword || credential.password)) {
       throw new Error('GIB e-Arsiv kullanici kodu ve sifre eksik');
     }
+    this.logger.log('[EARSIV-ADIM] assos-login basliyor');
     const token = await this.earsivLoginHttp(credential);
+    this.logger.log(`[EARSIV-ADIM] login OK, token alindi (${token ? token.length : 0} karakter), liste sorgusu basliyor`);
 
     if (bundle.job?.payload?.validationOnly === true) {
       await this.jobProgress(tenantId, bundle.job, 'validated', 'GIB e-Arsiv girisi dogrulandi.');
