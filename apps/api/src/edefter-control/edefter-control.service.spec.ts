@@ -373,4 +373,48 @@ describe('EDefterControlService tevsik kasa kontrolleri', () => {
     ) as Array<{ category: string; message: string }>;
     expect(findings.map((f) => f.category)).toContain('MIZAN_FIS_UYUMSUZ');
   });
+
+  function analyzeWithMizan(
+    rows: ParsedEDefterFisLine[],
+    mizanCtx: any,
+    ruleSettings = new Map<string, boolean>(),
+  ) {
+    return (service as any).analyze(
+      rows,
+      { start: d('2026-01-01'), end: d('2026-12-31') },
+      'YILLIK',
+      ruleSettings,
+      mizanCtx,
+    ) as Array<{ category: string; message: string; severity: string }>;
+  }
+
+  it('ozellikli hesap katalogu: Mizan\'da 549 alacak bakiyesi olunca yenileme fonu BILGI uretir', () => {
+    const mizanCtx = { bakiyeByCode: new Map([['549', -500000], ['500', -500000]]), found: true };
+    const findings = analyzeWithMizan([row({ hesapKodu: '549.01.001', alacak: 500000 })], mizanCtx);
+    const bulgu = findings.find((f) => f.category === 'OZELLIKLI_549_YENILEME_FONU');
+    expect(bulgu).toBeDefined();
+    expect(bulgu?.severity).toBe('INFO');
+    expect(bulgu?.message).toContain('3 yil');
+    expect(bulgu?.message).toContain('VUK 328');
+  });
+
+  it('ozellikli hesap katalogu: Mizan yoksa katalog bulgusu uretmez', () => {
+    const findings = analyzeWithMizan([row({ hesapKodu: '549.01.001', alacak: 500000 })], null);
+    expect(findings.some((f) => f.category.startsWith('OZELLIKLI_'))).toBe(false);
+  });
+
+  it('ozellikli hesap katalogu: 331 esik altinda bakiye uyari uretmez, esik ustunde uretir', () => {
+    const altinda = analyzeWithMizan([], { bakiyeByCode: new Map([['331', -50000]]), found: true });
+    expect(altinda.map((f) => f.category)).not.toContain('OZELLIKLI_331_ORTULU_SERMAYE');
+    const ustunde = analyzeWithMizan([], { bakiyeByCode: new Map([['331', -250000]]), found: true });
+    expect(ustunde.map((f) => f.category)).toContain('OZELLIKLI_331_ORTULU_SERMAYE');
+  });
+
+  it('ozellikli hesap katalogu: kullanici kurali kapatinca bulgu uretmez', () => {
+    const mizanCtx = { bakiyeByCode: new Map([['580', 120000]]), found: true };
+    const acik = analyzeWithMizan([], mizanCtx);
+    expect(acik.map((f) => f.category)).toContain('OZELLIKLI_580_ZARAR_MAHSUP');
+    const kapali = analyzeWithMizan([], mizanCtx, new Map([['OZELLIKLI_580_ZARAR_MAHSUP', false]]));
+    expect(kapali.map((f) => f.category)).not.toContain('OZELLIKLI_580_ZARAR_MAHSUP');
+  });
 });

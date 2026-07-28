@@ -746,6 +746,7 @@ export class EDefterControlService {
     findings.push(...this.analyzeStokNegatif(rows, mizanCtx));
     findings.push(...this.analyzeBankaGunlukNegatif(rows, mizanCtx));
     findings.push(...this.analyzeMizanMutabakat(rows, mizanCtx));
+    findings.push(...this.analyzeOzellikliHesapKatalogu(rows, mizanCtx));
     findings.push(...this.analyzePOSValor108(rows));
     findings.push(...this.analyzeKKEG689(rows));
     findings.push(...this.analyzeAmortismanYilSonu(rows, range, isYillik));
@@ -2525,6 +2526,195 @@ export class EDefterControlService {
     }
     if (kapanis == null) return { value: 0, known: false };
     return { value: kapanis - periodNet, known: true };
+  }
+
+  // Bir hesap grubunun Mizan KAPANIS bakiyesini dondurur (borcBakiye − alacakBakiye).
+  //   Ana hesap kodu (orn "549") Mizan'da varsa onu; yoksa cift-sayim olmadan alt hesap (leaf) toplamini alir.
+  //   Grup Mizan'da hic yoksa null. deriveAcilisFromMizan ile ayni kapanis mantigi (donem neti dusulmez).
+  private mizanBakiyeForPrefix(mizanCtx: MizanCtx | null, prefixRegex: RegExp, anaKod: string): number | null {
+    if (!mizanCtx?.found) return null;
+    if (mizanCtx.bakiyeByCode.has(anaKod)) return mizanCtx.bakiyeByCode.get(anaKod)!;
+    const codes = [...mizanCtx.bakiyeByCode.keys()];
+    let sum = 0;
+    let any = false;
+    for (const c of codes) {
+      if (!prefixRegex.test(c)) continue;
+      const isLeaf = !codes.some((o) => o !== c && o.startsWith(`${c}.`));
+      if (isLeaf) {
+        sum += mizanCtx.bakiyeByCode.get(c)!;
+        any = true;
+      }
+    }
+    return any ? sum : null;
+  }
+
+  // OZELLIKLI HESAP KATALOGU — deklaratif bilgilendirici uyarilar.
+  //   Amac: tek duzen hesap planinin "ozellikli" (surli/vergisel sonucu olan) hesaplarinda cari Mizan'da
+  //   bakiye gorulunce, o hesabin mevzuattan dogan kuralini BILGI olarak hatirlatmak. Sistem KARAR VERMEZ
+  //   (orn "3 yil doldu" demez); sadece "burada su kural var, kontrol et" der — son soz musavirde.
+  //   Cari donem Mizan'i yeterli; gecmis yil verisi GEREKMEZ. Gurultu icin her hesaba mantikli bakiye esigi.
+  //   yon: bakiyenin ANLAMLI yonu (BORC → borc bakiye, ALACAK → alacak bakiye). Kod finding.category'dir;
+  //   kullanici rule-settings ile tek tek kapatabilir. Not: mevzuat sure/oran/esikleri genel cercevedir,
+  //   kesin karar icin guncel mevzuata bakilmalidir (bu yuzden mesajlarda "kontrol edin" denir).
+  private readonly ozellikliHesapKatalogu: Array<{
+    code: string;
+    ad: string;
+    anaKod: string;
+    prefix: RegExp;
+    yon: 'BORC' | 'ALACAK';
+    esik: number;
+    mevzuat: string;
+    mesaj: (bakiye: string) => string;
+  }> = [
+    {
+      code: 'OZELLIKLI_549_YENILEME_FONU',
+      ad: '549 Ozel Fonlar',
+      anaKod: '549',
+      prefix: /^549(?:[.\-]|$)/,
+      yon: 'ALACAK',
+      esik: 1,
+      mevzuat: 'VUK 328',
+      mesaj: (b) =>
+        `549 Ozel Fonlar'da ${b} TL bakiye var. Yenileme fonu ise, satilan sabit kiymetin kari 3 yil icinde yeni kiymet aliminda kullanilmali; sure dolduysa donem karina (matraha) eklenmeli. Fonun olusma yilini ve kullanim durumunu kontrol edin.`,
+    },
+    {
+      code: 'OZELLIKLI_580_ZARAR_MAHSUP',
+      ad: '580 Gecmis Yillar Zararlari',
+      anaKod: '580',
+      prefix: /^580(?:[.\-]|$)/,
+      yon: 'BORC',
+      esik: 1,
+      mevzuat: 'KVK 9',
+      mesaj: (b) =>
+        `580 Gecmis Yillar Zararlari'nda ${b} TL bakiye var. Kurum kazancindan mahsup, zararin dogdugu yildan itibaren 5 yil ile sinirlidir; suresi dolan zarar mahsup edilemez. Zararin hangi yildan geldigini ve mahsup suresini kontrol edin.`,
+    },
+    {
+      code: 'OZELLIKLI_501_ODENMEMIS_SERMAYE',
+      ad: '501 Odenmemis Sermaye',
+      anaKod: '501',
+      prefix: /^501(?:[.\-]|$)/,
+      yon: 'BORC',
+      esik: 1,
+      mevzuat: 'TTK 344',
+      mesaj: (b) =>
+        `501 Odenmemis Sermaye'de ${b} TL bakiye var. Taahhut edilen sermayenin bu kismi henuz odenmemis; kanuni sure icinde tamamlanmali. Odeme durumunu ve sureyi kontrol edin.`,
+    },
+    {
+      code: 'OZELLIKLI_472_KIDEM_KARSILIGI',
+      ad: '472 Kidem Tazminati Karsiligi',
+      anaKod: '472',
+      prefix: /^472(?:[.\-]|$)/,
+      yon: 'ALACAK',
+      esik: 1,
+      mevzuat: 'KVK 8 / KKEG',
+      mesaj: (b) =>
+        `472 Kidem Tazminati Karsiligi'nda ${b} TL bakiye var. Ayrilan kidem karsiligi vergi matrahindan indirilemez (KKEG); gider ancak fiilen odendiginde kabul edilir. Beyanda KKEG olarak dikkate alinip alinmadigini kontrol edin.`,
+    },
+    {
+      code: 'OZELLIKLI_331_ORTULU_SERMAYE',
+      ad: '331 Ortaklara Borclar',
+      anaKod: '331',
+      prefix: /^331(?:[.\-]|$)/,
+      yon: 'ALACAK',
+      esik: 100000,
+      mevzuat: 'KVK 11-12',
+      mesaj: (b) =>
+        `331 Ortaklara Borclar'da ${b} TL bakiye var. Ortaktan alinan borc oz sermayenin 3 katini asarsa asan kisim ortulu sermaye sayilir ve bu borca islenen faiz/kur farki KKEG olur. Oz sermaye ile karsilastirip kontrol edin.`,
+    },
+    {
+      code: 'OZELLIKLI_340_ALINAN_AVANS_KDV',
+      ad: '340 Alinan Siparis Avanslari',
+      anaKod: '340',
+      prefix: /^340(?:[.\-]|$)/,
+      yon: 'ALACAK',
+      esik: 1000,
+      mevzuat: 'KDVK 10',
+      mesaj: (b) =>
+        `340 Alinan Siparis Avanslari'nda ${b} TL bakiye var. Avans niteligine gore KDV dogmus olabilir (mal/hizmet teslimi baslamissa). Avansin durumunu ve KDV hesaplanip hesaplanmadigini kontrol edin.`,
+    },
+    {
+      code: 'OZELLIKLI_128_SUPHELI_ALACAK',
+      ad: '128 Supheli Ticari Alacaklar',
+      anaKod: '128',
+      prefix: /^128(?:[.\-]|$)/,
+      yon: 'BORC',
+      esik: 1,
+      mevzuat: 'VUK 323',
+      mesaj: (b) =>
+        `128 Supheli Ticari Alacaklar'da ${b} TL bakiye var. Supheli alacak karsiligi (129) ancak dava/icra safhasindaki alacaklar icin ayrilabilir ve gider yazilabilir. Karsiligin (129) ayrilip ayrilmadigini ve dava/icra sartini kontrol edin.`,
+    },
+    {
+      code: 'OZELLIKLI_300_KREDI_FAIZ_KUR',
+      ad: '300 Banka Kredileri',
+      anaKod: '300',
+      prefix: /^300(?:[.\-]|$)/,
+      yon: 'ALACAK',
+      esik: 50000,
+      mevzuat: 'VUK / KVK 11',
+      mesaj: (b) =>
+        `300 Banka Kredileri'nde ${b} TL bakiye var. Donem sonunda islemis faiz tahakkuku ve (dovizli ise) kur degerlemesi yapilmis olmali; yabanci kaynak oz kaynagi asiyorsa finansman gideri kisitina (KVK 11) da dikkat edin.`,
+    },
+    {
+      code: 'OZELLIKLI_280_DONEMSELLIK_GIDER',
+      ad: '280 Gelecek Yillara Ait Giderler',
+      anaKod: '280',
+      prefix: /^280(?:[.\-]|$)/,
+      yon: 'BORC',
+      esik: 1,
+      mevzuat: 'VUK / donemsellik',
+      mesaj: (b) =>
+        `280 Gelecek Yillara Ait Giderler'de ${b} TL bakiye var. Pesin odenen cok donemli giderin (kira, sigorta vb.) ait oldugu donemlere dogru dagitildigini kontrol edin (donemsellik ilkesi).`,
+    },
+    {
+      code: 'OZELLIKLI_480_DONEMSELLIK_GELIR',
+      ad: '480 Gelecek Yillara Ait Gelirler',
+      anaKod: '480',
+      prefix: /^480(?:[.\-]|$)/,
+      yon: 'ALACAK',
+      esik: 1,
+      mevzuat: 'VUK / donemsellik',
+      mesaj: (b) =>
+        `480 Gelecek Yillara Ait Gelirler'de ${b} TL bakiye var. Pesin tahsil edilen cok donemli gelirin ait oldugu donemlere dogru dagitildigini kontrol edin (donemsellik ilkesi).`,
+    },
+    {
+      code: 'OZELLIKLI_502_ENFLASYON_DUZELTME',
+      ad: '502 Sermaye Duzeltmesi Olumlu Farklari',
+      anaKod: '502',
+      prefix: /^502(?:[.\-]|$)/,
+      yon: 'ALACAK',
+      esik: 1,
+      mevzuat: 'VUK mukerrer 298',
+      mesaj: (b) =>
+        `502 Sermaye Duzeltmesi Olumlu Farklari'nda ${b} TL bakiye var. Bu fark sermayeye eklenebilir; isletmeden cekilir veya sermayeye eklenmeden baska hesaba aktarilirsa vergiye tabi olur. Kullanim seklini kontrol edin.`,
+    },
+  ];
+
+  // Katalog motoru: cari Mizan bakiyesi anlamli yonde esigi asan ozellikli hesaplar icin BILGI bulgusu uretir.
+  private analyzeOzellikliHesapKatalogu(
+    rows: ParsedEDefterFisLine[],
+    mizanCtx: MizanCtx | null,
+  ): FindingDraft[] {
+    if (!mizanCtx?.found) return [];
+    const findings: FindingDraft[] = [];
+    for (const kural of this.ozellikliHesapKatalogu) {
+      const raw = this.mizanBakiyeForPrefix(mizanCtx, kural.prefix, kural.anaKod);
+      if (raw == null) continue;
+      // yonluBakiye: BORC hesabi icin borc-bakiye (+), ALACAK hesabi icin alacak-bakiye (raw negatif → cevir).
+      const yonluBakiye = kural.yon === 'BORC' ? raw : -raw;
+      if (yonluBakiye < kural.esik) continue;
+      // Bulguyu, o hesap kodunun gectigi ilk fis satirina capala (defterde hareket varsa); yoksa capasiz.
+      const anchor = rows.find((r) => kural.prefix.test(String(r.hesapKodu || '')));
+      findings.push({
+        severity: 'INFO',
+        category: kural.code,
+        message: `${kural.mesaj(this.fmt(yonluBakiye))} [Mevzuat: ${kural.mevzuat}]`,
+        voucherKey: anchor?.voucherKey ?? null,
+        rowIndex: anchor?.rowIndex ?? null,
+        hesapKodu: anchor?.hesapKodu ?? kural.anaKod,
+        detail: { hesap: kural.ad, bakiye: yonluBakiye, yon: kural.yon, mevzuat: kural.mevzuat },
+      });
+    }
+    return findings;
   }
 
   // PAYLASILAN: bir hesabin satirlarindan gun-sonu negatif bakiye gunlerini bulur (acilis + kumulatif
