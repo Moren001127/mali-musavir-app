@@ -191,4 +191,25 @@ export class IsletmeHesapOzetiController {
     return this.service.getLucaJob(jobId, req.user.tenantId);
   }
 
+  /**
+   * Bir dönem için mükellefe WhatsApp bilgilendirme mesajı (dönem mali durum özeti).
+   * dryRun (varsayılan true) → yalnız önizleme { telefon, mesaj }; gönderim yapmaz.
+   * dryRun:false → gerçek gönderim (telefon opsiyonel override).
+   */
+  @Post(':id/whatsapp-bilgi')
+  @Roles('ADMIN', 'STAFF')
+  @HttpCode(HttpStatus.OK)
+  whatsappBilgi(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body() body: { dryRun?: boolean; telefon?: string },
+  ) {
+    return this.service.whatsappBilgi({
+      tenantId: req.user.tenantId,
+      id,
+      dryRun: body?.dryRun !== false,
+      telefon: body?.telefon,
+    });
+  }
+
 }

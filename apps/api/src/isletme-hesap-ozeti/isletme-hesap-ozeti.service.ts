@@ -1,4 +1,5 @@
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { PrismaService } from '../prisma/prisma.service';
 import { LucaService } from '../luca/luca.service';
 import { ExcelParserService } from '../kdv-control/excel-parser.service';
@@ -29,7 +30,140 @@ export class IsletmeHesapOzetiService {
     private readonly prisma: PrismaService,
     private readonly luca: LucaService,
     private readonly excelParser: ExcelParserService,
+    private readonly moduleRef: ModuleRef,
   ) {}
+
+  // ── WhatsApp bilgilendirme sabitleri ──
+  private static readonly DONEM_ROMAN: Record<number, string> = { 1: 'I', 2: 'II', 3: 'III', 4: 'IV' };
+  private static readonly DONEM_RANGE: Record<number, string> = {
+    1: 'Ocak – Mart',
+    2: 'Nisan – Haziran',
+    3: 'Temmuz – Eylül',
+    4: 'Ekim – Aralık',
+  };
+  // Geçici vergi beyan + ödeme son günü: dönemi izleyen İKİNCİ ayın 17'si.
+  //   Q1(Oca-Mar)→17 Mayıs · Q2(Nis-Haz)→17 Ağustos · Q3(Tem-Eyl)→17 Kasım · Q4(Eki-Ara)→17 Şubat (izleyen yıl).
+  //   Not: 17'si resmi tatil/hafta sonuna denk gelirse yasal olarak sonraki iş gününe kayabilir.
+  private odemeVadesi(donem: number, yil: number): string {
+    switch (donem) {
+      case 1: return `17 Mayıs ${yil}`;
+      case 2: return `17 Ağustos ${yil}`;
+      case 3: return `17 Kasım ${yil}`;
+      case 4: return `17 Şubat ${yil + 1}`;
+      default: return '';
+    }
+  }
+
+  private fmtPara(n: any): string {
+    const v = Number(n) || 0;
+    return v.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  /** Bir İHÖ dönem kaydından kurumsal WhatsApp bilgilendirme metni üretir (WhatsApp *bold* biçimi). */
+  private buildWhatsappMesaj(ozet: any, taxpayerAd: string): string {
+    const donem = Number(ozet.donem);
+    const roman = IsletmeHesapOzetiService.DONEM_ROMAN[donem] || String(donem);
+    const range = IsletmeHesapOzetiService.DONEM_RANGE[donem] || '';
+    const satis = Number(ozet.satisHasilati || 0);
+    const digerGelir = Number(ozet.digerGelir || 0);
+    const smm = Number(ozet.satilanMalMaliyeti || 0);
+    const giderler = Number(ozet.donemIciGiderler || 0);
+    const kar = Number(ozet.donemKari || 0);
+    const oncekiOdenen = Number(ozet.oncekiOdenenGecVergi || 0);
+    const odenecek = Number(ozet.odenecekGecVergi || 0);
+    const kalanStok = Number(ozet.kalanStok || 0);
+    // Stoklu firma (ticari) mı, hizmet firması mı? Stok/mal hareketi varsa stok satırları eklenir.
+    const stoklu =
+      Number(ozet.malAlisi || 0) > 0 ||
+      kalanStok > 0 ||
+      Number(ozet.donemBasiStok || 0) > 0 ||
+      smm > 0;
+    const P = (n: number) => `*${this.fmtPara(n)} ₺*`;
+
+    const satirlar: string[] = [
+      '*MOREN MALİ MÜŞAVİRLİK*',
+      `📊 *İşletme Hesap Özeti — ${ozet.yil} · ${roman}. Geçici Vergi Dönemi*`,
+      `_${range}_`,
+      '',
+      `Sayın *${taxpayerAd}*,`,
+      `${ozet.yil} yılı ${donem}. geçici vergi dönemi (${range}) itibarıyla işletmenizin özet mali durumu aşağıdadır:`,
+      '',
+      `💵 Satışlar: ${P(satis)}`,
+    ];
+    if (digerGelir > 0) satirlar.push(`➕ Diğer Gelirler: ${P(digerGelir)}`);
+    if (stoklu) satirlar.push(`📦 Satılan Malın Maliyeti: ${P(smm)}`);
+    satirlar.push(`🧾 Giderler: ${P(giderler)}`);
+    satirlar.push(kar >= 0 ? `📈 Dönem Kârı: ${P(kar)}` : `📉 Dönem Zararı: ${P(Math.abs(kar))}`);
+    satirlar.push(`↪️ Önceki Dönem Ödenen Geçici Vergi: ${P(oncekiOdenen)}`);
+    satirlar.push(`💰 Bu Dönem Ödenecek Geçici Vergi: ${P(odenecek)}`);
+    if (stoklu) satirlar.push(`📦 Dönem Sonu Stok: ${P(kalanStok)}`);
+
+    const vade = this.odemeVadesi(donem, Number(ozet.yil));
+    if (vade) satirlar.push('', `🗓️ Ödeme Vadesi: ${vade} tarihine kadar.`);
+
+    satirlar.push(
+      '',
+      'ℹ️ Bu mesaj bilgilendirme amacıyla gönderilmiştir.',
+      'Sorularınız için bize ulaşabilirsiniz. 🙏',
+    );
+    return satirlar.join('\n');
+  }
+
+  /**
+   * Bir dönem İHÖ kaydından kurumsal WhatsApp bilgilendirme mesajı üretir ve mükellefe gönderir.
+   * dryRun (varsayılan true) → hiçbir şey göndermez, sadece { telefon, mesaj } önizleme döner.
+   * dryRun:false → WhatsAppService ile gönderir (telefon opsiyonel override).
+   */
+  async whatsappBilgi(params: {
+    tenantId: string;
+    id: string;
+    dryRun?: boolean;
+    telefon?: string;
+  }) {
+    const ozet = await (this.prisma as any).isletmeHesapOzeti.findFirst({
+      where: { id: params.id, tenantId: params.tenantId },
+    });
+    if (!ozet) throw new NotFoundException('İHÖ kaydı bulunamadı');
+
+    const taxpayer = await (this.prisma as any).taxpayer.findFirst({
+      where: { id: ozet.taxpayerId, tenantId: params.tenantId },
+      select: { phone: true, phones: true, firstName: true, lastName: true, companyName: true },
+    });
+    const taxpayerAd =
+      taxpayer?.companyName ||
+      [taxpayer?.firstName, taxpayer?.lastName].filter(Boolean).join(' ') ||
+      'Mükellefimiz';
+    const telefon = String(
+      params.telefon ||
+        taxpayer?.phone ||
+        (Array.isArray(taxpayer?.phones) ? taxpayer.phones[0] : '') ||
+        '',
+    ).trim();
+
+    const mesaj = this.buildWhatsappMesaj(ozet, taxpayerAd);
+
+    // Önizleme — hiçbir şey gönderme
+    if (params.dryRun !== false) {
+      return { ok: true, dryRun: true, telefon, mesaj };
+    }
+
+    if (!telefon) {
+      throw new BadRequestException(
+        'Mükellef kartında telefon numarası yok — önce mükellef kartına telefon ekleyin.',
+      );
+    }
+
+    // WhatsApp servisi dinamik çözülür (modül döngüsünü önlemek için — Fatura Merkezi ile aynı desen)
+    const { WhatsAppService } = await import('../whatsapp/whatsapp.service');
+    const whatsapp = this.moduleRef.get(WhatsAppService, { strict: false });
+    const sonuc = await whatsapp.sendMessageDetailed(telefon, mesaj, params.tenantId);
+    if (!sonuc.ok) {
+      throw new BadRequestException(
+        `WhatsApp gönderilemedi: ${sonuc.error || sonuc.errorCode || 'bilinmeyen hata'}`,
+      );
+    }
+    return { ok: true, telefon };
+  }
 
   /** Boş bir çeyrek kaydı oluştur (manuel veri girişine açık) */
   async olustur(params: {

@@ -130,6 +130,12 @@ export const isletmeHesapOzetiApi = {
     api
       .get(`/isletme-hesap-ozeti/export/${taxpayerId}/${yil}`, { responseType: 'arraybuffer' })
       .then((r) => r.data as ArrayBuffer),
+
+  // WhatsApp bilgilendirme — iki aşamalı: önce dryRun önizleme, sonra onayla gönder
+  whatsappBilgi: (id: string, body: { dryRun: boolean; telefon?: string }) =>
+    api
+      .post(`/isletme-hesap-ozeti/${id}/whatsapp-bilgi`, body)
+      .then((r) => r.data as { ok: boolean; dryRun?: boolean; telefon: string; mesaj?: string }),
 };
 
 export function fmtTRY(n: number | string | null | undefined): string {
