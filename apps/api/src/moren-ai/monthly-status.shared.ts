@@ -941,10 +941,20 @@ export function buildTaxpayerQuickReply(text: string): { reply: string; kind: st
   const n = normalizeForIntent(text);
   const wc = n.split(/\s+/).filter(Boolean).length;
 
-  // SELAMLAMA (sadece kısa, başka niyet yoksa)
-  if (wc <= 4 && /\b(merhaba|merhabalar|selam|selamlar|slm|mrb|gunaydin|iyi gunler|iyi aksamlar|kolay gelsin|nasilsin|nasilsiniz|naber|ne haber)\b/.test(n)
+  // SELAMLAMA (sadece kısa, başka niyet yoksa). "selamun aleykum / esselamu aleykum /
+  //   aleykum selam" varyasyonları da yakalanır — yoksa agentic'e düşüp laubali cevap üretiyordu.
+  if (wc <= 4 &&
+      (/\b(merhaba|merhabalar|selam|selamlar|slm|mrb|gunaydin|iyi gunler|iyi aksamlar|kolay gelsin|nasilsin|nasilsiniz|naber|ne haber)\b/.test(n)
+        || /selam[uü]?n? ?aleyk[uü]m|esselam[uü]? ?aleyk[uü]m|aleyk[uü]m ?selam/.test(n))
       && !/(borc|kdv|beyan|fatura|odeme|ne kadar|ne zaman|kac|mi$|var mi)/.test(n)) {
-    return { reply: 'Merhaba, hoş geldiniz. Size nasıl yardımcı olabilirim?', kind: 'selamlama' };
+    // Dini selama dini karşılık; diğerlerine nötr — ikisi de KURUMSAL, "siz" dili, laubalilik yok.
+    const diniSelam = /aleyk[uü]m|selam[uü]n|esselam/.test(n);
+    return {
+      reply: diniSelam
+        ? 'Aleykümselam, hoş geldiniz. Size nasıl yardımcı olabilirim?'
+        : 'Merhaba, hoş geldiniz. Size nasıl yardımcı olabilirim?',
+      kind: 'selamlama',
+    };
   }
   // TEŞEKKÜR
   if (wc <= 5 && (/\b(tesekkur|tesekkurler|eyvallah|tsk)\b/.test(n) || /\bsag\s?ol/.test(n) || /\bsaol/.test(n))) {

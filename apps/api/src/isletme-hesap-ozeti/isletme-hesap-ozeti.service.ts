@@ -78,7 +78,8 @@ export class IsletmeHesapOzetiService {
       kalanStok > 0 ||
       Number(ozet.donemBasiStok || 0) > 0 ||
       smm > 0;
-    const P = (n: number) => `*${this.fmtPara(n)} ₺*`;
+    //   = bölünmez boşluk: WhatsApp'ta tutar ile ₺ asla ayrı satıra düşmez.
+    const P = (n: number) => `*${this.fmtPara(n)} ₺*`;
 
     const satirlar: string[] = [
       '*MOREN MALİ MÜŞAVİRLİK*',
