@@ -1876,14 +1876,18 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     };
   }
 
-  // GIB e-Arsiv istekleri Turkiye proxy'sinden (TURMOB_PROXY_URL) cikar. Proxy yoksa direkt.
+  // GIB e-Arsiv istekleri DIREKT cikar (proxy YOK). Kanit (2026-07-28 canli): GIB earsivportal
+  //   yurtdisi IP'yi engellemiyor (Railway'den direkt zaten calisiyordu); TURMOB proxy'sine (tinyproxy)
+  //   sokunca GIB'e CONNECT 30sn timeout veriyordu ("aborted due to timeout" — iki mukellefte de).
+  //   TURMOB'un aksine GIB proxy GEREKTIRMEZ. Ileride GIB yurtdisi IP'yi kisitlarsa EARSIV_PROXY_URL
+  //   (ayri env, varsayilan bos) ile acilir; TURMOB_PROXY_URL'e BAGLAMA (o TURMOB'a ozel).
   private earsivFetch(url: string, init: any = {}): Promise<Response> {
     if (this._earsivDispatcher === undefined) {
-      const purl = String(process.env.TURMOB_PROXY_URL || process.env.PORTAL_TR_PROXY_URL || '').trim();
+      const purl = String(process.env.EARSIV_PROXY_URL || '').trim();
       if (purl) {
         try {
           this._earsivDispatcher = new (require('undici').ProxyAgent)(purl);
-          this.logger.log('GIB e-Arsiv proxy aktif (Turkiye cikis)');
+          this.logger.log('GIB e-Arsiv proxy aktif (EARSIV_PROXY_URL)');
         } catch (e: any) {
           this.logger.warn(`GIB e-Arsiv proxy kurulamadi: ${e?.message}`);
           this._earsivDispatcher = null;
