@@ -1521,11 +1521,19 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
                 const { matrah, kdv } = kdvParts(d);
                 const ocrCls = d.ocrStatus === 'IN_PROGRESS' ? 'scanning' : justDone.has(d.id) ? 'justdone' : d.ocrStatus === 'PENDING' ? 'queued' : undefined;
                 const fisAcik = fisDetayId === d.id;
-                // Muhasebe fişi STANDART SIRA (kullanıcı isteği): Matrah → KDV → Tevkifat → Cari.
+                // Muhasebe fişi STANDART SIRA (kullanıcı isteği): her KDV oranı için Matrah→KDV birlikte,
+                //   sonra Tevkifat, en altta Cari. Ör: Matrah %1 → KDV %1 → Matrah %20 → KDV %20 → Tevkifat → Cari.
                 //   Yalnız GÖRÜNTÜLEME sırası; BORÇ/ALACAK ve tutar mantığı DEĞİŞMEZ.
-                const FIS_GRUP_SIRA: Record<string, number> = { matrah: 0, vergi: 1, 'vergi-sorumlu': 2, tevkifat: 3, cari: 4 };
+                const fisSira = (l: any): number => {
+                  const g = String(l?.group || '');
+                  if (g === 'cari') return 100000;
+                  if (g === 'tevkifat') return 90000;
+                  if (g === 'vergi-sorumlu') return 80000;
+                  const oran = Number(l?.rate ?? l?.oran ?? 0) || 0; // matrah/vergi: orana göre grupla, matrah önce KDV sonra
+                  return oran * 10 + (g === 'vergi' ? 1 : 0);
+                };
                 const fisLines: any[] = (Array.isArray(d.lines) ? [...d.lines] : [])
-                  .sort((a: any, b: any) => (FIS_GRUP_SIRA[String(a?.group || '')] ?? 9) - (FIS_GRUP_SIRA[String(b?.group || '')] ?? 9));
+                  .sort((a: any, b: any) => fisSira(a) - fisSira(b));
                 const docUyarilar: any[] = Array.isArray((d.ocrData as any)?.uyarilar) ? (d.ocrData as any).uyarilar : [];
                 const docUyariHata = docUyarilar.filter((u: any) => u?.siddet === 'hata').length;
                 const docUyariRenk = docUyariHata > 0 ? '#dc2626' : '#d97706';
@@ -2124,11 +2132,11 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
                     </td>
                     <td>
                       {r.aktarildi ? (
-                        <span title="Luca'ya aktarıldı" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#15803d', fontWeight: 700, fontSize: 11.5, whiteSpace: 'nowrap' }}><span className="okico">✓</span> Aktarıldı</span>
+                        <span title="Luca'ya aktarıldı" style={{ display: 'inline-flex', alignItems: 'center', gap: 3, color: '#15803d', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap' }}>✓ Aktarıldı</span>
                       ) : r.zatenVar ? (
-                        <span title="Muhasebeleştirildi — Luca'ya henüz aktarılmadı" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#b8862b', fontWeight: 700, fontSize: 11.5, whiteSpace: 'nowrap' }}>◐ Muhasebeleşti</span>
+                        <span title="Muhasebeleştirildi — Luca'ya henüz aktarılmadı" style={{ display: 'inline-flex', alignItems: 'center', gap: 3, color: '#b8862b', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap' }}>◐ Muhasebe</span>
                       ) : (
-                        <span title="Henüz muhasebeleştirilmedi / aktarılmadı" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#94a3b8', fontWeight: 600, fontSize: 11.5, whiteSpace: 'nowrap' }}><span className="xico">×</span> Aktarılmadı</span>
+                        <span title="Henüz muhasebeleştirilmedi / aktarılmadı" style={{ display: 'inline-flex', alignItems: 'center', gap: 3, color: '#94a3b8', fontWeight: 600, fontSize: 11, whiteSpace: 'nowrap' }}>× Yok</span>
                       )}
                     </td>
                   </tr>
@@ -5337,24 +5345,24 @@ const CSS = `
    Kullanıcı: v1 fazla renkliydi, daha kaliteli olsun. Renk şeritleri KALDIRILDI; nötr slate
    palet + tipografi hiyerarşisi + ferah boşluk + tabular hizalı rakamlar. Yapı/mantık AYNEN.
    BEĞENİLMEZSE bu blok SİLİNİR → birebir eski hale döner. */
-#fm-root .muhmain .fgrps{gap:11px}
-#fm-root .muhmain .fgrp{position:relative;background:#fff;border:1px solid #e8ebf1;border-radius:14px;box-shadow:0 1px 2px rgba(15,23,42,.035);overflow:hidden;padding:0}
+#fm-root .muhmain .fgrps{gap:9px}
+#fm-root .muhmain .fgrp{position:relative;background:#fff;border:1px solid #e8ebf1;border-radius:13px;box-shadow:0 1px 2px rgba(15,23,42,.035);overflow:hidden;padding:0}
 #fm-root .muhmain .fgrp::before{content:none !important}
 #fm-root .muhmain .fgrp[data-g]{border-left:1px solid #e8ebf1}
-/* başlık: küçük uppercase, sakin */
-#fm-root .muhmain .fgh{padding:12px 16px 10px;background:#fff;border-bottom:1px solid #f1f3f8;display:flex;align-items:center;gap:8px}
+/* başlık: küçük uppercase, sakin (kompakt) */
+#fm-root .muhmain .fgh{padding:10px 15px 8px;background:#fff;border-bottom:1px solid #f1f3f8;display:flex;align-items:center;gap:8px}
 #fm-root .muhmain .fgh > *:first-child{font-size:11px;font-weight:700;letter-spacing:.9px;text-transform:uppercase;color:#3b4759}
 #fm-root .muhmain .fgs{margin-left:auto;font-size:9px;font-weight:700;letter-spacing:.9px;padding:2px 8px;border-radius:6px;background:#f4f6fa;color:#8a97ab;text-transform:uppercase}
-/* satır: ferah, ince ayrım */
-#fm-root .muhmain .frow{padding:11px 16px;gap:12px;align-items:center;border-bottom:1px solid #f6f7fb}
+/* satır: ferah ama kompakt */
+#fm-root .muhmain .frow{padding:9px 15px;gap:12px;align-items:center;border-bottom:1px solid #f6f7fb}
 #fm-root .muhmain .frow:hover{background:#fbfcfe}
 /* rakam: tabular, koyu, sıkı */
 #fm-root .muhmain .money{font-variant-numeric:tabular-nums;font-weight:600;color:#111a2b;letter-spacing:-.2px}
-/* toplam: üstte küçük label hissi + büyük değer */
-#fm-root .muhmain .fgt{padding:11px 16px;background:#fbfcfe;border-top:1px solid #f1f3f8;font-size:10.5px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;color:#8a97ab}
-#fm-root .muhmain .fgt b{font-variant-numeric:tabular-nums;font-size:15px;font-weight:800;color:#0d1626;letter-spacing:-.3px;text-transform:none}
+/* toplam: sade, İNCE (kullanıcı: fazla kalındı) + kompakt padding (kart sığsın) */
+#fm-root .muhmain .fgt{padding:8px 15px;background:#fbfcfe;border-top:1px solid #f1f3f8;font-size:10px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;color:#9aa6b8}
+#fm-root .muhmain .fgt b{font-variant-numeric:tabular-nums;font-size:13px;font-weight:600;color:#1c2740;letter-spacing:-.2px;text-transform:none}
 /* + satır: minimal, ikincil */
-#fm-root .muhmain .frowadd{padding:9px 16px;color:#98a3b6;font-weight:600;font-size:11.5px;background:transparent;border-top:1px solid #f6f7fb}
+#fm-root .muhmain .frowadd{padding:8px 15px;color:#98a3b6;font-weight:600;font-size:11.5px;background:transparent;border-top:1px solid #f6f7fb}
 #fm-root .muhmain .frowadd:hover{color:#475569;background:#fafbfd}
 #fm-root .muhmain .frowdel{opacity:.4;transition:opacity .15s,color .15s}
 #fm-root .muhmain .frowdel:hover{opacity:1;color:#dc2626}
@@ -5366,4 +5374,11 @@ const CSS = `
 @keyframes fmshimmer{0%{background-position:-45% 0}100%{background-position:145% 0}}
 #fm-root .qspin{width:12px;height:12px;border:2px solid rgba(8,145,178,.28);border-top-color:#0891b2;border-radius:50%;display:inline-block;animation:fmspin .7s linear infinite;flex:none}
 @keyframes fmspin{to{transform:rotate(360deg)}}
+/* e-Arşiv liste tablosu: tutar sütunları dolunca sıkışıp başlıklar iç içe giriyordu (GENEL TOPLAM↔ONAY).
+   Kompakt font + tek-satır başlık/hücre → sütunlar ayrık kalır; ad sütunu normal sarar. */
+#fm-root .earsivtable{font-size:12px}
+#fm-root .earsivtable th,#fm-root .earsivtable td{padding:9px 10px;white-space:nowrap;vertical-align:middle}
+#fm-root .earsivtable th{font-size:10px;letter-spacing:.3px}
+#fm-root .earsivtable td.partyname,#fm-root .earsivtable th:nth-child(2){white-space:normal;min-width:120px;max-width:200px}
+#fm-root .earsivtable td.num,#fm-root .earsivtable th.num{text-align:right}
 `;
