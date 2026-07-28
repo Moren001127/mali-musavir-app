@@ -1714,6 +1714,9 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
     return !updated || Date.now() - updated < 10 * 60 * 1000;
   });
   const waitForFirstRows = !!activeJob && rows.length === 0;
+  // İŞ SÜRÜYOR göstergesi (kullanıcı: "faturalar çekiliyor şeridi çıkmıyor"): satır gelmiş olsa bile
+  //   iş (belge indirme/prefetch) hâlâ pending/running ise gösterge kalsın (hesap planındaki gibi).
+  const earsivJobRunning = !!activeJob;
   const lastJob = (jobsQ.data || [])[0];
   useEffect(() => {
     if (source !== 'earsiv' || !taxpayerId) return;
@@ -2062,9 +2065,9 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
       </div>
 
       {source === 'earsiv' ? (
-        <div className={`card sourcepanel ${earsivOverlayBusy ? 'isbusy' : ''}`}>
+        <div className={`card sourcepanel ${(earsivOverlayBusy || earsivJobRunning) ? 'isbusy' : ''}`}>
           <div className="ch sourcehead">
-            <span className="mu">{waitForFirstRows ? 'Sorgu/aktarım çalışıyor' : lastJob ? `Son iş: ${lastJob.status} · ${fmtDate(lastJob.updatedAt || lastJob.createdAt)}` : 'Henüz sorgu yok'}</span>
+            <span className="mu">{earsivJobRunning ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#0891b2', fontWeight: 600 }}><span className="qspin" /> Faturalar çekiliyor…</span> : lastJob ? `Son iş: ${lastJob.status} · ${fmtDate(lastJob.updatedAt || lastJob.createdAt)}` : 'Henüz sorgu yok'}</span>
             <div className="sp" />
             <button className="btn sm fetch" disabled={!taxpayerId || rangeInvalid || sorgulaMut.isPending || waitForFirstRows} title={rangeInvalid ? 'Tarih aralığı hatalı: başlangıç bitişten sonra' : undefined} onClick={() => sorgulaMut.mutate()}><Ico html={I.sync} size={13} /> {sorgulaMut.isPending ? 'Sorgulanıyor…' : 'Sorgula'}</button>
             <button className="btn sm primary" disabled={!taxpayerId || aktarMut.isPending || waitForFirstRows || processable.length === 0} onClick={() => aktarMut.mutate()}><Ico html={I.download} size={13} /> {aktarMut.isPending ? 'Aktarılıyor…' : `${selectedRefs.length ? selectedRefs.length : processable.length} faturayı aktar`}</button>
