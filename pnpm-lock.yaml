@@ -173,6 +173,9 @@ importers:
       tesseract.js:
         specifier: ^7.0.0
         version: 7.0.0(encoding@0.1.13)
+      undici:
+        specifier: ^6.21.0
+        version: 6.25.0
       xlsx:
         specifier: ^0.18.5
         version: 0.18.5
