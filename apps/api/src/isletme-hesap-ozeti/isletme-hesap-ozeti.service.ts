@@ -88,7 +88,7 @@ export class IsletmeHesapOzetiService {
       `Sayın *${taxpayerAd}*,`,
       `${ozet.yil} yılı ${donem}. geçici vergi dönemi (${range}) itibarıyla işletmenizin özet mali durumu aşağıdadır:`,
       '',
-      `🪙 Satışlar: ${P(satis)}`,
+      `📊 Satışlar: ${P(satis)}`,
     ];
     if (digerGelir > 0) satirlar.push(`➕ Diğer Gelirler: ${P(digerGelir)}`);
     if (stoklu) satirlar.push(`📦 Satılan Malın Maliyeti: ${P(smm)}`);
