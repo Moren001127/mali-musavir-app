@@ -6673,8 +6673,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         this.logger.log('TÜRMOB giriş 200 döndü ama oturum çerezi alındı — başarılı sayılıyor');
         return cookieHeader();
       }
-      // Kimlik reddi: TÜRMOB'un kendi uyarısını göster; yoksa TCKN/parola işaret et.
-      throw new Error(`TÜRMOB girişi başarısız${uyari ? ` — ${uyari}` : ' — TCKN/parola hatalı olabilir'} (HTTP ${loginRes.status})`);
+      // Kimlik reddi. TÜRMOB hatalı-giriş nedenini SUNUCU yanıtında yazmıyor (JS ile gösteriyor;
+      //   canlı kanıt: yanlış kimlikle POST → 200, gövdede hata metni YOK, sadece login sayfası).
+      //   O yüzden 200/redirect-dışı = TÜRMOB kullanıcı adı/parolayı KABUL ETMEDİ demektir. Eyleme
+      //   dönük mesaj ver: parola çoğu kez TÜRMOB'da değişmiştir, Entegratörler'den güncellenmeli.
+      if (uyari) throw new Error(`TÜRMOB girişi başarısız — ${uyari} (HTTP ${loginRes.status})`);
+      throw new Error(`TÜRMOB kullanıcı adı/parolası kabul edilmedi (HTTP ${loginRes.status}). Bu mükellefin TÜRMOB parolası büyük olasılıkla değişmiş — Entegratörler ekranından TÜRMOB parolasını güncelleyip tekrar deneyin.`);
     }
     // 3) Redirect hedefini İZLE — ASP.NET'te auth/session çerezi çoğu zaman bu adımda tamamlanır.
     //    (redirect izlenmezse liste isteği login'e geri atılıp 0 kayıt döner.)
