@@ -163,7 +163,29 @@ export class IsletmeHesapOzetiService {
         `WhatsApp gönderilemedi: ${sonuc.error || sonuc.errorCode || 'bilinmeyen hata'}`,
       );
     }
+    // Sohbet geçmişine GİDEN mesaj olarak kaydet → portal "WhatsApp Mesajlar" ekranında görünsün.
+    //   Ekran communicationLog (channel=WHATSAPP) okur; subject "gelen" İÇERMEZ (giden sayılır),
+    //   content başına [[wa_phone:...]] (telefon eşleşmesi). Kayıt hatası gönderimi bozmasın.
+    await this.logWhatsappOutgoing(ozet.taxpayerId, telefon, mesaj);
     return { ok: true, telefon };
+  }
+
+  /** Giden WhatsApp mesajını sohbet geçmişine (communicationLog) yazar — Mesajlar ekranında görünür. */
+  private async logWhatsappOutgoing(taxpayerId: string, telefon: string, mesaj: string) {
+    let waPhone = String(telefon || '').replace(/\D/g, '');
+    if (waPhone.startsWith('0')) waPhone = '90' + waPhone.slice(1);
+    else if (waPhone && !waPhone.startsWith('90')) waPhone = '90' + waPhone;
+    await (this.prisma as any).communicationLog
+      .create({
+        data: {
+          taxpayerId,
+          channel: 'WHATSAPP',
+          subject: 'WhatsApp İşletme Hesap Özeti bilgilendirmesi',
+          content: `[[wa_phone:${waPhone}]]${mesaj}`,
+          occurredAt: new Date(),
+        },
+      })
+      .catch(() => undefined);
   }
 
   /** Boş bir çeyrek kaydı oluştur (manuel veri girişine açık) */

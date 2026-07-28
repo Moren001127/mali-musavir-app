@@ -1460,6 +1460,23 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const sonuc = await whatsapp.sendMessageDetailed(telefon, mesaj, tenantId);
     this.logger.log(`[KDV-RAPOR-WA] tp=${opts.taxpayerId} donem=${report.period} tel=${telefon.slice(0, 4)}*** ok=${sonuc.ok}${sonuc.ok ? '' : ' hata=' + (sonuc.error || sonuc.errorCode || '?')}`);
     if (!sonuc.ok) throw new BadRequestException(`WhatsApp gönderilemedi: ${sonuc.error || sonuc.errorCode || 'bilinmeyen hata'}`);
+    // Sohbet geçmişine GİDEN mesaj olarak kaydet → portal "WhatsApp Mesajlar" ekranında görünsün.
+    //   Ekran communicationLog (channel=WHATSAPP) okur; subject "gelen" İÇERMEZ (giden), content
+    //   başına [[wa_phone:...]] (telefon eşleşmesi). Kayıt hatası gönderimi bozmasın.
+    let waPhone = String(telefon).replace(/\D/g, '');
+    if (waPhone.startsWith('0')) waPhone = '90' + waPhone.slice(1);
+    else if (waPhone && !waPhone.startsWith('90')) waPhone = '90' + waPhone;
+    await (this.prisma as any).communicationLog
+      .create({
+        data: {
+          taxpayerId: String(opts.taxpayerId || ''),
+          channel: 'WHATSAPP',
+          subject: 'WhatsApp KDV bilgilendirmesi',
+          content: `[[wa_phone:${waPhone}]]${mesaj}`,
+          occurredAt: new Date(),
+        },
+      })
+      .catch(() => undefined);
     return { ok: true, telefon };
   }
 
