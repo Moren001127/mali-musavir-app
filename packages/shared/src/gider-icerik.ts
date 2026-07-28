@@ -32,7 +32,11 @@ const ICERIK_KURAL: Array<[RegExp, string, string]> = [
   // ÖNCE yakala: satıcı akaryakıtçı (ör. ELİT PETROLCÜLÜK) olduğu için OCR/AI kalemi
   // giderTuru="akaryakıt" etiketlese bile "Motor Yağı" YAKIT sanılmasın (kullanıcı vakası:
   // 740.01.001 ARAÇ YAKIT'a gidiyordu; doğrusu ARAÇ BAKIM ONARIM — plan hesabı adıyla çözülür).
-  [/motor yagi|madeni yag|\bmotor yag\b|sanziman yagi|vites yagi|hidrolik yag|dislibox yagi|\bgres\b|yag degisim|antifriz|\badblue\b/, 'araç taşıt bakım onarım', 'genel_gider'],
+  // MAZOT/YAKIT PARÇASI ≠ YAKIT (kullanıcı vakası — EGE OTOMOTİV): "MAZOT POMPASI, FİLTRE MAZOT,
+  //   MAZOT BORU, RADYATÖR, SU/YAKIT POMPASI, POMPA DEĞİŞİM İŞÇİLİĞİ" araç BAKIM-ONARIM yedek
+  //   parçasıdır; içindeki "mazot" kelimesi yüzünden 740 YAKIT'a gidiyordu. Akaryakıt kuralından ÖNCE
+  //   yakala → "mazot" tek başına (yakıt) satır altında kalır, "mazot pompası" bakıma gider.
+  [/motor yagi|madeni yag|\bmotor yag\b|sanziman yagi|vites yagi|hidrolik yag|dislibox yagi|\bgres\b|yag degisim|antifriz|\badblue\b|mazot pompa|pompa mazot|filtre mazot|mazot filtre|mazot boru|boru radyator|\bradyator\b|su pompasi|yakit pompasi|pompa degis|\benjektor\b|mazot enjektor/, 'araç taşıt bakım onarım', 'genel_gider'],
   [/akaryakit|motorin|\bbenzin\b|\bmazot\b|\bdizel\b|\blpg\b|\bopet\b|\bshell\b|aytemiz|petrol ofisi|\bpetrol\b|totalenergies|yakit gideri|\byakit\b/, 'akaryakıt yakıt taşıt', 'genel_gider'],
   // NOT: eski hâlinde \bfiltre\b / \biscilik\b / \bmuayene\b / teshis TEK BAŞINA eşleşiyordu —
   //   "FİLTRE KAHVE", "MONTAJ İŞÇİLİĞİ" (inşaat), doktor "muayene" ücreti yanlışlıkla araç-bakım
