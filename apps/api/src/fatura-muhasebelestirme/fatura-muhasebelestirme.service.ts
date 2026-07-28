@@ -7220,7 +7220,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   üst sayfalar sessizce inmezdi (25+ faturalı TÜM mükellefleri etkiler). Ölçüt artık SADECE:
     //   sunucu daha fazla TOPLAM (recordsFiltered) bildiriyor ama biz daha az aldıysak sayfala.
     //   start, gerçek gelen satır sayısı kadar artar (döngü içinde), 25'lik de olsa tüm sayfalar toplanır.
-    if (rows.length > 0 && Number.isFinite(bildirilenToplam) && bildirilenToplam > rows.length) {
+    // NOT: TÜRMOB toplam-kayıt (recordsFiltered) sayısını her uçta VERMİYOR (canlı: Gökhan satış
+    //   ekranda "36 kayıt" yazıyor ama JSON'da tanınan toplam alanı yok → bildirilenToplam=NaN).
+    //   Bu yüzden toplam BİLİNMESE DE sonraki sayfayı yokluyoruz: dedup + boş-sayfa + eklenen=0
+    //   korumaları sonsuz döngüyü engeller (yeni satır gelmeyince durur). Toplam biliniyorsa ona
+    //   kadar gider (erken dur, gereksiz istek yok).
+    if (rows.length > 0 && (!Number.isFinite(bildirilenToplam) || bildirilenToplam > rows.length)) {
       const rowKey = (r: any): string => this.providerKey(
         this.turmobField(r, ['Ettn', 'ETTN', 'Uuid', 'UUID', 'Guid', 'GUID'])
         || this.turmobField(r, ['IdFaturaGelen', 'IdFaturaGiden', 'IdFaturaArsiv', 'IdArsiv', 'InvoiceId', 'Id'])
@@ -7230,8 +7235,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const winProfile = profiles.find((p) => p.name === usedProfile) || profiles[0];
       let start = rows.length;
       let sayfa = 1;
-      const MAX_SAYFA = 20;
-      while (start < bildirilenToplam && sayfa < MAX_SAYFA) {
+      const MAX_SAYFA = 40;
+      const hedefToplam = Number.isFinite(bildirilenToplam) && bildirilenToplam > 0 ? bildirilenToplam : Number.POSITIVE_INFINITY;
+      while (start < hedefToplam && sayfa < MAX_SAYFA) {
         const pageParams: any = { ...baseListParams, ...(winProfile?.params || {}), start: String(start) };
         if (listPageToken) pageParams.__RequestVerificationToken = listPageToken;
         const pageBody = new URLSearchParams(pageParams).toString();
