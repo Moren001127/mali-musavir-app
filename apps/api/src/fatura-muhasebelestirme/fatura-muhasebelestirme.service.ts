@@ -6644,25 +6644,33 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     let loginRes = await postLogin();
     addCookies(pick(loginRes));
     // ÇOK-FİRMA (İLGİ OTO / ÖZ ELA): tek TCKN altında birden çok firma varsa TÜRMOB, CompanyId olmadan
-    //   girişi kabul etmez (redirect yerine 200 login sayfası döner). İlk giriş 302 DEĞİLSE ve elimizde
-    //   eşleştirecek firma VKN'si (matchVkn = mükellefin senderVkn'i) varsa, firma listesinden IdFirma'yı
-    //   bul → CompanyId ile TEKRAR gir. Tek-firmalı hesaplar ilk POST'ta 302 alıp buraya HİÇ girmez
-    //   (sıfır regresyon). GetCompanyList başarısız/belirsizse aşağıdaki mevcut hata akışına düşer.
-    if (loginRes.status !== 302 && loginRes.status !== 301 && matchVkn) {
-      this.logger.log(`[TURMOB-COMPANY] ilk giriş ${loginRes.status} (çok-firma olabilir); GetCompanyList deneniyor matchVkn=${matchVkn}`);
-      const companyId = await this.turmobResolveCompanyId(BASE, cookieHeader(), token, matchVkn).catch((e) => { this.logger.warn(`[TURMOB-COMPANY] resolve hata: ${e?.message || e}`); return null; });
-      this.logger.log(`[TURMOB-COMPANY] resolve sonucu CompanyId=${companyId ?? 'YOK'}`);
-      if (companyId) {
-        const retry = await postLogin(companyId);
-        addCookies(pick(retry));
-        this.logger.log(`[TURMOB-COMPANY] CompanyId ile 2. giriş status=${retry.status}`);
-        if (retry.status === 302 || retry.status === 301) {
-          this.logger.log(`TÜRMOB çok-firma girişi: CompanyId=${companyId} ile giriş başarılı`);
-          loginRes = retry;
+    //   girişi kabul etmez (redirect yerine 200 login sayfası döner). İlk giriş 302 DEĞİLSE, mükellefin
+    //   ADIna göre firma listesinden IdFirma'yı bul → CompanyId ile TEKRAR gir. Firma listesi (GetCompanyList)
+    //   VKN döndürmediği için eşleştirme ADla yapılır (matchVkn'den mükellef adını DB'den buluruz). Tek-firmalı
+    //   hesaplar ilk POST'ta 302 alıp buraya HİÇ girmez (sıfır regresyon). Belirsizse mevcut hata akışına düşer.
+    if (loginRes.status !== 302 && loginRes.status !== 301) {
+      let matchName = '';
+      const vkn = String(matchVkn || '').replace(/\D/g, '');
+      if (vkn) {
+        try {
+          const tp = await (this.prisma as any).taxpayer.findFirst({ where: { taxNumber: vkn }, select: { companyName: true } });
+          matchName = String(tp?.companyName || '').trim();
+        } catch (e: any) { this.logger.warn(`[TURMOB-COMPANY] mükellef adı bulunamadı: ${e?.message || e}`); }
+      }
+      this.logger.log(`[TURMOB-COMPANY] ilk giriş ${loginRes.status} (çok-firma olabilir); matchVkn=${vkn || 'YOK'} ad="${matchName}"`);
+      if (matchName) {
+        const companyId = await this.turmobResolveCompanyId(BASE, cookieHeader(), token, matchName).catch((e) => { this.logger.warn(`[TURMOB-COMPANY] resolve hata: ${e?.message || e}`); return null; });
+        this.logger.log(`[TURMOB-COMPANY] resolve sonucu CompanyId=${companyId ?? 'YOK'}`);
+        if (companyId) {
+          const retry = await postLogin(companyId);
+          addCookies(pick(retry));
+          this.logger.log(`[TURMOB-COMPANY] CompanyId=${companyId} ile 2. giriş status=${retry.status}`);
+          if (retry.status === 302 || retry.status === 301) {
+            this.logger.log(`TÜRMOB çok-firma girişi: CompanyId=${companyId} ile giriş başarılı`);
+            loginRes = retry;
+          }
         }
       }
-    } else if (loginRes.status !== 302 && loginRes.status !== 301) {
-      this.logger.log(`[TURMOB-COMPANY] ilk giriş ${loginRes.status} ama matchVkn YOK (çok-firma denenmedi) — senderVkn boş olabilir`);
     }
     // Başarılı giriş = redirect (302/301). Redirect DIŞI (çoğunlukla 200) dönerse eskiden körlemesine
     //   "TCKN/parola hatalı" deniyordu — bu güven kırıyordu ve GERÇEK nedeni (kontör bitti / hesap
@@ -6716,46 +6724,66 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     return cookieHeader();
   }
 
-  // TÜRMOB çok-firma: verilen VKN'ye ait firmanın IdFirma'sını (CompanyId) döndürür. Login sayfasının
-  //   #Companylist typeahead'inin çağırdığı GetCompanyList ucunu kullanır (aynı oturum çerezi + token).
-  //   Belirsizse (birden çok firma dönüp VKN eşleşmiyorsa) null → yanlış firmaya girmeyi önler.
-  private async turmobResolveCompanyId(BASE: string, cookie: string, token: string, matchVkn: string): Promise<string | null> {
-    const q = String(matchVkn || '').replace(/\D/g, '');
-    if (!q) return null;
+  // TÜRMOB firma adını karşılaştırma anahtarına çevirir (Türkçe asciiFold + şirket-eki temizliği).
+  private turmobNameTokens(s: string): string[] {
+    const fold = (x: string) => x
+      .replace(/ş/g, 's').replace(/Ş/g, 's').replace(/ğ/g, 'g').replace(/Ğ/g, 'g')
+      .replace(/ı/g, 'i').replace(/İ/g, 'i').replace(/ç/g, 'c').replace(/Ç/g, 'c')
+      .replace(/ö/g, 'o').replace(/Ö/g, 'o').replace(/ü/g, 'u').replace(/Ü/g, 'u');
+    const STOP = new Set(['LTD', 'STI', 'LIMITED', 'SIRKETI', 'SIRKET', 'TICARET', 'SANAYI', 'SAN', 'TIC', 'VE', 'AS', 'ANONIM', 'LTDSTI', 'DIS', 'INSAAT']);
+    return fold(String(s || '')).toUpperCase().replace(/[^A-Z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim()
+      .split(' ').filter((t) => t.length >= 2 && !STOP.has(t));
+  }
+
+  // TÜRMOB çok-firma: mükellef ADIna (FirmaAdi) göre firmanın IdFirma'sını (CompanyId) döndürür.
+  //   CANLI KANIT (2026-07-28): login sayfasının #Companylist typeahead'i POST /Account/GetCompanyList
+  //   ile arar; parametre q=FirmaAdi (VKN DEĞİL!), yanıt {IdFirma, FirmaAdi} — VKN alanı YOK. q=''
+  //   oturumdaki TÜM firmaları döndürür. Seçince #CompanyId=item.IdFirma. Bu yüzden isim örtüşmesiyle
+  //   eşleştiriyoruz; belirsizse (skor beraberliği) null → yanlış firmaya girmeyi önler.
+  private async turmobResolveCompanyId(BASE: string, cookie: string, token: string, matchName: string): Promise<string | null> {
+    const target = this.turmobNameTokens(matchName);
     const headers = {
-      'Content-Type': 'application/x-www-form-urlencoded',
+      'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
       Cookie: cookie,
       'User-Agent': 'MorenPortal/1.0',
       'X-Requested-With': 'XMLHttpRequest',
       Accept: 'application/json, text/javascript, */*; q=0.01',
     };
-    const attempts: Array<{ url: string; method: string; body?: string }> = [
-      { url: BASE + '/Account/GetCompanyList', method: 'POST', body: new URLSearchParams({ q, __RequestVerificationToken: token }).toString() },
-      { url: BASE + '/Account/GetCompanyList?q=' + encodeURIComponent(q), method: 'GET' },
-    ];
-    const readId = (o: any) => String(o?.IdFirma ?? o?.idFirma ?? o?.Id ?? o?.id ?? o?.CompanyId ?? o?.companyId ?? o?.value ?? o?.Value ?? '').trim();
-    const readVkn = (o: any) => String(o?.Vkn ?? o?.vkn ?? o?.VknTckn ?? o?.vknTckn ?? o?.VergiNo ?? o?.taxNumber ?? '').replace(/\D/g, '');
-    for (const a of attempts) {
+    const readId = (o: any) => String(o?.IdFirma ?? o?.idFirma ?? o?.Id ?? o?.id ?? o?.CompanyId ?? o?.companyId ?? '').trim();
+    const readName = (o: any) => String(o?.FirmaAdi ?? o?.firmaAdi ?? o?.text ?? o?.Text ?? o?.label ?? o?.Name ?? o?.ad ?? '').trim();
+    // Önce q='' (hepsi); sonra ismin ilk anlamlı kelimesiyle daralt (yedek).
+    const queries = Array.from(new Set(['', ...(target[0] ? [target[0]] : [])]));
+    for (const q of queries) {
       try {
-        const res = await this.turmobFetch(a.url, { method: a.method, headers, ...(a.body ? { body: a.body } : {}) });
+        const res = await this.turmobFetch(BASE + '/Account/GetCompanyList', {
+          method: 'POST', headers,
+          body: new URLSearchParams({ q, __RequestVerificationToken: token }).toString(),
+        });
         const text = await res.text();
-        this.logger.log(`[TURMOB-COMPANY] ${a.method} ${a.url.replace(BASE, '')} -> HTTP${res.status} len=${text.length} ilk=${text.slice(0, 160).replace(/\s+/g, ' ')}`);
-        if (!res.ok) continue;
+        if (!res.ok) { this.logger.log(`[TURMOB-COMPANY] GetCompanyList q="${q}" HTTP${res.status}`); continue; }
         let data: any = null;
         try { data = JSON.parse(text); } catch { continue; }
         const list: any[] = Array.isArray(data) ? data
           : Array.isArray(data?.data) ? data.data
-          : Array.isArray(data?.options) ? data.options
           : Array.isArray(data?.Data) ? data.Data
+          : Array.isArray(data?.options) ? data.options
           : [];
+        this.logger.log(`[TURMOB-COMPANY] GetCompanyList q="${q}" -> ${list.length} firma; hedef=[${target.join(',')}]`);
         if (!list.length) continue;
-        // VKN'si tam eşleşen firmayı tercih et; yoksa sadece TEK firma döndüyse onu al. Birden çok
-        //   belirsiz sonuçta null (yanlış firma seçmektense mevcut hata akışına bırak).
-        const exact = list.find((o) => readVkn(o) && readVkn(o) === q);
-        const chosen = exact || (list.length === 1 ? list[0] : null);
-        const id = chosen ? readId(chosen) : '';
-        if (id) return id;
-      } catch { /* sonraki deneme */ }
+        // İsim örtüşme puanı (ortak anlamlı kelime sayısı). En yüksek + tekil ise seç.
+        let best: { id: string; score: number; name: string } | null = null;
+        let tie = false;
+        for (const o of list) {
+          const id = readId(o); if (!id) continue;
+          const name = readName(o);
+          const score = target.length ? this.turmobNameTokens(name).filter((t) => target.includes(t)).length : 0;
+          if (!best || score > best.score) { best = { id, score, name }; tie = false; }
+          else if (score === best.score) tie = true;
+        }
+        if (best) this.logger.log(`[TURMOB-COMPANY] en iyi aday IdFirma=${best.id} "${best.name.slice(0, 45)}" skor=${best.score} beraberlik=${tie}`);
+        if (best && best.score >= 1 && !tie) return best.id;
+        if (list.length === 1) { const id = readId(list[0]); if (id) return id; }
+      } catch (e: any) { this.logger.warn(`[TURMOB-COMPANY] GetCompanyList q="${q}" hata: ${e?.message || e}`); }
     }
     return null;
   }
