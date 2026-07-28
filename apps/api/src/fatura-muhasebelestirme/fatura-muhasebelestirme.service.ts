@@ -6993,6 +6993,15 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   /** TÜRMOB liste sorgusu KEŞİF HAFIZASI: kanal → en son çalışan uç+profil+yöntem.
    *  Sonraki sorgular 168-264'lük deneme matrisini atlayıp bu kombinasyonla başlar. */
   private static turmobComboCache = new Map<string, { listUrl: string; profileName: string; method: 'POST' | 'GET' }>();
+  // BİLİNEN çalışan kombinasyonlar (canlı log ile doğrulandı 2026-07-28). Cache boşken (deploy/restart
+  //   sonrası ilk çekim) bunlar ÖNCE denenir → deneme-yanılma matrisi atlanır, sorgu ~2.5dk yerine
+  //   ~10-15sn. Tutmazsa (portal değişirse) tam matris fallback devreye girer + yeni kombinasyon cache'lenir.
+  private static readonly TURMOB_DEFAULT_COMBO: Record<string, { listUrl: string; profileName: string; method: 'POST' | 'GET' }> = {
+    IN_EFATURA: { listUrl: '/IncomingInvoice/AllIncomingInvoiceByFilter', profileName: 'tr-text', method: 'POST' },
+    IN_EARSIV: { listUrl: '/IncomingInvoice/AllIncomingInvoiceByFilter', profileName: 'tr-text', method: 'POST' },
+    OUT_EFATURA: { listUrl: '/OutgoingInvoice/AllOutgoingInvoiceByFilter', profileName: 'tr-text', method: 'POST' },
+    OUT_EARSIV: { listUrl: '/OutgoingInvoice/AllOutgoingInvoiceByFilter', profileName: 'tr-text', method: 'POST' },
+  };
 
   private async fetchTurmobPortalRows(
     cfg: RuntimeIntegrationConfig,
@@ -7078,11 +7087,14 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // KEŞİF HAFIZASI (kanal başına): en son ÇALIŞAN uç+profil+yöntem ÖNCE denenir → tipik sorgu
     //   1-2 istekte biter (kullanıcı: "sorgu hızlı olsun, boşuna beklemesin"). Tutmazsa tam matris
     //   taranır ve yeni çalışan kombinasyon hafızaya yazılır. Süreç içi hafıza; restart'ta sıfırlanır.
-    const hatirlanan = FaturaMuhasebelestirmeService.turmobComboCache.get(channel);
+    const hatirlanan = FaturaMuhasebelestirmeService.turmobComboCache.get(channel)
+      || FaturaMuhasebelestirmeService.TURMOB_DEFAULT_COMBO[channel];
     const kombinasyonlar: Array<{ listUrl: string; profile: any; method: 'POST' | 'GET' }> = [];
     if (hatirlanan) {
       const p = profiles.find((x) => x.name === hatirlanan.profileName);
-      if (p && allListUrls.includes(hatirlanan.listUrl)) kombinasyonlar.push({ listUrl: hatirlanan.listUrl, profile: p, method: hatirlanan.method });
+      // Bilinen/hatırlanan kombinasyon ÖNCE (allListUrls kontrolü YOK — seed listUrl kesin doğru;
+      //   portal değişmişse tutmaz, aşağıdaki tam matris fallback devreye girer). Tipik sorgu 1 istekte biter.
+      if (p) kombinasyonlar.push({ listUrl: hatirlanan.listUrl, profile: p, method: hatirlanan.method });
     }
     for (const listUrl of allListUrls) {
       for (const profile of profiles) {
