@@ -7209,13 +7209,18 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   (1000+ faturalı mükellef) ÜST faturalar sessizce inmiyordu. Kazanan kombinasyonla start'ı artırıp
     //   sonraki sayfaları çek ve birleştir. Üst sınır 20 sayfa (güvenlik). Yalnız combo başarılı + sunucu
     //   daha fazla toplam bildiriyorsa çalışır (küçük mükellefte hiç tetiklenmez).
-    const pageLen = Number(baseListParams.length) || 0;
     const bildirilenToplam = Number(
       selectedData?.recordsFiltered ?? selectedData?.recordsTotal
       ?? selectedData?.RecordsFiltered ?? selectedData?.RecordsTotal
       ?? selectedData?.iTotalDisplayRecords ?? selectedData?.iTotalRecords ?? NaN,
     );
-    if (rows.length > 0 && pageLen > 0 && Number.isFinite(bildirilenToplam) && bildirilenToplam > rows.length && rows.length >= pageLen) {
+    // TÜRMOB gönderdiğimiz `length`(=500) parametresini YOK SAYIP sabit 25'lik sayfa döndürebiliyor
+    //   (canlı kanıt: Gökhan Akgöz satış "36 kayıttan 1-25" → yalnız 25 indi, 26-36 kayboldu). Eski
+    //   koşul `rows.length >= pageLen(500)` bu durumda ASLA doğru olmuyordu → sayfalama hiç tetiklenmez,
+    //   üst sayfalar sessizce inmezdi (25+ faturalı TÜM mükellefleri etkiler). Ölçüt artık SADECE:
+    //   sunucu daha fazla TOPLAM (recordsFiltered) bildiriyor ama biz daha az aldıysak sayfala.
+    //   start, gerçek gelen satır sayısı kadar artar (döngü içinde), 25'lik de olsa tüm sayfalar toplanır.
+    if (rows.length > 0 && Number.isFinite(bildirilenToplam) && bildirilenToplam > rows.length) {
       const rowKey = (r: any): string => this.providerKey(
         this.turmobField(r, ['Ettn', 'ETTN', 'Uuid', 'UUID', 'Guid', 'GUID'])
         || this.turmobField(r, ['IdFaturaGelen', 'IdFaturaGiden', 'IdFaturaArsiv', 'IdArsiv', 'InvoiceId', 'Id'])
