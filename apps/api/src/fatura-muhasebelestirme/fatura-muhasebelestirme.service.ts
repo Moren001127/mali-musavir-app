@@ -7272,7 +7272,6 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         let pdata: any = null;
         try { pdata = JSON.parse(praw); } catch { break; }
         const prows = this.turmobRowsFromListResponse(pdata);
-        this.logger.log(`TURMOB ${channel} SAYFADBG#${sayfa}: gonderilen[start=${start} len=${(baseListParams as any).length}] status=${pres.status} donen=${prows.length} recFilt=${pdata?.recordsFiltered ?? pdata?.RecordsFiltered ?? '?'} recTot=${pdata?.recordsTotal ?? pdata?.RecordsTotal ?? '?'} ilkYeni=${prows[0] ? rowKey(prows[0]).slice(0, 18) : '-'} sayfa1ilk=${rowKey(rows[0]).slice(0, 18)}`);
         if (!prows.length) break;
         let eklenen = 0;
         for (const pr of prows) {
@@ -7306,6 +7305,49 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         if ((retry?.liveRows?.length || 0) > liveRows.length) return retry;
       } catch (e: any) {
         this.logger.warn(`TURMOB liste retry hatasi: ${e?.message || e}`);
+      }
+    }
+    // TARİH-BÖLME (satış ucu tek-sayfa limiti): TÜRMOB satış ucu (OutgoingInvoice) length=500'ü YOK
+    //   SAYIP tek sorguda MAX 25 döndürüyor VE start-paging'i reddediyor (canlı kanıt: Gökhan Akgöz
+    //   26 satıştan 25 geldi, en eski SEL ULUSLARARASI 01.07 = 26. sıra eksik; start=25 → TÜRMOB 0/tekrar).
+    //   Çözüm: tam-limit (25) geldiyse dönemi İKİYE böl, iki yarı-tarih aralığını AYRI sorgula, birleştir.
+    //   TÜRMOB'un tarih filtresi çalıştığı için her yarı sınırın altında kalır → tüm faturalar toplanır.
+    //   Birleşik daha fazla getirmezse (alış gibi zaten tam gelen uçlarda) ilk sonuç korunur.
+    const splitDepth = Number((opts as any).__splitDepth || 0);
+    const splitStartMs = new Date(`${opts.period.startDate}T00:00:00.000Z`).getTime();
+    const splitEndMs = new Date(`${opts.period.endDate}T00:00:00.000Z`).getTime();
+    const splitGunFarki = Number.isFinite(splitStartMs) && Number.isFinite(splitEndMs)
+      ? Math.round((splitEndMs - splitStartMs) / 86400000) : 0;
+    if (rows.length >= 25 && channel.startsWith('OUT') && splitGunFarki >= 1 && splitDepth < 5) {
+      try {
+        const midMs = splitStartMs + Math.floor(splitGunFarki / 2) * 86400000;
+        const midYmd = new Date(midMs).toISOString().slice(0, 10);
+        const nextYmd = new Date(midMs + 86400000).toISOString().slice(0, 10);
+        const p1 = { ...opts.period, endDate: midYmd };
+        const p2 = { ...opts.period, startDate: nextYmd };
+        const r1 = await this.fetchTurmobPortalRows(cfg, { ...opts, period: p1, __splitDepth: splitDepth + 1 } as any).catch(() => null);
+        const r2 = await this.fetchTurmobPortalRows(cfg, { ...opts, period: p2, __splitDepth: splitDepth + 1 } as any).catch(() => null);
+        const keyOf = (r: any) => this.providerKey(
+          this.turmobField(r, ['Ettn', 'ETTN', 'Uuid', 'UUID', 'Guid', 'GUID'])
+          || this.turmobField(r, ['IdFaturaGelen', 'IdFaturaGiden', 'IdFaturaArsiv', 'IdArsiv', 'InvoiceId', 'Id'])
+          || this.turmobField(r, ['FaturaNo', 'BelgeNo', 'InvoiceNo', 'InvoiceNumber']),
+        ) || JSON.stringify(r).slice(0, 200);
+        const seenSplit = new Set<string>();
+        const birlesikRows: any[] = [];
+        for (const r of [...(r1?.rows || []), ...(r2?.rows || []), ...rows]) {
+          const k = keyOf(r);
+          if (seenSplit.has(k)) continue;
+          seenSplit.add(k);
+          birlesikRows.push(r);
+        }
+        const birlesikLive = birlesikRows.filter((r) => !this.turmobIsCancelled(r) && this.turmobRowInPeriod(r, opts.period));
+        if (birlesikLive.length > liveRows.length) {
+          this.logger.log(`TURMOB ${channel}: tarih-bolme ${liveRows.length} → ${birlesikLive.length} (donem ${opts.period.startDate}..${opts.period.endDate})`);
+          rows = birlesikRows;
+          liveRows = birlesikLive;
+        }
+      } catch (e: any) {
+        this.logger.warn(`TURMOB ${channel} tarih-bolme hatasi: ${e?.message || e}`);
       }
     }
     return {
