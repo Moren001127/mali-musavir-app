@@ -1773,8 +1773,13 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         }
 
         if (mode === 'query') {
-          const payload = await this.downloadEarsivBelge(token, uuid, signed, referenceNo || `earsiv-${i + 1}`)
-            .catch(() => this.fetchEarsivHtml(token, uuid, signed, referenceNo || `earsiv-${i + 1}`))
+          // TUTAR + GÖRSEL (kullanıcı bulgusu — "tutar okunamadı", tutar sütunları boş): downloadEarsivBelge
+          //   PDF döndürüyor, PDF'ten tutar güvenilir parse EDİLEMİYOR (matrah/kdv/toplam boş → aktarımda
+          //   'tutar okunamadı'). fetchEarsivHtml ise HTML döndürür — tutar (matrah/KDV/toplam) yapısal olarak
+          //   içinde (parseEarsivPortalHtmlTotals okur) ve görsel HTML olarak render edilir. Query (önizleme)
+          //   modunda HTML'i ÖNCE dene; PDF yalnız HTML alınamazsa yedek.
+          const payload = await this.fetchEarsivHtml(token, uuid, signed, referenceNo || `earsiv-${i + 1}`)
+            .catch(() => this.downloadEarsivBelge(token, uuid, signed, referenceNo || `earsiv-${i + 1}`))
             .catch((err: any) => {
               notes.push(`${referenceNo || uuid}: on indirme yapilamadi, yalniz satir listelendi (${this.compact(err?.message || err)})`);
               return null;
