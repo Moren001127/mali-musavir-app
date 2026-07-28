@@ -6518,7 +6518,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       // ── 1. TUR: DOGRUDAN (turmobRowId ile, liste cekme yok) ──
       try {
         await this.withTurmobAccess(cfg.username, async () => {
-          const cookie = await this.turmobLogin(cfg.username, cfg.password);
+          const cookie = await this.turmobLogin(cfg.username, cfg.password, cfg.senderVkn || undefined);
           const headers = { Cookie: cookie, 'User-Agent': 'MorenPortal/1.0', Accept: 'application/xml,text/xml,text/html,*/*', Origin: BASE, Referer: BASE + refererPath };
           const CONC = 6;
           for (let i = 0; i < targets.length; i += CONC) {
@@ -6602,7 +6602,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     }
   }
 
-  private async turmobLogin(vknTckn: string, password: string): Promise<string> {
+  private async turmobLogin(vknTckn: string, password: string, matchVkn?: string): Promise<string> {
     const BASE = this.TURMOB_BASE;
     const pick = (res: Response): string[] => {
       const anyH = res.headers as any;
@@ -6630,15 +6630,35 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const token = html.match(/name="__RequestVerificationToken"[^>]*value="([^"]+)"/)?.[1]
       || html.match(/__RequestVerificationToken[^>]*value="([^"]+)"/)?.[1];
     if (!token) throw new Error('TÜRMOB giriş sayfası okunamadı (antiforgery token yok)');
-    // 2) POST login
-    const body = new URLSearchParams({ VknTckn: String(vknTckn).trim(), Password: password, __RequestVerificationToken: token, RememberMe: 'true' }).toString();
-    const loginRes = await this.turmobFetch(BASE +'/Account/Login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', Cookie: cookieHeader(), 'User-Agent': 'MorenPortal/1.0' },
-      body,
-      redirect: 'manual',
-    });
+    // 2) POST login — CompanyId opsiyonel (çok-firmalı TCKN için).
+    const postLogin = (companyId?: string) => {
+      const fields: Record<string, string> = { VknTckn: String(vknTckn).trim(), Password: password, __RequestVerificationToken: token, RememberMe: 'true' };
+      if (companyId) fields.CompanyId = companyId;
+      return this.turmobFetch(BASE +'/Account/Login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', Cookie: cookieHeader(), 'User-Agent': 'MorenPortal/1.0' },
+        body: new URLSearchParams(fields).toString(),
+        redirect: 'manual',
+      });
+    };
+    let loginRes = await postLogin();
     addCookies(pick(loginRes));
+    // ÇOK-FİRMA (İLGİ OTO / ÖZ ELA): tek TCKN altında birden çok firma varsa TÜRMOB, CompanyId olmadan
+    //   girişi kabul etmez (redirect yerine 200 login sayfası döner). İlk giriş 302 DEĞİLSE ve elimizde
+    //   eşleştirecek firma VKN'si (matchVkn = mükellefin senderVkn'i) varsa, firma listesinden IdFirma'yı
+    //   bul → CompanyId ile TEKRAR gir. Tek-firmalı hesaplar ilk POST'ta 302 alıp buraya HİÇ girmez
+    //   (sıfır regresyon). GetCompanyList başarısız/belirsizse aşağıdaki mevcut hata akışına düşer.
+    if (loginRes.status !== 302 && loginRes.status !== 301 && matchVkn) {
+      const companyId = await this.turmobResolveCompanyId(BASE, cookieHeader(), token, matchVkn).catch(() => null);
+      if (companyId) {
+        const retry = await postLogin(companyId);
+        addCookies(pick(retry));
+        if (retry.status === 302 || retry.status === 301) {
+          this.logger.log(`TÜRMOB çok-firma girişi: CompanyId=${companyId} ile giriş başarılı`);
+          loginRes = retry;
+        }
+      }
+    }
     // Başarılı giriş = redirect (302/301). Redirect DIŞI (çoğunlukla 200) dönerse eskiden körlemesine
     //   "TCKN/parola hatalı" deniyordu — bu güven kırıyordu ve GERÇEK nedeni (kontör bitti / hesap
     //   kilitli / captcha / parola değişti) gizliyordu. Ayrıca bazı hesaplarda giriş 302 yerine 200
@@ -6689,6 +6709,49 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     } catch { /* redirect izlenemese de eldeki çerezle devam */ }
     if (!cookieMap.size) throw new Error('TÜRMOB oturum çerezi alınamadı');
     return cookieHeader();
+  }
+
+  // TÜRMOB çok-firma: verilen VKN'ye ait firmanın IdFirma'sını (CompanyId) döndürür. Login sayfasının
+  //   #Companylist typeahead'inin çağırdığı GetCompanyList ucunu kullanır (aynı oturum çerezi + token).
+  //   Belirsizse (birden çok firma dönüp VKN eşleşmiyorsa) null → yanlış firmaya girmeyi önler.
+  private async turmobResolveCompanyId(BASE: string, cookie: string, token: string, matchVkn: string): Promise<string | null> {
+    const q = String(matchVkn || '').replace(/\D/g, '');
+    if (!q) return null;
+    const headers = {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Cookie: cookie,
+      'User-Agent': 'MorenPortal/1.0',
+      'X-Requested-With': 'XMLHttpRequest',
+      Accept: 'application/json, text/javascript, */*; q=0.01',
+    };
+    const attempts: Array<{ url: string; method: string; body?: string }> = [
+      { url: BASE + '/Account/GetCompanyList', method: 'POST', body: new URLSearchParams({ q, __RequestVerificationToken: token }).toString() },
+      { url: BASE + '/Account/GetCompanyList?q=' + encodeURIComponent(q), method: 'GET' },
+    ];
+    const readId = (o: any) => String(o?.IdFirma ?? o?.idFirma ?? o?.Id ?? o?.id ?? o?.CompanyId ?? o?.companyId ?? o?.value ?? o?.Value ?? '').trim();
+    const readVkn = (o: any) => String(o?.Vkn ?? o?.vkn ?? o?.VknTckn ?? o?.vknTckn ?? o?.VergiNo ?? o?.taxNumber ?? '').replace(/\D/g, '');
+    for (const a of attempts) {
+      try {
+        const res = await this.turmobFetch(a.url, { method: a.method, headers, ...(a.body ? { body: a.body } : {}) });
+        if (!res.ok) continue;
+        const text = await res.text();
+        let data: any = null;
+        try { data = JSON.parse(text); } catch { continue; }
+        const list: any[] = Array.isArray(data) ? data
+          : Array.isArray(data?.data) ? data.data
+          : Array.isArray(data?.options) ? data.options
+          : Array.isArray(data?.Data) ? data.Data
+          : [];
+        if (!list.length) continue;
+        // VKN'si tam eşleşen firmayı tercih et; yoksa sadece TEK firma döndüyse onu al. Birden çok
+        //   belirsiz sonuçta null (yanlış firma seçmektense mevcut hata akışına bırak).
+        const exact = list.find((o) => readVkn(o) && readVkn(o) === q);
+        const chosen = exact || (list.length === 1 ? list[0] : null);
+        const id = chosen ? readId(chosen) : '';
+        if (id) return id;
+      } catch { /* sonraki deneme */ }
+    }
+    return null;
   }
 
   private turmobDateProfiles(period: { startDate: string; endDate: string }) {
@@ -7059,7 +7122,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     attempt = 0,
   ): Promise<any> {
     if (!cfg.username || !cfg.password) throw new Error('TURMOB icin TCKN (kullanici adi) ve parola gerekli');
-    const cookie = await this.turmobLogin(cfg.username, cfg.password);
+    const cookie = await this.turmobLogin(cfg.username, cfg.password, cfg.senderVkn || undefined);
     const BASE = this.TURMOB_BASE;
     const channel = String(opts.channel || (opts.direction === 'SATIS' ? 'OUT_EFATURA' : 'IN_EFATURA')).toUpperCase();
     const { refererPath, listUrls } = this.turmobListPaths(channel);
@@ -7550,7 +7613,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     },
   ): Promise<ProviderInvoicePayload[]> {
     if (!cfg.username || !cfg.password) throw new Error('TÜRMOB için TCKN (kullanıcı adı) ve parola gerekli');
-    const cookie = await this.turmobLogin(cfg.username, cfg.password);
+    const cookie = await this.turmobLogin(cfg.username, cfg.password, cfg.senderVkn || undefined);
     const BASE = this.TURMOB_BASE;
     // Gelen=alış (/IncomingInvoice), Giden=satış (/OutgoingInvoice). e-Arşiv ucu ilk testte eklenecek.
     const channel = String(opts.channel || (opts.direction === 'SATIS' ? 'OUT_EFATURA' : 'IN_EFATURA')).toUpperCase();
