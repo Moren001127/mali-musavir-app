@@ -1521,7 +1521,11 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
                 const { matrah, kdv } = kdvParts(d);
                 const ocrCls = d.ocrStatus === 'IN_PROGRESS' ? 'scanning' : justDone.has(d.id) ? 'justdone' : d.ocrStatus === 'PENDING' ? 'queued' : undefined;
                 const fisAcik = fisDetayId === d.id;
-                const fisLines: any[] = Array.isArray(d.lines) ? d.lines : [];
+                // Muhasebe fişi STANDART SIRA (kullanıcı isteği): Matrah → KDV → Tevkifat → Cari.
+                //   Yalnız GÖRÜNTÜLEME sırası; BORÇ/ALACAK ve tutar mantığı DEĞİŞMEZ.
+                const FIS_GRUP_SIRA: Record<string, number> = { matrah: 0, vergi: 1, 'vergi-sorumlu': 2, tevkifat: 3, cari: 4 };
+                const fisLines: any[] = (Array.isArray(d.lines) ? [...d.lines] : [])
+                  .sort((a: any, b: any) => (FIS_GRUP_SIRA[String(a?.group || '')] ?? 9) - (FIS_GRUP_SIRA[String(b?.group || '')] ?? 9));
                 const docUyarilar: any[] = Array.isArray((d.ocrData as any)?.uyarilar) ? (d.ocrData as any).uyarilar : [];
                 const docUyariHata = docUyarilar.filter((u: any) => u?.siddet === 'hata').length;
                 const docUyariRenk = docUyariHata > 0 ? '#dc2626' : '#d97706';
@@ -2120,11 +2124,11 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
                     </td>
                     <td>
                       {r.aktarildi ? (
-                        <span className="transferstate ok" title="Luca'ya aktarıldı" aria-label="Luca'ya aktarıldı"><span className="okico">✓</span></span>
+                        <span title="Luca'ya aktarıldı" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#15803d', fontWeight: 700, fontSize: 11.5, whiteSpace: 'nowrap' }}><span className="okico">✓</span> Aktarıldı</span>
                       ) : r.zatenVar ? (
-                        <span className="transferstate" title="Muhasebeleştirildi — Luca'ya henüz aktarılmadı" aria-label="Muhasebeleştirildi" style={{ color: '#b8862b', fontWeight: 800, fontSize: 15 }}>◐</span>
+                        <span title="Muhasebeleştirildi — Luca'ya henüz aktarılmadı" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#b8862b', fontWeight: 700, fontSize: 11.5, whiteSpace: 'nowrap' }}>◐ Muhasebeleşti</span>
                       ) : (
-                        <span className="transferstate no" title="Aktarılmadı" aria-label="Aktarılmadı"><span className="xico">×</span></span>
+                        <span title="Henüz muhasebeleştirilmedi / aktarılmadı" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#94a3b8', fontWeight: 600, fontSize: 11.5, whiteSpace: 'nowrap' }}><span className="xico">×</span> Aktarılmadı</span>
                       )}
                     </td>
                   </tr>
@@ -5329,31 +5333,32 @@ const CSS = `
 #fm-root .daterange .drmsg.warn{color:#92400e;background:#fffbeb;border:1px solid #fde68a}
 #fm-root .daterange .drmsg.hint{color:#8a6a1f;background:#fffdf5;border:1px solid #f3e7c4}
 
-/* ═══════════ MUHASEBE FİŞ — GÖRSEL CİLA v1 ═══════════
-   Kullanıcı isteği: sağ panel fişi (Matrah/KDV/Cari) daha sade, belirgin, profesyonel dursun.
-   YALNIZ görünüm (renk/çerçeve/boşluk/tipografi). Yapı, düzen, mantık AYNEN korunur.
-   BEĞENİLMEZSE: bu blok (bu yorumdan aşağıdaki kurallara kadar) SİLİNİR → birebir eski hale döner. */
-#fm-root .muhmain .fgrps{gap:14px}
-#fm-root .muhmain .fgrp{position:relative;background:#fff;border:1px solid #e6ebf2;border-left-width:3px;border-radius:12px;box-shadow:0 1px 3px rgba(16,32,64,.055),0 1px 2px rgba(16,32,64,.03);overflow:hidden;padding:0}
+/* ═══════════ MUHASEBE FİŞ — GÖRSEL CİLA v2 (sade / nötr / rafine) ═══════════
+   Kullanıcı: v1 fazla renkliydi, daha kaliteli olsun. Renk şeritleri KALDIRILDI; nötr slate
+   palet + tipografi hiyerarşisi + ferah boşluk + tabular hizalı rakamlar. Yapı/mantık AYNEN.
+   BEĞENİLMEZSE bu blok SİLİNİR → birebir eski hale döner. */
+#fm-root .muhmain .fgrps{gap:11px}
+#fm-root .muhmain .fgrp{position:relative;background:#fff;border:1px solid #e8ebf1;border-radius:14px;box-shadow:0 1px 2px rgba(15,23,42,.035);overflow:hidden;padding:0}
 #fm-root .muhmain .fgrp::before{content:none !important}
-#fm-root .muhmain .fgrp[data-g="matrah"]{border-left-color:#2f5b8f}
-#fm-root .muhmain .fgrp[data-g="vergi"]{border-left-color:#b1802a}
-#fm-root .muhmain .fgrp[data-g="vergi-sorumlu"]{border-left-color:#b1802a}
-#fm-root .muhmain .fgrp[data-g="cari"]{border-left-color:#2f8f5f}
-#fm-root .muhmain .fgrp[data-g="tevkifat"]{border-left-color:#a14152}
-#fm-root .muhmain .fgh{padding:11px 15px 9px;background:#fbfcfe;border-bottom:1px solid #eef1f6}
-#fm-root .muhmain .fgh > *:first-child{font-size:12.5px;font-weight:800;letter-spacing:.2px;color:#1f2d45}
-#fm-root .muhmain .fgs{margin-left:auto;font-size:9.5px;font-weight:800;letter-spacing:.7px;padding:2px 9px;border-radius:20px;background:#eef2f7;color:#5c6c86;text-transform:uppercase}
-#fm-root .muhmain .frow{padding:9px 15px;gap:10px;align-items:center;border-bottom:1px solid #f4f6fa}
-#fm-root .muhmain .frow:hover{background:#fafbfd}
-#fm-root .muhmain .money{font-variant-numeric:tabular-nums;font-weight:700;color:#17233b}
-#fm-root .muhmain .fgt{padding:10px 15px;background:#fbfcfe;border-top:1px solid #eef1f6;font-size:12px;color:#5c6c86}
-#fm-root .muhmain .fgt b{font-variant-numeric:tabular-nums;font-size:14px;color:#0f1c33;font-weight:800}
-#fm-root .muhmain .frowadd{padding:8px 15px;color:#6b7a95;font-weight:600;font-size:12px;background:transparent;border-top:1px dashed #eef1f6}
-#fm-root .muhmain .frowadd:hover{color:#2f5b8f;background:#f7f9fc}
-#fm-root .muhmain .frowdel{opacity:.5;transition:opacity .15s,color .15s}
-#fm-root .muhmain .frowdel:hover{opacity:1;color:#c0353a}
-/* ═══════════ /MUHASEBE FİŞ GÖRSEL CİLA v1 ═══════════ */
+#fm-root .muhmain .fgrp[data-g]{border-left:1px solid #e8ebf1}
+/* başlık: küçük uppercase, sakin */
+#fm-root .muhmain .fgh{padding:12px 16px 10px;background:#fff;border-bottom:1px solid #f1f3f8;display:flex;align-items:center;gap:8px}
+#fm-root .muhmain .fgh > *:first-child{font-size:11px;font-weight:700;letter-spacing:.9px;text-transform:uppercase;color:#3b4759}
+#fm-root .muhmain .fgs{margin-left:auto;font-size:9px;font-weight:700;letter-spacing:.9px;padding:2px 8px;border-radius:6px;background:#f4f6fa;color:#8a97ab;text-transform:uppercase}
+/* satır: ferah, ince ayrım */
+#fm-root .muhmain .frow{padding:11px 16px;gap:12px;align-items:center;border-bottom:1px solid #f6f7fb}
+#fm-root .muhmain .frow:hover{background:#fbfcfe}
+/* rakam: tabular, koyu, sıkı */
+#fm-root .muhmain .money{font-variant-numeric:tabular-nums;font-weight:600;color:#111a2b;letter-spacing:-.2px}
+/* toplam: üstte küçük label hissi + büyük değer */
+#fm-root .muhmain .fgt{padding:11px 16px;background:#fbfcfe;border-top:1px solid #f1f3f8;font-size:10.5px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;color:#8a97ab}
+#fm-root .muhmain .fgt b{font-variant-numeric:tabular-nums;font-size:15px;font-weight:800;color:#0d1626;letter-spacing:-.3px;text-transform:none}
+/* + satır: minimal, ikincil */
+#fm-root .muhmain .frowadd{padding:9px 16px;color:#98a3b6;font-weight:600;font-size:11.5px;background:transparent;border-top:1px solid #f6f7fb}
+#fm-root .muhmain .frowadd:hover{color:#475569;background:#fafbfd}
+#fm-root .muhmain .frowdel{opacity:.4;transition:opacity .15s,color .15s}
+#fm-root .muhmain .frowdel:hover{opacity:1;color:#dc2626}
+/* ═══════════ /MUHASEBE FİŞ GÖRSEL CİLA v2 ═══════════ */
 
 /* e-Arşiv "Faturalar çekiliyor" belirgin animasyonlu gösterge (kullanıcı: şerit çıksın) */
 #fm-root .sourcepanel.isbusy{position:relative}
