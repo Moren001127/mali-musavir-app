@@ -2103,7 +2103,7 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
               <thead>
                 <tr>
                   <th><Check checked={processable.length > 0 && selectedRefs.length === processable.length} onToggle={toggleAll} /></th>
-                  <th>Alıcı</th><th>VKN/TCKN</th><th>Belge No</th><th>Tarih</th><th className="num">KDV Hariç</th><th className="num">KDV</th><th className="num">Genel Toplam</th><th>Onay</th><th>İptal/İtiraz</th><th>Görsel</th><th>Aktarım</th>
+                  <th>Alıcı</th><th>VKN/TCKN</th><th>Belge No</th><th>Tarih</th><th>Onay</th><th>İptal/İtiraz</th><th>Görsel</th><th>Aktarım</th>
                 </tr>
               </thead>
               <tbody>
@@ -2120,9 +2120,6 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
                     <td>{r.buyerVkn || '—'}</td>
                     <td>{r.belgeNo || r.referenceNo || '—'}</td>
                     <td>{fmtDate(r.issuedAt)}</td>
-                    <td className="num">{r.kdvHaric != null ? fmtMoney(r.kdvHaric) : '—'}</td>
-                    <td className="num">{r.kdv != null ? fmtMoney(r.kdv) : '—'}</td>
-                    <td className="num">{r.toplam != null ? fmtMoney(r.toplam) : '—'}</td>
                     <td className="plainstatus">{r.onayDurumu || '—'}</td>
                     <td>{r.iptalDurumu || 'Yok'}</td>
                     <td>
@@ -4963,14 +4960,15 @@ const CSS = `
 #fm-root .sourcehint{padding:9px 14px;border-bottom:1px solid #e5e7eb;background:#fffbeb;color:#805b16;font-size:12px}
 #fm-root .sourcetablewrap{overflow:auto;max-height:none;min-height:0;flex:1;position:relative}
 #fm-root .sourcetable{width:100%;border-collapse:separate;border-spacing:0}
-#fm-root .sourcetable.earsivtable{table-layout:fixed;min-width:960px}
+#fm-root .sourcetable.earsivtable{table-layout:fixed;min-width:760px}
 #fm-root .sourcetable.earsivtable th:nth-child(1),#fm-root .sourcetable.earsivtable td:nth-child(1){width:42px}
 #fm-root .sourcetable.earsivtable th:nth-child(3),#fm-root .sourcetable.earsivtable td:nth-child(3){width:120px}
 #fm-root .sourcetable.earsivtable th:nth-child(4),#fm-root .sourcetable.earsivtable td:nth-child(4){width:155px}
 #fm-root .sourcetable.earsivtable th:nth-child(5),#fm-root .sourcetable.earsivtable td:nth-child(5){width:110px}
-#fm-root .sourcetable.earsivtable th:nth-child(6),#fm-root .sourcetable.earsivtable td:nth-child(6){width:112px}
-#fm-root .sourcetable.earsivtable th:nth-child(7),#fm-root .sourcetable.earsivtable td:nth-child(7){width:118px}
-#fm-root .sourcetable.earsivtable th:nth-child(8),#fm-root .sourcetable.earsivtable td:nth-child(8){width:74px}
+#fm-root .sourcetable.earsivtable th:nth-child(6),#fm-root .sourcetable.earsivtable td:nth-child(6){width:110px}
+#fm-root .sourcetable.earsivtable th:nth-child(7),#fm-root .sourcetable.earsivtable td:nth-child(7){width:88px}
+#fm-root .sourcetable.earsivtable th:nth-child(8),#fm-root .sourcetable.earsivtable td:nth-child(8){width:62px}
+#fm-root .sourcetable.earsivtable th:nth-child(9),#fm-root .sourcetable.earsivtable td:nth-child(9){width:92px}
 #fm-root .sourcetable th{height:36px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.25px;white-space:nowrap}
 #fm-root .sourcetable td{height:42px;font-size:12.5px;vertical-align:middle}
 #fm-root .sourcetable.earsivtable td:not(.partyname){white-space:nowrap}
