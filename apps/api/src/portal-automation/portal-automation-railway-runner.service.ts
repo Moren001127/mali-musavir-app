@@ -132,6 +132,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
   // GIB e-Arsiv Turkiye cikis proxy'si (TURMOB ile ayni tinyproxy). undici ProxyAgent tek sefer kurulur;
   //   TURMOB_PROXY_URL yoksa direkt cikis (davranis degismez). turmobFetch ile ayni desen.
   private _earsivDispatcher: any = undefined;
+  private _earsivRelayDispatcher: any = undefined;
 
   constructor(
     private prisma: PrismaService,
@@ -1876,8 +1877,15 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     };
   }
 
-  // GIB e-Arsiv istekleri Turkiye proxy'sinden (TURMOB_PROXY_URL) cikar. Proxy yoksa direkt.
+  // GIB e-Arsiv istekleri: (1) EARSIV_RELAY_URL+SECRET set ise VPS relay'i uzerinden (Turkiye cikis;
+  //   Railway'in dogrudan/proxy-tunel GIB erisimi engelli/takiliyor — canli kanit 2026-07-29), (2) yoksa
+  //   TURMOB_PROXY_URL proxy'si, (3) o da yoksa dogrudan. Relay env yoksa davranis DEGISMEZ.
   private earsivFetch(url: string, init: any = {}): Promise<Response> {
+    const relayUrl = String(process.env.EARSIV_RELAY_URL || '').trim();
+    const relaySecret = String(process.env.EARSIV_RELAY_SECRET || '').trim();
+    if (relayUrl && relaySecret) {
+      return this.earsivViaRelay(relayUrl, relaySecret, url, init);
+    }
     if (this._earsivDispatcher === undefined) {
       const purl = String(process.env.TURMOB_PROXY_URL || process.env.PORTAL_TR_PROXY_URL || '').trim();
       if (purl) {
@@ -1893,6 +1901,39 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       }
     }
     return fetch(url, this._earsivDispatcher ? { ...init, dispatcher: this._earsivDispatcher } : init) as any;
+  }
+
+  // GIB istegini VPS relay'ine (POST /fwd) yollar, relay VPS'ten GIB'e forward eder, yaniti geri kurar.
+  //   Relay self-signed TLS -> undici Agent(rejectUnauthorized:false) YALNIZ relay host'una. Relay tarafinda
+  //   sadece earsivportal'a izinli (allowlist) + x-relay-secret. Yanit gercek Response'a cevrilir.
+  private async earsivViaRelay(relayUrl: string, secret: string, url: string, init: any): Promise<Response> {
+    if (this._earsivRelayDispatcher === undefined) {
+      try {
+        this._earsivRelayDispatcher = new (require('undici').Agent)({ connect: { rejectUnauthorized: false } });
+        this.logger.log('GIB e-Arsiv relay aktif (VPS Turkiye cikis)');
+      } catch (e: any) {
+        this.logger.warn(`GIB e-Arsiv relay dispatcher kurulamadi: ${e?.message}`);
+        this._earsivRelayDispatcher = null;
+      }
+    }
+    const bodyStr = init?.body == null ? null : (typeof init.body === 'string' ? init.body : String(init.body));
+    const bodyB64 = bodyStr != null ? Buffer.from(bodyStr, 'utf8').toString('base64') : null;
+    const relayRes = await fetch(relayUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-relay-secret': secret },
+      body: JSON.stringify({ method: init?.method || 'GET', url, headers: init?.headers || {}, bodyB64 }),
+      ...(this._earsivRelayDispatcher ? { dispatcher: this._earsivRelayDispatcher } : {}),
+      signal: init?.signal || AbortSignal.timeout(35_000),
+    } as any);
+    if (!relayRes.ok) throw new Error(`GIB e-Arsiv relay hata: HTTP ${relayRes.status}`);
+    const j: any = await relayRes.json();
+    const buf = j?.bodyB64 ? Buffer.from(String(j.bodyB64), 'base64') : Buffer.alloc(0);
+    const headers = new Headers();
+    for (const [k, v] of Object.entries(j?.headers || {})) {
+      if (/^(content-encoding|content-length|transfer-encoding|connection)$/i.test(k)) continue;
+      try { headers.set(k, String(v)); } catch { /* gecersiz header atla */ }
+    }
+    return new Response(buf, { status: Number(j?.status) || 502, headers }) as any;
   }
 
   private async earsivDispatch(token: string, cmd: string, pageName: string, payload: Record<string, any> = {}) {
