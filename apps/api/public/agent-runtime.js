@@ -12,7 +12,7 @@
   // v1.42.2 (2026-06-16): Ajan kendini yenilerken (delete __morenAgent) eski async
   // döngü "Cannot read 'stopRequested' of undefined/null" ile ÇÖKÜYORDU → yetim
   // döngü artık nesne yoksa güvenle durur (stopRequested kontrollerine null-guard).
-  const AGENT_VERSION = '1.46.7';
+  const AGENT_VERSION = '1.46.8';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -4917,9 +4917,19 @@
       let lastProgress = '';
       let lastProgressLogTs = 0;
       let sawQueryActivity = false;
+      // AKTIVITE-SESSİZLİK ERKEN ÇIKIŞ (hız): "Fatura kaydetme işlemi sona erdi" yazısı küçük
+      //   sorgularda yakalanamayıp 5dk timeout'a düşürüyordu (ör. 2 fatura → dakikalarca boşuna
+      //   bekleme). Kayıt XHR'ları (fatura_kaydet/gib530) SILENCE_DONE_MS boyunca hiç artmadıysa
+      //   saves bitmiştir → yazıyı beklemeden çık. GÜVENLİK: döngü sonrası waitForActivitySilence
+      //   (2.5sn) guard'ı kalan/yeniden başlayan aktiviteyi zaten yakalar → erken çıksa da fatura kaçmaz.
+      let lastActCount = activityBeforeClick;
+      let lastActChangeTs = Date.now();
+      const SILENCE_DONE_MS = 8000;
       while (Date.now() - pollStart < POLL_MAX_MS) {
         await throwIfCancelled();
-        if (getAgentActivityCount() > activityBeforeClick) sawQueryActivity = true;
+        const actNow = getAgentActivityCount();
+        if (actNow > activityBeforeClick) sawQueryActivity = true;
+        if (actNow > lastActCount) { lastActCount = actNow; lastActChangeTs = Date.now(); }
         const allDocs = collectEbelgeDocsDeep();
         if (!allDocs.includes(document)) allDocs.unshift(document);
         let foundDoneSignal = false;
@@ -4960,6 +4970,13 @@
         if (foundDoneSignal) { queryDone = true; break; }
         // Her 5sn'de bir progress log'la (kullanıcı boş ekran görmesin)
         const now = Date.now();
+        // AKTIVİTE-SESSİZLİK ile erken çık: kayıt XHR'ları SILENCE_DONE_MS'dir durduysa saves bitti;
+        //   "sona erdi" yazısını beklemeden çık → küçük sorgudaki 5dk boşa beklemeyi önler.
+        if (sawQueryActivity && now - pollStart > 4000 && now - lastActChangeTs > SILENCE_DONE_MS) {
+          queryDone = true;
+          await log(`✓ GİB sorgu bitti (kayıt aktivitesi ${Math.round((now - lastActChangeTs) / 1000)}sn sessiz — "sona erdi" beklenmeden erken çıkıldı)`);
+          break;
+        }
         if (progressLine && progressLine !== lastProgress && now - lastProgressLogTs > 5000) {
           await log(`📊 GİB sorgu ilerleme: ${progressLine}`);
           lastProgress = progressLine;
