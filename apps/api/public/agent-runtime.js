@@ -12,7 +12,7 @@
   // v1.42.2 (2026-06-16): Ajan kendini yenilerken (delete __morenAgent) eski async
   // döngü "Cannot read 'stopRequested' of undefined/null" ile ÇÖKÜYORDU → yetim
   // döngü artık nesne yoksa güvenle durur (stopRequested kontrollerine null-guard).
-  const AGENT_VERSION = '1.46.14';
+  const AGENT_VERSION = '1.47.0';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -366,6 +366,22 @@
     } catch {}
   }
 
+  // HIZLI FİŞ gibi AYRI-PENCERE (window.open) popup'larını yakala — İşletme fiş yükleme
+  // ekranı (hizliFisPopUp.do) ana pencerenin frame'i DEĞİL. Luca'nın window.open'ını ŞEFFAF
+  // sarmalayıp referansı tutuyoruz (aynı köken → DOM erişilebilir). Davranış değişmez; yalnız liste.
+  try {
+    if (!window.__morenOpenHooked) {
+      window.__morenOpenHooked = true;
+      window.__morenLucaPopups = window.__morenLucaPopups || [];
+      const _origOpen = window.open;
+      window.open = function () {
+        const w = _origOpen.apply(this, arguments);
+        try { if (w) window.__morenLucaPopups.push(w); } catch {}
+        return w;
+      };
+    }
+  } catch {}
+
   function lucaDocuments() {
     const docs = [];
     const add = (w) => {
@@ -376,6 +392,14 @@
     };
     add(window.top || window);
     add(window);
+    // Ayrı-pencere popup'lar (HIZLI FİŞ vb.) — kapananları temizle, açık olanları ekle
+    try {
+      const pops = window.__morenLucaPopups || [];
+      for (let i = pops.length - 1; i >= 0; i--) {
+        const w = pops[i];
+        try { if (!w || w.closed) { pops.splice(i, 1); continue; } add(w); } catch {}
+      }
+    } catch {}
     return docs;
   }
 
@@ -1855,7 +1879,42 @@
                 return false;
               };
               let input = findFileInput();
-              if (!input) {
+              if (!input && isCsv) {
+                // ── İŞLETME DEFTERİ: Bilanço "Muhasebe › Excel Veri Aktarımı" ekranı bu mükellefte YOK.
+                //   Doğru yol (kullanıcı doğruladı): İşletme Defteri › Gelir Gider İşlemleri › Gelir Gider
+                //   Girişi → AYRI PENCERE "HIZLI FİŞ" popup'ı → alt "Excel Aktarım" → "Excel Şablon"
+                //   kutusundaki "Dosya Seç" input'u. Popup ana pencerenin frame'i değil; window.open
+                //   sarmalayıcı sayesinde lucaDocuments() artık onu da tarar.
+                const hizliFisAcik = () => lucaDocuments().some((d) => {
+                  try {
+                    const u = (d.URL || '') + ' ' + (d.title || '');
+                    if (/hizliFis|HIZLI\s*Fİ[ŞS]/i.test(u)) return true;
+                    return /Excel\s*Aktar[ıi]m/i.test((d.body && d.body.textContent) || '');
+                  } catch { return false; }
+                });
+                await log('İşletme Defteri fiş ekranı açılıyor — Gelir Gider İşlemleri › Gelir Gider Girişi (HIZLI FİŞ)');
+                try {
+                  if (!hizliFisAcik()) {
+                    try { cacheVisibleLucaMenuIds(); } catch {}
+                    let opened = await openCachedLucaMenu('Gelir Gider Girişi', log, 1500);
+                    if (!opened) {
+                      await nativeClickLucaText('İşletme Defteri', { settleMs: 1000 }); await sleep(700);
+                      await nativeClickLucaText('Gelir Gider İşlemleri', { hoverOnly: true, settleMs: 1000 }); await sleep(800);
+                      try { cacheVisibleLucaMenuIds(); } catch {}
+                      opened = await openCachedLucaMenu('Gelir Gider Girişi', log, 1500);
+                      if (!opened) { await nativeClickLucaText('Gelir Gider Girişi', { settleMs: 1500 }); }
+                    }
+                    for (let i = 0; i < 20 && !hizliFisAcik(); i++) { await sleep(500); }
+                  }
+                  await log(hizliFisAcik() ? '✓ HIZLI FİŞ ekranı hazır' : '⚠ HIZLI FİŞ ekranı görünmedi — Excel Aktarım yine de deneniyor');
+                  // Alt toolbar "Excel Aktarım" → "Excel Şablon" kutusu (Dosya Seç input'u belirir)
+                  let acildi = await nativeClickLucaText('Excel Aktarım', { settleMs: 1200, timeoutMs: 6000 });
+                  if (!acildi) acildi = lucaClickByText('Excel Aktarım');
+                  await log(acildi ? '✓ "Excel Aktarım" tıklandı' : '⚠ "Excel Aktarım" bulunamadı');
+                  await sleep(1200);
+                } catch (e) { await log(`İşletme menü/Excel Aktarım uyarısı: ${(e && e.message) || e}`); }
+                for (let i = 0; i < 16 && !input; i++) { await sleep(800); input = findFileInput(); }
+              } else if (!input) {
                 await log('Excel Veri Aktarımı ekranı açık değil — Luca menü kodu (II1a) ile açılıyor');
                 try {
                   // SAĞLAM YOL: metin-tıklama/hover/mouse pozisyonu yerine Luca'nın KENDİ menü
@@ -1877,7 +1936,7 @@
                 } catch (e) { await log(`Menü gezinme uyarısı: ${(e && e.message) || e}`); }
                 for (let i = 0; i < 16 && !input; i++) { await sleep(900); input = findFileInput(); }
               }
-              if (!input) throw new Error('Excel Veri Aktarımı ekranındaki dosya alanı bulunamadı. Luca\'da o ekranı açıp tekrar deneyin.');
+              if (!input) throw new Error((isCsv ? 'HIZLI FİŞ Excel Aktarım' : 'Excel Veri Aktarımı') + ' ekranındaki dosya alanı bulunamadı. Luca\'da o ekranı açıp tekrar deneyin.');
 
               // 4) Dosyayi input'a koy (DataTransfer) + change tetikle
               const dt = new DataTransfer();
