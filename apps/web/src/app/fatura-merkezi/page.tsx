@@ -4127,10 +4127,6 @@ function ScreenGenel({ taxpayers, period, onOpen }: { taxpayers: any[]; period: 
         .catch(() => []),
   });
   const rows: any[] = sumQ.data || [];
-  const nameOf = (id: string) => {
-    const t = taxpayers.find((x) => x.id === id);
-    return t ? taxpayerLabel(t) : id;
-  };
   const pendingOf = (r: any) => Number(r.pendingAlis || 0) + Number(r.pendingSatis || 0);
   const tot = rows.reduce(
     (a, r) => ({
@@ -4140,14 +4136,8 @@ function ScreenGenel({ taxpayers, period, onOpen }: { taxpayers: any[]; period: 
     }),
     { pending: 0, posted: 0, issue: 0 },
   );
-  // Genel Bakış = grafikli ÖZET + DİKKAT GEREKTİREN (bekleyen ya da sorunlu) mükellefler.
-  const attention = rows
-    .filter((r) => pendingOf(r) > 0 || Number(r.hasIssue || 0) > 0)
-    .sort((a, b) => (Number(b.hasIssue || 0) - Number(a.hasIssue || 0)) || (pendingOf(b) - pendingOf(a)));
   // ── Grafik verileri ──
   const donutTotal = tot.pending + tot.posted + tot.issue;
-  const topPending = [...rows].filter((r) => pendingOf(r) > 0).sort((a, b) => pendingOf(b) - pendingOf(a)).slice(0, 7);
-  const maxPending = topPending.length ? pendingOf(topPending[0]) : 1;
   const alisTot = rows.reduce((a, r) => a + Number(r.pendingAlis || 0), 0);
   const satisTot = rows.reduce((a, r) => a + Number(r.pendingSatis || 0), 0);
   const completionPct = donutTotal > 0 ? Math.round((tot.posted / donutTotal) * 100) : 0;
@@ -4242,45 +4232,6 @@ function ScreenGenel({ taxpayers, period, onOpen }: { taxpayers: any[]; period: 
               <div className="ovrl"><i className="ovd dg" /><span>Aktarıldı</span><b>{tot.posted}</b></div>
             </div>
           </div>
-        </div>
-      </div>
-      <div className="card ovbarcard">
-        <div className="ch"><h3>En çok bekleyen mükellefler</h3><div className="sp" /><span className="mu">ilk {topPending.length}</span></div>
-        <div className="ovbars">
-            {topPending.map((r) => {
-              const p = pendingOf(r);
-              return (
-                <div className="ovbar" key={r.taxpayerId} onClick={() => onOpen(r.taxpayerId)} title={nameOf(r.taxpayerId)}>
-                  <span className="ovbn">{nameOf(r.taxpayerId)}</span>
-                  <div className="ovbt"><div className="ovbf" style={{ width: `${Math.max(6, (p / maxPending) * 100)}%` }} /></div>
-                  <span className="ovbc">{p}</span>
-                </div>
-              );
-            })}
-            {topPending.length === 0 && <div className="empty">Bekleyen belge yok — her şey güncel. 🎉</div>}
-          </div>
-        </div>
-      <div className="card">
-        <div className="ch"><h3>Dikkat gerektirenler</h3><div className="sp" /><span className="mu">bekleyen ya da sorunlu olanlar</span></div>
-        <div className="twrap">
-          <table>
-            <thead><tr><th>Mükellef</th><th className="num">Bek. alış</th><th className="num">Bek. satış</th><th className="num">Sorunlu</th><th className="num">Luca'ya</th><th className="actcol" style={{ width: 60 }} /></tr></thead>
-            <tbody>
-              {attention.map((r) => (
-                <tr key={r.taxpayerId} style={{ cursor: 'pointer' }} onClick={() => onOpen(r.taxpayerId)}>
-                  <td className="firm"><b>{nameOf(r.taxpayerId)}</b></td>
-                  <td className="num">{r.pendingAlis || 0}</td>
-                  <td className="num">{r.pendingSatis || 0}</td>
-                  <td className="num">{Number(r.hasIssue || 0) > 0 ? <span className="pill miss">{r.hasIssue}</span> : '0'}</td>
-                  <td className="num">{r.postedToLuca || 0}</td>
-                  <td className="actcol"><button className="btn ghost sm" onClick={(e) => { e.stopPropagation(); onOpen(r.taxpayerId); }}>Aç</button></td>
-                </tr>
-              ))}
-              {!sumQ.isLoading && attention.length === 0 && (
-                <tr><td colSpan={6}><div className="empty">Bu dönemde bekleyen ya da sorunlu mükellef yok — her şey güncel. 🎉</div></td></tr>
-              )}
-            </tbody>
-          </table>
         </div>
       </div>
     </section>
