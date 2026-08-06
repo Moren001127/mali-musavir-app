@@ -4348,7 +4348,15 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       }
     }
 
-    const clicked = await this.clickEBeyannameSearchMenu(page);
+    let clicked = await this.clickEBeyannameSearchMenu(page);
+    if (!clicked) {
+      // 2026-08: GIB giriste bazen TAKVIM penceresi acik kaliyor (dpYear/dpMonth/d0..d30
+      // gorunumu) ve menu ya gizleniyor ya da erisilemiyor. Takvimi kapatip tekrar dene;
+      // menu DOM'da gizliyse gizli elemani da tikla (onclick yine calisir).
+      await this.dismissEBeyannameCalendar(page, notes);
+      clicked = await this.clickEBeyannameSearchMenu(page, true);
+      if (clicked) notes.push('Takvim kapatildi/gizli menu tiklandi; Beyanname Ara acildi');
+    }
     if (!clicked) {
       if (await this.hasEBeyannameSearchControls(page)) {
         notes.push('Beyanname Ara menusu gorunmedi ama sorgu formu aktif; mevcut form kullaniliyor');
@@ -4405,9 +4413,53 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     }).catch(() => false);
   }
 
-  private async clickEBeyannameSearchMenu(page: any) {
+  /** GİB e-Beyanname'de açık kalan takvim (datepicker) penceresini kapatmayı dener. */
+  private async dismissEBeyannameCalendar(page: any, notes: string[]) {
+    try {
+      await page.keyboard?.press?.('Escape');
+    } catch {}
     for (const target of this.ebeyannameDomTargets(page)) {
-      const clicked = await target.evaluate(() => {
+      const closed = await target.evaluate(() => {
+        const isVisible = (el: Element) => {
+          const anyEl = el as HTMLElement;
+          return !!(anyEl.offsetWidth || anyEl.offsetHeight || anyEl.getClientRects().length);
+        };
+        // Takvim gerçekten açık mı? (gün hücreleri d0..d30 + setDate)
+        const dayCells = Array.from(document.querySelectorAll<HTMLElement>('input[onclick*="setDate"], input[id^="d"][onclick]')).filter(isVisible);
+        if (dayCells.length < 5) return false;
+        // Tipik kapatma kontrolleri
+        const closers = Array.from(
+          document.querySelectorAll<HTMLElement>(
+            '[onclick*="closeCalendar" i], [onclick*="hideCalendar" i], [onclick*="kapat" i], img[src*="close" i], a[title*="Kapat" i], button[title*="Kapat" i]',
+          ),
+        ).filter(isVisible);
+        if (closers.length) {
+          closers[0].click();
+          return true;
+        }
+        // Kapatıcı yoksa takvim kapsayıcısını gizle (popup div genelde gün hücrelerinin atası)
+        let node: HTMLElement | null = dayCells[0];
+        for (let i = 0; i < 6 && node; i++) {
+          const style = window.getComputedStyle(node);
+          if (style.position === 'absolute' || style.position === 'fixed' || /calendar|takvim|datepicker/i.test(node.className || '')) {
+            node.style.display = 'none';
+            return true;
+          }
+          node = node.parentElement;
+        }
+        return false;
+      }).catch(() => false);
+      if (closed) {
+        notes.push('Acik takvim penceresi kapatildi');
+        await page.waitForTimeout(500);
+        return;
+      }
+    }
+  }
+
+  private async clickEBeyannameSearchMenu(page: any, allowHidden = false) {
+    for (const target of this.ebeyannameDomTargets(page)) {
+      const clicked = await target.evaluate((allowHiddenArg: boolean) => {
         const norm = (value: string) => String(value || '')
           .toLocaleUpperCase('tr-TR')
           .normalize('NFD')
@@ -4418,10 +4470,12 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
           const anyEl = el as HTMLElement;
           return !!(anyEl.offsetWidth || anyEl.offsetHeight || anyEl.getClientRects().length);
         };
-        const controls = Array.from(document.querySelectorAll<HTMLElement>('span[onclick], a[onclick], button, input[type="button"], input[type="submit"]'))
-          .filter(isVisible);
+        const allControls = Array.from(document.querySelectorAll<HTMLElement>('span[onclick], a[onclick], button, input[type="button"], input[type="submit"]'));
+        const controls = allControls.filter(isVisible);
 
-        const exact = controls.find((el) => /beyannameAraFormu\s*\(/i.test(el.getAttribute('onclick') || ''));
+        // Tam eşleşme: gizli olsa bile onclick tetiklenebilir (allowHidden modunda)
+        const exactPool = allowHiddenArg ? allControls : controls;
+        const exact = exactPool.find((el) => /beyannameAraFormu\s*\(/i.test(el.getAttribute('onclick') || ''));
         if (exact) {
           exact.click();
           return true;
@@ -4436,7 +4490,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         if (!fallback) return false;
         fallback.click();
         return true;
-      }).catch(() => false);
+      }, allowHidden).catch(() => false);
       if (clicked) {
         await page.waitForTimeout(800);
         return true;
@@ -7480,9 +7534,11 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
           const anyEl = el as HTMLElement;
           return !!(anyEl.offsetWidth || anyEl.offsetHeight || anyEl.getClientRects().length);
         };
-        return Array.from(document.querySelectorAll<HTMLElement>('a, button, input, select, span[onclick], div[onclick], form'))
+        // Menü adayları (a/span/div onclick) İLK sırada — takvim gün hücreleri (31 input)
+        // listeyi doldurup asıl menüyü gizlemesin diye inputlar en sona alındı.
+        return Array.from(document.querySelectorAll<HTMLElement>('a, span[onclick], div[onclick], button, select, form, input'))
           .filter(isVisible)
-          .slice(0, 60)
+          .slice(0, 80)
           .map((el: any) => {
             const label = (el.innerText || el.value || el.placeholder || el.title || el.name || el.id || '').replace(/\s+/g, ' ').trim();
             const marker = [el.id, el.name, el.getAttribute?.('onclick')]
