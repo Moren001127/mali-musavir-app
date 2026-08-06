@@ -12,7 +12,7 @@
   // v1.42.2 (2026-06-16): Ajan kendini yenilerken (delete __morenAgent) eski async
   // döngü "Cannot read 'stopRequested' of undefined/null" ile ÇÖKÜYORDU → yetim
   // döngü artık nesne yoksa güvenle durur (stopRequested kontrollerine null-guard).
-  const AGENT_VERSION = '1.47.1';
+  const AGENT_VERSION = '1.47.2';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -1956,6 +1956,68 @@
               input.dispatchEvent(new Event('change', { bubbles: true }));
               await log(`📎 Dosya seçildi: ${fname}`);
               await sleep(900);
+
+              // ═══ İŞLETME HIZLI FİŞ — ÖZEL FİNALİZE (Bilanço akışına GİRMEZ) ═══
+              //   Yükle → grid dolmasını bekle → popup içindeki "Fiş Kes" → onay → DOĞRULA.
+              //   Eski hata: Bilanço tail'i (İşlem Takip/fiş-seç/Fiş Kes) HIZLI FİŞ'e uymuyordu →
+              //   Fiş Kes gerçekten kesmiyordu ama "başarı" sanılıp yanlış POSTED işaretleniyordu.
+              if (isCsv) {
+                try {
+                  // popup dahil tüm dokümanlarda "Satır Sayısı: N" oku (grid dolu mu)
+                  const gridCount = () => {
+                    for (const d of lucaDocuments()) {
+                      try { const m = ((d.body && d.body.textContent) || '').match(/Sat[ıi]r\s*Say[ıi]s[ıi]\s*:?\s*(\d+)/i); if (m) return parseInt(m[1], 10); } catch {}
+                    }
+                    return -1;
+                  };
+                  // 1) Yükle (Excel Şablon dialog) — native, sonra DOM (popup lucaDocuments'te)
+                  let yOk = await nativeClickLucaText('Yükle', { exact: true, settleMs: 1200, timeoutMs: 6000 });
+                  if (!yOk) yOk = lucaClickByText('Yükle');
+                  await log(yOk ? '⏫ "Yükle" tıklandı (İşletme)' : '⚠ "Yükle" bulunamadı (İşletme)');
+                  // 2) Grid dolmasını bekle (CSV parse edilip satırlar HIZLI FİŞ tablosuna düşer)
+                  let gc = -1;
+                  for (let i = 0; i < 24 && (gc = gridCount()) < 1; i++) { await sleep(500); }
+                  await log(`ℹ HIZLI FİŞ grid satır sayısı (Yükle sonrası): ${gc}`);
+                  // 3) "Fiş Kes" — popup içindeki buton; native + DOM (onclick/gonder) yedek
+                  const clickByText = async (re) => {
+                    for (const d of lucaDocuments()) {
+                      try { for (const el of d.querySelectorAll('button,input[type=button],input[type=submit],a,span,div')) {
+                        const t = ((el.value || el.innerText || el.textContent) || '').replace(/\s+/g, ' ').trim();
+                        if (re.test(t) && (el.offsetParent !== null || el.tagName === 'INPUT' || el.tagName === 'A')) { try { el.scrollIntoView({ block: 'center' }); } catch {} el.click(); return true; }
+                      } } catch {}
+                    }
+                    return false;
+                  };
+                  let fk = await nativeClickLucaText('Fiş Kes', { settleMs: 1500, timeoutMs: 5000 });
+                  if (!fk) fk = await clickByText(/^Fi[şs]\s*Kes$/i);
+                  await log(fk ? '✂ "Fiş Kes" tıklandı' : '⚠ "Fiş Kes" bulunamadı');
+                  await sleep(1800);
+                  // 4) Onay dialog'u (Evet/Tamam/Onayla) — popup dahil
+                  for (const lbl of ['Evet', 'Tamam', 'Onayla', 'Onay']) {
+                    if (await nativeClickLucaText(lbl, { exact: true, settleMs: 900, timeoutMs: 2200 })) { await log(`↳ "${lbl}" onaylandı`); break; }
+                    if (await clickByText(new RegExp('^' + lbl + '$', 'i'))) { await log(`↳ "${lbl}" onaylandı (dom)`); break; }
+                  }
+                  await sleep(2500);
+                  // 5) DOĞRULA: grid boşaldı mı (fiş kesildi) ya da başarı metni
+                  const gc2 = gridCount();
+                  let ok = (gc >= 1 && gc2 >= 0 && gc2 < gc);
+                  for (const d of lucaDocuments()) {
+                    try { if (/fi[şs].{0,15}olu[şs]turuldu|kay[ıi]t\s+ba[şs]ar[ıi]|ba[şs]ar[ıi]yla\s+(kaydedildi|tamamland|eklendi)/i.test((d.body && d.body.textContent) || '')) ok = true; } catch {}
+                  }
+                  await log(`ℹ Fiş Kes sonrası grid: ${gc2} · başarı=${ok}`);
+                  if (ok) {
+                    await fetch(API + `/agent/luca/jobs/${job.id}/done`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN }, body: JSON.stringify({ recordCount: p.totalCount || 0 }) }).catch(() => {});
+                    setStatus('Luca: İşletme fişi OLUŞTURULDU');
+                    await log(`✅ İşletme ${p.direction === 'SATIS' ? 'Gelir' : 'Gider'} fişi Luca'da OLUŞTURULDU (HIZLI FİŞ → Fiş Kes → onay).`);
+                  } else {
+                    throw new Error(`İşletme Fiş Kes doğrulanamadı (grid ${gc}→${gc2}). Luca'da HIZLI FİŞ ekranında Fiş Kes'i / onayı kontrol et.`);
+                  }
+                } catch (e) {
+                  await log(`✗ İşletme finalize hata: ${(e && e.message) || e}`);
+                  await fetch(API + `/agent/luca/jobs/${job.id}/fail`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN }, body: JSON.stringify({ error: (e && e.message) || 'İşletme finalize hata' }) }).catch(() => {});
+                }
+                continue;
+              }
 
               // 5) "Yükle" — POPUP dialog butonu. DOM click (lucaClickByText) Luca'da TETİKLEMİYOR
               //    (dosya seçili, dialog açık kalıyor, yükleme olmuyor — kullanıcı ekranda gördü).
