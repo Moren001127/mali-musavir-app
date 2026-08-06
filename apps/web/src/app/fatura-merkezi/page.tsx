@@ -4105,55 +4105,60 @@ function ScreenGenel({ taxpayers, period, onOpen }: { taxpayers: any[]; period: 
     .sort((a, b) => (Number(b.hasIssue || 0) - Number(a.hasIssue || 0)) || (pendingOf(b) - pendingOf(a)));
   // ── Grafik verileri ──
   const donutTotal = tot.pending + tot.posted + tot.issue;
-  const RC = 2 * Math.PI * 52; // r=52 çevresi
-  const seg = (v: number) => (donutTotal > 0 ? (v / donutTotal) * RC : 0);
-  const segPosted = seg(tot.posted);
-  const segPending = seg(tot.pending);
-  const segIssue = seg(tot.issue);
   const topPending = [...rows].filter((r) => pendingOf(r) > 0).sort((a, b) => pendingOf(b) - pendingOf(a)).slice(0, 7);
   const maxPending = topPending.length ? pendingOf(topPending[0]) : 1;
   const alisTot = rows.reduce((a, r) => a + Number(r.pendingAlis || 0), 0);
   const satisTot = rows.reduce((a, r) => a + Number(r.pendingSatis || 0), 0);
+  const completionPct = donutTotal > 0 ? Math.round((tot.posted / donutTotal) * 100) : 0;
   return (
     <section className="screen">
       <div className="h2">Genel Bakış</div>
       <div className="sub">{period} dönemi — belge durumu, dağılım ve dikkat gerektiren mükellefler.</div>
-      <div className="ovstats">
-        <div className="ovstat ov-blue"><div className="ovl">Bekleyen belge</div><div className="ovv">{tot.pending}</div></div>
-        <div className="ovstat ov-green"><div className="ovl">Luca'ya aktarılan</div><div className="ovv">{tot.posted}</div></div>
-        <div className="ovstat ov-red"><div className="ovl">Sorunlu (kontrol)</div><div className="ovv">{tot.issue}</div></div>
-        <div className="ovstat ov-amber"><div className="ovl">Dikkat gereken mükellef</div><div className="ovv">{attention.length}</div></div>
-      </div>
-      <div className="ovcharts">
-        <div className="card ovcard">
-          <div className="ch"><h3>Belge Durumu</h3><div className="sp" /><span className="mu">{donutTotal} belge</span></div>
-          <div className="ovdonwrap">
-            <svg viewBox="0 0 120 120" className="ovdon" aria-hidden="true">
-              <circle cx="60" cy="60" r="52" fill="none" stroke="#e9edf5" strokeWidth="13" />
-              {donutTotal > 0 && (
-                <>
-                  <circle cx="60" cy="60" r="52" fill="none" stroke="#15924f" strokeWidth="13" strokeDasharray={`${segPosted} ${RC}`} strokeDashoffset="0" transform="rotate(-90 60 60)" />
-                  <circle cx="60" cy="60" r="52" fill="none" stroke="#2f54d6" strokeWidth="13" strokeDasharray={`${segPending} ${RC}`} strokeDashoffset={`${-segPosted}`} transform="rotate(-90 60 60)" />
-                  <circle cx="60" cy="60" r="52" fill="none" stroke="#e0394a" strokeWidth="13" strokeDasharray={`${segIssue} ${RC}`} strokeDashoffset={`${-(segPosted + segPending)}`} transform="rotate(-90 60 60)" />
-                </>
-              )}
-              <text x="60" y="57" textAnchor="middle" className="ovdont">{donutTotal}</text>
-              <text x="60" y="73" textAnchor="middle" className="ovdonl">toplam</text>
-            </svg>
-            <div className="ovleg">
-              <div className="ovlegi"><span className="ovdot" style={{ background: '#2f54d6' }} />Bekleyen<b>{tot.pending}</b></div>
-              <div className="ovlegi"><span className="ovdot" style={{ background: '#15924f' }} />Aktarılan<b>{tot.posted}</b></div>
-              <div className="ovlegi"><span className="ovdot" style={{ background: '#e0394a' }} />Sorunlu<b>{tot.issue}</b></div>
-            </div>
-          </div>
-          <div className="ovsplit">
-            <div className="ovsp"><span>Bekleyen Alış</span><b>{alisTot}</b></div>
-            <div className="ovsp"><span>Bekleyen Satış</span><b>{satisTot}</b></div>
+      {/* ── BELGE AKIŞ HATTI ── faturanın yolculuğu */}
+      <div className="ovhero">
+        <div className="ovprog">
+          <div className="ovprogl"><span className="ovpct">%{completionPct}</span><span className="ovpctt">belge işlenip Luca'ya aktarıldı</span></div>
+          <div className="ovtrack"><div className="ovtrackfill" style={{ width: `${completionPct === 0 && donutTotal > 0 ? 1.5 : completionPct}%` }} /></div>
+          <div className="ovtrackleg">
+            <span><i className="ovd db" />{tot.pending} bekliyor</span>
+            <span><i className="ovd dr" />{tot.issue} sorunlu</span>
+            <span><i className="ovd dg" />{tot.posted} aktarıldı</span>
+            <span className="ovtotb">{donutTotal} toplam belge</span>
           </div>
         </div>
-        <div className="card ovcard">
-          <div className="ch"><h3>En çok bekleyen mükellefler</h3><div className="sp" /><span className="mu">ilk {topPending.length}</span></div>
-          <div className="ovbars">
+        <div className="ovpipe">
+          <div className="ovstage st-slate">
+            <div className="ovsic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2" /><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" /></svg></div>
+            <div className="ovsnum">{donutTotal}</div>
+            <div className="ovsl">Gelen Belge</div>
+            <div className="ovss">bu dönem toplam</div>
+          </div>
+          <div className="ovconn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6" /></svg></div>
+          <div className="ovstage st-blue">
+            <div className="ovsic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><polyline points="12 7 12 12 16 14" /></svg></div>
+            <div className="ovsnum">{tot.pending}</div>
+            <div className="ovsl">Bekleyen</div>
+            <div className="ovss">Alış {alisTot} · Satış {satisTot}</div>
+          </div>
+          <div className="ovconn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6" /></svg></div>
+          <div className="ovstage st-red">
+            <div className="ovsic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" /><line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" /></svg></div>
+            <div className="ovsnum">{tot.issue}</div>
+            <div className="ovsl">Sorunlu</div>
+            <div className="ovss">kontrol gerekli</div>
+          </div>
+          <div className="ovconn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6" /></svg></div>
+          <div className="ovstage st-green">
+            <div className="ovsic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></svg></div>
+            <div className="ovsnum">{tot.posted}</div>
+            <div className="ovsl">Luca'ya Aktarıldı</div>
+            <div className="ovss">tamamlandı</div>
+          </div>
+        </div>
+      </div>
+      <div className="card ovbarcard">
+        <div className="ch"><h3>En çok bekleyen mükellefler</h3><div className="sp" /><span className="mu">ilk {topPending.length}</span></div>
+        <div className="ovbars">
             {topPending.map((r) => {
               const p = pendingOf(r);
               return (
@@ -4167,7 +4172,6 @@ function ScreenGenel({ taxpayers, period, onOpen }: { taxpayers: any[]; period: 
             {topPending.length === 0 && <div className="empty">Bekleyen belge yok — her şey güncel. 🎉</div>}
           </div>
         </div>
-      </div>
       <div className="card">
         <div className="ch"><h3>Dikkat gerektirenler</h3><div className="sp" /><span className="mu">bekleyen ya da sorunlu olanlar</span></div>
         <div className="twrap">
@@ -4292,39 +4296,46 @@ const CSS = `
 #fm-root .btn.soon:disabled{opacity:.72;background:#f8fafc;color:#64748b;border-color:#e2e8f0}
 #fm-root .soonbadge{font-size:9px;font-weight:800;line-height:1;padding:3px 5px;border-radius:999px;background:#e2e8f0;color:#475569;letter-spacing:.2px}
 #fm-root .card{background:#fff;border:1px solid var(--line);border-radius:14px;margin-bottom:16px;box-shadow:0 1px 2px rgba(16,24,40,.04)}
-/* ── Genel Bakış grafik ekranı ── */
-#fm-root .ovstats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}
-#fm-root .ovstat{background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 14px 13px 18px;position:relative;overflow:hidden;box-shadow:0 1px 2px rgba(16,24,40,.04)}
-#fm-root .ovstat::before{content:'';position:absolute;left:0;top:0;bottom:0;width:5px}
-#fm-root .ovstat.ov-blue::before{background:#2f54d6}
-#fm-root .ovstat.ov-green::before{background:#15924f}
-#fm-root .ovstat.ov-red::before{background:#e0394a}
-#fm-root .ovstat.ov-amber::before{background:#cf7a0e}
-#fm-root .ovstat .ovl{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.3px}
-#fm-root .ovstat .ovv{font-size:27px;font-weight:800;line-height:1.1;margin-top:3px;font-variant-numeric:tabular-nums;letter-spacing:-.5px}
-#fm-root .ovcharts{display:grid;grid-template-columns:minmax(300px,1fr) minmax(320px,1.25fr);gap:14px;margin-bottom:16px}
-#fm-root .ovcard{padding:0}
-#fm-root .ovdonwrap{display:flex;align-items:center;gap:22px;padding:16px 18px 8px}
-#fm-root .ovdon{width:138px;height:138px;flex-shrink:0}
-#fm-root .ovdont{font-size:25px;font-weight:800;fill:var(--text)}
-#fm-root .ovdonl{font-size:9.5px;font-weight:700;fill:var(--muted);text-transform:uppercase;letter-spacing:.4px}
-#fm-root .ovleg{display:flex;flex-direction:column;gap:9px;flex:1}
-#fm-root .ovlegi{display:flex;align-items:center;gap:9px;font-size:12.5px;color:var(--muted);font-weight:600}
-#fm-root .ovlegi b{margin-left:auto;color:var(--text);font-weight:800;font-variant-numeric:tabular-nums;font-size:14px}
-#fm-root .ovdot{width:11px;height:11px;border-radius:3px;flex-shrink:0}
-#fm-root .ovsplit{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin:4px 18px 18px;padding-top:14px;border-top:1px solid var(--line)}
-#fm-root .ovsp{display:flex;flex-direction:column;gap:3px;background:#f8fafc;border:1px solid var(--line);border-radius:9px;padding:9px 11px}
-#fm-root .ovsp span{font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.3px}
-#fm-root .ovsp b{font-size:19px;font-weight:800;font-variant-numeric:tabular-nums}
+/* ── Belge Akış Hattı (Genel Bakış hero) ── */
+#fm-root .ovhero{background:linear-gradient(135deg,#0e1b3a,#16294d 55%,#0d2b3f);border-radius:16px;padding:20px 22px;margin-bottom:16px;box-shadow:0 8px 30px rgba(16,32,68,.22);position:relative;overflow:hidden}
+#fm-root .ovhero::after{content:'';position:absolute;inset:0;background:radial-gradient(120% 140% at 100% 0%,rgba(47,84,214,.35),transparent 55%);pointer-events:none}
+#fm-root .ovprog{position:relative;z-index:1;margin-bottom:18px}
+#fm-root .ovprogl{display:flex;align-items:baseline;gap:10px;margin-bottom:9px}
+#fm-root .ovpct{font-size:34px;font-weight:900;color:#fff;line-height:1;letter-spacing:-1px;font-variant-numeric:tabular-nums}
+#fm-root .ovpctt{font-size:13px;font-weight:600;color:rgba(255,255,255,.72)}
+#fm-root .ovtrack{height:12px;border-radius:8px;background:rgba(255,255,255,.13);overflow:hidden}
+#fm-root .ovtrackfill{height:100%;border-radius:8px;background:linear-gradient(90deg,#22c55e,#4ade80);box-shadow:0 0 14px rgba(74,222,128,.5);transition:width .5s}
+#fm-root .ovtrackleg{display:flex;flex-wrap:wrap;gap:16px;margin-top:10px;font-size:12px;font-weight:600;color:rgba(255,255,255,.78)}
+#fm-root .ovtrackleg span{display:inline-flex;align-items:center;gap:6px}
+#fm-root .ovtrackleg .ovtotb{margin-left:auto;color:rgba(255,255,255,.55);font-weight:700}
+#fm-root .ovd{width:9px;height:9px;border-radius:50%;display:inline-block}
+#fm-root .ovd.db{background:#60a5fa}
+#fm-root .ovd.dr{background:#f87171}
+#fm-root .ovd.dg{background:#4ade80}
+#fm-root .ovpipe{position:relative;z-index:1;display:flex;align-items:stretch;gap:0}
+#fm-root .ovstage{flex:1;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:13px;padding:14px 12px 13px;text-align:center;transition:transform .15s,background .15s}
+#fm-root .ovstage:hover{transform:translateY(-2px);background:rgba(255,255,255,.12)}
+#fm-root .ovsic{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;margin:0 auto 9px;color:#fff}
+#fm-root .ovsic svg{width:20px;height:20px}
+#fm-root .ovstage.st-slate .ovsic{background:linear-gradient(135deg,#475569,#64748b)}
+#fm-root .ovstage.st-blue .ovsic{background:linear-gradient(135deg,#2563eb,#3b82f6)}
+#fm-root .ovstage.st-red .ovsic{background:linear-gradient(135deg,#dc2626,#ef4444)}
+#fm-root .ovstage.st-green .ovsic{background:linear-gradient(135deg,#16a34a,#22c55e)}
+#fm-root .ovsnum{font-size:30px;font-weight:900;color:#fff;line-height:1;font-variant-numeric:tabular-nums;letter-spacing:-.5px}
+#fm-root .ovsl{font-size:12.5px;font-weight:700;color:rgba(255,255,255,.92);margin-top:5px}
+#fm-root .ovss{font-size:10.5px;font-weight:600;color:rgba(255,255,255,.5);margin-top:3px}
+#fm-root .ovconn{display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.3);width:32px;flex-shrink:0}
+#fm-root .ovconn svg{width:19px;height:19px}
+#fm-root .ovbarcard{margin-bottom:16px}
 #fm-root .ovbars{display:flex;flex-direction:column;gap:10px;padding:16px 18px}
-#fm-root .ovbar{display:grid;grid-template-columns:minmax(90px,150px) 1fr 34px;align-items:center;gap:11px;cursor:pointer}
+#fm-root .ovbar{display:grid;grid-template-columns:minmax(90px,160px) 1fr 34px;align-items:center;gap:11px;cursor:pointer}
 #fm-root .ovbar:hover .ovbf{filter:brightness(1.08)}
 #fm-root .ovbar:hover .ovbn{color:var(--accent)}
 #fm-root .ovbn{font-size:12px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #fm-root .ovbt{height:13px;background:#eef1f7;border-radius:7px;overflow:hidden}
 #fm-root .ovbf{height:100%;border-radius:7px;background:linear-gradient(90deg,#2f54d6,#6b8bea);transition:width .35s}
 #fm-root .ovbc{font-size:12.5px;font-weight:800;color:var(--text);text-align:right;font-variant-numeric:tabular-nums}
-@media(max-width:980px){#fm-root .ovstats{grid-template-columns:repeat(2,1fr)}#fm-root .ovcharts{grid-template-columns:1fr}}
+@media(max-width:820px){#fm-root .ovpipe{flex-wrap:wrap;gap:8px}#fm-root .ovstage{flex:1 1 42%}#fm-root .ovconn{display:none}}
 #fm-root .card .ch{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap;background:#fff}
 #fm-root .card .ch h3{font-size:13.5px;font-weight:700}
 #fm-root .mu{font-size:11px;color:var(--faint)}
