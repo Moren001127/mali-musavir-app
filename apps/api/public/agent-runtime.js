@@ -12,7 +12,7 @@
   // v1.42.2 (2026-06-16): Ajan kendini yenilerken (delete __morenAgent) eski async
   // döngü "Cannot read 'stopRequested' of undefined/null" ile ÇÖKÜYORDU → yetim
   // döngü artık nesne yoksa güvenle durur (stopRequested kontrollerine null-guard).
-  const AGENT_VERSION = '1.47.6';
+  const AGENT_VERSION = '1.47.7';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -2066,13 +2066,31 @@
                       await log(`ℹ[fnsrc] ${clean || 'fn-erişilemedi'}`);
                     } catch (e) { await log(`fnsrc: ${(e && e.message) || e}`); }
                   } catch {}
-                  // 1) Yükle — sayfa fonksiyonu → popup-trusted → ana native → fireEl
+                  // 1) Yükle — Luca "csvSablonYukle" FORM.submit yapıyor (uploadHizliFisAktarimCsvAction.do).
+                  //   PROGRAMATİK form.submit dosyayı göndermiyor (Chrome user-activation kısıtı → grid boş
+                  //   kalıyordu). ÇÖZÜM: formu FETCH ile POST et (aktivasyon gerekmez; FormData formFile'ı
+                  //   içerir) → dönen HTML (satırlı grid) popup'a yazılır. Sonra Fiş Kes o grid'i keser.
                   const yEl = findBtn(/^Y[üu]kle$/i);
                   let yOk = false;
-                  if (yEl) yOk = firePageBtn(yEl);
+                  try {
+                    const pw = popupWin();
+                    const fi = findFileInput();
+                    const form = fi && (fi.form || (fi.closest && fi.closest('form')));
+                    if (pw && form && pw.fetch && pw.FormData) {
+                      const action = form.action || (form.getAttribute && form.getAttribute('action')) || (pw.location && pw.location.href);
+                      const fd = new pw.FormData(form);
+                      const resp = await pw.fetch(action, { method: 'POST', body: fd, credentials: 'include' });
+                      const html = await resp.text();
+                      await log(`ℹ Yükle fetch-POST → HTTP ${resp.status} · ${Math.round(html.length / 1024)}KB`);
+                      if (resp.status >= 200 && resp.status < 400 && html.length > 500) {
+                        try { pw.document.open(); pw.document.write(html); pw.document.close(); yOk = true; } catch (e2) { await log(`doc.write: ${(e2 && e2.message) || e2}`); }
+                      }
+                    }
+                  } catch (e) { await log(`fetch-POST hata: ${(e && e.message) || e}`); }
+                  // yedek: butonu doğrudan tetikle
+                  if (!yOk && yEl) yOk = firePageBtn(yEl);
                   if (!yOk) yOk = await popupNativeClick('Yükle', { exact: true, settleMs: 1200, timeoutMs: 5000 });
-                  if (!yOk) yOk = await nativeClickLucaText('Yükle', { exact: true, settleMs: 1000, timeoutMs: 4000 });
-                  await log(yOk ? '⏫ "Yükle" tetiklendi (İşletme)' : '⚠ "Yükle" bulunamadı');
+                  await log(yOk ? '⏫ "Yükle" tetiklendi (İşletme, fetch-POST)' : '⚠ "Yükle" bulunamadı');
                   // 2) Grid DOLMASINI bekle — boş grid "Satır Sayısı:1" placeholder; dolu = >1
                   let gc = 1;
                   for (let i = 0; i < 30 && (gc = gridCount()) <= 1; i++) { await sleep(600); }
