@@ -12,7 +12,7 @@
   // v1.42.2 (2026-06-16): Ajan kendini yenilerken (delete __morenAgent) eski async
   // döngü "Cannot read 'stopRequested' of undefined/null" ile ÇÖKÜYORDU → yetim
   // döngü artık nesne yoksa güvenle durur (stopRequested kontrollerine null-guard).
-  const AGENT_VERSION = '1.46.10';
+  const AGENT_VERSION = '1.46.11';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -4871,7 +4871,7 @@
         throw new Error('indir-window aksiyonu bulunamadı — Luca sayfası beklenen yapıda değil');
       }
       await log(`⏱ ${etiket} · modal aksiyonu: ${Date.now() - __tModalBas}ms`);
-      await sleep(800); // modal animasyonu
+      await sleep(300); // modal animasyonu (kısaltıldı: waitForDatePair zaten tarih alanlarını bekliyor)
 
       // Tarih input'ları Luca sürümüne göre farklı frame/modal içinde açılabiliyor.
       const __tDateBas = Date.now();
@@ -4910,7 +4910,7 @@
       // Çok fatura varsa bu 60-90sn sürebilir (örn 333 belge → her biri ayrı GİB sorgusu).
       // Sabit 8sn yetersiz — POLLING ile bekle: max 5 dk, "N adet fatura bulundu" ya da
       // "İşlem tamamlandı" gibi tamamlanma sinyalini bekle.
-      const POLL_INTERVAL = 1000;
+      const POLL_INTERVAL = 600; // 1000→600: "sona erdi" metni/sessizlik daha erken yakalanır
       const POLL_MAX_MS = 5 * 60 * 1000; // 5 dakika
       const pollStart = Date.now();
       let queryDone = false;
@@ -4924,7 +4924,7 @@
       //   (2.5sn) guard'ı kalan/yeniden başlayan aktiviteyi zaten yakalar → erken çıksa da fatura kaçmaz.
       let lastActCount = activityBeforeClick;
       let lastActChangeTs = Date.now();
-      const SILENCE_DONE_MS = 8000;
+      const SILENCE_DONE_MS = 5000; // 8000→5000: metin sinyali kaçarsa daha erken çık (indirmeden önce waitForActivitySilence guard'ı korur)
       while (Date.now() - pollStart < POLL_MAX_MS) {
         await throwIfCancelled();
         const actNow = getAgentActivityCount();
