@@ -887,6 +887,7 @@ export class TaxpayersService {
     month: number,
     data: {
       evraklarGeldi?: boolean;
+      yuklendi?: boolean;
       evraklarIslendi?: boolean;
       kontrolEdildi?: boolean;
       beyannameVerildi?: boolean;

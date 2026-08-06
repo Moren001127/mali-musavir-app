@@ -1245,6 +1245,7 @@ model TaxpayerMonthlyStatus {
   year             Int
   month            Int      // 1-12
   evraklarGeldi          Boolean  @default(false)
+  yuklendi               Boolean  @default(false) // evrak geldi → sisteme yüklendi (fiş görselleri, portal faturaları); işlemden önce
   evraklarIslendi        Boolean  @default(false)
   kontrolEdildi          Boolean  @default(false)
   beyannameVerildi       Boolean  @default(false)

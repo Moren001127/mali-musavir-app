@@ -15,6 +15,7 @@ import {
 
 const MONTHLY_STATUS_FIELDS = new Set([
   'evraklarGeldi',
+  'yuklendi',
   'evraklarIslendi',
   'kontrolEdildi',
   'beyannameVerildi',

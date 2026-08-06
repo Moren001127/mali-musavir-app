@@ -9,11 +9,12 @@ import { ClipboardCheck, Search, Upload, AlertCircle, PhoneOff, Check as CheckIc
 const GOLD = '#d4b876';
 const GOLD_SOFT = '#b8a06f';
 // Satır: avatar | ad | durum etiketi | 6 onay kutusu | not
-const TAXPAYER_TABLE_GRID = '34px minmax(190px, 1.2fr) 142px repeat(6, minmax(46px, 0.32fr)) minmax(150px, 0.8fr)';
+const TAXPAYER_TABLE_GRID = '34px minmax(190px, 1.2fr) 142px repeat(7, minmax(46px, 0.32fr)) minmax(150px, 0.8fr)';
 
 type MonthlyStatus = {
   id?: string;
   evraklarGeldi: boolean;
+  yuklendi: boolean;
   evraklarIslendi: boolean;
   kontrolEdildi: boolean;
   beyannameVerildi: boolean;
@@ -52,6 +53,7 @@ type Taxpayer = {
 // Tablodaki checkbox alanlarının tipi
 type StatusKey =
   | 'evraklarGeldi'
+  | 'yuklendi'
   | 'evraklarIslendi'
   | 'indirilecekKdvKontrol'
   | 'hesaplananKdvKontrol'
@@ -60,18 +62,19 @@ type StatusKey =
 type MonthlyStatusPatch = Partial<Pick<MonthlyStatus, StatusKey | 'notes'>>;
 
 // 'islenmedi' geriye dönük (dış bağlantı) korunuyor; 'beyanname-verilmedi' de
-type FilterKey = 'all' | 'evrak-gelmedi' | 'islem-bekliyor' | 'kontrol-bekliyor' | 'islenmedi' | 'beyanname-bekliyor' | 'beyanname-verilmedi' | 'verildi';
+type FilterKey = 'all' | 'evrak-gelmedi' | 'yukleme-bekliyor' | 'islem-bekliyor' | 'kontrol-bekliyor' | 'islenmedi' | 'beyanname-bekliyor' | 'beyanname-verilmedi' | 'verildi';
 type ProfileFilterKey = 'all' | 'profil-eksik' | 'telefon-yok';
 type CompletenessItem = { id: string; score: number; durum: string; eksikSayisi: number; kritikEksikSayisi: number };
 
 const AYLAR_TR = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
-const FILTER_KEYS: FilterKey[] = ['all', 'evrak-gelmedi', 'islem-bekliyor', 'kontrol-bekliyor', 'islenmedi', 'beyanname-bekliyor', 'beyanname-verilmedi', 'verildi'];
+const FILTER_KEYS: FilterKey[] = ['all', 'evrak-gelmedi', 'yukleme-bekliyor', 'islem-bekliyor', 'kontrol-bekliyor', 'islenmedi', 'beyanname-bekliyor', 'beyanname-verilmedi', 'verildi'];
 const PROFILE_FILTER_KEYS: ProfileFilterKey[] = ['all', 'profil-eksik', 'telefon-yok'];
 
 // İş akışı aşamaları — sıradaki bekleyen adımı gösterir, her biri farklı renk
-type Stage = 'evrak-bekliyor' | 'islem-bekliyor' | 'kontrol-bekliyor' | 'beyan-hazir' | 'verildi';
+type Stage = 'evrak-bekliyor' | 'yukleme-bekliyor' | 'islem-bekliyor' | 'kontrol-bekliyor' | 'beyan-hazir' | 'verildi';
 const STAGES: Record<Stage, { label: string; color: string }> = {
   'evrak-bekliyor':   { label: 'Evrak bekleniyor', color: '#e0843e' },
+  'yukleme-bekliyor': { label: 'Yükleme bekliyor', color: '#2dd4bf' },
   'islem-bekliyor':   { label: 'İşlem bekliyor',   color: '#5b9bd5' },
   'kontrol-bekliyor': { label: 'Kontrol bekliyor', color: '#a78bdb' },
   'beyan-hazir':      { label: 'Beyanname verilebilir',  color: GOLD },
@@ -140,6 +143,7 @@ function deriveStage(s: MonthlyStatus | null): Stage {
   if (!s) return 'evrak-bekliyor';
   if (s.beyannameVerildi) return 'verildi';
   if (!s.evraklarGeldi) return 'evrak-bekliyor';
+  if (!s.yuklendi) return 'yukleme-bekliyor';
   if (!s.evraklarIslendi) return 'islem-bekliyor';
   const kontrolBitti = s.indirilecekKdvKontrol && s.hesaplananKdvKontrol && s.eArsivKontrol;
   return kontrolBitti ? 'beyan-hazir' : 'kontrol-bekliyor';
@@ -228,7 +232,7 @@ export default function MukelleflerPage() {
         (old || []).map((t) => {
           if (t.id !== id) return t;
           const base: MonthlyStatus = t.monthlyStatus ?? {
-            evraklarGeldi: false, evraklarIslendi: false, kontrolEdildi: false,
+            evraklarGeldi: false, yuklendi: false, evraklarIslendi: false, kontrolEdildi: false,
             beyannameVerildi: false, kdvKontrolEdildi: false,
             indirilecekKdvKontrol: false, hesaplananKdvKontrol: false, eArsivKontrol: false,
             notes: null,
@@ -252,23 +256,25 @@ export default function MukelleflerPage() {
 
   // Aşama bazlı sayımlar — her mükellef tam olarak bir aşamada
   const counts = useMemo(() => {
-    let evrakBekliyor = 0, islemBekliyor = 0, kontrolBekliyor = 0, beyanHazir = 0, verildi = 0;
+    let evrakBekliyor = 0, yuklemeBekliyor = 0, islemBekliyor = 0, kontrolBekliyor = 0, beyanHazir = 0, verildi = 0;
     for (const t of raw) {
       switch (deriveStage(t.monthlyStatus)) {
         case 'evrak-bekliyor': evrakBekliyor++; break;
+        case 'yukleme-bekliyor': yuklemeBekliyor++; break;
         case 'islem-bekliyor': islemBekliyor++; break;
         case 'kontrol-bekliyor': kontrolBekliyor++; break;
         case 'beyan-hazir': beyanHazir++; break;
         case 'verildi': verildi++; break;
       }
     }
-    return { total: raw.length, evrakBekliyor, islemBekliyor, kontrolBekliyor, beyanHazir, verildi };
+    return { total: raw.length, evrakBekliyor, yuklemeBekliyor, islemBekliyor, kontrolBekliyor, beyanHazir, verildi };
   }, [raw]);
 
   const matchesFilter = (t: Taxpayer): boolean => {
     const stage = deriveStage(t.monthlyStatus);
     switch (filter) {
       case 'evrak-gelmedi': return stage === 'evrak-bekliyor';
+      case 'yukleme-bekliyor': return stage === 'yukleme-bekliyor';
       case 'islem-bekliyor': return stage === 'islem-bekliyor';
       case 'kontrol-bekliyor': return stage === 'kontrol-bekliyor';
       case 'islenmedi': return stage === 'islem-bekliyor' || stage === 'kontrol-bekliyor';
@@ -295,6 +301,7 @@ export default function MukelleflerPage() {
   const stageCards: { key: FilterKey; label: string; count: number; color: string }[] = [
     { key: 'all',                label: 'Takipteki mükellef', count: counts.total,          color: GOLD },
     { key: 'evrak-gelmedi',      label: 'Evrak bekleniyor', count: counts.evrakBekliyor,    color: STAGES['evrak-bekliyor'].color },
+    { key: 'yukleme-bekliyor',   label: 'Yükleme bekliyor', count: counts.yuklemeBekliyor,  color: STAGES['yukleme-bekliyor'].color },
     { key: 'islem-bekliyor',     label: 'İşlem bekliyor',   count: counts.islemBekliyor,    color: STAGES['islem-bekliyor'].color },
     { key: 'kontrol-bekliyor',   label: 'Kontrol bekliyor', count: counts.kontrolBekliyor,  color: STAGES['kontrol-bekliyor'].color },
     { key: 'beyanname-bekliyor', label: 'Beyanname verilebilir',  count: counts.beyanHazir,       color: STAGES['beyan-hazir'].color },
@@ -370,7 +377,7 @@ export default function MukelleflerPage() {
             type="button"
             onClick={() => {
               const rows = [
-                ['İsim','Tür','VKN/TC','VD','Evrak','İşlendi','İnd.KDV','Hes.KDV','E-Arşiv','Beyanname','Not'],
+                ['İsim','Tür','VKN/TC','VD','Evrak','Yüklendi','İşlendi','İnd.KDV','Hes.KDV','E-Arşiv','Beyanname','Not'],
                 ...raw.map(t => {
                   const s = t.monthlyStatus;
                   return [
@@ -379,6 +386,7 @@ export default function MukelleflerPage() {
                     t.taxNumber,
                     t.taxOffice,
                     s?.evraklarGeldi ? 'Evet' : 'Hayır',
+                    s?.yuklendi ? 'Evet' : 'Hayır',
                     s?.evraklarIslendi ? 'Evet' : 'Hayır',
                     s?.indirilecekKdvKontrol ? 'Evet' : 'Hayır',
                     s?.hesaplananKdvKontrol ? 'Evet' : 'Hayır',
@@ -523,6 +531,7 @@ export default function MukelleflerPage() {
           <span>Mükellef</span>
           <span>Durum</span>
           <span className="text-center" title="Evrak geldi">Evrak</span>
+          <span className="text-center" title="Sisteme yüklendi (fiş görselleri / portal faturaları)">Yüklendi</span>
           <span className="text-center" title="Evraklar işlendi">İşlem</span>
           <span className="text-center" title="İndirilecek KDV kontrol" style={{ borderLeft: '1px solid rgba(255,255,255,0.07)', paddingLeft: 6 }}>İnd</span>
           <span className="text-center" title="Hesaplanan KDV kontrol">Hes</span>
@@ -709,6 +718,11 @@ function TaxpayerRow({
       {/* Evrak */}
       <div className="flex justify-center">
         <Check checked={!!s?.evraklarGeldi} onClick={() => onToggle('evraklarGeldi', !s?.evraklarGeldi)} title="Evrak geldi" />
+      </div>
+
+      {/* Yüklendi — evrak sisteme yüklendi (fiş görselleri, portal faturaları çekildi) */}
+      <div className="flex justify-center">
+        <Check checked={!!s?.yuklendi} onClick={() => onToggle('yuklendi', !s?.yuklendi)} title="Sisteme yüklendi (fiş görselleri / portal faturaları)" />
       </div>
 
       {/* İşlendi */}
