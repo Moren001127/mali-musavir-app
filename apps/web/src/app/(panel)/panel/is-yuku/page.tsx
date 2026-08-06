@@ -294,9 +294,6 @@ export default function IsYukuPage() {
 // ════════════════════════════════════════════════════════════════════
 function WorkflowSummary({ data, evrakPct }: { data: WorkflowData; evrakPct: number }) {
   const aktifIs = data.counts.yukleme + data.counts.islenme + data.counts.kontrol + data.counts.beyanname;
-  const kaydiOlmayan = Object.values(data.grouped || {})
-    .flat()
-    .filter((i) => !i.monthlyStatusExists).length;
 
   return (
     <div
@@ -308,7 +305,7 @@ function WorkflowSummary({ data, evrakPct }: { data: WorkflowData; evrakPct: num
       }}
     >
       <div className="grid grid-cols-1 lg:grid-cols-[1.15fr_2fr]">
-        <div className="p-4" style={{ borderRight: '1px solid rgba(212,184,118,0.16)' }}>
+        <div className="p-4 flex flex-col justify-center" style={{ borderRight: '1px solid rgba(212,184,118,0.16)' }}>
           <div className="text-[10px] uppercase font-bold tracking-[.18em] mb-2" style={{ color: GOLD_SOFT }}>
             Aylık Akış Özeti
           </div>
@@ -329,9 +326,6 @@ function WorkflowSummary({ data, evrakPct }: { data: WorkflowData; evrakPct: num
                 {data.counts.tamam} tamamlandı
               </div>
             </div>
-          </div>
-          <div className="mt-3 rounded-xl px-3 py-2 text-[12px]" style={{ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.07)', color: 'rgba(250,250,249,0.72)' }}>
-            Evrak bekliyor: aktif olup bu ay evrak geldi işaretlenmemiş mükellefler. Aylık kayıt açılmamış olanlar da burada sayılır{kaydiOlmayan > 0 ? ` (${kaydiOlmayan} kayıt otomatik tamamlandı).` : '.'}
           </div>
         </div>
 
@@ -389,7 +383,7 @@ function HeroCard({
         boxShadow: '0 12px 48px rgba(0,0,0,0.3)',
       }}>
       {/* Üst etiket bandı */}
-      <div className="flex items-center justify-between px-7 pt-6 pb-2">
+      <div className="flex items-center justify-between px-6 pt-4 pb-2">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             <Sparkles size={14} style={{ color: GOLD }} />
@@ -409,13 +403,13 @@ function HeroCard({
         </div>
       </div>
 
-      {/* Mükellef adı — büyük serif */}
-      <div className="px-7 pt-2 pb-4">
+      {/* Mükellef adı — serif */}
+      <div className="px-6 pt-1 pb-3">
         <div className="flex items-baseline gap-3 flex-wrap">
-          <Building2 size={20} style={{ color: 'rgba(250,250,249,0.4)' }} />
+          <Building2 size={18} style={{ color: 'rgba(250,250,249,0.4)' }} />
           <h2 style={{
             fontFamily: 'Fraunces, serif',
-            fontSize: 42,
+            fontSize: 30,
             fontWeight: 600,
             color: '#fafaf9',
             letterSpacing: '-.03em',
