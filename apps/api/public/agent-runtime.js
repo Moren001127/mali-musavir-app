@@ -12,7 +12,7 @@
   // v1.42.2 (2026-06-16): Ajan kendini yenilerken (delete __morenAgent) eski async
   // döngü "Cannot read 'stopRequested' of undefined/null" ile ÇÖKÜYORDU → yetim
   // döngü artık nesne yoksa güvenle durur (stopRequested kontrollerine null-guard).
-  const AGENT_VERSION = '1.47.8';
+  const AGENT_VERSION = '1.47.9';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -2072,6 +2072,7 @@
                   //   içerir) → dönen HTML (satırlı grid) popup'a yazılır. Sonra Fiş Kes o grid'i keser.
                   const yEl = findBtn(/^Y[üu]kle$/i);
                   let yOk = false;
+                  let postTr = 0; // fetch-POST yanıtındaki tablo satırı sayısı = grid doldu göstergesi
                   try {
                     const pw = popupWin();
                     const fi = findFileInput();
@@ -2092,7 +2093,7 @@
                       const resp = await pw.fetch(action, { method: 'POST', body: fd, credentials: 'include' });
                       const html = await resp.text();
                       const rowInd = (html.match(/Sat[ıi]r\s*Say[ıi]s[ıi]\s*:?\s*(\d+)/i) || [])[1];
-                      const trc = (html.match(/<tr/gi) || []).length;
+                      const trc = (html.match(/<tr/gi) || []).length; postTr = trc;
                       const err = /ge[çc]ersiz|ba[şs]ar[ıi]s[ıi]z|okunama|hatal[ıi]|format\s*hatas/i.test(html);
                       await log(`ℹ fetch-POST → HTTP ${resp.status} ${Math.round(html.length / 1024)}KB · yanıtSatır=${rowInd || '?'} tr=${trc} hata=${err} fname=${fi.name || fi.id || '-'}`);
                       if (resp.status >= 200 && resp.status < 400 && html.length > 500) {
@@ -2104,11 +2105,13 @@
                   if (!yOk && yEl) yOk = firePageBtn(yEl);
                   if (!yOk) yOk = await popupNativeClick('Yükle', { exact: true, settleMs: 1200, timeoutMs: 5000 });
                   await log(yOk ? '⏫ "Yükle" tetiklendi (İşletme, fetch-POST)' : '⚠ "Yükle" bulunamadı');
-                  // 2) Grid DOLMASINI bekle — boş grid "Satır Sayısı:1" placeholder; dolu = >1
-                  let gc = 1;
-                  for (let i = 0; i < 30 && (gc = gridCount()) <= 1; i++) { await sleep(600); }
-                  await log(`ℹ HIZLI FİŞ grid satır sayısı (Yükle sonrası): ${gc}`);
-                  if (gc <= 1) throw new Error(`CSV grid'e yüklenmedi (Satır Sayısı=${gc}). Yükle tetiklenmiyor ya da dosya popup input'una konmuyor.`);
+                  // 2) Yükleme başarısı = fetch-POST yanıtındaki TABLO SATIRI (tr) sayısı. "Satır Sayısı"
+                  //   metni JS ile güncellendiğinden doc.write sonrası 1 kalıyor → onu değil tr'yi baz al.
+                  //   Boş HIZLI FİŞ ~6-8 tr; 8 fatura yüklenince belirgin artar.
+                  let gc = postTr;
+                  if (gc <= 1) { for (let i = 0; i < 20 && (gc = gridCount()) <= 1; i++) { await sleep(600); } }
+                  await log(`ℹ HIZLI FİŞ dolu göstergesi=${gc} (yanıt tr=${postTr})`);
+                  if (gc <= 8) throw new Error(`CSV grid'e yüklenmedi (gösterge=${gc}, yanıtTr=${postTr}).`);
                   // 3) "Fiş Kes" — sayfa fonksiyonu (fn:gonder) → popup-trusted → ana native → fireEl
                   const fkEl = findBtn(/^Fi[şs]\s*Kes$/i);
                   let fk = false;
@@ -2125,19 +2128,21 @@
                     if (oe && fireEl(oe)) { await log(`↳ "${lbl}" onaylandı (dom)`); break; }
                   }
                   await sleep(2500);
-                  // 5) DOĞRULA: grid boşaldı mı (fiş kesildi) ya da başarı metni
-                  const gc2 = gridCount();
-                  let ok = (gc2 >= 0 && gc2 < gc);
+                  // 5) DOĞRULA — DÜRÜST: sadece GERÇEK sinyal (başarı metni ya da grid satırları temizlendi).
+                  //   gc2<gc gibi zayıf sinyalle done DEME (yanlış POSTED olur).
+                  let ok = false;
                   for (const d of lucaDocuments()) {
-                    try { if (/fi[şs].{0,15}olu[şs]turuldu|kay[ıi]t\s+ba[şs]ar[ıi]|ba[şs]ar[ıi]yla\s+(kaydedildi|tamamland|eklendi)/i.test((d.body && d.body.textContent) || '')) ok = true; } catch {}
+                    try { const t = (d.body && d.body.textContent) || ''; if (/fi[şs].{0,20}(olu[şs]turuldu|kesildi|kaydedildi)|ba[şs]ar[ıi]yla\s+(kaydedildi|olu[şs]tur|eklendi|kesildi|tamamland)/i.test(t)) ok = true; } catch {}
                   }
-                  await log(`ℹ Fiş Kes sonrası grid: ${gc2} · başarı=${ok}`);
+                  let liveTr = 0; try { for (const d of lucaDocuments()) { try { liveTr += d.querySelectorAll('table tr').length; } catch {} } } catch {}
+                  if (postTr > 8 && liveTr > 0 && liveTr < postTr - 4) ok = true; // Fiş Kes sonrası grid boşaldı
+                  await log(`ℹ Fiş Kes sonrası tr=${liveTr} (yükleme tr=${postTr}) · başarı=${ok}`);
                   if (ok) {
                     await fetch(API + `/agent/luca/jobs/${job.id}/done`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN }, body: JSON.stringify({ recordCount: p.totalCount || 0 }) }).catch(() => {});
                     setStatus('Luca: İşletme fişi OLUŞTURULDU');
                     await log(`✅ İşletme ${p.direction === 'SATIS' ? 'Gelir' : 'Gider'} fişi Luca'da OLUŞTURULDU (HIZLI FİŞ → Fiş Kes → onay).`);
                   } else {
-                    throw new Error(`İşletme Fiş Kes doğrulanamadı (grid ${gc}→${gc2}). Luca'da HIZLI FİŞ ekranında Fiş Kes'i / onayı kontrol et.`);
+                    throw new Error(`İşletme Fiş Kes doğrulanamadı (yükleme tr=${postTr}, sonra tr=${liveTr}). Yükleme oldu ama Fiş Kes commit sinyali yok.`);
                   }
                 } catch (e) {
                   await log(`✗ İşletme finalize hata: ${(e && e.message) || e}`);
