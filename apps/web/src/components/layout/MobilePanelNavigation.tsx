@@ -147,7 +147,7 @@ const moduleGroups: ModuleGroup[] = [
     icon: Settings2,
     items: [
       { href: '/panel/otomasyonlar', label: 'Otomasyonlar', icon: WandSparkles },
-      { href: '/panel/hatirlatmalar', label: 'WhatsApp Otomasyonu', icon: MessageSquareText },
+      // { href: '/panel/hatirlatmalar', label: 'WhatsApp Otomasyonu', icon: MessageSquareText }, // gizlendi 2026-08-06
       // Gizlendi 2026-08-06 (sadeleştirme) — sayfa+backend duruyor, sadece menüden kaldırıldı.
       // { href: '/panel/ajanlar', label: 'Tüm Ajanlar', icon: Cpu },
       { href: '/panel/ajanlar/luca', label: 'Luca Oturumu', icon: ShieldCheck },

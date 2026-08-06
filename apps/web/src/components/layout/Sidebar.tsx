@@ -132,7 +132,7 @@ const navGroups = [
     items: [
       { href: '/panel/cari-kasa', label: 'Cari Kasa & Tahsilat', icon: HandCoins },
       { href: '/panel/iletim-raporu', label: 'İletim Raporu', icon: ClipboardList },
-      { href: '/panel/evraklar', label: 'Evrak Arşivi', icon: FolderArchive },
+      // { href: '/panel/evraklar', label: 'Evrak Arşivi', icon: FolderArchive }, // gizlendi 2026-08-06 (sayfa+backend duruyor, sadece menüden kaldırıldı)
       { href: '/panel/mukellef-erisim', label: 'Mükellef Portal Erişimi', icon: LockKeyhole },
       { href: '/panel/duyurular', label: 'Duyurular', icon: Megaphone },
       { href: '/panel/galeri/hgs-ihlal', label: 'HGS İhlal Sorgulama', icon: Gavel },
@@ -143,9 +143,9 @@ const navGroups = [
     color: STEEL,
     icon: Settings2,
     items: [
-      { href: '/panel/luca-operator', label: 'Luca Operatörü', icon: BotMessageSquare },
+      // { href: '/panel/luca-operator', label: 'Luca Operatörü', icon: BotMessageSquare }, // gizlendi 2026-08-06 (sayfa+backend duruyor, sadece menüden kaldırıldı)
       { href: '/panel/otomasyonlar', label: 'Otomasyonlar', icon: WandSparkles },
-      { href: '/panel/hatirlatmalar', label: 'WhatsApp Otomasyonu', icon: MessageSquareText },
+      // { href: '/panel/hatirlatmalar', label: 'WhatsApp Otomasyonu', icon: MessageSquareText }, // gizlendi 2026-08-06 (sayfa+otomasyon duruyor, sadece menüden kaldırıldı)
       { href: '/panel/sablonlar', label: 'Mesaj Şablonları', icon: MessageCircle },
       { href: '/panel/bot-kalite', label: 'Bot Kalite', icon: ShieldCheck },
       { href: '/panel/masaustu', label: 'Masaüstü Uygulaması', icon: MonitorDown },
