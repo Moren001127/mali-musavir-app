@@ -890,10 +890,16 @@ ${rows}
     if (!(sent as any)?.ok) throw new BadRequestException((sent as any)?.error || 'WhatsApp mesajı gönderilemedi');
 
     const baslik = `${this.trTarih(new Date(baslangic))} / ${this.trTarih(new Date(bitis))} Hesap Dökümü`;
+    // DOSYA ADINDA '/' OLMAZ — ek bu yüzden gönderilemiyordu (görünen başlıkta kalabilir)
+    const dosyaAdi = `${baslik.replace(/\s*\/\s*/g, ' - ')}.pdf`;
     const key = `${tenantId}/${taxpayerId}/ekstre/${randomUUID()}.pdf`;
     await this.storage.putBuffer(key, pdf, 'application/pdf');
-    const url = await this.storage.getPresignedInlineUrl(key, `${baslik}.pdf`, 'application/pdf', 3600);
-    await this.whatsApp.sendMediaDetailed(phone, { url, mimeType: 'application/pdf', filename: `${baslik}.pdf`, caption: null }, tenantId, { quote: false } as any);
+    const url = await this.storage.getPresignedInlineUrl(key, dosyaAdi, 'application/pdf', 3600);
+    const med = await this.whatsApp.sendMediaDetailed(phone, { url, mimeType: 'application/pdf', filename: dosyaAdi, caption: null }, tenantId, { quote: false } as any);
+    if (!(med as any)?.ok) {
+      this.logger.warn(`Ekstre PDF eki gönderilemedi: ${(med as any)?.error}`);
+      throw new BadRequestException(`Mesaj gitti ama PDF eki gönderilemedi: ${(med as any)?.error || 'bilinmeyen hata'}`);
+    }
 
     await (this.prisma as any).communicationLog.create({
       data: {
