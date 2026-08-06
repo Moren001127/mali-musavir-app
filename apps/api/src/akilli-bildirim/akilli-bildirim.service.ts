@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { createHash } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
+import { mergePdfBuffers } from './pdf-merge.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
@@ -267,14 +268,38 @@ export class AkilliBildirimService {
     for (const bundle of bundles) {
       if (excluded.has(bundle.taxpayerId)) continue;
       const dedupeKey = this.dedupeKeyFor(kategori, bundle);
-      // Hattat birebir: mesajın sonunda KISA belge linki (7 gün geçerli)
-      const links: string[] = [];
+      // Hattat birebir: belgeler TEK PDF'te birleşir, mesajın sonunda TEK kısa link olur
+      const fileBufs: Array<{ filename: string; buf: Buffer }> = [];
       for (const it of bundle.items) {
         for (const f of it.files) {
           try {
-            links.push(await this.shortLink.create(tenantId, f.storageKey, f.filename, 7));
+            fileBufs.push({ filename: f.filename, buf: await this.storage.getBuffer(f.storageKey) });
           } catch (e: any) {
-            this.logger.warn(`link üretilemedi ${f.filename}: ${e?.message}`);
+            this.logger.warn(`belge okunamadı ${f.filename}: ${e?.message}`);
+          }
+        }
+      }
+      const merged = await mergePdfBuffers(fileBufs.map((x) => x.buf), this.logger);
+      const mergedName = `${KATEGORI_BASLIK[kategori]}-Dokumanlari.pdf`.replace(/İ/g, 'I').replace(/[ğüşıöçĞÜŞÖÇ]/g, (c) => ({ 'ğ': 'g', 'ü': 'u', 'ş': 's', 'ı': 'i', 'ö': 'o', 'ç': 'c', 'Ğ': 'G', 'Ü': 'U', 'Ş': 'S', 'Ö': 'O', 'Ç': 'C' }[c] || c));
+      let links: string[] = [];
+      let emailAttachments: Array<{ filename: string; content: Buffer; contentType?: string }> = [];
+      if (merged) {
+        const key = `${tenantId}/${bundle.taxpayerId}/bildirim/${kategori}_${randomUUID()}.pdf`;
+        await this.storage.putBuffer(key, merged, 'application/pdf');
+        links = [await this.shortLink.create(tenantId, key, mergedName, 7)];
+        emailAttachments = [{ filename: mergedName, content: merged, contentType: 'application/pdf' }];
+      } else {
+        // birleştirme mümkün olmazsa tek tek linkle (yedek yol)
+        for (const f of fileBufs) {
+          emailAttachments.push({ filename: f.filename, content: f.buf, contentType: 'application/pdf' });
+        }
+        for (const it of bundle.items) {
+          for (const f of it.files) {
+            try {
+              links.push(await this.shortLink.create(tenantId, f.storageKey, f.filename, 7));
+            } catch (e: any) {
+              this.logger.warn(`link üretilemedi ${f.filename}: ${e?.message}`);
+            }
           }
         }
       }
@@ -296,7 +321,7 @@ export class AkilliBildirimService {
         const existing = await (this.prisma as any).documentDispatch.findUnique({
           where: { tenantId_dedupeKey_channel: { tenantId, dedupeKey, channel } },
         });
-        if (existing && existing.status === 'SENT') {
+        if (existing && existing.status === 'SENT' && !opts.force) {
           results.push({ taxpayerId: bundle.taxpayerId, channel, status: 'SKIPPED', reason: 'daha önce gönderildi' });
           continue;
         }
@@ -315,23 +340,12 @@ export class AkilliBildirimService {
             status = 'SENT';
           } else {
             if (!targetEmail) throw new Error(settings.testMode ? 'test e-postası girilmemiş' : 'mükellefin e-postası yok');
-            const attachments: Array<{ filename: string; content: Buffer; contentType?: string }> = [];
-            for (const it of bundle.items) {
-              for (const f of it.files) {
-                try {
-                  const buf = await this.storage.getBuffer(f.storageKey);
-                  attachments.push({ filename: f.filename, content: buf, contentType: 'application/pdf' });
-                } catch (e: any) {
-                  this.logger.warn(`ek okunamadı ${f.filename}: ${e?.message}`);
-                }
-              }
-            }
             const res = await this.email.send(
               {
                 to: targetEmail,
                 subject: `${KATEGORI_BASLIK[kategori]} Dökümanları — ${bundle.unvan}`,
                 text: message.replace(/\*/g, ''),
-                attachments,
+                attachments: emailAttachments,
               },
               tenantId,
             );

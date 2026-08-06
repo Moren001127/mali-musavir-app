@@ -6,6 +6,8 @@ import { EmailService } from '../email/email.service';
 import { calculateBeyannameDeadline } from '../schedule/beyanname-deadline.util';
 import { DEFAULT_SENDER } from './akilli-bildirim.service';
 import { ShortLinkService } from './short-link.controller';
+import { mergePdfBuffers } from './pdf-merge.util';
+import { randomUUID } from 'crypto';
 
 export interface OdemeSatiri {
   tur: string; // KDV1, MUHSGK, Tahakkuk Fişi...
@@ -189,13 +191,33 @@ export class AylikOdemeService {
       const targetEmail = testMode ? settings?.testEmail : row.email;
 
       for (const grup of gruplar) {
-        const links: string[] = [];
+        // belgeler TEK PDF'te birleşir → mesajda TEK link
+        const bufs: Buffer[] = [];
         for (const s of grup.satirlar) {
           if (!s.storageKey) continue;
           try {
-            links.push(await this.shortLink.create(tenantId, s.storageKey, `${s.tur}-${s.donem}.pdf`, 7));
+            bufs.push(await this.storage.getBuffer(s.storageKey));
           } catch (e: any) {
-            this.logger.warn(`link üretilemedi ${s.tur} ${s.donem}: ${e?.message}`);
+            this.logger.warn(`belge okunamadı ${s.tur} ${s.donem}: ${e?.message}`);
+          }
+        }
+        const merged = await mergePdfBuffers(bufs, this.logger);
+        const mergedName = `${grup.baslik}-Dokumanlari.pdf`;
+        let links: string[] = [];
+        let emailAttachments: Array<{ filename: string; content: Buffer; contentType?: string }> = [];
+        if (merged) {
+          const key = `${tenantId}/${row.taxpayerId}/bildirim/ODEME_${grup.kaynak}_${randomUUID()}.pdf`;
+          await this.storage.putBuffer(key, merged, 'application/pdf');
+          links = [await this.shortLink.create(tenantId, key, mergedName, 7)];
+          emailAttachments = [{ filename: mergedName, content: merged, contentType: 'application/pdf' }];
+        } else {
+          for (const s of grup.satirlar) {
+            if (!s.storageKey) continue;
+            try {
+              links.push(await this.shortLink.create(tenantId, s.storageKey, `${s.tur}-${s.donem}.pdf`, 7));
+            } catch (e: any) {
+              this.logger.warn(`link üretilemedi ${s.tur} ${s.donem}: ${e?.message}`);
+            }
           }
         }
         const message = this.composeMessage(senderName, row.unvan, grup.baslik, grup.satirlar, links);
@@ -216,7 +238,7 @@ export class AylikOdemeService {
             } else {
               if (!targetEmail) throw new Error(testMode ? 'test e-postası girilmemiş' : 'mükellefin e-postası yok');
               const res = await this.email.send(
-                { to: targetEmail, subject: `${grup.baslik} Dökümanları — ${row.unvan}`, text: message.replace(/\*/g, '') },
+                { to: targetEmail, subject: `${grup.baslik} Dökümanları — ${row.unvan}`, text: message.replace(/\*/g, ''), attachments: emailAttachments },
                 tenantId,
               );
               if (!res.sent) throw new Error('e-posta gönderilemedi');

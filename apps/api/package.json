@@ -14,7 +14,6 @@
     "db:seed": "ts-node prisma/seed.ts"
   },
   "dependencies": {
-    "undici": "^6.21.0",
     "@anthropic-ai/claude-agent-sdk": "^0.3.159",
     "@aws-sdk/client-s3": "^3.600.0",
     "@aws-sdk/s3-request-presigner": "^3.600.0",
@@ -56,6 +55,7 @@
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "passport-local": "^1.0.0",
+    "pdf-lib": "^1.17.1",
     "pdf-parse": "^2.4.5",
     "playwright-core": "^1.47.2",
     "qrcode": "^1.5.4",
@@ -63,6 +63,7 @@
     "rxjs": "^7.8.1",
     "sharp": "^0.34.5",
     "tesseract.js": "^7.0.0",
+    "undici": "^6.21.0",
     "xlsx": "^0.18.5",
     "xlsx-js-style": "^1.2.0",
     "zod": "^3.23.0"
@@ -93,13 +94,19 @@
     "webpack-node-externals": "^3.0.0"
   },
   "jest": {
-    "moduleFileExtensions": ["js", "json", "ts"],
+    "moduleFileExtensions": [
+      "js",
+      "json",
+      "ts"
+    ],
     "rootDir": "src",
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"
     },
-    "collectCoverageFrom": ["**/*.(t|j)s"],
+    "collectCoverageFrom": [
+      "**/*.(t|j)s"
+    ],
     "coverageDirectory": "../coverage",
     "testEnvironment": "node"
   }
