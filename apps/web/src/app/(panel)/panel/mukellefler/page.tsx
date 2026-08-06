@@ -9,7 +9,7 @@ import { ClipboardCheck, Search, Upload, AlertCircle, PhoneOff, Check as CheckIc
 const GOLD = '#d4b876';
 const GOLD_SOFT = '#b8a06f';
 // Satır: avatar | ad | durum etiketi | 6 onay kutusu | not
-const TAXPAYER_TABLE_GRID = '34px minmax(180px, 1fr) 138px repeat(7, minmax(42px, 0.26fr)) minmax(240px, 1.9fr)';
+const TAXPAYER_TABLE_GRID = '34px minmax(190px, 1.15fr) 140px repeat(7, minmax(44px, 0.3fr)) minmax(185px, 1.05fr)';
 
 type MonthlyStatus = {
   id?: string;
