@@ -100,7 +100,7 @@ const moduleGroups: ModuleGroup[] = [
     items: [
       { href: '/fatura-merkezi', label: 'Fatura Merkezi', icon: FileStack },
       { href: '/panel/e-arsiv', label: 'E-Fatura / E-Arşiv', icon: FileScan },
-      { href: '/panel/ajanlar/mihsap', label: 'Mihsap Fatura İşleme', icon: BotMessageSquare },
+      // { href: '/panel/ajanlar/mihsap', label: 'Mihsap Fatura İşleme', icon: BotMessageSquare }, // gizlendi 2026-08-06
       { href: '/panel/faturalar', label: 'İşlenen Faturalar', icon: ReceiptText },
       { href: '/panel/fis-yazdirma', label: 'Fiş Yazdırma', icon: Printer },
       { href: '/panel/banka-takip', label: 'Banka Takip', icon: Landmark },
@@ -148,12 +148,13 @@ const moduleGroups: ModuleGroup[] = [
     items: [
       { href: '/panel/otomasyonlar', label: 'Otomasyonlar', icon: WandSparkles },
       { href: '/panel/hatirlatmalar', label: 'WhatsApp Otomasyonu', icon: MessageSquareText },
-      { href: '/panel/ajanlar', label: 'Tüm Ajanlar', icon: Cpu },
+      // Gizlendi 2026-08-06 (sadeleştirme) — sayfa+backend duruyor, sadece menüden kaldırıldı.
+      // { href: '/panel/ajanlar', label: 'Tüm Ajanlar', icon: Cpu },
       { href: '/panel/ajanlar/luca', label: 'Luca Oturumu', icon: ShieldCheck },
-      { href: '/panel/ajan-saglik', label: 'Sağlık Panosu', icon: Stethoscope },
+      // { href: '/panel/ajan-saglik', label: 'Sağlık Panosu', icon: Stethoscope }, // gizlendi 2026-08-06
       { href: '/panel/ayarlar', label: 'Ayarlar', icon: Settings2 },
       { href: '/panel/ayarlar/denetim', label: 'Denetim Günlüğü', icon: Shield },
-      { href: '/panel/sistem/kilitli-moduller', label: 'Kilitli Modüller', icon: LockKeyhole },
+      // { href: '/panel/sistem/kilitli-moduller', label: 'Kilitli Modüller', icon: LockKeyhole }, // gizlendi 2026-08-06
     ],
   },
 ];
@@ -161,7 +162,7 @@ const moduleGroups: ModuleGroup[] = [
 const bottomItems: ModuleItem[] = [
   { href: '/panel', label: 'Panel', icon: Gauge },
   { href: '/panel/mukellef-listesi', label: 'Mükellef', icon: UserRoundSearch },
-  { href: '/panel/ajanlar/mihsap', label: 'Fatura', icon: ReceiptText },
+  { href: '/fatura-merkezi', label: 'Fatura', icon: ReceiptText }, // eskiden ajanlar/mihsap; o menüden gizlenince Fatura Merkezi'ne yönlendirildi (2026-08-06)
   { href: '/panel/kdv-kontrol', label: 'KDV', icon: FileCheck2 },
   { href: '/panel/moren-ai', label: 'AI', icon: BrainCircuit },
 ];

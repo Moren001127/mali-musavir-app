@@ -93,7 +93,7 @@ const navGroups = [
     items: [
       { href: '/fatura-merkezi', label: 'Fatura İşleme Merkezi', icon: FileStack },
       { href: '/panel/e-arsiv', label: 'E-Fatura / E-Arşiv Sorgulama', icon: FileScan },
-      { href: '/panel/ajanlar/mihsap', label: 'Mihsap Fatura İşleme', icon: BotMessageSquare },
+      // { href: '/panel/ajanlar/mihsap', label: 'Mihsap Fatura İşleme', icon: BotMessageSquare }, // gizlendi 2026-08-06 (sayfa+backend duruyor, sadece menüden kaldırıldı)
       { href: '/panel/faturalar', label: 'İşlenen Faturalar', icon: ReceiptText },
       { href: '/panel/fis-yazdirma', label: 'Fiş Yazdırma', icon: Printer },
       { href: '/panel/banka-takip', label: 'Banka Takip', icon: Landmark },
@@ -149,12 +149,13 @@ const navGroups = [
       { href: '/panel/sablonlar', label: 'Mesaj Şablonları', icon: MessageCircle },
       { href: '/panel/bot-kalite', label: 'Bot Kalite', icon: ShieldCheck },
       { href: '/panel/masaustu', label: 'Masaüstü Uygulaması', icon: MonitorDown },
-      { href: '/panel/ajanlar', label: 'Tüm Ajanlar', icon: Cpu },
+      // Menüden gizlendi (kullanıcı 2026-08-06 sadeleştirme) — sayfa + backend DURUYOR, sadece sidebar linki kaldırıldı. Geri açmak için yorumu kaldır.
+      // { href: '/panel/ajanlar', label: 'Tüm Ajanlar', icon: Cpu },
       { href: '/panel/ajanlar/luca', label: 'Luca Oturumu', icon: ShieldCheck },
-      { href: '/panel/ajan-saglik', label: 'Sağlık Panosu', icon: Stethoscope },
+      // { href: '/panel/ajan-saglik', label: 'Sağlık Panosu', icon: Stethoscope }, // gizlendi 2026-08-06
       { href: '/panel/ayarlar', label: 'Ayarlar', icon: Settings2 },
       { href: '/panel/ayarlar/denetim', label: 'Denetim Günlüğü', icon: Shield },
-      { href: '/panel/sistem/kilitli-moduller', label: 'Kilitli Modüller', icon: LockKeyhole },
+      // { href: '/panel/sistem/kilitli-moduller', label: 'Kilitli Modüller', icon: LockKeyhole }, // gizlendi 2026-08-06
     ],
   },
 ];
