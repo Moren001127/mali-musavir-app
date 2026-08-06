@@ -12,7 +12,7 @@
   // v1.42.2 (2026-06-16): Ajan kendini yenilerken (delete __morenAgent) eski async
   // döngü "Cannot read 'stopRequested' of undefined/null" ile ÇÖKÜYORDU → yetim
   // döngü artık nesne yoksa güvenle durur (stopRequested kontrollerine null-guard).
-  const AGENT_VERSION = '1.46.11';
+  const AGENT_VERSION = '1.46.12';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -3561,7 +3561,9 @@
           const msg = String(e?.message || e);
           return /indexOf.*undefined|undefined.*\.indexOf|reading\s+['"]?(?:indexOf|II11|1)['"]?|Cannot read properties of (?:undefined|null)/i.test(msg);
         };
-        const MAX_RETRY = 2;
+        // 2→8: menü ağacı (tree) init'i birkaç saniye sürebiliyor; erken pes edip 57sn'lik
+        //   metin-navigasyonuna düşmek yerine ağaç hazır olana kadar bekle (hızlı yol kazansın).
+        const MAX_RETRY = 8;
         for (const candidate of candidates) {
           const attempts = [
             [fakeEvent, code, ''],
@@ -3769,7 +3771,9 @@
           preventDefault: () => {}, stopPropagation: () => {}, stopImmediatePropagation: () => {},
           returnValue: true, cancelBubble: false,
         };
-        const MAX_RETRY = 2;
+        // 2→8: menü ağacı init'i birkaç saniye sürebiliyor; erken pes edip 57sn'lik
+        //   metin-navigasyonuna düşmek yerine ağaç hazır olana kadar bekle (hızlı yol kazansın).
+        const MAX_RETRY = 8;
         let retry = 0;
         while (retry < MAX_RETRY) {
           try {
