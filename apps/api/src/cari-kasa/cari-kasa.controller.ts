@@ -208,6 +208,12 @@ export class CariKasaController {
     return this.service.tahsilatHatirlatmaSend(req.user.tenantId, body || {});
   }
 
+  /** Satır butonu: Hesap Dökümü PDF'li WhatsApp gönderimi (tıklamayla, otomatik yok). */
+  @Post('ekstre-whatsapp/:taxpayerId')
+  whatsappEkstre(@Req() req: any, @Param('taxpayerId') taxpayerId: string) {
+    return this.service.whatsappEkstreSend(req.user.tenantId, taxpayerId);
+  }
+
   // ==================== BÜTÇE TAKİP ====================
   @Get('budget/categories')
   budgetCategories(@Req() req: any, @Query('includeInactive') includeInactive?: string) {

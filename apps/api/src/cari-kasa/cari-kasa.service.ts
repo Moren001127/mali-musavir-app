@@ -2,6 +2,9 @@ import { Injectable, Logger, BadRequestException, NotFoundException } from '@nes
 import { createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
+import { StorageService } from '../storage/storage.service';
+import { chromium } from 'playwright-core';
+import { randomUUID } from 'crypto';
 
 type HattatCariKasaImportRow = {
   hattatCustomerId?: string | null;
@@ -39,6 +42,7 @@ export class CariKasaService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly whatsApp: WhatsAppService,
+    private readonly storage: StorageService,
   ) {}
 
   private readonly defaultBudgetCategories = [
@@ -760,6 +764,140 @@ export class CariKasaService {
       toplamTahsilat: satirlar.reduce((s: number, h: any) => s + (h.tip === 'TAHSILAT' ? h.tutar : 0), 0),
       satirlar,
     };
+  }
+
+  // ==================== WHATSAPP EKSTRE (Hesap Dökümü PDF) ====================
+
+  private trTarih(d: Date): string {
+    return `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;
+  }
+
+  /** Ekstreyi yazdırılabilir A4 HTML'e çevirir (Hesap Dökümü). */
+  private ekstreHtml(ekstre: any, senderName: string): string {
+    const fmt = (n: number) => new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
+    const tipLabel: Record<string, string> = { TAHAKKUK: 'Tahakkuk', TAHSILAT: 'Tahsilat', IADE: 'İade', DUZELTME: 'Düzeltme' };
+    const rows = (ekstre.satirlar || [])
+      .map((h: any) => {
+        const borc = h.tip === 'TAHAKKUK' ? h.tutar : h.tip === 'IADE' ? -h.tutar : null;
+        const alacak = h.tip === 'TAHSILAT' ? h.tutar : h.tip === 'DUZELTME' ? -h.tutar : null;
+        const aciklama = h.aciklama || h.hizmet?.hizmetAdi || tipLabel[h.tip] || h.tip;
+        return `<tr>
+<td>${this.trTarih(new Date(h.tarih))}</td>
+<td>${String(aciklama).slice(0, 80)}</td>
+<td class="num">${borc != null ? fmt(borc) : ''}</td>
+<td class="num">${alacak != null ? fmt(alacak) : ''}</td>
+<td class="num">${fmt(h.runningBakiye)}</td>
+</tr>`;
+      })
+      .join('');
+    return `<!doctype html><html lang="tr"><head><meta charset="utf-8"><style>
+body{font-family:'Liberation Sans',Arial,sans-serif;font-size:12px;color:#111;margin:0}
+h1{font-size:16px;margin:0}
+.head{border-bottom:2px solid #26364a;padding-bottom:10px;margin-bottom:14px}
+.head .ofis{font-size:18px;font-weight:700;color:#26364a}
+.meta{display:flex;justify-content:space-between;margin-top:6px;font-size:12px}
+table{width:100%;border-collapse:collapse;margin-top:8px}
+th{background:#26364a;color:#fff;text-align:left;padding:6px 8px;font-size:11px}
+td{border-bottom:1px solid #d7dde5;padding:5px 8px}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+.ozet{margin-top:14px;width:45%;margin-left:auto}
+.ozet td{padding:4px 8px}
+.ozet .toplam td{font-weight:700;border-top:2px solid #26364a;font-size:13px}
+</style></head><body>
+<div class="head">
+  <div class="ofis">${senderName}</div>
+  <div class="meta">
+    <div><b>${ekstre.taxpayer.ad}</b><br>VKN/TCKN: ${ekstre.taxpayer.taxNumber || ''} · ${ekstre.taxpayer.taxOffice || ''}</div>
+    <div style="text-align:right"><h1>Hesap Dökümü</h1>${this.trTarih(new Date(ekstre.donem.baslangic))} / ${this.trTarih(new Date(ekstre.donem.bitis))}</div>
+  </div>
+</div>
+<table>
+<tr><th>Tarih</th><th>Açıklama</th><th class="num">Borç</th><th class="num">Alacak</th><th class="num">Bakiye</th></tr>
+<tr><td></td><td><b>Devir (Açılış Bakiyesi)</b></td><td></td><td></td><td class="num"><b>${fmt(ekstre.acilisBakiye)}</b></td></tr>
+${rows}
+</table>
+<table class="ozet">
+<tr><td>Toplam Tahakkuk</td><td class="num">${fmt(ekstre.toplamTahakkuk)} TL</td></tr>
+<tr><td>Toplam Tahsilat</td><td class="num">${fmt(ekstre.toplamTahsilat)} TL</td></tr>
+<tr class="toplam"><td>Kalan Bakiye</td><td class="num">${fmt(ekstre.kapanisBakiye)} TL</td></tr>
+</table>
+</body></html>`;
+  }
+
+  /** Ekstre PDF'i (Playwright Chromium ile). */
+  async ekstrePdfBuffer(tenantId: string, taxpayerId: string, baslangic: string, bitis: string, senderName: string): Promise<{ pdf: Buffer; ekstre: any }> {
+    const ekstre = await this.getEkstre(tenantId, taxpayerId, baslangic, bitis);
+    const html = this.ekstreHtml(ekstre, senderName);
+    let browser: any;
+    try {
+      browser = await chromium.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] });
+      const context = await browser.newContext();
+      const page = await context.newPage();
+      await page.setContent(html, { waitUntil: 'networkidle' });
+      const pdf = Buffer.from(
+        await page.pdf({ format: 'A4', margin: { top: '12mm', right: '10mm', bottom: '12mm', left: '10mm' }, printBackground: true }),
+      );
+      return { pdf, ekstre };
+    } finally {
+      try { if (browser) await browser.close(); } catch {}
+    }
+  }
+
+  /**
+   * Tahsilat satırındaki WhatsApp butonu: kullanıcının istediği sabit metin +
+   * Hesap Dökümü PDF EK olarak gönderilir (link yok). Otomatik gönderim YOK — yalnız tıklama.
+   * Akıllı Bildirim test modu açıksa mesaj test telefonuna gider (güvenli deneme).
+   */
+  async whatsappEkstreSend(tenantId: string, taxpayerId: string) {
+    const taxpayer = await (this.prisma as any).taxpayer.findFirst({ where: { id: taxpayerId, tenantId } });
+    if (!taxpayer) throw new NotFoundException('Mükellef bulunamadı');
+
+    const settings = await (this.prisma as any).smartDispatchSetting
+      .findUnique({ where: { tenantId_kategori: { tenantId, kategori: 'VERGI' } } })
+      .catch(() => null);
+    const testMode = settings?.testMode ?? true;
+    const senderName = (settings?.senderName || 'MOREN MALİ MÜŞAVİRLİK').toString();
+
+    const now = new Date();
+    const baslangic = `${now.getFullYear()}-01-01`;
+    const bitis = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+    const { pdf, ekstre } = await this.ekstrePdfBuffer(tenantId, taxpayerId, baslangic, bitis, senderName);
+
+    const fmt = (n: number) => new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
+    const mesaj = [
+      '*Gönderen* ',
+      senderName,
+      '',
+      '*Sayın* ',
+      ` ${ekstre.taxpayer.ad},`,
+      '',
+      `Hesap dökümü ekte sunulmuş olup ${fmt(ekstre.kapanisBakiye)} TL bakiyeniz görülmektedir. Ödeme yapmanızı rica ederiz.`,
+    ].join('\n');
+
+    const phone = testMode ? settings?.testPhone : taxpayer.phone || (taxpayer.phones && taxpayer.phones[0]);
+    if (!phone) throw new BadRequestException(testMode ? 'Test telefonu girilmemiş (Ayarlar > Akıllı Bildirim)' : 'Mükellefin telefon numarası yok');
+
+    const sent = await this.whatsApp.sendMessageDetailed(phone, mesaj, tenantId, { quote: false } as any);
+    if (!(sent as any)?.ok) throw new BadRequestException((sent as any)?.error || 'WhatsApp mesajı gönderilemedi');
+
+    const baslik = `${this.trTarih(new Date(baslangic))} / ${this.trTarih(new Date(bitis))} Hesap Dökümü`;
+    const key = `${tenantId}/${taxpayerId}/ekstre/${randomUUID()}.pdf`;
+    await this.storage.putBuffer(key, pdf, 'application/pdf');
+    const url = await this.storage.getPresignedInlineUrl(key, `${baslik}.pdf`, 'application/pdf', 3600);
+    await this.whatsApp.sendMediaDetailed(phone, { url, mimeType: 'application/pdf', filename: `${baslik}.pdf`, caption: null }, tenantId, { quote: false } as any);
+
+    await (this.prisma as any).communicationLog.create({
+      data: {
+        taxpayerId,
+        channel: 'WHATSAPP',
+        subject: `Hesap Dökümü (ekstre PDF) — ${baslik}${testMode ? ' [TEST]' : ''}`,
+        content: mesaj,
+        occurredAt: new Date(),
+      },
+    });
+
+    return { ok: true, testMode, phone, bakiye: ekstre.kapanisBakiye, baslik };
   }
 
   // ==================== OTOMATİK TAHAKKUK (CRON) ====================

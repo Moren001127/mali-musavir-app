@@ -254,17 +254,19 @@ export function CariTahsilatWorkspace({ onSelect }: { onSelect: (id: string) => 
     }
   };
 
-  // Tek mükellefe WhatsApp tahsilat hatırlatması (satır butonu — eskiden
-  // yanlışlıkla tahsilat penceresi açıyordu).
+  // Tek mükellefe WhatsApp: Hesap Dökümü PDF EKLİ mesaj (kullanıcı isteği 2026-08-06).
+  // Metin sabittir; belge link değil PDF eki olarak gider. Otomatik gönderim yok.
   const sendReminderSingle = async (row: WorkspaceRow) => {
     if (!row.whatsappUygun) {
       toast.warning('Bu mükellef için WhatsApp uygun değil (telefon/izin yok)');
       return;
     }
-    if (!confirm(`${row.ad} mükellefine tahsilat WhatsApp mesajı gönderilsin mi?`)) return;
+    if (!confirm(`${row.ad} mükellefine hesap dökümü (ekstre PDF) WhatsApp ile gönderilsin mi?`)) return;
     try {
-      const resp = await api.post('/cari-kasa/tahsilat-hatirlatma/send', { taxpayerIds: [row.id] });
-      toast.success(`${resp.data.basarili || 0} WhatsApp gönderildi`);
+      const resp = await api.post(`/cari-kasa/ekstre-whatsapp/${row.id}`);
+      toast.success(
+        `Hesap dökümü gönderildi${resp.data?.testMode ? ' (TEST MODU — test telefonuna gitti)' : ''}`,
+      );
       refreshAll();
     } catch (e: any) {
       toast.error(e?.response?.data?.message || 'WhatsApp gönderilemedi');
