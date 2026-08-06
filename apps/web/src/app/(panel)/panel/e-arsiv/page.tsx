@@ -170,10 +170,11 @@ export default function EarsivPage() {
   const [bulkPreviewHtml, setBulkPreviewHtml] = useState<string | null>(null);
   const [bulkPreviewCount, setBulkPreviewCount] = useState(0);
 
-  // Mükellef listesi
+  // Mükellef listesi — Aylık Takip Listesi ile AYNI: seçili yıl/ay geçilir, backend
+  // kapanan firmaları (endDate) o aya göre eler (kapanışı takip eden aydan itibaren görünmez).
   const { data: taxpayers = [] } = useQuery({
-    queryKey: ['taxpayers'],
-    queryFn: () => api.get('/taxpayers').then((r) => r.data as Taxpayer[]),
+    queryKey: ['taxpayers', 'earsiv-liste', year, month],
+    queryFn: () => api.get('/taxpayers', { params: { year, month } }).then((r) => r.data as Taxpayer[]),
   });
 
   const taxpayerMap = useMemo(

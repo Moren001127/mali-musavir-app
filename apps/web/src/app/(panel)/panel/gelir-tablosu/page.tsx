@@ -455,8 +455,11 @@ export default function GelirTablosuPage() {
       satirlar.push(d.donemNetKari >= 0 ? `✅ Dönem Net Kârı: ${P(d.donemNetKari)}` : `⚠️ Dönem Net Zararı: ${P(Math.abs(d.donemNetKari))}`);
     }
     if (stoklu) satirlar.push(`📦 Dönem Sonu Stok: ${P(kalanStok)}`);
-    if (oncekiOdenenGV !== null && oncekiOdenenGV > 0.004) satirlar.push(`↪️ Önceki Dönem Ödenen Geçici Vergi: ${P(oncekiOdenenGV)}`);
+    // Geçici vergi bilgileri EN ALTTA — boş satırla ayrılıp dikkat çeker.
+    //   1. dönemde (qi===0) "Önceki Dönem Ödenen" YAZILMAZ (önceki dönemi yok); 2. dönemden itibaren yazılır.
     if (odenecekGV !== null) {
+      satirlar.push('');
+      if (qi >= 1 && oncekiOdenenGV !== null) satirlar.push(`↪️ Önceki Dönem Ödenen Geçici Vergi: ${P(oncekiOdenenGV)}`);
       satirlar.push(`🏛️ Bu Dönem Ödenecek Geçici Vergi: ${P(odenecekGV)}`);
       // Geçici vergi beyan+ödeme son günü: dönemi izleyen 2. ayın 17'si (İHÖ ile aynı).
       const vade =
@@ -465,7 +468,7 @@ export default function GelirTablosuPage() {
         : qi === 2 ? `17 Kasım ${year}`
         : qi === 3 ? `17 Şubat ${year + 1}`
         : '';
-      if (vade) satirlar.push('', `🗓️ Ödeme Vadesi: ${vade} tarihine kadar.`);
+      if (vade) satirlar.push(`🗓️ Ödeme Vadesi: ${vade} tarihine kadar.`);
     }
 
     satirlar.push(

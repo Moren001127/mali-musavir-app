@@ -92,12 +92,16 @@ export class IsletmeHesapOzetiService {
     if (stoklu) satirlar.push(`📦 Satılan Malın Maliyeti: ${P(smm)}`);
     satirlar.push(`🧾 Giderler: ${P(giderler)}`);
     satirlar.push(kar >= 0 ? `📈 Dönem Kârı: ${P(kar)}` : `📉 Dönem Zararı: ${P(Math.abs(kar))}`);
-    satirlar.push(`↪️ Önceki Dönem Ödenen Geçici Vergi: ${P(oncekiOdenen)}`);
-    satirlar.push(`🏛️ Bu Dönem Ödenecek Geçici Vergi: ${P(odenecek)}`);
     if (stoklu) satirlar.push(`📦 Dönem Sonu Stok: ${P(kalanStok)}`);
 
+    // Geçici vergi bilgileri EN ALTTA — boş satırla ayrılıp dikkat çeker.
+    //   1. dönemde "Önceki Dönem Ödenen" YAZILMAZ (1. dönemin önceki dönemi yoktur);
+    //   2. dönemden itibaren yazılır.
+    satirlar.push('');
+    if (donem > 1) satirlar.push(`↪️ Önceki Dönem Ödenen Geçici Vergi: ${P(oncekiOdenen)}`);
+    satirlar.push(`🏛️ Bu Dönem Ödenecek Geçici Vergi: ${P(odenecek)}`);
     const vade = this.odemeVadesi(donem, Number(ozet.yil));
-    if (vade) satirlar.push('', `🗓️ Ödeme Vadesi: ${vade} tarihine kadar.`);
+    if (vade) satirlar.push(`🗓️ Ödeme Vadesi: ${vade} tarihine kadar.`);
 
     satirlar.push(
       '',
