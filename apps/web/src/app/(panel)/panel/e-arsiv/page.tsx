@@ -1897,56 +1897,34 @@ function BulkPrintModal({
   return createPortal(modalContent, document.body);
 }
 
-// v2.3: Fatura Merkezi durumu rozeti
+// Fatura Merkezi durumu — kullanıcı isteği (2026-08-06): BASİT İKİLİ.
+//   Aktarılmadı = kırmızı ✕ · Aktarıldı = yeşil ✓ (detay durum tooltip'te).
 function FaturaMerkeziRozeti({ acc }: { acc: any }) {
   if (!acc || !acc.id) {
     return (
-      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10.5px] font-semibold" style={{ background: 'rgba(148,163,184,0.12)', color: '#94a3b8' }}>
-        ● Aktarilmadi
+      <span
+        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10.5px] font-semibold"
+        style={{ background: 'rgba(239,68,68,0.14)', color: '#ef4444' }}
+        title="Fatura Merkezi'ne aktarılmadı"
+      >
+        ✕ Aktarılmadı
       </span>
     );
   }
-  // Luca'ya gonderilmis?
-  if (acc.lucaStatus === 'POSTED' || acc.lucaStatus === 'SUCCESS') {
-    return (
-      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10.5px] font-semibold" style={{ background: 'rgba(34,197,94,0.16)', color: '#16a34a' }}>
-        ✓ Luca'da
-      </span>
-    );
-  }
-  // Onaylanmis (Luca'ya gitmemis veya kuyrukta)
-  if (acc.status === 'APPROVED') {
-    return (
-      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10.5px] font-semibold" style={{ background: 'rgba(34,197,94,0.12)', color: '#16a34a' }}>
-        ✓ Onayli
-      </span>
-    );
-  }
-  if (acc.status === 'READY') {
-    return (
-      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10.5px] font-semibold" style={{ background: 'rgba(59,130,246,0.14)', color: '#3b82f6' }}>
-        Hazir
-      </span>
-    );
-  }
-  if (acc.status === 'REJECTED') {
-    return (
-      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10.5px] font-semibold" style={{ background: 'rgba(239,68,68,0.14)', color: '#ef4444' }}>
-        ✕ Red
-      </span>
-    );
-  }
-  if (acc.ocrStatus === 'IN_PROGRESS' || acc.ocrStatus === 'PENDING') {
-    return (
-      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10.5px] font-semibold" style={{ background: 'rgba(168,85,247,0.14)', color: '#a855f7' }}>
-        OCR
-      </span>
-    );
-  }
-  // Default: NEEDS_REVIEW
+  const durum =
+    acc.lucaStatus === 'POSTED' || acc.lucaStatus === 'SUCCESS' ? "Luca'da"
+    : acc.status === 'APPROVED' ? 'Onaylı'
+    : acc.status === 'REJECTED' ? 'Reddedildi'
+    : acc.status === 'READY' ? 'Hazır'
+    : acc.ocrStatus === 'IN_PROGRESS' || acc.ocrStatus === 'PENDING' ? 'OCR sürüyor'
+    : 'İncelemede';
   return (
-    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10.5px] font-semibold" style={{ background: 'rgba(245,158,11,0.14)', color: '#f59e0b' }}>
-      ⚠ Inceleme
+    <span
+      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10.5px] font-semibold"
+      style={{ background: 'rgba(34,197,94,0.16)', color: '#16a34a' }}
+      title={`Fatura Merkezi'ne aktarıldı — ${durum}`}
+    >
+      ✓ Aktarıldı
     </span>
   );
 }

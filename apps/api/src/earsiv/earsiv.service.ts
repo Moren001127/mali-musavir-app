@@ -544,7 +544,10 @@ export class EarsivService {
               });
             } catch { /* aynı belge-no başka satırda var — dokunma */ }
           }
-          await this.queueAccountingSafe(tenantId, existing.id, { tip, belgeKaynak });
+          // OTOMATİK AKTARIM KAPATILDI (kullanıcı 2026-08-06): sorgulanan faturalar artık
+          //   otomatik Fatura Merkezi'ne DÜŞMEZ. Sadece "Fatura Merkezi'ne Aktar" butonu
+          //   (POST /fatura-muhasebelestirme/documents/backfill-earsiv) ile aktarılır.
+          // await this.queueAccountingSafe(tenantId, existing.id, { tip, belgeKaynak });
           { const k = kimlik(f); if (k) savedKeys.add(k); }
           duplicate++;
           continue;
@@ -614,7 +617,9 @@ export class EarsivService {
           // olmayabilir, default geri dönüşte SELECT ediyor ve patlıyordu (P2022).
           select: { id: true },
         });
-        await this.queueAccountingSafe(tenantId, created.id, { tip, belgeKaynak });
+        // OTOMATİK AKTARIM KAPATILDI (kullanıcı 2026-08-06): yeni fatura da otomatik
+        //   Fatura Merkezi'ne düşmez; sadece "Fatura Merkezi'ne Aktar" butonuyla aktarılır.
+        // await this.queueAccountingSafe(tenantId, created.id, { tip, belgeKaynak });
         { const k = kimlik(f); if (k) savedKeys.add(k); }
         inserted++;
       } catch (e: any) {
