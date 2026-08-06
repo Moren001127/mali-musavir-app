@@ -455,6 +455,34 @@ export class IsletmeHesapOzetiService {
       }
     }
 
+    // Kullanıcı isteği (2026-08-06): Geçmiş yıl zararı bir dönemde girilince aynı yılın
+    // SONRAKİ dönemlerine de aynı değer otomatik yazılır (kilitli dönem atlanır).
+    // Zarar yıllıktır; her çeyrekte aynı tutar düşülür — elle 4 kez girme derdi biter.
+    if (
+      ozet.donem < 4 &&
+      typeof params.gecmisYilZarari === 'number' &&
+      Number(params.gecmisYilZarari) !== Number(ozet.gecmisYilZarari)
+    ) {
+      const zararSonrakiler = await (this.prisma as any).isletmeHesapOzeti.findMany({
+        where: {
+          tenantId: params.tenantId,
+          taxpayerId: ozet.taxpayerId,
+          yil: ozet.yil,
+          donem: { gt: ozet.donem },
+        },
+        orderBy: { donem: 'asc' },
+      });
+      for (const s of zararSonrakiler) {
+        if (s.locked) continue;
+        if (Number(s.gecmisYilZarari) === r2(params.gecmisYilZarari)) continue;
+        await this.updateManuel({
+          tenantId: params.tenantId,
+          id: s.id,
+          gecmisYilZarari: params.gecmisYilZarari,
+        });
+      }
+    }
+
     return updated;
   }
 
