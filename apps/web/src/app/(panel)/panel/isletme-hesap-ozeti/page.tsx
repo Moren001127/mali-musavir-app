@@ -974,7 +974,9 @@ function KarsilastirmaTablosu({
       // GEÇMİŞ YIL ZARARI: yıl için TEK değer — geçici vergide HER dönemin matrahından AYNI geçmiş
       //   yıl zararı düşülür. Bir döneme girilince DİĞER TÜM dönemlere de otomatik yaz (kullanıcı
       //   isteği: "ilk döneme tanımlanınca diğerlerine de otomatik yazılsın").
-      if (field === 'gecmisYilZarari') {
+      //   ÖNEMLİ: yalnız POZİTİF değer yayılır — 0 yayılırsa boş bir hücreye tıklayıp
+      //   çıkmak diğer dönemlerdeki girilmiş zararı EKRANDAN siliyordu (2026-08-06 bug).
+      if (field === 'gecmisYilZarari' && val > 0) {
         const donemSayisi = yilData?.ceyrekler?.length || 4;
         for (let dd = 1; dd <= donemSayisi; dd++) {
           if (dd === donem) continue;

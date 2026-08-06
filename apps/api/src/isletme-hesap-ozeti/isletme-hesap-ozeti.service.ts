@@ -277,15 +277,42 @@ export class IsletmeHesapOzetiService {
 
   /** Bir mükellef için belirli yılın 4 çeyreğini birden getir (karşılaştırmalı görünüm için) */
   async getYil(tenantId: string, taxpayerId: string, yil: number) {
-    const ceyrekler = await (this.prisma as any).isletmeHesapOzeti.findMany({
-      where: { tenantId, taxpayerId, yil },
-      orderBy: { donem: 'asc' },
-      include: {
-        taxpayer: {
-          select: { firstName: true, lastName: true, companyName: true, taxNumber: true },
+    const fetchAll = () =>
+      (this.prisma as any).isletmeHesapOzeti.findMany({
+        where: { tenantId, taxpayerId, yil },
+        orderBy: { donem: 'asc' },
+        include: {
+          taxpayer: {
+            select: { firstName: true, lastName: true, companyName: true, taxNumber: true },
+          },
         },
-      },
-    });
+      });
+    let ceyrekler = await fetchAll();
+
+    // Geçmiş yıl zararı BACKFILL (2026-08-06): zarar yıllıktır — en erken >0 girilen
+    // dönemin değeri, 0 kalmış KİLİTSİZ sonraki dönemlere otomatik yazılır.
+    // Eski kayıtlar (yayılım eklenmeden önce girilmiş) veya kaynak dönemi kilitli
+    // olanlar da bu sayede yıl görünümü açılırken tamamlanır.
+    const kaynak = ceyrekler.find((c: any) => Number(c.gecmisYilZarari) > 0);
+    if (kaynak) {
+      const hedefler = ceyrekler.filter(
+        (c: any) => c.donem > kaynak.donem && !c.locked && Number(c.gecmisYilZarari) === 0,
+      );
+      if (hedefler.length > 0) {
+        for (const h of hedefler) {
+          try {
+            await this.updateManuel({
+              tenantId,
+              id: h.id,
+              gecmisYilZarari: Number(kaynak.gecmisYilZarari),
+            });
+          } catch {
+            // kilit yarışı vb. — atla, görünüm bozulmasın
+          }
+        }
+        ceyrekler = await fetchAll();
+      }
+    }
 
     const map: Record<number, any> = {};
     for (const c of ceyrekler) map[c.donem] = c;
