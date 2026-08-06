@@ -7555,7 +7555,18 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         pieces.push(`${url || 'page'} => ${snapshot}`);
       }
     }
-    return pieces.join(' || ').slice(0, 1200);
+    // Teşhis (2026-08): sayfa metni + frame listesi — "yalnız takvim görünüyor" gibi
+    // durumlarda GİB'in gerçekte hangi ekranı gösterdiğini anlamak için.
+    try {
+      const bodyText = await page.evaluate(() => (document.body?.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 500)).catch(() => '');
+      if (bodyText) pieces.push(`TEXT: ${bodyText}`);
+      const frameUrls = (page.frames?.() || [])
+        .map((f: any) => String(f.url?.() || '').replace(/([?&](?:password|sifre|parola|token|kod)=)[^&]+/gi, '$1***'))
+        .filter(Boolean)
+        .slice(0, 8);
+      if (frameUrls.length) pieces.push(`FRAMES: ${frameUrls.join(' , ')}`);
+    } catch {}
+    return pieces.join(' || ').slice(0, 2400);
   }
 
   private istanbulDateParts(value?: string | Date | null) {
