@@ -12,7 +12,7 @@
   // v1.42.2 (2026-06-16): Ajan kendini yenilerken (delete __morenAgent) eski async
   // döngü "Cannot read 'stopRequested' of undefined/null" ile ÇÖKÜYORDU → yetim
   // döngü artık nesne yoksa güvenle durur (stopRequested kontrollerine null-guard).
-  const AGENT_VERSION = '1.47.2';
+  const AGENT_VERSION = '1.47.3';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -1867,12 +1867,22 @@
               // 2) Dogru firma secili olsun (best-effort)
               try { await ensureLucaFirma(job, log); } catch (e) { await log(`Firma secimi atlandi: ${(e && e.message) || e}`); }
 
-              // 3) Dosya input'unu bul — yoksa menuyu ac (bilanco yolu)
+              // 3) Dosya input'unu bul — İşletme'de POPUP'taki "Excel Şablon > Dosya Seç"i TERCİH ET
+              //   (eski hata: ana penceredeki ilk file input'a düşüyordu → CSV yanlış yere gidiyordu).
               const findFileInput = () => {
+                const cands = [];
                 for (const doc of lucaDocuments()) {
-                  try { const el = doc.querySelector('input[type="file"]'); if (el) return el; } catch {}
+                  try {
+                    const ctx = (doc.body && doc.body.textContent) || '';
+                    const ctxScore = /Excel\s*[ŞS]ablon|Dosya\s*Se[çc]|Excel\s*\(CSV\)/i.test(ctx) ? 4 : 0;
+                    for (const el of doc.querySelectorAll('input[type="file"]')) {
+                      cands.push({ el, score: ctxScore + (el.offsetParent !== null ? 1 : 0) });
+                    }
+                  } catch {}
                 }
-                return null;
+                if (!cands.length) return null;
+                cands.sort((a, b) => b.score - a.score);
+                return cands[0].el;
               };
               // YEREL native-tık: global nativeClickLucaText BAŞKA scope'ta tanımlı (bu blokta
               // "not defined" hatası veriyordu) → bridge'i (__morenNativeClickText) doğrudan çağır.
@@ -1970,37 +1980,60 @@
                     }
                     return -1;
                   };
-                  // 1) Yükle (Excel Şablon dialog) — native, sonra DOM (popup lucaDocuments'te)
-                  let yOk = await nativeClickLucaText('Yükle', { exact: true, settleMs: 1200, timeoutMs: 6000 });
-                  if (!yOk) yOk = lucaClickByText('Yükle');
-                  await log(yOk ? '⏫ "Yükle" tıklandı (İşletme)' : '⚠ "Yükle" bulunamadı (İşletme)');
-                  // 2) Grid dolmasını bekle (CSV parse edilip satırlar HIZLI FİŞ tablosuna düşer)
-                  let gc = -1;
-                  for (let i = 0; i < 24 && (gc = gridCount()) < 1; i++) { await sleep(500); }
-                  await log(`ℹ HIZLI FİŞ grid satır sayısı (Yükle sonrası): ${gc}`);
-                  // 3) "Fiş Kes" — popup içindeki buton; native + DOM (onclick/gonder) yedek
-                  const clickByText = async (re) => {
+                  // Metne göre öğe bul (popup dahil)
+                  const findEl = (re) => {
                     for (const d of lucaDocuments()) {
                       try { for (const el of d.querySelectorAll('button,input[type=button],input[type=submit],a,span,div')) {
                         const t = ((el.value || el.innerText || el.textContent) || '').replace(/\s+/g, ' ').trim();
-                        if (re.test(t) && (el.offsetParent !== null || el.tagName === 'INPUT' || el.tagName === 'A')) { try { el.scrollIntoView({ block: 'center' }); } catch {} el.click(); return true; }
+                        if (re.test(t)) return el;
                       } } catch {}
                     }
-                    return false;
+                    return null;
                   };
-                  let fk = await nativeClickLucaText('Fiş Kes', { settleMs: 1500, timeoutMs: 5000 });
-                  if (!fk) fk = await clickByText(/^Fi[şs]\s*Kes$/i);
-                  await log(fk ? '✂ "Fiş Kes" tıklandı' : '⚠ "Fiş Kes" bulunamadı');
+                  // Butonu MAKSİMUM tetikle — Luca non-trusted el.click()'i yok sayabilir → onclick fn'i +
+                  //   form submit de dene (Fiş Kes'te fn:gonder böyle çalışmıştı).
+                  const fireEl = (el) => {
+                    if (!el) return false;
+                    let done = false;
+                    try { el.scrollIntoView({ block: 'center' }); } catch {}
+                    try { if (typeof el.onclick === 'function') { el.onclick(); done = true; } } catch {}
+                    try { el.click(); done = true; } catch {}
+                    try { const f = el.closest && el.closest('form'); if (f) { if (f.requestSubmit) f.requestSubmit(); else f.submit(); done = true; } } catch {}
+                    return done;
+                  };
+                  // TANI: dosya input hangi dokümanda + dosya kondu mu
+                  try {
+                    const fi = findFileInput();
+                    const fn = fi && fi.files && fi.files.length ? fi.files[0].name : '(boş)';
+                    let ctx = 'yok'; try { ctx = ((fi && fi.ownerDocument.body.textContent) || '').replace(/\s+/g, ' ').match(/Excel\s*[ŞS]ablon|Dosya\s*Se[çc]/i) ? 'Excel-Şablon' : 'başka'; } catch {}
+                    await log(`ℹ dosya input=${fi ? 'VAR' : 'YOK'} · dosya=${fn} · bağlam=${ctx}`);
+                  } catch {}
+                  // 1) Yükle — popup butonunu maksimum tetikle (native + onclick + form)
+                  const yEl = findEl(/^Y[üu]kle$/i);
+                  let yOk = await nativeClickLucaText('Yükle', { exact: true, settleMs: 1000, timeoutMs: 4000 });
+                  if (yEl) yOk = fireEl(yEl) || yOk;
+                  await log(yOk ? '⏫ "Yükle" tetiklendi (İşletme)' : '⚠ "Yükle" bulunamadı');
+                  // 2) Grid DOLMASINI bekle — boş grid "Satır Sayısı:1" placeholder; dolu = >1
+                  let gc = 1;
+                  for (let i = 0; i < 30 && (gc = gridCount()) <= 1; i++) { await sleep(600); }
+                  await log(`ℹ HIZLI FİŞ grid satır sayısı (Yükle sonrası): ${gc}`);
+                  if (gc <= 1) throw new Error(`CSV grid'e yüklenmedi (Satır Sayısı=${gc}). Yükle tetiklenmiyor ya da dosya popup input'una konmuyor.`);
+                  // 3) "Fiş Kes" — popup butonunu maksimum tetikle
+                  const fkEl = findEl(/^Fi[şs]\s*Kes$/i);
+                  let fk = await nativeClickLucaText('Fiş Kes', { settleMs: 1500, timeoutMs: 4000 });
+                  if (fkEl) fk = fireEl(fkEl) || fk;
+                  await log(fk ? '✂ "Fiş Kes" tetiklendi' : '⚠ "Fiş Kes" bulunamadı');
                   await sleep(1800);
                   // 4) Onay dialog'u (Evet/Tamam/Onayla) — popup dahil
                   for (const lbl of ['Evet', 'Tamam', 'Onayla', 'Onay']) {
-                    if (await nativeClickLucaText(lbl, { exact: true, settleMs: 900, timeoutMs: 2200 })) { await log(`↳ "${lbl}" onaylandı`); break; }
-                    if (await clickByText(new RegExp('^' + lbl + '$', 'i'))) { await log(`↳ "${lbl}" onaylandı (dom)`); break; }
+                    if (await nativeClickLucaText(lbl, { exact: true, settleMs: 900, timeoutMs: 2000 })) { await log(`↳ "${lbl}" onaylandı`); break; }
+                    const oe = findEl(new RegExp('^' + lbl + '$', 'i'));
+                    if (oe && fireEl(oe)) { await log(`↳ "${lbl}" onaylandı (dom)`); break; }
                   }
                   await sleep(2500);
                   // 5) DOĞRULA: grid boşaldı mı (fiş kesildi) ya da başarı metni
                   const gc2 = gridCount();
-                  let ok = (gc >= 1 && gc2 >= 0 && gc2 < gc);
+                  let ok = (gc2 >= 0 && gc2 < gc);
                   for (const d of lucaDocuments()) {
                     try { if (/fi[şs].{0,15}olu[şs]turuldu|kay[ıi]t\s+ba[şs]ar[ıi]|ba[şs]ar[ıi]yla\s+(kaydedildi|tamamland|eklendi)/i.test((d.body && d.body.textContent) || '')) ok = true; } catch {}
                   }
