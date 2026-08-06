@@ -9,7 +9,7 @@ import { ClipboardCheck, Search, Upload, AlertCircle, PhoneOff, Check as CheckIc
 const GOLD = '#d4b876';
 const GOLD_SOFT = '#b8a06f';
 // Satır: avatar | ad | durum etiketi | 6 onay kutusu | not
-const TAXPAYER_TABLE_GRID = '34px minmax(190px, 1.2fr) 142px repeat(7, minmax(46px, 0.32fr)) minmax(150px, 0.8fr)';
+const TAXPAYER_TABLE_GRID = '34px minmax(180px, 1fr) 138px repeat(7, minmax(42px, 0.26fr)) minmax(240px, 1.9fr)';
 
 type MonthlyStatus = {
   id?: string;
@@ -75,7 +75,7 @@ type Stage = 'evrak-bekliyor' | 'yukleme-bekliyor' | 'islem-bekliyor' | 'kontrol
 const STAGES: Record<Stage, { label: string; color: string }> = {
   'evrak-bekliyor':   { label: 'Evrak bekleniyor', color: '#e0843e' },
   'yukleme-bekliyor': { label: 'Yükleme bekliyor', color: '#2dd4bf' },
-  'islem-bekliyor':   { label: 'İşlem bekliyor',   color: '#5b9bd5' },
+  'islem-bekliyor':   { label: 'İşleme bekliyor',  color: '#5b9bd5' },
   'kontrol-bekliyor': { label: 'Kontrol bekliyor', color: '#a78bdb' },
   'beyan-hazir':      { label: 'Beyanname verilebilir',  color: GOLD },
   'verildi':          { label: 'Verildi',          color: '#4ade80' },
@@ -302,7 +302,7 @@ export default function MukelleflerPage() {
     { key: 'all',                label: 'Takipteki mükellef', count: counts.total,          color: GOLD },
     { key: 'evrak-gelmedi',      label: 'Evrak bekleniyor', count: counts.evrakBekliyor,    color: STAGES['evrak-bekliyor'].color },
     { key: 'yukleme-bekliyor',   label: 'Yükleme bekliyor', count: counts.yuklemeBekliyor,  color: STAGES['yukleme-bekliyor'].color },
-    { key: 'islem-bekliyor',     label: 'İşlem bekliyor',   count: counts.islemBekliyor,    color: STAGES['islem-bekliyor'].color },
+    { key: 'islem-bekliyor',     label: 'İşleme bekliyor',  count: counts.islemBekliyor,    color: STAGES['islem-bekliyor'].color },
     { key: 'kontrol-bekliyor',   label: 'Kontrol bekliyor', count: counts.kontrolBekliyor,  color: STAGES['kontrol-bekliyor'].color },
     { key: 'beyanname-bekliyor', label: 'Beyanname verilebilir',  count: counts.beyanHazir,       color: STAGES['beyan-hazir'].color },
     { key: 'verildi',            label: 'Verildi',          count: counts.verildi,          color: STAGES['verildi'].color },
@@ -480,8 +480,8 @@ export default function MukelleflerPage() {
         })}
       </div>
 
-      {/* AŞAMA KARTLARI — hem KPI hem filtre */}
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+      {/* AŞAMA KARTLARI — hem KPI hem filtre (7 kart: tek satırda) */}
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
         {stageCards.map((c) => {
           const active = filter === c.key;
           return (
