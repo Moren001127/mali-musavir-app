@@ -122,7 +122,7 @@ export default function IsYukuPage() {
   return (
     <div className="space-y-6 max-w-7xl">
       <header
-        className="relative overflow-hidden rounded-[18px] border px-5 py-4"
+        className="relative overflow-hidden rounded-[18px] border px-5 py-3"
         style={{
           background:
             'radial-gradient(120% 140% at 0% 0%, rgba(212,184,118,0.16), transparent 46%), radial-gradient(120% 140% at 100% 0%, rgba(139,118,73,0.12), transparent 48%), #0f0d0b',
@@ -134,7 +134,7 @@ export default function IsYukuPage() {
           className="absolute inset-x-0 top-0 h-1"
           style={{ background: 'linear-gradient(90deg, #8b7649, #b8a06f, #d4b876, #e7cf95, #d4b876, #b8a06f)' }}
         />
-        <div className="mb-3 flex items-center gap-2.5">
+        <div className="mb-2 flex items-center gap-2.5">
           <span className="h-px w-[26px]" style={{ background: GOLD }} />
           <span className="text-[10px] font-bold uppercase tracking-[.18em]" style={{ color: GOLD_SOFT }}>Ofis Akışı</span>
         </div>
@@ -143,19 +143,19 @@ export default function IsYukuPage() {
             <span
               className="grid shrink-0 place-items-center rounded-xl"
               style={{
-                width: 46,
-                height: 46,
+                width: 40,
+                height: 40,
                 background: `linear-gradient(135deg, ${GOLD}, ${GOLD_SOFT})`,
                 boxShadow: '0 8px 22px rgba(212,184,118,0.30)',
               }}
             >
-              <Workflow size={24} style={{ color: '#1a1410' }} />
+              <Workflow size={20} style={{ color: '#1a1410' }} />
             </span>
             <div className="min-w-0">
-              <h1 style={{ fontFamily: 'Fraunces, Georgia, serif', fontSize: 30, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em', lineHeight: 1.05 }}>
+              <h1 style={{ fontFamily: 'Fraunces, Georgia, serif', fontSize: 24, fontWeight: 600, color: '#fafaf9', letterSpacing: '-.03em', lineHeight: 1.05 }}>
                 İş Akışı
               </h1>
-              <p className="mt-2 text-[13px] font-semibold" style={{ color: 'rgba(250,250,249,0.48)' }}>
+              <p className="mt-1 text-[12.5px] font-semibold" style={{ color: 'rgba(250,250,249,0.48)' }}>
                 Sabah aç, sırasıyla yap — sistem hangi mükellefin işini önce yapacağını söylüyor
               </p>
               {(stageFilter || lateOnly) && (
@@ -308,13 +308,13 @@ function WorkflowSummary({ data, evrakPct }: { data: WorkflowData; evrakPct: num
       }}
     >
       <div className="grid grid-cols-1 lg:grid-cols-[1.15fr_2fr]">
-        <div className="p-5" style={{ borderRight: '1px solid rgba(212,184,118,0.16)' }}>
+        <div className="p-4" style={{ borderRight: '1px solid rgba(212,184,118,0.16)' }}>
           <div className="text-[10px] uppercase font-bold tracking-[.18em] mb-2" style={{ color: GOLD_SOFT }}>
             Aylık Akış Özeti
           </div>
           <div className="flex items-end gap-4">
             <div>
-              <div className="tabular-nums" style={{ fontFamily: 'Fraunces, serif', fontSize: 44, fontWeight: 700, color: '#fafaf9', lineHeight: 1 }}>
+              <div className="tabular-nums" style={{ fontFamily: 'Fraunces, serif', fontSize: 36, fontWeight: 700, color: '#fafaf9', lineHeight: 1 }}>
                 {data.total}
               </div>
               <div className="text-[12px] mt-1" style={{ color: 'rgba(250,250,249,0.48)' }}>
@@ -330,7 +330,7 @@ function WorkflowSummary({ data, evrakPct }: { data: WorkflowData; evrakPct: num
               </div>
             </div>
           </div>
-          <div className="mt-4 rounded-xl px-3 py-2 text-[12.5px]" style={{ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.07)', color: 'rgba(250,250,249,0.72)' }}>
+          <div className="mt-3 rounded-xl px-3 py-2 text-[12px]" style={{ background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.07)', color: 'rgba(250,250,249,0.72)' }}>
             Evrak bekliyor: aktif olup bu ay evrak geldi işaretlenmemiş mükellefler. Aylık kayıt açılmamış olanlar da burada sayılır{kaydiOlmayan > 0 ? ` (${kaydiOlmayan} kayıt otomatik tamamlandı).` : '.'}
           </div>
         </div>
@@ -345,7 +345,7 @@ function WorkflowSummary({ data, evrakPct }: { data: WorkflowData; evrakPct: num
               <Link
                 key={stage}
                 href="#pipeline"
-                className="p-4 transition hover:bg-white/[0.03]"
+                className="p-3 transition hover:bg-white/[0.03]"
                 style={{ borderLeft: '1px solid rgba(255,255,255,0.055)' }}
               >
                 <div className="flex items-center justify-between gap-2">
@@ -356,7 +356,7 @@ function WorkflowSummary({ data, evrakPct }: { data: WorkflowData; evrakPct: num
                     {stage === 'EVRAK_BEKLIYOR' ? `%${evrakPct}` : `%${pct}`}
                   </span>
                 </div>
-                <div className="mt-3 tabular-nums" style={{ fontFamily: 'Fraunces, serif', fontSize: 30, fontWeight: 700, color: cfg.color, lineHeight: 1 }}>
+                <div className="mt-2 tabular-nums" style={{ fontFamily: 'Fraunces, serif', fontSize: 25, fontWeight: 700, color: cfg.color, lineHeight: 1 }}>
                   {count}
                 </div>
                 <div className="text-[11px] uppercase font-bold tracking-[.08em] mt-1" style={{ color: 'rgba(250,250,249,0.55)' }}>
