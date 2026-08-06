@@ -830,7 +830,12 @@ ${rows}
     const html = this.ekstreHtml(ekstre, senderName);
     let browser: any;
     try {
-      browser = await chromium.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] });
+      browser = await chromium.launch({
+        headless: true,
+        // playwright-core kendi Chromium'unu indirmez — imajdaki sistem Chromium'u kullan
+        executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || process.env.CHROMIUM_PATH || undefined,
+        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      });
       const context = await browser.newContext();
       const page = await context.newPage();
       await page.setContent(html, { waitUntil: 'networkidle' });
@@ -838,6 +843,9 @@ ${rows}
         await page.pdf({ format: 'A4', margin: { top: '12mm', right: '10mm', bottom: '12mm', left: '10mm' }, printBackground: true }),
       );
       return { pdf, ekstre };
+    } catch (e: any) {
+      this.logger.error(`Ekstre PDF üretilemedi: ${e?.message}`);
+      throw new BadRequestException(`Ekstre PDF üretilemedi: ${e?.message || e}`);
     } finally {
       try { if (browser) await browser.close(); } catch {}
     }
