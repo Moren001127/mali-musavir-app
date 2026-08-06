@@ -864,6 +864,67 @@ export class WhatsAppController {
     */
   }
 
+  /**
+   * Genel amaçlı mükellef WhatsApp bilgilendirmesi — herhangi bir modül (Gelir Tablosu,
+   * İşletme Hesap Özeti vb.) frontend'de kurduğu hazır mesajı buraya gönderip mükellefe
+   * iletebilir. Böylece her modülün ayrı bir gönderim ucu olmasına gerek kalmaz.
+   *   dryRun:true  → hiçbir şey göndermez; sadece çözümlenen telefonu döner (önizleme için).
+   *   dryRun:false → gönderir + sohbet geçmişine (communicationLog) yazar (Mesajlar ekranında görünür).
+   */
+  @Post('taxpayer-notify')
+  async taxpayerNotify(
+    @Req() req: any,
+    @Body() body: { taxpayerId?: string; message?: string; phone?: string; dryRun?: boolean; subject?: string },
+  ) {
+    const tenantId = req.user.tenantId;
+    const taxpayerId = String(body?.taxpayerId || '').trim();
+    const message = String(body?.message || '').trim();
+    if (!taxpayerId) return { ok: false, error: 'taxpayerId zorunlu' };
+    if (!message) return { ok: false, error: 'message zorunlu' };
+
+    const taxpayer = await this.prisma.taxpayer.findFirst({
+      where: { id: taxpayerId, tenantId },
+      select: { id: true, companyName: true, firstName: true, lastName: true, phone: true, phones: true },
+    });
+    if (!taxpayer) return { ok: false, error: 'Mükellef bulunamadı' };
+
+    const displayPhone = this.normalizePhoneForWhatsApp(body?.phone) || this.defaultWhatsAppPhone(taxpayer);
+    if (!displayPhone) {
+      return { ok: false, error: 'Mükellefin telefon numarası yok — önce mükellef kartına telefon ekleyin.' };
+    }
+
+    // Önizleme — hiçbir şey gönderme, sadece hedef telefonu bildir
+    if (body?.dryRun) {
+      return { ok: true, dryRun: true, telefon: displayPhone };
+    }
+
+    const sendTarget = await this.whatsAppSendTarget(taxpayer, displayPhone);
+    if (!sendTarget) return { ok: false, telefon: displayPhone, error: 'Geçerli WhatsApp hedefi bulunamadı' };
+
+    const result = await this.whatsappService.sendMessageDetailed(sendTarget, message, tenantId);
+    const subject = String(body?.subject || '').trim() || 'WhatsApp bilgilendirmesi';
+    await this.prisma.communicationLog
+      .create({
+        data: {
+          taxpayerId,
+          channel: 'WHATSAPP',
+          subject: result.ok ? subject : `${subject} (gonderilemedi)`,
+          content: this.withWhatsAppLogMeta(
+            result.ok ? message : `${message}\n\nHata: ${result.error || 'WhatsApp gonderimi basarisiz.'}`,
+            displayPhone,
+            result.ok ? result.providerMessageId || null : null,
+          ),
+          occurredAt: new Date(),
+        },
+      })
+      .catch(() => undefined);
+
+    if (!result.ok) {
+      return { ok: false, telefon: displayPhone, error: result.error || 'WhatsApp gonderimi basarisiz.' };
+    }
+    return { ok: true, telefon: displayPhone };
+  }
+
   @Post('conversations/start')
   async startConversation(@Req() req: any, @Body() body: StartConversationBody) {
     const tenantId = req.user.tenantId;

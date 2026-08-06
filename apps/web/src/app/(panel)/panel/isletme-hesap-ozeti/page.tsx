@@ -1241,7 +1241,13 @@ function KarsilastirmaTablosu({
   return (
     <div>
       {/* v1.36.26: Dönem Aksiyonları + KAR/ZARAR ÖZETİ tek bağlı blok — boşluk yok */}
-      <div className="space-y-0">
+      {/* v1.36.71: Tablo ekranı boydan boya kaplamasın — dönem sayısına göre ölçeklenen
+          genişlik sınırı + ortala. Bar/tablolar/aksiyonlar aynı sarmalın içinde olduğu
+          için %-tabanlı sütunlar birlikte hizalı kalır. */}
+      <div
+        className="space-y-0"
+        style={{ maxWidth: Math.min(1120, 320 + tersDonemler.length * 200), margin: '0 auto' }}
+      >
       {/* Üst dönem barı — tablonun sütun genişlikleriyle birebir hizalı */}
       <div
         className="rounded-t-xl overflow-hidden"
@@ -1957,7 +1963,7 @@ function Row({
       }}
     >
       <td
-        className="px-5 py-3"
+        className="px-4 py-2"
         style={{
           color: manuel ? MANUAL_TEXT : bold ? REPORT_TEXT : REPORT_MUTED,
           borderTop: `1px solid ${GRID_LINE}`,
@@ -2017,7 +2023,7 @@ function Row({
         return (
           <td
             key={i}
-            className="px-5 py-3 text-center tabular-nums"
+            className="px-4 py-2 text-center tabular-nums"
             style={{
               borderTop: `1px solid ${GRID_LINE}`,
               borderLeft: `1px solid ${GRID_LINE}`,

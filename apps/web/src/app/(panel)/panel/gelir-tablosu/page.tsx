@@ -47,6 +47,21 @@ function taxpayerName(t: Taxpayer): string {
   return t.companyName || [t.firstName, t.lastName].filter(Boolean).join(' ') || '(isim yok)';
 }
 
+/* Resmi WhatsApp logosu (İşletme Hesap Özeti / Fatura Merkezi ile aynı ikon) */
+function WhatsAppIcon({ size = 15, color = 'currentColor' }: { size?: number; color?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill={color} aria-hidden="true">
+      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
+    </svg>
+  );
+}
+
+/* WhatsApp mesajı için TR para biçimi — sayı ile ₺ bölünmez boşlukla (asla ayrı satıra düşmez). */
+function fmtParaWa(n: number): string {
+  const s = (isFinite(n) ? n : 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return `${s} ₺`;
+}
+
 // Çeyrek aralığını "01-2026 → 03-2026" formatında döndürür
 function quarterRangeLabel(year: number, q: number): string {
   const ranges: Record<number, [string, string]> = {
@@ -312,6 +327,15 @@ export default function GelirTablosuPage() {
   const [editingManual, setEditingManual] = useState<Record<string, boolean>>({});
   const [clientOutputLoadingId, setClientOutputLoadingId] = useState<string | null>(null);
 
+  // WhatsApp bilgilendirme — iki aşamalı (önizleme → onay), dönem bazlı.
+  // İHÖ ile aynı desen; mesaj burada (ekrandaki değerlerle) kurulur, genel
+  // /whatsapp/taxpayer-notify ucundan gönderilir (kilitli mizan/ klasörüne dokunulmaz).
+  const [waOpen, setWaOpen] = useState(false);
+  const [waQi, setWaQi] = useState<number | null>(null);
+  const [waLoading, setWaLoading] = useState(false);
+  const [waPhone, setWaPhone] = useState('');
+  const [waMessage, setWaMessage] = useState('');
+
   const setDuzeltme = (gtId: string, key: string, val: number) => {
     setDuzeltmelerDraft((prev) => {
       const curr = { ...(prev[gtId] || {}) };
@@ -379,6 +403,95 @@ export default function GelirTablosuPage() {
       faaliyetGiderleri, faaliyetKari, digerGelirler, digerGiderler, finansmanGiderleri,
       olaganKar, olaganDisiGelir, olaganDisiGider, donemKari, vergiKarsiligi, donemNetKari,
     };
+  };
+
+  /** Bir dönemin gelir tablosu özetinden kurumsal WhatsApp bilgilendirme metni üretir (WhatsApp *bold* biçimi). */
+  const buildGelirMesaj = (qi: number): string => {
+    const gt = quarterSlots[qi];
+    const d = derived(gt);
+    if (!d) return '';
+    const label = QUARTER_LABELS[qi];
+    const ad = selectedTp ? taxpayerName(selectedTp) : 'Mükellefimiz';
+    const P = (n: number) => `*${fmtParaWa(n)}*`;
+
+    const satirlar: string[] = [
+      '*MOREN MALİ MÜŞAVİRLİK*',
+      `📊 *Gelir Tablosu — ${year} · ${label.no.replace('. DÖNEM', '. Dönem')}*`,
+      `_${label.range}_`,
+      '',
+      `Sayın *${ad}*,`,
+      `${year} yılı ${label.no.toLocaleLowerCase('tr-TR')} (${label.range}) gelir tablonuzun özeti aşağıdadır:`,
+      '',
+      `📊 Net Satışlar: ${P(d.netSatislar)}`,
+    ];
+    if (Math.abs(d.satisMaliyeti) > 0.004) satirlar.push(`📦 Satışların Maliyeti: ${P(d.satisMaliyeti)}`);
+    satirlar.push(d.brutSatisKari >= 0 ? `📈 Brüt Satış Kârı: ${P(d.brutSatisKari)}` : `📉 Brüt Satış Zararı: ${P(Math.abs(d.brutSatisKari))}`);
+    if (Math.abs(d.faaliyetGiderleri) > 0.004) satirlar.push(`🧾 Faaliyet Giderleri: ${P(d.faaliyetGiderleri)}`);
+    satirlar.push(d.faaliyetKari >= 0 ? `⚙️ Faaliyet Kârı: ${P(d.faaliyetKari)}` : `⚙️ Faaliyet Zararı: ${P(Math.abs(d.faaliyetKari))}`);
+    satirlar.push(d.donemKari >= 0 ? `📈 Dönem Kârı: ${P(d.donemKari)}` : `📉 Dönem Zararı: ${P(Math.abs(d.donemKari))}`);
+    if (Math.abs(d.vergiKarsiligi) > 0.004) satirlar.push(`🏛️ Vergi Karşılığı: ${P(d.vergiKarsiligi)}`);
+    satirlar.push(d.donemNetKari >= 0 ? `✅ Dönem Net Kârı: ${P(d.donemNetKari)}` : `⚠️ Dönem Net Zararı: ${P(Math.abs(d.donemNetKari))}`);
+
+    satirlar.push(
+      '',
+      'ℹ️ Bu mesaj bilgilendirme amacıyla gönderilmiştir.',
+      'Sorularınız için bize ulaşabilirsiniz. 🙏',
+    );
+    return satirlar.join('\n');
+  };
+
+  /** WhatsApp önizleme — mesajı kur, mükellef telefonunu çöz, modalı aç. */
+  const waOnizle = async (qi: number) => {
+    if (!taxpayerId) return;
+    const gt = quarterSlots[qi];
+    if (!gt) return;
+    const mesaj = buildGelirMesaj(qi);
+    if (!mesaj) return;
+    setWaQi(qi);
+    setWaLoading(true);
+    try {
+      const r = await api
+        .post('/whatsapp/taxpayer-notify', { taxpayerId, message: mesaj, dryRun: true })
+        .then((x) => x.data);
+      if (r?.ok === false) {
+        toast.error(r?.error || 'Önizleme hazırlanamadı');
+        return;
+      }
+      setWaMessage(mesaj);
+      setWaPhone(r?.telefon || '');
+      setWaOpen(true);
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || e?.response?.data?.error || 'Önizleme hazırlanamadı');
+    } finally {
+      setWaLoading(false);
+    }
+  };
+
+  /** WhatsApp gönder — düzenlenen telefon + mesajla mükellefe ilet. */
+  const waGonder = async () => {
+    if (waQi == null || !taxpayerId) return;
+    setWaLoading(true);
+    try {
+      const r = await api
+        .post('/whatsapp/taxpayer-notify', {
+          taxpayerId,
+          message: waMessage,
+          phone: waPhone.trim(),
+          dryRun: false,
+          subject: 'WhatsApp Gelir Tablosu bilgilendirmesi',
+        })
+        .then((x) => x.data);
+      if (r?.ok === false) {
+        toast.error(r?.error || 'Gönderilemedi');
+        return;
+      }
+      toast.success('WhatsApp bilgilendirme gönderildi ✅');
+      setWaOpen(false);
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || e?.response?.data?.error || 'Gönderilemedi');
+    } finally {
+      setWaLoading(false);
+    }
   };
 
   const saveDuzeltmelerMut = useMutation({
@@ -972,6 +1085,25 @@ export default function GelirTablosuPage() {
                             style={{ background: 'rgba(184,160,111,0.1)', color: GOLD, border: '1px solid rgba(184,160,111,0.25)' }}
                           >
                             Excel
+                          </button>
+                          <button
+                            onClick={() => waOnizle(qi)}
+                            disabled={waLoading && waQi === qi}
+                            title="Mükellefe WhatsApp'tan bu dönemin gelir tablosu özetini gönder (önce önizleme)"
+                            className="inline-flex items-center justify-center rounded"
+                            style={{
+                              background: 'rgba(37,211,102,0.14)',
+                              color: '#25D366',
+                              border: '1px solid rgba(37,211,102,0.4)',
+                              height: 22,
+                              width: 22,
+                            }}
+                          >
+                            {waLoading && waQi === qi ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <WhatsAppIcon size={12} color="#25D366" />
+                            )}
                           </button>
                         </div>
                       )}
@@ -1863,6 +1995,61 @@ export default function GelirTablosuPage() {
                   <span className="flex-1 truncate font-medium">{taxpayerName(t)}</span>
                 </button>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* WhatsApp bilgilendirme — önizleme + onay modalı (dönem bazlı) */}
+      {waOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.65)' }}
+          onClick={() => !waLoading && setWaOpen(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl border p-5"
+            style={{ background: '#14110d', borderColor: 'rgba(37,211,102,0.3)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2 mb-3">
+              <WhatsAppIcon size={18} color="#25D366" />
+              <h3 className="text-sm font-bold text-stone-100">
+                WhatsApp Bilgilendirme{waQi != null ? ` — ${QUARTER_LABELS[waQi].no.replace('. DÖNEM', '. Dönem')}` : ''}
+              </h3>
+            </div>
+            <label className="block text-xs text-stone-500 mb-1">Mükellef telefonu</label>
+            <input
+              value={waPhone}
+              onChange={(e) => setWaPhone(e.target.value)}
+              placeholder="5xx xxx xx xx"
+              className="w-full rounded-md border border-white/15 bg-white/[0.04] px-3 py-2 text-sm text-stone-100 mb-3 outline-none"
+            />
+            <label className="block text-xs text-stone-500 mb-1">Gidecek mesaj (düzenlenebilir)</label>
+            <textarea
+              value={waMessage}
+              onChange={(e) => setWaMessage(e.target.value)}
+              rows={12}
+              className="w-full whitespace-pre-wrap rounded-md border border-white/10 p-3 text-xs text-stone-200 max-h-72 overflow-auto mb-4 outline-none"
+              style={{ background: 'rgba(0,0,0,0.35)', fontFamily: 'inherit', resize: 'vertical' }}
+            />
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setWaOpen(false)}
+                disabled={waLoading}
+                className="rounded-md border border-white/15 px-3 py-2 text-sm text-stone-300 hover:bg-white/5 disabled:opacity-50"
+              >
+                Vazgeç
+              </button>
+              <button
+                onClick={waGonder}
+                disabled={waLoading || !waPhone.trim() || !waMessage.trim()}
+                className="inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-bold text-white disabled:opacity-50"
+                style={{ background: '#25D366' }}
+              >
+                {waLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <WhatsAppIcon size={14} color="#ffffff" />}
+                Onayla ve Gönder
+              </button>
             </div>
           </div>
         </div>
