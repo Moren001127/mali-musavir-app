@@ -961,14 +961,10 @@ function KarsilastirmaTablosu({
       const dbs = Number(cur.donemBasiStok || 0);
       const ma = Number(cur.malAlisi || 0);
       const toplam = dbs + ma;
-      if (field === 'satilanMalMaliyeti') {
-        cur.kalanStok = Math.round((toplam - val) * 100) / 100;
-      } else if (field === 'kalanStok') {
-        cur.satilanMalMaliyeti = Math.round((toplam - val) * 100) / 100;
-      } else if (field === 'malAlisi' || field === 'donemBasiStok') {
-        // Toplam değişti → mevcut kalanStok'a göre SMM yenilenir
-        const kalan = Number(cur.kalanStok || 0);
-        cur.satilanMalMaliyeti = Math.round((toplam - kalan) * 100) / 100;
+      // SMM = TEK manuel alan; Kalan Stok DAİMA otomatik = Toplam − SMM.
+      if (field === 'satilanMalMaliyeti' || field === 'malAlisi' || field === 'donemBasiStok') {
+        const smm = Number(cur.satilanMalMaliyeti || 0);
+        cur.kalanStok = Math.round((toplam - smm) * 100) / 100;
       }
       const next = { ...prev, [donem]: cur };
       // GEÇMİŞ YIL ZARARI: yıl için TEK değer — geçici vergide HER dönemin matrahından AYNI geçmiş
@@ -1094,7 +1090,7 @@ function KarsilastirmaTablosu({
       { label: 'Satın Alınan Mal Bedeli', values: values((d) => draftVal(d, 'malAlisi')) },
       { label: 'Dönem Başı Stok', values: values((d) => draftVal(d, 'donemBasiStok')) },
       { label: 'Toplam Stok', values: values((d) => liveCalc(d).toplam) },
-      { label: 'Kalan Stok (sayım)', values: values((d) => draftVal(d, 'kalanStok')) },
+      { label: 'Kalan Stok', values: values((d) => Math.round((liveCalc(d).toplam - Number(draftVal(d, 'satilanMalMaliyeti') || 0)) * 100) / 100) },
       { label: 'Geçmiş Yıl Zararı (-)', values: values((d) => draftVal(d, 'gecmisYilZarari')), kind: 'manual' },
       { label: 'Geçici Vergi Matrahı', values: values((d) => liveCalc(d).matrah), kind: 'tax' },
       { label: 'Hesaplanan Geçici Vergi %15', values: values((d) => liveCalc(d).hesGV), kind: 'tax' },
@@ -1572,28 +1568,15 @@ function KarsilastirmaTablosu({
           <tbody>
             <Row
               label="SATIN ALINAN MAL BEDELİ"
-              cols={tersDonemler.map((d) => (
-                <NumInput
-                  key={d}
-                  value={draftVal(d, 'malAlisi')}
-                  onChange={(n) => setField(d, 'malAlisi', n)}
-                  disabled={!!yilData.ceyrekler[d - 1]?.locked}
-                />
-              ))}
-              raw
+              hint="(Luca'dan otomatik)"
+              cols={tersDonemler.map((d) => formatTR(draftVal(d, 'malAlisi')))}
+              calc
             />
             <Row
               label="DÖNEM BAŞI STOK"
               hint="(2-4. dönem önceki kalandan otomatik)"
-              cols={tersDonemler.map((d) => (
-                <NumInput
-                  key={d}
-                  value={draftVal(d, 'donemBasiStok')}
-                  onChange={(n) => setField(d, 'donemBasiStok', n)}
-                  disabled={!!yilData.ceyrekler[d - 1]?.locked}
-                />
-              ))}
-              raw
+              cols={tersDonemler.map((d) => formatTR(draftVal(d, 'donemBasiStok')))}
+              calc
             />
             <Row
               label="TOPLAM STOK"
@@ -1604,21 +1587,22 @@ function KarsilastirmaTablosu({
             />
             <Row
               label="SATILAN MALIN MALİYETİ"
-              hint="(= Toplam − Kalan)"
-              cols={tersDonemler.map((d) => formatTR(liveCalc(d).smm))}
-              calc
-            />
-            <Row
-              label="KALAN STOK (sayım)"
+              hint="(elle girilir)"
               cols={tersDonemler.map((d) => (
                 <NumInput
                   key={d}
-                  value={draftVal(d, 'kalanStok')}
-                  onChange={(n) => setField(d, 'kalanStok', n)}
+                  value={draftVal(d, 'satilanMalMaliyeti')}
+                  onChange={(n) => setField(d, 'satilanMalMaliyeti', n)}
                   disabled={!!yilData.ceyrekler[d - 1]?.locked}
                 />
               ))}
               raw
+            />
+            <Row
+              label="KALAN STOK"
+              hint="(= Toplam Stok − Satılan Malın Maliyeti)"
+              cols={tersDonemler.map((d) => formatTR(Math.round((liveCalc(d).toplam - Number(draftVal(d, 'satilanMalMaliyeti') || 0)) * 100) / 100))}
+              calc
             />
           </tbody>
         </table>
