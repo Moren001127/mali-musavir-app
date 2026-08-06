@@ -3491,3 +3491,15 @@ model DocumentDispatch {
   @@index([tenantId, taxpayerId, kategori])
   @@map("document_dispatches")
 }
+
+model ShortLink {
+  token      String   @id
+  tenantId   String
+  storageKey String
+  filename   String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+
+  @@index([tenantId])
+  @@map("short_links")
+}

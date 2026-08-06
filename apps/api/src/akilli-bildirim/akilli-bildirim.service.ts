@@ -5,6 +5,7 @@ import { StorageService } from '../storage/storage.service';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import { EmailService } from '../email/email.service';
 import { calculateBeyannameDeadline } from '../schedule/beyanname-deadline.util';
+import { ShortLinkService } from './short-link.controller';
 
 export type DispatchKategori = 'VERGI' | 'SGK' | 'ETEBLIGAT';
 export const DISPATCH_KATEGORILER: DispatchKategori[] = ['VERGI', 'SGK', 'ETEBLIGAT'];
@@ -59,6 +60,7 @@ export class AkilliBildirimService {
     private readonly storage: StorageService,
     private readonly whatsapp: WhatsAppService,
     private readonly email: EmailService,
+    private readonly shortLink: ShortLinkService,
   ) {}
 
   // ---------- AYARLAR ----------
@@ -259,12 +261,12 @@ export class AkilliBildirimService {
     for (const bundle of bundles) {
       if (excluded.has(bundle.taxpayerId)) continue;
       const dedupeKey = this.dedupeKeyFor(kategori, bundle);
-      // Hattat birebir: mesajın sonunda belge linki (7 gün geçerli)
+      // Hattat birebir: mesajın sonunda KISA belge linki (7 gün geçerli)
       const links: string[] = [];
       for (const it of bundle.items) {
         for (const f of it.files) {
           try {
-            links.push(await this.storage.getPresignedInlineUrl(f.storageKey, f.filename, 'application/pdf', 7 * 24 * 3600));
+            links.push(await this.shortLink.create(tenantId, f.storageKey, f.filename, 7));
           } catch (e: any) {
             this.logger.warn(`link üretilemedi ${f.filename}: ${e?.message}`);
           }

@@ -5,6 +5,7 @@ import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import { EmailService } from '../email/email.service';
 import { calculateBeyannameDeadline } from '../schedule/beyanname-deadline.util';
 import { DEFAULT_SENDER } from './akilli-bildirim.service';
+import { ShortLinkService } from './short-link.controller';
 
 export interface OdemeSatiri {
   tur: string; // KDV1, MUHSGK, Tahakkuk Fişi...
@@ -46,6 +47,7 @@ export class AylikOdemeService {
     private readonly storage: StorageService,
     private readonly whatsapp: WhatsAppService,
     private readonly email: EmailService,
+    private readonly shortLink: ShortLinkService,
   ) {}
 
   /**
@@ -138,18 +140,18 @@ export class AylikOdemeService {
       .sort((a, b) => a.unvan.localeCompare(b.unvan, 'tr'));
   }
 
-  /** Hattat ile birebir kalıp; sonda belge linkleri. */
-  composeMessage(senderName: string, row: OdemeListesi, links: string[] = []): string {
+  /** Hattat ile BİREBİR kalıp. baslik: 'Beyanname' | 'SGK'. */
+  composeMessage(senderName: string, unvan: string, baslik: string, satirlar: OdemeSatiri[], links: string[] = []): string {
     const lines: string[] = [];
     lines.push('*Gönderen* ');
     lines.push(senderName);
     lines.push('');
     lines.push('*Merhaba* ');
-    lines.push(` ${row.unvan},`);
+    lines.push(` ${unvan},`);
     lines.push('');
-    lines.push('Aşağıdaki Ödeme Listeniz Bilginize Sunulmuştur,');
+    lines.push(`Aşağıdaki ${baslik} Dökümanları Bilginize Sunulmuştur,`);
     lines.push('');
-    for (const s of row.satirlar) {
+    for (const s of satirlar) {
       // Vergi: "KDV1 - Tahakkuk - Son Ödeme: 28.7.2026 - 9.018,30  TL"
       // SGK  : "Tahakkuk Fişi - 2026/06 - Son Ödeme: 31.7.2026 - 24.277,05  TL"
       const parts = s.kaynak === 'VERGI' ? [s.tur, 'Tahakkuk'] : [s.tur, s.donem];
@@ -158,7 +160,7 @@ export class AylikOdemeService {
       lines.push(parts.join(' - '));
     }
     lines.push('');
-    lines.push(`Toplam: ${trMoney(row.toplam)}`);
+    lines.push(`Toplam: ${trMoney(satirlar.reduce((a, s) => a + s.tutar, 0))}`);
     if (links.length > 0) {
       lines.push('');
       for (const l of links) lines.push(l);
@@ -177,63 +179,73 @@ export class AylikOdemeService {
     const rows = await this.list(tenantId, month, taxpayerId);
     const results: any[] = [];
     for (const row of rows) {
-      const links: string[] = [];
-      for (const s of row.satirlar) {
-        if (!s.storageKey) continue;
-        try {
-          links.push(await this.storage.getPresignedInlineUrl(s.storageKey, `${s.tur}-${s.donem}.pdf`, 'application/pdf', 7 * 24 * 3600));
-        } catch (e: any) {
-          this.logger.warn(`link üretilemedi ${s.tur} ${s.donem}: ${e?.message}`);
-        }
-      }
-      const message = this.composeMessage(senderName, row, links);
-      const dedupeKey = `ODEME:${row.taxpayerId}:${month}`;
+      // Hattat birebir: Vergi ve SGK AYRI mesaj olarak gider
+      const gruplar: Array<{ kaynak: 'VERGI' | 'SGK'; baslik: string; satirlar: OdemeSatiri[] }> = [
+        { kaynak: 'VERGI', baslik: 'Beyanname', satirlar: row.satirlar.filter((s) => s.kaynak === 'VERGI') },
+        { kaynak: 'SGK', baslik: 'SGK', satirlar: row.satirlar.filter((s) => s.kaynak === 'SGK') },
+      ].filter((g) => g.satirlar.length > 0) as any;
+
       const targetPhone = testMode ? settings?.testPhone : row.phone;
       const targetEmail = testMode ? settings?.testEmail : row.email;
 
-      for (const channel of ['WHATSAPP', 'EMAIL'] as const) {
-        if (channel === 'WHATSAPP' && settings && !settings.whatsapp) continue;
-        if (channel === 'EMAIL' && settings && !settings.email) continue;
-        let status = 'FAILED';
-        let error: string | null = null;
-        try {
-          if (channel === 'WHATSAPP') {
-            if (!targetPhone) throw new Error(testMode ? 'test telefonu girilmemiş' : 'mükellefin telefon numarası yok');
-            const sent = await this.whatsapp.sendMessageDetailed(targetPhone, message, tenantId, { quote: false } as any);
-            if (!(sent as any)?.ok) throw new Error((sent as any)?.error || 'whatsapp gönderilemedi');
-            status = 'SENT';
-          } else {
-            if (!targetEmail) throw new Error(testMode ? 'test e-postası girilmemiş' : 'mükellefin e-postası yok');
-            const res = await this.email.send(
-              { to: targetEmail, subject: `${month} Dönemi Ödeme Listesi — ${row.unvan}`, text: message.replace(/\*/g, '') },
-              tenantId,
-            );
-            if (!res.sent) throw new Error('e-posta gönderilemedi');
-            status = 'SENT';
+      for (const grup of gruplar) {
+        const links: string[] = [];
+        for (const s of grup.satirlar) {
+          if (!s.storageKey) continue;
+          try {
+            links.push(await this.shortLink.create(tenantId, s.storageKey, `${s.tur}-${s.donem}.pdf`, 7));
+          } catch (e: any) {
+            this.logger.warn(`link üretilemedi ${s.tur} ${s.donem}: ${e?.message}`);
           }
-        } catch (e: any) {
-          error = e?.message || String(e);
         }
-        await (this.prisma as any).documentDispatch.upsert({
-          where: { tenantId_dedupeKey_channel: { tenantId, dedupeKey, channel } },
-          create: {
-            tenantId,
-            taxpayerId: row.taxpayerId,
-            kategori: 'ODEME_LISTESI',
-            donem: month,
-            channel,
-            status,
-            error,
-            itemCount: row.satirlar.length,
-            totalAmount: row.toplam,
-            docRefs: null,
-            dedupeKey,
-            testMode: !!testMode,
-            sentAt: status === 'SENT' ? new Date() : null,
-          },
-          update: { status, error, sentAt: status === 'SENT' ? new Date() : null, testMode: !!testMode },
-        });
-        results.push({ taxpayerId: row.taxpayerId, unvan: row.unvan, channel, status, error });
+        const message = this.composeMessage(senderName, row.unvan, grup.baslik, grup.satirlar, links);
+        const grupToplam = grup.satirlar.reduce((a: number, s: OdemeSatiri) => a + s.tutar, 0);
+        const dedupeKey = `ODEME:${row.taxpayerId}:${month}:${grup.kaynak}`;
+
+        for (const channel of ['WHATSAPP', 'EMAIL'] as const) {
+          if (channel === 'WHATSAPP' && settings && !settings.whatsapp) continue;
+          if (channel === 'EMAIL' && settings && !settings.email) continue;
+          let status = 'FAILED';
+          let error: string | null = null;
+          try {
+            if (channel === 'WHATSAPP') {
+              if (!targetPhone) throw new Error(testMode ? 'test telefonu girilmemiş' : 'mükellefin telefon numarası yok');
+              const sent = await this.whatsapp.sendMessageDetailed(targetPhone, message, tenantId, { quote: false } as any);
+              if (!(sent as any)?.ok) throw new Error((sent as any)?.error || 'whatsapp gönderilemedi');
+              status = 'SENT';
+            } else {
+              if (!targetEmail) throw new Error(testMode ? 'test e-postası girilmemiş' : 'mükellefin e-postası yok');
+              const res = await this.email.send(
+                { to: targetEmail, subject: `${grup.baslik} Dökümanları — ${row.unvan}`, text: message.replace(/\*/g, '') },
+                tenantId,
+              );
+              if (!res.sent) throw new Error('e-posta gönderilemedi');
+              status = 'SENT';
+            }
+          } catch (e: any) {
+            error = e?.message || String(e);
+          }
+          await (this.prisma as any).documentDispatch.upsert({
+            where: { tenantId_dedupeKey_channel: { tenantId, dedupeKey, channel } },
+            create: {
+              tenantId,
+              taxpayerId: row.taxpayerId,
+              kategori: 'ODEME_LISTESI',
+              donem: month,
+              channel,
+              status,
+              error,
+              itemCount: grup.satirlar.length,
+              totalAmount: grupToplam,
+              docRefs: null,
+              dedupeKey,
+              testMode: !!testMode,
+              sentAt: status === 'SENT' ? new Date() : null,
+            },
+            update: { status, error, sentAt: status === 'SENT' ? new Date() : null, testMode: !!testMode },
+          });
+          results.push({ taxpayerId: row.taxpayerId, unvan: row.unvan, grup: grup.baslik, channel, status, error });
+        }
       }
     }
     return { ok: true, month, testMode, count: results.length, results };

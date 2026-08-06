@@ -4,6 +4,12 @@ const path = require('path');
 const nextConfig = {
   transpilePackages: ['@mali-musavir/shared'],
   outputFileTracingRoot: path.join(__dirname, '../..'),
+  // Akıllı Bildirim kısa belge linkleri: portal.morenmusavirlik.com/b/<token>
+  // mesajlarda kısa görünür; istek API'nin /b ucuna yönlenir, o da belgeye yönlendirir.
+  async rewrites() {
+    const api = (process.env.NEXT_PUBLIC_API_URL || 'https://mali-musavir-app-production.up.railway.app/api/v1').replace(/\/$/, '');
+    return [{ source: '/b/:token', destination: `${api}/b/:token` }];
+  },
   // Bookmarklet'in çektiği moren-agent.js'in tarayıcıda cache'lenmesini engelle.
   // Vercel default static cache header'i agresif (1 yil), bu da yeni sürümlerin
   // kullanicinin tarayicisina ulasmasini geciktiriyor. no-cache + must-revalidate
