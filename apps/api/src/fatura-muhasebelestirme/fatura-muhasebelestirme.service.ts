@@ -293,6 +293,7 @@ const INTEGRATOR_CATALOG = [
   { provider: 'PARASUT', label: 'Parasut', kind: 'efatura', tone: 'purple' },
   { provider: 'LOGO_ISBASI', label: 'Logo Isbasi', kind: 'efatura', tone: 'gold' },
   { provider: 'TURMOB_EFATURA', label: 'TURMOB e-Fatura', kind: 'efatura', tone: 'red' },
+  { provider: 'TURKCELL', label: 'Turkcell e-Şirket', kind: 'efatura', tone: 'gold' },
 ] as const;
 
 const PROVIDER_DEFAULT_BASE_URL: Record<string, string> = {
@@ -305,6 +306,7 @@ const PROVIDER_DEFAULT_BASE_URL: Record<string, string> = {
   LOGO_ISBASI: 'https://api.isbasi.com',
   KOLAYSOFT: 'https://efatura.kolaysoft.com.tr',
   TURMOB_EFATURA: 'https://turmobefatura.luca.com.tr',
+  TURKCELL: 'https://efaturaservice.turkcellesirket.com',
 };
 
 // Saglayicilara ozel kullanici yardim metinleri (UI'da entegrator eklerken gosterilir)
@@ -318,6 +320,7 @@ export const PROVIDER_AUTH_HINTS: Record<string, string> = {
   LOGO_ISBASI: "Logo Isbasi API anahtari. developers.isbasi.com adresinden alin.",
   KOLAYSOFT: "Kolaysoft kullanici ve sifresi. Servis URL hesabiniza ozeldir.",
   TURMOB_EFATURA: "TÜRMOB e-Belge portalına mükellefin TCKN ve parolasıyla otomatik giriş yapılıp gelen/giden faturalar XML olarak çekilir (kod/2FA sormaz).",
+  TURKCELL: "Turkcell e-Şirket (isim360): mükellefin panelinden (API Yönetimi > Yeni API Anahtarı) oluşturulan API anahtarını girin — ya da e-Şirket kullanıcı adı+şifresini yazın. Fatura çekerken SMS gitmez.",
   GIB_PORTAL: "GIB Portal: dogrudan API yok. Luca Local Agent veya mali muhur ile portal otomasyonu gerekir.",
 };
 
@@ -6209,6 +6212,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     if (cfg.provider === 'UYUMSOFT' && (!cfg.username || !cfg.password)) return 'Uyumsoft kullanici/sifre eksik';
     if (cfg.provider === 'TURMOB_EFATURA' && (!cfg.username || !cfg.password)) return 'TÜRMOB TCKN ve parola gerekli';
     if (I2I_SOAP_PROVIDERS.has(cfg.provider) && (!cfg.username || !cfg.password)) return 'Izibiz/i2i kullanici/sifre eksik';
+    // Turkcell e-Şirket (isim360): API anahtarı (apiKey) VEYA kullanıcı+şifre yeter; servis adresi varsayılandan gelir.
+    if (cfg.provider === 'TURKCELL') {
+      if (!cfg.apiKey && !(cfg.username && cfg.password)) return 'Turkcell API anahtarı veya kullanıcı+şifre gerekli';
+      return null;
+    }
     if (cfg.provider !== 'UYUMSOFT' && cfg.provider !== 'TURMOB_EFATURA' && !I2I_SOAP_PROVIDERS.has(cfg.provider) && !cfg.baseUrl) return 'API adresi eksik';
     if (!cfg.username && !cfg.password && !cfg.apiKey && !cfg.apiSecret && !cfg.baseUrl) return 'Kimlik bilgisi eksik';
     return null;
@@ -6355,6 +6363,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     }
     if (cfg.provider === 'TURMOB_EFATURA') return this.fetchTurmobPortalInvoices(cfg, opts);
     if (cfg.provider === 'PARASUT') return this.fetchParasutInvoices(cfg, opts);
+    if (cfg.provider === 'TURKCELL') return this.fetchTurkcellInvoices(cfg, opts);
     return this.fetchGenericRestInvoices(cfg, opts);
   }
 
@@ -8295,6 +8304,134 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
    * Parasut OAuth2 + REST adapter. Erisim icin client_id + client_secret + user/pass gerek.
    * Token al -> /v4/{firmaNo}/purchase_bills (ALIS) veya sales_invoices (SATIS) cek.
    */
+  /**
+   * Turkcell e-Şirket = isim360 REST API. Gelen (ALIS) e-Fatura'yı inboxinvoice,
+   * giden (SATIS) e-Fatura'yı outboxinvoice servisinden çeker.
+   *
+   * Kimlik (iki yol — SMS GÖNDERMEZ; SMS yalnız panele elle girişte gider):
+   *   1) apiKey  → 'X-Api-Key' header. Mükellef panelinden (API Yönetimi > Yeni API
+   *      Anahtarı) BİR KEZ oluşturulur, sonra çekimde tekrar giriş/SMS gerekmez.
+   *   2) kullanıcı+şifre → core token endpoint (client_id sabit 'serviceApi') → Bearer.
+   *
+   * Endpoint'ler resmi dökümandan (developer.turkcellesirket.com):
+   *   GET {base}/v1/{inbox|outbox}invoice/list?startDate=&endDate=   → JSON liste
+   *   GET {base}/v1/{inbox|outbox}invoice/getUBL?id=                 → UBL XML
+   * NOT: Canlı bir mükellef hesabıyla ilk çekimde alan adları (getUBL id parametresi,
+   *      liste JSON alanları) teyit edilip gerekiyorsa buradan ayarlanacak.
+   */
+  private async fetchTurkcellInvoices(
+    cfg: RuntimeIntegrationConfig,
+    opts: {
+      taxpayer: any;
+      direction: 'ALIS' | 'SATIS';
+      period: { donem: string; startDate: string; endDate: string };
+      limit: number;
+    },
+  ): Promise<ProviderInvoicePayload[]> {
+    const baseUrl = (cfg.baseUrl || PROVIDER_DEFAULT_BASE_URL.TURKCELL).replace(/\/+$/, '');
+    const isTest = /isim360\.com/i.test(baseUrl) && /test/i.test(baseUrl);
+
+    // --- Kimlik başlığı ---
+    const authHeaders: Record<string, string> = {};
+    if (cfg.apiKey) {
+      authHeaders['X-Api-Key'] = cfg.apiKey;
+    } else if (cfg.username && cfg.password) {
+      const tokenUrl = isTest
+        ? 'https://coretest.isim360.com/v1/token'
+        : 'https://core.turkcellesirket.com/v1/token';
+      const tokenRes = await fetch(tokenUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          username: cfg.username,
+          password: cfg.password,
+          client_id: 'serviceApi',
+        }).toString(),
+      });
+      if (!tokenRes.ok) {
+        throw new Error(`Turkcell token alınamadı: ${tokenRes.status} ${(await tokenRes.text()).slice(0, 200)}`);
+      }
+      const tokenData: any = await tokenRes.json().catch(() => ({}));
+      const accessToken = tokenData?.access_token || tokenData?.accessToken;
+      if (!accessToken) throw new Error('Turkcell access_token dönmedi (kullanıcı/şifre hatalı olabilir)');
+      authHeaders['Authorization'] = `Bearer ${accessToken}`;
+    } else {
+      throw new Error('Turkcell için API anahtarı (apiKey) veya kullanıcı+şifre gerekli');
+    }
+
+    const box = opts.direction === 'ALIS' ? 'inboxinvoice' : 'outboxinvoice';
+
+    // --- Fatura listesi ---
+    const listUrl = new URL(`${baseUrl}/v1/${box}/list`);
+    listUrl.searchParams.set('startDate', opts.period.startDate);
+    listUrl.searchParams.set('endDate', opts.period.endDate);
+    const listRes = await fetch(listUrl.toString(), {
+      method: 'GET',
+      headers: { ...authHeaders, Accept: 'application/json' },
+    });
+    const listText = await listRes.text();
+    if (!listRes.ok) throw new Error(`Turkcell ${box} liste hatası: ${listRes.status} ${listText.slice(0, 250)}`);
+    let listJson: any;
+    try {
+      listJson = JSON.parse(listText);
+    } catch {
+      throw new Error(`Turkcell liste yanıtı JSON değil: ${listText.slice(0, 200)}`);
+    }
+    const items: any[] =
+      (Array.isArray(listJson) && listJson) ||
+      (Array.isArray(listJson?.data) && listJson.data) ||
+      (Array.isArray(listJson?.invoices) && listJson.invoices) ||
+      (Array.isArray(listJson?.result) && listJson.result) ||
+      (Array.isArray(listJson?.items) && listJson.items) ||
+      (Array.isArray(listJson?.content) && listJson.content) ||
+      [];
+
+    const payloads: ProviderInvoicePayload[] = [];
+    for (const item of items) {
+      if (payloads.length >= opts.limit) break;
+      const id = item?.id ?? item?.uuid ?? item?.invoiceId ?? item?.ettn ?? item?.documentId ?? item?.ettnId;
+      if (!id) continue;
+      const invoiceNo = String(item?.invoiceNumber || item?.invoiceNo || item?.number || item?.documentNo || id).trim();
+
+      // UBL indir
+      const ublUrl = new URL(`${baseUrl}/v1/${box}/getUBL`);
+      ublUrl.searchParams.set('id', String(id));
+      const ublRes = await fetch(ublUrl.toString(), {
+        method: 'GET',
+        headers: { ...authHeaders, Accept: 'application/xml, text/xml, application/json, */*' },
+      });
+      const ublText = await ublRes.text();
+      if (!ublRes.ok) {
+        this.logger.warn(`Turkcell getUBL ${id} hata ${ublRes.status}: ${ublText.slice(0, 150)}`);
+        continue;
+      }
+      // Yanıt düz UBL XML olabilir ya da {content/ubl/base64} sarmalı gelebilir
+      let xml = ublText;
+      const trimmed = ublText.trim();
+      if (!trimmed.startsWith('<')) {
+        try {
+          const wrap = JSON.parse(trimmed);
+          const inner = wrap?.content ?? wrap?.ubl ?? wrap?.xml ?? wrap?.data ?? wrap?.base64;
+          if (inner) {
+            const s = String(inner);
+            xml = !s.includes('<') && /^[A-Za-z0-9+/=\s]+$/.test(s)
+              ? Buffer.from(s, 'base64').toString('utf8')
+              : s;
+          }
+        } catch {
+          /* düz metin bırak */
+        }
+      }
+      if (!xml.includes('<')) continue;
+      payloads.push({
+        externalId: `turkcell:${box}:${id}`,
+        originalName: `${invoiceNo || id}.xml`,
+        xml,
+      });
+    }
+    return payloads;
+  }
+
   private async fetchParasutInvoices(
     cfg: RuntimeIntegrationConfig,
     opts: {
