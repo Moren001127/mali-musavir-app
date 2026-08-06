@@ -11,7 +11,7 @@ export type DispatchKategori = 'VERGI' | 'SGK' | 'ETEBLIGAT';
 export const DISPATCH_KATEGORILER: DispatchKategori[] = ['VERGI', 'SGK', 'ETEBLIGAT'];
 
 interface DispatchItem {
-  line: string; // mesaj satırı: "KDV1 - Tahakkuk - Son Ödeme: 28.02.2026 - 791,00 TL"
+  line: string | null; // mesaj satırı; null = satır yazılmaz (belge yalnız link olarak eklenir)
   amount: number | null;
   files: Array<{ storageKey: string; filename: string }>;
   refId: string; // BeyanKaydi.id veya PortalDocument.id
@@ -178,20 +178,26 @@ export class AkilliBildirimService {
         if (!d.taxpayer) continue;
         const b = await ensure(d.taxpayer);
         const raw = (d.raw || {}) as Record<string, any>;
-        let line: string;
+        let line: string | null;
         let amount: number | null = null;
         if (kategori === 'SGK') {
-          const tutarRaw = raw.tutar != null ? String(raw.tutar).replace(/[^0-9,.-]/g, '').replace(/\./g, '').replace(',', '.') : null;
-          amount = tutarRaw ? Number(tutarRaw) : null;
-          if (amount != null && !Number.isFinite(amount)) amount = null;
-          const donem = d.period || raw.donem || '';
-          // Hattat birebir: "Tahakkuk Fişi - 2026/01 - Son Ödeme: 28.2.2026 - 24.277,05  TL"
-          const baslik = (d.title || 'SGK Belgesi').replace(/^SGK\s+/i, '');
-          const parts = [`${baslik}${donem ? ` - ${donem}` : ''}`];
-          const vade = sgkSonOdeme(donem);
-          if (vade) parts.push(`Son Ödeme: ${trDate(vade)}`);
-          if (amount != null) parts.push(trMoney(amount));
-          line = parts.join(' - ');
+          // Hattat birebir: mesajda YALNIZ Tahakkuk Fişi satırları yazılır;
+          // Hizmet Listesi tutarı toplamı ŞİŞİRMESİN diye satırsız, yalnız link olarak gider.
+          if (d.belgeTuru === 'SGK_HIZMET_LISTESI') {
+            line = null;
+          } else {
+            const tutarRaw = raw.tutar != null ? String(raw.tutar).replace(/[^0-9,.-]/g, '').replace(/\./g, '').replace(',', '.') : null;
+            amount = tutarRaw ? Number(tutarRaw) : null;
+            if (amount != null && !Number.isFinite(amount)) amount = null;
+            const donem = d.period || raw.donem || '';
+            // "Tahakkuk Fişi - 2026/01 - Son Ödeme: 28.2.2026 - 24.277,05  TL"
+            const baslik = (d.title || 'SGK Belgesi').replace(/^SGK\s+/i, '');
+            const parts = [`${baslik}${donem ? ` - ${donem}` : ''}`];
+            const vade = sgkSonOdeme(donem);
+            if (vade) parts.push(`Son Ödeme: ${trDate(vade)}`);
+            if (amount != null) parts.push(trMoney(amount));
+            line = parts.join(' - ');
+          }
         } else {
           const teblig = raw.tebligZamani || raw.tebligTarihi || raw.tebligatTarihi || raw.tarih || null;
           const kurum = raw.kurumAciklama || raw.altKurum || 'GİB';
@@ -218,7 +224,7 @@ export class AkilliBildirimService {
     lines.push('');
     lines.push(`Aşağıdaki ${KATEGORI_BASLIK[kategori]} Dökümanları Bilginize Sunulmuştur,`);
     lines.push('');
-    for (const it of bundle.items) lines.push(it.line);
+    for (const it of bundle.items) if (it.line) lines.push(it.line);
     const amounts = bundle.items.map((i) => i.amount).filter((a): a is number => a != null);
     if (amounts.length > 0) {
       lines.push('');
