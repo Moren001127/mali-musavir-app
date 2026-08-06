@@ -12,6 +12,7 @@ import {
   Building2,
   ChevronRight,
   ClipboardCheck,
+  ClipboardList,
   Cpu,
   DatabaseZap,
   FileCheck2,
@@ -109,6 +110,7 @@ const navGroups = [
       { href: '/panel/beyannameler', label: 'Toplu Beyanname', icon: FileText },
       { href: '/panel/ajanlar/tebligat', label: 'e-Tebligat Kontrol', icon: MailSearch },
       { href: '/panel/ajanlar/sgk', label: 'SGK Otomasyonu', icon: ShieldAlert },
+      { href: '/panel/aylik-odeme', label: 'Aylık Ödeme Listesi', icon: ReceiptText },
     ],
   },
   {
@@ -129,6 +131,7 @@ const navGroups = [
     icon: Building2,
     items: [
       { href: '/panel/cari-kasa', label: 'Cari Kasa & Tahsilat', icon: HandCoins },
+      { href: '/panel/iletim-raporu', label: 'İletim Raporu', icon: ClipboardList },
       { href: '/panel/evraklar', label: 'Evrak Arşivi', icon: FolderArchive },
       { href: '/panel/mukellef-erisim', label: 'Mükellef Portal Erişimi', icon: LockKeyhole },
       { href: '/panel/duyurular', label: 'Duyurular', icon: Megaphone },

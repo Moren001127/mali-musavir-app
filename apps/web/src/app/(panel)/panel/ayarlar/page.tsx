@@ -153,6 +153,13 @@ function SettingsGrid() {
       icon: MessageSquareText,
       tone: 'teal',
     },
+    {
+      href: '/panel/ayarlar/akilli-bildirim',
+      title: 'Akıllı Bildirim Ayarları',
+      text: 'Çekilen belgelerin mükellefe otomatik gönderimi (Vergi / SGK / e-Tebligat)',
+      icon: MessageSquareText,
+      tone: 'amber',
+    },
   ];
 
   return (
