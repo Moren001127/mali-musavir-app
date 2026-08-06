@@ -629,6 +629,7 @@ export class TaxpayersService {
         id: `virtual-${taxpayer.id}-${y}-${m}`,
         updatedAt: taxpayer.startDate || firstDay,
         evraklarGeldi: false,
+        yuklendi: false,
         evraklarIslendi: false,
         kontrolEdildi: false,
         beyannameVerildi: false,
@@ -639,7 +640,7 @@ export class TaxpayersService {
       const ad = taxpayer.companyName || `${taxpayer.firstName ?? ''} ${taxpayer.lastName ?? ''}`.trim();
 
       // Hangi aşamada?
-      let stage: 'EVRAK_BEKLIYOR' | 'ISLENMEYI_BEKLIYOR' | 'KONTROL_BEKLIYOR' | 'BEYANNAME_BEKLIYOR' | 'TAMAM';
+      let stage: 'EVRAK_BEKLIYOR' | 'YUKLEME_BEKLIYOR' | 'ISLENMEYI_BEKLIYOR' | 'KONTROL_BEKLIYOR' | 'BEYANNAME_BEKLIYOR' | 'TAMAM';
       let actionLabel: string;
       let actionPath: string;
 
@@ -662,10 +663,14 @@ export class TaxpayersService {
         stage = 'KONTROL_BEKLIYOR';
         actionLabel = 'KDV Kontrol Yap';
         actionPath = `/panel/kdv-kontrol`;
-      } else if (s.evraklarGeldi) {
+      } else if (s.yuklendi) {
         stage = 'ISLENMEYI_BEKLIYOR';
         actionLabel = 'Faturaları İşle';
         actionPath = `/panel/ajanlar/mihsap`;
+      } else if (s.evraklarGeldi) {
+        stage = 'YUKLEME_BEKLIYOR';
+        actionLabel = 'Sisteme Yükle';
+        actionPath = `/panel/kdv-kontrol`;
       } else {
         stage = 'EVRAK_BEKLIYOR';
         actionLabel = 'Evrak Bekleniyor';
@@ -700,9 +705,10 @@ export class TaxpayersService {
     const stageOrder = {
       KONTROL_BEKLIYOR: 1,
       ISLENMEYI_BEKLIYOR: 2,
-      BEYANNAME_BEKLIYOR: 3,
-      EVRAK_BEKLIYOR: 4,
-      TAMAM: 5,
+      YUKLEME_BEKLIYOR: 3,
+      BEYANNAME_BEKLIYOR: 4,
+      EVRAK_BEKLIYOR: 5,
+      TAMAM: 6,
     };
 
     // Sırala: aşama önceliği DESC, sonra updatedAt ASC (en eski önce — kim önce hazır geldiyse o işlensin)
@@ -716,6 +722,7 @@ export class TaxpayersService {
     const grouped = {
       KONTROL_BEKLIYOR: items.filter((i) => i.stage === 'KONTROL_BEKLIYOR').sort((a, b) => new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime()),
       ISLENMEYI_BEKLIYOR: items.filter((i) => i.stage === 'ISLENMEYI_BEKLIYOR').sort((a, b) => new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime()),
+      YUKLEME_BEKLIYOR: items.filter((i) => i.stage === 'YUKLEME_BEKLIYOR').sort((a, b) => new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime()),
       BEYANNAME_BEKLIYOR: items.filter((i) => i.stage === 'BEYANNAME_BEKLIYOR').sort((a, b) => new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime()),
       EVRAK_BEKLIYOR: items.filter((i) => i.stage === 'EVRAK_BEKLIYOR'),
       TAMAM: items.filter((i) => i.stage === 'TAMAM'),
@@ -728,6 +735,7 @@ export class TaxpayersService {
       total: items.length,
       counts: {
         evrak: grouped.EVRAK_BEKLIYOR.length,
+        yukleme: grouped.YUKLEME_BEKLIYOR.length,
         islenme: grouped.ISLENMEYI_BEKLIYOR.length,
         kontrol: grouped.KONTROL_BEKLIYOR.length,
         beyanname: grouped.BEYANNAME_BEKLIYOR.length,

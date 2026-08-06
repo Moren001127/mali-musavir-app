@@ -11,6 +11,7 @@ import {
   Plus,
   Bot,
   FileInput,
+  UploadCloud,
   CheckCircle2,
   X as IconX,
   Download,
@@ -119,9 +120,9 @@ function StatCard({ title, value, icon: Icon, href, sub, trend, trendKind, accen
   return href ? <Link href={href} className="block">{c}</Link> : c;
 }
 
-type WorkflowCounts = { evrak: number; islenme: number; kontrol: number; beyanname: number; tamam: number };
+type WorkflowCounts = { evrak: number; yukleme: number; islenme: number; kontrol: number; beyanname: number; tamam: number };
 
-const EMPTY_WORKFLOW_COUNTS: WorkflowCounts = { evrak: 0, islenme: 0, kontrol: 0, beyanname: 0, tamam: 0 };
+const EMPTY_WORKFLOW_COUNTS: WorkflowCounts = { evrak: 0, yukleme: 0, islenme: 0, kontrol: 0, beyanname: 0, tamam: 0 };
 
 const WORKFLOW_STEPS: Array<{
   key: keyof WorkflowCounts;
@@ -134,6 +135,7 @@ const WORKFLOW_STEPS: Array<{
   border: string;
 }> = [
   { key: 'evrak', label: 'Evrak Bekliyor', sub: 'Mükelleften gelecek', href: '/panel/is-yuku', icon: FileInput, color: '#d8caa9', bg: 'rgba(255,255,255,0.022)', border: 'rgba(216,189,134,0.15)' },
+  { key: 'yukleme', label: 'Yükleme', sub: 'Sisteme yüklenecek', href: '/panel/kdv-kontrol', icon: UploadCloud, color: '#2dd4bf', bg: 'rgba(255,255,255,0.020)', border: 'rgba(45,212,191,0.16)' },
   { key: 'islenme', label: 'Fatura İşleme', sub: 'Belge merkezi', href: '/panel/fatura-isleme', icon: Receipt, color: '#d2b06f', bg: 'rgba(255,255,255,0.020)', border: 'rgba(210,176,111,0.16)' },
   { key: 'kontrol', label: 'KDV Kontrol', sub: 'Kontrol bekliyor', href: '/panel/kdv-kontrol', icon: FileCheck, color: '#8db6c6', bg: 'rgba(255,255,255,0.020)', border: 'rgba(141,182,198,0.16)' },
   { key: 'beyanname', label: 'Beyanname', sub: 'Hazırlanacak', href: '/panel/beyannameler', icon: FileText, color: '#cda2ad', bg: 'rgba(255,255,255,0.020)', border: 'rgba(205,162,173,0.15)' },
@@ -182,7 +184,7 @@ function WorkflowOverview({ counts, total, activeCount }: { counts?: WorkflowCou
       </div>
 
       <div className="px-5 py-4">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 xl:grid-cols-6">
           {WORKFLOW_STEPS.map((step) => {
             const value = c[step.key] || 0;
             const pct = scopedTotal > 0 ? Math.round((value / scopedTotal) * 100) : 0;
@@ -1658,9 +1660,9 @@ export default function DashboardPage() {
   }, [agentStatuses]);
 
   // v1.36.80: Aktif İş Yükü — gerçek workflow queue count'u (KONTROL/İŞLEME/BEYAN bekleyenler toplamı)
-  const { data: workflowData } = useQuery<{ counts?: { evrak: number; islenme: number; kontrol: number; beyanname: number; tamam: number }; total?: number }>({
+  const { data: workflowData } = useQuery<{ counts?: { evrak: number; yukleme: number; islenme: number; kontrol: number; beyanname: number; tamam: number }; total?: number }>({
     queryKey: ['dashboard-workflow-queue'],
-    queryFn: () => api.get('/taxpayers/workflow/queue').then((r) => r.data).catch(() => ({ counts: { evrak: 0, islenme: 0, kontrol: 0, beyanname: 0, tamam: 0 }, total: 0 })),
+    queryFn: () => api.get('/taxpayers/workflow/queue').then((r) => r.data).catch(() => ({ counts: { evrak: 0, yukleme: 0, islenme: 0, kontrol: 0, beyanname: 0, tamam: 0 }, total: 0 })),
     refetchInterval: 60_000,
   });
   const aktifIsYuku =

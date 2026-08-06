@@ -7,13 +7,13 @@ import { api } from '@/lib/api';
 import {
   Workflow, Clock, ChevronRight, FileText, Receipt, FileCheck,
   Loader2, Building2, ArrowRight, AlertTriangle, CheckCircle2,
-  SkipForward, Sparkles, Calendar, Flame,
+  SkipForward, Sparkles, Calendar, Flame, UploadCloud,
 } from 'lucide-react';
 
 const GOLD = '#d4b876';
 const GOLD_SOFT = '#b8a06f';
 
-type Stage = 'EVRAK_BEKLIYOR' | 'ISLENMEYI_BEKLIYOR' | 'KONTROL_BEKLIYOR' | 'BEYANNAME_BEKLIYOR' | 'TAMAM';
+type Stage = 'EVRAK_BEKLIYOR' | 'YUKLEME_BEKLIYOR' | 'ISLENMEYI_BEKLIYOR' | 'KONTROL_BEKLIYOR' | 'BEYANNAME_BEKLIYOR' | 'TAMAM';
 
 interface QueueItem {
   statusId: string;
@@ -38,7 +38,7 @@ interface WorkflowData {
   month: number;
   donem: string;
   total: number;
-  counts: { evrak: number; islenme: number; kontrol: number; beyanname: number; tamam: number };
+  counts: { evrak: number; yukleme: number; islenme: number; kontrol: number; beyanname: number; tamam: number };
   siradaki: QueueItem[];
   grouped: Record<Stage, QueueItem[]>;
 }
@@ -47,13 +47,14 @@ const AYLAR = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz',
 
 const STAGE_CONFIG: Record<Stage, { label: string; short: string; color: string; icon: any; gradient: string; bg: string }> = {
   EVRAK_BEKLIYOR:     { label: 'Evrak Bekleniyor',       short: 'BEKLİYOR',  color: '#cbd5e1', icon: Clock,        gradient: 'rgba(203,213,225,0.16)', bg: 'rgba(203,213,225,0.06)' },
+  YUKLEME_BEKLIYOR:   { label: 'Yükleme Bekliyor',       short: 'YÜKLEME',   color: '#2dd4bf', icon: UploadCloud,  gradient: 'rgba(45,212,191,0.18)',  bg: 'rgba(45,212,191,0.06)' },
   ISLENMEYI_BEKLIYOR: { label: 'İşlenmeyi Bekliyor',     short: 'İŞLENECEK', color: '#60a5fa', icon: Receipt,      gradient: 'rgba(96,165,250,0.18)',  bg: 'rgba(96,165,250,0.06)' },
   KONTROL_BEKLIYOR:   { label: 'KDV Kontrol Bekliyor',   short: 'KONTROL',   color: '#fbbf24', icon: FileCheck,    gradient: 'rgba(251,191,36,0.20)',  bg: 'rgba(251,191,36,0.07)' },
   BEYANNAME_BEKLIYOR: { label: 'Beyanname Hazırlanacak', short: 'BEYAN',     color: '#c084fc', icon: FileText,     gradient: 'rgba(192,132,252,0.20)', bg: 'rgba(192,132,252,0.07)' },
   TAMAM:              { label: 'Tamamlandı',             short: 'TAMAM',     color: '#4ade80', icon: CheckCircle2, gradient: 'rgba(74,222,128,0.18)',  bg: 'rgba(74,222,128,0.05)' },
 };
 
-const STAGE_ORDER: Stage[] = ['EVRAK_BEKLIYOR', 'ISLENMEYI_BEKLIYOR', 'KONTROL_BEKLIYOR', 'BEYANNAME_BEKLIYOR', 'TAMAM'];
+const STAGE_ORDER: Stage[] = ['EVRAK_BEKLIYOR', 'YUKLEME_BEKLIYOR', 'ISLENMEYI_BEKLIYOR', 'KONTROL_BEKLIYOR', 'BEYANNAME_BEKLIYOR', 'TAMAM'];
 
 function getQueryParam(key: string): string | null {
   if (typeof window === 'undefined') return null;
@@ -248,7 +249,7 @@ export default function IsYukuPage() {
               </span>
               <span className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.05)' }} />
             </div>
-            <div id="pipeline" className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+            <div id="pipeline" className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
               {visibleStages.map((stage) => (
                 <PipelineSutun
                   key={stage}
@@ -292,7 +293,7 @@ export default function IsYukuPage() {
 // HERO CARD — ŞİMDİ YAPILACAK (büyük öne çıkan kart)
 // ════════════════════════════════════════════════════════════════════
 function WorkflowSummary({ data, evrakPct }: { data: WorkflowData; evrakPct: number }) {
-  const aktifIs = data.counts.islenme + data.counts.kontrol + data.counts.beyanname;
+  const aktifIs = data.counts.yukleme + data.counts.islenme + data.counts.kontrol + data.counts.beyanname;
   const kaydiOlmayan = Object.values(data.grouped || {})
     .flat()
     .filter((i) => !i.monthlyStatusExists).length;
@@ -334,7 +335,7 @@ function WorkflowSummary({ data, evrakPct }: { data: WorkflowData; evrakPct: num
           </div>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-5">
+        <div className="grid grid-cols-3 md:grid-cols-6">
           {STAGE_ORDER.map((stage) => {
             const cfg = STAGE_CONFIG[stage];
             const Icon = cfg.icon;
