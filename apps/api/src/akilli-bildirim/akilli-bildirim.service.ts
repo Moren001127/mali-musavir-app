@@ -106,12 +106,12 @@ export class AkilliBildirimService {
     const since = new Date(Date.now() - sinceHours * 3600 * 1000);
     const map = new Map<string, TaxpayerBundle>();
 
-    const ensure = async (tp: { id: string; unvan?: string | null; name?: string | null; phone?: string | null; phones?: string[]; email?: string | null; emails?: string[] }) => {
+    const ensure = async (tp: { id: string; companyName?: string | null; firstName?: string | null; lastName?: string | null; phone?: string | null; phones?: string[]; email?: string | null; emails?: string[] }) => {
       let b = map.get(tp.id);
       if (!b) {
         b = {
           taxpayerId: tp.id,
-          unvan: (tp.unvan || tp.name || 'Mükellef').toString(),
+          unvan: (tp.companyName || `${tp.firstName || ''} ${tp.lastName || ''}`.trim() || 'Mükellef').toString(),
           phone: tp.phone || (tp.phones && tp.phones[0]) || null,
           email: tp.email || (tp.emails && tp.emails[0]) || null,
           items: [],
@@ -363,9 +363,11 @@ export class AkilliBildirimService {
     });
     const taxpayers = await (this.prisma as any).taxpayer.findMany({
       where: { tenantId, id: { in: [...new Set(rows.map((r: any) => r.taxpayerId))] } },
-      select: { id: true, unvan: true, name: true },
+      select: { id: true, companyName: true, firstName: true, lastName: true },
     });
-    const tpName = new Map<string, string>(taxpayers.map((t: any) => [t.id, t.unvan || t.name || t.id]));
+    const tpName = new Map<string, string>(
+      taxpayers.map((t: any) => [t.id, t.companyName || `${t.firstName || ''} ${t.lastName || ''}`.trim() || t.id]),
+    );
 
     const perTaxpayer = new Map<string, any>();
     let sent = 0;

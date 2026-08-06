@@ -42,9 +42,15 @@ export class AylikOdemeService {
     private readonly email: EmailService,
   ) {}
 
-  /** month: 'YYYY-MM'. taxpayerId verilirse tek mükellef. */
+  /**
+   * month: ÖDEME AYI ('YYYY-MM'). Tahakkuklar bir önceki DÖNEME aittir
+   * (Temmuz'da ödenen = Haziran dönemi beyannameleri). taxpayerId verilirse tek mükellef.
+   */
   async list(tenantId: string, month: string, taxpayerId?: string): Promise<OdemeListesi[]> {
-    const sgkPeriod = month.replace('-', '/');
+    const [my, mm] = month.split('-').map(Number);
+    const prev = new Date(my, mm - 2, 1);
+    const donem = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}`;
+    const sgkPeriod = donem.replace('-', '/');
     const map = new Map<string, OdemeListesi>();
 
     const ensure = (tp: any): OdemeListesi => {
@@ -52,7 +58,7 @@ export class AylikOdemeService {
       if (!row) {
         row = {
           taxpayerId: tp.id,
-          unvan: (tp.unvan || tp.name || 'Mükellef').toString(),
+          unvan: (tp.companyName || `${tp.firstName || ''} ${tp.lastName || ''}`.trim() || 'Mükellef').toString(),
           phone: tp.phone || (tp.phones && tp.phones[0]) || null,
           email: tp.email || (tp.emails && tp.emails[0]) || null,
           satirlar: [],
@@ -67,7 +73,7 @@ export class AylikOdemeService {
     const beyanlar = await (this.prisma as any).beyanKaydi.findMany({
       where: {
         tenantId,
-        donem: month,
+        donem,
         tahakkukTutari: { not: null },
         ...(taxpayerId ? { taxpayerId } : {}),
       },
@@ -90,7 +96,7 @@ export class AylikOdemeService {
         tenantId,
         belgeTuru: 'SGK_TAHAKKUK',
         ...(taxpayerId ? { taxpayerId } : {}),
-        OR: [{ period: sgkPeriod }, { period: month }],
+        OR: [{ period: sgkPeriod }, { period: donem }],
       },
       include: { taxpayer: true },
       take: 5000,
