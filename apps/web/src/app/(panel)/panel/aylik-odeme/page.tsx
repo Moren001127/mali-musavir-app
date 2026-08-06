@@ -81,7 +81,8 @@ export default function AylikOdemePage() {
             type="month"
             value={month}
             onChange={(e) => { setMonth(e.target.value); setSelected(null); }}
-            className="rounded-lg border bg-transparent px-3 py-1.5 text-[13px] text-white outline-none"
+            onClick={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch { /* tarayıcı desteklemiyorsa elle yazılır */ } }}
+            className="cursor-pointer rounded-lg border bg-transparent px-3 py-1.5 text-[13px] text-white outline-none [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:invert"
             style={{ borderColor: 'rgba(255,255,255,0.12)', colorScheme: 'dark' }}
           />
           <button
