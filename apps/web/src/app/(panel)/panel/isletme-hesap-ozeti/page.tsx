@@ -970,7 +970,18 @@ function KarsilastirmaTablosu({
         const kalan = Number(cur.kalanStok || 0);
         cur.satilanMalMaliyeti = Math.round((toplam - kalan) * 100) / 100;
       }
-      return { ...prev, [donem]: cur };
+      const next = { ...prev, [donem]: cur };
+      // GEÇMİŞ YIL ZARARI: yıl için TEK değer — geçici vergide HER dönemin matrahından AYNI geçmiş
+      //   yıl zararı düşülür. Bir döneme girilince DİĞER TÜM dönemlere de otomatik yaz (kullanıcı
+      //   isteği: "ilk döneme tanımlanınca diğerlerine de otomatik yazılsın").
+      if (field === 'gecmisYilZarari') {
+        const donemSayisi = yilData?.ceyrekler?.length || 4;
+        for (let dd = 1; dd <= donemSayisi; dd++) {
+          if (dd === donem) continue;
+          next[dd] = { ...(next[dd] || {}), gecmisYilZarari: val };
+        }
+      }
+      return next;
     });
   }
 
