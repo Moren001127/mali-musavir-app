@@ -12,7 +12,7 @@
   // v1.42.2 (2026-06-16): Ajan kendini yenilerken (delete __morenAgent) eski async
   // döngü "Cannot read 'stopRequested' of undefined/null" ile ÇÖKÜYORDU → yetim
   // döngü artık nesne yoksa güvenle durur (stopRequested kontrollerine null-guard).
-  const AGENT_VERSION = '1.46.8';
+  const AGENT_VERSION = '1.46.9';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -4924,6 +4924,7 @@
       //   (2.5sn) guard'ı kalan/yeniden başlayan aktiviteyi zaten yakalar → erken çıksa da fatura kaçmaz.
       let lastActCount = activityBeforeClick;
       let lastActChangeTs = Date.now();
+      let lastDiagTs = 0;
       const SILENCE_DONE_MS = 8000;
       while (Date.now() - pollStart < POLL_MAX_MS) {
         await throwIfCancelled();
@@ -4970,6 +4971,11 @@
         if (foundDoneSignal) { queryDone = true; break; }
         // Her 5sn'de bir progress log'la (kullanıcı boş ekran görmesin)
         const now = Date.now();
+        // TESHIS (gecici): completion dongusu durumu — aktivite sayisi, sessizlik suresi, sinyal gorundu mu.
+        if (now - lastDiagTs > 8000) {
+          lastDiagTs = now;
+          await log(`⏱ [teshis] aktivite=${getAgentActivityCount() - activityBeforeClick} sessizlik=${Math.round((now - lastActChangeTs) / 1000)}sn gordu=${sawQueryActivity} gecen=${Math.round((now - pollStart) / 1000)}sn`);
+        }
         // AKTIVİTE-SESSİZLİK ile erken çık: kayıt XHR'ları SILENCE_DONE_MS'dir durduysa saves bitti;
         //   "sona erdi" yazısını beklemeden çık → küçük sorgudaki 5dk boşa beklemeyi önler.
         if (sawQueryActivity && now - pollStart > 4000 && now - lastActChangeTs > SILENCE_DONE_MS) {
