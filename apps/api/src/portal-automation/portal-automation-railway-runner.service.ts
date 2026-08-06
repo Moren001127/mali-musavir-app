@@ -7559,12 +7559,13 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     // durumlarda GİB'in gerçekte hangi ekranı gösterdiğini anlamak için.
     try {
       const bodyText = await page.evaluate(() => (document.body?.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 500)).catch(() => '');
-      if (bodyText) pieces.push(`TEXT: ${bodyText}`);
       const frameUrls = (page.frames?.() || [])
         .map((f: any) => String(f.url?.() || '').replace(/([?&](?:password|sifre|parola|token|kod)=)[^&]+/gi, '$1***'))
         .filter(Boolean)
         .slice(0, 8);
-      if (frameUrls.length) pieces.push(`FRAMES: ${frameUrls.join(' , ')}`);
+      // TEXT/FRAMES BAŞA — eleman listesi uzun olduğundan sondaysa 1000 kr hata sınırında kesiliyordu
+      if (frameUrls.length) pieces.unshift(`FRAMES: ${frameUrls.join(' , ')}`);
+      if (bodyText) pieces.unshift(`TEXT: ${bodyText}`);
     } catch {}
     return pieces.join(' || ').slice(0, 2400);
   }
@@ -7971,7 +7972,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
   }
 
   private publicError(err: any) {
-    return String(err?.message || err || 'Railway runner hatasi').replace(/\s+/g, ' ').slice(0, 1000);
+    return String(err?.message || err || 'Railway runner hatasi').replace(/\s+/g, ' ').slice(0, 3000);
   }
 
   private compact(value: string) {
