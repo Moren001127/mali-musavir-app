@@ -786,9 +786,9 @@ export default function IsletmeHesapOzetiPage() {
               onClick={() => window.dispatchEvent(new CustomEvent('iho-print'))}
               className="ml-auto inline-flex items-center gap-2 rounded-lg px-3 py-2 text-[12.5px] font-bold"
               style={{
-                background: 'rgba(212,184,118,0.12)',
-                border: '1px solid rgba(212,184,118,0.32)',
-                color: AMOUNT_ACCENT,
+                background: 'rgba(122,162,204,0.13)',
+                border: '1px solid rgba(122,162,204,0.42)',
+                color: '#8fb3d9',
               }}
             >
               <Printer className="h-4 w-4" />
@@ -1351,9 +1351,9 @@ function KarsilastirmaTablosu({
                       title={fetching ? 'Bu döneme ait Luca çekimini iptal et' : "Luca'dan İşletme Defteri Excel'i çek"}
                       className="inline-flex items-center justify-center gap-1.5 text-[11px] font-semibold rounded"
                       style={{
-                        background: fetching ? 'rgba(239,68,68,0.12)' : 'rgba(184,160,111,0.12)',
-                        color: fetching ? '#fca5a5' : GOLD,
-                        border: `1px solid ${fetching ? 'rgba(239,68,68,0.35)' : 'rgba(184,160,111,0.3)'}`,
+                        background: fetching ? 'rgba(239,68,68,0.12)' : 'rgba(122,162,204,0.13)',
+                        color: fetching ? '#fca5a5' : '#8fb3d9',
+                        border: `1px solid ${fetching ? 'rgba(239,68,68,0.35)' : 'rgba(122,162,204,0.42)'}`,
                         height: 28,
                         padding: '0 10px',
                         minWidth: 100,
@@ -1374,9 +1374,9 @@ function KarsilastirmaTablosu({
                         title="Kesin kayda al"
                         className="inline-flex items-center justify-center text-[11px] font-semibold rounded"
                         style={{
-                          background: 'rgba(184,160,111,0.12)',
-                          color: GOLD,
-                          border: '1px solid rgba(184,160,111,0.3)',
+                          background: 'rgba(122,162,204,0.13)',
+                          color: '#8fb3d9',
+                          border: '1px solid rgba(122,162,204,0.42)',
                           height: 28,
                           padding: '0 10px',
                           minWidth: 88,

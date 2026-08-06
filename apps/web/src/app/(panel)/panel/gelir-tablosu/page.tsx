@@ -414,10 +414,31 @@ export default function GelirTablosuPage() {
     const ad = selectedTp ? taxpayerName(selectedTp) : 'Mükellefimiz';
     const P = (n: number) => `*${fmtParaWa(n)}*`;
 
+    // Geçici vergi + stok değerleri dönem DETAYINDAN — ekrandaki "Geçici Vergi Matrahı" ve
+    // "Stok ve Satılan Malın Maliyeti" tablolarıyla BİREBİR aynı hesap.
+    const detail = quarterDetails[qi]?.data as any;
+    const gv = detail?.geciciVergiHesabi;
+    let oncekiOdenenGV: number | null = null;
+    let odenecekGV: number | null = null;
+    if (gv) {
+      const kkeg = Number(gv.kkeg || 0);
+      const liveToplamKar = d.donemNetKari + kkeg;
+      const ms = detail?.id ? getManuel(detail.id) : null;
+      const draftGY = ms?.gecmisYil ? parseLocale(ms.gecmisYil) : null;
+      const draftOO = ms?.oncekiOdenen ? parseLocale(ms.oncekiOdenen) : null;
+      const gecmisYil = draftGY !== null ? draftGY : Number(gv.gecmisYilZarari || 0);
+      const oncekiOdenen = draftOO !== null ? draftOO : Number(gv.oncekiDonemOdenenGeciciVergi ?? gv.oncekiDonemOdenen ?? 0);
+      const matrah = Math.max(0, liveToplamKar - gecmisYil);
+      const oran = Number(gv.gecicVergiOrani) || 0.25;
+      oncekiOdenenGV = oncekiOdenen;
+      odenecekGV = Math.max(0, matrah * oran - oncekiOdenen);
+    }
+    const stok = detail?.stokMaliyetOzet;
+    const kalanStok = stok ? Number(stok.kalanStok || 0) : 0;
+    const stoklu = !!stok && (Number(stok.toplamStok || 0) > 0.004 || Number(stok.satisMaliyeti || 0) > 0.004 || kalanStok > 0.004);
+
     const satirlar: string[] = [
       '*MOREN MALİ MÜŞAVİRLİK*',
-      `📊 *Gelir Tablosu — ${year} · ${label.no.replace('. DÖNEM', '. Dönem')}*`,
-      `_${label.range}_`,
       '',
       `Sayın *${ad}*,`,
       `${year} yılı ${label.no.toLocaleLowerCase('tr-TR')} (${label.range}) gelir tablonuzun özeti aşağıdadır:`,
@@ -429,8 +450,13 @@ export default function GelirTablosuPage() {
     if (Math.abs(d.faaliyetGiderleri) > 0.004) satirlar.push(`🧾 Faaliyet Giderleri: ${P(d.faaliyetGiderleri)}`);
     satirlar.push(d.faaliyetKari >= 0 ? `⚙️ Faaliyet Kârı: ${P(d.faaliyetKari)}` : `⚙️ Faaliyet Zararı: ${P(Math.abs(d.faaliyetKari))}`);
     satirlar.push(d.donemKari >= 0 ? `📈 Dönem Kârı: ${P(d.donemKari)}` : `📉 Dönem Zararı: ${P(Math.abs(d.donemKari))}`);
-    if (Math.abs(d.vergiKarsiligi) > 0.004) satirlar.push(`🏛️ Vergi Karşılığı: ${P(d.vergiKarsiligi)}`);
-    satirlar.push(d.donemNetKari >= 0 ? `✅ Dönem Net Kârı: ${P(d.donemNetKari)}` : `⚠️ Dönem Net Zararı: ${P(Math.abs(d.donemNetKari))}`);
+    // Dönem Net Kârı: YALNIZCA Dönem Kârı'ndan farklıysa (vergi karşılığı varsa) yaz — tekrar yok.
+    if (Math.abs(d.donemNetKari - d.donemKari) > 0.004) {
+      satirlar.push(d.donemNetKari >= 0 ? `✅ Dönem Net Kârı: ${P(d.donemNetKari)}` : `⚠️ Dönem Net Zararı: ${P(Math.abs(d.donemNetKari))}`);
+    }
+    if (stoklu) satirlar.push(`📦 Dönem Sonu Stok: ${P(kalanStok)}`);
+    if (oncekiOdenenGV !== null && oncekiOdenenGV > 0.004) satirlar.push(`↪️ Önceki Dönem Ödenen Geçici Vergi: ${P(oncekiOdenenGV)}`);
+    if (odenecekGV !== null) satirlar.push(`🏛️ Bu Dönem Ödenecek Geçici Vergi: ${P(odenecekGV)}`);
 
     satirlar.push(
       '',

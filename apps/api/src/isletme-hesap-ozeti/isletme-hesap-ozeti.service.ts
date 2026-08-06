@@ -62,7 +62,6 @@ export class IsletmeHesapOzetiService {
   /** Bir İHÖ dönem kaydından kurumsal WhatsApp bilgilendirme metni üretir (WhatsApp *bold* biçimi). */
   private buildWhatsappMesaj(ozet: any, taxpayerAd: string): string {
     const donem = Number(ozet.donem);
-    const roman = IsletmeHesapOzetiService.DONEM_ROMAN[donem] || String(donem);
     const range = IsletmeHesapOzetiService.DONEM_RANGE[donem] || '';
     const satis = Number(ozet.satisHasilati || 0);
     const digerGelir = Number(ozet.digerGelir || 0);
@@ -83,8 +82,6 @@ export class IsletmeHesapOzetiService {
 
     const satirlar: string[] = [
       '*MOREN MALİ MÜŞAVİRLİK*',
-      `📊 *İşletme Hesap Özeti — ${ozet.yil} · ${roman}. Geçici Vergi Dönemi*`,
-      `_${range}_`,
       '',
       `Sayın *${taxpayerAd}*,`,
       `${ozet.yil} yılı ${donem}. geçici vergi dönemi (${range}) itibarıyla işletmenizin özet mali durumu aşağıdadır:`,
