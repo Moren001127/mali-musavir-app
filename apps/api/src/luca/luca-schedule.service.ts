@@ -77,6 +77,74 @@ export class LucaScheduleService {
     }
   }
 
+  /**
+   * GECE OTOMATİK "Gelen E-Arşiv" (EARSIV_ALIS) sorgulama — kullanıcı isteği 2026-08-06.
+   * Her gece 02:00 (Istanbul): her tenant için aktif + kapanmamış TÜM mükellefe
+   * ÖNCEKİ AY dönemiyle EARSIV_ALIS job'u açar. Ajanın kendi 2-sorgu mantığı bunu
+   * "önceki ay tamamı (Sorgu 1) + içinde bulunulan ay başı → bugün (Sorgu 2)" olarak
+   * çeker; VPS Luca agent gece boyu sırayla indirir.
+   *   - "Gelen E-Arşiv"de tüm mükellefler uygun (frontend: GELEN_EARSIV → herkes).
+   *   - Kapanan firma o dönemde aktif değilse elenir (endDate < önceki-ay-başı).
+   *   - Tekrar-koruma createFetchJob'da: aynı mükellef+dönem+tip pending/running varsa
+   *     yeni kopya açılmaz → önceki gecenin işi bitmediyse üst üste binmez.
+   *   - Otomatik Fatura Merkezi aktarımı YOK (kullanıcı: sadece indir; #3 ile tutarlı).
+   *   - Kapatmak için env: NIGHTLY_EARSIV=off
+   */
+  @Cron('0 2 * * *', { timeZone: 'Europe/Istanbul' })
+  async nightlyEarsivAlis() {
+    if (String(process.env.NIGHTLY_EARSIV || '').trim().toLowerCase() === 'off') {
+      this.logger.log('Gece e-Arşiv sorgusu KAPALI (NIGHTLY_EARSIV=off)');
+      return;
+    }
+    const now = new Date();
+    // donem = ÖNCEKİ AY → ajan Sorgu1 = önceki ay tamamı, Sorgu2 = bu ay başı → bugün.
+    const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const donem = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}`;
+    const firstDay = prev; // kapanan-firma filtresi: önceki ay başında aktif olanlar
+
+    // Tüm tenant'lar (aktif mükellefi olanlar)
+    const tenantRows: Array<{ tenantId: string }> = await (this.prisma as any).taxpayer
+      .findMany({ where: { isActive: true }, distinct: ['tenantId'], select: { tenantId: true } })
+      .catch(() => []);
+
+    let totalCreated = 0;
+    let totalTaxpayers = 0;
+    for (const { tenantId } of tenantRows) {
+      const taxpayers = await (this.prisma as any).taxpayer.findMany({
+        where: {
+          tenantId,
+          isActive: true,
+          taxNumber: { not: { startsWith: 'WHATSAPP-' } },
+          OR: [{ endDate: null }, { endDate: { gte: firstDay } }],
+        },
+        select: { id: true, companyName: true, firstName: true, lastName: true },
+        take: 3000,
+      });
+      totalTaxpayers += taxpayers.length;
+      for (const mk of taxpayers) {
+        const mukellefAdi =
+          mk.companyName || [mk.firstName, mk.lastName].filter(Boolean).join(' ') || '';
+        try {
+          await this.luca.createFetchJob({
+            tenantId,
+            sessionId: undefined as any,
+            mukellefId: mk.id,
+            donem,
+            tip: 'EARSIV_ALIS',
+            createdBy: 'nightly-earsiv',
+            mukellefAdi,
+          });
+          totalCreated++;
+        } catch {
+          // mükellef-bazlı hatayı yut, diğerlerini dene
+        }
+      }
+    }
+    this.logger.log(
+      `Gece e-Arşiv (EARSIV_ALIS, dönem ${donem}): ${totalTaxpayers} mükelleften ${totalCreated} yeni job kuyruğa alındı`,
+    );
+  }
+
   private async runScheduled(sched: any) {
     const now = new Date();
     // Mükellef listesi
