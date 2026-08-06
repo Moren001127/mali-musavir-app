@@ -1282,7 +1282,9 @@ export class BaileysService implements OnModuleDestroy {
       const buffer = Buffer.from(await res.arrayBuffer());
       const mime = String(media.mimeType || '').toLowerCase();
       const caption = media.caption ? String(media.caption).slice(0, 1024) : undefined;
-      const jid = this.toSendJid(s, phone);
+      // ensureSendJid ŞART: toSendJid ham "0xxx@s.whatsapp.net" (ülke kodsuz GEÇERSİZ)
+      // üretebiliyor — metin ulaşırken medyanın hiç ulaşmamasının kökü buydu.
+      const jid = await this.ensureSendJid(s, phone);
       if (!jid) {
         const error = 'WhatsApp LID adresi gercek telefon numarasina cozumlenemedi; bekleyen medya mesaji olusmamasi icin gonderim durduruldu.';
         this.logger.warn(`[Baileys] tenant=${tenantId} medya LID hedef cozumlenemedi target=${this.maskTarget(phone)}`);
@@ -1308,8 +1310,9 @@ export class BaileysService implements OnModuleDestroy {
       ]);
       clearTimeout(confirmTimer);
       if (sent === '__TIMEOUT__') {
-        this.logger.warn(`[Baileys] tenant=${tenantId} medya gonderim onayi 45sn gelmedi; buyuk olasilikla iletildi target=${this.maskTarget(phone)}`);
-        return { ok: true };
+        // Kanıtlandı (2026-08-06): onay gelmiyorsa mesaj TESLİM DE OLMUYOR (geçersiz jid vakası).
+        this.logger.warn(`[Baileys] tenant=${tenantId} medya gonderim onayi 45sn gelmedi jid=${this.maskTarget(jid)} target=${this.maskTarget(phone)}`);
+        return { ok: false, error: 'Medya gonderim onayi 45 sn icinde gelmedi (hedef adres gecersiz olabilir).' };
       }
       this.rememberSend(tenantId, jid, payload, sent?.key?.id, sent?.message);
       this.storeDelivery(tenantId, sent?.key?.id, 'sent');
@@ -1335,7 +1338,8 @@ export class BaileysService implements OnModuleDestroy {
       const buffer = Buffer.from(await res.arrayBuffer());
       const mime = String(media.mimeType || '').toLowerCase();
       const caption = media.caption ? String(media.caption).slice(0, 1024) : undefined;
-      const jid = this.toSendJid(s, phone);
+      // ensureSendJid: ham "0xxx@..." geçersiz jid'e karşı (bkz. sendMediaDetailed)
+      const jid = await this.ensureSendJid(s, phone);
       if (!jid) {
         this.logger.warn(`[Baileys] tenant=${tenantId} medya LID hedef cozumlenemedi target=${this.maskTarget(phone)}`);
         return false;
