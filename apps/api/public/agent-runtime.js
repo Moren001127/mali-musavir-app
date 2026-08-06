@@ -12,7 +12,7 @@
   // v1.42.2 (2026-06-16): Ajan kendini yenilerken (delete __morenAgent) eski async
   // döngü "Cannot read 'stopRequested' of undefined/null" ile ÇÖKÜYORDU → yetim
   // döngü artık nesne yoksa güvenle durur (stopRequested kontrollerine null-guard).
-  const AGENT_VERSION = '1.47.5';
+  const AGENT_VERSION = '1.47.6';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -2057,6 +2057,14 @@
                       for (const el of d.querySelectorAll('input,button,a')) { const t = ((el.value || el.innerText || el.textContent) || '').replace(/\s+/g, ' ').trim(); if (/^y[üu]kle$/i.test(t)) { const oa = (el.getAttribute && el.getAttribute('onclick')) || ''; yuks.push(`${el.tagName}[${el.type || ''}] fn=${typeof el.onclick === 'function'} attr=${oa ? oa.replace(/\s+/g, '').slice(0, 40) : '-'}`); } }
                     } catch {} }
                     await log(`ℹ[dump] file=[${fis.join(',')}] Yükle=[${yuks.slice(0, 3).join(' || ')}]`);
+                    // Yükle fonksiyonunun KAYNAĞINI dök (ne yaptığını gör: hangi input, hangi endpoint)
+                    try {
+                      const pw2 = popupWin();
+                      let src = '';
+                      for (const fn of ['csvSablonYukle', 'excelYukle', 'sablonYukle', 'yukle']) { try { if (pw2 && typeof pw2[fn] === 'function') { src = pw2[fn].toString(); break; } } catch {} }
+                      const clean = src.replace(/https?:\/\/\S+/g, '[url]').replace(/["']/g, '`').replace(/\s+/g, ' ').slice(0, 420);
+                      await log(`ℹ[fnsrc] ${clean || 'fn-erişilemedi'}`);
+                    } catch (e) { await log(`fnsrc: ${(e && e.message) || e}`); }
                   } catch {}
                   // 1) Yükle — sayfa fonksiyonu → popup-trusted → ana native → fireEl
                   const yEl = findBtn(/^Y[üu]kle$/i);
