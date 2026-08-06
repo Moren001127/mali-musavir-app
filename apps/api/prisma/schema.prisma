@@ -3445,3 +3445,48 @@ model MaliYorum {
   @@index([tenantId, taxpayerId, kaynak])
   @@map("mali_yorum")
 }
+
+// ===== AKILLI BILDIRIM (belge dagitim motoru) =====
+
+model SmartDispatchSetting {
+  id                  String   @id @default(cuid())
+  tenantId            String
+  kategori            String   // VERGI | SGK | ETEBLIGAT
+  whatsapp            Boolean  @default(true)
+  email               Boolean  @default(true)
+  sendHour            Int      @default(9)
+  manualInstant       Boolean  @default(true)  // elle cekilen de ayni formatla aninda iletilsin
+  enabled             Boolean  @default(false) // guvenli baslangic: kapali
+  testMode            Boolean  @default(true)  // acikken gonderimler test alicisina gider
+  testPhone           String?
+  testEmail           String?
+  excludedTaxpayerIds String[] @default([])
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@unique([tenantId, kategori])
+  @@map("smart_dispatch_settings")
+}
+
+model DocumentDispatch {
+  id          String    @id @default(cuid())
+  tenantId    String
+  taxpayerId  String
+  kategori    String    // VERGI | SGK | ETEBLIGAT | ODEME_LISTESI
+  donem       String?
+  channel     String    // WHATSAPP | EMAIL
+  status      String    @default("PENDING") // PENDING | SENT | FAILED | SKIPPED
+  error       String?
+  itemCount   Int       @default(0)
+  totalAmount Decimal?  @db.Decimal(14, 2)
+  docRefs     Json?
+  dedupeKey   String    // kategori + belge id'leri hash — ayni belgeler ikinci kez gonderilmez
+  testMode    Boolean   @default(false)
+  sentAt      DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@unique([tenantId, dedupeKey, channel])
+  @@index([tenantId, createdAt])
+  @@index([tenantId, taxpayerId, kategori])
+  @@map("document_dispatches")
+}
