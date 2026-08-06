@@ -12,7 +12,7 @@
   // v1.42.2 (2026-06-16): Ajan kendini yenilerken (delete __morenAgent) eski async
   // döngü "Cannot read 'stopRequested' of undefined/null" ile ÇÖKÜYORDU → yetim
   // döngü artık nesne yoksa güvenle durur (stopRequested kontrollerine null-guard).
-  const AGENT_VERSION = '1.47.7';
+  const AGENT_VERSION = '1.47.8';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -2077,11 +2077,24 @@
                     const fi = findFileInput();
                     const form = fi && (fi.form || (fi.closest && fi.closest('form')));
                     if (pw && form && pw.fetch && pw.FormData) {
-                      const action = form.action || (form.getAttribute && form.getAttribute('action')) || (pw.location && pw.location.href);
-                      const fd = new pw.FormData(form);
+                      // FormData'yı ELLE kur — name doğru olsun, dosya el.files[0]'dan alansın
+                      const fd = new pw.FormData();
+                      for (const el of form.querySelectorAll('input,select,textarea')) {
+                        const nm = el.name; if (!nm) continue;
+                        const tp = (el.type || '').toLowerCase();
+                        if (tp === 'file') { if (el.files && el.files[0]) { try { fd.append(nm, el.files[0], el.files[0].name); } catch { fd.append(nm, el.files[0]); } } }
+                        else if (tp === 'checkbox' || tp === 'radio') { if (el.checked) fd.append(nm, el.value); }
+                        else if (tp !== 'submit' && tp !== 'button' && tp !== 'file') fd.append(nm, el.value == null ? '' : el.value);
+                      }
+                      // csvSablonYukle action'ı uploadHizliFisAktarimCsvAction.do'ya set ediyor
+                      let action = form.action || (form.getAttribute && form.getAttribute('action')) || (pw.location && pw.location.href);
+                      try { action = new pw.URL('uploadHizliFisAktarimCsvAction.do', pw.location.href).href; } catch {}
                       const resp = await pw.fetch(action, { method: 'POST', body: fd, credentials: 'include' });
                       const html = await resp.text();
-                      await log(`ℹ Yükle fetch-POST → HTTP ${resp.status} · ${Math.round(html.length / 1024)}KB`);
+                      const rowInd = (html.match(/Sat[ıi]r\s*Say[ıi]s[ıi]\s*:?\s*(\d+)/i) || [])[1];
+                      const trc = (html.match(/<tr/gi) || []).length;
+                      const err = /ge[çc]ersiz|ba[şs]ar[ıi]s[ıi]z|okunama|hatal[ıi]|format\s*hatas/i.test(html);
+                      await log(`ℹ fetch-POST → HTTP ${resp.status} ${Math.round(html.length / 1024)}KB · yanıtSatır=${rowInd || '?'} tr=${trc} hata=${err} fname=${fi.name || fi.id || '-'}`);
                       if (resp.status >= 200 && resp.status < 400 && html.length > 500) {
                         try { pw.document.open(); pw.document.write(html); pw.document.close(); yOk = true; } catch (e2) { await log(`doc.write: ${(e2 && e2.message) || e2}`); }
                       }
