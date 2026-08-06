@@ -12,7 +12,7 @@
   // v1.42.2 (2026-06-16): Ajan kendini yenilerken (delete __morenAgent) eski async
   // döngü "Cannot read 'stopRequested' of undefined/null" ile ÇÖKÜYORDU → yetim
   // döngü artık nesne yoksa güvenle durur (stopRequested kontrollerine null-guard).
-  const AGENT_VERSION = '1.46.13';
+  const AGENT_VERSION = '1.46.14';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -3318,6 +3318,7 @@
       // ÖNCELİK 0: Eğer frm3'te zaten e-arşiv sayfası açıksa menü navigasyonunu ATLA.
       // Kullanıcı Luca'yı bir kez manuel olarak e-Arşiv Alış sayfasında bıraksın yeter.
       const ebelgeContextAtStart = findEbelgePageContext();
+      const __navT0 = Date.now(); // ⏱ menü-nav süresi ölçümü (hız teşhisi)
       const expectedEbelgeKey = `${mukellefTipi}:${job.tip}:${job.mukellefId || ''}:${job.donem || ''}`;
       const previousEbelgeKey = String(window.__morenLastEbelgeKey || '');
       const sayfaAcikMi = () => !!findEbelgePageContext();
@@ -3924,7 +3925,7 @@
         await nativeClickLucaText('Ak\u0131ll\u0131 Entegrasyon', {
           hoverOnly: true,
           timeoutMs: 4000,
-          settleMs: 800,
+          settleMs: 400,
         });
 
         const akilliEl = findElByText('Akıllı Entegrasyon');
@@ -3971,18 +3972,18 @@
 
         try {
           // Hover loop devam ederken e-Arşiv Alış'ı ara (cascade flyout populate eder)
-          if (!await nativeClickLucaText(menuLabel, { timeoutMs: 7000, settleMs: 2200 })) {
+          if (!await nativeClickLucaText(menuLabel, { timeoutMs: 7000, settleMs: 1000 })) {
             await clickByTextEverywhere(menuLabel, log, { maxMs: 10000 });
           }
           basariliAcildi = await waitForEbelgePage(8000);
         } catch (e) {
           await log(`⚠ "${menuLabel}" metin menüsünden bulunamadı; Akıllı Entegrasyon click fallback deneniyor`);
           try {
-            if (!await nativeClickLucaText('Ak\u0131ll\u0131 Entegrasyon', { timeoutMs: 4000, settleMs: 1200 })) {
+            if (!await nativeClickLucaText('Ak\u0131ll\u0131 Entegrasyon', { timeoutMs: 4000, settleMs: 600 })) {
               await clickByTextEverywhere('Akıllı Entegrasyon', log, { maxMs: 4000 });
-              await sleep(1200);
+              await sleep(600);
             }
-            if (!await nativeClickLucaText(menuLabel, { timeoutMs: 7000, settleMs: 2200 })) {
+            if (!await nativeClickLucaText(menuLabel, { timeoutMs: 7000, settleMs: 1000 })) {
               await clickByTextEverywhere(menuLabel, log, { maxMs: 7000 });
             }
             basariliAcildi = await waitForEbelgePage(8000);
@@ -4020,7 +4021,7 @@
         await log(`⚠ ${menuLabel} ekranı yeni frame olarak doğrulanamadı; mevcut e-belge ekranıyla devam ediliyor`);
       }
       try { window.__morenLastEbelgeKey = expectedEbelgeKey; } catch {}
-      await log(`✅ ${menuLabel} ekranı hazır (${ebelgeContext.label || 'frame'})`);
+      await log(`✅ ${menuLabel} ekranı hazır (${ebelgeContext.label || 'frame'}) · ⏱ menü-nav ${Math.round((Date.now() - __navT0) / 1000)}sn`);
       frm3 = { contentDocument: ebelgeContext.doc, contentWindow: ebelgeContext.win };
     }
 
