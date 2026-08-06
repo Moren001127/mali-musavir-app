@@ -12,7 +12,7 @@
   // v1.42.2 (2026-06-16): Ajan kendini yenilerken (delete __morenAgent) eski async
   // döngü "Cannot read 'stopRequested' of undefined/null" ile ÇÖKÜYORDU → yetim
   // döngü artık nesne yoksa güvenle durur (stopRequested kontrollerine null-guard).
-  const AGENT_VERSION = '1.47.0';
+  const AGENT_VERSION = '1.47.1';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -366,17 +366,23 @@
     } catch {}
   }
 
-  // HIZLI FİŞ gibi AYRI-PENCERE (window.open) popup'larını yakala — İşletme fiş yükleme
-  // ekranı (hizliFisPopUp.do) ana pencerenin frame'i DEĞİL. Luca'nın window.open'ını ŞEFFAF
-  // sarmalayıp referansı tutuyoruz (aynı köken → DOM erişilebilir). Davranış değişmez; yalnız liste.
+  // HIZLI FİŞ gibi AYRI-PENCERE popup'larını ana ajan örneğine GÖRÜNÜR kıl. hizliFisPopUp.do
+  // ana pencerenin frame'i DEĞİL; iki yolla PAYLAŞILAN (window.top) listeye yazıyoruz:
+  //  (a) Bu pencere bir popup ise (opener var, aynı köken) → kendini opener.top listesine kaydet.
+  //  (b) window.open'ı ŞEFFAF sarmala → açılanı window.top listesine yaz (hangi frame açarsa açsın).
+  // İş yürüten örnek lucaDocuments()'te window.top listesini okur → popup'ı görür. Davranış değişmez.
+  try {
+    if (window.opener && window.opener !== window) {
+      try { const t = window.opener.top || window.opener; t.__morenLucaPopups = t.__morenLucaPopups || []; if (!t.__morenLucaPopups.includes(window)) t.__morenLucaPopups.push(window); } catch {}
+    }
+  } catch {}
   try {
     if (!window.__morenOpenHooked) {
       window.__morenOpenHooked = true;
-      window.__morenLucaPopups = window.__morenLucaPopups || [];
       const _origOpen = window.open;
       window.open = function () {
         const w = _origOpen.apply(this, arguments);
-        try { if (w) window.__morenLucaPopups.push(w); } catch {}
+        try { const t = window.top || window; t.__morenLucaPopups = t.__morenLucaPopups || []; if (w) t.__morenLucaPopups.push(w); } catch {}
         return w;
       };
     }
@@ -392,12 +398,15 @@
     };
     add(window.top || window);
     add(window);
-    // Ayrı-pencere popup'lar (HIZLI FİŞ vb.) — kapananları temizle, açık olanları ekle
+    // Ayrı-pencere popup'lar (HIZLI FİŞ vb.) — PAYLAŞILAN window.top listesinden; kapananları ele
     try {
-      const pops = window.__morenLucaPopups || [];
-      for (let i = pops.length - 1; i >= 0; i--) {
-        const w = pops[i];
-        try { if (!w || w.closed) { pops.splice(i, 1); continue; } add(w); } catch {}
+      let pops = null;
+      try { pops = (window.top || window).__morenLucaPopups; } catch { pops = window.__morenLucaPopups; }
+      if (Array.isArray(pops)) {
+        for (let i = pops.length - 1; i >= 0; i--) {
+          const w = pops[i];
+          try { if (!w || w.closed) { pops.splice(i, 1); continue; } add(w); } catch {}
+        }
       }
     } catch {}
     return docs;
@@ -1906,6 +1915,7 @@
                     }
                     for (let i = 0; i < 20 && !hizliFisAcik(); i++) { await sleep(500); }
                   }
+                  try { const _pc = ((window.top || window).__morenLucaPopups || []).length; await log(`ℹ yakalanan ayrı-pencere: ${_pc}`); } catch {}
                   await log(hizliFisAcik() ? '✓ HIZLI FİŞ ekranı hazır' : '⚠ HIZLI FİŞ ekranı görünmedi — Excel Aktarım yine de deneniyor');
                   // Alt toolbar "Excel Aktarım" → "Excel Şablon" kutusu (Dosya Seç input'u belirir)
                   let acildi = await nativeClickLucaText('Excel Aktarım', { settleMs: 1200, timeoutMs: 6000 });
