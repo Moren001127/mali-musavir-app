@@ -516,39 +516,44 @@ export class AkilliBildirimService {
     const mukellefSayisi = new Set(items.map((r) => r.taxpayerId)).size;
     const bugun = fmtSaat(new Date()).split(' ')[0];
 
+    const tdBase = 'padding:10px 14px;border-bottom:1px solid #e3e8ef;font-size:13px;color:#222;vertical-align:middle';
+    const nowrap = 'white-space:nowrap;';
     const trRows = items
-      .map((r) => {
+      .map((r, idx) => {
         const tp = tpMap.get(r.taxpayerId) || {};
         const unvan = tp.companyName || `${tp.firstName || ''} ${tp.lastName || ''}`.trim() || r.taxpayerId;
         const alici: string[] = [];
         if (r.channels.includes('WHATSAPP')) alici.push(r.testMode ? `${settings?.testPhone || ''} (test)` : tp.phone || (tp.phones && tp.phones[0]) || '');
         if (r.channels.includes('EMAIL')) alici.push(r.testMode ? `${settings?.testEmail || ''} (test)` : tp.email || (tp.emails && tp.emails[0]) || '');
-        const belgeAdi = `${r.donem ? `${r.donem} • ` : ''}${r.itemCount} belge${r.totalAmount != null ? ` • ${new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2 }).format(Number(r.totalAmount))} TL` : ''}`;
+        const tutar = r.totalAmount != null ? `${new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2 }).format(Number(r.totalAmount))} TL` : '—';
+        const zebra = idx % 2 === 1 ? 'background:#f7f9fc;' : '';
         return `<tr>
-<td style="padding:8px 10px;border:1px solid #d9dee7;font-size:13px">${fmtSaat(r.sentAt)}</td>
-<td style="padding:8px 10px;border:1px solid #d9dee7;font-size:13px">${unvan}</td>
-<td style="padding:8px 10px;border:1px solid #d9dee7;font-size:13px">${tp.taxNumber || ''}</td>
-<td style="padding:8px 10px;border:1px solid #d9dee7;font-size:13px"><span style="background:#eef2f8;border-radius:12px;padding:2px 10px">${KATLBL[r.kategori] || r.kategori}</span></td>
-<td style="padding:8px 10px;border:1px solid #d9dee7;font-size:13px">${belgeAdi}</td>
-<td style="padding:8px 10px;border:1px solid #d9dee7;font-size:13px">${alici.filter(Boolean).join('<br>')}</td>
+<td style="${tdBase};${nowrap}${zebra}">${fmtSaat(r.sentAt)}</td>
+<td style="${tdBase};${zebra}min-width:220px">${unvan}</td>
+<td style="${tdBase};${nowrap}${zebra}">${tp.taxNumber || ''}</td>
+<td style="${tdBase};${nowrap}${zebra}"><span style="background:#e8eef7;color:#2d4a72;border-radius:12px;padding:3px 12px;white-space:nowrap">${KATLBL[r.kategori] || r.kategori}</span></td>
+<td style="${tdBase};${nowrap}${zebra}">${r.donem || ''}</td>
+<td style="${tdBase};${nowrap}${zebra}text-align:center">${r.itemCount}</td>
+<td style="${tdBase};${nowrap}${zebra}text-align:right">${tutar}</td>
+<td style="${tdBase};${zebra}min-width:230px">${alici.filter(Boolean).join('<br>')}</td>
 </tr>`;
       })
       .join('');
 
     const html = `
-<div style="font-family:Segoe UI,Arial,sans-serif;max-width:820px;margin:0 auto;background:#f4f6fa;padding:18px">
-  <div style="background:#3d5a80;color:#fff;border-radius:10px 10px 0 0;padding:18px 22px">
-    <div style="font-size:19px;font-weight:700">Akıllı Bildirim İletim Raporu</div>
-    <div style="font-size:13px;opacity:.85;margin-top:4px">${bugun} • ${belgeToplam} belge, ${mukellefSayisi} mükellefe iletildi</div>
+<div style="font-family:Segoe UI,Arial,sans-serif;max-width:1000px;margin:0 auto;background:#f4f6fa;padding:20px">
+  <div style="background:#3d5a80;color:#fff;border-radius:10px 10px 0 0;padding:20px 26px">
+    <div style="font-size:20px;font-weight:700">Akıllı Bildirim İletim Raporu</div>
+    <div style="font-size:13.5px;opacity:.85;margin-top:5px">${bugun} • ${belgeToplam} belge, ${mukellefSayisi} mükellefe iletildi</div>
   </div>
-  <div style="background:#ffffff;border:1px solid #d9dee7;border-top:none;border-radius:0 0 10px 10px;padding:18px 22px">
+  <div style="background:#ffffff;border:1px solid #d9dee7;border-top:none;border-radius:0 0 10px 10px;padding:22px 26px">
     <table style="border-collapse:collapse;width:100%">
       <tr>
-        ${['Tarih / Saat', 'Mükellef', 'VKN / TCKN', 'Belge Türü', 'Belge', 'Alıcı'].map((h) => `<th style=\"padding:8px 10px;border:1px solid #3d5a80;background:#4a6a94;color:#fff;font-size:12px;text-align:left\">${h}</th>`).join('')}
+        ${['Tarih / Saat', 'Mükellef', 'VKN / TCKN', 'Belge Türü', 'Dönem', 'Adet', 'Tutar', 'Alıcı'].map((h) => `<th style=\"padding:10px 14px;background:#4a6a94;color:#fff;font-size:12px;text-align:left;white-space:nowrap\">${h}</th>`).join('')}
       </tr>
       ${trRows}
     </table>
-    <p style="font-size:13px;color:#444;margin-top:16px">Yukarıdaki belgeler mükelleflerinize <b>otomatik olarak iletilmiştir</b>.<br>Saygılarımızla, ${(settings?.senderName || DEFAULT_SENDER)}</p>
+    <p style="font-size:13px;color:#444;margin-top:18px">Yukarıdaki belgeler mükelleflerinize <b>otomatik olarak iletilmiştir</b>.<br>Saygılarımızla, ${(settings?.senderName || DEFAULT_SENDER)}</p>
   </div>
 </div>`;
 
