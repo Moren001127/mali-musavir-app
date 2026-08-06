@@ -458,18 +458,21 @@ export default function EarsivPage() {
     if (tamamlanan === lucaJobIds.length) {
       // Hepsi bitti — özet göster
       setLucaStatus(`Tamamlandi - ${done} basarili / ${nofatura} fatura yok / ${failed} hata / ${cancelled} iptal`);
-      // Listeyi ZORLA yenile (invalidate queue'lar, refetch hemen tetikler)
-      qc.refetchQueries({ queryKey: ['earsiv-list'], type: 'active' });
-      // 5sn sonra status'ü temizle
-      const t = setTimeout(() => {
+      // Liste tazeleme: iş "done" olduğunda faturalar DB'ye biraz SONRA yazılabiliyor (ZIP parse+store).
+      //   Tek refetch erken kalıp liste boş görünüyordu → kullanıcı elle yenilemek zorundaydı ("yenileyince
+      //   geliyor"). BİRKAÇ GECİKMELİ refetch ile geç-yazılan faturalar otomatik gelir, elle yenileme gerekmez.
+      const refetchDelays = [0, 1500, 4000, 8000, 13000];
+      const timers = refetchDelays.map((d) => setTimeout(() => qc.refetchQueries({ queryKey: ['earsiv-list'], type: 'active' }), d));
+      // Job state'i EN SON refetch'ten sonra temizle (erken silinirse refetchInterval de durur, geç fatura kaçar).
+      timers.push(setTimeout(() => {
         setLucaJobId(null);
         setLucaJobIds([]);
         setLucaJobMeta({});
         setLucaStatus('');
         setLucaLogLines([]);
         setActiveJobId(null);
-      }, 5000);
-      return () => clearTimeout(t);
+      }, 15000));
+      return () => timers.forEach(clearTimeout);
     } else {
       setLucaStatus(`İşleniyor ${tamamlanan}/${lucaJobIds.length} · ${running} çalışıyor, ${pending} sırada`);
       // Bir job done olduysa liste yenile (kısmi sonuç da görünür) — refetch zorla
