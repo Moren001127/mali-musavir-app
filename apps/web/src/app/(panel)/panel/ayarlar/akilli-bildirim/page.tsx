@@ -238,6 +238,38 @@ export default function AkilliBildirimPage() {
                 style={{ borderColor: 'rgba(255,255,255,0.12)' }}
               />
             </label>
+            <label className="mt-3 block text-[12px]" style={{ color: MUTED }}>
+              İletim raporu e-postası (dağıtım sonrası müşavire giden özet mail)
+              <input
+                key={`report-${tab}-${current.reportEmail || ''}`}
+                defaultValue={current.reportEmail || ''}
+                onBlur={async (e) => {
+                  const v = e.target.value || null;
+                  if (v === (current.reportEmail || null)) return;
+                  setSaving(true);
+                  try {
+                    await Promise.all(KATEGORILER.map((k) => api.put(`/akilli-bildirim/settings/${k.key}`, { reportEmail: v })));
+                    await qc.invalidateQueries({ queryKey: ['akilli-bildirim-settings'] });
+                  } catch { toast.error('Rapor e-postası kaydedilemedi'); } finally { setSaving(false); }
+                }}
+                placeholder="musavir@ofis.com"
+                className="mt-1 w-full rounded-lg border bg-transparent px-3 py-2 text-[13px] text-white outline-none"
+                style={{ borderColor: 'rgba(255,255,255,0.12)' }}
+              />
+            </label>
+            <button
+              onClick={async () => {
+                try {
+                  const r = await api.post('/akilli-bildirim/report-email');
+                  if (r.data?.sent) toast.success(`İletim raporu maili gönderildi (${r.data.to})`);
+                  else toast.error(r.data?.reason || 'Rapor gönderilemedi');
+                } catch (e: any) { toast.error(e?.response?.data?.message || 'Rapor gönderilemedi'); }
+              }}
+              className="mt-3 inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-[12.5px]"
+              style={{ borderColor: 'rgba(255,255,255,0.15)', color: TEXT2 }}
+            >
+              <Mail size={14} /> İletim Raporu Mailini Şimdi Gönder
+            </button>
             {current.testMode && (
               <div className="mt-3 grid gap-2 sm:grid-cols-2">
                 <label className="text-[12px]" style={{ color: MUTED }}>

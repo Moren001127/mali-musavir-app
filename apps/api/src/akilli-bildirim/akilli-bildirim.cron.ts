@@ -39,6 +39,13 @@ export class AkilliBildirimCron {
           this.logger.warn(`${tenant.name} ${kategori} dağıtım hatası: ${e?.message}`);
         }
       }
+      // Hattat gibi: dağıtım bitince müşavire günlük iletim raporu maili
+      try {
+        const rep = await this.svc.sendDailyReport(tenant.id);
+        if ((rep as any)?.sent) this.logger.log(`${tenant.name}: iletim raporu maili gönderildi (${(rep as any).to})`);
+      } catch (e: any) {
+        this.logger.warn(`${tenant.name} iletim raporu maili hatası: ${e?.message}`);
+      }
     }
   }
 }

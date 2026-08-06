@@ -3461,6 +3461,7 @@ model SmartDispatchSetting {
   testPhone           String?
   testEmail           String?
   senderName          String?  // mesajlardaki "Gönderen" adı (boşsa varsayılan ofis adı)
+  reportEmail         String?  // günlük iletim raporunun gideceği müşavir e-postası
   excludedTaxpayerIds String[] @default([])
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt

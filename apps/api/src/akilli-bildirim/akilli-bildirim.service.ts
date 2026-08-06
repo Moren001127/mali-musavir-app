@@ -96,6 +96,7 @@ export class AkilliBildirimService {
       'testPhone',
       'testEmail',
       'senderName',
+      'reportEmail',
       'excludedTaxpayerIds',
     ];
     const data: Record<string, unknown> = {};
@@ -268,6 +269,22 @@ export class AkilliBildirimService {
     for (const bundle of bundles) {
       if (excluded.has(bundle.taxpayerId)) continue;
       const dedupeKey = this.dedupeKeyFor(kategori, bundle);
+
+      if (opts.dryRun) {
+        // dryRun'da birleştirme/link üretimi YAPILMAZ (maliyetli) — sadece plan gösterilir
+        const message = this.composeMessage(senderName, bundle, kategori, []);
+        const amounts0 = bundle.items.map((i) => i.amount).filter((a): a is number => a != null);
+        results.push({
+          taxpayerId: bundle.taxpayerId,
+          unvan: bundle.unvan,
+          dedupeKey,
+          message,
+          itemCount: bundle.items.length,
+          total: amounts0.length ? amounts0.reduce((a, b) => a + b, 0) : null,
+        });
+        continue;
+      }
+
       // Hattat birebir: belgeler TEK PDF'te birleşir, mesajın sonunda TEK kısa link olur
       const fileBufs: Array<{ filename: string; buf: Buffer }> = [];
       for (const it of bundle.items) {
@@ -306,11 +323,6 @@ export class AkilliBildirimService {
       const message = this.composeMessage(senderName, bundle, kategori, links);
       const amounts = bundle.items.map((i) => i.amount).filter((a): a is number => a != null);
       const total = amounts.length ? amounts.reduce((a, b) => a + b, 0) : null;
-
-      if (opts.dryRun) {
-        results.push({ taxpayerId: bundle.taxpayerId, unvan: bundle.unvan, dedupeKey, message, itemCount: bundle.items.length, total });
-        continue;
-      }
 
       const channels: Array<'WHATSAPP' | 'EMAIL'> = [];
       if (settings.whatsapp) channels.push('WHATSAPP');
@@ -454,6 +466,97 @@ export class AkilliBildirimService {
       hata: rows.filter((r: any) => r.status === 'FAILED').length,
       ilkHata: rows.find((r: any) => r.status === 'FAILED')?.error || null,
     };
+  }
+
+  /**
+   * Günlük İletim Raporu maili — Hattat'ın müşavire attığı raporun karşılığı.
+   * Bugün SENT olan gönderimleri tabloyla listeler; reportEmail (yoksa ilk aktif kullanıcı) alır.
+   */
+  async sendDailyReport(tenantId: string) {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    const rows = await (this.prisma as any).documentDispatch.findMany({
+      where: { tenantId, createdAt: { gte: start }, status: 'SENT' },
+      orderBy: { sentAt: 'asc' },
+    });
+    if (rows.length === 0) return { sent: false, reason: 'bugün gönderim yok' };
+
+    const settings = (await this.getSettings(tenantId)).find((s: any) => s.kategori === 'VERGI');
+    let to: string | null = settings?.reportEmail || null;
+    if (!to) {
+      const user = await (this.prisma as any).user.findFirst({
+        where: { tenantId, isActive: true },
+        orderBy: { createdAt: 'asc' },
+        select: { email: true },
+      });
+      to = user?.email || null;
+    }
+    if (!to) return { sent: false, reason: 'rapor e-postası bulunamadı' };
+
+    const taxpayers = await (this.prisma as any).taxpayer.findMany({
+      where: { tenantId, id: { in: [...new Set(rows.map((r: any) => r.taxpayerId))] } },
+      select: { id: true, companyName: true, firstName: true, lastName: true, taxNumber: true, phone: true, phones: true, email: true, emails: true },
+    });
+    const tpMap = new Map<string, any>(taxpayers.map((t: any) => [t.id, t]));
+    const KATLBL: Record<string, string> = { VERGI: 'Beyanname', SGK: 'SGK', ETEBLIGAT: 'E-Tebligat', ODEME_LISTESI: 'Ödeme Listesi' };
+    const fmtSaat = (d: Date | null) => (d ? `${String(new Date(d).getDate()).padStart(2, '0')}.${String(new Date(d).getMonth() + 1).padStart(2, '0')}.${new Date(d).getFullYear()} ${String(new Date(d).getHours()).padStart(2, '0')}:${String(new Date(d).getMinutes()).padStart(2, '0')}` : '');
+
+    // WhatsApp+Email çiftlerini tek satırda göster (dedupeKey bazında)
+    const byKey = new Map<string, any>();
+    for (const r of rows) {
+      let g = byKey.get(r.dedupeKey);
+      if (!g) {
+        g = { ...r, channels: [] as string[] };
+        byKey.set(r.dedupeKey, g);
+      }
+      g.channels.push(r.channel);
+    }
+    const items = [...byKey.values()];
+    const belgeToplam = items.reduce((a, r) => a + (r.itemCount || 0), 0);
+    const mukellefSayisi = new Set(items.map((r) => r.taxpayerId)).size;
+    const bugun = fmtSaat(new Date()).split(' ')[0];
+
+    const trRows = items
+      .map((r) => {
+        const tp = tpMap.get(r.taxpayerId) || {};
+        const unvan = tp.companyName || `${tp.firstName || ''} ${tp.lastName || ''}`.trim() || r.taxpayerId;
+        const alici: string[] = [];
+        if (r.channels.includes('WHATSAPP')) alici.push(r.testMode ? `${settings?.testPhone || ''} (test)` : tp.phone || (tp.phones && tp.phones[0]) || '');
+        if (r.channels.includes('EMAIL')) alici.push(r.testMode ? `${settings?.testEmail || ''} (test)` : tp.email || (tp.emails && tp.emails[0]) || '');
+        const belgeAdi = `${r.donem ? `${r.donem} • ` : ''}${r.itemCount} belge${r.totalAmount != null ? ` • ${new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2 }).format(Number(r.totalAmount))} TL` : ''}`;
+        return `<tr>
+<td style="padding:8px 10px;border:1px solid #d9dee7;font-size:13px">${fmtSaat(r.sentAt)}</td>
+<td style="padding:8px 10px;border:1px solid #d9dee7;font-size:13px">${unvan}</td>
+<td style="padding:8px 10px;border:1px solid #d9dee7;font-size:13px">${tp.taxNumber || ''}</td>
+<td style="padding:8px 10px;border:1px solid #d9dee7;font-size:13px"><span style="background:#eef2f8;border-radius:12px;padding:2px 10px">${KATLBL[r.kategori] || r.kategori}</span></td>
+<td style="padding:8px 10px;border:1px solid #d9dee7;font-size:13px">${belgeAdi}</td>
+<td style="padding:8px 10px;border:1px solid #d9dee7;font-size:13px">${alici.filter(Boolean).join('<br>')}</td>
+</tr>`;
+      })
+      .join('');
+
+    const html = `
+<div style="font-family:Segoe UI,Arial,sans-serif;max-width:820px;margin:0 auto;background:#f4f6fa;padding:18px">
+  <div style="background:#3d5a80;color:#fff;border-radius:10px 10px 0 0;padding:18px 22px">
+    <div style="font-size:19px;font-weight:700">Akıllı Bildirim İletim Raporu</div>
+    <div style="font-size:13px;opacity:.85;margin-top:4px">${bugun} • ${belgeToplam} belge, ${mukellefSayisi} mükellefe iletildi</div>
+  </div>
+  <div style="background:#ffffff;border:1px solid #d9dee7;border-top:none;border-radius:0 0 10px 10px;padding:18px 22px">
+    <table style="border-collapse:collapse;width:100%">
+      <tr>
+        ${['Tarih / Saat', 'Mükellef', 'VKN / TCKN', 'Belge Türü', 'Belge', 'Alıcı'].map((h) => `<th style=\"padding:8px 10px;border:1px solid #3d5a80;background:#4a6a94;color:#fff;font-size:12px;text-align:left\">${h}</th>`).join('')}
+      </tr>
+      ${trRows}
+    </table>
+    <p style="font-size:13px;color:#444;margin-top:16px">Yukarıdaki belgeler mükelleflerinize <b>otomatik olarak iletilmiştir</b>.<br>Saygılarımızla, ${(settings?.senderName || DEFAULT_SENDER)}</p>
+  </div>
+</div>`;
+
+    const res = await this.email.send(
+      { to, subject: `İletim Raporu — Akıllı Bildirim (${belgeToplam} belge)`, html, text: `${bugun} • ${belgeToplam} belge, ${mukellefSayisi} mükellefe iletildi` },
+      tenantId,
+    );
+    return { sent: res.sent, to, count: items.length };
   }
 
   /** FAILED kayıtları yeniden dener. */

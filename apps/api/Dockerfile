@@ -4,6 +4,7 @@ FROM node:20-slim
 # git: @whiskeysockets/baileys'in git+ transitif bağımlılıkları için gerekli
 RUN apt-get update && apt-get install -y \
     openssl wget ca-certificates git \
+    qpdf \
     chromium \
     fonts-liberation fonts-noto-color-emoji fonts-noto-cjk \
     libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \

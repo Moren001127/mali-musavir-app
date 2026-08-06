@@ -42,4 +42,10 @@ export class AkilliBildirimController {
   resend(@Req() req: any, @Body() body: { month?: string }) {
     return this.svc.resendFailed(req.user.tenantId, body?.month);
   }
+
+  /** Günlük iletim raporu mailini elle tetikle (test/yeniden gönderim). */
+  @Post('report-email')
+  reportEmail(@Req() req: any) {
+    return this.svc.sendDailyReport(req.user.tenantId);
+  }
 }
