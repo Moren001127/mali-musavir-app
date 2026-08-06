@@ -998,8 +998,8 @@ export default function FaturaMerkeziPage() {
             {screen === 'mukellefler' && <ScreenMukellefler taxpayers={taxpayers} period={period} onOpen={(id) => { setTaxpayerId(id); setScreen('faturalar'); }} />}
             {screen === 'kurallar' && <ScreenKurallar taxpayerId={taxpayerId} period={period} />}
             {screen === 'muhasebe' && <ScreenMuhasebe taxpayerId={taxpayerId} period={period} isIsletme={(() => { const t = taxpayers.find((x) => x.id === taxpayerId); return /i[şs]letme|defter.?beyan|basit/i.test(`${t?.defterTuru || ''} ${(t as any)?.mihsapDefterTuru || ''}`); })()} taxpayerNace={(taxpayers.find((t) => t.id === taxpayerId) as any)?.naceKodu || ''} taxpayerFaaliyet={(taxpayers.find((t) => t.id === taxpayerId) as any)?.faaliyetAciklama || ''} taxpayerAd={(() => { const t = taxpayers.find((x) => x.id === taxpayerId); return t ? taxpayerLabel(t) : ''; })()} full={editorFull} onToggleFull={() => setEditorFull((v) => !v)} />}
-            {screen === 'aktarilanlar' && <ScreenAktarilanlar taxpayerId={taxpayerId} period={period} mode="bekleyen" />}
-            {screen === 'arsiv' && <ScreenAktarilanlar taxpayerId={taxpayerId} period={period} mode="arsiv" />}
+            {screen === 'aktarilanlar' && <ScreenAktarilanlar taxpayerId={taxpayerId} period={period} mode="bekleyen" isIsletme={(() => { const t = taxpayers.find((x) => x.id === taxpayerId); return /i[şs]letme|defter.?beyan|basit/i.test(`${t?.defterTuru || ''} ${(t as any)?.mihsapDefterTuru || ''}`); })()} />}
+            {screen === 'arsiv' && <ScreenAktarilanlar taxpayerId={taxpayerId} period={period} mode="arsiv" isIsletme={(() => { const t = taxpayers.find((x) => x.id === taxpayerId); return /i[şs]letme|defter.?beyan|basit/i.test(`${t?.defterTuru || ''} ${(t as any)?.mihsapDefterTuru || ''}`); })()} />}
             {screen === 'entegrator' && <ScreenEntegrator taxpayerId={taxpayerId} period={period} />}
             {screen === 'kdv' && <ScreenKdv taxpayerId={taxpayerId} period={period} />}
             {screen === 'ayarlar' && <ScreenAyarlar taxpayerId={taxpayerId} />}
@@ -3440,7 +3440,7 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
 }
 
 /* ===================== EKRAN: AKTARILANLAR ===================== */
-function ScreenAktarilanlar({ taxpayerId, period, mode = 'bekleyen' }: { taxpayerId: string; period: string; mode?: 'bekleyen' | 'arsiv' }) {
+function ScreenAktarilanlar({ taxpayerId, period, mode = 'bekleyen', isIsletme = false }: { taxpayerId: string; period: string; mode?: 'bekleyen' | 'arsiv'; isIsletme?: boolean }) {
   const arsiv = mode === 'arsiv';
   const qc = useQueryClient();
   const docsQ = useDocuments(taxpayerId, period);
@@ -3502,20 +3502,45 @@ function ScreenAktarilanlar({ taxpayerId, period, mode = 'bekleyen' }: { taxpaye
           {/* td'ye display:flex VERME (hücre tablo düzeninden çıkar) — flex'i içteki div'e koy. */}
           <td className="actcol"><div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
             {(d.lucaStatus === 'FAILED' || d.lucaStatus === 'ERROR') && (
-              <button className="btn ghost sm" disabled={retryMut.isPending} onClick={() => retryMut.mutate(d.id)} title={d.lucaErrorMessage || "Luca'ya tekrar gönder"}><Ico html={I.sync} size={12} /></button>
+              <button className="aico retry" disabled={retryMut.isPending} onClick={() => retryMut.mutate(d.id)} title={d.lucaErrorMessage || "Luca'ya tekrar gönder"}><Ico html={I.sync} size={13} /></button>
             )}
             {d.status === 'APPROVED' && !['POSTED', 'POSTING'].includes(d.lucaStatus) && (
-              <button className="btn ghost sm" disabled={reopenMut.isPending} onClick={() => { if (confirm('Onayı geri al? Belge tekrar düzenlenebilir olacak.')) reopenMut.mutate(d.id); }} title="Onayı geri al (Luca'ya gitmemişse)">↩</button>
+              <button className="aico reopen" disabled={reopenMut.isPending} onClick={() => { if (confirm('Onayı geri al? Belge tekrar düzenlenebilir olacak.')) reopenMut.mutate(d.id); }} title="Onayı geri al (Luca'ya gitmemişse)">↩</button>
             )}
-            <button className="btn ghost sm" onClick={() => setDetayId(acik ? '' : d.id)} title={acik ? 'Fiş detayını gizle' : 'Fiş (yevmiye) detayını göster'}>{acik ? '▾' : '▸'}</button>
-            <span className="eye" onClick={() => openDocFile(d.id)}><Ico html={I.eye} size={15} /></span>
+            <button className={`aico detay${acik ? ' on' : ''}`} onClick={() => setDetayId(acik ? '' : d.id)} title={acik ? 'Fiş detayını gizle' : 'Fiş (yevmiye) detayını göster'}>{acik ? '▾' : '▸'}</button>
+            <button className="aico eye" onClick={() => openDocFile(d.id)} title="Belgeyi önizle"><Ico html={I.eye} size={14} /></button>
           </div></td>
         </tr>
         {acik && (
           <tr className="detayrow">
             <td colSpan={7}>
               <div className="detaybox">
-                {lines.length ? (
+                {isIsletme ? (() => {
+                  // İŞLETME DEFTERİ: hesap kodu / borç-alacak YOK; Gelir-Gider listesi bilgileri gösterilir.
+                  const isl: any = (d.ocrData && (d.ocrData as any).isletme) || {};
+                  const ktAd = isl.kayitTuruAd || '';
+                  const altAd = isl.kayitAltAd || '';
+                  const matrah = lines.filter((l: any) => String(l.group) === 'matrah').reduce((s: number, l: any) => s + Number(l.debit || 0) + Number(l.credit || 0), 0);
+                  const kdv = lines.filter((l: any) => String(l.group) === 'vergi').reduce((s: number, l: any) => s + Number(l.debit || 0) + Number(l.credit || 0), 0);
+                  const acikl = (d.ocrData && (d.ocrData as any).aciklama) || (sat ? d.customerName : d.vendorName) || '';
+                  if (!ktAd && !matrah) return <div className="empty" style={{ padding: 10 }}>Kayıt türü / tutar belirlenemedi — Muhasebeleştir'de kontrol et.</div>;
+                  return (
+                    <table className="detaytbl">
+                      <thead><tr><th>İşlem</th><th>Kayıt Türü</th><th>Kayıt Alt Türü</th><th>Açıklama</th><th className="num">Matrah</th><th className="num">KDV</th><th className="num">Tutar</th></tr></thead>
+                      <tbody>
+                        <tr>
+                          <td>{sat ? 'Gelir' : 'Gider'}</td>
+                          <td>{ktAd || <span className="hk no">—</span>}</td>
+                          <td>{altAd || '—'}</td>
+                          <td>{acikl || '—'}</td>
+                          <td className="num">{matrah ? fmtMoney(matrah) : ''}</td>
+                          <td className="num">{kdv ? fmtMoney(kdv) : ''}</td>
+                          <td className="num">{fmtMoney(d.totalAmount)}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  );
+                })() : lines.length ? (
                   <table className="detaytbl">
                     <thead><tr><th>Tür</th><th>Hesap Kodu</th><th>Açıklama</th><th className="num">Borç</th><th className="num">Alacak</th></tr></thead>
                     <tbody>
@@ -4402,6 +4427,16 @@ const CSS = `
 #fm-root .ovbt{height:13px;background:#eef1f7;border-radius:7px;overflow:hidden}
 #fm-root .ovbf{height:100%;border-radius:7px;background:linear-gradient(90deg,#2f54d6,#6b8bea);transition:width .35s}
 #fm-root .ovbc{font-size:12.5px;font-weight:800;color:var(--text);text-align:right;font-variant-numeric:tabular-nums}
+/* ── Aktarım satır aksiyon ikonları (renkli) ── */
+#fm-root .aico{width:30px;height:30px;padding:0;display:inline-grid;place-items:center;border-radius:8px;border:1px solid var(--line2);background:#fff;cursor:pointer;font-size:14px;line-height:1;color:#64748b;transition:transform .12s,background .14s,color .14s,border-color .14s,filter .14s}
+#fm-root .aico:hover:not(:disabled){transform:translateY(-1px)}
+#fm-root .aico:disabled{opacity:.5;cursor:default}
+#fm-root .aico.retry{color:#e0394a;border-color:#f1c9ce;background:#fdeef0}
+#fm-root .aico.reopen{color:#cf7a0e;border-color:#f0d6ad;background:#fbf4e9}
+#fm-root .aico.detay{color:#2f54d6;border-color:#d2dbfb;background:#eef1fe}
+#fm-root .aico.detay.on{color:#fff;background:#2f54d6;border-color:#2f54d6}
+#fm-root .aico.eye{color:#0d9488;border-color:#bfe6e1;background:#e3f4f2}
+#fm-root .aico:hover:not(:disabled){filter:brightness(.97)}
 @media(max-width:900px){#fm-root .ovcharts{grid-template-columns:1fr}}
 #fm-root .card .ch{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap;background:#fff}
 #fm-root .card .ch h3{font-size:13.5px;font-weight:700}
