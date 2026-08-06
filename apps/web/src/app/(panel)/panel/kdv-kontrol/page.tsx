@@ -1227,25 +1227,10 @@ export default function KdvKontrolPage() {
           </div>
         </div>
 
-        {/* AKSİYON BUTONLARI (4 adım — OCR otomatik) */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3 mt-5 pt-5 border-t" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
-          <ActionBtn
-            icon={Upload}
-            label="Luca Excel Yükle"
-            sub={hasRecords ? `${stats?.totalRecords} satır yüklü` : !taxpayerId ? 'Önce mükellef seçin' : 'Manuel .xlsx upload'}
-            color="#2563eb"
-            done={hasRecords}
-            onClick={() => requireMukellef(openExcelPicker)}
-            loading={ensureSession.isPending}
-          />
-          <input
-            ref={excelFileInputRef}
-            type="file"
-            accept=".xlsx,.xls,.csv"
-            style={{ display: 'none' }}
-            onChange={handleExcelSelected}
-          />
-          {/* YENİ: Luca'dan Çek (otomatik agent) */}
+        {/* AKSİYON BUTONLARI (4 adım — OCR otomatik). Manuel "Luca Excel Yükle" kaldırıldı
+            (kullanıcı 2026-08-06): Luca verisi artık "Luca'dan Çek" ile otomatik çekiliyor. */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mt-5 pt-5 border-t" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+          {/* Luca'dan Çek (otomatik agent) */}
           <ActionBtn
             icon={Download}
             label={lucaJobId ? 'Luca\'dan Çekiliyor…' : 'Luca\'dan Çek'}
