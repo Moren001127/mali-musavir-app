@@ -856,6 +856,15 @@ ${rows}
    * Hesap Dökümü PDF EK olarak gönderilir (link yok). Otomatik gönderim YOK — yalnız tıklama.
    * Akıllı Bildirim test modu açıksa mesaj test telefonuna gider (güvenli deneme).
    */
+  /** Adımı süre sınırıyla çalıştır — takılan adımın ADI hatada görünsün (kök teşhis). */
+  private async adimla<T>(label: string, ms: number, p: Promise<T>): Promise<T> {
+    let timer: any;
+    const t = new Promise<never>((_, rej) => {
+      timer = setTimeout(() => rej(new BadRequestException(`'${label}' adımı ${Math.round(ms / 1000)} saniyede tamamlanamadı (takıldı)`)), ms);
+    });
+    try { return await Promise.race([p, t]); } finally { clearTimeout(timer); }
+  }
+
   async whatsappEkstreSend(tenantId: string, taxpayerId: string) {
     const taxpayer = await (this.prisma as any).taxpayer.findFirst({ where: { id: taxpayerId, tenantId } });
     if (!taxpayer) throw new NotFoundException('Mükellef bulunamadı');
@@ -870,7 +879,7 @@ ${rows}
     const baslangic = `${now.getFullYear()}-01-01`;
     const bitis = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
-    const { pdf, ekstre } = await this.ekstrePdfBuffer(tenantId, taxpayerId, baslangic, bitis, senderName);
+    const { pdf, ekstre } = await this.adimla('PDF üretimi', 90_000, this.ekstrePdfBuffer(tenantId, taxpayerId, baslangic, bitis, senderName));
 
     const fmt = (n: number) => new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
     const mesaj = [
@@ -886,16 +895,16 @@ ${rows}
     const phone = testMode ? settings?.testPhone : taxpayer.phone || (taxpayer.phones && taxpayer.phones[0]);
     if (!phone) throw new BadRequestException(testMode ? 'Test telefonu girilmemiş (Ayarlar > Akıllı Bildirim)' : 'Mükellefin telefon numarası yok');
 
-    const sent = await this.whatsApp.sendMessageDetailed(phone, mesaj, tenantId, { quote: false } as any);
+    const sent = await this.adimla('WhatsApp metin gönderimi', 45_000, this.whatsApp.sendMessageDetailed(phone, mesaj, tenantId, { quote: false } as any));
     if (!(sent as any)?.ok) throw new BadRequestException((sent as any)?.error || 'WhatsApp mesajı gönderilemedi');
 
     const baslik = `${this.trTarih(new Date(baslangic))} / ${this.trTarih(new Date(bitis))} Hesap Dökümü`;
     // DOSYA ADINDA '/' OLMAZ — ek bu yüzden gönderilemiyordu (görünen başlıkta kalabilir)
     const dosyaAdi = `${baslik.replace(/\s*\/\s*/g, ' - ')}.pdf`;
     const key = `${tenantId}/${taxpayerId}/ekstre/${randomUUID()}.pdf`;
-    await this.storage.putBuffer(key, pdf, 'application/pdf');
+    await this.adimla('PDF depoya yükleme', 45_000, this.storage.putBuffer(key, pdf, 'application/pdf'));
     const url = await this.storage.getPresignedInlineUrl(key, dosyaAdi, 'application/pdf', 3600);
-    const med = await this.whatsApp.sendMediaDetailed(phone, { url, mimeType: 'application/pdf', filename: dosyaAdi, caption: null }, tenantId, { quote: false } as any);
+    const med = await this.adimla('WhatsApp PDF eki gönderimi', 90_000, this.whatsApp.sendMediaDetailed(phone, { url, mimeType: 'application/pdf', filename: dosyaAdi, caption: null }, tenantId, { quote: false } as any));
     if (!(med as any)?.ok) {
       this.logger.warn(`Ekstre PDF eki gönderilemedi: ${(med as any)?.error}`);
       throw new BadRequestException(`Mesaj gitti ama PDF eki gönderilemedi: ${(med as any)?.error || 'bilinmeyen hata'}`);

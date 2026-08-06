@@ -1277,7 +1277,7 @@ export class BaileysService implements OnModuleDestroy {
     const s = this.sessions.get(tenantId);
     if (!s?.connected || !s.sock) return { ok: false, error: 'QR WhatsApp oturumu bagli degil.' };
     try {
-      const res = await fetch(media.url);
+      const res = await fetch(media.url, { signal: (AbortSignal as any).timeout(60_000) });
       if (!res.ok) return { ok: false, error: `Medya indirilemedi (${res.status}).` };
       const buffer = Buffer.from(await res.arrayBuffer());
       const mime = String(media.mimeType || '').toLowerCase();
