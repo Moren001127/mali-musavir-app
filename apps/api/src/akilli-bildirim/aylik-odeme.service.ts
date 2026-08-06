@@ -1,14 +1,18 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { StorageService } from '../storage/storage.service';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import { EmailService } from '../email/email.service';
 import { calculateBeyannameDeadline } from '../schedule/beyanname-deadline.util';
+import { DEFAULT_SENDER } from './akilli-bildirim.service';
 
 export interface OdemeSatiri {
-  tur: string; // KDV1, MUHSGK, SGK Tahakkuk Fişi...
+  tur: string; // KDV1, MUHSGK, Tahakkuk Fişi...
+  kaynak: 'VERGI' | 'SGK';
   donem: string;
-  sonGun: string | null; // dd.MM.yyyy
+  sonGun: string | null; // g.a.yyyy
   tutar: number;
+  storageKey?: string | null; // belge PDF anahtarı (link için)
 }
 
 export interface OdemeListesi {
@@ -20,11 +24,12 @@ export interface OdemeListesi {
   toplam: number;
 }
 
+// Hattat ile birebir: "4.182,86  TL" (çift boşluk), "28.2.2026" (sıfırsız)
 function trMoney(n: number): string {
-  return new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n) + ' TL';
+  return new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n) + '  TL';
 }
 function trDate(d: Date): string {
-  return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`;
+  return `${d.getDate()}.${d.getMonth() + 1}.${d.getFullYear()}`;
 }
 function parseTutar(v: unknown): number | null {
   if (v == null) return null;
@@ -38,6 +43,7 @@ export class AylikOdemeService {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly storage: StorageService,
     private readonly whatsapp: WhatsAppService,
     private readonly email: EmailService,
   ) {}
@@ -86,7 +92,14 @@ export class AylikOdemeService {
       if (!Number.isFinite(tutar) || tutar === 0) continue;
       const row = ensure(b.taxpayer);
       const vade = calculateBeyannameDeadline(b.beyanTipi, b.donem);
-      row.satirlar.push({ tur: b.beyanTipi, donem: b.donem, sonGun: vade ? trDate(vade) : null, tutar });
+      row.satirlar.push({
+        tur: b.beyanTipi,
+        kaynak: 'VERGI',
+        donem: b.donem,
+        sonGun: vade ? trDate(vade) : null,
+        tutar,
+        storageKey: b.pdfUrl || b.beyannameUrl || null,
+      });
       row.toplam += tutar;
     }
 
@@ -107,7 +120,16 @@ export class AylikOdemeService {
       const tutar = parseTutar(raw.tutar);
       if (tutar == null) continue;
       const row = ensure(d.taxpayer);
-      row.satirlar.push({ tur: d.title || 'SGK Tahakkuk Fişi', donem: d.period || sgkPeriod, sonGun: null, tutar });
+      // SGK son ödeme = dönemi izleyen ayın (ödeme ayının) son günü
+      const sgkSon = new Date(my, mm, 0);
+      row.satirlar.push({
+        tur: (d.title || 'Tahakkuk Fişi').replace(/^SGK\s+/i, ''),
+        kaynak: 'SGK',
+        donem: d.period || sgkPeriod,
+        sonGun: trDate(sgkSon),
+        tutar,
+        storageKey: d.storageKey || null,
+      });
       row.toplam += tutar;
     }
 
@@ -116,24 +138,31 @@ export class AylikOdemeService {
       .sort((a, b) => a.unvan.localeCompare(b.unvan, 'tr'));
   }
 
-  composeMessage(tenantName: string, row: OdemeListesi, month: string): string {
+  /** Hattat ile birebir kalıp; sonda belge linkleri. */
+  composeMessage(senderName: string, row: OdemeListesi, links: string[] = []): string {
     const lines: string[] = [];
-    lines.push('*Gönderen*');
-    lines.push(tenantName);
+    lines.push('*Gönderen* ');
+    lines.push(senderName);
     lines.push('');
-    lines.push('*Merhaba*');
+    lines.push('*Merhaba* ');
     lines.push(` ${row.unvan},`);
     lines.push('');
-    lines.push(`${month} Dönemi Ödeme Listeniz Bilginize Sunulmuştur,`);
+    lines.push('Aşağıdaki Ödeme Listeniz Bilginize Sunulmuştur,');
     lines.push('');
     for (const s of row.satirlar) {
-      const parts = [s.tur, `Dönem: ${s.donem}`];
+      // Vergi: "KDV1 - Tahakkuk - Son Ödeme: 28.7.2026 - 9.018,30  TL"
+      // SGK  : "Tahakkuk Fişi - 2026/06 - Son Ödeme: 31.7.2026 - 24.277,05  TL"
+      const parts = s.kaynak === 'VERGI' ? [s.tur, 'Tahakkuk'] : [s.tur, s.donem];
       if (s.sonGun) parts.push(`Son Ödeme: ${s.sonGun}`);
       parts.push(trMoney(s.tutar));
       lines.push(parts.join(' - '));
     }
     lines.push('');
     lines.push(`Toplam: ${trMoney(row.toplam)}`);
+    if (links.length > 0) {
+      lines.push('');
+      for (const l of links) lines.push(l);
+    }
     return lines.join('\n');
   }
 
@@ -143,13 +172,21 @@ export class AylikOdemeService {
       where: { tenantId_kategori: { tenantId, kategori: 'VERGI' } },
     });
     const testMode = settings?.testMode ?? true;
-    const tenant = await (this.prisma as any).tenant.findUnique({ where: { id: tenantId } });
-    const tenantName = (tenant?.name || 'MOREN MALİ MÜŞAVİRLİK').toString().toUpperCase();
+    const senderName = (settings?.senderName || DEFAULT_SENDER).toString();
 
     const rows = await this.list(tenantId, month, taxpayerId);
     const results: any[] = [];
     for (const row of rows) {
-      const message = this.composeMessage(tenantName, row, month);
+      const links: string[] = [];
+      for (const s of row.satirlar) {
+        if (!s.storageKey) continue;
+        try {
+          links.push(await this.storage.getPresignedInlineUrl(s.storageKey, `${s.tur}-${s.donem}.pdf`, 'application/pdf', 7 * 24 * 3600));
+        } catch (e: any) {
+          this.logger.warn(`link üretilemedi ${s.tur} ${s.donem}: ${e?.message}`);
+        }
+      }
+      const message = this.composeMessage(senderName, row, links);
       const dedupeKey = `ODEME:${row.taxpayerId}:${month}`;
       const targetPhone = testMode ? settings?.testPhone : row.phone;
       const targetEmail = testMode ? settings?.testEmail : row.email;

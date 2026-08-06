@@ -219,6 +219,25 @@ export default function AkilliBildirimPage() {
             <Row label="Test modu (gönderimler yalnız test alıcısına)">
               <Toggle value={!!current.testMode} onChange={(v) => patch({ testMode: v })} disabled={saving} />
             </Row>
+            <label className="mt-3 block text-[12px]" style={{ color: MUTED }}>
+              Gönderen adı (mesajın başında görünür — tüm kategoriler için geçerli)
+              <input
+                key={`sender-${tab}-${current.senderName || ''}`}
+                defaultValue={current.senderName || ''}
+                onBlur={async (e) => {
+                  const v = e.target.value || null;
+                  if (v === (current.senderName || null)) return;
+                  setSaving(true);
+                  try {
+                    await Promise.all(KATEGORILER.map((k) => api.put(`/akilli-bildirim/settings/${k.key}`, { senderName: v })));
+                    await qc.invalidateQueries({ queryKey: ['akilli-bildirim-settings'] });
+                  } catch { toast.error('Gönderen adı kaydedilemedi'); } finally { setSaving(false); }
+                }}
+                placeholder="MOREN MALİ MÜŞAVİRLİK"
+                className="mt-1 w-full rounded-lg border bg-transparent px-3 py-2 text-[13px] text-white outline-none"
+                style={{ borderColor: 'rgba(255,255,255,0.12)' }}
+              />
+            </label>
             {current.testMode && (
               <div className="mt-3 grid gap-2 sm:grid-cols-2">
                 <label className="text-[12px]" style={{ color: MUTED }}>
@@ -274,7 +293,10 @@ export default function AkilliBildirimPage() {
               {ORNEK[tab]}
               <br />
               <br />
-              <span className="inline-flex items-center gap-1.5"><Mail size={13} /> PDF ekleri WhatsApp + e-posta ile birlikte gönderilir</span>
+              <span style={{ color: '#8cbde8', wordBreak: 'break-all' }}>https://…/belge.pdf</span>
+              <br />
+              <br />
+              <span className="inline-flex items-center gap-1.5"><Mail size={13} /> Belgeler mesaj sonundaki linkle açılır (7 gün geçerli); e-postada ayrıca ek olarak gider</span>
             </div>
           </div>
         </div>

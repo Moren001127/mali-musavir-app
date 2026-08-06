@@ -31,15 +31,24 @@ const KATEGORI_BASLIK: Record<DispatchKategori, string> = {
   ETEBLIGAT: 'E-Tebligat',
 };
 
+// Hattat ile birebir: "4.182,86  TL" (çift boşluk), "28.2.2026" (ay sıfırsız)
 function trMoney(n: number): string {
-  return new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n) + ' TL';
+  return new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n) + '  TL';
 }
 
 function trDate(d: Date): string {
-  const dd = String(d.getDate()).padStart(2, '0');
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  return `${dd}.${mm}.${d.getFullYear()}`;
+  return `${d.getDate()}.${d.getMonth() + 1}.${d.getFullYear()}`;
 }
+
+/** SGK dönemi 'YYYY/MM' → son ödeme = dönemi izleyen ayın son günü */
+function sgkSonOdeme(period: string | null | undefined): Date | null {
+  if (!period) return null;
+  const m = /^(\d{4})[\/-](\d{1,2})$/.exec(String(period).trim());
+  if (!m) return null;
+  return new Date(Number(m[1]), Number(m[2]) + 1, 0);
+}
+
+export const DEFAULT_SENDER = 'MOREN MALİ MÜŞAVİRLİK';
 
 @Injectable()
 export class AkilliBildirimService {
@@ -83,6 +92,7 @@ export class AkilliBildirimService {
       'testMode',
       'testPhone',
       'testEmail',
+      'senderName',
       'excludedTaxpayerIds',
     ];
     const data: Record<string, unknown> = {};
@@ -173,7 +183,11 @@ export class AkilliBildirimService {
           amount = tutarRaw ? Number(tutarRaw) : null;
           if (amount != null && !Number.isFinite(amount)) amount = null;
           const donem = d.period || raw.donem || '';
-          const parts = [`${d.title || 'SGK Belgesi'}${donem ? ` - ${donem}` : ''}`];
+          // Hattat birebir: "Tahakkuk Fişi - 2026/01 - Son Ödeme: 28.2.2026 - 24.277,05  TL"
+          const baslik = (d.title || 'SGK Belgesi').replace(/^SGK\s+/i, '');
+          const parts = [`${baslik}${donem ? ` - ${donem}` : ''}`];
+          const vade = sgkSonOdeme(donem);
+          if (vade) parts.push(`Son Ödeme: ${trDate(vade)}`);
           if (amount != null) parts.push(trMoney(amount));
           line = parts.join(' - ');
         } else {
@@ -191,13 +205,13 @@ export class AkilliBildirimService {
 
   // ---------- MESAJ ----------
 
-  /** Onaylanan format: Gönderen → Merhaba ÜNVAN → satırlar → Toplam → (ekler ayrıca gönderilir). */
-  composeMessage(tenantName: string, bundle: TaxpayerBundle, kategori: DispatchKategori): string {
+  /** Hattat ile birebir format: Gönderen → Merhaba ÜNVAN → satırlar → Toplam → PDF link(ler)i. */
+  composeMessage(senderName: string, bundle: TaxpayerBundle, kategori: DispatchKategori, links: string[] = []): string {
     const lines: string[] = [];
-    lines.push('*Gönderen*');
-    lines.push(tenantName);
+    lines.push('*Gönderen* ');
+    lines.push(senderName);
     lines.push('');
-    lines.push('*Merhaba*');
+    lines.push('*Merhaba* ');
     lines.push(` ${bundle.unvan},`);
     lines.push('');
     lines.push(`Aşağıdaki ${KATEGORI_BASLIK[kategori]} Dökümanları Bilginize Sunulmuştur,`);
@@ -207,6 +221,10 @@ export class AkilliBildirimService {
     if (amounts.length > 0) {
       lines.push('');
       lines.push(`Toplam: ${trMoney(amounts.reduce((a, b) => a + b, 0))}`);
+    }
+    if (links.length > 0) {
+      lines.push('');
+      for (const l of links) lines.push(l);
     }
     return lines.join('\n');
   }
@@ -232,8 +250,7 @@ export class AkilliBildirimService {
     if (!settings) return { ok: false, error: 'ayar yok' };
     if (!opts.force && !settings.enabled) return { ok: false, skipped: true, reason: 'kapalı (enabled=false)' };
 
-    const tenant = await (this.prisma as any).tenant.findUnique({ where: { id: tenantId } });
-    const tenantName = (tenant?.name || 'MOREN MALİ MÜŞAVİRLİK').toString().toUpperCase();
+    const senderName = (settings.senderName || DEFAULT_SENDER).toString();
 
     const bundles = await this.collectBundles(tenantId, kategori, opts.sinceHours ?? 26, opts.taxpayerId);
     const excluded = new Set<string>(settings.excludedTaxpayerIds || []);
@@ -242,7 +259,18 @@ export class AkilliBildirimService {
     for (const bundle of bundles) {
       if (excluded.has(bundle.taxpayerId)) continue;
       const dedupeKey = this.dedupeKeyFor(kategori, bundle);
-      const message = this.composeMessage(tenantName, bundle, kategori);
+      // Hattat birebir: mesajın sonunda belge linki (7 gün geçerli)
+      const links: string[] = [];
+      for (const it of bundle.items) {
+        for (const f of it.files) {
+          try {
+            links.push(await this.storage.getPresignedInlineUrl(f.storageKey, f.filename, 'application/pdf', 7 * 24 * 3600));
+          } catch (e: any) {
+            this.logger.warn(`link üretilemedi ${f.filename}: ${e?.message}`);
+          }
+        }
+      }
+      const message = this.composeMessage(senderName, bundle, kategori, links);
       const amounts = bundle.items.map((i) => i.amount).filter((a): a is number => a != null);
       const total = amounts.length ? amounts.reduce((a, b) => a + b, 0) : null;
 
@@ -273,18 +301,9 @@ export class AkilliBildirimService {
         try {
           if (channel === 'WHATSAPP') {
             if (!targetPhone) throw new Error(settings.testMode ? 'test telefonu girilmemiş' : 'mükellefin telefon numarası yok');
+            // Hattat birebir: tek mesaj, belge LİNK ile (ek balonu yok)
             const sent = await this.whatsapp.sendMessageDetailed(targetPhone, message, tenantId, { quote: false } as any);
             if (!(sent as any)?.ok) throw new Error((sent as any)?.error || 'whatsapp gönderilemedi');
-            for (const it of bundle.items) {
-              for (const f of it.files) {
-                try {
-                  const url = await this.storage.getPresignedInlineUrl(f.storageKey, f.filename, 'application/pdf');
-                  await this.whatsapp.sendMediaDetailed(targetPhone, { url, mimeType: 'application/pdf', filename: f.filename, caption: null }, tenantId, { quote: false } as any);
-                } catch (e: any) {
-                  this.logger.warn(`ek gönderilemedi ${f.filename}: ${e?.message}`);
-                }
-              }
-            }
             status = 'SENT';
           } else {
             if (!targetEmail) throw new Error(settings.testMode ? 'test e-postası girilmemiş' : 'mükellefin e-postası yok');

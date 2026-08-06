@@ -3460,6 +3460,7 @@ model SmartDispatchSetting {
   testMode            Boolean  @default(true)  // acikken gonderimler test alicisina gider
   testPhone           String?
   testEmail           String?
+  senderName          String?  // mesajlardaki "Gönderen" adı (boşsa varsayılan ofis adı)
   excludedTaxpayerIds String[] @default([])
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
