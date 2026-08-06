@@ -171,6 +171,9 @@ export class OwnerNotifierService implements OnModuleInit {
     });
     if (!docs.length) return;
 
+    const ownerAd =
+      String(process.env.MOREN_OWNER_DISPLAY_NAME || 'Muzaffer').trim().split(/\s+/)[0] || 'Muzaffer';
+
     // Toplu backfill (cok sayida yeni tebligat ayni anda) owner'i PDF yagmuruna bogmasin:
     // esik ustunde tek tek PDF yerine TEK OZET mesaj gonder. Gunluk normal hacim (<=esik)
     // PDF olarak gider.
@@ -179,9 +182,12 @@ export class OwnerNotifierService implements OnModuleInit {
       const firmaSet = new Set<string>(docs.map((d: any) => this.docFirmaAdi(d)));
       const firmalar = Array.from(firmaSet).slice(0, 4).join(', ') + (firmaSet.size > 4 ? ' …' : '');
       const ozet = [
-        `📨 ${docs.length} yeni e-Tebligat geldi.`,
-        firmalar,
-        'Tümünü portaldan görüntüleyebilirsiniz.',
+        `Merhaba ${ownerAd} Bey,`,
+        '',
+        `Bu gece *${docs.length}* mükellefinize Gelir İdaresi Başkanlığı tarafından yeni e-Tebligat gelmiştir.`,
+        firmalar ? `İlgili mükellefler: ${firmalar}` : '',
+        '',
+        'Tümünü portaldan görüntüleyebilirsiniz. İncelemeniz için bilginize.',
       ].filter(Boolean).join('\n');
       for (const phone of ownerPhones) {
         try {
@@ -210,15 +216,23 @@ export class OwnerNotifierService implements OnModuleInit {
       // STANDART ŞABLON — bilgilendirme mesajı ÖNCE gönderilir, belge SONRA ayrı dosya olarak.
       // (Eskiden PDF caption ile birlikte gidiyordu → karışık görünüyordu. Kullanıcı isteği:
       //  önce mesaj, sonra dosya, hepsi tek standart formatta.)
+      // NAİF/DÜZGÜN ŞABLON (kullanıcı isteği 2026-08-06): soğuk emoji-listesi yerine
+      //   sıcak, kurumsal prosa. Owner adıyla hitap + kalın anahtar cümle + sade detay.
+      const detay = [
+        kurum ? `Gönderen: ${kurum}` : '',
+        `Belge: ${belge}`,
+        r.tebligZamani ? `Tebliğ tarihi: ${r.tebligZamani}` : '',
+      ].filter(Boolean).join('\n');
       const mesaj = [
-        '📨 YENİ E-TEBLİGAT',
+        `Merhaba ${ownerAd} Bey,`,
         '',
-        `🏢 Mükellef: ${firma}`,
-        kurum ? `🏛️ Kurum: ${kurum}` : '',
-        `📄 Belge: ${belge}`,
-        r.tebligZamani ? `🗓️ Tebliğ: ${r.tebligZamani}` : '',
+        `*${firma}* mükellefinize Gelir İdaresi Başkanlığı tarafından yeni bir e-Tebligat gelmiştir.`,
         '',
-        url ? '📎 Tebligat belgesi aşağıda paylaşılmıştır.' : 'Belgeyi portaldan görüntüleyebilirsiniz.',
+        detay,
+        '',
+        url
+          ? 'Tebligat içeriği ekte sunulmuştur. İncelemeniz için bilginize.'
+          : 'Tebligatı portaldan görüntüleyebilirsiniz. İncelemeniz için bilginize.',
       ].filter(Boolean).join('\n');
 
       for (const phone of ownerPhones) {
