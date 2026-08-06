@@ -12,7 +12,7 @@
   // v1.42.2 (2026-06-16): Ajan kendini yenilerken (delete __morenAgent) eski async
   // döngü "Cannot read 'stopRequested' of undefined/null" ile ÇÖKÜYORDU → yetim
   // döngü artık nesne yoksa güvenle durur (stopRequested kontrollerine null-guard).
-  const AGENT_VERSION = '1.47.4';
+  const AGENT_VERSION = '1.47.5';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -2032,22 +2032,50 @@
                     let ctx = 'yok'; try { ctx = ((fi && fi.ownerDocument.body.textContent) || '').replace(/\s+/g, ' ').match(/Excel\s*[ŞS]ablon|Dosya\s*Se[çc]/i) ? 'Excel-Şablon' : 'başka'; } catch {}
                     await log(`ℹ dosya input=${fi ? 'VAR' : 'YOK'} · dosya=${fn} · bağlam=${ctx}`);
                   } catch {}
-                  // 1) Yükle — popup butonunu maksimum tetikle (native + onclick + form)
-                  const yEl = findEl(/^Y[üu]kle$/i);
-                  let yOk = await popupNativeClick('Yükle', { exact: true, settleMs: 1200, timeoutMs: 5000 });
+                  // Buton bul — SADECE aksiyon öğeleri (span/div etiketi değil)
+                  const findBtn = (re) => {
+                    for (const d of lucaDocuments()) { try { for (const el of d.querySelectorAll('input[type=button],input[type=submit],button,a')) { const t = ((el.value || el.innerText || el.textContent) || '').replace(/\s+/g, ' ').trim(); if (re.test(t)) return el; } } catch {} }
+                    return findEl(re);
+                  };
+                  // Luca butonu SAYFA-KENDİ-KODUYLA tetikle: onclick="fn(...)" → popup context'inde fn() ÇAĞIR
+                  //   (trusted tık GEREKMEZ; sayfanın kendi fonksiyonu). Sonra onclick-fn/click/form yedek.
+                  const firePageBtn = (el) => {
+                    if (!el) return false;
+                    try { el.scrollIntoView({ block: 'center' }); } catch {}
+                    const pw = popupWin();
+                    const oa = (el.getAttribute && el.getAttribute('onclick')) || '';
+                    try { const m = oa.match(/([A-Za-z_$][\w$]*)\s*\(/); if (m && pw && typeof pw[m[1]] === 'function') { pw[m[1]](); return true; } } catch {}
+                    try { if (oa && pw && typeof pw.eval === 'function') { pw.eval(oa); return true; } } catch {}
+                    return fireEl(el);
+                  };
+                  // TANI: popup Yükle butonu + file input mekanizması
+                  try {
+                    const pw = popupWin(); const pdoc = pw ? pw.document : null; const scan = pdoc ? [pdoc] : lucaDocuments();
+                    const fis = [], yuks = [];
+                    for (const d of scan) { try {
+                      for (const el of d.querySelectorAll('input[type="file"]')) fis.push(`${el.id || el.name || '-'}:${el.files ? el.files.length : 0}`);
+                      for (const el of d.querySelectorAll('input,button,a')) { const t = ((el.value || el.innerText || el.textContent) || '').replace(/\s+/g, ' ').trim(); if (/^y[üu]kle$/i.test(t)) { const oa = (el.getAttribute && el.getAttribute('onclick')) || ''; yuks.push(`${el.tagName}[${el.type || ''}] fn=${typeof el.onclick === 'function'} attr=${oa ? oa.replace(/\s+/g, '').slice(0, 40) : '-'}`); } }
+                    } catch {} }
+                    await log(`ℹ[dump] file=[${fis.join(',')}] Yükle=[${yuks.slice(0, 3).join(' || ')}]`);
+                  } catch {}
+                  // 1) Yükle — sayfa fonksiyonu → popup-trusted → ana native → fireEl
+                  const yEl = findBtn(/^Y[üu]kle$/i);
+                  let yOk = false;
+                  if (yEl) yOk = firePageBtn(yEl);
+                  if (!yOk) yOk = await popupNativeClick('Yükle', { exact: true, settleMs: 1200, timeoutMs: 5000 });
                   if (!yOk) yOk = await nativeClickLucaText('Yükle', { exact: true, settleMs: 1000, timeoutMs: 4000 });
-                  if (!yOk && yEl) yOk = fireEl(yEl);
                   await log(yOk ? '⏫ "Yükle" tetiklendi (İşletme)' : '⚠ "Yükle" bulunamadı');
                   // 2) Grid DOLMASINI bekle — boş grid "Satır Sayısı:1" placeholder; dolu = >1
                   let gc = 1;
                   for (let i = 0; i < 30 && (gc = gridCount()) <= 1; i++) { await sleep(600); }
                   await log(`ℹ HIZLI FİŞ grid satır sayısı (Yükle sonrası): ${gc}`);
                   if (gc <= 1) throw new Error(`CSV grid'e yüklenmedi (Satır Sayısı=${gc}). Yükle tetiklenmiyor ya da dosya popup input'una konmuyor.`);
-                  // 3) "Fiş Kes" — popup butonunu maksimum tetikle
-                  const fkEl = findEl(/^Fi[şs]\s*Kes$/i);
-                  let fk = await popupNativeClick('Fiş Kes', { settleMs: 1500, timeoutMs: 5000 });
+                  // 3) "Fiş Kes" — sayfa fonksiyonu (fn:gonder) → popup-trusted → ana native → fireEl
+                  const fkEl = findBtn(/^Fi[şs]\s*Kes$/i);
+                  let fk = false;
+                  if (fkEl) fk = firePageBtn(fkEl);
+                  if (!fk) fk = await popupNativeClick('Fiş Kes', { settleMs: 1500, timeoutMs: 5000 });
                   if (!fk) fk = await nativeClickLucaText('Fiş Kes', { settleMs: 1500, timeoutMs: 4000 });
-                  if (!fk && fkEl) fk = fireEl(fkEl);
                   await log(fk ? '✂ "Fiş Kes" tetiklendi' : '⚠ "Fiş Kes" bulunamadı');
                   await sleep(1800);
                   // 4) Onay dialog'u (Evet/Tamam/Onayla) — popup dahil
