@@ -4365,15 +4365,27 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       throw new Error(`e-Beyanname sekmesinde Beyanname Ara menusu bulunamadi. Gorunen kontroller: ${await this.visibleActionSnapshot(page)}`);
     }
 
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < 24; i++) {
       if (await this.hasEBeyannameSearchForm(page) || await this.hasEBeyannameSearchControls(page)) {
         notes.push('Beyanname Ara formu acildi');
         return;
       }
+      // Tıklama etkisiz kaldıysa (gizli elemanda handler tetiklenmemiş olabilir)
+      // onclick kodunu her hedefte DOĞRUDAN çalıştırıp JS hatasını yakala.
+      if (i === 7 && typeof clicked === 'string' && clicked.length > 3) {
+        for (const target of this.ebeyannameDomTargets(page)) {
+          const evalErr = await target.evaluate((code: string) => {
+            try { (0, eval)(code); return ''; } catch (e: any) { return String(e?.message || e); }
+          }, clicked).catch((e: any) => String(e?.message || e));
+          notes.push(evalErr ? `onclick dogrudan calistirilamadi: ${evalErr}` : 'onclick dogrudan calistirildi');
+          if (!evalErr) break;
+        }
+        await page.waitForTimeout(800);
+      }
       await page.waitForTimeout(500);
     }
 
-    throw new Error(`Beyanname Ara formu acilmadi. Gorunen kontroller: ${await this.visibleActionSnapshot(page)}`);
+    throw new Error(`Beyanname Ara formu acilmadi. Tiklanan onclick: ${typeof clicked === 'string' ? clicked : '(metin yok)'}. Notlar: ${notes.slice(-4).join(' / ')}. Gorunen kontroller: ${await this.visibleActionSnapshot(page)}`);
   }
 
   private async hasEBeyannameSearchForm(page: any) {
@@ -4473,12 +4485,16 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         const allControls = Array.from(document.querySelectorAll<HTMLElement>('span[onclick], a[onclick], button, input[type="button"], input[type="submit"]'));
         const controls = allControls.filter(isVisible);
 
-        // Tam eşleşme: gizli olsa bile onclick tetiklenebilir (allowHidden modunda)
+        // Tam eşleşme: gizli olsa bile onclick tetiklenebilir (allowHidden modunda).
+        // ARŞİV varyantı tam eşleşmede de elenir; tıklanan onclick teşhis için döner.
         const exactPool = allowHiddenArg ? allControls : controls;
-        const exact = exactPool.find((el) => /beyannameAraFormu\s*\(/i.test(el.getAttribute('onclick') || ''));
+        const exact = exactPool.find((el) => {
+          const oc = el.getAttribute('onclick') || '';
+          return !/ARSIV/i.test(oc) && /beyannameAraFormu\s*\(/i.test(oc);
+        });
         if (exact) {
           exact.click();
-          return true;
+          return (exact.getAttribute('onclick') || 'onclick-bos').slice(0, 160);
         }
 
         const fallback = controls.find((el: any) => {
@@ -4489,11 +4505,11 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         });
         if (!fallback) return false;
         fallback.click();
-        return true;
+        return (fallback.getAttribute('onclick') || 'onclick-bos').slice(0, 160);
       }, allowHidden).catch(() => false);
       if (clicked) {
         await page.waitForTimeout(800);
-        return true;
+        return clicked as any; // teşhis: tıklanan onclick kodu (truthy)
       }
     }
     return false;

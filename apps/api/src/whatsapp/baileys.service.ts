@@ -1293,9 +1293,24 @@ export class BaileysService implements OnModuleDestroy {
       else if (mime.startsWith('video/')) payload = { video: buffer, caption };
       else if (mime.startsWith('audio/')) payload = { audio: buffer, mimetype: mime || 'audio/ogg' };
       else payload = { document: buffer, mimetype: mime || 'application/octet-stream', fileName: media.filename || 'belge', caption };
-      await this.warmUpIfCold(s, jid, phone);
-      await this.refreshSignalSession(s.sock, jid);
-      const sent = await this.sendQuoted(s, jid, phone, payload, opts?.quote);
+      // Isınma/oturum tazeleme bazen asılı kalıyor — 10 sn'de vazgeç, göndermeyi dene
+      await Promise.race([
+        (async () => { await this.warmUpIfCold(s, jid, phone); await this.refreshSignalSession(s.sock, jid); })(),
+        new Promise((r) => setTimeout(r, 10_000)),
+      ]);
+      // Gönderim onayı gelmese de mesaj çoğu kez iletilmiş oluyor; 45 sn sonra
+      // akışı kilitlemek yerine "iletildi (onay yok)" say. (Kanıt: metin mesajları
+      // telefona düşerken promise hiç dönmüyordu ve HTTP 300 sn'de kopuyordu.)
+      let confirmTimer: any;
+      const sent: any = await Promise.race([
+        this.sendQuoted(s, jid, phone, payload, opts?.quote),
+        new Promise((r) => { confirmTimer = setTimeout(() => r('__TIMEOUT__'), 45_000); }),
+      ]);
+      clearTimeout(confirmTimer);
+      if (sent === '__TIMEOUT__') {
+        this.logger.warn(`[Baileys] tenant=${tenantId} medya gonderim onayi 45sn gelmedi; buyuk olasilikla iletildi target=${this.maskTarget(phone)}`);
+        return { ok: true };
+      }
       this.rememberSend(tenantId, jid, payload, sent?.key?.id, sent?.message);
       this.storeDelivery(tenantId, sent?.key?.id, 'sent');
       this.logger.log(`[Baileys] tenant=${tenantId} medya gonderildi target=${this.maskTarget(phone)} jid=${this.maskTarget(jid)} id=${sent?.key?.id || 'unknown'}`);

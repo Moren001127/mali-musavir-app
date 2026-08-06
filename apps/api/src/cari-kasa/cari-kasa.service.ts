@@ -895,19 +895,18 @@ ${rows}
     const phone = testMode ? settings?.testPhone : taxpayer.phone || (taxpayer.phones && taxpayer.phones[0]);
     if (!phone) throw new BadRequestException(testMode ? 'Test telefonu girilmemiş (Ayarlar > Akıllı Bildirim)' : 'Mükellefin telefon numarası yok');
 
-    const sent = await this.adimla('WhatsApp metin gönderimi', 45_000, this.whatsApp.sendMessageDetailed(phone, mesaj, tenantId, { quote: false } as any));
-    if (!(sent as any)?.ok) throw new BadRequestException((sent as any)?.error || 'WhatsApp mesajı gönderilemedi');
-
     const baslik = `${this.trTarih(new Date(baslangic))} / ${this.trTarih(new Date(bitis))} Hesap Dökümü`;
-    // DOSYA ADINDA '/' OLMAZ — ek bu yüzden gönderilemiyordu (görünen başlıkta kalabilir)
+    // Dosya adında '/' olamaz
     const dosyaAdi = `${baslik.replace(/\s*\/\s*/g, ' - ')}.pdf`;
     const key = `${tenantId}/${taxpayerId}/ekstre/${randomUUID()}.pdf`;
     await this.adimla('PDF depoya yükleme', 45_000, this.storage.putBuffer(key, pdf, 'application/pdf'));
     const url = await this.storage.getPresignedInlineUrl(key, dosyaAdi, 'application/pdf', 3600);
-    const med = await this.adimla('WhatsApp PDF eki gönderimi', 90_000, this.whatsApp.sendMediaDetailed(phone, { url, mimeType: 'application/pdf', filename: dosyaAdi, caption: null }, tenantId, { quote: false } as any));
+    // Hattat kalıbı: TEK mesaj — PDF belge + altında açıklama (caption). İki adımlı
+    // metin+ek zinciri gönderim onayı beklerken asılı kalıyordu; tek gönderim daha sağlam.
+    const med = await this.adimla('WhatsApp PDF gönderimi', 120_000, this.whatsApp.sendMediaDetailed(phone, { url, mimeType: 'application/pdf', filename: dosyaAdi, caption: mesaj }, tenantId, { quote: false } as any));
     if (!(med as any)?.ok) {
-      this.logger.warn(`Ekstre PDF eki gönderilemedi: ${(med as any)?.error}`);
-      throw new BadRequestException(`Mesaj gitti ama PDF eki gönderilemedi: ${(med as any)?.error || 'bilinmeyen hata'}`);
+      this.logger.warn(`Ekstre PDF gönderilemedi: ${(med as any)?.error}`);
+      throw new BadRequestException(`Ekstre PDF gönderilemedi: ${(med as any)?.error || 'bilinmeyen hata'}`);
     }
 
     await (this.prisma as any).communicationLog.create({
