@@ -742,6 +742,9 @@ async function getBrowserSession() {
     lastTaxpayer: null, // { taxpayerId, selectedAt: number }
   };
   startKeepAlive(browserSession);
+  // HIZLI FİŞ gibi AYRI-PENCERE popup'lar açıldığında native köprü + onay kabulünü kur
+  //   (İşletme fiş aktarımı popup'ta trusted Yükle/Fiş Kes ister).
+  context.on('page', (p) => { setupAuxiliaryPage(p).catch(() => {}); });
   log.info(`Luca browser oturumu acildi (persistent: ${userDataDir}, idle TTL ${Math.round(BROWSER_IDLE_TTL/60000)}dk) — cookie'ler kayitli kalir.`);
   return browserSession;
 }
@@ -914,6 +917,29 @@ async function nativeClickText(page, payload = {}) {
     await new Promise((resolve) => setTimeout(resolve, 300));
   }
   return { ok: false, reason: `"${text}" bulunamadı`, text };
+}
+
+// Popup/yardımcı sayfalar (HIZLI FİŞ vb.): native TRUSTED tık köprüsü + onay-confirm kabulü.
+// Ana Luca sayfası zaten runJobWithMorenRuntime + installMorenRuntimeBridge'te kuruluyor; burada
+// YALNIZ yeni açılan popup sayfaları için. Böylece İşletme HIZLI FİŞ penceresindeki "Yükle"/"Fiş Kes"
+// Luca'nın kabul ettiği trusted tıklamalarla çalışır ve Fiş Kes onay confirm'i otomatik KABUL edilir.
+async function setupAuxiliaryPage(page) {
+  try {
+    if (browserSession && page === browserSession.page) return; // ana sayfa zaten kurulu
+    await installNativeClickBridge(page).catch(() => {});
+    page.on('dialog', async (dialog) => {
+      const msg = String(dialog.message() || '').trim();
+      const type = dialog.type();
+      const wantAccept = type === 'confirm'
+        && /(fi[şs]|kes|kaydet|aktar|olu[şs]tur|onayl|devam|emin\s*misin|kesilecek|aktar[ıi]lacak)/i.test(msg)
+        && !/(sil|iptal|vazge[çc]|geri\s*al)/i.test(msg);
+      try { if (wantAccept) await dialog.accept(); else await dialog.dismiss(); } catch {}
+    });
+    page.on('pageerror', () => {});
+    log.info(`Popup native köprü + onay kuruldu: ${(page.url() || '').slice(0, 60)}`);
+  } catch (e) {
+    log.warn(`Popup kurulum uyarısı: ${e?.message || e}`);
+  }
 }
 
 async function installNativeClickBridge(page) {

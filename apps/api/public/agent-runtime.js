@@ -12,7 +12,7 @@
   // v1.42.2 (2026-06-16): Ajan kendini yenilerken (delete __morenAgent) eski async
   // döngü "Cannot read 'stopRequested' of undefined/null" ile ÇÖKÜYORDU → yetim
   // döngü artık nesne yoksa güvenle durur (stopRequested kontrollerine null-guard).
-  const AGENT_VERSION = '1.47.3';
+  const AGENT_VERSION = '1.47.4';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -2001,6 +2001,30 @@
                     try { const f = el.closest && el.closest('form'); if (f) { if (f.requestSubmit) f.requestSubmit(); else f.submit(); done = true; } } catch {}
                     return done;
                   };
+                  // POPUP'IN KENDİ trusted köprüsü — yerel ajan (v1.44+) popup sayfasına da
+                  //   __morenNativeClickText kurdu. Luca "Yükle"/"Fiş Kes" GERÇEK (trusted) tık ister;
+                  //   ana pencere köprüsü popup'a ulaşmaz → popup'ın kendi bridge'ini çağırıyoruz.
+                  const popupWin = () => {
+                    try {
+                      const arr = (window.top || window).__morenLucaPopups || [];
+                      return arr.find((w) => { try { return w && !w.closed && /hizliFis/i.test(w.location.href || ''); } catch { return false; } })
+                        || arr.find((w) => { try { return w && !w.closed; } catch { return false; } }) || null;
+                    } catch { return null; }
+                  };
+                  const popupNativeClick = async (text, opts = {}) => {
+                    for (let a = 0; a < 4; a++) {
+                      const pw = popupWin();
+                      try {
+                        if (pw && typeof pw.__morenNativeClickText === 'function') {
+                          const r = await Promise.resolve(pw.__morenNativeClickText({ text, exact: !!opts.exact, hoverOnly: !!opts.hoverOnly, timeoutMs: opts.timeoutMs || 5000 }));
+                          if (r && r.ok) { await sleep(opts.settleMs || 800); return true; }
+                          return false;
+                        }
+                      } catch {}
+                      await sleep(800); // köprü henüz kurulmadıysa bekle
+                    }
+                    return false;
+                  };
                   // TANI: dosya input hangi dokümanda + dosya kondu mu
                   try {
                     const fi = findFileInput();
@@ -2010,8 +2034,9 @@
                   } catch {}
                   // 1) Yükle — popup butonunu maksimum tetikle (native + onclick + form)
                   const yEl = findEl(/^Y[üu]kle$/i);
-                  let yOk = await nativeClickLucaText('Yükle', { exact: true, settleMs: 1000, timeoutMs: 4000 });
-                  if (yEl) yOk = fireEl(yEl) || yOk;
+                  let yOk = await popupNativeClick('Yükle', { exact: true, settleMs: 1200, timeoutMs: 5000 });
+                  if (!yOk) yOk = await nativeClickLucaText('Yükle', { exact: true, settleMs: 1000, timeoutMs: 4000 });
+                  if (!yOk && yEl) yOk = fireEl(yEl);
                   await log(yOk ? '⏫ "Yükle" tetiklendi (İşletme)' : '⚠ "Yükle" bulunamadı');
                   // 2) Grid DOLMASINI bekle — boş grid "Satır Sayısı:1" placeholder; dolu = >1
                   let gc = 1;
@@ -2020,12 +2045,14 @@
                   if (gc <= 1) throw new Error(`CSV grid'e yüklenmedi (Satır Sayısı=${gc}). Yükle tetiklenmiyor ya da dosya popup input'una konmuyor.`);
                   // 3) "Fiş Kes" — popup butonunu maksimum tetikle
                   const fkEl = findEl(/^Fi[şs]\s*Kes$/i);
-                  let fk = await nativeClickLucaText('Fiş Kes', { settleMs: 1500, timeoutMs: 4000 });
-                  if (fkEl) fk = fireEl(fkEl) || fk;
+                  let fk = await popupNativeClick('Fiş Kes', { settleMs: 1500, timeoutMs: 5000 });
+                  if (!fk) fk = await nativeClickLucaText('Fiş Kes', { settleMs: 1500, timeoutMs: 4000 });
+                  if (!fk && fkEl) fk = fireEl(fkEl);
                   await log(fk ? '✂ "Fiş Kes" tetiklendi' : '⚠ "Fiş Kes" bulunamadı');
                   await sleep(1800);
                   // 4) Onay dialog'u (Evet/Tamam/Onayla) — popup dahil
                   for (const lbl of ['Evet', 'Tamam', 'Onayla', 'Onay']) {
+                    if (await popupNativeClick(lbl, { exact: true, settleMs: 900, timeoutMs: 2000 })) { await log(`↳ "${lbl}" onaylandı`); break; }
                     if (await nativeClickLucaText(lbl, { exact: true, settleMs: 900, timeoutMs: 2000 })) { await log(`↳ "${lbl}" onaylandı`); break; }
                     const oe = findEl(new RegExp('^' + lbl + '$', 'i'));
                     if (oe && fireEl(oe)) { await log(`↳ "${lbl}" onaylandı (dom)`); break; }
