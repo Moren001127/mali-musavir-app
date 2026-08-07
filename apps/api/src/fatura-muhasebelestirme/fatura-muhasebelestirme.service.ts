@@ -8548,17 +8548,20 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const H: Record<string, string> = { Accept: 'application/json' };
       if ((cfg as any).apiKey) H['X-Api-Key'] = (cfg as any).apiKey;
       const dd = (ymd: string) => { const [y, m, d] = ymd.split('-'); return `${d}.${m}.${y}`; };
-      const tot = async (qf: string | null) => {
+      const tot = async (qf: string | null, sort = false) => {
         const u = new URL(`${baseUrl}/v1/inboxinvoice/list`);
         u.searchParams.set('PageIndex', '1'); u.searchParams.set('PageSize', '5');
+        if (sort) { u.searchParams.set('SortedColumn', 'ExecutionDate'); u.searchParams.set('IsDesc', 'false'); }
         if (qf) u.searchParams.set('QueryFilter', qf);
         const r = await fetch(u.toString(), { headers: H }); const tx = await r.text();
         let jj: any = null; try { jj = JSON.parse(tx); } catch { /* */ }
-        return { status: r.status, totalCount: jj?.totalCount ?? jj?.TotalCount, itemCount: (jj?.items || jj?.Items || []).length, err: r.ok ? undefined : tx.slice(0, 120) };
+        const its = jj?.items || jj?.Items || [];
+        return { status: r.status, totalCount: jj?.totalCount ?? jj?.TotalCount, itemCount: its.length, tarihler: its.map((x: any) => String(x.executionDate ?? x.ExecutionDate ?? '').slice(0, 10)), err: r.ok ? undefined : tx.slice(0, 120) };
       };
       // VARYANTLAR — hangisi totalCount'u Temmuz'a düşürüyor:
       const variants: any = {
-        filtresiz: await tot(null),
+        filtresiz_sirali: await tot(null, true),
+        A_ExecutionDate_sirali: await tot(JSON.stringify([{ Category: 'ExecutionDate', Operator: 5, Value: dd(start) }, { Category: 'ExecutionDate', Operator: 3, Value: dd(end) }]), true),
         A_ExecutionDate_ddMMyyyy: await tot(JSON.stringify([{ Category: 'ExecutionDate', Operator: 5, Value: dd(start) }, { Category: 'ExecutionDate', Operator: 3, Value: dd(end) }])),
         B_ExecutionDate_iso: await tot(JSON.stringify([{ Category: 'ExecutionDate', Operator: 5, Value: start }, { Category: 'ExecutionDate', Operator: 3, Value: end }])),
         C_ExecutionDate_isoDT: await tot(JSON.stringify([{ Category: 'ExecutionDate', Operator: 5, Value: `${start}T00:00:00` }, { Category: 'ExecutionDate', Operator: 3, Value: `${end}T23:59:59` }])),
