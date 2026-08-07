@@ -8610,15 +8610,35 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     }
     const start = `${donem}-01`, end = `${donem}-31`;
     const dateOf = (it: any) => String(it?.attributes?.issue_date || it?.attributes?.date || it?.attributes?.created_at || '').slice(0, 10);
-    const donemdeki = all.filter((it) => { const d = dateOf(it); return d && d >= start && d <= end; });
-    return {
-      firmaNo,
-      toplamInboxKaydi: all.length,
-      donemdekiSayisi: donemdeki.length,
-      ornekHamKayit: all.slice(0, 2),
-      includedTipleri: Array.from(new Set(included.map((x) => x?.type))),
-      includedOrnek: included.slice(0, 1),
-    };
+    // ÇOK-UÇNOKTA SAYIM: 12'nin hangi kaynakta olduğunu bul.
+    const sonuc: any = { firmaNo, e_invoice_inboxes: { toplam: all.length, temmuz: all.filter((it) => { const d = dateOf(it); return d >= start && d <= end; }).length } };
+    for (const path of ['purchase_bills', 'e_invoices', 'e_archives']) {
+      try {
+        const rows: any[] = [];
+        for (let page = 1; page <= 12; page++) {
+          const params = new URLSearchParams({ 'page[number]': String(page), 'page[size]': '25', sort: '-issue_date', include: 'active_e_document' });
+          params.set('filter[issue_date]', `${start}..${end}`);
+          let r = await fetch(`${base}/${firmaNo}/${path}?${params}`, { headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' } });
+          if (!r.ok && /issue_date|not a date|Bad Request/i.test(await r.clone().text())) {
+            params.delete('filter[issue_date]');
+            r = await fetch(`${base}/${firmaNo}/${path}?${params}`, { headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' } });
+          }
+          if (!r.ok) { sonuc[path] = { hata: r.status, detay: (await r.text()).slice(0, 150) }; break; }
+          const j: any = await r.json();
+          const items = Array.isArray(j?.data) ? j.data : [];
+          rows.push(...items);
+          if (items.length < 25) break;
+        }
+        const temmuz = rows.filter((it) => { const d = dateOf(it); return d >= start && d <= end; });
+        sonuc[path] = sonuc[path]?.hata ? sonuc[path] : {
+          cekilenToplam: rows.length,
+          temmuz: temmuz.length,
+          ornekAttrKeys: Object.keys(rows[0]?.attributes || {}),
+          ornek: temmuz.slice(0, 2).map((it) => ({ id: it.id, no: it.attributes?.invoice_no || it.attributes?.invoice_id, tarih: dateOf(it), net: it.attributes?.net_total ?? it.attributes?.gross_total, from: it.attributes?.item_type, activeED: it.relationships?.active_e_document?.data })),
+        };
+      } catch (e: any) { sonuc[path] = { hata: e?.message?.slice(0, 120) }; }
+    }
+    return sonuc;
   }
 
   /** Paraşüt'ten faturanın GERÇEK e-belge PDF'ini indirir: active_e_document → /{tip}/{id}/pdf → url → indir. */
