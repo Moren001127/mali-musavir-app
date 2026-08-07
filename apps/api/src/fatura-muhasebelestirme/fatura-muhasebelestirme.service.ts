@@ -8731,76 +8731,6 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     }
   }
 
-  /** GEÇİCİ PROBE: Paraşüt gelen e-Fatura kutusu (e_invoice_inboxes) ham yapısını görmek için. Yazma yapmaz. */
-  async debugParasutInbox(tenantId: string, taxpayerId: string, donem = '2026-07'): Promise<any> {
-    const cfg = await this.resolveRuntimeConfigForProvider(tenantId, taxpayerId, 'PARASUT');
-    if (!cfg) return { hata: 'PARASUT config yok/eksik' };
-    const baseUrl = cfg.baseUrl || PROVIDER_DEFAULT_BASE_URL.PARASUT;
-    const clientId = process.env.PARASUT_CLIENT_ID || (cfg as any).apiKey;
-    const clientSecret = process.env.PARASUT_CLIENT_SECRET || (cfg as any).apiSecret;
-    const tokenRes = await fetch('https://api.parasut.com/oauth/token', {
-      method: 'POST',
-      body: new URLSearchParams({ grant_type: 'password', client_id: clientId, client_secret: clientSecret, username: cfg.username!, password: cfg.password!, redirect_uri: 'urn:ietf:wg:oauth:2.0:oob' }),
-    });
-    if (!tokenRes.ok) return { hata: `token ${tokenRes.status}`, detay: (await tokenRes.text()).slice(0, 200) };
-    const accessToken = (await tokenRes.json())?.access_token;
-    let firmaNo = String((cfg as any).accountId || (cfg as any).senderVkn || '').trim() || await this.parasutFirmaNo(baseUrl, accessToken);
-    const base = baseUrl.replace(/\/+$/, '');
-    const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
-    // Paraşüt HIZ-LIMITLI (429 "Try again in N seconds"). 429'da bekle-tekrar dene + çağrılar arası boşluk.
-    const pfetch = async (path: string, params: URLSearchParams) => {
-      for (let deneme = 0; deneme < 5; deneme++) {
-        const r = await fetch(`${base}/${firmaNo}/${path}?${params}`, { headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' } });
-        if (r.status !== 429) return r;
-        const txt = await r.text();
-        const m = txt.match(/(\d+)\s*second/);
-        await sleep((m ? Number(m[1]) : 5) * 1000 + 500);
-      }
-      return null;
-    };
-    const start = `${donem}-01`, end = `${donem}-31`;
-    const dateOf = (it: any) => String(it?.attributes?.issue_date || it?.attributes?.date || it?.attributes?.created_at || '').slice(0, 10);
-    const sonuc: any = { firmaNo };
-    // e_invoices'i DOĞRU include (invoice) ile sorgula — 12 burada olmalı (billed+unbilled gelen e-Faturalar).
-    for (const path of ['e_invoices']) {
-      try {
-        const rows: any[] = [];
-        let included: any[] = [];
-        let useDate = true;
-        for (let page = 1; page <= 12; page++) {
-          const params = new URLSearchParams({ 'page[number]': String(page), 'page[size]': '25', sort: '-issue_date', include: 'invoice' });
-          if (useDate) params.set('filter[issue_date]', `${start}..${end}`);
-          let r = await pfetch(path, params);
-          if (r && !r.ok && useDate && /issue_date|not a date|Bad Request/i.test(await r.clone().text())) {
-            useDate = false; params.delete('filter[issue_date]'); r = await pfetch(path, params);
-          }
-          if (!r) { sonuc[path] = { hata: '429-kalıcı' }; break; }
-          if (!r.ok) { sonuc[path] = { hata: r.status, detay: (await r.text()).slice(0, 200) }; break; }
-          const j: any = await r.json();
-          const items = Array.isArray(j?.data) ? j.data : [];
-          if (Array.isArray(j?.included)) included = included.concat(j.included);
-          rows.push(...items);
-          await sleep(1500);
-          if (items.length < 25) break;
-        }
-        if (sonuc[path]?.hata) continue;
-        const temmuz = rows.filter((it) => { const d = dateOf(it); return d >= start && d <= end; });
-        const invTip = (it: any) => it?.relationships?.invoice?.data?.type;
-        const tipSay: any = {}; temmuz.forEach((it) => { const t = String(invTip(it) || 'yok'); tipSay[t] = (tipSay[t] || 0) + 1; });
-        sonuc[path] = {
-          cekilenToplam: rows.length,
-          temmuz: temmuz.length,
-          temmuzInvoiceTipDagilimi: tipSay,
-          ornekAttrKeys: Object.keys(rows[0]?.attributes || {}),
-          ilkHamKayit: rows[0] ? { id: rows[0].id, type: rows[0].type, attributes: rows[0].attributes, relationships: rows[0].relationships } : null,
-          ornek: temmuz.slice(0, 5).map((it) => ({ id: it.id, no: it.attributes?.invoice_no || it.attributes?.external_id, tarih: dateOf(it), net: it.attributes?.net_total ?? it.attributes?.gross_total, invoiceTip: invTip(it), direction: it.attributes?.direction || it.attributes?.item_type })),
-          includedTipleri: Array.from(new Set(included.map((x) => x?.type))),
-        };
-      } catch (e: any) { sonuc[path] = { hata: e?.message?.slice(0, 150) }; }
-    }
-    return sonuc;
-  }
-
   /** Paraşüt'ten faturanın GERÇEK e-belge PDF'ini indirir: active_e_document → /{tip}/{id}/pdf → url → indir. */
   private async parasutDownloadPdf(baseUrl: string, firmaNo: string, accessToken: string, item: any): Promise<Buffer | null> {
     try {
@@ -9705,6 +9635,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           kdvBreakdown: Array.isArray(parsed.kdvBreakdown) ? parsed.kdvBreakdown : undefined,
           total,
           vendorName: direction === 'SATIS' ? parsed.alici : parsed.satici,
+          // TEVKİFAT (UBL WithholdingTaxTotal → parsed.tevkifatKdv): oran (tevkifat/KDV) geçilir →
+          //   satışta 391'e NET KDV (hesaplanan − tevkifat), alışta 191 ikiye bölme. Geçilmezse TAM KDV
+          //   ile işleniyordu (YORGUN nakliye 2/10: cari 33.600 yerine 32.480 olmalı — çelişki bundandı).
+          tevkifatOrani: (Number(parsed.tevkifatKdv) > 0 && Number(parsed.kdvTutari) > 0) ? Math.min(1, Number(parsed.tevkifatKdv) / Number(parsed.kdvTutari)) : undefined,
         }))
         : [];
 
@@ -9798,6 +9732,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       kdvBreakdown: Array.isArray(parsed.kdvBreakdown) ? parsed.kdvBreakdown : undefined,
       total,
       vendorName: direction === 'SATIS' ? parsed.alici : parsed.satici,
+      // TEVKİFAT (bkz. yukarıdaki mevcut-belge dalı): oran geçilmezse tam KDV ile işleniyordu.
+      tevkifatOrani: (Number(parsed.tevkifatKdv) > 0 && Number(parsed.kdvTutari) > 0) ? Math.min(1, Number(parsed.tevkifatKdv) / Number(parsed.kdvTutari)) : undefined,
     }));
 
     const doc = await (this.prisma as any).invoiceAccountingDocument.create({

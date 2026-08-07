@@ -90,12 +90,6 @@ export class FaturaMuhasebelestirmeController {
       : result;
   }
 
-  /** GEÇİCİ PROBE: Paraşüt gelen e-Fatura kutusu ham yapısı (kaldırılacak). */
-  @Get('debug/parasut-inbox')
-  async debugParasutInbox(@Req() req: any, @Query() q: any) {
-    return this.service.debugParasutInbox(req.user.tenantId, q?.taxpayerId, q?.donem || '2026-07');
-  }
-
   /** Talimat ver/kaldır — her gece otomatik fetch. */
   @Post('integrations/talimat')
   setTalimat(@Req() req: any, @Body() body: any) {
