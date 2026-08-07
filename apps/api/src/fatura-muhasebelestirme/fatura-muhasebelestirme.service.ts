@@ -8593,9 +8593,16 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       if (uuids[0]) {
         const dataBody = `<GetDocumentData xmlns="http://tempuri.org/"><sessionID>${this.xmlEscape(sid)}</sessionID><uuid>${this.xmlEscape(uuids[0])}</uuid>` + this.elogoParamList([`DOCUMENTTYPE=EINVOICE`]) + `</GetDocumentData>`;
         const dataResp = await this.soapPost(endpoint, ACT + 'GetDocumentData', dataBody);
-        out.dataRespTags = Array.from(new Set((dataResp.match(/<(?:\w+:)?(\w+)>/g) || []))).slice(0, 30);
         out.binaryDataVar = /binaryData/i.test(dataResp);
-        out.dataSnippet = dataResp.slice(0, 400);
+        out.errorCode = this.tagText(dataResp, 'errorCode');
+        out.resultMsg = this.tagText(dataResp, 'resultMsg') || this.tagText(dataResp, 'resultCode');
+        out.dataSnippet = dataResp.slice(0, 700);
+        // VARYANT: bazı eLogo sürümleri GetDocumentData'da DATATYPE/DOWNLOADTYPE ister → dene.
+        const dataBody2 = `<GetDocumentData xmlns="http://tempuri.org/"><sessionID>${this.xmlEscape(sid)}</sessionID><uuid>${this.xmlEscape(uuids[0])}</uuid>` + this.elogoParamList([`DOCUMENTTYPE=EINVOICE`, `DOWNLOADTYPE=UBL`, `DATATYPE=XML`, `OPTYPE=2`]) + `</GetDocumentData>`;
+        const dataResp2 = await this.soapPost(endpoint, ACT + 'GetDocumentData', dataBody2);
+        out.v2_errorCode = this.tagText(dataResp2, 'errorCode');
+        out.v2_binaryVar = /binaryData/i.test(dataResp2);
+        out.v2_resultMsg = this.tagText(dataResp2, 'resultMsg');
       }
       return out;
     }
