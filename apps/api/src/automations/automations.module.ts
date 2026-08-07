@@ -7,6 +7,7 @@ import { WhatsAppModule } from '../whatsapp/whatsapp.module';
 import { FisYazdirmaModule } from '../fis-yazdirma/fis-yazdirma.module';
 import { MihsapModule } from '../mihsap/mihsap.module';
 import { EmailModule } from '../email/email.module';
+import { SmsModule } from '../sms/sms.module';
 import { KdvBeyannameModule } from '../kdv-beyanname/kdv-beyanname.module';
 import { TaxpayersModule } from '../taxpayers/taxpayers.module';
 import { DriveModule } from '../drive/drive.module';
@@ -39,7 +40,7 @@ import { AutomationsService } from './automations.service';
  */
 @Global()
 @Module({
-  imports: [PrismaModule, ScheduleModule.forRoot(), MorenAiModule, NotificationsModule, WhatsAppModule, FisYazdirmaModule, MihsapModule, EmailModule, KdvBeyannameModule, TaxpayersModule, DriveModule, EDefterControlModule, LucaModule, PortalAutomationModule, KdvControlModule],
+  imports: [PrismaModule, ScheduleModule.forRoot(), MorenAiModule, NotificationsModule, WhatsAppModule, FisYazdirmaModule, MihsapModule, EmailModule, SmsModule, KdvBeyannameModule, TaxpayersModule, DriveModule, EDefterControlModule, LucaModule, PortalAutomationModule, KdvControlModule],
   controllers: [AutomationsController],
   providers: [
     AutomationsService,

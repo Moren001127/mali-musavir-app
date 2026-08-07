@@ -6,6 +6,7 @@ import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import { FisYazdirmaService } from '../fis-yazdirma/fis-yazdirma.service';
 import { MihsapService } from '../mihsap/mihsap.service';
 import { EmailService } from '../email/email.service';
+import { SmsService } from '../sms/sms.service';
 import { KdvBeyannameService } from '../kdv-beyanname/kdv-beyanname.service';
 import { TaxpayersService } from '../taxpayers/taxpayers.service';
 import { DriveService } from '../drive/drive.service';
@@ -39,6 +40,7 @@ export class ActionDispatcherService {
     private readonly fisYazdirma: FisYazdirmaService,
     private readonly mihsap: MihsapService,
     private readonly email: EmailService,
+    private readonly sms: SmsService,
     private readonly kdvBeyanname: KdvBeyannameService,
     private readonly taxpayers: TaxpayersService,
     private readonly drive: DriveService,
@@ -170,11 +172,13 @@ export class ActionDispatcherService {
   }
 
   private async sendSms(args: any, _ctx: { tenantId: string }) {
-    // SMS sağlayıcı entegrasyonu için ayrı SmsService yok — şimdilik notification
-    // olarak kaydedip operatör/ekran tarafında bildirim gösteriyoruz.
-    // Gerçek SMS gönderimi (NetGSM, Twilio vb.) Faz 8 polish'inde eklenir.
-    this.logger.warn(`[SMS] Gerçek sağlayıcı bağlı değil. ${args.to} için stub.`);
-    return { sent: false, reason: 'SMS sağlayıcı yapılandırılmamış (stub)', to: args.to };
+    // GERÇEK SMS — NetGSM (başlık MOREN). Yapılandırılmamışsa stub davranışı korunur.
+    if (!this.sms.isConfigured()) {
+      this.logger.warn(`[SMS] NetGSM yapılandırılmamış. ${args.to} için gönderilemedi.`);
+      return { sent: false, reason: 'NetGSM yapılandırılmamış (NETGSM_USERCODE/PASSWORD env)', to: args.to };
+    }
+    const res = await this.sms.sendSms(String(args.to || ''), String(args.message || args.body || ''));
+    return { ...res, to: args.to };
   }
 
   private async createPendingAction(

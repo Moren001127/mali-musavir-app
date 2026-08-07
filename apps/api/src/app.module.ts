@@ -41,6 +41,7 @@ import { DesktopModule } from './desktop/desktop.module';
 import { AutomationsModule } from './automations/automations.module';
 import { OfficeChatModule } from './office-chat/office-chat.module';
 import { EmailModule } from './email/email.module';
+import { SmsModule } from './sms/sms.module';
 import { AiCostModule } from './ai-cost/ai-cost.module';
 import { DriveModule } from './drive/drive.module';
 import { TaxpayerPortalModule } from './taxpayer-portal/taxpayer-portal.module';
@@ -97,6 +98,7 @@ import { InvoiceOverdueCron } from './schedule/invoice-overdue.cron';
     AutomationsModule,
     OfficeChatModule,
     EmailModule,
+    SmsModule,
     AiCostModule,
     TaxpayerPortalModule,
     AkilliBildirimModule,
