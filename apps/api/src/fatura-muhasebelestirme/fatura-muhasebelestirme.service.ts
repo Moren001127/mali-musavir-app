@@ -6203,8 +6203,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     if (cfg.provider === 'PARASUT') {
       // client_id/client_secret ofis geneli TEK uygulama anahtarı → env'den (PARASUT_CLIENT_ID/SECRET)
       // fallback ile gelebilir; mükellef başına sadece kullanıcı+şifre+Firma No gerekir.
-      const clientId = cfg.apiKey || process.env.PARASUT_CLIENT_ID;
-      const clientSecret = cfg.apiSecret || process.env.PARASUT_CLIENT_SECRET;
+      const clientId = process.env.PARASUT_CLIENT_ID || cfg.apiKey;
+      const clientSecret = process.env.PARASUT_CLIENT_SECRET || cfg.apiSecret;
       const missing: string[] = [];
       if (!clientId) missing.push('client_id');
       if (!clientSecret) missing.push('client_secret');
@@ -8446,10 +8446,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     },
   ): Promise<ProviderInvoicePayload[]> {
     const baseUrl = cfg.baseUrl || PROVIDER_DEFAULT_BASE_URL.PARASUT;
-    // Ofis geneli TEK uygulama anahtarı env'den fallback (PARASUT_CLIENT_ID/SECRET); mükellefe
-    // özel girilirse (cfg.apiKey/apiSecret) o önceliklidir. Mükellef başına yalnız kullanıcı+şifre+Firma No.
-    const clientId = (cfg as any).apiKey || process.env.PARASUT_CLIENT_ID;
-    const clientSecret = (cfg as any).apiSecret || process.env.PARASUT_CLIENT_SECRET;
+    // Ofiste TEK Paraşüt uygulaması var → client_id/secret ofis geneli env (PARASUT_CLIENT_ID/SECRET)
+    // ÖNCELİKLİ; mükellefe özel eski/yanlış değerler kalmışsa onları GEÇ. Mükellef başına sadece
+    // kullanıcı+şifre+Firma No anlamlı.
+    const clientId = process.env.PARASUT_CLIENT_ID || (cfg as any).apiKey;
+    const clientSecret = process.env.PARASUT_CLIENT_SECRET || (cfg as any).apiSecret;
     if (!cfg.username || !cfg.password || !clientId || !clientSecret) {
       throw new Error('Parasut OAuth2 icin client_id (apiKey) + client_secret (apiSecret) + kullanici + sifre gerekli');
     }
