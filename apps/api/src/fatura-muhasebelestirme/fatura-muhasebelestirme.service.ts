@@ -4351,6 +4351,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             listRows: listed.rows.length,
             liveRows: listed.liveRows.length,
             listUrl: listed.usedListUrl,
+            // HARİÇ TUTULANLAR: "Mihsap X, biz Y" farkını açıklar — iptal/dönem-dışı elenen faturalar.
+            excluded: Array.isArray((listed as any).excludedRows) ? (listed as any).excludedRows.slice(0, 50) : [],
             ...(listed.liveRows.length === 0 ? {
               warning: listed.rows.length > 0
                 ? `TÜRMOB listesi ${listed.rows.length} satır döndürdü ama dönem/iptal süzgeci sonrası 0 kaldı (uç: ${listed.usedListUrl}) — tarih aralığını kontrol edin.`
@@ -7522,12 +7524,22 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         this.logger.warn(`TURMOB ${channel} tarih-bolme hatasi: ${e?.message || e}`);
       }
     }
+    // HARİÇ TUTULANLAR (şeffaflık — "Mihsap 205, biz 203" farkını açıklar): iptal/itiraz edilmiş ya da
+    //   dönem dışı faturaları elemek DOĞRU davranıştır; kullanıcı hangi faturanın neden çıktığını görsün.
+    const excludedRows = rows
+      .filter((r) => this.turmobIsCancelled(r) || !this.turmobRowInPeriod(r, opts.period))
+      .map((r) => ({
+        faturaNo: String(this.turmobField(r, ['FaturaNo', 'faturaNo', 'BelgeNo', 'belgeNo', 'InvoiceNumber', 'invoiceNumber']) || '').trim(),
+        neden: this.turmobIsCancelled(r) ? 'iptal/itiraz edilmiş' : 'dönem dışı (tarih aralığında değil)',
+      }))
+      .filter((x) => x.faturaNo);
     return {
       cookie,
       channel,
       listPageHtml,
       rows,
       liveRows,
+      excludedRows,
       usedListUrl,
       usedMethod,
       usedProfile,
