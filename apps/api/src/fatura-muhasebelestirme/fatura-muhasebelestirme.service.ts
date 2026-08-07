@@ -7321,8 +7321,14 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         for (const method of ['POST', 'GET'] as const) kombinasyonlar.push({ listUrl, profile, method });
       }
     }
+    // MATRİS SÜRE TAVANI (backstop) + SEED-GÜVEN: "sonuç yok" halinde 168 kombinasyonu 8sn timeout'la
+    //   deneyip DAKİKALARCA takılmayı önler (YORGUN Satış e-Arşiv vakası — mükellefin o dönem e-Arşiv'i
+    //   yok → hiçbir kombo satır bulamıyor, tamamlandi tetiklenmiyordu). 22sn genel tavan.
+    const komboDeadline = Date.now() + 22000;
+    const seedKombo = kombinasyonlar[0];
     for (const kombo of kombinasyonlar) {
       if (tamamlandi) break;
+      if (Date.now() > komboDeadline) break; // süre tavanı — sonsuz matris taramasını kes, eldekini döndür
       const { listUrl, profile, method } = kombo;
       const listBody = new URLSearchParams(
         listPageToken
@@ -7376,6 +7382,14 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           tamamlandi = true;
           FaturaMuhasebelestirmeService.turmobComboCache.set(channel, { listUrl, profileName: profile.name, method });
         }
+      }
+      // SEED-GÜVEN (takılma önleme): seed = bilinen-DOĞRU uç (önbellek/DEFAULT_COMBO). Bu uç GEÇERLİ bir
+      //   DataTables yanıtı (recordsTotal alanı VAR) döndürdüyse 0 satır olsa BİLE dur → mükellefin o dönem
+      //   e-Arşiv'i yoktur (YORGUN vakası). Böylece kalan ~168 yanlış/boş kombinasyonu 8sn timeout'la deneyip
+      //   dakikalarca takılma biter. YALNIZ seed'e güvenilir — eski "hep boş dönen" yanlış uçlara DEĞİL.
+      if (!tamamlandi && kombo === seedKombo && data && typeof data === 'object') {
+        const seedTotal = Number(data?.recordsFiltered ?? data?.RecordsFiltered ?? data?.recordsTotal ?? data?.RecordsTotal ?? data?.iTotalDisplayRecords ?? data?.iTotalRecords ?? NaN);
+        if (Number.isFinite(seedTotal)) tamamlandi = true; // seed geçerli yanıt verdi (0 dahil) → yeter
       }
     }
     this.logger.log(`TURMOB list ${channel}: url=${usedListUrl} method=${usedMethod} profile=${usedProfile} ct=${selectedCt.slice(0, 40)} len=${selectedRaw.length} rows=${rows.length} live=${liveRows.length}`);
