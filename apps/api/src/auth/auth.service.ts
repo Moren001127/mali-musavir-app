@@ -1,4 +1,5 @@
-import { Injectable, UnauthorizedException, ConflictException, Logger, Optional } from '@nestjs/common';
+import { Injectable, UnauthorizedException, ConflictException, BadRequestException, Logger, Optional } from '@nestjs/common';
+import { EmailService } from '../email/email.service';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as argon2 from 'argon2';
@@ -25,7 +26,64 @@ export class AuthService {
     private jwtService: JwtService,
     private config: ConfigService,
     @Optional() private notifications?: NotificationsService,
+    @Optional() private email?: EmailService,
   ) {}
+
+  // === ŞİFREMİ UNUTTUM (müşavir) — DB migration YOK: reset tokenı JWT (ayrı secret). Şifre değişince
+  //   token içindeki 'pv' (passwordHash özeti) tutmaz → TEK KULLANIMLIK + otomatik geçersiz. ===
+  private resetSecret(): string {
+    return (this.config.get<string>('JWT_SECRET') || '') + '::pwreset';
+  }
+
+  /** Sıfırlama iste: kullanıcı varsa e-posta ile 1 saatlik link gönder. Varlık bilgisi SIZDIRMAZ
+   *  (kayıtlı olsun olmasın aynı yanıt). */
+  async requestPasswordReset(email: string): Promise<{ ok: true }> {
+    const clean = String(email || '').trim().toLowerCase();
+    if (clean) {
+      const user = await this.prisma.user
+        .findFirst({ where: { email: { equals: clean, mode: 'insensitive' }, isActive: true } })
+        .catch(() => null);
+      if (user) {
+        const pv = createHash('sha256').update(user.passwordHash).digest('hex').slice(0, 16);
+        const token = this.jwtService.sign({ sub: user.id, typ: 'pwreset', pv }, { secret: this.resetSecret(), expiresIn: '1h' });
+        const base = String(process.env.PUBLIC_WEB_URL || 'https://portal.morenmusavirlik.com').replace(/\/+$/, '');
+        const link = `${base}/sifre-sifirla?token=${encodeURIComponent(token)}`;
+        const html = `<div style="font-family:Segoe UI,Arial,sans-serif;max-width:520px;margin:0 auto;color:#1f2937">`
+          + `<h2 style="color:#1e3a8a;margin:0 0 12px">Moren Portal — Şifre Sıfırlama</h2>`
+          + `<p>Merhaba ${this.htmlEscape(user.firstName || '')},</p>`
+          + `<p>Hesabınız için şifre sıfırlama talebi aldık. Yeni şifre belirlemek için aşağıdaki butona tıklayın (bağlantı <b>1 saat</b> geçerlidir):</p>`
+          + `<p style="text-align:center;margin:24px 0"><a href="${link}" style="background:#1e3a8a;color:#fff;text-decoration:none;padding:12px 26px;border-radius:8px;font-weight:700;display:inline-block">Şifremi Sıfırla</a></p>`
+          + `<p style="font-size:12px;color:#6b7280">Bu talebi siz yapmadıysanız bu e-postayı yok sayabilirsiniz; şifreniz değişmez.</p>`
+          + `<p style="font-size:11px;color:#9ca3af;word-break:break-all">Buton çalışmazsa: ${link}</p></div>`;
+        await this.email
+          ?.send({ to: user.email, subject: 'Moren Portal — Şifre Sıfırlama', html }, user.tenantId)
+          .catch((e: any) => this.logger.warn(`Şifre sıfırlama e-postası gönderilemedi: ${e?.message || e}`));
+      }
+    }
+    return { ok: true };
+  }
+
+  /** Sıfırla: token doğrula (typ+pv+süre) → yeni şifre (argon2) + kilit sıfırla + oturumları iptal. */
+  async resetPassword(token: string, newPassword: string): Promise<{ ok: true }> {
+    const pw = String(newPassword || '');
+    if (pw.length < 8) throw new BadRequestException('Şifre en az 8 karakter olmalıdır');
+    let payload: any = null;
+    try { payload = this.jwtService.verify(String(token || ''), { secret: this.resetSecret() }); }
+    catch { throw new UnauthorizedException('Sıfırlama bağlantısı geçersiz veya süresi dolmuş — yeni bağlantı isteyin'); }
+    if (payload?.typ !== 'pwreset' || !payload?.sub) throw new UnauthorizedException('Geçersiz sıfırlama bağlantısı');
+    const user = await this.prisma.user.findFirst({ where: { id: String(payload.sub), isActive: true } });
+    if (!user) throw new UnauthorizedException('Kullanıcı bulunamadı');
+    const pv = createHash('sha256').update(user.passwordHash).digest('hex').slice(0, 16);
+    if (pv !== payload.pv) throw new UnauthorizedException('Bağlantı kullanılmış veya şifre değişmiş — yeni bağlantı isteyin');
+    const passwordHash = await argon2.hash(pw, { type: argon2.argon2id, memoryCost: 65536, timeCost: 3 });
+    await this.prisma.user.update({ where: { id: user.id }, data: { passwordHash, failedLoginCount: 0, lockedUntil: null } });
+    await this.prisma.refreshToken.deleteMany({ where: { userId: user.id } }).catch(() => {}); // tüm oturumları kapat
+    return { ok: true };
+  }
+
+  private htmlEscape(s: string): string {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
 
   async validateUser(email: string, password: string) {
     const user = await this.prisma.user.findFirst({

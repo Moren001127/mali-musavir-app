@@ -232,7 +232,7 @@ export default function GirisPage() {
                 </button>
               </div>
               {errors.password && <p className="text-[12px] mt-1.5" style={{ color: '#f43f5e' }}>{errors.password.message}</p>}
-              <a href="#" className="block text-right text-[12.5px] font-medium mt-2 transition-opacity hover:opacity-100" style={{ color: GOLD, opacity: 0.7 }}>
+              <a href="/sifremi-unuttum" className="block text-right text-[12.5px] font-medium mt-2 transition-opacity hover:opacity-100" style={{ color: GOLD, opacity: 0.7 }}>
                 Şifremi unuttum
               </a>
             </div>

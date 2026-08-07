@@ -83,6 +83,19 @@ export class AuthController {
     return publicResult;
   }
 
+  // === Şifremi unuttum (public) ===
+  @Post('forgot-password')
+  @HttpCode(HttpStatus.OK)
+  async forgotPassword(@Body('email') email: string) {
+    return this.authService.requestPasswordReset(String(email || ''));
+  }
+
+  @Post('reset-password')
+  @HttpCode(HttpStatus.OK)
+  async resetPassword(@Body('token') token: string, @Body('password') password: string) {
+    return this.authService.resetPassword(String(token || ''), String(password || ''));
+  }
+
   // === İki adımlı doğrulama (TOTP) ===
   @UseGuards(AuthGuard('jwt'))
   @Get('2fa/status')
