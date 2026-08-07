@@ -4157,7 +4157,7 @@ function ScreenGenel({ taxpayers, period, onOpen }: { taxpayers: any[]; period: 
   // ── Belge yükü dağılımı — EN ÇOK BEKLEYEN MÜKELLEFLER (yatay bar; ad+sayı okunur, tıklanınca aç) ──
   const tpById = new Map<string, any>((taxpayers || []).map((t: any) => [t.id, t]));
   const loadAll = rows
-    .map((r: any) => ({ id: r.taxpayerId as string, name: taxpayerLabel(tpById.get(r.taxpayerId) || {}), pending: pendingOf(r), issue: Number(r.hasIssue || 0) }))
+    .map((r: any) => ({ id: r.taxpayerId as string, name: taxpayerLabel(tpById.get(r.taxpayerId) || {}), alis: Number(r.pendingAlis || 0), satis: Number(r.pendingSatis || 0), pending: pendingOf(r), issue: Number(r.hasIssue || 0) }))
     .filter((x) => x.pending > 0)
     .sort((a, b) => b.pending - a.pending);
   const loadTop = loadAll.slice(0, 8);
@@ -4204,12 +4204,17 @@ function ScreenGenel({ taxpayers, period, onOpen }: { taxpayers: any[]; period: 
       {/* ── DALGA GRAFİĞİ + İŞLENME HALKASI ── */}
       <div className="ovcharts">
         <div className="card ovwave">
-          <div className="ch"><h3>Belge yükü dağılımı</h3><div className="sp" /><span className="mu">mükellef bazında bekleyen</span></div>
+          <div className="ch"><h3>Belge yükü dağılımı</h3><div className="sp" /><span className="ovleg"><i className="ovlegd alis" />Alış<i className="ovlegd satis" />Satış</span></div>
           <div className="ovbars">
             {loadTop.length ? loadTop.map((x) => (
-              <button key={x.id} type="button" className="ovbar" onClick={() => onOpen(x.id)} title={`${x.name} — ${x.pending} bekleyen belge${x.issue > 0 ? `, ${x.issue} sorunlu` : ''}`}>
+              <button key={x.id} type="button" className="ovbar" onClick={() => onOpen(x.id)} title={`${x.name} — ${x.pending} bekleyen (Alış ${x.alis} · Satış ${x.satis})${x.issue > 0 ? ` · ${x.issue} sorunlu` : ''}`}>
                 <span className="ovbarname">{x.name}</span>
-                <span className="ovbartrack"><span className={`ovbarfill${x.issue > 0 ? ' iss' : ''}`} style={{ width: `${Math.max(7, Math.round((x.pending / loadMax) * 100))}%` }} /></span>
+                <span className="ovbartrack">
+                  <span className="ovbarfill" style={{ width: `${Math.max(7, Math.round((x.pending / loadMax) * 100))}%` }}>
+                    {x.alis > 0 && <span className="ovseg alis" style={{ flexGrow: x.alis }} title={`Alış ${x.alis}`} />}
+                    {x.satis > 0 && <span className="ovseg satis" style={{ flexGrow: x.satis }} title={`Satış ${x.satis}`} />}
+                  </span>
+                </span>
                 <span className="ovbarval">{x.issue > 0 && <i className="ovbarwarn" title={`${x.issue} sorunlu belge`}>⚠</i>}{x.pending}</span>
               </button>
             )) : (
@@ -4367,9 +4372,15 @@ const CSS = `
 #fm-root .ovbar:hover{background:#f4f7fb}
 #fm-root .ovbarname{font-size:12.5px;font-weight:700;color:#1f2a3d;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #fm-root .ovbar:hover .ovbarname{color:var(--accent)}
-#fm-root .ovbartrack{height:16px;background:#eef1f7;border-radius:999px;overflow:hidden}
-#fm-root .ovbarfill{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,#3bc9a4,#0ca678);transition:width .5s cubic-bezier(.22,1,.36,1)}
-#fm-root .ovbarfill.iss{background:linear-gradient(90deg,#f0857d,#e0394a)}
+#fm-root .ovbartrack{height:17px;background:#eef1f7;border-radius:999px;overflow:hidden;box-shadow:inset 0 1px 2px rgba(16,24,40,.06)}
+#fm-root .ovbarfill{display:flex;height:100%;border-radius:999px;overflow:hidden;min-width:8px;transition:width .55s cubic-bezier(.22,1,.36,1);box-shadow:0 1px 3px rgba(16,24,40,.16)}
+#fm-root .ovseg{display:block;height:100%;transition:flex-grow .55s cubic-bezier(.22,1,.36,1)}
+#fm-root .ovseg.alis{background:linear-gradient(90deg,#5b9df9,#2563eb)}
+#fm-root .ovseg.satis{background:linear-gradient(90deg,#3bc9a4,#0ca678)}
+#fm-root .ovleg{display:flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:var(--muted)}
+#fm-root .ovlegd{width:9px;height:9px;border-radius:3px;display:inline-block}
+#fm-root .ovlegd.alis{background:#2563eb;margin-left:4px}
+#fm-root .ovlegd.satis{background:#0ca678;margin-left:10px}
 #fm-root .ovbarval{font-size:13px;font-weight:800;color:#0e1726;text-align:right;font-variant-numeric:tabular-nums;display:flex;align-items:center;justify-content:flex-end;gap:3px}
 #fm-root .ovbarwarn{font-style:normal;font-size:11px;color:#e0394a}
 #fm-root .ovwavefoot{display:flex;align-items:center;gap:8px;padding:10px 16px 14px;font-size:12px;color:var(--muted);border-top:1px solid var(--line)}
