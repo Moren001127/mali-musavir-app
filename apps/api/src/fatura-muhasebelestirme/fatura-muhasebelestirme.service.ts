@@ -8786,9 +8786,18 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         const uuids = (listResp.match(/<(?:\w+:)?documentUuid>([^<]+)<\/(?:\w+:)?documentUuid>/gi) || [])
           .map((m) => m.replace(/<[^>]+>/g, '').trim())
           .filter(Boolean);
-        // GEÇİCİ TEŞHİS (limit===777): ilk sorguda uuids sayısı + ham yanıtı hataya koy → yapı/parametre görülür.
+        // GEÇİCİ TEŞHİS (limit===777): ilk uuid için GetDocumentData ham yanıtını yakala → indirme neden boş.
         if (opts.limit === 777) {
-          throw new Error(`ELOGO_DBG uuids=${uuids.length} ${channel} ${docType} OPT=${optype} ${ch.start}..${ch.end} len=${listResp.length} :: ${listResp.replace(/\s+/g, ' ').slice(0, 850)}`);
+          let dbg = `uuids=${uuids.length} ${channel} ${docType} ${ch.start}..${ch.end}`;
+          if (uuids[0]) {
+            try {
+              const db = `<GetDocumentData xmlns="http://tempuri.org/"><sessionID>${this.xmlEscape(sessionID)}</sessionID><uuid>${this.xmlEscape(uuids[0])}</uuid>${this.elogoParamList([`DOCUMENTTYPE=${docType}`])}</GetDocumentData>`;
+              const dr = await this.soapPost(endpoint, ACT + 'GetDocumentData', db);
+              const b64 = this.tagText(dr, 'binaryData');
+              dbg += ` :: DATA len=${dr.length} b64len=${(b64 || '').length} :: ${dr.replace(/\s+/g, ' ').slice(0, 650)}`;
+            } catch (e: any) { dbg += ` :: DATA-ERR ${String(e?.message).slice(0, 350)}`; }
+          }
+          throw new Error('ELOGO_DBG2 ' + dbg);
         }
         for (const uuid of uuids) {
           if (payloads.length >= opts.limit) break;
