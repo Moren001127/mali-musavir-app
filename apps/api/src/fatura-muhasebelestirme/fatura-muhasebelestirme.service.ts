@@ -12490,6 +12490,25 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const det = this.buildMuhasebeNeden(tpFaaliyet, isSale, kat, giderTuru, matrahAccForNeden, isReturn);
     // Hesap atanmamışsa zengin yorum anlamsız → deterministik özet (AI çağırma).
     if (!hesapStr || !matrahAccForNeden) {
+      // #3 HESAP-UYUMSUZ (hesap BOŞALTILMIŞ): AI yeniden çağrılamaz (hesap yok) ve deterministik det
+      //   YANILTICI olur ("olağan satış 600"). Saklı zengin yorumdaki "…hesabına işlenmiştir" kapanışını
+      //   temizleyip "hesap atanmadı, seçin" yap (AI gerekçesi korunur); yoksa net mesaj üret. Sakla da.
+      if ((ocr as any)?.hesapUyumsuz) {
+        let z = String(ocr.muhasebeNedenZengin || '').trim();
+        if (z) {
+          z = z
+            .replace(/,?\s*[\dA-ZÇĞİÖŞÜ.\s]+hesab[ıi]na işlenmiştir\.?\s*$/i, '; ancak içerik ana faaliyetle uyuşmadığından OTOMATİK HESAP ATANMADI — doğru gelir hesabını manuel seçin.')
+            .replace(/işlenmiştir\.?\s*$/i, 'için otomatik hesap atanmadı — doğru gelir hesabını seçin.')
+            .trim();
+        } else {
+          z = `Faaliyet: ${tpFaaliyet || 'belirtilmemiş'}\nYorum: Faturanın içeriği mükellefin ana faaliyetiyle uyuşmadığından otomatik gelir hesabı atanmadı — doğru hesabı manuel seçin.`;
+        }
+        if (z && z !== String(ocr.muhasebeNedenZengin || '')) {
+          await (this.prisma as any).invoiceAccountingDocument
+            .update({ where: { id: doc.id }, data: { ocrData: { ...ocr, muhasebeNedenZengin: z } } }).catch(() => {});
+        }
+        return { ok: true, neden: z, zengin: true, denetim: cachedDenetim };
+      }
       return { ok: true, neden: det, zengin: false, denetim: cachedDenetim };
     }
 
