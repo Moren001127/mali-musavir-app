@@ -4373,10 +4373,30 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             if (channel === 'IN_EFATURA' && docType === 'E_ARSIV') { providerSkipped++; continue; }
             const uuid = String(payload.externalId || parsed.ettn || parsed.faturaNo || createHash('sha1').update(payload.xml).digest('hex'));
             const total = parsed.toplamTutar ?? ((parsed.matrah || 0) + (parsed.kdvTutari || 0));
-            const existing = await (this.prisma as any).eFaturaInbox.findUnique({
+            let existing = await (this.prisma as any).eFaturaInbox.findUnique({
               where: { tenantId_taxpayerId_entegrator_uuid: { tenantId, taxpayerId: opts.taxpayerId, entegrator: cfg.provider, uuid } },
               select: { id: true, isTransferred: true, documentId: true },
             });
+            // MÜKERRER KORUMASI: aynı fatura, çekim yolu değişince farklı uuid türetiyor
+            //   (purchase_bills:X ↔ e_invoices:X) → uuid tutmayınca İKİNCİ satır oluşuyordu (aktarılan
+            //   4 fatura tekrar görünüyordu). FATURA NO ile mevcut satır(lar)ı bul; AKTARILMIŞ/belgeli
+            //   olanı KORU, fazlalıkları sil, o satırı güncelle → tek satır kalır, aktarım durumu korunur.
+            const faturaNoKey = String(parsed.faturaNo || '').trim();
+            if (faturaNoKey) {
+              const sameNo = await (this.prisma as any).eFaturaInbox.findMany({
+                where: { tenantId, taxpayerId: opts.taxpayerId, entegrator: cfg.provider, faturaNo: faturaNoKey },
+                select: { id: true, isTransferred: true, documentId: true },
+              });
+              const havuz = existing && !sameNo.some((r: any) => r.id === existing.id) ? [existing, ...sameNo] : sameNo;
+              if (havuz.length > 1 || (havuz.length === 1 && havuz[0].id !== existing?.id)) {
+                const keep = havuz.find((r: any) => r.documentId || r.isTransferred) || havuz.find((r: any) => r.id === existing?.id) || havuz[0];
+                const sil = havuz.filter((r: any) => r.id !== keep.id).map((r: any) => r.id);
+                if (sil.length) await (this.prisma as any).eFaturaInbox.deleteMany({ where: { id: { in: sil } } });
+                existing = keep;
+              } else if (havuz.length === 1) {
+                existing = havuz[0];
+              }
+            }
             const storedVisual = this.providerStoredVisual(payload);
             const data = {
               ettn: parsed.ettn || null,
