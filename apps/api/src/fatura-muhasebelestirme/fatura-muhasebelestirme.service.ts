@@ -8611,37 +8611,42 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const start = `${donem}-01`, end = `${donem}-31`;
     const dateOf = (it: any) => String(it?.attributes?.issue_date || it?.attributes?.date || it?.attributes?.created_at || '').slice(0, 10);
     const sonuc: any = { firmaNo };
-    // ÇOK-UÇNOKTA SAYIM: 12'nin hangi kaynakta olduğunu bul.
-    for (const path of ['e_invoice_inboxes', 'purchase_bills', 'e_invoices', 'e_archives']) {
+    // e_invoices'i DOĞRU include (invoice) ile sorgula — 12 burada olmalı (billed+unbilled gelen e-Faturalar).
+    for (const path of ['e_invoices']) {
       try {
         const rows: any[] = [];
-        let useDate = path !== 'e_invoice_inboxes';
+        let included: any[] = [];
+        let useDate = true;
         for (let page = 1; page <= 12; page++) {
-          const params = new URLSearchParams({ 'page[number]': String(page), 'page[size]': '25', sort: '-issue_date' });
-          if (path !== 'e_invoice_inboxes') params.set('include', 'active_e_document');
+          const params = new URLSearchParams({ 'page[number]': String(page), 'page[size]': '25', sort: '-issue_date', include: 'invoice' });
           if (useDate) params.set('filter[issue_date]', `${start}..${end}`);
           let r = await pfetch(path, params);
           if (r && !r.ok && useDate && /issue_date|not a date|Bad Request/i.test(await r.clone().text())) {
             useDate = false; params.delete('filter[issue_date]'); r = await pfetch(path, params);
           }
           if (!r) { sonuc[path] = { hata: '429-kalıcı' }; break; }
-          if (!r.ok) { sonuc[path] = { hata: r.status, detay: (await r.text()).slice(0, 150) }; break; }
+          if (!r.ok) { sonuc[path] = { hata: r.status, detay: (await r.text()).slice(0, 200) }; break; }
           const j: any = await r.json();
           const items = Array.isArray(j?.data) ? j.data : [];
+          if (Array.isArray(j?.included)) included = included.concat(j.included);
           rows.push(...items);
-          await sleep(1500); // sayfalar arası boşluk
+          await sleep(1500);
           if (items.length < 25) break;
         }
         if (sonuc[path]?.hata) continue;
         const temmuz = rows.filter((it) => { const d = dateOf(it); return d >= start && d <= end; });
+        const invTip = (it: any) => it?.relationships?.invoice?.data?.type;
+        const tipSay: any = {}; temmuz.forEach((it) => { const t = String(invTip(it) || 'yok'); tipSay[t] = (tipSay[t] || 0) + 1; });
         sonuc[path] = {
           cekilenToplam: rows.length,
           temmuz: temmuz.length,
+          temmuzInvoiceTipDagilimi: tipSay,
           ornekAttrKeys: Object.keys(rows[0]?.attributes || {}),
-          ornek: temmuz.slice(0, 3).map((it) => ({ id: it.id, type: it.type, no: it.attributes?.invoice_no || it.attributes?.invoice_id, tarih: dateOf(it), net: it.attributes?.net_total ?? it.attributes?.gross_total, activeED: it.relationships?.active_e_document?.data })),
+          ilkHamKayit: rows[0] ? { id: rows[0].id, type: rows[0].type, attributes: rows[0].attributes, relationships: rows[0].relationships } : null,
+          ornek: temmuz.slice(0, 5).map((it) => ({ id: it.id, no: it.attributes?.invoice_no || it.attributes?.external_id, tarih: dateOf(it), net: it.attributes?.net_total ?? it.attributes?.gross_total, invoiceTip: invTip(it), direction: it.attributes?.direction || it.attributes?.item_type })),
+          includedTipleri: Array.from(new Set(included.map((x) => x?.type))),
         };
-      } catch (e: any) { sonuc[path] = { hata: e?.message?.slice(0, 120) }; }
-      await sleep(2500); // uç noktalar arası boşluk
+      } catch (e: any) { sonuc[path] = { hata: e?.message?.slice(0, 150) }; }
     }
     return sonuc;
   }
