@@ -8489,28 +8489,46 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const include = opts.direction === 'ALIS'
       ? 'spender,pay_to,details,details.product,active_e_document'
       : 'contact,details,details.product,active_e_document';
-    const pageSize = Math.min(Math.max(Number(opts.limit || 25), 1), 25);
-    const maxPages = Math.max(1, Math.ceil(opts.limit / pageSize));
+    const pageSize = 25; // Parasut sayfa üst sınırı
+    const scanCap = 60;  // istemci-tarafı süzmede geriye tarama üst sınırı (60×25 = 1500 fatura)
+    const start = String(opts.period.startDate || '').slice(0, 10);
+    const end = String(opts.period.endDate || '').slice(0, 10);
     const payloads: ProviderInvoicePayload[] = [];
-
-    for (let page = 1; page <= maxPages && payloads.length < opts.limit; page++) {
+    // Bazı Parasut sürümleri issue_date ARALIK (..) filtresini reddediyor ("'issue_date' is not a date").
+    // Önce sunucu-tarafı aralık filtresini dene; reddedilirse filtreyi bırak, sort=-issue_date ile
+    // (yeni→eski) çekip İSTEMCİ tarafında [start,end] aralığına göre süz, aralığın gerisine düşünce dur.
+    let useDateFilter = true;
+    let stop = false;
+    for (let page = 1; page <= scanCap && payloads.length < opts.limit && !stop; page++) {
       const params = new URLSearchParams({
-        'filter[issue_date]': `${opts.period.startDate}..${opts.period.endDate}`,
         'page[number]': String(page),
         'page[size]': String(pageSize),
         include,
+        sort: '-issue_date',
       });
+      if (useDateFilter && start && end) params.set('filter[issue_date]', `${start}..${end}`);
       const url = `${baseUrl.replace(/\/+$/, '')}/${firmaNo}/${path}?${params.toString()}`;
       const res = await fetch(url, {
         method: 'GET',
         headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' },
       });
-      if (!res.ok) throw new Error(`Parasut fatura listesi alinamadi: ${res.status} ${await res.text()}`);
+      if (!res.ok) {
+        const errTxt = await res.text();
+        if (useDateFilter && /issue_date|not a date|invalid|Bad Request/i.test(errTxt)) {
+          useDateFilter = false; page--; continue; // aralık filtresiz, istemci-tarafı süzmeye geç
+        }
+        throw new Error(`Parasut fatura listesi alinamadi: ${res.status} ${errTxt.slice(0, 300)}`);
+      }
       const data: any = await res.json();
       const items = Array.isArray(data?.data) ? data.data : [];
       const included = Array.isArray(data?.included) ? data.included : [];
       for (const item of items) {
         if (payloads.length >= opts.limit) break;
+        if (!useDateFilter) {
+          const d = String(item?.attributes?.issue_date || '').slice(0, 10);
+          if (d && start && d < start) { stop = true; break; } // sıralı yeni→eski: aralığın gerisine düştük
+          if (d && end && d > end) continue;                    // aralıktan yeni: atla
+        }
         payloads.push(this.parasutInvoicePayload(item, included, opts.direction, opts.taxpayer, path));
       }
       if (items.length < pageSize) break;
