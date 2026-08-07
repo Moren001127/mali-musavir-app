@@ -302,7 +302,7 @@ const PROVIDER_DEFAULT_BASE_URL: Record<string, string> = {
   FORIBA: 'https://api.fitbulut.com/servis',
   PARASUT: 'https://api.parasut.com/v4',
   MIKRO: 'https://apidocs.mikro.com.tr',
-  ELOGO: 'https://earsiv.elogo.com.tr',
+  ELOGO: 'https://pb.elogo.com.tr/postboxservice.svc',
   LOGO_ISBASI: 'https://api.isbasi.com',
   KOLAYSOFT: 'https://efatura.kolaysoft.com.tr',
   TURMOB_EFATURA: 'https://turmobefatura.luca.com.tr',
@@ -316,7 +316,7 @@ export const PROVIDER_AUTH_HINTS: Record<string, string> = {
   FORIBA: "Sovos Foriba bulut API icin kullanici ve sifre. URL Sovos tarafindan verilir.",
   PARASUT: "Parasut OAuth2: client_id (apiKey), client_secret (apiSecret), kullanici, sifre ve Firma No gerekir.",
   MIKRO: "Mikro API anahtari ile baglanir. apidestek@mikro.com.tr adresinden anahtar talep edin.",
-  ELOGO: "eLogo kullanici ve sifresi. Opsiyonel olarak servis URL girilebilir.",
+  ELOGO: "eLogo web servis: Kullanıcı adı = eLogo panelindeki WEB SERVİS KULLANICI KODU (örn 3961368714), Şifre = web servis şifresi. Servis adresi otomatik (pb.elogo.com.tr). SMS gitmez.",
   LOGO_ISBASI: "Logo Isbasi API anahtari. developers.isbasi.com adresinden alin.",
   KOLAYSOFT: "Kolaysoft kullanici ve sifresi. Servis URL hesabiniza ozeldir.",
   TURMOB_EFATURA: "TÜRMOB e-Belge portalına mükellefin TCKN ve parolasıyla otomatik giriş yapılıp gelen/giden faturalar XML olarak çekilir (kod/2FA sormaz).",
@@ -6232,6 +6232,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       if (!cfg.apiKey && !(cfg.username && cfg.password)) return 'Turkcell API anahtarı veya kullanıcı+şifre gerekli';
       return null;
     }
+    // eLogo posta kutusu web servisi: web servis kullanıcı kodu + şifresi yeter; servis adresi varsayılandan.
+    if (cfg.provider === 'ELOGO') {
+      if (!cfg.username || !cfg.password) return 'eLogo web servis kullanıcı adı (kod) ve şifresi gerekli';
+      return null;
+    }
     if (cfg.provider !== 'UYUMSOFT' && cfg.provider !== 'TURMOB_EFATURA' && !I2I_SOAP_PROVIDERS.has(cfg.provider) && !cfg.baseUrl) return 'API adresi eksik';
     if (!cfg.username && !cfg.password && !cfg.apiKey && !cfg.apiSecret && !cfg.baseUrl) return 'Kimlik bilgisi eksik';
     return null;
@@ -6379,6 +6384,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     if (cfg.provider === 'TURMOB_EFATURA') return this.fetchTurmobPortalInvoices(cfg, opts);
     if (cfg.provider === 'PARASUT') return this.fetchParasutInvoices(cfg, opts);
     if (cfg.provider === 'TURKCELL') return this.fetchTurkcellInvoices(cfg, opts);
+    if (cfg.provider === 'ELOGO') return this.fetchElogoInvoices(cfg, opts);
     return this.fetchGenericRestInvoices(cfg, opts);
   }
 
@@ -8689,6 +8695,138 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       </GetInvoiceRequest>`;
     const text = await this.soapPost(baseUrl, '', fetchBody);
     return this.extractPayloadsFromProviderResponse(text, ['CONTENT', 'XML_CONTENT', 'DATA']);
+  }
+
+  /**
+   * eLogo özel entegratör "posta kutusu" web servisi (postboxservice.svc — WCF SOAP, ns http://tempuri.org/).
+   * Gelen (ALIS) faturalar: Login → GetDocumentList (OPTYPE=2, tarih aralığı) → her UUID için
+   * GetDocumentData (ZIP içinde UBL) → Logout. EINVOICE aralığı 30 günü aşamaz → ≤30 günlük parçalara böl.
+   * Kimlik: web servis kullanıcı KODU (userName, örn 3961368714) + web servis şifresi (passWord). SMS gitmez.
+   * Endpoint: canlı pb.elogo.com.tr, test pb-demo.elogo.com.tr (cfg.baseUrl 'demo/test' içeriyorsa test).
+   * Şema WSDL'den birebir: LoginType ns=http://schemas.datacontract.org/2004/07/eFaturaWebService,
+   *   paramList ns=http://schemas.microsoft.com/2003/10/Serialization/Arrays, OPTYPE 2=Gelen 1=Giden.
+   * NOT: İlk gerçek çekimde GetDocumentData binaryData'nın zip/ham olduğu canlı doğrulanacak.
+   */
+  private async fetchElogoInvoices(
+    cfg: RuntimeIntegrationConfig,
+    opts: {
+      taxpayer: any;
+      direction: 'ALIS' | 'SATIS';
+      period: { donem: string; startDate: string; endDate: string };
+      limit: number;
+    },
+  ): Promise<ProviderInvoicePayload[]> {
+    if (!cfg.username || !cfg.password) throw new Error('eLogo web servis kullanıcı adı (kod) ve şifresi gerekli');
+    let endpoint = String(cfg.baseUrl || '').trim();
+    if (!/postboxservice\.svc/i.test(endpoint)) {
+      endpoint = /demo|test/i.test(endpoint)
+        ? 'https://pb-demo.elogo.com.tr/postboxservice.svc'
+        : 'https://pb.elogo.com.tr/postboxservice.svc';
+    }
+    const ACT = 'http://tempuri.org/IPostBoxService/';
+
+    // 1) Login → sessionID
+    const loginBody =
+      `<Login xmlns="http://tempuri.org/">` +
+      `<login xmlns:a="http://schemas.datacontract.org/2004/07/eFaturaWebService">` +
+      `<a:appStr>MOREN</a:appStr>` +
+      `<a:passWord>${this.xmlEscape(cfg.password)}</a:passWord>` +
+      `<a:userName>${this.xmlEscape(cfg.username)}</a:userName>` +
+      `<a:version>1.0</a:version>` +
+      `</login></Login>`;
+    const loginResp = await this.soapPost(endpoint, ACT + 'Login', loginBody);
+    const sessionID = this.tagText(loginResp, 'sessionID');
+    if (!sessionID || !/<(?:\w+:)?LoginResult>\s*true/i.test(loginResp)) {
+      throw new Error('eLogo giriş başarısız (kullanıcı adı/şifre): ' + (this.tagText(loginResp, 'faultstring') || 'sessionID alınamadı'));
+    }
+
+    try {
+      const optype = opts.direction === 'ALIS' ? '2' : '1'; // 2=Gelen, 1=Giden
+      const chunks = this.splitDateChunks(opts.period.startDate, opts.period.endDate, 30);
+      const payloads: ProviderInvoicePayload[] = [];
+      const seen = new Set<string>();
+      for (const ch of chunks) {
+        if (payloads.length >= opts.limit) break;
+        const listParams = ['DOCUMENTTYPE=EINVOICE', `OPTYPE=${optype}`, `BEGINDATE=${ch.start}`, `ENDDATE=${ch.end}`, 'DATEBY=1'];
+        const listBody =
+          `<GetDocumentList xmlns="http://tempuri.org/">` +
+          `<sessionID>${this.xmlEscape(sessionID)}</sessionID>` +
+          this.elogoParamList(listParams) +
+          `</GetDocumentList>`;
+        const listResp = await this.soapPost(endpoint, ACT + 'GetDocumentList', listBody);
+        const uuids = (listResp.match(/<(?:\w+:)?documentUuid>([^<]+)<\/(?:\w+:)?documentUuid>/gi) || [])
+          .map((m) => m.replace(/<[^>]+>/g, '').trim())
+          .filter(Boolean);
+        for (const uuid of uuids) {
+          if (payloads.length >= opts.limit) break;
+          if (seen.has(uuid)) continue;
+          seen.add(uuid);
+          let xml: string | null = null;
+          try {
+            const dataBody =
+              `<GetDocumentData xmlns="http://tempuri.org/">` +
+              `<sessionID>${this.xmlEscape(sessionID)}</sessionID>` +
+              `<uuid>${this.xmlEscape(uuid)}</uuid>` +
+              this.elogoParamList(['DOCUMENTTYPE=EINVOICE']) +
+              `</GetDocumentData>`;
+            const dataResp = await this.soapPost(endpoint, ACT + 'GetDocumentData', dataBody);
+            const b64 = this.tagText(dataResp, 'binaryData');
+            if (b64) xml = await this.elogoUnzipXml(Buffer.from(b64, 'base64'));
+          } catch (e: any) {
+            this.logger.warn(`eLogo GetDocumentData ${uuid} hata: ${e?.message}`);
+          }
+          if (!xml || !xml.includes('<')) continue;
+          payloads.push({ externalId: `elogo:${uuid}`, originalName: `${uuid}.xml`, xml });
+        }
+      }
+      return payloads;
+    } finally {
+      try {
+        await this.soapPost(endpoint, ACT + 'Logout', `<Logout xmlns="http://tempuri.org/"><sessionID>${this.xmlEscape(sessionID)}</sessionID></Logout>`);
+      } catch { /* logout best-effort */ }
+    }
+  }
+
+  private elogoParamList(params: string[]): string {
+    const items = params.map((p) => `<b:string>${this.xmlEscape(p)}</b:string>`).join('');
+    return `<paramList xmlns:b="http://schemas.microsoft.com/2003/10/Serialization/Arrays">${items}</paramList>`;
+  }
+
+  /** base64 çözülmüş buffer'ı zip ise açıp ilk XML'i, değilse ham metni döndürür. */
+  private async elogoUnzipXml(buf: Buffer): Promise<string | null> {
+    try {
+      const zip = await JSZip.loadAsync(buf);
+      const names = Object.keys(zip.files).filter((n) => !zip.files[n].dir);
+      const xmlName = names.find((n) => /\.xml$/i.test(n)) || names[0];
+      if (xmlName) {
+        const txt = await zip.files[xmlName].async('string');
+        if (txt && txt.includes('<')) return txt;
+      }
+    } catch { /* zip değil → ham metin dene */ }
+    const asText = buf.toString('utf8');
+    return asText.includes('<') ? asText : null;
+  }
+
+  /** Tarih aralığını ≤maxDays günlük parçalara böler (eLogo EINVOICE 30 gün sınırı). */
+  private splitDateChunks(startDate: string, endDate: string, maxDays: number): Array<{ start: string; end: string }> {
+    const s = String(startDate || '').slice(0, 10);
+    const e = String(endDate || '').slice(0, 10);
+    const start = new Date(`${s}T00:00:00.000Z`);
+    const end = new Date(`${e}T00:00:00.000Z`);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start > end) {
+      return [{ start: s || e, end: e || s }];
+    }
+    const out: Array<{ start: string; end: string }> = [];
+    let cur = new Date(start.getTime());
+    while (cur <= end) {
+      const chunkEnd = new Date(cur.getTime());
+      chunkEnd.setUTCDate(chunkEnd.getUTCDate() + (maxDays - 1));
+      const realEnd = chunkEnd > end ? end : chunkEnd;
+      out.push({ start: cur.toISOString().slice(0, 10), end: realEnd.toISOString().slice(0, 10) });
+      cur = new Date(realEnd.getTime());
+      cur.setUTCDate(cur.getUTCDate() + 1);
+    }
+    return out;
   }
 
   private async fetchGenericRestInvoices(
