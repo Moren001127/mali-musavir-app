@@ -4161,20 +4161,21 @@ function ScreenGenel({ taxpayers, period, onOpen }: { taxpayers: any[]; period: 
     .filter((x) => x.pending > 0)
     .sort((a, b) => b.pending - a.pending);
   const loadCount = loadAll.length;
-  // DONUT (halka) dağılım — mükellef paylarını dilim dilim gösterir (çubuk DEĞİL, gerçek grafik).
-  const donutPalette = ['#2563eb', '#0ca678', '#c2710c', '#7c3aed', '#e0394a', '#0d9488'];
-  const DONUT_C = 2 * Math.PI * 70; // r=70 çevre
-  const donutToplam = loadAll.reduce((s, x) => s + x.pending, 0) || 1;
-  const donutBase = loadAll.slice(0, 6).map((x, i) => ({ id: x.id, name: x.name, val: x.pending, issue: x.issue, color: donutPalette[i % donutPalette.length] }));
-  const digerAdet = loadAll.slice(6).reduce((s, x) => s + x.pending, 0);
-  if (digerAdet > 0) donutBase.push({ id: '', name: 'Diğer mükellefler', val: digerAdet, issue: 0, color: '#94a3b8' });
-  let donutAcc = 0;
-  const donutSegs = donutBase.map((s) => {
-    const frac = s.val / donutToplam;
-    const seg = { ...s, dash: frac * DONUT_C, offset: -donutAcc * DONUT_C, pct: Math.round(frac * 100) };
-    donutAcc += frac;
-    return seg;
-  });
+  const loadMax = loadAll[0]?.pending || 1;
+  // SAF GRAFİK (firma adı YOK) — alış (mavi) + satış (yeşil) yumuşak alan eğrileri; mükellef bazında
+  //   bekleyen belge dağılımı. Kullanıcı isteği: sadece grafik görünsün, isim/lejant listesi olmasın.
+  const GW = 1000, GH = 210, GP = 6;
+  const buildPts = (vals: number[], ymax: number) => {
+    let s = vals;
+    if (s.length === 0) return [] as { x: number; y: number }[];
+    if (s.length === 1) s = [s[0], s[0]];
+    const n = s.length;
+    return s.map((v, i) => ({ x: GP + (i / (n - 1)) * (GW - 2 * GP), y: (GH - GP) - (v / ymax) * (GH - 2 * GP) }));
+  };
+  const gYmax = Math.max(1, ...loadAll.map((x) => Math.max(x.alis, x.satis)));
+  const alisLine = smoothLine(buildPts(loadAll.map((x) => x.alis), gYmax));
+  const satisLine = smoothLine(buildPts(loadAll.map((x) => x.satis), gYmax));
+  const areaOf = (line: string) => (line ? `${line} L ${GW - GP} ${GH} L ${GP} ${GH} Z` : '');
   const ringDash = (completionPct / 100) * 402.12;
   return (
     <section className="screen">
@@ -4216,32 +4217,28 @@ function ScreenGenel({ taxpayers, period, onOpen }: { taxpayers: any[]; period: 
       {/* ── DALGA GRAFİĞİ + İŞLENME HALKASI ── */}
       <div className="ovcharts">
         <div className="card ovwave">
-          <div className="ch"><h3>Belge yükü dağılımı</h3><div className="sp" /><span className="mu">mükellef payları</span></div>
+          <div className="ch"><h3>Belge yükü dağılımı</h3><div className="sp" /><span className="ovleg"><i className="ovlegd alis" />Alış<i className="ovlegd satis" />Satış</span></div>
           {loadCount > 0 ? (
-            <div className="ovdonut">
-              <svg viewBox="0 0 180 180" className="ovdonutsvg">
-                <circle cx="90" cy="90" r="70" fill="none" stroke="#eef1f7" strokeWidth="20" />
-                {donutSegs.map((s, i) => (
-                  <circle key={i} cx="90" cy="90" r="70" fill="none" stroke={s.color} strokeWidth="20"
-                    strokeDasharray={`${s.dash} ${DONUT_C}`} strokeDashoffset={s.offset}
-                    transform="rotate(-90 90 90)"><title>{`${s.name}: ${s.val} (%${s.pct})`}</title></circle>
-                ))}
-                <text x="90" y="85" textAnchor="middle" className="ovdonutnum">{donutToplam}</text>
-                <text x="90" y="105" textAnchor="middle" className="ovdonutlbl">bekleyen belge</text>
+            <div className="ovwavebody">
+              <svg viewBox="0 0 1000 210" preserveAspectRatio="none" className="ovwavesvg">
+                <defs>
+                  <linearGradient id="fmA" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#2563eb" stopOpacity="0.30" /><stop offset="100%" stopColor="#2563eb" stopOpacity="0.02" /></linearGradient>
+                  <linearGradient id="fmS" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#0ca678" stopOpacity="0.28" /><stop offset="100%" stopColor="#0ca678" stopOpacity="0.02" /></linearGradient>
+                </defs>
+                {areaOf(alisLine) && <path d={areaOf(alisLine)} fill="url(#fmA)" />}
+                {areaOf(satisLine) && <path d={areaOf(satisLine)} fill="url(#fmS)" />}
+                {alisLine && <path d={alisLine} fill="none" stroke="#2563eb" strokeWidth="2.5" vectorEffect="non-scaling-stroke" strokeLinecap="round" strokeLinejoin="round" />}
+                {satisLine && <path d={satisLine} fill="none" stroke="#0ca678" strokeWidth="2.5" vectorEffect="non-scaling-stroke" strokeLinecap="round" strokeLinejoin="round" />}
               </svg>
-              <div className="ovdonutleg">
-                {donutSegs.map((s, i) => (
-                  <button key={i} type="button" className="ovdlegrow" disabled={!s.id} onClick={() => s.id && onOpen(s.id)} title={s.id ? `${s.name} — ${s.val} bekleyen (%${s.pct})` : s.name}>
-                    <i className="ovdlegd" style={{ background: s.color }} />
-                    <span className="ovdlegn">{s.name}</span>
-                    <span className="ovdlegv">{s.issue > 0 && <i className="ovbarwarn" title={`${s.issue} sorunlu`}>⚠</i>}{s.val}<small>%{s.pct}</small></span>
-                  </button>
-                ))}
-              </div>
             </div>
           ) : (
             <div className="empty">Bekleyen belge yok — her şey güncel. 🎉</div>
           )}
+          <div className="ovwavefoot">
+            <span><b>{loadCount}</b> mükellefte bekleyen belge var</span>
+            <span className="sp" />
+            <span>en yüksek <b>{loadMax}</b> belge</span>
+          </div>
         </div>
         <div className="card ovring">
           <div className="ch"><h3>İşlenme oranı</h3></div>
@@ -4383,21 +4380,10 @@ const CSS = `
 #fm-root .ovcharts .card{margin-bottom:0}
 #fm-root .ovwavebody{padding:14px 8px 4px}
 #fm-root .ovwavesvg{display:block;width:100%;height:200px}
-#fm-root .ovdonut{display:flex;align-items:center;gap:22px;padding:20px 20px 14px}
-#fm-root .ovdonutsvg{width:172px;height:172px;flex-shrink:0}
-#fm-root .ovdonutsvg circle[stroke-dasharray]{transition:stroke-dasharray .6s cubic-bezier(.22,1,.36,1),stroke-dashoffset .6s cubic-bezier(.22,1,.36,1)}
-#fm-root .ovdonutnum{font-size:33px;font-weight:800;fill:#0e1726}
-#fm-root .ovdonutlbl{font-size:11px;font-weight:700;fill:#94a0b2}
-#fm-root .ovdonutleg{display:flex;flex-direction:column;gap:3px;flex:1;min-width:0}
-#fm-root .ovdlegrow{display:flex;align-items:center;gap:9px;width:100%;border:none;background:transparent;padding:5px 8px;border-radius:8px;cursor:pointer;text-align:left;transition:background .13s}
-#fm-root .ovdlegrow:not(:disabled):hover{background:#f4f7fb}
-#fm-root .ovdlegrow:disabled{cursor:default;opacity:.85}
-#fm-root .ovdlegd{width:11px;height:11px;border-radius:3px;flex-shrink:0}
-#fm-root .ovdlegn{font-size:12.5px;font-weight:700;color:#1f2a3d;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
-#fm-root .ovdlegrow:not(:disabled):hover .ovdlegn{color:var(--accent)}
-#fm-root .ovdlegv{font-size:13px;font-weight:800;color:#0e1726;font-variant-numeric:tabular-nums;display:flex;align-items:center;gap:4px}
-#fm-root .ovdlegv small{font-size:10.5px;font-weight:700;color:#94a0b2}
-#fm-root .ovbarwarn{font-style:normal;font-size:11px;color:#e0394a}
+#fm-root .ovleg{display:flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:var(--muted)}
+#fm-root .ovlegd{width:9px;height:9px;border-radius:3px;display:inline-block}
+#fm-root .ovlegd.alis{background:#2563eb;margin-left:4px}
+#fm-root .ovlegd.satis{background:#0ca678;margin-left:10px}
 #fm-root .ovwavefoot{display:flex;align-items:center;gap:8px;padding:10px 16px 14px;font-size:12px;color:var(--muted);border-top:1px solid var(--line)}
 #fm-root .ovwavefoot b{color:var(--text);font-weight:800}
 #fm-root .ovwavefoot .sp{flex:1}
