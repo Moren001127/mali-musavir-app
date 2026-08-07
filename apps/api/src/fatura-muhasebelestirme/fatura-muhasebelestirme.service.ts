@@ -8394,16 +8394,29 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
 
     const box = opts.direction === 'ALIS' ? 'inboxinvoice' : 'outboxinvoice';
 
-    // --- Fatura listesi ---
-    const listUrl = new URL(`${baseUrl}/v1/${box}/list`);
-    listUrl.searchParams.set('startDate', opts.period.startDate);
-    listUrl.searchParams.set('endDate', opts.period.endDate);
-    const listRes = await fetch(listUrl.toString(), {
-      method: 'GET',
-      headers: { ...authHeaders, Accept: 'application/json' },
-    });
-    const listText = await listRes.text();
-    if (!listRes.ok) throw new Error(`Turkcell ${box} liste hatası: ${listRes.status} ${listText.slice(0, 250)}`);
+    // --- Fatura listesi --- Turkcell param adı/format kesin belgelenmedi (StartDate/EndDate DateTime
+    //   olması muhtemel) → birkaç varyantı sırayla dene, 200 dönen kazanır (deploy döngüsünü azaltır).
+    const startD = String(opts.period.startDate).slice(0, 10);
+    const endD = String(opts.period.endDate).slice(0, 10);
+    const paramVariants: Array<Record<string, string>> = [
+      { StartDate: `${startD}T00:00:00`, EndDate: `${endD}T23:59:59` },
+      { startDate: `${startD}T00:00:00`, endDate: `${endD}T23:59:59` },
+      { StartDate: startD, EndDate: endD },
+      { startDate: startD, endDate: endD },
+      { beginDate: `${startD}T00:00:00`, endDate: `${endD}T23:59:59` },
+    ];
+    let listRes: Response | null = null;
+    let listText = '';
+    let usedVariant = '';
+    for (const pv of paramVariants) {
+      const listUrl = new URL(`${baseUrl}/v1/${box}/list`);
+      for (const [k, v] of Object.entries(pv)) listUrl.searchParams.set(k, v);
+      listRes = await fetch(listUrl.toString(), { method: 'GET', headers: { ...authHeaders, Accept: 'application/json' } });
+      listText = await listRes.text();
+      if (listRes.ok) { usedVariant = Object.keys(pv).join(','); break; }
+    }
+    if (!listRes || !listRes.ok) throw new Error(`Turkcell ${box} liste hatası: ${listRes?.status} ${listText.slice(0, 250)}`);
+    if (usedVariant) this.logger.log(`Turkcell ${box} liste varyant=${usedVariant} OK`);
     let listJson: any;
     try {
       listJson = JSON.parse(listText);
