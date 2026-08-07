@@ -870,7 +870,7 @@ function FmPeriod({ value, onChange }: { value: string; onChange: (v: string) =>
 }
 
 export default function FaturaMerkeziPage() {
-  const [screen, setScreen] = useState('mukellefler');
+  const [screen, setScreen] = useState('genel');
   const accent = 'petrol';
   const [taxpayerId, setTaxpayerId] = useState('');
   const nowP = new Date();
@@ -957,7 +957,7 @@ export default function FaturaMerkeziPage() {
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
             </a>
             <div className="brandrow">
-              <div className="brandtx" role="button" title="Ana sayfa — Mükellefler" onClick={() => go('mukellefler')} style={{ cursor: 'pointer' }}>
+              <div className="brandtx" role="button" title="Ana sayfa — Genel Bakış" onClick={() => go('genel')} style={{ cursor: 'pointer' }}>
                 <div className="brandlogo">Moren</div>
                 <div className="brandmod">Fatura Merkezi</div>
               </div>
