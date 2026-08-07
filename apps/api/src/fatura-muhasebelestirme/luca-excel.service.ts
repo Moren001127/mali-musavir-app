@@ -225,9 +225,14 @@ export async function buildLucaImportExcel(payload: BatchPayload): Promise<Buffe
 const ISLETME_HEADER =
   'İŞLEM;KATEGORİ;BELGE TÜRÜ;EVRAK TARİHİ;KAYIT TARİHİ;SERİ NO;EVRAK NO;TCKN/VKN;VERGİ DAİRESİ;SOYADI ÜNVAN;ADI DEVAMI;ADRES;CARİ HESAP;KDV İSTİSNASI;KOD;BELGE TÜRÜ(DB);ALIŞ/SATIŞ TÜRÜ;KAYIT ALT TÜRÜ;PLAKA NO;MAL VE HİZMET KODU;AÇIKLAMA;MİKTAR;B.FİYAT;TUTAR;TEVKİFAT;KDV ORANI;İŞLEM BEDELİ;MATRAHTAN DÜŞÜLECEK TUTAR;ÖZEL MATRAH ŞEKLİNE DAHİL OLMAYAN BEDEL;KDV TUTARI;TOPLAM TUTAR;KREDİLİ TUTAR;STOPAJ KODU;STOPAJ TUTARI;DÖNEMSELLIK İLKESİ;FAALIYET KODU;ÖDEME TÜRÜ';
 
-/** cp1254 CSV hucresi — ; veya tirnak/yeni satir varsa tirnakla. */
+/** cp1254 CSV hucresi — ; veya tirnak/yeni satir varsa tirnakla. GUVENLIK: =,+,-,@ ile baslayan
+ *  metin (cari/firma adi fatura icerigi) Excel/LibreOffice'te FORMUL calisir → basina apostrof koy. */
 function csvCell(v: any): string {
-  const s = v == null ? '' : String(v);
+  let s = v == null ? '' : String(v);
+  // Formul enjeksiyonu: SADECE sayisal OLMAYAN hucrelerde (isim/aciklama) basina apostrof — negatif
+  //   tutar (-100,50) gibi sayisal alanlar BOZULMAZ (Luca ice aktarimi guvende). Gercek isim =,+,@ ile baslamaz.
+  const isNumeric = /^[-+]?[\d.,]+$/.test(s);
+  if (!isNumeric && /^[=+\-@\t\r]/.test(s)) s = "'" + s;
   if (/[;"\r\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
   return s;
 }

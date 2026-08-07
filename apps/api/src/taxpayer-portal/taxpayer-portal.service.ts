@@ -755,7 +755,7 @@ export class TaxpayerPortalService {
   async changePassword(taxpayerId: string, currentPassword: string, newPassword: string) {
     const cur = String(currentPassword || '');
     const nw = String(newPassword || '');
-    if (nw.length < 6) throw new BadRequestException('Yeni şifre en az 6 karakter olmalı');
+    if (nw.length < 8) throw new BadRequestException('Yeni şifre en az 8 karakter olmalı'); // güvenlik: min 8 (müşavir tarafıyla tutarlı)
     const tp = await this.prisma.taxpayer.findUnique({ where: { id: taxpayerId } });
     if (!tp || !tp.portalPasswordHash) throw new BadRequestException('Şifre tanımlı değil — müşavirinizle görüşün');
     const ok = await argon2.verify(tp.portalPasswordHash, cur);
