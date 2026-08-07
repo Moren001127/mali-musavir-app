@@ -3641,6 +3641,7 @@ function ScreenAktarilanlar({ taxpayerId, period, mode = 'bekleyen', isIsletme =
 /* ===================== EKRAN: ENTEGRATÖRLER ===================== */
 const PROVIDER_OPTS = [
   { v: 'PARASUT', l: 'Paraşüt' },
+  { v: 'TURKCELL', l: 'Turkcell e-Şirket' },
   { v: 'TURMOB_EFATURA', l: 'TÜRMOB e-Fatura' },
   { v: 'UYUMSOFT', l: 'Uyumsoft' },
   { v: 'IZIBIZ', l: 'İzibiz' },
@@ -3677,6 +3678,7 @@ function ScreenEntegrator({ taxpayerId, period }: { taxpayerId: string; period: 
   const [showAddForm, setShowAddForm] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const isParasut = provider === 'PARASUT';
+  const isTurkcell = provider === 'TURKCELL';
   const resetForm = () => { setUsername(''); setPassword(''); setApiKey(''); setApiSecret(''); setAccountId(''); };
   const openAdd = () => { setEditMode(false); resetForm(); setProvider('PARASUT'); setShowAddForm(true); };
   const openEdit = (c: any) => { setEditMode(true); setProvider(c.provider); setUsername(c.username || ''); setAccountId(c.accountId || ''); setApiKey(''); setApiSecret(''); setPassword(''); setShowAddForm(true); };
@@ -3774,7 +3776,7 @@ function ScreenEntegrator({ taxpayerId, period }: { taxpayerId: string; period: 
                     {PROVIDER_OPTS.map((p) => (<option key={p.v} value={p.v}>{p.l}</option>))}
                   </select>
                 </div>
-                <div className="fld"><label>client_id {isParasut ? '' : '(varsa)'}</label><input autoComplete="off" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder={isParasut ? 'Paraşüt destekten alınan' : '—'} /></div>
+                <div className="fld"><label>{isTurkcell ? 'API Key' : `client_id${isParasut ? '' : ' (varsa)'}`}</label><input autoComplete="off" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder={isParasut ? 'Paraşüt destekten alınan' : isTurkcell ? 'Turkcell panelinden alınan API anahtarı' : '—'} /></div>
               </div>
               <div className="erw">
                 <div className="fld"><label>client_secret</label><input type="password" autoComplete="new-password" value={apiSecret} onChange={(e) => setApiSecret(e.target.value)} placeholder="••••••••" /></div>
