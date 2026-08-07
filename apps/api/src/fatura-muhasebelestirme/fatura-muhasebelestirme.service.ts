@@ -8749,20 +8749,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     }
     const ACT = 'http://tempuri.org/IPostBoxService/';
 
-    // 1) Login → sessionID
-    const loginBody =
-      `<Login xmlns="http://tempuri.org/">` +
-      `<login xmlns:a="http://schemas.datacontract.org/2004/07/eFaturaWebService">` +
-      `<a:appStr>MOREN</a:appStr>` +
-      `<a:passWord>${this.xmlEscape(cfg.password)}</a:passWord>` +
-      `<a:userName>${this.xmlEscape(cfg.username)}</a:userName>` +
-      `<a:version>1.0</a:version>` +
-      `</login></Login>`;
-    const loginResp = await this.soapPost(endpoint, ACT + 'Login', loginBody);
-    const sessionID = this.tagText(loginResp, 'sessionID');
-    if (!sessionID || !/<(?:\w+:)?LoginResult>\s*true/i.test(loginResp)) {
-      throw new Error('eLogo giriş başarısız (kullanıcı adı/şifre): ' + (this.tagText(loginResp, 'faultstring') || 'sessionID alınamadı'));
-    }
+    // 1) Oturum — HER çekimde yeni giriş, eLogo'nun 10-hatalı-giriş kilidini riske atar.
+    //    sessionID kullanıcı bazında önbelleklenip (~8 dk) tekrar kullanılır; oturum düşerse temizlenir.
+    const sessionID = await this.elogoLogin(endpoint, ACT, cfg.username, cfg.password);
 
     try {
       // Kanal: Alış e-Fatura (IN_EFATURA), Satış e-Fatura (OUT_EFATURA), Satış e-Arşiv (OUT_EARSIV).
@@ -8786,19 +8775,6 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         const uuids = (listResp.match(/<(?:\w+:)?documentUuid>([^<]+)<\/(?:\w+:)?documentUuid>/gi) || [])
           .map((m) => m.replace(/<[^>]+>/g, '').trim())
           .filter(Boolean);
-        // GEÇİCİ TEŞHİS (limit===777): ilk uuid için GetDocumentData ham yanıtını yakala → indirme neden boş.
-        if (opts.limit === 777) {
-          let dbg = `uuids=${uuids.length} ${channel} ${docType} ${ch.start}..${ch.end}`;
-          if (uuids[0]) {
-            try {
-              const db = `<GetDocumentData xmlns="http://tempuri.org/"><sessionID>${this.xmlEscape(sessionID)}</sessionID><uuid>${this.xmlEscape(uuids[0])}</uuid>${this.elogoParamList([`DOCUMENTTYPE=${docType}`])}</GetDocumentData>`;
-              const dr = await this.soapPost(endpoint, ACT + 'GetDocumentData', db);
-              const b64 = this.tagText(dr, 'binaryData');
-              dbg += ` :: DATA len=${dr.length} b64len=${(b64 || '').length} :: ${dr.replace(/\s+/g, ' ').slice(0, 650)}`;
-            } catch (e: any) { dbg += ` :: DATA-ERR ${String(e?.message).slice(0, 350)}`; }
-          }
-          throw new Error('ELOGO_DBG2 ' + dbg);
-        }
         for (const uuid of uuids) {
           if (payloads.length >= opts.limit) break;
           if (seen.has(uuid)) continue;
@@ -8822,11 +8798,39 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         }
       }
       return payloads;
-    } finally {
-      try {
-        await this.soapPost(endpoint, ACT + 'Logout', `<Logout xmlns="http://tempuri.org/"><sessionID>${this.xmlEscape(sessionID)}</sessionID></Logout>`);
-      } catch { /* logout best-effort */ }
+    } catch (err: any) {
+      // Oturum düşmüş/geçersizse önbelleği temizle → sonraki çekim yeniden giriş yapsın.
+      // (Logout ÇAĞIRMIYORUZ; session tekrar kullanılıyor → giriş sıklığı ve kilit riski azalır.)
+      if (/login|session|oturum|expired|IdmLogin/i.test(String(err?.message || ''))) {
+        FaturaMuhasebelestirmeService.elogoSessions.delete(`${endpoint}|${cfg.username}`);
+      }
+      throw err;
     }
+  }
+
+  private static readonly elogoSessions = new Map<string, { sid: string; ts: number }>();
+
+  /** eLogo oturumu — kullanıcı bazında önbellekli (~8 dk). Her çekimde yeni giriş yapıp eLogo'nun
+   *  10-hatalı-giriş kilidini tetiklememek için sessionID tekrar kullanılır. */
+  private async elogoLogin(endpoint: string, act: string, username: string, password: string): Promise<string> {
+    const key = `${endpoint}|${username}`;
+    const cached = FaturaMuhasebelestirmeService.elogoSessions.get(key);
+    if (cached && Date.now() - cached.ts < 8 * 60 * 1000) return cached.sid;
+    const loginBody =
+      `<Login xmlns="http://tempuri.org/">` +
+      `<login xmlns:a="http://schemas.datacontract.org/2004/07/eFaturaWebService">` +
+      `<a:appStr>MOREN</a:appStr>` +
+      `<a:passWord>${this.xmlEscape(password)}</a:passWord>` +
+      `<a:userName>${this.xmlEscape(username)}</a:userName>` +
+      `<a:version>1.0</a:version>` +
+      `</login></Login>`;
+    const loginResp = await this.soapPost(endpoint, act + 'Login', loginBody);
+    const sid = this.tagText(loginResp, 'sessionID');
+    if (!sid || !/<(?:\w+:)?LoginResult>\s*true/i.test(loginResp)) {
+      throw new Error('eLogo giriş başarısız (kullanıcı adı/şifre): ' + (this.tagText(loginResp, 'faultstring') || 'sessionID alınamadı'));
+    }
+    FaturaMuhasebelestirmeService.elogoSessions.set(key, { sid, ts: Date.now() });
+    return sid;
   }
 
   private elogoParamList(params: string[]): string {
