@@ -3201,11 +3201,14 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   }
 
   /** OCR/okuma ilerlemesi — tarama şeridi için. ocrStatus'a göre sayar. */
-  async ocrProgress(tenantId: string, opts: { taxpayerId?: string; period?: string }) {
+  async ocrProgress(tenantId: string, opts: { taxpayerId?: string; period?: string; kind?: string }) {
+    const kindNorm = String(opts.kind || '').toUpperCase();
     const where: any = {
       tenantId,
       ...(opts.taxpayerId ? { taxpayerId: opts.taxpayerId } : {}),
       ...periodWhere(opts.period),
+      // #11: alış/satış AYRI sayaç — kind verildiyse yalnız o yönün belgelerini say (toplam değil).
+      ...(kindNorm === 'ALIS' || kindNorm === 'SATIS' ? { invoiceKind: kindNorm } : {}),
     };
     const grouped = await (this.prisma as any).invoiceAccountingDocument.groupBy({
       by: ['ocrStatus'], where, _count: { _all: true },

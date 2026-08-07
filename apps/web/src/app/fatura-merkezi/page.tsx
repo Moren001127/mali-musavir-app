@@ -1204,8 +1204,9 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
   // OCR/okuma ilerlemesi — sunucudan periyodik çekilir (3sn). Sayfaya dönünce mevcut
   // durumu gösterir; okuma sunucuda sürdüğü için kapanmaz.
   const ocrProgQ = useQuery({
-    queryKey: ['fm-ocr-progress', taxpayerId, period],
-    queryFn: async () => (await api.get('/fatura-muhasebelestirme/ocr-progress', { params: { taxpayerId, period } })).data,
+    // #11: sayaç KIND'e göre — satış okurken satış adedini, alış okurken alış adedini göstersin (toplam değil).
+    queryKey: ['fm-ocr-progress', taxpayerId, period, kind],
+    queryFn: async () => (await api.get('/fatura-muhasebelestirme/ocr-progress', { params: { taxpayerId, period, kind } })).data,
     enabled: !!taxpayerId,
     // Okuma AKTİFKEN hızlı (3sn); boştayken seyrelt (15sn) → çoklu bilgisayarda gereksiz yük düşer,
     //   başka makinede başlayan okuma yine (15sn içinde) yakalanır. Cache'ten güncel duruma bakılır.

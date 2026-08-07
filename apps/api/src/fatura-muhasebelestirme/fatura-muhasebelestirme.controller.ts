@@ -303,8 +303,8 @@ export class FaturaMuhasebelestirmeController {
 
   /** OCR/okuma ilerlemesi — tarama şeridi için. */
   @Get('ocr-progress')
-  ocrProgress(@Req() req: any, @Query('taxpayerId') taxpayerId?: string, @Query('period') period?: string) {
-    return this.service.ocrProgress(req.user.tenantId, { taxpayerId, period });
+  ocrProgress(@Req() req: any, @Query('taxpayerId') taxpayerId?: string, @Query('period') period?: string, @Query('kind') kind?: string) {
+    return this.service.ocrProgress(req.user.tenantId, { taxpayerId, period, kind });
   }
 
   /** Faz F/6: eksik belge takibi — düzenli gelen ama bu dönem gelmeyen satıcılar. */
