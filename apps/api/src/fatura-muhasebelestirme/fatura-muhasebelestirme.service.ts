@@ -936,9 +936,20 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
 
       const remaining = Object.keys(config.taxpayers || {});
       if (remaining.length === 0) {
-        await tx.integrationConnection.delete({
-          where: { tenantId_provider: { tenantId, provider } },
-        });
+        // FK: IntegrationJob.connection -> IntegrationConnection (onDelete: Cascade YOK).
+        // Bağlantıya ait iş kaydı varsa satırı hard-delete etmek FK ihlali verir ("Kaldırılamadı").
+        // İş varsa satırı silme; config'i boşalt + pasifle. İş yoksa güvenle sil.
+        const jobCount = await tx.integrationJob.count({ where: { connectionId: existing.id } });
+        if (jobCount === 0) {
+          await tx.integrationConnection.delete({
+            where: { tenantId_provider: { tenantId, provider } },
+          });
+        } else {
+          await tx.integrationConnection.update({
+            where: { tenantId_provider: { tenantId, provider } },
+            data: { config, isActive: false },
+          });
+        }
       } else {
         await tx.integrationConnection.update({
           where: { tenantId_provider: { tenantId, provider } },

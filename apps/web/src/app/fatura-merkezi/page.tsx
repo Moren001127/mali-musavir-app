@@ -3675,7 +3675,11 @@ function ScreenEntegrator({ taxpayerId, period }: { taxpayerId: string; period: 
   const [apiSecret, setApiSecret] = useState('');
   const [accountId, setAccountId] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
+  const [editMode, setEditMode] = useState(false);
   const isParasut = provider === 'PARASUT';
+  const resetForm = () => { setUsername(''); setPassword(''); setApiKey(''); setApiSecret(''); setAccountId(''); };
+  const openAdd = () => { setEditMode(false); resetForm(); setProvider('PARASUT'); setShowAddForm(true); };
+  const openEdit = (c: any) => { setEditMode(true); setProvider(c.provider); setUsername(c.username || ''); setAccountId(c.accountId || ''); setApiKey(''); setApiSecret(''); setPassword(''); setShowAddForm(true); };
 
   const saveMut = useMutation({
     mutationFn: () =>
@@ -3690,9 +3694,9 @@ function ScreenEntegrator({ taxpayerId, period }: { taxpayerId: string; period: 
         isActive: true,
       }),
     onSuccess: () => {
-      toast.success('Entegratör kaydedildi');
+      toast.success(editMode ? 'Entegratör güncellendi' : 'Entegratör kaydedildi');
       qc.invalidateQueries({ queryKey: ['fm2', 'integrations'] });
-      setUsername(''); setPassword(''); setApiKey(''); setApiSecret(''); setAccountId('');
+      resetForm(); setEditMode(false); setShowAddForm(false);
     },
     onError: (e: any) => toast.error('Kaydedilemedi: ' + (e?.response?.data?.message || e?.message || 'hata')),
   });
@@ -3750,6 +3754,7 @@ function ScreenEntegrator({ taxpayerId, period }: { taxpayerId: string; period: 
                   <div className="ebtns">
                     <button className="btn ghost sm" disabled={fetchMut.isPending} onClick={() => fetchMut.mutate(c.provider)}>{fetchMut.isPending ? 'Sorgulanıyor…' : 'Sorgula'}</button>
                     <button className="btn ghost sm" disabled={talimatMut.isPending} onClick={() => talimatMut.mutate({ provider: c.provider, active: !c.talimat })}>{c.talimat ? 'Otomatiği kapat' : 'Otomatiği aç'}</button>
+                    <button className="btn ghost sm" onClick={() => openEdit(c)}>Güncelle</button>
                     <button className="btn ghost sm" disabled={delMut.isPending} onClick={() => { if (window.confirm(`${c.label || c.provider} kaldırılsın mı?`)) delMut.mutate(c.provider); }}>Kaldır</button>
                   </div>
                 </div>
@@ -3758,14 +3763,14 @@ function ScreenEntegrator({ taxpayerId, period }: { taxpayerId: string; period: 
           )}
           <div style={{ marginTop: 16 }}>
             {!showAddForm && (
-              <button className="btn primary entadd" type="button" onClick={() => setShowAddForm(true)}><span className="entplus">+</span> Yeni entegratör ekle</button>
+              <button className="btn primary entadd" type="button" onClick={openAdd}><span className="entplus">+</span> Yeni entegratör ekle</button>
             )}
             {showAddForm && (<>
-            <div className="ph entaddhead" style={{ marginBottom: 10 }}>Yeni entegratör ekle<button className="entclose" type="button" onClick={() => setShowAddForm(false)}>Vazgeç</button></div>
+            <div className="ph entaddhead" style={{ marginBottom: 10 }}>{editMode ? 'Entegratör bilgilerini güncelle' : 'Yeni entegratör ekle'}<button className="entclose" type="button" onClick={() => { setShowAddForm(false); setEditMode(false); }}>Vazgeç</button></div>
             <div className="eform">
               <div className="erw">
                 <div className="fld"><label>Entegratör</label>
-                  <select value={provider} onChange={(e) => setProvider(e.target.value)}>
+                  <select value={provider} disabled={editMode} onChange={(e) => setProvider(e.target.value)}>
                     {PROVIDER_OPTS.map((p) => (<option key={p.v} value={p.v}>{p.l}</option>))}
                   </select>
                 </div>
@@ -3777,7 +3782,7 @@ function ScreenEntegrator({ taxpayerId, period }: { taxpayerId: string; period: 
               </div>
               <div className="erw">
                 <div className="fld"><label>Kullanıcı adı</label><input autoComplete="off" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="mükellefin giriş kullanıcısı" /></div>
-                <div className="fld"><label>Şifre</label><input type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" /></div>
+                <div className="fld"><label>Şifre</label><input type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={editMode ? 'değiştirmek için yaz — boş bırakırsan eski şifre korunur' : '••••••••'} /></div>
               </div>
               <div className="erw">
                 <div className="fld" /><div className="fld endcol">
