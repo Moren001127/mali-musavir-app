@@ -8581,6 +8581,46 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     return payloads;
   }
 
+  /** GEÇİCİ PROBE: Paraşüt gelen e-Fatura kutusu (e_invoice_inboxes) ham yapısını görmek için. Yazma yapmaz. */
+  async debugParasutInbox(tenantId: string, taxpayerId: string, donem = '2026-07'): Promise<any> {
+    const cfg = await this.resolveRuntimeConfigForProvider(tenantId, taxpayerId, 'PARASUT');
+    if (!cfg) return { hata: 'PARASUT config yok/eksik' };
+    const baseUrl = cfg.baseUrl || PROVIDER_DEFAULT_BASE_URL.PARASUT;
+    const clientId = process.env.PARASUT_CLIENT_ID || (cfg as any).apiKey;
+    const clientSecret = process.env.PARASUT_CLIENT_SECRET || (cfg as any).apiSecret;
+    const tokenRes = await fetch('https://api.parasut.com/oauth/token', {
+      method: 'POST',
+      body: new URLSearchParams({ grant_type: 'password', client_id: clientId, client_secret: clientSecret, username: cfg.username!, password: cfg.password!, redirect_uri: 'urn:ietf:wg:oauth:2.0:oob' }),
+    });
+    if (!tokenRes.ok) return { hata: `token ${tokenRes.status}`, detay: (await tokenRes.text()).slice(0, 200) };
+    const accessToken = (await tokenRes.json())?.access_token;
+    let firmaNo = String((cfg as any).accountId || (cfg as any).senderVkn || '').trim() || await this.parasutFirmaNo(baseUrl, accessToken);
+    const base = baseUrl.replace(/\/+$/, '');
+    const all: any[] = [];
+    let included: any[] = [];
+    for (let page = 1; page <= 8; page++) {
+      const params = new URLSearchParams({ 'page[number]': String(page), 'page[size]': '25', include: 'invoice' });
+      const r = await fetch(`${base}/${firmaNo}/e_invoice_inboxes?${params}`, { headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' } });
+      if (!r.ok) return { firmaNo, hata: `inbox ${r.status}`, detay: (await r.text()).slice(0, 300), toplananSayfa: page - 1, toplam: all.length };
+      const j: any = await r.json();
+      const items = Array.isArray(j?.data) ? j.data : [];
+      if (Array.isArray(j?.included)) included = included.concat(j.included);
+      all.push(...items);
+      if (items.length < 25) break;
+    }
+    const start = `${donem}-01`, end = `${donem}-31`;
+    const dateOf = (it: any) => String(it?.attributes?.issue_date || it?.attributes?.date || it?.attributes?.created_at || '').slice(0, 10);
+    const donemdeki = all.filter((it) => { const d = dateOf(it); return d && d >= start && d <= end; });
+    return {
+      firmaNo,
+      toplamInboxKaydi: all.length,
+      donemdekiSayisi: donemdeki.length,
+      ornekHamKayit: all.slice(0, 2),
+      includedTipleri: Array.from(new Set(included.map((x) => x?.type))),
+      includedOrnek: included.slice(0, 1),
+    };
+  }
+
   /** Paraşüt'ten faturanın GERÇEK e-belge PDF'ini indirir: active_e_document → /{tip}/{id}/pdf → url → indir. */
   private async parasutDownloadPdf(baseUrl: string, firmaNo: string, accessToken: string, item: any): Promise<Buffer | null> {
     try {
