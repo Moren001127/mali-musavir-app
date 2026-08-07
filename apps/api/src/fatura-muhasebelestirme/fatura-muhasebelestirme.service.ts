@@ -9987,6 +9987,14 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           matrah = round2(matrah + otherTaxTotal);
         }
       }
+      // TEVKİFAT KDV'yi kdvTutari'ye KATMA: gevşek 'TaxTotal' eşleşmesi cac:WithholdingTaxTotal'ı da
+      //   kapsayıp kdvTutari'yi ŞİŞİRİYORDU (6720 = 5600 hesaplanan KDV + 1120 tevkifat → kdvOrani %24!,
+      //   tevkifatOrani 1120/6720=1/6 yanlış). kdvTutari YALNIZ hesaplanan KDV olmalı → kırılımdan
+      //   (TaxSubtotal, tevkifat içermez) al; kırılım yoksa tevkifatı çıkar. Hem fiş hem KDV raporu düzelir.
+      if (tevkifatKdvUbl > 0 && kdvTutari != null) {
+        const bdSum = kdvBreakdown.reduce((s, b) => s + b.amount, 0);
+        kdvTutari = bdSum > 0 ? round2(bdSum) : Math.max(0, round2(kdvTutari - tevkifatKdvUbl));
+      }
       // ŞAHIS taraf: ünvan PartyName/PartyLegalEntity'de değil <cac:Person> (Ad+Soyad) altında —
       //   TCKN'li müşterilerde alıcı adı boş kalıp listede "—" görünüyordu (Yorgun Nakliyat 10 satış;
       //   earsiv-zip-parser'daki personAdi yedeğinin buradaki karşılığı).
