@@ -8548,64 +8548,6 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     return payloads;
   }
 
-  /** GEÇİCİ PROBE (kaldırılacak): Turkcell/eLogo ham liste+indirme yanıtını görür → sessiz 0 teşhisi. */
-  async debugIntegratorRaw(tenantId: string, taxpayerId: string, provider: string, donem = '2026-07'): Promise<any> {
-    const prov = String(provider || '').toUpperCase();
-    const cfg = await this.resolveRuntimeConfigForProvider(tenantId, taxpayerId, prov);
-    if (!cfg) return { hata: `${prov} config yok/eksik` };
-    const start = `${donem}-01`, end = `${donem}-31`;
-    if (prov === 'TURKCELL') {
-      const baseUrl = (cfg.baseUrl || PROVIDER_DEFAULT_BASE_URL.TURKCELL).replace(/\/+$/, '');
-      const H: Record<string, string> = { Accept: 'application/json' };
-      if ((cfg as any).apiKey) H['X-Api-Key'] = (cfg as any).apiKey;
-      const dd = (ymd: string) => { const [y, m, d] = ymd.split('-'); return `${d}.${m}.${y}`; };
-      const tot = async (qf: string | null, sort = false) => {
-        const u = new URL(`${baseUrl}/v1/inboxinvoice/list`);
-        u.searchParams.set('PageIndex', '1'); u.searchParams.set('PageSize', '5');
-        if (sort) { u.searchParams.set('SortedColumn', 'ExecutionDate'); u.searchParams.set('IsDesc', 'false'); }
-        if (qf) u.searchParams.set('QueryFilter', qf);
-        const r = await fetch(u.toString(), { headers: H }); const tx = await r.text();
-        let jj: any = null; try { jj = JSON.parse(tx); } catch { /* */ }
-        const its = jj?.items || jj?.Items || [];
-        return { status: r.status, totalCount: jj?.totalCount ?? jj?.TotalCount, itemCount: its.length, tarihler: its.map((x: any) => String(x.executionDate ?? x.ExecutionDate ?? '').slice(0, 10)), err: r.ok ? undefined : tx.slice(0, 120) };
-      };
-      // VARYANTLAR — hangisi totalCount'u Temmuz'a düşürüyor:
-      const variants: any = {
-        filtresiz_sirali: await tot(null, true),
-        A_ExecutionDate_sirali: await tot(JSON.stringify([{ Category: 'ExecutionDate', Operator: 5, Value: dd(start) }, { Category: 'ExecutionDate', Operator: 3, Value: dd(end) }]), true),
-        A_ExecutionDate_ddMMyyyy: await tot(JSON.stringify([{ Category: 'ExecutionDate', Operator: 5, Value: dd(start) }, { Category: 'ExecutionDate', Operator: 3, Value: dd(end) }])),
-        B_ExecutionDate_iso: await tot(JSON.stringify([{ Category: 'ExecutionDate', Operator: 5, Value: start }, { Category: 'ExecutionDate', Operator: 3, Value: end }])),
-        C_ExecutionDate_isoDT: await tot(JSON.stringify([{ Category: 'ExecutionDate', Operator: 5, Value: `${start}T00:00:00` }, { Category: 'ExecutionDate', Operator: 3, Value: `${end}T23:59:59` }])),
-        D_CreatedDate_ddMMyyyy: await tot(JSON.stringify([{ Category: 'CreatedDate', Operator: 5, Value: dd(start) }, { Category: 'CreatedDate', Operator: 3, Value: dd(end) }])),
-        E_lowercase_camel: await tot(JSON.stringify([{ category: 'ExecutionDate', operator: 5, value: dd(start) }, { category: 'ExecutionDate', operator: 3, value: dd(end) }])),
-      };
-      return { variants };
-    }
-    if (prov === 'ELOGO') {
-      let endpoint = String(cfg.baseUrl || '').trim();
-      if (!/postboxservice\.svc/i.test(endpoint)) endpoint = 'https://pb.elogo.com.tr/postboxservice.svc';
-      const ACT = 'http://tempuri.org/IPostBoxService/';
-      const sid = await this.elogoLogin(endpoint, ACT, cfg.username!, cfg.password!);
-      const listBody = `<GetDocumentList xmlns="http://tempuri.org/"><sessionID>${this.xmlEscape(sid)}</sessionID>` + this.elogoParamList([`DOCUMENTTYPE=EINVOICE`, `OPTYPE=2`, `BEGINDATE=${start}`, `ENDDATE=${end}`, 'DATEBY=1']) + `</GetDocumentList>`;
-      const listResp = await this.soapPost(endpoint, ACT + 'GetDocumentList', listBody);
-      const uuids = (listResp.match(/<(?:\w+:)?documentUuid>([^<]+)<\/(?:\w+:)?documentUuid>/gi) || []).map((m) => m.replace(/<[^>]+>/g, '').trim());
-      const out: any = { uuidCount: uuids.length, sampleUuids: uuids.slice(0, 3), listSnippet: listResp.slice(0, 400) };
-      if (uuids[0]) {
-        const tryFmt = async (fmt: string) => {
-          const b = `<GetDocumentData xmlns="http://tempuri.org/"><sessionID>${this.xmlEscape(sid)}</sessionID><uuid>${this.xmlEscape(uuids[0])}</uuid>` + this.elogoParamList([`DOCUMENTTYPE=EINVOICE`, `DATAFORMAT=${fmt}`]) + `</GetDocumentData>`;
-          const rp = await this.soapPost(endpoint, ACT + 'GetDocumentData', b);
-          const b64 = this.tagText(rp, 'binaryData');
-          let xmlHead = '';
-          if (b64) { try { const x = await this.elogoUnzipXml(Buffer.from(b64, 'base64')); xmlHead = String(x || '').slice(0, 60); } catch { /* */ } }
-          return { errorCode: this.tagText(rp, 'errorCode'), resultMsg: this.tagText(rp, 'resultMsg'), binaryVar: !!b64, xmlHead };
-        };
-        out.UBL = await tryFmt('UBL');
-        out.XML = await tryFmt('XML');
-      }
-      return out;
-    }
-    return { hata: 'desteklenmeyen provider' };
-  }
 
   private async fetchParasutInvoices(
     cfg: RuntimeIntegrationConfig,

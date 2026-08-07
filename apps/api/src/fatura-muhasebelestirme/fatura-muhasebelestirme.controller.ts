@@ -90,12 +90,6 @@ export class FaturaMuhasebelestirmeController {
       : result;
   }
 
-  /** GEÇİCİ PROBE: Turkcell/eLogo ham liste+indirme (kaldırılacak). */
-  @Get('debug/integrator-raw')
-  async debugIntegratorRaw(@Req() req: any, @Query() q: any) {
-    return this.service.debugIntegratorRaw(req.user.tenantId, q?.taxpayerId, q?.provider, q?.donem || '2026-07');
-  }
-
   /** Talimat ver/kaldır — her gece otomatik fetch. */
   @Post('integrations/talimat')
   setTalimat(@Req() req: any, @Body() body: any) {
