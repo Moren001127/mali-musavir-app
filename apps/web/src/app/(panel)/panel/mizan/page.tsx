@@ -351,13 +351,20 @@ export default function MizanPage() {
   // Aktif: URL'deki id varsa onu getir, yoksa secili donem/tip ile eslesen en son import
   const selectedDonem = toDonem(year, month, donemTipi);
   const selectedDonemTipi = normalizeDonemTipi(selectedDonem, donemTipi);
-  const effectiveId = viewId ||
-    mizanList.find((m) =>
-      m.taxpayerId === taxpayerId &&
-      m.donem === selectedDonem &&
-      normalizeDonemTipi(m.donem, m.donemTipi) === selectedDonemTipi
-    )?.id ||
-    (mizanList[0]?.id ?? null);
+  // Kaynak = SEÇİLİ DÖNEM. Seçili dönemin mizanını bul.
+  const matchForSelected = mizanList.find((m) =>
+    m.taxpayerId === taxpayerId &&
+    m.donem === selectedDonem &&
+    normalizeDonemTipi(m.donem, m.donemTipi) === selectedDonemTipi
+  )?.id ?? null;
+  // URL'deki id (viewId) YALNIZ seçili dönemin mizanıysa geçerli — dönem değişince eski id'ye takılmasın.
+  const viewIdOk = !!viewId && mizanList.some((m) =>
+    m.id === viewId &&
+    m.donem === selectedDonem &&
+    normalizeDonemTipi(m.donem, m.donemTipi) === selectedDonemTipi
+  );
+  // Seçili dönemde mizan yoksa null → mizan sorgusu pasif → BOŞ ekran (yanlışlıkla başka dönem gösterilmez).
+  const effectiveId = (viewIdOk ? viewId : null) || matchForSelected;
 
   const { data: mizan } = useQuery<any>({
     queryKey: ['mizan', effectiveId],
