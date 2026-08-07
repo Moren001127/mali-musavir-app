@@ -7301,14 +7301,19 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     if (discoveredUrls.length) this.logger.log(`TURMOB list ${channel}: sayfadan kesfedilen uclar: ${discoveredUrls.slice(0, 6).join(' , ')}`);
 
     // AY-SONU SINIR FIX (#2 İLGİ OTO — Mihsap 205 / biz 203): TÜRMOB liste filtresi GELİŞ/alınma
-    //   tarihine bakıyor → ayın SON günü kesilip ERTESİ AY başında TÜRMOB'a düşen fatura (31.07 kesilip
-    //   01.08 gelen) Temmuz sorgusuna girmiyordu. Sorgu penceresinin BİTİŞİNİ +7 gün uzat; sonuç yine
-    //   turmobRowInPeriod ile FATURA TARİHİNE göre TAM aya süzülür (7377/7490) → geç-düşen ay faturaları
-    //   yakalanır, gerçek ertesi-ay faturaları elenir. Serbest tarih aralığı sorgusunda dokunma.
+    //   tarihine bakıyor → ayın SON günü kesilip DAHA SONRA (ertesi ay, hatta günler sonra) TÜRMOB'a
+    //   düşen fatura (31.07 kesilip 01.08 gelen) sorguya girmiyordu. Kullanıcı önerisi: alınma penceresinin
+    //   BİTİŞİNİ SORGU GÜNÜNE (bugüne) kadar çek → fatura ne zaman düşerse düşsün yakalanır. Eski aylarda
+    //   pencere şişmesin diye üst sınır +45 gün (fatura hemen daima ~6 hafta içinde düşer). Sonuç yine
+    //   turmobRowInPeriod ile FATURA TARİHİNE göre TAM aya süzülür (7377/7490) → gerçek sonraki-ay elenir.
     const genisPeriod = (() => {
       const end = new Date(`${String(opts.period.endDate).slice(0, 10)}T00:00:00.000Z`);
       if (Number.isNaN(end.getTime())) return opts.period;
-      return { ...opts.period, endDate: new Date(end.getTime() + 7 * 86400000).toISOString().slice(0, 10) };
+      const bugunMs = Date.now();
+      const capMs = end.getTime() + 45 * 86400000; // makul üst sınır
+      const genisMs = Math.min(bugunMs, capMs);
+      if (genisMs <= end.getTime()) return opts.period; // dönem hâlâ sürüyor / gelecek → dokunma
+      return { ...opts.period, endDate: new Date(genisMs).toISOString().slice(0, 10) };
     })();
     const profiles = this.turmobDateProfiles(genisPeriod, channel);
     let ct = '';
