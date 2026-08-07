@@ -8596,47 +8596,52 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const accessToken = (await tokenRes.json())?.access_token;
     let firmaNo = String((cfg as any).accountId || (cfg as any).senderVkn || '').trim() || await this.parasutFirmaNo(baseUrl, accessToken);
     const base = baseUrl.replace(/\/+$/, '');
-    const all: any[] = [];
-    let included: any[] = [];
-    for (let page = 1; page <= 8; page++) {
-      const params = new URLSearchParams({ 'page[number]': String(page), 'page[size]': '25', include: 'invoice' });
-      const r = await fetch(`${base}/${firmaNo}/e_invoice_inboxes?${params}`, { headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' } });
-      if (!r.ok) return { firmaNo, hata: `inbox ${r.status}`, detay: (await r.text()).slice(0, 300), toplananSayfa: page - 1, toplam: all.length };
-      const j: any = await r.json();
-      const items = Array.isArray(j?.data) ? j.data : [];
-      if (Array.isArray(j?.included)) included = included.concat(j.included);
-      all.push(...items);
-      if (items.length < 25) break;
-    }
+    const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
+    // Paraşüt HIZ-LIMITLI (429 "Try again in N seconds"). 429'da bekle-tekrar dene + çağrılar arası boşluk.
+    const pfetch = async (path: string, params: URLSearchParams) => {
+      for (let deneme = 0; deneme < 5; deneme++) {
+        const r = await fetch(`${base}/${firmaNo}/${path}?${params}`, { headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' } });
+        if (r.status !== 429) return r;
+        const txt = await r.text();
+        const m = txt.match(/(\d+)\s*second/);
+        await sleep((m ? Number(m[1]) : 5) * 1000 + 500);
+      }
+      return null;
+    };
     const start = `${donem}-01`, end = `${donem}-31`;
     const dateOf = (it: any) => String(it?.attributes?.issue_date || it?.attributes?.date || it?.attributes?.created_at || '').slice(0, 10);
+    const sonuc: any = { firmaNo };
     // ÇOK-UÇNOKTA SAYIM: 12'nin hangi kaynakta olduğunu bul.
-    const sonuc: any = { firmaNo, e_invoice_inboxes: { toplam: all.length, temmuz: all.filter((it) => { const d = dateOf(it); return d >= start && d <= end; }).length } };
-    for (const path of ['purchase_bills', 'e_invoices', 'e_archives']) {
+    for (const path of ['e_invoice_inboxes', 'purchase_bills', 'e_invoices', 'e_archives']) {
       try {
         const rows: any[] = [];
+        let useDate = path !== 'e_invoice_inboxes';
         for (let page = 1; page <= 12; page++) {
-          const params = new URLSearchParams({ 'page[number]': String(page), 'page[size]': '25', sort: '-issue_date', include: 'active_e_document' });
-          params.set('filter[issue_date]', `${start}..${end}`);
-          let r = await fetch(`${base}/${firmaNo}/${path}?${params}`, { headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' } });
-          if (!r.ok && /issue_date|not a date|Bad Request/i.test(await r.clone().text())) {
-            params.delete('filter[issue_date]');
-            r = await fetch(`${base}/${firmaNo}/${path}?${params}`, { headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' } });
+          const params = new URLSearchParams({ 'page[number]': String(page), 'page[size]': '25', sort: '-issue_date' });
+          if (path !== 'e_invoice_inboxes') params.set('include', 'active_e_document');
+          if (useDate) params.set('filter[issue_date]', `${start}..${end}`);
+          let r = await pfetch(path, params);
+          if (r && !r.ok && useDate && /issue_date|not a date|Bad Request/i.test(await r.clone().text())) {
+            useDate = false; params.delete('filter[issue_date]'); r = await pfetch(path, params);
           }
+          if (!r) { sonuc[path] = { hata: '429-kalıcı' }; break; }
           if (!r.ok) { sonuc[path] = { hata: r.status, detay: (await r.text()).slice(0, 150) }; break; }
           const j: any = await r.json();
           const items = Array.isArray(j?.data) ? j.data : [];
           rows.push(...items);
+          await sleep(1500); // sayfalar arası boşluk
           if (items.length < 25) break;
         }
+        if (sonuc[path]?.hata) continue;
         const temmuz = rows.filter((it) => { const d = dateOf(it); return d >= start && d <= end; });
-        sonuc[path] = sonuc[path]?.hata ? sonuc[path] : {
+        sonuc[path] = {
           cekilenToplam: rows.length,
           temmuz: temmuz.length,
           ornekAttrKeys: Object.keys(rows[0]?.attributes || {}),
-          ornek: temmuz.slice(0, 2).map((it) => ({ id: it.id, no: it.attributes?.invoice_no || it.attributes?.invoice_id, tarih: dateOf(it), net: it.attributes?.net_total ?? it.attributes?.gross_total, from: it.attributes?.item_type, activeED: it.relationships?.active_e_document?.data })),
+          ornek: temmuz.slice(0, 3).map((it) => ({ id: it.id, type: it.type, no: it.attributes?.invoice_no || it.attributes?.invoice_id, tarih: dateOf(it), net: it.attributes?.net_total ?? it.attributes?.gross_total, activeED: it.relationships?.active_e_document?.data })),
         };
       } catch (e: any) { sonuc[path] = { hata: e?.message?.slice(0, 120) }; }
+      await sleep(2500); // uç noktalar arası boşluk
     }
     return sonuc;
   }
