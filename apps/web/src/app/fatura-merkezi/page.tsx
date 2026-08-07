@@ -3778,7 +3778,7 @@ function ScreenEntegrator({ taxpayerId, period }: { taxpayerId: string; period: 
               </div>
               <div className="erw">
                 <div className="fld"><label>client_secret</label><input type="password" autoComplete="new-password" value={apiSecret} onChange={(e) => setApiSecret(e.target.value)} placeholder="••••••••" /></div>
-                <div className="fld"><label>{isParasut ? 'Firma No' : 'Hesap / Firma No'}</label><input autoComplete="off" value={accountId} onChange={(e) => setAccountId(e.target.value)} placeholder={isParasut ? "Paraşüt URL'deki rakam" : '—'} /></div>
+                <div className="fld"><label>{isParasut ? 'Firma No (opsiyonel)' : 'Hesap / Firma No'}</label><input autoComplete="off" value={accountId} onChange={(e) => setAccountId(e.target.value)} placeholder={isParasut ? 'boş bırak → otomatik bulunur' : '—'} /></div>
               </div>
               <div className="erw">
                 <div className="fld"><label>Kullanıcı adı</label><input autoComplete="off" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="mükellefin giriş kullanıcısı" /></div>

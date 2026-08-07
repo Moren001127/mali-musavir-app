@@ -6221,7 +6221,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       if (!clientSecret) missing.push('client_secret');
       if (!cfg.username) missing.push('kullanici');
       if (!cfg.password) missing.push('sifre');
-      if (!cfg.accountId && !cfg.senderVkn) missing.push('Firma No');
+      // Firma No ARTIK ZORUNLU DEĞİL — girilmezse /me ile otomatik bulunur (Mihsap gibi).
       return missing.length ? `Parasut bilgileri eksik: ${missing.join(', ')}` : null;
     }
     if (cfg.provider === 'UYUMSOFT' && (!cfg.username || !cfg.password)) return 'Uyumsoft kullanici/sifre eksik';
@@ -8471,8 +8471,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     if (!cfg.username || !cfg.password || !clientId || !clientSecret) {
       throw new Error('Parasut OAuth2 icin client_id (apiKey) + client_secret (apiSecret) + kullanici + sifre gerekli');
     }
-    const firmaNo = (cfg as any).accountId || (cfg as any).senderVkn;
-    if (!firmaNo) throw new Error('Parasut Firma No gerekli');
+    // Firma No: kullanıcı girdiyse onu kullan; girmediyse token alındıktan sonra /me ile otomatik bulunur.
+    let firmaNo = String((cfg as any).accountId || (cfg as any).senderVkn || '').trim();
 
     const tokenBody = new URLSearchParams({
       grant_type: 'password',
@@ -8490,6 +8490,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const tokenData: any = await tokenRes.json();
     const accessToken = tokenData?.access_token;
     if (!accessToken) throw new Error('Parasut access_token donmedi');
+
+    // Firma No verilmediyse hesaptan OTOMATİK bul (Mihsap gibi — her mükellefte elle yazmaya gerek yok).
+    if (!firmaNo) firmaNo = await this.parasutFirmaNo(baseUrl, accessToken);
+    if (!firmaNo) throw new Error('Parasut Firma No otomatik bulunamadı — hesaba bağlı firma yok gibi. Formdan Firma No girin.');
 
     const path = opts.direction === 'ALIS' ? 'purchase_bills' : 'sales_invoices';
     const include = opts.direction === 'ALIS'
@@ -8540,6 +8544,25 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       if (items.length < pageSize) break;
     }
     return payloads;
+  }
+
+  /** Paraşüt hesabındaki firma (company) id'sini /me üzerinden otomatik bulur. */
+  private async parasutFirmaNo(baseUrl: string, accessToken: string): Promise<string> {
+    try {
+      const url = `${baseUrl.replace(/\/+$/, '')}/me`;
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' } });
+      if (!res.ok) return '';
+      const j: any = await res.json().catch(() => ({}));
+      const rel = j?.data?.relationships || {};
+      const cand =
+        rel?.company?.data?.id ??
+        rel?.companies?.data?.[0]?.id ??
+        (Array.isArray(j?.included) ? j.included.find((x: any) => /compan/i.test(String(x?.type)))?.id : undefined) ??
+        j?.data?.attributes?.company_id;
+      return cand ? String(cand) : '';
+    } catch {
+      return '';
+    }
   }
 
   private parasutInvoicePayload(
