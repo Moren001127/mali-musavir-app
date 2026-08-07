@@ -8479,86 +8479,60 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
 
     const box = opts.direction === 'ALIS' ? 'inboxinvoice' : 'outboxinvoice';
 
-    // --- Fatura listesi --- Turkcell param adı/format kesin belgelenmedi (StartDate/EndDate DateTime
-    //   olması muhtemel) → birkaç varyantı sırayla dene, 200 dönen kazanır (deploy döngüsünü azaltır).
-    const startD = String(opts.period.startDate).slice(0, 10);
-    const endD = String(opts.period.endDate).slice(0, 10);
-    const paramVariants: Array<Record<string, string>> = [
-      { StartDate: `${startD}T00:00:00`, EndDate: `${endD}T23:59:59` },
-      { startDate: `${startD}T00:00:00`, endDate: `${endD}T23:59:59` },
-      { StartDate: startD, EndDate: endD },
-      { startDate: startD, endDate: endD },
-      { beginDate: `${startD}T00:00:00`, endDate: `${endD}T23:59:59` },
-    ];
-    let listRes: Response | null = null;
-    let listText = '';
-    let usedVariant = '';
-    for (const pv of paramVariants) {
+    // --- Fatura listesi (isim360 GERÇEK format — ePlatform.Api.Core doğrulaması): GET /v1/{box}/list
+    //   ?PageIndex&PageSize&QueryFilter. QueryFilter = URL-encoded JSON dizisi [{Category,Operator,Value}].
+    //   Tarih aralığı = ExecutionDate (fatura tarihi) için iki filtre: >= başlangıç (Op 5), <= bitiş (Op 3).
+    //   Değer biçimi DD.MM.YYYY. Yanıt PagedList → faturalar 'Items' (PascalCase) altında. ---
+    const ddmmyyyy = (ymd: string) => { const [y, m, d] = String(ymd).slice(0, 10).split('-'); return `${d}.${m}.${y}`; };
+    const queryFilter = JSON.stringify([
+      { Category: 'ExecutionDate', Operator: 5, Value: ddmmyyyy(opts.period.startDate) }, // >= başlangıç
+      { Category: 'ExecutionDate', Operator: 3, Value: ddmmyyyy(opts.period.endDate) },   // <= bitiş
+    ]);
+    const items: any[] = [];
+    for (let page = 1; page <= 20 && items.length < opts.limit; page++) {
       const listUrl = new URL(`${baseUrl}/v1/${box}/list`);
-      for (const [k, v] of Object.entries(pv)) listUrl.searchParams.set(k, v);
-      listRes = await fetch(listUrl.toString(), { method: 'GET', headers: { ...authHeaders, Accept: 'application/json' } });
-      listText = await listRes.text();
-      if (listRes.ok) { usedVariant = Object.keys(pv).join(','); break; }
+      listUrl.searchParams.set('PageIndex', String(page));
+      listUrl.searchParams.set('PageSize', '100');
+      listUrl.searchParams.set('QueryFilter', queryFilter);
+      const listRes = await fetch(listUrl.toString(), { method: 'GET', headers: { ...authHeaders, Accept: 'application/json' } });
+      const listText = await listRes.text();
+      if (!listRes.ok) throw new Error(`Turkcell ${box} liste hatası: ${listRes.status} ${listText.slice(0, 250)}`);
+      let listJson: any;
+      try { listJson = JSON.parse(listText); } catch { throw new Error(`Turkcell liste yanıtı JSON değil: ${listText.slice(0, 200)}`); }
+      const pageItems: any[] = Array.isArray(listJson?.Items) ? listJson.Items
+        : Array.isArray(listJson?.items) ? listJson.items
+        : Array.isArray(listJson) ? listJson : [];
+      items.push(...pageItems);
+      const hasNext = listJson?.HasNextPage === true || (Number(listJson?.TotalPages) || 1) > page;
+      if (pageItems.length < 100 || !hasNext) break;
     }
-    if (!listRes || !listRes.ok) throw new Error(`Turkcell ${box} liste hatası: ${listRes?.status} ${listText.slice(0, 250)}`);
-    if (usedVariant) this.logger.log(`Turkcell ${box} liste varyant=${usedVariant} OK`);
-    let listJson: any;
-    try {
-      listJson = JSON.parse(listText);
-    } catch {
-      throw new Error(`Turkcell liste yanıtı JSON değil: ${listText.slice(0, 200)}`);
-    }
-    const items: any[] =
-      (Array.isArray(listJson) && listJson) ||
-      (Array.isArray(listJson?.data) && listJson.data) ||
-      (Array.isArray(listJson?.invoices) && listJson.invoices) ||
-      (Array.isArray(listJson?.result) && listJson.result) ||
-      (Array.isArray(listJson?.items) && listJson.items) ||
-      (Array.isArray(listJson?.content) && listJson.content) ||
-      [];
 
     const payloads: ProviderInvoicePayload[] = [];
     for (const item of items) {
       if (payloads.length >= opts.limit) break;
-      const id = item?.id ?? item?.uuid ?? item?.invoiceId ?? item?.ettn ?? item?.documentId ?? item?.ettnId;
+      const id = item?.Id ?? item?.id ?? item?.Uuid ?? item?.uuid;
       if (!id) continue;
-      const invoiceNo = String(item?.invoiceNumber || item?.invoiceNo || item?.number || item?.documentNo || id).trim();
+      const invoiceNo = String(item?.InvoiceNumber || item?.invoiceNumber || item?.DocumentNumber || id).trim();
 
-      // UBL indir
-      const ublUrl = new URL(`${baseUrl}/v1/${box}/getUBL`);
-      ublUrl.searchParams.set('id', String(id));
-      const ublRes = await fetch(ublUrl.toString(), {
-        method: 'GET',
-        headers: { ...authHeaders, Accept: 'application/xml, text/xml, application/json, */*' },
+      // UBL indir — GERÇEK yol (ePlatform.Api doğrulaması): GET /v2/{box}/{id}/ubl → ZIP akışı
+      //   (içinde UBL .xml). id path içinde (?id= DEĞİL). JSZip ile açılır (elogoUnzipXml ortak yardımcı).
+      const ublRes = await fetch(`${baseUrl}/v2/${box}/${encodeURIComponent(String(id))}/ubl`, {
+        method: 'GET', headers: { ...authHeaders, Accept: 'application/zip, application/octet-stream, application/xml, */*' },
       });
-      const ublText = await ublRes.text();
       if (!ublRes.ok) {
-        this.logger.warn(`Turkcell getUBL ${id} hata ${ublRes.status}: ${ublText.slice(0, 150)}`);
+        this.logger.warn(`Turkcell ubl ${id} hata ${ublRes.status}: ${(await ublRes.text()).slice(0, 150)}`);
         continue;
       }
-      // Yanıt düz UBL XML olabilir ya da {content/ubl/base64} sarmalı gelebilir
-      let xml = ublText;
-      const trimmed = ublText.trim();
-      if (!trimmed.startsWith('<')) {
-        try {
-          const wrap = JSON.parse(trimmed);
-          const inner = wrap?.content ?? wrap?.ubl ?? wrap?.xml ?? wrap?.data ?? wrap?.base64;
-          if (inner) {
-            const s = String(inner);
-            xml = !s.includes('<') && /^[A-Za-z0-9+/=\s]+$/.test(s)
-              ? Buffer.from(s, 'base64').toString('utf8')
-              : s;
-          }
-        } catch {
-          /* düz metin bırak */
-        }
+      const buf = Buffer.from(await ublRes.arrayBuffer());
+      let xml: string | null = null;
+      if (buf.length >= 2 && buf[0] === 0x50 && buf[1] === 0x4b) {
+        xml = await this.elogoUnzipXml(buf); // PK imzası = ZIP → ilk .xml
+      } else {
+        const txt = buf.toString('utf8').trim();
+        xml = txt.startsWith('<') ? txt : (/^[A-Za-z0-9+/=\s]+$/.test(txt) ? Buffer.from(txt, 'base64').toString('utf8') : txt);
       }
-      if (!xml.includes('<')) continue;
-      payloads.push({
-        externalId: `turkcell:${box}:${id}`,
-        originalName: `${invoiceNo || id}.xml`,
-        xml,
-      });
+      if (!xml || !xml.includes('<')) continue;
+      payloads.push({ externalId: `turkcell:${box}:${id}`, originalName: `${invoiceNo || id}.xml`, xml });
     }
     return payloads;
   }
