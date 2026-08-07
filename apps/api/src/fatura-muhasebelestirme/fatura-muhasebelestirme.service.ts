@@ -12522,8 +12522,15 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       //   seçer, otomatik Luca'ya atılmaz. Muhafazakâr: yalnız net UYUMSUZ (prompt "emin değilsen UYUMLU").
       const uyumM = rawText.match(/HESAP_UYUMU\s*:?\s*(UYUMSUZ|UYUMLU)/i);
       const uyumsuz = !!uyumM && /UYUMSUZ/i.test(uyumM[1]);
+      // UYUMSUZ ise hesap BOŞALTILIYOR → yorumdaki "... 600.01.001 ... hesabına işlenmiştir." kapanışı
+      //   ÇELİŞİR (kullanıcı bulgusu). O kapanışı "otomatik hesap atanmadı, doğru hesabı seçin" ile değiştir.
+      let finalText = text;
+      if (uyumsuz && finalText) {
+        const yeni = finalText.replace(/,?\s*[\dA-ZÇĞİÖŞÜ.\s]+hesab[ıi]na işlenmiştir\.?\s*$/i, '; ancak bu içerik ana faaliyetle uyuşmadığından OTOMATİK HESAP ATANMADI — doğru gelir hesabını manuel seçin.');
+        finalText = (yeni !== finalText ? yeni : finalText.replace(/işlenmiştir\.?\s*$/i, 'için otomatik hesap atanmadı — doğru gelir hesabını seçin.')).trim();
+      }
       const patch: any = { hesapUyumsuz: uyumsuz, hesapUyumNot: uyumsuz ? 'Fatura içeriği ana faaliyet/hesapla uyuşmuyor — otomatik hesap atanmadı, doğru hesabı seçin.' : null };
-      if (text) patch.muhasebeNedenZengin = text; // Deterministik muhasebeNeden'e DOKUNMA (anlık fallback).
+      if (finalText) patch.muhasebeNedenZengin = finalText; // Deterministik muhasebeNeden'e DOKUNMA (anlık fallback).
       await (this.prisma as any).invoiceAccountingDocument
         .update({ where: { id: doc.id }, data: { ocrData: { ...ocr, ...patch } } })
         .catch(() => {});
@@ -12532,7 +12539,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           .updateMany({ where: { documentId: doc.id, group: 'matrah' }, data: { accountCode: null } })
           .catch(() => {});
       }
-      return { text, denetim };
+      return { text: finalText, denetim };
     };
 
     // "AI ile yeniden yorumla" (force) → senkron üret, zengini + denetimi döndür.
