@@ -8548,20 +8548,24 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const H: Record<string, string> = { Accept: 'application/json' };
       if ((cfg as any).apiKey) H['X-Api-Key'] = (cfg as any).apiKey;
       const dd = (ymd: string) => { const [y, m, d] = ymd.split('-'); return `${d}.${m}.${y}`; };
-      const qf = JSON.stringify([{ Category: 'ExecutionDate', Operator: 5, Value: dd(start) }, { Category: 'ExecutionDate', Operator: 3, Value: dd(end) }]);
-      const listUrl = `${baseUrl}/v1/inboxinvoice/list?PageIndex=1&PageSize=10&QueryFilter=${encodeURIComponent(qf)}`;
-      const lr = await fetch(listUrl, { headers: H });
-      const lt = await lr.text();
-      let lj: any = null; try { lj = JSON.parse(lt); } catch { /* */ }
-      const items = Array.isArray(lj?.Items) ? lj.Items : Array.isArray(lj?.items) ? lj.items : Array.isArray(lj) ? lj : [];
-      const out: any = { listStatus: lr.status, itemCount: items.length, totalCount: lj?.TotalCount, listKeys: lj && typeof lj === 'object' ? Object.keys(lj) : null, ilkItemKeys: items[0] ? Object.keys(items[0]) : null, listSnippet: lt.slice(0, 300) };
-      if (items[0]) {
-        const id = items[0]?.Id ?? items[0]?.id;
-        const ur = await fetch(`${baseUrl}/v2/inboxinvoice/${encodeURIComponent(String(id))}/ubl`, { headers: { 'X-Api-Key': (cfg as any).apiKey || '' } });
-        const ub = Buffer.from(await ur.arrayBuffer());
-        out.ublStatus = ur.status; out.ublBytes = ub.length; out.ublZip = ub.length >= 2 && ub[0] === 0x50 && ub[1] === 0x4b; out.ublHead = ub.slice(0, 60).toString('utf8');
-      }
-      return out;
+      const tot = async (qf: string | null) => {
+        const u = new URL(`${baseUrl}/v1/inboxinvoice/list`);
+        u.searchParams.set('PageIndex', '1'); u.searchParams.set('PageSize', '5');
+        if (qf) u.searchParams.set('QueryFilter', qf);
+        const r = await fetch(u.toString(), { headers: H }); const tx = await r.text();
+        let jj: any = null; try { jj = JSON.parse(tx); } catch { /* */ }
+        return { status: r.status, totalCount: jj?.totalCount ?? jj?.TotalCount, itemCount: (jj?.items || jj?.Items || []).length, err: r.ok ? undefined : tx.slice(0, 120) };
+      };
+      // VARYANTLAR — hangisi totalCount'u Temmuz'a düşürüyor:
+      const variants: any = {
+        filtresiz: await tot(null),
+        A_ExecutionDate_ddMMyyyy: await tot(JSON.stringify([{ Category: 'ExecutionDate', Operator: 5, Value: dd(start) }, { Category: 'ExecutionDate', Operator: 3, Value: dd(end) }])),
+        B_ExecutionDate_iso: await tot(JSON.stringify([{ Category: 'ExecutionDate', Operator: 5, Value: start }, { Category: 'ExecutionDate', Operator: 3, Value: end }])),
+        C_ExecutionDate_isoDT: await tot(JSON.stringify([{ Category: 'ExecutionDate', Operator: 5, Value: `${start}T00:00:00` }, { Category: 'ExecutionDate', Operator: 3, Value: `${end}T23:59:59` }])),
+        D_CreatedDate_ddMMyyyy: await tot(JSON.stringify([{ Category: 'CreatedDate', Operator: 5, Value: dd(start) }, { Category: 'CreatedDate', Operator: 3, Value: dd(end) }])),
+        E_lowercase_camel: await tot(JSON.stringify([{ category: 'ExecutionDate', operator: 5, value: dd(start) }, { category: 'ExecutionDate', operator: 3, value: dd(end) }])),
+      };
+      return { variants };
     }
     if (prov === 'ELOGO') {
       let endpoint = String(cfg.baseUrl || '').trim();
