@@ -8564,11 +8564,42 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           if (d && start && d < start) { stop = true; break; } // sıralı yeni→eski: aralığın gerisine düştük
           if (d && end && d > end) continue;                    // aralıktan yeni: atla
         }
-        payloads.push(this.parasutInvoicePayload(item, included, opts.direction, opts.taxpayer, path));
+        const payload = this.parasutInvoicePayload(item, included, opts.direction, opts.taxpayer, path);
+        // GERÇEK e-belge PDF'ini indir → "görüntüle" gerçek faturayı göstersin (sentetik liste değil).
+        const pdf = await this.parasutDownloadPdf(baseUrl, firmaNo, accessToken, item);
+        if (pdf) payload.pdfBuffer = pdf;
+        payloads.push(payload);
       }
       if (items.length < pageSize) break;
     }
     return payloads;
+  }
+
+  /** Paraşüt'ten faturanın GERÇEK e-belge PDF'ini indirir: active_e_document → /{tip}/{id}/pdf → url → indir. */
+  private async parasutDownloadPdf(baseUrl: string, firmaNo: string, accessToken: string, item: any): Promise<Buffer | null> {
+    try {
+      const ed = item?.relationships?.active_e_document?.data;
+      const edId = ed?.id;
+      const edType = String(ed?.type || '').trim(); // 'e_invoices' | 'e_archives'
+      if (!edId || !/^e_(invoices|archives)$/.test(edType)) return null;
+      const base = baseUrl.replace(/\/+$/, '');
+      // 1) PDF URL al (Paraşüt link ~1 saat geçerli)
+      const metaRes = await fetch(`${base}/${firmaNo}/${edType}/${edId}/pdf`, {
+        headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' },
+      });
+      if (!metaRes.ok) return null;
+      const meta: any = await metaRes.json().catch(() => ({}));
+      const url = meta?.data?.attributes?.url;
+      if (!url) return null;
+      // 2) PDF'i indir
+      const pdfRes = await fetch(String(url));
+      if (!pdfRes.ok) return null;
+      const buf = Buffer.from(await pdfRes.arrayBuffer());
+      return buf.length > 1000 ? buf : null;
+    } catch (e: any) {
+      this.logger.warn(`Parasut PDF indirilemedi: ${e?.message || e}`);
+      return null;
+    }
   }
 
   /** Paraşüt hesabındaki firma (company) id'sini /me üzerinden otomatik bulur. */
