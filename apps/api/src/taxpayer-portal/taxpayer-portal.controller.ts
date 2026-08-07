@@ -29,6 +29,18 @@ export class TaxpayerPortalController {
     return this.service.login(String(body?.email || ''), String(body?.password || ''));
   }
 
+  @Post('auth/forgot-password')
+  @HttpCode(HttpStatus.OK)
+  forgotPassword(@Body('email') email: string) {
+    return this.service.requestPortalPasswordReset(String(email || ''));
+  }
+
+  @Post('auth/reset-password')
+  @HttpCode(HttpStatus.OK)
+  resetPassword(@Body('token') token: string, @Body('password') password: string) {
+    return this.service.resetPortalPassword(String(token || ''), String(password || ''));
+  }
+
   // (Geçici selftest-chat test ucu — lansman öncesi kaldırıldı 2026-07-27.)
 
   // ============ MÜKELLEFE KİLİTLİ UÇLAR (taxpayer-jwt) ============

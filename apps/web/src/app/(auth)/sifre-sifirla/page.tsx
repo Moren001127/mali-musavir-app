@@ -7,6 +7,7 @@ const GOLD = '#d4b876';
 
 export default function SifreSifirlaPage() {
   const [token, setToken] = useState('');
+  const [rol, setRol] = useState('');
   const [pw, setPw] = useState('');
   const [pw2, setPw2] = useState('');
   const [show, setShow] = useState(false);
@@ -14,9 +15,15 @@ export default function SifreSifirlaPage() {
   const [err, setErr] = useState('');
 
   useEffect(() => {
-    // useSearchParams Suspense zorunluluğundan kaçınmak için token'ı doğrudan URL'den oku.
-    try { setToken(new URLSearchParams(window.location.search).get('token') || ''); } catch { /* yok */ }
+    // useSearchParams Suspense zorunluluğundan kaçınmak için doğrudan URL'den oku.
+    try {
+      const q = new URLSearchParams(window.location.search);
+      setToken(q.get('token') || '');
+      setRol(q.get('rol') || '');
+    } catch { /* yok */ }
   }, []);
+  const isMukellef = rol === 'mukellef';
+  const girisHref = isMukellef ? '/giris/mukellef' : '/giris/musavir';
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,9 +33,10 @@ export default function SifreSifirlaPage() {
     if (!token) { setErr('Sıfırlama bağlantısı geçersiz. Yeni bağlantı isteyin.'); return; }
     setStatus('saving');
     try {
-      await api.post('/auth/reset-password', { token, password: pw });
+      const ep = isMukellef ? '/portal/auth/reset-password' : '/auth/reset-password';
+      await api.post(ep, { token, password: pw });
       setStatus('done');
-      setTimeout(() => { window.location.href = '/giris/musavir'; }, 2500);
+      setTimeout(() => { window.location.href = girisHref; }, 2500);
     } catch (e: any) {
       setStatus('idle');
       setErr(e?.response?.data?.message || 'Şifre güncellenemedi. Bağlantının süresi dolmuş olabilir.');
@@ -75,7 +83,7 @@ export default function SifreSifirlaPage() {
               <button type="submit" disabled={status === 'saving'} className="w-full py-[15px] rounded-[14px] text-[15px] font-bold transition-opacity disabled:opacity-60" style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#17130f' }}>
                 {status === 'saving' ? 'Kaydediliyor…' : 'Şifremi güncelle'}
               </button>
-              <a href="/giris/musavir" className="flex items-center justify-center gap-2 mt-6 text-[13px] font-medium" style={{ color: 'rgba(250,250,249,.5)' }}>
+              <a href={girisHref} className="flex items-center justify-center gap-2 mt-6 text-[13px] font-medium" style={{ color: 'rgba(250,250,249,.5)' }}>
                 <ArrowLeft size={15} /> Girişe dön
               </a>
             </form>

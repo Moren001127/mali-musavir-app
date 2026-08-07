@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { Mail, ArrowLeft, CheckCircle2 } from 'lucide-react';
 
@@ -8,13 +8,21 @@ const GOLD = '#d4b876';
 export default function SifremiUnuttumPage() {
   const [email, setEmail] = useState('');
   const [status, setStatus] = useState<'idle' | 'sending' | 'sent'>('idle');
+  const [rol, setRol] = useState('');
+
+  useEffect(() => {
+    try { setRol(new URLSearchParams(window.location.search).get('rol') || ''); } catch { /* yok */ }
+  }, []);
+  const isMukellef = rol === 'mukellef';
+  const girisHref = isMukellef ? '/giris/mukellef' : '/giris/musavir';
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim() || status === 'sending') return;
     setStatus('sending');
     // Varlık bilgisi sızdırmamak için backend her durumda 200 döner → hep "gönderildi" göster.
-    try { await api.post('/auth/forgot-password', { email: email.trim() }); } catch { /* yut */ }
+    const ep = isMukellef ? '/portal/auth/forgot-password' : '/auth/forgot-password';
+    try { await api.post(ep, { email: email.trim() }); } catch { /* yut */ }
     setStatus('sent');
   };
 
@@ -33,7 +41,7 @@ export default function SifremiUnuttumPage() {
                 Girdiğiniz adres kayıtlıysa, şifre sıfırlama bağlantısını e-postanıza gönderdik.
                 Bağlantı <b style={{ color: GOLD }}>1 saat</b> geçerlidir. Gelen kutunuzu ve spam klasörünü kontrol edin.
               </p>
-              <a href="/giris/musavir" className="inline-flex items-center gap-2 mt-7 text-[13px] font-semibold" style={{ color: GOLD }}>
+              <a href={girisHref} className="inline-flex items-center gap-2 mt-7 text-[13px] font-semibold" style={{ color: GOLD }}>
                 <ArrowLeft size={15} /> Girişe dön
               </a>
             </div>
@@ -60,7 +68,7 @@ export default function SifremiUnuttumPage() {
               >
                 {status === 'sending' ? 'Gönderiliyor…' : 'Sıfırlama bağlantısı gönder'}
               </button>
-              <a href="/giris/musavir" className="flex items-center justify-center gap-2 mt-6 text-[13px] font-medium" style={{ color: 'rgba(250,250,249,.5)' }}>
+              <a href={girisHref} className="flex items-center justify-center gap-2 mt-6 text-[13px] font-medium" style={{ color: 'rgba(250,250,249,.5)' }}>
                 <ArrowLeft size={15} /> Girişe dön
               </a>
             </form>

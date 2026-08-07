@@ -252,6 +252,9 @@ export default function MukellefGirisPage() {
                   {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
+              <a href="/sifremi-unuttum?rol=mukellef" className="block text-right text-[12.5px] font-medium mt-2 hover:opacity-100" style={{ color: '#d4b876', opacity: 0.7 }}>
+                Şifremi unuttum
+              </a>
             </div>
 
             {/* Hata */}

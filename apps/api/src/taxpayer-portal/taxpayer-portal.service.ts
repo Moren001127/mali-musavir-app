@@ -4,10 +4,13 @@ import {
   NotFoundException,
   BadRequestException,
   Logger,
+  Optional,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
+import { createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
+import { EmailService } from '../email/email.service';
 import { StorageService } from '../storage/storage.service';
 import { claudeTextViaMax } from '../common/max-inference';
 import { KdvBeyannameService } from '../kdv-beyanname/kdv-beyanname.service';
@@ -62,7 +65,63 @@ export class TaxpayerPortalService {
     private storage: StorageService,
     private kdvBeyanname: KdvBeyannameService,
     private drive: DriveService,
+    @Optional() private email?: EmailService,
   ) {}
+
+  // === MÜKELLEF ŞİFREMİ UNUTTUM — DB migration YOK: reset tokenı JWT (ayrı secret). Şifre değişince
+  //   token 'pv' (portalPasswordHash özeti) tutmaz → TEK KULLANIMLIK/otomatik geçersiz. ===
+  private portalResetSecret(): string {
+    return (process.env.JWT_SECRET || '') + '::taxpayer-pwreset';
+  }
+
+  /** Mükellef sıfırlama iste: portalı açık kullanıcı varsa e-posta ile 1sa link. Varlık SIZDIRMAZ. */
+  async requestPortalPasswordReset(email: string): Promise<{ ok: true }> {
+    const mail = String(email || '').trim().toLowerCase();
+    if (mail) {
+      const tp = await this.prisma.taxpayer
+        .findFirst({ where: { portalEmail: { equals: mail, mode: 'insensitive' }, portalEnabled: true, isActive: true } })
+        .catch(() => null);
+      if (tp && (tp as any).portalPasswordHash) {
+        const pv = createHash('sha256').update((tp as any).portalPasswordHash).digest('hex').slice(0, 16);
+        const token = this.jwt.sign({ sub: tp.id, typ: 'taxpayer-pwreset', pv }, { secret: this.portalResetSecret(), expiresIn: '1h' });
+        const base = String(process.env.PUBLIC_WEB_URL || 'https://portal.morenmusavirlik.com').replace(/\/+$/, '');
+        const link = `${base}/sifre-sifirla?rol=mukellef&token=${encodeURIComponent(token)}`;
+        const ad = String((tp as any).companyName || (tp as any).firstName || '').trim();
+        const html = `<div style="font-family:Segoe UI,Arial,sans-serif;max-width:520px;margin:0 auto;color:#1f2937">`
+          + `<h2 style="color:#1e3a8a;margin:0 0 12px">Moren Mükellef Portalı — Şifre Sıfırlama</h2>`
+          + `<p>Merhaba ${this.htmlEscapeTp(ad)},</p>`
+          + `<p>Portal hesabınız için şifre sıfırlama talebi aldık. Yeni şifre belirlemek için (bağlantı <b>1 saat</b> geçerli):</p>`
+          + `<p style="text-align:center;margin:24px 0"><a href="${link}" style="background:#1e3a8a;color:#fff;text-decoration:none;padding:12px 26px;border-radius:8px;font-weight:700;display:inline-block">Şifremi Sıfırla</a></p>`
+          + `<p style="font-size:12px;color:#6b7280">Bu talebi siz yapmadıysanız yok sayabilirsiniz.</p>`
+          + `<p style="font-size:11px;color:#9ca3af;word-break:break-all">${link}</p></div>`;
+        await this.email
+          ?.send({ to: (tp as any).portalEmail, subject: 'Moren Mükellef Portalı — Şifre Sıfırlama', html }, tp.tenantId)
+          .catch((e: any) => this.logger.warn(`Mükellef şifre sıfırlama e-postası gönderilemedi: ${e?.message || e}`));
+      }
+    }
+    return { ok: true };
+  }
+
+  /** Mükellef sıfırla: token doğrula → yeni portal şifresi (argon2) + kilit sıfırla. */
+  async resetPortalPassword(token: string, newPassword: string): Promise<{ ok: true }> {
+    const pw = String(newPassword || '');
+    if (pw.length < 8) throw new BadRequestException('Şifre en az 8 karakter olmalıdır');
+    let payload: any = null;
+    try { payload = this.jwt.verify(String(token || ''), { secret: this.portalResetSecret() }); }
+    catch { throw new UnauthorizedException('Sıfırlama bağlantısı geçersiz veya süresi dolmuş — yeni bağlantı isteyin'); }
+    if (payload?.typ !== 'taxpayer-pwreset' || !payload?.sub) throw new UnauthorizedException('Geçersiz sıfırlama bağlantısı');
+    const tp = await this.prisma.taxpayer.findFirst({ where: { id: String(payload.sub), portalEnabled: true, isActive: true } });
+    if (!tp || !(tp as any).portalPasswordHash) throw new UnauthorizedException('Mükellef bulunamadı');
+    const pv = createHash('sha256').update((tp as any).portalPasswordHash).digest('hex').slice(0, 16);
+    if (pv !== payload.pv) throw new UnauthorizedException('Bağlantı kullanılmış veya şifre değişmiş — yeni bağlantı isteyin');
+    const portalPasswordHash = await argon2.hash(pw, { type: argon2.argon2id, memoryCost: 65536, timeCost: 3 });
+    await this.prisma.taxpayer.update({ where: { id: tp.id }, data: { portalPasswordHash, portalFailedLoginCount: 0, portalLockedUntil: null } as any });
+    return { ok: true };
+  }
+
+  private htmlEscapeTp(s: string): string {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
 
   /** Fatura görüntüsü (mükellefe KİLİTLİ) — Drive-öncelikli, MIHSAP fallback. storageKey olmasa da çalışır. */
   async getFaturaFile(taxpayerId: string, tenantId: string, id: string) {

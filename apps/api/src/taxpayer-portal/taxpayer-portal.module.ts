@@ -7,10 +7,12 @@ import { TaxpayerPortalService } from './taxpayer-portal.service';
 import { TaxpayerJwtStrategy } from './strategies/taxpayer-jwt.strategy';
 import { KdvBeyannameModule } from '../kdv-beyanname/kdv-beyanname.module';
 import { DriveModule } from '../drive/drive.module';
+import { EmailModule } from '../email/email.module';
 
 @Module({
   imports: [
     PassportModule,
+    EmailModule,
     // KDV özeti (aylık alış/satış/ödenecek KDV) — Luca-mutabık ön-hazırlık verisi.
     KdvBeyannameModule,
     // Fatura görüntüsü (Drive-öncelikli → MIHSAP) — storageKey olmasa da gösterebilmek için.
