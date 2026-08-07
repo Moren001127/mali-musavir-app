@@ -6201,9 +6201,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   (kimlik bilgisi tam olsa bile çekim yapılmasın) — eskiden yalnız not yazılıyor, kimse bakmıyordu.
     if (cfg.note === '__inactive__') return 'Bu mükellef için entegratör pasif (kapatılmış)';
     if (cfg.provider === 'PARASUT') {
+      // client_id/client_secret ofis geneli TEK uygulama anahtarı → env'den (PARASUT_CLIENT_ID/SECRET)
+      // fallback ile gelebilir; mükellef başına sadece kullanıcı+şifre+Firma No gerekir.
+      const clientId = cfg.apiKey || process.env.PARASUT_CLIENT_ID;
+      const clientSecret = cfg.apiSecret || process.env.PARASUT_CLIENT_SECRET;
       const missing: string[] = [];
-      if (!cfg.apiKey) missing.push('client_id');
-      if (!cfg.apiSecret) missing.push('client_secret');
+      if (!clientId) missing.push('client_id');
+      if (!clientSecret) missing.push('client_secret');
       if (!cfg.username) missing.push('kullanici');
       if (!cfg.password) missing.push('sifre');
       if (!cfg.accountId && !cfg.senderVkn) missing.push('Firma No');
@@ -8442,7 +8446,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     },
   ): Promise<ProviderInvoicePayload[]> {
     const baseUrl = cfg.baseUrl || PROVIDER_DEFAULT_BASE_URL.PARASUT;
-    if (!cfg.username || !cfg.password || !(cfg as any).apiKey || !(cfg as any).apiSecret) {
+    // Ofis geneli TEK uygulama anahtarı env'den fallback (PARASUT_CLIENT_ID/SECRET); mükellefe
+    // özel girilirse (cfg.apiKey/apiSecret) o önceliklidir. Mükellef başına yalnız kullanıcı+şifre+Firma No.
+    const clientId = (cfg as any).apiKey || process.env.PARASUT_CLIENT_ID;
+    const clientSecret = (cfg as any).apiSecret || process.env.PARASUT_CLIENT_SECRET;
+    if (!cfg.username || !cfg.password || !clientId || !clientSecret) {
       throw new Error('Parasut OAuth2 icin client_id (apiKey) + client_secret (apiSecret) + kullanici + sifre gerekli');
     }
     const firmaNo = (cfg as any).accountId || (cfg as any).senderVkn;
@@ -8450,8 +8458,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
 
     const tokenBody = new URLSearchParams({
       grant_type: 'password',
-      client_id: (cfg as any).apiKey,
-      client_secret: (cfg as any).apiSecret,
+      client_id: clientId,
+      client_secret: clientSecret,
       username: cfg.username,
       password: cfg.password,
       redirect_uri: 'urn:ietf:wg:oauth:2.0:oob',
