@@ -8526,10 +8526,27 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     if (!firmaNo) firmaNo = await this.parasutFirmaNo(baseUrl, accessToken);
     if (!firmaNo) throw new Error('Parasut Firma No otomatik bulunamadı — hesaba bağlı firma yok gibi. Formdan Firma No girin.');
 
-    const path = opts.direction === 'ALIS' ? 'purchase_bills' : 'sales_invoices';
-    const include = opts.direction === 'ALIS'
-      ? 'spender,pay_to,details,details.product,active_e_document'
-      : 'contact,details,details.product,active_e_document';
+    // Paraşüt HIZ-LIMITLI (429 "Try again in N seconds"). Ortak throttled fetcher (Bearer sabit).
+    const psleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
+    const pfetch = async (url: string) => {
+      for (let i = 0; i < 5; i++) {
+        const r = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' } });
+        if (r.status !== 429) return r;
+        const m = (await r.text()).match(/(\d+)\s*second/);
+        await psleep((m ? Number(m[1]) : 5) * 1000 + 500);
+      }
+      return null;
+    };
+
+    // ALIŞ e-Fatura: gelen kutusunun TAMAMI e_invoices(direction=inbound)'da. purchase_bills yalnız
+    //   Paraşüt'te FİŞE DÖNÜŞMÜŞ alışları verir → eksik çekim (Zeki 4 vs Mihsap 12). Gelen e-Faturaların
+    //   HEPSİNİ (fişe dönüşmüş + dönüşmemiş) e_invoices'tan al; gerçek PDF /e_invoices/{id}/pdf ile iner.
+    if (opts.direction === 'ALIS') {
+      return this.fetchParasutInboundEInvoices(baseUrl, firmaNo, opts, pfetch, psleep);
+    }
+
+    const path = 'sales_invoices';
+    const include = 'contact,details,details.product,active_e_document';
     const pageSize = 25; // Parasut sayfa üst sınırı
     const scanCap = 60;  // istemci-tarafı süzmede geriye tarama üst sınırı (60×25 = 1500 fatura)
     const start = String(opts.period.startDate || '').slice(0, 10);
@@ -8579,6 +8596,119 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       if (items.length < pageSize) break;
     }
     return payloads;
+  }
+
+  /**
+   * ALIŞ e-Fatura: Paraşüt GELEN e-Faturalarının TAMAMINI e_invoices(direction=inbound)'tan çeker.
+   * purchase_bills yalnız fişe dönüşmüş alışları verdiği için eksik kalıyordu (Zeki 4 vs Mihsap 12).
+   * Her belge için gerçek PDF /e_invoices/{id}/pdf ile iner ("görüntüle" gerçek faturayı gösterir).
+   */
+  private async fetchParasutInboundEInvoices(
+    baseUrl: string,
+    firmaNo: string,
+    opts: { taxpayer: any; direction: 'ALIS' | 'SATIS'; period: { donem: string; startDate: string; endDate: string }; limit: number },
+    pfetch: (url: string) => Promise<any>,
+    psleep: (ms: number) => Promise<unknown>,
+  ): Promise<ProviderInvoicePayload[]> {
+    const base = baseUrl.replace(/\/+$/, '');
+    const start = String(opts.period.startDate || '').slice(0, 10);
+    const end = String(opts.period.endDate || '').slice(0, 10);
+    const inbound: any[] = [];
+    let useDate = true;
+    let stop = false;
+    for (let page = 1; page <= 40 && inbound.length < opts.limit && !stop; page++) {
+      const params = new URLSearchParams({ 'page[number]': String(page), 'page[size]': '25', sort: '-issue_date', include: 'invoice' });
+      if (useDate) params.set('filter[issue_date]', `${start}..${end}`);
+      let r = await pfetch(`${base}/${firmaNo}/e_invoices?${params}`);
+      if (r && !r.ok && useDate && /issue_date|not a date|Bad Request/i.test(await r.clone().text())) {
+        useDate = false; params.delete('filter[issue_date]'); r = await pfetch(`${base}/${firmaNo}/e_invoices?${params}`);
+      }
+      if (!r) throw new Error('Parasut e_invoices listesi alinamadi: hiz limiti (429)');
+      if (!r.ok) throw new Error(`Parasut e_invoices listesi alinamadi: ${r.status} ${(await r.text()).slice(0, 200)}`);
+      const j: any = await r.json();
+      const items = Array.isArray(j?.data) ? j.data : [];
+      for (const it of items) {
+        const dir = String(it?.attributes?.direction || '').toLowerCase();
+        const d = String(it?.attributes?.issue_date || '').slice(0, 10);
+        if (!useDate) {
+          if (d && start && d < start) { stop = true; break; } // sıralı yeni→eski: aralığın gerisine düştük
+          if (d && end && d > end) continue;                    // aralıktan yeni: atla
+        }
+        if (dir !== 'inbound') continue; // yalnız GELEN e-Fatura (giden=satış hariç)
+        inbound.push(it);
+        if (inbound.length >= opts.limit) break;
+      }
+      await psleep(1200); // sayfalar arası boşluk (429 önle)
+      if (items.length < 25) break;
+    }
+    const payloads: ProviderInvoicePayload[] = [];
+    for (const it of inbound) {
+      const payload = this.parasutInboundEInvoicePayload(it, opts.taxpayer);
+      const pdf = await this.parasutDownloadEInvoicePdf(base, firmaNo, String(it.id), pfetch);
+      if (pdf) payload.pdfBuffer = pdf;
+      payloads.push(payload);
+      await psleep(700); // PDF çağrıları arası boşluk
+    }
+    return payloads;
+  }
+
+  private parasutInboundEInvoicePayload(it: any, taxpayer: any): ProviderInvoicePayload {
+    const a = it?.attributes || {};
+    const invoiceNo = String(a.external_id || it?.id || '').trim();
+    return {
+      externalId: `e_invoices:${it?.id || invoiceNo}`,
+      originalName: invoiceNo ? `${invoiceNo}.xml` : `parasut-einvoice-${it?.id || randomUUID()}.xml`,
+      xml: this.parasutInboundEInvoiceXml(it, taxpayer),
+    };
+  }
+
+  /** Gelen e-Fatura özet alanlarından (satıcı=karşı taraf, alıcı=mükellef) UBL benzeri XML üretir. */
+  private parasutInboundEInvoiceXml(it: any, taxpayer: any) {
+    const a = it?.attributes || {};
+    const ownName = this.reportTaxpayerName(taxpayer);
+    const ownTaxNo = this.reportTaxNumber(taxpayer);
+    const supplierName = String(a.contact_name || 'BILINMIYOR').trim();
+    const supplierTaxNo = String(a.from_vkn || '').replace(/\D/g, '');
+    const invoiceNo = String(a.external_id || it?.id || 'BILINMIYOR').trim();
+    const issueDate = String(a.issue_date || a.created_at || '').slice(0, 10);
+    const currency = String(a.currency || 'TRL').toUpperCase() === 'TRL' ? 'TRY' : String(a.currency || 'TRY').toUpperCase();
+    const totalVat = this.parasutNumber(a.total_vat);
+    const total = this.parasutNumber(a.net_total); // net_total = KDV DAHİL ödenecek toplam
+    const taxExclusive = Number.isFinite(total) && Number.isFinite(totalVat) ? total - totalVat : total;
+    const uuid = String(a.uuid || '').trim();
+    return `<?xml version="1.0" encoding="UTF-8"?>
+<Invoice>
+  <ID>${this.xmlEscape(invoiceNo)}</ID>
+  ${uuid ? `<UUID>${this.xmlEscape(uuid)}</UUID>` : ''}
+  ${issueDate ? `<IssueDate>${this.xmlEscape(issueDate)}</IssueDate>` : ''}
+  <DocumentCurrencyCode>${this.xmlEscape(currency)}</DocumentCurrencyCode>
+  ${this.syntheticParasutPartyXml('AccountingSupplierParty', supplierName, supplierTaxNo)}
+  ${this.syntheticParasutPartyXml('AccountingCustomerParty', ownName, ownTaxNo)}
+  <TaxTotal><TaxAmount currencyID="${this.xmlEscape(currency)}">${this.parasutMoney(totalVat)}</TaxAmount></TaxTotal>
+  <LegalMonetaryTotal>
+    <TaxExclusiveAmount currencyID="${this.xmlEscape(currency)}">${this.parasutMoney(taxExclusive)}</TaxExclusiveAmount>
+    <TaxInclusiveAmount currencyID="${this.xmlEscape(currency)}">${this.parasutMoney(total)}</TaxInclusiveAmount>
+    <PayableAmount currencyID="${this.xmlEscape(currency)}">${this.parasutMoney(total)}</PayableAmount>
+  </LegalMonetaryTotal>
+</Invoice>`;
+  }
+
+  /** Gelen e-Fatura'nın gerçek PDF'i: GET /e_invoices/{id}/pdf → {url} → indir. */
+  private async parasutDownloadEInvoicePdf(base: string, firmaNo: string, id: string, pfetch: (url: string) => Promise<any>): Promise<Buffer | null> {
+    try {
+      const metaRes = await pfetch(`${base}/${firmaNo}/e_invoices/${id}/pdf`);
+      if (!metaRes || !metaRes.ok) return null;
+      const meta: any = await metaRes.json().catch(() => ({}));
+      const url = meta?.data?.attributes?.url;
+      if (!url) return null;
+      const pdfRes = await fetch(String(url));
+      if (!pdfRes.ok) return null;
+      const buf = Buffer.from(await pdfRes.arrayBuffer());
+      return buf.length > 1000 ? buf : null;
+    } catch (e: any) {
+      this.logger.warn(`Parasut e_invoice PDF indirilemedi: ${e?.message || e}`);
+      return null;
+    }
   }
 
   /** GEÇİCİ PROBE: Paraşüt gelen e-Fatura kutusu (e_invoice_inboxes) ham yapısını görmek için. Yazma yapmaz. */
