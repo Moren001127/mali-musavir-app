@@ -8737,6 +8737,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       direction: 'ALIS' | 'SATIS';
       period: { donem: string; startDate: string; endDate: string };
       limit: number;
+      channel?: string;
     },
   ): Promise<ProviderInvoicePayload[]> {
     if (!cfg.username || !cfg.password) throw new Error('eLogo web servis kullanıcı adı (kod) ve şifresi gerekli');
@@ -8764,13 +8765,18 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     }
 
     try {
-      const optype = opts.direction === 'ALIS' ? '2' : '1'; // 2=Gelen, 1=Giden
-      const chunks = this.splitDateChunks(opts.period.startDate, opts.period.endDate, 30);
+      // Kanal: Alış e-Fatura (IN_EFATURA), Satış e-Fatura (OUT_EFATURA), Satış e-Arşiv (OUT_EARSIV).
+      const channel = String(opts.channel || (opts.direction === 'SATIS' ? 'OUT_EFATURA' : 'IN_EFATURA')).toUpperCase();
+      const isEarsiv = channel === 'OUT_EARSIV';
+      const docType = isEarsiv ? 'EARCHIVE' : 'EINVOICE';
+      const optype = channel === 'IN_EFATURA' ? '2' : '1'; // 2=Gelen(alış), 1=Giden(satış/e-arşiv)
+      // eLogo e-Arşiv sorgusunda BEGINDATE=ENDDATE aynı gün olmalı → gün-gün; e-Fatura ≤30 günlük parçalar.
+      const chunks = this.splitDateChunks(opts.period.startDate, opts.period.endDate, isEarsiv ? 1 : 30);
       const payloads: ProviderInvoicePayload[] = [];
       const seen = new Set<string>();
       for (const ch of chunks) {
         if (payloads.length >= opts.limit) break;
-        const listParams = ['DOCUMENTTYPE=EINVOICE', `OPTYPE=${optype}`, `BEGINDATE=${ch.start}`, `ENDDATE=${ch.end}`, 'DATEBY=1'];
+        const listParams = [`DOCUMENTTYPE=${docType}`, `OPTYPE=${optype}`, `BEGINDATE=${ch.start}`, `ENDDATE=${ch.end}`, 'DATEBY=1'];
         const listBody =
           `<GetDocumentList xmlns="http://tempuri.org/">` +
           `<sessionID>${this.xmlEscape(sessionID)}</sessionID>` +
@@ -8790,7 +8796,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
               `<GetDocumentData xmlns="http://tempuri.org/">` +
               `<sessionID>${this.xmlEscape(sessionID)}</sessionID>` +
               `<uuid>${this.xmlEscape(uuid)}</uuid>` +
-              this.elogoParamList(['DOCUMENTTYPE=EINVOICE']) +
+              this.elogoParamList([`DOCUMENTTYPE=${docType}`]) +
               `</GetDocumentData>`;
             const dataResp = await this.soapPost(endpoint, ACT + 'GetDocumentData', dataBody);
             const b64 = this.tagText(dataResp, 'binaryData');
