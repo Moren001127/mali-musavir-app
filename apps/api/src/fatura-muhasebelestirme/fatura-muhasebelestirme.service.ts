@@ -4513,34 +4513,39 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     };
     const rowSourceRef = (row: any) => String(row?.uuid || row?.ettn || row?.faturaNo || '').trim();
     const existingDocsBySourceRef = new Map<string, any>();
+    // Belge NO ile de eşleştir: içe-alma yolları (Sorgula vs doğrudan çekim) farklı sourceRefId üretebilir;
+    //   aynı mükellefte aynı belge no = aynı fatura → aktarım ✓ görünür ve ÇİFT-aktarım önlenir.
+    const existingDocsByBelgeNo = new Map<string, any>();
+    const indexDoc = (doc: any) => {
+      existingDocIds.add(String(doc.id));
+      const src = String(doc.source || '').toLowerCase();
+      if (doc.sourceRefId) existingDocsBySourceRef.set(`${src}::${String(doc.sourceRefId).trim()}`, doc);
+      if (doc.belgeNo) existingDocsByBelgeNo.set(String(doc.belgeNo).trim().toUpperCase(), doc);
+    };
     if (referencedDocIds.length) {
       const existingDocs = await (this.prisma as any).invoiceAccountingDocument.findMany({
         where: { tenantId, taxpayerId: opts.taxpayerId, id: { in: referencedDocIds } },
-        select: { id: true, source: true, sourceRefId: true },
+        select: { id: true, source: true, sourceRefId: true, belgeNo: true },
       });
-      existingDocIds = new Set(existingDocs.map((doc: any) => String(doc.id)));
-      for (const doc of existingDocs) {
-        const key = `${String(doc.source || '').toLowerCase()}::${String(doc.sourceRefId || '').trim()}`;
-        if (doc.sourceRefId) existingDocsBySourceRef.set(key, doc);
-      }
+      existingDocs.forEach(indexDoc);
     }
     const sourceRefs = [...new Set(rows.map(rowSourceRef).filter(Boolean))];
     const sources = [...new Set(rows.map(providerSource).filter(Boolean))];
     if (sourceRefs.length && sources.length) {
       const existingDocs = await (this.prisma as any).invoiceAccountingDocument.findMany({
-        where: {
-          tenantId,
-          taxpayerId: opts.taxpayerId,
-          source: { in: sources },
-          sourceRefId: { in: sourceRefs },
-        },
-        select: { id: true, source: true, sourceRefId: true },
+        where: { tenantId, taxpayerId: opts.taxpayerId, source: { in: sources }, sourceRefId: { in: sourceRefs } },
+        select: { id: true, source: true, sourceRefId: true, belgeNo: true },
       });
-      for (const doc of existingDocs) {
-        existingDocIds.add(String(doc.id));
-        const key = `${String(doc.source || '').toLowerCase()}::${String(doc.sourceRefId || '').trim()}`;
-        if (doc.sourceRefId) existingDocsBySourceRef.set(key, doc);
-      }
+      existingDocs.forEach(indexDoc);
+    }
+    // Belge NO üzerinden mevcut belgeleri getir (uuid/sourceRefId tutmasa da eşleşsin).
+    const belgeNos = [...new Set(rows.map((r: any) => String(r.faturaNo || '').trim()).filter(Boolean))];
+    if (belgeNos.length) {
+      const byNoDocs = await (this.prisma as any).invoiceAccountingDocument.findMany({
+        where: { tenantId, taxpayerId: opts.taxpayerId, belgeNo: { in: belgeNos } },
+        select: { id: true, source: true, sourceRefId: true, belgeNo: true },
+      });
+      byNoDocs.forEach(indexDoc);
     }
 
     const runtimeConfigCache = new Map<string, RuntimeIntegrationConfig | null>();
@@ -4624,7 +4629,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const provider = String(row.entegrator || 'TURMOB_EFATURA');
       const runtimeCfg = (await runtimeConfigFor(provider)) || this.providerStubConfig(provider);
       const sourceRef = rowSourceRef(row);
-      const existingBySourceRef = existingDocsBySourceRef.get(`${providerSource(row)}::${sourceRef}`);
+      const existingBySourceRef = existingDocsBySourceRef.get(`${providerSource(row)}::${sourceRef}`)
+        || (row.faturaNo ? existingDocsByBelgeNo.get(String(row.faturaNo).trim().toUpperCase()) : null);
       const savedXml = String(row.ublXmlRaw || '').trim();
       const savedXmlLooksSynthetic = provider === 'TURMOB_EFATURA' && this.isSyntheticTurmobInboxXml(savedXml);
       // ORİJİNAL EKSİK = yalnız sağlam UBL XML YOKSA (sentetik/liste-özeti dahil). Görsel/stale
