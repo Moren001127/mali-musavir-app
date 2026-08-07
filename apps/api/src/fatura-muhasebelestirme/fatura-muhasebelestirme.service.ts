@@ -7300,7 +7300,17 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const allListUrls = [...listUrls, ...discoveredUrls.filter((u) => !listUrls.includes(u))];
     if (discoveredUrls.length) this.logger.log(`TURMOB list ${channel}: sayfadan kesfedilen uclar: ${discoveredUrls.slice(0, 6).join(' , ')}`);
 
-    const profiles = this.turmobDateProfiles(opts.period, channel);
+    // AY-SONU SINIR FIX (#2 İLGİ OTO — Mihsap 205 / biz 203): TÜRMOB liste filtresi GELİŞ/alınma
+    //   tarihine bakıyor → ayın SON günü kesilip ERTESİ AY başında TÜRMOB'a düşen fatura (31.07 kesilip
+    //   01.08 gelen) Temmuz sorgusuna girmiyordu. Sorgu penceresinin BİTİŞİNİ +7 gün uzat; sonuç yine
+    //   turmobRowInPeriod ile FATURA TARİHİNE göre TAM aya süzülür (7377/7490) → geç-düşen ay faturaları
+    //   yakalanır, gerçek ertesi-ay faturaları elenir. Serbest tarih aralığı sorgusunda dokunma.
+    const genisPeriod = (() => {
+      const end = new Date(`${String(opts.period.endDate).slice(0, 10)}T00:00:00.000Z`);
+      if (Number.isNaN(end.getTime())) return opts.period;
+      return { ...opts.period, endDate: new Date(end.getTime() + 7 * 86400000).toISOString().slice(0, 10) };
+    })();
+    const profiles = this.turmobDateProfiles(genisPeriod, channel);
     let ct = '';
     let raw = '';
     let data: any = null;
@@ -12380,6 +12390,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       .replace(/```[a-z]*/gi, '')
       .replace(/```/g, '')
       .replace(/^\s*[-*•]\s*/gm, '')
+      .replace(/^\s*HESAP_UYUMU\s*:.*$/gim, '') // #3 yapısal uyum satırı — kullanıcıya GÖSTERİLMEZ
       .trim();
     if (!out) return '';
     const fa = out.match(/Faaliyet\s*:?[ \t]*(.+?)(?:\n+|$)/i);
@@ -12483,10 +12494,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       kalemStr ? `Faturadaki kalemler: ${kalemStr}.` : `Faturanın içeriği: ${giderTuru || kat || 'belirsiz'}.`,
       `Sistemin işlediği muhasebe hesabı: ${hesapStr}.`,
       '',
-      'ÇIKTI — TAM OLARAK aşağıdaki iki satır; başka HİÇBİR şey yazma (kod bloğu, yıldız, madde işareti, ek başlık YOK):',
+      'ÇIKTI — TAM OLARAK aşağıdaki ÜÇ satır; başka HİÇBİR şey yazma (kod bloğu, yıldız, madde işareti, ek başlık YOK):',
+      'HESAP_UYUMU: <UYUMLU | UYUMSUZ>',
       'Faaliyet: <mükellefin ne iş yaptığını tek cümleyle açıkla>',
       'Yorum: <Faturada özetle nelerin alındığını/satıldığını içerikten özetle; mükellefin faaliyetine göre bunların NİYE ticari mal / üretim girdisi(hammadde) / demirbaş / gider niteliğinde olduğunu açıkla; içerik faaliyetle uyumsuzsa (ör. lokantanın aldığı klima → demirbaş) nedenini belirt; cümleyi "... bu nedenle ' + hesapStr + ' hesabına işlenmiştir." ile bitir>',
       '',
+      'HESAP_UYUMU KURALI: Faturanın İÇERİĞİ, işlendiği hesabın (' + hesapStr + ') temsil ettiği faaliyet/kategori ile AÇIKÇA FARKLI bir faaliyetse "UYUMSUZ" yaz — örn. yedek parça satıcısının PERSONEL TAŞIMA / nakliye geliri, ya da MAL-SATIŞ hesabına HİZMET geliri işlenmesi. İçerik hesapla makul biçimde bağdaşıyorsa ya da EN KÜÇÜK şüphede "UYUMLU" yaz. Emin değilsen UYUMLU. (Bu satır kullanıcıya gösterilmez; yalnız sistem içindir.)',
       'KURALLAR: Yönü MÜKELLEF gözünden anlat (ALIŞ ise "mükellef almış"; satıcının ne sattığı önemli değil). Hesap kodunu (' + hesapStr + ') Yorum cümlesinde AYNEN kullan. Faturada olmayan şey UYDURMA. Toplam ~60 kelimeyi geçme.',
     ].join('\n');
 
@@ -12495,13 +12508,23 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // Zengin AI yorumunu üret + cache'le (ortak iç fonksiyon).
     const uretVeCachele = async (): Promise<{ text: string; denetim: any }> => {
       const yRes = await claudeTextViaMax({ prompt, timeoutMs: 30000, model: MAX_MODEL_CHEAP }).catch(() => null);
-      const text = this.cleanRichMuhasebeNeden(yRes && yRes.ok && yRes.text ? String(yRes.text) : '', hesapStr, isSale, isReturn);
+      const rawText = yRes && yRes.ok && yRes.text ? String(yRes.text) : '';
+      const text = this.cleanRichMuhasebeNeden(rawText, hesapStr, isSale, isReturn);
       const denetim = null;
-      const patch: any = {};
+      // #3 HESAP-UYUM (kullanıcı kuralı): AI, faturanın İÇERİĞİNİ işlendiği hesapla AÇIKÇA uyumsuz
+      //   (faaliyet dışı — ör. yedek parça satıcısının personel taşıma geliri) bulduysa, hesabı ZORLA
+      //   ATAMA → matrah kodunu BOŞALT + işaret koy. Belge "hesap eksik" görünür, kullanıcı doğru hesabı
+      //   seçer, otomatik Luca'ya atılmaz. Muhafazakâr: yalnız net UYUMSUZ (prompt "emin değilsen UYUMLU").
+      const uyumM = rawText.match(/HESAP_UYUMU\s*:?\s*(UYUMSUZ|UYUMLU)/i);
+      const uyumsuz = !!uyumM && /UYUMSUZ/i.test(uyumM[1]);
+      const patch: any = { hesapUyumsuz: uyumsuz, hesapUyumNot: uyumsuz ? 'Fatura içeriği ana faaliyet/hesapla uyuşmuyor — otomatik hesap atanmadı, doğru hesabı seçin.' : null };
       if (text) patch.muhasebeNedenZengin = text; // Deterministik muhasebeNeden'e DOKUNMA (anlık fallback).
-      if (Object.keys(patch).length) {
-        await (this.prisma as any).invoiceAccountingDocument
-          .update({ where: { id: doc.id }, data: { ocrData: { ...ocr, ...patch } } })
+      await (this.prisma as any).invoiceAccountingDocument
+        .update({ where: { id: doc.id }, data: { ocrData: { ...ocr, ...patch } } })
+        .catch(() => {});
+      if (uyumsuz) {
+        await (this.prisma as any).invoiceAccountingLine
+          .updateMany({ where: { documentId: doc.id, group: 'matrah' }, data: { accountCode: null } })
           .catch(() => {});
       }
       return { text, denetim };
