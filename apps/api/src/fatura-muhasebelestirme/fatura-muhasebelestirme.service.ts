@@ -8591,18 +8591,16 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const uuids = (listResp.match(/<(?:\w+:)?documentUuid>([^<]+)<\/(?:\w+:)?documentUuid>/gi) || []).map((m) => m.replace(/<[^>]+>/g, '').trim());
       const out: any = { uuidCount: uuids.length, sampleUuids: uuids.slice(0, 3), listSnippet: listResp.slice(0, 400) };
       if (uuids[0]) {
-        const dataBody = `<GetDocumentData xmlns="http://tempuri.org/"><sessionID>${this.xmlEscape(sid)}</sessionID><uuid>${this.xmlEscape(uuids[0])}</uuid>` + this.elogoParamList([`DOCUMENTTYPE=EINVOICE`]) + `</GetDocumentData>`;
-        const dataResp = await this.soapPost(endpoint, ACT + 'GetDocumentData', dataBody);
-        out.binaryDataVar = /binaryData/i.test(dataResp);
-        out.errorCode = this.tagText(dataResp, 'errorCode');
-        out.resultMsg = this.tagText(dataResp, 'resultMsg') || this.tagText(dataResp, 'resultCode');
-        out.dataSnippet = dataResp.slice(0, 700);
-        // VARYANT: bazı eLogo sürümleri GetDocumentData'da DATATYPE/DOWNLOADTYPE ister → dene.
-        const dataBody2 = `<GetDocumentData xmlns="http://tempuri.org/"><sessionID>${this.xmlEscape(sid)}</sessionID><uuid>${this.xmlEscape(uuids[0])}</uuid>` + this.elogoParamList([`DOCUMENTTYPE=EINVOICE`, `DOWNLOADTYPE=UBL`, `DATATYPE=XML`, `OPTYPE=2`]) + `</GetDocumentData>`;
-        const dataResp2 = await this.soapPost(endpoint, ACT + 'GetDocumentData', dataBody2);
-        out.v2_errorCode = this.tagText(dataResp2, 'errorCode');
-        out.v2_binaryVar = /binaryData/i.test(dataResp2);
-        out.v2_resultMsg = this.tagText(dataResp2, 'resultMsg');
+        const tryFmt = async (fmt: string) => {
+          const b = `<GetDocumentData xmlns="http://tempuri.org/"><sessionID>${this.xmlEscape(sid)}</sessionID><uuid>${this.xmlEscape(uuids[0])}</uuid>` + this.elogoParamList([`DOCUMENTTYPE=EINVOICE`, `DATAFORMAT=${fmt}`]) + `</GetDocumentData>`;
+          const rp = await this.soapPost(endpoint, ACT + 'GetDocumentData', b);
+          const b64 = this.tagText(rp, 'binaryData');
+          let xmlHead = '';
+          if (b64) { try { const x = await this.elogoUnzipXml(Buffer.from(b64, 'base64')); xmlHead = String(x || '').slice(0, 60); } catch { /* */ } }
+          return { errorCode: this.tagText(rp, 'errorCode'), resultMsg: this.tagText(rp, 'resultMsg'), binaryVar: !!b64, xmlHead };
+        };
+        out.UBL = await tryFmt('UBL');
+        out.XML = await tryFmt('XML');
       }
       return out;
     }
@@ -9109,7 +9107,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
               `<GetDocumentData xmlns="http://tempuri.org/">` +
               `<sessionID>${this.xmlEscape(sessionID)}</sessionID>` +
               `<uuid>${this.xmlEscape(uuid)}</uuid>` +
-              this.elogoParamList([`DOCUMENTTYPE=${docType}`]) +
+              // DATAFORMAT ZORUNLU (canlı teşhis: eksikse "Geçersiz DATAFORMAT parametresi" errorCode -1).
+              //   UBL = imzalı UBL-TR XML (bize gerekli). Aksi durumda HTML/PDF döner.
+              this.elogoParamList([`DOCUMENTTYPE=${docType}`, `DATAFORMAT=UBL`]) +
               `</GetDocumentData>`;
             const dataResp = await this.soapPost(endpoint, ACT + 'GetDocumentData', dataBody);
             const b64 = this.tagText(dataResp, 'binaryData');
