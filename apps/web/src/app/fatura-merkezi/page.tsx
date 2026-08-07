@@ -2262,7 +2262,11 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
                   );
                 })}
                 {!efaturaRows.length && (
-                  <tr><td colSpan={9} className="emptyrow">{taxpayerId ? `Bu yönde ${efaturaChannelTitle} sorgu satırı yok. Entegratör satırından Sorgula ile getir.` : 'Önce mükellef seç.'}</td></tr>
+                  (efaturaInboxQ.isLoading || (efaturaInboxQ.isFetching && !efaturaInboxQ.data))
+                    // İLK YÜKLEME (kullanıcı bulgusu #10): ekran ÖNCE boş "sorgu satırı yok" flaşlıyordu →
+                    //   veri gelene kadar boş mesaj yerine yükleniyor göster; mükellef/dönem değişince de böyle.
+                    ? <tr><td colSpan={9} className="emptyrow loadingrow">Faturalar yükleniyor…</td></tr>
+                    : <tr><td colSpan={9} className="emptyrow">{taxpayerId ? `Bu yönde ${efaturaChannelTitle} sorgu satırı yok. Entegratör satırından Sorgula ile getir.` : 'Önce mükellef seç.'}</td></tr>
                 )}
               </tbody>
             </table>
