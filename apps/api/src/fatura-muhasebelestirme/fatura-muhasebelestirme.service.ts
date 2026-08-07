@@ -8786,6 +8786,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         const uuids = (listResp.match(/<(?:\w+:)?documentUuid>([^<]+)<\/(?:\w+:)?documentUuid>/gi) || [])
           .map((m) => m.replace(/<[^>]+>/g, '').trim())
           .filter(Boolean);
+        // GEÇİCİ TEŞHİS (limit===777): 0 uuid dönerse ham yanıtı hataya koy → gerçek tag/yapı görülür.
+        if (uuids.length === 0 && opts.limit === 777) {
+          throw new Error(`ELOGO_DBG ${channel} ${docType} OPT=${optype} ${ch.start}..${ch.end} len=${listResp.length} :: ${listResp.replace(/\s+/g, ' ').slice(0, 900)}`);
+        }
         for (const uuid of uuids) {
           if (payloads.length >= opts.limit) break;
           if (seen.has(uuid)) continue;
