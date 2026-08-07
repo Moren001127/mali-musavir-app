@@ -351,20 +351,24 @@ export default function MizanPage() {
   // Aktif: URL'deki id varsa onu getir, yoksa secili donem/tip ile eslesen en son import
   const selectedDonem = toDonem(year, month, donemTipi);
   const selectedDonemTipi = normalizeDonemTipi(selectedDonem, donemTipi);
-  // Kaynak = SEÇİLİ DÖNEM. Seçili dönemin mizanını bul.
+  // Kaynak = SEÇİLİ DÖNEM (yoksa BOŞ). viewId (göz ikonu / ?id derin bağlantı) doğrudan onu gösterir;
+  //   kullanıcı TÜR/YIL/AY ya da mükellef değiştirince aşağıdaki effect viewId'yi temizler → görüntü
+  //   seçili döneme bağlanır (eski çekimin ?id'sine ya da mizanList[0]'a takılıp yanlış dönem gösterilmez).
   const matchForSelected = mizanList.find((m) =>
     m.taxpayerId === taxpayerId &&
     m.donem === selectedDonem &&
     normalizeDonemTipi(m.donem, m.donemTipi) === selectedDonemTipi
   )?.id ?? null;
-  // URL'deki id (viewId) YALNIZ seçili dönemin mizanıysa geçerli — dönem değişince eski id'ye takılmasın.
-  const viewIdOk = !!viewId && mizanList.some((m) =>
-    m.id === viewId &&
-    m.donem === selectedDonem &&
-    normalizeDonemTipi(m.donem, m.donemTipi) === selectedDonemTipi
-  );
-  // Seçili dönemde mizan yoksa null → mizan sorgusu pasif → BOŞ ekran (yanlışlıkla başka dönem gösterilmez).
-  const effectiveId = (viewIdOk ? viewId : null) || matchForSelected;
+  const effectiveId = viewId || matchForSelected;
+
+  // Kullanıcı dönem/mükellef değiştirince URL'deki ?id'yi (viewId) temizle → seçili dönem gelsin.
+  //   İlk mount ATLANIR (göz ikonu / derin bağlantı korunur).
+  const mizanViewMountRef = useRef(false);
+  useEffect(() => {
+    if (!mizanViewMountRef.current) { mizanViewMountRef.current = true; return; }
+    if (viewId) router.replace('/panel/mizan');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [year, month, donemTipi, taxpayerId]);
 
   const { data: mizan } = useQuery<any>({
     queryKey: ['mizan', effectiveId],
