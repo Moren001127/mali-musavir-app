@@ -1079,7 +1079,13 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
   const [durumF, setDurumF] = useState('all');
   const durumCount = (cat: string) => cat === 'all' ? docsAll.length : docsAll.filter((d) => dd(d).cat === cat).length;
   const docs = useMemo(
-    () => durumF === 'all' ? docsAll : docsAll.filter((d) => deriveDurum(d, isIsletme, '').cat === durumF),
+    () => {
+      const base = durumF === 'all' ? docsAll : docsAll.filter((d) => deriveDurum(d, isIsletme, '').cat === durumF);
+      // TARİH SIRASI (kullanıcı isteği: liste karışık gelmesin) — kronolojik eskiden yeniye,
+      //   eşit tarihte belge no'ya göre. Alış ve Satış listelerinin ikisinde de geçerli.
+      const dnum = (d: any) => { const s = String(d.faturaTarihi || d.createdAt || '').slice(0, 10); return s ? Number(s.replace(/-/g, '')) || 0 : 0; };
+      return [...base].sort((a, b) => dnum(a) - dnum(b) || String(a.belgeNo || '').localeCompare(String(b.belgeNo || ''), 'tr'));
+    },
     [docsAll, durumF, isIsletme],
   );
   const [sel, setSel] = useState<Set<string>>(new Set());
