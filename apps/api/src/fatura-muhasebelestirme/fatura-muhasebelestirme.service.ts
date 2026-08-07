@@ -8488,51 +8488,62 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       { Category: 'ExecutionDate', Operator: 5, Value: ddmmyyyy(opts.period.startDate) }, // >= başlangıç
       { Category: 'ExecutionDate', Operator: 3, Value: ddmmyyyy(opts.period.endDate) },   // <= bitiş
     ]);
-    const items: any[] = [];
-    for (let page = 1; page <= 20 && items.length < opts.limit; page++) {
+    // NOT (canlı teşhis): bazı hesaplarda API QueryFilter'ı UYGULAMIYOR (47432 fatura, filtresizle aynı
+    //   totalCount + 4744 sayfa) → eski kod binlerce UBL indirmeye çalışıp takılıyordu. Bu yüzden: (a) filtreyi
+    //   yine gönderiyoruz (çalışırsa set küçülür), (b) ExecutionDate'e göre YENİ→ESKİ sıralayıp İSTEMCİ tarafında
+    //   döneme süzüyoruz (yalnız dönem-içi UBL iner), (c) sıralı olduğu için dönem başından ESKİYE düşünce DURUYORUZ,
+    //   (d) totalCount/hasNext YERİNE kısmi/boş sayfada duruyoruz + 60 sayfa tavanı → sonsuz indirme yok.
+    const startYmd = String(opts.period.startDate).slice(0, 10);
+    const endYmd = String(opts.period.endDate).slice(0, 10);
+    const execYmd = (it: any) => String(it?.executionDate ?? it?.ExecutionDate ?? it?.createdDate ?? '').slice(0, 10);
+    const payloads: ProviderInvoicePayload[] = [];
+    let stop = false;
+    let sorted = true; // sıralama çalışmıyorsa (dönem-öncesi görüp durmak yerine) taramayı sürdür
+    let ardArdaEski = 0;
+    for (let page = 1; page <= 60 && payloads.length < opts.limit && !stop; page++) {
       const listUrl = new URL(`${baseUrl}/v1/${box}/list`);
       listUrl.searchParams.set('PageIndex', String(page));
       listUrl.searchParams.set('PageSize', '100');
+      listUrl.searchParams.set('SortedColumn', 'ExecutionDate');
+      listUrl.searchParams.set('IsDesc', 'true'); // YENİ→ESKİ
       listUrl.searchParams.set('QueryFilter', queryFilter);
       const listRes = await fetch(listUrl.toString(), { method: 'GET', headers: { ...authHeaders, Accept: 'application/json' } });
       const listText = await listRes.text();
       if (!listRes.ok) throw new Error(`Turkcell ${box} liste hatası: ${listRes.status} ${listText.slice(0, 250)}`);
       let listJson: any;
       try { listJson = JSON.parse(listText); } catch { throw new Error(`Turkcell liste yanıtı JSON değil: ${listText.slice(0, 200)}`); }
-      const pageItems: any[] = Array.isArray(listJson?.Items) ? listJson.Items
-        : Array.isArray(listJson?.items) ? listJson.items
+      const pageItems: any[] = Array.isArray(listJson?.items) ? listJson.items
+        : Array.isArray(listJson?.Items) ? listJson.Items
         : Array.isArray(listJson) ? listJson : [];
-      items.push(...pageItems);
-      const hasNext = listJson?.HasNextPage === true || (Number(listJson?.TotalPages) || 1) > page;
-      if (pageItems.length < 100 || !hasNext) break;
-    }
-
-    const payloads: ProviderInvoicePayload[] = [];
-    for (const item of items) {
-      if (payloads.length >= opts.limit) break;
-      const id = item?.Id ?? item?.id ?? item?.Uuid ?? item?.uuid;
-      if (!id) continue;
-      const invoiceNo = String(item?.InvoiceNumber || item?.invoiceNumber || item?.DocumentNumber || id).trim();
-
-      // UBL indir — GERÇEK yol (ePlatform.Api doğrulaması): GET /v2/{box}/{id}/ubl → ZIP akışı
-      //   (içinde UBL .xml). id path içinde (?id= DEĞİL). JSZip ile açılır (elogoUnzipXml ortak yardımcı).
-      const ublRes = await fetch(`${baseUrl}/v2/${box}/${encodeURIComponent(String(id))}/ubl`, {
-        method: 'GET', headers: { ...authHeaders, Accept: 'application/zip, application/octet-stream, application/xml, */*' },
-      });
-      if (!ublRes.ok) {
-        this.logger.warn(`Turkcell ubl ${id} hata ${ublRes.status}: ${(await ublRes.text()).slice(0, 150)}`);
-        continue;
+      if (!pageItems.length) break;
+      for (const item of pageItems) {
+        if (payloads.length >= opts.limit) break;
+        const d = execYmd(item);
+        if (d && d > endYmd) { ardArdaEski = 0; continue; } // dönemden YENİ → atla
+        if (d && d < startYmd) {
+          // Sıralı ise dönemi geçtik → dur. Sıralama çalışmıyorsa (ara ara eski) taramayı bırakma;
+          //   ancak 300 ard arda dönem-öncesi gelirse (gerçekten sıralı ve bitti) dur.
+          if (++ardArdaEski >= 300) { stop = true; break; }
+          continue;
+        }
+        ardArdaEski = 0;
+        const id = item?.Id ?? item?.id ?? item?.Uuid ?? item?.uuid;
+        if (!id) continue;
+        const invoiceNo = String(item?.InvoiceNumber || item?.invoiceNumber || item?.DocumentNumber || id).trim();
+        // UBL indir: GET /v2/{box}/{id}/ubl (id path içinde). Yanıt ZIP (PK) → JSZip; değilse düz XML.
+        const ublRes = await fetch(`${baseUrl}/v2/${box}/${encodeURIComponent(String(id))}/ubl`, {
+          method: 'GET', headers: { ...authHeaders, Accept: 'application/zip, application/octet-stream, application/xml, */*' },
+        });
+        if (!ublRes.ok) { this.logger.warn(`Turkcell ubl ${id} hata ${ublRes.status}`); continue; }
+        const buf = Buffer.from(await ublRes.arrayBuffer());
+        let xml: string | null = null;
+        if (buf.length >= 2 && buf[0] === 0x50 && buf[1] === 0x4b) xml = await this.elogoUnzipXml(buf);
+        else { const t2 = buf.toString('utf8').trim(); xml = t2.startsWith('<') ? t2 : (/^[A-Za-z0-9+/=\s]+$/.test(t2) ? Buffer.from(t2, 'base64').toString('utf8') : t2); }
+        if (!xml || !xml.includes('<')) continue;
+        payloads.push({ externalId: `turkcell:${box}:${id}`, originalName: `${invoiceNo || id}.xml`, xml });
       }
-      const buf = Buffer.from(await ublRes.arrayBuffer());
-      let xml: string | null = null;
-      if (buf.length >= 2 && buf[0] === 0x50 && buf[1] === 0x4b) {
-        xml = await this.elogoUnzipXml(buf); // PK imzası = ZIP → ilk .xml
-      } else {
-        const txt = buf.toString('utf8').trim();
-        xml = txt.startsWith('<') ? txt : (/^[A-Za-z0-9+/=\s]+$/.test(txt) ? Buffer.from(txt, 'base64').toString('utf8') : txt);
-      }
-      if (!xml || !xml.includes('<')) continue;
-      payloads.push({ externalId: `turkcell:${box}:${id}`, originalName: `${invoiceNo || id}.xml`, xml });
+      void sorted;
+      if (pageItems.length < 100) break; // kısmi sayfa = (filtreli) listenin sonu
     }
     return payloads;
   }
