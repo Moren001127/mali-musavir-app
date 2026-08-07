@@ -4350,6 +4350,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             //   hangi uç kullanıldı — kullanıcı/destek Railway loguna bakmadan ekranda görsün.
             listRows: listed.rows.length,
             liveRows: listed.liveRows.length,
+            reportedTotal: (listed as any).reportedTotal || 0,
             listUrl: listed.usedListUrl,
             // HARİÇ TUTULANLAR: "Mihsap X, biz Y" farkını açıklar — iptal/dönem-dışı elenen faturalar.
             excluded: Array.isArray((listed as any).excludedRows) ? (listed as any).excludedRows.slice(0, 50) : [],
@@ -7540,6 +7541,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       rows,
       liveRows,
       excludedRows,
+      reportedTotal,
       usedListUrl,
       usedMethod,
       usedProfile,
