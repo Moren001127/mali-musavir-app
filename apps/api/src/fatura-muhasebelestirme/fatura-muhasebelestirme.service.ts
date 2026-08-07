@@ -8872,11 +8872,18 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       ? { name: counterName, taxNo: counterTaxNo }
       : { name: ownName, taxNo: ownTaxNo };
     const uuid = String(attrs.uuid || attrs.external_id || item?.id || '').trim();
+    // KANAL AYRIMI (3 kanal kuralı): satış faturasının e-belgesi e_archives ise SATIŞ e-ARŞİV, e_invoices
+    //   ise SATIŞ e-FATURA. Sentetik XML'e ProfileID markörü koy → documentTypeFromProviderXml EARSIV'i
+    //   tanır, OUT_EARSIV/OUT_EFATURA kanalları doğru ayrışır. (Eskiden hepsi e-Fatura sayılıp e-Arşiv boştu.)
+    const edType = String(item?.relationships?.active_e_document?.data?.type || '').trim();
+    const isEArsiv = direction === 'SATIS' && edType === 'e_archives';
+    const profileId = isEArsiv ? 'EARSIVFATURA' : 'TICARIFATURA';
 
     return `<?xml version="1.0" encoding="UTF-8"?>
 <Invoice>
   <ID>${this.xmlEscape(invoiceNo)}</ID>
   ${uuid ? `<UUID>${this.xmlEscape(uuid)}</UUID>` : ''}
+  <ProfileID>${profileId}</ProfileID>
   ${issueDate ? `<IssueDate>${this.xmlEscape(issueDate)}</IssueDate>` : ''}
   <DocumentCurrencyCode>${this.xmlEscape(currency)}</DocumentCurrencyCode>
   ${this.syntheticParasutPartyXml('AccountingSupplierParty', supplier.name, supplier.taxNo)}
