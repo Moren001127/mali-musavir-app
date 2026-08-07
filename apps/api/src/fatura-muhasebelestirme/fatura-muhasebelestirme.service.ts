@@ -237,6 +237,7 @@ type RuntimeIntegrationConfig = {
   senderVkn: string;
   accountId: string;
   note: string;
+  taxpayerId?: string;
 };
 
 type ProviderInvoicePayload = {
@@ -6204,6 +6205,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       senderVkn: String(scoped.senderVkn || '').trim(),
       accountId: String(scoped.accountId || '').trim(),
       note: scoped.isActive === false ? '__inactive__' : String(scoped.note || '').trim(),
+      taxpayerId,
     };
   }
 
@@ -6548,7 +6550,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       // ── 1. TUR: DOGRUDAN (turmobRowId ile, liste cekme yok) ──
       try {
         await this.withTurmobAccess(cfg.username, async () => {
-          const cookie = await this.turmobLogin(cfg.username, cfg.password, cfg.senderVkn || undefined);
+          const cookie = await this.turmobLogin(cfg.username, cfg.password, cfg.senderVkn || undefined, cfg.taxpayerId);
           const headers = { Cookie: cookie, 'User-Agent': 'MorenPortal/1.0', Accept: 'application/xml,text/xml,text/html,*/*', Origin: BASE, Referer: BASE + refererPath };
           const CONC = 6;
           for (let i = 0; i < targets.length; i += CONC) {
@@ -6632,7 +6634,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     }
   }
 
-  private async turmobLogin(vknTckn: string, password: string, matchVkn?: string): Promise<string> {
+  private async turmobLogin(vknTckn: string, password: string, matchVkn?: string, matchTaxpayerId?: string): Promise<string> {
     const BASE = this.TURMOB_BASE;
     const pick = (res: Response): string[] => {
       const anyH = res.headers as any;
@@ -6680,8 +6682,18 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   hesaplar ilk POST'ta 302 alıp buraya HİÇ girmez (sıfır regresyon). Belirsizse mevcut hata akışına düşer.
     if (loginRes.status !== 302 && loginRes.status !== 301) {
       let matchName = '';
-      const vkn = String(matchVkn || '').replace(/\D/g, '');
-      if (vkn) {
+      let vkn = String(matchVkn || '').replace(/\D/g, '');
+      // senderVkn BOŞSA (İLGİ OTO/ÖZ ELA gibi çok-firmalı hesaplarda çoğu kez tanımsız): çekim YAPILAN
+      //   mükellefi taxpayerId'den bul → doğru firma adı+VKN. Böylece firma-seçme ekranında takılmadan
+      //   CompanyId çözülür. (Kök neden: iki mükellef aynı TCKN, ikisinin de senderVkn'i boş.)
+      if (!vkn && matchTaxpayerId) {
+        try {
+          const tp = await (this.prisma as any).taxpayer.findUnique({ where: { id: matchTaxpayerId }, select: { companyName: true, taxNumber: true } });
+          matchName = String(tp?.companyName || '').trim();
+          vkn = String(tp?.taxNumber || '').replace(/\D/g, '');
+        } catch (e: any) { this.logger.warn(`[TURMOB-COMPANY] taxpayerId ile mükellef bulunamadı: ${e?.message || e}`); }
+      }
+      if (!matchName && vkn) {
         try {
           const tp = await (this.prisma as any).taxpayer.findFirst({ where: { taxNumber: vkn }, select: { companyName: true } });
           matchName = String(tp?.companyName || '').trim();
@@ -7193,7 +7205,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     attempt = 0,
   ): Promise<any> {
     if (!cfg.username || !cfg.password) throw new Error('TURMOB icin TCKN (kullanici adi) ve parola gerekli');
-    const cookie = await this.turmobLogin(cfg.username, cfg.password, cfg.senderVkn || undefined);
+    const cookie = await this.turmobLogin(cfg.username, cfg.password, cfg.senderVkn || undefined, cfg.taxpayerId);
     const BASE = this.TURMOB_BASE;
     const channel = String(opts.channel || (opts.direction === 'SATIS' ? 'OUT_EFATURA' : 'IN_EFATURA')).toUpperCase();
     const { refererPath, listUrls } = this.turmobListPaths(channel);
@@ -7684,7 +7696,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     },
   ): Promise<ProviderInvoicePayload[]> {
     if (!cfg.username || !cfg.password) throw new Error('TÜRMOB için TCKN (kullanıcı adı) ve parola gerekli');
-    const cookie = await this.turmobLogin(cfg.username, cfg.password, cfg.senderVkn || undefined);
+    const cookie = await this.turmobLogin(cfg.username, cfg.password, cfg.senderVkn || undefined, cfg.taxpayerId);
     const BASE = this.TURMOB_BASE;
     // Gelen=alış (/IncomingInvoice), Giden=satış (/OutgoingInvoice). e-Arşiv ucu ilk testte eklenecek.
     const channel = String(opts.channel || (opts.direction === 'SATIS' ? 'OUT_EFATURA' : 'IN_EFATURA')).toUpperCase();
