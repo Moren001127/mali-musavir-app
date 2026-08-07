@@ -2521,7 +2521,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
    * zaten otomatik yeniden eşleştirir. İŞLETME defterinde tek düzen hesap planı YOK → atlanır.
    * Fire-and-forget: hata okuma/aktarımı engellemez.
    */
-  private async maybeRefreshAccountPlan(tenantId: string, taxpayerId?: string | null): Promise<void> {
+  private async maybeRefreshAccountPlan(tenantId: string, taxpayerId?: string | null, opts: { evenIfExists?: boolean } = {}): Promise<void> {
     if (!taxpayerId) return;
     const tp = await (this.prisma as any).taxpayer.findFirst({
       where: { id: taxpayerId, tenantId },
@@ -2535,15 +2535,18 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       select: { id: true },
     }).catch(() => null);
     if (recent) return;
-    // SADECE planı HİÇ OLMAYAN mükellefte çek (kullanıcı kararı). Planı varsa DOKUNMA — Luca yerel
-    //   makinede, gece/kapalıyken çalışmaz; eski-plan tazeleme ayrı planlanacak. Bu yüzden "eskiyse çek"
-    //   mantığı kaldırıldı; sadece ilk kurulum (plan yok) tetikler.
-    const snap = await (this.prisma as any).lucaAccountPlanSnapshot.findFirst({
-      where: { tenantId, taxpayerId, status: 'READY' },
-      select: { id: true },
-    }).catch(() => null);
-    if (snap) return; // plan zaten var → tetikleme
-    await this.refreshAccountPlan(tenantId, { taxpayerId, createdBy: 'oto-plan-ilk-kurulum' }).catch(() => {});
+    // evenIfExists=true (FATURA SORGUSU — GİB e-Arşiv / e-Fatura Sorgu): plan VAR olsa bile YENİDEN çek.
+    //   Kullanıcı kuralı: fatura çekilirken eş zamanlı hesap planı da çekilsin → Luca'da YENİ AÇILMIŞ
+    //   hesaplar plana yansır, faturalar işlenirken MÜKERRER hesap/karışıklık olmaz. 1-saat throttle
+    //   Luca'ya mükerrer iş yağmasını zaten engeller. evenIfExists=false → yalnız ilk kurulum (plan yok).
+    if (!opts.evenIfExists) {
+      const snap = await (this.prisma as any).lucaAccountPlanSnapshot.findFirst({
+        where: { tenantId, taxpayerId, status: 'READY' },
+        select: { id: true },
+      }).catch(() => null);
+      if (snap) return; // plan zaten var → tetikleme (yalnız ilk-kurulum modunda)
+    }
+    await this.refreshAccountPlan(tenantId, { taxpayerId, createdBy: opts.evenIfExists ? 'oto-plan-sorgu-tazeleme' : 'oto-plan-ilk-kurulum' }).catch(() => {});
   }
 
   /**
@@ -4087,6 +4090,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     });
     if (!taxpayer) throw new NotFoundException('Mukellef bulunamadi');
 
+    // #5 EŞ ZAMANLI HESAP PLANI (kullanıcı kuralı): bilanço mükellefinde e-Fatura/e-Arşiv sorgusu ile
+    //   BİRLİKTE Luca'dan hesap planını da tazele (plan VARSA da) → Luca'da yeni açılan hesaplar plana
+    //   yansır, faturalar işlenirken MÜKERRER hesap/karışıklık olmaz. Fire-and-forget + 1-saat throttle.
+    this.maybeRefreshAccountPlan(tenantId, opts.taxpayerId, { evenIfExists: true }).catch(() => {});
+
     const channel = String(opts.channel || (opts.direction === 'OUT' ? 'OUT_EFATURA' : 'IN_EFATURA')).toUpperCase();
     const direction: 'ALIS' | 'SATIS' = channel === 'IN_EFATURA' ? 'ALIS' : 'SATIS';
     const inboxDirection: 'IN' | 'OUT' = direction === 'ALIS' ? 'IN' : 'OUT';
@@ -4500,6 +4508,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       select: { id: true, companyName: true, taxNumber: true },
     });
     if (!taxpayer) throw new NotFoundException('Mukellef bulunamadi');
+
+    // #5 EŞ ZAMANLI HESAP PLANI (kullanıcı kuralı): bilanço mükellefinde e-Fatura/e-Arşiv sorgusu ile
+    //   BİRLİKTE Luca'dan hesap planını da tazele (plan VARSA da) → Luca'da yeni açılan hesaplar plana
+    //   yansır, faturalar işlenirken MÜKERRER hesap/karışıklık olmaz. Fire-and-forget + 1-saat throttle.
+    this.maybeRefreshAccountPlan(tenantId, opts.taxpayerId, { evenIfExists: true }).catch(() => {});
 
     const channel = String(opts.channel || (opts.direction === 'OUT' ? 'OUT_EFATURA' : 'IN_EFATURA')).toUpperCase();
     const direction: 'IN' | 'OUT' = channel === 'IN_EFATURA' ? 'IN' : 'OUT';

@@ -3442,10 +3442,34 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       };
     }
 
+    // #5 EŞ ZAMANLI HESAP PLANI (kullanıcı kuralı): GİB e-Arşiv sorgusu yapılan BİLANÇO mükellefinde
+    //   Luca'dan hesap planını da tazele (plan VARSA da → Luca'da yeni açılan hesaplar plana yansır,
+    //   faturalar işlenirken MÜKERRER hesap olmaz). Fire-and-forget + 1-saat throttle.
+    this.maybeQueueAccountPlanRefresh(tenantId, bundle.job?.taxpayerId).catch(() => {});
     const earsiv = await this.collectEarsivPortalViaApi(token, bundle.job, tenantId);
     const modeLabel = bundle.job?.payload?.earsivMode === 'query' ? 'satir listelendi' : 'belge indirildi';
     await this.jobProgress(tenantId, bundle.job, 'earsiv_done', `GIB e-Arsiv sorgusu: ${earsiv.recordCount} ${modeLabel}.`);
     return earsiv;
+  }
+
+  /** #5: GİB e-Arşiv sorgusunda BİLANÇO mükellefi için Luca hesap planı tazeleme işi yaratır (plan
+   *  VARSA da — yeni açılan hesaplar için). 1-saat throttle Luca'ya mükerrer iş yağmasını önler. */
+  private async maybeQueueAccountPlanRefresh(tenantId: string, taxpayerId?: string | null): Promise<void> {
+    if (!tenantId || !taxpayerId) return;
+    const tp = await (this.prisma as any).taxpayer.findFirst({
+      where: { id: taxpayerId, tenantId },
+      select: { defterTuru: true, companyName: true, firstName: true, lastName: true },
+    }).catch(() => null);
+    if (!tp || String(tp.defterTuru || '').toUpperCase() !== 'BILANCO') return; // işletmede tek düzen plan yok
+    const recent = await (this.prisma as any).lucaFetchJob.findFirst({
+      where: { tenantId, mukellefId: taxpayerId, tip: 'ACCOUNT_PLAN', createdAt: { gte: new Date(Date.now() - 60 * 60 * 1000) } },
+      select: { id: true },
+    }).catch(() => null);
+    if (recent) return; // son 1 saatte tazelendi → mükerrer iş yaratma
+    const ad = tp.companyName || [tp.firstName, tp.lastName].filter(Boolean).join(' ') || taxpayerId;
+    await (this.prisma as any).lucaFetchJob.create({
+      data: { tenantId, sessionId: null, mukellefId: taxpayerId, donem: new Date().toISOString().slice(0, 7), tip: 'ACCOUNT_PLAN', status: 'pending', createdBy: 'oto-plan-earsiv-sorgu', errorMsg: `[META] mukellefAdi=${ad}` },
+    }).catch(() => {});
   }
 
   private async finishLoginAfterFill(page: any) {
