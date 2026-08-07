@@ -8537,6 +8537,53 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     return payloads;
   }
 
+  /** GEÇİCİ PROBE (kaldırılacak): Turkcell/eLogo ham liste+indirme yanıtını görür → sessiz 0 teşhisi. */
+  async debugIntegratorRaw(tenantId: string, taxpayerId: string, provider: string, donem = '2026-07'): Promise<any> {
+    const prov = String(provider || '').toUpperCase();
+    const cfg = await this.resolveRuntimeConfigForProvider(tenantId, taxpayerId, prov);
+    if (!cfg) return { hata: `${prov} config yok/eksik` };
+    const start = `${donem}-01`, end = `${donem}-31`;
+    if (prov === 'TURKCELL') {
+      const baseUrl = (cfg.baseUrl || PROVIDER_DEFAULT_BASE_URL.TURKCELL).replace(/\/+$/, '');
+      const H: Record<string, string> = { Accept: 'application/json' };
+      if ((cfg as any).apiKey) H['X-Api-Key'] = (cfg as any).apiKey;
+      const dd = (ymd: string) => { const [y, m, d] = ymd.split('-'); return `${d}.${m}.${y}`; };
+      const qf = JSON.stringify([{ Category: 'ExecutionDate', Operator: 5, Value: dd(start) }, { Category: 'ExecutionDate', Operator: 3, Value: dd(end) }]);
+      const listUrl = `${baseUrl}/v1/inboxinvoice/list?PageIndex=1&PageSize=10&QueryFilter=${encodeURIComponent(qf)}`;
+      const lr = await fetch(listUrl, { headers: H });
+      const lt = await lr.text();
+      let lj: any = null; try { lj = JSON.parse(lt); } catch { /* */ }
+      const items = Array.isArray(lj?.Items) ? lj.Items : Array.isArray(lj?.items) ? lj.items : Array.isArray(lj) ? lj : [];
+      const out: any = { listStatus: lr.status, itemCount: items.length, totalCount: lj?.TotalCount, listKeys: lj && typeof lj === 'object' ? Object.keys(lj) : null, ilkItemKeys: items[0] ? Object.keys(items[0]) : null, listSnippet: lt.slice(0, 300) };
+      if (items[0]) {
+        const id = items[0]?.Id ?? items[0]?.id;
+        const ur = await fetch(`${baseUrl}/v2/inboxinvoice/${encodeURIComponent(String(id))}/ubl`, { headers: { 'X-Api-Key': (cfg as any).apiKey || '' } });
+        const ub = Buffer.from(await ur.arrayBuffer());
+        out.ublStatus = ur.status; out.ublBytes = ub.length; out.ublZip = ub.length >= 2 && ub[0] === 0x50 && ub[1] === 0x4b; out.ublHead = ub.slice(0, 60).toString('utf8');
+      }
+      return out;
+    }
+    if (prov === 'ELOGO') {
+      let endpoint = String(cfg.baseUrl || '').trim();
+      if (!/postboxservice\.svc/i.test(endpoint)) endpoint = 'https://pb.elogo.com.tr/postboxservice.svc';
+      const ACT = 'http://tempuri.org/IPostBoxService/';
+      const sid = await this.elogoLogin(endpoint, ACT, cfg.username!, cfg.password!);
+      const listBody = `<GetDocumentList xmlns="http://tempuri.org/"><sessionID>${this.xmlEscape(sid)}</sessionID>` + this.elogoParamList([`DOCUMENTTYPE=EINVOICE`, `OPTYPE=2`, `BEGINDATE=${start}`, `ENDDATE=${end}`, 'DATEBY=1']) + `</GetDocumentList>`;
+      const listResp = await this.soapPost(endpoint, ACT + 'GetDocumentList', listBody);
+      const uuids = (listResp.match(/<(?:\w+:)?documentUuid>([^<]+)<\/(?:\w+:)?documentUuid>/gi) || []).map((m) => m.replace(/<[^>]+>/g, '').trim());
+      const out: any = { uuidCount: uuids.length, sampleUuids: uuids.slice(0, 3), listSnippet: listResp.slice(0, 400) };
+      if (uuids[0]) {
+        const dataBody = `<GetDocumentData xmlns="http://tempuri.org/"><sessionID>${this.xmlEscape(sid)}</sessionID><uuid>${this.xmlEscape(uuids[0])}</uuid>` + this.elogoParamList([`DOCUMENTTYPE=EINVOICE`]) + `</GetDocumentData>`;
+        const dataResp = await this.soapPost(endpoint, ACT + 'GetDocumentData', dataBody);
+        out.dataRespTags = Array.from(new Set((dataResp.match(/<(?:\w+:)?(\w+)>/g) || []))).slice(0, 30);
+        out.binaryDataVar = /binaryData/i.test(dataResp);
+        out.dataSnippet = dataResp.slice(0, 400);
+      }
+      return out;
+    }
+    return { hata: 'desteklenmeyen provider' };
+  }
+
   private async fetchParasutInvoices(
     cfg: RuntimeIntegrationConfig,
     opts: {
