@@ -4117,7 +4117,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const period = (dateFromOk && dateToOk && String(opts.dateFrom) <= String(opts.dateTo))
       ? { donem: `${opts.dateFrom}_${opts.dateTo}`, startDate: String(opts.dateFrom), endDate: String(opts.dateTo) }
       : this.monthRange(opts.period);
-    const limit = Math.min(Math.max(Number(opts.limit || 500), 1), 1000);
+    // Default limit 1000: çok-faturalı hesaplarda bir aylık set 500'ü aşabiliyor (örn YAVUZ ~853/ay).
+    const limit = Math.min(Math.max(Number(opts.limit || 1000), 1), 2000);
     const requested = new Set((Array.isArray(opts.providers) ? opts.providers : []).map((p) => String(p).toUpperCase()));
 
     const rows = await (this.prisma as any).integrationConnection.findMany({
@@ -8559,35 +8560,33 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       return { ok: false, status: last.status || 429, buf: Buffer.from(''), text: () => last.body };
     };
 
-    // --- Fatura listesi (isim360 GERÇEK format — ePlatform.Api.Core doğrulaması): GET /v1/{box}/list
-    //   ?PageIndex&PageSize&QueryFilter. QueryFilter = URL-encoded JSON dizisi [{Category,Operator,Value}].
-    //   Tarih aralığı = ExecutionDate (fatura tarihi) için iki filtre: >= başlangıç (Op 5), <= bitiş (Op 3).
-    //   Değer biçimi DD.MM.YYYY. Yanıt PagedList → faturalar 'Items' (PascalCase) altında. ---
-    const ddmmyyyy = (ymd: string) => { const [y, m, d] = String(ymd).slice(0, 10).split('-'); return `${d}.${m}.${y}`; };
-    const queryFilter = JSON.stringify([
-      { Category: 'ExecutionDate', Operator: 5, Value: ddmmyyyy(opts.period.startDate) }, // >= başlangıç
-      { Category: 'ExecutionDate', Operator: 3, Value: ddmmyyyy(opts.period.endDate) },   // <= bitiş
-    ]);
-    // NOT (canlı teşhis): bazı hesaplarda API QueryFilter'ı UYGULAMIYOR (47432 fatura, filtresizle aynı
-    //   totalCount + 4744 sayfa) → eski kod binlerce UBL indirmeye çalışıp takılıyordu. Bu yüzden: (a) filtreyi
-    //   yine gönderiyoruz (çalışırsa set küçülür), (b) ExecutionDate'e göre YENİ→ESKİ sıralayıp İSTEMCİ tarafında
-    //   döneme süzüyoruz (yalnız dönem-içi UBL iner), (c) sıralı olduğu için dönem başından ESKİYE düşünce DURUYORUZ,
-    //   (d) totalCount/hasNext YERİNE kısmi/boş sayfada duruyoruz + 60 sayfa tavanı → sonsuz indirme yok.
-    const startYmd = String(opts.period.startDate).slice(0, 10);
-    const endYmd = String(opts.period.endDate).slice(0, 10);
-    const execYmd = (it: any) => String(it?.executionDate ?? it?.ExecutionDate ?? it?.createdDate ?? '').slice(0, 10);
+    // --- Fatura listesi (isim360): GET /v1/{box}/list?PageIndex&PageSize&SortedColumn&IsDesc ---
+    // CANLI TEŞHİS (2026-08-08, YAVUZ 47433 fatura):
+    //   • isim360 QueryFilter'ı BU HESAPTA GÖRMEZDEN GELİYOR (filtreli/filtresiz item'lar birebir aynı) → filtre gönderMİYORUZ.
+    //   • SortedColumn=ExecutionDate + IsDesc ÇALIŞIYOR (desc=bugün, asc=2021) → sayfalama güvenilir.
+    //   • item.executionDate = GELİŞ/ALINMA TARİHİ (bugün, saatli), FATURA TARİHİ DEĞİL. Fatura tarihi UBL IssueDate'te.
+    // KULLANICI KURALI: fatura tarihi [başlangıç..bitiş] sorgulanırken GELİŞ penceresi [başlangıç..BUGÜN] taranır
+    //   (ay sonunda kesilip sonraki ay gelen faturalar kaçmasın), sonra UBL FATURA TARİHİNE göre döneme süzülür.
+    const faturaStart = String(opts.period.startDate).slice(0, 10);
+    const faturaEnd = String(opts.period.endDate).slice(0, 10);
+    const today = new Date().toISOString().slice(0, 10);
+    const gelisStart = faturaStart;
+    const gelisEnd = today > faturaEnd ? today : faturaEnd; // geliş penceresini bugüne kadar genişlet
+    const gelisYmd = (it: any) => String(it?.executionDate ?? it?.ExecutionDate ?? it?.createdDate ?? '').slice(0, 10);
+    const ublIssueYmd = (xml: string) => {
+      const m = xml.match(/<cbc:IssueDate>\s*([0-9]{4}-[0-9]{2}-[0-9]{2})/i) || xml.match(/<IssueDate>\s*([0-9]{4}-[0-9]{2}-[0-9]{2})/i);
+      return m ? m[1] : '';
+    };
     const payloads: ProviderInvoicePayload[] = [];
     let stop = false;
-    let sorted = true; // sıralama çalışmıyorsa (dönem-öncesi görüp durmak yerine) taramayı sürdür
-    let ardArdaEski = 0;
-    for (let page = 1; page <= 60 && payloads.length < opts.limit && !stop; page++) {
+    const MAX_PAGES = 400; // geliş penceresi kaç sayfa sürerse (executionDate<gelisStart olunca zaten durur)
+    for (let page = 1; page <= MAX_PAGES && payloads.length < opts.limit && !stop; page++) {
       const listUrl = new URL(`${baseUrl}/v1/${box}/list`);
       listUrl.searchParams.set('PageIndex', String(page));
       listUrl.searchParams.set('PageSize', '100');
       listUrl.searchParams.set('SortedColumn', 'ExecutionDate');
-      listUrl.searchParams.set('IsDesc', 'true'); // YENİ→ESKİ
-      listUrl.searchParams.set('QueryFilter', queryFilter);
-      if (page > 1) await tsleep(600); // sayfalar arası nefes payı (429 önleme)
+      listUrl.searchParams.set('IsDesc', 'true'); // YENİ→ESKİ (geliş tarihine göre)
+      if (page > 1) await tsleep(500); // sayfalar arası nefes payı (429 önleme)
       const listRes = await turkcellFetch(listUrl.toString(), 'application/json');
       const listText = listRes.text();
       if (!listRes.ok) throw new Error(`Turkcell ${box} liste hatası: ${listRes.status} ${listText.slice(0, 250)}`);
@@ -8599,20 +8598,14 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       if (!pageItems.length) break;
       for (const item of pageItems) {
         if (payloads.length >= opts.limit) break;
-        const d = execYmd(item);
-        if (d && d > endYmd) { ardArdaEski = 0; continue; } // dönemden YENİ → atla
-        if (d && d < startYmd) {
-          // Sıralı ise dönemi geçtik → dur. Sıralama çalışmıyorsa (ara ara eski) taramayı bırakma;
-          //   ancak 300 ard arda dönem-öncesi gelirse (gerçekten sıralı ve bitti) dur.
-          if (++ardArdaEski >= 300) { stop = true; break; }
-          continue;
-        }
-        ardArdaEski = 0;
+        const g = gelisYmd(item);
+        if (g && g > gelisEnd) continue;      // geliş penceresinden YENİ → atla (bugünden sonrası yok ama güvenlik)
+        if (g && g < gelisStart) { stop = true; break; } // desc sıralı → geliş penceresinin altına düştük → DUR
         const id = item?.Id ?? item?.id ?? item?.Uuid ?? item?.uuid;
         if (!id) continue;
         const invoiceNo = String(item?.InvoiceNumber || item?.invoiceNumber || item?.DocumentNumber || id).trim();
-        // UBL indir: GET /v2/{box}/{id}/ubl (id path içinde). Yanıt ZIP (PK) → JSZip; değilse düz XML.
-        await tsleep(250); // UBL indirmeleri arası nefes payı (429 önleme)
+        // UBL indir: GET /v2/{box}/{id}/ubl. Yanıt ZIP (PK) → JSZip; değilse düz XML.
+        await tsleep(200); // UBL indirmeleri arası nefes payı (429 önleme)
         const ublRes = await turkcellFetch(
           `${baseUrl}/v2/${box}/${encodeURIComponent(String(id))}/ubl`,
           'application/zip, application/octet-stream, application/xml, */*',
@@ -8623,10 +8616,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         if (buf.length >= 2 && buf[0] === 0x50 && buf[1] === 0x4b) xml = await this.elogoUnzipXml(buf);
         else { const t2 = buf.toString('utf8').trim(); xml = t2.startsWith('<') ? t2 : (/^[A-Za-z0-9+/=\s]+$/.test(t2) ? Buffer.from(t2, 'base64').toString('utf8') : t2); }
         if (!xml || !xml.includes('<')) continue;
+        // FATURA TARİHİ süzgeci: UBL IssueDate dönem içinde olmalı (geliş penceresi genişti; asıl ölçüt fatura tarihi).
+        const iss = ublIssueYmd(xml);
+        if (iss && (iss < faturaStart || iss > faturaEnd)) continue;
         payloads.push({ externalId: `turkcell:${box}:${id}`, originalName: `${invoiceNo || id}.xml`, xml });
       }
-      void sorted;
-      if (pageItems.length < 100) break; // kısmi sayfa = (filtreli) listenin sonu
+      if (pageItems.length < 100) break; // son sayfa
     }
     return payloads;
   }
