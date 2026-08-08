@@ -8479,10 +8479,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     }
 
     // Kanal → kutu (isim360): Alış e-Fatura=inboxinvoice, Satış e-Fatura=outboxinvoice,
-    //   Satış e-Arşiv=earchiveinvoice (e-Arşiv AYRI uç nokta; her zaman giden/satış).
+    //   Satış e-Arşiv=earchive (e-Arşiv AYRI resource — doküman/örnek: /v1/earchive/...,
+    //   IEArchiveInvoiceClient; 'earchiveinvoice' 404 verir). e-Arşiv her zaman giden/satış.
     const channel = String(opts.channel || (opts.direction === 'SATIS' ? 'OUT_EFATURA' : 'IN_EFATURA')).toUpperCase();
     const isEarsiv = channel === 'OUT_EARSIV';
-    const box = isEarsiv ? 'earchiveinvoice' : opts.direction === 'ALIS' ? 'inboxinvoice' : 'outboxinvoice';
+    const box = isEarsiv ? 'earchive' : opts.direction === 'ALIS' ? 'inboxinvoice' : 'outboxinvoice';
 
     // --- Hız sınırı (429) dayanıklılığı ---
     // Turkcell "yüksek frekanslı istek" (429) veriyor. Çözüm: (a) istekler arası kısa bekleme,
