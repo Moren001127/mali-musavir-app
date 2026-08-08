@@ -500,12 +500,17 @@ export class FaturaMuhasebelestirmeController {
       : [];
   }
 
-  /** GEÇİCİ TEŞHİS: Turkcell isim360 tarih filtresi hangi kategoriyle çalışıyor */
+  /** GEÇİCİ TEŞHİS: başlat (arka planda) + sonucu oku (CDP 45sn sınırından bağımsız) */
   @Get('debug/turkcell-dates')
   async debugTurkcellDates(@Req() req: any, @Query() q: any) {
-    return (this.service as any).debugTurkcellDates(
+    return (this.service as any).startTurkcellDebug(
       req.user.tenantId, q?.taxpayerId, q?.dateFrom || '2026-07-01', q?.dateTo || '2026-07-31',
     );
+  }
+
+  @Get('debug/turkcell-dates/result')
+  async debugTurkcellDatesResult() {
+    return (this.service as any).getTurkcellDebug();
   }
 
   /** Manuel tetikleme: entegratörden hemen çek */

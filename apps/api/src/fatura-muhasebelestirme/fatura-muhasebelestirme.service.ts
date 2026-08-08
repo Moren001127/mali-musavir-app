@@ -8437,6 +8437,17 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
    * NOT: Canlı bir mükellef hesabıyla ilk çekimde alan adları (getUBL id parametresi,
    *      liste JSON alanları) teyit edilip gerekiyorsa buradan ayarlanacak.
    */
+  // GEÇİCİ TEŞHİS sonucu (CDP 45sn sınırından bağımsız okumak için sunucuda saklanır).
+  private __tcDebug: any = { state: 'idle' };
+  startTurkcellDebug(tenantId: string, taxpayerId: string, startDate: string, endDate: string) {
+    this.__tcDebug = { state: 'running', at: new Date().toISOString() };
+    this.debugTurkcellDates(tenantId, taxpayerId, startDate, endDate)
+      .then((r) => { this.__tcDebug = { state: 'done', result: r }; })
+      .catch((e) => { this.__tcDebug = { state: 'error', err: String(e?.message || e) }; });
+    return { started: true };
+  }
+  getTurkcellDebug() { return this.__tcDebug; }
+
   // GEÇİCİ TEŞHİS: isim360 hangi tarih kategorisiyle süzüyor + ham item tarih alanları.
   async debugTurkcellDates(tenantId: string, taxpayerId: string, startDate: string, endDate: string) {
     const cfg = await this.resolveRuntimeConfigForProvider(tenantId, taxpayerId, 'TURKCELL');
