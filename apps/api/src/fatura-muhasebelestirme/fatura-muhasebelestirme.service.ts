@@ -8437,6 +8437,36 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
    * NOT: Canlı bir mükellef hesabıyla ilk çekimde alan adları (getUBL id parametresi,
    *      liste JSON alanları) teyit edilip gerekiyorsa buradan ayarlanacak.
    */
+  // GEÇİCİ TEŞHİS: isim360 hangi tarih kategorisiyle süzüyor + ham item tarih alanları.
+  async debugTurkcellDates(tenantId: string, taxpayerId: string, startDate: string, endDate: string) {
+    const cfg = await this.resolveRuntimeConfigForProvider(tenantId, taxpayerId, 'TURKCELL');
+    if (!cfg) return { error: 'TURKCELL config yok' };
+    const baseUrl = (cfg.baseUrl || PROVIDER_DEFAULT_BASE_URL.TURKCELL).replace(/\/+$/, '');
+    const authHeaders: Record<string, string> = {};
+    if (cfg.apiKey) authHeaders['X-Api-Key'] = cfg.apiKey;
+    else return { error: 'apiKey yok (token akisi teshiste atlandi)' };
+    const ddmmyyyy = (ymd: string) => { const [y,m,d]=String(ymd).slice(0,10).split('-'); return `${d}.${m}.${y}`; };
+    const call = async (qf: any[] | null) => {
+      const u = new URL(`${baseUrl}/v1/inboxinvoice/list`);
+      u.searchParams.set('PageIndex','1'); u.searchParams.set('PageSize','3');
+      if (qf) u.searchParams.set('QueryFilter', JSON.stringify(qf));
+      const r = await fetch(u.toString(), { headers: { ...authHeaders, Accept:'application/json' } });
+      const t = await r.text(); let j:any={}; try{ j=JSON.parse(t);}catch{}
+      const items = j?.items||j?.Items||[];
+      return { ok:r.ok, status:r.status, totalCount: j?.totalCount ?? j?.TotalCount ?? j?.totalRecordCount ?? null,
+        itemKeys: items[0]?Object.keys(items[0]):[], sample: items[0]||null };
+    };
+    const cats = ['ExecutionDate','IssueDate','CreateDate','CreatedDate','ReceiveDate','ReceivedDate','RecordDate'];
+    const out: any = { unfiltered: await call(null), byCategory: {} };
+    for (const c of cats) {
+      out.byCategory[c] = (await call([
+        { Category:c, Operator:5, Value:ddmmyyyy(startDate) },
+        { Category:c, Operator:3, Value:ddmmyyyy(endDate) },
+      ])).totalCount;
+    }
+    return out;
+  }
+
   private async fetchTurkcellInvoices(
     cfg: RuntimeIntegrationConfig,
     opts: {
