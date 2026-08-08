@@ -8479,6 +8479,31 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
 
     const box = opts.direction === 'ALIS' ? 'inboxinvoice' : 'outboxinvoice';
 
+    // --- Hız sınırı (429) dayanıklılığı ---
+    // Turkcell "yüksek frekanslı istek" (429) veriyor. Çözüm: (a) istekler arası kısa bekleme,
+    //   (b) 429 gelince ÇÖKME → artan bekleme ile birkaç kez tekrar dene (backoff).
+    const tsleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
+    const is429 = (status: number, body: string) =>
+      status === 429 || /"code"\s*:\s*429/.test(body) || /yüksek frekans|too many request|rate limit/i.test(body);
+    const turkcellFetch = async (url: string, accept: string): Promise<{ ok: boolean; status: number; buf: Buffer; text: () => string }> => {
+      const backoff = [4000, 8000, 15000, 25000]; // 429'da sırayla bekle
+      let last = { status: 0, body: '' };
+      for (let attempt = 0; attempt <= backoff.length; attempt++) {
+        const res = await fetch(url, { method: 'GET', headers: { ...authHeaders, Accept: accept } });
+        const buf = Buffer.from(await res.arrayBuffer());
+        const bodyStr = buf.toString('utf8');
+        if (res.ok) return { ok: true, status: res.status, buf, text: () => bodyStr };
+        last = { status: res.status, body: bodyStr };
+        if (is429(res.status, bodyStr) && attempt < backoff.length) {
+          this.logger.warn(`Turkcell 429 — ${backoff[attempt]}ms bekleyip tekrar (deneme ${attempt + 1})`);
+          await tsleep(backoff[attempt]);
+          continue;
+        }
+        return { ok: false, status: res.status, buf, text: () => bodyStr };
+      }
+      return { ok: false, status: last.status || 429, buf: Buffer.from(''), text: () => last.body };
+    };
+
     // --- Fatura listesi (isim360 GERÇEK format — ePlatform.Api.Core doğrulaması): GET /v1/{box}/list
     //   ?PageIndex&PageSize&QueryFilter. QueryFilter = URL-encoded JSON dizisi [{Category,Operator,Value}].
     //   Tarih aralığı = ExecutionDate (fatura tarihi) için iki filtre: >= başlangıç (Op 5), <= bitiş (Op 3).
@@ -8507,8 +8532,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       listUrl.searchParams.set('SortedColumn', 'ExecutionDate');
       listUrl.searchParams.set('IsDesc', 'true'); // YENİ→ESKİ
       listUrl.searchParams.set('QueryFilter', queryFilter);
-      const listRes = await fetch(listUrl.toString(), { method: 'GET', headers: { ...authHeaders, Accept: 'application/json' } });
-      const listText = await listRes.text();
+      if (page > 1) await tsleep(600); // sayfalar arası nefes payı (429 önleme)
+      const listRes = await turkcellFetch(listUrl.toString(), 'application/json');
+      const listText = listRes.text();
       if (!listRes.ok) throw new Error(`Turkcell ${box} liste hatası: ${listRes.status} ${listText.slice(0, 250)}`);
       let listJson: any;
       try { listJson = JSON.parse(listText); } catch { throw new Error(`Turkcell liste yanıtı JSON değil: ${listText.slice(0, 200)}`); }
@@ -8531,11 +8557,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         if (!id) continue;
         const invoiceNo = String(item?.InvoiceNumber || item?.invoiceNumber || item?.DocumentNumber || id).trim();
         // UBL indir: GET /v2/{box}/{id}/ubl (id path içinde). Yanıt ZIP (PK) → JSZip; değilse düz XML.
-        const ublRes = await fetch(`${baseUrl}/v2/${box}/${encodeURIComponent(String(id))}/ubl`, {
-          method: 'GET', headers: { ...authHeaders, Accept: 'application/zip, application/octet-stream, application/xml, */*' },
-        });
+        await tsleep(250); // UBL indirmeleri arası nefes payı (429 önleme)
+        const ublRes = await turkcellFetch(
+          `${baseUrl}/v2/${box}/${encodeURIComponent(String(id))}/ubl`,
+          'application/zip, application/octet-stream, application/xml, */*',
+        );
         if (!ublRes.ok) { this.logger.warn(`Turkcell ubl ${id} hata ${ublRes.status}`); continue; }
-        const buf = Buffer.from(await ublRes.arrayBuffer());
+        const buf = ublRes.buf;
         let xml: string | null = null;
         if (buf.length >= 2 && buf[0] === 0x50 && buf[1] === 0x4b) xml = await this.elogoUnzipXml(buf);
         else { const t2 = buf.toString('utf8').trim(); xml = t2.startsWith('<') ? t2 : (/^[A-Za-z0-9+/=\s]+$/.test(t2) ? Buffer.from(t2, 'base64').toString('utf8') : t2); }
