@@ -517,20 +517,30 @@ export class FaturaMuhasebelestirmeController {
   @Post('efatura-sync')
   async efaturaSync(@Req() req: any, @Body() body: any) {
     const direction: 'IN' | 'OUT' = body?.direction === 'OUT' ? 'OUT' : 'IN';
-    return this.service.syncEfaturaInboxFromIntegrations(
-      req.user.tenantId,
-      req.user?.userId || req.user?.sub,
-      {
-        taxpayerId: body?.taxpayerId,
-        period: body?.period,
-        dateFrom: body?.dateFrom,
-        dateTo: body?.dateTo,
-        direction,
-        channel: body?.channel,
-        limit: body?.limit,
-        providers: Array.isArray(body?.providers) ? body.providers : undefined,
-      },
-    );
+    const providers = Array.isArray(body?.providers) ? body.providers : undefined;
+    const opts = {
+      taxpayerId: body?.taxpayerId,
+      period: body?.period,
+      dateFrom: body?.dateFrom,
+      dateTo: body?.dateTo,
+      direction,
+      channel: body?.channel,
+      limit: body?.limit,
+      providers,
+    };
+    // Turkcell (çok-faturalı, uzun çekim) → KOPUK ARKA PLAN: hemen dön, iş bağımsız sürsün (HTTP timeout'a takılmasın).
+    //   Artımlı yazım sayesinde satırlar geldikçe efatura-inbox'ta görünür; durum efatura-sync/status'tan izlenir.
+    const isTurkcell = (providers || []).some((p: any) => String(p).toUpperCase() === 'TURKCELL');
+    if (isTurkcell) {
+      return this.service.startEfaturaSyncBackground(req.user.tenantId, req.user?.userId || req.user?.sub, opts);
+    }
+    return this.service.syncEfaturaInboxFromIntegrations(req.user.tenantId, req.user?.userId || req.user?.sub, opts);
+  }
+
+  /** Arka plan sorgu durumu (Turkcell gibi uzun çekimler için) */
+  @Get('efatura-sync/status')
+  efaturaSyncStatus(@Req() req: any, @Query() q: any) {
+    return this.service.getEfaturaSyncStatus(req.user.tenantId, q?.taxpayerId, q?.channel || q?.direction || 'IN');
   }
 
   @Post('efatura-inbox/import')

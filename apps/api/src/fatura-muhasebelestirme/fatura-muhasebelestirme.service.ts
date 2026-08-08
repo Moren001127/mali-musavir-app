@@ -4081,6 +4081,26 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     };
   }
 
+  // Arka plan sorgu durumu (çok-faturalı Turkcell gibi uzun çekimler için — HTTP isteğine bağlı DEĞİL).
+  private __efaturaSyncStatus = new Map<string, any>();
+  private efaturaSyncKey(tenantId: string, opts: any) {
+    return `${tenantId}:${opts?.taxpayerId}:${String(opts?.channel || opts?.direction || 'IN').toUpperCase()}`;
+  }
+  getEfaturaSyncStatus(tenantId: string, taxpayerId: string, channel: string) {
+    return this.__efaturaSyncStatus.get(`${tenantId}:${taxpayerId}:${String(channel || 'IN').toUpperCase()}`) || { state: 'idle' };
+  }
+  /** İsteğe bağlı olmayan (kopuk) arka plan sorgu: hemen döner, iş event-loop'ta bağımsız sürer. */
+  startEfaturaSyncBackground(tenantId: string, userId: string | undefined, opts: any) {
+    const key = this.efaturaSyncKey(tenantId, opts);
+    const prev = this.__efaturaSyncStatus.get(key);
+    if (prev?.state === 'running') return { started: false, background: true, alreadyRunning: true, statusKey: key };
+    this.__efaturaSyncStatus.set(key, { state: 'running', startedAt: new Date().toISOString() });
+    this.syncEfaturaInboxFromIntegrations(tenantId, userId, opts)
+      .then((r) => { this.__efaturaSyncStatus.set(key, { state: 'done', finishedAt: new Date().toISOString(), result: r }); })
+      .catch((e) => { this.__efaturaSyncStatus.set(key, { state: 'error', finishedAt: new Date().toISOString(), error: String(e?.message || e) }); });
+    return { started: true, background: true, statusKey: key };
+  }
+
   async syncEfaturaInboxFromIntegrations(
     tenantId: string,
     userId: string | undefined,
