@@ -8459,32 +8459,38 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     else return { error: 'apiKey yok (token akisi teshiste atlandi)' };
     const ddmmyyyy = (ymd: string) => { const [y,m,d]=String(ymd).slice(0,10).split('-'); return `${d}.${m}.${y}`; };
     const sleep = (ms:number)=>new Promise(res=>setTimeout(res,ms));
-    const call = async (qf: any[] | null, desc: boolean) => {
-      const u = new URL(`${baseUrl}/v1/inboxinvoice/list`);
-      u.searchParams.set('PageIndex','1'); u.searchParams.set('PageSize','10');
-      u.searchParams.set('SortedColumn','ExecutionDate'); u.searchParams.set('IsDesc', desc?'true':'false');
-      if (qf) u.searchParams.set('QueryFilter', JSON.stringify(qf));
-      for (let attempt=0; attempt<3; attempt++) {
-        const r = await fetch(u.toString(), { headers: { ...authHeaders, Accept:'application/json' } });
-        const t = await r.text(); let j:any={}; try{ j=JSON.parse(t);}catch{}
-        if (r.status===429) { await sleep(5000*(attempt+1)); continue; }
-        const items = j?.items||j?.Items||[];
-        return { ok:r.ok, status:r.status, totalCount: j?.totalCount ?? j?.TotalCount ?? null,
-          dates: items.map((x:any)=>String(x.executionDate||x.ExecutionDate||'').slice(0,10)) };
-      }
-      return { ok:false, status:429, totalCount:null, dates:[] };
+    void ddmmyyyy;
+    const getJson = async (url: string) => {
+      for (let a=0;a<3;a++){ const r=await fetch(url,{headers:{...authHeaders,Accept:'application/json'}}); const t=await r.text();
+        if(r.status===429){await sleep(5000*(a+1));continue;} try{return JSON.parse(t);}catch{return {};} } return {};
     };
-    const qfExec = [
-      { Category:'ExecutionDate', Operator:5, Value:ddmmyyyy(startDate) },
-      { Category:'ExecutionDate', Operator:3, Value:ddmmyyyy(endDate) },
-    ];
-    await sleep(1000);
-    const unfilteredDesc = await call(null, true);
-    await sleep(2000);
-    const unfilteredAsc = await call(null, false);
-    await sleep(2000);
-    const execFiltered = await call(qfExec, true);
-    return { period: `${startDate}..${endDate}`, unfilteredDesc, unfilteredAsc, execFiltered };
+    const getUbl = async (id: string) => {
+      for (let a=0;a<3;a++){ const r=await fetch(`${baseUrl}/v2/inboxinvoice/${encodeURIComponent(id)}/ubl`,{headers:{...authHeaders,Accept:'*/*'}});
+        const buf=Buffer.from(await r.arrayBuffer()); if(r.status===429){await sleep(5000*(a+1));continue;}
+        let xml=''; if(buf.length>=2&&buf[0]===0x50&&buf[1]===0x4b) xml=(await this.elogoUnzipXml(buf))||''; else xml=buf.toString('utf8');
+        const m=xml.match(/<cbc:IssueDate>\s*([0-9-]{10})/i)||xml.match(/<IssueDate>\s*([0-9-]{10})/i); return m?m[1]:''; } return '';
+    };
+    // Sayfa tabrak: executionDate desc; hangi sayfada Temmuz'a (2026-07) düşüyor + kaç Ağustos var
+    let pagesToJuly: any = null, augCount = 0, firstJulyId: any = null, firstJulyExec: any = null;
+    const compare: any[] = [];
+    for (let p=1; p<=25; p++){
+      await sleep(p>1?1500:500);
+      const j = await getJson(`${baseUrl}/v1/inboxinvoice/list?PageIndex=${p}&PageSize=100&SortedColumn=ExecutionDate&IsDesc=true`);
+      const items = j?.items||j?.Items||[];
+      if(!items.length) break;
+      for(const it of items){ const ex=String(it.executionDate||'').slice(0,10);
+        if(ex>=startDate&&ex<=endDate){ if(!firstJulyId){firstJulyId=it.id; firstJulyExec=ex; pagesToJuly=p;} }
+        else if(ex>endDate) augCount++; }
+      if(firstJulyId) break;
+    }
+    // Karsilastirma: birkac faturanin executionDate'i vs UBL IssueDate (fatura tarihi)
+    if(firstJulyId){ const iss=await getUbl(firstJulyId); compare.push({ id:String(firstJulyId).slice(0,8), executionDate:firstJulyExec, ublIssueDate:iss, ayni: firstJulyExec===iss }); }
+    // en yeni (Agustos) faturadan da bir ornek
+    await sleep(1500);
+    const top = await getJson(`${baseUrl}/v1/inboxinvoice/list?PageIndex=1&PageSize=3&SortedColumn=ExecutionDate&IsDesc=true`);
+    const t0=(top?.items||[])[0];
+    if(t0){ const iss=await getUbl(t0.id); compare.push({ id:String(t0.id).slice(0,8), executionDate:String(t0.executionDate||'').slice(0,10), ublIssueDate:iss, ayni:String(t0.executionDate||'').slice(0,10)===iss }); }
+    return { period:`${startDate}..${endDate}`, pagesToJuly, augustCountBeforeJuly: augCount, compare };
   }
 
   private async fetchTurkcellInvoices(
