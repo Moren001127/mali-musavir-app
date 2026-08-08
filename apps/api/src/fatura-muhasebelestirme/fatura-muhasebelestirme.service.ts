@@ -8444,6 +8444,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       direction: 'ALIS' | 'SATIS';
       period: { donem: string; startDate: string; endDate: string };
       limit: number;
+      channel?: string;
     },
   ): Promise<ProviderInvoicePayload[]> {
     const baseUrl = (cfg.baseUrl || PROVIDER_DEFAULT_BASE_URL.TURKCELL).replace(/\/+$/, '');
@@ -8477,7 +8478,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       throw new Error('Turkcell için API anahtarı (apiKey) veya kullanıcı+şifre gerekli');
     }
 
-    const box = opts.direction === 'ALIS' ? 'inboxinvoice' : 'outboxinvoice';
+    // Kanal → kutu (isim360): Alış e-Fatura=inboxinvoice, Satış e-Fatura=outboxinvoice,
+    //   Satış e-Arşiv=earchiveinvoice (e-Arşiv AYRI uç nokta; her zaman giden/satış).
+    const channel = String(opts.channel || (opts.direction === 'SATIS' ? 'OUT_EFATURA' : 'IN_EFATURA')).toUpperCase();
+    const isEarsiv = channel === 'OUT_EARSIV';
+    const box = isEarsiv ? 'earchiveinvoice' : opts.direction === 'ALIS' ? 'inboxinvoice' : 'outboxinvoice';
 
     // --- Hız sınırı (429) dayanıklılığı ---
     // Turkcell "yüksek frekanslı istek" (429) veriyor. Çözüm: (a) istekler arası kısa bekleme,
