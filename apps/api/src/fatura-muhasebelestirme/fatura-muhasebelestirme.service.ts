@@ -4099,14 +4099,17 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     this.__efaturaSyncStatus.set(key, { state: 'running', startedAt: new Date().toISOString(), added: 0, rounds: 0 });
     (async () => {
       let toplamAdded = 0;
-      const MAX_ROUNDS = 8;
+      const MAX_ROUNDS = 20; // hız-sınırı ceza turları uzun sürebilir; skip-existing sayesinde her tur ucuz
       for (let round = 1; round <= MAX_ROUNDS; round++) {
         const r: any = await this.syncEfaturaInboxFromIntegrations(tenantId, userId, opts);
         const roundAdded = Number(r?.added || 0);
+        const rateLimited = Array.isArray(r?.providers) && r.providers.some((p: any) => p?.rateLimited);
         toplamAdded += roundAdded;
-        this.__efaturaSyncStatus.set(key, { state: 'running', rounds: round, added: toplamAdded, sonTur: r });
-        if (roundAdded === 0) { this.__efaturaSyncStatus.set(key, { state: 'done', finishedAt: new Date().toISOString(), rounds: round, added: toplamAdded, result: r }); return; }
-        await new Promise((res) => setTimeout(res, 3000)); // turlar arası kısa nefes (hız-sınırı reset)
+        this.__efaturaSyncStatus.set(key, { state: 'running', rounds: round, added: toplamAdded, rateLimited, sonTur: r });
+        // BİTİŞ: yalnız bir tur HİÇ 429 yemeden VE 0 yeni eklediyse (gerçekten tamam). 429'la kesildiyse devam et.
+        if (roundAdded === 0 && !rateLimited) { this.__efaturaSyncStatus.set(key, { state: 'done', finishedAt: new Date().toISOString(), rounds: round, added: toplamAdded, result: r }); return; }
+        // 429 yediyse UZUN dinlen (ceza dakikalarca sürebilir), yoksa kısa nefes.
+        await new Promise((res) => setTimeout(res, rateLimited ? 120000 : 5000));
       }
       this.__efaturaSyncStatus.set(key, { state: 'done', finishedAt: new Date().toISOString(), rounds: MAX_ROUNDS, added: toplamAdded, note: 'tavan tur' });
     })().catch((e) => { this.__efaturaSyncStatus.set(key, { state: 'error', finishedAt: new Date().toISOString(), error: String(e?.message || e) }); });
@@ -4509,10 +4512,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           });
           skipExistingExternalIds = new Set<string>(mevcut.map((m: any) => String(m.uuid)));
         }
+        const tcProgress = { rateLimited: false };
         const payloads = await this.fetchProviderInvoices(cfg, {
           taxpayer, direction, period, limit, channel,
           onPayload: incremental ? persistOne : undefined,
           skipExistingExternalIds,
+          progress: tcProgress,
         });
         if (!incremental) { for (const payload of payloads) await persistOne(payload); }
         fetched += providerFetched;
@@ -4521,6 +4526,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         skipped += providerSkipped;
         statuses.push({
           provider: item.provider, label: cfg.label, status: 'SUCCESS', fetched: providerFetched, added: providerAdded, updated: providerUpdated, skipped: providerSkipped,
+          ...(tcProgress.rateLimited ? { rateLimited: true, partial: true } : {}),
           // Sayfalama yok: dönen adet limite ULAŞTIYSA dönemde daha fazla fatura olabilir — sessiz
           //   kırpma yerine görünür uyarı (kullanıcı limiti artırır ya da aralığı böler).
           ...(providerFetched >= limit ? { truncated: true, warning: `Sağlayıcı ${limit} kayıt sınırına ulaştı — dönemde daha fazla fatura olabilir; tarih aralığını bölerek tekrar sorgulayın.` } : {}),
@@ -6468,6 +6474,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       targetRows?: any[];
       onPayload?: (p: ProviderInvoicePayload) => Promise<void>; // ARTIMLI persistence (Turkcell)
       skipExistingExternalIds?: Set<string>; // yeniden-indirmeyi önle (Turkcell resumable)
+      progress?: { rateLimited?: boolean }; // 429 ile kısmi-bitiş sinyali (oto-tekrar için)
     },
   ): Promise<ProviderInvoicePayload[]> {
     if (cfg.provider === 'UYUMSOFT') return this.fetchUyumsoftInvoices(cfg, opts);
@@ -8541,6 +8548,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       channel?: string;
       onPayload?: (p: ProviderInvoicePayload) => Promise<void>;
       skipExistingExternalIds?: Set<string>;
+      progress?: { rateLimited?: boolean };
     },
   ): Promise<ProviderInvoicePayload[]> {
     const baseUrl = (cfg.baseUrl || PROVIDER_DEFAULT_BASE_URL.TURKCELL).replace(/\/+$/, '');
@@ -8637,7 +8645,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         // Backoff'a rağmen liste çağrısı düştü (hard rate-limit). İlerleme VARSA (skip-existing sayesinde
         //   bu tetikleme eksikleri indiriyordu) THROW ETME → nazikçe bitir; kalan eksikler bir sonraki
         //   tetiklemede tamamlanır (zaten indirilenler atlanır). Hiç ilerleme yoksa hatayı yükselt.
-        if (kept > 0) { this.logger.warn(`Turkcell ${box} liste ${listRes.status} — ${kept} indirildi, kismi bitis (tekrar tetikle eksikler tamamlanir)`); break; }
+        if (is429(listRes.status, listText) && opts.progress) opts.progress.rateLimited = true;
+        if (kept > 0 || opts.skipExistingExternalIds) { this.logger.warn(`Turkcell ${box} liste ${listRes.status} — kismi bitis (tekrar tetikle eksikler tamamlanir)`); break; }
         throw new Error(`Turkcell ${box} liste hatası: ${listRes.status} ${listText.slice(0, 250)}`);
       }
       let listJson: any;
