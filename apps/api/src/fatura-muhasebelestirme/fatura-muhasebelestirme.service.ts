@@ -8446,19 +8446,26 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     if (cfg.apiKey) authHeaders['X-Api-Key'] = cfg.apiKey;
     else return { error: 'apiKey yok (token akisi teshiste atlandi)' };
     const ddmmyyyy = (ymd: string) => { const [y,m,d]=String(ymd).slice(0,10).split('-'); return `${d}.${m}.${y}`; };
+    const sleep = (ms:number)=>new Promise(res=>setTimeout(res,ms));
     const call = async (qf: any[] | null) => {
       const u = new URL(`${baseUrl}/v1/inboxinvoice/list`);
       u.searchParams.set('PageIndex','1'); u.searchParams.set('PageSize','3');
       if (qf) u.searchParams.set('QueryFilter', JSON.stringify(qf));
-      const r = await fetch(u.toString(), { headers: { ...authHeaders, Accept:'application/json' } });
-      const t = await r.text(); let j:any={}; try{ j=JSON.parse(t);}catch{}
-      const items = j?.items||j?.Items||[];
-      return { ok:r.ok, status:r.status, totalCount: j?.totalCount ?? j?.TotalCount ?? j?.totalRecordCount ?? null,
-        itemKeys: items[0]?Object.keys(items[0]):[], sample: items[0]||null };
+      for (let attempt=0; attempt<5; attempt++) {
+        const r = await fetch(u.toString(), { headers: { ...authHeaders, Accept:'application/json' } });
+        const t = await r.text(); let j:any={}; try{ j=JSON.parse(t);}catch{}
+        if (r.status===429) { await sleep(6000*(attempt+1)); continue; }
+        const items = j?.items||j?.Items||[];
+        return { ok:r.ok, status:r.status, totalCount: j?.totalCount ?? j?.TotalCount ?? j?.totalRecordCount ?? null,
+          itemKeys: items[0]?Object.keys(items[0]):[], sample: items[0]||null };
+      }
+      return { ok:false, status:429, totalCount:null, itemKeys:[], sample:null };
     };
-    const cats = ['ExecutionDate','IssueDate','CreateDate','CreatedDate','ReceiveDate','ReceivedDate','RecordDate'];
+    const cats = ['ExecutionDate','IssueDate','CreateDate','ReceiveDate'];
+    await sleep(1500);
     const out: any = { unfiltered: await call(null), byCategory: {} };
     for (const c of cats) {
+      await sleep(1500);
       out.byCategory[c] = (await call([
         { Category:c, Operator:5, Value:ddmmyyyy(startDate) },
         { Category:c, Operator:3, Value:ddmmyyyy(endDate) },
