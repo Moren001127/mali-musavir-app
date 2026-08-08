@@ -8569,7 +8569,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const is429 = (status: number, body: string) =>
       status === 429 || /"code"\s*:\s*429/.test(body) || /yüksek frekans|too many request|rate limit/i.test(body);
     const turkcellFetch = async (url: string, accept: string): Promise<{ ok: boolean; status: number; buf: Buffer; text: () => string }> => {
-      const backoff = [4000, 8000, 15000, 25000]; // 429'da sırayla bekle
+      // Sabırlı backoff: geçici 429 spike'ı TÜM çekimi öldürmesin (özellikle liste çağrısı — bir sayfa
+      //   kaybı sonraki tüm sayfaları da kaçırır). 6 deneme, 60sn'ye kadar.
+      const backoff = [5000, 10000, 20000, 35000, 50000, 60000];
       let last = { status: 0, body: '' };
       for (let attempt = 0; attempt <= backoff.length; attempt++) {
         const res = await fetch(url, { method: 'GET', headers: { ...authHeaders, Accept: accept } });
@@ -8609,7 +8611,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       listUrl.searchParams.set('PageSize', '100');
       listUrl.searchParams.set('SortedColumn', 'ExecutionDate');
       listUrl.searchParams.set('IsDesc', 'true'); // YENİ→ESKİ (fatura tarihine göre)
-      if (page > 1) await tsleep(400); // sayfalar arası nefes payı (429 önleme)
+      if (page > 1) await tsleep(1000); // sayfalar arası nefes payı (429 önleme)
       const listRes = await turkcellFetch(listUrl.toString(), 'application/json');
       const listText = listRes.text();
       if (!listRes.ok) throw new Error(`Turkcell ${box} liste hatası: ${listRes.status} ${listText.slice(0, 250)}`);
@@ -8628,7 +8630,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         if (!id) continue;
         const invoiceNo = String(item?.InvoiceNumber || item?.invoiceNumber || item?.DocumentNumber || id).trim();
         // UBL indir: GET /v2/{box}/{id}/ubl. Yanıt ZIP (PK) → JSZip; değilse düz XML.
-        await tsleep(150); // UBL indirmeleri arası nefes payı (429 önleme)
+        await tsleep(600); // UBL indirmeleri arası nefes payı — Turkcell hız-sınırı agresif; sürekli 429'a girmemek için nazik (~1.6/s)
         const ublRes = await turkcellFetch(
           `${baseUrl}/v2/${box}/${encodeURIComponent(String(id))}/ubl`,
           'application/zip, application/octet-stream, application/xml, */*',
