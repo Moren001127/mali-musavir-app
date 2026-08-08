@@ -8447,31 +8447,32 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     else return { error: 'apiKey yok (token akisi teshiste atlandi)' };
     const ddmmyyyy = (ymd: string) => { const [y,m,d]=String(ymd).slice(0,10).split('-'); return `${d}.${m}.${y}`; };
     const sleep = (ms:number)=>new Promise(res=>setTimeout(res,ms));
-    const call = async (qf: any[] | null) => {
+    const call = async (qf: any[] | null, desc: boolean) => {
       const u = new URL(`${baseUrl}/v1/inboxinvoice/list`);
-      u.searchParams.set('PageIndex','1'); u.searchParams.set('PageSize','3');
+      u.searchParams.set('PageIndex','1'); u.searchParams.set('PageSize','10');
+      u.searchParams.set('SortedColumn','ExecutionDate'); u.searchParams.set('IsDesc', desc?'true':'false');
       if (qf) u.searchParams.set('QueryFilter', JSON.stringify(qf));
-      for (let attempt=0; attempt<5; attempt++) {
+      for (let attempt=0; attempt<3; attempt++) {
         const r = await fetch(u.toString(), { headers: { ...authHeaders, Accept:'application/json' } });
         const t = await r.text(); let j:any={}; try{ j=JSON.parse(t);}catch{}
-        if (r.status===429) { await sleep(6000*(attempt+1)); continue; }
+        if (r.status===429) { await sleep(5000*(attempt+1)); continue; }
         const items = j?.items||j?.Items||[];
-        return { ok:r.ok, status:r.status, totalCount: j?.totalCount ?? j?.TotalCount ?? j?.totalRecordCount ?? null,
-          itemKeys: items[0]?Object.keys(items[0]):[], sample: items[0]||null };
+        return { ok:r.ok, status:r.status, totalCount: j?.totalCount ?? j?.TotalCount ?? null,
+          dates: items.map((x:any)=>String(x.executionDate||x.ExecutionDate||'').slice(0,10)) };
       }
-      return { ok:false, status:429, totalCount:null, itemKeys:[], sample:null };
+      return { ok:false, status:429, totalCount:null, dates:[] };
     };
-    const cats = ['ExecutionDate','IssueDate','CreateDate','ReceiveDate'];
-    await sleep(1500);
-    const out: any = { unfiltered: await call(null), byCategory: {} };
-    for (const c of cats) {
-      await sleep(1500);
-      out.byCategory[c] = (await call([
-        { Category:c, Operator:5, Value:ddmmyyyy(startDate) },
-        { Category:c, Operator:3, Value:ddmmyyyy(endDate) },
-      ])).totalCount;
-    }
-    return out;
+    const qfExec = [
+      { Category:'ExecutionDate', Operator:5, Value:ddmmyyyy(startDate) },
+      { Category:'ExecutionDate', Operator:3, Value:ddmmyyyy(endDate) },
+    ];
+    await sleep(1000);
+    const unfilteredDesc = await call(null, true);
+    await sleep(2000);
+    const unfilteredAsc = await call(null, false);
+    await sleep(2000);
+    const execFiltered = await call(qfExec, true);
+    return { period: `${startDate}..${endDate}`, unfilteredDesc, unfilteredAsc, execFiltered };
   }
 
   private async fetchTurkcellInvoices(
