@@ -4376,16 +4376,19 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           continue;
         }
 
-        const payloads = await this.fetchProviderInvoices(cfg, { taxpayer, direction, period, limit, channel });
-        let providerAdded = 0, providerUpdated = 0, providerSkipped = 0;
-        for (const payload of payloads) {
+        let providerAdded = 0, providerUpdated = 0, providerSkipped = 0, providerFetched = 0;
+        // Tek fatura yazımı — ARTIMLI persistence için closure. Turkcell gibi çok-belgeli/uzun çekimlerde
+        //   onPayload olarak GEÇİLİR → her UBL inince ANINDA yazılır (uzun/kesintili sorguda ilerleme kaybolmaz;
+        //   frontend efatura-inbox'u poll edip satırların gelişini görür). Diğer sağlayıcılarda dönüş dizisi üstünde çalışır.
+        const persistOne = async (payload: ProviderInvoicePayload) => {
+          providerFetched++;
           try {
             const parsed = this.parseProviderUblInvoice(payload.xml) || this.regexProviderInvoiceFallback(payload.xml);
-            if (!parsed) { providerSkipped++; continue; }
+            if (!parsed) { providerSkipped++; return; }
             const docType = this.documentTypeFromProviderXml(payload.xml);
-            if (channel === 'OUT_EARSIV' && docType !== 'E_ARSIV') { providerSkipped++; continue; }
-            if (channel === 'OUT_EFATURA' && docType === 'E_ARSIV') { providerSkipped++; continue; }
-            if (channel === 'IN_EFATURA' && docType === 'E_ARSIV') { providerSkipped++; continue; }
+            if (channel === 'OUT_EARSIV' && docType !== 'E_ARSIV') { providerSkipped++; return; }
+            if (channel === 'OUT_EFATURA' && docType === 'E_ARSIV') { providerSkipped++; return; }
+            if (channel === 'IN_EFATURA' && docType === 'E_ARSIV') { providerSkipped++; return; }
             const uuid = String(payload.externalId || parsed.ettn || parsed.faturaNo || createHash('sha1').update(payload.xml).digest('hex'));
             const total = parsed.toplamTutar ?? ((parsed.matrah || 0) + (parsed.kdvTutari || 0));
             let existing = await (this.prisma as any).eFaturaInbox.findUnique({
@@ -4446,41 +4449,37 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             if (existing) {
               await (this.prisma as any).eFaturaInbox.update({ where: { id: existing.id }, data });
               if (existing.documentId && storedVisual) {
-                await this.refreshProviderDocumentVisual(
-                  tenantId,
-                  existing.documentId,
-                  taxpayer,
-                  cfg,
-                  payload,
-                ).catch((e: any) => this.logger.warn(`Aktarilmis e-fatura gorseli yenilenemedi: ${e?.message || e}`));
+                await this.refreshProviderDocumentVisual(tenantId, existing.documentId, taxpayer, cfg, payload)
+                  .catch((e: any) => this.logger.warn(`Aktarilmis e-fatura gorseli yenilenemedi: ${e?.message || e}`));
               }
               providerUpdated++;
             } else {
               await (this.prisma as any).eFaturaInbox.create({
-                data: {
-                  tenantId,
-                  taxpayerId: opts.taxpayerId,
-                  entegrator: cfg.provider,
-                  uuid,
-                  ...data,
-                },
+                data: { tenantId, taxpayerId: opts.taxpayerId, entegrator: cfg.provider, uuid, ...data },
               });
               providerAdded++;
             }
           } catch (e: any) {
             failed++;
-            this.logger.warn(`e-Fatura inbox yazilamadi (${item.provider}): ${e?.message || e}`);
+            this.logger.warn(`e-Fatura inbox yazilamadi (${cfg.provider}): ${e?.message || e}`);
           }
-        }
-        fetched += payloads.length;
+        };
+        // Turkcell = çok-faturalı/uzun çekim → ARTIMLI yaz (onPayload). Diğerleri dönüş dizisinden.
+        const incremental = cfg.provider === 'TURKCELL';
+        const payloads = await this.fetchProviderInvoices(cfg, {
+          taxpayer, direction, period, limit, channel,
+          onPayload: incremental ? persistOne : undefined,
+        });
+        if (!incremental) { for (const payload of payloads) await persistOne(payload); }
+        fetched += providerFetched;
         added += providerAdded;
         updated += providerUpdated;
         skipped += providerSkipped;
         statuses.push({
-          provider: item.provider, label: cfg.label, status: 'SUCCESS', fetched: payloads.length, added: providerAdded, updated: providerUpdated, skipped: providerSkipped,
+          provider: item.provider, label: cfg.label, status: 'SUCCESS', fetched: providerFetched, added: providerAdded, updated: providerUpdated, skipped: providerSkipped,
           // Sayfalama yok: dönen adet limite ULAŞTIYSA dönemde daha fazla fatura olabilir — sessiz
           //   kırpma yerine görünür uyarı (kullanıcı limiti artırır ya da aralığı böler).
-          ...(payloads.length >= limit ? { truncated: true, warning: `Sağlayıcı ${limit} kayıt sınırına ulaştı — dönemde daha fazla fatura olabilir; tarih aralığını bölerek tekrar sorgulayın.` } : {}),
+          ...(providerFetched >= limit ? { truncated: true, warning: `Sağlayıcı ${limit} kayıt sınırına ulaştı — dönemde daha fazla fatura olabilir; tarih aralığını bölerek tekrar sorgulayın.` } : {}),
         });
       } catch (e: any) {
         failed++;
@@ -6423,6 +6422,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       limit: number;
       channel?: string;
       targetRows?: any[];
+      onPayload?: (p: ProviderInvoicePayload) => Promise<void>; // ARTIMLI persistence (Turkcell)
     },
   ): Promise<ProviderInvoicePayload[]> {
     if (cfg.provider === 'UYUMSOFT') return this.fetchUyumsoftInvoices(cfg, opts);
@@ -8501,6 +8501,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       period: { donem: string; startDate: string; endDate: string };
       limit: number;
       channel?: string;
+      onPayload?: (p: ProviderInvoicePayload) => Promise<void>;
     },
   ): Promise<ProviderInvoicePayload[]> {
     const baseUrl = (cfg.baseUrl || PROVIDER_DEFAULT_BASE_URL.TURKCELL).replace(/\/+$/, '');
@@ -8570,29 +8571,25 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // CANLI TEŞHİS (2026-08-08, YAVUZ 47433 fatura):
     //   • isim360 QueryFilter'ı BU HESAPTA GÖRMEZDEN GELİYOR (filtreli/filtresiz item'lar birebir aynı) → filtre gönderMİYORUZ.
     //   • SortedColumn=ExecutionDate + IsDesc ÇALIŞIYOR (desc=bugün, asc=2021) → sayfalama güvenilir.
-    //   • item.executionDate = GELİŞ/ALINMA TARİHİ (bugün, saatli), FATURA TARİHİ DEĞİL. Fatura tarihi UBL IssueDate'te.
-    // KULLANICI KURALI: fatura tarihi [başlangıç..bitiş] sorgulanırken GELİŞ penceresi [başlangıç..BUGÜN] taranır
-    //   (ay sonunda kesilip sonraki ay gelen faturalar kaçmasın), sonra UBL FATURA TARİHİNE göre döneme süzülür.
+    //   • item.executionDate == UBL IssueDate (FATURA TARİHİ) — canlı karşılaştırmayla DOĞRULANDI (ayni:true).
+    //     Yani executionDate = fatura tarihidir → doğrudan onunla süzeriz; dönem-DIŞI (yeni) faturalar İNDİRİLMEZ,
+    //     sadece liste sayfası geçilir; dönem başından ESKİYE düşünce DURUR (desc sıralı).
+    // ARTIMLI YAZIM: onPayload verildiyse her UBL inince ANINDA yazılır (çok-faturalı hesapta uzun/kesintili
+    //   sorguda ilerleme kaybolmaz). Bellekte tümünü biriktirmeyiz (yalnız sayaç).
     const faturaStart = String(opts.period.startDate).slice(0, 10);
     const faturaEnd = String(opts.period.endDate).slice(0, 10);
-    const today = new Date().toISOString().slice(0, 10);
-    const gelisStart = faturaStart;
-    const gelisEnd = today > faturaEnd ? today : faturaEnd; // geliş penceresini bugüne kadar genişlet
-    const gelisYmd = (it: any) => String(it?.executionDate ?? it?.ExecutionDate ?? it?.createdDate ?? '').slice(0, 10);
-    const ublIssueYmd = (xml: string) => {
-      const m = xml.match(/<cbc:IssueDate>\s*([0-9]{4}-[0-9]{2}-[0-9]{2})/i) || xml.match(/<IssueDate>\s*([0-9]{4}-[0-9]{2}-[0-9]{2})/i);
-      return m ? m[1] : '';
-    };
+    const execYmd = (it: any) => String(it?.executionDate ?? it?.ExecutionDate ?? it?.createdDate ?? '').slice(0, 10);
     const payloads: ProviderInvoicePayload[] = [];
+    let kept = 0;
     let stop = false;
-    const MAX_PAGES = 400; // geliş penceresi kaç sayfa sürerse (executionDate<gelisStart olunca zaten durur)
-    for (let page = 1; page <= MAX_PAGES && payloads.length < opts.limit && !stop; page++) {
+    const MAX_PAGES = 600; // dönem başından eskiye düşünce zaten durur; tavan güvenlik amaçlı
+    for (let page = 1; page <= MAX_PAGES && kept < opts.limit && !stop; page++) {
       const listUrl = new URL(`${baseUrl}/v1/${box}/list`);
       listUrl.searchParams.set('PageIndex', String(page));
       listUrl.searchParams.set('PageSize', '100');
       listUrl.searchParams.set('SortedColumn', 'ExecutionDate');
-      listUrl.searchParams.set('IsDesc', 'true'); // YENİ→ESKİ (geliş tarihine göre)
-      if (page > 1) await tsleep(500); // sayfalar arası nefes payı (429 önleme)
+      listUrl.searchParams.set('IsDesc', 'true'); // YENİ→ESKİ (fatura tarihine göre)
+      if (page > 1) await tsleep(400); // sayfalar arası nefes payı (429 önleme)
       const listRes = await turkcellFetch(listUrl.toString(), 'application/json');
       const listText = listRes.text();
       if (!listRes.ok) throw new Error(`Turkcell ${box} liste hatası: ${listRes.status} ${listText.slice(0, 250)}`);
@@ -8603,15 +8600,15 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         : Array.isArray(listJson) ? listJson : [];
       if (!pageItems.length) break;
       for (const item of pageItems) {
-        if (payloads.length >= opts.limit) break;
-        const g = gelisYmd(item);
-        if (g && g > gelisEnd) continue;      // geliş penceresinden YENİ → atla (bugünden sonrası yok ama güvenlik)
-        if (g && g < gelisStart) { stop = true; break; } // desc sıralı → geliş penceresinin altına düştük → DUR
+        if (kept >= opts.limit) break;
+        const d = execYmd(item);
+        if (d && d > faturaEnd) continue;              // dönemden YENİ (örn Ağustos) → İNDİRME, atla
+        if (d && d < faturaStart) { stop = true; break; } // desc sıralı → dönemin altına düştük → DUR
         const id = item?.Id ?? item?.id ?? item?.Uuid ?? item?.uuid;
         if (!id) continue;
         const invoiceNo = String(item?.InvoiceNumber || item?.invoiceNumber || item?.DocumentNumber || id).trim();
         // UBL indir: GET /v2/{box}/{id}/ubl. Yanıt ZIP (PK) → JSZip; değilse düz XML.
-        await tsleep(200); // UBL indirmeleri arası nefes payı (429 önleme)
+        await tsleep(150); // UBL indirmeleri arası nefes payı (429 önleme)
         const ublRes = await turkcellFetch(
           `${baseUrl}/v2/${box}/${encodeURIComponent(String(id))}/ubl`,
           'application/zip, application/octet-stream, application/xml, */*',
@@ -8622,10 +8619,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         if (buf.length >= 2 && buf[0] === 0x50 && buf[1] === 0x4b) xml = await this.elogoUnzipXml(buf);
         else { const t2 = buf.toString('utf8').trim(); xml = t2.startsWith('<') ? t2 : (/^[A-Za-z0-9+/=\s]+$/.test(t2) ? Buffer.from(t2, 'base64').toString('utf8') : t2); }
         if (!xml || !xml.includes('<')) continue;
-        // FATURA TARİHİ süzgeci: UBL IssueDate dönem içinde olmalı (geliş penceresi genişti; asıl ölçüt fatura tarihi).
-        const iss = ublIssueYmd(xml);
-        if (iss && (iss < faturaStart || iss > faturaEnd)) continue;
-        payloads.push({ externalId: `turkcell:${box}:${id}`, originalName: `${invoiceNo || id}.xml`, xml });
+        const payload = { externalId: `turkcell:${box}:${id}`, originalName: `${invoiceNo || id}.xml`, xml };
+        kept++;
+        if (opts.onPayload) { await opts.onPayload(payload); } // ARTIMLI: anında yaz, bellekte tutma
+        else payloads.push(payload);
       }
       if (pageItems.length < 100) break; // son sayfa
     }
