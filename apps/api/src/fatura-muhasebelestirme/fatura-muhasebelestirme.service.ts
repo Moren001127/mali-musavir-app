@@ -8505,37 +8505,30 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const ddmmyyyy = (ymd: string) => { const [y,m,d]=String(ymd).slice(0,10).split('-'); return `${d}.${m}.${y}`; };
     const sleep = (ms:number)=>new Promise(res=>setTimeout(res,ms));
     void ddmmyyyy;
-    const getJson = async (url: string) => {
-      for (let a=0;a<3;a++){ const r=await fetch(url,{headers:{...authHeaders,Accept:'application/json'}}); const t=await r.text();
-        if(r.status===429){await sleep(5000*(a+1));continue;} try{return JSON.parse(t);}catch{return {};} } return {};
+    const getListRaw = async (url: string) => {
+      for (let a=0;a<6;a++){ const r=await fetch(url,{headers:{...authHeaders,Accept:'application/json'}}); const t=await r.text();
+        if(r.status===429){await sleep(6000*(a+1));continue;} let j:any={}; try{j=JSON.parse(t);}catch{}; return { ok:r.ok, status:r.status, j }; }
+      return { ok:false, status:429, j:{} };
     };
-    const getUbl = async (id: string) => {
-      for (let a=0;a<3;a++){ const r=await fetch(`${baseUrl}/v2/inboxinvoice/${encodeURIComponent(id)}/ubl`,{headers:{...authHeaders,Accept:'*/*'}});
-        const buf=Buffer.from(await r.arrayBuffer()); if(r.status===429){await sleep(5000*(a+1));continue;}
-        let xml=''; if(buf.length>=2&&buf[0]===0x50&&buf[1]===0x4b) xml=(await this.elogoUnzipXml(buf))||''; else xml=buf.toString('utf8');
-        const m=xml.match(/<cbc:IssueDate>\s*([0-9-]{10})/i)||xml.match(/<IssueDate>\s*([0-9-]{10})/i); return m?m[1]:''; } return '';
-    };
-    // Sayfa tabrak: executionDate desc; hangi sayfada Temmuz'a (2026-07) düşüyor + kaç Ağustos var
-    let pagesToJuly: any = null, augCount = 0, firstJulyId: any = null, firstJulyExec: any = null;
-    const compare: any[] = [];
-    for (let p=1; p<=25; p++){
-      await sleep(p>1?1500:500);
-      const j = await getJson(`${baseUrl}/v1/inboxinvoice/list?PageIndex=${p}&PageSize=100&SortedColumn=ExecutionDate&IsDesc=true`);
+    // SAYIM (indirme YOK): executionDate desc sayfala; dönemdeki (start..end) item'ları say. Dönem başından
+    //   eskiye düşünce dur. Böylece isim360 listesinde executionDate=fatura tarihi Temmuz kaç adet KESIN görülür.
+    let julyCount = 0, augCount = 0, olderSeen = 0, pages = 0, hit429 = false;
+    let stop = false;
+    for (let p=1; p<=200 && !stop; p++){
+      await sleep(p>1?900:200);
+      const { ok, status, j } = await getListRaw(`${baseUrl}/v1/inboxinvoice/list?PageIndex=${p}&PageSize=100&SortedColumn=ExecutionDate&IsDesc=true`);
+      if(!ok){ hit429 = status===429; break; }
       const items = j?.items||j?.Items||[];
       if(!items.length) break;
+      pages = p;
       for(const it of items){ const ex=String(it.executionDate||'').slice(0,10);
-        if(ex>=startDate&&ex<=endDate){ if(!firstJulyId){firstJulyId=it.id; firstJulyExec=ex; pagesToJuly=p;} }
-        else if(ex>endDate) augCount++; }
-      if(firstJulyId) break;
+        if(ex>endDate) augCount++;
+        else if(ex>=startDate && ex<=endDate) julyCount++;
+        else { olderSeen++; if(olderSeen>=120){ stop=true; break; } } // dönem altına düştük (tolerans)
+      }
+      if(items.length<100) break;
     }
-    // Karsilastirma: birkac faturanin executionDate'i vs UBL IssueDate (fatura tarihi)
-    if(firstJulyId){ const iss=await getUbl(firstJulyId); compare.push({ id:String(firstJulyId).slice(0,8), executionDate:firstJulyExec, ublIssueDate:iss, ayni: firstJulyExec===iss }); }
-    // en yeni (Agustos) faturadan da bir ornek
-    await sleep(1500);
-    const top = await getJson(`${baseUrl}/v1/inboxinvoice/list?PageIndex=1&PageSize=3&SortedColumn=ExecutionDate&IsDesc=true`);
-    const t0=(top?.items||[])[0];
-    if(t0){ const iss=await getUbl(t0.id); compare.push({ id:String(t0.id).slice(0,8), executionDate:String(t0.executionDate||'').slice(0,10), ublIssueDate:iss, ayni:String(t0.executionDate||'').slice(0,10)===iss }); }
-    return { period:`${startDate}..${endDate}`, pagesToJuly, augustCountBeforeJuly: augCount, compare };
+    return { period:`${startDate}..${endDate}`, julyCount, augCount, pagesScanned: pages, hit429, stopped: stop };
   }
 
   private async fetchTurkcellInvoices(
