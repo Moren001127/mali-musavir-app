@@ -4099,17 +4099,21 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     this.__efaturaSyncStatus.set(key, { state: 'running', startedAt: new Date().toISOString(), added: 0, rounds: 0 });
     (async () => {
       let toplamAdded = 0;
-      const MAX_ROUNDS = 20; // hız-sınırı ceza turları uzun sürebilir; skip-existing sayesinde her tur ucuz
+      let cezaSeri = 0; // ardışık 429 tur sayısı → UYARLANABİLİR dinlenme (erken tekrar cezayı UZATIR)
+      const MAX_ROUNDS = 25;
       for (let round = 1; round <= MAX_ROUNDS; round++) {
         const r: any = await this.syncEfaturaInboxFromIntegrations(tenantId, userId, opts);
         const roundAdded = Number(r?.added || 0);
         const rateLimited = Array.isArray(r?.providers) && r.providers.some((p: any) => p?.rateLimited);
         toplamAdded += roundAdded;
-        this.__efaturaSyncStatus.set(key, { state: 'running', rounds: round, added: toplamAdded, rateLimited, sonTur: r });
-        // BİTİŞ: yalnız bir tur HİÇ 429 yemeden VE 0 yeni eklediyse (gerçekten tamam). 429'la kesildiyse devam et.
+        cezaSeri = rateLimited && roundAdded === 0 ? cezaSeri + 1 : 0; // ilerleme olduysa seriyi sıfırla
+        this.__efaturaSyncStatus.set(key, { state: 'running', rounds: round, added: toplamAdded, rateLimited, cezaSeri, sonTur: r });
+        // BİTİŞ: yalnız bir tur HİÇ 429 yemeden VE 0 yeni eklediyse (gerçekten tamam).
         if (roundAdded === 0 && !rateLimited) { this.__efaturaSyncStatus.set(key, { state: 'done', finishedAt: new Date().toISOString(), rounds: round, added: toplamAdded, result: r }); return; }
-        // 429 yediyse UZUN dinlen (ceza dakikalarca sürebilir), yoksa kısa nefes.
-        await new Promise((res) => setTimeout(res, rateLimited ? 120000 : 5000));
+        // UYARLANABİLİR dinlenme: ilerleme varsa kısa; ceza serisi uzadıkça gittikçe uzun (10 dk'ya kadar),
+        //   böylece erken-tekrar cezayı yeniden-tetiklemez, hesap gerçekten soğur.
+        const rest = roundAdded > 0 ? 5000 : Math.min(600000, 120000 * Math.max(1, cezaSeri));
+        await new Promise((res) => setTimeout(res, rest));
       }
       this.__efaturaSyncStatus.set(key, { state: 'done', finishedAt: new Date().toISOString(), rounds: MAX_ROUNDS, added: toplamAdded, note: 'tavan tur' });
     })().catch((e) => { this.__efaturaSyncStatus.set(key, { state: 'error', finishedAt: new Date().toISOString(), error: String(e?.message || e) }); });
@@ -8490,54 +8494,6 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
    * NOT: Canlı bir mükellef hesabıyla ilk çekimde alan adları (getUBL id parametresi,
    *      liste JSON alanları) teyit edilip gerekiyorsa buradan ayarlanacak.
    */
-  // GEÇİCİ TEŞHİS sonucu (CDP 45sn sınırından bağımsız okumak için sunucuda saklanır).
-  private __tcDebug: any = { state: 'idle' };
-  startTurkcellDebug(tenantId: string, taxpayerId: string, startDate: string, endDate: string) {
-    this.__tcDebug = { state: 'running', at: new Date().toISOString() };
-    this.debugTurkcellDates(tenantId, taxpayerId, startDate, endDate)
-      .then((r) => { this.__tcDebug = { state: 'done', result: r }; })
-      .catch((e) => { this.__tcDebug = { state: 'error', err: String(e?.message || e) }; });
-    return { started: true };
-  }
-  getTurkcellDebug() { return this.__tcDebug; }
-
-  // GEÇİCİ TEŞHİS: isim360 hangi tarih kategorisiyle süzüyor + ham item tarih alanları.
-  async debugTurkcellDates(tenantId: string, taxpayerId: string, startDate: string, endDate: string) {
-    const cfg = await this.resolveRuntimeConfigForProvider(tenantId, taxpayerId, 'TURKCELL');
-    if (!cfg) return { error: 'TURKCELL config yok' };
-    const baseUrl = (cfg.baseUrl || PROVIDER_DEFAULT_BASE_URL.TURKCELL).replace(/\/+$/, '');
-    const authHeaders: Record<string, string> = {};
-    if (cfg.apiKey) authHeaders['X-Api-Key'] = cfg.apiKey;
-    else return { error: 'apiKey yok (token akisi teshiste atlandi)' };
-    const ddmmyyyy = (ymd: string) => { const [y,m,d]=String(ymd).slice(0,10).split('-'); return `${d}.${m}.${y}`; };
-    const sleep = (ms:number)=>new Promise(res=>setTimeout(res,ms));
-    void ddmmyyyy;
-    const getListRaw = async (url: string) => {
-      for (let a=0;a<6;a++){ const r=await fetch(url,{headers:{...authHeaders,Accept:'application/json'}}); const t=await r.text();
-        if(r.status===429){await sleep(6000*(a+1));continue;} let j:any={}; try{j=JSON.parse(t);}catch{}; return { ok:r.ok, status:r.status, j }; }
-      return { ok:false, status:429, j:{} };
-    };
-    // SAYIM (indirme YOK): executionDate desc sayfala; dönemdeki (start..end) item'ları say. Dönem başından
-    //   eskiye düşünce dur. Böylece isim360 listesinde executionDate=fatura tarihi Temmuz kaç adet KESIN görülür.
-    let julyCount = 0, augCount = 0, olderSeen = 0, pages = 0, hit429 = false;
-    let stop = false;
-    for (let p=1; p<=200 && !stop; p++){
-      await sleep(p>1?900:200);
-      const { ok, status, j } = await getListRaw(`${baseUrl}/v1/inboxinvoice/list?PageIndex=${p}&PageSize=100&SortedColumn=ExecutionDate&IsDesc=true`);
-      if(!ok){ hit429 = status===429; break; }
-      const items = j?.items||j?.Items||[];
-      if(!items.length) break;
-      pages = p;
-      for(const it of items){ const ex=String(it.executionDate||'').slice(0,10);
-        if(ex>endDate) augCount++;
-        else if(ex>=startDate && ex<=endDate) julyCount++;
-        else { olderSeen++; if(olderSeen>=120){ stop=true; break; } } // dönem altına düştük (tolerans)
-      }
-      if(items.length<100) break;
-    }
-    return { period:`${startDate}..${endDate}`, julyCount, augCount, pagesScanned: pages, hit429, stopped: stop };
-  }
-
   private async fetchTurkcellInvoices(
     cfg: RuntimeIntegrationConfig,
     opts: {
