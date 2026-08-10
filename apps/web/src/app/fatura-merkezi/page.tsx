@@ -1826,7 +1826,7 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
   const activeEfaturaProvider = connectedEfaturaProviders[0] || efaturaProviders[0];
   const efaturaInboxQ = useQuery({
     queryKey: ['fm-efatura-inbox', taxpayerId, period, efaturaDirection, efaturaChannel],
-    queryFn: async () => (await api.get('/fatura-muhasebelestirme/efatura-inbox', { params: { taxpayerId, period, direction: efaturaDirection, channel: efaturaChannel, limit: 500 } })).data,
+    queryFn: async () => (await api.get('/fatura-muhasebelestirme/efatura-inbox', { params: { taxpayerId, period, direction: efaturaDirection, channel: efaturaChannel, limit: 2000 } })).data,
     enabled: !!taxpayerId && source === 'efatura',
     refetchInterval: source === 'efatura' && efaturaPollUntil > Date.now() ? 2500 : 6000,
   });
@@ -1876,7 +1876,7 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
       period,
       ...(rangeFrom && rangeTo ? { dateFrom: rangeFrom, dateTo: rangeTo } : {}),
       providers: [v.provider],
-      limit: 500,
+      limit: 2000,
     }),
     onSuccess: (r: any) => {
       const data = r?.data || null;
@@ -1930,7 +1930,7 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
       channel: efaturaChannel,
       period,
       ids: efaturaSelectedIds.length ? efaturaSelectedIds : efaturaTransferableIds,
-      limit: 500,
+      limit: 2000,
       background: true,
     }),
     onSuccess: (r: any) => {

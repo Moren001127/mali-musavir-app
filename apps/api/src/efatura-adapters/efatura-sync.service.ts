@@ -160,8 +160,8 @@ export class EFaturaSyncService {
       periodEnd = end;
       if (!opts.channel) where.faturaDate = { gte: start, lt: end };
     }
-    const limit = Math.min(parseInt(opts.limit || '200', 10) || 200, 1000);
-    const take = opts.channel ? Math.min(limit * 3, 3000) : limit;
+    const limit = Math.min(parseInt(opts.limit || '200', 10) || 200, 3000);
+    const take = opts.channel ? Math.min(limit * 3, 5000) : limit;
     const rows = await (this.prisma as any).eFaturaInbox.findMany({
       where,
       orderBy: { syncedAt: 'desc' },
