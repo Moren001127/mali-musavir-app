@@ -9119,8 +9119,16 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const isEarsiv = channel === 'OUT_EARSIV';
       const docType = isEarsiv ? 'EARCHIVE' : 'EINVOICE';
       const optype = channel === 'IN_EFATURA' ? '2' : '1'; // 2=Gelen(alış), 1=Giden(satış/e-arşiv)
+      // KULLANICI KURALI (fatura tarihi vs alınma/geliş): dönem [başlangıç..bitiş] fatura tarihiyle sorgulanır,
+      //   ama SORGU penceresi başlangıç..BUGÜN'e genişletilir (ay sonunda kesilip sonraki ay eLogo'ya düşen
+      //   faturalar kaçmasın), sonra UBL FATURA TARİHİNE göre döneme süzülür.
+      const faturaStart = String(opts.period.startDate).slice(0, 10);
+      const faturaEnd = String(opts.period.endDate).slice(0, 10);
+      const bugun = new Date().toISOString().slice(0, 10);
+      const sorguEnd = bugun > faturaEnd ? bugun : faturaEnd;
+      const ublIssueYmd = (x: string) => { const m = x.match(/<cbc:IssueDate>\s*([0-9]{4}-[0-9]{2}-[0-9]{2})/i) || x.match(/<IssueDate>\s*([0-9]{4}-[0-9]{2}-[0-9]{2})/i); return m ? m[1] : ''; };
       // eLogo e-Arşiv sorgusunda BEGINDATE=ENDDATE aynı gün olmalı → gün-gün; e-Fatura ≤30 günlük parçalar.
-      const chunks = this.splitDateChunks(opts.period.startDate, opts.period.endDate, isEarsiv ? 1 : 30);
+      const chunks = this.splitDateChunks(faturaStart, sorguEnd, isEarsiv ? 1 : 30);
       const payloads: ProviderInvoicePayload[] = [];
       const seen = new Set<string>();
       for (const ch of chunks) {
@@ -9156,6 +9164,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             this.logger.warn(`eLogo GetDocumentData ${uuid} hata: ${e?.message}`);
           }
           if (!xml || !xml.includes('<')) continue;
+          // FATURA TARİHİ süzgeci: sorgu penceresi bugüne genişti; asıl ölçüt fatura tarihi → dönem dışını ele.
+          const iss = ublIssueYmd(xml);
+          if (iss && (iss < faturaStart || iss > faturaEnd)) continue;
           payloads.push({ externalId: `elogo:${uuid}`, originalName: `${uuid}.xml`, xml });
         }
       }
