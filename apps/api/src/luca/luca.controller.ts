@@ -462,6 +462,13 @@ export class LucaController {
     return jobs.filter((job: any) => {
       const requiredVersion = this.requiredAgentVersionForJobTip(job.tip);
       if (!requiredVersion) return true;
+      // DEADLOCK KIRICI: Yerel/VPS ajanı (bootstrap sürümü 'local-*') runtime'ı HER İŞTE sunucudan
+      //   TAZE yükler → gerçekte her zaman güncel. Ama tarayıcısı KAPALIYKEN (idle/flood sonrası)
+      //   getCurrentRuntimeVersionForApi() 'local-1.1.8'e düşer; versiyon-kapısı MIZAN/ACCOUNT_PLAN'ı
+      //   süzünce ajan işi alamaz → tarayıcıyı hiç açmaz → sürüm düşük kalır → SONSUZ KISIR DÖNGÜ.
+      //   Yerel ajanı gate'ten muaf tut (tarayıcı-ext DEV-* agent'lar 'local-*' göndermez; onlar
+      //   gerçek runtime sürümü gönderir → onlar için gate aynen işler).
+      if (/^local-/i.test(String(agentVersion || ''))) return true;
       return this.compareAgentVersions(agentVersion, requiredVersion) >= 0;
     });
   }
@@ -572,7 +579,9 @@ export class LucaController {
     const existingJob = await this.luca.getJob(id, tenantId);
     const agentVersion = String(body?.version || body?.agentVersion || '').trim();
     const requiredVersion = this.requiredAgentVersionForJobTip(existingJob.tip);
-    if (requiredVersion && this.compareAgentVersions(agentVersion, requiredVersion) < 0) {
+    // Yerel/VPS ajanı ('local-*' bootstrap) runtime'ı taze yükler → gate'ten muaf (pending filtresiyle tutarlı, deadlock kırıcı).
+    const localAgentExempt = /^local-/i.test(agentVersion || '');
+    if (requiredVersion && !localAgentExempt && this.compareAgentVersions(agentVersion, requiredVersion) < 0) {
       const label = agentVersion || 'bilinmiyor';
       if (!String(existingJob.errorMsg || '').includes('Ajan surumu eski')) {
         await this.luca.appendJobLog(
