@@ -1836,7 +1836,7 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
   const efaturaSyncStatusQ = useQuery({
     queryKey: ['fm-efatura-syncstatus', taxpayerId, efaturaChannel],
     queryFn: async () => (await api.get('/fatura-muhasebelestirme/efatura-sync/status', { params: { taxpayerId, channel: efaturaChannel } })).data,
-    enabled: !!taxpayerId && source === 'efatura' && activeEfaturaProvider?.provider === 'TURKCELL',
+    enabled: !!taxpayerId && source === 'efatura' && ['TURKCELL', 'TURMOB_EFATURA'].includes(String(activeEfaturaProvider?.provider)),
     refetchInterval: (arg: any) => {
       const s = arg?.state?.data ?? arg;
       if (s?.state === 'running') return 4000;
@@ -2215,7 +2215,7 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
             </div>
           )}
           {/* ARKA PLAN ÇEKİM DURUMU (Turkcell çok-faturalı): kullanıcı çekimin bitip bitmediğini net görsün. */}
-          {activeEfaturaProvider?.provider === 'TURKCELL' && efaturaSyncStatus && efaturaSyncStatus.state === 'running' && (
+          {['TURKCELL', 'TURMOB_EFATURA'].includes(String(activeEfaturaProvider?.provider)) && efaturaSyncStatus && efaturaSyncStatus.state === 'running' && (
             <div className={`efdownbar ${efaturaSyncStatus.rateLimited ? 'import' : ''}`}>
               <span className="efspin" aria-hidden="true" />
               <span className="eftext">
@@ -2225,13 +2225,13 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
               </span>
             </div>
           )}
-          {activeEfaturaProvider?.provider === 'TURKCELL' && efaturaSyncStatus && efaturaSyncStatus.state === 'done' && efaturaSyncPollUntil > Date.now() && (
+          {['TURKCELL', 'TURMOB_EFATURA'].includes(String(activeEfaturaProvider?.provider)) && efaturaSyncStatus && efaturaSyncStatus.state === 'done' && efaturaSyncPollUntil > Date.now() && (
             <div className="providerdiag ok">
               <b>Durum</b>
               <span>Sorgu tamamlandı — dönemdeki tüm faturalar çekildi ({efaturaRows.length} fatura).</span>
             </div>
           )}
-          {activeEfaturaProvider?.provider === 'TURKCELL' && efaturaSyncStatus && efaturaSyncStatus.state === 'error' && efaturaSyncPollUntil > Date.now() && (
+          {['TURKCELL', 'TURMOB_EFATURA'].includes(String(activeEfaturaProvider?.provider)) && efaturaSyncStatus && efaturaSyncStatus.state === 'error' && efaturaSyncPollUntil > Date.now() && (
             <div className="providerdiag err">
               <b>Durum</b>
               <span>Sorgu tamamlanamadı ({efaturaRows.length} fatura indirildi). Bir süre sonra tekrar Sorgula — inmeyenler tamamlanır.</span>

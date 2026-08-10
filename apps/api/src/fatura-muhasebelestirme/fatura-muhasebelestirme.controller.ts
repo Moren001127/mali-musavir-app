@@ -515,10 +515,13 @@ export class FaturaMuhasebelestirmeController {
       limit: body?.limit,
       providers,
     };
-    // Turkcell (çok-faturalı, uzun çekim) → KOPUK ARKA PLAN: hemen dön, iş bağımsız sürsün (HTTP timeout'a takılmasın).
-    //   Artımlı yazım sayesinde satırlar geldikçe efatura-inbox'ta görünür; durum efatura-sync/status'tan izlenir.
-    const isTurkcell = (providers || []).some((p: any) => String(p).toUpperCase() === 'TURKCELL');
-    if (isTurkcell) {
+    // YAVAŞ/UZUN ÇEKİM SAĞLAYICILARI → KOPUK ARKA PLAN: hemen dön, iş bağımsız sürsün (HTTP timeout'a
+    //   takılmasın → "bağlantı koptu" hatası olmasın). Artımlı yazım sayesinde satırlar geldikçe
+    //   efatura-inbox'ta görünür; durum efatura-sync/status'tan izlenir.
+    //   - TURKCELL: 47k+ fatura, hız-sınırı.  - TURMOB_EFATURA: Türkiye proxy üzerinden (yavaş) → zaman aşımı.
+    const BACKGROUND_PROVIDERS = new Set(['TURKCELL', 'TURMOB_EFATURA']);
+    const isBackground = (providers || []).some((p: any) => BACKGROUND_PROVIDERS.has(String(p).toUpperCase()));
+    if (isBackground) {
       return this.service.startEfaturaSyncBackground(req.user.tenantId, req.user?.userId || req.user?.sub, opts);
     }
     return this.service.syncEfaturaInboxFromIntegrations(req.user.tenantId, req.user?.userId || req.user?.sub, opts);
