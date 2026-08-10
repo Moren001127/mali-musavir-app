@@ -10774,6 +10774,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       'romork', 'treyler', 'dorse', 'cekici dorse',
       'kamyon', 'kamyonet', 'otomobil', 'binek arac', 'minibus', 'otobus',
       'traktor', 'ekskavator', 'yukleyici kepce', 'is makine',
+      // Denetim eksikleri (2026-08-11): BT/üretim/altyapı sabit kıymetleri — AI "gider" derse kaçıp
+      //   770'e yazılıyordu. giderIcerikSinifla (yedek parça/bakım/hizmet) + faaliyet-kökü kapısı
+      //   yanlış-pozitifi zaten eler; bunlar yalnız GERÇEK sabit-kıymet alımında kalır.
+      'sunucu', 'server', 'network switch', 'cnc', 'torna tezgah', 'freze tezgah', 'matkap tezgah',
+      '3d yazici', 'uc boyutlu yazici', 'lazer kesim', 'plazma kesim', 'konteyner', 'prefabrik',
+      'totem', 'reklam panosu', 'dijital tabela', 'led ekran', 'vinc', 'kule vinc', 'silo',
     ];
     // İÇERİK sinyali ŞART: faturada gerçek cihaz/makine/sabit-kıymet adı geçmeli. AI'ın salt "demirbas"
     //   KATEGORİSİ TEK BAŞINA güvenilmez — AI, mükellefin faaliyet açıklamasındaki cihaz isimlerine
