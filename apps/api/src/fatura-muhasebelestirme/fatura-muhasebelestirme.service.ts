@@ -13063,7 +13063,22 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           //   SIF.İND.KDV. 2/10" hesabına atanmıştı — aşağıdaki normals filtresi zaten bu hesapları
           //   eler, ALIŞ'ta direkt oraya düşmeli).
           if (vergiPrefix === '391' && tevkPay >= 1 && tevkPay <= 9) {
-            result = grp.find((a: any) => { const n = String(a.accountName || ''); return n.includes(`${tevkPay}/10`) || /tevk[iıİ]fat/i.test(n); }) || null;
+            // TEVKİFATLI SATIŞ KDV hesabı ORANLA eşleşmeli (kullanıcı: "%20 fatura TEVKİFATLI KDV %9'a düştü").
+            //   Plan tevkifatlı KDV hesaplarını 3 ayrı konvansiyonla adlandırabilir → sırayla dene:
+            //   (1) tevkifat oranı "X/10" (ör "...5/10"), (2) FACE = KDV oranı ("TEVKİFATLI KDV %20"),
+            //   (3) NET etkin oran = KDV oranı × (10−tevkPay)/10 ("TEVKİFATLI KDV %10"; ÖZ ELA: %9=%18×0.5,
+            //   %10=%20×0.5, %5=%10×0.5). HİÇBİRİ oranla eşleşmezse BOŞ BIRAK → normal KDV hesabına DÜŞME
+            //   (kullanıcı kuralı: "anlamadığını eşleştirmesin"); müşavir 1 kez seçer, öğrenilir.
+            const kdvR = Number(rateDigits) || 0;
+            const netRate = kdvR > 0 ? Math.round((kdvR * (10 - tevkPay)) / 10) : 0;
+            const tevkAccts = grp.filter((a: any) => this.isTevkifatAccountName(a.accountName || '') || String(a.accountName || '').includes('/10'));
+            result =
+              tevkAccts.find((a: any) => String(a.accountName || '').includes(`${tevkPay}/10`))
+              || (kdvR ? tevkAccts.find((a: any) => this.rateTokenInName(String(a.accountName || ''), String(kdvR))) : null)
+              || (netRate ? tevkAccts.find((a: any) => this.rateTokenInName(String(a.accountName || ''), String(netRate))) : null)
+              || null;
+            vergiCache.set(key, result); // eşleşme yoksa null = BOŞ; normal-oran bloğuna DÜŞME
+            return result;
           }
           if (!result) {
             // tevkifat/iade/ihrac/istisna/SORUMLU GEÇMEYEN düz hesaplar (matrahla simetrik).
