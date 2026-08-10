@@ -62,6 +62,12 @@ export class FaturaMuhasebelestirmeController {
     return this.service.dashboard(req.user.tenantId, { period });
   }
 
+  /** Oto-eşleşme karnesi: otomatik-eşleşme oranı + en çok "bakılmalı" çıkan cariler. */
+  @Get('eslesme-karnesi')
+  eslesmeKarnesi(@Req() req: any, @Query('taxpayerId') taxpayerId?: string, @Query('period') period?: string) {
+    return this.service.eslesmeKarnesi(req.user.tenantId, { taxpayerId, period });
+  }
+
   @Get('integrations')
   integrations(@Req() req: any, @Query('taxpayerId') taxpayerId?: string) {
     return this.service.listIntegrations(req.user.tenantId, { taxpayerId: taxpayerId || null });

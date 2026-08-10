@@ -1029,6 +1029,14 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
   const qc = useQueryClient();
   const docsQ = useDocuments(taxpayerId, period);
   const all: any[] = docsQ.data || [];
+  // OTO-EŞLEŞME KARNESİ (iyileştirme #4): otomatik oran + en çok "bakılmalı" çıkan cariler.
+  const [karneAcik, setKarneAcik] = useState(false);
+  const karneQ = useQuery({
+    queryKey: ['fm2', 'karne', taxpayerId, period],
+    queryFn: async () => (await api.get('/fatura-muhasebelestirme/eslesme-karnesi', { params: { taxpayerId, period } })).data,
+    enabled: !!taxpayerId,
+  });
+  const karne: any = karneQ.data || null;
   // Gelen kutusu: yalnız HENÜZ İŞLENMEMİŞ gelen belgeler. Onaylanan/aktarıma alınan/aktarılan
   //   belgeler buradan çıkar (Aktarım arşivinde görünür) — kullanıcı talebi.
   // useMemo: docsAll/docs referansı her render'da yenilenmesin → justDone/richNotes efektleri
@@ -1352,6 +1360,36 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
     <section className="screen">
       <div className="h2">{kind === 'SATIS' ? 'Bekleyen Satış Faturaları' : 'Bekleyen Alış Faturaları'}</div>
       <div className="sub">{kind === 'SATIS' ? 'Mükellefin kestiği satış faturaları — kuralla otomatik eşleşir.' : 'Entegratörden çekilen gelen faturalar — kuralla otomatik eşleşir, sadece eksik/çelişkili olana bakarsın.'}</div>
+      {karne && karne.toplam > 0 && (() => {
+        const oran = Number(karne.otomatikOran) || 0;
+        const oc = oran >= 70 ? '#15803d' : oran >= 40 ? '#d97706' : '#e5484d';
+        return (
+          <div style={{ margin: '0 0 12px', border: '1px solid #e2e8f0', borderRadius: 12, background: 'linear-gradient(135deg,#f8fafc,#ffffff)', overflow: 'hidden' }}>
+            <div onClick={() => setKarneAcik((v) => !v)} style={{ cursor: karne.zayifSaticilar?.length ? 'pointer' : 'default', display: 'flex', alignItems: 'center', gap: 14, padding: '11px 15px', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 13, fontWeight: 700, color: '#334155' }}>Oto-eşleşme karnesi</span>
+              <span style={{ fontSize: 18, fontWeight: 800, color: oc }}>%{oran}</span>
+              <span style={{ fontSize: 12, color: '#64748b' }}>otomatik eşleşme oranı</span>
+              <div style={{ flex: 1 }} />
+              <span style={{ fontSize: 12.5, fontWeight: 700, color: '#15803d' }}>{karne.yuksek} güvenli</span>
+              <span style={{ fontSize: 12.5, fontWeight: 700, color: '#d97706' }}>{karne.bakilmali} bakılmalı</span>
+              <span style={{ fontSize: 12.5, fontWeight: 600, color: '#94a3b8' }}>{karne.onaylanmis} onaylı</span>
+              {karne.zayifSaticilar?.length ? <span style={{ fontSize: 12, color: '#64748b' }}>{karneAcik ? '▲' : '▼'}</span> : null}
+            </div>
+            {karneAcik && karne.zayifSaticilar?.length > 0 && (
+              <div style={{ padding: '0 15px 12px', borderTop: '1px solid #eef2f7' }}>
+                <div style={{ fontSize: 11.5, color: '#94a3b8', margin: '10px 0 6px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.3 }}>En çok bakılan cariler (kural/öğretme buraya)</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  {karne.zayifSaticilar.map((z: any) => (
+                    <span key={z.ad} title={z.neden} style={{ fontSize: 12, background: '#fff7ed', border: '1px solid #fed7aa', color: '#9a3412', borderRadius: 8, padding: '4px 9px', fontWeight: 600 }}>
+                      {z.ad} <b style={{ color: '#c2410c' }}>{z.adet}</b>{z.neden ? <span style={{ color: '#c2710c', fontWeight: 500 }}> · {z.neden}</span> : null}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
       <div className="filttiles">
         {([
           { v: 'all', l: 'Tümü', c: 'var(--accent)' },

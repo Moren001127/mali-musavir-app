@@ -715,6 +715,42 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     return { seviye: 'orta', neden: uyarilar.length ? 'AI tahmini + uyarı' : 'AI tahmini (teyit edilmemiş)' };
   }
 
+  /** OTO-EŞLEŞME KARNESİ (iyileştirme #4): otomatik-eşleşme oranı + en çok "bakılmalı" çıkan cariler.
+   *  Nerede zayıf olduğumuzu TAHMİNLE değil VERİYLE gösterir → oraya kural/öğretme yapılır. */
+  async eslesmeKarnesi(tenantId: string, opts: { taxpayerId?: string; period?: string } = {}) {
+    const [docs, onaylanmis] = await Promise.all([
+      (this.prisma as any).invoiceAccountingDocument.findMany({
+        where: { tenantId, status: { in: ['READY', 'NEEDS_REVIEW'] }, ...(opts.taxpayerId ? { taxpayerId: opts.taxpayerId } : {}), ...periodWhere(opts.period) },
+        include: { lines: { orderBy: { orderNo: 'asc' } } }, take: 2000,
+      }),
+      (this.prisma as any).invoiceAccountingDocument.count({
+        where: { tenantId, status: 'APPROVED', ...(opts.taxpayerId ? { taxpayerId: opts.taxpayerId } : {}), ...periodWhere(opts.period) },
+      }).catch(() => 0),
+    ]);
+    let yuksek = 0, orta = 0, dusuk = 0;
+    const zayif = new Map<string, { ad: string; adet: number; nedenler: Record<string, number> }>();
+    for (const d of docs) {
+      const g = this.computeDocConfidence(d);
+      if (g.seviye === 'yuksek') { yuksek++; continue; }
+      if (g.seviye === 'orta') orta++; else dusuk++;
+      const ad = String((String(d.invoiceKind || '').toUpperCase() === 'SATIS' ? d.customerName : d.vendorName) || 'Bilinmeyen').trim() || 'Bilinmeyen';
+      const key = ad.toUpperCase();
+      const e = zayif.get(key) || { ad, adet: 0, nedenler: {} };
+      e.adet++; e.nedenler[g.neden] = (e.nedenler[g.neden] || 0) + 1;
+      zayif.set(key, e);
+    }
+    const toplam = docs.length;
+    const bakilmali = orta + dusuk;
+    const zayifSaticilar = [...zayif.values()].sort((a, b) => b.adet - a.adet).slice(0, 8).map((z) => ({
+      ad: z.ad, adet: z.adet, neden: Object.entries(z.nedenler).sort((a, b) => b[1] - a[1])[0]?.[0] || '',
+    }));
+    return {
+      toplam, yuksek, orta, dusuk, bakilmali, onaylanmis: Number(onaylanmis) || 0,
+      otomatikOran: toplam ? Math.round((yuksek / toplam) * 100) : 0,
+      zayifSaticilar,
+    };
+  }
+
   async dashboard(tenantId: string, opts: PeriodQuery = {}) {
     const [taxpayers, grouped] = await Promise.all([
       (this.prisma as any).taxpayer.findMany({
