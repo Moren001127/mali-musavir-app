@@ -2214,14 +2214,14 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
               <span className="eftrack"><span className="effill" style={{ width: `${efaturaTransferTotal ? Math.round((efaturaTransferredCount / efaturaTransferTotal) * 100) : 0}%` }} /></span>
             </div>
           )}
-          {/* ARKA PLAN ÇEKİM DURUMU (Turkcell çok-faturalı): kullanıcı çekimin bitip bitmediğini net görsün. */}
-          {['TURKCELL', 'TURMOB_EFATURA'].includes(String(activeEfaturaProvider?.provider)) && efaturaSyncStatus && efaturaSyncStatus.state === 'running' && (
-            <div className={`efdownbar ${efaturaSyncStatus.rateLimited ? 'import' : ''}`}>
+          {/* ARKA PLAN ÇEKİM DURUMU: Sorgula'ya basar basmaz (poll'ü beklemeden) görünür; bitince gizlenir. */}
+          {['TURKCELL', 'TURMOB_EFATURA'].includes(String(activeEfaturaProvider?.provider)) && efaturaSyncPollUntil > Date.now() && (!efaturaSyncStatus || (efaturaSyncStatus.state !== 'done' && efaturaSyncStatus.state !== 'error')) && (
+            <div className={`efdownbar ${efaturaSyncStatus?.rateLimited ? 'import' : ''}`}>
               <span className="efspin" aria-hidden="true" />
               <span className="eftext">
-                {efaturaSyncStatus.rateLimited
-                  ? <><b>Sorgu sürüyor — TAMAMLANMADI.</b> Turkcell hız sınırı uyguladı; otomatik bekleyip devam ediyor. Şu ana kadar <b>{efaturaRows.length}</b> fatura indirildi.</>
-                  : <>Sorgulanıyor (arka planda)… <b>{efaturaRows.length}</b> fatura indirildi. Bitince burada belirtilecek.</>}
+                {efaturaSyncStatus?.rateLimited
+                  ? <><b>Sorgu sürüyor — TAMAMLANMADI.</b> Hız sınırı uygulandı; otomatik bekleyip devam ediyor. Şu ana kadar <b>{efaturaRows.length}</b> fatura indirildi.</>
+                  : <>Sorgulanıyor… entegratörden faturalar çekiliyor. Şu ana kadar <b>{efaturaRows.length}</b> fatura geldi. Bitince burada belirtilecek.</>}
               </span>
             </div>
           )}
