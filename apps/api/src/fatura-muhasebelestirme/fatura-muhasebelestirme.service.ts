@@ -13896,7 +13896,17 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // kelimeleri (turizm/insaat/market/magaza…) zaten STOP listesinde elenir → yanlış cari önlenir.
     // (Eski "İLK kelime ZORUNLU" kuralı A101 gibi marka-önekli carileri kaçırıyordu — kullanıcı
     //  "kabak gibi planında var ama eşleştirmiyor" dedi; VKN plan'da boş → isim tek dayanak.)
-    if (h.length >= 2 && shared < 2) return 0;
+    // (Denetim cari R3 — asimetri) Belge adı plandan UZUNSA (fazla ayırt edici kelime) "2 ortak" kuralı
+    //   meşru cariyi reddediyordu: belge "ÖZ ULUDAĞ SEYAHAT"={uludag,seyahat}, plan "ÖZ ULUDAĞ"={uludag}
+    //   → shared=1<2 → RED (cari EKSİK). İSTİSNA: karşı tarafın (kısa) TÜM ayırt edici kökleri paylaşılıyorsa
+    //   (shared === nameSet.size) ve bu kök(ler) UZUN/ayırt edici ise (≥4 harf, kısa-kaza eşleşmesi değil)
+    //   → eşleş. Yanlış-pozitifi ETKİLEMEZ: TRANSAY↔AFACAN shared=0'da zaten reddedilir; farklı köklerde
+    //   (Uludağ İçecek {uludag,icecek} vs Öz Uludağ Seyahat) nameSet tam kapanmaz → yine reddedilir.
+    if (h.length >= 2 && shared < 2) {
+      const sharedTokens = h.filter((t) => nameSet.has(t));
+      const fullyCoversName = shared === nameSet.size && sharedTokens.every((t) => t.length >= 4);
+      if (!fullyCoversName) return 0;
+    }
     // TEK-TOKEN kuralı sıkılaştırıldı: hint tek ayırt edici kelimeye İNDİYSE (UNOX), karşı taraf da
     //   AYNI tek kelimeye inmeli (UNOX GIDA SAN. → {unox} ✓). Aksi halde "ANADOLU LOJİSTİK" ({anadolu})
     //   plandaki HERHANGİ "ANADOLU …" carisiyle (ANADOLU SİGORTA, ANADOLU EFES) eşleşiyordu —
