@@ -88,12 +88,13 @@ export class LucaScheduleService {
    *   - Tekrar-koruma createFetchJob'da: aynı mükellef+dönem+tip pending/running varsa
    *     yeni kopya açılmaz → önceki gecenin işi bitmediyse üst üste binmez.
    *   - Otomatik Fatura Merkezi aktarımı YOK (kullanıcı: sadece indir; #3 ile tutarlı).
-   *   - Kapatmak için env: NIGHTLY_EARSIV=off
+   *   - VARSAYILAN KAPALI (kullanıcı isteği 2026-08-08: gece sorgusu bütün gün Luca kuyruğunu
+   *     tıkıyordu → iptal). Geri açmak için env: NIGHTLY_EARSIV=on
    */
   @Cron('0 2 * * *', { timeZone: 'Europe/Istanbul' })
   async nightlyEarsivAlis() {
-    if (String(process.env.NIGHTLY_EARSIV || '').trim().toLowerCase() === 'off') {
-      this.logger.log('Gece e-Arşiv sorgusu KAPALI (NIGHTLY_EARSIV=off)');
+    if (String(process.env.NIGHTLY_EARSIV || '').trim().toLowerCase() !== 'on') {
+      this.logger.log('Gece e-Arşiv sorgusu KAPALI (varsayılan; açmak için NIGHTLY_EARSIV=on)');
       return;
     }
     const now = new Date();

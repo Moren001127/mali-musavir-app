@@ -1694,6 +1694,7 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
   const [efaturaChannel, setEfaturaChannel] = useState<'IN_EFATURA' | 'OUT_EFATURA' | 'OUT_EARSIV'>('IN_EFATURA');
   const [lastEfaturaSync, setLastEfaturaSync] = useState<any>(null);
   const [efaturaPollUntil, setEfaturaPollUntil] = useState(0);
+  const [efaturaSyncPollUntil, setEfaturaSyncPollUntil] = useState(0);
   const efaturaDirection: 'IN' | 'OUT' = efaturaChannel === 'IN_EFATURA' ? 'IN' : 'OUT';
   // Aktif (pending/running) e-Arşiv işi var mı? Cache'teki iş listesinden bakılır → polling hızını ayarlar.
   const isEarsivJobActive = (jobs: any): boolean =>
@@ -1831,6 +1832,18 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
     refetchInterval: source === 'efatura' && efaturaPollUntil > Date.now() ? 2500 : 6000,
   });
   const efaturaRows: any[] = Array.isArray(efaturaInboxQ.data) ? efaturaInboxQ.data : [];
+  // Arka plan sorgu (Turkcell gibi çok-faturalı) durumu — kullanıcı çekimin BİTİP bitmediğini görebilsin.
+  const efaturaSyncStatusQ = useQuery({
+    queryKey: ['fm-efatura-syncstatus', taxpayerId, efaturaChannel],
+    queryFn: async () => (await api.get('/fatura-muhasebelestirme/efatura-sync/status', { params: { taxpayerId, channel: efaturaChannel } })).data,
+    enabled: !!taxpayerId && source === 'efatura' && activeEfaturaProvider?.provider === 'TURKCELL',
+    refetchInterval: (arg: any) => {
+      const s = arg?.state?.data ?? arg;
+      if (s?.state === 'running') return 4000;
+      return efaturaSyncPollUntil > Date.now() ? 4000 : false;
+    },
+  });
+  const efaturaSyncStatus: any = efaturaSyncStatusQ.data || null;
   const efaturaIsTransferred = (r: any) => {
     if (r?.hasAccountingDocument === true) return true;
     if (r?.hasAccountingDocument === false) return false;
@@ -1881,7 +1894,12 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
     onSuccess: (r: any) => {
       const data = r?.data || null;
       setLastEfaturaSync(data);
-      if (data?.queued) {
+      if (data?.background) {
+        // Turkcell gibi çok-faturalı: kopuk arka plan çekim. Durum ucunu bir süre poll et (ilerleme/bitiş görünsün).
+        setEfaturaSyncPollUntil(Date.now() + 30 * 60 * 1000);
+        setEfaturaPollUntil(Date.now() + 30 * 60 * 1000);
+        toast.success('Sorgu arka planda basladi; ilerleme ve bitiş durumu ekranda gösterilecek.');
+      } else if (data?.queued) {
         setEfaturaPollUntil(Date.now() + 5 * 60 * 1000);
         toast.success('Sorgu arka planda basladi; tablo otomatik yenilenecek.');
       } else {
@@ -2194,6 +2212,29 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
               <span className="efspin" aria-hidden="true" />
               <span className="eftext">Faturalar aktarılıyor… <b>{efaturaTransferredCount}</b> / {efaturaTransferTotal} muhasebeye geçti</span>
               <span className="eftrack"><span className="effill" style={{ width: `${efaturaTransferTotal ? Math.round((efaturaTransferredCount / efaturaTransferTotal) * 100) : 0}%` }} /></span>
+            </div>
+          )}
+          {/* ARKA PLAN ÇEKİM DURUMU (Turkcell çok-faturalı): kullanıcı çekimin bitip bitmediğini net görsün. */}
+          {activeEfaturaProvider?.provider === 'TURKCELL' && efaturaSyncStatus && efaturaSyncStatus.state === 'running' && (
+            <div className={`efdownbar ${efaturaSyncStatus.rateLimited ? 'import' : ''}`}>
+              <span className="efspin" aria-hidden="true" />
+              <span className="eftext">
+                {efaturaSyncStatus.rateLimited
+                  ? <><b>Sorgu sürüyor — TAMAMLANMADI.</b> Turkcell hız sınırı uyguladı; otomatik bekleyip devam ediyor. Şu ana kadar <b>{efaturaRows.length}</b> fatura indirildi.</>
+                  : <>Sorgulanıyor (arka planda)… <b>{efaturaRows.length}</b> fatura indirildi. Bitince burada belirtilecek.</>}
+              </span>
+            </div>
+          )}
+          {activeEfaturaProvider?.provider === 'TURKCELL' && efaturaSyncStatus && efaturaSyncStatus.state === 'done' && efaturaSyncPollUntil > Date.now() && (
+            <div className="providerdiag ok">
+              <b>Durum</b>
+              <span>Sorgu tamamlandı — dönemdeki tüm faturalar çekildi ({efaturaRows.length} fatura).</span>
+            </div>
+          )}
+          {activeEfaturaProvider?.provider === 'TURKCELL' && efaturaSyncStatus && efaturaSyncStatus.state === 'error' && efaturaSyncPollUntil > Date.now() && (
+            <div className="providerdiag err">
+              <b>Durum</b>
+              <span>Sorgu tamamlanamadı ({efaturaRows.length} fatura indirildi). Bir süre sonra tekrar Sorgula — inmeyenler tamamlanır.</span>
             </div>
           )}
           {efaturaStatusRows.length > 0 && (
