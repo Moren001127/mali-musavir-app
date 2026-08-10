@@ -12456,6 +12456,22 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // GERÇEK hesap planındaki kodla değiştir; öğrenilmiş satıcı kodu varsa onu uygula.
     // (Sadece applyLearnedVendorCodes yetmiyordu → öğrenilmemiş satıcıda placeholder kalıyordu.)
     if (d.taxpayerId) await this.rematchDocumentsWithLatestAccountPlan(tenantId, d.taxpayerId, [d.id]).catch(() => {});
+    // İÇERİK-HESAP UYUM (lastik→nakliye geliri bulgusu 2026-08-11): satış gelir hesabı İÇERİK-KÖR atanıyor
+    //   (saleMatrahDefault orana göre mükellefin tek 600'ünü seçer; aiMatrahKodu boş olsa bile fallback
+    //   600'e düşürür). Uyum kapısı (generateRichMuhasebeNeden) normalde yalnız belge açılınca/force çalışıp
+    //   cache'leniyordu → "AI ile oku" onu HİÇ tetiklemiyordu (kullanıcı: "AI ile oku dedim yine aynı koda
+    //   işledi"). Burada, satış + atanan matrah hesabı HİZMET-GELİRİ adlıysa kapıyı force çalıştır → hizmet
+    //   mükellefinin mal satışı (nakliyecinin lastik satışı) UYUMSUZ görülüp matrah OTOMATİK boşalır + uyarı.
+    //   Mal-satış hesaplı normal ticaret mükellefinde (TİCARİ MAL SATIŞ) tetiklenmez → ek AI çağrısı yok.
+    //   (Satıştan-iade hariç değil: iade matrahı 610'a gider, hizmet-gelir adı filtresi onu zaten eler.)
+    if (isSale && d.taxpayerId) {
+      const mLine: any = await (this.prisma as any).invoiceAccountingLine
+        .findFirst({ where: { documentId: d.id, group: 'matrah' }, select: { description: true } })
+        .catch(() => null);
+      if (mLine && this.isHizmetGeliriAccountName(String(mLine.description || ''))) {
+        await this.generateRichMuhasebeNeden(tenantId, d.id, true).catch(() => {});
+      }
+    }
     return { ok: true, matrah, kdv, oranSayisi: breakdown.length };
   }
 
@@ -12738,6 +12754,16 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const firstCode = String(hesapStr || '').match(/\b\d{3}(?:\.[A-Z0-9ÖİÜÇĞŞ]+)+\b/i)?.[0] || '';
     if (firstCode && !out.includes(firstCode)) return '';
     return out;
+  }
+
+  /** Hizmet-geliri hesap adı mı? (nakliye/taşıma/lojistik/danışmanlık/komisyon/kira/işçilik/servis/
+   *  onarım/bakım/temizlik/aracılık/müşavirlik…). Mal-satış hesapları (TİCARİ MAL SATIŞ / YURT İÇİ
+   *  SATIŞLAR) bu listede YOK → hariç kalır. Satışta içerik-hesap uyum kapısını YALNIZ hizmet-gelir
+   *  hesaplı belgelerde tetiklemek için (lastik→nakliye geliri bulgusu 2026-08-11). */
+  private isHizmetGeliriAccountName(name: string): boolean {
+    const s = String(name || '').toLocaleLowerCase('tr-TR');
+    if (!s) return false;
+    return /(nakliy|taşım|tasim|lojist|navlun|sevkiyat|hizmet|danışman|danisman|komisyon|kira|işçilik|iscilik|montaj|servis|onarım|onarim|tamir|bakım|bakim|temizlik|aracılık|aracilik|müşavir|musavir)/.test(s);
   }
 
   // ZENGİN AI MUHASEBE YORUMU (eşleştirme SONRASI, tek belge, lazy/on-demand). Deterministik
@@ -13494,7 +13520,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             return null;
           }
         }
-        if (!m) { m = leafOnly(saleMatrahDefault); if (m) mKaynak = 'VARSAYILAN'; }
+        // İÇERİK-HESAP UYUMSUZ (lastik→nakliye geliri bulgusu 2026-08-11): AI, içeriği hesapla UYUMSUZ
+        //   bulup hesabı boşalttıysa (ocrData.hesapUyumsuz), içerik-KÖR VARSAYILAN fallback'i UYGULAMA →
+        //   matrah BOŞ kalsın (müşavir doğru hesabı seçer). Öğrenilmiş/AI/oran-eşleşmeli kodlar bu satırdan
+        //   ÖNCE geldiği için kullanıcının seçtiği doğru hesap KORUNUR; yalnız kör-varsayılan bloklanır.
+        //   Aksi halde "Kodları düzelt"/rematch, kapının boşalttığı hesabı tekrar 600'e dolduruyordu.
+        if (!m && (doc.ocrData as any)?.hesapUyumsuz !== true) { m = leafOnly(saleMatrahDefault); if (m) mKaynak = 'VARSAYILAN'; }
         // SON GÜVENLİK (yağ ≠ yakıt): hangi yoldan gelirse gelsin (AI-kod / öğrenilmiş /
         //   içerik-sınıf / varsayılan), içerik madeni/motor yağı iken seçilen hesap ARAÇ YAKIT/
         //   AKARYAKIT ise plandaki ARAÇ BAKIM ONARIM'a çevir; bakım hesabı yoksa BOŞ bırak (yakıta
