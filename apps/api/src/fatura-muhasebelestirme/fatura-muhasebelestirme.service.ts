@@ -5914,15 +5914,22 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const key = `${code}|${rate || ''}`;
       if (seen.has(key)) continue;
       seen.add(key);
+      // TEK DÜZELTMEDE ÖĞREN (kullanıcı kuralı: "elle seçince kaydet, sonra hafızaya bak"): müşavir
+      //   editörde ELLE seçtiyse (KULLANICI) onayBoost=2 → okuma eşiğini (onayAdedi>=2) ANINDA geçer,
+      //   sonraki fatura otomatik uygulanır. HAFIZA (pekişme) normal +1. AI/KURAL zaten yukarıda elendi
+      //   → zehirli-hafıza koruması bozulmaz. (İşletme/Kurallar yolları zaten boost'lu; editör eksikti.)
+      const boost = src === 'KULLANICI' ? 2 : undefined;
       // Hem içerik-imzalı (spesifik) HEM satıcı-geneli (imzasız) kayıt yaz → geriye-uyum + içerik-öğrenme.
       await this.vendorMemory.recordDecision({
         tenantId, firmaKimlikNo, firmaUnvan, kararTipi: 'fatura',
         kategori: code, altKategori: rate, icerikImza, taxpayerId: doc.taxpayerId,
+        onayBoost: boost,
       });
       if (icerikImza) {
         await this.vendorMemory.recordDecision({
           tenantId, firmaKimlikNo, firmaUnvan, kararTipi: 'fatura',
           kategori: code, altKategori: rate, icerikImza: null, taxpayerId: doc.taxpayerId,
+          onayBoost: boost,
         }).catch(() => {});
       }
     }
@@ -5936,9 +5943,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   İSİM tahmini ve kural atamaları öğrenilmez — poisoned cari vakalarının (MERT REKLAM) girişi buydu.
     const cariSrc = String((cariLine as any)?.kaynak || '').toUpperCase();
     if (cariCode && /^(120|320|329|331)/.test(cariCode) && ['KULLANICI', 'HAFIZA', 'VKN'].includes(cariSrc)) {
+      // Elle seçilen (KULLANICI) ya da VKN ile kesin eşleşen cari → onayBoost=2 (tek seferde uygulanır);
+      //   HAFIZA pekişmesi normal +1. (Aynı "tek düzeltmede öğren" kuralı cari için de.)
       await this.vendorMemory.recordDecision({
         tenantId, firmaKimlikNo, firmaUnvan, kararTipi: 'fatura',
         kategori: cariCode, altKategori: 'CARI', taxpayerId: doc.taxpayerId,
+        onayBoost: (cariSrc === 'KULLANICI' || cariSrc === 'VKN') ? 2 : undefined,
       }).catch(() => {});
     }
 
@@ -9787,7 +9797,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   çevir. SATIŞ'ta satıcı=mükellef DOĞRU olduğu için yalnız ALIŞ'ta uygulanır. Satıcısı zaten
     //   mükellef olmayan (TÜVTÜRK/Çetaş gibi) doğru faturalar ETKİLENMEZ.
     {
-      const ownVkn = String((taxpayer as any)?.taxNumber || '').replace(/\D/g, '');
+      // VKN ŞİFRELİ tutulabilir → retro-cari pass (reapplyAccountCodes) ile birebir: önce tryDecrypt.
+      //   Ham okunursa şifreli VKN mükellefle eşleşmez → oluşturma anında satıcı=mükellef ters-çevirme
+      //   HİÇ tetiklenmez, cari yanlış tarafta kalır (ancak "Kodları düzelt"te düzelirdi). Artık çekim anında da çalışır.
+      const ownVkn = String(tryDecrypt((taxpayer as any)?.taxNumber) || (taxpayer as any)?.taxNumber || '').replace(/\D/g, '');
       if (ownVkn && direction === 'ALIS') {
         const sVkn = String(parsed.saticiVergiNo || '').replace(/\D/g, '');
         const aVkn = String(parsed.aliciVergiNo || '').replace(/\D/g, '');
