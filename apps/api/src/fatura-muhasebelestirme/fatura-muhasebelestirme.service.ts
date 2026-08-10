@@ -10892,13 +10892,19 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   "34 LAM 220 ARAÇ SATIŞ BEDELİ" NORMAL SATIŞ sanılıyordu — kullanıcı bildirdi.) Bare "araç" ASSET'te
     //   yoktu + "ARAŞ" gibi harf/OCR sapmasında ad-eşleşmesi kaçar; plaka bunları kurtarır.
     const plakaRe = /\b(0[1-9]|[1-7]\d|8[01])\s?[a-z]{1,3}\s?\d{2,4}\b/;
-    const tasitBaglam = /(satis|bedel|arac|aras|tasit|plaka|model|sasi|motor no|km\b|hususi|kamyon|otomobil)/;
-    if (plakaRe.test(blob) && tasitBaglam.test(blob)) {
+    // ⚠️ TAŞIT HİZMETİ (nakliye/taşıma/yükleme/boşaltma/sevkiyat/kargo/kiralama/servis) → plaka SADECE
+    //   hizmeti veren aracın plakasıdır, SATIŞ DEĞİLDİR. (Kullanıcı bulgusu: YORGUN NAKLİYAT "34FPE599
+    //   plakalı aracın ... yükleme ... boşaltma NAKLİYE bedeli" faturasını yanlışlıkla demirbaş sandım.)
+    const tasitHizmet = /(nakliy|tasima|tasimacilik|yukleme|bosaltma|sevkiyat|navlun|lojistik|kargo|kiralama|rent|sefer|servis|hizmet)/;
+    // Aracın KENDİSİNİN SATIŞI sinyali: "satış/devir" + araç/taşıt kelimesi. Hizmet faturasında bunlar yok.
+    const aracKelime = /(arac|aras|tasit|otomobil|kamyon|kamyonet|binek|minibus|otobus|plakali|hususi|binek oto)/;
+    const satisKelime = /(satis|devir)/;
+    if (plakaRe.test(blob) && aracKelime.test(blob) && satisKelime.test(blob) && !tasitHizmet.test(blob)) {
       // TİCARET kapısı: yalnız araç TİCARETİ (oto galeri) yapan hariç — onun aracı ticari mal. Taşımacılık/
-      //   kiralama/inşaat firmasının aracı SABİT KIYMETtir (kendi filosu). ÖZ ELA "taşımacılık" → dahil.
+      //   kiralama/inşaat firmasının kendi filosundaki aracın SATIŞI = SABİT KIYMET çıkışı. ÖZ ELA dahil.
       const faalV = fold(`${taxpayer?.faaliyetAciklama || ''} ${taxpayer?.companyName || ''} ${taxpayer?.naceKodu || ''}`);
       if (!/(oto galeri|galeri|arac tic|motorlu tasit tic|oto tic|arac al[ .-]?sat|ikinci el arac|oto sat)/.test(faalV)) {
-        return { is: true, reason: 'taşıt (plaka)' };
+        return { is: true, reason: 'taşıt satışı (plaka)' };
       }
     }
     if (giderIcerikSinifla(`${kalemAd} ${ocr.giderTuru || ''}`)) return { is: false, reason: '' };
