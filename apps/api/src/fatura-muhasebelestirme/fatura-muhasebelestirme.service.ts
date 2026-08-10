@@ -2546,7 +2546,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       }).catch(() => null);
       if (snap) return; // plan zaten var → tetikleme (yalnız ilk-kurulum modunda)
     }
-    await this.refreshAccountPlan(tenantId, { taxpayerId, createdBy: opts.evenIfExists ? 'oto-plan-sorgu-tazeleme' : 'oto-plan-ilk-kurulum' }).catch(() => {});
+    // createdBy=null (SAHİPSİZ/otomatik): owner-filtresine takılmasın → alsoUnowned yapan ajanlar üstlensin.
+    //   ('oto-plan-*' gibi sentetik string createdBy, ownerUserId'ye de null'a da eşit olmadığı için işi
+    //   owner-filtreli ajanlardan GİZLİYORDU → iş sonsuza kadar pending kalıyordu, "0 çalışıyor".)
+    await this.refreshAccountPlan(tenantId, { taxpayerId, createdBy: undefined }).catch(() => {});
   }
 
   /**

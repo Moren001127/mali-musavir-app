@@ -3467,8 +3467,9 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     }).catch(() => null);
     if (recent) return; // son 1 saatte tazelendi → mükerrer iş yaratma
     const ad = tp.companyName || [tp.firstName, tp.lastName].filter(Boolean).join(' ') || taxpayerId;
+    // createdBy=null (SAHİPSİZ): otomatik iş owner-filtresine takılmasın (sentetik string createdBy işi gizliyordu).
     await (this.prisma as any).lucaFetchJob.create({
-      data: { tenantId, sessionId: null, mukellefId: taxpayerId, donem: new Date().toISOString().slice(0, 7), tip: 'ACCOUNT_PLAN', status: 'pending', createdBy: 'oto-plan-earsiv-sorgu', errorMsg: `[META] mukellefAdi=${ad}` },
+      data: { tenantId, sessionId: null, mukellefId: taxpayerId, donem: new Date().toISOString().slice(0, 7), tip: 'ACCOUNT_PLAN', status: 'pending', createdBy: null, errorMsg: `[META] mukellefAdi=${ad}` },
     }).catch(() => {});
   }
 
