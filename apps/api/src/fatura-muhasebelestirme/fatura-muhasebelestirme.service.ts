@@ -13143,24 +13143,39 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       // hesabına bağlanır. Adında "KDV / sorumlu / tevkifat / beyan" geçen 360 alt-hesabını
       // tercih et (gelir-vergisi-stopajı 360'ını DEĞİL); yoksa en genel 360 leaf'i. 360 hiç
       // yoksa null → satır boşalır, K7 "360 hesabı ekle" uyarısı verir (sahte kod yazılmaz).
-      const tevkMatch = (() => {
+      // ORANA DUYARLI (denetim R3): plan birden çok oranlı 360/191-sorumlu barındırıyorsa satırın KDV
+      //   oranıyla eşleşeni tercih et; yoksa mevcut ilk-uygun davranışa düş (regresyon yok).
+      const _tevkCache = new Map<string, any>();
+      const tevkForRate = (rateDigits?: string) => {
+        const key = String(rateDigits || '');
+        if (_tevkCache.has(key)) return _tevkCache.get(key);
         const g360 = accounts.filter((a: any) => { const c = String(a.accountCode || ''); return c.startsWith('360') && !c.startsWith('79'); });
-        if (!g360.length) return null;
-        const pref = g360.find((a: any) => { const n = this.norm(String(a.accountName || '')); return n.includes('kdv') || n.includes('sorumlu') || n.includes('tevkifat') || n.includes('beyan'); });
-        if (pref) return pref;
-        const depth = (c: string) => (String(c || '').match(/\./g) || []).length;
-        const mx = g360.reduce((mxv: number, a: any) => Math.max(mxv, depth(String(a.accountCode || ''))), 0);
-        return g360.filter((a: any) => depth(String(a.accountCode || '')) === mx)[0] || g360[0];
-      })();
+        let out: any = null;
+        if (g360.length) {
+          const kdvish = g360.filter((a: any) => { const n = this.norm(String(a.accountName || '')); return n.includes('kdv') || n.includes('sorumlu') || n.includes('tevkifat') || n.includes('beyan'); });
+          const pool = kdvish.length ? kdvish : g360;
+          const depth = (c: string) => (String(c || '').match(/\./g) || []).length;
+          const mx = pool.reduce((mxv: number, a: any) => Math.max(mxv, depth(String(a.accountCode || ''))), 0);
+          out = (rateDigits ? pool.find((a: any) => this.rateTokenInName(String(a.accountName || ''), String(rateDigits))) : null)
+            || pool.filter((a: any) => depth(String(a.accountCode || '')) === mx)[0] || pool[0] || g360[0];
+        }
+        _tevkCache.set(key, out);
+        return out;
+      };
       // SORUMLU SIFATIYLA İNDİRİLECEK KDV (191 — kullanıcı kuralı, Mihsap birebir): ALIŞ tevkifatta
       //   normal İndirilecek KDV'den AYRI bir 191 alt-hesabına (adında "sorumlu" geçen) tevkifat
       //   tutarı borç yazılır. Plan'da böyle bir alt-hesap YOKSA uydurma — boş bırak ("Eksik hesap
       //   kodu" görünür; müşavir 1 kez ekler/seçer, sahte kod asla yazılmaz).
-      const sorumluKdvMatch = (() => {
-        const g191 = accounts.filter((a: any) => { const c = String(a.accountCode || ''); return c.startsWith('191') && !c.startsWith('79') && isPostableLeaf(c); });
-        if (!g191.length) return null;
-        return g191.find((a: any) => this.norm(String(a.accountName || '')).includes('sorumlu')) || null;
-      })();
+      const _sorumluCache = new Map<string, any>();
+      const sorumluForRate = (rateDigits?: string) => {
+        const key = String(rateDigits || '');
+        if (_sorumluCache.has(key)) return _sorumluCache.get(key);
+        const g191s = accounts.filter((a: any) => { const c = String(a.accountCode || ''); return c.startsWith('191') && !c.startsWith('79') && isPostableLeaf(c) && this.norm(String(a.accountName || '')).includes('sorumlu'); });
+        // Önce orana göre "sorumlu" 191, yoksa ilk "sorumlu" (mevcut davranış). Sorumlu-191 yoksa null.
+        const out = (rateDigits ? g191s.find((a: any) => this.rateTokenInName(String(a.accountName || ''), String(rateDigits))) : null) || g191s[0] || null;
+        _sorumluCache.set(key, out);
+        return out;
+      };
       // SATIŞ matrahı TEVKİFAT-FARKINDA (KDV hesabıyla simetrik): tevkifatlı satış → adında
       // "tevkifat" geçen 600; NORMAL satış → "tevkifat/iade/ihrac/istisna" GEÇMEYEN normal 600.
       // Eskiden isim eşleşmesi olmayınca EN DÜŞÜK 600 leaf seçiliyordu → planın ilk hesabı
@@ -13350,13 +13365,14 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         const match = group === 'matrah'
           ? await matrahForRate(lineRate)
           : group === 'vergi' ? vergiForRate(lineRate)
-          : group === 'vergi-sorumlu' ? sorumluKdvMatch
+          : group === 'vergi-sorumlu' ? sorumluForRate(lineRate)
           : group === 'cari' ? cariMatch
           : null;
         const current = String(line.accountCode || '');
         // TEVKİFAT özel (KDV2 360): satıcı carisine EZME. Plandaki gerçek 360'a bağla; 360 yoksa
         // boşalt (K7 "360 ekle" uyarır). Sahte 360.01.001 placeholder'ı asla canlı kalmasın.
         if (group === 'tevkifat') {
+          const tevkMatch = tevkForRate(lineRate);
           if (tevkMatch) {
             if (current !== String((tevkMatch as any).accountCode)) {
               await (this.prisma as any).invoiceAccountingLine.update({
@@ -13372,6 +13388,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         // SORUMLU SIFATIYLA İNDİRİLECEK KDV özel (191): satıcı carisine/orana EZME. Plandaki "sorumlu"
         // adlı 191 alt-hesabına bağlanır; yoksa boşalt (sahte placeholder asla canlı kalmaz).
         if (group === 'vergi-sorumlu') {
+          const sorumluKdvMatch = sorumluForRate(lineRate);
           if (sorumluKdvMatch) {
             if (current !== String((sorumluKdvMatch as any).accountCode)) {
               await (this.prisma as any).invoiceAccountingLine.update({
