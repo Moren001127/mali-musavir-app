@@ -665,7 +665,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       return { status: s };
     })();
 
-    return (this.prisma as any).invoiceAccountingDocument.findMany({
+    const docs = await (this.prisma as any).invoiceAccountingDocument.findMany({
       where: {
         tenantId,
         ...statusFilter,
@@ -676,6 +676,43 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       orderBy: { createdAt: 'desc' },
       take: Math.min(Math.max(opts.limit || 100, 1), 500),
     });
+    // GÜVEN SKORU (iyileştirme #1): her belgeye deterministik güven ekle → müşavir yalnız "bakılmalı"
+    //   olanları görsün, "güvenli"leri toplu onaylasın. Ekstra AI çağrısı YOK; mevcut sinyaller:
+    //   doğrulama durumu + hesap satırı KAYNAĞI (öğrenilmiş mi) + boş kod/cari + uyarı.
+    return docs.map((d: any) => ({ ...d, guven: this.computeDocConfidence(d) }));
+  }
+
+  /** Belge güveni: 'yuksek' (öğrenilmiş/kesin, otomatik onaya uygun) | 'orta' (AI tahmini, tam ama
+   *  teyit edilmemiş — bir bak) | 'dusuk' (eksik/çelişkili/boş — mutlaka bak). DETERMİNİSTİK. */
+  private computeDocConfidence(doc: any): { seviye: 'yuksek' | 'orta' | 'dusuk'; neden: string } {
+    const vStatus = String((doc as any).validationStatus || doc?.ocrData?.validationStatus || '').toUpperCase();
+    const issues = Array.isArray((doc as any).validationIssues) ? (doc as any).validationIssues : [];
+    const uyarilar = Array.isArray(doc?.ocrData?.uyarilar) ? doc.ocrData.uyarilar : [];
+    const lines = Array.isArray(doc?.lines) ? doc.lines : [];
+    const byGroup = (g: string) => lines.filter((l: any) => String(l.group || '').toLowerCase() === g);
+    const matrah = byGroup('matrah');
+    const cari = lines.filter((l: any) => /^cari$/i.test(String(l.group || '')));
+    const vergi = lines.filter((l: any) => /^(vergi|vergi-sorumlu|tevkifat)$/i.test(String(l.group || '')));
+    const hasCode = (l: any) => !!String(l.accountCode || '').trim();
+    const confSrc = (l: any) => ['KULLANICI', 'HAFIZA', 'VKN'].includes(String(l.kaynak || '').toUpperCase());
+    // DÜŞÜK: doğrulama sorunlu YA DA zorunlu satırlardan biri boş kod.
+    const bosMatrah = matrah.length === 0 || matrah.some((l: any) => !hasCode(l));
+    const bosCari = cari.length === 0 || cari.some((l: any) => !hasCode(l));
+    const bosVergi = vergi.some((l: any) => !hasCode(l));
+    if (vStatus === 'INVALID' || vStatus === 'INCOMPLETE' || issues.length > 0) {
+      return { seviye: 'dusuk', neden: 'Doğrulama uyarısı/çelişki var' };
+    }
+    if (bosMatrah || bosCari || bosVergi) {
+      return { seviye: 'dusuk', neden: bosCari ? 'Cari eksik' : bosMatrah ? 'Hesap kodu eksik' : 'KDV hesabı eksik' };
+    }
+    // YÜKSEK: matrah + cari kodları ÖĞRENİLMİŞ/KESİN kaynaktan (müşavir daha önce onaylamış/VKN) ve uyarı yok.
+    const matrahLearned = matrah.length > 0 && matrah.every((l: any) => hasCode(l) && confSrc(l));
+    const cariLearned = cari.length > 0 && cari.every((l: any) => hasCode(l) && confSrc(l));
+    if (matrahLearned && cariLearned && uyarilar.length === 0) {
+      return { seviye: 'yuksek', neden: 'Öğrenilmiş/kesin eşleşme' };
+    }
+    // ORTA: tüm kodlar dolu ama en az biri AI/KURAL tahmini (teyit edilmemiş) → bir bakılmalı.
+    return { seviye: 'orta', neden: uyarilar.length ? 'AI tahmini + uyarı' : 'AI tahmini (teyit edilmemiş)' };
   }
 
   async dashboard(tenantId: string, opts: PeriodQuery = {}) {

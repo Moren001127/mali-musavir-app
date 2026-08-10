@@ -1337,6 +1337,16 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
     }
     approveMut.mutate({ ids: hazir.map((d) => d.id) });
   };
+  // GÜVEN SKORU (iyileştirme #1): backend her belgeye `guven.seviye` (yuksek|orta|dusuk) verir.
+  //   "yuksek" = öğrenilmiş/kesin eşleşme → otomatik onaya hazır. Müşavir tek tıkla güvenlileri onaylar,
+  //   geriye yalnız "bakılmalı" (orta+düşük) kalır → asıl zaman tasarrufu. (İşletme'de güven backend'de
+  //   satır kodu aramaz; orada mevcut "Seçilenleri onayla" akışı kullanılır — güvenli-buton yalnız kod olan bilançoda anlamlı.)
+  const guvenliDocs = docs.filter((d: any) => d.status !== 'APPROVED' && d?.guven?.seviye === 'yuksek');
+  const bakilmaliCount = docs.filter((d: any) => d.status !== 'APPROVED' && d?.guven && d.guven.seviye !== 'yuksek').length;
+  const guvenliOnayla = () => {
+    if (!guvenliDocs.length) { toast.error('Otomatik onaya hazır (yüksek güvenli) belge yok'); return; }
+    approveMut.mutate({ ids: guvenliDocs.map((d: any) => d.id) });
+  };
 
   return (
     <section className="screen">
@@ -1366,7 +1376,7 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
       </div>
       <div className="card invcard">
         <div className="ch invactions">
-          <h3>{docsQ.isLoading ? 'Yükleniyor…' : <>{docs.length} belge{sel.size > 0 ? <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--accent)' }}>· {sel.size} seçili</span> : null}</>}</h3><div className="sp" />
+          <h3>{docsQ.isLoading ? 'Yükleniyor…' : <>{docs.length} belge{sel.size > 0 ? <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--accent)' }}> · {sel.size} seçili</span> : null}{guvenliDocs.length > 0 ? <span style={{ fontSize: 12, fontWeight: 700, color: '#15803d' }}> · {guvenliDocs.length} güvenli</span> : null}{bakilmaliCount > 0 ? <span style={{ fontSize: 12, fontWeight: 700, color: '#d97706' }}> · {bakilmaliCount} bakılmalı</span> : null}</>}</h3><div className="sp" />
           <input ref={fileRef} type="file" multiple accept=".pdf,.jpg,.jpeg,.jpe,.jfif,.png,.webp,.gif,.tif,.tiff,.bmp,.heic,.heif,.avif,.xml,.ubl,.zip" style={{ display: 'none' }} onChange={(e) => { const files = Array.from(e.currentTarget.files || []); e.currentTarget.value = ''; if (files.length) uploadMut.mutate(files); }} />
           <button className="btn sm upload" disabled={!taxpayerId || uploadMut.isPending} onClick={() => setUploadPick(true)} title={!taxpayerId ? 'Önce mükellef seç' : 'Gelir/Gider seç, sonra JPEG / PDF / XML belge yükle'}><Ico html={I.upload} size={13} /> {uploadMut.isPending ? 'Yükleniyor…' : 'Belge Yükle'}</button>
           {uploadPick && (
@@ -1390,6 +1400,11 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
           )}
           <button className="btn sm fix" disabled={!taxpayerId || recodeMut.isPending} onClick={() => recodeMut.mutate()} title="Belgeleri TEKRAR OKUMADAN hesap kodlarını plana göre yeniden eşleştir — yanlış carileri düzeltir/temizler (saniyeler sürer)"><Ico html={I.wand} size={13} /> {recodeMut.isPending ? 'Düzeltiliyor…' : 'Kodları düzelt'}</button>
           <button className="btn sm ai" disabled={aiBusy || sel.size === 0} onClick={aiOku} title="Seçili faturaları yapay zeka (Max) ile oku — sunucuda okur, sayfa değişince durmaz"><Ico html={I.spark} size={13} /> {aiBusy ? 'Başlatılıyor…' : `AI ile oku${sel.size ? ` (${sel.size})` : ''}`}</button>
+          {guvenliDocs.length > 0 && (
+            <button className="btn sm" style={{ ['--tc' as any]: '#15803d', background: 'linear-gradient(135deg,#16a34a,#15803d)', color: '#fff', border: '1px solid #15803d' }} disabled={approveMut.isPending} onClick={guvenliOnayla} title="Öğrenilmiş/kesin eşleşen (yüksek güvenli) belgeleri TEK TIKLA onayla — geriye yalnız bakılması gerekenler kalır. Güven büyüdükçe (sen düzelttikçe) bu sayı artar.">
+              <Ico html={I.checkSm} size={13} /> {approveMut.isPending ? 'İşleniyor…' : `Güvenli ${guvenliDocs.length}'i onayla`}
+            </button>
+          )}
           <button className="btn sm primary" disabled={approveMut.isPending} onClick={muhasebelestir} title="Seçili, kodu tam olan belgeleri toplu onayla (Luca kuyruğuna alır). Tek tek inceleme için soldaki 'Muhasebeleştir' ekranını kullan."><Ico html={I.checkSm} size={13} /> {approveMut.isPending ? 'İşleniyor…' : `Seçilenleri onayla${sel.size ? ` (${sel.size})` : ''}`}</button>
         </div>
         {skipInfo && skipInfo.length > 0 && (() => {
