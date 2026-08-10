@@ -10851,6 +10851,20 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   akaryakıt, nakliye, müşavirlik, lastik…) bu SABİT KIYMET DEĞİLDİR → demirbaş YANLIŞ-POZİTİFİNİ
     //   engelle. (Çetaş "diagnostik/elektrik", MENGERLER "yedek parça filtre", TORA akaryakıt servis/sarf
     //   faturaları demirbaş işaretleniyordu.) Ham içerik (kalem + giderTuru); bozuk muhasebeNeden'e bakma.
+    // TAŞIT (PLAKA) — güçlü sinyal, giderIcerikSinifla'dan (gider-odaklı) ÖNCE: Türk plakası (il 01-81 +
+    //   1-3 harf + 2-4 rakam) + araç/satış/bedel bağlamı → taşıt alış/SATIŞI = sabit kıymet. (ÖZ ELA
+    //   "34 LAM 220 ARAÇ SATIŞ BEDELİ" NORMAL SATIŞ sanılıyordu — kullanıcı bildirdi.) Bare "araç" ASSET'te
+    //   yoktu + "ARAŞ" gibi harf/OCR sapmasında ad-eşleşmesi kaçar; plaka bunları kurtarır.
+    const plakaRe = /\b(0[1-9]|[1-7]\d|8[01])\s?[a-z]{1,3}\s?\d{2,4}\b/;
+    const tasitBaglam = /(satis|bedel|arac|aras|tasit|plaka|model|sasi|motor no|km\b|hususi|kamyon|otomobil)/;
+    if (plakaRe.test(blob) && tasitBaglam.test(blob)) {
+      // TİCARET kapısı: yalnız araç TİCARETİ (oto galeri) yapan hariç — onun aracı ticari mal. Taşımacılık/
+      //   kiralama/inşaat firmasının aracı SABİT KIYMETtir (kendi filosu). ÖZ ELA "taşımacılık" → dahil.
+      const faalV = fold(`${taxpayer?.faaliyetAciklama || ''} ${taxpayer?.companyName || ''} ${taxpayer?.naceKodu || ''}`);
+      if (!/(oto galeri|galeri|arac tic|motorlu tasit tic|oto tic|arac al[ .-]?sat|ikinci el arac|oto sat)/.test(faalV)) {
+        return { is: true, reason: 'taşıt (plaka)' };
+      }
+    }
     if (giderIcerikSinifla(`${kalemAd} ${ocr.giderTuru || ''}`)) return { is: false, reason: '' };
     const hitWord = ASSET.find((w) => blob.includes(w)) || '';
     if (!hitWord) return { is: false, reason: '' };
@@ -12937,7 +12951,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       //   geçer → is=false). Bu içerik-sinyali AI kategorisini EZER → klima 153 TİCARİ MAL yerine 255 DEMİRBAŞ'a
       //   (yoksa BOŞ; KAT_PREFIX[demirbas]=255/253/254, gider prefix'i YOK) gider. Belge zaten FIXED_ASSET_MANUAL
       //   ile bloklu (manuel Luca) — kategori/hesap da artık tutarlı görünür. Yalnız ALIŞ (satış demirbaş ayrı).
-      const faContent = !isSale ? this.detectFixedAsset(doc.ocrData, tpRow) : { is: false, reason: '' };
+      // Denetim/kullanıcı (2026-08-11): SATIŞ da dahil — araç/demirbaş SATIŞI (sabit kıymet ÇIKIŞI) normal
+      //   600 gelire yazılmamalı; detectFixedAsset (plaka + faaliyet kapısı) satışta da çalışır → kat='demirbas',
+      //   satış matrahı BOŞ kalır (saleMatrahDefault null), FIXED_ASSET_MANUAL ile bloklu (müşavir Luca sabit
+      //   kıymet modülünden işler). Araç TİCARETİ (galeri) yapanı faaliyet kapısı zaten eler.
+      const faContent = this.detectFixedAsset(doc.ocrData, tpRow);
       // DEMİRBAŞ HADDİ (VUK 313, KDV hariç matrah): içerik demirbaş olsa da bedel haddin ALTINDAysa
       //   doğrudan GİDER (770) yazılır, demirbaş (255) DEĞİL — kullanıcı "770'te gider yazılan demirbaş"
       //   diye açıyor. Eşik üstü → demirbaş (manuel/amortisman). Bedel bilinmiyorsa demirbaş kalır (güvenli).
@@ -13247,6 +13265,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       // "600.01.003 TEVKİFATLI GELİRLER" ise NORMAL satışlar da oraya düşüyordu (kullanıcı bildirdi).
       const saleMatrahDefault = (() => {
         if (!isSale || isReturn) return categoryMatrah; // alıştan iade: 600 değil, orijinal stok/gider
+        // DEMİRBAŞ/ARAÇ SATIŞI (sabit kıymet çıkışı): 600 gelire YAZMA — BOŞ bırak (FIXED_ASSET_MANUAL
+        //   ile bloklu; müşavir 255 çıkış + 257 amortisman + 679/689 kâr-zararı Luca'da işler).
+        if (faDet.is) return null;
         const g600 = accounts.filter((a: any) => { const c = String(a.accountCode || ''); return c.startsWith('600') && !c.startsWith('79') && isPostableLeaf(c); });
         if (!g600.length) return categoryMatrah;
         if (tevkPay >= 1) {
