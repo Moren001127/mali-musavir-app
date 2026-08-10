@@ -426,11 +426,14 @@ export default function GelirTablosuPage() {
   //   hesaplanan geçici vergisi. (Kullanıcı isteği 2026-08-10: bu alan manuel olmasın, önceki
   //   dönemden otomatik gelsin. Kaydedilmiş manuel değer varsa yine ona saygı duyulur.)
   const oncekiOdenenGVDefault = (qi: number): number => (qi >= 1 ? liveHesaplananGV(qi - 1) : 0);
-  // Kaydedilmiş manuel değer (null/undefined) yoksa otomatik varsayılana düş.
+  // Kaydedilmiş GERÇEK manuel değer (>0) yoksa otomatik önceki-dönem varsayılanına düş.
+  //   NOT: DB'de bu alan çoğunlukla 0 olarak duruyor (hiç girilmemiş) → 0'ı "boş" sayıp otomatiğe düşeriz;
+  //   yalnız kullanıcının bilinçli girdiği >0 değere saygı duyulur. (2026-08-10 bug: kayıtlı 0, otomatiği
+  //   engelleyip 0,00 gösteriyordu.)
   const resolveOncekiOdenen = (qi: number, gv: any, draftOO: number | null): number => {
-    if (draftOO !== null) return draftOO;
-    const stored = gv?.oncekiDonemOdenenGeciciVergi ?? gv?.oncekiDonemOdenen;
-    if (stored !== null && stored !== undefined && stored !== '') return Number(stored) || 0;
+    if (draftOO !== null && draftOO > 0) return draftOO;
+    const stored = Number(gv?.oncekiDonemOdenenGeciciVergi ?? gv?.oncekiDonemOdenen ?? 0);
+    if (stored > 0) return stored;
     return oncekiOdenenGVDefault(qi);
   };
 
