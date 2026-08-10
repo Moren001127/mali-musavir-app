@@ -10567,43 +10567,47 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // satışta hesaplanan KDV yalnız tevkifat-dışı kısımdır (kalanı alıcı sorumlu sıf. beyan eder).
     const tk = Number(opts.tevkifatOrani) || 0;
     if (tk > 0 && tk <= 1) { // tk=1 (10/10 TAM tevkifat) dahil — normal KDV satırı 0 olur, aşağıda elenir
-      const m = hasBreakdown
-        ? breakdown.reduce((s, b) => s.plus(money(b.base) || zero()), zero())
-        : (money(opts.matrah) || zero());
-      const k = hasBreakdown
-        ? breakdown.reduce((s, b) => s.plus(money(b.amount) || zero()), zero())
-        : (money(opts.kdvTutari) || zero());
-      const tevk = k.mul(tk);
-      const normalK = k.minus(tevk);
-      const primaryRate = hasBreakdown ? breakdown[0]?.rate : (opts.kdvOrani ? Number(opts.kdvOrani) : undefined);
-      const rl = primaryRate ? `%${primaryRate}` : undefined;
-      const net = m.plus(normalK);
-      if (!isSale) {
-        // ALIŞ tevkifat (KDV2 — kullanıcı kuralı, Mihsap birebir): 191 İKİ AYRI satıra bölünür:
-        //   (a) NORMAL İndirilecek KDV = tevkifat-dışı kısım (k − tevk) — satıcıya fiilen ödenen KDV.
-        //   (b) Sorumlu Sıfatıyla İndirilecek KDV = tevkifat tutarı (tevk) — alıcı bu kısmı KDV2 ile
-        //       sorumlu sıfatıyla beyan/ödedikten SONRA aynı tutarı indirim hakkı olarak GERİ ALIR,
-        //       o yüzden AYRI bir 191 alt-hesabına (adında "sorumlu" geçen) borç yazılır. Toplam 191
-        //       borcu yine k'dir (normalK + tevk = k) — denge/toplam DEĞİŞMEZ, yalnız iki hesaba bölünür.
-        //   770 matrah (B) · 191 normal KDV (B) · 191 sorumlu sıf. KDV (B) · 320 net cari (A) · 360 tevkifat (A)
-        // 191-sorumlu ve 360 AYRI gruplarda → cari/oran eşleştirme onları EZMESİN; plandaki gerçek
-        // hesaplara (adında "sorumlu"/"kdv"/"tevkifat" geçen) bağlanır (bkz. rematch 'vergi-sorumlu'/'tevkifat' kolu).
-        const alisRows = [
-          { group: 'matrah', accountCode: matrahCode, description: 'Gider / matrah', debit: m, credit: zero(), orderNo: 0 },
-          { group: 'vergi', accountCode: this.kdvAccountCode(false, primaryRate), description: `İndirilecek KDV ${rl || ''}`.trim(), rate: rl, debit: normalK, credit: zero(), orderNo: 1 },
-          { group: 'vergi-sorumlu', accountCode: '191.02.001', description: `Sorumlu Sıfatıyla İndirilecek KDV ${rl || ''}`.trim(), rate: rl, debit: tevk, credit: zero(), orderNo: 2 },
-          { group: 'cari', accountCode: cariCode, description: opts.vendorName || 'Cari hesap', debit: zero(), credit: net, orderNo: 3 },
-          { group: 'tevkifat', accountCode: '360.01.001', description: 'Ödenecek KDV (sorumlu sıf. — KDV2 ile beyan)', rate: rl, debit: zero(), credit: tevk, orderNo: 4 },
-        ];
-        // TAM tevkifatta (tk=1) normal KDV 0 → boş satır bırakma.
-        return applySmmStopaj(normalK.gt(0) ? alisRows : alisRows.filter((l) => l.group !== 'vergi'));
+      // ÇOK-ORANLI TEVKİFAT (denetim KDV R1): her KDV oranı KENDİ matrah + KDV + sorumlu satırını alır →
+      //   rematch her satırı kendi oranıyla doğru 391/191/600 hesabına eşler. Eskiden hasBreakdown olsa da
+      //   tek m/k'ye toplanıp primaryRate=EN DÜŞÜK oran etiketiyle tek satır kuruluyordu (%10+%20 karışıkta
+      //   %20 yanlış hesaba gidiyordu). Tek-oranlı davranış BİREBİR korunur (döngü tek eleman çalışır).
+      //   Cari (net) ve tevkifat-360 TOPLAM tek satır kalır (denge: borç m+k = alacak net + tevk).
+      const rateItems = (hasBreakdown && breakdown.length)
+        ? breakdown.filter((b) => (Number(b.base || 0) > 0 || Number(b.amount || 0) > 0))
+        : [{ rate: (opts.kdvOrani ? Number(opts.kdvOrani) : undefined) as any, base: Number(opts.matrah) || 0, amount: Number(opts.kdvTutari) || 0 }];
+      let mTotal = zero(), normalKTotal = zero(), tevkTotal = zero();
+      const rateRows: any[] = [];
+      for (const it of rateItems) {
+        const base = money((it as any).base) || zero();
+        const amt = money((it as any).amount) || zero();
+        const tevkI = amt.mul(tk);
+        const normalI = amt.minus(tevkI); // her zaman amt = normalI + tevkI (yuvarlama biriktirmez)
+        const rNum = (it as any).rate ? Number((it as any).rate) : undefined;
+        const rl = rNum ? `%${rNum}` : undefined;
+        if (!isSale) {
+          // ALIŞ: 770 matrah (B) · 191 normal KDV (B) · 191 sorumlu sıf. KDV (B). Sorumlu-191, cari/oran
+          //   eşleştirmesi tarafından EZİLMESİN diye AYRI grupta; plandaki "sorumlu" 191'e bağlanır.
+          if (base.gt(0)) rateRows.push({ group: 'matrah', accountCode: matrahCode, description: 'Gider / matrah', rate: rl, debit: base, credit: zero() });
+          if (normalI.gt(0)) rateRows.push({ group: 'vergi', accountCode: this.kdvAccountCode(false, rNum), description: `İndirilecek KDV ${rl || ''}`.trim(), rate: rl, debit: normalI, credit: zero() });
+          if (tevkI.gt(0)) rateRows.push({ group: 'vergi-sorumlu', accountCode: '191.02.001', description: `Sorumlu Sıfatıyla İndirilecek KDV ${rl || ''}`.trim(), rate: rl, debit: tevkI, credit: zero() });
+        } else {
+          // SATIŞ: 600 matrah (A) · 391 hesaplanan KDV = tevkifat-DIŞI kısım (A). Tevkifat kısmını satıcı
+          //   beyan etmez → hiçbir yere işlenmez (cari NET yazılır).
+          if (base.gt(0)) rateRows.push({ group: 'matrah', accountCode: matrahCode, description: 'Satış matrahı', rate: rl, debit: zero(), credit: base });
+          if (normalI.gt(0)) rateRows.push({ group: 'vergi', accountCode: this.kdvAccountCode(true, rNum), description: `Hesaplanan KDV (tevkifat sonrası) ${rl || ''}`.trim(), rate: rl, debit: zero(), credit: normalI });
+        }
+        mTotal = mTotal.plus(base); normalKTotal = normalKTotal.plus(normalI); tevkTotal = tevkTotal.plus(tevkI);
       }
-      const satisRows = [
-        { group: 'cari', accountCode: cariCode, description: opts.vendorName || 'Cari hesap', debit: net, credit: zero(), orderNo: 0 },
-        { group: 'matrah', accountCode: matrahCode, description: 'Satış matrahı', debit: zero(), credit: m, orderNo: 1 },
-        { group: 'vergi', accountCode: this.kdvAccountCode(true, primaryRate), description: `Hesaplanan KDV (tevkifat sonrası) ${rl || ''}`.trim(), rate: rl, debit: zero(), credit: normalK, orderNo: 2 },
-      ];
-      return normalK.gt(0) ? satisRows : satisRows.filter((l) => l.group !== 'vergi');
+      const net = mTotal.plus(normalKTotal);
+      let out: any[];
+      if (!isSale) {
+        out = [...rateRows, { group: 'cari', accountCode: cariCode, description: opts.vendorName || 'Cari hesap', debit: zero(), credit: net }];
+        if (tevkTotal.gt(0)) out.push({ group: 'tevkifat', accountCode: '360.01.001', description: 'Ödenecek KDV (sorumlu sıf. — KDV2 ile beyan)', debit: zero(), credit: tevkTotal });
+      } else {
+        out = [{ group: 'cari', accountCode: cariCode, description: opts.vendorName || 'Cari hesap', debit: net, credit: zero() }, ...rateRows];
+      }
+      out = out.map((r, i) => ({ ...r, orderNo: i }));
+      return applySmmStopaj(out);
     }
 
     const lines: any[] = [];
