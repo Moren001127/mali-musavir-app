@@ -1960,10 +1960,10 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
             provider: activeEfaturaProvider?.provider || 'TURMOB_EFATURA',
             label: activeEfaturaProvider?.label || 'TURMOB e-Fatura',
             status: 'QUEUED_EFATURA_IMPORT',
-            reason: data?.reason || 'Aktarim arka planda calisiyor; tablo otomatik yenilenecek.',
+            reason: data?.reason || 'Faturalar bekleyen listeye aktariliyor (eslestirme yok); bitince "AI ile oku" ile eslestirin.',
           }],
         });
-        toast.success('Aktarim arka planda basladi; liste otomatik yenilenecek.');
+        toast.success('Faturalar aktariliyor (eslestirme yapilmadan). Bitince "AI ile oku" ile hesap/cari/tevkifat eslestir.');
         setSel(new Set());
         qc.invalidateQueries({ queryKey: ['fm-efatura-inbox'] });
         qc.invalidateQueries({ queryKey: ['fm2'] });
@@ -1979,8 +1979,8 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
       const imported = Number(r?.data?.imported || 0);
       const processed = Number(r?.data?.processed || 0);
       const failed = Number(r?.data?.failed || 0);
-      if (failed > 0) toast.warning(`${imported} fatura aktarildi, ${failed} fatura belge indirilemedigi icin atlandi.`);
-      else toast.success(imported > 0 ? `${imported} fatura bekleyen listeye aktarildi.` : `${processed} fatura kontrol edildi; yeni aktarim yok.`);
+      if (failed > 0) toast.warning(`${imported} fatura aktarildi (eslestirme yok — "AI ile oku" ile eslestirin), ${failed} fatura belge indirilemedigi icin atlandi.`);
+      else toast.success(imported > 0 ? `${imported} fatura bekleyen listeye aktarildi (eslestirme yok). "AI ile oku" ile hesap/cari/tevkifat eslestir.` : `${processed} fatura kontrol edildi; yeni aktarim yok.`);
       setSel(new Set());
       qc.invalidateQueries({ queryKey: ['fm-efatura-inbox'] });
       qc.invalidateQueries({ queryKey: ['fm2'] });

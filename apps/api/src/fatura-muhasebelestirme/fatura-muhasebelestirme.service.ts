@@ -4560,9 +4560,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   async importEfaturaInboxToAccounting(
     tenantId: string,
     userId: string | undefined,
-    opts: { taxpayerId: string; period?: string; direction?: 'IN' | 'OUT'; channel?: string; ids?: string[]; limit?: number } = {} as any,
+    opts: { taxpayerId: string; period?: string; direction?: 'IN' | 'OUT'; channel?: string; ids?: string[]; limit?: number; skipMatching?: boolean } = {} as any,
   ) {
     if (!opts.taxpayerId) throw new BadRequestException('taxpayerId gerekli');
+    // YENİ MODEL: Aktar = ham belgeyi bekleyen listeye taşı; hesap/cari/tevkifat eşleştirmesini
+    //   SONRAYA ("AI ile işle") bırak. Varsayılan AÇIK (kullanıcı 2026-08-11 "sistemi değiştirelim").
+    const skipMatching = opts.skipMatching !== false;
     const taxpayer = await (this.prisma as any).taxpayer.findFirst({
       where: { id: opts.taxpayerId, tenantId },
       select: { id: true, companyName: true, taxNumber: true },
@@ -4770,7 +4773,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
               runtimeCfg,
               direction === 'OUT' ? 'SATIS' : 'ALIS',
               { ...visualPayload, externalId: row.uuid || visualPayload.externalId || row.ettn || row.faturaNo || null },
-              { existingDocumentId: row.documentId },
+              { existingDocumentId: row.documentId, skipMatching },
             ).catch((e: any) => this.logger.warn(`Aktarilmis e-fatura belgesi yenilenemedi: ${e?.message || e}`));
           }
         }
@@ -4860,6 +4863,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           runtimeCfg,
           direction === 'OUT' ? 'SATIS' : 'ALIS',
           this.providerPayloadFromStoredVisual(xml, row.uuid, row.faturaNo, storedVisual),
+          { skipMatching },
         );
         const parsed = this.parseProviderUblInvoice(xml) || this.regexProviderInvoiceFallback(xml);
         const updateRaw = {
@@ -9735,8 +9739,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     cfg: RuntimeIntegrationConfig,
     direction: 'ALIS' | 'SATIS',
     payload: ProviderInvoicePayload,
-    opts: { existingDocumentId?: string } = {},
+    opts: { existingDocumentId?: string; skipMatching?: boolean } = {},
   ) {
+    // skipMatching: belge oluşturulur ama hesap/cari/tevkifat eşleştirmesi ve doğrulama YAPILMAZ
+    //   (ham "beklemede" belge; validationStatus=INCOMPLETE → Luca gönderiminden elenir). Eşleştirme
+    //   sonradan "AI ile işle" (reapplyAccountCodes / aiRead) ile çalışır. (Kullanıcı: "Aktar sadece aktarsın.")
+    const skipMatching = !!opts.skipMatching;
     let xml = String(payload.xml || '').trim();
     const unpacked: ProviderInvoicePayload[] = [];
     const rawBuffer = Buffer.from(xml, 'utf8');
@@ -9787,7 +9795,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         externalId: sourceRefId,
       }, parsed, source, sourceRefId);
       const total = parsed.toplamTutar ?? ((parsed.matrah || 0) + (parsed.kdvTutari || 0));
-      const shouldRewriteAccounting = String(existing.status || '').toUpperCase() !== 'APPROVED';
+      // skipMatching'de mevcut belgenin hesap satırlarına DOKUNMA (yalnız görsel/depolama tazelenir).
+      const shouldRewriteAccounting = !skipMatching && String(existing.status || '').toUpperCase() !== 'APPROVED';
       const lines = shouldRewriteAccounting
         ? await this.gateCodesByPlan(tenantId, taxpayer.id, this.linesFromAmounts({
           invoiceKind: direction,
@@ -9887,7 +9896,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       buyerVkn: parsed.aliciVergiNo || null,
       totalAmount: total,
     });
-    const lines = await this.gateCodesByPlan(tenantId, taxpayer.id, this.linesFromAmounts({
+    // skipMatching: hesap satırı ÜRETME (Aktar sadece belgeyi koyar; eşleştirme sonra "AI ile işle").
+    const lines = skipMatching ? [] : await this.gateCodesByPlan(tenantId, taxpayer.id, this.linesFromAmounts({
       invoiceKind: direction,
       matrah: parsed.matrah,
       kdvTutari: parsed.kdvTutari,
@@ -9931,6 +9941,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           provider: cfg.provider,
           source: 'provider-api',
           direction,
+          // Aktar-sadece (skipMatching): belge eşleştirilmemiş → INCOMPLETE. batchPostToLuca bunu ELER
+          //   (yanlışlıkla Luca'ya gitmez). "AI ile işle" eşleştirince revalidate OK'e çeker.
+          validationStatus: skipMatching ? 'INCOMPLETE' : undefined,
+          matchDeferred: skipMatching || undefined,
           matrah: parsed.matrah,
           kdvTutari: parsed.kdvTutari,
           kdvOrani: parsed.kdvOrani,
@@ -9948,10 +9962,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // OTOMATİK EŞLEŞTİRME: entegratör belgesi oluşur oluşmaz hesap kodlarını ATA — KDV 191/391
     //   (orana göre, deterministik), cari (VKN→320 öğrenilmiş/plan), gider (plan/kural). Kullanıcı:
     //   "XML fatura eşleştirmeyi otomatik çalıştırmadı". Önce kodla, SONRA doğrula (demirbaş/denge).
-    if (taxpayer?.id) await this.rematchDocumentsWithLatestAccountPlan(tenantId, taxpayer.id, [doc.id]).catch(() => {});
-    // DEMİRBAŞ + sahiplik/denge doğrulaması: demirbaş alış/satışı INVALID → otomatik aktarım engellenir,
-    //   "Luca sabit kıymet modülünden işle" uyarısı kalır. (Provider-XML belgede de validation çalışsın.)
-    await this.revalidateDocument(tenantId, doc.id).catch(() => {});
+    // skipMatching'de İKİSİNİ DE ATLA: Aktar sadece belgeyi koyar; eşleştirmeyi "AI ile işle" yapar.
+    if (!skipMatching) {
+      if (taxpayer?.id) await this.rematchDocumentsWithLatestAccountPlan(tenantId, taxpayer.id, [doc.id]).catch(() => {});
+      // DEMİRBAŞ + sahiplik/denge doğrulaması: demirbaş alış/satışı INVALID → otomatik aktarım engellenir,
+      //   "Luca sabit kıymet modülünden işle" uyarısı kalır. (Provider-XML belgede de validation çalışsın.)
+      await this.revalidateDocument(tenantId, doc.id).catch(() => {});
+    }
     return { created: true, document: doc };
   }
 

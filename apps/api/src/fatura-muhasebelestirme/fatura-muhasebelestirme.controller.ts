@@ -546,6 +546,10 @@ export class FaturaMuhasebelestirmeController {
         channel: body?.channel,
         ids: Array.isArray(body?.ids) ? body.ids : undefined,
         limit: body?.limit,
+        // YENİ MODEL (kullanıcı 2026-08-11): "Aktar" SADECE faturayı bekleyen listeye taşır;
+        //   hesap/cari/tevkifat EŞLEŞTİRMESİ YAPMAZ. Eşleştirme sonradan "AI ile işle" (reapply-codes
+        //   / ai-read) ile çalışır. Ham belge validationStatus=INCOMPLETE → Luca'ya kazara gitmez.
+        skipMatching: body?.skipMatching !== false,
       };
       void this.service.importEfaturaInboxToAccounting(tenantId, userId, input)
         .catch((e: any) => console.warn('[efatura-inbox/import] background failed:', e?.message || e));
@@ -565,6 +569,7 @@ export class FaturaMuhasebelestirmeController {
         channel: body?.channel,
         ids: Array.isArray(body?.ids) ? body.ids : undefined,
         limit: body?.limit,
+        skipMatching: body?.skipMatching !== false,
       },
     );
   }
