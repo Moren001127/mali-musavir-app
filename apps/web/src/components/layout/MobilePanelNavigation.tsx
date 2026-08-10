@@ -125,9 +125,9 @@ const moduleGroups: ModuleGroup[] = [
     icon: DatabaseZap,
     items: [
       { href: '/panel/mizan', label: 'Mizan', icon: Table2 },
-      { href: '/panel/isletme-hesap-ozeti', label: 'İşletme Hesap Özeti', icon: BookOpenText },
       { href: '/panel/gelir-tablosu', label: 'Gelir Tablosu', icon: TrendingUp },
       { href: '/panel/bilanco', label: 'Bilanço', icon: Scale },
+      { href: '/panel/isletme-hesap-ozeti', label: 'İşletme Hesap Özeti', icon: BookOpenText },
       { href: '/panel/ajanlar/e-defter', label: 'E-Defter Kontrol', icon: BookMarked },
     ],
   },
