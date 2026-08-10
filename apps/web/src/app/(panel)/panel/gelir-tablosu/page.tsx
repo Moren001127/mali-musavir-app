@@ -405,6 +405,35 @@ export default function GelirTablosuPage() {
     };
   };
 
+  // Bir dönemin (index j) CANLI hesaplanan geçici vergisi (manuel düzeltmeler dahil).
+  //   Geçici vergi KÜMÜLATİFtir → matrah yıl başından o döneme kadar; hesaplanan = matrah × oran.
+  const liveHesaplananGV = (j: number): number => {
+    const detail = quarterDetails[j]?.data as any;
+    const gv = detail?.geciciVergiHesabi;
+    if (!gv) return 0;
+    const der = quarterSlots[j] ? derived(quarterSlots[j]) : null;
+    const liveDonemNetKari = der ? der.donemNetKari : Number(gv.donemNetKari || 0);
+    const kkeg = Number(gv.kkeg || 0);
+    const liveToplamKar = liveDonemNetKari + kkeg;
+    const ms = detail?.id ? getManuel(detail.id) : null;
+    const draftGY = ms?.gecmisYil ? parseLocale(ms.gecmisYil) : null;
+    const gecmisYil = draftGY !== null ? draftGY : Number(gv.gecmisYilZarari || 0);
+    const matrah = Math.max(0, liveToplamKar - gecmisYil);
+    const oran = Number(gv.gecicVergiOrani) || 0.25;
+    return matrah * oran;
+  };
+  // "Önceki Dönem Ödenen Geçici Vergi" OTOMATİK varsayılanı: bir ÖNCEKİ dönemin (qi-1) kümülatif
+  //   hesaplanan geçici vergisi. (Kullanıcı isteği 2026-08-10: bu alan manuel olmasın, önceki
+  //   dönemden otomatik gelsin. Kaydedilmiş manuel değer varsa yine ona saygı duyulur.)
+  const oncekiOdenenGVDefault = (qi: number): number => (qi >= 1 ? liveHesaplananGV(qi - 1) : 0);
+  // Kaydedilmiş manuel değer (null/undefined) yoksa otomatik varsayılana düş.
+  const resolveOncekiOdenen = (qi: number, gv: any, draftOO: number | null): number => {
+    if (draftOO !== null) return draftOO;
+    const stored = gv?.oncekiDonemOdenenGeciciVergi ?? gv?.oncekiDonemOdenen;
+    if (stored !== null && stored !== undefined && stored !== '') return Number(stored) || 0;
+    return oncekiOdenenGVDefault(qi);
+  };
+
   /** Bir dönemin gelir tablosu özetinden kurumsal WhatsApp bilgilendirme metni üretir (WhatsApp *bold* biçimi). */
   const buildGelirMesaj = (qi: number): string => {
     const gt = quarterSlots[qi];
@@ -427,7 +456,7 @@ export default function GelirTablosuPage() {
       const draftGY = ms?.gecmisYil ? parseLocale(ms.gecmisYil) : null;
       const draftOO = ms?.oncekiOdenen ? parseLocale(ms.oncekiOdenen) : null;
       const gecmisYil = draftGY !== null ? draftGY : Number(gv.gecmisYilZarari || 0);
-      const oncekiOdenen = draftOO !== null ? draftOO : Number(gv.oncekiDonemOdenenGeciciVergi ?? gv.oncekiDonemOdenen ?? 0);
+      const oncekiOdenen = resolveOncekiOdenen(qi, gv, draftOO); // önceki dönemden OTOMATİK (yoksa kayıtlı manuel)
       const matrah = Math.max(0, liveToplamKar - gecmisYil);
       const oran = Number(gv.gecicVergiOrani) || 0.25;
       oncekiOdenenGV = oncekiOdenen;
@@ -718,10 +747,7 @@ export default function GelirTablosuPage() {
     const draftGY = manualState?.gecmisYil ? parseLocale(manualState.gecmisYil) : null;
     const draftOO = manualState?.oncekiOdenen ? parseLocale(manualState.oncekiOdenen) : null;
     const gecmisYil = draftGY !== null ? draftGY : Number(tax.gecmisYilZarari || 0);
-    const oncekiOdenen =
-      draftOO !== null
-        ? draftOO
-        : Number(tax.oncekiDonemOdenenGeciciVergi ?? tax.oncekiDonemOdenen ?? 0);
+    const oncekiOdenen = resolveOncekiOdenen(Number(tax.donemSirasi || 0) - 1, tax, draftOO); // önceki dönemden OTOMATİK
     const toplamKar = (Number(values?.donemNetKari) || 0) + (Number(tax.kkeg) || 0);
     const matrah = Math.max(0, toplamKar - gecmisYil);
     const oran = Number(tax.gecicVergiOrani) || 0.25;
@@ -1604,7 +1630,11 @@ export default function GelirTablosuPage() {
                       <span className="inline-flex items-center gap-2">
                         {row.label}
                         {row.manual && (
-                          <span className="text-[9.5px] font-bold px-1.5 py-[1px] rounded" style={{ background: 'rgba(184,160,111,0.28)', color: GOLD }}>MANUEL</span>
+                          row.key === 'oncekiDonemOdenen' ? (
+                            <span className="text-[9.5px] font-bold px-1.5 py-[1px] rounded" style={{ background: 'rgba(34,197,94,0.2)', color: '#22c55e' }} title="Önceki dönemin hesaplanan geçici vergisinden otomatik gelir">OTOMATİK</span>
+                          ) : (
+                            <span className="text-[9.5px] font-bold px-1.5 py-[1px] rounded" style={{ background: 'rgba(184,160,111,0.28)', color: GOLD }}>MANUEL</span>
+                          )
                         )}
                       </span>
                     </td>
@@ -1631,8 +1661,7 @@ export default function GelirTablosuPage() {
                         const draftGY = manuelState?.gecmisYil ? parseLocale(manuelState.gecmisYil) : null;
                         const draftOO = manuelState?.oncekiOdenen ? parseLocale(manuelState.oncekiOdenen) : null;
                         const gecmisYil = draftGY !== null ? draftGY : Number(v.gecmisYilZarari || 0);
-                        const oncekiOdenen =
-                          draftOO !== null ? draftOO : Number(v.oncekiDonemOdenenGeciciVergi ?? v.oncekiDonemOdenen ?? 0);
+                        const oncekiOdenen = resolveOncekiOdenen(qi, v, draftOO); // önceki dönemden OTOMATİK (yoksa kayıtlı manuel)
                         const matrah = Math.max(0, liveToplamKar - gecmisYil);
                         // v1.36.57: Vergi oranı backend'den (TUZEL %25, GERCEK %15) — hardcoded 0.25 değildi BUG idi
                         const oran = Number(v.gecicVergiOrani) || 0.25;
@@ -1648,7 +1677,7 @@ export default function GelirTablosuPage() {
 
                       return (
                         <td key={qi} className="px-3 py-2 text-center font-mono" style={{ color: !hasData ? MISSING_AMOUNT_COLOR : row.color || (val === 0 ? MUTED_AMOUNT_COLOR : AMOUNT_COLOR), fontWeight: row.bold ? FINANCIAL_AMOUNT_STRONG_WEIGHT : FINANCIAL_AMOUNT_WEIGHT, fontSize: FINANCIAL_AMOUNT_SIZE, borderLeft: `1px solid ${GRID_LINE}`, borderBottom: `1px solid ${GRID_LINE}`, fontFamily: FINANCIAL_FONT, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', letterSpacing: 0 }}>
-                          {!hasData ? '—' : isManual && !isLocked ? (
+                          {!hasData ? '—' : (isManual && !isLocked && row.key !== 'oncekiDonemOdenen') ? (
                             isFirstQuarter ? (
                               <span style={{ color: 'rgba(250,250,249,0.3)' }}>— (ilk)</span>
                             ) : (
