@@ -12133,6 +12133,29 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           if (only) detHit = { giderTuru: only.hint, kategori: only.kategori };
         }
       }
+      // ⚡ HIZ — ÖĞRENİLMİŞ SATICI+İÇERİK → Max ATLA (içerik-imzalı, güvenli): bu satıcının AYNI içerikli
+      //   (aynı imza) faturası daha önce onaylanmışsa hesap ZATEN öğrenilmiş → rematch onu uygular, AI'a
+      //   sormaya gerek yok. GÜVENLİK (kullanıcı: "101. faturada taşıt alırsak?"): yalnız TAM imza eşleşmesi
+      //   → FARKLI içerik (taşıt/demirbaş) farklı imza → EŞLEŞMEZ → Max çalışır. detectFixedAsset her hâlde
+      //   içeriğe bakar (demirbaş yön-bağımsız yakalanır). Genel (imzasız) karar burada KABUL EDİLMEZ —
+      //   içerik körü atlamayı önler. Yalnız ilk-kez satıcıda değil, TEKRAR eden faturalarda hızlandırır.
+      let ogrenilmisAtla = false;
+      if (!detHit && !isIsletmeMukellef && d.taxpayerId) {
+        try {
+          const vkn = String((d.invoiceKind === 'SATIS' ? d.buyerVkn : d.sellerVkn) || parsed.saticiVergiNo || parsed.aliciVergiNo || '').replace(/\D/g, '');
+          const imza = VendorMemoryService.buildIcerikImza(Array.isArray(parsed.kalemler) ? parsed.kalemler.map((k: any) => k?.ad) : []);
+          if (vkn && imza) {
+            const mem = await (this.prisma as any).vendorMemory.findUnique({
+              where: { tenantId_firmaKimlikNo: { tenantId, firmaKimlikNo: vkn } },
+              include: { decisions: { where: { taxpayerId: d.taxpayerId, kararTipi: 'fatura' } } },
+            });
+            ogrenilmisAtla = (mem?.decisions || []).some((dec: any) => (dec.onayAdedi || 0) >= 2
+              && String(dec.altKategori || '').trim().toUpperCase() !== 'CARI'
+              && /^\d/.test(String(dec.kategori || '').trim())
+              && String(dec.icerikImza || '').trim() === imza);
+          }
+        } catch { /* hafıza okunamadıysa normal AI yoluna düş */ }
+      }
       // TOPLU: aynı mükellef+plan+yön grubundaki belgeler tek Max çağrısında sınıflanır (alt-süreç N× azalır).
       const c: any = detHit
         ? {
@@ -12142,8 +12165,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             //   deterministik kısa gerekçe yaz (zengin yorum istenirse lazy generateRichMuhasebeNeden var).
             muhasebeNeden: `Fatura kalemleri "${detHit.giderTuru}" niteliğinde — içerik kuralıyla otomatik sınıflandırıldı.`,
           }
+        : ogrenilmisAtla
+        ? { giderTuru: '', kategori: '', muhasebeNeden: 'Bu satıcı + aynı içerik daha önce onaylandı — öğrenilmiş hesap uygulanacak (AI atlandı).' }
         : await this.aiClassifyAccountingCoalesced(contentText, mukellefBilgi, isIsletmeMukellef, d.invoiceKind === 'SATIS' ? 'SATIS' : 'ALIS', planAdaylar).catch(() => null);
       if (detHit) this.logger.log(`[CLS-SKIP] det icerik=${detHit.kategori} (${detAdlar.length} kalem) → Max ATLANDI belge=${d.belgeNo || d.id}`);
+      if (ogrenilmisAtla) this.logger.log(`[CLS-SKIP-LEARNED] satici+icerik ogrenilmis → Max ATLANDI (hesap rematch'ten) belge=${d.belgeNo || d.id}`);
       if (c) {
         if (!parsed.giderTuru && c.giderTuru) parsed.giderTuru = c.giderTuru;
         if (!parsed.kategori && c.kategori) parsed.kategori = c.kategori;
