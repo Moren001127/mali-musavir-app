@@ -13762,6 +13762,15 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       'organizasyon', 'profesyonel', 'mutfak', 'ekipmanlari', 'ekipman', 'endustri', 'endustriyel',
       'fen', 'lisesi', 'okul', 'aile', 'birligi', 'kiz', 'erkek', 'ana', 'anaokulu', 'sitesi',
       'yonetimi', 'teknik', 'servis', 'sistemleri', 'sistem', 'makina', 'makine',
+      // TÜRKÇE KISALTMALAR (Luca hesap adlarında yaygın: "ÖZENİR TUR.SER.HİZ.OTO.VE İNŞ.TAAH.SAN.TİC.LTD.").
+      //   Açık biçimleri (insaat/servis/hizmet/turizm/taahhut/otomotiv/muhendislik...) STOP'taydı ama
+      //   KISALTMALARI değildi → Luca hesabı bu kısaltmalarla ŞİŞİYOR, "tek ayırt edici kelime + karşı taraf
+      //   çok tokenli → reddet" kuralı ÖZENİR=ÖZENİR / ÖZ ULUDAĞ=ÖZ ULUDAĞ gibi DOĞRU eşleşmeleri REDDEDİYORDU
+      //   (cari EKSİK kalıyordu). Kısaltmaları da ele → her iki taraf ayırt edici köke (ozenir/uludag) iner.
+      'ins', 'tur', 'ser', 'hiz', 'oto', 'taah', 'nak', 'per', 'muh', 'org', 'ith', 'ihr', 'tas', 'san', 'tic',
+      // SEKTÖR kelimeleri (açık): TAŞIMACILIK/PERSONEL çok firmada ortak → yanlış eşleşme üretiyordu
+      //   (TRANSAY TAŞIMACILIK ↔ AFACAN TRAVEL TAŞIMACILIK "taşımacılık" ortak sanılıp EŞLEŞİYORDU).
+      'tasimacilik', 'personel', 'hizmetleri', 'sirketleri', 'ticari', 'kardesler', 'kard',
     ]);
     // Türkçe→ASCII katla (ş→s ğ→g ı→i ç→c ö→o ü→u): STOP listesi ASCII yazılı; "ŞİRKETİ/SANAYİ/
     //   TİCARET/MAĞAZA" gibi Türkçe-karakterli kelimeler aksi halde STOP'tan GEÇMEYİP ortak çıkıyor →
