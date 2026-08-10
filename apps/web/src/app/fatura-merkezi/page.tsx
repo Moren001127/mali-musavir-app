@@ -1361,17 +1361,21 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
       <div className="h2">{kind === 'SATIS' ? 'Bekleyen Satış Faturaları' : 'Bekleyen Alış Faturaları'}</div>
       <div className="sub">{kind === 'SATIS' ? 'Mükellefin kestiği satış faturaları — kuralla otomatik eşleşir.' : 'Entegratörden çekilen gelen faturalar — kuralla otomatik eşleşir, sadece eksik/çelişkili olana bakarsın.'}</div>
       {karne && karne.toplam > 0 && (() => {
-        const oran = Number(karne.otomatikOran) || 0;
+        // BÜYÜK yüzde = "hesap atandı" oranı (listedeki "Eşleşti" ile tutarlı). "Güvenli" AYRI ve daha
+        //   katı ölçüt (öğrenilmiş + carisi dolu) — sen onayladıkça büyür. Eski büyük yüzde=güvenli oranı
+        //   olduğu için "76 Eşleşti ama %0" çelişkisi görünüyordu (kullanıcı bulgusu 2026-08-11).
+        const oran = Number(karne.hesapAtananOran ?? karne.otomatikOran) || 0;
+        const atanan = Number(karne.hesapAtanan ?? 0);
         const oc = oran >= 70 ? '#15803d' : oran >= 40 ? '#d97706' : '#e5484d';
         return (
           <div style={{ margin: '0 0 12px', border: '1px solid #e2e8f0', borderRadius: 12, background: 'linear-gradient(135deg,#f8fafc,#ffffff)', overflow: 'hidden' }}>
             <div onClick={() => setKarneAcik((v) => !v)} style={{ cursor: karne.zayifSaticilar?.length ? 'pointer' : 'default', display: 'flex', alignItems: 'center', gap: 14, padding: '11px 15px', flexWrap: 'wrap' }}>
               <span style={{ fontSize: 13, fontWeight: 700, color: '#334155' }}>Oto-eşleşme karnesi</span>
-              <span style={{ fontSize: 18, fontWeight: 800, color: oc }}>%{oran}</span>
-              <span style={{ fontSize: 12, color: '#64748b' }}>otomatik eşleşme oranı</span>
+              <span style={{ fontSize: 18, fontWeight: 800, color: oc }} title={`${atanan}/${karne.toplam} belgeye otomatik hesap kodu atandı`}>%{oran}</span>
+              <span style={{ fontSize: 12, color: '#64748b' }}>hesap atandı ({atanan}/{karne.toplam})</span>
               <div style={{ flex: 1 }} />
-              <span style={{ fontSize: 12.5, fontWeight: 700, color: '#15803d' }}>{karne.yuksek} güvenli</span>
-              <span style={{ fontSize: 12.5, fontWeight: 700, color: '#d97706' }}>{karne.bakilmali} bakılmalı</span>
+              <span style={{ fontSize: 12.5, fontWeight: 700, color: '#15803d' }} title="Öğrenilmiş kaynaktan (sen onaylamış) + carisi dolu + uyarısız. Sen düzelttikçe/onayladıkça artar; ilk okumada 0 olması normaldir.">{karne.yuksek} güvenli</span>
+              <span style={{ fontSize: 12.5, fontWeight: 700, color: '#d97706' }} title="Bir bakılması gereken (orta + düşük güven) belge sayısı.">{karne.bakilmali} bakılmalı</span>
               <span style={{ fontSize: 12.5, fontWeight: 600, color: '#94a3b8' }}>{karne.onaylanmis} onaylı</span>
               {karne.zayifSaticilar?.length ? <span style={{ fontSize: 12, color: '#64748b' }}>{karneAcik ? '▲' : '▼'}</span> : null}
             </div>

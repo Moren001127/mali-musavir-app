@@ -727,10 +727,16 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         where: { tenantId, status: 'APPROVED', ...(opts.taxpayerId ? { taxpayerId: opts.taxpayerId } : {}), ...periodWhere(opts.period) },
       }).catch(() => 0),
     ]);
-    let yuksek = 0, orta = 0, dusuk = 0;
+    let yuksek = 0, orta = 0, dusuk = 0, hesapAtanan = 0;
     const zayif = new Map<string, { ad: string; adet: number; nedenler: Record<string, number> }>();
     for (const d of docs) {
       const g = this.computeDocConfidence(d);
+      // "Hesap atandı" = matrah (gelir/gider) satırlarının kodu DOLU (liste "Eşleşti" rozetiyle tutarlı).
+      //   Karnenin büyük yüzdesi budur. "Güvenli" (yuksek) bundan AYRI ve DAHA KATI: öğrenilmiş kaynak +
+      //   cari dolu + uyarısız. Kullanıcı "76 Eşleşti ama karne %0" derken bu iki ölçüt karışıyordu.
+      const dl = Array.isArray((d as any).lines) ? (d as any).lines : [];
+      const dm = dl.filter((l: any) => String(l.group || '').toLowerCase() === 'matrah');
+      if (dm.length > 0 && dm.every((l: any) => String(l.accountCode || '').trim())) hesapAtanan++;
       if (g.seviye === 'yuksek') { yuksek++; continue; }
       if (g.seviye === 'orta') orta++; else dusuk++;
       const ad = String((String(d.invoiceKind || '').toUpperCase() === 'SATIS' ? d.customerName : d.vendorName) || 'Bilinmeyen').trim() || 'Bilinmeyen';
@@ -746,7 +752,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     }));
     return {
       toplam, yuksek, orta, dusuk, bakilmali, onaylanmis: Number(onaylanmis) || 0,
+      hesapAtanan,
       otomatikOran: toplam ? Math.round((yuksek / toplam) * 100) : 0,
+      hesapAtananOran: toplam ? Math.round((hesapAtanan / toplam) * 100) : 0,
       zayifSaticilar,
     };
   }
@@ -12842,6 +12850,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       'Yorum: <Faturada özetle nelerin alındığını/satıldığını içerikten özetle; mükellefin faaliyetine göre bunların NİYE ticari mal / üretim girdisi(hammadde) / demirbaş / gider niteliğinde olduğunu açıkla; içerik faaliyetle uyumsuzsa (ör. lokantanın aldığı klima → demirbaş) nedenini belirt; cümleyi "... bu nedenle ' + hesapStr + ' hesabına işlenmiştir." ile bitir>',
       '',
       'HESAP_UYUMU KURALI: Faturanın İÇERİĞİ, işlendiği hesabın (' + hesapStr + ') temsil ettiği faaliyet/kategori ile AÇIKÇA FARKLI bir faaliyetse "UYUMSUZ" yaz — örn. yedek parça satıcısının PERSONEL TAŞIMA / nakliye geliri, ya da MAL-SATIŞ hesabına HİZMET geliri işlenmesi. İçerik hesapla makul biçimde bağdaşıyorsa ya da EN KÜÇÜK şüphede "UYUMLU" yaz. Emin değilsen UYUMLU. (Bu satır kullanıcıya gösterilmez; yalnız sistem içindir.)',
+      // KULLANICI BULGUSU (2026-08-11): Yorgun Nakliyat "20 adet lastik SATIŞ" faturasını 600.01.001
+      //   NAKLİYE GELİRLERİ'ne yazmış. Hizmet mükellefinin FİZİKSEL MAL satışı hizmet-gelir hesabına
+      //   yazılamaz. Bu DAR ve NET kalıpta "emin değilsen UYUMLU" varsayılanı GEÇERSİZ.
+      ...(isSale && !isReturn ? ['SATIŞTA ÖZEL UYUMSUZLUK: Mükellef bir HİZMET işletmesiyse (nakliye, lojistik, taşımacılık, depolama, danışmanlık, temizlik, kiralama, yazılım-hizmet, tamir-bakım vb.) ve bu SATIŞ faturasında sattığı şey mükellefin sunduğu hizmet DEĞİL, FİZİKSEL BİR MAL/EŞYA ise (ör. lastik, araç yedek parçası, cihaz, makine, malzeme, hurda, sabit kıymet/demirbaş çıkışı), bunu HİZMET-GELİRİ hesabına (ör. NAKLİYE GELİRLERİ) yazmak YANLIŞTIR → net "UYUMSUZ" yaz. Bu DAR kalıpta "emin değilsen UYUMLU" GEÇERSİZDİR. (Mükellef zaten MAL TİCARETİ yapıyorsa ya da satılan şey onun asıl hizmetiyse UYUMLU.)'] : []),
       'KURALLAR: Yönü MÜKELLEF gözünden anlat (ALIŞ ise "mükellef almış"; satıcının ne sattığı önemli değil). Hesap kodunu (' + hesapStr + ') Yorum cümlesinde AYNEN kullan. Faturada olmayan şey UYDURMA. Toplam ~60 kelimeyi geçme.',
     ].join('\n');
 
