@@ -3,6 +3,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
 import { kdvApi } from '@/lib/kdv';
 import { api } from '@/lib/api';
+import { lucaLogFriendly } from '@/lib/lucaLogFriendly';
 import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { toast } from 'sonner';
@@ -473,7 +474,8 @@ export default function KdvKontrolPage() {
     const lines = jobs.flatMap((job) => {
       const label = TYPE_LABEL[job.tip] || job.tip;
       const logLines = String(job.errorMsg || '').split('\n').filter((l: string) => l.trim());
-      return logLines.slice(-4).map((line: string) => `${label}: ${line}`);
+      // ham teknik logları sade Türkçe aşamalara çevir
+      return lucaLogFriendly(logLines).slice(-4).map((line: string) => `${label}: ${line}`);
     });
     setLucaLogLines(lines);
 

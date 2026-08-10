@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
 import { earsivApi, fmtTRY, type EarsivTip, type BelgeKaynak, type EarsivFatura, type LucaFetchJob } from '@/lib/earsiv';
 import { api } from '@/lib/api';
+import { lucaLogFriendly } from '@/lib/lucaLogFriendly';
 import { LucaInlineCaptchaPanel } from '@/components/luca/LucaInlineCaptchaPanel';
 import { useLucaAgent } from '@/hooks/useLucaAgent';
 import { toast } from 'sonner';
@@ -452,7 +453,7 @@ export default function EarsivPage() {
       }
     }
     setLucaSummary({ done, failed, nofatura, cancelled, total: lucaJobIds.length });
-    setLucaLogLines(liveLogLines.slice(-30));
+    setLucaLogLines(lucaLogFriendly(liveLogLines).slice(-30)); // ham teknik logları sade Türkçe aşamalara çevir
     setActiveJobId(activeJobIdLocal);
 
     const tamamlanan = done + failed + nofatura + cancelled;

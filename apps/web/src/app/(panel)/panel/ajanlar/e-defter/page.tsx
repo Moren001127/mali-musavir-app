@@ -11,6 +11,7 @@ import {
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import { EDefterDonemTipi, edefterControlApi } from '@/lib/edefter-control';
+import { lucaLogFriendly } from '@/lib/lucaLogFriendly';
 import { useLucaAgent } from '@/hooks/useLucaAgent';
 
 // ── e-Defter modül kimliği: kurumsal lacivert/mavi (her modüle ayrı renk imzası) ──
@@ -489,7 +490,8 @@ export default function EDefterAgentPage() {
   useEffect(() => {
     const data = jobQuery.data; if (!data?.job) return;
     const job = data.job;
-    const lines = String(job.errorMsg || '').split('\n').map((line) => line.trim()).filter(Boolean);
+    const rawLines = String(job.errorMsg || '').split('\n').map((line) => line.trim()).filter(Boolean);
+    const lines = lucaLogFriendly(rawLines); // ham teknik logları sade Türkçe aşamalara çevir
     const lastLine = cleanLucaStatus(lines[lines.length - 1]);
     const mizanJob = data.mizanJob;
     const mizanStatus = String(mizanJob?.status || '').toLowerCase();

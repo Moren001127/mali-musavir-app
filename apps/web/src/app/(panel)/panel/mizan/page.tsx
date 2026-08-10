@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { mizanApi, fmtTRY } from '@/lib/mizan';
 import { api } from '@/lib/api';
+import { lucaLogFriendly } from '@/lib/lucaLogFriendly';
 import { lucaSessionApi } from '@/lib/luca-session';
 import { useLucaAgent } from '@/hooks/useLucaAgent';
 import { formatDonemLabel, formatDonemTipiLabel, getDonemDateRange, normalizeDonemTipi } from '@/lib/period';
@@ -548,7 +549,8 @@ export default function MizanPage() {
     if (!job?.status) return;
     const s = job.status;
     const log = job.errorMsg || '';
-    const lines = log ? log.split('\n').filter((l: string) => l.trim()) : [];
+    const rawLines = log ? log.split('\n').filter((l: string) => l.trim()) : [];
+    const lines = lucaLogFriendly(rawLines); // ham teknik logları sade Türkçe aşamalara çevir
     setLucaLogLines(lines);
     const lastLine = lines[lines.length - 1] || '';
     if (s === 'pending') setLucaStatus(lastLine || 'Luca ajanı işi almak için bekleniyor...');
