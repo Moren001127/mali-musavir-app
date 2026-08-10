@@ -4089,8 +4089,17 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   private efaturaSyncKey(tenantId: string, opts: any) {
     return `${tenantId}:${opts?.taxpayerId}:${String(opts?.channel || opts?.direction || 'IN').toUpperCase()}`;
   }
+  // AKTAR (import) ilerleme durumu — ekran değişince/geri gelince sunucudan okunur (kalıcı sayaç).
+  private __efaturaImportStatus = new Map<string, any>();
+  getEfaturaImportStatus(tenantId: string, taxpayerId: string, channel: string) {
+    return this.__efaturaImportStatus.get(`${tenantId}:${taxpayerId}:${String(channel || 'IN').toUpperCase()}`) || { state: 'idle' };
+  }
   getEfaturaSyncStatus(tenantId: string, taxpayerId: string, channel: string) {
-    return this.__efaturaSyncStatus.get(`${tenantId}:${taxpayerId}:${String(channel || 'IN').toUpperCase()}`) || { state: 'idle' };
+    const ch = String(channel || 'IN').toUpperCase();
+    const sync = this.__efaturaSyncStatus.get(`${tenantId}:${taxpayerId}:${ch}`) || { state: 'idle' };
+    // Sorgu durumunun yanında AKTAR durumunu da döndür → tek endpoint, tek poll; şerit ikisini de gösterir.
+    const imp = this.__efaturaImportStatus.get(`${tenantId}:${taxpayerId}:${ch}`) || { state: 'idle' };
+    return { ...sync, import: imp };
   }
   /** İsteğe bağlı olmayan (kopuk) arka plan sorgu: hemen döner, iş event-loop'ta bağımsız sürer.
    *  OTO-TEKRAR: hız-sınırı yüzünden çekim yarıda kalabilir (kısmi). skip-existing sayesinde her tur eksikleri
@@ -4714,6 +4723,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
 
     let processed = 0, imported = 0, alreadyQueued = 0, skipped = 0, failed = 0, staleReset = 0;
     const errors: any[] = [];
+    // AKTAR İLERLEME DURUMU (sunucu tarafı, kalıcı): ekran değişip geri gelince şerit buradan beslenir.
+    const importKey = `${tenantId}:${opts.taxpayerId}:${channel}`;
+    const importTotal = rows.length;
+    const setImportStatus = (state: string, extra: any = {}) => {
+      this.__efaturaImportStatus.set(importKey, { state, total: importTotal, imported, alreadyQueued, failed, processed, updatedAt: new Date().toISOString(), ...extra });
+    };
+    setImportStatus('running', { startedAt: new Date().toISOString() });
     for (const row of rows) {
       let raw = row.rawJson || {};
       if (String(raw.channel || '').toUpperCase() !== channel) continue;
@@ -4725,6 +4741,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         if (validRowDate ? !dateMatches : !rawPeriodMatches) continue;
       }
       processed++;
+      if (processed % 3 === 1) setImportStatus('running'); // şeridi ilerlet (her ~3 belgede bir yeterli)
       const provider = String(row.entegrator || 'TURMOB_EFATURA');
       const runtimeCfg = (await runtimeConfigFor(provider)) || this.providerStubConfig(provider);
       const sourceRef = rowSourceRef(row);
@@ -4903,10 +4920,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         if (errors.length < 10) errors.push({ id: row.id, faturaNo: row.faturaNo, message: e?.message || 'aktarim hatasi' });
       }
     }
+    setImportStatus('done', { finishedAt: new Date().toISOString() });
     // OTOMATİK EŞLEŞTİRME: aktarılan e-faturalara hesap kodlarını ("Kodları düzelt" ile AYNI:
     //   cari VKN→320, KDV 191/391, plan/öğrenilmiş gider) kendiliğinden ata → kullanıcı elle basmasın.
     //   Fire-and-forget (HTTP yanıtını bekletmez); frontend poll ile kodlar dolar.
-    if (imported > 0) {
+    // skipMatching (yeni model): Aktar SADECE aktarır — otomatik eşleştirme YAPMA; kullanıcı "AI ile oku" der.
+    if (imported > 0 && !skipMatching) {
       void this.reapplyAccountCodes(tenantId, opts.taxpayerId)
         .catch((e: any) => this.logger.warn(`Aktar sonrasi otomatik eslestirme hatasi: ${e?.message || e}`));
     }
@@ -13014,7 +13033,17 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       // KDV hesabı: tevkifatlıda planında ADINDA oranı (ör "2/10") ya da "tevkifat" geçen
       // hesabı tercih et (391.01.004 "HESAPLANAN KDV %20 2/10"), düz 391.01.003 değil.
       const vergiPrefix = isSale ? '391' : '191';
-      const tevkPay = Math.round(Number((doc.ocrData as any)?.tevkifatOrani || 0) * 10); // 0.2→2 (2/10)
+      // TEVKİFAT ORANI: ocrData.tevkifatOrani DOLUYSA onu kullan; DEĞİLSE tevkifatKdv/kdvTutari'den TÜRET
+      //   (kök: eski entegratör-import yolu tevkifatOrani'ı ocrData'ya YAZMIYORDU → tevkPay=0 → tevkifatlı
+      //   satış NORMAL 600/391'e düşüyordu. ÖZ ELA vakası). Böylece hangi yol yazmış olursa olsun yakalanır.
+      const _tevkOranEff = (() => {
+        const o = Number((doc.ocrData as any)?.tevkifatOrani || 0);
+        if (o > 0) return o;
+        const tk = Number((doc.ocrData as any)?.tevkifatKdv || 0);
+        const kv = Number((doc.ocrData as any)?.kdvTutari || 0);
+        return (tk > 0 && kv > 0 && tk <= kv) ? tk / kv : 0;
+      })();
+      const tevkPay = Math.round(_tevkOranEff * 10); // 0.5→5 (5/10), 0.2→2 (2/10)
       // KDV hesabı ORANA göre seçilir: %20 satır → adında "20" geçen 191/391 ("İNDİRİLECEK KDV %20").
       // Eskiden orana bakmadan en düşük 191 (= "%1" hesabı) seçiliyordu → %20 KDV "%1" hesabına
       // gidiyordu (kullanıcı bildirdi). Tevkifatlıda oran/"tevkifat" hesabı önceliklidir.

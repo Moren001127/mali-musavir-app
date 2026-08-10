@@ -1837,13 +1837,22 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
     queryKey: ['fm-efatura-syncstatus', taxpayerId, efaturaChannel],
     queryFn: async () => (await api.get('/fatura-muhasebelestirme/efatura-sync/status', { params: { taxpayerId, channel: efaturaChannel } })).data,
     enabled: !!taxpayerId && source === 'efatura' && ['TURKCELL', 'TURMOB_EFATURA'].includes(String(activeEfaturaProvider?.provider)),
+    // Mount'ta bir kez çek (enabled) → sayfaya her girişte sunucudaki CANLI durum gelir (kalıcı sayaç).
+    refetchOnMount: 'always',
     refetchInterval: (arg: any) => {
       const s = arg?.state?.data ?? arg;
-      if (s?.state === 'running') return 4000;
+      if (s?.state === 'running' || s?.import?.state === 'running') return 4000; // sorgu YA DA aktar sürüyor
       return efaturaSyncPollUntil > Date.now() ? 4000 : false;
     },
   });
   const efaturaSyncStatus: any = efaturaSyncStatusQ.data || null;
+  // AKTAR (import) sunucu durumu — ekran değişip geri gelince de görünür (yerel state'e bağlı DEĞİL).
+  //   Bayat koruması: son güncelleme 90sn'den eskiyse iş ölmüş say, şeridi gizle.
+  const efaturaImportStatus: any = efaturaSyncStatus?.import || null;
+  const efaturaImportRunning = !!efaturaImportStatus && efaturaImportStatus.state === 'running'
+    && (!efaturaImportStatus.updatedAt || (Date.now() - new Date(efaturaImportStatus.updatedAt).getTime()) < 90000);
+  const efaturaImportSrvDone = efaturaImportStatus ? (Number(efaturaImportStatus.processed || 0)) : 0;
+  const efaturaImportSrvTotal = efaturaImportStatus ? (Number(efaturaImportStatus.total || 0)) : 0;
   const efaturaIsTransferred = (r: any) => {
     if (r?.hasAccountingDocument === true) return true;
     if (r?.hasAccountingDocument === false) return false;
@@ -2207,15 +2216,25 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
               <span className="eftrack"><span className="effill" style={{ width: `${efaturaDownloadTotal ? Math.round((efaturaDownloadReady / efaturaDownloadTotal) * 100) : 0}%` }} /></span>
             </div>
           )}
-          {!efaturaDownloading && (efaturaImportMut.isPending || efaturaQueuedImport) && (
+          {/* AKTAR ŞERİDİ: SUNUCU durumundan beslenir (efaturaImportRunning) → sayfayı değiştirip geri
+              gelince de görünür. Yerel isPending/queued yalnız ilk anı köprüler; sonra sunucu sayacı. */}
+          {!efaturaDownloading && (efaturaImportMut.isPending || efaturaQueuedImport || efaturaImportRunning) && (
             <div className="efdownbar import">
               <span className="efspin" aria-hidden="true" />
-              <span className="eftext">Faturalar aktarılıyor… <b>{efaturaTransferredCount}</b> / {efaturaTransferTotal} muhasebeye geçti</span>
-              <span className="eftrack"><span className="effill" style={{ width: `${efaturaTransferTotal ? Math.round((efaturaTransferredCount / efaturaTransferTotal) * 100) : 0}%` }} /></span>
+              {efaturaImportRunning && efaturaImportSrvTotal > 0
+                ? <>
+                    <span className="eftext">Faturalar aktarılıyor… <b>{efaturaImportSrvDone}</b> / {efaturaImportSrvTotal} işlendi (eşleştirme yok — bitince "AI ile oku")</span>
+                    <span className="eftrack"><span className="effill" style={{ width: `${Math.min(100, Math.round((efaturaImportSrvDone / efaturaImportSrvTotal) * 100))}%` }} /></span>
+                  </>
+                : <>
+                    <span className="eftext">Faturalar aktarılıyor… <b>{efaturaTransferredCount}</b> / {efaturaTransferTotal} muhasebeye geçti</span>
+                    <span className="eftrack"><span className="effill" style={{ width: `${efaturaTransferTotal ? Math.round((efaturaTransferredCount / efaturaTransferTotal) * 100) : 0}%` }} /></span>
+                  </>}
             </div>
           )}
-          {/* ARKA PLAN ÇEKİM DURUMU: Sorgula'ya basar basmaz (poll'ü beklemeden) görünür; bitince gizlenir. */}
-          {['TURKCELL', 'TURMOB_EFATURA'].includes(String(activeEfaturaProvider?.provider)) && efaturaSyncPollUntil > Date.now() && (!efaturaSyncStatus || (efaturaSyncStatus.state !== 'done' && efaturaSyncStatus.state !== 'error')) && (
+          {/* ARKA PLAN ÇEKİM DURUMU: Sorgula'ya basar basmaz (yerel poll) VE sunucu 'running' iken görünür
+              → sayfayı değiştirip geri gelince de sunucu durumundan devam eder. */}
+          {['TURKCELL', 'TURMOB_EFATURA'].includes(String(activeEfaturaProvider?.provider)) && (efaturaSyncPollUntil > Date.now() || efaturaSyncStatus?.state === 'running') && (!efaturaSyncStatus || (efaturaSyncStatus.state !== 'done' && efaturaSyncStatus.state !== 'error')) && (
             <div className={`efdownbar ${efaturaSyncStatus?.rateLimited ? 'import' : ''}`}>
               <span className="efspin" aria-hidden="true" />
               <span className="eftext">
