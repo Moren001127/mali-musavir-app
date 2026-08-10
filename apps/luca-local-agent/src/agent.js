@@ -2082,20 +2082,30 @@ function startJobTimeoutWatcher() {
 function startFreezeWatchdog() {
   const FREEZE_IDLE_MS = 5 * 60 * 1000;                      // boşta 5dk log yoksa
   const FREEZE_HARD_CAP_MS = JOB_TIMEOUT_MS + 5 * 60 * 1000; // mutlak (~30dk) hiç log yoksa
+  // AKTİF-İŞ TAKILMA (2026-08-10, kullanıcı isteği "bir daha takılma yaşamayayım"):
+  //   Ajan bir işi işlerken (activeJobCount>0) TAKILIRSA eski kod ancak ~30dk'da (hard cap)
+  //   kurtarıyordu — çünkü "boşta 5dk" kuralı yalnız aktif-iş YOKken çalışır. Sonuç: kullanıcı
+  //   dakikalarca "bir yerde takıldı" görüyordu (örn klasik Luca paketi tıklandı, sayfa açılmadı,
+  //   log akmadı). ÇÖZÜM: aktif iş varken de İLERLEME (log heartbeat) 4dk durursa = TAKILDI →
+  //   işi tekrar sıraya al + prosesi bitir (wrapper TAZE tarayıcıyla yeniden başlatır, takılı
+  //   frame/sayfa gider). Mesru uzun işler adım adım loglar → heartbeat taze → yanlış-kill olmaz.
+  const STALL_ACTIVE_MS = 4 * 60 * 1000;
   setInterval(() => {
     if (stopped) return;
     const idleMs = Date.now() - lastAgentProgressAt;
     const frozenIdle = activeJobCount === 0 && idleMs > FREEZE_IDLE_MS;
+    const stalledActive = activeJobCount > 0 && idleMs > STALL_ACTIVE_MS; // aktif iş ilerlemiyor
     const frozenHard = idleMs > FREEZE_HARD_CAP_MS;
-    if (frozenIdle || frozenHard) {
-      log.error(`Self-heal: ajan ${Math.round(idleMs / 60000)}dk hiç ilerleme/log yapmadi (DONMA). Proses sonlandiriliyor (wrapper taze ajan başlatir).`);
+    if (frozenIdle || stalledActive || frozenHard) {
+      const sebep = stalledActive ? 'aktif iş 4dk ilerlemedi (TAKILDI)' : 'hiç ilerleme/log yok (DONMA)';
+      log.error(`Self-heal: ${Math.round(idleMs / 60000)}dk ${sebep}. Is tekrar siraya alinip proses bitiriliyor (wrapper TAZE ajan başlatir).`);
       for (const jid of activeJobsStartTime.keys()) {
-        api.post(`/agent/luca/jobs/${jid}/requeue`, { reason: 'AGENT_FREEZE_WATCHDOG' }).catch(() => {});
+        api.post(`/agent/luca/jobs/${jid}/requeue`, { reason: stalledActive ? 'AGENT_STALL_WATCHDOG_4MIN' : 'AGENT_FREEZE_WATCHDOG' }).catch(() => {});
       }
       setTimeout(() => process.exit(7), 2000);
     }
-  }, 60_000); // 60sn'de bir
-  log.info(`Donma watchdog aktif (boşta ${FREEZE_IDLE_MS / 60000}dk / mutlak ${Math.round(FREEZE_HARD_CAP_MS / 60000)}dk log yoksa restart).`);
+  }, 30_000); // 30sn'de bir (daha hızlı yakala)
+  log.info(`Donma/takilma watchdog aktif (boşta ${FREEZE_IDLE_MS / 60000}dk · aktif-iş ${STALL_ACTIVE_MS / 60000}dk ilerleme yoksa restart).`);
 }
 
 // ====================================================================
