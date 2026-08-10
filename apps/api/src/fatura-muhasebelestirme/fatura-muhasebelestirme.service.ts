@@ -10877,6 +10877,14 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       'sunucu', 'server', 'network switch', 'cnc', 'torna tezgah', 'freze tezgah', 'matkap tezgah',
       '3d yazici', 'uc boyutlu yazici', 'lazer kesim', 'plazma kesim', 'konteyner', 'prefabrik',
       'totem', 'reklam panosu', 'dijital tabela', 'led ekran', 'vinc', 'kule vinc', 'silo',
+      // OFİS + BT + MOBİLYA sabit kıymetleri (kullanıcı: "taşıt-dışı demirbaşı da KESİN ayırt et").
+      //   Sarf/aksesuar (toner/kartuş/kağıt/kablo) giderIcerikSinifla ile ELENİR; VUK haddi altındaysa
+      //   demirbaş sayılmaz (doğrudan gider). Yalnız GERÇEK cihaz/ekipman kalır.
+      'tablet bilgisayar', 'ip telefon', 'telefon santral', 'santral cihaz', 'yazarkasa', 'yazar kasa',
+      'odeme kaydedici', 'okc cihaz', 'pos cihaz', 'barkod okuyucu', 'barkod yazici', 'el terminali',
+      'kesintisiz guc', 'ups cihaz', 'projektor', 'plotter', 'dokum makin', 'etiket yazici',
+      'ofis koltug', 'calisma masasi', 'toplanti masasi', 'celik dolap', 'celik kasa', 'para kasas',
+      'raf sistem', 'depolama raf', 'rack kabin', 'sunucu dolab',
     ];
     // İÇERİK sinyali ŞART: faturada gerçek cihaz/makine/sabit-kıymet adı geçmeli. AI'ın salt "demirbas"
     //   KATEGORİSİ TEK BAŞINA güvenilmez — AI, mükellefin faaliyet açıklamasındaki cihaz isimlerine
