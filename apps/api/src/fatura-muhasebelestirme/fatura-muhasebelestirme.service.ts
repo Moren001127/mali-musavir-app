@@ -11588,11 +11588,15 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         });
       });
       await this.revalidateDocument(tenantId, d.id).catch(() => {});
-      // Elle verilen hesap kodunu öğren — bu satıcının sonraki faturaları otomatik alsın
+      // Elle verilen hesap kodunu öğren — bu satıcının sonraki faturaları otomatik alsın.
+      //   (Denetim R-B) altKategori=ORAN → oran-bazlı öğrenmeyle hizalı (aynı satıcının %1/%20 alımı
+      //   farklı koda gidebilsin); onayBoost=2 → elle işlem AÇIK İRADE, okuma eşiğini (>=2) tek seferde
+      //   geçer, sonraki fatura hemen uygulanır (editör/İşletme/Kurallar yollarıyla tutarlı).
       if (hasManualCode && !isSale && d.sellerVkn) {
         await this.vendorMemory.recordDecision({
           tenantId, firmaKimlikNo: String(d.sellerVkn).replace(/\D/g, ''), firmaUnvan: d.vendorName,
-          kararTipi: 'fatura', kategori: manualCode, taxpayerId: d.taxpayerId,
+          kararTipi: 'fatura', kategori: manualCode, altKategori: rate ? String(rate) : null,
+          taxpayerId: d.taxpayerId, onayBoost: 2,
         }).catch(() => {});
       }
       if (d.taxpayerId) taxpayerIds.add(d.taxpayerId);
