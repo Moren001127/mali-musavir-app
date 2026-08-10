@@ -5987,6 +5987,26 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         kategori: cariCode, altKategori: 'CARI', taxpayerId: doc.taxpayerId,
         onayBoost: (cariSrc === 'KULLANICI' || cariSrc === 'VKN') ? 2 : undefined,
       }).catch(() => {});
+      // PLAN VKN DOLDURMA (iyileştirme #2): müşavir cariyi onayladıysa (KULLANICI/HAFIZA = kesin), o cari
+      //   hesabının PLANDAKİ VKN'sini karşı tarafın VKN'siyle DOLDUR (yalnız BOŞsa; üzerine yazma yok).
+      //   Böylece sonraki faturalar `cariByVkn` (en güvenilir, deterministik katman) ile eşleşir → isim
+      //   tahminine düşmez (ÖZENİR/ÖZ ULUDAĞ/TRANSAY gibi isim-eşleşme kaçış/hataları biter). Sadece
+      //   VKN'si zaten olan (cariSrc==='VKN') hesap için gereksiz → onu atla. Latest READY snapshot.
+      if (firmaKimlikNo && (cariSrc === 'KULLANICI' || cariSrc === 'HAFIZA')) {
+        try {
+          const snap = await (this.prisma as any).lucaAccountPlanSnapshot.findFirst({
+            where: { tenantId, taxpayerId: doc.taxpayerId, status: 'READY' },
+            orderBy: { createdAt: 'desc' }, select: { id: true },
+          });
+          if (snap?.id) {
+            const r = await (this.prisma as any).lucaAccountPlanLine.updateMany({
+              where: { snapshotId: snap.id, accountCode: cariCode, OR: [{ vkn: null }, { vkn: '' }] },
+              data: { vkn: firmaKimlikNo },
+            });
+            if (r?.count) this.logger.log(`[PLAN-VKN] ${cariCode} → VKN ${firmaKimlikNo} dolduruldu (tp=${doc.taxpayerId}); sonraki faturalar cariByVkn ile eşleşir`);
+          }
+        } catch { /* plan yoksa/erişilemezse sessiz geç — vendor memory zaten öğrendi */ }
+      }
     }
 
     // İŞLETME DEFTERİ ÖĞRENME: kullanıcı işletme sınıfını (Kayıt Türü/Alt Türü) ELLE düzelttiyse
