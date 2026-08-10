@@ -12762,15 +12762,22 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       'ÖRNEK: NAKLİYECİ kendi aracına yedek parça/lastik/tamir alır → taşıt giderleri / bakım-onarım gider hesabı (STOK DEĞİL). Oto yedek parça TİCARETİ yapan satmak için alır → ticari mal stok (153).',
       'ÖRNEK 2: ARAÇ/TAŞIT KİRALAMA bedeli → "KİRA GİDERİ" (işyeri/gayrimenkul kirası) hesabına ASLA yazma — araç kirası işyeri kirası DEĞİLDİR. Plandaki uygun bir araç/taşıt kira hesabı yoksa kod null.',
       'GENEL KURAL: seçtiğin hesabın ADI faturanın İÇERİĞİYLE SEMANTİK uyuşmalı. Yüzeysel kelime benzerliği (kiralama≈kira) ya da "planda tek/uygun-gibi hesap kalmış" YETMEZ. İçeriğe gerçekten uyan hesap yoksa kod null = BOŞ (kullanıcı 1 kez seçer, öğrenilir).',
-      'YALNIZCA şu JSON: {"kod":"<plandaki TAM hesap kodu, emin değilsen null>","neden":"<kısa>"}. Listede OLMAYAN kodu ASLA yazma.',
+      // GÜVEN KAPISI (kullanıcı kuralı: "anlamadığını eşleştirmesin"): AI kendi güvenini bildirir;
+      //   yalnız "yuksek" güvende hesap atanır, "dusuk"ta BOŞ kalır. Zorlama/tahmin atamasını keser
+      //   ama semantik-doğru seçimleri (kırtasiye→BÜRO GİDERLERİ) engellemez (o güven yüksektir).
+      'GÜVEN: Seçtiğin hesabın adı içerikle GERÇEKTEN uyuşuyor ve MÜKELLEFİN İŞİNE oturuyorsa guven="yuksek". Zorlayarak/en-yakınını seçtiysen ya da tereddüt varsa guven="dusuk" (bu durumda kod yine de ver ama dusuk işaretle — sistem boş bırakacak).',
+      'YALNIZCA şu JSON: {"kod":"<plandaki TAM hesap kodu, emin değilsen null>","guven":"yuksek|dusuk","neden":"<kısa>"}. Listede OLMAYAN kodu ASLA yazma.',
       'HESAP PLANI:',
       liste,
     ].join('\n');
     const res = await claudeTextViaMax({ prompt, timeoutMs: 30000, model: MAX_MODEL_CHEAP }).catch(() => null);
     if (!res || !res.ok || !res.text) return null;
-    let kod = '';
-    try { const m = res.text.match(/\{[\s\S]*\}/); const j = m ? JSON.parse(m[0]) : null; kod = String(j?.kod || '').trim(); } catch { return null; }
+    let kod = ''; let guven = '';
+    try { const m = res.text.match(/\{[\s\S]*\}/); const j = m ? JSON.parse(m[0]) : null; kod = String(j?.kod || '').trim(); guven = String(j?.guven || '').trim().toLowerCase(); } catch { return null; }
     if (!kod || /^null$/i.test(kod)) return null;
+    // Düşük güvende ATAMA YAPMA (boş bırak → müşavir 1 kez seçer, öğrenilir). Güven alanı gelmezse
+    //   (eski/kısa yanıt) eskisi gibi kabul et — regresyon yaratma; yalnız AÇIKÇA "dusuk" olan elenir.
+    if (guven === 'dusuk') { this.logger.log(`[AI-GIDER] düşük güven → boş bırakıldı (gider="${giderTuru}" kod=${kod})`); return null; }
     const hit = accounts.find((a) => String(a.accountCode) === kod); // hallüsinasyon koruması: plan'da var mı?
     return hit ? { accountCode: hit.accountCode, accountName: hit.accountName } : null;
   }
