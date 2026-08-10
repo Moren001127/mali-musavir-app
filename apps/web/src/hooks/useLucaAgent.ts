@@ -49,9 +49,17 @@ export function useLucaAgent() {
 
   const onlineDevices = localDevices.filter((d) => !d.stale);
 
-  // Seçili ID geçerliyse kullan, yoksa tek online cihazı otomatik seç
+  // KULLANICI VİZYONU (2026-08-10): "bilgisayarlarda ajan olmayacak; her şey VPS'te; hangi
+  //   bilgisayardan portala girersem gireyim Luca'dan çek/aktar çalışsın." → İş yönlendirmesi
+  //   elle seçime BAĞLI OLMAMALI. VARSAYILAN: online VPS/headless (sunucu) ajanı otomatik seç.
+  //   Böylece kullanıcı hiç seçim yapmasa da işler VPS'e gider. (Elle seçim yapılmışsa yine ona saygı
+  //   duyulur — geriye uyumlu.)
+  const vpsOrHeadless = onlineDevices.find((d) =>
+    /vps|headless|runner|radore/i.test(`${d.deviceId} ${d.workerName || ''}`),
+  );
   const activeDevice =
     onlineDevices.find((d) => d.deviceId === preferredId) ??
+    vpsOrHeadless ??
     (onlineDevices.length === 1 ? onlineDevices[0] : null);
 
   function setPreferred(deviceId: string | null) {
