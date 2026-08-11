@@ -12368,6 +12368,14 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   oku" yeniden okumada nakit/kart ayrımı kaybolup normal cari satırı kuruluyordu.
     const zRep = kind === 'SATIS' && String(mappedType || d.documentType || '').toUpperCase() === 'Z_RAPORU';
     const zPay = zRep ? this.parseZPayments(String(azureText || (parsed as any)._azureText || (parsed as any)._htmlText || html || ''), total) : null;
+    // KALEM-BAZLI (Faz 1 wiring): okuma AI'ı kalem başına 'hesap' ürettiyse (bayrak açık) matrahSplit türet.
+    //   linesFromAmounts, ≥2 farklı hesap + her oran matrahına denk gelirse matrahı HESAP bazında böler;
+    //   aksi halde tek-hesaba düşer (güvenli). Bayrak kapalıyken kalem.hesap yok → matrahSplit boş → inert.
+    const matrahSplit = this.kalemBazliHesapOn && Array.isArray(parsed.kalemler)
+      ? parsed.kalemler
+          .filter((k: any) => typeof k?.hesap === 'string' && k.hesap.trim() && planLeafSet.has(String(k.hesap).trim()) && (Number(k?.tutar) || 0) > 0)
+          .map((k: any) => ({ hesap: String(k.hesap).trim(), rate: Number(k?.oran) || 0, base: Number(k?.tutar) || 0 }))
+      : undefined;
     const lines = await this.gateCodesByPlan(tenantId, d.taxpayerId, this.linesFromAmounts({
       invoiceKind: kind,
       matrah, kdvTutari: kdv, kdvOrani: breakdown[0].rate, total,
@@ -12375,8 +12383,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       kdvBreakdown: breakdown,
       tevkifatOrani: tevkifatOrani || null,
       smmStopaj: smmStopaj > 0 ? smmStopaj : null,
+      ...(matrahSplit && matrahSplit.length ? { matrahSplit } : {}),
       ...(zRep ? { zRaporu: true, nakit: zPay?.nakit || 0, kart: zPay?.kart || 0 } : {}),
     }));
+    // Bölme UYGULANDI mı? (linesFromAmounts ≥2 FARKLI matrah hesabı ürettiyse). rematch bu satırları
+    //   ezmesin diye ocrData.kalemSplit'e işaretlenir (aşağıdaki persist).
+    const kalemSplitApplied = new Set(lines.filter((l: any) => l.group === 'matrah' && l.accountCode).map((l: any) => String(l.accountCode))).size >= 2;
     await (this.prisma as any).$transaction(async (tx: any) => {
       await tx.invoiceAccountingLine.deleteMany({ where: { documentId: d.id } });
       if (lines.length) await tx.invoiceAccountingLine.createMany({ data: lines.map((l: any) => ({ ...l, documentId: d.id })) });
@@ -12478,7 +12490,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           ocrData: { ...((d.ocrData as any) || {}), matrah, kdvTutari: kdv, kdvOrani: breakdown[0].rate, kdvBreakdown: breakdown.map((b: any) => ({ oran: b.rate, matrah: b.base, tutar: b.amount })), matrahKategori: typeof parsed.kategori === 'string' ? parsed.kategori : undefined, giderTuru: typeof parsed.giderTuru === 'string' ? parsed.giderTuru.slice(0, 40) : undefined, muhasebeNeden: this.cleanBaseNeden(parsed.muhasebeNeden).slice(0, 300) || undefined, aiYorum: this.cleanBaseNeden(parsed.muhasebeNeden).slice(0, 400) || undefined, aiMatrahKodu: (() => {
                 const aiKod = typeof parsed.matrahHesapKodu === 'string' ? String(parsed.matrahHesapKodu).trim() : '';
                 return (aiKod && planLeafSet.has(aiKod)) ? aiKod : undefined;
-              })(), kalemler: Array.isArray(parsed.kalemler) ? parsed.kalemler.slice(0, 30).map((k: any) => { const h = typeof k?.hesap === 'string' ? String(k.hesap).trim() : ''; return { ad: String(k?.ad || '').slice(0, 80), tutar: Number(k?.tutar) || 0, oran: Number(k?.oran) || 0, ...(h && planLeafSet.has(h) ? { hesap: h } : {}) }; }).filter((k: any) => k.ad) : undefined, ...(islSinifAi ? { isletme: islSinifAi } : {}), isReturn: isReturnDet, tevkifatHint: parsed.tevkifat === true || tevkifatOrani > 0 || /tevkifat/i.test(String(html || '')), tevkifatOrani: tevkifatOrani || 0, tevkifatKdv: tevkKdv || 0, ...(smmStopaj > 0 ? { stopajTutari: smmStopaj } : {}), engine: parsed._azure ? 'azure-read' : (parsed === preParsed ? 'ubl-xml' : 'max-vision'),
+              })(), kalemler: Array.isArray(parsed.kalemler) ? parsed.kalemler.slice(0, 30).map((k: any) => { const h = typeof k?.hesap === 'string' ? String(k.hesap).trim() : ''; return { ad: String(k?.ad || '').slice(0, 80), tutar: Number(k?.tutar) || 0, oran: Number(k?.oran) || 0, ...(h && planLeafSet.has(h) ? { hesap: h } : {}) }; }).filter((k: any) => k.ad) : undefined, ...(islSinifAi ? { isletme: islSinifAi } : {}), isReturn: isReturnDet, kalemSplit: kalemSplitApplied || undefined, tevkifatHint: parsed.tevkifat === true || tevkifatOrani > 0 || /tevkifat/i.test(String(html || '')), tevkifatOrani: tevkifatOrani || 0, tevkifatKdv: tevkKdv || 0, ...(smmStopaj > 0 ? { stopajTutari: smmStopaj } : {}), engine: parsed._azure ? 'azure-read' : (parsed === preParsed ? 'ubl-xml' : 'max-vision'),
             readMode: parsed === preParsed ? 'ubl-xml' : (isImage ? 'image' : /pdf/i.test(imgMedia) ? 'pdf-text' : /xml/i.test(imgMedia) ? 'xml-text' : 'html'),
             ...(!preParsed && imgBuf && /xml/i.test(imgMedia) ? { xmlHead: imgBuf.toString('utf8').slice(0, 220).replace(/\s+/g, ' ') } : {}),
             // uyarilar KOŞULSUZ yazılır: yeni okuma uyarı üretmediyse ESKİ okumanın bayat uyarısı
@@ -13620,6 +13632,16 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             continue;
           }
           // (alıştan iade matrahı → aşağıdaki normal categoryMatrah akışına düşer)
+        }
+        // KALEM-BAZLI KORUMA (Faz 1): bölme uygulanmış belgede (ocrData.kalemSplit) matrah satırları
+        //   HESAP bazında AYRI atanmıştır (kaynak='AI', gerçek plan kodu). matrahForRate oran bazlı TEK
+        //   hesaba çökertir → bu satırları KORU (öğrenilebilir/kullanıcı kaynaklı geçerli kod ise dokunma).
+        //   Böylece "Kodları düzelt"/rematch kalem-bazlı bölmeyi SİLMEZ. Tevkifatlı belge zaten bölünmez.
+        if (group === 'matrah' && (doc.ocrData as any)?.kalemSplit === true
+            && String(line.accountCode || '').trim()
+            && _codeSet.has(String(line.accountCode || '').trim())
+            && ['AI', 'KULLANICI', 'HAFIZA', 'VKN'].includes(String(line.kaynak || '').toUpperCase())) {
+          continue;
         }
         const match = group === 'matrah'
           ? await matrahForRate(lineRate)
