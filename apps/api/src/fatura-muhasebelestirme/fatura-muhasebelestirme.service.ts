@@ -12182,7 +12182,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     if (semMotor && parsed && parsed !== preParsed && planAdaylar && !sonnetKullanildi) {
       const _g = Number((parsed as any).guven);
       const _kodBos = !String((parsed as any).matrahHesapKodu || '').trim();
-      if ((Number.isFinite(_g) && _g < 0.6) || _kodBos) {
+      // GLOBAL stall-koruması: eskalasyon YALNIZ hesap BOŞ (AI seçemedi — objektif, düşük hacim) VEYA
+      //   güven ÇOK düşükse (<0.4). Böylece çok-mükellefte Sonnet yükü patlamaz (toplu-stall önlenir).
+      if (_kodBos || (Number.isFinite(_g) && _g < 0.4)) {
         const res2: any = await claudeTextViaMax(
           (isImage && !useAzureText)
             ? { prompt: callPrompt, images: [{ base64: imgBuf!.toString('base64'), mediaType: imgMedia }], timeoutMs: 90000, model: undefined }
@@ -12632,16 +12634,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
    *  son-kontrolü (6xx alış reddi, demirbaş→25x) kalır. KAPALIYKEN (diğer TÜM mükellefler) her akış
    *  BUGÜNKÜYLE BİRE BİR aynıdır. Gate: `SEMANTIK_MOTOR=1` (global) | `SEMANTIK_MOTOR_TAXPAYERS=<ad/id,...>`
    *  | (kalem-bazlı pilotu da otomatik dahil → İlgi Oto). Önce mükellef-bazlı pilotla doğrula, sonra global. */
-  private semantikMotorFor(taxpayerId?: string | null, taxpayerName?: string | null): boolean {
-    if (String(process.env.SEMANTIK_MOTOR || '').trim() === '1') return true;
-    const allow = String(process.env.SEMANTIK_MOTOR_TAXPAYERS || '')
-      .split(/[,;]+/).map((s) => s.trim()).filter(Boolean);
-    if (allow.length) {
-      const id = String(taxpayerId || '').trim();
-      const nm = String(taxpayerName || '').toLocaleLowerCase('tr-TR');
-      if (allow.some((a) => (id && a === id) || (a.toLocaleLowerCase('tr-TR').length >= 3 && !!nm && nm.includes(a.toLocaleLowerCase('tr-TR'))))) return true;
-    }
-    return this.kalemBazliHesapFor(taxpayerId, taxpayerName); // İlgi Oto pilotu (kalem-bazlı) otomatik dahil
+  private semantikMotorFor(_taxpayerId?: string | null, _taxpayerName?: string | null): boolean {
+    // GLOBAL — TÜM MÜKELLEFLER (kullanıcı talimatı 2026-08-11: "bütün mükelleflere aç").
+    //   ⚠️ ACİL KAPATMA (kod deploy'u GEREKTİRMEZ): Railway ortam değişkeni `SEMANTIK_MOTOR=0` →
+    //   ANINDA eski/bilinen-çalışan davranışa döner (Haiku, mekanik satış-600, eskalasyon yok).
+    const flag = String(process.env.SEMANTIK_MOTOR || '').trim().toLowerCase();
+    if (flag === '0' || flag === 'false' || flag === 'off' || flag === 'kapali') return false; // kill-switch
+    return true;
   }
   /** taxpayerId'siz (classify/UBL yolu) → yalnız GLOBAL bayrak. Vision-okuma yolu mükellef-bazlı gate kullanır. */
   private get kalemBazliHesapOn(): boolean {
