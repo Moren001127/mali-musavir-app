@@ -563,7 +563,7 @@ export default function MukellefDetayPage() {
 
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <h1 className="min-w-0 truncate text-[24px] font-black leading-tight" style={{ color: TEXT }}>{currentName}</h1>
+                <h1 className="min-w-0 truncate text-[24px] font-black leading-tight tracking-[-0.02em]" style={{ color: TEXT }}>{currentName}</h1>
                 {!isNew && (
                   <div className="relative">
                     <button
@@ -657,8 +657,6 @@ export default function MukellefDetayPage() {
         )}
       </header>
 
-      {!isNew && <KisayolIcerik vkn={form.taxNumber} onKisayol={handleKisayolClick} />}
-
       <section className="overflow-hidden rounded-[8px] border" style={{ borderColor: LINE, background: CARD }}>
         <nav className="grid grid-cols-2 border-b md:grid-cols-4 xl:grid-cols-8" style={{ borderColor: HAIR, background: 'linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.012))' }}>
           {visibleTabs.map((t) => {
@@ -669,7 +667,7 @@ export default function MukellefDetayPage() {
                 key={t.key}
                 type="button"
                 onClick={() => setActiveTab(t.key)}
-                className="inline-flex min-h-[58px] items-center justify-center gap-2 border-r px-3 text-[13.5px] font-black transition hover:bg-white/[0.045]"
+                className="inline-flex min-h-[56px] items-center justify-center gap-2 border-r px-3 text-[13px] font-bold tracking-tight transition hover:bg-white/[0.045]"
                 style={{
                   borderColor: HAIR,
                   color: active ? TEXT : MUTED,
@@ -888,20 +886,21 @@ function BilgilerTab({
     icon: React.ElementType;
     show: boolean;
     filled: boolean;
+    renk: string;
   }[] = [
-    { id: 'musteri', title: 'Müşteri & Vergi Dairesi Bilgileri', subtitle: 'Ad, tip, VKN/TCKN, vergi dairesi, sicil ve adres', icon: Building2, show: true, filled: !!(form.companyName || form.firstName || form.taxNumber || form.taxOffice) },
-    { id: 'mukellefiyet', title: 'Mükellefiyet Bilgileri', subtitle: 'Vergi türleri ve dönemler', icon: FileCheck, show: !!taxpayerId, filled: !!taxpayerId },
-    { id: 'yetkili', title: 'Firma Yetkili Bilgileri', subtitle: 'Müdür, ortak, imza', icon: UserCog, show: !!taxpayerId, filled: false },
-    { id: 'iletisim', title: 'İletişim Bilgileri', subtitle: 'Telefon, e-posta, KEP', icon: Phone, show: true, filled: form.phones.some(Boolean) || form.emails.some(Boolean) || !!form.kepAdresi },
-    { id: 'giris', title: 'E-Devlet / E-Bildirge Giriş Bilgileri', subtitle: 'Portal kullanıcıları ve şifreler', icon: Lock, show: !!taxpayerId, filled: false },
-    { id: 'bagkur', title: 'Bağ-Kur Bilgileri', subtitle: 'Sicil bilgisi', icon: Shield, show: true, filled: !!form.bagkurSicilNo },
-    { id: 'entegrator', title: 'E-Fatura Entegratör Bilgileri', subtitle: 'Sağlayıcı ve mükellefiyet', icon: Sparkles, show: true, filled: !!form.eFaturaEntegrator || form.isEFaturaMukellefi },
-    { id: 'otomasyon', title: 'Evrak & Otomasyon Bilgileri', subtitle: 'Teslim günü ve mesajlar', icon: Workflow, show: true, filled: !!form.evrakTeslimGunu || form.whatsappEvrakTalep || form.whatsappEvrakGeldi },
-    { id: 'sistem', title: 'Defter & Sistem Bilgileri', subtitle: 'Luca / Mihsap eşleşme', icon: Settings2, show: true, filled: !!form.lucaSlug || !!form.mihsapId },
+    { id: 'musteri', title: 'Müşteri & Vergi Dairesi Bilgileri', subtitle: 'Ad, tip, VKN/TCKN, vergi dairesi, sicil ve adres', icon: Building2, show: true, filled: !!(form.companyName || form.firstName || form.taxNumber || form.taxOffice), renk: '#4f86c9' },
+    { id: 'mukellefiyet', title: 'Mükellefiyet Bilgileri', subtitle: 'Vergi türleri ve dönemler', icon: FileCheck, show: !!taxpayerId, filled: !!taxpayerId, renk: '#5fcf8e' },
+    { id: 'yetkili', title: 'Firma Yetkili Bilgileri', subtitle: 'Müdür, ortak, imza', icon: UserCog, show: !!taxpayerId, filled: false, renk: '#a78bfa' },
+    { id: 'iletisim', title: 'İletişim Bilgileri', subtitle: 'Telefon, e-posta, KEP', icon: Phone, show: true, filled: form.phones.some(Boolean) || form.emails.some(Boolean) || !!form.kepAdresi, renk: '#a78bfa' },
+    { id: 'giris', title: 'E-Devlet / E-Bildirge Giriş Bilgileri', subtitle: 'Portal kullanıcıları ve şifreler', icon: Lock, show: !!taxpayerId, filled: false, renk: '#d4b876' },
+    { id: 'bagkur', title: 'Bağ-Kur Bilgileri', subtitle: 'Sicil bilgisi', icon: Shield, show: true, filled: !!form.bagkurSicilNo, renk: '#38bdf8' },
+    { id: 'entegrator', title: 'E-Fatura Entegratör Bilgileri', subtitle: 'Sağlayıcı ve mükellefiyet', icon: Sparkles, show: true, filled: !!form.eFaturaEntegrator || form.isEFaturaMukellefi, renk: '#f472b6' },
+    { id: 'otomasyon', title: 'Evrak & Otomasyon Bilgileri', subtitle: 'Teslim günü ve mesajlar', icon: Workflow, show: true, filled: !!form.evrakTeslimGunu || form.whatsappEvrakTalep || form.whatsappEvrakGeldi, renk: '#fb923c' },
+    { id: 'sistem', title: 'Defter & Sistem Bilgileri', subtitle: 'Luca / Mihsap eşleşme', icon: Settings2, show: true, filled: !!form.lucaSlug || !!form.mihsapId, renk: '#2dd4bf' },
   ];
   let credentialSections: typeof sections = [
-    { id: 'vergiSifre', title: 'Vergi Dairesi Şifre Bilgileri', subtitle: 'Kullanıcı kodu ve şifre', icon: Lock, show: !!taxpayerId, filled: false },
-    { id: 'sgkSifre', title: 'E-Bildirge Giriş Bilgileri', subtitle: 'SGK kullanıcı adı, sistem şifresi ve işyeri şifresi', icon: Shield, show: !!taxpayerId, filled: false },
+    { id: 'vergiSifre', title: 'Vergi Dairesi Şifre Bilgileri', subtitle: 'Kullanıcı kodu ve şifre', icon: Lock, show: !!taxpayerId, filled: false, renk: '#d4b876' },
+    { id: 'sgkSifre', title: 'E-Bildirge Giriş Bilgileri', subtitle: 'SGK kullanıcı adı, sistem şifresi ve işyeri şifresi', icon: Shield, show: !!taxpayerId, filled: false, renk: '#38bdf8' },
   ];
   credentialSections = credentialSections.map((section) => {
     if (section.id === 'vergiSifre') return { ...section, filled: hasGibCredential };
@@ -1205,6 +1204,7 @@ function BilgilerTab({
           title={s.title}
           subtitle={s.subtitle}
           filled={s.filled}
+          renk={s.renk}
           open={open === s.id}
           onToggle={() => setOpen((current) => (current === s.id ? null : s.id))}
         >
@@ -1245,6 +1245,7 @@ function AccordionRow({
   title,
   subtitle,
   filled,
+  renk,
   open,
   onToggle,
   children,
@@ -1253,43 +1254,58 @@ function AccordionRow({
   title: string;
   subtitle: string;
   filled: boolean;
+  renk: string;
   open: boolean;
   onToggle: () => void;
   children: React.ReactNode;
 }) {
   return (
     <section
-      className="overflow-hidden rounded-[8px] border"
+      className="overflow-hidden rounded-[12px] border transition duration-200"
       style={{
-        borderColor: open ? 'rgba(212,184,118,0.38)' : 'rgba(255,255,255,0.105)',
-        background: open ? '#151318' : '#121318',
-        boxShadow: open ? '0 14px 32px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.045)' : '0 8px 22px rgba(0,0,0,0.18)',
+        borderColor: open ? `${renk}55` : 'rgba(255,255,255,0.08)',
+        background: '#121318',
+        boxShadow: open
+          ? `0 16px 38px rgba(0,0,0,0.34), inset 3px 0 0 ${renk}`
+          : '0 6px 18px rgba(0,0,0,0.16)',
       }}
     >
       <button
         type="button"
         aria-expanded={open}
         onClick={onToggle}
-        className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:brightness-110"
-        style={{ background: open ? 'rgba(212,184,118,0.10)' : 'rgba(255,255,255,0.035)' }}
+        className="group flex w-full items-center gap-3.5 px-4 py-3.5 text-left transition hover:bg-white/[0.02]"
+        style={{ background: open ? `linear-gradient(90deg, ${renk}1c, ${renk}08 55%, transparent)` : 'transparent' }}
       >
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[6px] border" style={{ borderColor: open ? 'rgba(212,184,118,0.34)' : LINE, color: open ? GOLD_BR : MUTED, background: open ? 'rgba(212,184,118,0.10)' : 'rgba(255,255,255,0.035)' }}>
-          <Icon size={17} />
+        <span
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[11px] transition group-hover:scale-[1.04]"
+          style={{
+            background: `linear-gradient(150deg, ${renk}, ${renk}c0)`,
+            color: '#fff',
+            boxShadow: `0 3px 12px ${renk}55, inset 0 1px 0 rgba(255,255,255,0.30)`,
+          }}
+        >
+          <Icon size={18} />
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-[15px] font-black" style={{ color: TEXT }}>{title}</span>
-          <span className="mt-0.5 block truncate text-[11.5px]" style={{ color: MUTED }}>{subtitle}</span>
+          <span className="block truncate text-[14.5px] font-bold" style={{ color: TEXT, letterSpacing: '-0.01em' }}>{title}</span>
+          <span className="mt-[3px] block truncate text-[11.5px] font-medium" style={{ color: MUTED }}>{subtitle}</span>
         </span>
         {filled && (
-          <span className="hidden rounded-[6px] border px-2 py-1 text-[10.5px] font-black sm:inline-flex" style={{ borderColor: 'rgba(95,207,142,0.30)', background: 'rgba(95,207,142,0.10)', color: GREEN }}>
-            Tanımlı
+          <span className="hidden items-center gap-1 rounded-full border px-2.5 py-1 text-[10.5px] font-bold sm:inline-flex" style={{ borderColor: 'rgba(95,207,142,0.28)', background: 'rgba(95,207,142,0.12)', color: GREEN }}>
+            <CheckCircle2 size={12} /> Tanımlı
           </span>
         )}
-        <ChevronRight size={18} className="transition-transform" style={{ color: MUTED, transform: open ? 'rotate(90deg)' : 'rotate(0deg)' }} />
+        <span
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition"
+          style={{ background: open ? `${renk}22` : 'rgba(255,255,255,0.045)', color: open ? renk : MUTED }}
+        >
+          <ChevronRight size={16} className="transition-transform duration-200" style={{ transform: open ? 'rotate(90deg)' : 'rotate(0deg)' }} />
+        </span>
       </button>
       {open && (
         <div className="border-t p-4 sm:p-5" style={{ borderColor: HAIR, background: 'linear-gradient(180deg, #111217, #0d0e12)' }}>
-          <div className="rounded-[10px] border p-4 sm:p-5" style={{ borderColor: 'rgba(212,184,118,0.18)', background: 'linear-gradient(180deg, rgba(255,255,255,0.032), rgba(255,255,255,0.014))', boxShadow: 'inset 3px 0 0 rgba(212,184,118,0.45), 0 10px 30px rgba(0,0,0,0.24)' }}>
+          <div className="rounded-[10px] border p-4 sm:p-5" style={{ borderColor: `${renk}2e`, background: 'linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.012))', boxShadow: `inset 3px 0 0 ${renk}88, 0 10px 30px rgba(0,0,0,0.24)` }}>
             {children}
           </div>
         </div>
@@ -2159,7 +2175,7 @@ function SgkTab({ taxpayerId }: { taxpayerId: string }) {
   return (
     <div>
       <h3 className="mb-3 text-[14px] font-extrabold" style={{ color: TEXT }}>SGK — Tahakkuk Fişleri & Hizmet Listeleri</h3>
-      <div className="overflow-x-auto rounded-[10px] border" style={{ borderColor: LINE }}>
+      <div className="overflow-auto max-h-[560px] rounded-[10px] border [&_thead_th]:sticky [&_thead_th]:top-0 [&_thead_th]:z-10" style={{ borderColor: LINE }}>
         <table className="w-full border-collapse">
           <thead><tr>
             <PortalTh>Dönem</PortalTh><PortalTh>Tür</PortalTh><PortalTh>Mahiyet</PortalTh>
@@ -2233,7 +2249,7 @@ function ETebligatTab({ taxpayerId }: { taxpayerId: string }) {
   return (
     <div>
       <h3 className="mb-3 text-[14px] font-extrabold" style={{ color: TEXT }}>E-Tebligat</h3>
-      <div className="overflow-x-auto rounded-[10px] border" style={{ borderColor: LINE }}>
+      <div className="overflow-auto max-h-[560px] rounded-[10px] border [&_thead_th]:sticky [&_thead_th]:top-0 [&_thead_th]:z-10" style={{ borderColor: LINE }}>
         <table className="w-full border-collapse">
           <thead><tr>
             <PortalTh>Gönderen Kurum</PortalTh><PortalTh>Belge No</PortalTh><PortalTh>Tebliğ</PortalTh>
@@ -2566,7 +2582,7 @@ function BeyannamelerTab({ taxpayerId }: { taxpayerId: string }) {
             </span>
           </div>
         </div>
-        <div className="overflow-x-auto">
+        <div className="overflow-auto max-h-[560px] [&_thead_th]:sticky [&_thead_th]:top-0 [&_thead_th]:z-10 [&_thead_th]:bg-[#15161b] [&_thead_th]:shadow-[inset_0_-1px_0_rgba(255,255,255,0.08)]">
         <table className="w-full min-w-[1040px] border-collapse text-left">
           <colgroup>
             <col style={{ width: '42px' }} />
