@@ -13238,7 +13238,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           //   benzin filtresi→"akaryakıt"). Kalem adında NET işletme gideri (elektrik/kira/telefon/internet/
           //   danışmanlık/sigorta/muhasebe/işçilik…) YOKSA → sattığı ticari mal (153). Parça adlarıyla çakışan
           //   su/akaryakıt/bakım/onarım/servis/tamir/montaj kelimeleri BİLEREK ÇIKARILDI (yanlış-pozitif).
-          && !/\b(elektrik|dogalgaz|internet|telefon|\bkira\b|kirtasiye|danisman|sigorta|temizlik|\byemek\b|reklam|abonelik|muhasebe|musavir|noter|avukat|iscilik)\b/.test(_af(_kalemAd))) {
+          && !/\b(elektrik|dogalgaz|internet|telefon|\bkira\b|kirtasiye|danisman|sigorta|temizlik|\byemek\b|reklam|abonelik|muhasebe|musavir|noter|avukat|iscilik)\b/.test(_af(_kalemAd))
+          // SATICI kamu-hizmeti sağlayıcısıysa (elektrik/doğalgaz/su/telekom dağıtım şirketi) GERÇEK giderdir —
+          //   fatura KALEM adı "aktif enerji/güç bedeli" olup anahtar kelime içermeyebilir, ama satıcı ünvanı ele verir
+          //   (ör. CK BOĞAZİÇİ ELEKTRİK → 770 elektrik gideri; parça tedarikçisi ünvanları bu kalıba UYMAZ).
+          && !/\b(elektrik|dogalgaz|dogal gaz|elektrik dagitim|\bedas\b|\biski\b|su ve kanalizasyon|telekom|turk telekom|\bttnet\b|\bipragaz\b|\baygaz\b)\b/.test(_af(vendorName || ''))) {
         kat = 'ticari_mal';            // → categoryMatrah 153 (sattığı emtia)
         detIcerik = null;             // deterministik gider hint'i EZMESİN
         _giderTuruEfektif = '';
