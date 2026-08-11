@@ -4772,7 +4772,7 @@ const CSS = `
 #fm-root .csel .cselopt{display:flex;align-items:baseline;gap:9px;padding:6px 9px;border-radius:6px;cursor:pointer}
 #fm-root .csel .cselopt:hover,#fm-root .csel .cselopt.sel{background:var(--accent-soft)}
 #fm-root .csel .cselopt.act{background:var(--accent-soft);box-shadow:inset 3px 0 0 var(--accent)}
-#fm-root .csel .cselopt b{flex:0 0 auto;font-size:12px;font-weight:800;color:var(--accent);font-variant-numeric:tabular-nums}
+#fm-root .csel .cselopt b{flex:0 0 auto;font-size:12px;font-weight:800;color:#1f2937;font-variant-numeric:tabular-nums}
 #fm-root .csel .cselopt span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px;color:#374151}
 #fm-root .csel .cselempty,#fm-root .csel .cselmore{padding:9px 11px;font-size:11.5px;color:var(--muted)}
 #fm-root .fgrp .frow .fdesc{flex:1;min-width:0;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -5701,14 +5701,16 @@ const CSS = `
 /* ── Muhasebeleştir TAM-EKRAN fiş: HEPSİ TEK EKRANA SIĞSIN (kullanıcı 2026-08-11: cari altındaki
    TOPLAM görünmüyor, scroll gerekiyor). Dikey boşlukları sıkılaştır — bölüm aralığı + başlık/satır/
    toplam/+satır padding'leri + meta alanları + Denge. En sonda tanımlı → en yüksek öncelik. ── */
-#fm-root .screen-muhasebe .muhmain .fgrps{gap:5px}
-#fm-root .screen-muhasebe .muhmain .fgrp .fgh{padding:4px 11px 3px}
-#fm-root .screen-muhasebe .muhmain .fgrp .frow{padding:4px 11px;gap:9px}
-#fm-root .screen-muhasebe .muhmain .fgrp .fgt{padding:3px 11px}
-#fm-root .screen-muhasebe .muhmain .fgrp .frowadd{padding:3px 11px}
-#fm-root .screen-muhasebe .muhmain .docmeta-bottom{margin:5px 0 0;padding:5px 7px;gap:4px 6px}
-#fm-root .screen-muhasebe .muhmain .docmeta-bottom .dm{gap:1px}
-#fm-root .screen-muhasebe .muhmain .docmeta-bottom .dmi,#fm-root .screen-muhasebe .muhmain .docmeta-bottom .psel .pselfield{height:26px}
-#fm-root .screen-muhasebe .muhmain .balance{min-height:0;margin:5px 0 0;padding:4px 9px}
-#fm-root .screen-muhasebe .muhmain .wactions{margin-top:5px}
+/* Not (2026-08-11 v2): ilk sıkıştırma FAZLA sıkıydı (TEVKİFAT↔CARİ iç içe, altta boşluk). Bölüm araları
+   açıldı + meta/Denge/butonlar arası nefes verildi → içerik ekrana YAYILIP dolsun ama yine tek ekrana sığsın. */
+#fm-root .screen-muhasebe .muhmain .fgrps{gap:11px}
+#fm-root .screen-muhasebe .muhmain .fgrp .fgh{padding:6px 13px 5px}
+#fm-root .screen-muhasebe .muhmain .fgrp .frow{padding:6px 13px;gap:10px}
+#fm-root .screen-muhasebe .muhmain .fgrp .fgt{padding:5px 13px}
+#fm-root .screen-muhasebe .muhmain .fgrp .frowadd{padding:5px 13px}
+#fm-root .screen-muhasebe .muhmain .docmeta-bottom{margin:13px 0 0;padding:8px;gap:6px 8px}
+#fm-root .screen-muhasebe .muhmain .docmeta-bottom .dm{gap:2px}
+#fm-root .screen-muhasebe .muhmain .docmeta-bottom .dmi,#fm-root .screen-muhasebe .muhmain .docmeta-bottom .psel .pselfield{height:28px}
+#fm-root .screen-muhasebe .muhmain .balance{min-height:0;margin:11px 0 0;padding:8px 11px}
+#fm-root .screen-muhasebe .muhmain .wactions{margin-top:11px}
 `;
