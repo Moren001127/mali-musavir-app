@@ -5713,4 +5713,15 @@ const CSS = `
 #fm-root .screen-muhasebe .muhmain .docmeta-bottom .dmi,#fm-root .screen-muhasebe .muhmain .docmeta-bottom .psel .pselfield{height:28px}
 #fm-root .screen-muhasebe .muhmain .balance{min-height:0;margin:11px 0 0;padding:8px 11px}
 #fm-root .screen-muhasebe .muhmain .wactions{margin-top:11px}
+/* ── DAR EKRAN (<1100px) — kullanıcı bulgusu: CARİ altındaki TOPLAM görünmüyordu. Sebep: panel dar ekranda
+   da İÇ KAYDIRMA (height:100%/overflow:auto) + YAPIŞKAN footer → son bölümün toplamı footer'ın altında
+   kırpılıyordu. Dar ekranda panel DOĞAL AKAR (iç kaydırma yok, footer/başlık yapışmaz) → hiçbir şey kırpılmaz,
+   tüm bölümler + toplamlar görünür (gerekirse SAYFA kaydırılır, ama kırpma OLMAZ). ── */
+@media(max-width:1100px){
+  #fm-root .screen-muhasebe .muhmain{height:auto;min-height:0}
+  #fm-root .screen-muhasebe .muhmain .fiseditor{height:auto;min-height:0}
+  #fm-root .screen-muhasebe .muhmain .fispane{height:auto;min-height:0;max-height:none;overflow:visible}
+  #fm-root .screen-muhasebe .muhmain .fispane > .ph{position:static}
+  #fm-root .screen-muhasebe .muhmain .fispane > .wactions{position:static;background:none}
+}
 `;
