@@ -12030,6 +12030,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const semMotor = this.semantikMotorFor(d.taxpayerId, mukellefBilgi); // KALICI MOTOR pilotu (güçlü model + zengin plan + AI-birincil)
     let planAdaylar = '';
     const planLeafSet = new Set<string>();
+    const planNameByCode = new Map<string, string>(); // kod→ad (geçmiş-düzeltme promptu hesabı adıyla göstersin)
     if (d.taxpayerId && !isIsletmeMukellef) {
       const snap = await (this.prisma as any).lucaAccountPlanSnapshot.findFirst({
         where: { tenantId, taxpayerId: d.taxpayerId, status: 'READY' },
@@ -12047,6 +12048,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         const isLeaf = (c: string) => c.includes('.') && !grpCodes.has(c);
         // MATRAH adayları: stok 15x, sabit kıymet 25x, gider 6xx/7xx, gelir 600 leaf'leri (79x hariç).
         const cand = allLines.filter((a) => { const c = String(a.accountCode || ''); return /^(15\d|25\d|6\d\d|7\d\d)/.test(c) && !c.startsWith('79') && isLeaf(c); });
+        for (const a of allLines) { const c = String(a.accountCode || ''); if (c) planNameByCode.set(c, String(a.accountName || '')); }
         for (const a of cand) planLeafSet.add(String(a.accountCode));
         // HIZ: aday listesi kısa tutulur (220→100) + ad 40 karaktere kırpılır → Max prompt'u küçülür,
         //   okuma hızlanır. En olası kodlar zaten ilk sıralarda (leaf filtresi sonrası), doğruluk düşmez.
@@ -12054,6 +12056,15 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         //   kapalıyken eski dar liste (100/40) korunur → diğer mükelleflerde hız/davranış aynı.
         if (cand.length) planAdaylar = cand.slice(0, semMotor ? 400 : 100).map((a) => `${a.accountCode} = ${String(a.accountName || '').slice(0, semMotor ? 80 : 40)}`).join('\n');
       }
+    }
+    // ── KALICI MOTOR Faz 2: GEÇMİŞ DÜZELTMELER (retrieval-augmented öğrenme) ──
+    //   Mükellefin bu SATICIDA geçmişte ONAYLADIĞI hesap kararlarını AI'a ÖN BİLGİ ver → "bir kez düzelt,
+    //   benzer içerikte bir daha sorma". Deterministik hafıza birebir tekrarı zaten yakalıyor; bu, AI'ın
+    //   BENZER-ama-aynı-değil içerikte de mükellefin tercihini genellemesini sağlar. Pilot + karşı-taraf VKN varsa.
+    let gecmisDuzeltme = '';
+    if (semMotor && d.taxpayerId) {
+      const _cpVkn = String((d.ocrData as any)?.[d.invoiceKind === 'SATIS' ? 'aliciVkn' : 'saticiVkn'] || '').replace(/\D/g, '');
+      if (_cpVkn.length >= 10) gecmisDuzeltme = await this.learnedCorrectionsForPrompt(tenantId, d.taxpayerId, _cpVkn, planNameByCode).catch(() => '');
     }
     const islSeg = isIsletmeMukellef ? islPromptSeg(d.invoiceKind === 'SATIS' ? 'SATIS' : 'ALIS') : '';
     const yonBilgi = d.invoiceKind === 'SATIS'
@@ -12084,6 +12095,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         : '',
       planAdaylar ? `\nMÜKELLEFİN HESAP PLANI — matrah/gider için aday hesaplar (matrahHesapKodu'nu SADECE bu listeden seç):\n${planAdaylar}\n→ matrahHesapKodu: bu faturanın matrahını (mal/hizmet/gider tutarını) mükellefin İŞİNE ve fatura İÇERİĞİNE göre yukarıdaki listeden EN UYGUN TAM koda ata. Mükellefin SATARAK ticaret yaptığı emtia → stok (15x); kendi işinde KULLANDIĞI/tükettiği şey → ilgili gider (7xx/6xx; ör. mutfak malzemesi/çatal-kaşık→mutfak gideri, yakıt→akaryakıt gideri); uzun ömürlü makine/cihaz/mobilya/demirbaş → sabit kıymet (25x); SATIŞ faturasıysa gelir (600). ⚠️ İçeriğe gerçekten uyan hesap yoksa BOŞ bırak — listede OLMAYAN kodu ASLA yazma, uydurma.` : '',
       (semMotor && planAdaylar) ? `\nSATIŞ GELİR HESABI (mükellef SATICIYSA, matrahHesapKodu): MAL satışı → yurtiçi satışlar (600); HİZMET satışı → planında hizmet geliri için varsa 600/601; İHRACAT/yurtdışı → 601. ⚠️ PRİM / CİRO PRİMİ / HAKEDİŞ / KOMİSYON / KUR FARKI / FAİZ gibi MAL-HİZMET SATIŞI OLMAYAN gelirler → 602 DİĞER GELİRLER (yoksa 649 DİĞER OLAĞAN GELİR VE KÂRLAR); bunları 600 MAL SATIŞ hesabına ASLA yazma. Uygun gelir hesabı planda yoksa matrahHesapKodu BOŞ.` : '',
+      gecmisDuzeltme ? `\n⚠️ GEÇMİŞ DÜZELTMELER — bu mükellef bu satıcıda aşağıdaki hesap seçimlerini KENDİ ONAYLADI. BENZER içerikte AYNI hesabı seç (mükellefin yerleşik tercihini EZME); yalnız içerik gerçekten farklı bir niteliktEYSE serbestsin:\n${gecmisDuzeltme}` : '',
       isImage ? '' : ('\nİÇERİK:\n' + html.replace(/<(script|style)[^>]*>[\s\S]*?<\/(script|style)>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/&[a-z#0-9]+;/gi, ' ').replace(/\s+/g, ' ').trim().slice(0, 16000)),
     ].filter(Boolean).join('\n');
 
@@ -14094,6 +14106,40 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const r = String(rateDigits || '').replace(/[^0-9]/g, '');
     if (!r) return false;
     return this.rateTokensOf(accountName).includes(r);
+  }
+
+  /** KALICI MOTOR Faz 2 — mükellefin bu satıcıda ONAYLADIĞI matrah/gider kararlarını okuma prompt'una
+   *  ÖN BİLGİ olarak verecek metni üretir (retrieval-augmented öğrenme). onayAdedi>=2 (elle düzeltme
+   *  boost=2 ile anında), CARI hariç. Kod planda yoksa yine gösterilir (AI referans alır). Boşsa ''. */
+  private async learnedCorrectionsForPrompt(
+    tenantId: string,
+    taxpayerId: string,
+    firmaKimlikNo: string,
+    nameByCode: Map<string, string>,
+  ): Promise<string> {
+    const memory = await (this.prisma as any).vendorMemory.findUnique({
+      where: { tenantId_firmaKimlikNo: { tenantId, firmaKimlikNo } },
+      include: { decisions: { where: { taxpayerId, kararTipi: 'fatura' }, orderBy: [{ onayAdedi: 'desc' }, { sonKullanim: 'desc' }], take: 20 } },
+    }).catch(() => null);
+    const decs = (memory?.decisions || []).filter((d: any) =>
+      /^\d/.test(String(d.kategori || '').trim())
+      && String(d.altKategori || '').trim().toUpperCase() !== 'CARI'
+      && (d.onayAdedi || 0) >= 2);
+    if (!decs.length) return '';
+    const seen = new Set<string>();
+    const lines: string[] = [];
+    for (const d of decs) {
+      const kod = String(d.kategori).trim();
+      const imza = String(d.icerikImza || '').trim();
+      const oran = String(d.altKategori || '').replace(/[^0-9]/g, '');
+      const key = `${imza}|${oran}|${kod}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const nm = nameByCode.get(kod) || '';
+      lines.push(`• ${imza ? `"${imza}" içerik` : 'genel'}${oran ? ` (%${oran})` : ''} → ${kod}${nm ? ' ' + nm : ''}`);
+      if (lines.length >= 8) break;
+    }
+    return lines.join('\n');
   }
 
   private async pickVendorMemoryAccount(
