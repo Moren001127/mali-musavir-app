@@ -13178,6 +13178,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       let _giderTuruEfektif = _giderTuruRaw;
       // araç bağlamı yok → araç ipucu VE araç-adlı AI/öğrenilmiş hesap kodu reddedilir (aşağıda kullanılır).
       let _aracBaglamYok = false;
+      // PİLOT TİCARET firması + fiziksel-mal alışı → sattığı TİCARİ MAL (153); AI'ın 7xx gider tahmini reddedilir.
+      let _forceTicariMal = false;
       // KRİTİK: this.norm() Türkçe karakteri KORUR ("araç"→"araç"); regex'ler ASCII ("arac"). Bu yüzden
       //   ASCII-fold (_af) ŞART — yoksa araç denetimi hiç eşleşmez (ilk fix'lerin SERİOFİS'te çalışmama nedeni).
       const _af = (s: string) => this.norm(s).replace(/ş/g, 's').replace(/ğ/g, 'g').replace(/ı/g, 'i').replace(/ç/g, 'c').replace(/ö/g, 'o').replace(/ü/g, 'u');
@@ -13206,6 +13208,23 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             if (aiAracHint) _giderTuruEfektif = '';
           }
         }
+      }
+      // ── PİLOT TİCARET FİRMASI — FAALİYET-FARKINDA (kullanıcı bulgusu İlgi Oto 2026-08-11) ──
+      //   TİCARET firması (ticaret/toptan/perakende; üretim/servis/nakliye DEĞİL) için aldığı FİZİKSEL MAL
+      //   (yedek parça, akü, yağ…) = sattığı TİCARİ MALdır (153) — araç bakım (740) ya da genel gider (770)
+      //   DEĞİL. AI parçayı sık sık 740 ARAÇ BAKIM / 770 gidere atıyordu (İlgi Oto). MUHAFAZAKÂR: gerçek
+      //   işletme gideri (elektrik/kira/telefon/kırtasiye/akaryakıt/nakliye/sigorta/danışmanlık/işçilik/
+      //   servis/bakım/tamir) ve DEMİRBAŞ alışı HARİÇ — onlar gider/sabit kıymet kalır. Yalnız pilot mükellefte.
+      if (!isSale && kat !== 'demirbas'
+          && this.kalemBazliHesapFor(taxpayerId, tpFaaliyet)
+          && /(ticaret|toptan|perakende|magaza|market)/.test(_af(tpFaaliyet))
+          && !/(uretim|imalat|sanayi|fabrika|\btamir\b|\bservis\b|nakliy|tasima|lojistik|kargo|kirala|montaj|onarim)/.test(_af(tpFaaliyet))
+          && !/\b(elektrik|dogalgaz|\bsu\b|telefon|internet|\bkira\b|kirtasiye|danisman|nakliy|kargo|sigorta|temizlik|\byemek\b|akaryakit|\byakit\b|reklam|abonelik|muhasebe|musavir|noter|avukat|iscilik|\bservis\b|\bbakim\b|onarim|\btamir\b|montaj)\b/.test(_af(`${_kalemAd} ${_giderTuruRaw}`))) {
+        kat = 'ticari_mal';            // → categoryMatrah 153 (sattığı emtia)
+        detIcerik = null;             // deterministik gider hint'i EZMESİN
+        _giderTuruEfektif = '';
+        _aracBaglamYok = true;         // araç-adlı 740 AI/öğrenilmiş kodu 13287/13560'ta reddedilir
+        _forceTicariMal = true;        // AI'ın 7xx gider tahmini de reddedilir (770 dahil)
       }
       if (detIcerik) kat = detIcerik.kategori;
       const KAT_PREFIX: Record<string, string[]> = {
@@ -13286,6 +13305,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const aiMatrahAcc = (_aiCand && (
           (_aracBaglamYok && _aracHesapAdRe.test(_af(String((_aiCand as any).accountName || ''))))
           || (_yagIcerik && _isYakitHesapAd(String((_aiCand as any).accountName || '')))
+          // PİLOT TİCARET FİRMASI: fiziksel-mal alışında AI'ın 7xx gider maliyeti tahminini (740/770/760/730)
+          //   reddet → ticari mala (153) düş. Gerçek gider/demirbaş yukarıda zaten hariç tutuldu.
+          || (_forceTicariMal && /^7/.test(String((_aiCand as any).accountCode || '')))
         ))
         ? null : _aiCand;
       const aiGroupLeaves = aiMatrahAcc
