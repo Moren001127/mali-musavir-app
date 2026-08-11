@@ -431,10 +431,16 @@ export default function GelirTablosuPage() {
   //   yalnız kullanıcının bilinçli girdiği >0 değere saygı duyulur. (2026-08-10 bug: kayıtlı 0, otomatiği
   //   engelleyip 0,00 gösteriyordu.)
   const resolveOncekiOdenen = (qi: number, gv: any, draftOO: number | null): number => {
-    if (draftOO !== null && draftOO > 0) return draftOO;
+    if (draftOO !== null && draftOO > 0) return draftOO; // kullanıcı ŞU AN elle giriyor
+    // OTOMATİK (2026-08-11 FIX — kullanıcı bulgusu): "Önceki Dönem Ödenen Geçici Vergi" bir ÖNCEKİ dönemin
+    //   CANLI hesaplanan geçici vergisini YANSITMALI. Önceki dönem düzeltilince (mizan yeniden çekilip gelir
+    //   tablosu güncellenince) DB'deki eski snapshot bayatlıyordu (1. dönem 2.360,89'a düştü ama 2. dönemdeki
+    //   önceki-ödenen eski 24.835,89'da kalıyordu → ödenecek yanlış 0). Bu yüzden CANLI otomatik-varsayılan,
+    //   kayıtlı snapshot'ı EZER; kayıtlı değer yalnız önceki dönem hiç hesaplanamıyorsa (auto=0) fallback olur.
+    const auto = oncekiOdenenGVDefault(qi);
+    if (auto > 0) return auto;
     const stored = Number(gv?.oncekiDonemOdenenGeciciVergi ?? gv?.oncekiDonemOdenen ?? 0);
-    if (stored > 0) return stored;
-    return oncekiOdenenGVDefault(qi);
+    return stored > 0 ? stored : 0;
   };
 
   /** Bir dönemin gelir tablosu özetinden kurumsal WhatsApp bilgilendirme metni üretir (WhatsApp *bold* biçimi). */
