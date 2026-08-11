@@ -13233,7 +13233,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           && this.kalemBazliHesapFor(taxpayerId, tpFaaliyet)
           && /(ticaret|toptan|perakende|magaza|market)/.test(_af(tpFaaliyet))
           && !/(uretim|imalat|sanayi|fabrika|\btamir\b|\bservis\b|nakliy|tasima|lojistik|kargo|kirala|montaj|onarim)/.test(_af(tpFaaliyet))
-          && !/\b(elektrik|dogalgaz|\bsu\b|telefon|internet|\bkira\b|kirtasiye|danisman|nakliy|kargo|sigorta|temizlik|\byemek\b|akaryakit|\byakit\b|reklam|abonelik|muhasebe|musavir|noter|avukat|iscilik|\bservis\b|\bbakim\b|onarim|\btamir\b|montaj)\b/.test(_af(`${_kalemAd} ${_giderTuruRaw}`))) {
+          // ⚠️ İçeriği YALNIZ KALEM ADINDAN kontrol et — AI'ın giderTuru ETİKETİ parçayı sık "araç bakım/
+          //   akaryakıt/kırtasiye/çeşitli gider" diye YANLIŞ etiketliyor (su radyatörü→740, rulman→"kırtasiye"→770,
+          //   benzin filtresi→"akaryakıt"). Kalem adında NET işletme gideri (elektrik/kira/telefon/internet/
+          //   danışmanlık/sigorta/muhasebe/işçilik…) YOKSA → sattığı ticari mal (153). Parça adlarıyla çakışan
+          //   su/akaryakıt/bakım/onarım/servis/tamir/montaj kelimeleri BİLEREK ÇIKARILDI (yanlış-pozitif).
+          && !/\b(elektrik|dogalgaz|internet|telefon|\bkira\b|kirtasiye|danisman|sigorta|temizlik|\byemek\b|reklam|abonelik|muhasebe|musavir|noter|avukat|iscilik)\b/.test(_af(_kalemAd))) {
         kat = 'ticari_mal';            // → categoryMatrah 153 (sattığı emtia)
         detIcerik = null;             // deterministik gider hint'i EZMESİN
         _giderTuruEfektif = '';
