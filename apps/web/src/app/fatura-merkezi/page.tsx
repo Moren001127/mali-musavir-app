@@ -5698,4 +5698,17 @@ const CSS = `
 #fm-root .earsivtable th{font-size:10px;letter-spacing:.3px}
 #fm-root .earsivtable td.partyname,#fm-root .earsivtable th:nth-child(2){white-space:normal;min-width:120px;max-width:200px}
 #fm-root .earsivtable td.num,#fm-root .earsivtable th.num{text-align:right}
+/* ── Muhasebeleştir TAM-EKRAN fiş: HEPSİ TEK EKRANA SIĞSIN (kullanıcı 2026-08-11: cari altındaki
+   TOPLAM görünmüyor, scroll gerekiyor). Dikey boşlukları sıkılaştır — bölüm aralığı + başlık/satır/
+   toplam/+satır padding'leri + meta alanları + Denge. En sonda tanımlı → en yüksek öncelik. ── */
+#fm-root .screen-muhasebe .muhmain .fgrps{gap:5px}
+#fm-root .screen-muhasebe .muhmain .fgrp .fgh{padding:4px 11px 3px}
+#fm-root .screen-muhasebe .muhmain .fgrp .frow{padding:4px 11px;gap:9px}
+#fm-root .screen-muhasebe .muhmain .fgrp .fgt{padding:3px 11px}
+#fm-root .screen-muhasebe .muhmain .fgrp .frowadd{padding:3px 11px}
+#fm-root .screen-muhasebe .muhmain .docmeta-bottom{margin:5px 0 0;padding:5px 7px;gap:4px 6px}
+#fm-root .screen-muhasebe .muhmain .docmeta-bottom .dm{gap:1px}
+#fm-root .screen-muhasebe .muhmain .docmeta-bottom .dmi,#fm-root .screen-muhasebe .muhmain .docmeta-bottom .psel .pselfield{height:26px}
+#fm-root .screen-muhasebe .muhmain .balance{min-height:0;margin:5px 0 0;padding:4px 9px}
+#fm-root .screen-muhasebe .muhmain .wactions{margin-top:5px}
 `;
