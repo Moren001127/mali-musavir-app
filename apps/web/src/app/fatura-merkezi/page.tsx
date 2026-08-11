@@ -5703,8 +5703,8 @@ const CSS = `
    toplam/+satır padding'leri + meta alanları + Denge. En sonda tanımlı → en yüksek öncelik. ── */
 /* Not (2026-08-11 v2): ilk sıkıştırma FAZLA sıkıydı (TEVKİFAT↔CARİ iç içe, altta boşluk). Bölüm araları
    açıldı + meta/Denge/butonlar arası nefes verildi → içerik ekrana YAYILIP dolsun ama yine tek ekrana sığsın. */
-/* ⚠️ KRİTİK (DOM incelemesi): fispane `overflow:hidden` idi → içerik kısa ekranda KIRPILIP kayboluyordu
-   (CARİ TOPLAM). auto yapıldı → kırpma yerine KAYDIRMA; hiçbir şey kaybolmaz. + içerik bir tık kısaltıldı. */
+/* KRITIK (DOM incelemesi): fispane overflow HIDDEN idi -> icerik kisa ekranda KIRPILIP kayboluyordu
+   (CARI TOPLAM). overflow-y:auto -> kirpma yerine KAYDIRMA; hicbir sey kaybolmaz. + icerik bir tik kisaltildi. */
 #fm-root .screen-muhasebe .muhmain .fispane{overflow-y:auto}
 #fm-root .screen-muhasebe .muhmain .fgrps{gap:9px}
 #fm-root .screen-muhasebe .muhmain .fgrp .fgh{padding:6px 13px 4px}
