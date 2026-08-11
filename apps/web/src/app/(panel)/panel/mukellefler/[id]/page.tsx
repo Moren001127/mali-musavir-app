@@ -378,7 +378,6 @@ export default function MukellefDetayPage() {
   const isNew = id === 'yeni';
 
   const [activeTab, setActiveTab] = useState<TabKey>('bilgiler');
-  const [portalOpen, setPortalOpen] = useState(false);
   const [activeActionOpen, setActiveActionOpen] = useState(false);
 
   const { data: taxpayer, isLoading } = useQuery({
@@ -619,17 +618,6 @@ export default function MukellefDetayPage() {
 
           <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
             {!isNew && <CardNavButtons cardNav={cardNav} isNew={isNew} router={router} />}
-            {!isNew && (
-              <button
-                type="button"
-                onClick={() => setPortalOpen(true)}
-                className="inline-flex h-10 items-center gap-2 rounded-[8px] border px-3 text-[12.5px] font-bold transition hover:brightness-110"
-                style={{ borderColor: STEEL_LN, background: STEEL_SF, color: STEEL_BR }}
-                title="Kısayol girişleri ve sık sorgular"
-              >
-                <Zap size={15} /> Kısayollar
-              </button>
-            )}
             <button
               type="submit"
               disabled={isPending}
@@ -668,6 +656,8 @@ export default function MukellefDetayPage() {
           </div>
         )}
       </header>
+
+      {!isNew && <KisayolIcerik vkn={form.taxNumber} onKisayol={handleKisayolClick} />}
 
       <section className="overflow-hidden rounded-[8px] border" style={{ borderColor: LINE, background: CARD }}>
         <nav className="grid grid-cols-2 border-b md:grid-cols-4 xl:grid-cols-8" style={{ borderColor: HAIR, background: 'linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.012))' }}>
@@ -711,11 +701,6 @@ export default function MukellefDetayPage() {
           {activeTab === 'notlar' && <NotlarTab form={form} setForm={setForm} onSave={saveForm} saving={isPending} hasRecord={!isNew} />}
         </div>
       </section>
-
-      {/* KISAYOL GİRİŞLERİ — açılır panel */}
-      {portalOpen && !isNew && (
-        <KisayolPaneli vkn={form.taxNumber} onClose={() => setPortalOpen(false)} onKisayol={handleKisayolClick} />
-      )}
     </form>
   );
 }
@@ -765,21 +750,14 @@ function kisayolFold(s: string) {
     .replace(/ü/g, 'u').replace(/ö/g, 'o').replace(/ç/g, 'c');
 }
 
-function KisayolPaneli({
+function KisayolIcerik({
   vkn,
-  onClose,
   onKisayol,
 }: {
   vkn: string;
-  onClose: () => void;
   onKisayol: (k: Kisayol) => void;
 }) {
   const [q, setQ] = useState('');
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
 
   const qn = kisayolFold(q.trim());
   const gruplar = KISAYOL_GRUPLARI
@@ -788,89 +766,63 @@ function KisayolPaneli({
   const toplam = KISAYOL_GRUPLARI.reduce((n, g) => n + g.items.length, 0);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-3 sm:p-6" style={{ fontFamily: CARD_FONT }}>
-      <div className="fixed inset-0" style={{ background: 'rgba(0,0,0,0.66)', backdropFilter: 'blur(3px)' }} onClick={onClose} />
+    <section className="overflow-hidden rounded-[8px] border" style={{ borderColor: LINE, background: CARD }}>
+      {/* Başlık şeridi */}
       <div
-        className="relative my-auto flex w-full max-w-[1120px] flex-col overflow-hidden rounded-2xl border shadow-2xl"
-        style={{ background: CARD, borderColor: LINE, maxHeight: '90vh' }}
+        className="flex flex-wrap items-center gap-3 border-b px-4 py-3"
+        style={{ borderColor: HAIR, background: `radial-gradient(130% 240% at 0% 0%, ${STEEL}22, transparent 55%), linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.012))` }}
       >
-        {/* Başlık */}
-        <div
-          className="relative flex items-center gap-3.5 border-b px-5 py-4"
-          style={{ borderColor: HAIR, background: `radial-gradient(130% 200% at 0% 0%, ${STEEL}22, transparent 55%), ${CARD}` }}
-        >
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border" style={{ borderColor: STEEL_LN, background: STEEL_SF, color: STEEL_BR }}>
-            <Zap size={20} />
-          </div>
-          <div className="min-w-0 flex-1">
-            <h2 className="text-[16px] font-bold tracking-tight" style={{ color: TEXT }}>Kısayollar &amp; Sorgulamalar</h2>
-            <p className="truncate text-[11.5px]" style={{ color: MUTED }}>{vkn ? `VKN ${vkn} · ${toplam} bağlantı` : `${toplam} bağlantı`}</p>
-          </div>
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Ara…"
-            autoFocus
-            className="hidden h-10 w-[220px] rounded-xl border border-white/10 bg-[#0e0f13] px-3.5 text-[13px] font-medium text-[#f5f5f4] outline-none transition placeholder:text-white/30 focus:border-[#4f86c9]/55 focus:bg-[#0e1014] focus:shadow-[0_0_0_3px_rgba(79,134,201,0.14)] sm:block"
-          />
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition hover:bg-white/[0.06]"
-            style={{ borderColor: LINE, color: MUTED }}
-            title="Kapat"
-          >
-            <X size={17} />
-          </button>
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[8px] border" style={{ borderColor: STEEL_LN, background: STEEL_SF, color: STEEL_BR }}>
+          <Zap size={18} />
         </div>
-
-        {/* Gövde */}
-        <div className="overflow-y-auto px-5 py-5" style={{ background: `linear-gradient(180deg, ${CARD}, ${CARD2})` }}>
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Ara…"
-            className="mb-4 h-10 w-full rounded-xl border border-white/10 bg-[#0e0f13] px-3.5 text-[13px] font-medium text-[#f5f5f4] outline-none placeholder:text-white/30 focus:border-[#4f86c9]/55 sm:hidden"
-          />
-          <div className="space-y-6">
-            {gruplar.map((g) => {
-              const Icon = g.ikon;
-              return (
-                <section key={g.id}>
-                  <div
-                    className="mb-3 flex items-center gap-3 rounded-xl border px-3.5 py-2.5"
-                    style={{ borderColor: `${g.renk}33`, background: `linear-gradient(90deg, ${g.renk}26, ${g.renk}0d 55%, transparent)` }}
-                  >
-                    <div
-                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
-                      style={{ background: g.renk, color: '#fff', boxShadow: `0 2px 10px ${g.renk}55, inset 0 1px 0 rgba(255,255,255,0.22)` }}
-                    >
-                      <Icon size={16} />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="text-[12.5px] font-bold uppercase tracking-wider" style={{ color: TEXT }}>{g.baslik}</div>
-                      <div className="truncate text-[11px]" style={{ color: MUTED }}>{g.aciklama}</div>
-                    </div>
-                    <span className="ml-auto rounded-full px-2 py-0.5 text-[11px] font-bold" style={{ background: `${g.renk}22`, color: g.renk }}>{g.items.length}</span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
-                    {g.items.map((k) => <KisayolCard key={k.id} k={k} onClick={() => onKisayol(k)} />)}
-                  </div>
-                </section>
-              );
-            })}
-            {gruplar.length === 0 && (
-              <div className="py-16 text-center">
-                <p className="text-[13px]" style={{ color: MUTED }}>“{q}” için sonuç bulunamadı.</p>
-              </div>
-            )}
-          </div>
-          <p className="mt-6 text-[11px] leading-relaxed" style={{ color: FAINT }}>
-            Portal şifreleri Bilgiler sekmesindeki “Şifreler” bölümünden yönetilir. Bağlantı tanımları güncelleniyor.
-          </p>
+        <div className="min-w-0 flex-1">
+          <h2 className="text-[15px] font-black tracking-tight" style={{ color: TEXT }}>Kısayollar &amp; Sorgulamalar</h2>
+          <p className="truncate text-[11.5px]" style={{ color: MUTED }}>{vkn ? `VKN ${vkn} · ${toplam} bağlantı` : `${toplam} bağlantı`}</p>
         </div>
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }}
+          placeholder="Ara…"
+          className="h-9 w-full rounded-[8px] border border-white/10 bg-[#0e0f13] px-3 text-[13px] font-medium text-[#f5f5f4] outline-none transition placeholder:text-white/30 focus:border-[#4f86c9]/55 focus:bg-[#0e1014] focus:shadow-[0_0_0_3px_rgba(79,134,201,0.14)] sm:w-[240px]"
+        />
       </div>
-    </div>
+
+      {/* Gruplar */}
+      <div className="space-y-5 px-4 py-4">
+        {gruplar.map((g) => {
+          const Icon = g.ikon;
+          return (
+            <div key={g.id}>
+              <div
+                className="mb-3 flex items-center gap-3 rounded-[8px] border px-3.5 py-2.5"
+                style={{ borderColor: `${g.renk}33`, background: `linear-gradient(90deg, ${g.renk}26, ${g.renk}0d 55%, transparent)` }}
+              >
+                <div
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+                  style={{ background: g.renk, color: '#fff', boxShadow: `0 2px 10px ${g.renk}55, inset 0 1px 0 rgba(255,255,255,0.22)` }}
+                >
+                  <Icon size={16} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-[12.5px] font-black uppercase tracking-wider" style={{ color: TEXT }}>{g.baslik}</div>
+                  <div className="truncate text-[11px]" style={{ color: MUTED }}>{g.aciklama}</div>
+                </div>
+                <span className="ml-auto rounded-full px-2 py-0.5 text-[11px] font-bold" style={{ background: `${g.renk}22`, color: g.renk }}>{g.items.length}</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
+                {g.items.map((k) => <KisayolCard key={k.id} k={k} onClick={() => onKisayol(k)} />)}
+              </div>
+            </div>
+          );
+        })}
+        {gruplar.length === 0 && (
+          <div className="py-10 text-center">
+            <p className="text-[13px]" style={{ color: MUTED }}>“{q}” için sonuç bulunamadı.</p>
+          </div>
+        )}
+      </div>
+    </section>
   );
 }
 
