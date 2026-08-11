@@ -5703,16 +5703,19 @@ const CSS = `
    toplam/+satır padding'leri + meta alanları + Denge. En sonda tanımlı → en yüksek öncelik. ── */
 /* Not (2026-08-11 v2): ilk sıkıştırma FAZLA sıkıydı (TEVKİFAT↔CARİ iç içe, altta boşluk). Bölüm araları
    açıldı + meta/Denge/butonlar arası nefes verildi → içerik ekrana YAYILIP dolsun ama yine tek ekrana sığsın. */
-#fm-root .screen-muhasebe .muhmain .fgrps{gap:11px}
-#fm-root .screen-muhasebe .muhmain .fgrp .fgh{padding:6px 13px 5px}
-#fm-root .screen-muhasebe .muhmain .fgrp .frow{padding:6px 13px;gap:10px}
-#fm-root .screen-muhasebe .muhmain .fgrp .fgt{padding:5px 13px}
-#fm-root .screen-muhasebe .muhmain .fgrp .frowadd{padding:5px 13px}
-#fm-root .screen-muhasebe .muhmain .docmeta-bottom{margin:13px 0 0;padding:8px;gap:6px 8px}
-#fm-root .screen-muhasebe .muhmain .docmeta-bottom .dm{gap:2px}
-#fm-root .screen-muhasebe .muhmain .docmeta-bottom .dmi,#fm-root .screen-muhasebe .muhmain .docmeta-bottom .psel .pselfield{height:28px}
-#fm-root .screen-muhasebe .muhmain .balance{min-height:0;margin:11px 0 0;padding:8px 11px}
-#fm-root .screen-muhasebe .muhmain .wactions{margin-top:11px}
+/* ⚠️ KRİTİK (DOM incelemesi): fispane `overflow:hidden` idi → içerik kısa ekranda KIRPILIP kayboluyordu
+   (CARİ TOPLAM). auto yapıldı → kırpma yerine KAYDIRMA; hiçbir şey kaybolmaz. + içerik bir tık kısaltıldı. */
+#fm-root .screen-muhasebe .muhmain .fispane{overflow-y:auto}
+#fm-root .screen-muhasebe .muhmain .fgrps{gap:9px}
+#fm-root .screen-muhasebe .muhmain .fgrp .fgh{padding:6px 13px 4px}
+#fm-root .screen-muhasebe .muhmain .fgrp .frow{padding:5px 13px;gap:10px}
+#fm-root .screen-muhasebe .muhmain .fgrp .fgt{padding:4px 13px}
+#fm-root .screen-muhasebe .muhmain .fgrp .frowadd{padding:3px 13px}
+#fm-root .screen-muhasebe .muhmain .docmeta-bottom{margin:9px 0 0;padding:6px 7px;gap:5px 8px}
+#fm-root .screen-muhasebe .muhmain .docmeta-bottom .dm{gap:1px}
+#fm-root .screen-muhasebe .muhmain .docmeta-bottom .dmi,#fm-root .screen-muhasebe .muhmain .docmeta-bottom .psel .pselfield{height:26px}
+#fm-root .screen-muhasebe .muhmain .balance{min-height:0;margin:8px 0 0;padding:6px 11px}
+#fm-root .screen-muhasebe .muhmain .wactions{margin-top:8px}
 /* ── DAR EKRAN (<1100px) — kullanıcı bulgusu: CARİ altındaki TOPLAM görünmüyordu. Sebep: panel dar ekranda
    da İÇ KAYDIRMA (height:100%/overflow:auto) + YAPIŞKAN footer → son bölümün toplamı footer'ın altında
    kırpılıyordu. Dar ekranda panel DOĞAL AKAR (iç kaydırma yok, footer/başlık yapışmaz) → hiçbir şey kırpılmaz,
