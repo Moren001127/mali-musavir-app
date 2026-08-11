@@ -2664,6 +2664,17 @@ function InlineBelge({ id }: { id: string }) {
   const frameRef = useRef<HTMLIFrameElement | null>(null);
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const contentWRef = useRef(0); // ölçülen içerik genişliği → panel yeniden boyutlanınca refit
+  // TİTREME FIX (kullanıcı bulgusu 2026-08-11): kaydırma-çubuğu ↔ ResizeObserver ↔ fit SALINIMINI kes.
+  //   iframe genişliğe sığınca çubuk çıkıp clientWidth'i ~15px oynatıyor → refit → yeniden salınım →
+  //   sürekli titreme. Çözüm: (a) scrollbar-gutter:stable (çubuk yeri sabit rezerve; aşağıda bpview),
+  //   (b) fit'i yalnız KAYDA DEĞER (≥0.02) değişimde uygula (mikro-salınımı yok say).
+  const fitRef = useRef(1);
+  const applyFit = (v: number) => {
+    const nv = Math.min(2.4, Math.max(0.3, Number(v) || 1));
+    if (Math.abs(nv - fitRef.current) < 0.02) return; // mikro değişim → yok say (titreme kaynağı)
+    fitRef.current = nv;
+    setFit(nv);
+  };
   // HTML belge: belgeyi panonun GENİŞLİĞİNE sığdır (fit-to-width) → yanlarda boşluk
   // kalmaz, fatura tam genişlikte ve okunur görünür; uzunsa dikey kaydırılır.
   const measure = () => {
@@ -2689,7 +2700,7 @@ function InlineBelge({ id }: { id: string }) {
       //    önizlemeyle tutarlı (kullanıcı isteği). Daha büyük için zoom (+) kullanılır.
       contentWRef.current = cw;
       const paneW = (w.clientWidth || 600) - 16;
-      setFit(Math.min(2.4, Math.max(0.3, paneW / cw)));
+      applyFit(paneW / cw);
     } catch { /* cross-origin */ }
   };
   // Panel yeniden boyutlanınca (Büyüt/Küçült/pencere) ölçülen içerik genişliğine göre yeniden sığdır.
@@ -2697,7 +2708,7 @@ function InlineBelge({ id }: { id: string }) {
     const w = wrapRef.current, cw = contentWRef.current;
     if (!w || !cw) { measure(); return; }
     const paneW = (w.clientWidth || 600) - 16;
-    setFit(Math.min(2.4, Math.max(0.3, paneW / cw)));
+    applyFit(paneW / cw);
   };
   // Resim de genişliğe sığdırılır ama DAR fiş BÜYÜTÜLMEZ (en çok %100) — tam-ekran önizlemeyle
   // tutarlı; geniş resim panoya küçültülür. Daha büyük için zoom (+).
@@ -2708,13 +2719,13 @@ function InlineBelge({ id }: { id: string }) {
     setImgW(Math.ceil(nw));
     contentWRef.current = nw;
     const paneW = (w.clientWidth || 600) - 16;
-    setFit(Math.min(2.4, Math.max(0.3, paneW / nw)));
+    applyFit(paneW / nw);
   };
   // Görseller geç yüklendiğinden birkaç kez yeniden ölç.
   const onFrameLoad = () => { measure(); setTimeout(measure, 250); setTimeout(measure, 900); setTimeout(measure, 2000); };
   useEffect(() => {
     let alive = true;
-    setD(null); setZoom(1); setFit(1); setImgW(0);
+    setD(null); setZoom(1); setFit(1); fitRef.current = 1; setImgW(0);
     api.get(`/fatura-muhasebelestirme/documents/${id}/file-url`)
       .then((r) => { if (alive) setD(r.data || {}); })
       .catch(() => { if (alive) setD({}); });
@@ -2781,7 +2792,7 @@ function InlineBelge({ id }: { id: string }) {
           {url ? <a href={url} target="_blank" rel="noopener noreferrer" title="Yeni sekmede aç">↗</a> : null}
         </div>
       </div>
-      <div ref={wrapRef} className="bpview" style={{ overflow: 'auto' }} onDoubleClick={() => openDocFile(id)}>
+      <div ref={wrapRef} className="bpview" style={{ overflow: 'auto', scrollbarGutter: 'stable' }} onDoubleClick={() => openDocFile(id)}>
         {html
           ? <iframe ref={frameRef} onLoad={onFrameLoad} className="bpframe-h" srcDoc={htmlDoc} title="Belge" sandbox="allow-same-origin allow-scripts" scrolling="no" style={{ zoom: appliedScale } as any} />
           : isImg
