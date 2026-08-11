@@ -12151,7 +12151,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const useAzureText = azureText.length > 80;
     const callPrompt = useAzureText ? (prompt + '\n\nBELGE METNİ (OCR ile okundu):\n' + azureText.slice(0, 20000)) : prompt;
     for (let attempt = 1; attempt <= 3 && !parsed; attempt++) {
-      const model = (attempt >= 3 || semMotor) ? undefined : MAX_MODEL_CHEAP; // 3. deneme ya da SEMANTİK MOTOR pilotu → Sonnet (güçlü, tutarlı muhasebe muhakemesi)
+      // NOT (2026-08-11 test bulgusu): "pilotta HER okuma Sonnet" toplu okumada hız-limitine takılıp
+      //   STALL ediyor (5 belge 3+ dk "sırada"). Deploy edilebilir olması için okuma Haiku'da kalır (hızlı);
+      //   doğruluğu zengin prompt + keyword güvenlik-ağı + öğrenme sağlar. (İleride: belirsiz belgeyi Sonnet'e
+      //   eskale eden İKİ-AŞAMALI okuma — güven-skoruyla.)
+      const model = attempt >= 3 ? undefined : MAX_MODEL_CHEAP; // 3. deneme: Sonnet (varsayılan)
       const res = await claudeTextViaMax(
         (isImage && !useAzureText)
           ? { prompt: callPrompt, images: [{ base64: imgBuf!.toString('base64'), mediaType: imgMedia }], timeoutMs: 75000, model }
@@ -13360,10 +13364,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         ? accounts.find((a: any) => String(a.accountCode || '') === aiKod) : null;
       // ARAÇ-ÇELİŞKİ: AI okuma anında araç-adlı hesap (740 ARAÇ BAKIM) seçmiş olsa da, mükellef+fatura
       //   araç-dışıysa (_aracBaglamYok) bu kodu REDDET → AI semantik/boş doğru hesabı bulur. (SERİOFİS toneri.)
-      // SEMANTİK MOTOR (kalıcı çözüm): pilotta AI-BİRİNCİL — keyword vetoları (araç-bağlam / yağ≠yakıt /
-      //   tacir-force) AI'ın plandan seçtiği hesabı EZMEZ; mevzuat kısıtları (6xx alış reddi, demirbaş→25x)
-      //   zaten _aiCand'da uygulandı. KAPALIYKEN (diğer mükellefler) eski veto davranışı BİRE BİR korunur.
-      const aiMatrahAcc = (_aiCand && !_semMotor && (
+      // KEYWORD GÜVENLİK AĞI (2026-08-11): Haiku okumada hız için Sonnet'ten döndük; AI yanılabilir.
+      //   Bu yüzden keyword vetoları "ince güvenlik ağı" olarak KALIR — AI fiziksel-mal alışını 7xx gidere
+      //   (740/770), araç-bağlamsız hesaba ya da yağ→yakıt hesabına atarsa REDDET → doğru kategoriye düşsün.
+      //   Bu bir GENEL koşuldur (mükellef-başı kural DEĞİL); pilotta da diğer mükelleflerde de aynı çalışır.
+      const aiMatrahAcc = (_aiCand && (
           (_aracBaglamYok && _aracHesapAdRe.test(_af(String((_aiCand as any).accountName || ''))))
           || (_yagIcerik && _isYakitHesapAd(String((_aiCand as any).accountName || '')))
           || (_forceTicariMal && /^7/.test(String((_aiCand as any).accountCode || '')))
