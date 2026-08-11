@@ -7,7 +7,6 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   ArrowLeft,
-  ArrowRight,
   BookOpen,
   Building2,
   CheckCircle2,
@@ -220,30 +219,130 @@ const COMPLETENESS_COLOR: Record<string, string> = {
 // ============================================================
 type Kisayol = { id: string; label: string; url: string; renk: string; kisaltma: string };
 
-const PORTAL_KISAYOLLAR: Kisayol[] = [
-  { id: 'dijital_vd',    label: 'Dijital Vergi Dairesi',  url: 'https://dijital.gib.gov.tr',                renk: '#0066b3', kisaltma: 'VD' },
-  { id: 'gib_ivd',       label: 'GİB İnteraktif V.D.',    url: 'https://ivd.gib.gov.tr',                    renk: '#c8102e', kisaltma: 'GİB' },
-  { id: 'ebeyanname',    label: 'E-Beyanname',            url: 'https://ebeyanname.gib.gov.tr',             renk: '#28a745', kisaltma: 'eB' },
-  { id: 'edefter',       label: 'e-Defter',               url: 'https://uyg.edefter.gov.tr',                renk: '#6f42c1', kisaltma: 'eD' },
-  { id: 'earsiv',        label: 'E-Arşiv Portal',         url: 'https://earsivportal.efatura.gov.tr',       renk: '#c8102e', kisaltma: 'eA' },
-  { id: 'mersis',        label: 'Mersis',                 url: 'https://mersis.gtb.gov.tr',                 renk: '#0066b3', kisaltma: 'M' },
-  { id: 'tobb',          label: 'TOBB Bilgi Merkezi',     url: 'https://bilgimerkezi.tobb.org.tr',          renk: '#fd7e14', kisaltma: 'TB' },
-  { id: 'sgk_ebildirge', label: 'SGK E-Bildirge V2',      url: 'https://uyg.sgk.gov.tr/IsverenSistemi',     renk: '#1d70b8', kisaltma: 'SGK' },
-  { id: 'sgk_isveren',   label: 'SGK İşveren Sistemi',    url: 'https://uyg.sgk.gov.tr/IsverenSistemi',     renk: '#1d70b8', kisaltma: 'SGK' },
-  { id: 'sgk_erapor',    label: 'SGK E-Rapor',            url: 'https://uyg.sgk.gov.tr/eRaporIsveren',      renk: '#1d70b8', kisaltma: 'SGK' },
-  { id: 'sgk_isegiris',  label: 'SGK İşe Giriş/Çıkış',    url: 'https://uyg.sgk.gov.tr/SgkIsgs',            renk: '#1d70b8', kisaltma: 'SGK' },
-  { id: 'edevlet',       label: 'e-Devlet (Türkiye.gov)', url: 'https://www.turkiye.gov.tr',                renk: '#dc3545', kisaltma: 'eD' },
-];
+type KisayolGrup = {
+  id: string;
+  baslik: string;
+  aciklama: string;
+  renk: string;
+  ikon: React.ElementType;
+  items: Kisayol[];
+};
 
-const HIZLI_SORGULAR: Kisayol[] = [
-  { id: 'vergi_borcu',   label: 'Vergi Borcu Sorgula',  url: 'https://ivd.gib.gov.tr',          renk: '#c8102e', kisaltma: '?' },
-  { id: 'vergi_levha',   label: 'Vergi Levhası',        url: 'https://ivd.gib.gov.tr',          renk: '#c8102e', kisaltma: '?' },
-  { id: 'mukellefiyet',  label: 'Mükellefiyet Yazısı',  url: 'https://ivd.gib.gov.tr',          renk: '#c8102e', kisaltma: '?' },
-  { id: 'nace',          label: 'NACE Kodu',            url: 'https://www.tuik.gov.tr',         renk: '#c8102e', kisaltma: '?' },
-  { id: 'sgk_borcyok',   label: 'SGK Borç Yoktur',      url: 'https://uyg.sgk.gov.tr',          renk: '#1d70b8', kisaltma: '?' },
-  { id: 'sgk_donem',     label: 'SGK Dönem Borç',       url: 'https://uyg.sgk.gov.tr',          renk: '#1d70b8', kisaltma: '?' },
-  { id: 'ticaret_sicil', label: 'Tic. Sicil Gazetesi',  url: 'https://www.ticaretsicil.gov.tr', renk: '#fd7e14', kisaltma: '?' },
-  { id: 'mersis_firma',  label: 'Mersis Firma Bilgi',   url: 'https://mersis.gtb.gov.tr',       renk: '#fd7e14', kisaltma: '?' },
+// Sorguların çoğunun yaşadığı portallar — gerçek tanımlar (deep-link/otomasyon) sonra kesinleşecek
+const IVD_URL = 'https://ivd.gib.gov.tr';
+const SGK_URL = 'https://uyg.sgk.gov.tr/IsverenSistemi';
+const EARSIV_URL = 'https://earsivportal.efatura.gov.tr';
+
+const KISAYOL_GRUPLARI: KisayolGrup[] = [
+  {
+    id: 'portallar',
+    baslik: 'Devlet Portalları',
+    aciklama: 'Resmî portallara tek tıkla giriş',
+    renk: STEEL,
+    ikon: Landmark,
+    items: [
+      { id: 'dijital_vd',     label: 'Dijital Vergi Dairesi',  url: 'https://dijital.gib.gov.tr',           renk: '#2f7ed8', kisaltma: 'VD' },
+      { id: 'gib_ivd',        label: 'GİB İnteraktif V.D.',    url: IVD_URL,                                renk: '#c8102e', kisaltma: 'GİB' },
+      { id: 'ebeyanname',     label: 'E-Beyanname',            url: 'https://ebeyanname.gib.gov.tr',        renk: '#28a745', kisaltma: 'eB' },
+      { id: 'edefter',        label: 'e-Defter',               url: 'https://uyg.edefter.gov.tr',           renk: '#7a52d0', kisaltma: 'eD' },
+      { id: 'earsiv',         label: 'E-Arşiv Portal',         url: EARSIV_URL,                             renk: '#e0603a', kisaltma: 'eA' },
+      { id: 'efatura',        label: 'E-Fatura Portal',        url: 'https://portal.efatura.gov.tr',        renk: '#e0603a', kisaltma: 'eF' },
+      { id: 'mersis',         label: 'Mersis',                 url: 'https://mersis.ticaret.gov.tr',        renk: '#2f7ed8', kisaltma: 'M' },
+      { id: 'tobb',           label: 'TOBB Bilgi Merkezi',     url: 'https://bilgimerkezi.tobb.org.tr',     renk: '#fd7e14', kisaltma: 'TB' },
+      { id: 'sgk_ebildirge',  label: 'SGK E-Bildirge',         url: SGK_URL,                                renk: '#1d70b8', kisaltma: 'SGK' },
+      { id: 'sgk_ebildirge2', label: 'SGK E-Bildirge V2',      url: SGK_URL,                                renk: '#1d70b8', kisaltma: 'V2' },
+      { id: 'sgk_isveren',    label: 'SGK İşveren Sistemi',    url: SGK_URL,                                renk: '#1d70b8', kisaltma: 'İS' },
+      { id: 'sgk_erapor',     label: 'SGK E-Rapor',            url: 'https://uyg.sgk.gov.tr/eRaporIsveren', renk: '#1d70b8', kisaltma: 'ER' },
+      { id: 'sgk_isegiris',   label: 'SGK İşe Giriş/Çıkış',    url: 'https://uyg.sgk.gov.tr/SgkIsgs',       renk: '#1d70b8', kisaltma: 'İG' },
+      { id: 'sgk_ebildirim',  label: 'SGK E-Bildirim',         url: 'https://uyg.sgk.gov.tr',               renk: '#1d70b8', kisaltma: 'EB' },
+      { id: 'edevlet',        label: 'e-Devlet (Türkiye.gov)', url: 'https://www.turkiye.gov.tr',           renk: '#c8102e', kisaltma: 'eD' },
+    ],
+  },
+  {
+    id: 'gib_sorgu',
+    baslik: 'GİB Sorgulamaları',
+    aciklama: 'Gelir İdaresi sorgu ve dilekçeleri',
+    renk: '#d64550',
+    ikon: FileText,
+    items: [
+      { id: 'q_arac',        label: 'Araç Bilgileri',              url: IVD_URL, renk: '#d64550', kisaltma: 'AR' },
+      { id: 'q_ehaciz',      label: 'EHaciz',                      url: IVD_URL, renk: '#d64550', kisaltma: 'EH' },
+      { id: 'q_eyoklama',    label: 'EYoklama',                    url: IVD_URL, renk: '#d64550', kisaltma: 'EY' },
+      { id: 'q_vlevha',      label: 'Güncel Vergi Levhası',        url: IVD_URL, renk: '#d64550', kisaltma: 'VL' },
+      { id: 'q_gumruk',      label: 'Gümrük Çıkış Beyannamesi',    url: IVD_URL, renk: '#d64550', kisaltma: 'GÇ' },
+      { id: 'q_islenemeyen', label: 'İşlenemeyen Ödemeler',        url: IVD_URL, renk: '#d64550', kisaltma: 'İÖ' },
+      { id: 'q_mukyazi',     label: 'Mükellefiyet Yazısı',         url: IVD_URL, renk: '#d64550', kisaltma: 'MY' },
+      { id: 'q_dilekce',     label: 'Önceki Talep Dilekçeleri',    url: IVD_URL, renk: '#d64550', kisaltma: 'DL' },
+      { id: 'q_pos',         label: 'POS Sorgulama',               url: IVD_URL, renk: '#d64550', kisaltma: 'POS' },
+      { id: 'q_todeb',       label: 'Elektronik POS (TÖDEB)',      url: IVD_URL, renk: '#d64550', kisaltma: 'TÖ' },
+      { id: 'q_sube',        label: 'Şube Bilgisi Sorgulama',      url: IVD_URL, renk: '#d64550', kisaltma: 'ŞB' },
+      { id: 'q_tahsilat',    label: 'Tahsilat Bilgisi Sorgulama',  url: IVD_URL, renk: '#d64550', kisaltma: 'TH' },
+      { id: 'q_alindilar',   label: 'Ödemelerim ve Alındılarım',   url: IVD_URL, renk: '#d64550', kisaltma: 'ÖA' },
+      { id: 'q_vborcu',      label: 'Vergi Borcu Sorgulama',       url: IVD_URL, renk: '#d64550', kisaltma: 'VB' },
+      { id: 'q_vonay',       label: 'Vergi Levhası Onayla',        url: IVD_URL, renk: '#d64550', kisaltma: 'VO' },
+      { id: 'q_borcyoktur',  label: 'Vergi Borcu Yoktur Yazısı',   url: IVD_URL, renk: '#d64550', kisaltma: 'BY' },
+      { id: 'q_yapvbs',      label: 'Yapılandırılmış V.B.S.',      url: IVD_URL, renk: '#d64550', kisaltma: 'YP' },
+      { id: 'q_7256vbs',     label: '7256 Yapılandırılmış V.B.S.', url: IVD_URL, renk: '#d64550', kisaltma: '56' },
+      { id: 'q_7326vbs',     label: '7326 Yapılandırılmış V.B.S.', url: IVD_URL, renk: '#d64550', kisaltma: '26' },
+      { id: 'q_7440vbs',     label: '7440 Yapılandırılmış V.B.S.', url: IVD_URL, renk: '#d64550', kisaltma: '40' },
+      { id: 'q_esm',         label: 'E-SM Makbuzu Sorgulama',      url: IVD_URL, renk: '#d64550', kisaltma: 'SM' },
+      { id: 'q_muhsgkmuaf',  label: 'MUHSGK Muafiyet Dilekçe',     url: IVD_URL, renk: '#d64550', kisaltma: 'MU' },
+      { id: 'q_uyumindirim', label: 'Vergiye Uyumda İndirim',      url: IVD_URL, renk: '#d64550', kisaltma: 'Uİ' },
+      { id: 'q_okccihaz',    label: 'OKC Cihaz Listesi',           url: IVD_URL, renk: '#d64550', kisaltma: 'OK' },
+      { id: 'q_okcsatis',    label: 'OKC Satış Raporları',         url: IVD_URL, renk: '#d64550', kisaltma: 'OS' },
+      { id: 'q_ithalkdv',    label: 'İthalde Ödenen KDV',          url: IVD_URL, renk: '#d64550', kisaltma: 'İK' },
+      { id: 'q_kesinti',     label: 'Kesinti Sorgulama',           url: IVD_URL, renk: '#d64550', kisaltma: 'KS' },
+      { id: 'q_nace',        label: 'NACE Kodu Sorgulama',         url: IVD_URL, renk: '#d64550', kisaltma: 'NC' },
+      { id: 'q_iban',        label: 'Banka (IBAN) Sorgulama',      url: IVD_URL, renk: '#d64550', kisaltma: 'IB' },
+    ],
+  },
+  {
+    id: 'sgk_sorgu',
+    baslik: 'SGK Sorgulamaları',
+    aciklama: 'Sosyal Güvenlik sorgu ve yapılandırmaları',
+    renk: '#2f7ed8',
+    ikon: Shield,
+    items: [
+      { id: 's_tesvik',   label: 'Potansiyel Teşvik Sorgula', url: SGK_URL, renk: '#2f7ed8', kisaltma: 'TŞ' },
+      { id: 's_borcyok',  label: 'SGK Borcu Yoktur Yazısı',   url: SGK_URL, renk: '#2f7ed8', kisaltma: 'BY' },
+      { id: 's_emanet',   label: 'Emanetteki Tahsilatlar',    url: SGK_URL, renk: '#2f7ed8', kisaltma: 'EM' },
+      { id: 's_donem',    label: 'SGK Dönem Borcu',           url: SGK_URL, renk: '#2f7ed8', kisaltma: 'DB' },
+      { id: 's_odeme',    label: 'SGK Ödeme Sorgula',         url: SGK_URL, renk: '#2f7ed8', kisaltma: 'ÖD' },
+      { id: 's_6661',     label: '6661 Asgari Ücret Desteği', url: SGK_URL, renk: '#2f7ed8', kisaltma: '66' },
+      { id: 's_7252',     label: '7252 K.Ç.Ö. Sorgulama',     url: SGK_URL, renk: '#2f7ed8', kisaltma: '52' },
+      { id: 's_7256',     label: '7256 SGK Yapılandırılmış',  url: SGK_URL, renk: '#2f7ed8', kisaltma: '56' },
+      { id: 's_7326',     label: '7326 SGK Yapılandırılmış',  url: SGK_URL, renk: '#2f7ed8', kisaltma: '26' },
+      { id: 's_7440',     label: '7440 SGK Yapılandırılmış',  url: SGK_URL, renk: '#2f7ed8', kisaltma: '40' },
+      { id: 's_personel', label: 'Güncel Personel Sorgulama', url: SGK_URL, renk: '#2f7ed8', kisaltma: 'PR' },
+    ],
+  },
+  {
+    id: 'earsiv_sorgu',
+    baslik: 'E-Arşiv / E-Fatura',
+    aciklama: 'Fatura ve makbuz işlemleri',
+    renk: '#e0603a',
+    ikon: FileCheck,
+    items: [
+      { id: 'e_gelenarsiv', label: 'Gelen E-Arşiv Fatura',      url: EARSIV_URL,                      renk: '#e0603a', kisaltma: 'GA' },
+      { id: 'e_kesilen',    label: 'Kesilen E-Arşiv Fatura',    url: EARSIV_URL,                      renk: '#e0603a', kisaltma: 'KA' },
+      { id: 'e_efatura',    label: 'E-Fatura İşlemleri',        url: 'https://portal.efatura.gov.tr', renk: '#e0603a', kisaltma: 'EF' },
+      { id: 'e_tevkifat',   label: 'Gelen Tevkifatlı E-Fatura', url: 'https://portal.efatura.gov.tr', renk: '#e0603a', kisaltma: 'TV' },
+      { id: 'e_esm',        label: 'Gelen E-SM Makbuzu',        url: EARSIV_URL,                      renk: '#e0603a', kisaltma: 'SM' },
+    ],
+  },
+  {
+    id: 'ticaret',
+    baslik: 'Ticaret & Firma',
+    aciklama: 'Sicil, oda ve firma bilgileri',
+    renk: GOLD,
+    ikon: Building2,
+    items: [
+      { id: 't_sicilgazete', label: 'Ticaret Sicil Gazetesi', url: 'https://www.ticaretsicil.gov.tr',  renk: '#c9a94e', kisaltma: 'SG' },
+      { id: 't_odaborc',     label: 'Ticaret Odası Borç',     url: 'https://bilgimerkezi.tobb.org.tr', renk: '#c9a94e', kisaltma: 'OB' },
+      { id: 't_mersisfirma', label: 'Mersis Firma Bilgileri', url: 'https://mersis.ticaret.gov.tr',    renk: '#c9a94e', kisaltma: 'MF' },
+      { id: 't_aylikodeme',  label: 'Aylık Ödeme Listesi',    url: IVD_URL,                            renk: '#c9a94e', kisaltma: 'AÖ' },
+    ],
+  },
 ];
 
 // ============================================================
@@ -615,7 +714,7 @@ export default function MukellefDetayPage() {
 
       {/* KISAYOL GİRİŞLERİ — açılır panel */}
       {portalOpen && !isNew && (
-        <PortalDrawer vkn={form.taxNumber} onClose={() => setPortalOpen(false)} onKisayol={handleKisayolClick} />
+        <KisayolPaneli vkn={form.taxNumber} onClose={() => setPortalOpen(false)} onKisayol={handleKisayolClick} />
       )}
     </form>
   );
@@ -658,7 +757,15 @@ function CardNavButtons({ cardNav, isNew, router }: { cardNav: any; isNew: boole
 // ============================================================
 // KISAYOL GİRİŞLERİ — sağdan açılan panel
 // ============================================================
-function PortalDrawer({
+function kisayolFold(s: string) {
+  return s
+    .toLocaleLowerCase('tr-TR')
+    .replace(/ı/g, 'i').replace(/İ/g, 'i')
+    .replace(/ş/g, 's').replace(/ğ/g, 'g')
+    .replace(/ü/g, 'u').replace(/ö/g, 'o').replace(/ç/g, 'c');
+}
+
+function KisayolPaneli({
   vkn,
   onClose,
   onKisayol,
@@ -667,56 +774,101 @@ function PortalDrawer({
   onClose: () => void;
   onKisayol: (k: Kisayol) => void;
 }) {
+  const [q, setQ] = useState('');
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
+  const qn = kisayolFold(q.trim());
+  const gruplar = KISAYOL_GRUPLARI
+    .map((g) => ({ ...g, items: qn ? g.items.filter((k) => kisayolFold(k.label).includes(qn)) : g.items }))
+    .filter((g) => g.items.length > 0);
+  const toplam = KISAYOL_GRUPLARI.reduce((n, g) => n + g.items.length, 0);
+
   return (
-    <div className="fixed inset-0 z-50 flex justify-end">
-      <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(2px)' }} onClick={onClose} />
-      <div className="relative h-full w-full max-w-[440px] overflow-y-auto border-l p-5 shadow-2xl" style={{ background: CARD, borderColor: LINE }}>
-        <div className="mb-4 flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl border" style={{ borderColor: STEEL_LN, background: STEEL_SF, color: STEEL_BR }}>
-            <Zap size={17} />
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-3 sm:p-6" style={{ fontFamily: CARD_FONT }}>
+      <div className="fixed inset-0" style={{ background: 'rgba(0,0,0,0.66)', backdropFilter: 'blur(3px)' }} onClick={onClose} />
+      <div
+        className="relative my-auto flex w-full max-w-[1120px] flex-col overflow-hidden rounded-2xl border shadow-2xl"
+        style={{ background: CARD, borderColor: LINE, maxHeight: '90vh' }}
+      >
+        {/* Başlık */}
+        <div
+          className="relative flex items-center gap-3.5 border-b px-5 py-4"
+          style={{ borderColor: HAIR, background: `radial-gradient(130% 200% at 0% 0%, ${STEEL}22, transparent 55%), ${CARD}` }}
+        >
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border" style={{ borderColor: STEEL_LN, background: STEEL_SF, color: STEEL_BR }}>
+            <Zap size={20} />
           </div>
           <div className="min-w-0 flex-1">
-            <h2 className="text-[15px] font-semibold" style={{ color: TEXT }}>Kısayol Girişleri</h2>
-            <p className="truncate text-[11.5px]" style={{ color: MUTED }}>{vkn ? `VKN: ${vkn}` : 'Devlet portallarına hızlı erişim'}</p>
+            <h2 className="text-[16px] font-bold tracking-tight" style={{ color: TEXT }}>Kısayollar &amp; Sorgulamalar</h2>
+            <p className="truncate text-[11.5px]" style={{ color: MUTED }}>{vkn ? `VKN ${vkn} · ${toplam} bağlantı` : `${toplam} bağlantı`}</p>
           </div>
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Ara…"
+            autoFocus
+            className="hidden h-10 w-[220px] rounded-xl border border-white/10 bg-[#0e0f13] px-3.5 text-[13px] font-medium text-[#f5f5f4] outline-none transition placeholder:text-white/30 focus:border-[#4f86c9]/55 focus:bg-[#0e1014] focus:shadow-[0_0_0_3px_rgba(79,134,201,0.14)] sm:block"
+          />
           <button
             type="button"
             onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-lg border transition hover:bg-white/[0.06]"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition hover:bg-white/[0.06]"
             style={{ borderColor: LINE, color: MUTED }}
             title="Kapat"
           >
-            <X size={16} />
+            <X size={17} />
           </button>
         </div>
 
-        <div className="mb-2.5 text-[11px] font-semibold uppercase tracking-wider" style={{ color: MUTED }}>Devlet portalları</div>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          {PORTAL_KISAYOLLAR.map((k) => (
-            <KisayolButton key={k.id} k={k} onClick={() => onKisayol(k)} />
-          ))}
-        </div>
-
-        <div className="mt-5 border-t pt-4" style={{ borderColor: HAIR }}>
-          <div className="mb-2.5 text-[11px] font-semibold uppercase tracking-wider" style={{ color: MUTED }}>
-            En çok kullanılan sorgular
+        {/* Gövde */}
+        <div className="overflow-y-auto px-5 py-5" style={{ background: `linear-gradient(180deg, ${CARD}, ${CARD2})` }}>
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Ara…"
+            className="mb-4 h-10 w-full rounded-xl border border-white/10 bg-[#0e0f13] px-3.5 text-[13px] font-medium text-[#f5f5f4] outline-none placeholder:text-white/30 focus:border-[#4f86c9]/55 sm:hidden"
+          />
+          <div className="space-y-6">
+            {gruplar.map((g) => {
+              const Icon = g.ikon;
+              return (
+                <section key={g.id}>
+                  <div
+                    className="mb-3 flex items-center gap-3 rounded-xl border px-3.5 py-2.5"
+                    style={{ borderColor: `${g.renk}33`, background: `linear-gradient(90deg, ${g.renk}26, ${g.renk}0d 55%, transparent)` }}
+                  >
+                    <div
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+                      style={{ background: g.renk, color: '#fff', boxShadow: `0 2px 10px ${g.renk}55, inset 0 1px 0 rgba(255,255,255,0.22)` }}
+                    >
+                      <Icon size={16} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[12.5px] font-bold uppercase tracking-wider" style={{ color: TEXT }}>{g.baslik}</div>
+                      <div className="truncate text-[11px]" style={{ color: MUTED }}>{g.aciklama}</div>
+                    </div>
+                    <span className="ml-auto rounded-full px-2 py-0.5 text-[11px] font-bold" style={{ background: `${g.renk}22`, color: g.renk }}>{g.items.length}</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+                    {g.items.map((k) => <KisayolCard key={k.id} k={k} onClick={() => onKisayol(k)} />)}
+                  </div>
+                </section>
+              );
+            })}
+            {gruplar.length === 0 && (
+              <div className="py-16 text-center">
+                <p className="text-[13px]" style={{ color: MUTED }}>“{q}” için sonuç bulunamadı.</p>
+              </div>
+            )}
           </div>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {HIZLI_SORGULAR.map((k) => (
-              <KisayolButton key={k.id} k={k} small onClick={() => onKisayol(k)} />
-            ))}
-          </div>
+          <p className="mt-6 text-[11px] leading-relaxed" style={{ color: FAINT }}>
+            Portal şifreleri Bilgiler sekmesindeki “Şifreler” bölümünden yönetilir. Bağlantı tanımları güncelleniyor.
+          </p>
         </div>
-
-        <p className="mt-4 text-[11px] leading-relaxed" style={{ color: FAINT }}>
-          Portal şifreleri Bilgiler sekmesindeki “Şifreler” bölümünden yönetilir.
-        </p>
       </div>
     </div>
   );
@@ -2755,24 +2907,24 @@ function Segmented({
   );
 }
 
-function KisayolButton({ k, onClick, small = false }: { k: Kisayol; onClick: () => void; small?: boolean }) {
+function KisayolCard({ k, onClick }: { k: Kisayol; onClick: () => void }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="flex items-center gap-2.5 rounded-lg border px-3 py-2.5 text-left transition hover:bg-white/[0.04]"
-      style={{ borderColor: HAIR, background: CARD2 }}
+      title={k.label}
+      className="group flex items-center gap-2.5 rounded-xl border border-white/[0.07] bg-[#101116] px-2.5 py-2.5 text-left transition duration-150 hover:-translate-y-px hover:border-white/20 hover:bg-[#15171d] hover:shadow-[0_8px_22px_rgba(0,0,0,0.42)]"
     >
       <span
-        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[10.5px] font-bold"
-        style={{ background: k.renk, color: 'white' }}
+        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[10.5px] font-black tracking-tight transition group-hover:scale-105"
+        style={{ background: k.renk, color: '#fff', boxShadow: `0 2px 9px ${k.renk}55, inset 0 1px 0 rgba(255,255,255,0.2)` }}
       >
         {k.kisaltma}
       </span>
-      <span className={`min-w-0 flex-1 truncate font-semibold ${small ? 'text-[11.5px]' : 'text-[12.5px]'}`} style={{ color: TEXT }}>
+      <span className="min-w-0 flex-1 truncate text-[12px] font-semibold" style={{ color: TEXT }}>
         {k.label}
       </span>
-      <ArrowRight size={11} style={{ color: MUTED, flexShrink: 0 }} />
+      <ExternalLink size={12} className="shrink-0 opacity-60 transition group-hover:opacity-100" style={{ color: FAINT }} />
     </button>
   );
 }
