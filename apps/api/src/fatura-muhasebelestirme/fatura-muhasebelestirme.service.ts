@@ -11,6 +11,7 @@ import { EarsivRenderService } from '../earsiv/earsiv-render.service';
 import { encrypt, tryDecrypt } from '../common/crypto';
 import { claudeTextViaMax, MAX_MODEL_CHEAP } from '../common/max-inference';
 import { buildLucaImportExcel, buildLucaIsletmeHizliFisCsv } from './luca-excel.service';
+import { reconcileMatrahSplit } from './kalem-split';
 import { VendorMemoryService } from '../vendor-memory/vendor-memory.service';
 import { MihsapService } from '../mihsap/mihsap.service';
 import { PortalAutomationService } from '../portal-automation/portal-automation.service';
@@ -10726,6 +10727,15 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       // Toplam = sum(base) + sum(amount)
       let totalBase = new Prisma.Decimal(0);
       let totalKdv = new Prisma.Decimal(0);
+      // KALEM-BAZLI matrah bölme (Faz 1). matrahSplit YALNIZ kalem-bazlı okuma açıkken dolu gelir.
+      //   GÜVENLİK: bölme yalnız (a) ≥2 FARKLI hesap VE (b) HER breakdown oranının kalem tabanı, o oranın
+      //   matrahına (item.base) toleransta denk geliyorsa yapılır; aksi halde tümüyle bugünkü tek-hesap
+      //   davranışına düşülür → denge/kayıp riski YOK. matrahSplit boşken splitByRate boş → canSplit=false
+      //   → çıktı BİREBİR eski davranış.
+      const splitMap = reconcileMatrahSplit(
+        breakdown.map((b: any) => ({ rate: Number(b.rate) || 0, base: Number(b.base) || 0 })),
+        opts.matrahSplit,
+      );
       for (const item of breakdown) {
         const base = money(item.base) || zero();
         const amount = money(item.amount) || zero();
@@ -10733,17 +10743,37 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         totalKdv = totalKdv.plus(amount);
         const rateLabel = item.rate ? `%${Number(item.rate).toLocaleString('tr-TR')}` : undefined;
 
-        // Matrah satırı (alış için Borç, satış için Alacak)
-        lines.push({
-          group: 'matrah',
-          accountCode: matrahCode,
-          description: isSale ? `Satış matrahı (KDV ${rateLabel || ''})`.trim() : `Gider / matrah (KDV ${rateLabel || ''})`.trim(),
-          rate: rateLabel,
-          debit: isSale ? zero() : base,
-          credit: isSale ? base : zero(),
-          orderNo: orderNo++,
-        });
-        // KDV satırı (sadece tutar > 0 ise yaz)
+        const splitEntries = splitMap ? (splitMap.get(Number(item.rate) || 0) || []) : null;
+        if (splitEntries && splitEntries.length) {
+          // Bu oranın kalemlerini HESAP bazında AYRI matrah satırı olarak yaz (helper tabanları oran
+          //   matrahına EŞİTLEDİ → denge korunur). Kaynak='AI' (öğrenilebilir, yer-tutucu VARSAYILAN değil).
+          //   KDV satırı oran-bazlı TEK kalır (aşağıda), bölmeden etkilenmez.
+          for (const e of splitEntries) {
+            const eb = money(e.base) || zero();
+            lines.push({
+              group: 'matrah',
+              accountCode: e.hesap,
+              description: isSale ? `Satış matrahı (KDV ${rateLabel || ''})`.trim() : `Gider / matrah (KDV ${rateLabel || ''})`.trim(),
+              rate: rateLabel,
+              debit: isSale ? zero() : eb,
+              credit: isSale ? eb : zero(),
+              orderNo: orderNo++,
+              kaynak: 'AI',
+            });
+          }
+        } else {
+          // Matrah satırı (alış için Borç, satış için Alacak) — bugünkü tek-hesap davranışı.
+          lines.push({
+            group: 'matrah',
+            accountCode: matrahCode,
+            description: isSale ? `Satış matrahı (KDV ${rateLabel || ''})`.trim() : `Gider / matrah (KDV ${rateLabel || ''})`.trim(),
+            rate: rateLabel,
+            debit: isSale ? zero() : base,
+            credit: isSale ? base : zero(),
+            orderNo: orderNo++,
+          });
+        }
+        // KDV satırı (sadece tutar > 0 ise yaz) — ORAN bazlı, bölmeden ETKİLENMEZ (tek satır).
         if (Number(item.amount || 0) > 0) {
           lines.push({
             group: 'vergi',
@@ -10758,9 +10788,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       }
       const total = totalBase.plus(totalKdv);
       for (const cl of cariLinesFor(total, orderNo)) lines.push({ ...cl, orderNo: orderNo++ });
-      // İlk kurulum satırları yer-tutucudur → kaynak VARSAYILAN (öğrenme bu satırlardan yapılmaz).
+      // İlk kurulum satırları yer-tutucudur → kaynak VARSAYILAN. Kalem-bazlı matrah satırının 'AI' kaynağı KORUNUR.
       // (SMM stopajı 'kesinti' satırı applySmmStopaj'da kaynak='KURAL' ile eklenir — map'ten SONRA.)
-      return applySmmStopaj(lines.map((l: any) => ({ ...l, kaynak: 'VARSAYILAN' })));
+      return applySmmStopaj(lines.map((l: any) => ({ ...l, kaynak: l.kaynak || 'VARSAYILAN' })));
     }
 
     // Tek-oran fallback (eski davranış)
