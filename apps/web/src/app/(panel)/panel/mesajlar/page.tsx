@@ -1025,7 +1025,19 @@ export default function MesajlarPage() {
                     Gönder
                   </button>
                 </div>
-              ) : (() => {
+              ) : (<>
+                {/* Bu dal YALNIZ Baileys(QR) bağlı DEĞİLKEN görünür (freeForm = windowOpen || qrConnected).
+                    Yani "müşteri yanıtı bekleniyor" değil, ASIL sebep BAĞLANTININ KOPMUŞ olmasıdır →
+                    Meta 24s penceresine düşülüyor. Kullanıcıya gerçek sebebi + çözümü göster. */}
+                {!qrStatus?.connected && (
+                  <div className="flex items-start gap-2 px-3 py-2 rounded-[10px] mb-2" style={{ background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.22)' }}>
+                    <AlertCircle size={14} className="flex-shrink-0 mt-0.5" style={{ color: '#fca5a5' }} />
+                    <div className="text-[12px]" style={{ color: 'rgba(250,250,249,0.82)' }}>
+                      <strong>WhatsApp bağlantısı kapalı.</strong> Telefon uzun süre çevrimdışı kalınca bağlantı düşebiliyor; o zaman serbest mesaj kapanır. <strong>Ayarlar › Entegrasyonlar › WhatsApp</strong> ekranından QR&apos;ı telefonla yeniden okutun — bağlanınca bu konuşma normal mesaj kutusuna döner. (Aşağıdaki şablon, bağlantı gelene kadar geçici yoldur.)
+                    </div>
+                  </div>
+                )}
+                {(() => {
                 // En son giden baslangic mesaji var mi?
                 const lastOutgoing = [...(chatData?.messages || [])].reverse().find((m) => m.direction === 'outgoing');
                 const isTemplateRecent =
@@ -1078,6 +1090,7 @@ export default function MesajlarPage() {
                   </div>
                 );
               })()}
+              </>)}
             </div>
           </>
         )}
