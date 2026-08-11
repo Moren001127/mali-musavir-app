@@ -12027,6 +12027,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   AI doğru hesabı içerik+faaliyetle DOĞRUDAN seçsin (mekanik kategori→kod eşlemesi yerine;
     //   "çatal-kaşık→mutfak gideri", "lokanta klima→demirbaş" kategori kutusuyla değil, planı görüp).
     //   İŞLETME defterinde hesap planı YOK → atla. Plan yoksa boş → mekanik kategori yedeği devreye girer.
+    const semMotor = this.semantikMotorFor(d.taxpayerId, mukellefBilgi); // KALICI MOTOR pilotu (güçlü model + zengin plan + AI-birincil)
     let planAdaylar = '';
     const planLeafSet = new Set<string>();
     if (d.taxpayerId && !isIsletmeMukellef) {
@@ -12049,7 +12050,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         for (const a of cand) planLeafSet.add(String(a.accountCode));
         // HIZ: aday listesi kısa tutulur (220→100) + ad 40 karaktere kırpılır → Max prompt'u küçülür,
         //   okuma hızlanır. En olası kodlar zaten ilk sıralarda (leaf filtresi sonrası), doğruluk düşmez.
-        if (cand.length) planAdaylar = cand.slice(0, 100).map((a) => `${a.accountCode} = ${String(a.accountName || '').slice(0, 40)}`).join('\n');
+        // SEMANTİK MOTOR pilotunda aday listesi GENİŞ + ad kırpması gevşek (doğru hesap listede/tam görünsün);
+        //   kapalıyken eski dar liste (100/40) korunur → diğer mükelleflerde hız/davranış aynı.
+        if (cand.length) planAdaylar = cand.slice(0, semMotor ? 400 : 100).map((a) => `${a.accountCode} = ${String(a.accountName || '').slice(0, semMotor ? 80 : 40)}`).join('\n');
       }
     }
     const islSeg = isIsletmeMukellef ? islPromptSeg(d.invoiceKind === 'SATIS' ? 'SATIS' : 'ALIS') : '';
@@ -12080,6 +12083,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         ? `BU FATURAYI ALAN MÜKELLEFİN İŞİ: ${mukellefBilgi}. kategoriyi mükellefin ANA FAALİYETİNE göre seç: üretim/imalat/LOKANTA/RESTORAN/KAFE/PASTANE/YEMEK işletmesi ana işinde KULLANDIĞI/işlediği/pişirdiği malı (gıda, yağ, un, et, sebze, süt, baharat, içecek, ambalaj…) alırsa "hammadde"; alım-satım (toptan/perakende/market) firması SATACAĞI ürünü alırsa "ticari_mal"; uzun ömürlü makine/cihaz/mobilya/bilgisayar/taşıt = "demirbas"; reklam/ilan/kargo/nakliye = "pazarlama"; SADECE işletmeyi yürüten sarf (kira, elektrik, su, doğalgaz, telefon, internet, akaryakıt, kırtasiye, temizlik, danışmanlık) = "genel_gider". ⚠️ KRİTİK-1: LOKANTA/RESTORAN/YEMEK üreticisinin aldığı GIDA / MUTFAK MALZEMESİ (yağ, un, et, sebze…) ASLA "genel_gider" ya da "demirbas" DEĞİLDİR — "hammadde"dir. ⚠️ KRİTİK-2: Mükellefin ANA FAALİYETİNDE SATMADIĞI bir CİHAZ/MAKİNE/EKİPMAN/MOBİLYA/KLİMA/BEYAZ EŞYA/BİLGİSAYAR/TELEVİZYON alımı = "demirbas" (sabit kıymet); ASLA "ticari_mal" DEĞİLDİR. "ticari_mal" YALNIZCA mükellefin o ürünü SATARAK ticaret yaptığı durumdur — ör. LOKANTA/YEMEK üreticisi KLİMA alırsa "demirbas"; klima TİCARETİ yapan firma klima alırsa "ticari_mal". ⚠️ KRİTİK-3: Mükellefin SATMADIĞI TÜKETİM/SARF malzemesi (ambalaj, poşet, streç, tek-kullanımlık bardak/tabak/çatal/kaşık, eldiven, temizlik, kırtasiye, servis malzemesi) hizmet/eğitim/ofis/lokanta gibi MAL TİCARETİ YAPMAYAN işletmede "genel_gider"dir (sarf malzeme); ASLA "ticari_mal" DEĞİLDİR (mükellef bunları satmıyor, kendi işinde tüketiyor). Bunları SATARAK ticaret yapan ambalaj/kırtasiye toptancısı alırsa "ticari_mal".`
         : '',
       planAdaylar ? `\nMÜKELLEFİN HESAP PLANI — matrah/gider için aday hesaplar (matrahHesapKodu'nu SADECE bu listeden seç):\n${planAdaylar}\n→ matrahHesapKodu: bu faturanın matrahını (mal/hizmet/gider tutarını) mükellefin İŞİNE ve fatura İÇERİĞİNE göre yukarıdaki listeden EN UYGUN TAM koda ata. Mükellefin SATARAK ticaret yaptığı emtia → stok (15x); kendi işinde KULLANDIĞI/tükettiği şey → ilgili gider (7xx/6xx; ör. mutfak malzemesi/çatal-kaşık→mutfak gideri, yakıt→akaryakıt gideri); uzun ömürlü makine/cihaz/mobilya/demirbaş → sabit kıymet (25x); SATIŞ faturasıysa gelir (600). ⚠️ İçeriğe gerçekten uyan hesap yoksa BOŞ bırak — listede OLMAYAN kodu ASLA yazma, uydurma.` : '',
+      (semMotor && planAdaylar) ? `\nSATIŞ GELİR HESABI (mükellef SATICIYSA, matrahHesapKodu): MAL satışı → yurtiçi satışlar (600); HİZMET satışı → planında hizmet geliri için varsa 600/601; İHRACAT/yurtdışı → 601. ⚠️ PRİM / CİRO PRİMİ / HAKEDİŞ / KOMİSYON / KUR FARKI / FAİZ gibi MAL-HİZMET SATIŞI OLMAYAN gelirler → 602 DİĞER GELİRLER (yoksa 649 DİĞER OLAĞAN GELİR VE KÂRLAR); bunları 600 MAL SATIŞ hesabına ASLA yazma. Uygun gelir hesabı planda yoksa matrahHesapKodu BOŞ.` : '',
       isImage ? '' : ('\nİÇERİK:\n' + html.replace(/<(script|style)[^>]*>[\s\S]*?<\/(script|style)>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/&[a-z#0-9]+;/gi, ' ').replace(/\s+/g, ' ').trim().slice(0, 16000)),
     ].filter(Boolean).join('\n');
 
@@ -12135,7 +12139,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const useAzureText = azureText.length > 80;
     const callPrompt = useAzureText ? (prompt + '\n\nBELGE METNİ (OCR ile okundu):\n' + azureText.slice(0, 20000)) : prompt;
     for (let attempt = 1; attempt <= 3 && !parsed; attempt++) {
-      const model = attempt >= 3 ? undefined : MAX_MODEL_CHEAP; // 3. deneme: Sonnet (varsayılan)
+      const model = (attempt >= 3 || semMotor) ? undefined : MAX_MODEL_CHEAP; // 3. deneme ya da SEMANTİK MOTOR pilotu → Sonnet (güçlü, tutarlı muhasebe muhakemesi)
       const res = await claudeTextViaMax(
         (isImage && !useAzureText)
           ? { prompt: callPrompt, images: [{ base64: imgBuf!.toString('base64'), mediaType: imgMedia }], timeoutMs: 75000, model }
@@ -12586,6 +12590,22 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const al = a.toLocaleLowerCase('tr-TR');
       return al.length >= 3 && !!nm && nm.includes(al); // mükellef ADI alt-dizesi (ör. "ilgi oto")
     });
+  }
+  /** SEMANTİK MOTOR (kalıcı çözüm) PİLOTU — AI-BİRİNCİL hesap seçimi + güçlü model (Sonnet) + zengin/etiketli
+   *  plan besleme + satışta AI-doğrudan gelir hesabı. Açıkken keyword vetoları AI'ı EZMEZ; yalnız mevzuat
+   *  son-kontrolü (6xx alış reddi, demirbaş→25x) kalır. KAPALIYKEN (diğer TÜM mükellefler) her akış
+   *  BUGÜNKÜYLE BİRE BİR aynıdır. Gate: `SEMANTIK_MOTOR=1` (global) | `SEMANTIK_MOTOR_TAXPAYERS=<ad/id,...>`
+   *  | (kalem-bazlı pilotu da otomatik dahil → İlgi Oto). Önce mükellef-bazlı pilotla doğrula, sonra global. */
+  private semantikMotorFor(taxpayerId?: string | null, taxpayerName?: string | null): boolean {
+    if (String(process.env.SEMANTIK_MOTOR || '').trim() === '1') return true;
+    const allow = String(process.env.SEMANTIK_MOTOR_TAXPAYERS || '')
+      .split(/[,;]+/).map((s) => s.trim()).filter(Boolean);
+    if (allow.length) {
+      const id = String(taxpayerId || '').trim();
+      const nm = String(taxpayerName || '').toLocaleLowerCase('tr-TR');
+      if (allow.some((a) => (id && a === id) || (a.toLocaleLowerCase('tr-TR').length >= 3 && !!nm && nm.includes(a.toLocaleLowerCase('tr-TR'))))) return true;
+    }
+    return this.kalemBazliHesapFor(taxpayerId, taxpayerName); // İlgi Oto pilotu (kalem-bazlı) otomatik dahil
   }
   /** taxpayerId'siz (classify/UBL yolu) → yalnız GLOBAL bayrak. Vision-okuma yolu mükellef-bazlı gate kullanır. */
   private get kalemBazliHesapOn(): boolean {
@@ -13094,6 +13114,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // Mükellefin faaliyeti — AI gider-hesabı eşleştirmesinde "ne iş yapıyor" bağlamı.
     const tpRow: any = await (this.prisma as any).taxpayer.findFirst({ where: { id: taxpayerId, tenantId }, select: { companyName: true, firstName: true, lastName: true, naceKodu: true, faaliyetAciklama: true } }).catch(() => null);
     const tpFaaliyet = tpRow ? [String(tpRow.companyName || (String(tpRow.firstName || '') + ' ' + String(tpRow.lastName || ''))).trim(), String(tpRow.faaliyetAciklama || '').trim() || (tpRow.naceKodu ? ('NACE ' + tpRow.naceKodu) : '')].filter(Boolean).join(' — ') : '';
+    const _semMotor = this.semantikMotorFor(taxpayerId, tpFaaliyet); // KALICI MOTOR pilotu — AI-birincil (keyword vetosu AI'ı ezmez)
     let aiAccCalls = 0; // batch'te AI eskalasyonunu sınırla
     const AI_GIDER_LIMIT = 50; // "Kodları düzelt" batch'inde AI semantik eşleştirme tavanı (Max yükü). Cache aynı içeriği 1 kez sorar → 50 benzersiz gider çoğu mükellefe yeter.
     const aiGiderCache = new Map<string, any>(); // norm(giderTuru) → hesap|null; aynı gider 1 kez sorulur
@@ -13320,16 +13341,19 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       //   63x (630/631/632) dönem-sonu yansıtma hesaplarıdır. Gider faturası 7xx'e (7/A) gider; dönem sonu
       //   771 ile 632'ye yansıtılır. AI "GENEL YÖNETİM GİDERLERİ" ad-benzerliğiyle 632'yi seçiyordu
       //   (İstanbul Gaz/Turkcell → 632 saçmalığı). Alışta yalnız 15x/25x/7xx kabul.
-      const _aiCand = (!isSale && aiKod && !/^6/.test(aiKod) && isPostableLeaf(aiKod)
-        && !(faDet.is && !/^25/.test(aiKod)))
+      // SEMANTİK MOTOR: satışta da AI'ın plandan DOĞRUDAN seçtiği gelir hesabını (6xx: 600/601/602/649…) kullan
+      //   (pilotta) — prim/ciro→602, ihracat→601 gibi. ALIŞ mantığı aynı (6xx reddi: 60x gelir / 63x yansıtma).
+      const _aiCand = (aiKod && isPostableLeaf(aiKod) && !(faDet.is && !/^25/.test(aiKod))
+        && (!isSale ? !/^6/.test(aiKod) : (_semMotor && /^6/.test(aiKod))))
         ? accounts.find((a: any) => String(a.accountCode || '') === aiKod) : null;
       // ARAÇ-ÇELİŞKİ: AI okuma anında araç-adlı hesap (740 ARAÇ BAKIM) seçmiş olsa da, mükellef+fatura
       //   araç-dışıysa (_aracBaglamYok) bu kodu REDDET → AI semantik/boş doğru hesabı bulur. (SERİOFİS toneri.)
-      const aiMatrahAcc = (_aiCand && (
+      // SEMANTİK MOTOR (kalıcı çözüm): pilotta AI-BİRİNCİL — keyword vetoları (araç-bağlam / yağ≠yakıt /
+      //   tacir-force) AI'ın plandan seçtiği hesabı EZMEZ; mevzuat kısıtları (6xx alış reddi, demirbaş→25x)
+      //   zaten _aiCand'da uygulandı. KAPALIYKEN (diğer mükellefler) eski veto davranışı BİRE BİR korunur.
+      const aiMatrahAcc = (_aiCand && !_semMotor && (
           (_aracBaglamYok && _aracHesapAdRe.test(_af(String((_aiCand as any).accountName || ''))))
           || (_yagIcerik && _isYakitHesapAd(String((_aiCand as any).accountName || '')))
-          // PİLOT TİCARET FİRMASI: fiziksel-mal alışında AI'ın 7xx gider maliyeti tahminini (740/770/760/730)
-          //   reddet → ticari mala (153) düş. Gerçek gider/demirbaş yukarıda zaten hariç tutuldu.
           || (_forceTicariMal && /^7/.test(String((_aiCand as any).accountCode || '')))
         ))
         ? null : _aiCand;
