@@ -621,8 +621,8 @@ export default function MukellefDetayPage() {
             <button
               type="submit"
               disabled={isPending}
-              className="inline-flex h-10 items-center gap-2 rounded-[8px] px-4 text-[12.5px] font-black transition disabled:opacity-50"
-              style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_DP})`, color: '#0f0d0b' }}
+              className="inline-flex h-10 items-center gap-2 rounded-[9px] px-5 text-[12.5px] font-extrabold tracking-tight transition duration-150 hover:-translate-y-px hover:brightness-105 disabled:opacity-50 disabled:hover:translate-y-0"
+              style={{ background: `linear-gradient(135deg, ${GOLD_BR}, ${GOLD_DP})`, color: '#0f0d0b', boxShadow: `0 6px 18px ${GOLD}44, inset 0 1px 0 rgba(255,255,255,0.35)` }}
             >
               {isPending ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
               {isNew ? 'Kaydı Oluştur' : 'Kaydet'}
