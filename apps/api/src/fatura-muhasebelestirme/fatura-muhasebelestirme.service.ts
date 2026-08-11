@@ -12077,7 +12077,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         : 'Aşağıda bir Türk e-Fatura/e-Arşiv belgesinin HTML/metin içeriği var. İçindeki bilgileri oku.',
       `⚡⚡ KRİTİK YÖN — BU FATURA MÜKELLEF AÇISINDAN: ${yonBilgi}. Tüm yorumu, kategoriyi ve sınıflandırmayı MÜKELLEFİN BU YÖNÜNE göre yap. ⛔ Belgenin üstünde "Fatura Tipi: SATIŞ", "Senaryo: ... SATIŞ" gibi ibareler görebilirsin — bu NORMALDİR ve SATICININ bakışıdır (her satıcı kendi açısından "satış" faturası keser). Bu ibare mükellefin yönünü ASLA değiştirmez. ${yonBilgi.startsWith('ALIŞ') ? 'Mükellef burada ALICIDIR — mal/hizmeti SATIN ALIYOR, ÖDÜYOR; yorumu "almış/gideridir/stoğuna girmiştir" diliyle yaz, ASLA "sattı/geliri/hasılatı" deme.' : 'Mükellef burada SATICIDIR — gelir/hasılat söz konusudur.'}`,
       'YALNIZCA şu JSON\'u döndür — kod bloğu, açıklama, başka metin YOK:',
-      `{"belgeNo":"<fatura/fiş no ya da null>","tarih":"<GG.AA.YYYY ya da null>","belgeTuru":"<e-arsiv|e-fatura|fis|diger>","saticiAd":"<satıcı ünvanı ya da null>","saticiVkn":"<satıcının VKN/TCKN ya da null>","aliciAd":"<alıcı ünvanı ya da null>","aliciVkn":"<alıcının VKN/TCKN ya da null>","toplam":<genel toplam KDV dahil sayı ya da null>,"kategori":"<asagidaki tek deger>","giderTuru":"<ALIŞ ise faturadaki ana mal/hizmetin kısa adı — aşağıdaki giderTuru kuralına göre; SATIŞ ya da net değilse boş>"${isIsletmeMukellef ? ',"isletmeKayitTuru":"<aşağıdaki İŞLETME listesinden TAM kayıt türü adı; net değilse boş>","isletmeAltTuru":"<o türün listesinden TAM alt adı; net değilse boş>","isletmeNeden":"<tek cümle gerekçe>"' : ''},"muhasebeNeden":"<1 cümle Türkçe muhasebe gerekçesi — aşağıdaki kurala göre>"${planAdaylar ? ',"matrahHesapKodu":"<aşağıdaki HESAP PLANI listesinden matrah/gider için EN UYGUN TAM kod; emin değilsen boş>"' : ''},"kalemler":[{"ad":"<mal/hizmet kalem adı>","tutar":<o kalemin KDV hariç tutarı sayı>,"oran":<o kalemin KDV oranı sayı>${(planAdaylar && this.kalemBazliHesapFor(d.taxpayerId, mukellefBilgi)) ? ',"hesap":"<bu kalemin HESAP PLANINDAN kendi tam kodu; niteliğine uyan yoksa boş>"' : ''}}],"kdv":[{"oran":<KDV yüzdesi sayı>,"matrah":<KDV hariç tutar sayı>,"kdv":<KDV tutarı sayı>}]}`,
+      `{"belgeNo":"<fatura/fiş no ya da null>","tarih":"<GG.AA.YYYY ya da null>","belgeTuru":"<e-arsiv|e-fatura|fis|diger>","saticiAd":"<satıcı ünvanı ya da null>","saticiVkn":"<satıcının VKN/TCKN ya da null>","aliciAd":"<alıcı ünvanı ya da null>","aliciVkn":"<alıcının VKN/TCKN ya da null>","toplam":<genel toplam KDV dahil sayı ya da null>,"kategori":"<asagidaki tek deger>","giderTuru":"<ALIŞ ise faturadaki ana mal/hizmetin kısa adı — aşağıdaki giderTuru kuralına göre; SATIŞ ya da net değilse boş>"${isIsletmeMukellef ? ',"isletmeKayitTuru":"<aşağıdaki İŞLETME listesinden TAM kayıt türü adı; net değilse boş>","isletmeAltTuru":"<o türün listesinden TAM alt adı; net değilse boş>","isletmeNeden":"<tek cümle gerekçe>"' : ''},"muhasebeNeden":"<1 cümle Türkçe muhasebe gerekçesi — aşağıdaki kurala göre>"${planAdaylar ? ',"matrahHesapKodu":"<aşağıdaki HESAP PLANI listesinden matrah/gider için EN UYGUN TAM kod; emin değilsen boş>"' : ''}${(semMotor && planAdaylar) ? ',"guven":<0-1 arası ondalık — matrahHesapKodu ve niteliği ne kadar EMİN seçtiğin; belirsiz/ikircikliyse 0.5 altı ver>' : ''},"kalemler":[{"ad":"<mal/hizmet kalem adı>","tutar":<o kalemin KDV hariç tutarı sayı>,"oran":<o kalemin KDV oranı sayı>${(planAdaylar && this.kalemBazliHesapFor(d.taxpayerId, mukellefBilgi)) ? ',"hesap":"<bu kalemin HESAP PLANINDAN kendi tam kodu; niteliğine uyan yoksa boş>"' : ''}}],"kdv":[{"oran":<KDV yüzdesi sayı>,"matrah":<KDV hariç tutar sayı>,"kdv":<KDV tutarı sayı>}]}`,
       'kalemler: faturadaki mal/hizmet satırlarını listele (kalem adı + KDV hariç tutarı + KDV oranı). ⚠️ ÇOK KALEMLİYSE (>15 satır) MUTLAKA KDV oranına ve benzer ürün grubuna göre BİRLEŞTİR — en fazla 15 nesne döndür (ör. "%1 gıda ürünleri", "%20 temizlik/sarf"). Az kalemliyse her satır ayrı. Bu döküm BİLGİ amaçlıdır (muhasebe satırlarını değiştirmez). Okunamazsa boş dizi [].',
       (planAdaylar && this.kalemBazliHesapFor(d.taxpayerId, mukellefBilgi)) ? 'KALEM-BAZLI HESAP: Plan verildiğinde HER kaleme, o kalemin NİTELİĞİNE + KDV ORANINA göre yukarıdaki HESAP PLANINDAN kendi "hesap" kodunu ata (matrahHesapKodu ile AYNI mantık, ama kalem kalem). AYNI nitelikteki kalemler aynı hesabı alır; FARKLI nitelikteki kalemleri AYRI hesaba ver (ör. nakliyecinin sattığı LASTİK ≠ verdiği NAKLİYE HİZMETİ; market faturasında GIDA ≠ TEMİZLİK). Kalemleri birleştirirken (>15) SADECE aynı nitelik+oran birleşsin — farklı hesaba gidecek kalemleri birleştirme. Niteliğe uyan hesap planda yoksa o kalemin "hesap"ını BOŞ bırak.' : '',
       'belgeTuru: belgenin üstündeki ibareye göre → "e-arsiv" (e-Arşiv Fatura), "e-fatura" (e-Fatura), "e-smm" (Serbest Meslek Makbuzu / SMM), "fis" (yazarkasa/ÖKC fişi), yoksa "diger".',
@@ -12145,6 +12145,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     }
     let parsed: any = preParsed;
     let reason = 'okunamadı';
+    let sonnetKullanildi = false; // iki-aşamalı okuma: başarılı parse Sonnet'ten mi geldi?
     // AZURE-TEXT HIZLANDIRMA: Azure görüntüyü zaten OKUDUYSA (azureText), Max'e GÖRÜNTÜ yerine METNİ ver
     //   → text okuma vision'dan çok HIZLI + alt-süreç hafif (OOM riski az). Görüntü-vision yalnız Azure
     //   metni yoksa. Yanlış okumayı denge/KDV-matematik doğrulaması yakalar. (Kullanıcı: "okuma yavaş".)
@@ -12170,8 +12171,27 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       try {
         const m = res.text.match(/\{[\s\S]*\}/);
         parsed = m ? JSON.parse(m[0]) : null;
+        if (parsed) sonnetKullanildi = (model === undefined); // parse Sonnet'ten mi geldi (tekrar eskale etme)
         if (!parsed) reason = 'AI yanıtı çözülemedi';
       } catch { parsed = null; reason = 'AI yanıtı çözülemedi'; }
+    }
+
+    // ── İKİ-AŞAMALI OKUMA (pilot, 2026-08-11): Haiku sonucu BELİRSİZse (güven<0.6 VEYA plan var ama
+    //   matrahHesapKodu boş) → YALNIZ BU belgeyi Sonnet'e ESKALE et. Böylece parçaların çoğu Haiku'da HIZLI
+    //   kalır (toplu-Sonnet stall'ı OLMAZ), yalnız zor/ikircikli belge güvenilir modele gider ("saf AI" orada).
+    if (semMotor && parsed && parsed !== preParsed && planAdaylar && !sonnetKullanildi) {
+      const _g = Number((parsed as any).guven);
+      const _kodBos = !String((parsed as any).matrahHesapKodu || '').trim();
+      if ((Number.isFinite(_g) && _g < 0.6) || _kodBos) {
+        const res2: any = await claudeTextViaMax(
+          (isImage && !useAzureText)
+            ? { prompt: callPrompt, images: [{ base64: imgBuf!.toString('base64'), mediaType: imgMedia }], timeoutMs: 90000, model: undefined }
+            : { prompt: callPrompt, timeoutMs: 95000, model: undefined },
+        ).catch(() => null);
+        if (res2?.ok && res2.text) {
+          try { const m2 = res2.text.match(/\{[\s\S]*\}/); const p2 = m2 ? JSON.parse(m2[0]) : null; if (p2) { parsed = p2; (parsed as any)._sonnetEskale = true; } } catch { /* Sonnet çözülemedi → Haiku sonucunu KORU */ }
+        }
+      }
     }
 
     if (!parsed) return { ok: false, reason };
