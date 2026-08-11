@@ -674,8 +674,12 @@ const KAYNAK_ROZET: Record<string, { t: string; bg: string; fg: string }> = {
 function KaynakRozet({ kaynak }: { kaynak?: string | null }) {
   const r = kaynak ? KAYNAK_ROZET[String(kaynak)] : null;
   if (!r) return null;
+  // Sadeleştirme (2026-08-11): her satırdaki renkli DOLGULU rozet "muhasebe kodu alanını" görsel olarak
+  //   kalabalıklaştırıyordu. Artık dolgu YOK — küçük renk NOKTASI + sakin renkli metin; bilgi metinde+tooltip'te.
   return (
-    <span title={`Hesap kodu kaynağı: ${r.t}`} style={{ flex: '0 0 auto', fontSize: 9.5, fontWeight: 800, lineHeight: 1.2, padding: '2px 6px', borderRadius: 999, background: r.bg, color: r.fg, whiteSpace: 'nowrap', letterSpacing: '.2px' }}>{r.t}</span>
+    <span title={`Hesap kodu kaynağı: ${r.t}`} style={{ flex: '0 0 auto', display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 9.5, fontWeight: 700, lineHeight: 1.2, color: r.fg, whiteSpace: 'nowrap', letterSpacing: '.2px' }}>
+      <span style={{ width: 5, height: 5, borderRadius: 999, background: r.fg, flex: '0 0 auto' }} />{r.t}
+    </span>
   );
 }
 
@@ -1368,8 +1372,8 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
         const atanan = Number(karne.hesapAtanan ?? 0);
         const oc = oran >= 70 ? '#15803d' : oran >= 40 ? '#d97706' : '#e5484d';
         return (
-          <div style={{ margin: '0 0 12px', border: '1px solid #e2e8f0', borderRadius: 12, background: 'linear-gradient(135deg,#f8fafc,#ffffff)', overflow: 'hidden' }}>
-            <div onClick={() => setKarneAcik((v) => !v)} style={{ cursor: karne.zayifSaticilar?.length ? 'pointer' : 'default', display: 'flex', alignItems: 'center', gap: 14, padding: '11px 15px', flexWrap: 'wrap' }}>
+          <div style={{ margin: '0 0 8px', border: '1px solid #e2e8f0', borderRadius: 10, background: 'linear-gradient(135deg,#f8fafc,#ffffff)', overflow: 'hidden' }}>
+            <div onClick={() => setKarneAcik((v) => !v)} style={{ cursor: karne.zayifSaticilar?.length ? 'pointer' : 'default', display: 'flex', alignItems: 'center', gap: 12, padding: '7px 14px', flexWrap: 'wrap' }}>
               <span style={{ fontSize: 13, fontWeight: 700, color: '#334155' }}>Oto-eşleşme karnesi</span>
               <span style={{ fontSize: 18, fontWeight: 800, color: oc }} title={`${atanan}/${karne.toplam} belgeye otomatik hesap kodu atandı`}>%{oran}</span>
               <span style={{ fontSize: 12, color: '#64748b' }}>hesap atandı ({atanan}/{karne.toplam})</span>
@@ -5457,12 +5461,12 @@ const CSS = `
 /* ── Faturalar ekranı görsel yenileme (2026-06-30) — sayaç kartları + toolbar + başlık ── */
 #fm-root .screen > .h2{font-size:23px;font-weight:800;letter-spacing:-.45px;color:#0d1626}
 #fm-root .screen > .sub{font-size:13px;color:#67718a;margin-bottom:6px;line-height:1.5}
-#fm-root .filttiles{gap:10px;margin:8px 0 18px}
-#fm-root .ftile{flex-direction:row;align-items:center;gap:11px;min-width:auto;padding:11px 17px 11px 14px;border-radius:14px;border:1.5px solid color-mix(in srgb,var(--tc,var(--accent)) 26%,#eef1f6);background:color-mix(in srgb,var(--tc,var(--accent)) 7%,#fff);box-shadow:none;transition:transform .12s,box-shadow .14s,border-color .12s,background .12s}
+#fm-root .filttiles{gap:8px;margin:5px 0 11px}
+#fm-root .ftile{flex-direction:row;align-items:center;gap:9px;min-width:auto;padding:7px 14px 7px 11px;border-radius:11px;border:1.5px solid color-mix(in srgb,var(--tc,var(--accent)) 26%,#eef1f6);background:color-mix(in srgb,var(--tc,var(--accent)) 7%,#fff);box-shadow:none;transition:transform .12s,box-shadow .14s,border-color .12s,background .12s}
 #fm-root .ftile::before,#fm-root .ftile::after{display:none;content:none}
 #fm-root .ftile .ftdot{width:9px;height:9px;border-radius:50%;background:var(--tc,var(--accent));flex-shrink:0}
 #fm-root .ftile .fttx{display:flex;flex-direction:column;gap:2px;align-items:flex-start}
-#fm-root .ftile .ftn{font-size:23px;font-weight:800;letter-spacing:-.5px;color:var(--tc,var(--accent));line-height:1}
+#fm-root .ftile .ftn{font-size:18px;font-weight:800;letter-spacing:-.4px;color:var(--tc,var(--accent));line-height:1}
 #fm-root .ftile .ftl{font-size:11px;font-weight:700;color:color-mix(in srgb,var(--tc,var(--accent)) 58%,#475569)}
 #fm-root .ftile:hover{transform:translateY(-2px);border-color:var(--tc,var(--accent));box-shadow:0 11px 22px -12px var(--tc,var(--accent))}
 #fm-root .ftile.on{background:color-mix(in srgb,var(--tc,var(--accent)) 15%,#fff);border-color:var(--tc,var(--accent));box-shadow:inset 0 0 0 2px var(--tc,var(--accent))}
