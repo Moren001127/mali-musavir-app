@@ -10619,6 +10619,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // SMM (E_SMM ALIŞ): okunan gelir vergisi stopajı tutarı (TL). >0 ise cari (320) NET yazılır
     //   (brüt+KDV − stopaj) ve ayrı 'kesinti' grubunda 360 satırı üretilir. 0/yok → mevcut davranış.
     smmStopaj?: number | null;
+    // KALEM-BAZLI (Faz 1): (hesap, oran) bazında matrah tabanı. Doluysa + ≥2 FARKLI hesap + HER oranın
+    //   kalem tabanı o oranın matrahına (breakdown.base) toleransta denk geliyorsa matrah satırı HESAP
+    //   bazında bölünür (KDV oran-bazlı, cari TEK kalır → denge korunur). Yoksa/uyumsuzsa bugünkü
+    //   tek-hesap davranışı. Yalnız KALEM_BAZLI_HESAP bayrağı açıkken dolu gelir (tevkifatlı fatura hariç).
+    matrahSplit?: Array<{ hesap: string; rate: number; base: number }> | null;
   }) {
     const isSale = opts.invoiceKind === 'SATIS';
     const cariCode = isSale ? '120.01.001' : '320.01.001';
@@ -13504,6 +13509,14 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         if (m && !isSale && /^6/.test(String((m as any).accountCode || ''))) {
           m = null;
         }
+        // İÇERİK-HESAP UYUMSUZ (lastik→nakliye geliri, kullanıcı bulgusu 2026-08-11): AI faturayı işlendiği
+        //   hesapla UYUMSUZ bulup matrahı boşaltmayı işaretlediyse (ocrData.hesapUyumsuz), ÖĞRENİLMİŞ
+        //   (kullanıcı/hafıza) kod YOKSA hiçbir OTOMATİK kaynağı (aiMatrahAcc / oran-leaf / saleMatrahDefault)
+        //   UYGULAMA → matrah BOŞ kalır (müşavir doğru hesabı seçer). Eski guard yalnız VARSAYILAN'ı
+        //   engelliyordu; read AI'ın matrahHesapKodu=600'ü aiMatrahAcc olarak yeniden dolduruyordu →
+        //   yorum "otomatik hesap atanmadı" derken tabloda hesap DOLU kalıyordu. Kullanıcı seçimi HAFIZA/
+        //   KULLANICI kaynaklı öğrenildiği için 'm' dolu gelir ve KORUNUR (bu guard onu etkilemez).
+        if (!m && (doc.ocrData as any)?.hesapUyumsuz === true) { matrahCache.set(rate, null); return null; }
         // ③ AI doğrudan seçim (öğrenilmiş kod YOKSA): AI'ın okuma anında plandan seçtiği matrah
         //   hesabı. Çok-oranlı faturada AI grubunun bu orana ait varyantı (153.01.001 %1 / .003 %20)
         //   varsa onu, yoksa AI'ın seçtiği kodu. Mekanik kategori/varsayılandan ÖNCE gelir.
