@@ -5825,6 +5825,20 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     } catch {
       // kolonlar yoksa atla
     }
+    // STALE AKTAR BAYRAĞI TEMİZLE (kullanıcı bulgusu 2026-08-11): entegratör "Aktar" belgeye
+    //   ocrData.validationStatus='INCOMPLETE' (+ matchDeferred) koyar (eşleşmemiş işareti). AI-oku/rematch
+    //   tutar+hesabı atayınca TOP-LEVEL status OK olur ama ocrData'daki BAYAT bayrak kalıp listede
+    //   yanlışlıkla "Tutar okunamadı" gösteriyordu (tutar aslında dolu). Belge artık INCOMPLETE değilse
+    //   bu bayat bayrakları ocrData'dan sil (yalnız 1 kez; sonra koşul tutmaz). Tüm mükellefler için.
+    if (validation.status !== 'INCOMPLETE'
+        && ((ocrData as any)?.validationStatus === 'INCOMPLETE' || (ocrData as any)?.matchDeferred)) {
+      const cleaned: any = { ...ocrData };
+      delete cleaned.validationStatus;
+      delete cleaned.matchDeferred;
+      await (this.prisma as any).invoiceAccountingDocument
+        .update({ where: { id }, data: { ocrData: cleaned } })
+        .catch(() => {});
+    }
     return validation;
   }
 
