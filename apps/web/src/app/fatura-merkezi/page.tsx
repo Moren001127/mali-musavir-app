@@ -5706,16 +5706,18 @@ const CSS = `
 /* KRITIK (DOM incelemesi): fispane overflow HIDDEN idi -> icerik kisa ekranda KIRPILIP kayboluyordu
    (CARI TOPLAM). overflow-y:auto -> kirpma yerine KAYDIRMA; hicbir sey kaybolmaz. + icerik bir tik kisaltildi. */
 #fm-root .screen-muhasebe .muhmain .fispane{overflow-y:auto}
-#fm-root .screen-muhasebe .muhmain .fgrps{gap:9px}
-#fm-root .screen-muhasebe .muhmain .fgrp .fgh{padding:6px 13px 4px}
+#fm-root .screen-muhasebe .muhmain .fgrps{gap:8px}
+#fm-root .screen-muhasebe .muhmain .fgrp .fgh{padding:5px 13px 4px}
 #fm-root .screen-muhasebe .muhmain .fgrp .frow{padding:5px 13px;gap:10px}
-#fm-root .screen-muhasebe .muhmain .fgrp .fgt{padding:4px 13px}
-#fm-root .screen-muhasebe .muhmain .fgrp .frowadd{padding:3px 13px}
-#fm-root .screen-muhasebe .muhmain .docmeta-bottom{margin:9px 0 0;padding:6px 7px;gap:5px 8px}
+#fm-root .screen-muhasebe .muhmain .fgrp .fgt{padding:3px 13px}
+#fm-root .screen-muhasebe .muhmain .fgrp .frowadd{padding:2px 13px}
+/* footer (docmeta/Denge/butonlar) SIKI → sections'in aktığı .twrap'a yer aç → son bölümün TOPLAM'ı tam sığsın */
+#fm-root .screen-muhasebe .muhmain .docmeta-bottom{margin:6px 0 0;padding:4px 7px;gap:3px 8px}
 #fm-root .screen-muhasebe .muhmain .docmeta-bottom .dm{gap:1px}
-#fm-root .screen-muhasebe .muhmain .docmeta-bottom .dmi,#fm-root .screen-muhasebe .muhmain .docmeta-bottom .psel .pselfield{height:26px}
-#fm-root .screen-muhasebe .muhmain .balance{min-height:0;margin:8px 0 0;padding:6px 11px}
-#fm-root .screen-muhasebe .muhmain .wactions{margin-top:8px}
+#fm-root .screen-muhasebe .muhmain .docmeta-bottom .dml{font-size:9px}
+#fm-root .screen-muhasebe .muhmain .docmeta-bottom .dmi,#fm-root .screen-muhasebe .muhmain .docmeta-bottom .psel .pselfield{height:24px}
+#fm-root .screen-muhasebe .muhmain .balance{min-height:0;margin:6px 0 0;padding:5px 11px}
+#fm-root .screen-muhasebe .muhmain .wactions{margin-top:6px}
 /* ── DAR EKRAN (<1100px) — kullanıcı bulgusu: CARİ altındaki TOPLAM görünmüyordu. Sebep: panel dar ekranda
    da İÇ KAYDIRMA (height:100%/overflow:auto) + YAPIŞKAN footer → son bölümün toplamı footer'ın altında
    kırpılıyordu. Dar ekranda panel DOĞAL AKAR (iç kaydırma yok, footer/başlık yapışmaz) → hiçbir şey kırpılmaz,
