@@ -12049,9 +12049,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         : 'Aşağıda bir Türk e-Fatura/e-Arşiv belgesinin HTML/metin içeriği var. İçindeki bilgileri oku.',
       `⚡⚡ KRİTİK YÖN — BU FATURA MÜKELLEF AÇISINDAN: ${yonBilgi}. Tüm yorumu, kategoriyi ve sınıflandırmayı MÜKELLEFİN BU YÖNÜNE göre yap. ⛔ Belgenin üstünde "Fatura Tipi: SATIŞ", "Senaryo: ... SATIŞ" gibi ibareler görebilirsin — bu NORMALDİR ve SATICININ bakışıdır (her satıcı kendi açısından "satış" faturası keser). Bu ibare mükellefin yönünü ASLA değiştirmez. ${yonBilgi.startsWith('ALIŞ') ? 'Mükellef burada ALICIDIR — mal/hizmeti SATIN ALIYOR, ÖDÜYOR; yorumu "almış/gideridir/stoğuna girmiştir" diliyle yaz, ASLA "sattı/geliri/hasılatı" deme.' : 'Mükellef burada SATICIDIR — gelir/hasılat söz konusudur.'}`,
       'YALNIZCA şu JSON\'u döndür — kod bloğu, açıklama, başka metin YOK:',
-      `{"belgeNo":"<fatura/fiş no ya da null>","tarih":"<GG.AA.YYYY ya da null>","belgeTuru":"<e-arsiv|e-fatura|fis|diger>","saticiAd":"<satıcı ünvanı ya da null>","saticiVkn":"<satıcının VKN/TCKN ya da null>","aliciAd":"<alıcı ünvanı ya da null>","aliciVkn":"<alıcının VKN/TCKN ya da null>","toplam":<genel toplam KDV dahil sayı ya da null>,"kategori":"<asagidaki tek deger>","giderTuru":"<ALIŞ ise faturadaki ana mal/hizmetin kısa adı — aşağıdaki giderTuru kuralına göre; SATIŞ ya da net değilse boş>"${isIsletmeMukellef ? ',"isletmeKayitTuru":"<aşağıdaki İŞLETME listesinden TAM kayıt türü adı; net değilse boş>","isletmeAltTuru":"<o türün listesinden TAM alt adı; net değilse boş>","isletmeNeden":"<tek cümle gerekçe>"' : ''},"muhasebeNeden":"<1 cümle Türkçe muhasebe gerekçesi — aşağıdaki kurala göre>"${planAdaylar ? ',"matrahHesapKodu":"<aşağıdaki HESAP PLANI listesinden matrah/gider için EN UYGUN TAM kod; emin değilsen boş>"' : ''},"kalemler":[{"ad":"<mal/hizmet kalem adı>","tutar":<o kalemin KDV hariç tutarı sayı>,"oran":<o kalemin KDV oranı sayı>${(planAdaylar && this.kalemBazliHesapOn) ? ',"hesap":"<bu kalemin HESAP PLANINDAN kendi tam kodu; niteliğine uyan yoksa boş>"' : ''}}],"kdv":[{"oran":<KDV yüzdesi sayı>,"matrah":<KDV hariç tutar sayı>,"kdv":<KDV tutarı sayı>}]}`,
+      `{"belgeNo":"<fatura/fiş no ya da null>","tarih":"<GG.AA.YYYY ya da null>","belgeTuru":"<e-arsiv|e-fatura|fis|diger>","saticiAd":"<satıcı ünvanı ya da null>","saticiVkn":"<satıcının VKN/TCKN ya da null>","aliciAd":"<alıcı ünvanı ya da null>","aliciVkn":"<alıcının VKN/TCKN ya da null>","toplam":<genel toplam KDV dahil sayı ya da null>,"kategori":"<asagidaki tek deger>","giderTuru":"<ALIŞ ise faturadaki ana mal/hizmetin kısa adı — aşağıdaki giderTuru kuralına göre; SATIŞ ya da net değilse boş>"${isIsletmeMukellef ? ',"isletmeKayitTuru":"<aşağıdaki İŞLETME listesinden TAM kayıt türü adı; net değilse boş>","isletmeAltTuru":"<o türün listesinden TAM alt adı; net değilse boş>","isletmeNeden":"<tek cümle gerekçe>"' : ''},"muhasebeNeden":"<1 cümle Türkçe muhasebe gerekçesi — aşağıdaki kurala göre>"${planAdaylar ? ',"matrahHesapKodu":"<aşağıdaki HESAP PLANI listesinden matrah/gider için EN UYGUN TAM kod; emin değilsen boş>"' : ''},"kalemler":[{"ad":"<mal/hizmet kalem adı>","tutar":<o kalemin KDV hariç tutarı sayı>,"oran":<o kalemin KDV oranı sayı>${(planAdaylar && this.kalemBazliHesapFor(d.taxpayerId)) ? ',"hesap":"<bu kalemin HESAP PLANINDAN kendi tam kodu; niteliğine uyan yoksa boş>"' : ''}}],"kdv":[{"oran":<KDV yüzdesi sayı>,"matrah":<KDV hariç tutar sayı>,"kdv":<KDV tutarı sayı>}]}`,
       'kalemler: faturadaki mal/hizmet satırlarını listele (kalem adı + KDV hariç tutarı + KDV oranı). ⚠️ ÇOK KALEMLİYSE (>15 satır) MUTLAKA KDV oranına ve benzer ürün grubuna göre BİRLEŞTİR — en fazla 15 nesne döndür (ör. "%1 gıda ürünleri", "%20 temizlik/sarf"). Az kalemliyse her satır ayrı. Bu döküm BİLGİ amaçlıdır (muhasebe satırlarını değiştirmez). Okunamazsa boş dizi [].',
-      (planAdaylar && this.kalemBazliHesapOn) ? 'KALEM-BAZLI HESAP: Plan verildiğinde HER kaleme, o kalemin NİTELİĞİNE + KDV ORANINA göre yukarıdaki HESAP PLANINDAN kendi "hesap" kodunu ata (matrahHesapKodu ile AYNI mantık, ama kalem kalem). AYNI nitelikteki kalemler aynı hesabı alır; FARKLI nitelikteki kalemleri AYRI hesaba ver (ör. nakliyecinin sattığı LASTİK ≠ verdiği NAKLİYE HİZMETİ; market faturasında GIDA ≠ TEMİZLİK). Kalemleri birleştirirken (>15) SADECE aynı nitelik+oran birleşsin — farklı hesaba gidecek kalemleri birleştirme. Niteliğe uyan hesap planda yoksa o kalemin "hesap"ını BOŞ bırak.' : '',
+      (planAdaylar && this.kalemBazliHesapFor(d.taxpayerId)) ? 'KALEM-BAZLI HESAP: Plan verildiğinde HER kaleme, o kalemin NİTELİĞİNE + KDV ORANINA göre yukarıdaki HESAP PLANINDAN kendi "hesap" kodunu ata (matrahHesapKodu ile AYNI mantık, ama kalem kalem). AYNI nitelikteki kalemler aynı hesabı alır; FARKLI nitelikteki kalemleri AYRI hesaba ver (ör. nakliyecinin sattığı LASTİK ≠ verdiği NAKLİYE HİZMETİ; market faturasında GIDA ≠ TEMİZLİK). Kalemleri birleştirirken (>15) SADECE aynı nitelik+oran birleşsin — farklı hesaba gidecek kalemleri birleştirme. Niteliğe uyan hesap planda yoksa o kalemin "hesap"ını BOŞ bırak.' : '',
       'belgeTuru: belgenin üstündeki ibareye göre → "e-arsiv" (e-Arşiv Fatura), "e-fatura" (e-Fatura), "e-smm" (Serbest Meslek Makbuzu / SMM), "fis" (yazarkasa/ÖKC fişi), yoksa "diger".',
       'JSON\'a "iade": true/false ekle — belge bir İADE FATURASI / İPTAL / CreditNote ise true (üstte "İADE", "İADE FATURASI" yazar ya da senaryo İADE/IPTAL\'dir), normal satış/alış faturasıysa false.',
       'JSON\'a "tevkifat": true/false ekle — belgede KDV TEVKİFATI varsa true (Fatura Tipi: TEVKIFAT, ya da "KDV TEVKİFAT (%..)=... TL" satırı/Diğer Vergiler\'de tevkifat), yoksa false.',
@@ -12371,7 +12371,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // KALEM-BAZLI (Faz 1 wiring): okuma AI'ı kalem başına 'hesap' ürettiyse (bayrak açık) matrahSplit türet.
     //   linesFromAmounts, ≥2 farklı hesap + her oran matrahına denk gelirse matrahı HESAP bazında böler;
     //   aksi halde tek-hesaba düşer (güvenli). Bayrak kapalıyken kalem.hesap yok → matrahSplit boş → inert.
-    const matrahSplit = this.kalemBazliHesapOn && Array.isArray(parsed.kalemler)
+    const matrahSplit = this.kalemBazliHesapFor(d.taxpayerId) && Array.isArray(parsed.kalemler)
       ? parsed.kalemler
           .filter((k: any) => typeof k?.hesap === 'string' && k.hesap.trim() && planLeafSet.has(String(k.hesap).trim()) && (Number(k?.tutar) || 0) > 0)
           .map((k: any) => ({ hesap: String(k.hesap).trim(), rate: Number(k?.oran) || 0, base: Number(k?.tutar) || 0 }))
@@ -12556,9 +12556,18 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   }
   /** KALEM-BAZLI HESAP modu (varsayılan KAPALI). Açıkken okuma AI'ı her kaleme kendi hesabını üretir ve
    *  karışık faturalarda (≥2 farklı geçerli hesap) matrah kalem/hesap bazında bölünür. Kapalıyken TÜM
-   *  akış bugünkü tek-hesap davranışına düşer (canlı hiç etkilenmez). Pilot: Railway env KALEM_BAZLI_HESAP=1. */
+   *  akış bugünkü tek-hesap davranışına düşer (canlı hiç etkilenmez).
+   *  PİLOT (DAR): `KALEM_BAZLI_HESAP_TAXPAYERS=<id1>,<id2>` → SADECE bu mükelleflerde açık. (vision-okuma yolu).
+   *  GLOBAL (tüm mükellef): `KALEM_BAZLI_HESAP=1` → herkes. Önce mükellef-bazlı pilotla doğrula, sonra global. */
+  private kalemBazliHesapFor(taxpayerId?: string | null): boolean {
+    if (String(process.env.KALEM_BAZLI_HESAP || '').trim() === '1') return true; // global (tüm mükellef)
+    const allow = String(process.env.KALEM_BAZLI_HESAP_TAXPAYERS || '')
+      .split(/[\s,;]+/).map((s) => s.trim()).filter(Boolean);
+    return !!taxpayerId && allow.includes(String(taxpayerId));
+  }
+  /** taxpayerId'siz (classify/UBL yolu) → yalnız GLOBAL bayrak. Vision-okuma yolu mükellef-bazlı gate kullanır. */
   private get kalemBazliHesapOn(): boolean {
-    return String(process.env.KALEM_BAZLI_HESAP || '').trim() === '1';
+    return this.kalemBazliHesapFor();
   }
   private classifyJsonShape(planAdaylar?: string): string {
     const kalemHesap = (planAdaylar && this.kalemBazliHesapOn) ? ',"hesap":""' : '';
