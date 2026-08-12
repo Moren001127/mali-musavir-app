@@ -1784,7 +1784,7 @@ export default function KdvKontrolPage() {
                 </span>
               )}
             </h3>
-            <div className="rounded-2xl overflow-x-auto overflow-y-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
+            <div className="rounded-2xl overflow-auto max-h-[660px] [&_thead_th]:sticky [&_thead_th]:top-0 [&_thead_th]:z-10 [&_thead_th]:bg-[#15161b] [&_thead_th]:shadow-[inset_0_-1px_0_rgba(255,255,255,0.07)]" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
               <table className="w-full min-w-[1120px] table-fixed text-left">
                 <thead>
                   <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
