@@ -77,6 +77,27 @@ const FIELD_CLS = 'h-11 w-full rounded-[10px] border border-white/[0.1] bg-[#0d0
 const SELECT_CLS = `${FIELD_CLS} cursor-pointer`;
 const TEXTAREA_CLS = 'w-full resize-none rounded-[10px] border border-white/[0.1] bg-[#0d0e13] px-3.5 py-3 text-[13.5px] font-medium text-[#f5f5f4] outline-none transition-all duration-150 placeholder:text-white/25 shadow-[inset_0_1px_2px_rgba(0,0,0,0.3)] hover:border-white/[0.18] focus:border-[#4f86c9]/60 focus:bg-[#111319] focus:shadow-[0_0_0_3px_rgba(79,134,201,0.16),inset_0_1px_2px_rgba(0,0,0,0.2)]';
 
+// Telefon maskesi: rakamları 0(5XX) XXX XX XX biçiminde gösterir; sakla=temiz 10 hane
+function formatTrPhone(raw: string): string {
+  let d = String(raw || '').replace(/\D/g, '');
+  if (d.startsWith('90')) d = d.slice(2);
+  if (d.startsWith('0')) d = d.slice(1);
+  d = d.slice(0, 10);
+  if (!d) return '';
+  let out = '0(' + d.slice(0, 3);
+  if (d.length >= 3) out += ')';
+  if (d.length > 3) out += ' ' + d.slice(3, 6);
+  if (d.length > 6) out += ' ' + d.slice(6, 8);
+  if (d.length > 8) out += ' ' + d.slice(8, 10);
+  return out;
+}
+function cleanTrPhone(raw: string): string {
+  let d = String(raw || '').replace(/\D/g, '');
+  if (d.startsWith('90')) d = d.slice(2);
+  if (d.startsWith('0')) d = d.slice(1);
+  return d.slice(0, 10);
+}
+
 const TAXPAYER_TYPES = [
   { value: 'TUZEL_KISI', label: 'Tüzel Kişi', detail: 'Şirket veya kurum kaydı' },
   { value: 'GERCEK_KISI', label: 'Gerçek Kişi', detail: 'Şahıs işletmesi veya bireysel kayıt' },
@@ -241,34 +262,21 @@ const KISAYOL_GRUPLARI: KisayolGrup[] = [
     renk: STEEL,
     ikon: Landmark,
     items: [
-      { id: 'dijital_vd',     label: 'Dijital Vergi Dairesi',  url: 'https://dijital.gib.gov.tr',           renk: '#2f7ed8', kisaltma: 'VD',  logo: 'dijital.gib.gov.tr' },
-      { id: 'gib_ivd',        label: 'GİB İnteraktif V.D.',    url: IVD_URL,                                renk: '#c8102e', kisaltma: 'GİB', logo: 'ivd.gib.gov.tr' },
-      { id: 'ebeyanname',     label: 'E-Beyanname',            url: 'https://ebeyanname.gib.gov.tr',        renk: '#28a745', kisaltma: 'eB',  logo: 'gib.gov.tr' },
-      { id: 'edefter',        label: 'e-Defter',               url: 'https://uyg.edefter.gov.tr',           renk: '#7a52d0', kisaltma: 'eD',  logo: 'edefter.gov.tr' },
-      { id: 'earsiv',         label: 'E-Arşiv Portal',         url: EARSIV_URL,                             renk: '#e0603a', kisaltma: 'eA',  logo: 'earsivportal.efatura.gov.tr' },
-      { id: 'efatura',        label: 'E-Fatura Portal',        url: 'https://portal.efatura.gov.tr',        renk: '#e0603a', kisaltma: 'eF',  logo: 'efatura.gov.tr' },
-      { id: 'mersis',         label: 'Mersis',                 url: 'https://mersis.ticaret.gov.tr',        renk: '#2f7ed8', kisaltma: 'M',   logo: 'mersis.ticaret.gov.tr' },
-      { id: 'tobb',           label: 'TOBB Bilgi Merkezi',     url: 'https://bilgimerkezi.tobb.org.tr',     renk: '#fd7e14', kisaltma: 'TB',  logo: 'tobb.org.tr' },
-      { id: 'sgk_ebildirge',  label: 'SGK E-Bildirge',         url: SGK_URL,                                renk: '#1d70b8', kisaltma: 'SGK', logo: 'sgk.gov.tr' },
-      { id: 'sgk_ebildirge2', label: 'SGK E-Bildirge V2',      url: SGK_URL,                                renk: '#1d70b8', kisaltma: 'V2',  logo: 'sgk.gov.tr' },
-      { id: 'sgk_isveren',    label: 'SGK İşveren Sistemi',    url: SGK_URL,                                renk: '#1d70b8', kisaltma: 'İS',  logo: 'sgk.gov.tr' },
-      { id: 'sgk_erapor',     label: 'SGK E-Rapor',            url: 'https://uyg.sgk.gov.tr/eRaporIsveren', renk: '#1d70b8', kisaltma: 'ER',  logo: 'sgk.gov.tr' },
-      { id: 'sgk_isegiris',   label: 'SGK İşe Giriş/Çıkış',    url: 'https://uyg.sgk.gov.tr/SgkIsgs',       renk: '#1d70b8', kisaltma: 'İG',  logo: 'sgk.gov.tr' },
-      { id: 'sgk_ebildirim',  label: 'SGK E-Bildirim',         url: 'https://uyg.sgk.gov.tr',               renk: '#1d70b8', kisaltma: 'EB',  logo: 'sgk.gov.tr' },
-      { id: 'edevlet',        label: 'e-Devlet (Türkiye.gov)', url: 'https://www.turkiye.gov.tr',           renk: '#c8102e', kisaltma: 'eD',  logo: 'turkiye.gov.tr' },
-    ],
-  },
-  {
-    id: 'ticaret',
-    baslik: 'Ticaret & Firma',
-    aciklama: 'Sicil, oda ve firma bilgileri',
-    renk: GOLD,
-    ikon: Building2,
-    items: [
-      { id: 't_sicilgazete', label: 'Ticaret Sicil Gazetesi', url: 'https://www.ticaretsicil.gov.tr',  renk: '#c9a94e', kisaltma: 'SG', logo: 'ticaretsicil.gov.tr' },
-      { id: 't_odaborc',     label: 'Ticaret Odası Borç',     url: 'https://bilgimerkezi.tobb.org.tr', renk: '#c9a94e', kisaltma: 'OB', logo: 'tobb.org.tr' },
-      { id: 't_mersisfirma', label: 'Mersis Firma Bilgileri', url: 'https://mersis.ticaret.gov.tr',    renk: '#c9a94e', kisaltma: 'MF', logo: 'mersis.ticaret.gov.tr' },
-      { id: 't_aylikodeme',  label: 'Aylık Ödeme Listesi',    url: IVD_URL,                            renk: '#c9a94e', kisaltma: 'AÖ' },
+      { id: 'dijital_vd',     label: 'Dijital Vergi Dairesi',  url: 'https://dijital.gib.gov.tr',           renk: '#2f7ed8', kisaltma: 'VD',  logo: '/portal-logos/dvdLogo.png' },
+      { id: 'gib_ivd',        label: 'GİB İnteraktif V.D.',    url: IVD_URL,                                renk: '#c8102e', kisaltma: 'GİB', logo: '/portal-logos/ivdlogo.png' },
+      { id: 'ebeyanname',     label: 'E-Beyanname',            url: 'https://ebeyanname.gib.gov.tr',        renk: '#28a745', kisaltma: 'eB',  logo: '/portal-logos/ebeyanlogo.jpg' },
+      { id: 'edefter',        label: 'e-Defter',               url: 'https://uyg.edefter.gov.tr',           renk: '#7a52d0', kisaltma: 'eD',  logo: '/portal-logos/edefterlogo.jpg' },
+      { id: 'earsiv',         label: 'E-Arşiv Portal',         url: EARSIV_URL,                             renk: '#e0603a', kisaltma: 'eA',  logo: '/portal-logos/earsivportal.png' },
+      { id: 'efatura',        label: 'E-Fatura Portal',        url: 'https://portal.efatura.gov.tr',        renk: '#e0603a', kisaltma: 'eF' },
+      { id: 'mersis',         label: 'Mersis',                 url: 'https://mersis.ticaret.gov.tr',        renk: '#2f7ed8', kisaltma: 'M' },
+      { id: 'tobb',           label: 'TOBB Bilgi Merkezi',     url: 'https://bilgimerkezi.tobb.org.tr',     renk: '#fd7e14', kisaltma: 'TB',  logo: '/portal-logos/tobblogo.png' },
+      { id: 'sgk_ebildirge',  label: 'SGK E-Bildirge',         url: SGK_URL,                                renk: '#1d70b8', kisaltma: 'SGK', logo: '/portal-logos/ebildirgeV1logo.png' },
+      { id: 'sgk_ebildirge2', label: 'SGK E-Bildirge V2',      url: SGK_URL,                                renk: '#1d70b8', kisaltma: 'V2',  logo: '/portal-logos/ebildirgeV2logo.png' },
+      { id: 'sgk_isveren',    label: 'SGK İşveren Sistemi',    url: SGK_URL,                                renk: '#1d70b8', kisaltma: 'İS',  logo: '/portal-logos/isverenlogo.png' },
+      { id: 'sgk_erapor',     label: 'SGK E-Rapor',            url: 'https://uyg.sgk.gov.tr/eRaporIsveren', renk: '#1d70b8', kisaltma: 'ER',  logo: '/portal-logos/evizitelogo.png' },
+      { id: 'sgk_isegiris',   label: 'SGK İşe Giriş/Çıkış',    url: 'https://uyg.sgk.gov.tr/SgkIsgs',       renk: '#1d70b8', kisaltma: 'İG',  logo: '/portal-logos/isgiriscikislogo.png' },
+      { id: 'sgk_ebildirim',  label: 'SGK E-Bildirim',         url: 'https://uyg.sgk.gov.tr',               renk: '#1d70b8', kisaltma: 'EB',  logo: '/portal-logos/ebildirimlogo.png' },
+      { id: 'edevlet',        label: 'e-Devlet (Türkiye.gov)', url: 'https://www.turkiye.gov.tr',           renk: '#c8102e', kisaltma: 'eD',  logo: '/portal-logos/Edevlet.png' },
     ],
   },
   {
@@ -1014,15 +1022,16 @@ function BilgilerTab({
                   <InputBase
                     key={index}
                     type="tel"
-                    value={phone}
+                    inputMode="numeric"
+                    value={formatTrPhone(phone)}
                     onChange={(e) =>
                       setForm((prev) => {
                         const phones = [...prev.phones];
-                        phones[index] = e.target.value;
+                        phones[index] = cleanTrPhone(e.target.value);
                         return { ...prev, phones };
                       })
                     }
-                    placeholder={index === 0 ? 'Ana telefon' : `Telefon ${index + 1}`}
+                    placeholder={index === 0 ? '0(5__) ___ __ __' : `Telefon ${index + 1}`}
                   />
                 ))}
               </div>
@@ -2881,12 +2890,12 @@ function KisayolLogo({ k }: { k: Kisayol }) {
   const [imgOk, setImgOk] = useState(!!k.logo);
   if (k.logo && imgOk) {
     return (
-      <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-[9px] bg-white shadow-[0_1px_5px_rgba(0,0,0,0.35),inset_0_0_0_1px_rgba(0,0,0,0.06)]">
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-[9px] bg-white p-[3px] shadow-[0_1px_5px_rgba(0,0,0,0.35),inset_0_0_0_1px_rgba(0,0,0,0.06)]">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={`https://www.google.com/s2/favicons?domain=${k.logo}&sz=64`}
+          src={k.logo}
           alt=""
-          className="h-[22px] w-[22px] object-contain"
+          className="h-full w-full object-contain"
           onError={() => setImgOk(false)}
         />
       </span>
