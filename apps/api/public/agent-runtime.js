@@ -12,7 +12,12 @@
   // v1.42.2 (2026-06-16): Ajan kendini yenilerken (delete __morenAgent) eski async
   // döngü "Cannot read 'stopRequested' of undefined/null" ile ÇÖKÜYORDU → yetim
   // döngü artık nesne yoksa güvenle durur (stopRequested kontrollerine null-guard).
-  const AGENT_VERSION = '1.47.9';
+  // v1.47.10 (2026-08-13): e-Belge (e-Arşiv/e-Fatura) menü açma — metin-tabanlı
+  // navigasyon (kök menü → Akıllı Entegrasyon hover → hedefi metinle aç) artık
+  // sabit II1a ID'lerinden ÖNCE çalışıyor. Sabit ID'ler Luca menüsü değişince
+  // kayıp 8'er sn boşa bekletiyordu; metin sabit kaldığı için hem HIZLI hem
+  // GÜVENİLİR bulur. Başarısızsa eski keşif/ID zinciri aynen yedek kalır.
+  const AGENT_VERSION = '1.47.10';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -4018,6 +4023,17 @@
       // Sabit II1a kodları Luca menüsü değişince (yeni Damga Vergisi girişi) KAYIYOR;
       // yanlış ekran (damga) açılıp her denemede 8sn beklendiği için iş çok uzuyordu.
       // Keşif hedefi bulursa doğrudan onu açar; sabit kod yalnız keşif boş kalırsa denenir.
+      // v1.47 (HIZ + GÜVENİLİRLİK): sabit II1a ID'lerinden ÖNCE menüyü METİNLE aç.
+      // Luca menü ID'leri (apy1000m24i11I gibi) yeni menü girişi eklenince KAYIYOR;
+      // metin-tabanlı navigasyon (kök menü → Akıllı Entegrasyon'u hover'da tut →
+      // hedefi metinle aç) Luca değişse de bulur VE stale ID'lerle 8'er sn boşa
+      // beklemez → hem hızlı hem doğru. Başarısızsa aşağıdaki keşif/ID zinciri yedek.
+      if (!__navSkip && !basariliAcildi) {
+        try { await openEbelgeByTextNav(); } catch (e) {
+          await log(`ℹ Erken metin-navigasyon geçildi: ${String(e?.message || e).slice(0, 90)}`);
+        }
+      }
+
       let ii1aTreeNotReady = false;
       if (!__navSkip && !basariliAcildi) {
         basariliAcildi = await tryOpenByDiscoveredMenuTargets('yaziya-gore birincil');
@@ -4081,7 +4097,8 @@
       if (!__navSkip && !basariliAcildi) {
         basariliAcildi = await tryOpenByDiscoveredMenuTargets('alternatif kodlar sonrasi');
       }
-      if (!basariliAcildi) {
+      async function openEbelgeByTextNav() {
+        if (basariliAcildi || __navSkip) return;
         // Fallback: menüleri sırayla açıp elementi click et.
         // Bilanço esası → "Muhasebe", İşletme Defteri → "İşletme Defteri"
         // "Muhasebe" yazısı sayfada başka yerlerde de var olabileceğinden tıklandı doğrulaması için
