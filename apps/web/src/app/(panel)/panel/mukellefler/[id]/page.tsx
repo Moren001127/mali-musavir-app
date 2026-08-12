@@ -73,9 +73,9 @@ const GREEN = '#5fcf8e';
 const AMBER = '#f0b755';
 const RED = '#ef6b6b';
 
-const FIELD_CLS = 'h-11 w-full rounded-[9px] border border-white/10 bg-[#0b0c10] px-3.5 text-[13.5px] font-medium text-[#f5f5f4] outline-none transition placeholder:text-white/28 focus:border-[#d4b876]/55 focus:bg-[#0e1014] focus:shadow-[0_0_0_3px_rgba(212,184,118,0.13)]';
+const FIELD_CLS = 'h-11 w-full rounded-[10px] border border-white/[0.1] bg-[#0d0e13] px-3.5 text-[13.5px] font-medium text-[#f5f5f4] outline-none transition-all duration-150 placeholder:text-white/25 shadow-[inset_0_1px_2px_rgba(0,0,0,0.3)] hover:border-white/[0.18] hover:bg-[#0f1015] focus:border-[#d4b876]/60 focus:bg-[#111319] focus:shadow-[0_0_0_3px_rgba(212,184,118,0.16),inset_0_1px_2px_rgba(0,0,0,0.2)]';
 const SELECT_CLS = `${FIELD_CLS} cursor-pointer`;
-const TEXTAREA_CLS = 'w-full resize-none rounded-[9px] border border-white/10 bg-[#0b0c10] px-3.5 py-3 text-[13.5px] font-medium text-[#f5f5f4] outline-none transition placeholder:text-white/28 focus:border-[#4f86c9]/55 focus:bg-[#0e1014] focus:shadow-[0_0_0_3px_rgba(79,134,201,0.14)]';
+const TEXTAREA_CLS = 'w-full resize-none rounded-[10px] border border-white/[0.1] bg-[#0d0e13] px-3.5 py-3 text-[13.5px] font-medium text-[#f5f5f4] outline-none transition-all duration-150 placeholder:text-white/25 shadow-[inset_0_1px_2px_rgba(0,0,0,0.3)] hover:border-white/[0.18] focus:border-[#4f86c9]/60 focus:bg-[#111319] focus:shadow-[0_0_0_3px_rgba(79,134,201,0.16),inset_0_1px_2px_rgba(0,0,0,0.2)]';
 
 const TAXPAYER_TYPES = [
   { value: 'TUZEL_KISI', label: 'Tüzel Kişi', detail: 'Şirket veya kurum kaydı' },
@@ -656,6 +656,8 @@ export default function MukellefDetayPage() {
           </div>
         )}
       </header>
+
+      {!isNew && <KisayolIcerik vkn={form.taxNumber} onKisayol={handleKisayolClick} />}
 
       <section className="overflow-hidden rounded-[8px] border" style={{ borderColor: LINE, background: CARD }}>
         <nav className="grid grid-cols-2 border-b md:grid-cols-4 xl:grid-cols-8" style={{ borderColor: HAIR, background: 'linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.012))' }}>
@@ -2954,7 +2956,7 @@ function PlaceholderTab({
 function Field({ label, required, className = '', children }: { label: string; required?: boolean; className?: string; children: React.ReactNode }) {
   return (
     <label className={`block ${className}`}>
-      <span className="mb-1.5 block text-[11.5px] font-black tracking-wide" style={{ color: 'rgba(245,245,244,0.66)' }}>
+      <span className="mb-2 block text-[10.5px] font-bold uppercase tracking-[0.07em]" style={{ color: 'rgba(245,245,244,0.52)' }}>
         {label}{required ? <span style={{ color: AMBER }}> *</span> : ''}
       </span>
       {children}
