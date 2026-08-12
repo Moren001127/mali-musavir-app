@@ -17,7 +17,12 @@
   // sabit II1a ID'lerinden ÖNCE çalışıyor. Sabit ID'ler Luca menüsü değişince
   // kayıp 8'er sn boşa bekletiyordu; metin sabit kaldığı için hem HIZLI hem
   // GÜVENİLİR bulur. Başarısızsa eski keşif/ID zinciri aynen yedek kalır.
-  const AGENT_VERSION = '1.47.10';
+  // v1.47.11 (2026-08-13): e-Arşiv dayanıklılık+hız paketi (denetim bulguları):
+  // finally-temizlik (hata yolunda kanca/interval sızıntısı bitti), bayat "sona erdi"
+  // koruması (Sorgu 2 sessiz eksik fatura), mükellef-tip tespitine poll (firma değişimi
+  // yarışı), yanlış menü-cache kendini-onarır, iptal ZIP beklemesini keser,
+  // cache-menü 3sn ölü uyku→0.5sn, popup uykusu 700→200ms.
+  const AGENT_VERSION = '1.47.11';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -3571,7 +3576,16 @@
         },
       };
 
-      const mukellefTipi = detectMukellefTipi();
+      // v1.47.11: firma değişimi sonrası menü çerçevesi geç yüklenirse tespit null
+      // dönüp işi patlatıyordu (zamanlama yarışı — "ara sıra çalışıyor ara sıra hata").
+      // Kısa poll: ilk çağrı doluysa döngüye hiç girilmez, ek gecikme yok.
+      let mukellefTipi = detectMukellefTipi();
+      for (let i = 0; i < 10 && !mukellefTipi; i++) {
+        await throwIfCancelled();
+        await sleep(400);
+        try { cacheVisibleLucaMenuIds(); } catch {}
+        mukellefTipi = detectMukellefTipi();
+      }
       if (!mukellefTipi) {
         throw new Error(`E-belge icin defter turu tespit edilemedi; guvenlik geregi Bilanço/İşletme varsayimi yapilmadi. Mukellef kartinda defter turunu kontrol edin. Job=${job.tip}`);
       }
@@ -3979,8 +3993,15 @@
         const cachedRows = cacheVisibleLucaMenuIds();
         if (cachedRows > 0) await log(`🧠 Luca menü ID cache güncellendi (${cachedRows} satır)`);
       } catch {}
-      if (!__navSkip && await openCachedLucaMenu(menuLabel, log, 3000, { expectedCode: ii1aId })) {
+      // v1.47.11: settle 3000→500 (waitForEbelgePage zaten doğrulamalı bekliyor; 3sn ölü uykuydu)
+      if (!__navSkip && await openCachedLucaMenu(menuLabel, log, 500, { expectedCode: ii1aId })) {
         basariliAcildi = await waitForEbelgePage(10000);
+        if (!basariliAcildi) {
+          // Kendini-onarma: az önce YANLIŞ olduğu kanıtlanan cache kodunu sil ki
+          // her çalışmada 10sn israf eden kalıcı-yanlış ID kalmasın.
+          try { deleteCachedLucaMenuHit(menuLabel); cacheVisibleLucaMenuIds(); } catch {}
+          await log('ℹ Cache menü kodu doğru ekranı açmadı — silindi, canlı menüden yeniden öğrenilecek');
+        }
       }
       if (!__navSkip && !basariliAcildi && await tryOpenByQuickAccess('ilk deneme')) {
         basariliAcildi = true;
@@ -4739,6 +4760,32 @@
     const getAgentActivityCount = () => window.__morenLucaActivity.count;
     const getAgentLastActivityTs = () => window.__morenLucaActivity.lastTs;
 
+    // v1.47.11: kanca/interval/köprü temizliği TEK fonksiyonda — try/finally ile
+    // HATA/İPTAL/NO_FATURA yollarında da garanti çalışır. Eskiden yalnız başarılı
+    // yolda temizleniyordu; her hatalı işte sekmeye sarmalayıcı+interval birikip
+    // "zamanla bozuluyor, sekme yenileyince düzeliyor" etkisi yaratıyordu.
+    let __earsivCleanupDone = false;
+    const cleanupEarsivHooks = () => {
+      if (__earsivCleanupDone) return;
+      __earsivCleanupDone = true;
+      try { clearInterval(activityHookInterval); } catch {}
+      try { clearInterval(agentActHookInterval); } catch {}
+      for (const h of hookedFrames) {
+        try {
+          if (h.origFetch) h.win.fetch = h.origFetch;
+          if (h.origXHROpen) h.win.XMLHttpRequest.prototype.open = h.origXHROpen;
+          if (h.origXHRSend) h.win.XMLHttpRequest.prototype.send = h.origXHRSend;
+          if (h.origWindowOpen) h.win.open = h.origWindowOpen;
+          if (h.origCreateElement) h.win.document.createElement = h.origCreateElement;
+          if (h.origFormSubmit) h.win.HTMLFormElement.prototype.submit = h.origFormSubmit;
+        } catch {}
+      }
+      try { window.removeEventListener('message', onBridgeMessage); } catch (e) {}
+      try { window.removeEventListener('moren-luca-file', onLucaFile); } catch (e) {}
+      try { postExpectingZip(false); } catch {}
+    };
+    try {
+
     // birSorgu done sinyali sonrası: XHR aktivitesi N saniye boyunca durana kadar bekle.
     // Bu sayede "fatura kaydetme işlemi sona erdi" mesajı çıktı ama hâlâ son fatura_kaydet'ler
     // yoldaysa onları da bekleriz; sonra Sorgu 2'ye veya download'a geçeriz.
@@ -5253,7 +5300,10 @@
             }
           } catch {}
         }
-        if (foundDoneSignal) { queryDone = true; break; }
+        // v1.47.11: BAYAT yazı koruması — Sorgu 1'in "sona erdi" yazısı popup'ta kalmışsa
+        // Sorgu 2 daha GİB'e gitmeden "bitti" sanılıyordu (sessiz eksik fatura).
+        // Metin-bazlı bitiş ancak sorgu aktivitesi görüldüyse ya da 4sn geçtiyse kabul edilir.
+        if (foundDoneSignal && (sawQueryActivity || Date.now() - pollStart > 4000)) { queryDone = true; break; }
         // Her 5sn'de bir progress log'la (kullanıcı boş ekran görmesin)
         const now = Date.now();
         // AKTIVİTE-SESSİZLİK ile erken çık: kayıt XHR'ları SILENCE_DONE_MS'dir durduysa saves bitti;
@@ -5597,8 +5647,8 @@
       throw new Error('zip-window aksiyonu bulunamadı');
     }
 
-    // Popup açılma animasyonunu bekle (hız: 1500→700ms; indir butonu zaten retry'lı aranır)
-    await sleep(700);
+    // Popup açılma animasyonunu bekle (hız: 700→200ms; popup+indir butonu zaten retry'lı aranır)
+    await sleep(200);
 
     // location.href / location.assign / location.replace hook (Luca direct nav ile download yapıyorsa)
     try {
@@ -5879,39 +5929,23 @@
           popupClosed = true;
         }
       }
+      await throwIfCancelled(); // v1.47.11: iptal edilen iş sekmeyi 10 dk meşgul etmesin
       await sleep(400);
     }
-    try { clearInterval(activityHookInterval); } catch {}
-    try { clearInterval(agentActHookInterval); } catch {}
-
-    // ZIP geldiyse ama popup hala açıksa kapat
+    // ZIP geldiyse ama popup hala açıksa kapat (temizlik artık finally/cleanupEarsivHooks'ta)
     if (yakalanmisZip && !popupClosed) {
       if (closePopupWithX()) {
         await log('✓ Popup X ile kapatıldı (ZIP yakalandıktan sonra)');
       }
     }
 
-    // Hook'ları geri al (tüm frame'lerde)
-    for (const h of hookedFrames) {
-      try {
-        if (h.origFetch) h.win.fetch = h.origFetch;
-        if (h.origXHROpen) h.win.XMLHttpRequest.prototype.open = h.origXHROpen;
-        if (h.origXHRSend) h.win.XMLHttpRequest.prototype.send = h.origXHRSend;
-        if (h.origWindowOpen) h.win.open = h.origWindowOpen;
-        if (h.origCreateElement) h.win.document.createElement = h.origCreateElement;
-        if (h.origFormSubmit) h.win.HTMLFormElement.prototype.submit = h.origFormSubmit;
-      } catch {}
-    }
-
-    // Bridge listener'larını çıkar + expecting=false sinyali
-    try { window.removeEventListener('message', onBridgeMessage); } catch (e) {}
-    try { window.removeEventListener('moren-luca-file', onLucaFile); } catch (e) {}
-    postExpectingZip(false);
-
     if (!yakalanmisZip) {
       throw new Error(`ZIP ${Math.round(ZIP_TIMEOUT_MS/1000)}sn içinde yakalanamadı — Luca download mekanizması interceptor'ları bypass ediyor olabilir`);
     }
     return yakalanmisZip;
+    } finally {
+      cleanupEarsivHooks();
+    }
   }
 
 
