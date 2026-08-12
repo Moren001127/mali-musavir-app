@@ -1360,7 +1360,7 @@ export default function KdvKontrolPage() {
       {/* AKTİF SEANS SAYAÇLARI */}
       {activeSession && stats && (
         <div className="rounded-2xl overflow-hidden" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
-          <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+          <div className="flex items-center justify-between px-4 py-2.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
             <div className="flex items-center gap-2.5">
               <span className="w-[3px] h-4 rounded-sm" style={{ background: GOLD }} />
               <h3 className="text-[13.5px] font-semibold" style={{ color: '#fafaf9' }}>
@@ -1381,8 +1381,8 @@ export default function KdvKontrolPage() {
               )}
             </div>
           </div>
-          <div className="p-3.5">
-            <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-7 gap-2">
+          <div className="px-3.5 py-2.5">
+            <div className="flex flex-wrap items-stretch gap-1.5">
               {(() => {
                 // Eşleşme Hatalı kartı için kırılım: iki ayrı kovadan geliyor
                 //   (1) Luca var, fatura yok  → lucaOnlyMissing (Luca tarafı orphan)
@@ -1409,36 +1409,35 @@ export default function KdvKontrolPage() {
                   { key: 'failed',  label: 'Eşleşme Hatalı',    val: _lucaOrphan + _imageOrphan + _otherUnmatched + _rejected, color: '#f43f5e', icon: XCircle, sub: failedSubParts.join(' · ') || null },
                 ];
               })().map(({ key, label, val, color, icon: Icon, showRerun, sub }: any) => (
-                <div key={key} className="rounded-lg p-2.5" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}>
-                  <div className="flex items-center justify-between mb-1 text-[10px] font-medium uppercase tracking-wide" style={{ color: 'rgba(250,250,249,0.55)' }}>
-                    <span className="flex items-center gap-1.5">
-                      <Icon size={12} style={{ color }} /> {label}
-                    </span>
-                    {showRerun && (
-                      <button
-                        onClick={() => runOcrAgain.mutate()}
-                        disabled={runOcrAgain.isPending}
-                        title={key === 'pending'
-                          ? 'Bekleyen faturaları yeniden OCR\'la (başarılılara dokunulmaz)'
-                          : 'OCR\'ı tekrar çalıştır'}
-                        className="text-[10px] normal-case font-semibold px-2 py-0.5 rounded hover:brightness-125 transition flex items-center gap-1"
-                        style={{
-                          background: key === 'pending' ? 'rgba(245,158,11,0.15)' : 'rgba(96,165,250,0.12)',
-                          color: key === 'pending' ? '#f59e0b' : '#60a5fa',
-                        }}
-                      >
-                        <span>{runOcrAgain.isPending ? '…' : '⟳'}</span>
-                        {key === 'pending' && !runOcrAgain.isPending && <span>Yenile</span>}
-                      </button>
-                    )}
-                  </div>
-                  <p className="leading-none tabular-nums" style={{ fontFamily: 'Fraunces, serif', fontSize: 22, fontWeight: 700, color: '#fafaf9' }}>
+                <div
+                  key={key}
+                  title={sub ? `${label}: ${sub}` : label}
+                  className="flex items-center gap-2 rounded-lg px-2.5 py-1.5"
+                  style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.05)' }}
+                >
+                  <Icon size={13} style={{ color, flexShrink: 0 }} />
+                  <span className="leading-none tabular-nums" style={{ fontFamily: 'Fraunces, serif', fontSize: 17, fontWeight: 700, color: '#fafaf9' }}>
                     {val ?? 0}
-                  </p>
-                  {sub && (
-                    <p className="mt-1.5 text-[10.5px] tabular-nums leading-tight" style={{ color: 'rgba(250,250,249,0.45)', fontFamily: 'JetBrains Mono, monospace' }}>
-                      {sub}
-                    </p>
+                  </span>
+                  <span className="text-[10px] font-medium uppercase tracking-wide leading-tight" style={{ color: 'rgba(250,250,249,0.55)' }}>
+                    {label}
+                  </span>
+                  {showRerun && (
+                    <button
+                      onClick={() => runOcrAgain.mutate()}
+                      disabled={runOcrAgain.isPending}
+                      title={key === 'pending'
+                        ? 'Bekleyen faturaları yeniden OCR\'la (başarılılara dokunulmaz)'
+                        : 'OCR\'ı tekrar çalıştır'}
+                      className="text-[10px] normal-case font-semibold px-1.5 py-0.5 rounded hover:brightness-125 transition flex items-center gap-1"
+                      style={{
+                        background: key === 'pending' ? 'rgba(245,158,11,0.15)' : 'rgba(96,165,250,0.12)',
+                        color: key === 'pending' ? '#f59e0b' : '#60a5fa',
+                      }}
+                    >
+                      <span>{runOcrAgain.isPending ? '…' : '⟳'}</span>
+                      {key === 'pending' && !runOcrAgain.isPending && <span>Yenile</span>}
+                    </button>
                   )}
                 </div>
               ))}
@@ -1463,7 +1462,7 @@ export default function KdvKontrolPage() {
               const otherUnmatched = stats.otherUnmatched ?? Math.max(0, (stats.unmatched ?? 0) - lucaOnlyMissing - imageOnlyMissing);
               return (
                 <div
-                  className="mt-4 px-4 py-3 rounded-xl text-[11.5px] tabular-nums space-y-1"
+                  className="mt-2.5 px-3 py-2 rounded-lg text-[11px] tabular-nums space-y-0.5"
                   style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)' }}
                 >
                   <div className="flex items-center gap-2 flex-wrap" style={{ color: 'rgba(250,250,249,0.6)' }}>
