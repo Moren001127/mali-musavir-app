@@ -11,11 +11,20 @@ import { api } from '@/lib/api';
  */
 
 type Kur = { kod: string; isim: string; alis: number | null; satis: number | null; degisimYuzde: number | null };
+type Piyasa = {
+  kod: string;
+  isim: string;
+  deger: number | null;
+  birim: string;
+  degisimYuzde: number | null;
+  ondalik: number;
+};
 type Mevzuat = { baslik: string; url: string; neden: string; onem: 'yuksek' | 'orta' };
 type GundemData = {
   tarih: string;
   kurTarihi: string | null;
   kurlar: Kur[];
+  piyasa: Piyasa[];
   mevzuat: Mevzuat[];
   mevzuatToplam: number;
   uyarilar: string[];
@@ -28,6 +37,9 @@ const GOLD = '#d8bd86';
 
 const fmtKur = (n: number | null) =>
   n == null ? '—' : n.toLocaleString('tr-TR', { minimumFractionDigits: 4, maximumFractionDigits: 4 });
+
+const fmtPiyasa = (n: number | null, ondalik: number) =>
+  n == null ? '—' : n.toLocaleString('tr-TR', { minimumFractionDigits: ondalik, maximumFractionDigits: ondalik });
 
 export function GundemKart() {
   const qc = useQueryClient();
@@ -76,7 +88,7 @@ export function GundemKart() {
             className="text-[9.5px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md inline-flex items-center gap-1"
             style={{ background: 'rgba(216,189,134,0.075)', color: '#d8c38f', border: '1px solid rgba(216,189,134,0.18)' }}
           >
-            Resmî Gazete · TCMB
+            Resmî Gazete · TCMB · Piyasa
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -124,6 +136,39 @@ export function GundemKart() {
                     <span className="text-[11px] font-semibold tabular-nums inline-flex items-center gap-0.5" style={{ color: renk }}>
                       {arti ? <TrendingUp size={11} /> : eksi ? <TrendingDown size={11} /> : null}
                       %{Math.abs(k.degisimYuzde).toFixed(2)}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+
+            {/* Borsa / altın — kurdan ayrı dursun diye altın çerçeveli.
+                Kurda yükseliş kırmızıdır (maliyet artışı); borsa/altında piyasa
+                yönü okunur: yükseliş yeşil, düşüş kırmızı. */}
+            {(data?.piyasa ?? []).map((p) => {
+              const arti = (p.degisimYuzde ?? 0) > 0;
+              const eksi = (p.degisimYuzde ?? 0) < 0;
+              const renk = arti ? MINT : eksi ? '#ef8a8a' : 'rgba(250,250,249,0.55)';
+              return (
+                <div
+                  key={p.kod}
+                  title={p.isim}
+                  className="rounded-lg px-3 py-2 flex items-center gap-2.5"
+                  style={{ background: 'rgba(216,189,134,0.05)', border: '1px solid rgba(216,189,134,0.17)' }}
+                >
+                  <span className="text-[10px] font-black tracking-wider" style={{ color: GOLD }}>{p.kod}</span>
+                  <span className="text-[14px] font-bold tabular-nums" style={{ color: 'rgba(250,250,249,0.9)' }}>
+                    {fmtPiyasa(p.deger, p.ondalik)}
+                    {p.birim && (
+                      <span className="text-[10px] font-semibold ml-1" style={{ color: 'rgba(250,250,249,0.42)' }}>
+                        {p.birim}
+                      </span>
+                    )}
+                  </span>
+                  {p.degisimYuzde != null && (
+                    <span className="text-[11px] font-semibold tabular-nums inline-flex items-center gap-0.5" style={{ color: renk }}>
+                      {arti ? <TrendingUp size={11} /> : eksi ? <TrendingDown size={11} /> : null}
+                      %{Math.abs(p.degisimYuzde).toFixed(2)}
                     </span>
                   )}
                 </div>

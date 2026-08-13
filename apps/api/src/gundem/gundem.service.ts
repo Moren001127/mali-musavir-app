@@ -28,10 +28,21 @@ export type GundemMevzuat = {
   onem: 'yuksek' | 'orta';
 };
 
+/** Borsa/altın gibi kur dışı piyasa göstergeleri */
+export type GundemPiyasa = {
+  kod: string;                 // 'BİST 100' | 'GRAM ALTIN'
+  isim: string;
+  deger: number | null;
+  birim: string;               // 'TL' | ''
+  degisimYuzde: number | null;
+  ondalik: number;             // gösterim hassasiyeti
+};
+
 export type GundemData = {
   tarih: string;              // yyyy-mm-dd (Türkiye)
   kurTarihi: string | null;   // TCMB'nin yayınladığı tarih
   kurlar: GundemKur[];
+  piyasa: GundemPiyasa[];
   mevzuat: GundemMevzuat[];
   mevzuatToplam: number;      // Resmî Gazete'de taranan madde sayısı
   uyarilar: string[];         // kaynak erişilemediyse vb.
@@ -40,6 +51,8 @@ export type GundemData = {
 };
 
 const TCMB_TODAY = 'https://www.tcmb.gov.tr/kurlar/today.xml';
+const BIST_URL = 'https://query1.finance.yahoo.com/v8/finance/chart/XU100.IS?interval=1d&range=5d';
+const ALTIN_URL = 'https://finans.truncgil.com/today.json';
 const RG_ANASAYFA = 'https://www.resmigazete.gov.tr/';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) MorenPortal/1.0';
 
@@ -48,6 +61,8 @@ export class GundemService {
   private readonly logger = new Logger(GundemService.name);
   private cache: { key: string; data: GundemData } | null = null;
   private inFlight: Promise<GundemData> | null = null;
+  private piyasaCache: { ts: number; data: GundemPiyasa[] } | null = null;
+  private readonly PIYASA_TTL_MS = 15 * 60 * 1000; // borsa/altın gün içinde değişir
   private dispatcher: any = undefined; // undici ProxyAgent | null (Türkiye çıkışı)
 
   /** Türkiye saatine göre gün anahtarı (yyyy-mm-dd) */
@@ -62,7 +77,9 @@ export class GundemService {
   async getGundem(force = false): Promise<GundemData> {
     const key = this.todayKey();
     if (!force && this.cache?.key === key) {
-      return { ...this.cache.data, onbellekten: true };
+      // Kur ve mevzuat gün boyu sabit; borsa/altın DEĞİL — onları tazeleyerek dön.
+      const piyasa = await this.fetchPiyasa().catch(() => this.cache?.data.piyasa ?? []);
+      return { ...this.cache.data, piyasa, onbellekten: true };
     }
     // Aynı anda gelen istekler tek çekimi paylaşsın
     if (!force && this.inFlight) return this.inFlight;
@@ -73,7 +90,17 @@ export class GundemService {
 
   private async build(key: string): Promise<GundemData> {
     const uyarilar: string[] = [];
-    const [kurRes, rgRes] = await Promise.allSettled([this.fetchKurlar(), this.fetchResmiGazete()]);
+    const [kurRes, rgRes, piyasaRes] = await Promise.allSettled([
+      this.fetchKurlar(), this.fetchResmiGazete(), this.fetchPiyasa(),
+    ]);
+
+    let piyasa: GundemPiyasa[] = [];
+    if (piyasaRes.status === 'fulfilled') {
+      piyasa = piyasaRes.value;
+    } else {
+      uyarilar.push('Borsa/altın verisi alınamadı');
+      this.logger.warn(`Piyasa hatası: ${piyasaRes.reason?.message || piyasaRes.reason}`);
+    }
 
     let kurlar: GundemKur[] = [];
     let kurTarihi: string | null = null;
@@ -106,6 +133,7 @@ export class GundemService {
       tarih: key,
       kurTarihi,
       kurlar,
+      piyasa,
       mevzuat,
       mevzuatToplam,
       uyarilar,
@@ -202,6 +230,84 @@ export class GundemService {
     const init: any = { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(timeoutMs) };
     if (this.dispatcher) init.dispatcher = this.dispatcher;
     return fetch(url, init) as any;
+  }
+
+  // ─────────────────────── BORSA / ALTIN ───────────────────────
+
+  /**
+   * BİST 100 ve gram altın. Kurdan farklı olarak bunlar GÜN İÇİNDE değişir;
+   * günlük önbelleğe hapsedilirse akşam sabahki fiyatı gösterir. Bu yüzden
+   * kendi 15 dakikalık önbelleği var ve gündem önbellekten dönerken bile tazelenir.
+   */
+  private async fetchPiyasa(): Promise<GundemPiyasa[]> {
+    if (this.piyasaCache && Date.now() - this.piyasaCache.ts < this.PIYASA_TTL_MS) {
+      return this.piyasaCache.data;
+    }
+    const [bistRes, altinRes] = await Promise.allSettled([this.fetchBist(), this.fetchGramAltin()]);
+    const out: GundemPiyasa[] = [];
+    if (bistRes.status === 'fulfilled' && bistRes.value) out.push(bistRes.value);
+    else if (bistRes.status === 'rejected') this.logger.warn(`BİST: ${bistRes.reason?.message || bistRes.reason}`);
+    if (altinRes.status === 'fulfilled' && altinRes.value) out.push(altinRes.value);
+    else if (altinRes.status === 'rejected') this.logger.warn(`Altın: ${altinRes.reason?.message || altinRes.reason}`);
+
+    // Hepsi başarısızsa eski değeri koru — kart boşalmasın
+    if (!out.length && this.piyasaCache) return this.piyasaCache.data;
+    this.piyasaCache = { ts: Date.now(), data: out };
+    return out;
+  }
+
+  private async fetchBist(): Promise<GundemPiyasa | null> {
+    const r = await this.webFetch(BIST_URL, 12000);
+    if (!r.ok) throw new Error(`BİST → HTTP ${r.status}`);
+    const j: any = await r.json();
+    const meta = j?.chart?.result?.[0]?.meta;
+    const fiyat = Number(meta?.regularMarketPrice);
+    const onceki = Number(meta?.chartPreviousClose ?? meta?.previousClose);
+    if (!Number.isFinite(fiyat) || fiyat <= 0) return null;
+    const degisim = Number.isFinite(onceki) && onceki > 0
+      ? Number((((fiyat - onceki) / onceki) * 100).toFixed(2))
+      : null;
+    return { kod: 'BİST 100', isim: 'Borsa İstanbul', deger: fiyat, birim: '', degisimYuzde: degisim, ondalik: 0 };
+  }
+
+  private async fetchGramAltin(): Promise<GundemPiyasa | null> {
+    const r = await this.webFetch(ALTIN_URL, 12000);
+    if (!r.ok) throw new Error(`Altın → HTTP ${r.status}`);
+    const j: any = await r.json();
+    const blok = j?.['gram-altin'];
+    if (!blok || typeof blok !== 'object') return null;
+    // Alan adları Türkçe ("Satış", "Değişim") — kaynak yazımı değişirse diye
+    // birebir eşleşme yerine baş harflerden bul.
+    const alan = (bas: string): string => {
+      const k = Object.keys(blok).find((x) => x.toLocaleLowerCase('tr').startsWith(bas));
+      return k ? String(blok[k] ?? '') : '';
+    };
+    const fiyat = this.trSayi(alan('sat')) ?? this.trSayi(alan('alı'));
+    if (fiyat == null || fiyat <= 0) return null;
+    return {
+      kod: 'GRAM ALTIN',
+      isim: 'Gram altın',
+      deger: fiyat,
+      birim: 'TL',
+      degisimYuzde: this.trSayi(alan('değ')),
+      ondalik: 2,
+    };
+  }
+
+  /** "6.768,86" / "%-0,01" / "$4.407,06" → 6768.86 / -0.01 / 4407.06 */
+  private trSayi(s: string): number | null {
+    const t = String(s || '').replace(/[%$₺\s]/g, '').replace(/\./g, '').replace(',', '.');
+    if (!t || !/^-?\d+(\.\d+)?$/.test(t)) return null;
+    const n = Number(t);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  /** Yurt dışı kaynaklar (Yahoo, truncgil) — Türkiye proxy'sine gerek yok, doğrudan git. */
+  private async webFetch(url: string, timeoutMs = 12000): Promise<Response> {
+    return fetch(url, {
+      headers: { 'User-Agent': UA, Accept: 'application/json,text/plain,*/*' },
+      signal: AbortSignal.timeout(timeoutMs),
+    }) as any;
   }
 
   // ─────────────────────── RESMÎ GAZETE ───────────────────────

@@ -2229,11 +2229,50 @@ export class MorenAiService {
   private brifingCache = new Map<string, { payload: BrifingPayload; generatedAt: Date }>();
   private readonly BRIFING_TTL_MS = 30 * 60 * 1000; // 30 dk
 
+  /**
+   * Kuyruk sayaçları (Luca/Mihsap bekleyen+çalışan) dakikalar içinde değişir, brifing ise
+   * 30 dk önbellekte durur. Önbellekten dönerken bu iki sinyal CANLI sayılıp güncellenir;
+   * aksi halde işler bittikten sonra da "1 Luca çekimi bekliyor" yazmaya devam ediyordu.
+   * Sadece 4 adet COUNT sorgusu — önbelleğin ucuzluğunu bozmaz.
+   */
+  private async tazeleKuyrukSinyalleri(tenantId: string, payload: BrifingPayload): Promise<BrifingPayload> {
+    const kuyrukMaddesi = (payload.suggestions || []).some(
+      (s: any) => (s?.source === 'luca' || s?.source === 'mihsap') && /çekimini (kontrol et|aç)/i.test(String(s?.text || '')),
+    );
+    if (!kuyrukMaddesi) return payload;
+
+    const now = new Date();
+    const period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const say = (tablo: string, status: string) =>
+      (this.prisma as any)[tablo].count({ where: { tenantId, donem: period, status } }).catch(() => 0);
+    try {
+      const [lp, lr, mp, mr] = await Promise.all([
+        say('lucaFetchJob', 'pending'), say('lucaFetchJob', 'running'),
+        say('mihsapFetchJob', 'pending'), say('mihsapFetchJob', 'running'),
+      ]);
+      const luca = Number(lp) + Number(lr);
+      const mihsap = Number(mp) + Number(mr);
+      const suggestions = (payload.suggestions || []).flatMap((s: any) => {
+        if (s?.source === 'luca' && /çekimini kontrol et/i.test(String(s?.text || ''))) {
+          return luca > 0 ? [{ ...s, text: `${luca} Luca çekimini kontrol et` }] : [];
+        }
+        if (s?.source === 'mihsap' && /fatura çekimini aç/i.test(String(s?.text || ''))) {
+          return mihsap > 0 ? [{ ...s, text: `${mihsap} Mihsap fatura çekimini aç` }] : [];
+        }
+        return [s];
+      });
+      return { ...payload, suggestions } as BrifingPayload;
+    } catch {
+      return payload;
+    }
+  }
+
   async getBrifing(tenantId: string, userId?: string | null, force = false): Promise<BrifingResponse> {
     const cacheKey = `${tenantId}:${userId || 'anonymous'}`;
     const cached = this.brifingCache.get(cacheKey);
     if (!force && cached && (Date.now() - cached.generatedAt.getTime()) < this.BRIFING_TTL_MS) {
-      return { ...cached.payload, generatedAt: cached.generatedAt.toISOString(), fromCache: true };
+      const taze = await this.tazeleKuyrukSinyalleri(tenantId, cached.payload);
+      return { ...taze, generatedAt: cached.generatedAt.toISOString(), fromCache: true };
     }
 
     const ctx = await this.buildBrifingContext(tenantId, userId);
@@ -2755,6 +2794,7 @@ SADECE aşağıdaki JSON formatında cevap ver, başka hiçbir şey yazma (markd
 KURALLAR:
 - summary: 150 karakteri geçmesin, tek cümle. Mükellef adı yazabilirsin; kullanıcıya doğal ve kısa hitap et — adını söyleyebilirsin ("${c.userFirstName}") ama "Bey/Hanım" eki ekleme, sade kullan.
 - summary ve motivation içinde "şunları taradım", "Luca/Mihsap/KDV okundu", "portal verisi tarandı" gibi kaynak sayma cümlesi yazma. Kartta sadece sonuç ve odak görünsün.
+- summary'de Luca/Mihsap kuyruk sayılarını ("N iş bekliyor/çalışıyor") YAZMA. Bu işler dakikalar içinde biter, kart ise 30 dk açık kalır — okunduğunda yanlış bilgi olur. Özeti mükellef adı ve yapılacak iş üzerine kur.
 - motivation: tek cümle, sıcak ama kısa. Sayı, modül adı veya yapılacak iş detayı yazma. Örnek: "Sırayı sakin tutalım; birkaç net hamle günü toparlar."
 - alerts: 0-3 madde. HER MADDE AKSİYON ALINABİLİR OLMALI — bu ofisin kendi panelidir, MÜKELLEF ADI YAZ (gizleme).
   * DOĞRU: "AYŞEGÜL ARSLAN 12 gündür evrak bekliyor — hatırlatma gönder", "GİTO GIDA 48.500 TL açık bakiye — tahsilat için ara", "3 mükellefin KDV kontrolü eşleşmedi — incele"
@@ -2981,7 +3021,7 @@ KURALLAR:
   }
 
   private applyRuleDecisions(aiPayload: BrifingPayload, rulePayload: BrifingPayload): BrifingPayload {
-    const aiSummary = this.cleanBrifingActionText(aiPayload.summary || '');
+    const aiSummary = this.kuyrukCumlesiniAt(this.cleanBrifingActionText(aiPayload.summary || ''));
     const aiMotivation = this.cleanBrifingMotivation(aiPayload.motivation || '', rulePayload.motivation);
     return {
       ...rulePayload,
@@ -2996,7 +3036,7 @@ KURALLAR:
 
   /** AI'dan gelen JSON'u doğrula, eksik alanları tamamla */
   private validatePayload(obj: any): BrifingPayload {
-    const summary = this.cleanBrifingActionText(String(obj?.summary || '')).slice(0, 180);
+    const summary = this.kuyrukCumlesiniAt(this.cleanBrifingActionText(String(obj?.summary || ''))).slice(0, 180);
     const motivation = this.cleanBrifingMotivation(String(obj?.motivation || ''));
     const alerts = Array.isArray(obj?.alerts)
       ? obj.alerts.slice(0, 3).map((a: any) => ({
@@ -3072,6 +3112,19 @@ KURALLAR:
       .replace(/\s+/g, ' ')
       .trim()
       .slice(0, 78);
+  }
+
+  /**
+   * Özetten geçici kuyruk cümlelerini ayıklar ("Luca çekiminde 1 iş bekliyor" gibi).
+   * Brifing 30 dk önbellekte durduğundan bu sayılar okunduğu anda çoktan yanlış oluyordu;
+   * özet mükellef/iş odaklı kalsın. Geriye anlamlı cümle kalmazsa boş döner → kural özeti kullanılır.
+   */
+  private kuyrukCumlesiniAt(text: string): string {
+    const parcalar = String(text || '').split(/;\s*|(?<=[.!?])\s+/).filter((p) => p.trim());
+    const temiz = parcalar.filter((p) => !/(luca|mihsap|ajan)[^.;!?]{0,40}\b(bekl|çalış|calis|kuyru)/i.test(p));
+    if (temiz.length === parcalar.length) return String(text || '');
+    const out = temiz.join(' ').trim();
+    return out.length >= 20 ? out.charAt(0).toLocaleUpperCase('tr') + out.slice(1) : '';
   }
 
   private cleanBrifingActionText(text: string): string {
