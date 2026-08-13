@@ -765,6 +765,25 @@ export function ayAdindanDonem(text: string): string {
   return `${yil ? yil[1] : new Date().getFullYear()}-${bulunan[1]}`;
 }
 
+/**
+ * Metinde BEYANNAME TURU gecerse o turun kod listesini dondurur.
+ * "2026 1. donem GECICI VERGIde ne kadar cikti" denince tum donem dokumu
+ * donuyordu; owner yalniz gecici vergiyi sormustu.
+ */
+export function beyanTuruSuzgeci(text: string): { kodlar: string[]; ad: string } | null {
+  const n = normalizeForIntent(text);
+  // Sira onemli: "gecici vergi" once bakilmali ("vergi" kelimesi hepsinde var).
+  if (/gecici/.test(n)) return { kodlar: ['GGECICI', 'KGECICI', 'GECICI_VERGI'], ad: 'geçici vergi' };
+  if (/(muhtasar|muhsgk|\bsgk\b)/.test(n)) return { kodlar: ['MUHSGK'], ad: 'muhtasar-SGK' };
+  if (/damga/.test(n)) return { kodlar: ['DAMGA'], ad: 'damga vergisi' };
+  if (/kurumlar/.test(n)) return { kodlar: ['KURUMLAR', 'KGECICI'], ad: 'kurumlar vergisi' };
+  if (/(yillik gelir|gelir vergisi|yillik beyan)/.test(n)) return { kodlar: ['GELIR'], ad: 'yıllık gelir vergisi' };
+  if (/poset/.test(n)) return { kodlar: ['POSET'], ad: 'poşet beyannamesi' };
+  if (/(e-?defter|berat)/.test(n)) return { kodlar: ['EDEFTER'], ad: 'e-Defter beratı' };
+  if (/kdv/.test(n)) return { kodlar: ['KDV1', 'KDV2'], ad: 'KDV' };
+  return null;
+}
+
 export function ceyrekDonemOku(text: string): string {
   const n = normalizeForIntent(text);
   const sozle: Record<string, string> = { birinci: '1', ikinci: '2', ucuncu: '3', dorduncu: '4' };
@@ -1057,6 +1076,14 @@ export async function buildTaxpayerSelfReply(
       });
       etiket = `${yil} ${q}. dönem`;
     }
+    // Tur suzgeci (gecici vergi / muhtasar / damga …) — owner tarafiyla ayni mantik.
+    const turM = beyanTuruSuzgeci(text);
+    let turEt = '';
+    if (turM) {
+      const turlu = sec.filter((k: any) => turM.kodlar.includes(String(k.beyanTipi)));
+      if (turlu.length) { sec = turlu; turEt = turM.ad; }
+      else if (etiket) return { reply: `${etiket} için ${turM.ad} kaydınızı görmüyorum.`, kind: 'vergi' };
+    }
     if (!sec.length) return { reply: `${etiket || 'İstediğiniz dönem'} için tahakkuk kaydınızı görmüyorum.`, kind: 'vergi' };
     let toplamYaz = true;
     if (!etiket) {
@@ -1077,8 +1104,8 @@ export async function buildTaxpayerSelfReply(
     const top = sec.reduce((a: number, k: any) => a + (Number(k.tahakkukTutari) || 0), 0);
     const topSat = (toplamYaz && top > 0) ? `\n\nToplam: ${fmtTL(top)}` : '';
     const baslik = etiket
-      ? `${etiket} tahakkuk eden vergileriniz:`
-      : 'Son beyannamelerinize göre tahakkuk eden vergileriniz:';
+      ? `${etiket} tahakkuk eden ${turEt || 'vergileriniz'}${turEt ? ' tutarınız' : ''}:`
+      : `Son beyannamelerinize göre tahakkuk eden ${turEt || 'vergileriniz'}${turEt ? ' tutarınız' : ''}:`;
     return { reply: `${baslik}\n\n${sat}${topSat}`, kind: 'vergi' };
   }
 
@@ -1419,6 +1446,19 @@ export async function buildOwnerSingleTaxpayerReply(
     });
     donemEtiketi = `${yil} ${q}. dönem`;
   }
+  // BEYANNAME TURU SUZGECI. "…1. donem GECICI VERGIde ne kadar cikti" denince
+  // butun donem dokumu donuyordu; owner tek turu sormustu.
+  const tur = beyanTuruSuzgeci(text);
+  let turEtiketi = '';
+  if (tur) {
+    const turluler = secilenler.filter((b: any) => tur.kodlar.includes(String(b.beyanTipi)));
+    if (turluler.length) {
+      secilenler = turluler;
+      turEtiketi = tur.ad;
+    } else if (donemEtiketi) {
+      return { reply: `${ad} için ${donemEtiketi} ${tur.ad} kaydı bulamadım.`, mukellef: ad };
+    }
+  }
   if (!secilenler.length) {
     return { reply: `${ad} için ${donemEtiketi || 'istenen dönem'} beyanname/tahakkuk kaydı bulamadım.`, mukellef: ad };
   }
@@ -1454,7 +1494,8 @@ export async function buildOwnerSingleTaxpayerReply(
   // Donem sorulmadiysa liste farkli donemlerden geliyor; toplamini yazmak yanlis
   // olur (birbirine karisik donemlerin toplami hicbir seyi ifade etmez).
   const toplamSatir = (toplam > 0 && !donemSorulmadi) ? `\n\nTOPLAM TAHAKKUK: ${TL2(toplam)}` : '';
-  const reply = `BEYANNAME / TAHAKKUK — ${ad}\n${donemEtiketi}\n\n${satirlar}${toplamSatir}`;
+  const ustSatir = turEtiketi ? `${donemEtiketi} · ${turEtiketi}` : donemEtiketi;
+  const reply = `BEYANNAME / TAHAKKUK — ${ad}\n${ustSatir}\n\n${satirlar}${toplamSatir}`;
   return { reply, mukellef: ad };
 }
 
