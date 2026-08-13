@@ -589,16 +589,16 @@ export default function MesajlarPage() {
 
 
   return (
-    <div className="flex h-[calc(100vh-104px)] w-full gap-3 max-w-[1680px]">
+    <div className="flex h-[calc(100vh-164px)] lg:h-[calc(100vh-88px)] w-full gap-3 max-w-[2200px]">
       {/* SOL: KONUŞMA LİSTESİ */}
       <div
-        className="w-[378px] rounded-2xl flex flex-col overflow-hidden"
+        className="w-[340px] xl:w-[400px] 2xl:w-[440px] flex-shrink-0 rounded-2xl flex flex-col overflow-hidden"
         style={{ background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)' }}
       >
         {/* Üst başlık + arama */}
-        <div className="px-5 py-4 flex items-center gap-2.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-          <MessageCircle size={22} style={{ color: GOLD }} />
-          <h1 className="text-[18px] font-semibold flex-1" style={{ color: '#fafaf9' }}>WhatsApp Mesajlar</h1>
+        <div className="px-4 py-3 flex items-center gap-2.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+          <MessageCircle size={20} style={{ color: GOLD }} />
+          <h1 className="text-[17px] font-semibold flex-1 truncate" style={{ color: '#fafaf9' }}>WhatsApp Mesajlar</h1>
           <span className="text-[13px] tabular-nums" style={{ color: 'rgba(250,250,249,0.62)' }}>
             {conversations.length} kişi
           </span>
@@ -606,20 +606,20 @@ export default function MesajlarPage() {
             type="button"
             onClick={openStartModal}
             title="Yeni konuşma"
-            className="h-10 w-10 rounded-[10px] flex items-center justify-center"
+            className="h-9 w-9 flex-shrink-0 rounded-[10px] flex items-center justify-center"
             style={{ background: 'rgba(212,184,118,0.12)', border: '1px solid rgba(212,184,118,0.24)', color: GOLD }}
           >
             <Plus size={18} />
           </button>
         </div>
-        <div className="p-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+        <div className="px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
           <div className="relative">
             <Search size={17} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: 'rgba(250,250,249,0.48)' }} />
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Mükellef veya telefon ara..."
-              className="w-full h-12 pl-11 pr-4 rounded-[11px] text-[14.5px] outline-none"
+              className="w-full h-11 pl-11 pr-4 rounded-[11px] text-[14px] outline-none"
               style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
             />
           </div>
@@ -647,7 +647,7 @@ export default function MesajlarPage() {
                   key={id}
                   type="button"
                   onClick={() => setSelectedId(id)}
-                  className="w-full px-4 py-3.5 text-left flex items-start gap-3 transition-colors"
+                  className="w-full px-4 py-3 text-left flex items-start gap-3 transition-colors"
                   style={{
                     background: isSelected ? 'rgba(212,184,118,0.08)' : 'transparent',
                     borderBottom: '1px solid rgba(255,255,255,0.04)',
@@ -671,11 +671,11 @@ export default function MesajlarPage() {
                         <Send size={11} style={{ color: 'rgba(250,250,249,0.45)' }} />
                       )}
                       {c.phone && (
-                        <span className="text-[13px] font-medium tabular-nums flex-shrink-0" style={{ color: 'rgba(250,250,249,0.62)' }}>
+                        <span className="text-[12px] font-medium tabular-nums truncate max-w-[104px] flex-shrink-0" style={{ color: 'rgba(250,250,249,0.5)' }}>
                           {c.phone}
                         </span>
                       )}
-                      <span className="text-[13.5px] truncate flex-1" style={{ color: 'rgba(250,250,249,0.68)' }}>
+                      <span className="text-[13.5px] truncate flex-1 min-w-0" style={{ color: 'rgba(250,250,249,0.68)' }}>
                         {renderWhatsAppLogText(c.lastMessage) || '(boş mesaj)'}
                       </span>
                     </div>
@@ -704,7 +704,7 @@ export default function MesajlarPage() {
         ) : (
           <>
             {/* Sohbet başlık */}
-            <div className="px-6 py-4 flex items-center gap-3.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.02)' }}>
+            <div className="px-6 py-3 flex items-center gap-3.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.02)' }}>
               <button type="button" onClick={() => setShowProfilePanel(true)} className="rounded-full" title="Kişi bilgisi">
                 <WhatsAppAvatar name={chatData?.taxpayer?.name} url={chatData?.taxpayer?.avatarUrl} active={isLivePresence(chatData?.presence)} />
               </button>
@@ -776,7 +776,7 @@ export default function MesajlarPage() {
             {/* Mesaj listesi */}
             <div
               ref={scrollRef}
-              className="flex-1 overflow-y-auto px-6 py-5 space-y-2.5"
+              className="flex-1 overflow-y-auto px-6 py-4 space-y-2"
               style={{
                 backgroundColor: '#0b141a',
                 backgroundImage: 'radial-gradient(rgba(255,255,255,0.022) 1px, transparent 1px)',
@@ -814,7 +814,7 @@ export default function MesajlarPage() {
                       )}
                       <div className={`flex ${incoming ? 'justify-start' : 'justify-end'}`}>
                       <div
-                        className="max-w-[76%] px-3 py-2 rounded-[10px] text-[14.5px] leading-relaxed"
+                        className="max-w-[min(76%,780px)] px-3.5 py-2.5 rounded-[10px] text-[15px] leading-[1.55]"
                         style={{
                           background: incoming ? '#1f2c33' : '#114a3a',
                           border: incoming ? '1px solid rgba(255,255,255,0.04)' : '1px solid rgba(37,211,102,0.16)',
@@ -876,7 +876,7 @@ export default function MesajlarPage() {
             </div>
 
             {/* Alt input */}
-            <div className="p-5" style={{ borderTop: '1px solid rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.015)' }}>
+            <div className="px-5 py-3.5" style={{ borderTop: '1px solid rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.015)' }}>
               {freeFormAvailable ? (
                 <>
                 {qrDurumBilindi && !qrConnected && (
