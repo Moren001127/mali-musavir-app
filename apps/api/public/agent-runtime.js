@@ -32,7 +32,12 @@
   // sıraya alıyor, 3. denemede BAŞARISIZ işaretliyordu (PETRAVET: "9 adet bulundu"
   // dedikten hemen sonra öldürüldü). Ayrıca hata mesajı artık log kuyruğundan sonra
   // yazılıyor (arayüzde kaybolmuyor).
-  const AGENT_VERSION = '1.47.13';
+  // v1.47.14 (2026-08-13): MENÜ ID ÖNBELLEĞİ ARTIK FİRMA BAZLI. Aynı menü adı her
+  // firmada farklı ID'ye sahip olabildiği için, A firmasında öğrenilen ID B
+  // firmasında BAŞKA menüyü açıyordu (PERİHAN ŞAHİN: e-Arşiv yerine Damga Vergisi
+  // Beyannamesi ekranı açıldı → "ekran açılamadı" hatası). Firma kimliği
+  // bilinmiyorsa önbellek hiç kullanılmaz.
+  const AGENT_VERSION = '1.47.14';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -8548,6 +8553,35 @@
 
   const LUCA_MENU_ID_CACHE_KEY = 'moren_luca_menu_id_cache_v1';
 
+  // v1.47.14: Menü ID önbelleği FİRMA BAZLI olmalı. Luca'da aynı menü adı
+  // ("e-Arşiv Alış Faturaları") her firmada FARKLI ID'ye sahip olabiliyor
+  // (bilanço/işletme modül düzeni farklı). Tek ortak anahtar kullanılınca A
+  // firmasında öğrenilen ID, B firmasında BAŞKA menüyü (ör. Damga Vergisi
+  // Beyannamesi) açıyordu — PERİHAN ŞAHİN vakası. Firma kimliği bilinmiyorsa
+  // önbellek hiç kullanılmaz (zehirlenme riski sıfırlanır).
+  function currentLucaFirmaCacheKey() {
+    try {
+      const k = String(window.__morenLucaFirmaKey || '').trim();
+      if (k) return k;
+    } catch {}
+    try {
+      const fr = getLucaFrame('frm4');
+      const combo = fr?.contentDocument?.getElementById('SirketCombo');
+      const val = String(combo?.value || '').trim();
+      if (val) return `f${val}`;
+      const txt = String(combo?.selectedOptions?.[0]?.text || '').trim();
+      if (txt) return `n${txt.replace(/\s+/g, '').slice(0, 32)}`;
+    } catch {}
+    return '';
+  }
+
+  function scopedLucaMenuKey(label) {
+    const firma = currentLucaFirmaCacheKey();
+    const base = normalizeLucaMenuText(label);
+    if (!firma || !base) return '';
+    return `${firma}::${base}`;
+  }
+
   function readLucaMenuIdCache() {
     try {
       const parsed = JSON.parse(localStorage.getItem(LUCA_MENU_ID_CACHE_KEY) || '{}');
@@ -8640,7 +8674,8 @@
 
   function getCachedLucaMenuHit(label) {
     try {
-      const key = normalizeLucaMenuText(label);
+      const key = scopedLucaMenuKey(label); // v1.47.14: firma bazlı; firma bilinmiyorsa boş
+      if (!key) return null;
       const hit = readLucaMenuIdCache()[key];
       if (!hit?.code) return null;
       // Luca menu ID'leri stabil — bir kez keşfedildiyse kalıcı tutulur.
@@ -8655,7 +8690,7 @@
 
   function deleteCachedLucaMenuHit(label) {
     try {
-      const key = normalizeLucaMenuText(label);
+      const key = scopedLucaMenuKey(label); // v1.47.14: firma bazlı
       if (!key) return;
       const cache = readLucaMenuIdCache();
       if (cache[key]) {
@@ -8722,7 +8757,7 @@
         if (!codeInfo?.code) continue;
         const label = getLucaMenuTextForCache(el);
         if (!label) continue;
-        const key = normalizeLucaMenuText(label);
+        const key = scopedLucaMenuKey(label); // v1.47.14: firma bazlı anahtar
         if (!key) continue;
         cache[key] = {
           label,
