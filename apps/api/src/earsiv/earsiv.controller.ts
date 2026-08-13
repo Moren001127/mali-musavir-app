@@ -26,6 +26,45 @@ export class EarsivController {
 
   // === PORTAL UI ENDPOINTS (JWT) ===
 
+  /**
+   * Bir mükellefin BELİRLİ dönem + tip + kaynak kombinasyonundaki e-arşiv/e-fatura
+   * kayıtlarını siler. Yalnızca ADMIN. Kapsam DAİMA tenant + mükellef + dönem + tip
+   * + kaynak ile sınırlıdır (toplu/global silme YOK) — yanlışlıkla geniş silmeyi
+   * engellemek için dördü de zorunlu. Silinen kayıtlar Luca'dan tekrar çekilebilir.
+   */
+  @Post('earsiv/delete-period')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('ADMIN')
+  @HttpCode(HttpStatus.OK)
+  async deletePeriod(
+    @Req() req: any,
+    @Body() body: { mukellefId: string; donem: string; tip: EarsivTip; belgeKaynak?: BelgeKaynak; onay?: string },
+  ) {
+    if (!body?.mukellefId || !body?.donem || !body?.tip) {
+      throw new BadRequestException('mukellefId, donem ve tip gerekli');
+    }
+    if (body.tip !== 'SATIS' && body.tip !== 'ALIS') {
+      throw new BadRequestException('tip SATIS veya ALIS olmalı');
+    }
+    if (!/^\d{4}-\d{2}$/.test(String(body.donem))) {
+      throw new BadRequestException('donem yyyy-mm formatında olmalı');
+    }
+    if (body.onay !== 'SIL') {
+      throw new BadRequestException('Silme için onay:"SIL" gönderilmeli');
+    }
+    const belgeKaynak: BelgeKaynak = body.belgeKaynak || 'EARSIV';
+    const where = {
+      tenantId: req.user.tenantId,
+      taxpayerId: body.mukellefId,
+      donem: body.donem,
+      tip: body.tip,
+      belgeKaynak,
+    };
+    const adet = await (this.prisma as any).earsivFatura.count({ where });
+    const res = await (this.prisma as any).earsivFatura.deleteMany({ where });
+    return { silinen: res?.count ?? 0, oncekiAdet: adet, kapsam: where };
+  }
+
   @Post('earsiv/fetch-from-luca')
   @UseGuards(AuthGuard('jwt'), RolesGuard)
   @Roles('ADMIN', 'STAFF')
