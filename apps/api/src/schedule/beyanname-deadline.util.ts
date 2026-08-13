@@ -69,3 +69,25 @@ export function calculateBeyannameDeadline(beyanTipi: string, donem: string): Da
       return null;
   }
 }
+
+/**
+ * Son tarihe KAC GUN kaldi — iki tarihi de GUN BASINA yuvarlayarak hesaplar.
+ *
+ * NEDEN: calculateBeyannameDeadline son gunu 23:59:59 olarak kurar. Math.ceil ile ham
+ * fark alininca "bugun 25'i, son gun 26'si" durumu 1 gun degil 2 gun cikiyordu
+ * (1 gun 23:59:59 -> ceil -> 2). Canli dokumde taranan 16 gun ifadesinin TAMAMI 1 fazlaydi.
+ * Math.round + gun basi yuvarlama yaz saati kaymalarina karsi da dayaniklidir.
+ *
+ * Donus: 0 = son gun bugun, pozitif = kalan gun, negatif = gecikme.
+ */
+export function kalanGunHesapla(deadline: Date, bugun: Date = new Date()): number {
+  const gunBasi = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  return Math.round((gunBasi(deadline) - gunBasi(bugun)) / 86400000);
+}
+
+const GUN_ADLARI = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'];
+
+/** Tarihin gun adi — modelin gun adi UYDURMASINI onlemek icin arac ciktisinda hazir verilir. */
+export function gunAdi(d: Date): string {
+  return GUN_ADLARI[d.getDay()] || '';
+}

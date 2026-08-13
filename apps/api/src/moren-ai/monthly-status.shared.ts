@@ -22,6 +22,8 @@ const AYLAR = [
   'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık',
 ];
 
+import { cariIsaret } from '../common/cari-bakiye';
+
 export interface MonthlyStatusRow {
   id: string;
   isim: string;
@@ -876,12 +878,9 @@ export async function buildTaxpayerSelfReply(
       select: { tip: true, tutar: true, tarih: true, odemeYontemi: true },
       orderBy: { tarih: 'desc' },
     }).catch(() => []);
+    // Isaret tanimi TEK KAYNAKTAN (common/cari-bakiye) — owner tarafi ile ayni olsun.
     let bakiye = 0;
-    for (const h of hareketler) {
-      const t = Number(h.tutar) || 0;
-      if (h.tip === 'TAHAKKUK') bakiye += t;
-      else if (h.tip === 'TAHSILAT' || h.tip === 'IADE') bakiye -= t;
-    }
+    for (const h of hareketler) bakiye += cariIsaret(h.tip) * (Number(h.tutar) || 0);
     const sonO = hareketler.find((h: any) => h.tip === 'TAHSILAT');
     if (wantsSonOdeme) {
       if (!sonO) return { reply: 'Sistemde kayıtlı bir ödemeniz görünmüyor.', kind: 'son-odeme' };
@@ -1097,11 +1096,20 @@ export async function buildOwnerSingleTaxpayerReply(
   if (kind === 'gelir') {
     const g = await prisma.gelirTablosu.findFirst({ where: { tenantId, taxpayerId: t.id }, orderBy: [{ donem: 'desc' }, { createdAt: 'desc' }], select: { donem: true, netSatislar: true, brutSatislar: true, donemNetKari: true, satisMaliyeti: true } }).catch(() => null);
     if (!g) return { reply: `${ad} için gelir tablosu kaydı bulamadım.`, mukellef: ad };
+    // Cizgi KALDIRILDI: "net satis − satis maliyeti = donem net kari" izlenimi veriyordu,
+    // oysa aradaki faaliyet giderleri/diger gelir-gider satirlari yazilmiyor. Owner
+    // cikarmayi elle yapip tutmadigini goruyordu (canli dokumde 3/3 ornek hatali,
+    // birinde 8 kat sapma). Artik brut kar ACIKCA yaziliyor ve net karin neyi icerdigi
+    // tek cumleyle soyleniyor.
+    const netSatis = Number(g.netSatislar) || Number(g.brutSatislar) || 0;
+    const maliyet = Number(g.satisMaliyeti) || 0;
     const reply =
       `GELİR TABLOSU — ${ad}\n${donemOku(g.donem)}\n\n` +
-      `• Net satış (ciro): ${TL2(Number(g.netSatislar) || Number(g.brutSatislar) || 0)}\n` +
-      `• Satış maliyeti: ${TL2(Number(g.satisMaliyeti) || 0)}\n` +
-      `────────────\nDönem net kârı: ${TL2(Number(g.donemNetKari) || 0)}`;
+      `• Net satış (ciro): ${TL2(netSatis)}\n` +
+      `• Satış maliyeti: ${TL2(maliyet)}\n` +
+      `• Brüt kâr: ${TL2(netSatis - maliyet)}\n\n` +
+      `• Dönem net kârı: ${TL2(Number(g.donemNetKari) || 0)}\n` +
+      `  (faaliyet giderleri ve diğer gelir/giderler düşülmüş hâlidir — brüt kârdan farkı gider toplamıdır)`;
     return { reply, mukellef: ad };
   }
 

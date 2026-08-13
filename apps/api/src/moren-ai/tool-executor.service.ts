@@ -1,7 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { MIHSAP_FATURA_ACTIONS, isMihsapFaturaCommandAgent } from '../agent-events/agent-registry';
-import { calculateBeyannameDeadline } from '../schedule/beyanname-deadline.util';
+import { calculateBeyannameDeadline, kalanGunHesapla, gunAdi } from '../schedule/beyanname-deadline.util';
+import { hesaplaCariBakiyeler, borcluOzeti } from '../common/cari-bakiye';
 import { ISLEM_OPERATIONS, ISLEM_ACTION_KEYS, islemCapabilityList, isIslemAction } from './islem-operations';
 import { TDHP, tdhpAciklama, vergiOranlari, vergiOraniAciklama } from '../common/accounting-reference';
 import { computeMonthlyStatusList, computeTaxPayableList } from './monthly-status.shared';
@@ -2484,12 +2485,22 @@ export class ToolExecutorService {
     for (const bd of beyanDurumlari as any[]) {
       const deadline = calculateBeyannameDeadline(bd.beyanTipi, bd.donem);
       if (!deadline) continue;
-      const kalanGun = Math.ceil((deadline.getTime() - todayStart.getTime()) / 86400000);
+      // Gun basina yuvarlanmis fark. Eskiden ham Math.ceil aliniyordu ve son tarih
+      // 23:59:59 oldugu icin kalan gun HER ZAMAN 1 fazla cikiyordu (canli dokumde
+      // taranan 16 ifadenin tamami hatalidi). donem ve gunAdi da hazir veriliyor ki
+      // model bunlari tahmin etmesin.
+      const kalanGun = kalanGunHesapla(deadline, todayStart);
       const ad = this.displayName(bd.taxpayer || {});
       if (kalanGun < 0) {
-        gecikenBeyanname.push({ mukellef: ad, beyanTipi: bd.beyanTipi, sonGun: fmtTr(deadline), gecenGun: -kalanGun });
+        gecikenBeyanname.push({
+          mukellef: ad, beyanTipi: bd.beyanTipi, donem: bd.donem,
+          sonGun: fmtTr(deadline), sonGunAdi: gunAdi(deadline), gecenGun: -kalanGun,
+        });
       } else if (kalanGun <= 14) {
-        yaklasanSureler.push({ mukellef: ad, beyanTipi: bd.beyanTipi, sonGun: fmtTr(deadline), kalanGun });
+        yaklasanSureler.push({
+          mukellef: ad, beyanTipi: bd.beyanTipi, donem: bd.donem,
+          sonGun: fmtTr(deadline), sonGunAdi: gunAdi(deadline), kalanGun,
+        });
       }
     }
     yaklasanSureler.sort((a, b) => a.kalanGun - b.kalanGun);
@@ -2502,15 +2513,12 @@ export class ToolExecutorService {
 
     const cariVeriYok = cariRows === null; // sorgu hata verdi → "veri alınamadı" (0 borçlu DEĞİL)
     const aktifIdSet = new Set((taxpayers as any[]).map((t) => t.id));
-    const cariByTaxpayer = new Map<string, number>();
-    for (const h of cariRows || []) {
-      if (!aktifIdSet.has(h.taxpayerId)) continue; // pasif/kapanmış mükellef borçlusu sayılmaz
-      const tutar = this.toNum(h.tutar);
-      const sign = h.tip === 'TAHAKKUK' ? 1 : h.tip === 'TAHSILAT' ? -1 : h.tip === 'IADE' ? 1 : 0;
-      cariByTaxpayer.set(h.taxpayerId, (cariByTaxpayer.get(h.taxpayerId) || 0) + sign * tutar);
-    }
-    const borclular = [...cariByTaxpayer.entries()].filter(([, v]) => v > 0);
-    const toplamBakiye = borclular.reduce((s, [, v]) => s + v, 0);
+    // TEK KAYNAK: common/cari-bakiye. Eskiden bu hesap uc ayri yerde farkli yapiliyordu
+    // (biri pasifi eliyor biri elemiyor, IADE isareti Cari Kasa ile ters) ve owner'a ayni
+    // gun sabah/aksam FARKLI toplam gidiyordu.
+    const cariOzet = borcluOzeti(hesaplaCariBakiyeler(cariRows as any[], aktifIdSet));
+    const borclular = cariOzet.borclular;
+    const toplamBakiye = cariOzet.toplamBakiye;
     const bugunHata = (agentEvents || []).filter((e: any) => /hata|error|fail/i.test(String(e.status || ''))).length;
     const gecikenGorev = (tasks || []).filter((t: any) => t.dueDate && new Date(t.dueDate) < todayStart).length;
 
@@ -2742,28 +2750,22 @@ export class ToolExecutorService {
   private async getCollectionRiskSummary(input: any, ctx: { tenantId: string }) {
     const limit = Math.min(input?.limit || 20, 100);
     const [taxpayers, rows] = await Promise.all([
-      this.prisma.taxpayer.findMany({ where: { tenantId: ctx.tenantId }, select: { id: true, companyName: true, firstName: true, lastName: true, phone: true, phones: true } }),
+      // isActive suzgeci: brifing ile AYNI mukellef kumesi kullanilsin diye eklendi.
+      // Eskiden pasif/kapanmis mukellefler de borclu sayiliyor, ayni gun brifingden
+      // FARKLI toplam cikiyordu.
+      this.prisma.taxpayer.findMany({ where: { tenantId: ctx.tenantId, isActive: true }, select: { id: true, companyName: true, firstName: true, lastName: true, phone: true, phones: true } }),
       (this.prisma as any).cariHareket.findMany({ where: { tenantId: ctx.tenantId }, select: { taxpayerId: true, tip: true, tutar: true, tarih: true } }),
     ]);
     const tMap = new Map((taxpayers as any[]).map((t) => [t.id, t]));
-    const balances = new Map<string, { bakiye: number; sonTahsilat?: Date }>();
-    for (const h of rows || []) {
-      const cur = balances.get(h.taxpayerId) || { bakiye: 0 };
-      if (h.tip === 'TAHAKKUK') cur.bakiye += this.toNum(h.tutar);
-      if (h.tip === 'TAHSILAT') {
-        cur.bakiye -= this.toNum(h.tutar);
-        if (!cur.sonTahsilat || new Date(h.tarih) > cur.sonTahsilat) cur.sonTahsilat = new Date(h.tarih);
-      }
-      balances.set(h.taxpayerId, cur);
-    }
-    const riskli = [...balances.entries()]
-      .map(([taxpayerId, b]) => {
-        const t: any = tMap.get(taxpayerId);
+    // TEK KAYNAK + AKTIF SUZGECI: bu fonksiyon eskiden pasif mukellefi elemiyor ve IADE'yi
+    // hic saymiyordu; brifingle ayni gun farkli toplam uretiyordu.
+    const aktifIdSet = new Set((taxpayers as any[]).map((t) => t.id));
+    const riskli = borcluOzeti(hesaplaCariBakiyeler(rows as any[], aktifIdSet)).borclular
+      .map((b) => {
+        const t: any = tMap.get(b.taxpayerId);
         const phone = t?.phone || (Array.isArray(t?.phones) ? t.phones.find(Boolean) : null);
-        return { taxpayerId, ad: t ? this.displayName(t) : taxpayerId, bakiye: b.bakiye, sonTahsilat: b.sonTahsilat, whatsappUygun: !!phone };
-      })
-      .filter((r) => r.bakiye > 0)
-      .sort((a, b) => b.bakiye - a.bakiye);
+        return { taxpayerId: b.taxpayerId, ad: t ? this.displayName(t) : b.taxpayerId, bakiye: b.bakiye, sonTahsilat: b.sonTahsilat, whatsappUygun: !!phone };
+      });
     return {
       toplamBorclu: riskli.length,
       toplamBakiye: riskli.reduce((s, r) => s + r.bakiye, 0),
