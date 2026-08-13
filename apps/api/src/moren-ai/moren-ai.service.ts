@@ -2952,23 +2952,10 @@ KURALLAR:
     else if (topIssue?.score >= 74) focus = 'review';
     else if (topIssue?.score >= 50) focus = 'busy';
 
-    if (c.portal.luca.failed > 0 || lucaBekleyen > 0) {
-      const total = c.portal.luca.failed + lucaBekleyen;
-      summary = `Luca çekiminde ${total} iş bekliyor; fatura akışını açmak iyi olur.`;
-    } else if (c.portal.mihsap.failed > 0 || mihsapBekleyen > 0) {
-      const total = c.portal.mihsap.failed + mihsapBekleyen;
-      summary = `${total} Mihsap fatura işi kontrol istiyor; fatura akışını toparlayalım.`;
-    } else if (c.portal.finance.borcluMukellef > 0 && (c.portal.finance.borcluMukellef >= 5 || c.portal.finance.toplamBakiye >= 100_000)) {
-      summary = `${c.portal.finance.borcluMukellef} mükellefte açık bakiye var; tahsilat listesini öne al.`;
-    } else if (automationIssue > 0) {
-      summary = `${automationIssue} otomasyon/ajan uyarısı var; logları temizlemek günü rahatlatır.`;
-    } else if (aktifIsYuku === 0) {
-      summary = c.workflow.total === 0
-        ? `${c.userFirstName}, bu ay iş akışında kayıt yok; liste doluysa veri akışını kontrol edelim.`
-        : erkenDonem
-          ? `${c.userFirstName}, ayın ilk akışındayız; evrak gelişini izleyip takip listesini hazırlamak iyi olur.`
-          : `${c.userFirstName}, aktif iş yükü yok; bekleyen evrak varsa kısa bir kontrol iyi olur.`;
-    } else {
+    // ÖZET SIRASI: günün gerçek işi önce, teknik kuyruk en sonda.
+    // (Eskiden tek bir HATA ALMIŞ Luca işi "Luca çekiminde 1 iş bekliyor" diye
+    //  özetin başına geçiyordu; hem yanlış kelimeydi hem de günü temsil etmiyordu.)
+    if (aktifIsYuku > 0) {
       const parcalar: string[] = [];
       if (c.workflow.kontrol > 0) parcalar.push(`${c.workflow.kontrol} KDV kontrol`);
       if (c.workflow.beyan > 0) parcalar.push(`${c.workflow.beyan} beyanname`);
@@ -2977,6 +2964,27 @@ KURALLAR:
       summary += c.eskiBeklemeler.length > 0
         ? ` ${c.eskiBeklemeler.length} kayıt 5+ gündür aynı aşamada bekliyor.`
         : ' Sırayı bozmadan ilerlersek tablo temiz kalır.';
+    } else if (c.portal.finance.borcluMukellef > 0 && (c.portal.finance.borcluMukellef >= 5 || c.portal.finance.toplamBakiye >= 100_000)) {
+      summary = `${c.portal.finance.borcluMukellef} mükellefte açık bakiye var; tahsilat listesini öne al.`;
+    } else if (c.portal.luca.failed > 0 || lucaBekleyen > 0) {
+      // Hata alan iş ile sırada bekleyen iş AYNI ŞEY DEĞİL — ayrı yazılır.
+      summary = c.portal.luca.failed > 0 && lucaBekleyen > 0
+        ? `${c.portal.luca.failed} Luca çekimi hata aldı, ${lucaBekleyen} çekim sırada; ajan ekranını aç.`
+        : c.portal.luca.failed > 0
+          ? `${c.portal.luca.failed} Luca çekimi hata aldı; yeniden başlatmak iyi olur.`
+          : `${lucaBekleyen} Luca çekimi sırada; ajan ekranından takip et.`;
+    } else if (c.portal.mihsap.failed > 0 || mihsapBekleyen > 0) {
+      summary = c.portal.mihsap.failed > 0
+        ? `${c.portal.mihsap.failed} Mihsap fatura çekimi hata aldı; fatura akışını toparlayalım.`
+        : `${mihsapBekleyen} Mihsap fatura çekimi sırada; fatura akışını açmak iyi olur.`;
+    } else if (automationIssue > 0) {
+      summary = `${automationIssue} otomasyon/ajan uyarısı var; logları temizlemek günü rahatlatır.`;
+    } else {
+      summary = c.workflow.total === 0
+        ? `${c.userFirstName}, bu ay iş akışında kayıt yok; liste doluysa veri akışını kontrol edelim.`
+        : erkenDonem
+          ? `${c.userFirstName}, ayın ilk akışındayız; evrak gelişini izleyip takip listesini hazırlamak iyi olur.`
+          : `${c.userFirstName}, aktif iş yükü yok; bekleyen evrak varsa kısa bir kontrol iyi olur.`;
     }
 
     const motivationBySource: Record<BrifingSourceKey, string> = {

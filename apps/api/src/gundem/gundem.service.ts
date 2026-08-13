@@ -59,6 +59,7 @@ export type GundemData = {
   enflasyon: GundemEnflasyon | null;
   mevzuat: GundemMevzuat[];
   mevzuatToplam: number;      // Resmî Gazete'de taranan madde sayısı
+  mevzuatHazirlaniyor: boolean; // true iken Resmî Gazete taraması hâlâ sürüyor
   uyarilar: string[];         // kaynak erişilemediyse vb.
   uretimZamani: string;
   onbellekten: boolean;
@@ -100,14 +101,21 @@ export class GundemService {
     // Aynı anda gelen istekler tek çekimi paylaşsın
     if (!force && this.inFlight) return this.inFlight;
 
-    this.inFlight = this.build(key).finally(() => { this.inFlight = null; });
+    this.inFlight = this.build(key, force).finally(() => { this.inFlight = null; });
     return this.inFlight;
   }
 
-  private async build(key: string): Promise<GundemData> {
+  /**
+   * Kart iki aşamada dolar. Sayısal kaynaklar (TCMB, borsa/altın, TÜİK) saniyeler
+   * içinde gelir; Resmî Gazete + AI süzgeci ise 20-60 sn sürebiliyor. Kullanıcı bu
+   * süre boyunca boş karta bakmasın diye önce hızlı kısım dönülür, mevzuat arkada
+   * tamamlanıp önbelleğe işlenir (kart "taranıyor" der, bitince kendini günceller).
+   * force=true'da (Yenile düğmesi) mevzuat beklenir — kullanıcı bilerek yeniliyor.
+   */
+  private async build(key: string, force = false): Promise<GundemData> {
     const uyarilar: string[] = [];
-    const [kurRes, rgRes, piyasaRes, enfRes] = await Promise.allSettled([
-      this.fetchKurlar(), this.fetchResmiGazete(), this.fetchPiyasa(), this.fetchEnflasyon(),
+    const [kurRes, piyasaRes, enfRes] = await Promise.allSettled([
+      this.fetchKurlar(), this.fetchPiyasa(), this.fetchEnflasyon(),
     ]);
 
     let enflasyon: GundemEnflasyon | null = null;
@@ -139,37 +147,63 @@ export class GundemService {
       this.logger.warn(`TCMB kur hatası: ${kurRes.reason?.message || kurRes.reason}`);
     }
 
-    let mevzuat: GundemMevzuat[] = [];
-    let mevzuatToplam = 0;
-    if (rgRes.status === 'fulfilled') {
-      mevzuatToplam = rgRes.value.length;
-      try {
-        mevzuat = await this.suzMevzuat(rgRes.value);
-      } catch (e: any) {
-        uyarilar.push('Resmî Gazete süzgeci çalışmadı');
-        this.logger.warn(`RG AI süzgeç hatası: ${e?.message || e}`);
-      }
-    } else {
-      // Sebebi GİZLEME: proxy yok mu, engel mi, zaman aşımı mı — tek bakışta görünsün.
-      const sebep = String(rgRes.reason?.message || rgRes.reason || 'bilinmeyen').slice(0, 120);
-      uyarilar.push(`Resmî Gazete okunamadı (${sebep})`);
-      this.logger.warn(`RG hatası: ${sebep}`);
-    }
-
     const data: GundemData = {
       tarih: key,
       kurTarihi,
       kurlar,
       piyasa,
       enflasyon,
-      mevzuat,
-      mevzuatToplam,
+      mevzuat: [],
+      mevzuatToplam: 0,
+      mevzuatHazirlaniyor: true,
       uyarilar,
       uretimZamani: new Date().toISOString(),
       onbellekten: false,
     };
     this.cache = { key, data };
-    return data;
+
+    const mevzuatIsi = this.mevzuatTamamla(key);
+    if (force) {
+      await mevzuatIsi;                       // Yenile: kullanıcı sonucu bekliyor
+      return this.cache?.key === key ? this.cache.data : data;
+    }
+    return data;                              // İlk açılış: mevzuat arkada gelir
+  }
+
+  /** Resmî Gazete + AI süzgeci — bitince günün önbelleğine işlenir. */
+  private mevzuatCalisiyor = false;
+  private async mevzuatTamamla(key: string): Promise<void> {
+    if (this.mevzuatCalisiyor) return;
+    this.mevzuatCalisiyor = true;
+    const ekUyari: string[] = [];
+    let mevzuat: GundemMevzuat[] = [];
+    let toplam = 0;
+    try {
+      const liste = await this.fetchResmiGazete();
+      toplam = liste.length;
+      try {
+        mevzuat = await this.suzMevzuat(liste);
+      } catch (e: any) {
+        ekUyari.push('Resmî Gazete süzgeci çalışmadı');
+        this.logger.warn(`RG AI süzgeç hatası: ${e?.message || e}`);
+      }
+    } catch (e: any) {
+      // Sebebi GİZLEME: proxy yok mu, engel mi, zaman aşımı mı — tek bakışta görünsün.
+      const sebep = String(e?.message || e || 'bilinmeyen').slice(0, 120);
+      ekUyari.push(`Resmî Gazete okunamadı (${sebep})`);
+      this.logger.warn(`RG hatası: ${sebep}`);
+    } finally {
+      this.mevzuatCalisiyor = false;
+    }
+    if (this.cache?.key === key) {
+      this.cache.data = {
+        ...this.cache.data,
+        mevzuat,
+        mevzuatToplam: toplam,
+        mevzuatHazirlaniyor: false,
+        uyarilar: [...this.cache.data.uyarilar, ...ekUyari],
+      };
+    }
   }
 
   // ─────────────────────────── TCMB ───────────────────────────

@@ -36,6 +36,7 @@ type GundemData = {
   enflasyon: Enflasyon | null;
   mevzuat: Mevzuat[];
   mevzuatToplam: number;
+  mevzuatHazirlaniyor: boolean;
   uyarilar: string[];
   uretimZamani: string;
   onbellekten: boolean;
@@ -70,6 +71,8 @@ export function GundemKart() {
     queryFn: () => api.get('/gundem').then((r) => r.data),
     staleTime: 30 * 60 * 1000,
     refetchOnWindowFocus: false,
+    // Resmî Gazete taraması sunucuda arkada sürerken kısa aralıkla sor; bitince dur.
+    refetchInterval: (q) => (q.state.data?.mevzuatHazirlaniyor ? 15000 : false),
   });
 
   const handleRefresh = async () => {
@@ -242,7 +245,22 @@ export function GundemKart() {
 
       {/* Mevzuat */}
       <div className="px-5 pt-3 pb-4">
-        {!isLoading && (data?.mevzuat?.length ?? 0) === 0 && (
+        {!isLoading && (data?.mevzuat?.length ?? 0) === 0 && data?.mevzuatHazirlaniyor && (
+          <div
+            className="rounded-xl px-4 py-3 text-[13px] flex items-center gap-2"
+            style={{
+              background: 'rgba(255,255,255,0.018)',
+              border: '1px solid rgba(143,215,189,0.10)',
+              boxShadow: 'inset 3px 0 0 rgba(143,215,189,0.30)',
+              color: 'rgba(250,250,249,0.55)',
+            }}
+          >
+            <Loader2 size={13} className="animate-spin" style={{ color: MINT }} />
+            Bugünkü Resmî Gazete taranıyor…
+          </div>
+        )}
+
+        {!isLoading && (data?.mevzuat?.length ?? 0) === 0 && data && !data.mevzuatHazirlaniyor && (
           <div
             className="rounded-xl px-4 py-3 text-[13px] flex items-center gap-2"
             style={{
