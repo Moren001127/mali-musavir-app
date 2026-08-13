@@ -1044,7 +1044,7 @@ export async function buildTaxpayerSelfReply(
         const tb = b.beyanTarihi ? new Date(b.beyanTarihi).getTime() : 0;
         return tb - ta;
       }).slice(0, 5);
-      etiket = 'Son beyannameleriniz';
+      etiket = '';
       toplamYaz = false; // karisik donemlerin toplami anlamsiz
     }
     const cokDonem = new Set(sec.map((k: any) => String(k.donem))).size > 1;
@@ -1055,7 +1055,10 @@ export async function buildTaxpayerSelfReply(
       .join('\n');
     const top = sec.reduce((a: number, k: any) => a + (Number(k.tahakkukTutari) || 0), 0);
     const topSat = (toplamYaz && top > 0) ? `\n\nToplam: ${fmtTL(top)}` : '';
-    return { reply: `${etiket} tahakkuk eden vergileriniz:\n\n${sat}${topSat}`, kind: 'vergi' };
+    const baslik = etiket
+      ? `${etiket} tahakkuk eden vergileriniz:`
+      : 'Son beyannamelerinize göre tahakkuk eden vergileriniz:';
+    return { reply: `${baslik}\n\n${sat}${topSat}`, kind: 'vergi' };
   }
 
   // Beyanname DURUMU (kendi) — tutar VERME, sadece verildi/hazırlanıyor
