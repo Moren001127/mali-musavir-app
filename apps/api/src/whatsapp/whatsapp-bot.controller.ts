@@ -1829,11 +1829,62 @@ export class WhatsAppBotController implements OnModuleInit {
       // Owner uzun yapılandırılmış brifing/rapor isteyebilir (compactFinalAnswer 3200'e
       // izin veriyor, post-filter 3500); burada 1400'de kesmek raporu yarıda bırakıyordu.
       const rawReply = (answer?.assistantMessage || '').slice(0, 3500);
-      // Owner için de post-filter uygula — iç monolog/markdown temizle
-      const reply = this.repairOwnerReply(
+      // Owner icin de post-filter uygula — ic monolog/markdown temizle
+      let reply = this.repairOwnerReply(
         this.postFilter.filterTaxpayerReply(rawReply, { mode: 'owner' }),
         ownerTenant,
       );
+
+      // ── OWNER KALITE KAPISI (gonderim ONCESI, DAR KAPSAM) ─────────────────
+      // Eskiden owner cevabi HIC on-denetimden gecmiyordu; denetim gonderimden SONRA
+      // ve yalniz log icin calisiyordu. Canli dokumde owner'a yanlis oran/dayanak
+      // (GVK 94 yerine KVK 30) ve kendi icinde tutmayan hesaplar gitti.
+      // Hiz kaygisi nedeniyle kapi DAR: yalnizca cevap SAYISAL/HUKUKI iddia
+      // iceriyorsa (yuzde, kanun maddesi, tutar) bloklayici denetim + tek retry.
+      const riskliOwnerCevabi = /%\s*\d|(?:\bGVK\b|\bKVK\b|\bKDVK\b|\bVUK\b|\bTTK\b)|\bmadde\s*\d|₺|\bTL\b/i.test(reply);
+      if (riskliOwnerCevabi) {
+        // Celiski denetimi icin onceki cevaplar SART: eskiden bos dizi geciliyordu,
+        // yani "onceki cevabinla celisiyor mu" kontrolu YAPISAL OLARAK korduyu.
+        const ownerRecent = await this.botContext.getRecentOutgoingReplies(ownerContact.id).catch(() => []);
+        reply = await this.qualityGateReply({
+          tenantId: ownerTenant.id,
+          taxpayerId: ownerContact.id,
+          messageId: msg.id || null,
+          intent: 'OWNER',
+          customerMessage: msg.text,
+          reply,
+          contextBlock: recentContext,
+          recentReplies: ownerRecent,
+          blocking: true,
+          ownerMode: true,
+          retry: async (reasons) => {
+            const retryPrompt = this.botEval.buildRetryPrompt(
+              rawReply,
+              reasons,
+              {
+                tenantId: ownerTenant.id,
+                taxpayerId: ownerContact.id,
+                intent: 'OWNER',
+                message: msg.text,
+                contextBlock: recentContext,
+              },
+              ownerRecent,
+            );
+            const retryAnswer = await this.calisan.runViaMorenAi({
+              tenantId: ownerTenant.id,
+              conversationId,
+              message: retryPrompt,
+              originalMessage: msg.text,
+              source: 'calisan-whatsapp-retry',
+            });
+            return this.repairOwnerReply(
+              this.postFilter.filterTaxpayerReply(String(retryAnswer?.assistantMessage || ''), { mode: 'owner' }),
+              ownerTenant,
+            );
+          },
+        }).catch(() => reply);
+      }
+
       if (reply) {
         const sent = await this.whatsapp.sendMessage(this.replyTarget(msg), reply, ownerTenant.id);
         await this.prisma.communicationLog.create({
@@ -1855,7 +1906,7 @@ export class WhatsAppBotController implements OnModuleInit {
           conversationId: ownerContact.id,
           intent: 'OWNER',
           customerMessage: msg.text || null,
-          recentReplies: [],
+          recentReplies: await this.botContext.getRecentOutgoingReplies(ownerContact.id).catch(() => []),
           originalReply: rawReply,
           finalReply: reply,
           retryCount: 0,
@@ -2597,6 +2648,7 @@ export class WhatsAppBotController implements OnModuleInit {
     recentReplies?: string[];
     retry?: (reasons: string[]) => Promise<string>;
     blocking?: boolean;  // true → LLM-yargıç gönderimden ÖNCE (mükellef hattı için)
+    ownerMode?: boolean; // owner hattı: uzunluk/emoji cezası yok, çelişki/yalan denetimi var
   }): Promise<string> {
     // Maliyet tasarrufu: live cevaplarin %X'i eval'den gecsin (varsayilan %20).
     // Gece synthetic test'ler ayri cron'da, bu sample etkilemez.
@@ -2626,6 +2678,7 @@ export class WhatsAppBotController implements OnModuleInit {
         intent: input.intent || null,
         message: input.customerMessage || null,
         contextBlock: input.contextBlock || null,
+        ownerMode: input.ownerMode === true,
         source: 'online',
       },
       recentReplies,
@@ -2647,6 +2700,7 @@ export class WhatsAppBotController implements OnModuleInit {
             intent: input.intent || null,
             message: input.customerMessage || null,
             contextBlock: input.contextBlock || null,
+            ownerMode: input.ownerMode === true,
             source: 'online-escalation',
           },
           recentReplies,
