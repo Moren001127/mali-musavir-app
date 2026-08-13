@@ -22,7 +22,11 @@
   // koruması (Sorgu 2 sessiz eksik fatura), mükellef-tip tespitine poll (firma değişimi
   // yarışı), yanlış menü-cache kendini-onarır, iptal ZIP beklemesini keser,
   // cache-menü 3sn ölü uyku→0.5sn, popup uykusu 700→200ms.
-  const AGENT_VERSION = '1.47.11';
+  // v1.47.12 (2026-08-13) ASIL YAVAŞLIK KÖKÜ: ajan her log satırında ve poll
+  // döngülerinde (400-600ms) API'ye ayrı HTTP isteği atıyordu → dakikada 100+
+  // istek → hız sınırı/gecikme → log satırları arası 15-60sn, işler kat kat uzun.
+  // FIX: iptal kontrolü 3sn önbellekli + log POST'u bloklamayan sıralı kuyruk.
+  const AGENT_VERSION = '1.47.12';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -1478,19 +1482,33 @@
       window.__lucaJobRunning = true;
       for (const job of jobs) {
         try {
-          const isJobCancelled = async () => {
+          // v1.47.12 HIZ (asıl darboğaz): iptal kontrolü artık ÖNBELLEKLİ.
+          // Eskiden HER throwIfCancelled() ve HER log() satırı Railway'e ayrı HTTP
+          // isteği atıyordu; GİB/ZIP poll döngüleri bunu 400-600ms'de bir çağırdığı
+          // için dakikada 100+ istek → hız sınırı (429) + her log satırı arası
+          // 15-60sn gecikme. Job'lar bu yüzden "eskisinden çok daha uzun" sürüyordu.
+          // Artık en fazla 3sn'de bir gerçek istek; arası önbellekten döner.
+          // İptal gecikmesi en fazla 3sn (kullanıcı için fark edilmez).
+          let __cancelTs = 0;
+          let __cancelVal = false;
+          const isJobCancelled = async (force = false) => {
             if (window.__morenAgent.stopRequested) return true;
+            const now = Date.now();
+            if (!force && now - __cancelTs < 3000) return __cancelVal;
+            __cancelTs = now;
             try {
               const r = await fetch(API + `/agent/luca/jobs/${job.id}/status`, {
                 headers: { 'X-Agent-Token': TOKEN },
               });
-              if (!r.ok) return false;
+              if (!r.ok) { __cancelVal = false; return false; }
               const j = await r.json();
               if (j && j.status === 'cancelled') {
                 window.__morenAgent.stopRequested = true;
+                __cancelVal = true;
                 return true;
               }
             } catch {}
+            __cancelVal = false;
             return false;
           };
           const throwIfCancelled = async () => {
@@ -1506,7 +1524,7 @@
           // Bu sayede firma değişimi gibi /start öncesi aşamalar da kullanıcıya görünür.
           const earlyLog = async (line) => {
             try {
-              if (await isJobCancelled()) return;
+              if (window.__morenAgent.stopRequested) return; // v1.47.12: ağ turu yok
               await fetch(API + `/agent/luca/jobs/${job.id}/log`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
@@ -1640,7 +1658,9 @@
           window.__morenLogs = window.__morenLogs || [];
           const log = async (line) => {
             try {
-              if (await isJobCancelled()) return;
+              // v1.47.12: log yazmak için sunucuya "iptal mi?" diye SORMA (ağ turu
+              // ~2 kat log maliyeti demekti). Yerel bayrak yeterli.
+              if (window.__morenAgent.stopRequested) return;
               const ts = new Date().toLocaleTimeString('tr-TR', {
                 hour12: false,
                 timeZone: 'Europe/Istanbul',
@@ -1651,12 +1671,17 @@
               // 2) window dizisi — istediği zaman copy(window.__morenLogs.join('\n')) ile alır
               window.__morenLogs.push(formatted);
               if (window.__morenLogs.length > 5000) window.__morenLogs.splice(0, 1000);
-              // 3) Backend POST (mevcut akış — portal job ekranında gösteriliyor)
-              await fetch(API + `/agent/luca/jobs/${job.id}/log`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
-                body: JSON.stringify({ msg: line, line }),
-              });
+              // 3) Backend POST — v1.47.12: SIRALI ama BLOKLAMAYAN kuyruk.
+              // Eskiden her log satırında Railway cevabı BEKLENİYORDU; sunucu yavaş
+              // ya da hız-sınırındayken (429) ajanın işi log başına saniyelerce
+              // duruyordu. Artık zincirle sıra korunur, akış beklemez.
+              window.__morenLogQueue = (window.__morenLogQueue || Promise.resolve())
+                .then(() => fetch(API + `/agent/luca/jobs/${job.id}/log`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
+                  body: JSON.stringify({ msg: line, line }),
+                }))
+                .catch(() => {});
             } catch {}
           };
 
