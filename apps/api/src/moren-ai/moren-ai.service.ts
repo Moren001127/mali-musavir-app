@@ -199,7 +199,15 @@ const TOOL_GROUPS: Array<{ pattern: RegExp; tools: string[] }> = [
   { pattern: /mizan|hesap kod|gelir tablos|bilanço|bilanco|rasyo|oran|likidite|özkaynak|ozkaynak/i, tools: ['list_mizan_periods', 'get_mizan', 'get_gelir_tablosu', 'get_bilanco', 'compare_periods', 'calculate_financial_ratios'] },
   // TDHP hesap kodu / vergi oranı sorusu → DOĞRULANMIŞ referans (uydurmayı keser).
   { pattern: /hangi hesap|hesap kod|hesap plan|tdhp|\b[1-7]\d\d\b.*hesap|kurumlar.*oran|gecici.*oran|geçici.*oran|tevkifat.*oran|vergi oran/i, tools: ['get_accounting_reference'] },
-  { pattern: /muhasebe|tdhp|yevmiye|defter|e-defter|e defter|dönem sonu|donem sonu|dönem kapan|donem kapan|amortisman|envanter|mali müşavirlik|mali musavirlik/i, tools: ['list_mizan_periods', 'get_mizan', 'get_gelir_tablosu', 'get_bilanco', 'compare_periods', 'calculate_financial_ratios', 'get_operation_briefing'] },
+  // e-DEFTER kendi modulu — mizan araclarina yonlendirilmemeli (yanlis modul verisi riski).
+  { pattern: /e-?\s?defter|edefter|yevmiye|kebir|berat/i, tools: ['list_edefter_sessions', 'list_mizan_periods', 'get_mizan'] },
+  // FATURA ISLEME MERKEZI — "islenen/onaylanan/Luca'ya giden fatura".
+  { pattern: /fatura merkez|islenen fatura|işlenen fatura|muhasebele[sş]tir|luca'?ya (git|aktar)|onay bekleyen fatura|kopya fatura|fatura islem/i, tools: ['list_fatura_merkezi', 'list_invoices'] },
+  // OTOMASYONLAR — ajan islerinden ayri.
+  { pattern: /otomasyon|automation|zamanlanm[ıi][sş] g[öo]rev|cron/i, tools: ['list_automations', 'get_agent_status'] },
+  // GUNDEM — kur/enflasyon/kira artisi/Resmi Gazete.
+  { pattern: /d[öo]viz|kur|dolar|euro|avro|enflasyon|t[üu]fe|kira art|alt[ıi]n|borsa|bist|resmi gazete|g[üu]ndem/i, tools: ['get_gundem'] },
+  { pattern: /muhasebe|tdhp|yevmiye|dönem sonu|donem sonu|dönem kapan|donem kapan|amortisman|envanter|mali müşavirlik|mali musavirlik/i, tools: ['list_mizan_periods', 'get_mizan', 'get_gelir_tablosu', 'get_bilanco', 'compare_periods', 'calculate_financial_ratios', 'get_operation_briefing'] },
   { pattern: /finans|nakit akış|nakit akis|bütçe|butce|kârlılık|karlılık|karlilik|finansman|işletme sermayesi|isletme sermayesi|tahsilat|cari|rasyo|likidite/i, tools: ['get_operation_briefing', 'get_collection_risk_summary', 'list_mizan_periods', 'get_mizan', 'get_gelir_tablosu', 'get_bilanco', 'compare_periods', 'calculate_financial_ratios'] },
   { pattern: /şirket yönetimi|sirket yonetimi|planlama|iş planı|is plani|strateji|performans|kpi|görev|gorev|iş akışı|is akisi|risk yönetimi|risk yonetimi/i, tools: ['get_operation_briefing', 'get_beyanname_readiness_summary', 'get_collection_risk_summary', 'get_agent_status', 'list_taxpayers_monthly_status'] },
   // PORTFÖY-GENELİ VERGİ ÖDEMESİ listesi: "kdv/muhtasar/geçici/damga çıkan mükellefler/tutarları", "kimlere ödeme çıkıyor".

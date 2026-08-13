@@ -117,6 +117,9 @@ export class ToolExecutorService {
         case 'list_tasks': return this.listTasks(input, ctx);
         case 'list_etebligat': return this.listETebligat(input, ctx);
         case 'get_gundem': return this.getGundem(input, ctx);
+        case 'list_fatura_merkezi': return this.listFaturaMerkezi(input, ctx);
+        case 'list_edefter_sessions': return this.listEdefterSessions(input, ctx);
+        case 'list_automations': return this.listAutomations(input, ctx);
         case 'get_my_tebligat': return this.getMyTebligat(input, ctx);
         case 'get_my_sgk': return this.getMySgk(input, ctx);
         case 'get_my_isletme_hesap_ozeti': return this.getMyIsletmeHesapOzeti(input, ctx);
@@ -2989,6 +2992,107 @@ export class ToolExecutorService {
     } catch (e: any) {
       return { error: `Gundem verisi alinamadi: ${e?.message || e}` };
     }
+  }
+
+  /**
+   * FATURA ISLEME MERKEZI — InvoiceAccountingDocument. Bota TAMAMEN kapaliydi;
+   * "kac fatura islendi / hangileri Luca'ya gitti / eslesmeyen var mi" sorularinda
+   * bot ham Mihsap listesini "islenen fatura" diye sunuyordu (yanlis sayi).
+   */
+  private async listFaturaMerkezi(input: any, ctx: { tenantId: string }) {
+    const where: any = { tenantId: ctx.tenantId };
+    if (input?.taxpayerId || input?.taxpayerName || input?.mukellefId) {
+      const t = await this.resolveTaxpayerFromInput(input, ctx);
+      if (t) where.taxpayerId = t.id;
+    }
+    if (input?.durum) where.status = String(input.durum).toUpperCase();
+    if (input?.lucaDurum) where.lucaStatus = String(input.lucaDurum).toUpperCase();
+    if (input?.tur) where.invoiceKind = String(input.tur).toUpperCase();
+    const donem = String(input?.donem || '').trim();
+    if (/^\d{4}-\d{2}$/.test(donem)) {
+      const [y, m] = donem.split('-').map(Number);
+      where.faturaTarihi = { gte: new Date(y, m - 1, 1), lt: new Date(y, m, 1) };
+    }
+    const limit = Math.min(Number(input?.limit) || 25, 100);
+    const [kayitlar, toplam] = await Promise.all([
+      (this.prisma as any).invoiceAccountingDocument.findMany({
+        where, orderBy: [{ faturaTarihi: 'desc' }, { createdAt: 'desc' }], take: limit,
+        select: {
+          id: true, documentType: true, invoiceKind: true, status: true, belgeNo: true,
+          faturaTarihi: true, vendorName: true, customerName: true, totalAmount: true,
+          lucaStatus: true, lucaFisNo: true, duplicateOfId: true,
+          taxpayer: { select: { companyName: true, firstName: true, lastName: true } },
+        },
+      }).catch(() => []),
+      (this.prisma as any).invoiceAccountingDocument.count({ where }).catch(() => 0),
+    ]);
+    const sayim = (alan: string) => kayitlar.reduce((a: any, k: any) => { const v = k[alan] || '-'; a[v] = (a[v] || 0) + 1; return a; }, {});
+    return {
+      modul: 'Fatura İşleme Merkezi',
+      toplam,
+      gosterilen: kayitlar.length,
+      durumDagilimi: sayim('status'),
+      lucaDagilimi: sayim('lucaStatus'),
+      faturalar: kayitlar.map((k: any) => ({
+        belgeNo: k.belgeNo || '-', tur: k.documentType, yon: k.invoiceKind,
+        tarih: k.faturaTarihi ? new Date(k.faturaTarihi).toISOString().slice(0, 10) : null,
+        karsiTaraf: k.vendorName || k.customerName || '-',
+        tutar: this.toNum(k.totalAmount), durum: k.status,
+        luca: k.lucaStatus, lucaFisNo: k.lucaFisNo || null,
+        kopyaMi: !!k.duplicateOfId,
+        mukellef: k.taxpayer ? (k.taxpayer.companyName || `${k.taxpayer.firstName || ''} ${k.taxpayer.lastName || ''}`).trim() : null,
+      })),
+      not: toplam === 0 ? 'Bu kriterlerde Fatura Merkezi kaydi yok.' : undefined,
+    };
+  }
+
+  /** E-DEFTER KONTROL oturumlari ve bulgu sayilari. Bota kapaliydi. */
+  private async listEdefterSessions(input: any, ctx: { tenantId: string }) {
+    const where: any = { tenantId: ctx.tenantId };
+    if (input?.taxpayerId || input?.taxpayerName || input?.mukellefId) {
+      const t = await this.resolveTaxpayerFromInput(input, ctx);
+      if (t) where.taxpayerId = t.id;
+    }
+    if (input?.donem) where.donem = String(input.donem);
+    const limit = Math.min(Number(input?.limit) || 15, 50);
+    const rows = await (this.prisma as any).eDefterControlSession.findMany({
+      where, orderBy: [{ createdAt: 'desc' }], take: limit,
+      select: {
+        id: true, donem: true, donemTipi: true, kaynak: true, status: true,
+        totalLines: true, totalVouchers: true, findingCount: true, createdAt: true,
+        taxpayer: { select: { companyName: true, firstName: true, lastName: true } },
+      },
+    }).catch(() => []);
+    return {
+      modul: 'e-Defter Kontrol',
+      adet: rows.length,
+      oturumlar: rows.map((r: any) => ({
+        donem: r.donem, tip: r.donemTipi, kaynak: r.kaynak, durum: r.status,
+        satir: r.totalLines, fis: r.totalVouchers, bulgu: r.findingCount,
+        tarih: r.createdAt ? new Date(r.createdAt).toISOString().slice(0, 10) : null,
+        mukellef: r.taxpayer ? (r.taxpayer.companyName || `${r.taxpayer.firstName || ''} ${r.taxpayer.lastName || ''}`).trim() : null,
+      })),
+      not: rows.length === 0 ? 'e-Defter kontrol oturumu yok.' : undefined,
+    };
+  }
+
+  /** OTOMASYONLAR — Automation + son calismalar. Bota kapaliydi, ajan islerine karisiyordu. */
+  private async listAutomations(input: any, ctx: { tenantId: string }) {
+    const limit = Math.min(Number(input?.limit) || 20, 50);
+    const rows = await (this.prisma as any).automation.findMany({
+      where: { tenantId: ctx.tenantId },
+      orderBy: [{ lastRunAt: 'desc' }], take: limit,
+      select: { id: true, name: true, status: true, lastRunAt: true, lastRunStatus: true, totalRuns: true },
+    }).catch(() => []);
+    return {
+      modul: 'Otomasyonlar',
+      adet: rows.length,
+      otomasyonlar: rows.map((r: any) => ({
+        ad: r.name, durum: r.status, sonCalisma: r.lastRunAt ? new Date(r.lastRunAt).toISOString().slice(0, 16).replace('T', ' ') : null,
+        sonSonuc: r.lastRunStatus || '-', toplamCalisma: r.totalRuns,
+      })),
+      not: rows.length === 0 ? 'Tanimli otomasyon yok.' : undefined,
+    };
   }
 
   private async researchOfficialSources(input: any, ctx: { tenantId: string; userId?: string | null }) {

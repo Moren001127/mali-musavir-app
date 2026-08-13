@@ -192,6 +192,36 @@ export const MOREN_AI_TOOLS: ToolDefinition[] = [
     input_schema: { type: 'object', properties: {} },
   },
   {
+    name: 'list_fatura_merkezi',
+    description:
+      'FATURA ISLEME MERKEZI kayitlari (islenen/onaylanan faturalar, Luca aktarim durumu, kopya uyarilari). ' +
+      '"kac fatura islendi", "hangi faturalar Lucaya gitti", "onay bekleyen fatura var mi", "kopya fatura" sorularinda BUNU kullan. ' +
+      'DIKKAT: list_invoices HAM Mihsap/e-arsiv listesidir; ISLENEN fatura sayisi BURADAN gelir. ' +
+      'Suzgecler: taxpayerId/taxpayerName, donem (yyyy-mm), durum (NEEDS_REVIEW|READY|APPROVED|REJECTED), lucaDurum (NOT_STARTED|QUEUED|POSTED|FAILED), tur (ALIS|SATIS).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        taxpayerId: { type: 'string' }, taxpayerName: { type: 'string' }, donem: { type: 'string' },
+        durum: { type: 'string' }, lucaDurum: { type: 'string' }, tur: { type: 'string' }, limit: { type: 'number' },
+      },
+    },
+  },
+  {
+    name: 'list_edefter_sessions',
+    description:
+      'e-DEFTER KONTROL oturumlari: donem, kaynak (LUCA/EXCEL), durum, satir/fis sayisi ve BULGU sayisi. ' +
+      '"e-defter kontrolu yapildi mi", "kac bulgu cikti", "hangi donem kontrol edildi" sorularinda kullan. Mizan araclariyla KARISTIRMA.',
+    input_schema: { type: 'object', properties: { taxpayerId: { type: 'string' }, taxpayerName: { type: 'string' }, donem: { type: 'string' }, limit: { type: 'number' } } },
+  },
+  {
+    name: 'list_automations',
+    description:
+      'OTOMASYONLAR modulu: tanimli otomasyonlar, durumlari, son calisma zamani ve sonucu. ' +
+      '"otomasyonlar calisiyor mu", "hangi otomasyon hata verdi", "son ne zaman calisti" sorularinda kullan. ' +
+      'AJAN (Luca/Mihsap) isleriyle KARISTIRMA — onlar get_agent_status / get_luca_agent_jobs.',
+    input_schema: { type: 'object', properties: { limit: { type: 'number' } } },
+  },
+  {
     name: 'get_gundem',
     description:
       'Gunun gundemi: TCMB doviz kurlari, TUFE/enflasyon ve kira artis tavani, piyasa (BIST/altin), Resmi Gazete ozetleri. ' +
@@ -352,7 +382,7 @@ export const MOREN_AI_TOOLS: ToolDefinition[] = [
   {
     name: 'list_invoices',
     description:
-      'Mükellefin İşlenen Faturalar modülündeki faturalarını listeler (/panel/faturalar, MihsapInvoice). ' +
+      'HAM fatura listesi (Mihsap/e-arsiv/e-fatura kaynaklarindan cekilen kayitlar). ISLENEN/muhasebelestirilen fatura sayisi icin list_fatura_merkezi kullan. Mükellefin İşlenen Faturalar modülündeki faturalarını listeler (/panel/faturalar, MihsapInvoice). ' +
       'taxpayerId bilinmiyorsa taxpayerName/mukellefName ile mükellefi bulur; period/donem YYYY-MM veya "Nisan" gibi ay adı olabilir. ' +
       'Alış/satış tipi, karşı firma, tarih aralığı ve tutara göre filtreler; özet toplamları ve fatura satırlarını döndürür.',
     input_schema: {
