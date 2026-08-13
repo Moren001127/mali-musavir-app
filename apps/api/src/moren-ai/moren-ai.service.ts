@@ -2267,14 +2267,49 @@ export class MorenAiService {
     }
   }
 
+  /**
+   * Brifing kartı. AI üretimi 15-60 saniye sürebiliyor; kullanıcı bu süre boyunca
+   * "Brifing hazırlanıyor…" yazısına bakmasın diye AI ASLA beklenmez:
+   *   - önbellek taze  → anında döner
+   *   - önbellek bayat → ESKİSİ anında döner, yenileme arka planda yapılır
+   *   - önbellek yok   → kural bazlı brifing (yalnızca veritabanı sorgusu) anında
+   *                      döner; AI sürümü arka planda üretilip önbelleğe yazılır
+   * Tek istisna force=true (Yenile düğmesi): orada beklemeyi kullanıcı seçmiştir.
+   */
   async getBrifing(tenantId: string, userId?: string | null, force = false): Promise<BrifingResponse> {
     const cacheKey = `${tenantId}:${userId || 'anonymous'}`;
     const cached = this.brifingCache.get(cacheKey);
-    if (!force && cached && (Date.now() - cached.generatedAt.getTime()) < this.BRIFING_TTL_MS) {
+
+    if (force) return this.brifingUret(tenantId, userId, cacheKey);
+
+    if (cached) {
+      if (Date.now() - cached.generatedAt.getTime() >= this.BRIFING_TTL_MS) {
+        this.brifingArkadaYenile(cacheKey, tenantId, userId);
+      }
       const taze = await this.tazeleKuyrukSinyalleri(tenantId, cached.payload);
       return { ...taze, generatedAt: cached.generatedAt.toISOString(), fromCache: true };
     }
 
+    // İlk açılış: kural brifingi hemen göster, AI sürümünü arkada üret.
+    const ilkCtx = await this.buildBrifingContext(tenantId, userId);
+    const hizli = this.buildFallbackPayload(ilkCtx);
+    const simdi = new Date();
+    this.brifingCache.set(cacheKey, { payload: hizli, generatedAt: simdi });
+    this.brifingArkadaYenile(cacheKey, tenantId, userId);
+    return { ...hizli, generatedAt: simdi.toISOString(), fromCache: false };
+  }
+
+  /** Arka plan yenileme — aynı kullanıcı için aynı anda tek üretim çalışır. */
+  private brifingYenileniyor = new Set<string>();
+  private brifingArkadaYenile(cacheKey: string, tenantId: string, userId?: string | null): void {
+    if (this.brifingYenileniyor.has(cacheKey)) return;
+    this.brifingYenileniyor.add(cacheKey);
+    void this.brifingUret(tenantId, userId, cacheKey)
+      .catch((e: any) => this.logger.warn(`Brifing arka plan yenileme hatası: ${e?.message || e}`))
+      .finally(() => { this.brifingYenileniyor.delete(cacheKey); });
+  }
+
+  private async brifingUret(tenantId: string, userId: string | null | undefined, cacheKey: string): Promise<BrifingResponse> {
     const ctx = await this.buildBrifingContext(tenantId, userId);
     const prompt = this.buildBrifingPrompt(ctx);
 

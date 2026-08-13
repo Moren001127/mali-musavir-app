@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ExternalLink, Landmark, Loader2, RefreshCw, ScrollText, TrendingDown, TrendingUp } from 'lucide-react';
+import { ExternalLink, Home, Landmark, Loader2, RefreshCw, ScrollText, TrendingDown, TrendingUp } from 'lucide-react';
 import { api } from '@/lib/api';
 
 /**
@@ -20,11 +20,20 @@ type Piyasa = {
   ondalik: number;
 };
 type Mevzuat = { baslik: string; url: string; neden: string; onem: 'yuksek' | 'orta' };
+type Enflasyon = {
+  donem: string;
+  aylik: number | null;
+  yillik: number | null;
+  kiraArtisTavani: number | null;
+  yilbasindan: number | null;
+  kaynakUrl: string;
+};
 type GundemData = {
   tarih: string;
   kurTarihi: string | null;
   kurlar: Kur[];
   piyasa: Piyasa[];
+  enflasyon: Enflasyon | null;
   mevzuat: Mevzuat[];
   mevzuatToplam: number;
   uyarilar: string[];
@@ -40,6 +49,19 @@ const fmtKur = (n: number | null) =>
 
 const fmtPiyasa = (n: number | null, ondalik: number) =>
   n == null ? '—' : n.toLocaleString('tr-TR', { minimumFractionDigits: ondalik, maximumFractionDigits: ondalik });
+
+/** TÜFE oranı — etiket + yüzde */
+function Oran({ etiket, deger }: { etiket: string; deger: number | null }) {
+  if (deger == null) return null;
+  return (
+    <span className="inline-flex items-baseline gap-1.5">
+      <span className="text-[10.5px]" style={{ color: 'rgba(250,250,249,0.45)' }}>{etiket}</span>
+      <span className="text-[13px] font-bold tabular-nums" style={{ color: 'rgba(250,250,249,0.88)' }}>
+        %{deger.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+      </span>
+    </span>
+  );
+}
 
 export function GundemKart() {
   const qc = useQueryClient();
@@ -177,6 +199,46 @@ export function GundemKart() {
           </div>
         )}
       </div>
+
+      {/* Enflasyon + kira artış tavanı (TÜİK TÜFE) */}
+      {data?.enflasyon && (
+        <div className="px-5 pt-2.5">
+          <a
+            href={data.enflasyon.kaynakUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            title="TÜİK Tüketici Fiyat Endeksi bültenini aç"
+            className="group flex items-center gap-x-4 gap-y-1.5 flex-wrap rounded-xl px-4 py-2.5 transition hover:brightness-110"
+            style={{
+              background: 'rgba(255,255,255,0.018)',
+              border: '1px solid rgba(216,189,134,0.12)',
+              boxShadow: 'inset 3px 0 0 rgba(216,189,134,0.45)',
+            }}
+          >
+            <span className="text-[9.5px] uppercase font-bold tracking-[.18em]" style={{ color: 'rgba(221,246,238,0.5)' }}>
+              TÜFE · {data.enflasyon.donem}
+            </span>
+
+            <Oran etiket="Aylık" deger={data.enflasyon.aylik} />
+            <Oran etiket="Yıllık" deger={data.enflasyon.yillik} />
+
+            {data.enflasyon.kiraArtisTavani != null && (
+              <span
+                className="inline-flex items-center gap-1.5 rounded-md px-2 py-0.5"
+                style={{ background: 'rgba(216,189,134,0.08)', border: '1px solid rgba(216,189,134,0.18)' }}
+              >
+                <Home size={11} style={{ color: GOLD }} />
+                <span className="text-[10.5px]" style={{ color: 'rgba(250,250,249,0.55)' }}>Kira artış tavanı</span>
+                <span className="text-[13px] font-bold tabular-nums" style={{ color: GOLD }}>
+                  %{data.enflasyon.kiraArtisTavani.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                </span>
+              </span>
+            )}
+
+            <ExternalLink size={12} className="ml-auto opacity-35 transition group-hover:opacity-90" style={{ color: GOLD }} />
+          </a>
+        </div>
+      )}
 
       {/* Mevzuat */}
       <div className="px-5 pt-3 pb-4">

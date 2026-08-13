@@ -38,11 +38,25 @@ export type GundemPiyasa = {
   ondalik: number;             // gösterim hassasiyeti
 };
 
+/**
+ * TÜİK Tüketici Fiyat Endeksi (TÜFE). "On iki aylık ortalamalara göre değişim"
+ * konut kirası artış tavanıdır (TBK 344) — mali müşavirin en sık sorulan sayısı.
+ */
+export type GundemEnflasyon = {
+  donem: string;                    // "Temmuz 2026"
+  aylik: number | null;             // bir önceki aya göre
+  yillik: number | null;            // bir önceki yılın aynı ayına göre
+  kiraArtisTavani: number | null;   // on iki aylık ortalamalara göre
+  yilbasindan: number | null;       // bir önceki yılın Aralık ayına göre
+  kaynakUrl: string;
+};
+
 export type GundemData = {
   tarih: string;              // yyyy-mm-dd (Türkiye)
   kurTarihi: string | null;   // TCMB'nin yayınladığı tarih
   kurlar: GundemKur[];
   piyasa: GundemPiyasa[];
+  enflasyon: GundemEnflasyon | null;
   mevzuat: GundemMevzuat[];
   mevzuatToplam: number;      // Resmî Gazete'de taranan madde sayısı
   uyarilar: string[];         // kaynak erişilemediyse vb.
@@ -53,6 +67,7 @@ export type GundemData = {
 const TCMB_TODAY = 'https://www.tcmb.gov.tr/kurlar/today.xml';
 const BIST_URL = 'https://query1.finance.yahoo.com/v8/finance/chart/XU100.IS?interval=1d&range=5d';
 const ALTIN_URL = 'https://finans.truncgil.com/today.json';
+const TUIK_API = 'https://veriportali.tuik.gov.tr/api/tr';
 const RG_ANASAYFA = 'https://www.resmigazete.gov.tr/';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) MorenPortal/1.0';
 
@@ -61,6 +76,7 @@ export class GundemService {
   private readonly logger = new Logger(GundemService.name);
   private cache: { key: string; data: GundemData } | null = null;
   private inFlight: Promise<GundemData> | null = null;
+  private sonEnflasyon: GundemEnflasyon | null = null; // TÜİK erişilemezse son bilinen değer
   private piyasaCache: { ts: number; data: GundemPiyasa[] } | null = null;
   private readonly PIYASA_TTL_MS = 15 * 60 * 1000; // borsa/altın gün içinde değişir
   private dispatcher: any = undefined; // undici ProxyAgent | null (Türkiye çıkışı)
@@ -90,9 +106,20 @@ export class GundemService {
 
   private async build(key: string): Promise<GundemData> {
     const uyarilar: string[] = [];
-    const [kurRes, rgRes, piyasaRes] = await Promise.allSettled([
-      this.fetchKurlar(), this.fetchResmiGazete(), this.fetchPiyasa(),
+    const [kurRes, rgRes, piyasaRes, enfRes] = await Promise.allSettled([
+      this.fetchKurlar(), this.fetchResmiGazete(), this.fetchPiyasa(), this.fetchEnflasyon(),
     ]);
+
+    let enflasyon: GundemEnflasyon | null = null;
+    if (enfRes.status === 'fulfilled') {
+      enflasyon = enfRes.value;
+    } else {
+      // Ayda bir değişen veri — erişilemezse son bilinen değeri göstermek boş
+      // göstermekten iyidir (dönem etiketi zaten kartta yazıyor).
+      enflasyon = this.sonEnflasyon;
+      if (!enflasyon) uyarilar.push('TÜİK enflasyon verisi alınamadı');
+      this.logger.warn(`Enflasyon hatası: ${enfRes.reason?.message || enfRes.reason}`);
+    }
 
     let piyasa: GundemPiyasa[] = [];
     if (piyasaRes.status === 'fulfilled') {
@@ -134,6 +161,7 @@ export class GundemService {
       kurTarihi,
       kurlar,
       piyasa,
+      enflasyon,
       mevzuat,
       mevzuatToplam,
       uyarilar,
@@ -212,7 +240,7 @@ export class GundemService {
    * Türkiye proxy'si üzerinden gider (GİB e-Arşiv akışıyla aynı mekanizma).
    * Proxy yoksa doğrudan denenir — kart yine çalışır, sadece o kaynak boş kalır.
    */
-  private async trFetch(url: string, timeoutMs = 20000): Promise<Response> {
+  private async trFetch(url: string, timeoutMs = 20000, ekBaslik?: Record<string, string>): Promise<Response> {
     if (this.dispatcher === undefined) {
       const purl = String(process.env.TURMOB_PROXY_URL || process.env.PORTAL_TR_PROXY_URL || '').trim();
       if (purl) {
@@ -227,9 +255,69 @@ export class GundemService {
         this.dispatcher = null;
       }
     }
-    const init: any = { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(timeoutMs) };
+    const init: any = { headers: { 'User-Agent': UA, ...(ekBaslik || {}) }, signal: AbortSignal.timeout(timeoutMs) };
     if (this.dispatcher) init.dispatcher = this.dispatcher;
     return fetch(url, init) as any;
+  }
+
+  // ─────────────────────── TÜİK ENFLASYON ───────────────────────
+
+  /**
+   * TÜFE — TÜİK veri portalının kendi JSON ucundan (anahtar gerektirmiyor).
+   * Bülten numarası her ay değişiyor ve sıralı DEĞİL; önce liste ucundan bulunuyor.
+   * Tarayıcı benzeri User-Agent + X-Requested-With şart (WAF aksi halde 403/404 veriyor).
+   * Ayda bir değiştiği için günlük gündem önbelleğiyle birlikte günde bir kez çekilir;
+   * çekilemezse en son başarılı değer korunur (kart boş kalmasın).
+   */
+  private async fetchEnflasyon(): Promise<GundemEnflasyon | null> {
+    const bas = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+      'X-Requested-With': 'XMLHttpRequest',
+      Accept: 'application/json',
+    };
+    const liste = await this.trFetch(`${TUIK_API}/press`, 15000, bas);
+    if (!liste.ok) throw new Error(`TÜİK liste → HTTP ${liste.status}`);
+    const lj: any = await liste.json();
+    const kayit = (Array.isArray(lj?.data) ? lj.data : []).find(
+      (x: any) => String(x?.title || '').toLocaleLowerCase('tr').includes('tüketici fiyat endeksi'),
+    );
+    const id = kayit?.id ? String(kayit.id) : '';
+    if (!id) throw new Error('TÜİK: TÜFE bülteni bulunamadı');
+
+    const bulten = await this.trFetch(`${TUIK_API}/press/${id}`, 20000, bas);
+    if (!bulten.ok) throw new Error(`TÜİK bülten → HTTP ${bulten.status}`);
+    const bj: any = await bulten.json();
+    const icerik = String(bj?.data?.content || '');
+    const donem = String(bj?.data?.period || '').trim();
+
+    // 1) Bültenin özet tablosu: satır etiketi + sağdaki oran
+    const satirlar = [
+      ...icerik.matchAll(/<td[^>]*class="text-left"[^>]*>([^<]+)<\/td>\s*<td[^>]*class="text-right"[^>]*>([^<]+)<\/td>/gi),
+    ].map((m) => ({ etiket: m[1].toLocaleLowerCase('tr'), deger: this.trSayi(m[2]) }));
+    const tablodan = (parca: string): number | null =>
+      satirlar.find((s) => s.etiket.includes(parca))?.deger ?? null;
+
+    // 2) Tablo bulunamazsa aynı sayılar bültenin özet cümlesinde de geçiyor
+    const duz = icerik.replace(/<[^>]+>/g, ' ').toLocaleLowerCase('tr');
+    const cumleden = (parca: string): number | null => {
+      const m = new RegExp(`${parca}[^%]{0,30}%\\s*([\\d.,]+)`, 'i').exec(duz);
+      return m ? this.trSayi(m[1]) : null;
+    };
+    const oku = (tabloParca: string, cumleParca: string) => tablodan(tabloParca) ?? cumleden(cumleParca);
+
+    const veri: GundemEnflasyon = {
+      donem: donem || 'son dönem',
+      aylik: oku('önceki aya göre', 'bir önceki aya göre'),
+      yillik: oku('aynı ayına göre', 'aynı ayına göre'),
+      kiraArtisTavani: oku('on iki aylık ortalama', 'on iki aylık ortalamalara göre'),
+      yilbasindan: oku('aralık ayına göre', 'aralık ayına göre'),
+      kaynakUrl: `https://veriportali.tuik.gov.tr/tr/press/${id}`,
+    };
+    if (veri.aylik == null && veri.yillik == null && veri.kiraArtisTavani == null) {
+      throw new Error('TÜİK: bülten okundu ama oranlar ayrıştırılamadı');
+    }
+    this.sonEnflasyon = veri;
+    return veri;
   }
 
   // ─────────────────────── BORSA / ALTIN ───────────────────────
