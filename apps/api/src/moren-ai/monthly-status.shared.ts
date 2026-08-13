@@ -676,11 +676,33 @@ export function detectTaxTotalIntent(text: string): boolean {
   if (/['’](a|e|ya|ye|na|ne|n[ıi]n|n[uü]n|[ıi]n|[uü]n)\b/i.test(text)) return false;
   // HİPOTETİK HESAP sorusu (verilen rakamlarla "…ise ne kadar") → portföy TOPLAMI değil.
   // "kurum kazancı 5.000.000, kkeg 200.000 ise kurumlar vergisi ne kadar" gibi.
+  // Yaziyla yazilan tutarlar da hipotetik sayilir. Canli olay: "45 bin tl faturayi
+  // isledigim zaman ne kadar kdv oderim" sorusuna 37 beyannamelik OFIS GENELI toplam
+  // dondu — cunku "45.000" bicimi olmadigi icin bu korumaya takilmiyordu.
   if (/\bise\b|kkeg|matrah|kazanc|\d{1,3}[.,]\d{3}/.test(n)) return false;
+  if (/\d+\s*(bin|milyon|milyar)\b/.test(n)) return false;
+  // "…islersem / …oderim / …cikar" gibi VARSAYIM kipleri de tek-olay hesabidir.
+  if (/(isledigim|islersem|kesersem|kessem|alirsam|odersem|oderim|odemem gerek)/.test(n)) return false;
   const toplam = /(toplam|ne kadar|kac tl|kac para|genel toplam|hepsi)/.test(n);
   const vergi = /(vergi|tahakkuk|ödeme|odeme|beyanname)/.test(n);
   const liste = /(kim|kimler|hangi mukellef|listele)/.test(n); // liste sorusu DEĞİL (o tax-payable)
   return toplam && vergi && !liste;
+}
+
+/**
+ * "1. donem / birinci donem / 2.donem" -> 2026-Q1 bicimi. Eskiden yalniz
+ * 2026-06 / 2026-Q2 yazimi taniniyor, "1. donemde" denince SESSIZCE en son kayda
+ * dusuluyor ve owner'a YANLIS DONEMIN toplami gidiyordu.
+ */
+export function ceyrekDonemOku(text: string): string {
+  const n = normalizeForIntent(text);
+  const sozle: Record<string, string> = { birinci: '1', ikinci: '2', ucuncu: '3', dorduncu: '4' };
+  const m = n.match(/\b([1-4])\s*\.?\s*donem/) || n.match(/\b(birinci|ikinci|ucuncu|dorduncu)\s+donem/);
+  if (!m) return '';
+  const q = /^[1-4]$/.test(m[1]) ? m[1] : sozle[m[1]];
+  if (!q) return '';
+  const yil = text.match(/\b(20\d{2})\b/);
+  return `${yil ? yil[1] : new Date().getFullYear()}-Q${q}`;
 }
 
 export async function buildOwnerTaxTotalReply(
@@ -688,7 +710,7 @@ export async function buildOwnerTaxTotalReply(
 ): Promise<{ reply: string } | null> {
   if (!detectTaxTotalIntent(text)) return null;
   const pm = text.match(/\b(\d{4})-(\d{2}|Q[1-4])\b/i);
-  let donem = pm ? pm[0] : '';
+  let donem = pm ? pm[0] : ceyrekDonemOku(text);
   if (!donem) {
     const son = await prisma.beyanKaydi.findFirst({
       where: { tenantId, tahakkukTutari: { not: null, gt: 0 }, taxpayer: { isActive: true } },
@@ -711,8 +733,10 @@ export async function buildOwnerTaxTotalReply(
   }
   const fmt = (n: number) => new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n) + ' ₺';
   const satirlar = [...byType.entries()].sort((a, b) => b[1] - a[1]).map(([t, v]) => `• ${t}: ${fmt(v)}`).join('\n');
+  // Baslikta "TUM OFIS" ACIKCA yazar: owner tek mukellef sorup ofis geneli toplam
+  // aldiginda bunu fark edemiyordu (canli dokumde iki kez yasandi).
   const reply = kayitlar.length
-    ? `TOPLAM TAHAKKUK — ${donem}\n\n${satirlar}\n\nGENEL TOPLAM: ${fmt(toplam)} (${kayitlar.length} beyanname)`
+    ? `TOPLAM TAHAKKUK — TÜM OFİS · ${donem}\n\n${satirlar}\n\nGENEL TOPLAM: ${fmt(toplam)} (${kayitlar.length} beyanname)\n\n(Tek bir mükellefin rakamını istiyorsan mükellefin adını yaz.)`
     : `${donem} için tahakkuk kaydı yok.`;
   return { reply };
 }

@@ -84,7 +84,11 @@ export class IsletmeHesapOzetiService {
       '*MOREN MALİ MÜŞAVİRLİK*',
       '',
       `Sayın *${taxpayerAd}*,`,
+      // KUMULATIF UYARISI: rakamlar 1 Ocak'tan donem sonuna kadarki TOPLAMDIR
+      // (veri de oyle cekiliyor), ama etiket "Nisan – Haziran" yazdigi icin mukellef
+      // bunlari yalniz o uc ayin rakami saniyordu.
       `${ozet.yil} yılı ${donem}. geçici vergi dönemi (${range}) itibarıyla işletmenizin özet mali durumu aşağıdadır:`,
+      `_(Tutarlar 1 Ocak ${ozet.yil} tarihinden dönem sonuna kadarki kümülatif toplamdır.)_`,
       '',
       `📊 Satışlar: ${P(satis)}`,
     ];
