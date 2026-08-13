@@ -125,7 +125,6 @@ const MOTIVATION_BY_FOCUS: Record<string, string> = {
 };
 
 const OPERATIONAL_MOTIVATION_RE = /\d|\b(KDV|Luca|Mihsap|evrak|fatura|çekim|hata|mükellef|beyanname|otomasyon|ajan|dosya|takip|hız|hiz|artır|artir|gecik|geciken|liste|talep|kontrol|log|işlem|islem|kayıt|kayit|bekleyen)\b/iu;
-const COMPANY_WORD_RE = /\b(LİMİTED|ANONİM|ŞİRKETİ|TİCARET|SANAYİ|PAZARLAMA|GIDA|İNŞAAT|TURİZM|A\.Ş|LTD|LTD\.ŞTİ)\b/i;
 const TODAY_DAY = new Date().getDate();
 const EARLY_MONTH = TODAY_DAY <= 12;
 const SAFE_PANEL_ROUTES = [
@@ -197,10 +196,11 @@ function cleanBriefSummary(summary: string | undefined, focus: string): string {
   const source = String(summary || '').replace(/\s+/g, ' ').trim();
   if (!source) return '';
   const sentences = source.split(/(?<=[.!?])\s+/).filter(Boolean);
-  let picked = sentences.find((s) => s.length <= 170 && !COMPANY_WORD_RE.test(s)) || '';
+  // NOT: Eskiden içinde LİMİTED/ŞİRKETİ/TİCARET gibi kelime geçen cümleler
+  // atılıyordu (mükellef adı gizleme). Bu, ofisin kendi panelinde brifingi
+  // isimsiz/sayaç cümlelerine mahkûm ediyordu — kaldırıldı.
+  let picked = sentences.find((s) => s.length <= 170) || '';
   if (!picked) picked = fallbackSummary(focus);
-  picked = picked.replace(/"[^"]{14,}"/g, 'ilgili mükellef');
-  if (COMPANY_WORD_RE.test(picked)) picked = fallbackSummary(focus);
   picked = softenCalendarTone(picked);
   picked = picked
     .replace(/\bMOREN AI\s+[^.;!?]{0,80}\btarad[ıi]\b\.?/gi, '')
@@ -229,11 +229,12 @@ function cleanBriefMotivation(text: string | undefined, focus: string): string {
 }
 
 function cleanBriefAlert(text: string): string {
+  // Mükellef adı ARTIK GÖRÜNÜR (bkz. cleanBriefSummary notu). Uyarılar ad + aksiyon
+  // içerdiği için kırpma sınırı da yükseltildi; "— hatırlatma gönder" gibi aksiyon
+  // kısmı kesilmesin.
   let value = String(text || '').replace(/\s+/g, ' ').trim();
-  value = value.replace(/"[^"]{14,}"/g, 'ilgili mükellef');
-  if (COMPANY_WORD_RE.test(value)) value = value.replace(/:.+?(?=\s|$)/, ': ilgili kayıt');
   value = softenCalendarTone(value);
-  return value.length > 120 ? `${value.slice(0, 117).trimEnd()}...` : value;
+  return value.length > 155 ? `${value.slice(0, 152).trimEnd()}...` : value;
 }
 
 function cleanSuggestionText(text: string): string {
