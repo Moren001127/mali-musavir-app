@@ -8,8 +8,30 @@ const fixNumberSpacing = (s: string) => String(s || '').replace(/(\d)\.\s+(\d{3}
 // Emoji/sembol SÜZ — mali müşavirlik için profesyonel/sade dursun (kullanıcı talimatı: "çok fazla
 // emoji"). ₺, •, — gibi gerekli karakterler emoji aralıklarının DIŞINDA, korunur. Emoji + ardındaki
 // tek boşluk birlikte silinir ("🧾 KDV" → "KDV").
-const EMOJI_RE = /[\u{1F000}-\u{1FAFF}\u{2190}-\u{21FF}\u{2300}-\u{23FF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}\u{20E3}]️?[ \t]?/gu;
-const stripEmojis = (s: string) => String(s || '').replace(EMOJI_RE, '').replace(/[ \t]{2,}/g, ' ').replace(/[ \t]+\n/g, '\n').trim();
+// ARALIK DUZELTMESI: ▶ (U+25B6), ─ (U+2500), ℹ (U+2139) hicbir araliga girmiyordu.
+// Desendeki [ \t]? bu isaretlerin ARDINDAKI BOSLUGU yiyordu ama isaretin kendisini
+// silmiyordu → "▶YARIN ONCELIK" gibi kelimeye yapisik cikti. Canli dokumde ▶ gecen
+// 68 giden mesajin 68'inde de bozuktu (24 Haziran - 12 Agustos, hala suruyordu).
+const EMOJI_RE = /[\u{1F000}-\u{1FAFF}\u{2100}-\u{214F}\u{2190}-\u{21FF}\u{2300}-\u{23FF}\u{2500}-\u{257F}\u{25A0}-\u{25FF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}\u{20E3}]️?[ \t]?/gu;
+// Emoji yerine BOSLUK birakilir; sonra coklu bosluk sikistirilir. Bosa silince
+// "🧾KDV" gibi girdilerde kelimeler birbirine yapisiyordu.
+const stripEmojis = (s: string) => String(s || '')
+  .replace(EMOJI_RE, ' ')
+  .replace(/[ \t]{2,}/g, ' ')
+  .replace(/[ \t]+\n/g, '\n')
+  .replace(/\n[ \t]+/g, '\n')
+  .trim();
+
+// SIK YAZIM HATALARI — canli dokumde tekrar eden, kesin duzeltilebilir olanlar.
+// "mukellefde" 7 mesajda 14 kez gecmis (dogrusu "mukellefte" 53 mesajda 144 kez).
+const YAZIM_DUZELTMELERI: Array<[RegExp, string]> = [
+  [/\bmükellefde\b/g, 'mükellefte'],
+  [/\bMükellefde\b/g, 'Mükellefte'],
+  [/\bbeyannameyleriniz/g, 'beyannameleriniz'],
+  [/\bgayri müsellim\b/gi, 'gayri mükellef'],
+  [/\bmüssellim\b/gi, 'mükellef'],
+];
+const yazimDuzelt = (s: string) => YAZIM_DUZELTMELERI.reduce((acc, [re, to]) => acc.replace(re, to), String(s || ''));
 
 @Injectable()
 export class WhatsAppBotPostFilterService {
@@ -123,12 +145,12 @@ export class WhatsAppBotPostFilterService {
     text = text.replace(/\[\[\s*ESKALE\s*\]\]/gi, '').trim();
 
     // Emoji süz (profesyonel/sade ton).
-    text = stripEmojis(text);
+    text = yazimDuzelt(stripEmojis(text));
 
     // Owner (mali müşavir) raporları yapı ister: satır sonları, başlıklar, numaralar
     // KORUNMALI. Sohbet için tasarlanan agresif temizlik bunları eziyordu → ayrı yol.
     if (options?.mode === 'owner') {
-      return this.formatOwnerReport(this.guardOwnerIdentity(stripEmojis(text)));
+      return this.formatOwnerReport(this.guardOwnerIdentity(yazimDuzelt(stripEmojis(text))));
     }
 
     // 1. Code block + markdown formatting sil
