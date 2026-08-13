@@ -243,6 +243,25 @@ export class WhatsAppService {
     return Math.max(3_000, Number(process.env.WHATSAPP_QR_SEND_CONNECT_WAIT_MS || 18_000) || 18_000);
   }
 
+  /**
+   * QR-ONLY KAPISI (kullanici karari 2026-08-13): "Meta yolu girmeyecek, sadece QR".
+   * Meta/Kapso hatti koddan ERISILEMEZ. Anahtarlar ortamda kalsa bile gonderim
+   * oraya dusmez; QR yoksa acik hata doner (sessizce baska hattan gitmez).
+   * Geri acmak icin tek adim: WHATSAPP_ALLOW_META=1.
+   */
+  private get metaPathAllowed(): boolean {
+    return process.env.WHATSAPP_ALLOW_META === '1';
+  }
+
+  private metaDisabledResult(): WhatsAppSendResult {
+    return {
+      ok: false,
+      errorCode: 'META_DISABLED',
+      error: 'WhatsApp yalniz QR hattindan gonderiyor ve su an kayitli QR oturumu yok. '
+        + 'Ayarlar > Entegrasyonlar > WhatsApp ekranindan QR kodu telefonla okutun.',
+    };
+  }
+
   private async shouldUseQr(tenantId?: string): Promise<boolean> {
     if (!tenantId) return false;
     if (this.baileys.isConnected(tenantId)) return true;
@@ -334,6 +353,10 @@ export class WhatsAppService {
       const ok = await this.baileys.sendText(tenantId, phone, message, opts);
       return ok ? { ok: true } : { ok: false, error: 'Baileys (QR) gönderimi başarısız — bağlantı kopmuş olabilir.' };
     }
+    if (!this.metaPathAllowed) {
+      this.logger.warn(`[WhatsApp] QR oturumu yok, Meta yolu kapali - mesaj gonderilmedi: ${phone}`);
+      return this.metaDisabledResult();
+    }
     const cfg = await this.getEffectiveConfig(tenantId);
     if (!this.isConfigured(cfg)) {
       this.logger.warn(`[WhatsApp] Yapilandirilmamis - mesaj atlandi: ${phone}`);
@@ -364,11 +387,24 @@ export class WhatsAppService {
       return { ok: false, error };
     }
     // Baileys'te Meta şablonu yok → parametreleri düz metin gönder.
+    // UYARI: bu birlestirme "AD - DONEM" gibi bozuk metin uretir. Cagiranlarin
+    // hepsi artik gercek metni sendMessage ile gonderiyor; buraya bir sablon adiyla
+    // gelinmesi bir GERILEME isaretidir, sessiz kalmasin.
+    if (parameters.length > 1) {
+      this.logger.warn(
+        `[WhatsApp] Sablon cagrisi QR hattinda duz metne cevrildi (${parameters.length} parametre birlestirildi). `
+        + 'Cagiran taraf gercek mesaji sendMessage ile gondermeli.',
+      );
+    }
     const qrResult = await this.sendTextViaQr(phone, parameters.join(' - '), tenantId);
     if (qrResult) return qrResult;
     if (tenantId && this.baileys.isConnected(tenantId)) {
       const ok = await this.baileys.sendText(tenantId, phone, parameters.join(' - '));
       return ok ? { ok: true } : { ok: false, error: 'Baileys (QR) gönderimi başarısız.' };
+    }
+    if (!this.metaPathAllowed) {
+      this.logger.warn(`[WhatsApp] QR oturumu yok, Meta yolu kapali - sablon gonderilmedi: ${phone}`);
+      return this.metaDisabledResult();
     }
     const cfg = await this.getEffectiveConfig(tenantId);
     if (!this.isConfigured(cfg)) {
