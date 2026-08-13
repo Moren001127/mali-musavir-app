@@ -367,7 +367,7 @@ interface BrifingContext {
   portal: {
     luca: { pending: number; running: number; failed: number };
     mihsap: { pending: number; running: number; failed: number; invoiceCount: number };
-    finance: { borcluMukellef: number; toplamBakiye: number };
+    finance: { borcluMukellef: number; toplamBakiye: number; enBorclular: Array<{ ad: string; tutar: number }> };
     automation: { active: number; error: number; failedRuns: number };
     approval: { pendingDecisions: number; pendingCommands: number; failedCommands: number };
   };
@@ -2512,7 +2512,7 @@ export class MorenAiService {
     const portal: BrifingContext['portal'] = {
       luca: { pending: 0, running: 0, failed: 0 },
       mihsap: { pending: 0, running: 0, failed: 0, invoiceCount: 0 },
-      finance: { borcluMukellef: 0, toplamBakiye: 0 },
+      finance: { borcluMukellef: 0, toplamBakiye: 0, enBorclular: [] },
       automation: { active: 0, error: 0, failedRuns: 0 },
       approval: { pendingDecisions: 0, pendingCommands: 0, failedCommands: 0 },
     };
@@ -2569,11 +2569,22 @@ export class MorenAiService {
         cariByTaxpayer.set(h.taxpayerId, (cariByTaxpayer.get(h.taxpayerId) || 0) + sign * tutar);
       }
       const borclular = [...cariByTaxpayer.values()].filter((v) => v > 0);
+      // İsimli en yüksek 3 borçlu — brifing "kimi arayacağım" diyebilsin diye.
+      const adById = new Map<string, string>();
+      for (const t of taxpayers) {
+        adById.set(t.id, (t.companyName || `${t.firstName ?? ''} ${t.lastName ?? ''}`.trim() || '—'));
+      }
+      const enBorclular = [...cariByTaxpayer.entries()]
+        .filter(([, v]) => v > 0)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([id, tutar]) => ({ ad: adById.get(id) || '—', tutar: Math.round(tutar) }));
       portal.luca = { pending: lucaPending, running: lucaRunning, failed: lucaFailed };
       portal.mihsap = { pending: mihsapPending, running: mihsapRunning, failed: mihsapFailed, invoiceCount: mihsapInvoiceCount };
       portal.finance = {
         borcluMukellef: borclular.length,
         toplamBakiye: Math.round(borclular.reduce((sum, value) => sum + value, 0)),
+        enBorclular,
       };
       portal.automation = { active: automationActive, error: automationError, failedRuns: automationFailedRuns };
       portal.approval = { pendingDecisions, pendingCommands, failedCommands };
@@ -2704,7 +2715,7 @@ ${c.deadlines.length === 0 ? '- Bu hafta yaklaşan beyanname yok' : c.deadlines.
 ## Portal Geneli Sinyaller
 - Luca çekimleri: ${c.portal.luca.pending} bekleyen, ${c.portal.luca.running} çalışan, ${c.portal.luca.failed} hata
 - Mihsap fatura çekimleri: ${c.portal.mihsap.pending} bekleyen, ${c.portal.mihsap.running} çalışan, ${c.portal.mihsap.failed} hata, bu dönem ${c.portal.mihsap.invoiceCount} fatura
-- Tahsilat/cari: ${c.portal.finance.borcluMukellef} mükellefte açık bakiye, toplam ${c.portal.finance.toplamBakiye} TL
+- Tahsilat/cari: ${c.portal.finance.borcluMukellef} mükellefte açık bakiye, toplam ${c.portal.finance.toplamBakiye} TL${c.portal.finance.enBorclular?.length ? ` — en yüksek: ${c.portal.finance.enBorclular.map((b) => `${b.ad} ${b.tutar.toLocaleString('tr-TR')} TL`).join(', ')}` : ''}
 - Otomasyonlar: ${c.portal.automation.active} aktif, ${c.portal.automation.error} hata durumunda, ${c.portal.automation.failedRuns} sorunlu çalışma
 - Onay kuyruğu: ${c.portal.approval.pendingDecisions} AI kararı, ${c.portal.approval.pendingCommands} ajan komutu bekliyor, ${c.portal.approval.failedCommands} komut hata aldı
 
@@ -2716,10 +2727,10 @@ ${c.deadlines.length === 0 ? '- Bu hafta yaklaşan beyanname yok' : c.deadlines.
 SADECE aşağıdaki JSON formatında cevap ver, başka hiçbir şey yazma (markdown code fence dahi):
 
 {
-  "summary": "Tek kısa cümle; en fazla 150 karakter. Firma/mükellef adı yazma. Sayı + aksiyon ver, uzun açıklama yapma.",
+  "summary": "Tek kısa cümle; en fazla 150 karakter. Bugünün EN ÖNEMLİ işi + neden. Gerekirse mükellef adı yazabilirsin.",
   "motivation": "Sağ üstte gösterilecek tek kısa AI motivasyon cümlesi. En fazla 72 karakter.",
   "alerts": [
-    { "severity": "high|medium|low", "text": "Acil dikkat çeken konu; firma/mükellef adı yazma", "href": "/panel/is-yuku" }
+    { "severity": "high|medium|low", "text": "MÜKELLEF ADIYLA somut durum + ne yapılacağı (örn: 'AYŞEGÜL ARSLAN 12 gündür evrak bekliyor — WhatsApp'tan hatırlat')", "href": "/panel/is-yuku" }
   ],
   "suggestions": [
     { "text": "Aksiyon önerisi (örn: 'Mihsap'tan faturaları işle')", "href": "/panel/ajanlar/mihsap", "icon": "Receipt|FileText|FileCheck|Bell|Sparkles" }
@@ -2729,10 +2740,14 @@ SADECE aşağıdaki JSON formatında cevap ver, başka hiçbir şey yazma (markd
 }
 
 KURALLAR:
-- summary: 150 karakteri geçmesin, tek cümle. Firma/mükellef adı yazma; kullanıcıya doğal ve kısa hitap et — adını söyleyebilirsin ("${c.userFirstName}") ama "Bey/Hanım" eki ekleme, sade kullan.
+- summary: 150 karakteri geçmesin, tek cümle. Mükellef adı yazabilirsin; kullanıcıya doğal ve kısa hitap et — adını söyleyebilirsin ("${c.userFirstName}") ama "Bey/Hanım" eki ekleme, sade kullan.
 - summary ve motivation içinde "şunları taradım", "Luca/Mihsap/KDV okundu", "portal verisi tarandı" gibi kaynak sayma cümlesi yazma. Kartta sadece sonuç ve odak görünsün.
 - motivation: tek cümle, sıcak ama kısa. Sayı, modül adı veya yapılacak iş detayı yazma. Örnek: "Sırayı sakin tutalım; birkaç net hamle günü toparlar."
-- alerts: 0-3 madde. Sadece gerçekten dikkat gerektiren konular. Firma/mükellef adı yazma. Boş varsa boş array.
+- alerts: 0-3 madde. HER MADDE AKSİYON ALINABİLİR OLMALI — bu ofisin kendi panelidir, MÜKELLEF ADI YAZ (gizleme).
+  * DOĞRU: "AYŞEGÜL ARSLAN 12 gündür evrak bekliyor — hatırlatma gönder", "GİTO GIDA 48.500 TL açık bakiye — tahsilat için ara", "3 mükellefin KDV kontrolü eşleşmedi — incele"
+  * YANLIŞ (sakın böyle yazma): "124 otomasyon/ajan uyarısı kontrol istiyor", "1 Luca çekimi hata aldı", "11 geciken görev" gibi çıplak sayaçlar — bunlar ne yapılacağını söylemez.
+  * Sayaç vermen gerekiyorsa mutlaka "kim/hangisi" ve "ne yapmalı" ekle. Ad bilmiyorsan o maddeyi yazma, yerine ad bildiğin bir konuyu yaz.
+  * Ajan/otomasyon hatalarını yalnızca İŞ AKIŞINI durduruyorsa yaz; teknik gürültüyü brifinge taşıma.
 - suggestions: 1-3 madde. Tıklanabilir somut aksiyon. icon Lucide isim.
 - focus: tek kelime. calm=her şey iyi, busy=normal yoğun, critical=acil işler var, review=ay sonu/kontrol günü
 - Eleştiri varsa net ve çözüm odaklı olsun; mizah varsa tek cümleyi geçmesin.
