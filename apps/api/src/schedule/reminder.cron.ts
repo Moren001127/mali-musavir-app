@@ -165,9 +165,9 @@ export class ReminderCron {
         let anyDelivered = false;
         const deliveredPhones: string[] = [];
         for (const phone of phones) {
-          const ok = process.env.WHATSAPP_TEMPLATE_NAME
-            ? await this.whatsapp.sendTemplate(phone, [ad, donem], undefined, taxpayer.tenantId)
-            : await this.whatsapp.sendMessage(phone, renderedMessage, taxpayer.tenantId);
+          // QR hattinda Meta sablonu yok; sablon dali parametreleri tire ile
+          // birlestirip "AD - DONEM" gonderiyordu. Her zaman gercek metni gonder.
+          const ok = await this.whatsapp.sendMessage(phone, renderedMessage, taxpayer.tenantId);
           if (ok) {
             anyDelivered = true;
             deliveredPhones.push(phone);

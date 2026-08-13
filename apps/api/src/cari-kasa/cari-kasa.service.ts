@@ -1280,7 +1280,7 @@ ${rows}
       gonderilecek: rows.filter((r: any) => r.gonderilebilir).length,
       atlanacak: rows.filter((r: any) => !r.gonderilebilir).length,
       rows,
-      whatsapp: this.whatsApp.getStatus(tenantId),
+      whatsapp: await this.whatsApp.getStatus(tenantId),
     };
   }
 

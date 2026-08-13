@@ -104,26 +104,41 @@ export class WhatsAppService {
     return Boolean(cfg.accessToken && cfg.phoneNumberId);
   }
 
+  /**
+   * Gonderim hattinin durumu. BIRINCIL HAT QR (Baileys) — gonderim sirasi
+   * sendMessageDetailed'da da oyle: once QR, ancak QR oturumu hic yoksa Meta.
+   * Bu yuzden 'ready' de once QR'a bakar; eskiden yalniz Meta anahtarlarina
+   * bakiyordu ve QR bagliyken bile ekranlar "WhatsApp Cloud API ayarlanmamis"
+   * uyarisi gosterip gonderimi kilitliyordu.
+   *
+   * ALAN SOZLESMESI: cagiranlar templateName / portalTemplateName / ownerPhones /
+   * phoneNumberId alanlarini okuyor (whatsapp.controller 1310, bot-controller 2934,
+   * cari-kasa 1283 ...). Bu alanlar HER IKI durumda da AYNI anahtarlarla doner;
+   * eksik birakilirsa cagiranlar undefined uzerinden env'e duser.
+   */
   async getStatus(tenantId?: string) {
     const cfg = await this.getEffectiveConfig(tenantId);
-    if (!this.isConfigured(cfg)) {
-      return {
-        ready: false,
-        provider: 'meta-cloud',
-        webhookReady: Boolean(cfg.webhookVerifyToken),
-        error: 'WhatsApp Cloud API ayarlanmamış. Ayarlar > Entegrasyonlar sayfasından bağlayın.',
-      };
-    }
+    const qrConnected = tenantId ? this.baileys.isConnected(tenantId) : false;
+    const qrAvailable = qrConnected
+      || (tenantId ? await this.baileys.hasStoredSession(tenantId).catch(() => false) : false);
+    const metaConfigured = this.isConfigured(cfg);
+    const ready = qrAvailable || metaConfigured;
+
     return {
-      ready: true,
-      provider: 'meta-cloud',
-      phoneNumberId: cfg.phoneNumberId,
+      ready,
+      provider: qrAvailable ? 'whatsapp-qr' : (metaConfigured ? 'meta-cloud' : 'yok'),
+      qrConnected,
+      qrAvailable,
+      phoneNumberId: cfg.phoneNumberId || null,
       templateName: cfg.templateName || null,
       documentTemplateName: cfg.documentTemplateName || cfg.templateName || null,
       portalTemplateName: cfg.portalTemplateName || cfg.templateName || null,
       ownerAlertTemplateName: cfg.ownerAlertTemplateName || null,
       ownerPhones: cfg.ownerPhones || '',
       webhookReady: Boolean(cfg.webhookVerifyToken),
+      ...(ready ? {} : {
+        error: 'WhatsApp QR baglantisi kapali. Ayarlar > Entegrasyonlar > WhatsApp ekranindan QR kodu telefonla yeniden okutun.',
+      }),
     };
   }
 
@@ -206,8 +221,16 @@ export class WhatsAppService {
       // Meta hiç kurulmamış ama QR (Baileys) bağlıysa aktif say.
       if (this.baileys?.isConnected(tenantId)) return true;
       if (await this.baileys?.hasStoredSession(tenantId).catch(() => false)) return true;
-      // DB kaydı yoksa eski env-based kurulumları kırma; env yapılandırılmışsa aktif say.
-      return this.isConfigured(this.envConfig);
+      // ARTIK META ENV YEDEGI YOK (QR-only gecisi adim 7). Onceden burada
+      // isConfigured(envConfig) donuluyordu; Meta anahtarlari bosaltilinca bu dal
+      // sessizce false'a duser ve tum gonderim HATASIZ dururdu. Salter satiri her
+      // aktif ofis icin olusturuldu (adim 1); yine de bir ofis satirsiz kalirsa
+      // teshis edilebilsin diye ACIKCA loglanir.
+      this.logger.warn(
+        `[WhatsApp] tenant=${tenantId} icin salter satiri yok ve QR oturumu bulunamadi — gonderim durduruldu. ` +
+        'Ayarlar > Entegrasyonlar > WhatsApp ekranindan gonderim anahtarini acin.',
+      );
+      return false;
     } catch {
       return false;
     }

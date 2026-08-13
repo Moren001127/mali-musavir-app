@@ -122,6 +122,9 @@ export default function HatirlatmalarPage() {
   const tahsilatRows = tahsilatQuery.data?.rows || [];
   const whatsappStatus = evrakQuery.data?.whatsapp || tahsilatQuery.data?.whatsapp;
   const whatsappReady = Boolean(whatsappStatus?.ready);
+  // Hat QR (Baileys). 'ready' kayitli oturumu da kapsar; asil canli bilgi qrConnected.
+  const qrBagli = Boolean((whatsappStatus as any)?.qrConnected);
+  const metaHatti = whatsappStatus?.provider === 'meta-cloud';
 
   const totals = useMemo(() => {
     const tahsilatTutar = tahsilatRows
@@ -189,19 +192,29 @@ export default function HatirlatmalarPage() {
       </header>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-        <SummaryCard icon={MessageSquare} label="Meta Cloud" value={whatsappReady ? 'Hazır' : 'Eksik'} tone={whatsappReady ? 'green' : 'amber'} sub={evrakQuery.data?.whatsapp?.provider || 'WhatsApp'} />
+        <SummaryCard
+          icon={MessageSquare}
+          label="WhatsApp Hattı"
+          value={qrBagli ? 'Bağlı' : whatsappReady ? 'Bağlantı kopuk' : 'Kapalı'}
+          tone={qrBagli ? 'green' : 'amber'}
+          sub={metaHatti ? 'Meta Cloud' : 'QR / telefon'}
+        />
         <SummaryCard icon={FileInput} label="Evrak Mesajı" value={String(totals.evrak)} tone="gold" sub={`${evrakQuery.data?.atlanacak || 0} atlanacak`} />
         <SummaryCard icon={Wallet} label="Tahsilat Mesajı" value={String(totals.tahsilat)} tone="blue" sub={`${formatMoney(totals.tahsilatTutar)} TL açık bakiye`} />
         <SummaryCard icon={Calendar} label="Dönem" value={evrakQuery.data?.donem || `${AYLAR[month - 1]} ${year}`} tone="neutral" sub="Evrak hatırlatma dönemi" />
       </div>
 
-      {!whatsappReady && (
+      {!qrBagli && (
         <div className="rounded-2xl px-4 py-3 flex items-start gap-3" style={{ background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.25)', color: '#fbbf24' }}>
           <AlertTriangle size={17} className="mt-0.5 flex-shrink-0" />
           <div className="text-sm">
-            <div className="font-semibold">WhatsApp ayarı eksik görünüyor.</div>
+            <div className="font-semibold">
+              {whatsappReady ? 'WhatsApp bağlantısı şu an kopuk.' : 'WhatsApp bağlantısı kapalı.'}
+            </div>
             <div className="text-[12.5px] mt-0.5" style={{ color: 'rgba(250,250,249,0.62)' }}>
-              {evrakQuery.data?.whatsapp?.error || tahsilatQuery.data?.whatsapp?.error || 'WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID ve şablon değişkenlerini kontrol et.'}
+              {whatsappReady
+                ? "Kayıtlı oturum var; gönderirken otomatik yeniden bağlanmayı deneyecek. Sürerse Ayarlar › Entegrasyonlar › WhatsApp ekranından QR kodunu telefonla yeniden okutun."
+                : (whatsappStatus?.error || 'Ayarlar › Entegrasyonlar › WhatsApp ekranından QR kodu telefonla okutun.')}
             </div>
           </div>
         </div>
@@ -215,15 +228,16 @@ export default function HatirlatmalarPage() {
             </span>
             <div>
               <h2 className="text-[16px] font-semibold" style={{ color: '#fafaf9', fontFamily: 'Fraunces, serif' }}>Bağlantı Ayarları</h2>
-              <p className="text-[12.5px] mt-1" style={{ color: 'rgba(250,250,249,0.48)' }}>Meta Cloud API durumu ve kullanılan şablonlar.</p>
+              <p className="text-[12.5px] mt-1" style={{ color: 'rgba(250,250,249,0.48)' }}>WhatsApp hattının bağlantı durumu.</p>
             </div>
           </div>
           <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <StatusPill label="Sağlayıcı" value={whatsappStatus?.provider || 'meta-cloud'} />
-            <StatusPill label="Webhook" value={whatsappStatus?.webhookReady ? 'Hazır' : 'Eksik'} tone={whatsappStatus?.webhookReady ? 'green' : 'amber'} />
-            <StatusPill label="Numara ID" value={whatsappStatus?.phoneNumberId || 'Eksik'} tone={whatsappStatus?.phoneNumberId ? 'green' : 'amber'} />
-            <StatusPill label="Evrak Şablonu" value={whatsappStatus?.documentTemplateName || 'Eksik'} tone={whatsappStatus?.documentTemplateName ? 'green' : 'amber'} />
-            <StatusPill label="Portal Şablonu" value={whatsappStatus?.portalTemplateName || 'Eksik'} tone={whatsappStatus?.portalTemplateName ? 'green' : 'amber'} />
+            <StatusPill label="Hat" value={metaHatti ? 'Meta Cloud' : 'QR / telefon'} />
+            <StatusPill label="Bağlantı" value={qrBagli ? 'Bağlı' : 'Kopuk'} tone={qrBagli ? 'green' : 'amber'} />
+            <StatusPill label="Kayıtlı oturum" value={whatsappReady ? 'Var' : 'Yok'} tone={whatsappReady ? 'green' : 'amber'} />
+            {metaHatti && (
+              <StatusPill label="Numara ID" value={whatsappStatus?.phoneNumberId || 'Eksik'} tone={whatsappStatus?.phoneNumberId ? 'green' : 'amber'} />
+            )}
           </div>
         </section>
 

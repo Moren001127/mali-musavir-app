@@ -873,18 +873,23 @@ export class BaileysService implements OnModuleDestroy {
   }
 
   async getStatus(tenantId: string): Promise<{
-    provider: 'baileys'; connected: boolean; connecting: boolean; hasQr: boolean; qrDataUrl: string | null; error?: string;
+    provider: 'baileys'; connected: boolean; connecting: boolean; hasQr: boolean;
+    hasStoredSession: boolean; qrDataUrl: string | null; error?: string;
   }> {
     const s = this.sessions.get(tenantId);
     let qrDataUrl: string | null = null;
     if (s?.qr) {
       try { qrDataUrl = await QRCode.toDataURL(s.qr, { margin: 1, width: 280 }); } catch { qrDataUrl = null; }
     }
+    // hasStoredSession: kayitli oturum varsa gonderim ANINDA ensureConnected ile
+    // yeniden baglanmayi dener (18 sn). Ekran bunu bilmezse, anlik kopmada mesaj
+    // kutusunu sunucudan DAHA SERT kapatir ve kullanici bosuna engellenir.
     return {
       provider: 'baileys',
       connected: Boolean(s?.connected),
       connecting: Boolean(s?.connecting),
       hasQr: Boolean(s?.qr),
+      hasStoredSession: Boolean(s?.connected) || await this.hasStoredSession(tenantId).catch(() => false),
       qrDataUrl,
       error: s?.lastError || this.lastErrors.get(tenantId),
     };

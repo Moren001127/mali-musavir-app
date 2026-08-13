@@ -934,7 +934,11 @@ export class WhatsAppController {
       const contact = await this.ensureManualWhatsAppContact(tenantId, manualPhone, body?.displayName);
       const status = await this.whatsappService.getStatus(tenantId);
       const initialMessage = String(body?.initialMessage || '').trim();
-      if (this.baileys.isConnected(tenantId) && initialMessage) {
+      // Kosul BAGLANTIYA degil MESAJA bakar: kayitli QR oturumu varken anlik kopma
+      // olsa bile sendMessageDetailed ensureConnected ile yeniden baglanip gonderir.
+      // Eskiden isConnected false olunca sablon dalina dusuyor ve kullanicinin YAZDIGI
+      // mesaj yerine mukellefe yalnizca firma adi gidiyordu.
+      if (initialMessage) {
         const manualResult = await this.whatsappService.sendMessageDetailed(manualPhone, initialMessage, tenantId);
         await this.prisma.communicationLog.create({
           data: {
@@ -1011,7 +1015,8 @@ export class WhatsAppController {
     const phone = String(body?.phone || fallbackPhone || '').trim();
     if (!phone) return { ok: false, error: 'Mukellefin telefon numarasi yok' };
     const initialMessage = String(body?.initialMessage || '').trim();
-    if (this.baileys.isConnected(tenantId) && initialMessage) {
+    // Kosul BAGLANTIYA degil MESAJA bakar (yukaridaki manuel dal ile ayni gerekce).
+    if (initialMessage) {
       const sendTarget = await this.whatsAppSendTarget(taxpayer, phone);
       const startResult = await this.whatsappService.sendMessageDetailed(sendTarget || phone, initialMessage, tenantId);
       await this.prisma.communicationLog.create({
@@ -1086,15 +1091,16 @@ export class WhatsAppController {
   @Post('evrak-reminders/send')
   async sendEvrakReminders(@Req() req: any, @Body() body: EvrakReminderBody = {}) {
     const preview = await this.buildEvrakReminderPreview(req.user.tenantId, body);
-    const templateName = process.env.WHATSAPP_DOCUMENT_TEMPLATE_NAME || process.env.WHATSAPP_TEMPLATE_NAME || undefined;
     const results: any[] = [];
 
+    // QR hattinda Meta sablonu YOK: sablon dali sendTemplateDetailed uzerinden
+    // parametreleri tire ile birlestirip duz metin gonderiyordu, yani mukellefe
+    // "AD - DONEM" gidiyor, gunluge ise row.mesaj yaziliyordu (gonderilen ile
+    // gorunen ayrisiyordu). Artik her zaman gunluge yazilan metnin AYNISI gider.
     for (const row of preview.rows.filter((r: any) => r.gonderilebilir)) {
       let delivered = false;
       for (const phone of row.phones) {
-        const ok = templateName
-          ? await this.whatsappService.sendTemplate(phone, [row.ad, preview.donem], templateName, req.user.tenantId)
-          : await this.whatsappService.sendMessage(phone, row.mesaj, req.user.tenantId);
+        const ok = await this.whatsappService.sendMessage(phone, row.mesaj, req.user.tenantId);
         delivered = delivered || ok;
       }
 
