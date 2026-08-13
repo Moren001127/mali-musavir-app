@@ -48,6 +48,7 @@ export class GundemService {
   private readonly logger = new Logger(GundemService.name);
   private cache: { key: string; data: GundemData } | null = null;
   private inFlight: Promise<GundemData> | null = null;
+  private dispatcher: any = undefined; // undici ProxyAgent | null (Türkiye çıkışı)
 
   /** Türkiye saatine göre gün anahtarı (yyyy-mm-dd) */
   private todayKey(): string {
@@ -124,10 +125,18 @@ export class GundemService {
       { kod: 'GBP', isim: 'Sterlin' },
     ];
 
-    // Önceki iş günü (değişim için) — 1..5 gün geriye dene
+    // Değişim tabanı: YAYIN tarihinden bir önceki iş günü.
+    // (Bugünün kuru saat 15:30'da yayınlanır; o saate kadar today.xml DÜNÜN
+    //  bültenidir. Takvim gününe göre geri saymak aynı güne denk gelip %0.00
+    //  gösteriyordu — taban artık bültenin kendi tarihi.)
+    let taban = new Date();
+    if (tarih && /^\d{2}\.\d{2}\.\d{4}$/.test(tarih)) {
+      const [d, m, y] = tarih.split('.').map(Number);
+      taban = new Date(y, m - 1, d);
+    }
     let oncekiXml = '';
-    for (let i = 1; i <= 5 && !oncekiXml; i++) {
-      const d = new Date(Date.now() - i * 86400000);
+    for (let i = 1; i <= 6 && !oncekiXml; i++) {
+      const d = new Date(taban.getTime() - i * 86400000);
       const yyyy = d.getFullYear();
       const mm = String(d.getMonth() + 1).padStart(2, '0');
       const dd = String(d.getDate()).padStart(2, '0');
@@ -162,16 +171,42 @@ export class GundemService {
   }
 
   private async fetchXml(url: string): Promise<string> {
-    const r = await fetch(url, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(15000) });
+    const r = await this.trFetch(url, 15000);
     if (!r.ok) throw new Error(`${url} → HTTP ${r.status}`);
     return await r.text();
+  }
+
+  /**
+   * Türkiye çıkışlı istek. Resmî Gazete gibi bazı kamu siteleri yurt dışı IP'leri
+   * (Railway) reddediyor; TURMOB_PROXY_URL / PORTAL_TR_PROXY_URL tanımlıysa istek
+   * Türkiye proxy'si üzerinden gider (GİB e-Arşiv akışıyla aynı mekanizma).
+   * Proxy yoksa doğrudan denenir — kart yine çalışır, sadece o kaynak boş kalır.
+   */
+  private async trFetch(url: string, timeoutMs = 20000): Promise<Response> {
+    if (this.dispatcher === undefined) {
+      const purl = String(process.env.TURMOB_PROXY_URL || process.env.PORTAL_TR_PROXY_URL || '').trim();
+      if (purl) {
+        try {
+          this.dispatcher = new (require('undici').ProxyAgent)(purl);
+          this.logger.log('Gündem: Türkiye proxy aktif');
+        } catch (e: any) {
+          this.logger.warn(`Gündem: proxy kurulamadı — ${e?.message}`);
+          this.dispatcher = null;
+        }
+      } else {
+        this.dispatcher = null;
+      }
+    }
+    const init: any = { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(timeoutMs) };
+    if (this.dispatcher) init.dispatcher = this.dispatcher;
+    return fetch(url, init) as any;
   }
 
   // ─────────────────────── RESMÎ GAZETE ───────────────────────
 
   /** Günlük fihristten madde başlıklarını çıkarır (ilan bölümü hariç). */
   private async fetchResmiGazete(): Promise<Array<{ baslik: string; url: string }>> {
-    const r = await fetch(RG_ANASAYFA, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(20000) });
+    const r = await this.trFetch(RG_ANASAYFA, 25000);
     if (!r.ok) throw new Error(`Resmî Gazete → HTTP ${r.status}`);
     const html = await r.text();
 
