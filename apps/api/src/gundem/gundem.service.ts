@@ -171,10 +171,11 @@ export class GundemService {
   }
 
   /** Resmî Gazete + AI süzgeci — bitince günün önbelleğine işlenir. */
-  private mevzuatCalisiyor = false;
+  private mevzuatCalisiyorKey: string | null = null;
   private async mevzuatTamamla(key: string): Promise<void> {
-    if (this.mevzuatCalisiyor) return;
-    this.mevzuatCalisiyor = true;
+    // Aynı gün için ikinci kez başlatma; FARKLI gün (gece yarısı devri) engellenmesin.
+    if (this.mevzuatCalisiyorKey === key) return;
+    this.mevzuatCalisiyorKey = key;
     const ekUyari: string[] = [];
     let mevzuat: GundemMevzuat[] = [];
     let toplam = 0;
@@ -193,7 +194,7 @@ export class GundemService {
       ekUyari.push(`Resmî Gazete okunamadı (${sebep})`);
       this.logger.warn(`RG hatası: ${sebep}`);
     } finally {
-      this.mevzuatCalisiyor = false;
+      if (this.mevzuatCalisiyorKey === key) this.mevzuatCalisiyorKey = null;
     }
     if (this.cache?.key === key) {
       this.cache.data = {
