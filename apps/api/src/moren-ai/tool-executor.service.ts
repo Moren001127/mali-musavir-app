@@ -16,6 +16,7 @@ const OFFICIAL_SOURCE_DOMAINS = [
   'bedesten.adalet.gov.tr',
   'turkiye.gov.tr',
   'calisma.gov.tr',
+  'csgb.gov.tr',
   'ticaret.gov.tr',
   'kgk.gov.tr',
   'turmob.org.tr',
@@ -729,13 +730,70 @@ export class ToolExecutorService {
     }
   }
 
+  /**
+   * Arama motoru yonlendirme linkini GERCEK adrese cevirir.
+   *  - DuckDuckGo: //duckduckgo.com/l/?uddg=<url-encoded>
+   *  - Bing:       /ck/a?...&u=a1<base64url>
+   * Bu cozum olmadan sonuclarin TAMAMI "resmi alan adi degil" diye eleniyordu:
+   * canli testte Bing'in 10 sonucunun 10'u da ck/a yonlendirmesiydi, yani
+   * research_official_sources her cagrida 0 kaynak donuyordu (arac fiilen oluydu).
+   */
+  private cozYonlendirme(raw: string): string {
+    let url = this.decodeHtml(String(raw || '')).replace(/&amp;/g, '&');
+    if (url.startsWith('//')) url = 'https:' + url;
+    try {
+      const u = new URL(url);
+      const uddg = u.searchParams.get('uddg');
+      if (uddg) return uddg;
+      if (/bing\.com$/i.test(u.hostname.replace(/^www\./, '')) && u.pathname.startsWith('/ck/')) {
+        const raw64 = u.searchParams.get('u') || '';
+        const b64 = raw64.replace(/^a1/, '').replace(/-/g, '+').replace(/_/g, '/');
+        if (b64) {
+          const pad = b64 + '='.repeat((4 - (b64.length % 4)) % 4);
+          const cozulen = Buffer.from(pad, 'base64').toString('utf8');
+          if (/^https?:\/\//i.test(cozulen)) return cozulen;
+        }
+      }
+    } catch { /* bozuk adres — ham hali donsun, suzgec elesin */ }
+    return url;
+  }
+
+  /**
+   * DuckDuckGo HTML sonuclari. Bing'in yerine BIRINCIL arama yolu; canli testte
+   * Bing tum sonuclari yonlendirmeye sardigi icin guvenilir degil.
+   */
+  private parseDuckDuckGoResults(html: string, allowedDomains: string[], limit: number) {
+    const results: Array<{ title: string; url: string; snippet: string; domain: string }> = [];
+    const bloklar = html.match(/<div class="result__body"[\s\S]*?<\/div>\s*<\/div>/gi)
+      || html.match(/<a[^>]+class="result__a"[\s\S]{0,1200}?<\/a>/gi)
+      || [];
+    for (const blok of bloklar) {
+      const link = blok.match(/class="result__a"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/i);
+      if (!link) continue;
+      const url = this.cozYonlendirme(link[1]);
+      if (!this.isAllowedOfficialUrl(url, allowedDomains)) continue;
+      const snip = blok.match(/class="result__snippet"[^>]*>([\s\S]*?)<\/a>/i)
+        || blok.match(/class="result__snippet"[^>]*>([\s\S]*?)<\//i);
+      let domain = '';
+      try { domain = new URL(url).hostname.replace(/^www\./, ''); } catch {}
+      results.push({
+        title: this.decodeHtml(link[2]).replace(/<[^>]+>/g, '').trim(),
+        url,
+        domain,
+        snippet: snip ? this.decodeHtml(snip[1]).replace(/<[^>]+>/g, '').trim() : '',
+      });
+      if (results.length >= limit) break;
+    }
+    return results;
+  }
+
   private parseBingResults(html: string, allowedDomains: string[], limit: number) {
     const results: Array<{ title: string; url: string; snippet: string; domain: string }> = [];
     const blocks = html.match(/<li class="b_algo"[\s\S]*?<\/li>/gi) || [];
     for (const block of blocks) {
       const link = block.match(/<h2[^>]*>\s*<a[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/i);
       if (!link) continue;
-      const url = this.decodeHtml(link[1]);
+      const url = this.cozYonlendirme(link[1]);
       if (!this.isAllowedOfficialUrl(url, allowedDomains)) continue;
       const snippetMatch = block.match(/<p[^>]*>([\s\S]*?)<\/p>/i);
       let domain = '';
@@ -2842,12 +2900,33 @@ export class ToolExecutorService {
     const domains = this.normalizeOfficialDomains(input?.domains);
     const domainFilter = domains.map((domain) => `site:${domain}`).join(' OR ');
     const searchQuery = `${query} ${domainFilter}`;
+    const ddgUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(searchQuery)}`;
     const bingUrl = `https://www.bing.com/search?setlang=tr&q=${encodeURIComponent(searchQuery)}`;
     // HIZ: araştırma WhatsApp cevabını bekletmesin. Bing taraması + sayfa okuma
     // timeout'ları düşürüldü (12s→7s, 9s→6s); boş dönerse model bilgisinden + uydurma
     // yasağıyla (stabil kural/formül) hızlı cevap verir, takılmaz.
-    const html = await this.fetchText(bingUrl, 7000);
-    const searchResults = this.parseBingResults(html, domains, limit);
+    // ARAMA YOLU (canli olcumle secildi):
+    //  - DuckDuckGo site: filtresine UYAR ama arka arkaya sorguda HIZ SINIRINA takilir
+    //    (HTTP 202 + "anomaly" sayfasi, 0 sonuc).
+    //  - Bing hep 200 doner ama sonuclari /ck/a yonlendirmesine sarar (cozuluyor) ve
+    //    site: filtresini cogu zaman YOK SAYAR, o yuzden resmi olmayan alan adlari gelir.
+    // Bu yuzden: once DDG (anomalide bir kez tekrar), sonra Bing yedegi.
+    let motor = 'duckduckgo';
+    let ddgHtml = await this.fetchText(ddgUrl, 7000);
+    if (/anomaly|unusual traffic/i.test(ddgHtml) || !/result__a/.test(ddgHtml)) {
+      ddgHtml = await this.fetchText(ddgUrl, 7000);
+    }
+    let searchResults = this.parseDuckDuckGoResults(ddgHtml, domains, limit);
+    if (!searchResults.length) {
+      motor = 'bing';
+      searchResults = this.parseBingResults(await this.fetchText(bingUrl, 7000), domains, limit);
+    }
+    if (!searchResults.length) {
+      motor = 'yok';
+      // SESSIZ KALMA: arac bozulursa (motor HTML'i degisirse) fark edilmeli. Eskiden
+      // bu durum hic loglanmiyordu ve arac AYLARCA 0 kaynak donerken kimse gormedi.
+      this.logger.warn(`[research_official_sources] 0 KAYNAK — sorgu: ${searchQuery.slice(0, 160)}`);
+    }
 
     const sources = await Promise.all(
       searchResults.map(async (result) => {
@@ -2869,6 +2948,7 @@ export class ToolExecutorService {
       searchedAt: new Date().toISOString(),
       officialOnly: true,
       searchedDomains: domains,
+      motor,
       count: sources.length,
       sources,
       note: sources.length

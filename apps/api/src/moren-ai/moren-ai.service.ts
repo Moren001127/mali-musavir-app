@@ -64,7 +64,22 @@ export function needsLegislationModel(userMessage: string): boolean {
   ];
 
   if (looksLikePersonalData) return false;
-  return legislationPatterns.some((p) => p.test(text));
+  if (legislationPatterns.some((p) => p.test(text))) return true;
+
+  // ITIRAZ / DUZELTME MESAJI: "stopaj %15 degil mi", "yanlis", "emin misin".
+  // Bunlar anahtar kelime kaliplarina takilmiyor ve EN UCUZ modele dusuyordu; oysa
+  // konusma bir ORAN TARTISMASI ve tam da dogrulama gereken an. Canli olay: owner
+  // "Stopaj %15 degil mi" dedi, bot kaynak bakmadan "haklisin" deyip orani degistirdi.
+  const itirazKalibi = /(degil\s*mi|yanlis|hatali|emin\s*misin|oyle\s*degil|dogru\s*mu|sanmiyorum|bence\s*(oyle\s*)?degil)/.test(text);
+  const vergiTerimi = /\b(stopaj|tevkifat|kdv|otv|damga|muhtasar|beyanname|vergi|sgk|prim|amortisman|matrah|sermaye|ceza|oran)/.test(text);
+  const yuzdeVar = /%\s*\d|\byuzde\b/.test(text);
+  // Itiraz + (vergi terimi VEYA yuzde) → mevzuat modeli. "yanlis anladim" gibi
+  // konu disi itirazlar vergi terimi tasimadigi icin bu kapiya takilmaz.
+  if (itirazKalibi && (vergiTerimi || yuzdeVar)) return true;
+  // Yuzde + vergi terimi birlikteyse (soru cumlesi olmasa bile) mevzuat sayilir.
+  if (yuzdeVar && vergiTerimi) return true;
+
+  return false;
 }
 
 /**
