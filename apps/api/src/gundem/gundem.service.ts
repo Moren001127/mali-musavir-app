@@ -228,6 +228,27 @@ export class GundemService {
         sonHata = `${u.replace('https://', '')} → ${String(e?.message || e).slice(0, 60)}`;
       }
     }
+    // YEDEK YOL: resmigazete.gov.tr yurt dışı/veri merkezi IP'lerini (Railway) TCP
+    // seviyesinde reddediyor ("fetch failed"). Türkiye proxy'si tanımlı değilse
+    // sayfayı genel bir okuyucu ayna üzerinden alırız — içerik KAMUYA AÇIK resmî
+    // gazete sayfasıdır, dışarı hiçbir ofis/mükellef verisi gitmez.
+    if (!html) {
+      try {
+        const r = await fetch(`https://r.jina.ai/${RG_ANASAYFA}`, {
+          headers: { 'User-Agent': UA, 'x-respond-with': 'html' },
+          signal: AbortSignal.timeout(40000),
+        });
+        if (r.ok) {
+          const govde = await r.text();
+          if (govde && govde.length > 5000) html = govde;
+          else sonHata = `ayna → kısa yanıt (${govde?.length || 0})`;
+        } else {
+          sonHata = `ayna → HTTP ${r.status}`;
+        }
+      } catch (e: any) {
+        sonHata = `${sonHata} | ayna → ${String(e?.message || e).slice(0, 50)}`;
+      }
+    }
     if (!html) throw new Error(sonHata || 'erişilemedi');
 
     const out: Array<{ baslik: string; url: string }> = [];

@@ -1,4 +1,5 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { hesaplaCariBakiyeler } from '../common/cari-bakiye';
 import { PrismaService } from '../prisma/prisma.service';
 import { ToolExecutorService } from './tool-executor.service';
 import { MOREN_AI_TOOLS } from './tools';
@@ -2562,23 +2563,20 @@ export class MorenAiService {
         (this.prisma as any).agentCommand.count({ where: { tenantId, status: 'failed' } }).catch(() => 0),
       ]);
 
-      const cariByTaxpayer = new Map<string, number>();
-      for (const h of cariRows || []) {
-        const tutar = Number(h.tutar || 0);
-        const sign = h.tip === 'TAHAKKUK' || h.tip === 'IADE' ? 1 : h.tip === 'TAHSILAT' ? -1 : 0;
-        cariByTaxpayer.set(h.taxpayerId, (cariByTaxpayer.get(h.taxpayerId) || 0) + sign * tutar);
-      }
-      const borclular = [...cariByTaxpayer.values()].filter((v) => v > 0);
+      // TEK KAYNAK: common/cari-bakiye (bkz. dosya basligi — bu hesap uc yerde farkliydi).
+      const cariAktifIds = new Set((taxpayers as any[]).map((t: any) => t.id));
+      const cariBakiyeleri = hesaplaCariBakiyeler(cariRows as any[], cariAktifIds);
+      const borclular = [...cariBakiyeleri.values()].filter((b) => b.bakiye > 0).map((b) => b.bakiye);
       // İsimli en yüksek 3 borçlu — brifing "kimi arayacağım" diyebilsin diye.
       const adById = new Map<string, string>();
       for (const t of taxpayers) {
         adById.set(t.id, (t.companyName || `${t.firstName ?? ''} ${t.lastName ?? ''}`.trim() || '—'));
       }
-      const enBorclular = [...cariByTaxpayer.entries()]
-        .filter(([, v]) => v > 0)
-        .sort((a, b) => b[1] - a[1])
+      const enBorclular = [...cariBakiyeleri.values()]
+        .filter((b) => b.bakiye > 0)
+        .sort((a, b) => b.bakiye - a.bakiye)
         .slice(0, 3)
-        .map(([id, tutar]) => ({ ad: adById.get(id) || '—', tutar: Math.round(tutar) }));
+        .map((b) => ({ ad: adById.get(b.taxpayerId) || '—', tutar: Math.round(b.bakiye) }));
       portal.luca = { pending: lucaPending, running: lucaRunning, failed: lucaFailed };
       portal.mihsap = { pending: mihsapPending, running: mihsapRunning, failed: mihsapFailed, invoiceCount: mihsapInvoiceCount };
       portal.finance = {
@@ -3062,8 +3060,12 @@ KURALLAR:
   }
 
   private cleanBrifingActionText(text: string): string {
+    // NOT: Eskiden burada büyük harfli 2+ kelimeyi "ilgili mükellef" ile değiştiren
+    // bir maskeleme vardı. Bu, ofisin KENDİ panelinde mükellef adını görünmez
+    // kılıyordu ("ilgili mükellefİ ilgili mükellefİ 108.000 TL" gibi bozuk metinler
+    // de üretiyordu). Uyarılar artık veritabanındaki GERÇEK adlardan kural bazlı
+    // üretildiği için (uydurma riski yok) maskeleme kaldırıldı.
     return String(text || '')
-      .replace(/\b(?!KDV\b|SGK\b|GIB\b|GİB\b|LUCA\b|MIHSAP\b|MİHSAP\b)([A-ZÇĞİÖŞÜ]{2,})(?:\s+[A-ZÇĞİÖŞÜ]{2,}){1,3}\b/g, 'ilgili mükellef')
       .replace(/\byapı\s*taşla\b/gi, 'planla')
       .replace(/\byapi\s*tasla\b/gi, 'planla')
       .replace(/\btakılı\b/gi, 'beklemede')
