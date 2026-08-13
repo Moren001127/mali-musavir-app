@@ -1303,6 +1303,15 @@ export class WhatsAppBotController implements OnModuleInit {
    * __dryReply'a yakalar ve sohbet gecmisini KIRLETMEZ. Owner yolunda bu koruma YOKTU:
    * deneme calistirilsa gercek mesaj giderdi.
    */
+  /** KURU-TEST: gonderilmeyecek cevabi rapora yakalar (birden fazlaysa birlestirir). */
+  private kuruTestYakala(msg: IncomingWhatsAppMessage, metin: string): void {
+    const t = String(metin || '').trim();
+    if (!t) return;
+    msg.__dryReply = msg.__dryReply ? `${msg.__dryReply}
+${t}` : t;
+    msg.__dryKind = msg.__dryKind || 'kuru-test';
+  }
+
   private async ownerCevapGonder(
     msg: IncomingWhatsAppMessage,
     tenantId: string,
@@ -1523,6 +1532,7 @@ export class WhatsAppBotController implements OnModuleInit {
       try {
         const url = await this.storage!.getPresignedDownloadUrl(s3Key, filename);
         if (msg.__dryRun) return true; // kuru-test: gerçekten gönderme
+        if (msg.__dryRun) { this.kuruTestYakala(msg, `[KURU-TEST] mukellefe dosya gidecekti: ${caption}`); return true; }
         await this.whatsapp.sendMessage(target, `📎 ${caption}`, ownerTenant.id);
         return await this.baileys.sendMedia(ownerTenant.id, target, { url, mimeType, filename, caption: null });
       } catch (e: any) { this.logger.warn(`[MukellefeGonder] gonderim hatasi: ${e?.message || e}`); return false; }
@@ -1600,7 +1610,16 @@ export class WhatsAppBotController implements OnModuleInit {
     const wantsBeyanname = items.length > 0 || /beyan|tahakkuk|muhtasar|muhsgk|kdv|gecici|damga|kurumlar|gelir|poset|stopaj/.test(n);
 
     const sendOwnerText = async (reply: string) => {
-      const sent = await this.whatsapp.sendMessage(this.replyTarget(msg), reply, ownerTenant.id);
+      // KURU-TEST (deneme): GERCEKTEN GONDERME, sohbeti kirletme, cevabi yakala.
+      // BU KORUMA YOKTU: deneme sirasinda owner'a gercek "PDF bulamadim" mesajlari
+      // gitti (13.08.2026 07:28/07:29/07:44). Belge akisi tek atlanan yoldu.
+      if (msg.__dryRun) {
+        msg.__dryReply = msg.__dryReply ? `${msg.__dryReply}
+${reply}` : reply;
+        msg.__dryKind = msg.__dryKind || 'owner:belge';
+        return;
+      }
+      const sent = msg.__dryRun ? (this.kuruTestYakala(msg, reply), true) : await this.whatsapp.sendMessage(this.replyTarget(msg), reply, ownerTenant.id);
       await this.prisma.communicationLog.create({
         data: {
           taxpayerId: ownerContactId, channel: 'WHATSAPP',
@@ -1612,6 +1631,14 @@ export class WhatsAppBotController implements OnModuleInit {
 
     // Ortak gönderim: presigned URL + sendMedia + log.
     const sendDoc = async (s3Key: string, mimeType: string, filename: string, caption: string, markerDonem = ''): Promise<boolean> => {
+      // KURU-TEST: dosya GONDERILMEZ, yalniz ne gonderilecegi yakalanir.
+      if (msg.__dryRun) {
+        const not = `[KURU-TEST] dosya gonderilecekti: ${caption}`;
+        msg.__dryReply = msg.__dryReply ? `${msg.__dryReply}
+${not}` : not;
+        msg.__dryKind = msg.__dryKind || 'owner:belge-dosya';
+        return true;
+      }
       try {
         const url = await this.storage!.getPresignedDownloadUrl(s3Key, filename);
         // STANDART: önce bilgilendirme mesajı, sonra temiz dosya (her şey tek düzende).
@@ -1837,7 +1864,7 @@ export class WhatsAppBotController implements OnModuleInit {
 
     const adi = (taxpayer.companyName || `${taxpayer.firstName || ''} ${taxpayer.lastName || ''}`).trim();
     const sendText = async (reply: string) => {
-      const sent = await this.whatsapp.sendMessage(this.replyTarget(msg), reply, taxpayer.tenantId);
+      const sent = msg.__dryRun ? (this.kuruTestYakala(msg, reply), true) : await this.whatsapp.sendMessage(this.replyTarget(msg), reply, taxpayer.tenantId);
       await this.prisma.communicationLog.create({
         data: {
           taxpayerId: taxpayer.id, channel: 'WHATSAPP',
@@ -1847,6 +1874,14 @@ export class WhatsAppBotController implements OnModuleInit {
       });
     };
     const sendDoc = async (s3Key: string, mimeType: string, filename: string, caption: string, markerDonem = ''): Promise<boolean> => {
+      // KURU-TEST: dosya GONDERILMEZ, yalniz ne gonderilecegi yakalanir.
+      if (msg.__dryRun) {
+        const not = `[KURU-TEST] dosya gonderilecekti: ${caption}`;
+        msg.__dryReply = msg.__dryReply ? `${msg.__dryReply}
+${not}` : not;
+        msg.__dryKind = msg.__dryKind || 'owner:belge-dosya';
+        return true;
+      }
       try {
         const url = await this.storage!.getPresignedDownloadUrl(s3Key, filename);
         // STANDART: önce bilgilendirme mesajı, sonra temiz dosya (her şey tek düzende).
@@ -2010,7 +2045,7 @@ export class WhatsAppBotController implements OnModuleInit {
         this.logger.warn(`Owner AI cevabi uretilemedi (fetch hatasi?): ${err?.message || err}`);
         const fallbackText = 'Mesajini aldim. AI baglantisi anlik yavasladi; teknik hata metni gondermeden yeniden deneyecegim. Birazdan tekrar yazarsan kaldigimiz yerden cevaplayacagim.';
         try {
-          await this.whatsapp.sendMessage(this.replyTarget(msg), fallbackText, ownerTenant.id);
+          msg.__dryRun ? (this.kuruTestYakala(msg, fallbackText), true) : await this.whatsapp.sendMessage(this.replyTarget(msg), fallbackText, ownerTenant.id);
           await this.prisma.communicationLog.create({
             data: {
               taxpayerId: ownerContact.id,
@@ -2273,7 +2308,7 @@ export class WhatsAppBotController implements OnModuleInit {
           reply: filteredRaw,
           recentReplies: recentUnknownReplies,
         });
-        const sent = await this.whatsapp.sendMessage(this.replyTarget(msg), reply, tenant.id);
+        const sent = msg.__dryRun ? (this.kuruTestYakala(msg, reply), true) : await this.whatsapp.sendMessage(this.replyTarget(msg), reply, tenant.id);
         await this.prisma.communicationLog.create({
           data: {
             taxpayerId: contact.id,
@@ -2396,7 +2431,7 @@ export class WhatsAppBotController implements OnModuleInit {
           reply: filteredRate,
           recentReplies,
         });
-        const sent = await this.whatsapp.sendMessage(this.replyTarget(msg), limitedReply, taxpayer.tenantId);
+        const sent = msg.__dryRun ? (this.kuruTestYakala(msg, limitedReply), true) : await this.whatsapp.sendMessage(this.replyTarget(msg), limitedReply, taxpayer.tenantId);
         await this.prisma.communicationLog.create({
           data: {
             taxpayerId: taxpayer.id,
@@ -2434,7 +2469,7 @@ export class WhatsAppBotController implements OnModuleInit {
         reply: filteredGuard,
         recentReplies,
       });
-      const sent = await this.whatsapp.sendMessage(this.replyTarget(msg), filteredReply, taxpayer.tenantId);
+      const sent = msg.__dryRun ? (this.kuruTestYakala(msg, filteredReply), true) : await this.whatsapp.sendMessage(this.replyTarget(msg), filteredReply, taxpayer.tenantId);
       await this.prisma.communicationLog.create({
         data: {
           taxpayerId: taxpayer.id,
@@ -2485,7 +2520,7 @@ export class WhatsAppBotController implements OnModuleInit {
     if (cachedReply && !msg.__dryRun) {
       const filteredCached = this.postFilter.filterTaxpayerReply(cachedReply, { recentReplies });
       if (filteredCached) {
-        const sent = await this.whatsapp.sendMessage(this.replyTarget(msg), filteredCached, taxpayer.tenantId);
+        const sent = msg.__dryRun ? (this.kuruTestYakala(msg, filteredCached), true) : await this.whatsapp.sendMessage(this.replyTarget(msg), filteredCached, taxpayer.tenantId);
         if (!msg.__dryRun) await this.prisma.communicationLog.create({
           data: {
             taxpayerId: taxpayer.id,
@@ -2736,7 +2771,8 @@ export class WhatsAppBotController implements OnModuleInit {
     const target = resolveTaxpayerByText(taxpayers, namePart);
     if (!target) {
       const r = `"${namePart}" için net bir mükellef bulamadım — yanlış kişiye göndermemek için tam unvanı (en az 2 kelime) yazar mısınız? Örn: "Wash Clean'e ilet: ...".`;
-      await this.whatsapp.sendMessage(this.replyTarget(msg), r, ownerTenant.id).catch(() => false);
+      if (msg.__dryRun) this.kuruTestYakala(msg, r);
+      else await this.whatsapp.sendMessage(this.replyTarget(msg), r, ownerTenant.id).catch(() => false);
       return true;
     }
     const phone = [target.phone, ...(Array.isArray(target.phones) ? target.phones : [])]
@@ -2744,7 +2780,8 @@ export class WhatsAppBotController implements OnModuleInit {
       .filter(Boolean)[0];
     const ad = this.displayName(target);
     if (!phone) {
-      await this.whatsapp.sendMessage(this.replyTarget(msg), `${ad} için kayıtlı telefon numarası yok; iletemedim.`, ownerTenant.id).catch(() => false);
+      if (msg.__dryRun) this.kuruTestYakala(msg, `${ad} için kayıtlı telefon numarası yok; iletemedim.`);
+      else await this.whatsapp.sendMessage(this.replyTarget(msg), `${ad} için kayıtlı telefon numarası yok; iletemedim.`, ownerTenant.id).catch(() => false);
       return true;
     }
     const advisor = this.ownerDisplayName();
@@ -2752,7 +2789,10 @@ export class WhatsAppBotController implements OnModuleInit {
       `Sayın ${ad}, konuyu müşavirimiz ${advisor} Bey'e ilettik — kendisi sizinle ilgili şu bilgiyi paylaştı:\n\n` +
       `${messagePart}\n\n` +
       `Başka bir sorunuz olursa yardımcı olmaktan memnuniyet duyarız.`;
-    const sent = await this.whatsapp.sendMessage(phone, framed, ownerTenant.id).catch(() => false);
+    // KURU-TEST: bu satir MUKELLEFE gercek mesaj gonderir — denemede KESINLIKLE gonderme.
+    const sent = msg.__dryRun
+      ? (this.kuruTestYakala(msg, `[KURU-TEST] mukellefe gidecekti: ${framed}`), true)
+      : await this.whatsapp.sendMessage(phone, framed, ownerTenant.id).catch(() => false);
     await this.prisma.communicationLog.create({
       data: {
         taxpayerId: target.id,
@@ -2765,7 +2805,8 @@ export class WhatsAppBotController implements OnModuleInit {
     const confirm = sent
       ? `✓ ${ad} mükellefine iletildi:\n${messagePart}`
       : `⚠️ ${ad} mükellefine iletilemedi (WhatsApp bağlantısı/şalter). Lütfen tekrar deneyin.`;
-    await this.whatsapp.sendMessage(this.replyTarget(msg), confirm, ownerTenant.id).catch(() => false);
+    if (msg.__dryRun) this.kuruTestYakala(msg, confirm);
+    else await this.whatsapp.sendMessage(this.replyTarget(msg), confirm, ownerTenant.id).catch(() => false);
     return true;
   }
 
@@ -2813,17 +2854,20 @@ export class WhatsAppBotController implements OnModuleInit {
     }
     const disp = phone.replace(/^90/, '0');
     if (message.length < 2) {
-      await this.whatsapp.sendMessage(this.replyTarget(msg),
-        `Numarayı (${disp}) anladım ama gönderilecek mesajı çıkaramadım. Şu biçimde yazar mısın: «${disp} numarasına: merhaba, …».`,
-        ownerTenant.id).catch(() => false);
+      const uyari = `Numarayı (${disp}) anladım ama gönderilecek mesajı çıkaramadım. Şu biçimde yazar mısın: «${disp} numarasına: merhaba, …».`;
+      if (msg.__dryRun) this.kuruTestYakala(msg, uyari);
+      else await this.whatsapp.sendMessage(this.replyTarget(msg), uyari, ownerTenant.id).catch(() => false);
       return true;
     }
-    const sent = await this.whatsapp.sendMessage(phone, message, ownerTenant.id).catch(() => false);
-    await this.whatsapp.sendMessage(this.replyTarget(msg),
-      sent
-        ? `✓ ${disp} numarasına gönderildi:\n${message}`
-        : `⚠️ ${disp} numarasına gönderilemedi (WhatsApp bağlantısı/şalter kapalı olabilir). Tekrar dener misin?`,
-      ownerTenant.id).catch(() => false);
+    // KURU-TEST: bu satir SERBEST BIR NUMARAYA gercek mesaj gonderir — denemede ASLA gonderme.
+    const sent = msg.__dryRun
+      ? (this.kuruTestYakala(msg, `[KURU-TEST] ${disp} numarasina gidecekti: ${message}`), true)
+      : await this.whatsapp.sendMessage(phone, message, ownerTenant.id).catch(() => false);
+    const onay = sent
+      ? `✓ ${disp} numarasına gönderildi:\n${message}`
+      : `⚠️ ${disp} numarasına gönderilemedi (WhatsApp bağlantısı/şalter kapalı olabilir). Tekrar dener misin?`;
+    if (msg.__dryRun) this.kuruTestYakala(msg, onay);
+    else await this.whatsapp.sendMessage(this.replyTarget(msg), onay, ownerTenant.id).catch(() => false);
     return true;
   }
 
