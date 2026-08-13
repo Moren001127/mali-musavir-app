@@ -1365,10 +1365,12 @@ export class WhatsAppBotController implements OnModuleInit {
     };
 
     const tp = { id: pending.taxpayerId };
-    let gonderilen = 0; const bulunamayan: string[] = [];
+    let gonderilen = 0; const bulunamayan: string[] = []; const gonderilenler: string[] = [];
     if (Array.isArray(pending.items) && pending.items.length) {
       const r = await this.sendBeyanItemsLoop(ownerTenant.id, tp, adi, pending.items, sendDoc);
-      if (r.sentAny) gonderilen++; bulunamayan.push(...(r.bulunamayan || []));
+      if (r.sentAny) gonderilen++;
+      bulunamayan.push(...(r.bulunamayan || []));
+      gonderilenler.push(...(r.gonderilenler || []));
     } else {
       // Mükellef kartına yüklü belge (kategori filtreli)
       const where: any = { taxpayerId: pending.taxpayerId, isDeleted: false };
@@ -1379,7 +1381,12 @@ export class WhatsAppBotController implements OnModuleInit {
     }
 
     if (gonderilen > 0) {
-      await sendOwner(`✓ ${adi} mükellefine gönderildi: ${pending.etiket}.${bulunamayan.length ? ` (Bulunamayan: ${bulunamayan.join(', ')})` : ''}`, 'WhatsApp owner mukellefe-gonder gonderildi');
+      // Onay metni ISTENEN etiketten degil GERCEKTEN gonderilen dosyalardan uretilir.
+      // "kdv" istegi ['KDV1','KDV2','KDV'] arama alternatiflerine cevrildigi icin tek
+      // PDF uc kalem gibi gorunuyordu; ayrica gonderim basarisiz olsa bile "gonderildi"
+      // yaziliyordu.
+      const liste = gonderilenler.length ? gonderilenler.join(', ') : (pending.etiket || 'belge');
+      await sendOwner(`✓ ${adi} mükellefine gönderildi: ${liste}.${bulunamayan.length ? ` (Gönderilemeyen: ${bulunamayan.join(', ')})` : ''}`, 'WhatsApp owner mukellefe-gonder gonderildi');
     } else {
       await sendOwner(`${adi} için ${pending.etiket} bulunamadı; iletemedim.`, 'WhatsApp owner mukellefe-gonder gonderildi');
     }
@@ -1473,7 +1480,7 @@ export class WhatsAppBotController implements OnModuleInit {
       // Tip yazılmamış ama "beyanname gönder" gibi genel istek → tek öge ile dene.
       const sendList = items.length ? items : [{ tipler: null, donem: recentCtx.donem, belge: this.inferBelgeKindFromText(msg.text) }];
 
-      const { sentAny, bulunamayan } = await this.sendBeyanItemsLoop(ownerTenant.id, taxpayer, adi, sendList, sendDoc);
+      const { sentAny, bulunamayan, gonderilenler } = await this.sendBeyanItemsLoop(ownerTenant.id, taxpayer, adi, sendList, sendDoc);
       if (sentAny) {
         if (bulunamayan.length) await sendOwnerText(`Şunları bulamadım: ${bulunamayan.join(', ')}. Diğerlerini gönderdim.`);
         return true;
@@ -1547,7 +1554,7 @@ export class WhatsAppBotController implements OnModuleInit {
     adi: string,
     items: Array<{ tipler: string[] | null; donem: string | null; belge: 'beyanname' | 'tahakkuk' | 'ikisi' }>,
     sendDoc: (s3Key: string, mimeType: string, filename: string, caption: string, markerDonem?: string) => Promise<boolean>,
-  ): Promise<{ sentAny: boolean; bulunamayan: string[] }> {
+  ): Promise<{ sentAny: boolean; bulunamayan: string[]; gonderilenler: string[] }> {
     const findRec = async (tipler: string[] | null, donem: string | null): Promise<any> => {
       const baseWhere: any = { tenantId, taxpayerId: taxpayer.id };
       if (tipler?.length) baseWhere.beyanTipi = { in: tipler };
@@ -1556,16 +1563,20 @@ export class WhatsAppBotController implements OnModuleInit {
         const k1 = await (this.prisma as any).beyanKaydi.findMany({ where: { ...baseWhere, donem }, orderBy: [{ donem: 'desc' }], take: 6 });
         rec = k1.find((k: any) => k.beyannameUrl || k.pdfUrl);
       }
-      if (!rec) {
+      // DONEM ACIKCA ISTENDIYSE BASKA DONEME DUSME. Eskiden istenen donemde kayit
+      // bulunamayinca once ayni YILIN en yenisine, o da yoksa HERHANGI bir kayda
+      // dusuluyordu; owner'a "istenen donem gonderildi" deniyor, mukellefe BASKA
+      // donemin vergi belgesi gidiyordu. Yedege dusus artik yalniz donem HIC
+      // belirtilmediginde calisir.
+      if (!rec && !donem) {
         const k2 = await (this.prisma as any).beyanKaydi.findMany({ where: baseWhere, orderBy: [{ donem: 'desc' }], take: 12 });
-        const yil = String(donem || '').slice(0, 4);
-        rec = (yil ? k2.find((k: any) => (k.beyannameUrl || k.pdfUrl) && String(k.donem || '').startsWith(yil)) : null)
-          || k2.find((k: any) => k.beyannameUrl || k.pdfUrl);
+        rec = k2.find((k: any) => k.beyannameUrl || k.pdfUrl);
       }
       return rec;
     };
     let sentAny = false;
     const bulunamayan: string[] = [];
+    const gonderilenler: string[] = [];
     for (const it of items) {
       const rec = await findRec(it.tipler, it.donem);
       const etiket = `${it.donem ? it.donem + ' ' : ''}${this.beyanLabel(it.tipler?.[0] || '')}`.trim() || 'beyanname';
@@ -1573,21 +1584,28 @@ export class WhatsAppBotController implements OnModuleInit {
       const wantBey = it.belge === 'beyanname' || it.belge === 'ikisi';
       const wantTah = it.belge === 'tahakkuk' || it.belge === 'ikisi';
       const tip = this.beyanLabel(rec.beyanTipi);
+      // GONDERIM SONUCU KONTROL EDILIR. Eskiden sendDoc'un donusu YOK SAYILIYOR
+      // (any = true; sentAny = true;), gonderim basarisiz olsa bile owner'a
+      // "gonderildi" yaziliyordu. Ayrica onay metni ISTENEN etiketten uretiliyordu;
+      // "kdv" istegi ['KDV1','KDV2','KDV'] arama alternatiflerine cevrildigi icin
+      // TEK PDF ucus kalem gibi gorunuyordu. Artik GERCEKTEN gonderilenler yazilir.
       let any = false;
       if (wantBey && rec.beyannameUrl) {
-        await sendDoc(rec.beyannameUrl, 'application/pdf', `${adi}-${rec.beyanTipi}-${rec.donem}-beyanname.pdf`.replace(/[^\w.-]+/g, '_'), `${adi} · ${tip} Beyanname · ${rec.donem}`, String(rec.donem || ''));
-        any = true; sentAny = true;
+        const ok = await sendDoc(rec.beyannameUrl, 'application/pdf', `${adi}-${rec.beyanTipi}-${rec.donem}-beyanname.pdf`.replace(/[^\w.-]+/g, '_'), `${adi} · ${tip} Beyanname · ${rec.donem}`, String(rec.donem || ''));
+        if (ok) { any = true; sentAny = true; gonderilenler.push(`${rec.donem} ${tip} beyanname`); }
+        else bulunamayan.push(`${rec.donem} ${tip} beyanname (gönderilemedi)`);
       }
       if (wantTah && rec.pdfUrl) {
-        await sendDoc(rec.pdfUrl, 'application/pdf', `${adi}-${rec.beyanTipi}-${rec.donem}-tahakkuk.pdf`.replace(/[^\w.-]+/g, '_'), `${adi} · ${tip} Tahakkuk · ${rec.donem}`, String(rec.donem || ''));
-        any = true; sentAny = true;
+        const ok = await sendDoc(rec.pdfUrl, 'application/pdf', `${adi}-${rec.beyanTipi}-${rec.donem}-tahakkuk.pdf`.replace(/[^\w.-]+/g, '_'), `${adi} · ${tip} Tahakkuk · ${rec.donem}`, String(rec.donem || ''));
+        if (ok) { any = true; sentAny = true; gonderilenler.push(`${rec.donem} ${tip} tahakkuk`); }
+        else bulunamayan.push(`${rec.donem} ${tip} tahakkuk (gönderilemedi)`);
       }
       if (!any) {
         if (wantBey && !rec.beyannameUrl) bulunamayan.push(`${etiket} beyanname`);
         if (wantTah && !rec.pdfUrl) bulunamayan.push(`${etiket} tahakkuk`);
       }
     }
-    return { sentAny, bulunamayan };
+    return { sentAny, bulunamayan, gonderilenler };
   }
 
   /** Mükellef mesajından istenen belgeleri (tip+dönem+belge) AI ile çıkar — mükellef
