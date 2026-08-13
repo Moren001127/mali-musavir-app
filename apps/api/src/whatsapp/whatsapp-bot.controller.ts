@@ -16,7 +16,7 @@ import { BotEvalService } from './bot-eval.service';
 import { QualityLogService } from './quality-log.service';
 import { CalisanService } from '../calisan/calisan.service';
 import { claudeTextViaMax, MAX_MODEL_CHEAP } from '../common/max-inference';
-import { buildOwnerStatusReply, resolveTaxpayerByText, buildTaxpayerSelfReply, buildTaxpayerQuickReply, buildOwnerSingleTaxpayerReply, buildOwnerDebtTotalReply } from '../moren-ai/monthly-status.shared';
+import { buildOwnerStatusReply, resolveTaxpayerByText, buildTaxpayerSelfReply, buildTaxpayerQuickReply, buildOwnerSingleTaxpayerReply, buildOwnerSingleTaxpayerKdvReply, buildOwnerDebtTotalReply } from '../moren-ai/monthly-status.shared';
 
 type IncomingWhatsAppMessage = {
   from: string;
@@ -1418,12 +1418,18 @@ ${t}` : t;
           select: { id: true, companyName: true, firstName: true, lastName: true },
         }).catch(() => []);
         const oncekiMukellef = resolveTaxpayerByText(adaylar as any, onceki);
-        const ad = oncekiMukellef
-          ? (oncekiMukellef.companyName || `${oncekiMukellef.firstName || ''} ${oncekiMukellef.lastName || ''}`).trim()
-          : '';
-        const birlesik = ad ? `${ad} ${ham}` : `${onceki} ${ham}`;
+        // Onceki mesajdan MUKELLEF + KONU tasinir, DONEM tasinmaz. Takip sorusu
+        // ("peki 2. donem ne kadardi") konuyu icermez — konu ("ne kadar vergi")
+        // onceki mesajdadir; ama onceki mesajdaki donem ("1. donem") tasinirsa
+        // yeni donemin onune gecip eski cevabi tekrar ettirir.
+        const oncekiKonu = this.donemleriTemizle(onceki);
+        const birlesik = `${oncekiKonu} ${ham}`.trim();
         res = await buildOwnerSingleTaxpayerReply(this.prisma, ownerTenant.id, birlesik).catch(() => null);
-        if (res) this.logger.log(`[OwnerVeri] takip sorusu: onceki mukellef="${ad || onceki.slice(0, 40)}"`);
+        if (!res) {
+          res = await buildOwnerSingleTaxpayerKdvReply(this.prisma, ownerTenant.id, birlesik).catch(() => null);
+        }
+        if (res) this.logger.log(`[OwnerVeri] takip sorusu birlesik="${birlesik.slice(0, 70)}"`);
+        else if (oncekiMukellef) this.logger.log(`[OwnerVeri] takip cozulemedi (mukellef bulundu, konu yok): "${birlesik.slice(0, 70)}"`);
       }
     }
     if (!res) return false;
@@ -1475,6 +1481,22 @@ ${t}` : t;
   }
 
   /** Owner'in bir onceki GELEN mesaji (su anki haric) — duzeltmeyi baglama oturtmak icin. */
+  /**
+   * Metinden DONEM ifadelerini cikarir; mukellef adi ve konu (vergi/kdv/mizan…) kalir.
+   * Takip sorusu birlestirmesinde kullanilir: onceki mesajin donemi yeni donemi ezmesin.
+   */
+  private donemleriTemizle(metin: string): string {
+    return String(metin || '')
+      .replace(/\b\d{4}[-/]\d{2}\b/g, ' ')
+      .replace(/\b\d{4}[-/]?Q[1-4]\b/gi, ' ')
+      .replace(/\b[1-4]\s*\.?\s*(?:donem|dönem)\w*/gi, ' ')
+      .replace(/\b(birinci|ikinci|üçüncü|ucuncu|dördüncü|dorduncu)\s+(?:donem|dönem)\w*/gi, ' ')
+      .replace(/\b(ocak|şubat|subat|mart|nisan|mayıs|mayis|haziran|temmuz|ağustos|agustos|eylül|eylul|ekim|kasım|kasim|aralık|aralik)\w*/gi, ' ')
+      .replace(/\b20\d{2}\b/g, ' ')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+  }
+
   private async sonGelenOwnerMesaji(ownerContactId: string, simdikiMesajId: string | null, msg?: IncomingWhatsAppMessage): Promise<string | null> {
     // Kuru-testte gecmis yazilmadigi icin onceki soru disaridan gelir.
     if (msg?.__dryRun && msg.__testOncekiMesaj) return String(msg.__testOncekiMesaj).slice(0, 200);
