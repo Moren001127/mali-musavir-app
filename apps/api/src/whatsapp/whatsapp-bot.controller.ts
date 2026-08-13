@@ -862,6 +862,27 @@ export class WhatsAppBotController implements OnModuleInit {
    * WhatsApp owner sohbetleri tek bir AI conversation'da birikir.
    * Yan etki: portal "MOREN AI" listesinde tek satır, başlık temiz, system prompt cache'leniyor.
    */
+  /**
+   * Konusma hafizasindaki son bot cevabini, owner'a GERCEKTEN giden metinle esitler.
+   * Kalite kapisi ya da post-filter cevabi degistirdiginde ikisi ayrisiyor ve bot bir
+   * sonraki mesajda kendi soyledigini yanlis hatirliyor.
+   */
+  private async aiHafizasiniGercekCevapla(conversationId: string | null, gonderilen: string): Promise<void> {
+    if (!conversationId || !gonderilen) return;
+    try {
+      const son = await this.prisma.aiMessage.findFirst({
+        where: { conversationId, role: 'assistant' },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true, content: true },
+      });
+      if (!son || String(son.content || '').trim() === gonderilen.trim()) return;
+      await this.prisma.aiMessage.update({ where: { id: son.id }, data: { content: gonderilen } });
+      this.logger.log('[OwnerHafiza] son cevap gercek gonderilen metinle esitlendi');
+    } catch (err: any) {
+      this.logger.warn(`[OwnerHafiza] esitlenemedi: ${err?.message || err}`);
+    }
+  }
+
   private async getOrCreateOwnerWhatsAppConversation(
     tenantId: string,
     ownerContactId: string,
@@ -2097,7 +2118,18 @@ ${not}` : not;
       // Hiz kaygisi nedeniyle kapi DAR: yalnizca cevap SAYISAL/HUKUKI iddia
       // iceriyorsa (yuzde, kanun maddesi, tutar) bloklayici denetim + tek retry.
       const riskliOwnerCevabi = /%\s*\d|(?:\bGVK\b|\bKVK\b|\bKDVK\b|\bVUK\b|\bTTK\b)|\bmadde\s*\d|₺|\bTL\b/i.test(reply);
-      if (riskliOwnerCevabi) {
+      // DETERMINISTIK CEVAP KAPIYA GIRMEZ. Kisayollar (moren-ai-*-shortcut) AI metni
+      // degil, veritabani dokumudur: rakamlar zaten portaldan gelir, uydurma olamaz.
+      // Kapi "₺ gecen her cevap riskli" dedigi icin bunlari da bloklayip yerine
+      // "Hemen bir bakip size doneyim." koyuyordu. CANLI OLAY 13.08.2026 17:32:
+      // "hasan rauf saydan 2026 1.donemde ne kadar vergi odedi" -> kisayol DOGRU
+      // tahakkuk dokumunu uretti (aiMessage'da duruyor), yargic 2 kez reddetti,
+      // owner'a bos vaat gitti. Uydurma riski olmayan cevaba yargic gerekmez.
+      const deterministikCevap = /shortcut|deterministik/i.test(String(answer?.model || ''));
+      if (deterministikCevap && riskliOwnerCevabi) {
+        this.logger.log(`[OwnerKalite] deterministik cevap kapidan muaf (model=${answer?.model})`);
+      }
+      if (riskliOwnerCevabi && !deterministikCevap) {
         // Celiski denetimi icin onceki cevaplar SART: eskiden bos dizi geciliyordu,
         // yani "onceki cevabinla celisiyor mu" kontrolu YAPISAL OLARAK korduyu.
         const ownerRecent = await this.botContext.getRecentOutgoingReplies(ownerContact.id).catch(() => []);
@@ -2142,6 +2174,12 @@ ${not}` : not;
 
       if (reply) {
         const sent = await this.ownerCevapGonder(msg, ownerTenant.id, ownerContact.id, reply, 'owner:ai', 'WhatsApp owner bot cevabi');
+        // AI HAFIZASI = OWNER'IN GORDUGU. Kalite kapisi/post-filter cevabi degistirirse
+        // aiMessage'da URETILEN metin kaliyordu; owner ise BASKA bir metin goruyordu.
+        // Sonraki mesajda bot kendi gonderdigini bilmiyor. CANLI OLAY 13.08.2026:
+        // 17:33'te owner'a "Hemen bir bakip size doneyim." gitti ama hafizada tahakkuk
+        // dokumu yaziyordu; 17:45'te owner "donecek misin" deyince bot soruyu anlamadi.
+        if (!msg.__dryRun) await this.aiHafizasiniGercekCevapla(conversationId, reply);
         if (msg.__dryRun) return;
         this.refreshTaxpayerMemory(ownerTenant.id, ownerContact.id);
         // Owner cevabı da KALİTE DENETİMİNE alınır (Bot Kalite'de görünür) — async,

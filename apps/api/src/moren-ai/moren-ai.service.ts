@@ -156,6 +156,8 @@ const TAX_DEADLINE_RULES: Array<{ day: number | 'last'; tip: string; months?: nu
 const TR_FIXED_HOLIDAYS = new Set(['01-01', '04-23', '05-01', '05-19', '07-15', '08-30', '10-29']);
 const MAX_TOOL_ITERATIONS = 8;              // Tool döngüsünde en fazla 8 tur
 const MAX_HISTORY_MESSAGES = Number(process.env.MOREN_AI_HISTORY_LIMIT || 5); // Maliyet kontrolü: son mesaj penceresi (8 → 5, paket A tasarrufu)
+// Owner WhatsApp hatti: sohbet suruyor, pencere genis olmali (bkz. buildMessages).
+const OWNER_HISTORY_MESSAGES = Number(process.env.MOREN_AI_OWNER_HISTORY_LIMIT || 16);
 const NORMAL_MAX_TOKENS = Number(process.env.MOREN_AI_MAX_TOKENS || 650);
 const VOICE_MAX_TOKENS = Number(process.env.MOREN_AI_VOICE_MAX_TOKENS || 260);
 
@@ -634,7 +636,15 @@ export class MorenAiService {
       }
     }
 
-    const messages = this.buildMessages(conversation.messages, userMessage);
+    // OWNER WHATSAPP HATTI DAHA GENIS HAFIZA ISTER. 5 mesajlik pencere (2.5 tur)
+    // WhatsApp'ta cok dar: tek bir uzun veri dokumu pencereyi doldurup bir onceki
+    // konusmayi disari itiyor, bot kendi soyledigini hatirlamiyor gorunuyordu.
+    // Max aboneliginde jeton maliyeti yok; owner hattinda pencere genis tutulur.
+    const messages = this.buildMessages(
+      conversation.messages,
+      userMessage,
+      body.toolMode === 'owner' ? OWNER_HISTORY_MESSAGES : undefined,
+    );
 
     // Tenant + kullanıcı + cari dönem bağlamı
     const systemPrompt = buildSystemPrompt({
@@ -2079,11 +2089,11 @@ export class MorenAiService {
     return clean.slice(0, 50) + '…';
   }
 
-  private buildMessages(history: any[], newUserMessage: string): any[] {
+  private buildMessages(history: any[], newUserMessage: string, limit?: number): any[] {
     // Her mesaj için Anthropic format'ı:
     //   { role, content }  — content ya string ya block dizisi
     const msgs: any[] = [];
-    const windowed = history.slice(-MAX_HISTORY_MESSAGES);
+    const windowed = history.slice(-(limit || MAX_HISTORY_MESSAGES));
     while (windowed.length && windowed[0]?.role === 'assistant') windowed.shift();
     for (const m of windowed) {
       if (m.role === 'user' || m.role === 'assistant') {
