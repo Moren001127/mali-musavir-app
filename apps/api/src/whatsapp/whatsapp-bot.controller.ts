@@ -1057,16 +1057,38 @@ export class WhatsAppBotController implements OnModuleInit {
       where: { tenantId, isActive: true },
       select: { id: true, companyName: true, firstName: true, lastName: true },
     });
-    let best: { tp: any; len: number } | null = null;
+    // ESKI HATA: yalniz EN UZUN TEK kelime eslesmesine bakiliyordu. "Celal Kabakci"
+    // sorusunda hem CELAL KABAKCI hem FIGEN KABAKCI "kabakci"da eslesiyor, ayni uzunluk
+    // oldugu icin DB sirasinda ONCE geleni kazaniyordu → canli denemede "Celal Kabakci"
+    // istegi FIGEN KABAKCI'ya cozuldu. Vergi belgesi YANLIS MUKELLEFE gidebilirdi.
+    // Artik: kac ad-kelimesi eslesiyor SAYILIR, esitlik varsa toplam uzunluga bakilir,
+    // yine berabere ise HICBIRI secilmez (tahmin etme, sor).
+    let best: { tp: any; adet: number; uzunluk: number } | null = null;
+    let ikinci: { adet: number; uzunluk: number } = { adet: 0, uzunluk: 0 };
     for (const tp of taxpayers) {
       const ad = (tp.companyName || `${tp.firstName || ''} ${tp.lastName || ''}`).trim();
       const adN = this.normalizeForIntent(ad);
-      // adın 3+ harfli kelimeleri; en az biri mesajda substring olarak geçmeli
       const kelimeler = adN.split(/\s+/).filter((w) => w.length >= 3);
-      const hit = kelimeler.find((w) => n.includes(w));
-      if (hit && (!best || hit.length > best.len)) best = { tp, len: hit.length };
+      const eslesenler = kelimeler.filter((w) => n.includes(w));
+      if (!eslesenler.length) continue;
+      const adet = eslesenler.length;
+      const uzunluk = eslesenler.reduce((a, w) => a + w.length, 0);
+      const dahaIyi = !best || adet > best.adet || (adet === best.adet && uzunluk > best.uzunluk);
+      if (dahaIyi) {
+        if (best) ikinci = { adet: best.adet, uzunluk: best.uzunluk };
+        best = { tp, adet, uzunluk };
+      } else if (adet > ikinci.adet || (adet === ikinci.adet && uzunluk > ikinci.uzunluk)) {
+        ikinci = { adet, uzunluk };
+      }
     }
-    return best?.tp || null;
+    if (!best) return null;
+    // NET KAZANAN YOKSA SECME: ayni soyadli iki mukellef arasinda tahmin yurutme.
+    const netKazanan = best.adet > ikinci.adet || (best.adet === ikinci.adet && best.uzunluk > ikinci.uzunluk);
+    if (!netKazanan) {
+      this.logger.warn(`[MukellefCozum] belirsiz isim, secim yapilmadi: "${String(text).slice(0, 60)}"`);
+      return null;
+    }
+    return best.tp;
   }
 
   /**
