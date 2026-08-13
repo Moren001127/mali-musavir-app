@@ -48,7 +48,12 @@
   // adreslerinden aradığı için 5dk timeout'a kadar bekliyordu. Artık tıklama
   // öncesine göre satır sayısı değiştiyse "sorgu çalıştı" sayılır; sayı 5sn sabit
   // kalınca hemen indirmeye geçilir.
-  const AGENT_VERSION = '1.47.16';
+  // v1.47.17 (2026-08-13): 5dk boşa beklemenin İKİNCİ hali. Luca e-Arşiv ekranı
+  // açılırken zaten önceki faturaları listeliyor; sorgu YENİ satır getirmezse ne XHR
+  // ne DOM değişimi oluyor → "bitti" sinyali hiç gelmiyordu (PERİHAN ŞAHİN: tıklama
+  // öncesi de sonrası da 18 satır). Artık 30sn boyunca ekran hiç değişmediyse sorgu
+  // bitmiş sayılır. Ayrıca teşhis için ekrandaki durum metni loglanır.
+  const AGENT_VERSION = '1.47.17';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -5388,6 +5393,18 @@
         const now = Date.now();
         // AKTIVİTE-SESSİZLİK ile erken çık: kayıt XHR'ları SILENCE_DONE_MS'dir durduysa saves bitti;
         //   "sona erdi" yazısını beklemeden çık → küçük sorgudaki 5dk boşa beklemeyi önler.
+        // v1.47.17: HİÇ DEĞİŞİKLİK OLMAYAN durum. Luca e-Arşiv ekranı açılırken zaten
+        // önceki faturaları listeliyor; sorgu yeni satır getirmezse (hepsi mevcut)
+        // ne XHR ne DOM değişimi olur → eski kod 5 DAKİKA boşuna bekliyordu
+        // (PERİHAN ŞAHİN: tıklamadan önce de sonra da 18 satır). Tıklamadan bu yana
+        // 30sn boyunca ekran hiç değişmediyse sorgu bitmiştir; devam et.
+        const STABIL_NO_CHANGE_MS = 30000;
+        if (!queryDone && !sawQueryActivity && now - pollStart > STABIL_NO_CHANGE_MS
+            && now - lastActChangeTs > STABIL_NO_CHANGE_MS) {
+          queryDone = true;
+          await log(`✓ GİB sorgu bitti (${lastRowCount} satır, 30sn hiç değişmedi — yeni fatura yok sayılıyor)`);
+          break;
+        }
         if (sawQueryActivity && now - pollStart > 4000 && now - lastActChangeTs > SILENCE_DONE_MS) {
           queryDone = true;
           await log(`✓ GİB sorgu bitti (${lastRowCount} satır, ${Math.round((now - lastActChangeTs) / 1000)}sn sabit — "sona erdi" beklenmeden erken çıkıldı)`);
