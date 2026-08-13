@@ -2782,7 +2782,9 @@ KURALLAR:
     };
 
     const lucaBekleyen = c.portal.luca.pending + c.portal.luca.running;
-    if (c.portal.luca.failed > 0) addAlert(98, 'luca', 'high', `${c.portal.luca.failed} Luca çekimi hata aldı; logları kontrol et`, '/panel/ajanlar');
+    // Teknik hatalar brifingin ÜSTÜNÜ kaplamasın: isimli/mükellef odaklı maddeler
+    // (evrak bekleyen, tahsilat, son tarih) öne geçsin diye skor düşürüldü.
+    if (c.portal.luca.failed > 0) addAlert(64, 'luca', 'medium', `${c.portal.luca.failed} Luca çekimi hata aldı; yeniden başlat`, '/panel/ajanlar');
     if (lucaBekleyen > 0) addSuggestion(94, 'luca', `${lucaBekleyen} Luca çekimini kontrol et`, '/panel/ajanlar', 'RefreshCw');
 
     const mihsapBekleyen = c.portal.mihsap.pending + c.portal.mihsap.running;
@@ -2795,11 +2797,17 @@ KURALLAR:
     const financeScore = c.portal.finance.toplamBakiye >= 100_000 ? 86 : c.portal.finance.borcluMukellef >= 5 ? 78 : 62;
     if (c.portal.finance.borcluMukellef > 0) {
       if (c.portal.finance.borcluMukellef >= 5 || c.portal.finance.toplamBakiye >= 100_000) {
+        // İSİMLİ tahsilat uyarısı — "kimi arayacağım" belli olsun.
+        const enBorclu = c.portal.finance.enBorclular?.[0];
+        const metin = enBorclu
+          ? `${enBorclu.ad} ${formatAmount(enBorclu.tutar)} açık bakiye — tahsilat için ara` +
+            (c.portal.finance.borcluMukellef > 1 ? ` (+${c.portal.finance.borcluMukellef - 1} mükellef daha)` : '')
+          : `${c.portal.finance.borcluMukellef} mükellefte ${formatAmount(c.portal.finance.toplamBakiye)} açık bakiye — tahsilat listesini aç`;
         addAlert(
-          financeScore,
+          enBorclu ? 89 : financeScore,
           'finance',
           c.portal.finance.toplamBakiye >= 250_000 ? 'high' : 'medium',
-          `${c.portal.finance.borcluMukellef} mükellefte ${formatAmount(c.portal.finance.toplamBakiye)} açık bakiye var`,
+          metin,
           '/panel/cari-kasa',
         );
       }
@@ -2808,14 +2816,10 @@ KURALLAR:
 
     const automationIssue = c.portal.automation.error + c.portal.automation.failedRuns + c.ajan.bugunHata;
     if (automationIssue > 0) {
-      addAlert(
-        automationIssue >= 5 ? 93 : 82,
-        'automation',
-        automationIssue >= 5 ? 'high' : 'medium',
-        `${automationIssue} otomasyon/ajan uyarısı kontrol istiyor`,
-        '/panel/otomasyonlar',
-      );
-      addSuggestion(automationIssue >= 5 ? 92 : 80, 'automation', 'Ajan ve otomasyon hatalarını incele', '/panel/otomasyonlar', 'Zap');
+      // "124 otomasyon/ajan uyarısı kontrol istiyor" gibi çıplak sayaç UYARI olmaktan
+      // çıkarıldı (ne yapılacağını söylemiyordu, brifingin yerini işgal ediyordu).
+      // Teknik gürültü artık yalnızca tıklanabilir ÖNERİ olarak duruyor.
+      addSuggestion(automationIssue >= 5 ? 72 : 60, 'automation', 'Ajan ve otomasyon hatalarını incele', '/panel/otomasyonlar', 'Zap');
     }
 
     const totalApproval = c.portal.approval.pendingDecisions + c.portal.approval.pendingCommands;
@@ -2823,8 +2827,11 @@ KURALLAR:
     if (c.portal.approval.failedCommands > 0) addAlert(84, 'approval', 'medium', `${c.portal.approval.failedCommands} ajan komutu hata aldı`, '/panel/onay-kuyrugu');
 
     if (c.eskiBeklemeler.length > 0 && !erkenDonem) {
-      const text = `${c.eskiBeklemeler.length} iş 5+ gündür aynı aşamada; en eski kayıt ${c.eskiBeklemeler[0].gun} gündür bekliyor`;
-      addAlert(netUyariDonemi ? 90 : 74, 'workflow', netUyariDonemi ? 'high' : 'medium', text, '/panel/is-yuku?late=1');
+      // İSİMLİ bekleme uyarısı — hangi mükellef, kaç gündür, ne yapmalı.
+      const ilk = c.eskiBeklemeler[0];
+      const digerleri = c.eskiBeklemeler.length > 1 ? ` (+${c.eskiBeklemeler.length - 1} mükellef daha)` : '';
+      const text = `${ilk.ad} ${ilk.gun} gündür ${ilk.stage} aşamasında — hatırlatma gönder${digerleri}`;
+      addAlert(netUyariDonemi ? 94 : 87, 'workflow', netUyariDonemi ? 'high' : 'medium', text, '/panel/is-yuku?late=1');
     }
 
     const yakin = c.deadlines.find((d) => d.gunFark <= 1);
@@ -2835,7 +2842,7 @@ KURALLAR:
     }
 
     if (c.gorev.geciken > 0) {
-      const text = `${c.gorev.geciken} görev son tarihini geçmiş`;
+      const text = `${c.gorev.geciken} görev son tarihini geçmiş — listeyi aç ve tarihleri güncelle`;
       addAlert(c.gorev.geciken >= 3 ? 88 : 70, 'tasks', c.gorev.geciken >= 3 ? 'high' : 'medium', text, '/panel/gorevler');
     }
 
