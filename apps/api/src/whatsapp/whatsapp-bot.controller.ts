@@ -1487,6 +1487,9 @@ ${t}` : t;
    */
   private donemleriTemizle(metin: string): string {
     return String(metin || '')
+      // Beyanname TURU de temizlenir: onceki mesajin turu ("gecici vergide")
+      // yeni mesajin turunu ("muhtasar ne kadar") eziyordu.
+      .replace(/\b(geçici|gecici|muhtasar|muhsgk|damga|kurumlar|poşet|poset|e-?defter|berat)\w*/gi, ' ')
       .replace(/\b\d{4}[-/]\d{2}\b/g, ' ')
       .replace(/\b\d{4}[-/]?Q[1-4]\b/gi, ' ')
       .replace(/\b[1-4]\s*\.?\s*(?:donem|dönem)\w*/gi, ' ')

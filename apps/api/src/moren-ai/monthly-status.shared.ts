@@ -661,6 +661,14 @@ export async function buildOwnerDebtTotalReply(
   const cariSoru = /(acik cari|acik bakiye|cari bakiye|alacag|alacak|borc)/.test(n);
   const liste = /(kim|kimler|liste|sirala|en cok|en fazla|en yuksek)/.test(n);
   if (!toplamSoru || !cariSoru || liste) return null;
+  // ADI GECEN MUKELLEF VARSA OFIS TOPLAMI VERME — "hasan rauf saydan cari bakiyesi
+  // ne kadar" sorusuna 66 mukellefin 1,5 milyonluk toplami donuyordu (vergi
+  // toplamindaki ayni hatanin cari surumu).
+  const cariAdaylar = await prisma.taxpayer.findMany({
+    where: { tenantId, isActive: true, NOT: { taxNumber: { startsWith: 'WHATSAPP-' } } },
+    select: { id: true, companyName: true, firstName: true, lastName: true },
+  }).catch(() => []);
+  if (resolveTaxpayerByText(cariAdaylar, text)) return null;
 
   const [taxpayers, hareketler] = await Promise.all([
     prisma.taxpayer.findMany({ where: { tenantId, isActive: true, NOT: { taxNumber: { startsWith: 'WHATSAPP-' } } }, select: { id: true } }).catch(() => []),
@@ -1285,7 +1293,7 @@ export async function buildOwnerSingleTaxpayerReply(
   // dusup "Gelir PDF'i bulamadim" cevabi doniyordu (canli olay 06:37).
   else if (/(gelir tablo|kar ?zarar|kar-zarar|ciro|hasilat|net satis|kar(?!\w)|kazanc|karli)/.test(n)) kind = 'gelir';
   // "ne kadar vergi odedi/cikti", "vergisi ne kadar", "tahakkuku ne" → beyanname/tahakkuk dali.
-  else if (/(beyanname|beyan(?!\w)|verildi mi|verildi mı|tahakkuk|vergi (odedi|odemis|cikti|ciktı)|ne kadar vergi|vergisi ne)/.test(n)) kind = 'beyanname';
+  else if (/(beyanname|beyan(?!\w)|verildi mi|verildi mı|tahakkuk|vergi (odedi|odemis|cikti|ciktı)|ne kadar vergi|vergisi ne|muhtasar|muhsgk|gecici|damga|kurumlar|poset)/.test(n)) kind = 'beyanname';
   else return null;
 
   const taxpayers = await prisma.taxpayer.findMany({
