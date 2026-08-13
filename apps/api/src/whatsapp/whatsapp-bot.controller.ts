@@ -1386,9 +1386,13 @@ ${t}` : t;
   ): Promise<boolean> {
     const ham = String(msg.text || '');
     const n = this.normalizeForIntent(ham);
-    // Sadece VERI ozeti isteyen kavramlar; beyanname/tahakkuk PDF akisinda kalir.
-    if (!/(mizan|kar ?zarar|kar-zarar|gelir tablo|isletme hesap ozet|isletme ozet|hesap ozet|\biho\b|cari|bakiye|borc)/.test(n)) return false;
-    if (/(beyanname|tahakkuk|pdf|dosya olarak|belge olarak)/.test(n)) return false;
+    // BELGE istegi (PDF/dosya gonder) veri ozeti DEGILDIR — o akis ayri kalir.
+    if (/(gonder|yolla|ilet|at bana|pdf|dosya olarak|belge olarak|ekte)/.test(n)) return false;
+    // VERI ozeti kavramlari. Vergi/tahakkuk/beyanname/donem SORULARI da buraya girer:
+    // eskiden yalniz mizan/cari/gelir-tablosu vardi; "2026 1. donemde ne kadar vergi
+    // odedi" ve "peki 2. donem ne kadardi" gibi takip sorulari disarida kalip AI'ya
+    // dusuyordu, AI da kaydi bulamayip "elimde yok" diyordu.
+    if (!/(mizan|kar ?zarar|kar-zarar|gelir tablo|isletme hesap ozet|isletme ozet|hesap ozet|\biho\b|cari|bakiye|borc|vergi|tahakkuk|beyanname|\bbeyan\b|donem|kdv)/.test(n)) return false;
 
     // OFIS GENELI toplam cari — tek mukellef cozumune girmeden once.
     const toplamCari = await buildOwnerDebtTotalReply(this.prisma, ownerTenant.id, ham).catch(() => null);
@@ -1399,10 +1403,27 @@ ${t}` : t;
 
     let res = await buildOwnerSingleTaxpayerReply(this.prisma, ownerTenant.id, ham).catch(() => null);
     if (!res) {
-      const onceki = await this.sonGelenOwnerMesaji(ownerContactId, msg.id || null, msg);
+      // TAKIP SORUSU. "peki 2. donem ne kadardi" gibi mesajlarda mukellef adi YOK;
+      // ad onceki mesajdan alinir. Iki mesaji ham haliyle birlestirmek YANLIS olur:
+      // onceki mesajdaki donem ("1. donem") yeni donemin onune gecip eski cevabi
+      // tekrar ettiriyordu. Bu yuzden onceki mesajdan SADECE mukellefin adi alinir.
+      // OFIS GENELI sorusuna onceki mesajdan mukellef adi TASIMA: "bu donem toplam ne
+      // kadar vergi cikti" sorusu, bir onceki mesajda gecen mukellefe daraltilirsa
+      // yanlis (ve fark edilmesi zor) bir cevap olur.
+      const ofisGeneli = /(toplam|tum|butun|ofis|genel|kimler|herkes|hangi mukellef)/.test(n);
+      const onceki = ofisGeneli ? '' : await this.sonGelenOwnerMesaji(ownerContactId, msg.id || null, msg);
       if (onceki) {
-        res = await buildOwnerSingleTaxpayerReply(this.prisma, ownerTenant.id, `${onceki} ${ham}`).catch(() => null);
-        if (res) this.logger.log(`[OwnerVeri] onceki mesajla birlestirildi: "${onceki.slice(0, 50)}"`);
+        const adaylar = await this.prisma.taxpayer.findMany({
+          where: { tenantId: ownerTenant.id, isActive: true, NOT: { taxNumber: { startsWith: 'WHATSAPP-' } } },
+          select: { id: true, companyName: true, firstName: true, lastName: true },
+        }).catch(() => []);
+        const oncekiMukellef = resolveTaxpayerByText(adaylar as any, onceki);
+        const ad = oncekiMukellef
+          ? (oncekiMukellef.companyName || `${oncekiMukellef.firstName || ''} ${oncekiMukellef.lastName || ''}`).trim()
+          : '';
+        const birlesik = ad ? `${ad} ${ham}` : `${onceki} ${ham}`;
+        res = await buildOwnerSingleTaxpayerReply(this.prisma, ownerTenant.id, birlesik).catch(() => null);
+        if (res) this.logger.log(`[OwnerVeri] takip sorusu: onceki mukellef="${ad || onceki.slice(0, 40)}"`);
       }
     }
     if (!res) return false;
