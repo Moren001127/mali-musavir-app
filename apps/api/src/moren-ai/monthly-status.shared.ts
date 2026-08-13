@@ -761,6 +761,16 @@ export async function buildOwnerTaxTotalReply(
   prisma: any, tenantId: string, text: string,
 ): Promise<{ reply: string } | null> {
   if (!detectTaxTotalIntent(text)) return null;
+  // ADI GECEN MUKELLEF VARSA OFIS TOPLAMI VERME. Eski korumalar yalniz sirket eki
+  // ("Ltd/Insaat") ve iyelik eki ("...'in") ariyordu; SADE BIR KISI ADI gecince
+  // tetiklenmiyordu. Canli olay: "hasan rauf saydan 2026 1.donemde ne kadar vergi
+  // odedi" sorusuna 98 beyannamelik TUM OFIS toplami dondu, ustune "mukellefin adini
+  // yaz" denildi — ad zaten yaziliydi.
+  const adaylar = await prisma.taxpayer.findMany({
+    where: { tenantId, isActive: true, NOT: { taxNumber: { startsWith: 'WHATSAPP-' } } },
+    select: { id: true, companyName: true, firstName: true, lastName: true },
+  }).catch(() => []);
+  if (resolveTaxpayerByText(adaylar, text)) return null;
   const pm = text.match(/\b(\d{4})-(\d{2}|Q[1-4])\b/i);
   let donem = pm ? pm[0] : ceyrekDonemOku(text);
   if (!donem) {
@@ -1097,6 +1107,28 @@ export async function buildOwnerSingleTaxpayerKdvReply(
   const kdv = await computeTaxpayerKdvPayable(prisma, tenantId, t.id, pm ? `${pm[1]}/${pm[2]}` : '');
   const ad = (t.companyName || `${t.firstName || ''} ${t.lastName || ''}`).trim();
   if (!kdv) {
+    // KDV Kontrol (Luca-mutabik) yoksa soruyu bos birakma: GIB'den cekilmis
+    // beyanname tahakkuku varsa KAYNAGI ACIKCA yazarak onu ver. KDV beyani
+    // hazirlarken kaynak yine yalniz KDV Kontrol'dur; bu satir sadece bilgi.
+    const donem = pm ? `${pm[1]}-${pm[2]}` : '';
+    const bk = await prisma.beyanKaydi.findMany({
+      where: { tenantId, taxpayerId: t.id, beyanTipi: { startsWith: 'KDV' }, ...(donem ? { donem } : {}) },
+      orderBy: [{ donem: 'desc' }],
+      take: donem ? 5 : 3,
+      select: { beyanTipi: true, donem: true, tahakkukTutari: true },
+    }).catch(() => []);
+    if (bk.length) {
+      const sat = bk
+        .filter((b: any) => Number(b.tahakkukTutari) > 0)
+        .map((b: any) => `• ${donemOku(String(b.donem))} ${b.beyanTipi}: ${TL2(Number(b.tahakkukTutari))}`)
+        .join('\n');
+      if (sat) {
+        return {
+          reply: `${ad} için tamamlanmış KDV kontrolü yok. Beyannameye göre ödenen KDV:\n\n${sat}\n\n(Kaynak: GİB beyanname tahakkuku. KDV kontrolü yapılınca 391−191 ayrıntısını da iletebilirim.)`,
+          mukellef: ad,
+        };
+      }
+    }
     return { reply: `${ad} için tamamlanmış KDV kontrolü bulamadım; kontrol yapılınca KDV tutarını iletebilirim.`, mukellef: ad };
   }
   const fmt = (x: number) => new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(x) + ' ₺';
@@ -1141,7 +1173,8 @@ export async function buildOwnerSingleTaxpayerReply(
   // "kar zarar ozeti" de gelir tablosudur — eskiden taninmiyor, istek BELGE akisina
   // dusup "Gelir PDF'i bulamadim" cevabi doniyordu (canli olay 06:37).
   else if (/(gelir tablo|kar ?zarar|kar-zarar|ciro|hasilat|net satis|kar(?!\w)|kazanc|karli)/.test(n)) kind = 'gelir';
-  else if (/(beyanname|beyan(?!\w)|verildi mi|verildi mı|tahakkuk)/.test(n)) kind = 'beyanname';
+  // "ne kadar vergi odedi/cikti", "vergisi ne kadar", "tahakkuku ne" → beyanname/tahakkuk dali.
+  else if (/(beyanname|beyan(?!\w)|verildi mi|verildi mı|tahakkuk|vergi (odedi|odemis|cikti|ciktı)|ne kadar vergi|vergisi ne)/.test(n)) kind = 'beyanname';
   else return null;
 
   const taxpayers = await prisma.taxpayer.findMany({
@@ -1270,20 +1303,72 @@ export async function buildOwnerSingleTaxpayerReply(
   const bk = await prisma.beyanKaydi.findMany({
     where: { tenantId, taxpayerId: t.id },
     orderBy: [{ donem: 'desc' }, { beyanTarihi: 'desc' }],
-    take: 8,
+    // 8 kayit YETMIYOR: "2026 1. donem" sorusunda ceyrek 4 dilime yayiliyor
+    // (2026-Q1 + 2026-01/02/03) ve Ocak KDV'si listenin disinda kalip toplami
+    // eksik gosteriyordu.
+    take: 60,
     select: { beyanTipi: true, donem: true, tahakkukTutari: true, beyanTarihi: true },
   }).catch(() => []);
   if (!bk.length) return { reply: `${ad} için beyanname kaydı bulamadım.`, mukellef: ad };
-  // En son döneme ait olanları göster
-  const sonDonem = bk[0].donem;
-  const son = bk.filter((b: any) => b.donem === sonDonem);
-  const satirlar = son.map((b: any) => {
-    const verildi = !!b.beyanTarihi;
-    const tar = b.beyanTarihi ? ` (${new Date(b.beyanTarihi).toLocaleDateString('tr-TR')})` : '';
-    const tah = b.tahakkukTutari != null ? ` · tahakkuk ${TL2(Number(b.tahakkukTutari))}` : '';
-    return `• ${b.beyanTipi}: ${verildi ? 'VERİLDİ' : 'hazırlandı'}${tar}${tah}`;
-  }).join('\n');
-  const reply = `BEYANNAME DURUMU — ${ad}\n${donemOku(sonDonem)} dönemi\n\n${satirlar}`;
+  // ISTENEN DONEM SUZGECI. Eskiden HER ZAMAN en son donem gosteriliyordu; owner
+  // "2026 1. donemde ne kadar vergi odedi" dediginde istedigi donem yok sayiliyordu.
+  const istenenAy = text.match(/\b(\d{4})-(\d{2})\b/);
+  const qm = text.match(/\b(\d{4})-Q([1-4])\b/i);
+  const istenenCeyrek = ceyrekDonemOku(text) || (qm ? qm[0].toUpperCase() : '');
+  let secilenler: any[] = bk;
+  let donemEtiketi = '';
+  let donemSorulmadi = false;
+  if (istenenAy) {
+    secilenler = bk.filter((b: any) => String(b.donem) === istenenAy[0]);
+    donemEtiketi = donemOku(istenenAy[0]);
+  } else if (istenenCeyrek) {
+    const parca = istenenCeyrek.split('-Q');
+    const yil = parca[0];
+    const q = parca[1];
+    const aylarHar: Record<string, string[]> = { '1': ['01', '02', '03'], '2': ['04', '05', '06'], '3': ['07', '08', '09'], '4': ['10', '11', '12'] };
+    const aylar = aylarHar[q] || [];
+    secilenler = bk.filter((b: any) => {
+      const d = String(b.donem || '').toUpperCase();
+      return d === `${yil}-Q${q}` || aylar.some((a) => d === `${yil}-${a}`);
+    });
+    donemEtiketi = `${yil} ${q}. dönem`;
+  }
+  if (!secilenler.length) {
+    return { reply: `${ad} için ${donemEtiketi || 'istenen dönem'} beyanname/tahakkuk kaydı bulamadım.`, mukellef: ad };
+  }
+  if (!donemEtiketi) {
+    // Donem belirtilmemis. Eskiden SADECE en son donem gosteriliyordu; "beyannameleri
+    // verildi mi" sorusuna cogu zaman tek satir donuyordu (string siralamasinda
+    // 2026-Q2 > 2026-06 oldugu icin aylik KDV'ler disarida kaliyordu).
+    secilenler = secilenler
+      .slice()
+      .sort((a: any, b: any) => {
+        const ta = a.beyanTarihi ? new Date(a.beyanTarihi).getTime() : 0;
+        const tb = b.beyanTarihi ? new Date(b.beyanTarihi).getTime() : 0;
+        return tb - ta;
+      })
+      .slice(0, 6);
+    donemEtiketi = 'son beyannameler';
+    donemSorulmadi = true;
+  }
+  // Ceyrek sorusunda ayni tipten birden cok satir olabiliyor (3 ayri KDV1); hangi
+  // aya ait oldugu yazilmazsa satirlar ayirt edilemiyor.
+  const cokDonem = new Set(secilenler.map((b: any) => String(b.donem))).size > 1;
+  const satirlar = secilenler
+    .slice()
+    .sort((a: any, b: any) => String(a.donem).localeCompare(String(b.donem)))
+    .map((b: any) => {
+      const verildi = !!b.beyanTarihi;
+      const tar = b.beyanTarihi ? ` (${new Date(b.beyanTarihi).toLocaleDateString('tr-TR')})` : '';
+      const tah = b.tahakkukTutari != null ? ` · tahakkuk ${TL2(Number(b.tahakkukTutari))}` : '';
+      const dilim = cokDonem ? ` ${donemOku(String(b.donem))}` : '';
+      return `• ${b.beyanTipi}${dilim}: ${verildi ? 'VERİLDİ' : 'hazırlandı'}${tar}${tah}`;
+    }).join('\n');
+  const toplam = secilenler.reduce((a: number, b: any) => a + (Number(b.tahakkukTutari) || 0), 0);
+  // Donem sorulmadiysa liste farkli donemlerden geliyor; toplamini yazmak yanlis
+  // olur (birbirine karisik donemlerin toplami hicbir seyi ifade etmez).
+  const toplamSatir = (toplam > 0 && !donemSorulmadi) ? `\n\nTOPLAM TAHAKKUK: ${TL2(toplam)}` : '';
+  const reply = `BEYANNAME / TAHAKKUK — ${ad}\n${donemEtiketi}\n\n${satirlar}${toplamSatir}`;
   return { reply, mukellef: ad };
 }
 
