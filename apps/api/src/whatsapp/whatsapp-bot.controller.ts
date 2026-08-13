@@ -1246,7 +1246,20 @@ export class WhatsAppBotController implements OnModuleInit {
     // TEK KAYNAK: intent algılama + tek-kaynak veri + biçimlendirme hepsi
     // monthly-status.shared → buildOwnerStatusReply'da. MOREN AI sayfası (moren-ai.chat
     // owner fast-path) AYNI fonksiyonu çağırır → sayfa ile WhatsApp birebir aynı cevap.
-    const res = await buildOwnerStatusReply(this.prisma, ownerTenant.id, msg.text || '');
+    let res = await buildOwnerStatusReply(this.prisma, ownerTenant.id, msg.text || '');
+
+    // DUZELTME / TAKIP MESAJI: "islenen degil islenecek", "sana sordum", "yukarida
+    // yazdim", "hayir onu degil" gibi mesajlar TEK BASINA bir niyet tasimaz. Eskiden
+    // bunlar AI'ya dusuyor, AI da soruyu cevaplamak yerine OZUR/ONAY mesaji yaziyordu
+    // (canli ornek 06:20-06:24: owner ust uste dort kez sordu, hicbirine liste gelmedi).
+    // Cozum: bir onceki GELEN owner mesaji ile BIRLESTIRIP niyeti tekrar coz.
+    if (!res && this.duzeltmeMesajiMi(msg.text || '')) {
+      const oncekiSoru = await this.sonGelenOwnerMesaji(ownerContactId, msg.id || null);
+      if (oncekiSoru) {
+        res = await buildOwnerStatusReply(this.prisma, ownerTenant.id, `${oncekiSoru} ${msg.text || ''}`);
+        if (res) this.logger.log(`[OwnerStatus] duzeltme birlestirildi: "${oncekiSoru.slice(0, 60)}" + "${(msg.text || '').slice(0, 40)}"`);
+      }
+    }
     if (!res) return false;
     const { reply, intent, donemLabel, count } = res;
     const sent = await this.whatsapp.sendMessage(this.replyTarget(msg), reply, ownerTenant.id);
@@ -1259,6 +1272,40 @@ export class WhatsAppBotController implements OnModuleInit {
     });
     this.logger.log(`[OwnerStatus] intent=${intent} donem=${donemLabel} sonuc=${count}`);
     return true;
+  }
+
+  /**
+   * Mesaj tek basina soru degil, ONCEKI soruya yapilan bir DUZELTME/ISRAR mi?
+   * ("islenen degil islenecek", "sana sordum", "yazdiklarima bak", "hayir onu degil")
+   */
+  private duzeltmeMesajiMi(text: string): boolean {
+    const n = this.normalizeForIntent(text);
+    if (!n || n.length > 120) return false;
+    return /\bdegil\b/.test(n)
+      || /(sana sordum|sordum ya|sorumu|yazdiklarima bak|yukarida yazdim|tekrar soruyorum|ayni seyi mi)/.test(n)
+      || /^(hayir|yok|olmadi|o degil|onu degil|yanlis)\b/.test(n);
+  }
+
+  /** Owner'in bir onceki GELEN mesaji (su anki haric) — duzeltmeyi baglama oturtmak icin. */
+  private async sonGelenOwnerMesaji(ownerContactId: string, simdikiMesajId: string | null): Promise<string | null> {
+    try {
+      const kayitlar = await this.prisma.communicationLog.findMany({
+        where: { taxpayerId: ownerContactId, channel: 'WHATSAPP', subject: { contains: 'gelen' } },
+        orderBy: { occurredAt: 'desc' },
+        take: 4,
+        select: { content: true },
+      });
+      for (const k of kayitlar) {
+        // Log icerigi basinda [[wa_phone:...]] / [[wa_jid:...]] isaretleri tasir; ayikla.
+        const ham = String(k.content || '').replace(/\[\[wa_[^\]]*\]\]/g, '').trim();
+        if (!ham) continue;
+        if (simdikiMesajId && String(k.content || '').includes(simdikiMesajId)) continue;
+        // Duzeltmenin kendisini atla; ondan onceki GERCEK soruyu bul.
+        if (this.duzeltmeMesajiMi(ham)) continue;
+        return ham.slice(0, 200);
+      }
+    } catch { /* gecmis okunamazsa duzeltme birlestirmesi yapilmaz */ }
+    return null;
   }
 
   private isOwnerConfirm(text: string): boolean {

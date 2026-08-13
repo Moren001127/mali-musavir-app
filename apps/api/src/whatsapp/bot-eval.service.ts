@@ -136,6 +136,16 @@ export class BotEvalService {
       }
     }
 
+    // ICI BOS OZUR/ONAY CEVABI: "ozur dilerim / haklisiniz / not aldim" deyip SORUYU
+    // CEVAPLAMAMAK. Canli ornek: owner ust uste dort kez sordu, bot her seferinde
+    // ozur diledi, liste hic gelmedi. Icinde rakam/isim/liste yoksa bu bir cevap degil.
+    const ozurKalibi = /(özür dilerim|ozur dilerim|hakl[ıi]s[ıi]n[ıi]z|eksikli[ğg]im|not ald[ıi]m|ayn[ıi] hatay[ıi]|konudan sapt[ıi]m)/i.test(text);
+    const bilgiVar = /\d/.test(text) || /\n\s*[\d•\-]/.test(text) || text.length > 400;
+    if (ozurKalibi && !bilgiVar) {
+      reasons.push('CONTENT_FREE_APOLOGY');
+      score -= 4;
+    }
+
     const sentenceCount = this.sentenceCount(text);
     // Owner brifingleri uzun + çok cümleli olabilir → uzunluk cezası YALNIZ müşteri cevabında.
     if (!context.ownerMode && (sentenceCount > 3 || text.length > 340)) {
