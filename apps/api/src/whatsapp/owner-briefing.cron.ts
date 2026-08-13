@@ -130,7 +130,7 @@ export class OwnerBriefingCron {
         '"Günaydın." ile başla; sonra TAM OLARAK şu 4 emoji başlığını bu sırayla kullan (başka başlık ekleme):',
         '📊 BUGÜNÜN DURUMU · ⚠️ RİSKLİ/ACİL · 📝 YAKLAŞAN SÜRELER · ▶️ BUGÜN ÖNCELİK',
         'SIKI STANDART: her başlık altında üç maddeyi aşma, her madde TEK satır; mesajın tamamı 900 karakteri aşmasın. Selamlaşma dışında dolgu cümlesi, tekrar, genel tavsiye YAZMA.',
-        'Yıldız markdown yok, • madde kullan, Türk sayı formatı. Kısa ve net ol, UYDURMA yok — veri yoksa açıkça "veri yok" yaz.',
+        'Çift yıldız (**) ve başlık işareti yok — tek yıldız *kalın* serbest, • madde kullan, Türk sayı formatı. Kısa ve net ol, UYDURMA yok — veri yoksa açıkça "veri yok" yaz.',
         'SAYI KURALI: aşağıdaki SAYILAR bloğundaki rakamları AYNEN kullan. Kendin toplama/çıkarma/yüzde HESAPLAMA, blokta olmayan rakam YAZMA, tarih ve gün adı UYDURMA. Bir rakam blokta yoksa o cümleyi kurma.',
         'Borçlu/cari sayısı boş (null) ya da "veri alınamadı" ise ASLA "borçlu yok / sıfır borçlu" yazma; "borçlu verisi şu an alınamadı" de (veri yokluğu ile sıfır farklıdır).',
       ].join('\n');
@@ -141,7 +141,7 @@ export class OwnerBriefingCron {
       'Tek cümlelik kapanış girişiyle başla; sonra TAM OLARAK şu 4 emoji başlığını bu sırayla kullan (başka başlık ekleme):',
       '✅ BUGÜN İLERLEYEN · ⏳ BEKLEYEN/YARINA KALAN · ⚠️ DİKKAT · ▶️ YARIN ÖNCELİK',
       'SIKI STANDART: her başlık altında üç maddeyi aşma, her madde TEK satır; mesajın tamamı 900 karakteri aşmasın. Dolgu cümlesi, tekrar, genel tavsiye YAZMA.',
-      'Yıldız markdown yok, • madde kullan, Türk sayı formatı. Kısa ve net ol, UYDURMA yok.',
+      'Çift yıldız (**) ve başlık işareti yok — tek yıldız *kalın* serbest, • madde kullan, Türk sayı formatı. Kısa ve net ol, UYDURMA yok.',
       'SAYI KURALI: aşağıdaki SAYILAR bloğundaki rakamları AYNEN kullan. Kendin toplama/çıkarma/yüzde HESAPLAMA, blokta olmayan rakam YAZMA, tarih ve gün adı UYDURMA. Bir rakam blokta yoksa o cümleyi kurma.',
     ].join('\n');
   }

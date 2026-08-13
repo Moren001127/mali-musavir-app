@@ -39,6 +39,9 @@ type IncomingWhatsAppMessage = {
   __dryRun?: boolean;
   __dryReply?: string;
   __dryKind?: string;
+  /** Kuru-testte "onceki soru" baglami. Gercek akista bu bilgi communicationLog'dan
+   *  okunur; kuru-testte gecmis YAZILMADIGI icin disaridan verilir. */
+  __testOncekiMesaj?: string;
 };
 
 // Asistanın müşteriye görünen insan ismi. Değiştirmek için MOREN_BOT_NAME env'i.
@@ -151,6 +154,7 @@ export class WhatsAppBotController implements OnModuleInit {
       text: metin,
       id: `DENEME-${Date.now()}-${Math.floor(Math.random() * 1e6)}`,
       __dryRun: true,
+      __testOncekiMesaj: body?.oncekiSoru ? String(body.oncekiSoru) : undefined,
     };
     const basla = Date.now();
     try {
@@ -911,7 +915,7 @@ export class WhatsAppBotController implements OnModuleInit {
       'KESİN KURALLAR:',
       '1) ASLA "müşteri X yaptı/dedi/selamlaştı" gibi 3. tekil dille konuşma. "Sen", "size" diye konuş.',
       '2) ASLA "Anladım — ...", "Görüyorum...", "Şimdilik:", "Yapılacak:", "Plan:" gibi düşünce/brifing yazma.',
-      '3) Yıldız tabanlı markdown (** __ ` # > ~) YASAK ama WhatsApp doğal formatları SERBEST:',
+      '3) CIFT yildiz (**), alt cizgi (__), backtick, # ve > YASAK. TEK yildiz (*kalin*) WhatsApp kalin bicimidir, SERBEST. Diger WhatsApp dogal formatlari da serbest:',
       '   - Satır arası (\\n\\n) bölüm ayırmak için kullan',
       '   - Liste için • veya - kullan',
       '   - Bölüm başlığı BÜYÜK HARF (DURUM, RİSKLİ, AJANLAR, HGS, AKSİYON) — EMOJİ KULLANMA, sade/profesyonel',
@@ -1343,7 +1347,7 @@ export class WhatsAppBotController implements OnModuleInit {
 
     let res = await buildOwnerSingleTaxpayerReply(this.prisma, ownerTenant.id, ham).catch(() => null);
     if (!res) {
-      const onceki = await this.sonGelenOwnerMesaji(ownerContactId, msg.id || null);
+      const onceki = await this.sonGelenOwnerMesaji(ownerContactId, msg.id || null, msg);
       if (onceki) {
         res = await buildOwnerSingleTaxpayerReply(this.prisma, ownerTenant.id, `${onceki} ${ham}`).catch(() => null);
         if (res) this.logger.log(`[OwnerVeri] onceki mesajla birlestirildi: "${onceki.slice(0, 50)}"`);
@@ -1372,7 +1376,7 @@ export class WhatsAppBotController implements OnModuleInit {
     // (canli ornek 06:20-06:24: owner ust uste dort kez sordu, hicbirine liste gelmedi).
     // Cozum: bir onceki GELEN owner mesaji ile BIRLESTIRIP niyeti tekrar coz.
     if (!res && this.duzeltmeMesajiMi(msg.text || '')) {
-      const oncekiSoru = await this.sonGelenOwnerMesaji(ownerContactId, msg.id || null);
+      const oncekiSoru = await this.sonGelenOwnerMesaji(ownerContactId, msg.id || null, msg);
       if (oncekiSoru) {
         res = await buildOwnerStatusReply(this.prisma, ownerTenant.id, `${oncekiSoru} ${msg.text || ''}`);
         if (res) this.logger.log(`[OwnerStatus] duzeltme birlestirildi: "${oncekiSoru.slice(0, 60)}" + "${(msg.text || '').slice(0, 40)}"`);
@@ -1398,7 +1402,9 @@ export class WhatsAppBotController implements OnModuleInit {
   }
 
   /** Owner'in bir onceki GELEN mesaji (su anki haric) — duzeltmeyi baglama oturtmak icin. */
-  private async sonGelenOwnerMesaji(ownerContactId: string, simdikiMesajId: string | null): Promise<string | null> {
+  private async sonGelenOwnerMesaji(ownerContactId: string, simdikiMesajId: string | null, msg?: IncomingWhatsAppMessage): Promise<string | null> {
+    // Kuru-testte gecmis yazilmadigi icin onceki soru disaridan gelir.
+    if (msg?.__dryRun && msg.__testOncekiMesaj) return String(msg.__testOncekiMesaj).slice(0, 200);
     try {
       const kayitlar = await this.prisma.communicationLog.findMany({
         where: { taxpayerId: ownerContactId, channel: 'WHATSAPP', subject: { contains: 'gelen' } },

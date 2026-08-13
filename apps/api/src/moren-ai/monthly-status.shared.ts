@@ -290,13 +290,16 @@ export function detectOwnerStatusIntent(text: string): OwnerStatusIntent | null 
   if (!isList) return null;
 
   // ── ÖNCE OLUMSUZ / BEKLEYEN kalıplar (en spesifik) ──
-  if (/kontrol[^.]*?(bekle|edilmed|edilmemis|edilmeyen|edilecek|edilmeli|edilsin|yapilmad|yapilmamis|yapilacak|yapilmali|bitmemis|bitmedi|gecmemis|gecmedi|olmamis|olmadi)/.test(n)) return 'kontrol_bekleyen';
+  // "bitmeyen / tamamlanmayan / kalan" da OLUMSUZ sayilir. Canli denemede
+  // "Kontrolu bitmeyen kimler var" hicbir kalibi tutturamayip AI'ya dusuyor,
+  // AI da "listeyi cekme erisimim yok" diyordu.
+  if (/kontrol[^.]*?(bekle|edilmed|edilmemis|edilmeyen|edilecek|edilmeli|edilsin|yapilmad|yapilmamis|yapilacak|yapilmali|bitmemis|bitmedi|bitmeyen|bitmeme|tamamlanmam|tamamlanmayan|kalan|eksik)/.test(n)) return 'kontrol_bekleyen';
   if (/(beyanname|beyan)[^.]*?(verilmed|verilmeyen|verilmemis|vermedi|vermeyen|vermemis|gecik|eksik|kalan)/.test(n)) return 'verilmedi';
   if (/(evrak|evrag|belge)[^.]*?(bekle|gelmedi|gelmemis|gelmeyen|gelmiyen|yok)/.test(n)) return 'evrak_bekleyen';
   // "islenecek / islenmesi gereken / islenmeyi bekleyen" = HENUZ ISLENMEMIS.
   // Eskiden bunlar asagidaki OLUMLU dala ("gelip...islen") dusup ISLENMIS listesi
   // donduruyordu; owner "islenen degil islenecek" diye duzeltmek zorunda kaliyordu.
-  if (/islenecek|islenmesi gerek|islenmeli|islenmeyi bekle/.test(n)) return 'islem_bekleyen';
+  if (/islenecek|islenmesi gerek|islenmeli|islenmeyi bekle|islenmesi kalan|islem[^.]*?(bitmeyen|tamamlanmayan)/.test(n)) return 'islem_bekleyen';
   if (/islenmemis|islenmeyen|islenmedi|henuz islen|(islem|islenme)[^.]*?(bekle|memis|meyen|medi)/.test(n)) return 'islem_bekleyen';
 
   // ── OLUMLU kalıplar ──
