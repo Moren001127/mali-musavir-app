@@ -746,6 +746,25 @@ export function detectTaxTotalIntent(text: string): boolean {
  * 2026-06 / 2026-Q2 yazimi taniniyor, "1. donemde" denince SESSIZCE en son kayda
  * dusuluyor ve owner'a YANLIS DONEMIN toplami gidiyordu.
  */
+/**
+ * "haziranda", "Mayıs ayında", "Ocak 2025" gibi TÜRKÇE AY ADINI YYYY-MM'e çevirir.
+ * Owner da mükellef de dönemi "2026-06" diye yazmıyor; ay adı tanınmayınca dönem
+ * sorgusu sessizce "son beyannameler"e düşüyordu.
+ */
+export function ayAdindanDonem(text: string): string {
+  const n = normalizeForIntent(text);
+  const AYLAR: Array<[string, string]> = [
+    ['ocak', '01'], ['subat', '02'], ['mart', '03'], ['nisan', '04'],
+    ['mayis', '05'], ['haziran', '06'], ['temmuz', '07'], ['agustos', '08'],
+    ['eylul', '09'], ['ekim', '10'], ['kasim', '11'], ['aralik', '12'],
+  ];
+  // Turkce eklemeli dildir ("haziranda", "haziranin"); sondaki sinir aranmaz.
+  const bulunan = AYLAR.find(([ad]) => new RegExp(`\\b${ad}`).test(n));
+  if (!bulunan) return '';
+  const yil = text.match(/\b(20\d{2})\b/);
+  return `${yil ? yil[1] : new Date().getFullYear()}-${bulunan[1]}`;
+}
+
 export function ceyrekDonemOku(text: string): string {
   const n = normalizeForIntent(text);
   const sozle: Record<string, string> = { birinci: '1', ikinci: '2', ucuncu: '3', dorduncu: '4' };
@@ -1018,7 +1037,9 @@ export async function buildTaxpayerSelfReply(
       select: { beyanTipi: true, donem: true, tahakkukTutari: true, beyanTarihi: true },
     }).catch(() => []);
     if (!kayitlar.length) return { reply: 'Vergi tahakkukunuzu sistemde henüz görmüyorum; beyannameniz verilince tutarı iletiriz.', kind: 'vergi' };
-    const ayM = text.match(/\b(\d{4})-(\d{2})\b/);
+    const ayEs = text.match(/\b(\d{4})-(\d{2})\b/);
+    const ayAd = ayEs ? '' : ayAdindanDonem(text);
+    const ayM: string[] | null = ayEs ? [ayEs[0]] : (ayAd ? [ayAd] : null);
     const qM = text.match(/\b(\d{4})-Q([1-4])\b/i);
     const ceyrek = ceyrekDonemOku(text) || (qM ? qM[0].toUpperCase() : '');
     let sec: any[] = kayitlar;
@@ -1375,7 +1396,9 @@ export async function buildOwnerSingleTaxpayerReply(
   if (!bk.length) return { reply: `${ad} için beyanname kaydı bulamadım.`, mukellef: ad };
   // ISTENEN DONEM SUZGECI. Eskiden HER ZAMAN en son donem gosteriliyordu; owner
   // "2026 1. donemde ne kadar vergi odedi" dediginde istedigi donem yok sayiliyordu.
-  const istenenAy = text.match(/\b(\d{4})-(\d{2})\b/);
+  const ayEsleme = text.match(/\b(\d{4})-(\d{2})\b/);
+  const ayAdi = ayEsleme ? '' : ayAdindanDonem(text);
+  const istenenAy: string[] | null = ayEsleme ? [ayEsleme[0]] : (ayAdi ? [ayAdi] : null);
   const qm = text.match(/\b(\d{4})-Q([1-4])\b/i);
   const istenenCeyrek = ceyrekDonemOku(text) || (qm ? qm[0].toUpperCase() : '');
   let secilenler: any[] = bk;
