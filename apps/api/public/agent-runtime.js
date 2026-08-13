@@ -43,7 +43,12 @@
   // sanıp 5dk sonra işi düşürüyordu (PERİHAN ŞAHİN). Artık EKRAN da kanıt sayılıyor:
   // tablo satırı artışı = aktivite; hata öncesi son kontrolde satır/"adet bulundu"
   // varsa sorgu çalışmış kabul edilir.
-  const AGENT_VERSION = '1.47.15';
+  // v1.47.16 (2026-08-13): 5 DAKİKA BOŞA BEKLEME BİTTİ. PERİHAN ŞAHİN ölçümü:
+  // sorgu ANINDA 18 satır getirdi ama ajan "bitti" sinyalini yalnız tanımadığı XHR
+  // adreslerinden aradığı için 5dk timeout'a kadar bekliyordu. Artık tıklama
+  // öncesine göre satır sayısı değiştiyse "sorgu çalıştı" sayılır; sayı 5sn sabit
+  // kalınca hemen indirmeye geçilir.
+  const AGENT_VERSION = '1.47.16';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -5265,6 +5270,19 @@
 
       // Belgeleri Getir butonu
       const activityBeforeClick = getAgentActivityCount();
+      // v1.47.16: Tıklamadan ÖNCEKİ satır sayısı — sorgunun gerçekten sonuç
+      // ürettiğini uç adresinden bağımsız anlamak için tek güvenilir taban.
+      const sayEbelgeRows = () => {
+        let n = 0;
+        for (const d of collectEbelgeDocsDeep()) {
+          try {
+            n += d.querySelectorAll('.sec').length;
+            if (!n) n += d.querySelectorAll('table tr input[type=checkbox]').length;
+          } catch {}
+        }
+        return n;
+      };
+      const rowsBeforeClick = sayEbelgeRows();
       let triggerMethod = '';
       const getirBtn = findGetirButtonEverywhere(datePair.doc);
       if (getirBtn) {
@@ -5303,35 +5321,25 @@
       let lastActCount = activityBeforeClick;
       let lastActChangeTs = Date.now();
       const SILENCE_DONE_MS = 5000; // 8000→5000: metin sinyali kaçarsa daha erken çık (indirmeden önce waitForActivitySilence guard'ı korur)
-      // v1.47.15: EKRANDAN da kanıt topla. Sorgunun başladığı/ilerlediği yalnız SABİT
-      // XHR adreslerinden (gib530|fatura_kaydet…) anlaşılıyordu; İŞLETME DEFTERİ
-      // ekranı farklı uç kullanınca "hiç sorgu olmadı" sanılıp 5dk sonra
-      // "sorgusu baslatilamadi" hatası veriliyordu (PERİHAN ŞAHİN vakası) — oysa
-      // ekranda sonuç satırları oluşabiliyor. Tablo satırı sayısı artıyorsa bu da
-      // aktivitedir.
-      const sayEbelgeRows = () => {
-        let n = 0;
-        for (const d of collectEbelgeDocsDeep()) {
-          try {
-            n += d.querySelectorAll('.sec').length;
-            if (!n) n += d.querySelectorAll('table tr input[type=checkbox]').length;
-          } catch {}
-        }
-        return n;
-      };
+      // v1.47.15/16: EKRANDAN da kanıt topla (sabit XHR adreslerine bağımlılık
+      // İŞLETME DEFTERİ ekranında kör kalıyordu). Satır sayısı tıklama öncesine
+      // göre DEĞİŞTİYSE sorgu sonuç üretmiştir.
       let lastRowCount = sayEbelgeRows();
       while (Date.now() - pollStart < POLL_MAX_MS) {
         await throwIfCancelled();
         const actNow = getAgentActivityCount();
         if (actNow > activityBeforeClick) sawQueryActivity = true;
         if (actNow > lastActCount) { lastActCount = actNow; lastActChangeTs = Date.now(); }
-        // v1.47.15: DOM kanıtı — satır sayısı arttıysa sorgu GERÇEKTEN çalışıyor
-        // (uç adresi tanınmasa bile). Hem "başladı" hem "ilerliyor" sayılır.
+        // v1.47.16: DOM kanıtı. Satır sayısı tıklama öncesine göre DEĞİŞTİYSE sorgu
+        // sonuç üretmiştir (uç adresi tanınmasa bile) → "başladı" sayılır. Sayı
+        // değiştikçe sessizlik saati sıfırlanır; sabitlenince (5sn) erken çıkış
+        // devreye girer. PERİHAN ŞAHİN: 18 satır anında geldi ama ajan bunu
+        // görmediği için 5 DAKİKA boşuna bekliyordu.
         try {
           const rowsNow = sayEbelgeRows();
-          if (rowsNow > lastRowCount) {
+          if (rowsNow !== rowsBeforeClick) sawQueryActivity = true;
+          if (rowsNow !== lastRowCount) {
             lastRowCount = rowsNow;
-            sawQueryActivity = true;
             lastActChangeTs = Date.now();
           }
         } catch {}
@@ -5382,7 +5390,7 @@
         //   "sona erdi" yazısını beklemeden çık → küçük sorgudaki 5dk boşa beklemeyi önler.
         if (sawQueryActivity && now - pollStart > 4000 && now - lastActChangeTs > SILENCE_DONE_MS) {
           queryDone = true;
-          await log(`✓ GİB sorgu bitti (kayıt aktivitesi ${Math.round((now - lastActChangeTs) / 1000)}sn sessiz — "sona erdi" beklenmeden erken çıkıldı)`);
+          await log(`✓ GİB sorgu bitti (${lastRowCount} satır, ${Math.round((now - lastActChangeTs) / 1000)}sn sabit — "sona erdi" beklenmeden erken çıkıldı)`);
           break;
         }
         if (progressLine && progressLine !== lastProgress && now - lastProgressLogTs > 5000) {
