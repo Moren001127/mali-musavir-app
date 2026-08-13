@@ -21,6 +21,7 @@ import { LucaModule } from './luca/luca.module';
 import { MizanModule } from './mizan/mizan.module';
 import { EarsivModule } from './earsiv/earsiv.module';
 import { MorenAiModule } from './moren-ai/moren-ai.module';
+import { GundemModule } from './gundem/gundem.module';
 import { CalisanModule } from './calisan/calisan.module';
 import { WhatsAppModule } from './whatsapp/whatsapp.module';
 import { VendorMemoryModule } from './vendor-memory/vendor-memory.module';
@@ -77,6 +78,7 @@ import { InvoiceOverdueCron } from './schedule/invoice-overdue.cron';
     MizanModule,
     EarsivModule,
     MorenAiModule,
+    GundemModule,
     CalisanModule,
     WhatsAppModule,
     VendorMemoryModule,

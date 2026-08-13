@@ -38,6 +38,7 @@ import { createPortal } from 'react-dom';
 import { useMe } from '@/hooks/useAuth';
 import { KritikUyariStatCard } from '@/components/dashboard/KritikUyariStatCard';
 import { BrifingKart } from '@/components/dashboard/BrifingKart';
+import { GundemKart } from '@/components/dashboard/GundemKart';
 import { BuHaftaTakvim } from '@/components/dashboard/BuHaftaTakvim';
 
 const GOLD = '#d4b876';
@@ -1947,6 +1948,9 @@ export default function DashboardPage() {
       </div>
 
       <BrifingKart userName={displayUserName(meUser)} />
+
+      {/* Günün Gündemi — dış dünya: Resmî Gazete (AI süzgeçli) + TCMB kuru */}
+      <GundemKart />
 
       <DashboardSectionBridge from="Brifing" to="Beyanname Takibi" tone="mint" />
 
