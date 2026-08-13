@@ -16,7 +16,7 @@ import { BotEvalService } from './bot-eval.service';
 import { QualityLogService } from './quality-log.service';
 import { CalisanService } from '../calisan/calisan.service';
 import { claudeTextViaMax, MAX_MODEL_CHEAP } from '../common/max-inference';
-import { buildOwnerStatusReply, resolveTaxpayerByText, buildTaxpayerSelfReply, buildTaxpayerQuickReply } from '../moren-ai/monthly-status.shared';
+import { buildOwnerStatusReply, resolveTaxpayerByText, buildTaxpayerSelfReply, buildTaxpayerQuickReply, buildOwnerSingleTaxpayerReply } from '../moren-ai/monthly-status.shared';
 
 type IncomingWhatsAppMessage = {
   from: string;
@@ -1238,6 +1238,45 @@ export class WhatsAppBotController implements OnModuleInit {
    * DETERMİNİSTİK yanıtlar. AI bu sorularda sürekli "çekemiyorum/Luca'ya bağlantım yok"
    * halüsinasyonu yapıyordu. Dönem = BEYANNAME dönemi (işlem ayı−1); kayıtlar işlem ayında.
    */
+  /**
+   * Tek mukellef VERI ozeti (mizan / kar-zarar / isletme hesap ozeti / cari borc).
+   * YAZILI ozet dondurur; PDF/belge istekleri (beyanname, tahakkuk) buraya girmez.
+   * Mesajda mukellef adi yoksa bir onceki owner mesajiyla birlestirilip tekrar denenir
+   * (owner "kar zarar ozetini gonder" derken kimden bahsettigini tekrar yazmiyor).
+   */
+  private async maybeHandleOwnerDataSummary(
+    ownerTenant: any,
+    ownerContactId: string,
+    msg: IncomingWhatsAppMessage,
+  ): Promise<boolean> {
+    const ham = String(msg.text || '');
+    const n = this.normalizeForIntent(ham);
+    // Sadece VERI ozeti isteyen kavramlar; beyanname/tahakkuk PDF akisinda kalir.
+    if (!/(mizan|kar ?zarar|kar-zarar|gelir tablo|isletme hesap ozet|isletme ozet|hesap ozet|\biho\b|cari|bakiye|borc)/.test(n)) return false;
+    if (/(beyanname|tahakkuk|pdf|dosya olarak|belge olarak)/.test(n)) return false;
+
+    let res = await buildOwnerSingleTaxpayerReply(this.prisma, ownerTenant.id, ham).catch(() => null);
+    if (!res) {
+      const onceki = await this.sonGelenOwnerMesaji(ownerContactId, msg.id || null);
+      if (onceki) {
+        res = await buildOwnerSingleTaxpayerReply(this.prisma, ownerTenant.id, `${onceki} ${ham}`).catch(() => null);
+        if (res) this.logger.log(`[OwnerVeri] onceki mesajla birlestirildi: "${onceki.slice(0, 50)}"`);
+      }
+    }
+    if (!res) return false;
+
+    const sent = await this.whatsapp.sendMessage(this.replyTarget(msg), res.reply, ownerTenant.id);
+    await this.prisma.communicationLog.create({
+      data: {
+        taxpayerId: ownerContactId, channel: 'WHATSAPP',
+        subject: sent ? 'WhatsApp owner veri ozeti' : 'WhatsApp owner veri ozeti (gonderilemedi)',
+        content: this.withWhatsAppPhone(res.reply, msg.from), occurredAt: new Date(),
+      },
+    });
+    this.logger.log(`[OwnerVeri] mukellef=${res.mukellef}`);
+    return true;
+  }
+
   private async maybeHandleOwnerStatusQuery(
     ownerTenant: any,
     ownerContactId: string,
@@ -1833,6 +1872,16 @@ export class WhatsAppBotController implements OnModuleInit {
       // OWNER → MÜKELLEFE GÖNDER: "X mükellefine/kendisine <belge> gönder" → belgeyi
       // doğrudan O MÜKELLEFE ilet (önizleme + ONAYLIYORUM kapısı). Kendine-gönderden ÖNCE
       // gelmeli ki "mükellefe gönder" yanlışlıkla owner'a gitmesin.
+      // TEK-MUKELLEF VERI OZETI (YAZILI) — belge akislarindan ONCE.
+      // "X'in mizani / kar zarar ozeti / isletme hesap ozeti / cari borcu" gibi istekler
+      // BELGE degil YAZILI ozet ister. Eskiden bu fonksiyon yalniz MOREN AI ekraninda
+      // cagriliyordu; WhatsApp'ta istek belge akisina dusup "Gelir PDF'i bulamadim"
+      // cevabi doniyordu (canli olay 06:37). Beyanname/tahakkuk istekleri DISARIDA
+      // birakilir — onlar gercekten PDF ister.
+      if (await this.maybeHandleOwnerDataSummary(ownerTenant, ownerContact.id, msg)) {
+        return;
+      }
+
       if (await this.maybeHandleOwnerSendDocToTaxpayer(ownerTenant, ownerContact.id, msg)) {
         return;
       }

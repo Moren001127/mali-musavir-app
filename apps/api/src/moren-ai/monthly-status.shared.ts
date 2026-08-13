@@ -1085,9 +1085,15 @@ export async function buildOwnerSingleTaxpayerReply(
   const n = normalizeForIntent(text);
   if (/(kim|kimler|kimlere|liste|listele|herkes|hangi mukellef)/.test(n)) return null; // portföy
   let kind = '';
-  if (/mizan/.test(n)) kind = 'mizan';
+  // ISLETME HESAP OZETI en basta: "hesap ozeti" ifadesi asagidaki gelir/borc
+  // kaliplarina kaciyordu ve owner "isletme hesap ozetini gonder" deyince istek
+  // BELGE gonderme akisina dusup alakasiz evraklar listeleniyordu (canli olay 06:34).
+  if (/(isletme hesap ozet|isletme ozet|hesap ozet|\biho\b|ihö)/.test(n)) kind = 'iho';
+  else if (/mizan/.test(n)) kind = 'mizan';
   else if (/(borc|cari|bakiye|alacak)/.test(n)) kind = 'borc';
-  else if (/(gelir tablo|ciro|hasilat|net satis|kar(?!\w)|kazanc|karli)/.test(n)) kind = 'gelir';
+  // "kar zarar ozeti" de gelir tablosudur — eskiden taninmiyor, istek BELGE akisina
+  // dusup "Gelir PDF'i bulamadim" cevabi doniyordu (canli olay 06:37).
+  else if (/(gelir tablo|kar ?zarar|kar-zarar|ciro|hasilat|net satis|kar(?!\w)|kazanc|karli)/.test(n)) kind = 'gelir';
   else if (/(beyanname|beyan(?!\w)|verildi mi|verildi mı|tahakkuk)/.test(n)) kind = 'beyanname';
   else return null;
 
@@ -1133,6 +1139,47 @@ export async function buildOwnerSingleTaxpayerReply(
       : bakiye < 0
         ? `CARİ DURUM — ${ad}\n\n• Alacaklı bakiye: ${TL2(-bakiye)} (fazla ödeme)`
         : `CARİ DURUM — ${ad}\n\nAçık borcu yok, bakiye sıfır. `;
+    return { reply, mukellef: ad };
+  }
+
+  if (kind === 'iho') {
+    // Istenen donem(ler): "2026 1. ve 2. donem" -> yil 2026, donemler [1,2].
+    const yilM = text.match(/\b(20\d{2})\b/);
+    const yil = yilM ? Number(yilM[1]) : new Date().getFullYear();
+    const donemler = [...new Set((normalizeForIntent(text).match(/\b([1-4])\s*\.?\s*donem/g) || [])
+      .map((x) => Number((x.match(/[1-4]/) || ['0'])[0]))
+      .filter((d) => d >= 1 && d <= 4))];
+    const kayitlar = await prisma.isletmeHesapOzeti.findMany({
+      where: { tenantId, taxpayerId: t.id, yil, ...(donemler.length ? { donem: { in: donemler } } : {}) },
+      orderBy: [{ donem: 'asc' }],
+    }).catch(() => []);
+    if (!kayitlar.length) {
+      const dLabel = donemler.length ? donemler.map((d) => `${d}. dönem`).join(' ve ') : 'ilgili dönem';
+      return { reply: `${ad} için ${yil} ${dLabel} işletme hesap özeti kaydı bulamadım.`, mukellef: ad };
+    }
+    const ARALIK: Record<number, string> = { 1: 'Ocak–Mart', 2: 'Nisan–Haziran', 3: 'Temmuz–Eylül', 4: 'Ekim–Aralık' };
+    const bloklar = kayitlar.map((o: any) => {
+      const satis = Number(o.satisHasilati) || 0;
+      const digerGelir = Number(o.digerGelir) || 0;
+      const smm = Number(o.satilanMalMaliyeti) || 0;
+      const gider = Number(o.donemIciGiderler) || 0;
+      const kar = Number(o.donemKari) || 0;
+      const odenecek = Number(o.odenecekGecVergi) || 0;
+      const satirlar = [
+        `${o.donem}. dönem (${ARALIK[o.donem] || ''})`,
+        `• Satışlar: ${TL2(satis)}`,
+        ...(digerGelir > 0 ? [`• Diğer gelirler: ${TL2(digerGelir)}`] : []),
+        ...(smm > 0 ? [`• Satılan malın maliyeti: ${TL2(smm)}`] : []),
+        `• Giderler: ${TL2(gider)}`,
+        kar >= 0 ? `• Dönem kârı: ${TL2(kar)}` : `• Dönem zararı: ${TL2(Math.abs(kar))}`,
+        `• Ödenecek geçici vergi: ${TL2(odenecek)}`,
+      ];
+      return satirlar.join('\n');
+    });
+    const reply =
+      `İŞLETME HESAP ÖZETİ — ${ad}\n${yil}\n\n` +
+      bloklar.join('\n\n') +
+      `\n\n(Tutarlar 1 Ocak ${yil} tarihinden dönem sonuna kadarki kümülatif toplamdır.)`;
     return { reply, mukellef: ad };
   }
 
