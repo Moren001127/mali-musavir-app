@@ -26,7 +26,13 @@
   // döngülerinde (400-600ms) API'ye ayrı HTTP isteği atıyordu → dakikada 100+
   // istek → hız sınırı/gecikme → log satırları arası 15-60sn, işler kat kat uzun.
   // FIX: iptal kontrolü 3sn önbellekli + log POST'u bloklamayan sıralı kuyruk.
-  const AGENT_VERSION = '1.47.12';
+  // v1.47.13 (2026-08-13): SAĞLIKLI İŞ ÖLDÜRÜLMESİN — GİB sorgu ve ZIP paketleme
+  // aşamalarında 45sn'de bir kalp atışı logu. Bu aşamalar dakikalarca sessiz
+  // kalabildiği için sunucudaki ilerleme izleyici (150sn) işi takıldı sanıp yeniden
+  // sıraya alıyor, 3. denemede BAŞARISIZ işaretliyordu (PETRAVET: "9 adet bulundu"
+  // dedikten hemen sonra öldürüldü). Ayrıca hata mesajı artık log kuyruğundan sonra
+  // yazılıyor (arayüzde kaybolmuyor).
+  const AGENT_VERSION = '1.47.13';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -2700,6 +2706,9 @@
           // Doğrudan backend POST + console.warn yap, log() çağırma.
           const safeLog = async (line) => {
             try { console.log('[Moren-safe]', line); } catch {}
+            // v1.47.13: önce bekleyen log kuyruğunu boşalt — yoksa hata mesajı
+            // geciken log satırlarının ÖNÜNE yazılıp arayüzde kayboluyordu.
+            try { await (window.__morenLogQueue || Promise.resolve()); } catch {}
             try {
               await fetch(API + `/agent/luca/jobs/${job.id}/log`, {
                 method: 'POST',
@@ -5343,6 +5352,16 @@
           lastProgress = progressLine;
           lastProgressLogTs = now;
         }
+        // v1.47.13 KALP ATIŞI: GİB sorgusu/fatura kaydı dakikalarca sürebiliyor ve bu
+        // sırada Luca yeni bir ilerleme metni göstermezse ajan SESSİZ kalıyordu.
+        // Sunucudaki "ilerleme izleyici" 150sn sessizliği takılma sayıp SAĞLIKLI işi
+        // yeniden sıraya alıyor, 3. seferde başarısız işaretliyordu (PETRAVET vakası:
+        // "9 adet bulundu" dedikten sonra öldürüldü). 45sn'de bir kısa satır yazarak
+        // hem izleyiciyi bilgilendiriyoruz hem kullanıcı ilerlemeyi görüyor.
+        if (now - lastProgressLogTs > 45000) {
+          lastProgressLogTs = now;
+          await log(`⏳ GİB sorgusu sürüyor (${Math.round((now - pollStart) / 1000)}sn)${lastProgress ? ` · son: ${lastProgress}` : ''}`);
+        }
         await sleep(POLL_INTERVAL);
       }
       if (!queryDone) {
@@ -5936,6 +5955,7 @@
     // tıklama anında "90sn idle" yanlışlıkla fire edip ZIP gelmeden vazgeçiyordu.
     window.__morenLucaActivity.lastTs = Date.now();
     let popupClosed = false;
+    let __zipHeartbeatTs = Date.now();
     while (Date.now() - zipWaitStart < ZIP_TIMEOUT_MS) {
       if (yakalanmisZip) break;
       // Aktivite kontrolü — XHR hook'ları lastTs'i bump ediyor
@@ -5955,6 +5975,12 @@
         }
       }
       await throwIfCancelled(); // v1.47.11: iptal edilen iş sekmeyi 10 dk meşgul etmesin
+      // v1.47.13 KALP ATIŞI: ZIP paketleme dakikalarca sürebilir; sessiz kalınca
+      // sunucudaki ilerleme izleyici sağlıklı işi öldürüyordu.
+      if (Date.now() - __zipHeartbeatTs > 45000) {
+        __zipHeartbeatTs = Date.now();
+        await log(`⏳ ZIP hazırlanıyor (${Math.round((Date.now() - zipWaitStart) / 1000)}sn, ${getActivityCount()} istek)…`);
+      }
       await sleep(400);
     }
     // ZIP geldiyse ama popup hala açıksa kapat (temizlik artık finally/cleanupEarsivHooks'ta)
