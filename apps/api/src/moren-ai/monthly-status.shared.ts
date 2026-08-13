@@ -22,7 +22,7 @@ const AYLAR = [
   'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık',
 ];
 
-import { cariIsaret } from '../common/cari-bakiye';
+import { cariIsaret, hesaplaCariBakiyeler, borcluOzeti } from '../common/cari-bakiye';
 
 export interface MonthlyStatusRow {
   id: string;
@@ -645,6 +645,36 @@ export function detectDebtRankingIntent(text: string): { limit: number } | null 
   return { limit: m ? parseInt(m[1], 10) : 20 };
 }
 
+/**
+ * OFIS GENELI TOPLAM acik cari bakiye. "toplam acik cari bakiye ne kadar",
+ * "toplam ne kadar alacagimiz var" gibi sorular siralama niyetine takilmiyordu
+ * (liste kelimesi yok) ve AI'ya dusup meta cevap uretiyordu (canli deneme #8).
+ */
+export async function buildOwnerDebtTotalReply(
+  prisma: any, tenantId: string, text: string,
+): Promise<{ reply: string } | null> {
+  const n = normalizeForIntent(text);
+  const toplamSoru = /(toplam|genel toplam|hepsi|ne kadar)/.test(n);
+  const cariSoru = /(acik cari|acik bakiye|cari bakiye|alacag|alacak|borc)/.test(n);
+  const liste = /(kim|kimler|liste|sirala|en cok|en fazla|en yuksek)/.test(n);
+  if (!toplamSoru || !cariSoru || liste) return null;
+
+  const [taxpayers, hareketler] = await Promise.all([
+    prisma.taxpayer.findMany({ where: { tenantId, isActive: true, NOT: { taxNumber: { startsWith: 'WHATSAPP-' } } }, select: { id: true } }).catch(() => []),
+    prisma.cariHareket.findMany({ where: { tenantId }, select: { taxpayerId: true, tip: true, tutar: true } }).catch(() => []),
+  ]);
+  const ozet = borcluOzeti(hesaplaCariBakiyeler(hareketler, new Set(taxpayers.map((t: any) => t.id))));
+  const fmt = (x: number) => new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(x) + ' ₺';
+  return {
+    reply: `TOPLAM AÇIK CARİ BAKİYE
+
+• Borçlu mükellef: ${ozet.borcluSayisi}
+• Toplam: ${fmt(ozet.toplamBakiye)}
+
+(Cari Kasa ekranıyla aynı hesap.)`,
+  };
+}
+
 export async function buildOwnerDebtRankingReply(
   prisma: any, tenantId: string, text: string,
 ): Promise<{ reply: string; count: number } | null> {
@@ -1146,9 +1176,25 @@ export async function buildOwnerSingleTaxpayerReply(
     // Istenen donem(ler): "2026 1. ve 2. donem" -> yil 2026, donemler [1,2].
     const yilM = text.match(/\b(20\d{2})\b/);
     const yil = yilM ? Number(yilM[1]) : new Date().getFullYear();
-    const donemler = [...new Set((normalizeForIntent(text).match(/\b([1-4])\s*\.?\s*donem/g) || [])
-      .map((x) => Number((x.match(/[1-4]/) || ['0'])[0]))
-      .filter((d) => d >= 1 && d <= 4))];
+    // "2026 1. ve 2. donem" -> [1,2]. Tek regex yalniz "2. donem"i yakaliyordu ("1. ve"
+    // dogrudan 'donem' ile bitisik olmadigi icin dusuyordu); canli denemede 1. donem
+    // eksik geldi. Once "donem" gecen cumledeki TUM sira sayilarini topla.
+    const nText = normalizeForIntent(text);
+    const donemler: number[] = [];
+    if (/donem/.test(nText)) {
+      const bolge = nText.slice(0, nText.lastIndexOf('donem') + 5);
+      for (const m of bolge.matchAll(/\b([1-4])\s*\./g)) {
+        const d = Number(m[1]);
+        if (d >= 1 && d <= 4 && !donemler.includes(d)) donemler.push(d);
+      }
+      if (!donemler.length) {
+        for (const m of bolge.matchAll(/\b([1-4])\s*\.?\s*donem/g)) {
+          const d = Number(m[1]);
+          if (d >= 1 && d <= 4 && !donemler.includes(d)) donemler.push(d);
+        }
+      }
+    }
+    donemler.sort((a, b) => a - b);
     const kayitlar = await prisma.isletmeHesapOzeti.findMany({
       where: { tenantId, taxpayerId: t.id, yil, ...(donemler.length ? { donem: { in: donemler } } : {}) },
       orderBy: [{ donem: 'asc' }],

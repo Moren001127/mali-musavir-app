@@ -164,6 +164,42 @@ export const MOREN_AI_TOOLS: ToolDefinition[] = [
     },
   },
   {
+    name: 'get_my_tebligat',
+    description:
+      'Taxpayer WhatsApp mode only. Aktif mukellefin KENDI e-Tebligatlari (GIB elektronik tebligat) — baslik, donem, tarih, okundu mu. ' +
+      '"tebligat var mi", "bana tebligat gelmis mi", "e-tebligatim" sorularinda kullan. Backend aktif mukellefi kendisi baglar.',
+    input_schema: { type: 'object', properties: { limit: { type: 'number' } } },
+  },
+  {
+    name: 'get_my_sgk',
+    description:
+      'Taxpayer WhatsApp mode only. Aktif mukellefin KENDI SGK belgeleri (tahakkuk fisi, hizmet listesi). ' +
+      '"sgk tahakkukum", "hizmet listem", "sgk belgem" sorularinda kullan.',
+    input_schema: { type: 'object', properties: { limit: { type: 'number' } } },
+  },
+  {
+    name: 'get_my_isletme_hesap_ozeti',
+    description:
+      'Taxpayer WhatsApp mode only. Aktif mukellefin KENDI isletme hesap ozeti (isletme defteri geçici vergi donemi): satis, gider, donem kari, odenecek gecici vergi. ' +
+      '"isletme hesap ozetim", "kar zararim", "gecici vergim ne kadar" sorularinda kullan. yil/donem verilebilir.',
+    input_schema: { type: 'object', properties: { yil: { type: 'number' }, donem: { type: 'number' } } },
+  },
+  {
+    name: 'get_my_vergi_takvimi',
+    description:
+      'Taxpayer WhatsApp mode only. Aktif mukellefin KENDI yaklasan beyanname/odeme son gunleri. ' +
+      '"ne zaman odemem gerek", "son gun ne zaman", "vergi takvimim" sorularinda kullan.',
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'get_gundem',
+    description:
+      'Gunun gundemi: TCMB doviz kurlari, TUFE/enflasyon ve kira artis tavani, piyasa (BIST/altin), Resmi Gazete ozetleri. ' +
+      'Kamuya acik veri; hem owner hem mukellef sorabilir. "dolar kac", "kur ne", "enflasyon", "kira artis orani", "resmi gazetede ne var" sorularinda kullan. ' +
+      'bolum: kur | piyasa | enflasyon | mevzuat (bos birakilirsa ozet doner).',
+    input_schema: { type: 'object', properties: { bolum: { type: 'string' } } },
+  },
+  {
     name: 'list_taxpayers_monthly_status',
     description:
       'TEK ÇAĞRIDA ofisteki TÜM mükelleflerin belirli bir aydaki evrak/işlem durumunu listeler. ' +

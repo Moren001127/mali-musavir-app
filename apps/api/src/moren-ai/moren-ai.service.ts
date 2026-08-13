@@ -186,6 +186,13 @@ const TAXPAYER_READONLY_TOOL_NAMES = [
   // mevzuat; inferMaxToolInput yalnız GERÇEK mevzuat sorusunda çalıştırır (gate'li).
   'research_official_sources',
   'get_accounting_reference', // mükellef de hesap kodu/oran sorabilir — genel bilgi, veri sızıntısı yok
+  // FAZ 2 (2026-08-13) — mükellefin portalda ZATEN gördüğü kendi verileri. Hepsi
+  // scopedTaxpayer ile KENDİ kaydına kilitli; başka mükellefin verisine erişemez.
+  'get_my_tebligat',            // e-Tebligat (mükellef portalında /mukellef/tebligatlar var)
+  'get_my_sgk',                 // SGK tahakkuk/hizmet listesi (/mukellef/sgk var)
+  'get_my_isletme_hesap_ozeti', // kendi işletme hesap özeti (kâr/zarar, geçici vergi)
+  'get_my_vergi_takvimi',       // "ne zaman ödemem gerek" — kendi son günleri
+  'get_gundem',                 // kur/enflasyon/kira artış tavanı — KAMUYA AÇIK veri
 ];
 
 const TOOL_GROUPS: Array<{ pattern: RegExp; tools: string[] }> = [

@@ -1,5 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { ModuleRef } from '@nestjs/core';
 import { MIHSAP_FATURA_ACTIONS, isMihsapFaturaCommandAgent } from '../agent-events/agent-registry';
 import { calculateBeyannameDeadline, kalanGunHesapla, gunAdi } from '../schedule/beyanname-deadline.util';
 import { hesaplaCariBakiyeler, borcluOzeti } from '../common/cari-bakiye';
@@ -48,7 +49,12 @@ const WHATSAPP_AGENT_ACTIONS = [
 export class ToolExecutorService {
   private readonly logger = new Logger(ToolExecutorService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    // GundemService dinamik cozulur (modul dongusu olmasin) — Isletme Hesap Ozeti
+    // servisinin WhatsAppService icin kullandigi desenin aynisi.
+    @Optional() private readonly moduleRef?: ModuleRef,
+  ) {}
 
   /**
    * Tool çağrısını execute eder. name + input → result (JSON-serializable).
@@ -110,6 +116,11 @@ export class ToolExecutorService {
         case 'list_earsiv_invoices': return this.listEarsivInvoices(input, ctx);
         case 'list_tasks': return this.listTasks(input, ctx);
         case 'list_etebligat': return this.listETebligat(input, ctx);
+        case 'get_gundem': return this.getGundem(input, ctx);
+        case 'get_my_tebligat': return this.getMyTebligat(input, ctx);
+        case 'get_my_sgk': return this.getMySgk(input, ctx);
+        case 'get_my_isletme_hesap_ozeti': return this.getMyIsletmeHesapOzeti(input, ctx);
+        case 'get_my_vergi_takvimi': return this.getMyVergiTakvimi(input, ctx);
         case 'get_isletme_hesap_ozeti': return this.getIsletmeHesapOzeti(input, ctx);
         case 'get_beyanname_readiness_summary': return this.getBeyannameReadinessSummary(input, ctx);
         case 'get_portal_capability_map': return this.getPortalCapabilityMap();
@@ -190,7 +201,70 @@ export class ToolExecutorService {
   private async getMyWorkStatus(input: any, ctx: { tenantId: string; taxpayerId?: string | null }) {
     const taxpayer = await this.scopedTaxpayer(ctx);
     if (!taxpayer) return { error: 'Aktif mukellef baglami yok.' };
-    return this.getTaxpayerWorkStatus({ ...input, taxpayerId: taxpayer.id }, ctx);
+    const tam: any = await this.getTaxpayerWorkStatus({ ...input, taxpayerId: taxpayer.id }, ctx);
+    if (tam?.error) return tam;
+    // GIZLILIK KALKANI: getTaxpayerWorkStatus OFIS ICI alanlar donduruyor —
+    // hafizaNotlari (mukellef hakkinda ic notlar), sonAgentOlaylari (otomasyon
+    // gunlugu), score/durum (ic risk puani) ve "banka hesabi yok / acik cari bakiye
+    // var" gibi ic degerlendirmeler. Bunlar MUKELLEFE GITMEZ. Mukellefe yalnizca
+    // KENDI is akisindaki somut asamalar bildirilir.
+    const v = tam?.veri || {};
+    const eksikler: string[] = Array.isArray(tam?.eksikler) ? tam.eksikler : [];
+    const mukellefeUygun = eksikler.filter((e) => /evrak/i.test(e));
+    return {
+      ad: tam.ad,
+      donem: tam.period,
+      evrakDurumu: mukellefeUygun.length ? mukellefeUygun.join(', ') : 'evrak akisinda eksik gorunmuyor',
+      beyannameKaydiVar: Number(v.beyanKaydi || 0) > 0,
+      faturaSayisi: v.mihsapFatura ?? null,
+      not: 'Ayrintili durum icin musavirinize danisin.',
+    };
+  }
+
+  /** Mukellefin KENDI e-Tebligat/SGK belgeleri (PortalDocument). taxpayerId kilitli. */
+  private async getMyPortalDocuments(input: any, ctx: { tenantId: string; taxpayerId?: string | null }, turler: string[]) {
+    const taxpayer = await this.scopedTaxpayer(ctx);
+    if (!taxpayer) return { error: 'Aktif mukellef baglami yok.' };
+    const limit = Math.min(Math.max(Number(input?.limit) || 10, 1), 25);
+    const docs = await (this.prisma as any).portalDocument.findMany({
+      where: { tenantId: ctx.tenantId, taxpayerId: taxpayer.id, belgeTuru: { in: turler } },
+      orderBy: [{ issuedAt: 'desc' }, { createdAt: 'desc' }],
+      take: limit,
+      select: { belgeTuru: true, title: true, period: true, referenceNo: true, issuedAt: true, viewedAt: true },
+    }).catch(() => []);
+    const iso = (d: any) => (d ? new Date(d).toISOString().slice(0, 10) : null);
+    return {
+      adet: docs.length,
+      belgeler: docs.map((d: any) => ({
+        tur: d.belgeTuru, baslik: d.title, donem: d.period || '-',
+        refNo: d.referenceNo || '-', tarih: iso(d.issuedAt), okundu: !!d.viewedAt,
+      })),
+      not: docs.length === 0 ? 'Bu turde belgeniz gorunmuyor.' : undefined,
+    };
+  }
+
+  /** Mukellefin KENDI e-Tebligatlari. */
+  private async getMyTebligat(input: any, ctx: { tenantId: string; taxpayerId?: string | null }) {
+    return this.getMyPortalDocuments(input, ctx, ['E_TEBLIGAT']);
+  }
+
+  /** Mukellefin KENDI SGK belgeleri (tahakkuk fisi, hizmet listesi). */
+  private async getMySgk(input: any, ctx: { tenantId: string; taxpayerId?: string | null }) {
+    return this.getMyPortalDocuments(input, ctx, ['SGK_TAHAKKUK', 'SGK_HIZMET_LISTESI', 'SGK']);
+  }
+
+  /** Mukellefin KENDI isletme hesap ozeti (yil + istege bagli donem). */
+  private async getMyIsletmeHesapOzeti(input: any, ctx: { tenantId: string; taxpayerId?: string | null }) {
+    const taxpayer = await this.scopedTaxpayer(ctx);
+    if (!taxpayer) return { error: 'Aktif mukellef baglami yok.' };
+    return this.getIsletmeHesapOzeti({ ...input, taxpayerId: taxpayer.id }, ctx as any);
+  }
+
+  /** Mukellefin KENDI vergi takvimi — yaklasan beyanname/odeme son gunleri. */
+  private async getMyVergiTakvimi(input: any, ctx: { tenantId: string; taxpayerId?: string | null }) {
+    const taxpayer = await this.scopedTaxpayer(ctx);
+    if (!taxpayer) return { error: 'Aktif mukellef baglami yok.' };
+    return this.getTaxCalendar({ ...input, taxpayerId: taxpayer.id }, ctx as any);
   }
 
   private async getMyDocuments(input: any, ctx: { tenantId: string; taxpayerId?: string | null }) {
@@ -2890,6 +2964,31 @@ export class ToolExecutorService {
         'Kalıcı öğrenme ofis/mükellef hafızasına yazılan notlarla yapılır.',
       ],
     };
+  }
+
+  /**
+   * GUNDEM — TCMB kuru, TUFE/kira artis tavani, piyasa, Resmi Gazete ozetleri.
+   * gundem.service gunluk onbellek tutuyor; panelde gorunen bu veri bota KAPALIYDI.
+   * Kamuya acik veri: hem owner hem mukellef kullanabilir.
+   */
+  private async getGundem(input: any, _ctx: { tenantId: string }) {
+    try {
+      const { GundemService } = await import('../gundem/gundem.service');
+      const svc: any = this.moduleRef?.get?.(GundemService, { strict: false });
+      if (!svc?.getGundem) return { error: 'Gundem servisi kullanilamiyor.' };
+      const d: any = await svc.getGundem();
+      const bolum = String(input?.bolum || '').toLowerCase();
+      if (bolum === 'kur') return { tarih: d?.tarih, kurTarihi: d?.kurTarihi, kurlar: d?.kurlar || [] };
+      if (bolum === 'piyasa') return { tarih: d?.tarih, piyasa: d?.piyasa || [] };
+      if (bolum === 'enflasyon') return { tarih: d?.tarih, enflasyon: d?.enflasyon || null };
+      if (bolum === 'mevzuat') return { tarih: d?.tarih, mevzuat: (d?.mevzuat || []).slice(0, 10), toplam: d?.mevzuatToplam };
+      return {
+        tarih: d?.tarih, kurlar: (d?.kurlar || []).slice(0, 6), piyasa: (d?.piyasa || []).slice(0, 6),
+        enflasyon: d?.enflasyon || null, mevzuat: (d?.mevzuat || []).slice(0, 5), uyarilar: d?.uyarilar || [],
+      };
+    } catch (e: any) {
+      return { error: `Gundem verisi alinamadi: ${e?.message || e}` };
+    }
   }
 
   private async researchOfficialSources(input: any, ctx: { tenantId: string; userId?: string | null }) {

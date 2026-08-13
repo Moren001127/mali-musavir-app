@@ -16,7 +16,7 @@ import { BotEvalService } from './bot-eval.service';
 import { QualityLogService } from './quality-log.service';
 import { CalisanService } from '../calisan/calisan.service';
 import { claudeTextViaMax, MAX_MODEL_CHEAP } from '../common/max-inference';
-import { buildOwnerStatusReply, resolveTaxpayerByText, buildTaxpayerSelfReply, buildTaxpayerQuickReply, buildOwnerSingleTaxpayerReply } from '../moren-ai/monthly-status.shared';
+import { buildOwnerStatusReply, resolveTaxpayerByText, buildTaxpayerSelfReply, buildTaxpayerQuickReply, buildOwnerSingleTaxpayerReply, buildOwnerDebtTotalReply } from '../moren-ai/monthly-status.shared';
 
 type IncomingWhatsAppMessage = {
   from: string;
@@ -1334,6 +1334,13 @@ export class WhatsAppBotController implements OnModuleInit {
     if (!/(mizan|kar ?zarar|kar-zarar|gelir tablo|isletme hesap ozet|isletme ozet|hesap ozet|\biho\b|cari|bakiye|borc)/.test(n)) return false;
     if (/(beyanname|tahakkuk|pdf|dosya olarak|belge olarak)/.test(n)) return false;
 
+    // OFIS GENELI toplam cari — tek mukellef cozumune girmeden once.
+    const toplamCari = await buildOwnerDebtTotalReply(this.prisma, ownerTenant.id, ham).catch(() => null);
+    if (toplamCari) {
+      await this.ownerCevapGonder(msg, ownerTenant.id, ownerContactId, toplamCari.reply, 'owner:veri:toplam-cari', 'WhatsApp owner veri ozeti');
+      return true;
+    }
+
     let res = await buildOwnerSingleTaxpayerReply(this.prisma, ownerTenant.id, ham).catch(() => null);
     if (!res) {
       const onceki = await this.sonGelenOwnerMesaji(ownerContactId, msg.id || null);
@@ -1657,13 +1664,26 @@ export class WhatsAppBotController implements OnModuleInit {
 
     // Başlık anahtar kelimeleriyle daralt (birden çok belge varsa).
     const keys = this.docTitleKeywords(msg.text, adi);
+    let baslikEslesti = false;
     if (keys.length && docs.length > 1) {
       const filtered = docs.filter((d) => { const t = this.normalizeForIntent(d.title); return keys.some((k) => t.includes(k)); });
-      if (filtered.length) docs = filtered;
+      if (filtered.length) { docs = filtered; baslikEslesti = true; }
+    } else if (keys.length && docs.length === 1) {
+      const t = this.normalizeForIntent(docs[0].title);
+      baslikEslesti = keys.some((k) => t.includes(k));
     }
 
     if (docs.length === 1) {
       const d = docs[0];
+      // KOR GONDERIM KORUMASI: kategori de baslik da eslesmiyorsa, mukellefin TEK
+      // belgesi diye ALAKASIZ dosya gonderilmemeli. Canli olayda "isletme hesap ozeti"
+      // istegine ODEME EMRI/Idari Para Cezasi gibi evraklar donmustu. Emin degilsek SOR.
+      if (!kategori && !baslikEslesti) {
+        await sendOwnerText(
+          `${adi} için istediğin belgeyi tam çözemedim. Kayıtlı tek belge: "${d.title}". Bunu mu göndereyim, yoksa başka bir belge mi?`,
+        );
+        return true;
+      }
       await sendDoc(d.s3Key, d.mimeType, this.docFilename(d), `${adi} · ${d.title}`);
       return true;
     }
