@@ -37,7 +37,13 @@
   // firmasında BAŞKA menüyü açıyordu (PERİHAN ŞAHİN: e-Arşiv yerine Damga Vergisi
   // Beyannamesi ekranı açıldı → "ekran açılamadı" hatası). Firma kimliği
   // bilinmiyorsa önbellek hiç kullanılmaz.
-  const AGENT_VERSION = '1.47.14';
+  // v1.47.15 (2026-08-13): "Sorgu baslatilamadi" YANLIŞ HATASI. Sorgunun çalışıp
+  // çalışmadığı yalnız SABİT XHR adreslerinden (gib530|fatura_kaydet…) anlaşılıyordu;
+  // İŞLETME DEFTERİ e-Arşiv ekranı farklı uç kullandığı için ajan "hiç sorgu olmadı"
+  // sanıp 5dk sonra işi düşürüyordu (PERİHAN ŞAHİN). Artık EKRAN da kanıt sayılıyor:
+  // tablo satırı artışı = aktivite; hata öncesi son kontrolde satır/"adet bulundu"
+  // varsa sorgu çalışmış kabul edilir.
+  const AGENT_VERSION = '1.47.15';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -5297,11 +5303,38 @@
       let lastActCount = activityBeforeClick;
       let lastActChangeTs = Date.now();
       const SILENCE_DONE_MS = 5000; // 8000→5000: metin sinyali kaçarsa daha erken çık (indirmeden önce waitForActivitySilence guard'ı korur)
+      // v1.47.15: EKRANDAN da kanıt topla. Sorgunun başladığı/ilerlediği yalnız SABİT
+      // XHR adreslerinden (gib530|fatura_kaydet…) anlaşılıyordu; İŞLETME DEFTERİ
+      // ekranı farklı uç kullanınca "hiç sorgu olmadı" sanılıp 5dk sonra
+      // "sorgusu baslatilamadi" hatası veriliyordu (PERİHAN ŞAHİN vakası) — oysa
+      // ekranda sonuç satırları oluşabiliyor. Tablo satırı sayısı artıyorsa bu da
+      // aktivitedir.
+      const sayEbelgeRows = () => {
+        let n = 0;
+        for (const d of collectEbelgeDocsDeep()) {
+          try {
+            n += d.querySelectorAll('.sec').length;
+            if (!n) n += d.querySelectorAll('table tr input[type=checkbox]').length;
+          } catch {}
+        }
+        return n;
+      };
+      let lastRowCount = sayEbelgeRows();
       while (Date.now() - pollStart < POLL_MAX_MS) {
         await throwIfCancelled();
         const actNow = getAgentActivityCount();
         if (actNow > activityBeforeClick) sawQueryActivity = true;
         if (actNow > lastActCount) { lastActCount = actNow; lastActChangeTs = Date.now(); }
+        // v1.47.15: DOM kanıtı — satır sayısı arttıysa sorgu GERÇEKTEN çalışıyor
+        // (uç adresi tanınmasa bile). Hem "başladı" hem "ilerliyor" sayılır.
+        try {
+          const rowsNow = sayEbelgeRows();
+          if (rowsNow > lastRowCount) {
+            lastRowCount = rowsNow;
+            sawQueryActivity = true;
+            lastActChangeTs = Date.now();
+          }
+        } catch {}
         const allDocs = collectEbelgeDocsDeep();
         if (!allDocs.includes(document)) allDocs.unshift(document);
         let foundDoneSignal = false;
@@ -5365,13 +5398,29 @@
         // hem izleyiciyi bilgilendiriyoruz hem kullanıcı ilerlemeyi görüyor.
         if (now - lastProgressLogTs > 45000) {
           lastProgressLogTs = now;
-          await log(`⏳ GİB sorgusu sürüyor (${Math.round((now - pollStart) / 1000)}sn)${lastProgress ? ` · son: ${lastProgress}` : ''}`);
+          // v1.47.15: teşhis için satır sayısını da yaz — takılma halinde
+          // "ekranda sonuç var mı yok mu" tek bakışta anlaşılsın.
+          await log(`⏳ GİB sorgusu sürüyor (${Math.round((now - pollStart) / 1000)}sn · ${lastRowCount} satır)${lastProgress ? ` · son: ${lastProgress}` : ''}`);
         }
         await sleep(POLL_INTERVAL);
       }
       if (!queryDone) {
         const activityDelta = getAgentActivityCount() - activityBeforeClick;
-        if (!sawQueryActivity && activityDelta <= 0) {
+        // v1.47.15: hata fırlatmadan ÖNCE ekrana bak. Uç adresi tanınmasa bile
+        // tabloda satır varsa ya da "N adet ... bulundu" yazıyorsa sorgu ÇALIŞMIŞTIR;
+        // boşuna "sorgusu baslatilamadi" deyip işi düşürme (PERİHAN ŞAHİN vakası).
+        let domKanit = 0;
+        let domMetin = false;
+        try {
+          domKanit = sayEbelgeRows();
+          for (const d of collectEbelgeDocsDeep()) {
+            const t2 = d.body ? d.body.textContent : '';
+            if (t2 && /(\d+)\s+adet\s+(?:belge\s+kaydı|fatura)\s+bulundu/i.test(t2)) { domMetin = true; break; }
+          }
+        } catch {}
+        if (!sawQueryActivity && activityDelta <= 0 && (domKanit > 0 || domMetin)) {
+          await log(`ℹ Tanınan XHR yok ama ekranda sonuç var (${domKanit} satır${domMetin ? ' + "adet bulundu" yazısı' : ''}) — sorgu çalışmış sayılıyor`);
+        } else if (!sawQueryActivity && activityDelta <= 0) {
           const actionHints = describeEbelgeActionCandidates(datePair.doc, 35);
           await log(`✗ E-belge sorgusu baslamadi: "${triggerMethod || 'unknown'}" tetiklendi ama hic GIB/e-belge XHR olusmadi.`);
           if (actionHints) await log(`🔎 E-belge aksiyon adaylari: ${actionHints}`);
