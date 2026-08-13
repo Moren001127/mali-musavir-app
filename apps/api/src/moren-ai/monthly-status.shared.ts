@@ -131,6 +131,19 @@ export async function computeMonthlyStatusList(prisma: any, opts: ComputeOpts): 
   // 3) Mükellefler + o işlem ayındaki durum kaydı
   const whereTaxpayer: any = { tenantId: opts.tenantId };
   if (opts.onlyActive !== false) whereTaxpayer.isActive = true;
+  // DONEM PENCERESI (panel ile AYNI kume). Panel /taxpayers ucu bu iki kosulu
+  // uyguluyor (taxpayers.service findAll, monthly scope); burada YOKTU. Sonuc: isi
+  // BIRAKMIS mukellefler (endDate gecmis) listeye giriyor, durum kaydi olmadigi icin
+  // "evraki gelmedi" sayiliyordu. Canli olcum 2026-08 islem ayi: panel 66, burasi 74
+  // -> "evrak bekleyen" 26 yerine 34 cikiyordu; fazladan 8 kisinin HEPSI isi birakmis.
+  if (opts.onlyActive !== false) {
+    const ilkGun = new Date(year, month - 1, 1);
+    const sonGun = new Date(year, month, 0, 23, 59, 59);
+    whereTaxpayer.AND = [
+      { OR: [{ startDate: null }, { startDate: { lte: sonGun } }] },
+      { OR: [{ endDate: null }, { endDate: { gte: ilkGun } }] },
+    ];
+  }
   // SANAL WHATSAPP KİŞİLERİNİ HARİÇ TUT: owner'ın kendi WhatsApp kaydı
   // (taxNumber 'WHATSAPP-OWNER-*', companyName "Moren Mali Müşavirlik") ve
   // kayıtsız gelen numaralar (taxNumber 'WHATSAPP-*') gerçek mükellef değildir;
@@ -280,12 +293,18 @@ export function detectOwnerStatusIntent(text: string): OwnerStatusIntent | null 
   if (/kontrol[^.]*?(bekle|edilmed|edilmemis|edilmeyen|edilecek|edilmeli|edilsin|yapilmad|yapilmamis|yapilacak|yapilmali|bitmemis|bitmedi|gecmemis|gecmedi|olmamis|olmadi)/.test(n)) return 'kontrol_bekleyen';
   if (/(beyanname|beyan)[^.]*?(verilmed|verilmeyen|verilmemis|vermedi|vermeyen|vermemis|gecik|eksik|kalan)/.test(n)) return 'verilmedi';
   if (/(evrak|evrag|belge)[^.]*?(bekle|gelmedi|gelmemis|gelmeyen|gelmiyen|yok)/.test(n)) return 'evrak_bekleyen';
+  // "islenecek / islenmesi gereken / islenmeyi bekleyen" = HENUZ ISLENMEMIS.
+  // Eskiden bunlar asagidaki OLUMLU dala ("gelip...islen") dusup ISLENMIS listesi
+  // donduruyordu; owner "islenen degil islenecek" diye duzeltmek zorunda kaliyordu.
+  if (/islenecek|islenmesi gerek|islenmeli|islenmeyi bekle/.test(n)) return 'islem_bekleyen';
   if (/islenmemis|islenmeyen|islenmedi|henuz islen|(islem|islenme)[^.]*?(bekle|memis|meyen|medi)/.test(n)) return 'islem_bekleyen';
 
   // ── OLUMLU kalıplar ──
   if (/(beyanname|beyan)[^.]*?(verilebil|verilecek|verilir|hazir)|kontrol[^.]*?(edilen|edildi|biten|bitti|bitmis|yapilan|yapildi|yapilmis|gecen|gecti|gecmis|gecirildi|tamamlan)|kontrolden gec/.test(n)) return 'beyanname_hazir';
   if (/(beyanname|beyan)[^.]*?(verildi|verilen|verilmis|gonderildi|tamamlan)/.test(n)) return 'verildi';
-  if (/(evrak|evrag|belge)[^.]*?islen|gelip[^.]*?islen|islenip|islenen|islenmis/.test(n)) return 'evrak_islenen';
+  // Olumlu dal yalniz GECMIS/SIMDIKI zaman eklerini kabul eder; "islenecek" gelecek
+  // zamani yukarida olumsuz dala yakalanir.
+  if (/(evrak|evrag|belge)[^.]*?islen(en|di|mis|ip)|gelip[^.]*?islen(en|di|mis|ip)|islenip|islenen|islenmis/.test(n)) return 'evrak_islenen';
   if (/(evrak|evrag|belge)[^.]*?(gel(en|di|mis)|teslim|getir)/.test(n)) return 'evrak_gelen';
   if (/(mukellef|musteri|firma)/.test(n) && /(kac|toplam|sayisi|adet|ne kadar)/.test(n)) return 'mukellef_sayisi';
   return null;
