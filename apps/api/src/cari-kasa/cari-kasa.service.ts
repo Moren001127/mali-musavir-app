@@ -1286,11 +1286,14 @@ ${rows}
 
   async tahsilatHatirlatmaSend(tenantId: string, body: { taxpayerIds?: string[]; minBakiye?: number }) {
     const preview = await this.tahsilatHatirlatmaPreview(tenantId, body);
-    const templateName = process.env.WHATSAPP_COLLECTION_TEMPLATE_NAME || process.env.WHATSAPP_TEMPLATE_NAME || undefined;
     const results: any[] = [];
 
+    // QR (Baileys) hattinda Meta sablonu yok; sendTemplate parametreleri tire ile birlestirip
+    // duz metin gonderiyordu -> mukellefe "AD - TUTAR - DONEM" gidiyor, gunluge ise row.mesaj
+    // yaziliyordu (gonderilen ile gorunen ayrisiyordu). Artik gunluge yazilan metnin AYNISI
+    // gonderilir; boylece panelde gorunen mesaj ile mukellefe ulasan mesaj birebir ayni olur.
     for (const row of preview.rows.filter((r: any) => r.gonderilebilir)) {
-      const ok = await this.whatsApp.sendTemplate(row.phone, row.templateParameters, templateName, tenantId);
+      const ok = await this.whatsApp.sendMessage(row.phone, row.mesaj, tenantId);
       await (this.prisma as any).communicationLog.create({
         data: {
           taxpayerId: row.taxpayerId,

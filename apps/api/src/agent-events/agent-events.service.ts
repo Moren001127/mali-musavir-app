@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, Logger, NotFoundException, forwardRef } from '@nestjs/common';
 import { createHash } from 'crypto';
 import { Prisma } from '@prisma/client';
 import * as ExcelJS from 'exceljs';
@@ -9,6 +9,7 @@ import { profileToPromptText } from '../common/profile-prompt';
 import { SISTEM_KURALLARI } from '../common/sistem-kurallari';
 import { VendorMemoryService } from '../vendor-memory/vendor-memory.service';
 import { PendingDecisionsService } from '../pending-decisions/pending-decisions.service';
+import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import {
   commandClaimAgentsForRunner,
   commandListAgentsForFilter,
@@ -65,6 +66,9 @@ export class AgentEventsService {
     private prisma: PrismaService,
     private vendorMemory: VendorMemoryService,
     private pendingDecisions: PendingDecisionsService,
+    // forwardRef: AgentEvents -> WhatsApp -> Calisan -> Luca -> KdvControl -> AgentEvents
+    // dolayli halkasi var; forwardRef bu kenari kirar ve acilis hatasini onler.
+    @Inject(forwardRef(() => WhatsAppService)) private readonly whatsapp: WhatsAppService,
   ) {}
 
   /**
@@ -5241,35 +5245,15 @@ Fatura görüntüsünü incele. Yukarıdaki MEVCUT SEÇENEKLER'den Kayıt Türü
       `İyi günler.`,
     ].join('\n');
 
-    // WhatsApp gönderim: yalnızca resmi Meta Cloud API.
-    const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
-    const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
-
-    if (accessToken && phoneNumberId) {
-      // 1. yol: Meta Cloud API (kurumsal numara)
-      try {
-        const apiVersion = process.env.WHATSAPP_API_VERSION || 'v20.0';
-        const res = await fetch(`https://graph.facebook.com/${apiVersion}/${phoneNumberId}/messages`, {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            messaging_product: 'whatsapp',
-            to: aliciNumara,
-            type: 'text',
-            text: { body: mesaj, preview_url: false },
-          }),
-        });
-        if (res.ok) {
-          this.logger.log(`[HGS WhatsApp Meta] Bildirim gönderildi: ${aliciNumara} (${aracSayisi} araç, ${toplamIhlal} ihlal)`);
-          return;
-        }
-        const errBody = await res.text();
-        this.logger.warn(`[HGS WhatsApp Meta] Başarısız ${res.status}: ${errBody.slice(0, 200)}`);
-      } catch (err: any) {
-        this.logger.warn(`[HGS WhatsApp Meta] Hata: ${err?.message || err}`);
-      }
+    // WhatsApp gonderimi portal servisinden gecer (QR/Baileys birincil hat).
+    // ONCEDEN: bu blok dogrudan graph.facebook.com'a gidiyordu; ne QR ne de portal
+    // ayarlarini taniyordu ve anahtar gecersiz/eksik oldugunda yalnizca log'a uyari
+    // yazip SESSIZCE susuyordu. Artik diger tum bildirimlerle ayni yoldan gider.
+    const gonderildi = await this.whatsapp.sendMessage(aliciNumara, mesaj, tenantId);
+    if (gonderildi) {
+      this.logger.log(`[HGS WhatsApp] Bildirim gonderildi: ${aliciNumara} (${aracSayisi} arac, ${toplamIhlal} ihlal)`);
     } else {
-      this.logger.warn('[HGS WhatsApp Meta] WHATSAPP_ACCESS_TOKEN veya WHATSAPP_PHONE_NUMBER_ID eksik; bildirim atlandı');
+      this.logger.warn(`[HGS WhatsApp] Bildirim GONDERILEMEDI: ${aliciNumara} — WhatsApp hatti kapali veya gonderim basarisiz`);
     }
   }
 
