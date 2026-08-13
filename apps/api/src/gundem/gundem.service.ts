@@ -96,8 +96,10 @@ export class GundemService {
         this.logger.warn(`RG AI süzgeç hatası: ${e?.message || e}`);
       }
     } else {
-      uyarilar.push('Resmî Gazete okunamadı');
-      this.logger.warn(`RG hatası: ${rgRes.reason?.message || rgRes.reason}`);
+      // Sebebi GİZLEME: proxy yok mu, engel mi, zaman aşımı mı — tek bakışta görünsün.
+      const sebep = String(rgRes.reason?.message || rgRes.reason || 'bilinmeyen').slice(0, 120);
+      uyarilar.push(`Resmî Gazete okunamadı (${sebep})`);
+      this.logger.warn(`RG hatası: ${sebep}`);
     }
 
     const data: GundemData = {
@@ -206,9 +208,27 @@ export class GundemService {
 
   /** Günlük fihristten madde başlıklarını çıkarır (ilan bölümü hariç). */
   private async fetchResmiGazete(): Promise<Array<{ baslik: string; url: string }>> {
-    const r = await this.trFetch(RG_ANASAYFA, 25000);
-    if (!r.ok) throw new Error(`Resmî Gazete → HTTP ${r.status}`);
-    const html = await r.text();
+    // Bazı adres varyantları farklı davranıyor (www/non-www, fihrist sayfası) —
+    // biri engellenirse diğerini dene, son hatayı sakla.
+    const adaylar = [
+      RG_ANASAYFA,
+      'https://resmigazete.gov.tr/',
+      'https://www.resmigazete.gov.tr/fihrist',
+    ];
+    let html = '';
+    let sonHata = '';
+    for (const u of adaylar) {
+      try {
+        const r = await this.trFetch(u, 25000);
+        if (!r.ok) { sonHata = `${u.replace('https://', '')} → HTTP ${r.status}`; continue; }
+        const govde = await r.text();
+        if (govde && govde.length > 5000) { html = govde; break; }
+        sonHata = `${u.replace('https://', '')} → boş/kısa yanıt (${govde?.length || 0})`;
+      } catch (e: any) {
+        sonHata = `${u.replace('https://', '')} → ${String(e?.message || e).slice(0, 60)}`;
+      }
+    }
+    if (!html) throw new Error(sonHata || 'erişilemedi');
 
     const out: Array<{ baslik: string; url: string }> = [];
     const gorulen = new Set<string>();
