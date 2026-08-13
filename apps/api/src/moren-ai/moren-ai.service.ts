@@ -206,7 +206,7 @@ const TOOL_GROUPS: Array<{ pattern: RegExp; tools: string[] }> = [
   // OTOMASYONLAR — ajan islerinden ayri.
   { pattern: /otomasyon|automation|zamanlanm[ıi][sş] g[öo]rev|cron/i, tools: ['list_automations', 'get_agent_status'] },
   // GUNDEM — kur/enflasyon/kira artisi/Resmi Gazete.
-  { pattern: /d[öo]viz|kur|dolar|euro|avro|enflasyon|t[üu]fe|kira art|alt[ıi]n|borsa|bist|resmi gazete|g[üu]ndem/i, tools: ['get_gundem'] },
+  { pattern: /d[öo]viz|\bkur\b|dolar|euro|avro|enflasyon|t[üu]fe|kira art|alt[ıi]n|borsa|bist|resmi gazete|g[üu]ndem/i, tools: ['get_gundem'] },
   { pattern: /muhasebe|tdhp|yevmiye|dönem sonu|donem sonu|dönem kapan|donem kapan|amortisman|envanter|mali müşavirlik|mali musavirlik/i, tools: ['list_mizan_periods', 'get_mizan', 'get_gelir_tablosu', 'get_bilanco', 'compare_periods', 'calculate_financial_ratios', 'get_operation_briefing'] },
   { pattern: /finans|nakit akış|nakit akis|bütçe|butce|kârlılık|karlılık|karlilik|finansman|işletme sermayesi|isletme sermayesi|tahsilat|cari|rasyo|likidite/i, tools: ['get_operation_briefing', 'get_collection_risk_summary', 'list_mizan_periods', 'get_mizan', 'get_gelir_tablosu', 'get_bilanco', 'compare_periods', 'calculate_financial_ratios'] },
   { pattern: /şirket yönetimi|sirket yonetimi|planlama|iş planı|is plani|strateji|performans|kpi|görev|gorev|iş akışı|is akisi|risk yönetimi|risk yonetimi/i, tools: ['get_operation_briefing', 'get_beyanname_readiness_summary', 'get_collection_risk_summary', 'get_agent_status', 'list_taxpayers_monthly_status'] },

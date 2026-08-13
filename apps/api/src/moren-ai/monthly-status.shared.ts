@@ -922,6 +922,20 @@ export async function buildTaxpayerSelfReply(
   prisma: any, tenantId: string, taxpayerId: string, text: string,
 ): Promise<{ reply: string; kind: string } | null> {
   const n = normalizeForIntent(text);
+
+  // ── UCUNCU KISI / PORTFOY KORUMASI (canli deneme bulgusu) ────────────────────
+  // Hizli-yol kaliplari fazla genisti: "Ahmet Bey'in borcu ne kadar", "En cok borcu
+  // olan kim", "Vergi cezasi geldi ne kadar odeyecegim" sorularinin UCUNDE de
+  // SORANIN KENDI BAKIYESI cevap olarak donuyordu. Baska mukellefin verisi sizmiyor
+  // ama cevap YANLIS ve yaniltici. Bu kaliplarda hizli-yol DEVREDEN CIKAR; soru
+  // AI'ya gider, o da gizlilik kuralina gore reddeder/eskale eder.
+  const ucuncuKisi = /\b(bey'?in|bey in|hanim'?in|hanimin)\b/.test(n)
+    || /\b(baska|digerleri?nin|onun|onlarin)\s+(borc|bakiye|kdv|beyanname|fatura)/.test(n);
+  const portfoySorusu = /\b(kim|kimin|kimler|en cok|en fazla|en yuksek|listele|hangi mukellef|kac mukellef)\b/.test(n);
+  if (ucuncuKisi || portfoySorusu) return null;
+  // "ceza" sorusu BAKIYE sorusu degildir — kendi bakiyesini cevap diye vermesin.
+  if (/ceza/.test(n) && !/(bakiye|cari|hesabim)/.test(n)) return null;
+
   const fmtTL = (x: number) =>
     new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(x) + ' ₺';
   const aylar = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
