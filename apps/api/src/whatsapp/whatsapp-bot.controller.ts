@@ -2514,7 +2514,11 @@ ${not}` : not;
     const fast = (await buildTaxpayerSelfReply(this.prisma, taxpayer.tenantId, taxpayer.id, msg.text).catch(() => null))
       || buildTaxpayerQuickReply(msg.text);
     if (fast) {
-      const fastReply = this.postFilter.filterTaxpayerReply(fast.reply, { recentReplies });
+      // VERI sablonlari (borc/kdv/vergi/beyanname/son-odeme) bicimli metindir; sohbet
+      // temizligi satirlarini eziyordu. Selamlama/mevzuat kisayollari serbest metin,
+      // onlar normal filtreden gecer.
+      const sablonMu = ['borc', 'kdv', 'vergi', 'beyanname', 'son-odeme'].includes(fast.kind);
+      const fastReply = this.postFilter.filterTaxpayerReply(fast.reply, { recentReplies, sablon: sablonMu });
       if (fastReply) {
         // Dry-run: GÖNDERME (müşteriye mesaj gitmesin) ama LOGLA (Mesajlar'da görünsün).
         const sent = msg.__dryRun ? true : await this.whatsapp.sendMessage(this.replyTarget(msg), fastReply, taxpayer.tenantId);

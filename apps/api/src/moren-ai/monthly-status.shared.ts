@@ -928,6 +928,16 @@ export async function computeTaxpayerKdvPayable(prisma: any, tenantId: string, t
  * AKTİF MÜKELLEFE KİLİTLİ (taxpayerId parametreyle gelir; isim çözümü YOK yanlış mükellef
  * imkânsız). Eşleşme yoksa null agentic akışa bırakır. Beyanname TUTARI verilmez (sadece durum).
  */
+// Ham beyanname kodunu insan diline cevirir (musteri "GGECICI" degil "Gelir Gecici
+// Vergi" gorsun). Hem vergi tutari hem beyanname durumu dallari kullanir.
+const BEYAN_TIP_ADI: Record<string, string> = {
+  KDV1: 'KDV', KDV2: 'KDV tevkifat (2 No.lu)', MUHSGK: 'Muhtasar-SGK', DAMGA: 'Damga Vergisi',
+  GGECICI: 'Gelir Geçici Vergi', KGECICI: 'Kurumlar Geçici Vergi', GECICI_VERGI: 'Geçici Vergi',
+  KURUMLAR: 'Kurumlar Vergisi', GELIR: 'Yıllık Gelir Vergisi', POSET: 'Poşet Beyannamesi',
+  BILDIRGE: 'Bildirim', EDEFTER: 'e-Defter Beratı', DIGER: 'Beyanname',
+};
+export function beyanTipiAdi(t: string): string { return BEYAN_TIP_ADI[t] || t; }
+
 export async function buildTaxpayerSelfReply(
   prisma: any, tenantId: string, taxpayerId: string, text: string,
 ): Promise<{ reply: string; kind: string } | null> {
@@ -958,7 +968,14 @@ export async function buildTaxpayerSelfReply(
   // KDV (kendi verisi): "kdvm/kdvim" (iyelik = benim kdv'm) veya tutar/durum kelimesi.
   const wantsKdv = /kdv/.test(n) && (/(ne kadar|odeyecek|odecek|cikiyor|cikti|durum|borc|kac tl|kac para|tutar|hesaplanan|indirilecek|odemem)/.test(n) || /kdvm|kdvim/.test(n));
   // NOT: "alacag" KALDIRILDI — "eleman alacağım" (alma fiili) ile "alacak" (receivable) çakışıyor.
-  const wantsBorc = !wantsKdv && (/(\bborc|borcum|bakiye|hesabim|odemem (var|gerek|olan)|odenecek (bir|var|tutar)|ne kadar.*ode)/.test(n) || wantsSonOdeme);
+  // VERGI (kendi tahakkuku). "ne kadar vergi odeyecegim" sorusu CARI BORC dalina
+  // dusuyordu ve musavirlik ucreti bakiyesi cevap olarak veriliyordu — mukellefe
+  // yanlis rakam. Vergi/tahakkuk sorusu kendi beyanname tahakkukundan cevaplanir.
+  const wantsVergi = !wantsKdv
+    && /(vergi|tahakkuk)/.test(n)
+    && /(ne kadar|kac tl|kac para|tutar|odeyecek|odecek|odedim|cikti|cikiyor|borcum)/.test(n)
+    && !/(oran|yuzde|ne zaman|son tarih|nedir|ne demek)/.test(n);
+  const wantsBorc = !wantsKdv && !wantsVergi && (/(\bborc|borcum|bakiye|hesabim|odemem (var|gerek|olan)|odenecek (bir|var|tutar)|ne kadar.*ode)/.test(n) || wantsSonOdeme);
   // Beyanname DURUMU: beyanname + tüm tipler (muhtasar/geçici) + durum kelimesi.
   const wantsBeyan = /(beyanname|beyannamem|beyanim|muhtasar|gecici vergi)/.test(n) && /(veril|hazir|durum|oldu mu|verildi mi|hazir mi|yapildi)/.test(n);
 
@@ -991,6 +1008,56 @@ export async function buildTaxpayerSelfReply(
     return { reply: `${durum}${sonLine}`, kind: 'borc' };
   }
 
+  // VERGİ TUTARI (kendi) — beyanname tahakkuklarından. Dönem yazılmışsa o dönem,
+  // yazılmamışsa son verilen beyannameler.
+  if (wantsVergi) {
+    const kayitlar = await prisma.beyanKaydi.findMany({
+      where: { tenantId, taxpayerId },
+      orderBy: [{ donem: 'desc' }],
+      take: 60,
+      select: { beyanTipi: true, donem: true, tahakkukTutari: true, beyanTarihi: true },
+    }).catch(() => []);
+    if (!kayitlar.length) return { reply: 'Vergi tahakkukunuzu sistemde henüz görmüyorum; beyannameniz verilince tutarı iletiriz.', kind: 'vergi' };
+    const ayM = text.match(/\b(\d{4})-(\d{2})\b/);
+    const qM = text.match(/\b(\d{4})-Q([1-4])\b/i);
+    const ceyrek = ceyrekDonemOku(text) || (qM ? qM[0].toUpperCase() : '');
+    let sec: any[] = kayitlar;
+    let etiket = '';
+    if (ayM) {
+      sec = kayitlar.filter((k: any) => String(k.donem) === ayM[0]);
+      etiket = donemOku(ayM[0]);
+    } else if (ceyrek) {
+      const [yil, q] = ceyrek.split('-Q');
+      const aylarHar: Record<string, string[]> = { '1': ['01', '02', '03'], '2': ['04', '05', '06'], '3': ['07', '08', '09'], '4': ['10', '11', '12'] };
+      const ayListe = aylarHar[q] || [];
+      sec = kayitlar.filter((k: any) => {
+        const d = String(k.donem || '').toUpperCase();
+        return d === `${yil}-Q${q}` || ayListe.some((a) => d === `${yil}-${a}`);
+      });
+      etiket = `${yil} ${q}. dönem`;
+    }
+    if (!sec.length) return { reply: `${etiket || 'İstediğiniz dönem'} için tahakkuk kaydınızı görmüyorum.`, kind: 'vergi' };
+    let toplamYaz = true;
+    if (!etiket) {
+      sec = sec.slice().sort((a: any, b: any) => {
+        const ta = a.beyanTarihi ? new Date(a.beyanTarihi).getTime() : 0;
+        const tb = b.beyanTarihi ? new Date(b.beyanTarihi).getTime() : 0;
+        return tb - ta;
+      }).slice(0, 5);
+      etiket = 'Son beyannameleriniz';
+      toplamYaz = false; // karisik donemlerin toplami anlamsiz
+    }
+    const cokDonem = new Set(sec.map((k: any) => String(k.donem))).size > 1;
+    const sat = sec
+      .slice()
+      .sort((a: any, b: any) => String(a.donem).localeCompare(String(b.donem)))
+      .map((k: any) => `- ${beyanTipiAdi(k.beyanTipi)}${cokDonem ? ' ' + donemOku(String(k.donem)) : ''}: ${fmtTL(Number(k.tahakkukTutari) || 0)}`)
+      .join('\n');
+    const top = sec.reduce((a: number, k: any) => a + (Number(k.tahakkukTutari) || 0), 0);
+    const topSat = (toplamYaz && top > 0) ? `\n\nToplam: ${fmtTL(top)}` : '';
+    return { reply: `${etiket} tahakkuk eden vergileriniz:\n\n${sat}${topSat}`, kind: 'vergi' };
+  }
+
   // Beyanname DURUMU (kendi) — tutar VERME, sadece verildi/hazırlanıyor
   if (wantsBeyan) {
     const kayitlar = await prisma.beyanKaydi.findMany({
@@ -1000,14 +1067,7 @@ export async function buildTaxpayerSelfReply(
       select: { beyanTipi: true, donem: true, beyanTarihi: true },
     }).catch(() => []);
     if (!kayitlar.length) return { reply: 'Beyanname kaydınızı sistemde henüz görmüyorum; hazırlanınca size bilgi vereceğiz.', kind: 'beyanname' };
-    // Ham kodu insan diline çevir (müşteri "GGECICI" değil "Gelir Geçici Vergi" görsün)
-    const TIP_AD: Record<string, string> = {
-      KDV1: 'KDV', KDV2: 'KDV tevkifat (2 No.lu)', MUHSGK: 'Muhtasar-SGK', DAMGA: 'Damga Vergisi',
-      GGECICI: 'Gelir Geçici Vergi', KGECICI: 'Kurumlar Geçici Vergi', GECICI_VERGI: 'Geçici Vergi',
-      KURUMLAR: 'Kurumlar Vergisi', GELIR: 'Yıllık Gelir Vergisi', POSET: 'Poşet Beyannamesi',
-      BILDIRGE: 'Bildirim', EDEFTER: 'e-Defter Beratı', DIGER: 'Beyanname',
-    };
-    const adKodu = (t: string) => TIP_AD[t] || t;
+    const adKodu = beyanTipiAdi;
     // Dönemi düzgün yaz: 2026-05"Mayıs 2026", 2026-Q1"2026 1. geçici vergi dönemi", 2025-YIL"2025 yıllık"
     const donemFmt = (d: string) => {
       const mm = d.match(/^(\d{4})[\/-](\d{2})$/); if (mm) return `${aylar[parseInt(mm[2], 10) - 1]} ${mm[1]}`;

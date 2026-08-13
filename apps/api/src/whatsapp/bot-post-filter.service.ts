@@ -137,7 +137,10 @@ export class WhatsAppBotPostFilterService {
     return String(text || '').replace(/\bBuse\b/gi, ownerFirst);
   }
 
-  filterTaxpayerReply(raw: string, options?: { recentReplies?: string[]; mode?: 'taxpayer' | 'owner' | 'unknown' }): string {
+  filterTaxpayerReply(
+    raw: string,
+    options?: { recentReplies?: string[]; mode?: 'taxpayer' | 'owner' | 'unknown'; sablon?: boolean },
+  ): string {
     let text = String(raw || '').trim();
 
     // SAVUNMA: dahili ESKALE işareti hiçbir koşulda müşteriye/owner'a SIZMASIN
@@ -151,6 +154,17 @@ export class WhatsAppBotPostFilterService {
     // KORUNMALI. Sohbet için tasarlanan agresif temizlik bunları eziyordu → ayrı yol.
     if (options?.mode === 'owner') {
       return this.formatOwnerReport(this.guardOwnerIdentity(yazimDuzelt(stripEmojis(text))));
+    }
+
+    // SABLON CEVAP (hizli-yol veri ozetleri: borc, KDV, vergi, beyanname). Bunlar
+    // zaten bicimli ve DOGRULANMIS metin. Sohbet icin yazilmis agresif temizlik
+    // (satir sonlarini bosluga cevirme, madde isaretini silme, cumle sayisini
+    // kisitlama) tabloyu tek satira eziyordu — canli denemede beyanname listesi
+    // okunamaz hale gelmisti. Sablonda sadece dahili sizinti temizligi yapilir.
+    if (options?.sablon) {
+      let t = this.stripInternalDebug(this.stripToolNarration(text));
+      t = fixNumberSpacing(t);
+      return t.trim() || 'Bir bakıp size döneyim.';
     }
 
     // 1. Code block + markdown formatting sil
