@@ -1222,7 +1222,13 @@ export async function buildOwnerSingleTaxpayerKdvReply(
   }).catch(() => []);
   const t = resolveTaxpayerByText(taxpayers, text);
   if (!t) return null; // belirsiz agentic
-  const pm = text.match(/\b(\d{4})[\/-](\d{2})\b/);
+  // Donem: "2026-06" yazimi ya da TURKCE AY ADI ("haziran 2026 doneminde").
+  // Ay adi taninmayinca donem bos kaliyor ve cevapta son 3 ay birden donuyordu.
+  const pmEs = text.match(/\b(\d{4})[\/-](\d{2})\b/);
+  const pmAy = pmEs ? '' : ayAdindanDonem(text);
+  const pm: string[] | null = pmEs
+    ? [pmEs[0], pmEs[1], pmEs[2]]
+    : (pmAy ? [pmAy, pmAy.slice(0, 4), pmAy.slice(5)] : null);
   const kdv = await computeTaxpayerKdvPayable(prisma, tenantId, t.id, pm ? `${pm[1]}/${pm[2]}` : '');
   const ad = (t.companyName || `${t.firstName || ''} ${t.lastName || ''}`).trim();
   if (!kdv) {
@@ -1239,6 +1245,7 @@ export async function buildOwnerSingleTaxpayerKdvReply(
     if (bk.length) {
       const sat = bk
         .filter((b: any) => Number(b.tahakkukTutari) > 0)
+        .sort((a: any, b: any) => String(a.donem).localeCompare(String(b.donem)))
         .map((b: any) => `• ${donemOku(String(b.donem))} ${b.beyanTipi}: ${TL2(Number(b.tahakkukTutari))}`)
         .join('\n');
       if (sat) {
