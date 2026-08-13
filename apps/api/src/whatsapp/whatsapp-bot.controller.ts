@@ -30,6 +30,8 @@ type IncomingWhatsAppMessage = {
     mimeType?: string;
     filename?: string;
     caption?: string;
+    /** QR (Baileys) hatti: mediaId yok, indirmeyi Baileys servisi kapanis olarak verir. */
+    download?: () => Promise<{ buffer: Buffer; mimeType: string; sizeBytes: number } | null>;
   };
   // KURU-TEST (dry-run): gerçek handleMessage akışını GÖNDERMEDEN çalıştırır; üretilen
   // cevabı __dryReply'a yakalar. GO_LIVE/automation kapıları dry-run'da atlanır. Müşteriye
@@ -728,16 +730,23 @@ export class WhatsAppBotController implements OnModuleInit {
     taxpayerId: string,
     msg: IncomingWhatsAppMessage,
   ): Promise<string> {
-    if (!msg.media?.id || !this.storage) return msg.text;
+    if (!msg.media || !this.storage) return msg.text;
+    // Iki tasima hatti: QR (Baileys) indirmeyi kapanis olarak verir, Meta ise mediaId.
+    // ONCEDEN yalniz mediaId dali vardi; QR'da o kimlik hic uretilmedigi icin
+    // mukellefin gonderdigi fatura/dekont portale HIC kaydedilmiyordu.
+    const kaynak: 'whatsapp-qr' | 'whatsapp-meta' = msg.media.download ? 'whatsapp-qr' : 'whatsapp-meta';
+    if (kaynak === 'whatsapp-meta' && !msg.media.id) return msg.text;
     try {
-      const downloaded = await this.whatsapp.downloadMedia(msg.media.id, tenantId);
+      const downloaded = msg.media.download
+        ? await msg.media.download()
+        : await this.whatsapp.downloadMedia(msg.media.id!, tenantId);
       if (!downloaded?.buffer?.length) return `${msg.text}\n[Medya dosyasi indirilemedi]`;
 
       const filename = this.safeMediaFilename(msg.media.filename || `whatsapp-${msg.media.kind}.${this.extFromMime(downloaded.mimeType)}`);
       const s3Key = `${tenantId}/${taxpayerId}/whatsapp/${randomUUID()}-${filename}`;
       await this.storage.putBuffer(s3Key, downloaded.buffer, downloaded.mimeType, {
-        source: 'whatsapp-meta',
-        mediaId: msg.media.id,
+        source: kaynak,
+        mediaId: msg.media.id || msg.id || '',
       });
 
       const doc = await (this.prisma as any).document.create({
@@ -748,7 +757,7 @@ export class WhatsAppBotController implements OnModuleInit {
           mimeType: downloaded.mimeType,
           sizeBytes: downloaded.sizeBytes,
           s3Key,
-          notes: `WhatsApp ${msg.media.kind} mesajindan otomatik kaydedildi.`,
+          notes: `WhatsApp ${msg.media.kind} mesajindan otomatik kaydedildi (${kaynak}).`,
         },
         select: { id: true, title: true },
       });
@@ -758,8 +767,8 @@ export class WhatsAppBotController implements OnModuleInit {
           versionNo: 1,
           s3Key,
           sizeBytes: downloaded.sizeBytes,
-          uploadedBy: 'whatsapp-webhook',
-          notes: `WhatsApp mediaId=${msg.media.id}`,
+          uploadedBy: kaynak === 'whatsapp-qr' ? 'whatsapp-qr' : 'whatsapp-webhook',
+          notes: `WhatsApp ${kaynak} mediaId=${msg.media.id || msg.id || '-'}`,
         },
       });
 

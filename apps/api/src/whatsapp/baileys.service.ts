@@ -23,7 +23,21 @@ export type BaileysInbound = {
   text: string;
   id?: string;
   replyTo?: string;
-  media?: { kind: string; id?: string; mimeType?: string; filename?: string; caption?: string };
+  media?: {
+    kind: string;
+    id?: string;
+    mimeType?: string;
+    filename?: string;
+    caption?: string;
+    /**
+     * QR (Baileys) hattinda medya icin Meta'daki gibi bir mediaId YOKTUR; dosya
+     * sifreli olarak WhatsApp CDN'inde durur ve yalniz mesajin kendi anahtariyla
+     * cozulur. Bu yuzden indirmeyi mesaji taniyan taraf (bu servis) uzerine bir
+     * kapanis olarak veriyoruz: ust katman ham protobuf'u hic gormeden dosyayi alir.
+     * Meta hattindan gelen mesajlarda bu alan bos olur (orada media.id kullanilir).
+     */
+    download?: () => Promise<{ buffer: Buffer; mimeType: string; sizeBytes: number } | null>;
+  };
 };
 
 export type BaileysSendResult = {
@@ -86,6 +100,10 @@ export class BaileysService implements OnModuleDestroy {
    */
   private readonly recentInboundIds = new Map<string, number>();
   private static readonly INBOUND_DEDUP_TTL_MS = 5 * 60 * 1000;
+  /** Gelen medyada indirme ust siniri (bellek korumasi). Asani metin olarak kaydederiz. */
+  private static readonly MAX_INBOUND_MEDIA_BYTES = Number(process.env.WHATSAPP_MAX_INBOUND_MEDIA_MB || 25) * 1024 * 1024;
+  /** Indirme suresi ust siniri — bot cevabi medya yuzunden beklemesin. */
+  private static readonly INBOUND_MEDIA_TIMEOUT_MS = Number(process.env.WHATSAPP_INBOUND_MEDIA_TIMEOUT_MS || 60_000);
 
   constructor(private readonly prisma: PrismaService) {}
 
@@ -507,6 +525,10 @@ export class BaileysService implements OnModuleDestroy {
     else if (msg.audioMessage) media = { kind: 'audio', mimeType: msg.audioMessage.mimetype };
     else if (msg.videoMessage) media = { kind: 'video', mimeType: msg.videoMessage.mimetype, caption: msg.videoMessage.caption };
     else if (msg.stickerMessage) media = { kind: 'sticker', mimeType: msg.stickerMessage.mimetype };
+    if (media) {
+      const mimeType = media.mimeType || 'application/octet-stream';
+      media.download = () => this.downloadInboundMedia(session, m, mimeType);
+    }
 
     let finalText = text;
     if (!finalText && media) {
@@ -522,6 +544,62 @@ export class BaileysService implements OnModuleDestroy {
       return;
     }
     await this.inboundHandler({ from, text: finalText, id: m.key?.id, replyTo: jid, media });
+  }
+
+  /**
+   * QR hattindan gelen medyayi (fatura/dekont/gorsel/ses) indirir.
+   * Basarisizlikta ISTISNA FIRLATMAZ, null doner — cagiran taraf mesaji yine
+   * kaydedebilsin diye. reuploadRequest: CDN'den dusmus dosyalar icin WhatsApp'tan
+   * yeniden yukleme istenir (Baileys'in onerdigi kurtarma yolu).
+   */
+  private async downloadInboundMedia(
+    session: Session,
+    rawMessage: any,
+    mimeType: string,
+  ): Promise<{ buffer: Buffer; mimeType: string; sizeBytes: number } | null> {
+    try {
+      const b = await this.baileys();
+      const download = b?.downloadMediaMessage;
+      if (typeof download !== 'function') {
+        this.logger.warn('[Baileys] downloadMediaMessage bulunamadi — medya indirilemedi');
+        return null;
+      }
+      // BOYUT KAPISI: 'buffer' modu dosyayi tumuyle bellege alir. Cok buyuk bir
+      // video/ses geldiginde surec sisip mesaj hattini kilitleyebilir; bu yuzden
+      // WhatsApp'in bildirdigi uzunluga bakip esigi asani INDIRMEYIZ (mesaj yine
+      // metin olarak kaydedilir, dosya ofis telefonundaki WhatsApp'ta durur).
+      const inner = rawMessage?.message || {};
+      const node = inner.imageMessage || inner.documentMessage || inner.audioMessage
+        || inner.videoMessage || inner.stickerMessage
+        || inner.ephemeralMessage?.message?.documentMessage
+        || inner.viewOnceMessageV2?.message?.imageMessage;
+      const bildirilenBoyut = Number(node?.fileLength || 0);
+      if (bildirilenBoyut > BaileysService.MAX_INBOUND_MEDIA_BYTES) {
+        this.logger.warn(
+          `[Baileys] medya cok buyuk (${Math.round(bildirilenBoyut / 1048576)} MB), indirilmedi tenant=${session.tenantId}`,
+        );
+        return null;
+      }
+
+      // SURE KAPISI: CDN yavaslarsa indirme bot cevabini bekletmesin.
+      const buffer: Buffer | null = await Promise.race([
+        download(
+          rawMessage,
+          'buffer',
+          {},
+          { logger: this.makeLogger(), reuploadRequest: session.sock?.updateMediaMessage },
+        ),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), BaileysService.INBOUND_MEDIA_TIMEOUT_MS)),
+      ]);
+      if (!buffer?.length) {
+        this.logger.warn(`[Baileys] medya indirme bos/zaman asimi tenant=${session.tenantId}`);
+        return null;
+      }
+      return { buffer, mimeType, sizeBytes: buffer.length };
+    } catch (err: any) {
+      this.logger.warn(`[Baileys] medya indirilemedi tenant=${session.tenantId}: ${err?.message || err}`);
+      return null;
+    }
   }
 
   /**
