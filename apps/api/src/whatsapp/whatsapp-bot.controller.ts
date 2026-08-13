@@ -117,8 +117,58 @@ export class WhatsAppBotController implements OnModuleInit {
     return { ok: true, count: messages.length };
   }
 
-  // (Geçici öz-test/denetim uçları — owner-selftest, selftest-taxpayers, dry-run — lansman
-  //  öncesi kaldırıldı 2026-07-27. Token korumalıydı ama canlıda girişsiz uç durmasın.)
+  /**
+   * YAPAY DENEME (kuru-test) — kullanici talebi 2026-08-13.
+   *
+   * GERCEK handleMessage hattini calistirir: niyet cozumu, hizli-yol, araclar, AI,
+   * kalite kapisi, post-filter... hepsi normal akistaki gibi. TEK FARK: hicbir mesaj
+   * GONDERILMEZ ve sohbet gecmisi KIRLETILMEZ. Bot mesaji gercek saniyor.
+   *
+   * GUVENLIK: yalniz MOREN_DENEME_TOKEN tanimliysa ve istekte AYNI token varsa calisir.
+   * Token tanimli degilse uc 403 doner (canlida girissiz uc acik kalmasin).
+   *
+   * Govde: { token, taraf: 'owner'|'mukellef', telefon?, metin }
+   *   taraf='owner'    -> owner numarasi kullanilir (env MOREN_OWNER_WHATSAPP_PHONES ilk kayit)
+   *   taraf='mukellef' -> telefon ZORUNLU (o mukellef yaziyormus gibi davranilir)
+   */
+  @Post('deneme')
+  async deneme(@Body() body: any) {
+    const beklenen = String(process.env.MOREN_DENEME_TOKEN || '').trim();
+    if (!beklenen || String(body?.token || '') !== beklenen) {
+      return { ok: false, error: 'yetkisiz' };
+    }
+    const metin = String(body?.metin || '').trim();
+    if (!metin) return { ok: false, error: 'metin zorunlu' };
+    const taraf = body?.taraf === 'mukellef' ? 'mukellef' : 'owner';
+    let from = String(body?.telefon || '').replace(/\D/g, '');
+    if (taraf === 'owner') {
+      from = this.normalize(String(process.env.MOREN_OWNER_WHATSAPP_PHONES || '').split(',')[0] || '');
+    }
+    if (!from) return { ok: false, error: 'telefon zorunlu (mukellef tarafi)' };
+
+    const msg: IncomingWhatsAppMessage = {
+      from,
+      text: metin,
+      id: `DENEME-${Date.now()}-${Math.floor(Math.random() * 1e6)}`,
+      __dryRun: true,
+    };
+    const basla = Date.now();
+    try {
+      await this.handleMessage(msg);
+    } catch (e: any) {
+      return { ok: false, error: `handleMessage hata: ${e?.message || e}`, ms: Date.now() - basla };
+    }
+    return {
+      ok: true,
+      taraf,
+      soru: metin,
+      cevap: msg.__dryReply || '',
+      tur: msg.__dryKind || '',
+      cevapsiz: !msg.__dryReply,
+      ms: Date.now() - basla,
+    };
+  }
+
   private extractMessages(body: any): IncomingWhatsAppMessage[] {
     const out: IncomingWhatsAppMessage[] = [];
     for (const entry of body?.entry || []) {
@@ -1244,6 +1294,35 @@ export class WhatsAppBotController implements OnModuleInit {
    * Mesajda mukellef adi yoksa bir onceki owner mesajiyla birlestirilip tekrar denenir
    * (owner "kar zarar ozetini gonder" derken kimden bahsettigini tekrar yazmiyor).
    */
+  /**
+   * Owner'a cevap gonderir. KURU-TEST (deneme) modunda GERCEKTEN GONDERMEZ; cevabi
+   * __dryReply'a yakalar ve sohbet gecmisini KIRLETMEZ. Owner yolunda bu koruma YOKTU:
+   * deneme calistirilsa gercek mesaj giderdi.
+   */
+  private async ownerCevapGonder(
+    msg: IncomingWhatsAppMessage,
+    tenantId: string,
+    ownerContactId: string,
+    reply: string,
+    kind: string,
+    subjectOk: string,
+  ): Promise<boolean> {
+    if (msg.__dryRun) {
+      msg.__dryReply = reply;
+      msg.__dryKind = kind;
+      return true;
+    }
+    const sent = await this.whatsapp.sendMessage(this.replyTarget(msg), reply, tenantId);
+    if (!msg.__dryRun) await this.prisma.communicationLog.create({
+      data: {
+        taxpayerId: ownerContactId, channel: 'WHATSAPP',
+        subject: sent ? subjectOk : `${subjectOk} (gonderilemedi)`,
+        content: this.withWhatsAppPhone(reply, msg.from), occurredAt: new Date(),
+      },
+    }).catch(() => null);
+    return sent;
+  }
+
   private async maybeHandleOwnerDataSummary(
     ownerTenant: any,
     ownerContactId: string,
@@ -1265,14 +1344,7 @@ export class WhatsAppBotController implements OnModuleInit {
     }
     if (!res) return false;
 
-    const sent = await this.whatsapp.sendMessage(this.replyTarget(msg), res.reply, ownerTenant.id);
-    await this.prisma.communicationLog.create({
-      data: {
-        taxpayerId: ownerContactId, channel: 'WHATSAPP',
-        subject: sent ? 'WhatsApp owner veri ozeti' : 'WhatsApp owner veri ozeti (gonderilemedi)',
-        content: this.withWhatsAppPhone(res.reply, msg.from), occurredAt: new Date(),
-      },
-    });
+    await this.ownerCevapGonder(msg, ownerTenant.id, ownerContactId, res.reply, `owner:veri:${res.mukellef}`, 'WhatsApp owner veri ozeti');
     this.logger.log(`[OwnerVeri] mukellef=${res.mukellef}`);
     return true;
   }
@@ -1301,14 +1373,7 @@ export class WhatsAppBotController implements OnModuleInit {
     }
     if (!res) return false;
     const { reply, intent, donemLabel, count } = res;
-    const sent = await this.whatsapp.sendMessage(this.replyTarget(msg), reply, ownerTenant.id);
-    await this.prisma.communicationLog.create({
-      data: {
-        taxpayerId: ownerContactId, channel: 'WHATSAPP',
-        subject: sent ? 'WhatsApp owner durum cevabi' : 'WhatsApp owner durum cevabi (gonderilemedi)',
-        content: this.withWhatsAppPhone(reply, msg.from), occurredAt: new Date(),
-      },
-    });
+    await this.ownerCevapGonder(msg, ownerTenant.id, ownerContactId, reply, `owner:durum:${intent}`, 'WhatsApp owner durum cevabi');
     this.logger.log(`[OwnerStatus] intent=${intent} donem=${donemLabel} sonuc=${count}`);
     return true;
   }
@@ -1815,17 +1880,19 @@ export class WhatsAppBotController implements OnModuleInit {
         'owner',
         OWNER_PORTAL_NAME,
       );
-      const incomingContent = await this.contentWithSavedMedia(ownerTenant.id, ownerContact.id, msg);
-      await this.prisma.communicationLog.create({
-        data: {
-          taxpayerId: ownerContact.id,
-          channel: 'WHATSAPP',
-          subject: 'WhatsApp owner gelen mesaj',
-          content: this.withWhatsAppMeta(incomingContent, msg),
-          occurredAt: new Date(),
-        },
-      });
-      this.refreshTaxpayerMemory(ownerTenant.id, ownerContact.id);
+      if (!msg.__dryRun) {
+        const incomingContent = await this.contentWithSavedMedia(ownerTenant.id, ownerContact.id, msg);
+        await this.prisma.communicationLog.create({
+          data: {
+            taxpayerId: ownerContact.id,
+            channel: 'WHATSAPP',
+            subject: 'WhatsApp owner gelen mesaj',
+            content: this.withWhatsAppMeta(incomingContent, msg),
+            occurredAt: new Date(),
+          },
+        });
+        this.refreshTaxpayerMemory(ownerTenant.id, ownerContact.id);
+      }
 
       if (!this.ownerAutoReplyEnabled()) {
         this.logger.log(`[Owner botu kapali] owner mesaji kaydedildi, otomatik cevap atlanadi: ${this.normalize(msg.from)}`);
@@ -1834,17 +1901,8 @@ export class WhatsAppBotController implements OnModuleInit {
 
       if (this.isOwnerIdentityQuestion(msg.text)) {
         const reply = this.ownerIdentityReply(ownerTenant);
-        const sent = await this.whatsapp.sendMessage(this.replyTarget(msg), reply, ownerTenant.id);
-        await this.prisma.communicationLog.create({
-          data: {
-            taxpayerId: ownerContact.id,
-            channel: 'WHATSAPP',
-            subject: sent ? 'WhatsApp owner kimlik cevabi' : 'WhatsApp owner kimlik cevabi (gonderilemedi - master switch veya hata)',
-            content: this.withWhatsAppPhone(reply, msg.from),
-            occurredAt: new Date(),
-          },
-        });
-        this.refreshTaxpayerMemory(ownerTenant.id, ownerContact.id);
+        await this.ownerCevapGonder(msg, ownerTenant.id, ownerContact.id, reply, 'owner:kimlik', 'WhatsApp owner kimlik cevabi');
+        if (!msg.__dryRun) this.refreshTaxpayerMemory(ownerTenant.id, ownerContact.id);
         return;
       }
 
@@ -2000,16 +2058,8 @@ export class WhatsAppBotController implements OnModuleInit {
       }
 
       if (reply) {
-        const sent = await this.whatsapp.sendMessage(this.replyTarget(msg), reply, ownerTenant.id);
-        await this.prisma.communicationLog.create({
-          data: {
-            taxpayerId: ownerContact.id,
-            channel: 'WHATSAPP',
-            subject: sent ? 'WhatsApp owner bot cevabi' : 'WhatsApp owner bot cevabi (gonderilemedi - master switch veya hata)',
-            content: this.withWhatsAppPhone(reply, msg.from),
-            occurredAt: new Date(),
-          },
-        });
+        const sent = await this.ownerCevapGonder(msg, ownerTenant.id, ownerContact.id, reply, 'owner:ai', 'WhatsApp owner bot cevabi');
+        if (msg.__dryRun) return;
         this.refreshTaxpayerMemory(ownerTenant.id, ownerContact.id);
         // Owner cevabı da KALİTE DENETİMİNE alınır (Bot Kalite'de görünür) — async,
         // gönderim sonrası, owner-modu (uzunluk/emoji cezası yok; yalan/çelişki/sahte-eylem/
@@ -2228,7 +2278,8 @@ export class WhatsAppBotController implements OnModuleInit {
       });
     }
 
-    await this.prisma.communicationLog.create({
+    // Kuru-testte (deneme) mukellef sohbet gecmisi KIRLETILMEZ.
+    if (!msg.__dryRun) await this.prisma.communicationLog.create({
       data: {
         taxpayerId: taxpayer.id,
         channel: 'WHATSAPP',
@@ -2385,7 +2436,7 @@ export class WhatsAppBotController implements OnModuleInit {
         // Dry-run: GÖNDERME (müşteriye mesaj gitmesin) ama LOGLA (Mesajlar'da görünsün).
         const sent = msg.__dryRun ? true : await this.whatsapp.sendMessage(this.replyTarget(msg), fastReply, taxpayer.tenantId);
         if (!msg.__dryRun) this.botCache.set(taxpayer.tenantId, taxpayer.id, msg.text, fastReply);
-        await this.prisma.communicationLog.create({
+        if (!msg.__dryRun) await this.prisma.communicationLog.create({
           data: {
             taxpayerId: taxpayer.id,
             channel: 'WHATSAPP',
@@ -2409,7 +2460,7 @@ export class WhatsAppBotController implements OnModuleInit {
       const filteredCached = this.postFilter.filterTaxpayerReply(cachedReply, { recentReplies });
       if (filteredCached) {
         const sent = await this.whatsapp.sendMessage(this.replyTarget(msg), filteredCached, taxpayer.tenantId);
-        await this.prisma.communicationLog.create({
+        if (!msg.__dryRun) await this.prisma.communicationLog.create({
           data: {
             taxpayerId: taxpayer.id,
             channel: 'WHATSAPP',
@@ -2571,7 +2622,7 @@ export class WhatsAppBotController implements OnModuleInit {
       if (!msg.__dryRun) this.botCache.set(taxpayer.tenantId, taxpayer.id, msg.text, reply);
 
       const sent = msg.__dryRun ? true : await this.whatsapp.sendMessage(this.replyTarget(msg), reply, taxpayer.tenantId);
-      await this.prisma.communicationLog.create({
+      if (!msg.__dryRun) await this.prisma.communicationLog.create({
         data: {
           taxpayerId: taxpayer.id,
           channel: 'WHATSAPP',
