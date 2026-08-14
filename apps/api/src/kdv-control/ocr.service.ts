@@ -65,6 +65,7 @@ import {
   extractMoneyAmounts as extractMoneyAmountsPure,
   inferTevkifatFromAzureAmounts as inferTevkifatFromAzureAmountsPure,
 } from './ocr/providers/azure/helpers';
+import { reconcileKdvByArithmetic as reconcileKdvByArithmeticPure } from './ocr/providers/azure/kdv-arithmetic';
 import {
   extractKdvOnlyFromTelekom as extractKdvOnlyFromTelekomPure,
   extractElectricityKdv as extractElectricityKdvPure,
@@ -547,6 +548,7 @@ export class OcrService {
             // (debug + ileride extractDateFromText fallback için)
             claudeResult.rawText = `[CLAUDE] ${claudeResult.rawText}\n[AZURE]\n${azureRawText.slice(0, 2000)}`;
           }
+          this.reconcileKdvByArithmetic(claudeResult, azureRawText || claudeResult.rawText);
 
           // ═══ MULTI-PASS VALIDATION (matematik + mantık) ═══
           // breakdown.tutar.sum === kdvTutari? matrah×oran === tutar?
@@ -667,6 +669,7 @@ export class OcrService {
         this.crossCheckWithAzure(maxResult, azureRawText, originalName, belgeNoFromFilename);
         maxResult.rawText = `[MAX] ${maxResult.rawText}\n[AZURE]\n${azureRawText.slice(0, 2000)}`;
       }
+      this.reconcileKdvByArithmetic(maxResult, azureRawText || maxResult.rawText);
       this.validateOcrResult(maxResult, originalName);
       maxResult.engine = `${maxResult.engine || 'max-vision'} (max-escalation)`;
       this.logger.log(
@@ -1036,6 +1039,7 @@ export class OcrService {
 
     this.postProcessOcrResult(result, belgeNoFromFilename, originalName);
     this.crossCheckWithAzure(result, fullText, originalName, belgeNoFromFilename);
+    this.reconcileKdvByArithmetic(result, fullText);
     this.validateOcrResult(result, originalName);
 
     return result;
@@ -1432,6 +1436,21 @@ export class OcrService {
   /** @deprecated Faz 2 — saf provider'a delege. */
   private foldTurkishAscii(text: string): string {
     return foldTurkishAsciiPure(text);
+  }
+
+  /**
+   * KDV ARİTMETİK SON-UZLAŞTIRMA — saf fonksiyona delege (Faz 2 kalıbı).
+   * crossCheck'ten SONRA, validate'ten ÖNCE çağrılır. Ayrıntı ve gerekçe:
+   * ./ocr/providers/azure/kdv-arithmetic.ts
+   */
+  private reconcileKdvByArithmetic(result: OcrResult, text: string): void {
+    reconcileKdvByArithmeticPure(result, text, {
+      parseAmount: (s) => this.parseAmount(s),
+      formatAmount: (n) => this.formatAmount(n),
+      normalizeAzureText: (t) => this.normalizeAzureText(t),
+      foldTurkishAscii: (t) => this.foldTurkishAscii(t),
+      logger: this.logger,
+    });
   }
 
   /** @deprecated Faz 1 — saf fonksiyona delege. */

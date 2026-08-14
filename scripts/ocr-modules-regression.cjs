@@ -1381,6 +1381,60 @@ const efaturaZ = claudeProvider.parseClaudeOcrResult(
 assert(efaturaZ.kdvTutari === '1000,00', 'e-fatura Z raporu kuralindan etkilenmemeli');
 ok('providers/claude.ts parseClaudeOcrResult Z raporu gunluk KDV (3 assertion)');
 
+// ─── azure/kdv-arithmetic.ts (KDV = Toplam - Matrah son-uzlastirma) ───
+const kdvArithmetic = require(path.join(ROOT, 'apps/api/src/kdv-control/ocr/providers/azure/kdv-arithmetic.ts'));
+const arithDeps = {
+  parseAmount: ublDeps.parseAmount,
+  formatAmount: ublDeps.formatAmount,
+  normalizeAzureText: azureHelpers.normalizeAzureText,
+  foldTurkishAscii: azureHelpers.foldTurkishAscii,
+  logger: silentLogger,
+};
+const arMkRes = (o) => ({
+  belgeTipi: 'EFATURA', kdvTevkifat: null, totalTutari: null,
+  kdvTutari: null, kdvBreakdown: null,
+  fieldConfidence: { belgeNo: null, date: null, kdvTutari: 0.72 },
+  ...o,
+});
+// (A) TUVTURK: Azure kalem KDV'si 28,08 okumus; matrah 3.428,40 (iskonto 0) +
+//     Vergiler Dahil 4.114,08 => 685,68 = 3.428,40 x %20. GUARD DUZELTMELI.
+const arTuv = arMkRes({ kdvTutari: '28,08', kdvBreakdown: [{ oran: 20, tutar: 28.08, matrah: null }] });
+const arTuvText = [
+  'Mal Hizmet Toplam', 'Tutarı', '3.428,40TL', 'Toplam İskonto', '0,00TL',
+  'Hesaplanan', '685,68TL', 'KDV(%20.00)', 'Vergiler Dahil Toplam Tutar', '4.114,08TL',
+  'Ödenecek Tutar', '4.114,08TL',
+].join('\n');
+assert(kdvArithmetic.reconcileKdvByArithmetic(arTuv, arTuvText, arithDeps) === true, 'TUVTURK: guard duzeltme yapmali');
+eq(arTuv.kdvTutari, '685,68', 'TUVTURK: kdv 28,08 -> 685,68');
+deepEq(arTuv.kdvBreakdown, [{ oran: 20, tutar: 685.68, matrah: 3428.4 }], 'TUVTURK: breakdown senkron');
+// (B) BASBUG: KDV null; KDV Matrahi 595,15 + Vergiler Dahil 714,18 => 119,03.
+const arBas = arMkRes({ kdvTutari: null });
+const arBasText = ['KDV Matrahi', '595,15 TL', 'Hesaplanan', '119,03 TL', 'KDV(%20.00)',
+  'Vergiler Dahil Toplam Tutar', '714,18 TL', 'Ödenecek Tutar', '714,18 TL'].join('\n');
+assert(kdvArithmetic.reconcileKdvByArithmetic(arBas, arBasText, arithDeps) === true, 'BASBUG: guard null->deger');
+eq(arBas.kdvTutari, '119,03', 'BASBUG: kdv null -> 119,03');
+// (C) TEVKIFAT: metin TEVKIFAT iceriyorsa DOKUNMA (odenecek net'i verir).
+const arTevk = arMkRes({ kdvTutari: '500,00' });
+const arTevkText = ['KDV Matrahi', '1.000,00 TL', 'KDV TEVKİFAT (%50,00)', '100,00 TL',
+  'Vergiler Dahil Toplam Tutar', '1.100,00 TL'].join('\n');
+assert(kdvArithmetic.reconcileKdvByArithmetic(arTevk, arTevkText, arithDeps) === false, 'TEVKIFAT: guard elemeli');
+eq(arTevk.kdvTutari, '500,00', 'TEVKIFAT: kdv degismemeli');
+// (D) ZATEN DOGRU: mevcut kdv beklenene esitse no-op.
+const arOk = arMkRes({ kdvTutari: '119,03' });
+assert(kdvArithmetic.reconcileKdvByArithmetic(arOk, arBasText, arithDeps) === false, 'zaten dogru: no-op');
+eq(arOk.kdvTutari, '119,03', 'zaten dogru: kdv degismemeli');
+// (E) TEK ORANA OTURMAYAN (cok-oran/ek-vergi): toplam-matrah gecerli orana esit degil => ELE.
+const arMulti = arMkRes({ kdvTutari: '90,00' });
+const arMultiText = ['KDV Matrahi', '1.000,00 TL', 'Vergiler Dahil Toplam Tutar', '1.150,00 TL'].join('\n');
+assert(kdvArithmetic.reconcileKdvByArithmetic(arMulti, arMultiText, arithDeps) === false, 'tek orana oturmayan: ele');
+eq(arMulti.kdvTutari, '90,00', 'tek orana oturmayan: kdv degismemeli');
+// (F) DOVIZ: metinde USD varsa DOKUNMA (oran matematigi para biriminden bagimsiz).
+const arDoviz = arMkRes({ kdvTutari: '5,00' });
+const arDovizText = ['KDV Matrahi', '100,00 TL', 'Vergiler Dahil Toplam Tutar', '120,00 TL', 'Toplam Tutar USD'].join('\n');
+assert(kdvArithmetic.reconcileKdvByArithmetic(arDoviz, arDovizText, arithDeps) === false, 'doviz: guard elemeli');
+eq(arDoviz.kdvTutari, '5,00', 'doviz: kdv degismemeli');
+ok('azure/kdv-arithmetic.ts reconcileKdvByArithmetic (12 assertion)');
+
 // ═══════════════════════════════════════════════════════════
 // SONUC
 // ═══════════════════════════════════════════════════════════
