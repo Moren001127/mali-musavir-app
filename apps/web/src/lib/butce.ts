@@ -109,6 +109,8 @@ export interface AkisSecenek {
   ad: string;
   aciklama: string;
   maliyet: number;
+  /** Faiz oranı girilmediği için maliyet hesaplanamadı — "maliyetsiz" sanılmasın */
+  maliyetBilinmiyor?: boolean;
   onerilen: boolean;
 }
 

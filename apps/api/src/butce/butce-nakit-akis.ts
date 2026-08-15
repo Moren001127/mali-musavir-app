@@ -71,6 +71,8 @@ export interface AkisOnerisi {
     aciklama: string;
     /** Tahmini maliyet (TL). 0 = bedelsiz çözüm */
     maliyet: number;
+    /** Faiz oranı girilmediği için maliyet hesaplanamadı — "maliyetsiz" sanılmasın */
+    maliyetBilinmiyor?: boolean;
     onerilen: boolean;
   }>;
 }
@@ -184,10 +186,16 @@ export function akisOnerileri(
   // KMH seçeneği yalnız GERÇEKTEN kullanılabilir limit varsa önerilir ve
   // HANGİ HESAPTAN kullanılacağı adıyla söylenir. Eskiden koşulsuz "KMH ile kapat"
   // deniyordu; hesabı olmayan kullanıcıya olmayan bir imkân öneriliyordu.
+  //
+  // LİMİT TÜKENİR. Kullanıcı bulgusu (2026-08-16): her açık günde limit
+  // sıfırdan 50.000 sayılıyordu. Oysa 17'sinde 34.210 kullanılırsa 25'inde
+  // kalan limit 15.789'dur. Öneriler gün sırasıyla üretilir ve her önerilen
+  // kullanım limitten DÜŞÜLÜR; böylece sonraki günler gerçek kalanı görür.
   const kmhHesaplari = (p.kmhHesaplari || [])
     .filter((h) => h && h.kullanilabilir > 0)
-    .sort((a, b) => a.aylikFaiz - b.aylikFaiz); // en ucuz hesap önce
-  const kmhToplam = kmhHesaplari.length
+    .sort((a, b) => a.aylikFaiz - b.aylikFaiz) // en ucuz hesap önce
+    .map((h) => ({ ...h })); // kopyala: çağıranın verisi bozulmasın
+  let kmhSerbest = kmhHesaplari.length
     ? KURUS(kmhHesaplari.reduce((t, h) => t + h.kullanilabilir, 0))
     : Math.max(p.kmhKullanilabilir ?? 0, 0);
   const oneriler: AkisOnerisi[] = [];
@@ -232,19 +240,23 @@ export function akisOnerileri(
     }
 
     // 2) Ek hesap (KMH) — hangi hesaptan ne kadar, adıyla ve faiziyle
-    if (kmhToplam > 0) {
-      const yeterli = kmhToplam >= gun.acik;
-      const kapanan = KURUS(Math.min(kmhToplam, gun.acik));
+    if (kmhSerbest > 0) {
+      const yeterli = kmhSerbest >= gun.acik;
+      const kapanan = KURUS(Math.min(kmhSerbest, gun.acik));
 
       // Açığı en ucuz hesaptan başlayarak dağıt
       let kalanIhtiyac = kapanan;
-      const kullanim: Array<{ hesap: KmhHesabi; tutar: number }> = [];
+      const kullanim: Array<{ hesap: KmhHesabi; tutar: number; kalanLimit: number }> = [];
       for (const h of kmhHesaplari) {
         if (kalanIhtiyac <= 0.009) break;
         const al = KURUS(Math.min(h.kullanilabilir, kalanIhtiyac));
-        kullanim.push({ hesap: h, tutar: al });
+        if (al <= 0) continue;
+        // Bu öneri uygulanırsa limitin bu kadarı gider — sonraki günler için düş
+        h.kullanilabilir = KURUS(h.kullanilabilir - al);
+        kullanim.push({ hesap: h, tutar: al, kalanLimit: h.kullanilabilir });
         kalanIhtiyac = KURUS(kalanIhtiyac - al);
       }
+      kmhSerbest = KURUS(Math.max(kmhSerbest - kapanan, 0));
 
       const maliyet = kullanim.length
         ? KURUS(kullanim.reduce((t, x) => t + x.tutar * (x.hesap.aylikFaiz / 100) * (kacGun / 30), 0))
@@ -254,11 +266,17 @@ export function akisOnerileri(
         ? kullanim
             .map(
               (x) =>
-                `${x.hesap.banka} ${x.hesap.ad} hesabınızdaki ek hesaptan ${x.tutar.toLocaleString('tr-TR')} TL` +
-                ` (kullanılabilir ${x.hesap.kullanilabilir.toLocaleString('tr-TR')} TL, aylık %${x.hesap.aylikFaiz})`,
+                `${x.hesap.banka} ${x.hesap.ad} ek hesabından ${x.tutar.toLocaleString('tr-TR')} TL` +
+                ` (bu kullanımdan sonra kalan limit ${x.kalanLimit.toLocaleString('tr-TR')} TL` +
+                (x.hesap.aylikFaiz > 0 ? `, aylık %${x.hesap.aylikFaiz}` : ', faiz oranı girilmemiş') +
+                `)`,
             )
             .join(' + ')
         : `ek hesabınızdan ${kapanan.toLocaleString('tr-TR')} TL`;
+
+      // Faiz oranı girilmemişse maliyet 0 çıkar ve seçenek "maliyetsiz" görünür.
+      // KMH'da faiz her zaman vardır; bunu bedava göstermek yanlış yönlendirmedir.
+      const faizBilinmiyor = kullanim.length > 0 && kullanim.every((x) => x.hesap.aylikFaiz <= 0);
 
       secenekler.push({
         ad: !yeterli
@@ -266,10 +284,15 @@ export function akisOnerileri(
           : kullanim.length === 1
             ? `${kullanim[0].hesap.banka} ${kullanim[0].hesap.ad} — ek hesabı kullan`
             : 'Ek hesaplarını kullan',
-        aciklama: yeterli
-          ? `${kacGun} gün için ${hesapMetni} kullanın. Faiz günlük işler; para girince hemen kapatılırsa maliyet sınırlı kalır.`
-          : `${hesapMetni} kullansanız bile ${(gun.acik - kapanan).toLocaleString('tr-TR')} TL eksik kalır.`,
+        aciklama:
+          (yeterli
+            ? `${kacGun} gün için ${hesapMetni} kullanın. Faiz günlük işler; para girince hemen kapatılırsa maliyet sınırlı kalır.`
+            : `${hesapMetni} kullansanız bile ${(gun.acik - kapanan).toLocaleString('tr-TR')} TL eksik kalır.`) +
+          (faizBilinmiyor
+            ? ' Bu hesabın faiz oranı girilmediği için maliyet hesaplanamıyor — Hesaplar ekranından oranı girin.'
+            : ''),
         maliyet,
+        maliyetBilinmiyor: faizBilinmiyor,
         onerilen: false,
       });
     }

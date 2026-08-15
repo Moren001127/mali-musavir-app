@@ -153,7 +153,9 @@ describe('nakit akışı — KMH önerisi yalnız gerçek limit varsa', () => {
     expect(kmh.ad).not.toMatch(/yetmez/i);
     // Hangi hesaptan kullanılacağı ADIYLA söylenmeli
     expect(kmh.ad).toContain('Ziraat');
-    expect(kmh.aciklama).toContain('100.000');
+    // Kullanılan tutar ve bu kullanımdan SONRAKİ kalan limit yazılır
+    expect(kmh.aciklama).toContain('25.000');
+    expect(kmh.aciklama).toContain('kalan limit 75.000');
   });
 
   it('KMH limiti yetersizse "yetmez" olarak işaretlenir ve kalan açık söylenir', () => {
@@ -188,7 +190,8 @@ describe('nakit akışı — hangi ek hesaptan ne kadar', () => {
     });
     const kmh = o[0].secenekler.find((s) => /ek hesab/i.test(s.ad))!;
     expect(kmh.ad).toBe('Ziraat Muzaffer Ören — ek hesabı kullan');
-    expect(kmh.aciklama).toContain('100.000');
+    expect(kmh.aciklama).toContain('60.000');
+    expect(kmh.aciklama).toContain('kalan limit 40.000');
     expect(kmh.aciklama).toContain('%4.25');
   });
 
@@ -213,5 +216,46 @@ describe('nakit akışı — hangi ek hesaptan ne kadar', () => {
     const kmh = o[0].secenekler.find((s) => /ek hesap/i.test(s.ad))!;
     expect(kmh.ad).toMatch(/yetmez/i);
     expect(kmh.aciklama).toContain('50.000'); // 60.000 açık − 10.000 limit
+  });
+});
+
+/**
+ * KULLANICI BULGUSU (2026-08-16): "17'sinde 34.210 KMH kullan" dedikten sonra
+ * 25'inde yine "50.000 kullanılabilir" diyordu. Limit tüketilmiyordu.
+ */
+describe('nakit akışı — KMH limiti günler arasında tükenir', () => {
+  const hareketler: AkisHareketi[] = [
+    { tarih: G(5), tutar: -30000, ad: 'Kart 1', tur: 'KART_ODEME', kesin: true },
+    { tarih: G(20), tutar: -30000, ad: 'Kart 2', tur: 'KART_ODEME', kesin: true },
+  ];
+  const sonuc = nakitAkisiHesapla({ baslangicNakit: 0, hareketler, bugun: BUGUN, gunSayisi: 40 });
+
+  it('ikinci açık gününde kalan limit gösterilir, baştaki limit tekrar edilmez', () => {
+    const o = akisOnerileri(sonuc, hareketler, {
+      kmhHesaplari: [{ banka: 'Ziraat', ad: 'Vadesiz', kullanilabilir: 50000, aylikFaiz: 4 }],
+    });
+    expect(o.length).toBeGreaterThanOrEqual(2);
+    const ikinci = o[1].secenekler.find((x) => /ek hesab|ek hesap/i.test(x.ad))!;
+    expect(ikinci).toBeTruthy();
+    // 50.000 limitin 30.000'i ilk günde kullanıldı → ikinci gün 20.000 kalır
+    expect(ikinci.ad).toMatch(/yetmez/i);
+    expect(ikinci.aciklama).toContain('20.000');
+  });
+
+  it('her kullanımdan sonra kalan limit açıklamada yazar', () => {
+    const o = akisOnerileri(sonuc, hareketler, {
+      kmhHesaplari: [{ banka: 'Ziraat', ad: 'Vadesiz', kullanilabilir: 100000, aylikFaiz: 4 }],
+    });
+    const ilk = o[0].secenekler.find((x) => /ek hesab/i.test(x.ad))!;
+    expect(ilk.aciklama).toContain('kalan limit');
+  });
+
+  it('faiz oranı girilmemişse "maliyetsiz" gibi sunulmaz, uyarı verir', () => {
+    const o = akisOnerileri(sonuc, hareketler, {
+      kmhHesaplari: [{ banka: 'Ziraat', ad: 'Vadesiz', kullanilabilir: 100000, aylikFaiz: 0 }],
+    });
+    const secenek = o[0].secenekler.find((x) => /ek hesab/i.test(x.ad))!;
+    expect(secenek.maliyetBilinmiyor).toBe(true);
+    expect(secenek.aciklama).toMatch(/faiz oranı girilme/i);
   });
 });

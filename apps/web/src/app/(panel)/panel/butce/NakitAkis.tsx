@@ -225,7 +225,11 @@ export default function NakitAkis() {
                         {s.aciklama}
                       </p>
                       <div className="mt-1.5">
-                        {s.maliyet === 0 ? (
+                        {/* Faiz oranı girilmemişse maliyet 0 çıkar; bunu "bedava" diye
+                            göstermek yanlış yönlendirme olurdu. */}
+                        {s.maliyetBilinmiyor ? (
+                          <Rozet metin="maliyeti bilinmiyor" renk={TURUNCU} />
+                        ) : s.maliyet === 0 ? (
                           <Rozet metin="maliyetsiz" renk={OK} />
                         ) : (
                           <span className="text-[11.5px] tabular-nums" style={{ color: TURUNCU }}>
