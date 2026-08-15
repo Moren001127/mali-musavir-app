@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { Sparkles, RefreshCw, Send } from 'lucide-react';
 import { AiRapor } from '@/lib/butce';
 import { Kutu, Dugme, Girdi, MUTED, TEXT, MOR, Yukleniyor } from './ui';
+import AiMetin from './AiMetin';
 
 /**
  * AI yorum kutusu. İçerik Max aboneliği üzerinden üretilir; rakamlar
@@ -46,12 +47,7 @@ export default function AiKutu({
       {yukleniyor && !rapor ? (
         <Yukleniyor metin="Verileriniz değerlendiriliyor…" />
       ) : rapor ? (
-        <div
-          className="whitespace-pre-wrap text-[12.5px] leading-relaxed"
-          style={{ color: rapor.hata ? MUTED : TEXT }}
-        >
-          {rapor.icerik}
-        </div>
+        <AiMetin metin={rapor.icerik} soluk={rapor.hata} />
       ) : (
         <p className="text-[12px]" style={{ color: MUTED }}>
           Henüz yorum üretilmedi.

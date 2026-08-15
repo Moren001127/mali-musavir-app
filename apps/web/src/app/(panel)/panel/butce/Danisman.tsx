@@ -10,6 +10,7 @@ import { butceApi } from '@/lib/butce';
 import {
   GOLD, MOR, OK, MAVI, TURUNCU, MUTED, TEXT, CARD_BORDER, ROW_SEP,
 } from './ui';
+import AiMetin from './AiMetin';
 
 type Mesaj = {
   id: string;
@@ -251,12 +252,7 @@ export default function Danisman() {
                       border: `1px solid ${ROW_SEP}`,
                     }}
                   >
-                    <div
-                      className="whitespace-pre-wrap text-[12.5px] leading-[1.75]"
-                      style={{ color: m.hata ? MUTED : TEXT }}
-                    >
-                      {m.metin}
-                    </div>
+                    <AiMetin metin={m.metin} soluk={m.hata} />
                     <div className="mt-2 flex items-center justify-between gap-3">
                       <span className="text-[10px]" style={{ color: 'rgba(113,113,122,0.85)' }}>
                         {m.model ? `${m.model} · ` : ''}

@@ -35,6 +35,13 @@ export class ButceAiService {
     '- Tutarları TL olarak, binlik ayraçla yaz.',
     '- Somut ol: "tasarruf et" deme, "şu kalemde şu kadar fazla harcamışsın" de.',
     '- En fazla 6 madde yaz. Her madde tek cümle olsun.',
+    '',
+    'BİÇİM (portal ekranında düz metin olarak gösterilir):',
+    '- Markdown KULLANMA: #, ##, **kalın**, ---, tablo (| ... |), kod bloğu YOK.',
+    '- Bölüm başlığı gerekiyorsa yalnız kısa bir satır yaz ve sonuna iki nokta koy. Örn: "Bu ay:"',
+    '- Maddeler için satır başına tek tire kullan: "- Market harcaman 4.200 TL."',
+    '- Yıldız, boru işareti, alt çizgi gibi süs karakterleri kullanma.',
+    '- Ard arda boş satır bırakma; her bölüm arasında tek boş satır yeter.',
   ].join('\n');
 
   /** Aylık gelir-gider yorumu: nereye para gitmiş, ne değişmiş, ne yapılmalı */
