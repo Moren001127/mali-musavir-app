@@ -3504,3 +3504,264 @@ model ShortLink {
   @@index([tenantId])
   @@map("short_links")
 }
+
+// ===== KİŞİSEL BÜTÇE & BORÇ YÖNETİMİ (owner-only modül) =====
+// Erişim: OwnerOnlyGuard (MOREN_BUTCE_OWNER_EMAIL). Diğer kullanıcılar 404 alır.
+// Tüm kayıtlar (tenantId, userId) ikilisiyle izole edilir.
+
+model ButceKategori {
+  id        String   @id @default(cuid())
+  tenantId  String
+  userId    String
+  ad        String
+  tur       String   // GELIR | GIDER
+  renk      String?
+  zorunlu   Boolean  @default(false) // gider: kira/fatura gibi kısılamaz kalem
+  aktif     Boolean  @default(true)
+  sira      Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  islemler  ButceIslem[]
+  duzenliler ButceDuzenliOdeme[]
+  hareketler ButceKartHareket[]
+  saticiHafiza ButceSaticiHafiza[]
+
+  @@unique([tenantId, userId, tur, ad])
+  @@index([tenantId, userId])
+  @@map("butce_kategoriler")
+}
+
+model ButceIslem {
+  id         String   @id @default(cuid())
+  tenantId   String
+  userId     String
+  tarih      DateTime
+  donem      String   // YYYY-MM
+  tur        String   // GELIR | GIDER
+  tutar      Decimal  @db.Decimal(14, 2)
+  kategoriId String?
+  aciklama   String?
+  kaynak     String   @default("NAKIT") // NAKIT | BANKA | KART
+  kartId     String?
+  duzenliId  String?
+  planlanan  Boolean  @default(false) // henüz gerçekleşmedi (beklenen)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  kategori ButceKategori?     @relation(fields: [kategoriId], references: [id], onDelete: SetNull)
+  kart     ButceKart?         @relation(fields: [kartId], references: [id], onDelete: SetNull)
+  duzenli  ButceDuzenliOdeme? @relation(fields: [duzenliId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, userId, donem])
+  @@index([tenantId, userId, tur, tarih])
+  @@map("butce_islemler")
+}
+
+model ButceDuzenliOdeme {
+  id               String   @id @default(cuid())
+  tenantId         String
+  userId           String
+  ad               String
+  tur              String   // GELIR | GIDER
+  tutar            Decimal  @db.Decimal(14, 2)
+  kategoriId       String?
+  ayinGunu         Int      @default(1)
+  baslangicDonem   String   // YYYY-MM
+  bitisDonem       String?
+  kaynak           String   @default("NAKIT")
+  kartId           String?
+  zorunlu          Boolean  @default(true)
+  aktif            Boolean  @default(true)
+  sonUretilenDonem String?  // otomatik işlem üretiminde tekrar koruması
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  kategori ButceKategori? @relation(fields: [kategoriId], references: [id], onDelete: SetNull)
+  kart     ButceKart?     @relation(fields: [kartId], references: [id], onDelete: SetNull)
+  islemler ButceIslem[]
+
+  @@index([tenantId, userId, aktif])
+  @@map("butce_duzenli_odemeler")
+}
+
+model ButceKart {
+  id               String   @id @default(cuid())
+  tenantId         String
+  userId           String
+  bankaAdi         String
+  kartAdi          String
+  sonDortHane      String?
+  kartLimiti       Decimal  @default(0) @db.Decimal(14, 2)
+  kesimGunu        Int      // ayın kaçında hesap kesiliyor (1-31)
+  sonOdemeGunFarki Int      @default(10) // kesim + bu kadar gün = son ödeme
+  asgariOran       Decimal  @default(20) @db.Decimal(5, 2)  // %
+  aylikFaizOrani   Decimal  @default(4.25) @db.Decimal(6, 3) // akdi aylık faiz %
+  gecikmeFaizOrani Decimal  @default(4.75) @db.Decimal(6, 3)
+  renk             String?
+  aktif            Boolean  @default(true)
+  sira             Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  ekstreler  ButceKartEkstre[]
+  islemler   ButceIslem[]
+  duzenliler ButceDuzenliOdeme[]
+
+  @@index([tenantId, userId, aktif])
+  @@map("butce_kartlar")
+}
+
+model ButceKartEkstre {
+  id             String    @id @default(cuid())
+  tenantId       String
+  userId         String
+  kartId         String
+  donem          String    // YYYY-MM (kesim ayı)
+  kesimTarihi    DateTime
+  sonOdemeTarihi DateTime
+  borcTutari     Decimal?  @db.Decimal(14, 2)
+  asgariTutar    Decimal?  @db.Decimal(14, 2)
+  odenenTutar    Decimal   @default(0) @db.Decimal(14, 2)
+  durum          String    @default("TUTAR_BEKLENIYOR") // TUTAR_BEKLENIYOR | ODENMEDI | KISMI | ODENDI | GECIKTI
+  odemeTarihi    DateTime?
+  notlar         String?
+  hatirlatmalar  Json?     // gönderilen hatırlatma anahtarları (tekrar koruması)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  kart      ButceKart          @relation(fields: [kartId], references: [id], onDelete: Cascade)
+  odemeler  ButceOdeme[]
+  hareketler ButceKartHareket[]
+
+  @@unique([tenantId, kartId, donem])
+  @@index([tenantId, userId, sonOdemeTarihi])
+  @@map("butce_kart_ekstreler")
+}
+
+model ButceBorc {
+  id                String    @id @default(cuid())
+  tenantId          String
+  userId            String
+  ad                String
+  tur               String    // IHTIYAC | TASIT | KONUT | KMH | SENET | KISISEL | DIGER
+  kurum             String?
+  toplamTutar       Decimal   @db.Decimal(14, 2)
+  kalanAnapara      Decimal   @db.Decimal(14, 2)
+  yillikFaiz        Decimal   @default(0) @db.Decimal(6, 3) // % yıllık
+  taksitTutari      Decimal   @default(0) @db.Decimal(14, 2)
+  toplamTaksit      Int       @default(0)
+  odenenTaksit      Int       @default(0)
+  odemeGunu         Int       @default(1)
+  baslangicTarihi   DateTime?
+  bitisTarihi       DateTime?
+  erkenKapamaCezasi Decimal?  @db.Decimal(6, 3) // % (bilgi amaçlı)
+  durum             String    @default("AKTIF") // AKTIF | KAPANDI
+  notlar            String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  odemeler ButceOdeme[]
+
+  @@index([tenantId, userId, durum])
+  @@map("butce_borclar")
+}
+
+model ButceOdeme {
+  id           String   @id @default(cuid())
+  tenantId     String
+  userId       String
+  tarih        DateTime
+  donem        String   // YYYY-MM
+  tutar        Decimal  @db.Decimal(14, 2)
+  hedefTur     String   // BORC | KART
+  borcId       String?
+  kartEkstreId String?
+  tip          String   @default("NORMAL") // NORMAL | ASGARI | EKSTRA | KAPAMA
+  aciklama     String?
+  createdAt    DateTime @default(now())
+
+  borc       ButceBorc?       @relation(fields: [borcId], references: [id], onDelete: Cascade)
+  kartEkstre ButceKartEkstre? @relation(fields: [kartEkstreId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, userId, donem])
+  @@map("butce_odemeler")
+}
+
+model ButceAyar {
+  id                 String   @id @default(cuid())
+  tenantId           String
+  userId             String
+  nakitYastigi       Decimal  @default(0) @db.Decimal(14, 2) // acil durum tamponu
+  strateji           String   @default("CIG") // CIG (avalanche) | KARTOPU (snowball)
+  hatirlatmaWhatsapp Boolean  @default(true)
+  hatirlatmaPortal   Boolean  @default(true)
+  hatirlatmaEmail    Boolean  @default(false)
+  whatsappNumara     String?
+  sabahSaati         Int      @default(9)
+  // Modül girişinde sorulan 6 haneli PIN (argon2 ile saklanır). Boşsa PIN kurulmamıştır.
+  pinHash            String?
+  pinDenemeSayisi    Int      @default(0)
+  pinKilitBitis      DateTime?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@unique([tenantId, userId])
+  @@map("butce_ayarlar")
+}
+
+model ButceAiRapor {
+  id        String   @id @default(cuid())
+  tenantId  String
+  userId    String
+  tur       String   // AYLIK_YORUM | PLAN_YORUM | SORU
+  donem     String?
+  soru      String?
+  icerik    String
+  model     String
+  girdiOzet Json?
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, userId, tur, createdAt])
+  @@map("butce_ai_raporlar")
+}
+
+model ButceKartHareket {
+  id             String   @id @default(cuid())
+  tenantId       String
+  userId         String
+  ekstreId       String
+  tarih          DateTime
+  aciklama       String
+  satici         String?  // normalize edilmiş satıcı anahtarı (öğrenme için)
+  tutar          Decimal  @db.Decimal(14, 2) // harcama +, iade/puan -
+  taksitBilgi    String?  // "3/12"
+  kategoriId     String?
+  kategoriKaynak String   @default("AI") // HAFIZA | AI | ELLE
+  onaylandi      Boolean  @default(false)
+  islemId        String?  // onaylanınca üretilen ButceIslem kaydı
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  ekstre   ButceKartEkstre @relation(fields: [ekstreId], references: [id], onDelete: Cascade)
+  kategori ButceKategori?  @relation(fields: [kategoriId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, userId, ekstreId])
+  @@map("butce_kart_hareketler")
+}
+
+model ButceSaticiHafiza {
+  id         String   @id @default(cuid())
+  tenantId   String
+  userId     String
+  satici     String   // normalize anahtar (küçük harf, sadeleştirilmiş)
+  kategoriId String
+  sayac      Int      @default(1)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  kategori ButceKategori @relation(fields: [kategoriId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, userId, satici])
+  @@map("butce_satici_hafiza")
+}

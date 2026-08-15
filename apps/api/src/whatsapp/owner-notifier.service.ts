@@ -30,6 +30,9 @@ export class OwnerNotifierService implements OnModuleInit {
     'DOCUMENT_UPLOADED', 'AGENT', 'AUTOMATION', 'SYSTEM',
     'AI', 'AI_PROPOSAL', 'MOREN_AI_ALERT', 'OFFICE_CHAT',
     'KDV_RESULT', 'MIHSAP_RESULT',
+    // Butce modulu kendi WhatsApp mesajini gonderiyor (ButceCron.bildir) — burada
+    // ikinci kez gonderilmesin. Ayrica kisisel finans verisi genel owner akisina dusmesin.
+    'BUTCE', 'BUTCE_KRITIK',
   ]);
 
   // SESSİZ SAAT (kullanıcı kararı 2026-07-04): gece 22:00–09:00 arası owner'a

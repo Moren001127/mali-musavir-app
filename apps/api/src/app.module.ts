@@ -48,6 +48,7 @@ import { DriveModule } from './drive/drive.module';
 import { TaxpayerPortalModule } from './taxpayer-portal/taxpayer-portal.module';
 import { MaliYorumModule } from './mali-yorum/mali-yorum.module';
 import { AkilliBildirimModule } from './akilli-bildirim/akilli-bildirim.module';
+import { ButceModule } from './butce/butce.module';
 import { ReminderCron } from './schedule/reminder.cron';
 import { HgsCron } from './schedule/hgs.cron';
 import { TaskReminderCron } from './schedule/task-reminder.cron';
@@ -104,6 +105,7 @@ import { InvoiceOverdueCron } from './schedule/invoice-overdue.cron';
     AiCostModule,
     TaxpayerPortalModule,
     AkilliBildirimModule,
+    ButceModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

@@ -34,6 +34,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   PanelTop,
+  PiggyBank,
   Printer,
   ReceiptText,
   Scale,
@@ -51,6 +52,7 @@ import {
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { pendingDecisionsApi } from '@/lib/pending-decisions';
+import { butceApi } from '@/lib/butce';
 
 const GOLD = '#d4b876';
 const ROSE = '#f09aa8';
@@ -176,6 +178,16 @@ export default function Sidebar() {
   });
   const bekleyenSayisi = pendingCount?.bekleyen || 0;
 
+  // Kisisel Butce: owner-only modul. Yetkisiz kullanicida API 404 doner ve
+  // link hic render edilmez (menude varligi bile gorunmez).
+  const { data: butceErisim } = useQuery({
+    queryKey: ['butce-erisim'],
+    queryFn: () => butceApi.erisim(),
+    retry: false,
+    staleTime: 30 * 60 * 1000,
+  });
+  const butceGorunur = !!butceErisim?.yetkili;
+
   useEffect(() => {
     try {
       setCollapsed(window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1');
@@ -207,6 +219,13 @@ export default function Sidebar() {
   };
 
   const hideCollapsedTooltip = () => setCollapsedTooltip(null);
+
+  // Butce linki yalniz yetkili kullaniciya, "Ofis" grubunun sonuna eklenir.
+  const gorunenGruplar = navGroups.map((g) =>
+    g.label === 'Ofis' && butceGorunur
+      ? { ...g, items: [...g.items, { href: '/panel/butce', label: 'Kişisel Bütçe', icon: PiggyBank }] }
+      : g,
+  );
 
   const exactActiveHrefs = new Set(['/panel', '/panel/ajanlar', '/panel/ayarlar', '/panel/mukellefler']);
   const isActive = (href: string) => {
@@ -300,7 +319,7 @@ export default function Sidebar() {
 
       {/* === NAVIGASYON === */}
       <nav className={collapsed ? 'flex-1 px-1.5 pt-2.5 pb-4 space-y-2.5 overflow-y-auto relative' : 'flex-1 px-2.5 pt-3 pb-4 space-y-2 overflow-y-auto relative'}>
-        {navGroups.map((group) => {
+        {gorunenGruplar.map((group) => {
           const GIcon = group.icon;
           return (
             <div key={group.label}>

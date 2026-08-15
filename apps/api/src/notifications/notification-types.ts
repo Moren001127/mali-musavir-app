@@ -34,6 +34,10 @@ export const NOTIFICATION_TYPES = {
   BANK_TRANSACTION_ALERT: 'BANK_TRANSACTION_ALERT',
 
   // === Yeni: Düşük Öncelik (Sprint 3) ===
+  // Kisisel Butce modulu (owner-only)
+  BUTCE: 'BUTCE',
+  BUTCE_KRITIK: 'BUTCE_KRITIK',
+
   SYSTEM: 'SYSTEM',
   AGENT: 'AGENT',
   AUTH_NEW_DEVICE: 'AUTH_NEW_DEVICE',
