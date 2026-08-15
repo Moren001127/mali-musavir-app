@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import { Plus, Landmark, Pencil, Trash2, Wallet } from 'lucide-react';
 import { butceApi, Borc, BORC_TURLERI, para, tarihTR } from '@/lib/butce';
 import {
-  Kutu, Dugme, Modal, Alan, Girdi, Secim, Bos, Rozet, Yukleniyor,
+  Kutu, Dugme, Modal, Alan, Girdi, Secim, Bos, Rozet, Yukleniyor, ParaGirdi, paraCoz, paraGiris,
   GOLD, OK, KIRMIZI, TURUNCU, MUTED, TEXT, ROW_SEP,
 } from './ui';
 
@@ -168,10 +168,10 @@ function BorcModal({ borc, kapat, kaydedildi }: { borc: Borc | null; kapat: () =
     ad: borc?.ad || '',
     tur: borc?.tur || 'IHTIYAC',
     kurum: borc?.kurum || '',
-    toplamTutar: borc ? String(borc.toplamTutar) : '',
-    kalanAnapara: borc ? String(borc.kalanAnapara) : '',
+    toplamTutar: paraGiris(borc?.toplamTutar),
+    kalanAnapara: paraGiris(borc?.kalanAnapara),
     yillikFaiz: borc ? String(borc.yillikFaiz) : '',
-    taksitTutari: borc ? String(borc.taksitTutari) : '',
+    taksitTutari: paraGiris(borc?.taksitTutari),
     toplamTaksit: borc ? String(borc.toplamTaksit) : '',
     odenenTaksit: borc ? String(borc.odenenTaksit) : '0',
     odemeGunu: String(borc?.odemeGunu || 1),
@@ -181,15 +181,15 @@ function BorcModal({ borc, kapat, kaydedildi }: { borc: Borc | null; kapat: () =
 
   const kaydet = useMutation({
     mutationFn: () => {
-      const s = (v: string) => Number(String(v).replace(',', '.') || 0);
+      const oran = (v: string) => Number(String(v).replace(',', '.') || 0);
       const body = {
         ad: form.ad,
         tur: form.tur,
         kurum: form.kurum,
-        toplamTutar: s(form.toplamTutar),
-        kalanAnapara: s(form.kalanAnapara || form.toplamTutar),
-        yillikFaiz: s(form.yillikFaiz),
-        taksitTutari: s(form.taksitTutari),
+        toplamTutar: paraCoz(form.toplamTutar),
+        kalanAnapara: paraCoz(form.kalanAnapara || form.toplamTutar),
+        yillikFaiz: oran(form.yillikFaiz),
+        taksitTutari: paraCoz(form.taksitTutari),
         toplamTaksit: Number(form.toplamTaksit || 0),
         odenenTaksit: Number(form.odenenTaksit || 0),
         odemeGunu: Number(form.odemeGunu),
@@ -234,17 +234,17 @@ function BorcModal({ borc, kapat, kaydedildi }: { borc: Borc | null; kapat: () =
         <Alan etiket="Kurum / kişi">
           <Girdi value={form.kurum} onChange={(e) => setForm({ ...form, kurum: e.target.value })} />
         </Alan>
-        <Alan etiket="Çekilen tutar (₺)">
-          <Girdi value={form.toplamTutar} onChange={(e) => setForm({ ...form, toplamTutar: e.target.value })} inputMode="decimal" />
+        <Alan etiket="Çekilen tutar">
+          <ParaGirdi value={form.toplamTutar} onChange={(v) => setForm({ ...form, toplamTutar: v })} />
         </Alan>
-        <Alan etiket="Kalan anapara (₺)" ipucu="Boş bırakırsanız çekilen tutar alınır">
-          <Girdi value={form.kalanAnapara} onChange={(e) => setForm({ ...form, kalanAnapara: e.target.value })} inputMode="decimal" />
+        <Alan etiket="Kalan anapara" ipucu="Boş bırakırsanız çekilen tutar alınır">
+          <ParaGirdi value={form.kalanAnapara} onChange={(v) => setForm({ ...form, kalanAnapara: v })} />
         </Alan>
         <Alan etiket="Yıllık faiz (%)">
           <Girdi value={form.yillikFaiz} onChange={(e) => setForm({ ...form, yillikFaiz: e.target.value })} inputMode="decimal" />
         </Alan>
-        <Alan etiket="Aylık taksit (₺)">
-          <Girdi value={form.taksitTutari} onChange={(e) => setForm({ ...form, taksitTutari: e.target.value })} inputMode="decimal" />
+        <Alan etiket="Aylık taksit">
+          <ParaGirdi value={form.taksitTutari} onChange={(v) => setForm({ ...form, taksitTutari: v })} />
         </Alan>
         <Alan etiket="Ödeme günü">
           <Girdi type="number" min={1} max={31} value={form.odemeGunu} onChange={(e) => setForm({ ...form, odemeGunu: e.target.value })} />
@@ -275,11 +275,11 @@ function BorcModal({ borc, kapat, kaydedildi }: { borc: Borc | null; kapat: () =
 }
 
 function OdemeModal({ borc, kapat, kaydedildi }: { borc: Borc; kapat: () => void; kaydedildi: () => void }) {
-  const [tutar, setTutar] = useState(String(borc.taksitTutari || ''));
+  const [tutar, setTutar] = useState(paraGiris(borc.taksitTutari));
   const [tip, setTip] = useState<'NORMAL' | 'EKSTRA' | 'KAPAMA'>('NORMAL');
 
   const kaydet = useMutation({
-    mutationFn: () => butceApi.borcOdeme(borc.id, { tutar: Number(tutar.replace(',', '.')), tip }),
+    mutationFn: () => butceApi.borcOdeme(borc.id, { tutar: paraCoz(tutar), tip }),
     onSuccess: () => {
       toast.success('Ödeme işlendi');
       kaydedildi();
@@ -290,8 +290,8 @@ function OdemeModal({ borc, kapat, kaydedildi }: { borc: Borc; kapat: () => void
   return (
     <Modal baslik={`${borc.ad} — ödeme`} aciklama={`Kalan anapara ${para(borc.kalanAnapara)} ₺`} kapat={kapat}>
       <div className="space-y-3">
-        <Alan etiket="Ödeme tutarı (₺)">
-          <Girdi autoFocus value={tutar} onChange={(e) => setTutar(e.target.value)} inputMode="decimal" />
+        <Alan etiket="Ödeme tutarı">
+          <ParaGirdi autoFocus value={tutar} onChange={setTutar} />
         </Alan>
         <Alan etiket="Ödeme tipi" ipucu="Ekstra ödeme taksit sayacını ilerletmez, anaparayı düşürür">
           <Secim value={tip} onChange={(e) => setTip(e.target.value as any)}>
@@ -301,8 +301,8 @@ function OdemeModal({ borc, kapat, kaydedildi }: { borc: Borc; kapat: () => void
           </Secim>
         </Alan>
         <div className="flex flex-wrap justify-end gap-2">
-          <Dugme onClick={() => setTutar(String(borc.taksitTutari))}>Taksit tutarı</Dugme>
-          <Dugme onClick={() => setTutar(String(borc.kalanAnapara))}>Tamamı</Dugme>
+          <Dugme onClick={() => setTutar(paraGiris(borc.taksitTutari))}>Taksit tutarı</Dugme>
+          <Dugme onClick={() => setTutar(paraGiris(borc.kalanAnapara))}>Tamamı</Dugme>
           <Dugme tur="birincil" renk={OK} onClick={() => kaydet.mutate()} yukleniyor={kaydet.isPending}>
             İşle
           </Dugme>

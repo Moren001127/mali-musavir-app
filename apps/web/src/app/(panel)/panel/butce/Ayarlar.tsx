@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import { Plus, Trash2, ShieldCheck, Bell } from 'lucide-react';
 import { butceApi, Kategori, para } from '@/lib/butce';
 import {
-  Kutu, Dugme, Alan, Girdi, Secim, Rozet, Yukleniyor,
+  Kutu, Dugme, Alan, Girdi, Secim, Rozet, Yukleniyor, ParaGirdi, paraCoz, paraGiris,
   GOLD, OK, KIRMIZI, MAVI, MUTED, TEXT, ROW_SEP, CARD_BORDER,
 } from './ui';
 
@@ -28,7 +28,7 @@ export default function Ayarlar() {
   useEffect(() => {
     if (!ayar) return;
     setForm({
-      nakitYastigi: String(ayar.nakitYastigi ?? 0),
+      nakitYastigi: paraGiris(ayar.nakitYastigi),
       strateji: ayar.strateji,
       hatirlatmaWhatsapp: ayar.hatirlatmaWhatsapp,
       hatirlatmaPortal: ayar.hatirlatmaPortal,
@@ -41,7 +41,7 @@ export default function Ayarlar() {
   const kaydet = useMutation({
     mutationFn: () =>
       butceApi.ayarKaydet({
-        nakitYastigi: Number(form.nakitYastigi.replace(',', '.') || 0),
+        nakitYastigi: paraCoz(form.nakitYastigi),
         strateji: form.strateji,
         hatirlatmaWhatsapp: form.hatirlatmaWhatsapp,
         hatirlatmaPortal: form.hatirlatmaPortal,
@@ -73,14 +73,10 @@ export default function Ayarlar() {
       >
         <div className="grid gap-3 sm:grid-cols-2">
           <Alan
-            etiket="Nakit yastığı (₺)"
+            etiket="Nakit yastığı"
             ipucu="Acil durum için dokunulmayacak tutar. Borç kapasitesinden düşülür."
           >
-            <Girdi
-              value={form.nakitYastigi}
-              onChange={(e) => setForm({ ...form, nakitYastigi: e.target.value })}
-              inputMode="decimal"
-            />
+            <ParaGirdi value={form.nakitYastigi} onChange={(v) => setForm({ ...form, nakitYastigi: v })} />
           </Alan>
           <Alan etiket="Varsayılan strateji" ipucu="Çığ: en pahalı borç önce. Kartopu: en küçük borç önce.">
             <Secim value={form.strateji} onChange={(e) => setForm({ ...form, strateji: e.target.value as any })}>

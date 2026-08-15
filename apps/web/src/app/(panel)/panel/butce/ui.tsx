@@ -395,3 +395,68 @@ export function OranCubugu({
     </div>
   );
 }
+
+/* ===== Para girdisi =====
+ * Yazarken binlik ayracını (1.234.567,89) canlı uygular. Kullanıcı yalnız rakam
+ * ve virgül yazar; nokta otomatik yerleşir. Değer dışarı biçimli metin olarak
+ * çıkar, kaydederken paraCoz() ile sayıya dönüşür.
+ */
+export function paraBicimle(ham: string): string {
+  const temiz = String(ham ?? '').replace(/[^\d,]/g, '');
+  if (!temiz) return '';
+  const [tamHam, ...kalan] = temiz.split(',');
+  const tam = tamHam.replace(/^0+(?=\d)/, '');
+  const tamBicimli = tam.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  const ondalik = kalan.length ? ',' + kalan.join('').slice(0, 2) : '';
+  return (tamBicimli || '0') + ondalik;
+}
+
+/** Biçimli metni sayıya çevirir: "1.234,56" → 1234.56 */
+export function paraCoz(bicimli: string | number | null | undefined): number {
+  if (typeof bicimli === 'number') return Number.isFinite(bicimli) ? bicimli : 0;
+  const s = String(bicimli ?? '').replace(/\./g, '').replace(',', '.');
+  const n = Number(s);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** Sayıyı forma yerleştirmek için biçimli metne çevirir: 1234.56 → "1.234,56" */
+export function paraGiris(n: number | null | undefined): string {
+  if (n === null || n === undefined || !Number.isFinite(Number(n))) return '';
+  const v = Number(n);
+  if (v === 0) return '';
+  return paraBicimle(String(v).replace('.', ','));
+}
+
+export function ParaGirdi({
+  value,
+  onChange,
+  placeholder = '0,00',
+  autoFocus,
+  disabled,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  autoFocus?: boolean;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="relative">
+      <input
+        value={value}
+        onChange={(e) => onChange(paraBicimle(e.target.value))}
+        placeholder={placeholder}
+        inputMode="decimal"
+        autoFocus={autoFocus}
+        disabled={disabled}
+        style={{ ...girdiStil, paddingRight: 26, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
+      />
+      <span
+        className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[12px]"
+        style={{ color: MUTED }}
+      >
+        ₺
+      </span>
+    </div>
+  );
+}

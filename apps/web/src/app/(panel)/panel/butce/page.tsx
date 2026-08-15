@@ -14,10 +14,8 @@ import Kartlar from './Kartlar';
 import Borclar from './Borclar';
 import OdemePlani from './OdemePlani';
 import Ayarlar from './Ayarlar';
-import AiKutu from './AiKutu';
-import { Kutu, Yukleniyor, GOLD, MUTED, TEXT, CARD_BORDER, MOR } from './ui';
-import { useMutation } from '@tanstack/react-query';
-import { AiRapor } from '@/lib/butce';
+import Danisman from './Danisman';
+import { Yukleniyor, GOLD, MUTED, TEXT, CARD_BORDER } from './ui';
 
 const SEKMELER = [
   { anahtar: 'genel', etiket: 'Genel Bakış', ikon: LayoutDashboard },
@@ -164,48 +162,6 @@ export default function ButcePage() {
       {sekme === 'plan' && <OdemePlani donem={donem} />}
       {sekme === 'danisman' && <Danisman />}
       {sekme === 'ayarlar' && <Ayarlar />}
-    </div>
-  );
-}
-
-/** Serbest soru-cevap: kendi verisi üzerinden */
-function Danisman() {
-  const [cevap, setCevap] = useState<AiRapor | null>(null);
-  const sor = useMutation({
-    mutationFn: (soru: string) => butceApi.aiSoru(soru),
-    onSuccess: (d) => setCevap(d),
-  });
-
-  return (
-    <div className="space-y-4">
-      <Kutu baslik="Örnek sorular" renk={MOR}>
-        <div className="flex flex-wrap gap-1.5">
-          {[
-            'Bu ay en çok nereye harcadım?',
-            'Hangi kartı önce kapatmalıyım?',
-            'Giderimi 5.000 TL kısarsam borcum ne kadar erken biter?',
-            'Önümüzdeki 30 günde ne kadar ödemem var?',
-            'Harcamalarımda geçen aya göre ne değişti?',
-          ].map((s) => (
-            <button
-              key={s}
-              onClick={() => sor.mutate(s)}
-              className="rounded-xl px-3 py-1.5 text-[11.5px] transition hover:brightness-125"
-              style={{ background: `${MOR}14`, border: `1px solid ${MOR}33`, color: MOR }}
-            >
-              {s}
-            </button>
-          ))}
-        </div>
-      </Kutu>
-
-      <AiKutu
-        baslik="Finans danışmanı"
-        aciklama="Yalnız sizin verinizi kullanır; yatırım tavsiyesi vermez"
-        rapor={cevap}
-        yukleniyor={sor.isPending}
-        soruSor={(s) => sor.mutate(s)}
-      />
     </div>
   );
 }

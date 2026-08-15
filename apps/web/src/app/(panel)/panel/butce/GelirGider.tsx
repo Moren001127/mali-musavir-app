@@ -8,7 +8,7 @@ import {
   butceApi, Islem, Kategori, DuzenliOdeme, Kart, para, tarihTR, buDonem,
 } from '@/lib/butce';
 import {
-  Kutu, Dugme, Modal, Alan, Girdi, Secim, Bos, Rozet, Yukleniyor,
+  Kutu, Dugme, Modal, Alan, Girdi, Secim, Bos, Rozet, Yukleniyor, ParaGirdi, paraCoz, paraGiris,
   GOLD, OK, KIRMIZI, MUTED, TEXT, ROW_SEP, MAVI, TURUNCU,
 } from './ui';
 
@@ -281,7 +281,7 @@ function IslemModal({
     kayit?.tarih?.slice(0, 10) || (donem === buDonem() ? bugun() : `${donem}-01`);
   const [form, setForm] = useState({
     tur: kayit?.tur || ('GIDER' as 'GELIR' | 'GIDER'),
-    tutar: kayit ? String(kayit.tutar) : '',
+    tutar: paraGiris(kayit?.tutar),
     tarih: varsayilanTarih,
     kategoriId: kayit?.kategoriId || '',
     aciklama: kayit?.aciklama || '',
@@ -293,7 +293,7 @@ function IslemModal({
     mutationFn: () => {
       const body = {
         tur: form.tur,
-        tutar: Number(form.tutar.replace(',', '.')),
+        tutar: paraCoz(form.tutar),
         tarih: form.tarih,
         kategoriId: form.kategoriId || null,
         aciklama: form.aciklama || null,
@@ -326,14 +326,8 @@ function IslemModal({
             <option value="GELIR">Gelir</option>
           </Secim>
         </Alan>
-        <Alan etiket="Tutar (₺)">
-          <Girdi
-            autoFocus
-            value={form.tutar}
-            onChange={(e) => setForm({ ...form, tutar: e.target.value })}
-            placeholder="0,00"
-            inputMode="decimal"
-          />
+        <Alan etiket="Tutar">
+          <ParaGirdi autoFocus value={form.tutar} onChange={(v) => setForm({ ...form, tutar: v })} />
         </Alan>
         <Alan etiket="Tarih">
           <Girdi type="date" value={form.tarih} onChange={(e) => setForm({ ...form, tarih: e.target.value })} />
@@ -405,7 +399,7 @@ function DuzenliModal({
   const [form, setForm] = useState({
     ad: kayit?.ad || '',
     tur: kayit?.tur || ('GIDER' as 'GELIR' | 'GIDER'),
-    tutar: kayit ? String(kayit.tutar) : '',
+    tutar: paraGiris(kayit?.tutar),
     ayinGunu: String(kayit?.ayinGunu || 1),
     kategoriId: kayit?.kategoriId || '',
     kaynak: kayit?.kaynak || 'NAKIT',
@@ -421,7 +415,7 @@ function DuzenliModal({
       const body = {
         ad: form.ad,
         tur: form.tur,
-        tutar: Number(form.tutar.replace(',', '.')),
+        tutar: paraCoz(form.tutar),
         ayinGunu: Number(form.ayinGunu),
         kategoriId: form.kategoriId || null,
         kaynak: form.kaynak,
@@ -462,8 +456,8 @@ function DuzenliModal({
             <option value="GELIR">Gelir</option>
           </Secim>
         </Alan>
-        <Alan etiket="Tutar (₺)">
-          <Girdi value={form.tutar} onChange={(e) => setForm({ ...form, tutar: e.target.value })} inputMode="decimal" />
+        <Alan etiket="Tutar">
+          <ParaGirdi value={form.tutar} onChange={(v) => setForm({ ...form, tutar: v })} />
         </Alan>
         <Alan etiket="Ayın kaçında">
           <Girdi

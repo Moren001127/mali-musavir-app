@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { butceApi, Strateji, para, donemTR } from '@/lib/butce';
 import {
-  Kutu, KPI, Dugme, Girdi, Alan, Bos, Rozet, Yukleniyor,
+  Kutu, KPI, Dugme, Girdi, Alan, Bos, Rozet, Yukleniyor, ParaGirdi, paraCoz,
   GOLD, OK, KIRMIZI, TURUNCU, MAVI, MOR, MUTED, TEXT, ROW_SEP,
 } from './ui';
 import AiKutu from './AiKutu';
@@ -22,7 +22,7 @@ export default function OdemePlani({ donem }: { donem: string }) {
     queryFn: () =>
       butceApi.plan({
         donem,
-        kapasite: kapasite === '' ? undefined : Number(kapasite.replace(',', '.')),
+        kapasite: kapasite === '' ? undefined : paraCoz(kapasite),
         strateji,
       }),
   });
@@ -69,13 +69,8 @@ export default function OdemePlani({ donem }: { donem: string }) {
         }
       >
         <div className="grid gap-3 sm:grid-cols-4">
-          <Alan etiket="Aylık kapasite (₺)">
-            <Girdi
-              value={kapasite}
-              onChange={(e) => setKapasite(e.target.value)}
-              placeholder={String(plan.otomatikKapasite)}
-              inputMode="decimal"
-            />
+          <Alan etiket="Aylık kapasite" ipucu="Boş bırakırsanız otomatik hesaplanır">
+            <ParaGirdi value={kapasite} onChange={setKapasite} placeholder={para(plan.otomatikKapasite)} />
           </Alan>
           <div className="sm:col-span-3 grid gap-3 sm:grid-cols-3">
             <KPI etiket="Gelir" deger={`${para(plan.gelir)} ₺`} renk={OK} />
@@ -273,14 +268,14 @@ export default function OdemePlani({ donem }: { donem: string }) {
           >
             <div className="flex flex-wrap items-end gap-3">
               <div className="w-44">
-                <Alan etiket="Tutar (₺)">
-                  <Girdi value={ekstra} onChange={(e) => setEkstra(e.target.value)} inputMode="decimal" placeholder="10.000" />
+                <Alan etiket="Tutar">
+                  <ParaGirdi value={ekstra} onChange={setEkstra} placeholder="10.000" />
                 </Alan>
               </div>
               <Dugme
                 tur="birincil"
                 renk={OK}
-                onClick={() => faydaSorgu.mutate(Number(ekstra.replace('.', '').replace(',', '.')))}
+                onClick={() => faydaSorgu.mutate(paraCoz(ekstra))}
                 disabled={!ekstra}
                 yukleniyor={faydaSorgu.isPending}
               >

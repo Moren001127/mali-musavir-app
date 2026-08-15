@@ -12,7 +12,7 @@ import {
   EKSTRE_DURUM_ETIKET,
 } from '@/lib/butce';
 import {
-  Kutu, Dugme, Modal, Alan, Girdi, Secim, Bos, Rozet, Yukleniyor,
+  Kutu, Dugme, Modal, Alan, Girdi, Secim, Bos, Rozet, Yukleniyor, ParaGirdi, paraCoz, paraGiris,
   GOLD, OK, KIRMIZI, TURUNCU, MAVI, MOR, MUTED, TEXT, ROW_SEP, CARD_BORDER,
 } from './ui';
 
@@ -312,7 +312,7 @@ function KartModal({ kart, kapat, kaydedildi }: { kart: Kart | null; kapat: () =
     bankaAdi: kart?.bankaAdi || '',
     kartAdi: kart?.kartAdi || '',
     sonDortHane: kart?.sonDortHane || '',
-    kartLimiti: kart ? String(kart.kartLimiti) : '',
+    kartLimiti: paraGiris(kart?.kartLimiti),
     kesimGunu: String(kart?.kesimGunu || 1),
     sonOdemeGunFarki: String(kart?.sonOdemeGunFarki ?? 10),
     asgariOran: String(kart?.asgariOran ?? 20),
@@ -328,7 +328,7 @@ function KartModal({ kart, kapat, kaydedildi }: { kart: Kart | null; kapat: () =
         bankaAdi: form.bankaAdi,
         kartAdi: form.kartAdi,
         sonDortHane: form.sonDortHane,
-        kartLimiti: Number(form.kartLimiti.replace(',', '.') || 0),
+        kartLimiti: paraCoz(form.kartLimiti),
         kesimGunu: Number(form.kesimGunu),
         sonOdemeGunFarki: Number(form.sonOdemeGunFarki),
         asgariOran: Number(form.asgariOran.replace(',', '.')),
@@ -369,8 +369,8 @@ function KartModal({ kart, kapat, kaydedildi }: { kart: Kart | null; kapat: () =
         <Alan etiket="Son 4 hane">
           <Girdi value={form.sonDortHane} onChange={(e) => setForm({ ...form, sonDortHane: e.target.value })} maxLength={4} placeholder="1234" />
         </Alan>
-        <Alan etiket="Kart limiti (₺)">
-          <Girdi value={form.kartLimiti} onChange={(e) => setForm({ ...form, kartLimiti: e.target.value })} inputMode="decimal" />
+        <Alan etiket="Kart limiti">
+          <ParaGirdi value={form.kartLimiti} onChange={(v) => setForm({ ...form, kartLimiti: v })} />
         </Alan>
         <Alan etiket="Hesap kesim günü" ipucu="Ayın kaçında ekstre kesiliyor">
           <Girdi type="number" min={1} max={31} value={form.kesimGunu} onChange={(e) => setForm({ ...form, kesimGunu: e.target.value })} />
@@ -425,11 +425,11 @@ function EkstreModal({
   kapat: () => void;
   kaydedildi: () => void;
 }) {
-  const [borc, setBorc] = useState(ekstre.borcTutari !== null ? String(ekstre.borcTutari) : '');
+  const [borc, setBorc] = useState(paraGiris(ekstre.borcTutari));
   const [odeme, setOdeme] = useState('');
 
   const tutarKaydet = useMutation({
-    mutationFn: () => butceApi.ekstreTutar(ekstre.id, { borcTutari: Number(borc.replace(',', '.')) }),
+    mutationFn: () => butceApi.ekstreTutar(ekstre.id, { borcTutari: paraCoz(borc) }),
     onSuccess: () => {
       toast.success('Ekstre tutarı kaydedildi');
       kaydedildi();
@@ -438,7 +438,7 @@ function EkstreModal({
   });
 
   const odemeKaydet = useMutation({
-    mutationFn: () => butceApi.ekstreOdeme(ekstre.id, { tutar: Number(odeme.replace(',', '.')) }),
+    mutationFn: () => butceApi.ekstreOdeme(ekstre.id, { tutar: paraCoz(odeme) }),
     onSuccess: () => {
       toast.success('Ödeme işlendi');
       kaydedildi();
@@ -446,7 +446,7 @@ function EkstreModal({
     onError: (e: any) => toast.error(e?.response?.data?.message || 'İşlenemedi'),
   });
 
-  const asgariTahmin = borc ? (Number(borc.replace(',', '.')) * kart.asgariOran) / 100 : 0;
+  const asgariTahmin = borc ? (paraCoz(borc) * kart.asgariOran) / 100 : 0;
 
   return (
     <Modal
@@ -456,8 +456,8 @@ function EkstreModal({
     >
       <div className="space-y-4">
         <div>
-          <Alan etiket="Ekstre borç tutarı (₺)" ipucu={borc ? `Asgari (%${kart.asgariOran}): ${para(asgariTahmin)} ₺` : undefined}>
-            <Girdi autoFocus value={borc} onChange={(e) => setBorc(e.target.value)} inputMode="decimal" placeholder="0,00" />
+          <Alan etiket="Ekstre borç tutarı" ipucu={borc ? `Asgari (%${kart.asgariOran}): ${para(asgariTahmin)} ₺` : undefined}>
+            <ParaGirdi autoFocus value={borc} onChange={setBorc} />
           </Alan>
           <div className="mt-2 flex justify-end">
             <Dugme tur="birincil" onClick={() => tutarKaydet.mutate()} yukleniyor={tutarKaydet.isPending}>
@@ -472,12 +472,12 @@ function EkstreModal({
               <span>Ödenen: {para(ekstre.odenenTutar)} ₺</span>
               <span>Kalan: {para(ekstre.kalanTutar ?? 0)} ₺</span>
             </div>
-            <Alan etiket="Ödeme tutarı (₺)">
-              <Girdi value={odeme} onChange={(e) => setOdeme(e.target.value)} inputMode="decimal" placeholder="0,00" />
+            <Alan etiket="Ödeme tutarı">
+              <ParaGirdi value={odeme} onChange={setOdeme} />
             </Alan>
             <div className="mt-2 flex flex-wrap justify-end gap-2">
-              <Dugme onClick={() => setOdeme(String(ekstre.asgariTutar ?? 0))}>Asgari</Dugme>
-              <Dugme onClick={() => setOdeme(String(ekstre.kalanTutar ?? 0))}>Tamamı</Dugme>
+              <Dugme onClick={() => setOdeme(paraGiris(ekstre.asgariTutar ?? 0))}>Asgari</Dugme>
+              <Dugme onClick={() => setOdeme(paraGiris(ekstre.kalanTutar ?? 0))}>Tamamı</Dugme>
               <Dugme tur="birincil" renk={OK} onClick={() => odemeKaydet.mutate()} yukleniyor={odemeKaydet.isPending}>
                 Ödemeyi işle
               </Dugme>
