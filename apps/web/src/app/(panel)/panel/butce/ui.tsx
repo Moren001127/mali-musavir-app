@@ -460,3 +460,73 @@ export function ParaGirdi({
     </div>
   );
 }
+
+/* ===== Anahtar (aç/kapa) ===== */
+export function Anahtar({
+  acik,
+  degistir,
+  renk = GOLD,
+}: {
+  acik: boolean;
+  degistir: (v: boolean) => void;
+  renk?: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={acik}
+      onClick={() => degistir(!acik)}
+      className="relative inline-flex h-[22px] w-[40px] flex-shrink-0 items-center rounded-full transition-colors"
+      style={{
+        background: acik ? renk + '33' : 'rgba(255,255,255,0.06)',
+        border: '1px solid ' + (acik ? renk + '66' : CARD_BORDER),
+      }}
+    >
+      <span
+        className="absolute h-[15px] w-[15px] rounded-full transition-all"
+        style={{
+          left: acik ? 21 : 3,
+          background: acik ? renk : '#6b6b73',
+          boxShadow: acik ? '0 0 10px ' + renk + '88' : 'none',
+        }}
+      />
+    </button>
+  );
+}
+
+/* ===== Renk seçici (hazır palet + serbest seçim) ===== */
+export const PALET = ['#e6c878', '#5ad18a', '#e0697a', '#d9a06c', '#8cbde8', '#b0a0e0', '#f09aa8', '#9da8b7'];
+
+export function RenkSecici({ deger, degistir }: { deger: string; degistir: (v: string) => void }) {
+  return (
+    <div className="flex items-center gap-1.5">
+      {PALET.map((r) => (
+        <button
+          key={r}
+          type="button"
+          onClick={() => degistir(r)}
+          className="h-5 w-5 rounded-full transition-transform hover:scale-110"
+          style={{
+            background: r,
+            border: deger === r ? '2px solid #fff' : '1px solid rgba(255,255,255,0.15)',
+            boxShadow: deger === r ? '0 0 0 2px ' + r + '55' : 'none',
+          }}
+          aria-label={r}
+        />
+      ))}
+      <label className="relative h-5 w-5 cursor-pointer overflow-hidden rounded-full" style={{ border: '1px dashed rgba(255,255,255,0.28)' }}>
+        <input
+          type="color"
+          value={deger}
+          onChange={(e) => degistir(e.target.value)}
+          className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+        />
+        <span
+          className="pointer-events-none absolute inset-0"
+          style={{ background: 'conic-gradient(#e6c878,#5ad18a,#8cbde8,#b0a0e0,#e0697a,#e6c878)', opacity: 0.75 }}
+        />
+      </label>
+    </div>
+  );
+}
