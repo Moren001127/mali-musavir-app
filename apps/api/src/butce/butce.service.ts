@@ -267,7 +267,15 @@ export class ButceService {
         _sum: { tutar: true },
       }),
       this.db.butceIslem.aggregate({
-        where: { tenantId: k.tenantId, userId: k.userId, bankaHesapId: h.id, tur: 'GIDER', planlanan: false },
+        // kaynak !== KART: kart harcaması banka bakiyesinden düşmez (karta borçlanmadır)
+        where: {
+          tenantId: k.tenantId,
+          userId: k.userId,
+          bankaHesapId: h.id,
+          tur: 'GIDER',
+          planlanan: false,
+          kaynak: { not: 'KART' },
+        },
         _sum: { tutar: true },
       }),
       this.db.butceOdeme.aggregate({
@@ -1387,9 +1395,14 @@ export class ButceService {
     const kartDonemIci = kurus(kartlar.reduce((t: number, kk: any) => t + kk.donemIciHarcama, 0));
     const krediBorcu = kurus(borclar.reduce((t: number, b: any) => t + b.kalanAnapara, 0));
     const kmhBorcu = kurus(hesaplar.reduce((t: number, h: any) => t + (h.kmhBorcu || 0), 0));
-    const bankaBakiyesi = kurus(hesaplar.reduce((t: number, h: any) => t + Math.max(h.bakiye, 0), 0));
+    // Nakit varlık TEK TANIM: net banka bakiyesi (eksideki hesaplar dahil) + kasa.
+    // Eskiden burada yalnız artı bakiyeler sayılıyordu; Nakit Akışı ise eksileri de
+    // katıyordu, dolayısıyla bir hesap eksiye düştüğünde iki ekran farklı rakam
+    // gösteriyordu. Eksi bakiye zaten KMH borcudur; aşağıda net varlıkta ikinci
+    // kez düşülmemesi için kmhBorcu ayrıca çıkarılmaz.
+    const bankaBakiyesi = kurus(hesaplar.reduce((t: number, h: any) => t + h.bakiye, 0));
     const kasa = await this.nakitKasasi(k);
-    const nakitVarlik = kurus(bankaBakiyesi + Math.max(kasa, 0));
+    const nakitVarlik = kurus(bankaBakiyesi + kasa);
 
     // Kategori kırılımı mesleki/kişisel ayrımını KATEGORİ ÜSTÜNDE taşır.
     // Üstteki genel süzgeç kaldırıldı; ayrımı görmek isteyen buradan görür.
@@ -1481,7 +1494,12 @@ export class ButceService {
         kartDonemIci,
         kredi: krediBorcu,
         kmh: kmhBorcu,
-        toplam: kurus(kartBorcu + krediBorcu + kmhBorcu),
+        /**
+         * Dönem içi harcama da BORÇTUR — henüz ekstresi kesilmemiş olması onu
+         * borç olmaktan çıkarmaz. Eskiden toplamdan düşüyordu; kartında 50.000
+         * dönem içi harcama varken toplam borç eksik görünüyordu.
+         */
+        toplam: kurus(kartBorcu + kartDonemIci + krediBorcu + kmhBorcu),
         // Zorunlu ödeme KALAN borçtan türetilir: borç kapandıysa 0, kısmi ödendiyse
         // ödenen düşülür. Aksi hâlde borç 0 iken bile "asgari ödemen var" yazıyordu.
         aylikZorunluOdeme: kurus(
@@ -1489,7 +1507,8 @@ export class ButceService {
             borclar.reduce((t: number, b: any) => t + Math.min(b.taksitTutari, b.kalanAnapara), 0),
         ),
       },
-      netVarlik: kurus(nakitVarlik - (kartBorcu + kartDonemIci + krediBorcu + kmhBorcu)),
+      // kmhBorcu burada AYRICA düşülmez: eksi banka bakiyesi olarak nakitVarlık'ta zaten var
+      netVarlik: kurus(nakitVarlik - (kartBorcu + kartDonemIci + krediBorcu)),
       hesapOzet: hesaplar.map((h: any) => ({
         id: h.id,
         ad: h.ad,
@@ -1698,6 +1717,49 @@ export class ButceService {
     return list;
   }
 
+  /**
+   * Son 6 ayın ORTALAMA aylık gelir ve nakit gideri.
+   *
+   * Düzensiz gelirde tek ayın rakamı "her ay böyle olacak" anlamına gelmez.
+   * Yalnız hareket görmüş aylar sayılır: hiç kayıt girilmemiş aylar ortalamayı
+   * haksız yere aşağı çekmesin.
+   */
+  private async aylikOrtalamaAkis(k: Kimlik, donem: string) {
+    const donemler: string[] = [];
+    for (let i = 5; i >= 0; i--) donemler.push(donemKaydir(donem, -i));
+
+    const kayitlar = await this.db.butceIslem.groupBy({
+      by: ['donem', 'tur'],
+      where: {
+        tenantId: k.tenantId,
+        userId: k.userId,
+        donem: { in: donemler },
+        planlanan: false,
+        transferGrupId: null,
+        OR: [{ tur: 'GELIR' }, { tur: 'GIDER', kaynak: { not: 'KART' } }],
+      },
+      _sum: { tutar: true },
+    });
+
+    let toplamGelir = 0;
+    let toplamGider = 0;
+    const dolu = new Set<string>();
+    for (const r of kayitlar as any[]) {
+      const tutar = num(r._sum?.tutar);
+      if (tutar <= 0) continue;
+      dolu.add(r.donem);
+      if (r.tur === 'GELIR') toplamGelir += tutar;
+      else toplamGider += tutar;
+    }
+
+    const aySayisi = Math.max(dolu.size, 1);
+    return {
+      aySayisi,
+      ortGelir: kurus(toplamGelir / aySayisi),
+      ortGider: kurus(toplamGider / aySayisi),
+    };
+  }
+
   /* ===================== ÖDEME PLANI ===================== */
 
   private async planKalemleri(k: Kimlik, _defter?: DefterSecim): Promise<PlanKalemi[]> {
@@ -1778,14 +1840,20 @@ export class ButceService {
     // ÇİFT SAYIM KORUMASI: bir gelir/gider banka hesabına bağlıysa etkisi zaten
     // bakiyededir; birikime ikinci kez eklenmemesi için ayrıca sayılmaz.
     const hesaplar = await this.bankaHesaplar(k);
-    const bankaBakiyesi = kurus(hesaplar.reduce((t: number, h: any) => t + Math.max(h.bakiye, 0), 0));
+    const bankaBakiyesi = kurus(hesaplar.reduce((t: number, h: any) => t + h.bakiye, 0));
     const kasa = await this.nakitKasasi(k);
-    // Elde olan toplam para — Genel Bakış ve Nakit Akışı ile AYNI rakam
-    const nakitVarlik = kurus(bankaBakiyesi + Math.max(kasa, 0));
-    // Her ay tekrar eden kapasite — simülasyonun tamamı bununla yürür
-    const otomatikKapasite = kurus(Math.max(gelir - gider - ayar.nakitYastigi, 0));
-    // Yalnız bu aya özel ek güç: elde duran para, bu ayın akışı düşülmüş hâli.
-    // (Bu ayın geliri zaten aylık kapasitede sayıldı; iki kez sayılmasın.)
+    // Elde olan toplam para — Genel Bakış ve Nakit Akışı ile AYNI tanım
+    const nakitVarlik = kurus(bankaBakiyesi + kasa);
+    // HER AY TEKRAR EDEN KAPASİTE — tek ayın verisinden değil, GEÇMİŞ AYLARIN
+    // ORTALAMASINDAN türetilir.
+    //
+    // Kullanıcı bulgusu: geliri düzensiz olan biri için "her ay 95.000
+    // ayırabilirsiniz" demek yanıltıcıydı; o rakam yalnız içinde bulunulan ayın
+    // gelir − giderinden geliyordu. Mükellef tahsilatları aydan aya değişiyor.
+    const gecmis = await this.aylikOrtalamaAkis(k, donem);
+    const otomatikKapasite = kurus(Math.max(gecmis.ortGelir - gecmis.ortGider - ayar.nakitYastigi, 0));
+    // Bu ay öncesinden devreden para: elde duran paradan bu ayın akışı düşülür,
+    // çünkü bu ayın geliri zaten aylık kapasitede sayıldı (çift sayım olmasın).
     const birikim = kurus(Math.max(nakitVarlik - gelir + gider, 0));
     const kullanilabilirNakit = nakitVarlik;
     const kapasite =
@@ -1821,8 +1889,14 @@ export class ButceService {
       nakitKasasi: kasa,
       /** Yastık düşülmeden önce elde olan toplam para */
       kullanilabilirNakit,
-      /** Yalnız bu aya özel ek güç — hesaptaki birikim (her ay tekrarlamaz) */
+      /** Bu ay öncesinden devreden para — her ay tekrarlamaz */
       birikim,
+      /** Ortalamanın kaç aylık veriye dayandığı (1 ise yalnız bu ay) */
+      ortalamaAySayisi: gecmis.aySayisi,
+      /** Ortalama aylık gelir (kapasite bundan türer) */
+      ortalamaGelir: gecmis.ortGelir,
+      /** Ortalama aylık nakit gider */
+      ortalamaGider: gecmis.ortGider,
       /** Her ay tekrar eden kapasite: gelir − nakit gider − yastık */
       otomatikKapasite,
       /** Bu ay fiilen ödeyebileceğiniz toplam: tekrarlayan + birikim */

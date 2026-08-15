@@ -83,8 +83,23 @@ export default function OdemePlani({ donem, defter = 'TUMU' }: { donem: string; 
             <ParaGirdi value={kapasite} onChange={setKapasite} placeholder={para(plan.otomatikKapasite)} />
           </Alan>
           <div className="sm:col-span-3 grid gap-3 sm:grid-cols-3">
-            <KPI etiket="Her ay ayırabilirsiniz" deger={`${para(plan.kapasite)} ₺`} renk={GOLD} vurgu />
-            <KPI etiket="Bu aya özel birikim" deger={`${para(plan.birikim)} ₺`} renk={MAVI} />
+            <KPI
+              etiket="Her ay ayırabilirsiniz"
+              deger={`${para(plan.kapasite)} ₺`}
+              renk={GOLD}
+              vurgu
+              altBilgi={
+                plan.ortalamaAySayisi > 1
+                  ? `Son ${plan.ortalamaAySayisi} ayın ortalaması`
+                  : 'Yalnız bu ayın verisi'
+              }
+            />
+            <KPI
+              etiket="Devreden birikim"
+              deger={`${para(plan.birikim)} ₺`}
+              renk={MAVI}
+              altBilgi="Bu ay öncesinden kalan"
+            />
             <KPI etiket="Bu ay toplam" deger={`${para(plan.buAyToplam)} ₺`} renk={OK} />
           </div>
         </div>
@@ -102,9 +117,9 @@ export default function OdemePlani({ donem, defter = 'TUMU' }: { donem: string; 
               <span className="w-[150px] shrink-0" style={{ color: MUTED }}>
                 Her ay tekrar eden
               </span>
-              <span style={{ color: OK }}>{para(plan.gelir)} ₺ gelir</span>
+              <span style={{ color: OK }}>{para(plan.ortalamaGelir)} ₺ ortalama gelir</span>
               <span style={{ color: MUTED }}>−</span>
-              <span style={{ color: KIRMIZI }}>{para(plan.gider)} ₺ nakit gider</span>
+              <span style={{ color: KIRMIZI }}>{para(plan.ortalamaGider)} ₺ ortalama gider</span>
               <span style={{ color: MUTED }}>−</span>
               <span style={{ color: MUTED }}>{para(plan.nakitYastigi)} ₺ yastık</span>
               <span style={{ color: MUTED }}>=</span>
@@ -114,7 +129,7 @@ export default function OdemePlani({ donem, defter = 'TUMU' }: { donem: string; 
             </div>
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
               <span className="w-[150px] shrink-0" style={{ color: MUTED }}>
-                Bu aya özel birikim
+                Devreden birikim
               </span>
               <span style={{ color: MAVI }}>{para(plan.bankaBakiyesi)} ₺ bankada</span>
               {plan.nakitKasasi !== 0 && (
@@ -132,8 +147,19 @@ export default function OdemePlani({ donem, defter = 'TUMU' }: { donem: string; 
             </div>
           </div>
           <p className="mt-2 text-[10.5px] leading-relaxed" style={{ color: 'rgba(113,113,122,0.9)' }}>
-            Birikim bir kereliktir, gelecek ay tekrar gelmez. Bu yüzden borçsuz kalma süresi hesaplanırken
-            yalnız ilk aya eklenir; sonraki aylar her ay tekrar eden tutarla yürür.
+            Birikim bir kereliktir, gelecek ay tekrar gelmez; bu yüzden borçsuz kalma süresinde yalnız ilk aya
+            eklenir.{' '}
+            {plan.ortalamaAySayisi > 1 ? (
+              <>
+                Aylık kapasite son {plan.ortalamaAySayisi} ayın ortalamasından bulunur — geliriniz düzensiz
+                olduğu için tek ayın rakamı yanıltıcı olurdu.
+              </>
+            ) : (
+              <>
+                Elinizde tek aylık veri olduğu için kapasite bu ayın rakamıyla hesaplandı. Aylar biriktikçe
+                ortalamaya geçer ve isabet artar; şimdilik kendi tahmininizi yukarıdaki kutuya yazabilirsiniz.
+              </>
+            )}
           </p>
         </div>
       </Kutu>

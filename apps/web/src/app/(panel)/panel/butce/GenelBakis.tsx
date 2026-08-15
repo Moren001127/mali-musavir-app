@@ -162,7 +162,14 @@ export default function GenelBakis({
           deger={`${para(ozet.borcOzet.toplam)} ₺`}
           renk={TURUNCU}
           ikon={<CreditCard size={14} />}
-          altBilgi={`Kart ${para(ozet.borcOzet.kart)} ₺ · Kredi ${para(ozet.borcOzet.kredi)} ₺`}
+          altBilgi={
+            `Kart ${para(ozet.borcOzet.kart + ozet.borcOzet.kartDonemIci)} ₺` +
+            (ozet.borcOzet.kartDonemIci > 0
+              ? ` (${para(ozet.borcOzet.kartDonemIci)} ₺ dönem içi)`
+              : '') +
+            ` · Kredi ${para(ozet.borcOzet.kredi)} ₺` +
+            (ozet.borcOzet.kmh > 0 ? ` · Ek hesap ${para(ozet.borcOzet.kmh)} ₺` : '')
+          }
         />
       </div>
 

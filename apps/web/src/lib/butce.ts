@@ -383,8 +383,14 @@ export interface Plan {
   nakitKasasi: number;
   /** Yastık düşülmeden önce elde olan toplam para */
   kullanilabilirNakit: number;
-  /** Yalnız bu aya özel birikim — her ay tekrarlamaz */
+  /** Bu ay öncesinden devreden para — her ay tekrarlamaz */
   birikim: number;
+  /** Ortalamanın kaç aylık veriye dayandığı (1 ise yalnız bu ay) */
+  ortalamaAySayisi: number;
+  /** Ortalama aylık gelir */
+  ortalamaGelir: number;
+  /** Ortalama aylık nakit gider */
+  ortalamaGider: number;
   /** Bu ay fiilen ödeyebileceğiniz toplam */
   buAyToplam: number;
   otomatikKapasite: number;
