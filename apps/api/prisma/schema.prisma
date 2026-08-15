@@ -3513,6 +3513,7 @@ model ButceKategori {
   id        String   @id @default(cuid())
   tenantId  String
   userId    String
+  defter    String   @default("SAHSI") // SAHSI | OFIS
   ad        String
   tur       String   // GELIR | GIDER
   renk      String?
@@ -3527,8 +3528,8 @@ model ButceKategori {
   hareketler ButceKartHareket[]
   saticiHafiza ButceSaticiHafiza[]
 
-  @@unique([tenantId, userId, tur, ad])
-  @@index([tenantId, userId])
+  @@unique([tenantId, userId, defter, tur, ad])
+  @@index([tenantId, userId, defter])
   @@map("butce_kategoriler")
 }
 
@@ -3544,16 +3545,25 @@ model ButceIslem {
   aciklama   String?
   kaynak     String   @default("NAKIT") // NAKIT | BANKA | KART
   kartId     String?
+  bankaHesapId String? // kaynak=BANKA ise hangi hesaptan
   duzenliId  String?
   planlanan  Boolean  @default(false) // henüz gerçekleşmedi (beklenen)
+  // ŞAHSİ mi OFİS mi — ofis kirası ile kişisel harcama aynı torbaya girmesin
+  defter     String   @default("SAHSI") // SAHSI | OFIS
+  // Hesaplar/defterler arası aktarımın iki bacağını eşleştirir; gelir-gider toplamlarına GİRMEZ
+  transferGrupId String?
+  // Ekstre PDF satırından üretildiyse dolu olur (elle girilenlerde boş)
+  kartHareketId  String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  kategori ButceKategori?     @relation(fields: [kategoriId], references: [id], onDelete: SetNull)
-  kart     ButceKart?         @relation(fields: [kartId], references: [id], onDelete: SetNull)
-  duzenli  ButceDuzenliOdeme? @relation(fields: [duzenliId], references: [id], onDelete: SetNull)
+  kategori   ButceKategori?     @relation(fields: [kategoriId], references: [id], onDelete: SetNull)
+  kart       ButceKart?         @relation(fields: [kartId], references: [id], onDelete: SetNull)
+  bankaHesap ButceBankaHesap?   @relation(fields: [bankaHesapId], references: [id], onDelete: SetNull)
+  duzenli    ButceDuzenliOdeme? @relation(fields: [duzenliId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, userId, donem])
+  @@index([tenantId, userId, defter, donem])
   @@index([tenantId, userId, tur, tarih])
   @@map("butce_islemler")
 }
@@ -3562,6 +3572,7 @@ model ButceDuzenliOdeme {
   id               String   @id @default(cuid())
   tenantId         String
   userId           String
+  defter           String   @default("SAHSI") // SAHSI | OFIS
   ad               String
   tur              String   // GELIR | GIDER
   tutar            Decimal  @db.Decimal(14, 2)
@@ -3589,6 +3600,8 @@ model ButceKart {
   id               String   @id @default(cuid())
   tenantId         String
   userId           String
+  // Kart hem şahsi hem ofis harcamasında kullanılır; bu yalnız ÖN SEÇİM
+  varsayilanDefter String   @default("SAHSI") // SAHSI | OFIS
   bankaAdi         String
   kartAdi          String
   sonDortHane      String?
@@ -3643,6 +3656,7 @@ model ButceBorc {
   id                String    @id @default(cuid())
   tenantId          String
   userId            String
+  defter            String    @default("SAHSI") // SAHSI | OFIS
   ad                String
   tur               String    // IHTIYAC | TASIT | KONUT | KMH | SENET | KISISEL | DIGER
   kurum             String?
@@ -3677,12 +3691,14 @@ model ButceOdeme {
   hedefTur     String   // BORC | KART
   borcId       String?
   kartEkstreId String?
+  bankaHesapId String?  // ödeme hangi hesaptan çıktı (nakit ödemede boş)
   tip          String   @default("NORMAL") // NORMAL | ASGARI | EKSTRA | KAPAMA
   aciklama     String?
   createdAt    DateTime @default(now())
 
   borc       ButceBorc?       @relation(fields: [borcId], references: [id], onDelete: Cascade)
   kartEkstre ButceKartEkstre? @relation(fields: [kartEkstreId], references: [id], onDelete: Cascade)
+  bankaHesap ButceBankaHesap? @relation(fields: [bankaHesapId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, userId, donem])
   @@map("butce_odemeler")
@@ -3734,6 +3750,7 @@ model ButceKartHareket {
   tarih          DateTime
   aciklama       String
   satici         String?  // normalize edilmiş satıcı anahtarı (öğrenme için)
+  defter         String   @default("SAHSI") // SAHSI | OFIS — satır bazında
   tutar          Decimal  @db.Decimal(14, 2) // harcama +, iade/puan -
   taksitBilgi    String?  // "3/12"
   kategoriId     String?
@@ -3755,6 +3772,7 @@ model ButceSaticiHafiza {
   tenantId   String
   userId     String
   satici     String   // normalize anahtar (küçük harf, sadeleştirilmiş)
+  defter     String   @default("SAHSI") // bu satıcı hangi deftere yazılıyor
   kategoriId String
   sayac      Int      @default(1)
   createdAt  DateTime @default(now())
@@ -3764,4 +3782,31 @@ model ButceSaticiHafiza {
 
   @@unique([tenantId, userId, satici])
   @@map("butce_satici_hafiza")
+}
+
+model ButceBankaHesap {
+  id            String    @id @default(cuid())
+  tenantId      String
+  userId        String
+  // Hesap hem şahsi hem ofis için kullanılabilir; bu yalnız yeni kayıtta ÖN SEÇİM
+  varsayilanDefter String @default("SAHSI") // SAHSI | OFIS
+  ad            String    // "Maaş hesabı", "Ofis hesabı"
+  bankaAdi      String
+  iban4         String?   // IBAN son 4 hane (tamamı saklanmaz)
+  tur           String    @default("VADESIZ") // VADESIZ | KMH
+  acilisBakiye  Decimal   @default(0) @db.Decimal(14, 2) // sisteme giriş anındaki bakiye
+  acilisTarihi  DateTime?
+  kmhLimiti     Decimal   @default(0) @db.Decimal(14, 2)
+  kmhAylikFaiz  Decimal   @default(0) @db.Decimal(6, 3) // % aylık
+  renk          String?
+  aktif         Boolean   @default(true)
+  sira          Int       @default(0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  islemler ButceIslem[]
+  odemeler ButceOdeme[]
+
+  @@index([tenantId, userId, aktif])
+  @@map("butce_banka_hesaplar")
 }

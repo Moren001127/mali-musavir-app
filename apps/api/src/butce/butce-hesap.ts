@@ -44,8 +44,14 @@ export interface KalemOdeme {
   id: string;
   ad: string;
   tip: BorcTipi;
+  /** Bu ay ÖDENMESİ GEREKEN tutar (kart asgarisi / kredi taksiti) — kapasiteye göre kırpılmaz */
   zorunlu: number;
+  /** Kapasiteden bu borca gerçekten ayrılabilen zorunlu tutar */
+  odenen: number;
+  /** Zorunlu tutarın karşılanamayan kısmı (0 ise sorun yok) */
+  eksik: number;
   ekstra: number;
+  /** odenen + ekstra */
   toplam: number;
   kalanSonra: number;
 }
@@ -204,19 +210,24 @@ export function odemePlaniHesapla(girdi: PlanGirdi): PlanSonuc {
     let kalanKapasite = kapasite;
     const ayDagilim = new Map<string, KalemOdeme>();
     for (const k of kalemler) {
-      const zorunlu = Math.min(zorunluOdeme(k), kalanKapasite > 0 ? kalanKapasite : 0);
-      if (zorunlu > 0) {
-        k._kalan = KURUS(k._kalan - zorunlu);
-        kalanKapasite = KURUS(kalanKapasite - zorunlu);
-        toplamOdeme = KURUS(toplamOdeme + zorunlu);
+      // Gerçek zorunlu tutar kapasiteye göre KIRPILMAZ: kredi taksiti bölünemez,
+      // kart asgarisi de öyle. Kapasite yetmiyorsa fark "eksik" olarak raporlanır.
+      const gercekZorunlu = KURUS(zorunluOdeme(k));
+      const odenen = KURUS(Math.min(gercekZorunlu, kalanKapasite > 0 ? kalanKapasite : 0));
+      if (odenen > 0) {
+        k._kalan = KURUS(k._kalan - odenen);
+        kalanKapasite = KURUS(kalanKapasite - odenen);
+        toplamOdeme = KURUS(toplamOdeme + odenen);
       }
       ayDagilim.set(k.id, {
         id: k.id,
         ad: k.ad,
         tip: k.tip,
-        zorunlu: KURUS(zorunlu),
+        zorunlu: gercekZorunlu,
+        odenen,
+        eksik: KURUS(Math.max(gercekZorunlu - odenen, 0)),
         ekstra: 0,
-        toplam: KURUS(zorunlu),
+        toplam: odenen,
         kalanSonra: KURUS(k._kalan),
       });
     }
@@ -233,7 +244,7 @@ export function odemePlaniHesapla(girdi: PlanGirdi): PlanSonuc {
       const satir = ayDagilim.get(hedef.id);
       if (satir) {
         satir.ekstra = KURUS(satir.ekstra + odenecek);
-        satir.toplam = KURUS(satir.zorunlu + satir.ekstra);
+        satir.toplam = KURUS(satir.odenen + satir.ekstra);
         satir.kalanSonra = KURUS(hedef._kalan);
       }
     }
@@ -325,4 +336,73 @@ export function ekstraOdemeFaydasi(
       return { id: k.id, ad: k.ad, kazanc, ay };
     })
     .sort((a, b) => b.kazanc - a.kazanc);
+}
+
+/**
+ * Bir ekstrenin KAPSADIĞI harcama aralığı.
+ *
+ * "2026-08 dönemi" = 7 Ağustos'ta kesilen ekstre demektir; içindeki harcamalar
+ * bir önceki kesimin ertesi gününden (8 Temmuz) bu kesim gününe (7 Ağustos) kadardır.
+ * Ekranda dönem etiketi tek başına yanıltıcı olduğu için bu aralık gösterilir.
+ */
+export function ekstreHarcamaAraligi(
+  donem: string,
+  kesimGunu: number,
+  sonOdemeGunFarki: number,
+): { baslangic: Date; bitis: Date; kesimTarihi: Date; sonOdemeTarihi: Date } {
+  const buAy = kesimVeSonOdeme(donem, kesimGunu, sonOdemeGunFarki);
+  const oncekiAy = kesimVeSonOdeme(donemKaydir(donem, -1), kesimGunu, sonOdemeGunFarki);
+  return {
+    baslangic: new Date(oncekiAy.kesimTarihi.getTime() + 86400000), // önceki kesimin ertesi günü
+    bitis: buAy.kesimTarihi,
+    kesimTarihi: buAy.kesimTarihi,
+    sonOdemeTarihi: buAy.sonOdemeTarihi,
+  };
+}
+
+/**
+ * Kredili mevduat hesabı (KMH) borcu, plan motoru için borç kalemine çevrilir.
+ *
+ * KMH'de sabit taksit yoktur; ödenmezse faiz anaparaya biner. Zorunlu ödeme
+ * olarak aylık faiz kadarı alınır — en azından faizi karşılamayan bir plan
+ * borcu büyütür ve motor bunu "kapanmıyor" olarak gösterir.
+ */
+export function kmhBorcKalemi(p: {
+  id: string;
+  ad: string;
+  eksiBakiye: number; // pozitif tutar olarak KMH borcu
+  aylikFaizYuzde: number;
+}): PlanKalemi | null {
+  const kalan = Math.round(Math.max(p.eksiBakiye, 0) * 100) / 100;
+  if (kalan <= 0) return null;
+  const aylikFaiz = Math.max(p.aylikFaizYuzde, 0) / 100;
+  return {
+    id: p.id,
+    ad: p.ad,
+    tip: 'KREDI',
+    kalan,
+    aylikFaiz,
+    // Zorunlu ödeme = işleyen faiz (anaparayı azaltmaz ama borcu büyütmez)
+    taksitTutari: Math.max(Math.round(kalan * aylikFaiz * 100) / 100, 1),
+  };
+}
+
+/**
+ * Kart için "dönem içi harcama": son kesimden SONRA yapılan, henüz ekstreye
+ * girmemiş harcamalar. Banka ekranlarındaki "güncel borç" bunu içerir,
+ * "ekstre borcu" içermez — ikisi karıştırılırsa limit ve plan yanlış çıkar.
+ */
+export function donemIciAralik(
+  kesimGunu: number,
+  sonOdemeGunFarki: number,
+  bugun: Date = new Date(),
+): { sonKesim: Date; simdi: Date } {
+  const donem = `${bugun.getUTCFullYear()}-${String(bugun.getUTCMonth() + 1).padStart(2, '0')}`;
+  const buAy = kesimVeSonOdeme(donem, kesimGunu, sonOdemeGunFarki);
+  // Bu ayın kesimi henüz gelmediyse son kesim önceki aydadır
+  const sonKesim =
+    buAy.kesimTarihi.getTime() <= bugun.getTime()
+      ? buAy.kesimTarihi
+      : kesimVeSonOdeme(donemKaydir(donem, -1), kesimGunu, sonOdemeGunFarki).kesimTarihi;
+  return { sonKesim, simdi: bugun };
 }

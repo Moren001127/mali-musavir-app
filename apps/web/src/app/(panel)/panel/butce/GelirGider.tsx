@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Plus, Trash2, Repeat, Pencil, CreditCard, PlayCircle } from 'lucide-react';
 import {
-  butceApi, Islem, Kategori, DuzenliOdeme, Kart, para, tarihTR, buDonem,
+  butceApi, Islem, Kategori, DuzenliOdeme, Kart, para, tarihTR, buDonem, DefterSecim, DEFTER_ETIKET,
 } from '@/lib/butce';
 import {
   Kutu, Dugme, Modal, Alan, Girdi, Secim, Bos, Rozet, Yukleniyor, ParaGirdi, paraCoz, paraGiris,
@@ -14,19 +14,19 @@ import {
 
 const bugun = () => new Date().toISOString().slice(0, 10);
 
-export default function GelirGider({ donem }: { donem: string }) {
+export default function GelirGider({ donem, defter = 'TUMU' }: { donem: string; defter?: DefterSecim }) {
   const qc = useQueryClient();
   const [modal, setModal] = useState<Islem | 'yeni' | null>(null);
   const [duzenliModal, setDuzenliModal] = useState<DuzenliOdeme | 'yeni' | null>(null);
   const [filtre, setFiltre] = useState<'HEPSI' | 'GELIR' | 'GIDER'>('HEPSI');
 
   const { data: islemler = [], isLoading } = useQuery({
-    queryKey: ['butce-islemler', donem],
-    queryFn: () => butceApi.islemler({ donem }),
+    queryKey: ['butce-islemler', donem, defter],
+    queryFn: () => butceApi.islemler({ donem, defter }),
   });
-  const { data: kategoriler = [] } = useQuery({ queryKey: ['butce-kategoriler'], queryFn: butceApi.kategoriler });
+  const { data: kategoriler = [] } = useQuery({ queryKey: ['butce-kategoriler'], queryFn: () => butceApi.kategoriler() });
   const { data: kartlar = [] } = useQuery({ queryKey: ['butce-kartlar'], queryFn: butceApi.kartlar });
-  const { data: duzenliler = [] } = useQuery({ queryKey: ['butce-duzenliler'], queryFn: butceApi.duzenliler });
+  const { data: duzenliler = [] } = useQuery({ queryKey: ['butce-duzenliler'], queryFn: () => butceApi.duzenliler() });
 
   const tazele = () => {
     qc.invalidateQueries({ queryKey: ['butce-islemler'] });
@@ -120,7 +120,13 @@ export default function GelirGider({ donem }: { donem: string }) {
                       <span className="flex items-center gap-1.5">
                         {i.aciklama || '—'}
                         {i.kaynak === 'KART' && <CreditCard size={11} style={{ color: MAVI }} />}
-                        {i.planlanan && <Rozet metin="planlanan" renk={TURUNCU} />}
+                        {i.planlanan && <Rozet metin="beklenen" renk={TURUNCU} />}
+                        {defter === 'TUMU' && (
+                          <Rozet
+                            metin={DEFTER_ETIKET[i.defter]}
+                            renk={i.defter === 'OFIS' ? MAVI : GOLD}
+                          />
+                        )}
                       </span>
                     </td>
                     <td className="py-2" style={{ color: MUTED }}>

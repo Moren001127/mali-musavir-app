@@ -590,7 +590,7 @@ function HareketModal({
     queryKey: ['butce-hareketler', ekstreId],
     queryFn: () => butceApi.hareketler(ekstreId),
   });
-  const { data: kategoriler = [] } = useQuery({ queryKey: ['butce-kategoriler'], queryFn: butceApi.kategoriler });
+  const { data: kategoriler = [] } = useQuery({ queryKey: ['butce-kategoriler'], queryFn: () => butceApi.kategoriler() });
 
   const kategoriDegistir = useMutation({
     mutationFn: (p: { id: string; kategoriId: string }) => butceApi.hareketKategori(p.id, p.kategoriId, true),

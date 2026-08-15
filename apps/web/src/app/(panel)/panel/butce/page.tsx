@@ -4,9 +4,12 @@ import React, { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   LayoutDashboard, ArrowLeftRight, CreditCard, Landmark, Target, Settings2,
-  ChevronLeft, ChevronRight, Lock, MessageCircleQuestion,
+  ChevronLeft, ChevronRight, Lock, MessageCircleQuestion, Wallet, CalendarClock,
+  User, Building2, Layers,
 } from 'lucide-react';
-import { butceApi, buDonem, donemKaydir, donemTR, pinBileti } from '@/lib/butce';
+import { butceApi, buDonem, donemKaydir, donemTR, pinBileti, DefterSecim } from '@/lib/butce';
+import Hesaplar from './Hesaplar';
+import NakitAkis from './NakitAkis';
 import PinEkrani from './PinEkrani';
 import GenelBakis from './GenelBakis';
 import GelirGider from './GelirGider';
@@ -20,18 +23,28 @@ import { Yukleniyor, GOLD, MUTED, TEXT, CARD_BORDER } from './ui';
 const SEKMELER = [
   { anahtar: 'genel', etiket: 'Genel Bakış', ikon: LayoutDashboard },
   { anahtar: 'gelir-gider', etiket: 'Gelir & Gider', ikon: ArrowLeftRight },
+  { anahtar: 'hesaplar', etiket: 'Hesaplar', ikon: Wallet },
   { anahtar: 'kartlar', etiket: 'Kredi Kartları', ikon: CreditCard },
   { anahtar: 'borclar', etiket: 'Borçlar', ikon: Landmark },
+  { anahtar: 'nakit', etiket: 'Nakit Akışı', ikon: CalendarClock },
   { anahtar: 'plan', etiket: 'Ödeme Planı', ikon: Target },
   { anahtar: 'danisman', etiket: 'Danışman', ikon: MessageCircleQuestion },
   { anahtar: 'ayarlar', etiket: 'Ayarlar', ikon: Settings2 },
 ] as const;
+
+/** Şahsi / Ofis ayrımı — aynı kart ve hesap iki defterde de kullanılabilir */
+const DEFTERLER: Array<{ deger: DefterSecim; etiket: string; ikon: any }> = [
+  { deger: 'TUMU', etiket: 'Tümü', ikon: Layers },
+  { deger: 'SAHSI', etiket: 'Şahsi', ikon: User },
+  { deger: 'OFIS', etiket: 'Ofis', ikon: Building2 },
+];
 
 type Sekme = (typeof SEKMELER)[number]['anahtar'];
 
 export default function ButcePage() {
   const [sekme, setSekme] = useState<Sekme>('genel');
   const [donem, setDonem] = useState(buDonem());
+  const [defter, setDefter] = useState<DefterSecim>('TUMU');
   // PIN bileti sekme belleğinde: sayfa yenilense de sekme açık kaldıkça sorulmaz.
   const [kilitAcik, setKilitAcik] = useState(false);
 
@@ -44,8 +57,8 @@ export default function ButcePage() {
 
   const erisim = useQuery({ queryKey: ['butce-erisim'], queryFn: butceApi.erisim, retry: false });
   const ozet = useQuery({
-    queryKey: ['butce-ozet', donem],
-    queryFn: () => butceApi.ozet(donem),
+    queryKey: ['butce-ozet', donem, defter],
+    queryFn: () => butceApi.ozet(donem, defter),
     enabled: erisim.isSuccess && kilitAcik,
   });
 
@@ -67,7 +80,7 @@ export default function ButcePage() {
 
   if (!kilitAcik) return <PinEkrani acildi={() => setKilitAcik(true)} />;
 
-  const donemSecici = sekme !== 'ayarlar' && sekme !== 'kartlar' && sekme !== 'borclar' && sekme !== 'danisman';
+  const donemSecici = ['genel', 'gelir-gider', 'plan'].includes(sekme);
 
   return (
     <div className="space-y-4 pb-10">
@@ -130,6 +143,43 @@ export default function ButcePage() {
         </div>
       </header>
 
+      {/* Defter seçici — şahsi ve ofis kayıtları ayrı okunur */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[11px] uppercase tracking-wider" style={{ color: MUTED }}>
+          Defter
+        </span>
+        <div
+          className="flex items-center gap-1 rounded-xl p-1"
+          style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${CARD_BORDER}` }}
+        >
+          {DEFTERLER.map((d) => {
+            const Ikon = d.ikon;
+            const aktif = defter === d.deger;
+            return (
+              <button
+                key={d.deger}
+                onClick={() => setDefter(d.deger)}
+                className="flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[11.5px] transition"
+                style={{
+                  background: aktif ? `${GOLD}1f` : 'transparent',
+                  border: `1px solid ${aktif ? `${GOLD}44` : 'transparent'}`,
+                  color: aktif ? GOLD : MUTED,
+                }}
+              >
+                <Ikon size={12} /> {d.etiket}
+              </button>
+            );
+          })}
+        </div>
+        <span className="text-[10.5px]" style={{ color: 'rgba(113,113,122,0.85)' }}>
+          {defter === 'TUMU'
+            ? 'Şahsi ve ofis birlikte'
+            : defter === 'OFIS'
+              ? 'Yalnız ofis gelir-giderleri (kâr/zarar)'
+              : 'Yalnız kişisel gelir-giderleriniz'}
+        </span>
+      </div>
+
       {/* Sekmeler */}
       <nav className="flex flex-wrap gap-1.5">
         {SEKMELER.map((s) => {
@@ -156,10 +206,12 @@ export default function ButcePage() {
       {/* İçerik */}
       {sekme === 'genel' &&
         (ozet.isLoading || !ozet.data ? <Yukleniyor /> : <GenelBakis ozet={ozet.data} donem={donem} />)}
-      {sekme === 'gelir-gider' && <GelirGider donem={donem} />}
+      {sekme === 'gelir-gider' && <GelirGider donem={donem} defter={defter} />}
+      {sekme === 'hesaplar' && <Hesaplar />}
       {sekme === 'kartlar' && <Kartlar />}
       {sekme === 'borclar' && <Borclar />}
-      {sekme === 'plan' && <OdemePlani donem={donem} />}
+      {sekme === 'nakit' && <NakitAkis />}
+      {sekme === 'plan' && <OdemePlani donem={donem} defter={defter} />}
       {sekme === 'danisman' && <Danisman />}
       {sekme === 'ayarlar' && <Ayarlar />}
     </div>

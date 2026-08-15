@@ -77,6 +77,34 @@ export class ButceEkstreImportService {
 
   /* ===================== KURAL TABANLI AYRIŞTIRMA ===================== */
 
+  /**
+   * Ekstrede hareket SAYILMAYAN satırlar. Bunlar bütçeye harcama olarak yazılırsa
+   * ay iki kez şişer: "ödeme/teşekkür" satırı zaten yapılmış ödemedir, "devir" satırı
+   * ise önceki ayın bakiyesidir ve yeni dönem borcunun içinde zaten vardır.
+   */
+  private static readonly HAREKET_DEGIL = [
+    /[öo]deme.*te[şs]ekk[üu]r/i,
+    /te[şs]ekk[üu]r ederiz/i,
+    /yap[ıi]lan [öo]deme/i,
+    /[öo]nceki d[öo]nem/i,
+    /devreden bakiye/i,
+    /devir/i,
+    /ge[çc]en d[öo]nem bakiye/i,
+    /asgari [öo]deme/i,
+    /toplam bor[cç]/i,
+    /d[öo]nem bor[cç]u/i,
+    /son [öo]deme tarihi/i,
+    /hesap kesim/i,
+    /kalan bor[cç]/i,
+    /bakiye devri/i,
+  ];
+
+  private hareketSayilirMi(aciklama: string): boolean {
+    const a = String(aciklama || '').trim();
+    if (a.length < 3) return false;
+    return !ButceEkstreImportService.HAREKET_DEGIL.some((re) => re.test(a));
+  }
+
   /** "12.07.2026  MIGROS ISTANBUL  1.234,56" biçimli satırları yakalar */
   private kuralIleSatirlar(metin: string): Array<{ tarih: string; aciklama: string; tutar: number; taksitBilgi?: string }> {
     const cikti: Array<{ tarih: string; aciklama: string; tutar: number; taksitBilgi?: string }> = [];
@@ -89,10 +117,12 @@ export class ButceEkstreImportService {
       const yil = yy.length === 2 ? 2000 + Number(yy) : Number(yy);
       const tutar = this.paraCevir(tutarHam);
       if (tutar === null) continue;
+      const aciklama = aciklamaHam.replace(/\s{2,}/g, ' ').trim();
+      if (!this.hareketSayilirMi(aciklama)) continue; // ödeme/devir satırı — harcama değil
       const taksit = /(\d{1,2})\s*\/\s*(\d{1,2})/.exec(aciklamaHam);
       cikti.push({
         tarih: `${yil}-${aa}-${gg}`,
-        aciklama: aciklamaHam.replace(/\s{2,}/g, ' ').trim(),
+        aciklama,
         tutar: sonEksi ? -tutar : tutar,
         taksitBilgi: taksit ? `${taksit[1]}/${taksit[2]}` : undefined,
       });
@@ -168,7 +198,8 @@ export class ButceEkstreImportService {
         'KURALLAR:',
         '- Harcama tutarı POZİTİF, iade/puan/indirim NEGATİF olsun.',
         '- Faiz, ücret, aidat satırlarını da hareket olarak ekle.',
-        '- Önceki dönem bakiyesi / yapılan ödeme satırlarını hareket olarak EKLEME.',
+        '- Önceki dönem bakiyesi, devir, yapılan ödeme ve "teşekkür ederiz" satırlarını EKLEME.',
+        '- Asgari ödeme, dönem borcu, toplam borç gibi ÖZET satırlarını hareket olarak EKLEME.',
         '- Tutarları sayı olarak yaz (1234.56), metin değil.',
         '',
         'EKSTRE METNİ:',
@@ -264,7 +295,13 @@ export class ButceEkstreImportService {
             tutar: Math.round(Number(h.tutar) * 100) / 100,
             taksitBilgi: h.taksitBilgi || undefined,
           }))
-          .filter((h: any) => h.aciklama && Number.isFinite(h.tutar) && /^\d{4}-\d{2}-\d{2}$/.test(h.tarih));
+          .filter(
+            (h: any) =>
+              h.aciklama &&
+              Number.isFinite(h.tutar) &&
+              /^\d{4}-\d{2}-\d{2}$/.test(h.tarih) &&
+              this.hareketSayilirMi(h.aciklama), // model yine de eklerse burada elenir
+          );
         ozet = {
           donemBorcu: ozet.donemBorcu ?? (Number.isFinite(ai.donemBorcu) ? ai.donemBorcu : null),
           asgariTutar: ozet.asgariTutar ?? (Number.isFinite(ai.asgariTutar) ? ai.asgariTutar : null),
@@ -300,7 +337,18 @@ export class ButceEkstreImportService {
       guncelleme.borcTutari = ozet.donemBorcu;
       guncelleme.asgariTutar =
         ozet.asgariTutar ?? asgariTutarHesapla(ozet.donemBorcu, Number(kart.asgariOran) || 20);
-      guncelleme.durum = 'ODENMEDI';
+      // Durumu sabit 'ODENMEDI' yazmak, ödenmiş ekstreyi yeniden yükleyince
+      // borcu diriltiyordu. Ödenen tutara göre hesapla.
+      const odenen = Number(ekstre.odenenTutar) || 0;
+      const asgari = Number(guncelleme.asgariTutar) || 0;
+      guncelleme.durum =
+        odenen >= ozet.donemBorcu - 0.009
+          ? 'ODENDI'
+          : odenen >= asgari && asgari > 0
+            ? 'ASGARI_ODENDI'
+            : odenen > 0
+              ? 'KISMI'
+              : 'ODENMEDI';
     }
     if (Object.keys(guncelleme).length > 0) {
       await this.db.butceKartEkstre.update({ where: { id: ekstre.id }, data: guncelleme });
@@ -309,12 +357,15 @@ export class ButceEkstreImportService {
     // 3) Kategori ataması — önce hafıza, kalanı AI
     const kategoriler = await this.db.butceKategori.findMany({
       where: { tenantId: k.tenantId, userId: k.userId, tur: 'GIDER', aktif: true },
-      select: { id: true, ad: true },
+      select: { id: true, ad: true, defter: true },
     });
     const hafiza = await this.db.butceSaticiHafiza.findMany({
       where: { tenantId: k.tenantId, userId: k.userId },
     });
-    const hafizaMap = new Map<string, string>(hafiza.map((h: any) => [h.satici, h.kategoriId]));
+    // Hafıza hem kategoriyi hem defteri (şahsi/ofis) hatırlar
+    const hafizaMap = new Map<string, { kategoriId: string; defter: string }>(
+      hafiza.map((h: any) => [h.satici, { kategoriId: h.kategoriId, defter: h.defter || 'SAHSI' }]),
+    );
 
     const zenginler = hareketler.map((h) => ({
       ...h,
@@ -325,18 +376,37 @@ export class ButceEkstreImportService {
     ).slice(0, 120);
     const aiEslesme = await this.aiIleKategoriOner(bilinmeyenler, kategoriler);
 
-    // 4) Hareketleri yaz (aynı ekstre yeniden yüklenirse eskiler silinir — kopya olmasın)
+    // 4) Hareketleri yaz.
+    // ONAYLANMIŞ hareket varsa yükleme REDDEDİLİR: eski sürümde yalnız onaylanmamışlar
+    // siliniyor, onaylıların üstüne kopya ekleniyordu ve o ayın gideri ikiye katlanıyordu.
+    const onayliVar = await this.db.butceKartHareket.count({
+      where: { tenantId: k.tenantId, userId: k.userId, ekstreId: ekstre.id, onaylandi: true },
+    });
+    if (onayliVar > 0) {
+      throw new BadRequestException(
+        `Bu ekstrenin ${onayliVar} hareketi zaten bütçeye işlenmiş. Yeniden yüklemek için önce "Onayı geri al" deyin.`,
+      );
+    }
     await this.db.butceKartHareket.deleteMany({
       where: { tenantId: k.tenantId, userId: k.userId, ekstreId: ekstre.id, onaylandi: false },
     });
 
     let hafizadan = 0;
     let aiden = 0;
+    const kategoriDefterMap = new Map<string, string>(
+      kategoriler.map((c: any) => [c.id, c.defter || 'SAHSI']),
+    );
     for (const h of zenginler) {
-      const hafizaKategori = hafizaMap.get(h.satici);
-      const kategoriId = hafizaKategori || aiEslesme[h.aciklama] || null;
-      if (hafizaKategori) hafizadan++;
+      const hafizaKayit = hafizaMap.get(h.satici);
+      const kategoriId = hafizaKayit?.kategoriId || aiEslesme[h.aciklama] || null;
+      if (hafizaKayit) hafizadan++;
       else if (kategoriId) aiden++;
+      // Defter sırası: satıcı hafızası → kategorinin defteri → kartın varsayılanı
+      const defter =
+        hafizaKayit?.defter ||
+        (kategoriId ? kategoriDefterMap.get(kategoriId) : null) ||
+        kart.varsayilanDefter ||
+        'SAHSI';
       await this.db.butceKartHareket.create({
         data: {
           tenantId: k.tenantId,
@@ -348,7 +418,8 @@ export class ButceEkstreImportService {
           tutar: h.tutar,
           taksitBilgi: h.taksitBilgi || null,
           kategoriId,
-          kategoriKaynak: hafizaKategori ? 'HAFIZA' : kategoriId ? 'AI' : 'AI',
+          defter,
+          kategoriKaynak: hafizaKayit ? 'HAFIZA' : kategoriId ? 'AI' : 'AI',
         },
       });
     }
@@ -382,7 +453,13 @@ export class ButceEkstreImportService {
   }
 
   /** Kategori düzeltme — düzeltilen satıcı hafızaya yazılır (bir kez düzelt, bir daha sorma) */
-  async hareketKategoriDegistir(k: Kimlik, id: string, kategoriId: string, hepsineUygula = true) {
+  async hareketKategoriDegistir(
+    k: Kimlik,
+    id: string,
+    kategoriId: string,
+    hepsineUygula = true,
+    defter?: string,
+  ) {
     const hareket = await this.db.butceKartHareket.findFirst({
       where: { id, tenantId: k.tenantId, userId: k.userId },
     });
@@ -392,9 +469,12 @@ export class ButceEkstreImportService {
     });
     if (!kategori) throw new NotFoundException('Kategori bulunamadı');
 
+    // Defter: elle verilmişse o, yoksa kategorinin defteri
+    const yeniDefter = defter === 'OFIS' || defter === 'SAHSI' ? defter : kategori.defter || 'SAHSI';
+
     await this.db.butceKartHareket.update({
       where: { id },
-      data: { kategoriId, kategoriKaynak: 'ELLE' },
+      data: { kategoriId, defter: yeniDefter, kategoriKaynak: 'ELLE' },
     });
 
     if (hareket.satici) {
@@ -411,8 +491,9 @@ export class ButceEkstreImportService {
           userId: k.userId,
           satici: hareket.satici,
           kategoriId,
+          defter: yeniDefter,
         },
-        update: { kategoriId, sayac: { increment: 1 } },
+        update: { kategoriId, defter: yeniDefter, sayac: { increment: 1 } },
       });
 
       if (hepsineUygula) {
@@ -425,7 +506,47 @@ export class ButceEkstreImportService {
             onaylandi: false,
             id: { not: id },
           },
-          data: { kategoriId, kategoriKaynak: 'HAFIZA' },
+          data: { kategoriId, defter: yeniDefter, kategoriKaynak: 'HAFIZA' },
+        });
+      }
+    }
+    return { ok: true };
+  }
+
+  /** Yalnız defteri değiştir (kategori aynı kalsın) */
+  async hareketDefterDegistir(k: Kimlik, id: string, defter: string, hepsineUygula = true) {
+    if (defter !== 'SAHSI' && defter !== 'OFIS') {
+      throw new BadRequestException('defter SAHSI veya OFIS olmalı');
+    }
+    const hareket = await this.db.butceKartHareket.findFirst({
+      where: { id, tenantId: k.tenantId, userId: k.userId },
+    });
+    if (!hareket) throw new NotFoundException('Hareket bulunamadı');
+    await this.db.butceKartHareket.update({ where: { id }, data: { defter } });
+    if (hareket.satici && hepsineUygula) {
+      await this.db.butceKartHareket.updateMany({
+        where: {
+          tenantId: k.tenantId,
+          userId: k.userId,
+          satici: hareket.satici,
+          onaylandi: false,
+          id: { not: id },
+        },
+        data: { defter },
+      });
+      if (hareket.kategoriId) {
+        await this.db.butceSaticiHafiza.upsert({
+          where: {
+            tenantId_userId_satici: { tenantId: k.tenantId, userId: k.userId, satici: hareket.satici },
+          },
+          create: {
+            tenantId: k.tenantId,
+            userId: k.userId,
+            satici: hareket.satici,
+            kategoriId: hareket.kategoriId,
+            defter,
+          },
+          update: { defter },
         });
       }
     }
@@ -448,25 +569,49 @@ export class ButceEkstreImportService {
     });
 
     let islenen = 0;
+    let eslesenElleGirilen = 0;
     for (const h of hareketler) {
       const tutar = Number(h.tutar);
       if (!(Math.abs(tutar) > 0)) continue;
       const tarih = new Date(h.tarih);
       const donem = `${tarih.getUTCFullYear()}-${String(tarih.getUTCMonth() + 1).padStart(2, '0')}`;
+
+      // ÇAKIŞMA ÇÖZÜMÜ: aynı kart + aynı tutar + ±3 gün aralığında ELLE girilmiş
+      // (ekstre satırından üretilmemiş) bir kayıt varsa, onu bu satırla değiştir.
+      // Aksi hâlde ay içinde elle girilen harcama, ekstre yüklenince ikinci kez sayılırdı.
+      const pencereBas = new Date(tarih.getTime() - 3 * 86400000);
+      const pencereBit = new Date(tarih.getTime() + 3 * 86400000);
+      const elleGirilen = await this.db.butceIslem.findFirst({
+        where: {
+          tenantId: k.tenantId,
+          userId: k.userId,
+          kartId: ekstre.kartId,
+          kartHareketId: null,
+          tutar: Math.abs(tutar),
+          tarih: { gte: pencereBas, lte: pencereBit },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (elleGirilen) {
+        await this.db.butceIslem.delete({ where: { id: elleGirilen.id } });
+        eslesenElleGirilen++;
+      }
+
       const islem = await this.db.butceIslem.create({
         data: {
           tenantId: k.tenantId,
           userId: k.userId,
           tarih,
           donem,
-          // İade/puan negatif tutarlıdır → gelir değil, gideri azaltan kayıt olarak
-          // GIDER türünde negatif tutar tutmuyoruz; iadeyi GELIR olarak yazıyoruz.
+          // İade/puan satırı negatif tutarlıdır; gideri azaltmak yerine GELIR yazılır
           tur: tutar >= 0 ? 'GIDER' : 'GELIR',
           tutar: Math.abs(tutar),
+          defter: h.defter || ekstre.kart.varsayilanDefter || 'SAHSI',
           kategoriId: h.kategoriId,
           aciklama: `${h.aciklama}${h.taksitBilgi ? ` (${h.taksitBilgi})` : ''} — ${ekstre.kart.bankaAdi} ${ekstre.kart.kartAdi}`,
           kaynak: 'KART',
           kartId: ekstre.kartId,
+          kartHareketId: h.id,
         },
       });
       await this.db.butceKartHareket.update({
@@ -475,7 +620,15 @@ export class ButceEkstreImportService {
       });
       islenen++;
     }
-    return { ok: true, islenen };
+    return {
+      ok: true,
+      islenen,
+      eslesenElleGirilen,
+      mesaj:
+        eslesenElleGirilen > 0
+          ? `${islenen} hareket işlendi. ${eslesenElleGirilen} tanesi daha önce elle girdiğiniz kayıtla eşleşti ve ekstre satırıyla değiştirildi (çift kayıt olmadı).`
+          : `${islenen} hareket bütçeye işlendi.`,
+    };
   }
 
   /** Onaylanmış hareketleri geri al (yanlış ekstre yüklenmişse) */

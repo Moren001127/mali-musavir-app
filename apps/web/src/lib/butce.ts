@@ -44,11 +44,105 @@ if (!araciKuruldu) {
 /* ===================== TİPLER ===================== */
 
 export type Tur = 'GELIR' | 'GIDER';
+/** Şahsi mi ofis mi — aynı kart/hesap iki defter için de kullanılabilir, ayrım HAREKET düzeyinde */
+export type Defter = 'SAHSI' | 'OFIS';
+export type DefterSecim = Defter | 'TUMU';
+
+export const DEFTER_ETIKET: Record<DefterSecim, string> = {
+  SAHSI: 'Şahsi',
+  OFIS: 'Ofis',
+  TUMU: 'Tümü',
+};
+
+export interface BankaHesap {
+  id: string;
+  varsayilanDefter: Defter;
+  ad: string;
+  bankaAdi: string;
+  iban4?: string | null;
+  tur: 'VADESIZ' | 'KMH';
+  acilisBakiye: number;
+  acilisTarihi?: string | null;
+  kmhLimiti: number;
+  kmhAylikFaiz: number;
+  renk?: string | null;
+  aktif: boolean;
+  sira: number;
+  bakiye: number;
+  kmhBorcu: number;
+  kmhKalanLimit: number;
+  kmhDoluluk: number;
+  kullanilabilir: number;
+}
+
+export interface HesapHareket {
+  id: string;
+  tarih: string;
+  aciklama: string;
+  kategori: string | null;
+  defter: string | null;
+  tutar: number;
+  kayitTuru: 'ISLEM' | 'ODEME' | 'TRANSFER';
+}
+
+export interface AkisHareketOzet {
+  ad: string;
+  tutar: number;
+  tur: 'GELIR' | 'GIDER' | 'KART_ODEME' | 'KREDI_TAKSIT' | 'KMH_FAIZ';
+  kesin: boolean;
+}
+
+export interface AkisGunu {
+  tarih: string;
+  giris: number;
+  cikis: number;
+  bakiye: number;
+  hareketler: AkisHareketOzet[];
+  acik: number;
+}
+
+export interface AkisSecenek {
+  ad: string;
+  aciklama: string;
+  maliyet: number;
+  onerilen: boolean;
+}
+
+export interface AkisOnerisi {
+  tarih: string;
+  acik: number;
+  baslik: string;
+  secenekler: AkisSecenek[];
+}
+
+export interface NakitAkis {
+  baslangicNakit: number;
+  gunler: AkisGunu[];
+  enDusuk: { tarih: string; tutar: number };
+  acikGunler: AkisGunu[];
+  kmhIleKarsilanir: boolean;
+  toplamGiris: number;
+  toplamCikis: number;
+  kmhLimitToplam: number;
+  oneriler: AkisOnerisi[];
+  hesaplar: Array<{ id: string; ad: string; bankaAdi: string; bakiye: number; renk?: string | null }>;
+}
+
+export interface OfisOzet {
+  donem: string;
+  gelir: number;
+  gider: number;
+  kar: number;
+  karMarji: number;
+  sahipCekisi: number;
+  yilBasindanBeri: { gelir: number; gider: number; kar: number };
+}
 export type Strateji = 'CIG' | 'KARTOPU';
 export type EkstreDurum = 'TUTAR_BEKLENIYOR' | 'ODENMEDI' | 'KISMI' | 'ODENDI' | 'GECIKTI';
 
 export interface Kategori {
   id: string;
+  defter: Defter;
   ad: string;
   tur: Tur;
   renk?: string | null;
@@ -59,6 +153,10 @@ export interface Kategori {
 
 export interface Islem {
   id: string;
+  defter: Defter;
+  bankaHesapId?: string | null;
+  bankaHesap?: { id: string; ad: string; bankaAdi: string } | null;
+  transferGrupId?: string | null;
   tarih: string;
   donem: string;
   tur: Tur;
@@ -73,6 +171,7 @@ export interface Islem {
 
 export interface DuzenliOdeme {
   id: string;
+  defter: Defter;
   ad: string;
   tur: Tur;
   tutar: number;
@@ -101,11 +200,19 @@ export interface Ekstre {
   odemeTarihi?: string | null;
   notlar?: string | null;
   kalanGun?: number;
+  /** Kesim tarihi henüz gelmedi — "tutar girilmedi" uyarısı gösterilmez */
+  kesilmedi?: boolean;
+  /** Bu ekstrenin kapsadığı harcama aralığı */
+  harcamaBaslangic?: string | null;
+  harcamaBitis?: string | null;
+  /** Daha yeni bir ekstreye devretmiş, borç toplamına girmez */
+  devretti?: boolean;
   kart?: { id: string; bankaAdi: string; kartAdi: string; renk?: string | null };
 }
 
 export interface Kart {
   id: string;
+  varsayilanDefter: Defter;
   bankaAdi: string;
   kartAdi: string;
   sonDortHane?: string | null;
@@ -119,8 +226,18 @@ export interface Kart {
   aktif: boolean;
   ekstreler: Ekstre[];
   guncelEkstre: Ekstre | null;
+  /** Borcun hesaplandığı ekstre (tutarı girilmiş en son ekstre) */
+  borcEkstresi: Ekstre | null;
+  /** Kesilmiş ekstrenin ödenmemiş kısmı */
+  ekstreBorcu: number;
+  /** Son kesimden sonra yapılan, henüz ekstreye girmemiş harcama */
+  donemIciHarcama: number;
+  donemIciBaslangic: string;
+  /** ekstreBorcu + donemIciHarcama */
+  guncelBorc: number;
   kalanBorc: number;
   kullanilabilirLimit: number;
+  limitDoluluk: number;
 }
 
 export interface KartHareket {
@@ -139,6 +256,7 @@ export interface KartHareket {
 
 export interface Borc {
   id: string;
+  defter: Defter;
   ad: string;
   tur: string;
   kurum?: string | null;
@@ -187,7 +305,18 @@ export interface Ozet {
   zorunluGider: number;
   istegeBagliGider: number;
   nakitYastigi: number;
-  borcOzet: { kart: number; kredi: number; toplam: number; aylikZorunluOdeme: number };
+  defter: DefterSecim;
+  nakitVarlik: number;
+  netVarlik: number;
+  hesapOzet: Array<{ id: string; ad: string; bankaAdi: string; bakiye: number; kmhBorcu: number; renk?: string | null }>;
+  borcOzet: {
+    kart: number;
+    kartDonemIci: number;
+    kredi: number;
+    kmh: number;
+    toplam: number;
+    aylikZorunluOdeme: number;
+  };
   kategoriKirilim: Array<{ ad: string; renk: string; tutar: number; zorunlu: boolean }>;
   trend: Array<{ donem: string; gelir: number; gider: number }>;
   yaklasanOdemeler: Ekstre[];
@@ -198,7 +327,12 @@ export interface KalemOdeme {
   id: string;
   ad: string;
   tip: 'KART' | 'KREDI';
+  /** Ödenmesi GEREKEN tutar (kapasiteye göre kırpılmaz) */
   zorunlu: number;
+  /** Kapasiteden bu borca ayrılabilen */
+  odenen: number;
+  /** Karşılanamayan kısım */
+  eksik: number;
   ekstra: number;
   toplam: number;
   kalanSonra: number;
@@ -217,6 +351,7 @@ export interface PlanSonuc {
 
 export interface Plan {
   donem: string;
+  defter: DefterSecim;
   gelir: number;
   gider: number;
   nakitYastigi: number;
@@ -237,7 +372,7 @@ export interface Plan {
 }
 
 export interface AiRapor {
-  id?: string;
+  id: string;
   tur: string;
   donem?: string | null;
   soru?: string | null;
@@ -283,24 +418,64 @@ export const butceApi = {
     al<{ bilet: string; bitis: number }>(api.post('/butce/pin/kur', { pin, eskiPin })),
   pinAc: (pin: string) => al<{ bilet: string; bitis: number }>(api.post('/butce/pin/ac', { pin })),
 
-  ozet: (donem?: string) => al<Ozet>(api.get('/butce/ozet', { params: { donem } })),
+  ozet: (donem?: string, defter?: DefterSecim) =>
+    al<Ozet>(api.get('/butce/ozet', { params: { donem, defter } })),
+  ofisOzet: (donem?: string) => al<OfisOzet>(api.get('/butce/ofis-ozet', { params: { donem } })),
+
+  hesaplar: () => al<BankaHesap[]>(api.get('/butce/hesaplar')),
+  hesapEkle: (body: Partial<BankaHesap>) => al<BankaHesap>(api.post('/butce/hesaplar', body)),
+  hesapGuncelle: (id: string, body: Partial<BankaHesap>) =>
+    al<BankaHesap>(api.put(`/butce/hesaplar/${id}`, body)),
+  hesapSil: (id: string) =>
+    al<{ ok: boolean; pasifeAlindi: boolean; kullanim?: number }>(api.delete(`/butce/hesaplar/${id}`)),
+  hesapHareketleri: (id: string, donem?: string) =>
+    al<HesapHareket[]>(api.get(`/butce/hesaplar/${id}/hareketler`, { params: { donem } })),
+
+  transfer: (body: {
+    tutar: number;
+    tarih?: string;
+    kaynakDefter?: Defter;
+    hedefDefter?: Defter;
+    kaynakHesapId?: string | null;
+    hedefHesapId?: string | null;
+    aciklama?: string;
+  }) => al<{ ok: boolean; transferGrupId: string; tutar: number; aciklama: string }>(api.post('/butce/transfer', body)),
+
+  nakitAkis: (gunSayisi?: number) => al<NakitAkis>(api.get('/butce/nakit-akis', { params: { gunSayisi } })),
+
+  islemGerceklesti: (id: string, body: { tarih?: string; tutar?: number; bankaHesapId?: string }) =>
+    al<Islem>(api.post(`/butce/islemler/${id}/gerceklesti`, body)),
+  odemeSil: (id: string) => al(api.delete(`/butce/odemeler/${id}`)),
+  hareketDefter: (id: string, defter: Defter, hepsineUygula = true) =>
+    al(api.put(`/butce/hareketler/${id}/defter`, { defter, hepsineUygula })),
 
   ayar: () => al<Ayar>(api.get('/butce/ayar')),
   ayarKaydet: (body: Partial<Ayar>) => al<Ayar>(api.put('/butce/ayar', body)),
 
-  kategoriler: () => al<Kategori[]>(api.get('/butce/kategoriler')),
+  kategoriler: (defter?: DefterSecim) =>
+    al<Kategori[]>(api.get('/butce/kategoriler', { params: { defter } })),
   kategoriEkle: (body: Partial<Kategori>) => al<Kategori>(api.post('/butce/kategoriler', body)),
   kategoriGuncelle: (id: string, body: Partial<Kategori>) =>
     al<Kategori>(api.put(`/butce/kategoriler/${id}`, body)),
   kategoriSil: (id: string) => al(api.delete(`/butce/kategoriler/${id}`)),
 
-  islemler: (p: { donem?: string; tur?: string; kategoriId?: string; kartId?: string } = {}) =>
-    al<Islem[]>(api.get('/butce/islemler', { params: p })),
+  islemler: (
+    p: {
+      donem?: string;
+      tur?: string;
+      kategoriId?: string;
+      kartId?: string;
+      bankaHesapId?: string;
+      defter?: DefterSecim;
+      planlanan?: boolean;
+    } = {},
+  ) => al<Islem[]>(api.get('/butce/islemler', { params: { ...p, planlanan: p.planlanan ? 1 : undefined } })),
   islemEkle: (body: Partial<Islem>) => al<Islem>(api.post('/butce/islemler', body)),
   islemGuncelle: (id: string, body: Partial<Islem>) => al<Islem>(api.put(`/butce/islemler/${id}`, body)),
   islemSil: (id: string) => al(api.delete(`/butce/islemler/${id}`)),
 
-  duzenliler: () => al<DuzenliOdeme[]>(api.get('/butce/duzenliler')),
+  duzenliler: (defter?: DefterSecim) =>
+    al<DuzenliOdeme[]>(api.get('/butce/duzenliler', { params: { defter } })),
   duzenliEkle: (body: Partial<DuzenliOdeme>) => al<DuzenliOdeme>(api.post('/butce/duzenliler', body)),
   duzenliGuncelle: (id: string, body: Partial<DuzenliOdeme>) =>
     al<DuzenliOdeme>(api.put(`/butce/duzenliler/${id}`, body)),
@@ -318,7 +493,7 @@ export const butceApi = {
     al<Ekstre>(api.post('/butce/ekstreler/uret', { kartId, donem })),
   ekstreTutar: (id: string, body: { borcTutari: number; asgariTutar?: number; notlar?: string }) =>
     al<Ekstre>(api.put(`/butce/ekstreler/${id}/tutar`, body)),
-  ekstreOdeme: (id: string, body: { tutar: number; tarih?: string; tip?: string }) =>
+  ekstreOdeme: (id: string, body: { tutar: number; tarih?: string; tip?: string; bankaHesapId?: string | null }) =>
     al<Ekstre>(api.post(`/butce/ekstreler/${id}/odeme`, body)),
 
   ekstrePdfYukle: (kartId: string, dosya: File, opts: { donem?: string; sifre?: string } = {}) => {
@@ -339,14 +514,17 @@ export const butceApi = {
   hareketGeriAl: (ekstreId: string) =>
     al<{ geriAlinan: number }>(api.post(`/butce/ekstreler/${ekstreId}/hareketler/geri-al`)),
 
-  borclar: (hepsi = false) => al<Borc[]>(api.get('/butce/borclar', { params: { hepsi: hepsi ? 1 : 0 } })),
+  borclar: (hepsi = false, defter?: DefterSecim) =>
+    al<Borc[]>(api.get('/butce/borclar', { params: { hepsi: hepsi ? 1 : 0, defter } })),
   borcEkle: (body: Partial<Borc>) => al<Borc>(api.post('/butce/borclar', body)),
   borcGuncelle: (id: string, body: Partial<Borc>) => al<Borc>(api.put(`/butce/borclar/${id}`, body)),
   borcSil: (id: string) => al(api.delete(`/butce/borclar/${id}`)),
-  borcOdeme: (id: string, body: { tutar: number; tarih?: string; tip?: string }) =>
-    al<Borc>(api.post(`/butce/borclar/${id}/odeme`, body)),
+  borcOdeme: (
+    id: string,
+    body: { tutar: number; tarih?: string; tip?: string; bankaHesapId?: string | null },
+  ) => al<Borc>(api.post(`/butce/borclar/${id}/odeme`, body)),
 
-  plan: (p: { donem?: string; kapasite?: number; strateji?: Strateji } = {}) =>
+  plan: (p: { donem?: string; kapasite?: number; strateji?: Strateji; defter?: DefterSecim } = {}) =>
     al<Plan>(api.get('/butce/plan', { params: p })),
   fayda: (tutar: number) =>
     al<{ tutar: number; siralama: Array<{ id: string; ad: string; kazanc: number; ay: number }> }>(
@@ -356,6 +534,7 @@ export const butceApi = {
   aiAylik: (donem?: string, yenile = false) => al<AiRapor>(api.post('/butce/ai/aylik-yorum', { donem, yenile })),
   aiPlan: (yenile = false) => al<AiRapor>(api.post('/butce/ai/plan-yorum', { yenile })),
   aiSoru: (soru: string) => al<AiRapor>(api.post('/butce/ai/soru', { soru })),
+  aiGecmis: (tur?: string) => al<AiRapor[]>(api.get('/butce/ai/gecmis', { params: { tur } })),
 };
 
 /* ===================== YARDIMCI ===================== */

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import {
   Send, Sparkles, User, Copy, Check, Trash2, Loader2, ShieldCheck,
   Wallet, CreditCard, TrendingDown, CalendarClock, Lightbulb,
@@ -75,7 +75,41 @@ export default function Danisman() {
   const [mesajlar, setMesajlar] = useState<Mesaj[]>([]);
   const [girdi, setGirdi] = useState('');
   const [kopyalanan, setKopyalanan] = useState<string | null>(null);
+  const [gecmisYuklendi, setGecmisYuklendi] = useState(false);
   const akisRef = useRef<HTMLDivElement>(null);
+
+  // Sohbet sunucuda saklanır: sekme değiştirip dönünce ya da sayfayı yenileyince
+  // konuşma kaybolmaz (kayıtlar butce_ai_raporlar tablosunda tutulur).
+  const gecmis = useQuery({
+    queryKey: ['butce-ai-gecmis-soru'],
+    queryFn: () => butceApi.aiGecmis('SORU'),
+    staleTime: 60 * 1000,
+    retry: false,
+  });
+
+  useEffect(() => {
+    if (gecmisYuklendi || !gecmis.data) return;
+    const kayitlar = [...gecmis.data]
+      .filter((r) => r.soru)
+      .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    if (kayitlar.length === 0) {
+      setGecmisYuklendi(true);
+      return;
+    }
+    const akis: Mesaj[] = [];
+    for (const r of kayitlar) {
+      akis.push({ id: `${r.id}-s`, rol: 'soru', metin: r.soru as string, zaman: new Date(r.createdAt) });
+      akis.push({
+        id: `${r.id}-c`,
+        rol: 'cevap',
+        metin: r.icerik,
+        zaman: new Date(r.createdAt),
+        model: r.model,
+      });
+    }
+    setMesajlar(akis);
+    setGecmisYuklendi(true);
+  }, [gecmis.data, gecmisYuklendi]);
 
   const sor = useMutation({
     mutationFn: (soru: string) => butceApi.aiSoru(soru),
@@ -131,15 +165,17 @@ export default function Danisman() {
   const bos = mesajlar.length === 0;
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
+    <div
+      className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_300px]"
+      style={{ height: 'calc(100vh - 260px)', minHeight: 420 }}
+    >
       {/* ===== Sohbet ===== */}
       <section
-        className="relative flex flex-col overflow-hidden rounded-2xl"
+        className="relative flex min-h-0 flex-col overflow-hidden rounded-2xl"
         style={{
           background: 'linear-gradient(165deg, rgba(176,160,224,0.05), rgba(255,255,255,0.012) 45%)',
           border: `1px solid ${CARD_BORDER}`,
           boxShadow: '0 18px 44px rgba(0,0,0,0.24)',
-          minHeight: 560,
         }}
       >
         <div
@@ -173,7 +209,7 @@ export default function Danisman() {
               onClick={() => setMesajlar([])}
               className="flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[11px] transition hover:bg-white/[0.06]"
               style={{ color: MUTED }}
-              title="Sohbeti temizle"
+              title="Ekrandaki sohbeti gizle (kayıtlar silinmez)"
             >
               <Trash2 size={12} /> Temizle
             </button>
@@ -181,7 +217,7 @@ export default function Danisman() {
         </header>
 
         {/* Akış */}
-        <div ref={akisRef} className="flex-1 space-y-4 overflow-y-auto px-5 py-5" style={{ maxHeight: 520 }}>
+        <div ref={akisRef} className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-5">
           {bos ? (
             <div className="flex h-full min-h-[360px] flex-col items-center justify-center px-6 text-center">
               <span
@@ -339,7 +375,7 @@ export default function Danisman() {
       </section>
 
       {/* ===== Yan panel: hazır sorular ===== */}
-      <aside className="space-y-3">
+      <aside className="min-h-0 space-y-3 overflow-y-auto pr-1">
         <div
           className="rounded-2xl px-4 py-3.5"
           style={{ background: 'rgba(255,255,255,0.018)', border: `1px solid ${CARD_BORDER}` }}

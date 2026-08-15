@@ -17,6 +17,9 @@ import { QualityLogService } from './quality-log.service';
 import { CalisanService } from '../calisan/calisan.service';
 import { claudeTextViaMax, MAX_MODEL_CHEAP } from '../common/max-inference';
 import { buildOwnerStatusReply, resolveTaxpayerByText, buildTaxpayerSelfReply, buildTaxpayerQuickReply, buildOwnerSingleTaxpayerReply, buildOwnerSingleTaxpayerKdvReply, buildOwnerDebtTotalReply } from '../moren-ai/monthly-status.shared';
+import { forwardRef, Inject } from '@nestjs/common';
+import { ButceWhatsappService } from '../butce/butce-whatsapp.service';
+import { OwnerOnlyGuard } from '../auth/guards/owner-only.guard';
 
 type IncomingWhatsAppMessage = {
   from: string;
@@ -66,6 +69,9 @@ export class WhatsAppBotController implements OnModuleInit {
     private readonly qualityLog: QualityLogService,
     private readonly baileys: BaileysService,
     private readonly calisan: CalisanService,
+    // Kişisel Bütçe komutları (owner hattı). forwardRef: ButceModule bu modülü import ediyor.
+    @Inject(forwardRef(() => ButceWhatsappService))
+    private readonly butceWhatsapp: ButceWhatsappService,
     @Optional() private readonly eventBus?: AutomationEventBus,
     @Optional() private readonly storage?: StorageService,
   ) {}
@@ -999,6 +1005,42 @@ export class WhatsAppBotController implements OnModuleInit {
       .replace(/[^\w\s]/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
+  }
+
+  /**
+   * Kişisel Bütçe modülü komutları. Modül owner-only olduğu için kayıt, modülün
+   * sahibi olan kullanıcı adına yapılır; e-posta eşleşmezse hiçbir şey yapılmaz.
+   */
+  private async maybeHandleButce(ownerTenant: any, msg: any, ownerContactId: string): Promise<boolean> {
+    try {
+      if (!ButceWhatsappService.butceIstegiMi(msg.text)) return false;
+      const email = OwnerOnlyGuard.ownerEmail();
+      if (!email) return false;
+      const sahip = await this.prisma.user.findFirst({
+        where: { email: { equals: email, mode: 'insensitive' }, isActive: true },
+        select: { id: true, tenantId: true },
+      });
+      if (!sahip) return false;
+
+      const cevap = await this.butceWhatsapp.islemYap(
+        { tenantId: sahip.tenantId, userId: sahip.id },
+        msg.text,
+      );
+      if (!cevap) return false;
+
+      await this.ownerCevapGonder(
+        msg,
+        ownerTenant.id,
+        ownerContactId,
+        cevap,
+        'owner:butce',
+        'WhatsApp owner butce islemi',
+      );
+      return true;
+    } catch (e: any) {
+      this.logger.warn(`[Butce WhatsApp] islem hatasi: ${e?.message || e}`);
+      return false;
+    }
   }
 
   private isOwnerIdentityQuestion(text: string): boolean {
@@ -2053,6 +2095,13 @@ ${not}` : not;
         const reply = this.ownerIdentityReply(ownerTenant);
         await this.ownerCevapGonder(msg, ownerTenant.id, ownerContact.id, reply, 'owner:kimlik', 'WhatsApp owner kimlik cevabi');
         if (!msg.__dryRun) this.refreshTaxpayerMemory(ownerTenant.id, ownerContact.id);
+        return;
+      }
+
+      // KİŞİSEL BÜTÇE: owner "bugün 850 TL market harcaması yaptım işle" / "Ziraat kartının
+      // borç tutarı 95.000 TL" / "ofisten 20 bin çektim" gibi yazınca kaydı burada yapar.
+      // Yalnız MODÜL SAHİBİ için çalışır; başka owner numarası olsa bile veri karışmaz.
+      if (await this.maybeHandleButce(ownerTenant, msg, ownerContact?.id)) {
         return;
       }
 

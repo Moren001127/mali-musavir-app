@@ -5,25 +5,26 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import {
   Target, TrendingDown, AlertTriangle, Calculator, Trophy, CalendarCheck,
 } from 'lucide-react';
-import { butceApi, Strateji, para, donemTR } from '@/lib/butce';
+import { butceApi, Strateji, para, donemTR, DefterSecim } from '@/lib/butce';
 import {
   Kutu, KPI, Dugme, Girdi, Alan, Bos, Rozet, Yukleniyor, ParaGirdi, paraCoz,
   GOLD, OK, KIRMIZI, TURUNCU, MAVI, MOR, MUTED, TEXT, ROW_SEP,
 } from './ui';
 import AiKutu from './AiKutu';
 
-export default function OdemePlani({ donem }: { donem: string }) {
+export default function OdemePlani({ donem, defter = 'TUMU' }: { donem: string; defter?: DefterSecim }) {
   const [kapasite, setKapasite] = useState<string>('');
   const [strateji, setStrateji] = useState<Strateji | undefined>(undefined);
   const [ekstra, setEkstra] = useState('');
 
   const { data: plan, isLoading } = useQuery({
-    queryKey: ['butce-plan', donem, kapasite, strateji],
+    queryKey: ['butce-plan', donem, kapasite, strateji, defter],
     queryFn: () =>
       butceApi.plan({
         donem,
         kapasite: kapasite === '' ? undefined : paraCoz(kapasite),
         strateji,
+        defter,
       }),
   });
 
@@ -139,6 +140,8 @@ export default function OdemePlani({ donem }: { donem: string }) {
                 <tr className="text-left text-[10.5px] uppercase tracking-wider" style={{ color: MUTED }}>
                   <th className="pb-2 font-medium">Borç</th>
                   <th className="pb-2 text-right font-medium">Zorunlu</th>
+                  <th className="pb-2 text-right font-medium">Ödenebilen</th>
+                  <th className="pb-2 text-right font-medium">Eksik</th>
                   <th className="pb-2 text-right font-medium">Ekstra</th>
                   <th className="pb-2 text-right font-medium">Toplam ödeme</th>
                   <th className="pb-2 text-right font-medium">Sonraki kalan</th>
@@ -154,8 +157,17 @@ export default function OdemePlani({ donem }: { donem: string }) {
                         {x.ekstra > 0 && <Rozet metin="hedef" renk={GOLD} />}
                       </span>
                     </td>
-                    <td className="py-2 text-right tabular-nums" style={{ color: MUTED }}>
+                    <td className="py-2 text-right tabular-nums" style={{ color: TEXT }}>
                       {para(x.zorunlu)} ₺
+                    </td>
+                    <td className="py-2 text-right tabular-nums" style={{ color: MUTED }}>
+                      {para(x.odenen)} ₺
+                    </td>
+                    <td
+                      className="py-2 text-right tabular-nums"
+                      style={{ color: x.eksik > 0 ? KIRMIZI : MUTED }}
+                    >
+                      {x.eksik > 0 ? `${para(x.eksik)} ₺` : '—'}
                     </td>
                     <td className="py-2 text-right tabular-nums" style={{ color: x.ekstra > 0 ? GOLD : MUTED }}>
                       {para(x.ekstra)} ₺

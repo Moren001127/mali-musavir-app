@@ -151,3 +151,47 @@ describe('butce-hesap — ödeme planı', () => {
     expect(sira[0].kazanc).toBeLessThan(1000 * (Math.pow(1.05, 10) - 1) + 0.01);
   });
 });
+
+describe('butce-hesap — zorunlu ödeme kırpılmaz (gerçek vaka)', () => {
+  // Canlıda görülen hata: kapasite 35.000, kart asgarileri 29.607 → kalan 5.393.
+  // Kredi taksiti 60.000 iken tabloda "zorunlu 5.393" yazıyordu; doğrusu
+  // zorunlu 60.000, ödenebilen 5.393, eksik 54.607.
+  it('kapasite yetmediğinde zorunlu tutar olduğu gibi kalır, eksik ayrı gösterilir', () => {
+    const s = odemePlaniHesapla({
+      aylikKapasite: 35000,
+      kalemler: [
+        { id: 'k1', ad: 'Kart', tip: 'KART', kalan: 100000, aylikFaiz: 0.0425, asgariOran: 0.2 },
+        { id: 'b1', ad: 'Araç kredisi', tip: 'KREDI', kalan: 660000, aylikFaiz: 0, taksitTutari: 60000 },
+      ],
+      strateji: 'CIG',
+      maxAy: 12,
+    });
+
+    const kart = s.ilkAy.find((x) => x.id === 'k1')!;
+    const kredi = s.ilkAy.find((x) => x.id === 'b1')!;
+
+    // Kart asgarisi tam ödenir
+    expect(kart.zorunlu).toBe(20850); // faiz işledikten sonraki bakiyenin %20'si
+    expect(kart.eksik).toBe(0);
+
+    // Kredi taksiti KIRPILMAZ; ödenebilen kadarı ayrı alanda
+    expect(kredi.zorunlu).toBe(60000);
+    expect(kredi.odenen).toBeLessThan(60000);
+    expect(kredi.eksik).toBeGreaterThan(0);
+    expect(kredi.odenen + kredi.eksik).toBe(60000);
+
+    // Ödenen toplam kapasiteyi aşmaz
+    const odenenToplam = s.ilkAy.reduce((t, x) => t + x.toplam, 0);
+    expect(odenenToplam).toBeLessThanOrEqual(35000 + 0.01);
+  });
+
+  it('kapasite yeterliyken eksik sıfırdır', () => {
+    const s = odemePlaniHesapla({
+      aylikKapasite: 200000,
+      kalemler: [{ id: 'b1', ad: 'Kredi', tip: 'KREDI', kalan: 100000, aylikFaiz: 0.01, taksitTutari: 20000 }],
+      strateji: 'CIG',
+    });
+    expect(s.ilkAy[0].eksik).toBe(0);
+    expect(s.ilkAy[0].odenen).toBe(20000);
+  });
+});

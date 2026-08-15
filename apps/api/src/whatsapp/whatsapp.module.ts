@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { WhatsAppService } from './whatsapp.service';
 import { BaileysService } from './baileys.service';
 import { WhatsAppController } from './whatsapp.controller';
@@ -23,9 +23,10 @@ import { MorenAiModule } from '../moren-ai/moren-ai.module';
 import { StorageModule } from '../storage/storage.module';
 import { EmailModule } from '../email/email.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { ButceModule } from '../butce/butce.module';
 
 @Module({
-  imports: [PrismaModule, MorenAiModule, StorageModule, EmailModule, NotificationsModule, CalisanModule],
+  imports: [forwardRef(() => ButceModule), PrismaModule, MorenAiModule, StorageModule, EmailModule, NotificationsModule, CalisanModule],
   providers: [
     WhatsAppService,
     BaileysService,

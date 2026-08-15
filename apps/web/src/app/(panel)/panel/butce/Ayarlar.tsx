@@ -17,7 +17,7 @@ import {
 export default function Ayarlar() {
   const qc = useQueryClient();
   const { data: ayar, isLoading } = useQuery({ queryKey: ['butce-ayar'], queryFn: butceApi.ayar });
-  const { data: kategoriler = [] } = useQuery({ queryKey: ['butce-kategoriler'], queryFn: butceApi.kategoriler });
+  const { data: kategoriler = [] } = useQuery({ queryKey: ['butce-kategoriler'], queryFn: () => butceApi.kategoriler() });
 
   const [form, setForm] = useState({
     nakitYastigi: '',

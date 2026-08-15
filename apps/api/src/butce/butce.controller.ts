@@ -18,7 +18,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { OwnerOnlyGuard } from '../auth/guards/owner-only.guard';
 import { ButcePinGuard, PinSerbest } from './butce-pin.guard';
 import { ButcePinService } from './butce-pin.service';
-import { ButceService, Kimlik } from './butce.service';
+import { ButceService, Kimlik, DefterSecim } from './butce.service';
 import { ButceAiService } from './butce-ai.service';
 import { ButceEkstreImportService } from './butce-ekstre-import.service';
 import { Strateji } from './butce-hesap';
@@ -73,8 +73,54 @@ export class ButceController {
 
   /* ===== ÖZET ===== */
   @Get('ozet')
-  ozet(@Req() req: any, @Query('donem') donem?: string) {
-    return this.butce.ozet(this.kimlik(req), donem);
+  ozet(@Req() req: any, @Query('donem') donem?: string, @Query('defter') defter?: string) {
+    return this.butce.ozet(this.kimlik(req), donem, (defter as DefterSecim) || 'TUMU');
+  }
+
+  /** Ofis kâr/zarar özeti (yalnız OFIS defteri) */
+  @Get('ofis-ozet')
+  ofisOzet(@Req() req: any, @Query('donem') donem?: string) {
+    return this.butce.ofisOzet(this.kimlik(req), donem);
+  }
+
+  /** Gün gün nakit akışı projeksiyonu + açık günler için öneriler */
+  @Get('nakit-akis')
+  nakitAkis(@Req() req: any, @Query('gunSayisi') gunSayisi?: string) {
+    return this.butce.nakitAkisi(this.kimlik(req), {
+      gunSayisi: gunSayisi ? Number(gunSayisi) : undefined,
+    });
+  }
+
+  /* ===== BANKA HESAPLARI ===== */
+  @Get('hesaplar')
+  hesaplar(@Req() req: any) {
+    return this.butce.bankaHesaplar(this.kimlik(req));
+  }
+
+  @Post('hesaplar')
+  hesapEkle(@Req() req: any, @Body() body: any) {
+    return this.butce.bankaHesapKaydet(this.kimlik(req), body);
+  }
+
+  @Put('hesaplar/:id')
+  hesapGuncelle(@Req() req: any, @Param('id') id: string, @Body() body: any) {
+    return this.butce.bankaHesapKaydet(this.kimlik(req), body, id);
+  }
+
+  @Delete('hesaplar/:id')
+  hesapSil(@Req() req: any, @Param('id') id: string) {
+    return this.butce.bankaHesapSil(this.kimlik(req), id);
+  }
+
+  @Get('hesaplar/:id/hareketler')
+  hesapHareketleri(@Req() req: any, @Param('id') id: string, @Query('donem') donem?: string) {
+    return this.butce.bankaHareketleri(this.kimlik(req), id, donem);
+  }
+
+  /** Hesaplar / defterler arası aktarım (ofisten kendine çekmek dâhil) */
+  @Post('transfer')
+  transfer(@Req() req: any, @Body() body: any) {
+    return this.butce.transferYap(this.kimlik(req), body);
   }
 
   /* ===== AYARLAR ===== */
@@ -90,8 +136,8 @@ export class ButceController {
 
   /* ===== KATEGORİ ===== */
   @Get('kategoriler')
-  kategoriler(@Req() req: any) {
-    return this.butce.kategoriler(this.kimlik(req));
+  kategoriler(@Req() req: any, @Query('defter') defter?: string) {
+    return this.butce.kategoriler(this.kimlik(req), (defter as DefterSecim) || undefined);
   }
 
   @Post('kategoriler')
@@ -117,8 +163,25 @@ export class ButceController {
     @Query('tur') tur?: string,
     @Query('kategoriId') kategoriId?: string,
     @Query('kartId') kartId?: string,
+    @Query('bankaHesapId') bankaHesapId?: string,
+    @Query('defter') defter?: string,
+    @Query('planlanan') planlanan?: string,
   ) {
-    return this.butce.islemler(this.kimlik(req), { donem, tur, kategoriId, kartId });
+    return this.butce.islemler(this.kimlik(req), {
+      donem,
+      tur,
+      kategoriId,
+      kartId,
+      bankaHesapId,
+      defter: (defter as DefterSecim) || undefined,
+      planlanan: planlanan === undefined ? undefined : planlanan === '1' || planlanan === 'true',
+    });
+  }
+
+  /** Beklenen tahsilat/ödemeyi gerçekleşmiş yap */
+  @Post('islemler/:id/gerceklesti')
+  islemGerceklesti(@Req() req: any, @Param('id') id: string, @Body() body: any) {
+    return this.butce.islemGerceklesti(this.kimlik(req), id, body);
   }
 
   @Post('islemler')
@@ -138,8 +201,8 @@ export class ButceController {
 
   /* ===== DÜZENLİ ÖDEMELER ===== */
   @Get('duzenliler')
-  duzenliler(@Req() req: any) {
-    return this.butce.duzenliler(this.kimlik(req));
+  duzenliler(@Req() req: any, @Query('defter') defter?: string) {
+    return this.butce.duzenliler(this.kimlik(req), (defter as DefterSecim) || undefined);
   }
 
   @Post('duzenliler')
@@ -236,6 +299,19 @@ export class ButceController {
       id,
       body.kategoriId,
       body.hepsineUygula !== false,
+      body.defter,
+    );
+  }
+
+  /** Ekstre satırını şahsi/ofis olarak işaretle */
+  @Put('hareketler/:id/defter')
+  hareketDefter(@Req() req: any, @Param('id') id: string, @Body() body: any) {
+    if (!body?.defter) throw new BadRequestException('defter gerekli');
+    return this.ekstreImport.hareketDefterDegistir(
+      this.kimlik(req),
+      id,
+      body.defter,
+      body.hepsineUygula !== false,
     );
   }
 
@@ -251,8 +327,12 @@ export class ButceController {
 
   /* ===== BORÇLAR ===== */
   @Get('borclar')
-  borclar(@Req() req: any, @Query('hepsi') hepsi?: string) {
-    return this.butce.borclar(this.kimlik(req), hepsi === '1' || hepsi === 'true');
+  borclar(@Req() req: any, @Query('hepsi') hepsi?: string, @Query('defter') defter?: string) {
+    return this.butce.borclar(
+      this.kimlik(req),
+      hepsi === '1' || hepsi === 'true',
+      (defter as DefterSecim) || undefined,
+    );
   }
 
   @Post('borclar')
@@ -280,6 +360,12 @@ export class ButceController {
     return this.butce.odemeler(this.kimlik(req), donem);
   }
 
+  /** Yanlış girilen ödemeyi geri al */
+  @Delete('odemeler/:id')
+  odemeSil(@Req() req: any, @Param('id') id: string) {
+    return this.butce.odemeSil(this.kimlik(req), id);
+  }
+
   /* ===== ÖDEME PLANI ===== */
   @Get('plan')
   plan(
@@ -287,11 +373,13 @@ export class ButceController {
     @Query('donem') donem?: string,
     @Query('kapasite') kapasite?: string,
     @Query('strateji') strateji?: string,
+    @Query('defter') defter?: string,
   ) {
     return this.butce.plan(this.kimlik(req), {
       donem,
       kapasite: kapasite === undefined || kapasite === '' ? undefined : Number(kapasite),
       strateji: (strateji as Strateji) || undefined,
+      defter: (defter as DefterSecim) || undefined,
     });
   }
 
