@@ -51,19 +51,32 @@ export class ButceAiService {
       if (onceki) return onceki;
     }
     const ozet = await this.butce.ozet(k, donem);
+    // AI'nın gördüğü tablo ekranda gördüğümüzle AYNI olmalı; eksik alan
+    // yorumun uydurmaya kaymasına yol açıyor.
     const girdi = {
       donem,
       gelir: ozet.gelir,
       gider: ozet.gider,
+      meslekiGider: ozet.meslekiGider,
+      kisiselGider: ozet.kisiselGider,
+      meslekiKazanc: ozet.meslekiKazanc,
       net: ozet.net,
       zorunluGider: ozet.zorunluGider,
       istegeBagliGider: ozet.istegeBagliGider,
+      nakitVarlik: ozet.nakitVarlik,
+      bankaBakiyesi: ozet.bankaBakiyesi,
+      nakitKasasi: ozet.nakitKasasi,
+      odemeKapasitesi: ozet.odemeKapasitesi,
+      netVarlik: ozet.netVarlik,
       kategoriKirilim: ozet.kategoriKirilim,
       son6AyTrend: ozet.trend,
       borcOzet: ozet.borcOzet,
     };
     const prompt = [
       `${donem} dönemi kişisel bütçe verim aşağıda (JSON).`,
+      'Ben şahıs firması sahibi bir mali müşavirim: ofisin geliri benim gelirim,',
+      'o yüzden gelir tek havuzdur. Ayrım gider tarafındadır — mesleki gider',
+      'kazançtan indirilir, kişisel harcama indirilmez.',
       'Bunu yorumla:',
       '1) Bu ay para nereye gitmiş, dikkat çeken kalem hangisi?',
       '2) Önceki aylara göre ne değişmiş (trend verisini kullan)?',
@@ -126,8 +139,16 @@ export class ButceAiService {
         donem,
         gelir: ozet.gelir,
         gider: ozet.gider,
+        meslekiGider: ozet.meslekiGider,
+        kisiselGider: ozet.kisiselGider,
         net: ozet.net,
         kategoriKirilim: ozet.kategoriKirilim,
+      },
+      elimdekiPara: {
+        bankaBakiyesi: ozet.bankaBakiyesi,
+        nakitKasasi: ozet.nakitKasasi,
+        toplam: ozet.nakitVarlik,
+        borcaAyrilabilir: ozet.odemeKapasitesi,
       },
       trend: ozet.trend,
       borclar: plan.kalemler,

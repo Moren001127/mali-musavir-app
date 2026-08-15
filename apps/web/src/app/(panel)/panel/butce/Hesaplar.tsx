@@ -626,7 +626,7 @@ function AktarimModal({
           <Girdi
             value={form.aciklama}
             onChange={(e) => setForm({ ...form, aciklama: e.target.value })}
-            placeholder="Örn. Ofisten şahsi hesaba çekiliş"
+            placeholder="Örn. Ziraat’tan İş Bankası’na aktarım"
           />
         </Alan>
 
@@ -646,7 +646,7 @@ function AktarimModal({
         >
           <ArrowLeftRight size={13} style={{ color: MAVI }} className="mt-0.5 flex-shrink-0" />
           <span>
-            Ofisten kendinize para çekmek de aktarımdır: kaynak defter Ofis, hedef defter Şahsi.
+            Aktarım gelir ya da gider sayılmaz; para bir hesaptan diğerine geçer, toplamlarınız değişmez.
             Aktarım gelir/gider sayılmaz.
           </span>
         </div>

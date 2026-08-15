@@ -751,6 +751,8 @@ export class ButceService {
           kartId: kart.id,
           tur: 'GIDER',
           tarih: { gt: sonKesim },
+          // Beklenen (henüz olmamış) harcama kart borcu değildir
+          planlanan: false,
         },
         _sum: { tutar: true },
       }),
@@ -761,6 +763,7 @@ export class ButceService {
           kartId: kart.id,
           tur: 'GELIR',
           tarih: { gt: sonKesim },
+          planlanan: false,
         },
         _sum: { tutar: true },
       }),

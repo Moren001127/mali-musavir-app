@@ -864,8 +864,8 @@ function AktarimModal({
 
   const tutar = paraCoz(form.tutar);
   const ayniHesap = !!form.kaynakHesapId && form.kaynakHesapId === form.hedefHesapId;
-  const hesapsizAyniDefter =
-    !form.kaynakHesapId && !form.hedefHesapId && form.kaynakDefter === form.hedefDefter;
+  // Aktarım para taşımaktır: en az bir hesap belirtilmezse hiçbir bakiye değişmez
+  const hesapsizAyniDefter = !form.kaynakHesapId && !form.hedefHesapId;
   const gecersiz = tutar <= 0 || ayniHesap || hesapsizAyniDefter;
 
   const aktar = useMutation({
@@ -908,17 +908,6 @@ function AktarimModal({
           <Girdi type="date" value={form.tarih} onChange={(e) => setForm({ ...form, tarih: e.target.value })} />
         </Alan>
 
-        <DefterAlani
-          deger={form.kaynakDefter}
-          degistir={(d) => setForm({ ...form, kaynakDefter: d })}
-          ipucu="Paranın çıktığı defter"
-        />
-        <DefterAlani
-          deger={form.hedefDefter}
-          degistir={(d) => setForm({ ...form, hedefDefter: d })}
-          ipucu="Paranın girdiği defter"
-        />
-
         <Alan etiket="Kaynak hesap (paranın çıktığı)" ipucu="Nakit çekiş ise boş bırakın.">
           <Secim
             value={form.kaynakHesapId}
@@ -950,7 +939,7 @@ function AktarimModal({
           <Girdi
             value={form.aciklama}
             onChange={(e) => setForm({ ...form, aciklama: e.target.value })}
-            placeholder="Örn. Ofisten şahsi hesaba çekiliş"
+            placeholder="Örn. Ziraat’tan İş Bankası’na aktarım"
           />
         </Alan>
 
@@ -963,7 +952,7 @@ function AktarimModal({
             <span>
               {ayniHesap
                 ? 'Kaynak ve hedef aynı hesap olamaz. Farklı bir hesap seçin.'
-                : 'Aynı defter içinde hesap seçmeden aktarımın etkisi olmaz. Defterlerden birini ya da hesapları değiştirin.'}
+                : 'En az bir hesap seçin; yoksa aktarımın hiçbir bakiyeye etkisi olmaz.'}
             </span>
           </div>
         )}
@@ -974,7 +963,8 @@ function AktarimModal({
         >
           <ArrowLeftRight size={13} style={{ color: MAVI }} className="mt-0.5 flex-shrink-0" />
           <span>
-            Ofisten kendinize çektiğiniz para gelir sayılmaz; iki defterde de aktarım olarak görünür.
+            Aktarım gelir ya da gider değildir; para yalnız yer değiştirir. Bu yüzden gelir–gider
+            toplamlarını etkilemez, sadece hesap bakiyelerini günceller.
           </span>
         </div>
 
