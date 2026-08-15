@@ -91,6 +91,7 @@ async function bootstrap() {
       'Accept',
       'Origin',
       'X-Agent-Token', // Moren Agent extension için
+      'X-Butce-Pin', // Kisisel Butce modulu PIN bileti (bu basliksiz preflight tum /butce isteklerini bloklar)
     ],
     exposedHeaders: ['Content-Disposition', 'X-Moren-Render-Source'],
     maxAge: 600,
