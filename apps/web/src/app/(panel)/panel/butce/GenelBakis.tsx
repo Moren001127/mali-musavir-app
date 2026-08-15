@@ -150,14 +150,6 @@ export default function GenelBakis({
           }
         />
         <KPI
-          etiket="Varlık − borç"
-          deger={`${para(ozet.netVarlik)} ₺`}
-          renk={ozet.netVarlik >= 0 ? OK : KIRMIZI}
-          ikon={<Scale size={14} />}
-          altBilgi="Hesabımdaki para − tüm borçlar"
-          vurgu={ozet.netVarlik < 0}
-        />
-        <KPI
           etiket="Toplam borç"
           deger={`${para(ozet.borcOzet.toplam)} ₺`}
           renk={TURUNCU}
@@ -170,6 +162,14 @@ export default function GenelBakis({
             ` · Kredi ${para(ozet.borcOzet.kredi)} ₺` +
             (ozet.borcOzet.kmh > 0 ? ` · Ek hesap ${para(ozet.borcOzet.kmh)} ₺` : '')
           }
+        />
+        <KPI
+          etiket="Varlık − borç"
+          deger={`${para(ozet.netVarlik)} ₺`}
+          renk={ozet.netVarlik >= 0 ? OK : KIRMIZI}
+          ikon={<Scale size={14} />}
+          altBilgi="Hesabımdaki para − tüm borçlar"
+          vurgu={ozet.netVarlik < 0}
         />
       </div>
 
