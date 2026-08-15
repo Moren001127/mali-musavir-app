@@ -123,6 +123,10 @@ export class ButceService {
 
   async kategoriler(k: Kimlik) {
     await this.ayarGetir(k);
+    // Varsayilan kategoriler yalniz ayar kaydi ILK olusurken kuruluyordu; PIN kurulumu
+    // ayar kaydini onceden yarattigi icin liste bos kaliyordu. Burada da denenir —
+    // fonksiyon kendi icinde kategori-varsa-dokunma kontrolu yapar (idempotent).
+    await this.varsayilanKategorileriKur(k);
     return this.db.butceKategori.findMany({
       where: { tenantId: k.tenantId, userId: k.userId },
       orderBy: [{ tur: 'asc' }, { sira: 'asc' }, { ad: 'asc' }],
