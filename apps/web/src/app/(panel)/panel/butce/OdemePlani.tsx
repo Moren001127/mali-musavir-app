@@ -116,8 +116,16 @@ export default function OdemePlani({ donem, defter = 'TUMU' }: { donem: string; 
               <span className="w-[150px] shrink-0" style={{ color: MUTED }}>
                 Bu aya özel birikim
               </span>
-              <span style={{ color: MAVI }}>{para(plan.nakitVarlik)} ₺ hesaplardaki para</span>
-              <span style={{ color: MUTED }}>·</span>
+              <span style={{ color: MAVI }}>{para(plan.bankaBakiyesi)} ₺ bankada</span>
+              {plan.nakitKasasi !== 0 && (
+                <>
+                  <span style={{ color: MUTED }}>+</span>
+                  <span style={{ color: MAVI }}>{para(plan.nakitKasasi)} ₺ elde/kasada</span>
+                </>
+              )}
+              <span style={{ color: MUTED }}>−</span>
+              <span style={{ color: MUTED }}>bu ayın akışı</span>
+              <span style={{ color: MUTED }}>=</span>
               <span className="font-semibold" style={{ color: MAVI }}>
                 {para(plan.birikim)} ₺
               </span>

@@ -311,6 +311,12 @@ export interface Ozet {
   kartGideri: number;
   /** Nakit/banka ile yapılan gider */
   nakitGider: number;
+  /** Banka hesaplarındaki bakiye */
+  bankaBakiyesi: number;
+  /** Hesap seçilmeden girilmiş hareketlerin net etkisi (eldeki nakit) */
+  nakitKasasi: number;
+  /** Borca ayrılabilecek para — Ödeme Planı ile aynı hesap */
+  odemeKapasitesi: number;
   net: number;
   /** Nakit akışı: gelir − nakit gider */
   nakitNet: number;
@@ -367,12 +373,12 @@ export interface Plan {
   gelir: number;
   gider: number;
   nakitYastigi: number;
-  /** Banka hesaplarındaki artı bakiyelerin toplamı */
+  /** Elde olan toplam para: banka bakiyeleri + nakit kasası */
   nakitVarlik: number;
-  /** Hesaba bağlanmamış gelir — bakiyede görünmediği için ayrıca eklenir */
-  serbestGelir: number;
-  /** Hesaba bağlanmamış nakit gider */
-  serbestGider: number;
+  /** Banka hesaplarındaki bakiye */
+  bankaBakiyesi: number;
+  /** Hesap seçilmeden girilmiş hareketlerin net etkisi */
+  nakitKasasi: number;
   /** Yastık düşülmeden önce elde olan toplam para */
   kullanilabilirNakit: number;
   /** Yalnız bu aya özel birikim — her ay tekrarlamaz */

@@ -142,9 +142,11 @@ export default function GenelBakis({
           renk={MOR}
           ikon={<Coins size={14} />}
           altBilgi={
-            hesapSayisi > 0
-              ? `${hesapSayisi} banka hesabındaki bugünkü bakiye`
-              : 'Banka hesabı tanımlı değil'
+            ozet.nakitKasasi !== 0
+              ? `Bankada ${para(ozet.bankaBakiyesi)} ₺ · elde ${para(ozet.nakitKasasi)} ₺`
+              : hesapSayisi > 0
+                ? `${hesapSayisi} banka hesabındaki bugünkü bakiye`
+                : 'Banka hesabı tanımlı değil'
           }
         />
         <KPI
@@ -204,7 +206,7 @@ export default function GenelBakis({
             <div className="flex justify-between border-t pt-1" style={{ borderColor: ROW_SEP, color: TEXT }}>
               <span>Borca ayrılabilir</span>
               <span className="tabular-nums" style={{ color: GOLD }}>
-                {para(Math.max(ozet.nakitVarlik - ozet.nakitYastigi, 0))} ₺
+                {para(ozet.odemeKapasitesi)} ₺
               </span>
             </div>
           </div>

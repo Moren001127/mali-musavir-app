@@ -1186,7 +1186,10 @@ export class ButceService {
       this.duzenliler(k, 'TUMU'),
     ]);
 
-    const baslangicNakit = kurus(hesaplar.reduce((t: number, h: any) => t + h.bakiye, 0));
+    // Başlangıç nakdi = banka bakiyeleri + nakit kasası.
+    // Kasa katılmazsa hesap seçilmeden girilen gelir akışta hiç görünmüyordu.
+    const kasa = await this.nakitKasasi(k);
+    const baslangicNakit = kurus(hesaplar.reduce((t: number, h: any) => t + h.bakiye, 0) + kasa);
     const kmhLimitToplam = kurus(hesaplar.reduce((t: number, h: any) => t + (h.kmhKalanLimit || 0), 0));
     const hareketler: AkisHareketi[] = [];
 
@@ -1308,6 +1311,37 @@ export class ButceService {
     };
   }
 
+  /**
+   * NAKİT KASASI — banka hesabı seçilmeden girilen gerçekleşmiş hareketlerin net etkisi.
+   *
+   * Kullanıcı bir geliri "banka" diye işaretlese de hangi hesap olduğunu seçmezse
+   * o para hiçbir hesabın bakiyesine yazılmaz. Eskiden bu kayıtlar Genel Bakış'ta
+   * gelir olarak görünüp Nakit Akışı'nda hiç görünmüyordu; "115.000 gelir var ama
+   * akışta 0 ₺ giriyor" çelişkisinin sebebi buydu.
+   *
+   * Bu tutar elde/kasada duran para gibi davranır ve ÜÇ EKRANDA DA aynı şekilde
+   * hesaba katılır: Genel Bakış, Nakit Akışı, Ödeme Planı.
+   *
+   * Kart harcamaları hariçtir (kart nakit çıkışı değil, karta borçlanmadır).
+   */
+  private async nakitKasasi(k: Kimlik): Promise<number> {
+    const ortak = {
+      tenantId: k.tenantId,
+      userId: k.userId,
+      planlanan: false,
+      transferGrupId: null,
+      bankaHesapId: null,
+    };
+    const [giris, cikis] = await Promise.all([
+      this.db.butceIslem.aggregate({ where: { ...ortak, tur: 'GELIR' }, _sum: { tutar: true } }),
+      this.db.butceIslem.aggregate({
+        where: { ...ortak, tur: 'GIDER', kaynak: { not: 'KART' } },
+        _sum: { tutar: true },
+      }),
+    ]);
+    return kurus(num(giris._sum.tutar) - num(cikis._sum.tutar));
+  }
+
   /* ===================== ÖZET ===================== */
 
   async ozet(k: Kimlik, donem = bugunDonem(), defter: DefterSecim = 'TUMU') {
@@ -1349,22 +1383,13 @@ export class ButceService {
       giderler.filter((i: any) => i.kategori?.zorunlu).reduce((t: number, i: any) => t + i.tutar, 0),
     );
 
-    // ÖDEME KAPASİTESİ — Ödeme Planı ekranıyla BİREBİR aynı formül.
-    // İki ekranın farklı rakam göstermesi güven kırıyordu; tek hesap noktası.
-    const serbestGelir = kurus(
-      gelirler.filter((i: any) => !i.bankaHesapId).reduce((t: number, i: any) => t + i.tutar, 0),
-    );
-    const serbestNakitGider = kurus(
-      tumGiderler
-        .filter((i: any) => i.kaynak !== 'KART' && !i.bankaHesapId)
-        .reduce((t: number, i: any) => t + i.tutar, 0),
-    );
-
     const kartBorcu = kurus(kartlar.reduce((t: number, kk: any) => t + kk.ekstreBorcu, 0));
     const kartDonemIci = kurus(kartlar.reduce((t: number, kk: any) => t + kk.donemIciHarcama, 0));
     const krediBorcu = kurus(borclar.reduce((t: number, b: any) => t + b.kalanAnapara, 0));
     const kmhBorcu = kurus(hesaplar.reduce((t: number, h: any) => t + (h.kmhBorcu || 0), 0));
-    const nakitVarlik = kurus(hesaplar.reduce((t: number, h: any) => t + Math.max(h.bakiye, 0), 0));
+    const bankaBakiyesi = kurus(hesaplar.reduce((t: number, h: any) => t + Math.max(h.bakiye, 0), 0));
+    const kasa = await this.nakitKasasi(k);
+    const nakitVarlik = kurus(bankaBakiyesi + Math.max(kasa, 0));
 
     // Kategori kırılımı mesleki/kişisel ayrımını KATEGORİ ÜSTÜNDE taşır.
     // Üstteki genel süzgeç kaldırıldı; ayrımı görmek isteyen buradan görür.
@@ -1445,14 +1470,12 @@ export class ButceService {
       istegeBagliGider: kurus(gider - zorunluGider),
       nakitYastigi: ayar.nakitYastigi,
       nakitVarlik,
-      /** Hesaba işlenmemiş gelir — bakiyede görünmediği için ayrıca sayılır */
-      serbestGelir,
-      /** Hesaba işlenmemiş nakit gider */
-      serbestNakitGider,
+      /** Banka hesaplarındaki bakiye toplamı */
+      bankaBakiyesi,
+      /** Hesap seçilmeden girilmiş hareketlerin net etkisi (eldeki nakit) */
+      nakitKasasi: kasa,
       /** Borca ayrılabilecek para — Ödeme Planı ile aynı hesap */
-      odemeKapasitesi: kurus(
-        Math.max(nakitVarlik + serbestGelir - serbestNakitGider - ayar.nakitYastigi, 0),
-      ),
+      odemeKapasitesi: kurus(Math.max(nakitVarlik - ayar.nakitYastigi, 0)),
       borcOzet: {
         kart: kartBorcu,
         kartDonemIci,
@@ -1755,22 +1778,16 @@ export class ButceService {
     // ÇİFT SAYIM KORUMASI: bir gelir/gider banka hesabına bağlıysa etkisi zaten
     // bakiyededir; birikime ikinci kez eklenmemesi için ayrıca sayılmaz.
     const hesaplar = await this.bankaHesaplar(k);
-    const nakitVarlik = kurus(hesaplar.reduce((t: number, h: any) => t + Math.max(h.bakiye, 0), 0));
-    const serbestGelir = kurus(
-      islemler
-        .filter((i: any) => i.tur === 'GELIR' && !i.bankaHesapId)
-        .reduce((t: number, i: any) => t + i.tutar, 0),
-    );
-    const serbestGider = kurus(
-      islemler
-        .filter((i: any) => i.tur === 'GIDER' && i.kaynak !== 'KART' && !i.bankaHesapId)
-        .reduce((t: number, i: any) => t + i.tutar, 0),
-    );
+    const bankaBakiyesi = kurus(hesaplar.reduce((t: number, h: any) => t + Math.max(h.bakiye, 0), 0));
+    const kasa = await this.nakitKasasi(k);
+    // Elde olan toplam para — Genel Bakış ve Nakit Akışı ile AYNI rakam
+    const nakitVarlik = kurus(bankaBakiyesi + Math.max(kasa, 0));
     // Her ay tekrar eden kapasite — simülasyonun tamamı bununla yürür
     const otomatikKapasite = kurus(Math.max(gelir - gider - ayar.nakitYastigi, 0));
-    // Yalnız bu aya özel ek güç: hesaptaki birikim + henüz hesaba işlenmemiş net akış
-    const birikim = kurus(Math.max(nakitVarlik + serbestGelir - serbestGider - gelir + gider, 0));
-    const kullanilabilirNakit = kurus(nakitVarlik + serbestGelir - serbestGider);
+    // Yalnız bu aya özel ek güç: elde duran para, bu ayın akışı düşülmüş hâli.
+    // (Bu ayın geliri zaten aylık kapasitede sayıldı; iki kez sayılmasın.)
+    const birikim = kurus(Math.max(nakitVarlik - gelir + gider, 0));
+    const kullanilabilirNakit = nakitVarlik;
     const kapasite =
       opts.kapasite !== undefined && opts.kapasite !== null && !Number.isNaN(Number(opts.kapasite))
         ? kurus(Number(opts.kapasite))
@@ -1796,12 +1813,12 @@ export class ButceService {
       gelir,
       gider,
       nakitYastigi: ayar.nakitYastigi,
-      /** Banka hesaplarındaki artı bakiyelerin toplamı */
+      /** Elde olan toplam para: banka bakiyeleri + nakit kasası */
       nakitVarlik,
-      /** Henüz bir banka hesabına bağlanmamış gelir (bakiyede görünmeyen) */
-      serbestGelir,
-      /** Henüz bir banka hesabına bağlanmamış nakit gider */
-      serbestGider,
+      /** Banka hesaplarındaki bakiye */
+      bankaBakiyesi,
+      /** Hesap seçilmeden girilmiş hareketlerin net etkisi */
+      nakitKasasi: kasa,
       /** Yastık düşülmeden önce elde olan toplam para */
       kullanilabilirNakit,
       /** Yalnız bu aya özel ek güç — hesaptaki birikim (her ay tekrarlamaz) */
