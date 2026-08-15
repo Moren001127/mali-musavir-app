@@ -11,7 +11,7 @@ import { butceApi, Kategori, para, Defter, DEFTER_ETIKET } from '@/lib/butce';
 import {
   Kutu, Dugme, Alan, Girdi, Secim, Rozet, Yukleniyor, ParaGirdi, paraCoz, paraGiris,
   Anahtar, RenkSecici, PALET,
-  GOLD, OK, KIRMIZI, MAVI, MOR, MUTED, TEXT, ROW_SEP, CARD_BORDER,
+  GOLD, OK, KIRMIZI, TURUNCU, MAVI, MOR, MUTED, TEXT, ROW_SEP, CARD_BORDER,
 } from './ui';
 
 export default function Ayarlar() {
@@ -325,8 +325,11 @@ function KategoriYonetimi({ kategoriler }: { kategoriler: Kategori[] }) {
     onError: () => toast.error('Değiştirilemedi'),
   });
 
-  const grupla = (defter: Defter, tur: 'GELIR' | 'GIDER') =>
-    kategoriler.filter((c) => c.defter === defter && c.tur === tur);
+  // GELİR TEK HAVUZ: gelir kategorileri deftere göre bölünmez.
+  // Ayrım yalnız giderde anlamlıdır (mesleki indirilir, kişisel indirilmez).
+  const gelirler = kategoriler.filter((c) => c.tur === 'GELIR');
+  const giderler = (defter: Defter) =>
+    kategoriler.filter((c) => c.tur === 'GIDER' && c.defter === defter);
 
   const hazirSet = useMutation({
     mutationFn: () => butceApi.hazirKategoriler(),
@@ -366,32 +369,43 @@ function KategoriYonetimi({ kategoriler }: { kategoriler: Kategori[] }) {
                 </span>
               </span>
               <span className="flex flex-shrink-0 items-center gap-1.5">
-                <button
-                  onClick={() =>
-                    defterDegistir.mutate({ ...c, defter: c.defter === 'OFIS' ? 'SAHSI' : 'OFIS' })
-                  }
-                  className="rounded-md px-2 py-0.5 text-[10px] transition hover:brightness-125"
-                  style={{
-                    color: c.defter === 'OFIS' ? MAVI : GOLD,
-                    background: c.defter === 'OFIS' ? `${MAVI}14` : `${GOLD}14`,
-                    border: `1px solid ${c.defter === 'OFIS' ? `${MAVI}3d` : `${GOLD}3d`}`,
-                  }}
-                  title="Defteri değiştir"
-                >
-                  {DEFTER_ETIKET[c.defter]}
-                </button>
+                {/* Mesleki/kişisel yalnız GİDERDE sorulur — gelirde ayrım yok */}
+                {gider && (
+                  <button
+                    onClick={() =>
+                      defterDegistir.mutate({ ...c, defter: c.defter === 'OFIS' ? 'SAHSI' : 'OFIS' })
+                    }
+                    className="rounded-md px-2 py-0.5 text-[10px] transition hover:brightness-125"
+                    style={{
+                      color: c.defter === 'OFIS' ? MAVI : GOLD,
+                      background: c.defter === 'OFIS' ? `${MAVI}14` : `${GOLD}14`,
+                      border: `1px solid ${c.defter === 'OFIS' ? `${MAVI}3d` : `${GOLD}3d`}`,
+                    }}
+                    title={
+                      c.defter === 'OFIS'
+                        ? 'Mesleki gider — kazançtan indirilir. Tıklayınca kişisele geçer.'
+                        : 'Kişisel harcama — kazançtan indirilemez. Tıklayınca mesleki olur.'
+                    }
+                  >
+                    {DEFTER_ETIKET[c.defter]}
+                  </button>
+                )}
                 {gider && (
                   <button
                     onClick={() => zorunluDegistir.mutate(c)}
                     className="rounded-md px-2 py-0.5 text-[10px] transition"
                     style={{
-                      color: c.zorunlu ? GOLD : 'rgba(113,113,122,0.9)',
-                      background: c.zorunlu ? `${GOLD}14` : 'transparent',
-                      border: `1px solid ${c.zorunlu ? `${GOLD}3d` : ROW_SEP}`,
+                      color: c.zorunlu ? TURUNCU : 'rgba(113,113,122,0.9)',
+                      background: c.zorunlu ? `${TURUNCU}14` : 'transparent',
+                      border: `1px solid ${c.zorunlu ? `${TURUNCU}3d` : ROW_SEP}`,
                     }}
-                    title={c.zorunlu ? 'Zorunlu — tıklayınca kaldırılır' : 'Zorunlu olarak işaretle'}
+                    title={
+                      c.zorunlu
+                        ? 'Kısılamaz gider (kira, SGK gibi). Tıklayınca kısılabilir sayılır.'
+                        : 'Kısılabilir gider. Tıklayınca kısılamaz olarak işaretlenir.'
+                    }
                   >
-                    zorunlu
+                    {c.zorunlu ? 'kısılamaz' : 'kısılabilir'}
                   </button>
                 )}
                 <button
@@ -413,7 +427,7 @@ function KategoriYonetimi({ kategoriler }: { kategoriler: Kategori[] }) {
   return (
     <Kutu
       baslik="Kategoriler"
-      aciklama="Şahsi ve ofis kalemleri ayrı tutulur. “Zorunlu” işaretli giderler kısılamaz kabul edilir ve ödeme planında ayrı hesaplanır."
+      aciklama="Gelir tek havuzdur. Gider kategorileri mesleki/kişisel olarak ayrılır; “kısılamaz” işareti kira, SGK gibi vazgeçilemez kalemleri işaretler."
       renk={GOLD}
       sag={
         <Dugme onClick={() => hazirSet.mutate()} yukleniyor={hazirSet.isPending}>
@@ -450,14 +464,20 @@ function KategoriYonetimi({ kategoriler }: { kategoriler: Kategori[] }) {
               </Secim>
             </Alan>
           </div>
-          <div className="w-[130px]">
-            <Alan etiket="Defter" ipucu="Kayıt bu deftere yazılır">
-              <Secim value={yeni.defter} onChange={(e) => setYeni({ ...yeni, defter: e.target.value as Defter })}>
-                <option value="SAHSI">Şahsi</option>
-                <option value="OFIS">Ofis</option>
-              </Secim>
-            </Alan>
-          </div>
+          {/* Gelir tek havuz olduğu için defter yalnız giderde sorulur */}
+          {yeni.tur === 'GIDER' && (
+            <div className="w-[140px]">
+              <Alan etiket="Gider türü" ipucu="Mesleki gider kazançtan indirilir">
+                <Secim
+                  value={yeni.defter}
+                  onChange={(e) => setYeni({ ...yeni, defter: e.target.value as Defter })}
+                >
+                  <option value="SAHSI">Kişisel</option>
+                  <option value="OFIS">Mesleki</option>
+                </Secim>
+              </Alan>
+            </div>
+          )}
           <div>
             <span className="mb-1 block text-[11px] font-medium" style={{ color: MUTED }}>
               Renk
@@ -469,7 +489,7 @@ function KategoriYonetimi({ kategoriler }: { kategoriler: Kategori[] }) {
           {yeni.tur === 'GIDER' && (
             <label className="flex h-[33px] cursor-pointer items-center gap-2 text-[12px]" style={{ color: MUTED }}>
               <Anahtar acik={yeni.zorunlu} degistir={(v) => setYeni({ ...yeni, zorunlu: v })} />
-              Zorunlu
+              Kısılamaz
             </label>
           )}
           <div className="flex h-[33px] items-center">
@@ -480,12 +500,13 @@ function KategoriYonetimi({ kategoriler }: { kategoriler: Kategori[] }) {
         </form>
       </div>
 
-      {/* İki sütun: gelir / gider */}
-      <div className="grid gap-5 md:grid-cols-2">
-        {liste('Şahsi gelir', OK, <TrendingUp size={12} />, grupla('SAHSI', 'GELIR'), false)}
-        {liste('Şahsi gider', KIRMIZI, <TrendingDown size={12} />, grupla('SAHSI', 'GIDER'), true)}
-        {liste('Ofis gelir', OK, <TrendingUp size={12} />, grupla('OFIS', 'GELIR'), false)}
-        {liste('Ofis gider', KIRMIZI, <TrendingDown size={12} />, grupla('OFIS', 'GIDER'), true)}
+      {/* Gelir tek liste; gider mesleki/kişisel iki sütun */}
+      <div className="space-y-5">
+        {liste('Gelir', OK, <TrendingUp size={12} />, gelirler, false)}
+        <div className="grid gap-5 md:grid-cols-2">
+          {liste('Mesleki gider', KIRMIZI, <TrendingDown size={12} />, giderler('OFIS'), true)}
+          {liste('Kişisel gider', KIRMIZI, <TrendingDown size={12} />, giderler('SAHSI'), true)}
+        </div>
       </div>
     </Kutu>
   );

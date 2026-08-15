@@ -462,7 +462,7 @@ export default function GelirGider({ donem, defter = 'TUMU' }: { donem: string; 
                     <span className="truncate">{d.ad}</span>
                     <Rozet metin={DEFTER_ETIKET[d.defter]} renk={defterRenk(d.defter)} />
                     {!d.aktif && <Rozet metin="pasif" renk={MUTED} />}
-                    {d.zorunlu && <Rozet metin="zorunlu" renk={TURUNCU} />}
+                    {d.zorunlu && <Rozet metin="kısılamaz" renk={TURUNCU} />}
                   </div>
                   <div className="text-[10.5px]" style={{ color: MUTED }}>
                     Her ayın {d.ayinGunu}. günü · {d.kategori?.ad || 'kategorisiz'}

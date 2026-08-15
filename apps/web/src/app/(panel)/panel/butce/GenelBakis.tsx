@@ -291,7 +291,7 @@ export default function GenelBakis({
                           metin={k.defter === 'OFIS' ? 'mesleki' : 'kişisel'}
                           renk={k.defter === 'OFIS' ? MAVI : GOLD}
                         />
-                        {k.zorunlu && <Rozet metin="zorunlu" renk={MUTED} />}
+                        {k.zorunlu && <Rozet metin="kısılamaz" renk={MUTED} />}
                       </span>
                       <span className="flex-shrink-0 tabular-nums" style={{ color: MUTED }}>
                         {para(k.tutar)} ₺ · %{oran}
