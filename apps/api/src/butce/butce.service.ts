@@ -1317,7 +1317,10 @@ export class ButceService {
     const [tumIslemler, kartlar, borclar, ekstreler, hesaplar] = await Promise.all([
       this.islemler(k, { donem, transferHaric: true, planlanan: false }),
       this.kartlar(k),
-      this.borclar(k, false, defter),
+      // BORÇ DEFTERDEN BAĞIMSIZDIR. Şahıs firmasında borcu ödeyen tek kişi var:
+      // siz. "Mesleki gider" süzgecine basınca araç kredisinin kaybolması
+      // yanıltıcıydı — toplam borç ve net varlık her süzgeçte aynı kalmalı.
+      this.borclar(k, false, 'TUMU'),
       this.yaklasanEkstreler(k),
       this.bankaHesaplar(k),
     ]);
@@ -1345,22 +1348,6 @@ export class ButceService {
     const zorunluGider = kurus(
       giderler.filter((i: any) => i.kategori?.zorunlu).reduce((t: number, i: any) => t + i.tutar, 0),
     );
-
-    // Ofisten şahsiye (veya tersine) aktarılan para: gelir/gider DEĞİLDİR ama
-    // "param nereden geldi" sorusunun cevabıdır. Ayrı gösterilir.
-    const aktarimlar = await this.db.butceIslem.groupBy({
-      by: ['tur'],
-      where: {
-        tenantId: k.tenantId,
-        userId: k.userId,
-        donem,
-        transferGrupId: { not: null },
-        ...defterWhere(defter),
-      },
-      _sum: { tutar: true },
-    });
-    const aktarimGiris = num(aktarimlar.find((x: any) => x.tur === 'GELIR')?._sum?.tutar);
-    const aktarimCikis = num(aktarimlar.find((x: any) => x.tur === 'GIDER')?._sum?.tutar);
 
     const kartBorcu = kurus(kartlar.reduce((t: number, kk: any) => t + kk.ekstreBorcu, 0));
     const kartDonemIci = kurus(kartlar.reduce((t: number, kk: any) => t + kk.donemIciHarcama, 0));
@@ -1430,17 +1417,16 @@ export class ButceService {
       cepteKalan: kurus(gelir - (meslekiGider + kisiselGider)),
       kartGideri,
       nakitGider,
-      net: kurus(gelir - gider),
+      /**
+       * "Ay sonu kalan" — süzgeçten ETKİLENMEZ. Mesleki süzgeçteyken kişisel
+       * harcamalarınız yok sayılıp cebinizde 115.000 varmış gibi görünmesi
+       * yanlış yönlendirmeydi; gerçekte kalan para her zaman aynıdır.
+       */
+      net: kurus(gelir - (meslekiGider + kisiselGider)),
       nakitNet: kurus(gelir - nakitGider),
       zorunluGider,
       istegeBagliGider: kurus(gider - zorunluGider),
       nakitYastigi: ayar.nakitYastigi,
-      /** Bu deftere aktarılan para (şahsi defterde: ofisten çekiş) — gelir sayılmaz */
-      aktarimGiris,
-      /** Bu defterden çıkan aktarım (ofis defterinde: sahip çekişi) — gider sayılmaz */
-      aktarimCikis,
-      /** Nakit girişi = gerçek gelir + aktarım. Harcama gücünüz budur. */
-      toplamNakitGirisi: kurus(gelir + aktarimGiris),
       nakitVarlik,
       borcOzet: {
         kart: kartBorcu,
@@ -1666,10 +1652,12 @@ export class ButceService {
 
   /* ===================== ÖDEME PLANI ===================== */
 
-  private async planKalemleri(k: Kimlik, defter?: DefterSecim): Promise<PlanKalemi[]> {
+  private async planKalemleri(k: Kimlik, _defter?: DefterSecim): Promise<PlanKalemi[]> {
+    // Ödeme planı HER ZAMAN tüm borçları kapsar. Borcu ödeyen tek kasa var;
+    // "mesleki gider" süzgeci araç kredisini plandan düşürmemeli.
     const [kartlar, borclar, hesaplar] = await Promise.all([
       this.kartlar(k),
-      this.borclar(k, false, defter),
+      this.borclar(k, false, 'TUMU'),
       this.bankaHesaplar(k),
     ]);
     const kalemler: PlanKalemi[] = [];

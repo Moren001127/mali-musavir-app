@@ -81,6 +81,10 @@ export default function ButcePage() {
   if (!kilitAcik) return <PinEkrani acildi={() => setKilitAcik(true)} />;
 
   const donemSecici = ['genel', 'gelir-gider', 'plan'].includes(sekme);
+  // Gider türü süzgeci YALNIZ gelir-gider listesinde anlamlıdır. Diğer ekranlarda
+  // (özet, borç, plan) her şey tek kasadan okunur; süzgeç oralarda borcu ve kalan
+  // parayı değiştirip yanıltıyordu.
+  const suzgecGorunur = sekme === 'gelir-gider';
 
   return (
     <div className="space-y-4 pb-10">
@@ -153,6 +157,7 @@ export default function ButcePage() {
         }}
       >
         {/* Gider türü — gelir tek havuz olduğu için yalnız gideri süzer */}
+        {suzgecGorunur && (
         <div className="flex flex-wrap items-center gap-2 px-1 pb-2.5">
           <span className="text-[10.5px] font-medium uppercase tracking-[0.14em]" style={{ color: MUTED }}>
             Gider türü
@@ -188,6 +193,7 @@ export default function ButcePage() {
                 : 'Yalnız kişisel harcamalar — kazançtan indirilemeyenler'}
           </span>
         </div>
+        )}
 
         {/* Sekmeler */}
         <nav
@@ -238,7 +244,7 @@ export default function ButcePage() {
       {sekme === 'kartlar' && <Kartlar />}
       {sekme === 'borclar' && <Borclar />}
       {sekme === 'nakit' && <NakitAkis />}
-      {sekme === 'plan' && <OdemePlani donem={donem} defter={defter} />}
+      {sekme === 'plan' && <OdemePlani donem={donem} defter="TUMU" />}
       {sekme === 'danisman' && <Danisman />}
       {sekme === 'ayarlar' && <Ayarlar />}
     </div>

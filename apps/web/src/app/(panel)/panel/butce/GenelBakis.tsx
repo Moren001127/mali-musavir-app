@@ -104,37 +104,11 @@ export default function GenelBakis({
         </div>
       )}
 
-      {/* Tümü görünümü: aynı aktarım iki defterde de görünür, toplamı şişirmez */}
-      {defter === 'TUMU' && (
-        <div
-          className="flex items-start gap-2 rounded-xl px-4 py-2.5 text-[11.5px] leading-relaxed"
-          style={{ background: `${MAVI}0e`, border: `1px solid ${MAVI}26`, color: MUTED }}
-        >
-          <ArrowLeftRight size={13} style={{ color: MAVI }} className="mt-0.5 flex-shrink-0" />
-          <span>
-            {aktarimGiris > 0 || aktarimCikis > 0 ? (
-              <>
-                Bu dönem ofis ile şahsi arasında{' '}
-                <span className="font-semibold tabular-nums" style={{ color: MAVI }}>
-                  {para(aktarimGiris)} ₺
-                </span>{' '}
-                aktarıldı; bir defterde çıkış, diğerinde giriş göründüğü için gelir–gider toplamını şişirmez.
-              </>
-            ) : (
-              <>
-                Ofis ile şahsi arasındaki aktarımlar iki defterde de görünür; gelir ya da gider sayılmadığı için
-                toplamı şişirmez.
-              </>
-            )}
-          </span>
-        </div>
-      )}
-
       {/* KPI şeridi */}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <div className="space-y-1.5">
           <KPI
-            etiket={ofis ? 'Ofis geliri' : 'Gelir'}
+            etiket="Gelir"
             deger={`${para(ozet.gelir)} ₺`}
             renk={OK}
             ikon={<TrendingUp size={14} />}
@@ -155,7 +129,7 @@ export default function GenelBakis({
           deger={`${para(ozet.net)} ₺`}
           renk={ozet.net >= 0 ? GOLD : KIRMIZI}
           ikon={<Wallet size={14} />}
-          altBilgi={`Nakit akışı ${para(ozet.nakitNet)} ₺${ozet.gelir > 0 ? ` · gelirin %${kalanOran}’i` : ''}`}
+          altBilgi={`Gelir − tüm gider${ozet.gelir > 0 ? ` · gelirin %${kalanOran}’i` : ''}`}
           vurgu
         />
         <KPI
@@ -207,11 +181,12 @@ export default function GenelBakis({
           <div className="text-[26px] font-semibold tabular-nums" style={{ color: TURUNCU }}>
             {para(ozet.borcOzet.aylikZorunluOdeme)} ₺
           </div>
+          {/* Kapasite ELDEKİ PARADAN okunur — Ödeme Planı ekranıyla aynı hesap */}
           <div className="mt-2 space-y-1 text-[11.5px]" style={{ color: MUTED }}>
             <div className="flex justify-between">
-              <span>Gelir − nakit gider</span>
-              <span className="tabular-nums" style={{ color: ozet.nakitNet >= 0 ? OK : KIRMIZI }}>
-                {para(ozet.nakitNet)} ₺
+              <span>Hesaplardaki para</span>
+              <span className="tabular-nums" style={{ color: MOR }}>
+                {para(ozet.nakitVarlik)} ₺
               </span>
             </div>
             <div className="flex justify-between">
@@ -221,7 +196,7 @@ export default function GenelBakis({
             <div className="flex justify-between border-t pt-1" style={{ borderColor: ROW_SEP, color: TEXT }}>
               <span>Borca ayrılabilir</span>
               <span className="tabular-nums" style={{ color: GOLD }}>
-                {para(Math.max(ozet.nakitNet - ozet.nakitYastigi, 0))} ₺
+                {para(Math.max(ozet.nakitVarlik - ozet.nakitYastigi, 0))} ₺
               </span>
             </div>
           </div>

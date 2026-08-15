@@ -48,8 +48,29 @@ const DURUM_ETIKET: Record<string, { etiket: string; renk: string }> = {
   ...EKSTRE_DURUM_ETIKET,
   ASGARI_ODENDI: { etiket: 'Asgari ödendi', renk: MAVI },
 };
-const durumBilgi = (d?: string | null) =>
-  (d && DURUM_ETIKET[d]) || { etiket: String(d || '—'), renk: MUTED };
+/**
+ * Rozet SON ÖDEME TARİHİNE göre okunur.
+ *
+ * Kullanıcı bulgusu: vadesi daha gelmemiş ekstrede de kırmızı "Ödenmedi"
+ * yazıyordu; "süresi geçti de ödenmemiş" algısı veriyordu. Ödenmemiş ekstre
+ * ancak son ödeme günü GEÇTİYSE gecikmedir. Öncesinde yapılacak iş vardır,
+ * kusur değil.
+ */
+const durumBilgi = (d?: string | null, sonOdemeTarihi?: string | null) => {
+  const temel = (d && DURUM_ETIKET[d]) || { etiket: String(d || '—'), renk: MUTED };
+  if (d !== 'ODENMEDI' || !sonOdemeTarihi) return temel;
+
+  const bugun = new Date();
+  bugun.setHours(0, 0, 0, 0);
+  const vade = new Date(sonOdemeTarihi);
+  vade.setHours(0, 0, 0, 0);
+  const kalanGun = Math.round((vade.getTime() - bugun.getTime()) / 86400000);
+
+  if (kalanGun < 0) return { etiket: 'Gecikti', renk: KIRMIZI };
+  if (kalanGun === 0) return { etiket: 'Bugün son gün', renk: TURUNCU };
+  if (kalanGun <= 7) return { etiket: `${kalanGun} gün kaldı`, renk: TURUNCU };
+  return { etiket: 'Ödenecek', renk: MAVI };
+};
 
 const DEFTERLER: Array<{ deger: Defter; etiket: string }> = [
   { deger: 'SAHSI', etiket: DEFTER_ETIKET.SAHSI },
@@ -109,7 +130,7 @@ export default function Kartlar() {
               const kullanimOran =
                 k.limitDoluluk ?? (k.kartLimiti > 0 ? Math.min((guncelBorc / k.kartLimiti) * 100, 100) : 0);
               const e = k.guncelEkstre;
-              const durum = e ? durumBilgi(e.durum) : null;
+              const durum = e ? durumBilgi(e.durum, e.sonOdemeTarihi) : null;
               return (
                 <div
                   key={k.id}
@@ -474,7 +495,7 @@ function EkstreGecmisi({ kartlar }: { kartlar: Kart[] }) {
           </thead>
           <tbody>
             {ekstreler.map((e) => {
-              const d = durumBilgi(e.durum);
+              const d = durumBilgi(e.durum, e.sonOdemeTarihi);
               const borcDonem = borcDonemi.get(e.kartId);
               const devretti =
                 e.devretti === true ||
