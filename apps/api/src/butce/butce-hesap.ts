@@ -32,8 +32,19 @@ export interface PlanKalemi {
 }
 
 export interface PlanGirdi {
-  /** Borçlara ayrılabilecek aylık nakit (gelir − zorunlu giderler − nakit yastığı) */
+  /**
+   * HER AY TEKRARLAYAN kapasite: aylık gelir − aylık nakit gider − yastık.
+   * Simülasyonun tamamı bu tutarla yürür.
+   */
   aylikKapasite: number;
+  /**
+   * YALNIZ İLK AYA özel ek para: bugün hesabınızda duran birikim.
+   *
+   * Birikim tek seferliktir; her ay tekrar gelmez. Bu ayrım olmadan
+   * "elimde 98.000 var" bilgisi aylık kapasiteye karışıp "5 ayda borçsuz
+   * kalırsınız" gibi gerçekte tutmayacak bir süre üretiyordu.
+   */
+  ilkAyEkNakit?: number;
   kalemler: PlanKalemi[];
   strateji: Strateji;
   /** Simülasyon üst sınırı (ay) */
@@ -191,7 +202,8 @@ export function odemePlaniHesapla(girdi: PlanGirdi): PlanSonuc {
     return sonuc;
   }
 
-  const kapasite = Math.max(KURUS(girdi.aylikKapasite), 0);
+  const aylikKapasite = Math.max(KURUS(girdi.aylikKapasite), 0);
+  const ilkAyEk = Math.max(KURUS(girdi.ilkAyEkNakit || 0), 0);
   let toplamFaiz = 0;
   let toplamOdeme = 0;
   let oncekiToplamKalan = kalemler.reduce((t, k) => t + k._kalan, 0);
@@ -206,7 +218,8 @@ export function odemePlaniHesapla(girdi: PlanGirdi): PlanSonuc {
       toplamFaiz = KURUS(toplamFaiz + faiz);
     }
 
-    // 2) Zorunlu ödemeler
+    // 2) Zorunlu ödemeler — birikim yalnız ilk ay eklenir, sonraki aylar tekrarlayan tutarla yürür
+    const kapasite = ay === 1 ? KURUS(aylikKapasite + ilkAyEk) : aylikKapasite;
     let kalanKapasite = kapasite;
     const ayDagilim = new Map<string, KalemOdeme>();
     for (const k of kalemler) {
@@ -283,14 +296,18 @@ export function odemePlaniHesapla(girdi: PlanGirdi): PlanSonuc {
   sonuc.toplamFaiz = KURUS(toplamFaiz);
   sonuc.toplamOdeme = KURUS(toplamOdeme);
 
-  // Aylık açık: ilk ayda gereken zorunlu toplam − kapasite
+  // Aylık açık: zorunlu toplam − TEKRARLAYAN kapasite.
+  //
+  // Birikim (ilkAyEk) burada kasten sayılmaz: birikimle bu ayı kurtarmak
+  // açığı kapatmaz, sadece erteler. Asıl soru "her ay zorunluları
+  // karşılayabiliyor muyum" sorusudur.
   const gereken = (girdi.kalemler || [])
     .filter((k) => KURUS(k.kalan) > 0)
     .reduce((t, k) => {
       const gecici: SimKalem = { ...k, _kalan: KURUS(k.kalan) };
       return t + zorunluOdeme(gecici);
     }, 0);
-  sonuc.acik = KURUS(Math.max(gereken - kapasite, 0));
+  sonuc.acik = KURUS(Math.max(gereken - aylikKapasite, 0));
 
   return sonuc;
 }

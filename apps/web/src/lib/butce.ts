@@ -329,7 +329,7 @@ export interface Ozet {
     toplam: number;
     aylikZorunluOdeme: number;
   };
-  kategoriKirilim: Array<{ ad: string; renk: string; tutar: number; zorunlu: boolean }>;
+  kategoriKirilim: Array<{ ad: string; renk: string; tutar: number; zorunlu: boolean ; defter: Defter }>;
   trend: Array<{ donem: string; gelir: number; gider: number }>;
   yaklasanOdemeler: Ekstre[];
   uyarilar: Uyari[];
@@ -375,6 +375,10 @@ export interface Plan {
   serbestGider: number;
   /** Yastık düşülmeden önce elde olan toplam para */
   kullanilabilirNakit: number;
+  /** Yalnız bu aya özel birikim — her ay tekrarlamaz */
+  birikim: number;
+  /** Bu ay fiilen ödeyebileceğiniz toplam */
+  buAyToplam: number;
   otomatikKapasite: number;
   kapasite: number;
   strateji: Strateji;

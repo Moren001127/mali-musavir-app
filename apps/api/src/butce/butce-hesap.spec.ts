@@ -195,3 +195,59 @@ describe('butce-hesap — zorunlu ödeme kırpılmaz (gerçek vaka)', () => {
     expect(s.ilkAy[0].odenen).toBe(20000);
   });
 });
+
+/**
+ * KULLANICI BULGUSU (2026-08-16): bankadaki birikim aylık kapasiteye
+ * karıştırılınca plan "5 ayda borçsuz kalırsınız" diyordu. Birikim bir
+ * kereliktir; yalnız ilk aya eklenmeli, süre ondan sonra tekrar eden
+ * kapasiteyle hesaplanmalı.
+ */
+describe('ödeme planı — birikim yalnız ilk aya sayılır', () => {
+  const kalemler = [
+    { id: 'kart:1', ad: 'Kart', tip: 'KART' as const, kalan: 100000, aylikFaiz: 0.0425, asgariOran: 0.2 },
+  ];
+
+  it('birikim ilk ayda fazladan ödeme yapar', () => {
+    const birikimsiz = odemePlaniHesapla({ aylikKapasite: 10000, kalemler, strateji: 'CIG' });
+    const birikimli = odemePlaniHesapla({
+      aylikKapasite: 10000,
+      ilkAyEkNakit: 50000,
+      kalemler,
+      strateji: 'CIG',
+    });
+    const ilkAyOdeme = (p: typeof birikimli) => p.ilkAy.reduce((t, x) => t + x.toplam, 0);
+    expect(ilkAyOdeme(birikimli)).toBeGreaterThan(ilkAyOdeme(birikimsiz));
+    // Birikim borcu erken kapatır ama sınırsız hızlandırmaz
+    expect(birikimli.ayAdedi!).toBeLessThan(birikimsiz.ayAdedi!);
+  });
+
+  it('birikim tekrar etmez: 12 ay boyunca her ay eklenmiş gibi davranmaz', () => {
+    // Birikim her ay tekrarlasaydı bu borç 2 ayda kapanırdı.
+    const p = odemePlaniHesapla({
+      aylikKapasite: 10000,
+      ilkAyEkNakit: 50000,
+      kalemler,
+      strateji: 'CIG',
+    });
+    expect(p.ayAdedi!).toBeGreaterThan(2);
+  });
+
+  it('aylık açık tekrar eden kapasiteye göre bulunur, birikimle gizlenmez', () => {
+    // Zorunlu 20.000, tekrar eden kapasite 5.000 → her ay 15.000 açık var.
+    // Birikim 100.000 olsa bile bu açık kapanmış sayılmamalı.
+    const p = odemePlaniHesapla({
+      aylikKapasite: 5000,
+      ilkAyEkNakit: 100000,
+      kalemler,
+      strateji: 'CIG',
+    });
+    expect(p.acik).toBe(15000);
+  });
+
+  it('birikim verilmezse davranış eskisiyle birebir aynı kalır', () => {
+    const a = odemePlaniHesapla({ aylikKapasite: 10000, kalemler, strateji: 'CIG' });
+    const b = odemePlaniHesapla({ aylikKapasite: 10000, ilkAyEkNakit: 0, kalemler, strateji: 'CIG' });
+    expect(b.ayAdedi).toBe(a.ayAdedi);
+    expect(b.toplamFaiz).toBe(a.toplamFaiz);
+  });
+});

@@ -58,7 +58,7 @@ export default function OdemePlani({ donem, defter = 'TUMU' }: { donem: string; 
       {/* Kapasite ve strateji */}
       <Kutu
         baslik="Ödeme kapasitesi"
-        aciklama="Bu ay borçlara ayırabileceğiniz para. Boş bırakırsanız elinizdeki nakitten hesaplanır."
+        aciklama="Her ay tekrar eden kapasite ile bu aya özel birikim ayrı tutulur."
         sag={
           <div className="flex items-center gap-1.5">
             {(['CIG', 'KARTOPU'] as const).map((st) => (
@@ -83,9 +83,9 @@ export default function OdemePlani({ donem, defter = 'TUMU' }: { donem: string; 
             <ParaGirdi value={kapasite} onChange={setKapasite} placeholder={para(plan.otomatikKapasite)} />
           </Alan>
           <div className="sm:col-span-3 grid gap-3 sm:grid-cols-3">
-            <KPI etiket="Hesaplardaki para" deger={`${para(plan.nakitVarlik)} ₺`} renk={MAVI} />
-            <KPI etiket="Nakit yastığı" deger={`${para(plan.nakitYastigi)} ₺`} renk={MUTED} />
-            <KPI etiket="Borca ayrılan" deger={`${para(plan.kapasite)} ₺`} renk={GOLD} vurgu />
+            <KPI etiket="Her ay ayırabilirsiniz" deger={`${para(plan.kapasite)} ₺`} renk={GOLD} vurgu />
+            <KPI etiket="Bu aya özel birikim" deger={`${para(plan.birikim)} ₺`} renk={MAVI} />
+            <KPI etiket="Bu ay toplam" deger={`${para(plan.buAyToplam)} ₺`} renk={OK} />
           </div>
         </div>
 
@@ -95,39 +95,38 @@ export default function OdemePlani({ donem, defter = 'TUMU' }: { donem: string; 
           style={{ background: 'rgba(0,0,0,0.25)', border: `1px solid ${CARD_BORDER}` }}
         >
           <div className="text-[11px] uppercase tracking-wider" style={{ color: MUTED }}>
-            Bu tutar nasıl bulundu
+            Bu tutarlar nasıl bulundu
           </div>
-          <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px]">
-            <span style={{ color: MAVI }}>{para(plan.nakitVarlik)} ₺</span>
-            <span style={{ color: MUTED }}>hesaplardaki para</span>
-            {plan.serbestGelir > 0 && (
-              <>
-                <span style={{ color: MUTED }}>+</span>
-                <span style={{ color: OK }}>{para(plan.serbestGelir)} ₺</span>
-                <span style={{ color: MUTED }}>hesaba işlenmemiş gelir</span>
-              </>
-            )}
-            {plan.serbestGider > 0 && (
-              <>
-                <span style={{ color: MUTED }}>−</span>
-                <span style={{ color: KIRMIZI }}>{para(plan.serbestGider)} ₺</span>
-                <span style={{ color: MUTED }}>hesaba işlenmemiş gider</span>
-              </>
-            )}
-            <span style={{ color: MUTED }}>−</span>
-            <span style={{ color: MUTED }}>{para(plan.nakitYastigi)} ₺ yastık</span>
-            <span style={{ color: MUTED }}>=</span>
-            <span className="font-semibold" style={{ color: GOLD }}>
-              {para(plan.otomatikKapasite)} ₺
-            </span>
+          <div className="mt-2 space-y-1.5 text-[12px]">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span className="w-[150px] shrink-0" style={{ color: MUTED }}>
+                Her ay tekrar eden
+              </span>
+              <span style={{ color: OK }}>{para(plan.gelir)} ₺ gelir</span>
+              <span style={{ color: MUTED }}>−</span>
+              <span style={{ color: KIRMIZI }}>{para(plan.gider)} ₺ nakit gider</span>
+              <span style={{ color: MUTED }}>−</span>
+              <span style={{ color: MUTED }}>{para(plan.nakitYastigi)} ₺ yastık</span>
+              <span style={{ color: MUTED }}>=</span>
+              <span className="font-semibold" style={{ color: GOLD }}>
+                {para(plan.otomatikKapasite)} ₺
+              </span>
+            </div>
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span className="w-[150px] shrink-0" style={{ color: MUTED }}>
+                Bu aya özel birikim
+              </span>
+              <span style={{ color: MAVI }}>{para(plan.nakitVarlik)} ₺ hesaplardaki para</span>
+              <span style={{ color: MUTED }}>·</span>
+              <span className="font-semibold" style={{ color: MAVI }}>
+                {para(plan.birikim)} ₺
+              </span>
+            </div>
           </div>
-          {(plan.serbestGelir > 0 || plan.serbestGider > 0) && (
-            <p className="mt-2 text-[10.5px] leading-relaxed" style={{ color: 'rgba(113,113,122,0.9)' }}>
-              Hesaba bağlanmamış kayıtlar ayrı gösterilir; banka hesabı seçilen kayıtlar zaten bakiyeye
-              işlendiği için ikinci kez sayılmaz. Gelir ve giderlerinize hesap seçerseniz bu satır kaybolur ve
-              plan doğrudan bakiyeden okunur.
-            </p>
-          )}
+          <p className="mt-2 text-[10.5px] leading-relaxed" style={{ color: 'rgba(113,113,122,0.9)' }}>
+            Birikim bir kereliktir, gelecek ay tekrar gelmez. Bu yüzden borçsuz kalma süresi hesaplanırken
+            yalnız ilk aya eklenir; sonraki aylar her ay tekrar eden tutarla yürür.
+          </p>
         </div>
       </Kutu>
 

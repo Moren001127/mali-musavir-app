@@ -5,7 +5,6 @@ import { useQuery } from '@tanstack/react-query';
 import {
   LayoutDashboard, ArrowLeftRight, CreditCard, Landmark, Target, Settings2,
   ChevronLeft, ChevronRight, Lock, MessageCircleQuestion, Wallet, CalendarClock,
-  User, Building2, Layers,
 } from 'lucide-react';
 import { butceApi, buDonem, donemKaydir, donemTR, pinBileti, DefterSecim } from '@/lib/butce';
 import Hesaplar from './Hesaplar';
@@ -32,19 +31,11 @@ const SEKMELER = [
   { anahtar: 'ayarlar', etiket: 'Ayarlar', ikon: Settings2 },
 ] as const;
 
-/** Şahsi / Ofis ayrımı — aynı kart ve hesap iki defterde de kullanılabilir */
-const DEFTERLER: Array<{ deger: DefterSecim; etiket: string; ikon: any }> = [
-  { deger: 'TUMU', etiket: 'Tümü', ikon: Layers },
-  { deger: 'OFIS', etiket: 'Mesleki', ikon: Building2 },
-  { deger: 'SAHSI', etiket: 'Kişisel', ikon: User },
-];
-
 type Sekme = (typeof SEKMELER)[number]['anahtar'];
 
 export default function ButcePage() {
   const [sekme, setSekme] = useState<Sekme>('genel');
   const [donem, setDonem] = useState(buDonem());
-  const [defter, setDefter] = useState<DefterSecim>('TUMU');
   // PIN bileti sekme belleğinde: sayfa yenilense de sekme açık kaldıkça sorulmaz.
   const [kilitAcik, setKilitAcik] = useState(false);
 
@@ -57,8 +48,8 @@ export default function ButcePage() {
 
   const erisim = useQuery({ queryKey: ['butce-erisim'], queryFn: butceApi.erisim, retry: false });
   const ozet = useQuery({
-    queryKey: ['butce-ozet', donem, defter],
-    queryFn: () => butceApi.ozet(donem, defter),
+    queryKey: ['butce-ozet', donem],
+    queryFn: () => butceApi.ozet(donem, 'TUMU'),
     enabled: erisim.isSuccess && kilitAcik,
   });
 
@@ -81,10 +72,9 @@ export default function ButcePage() {
   if (!kilitAcik) return <PinEkrani acildi={() => setKilitAcik(true)} />;
 
   const donemSecici = ['genel', 'gelir-gider', 'plan'].includes(sekme);
-  // Gider türü süzgeci YALNIZ gelir-gider listesinde anlamlıdır. Diğer ekranlarda
-  // (özet, borç, plan) her şey tek kasadan okunur; süzgeç oralarda borcu ve kalan
-  // parayı değiştirip yanıltıyordu.
-  const suzgecGorunur = sekme === 'gelir-gider';
+  // Genel "gider türü" süzgeci KALDIRILDI (kullanıcı kararı 2026-08-16).
+  // Ekranlar arası rakam oynamasının kaynağı oydu; mesleki/kişisel ayrımı artık
+  // giderin kendi kartında ve kategori kırılımında görünüyor.
 
   return (
     <div className="space-y-4 pb-10">
@@ -156,45 +146,6 @@ export default function ButcePage() {
           boxShadow: '0 12px 32px -22px rgba(0,0,0,0.9)',
         }}
       >
-        {/* Gider türü — gelir tek havuz olduğu için yalnız gideri süzer */}
-        {suzgecGorunur && (
-        <div className="flex flex-wrap items-center gap-2 px-1 pb-2.5">
-          <span className="text-[10.5px] font-medium uppercase tracking-[0.14em]" style={{ color: MUTED }}>
-            Gider türü
-          </span>
-          <div
-            className="flex items-center gap-0.5 rounded-full p-0.5"
-            style={{ background: 'rgba(0,0,0,0.4)', border: `1px solid ${CARD_BORDER}` }}
-          >
-            {DEFTERLER.map((d) => {
-              const Ikon = d.ikon;
-              const aktif = defter === d.deger;
-              return (
-                <button
-                  key={d.deger}
-                  onClick={() => setDefter(d.deger)}
-                  className="flex items-center gap-1.5 rounded-full px-3 py-1 text-[11.5px] font-medium transition-all duration-150"
-                  style={{
-                    background: aktif ? `linear-gradient(180deg, ${GOLD}2e, ${GOLD}16)` : 'transparent',
-                    boxShadow: aktif ? `inset 0 0 0 1px ${GOLD}4d` : 'none',
-                    color: aktif ? GOLD : MUTED,
-                  }}
-                >
-                  <Ikon size={12} /> {d.etiket}
-                </button>
-              );
-            })}
-          </div>
-          <span className="text-[10.5px]" style={{ color: 'rgba(113,113,122,0.9)' }}>
-            {defter === 'TUMU'
-              ? 'Bütün giderler · gelir her zaman tek havuzdur'
-              : defter === 'OFIS'
-                ? 'Yalnız mesleki giderler — kazançtan indirilenler'
-                : 'Yalnız kişisel harcamalar — kazançtan indirilemeyenler'}
-          </span>
-        </div>
-        )}
-
         {/* Sekmeler */}
         <nav
           className="flex flex-wrap gap-1 rounded-xl p-1"
@@ -239,7 +190,7 @@ export default function ButcePage() {
       {/* İçerik */}
       {sekme === 'genel' &&
         (ozet.isLoading || !ozet.data ? <Yukleniyor /> : <GenelBakis ozet={ozet.data} donem={donem} />)}
-      {sekme === 'gelir-gider' && <GelirGider donem={donem} defter={defter} />}
+      {sekme === 'gelir-gider' && <GelirGider donem={donem} defter="TUMU" />}
       {sekme === 'hesaplar' && <Hesaplar />}
       {sekme === 'kartlar' && <Kartlar />}
       {sekme === 'borclar' && <Borclar />}

@@ -105,6 +105,10 @@ export default function GenelBakis({
       )}
 
       {/* KPI şeridi */}
+      <p className="text-[11px] leading-relaxed" style={{ color: 'rgba(113,113,122,0.9)' }}>
+        Üst sıra <strong style={{ color: MUTED }}>bu ayın hareketini</strong>, alt sıra{' '}
+        <strong style={{ color: MUTED }}>bugünkü durumunuzu</strong> gösterir.
+      </p>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <div className="space-y-1.5">
           <KPI
@@ -125,26 +129,30 @@ export default function GenelBakis({
           altBilgi={`Mesleki ${para(ozet.meslekiGider)} ₺ · Kişisel ${para(ozet.kisiselGider)} ₺`}
         />
         <KPI
-          etiket="Ay sonu kalan"
+          etiket="Bu ay net"
           deger={`${para(ozet.net)} ₺`}
           renk={ozet.net >= 0 ? GOLD : KIRMIZI}
           ikon={<Wallet size={14} />}
-          altBilgi={`Gelir − tüm gider${ozet.gelir > 0 ? ` · gelirin %${kalanOran}’i` : ''}`}
+          altBilgi={`Gelir − gider${ozet.gelir > 0 ? ` · gelirin %${kalanOran}’i` : ''}`}
           vurgu
         />
         <KPI
-          etiket="Nakit varlık"
+          etiket="Şu an hesabımda"
           deger={`${para(ozet.nakitVarlik)} ₺`}
           renk={MOR}
           ikon={<Coins size={14} />}
-          altBilgi={hesapSayisi > 0 ? `${hesapSayisi} banka hesabındaki toplam para` : 'Banka hesabı tanımlı değil'}
+          altBilgi={
+            hesapSayisi > 0
+              ? `${hesapSayisi} banka hesabındaki bugünkü bakiye`
+              : 'Banka hesabı tanımlı değil'
+          }
         />
         <KPI
-          etiket="Net varlık"
+          etiket="Varlık − borç"
           deger={`${para(ozet.netVarlik)} ₺`}
           renk={ozet.netVarlik >= 0 ? OK : KIRMIZI}
           ikon={<Scale size={14} />}
-          altBilgi="Nakit − tüm borçlar (kart, kredi, KMH)"
+          altBilgi="Hesabımdaki para − tüm borçlar"
           vurgu={ozet.netVarlik < 0}
         />
         <KPI
@@ -269,6 +277,11 @@ export default function GenelBakis({
                         <span className="truncate" style={{ color: TEXT }}>
                           {k.ad}
                         </span>
+                        {/* Mesleki/kişisel ayrımı artık kategori satırında görünür */}
+                        <Rozet
+                          metin={k.defter === 'OFIS' ? 'mesleki' : 'kişisel'}
+                          renk={k.defter === 'OFIS' ? MAVI : GOLD}
+                        />
                         {k.zorunlu && <Rozet metin="zorunlu" renk={MUTED} />}
                       </span>
                       <span className="flex-shrink-0 tabular-nums" style={{ color: MUTED }}>

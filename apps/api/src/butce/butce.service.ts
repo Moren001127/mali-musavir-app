@@ -1349,13 +1349,29 @@ export class ButceService {
       giderler.filter((i: any) => i.kategori?.zorunlu).reduce((t: number, i: any) => t + i.tutar, 0),
     );
 
+    // ÖDEME KAPASİTESİ — Ödeme Planı ekranıyla BİREBİR aynı formül.
+    // İki ekranın farklı rakam göstermesi güven kırıyordu; tek hesap noktası.
+    const serbestGelir = kurus(
+      gelirler.filter((i: any) => !i.bankaHesapId).reduce((t: number, i: any) => t + i.tutar, 0),
+    );
+    const serbestNakitGider = kurus(
+      tumGiderler
+        .filter((i: any) => i.kaynak !== 'KART' && !i.bankaHesapId)
+        .reduce((t: number, i: any) => t + i.tutar, 0),
+    );
+
     const kartBorcu = kurus(kartlar.reduce((t: number, kk: any) => t + kk.ekstreBorcu, 0));
     const kartDonemIci = kurus(kartlar.reduce((t: number, kk: any) => t + kk.donemIciHarcama, 0));
     const krediBorcu = kurus(borclar.reduce((t: number, b: any) => t + b.kalanAnapara, 0));
     const kmhBorcu = kurus(hesaplar.reduce((t: number, h: any) => t + (h.kmhBorcu || 0), 0));
     const nakitVarlik = kurus(hesaplar.reduce((t: number, h: any) => t + Math.max(h.bakiye, 0), 0));
 
-    const kategoriMap = new Map<string, { ad: string; renk: string; tutar: number; zorunlu: boolean }>();
+    // Kategori kırılımı mesleki/kişisel ayrımını KATEGORİ ÜSTÜNDE taşır.
+    // Üstteki genel süzgeç kaldırıldı; ayrımı görmek isteyen buradan görür.
+    const kategoriMap = new Map<
+      string,
+      { ad: string; renk: string; tutar: number; zorunlu: boolean; defter: Defter }
+    >();
     for (const i of islemler as any[]) {
       if (i.tur !== 'GIDER') continue;
       const ad = i.kategori?.ad || 'Kategorisiz';
@@ -1364,6 +1380,7 @@ export class ButceService {
         renk: i.kategori?.renk || '#9c9c9c',
         tutar: 0,
         zorunlu: !!i.kategori?.zorunlu,
+        defter: (i.defter as Defter) || 'SAHSI',
       };
       kayit.tutar = kurus(kayit.tutar + i.tutar);
       kategoriMap.set(ad, kayit);
@@ -1428,6 +1445,14 @@ export class ButceService {
       istegeBagliGider: kurus(gider - zorunluGider),
       nakitYastigi: ayar.nakitYastigi,
       nakitVarlik,
+      /** Hesaba işlenmemiş gelir — bakiyede görünmediği için ayrıca sayılır */
+      serbestGelir,
+      /** Hesaba işlenmemiş nakit gider */
+      serbestNakitGider,
+      /** Borca ayrılabilecek para — Ödeme Planı ile aynı hesap */
+      odemeKapasitesi: kurus(
+        Math.max(nakitVarlik + serbestGelir - serbestNakitGider - ayar.nakitYastigi, 0),
+      ),
       borcOzet: {
         kart: kartBorcu,
         kartDonemIci,
@@ -1717,14 +1742,18 @@ export class ButceService {
       islemler.filter((i: any) => i.tur === 'GIDER' && i.kaynak !== 'KART').reduce((t: number, i: any) => t + i.tutar, 0),
     );
 
-    // ÖDEME KAPASİTESİ = ELDEKİ PARA + HENÜZ HESABA GİRMEMİŞ AKIŞ − YASTIK
+    // İKİ AYRI KAPASİTE — biri tek seferlik, biri sürdürülebilir.
     //
-    // Eskiden yalnız "gelir − nakit gider" bakılıyordu; bankadaki mevcut para
-    // görülmüyordu. O yüzden Ödeme Planı ile Nakit Akışı birbirini tutmuyordu:
-    // biri "95.000 borca ayır" derken diğeri "para yetmiyor" diyordu.
+    // Kullanıcı bulgusu: "bankadaki 98.789 + gelir − gider" tek rakam olarak
+    // aylık kapasite sayılınca plan "5 ayda borçsuz kalırsınız" diyordu. Ama
+    // bankadaki birikim BİR KERELİKTİR; gelecek ay tekrar gelmez. Karıştırınca
+    // süre gerçekte tutmayacak kadar iyimser çıkıyordu.
     //
-    // ÇİFT SAYIM KORUMASI: bir gelir/gider bir banka hesabına bağlıysa etkisi
-    // ZATEN bakiyede vardır. Bu yüzden yalnız hesaba bağlanmamış kayıtlar eklenir.
+    //   aylikKapasite → her ay tekrar eden: gelir − nakit gider − yastık
+    //   ilkAyEkNakit  → yalnız bu aya özel: bugün hesapta duran birikim
+    //
+    // ÇİFT SAYIM KORUMASI: bir gelir/gider banka hesabına bağlıysa etkisi zaten
+    // bakiyededir; birikime ikinci kez eklenmemesi için ayrıca sayılmaz.
     const hesaplar = await this.bankaHesaplar(k);
     const nakitVarlik = kurus(hesaplar.reduce((t: number, h: any) => t + Math.max(h.bakiye, 0), 0));
     const serbestGelir = kurus(
@@ -1737,15 +1766,22 @@ export class ButceService {
         .filter((i: any) => i.tur === 'GIDER' && i.kaynak !== 'KART' && !i.bankaHesapId)
         .reduce((t: number, i: any) => t + i.tutar, 0),
     );
+    // Her ay tekrar eden kapasite — simülasyonun tamamı bununla yürür
+    const otomatikKapasite = kurus(Math.max(gelir - gider - ayar.nakitYastigi, 0));
+    // Yalnız bu aya özel ek güç: hesaptaki birikim + henüz hesaba işlenmemiş net akış
+    const birikim = kurus(Math.max(nakitVarlik + serbestGelir - serbestGider - gelir + gider, 0));
     const kullanilabilirNakit = kurus(nakitVarlik + serbestGelir - serbestGider);
-    const otomatikKapasite = kurus(Math.max(kullanilabilirNakit - ayar.nakitYastigi, 0));
     const kapasite =
       opts.kapasite !== undefined && opts.kapasite !== null && !Number.isNaN(Number(opts.kapasite))
         ? kurus(Number(opts.kapasite))
         : otomatikKapasite;
 
     const kalemler = await this.planKalemleri(k, defter);
-    const karsilastirma = stratejiKarsilastir({ aylikKapasite: kapasite, kalemler });
+    const karsilastirma = stratejiKarsilastir({
+      aylikKapasite: kapasite,
+      ilkAyEkNakit: birikim,
+      kalemler,
+    });
     const strateji: Strateji = opts.strateji || (ayar.strateji as Strateji) || 'CIG';
     const secilen = strateji === 'KARTOPU' ? karsilastirma.kartopu : karsilastirma.cig;
 
@@ -1768,7 +1804,12 @@ export class ButceService {
       serbestGider,
       /** Yastık düşülmeden önce elde olan toplam para */
       kullanilabilirNakit,
+      /** Yalnız bu aya özel ek güç — hesaptaki birikim (her ay tekrarlamaz) */
+      birikim,
+      /** Her ay tekrar eden kapasite: gelir − nakit gider − yastık */
       otomatikKapasite,
+      /** Bu ay fiilen ödeyebileceğiniz toplam: tekrarlayan + birikim */
+      buAyToplam: kurus(kapasite + birikim),
       kapasite,
       strateji,
       kalemler,

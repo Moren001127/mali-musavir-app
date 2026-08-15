@@ -654,11 +654,14 @@ function IslemModal({
           </Secim>
         </Alan>
 
-        <DefterAlani
-          deger={form.defter}
-          degistir={(d) => setForm({ ...form, defter: d })}
-          ipucu="Kategori seçtiğinizde kategorinin defteri gelir; gerekirse değiştirin."
-        />
+        {/* Gelir TEK HAVUZ olduğu için yalnız giderde mesleki/kişisel sorulur */}
+        {form.tur === 'GIDER' && (
+          <DefterAlani
+            deger={form.defter}
+            degistir={(d) => setForm({ ...form, defter: d })}
+            ipucu="Mesleki gider kazançtan indirilir; kişisel harcama indirilemez."
+          />
+        )}
 
         <Alan etiket="Ödeme kaynağı">
           <Secim value={form.kaynak} onChange={(e) => setForm({ ...form, kaynak: e.target.value as any })}>
@@ -715,10 +718,13 @@ function IslemModal({
         >
           <div className="min-w-0">
             <div className="text-[12px]" style={{ color: TEXT }}>
-              Beklenen kayıt
+              Henüz olmadı, ileride olacak
             </div>
-            <div className="mt-0.5 text-[10.5px]" style={{ color: MUTED }}>
-              Henüz gerçekleşmedi; nakit akışı takviminde görünür.
+            <div className="mt-0.5 text-[10.5px] leading-relaxed" style={{ color: MUTED }}>
+              Örnek: “20 Ağustos’ta gelecek tahsilat”. Gelir/gider toplamlarına{' '}
+              <strong style={{ color: TEXT }}>girmez</strong>; yalnız Nakit Akışı takviminde o günün hareketi
+              olarak görünür — “o gün param yeter mi” sorusunun cevabı doğru çıksın diye. Para gerçekten
+              gelince bu işareti kaldırın.
             </div>
           </div>
           <Anahtar acik={form.planlanan} degistir={(v) => setForm({ ...form, planlanan: v })} renk={TURUNCU} />
