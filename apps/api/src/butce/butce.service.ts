@@ -1728,7 +1728,29 @@ export class ButceService {
     const gider = kurus(
       islemler.filter((i: any) => i.tur === 'GIDER' && i.kaynak !== 'KART').reduce((t: number, i: any) => t + i.tutar, 0),
     );
-    const otomatikKapasite = kurus(Math.max(gelir - gider - ayar.nakitYastigi, 0));
+
+    // ÖDEME KAPASİTESİ = ELDEKİ PARA + HENÜZ HESABA GİRMEMİŞ AKIŞ − YASTIK
+    //
+    // Eskiden yalnız "gelir − nakit gider" bakılıyordu; bankadaki mevcut para
+    // görülmüyordu. O yüzden Ödeme Planı ile Nakit Akışı birbirini tutmuyordu:
+    // biri "95.000 borca ayır" derken diğeri "para yetmiyor" diyordu.
+    //
+    // ÇİFT SAYIM KORUMASI: bir gelir/gider bir banka hesabına bağlıysa etkisi
+    // ZATEN bakiyede vardır. Bu yüzden yalnız hesaba bağlanmamış kayıtlar eklenir.
+    const hesaplar = await this.bankaHesaplar(k);
+    const nakitVarlik = kurus(hesaplar.reduce((t: number, h: any) => t + Math.max(h.bakiye, 0), 0));
+    const serbestGelir = kurus(
+      islemler
+        .filter((i: any) => i.tur === 'GELIR' && !i.bankaHesapId)
+        .reduce((t: number, i: any) => t + i.tutar, 0),
+    );
+    const serbestGider = kurus(
+      islemler
+        .filter((i: any) => i.tur === 'GIDER' && i.kaynak !== 'KART' && !i.bankaHesapId)
+        .reduce((t: number, i: any) => t + i.tutar, 0),
+    );
+    const kullanilabilirNakit = kurus(nakitVarlik + serbestGelir - serbestGider);
+    const otomatikKapasite = kurus(Math.max(kullanilabilirNakit - ayar.nakitYastigi, 0));
     const kapasite =
       opts.kapasite !== undefined && opts.kapasite !== null && !Number.isNaN(Number(opts.kapasite))
         ? kurus(Number(opts.kapasite))
@@ -1750,6 +1772,14 @@ export class ButceService {
       gelir,
       gider,
       nakitYastigi: ayar.nakitYastigi,
+      /** Banka hesaplarındaki artı bakiyelerin toplamı */
+      nakitVarlik,
+      /** Henüz bir banka hesabına bağlanmamış gelir (bakiyede görünmeyen) */
+      serbestGelir,
+      /** Henüz bir banka hesabına bağlanmamış nakit gider */
+      serbestGider,
+      /** Yastık düşülmeden önce elde olan toplam para */
+      kullanilabilirNakit,
       otomatikKapasite,
       kapasite,
       strateji,

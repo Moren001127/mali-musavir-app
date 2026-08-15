@@ -367,6 +367,14 @@ export interface Plan {
   gelir: number;
   gider: number;
   nakitYastigi: number;
+  /** Banka hesaplarındaki artı bakiyelerin toplamı */
+  nakitVarlik: number;
+  /** Hesaba bağlanmamış gelir — bakiyede görünmediği için ayrıca eklenir */
+  serbestGelir: number;
+  /** Hesaba bağlanmamış nakit gider */
+  serbestGider: number;
+  /** Yastık düşülmeden önce elde olan toplam para */
+  kullanilabilirNakit: number;
   otomatikKapasite: number;
   kapasite: number;
   strateji: Strateji;

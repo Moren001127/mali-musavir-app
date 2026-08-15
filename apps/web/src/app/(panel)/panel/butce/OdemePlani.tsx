@@ -8,7 +8,7 @@ import {
 import { butceApi, Strateji, para, donemTR, DefterSecim } from '@/lib/butce';
 import {
   Kutu, KPI, Dugme, Girdi, Alan, Bos, Rozet, Yukleniyor, ParaGirdi, paraCoz,
-  GOLD, OK, KIRMIZI, TURUNCU, MAVI, MOR, MUTED, TEXT, ROW_SEP,
+  GOLD, OK, KIRMIZI, TURUNCU, MAVI, MOR, MUTED, TEXT, ROW_SEP, CARD_BORDER,
 } from './ui';
 import AiKutu from './AiKutu';
 
@@ -30,6 +30,15 @@ export default function OdemePlani({ donem, defter = 'TUMU' }: { donem: string; 
 
   const faydaSorgu = useMutation({ mutationFn: (t: number) => butceApi.fayda(t) });
 
+  // Ödeme planı ile Nakit Akışı aynı parayı kullanır. Plan "aylık" bakar,
+  // nakit akışı "gün gün" bakar: ay toplamı yetse bile ödeme gününde para
+  // olmayabilir. Bu yüzden akıştaki açık günler burada da uyarı olarak çıkar.
+  const akis = useQuery({
+    queryKey: ['butce-nakit-akis-plan'],
+    queryFn: () => butceApi.nakitAkis(30),
+    staleTime: 60_000,
+  });
+
   const aiSorgu = useQuery({
     queryKey: ['butce-ai-plan'],
     queryFn: () => butceApi.aiPlan(false),
@@ -49,7 +58,7 @@ export default function OdemePlani({ donem, defter = 'TUMU' }: { donem: string; 
       {/* Kapasite ve strateji */}
       <Kutu
         baslik="Ödeme kapasitesi"
-        aciklama="Bu ay borçlara ayırabileceğiniz para. Boş bırakırsanız gelir − gider − nakit yastığı olarak hesaplanır."
+        aciklama="Bu ay borçlara ayırabileceğiniz para. Boş bırakırsanız elinizdeki nakitten hesaplanır."
         sag={
           <div className="flex items-center gap-1.5">
             {(['CIG', 'KARTOPU'] as const).map((st) => (
@@ -74,12 +83,74 @@ export default function OdemePlani({ donem, defter = 'TUMU' }: { donem: string; 
             <ParaGirdi value={kapasite} onChange={setKapasite} placeholder={para(plan.otomatikKapasite)} />
           </Alan>
           <div className="sm:col-span-3 grid gap-3 sm:grid-cols-3">
-            <KPI etiket="Gelir" deger={`${para(plan.gelir)} ₺`} renk={OK} />
-            <KPI etiket="Gider (nakit)" deger={`${para(plan.gider)} ₺`} renk={KIRMIZI} />
+            <KPI etiket="Hesaplardaki para" deger={`${para(plan.nakitVarlik)} ₺`} renk={MAVI} />
+            <KPI etiket="Nakit yastığı" deger={`${para(plan.nakitYastigi)} ₺`} renk={MUTED} />
             <KPI etiket="Borca ayrılan" deger={`${para(plan.kapasite)} ₺`} renk={GOLD} vurgu />
           </div>
         </div>
+
+        {/* Kapasitenin nasıl bulunduğu — Nakit Akışı ile aynı parayı kullanır */}
+        <div
+          className="mt-3 rounded-xl px-3.5 py-3"
+          style={{ background: 'rgba(0,0,0,0.25)', border: `1px solid ${CARD_BORDER}` }}
+        >
+          <div className="text-[11px] uppercase tracking-wider" style={{ color: MUTED }}>
+            Bu tutar nasıl bulundu
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px]">
+            <span style={{ color: MAVI }}>{para(plan.nakitVarlik)} ₺</span>
+            <span style={{ color: MUTED }}>hesaplardaki para</span>
+            {plan.serbestGelir > 0 && (
+              <>
+                <span style={{ color: MUTED }}>+</span>
+                <span style={{ color: OK }}>{para(plan.serbestGelir)} ₺</span>
+                <span style={{ color: MUTED }}>hesaba işlenmemiş gelir</span>
+              </>
+            )}
+            {plan.serbestGider > 0 && (
+              <>
+                <span style={{ color: MUTED }}>−</span>
+                <span style={{ color: KIRMIZI }}>{para(plan.serbestGider)} ₺</span>
+                <span style={{ color: MUTED }}>hesaba işlenmemiş gider</span>
+              </>
+            )}
+            <span style={{ color: MUTED }}>−</span>
+            <span style={{ color: MUTED }}>{para(plan.nakitYastigi)} ₺ yastık</span>
+            <span style={{ color: MUTED }}>=</span>
+            <span className="font-semibold" style={{ color: GOLD }}>
+              {para(plan.otomatikKapasite)} ₺
+            </span>
+          </div>
+          {(plan.serbestGelir > 0 || plan.serbestGider > 0) && (
+            <p className="mt-2 text-[10.5px] leading-relaxed" style={{ color: 'rgba(113,113,122,0.9)' }}>
+              Hesaba bağlanmamış kayıtlar ayrı gösterilir; banka hesabı seçilen kayıtlar zaten bakiyeye
+              işlendiği için ikinci kez sayılmaz. Gelir ve giderlerinize hesap seçerseniz bu satır kaybolur ve
+              plan doğrudan bakiyeden okunur.
+            </p>
+          )}
+        </div>
       </Kutu>
+
+      {/* Gün bazlı gerçeklik kontrolü — aylık kapasite yetse bile gün tutmayabilir */}
+      {(akis.data?.acikGunler?.length ?? 0) > 0 && (
+        <div
+          className="flex items-start gap-3 rounded-xl px-4 py-3"
+          style={{ background: `${TURUNCU}12`, border: `1px solid ${TURUNCU}33` }}
+        >
+          <AlertTriangle size={16} style={{ color: TURUNCU }} className="mt-0.5" />
+          <div>
+            <div className="text-[12.5px] font-semibold" style={{ color: TURUNCU }}>
+              Nakit akışında {akis.data!.acikGunler.length} gün para yetmiyor
+            </div>
+            <div className="mt-0.5 text-[11.5px] leading-relaxed" style={{ color: MUTED }}>
+              En düşük bakiye {para(akis.data!.enDusuk.tutar)} ₺ ·{' '}
+              {new Date(akis.data!.enDusuk.tarih).toLocaleDateString('tr-TR')}. Buradaki plan ayın tamamına
+              bakar; ödemelerin düştüğü günlerde para elinizde olmayabilir. Gün gün dökümü ve hangi hesaptan
+              nasıl kapatacağınız <strong style={{ color: TEXT }}>Nakit Akışı</strong> sekmesinde.
+            </div>
+          </div>
+        </div>
+      )}
 
       {plan.kalemler.length === 0 ? (
         <Bos metin="Kayıtlı borç yok. Kart ve kredi ekledikçe plan burada oluşur." ikon={<Target size={18} />} />
