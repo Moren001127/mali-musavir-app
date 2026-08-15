@@ -137,7 +137,7 @@ export default function GenelBakis({
           vurgu
         />
         <KPI
-          etiket="Şu an hesabımda"
+          etiket="Net varlıklar"
           deger={`${para(ozet.nakitVarlik)} ₺`}
           renk={MOR}
           ikon={<Coins size={14} />}
