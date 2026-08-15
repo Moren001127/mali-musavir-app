@@ -35,8 +35,8 @@ const SEKMELER = [
 /** Şahsi / Ofis ayrımı — aynı kart ve hesap iki defterde de kullanılabilir */
 const DEFTERLER: Array<{ deger: DefterSecim; etiket: string; ikon: any }> = [
   { deger: 'TUMU', etiket: 'Tümü', ikon: Layers },
-  { deger: 'SAHSI', etiket: 'Şahsi', ikon: User },
-  { deger: 'OFIS', etiket: 'Ofis', ikon: Building2 },
+  { deger: 'OFIS', etiket: 'Mesleki', ikon: Building2 },
+  { deger: 'SAHSI', etiket: 'Kişisel', ikon: User },
 ];
 
 type Sekme = (typeof SEKMELER)[number]['anahtar'];
@@ -143,65 +143,92 @@ export default function ButcePage() {
         </div>
       </header>
 
-      {/* Defter seçici — şahsi ve ofis kayıtları ayrı okunur */}
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-[11px] uppercase tracking-wider" style={{ color: MUTED }}>
-          Defter
-        </span>
-        <div
-          className="flex items-center gap-1 rounded-xl p-1"
-          style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${CARD_BORDER}` }}
+      {/* Araç çubuğu — gider türü süzgeci ve sekmeler tek şeritte */}
+      <div
+        className="rounded-2xl p-2.5"
+        style={{
+          background: 'linear-gradient(180deg, rgba(255,255,255,0.035), rgba(0,0,0,0.25))',
+          border: `1px solid ${CARD_BORDER}`,
+          boxShadow: '0 12px 32px -22px rgba(0,0,0,0.9)',
+        }}
+      >
+        {/* Gider türü — gelir tek havuz olduğu için yalnız gideri süzer */}
+        <div className="flex flex-wrap items-center gap-2 px-1 pb-2.5">
+          <span className="text-[10.5px] font-medium uppercase tracking-[0.14em]" style={{ color: MUTED }}>
+            Gider türü
+          </span>
+          <div
+            className="flex items-center gap-0.5 rounded-full p-0.5"
+            style={{ background: 'rgba(0,0,0,0.4)', border: `1px solid ${CARD_BORDER}` }}
+          >
+            {DEFTERLER.map((d) => {
+              const Ikon = d.ikon;
+              const aktif = defter === d.deger;
+              return (
+                <button
+                  key={d.deger}
+                  onClick={() => setDefter(d.deger)}
+                  className="flex items-center gap-1.5 rounded-full px-3 py-1 text-[11.5px] font-medium transition-all duration-150"
+                  style={{
+                    background: aktif ? `linear-gradient(180deg, ${GOLD}2e, ${GOLD}16)` : 'transparent',
+                    boxShadow: aktif ? `inset 0 0 0 1px ${GOLD}4d` : 'none',
+                    color: aktif ? GOLD : MUTED,
+                  }}
+                >
+                  <Ikon size={12} /> {d.etiket}
+                </button>
+              );
+            })}
+          </div>
+          <span className="text-[10.5px]" style={{ color: 'rgba(113,113,122,0.9)' }}>
+            {defter === 'TUMU'
+              ? 'Bütün giderler · gelir her zaman tek havuzdur'
+              : defter === 'OFIS'
+                ? 'Yalnız mesleki giderler — kazançtan indirilenler'
+                : 'Yalnız kişisel harcamalar — kazançtan indirilemeyenler'}
+          </span>
+        </div>
+
+        {/* Sekmeler */}
+        <nav
+          className="flex flex-wrap gap-1 rounded-xl p-1"
+          style={{ background: 'rgba(0,0,0,0.32)', border: `1px solid ${CARD_BORDER}` }}
         >
-          {DEFTERLER.map((d) => {
-            const Ikon = d.ikon;
-            const aktif = defter === d.deger;
+          {SEKMELER.map((s) => {
+            const Ikon = s.ikon;
+            const aktif = sekme === s.anahtar;
             return (
               <button
-                key={d.deger}
-                onClick={() => setDefter(d.deger)}
-                className="flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-[11.5px] transition"
+                key={s.anahtar}
+                onClick={() => setSekme(s.anahtar)}
+                className="group relative flex items-center gap-1.5 rounded-lg px-3 py-[7px] text-[12.5px] font-medium transition-all duration-150"
                 style={{
-                  background: aktif ? `${GOLD}1f` : 'transparent',
-                  border: `1px solid ${aktif ? `${GOLD}44` : 'transparent'}`,
+                  background: aktif
+                    ? `linear-gradient(180deg, ${GOLD}2b, ${GOLD}12)`
+                    : 'transparent',
+                  boxShadow: aktif ? `inset 0 0 0 1px ${GOLD}4d, 0 6px 18px -12px ${GOLD}99` : 'none',
                   color: aktif ? GOLD : MUTED,
                 }}
+                onMouseEnter={(e) => {
+                  if (!aktif) e.currentTarget.style.background = 'rgba(255,255,255,0.045)';
+                }}
+                onMouseLeave={(e) => {
+                  if (!aktif) e.currentTarget.style.background = 'transparent';
+                }}
               >
-                <Ikon size={12} /> {d.etiket}
+                <Ikon size={13} style={{ opacity: aktif ? 1 : 0.75 }} />
+                {s.etiket}
+                {aktif && (
+                  <span
+                    className="absolute inset-x-3 -bottom-[1px] h-[2px] rounded-full"
+                    style={{ background: `linear-gradient(90deg, transparent, ${GOLD}, transparent)` }}
+                  />
+                )}
               </button>
             );
           })}
-        </div>
-        <span className="text-[10.5px]" style={{ color: 'rgba(113,113,122,0.85)' }}>
-          {defter === 'TUMU'
-            ? 'Şahsi ve ofis birlikte'
-            : defter === 'OFIS'
-              ? 'Yalnız ofis gelir-giderleri (kâr/zarar)'
-              : 'Yalnız kişisel gelir-giderleriniz'}
-        </span>
+        </nav>
       </div>
-
-      {/* Sekmeler */}
-      <nav className="flex flex-wrap gap-1.5">
-        {SEKMELER.map((s) => {
-          const Ikon = s.ikon;
-          const aktif = sekme === s.anahtar;
-          return (
-            <button
-              key={s.anahtar}
-              onClick={() => setSekme(s.anahtar)}
-              className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-[12px] transition"
-              style={{
-                background: aktif ? `${GOLD}18` : 'rgba(255,255,255,0.02)',
-                border: `1px solid ${aktif ? `${GOLD}44` : CARD_BORDER}`,
-                color: aktif ? GOLD : MUTED,
-              }}
-            >
-              <Ikon size={13} />
-              {s.etiket}
-            </button>
-          );
-        })}
-      </nav>
 
       {/* İçerik */}
       {sekme === 'genel' &&

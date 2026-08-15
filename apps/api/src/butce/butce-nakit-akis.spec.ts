@@ -87,7 +87,7 @@ describe('nakit akışı önerileri', () => {
 
   it('açık gün için seçenek üretir ve en ucuzu önerir', () => {
     const s = nakitAkisiHesapla({ baslangicNakit: 5000, hareketler, bugun: BUGUN, gunSayisi: 20 });
-    const o = akisOnerileri(s, hareketler, { kmhAylikFaiz: 5 });
+    const o = akisOnerileri(s, hareketler, { kmhAylikFaiz: 5, kmhHesaplari: [{ banka: 'Ziraat', ad: 'Vadesiz', kullanilabilir: 50000, aylikFaiz: 5 }] });
     expect(o.length).toBeGreaterThan(0);
 
     const ilk = o[0];
@@ -95,8 +95,8 @@ describe('nakit akışı önerileri', () => {
     expect(ilk.acik).toBe(25000);
     // Asgari ödeme seçeneği üretilmeli
     expect(ilk.secenekler.some((x) => x.ad.includes('asgari'))).toBe(true);
-    // KMH seçeneği üretilmeli
-    expect(ilk.secenekler.some((x) => x.ad.includes('KMH'))).toBe(true);
+    // Ek hesap (KMH) seçeneği yalnız limit verildiği için üretilmeli
+    expect(ilk.secenekler.some((x) => /ek hesab|ek hesap/i.test(x.ad))).toBe(true);
     // Tam olarak bir seçenek önerilmiş olmalı ve o "önerilmez" olmamalı
     const onerilenler = ilk.secenekler.filter((x) => x.onerilen);
     expect(onerilenler).toHaveLength(1);
@@ -122,5 +122,96 @@ describe('nakit akışı önerileri', () => {
 
   it('gün anahtarı UTC gün olarak sabittir', () => {
     expect(gunAnahtari(new Date('2026-09-05T21:30:00.000Z'))).toBe('2026-09-05');
+  });
+});
+
+describe('nakit akışı — KMH önerisi yalnız gerçek limit varsa', () => {
+  // Canlıda görülen hata: hiç ek hesabı olmayan kullanıcıya da "KMH ile kapat"
+  // öneriliyordu. Olmayan bir imkânı önermek yanlış yönlendirmedir.
+  const hareketler: AkisHareketi[] = [
+    {
+      tarih: G(5),
+      tutar: -30000,
+      ad: 'Kart',
+      tur: 'KART_ODEME',
+      kesin: true,
+      esnek: { asgari: 6000, aylikFaiz: 0.0425 },
+    },
+  ];
+  const sonuc = nakitAkisiHesapla({ baslangicNakit: 5000, hareketler, bugun: BUGUN, gunSayisi: 20 });
+
+  it('KMH limiti yoksa KMH seçeneği hiç üretilmez', () => {
+    const o = akisOnerileri(sonuc, hareketler, { kmhHesaplari: [] });
+    const hepsi = o.flatMap((x) => x.secenekler.map((s) => s.ad));
+    expect(hepsi.some((ad) => /KMH|ek hesab/i.test(ad))).toBe(false);
+  });
+
+  it('KMH limiti açığı karşılıyorsa normal seçenek olarak çıkar', () => {
+    const o = akisOnerileri(sonuc, hareketler, { kmhHesaplari: [{ banka: 'Ziraat', ad: 'Vadesiz', kullanilabilir: 100000, aylikFaiz: 5 }] });
+    const kmh = o[0].secenekler.find((s) => /ek hesab/i.test(s.ad))!;
+    expect(kmh).toBeTruthy();
+    expect(kmh.ad).not.toMatch(/yetmez/i);
+    // Hangi hesaptan kullanılacağı ADIYLA söylenmeli
+    expect(kmh.ad).toContain('Ziraat');
+    expect(kmh.aciklama).toContain('100.000');
+  });
+
+  it('KMH limiti yetersizse "yetmez" olarak işaretlenir ve kalan açık söylenir', () => {
+    const o = akisOnerileri(sonuc, hareketler, { kmhHesaplari: [{ banka: 'Ziraat', ad: 'Vadesiz', kullanilabilir: 10000, aylikFaiz: 5 }] });
+    const kmh = o[0].secenekler.find((s) => /ek hesap/i.test(s.ad))!;
+    expect(kmh.ad).toMatch(/yetmez/i);
+    expect(kmh.aciklama).toMatch(/eksik kalır/);
+  });
+
+  it('hiç seçenek üretilemezse uydurma yapmaz, durumu söyler', () => {
+    // Esnek olmayan tek ödeme + KMH yok + sonraki giriş yok
+    const h: AkisHareketi[] = [
+      { tarih: G(3), tutar: -50000, ad: 'Kredi taksiti', tur: 'KREDI_TAKSIT', kesin: true },
+    ];
+    const s2 = nakitAkisiHesapla({ baslangicNakit: 0, hareketler: h, bugun: BUGUN, gunSayisi: 15 });
+    const o = akisOnerileri(s2, h, { kmhHesaplari: [] });
+    expect(o[0].secenekler).toHaveLength(1);
+    expect(o[0].secenekler[0].ad).toMatch(/ek gelir/i);
+    expect(o[0].secenekler[0].onerilen).toBe(true);
+  });
+});
+
+describe('nakit akışı — hangi ek hesaptan ne kadar', () => {
+  const hareketler: AkisHareketi[] = [
+    { tarih: G(5), tutar: -60000, ad: 'Kart', tur: 'KART_ODEME', kesin: true },
+  ];
+  const sonuc = nakitAkisiHesapla({ baslangicNakit: 0, hareketler, bugun: BUGUN, gunSayisi: 20 });
+
+  it('tek hesap varsa seçenek başlığında banka ve hesap adı geçer', () => {
+    const o = akisOnerileri(sonuc, hareketler, {
+      kmhHesaplari: [{ banka: 'Ziraat', ad: 'Muzaffer Ören', kullanilabilir: 100000, aylikFaiz: 4.25 }],
+    });
+    const kmh = o[0].secenekler.find((s) => /ek hesab/i.test(s.ad))!;
+    expect(kmh.ad).toBe('Ziraat Muzaffer Ören — ek hesabı kullan');
+    expect(kmh.aciklama).toContain('100.000');
+    expect(kmh.aciklama).toContain('%4.25');
+  });
+
+  it('birden çok hesapta önce EN UCUZ faizli kullanılır', () => {
+    const o = akisOnerileri(sonuc, hareketler, {
+      kmhHesaplari: [
+        { banka: 'Akbank', ad: 'Ticari', kullanilabilir: 50000, aylikFaiz: 6 },
+        { banka: 'Ziraat', ad: 'Vadesiz', kullanilabilir: 40000, aylikFaiz: 3 },
+      ],
+    });
+    const kmh = o[0].secenekler.find((s) => /ek hesap/i.test(s.ad) || /ek hesab/i.test(s.ad))!;
+    // Önce Ziraat (%3) 40.000, kalan 20.000 Akbank'tan (%6)
+    expect(kmh.aciklama.indexOf('Ziraat')).toBeLessThan(kmh.aciklama.indexOf('Akbank'));
+    expect(kmh.aciklama).toContain('40.000');
+    expect(kmh.aciklama).toContain('20.000');
+  });
+
+  it('toplam limit yetmezse eksik kalan tutar söylenir', () => {
+    const o = akisOnerileri(sonuc, hareketler, {
+      kmhHesaplari: [{ banka: 'Ziraat', ad: 'Vadesiz', kullanilabilir: 10000, aylikFaiz: 4 }],
+    });
+    const kmh = o[0].secenekler.find((s) => /ek hesap/i.test(s.ad))!;
+    expect(kmh.ad).toMatch(/yetmez/i);
+    expect(kmh.aciklama).toContain('50.000'); // 60.000 açık − 10.000 limit
   });
 });

@@ -453,7 +453,7 @@ function HesapModal({
           </>
         )}
 
-        <Alan etiket="Varsayılan defter" ipucu="Bu hesaptan yapılan kayıtlar öntanımlı olarak buraya düşer">
+        <Alan etiket="Yeni kayıtta ön seçim" ipucu="Kısıt değildir: bu hesapla kayıt girerken defter olarak bu seçili gelir, her kayıtta değiştirebilirsiniz. Aynı hesabı hem şahsi hem ofis için kullanabilirsiniz.">
           <Secim
             value={form.varsayilanDefter}
             onChange={(e) => setForm({ ...form, varsayilanDefter: e.target.value as Defter })}

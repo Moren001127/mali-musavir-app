@@ -1,20 +1,63 @@
 'use client';
 
-import React, { useRef, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   Plus, CreditCard, Upload, Pencil, Trash2, CheckCircle2, Undo2, FileText,
-  Sparkles, Brain, Hand, CalendarClock,
+  Sparkles, Brain, Hand, CalendarClock, AlertTriangle,
 } from 'lucide-react';
 import {
-  butceApi, Kart, Ekstre, KartHareket, Kategori, para, tarihTR, buDonem,
-  EKSTRE_DURUM_ETIKET,
+  butceApi, Kart, Ekstre, KartHareket, Kategori, Defter, DEFTER_ETIKET,
+  para, tarihTR, buDonem, EKSTRE_DURUM_ETIKET,
 } from '@/lib/butce';
 import {
   Kutu, Dugme, Modal, Alan, Girdi, Secim, Bos, Rozet, Yukleniyor, ParaGirdi, paraCoz, paraGiris,
+  Anahtar,
   GOLD, OK, KIRMIZI, TURUNCU, MAVI, MOR, MUTED, TEXT, ROW_SEP, CARD_BORDER,
 } from './ui';
+
+/* ===================== YARDIMCILAR ===================== */
+
+/** Ekstre aralığı gün.ay olarak yazılır: "08.07 – 07.08" */
+const gunAy = (d?: string | Date | null) =>
+  d ? new Date(d).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit' }) : '';
+
+/* "22.08'de kesilecek" — bulunma eki ayın okunuşuna göre değişir
+ * (…sekiz → 'de, …dokuz → 'da), sabit ek yazınca cümle bozuluyor. */
+const AY_EKI: Record<number, string> = {
+  1: 'de', 2: 'de', 3: 'te', 4: 'te', 5: 'te', 6: 'da',
+  7: 'de', 8: 'de', 9: 'da', 10: 'da', 11: 'de', 12: 'de',
+};
+const gunAyEkli = (d?: string | Date | null) => {
+  if (!d) return '';
+  const t = new Date(d);
+  return `${gunAy(t)}'${AY_EKI[t.getMonth() + 1] || 'de'}`;
+};
+
+/** Kullanıcı dönem kodundan çok "hangi harcamalar" diye bakıyor; aralık yoksa döneme düşeriz. */
+const ekstreAralik = (e: Ekstre) =>
+  e.harcamaBaslangic && e.harcamaBitis
+    ? `${gunAy(e.harcamaBaslangic)} – ${gunAy(e.harcamaBitis)} harcamaları`
+    : `${e.donem} dönemi`;
+
+/* Sunucu 'ASGARI_ODENDI' durumunu döndürüyor ama lib'deki eşlemede yok; eşleme
+ * bulunamayınca rozet çöküyordu. Asgarisi ödenmiş ekstre GECİKME DEĞİLDİR,
+ * bu yüzden uyarı rengi (turuncu/kırmızı) değil mavi gösterilir. */
+const DURUM_ETIKET: Record<string, { etiket: string; renk: string }> = {
+  ...EKSTRE_DURUM_ETIKET,
+  ASGARI_ODENDI: { etiket: 'Asgari ödendi', renk: MAVI },
+};
+const durumBilgi = (d?: string | null) =>
+  (d && DURUM_ETIKET[d]) || { etiket: String(d || '—'), renk: MUTED };
+
+const DEFTERLER: Array<{ deger: Defter; etiket: string }> = [
+  { deger: 'SAHSI', etiket: DEFTER_ETIKET.SAHSI },
+  { deger: 'OFIS', etiket: DEFTER_ETIKET.OFIS },
+];
+
+/** Sunucu hareketin defterini gönderiyor; lib tipinde alan henüz tanımlı değil. */
+type Hareket = KartHareket & { defter?: Defter | null };
 
 export default function Kartlar() {
   const qc = useQueryClient();
@@ -22,6 +65,7 @@ export default function Kartlar() {
   const [ekstreModal, setEkstreModal] = useState<{ kart: Kart; ekstre: Ekstre } | null>(null);
   const [pdfModal, setPdfModal] = useState<Kart | null>(null);
   const [hareketModal, setHareketModal] = useState<{ kart: Kart; ekstreId: string } | null>(null);
+  const [silModal, setSilModal] = useState<Kart | null>(null);
 
   const { data: kartlar = [], isLoading } = useQuery({ queryKey: ['butce-kartlar'], queryFn: butceApi.kartlar });
 
@@ -31,14 +75,6 @@ export default function Kartlar() {
     qc.invalidateQueries({ queryKey: ['butce-plan'] });
     qc.invalidateQueries({ queryKey: ['butce-islemler'] });
   };
-
-  const kartSil = useMutation({
-    mutationFn: (id: string) => butceApi.kartSil(id),
-    onSuccess: () => {
-      toast.success('Kart silindi');
-      tazele();
-    },
-  });
 
   const ekstreUret = useMutation({
     mutationFn: (kartId: string) => butceApi.ekstreUret(kartId, buDonem()),
@@ -67,9 +103,13 @@ export default function Kartlar() {
           <div className="grid gap-3 lg:grid-cols-2">
             {kartlar.map((k) => {
               const renk = k.renk || GOLD;
-              const kullanimOran = k.kartLimiti > 0 ? Math.min((k.kalanBorc / k.kartLimiti) * 100, 100) : 0;
+              const guncelBorc = k.guncelBorc ?? k.kalanBorc ?? 0;
+              // Limit dolulugu ekstre borcu + dönem içi harcamanın toplamına göre; sunucu
+              // vermezse yerelde aynı hesabı yaparız.
+              const kullanimOran =
+                k.limitDoluluk ?? (k.kartLimiti > 0 ? Math.min((guncelBorc / k.kartLimiti) * 100, 100) : 0);
               const e = k.guncelEkstre;
-              const durum = e ? EKSTRE_DURUM_ETIKET[e.durum] : null;
+              const durum = e ? durumBilgi(e.durum) : null;
               return (
                 <div
                   key={k.id}
@@ -105,7 +145,7 @@ export default function Kartlar() {
                         <Pencil size={12} />
                       </button>
                       <button
-                        onClick={() => kartSil.mutate(k.id)}
+                        onClick={() => setSilModal(k)}
                         className="rounded-md p-1 transition hover:bg-white/[0.08]"
                         style={{ color: KIRMIZI }}
                         title="Sil"
@@ -115,21 +155,56 @@ export default function Kartlar() {
                     </div>
                   </div>
 
-                  <div className="mt-3 flex items-end justify-between gap-3">
-                    <div>
-                      <div className="text-[10.5px] uppercase tracking-wider" style={{ color: MUTED }}>
-                        Güncel borç
-                      </div>
-                      <div className="text-[20px] font-semibold tabular-nums" style={{ color: renk }}>
-                        {para(k.kalanBorc)} ₺
-                      </div>
+                  {/* Bankadaki gibi üç rakam: şimdi ödenecek olan, henüz ekstreye girmemiş
+                      olan ve ikisinin toplamı. Tek rakam gösterince "ne kadar ödeyeceğim"
+                      sorusu cevapsız kalıyordu. */}
+                  <div className="mt-3 space-y-1">
+                    <div className="flex items-baseline justify-between gap-3">
+                      <span
+                        className="text-[11px]"
+                        style={{ color: MUTED }}
+                        title="Kesilen ekstrenin ödenmemiş kısmı — son ödeme tarihinde bu tutar ödenir."
+                      >
+                        Ekstre borcu <span style={{ color: 'rgba(113,113,122,0.75)' }}>· ödenecek</span>
+                      </span>
+                      <span className="text-[12.5px] tabular-nums" style={{ color: TEXT }}>
+                        {para(k.ekstreBorcu ?? 0)} ₺
+                      </span>
                     </div>
-                    <div className="text-right">
-                      <div className="text-[10.5px]" style={{ color: MUTED }}>
-                        Kullanılabilir limit
+                    <div className="flex items-baseline justify-between gap-3">
+                      <span
+                        className="text-[11px]"
+                        style={{ color: MUTED }}
+                        title="Son kesimden bugüne yapılan harcama. Gelecek ekstreye gider, şimdi ödenmez."
+                      >
+                        Dönem içi harcama{' '}
+                        <span style={{ color: 'rgba(113,113,122,0.75)' }}>
+                          · {gunAy(k.donemIciBaslangic) || '—'} – bugün
+                        </span>
+                      </span>
+                      <span className="text-[12.5px] tabular-nums" style={{ color: TEXT }}>
+                        {para(k.donemIciHarcama ?? 0)} ₺
+                      </span>
+                    </div>
+                    <div
+                      className="flex items-end justify-between gap-3 border-t pt-1.5"
+                      style={{ borderColor: ROW_SEP }}
+                    >
+                      <div>
+                        <div className="text-[10.5px] uppercase tracking-wider" style={{ color: MUTED }}>
+                          Güncel borç
+                        </div>
+                        <div className="text-[20px] font-semibold tabular-nums" style={{ color: renk }}>
+                          {para(guncelBorc)} ₺
+                        </div>
                       </div>
-                      <div className="text-[12.5px] tabular-nums" style={{ color: TEXT }}>
-                        {para(k.kullanilabilirLimit)} ₺
+                      <div className="text-right">
+                        <div className="text-[10.5px]" style={{ color: MUTED }}>
+                          Kullanılabilir limit
+                        </div>
+                        <div className="text-[12.5px] tabular-nums" style={{ color: TEXT }}>
+                          {para(k.kullanilabilirLimit)} ₺
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -163,15 +238,23 @@ export default function Kartlar() {
                     ) : (
                       <>
                         <div className="flex items-center justify-between gap-2">
-                          <span className="flex items-center gap-2 text-[11.5px]" style={{ color: MUTED }}>
-                            <CalendarClock size={12} /> {e.donem} dönemi · son ödeme {tarihTR(e.sonOdemeTarihi)}
+                          <span className="flex items-center gap-1.5 text-[11.5px]" style={{ color: MUTED }}>
+                            <CalendarClock size={12} className="flex-shrink-0" />
+                            {ekstreAralik(e)} · son ödeme {tarihTR(e.sonOdemeTarihi)}
                           </span>
                           {durum && <Rozet metin={durum.etiket} renk={durum.renk} />}
                         </div>
                         <div className="mt-2 flex items-center justify-between gap-3">
                           <div className="text-[13px] tabular-nums" style={{ color: TEXT }}>
                             {e.borcTutari === null ? (
-                              <span style={{ color: TURUNCU }}>Ekstre tutarı girilmedi</span>
+                              e.kesilmedi ? (
+                                /* Kesim günü daha gelmedi — eksik veri değil, uyarı rengi kullanılmaz */
+                                <span style={{ color: MUTED }}>
+                                  {gunAyEkli(e.kesimTarihi)} kesilecek
+                                </span>
+                              ) : (
+                                <span style={{ color: TURUNCU }}>Ekstre tutarı girilmedi</span>
+                              )
                             ) : (
                               <>
                                 Borç {para(e.borcTutari)} ₺
@@ -204,7 +287,7 @@ export default function Kartlar() {
       </Kutu>
 
       {/* Geçmiş ekstreler */}
-      <EkstreGecmisi />
+      <EkstreGecmisi kartlar={kartlar} />
 
       {kartModal && (
         <KartModal
@@ -249,17 +332,134 @@ export default function Kartlar() {
           degisti={tazele}
         />
       )}
+
+      {silModal && (
+        <KartSilModal
+          kart={silModal}
+          kapat={() => setSilModal(null)}
+          silindi={() => {
+            setSilModal(null);
+            tazele();
+            qc.invalidateQueries({ queryKey: ['butce-ekstreler'] });
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+/* ===================== KART SİLME ONAYI ===================== */
+
+function KartSilModal({ kart, kapat, silindi }: { kart: Kart; kapat: () => void; silindi: () => void }) {
+  // Tek tıkla silinip geri alınamadığı için önce ne kaybedileceğini sayıyoruz.
+  const [eminMi, setEminMi] = useState(false);
+
+  const { data: ozet, isLoading } = useQuery({
+    queryKey: ['butce-kart-silme-ozeti', kart.id],
+    queryFn: async () => {
+      // Kart listesi yalnız son birkaç ekstreyi taşır; gerçek sayı için ekstre ucunu sorarız.
+      const ekstreler = await butceApi.ekstreler(kart.id);
+      const hareketListeleri = await Promise.all(
+        ekstreler.map((e) => butceApi.hareketler(e.id).catch(() => [] as KartHareket[])),
+      );
+      return {
+        ekstre: ekstreler.length,
+        hareket: hareketListeleri.reduce((t, h) => t + h.length, 0),
+        odemeli: ekstreler.filter((e) => e.odenenTutar > 0).length,
+      };
+    },
+  });
+
+  const sil = useMutation({
+    mutationFn: () => butceApi.kartSil(kart.id),
+    onSuccess: () => {
+      toast.success('Kart ve bağlı kayıtları silindi');
+      silindi();
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Silinemedi'),
+  });
+
+  const ekstreSayisi = ozet?.ekstre ?? kart.ekstreler.length;
+
+  return (
+    <Modal
+      baslik={`${kart.bankaAdi} ${kart.kartAdi} — kartı sil`}
+      aciklama="Silmeden önce nelerin gideceğini okuyun."
+      kapat={kapat}
+      genislik={480}
+    >
+      <div className="space-y-3">
+        <div
+          className="flex items-start gap-2 rounded-xl px-3 py-2.5 text-[11.5px]"
+          style={{ background: `${KIRMIZI}12`, border: `1px solid ${KIRMIZI}30`, color: MUTED }}
+        >
+          <AlertTriangle size={13} style={{ color: KIRMIZI }} className="mt-0.5 flex-shrink-0" />
+          <div className="space-y-1.5">
+            <div style={{ color: TEXT }}>Bu işlem geri alınamaz.</div>
+            {isLoading ? (
+              <div>Silinecek kayıtlar sayılıyor…</div>
+            ) : (
+              <ul className="list-disc space-y-0.5 pl-4">
+                <li>
+                  <b style={{ color: TEXT }}>{ekstreSayisi}</b> ekstre
+                  {ozet && ozet.odemeli > 0 && <> (bunların {ozet.odemeli} tanesinde ödeme kaydı var)</>}
+                </li>
+                <li>
+                  <b style={{ color: TEXT }}>{ozet?.hareket ?? 0}</b> ekstre hareketi
+                </li>
+                <li>Karta ait ödeme geçmişi ve hatırlatmalar</li>
+              </ul>
+            )}
+            <div>Kartı silmek yerine düzenleyip “pasif” yaparsanız geçmiş kayıtlarınız durur.</div>
+          </div>
+        </div>
+
+        {eminMi && (
+          <div className="text-[11.5px]" style={{ color: KIRMIZI }}>
+            Son adım: onaylarsanız yukarıdaki kayıtlar kalıcı olarak silinir.
+          </div>
+        )}
+
+        <div className="flex justify-end gap-2">
+          <Dugme tur="sade" onClick={kapat}>
+            Vazgeç
+          </Dugme>
+          {!eminMi ? (
+            <Dugme tur="tehlike" onClick={() => setEminMi(true)}>
+              <Trash2 size={12} /> Kartı sil
+            </Dugme>
+          ) : (
+            <Dugme tur="birincil" renk={KIRMIZI} onClick={() => sil.mutate()} yukleniyor={sil.isPending}>
+              <Trash2 size={12} /> Evet, kalıcı olarak sil
+            </Dugme>
+          )}
+        </div>
+      </div>
+    </Modal>
   );
 }
 
 /* ===================== GEÇMİŞ EKSTRELER ===================== */
 
-function EkstreGecmisi() {
+function EkstreGecmisi({ kartlar }: { kartlar: Kart[] }) {
   const { data: ekstreler = [] } = useQuery({ queryKey: ['butce-ekstreler'], queryFn: () => butceApi.ekstreler() });
+
+  /* Banka ekstresindeki dönem borcu önceki ayın devrini zaten içerir. Bu yüzden borç,
+   * tutarı girilmiş EN SON ekstreden okunur; ondan eski ödenmemiş ekstreler o tutarın
+   * içinde erimiştir ("devretti") ve toplama ikinci kez girmez. */
+  const borcDonemi = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const k of kartlar) if (k.borcEkstresi) m.set(k.id, k.borcEkstresi.donem);
+    return m;
+  }, [kartlar]);
+
   if (ekstreler.length === 0) return null;
   return (
-    <Kutu baslik="Ekstre geçmişi" aciklama="Son 60 ekstre" renk={MAVI}>
+    <Kutu
+      baslik="Ekstre geçmişi"
+      aciklama="Son 60 ekstre · “devretti” işaretli olanlar bir sonraki ekstrede toplandığı için güncel borca ayrıca eklenmez."
+      renk={MAVI}
+    >
       <div className="max-h-[320px] overflow-y-auto pr-1">
         <table className="w-full text-[12px]">
           <thead>
@@ -274,14 +474,32 @@ function EkstreGecmisi() {
           </thead>
           <tbody>
             {ekstreler.map((e) => {
-              const d = EKSTRE_DURUM_ETIKET[e.durum];
+              const d = durumBilgi(e.durum);
+              const borcDonem = borcDonemi.get(e.kartId);
+              const devretti =
+                e.devretti === true ||
+                (!!borcDonem && e.donem < borcDonem && e.durum !== 'ODENDI');
+              const devirNotu =
+                'Bu ekstrenin kalanı bir sonraki ekstreye devretti; güncel borç toplamına ayrıca eklenmez.';
               return (
-                <tr key={e.id} className="border-t" style={{ borderColor: ROW_SEP }}>
+                <tr
+                  key={e.id}
+                  className="border-t"
+                  style={{ borderColor: ROW_SEP, opacity: devretti ? 0.62 : 1 }}
+                  title={devretti ? devirNotu : undefined}
+                >
                   <td className="py-2" style={{ color: TEXT }}>
                     {e.kart?.bankaAdi} {e.kart?.kartAdi}
                   </td>
                   <td className="py-2" style={{ color: MUTED }}>
-                    {e.donem}
+                    <span className="flex flex-col leading-tight">
+                      <span>{e.donem}</span>
+                      {e.harcamaBaslangic && e.harcamaBitis && (
+                        <span className="text-[10px]" style={{ color: 'rgba(113,113,122,0.8)' }}>
+                          {gunAy(e.harcamaBaslangic)} – {gunAy(e.harcamaBitis)} harcamaları
+                        </span>
+                      )}
+                    </span>
                   </td>
                   <td className="py-2 tabular-nums" style={{ color: MUTED }}>
                     {tarihTR(e.sonOdemeTarihi)}
@@ -293,7 +511,14 @@ function EkstreGecmisi() {
                     {para(e.odenenTutar)} ₺
                   </td>
                   <td className="py-2 text-right">
-                    <Rozet metin={d.etiket} renk={d.renk} />
+                    <span className="inline-flex items-center justify-end gap-1">
+                      {devretti && (
+                        <span title={devirNotu}>
+                          <Rozet metin="devretti" renk={MUTED} />
+                        </span>
+                      )}
+                      <Rozet metin={d.etiket} renk={d.renk} />
+                    </span>
                   </td>
                 </tr>
               );
@@ -325,6 +550,9 @@ function KartModal({ kart, kapat, kaydedildi }: { kart: Kart | null; kapat: () =
   const kaydet = useMutation({
     mutationFn: () => {
       const body = {
+        // Sunucu bu alanı her kayıtta yeniden doğruluyor; göndermezsek kartın defteri
+        // düzenleme sırasında sessizce "Şahsi"ye dönüyor.
+        varsayilanDefter: kart?.varsayilanDefter || 'SAHSI',
         bankaAdi: form.bankaAdi,
         kartAdi: form.kartAdi,
         sonDortHane: form.sonDortHane,
@@ -427,6 +655,10 @@ function EkstreModal({
 }) {
   const [borc, setBorc] = useState(paraGiris(ekstre.borcTutari));
   const [odeme, setOdeme] = useState('');
+  const [hesapId, setHesapId] = useState('');
+
+  const { data: hesaplar = [] } = useQuery({ queryKey: ['butce-hesaplar'], queryFn: butceApi.hesaplar });
+  const aktifHesaplar = hesaplar.filter((h) => h.aktif);
 
   const tutarKaydet = useMutation({
     mutationFn: () => butceApi.ekstreTutar(ekstre.id, { borcTutari: paraCoz(borc) }),
@@ -438,7 +670,12 @@ function EkstreModal({
   });
 
   const odemeKaydet = useMutation({
-    mutationFn: () => butceApi.ekstreOdeme(ekstre.id, { tutar: paraCoz(odeme) }),
+    mutationFn: () =>
+      butceApi.ekstreOdeme(ekstre.id, {
+        tutar: paraCoz(odeme),
+        // Hesap seçilmezse ödeme eskisi gibi hesapsız işlenir.
+        bankaHesapId: hesapId || undefined,
+      }),
     onSuccess: () => {
       toast.success('Ödeme işlendi');
       kaydedildi();
@@ -472,9 +709,24 @@ function EkstreModal({
               <span>Ödenen: {para(ekstre.odenenTutar)} ₺</span>
               <span>Kalan: {para(ekstre.kalanTutar ?? 0)} ₺</span>
             </div>
-            <Alan etiket="Ödeme tutarı">
-              <ParaGirdi value={odeme} onChange={setOdeme} />
-            </Alan>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Alan etiket="Ödeme tutarı">
+                <ParaGirdi value={odeme} onChange={setOdeme} />
+              </Alan>
+              {/* Hesap tanımlı değilse alan hiç görünmesin */}
+              {aktifHesaplar.length > 0 && (
+                <Alan etiket="Hangi hesaptan ödendi" ipucu="Seçerseniz ödeme o hesabın bakiyesinden düşer">
+                  <Secim value={hesapId} onChange={(ev) => setHesapId(ev.target.value)}>
+                    <option value="">Belirtmeyeyim</option>
+                    {aktifHesaplar.map((h) => (
+                      <option key={h.id} value={h.id}>
+                        {h.bankaAdi} · {h.ad}
+                      </option>
+                    ))}
+                  </Secim>
+                </Alan>
+              )}
+            </div>
             <div className="mt-2 flex flex-wrap justify-end gap-2">
               <Dugme onClick={() => setOdeme(paraGiris(ekstre.asgariTutar ?? 0))}>Asgari</Dugme>
               <Dugme onClick={() => setOdeme(paraGiris(ekstre.kalanTutar ?? 0))}>Tamamı</Dugme>
@@ -586,10 +838,12 @@ function HareketModal({
   degisti: () => void;
 }) {
   const qc = useQueryClient();
-  const { data: hareketler = [], isLoading, refetch } = useQuery({
+  const [hepsineUygula, setHepsineUygula] = useState(true);
+  const { data: hamHareketler = [], isLoading, refetch } = useQuery({
     queryKey: ['butce-hareketler', ekstreId],
     queryFn: () => butceApi.hareketler(ekstreId),
   });
+  const hareketler = hamHareketler as Hareket[];
   const { data: kategoriler = [] } = useQuery({ queryKey: ['butce-kategoriler'], queryFn: () => butceApi.kategoriler() });
 
   const kategoriDegistir = useMutation({
@@ -598,6 +852,15 @@ function HareketModal({
       refetch();
       toast.success('Kategori güncellendi ve öğrenildi');
     },
+  });
+
+  const defterDegistir = useMutation({
+    mutationFn: (p: { id: string; defter: Defter }) => butceApi.hareketDefter(p.id, p.defter, hepsineUygula),
+    onSuccess: () => {
+      refetch();
+      toast.success(hepsineUygula ? 'Defter değişti, aynı satıcının hepsine uygulandı' : 'Defter değişti');
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Defter değiştirilemedi'),
   });
 
   const onayla = useMutation({
@@ -632,7 +895,7 @@ function HareketModal({
       baslik={`${kart.bankaAdi} ${kart.kartAdi} — ekstre hareketleri`}
       aciklama={`${hareketler.length} hareket · toplam ${para(toplam)} ₺${kategorisiz > 0 ? ` · ${kategorisiz} kategorisiz` : ''}`}
       kapat={kapat}
-      genislik={860}
+      genislik={920}
     >
       {isLoading ? (
         <Yukleniyor />
@@ -640,6 +903,11 @@ function HareketModal({
         <Bos metin="Bu ekstrede hareket yok. PDF yükleyerek hareketleri okutabilirsiniz." />
       ) : (
         <>
+          <div className="mb-2 flex items-center justify-end gap-2 text-[11px]" style={{ color: MUTED }}>
+            <span>Defter değişikliğini aynı satıcının tüm hareketlerine uygula</span>
+            <Anahtar acik={hepsineUygula} degistir={setHepsineUygula} renk={MAVI} />
+          </div>
+
           <div className="max-h-[440px] overflow-y-auto pr-1">
             <table className="w-full text-[12px]">
               <thead className="sticky top-0" style={{ background: '#0c0c0e' }}>
@@ -648,6 +916,7 @@ function HareketModal({
                   <th className="pb-2 font-medium">Açıklama</th>
                   <th className="pb-2 text-right font-medium">Tutar</th>
                   <th className="pb-2 font-medium">Kategori</th>
+                  <th className="pb-2 font-medium">Defter</th>
                 </tr>
               </thead>
               <tbody>
@@ -688,6 +957,21 @@ function HareketModal({
                             ))}
                         </Secim>
                       </div>
+                    </td>
+                    <td className="py-1.5 pl-2">
+                      <Secim
+                        value={h.defter || kart.varsayilanDefter || 'SAHSI'}
+                        disabled={h.onaylandi}
+                        onChange={(ev) => defterDegistir.mutate({ id: h.id, defter: ev.target.value as Defter })}
+                        style={{ padding: '4px 6px', fontSize: 11.5, minWidth: 76 }}
+                        title="Bu harcama şahsi mi, ofis mi?"
+                      >
+                        {DEFTERLER.map((d) => (
+                          <option key={d.deger} value={d.deger}>
+                            {d.etiket}
+                          </option>
+                        ))}
+                      </Secim>
                     </td>
                   </tr>
                 ))}

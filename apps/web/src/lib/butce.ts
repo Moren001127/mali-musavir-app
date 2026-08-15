@@ -48,9 +48,13 @@ export type Tur = 'GELIR' | 'GIDER';
 export type Defter = 'SAHSI' | 'OFIS';
 export type DefterSecim = Defter | 'TUMU';
 
+/**
+ * Şahıs firmasında ofisin geliri sahibinin geliridir; ayrım yalnız GİDER tarafındadır.
+ * OFIS = mesleki gider (kazançtan indirilir), SAHSI = kişisel gider (indirilemez).
+ */
 export const DEFTER_ETIKET: Record<DefterSecim, string> = {
-  SAHSI: 'Şahsi',
-  OFIS: 'Ofis',
+  SAHSI: 'Kişisel',
+  OFIS: 'Mesleki',
   TUMU: 'Tümü',
 };
 
@@ -296,6 +300,14 @@ export interface Ozet {
   gelir: number;
   gider: number;
   /** Kartla yapılan harcamalar (o ay nakit çıkışı değildir) */
+  /** Kazançtan indirilebilen mesleki (ofis) giderler */
+  meslekiGider: number;
+  /** İndirilemeyen kişisel harcamalar */
+  kisiselGider: number;
+  /** Vergi matrahına esas: gelir − mesleki gider */
+  meslekiKazanc: number;
+  /** Cepte kalan: gelir − tüm giderler */
+  cepteKalan: number;
   kartGideri: number;
   /** Nakit/banka ile yapılan gider */
   nakitGider: number;
@@ -455,6 +467,8 @@ export const butceApi = {
   kategoriler: (defter?: DefterSecim) =>
     al<Kategori[]>(api.get('/butce/kategoriler', { params: { defter } })),
   kategoriEkle: (body: Partial<Kategori>) => al<Kategori>(api.post('/butce/kategoriler', body)),
+  hazirKategoriler: () =>
+    al<{ eklenen: number; toplam: number }>(api.post('/butce/kategoriler/hazir-set')),
   kategoriGuncelle: (id: string, body: Partial<Kategori>) =>
     al<Kategori>(api.put(`/butce/kategoriler/${id}`, body)),
   kategoriSil: (id: string) => al(api.delete(`/butce/kategoriler/${id}`)),

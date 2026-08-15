@@ -5,6 +5,103 @@ import { ButceService, Kimlik } from './butce.service';
 import { claudeTextViaMax, isMaxAvailable, MAX_MODEL_DEFAULT } from '../common/max-inference';
 import { asgariTutarHesapla } from './butce-hesap';
 
+/* ===================== GİZLİLİK: AI'YA GİDEN METNİ TEMİZLEME ===================== */
+/*
+ * Ekstrede kart numarası, TCKN, IBAN, telefon ve e-posta bulunur. Ayrıştırma için
+ * bunların HİÇBİRİ gerekmez (gereken: tarih + açıklama + tutar). Bu yüzden modele
+ * gönderilen kopya maskelenir. Kural tabanlı ayıklama HAM metinle çalışmaya devam eder.
+ */
+
+/** e-posta adresi */
+const EPOSTA_DESENI = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
+/** TR IBAN: TR + 24 rakam (aralarında boşluk/tire olabilir) */
+const IBAN_DESENI = /\bTR[\s-]?(?:\d[\s-]?){24}/gi;
+/**
+ * 16 haneli kart numarası: "5528 1234 5678 9012", "5528123456789012",
+ * "5528********9012", "5528 XXXX XXXX 9012".
+ * Önündeki/arkasındaki rakam-nokta-virgül engeli sayesinde TUTAR ("1.234,56") ve
+ * TARİH ("12.07.2026") desenlerine dokunmaz.
+ */
+const KART_DESENI =
+  /(?<![\dXx*.,])([\dXx*]{4})[ -]?([\dXx*]{4})[ -]?([\dXx*]{4})[ -]?([\dXx*]{4})(?![\dXx*.,])/g;
+/**
+ * Telefon: 0 / +90 ile başlayan numara. Alan kodu 3 hane BİTİŞİK istenir; bu şart
+ * "05-08-2026" gibi tireli TARİHLERİN telefon sanılmasını engeller.
+ * Son 7 hanenin bilinen tüm gruplanışları desteklenir (123 45 67 / 123 4567 / 444 0 000).
+ */
+const TELEFON_DESENI =
+  /(?<![\dXx*.,])(?:\+?9?0)[ ()/-]{0,2}\(?\d{3}\)?[ ()/-]{0,2}(?:\d{3}[ ()/-]{0,2}\d{2}[ ()/-]{0,2}\d{2}|\d{3}[ ()/-]{0,2}\d[ ()/-]{0,2}\d{3}|\d{3}[ ()/-]{0,2}\d{4}|\d{4}[ ()/-]{0,2}\d{3}|\d{7})(?![\dXx*.,])/g;
+/** TCKN: 11 hane ve ilk hane 0 olamaz (0 ile başlayan 11 hane telefondur) */
+const TCKN_DESENI = /(?<![\dXx*.,])[1-9]\d{10}(?![\dXx*.,])/g;
+
+/**
+ * AI'ya gönderilecek metinden kimlik bilgilerini siler.
+ * SAF fonksiyon (yan etkisiz, test edilebilir).
+ *
+ * KRİTİK: tutar ("1.234,56") ve tarih ("12.07.2026") biçimleri BOZULMAZ —
+ * ayrıştırmanın tek dayanağı onlar.
+ */
+export function hassasVerileriMaskele(metin: string): string {
+  let s = String(metin || '');
+  // Sıra önemli:
+  //  - IBAN karttan ÖNCE (24 hanenin içinde 16 hanelik dizi var),
+  //  - telefon TCKN'den ÖNCE (0 ile başlayan 11 hane telefondur).
+  s = s.replace(EPOSTA_DESENI, '***@***');
+  s = s.replace(IBAN_DESENI, 'TR** **** **** **** **** **** **');
+  s = s.replace(KART_DESENI, (_tam: string, _a: string, _b: string, _c: string, son4: string) =>
+    /^\d{4}$/.test(son4) ? `**** **** **** ${son4}` : '**** **** **** ****',
+  );
+  s = s.replace(TELEFON_DESENI, '*** *** ** **');
+  s = s.replace(TCKN_DESENI, '***********');
+  return s;
+}
+
+/** Özet satırı işaretleri — bunlar ATILMAZ, özet ayıklamasında kullanılıyor */
+const OZET_ANAHTARLARI =
+  /(d[öo]nem bor[cç]|toplam bor[cç]|asgari|son [öo]deme|hesap kesim|hesap [öo]zeti|bakiye|devir|limit|faiz|taksit|puan|ekstre)/i;
+const TARIH_IZI = /\d{2}[./-]\d{2}[./-]\d{2,4}/;
+const TUTAR_IZI = /\d[\d.]*,\d{2}/;
+
+/**
+ * Ekstrenin başındaki ad-adres bloğunu atar (yalnız AI'ya giden kopyada).
+ * Tarih, tutar ya da özet anahtarı içeren İLK satırda durur; "Dönem Borcu" gibi
+ * özet satırları hiçbir koşulda atılmaz. En fazla ilk `tavanKarakter` kadar bakar.
+ * SAF fonksiyon.
+ */
+export function baslikBlogunuAt(metin: string, tavanKarakter = 400): string {
+  const tam = String(metin || '');
+  const satirlar = tam.split(/\r?\n/);
+  let sayac = 0;
+  let i = 0;
+  for (; i < satirlar.length; i++) {
+    if (sayac >= tavanKarakter) break;
+    const satir = satirlar[i];
+    sayac += satir.length + 1;
+    const t = satir.trim();
+    if (!t) continue; // boş satır — başlık bloğunun parçası sayılır
+    if (TARIH_IZI.test(t) || TUTAR_IZI.test(t) || OZET_ANAHTARLARI.test(t)) break;
+  }
+  if (i === 0) return tam;
+  const kalan = satirlar.slice(i).join('\n');
+  return kalan.trim() ? kalan : tam; // her şey atılacaksa dokunma
+}
+
+/**
+ * UÇUŞTA TEK AI ÇAĞRISI.
+ * Aynı anda birden çok PDF yüklenince her istek ayrı bir Max alt süreci açıyordu
+ * (bellek + kota patlaması). Bellek içi Promise kuyruğu: ikinci çağrı birincinin
+ * bitmesini bekler. Tek süreç içinde geçerlidir; çağrıların kendi timeout'u vardır.
+ */
+let aiKuyrugu: Promise<unknown> = Promise.resolve();
+export function aiSirayaAl<T>(is: () => Promise<T>): Promise<T> {
+  const sonraki = aiKuyrugu.then(is, is); // önceki hata verse de sıra ilerlesin
+  aiKuyrugu = sonraki.then(
+    () => undefined,
+    () => undefined,
+  );
+  return sonraki;
+}
+
 /**
  * Kredi kartı ekstresini (PDF) içe aktarma.
  *
@@ -31,6 +128,23 @@ export class ButceEkstreImportService {
     return this.prisma as any;
   }
 
+  /* ===================== DOSYA DOĞRULAMA ===================== */
+
+  /** Bu boyutun altındaki dosya bozuk/eksik yüklenmiştir (geçerli en küçük PDF bile daha büyüktür) */
+  private static readonly PDF_ASGARI_BOYUT = 200;
+  /** pdf-parse çıktısı için karakter tavanı — 2 MB. Üstü kırpılır (bellek koruması) */
+  private static readonly METIN_TAVANI = 2 * 1024 * 1024;
+
+  /**
+   * Dosya gerçekten PDF mi? İmza "%PDF-".
+   * Bazı bankalar imzanın önüne birkaç bayt koyduğu için ilk 1 KB içinde aranır.
+   */
+  static pdfMi(buffer: Buffer): boolean {
+    if (!buffer || buffer.length < 5) return false;
+    const bas = buffer.subarray(0, Math.min(buffer.length, 1024)).toString('latin1');
+    return bas.includes('%PDF-');
+  }
+
   /* ===================== METİN ===================== */
 
   private async pdfMetin(buffer: Buffer, sifre?: string): Promise<string> {
@@ -39,7 +153,15 @@ export class ButceEkstreImportService {
     );
     try {
       const r = await parser.getText();
-      return String(r?.text || '');
+      const ham = String(r?.text || '');
+      // Bozuk/şişirilmiş PDF sınırsız metin üretip belleği doldurabiliyor: tavan koy, işleme devam et.
+      if (ham.length > ButceEkstreImportService.METIN_TAVANI) {
+        this.logger.warn(
+          `[EkstreImport] PDF metni ${ham.length} karakter — ${ButceEkstreImportService.METIN_TAVANI} karaktere kırpıldı. Ekstrenin son satırları okunamamış olabilir.`,
+        );
+        return ham.slice(0, ButceEkstreImportService.METIN_TAVANI);
+      }
+      return ham;
     } finally {
       const destroy = (parser as any).destroy;
       if (typeof destroy === 'function') await destroy.call(parser).catch(() => {});
@@ -181,31 +303,37 @@ export class ButceEkstreImportService {
 
   private async aiIleSatirlar(metin: string) {
     if (!isMaxAvailable()) return null;
-    const kisa = metin.length > 40000 ? metin.slice(0, 40000) : metin;
-    const sonuc = await claudeTextViaMax({
-      model: MAX_MODEL_DEFAULT,
-      timeoutMs: 180000,
-      system:
-        'Kredi kartı ekstresi metnini yapılandırılmış veriye çeviren bir ayrıştırıcısın. ' +
-        'SADECE geçerli JSON döndür, açıklama yazma. Uydurma yapma; metinde olmayan satırı ekleme.',
-      prompt: [
-        'Aşağıda bir kredi kartı hesap özetinin (ekstre) ham metni var.',
-        'Şu JSON şemasında döndür:',
-        '{"donemBorcu":number|null,"asgariTutar":number|null,"sonOdemeTarihi":"YYYY-MM-DD"|null,',
-        '"kesimTarihi":"YYYY-MM-DD"|null,',
-        '"hareketler":[{"tarih":"YYYY-MM-DD","aciklama":"...","tutar":number,"taksitBilgi":"3/12"|null}]}',
-        '',
-        'KURALLAR:',
-        '- Harcama tutarı POZİTİF, iade/puan/indirim NEGATİF olsun.',
-        '- Faiz, ücret, aidat satırlarını da hareket olarak ekle.',
-        '- Önceki dönem bakiyesi, devir, yapılan ödeme ve "teşekkür ederiz" satırlarını EKLEME.',
-        '- Asgari ödeme, dönem borcu, toplam borç gibi ÖZET satırlarını hareket olarak EKLEME.',
-        '- Tutarları sayı olarak yaz (1234.56), metin değil.',
-        '',
-        'EKSTRE METNİ:',
-        kisa,
-      ].join('\n'),
-    });
+    // Modele KİMLİK GİTMEZ: ad-adres bloğu atılır, kart/TCKN/IBAN/telefon/e-posta maskelenir.
+    // Kural ayıklaması (kuralIleSatirlar/kuralIleOzet) ham metinle çalışmaya devam eder.
+    const temiz = hassasVerileriMaskele(baslikBlogunuAt(metin));
+    const kisa = temiz.length > 40000 ? temiz.slice(0, 40000) : temiz;
+    const sonuc = await aiSirayaAl(() =>
+      claudeTextViaMax({
+        model: MAX_MODEL_DEFAULT,
+        timeoutMs: 180000,
+        system:
+          'Kredi kartı ekstresi metnini yapılandırılmış veriye çeviren bir ayrıştırıcısın. ' +
+          'SADECE geçerli JSON döndür, açıklama yazma. Uydurma yapma; metinde olmayan satırı ekleme.',
+        prompt: [
+          'Aşağıda bir kredi kartı hesap özetinin (ekstre) ham metni var.',
+          'Şu JSON şemasında döndür:',
+          '{"donemBorcu":number|null,"asgariTutar":number|null,"sonOdemeTarihi":"YYYY-MM-DD"|null,',
+          '"kesimTarihi":"YYYY-MM-DD"|null,',
+          '"hareketler":[{"tarih":"YYYY-MM-DD","aciklama":"...","tutar":number,"taksitBilgi":"3/12"|null}]}',
+          '',
+          'KURALLAR:',
+          '- Harcama tutarı POZİTİF, iade/puan/indirim NEGATİF olsun.',
+          '- Faiz, ücret, aidat satırlarını da hareket olarak ekle.',
+          '- Önceki dönem bakiyesi, devir, yapılan ödeme ve "teşekkür ederiz" satırlarını EKLEME.',
+          '- Asgari ödeme, dönem borcu, toplam borç gibi ÖZET satırlarını hareket olarak EKLEME.',
+          '- Tutarları sayı olarak yaz (1234.56), metin değil.',
+          '- Yıldızla maskelenmiş alanlar (kart no, kimlik no) ayrıştırma için gereksizdir, yok say.',
+          '',
+          'EKSTRE METNİ:',
+          kisa,
+        ].join('\n'),
+      }),
+    );
     if (!sonuc.ok) {
       this.logger.warn(`[EkstreImport] AI ayrıştırma hatası: ${sonuc.error}`);
       return null;
@@ -221,22 +349,26 @@ export class ButceEkstreImportService {
     kategoriler: Array<{ id: string; ad: string }>,
   ): Promise<Record<string, string>> {
     if (!isMaxAvailable() || saticilar.length === 0) return {};
-    const sonuc = await claudeTextViaMax({
-      model: MAX_MODEL_DEFAULT,
-      timeoutMs: 120000,
-      system:
-        'Kredi kartı harcama açıklamalarını gider kategorilerine eşleyen bir sınıflandırıcısın. ' +
-        'SADECE JSON döndür. Emin olmadığın satıcıyı "Diğer Gider" kategorisine koy.',
-      prompt: [
-        'KATEGORİLER (sadece bu listeden seç, kategori adını birebir yaz):',
-        kategoriler.map((c) => `- ${c.ad}`).join('\n'),
-        '',
-        'HARCAMA AÇIKLAMALARI:',
-        saticilar.map((s, i) => `${i + 1}. ${s}`).join('\n'),
-        '',
-        'Şu biçimde döndür: {"eslesme":{"açıklama":"Kategori Adı", ...}}',
-      ].join('\n'),
-    });
+    // Not: açıklamalar MASKELENMEZ — dönen eşleşme anahtarları açıklamayla birebir
+    // karşılaştırılıyor; maskelenirse kategori eşleşmesi tümden kopar.
+    const sonuc = await aiSirayaAl(() =>
+      claudeTextViaMax({
+        model: MAX_MODEL_DEFAULT,
+        timeoutMs: 120000,
+        system:
+          'Kredi kartı harcama açıklamalarını gider kategorilerine eşleyen bir sınıflandırıcısın. ' +
+          'SADECE JSON döndür. Emin olmadığın satıcıyı "Diğer Gider" kategorisine koy.',
+        prompt: [
+          'KATEGORİLER (sadece bu listeden seç, kategori adını birebir yaz):',
+          kategoriler.map((c) => `- ${c.ad}`).join('\n'),
+          '',
+          'HARCAMA AÇIKLAMALARI:',
+          saticilar.map((s, i) => `${i + 1}. ${s}`).join('\n'),
+          '',
+          'Şu biçimde döndür: {"eslesme":{"açıklama":"Kategori Adı", ...}}',
+        ].join('\n'),
+      }),
+    );
     if (!sonuc.ok) return {};
     const veri = this.jsonAyikla(sonuc.text);
     const eslesme = veri?.eslesme || veri;
@@ -264,6 +396,20 @@ export class ButceEkstreImportService {
       where: { id: p.kartId, tenantId: k.tenantId, userId: k.userId },
     });
     if (!kart) throw new NotFoundException('Kart bulunamadı');
+
+    // 0) Dosya doğrulama — PDF ayrıştırıcısına çöp/yanlış tür dosya sokulmasın
+    const buffer = p.buffer;
+    if (!buffer || !Buffer.isBuffer(buffer) || buffer.length === 0) {
+      throw new BadRequestException('Dosya boş geldi. PDF ekstreyi tekrar yükleyin.');
+    }
+    if (buffer.length < ButceEkstreImportService.PDF_ASGARI_BOYUT) {
+      throw new BadRequestException(
+        'Dosya çok küçük — eksik ya da bozuk yüklenmiş görünüyor. PDF ekstreyi tekrar yükleyin.',
+      );
+    }
+    if (!ButceEkstreImportService.pdfMi(buffer)) {
+      throw new BadRequestException('Bu dosya PDF değil. Bankanızın verdiği PDF ekstreyi yükleyin.');
+    }
 
     let metin = '';
     try {

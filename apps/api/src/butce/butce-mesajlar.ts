@@ -341,6 +341,7 @@ export function faizOraniDegisti(p: {
   eskiGecikme: number;
   yeniGecikme: number;
   kartSayisi: number;
+  otomatikGuncellendi?: boolean;
 }): Mesaj {
   return bicimle({
     anahtar: 'faiz-degisti',
@@ -349,10 +350,12 @@ export function faizOraniDegisti(p: {
     satirlar: [
       ['Akdi faiz', `%${p.eskiAkdi} → *%${p.yeniAkdi}*`],
       ['Gecikme faizi', `%${p.eskiGecikme} → *%${p.yeniGecikme}*`],
-      ['Etkilenen kart', `${p.kartSayisi} adet`],
+      [p.otomatikGuncellendi ? 'Güncellenen kart' : 'Etkilenen kart', `${p.kartSayisi} adet`],
     ],
-    aksiyon: 'Portaldan tek tıkla güncelleyebilirsiniz.',
-    not: 'Bankanız daha düşük oran uyguluyorsa kartın kendi oranını elle girin.',
+    aksiyon: p.otomatikGuncellendi
+      ? 'Kartlarınızın oranı yeni değerle güncellendi; bir şey yapmanıza gerek yok.'
+      : 'Portaldan tek tıkla güncelleyebilirsiniz.',
+    not: 'Bankanız tavandan düşük oran uyguluyorsa kartın kendi oranını elle girin; otomatik güncellemeyi Ayarlar’dan kapatabilirsiniz.',
   });
 }
 

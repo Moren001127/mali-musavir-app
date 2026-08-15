@@ -7,7 +7,7 @@ import {
   Plus, Trash2, ShieldCheck, Bell, MessageCircle, Mail, Wallet, Target,
   Clock, Check, TrendingUp, TrendingDown,
 } from 'lucide-react';
-import { butceApi, Kategori, para } from '@/lib/butce';
+import { butceApi, Kategori, para, Defter, DEFTER_ETIKET } from '@/lib/butce';
 import {
   Kutu, Dugme, Alan, Girdi, Secim, Rozet, Yukleniyor, ParaGirdi, paraCoz, paraGiris,
   Anahtar, RenkSecici, PALET,
@@ -280,7 +280,13 @@ export default function Ayarlar() {
 
 function KategoriYonetimi({ kategoriler }: { kategoriler: Kategori[] }) {
   const qc = useQueryClient();
-  const [yeni, setYeni] = useState({ ad: '', tur: 'GIDER' as 'GELIR' | 'GIDER', zorunlu: false, renk: PALET[0] });
+  const [yeni, setYeni] = useState({
+    ad: '',
+    tur: 'GIDER' as 'GELIR' | 'GIDER',
+    defter: 'SAHSI' as Defter,
+    zorunlu: false,
+    renk: PALET[0],
+  });
 
   const tazele = () => qc.invalidateQueries({ queryKey: ['butce-kategoriler'] });
 
@@ -288,7 +294,7 @@ function KategoriYonetimi({ kategoriler }: { kategoriler: Kategori[] }) {
     mutationFn: () => butceApi.kategoriEkle(yeni),
     onSuccess: () => {
       toast.success('Kategori eklendi');
-      setYeni({ ad: '', tur: yeni.tur, zorunlu: false, renk: PALET[0] });
+      setYeni({ ad: '', tur: yeni.tur, defter: yeni.defter, zorunlu: false, renk: PALET[0] });
       tazele();
     },
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Eklenemedi'),
@@ -308,8 +314,30 @@ function KategoriYonetimi({ kategoriler }: { kategoriler: Kategori[] }) {
     onSuccess: tazele,
   });
 
-  const gelirler = kategoriler.filter((c) => c.tur === 'GELIR');
-  const giderler = kategoriler.filter((c) => c.tur === 'GIDER');
+  // Yanlış deftere düşmüş kategoriyi tek tıkla taşı (Müşavirlik geliri şahsiye yazılmıştı)
+  const defterDegistir = useMutation({
+    mutationFn: (k: Kategori) => butceApi.kategoriGuncelle(k.id, k),
+    onSuccess: () => {
+      toast.success('Kategori defteri değişti');
+      tazele();
+      qc.invalidateQueries({ queryKey: ['butce-ozet'] });
+    },
+    onError: () => toast.error('Değiştirilemedi'),
+  });
+
+  const grupla = (defter: Defter, tur: 'GELIR' | 'GIDER') =>
+    kategoriler.filter((c) => c.defter === defter && c.tur === tur);
+
+  const hazirSet = useMutation({
+    mutationFn: () => butceApi.hazirKategoriler(),
+    onSuccess: (d) => {
+      toast.success(
+        d.eklenen > 0 ? `${d.eklenen} hazır kategori eklendi` : 'Hazır kategorilerin hepsi zaten var',
+      );
+      tazele();
+    },
+    onError: () => toast.error('Eklenemedi'),
+  });
 
   const liste = (baslik: string, renk: string, ikon: React.ReactNode, kayitlar: Kategori[], gider: boolean) => (
     <div>
@@ -338,6 +366,20 @@ function KategoriYonetimi({ kategoriler }: { kategoriler: Kategori[] }) {
                 </span>
               </span>
               <span className="flex flex-shrink-0 items-center gap-1.5">
+                <button
+                  onClick={() =>
+                    defterDegistir.mutate({ ...c, defter: c.defter === 'OFIS' ? 'SAHSI' : 'OFIS' })
+                  }
+                  className="rounded-md px-2 py-0.5 text-[10px] transition hover:brightness-125"
+                  style={{
+                    color: c.defter === 'OFIS' ? MAVI : GOLD,
+                    background: c.defter === 'OFIS' ? `${MAVI}14` : `${GOLD}14`,
+                    border: `1px solid ${c.defter === 'OFIS' ? `${MAVI}3d` : `${GOLD}3d`}`,
+                  }}
+                  title="Defteri değiştir"
+                >
+                  {DEFTER_ETIKET[c.defter]}
+                </button>
                 {gider && (
                   <button
                     onClick={() => zorunluDegistir.mutate(c)}
@@ -371,8 +413,13 @@ function KategoriYonetimi({ kategoriler }: { kategoriler: Kategori[] }) {
   return (
     <Kutu
       baslik="Kategoriler"
-      aciklama="Gelir ve gider kalemlerinizi buradan yönetin. “Zorunlu” işaretli giderler kısılamaz kabul edilir ve ödeme planında ayrı hesaplanır."
+      aciklama="Şahsi ve ofis kalemleri ayrı tutulur. “Zorunlu” işaretli giderler kısılamaz kabul edilir ve ödeme planında ayrı hesaplanır."
       renk={GOLD}
+      sag={
+        <Dugme onClick={() => hazirSet.mutate()} yukleniyor={hazirSet.isPending}>
+          <Plus size={12} /> Hazır kategorileri ekle
+        </Dugme>
+      }
     >
       {/* Ekleme satırı */}
       <div
@@ -403,6 +450,14 @@ function KategoriYonetimi({ kategoriler }: { kategoriler: Kategori[] }) {
               </Secim>
             </Alan>
           </div>
+          <div className="w-[130px]">
+            <Alan etiket="Defter" ipucu="Kayıt bu deftere yazılır">
+              <Secim value={yeni.defter} onChange={(e) => setYeni({ ...yeni, defter: e.target.value as Defter })}>
+                <option value="SAHSI">Şahsi</option>
+                <option value="OFIS">Ofis</option>
+              </Secim>
+            </Alan>
+          </div>
           <div>
             <span className="mb-1 block text-[11px] font-medium" style={{ color: MUTED }}>
               Renk
@@ -427,8 +482,10 @@ function KategoriYonetimi({ kategoriler }: { kategoriler: Kategori[] }) {
 
       {/* İki sütun: gelir / gider */}
       <div className="grid gap-5 md:grid-cols-2">
-        {liste('Gelir kategorileri', OK, <TrendingUp size={12} />, gelirler, false)}
-        {liste('Gider kategorileri', KIRMIZI, <TrendingDown size={12} />, giderler, true)}
+        {liste('Şahsi gelir', OK, <TrendingUp size={12} />, grupla('SAHSI', 'GELIR'), false)}
+        {liste('Şahsi gider', KIRMIZI, <TrendingDown size={12} />, grupla('SAHSI', 'GIDER'), true)}
+        {liste('Ofis gelir', OK, <TrendingUp size={12} />, grupla('OFIS', 'GELIR'), false)}
+        {liste('Ofis gider', KIRMIZI, <TrendingDown size={12} />, grupla('OFIS', 'GIDER'), true)}
       </div>
     </Kutu>
   );

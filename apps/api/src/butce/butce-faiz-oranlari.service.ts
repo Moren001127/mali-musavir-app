@@ -494,6 +494,23 @@ export class ButceFaizOranlariService {
       const farklilar = this.oranlariKarsilastir(kartlar, azami);
       if (!farklilar.length) return; // her şey azamiyle aynı, söylenecek bir şey yok
 
+      // OTOMATİK GÜNCELLEME (varsayılan açık): kullanıcı oranları elle takip etmek
+      // istemiyor. Kapatmak isteyen Ayarlar'dan kapatır; o zaman yalnız bildirim gider.
+      const ayar = await this.db.butceAyar.findFirst({
+        where: { tenantId: k.tenantId, userId: k.userId },
+        select: { faizOtomatikGuncelle: true },
+      });
+      const otomatik = ayar?.faizOtomatikGuncelle !== false;
+      let guncellenen = 0;
+      if (otomatik) {
+        try {
+          const sonuc = await this.kartlariGuncelle(k, azami.akdi, azami.gecikme);
+          guncellenen = Number((sonuc as any)?.guncellenen ?? (sonuc as any)?.count ?? farklilar.length);
+        } catch (e: any) {
+          this.logger.warn(`Otomatik faiz güncelleme başarısız: ${e?.message || e}`);
+        }
+      }
+
       // Aynı azami oran için ikinci kez rahatsız etme. (Kartların bir kısmı
       // kalıcı olarak tavanın altındaysa her ay tekrar bildirim gitmesin.)
       if (this.sonDuyurulan && ayni(this.sonDuyurulan.akdi, azami.akdi) && ayni(this.sonDuyurulan.gecikme, azami.gecikme)) {
@@ -510,6 +527,7 @@ export class ButceFaizOranlariService {
         eskiGecikme: eski.gecikme,
         yeniGecikme: azami.gecikme,
         kartSayisi: farklilar.length,
+        otomatikGuncellendi: otomatik && guncellenen > 0,
       });
 
       await this.notifications

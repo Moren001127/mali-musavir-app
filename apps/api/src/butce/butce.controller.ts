@@ -71,6 +71,13 @@ export class ButceController {
     return this.pin.ac(this.kimlik(req), String(body?.pin || ''));
   }
 
+  /** Sunucu tarafında kilitle (deneme sayacını sıfırlar, istemci bileti siler) */
+  @Post('pin/kilitle')
+  @PinSerbest()
+  pinKilitle(@Req() req: any) {
+    return this.pin.kilitle(this.kimlik(req));
+  }
+
   /* ===== ÖZET ===== */
   @Get('ozet')
   ozet(@Req() req: any, @Query('donem') donem?: string, @Query('defter') defter?: string) {
@@ -143,6 +150,12 @@ export class ButceController {
   @Post('kategoriler')
   kategoriEkle(@Req() req: any, @Body() body: any) {
     return this.butce.kategoriKaydet(this.kimlik(req), body);
+  }
+
+  /** Hazır kategori setini ekler (var olanlar korunur) */
+  @Post('kategoriler/hazir-set')
+  hazirKategoriler(@Req() req: any) {
+    return this.butce.hazirKategorileriEkle(this.kimlik(req));
   }
 
   @Put('kategoriler/:id')

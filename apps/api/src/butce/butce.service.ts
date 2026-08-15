@@ -14,6 +14,7 @@ import {
   Strateji,
 } from './butce-hesap';
 import { nakitAkisiHesapla, akisOnerileri, AkisHareketi } from './butce-nakit-akis';
+import { ButcePinService } from './butce-pin.service';
 
 /** Prisma Decimal → number */
 const num = (v: any): number => {
@@ -28,7 +29,16 @@ export interface Kimlik {
   userId: string;
 }
 
-/** ŞAHSİ / OFİS ayrımı. TUMU = iki defter birlikte. */
+/**
+ * ŞAHIS FİRMASI MODELİ — ayrım yalnız GİDER tarafındadır.
+ *
+ * Ofisin geliri zaten sahibinin geliridir; gelirleri ikiye bölmek gerçeğe aykırı
+ * ve gereksizdi ("ofisten çekiş" diye olmayan bir işlem uydurmak zorunda kalıyorduk).
+ * Anlamlı olan ayrım gider tarafında:
+ *   OFIS   = mesleki gider  → kazançtan indirilir (kira, personel, SGK, yazılım)
+ *   SAHSI  = kişisel gider  → indirilemez (market, giyim, ev kirası)
+ * Böylece iki soru aynı anda cevaplanır: "kazancım ne" ve "elimde ne kaldı".
+ */
 export type Defter = 'SAHSI' | 'OFIS';
 export type DefterSecim = Defter | 'TUMU';
 
@@ -49,10 +59,11 @@ const VARSAYILAN_KATEGORILER: Array<{
   zorunlu: boolean;
   renk: string;
 }> = [
-  { defter: 'SAHSI', ad: 'Maaş / Ücret', tur: 'GELIR', zorunlu: false, renk: '#5ad18a' },
-  { defter: 'SAHSI', ad: 'Ofisten Çekiş', tur: 'GELIR', zorunlu: false, renk: '#4fc3a1' },
-  { defter: 'SAHSI', ad: 'Kira Geliri', tur: 'GELIR', zorunlu: false, renk: '#7ad3b0' },
-  { defter: 'SAHSI', ad: 'Diğer Gelir', tur: 'GELIR', zorunlu: false, renk: '#9fe0c4' },
+  // GELİRLER TEK HAVUZ (defter ayrımı gelirde yok; hepsi aynı listede görünür)
+  { defter: 'OFIS', ad: 'Müşavirlik Ücreti', tur: 'GELIR', zorunlu: false, renk: '#5ad18a' },
+  { defter: 'OFIS', ad: 'Danışmanlık / Rapor', tur: 'GELIR', zorunlu: false, renk: '#4fc3a1' },
+  { defter: 'OFIS', ad: 'Kira Geliri', tur: 'GELIR', zorunlu: false, renk: '#7ad3b0' },
+  { defter: 'OFIS', ad: 'Diğer Gelir', tur: 'GELIR', zorunlu: false, renk: '#9fe0c4' },
   { defter: 'SAHSI', ad: 'Ev Kirası', tur: 'GIDER', zorunlu: true, renk: '#e0697a' },
   { defter: 'SAHSI', ad: 'Faturalar (elektrik/su/doğalgaz)', tur: 'GIDER', zorunlu: true, renk: '#e08a6b' },
   { defter: 'SAHSI', ad: 'Market / Gıda', tur: 'GIDER', zorunlu: true, renk: '#d9a06c' },
@@ -63,9 +74,6 @@ const VARSAYILAN_KATEGORILER: Array<{
   { defter: 'SAHSI', ad: 'Giyim', tur: 'GIDER', zorunlu: false, renk: '#c9a0dc' },
   { defter: 'SAHSI', ad: 'Abonelikler', tur: 'GIDER', zorunlu: false, renk: '#b0a0e0' },
   { defter: 'SAHSI', ad: 'Diğer Gider', tur: 'GIDER', zorunlu: false, renk: '#9c9c9c' },
-  { defter: 'OFIS', ad: 'Müşavirlik Ücreti', tur: 'GELIR', zorunlu: false, renk: '#5ad18a' },
-  { defter: 'OFIS', ad: 'Danışmanlık / Rapor', tur: 'GELIR', zorunlu: false, renk: '#4fc3a1' },
-  { defter: 'OFIS', ad: 'Diğer Ofis Geliri', tur: 'GELIR', zorunlu: false, renk: '#9fe0c4' },
   { defter: 'OFIS', ad: 'Ofis Kirası', tur: 'GIDER', zorunlu: true, renk: '#e0697a' },
   { defter: 'OFIS', ad: 'Personel Maaşı', tur: 'GIDER', zorunlu: true, renk: '#e08a6b' },
   { defter: 'OFIS', ad: 'SGK / Vergi', tur: 'GIDER', zorunlu: true, renk: '#d9a06c' },
@@ -75,6 +83,7 @@ const VARSAYILAN_KATEGORILER: Array<{
   { defter: 'OFIS', ad: 'Kırtasiye / Sarf', tur: 'GIDER', zorunlu: false, renk: '#b0a0e0' },
   { defter: 'OFIS', ad: 'Ulaşım / Yakıt (ofis)', tur: 'GIDER', zorunlu: false, renk: '#c9a0dc' },
   { defter: 'OFIS', ad: 'Temsil / Ağırlama', tur: 'GIDER', zorunlu: false, renk: '#f09aa8' },
+  { defter: 'OFIS', ad: 'Demirbaş / Yatırım', tur: 'GIDER', zorunlu: false, renk: '#e6c878' },
   { defter: 'OFIS', ad: 'Diğer Ofis Gideri', tur: 'GIDER', zorunlu: false, renk: '#9c9c9c' },
 ];
 
@@ -116,7 +125,8 @@ export class ButceService {
     if (!ayar) {
       ayar = await this.db.butceAyar.create({ data: { tenantId: k.tenantId, userId: k.userId } });
     }
-    return { ...ayar, nakitYastigi: num(ayar.nakitYastigi) };
+    // PIN özeti ve deneme sayacı istemciye GİTMEZ (ayar ucu tarayıcıya açık)
+    return { ...ButcePinService.pinAlanlariniAyikla(ayar), nakitYastigi: num(ayar.nakitYastigi) };
   }
 
   async ayarKaydet(k: Kimlik, body: any) {
@@ -190,6 +200,34 @@ export class ButceService {
       return this.db.butceKategori.update({ where: { id }, data });
     }
     return this.db.butceKategori.create({ data: { ...data, tenantId: k.tenantId, userId: k.userId } });
+  }
+
+  /**
+   * Hazır kategori setini ekler (var olanlara dokunmaz).
+   * varsayilanKategorileriKur yalnız liste TAMAMEN boşken çalışır; kullanıcı bir
+   * kategori eklemişse hazır set hiç gelmiyordu ve ofis kategorileri eksik kalıyordu.
+   */
+  async hazirKategorileriEkle(k: Kimlik) {
+    const oncesi = await this.db.butceKategori.count({
+      where: { tenantId: k.tenantId, userId: k.userId },
+    });
+    await this.db.butceKategori.createMany({
+      data: VARSAYILAN_KATEGORILER.map((c, i) => ({
+        tenantId: k.tenantId,
+        userId: k.userId,
+        defter: c.defter,
+        ad: c.ad,
+        tur: c.tur,
+        zorunlu: c.zorunlu,
+        renk: c.renk,
+        sira: i,
+      })),
+      skipDuplicates: true,
+    });
+    const sonrasi = await this.db.butceKategori.count({
+      where: { tenantId: k.tenantId, userId: k.userId },
+    });
+    return { eklenen: sonrasi - oncesi, toplam: sonrasi };
   }
 
   async kategoriSil(k: Kimlik, id: string) {
@@ -394,9 +432,34 @@ export class ButceService {
     if (isNaN(tarih.getTime())) throw new BadRequestException('tarih geçersiz');
     const donem = `${tarih.getFullYear()}-${String(tarih.getMonth() + 1).padStart(2, '0')}`;
 
-    if (body.kategoriId) await this.sahiplikDogrula('butceKategori', k, body.kategoriId);
     if (body.kartId) await this.sahiplikDogrula('butceKart', k, body.kartId);
     if (body.bankaHesapId) await this.sahiplikDogrula('butceBankaHesap', k, body.bankaHesapId);
+
+    // Defter sırası: elle seçilen → KATEGORİNİN defteri → kartın/hesabın varsayılanı → ŞAHSİ.
+    // Kategoriye bakılmadığı için "Müşavirlik Ofisi Geliri" seçilen kayıt bile şahsi yazılıyordu.
+    let secilenDefter: Defter | null = DEFTERLER.includes(body.defter) ? body.defter : null;
+    if (body.kategoriId) {
+      const kategori = await this.db.butceKategori.findFirst({
+        where: { id: body.kategoriId, tenantId: k.tenantId, userId: k.userId },
+        select: { id: true, defter: true },
+      });
+      if (!kategori) throw new NotFoundException('Kayıt bulunamadı');
+      if (!secilenDefter) secilenDefter = (kategori.defter as Defter) || null;
+    }
+    if (!secilenDefter && body.kartId) {
+      const kart = await this.db.butceKart.findFirst({
+        where: { id: body.kartId },
+        select: { varsayilanDefter: true },
+      });
+      secilenDefter = (kart?.varsayilanDefter as Defter) || null;
+    }
+    if (!secilenDefter && body.bankaHesapId) {
+      const hesap = await this.db.butceBankaHesap.findFirst({
+        where: { id: body.bankaHesapId },
+        select: { varsayilanDefter: true },
+      });
+      secilenDefter = (hesap?.varsayilanDefter as Defter) || null;
+    }
 
     const kaynak = ['NAKIT', 'BANKA', 'KART'].includes(body.kaynak) ? body.kaynak : 'NAKIT';
     if (kaynak === 'BANKA' && !body.bankaHesapId) {
@@ -411,7 +474,7 @@ export class ButceService {
       donem,
       tur: body.tur,
       tutar,
-      defter: this.defterDogrula(body.defter),
+      defter: secilenDefter || 'SAHSI',
       kategoriId: body.kategoriId || null,
       aciklama: body.aciklama?.trim() || null,
       kaynak,
@@ -551,11 +614,19 @@ export class ButceService {
     if (!(tutar > 0)) throw new BadRequestException('tutar 0’dan büyük olmalı');
     const gun = Math.trunc(Number(body?.ayinGunu) || 1);
     if (gun < 1 || gun > 31) throw new BadRequestException('ayinGunu 1-31 olmalı');
-    if (body.kategoriId) await this.sahiplikDogrula('butceKategori', k, body.kategoriId);
     if (body.kartId) await this.sahiplikDogrula('butceKart', k, body.kartId);
+    let duzenliDefter: Defter | null = DEFTERLER.includes(body.defter) ? body.defter : null;
+    if (body.kategoriId) {
+      const kategori = await this.db.butceKategori.findFirst({
+        where: { id: body.kategoriId, tenantId: k.tenantId, userId: k.userId },
+        select: { id: true, defter: true },
+      });
+      if (!kategori) throw new NotFoundException('Kayıt bulunamadı');
+      if (!duzenliDefter) duzenliDefter = (kategori.defter as Defter) || null;
+    }
 
     const data: any = {
-      defter: this.defterDogrula(body.defter),
+      defter: duzenliDefter || 'SAHSI',
       ad: String(body.ad).trim(),
       tur: body.tur,
       tutar,
@@ -1206,11 +1277,26 @@ export class ButceService {
     const ortalamaKmhFaiz =
       hesaplar.filter((h: any) => h.kmhAylikFaiz > 0).reduce((t: number, h: any) => t + h.kmhAylikFaiz, 0) /
         Math.max(hesaplar.filter((h: any) => h.kmhAylikFaiz > 0).length, 1) || 5;
-    const oneriler = akisOnerileri(sonuc, hareketler, { kmhAylikFaiz: ortalamaKmhFaiz });
+    const oneriler = akisOnerileri(sonuc, hareketler, {
+      kmhAylikFaiz: ortalamaKmhFaiz,
+      kmhKullanilabilir: kmhLimitToplam,
+      // Öneri hangi hesaptan ne kadar kullanılacağını adıyla söylesin
+      kmhHesaplari: hesaplar
+        .filter((h: any) => (h.kmhKalanLimit || 0) > 0)
+        .map((h: any) => ({
+          id: h.id,
+          banka: h.bankaAdi,
+          ad: h.ad,
+          kullanilabilir: h.kmhKalanLimit,
+          aylikFaiz: h.kmhAylikFaiz || 0,
+        })),
+    });
 
     return {
       ...sonuc,
       kmhLimitToplam,
+      /** Hiç banka hesabı tanımlı değilse başlangıç nakdi 0 kabul edilir — ekran bunu söylemeli */
+      hesapTanimliMi: hesaplar.length > 0,
       oneriler,
       hesaplar: hesaplar.map((h: any) => ({
         id: h.id,
@@ -1226,23 +1312,55 @@ export class ButceService {
 
   async ozet(k: Kimlik, donem = bugunDonem(), defter: DefterSecim = 'TUMU') {
     const ayar = await this.ayarGetir(k);
-    const [islemler, kartlar, borclar, ekstreler, hesaplar] = await Promise.all([
-      this.islemler(k, { donem, defter, transferHaric: true, planlanan: false }),
+    // GELİR tek havuzdur: defter filtresi yalnız GİDERE uygulanır.
+    // (Şahıs firmasında ofisin geliri zaten sahibinin geliridir.)
+    const [tumIslemler, kartlar, borclar, ekstreler, hesaplar] = await Promise.all([
+      this.islemler(k, { donem, transferHaric: true, planlanan: false }),
       this.kartlar(k),
       this.borclar(k, false, defter),
       this.yaklasanEkstreler(k),
       this.bankaHesaplar(k),
     ]);
 
-    const gelir = kurus(islemler.filter((i: any) => i.tur === 'GELIR').reduce((t: number, i: any) => t + i.tutar, 0));
-    const gider = kurus(islemler.filter((i: any) => i.tur === 'GIDER').reduce((t: number, i: any) => t + i.tutar, 0));
+    const gelirler = tumIslemler.filter((i: any) => i.tur === 'GELIR');
+    const tumGiderler = tumIslemler.filter((i: any) => i.tur === 'GIDER');
+    // Seçili deftere göre süzülen giderler (ekranda gösterilen liste)
+    const giderler =
+      !defter || defter === 'TUMU' ? tumGiderler : tumGiderler.filter((i: any) => i.defter === defter);
+    const islemler = [...gelirler, ...giderler];
+
+    const gelir = kurus(gelirler.reduce((t: number, i: any) => t + i.tutar, 0));
+    const gider = kurus(giderler.reduce((t: number, i: any) => t + i.tutar, 0));
+    // Mesleki / kişisel gider ayrımı — vergi açısından anlamlı olan ayrım budur
+    const meslekiGider = kurus(
+      tumGiderler.filter((i: any) => i.defter === 'OFIS').reduce((t: number, i: any) => t + i.tutar, 0),
+    );
+    const kisiselGider = kurus(
+      tumGiderler.filter((i: any) => i.defter === 'SAHSI').reduce((t: number, i: any) => t + i.tutar, 0),
+    );
     const kartGideri = kurus(
-      islemler.filter((i: any) => i.tur === 'GIDER' && i.kaynak === 'KART').reduce((t: number, i: any) => t + i.tutar, 0),
+      giderler.filter((i: any) => i.kaynak === 'KART').reduce((t: number, i: any) => t + i.tutar, 0),
     );
     const nakitGider = kurus(gider - kartGideri);
     const zorunluGider = kurus(
-      islemler.filter((i: any) => i.tur === 'GIDER' && i.kategori?.zorunlu).reduce((t: number, i: any) => t + i.tutar, 0),
+      giderler.filter((i: any) => i.kategori?.zorunlu).reduce((t: number, i: any) => t + i.tutar, 0),
     );
+
+    // Ofisten şahsiye (veya tersine) aktarılan para: gelir/gider DEĞİLDİR ama
+    // "param nereden geldi" sorusunun cevabıdır. Ayrı gösterilir.
+    const aktarimlar = await this.db.butceIslem.groupBy({
+      by: ['tur'],
+      where: {
+        tenantId: k.tenantId,
+        userId: k.userId,
+        donem,
+        transferGrupId: { not: null },
+        ...defterWhere(defter),
+      },
+      _sum: { tutar: true },
+    });
+    const aktarimGiris = num(aktarimlar.find((x: any) => x.tur === 'GELIR')?._sum?.tutar);
+    const aktarimCikis = num(aktarimlar.find((x: any) => x.tur === 'GIDER')?._sum?.tutar);
 
     const kartBorcu = kurus(kartlar.reduce((t: number, kk: any) => t + kk.ekstreBorcu, 0));
     const kartDonemIci = kurus(kartlar.reduce((t: number, kk: any) => t + kk.donemIciHarcama, 0));
@@ -1267,22 +1385,24 @@ export class ButceService {
     const trend: Array<{ donem: string; gelir: number; gider: number }> = [];
     for (let i = 5; i >= 0; i--) {
       const d = donemKaydir(donem, -i);
-      const kayitlar = await this.db.butceIslem.groupBy({
-        by: ['tur'],
-        where: {
-          tenantId: k.tenantId,
-          userId: k.userId,
-          donem: d,
-          transferGrupId: null,
-          planlanan: false,
-          ...defterWhere(defter),
-        },
-        _sum: { tutar: true },
-      });
+      const ortak = {
+        tenantId: k.tenantId,
+        userId: k.userId,
+        donem: d,
+        transferGrupId: null,
+        planlanan: false,
+      };
+      const [gelirToplam, giderToplam] = await Promise.all([
+        this.db.butceIslem.aggregate({ where: { ...ortak, tur: 'GELIR' }, _sum: { tutar: true } }),
+        this.db.butceIslem.aggregate({
+          where: { ...ortak, tur: 'GIDER', ...defterWhere(defter) },
+          _sum: { tutar: true },
+        }),
+      ]);
       trend.push({
         donem: d,
-        gelir: num(kayitlar.find((x: any) => x.tur === 'GELIR')?._sum?.tutar),
-        gider: num(kayitlar.find((x: any) => x.tur === 'GIDER')?._sum?.tutar),
+        gelir: num(gelirToplam._sum.tutar),
+        gider: num(giderToplam._sum.tutar),
       });
     }
 
@@ -1300,6 +1420,14 @@ export class ButceService {
       defter,
       gelir,
       gider,
+      /** Kazançtan indirilebilecek mesleki giderler (ofis) */
+      meslekiGider,
+      /** İndirilemeyen kişisel harcamalar */
+      kisiselGider,
+      /** Vergi matrahına esas: gelir − mesleki gider */
+      meslekiKazanc: kurus(gelir - meslekiGider),
+      /** Cepte kalan: gelir − tüm giderler */
+      cepteKalan: kurus(gelir - (meslekiGider + kisiselGider)),
       kartGideri,
       nakitGider,
       net: kurus(gelir - gider),
@@ -1307,6 +1435,12 @@ export class ButceService {
       zorunluGider,
       istegeBagliGider: kurus(gider - zorunluGider),
       nakitYastigi: ayar.nakitYastigi,
+      /** Bu deftere aktarılan para (şahsi defterde: ofisten çekiş) — gelir sayılmaz */
+      aktarimGiris,
+      /** Bu defterden çıkan aktarım (ofis defterinde: sahip çekişi) — gider sayılmaz */
+      aktarimCikis,
+      /** Nakit girişi = gerçek gelir + aktarım. Harcama gücünüz budur. */
+      toplamNakitGirisi: kurus(gelir + aktarimGiris),
       nakitVarlik,
       borcOzet: {
         kart: kartBorcu,
@@ -1376,14 +1510,68 @@ export class ButceService {
     const yilGelir = num(yillik.find((x: any) => x.tur === 'GELIR')?._sum?.tutar);
     const yilGider = num(yillik.find((x: any) => x.tur === 'GIDER')?._sum?.tutar);
 
+    // OFİSTE KALAN PARA: tüm zamanların kârı − sahibin çektiği toplam.
+    // Ofisin yatırım kapasitesi budur; sahibin şahsi bütçesiyle karışmaz.
+    const [tumZamanlar, tumCekisler] = await Promise.all([
+      this.db.butceIslem.groupBy({
+        by: ['tur'],
+        where: {
+          tenantId: k.tenantId,
+          userId: k.userId,
+          defter: 'OFIS',
+          transferGrupId: null,
+          planlanan: false,
+        },
+        _sum: { tutar: true },
+      }),
+      this.db.butceIslem.aggregate({
+        where: {
+          tenantId: k.tenantId,
+          userId: k.userId,
+          defter: 'OFIS',
+          tur: 'GIDER',
+          transferGrupId: { not: null },
+        },
+        _sum: { tutar: true },
+      }),
+    ]);
+    const kumulatifGelir = num(tumZamanlar.find((x: any) => x.tur === 'GELIR')?._sum?.tutar);
+    const kumulatifGider = num(tumZamanlar.find((x: any) => x.tur === 'GIDER')?._sum?.tutar);
+    const kumulatifKar = kurus(kumulatifGelir - kumulatifGider);
+    const kumulatifCekis = num(tumCekisler._sum.tutar);
+
+    // Ofisin kendi yatırımı (demirbaş/araç) zaten gider olarak kârı azaltmıştır;
+    // burada ayrıca gösterilir ki "kâr nereye gitti" sorusu cevaplansın.
+    const yatirim = await this.db.butceIslem.aggregate({
+      where: {
+        tenantId: k.tenantId,
+        userId: k.userId,
+        defter: 'OFIS',
+        tur: 'GIDER',
+        transferGrupId: null,
+        kategori: { ad: { contains: 'Demirbaş', mode: 'insensitive' } },
+      },
+      _sum: { tutar: true },
+    });
+
     return {
       donem,
       gelir,
       gider,
       kar: kurus(gelir - gider),
       karMarji: gelir > 0 ? Math.round(((gelir - gider) / gelir) * 100) : 0,
+      /** Bu dönem sahibin ofisten çektiği para (gider değil, sermaye hareketi) */
       sahipCekisi: num(cekis._sum.tutar),
       yilBasindanBeri: { gelir: yilGelir, gider: yilGider, kar: kurus(yilGelir - yilGider) },
+      tumZamanlar: {
+        gelir: kumulatifGelir,
+        gider: kumulatifGider,
+        kar: kumulatifKar,
+        cekis: kumulatifCekis,
+        /** Ofiste biriken, henüz çekilmemiş para — yatırım kapasitesi */
+        ofisteKalan: kurus(kumulatifKar - kumulatifCekis),
+        yatirim: num(yatirim._sum.tutar),
+      },
     };
   }
 

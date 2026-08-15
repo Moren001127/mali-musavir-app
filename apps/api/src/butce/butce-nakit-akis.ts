@@ -51,6 +51,17 @@ export interface AkisSonuc {
   toplamCikis: number;
 }
 
+/** Ek hesap (KMH) tanımı — öneri hangi hesaptan kullanılacağını söylemek zorunda */
+export interface KmhHesabi {
+  id?: string;
+  banka: string;
+  ad: string;
+  /** Bu hesapta kullanılabilir kalan KMH limiti */
+  kullanilabilir: number;
+  /** Aylık faiz oranı (%) */
+  aylikFaiz: number;
+}
+
 export interface AkisOnerisi {
   tarih: string;
   acik: number;
@@ -161,10 +172,24 @@ export function nakitAkisiHesapla(p: {
 export function akisOnerileri(
   sonuc: AkisSonuc,
   hareketler: AkisHareketi[],
-  p: { kmhAylikFaiz?: number; gecikmeAylikFaiz?: number } = {},
+  p: {
+    kmhAylikFaiz?: number;
+    gecikmeAylikFaiz?: number;
+    kmhKullanilabilir?: number;
+    /** Ek hesaplar — hangi hesaptan ne kadar kullanılacağı buradan söylenir */
+    kmhHesaplari?: KmhHesabi[];
+  } = {},
 ): AkisOnerisi[] {
-  const kmhFaiz = (p.kmhAylikFaiz ?? 5) / 100;
   const gecikmeFaiz = (p.gecikmeAylikFaiz ?? 4.75) / 100;
+  // KMH seçeneği yalnız GERÇEKTEN kullanılabilir limit varsa önerilir ve
+  // HANGİ HESAPTAN kullanılacağı adıyla söylenir. Eskiden koşulsuz "KMH ile kapat"
+  // deniyordu; hesabı olmayan kullanıcıya olmayan bir imkân öneriliyordu.
+  const kmhHesaplari = (p.kmhHesaplari || [])
+    .filter((h) => h && h.kullanilabilir > 0)
+    .sort((a, b) => a.aylikFaiz - b.aylikFaiz); // en ucuz hesap önce
+  const kmhToplam = kmhHesaplari.length
+    ? KURUS(kmhHesaplari.reduce((t, h) => t + h.kullanilabilir, 0))
+    : Math.max(p.kmhKullanilabilir ?? 0, 0);
   const oneriler: AkisOnerisi[] = [];
 
   for (const gun of sonuc.acikGunler) {
@@ -206,13 +231,48 @@ export function akisOnerileri(
       });
     }
 
-    // 2) KMH kullanmak
-    secenekler.push({
-      ad: 'KMH (ek hesap) kullan',
-      aciklama: `${gun.acik.toLocaleString('tr-TR')} TL açığı ${kacGun} gün KMH ile kapat. KMH faizi günlük işler; girişten sonra hemen kapatılırsa maliyet sınırlı kalır.`,
-      maliyet: KURUS(gun.acik * kmhFaiz * (kacGun / 30)),
-      onerilen: false,
-    });
+    // 2) Ek hesap (KMH) — hangi hesaptan ne kadar, adıyla ve faiziyle
+    if (kmhToplam > 0) {
+      const yeterli = kmhToplam >= gun.acik;
+      const kapanan = KURUS(Math.min(kmhToplam, gun.acik));
+
+      // Açığı en ucuz hesaptan başlayarak dağıt
+      let kalanIhtiyac = kapanan;
+      const kullanim: Array<{ hesap: KmhHesabi; tutar: number }> = [];
+      for (const h of kmhHesaplari) {
+        if (kalanIhtiyac <= 0.009) break;
+        const al = KURUS(Math.min(h.kullanilabilir, kalanIhtiyac));
+        kullanim.push({ hesap: h, tutar: al });
+        kalanIhtiyac = KURUS(kalanIhtiyac - al);
+      }
+
+      const maliyet = kullanim.length
+        ? KURUS(kullanim.reduce((t, x) => t + x.tutar * (x.hesap.aylikFaiz / 100) * (kacGun / 30), 0))
+        : KURUS(kapanan * ((p.kmhAylikFaiz ?? 5) / 100) * (kacGun / 30));
+
+      const hesapMetni = kullanim.length
+        ? kullanim
+            .map(
+              (x) =>
+                `${x.hesap.banka} ${x.hesap.ad} hesabınızdaki ek hesaptan ${x.tutar.toLocaleString('tr-TR')} TL` +
+                ` (kullanılabilir ${x.hesap.kullanilabilir.toLocaleString('tr-TR')} TL, aylık %${x.hesap.aylikFaiz})`,
+            )
+            .join(' + ')
+        : `ek hesabınızdan ${kapanan.toLocaleString('tr-TR')} TL`;
+
+      secenekler.push({
+        ad: !yeterli
+          ? 'Ek hesap limitinin tamamını kullan (yetmez)'
+          : kullanim.length === 1
+            ? `${kullanim[0].hesap.banka} ${kullanim[0].hesap.ad} — ek hesabı kullan`
+            : 'Ek hesaplarını kullan',
+        aciklama: yeterli
+          ? `${kacGun} gün için ${hesapMetni} kullanın. Faiz günlük işler; para girince hemen kapatılırsa maliyet sınırlı kalır.`
+          : `${hesapMetni} kullansanız bile ${(gun.acik - kapanan).toLocaleString('tr-TR')} TL eksik kalır.`,
+        maliyet,
+        onerilen: false,
+      });
+    }
 
     // 3) Girişi öne çekmek (tahsilat hızlandırma) — bedelsiz
     const sonrakiGiris = sonuc.gunler
@@ -236,6 +296,18 @@ export function akisOnerileri(
         aciklama: `Gecikme faizi akdi faizden yüksektir ve gecikme kredi notuna işler. Yalnız karşılaştırma için gösteriliyor.`,
         maliyet: KURUS(geciktirilebilir * gecikmeFaiz * (kacGun / 30)),
         onerilen: false,
+      });
+    }
+
+    // Hiç seçenek üretilemediyse uydurma yapma; durumu olduğu gibi söyle
+    if (secenekler.length === 0) {
+      secenekler.push({
+        ad: 'Ek gelir ya da gider kısıntısı gerekiyor',
+        aciklama:
+          'Elinizdeki araçlarla (asgari ödeme, ek hesap, tahsilatı öne çekme) bu açık kapanmıyor. ' +
+          'Tanımlı ek hesabınız (KMH) yok. Varsa Hesaplar ekranından limitiyle ekleyin; yoksa bu tarihe kadar ek tahsilat planlamanız gerekiyor.',
+        maliyet: 0,
+        onerilen: true,
       });
     }
 

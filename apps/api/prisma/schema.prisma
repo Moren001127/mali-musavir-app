@@ -3517,6 +3517,8 @@ model ButceKategori {
   ad        String
   tur       String   // GELIR | GIDER
   renk      String?
+  /// Aylık harcama sınırı (yalnız gider kategorilerinde anlamlı). Boş = sınır yok
+  aylikLimit Decimal? @db.Decimal(14, 2)
   zorunlu   Boolean  @default(false) // gider: kira/fatura gibi kısılamaz kalem
   aktif     Boolean  @default(true)
   sira      Int      @default(0)
@@ -3719,6 +3721,9 @@ model ButceAyar {
   pinHash            String?
   pinDenemeSayisi    Int      @default(0)
   pinKilitBitis      DateTime?
+  // TCMB azami kart faizi değişince kartların oranı kendiliğinden güncellensin mi?
+  // Kapalıysa yalnız bildirim gider, oran elle güncellenir.
+  faizOtomatikGuncelle Boolean @default(true)
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
