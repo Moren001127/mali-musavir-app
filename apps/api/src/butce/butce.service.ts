@@ -1353,6 +1353,56 @@ export class ButceService {
     return kurus(num(giris._sum.tutar) - num(cikis._sum.tutar));
   }
 
+  /**
+   * NAKİT KASA ÖZETİ — Hesaplar ekranında banka hesaplarının yanında gösterilir.
+   *
+   * Kasa ayrı bir hesap kaydı değildir: banka hesabı seçilmeden girilmiş
+   * hareketlerin toplamıdır. Kullanıcı "hangi bankada ne kadar, kasada ne kadar
+   * var" sorusunu tek ekrandan görebilsin diye ayrı bir kart olarak sunulur.
+   */
+  async kasaOzet(k: Kimlik) {
+    const ortak = {
+      tenantId: k.tenantId,
+      userId: k.userId,
+      planlanan: false,
+      transferGrupId: null,
+      bankaHesapId: null,
+    };
+    const [giris, cikis, sayi, sonHareketler] = await Promise.all([
+      this.db.butceIslem.aggregate({ where: { ...ortak, tur: 'GELIR' }, _sum: { tutar: true } }),
+      this.db.butceIslem.aggregate({
+        where: { ...ortak, tur: 'GIDER', kaynak: { not: 'KART' } },
+        _sum: { tutar: true },
+      }),
+      this.db.butceIslem.count({
+        where: { ...ortak, OR: [{ tur: 'GELIR' }, { tur: 'GIDER', kaynak: { not: 'KART' } }] },
+      }),
+      this.db.butceIslem.findMany({
+        where: { ...ortak, OR: [{ tur: 'GELIR' }, { tur: 'GIDER', kaynak: { not: 'KART' } }] },
+        orderBy: [{ tarih: 'desc' }, { createdAt: 'desc' }],
+        take: 5,
+        include: { kategori: { select: { ad: true, renk: true } } },
+      }),
+    ]);
+
+    const toplamGiris = kurus(num(giris._sum.tutar));
+    const toplamCikis = kurus(num(cikis._sum.tutar));
+    return {
+      bakiye: kurus(toplamGiris - toplamCikis),
+      giris: toplamGiris,
+      cikis: toplamCikis,
+      hareketSayisi: sayi,
+      sonHareketler: sonHareketler.map((i: any) => ({
+        id: i.id,
+        tarih: i.tarih,
+        tur: i.tur,
+        tutar: num(i.tutar),
+        aciklama: i.aciklama,
+        kategori: i.kategori,
+      })),
+    };
+  }
+
   /* ===================== ÖZET ===================== */
 
   async ozet(k: Kimlik, donem = bugunDonem(), defter: DefterSecim = 'TUMU') {
@@ -1390,9 +1440,6 @@ export class ButceService {
       giderler.filter((i: any) => i.kaynak === 'KART').reduce((t: number, i: any) => t + i.tutar, 0),
     );
     const nakitGider = kurus(gider - kartGideri);
-    const zorunluGider = kurus(
-      giderler.filter((i: any) => i.kategori?.zorunlu).reduce((t: number, i: any) => t + i.tutar, 0),
-    );
 
     const kartBorcu = kurus(kartlar.reduce((t: number, kk: any) => t + kk.ekstreBorcu, 0));
     const kartDonemIci = kurus(kartlar.reduce((t: number, kk: any) => t + kk.donemIciHarcama, 0));
@@ -1482,8 +1529,6 @@ export class ButceService {
        */
       net: kurus(gelir - (meslekiGider + kisiselGider)),
       nakitNet: kurus(gelir - nakitGider),
-      zorunluGider,
-      istegeBagliGider: kurus(gider - zorunluGider),
       nakitYastigi: ayar.nakitYastigi,
       nakitVarlik,
       /** Banka hesaplarındaki bakiye toplamı */

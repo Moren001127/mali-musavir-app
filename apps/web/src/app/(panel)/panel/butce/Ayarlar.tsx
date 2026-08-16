@@ -309,11 +309,6 @@ function KategoriYonetimi({ kategoriler }: { kategoriler: Kategori[] }) {
     onError: () => toast.error('Silinemedi — bu kategoride kayıt olabilir'),
   });
 
-  const zorunluDegistir = useMutation({
-    mutationFn: (k: Kategori) => butceApi.kategoriGuncelle(k.id, { ...k, zorunlu: !k.zorunlu }),
-    onSuccess: tazele,
-  });
-
   // Yanlış deftere düşmüş kategoriyi tek tıkla taşı (Müşavirlik geliri şahsiye yazılmıştı)
   const defterDegistir = useMutation({
     mutationFn: (k: Kategori) => butceApi.kategoriGuncelle(k.id, k),
@@ -383,29 +378,11 @@ function KategoriYonetimi({ kategoriler }: { kategoriler: Kategori[] }) {
                     }}
                     title={
                       c.defter === 'OFIS'
-                        ? 'Mesleki gider — kazançtan indirilir. Tıklayınca kişisele geçer.'
-                        : 'Kişisel harcama — kazançtan indirilemez. Tıklayınca mesleki olur.'
+                        ? 'Ofis gideri — kazançtan indirilir. Tıklayınca kişisele geçer.'
+                        : 'Kişisel harcama — kazançtan indirilemez. Tıklayınca ofis gideri olur.'
                     }
                   >
                     {DEFTER_ETIKET[c.defter]}
-                  </button>
-                )}
-                {gider && (
-                  <button
-                    onClick={() => zorunluDegistir.mutate(c)}
-                    className="rounded-md px-2 py-0.5 text-[10px] transition"
-                    style={{
-                      color: c.zorunlu ? TURUNCU : 'rgba(113,113,122,0.9)',
-                      background: c.zorunlu ? `${TURUNCU}14` : 'transparent',
-                      border: `1px solid ${c.zorunlu ? `${TURUNCU}3d` : ROW_SEP}`,
-                    }}
-                    title={
-                      c.zorunlu
-                        ? 'Kısılamaz gider (kira, SGK gibi). Tıklayınca kısılabilir sayılır.'
-                        : 'Kısılabilir gider. Tıklayınca kısılamaz olarak işaretlenir.'
-                    }
-                  >
-                    {c.zorunlu ? 'kısılamaz' : 'kısılabilir'}
                   </button>
                 )}
                 <button
@@ -427,7 +404,7 @@ function KategoriYonetimi({ kategoriler }: { kategoriler: Kategori[] }) {
   return (
     <Kutu
       baslik="Kategoriler"
-      aciklama="Gelir tek havuzdur. Gider kategorileri mesleki/kişisel olarak ayrılır; “kısılamaz” işareti kira, SGK gibi vazgeçilemez kalemleri işaretler."
+      aciklama="Gelir tek havuzdur. Gider kategorileri ofis ve kişisel olarak ayrılır: ofis gideri kazançtan indirilir, kişisel harcama indirilemez."
       renk={GOLD}
       sag={
         <Dugme onClick={() => hazirSet.mutate()} yukleniyor={hazirSet.isPending}>
@@ -467,13 +444,13 @@ function KategoriYonetimi({ kategoriler }: { kategoriler: Kategori[] }) {
           {/* Gelir tek havuz olduğu için defter yalnız giderde sorulur */}
           {yeni.tur === 'GIDER' && (
             <div className="w-[140px]">
-              <Alan etiket="Gider türü" ipucu="Mesleki gider kazançtan indirilir">
+              <Alan etiket="Gider türü" ipucu="Ofis gideri kazançtan indirilir">
                 <Secim
                   value={yeni.defter}
                   onChange={(e) => setYeni({ ...yeni, defter: e.target.value as Defter })}
                 >
                   <option value="SAHSI">Kişisel</option>
-                  <option value="OFIS">Mesleki</option>
+                  <option value="OFIS">Ofis</option>
                 </Secim>
               </Alan>
             </div>
@@ -486,12 +463,6 @@ function KategoriYonetimi({ kategoriler }: { kategoriler: Kategori[] }) {
               <RenkSecici deger={yeni.renk} degistir={(v) => setYeni({ ...yeni, renk: v })} />
             </div>
           </div>
-          {yeni.tur === 'GIDER' && (
-            <label className="flex h-[33px] cursor-pointer items-center gap-2 text-[12px]" style={{ color: MUTED }}>
-              <Anahtar acik={yeni.zorunlu} degistir={(v) => setYeni({ ...yeni, zorunlu: v })} />
-              Kısılamaz
-            </label>
-          )}
           <div className="flex h-[33px] items-center">
             <Dugme type="submit" tur="birincil" disabled={!yeni.ad.trim()} yukleniyor={ekle.isPending}>
               <Plus size={13} /> Ekle
@@ -504,7 +475,7 @@ function KategoriYonetimi({ kategoriler }: { kategoriler: Kategori[] }) {
       <div className="space-y-5">
         {liste('Gelir', OK, <TrendingUp size={12} />, gelirler, false)}
         <div className="grid gap-5 md:grid-cols-2">
-          {liste('Mesleki gider', KIRMIZI, <TrendingDown size={12} />, giderler('OFIS'), true)}
+          {liste('Ofis gideri', KIRMIZI, <TrendingDown size={12} />, giderler('OFIS'), true)}
           {liste('Kişisel gider', KIRMIZI, <TrendingDown size={12} />, giderler('SAHSI'), true)}
         </div>
       </div>

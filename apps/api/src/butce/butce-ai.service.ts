@@ -61,8 +61,6 @@ export class ButceAiService {
       kisiselGider: ozet.kisiselGider,
       meslekiKazanc: ozet.meslekiKazanc,
       net: ozet.net,
-      zorunluGider: ozet.zorunluGider,
-      istegeBagliGider: ozet.istegeBagliGider,
       nakitVarlik: ozet.nakitVarlik,
       bankaBakiyesi: ozet.bankaBakiyesi,
       nakitKasasi: ozet.nakitKasasi,

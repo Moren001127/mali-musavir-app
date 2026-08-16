@@ -126,7 +126,7 @@ export default function GenelBakis({
           deger={`${para(ozet.gider)} ₺`}
           renk={KIRMIZI}
           ikon={<TrendingDown size={14} />}
-          altBilgi={`Mesleki ${para(ozet.meslekiGider)} ₺ · Kişisel ${para(ozet.kisiselGider)} ₺`}
+          altBilgi={`Ofis ${para(ozet.meslekiGider)} ₺ · Kişisel ${para(ozet.kisiselGider)} ₺`}
         />
         <KPI
           etiket="Bu ay net"
@@ -288,10 +288,9 @@ export default function GenelBakis({
                         </span>
                         {/* Mesleki/kişisel ayrımı artık kategori satırında görünür */}
                         <Rozet
-                          metin={k.defter === 'OFIS' ? 'mesleki' : 'kişisel'}
+                          metin={k.defter === 'OFIS' ? 'ofis' : 'kişisel'}
                           renk={k.defter === 'OFIS' ? MAVI : GOLD}
                         />
-                        {k.zorunlu && <Rozet metin="kısılamaz" renk={MUTED} />}
                       </span>
                       <span className="flex-shrink-0 tabular-nums" style={{ color: MUTED }}>
                         {para(k.tutar)} ₺ · %{oran}
@@ -338,8 +337,8 @@ function OfisKutulari({ veri, donem }: { veri: OfisOzetGenis; donem: string }) {
   return (
     <div className="grid gap-4 xl:grid-cols-2">
       <Kutu
-        baslik="Mesleki kazanç"
-        aciklama={`${donemTR(donem)} · gelir − mesleki gider`}
+        baslik="Ofis kazancı"
+        aciklama={`${donemTR(donem)} · gelir − ofis gideri`}
         renk={MOR}
         sag={<Building2 size={14} style={{ color: MOR }} />}
       >
@@ -357,7 +356,7 @@ function OfisKutulari({ veri, donem }: { veri: OfisOzetGenis; donem: string }) {
 
         <div className="mt-3 space-y-1 border-t pt-2" style={{ borderColor: ROW_SEP }}>
           <Satir etiket="Gelir" deger={`${para(veri.gelir)} ₺`} renk={OK} />
-          <Satir etiket="Mesleki gider" deger={`${para(veri.gider)} ₺`} renk={KIRMIZI} />
+          <Satir etiket="Ofis gideri" deger={`${para(veri.gider)} ₺`} renk={KIRMIZI} />
           <Satir etiket="Yıl başından beri kazanç" deger={`${para(veri.yilBasindanBeri.kar)} ₺`} renk={GOLD} />
         </div>
 
@@ -367,8 +366,8 @@ function OfisKutulari({ veri, donem }: { veri: OfisOzetGenis; donem: string }) {
       </Kutu>
 
       <Kutu
-        baslik="Mesleki yatırım"
-        aciklama="Demirbaş, araç ve benzeri mesleki alımlar"
+        baslik="Ofis yatırımı"
+        aciklama="Demirbaş, araç ve benzeri ofis alımları"
         renk={GOLD}
         sag={<PiggyBank size={14} style={{ color: GOLD }} />}
       >
@@ -382,12 +381,12 @@ function OfisKutulari({ veri, donem }: { veri: OfisOzetGenis; donem: string }) {
           {tz ? `${para(tz.yatirim)} ₺` : '—'}
         </div>
         <p className="mt-1 text-[11px] leading-relaxed" style={{ color: MUTED }}>
-          Ofise aldığınız demirbaş ve araç mesleki giderdir; kişisel harcamanız sayılmaz ve kazançtan indirilir.
+          Ofise aldığınız demirbaş ve araç ofis gideridir; kişisel harcamanız sayılmaz ve kazançtan indirilir.
         </p>
 
         <div className="mt-3 space-y-1 border-t pt-2" style={{ borderColor: ROW_SEP }}>
           <Satir etiket="Toplam gelir (tüm zamanlar)" deger={tz ? `${para(tz.gelir)} ₺` : '—'} renk={OK} />
-          <Satir etiket="Toplam mesleki gider" deger={tz ? `${para(tz.gider)} ₺` : '—'} renk={KIRMIZI} />
+          <Satir etiket="Toplam ofis gideri" deger={tz ? `${para(tz.gider)} ₺` : '—'} renk={KIRMIZI} />
           <Satir etiket="Toplam kazanç" deger={tz ? `${para(tz.kar)} ₺` : '—'} renk={GOLD} />
         </div>
       </Kutu>

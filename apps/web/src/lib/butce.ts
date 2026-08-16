@@ -54,7 +54,7 @@ export type DefterSecim = Defter | 'TUMU';
  */
 export const DEFTER_ETIKET: Record<DefterSecim, string> = {
   SAHSI: 'Kişisel',
-  OFIS: 'Mesleki',
+  OFIS: 'Ofis',
   TUMU: 'Tümü',
 };
 
@@ -103,6 +103,22 @@ export interface AkisGunu {
   bakiye: number;
   hareketler: AkisHareketOzet[];
   acik: number;
+}
+
+/** Nakit kasa: banka hesabı seçilmeden girilmiş hareketlerin toplamı */
+export interface KasaOzet {
+  bakiye: number;
+  giris: number;
+  cikis: number;
+  hareketSayisi: number;
+  sonHareketler: Array<{
+    id: string;
+    tarih: string;
+    tur: 'GELIR' | 'GIDER';
+    tutar: number;
+    aciklama: string | null;
+    kategori: { ad: string; renk: string } | null;
+  }>;
 }
 
 export interface AkisSecenek {
@@ -322,8 +338,6 @@ export interface Ozet {
   net: number;
   /** Nakit akışı: gelir − nakit gider */
   nakitNet: number;
-  zorunluGider: number;
-  istegeBagliGider: number;
   nakitYastigi: number;
   defter: DefterSecim;
   nakitVarlik: number;
@@ -461,6 +475,7 @@ export const butceApi = {
   ofisOzet: (donem?: string) => al<OfisOzet>(api.get('/butce/ofis-ozet', { params: { donem } })),
 
   hesaplar: () => al<BankaHesap[]>(api.get('/butce/hesaplar')),
+  kasa: () => al<KasaOzet>(api.get('/butce/kasa')),
   hesapEkle: (body: Partial<BankaHesap>) => al<BankaHesap>(api.post('/butce/hesaplar', body)),
   hesapGuncelle: (id: string, body: Partial<BankaHesap>) =>
     al<BankaHesap>(api.put(`/butce/hesaplar/${id}`, body)),

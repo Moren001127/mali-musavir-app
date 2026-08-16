@@ -55,8 +55,17 @@ export default function Hesaplar() {
     queryFn: butceApi.hesaplar,
   });
 
+  // Nakit kasa: banka hesabı seçilmeden girilmiş hareketlerin toplamı.
+  // "Hangi bankada ne kadar, kasada ne kadar" tek ekrandan görünsün.
+  const kasaSorgu = useQuery({
+    queryKey: ['butce-kasa'],
+    queryFn: () => butceApi.kasa(),
+    staleTime: 30_000,
+  });
+
   const tazele = () => {
     qc.invalidateQueries({ queryKey: ['butce-hesaplar'] });
+    qc.invalidateQueries({ queryKey: ['butce-kasa'] });
     qc.invalidateQueries({ queryKey: ['butce-ozet'] });
     qc.invalidateQueries({ queryKey: ['butce-nakit-akis'] });
     qc.invalidateQueries({ queryKey: ['butce-hesap-hareketler'] });
@@ -95,13 +104,20 @@ export default function Hesaplar() {
 
   if (isLoading) return <Yukleniyor />;
 
+  const kasa = kasaSorgu.data;
+  const kasaVar = !!kasa && kasa.hareketSayisi > 0;
+
   return (
     <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-3">
         <KPI
           etiket="Toplam nakit"
-          deger={`${para(toplamNakit)} ₺`}
-          altBilgi="Artıda olan hesapların toplamı"
+          deger={`${para(toplamNakit + (kasa?.bakiye || 0))} ₺`}
+          altBilgi={
+            kasaVar
+              ? `Bankada ${para(toplamNakit)} ₺ · kasada ${para(kasa!.bakiye)} ₺`
+              : 'Artıda olan hesapların toplamı'
+          }
           renk={OK}
           ikon={<Wallet size={13} />}
           vurgu
@@ -143,7 +159,7 @@ export default function Hesaplar() {
         {hesaplar.length === 0 ? (
           <Bos metin="Henüz banka hesabı eklenmedi." ikon={<Landmark size={18} />} />
         ) : (
-          <div className="grid gap-3 lg:grid-cols-2">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {sirali.map((h) => {
               const renk = h.renk || GOLD;
               const kmh = h.tur === 'KMH';
@@ -153,7 +169,7 @@ export default function Hesaplar() {
               return (
                 <div
                   key={h.id}
-                  className="relative overflow-hidden rounded-2xl p-4"
+                  className="relative overflow-hidden rounded-xl p-3"
                   style={{
                     background: `linear-gradient(150deg, ${renk}14, rgba(255,255,255,0.012) 55%)`,
                     border: `1px solid ${renk}33`,
@@ -161,13 +177,13 @@ export default function Hesaplar() {
                   }}
                 >
                   <div
-                    className="pointer-events-none absolute -right-10 -top-12 h-36 w-36 rounded-full opacity-20"
+                    className="pointer-events-none absolute -right-8 -top-10 h-24 w-24 rounded-full opacity-20"
                     style={{ background: `radial-gradient(circle, ${renk}, transparent 68%)` }}
                   />
 
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2 text-[13.5px] font-semibold" style={{ color: TEXT }}>
+                      <div className="flex flex-wrap items-center gap-1.5 text-[12.5px] font-semibold" style={{ color: TEXT }}>
                         {h.bankaAdi} · {h.ad}
                         {!h.aktif && <Rozet metin="pasif" renk={MUTED} />}
                       </div>
@@ -179,24 +195,21 @@ export default function Hesaplar() {
                     {defter && <Rozet metin={defter.etiket} renk={defter.renk} />}
                   </div>
 
-                  <div className="mt-3">
-                    <div className="text-[10.5px] uppercase tracking-wider" style={{ color: MUTED }}>
-                      Bakiye
-                    </div>
+                  <div className="mt-2">
                     <div
-                      className="text-[26px] font-semibold leading-tight tabular-nums"
+                      className="text-[20px] font-semibold leading-tight tabular-nums"
                       style={{ color: h.bakiye < 0 ? KIRMIZI : renk }}
                     >
                       {para(h.bakiye)} ₺
                     </div>
-                    <div className="mt-0.5 text-[11px]" style={{ color: MUTED }}>
+                    <div className="mt-0.5 text-[10.5px]" style={{ color: MUTED }}>
                       Kullanılabilir {para(h.kullanilabilir)} ₺
                     </div>
                   </div>
 
                   {kmh && (
                     <div
-                      className="mt-3 rounded-xl px-3 py-2.5"
+                      className="mt-2 rounded-lg px-2.5 py-2"
                       style={{ background: 'rgba(0,0,0,0.25)', border: `1px solid ${ROW_SEP}` }}
                     >
                       <div className="flex items-center justify-between gap-2 text-[11px]" style={{ color: MUTED }}>
@@ -211,16 +224,21 @@ export default function Hesaplar() {
                       >
                         <div style={{ width: `${doluluk}%`, height: '100%', background: dolulukRenk }} />
                       </div>
-                      <div className="mt-2 text-[11.5px]" style={{ color: TEXT }}>
-                        KMH borcu {para(h.kmhBorcu)} ₺ · kalan limit {para(h.kmhKalanLimit)} ₺
+                      <div className="mt-1.5 text-[11px]" style={{ color: TEXT }}>
+                        Borç {para(h.kmhBorcu)} ₺ · kalan {para(h.kmhKalanLimit)} ₺
                       </div>
-                      <div className="mt-0.5 text-[11px]" style={{ color: h.kmhBorcu > 0 ? TURUNCU : MUTED }}>
-                        Aylık faiz %{h.kmhAylikFaiz} · günlük yaklaşık {para(gunlukFaiz(h))} ₺ faiz
+                      <div
+                        className="mt-0.5 text-[10.5px]"
+                        style={{ color: h.kmhAylikFaiz > 0 ? (h.kmhBorcu > 0 ? TURUNCU : MUTED) : TURUNCU }}
+                      >
+                        {h.kmhAylikFaiz > 0
+                          ? `Aylık faiz %${h.kmhAylikFaiz} · günlük ~${para(gunlukFaiz(h))} ₺`
+                          : 'Faiz oranı girilmedi — öneriler maliyetsiz görünür'}
                       </div>
                     </div>
                   )}
 
-                  <div className="mt-3 flex flex-wrap gap-1.5">
+                  <div className="mt-2 flex flex-wrap gap-1.5">
                     <Dugme renk={MAVI} onClick={() => setHareketModal(h)}>
                       <Receipt size={12} /> Hareketler
                     </Dugme>
@@ -234,6 +252,77 @@ export default function Hesaplar() {
                 </div>
               );
             })}
+
+            {/* NAKİT KASA — ayrı bir hesap kaydı değil, hesap seçilmeden girilmiş
+                hareketlerin toplamı. Banka kartlarıyla aynı yerde dursun ki
+                "hangi bankada ne kadar, kasada ne kadar" tek bakışta görünsün. */}
+            {kasaVar && (
+              <div
+                className="relative overflow-hidden rounded-xl p-3"
+                style={{
+                  background: `linear-gradient(150deg, ${MOR}14, rgba(255,255,255,0.012) 55%)`,
+                  border: `1px dashed ${MOR}44`,
+                }}
+              >
+                <div
+                  className="pointer-events-none absolute -right-8 -top-10 h-24 w-24 rounded-full opacity-20"
+                  style={{ background: `radial-gradient(circle, ${MOR}, transparent 68%)` }}
+                />
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div
+                      className="flex flex-wrap items-center gap-1.5 text-[12.5px] font-semibold"
+                      style={{ color: TEXT }}
+                    >
+                      <Wallet size={13} style={{ color: MOR }} /> Nakit kasa
+                    </div>
+                    <div className="mt-0.5 text-[11px]" style={{ color: MUTED }}>
+                      Hesap seçilmeden girilen hareketler
+                    </div>
+                  </div>
+                  <Rozet metin={`${kasa!.hareketSayisi} kayıt`} renk={MOR} />
+                </div>
+
+                <div className="mt-2">
+                  <div
+                    className="text-[20px] font-semibold leading-tight tabular-nums"
+                    style={{ color: kasa!.bakiye < 0 ? KIRMIZI : MOR }}
+                  >
+                    {para(kasa!.bakiye)} ₺
+                  </div>
+                  <div className="mt-0.5 text-[10.5px]" style={{ color: MUTED }}>
+                    Giren {para(kasa!.giris)} ₺ · çıkan {para(kasa!.cikis)} ₺
+                  </div>
+                </div>
+
+                {kasa!.sonHareketler.length > 0 && (
+                  <div
+                    className="mt-2 space-y-1 rounded-lg px-2.5 py-2"
+                    style={{ background: 'rgba(0,0,0,0.25)', border: `1px solid ${ROW_SEP}` }}
+                  >
+                    {kasa!.sonHareketler.slice(0, 3).map((h) => (
+                      <div key={h.id} className="flex items-center justify-between gap-2 text-[11px]">
+                        <span className="truncate" style={{ color: MUTED }}>
+                          {h.aciklama || h.kategori?.ad || '—'}
+                        </span>
+                        <span
+                          className="flex-shrink-0 tabular-nums"
+                          style={{ color: h.tur === 'GELIR' ? OK : KIRMIZI }}
+                        >
+                          {h.tur === 'GELIR' ? '+' : '−'}
+                          {para(h.tutar)} ₺
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <p className="mt-2 text-[10px] leading-relaxed" style={{ color: 'rgba(113,113,122,0.9)' }}>
+                  Bu paranın hangi bankada olduğunu bilmek isterseniz, ilgili kayıtları düzenleyip
+                  ödeme kaynağına hesap seçin; tutar o hesabın bakiyesine geçer.
+                </p>
+              </div>
+            )}
           </div>
         )}
       </Kutu>

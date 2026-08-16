@@ -104,6 +104,12 @@ export class ButceController {
     return this.butce.bankaHesaplar(this.kimlik(req));
   }
 
+  /** Nakit kasa: banka hesabı seçilmeden girilmiş hareketlerin toplamı */
+  @Get('kasa')
+  kasa(@Req() req: any) {
+    return this.butce.kasaOzet(this.kimlik(req));
+  }
+
   @Post('hesaplar')
   hesapEkle(@Req() req: any, @Body() body: any) {
     return this.butce.bankaHesapKaydet(this.kimlik(req), body);

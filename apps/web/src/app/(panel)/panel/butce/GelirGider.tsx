@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   Plus, Trash2, Repeat, Pencil, CreditCard, PlayCircle, ArrowLeftRight,
-  Search, SlidersHorizontal, CheckCircle2, AlertTriangle,
+  Search, SlidersHorizontal, CheckCircle2, AlertTriangle, TrendingUp, TrendingDown,
 } from 'lucide-react';
 import {
   butceApi, Islem, Kategori, DuzenliOdeme, Kart, BankaHesap, Defter,
@@ -205,6 +205,84 @@ export default function GelirGider({ donem, defter = 'TUMU' }: { donem: string; 
       ? `${islemler.length} kayıt`
       : `${gosterilen.length} / ${islemler.length} kayıt`;
 
+  /** Tek kayıt satırı — iki sütunda da aynı görünür */
+  const satirCiz = (i: Islem) => (
+    <div
+      key={i.id}
+      className="group flex items-start justify-between gap-3 rounded-lg px-3 py-2 transition"
+      style={{
+        background: i.planlanan ? `${TURUNCU}0a` : 'rgba(255,255,255,0.02)',
+        border: `1px solid ${i.planlanan ? `${TURUNCU}44` : ROW_SEP}`,
+        borderStyle: i.planlanan ? 'dashed' : 'solid',
+      }}
+    >
+      <span className="min-w-0 flex-1">
+        <span className="flex flex-wrap items-center gap-1.5 text-[12.5px]" style={{ color: TEXT }}>
+          {i.aciklama || i.kategori?.ad || '—'}
+          {i.kaynak === 'KART' && <CreditCard size={11} style={{ color: MAVI }} />}
+          {i.planlanan && <Rozet metin="beklenen" renk={TURUNCU} />}
+          {i.transferGrupId && <Rozet metin="aktarım" renk={MAVI} />}
+          {/* Mesleki/kişisel yalnız GİDERDE anlamlı — gelir tek havuzdur */}
+          {i.tur === 'GIDER' && <Rozet metin={DEFTER_ETIKET[i.defter]} renk={defterRenk(i.defter)} />}
+        </span>
+        <span className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px]" style={{ color: MUTED }}>
+          <span className="tabular-nums">{tarihTR(i.tarih)}</span>
+          {i.kategori?.ad && (
+            <>
+              <span>·</span>
+              <span className="inline-flex items-center gap-1">
+                {i.kategori.renk && (
+                  <i className="h-2 w-2 rounded-sm" style={{ background: i.kategori.renk }} />
+                )}
+                {i.kategori.ad}
+              </span>
+            </>
+          )}
+        </span>
+      </span>
+
+      <span className="flex flex-shrink-0 flex-col items-end gap-1">
+        <span
+          className="whitespace-nowrap text-[13px] font-semibold tabular-nums"
+          style={{ color: i.tur === 'GELIR' ? OK : KIRMIZI }}
+        >
+          {i.tur === 'GELIR' ? '+' : '−'}
+          {para(i.tutar)} ₺
+        </span>
+        <span className="flex items-center gap-1">
+          {i.planlanan && (
+            <button
+              onClick={() =>
+                aktifHesaplar.length > 0 ? setGerceklesKayit(i) : gerceklestiHizli.mutate(i.id)
+              }
+              className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg px-2 py-0.5 text-[10.5px] transition hover:brightness-110"
+              style={{ background: `${OK}14`, border: `1px solid ${OK}3d`, color: OK }}
+              title="Bu beklenen kaydı gerçekleşmiş yap"
+            >
+              <CheckCircle2 size={11} /> Gerçekleşti
+            </button>
+          )}
+          <button
+            onClick={() => setModal(i)}
+            className="rounded-md p-1 opacity-0 transition group-hover:opacity-100 hover:bg-white/[0.06]"
+            style={{ color: MUTED }}
+            title="Düzenle"
+          >
+            <Pencil size={12} />
+          </button>
+          <button
+            onClick={() => sil.mutate(i.id)}
+            className="rounded-md p-1 opacity-0 transition group-hover:opacity-100 hover:bg-white/[0.06]"
+            style={{ color: KIRMIZI }}
+            title="Sil"
+          >
+            <Trash2 size={12} />
+          </button>
+        </span>
+      </span>
+    </div>
+  );
+
   return (
     <div className="space-y-4">
       <Kutu
@@ -215,20 +293,6 @@ export default function GelirGider({ donem, defter = 'TUMU' }: { donem: string; 
         }
         sag={
           <div className="flex flex-wrap items-center gap-2">
-            {(['HEPSI', 'GELIR', 'GIDER'] as const).map((f) => (
-              <button
-                key={f}
-                onClick={() => setFiltre(f)}
-                className="rounded-lg px-2.5 py-1 text-[11px] transition"
-                style={{
-                  background: filtre === f ? `${GOLD}1f` : 'transparent',
-                  border: `1px solid ${filtre === f ? `${GOLD}44` : 'transparent'}`,
-                  color: filtre === f ? GOLD : MUTED,
-                }}
-              >
-                {f === 'HEPSI' ? 'Hepsi' : f === 'GELIR' ? 'Gelir' : 'Gider'}
-              </button>
-            ))}
             <Dugme
               renk={aktifFiltreSayisi > 0 ? GOLD : MUTED}
               onClick={() => setFiltreAcik((a) => !a)}
@@ -333,101 +397,26 @@ export default function GelirGider({ donem, defter = 'TUMU' }: { donem: string; 
             }
           />
         ) : (
-          <div className="max-h-[520px] overflow-y-auto pr-1">
-            <table className="w-full text-[12.5px]">
-              <thead>
-                <tr className="text-left text-[10.5px] uppercase tracking-wider" style={{ color: MUTED }}>
-                  <th className="pb-2 font-medium">Tarih</th>
-                  <th className="pb-2 font-medium">Açıklama</th>
-                  <th className="pb-2 font-medium">Kategori</th>
-                  <th className="pb-2 text-right font-medium">Tutar</th>
-                  <th className="pb-2" />
-                </tr>
-              </thead>
-              <tbody>
-                {gosterilen.map((i) => (
-                  <tr
-                    key={i.id}
-                    className="border-t"
-                    style={{
-                      borderColor: ROW_SEP,
-                      // Beklenen kayıt henüz gerçekleşmedi; kesikli çerçeve onu gerçekleşmişten ayırır.
-                      ...(i.planlanan
-                        ? {
-                            background: `${TURUNCU}0a`,
-                            outline: `1px dashed ${TURUNCU}55`,
-                            outlineOffset: '-1px',
-                          }
-                        : null),
-                    }}
-                  >
-                    <td className="py-2 tabular-nums" style={{ color: MUTED }}>
-                      {tarihTR(i.tarih)}
-                    </td>
-                    <td className="py-2" style={{ color: TEXT }}>
-                      <span className="flex flex-wrap items-center gap-1.5">
-                        {i.aciklama || '—'}
-                        {i.kaynak === 'KART' && <CreditCard size={11} style={{ color: MAVI }} />}
-                        {i.planlanan && <Rozet metin="beklenen" renk={TURUNCU} />}
-                        {i.transferGrupId && <Rozet metin="aktarım" renk={MAVI} />}
-                        {defter === 'TUMU' && (
-                          <Rozet metin={DEFTER_ETIKET[i.defter]} renk={defterRenk(i.defter)} />
-                        )}
-                      </span>
-                    </td>
-                    <td className="py-2" style={{ color: MUTED }}>
-                      <span className="flex items-center gap-1.5">
-                        {i.kategori?.renk && (
-                          <i className="h-2 w-2 rounded-sm" style={{ background: i.kategori.renk }} />
-                        )}
-                        {i.kategori?.ad || '—'}
-                      </span>
-                    </td>
-                    <td
-                      className="py-2 text-right font-medium tabular-nums"
-                      style={{ color: i.tur === 'GELIR' ? OK : KIRMIZI }}
-                    >
-                      {i.tur === 'GELIR' ? '+' : '−'}
-                      {para(i.tutar)} ₺
-                    </td>
-                    <td className="py-2 pl-2 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        {i.planlanan && (
-                          <button
-                            onClick={() =>
-                              aktifHesaplar.length > 0
-                                ? setGerceklesKayit(i)
-                                : gerceklestiHizli.mutate(i.id)
-                            }
-                            className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg px-2 py-1 text-[10.5px] transition hover:brightness-110"
-                            style={{ background: `${OK}14`, border: `1px solid ${OK}3d`, color: OK }}
-                            title="Bu beklenen kaydı gerçekleşmiş yap"
-                          >
-                            <CheckCircle2 size={11} /> Gerçekleşti
-                          </button>
-                        )}
-                        <button
-                          onClick={() => setModal(i)}
-                          className="rounded-md p-1 transition hover:bg-white/[0.06]"
-                          style={{ color: MUTED }}
-                          title="Düzenle"
-                        >
-                          <Pencil size={12} />
-                        </button>
-                        <button
-                          onClick={() => sil.mutate(i.id)}
-                          className="rounded-md p-1 transition hover:bg-white/[0.06]"
-                          style={{ color: KIRMIZI }}
-                          title="Sil"
-                        >
-                          <Trash2 size={12} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          /* Gelir solda, gider sağda — para nereden geliyor / nereye gidiyor tek bakışta */
+          <div className="grid gap-4 lg:grid-cols-2">
+            <KayitSutunu
+              baslik="Gelir"
+              renk={OK}
+              ikon={<TrendingUp size={12} />}
+              kayitlar={gosterilen.filter((i) => i.tur === 'GELIR')}
+              toplam={gosterilen.filter((i) => i.tur === 'GELIR').reduce((t, i) => t + i.tutar, 0)}
+              bosMetin="Bu dönemde gelir kaydı yok."
+              satir={satirCiz}
+            />
+            <KayitSutunu
+              baslik="Gider"
+              renk={KIRMIZI}
+              ikon={<TrendingDown size={12} />}
+              kayitlar={gosterilen.filter((i) => i.tur === 'GIDER')}
+              toplam={gosterilen.filter((i) => i.tur === 'GIDER').reduce((t, i) => t + i.tutar, 0)}
+              bosMetin="Bu dönemde gider kaydı yok."
+              satir={satirCiz}
+            />
           </div>
         )}
       </Kutu>
@@ -462,7 +451,6 @@ export default function GelirGider({ donem, defter = 'TUMU' }: { donem: string; 
                     <span className="truncate">{d.ad}</span>
                     <Rozet metin={DEFTER_ETIKET[d.defter]} renk={defterRenk(d.defter)} />
                     {!d.aktif && <Rozet metin="pasif" renk={MUTED} />}
-                    {d.zorunlu && <Rozet metin="kısılamaz" renk={TURUNCU} />}
                   </div>
                   <div className="text-[10.5px]" style={{ color: MUTED }}>
                     Her ayın {d.ayinGunu}. günü · {d.kategori?.ad || 'kategorisiz'}
@@ -659,7 +647,7 @@ function IslemModal({
           <DefterAlani
             deger={form.defter}
             degistir={(d) => setForm({ ...form, defter: d })}
-            ipucu="Mesleki gider kazançtan indirilir; kişisel harcama indirilemez."
+            ipucu="Ofis gideri kazançtan indirilir; kişisel harcama indirilemez."
           />
         )}
 
@@ -1105,10 +1093,6 @@ function DuzenliModal({
         </Alan>
         <div className="flex items-center gap-4 sm:col-span-2">
           <label className="flex items-center gap-2 text-[12px]" style={{ color: MUTED }}>
-            <input type="checkbox" checked={form.zorunlu} onChange={(e) => setForm({ ...form, zorunlu: e.target.checked })} />
-            Zorunlu kalem (kısılamaz)
-          </label>
-          <label className="flex items-center gap-2 text-[12px]" style={{ color: MUTED }}>
             <input type="checkbox" checked={form.aktif} onChange={(e) => setForm({ ...form, aktif: e.target.checked })} />
             Aktif
           </label>
@@ -1123,5 +1107,53 @@ function DuzenliModal({
         </div>
       </form>
     </Modal>
+  );
+}
+
+/** Gelir ya da gider tarafını gösteren sütun — başlıkta kendi toplamı yazar */
+function KayitSutunu({
+  baslik,
+  renk,
+  ikon,
+  kayitlar,
+  toplam,
+  bosMetin,
+  satir,
+}: {
+  baslik: string;
+  renk: string;
+  ikon: React.ReactNode;
+  kayitlar: Islem[];
+  toplam: number;
+  bosMetin: string;
+  satir: (i: Islem) => React.ReactNode;
+}) {
+  return (
+    <div
+      className="rounded-xl p-3"
+      style={{ background: 'rgba(0,0,0,0.18)', border: `1px solid ${CARD_BORDER}` }}
+    >
+      <div className="mb-2.5 flex items-center justify-between gap-2">
+        <span
+          className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider"
+          style={{ color: renk }}
+        >
+          {ikon} {baslik} <span style={{ color: MUTED }}>({kayitlar.length})</span>
+        </span>
+        <span className="text-[13px] font-semibold tabular-nums" style={{ color: renk }}>
+          {para(toplam)} ₺
+        </span>
+      </div>
+      {kayitlar.length === 0 ? (
+        <div
+          className="rounded-lg px-3 py-6 text-center text-[11.5px]"
+          style={{ border: `1px dashed ${ROW_SEP}`, color: MUTED }}
+        >
+          {bosMetin}
+        </div>
+      ) : (
+        <div className="max-h-[460px] space-y-1.5 overflow-y-auto pr-1">{kayitlar.map(satir)}</div>
+      )}
+    </div>
   );
 }
