@@ -20,7 +20,6 @@ import { buildOwnerStatusReply, resolveTaxpayerByText, buildTaxpayerSelfReply, b
 import { forwardRef, Inject } from '@nestjs/common';
 import { ButceWhatsappService } from '../butce/butce-whatsapp.service';
 import { ButceCron } from '../butce/butce.cron';
-import { CariKasaService } from '../cari-kasa/cari-kasa.service';
 import { OwnerOnlyGuard } from '../auth/guards/owner-only.guard';
 
 type IncomingWhatsAppMessage = {
@@ -75,7 +74,6 @@ export class WhatsAppBotController implements OnModuleInit {
     @Inject(forwardRef(() => ButceWhatsappService))
     private readonly butceWhatsapp: ButceWhatsappService,
     private readonly butceCron: ButceCron,
-    private readonly cariKasa: CariKasaService,
     @Optional() private readonly eventBus?: AutomationEventBus,
     @Optional() private readonly storage?: StorageService,
   ) {}
@@ -167,95 +165,6 @@ export class WhatsAppBotController implements OnModuleInit {
       adet: sonuc.length,
       gonderilen: sonuc.filter((x: any) => x.gonderildi).length,
       mesajlar: sonuc,
-    };
-  }
-
-  /**
-   * TAHSİLAT KADEME ÖRNEKLERİNİ OFİS SAHİBİNE GÖNDER.
-   *
-   * Mükellefe DEĞİL, yalnız owner numarasına gider. Amaç: otomasyon açılmadan
-   * önce her kademenin metnini gerçek veriyle görmek.
-   *
-   * Gövde: { token, gonder?: boolean }
-   */
-  @Post('tahsilat-kademe')
-  async tahsilatKademe(@Body() body: any) {
-    const beklenen = String(process.env.MOREN_DENEME_TOKEN || '').trim();
-    if (!beklenen || String(body?.token || '') !== beklenen) {
-      return { ok: false, error: 'yetkisiz' };
-    }
-    const k = await this.butceCron.sahipKimligi();
-    if (!k) return { ok: false, error: 'owner bulunamadi' };
-
-    const plan: any = await this.cariKasa.tahsilatOtomasyonPlani(k.tenantId);
-    const havuz: any[] = [
-      ...(plan.gonderilecek || []),
-      ...(plan.onayBekleyen || []),
-    ];
-
-    // Her kademeden BİRER örnek — aynı kademeden onlarca mesaj göndermenin anlamı yok
-    const secilen = new Map<string, any>();
-    for (const x of havuz) {
-      if (x.kademe && x.mesaj && !secilen.has(x.kademe)) secilen.set(x.kademe, x);
-    }
-
-    const numara = String(
-      process.env.MOREN_OWNER_WHATSAPP_PHONES || process.env.MOREN_OWNER_WHATSAPP_PHONE || '',
-    )
-      .split(',')[0]
-      .trim();
-
-    const KADEME_ADI: Record<string, string> = {
-      K0: 'KADEME 1 · Bilgilendirme (vadesi geldi, henüz gecikmedi)',
-      K1: 'KADEME 2 · Hatırlatma (7+ gün gecikme)',
-      K2: 'KADEME 3 · Hesap dökümü (30+ gün, ekstre PDF ekli)',
-      K3: 'KADEME 4 · Görüşme çağrısı (60+ gün, ONAYINIZ ŞART)',
-    };
-
-    const cikti: any[] = [];
-    for (const kademe of ['K0', 'K1', 'K2', 'K3']) {
-      const x = secilen.get(kademe);
-      if (!x) {
-        cikti.push({ kademe, durum: 'bu kademede mükellef yok', gonderildi: false });
-        continue;
-      }
-      // Başlık satırı: bunun bir ÖRNEK olduğu ve kime gideceği açıkça yazılır
-      const metin = [
-          `🔔 *TAHSİLAT OTOMASYONU — ÖRNEK*`,
-          KADEME_ADI[kademe],
-          `Alıcı olacaktı: ${x.ad}`,
-          x.ekstreEkle ? 'Ek: hesap dökümü PDF' : '',
-          '──────────────',
-          '',
-          x.mesaj,
-          '',
-          `_Bu mesaj yalnız size gönderildi; mükellefe gitmedi._`,
-        ]
-          .filter(Boolean)
-          .join(String.fromCharCode(10));
-
-      let gonderildi = false;
-      if (body?.gonder === true && numara) {
-        try {
-          await this.whatsapp.sendMessageDetailed(numara, metin, k.tenantId);
-          gonderildi = true;
-          await new Promise((r) => setTimeout(r, 1500));
-        } catch {
-          gonderildi = false;
-        }
-      }
-      cikti.push({ kademe, ad: x.ad, metin, gonderildi });
-    }
-
-    return {
-      ok: true,
-      ozet: {
-        gonderilecek: plan.ozet?.gonderilecek ?? 0,
-        onayBekleyen: plan.ozet?.onayBekleyen ?? 0,
-        elleGorusulecek: plan.ozet?.elleGorusulecek ?? 0,
-        atlanan: plan.ozet?.atlanan ?? 0,
-      },
-      ornekler: cikti,
     };
   }
 

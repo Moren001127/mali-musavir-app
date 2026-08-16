@@ -24,10 +24,9 @@ import { StorageModule } from '../storage/storage.module';
 import { EmailModule } from '../email/email.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { ButceModule } from '../butce/butce.module';
-import { CariKasaModule } from '../cari-kasa/cari-kasa.module';
 
 @Module({
-  imports: [forwardRef(() => ButceModule), forwardRef(() => CariKasaModule), PrismaModule, MorenAiModule, StorageModule, EmailModule, NotificationsModule, CalisanModule],
+  imports: [forwardRef(() => ButceModule), PrismaModule, MorenAiModule, StorageModule, EmailModule, NotificationsModule, CalisanModule],
   providers: [
     WhatsAppService,
     BaileysService,
