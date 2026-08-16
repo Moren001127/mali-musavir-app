@@ -130,7 +130,11 @@ export function kademeBelirle(gecikmeGun: number, sonKademe?: Kademe | null): Ka
   return sira[Math.max(yeniIdx, 0)];
 }
 
-/** Kademe metinleri — WhatsApp'a uygun, nazik ama net */
+/**
+ * Kademe metinleri — is yazismasi tonu: kisa, net, bilgi odakli.
+ * Gevsetici kaliplar ve "dikkate almayiniz / dekont iletiniz" gibi
+ * hatirlatmayi gecersiz kilan ifadeler bilincli olarak yok.
+ */
 export function kademeMesaji(
   kademe: Kademe,
   p: { ad: string; bakiye: number; gecikmeGun: number; ofisAdi: string; sonTahsilat?: Date | null },
@@ -142,37 +146,35 @@ export function kademeMesaji(
     case 'K0':
       return (
         `Sayın ${p.ad},\n\n` +
-        `Cari hesabınızda ${tutar} tutarında açık bakiye bulunuyor. ` +
-        `Uygun olduğunuzda ödemenizi yapabilirsiniz.\n\n` +
-        `Ödemenizi yaptıysanız bu mesajı dikkate almayınız; dekontu iletmeniz yeterli.` +
+        `Cari hesabınızdaki açık bakiye: *${tutar}*\n\n` +
+        `Ödemenizi bekliyoruz.` +
         imza
       );
 
     case 'K1':
       return (
         `Sayın ${p.ad},\n\n` +
-        `Cari hesabınızdaki ${tutar} tutarındaki bakiye için ödeme kaydı göremedik.\n\n` +
-        `Ödemenizi tamamlarsanız seviniriz. Bir aksilik varsa ya da ödemeyi yaptıysanız ` +
-        `bu mesaja yazmanız yeterli.` +
+        `Cari hesabınızdaki *${tutar}* tutarındaki bakiye için ödeme kaydı bulunmuyor.\n\n` +
+        `Ödeme planınızı bize iletebilirsiniz.` +
         imza
       );
 
     case 'K2':
       return (
         `Sayın ${p.ad},\n\n` +
-        `Cari hesabınızda ${tutar} tutarında, ${p.gecikmeGun} gündür bekleyen bakiye bulunuyor. ` +
-        `Hesap dökümünüzü ekte gönderiyoruz.\n\n` +
-        `Dökümde bir uyuşmazlık görürseniz lütfen bildirin; doğruysa ödemenizi bekliyoruz.` +
+        `Cari hesabınızda *${tutar}* tutarında, ${p.gecikmeGun} gündür bekleyen bakiye bulunuyor. ` +
+        `Hesap dökümünüz ektedir.\n\n` +
+        `Dökümde uyuşmazlık varsa bildirin; yoksa ödemenizi bekliyoruz.` +
         imza
       );
 
     case 'K3':
       return (
         `Sayın ${p.ad},\n\n` +
-        `Cari hesabınızdaki ${tutar} tutarındaki bakiye ${p.gecikmeGun} gündür açık görünüyor ve ` +
+        `Cari hesabınızdaki *${tutar}* tutarındaki bakiye ${p.gecikmeGun} gündür açık ve ` +
         `hatırlatmalarımıza dönüş alamadık.\n\n` +
-        `Konuyu telefonda görüşmek isteriz. Size uygun bir zaman yazarsanız arayalım; ` +
-        `ödeme planı yapmak da mümkün.` +
+        `Konuyu görüşmek üzere size uygun bir zaman bildirmenizi bekliyoruz. ` +
+        `Ödeme planı yapılabilir.` +
         imza
       );
 

@@ -131,11 +131,21 @@ describe('tahsilat otomasyonu — durdurma kuralları', () => {
 });
 
 describe('tahsilat otomasyonu — mesajlar', () => {
-  it('K0 nazik, borç varlığını bildirir ve ödeyene çıkış kapısı bırakır', () => {
+  it('K0 adı ve tutarı net verir', () => {
     const k = kademeKarari(aday({ gecikmeGun: 0 }), AYAR, BUGUN);
     expect(k.mesaj).toContain('AHMET ATALAY');
     expect(k.mesaj).toContain('12.000,00 TL');
-    expect(k.mesaj).toMatch(/dikkate almayınız/i);
+    expect(k.mesaj).toMatch(/ödemenizi bekliyoruz/i);
+  });
+
+  it('GEVŞETİCİ KALIPLAR YOK — hatırlatmayı geçersiz kılan ifadeler kullanılmaz', () => {
+    // Kullanıcı kararı: "uygun olduğunuzda", "dikkate almayınız", "dekont
+    // iletiniz" mesajı isteğe çeviriyor ve gereksiz iş yükü doğuruyor.
+    const yasak = /uygun olduğunuzda|dikkate almay|dekont|rica ederiz|seviniriz/i;
+    for (const [g, onceki] of [[0, null], [10, 'K0'], [40, 'K1'], [75, 'K2']] as const) {
+      const k = kademeKarari(aday({ gecikmeGun: g, sonKademe: onceki as any }), AYAR, BUGUN);
+      if (k.mesaj) expect(k.mesaj).not.toMatch(yasak);
+    }
   });
 
   it('K2 hesap dökümünden bahseder ve ekstre eklenir', () => {
