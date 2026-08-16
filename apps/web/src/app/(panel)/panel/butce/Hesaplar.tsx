@@ -135,8 +135,12 @@ export default function Hesaplar() {
         />
         <KPI
           etiket="Kullanılabilir"
-          deger={`${para(toplamKullanilabilir)} ₺`}
-          altBilgi="Bakiye + kalan KMH limiti"
+          deger={`${para(toplamKullanilabilir + (kasa?.bakiye || 0))} ₺`}
+          altBilgi={
+            kasaVar
+              ? `Bakiye + kasa + kalan KMH limiti`
+              : 'Bakiye + kalan KMH limiti'
+          }
           renk={GOLD}
           ikon={<PiggyBank size={13} />}
         />
@@ -295,25 +299,42 @@ export default function Hesaplar() {
                   </div>
                 </div>
 
-                {kasa!.sonHareketler.length > 0 && (
+                {/* Kategori bazlı TOPLAMLAR — son hareket listesi kasanın tamamı
+                    sanılıp "kategori eksik görünüyor" izlenimi veriyordu */}
+                {(kasa!.kirilim?.length ?? 0) > 0 && (
                   <div
-                    className="mt-2 space-y-1 rounded-lg px-2.5 py-2"
+                    className="mt-2 rounded-lg px-2.5 py-2"
                     style={{ background: 'rgba(0,0,0,0.25)', border: `1px solid ${ROW_SEP}` }}
                   >
-                    {kasa!.sonHareketler.slice(0, 3).map((h) => (
-                      <div key={h.id} className="flex items-center justify-between gap-2 text-[11px]">
-                        <span className="truncate" style={{ color: MUTED }}>
-                          {h.aciklama || h.kategori?.ad || '—'}
-                        </span>
-                        <span
-                          className="flex-shrink-0 tabular-nums"
-                          style={{ color: h.tur === 'GELIR' ? OK : KIRMIZI }}
+                    <div
+                      className="mb-1 text-[10px] uppercase tracking-wider"
+                      style={{ color: 'rgba(113,113,122,0.9)' }}
+                    >
+                      Kategoriye göre
+                    </div>
+                    <div className="max-h-[132px] space-y-1 overflow-y-auto pr-0.5">
+                      {kasa!.kirilim.map((k, i) => (
+                        <div
+                          key={`${k.tur}-${k.ad}-${i}`}
+                          className="flex items-center justify-between gap-2 text-[11px]"
                         >
-                          {h.tur === 'GELIR' ? '+' : '−'}
-                          {para(h.tutar)} ₺
-                        </span>
-                      </div>
-                    ))}
+                          <span className="flex min-w-0 items-center gap-1.5" style={{ color: MUTED }}>
+                            <i
+                              className="h-2 w-2 flex-shrink-0 rounded-sm"
+                              style={{ background: k.renk || MUTED }}
+                            />
+                            <span className="truncate">{k.ad}</span>
+                          </span>
+                          <span
+                            className="flex-shrink-0 tabular-nums"
+                            style={{ color: k.tur === 'GELIR' ? OK : KIRMIZI }}
+                          >
+                            {k.tur === 'GELIR' ? '+' : '−'}
+                            {para(k.tutar)} ₺
+                          </span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
 

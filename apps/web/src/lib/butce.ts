@@ -111,14 +111,8 @@ export interface KasaOzet {
   giris: number;
   cikis: number;
   hareketSayisi: number;
-  sonHareketler: Array<{
-    id: string;
-    tarih: string;
-    tur: 'GELIR' | 'GIDER';
-    tutar: number;
-    aciklama: string | null;
-    kategori: { ad: string; renk: string } | null;
-  }>;
+  /** Kategori bazlı toplamlar — büyükten küçüğe */
+  kirilim: Array<{ ad: string; renk: string; tur: 'GELIR' | 'GIDER'; tutar: number }>;
 }
 
 export interface AkisSecenek {
@@ -640,10 +634,24 @@ export const BORC_TURLERI: Array<{ deger: string; etiket: string }> = [
   { deger: 'DIGER', etiket: 'Diğer' },
 ];
 
-export const EKSTRE_DURUM_ETIKET: Record<EkstreDurum, { etiket: string; renk: string }> = {
+/**
+ * Sunucu ASGARI_ODENDI durumunu da döndürür. Bu eşleme eksik kaldığında
+ * `EKSTRE_DURUM_ETIKET[durum].renk` okunurken ekran tümden çöküyordu
+ * (kullanıcı asgariyi ödeyince Genel Bakış açılmaz oldu). Asgarisi ödenmiş
+ * ekstre GECİKME DEĞİLDİR; uyarı rengi değil bilgi rengi kullanılır.
+ */
+export const EKSTRE_DURUM_ETIKET: Record<string, { etiket: string; renk: string }> = {
   TUTAR_BEKLENIYOR: { etiket: 'Tutar bekleniyor', renk: '#d8ad70' },
   ODENMEDI: { etiket: 'Ödenmedi', renk: '#e0697a' },
   KISMI: { etiket: 'Kısmi ödendi', renk: '#d9a06c' },
   ODENDI: { etiket: 'Ödendi', renk: '#5ad18a' },
+  ASGARI_ODENDI: { etiket: 'Asgari ödendi', renk: '#6aa9e8' },
   GECIKTI: { etiket: 'GECİKTİ', renk: '#ff5f6d' },
 };
+
+/**
+ * Durum etiketine GÜVENLİ erişim. Sunucu ileride yeni bir durum eklerse
+ * arayüz çökmemeli; bilinmeyen durum nötr renkle gösterilir.
+ */
+export const ekstreDurumBilgi = (durum?: string | null) =>
+  (durum && EKSTRE_DURUM_ETIKET[durum]) || { etiket: String(durum || '—'), renk: '#8b8b93' };

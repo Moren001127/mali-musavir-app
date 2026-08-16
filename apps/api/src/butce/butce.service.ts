@@ -1377,10 +1377,11 @@ export class ButceService {
       this.db.butceIslem.count({
         where: { ...ortak, OR: [{ tur: 'GELIR' }, { tur: 'GIDER', kaynak: { not: 'KART' } }] },
       }),
+      // KATEGORİ BAZLI KIRILIM — "son 5 hareket" yanıltıcıydı: kullanıcı onu
+      // kasanın tamamı sanıp "müşavirlik ücreti eksik görünüyor" diyordu.
+      // Doğrusu her kategorinin TOPLAMINI göstermek.
       this.db.butceIslem.findMany({
         where: { ...ortak, OR: [{ tur: 'GELIR' }, { tur: 'GIDER', kaynak: { not: 'KART' } }] },
-        orderBy: [{ tarih: 'desc' }, { createdAt: 'desc' }],
-        take: 5,
         include: { kategori: { select: { ad: true, renk: true } } },
       }),
     ]);
@@ -1392,14 +1393,23 @@ export class ButceService {
       giris: toplamGiris,
       cikis: toplamCikis,
       hareketSayisi: sayi,
-      sonHareketler: sonHareketler.map((i: any) => ({
-        id: i.id,
-        tarih: i.tarih,
-        tur: i.tur,
-        tutar: num(i.tutar),
-        aciklama: i.aciklama,
-        kategori: i.kategori,
-      })),
+      /** Kategori bazlı toplamlar — büyükten küçüğe, giriş ve çıkış ayrı işaretli */
+      kirilim: (() => {
+        const harita = new Map<string, { ad: string; renk: string; tur: string; tutar: number }>();
+        for (const i of sonHareketler as any[]) {
+          const ad = i.kategori?.ad || (i.tur === 'GELIR' ? 'Kategorisiz gelir' : 'Kategorisiz gider');
+          const anahtar = `${i.tur}:${ad}`;
+          const kayit = harita.get(anahtar) || {
+            ad,
+            renk: i.kategori?.renk || '#9c9c9c',
+            tur: i.tur,
+            tutar: 0,
+          };
+          kayit.tutar = kurus(kayit.tutar + num(i.tutar));
+          harita.set(anahtar, kayit);
+        }
+        return Array.from(harita.values()).sort((a, b) => b.tutar - a.tutar);
+      })(),
     };
   }
 

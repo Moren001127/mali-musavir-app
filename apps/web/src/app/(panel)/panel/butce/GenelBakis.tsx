@@ -7,7 +7,7 @@ import {
   CalendarClock, Landmark, Coins, Scale, ArrowLeftRight, Building2, PiggyBank,
 } from 'lucide-react';
 import {
-  butceApi, Ozet, OfisOzet, DefterSecim, para, tarihTR, donemTR, EKSTRE_DURUM_ETIKET,
+  butceApi, Ozet, OfisOzet, DefterSecim, para, tarihTR, donemTR, ekstreDurumBilgi,
 } from '@/lib/butce';
 import {
   Kutu, KPI, Rozet, Bos, Yukleniyor, TrendGrafik, OranCubugu,
@@ -234,7 +234,7 @@ export default function GenelBakis({
               <table className="w-full text-[12px]">
                 <tbody>
                   {ozet.yaklasanOdemeler.map((e) => {
-                    const d = EKSTRE_DURUM_ETIKET[e.durum];
+                    const d = ekstreDurumBilgi(e.durum);
                     const gecti = (e.kalanGun ?? 0) < 0;
                     return (
                       <tr key={e.id} className="border-b last:border-0" style={{ borderColor: ROW_SEP }}>
