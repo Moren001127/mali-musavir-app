@@ -846,7 +846,8 @@ function HareketModal({ hesap, kapat }: { hesap: BankaHesap; kapat: () => void }
               </thead>
               <tbody>
                 {satirlar.map(({ hareket: h, yurur }) => {
-                  const defter = defterBilgi(h.defter);
+                  // Gelir tek havuz: sunucu gelir satırında defter göndermiyor
+                  const defter = h.defter ? defterBilgi(h.defter) : null;
                   const tur = KAYIT_TURU[h.kayitTuru] || KAYIT_TURU.ISLEM;
                   const giren = h.tutar >= 0;
                   return (

@@ -50,7 +50,23 @@ const bugunDonem = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 };
 
+/**
+ * Defter süzgeci — DÜZ. Yalnız `defter` alanı olan, `tur`u GELİR/GİDER
+ * OLMAYAN tablolar için (ör. ButceBorc'ta tur = İHTİYAÇ/TAŞIT/KONUT).
+ */
 const defterWhere = (defter?: DefterSecim) => (!defter || defter === 'TUMU' ? {} : { defter });
+
+/**
+ * GELİR/GİDER kayıtları için defter süzgeci.
+ *
+ * GELİR TEK HAVUZDUR: süzgeç yalnız gidere uygulanır. Eskiden gelir de
+ * süzülüyordu; defter=SAHSI çağrısında müşavirlik geliri (kategorisi OFIS)
+ * listeden düşüyor, dönem geliri 0 görünüyordu.
+ */
+const defterWhereIslem = (defter?: DefterSecim) =>
+  !defter || defter === 'TUMU'
+    ? {}
+    : { OR: [{ tur: 'GELIR' as const }, { tur: 'GIDER' as const, defter }] };
 
 /** Yeni kullanıcı için hazır kategoriler — her defter ayrı */
 const VARSAYILAN_KATEGORILER: Array<{
@@ -200,7 +216,7 @@ export class ButceService {
     await this.ayarGetir(k);
     await this.varsayilanKategorileriKur(k);
     return this.db.butceKategori.findMany({
-      where: { tenantId: k.tenantId, userId: k.userId, ...defterWhere(defter) },
+      where: { tenantId: k.tenantId, userId: k.userId, ...defterWhereIslem(defter) },
       orderBy: [{ defter: 'asc' }, { tur: 'asc' }, { sira: 'asc' }, { ad: 'asc' }],
     });
   }
@@ -401,7 +417,8 @@ export class ButceService {
         tarih: i.tarih,
         aciklama: i.aciklama || i.kategori?.ad || '—',
         kategori: i.kategori?.ad || null,
-        defter: i.defter,
+        // Gelir tek havuz: defter yalnız giderde anlamlı, gelirde gösterilmez
+        defter: i.tur === 'GIDER' ? i.defter : null,
         tutar: i.tur === 'GELIR' ? num(i.tutar) : -num(i.tutar),
         kayitTuru: i.transferGrupId ? 'TRANSFER' : 'ISLEM',
       })),
@@ -435,7 +452,7 @@ export class ButceService {
       planlanan?: boolean;
     },
   ) {
-    const where: any = { tenantId: k.tenantId, userId: k.userId, ...defterWhere(filtre.defter) };
+    const where: any = { tenantId: k.tenantId, userId: k.userId, ...defterWhereIslem(filtre.defter) };
     if (filtre.donem) where.donem = filtre.donem;
     if (filtre.tur) where.tur = filtre.tur;
     if (filtre.kategoriId) where.kategoriId = filtre.kategoriId;
@@ -632,7 +649,7 @@ export class ButceService {
 
   async duzenliler(k: Kimlik, defter?: DefterSecim) {
     const list = await this.db.butceDuzenliOdeme.findMany({
-      where: { tenantId: k.tenantId, userId: k.userId, ...defterWhere(defter) },
+      where: { tenantId: k.tenantId, userId: k.userId, ...defterWhereIslem(defter) },
       orderBy: [{ aktif: 'desc' }, { tur: 'asc' }, { ayinGunu: 'asc' }],
       include: { kategori: { select: { id: true, ad: true, renk: true } } },
     });
@@ -1210,12 +1227,14 @@ export class ButceService {
     const bugun = new Date();
     const bitis = new Date(bugun.getTime() + gunSayisi * 86400000);
 
-    const [hesaplar, ekstreler, borclar, planlananlar, duzenliler] = await Promise.all([
+    const [hesaplar, kartlar, borclar, planlananlar, duzenliler] = await Promise.all([
       this.bankaHesaplar(k),
-      this.db.butceKartEkstre.findMany({
-        where: { tenantId: k.tenantId, userId: k.userId, durum: { not: 'ODENDI' } },
-        include: { kart: true },
-      }),
+      // ÇİFT SAYIM KORUMASI: ödenmemiş TÜM ekstreleri ayrı çıkış yazmak yanlıştı.
+      // Banka ekstresindeki dönem borcu önceki ayın devrini ZATEN içerir; eski
+      // ödenmemiş ekstre o tutarın içinde erimiştir. Özet ve plan da yalnız
+      // "tutarı girilmiş en son ekstre"yi borç sayıyor — akış da aynı kaynaktan
+      // beslensin diye kartNormalize sonucunu kullanıyoruz.
+      this.kartlar(k),
       this.borclar(k, false, 'TUMU'),
       this.islemler(k, { planlanan: true, transferHaric: true }),
       this.duzenliler(k, 'TUMU'),
@@ -1231,23 +1250,23 @@ export class ButceService {
     const kmhLimitToplam = kurus(hesaplar.reduce((t: number, h: any) => t + (h.kmhKalanLimit || 0), 0));
     const hareketler: AkisHareketi[] = [];
 
-    // 1) Kart ekstreleri — son ödeme tarihinde çıkış, asgariye çekilebilir
-    for (const e of ekstreler) {
-      const borc = e.borcTutari === null ? null : num(e.borcTutari);
-      const kalan = borc === null ? null : kurus(Math.max(borc - num(e.odenenTutar), 0));
-      if (kalan === null || kalan <= 0) continue;
+    // 1) Kart ekstreleri — kart başına TEK hareket (devreden borç iki kez sayılmaz)
+    for (const kk of kartlar as any[]) {
+      const e = kk.borcEkstresi;
+      const kalan = kurus(kk.ekstreBorcu || 0);
+      if (!e || kalan <= 0) continue;
       const sonOdeme = new Date(e.sonOdemeTarihi);
       if (sonOdeme > bitis) continue;
       hareketler.push({
         tarih: sonOdeme,
         tutar: -kalan,
-        ad: `${e.kart.bankaAdi} ${e.kart.kartAdi} ekstresi`,
+        ad: `${kk.bankaAdi} ${kk.kartAdi} ekstresi`,
         tur: 'KART_ODEME',
         kesin: true,
         kaynakId: e.id,
         esnek: {
-          asgari: num(e.asgariTutar) || asgariTutarHesapla(kalan, num(e.kart.asgariOran) || 20),
-          aylikFaiz: (num(e.kart.aylikFaizOrani) || 4.25) / 100,
+          asgari: num(e.asgariTutar) || asgariTutarHesapla(kalan, num(kk.asgariOran) || 20),
+          aylikFaiz: (num(kk.aylikFaizOrani) || 4.25) / 100,
         },
       });
     }
@@ -1366,11 +1385,17 @@ export class ButceService {
    * Kart harcamaları hariçtir (kart nakit çıkışı değil, karta borçlanmadır).
    */
   private async nakitKasasi(k: Kimlik): Promise<number> {
+    //
+    // AKTARIM BACAKLARI DA SAYILIR (kritik düzeltme).
+    // Eskiden transferGrupId dolu olan her kayıt eleniyordu. Ama tek taraflı
+    // aktarımda (banka → nakit çekiş, ya da nakit → banka yatırma) bir bacak
+    // hesaba bağlı, diğeri değildir: hesaba bağlı bacak bakiyeyi değiştirirken
+    // hesapsız bacak elendiği için para yok oluyor ya da yoktan var oluyordu.
+    // Hesapsız bacak fiilen kasa hareketidir; kasaya yazılmalıdır.
     const ortak = {
       tenantId: k.tenantId,
       userId: k.userId,
       planlanan: false,
-      transferGrupId: null,
       bankaHesapId: null,
     };
     const [giris, cikis] = await Promise.all([
@@ -1391,11 +1416,11 @@ export class ButceService {
    * var" sorusunu tek ekrandan görebilsin diye ayrı bir kart olarak sunulur.
    */
   async kasaOzet(k: Kimlik) {
+    // Aktarımın hesapsız bacağı da kasa hareketidir (bkz. nakitKasasi)
     const ortak = {
       tenantId: k.tenantId,
       userId: k.userId,
       planlanan: false,
-      transferGrupId: null,
       bankaHesapId: null,
     };
     const [giris, cikis, sayi, sonHareketler] = await Promise.all([
@@ -1449,7 +1474,6 @@ export class ButceService {
       tenantId: k.tenantId,
       userId: k.userId,
       planlanan: false,
-      transferGrupId: null,
       bankaHesapId: null,
       OR: [{ tur: 'GELIR' }, { tur: 'GIDER', kaynak: { not: 'KART' } }],
     };
