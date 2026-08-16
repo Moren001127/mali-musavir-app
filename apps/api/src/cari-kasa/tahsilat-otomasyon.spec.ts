@@ -135,13 +135,15 @@ describe('tahsilat otomasyonu — mesajlar', () => {
     const k = kademeKarari(aday({ gecikmeGun: 0 }), AYAR, BUGUN);
     expect(k.mesaj).toContain('AHMET ATALAY');
     expect(k.mesaj).toContain('12.000,00 TL');
-    expect(k.mesaj).toMatch(/ödemenizi bekliyoruz/i);
+    expect(k.mesaj).toMatch(/ödemenizi tamamlamanızı/i);
   });
 
   it('GEVŞETİCİ KALIPLAR YOK — hatırlatmayı geçersiz kılan ifadeler kullanılmaz', () => {
     // Kullanıcı kararı: "uygun olduğunuzda", "dikkate almayınız", "dekont
     // iletiniz" mesajı isteğe çeviriyor ve gereksiz iş yükü doğuruyor.
-    const yasak = /uygun olduğunuzda|dikkate almay|dekont|rica ederiz|seviniriz/i;
+    // 'rica ederiz' resmî Türkçe iş dilinde doğaldır; yasak olan, hatırlatmayı
+    // geçersiz kılan ve isteğe çeviren kalıplardır.
+    const yasak = /uygun olduğunuzda|dikkate almay|dekont iletm|seviniriz/i;
     for (const [g, onceki] of [[0, null], [10, 'K0'], [40, 'K1'], [75, 'K2']] as const) {
       const k = kademeKarari(aday({ gecikmeGun: g, sonKademe: onceki as any }), AYAR, BUGUN);
       if (k.mesaj) expect(k.mesaj).not.toMatch(yasak);
@@ -159,7 +161,7 @@ describe('tahsilat otomasyonu — mesajlar', () => {
     const k = kademeKarari(aday({ gecikmeGun: 75, sonKademe: 'K2' }), AYAR, BUGUN);
     expect(k.kademe).toBe('K3');
     expect(k.onayGerekli).toBe(true);
-    expect(k.mesaj).toMatch(/görüşmek|ödeme planı/i);
+    expect(k.mesaj).toMatch(/görüşülmesi|ödeme planı/i);
   });
 
   it('hiçbir mesaj tehditkâr dil içermez', () => {

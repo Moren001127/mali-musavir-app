@@ -131,51 +131,56 @@ export function kademeBelirle(gecikmeGun: number, sonKademe?: Kademe | null): Ka
 }
 
 /**
- * Kademe metinleri — is yazismasi tonu: kisa, net, bilgi odakli.
- * Gevsetici kaliplar ve "dikkate almayiniz / dekont iletiniz" gibi
- * hatirlatmayi gecersiz kilan ifadeler bilincli olarak yok.
+ * Kademe metinleri — MUHASEBE OFİSİ KURUMSAL DİLİ.
+ *
+ * Resmî iş yazışması tonu: "Sayın" hitabı, nazik ama net fiiller,
+ * "Saygılarımızla" kapanışı. Sistem dili ("ödeme kaydı bulunmuyor") yerine
+ * ofis dili ("ödemesi tarafımıza ulaşmamıştır") kullanılır.
+ * Tehdit dili ve hatırlatmayı geçersiz kılan kalıplar yoktur.
  */
 export function kademeMesaji(
   kademe: Kademe,
   p: { ad: string; bakiye: number; gecikmeGun: number; ofisAdi: string; sonTahsilat?: Date | null },
 ): string {
   const tutar = paraTR(p.bakiye);
-  const imza = `\n\n${p.ofisAdi}`;
+  const kapanis = `\n\nSaygılarımızla,\n${p.ofisAdi}`;
 
   switch (kademe) {
     case 'K0':
       return (
         `Sayın ${p.ad},\n\n` +
-        `Cari hesabınızdaki açık bakiye: *${tutar}*\n\n` +
-        `Ödemenizi bekliyoruz.` +
-        imza
+        `Cari hesabınızda *${tutar}* tutarında bakiye bulunmaktadır.\n\n` +
+        `Ödemenizi tamamlamanızı rica eder, bilginize sunarız.` +
+        kapanis
       );
 
     case 'K1':
       return (
         `Sayın ${p.ad},\n\n` +
-        `Cari hesabınızdaki *${tutar}* tutarındaki bakiye için ödeme kaydı bulunmuyor.\n\n` +
-        `Ödeme planınızı bize iletebilirsiniz.` +
-        imza
+        `Cari hesabınızda bulunan *${tutar}* tutarındaki bakiyenin vadesi geçmiş olup, ` +
+        `ödemesi tarafımıza ulaşmamıştır.\n\n` +
+        `Ödemenizi tamamlamanızı ya da ödeme planınızı tarafımıza bildirmenizi rica ederiz.` +
+        kapanis
       );
 
     case 'K2':
       return (
         `Sayın ${p.ad},\n\n` +
-        `Cari hesabınızda *${tutar}* tutarında, ${p.gecikmeGun} gündür bekleyen bakiye bulunuyor. ` +
-        `Hesap dökümünüz ektedir.\n\n` +
-        `Dökümde uyuşmazlık varsa bildirin; yoksa ödemenizi bekliyoruz.` +
-        imza
+        `Cari hesabınızda *${tutar}* tutarında ve ${p.gecikmeGun} gündür bekleyen bakiye ` +
+        `bulunmaktadır. Hesap dökümünüz ekte bilgilerinize sunulmuştur.\n\n` +
+        `Dökümde mutabık kalmadığınız bir husus varsa tarafımıza bildirmenizi, ` +
+        `aksi hâlde ödemenizi tamamlamanızı rica ederiz.` +
+        kapanis
       );
 
     case 'K3':
       return (
         `Sayın ${p.ad},\n\n` +
-        `Cari hesabınızdaki *${tutar}* tutarındaki bakiye ${p.gecikmeGun} gündür açık ve ` +
-        `hatırlatmalarımıza dönüş alamadık.\n\n` +
-        `Konuyu görüşmek üzere size uygun bir zaman bildirmenizi bekliyoruz. ` +
-        `Ödeme planı yapılabilir.` +
-        imza
+        `Cari hesabınızdaki *${tutar}* tutarındaki bakiye ${p.gecikmeGun} gündür açık olup, ` +
+        `hatırlatmalarımıza tarafınızdan dönüş sağlanamamıştır.\n\n` +
+        `Konunun görüşülmesi için size uygun bir zaman bildirmenizi rica ederiz. ` +
+        `Talebiniz hâlinde ödeme planı düzenlenebilir.` +
+        kapanis
       );
 
     default:
