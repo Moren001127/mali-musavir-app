@@ -107,6 +107,14 @@ export interface AkisGunu {
   acik: number;
 }
 
+/** Bildirim şablonu önizlemesi */
+export interface SablonOnizleme {
+  anahtar: string;
+  baslik: string;
+  metin: string;
+  gonderildi: boolean;
+}
+
 /** Kasadaki tek bir hareket */
 export interface KasaHareket {
   id: string;
@@ -492,6 +500,8 @@ export const butceApi = {
 
   hesaplar: () => al<BankaHesap[]>(api.get('/butce/hesaplar')),
   kasa: () => al<KasaOzet>(api.get('/butce/kasa')),
+  sablonTesti: (gonder = false) =>
+    al<SablonOnizleme[]>(api.post('/butce/sablon-testi', { gonder })),
   kasaHareketleri: (donem?: string) =>
     al<KasaHareket[]>(api.get('/butce/kasa/hareketler', { params: { donem } })),
   hesapEkle: (body: Partial<BankaHesap>) => al<BankaHesap>(api.post('/butce/hesaplar', body)),

@@ -19,6 +19,7 @@ import { claudeTextViaMax, MAX_MODEL_CHEAP } from '../common/max-inference';
 import { buildOwnerStatusReply, resolveTaxpayerByText, buildTaxpayerSelfReply, buildTaxpayerQuickReply, buildOwnerSingleTaxpayerReply, buildOwnerSingleTaxpayerKdvReply, buildOwnerDebtTotalReply } from '../moren-ai/monthly-status.shared';
 import { forwardRef, Inject } from '@nestjs/common';
 import { ButceWhatsappService } from '../butce/butce-whatsapp.service';
+import { ButceCron } from '../butce/butce.cron';
 import { OwnerOnlyGuard } from '../auth/guards/owner-only.guard';
 
 type IncomingWhatsAppMessage = {
@@ -72,6 +73,7 @@ export class WhatsAppBotController implements OnModuleInit {
     // Kişisel Bütçe komutları (owner hattı). forwardRef: ButceModule bu modülü import ediyor.
     @Inject(forwardRef(() => ButceWhatsappService))
     private readonly butceWhatsapp: ButceWhatsappService,
+    private readonly butceCron: ButceCron,
     @Optional() private readonly eventBus?: AutomationEventBus,
     @Optional() private readonly storage?: StorageService,
   ) {}
@@ -140,6 +142,32 @@ export class WhatsAppBotController implements OnModuleInit {
    *   taraf='owner'    -> owner numarasi kullanilir (env MOREN_OWNER_WHATSAPP_PHONES ilk kayit)
    *   taraf='mukellef' -> telefon ZORUNLU (o mukellef yaziyormus gibi davranilir)
    */
+  /**
+   * BÜTÇE BİLDİRİM ŞABLONLARINI GERÇEK VERİYLE GÖNDER.
+   *
+   * Kullanıcı şablonların canlı hâlini görmek istiyor; portal oturumu olmadan
+   * tetiklenebilmesi için deneme token'ıyla korunuyor (kuru-test ucuyla aynı
+   * güvenlik kuralı: token tanımlı değilse uç kapalıdır).
+   *
+   * Gövde: { token, gonder?: boolean }  — gonder=false ise yalnız metinler döner.
+   */
+  @Post('butce-sablon')
+  async butceSablon(@Body() body: any) {
+    const beklenen = String(process.env.MOREN_DENEME_TOKEN || '').trim();
+    if (!beklenen || String(body?.token || '') !== beklenen) {
+      return { ok: false, error: 'yetkisiz' };
+    }
+    const k = await this.butceCron.sahipKimligi();
+    if (!k) return { ok: false, error: 'owner bulunamadi' };
+    const sonuc = await this.butceCron.sablonOnizleme(k, body?.gonder === true);
+    return {
+      ok: true,
+      adet: sonuc.length,
+      gonderilen: sonuc.filter((x: any) => x.gonderildi).length,
+      mesajlar: sonuc,
+    };
+  }
+
   @Post('deneme')
   async deneme(@Body() body: any) {
     const beklenen = String(process.env.MOREN_DENEME_TOKEN || '').trim();

@@ -7,9 +7,9 @@ import {
   Plus, Trash2, ShieldCheck, Bell, MessageCircle, Mail, Wallet, Target,
   Clock, Check, TrendingUp, TrendingDown,
 } from 'lucide-react';
-import { butceApi, Kategori, para, Defter, DEFTER_ETIKET } from '@/lib/butce';
+import { butceApi, Kategori, para, Defter, DEFTER_ETIKET, SablonOnizleme } from '@/lib/butce';
 import {
-  Kutu, Dugme, Alan, Girdi, Secim, Rozet, Yukleniyor, ParaGirdi, paraCoz, paraGiris,
+  Kutu, Dugme, Alan, Girdi, Secim, Rozet, Yukleniyor, Bos, ParaGirdi, paraCoz, paraGiris,
   Anahtar, RenkSecici, PALET,
   GOLD, OK, KIRMIZI, TURUNCU, MAVI, MOR, MUTED, TEXT, ROW_SEP, CARD_BORDER,
 } from './ui';
@@ -264,6 +264,8 @@ export default function Ayarlar() {
 
       <KategoriYonetimi kategoriler={kategoriler} />
 
+      <BildirimTesti />
+
       <Kutu baslik="Gizlilik" renk={OK} sag={<ShieldCheck size={14} style={{ color: OK }} />}>
         <p className="text-[12px] leading-relaxed" style={{ color: MUTED }}>
           Bu modül yalnız sizin kullanıcınıza açıktır. Başka bir kullanıcı — yönetici yetkisi olsa bile — bu
@@ -479,6 +481,91 @@ function KategoriYonetimi({ kategoriler }: { kategoriler: Kategori[] }) {
           {liste('Kişisel gider', KIRMIZI, <TrendingDown size={12} />, giderler('SAHSI'), true)}
         </div>
       </div>
+    </Kutu>
+  );
+}
+
+/**
+ * Bildirim şablonlarını gerçek verinizle önizler ve isterseniz WhatsApp'a gönderir.
+ *
+ * İki adım bilinçli: mesajlar dış dünyaya gittiği için önce metinler ekranda
+ * görünür, gönderim ayrı bir onayla yapılır.
+ */
+function BildirimTesti() {
+  const [sonuc, setSonuc] = useState<SablonOnizleme[] | null>(null);
+
+  const onizle = useMutation({
+    mutationFn: () => butceApi.sablonTesti(false),
+    onSuccess: (d) => {
+      setSonuc(d);
+      if (!d.length) toast.info('Gösterilecek bildirim yok — kart, kredi veya hareket kaydı gerekiyor.');
+    },
+    onError: () => toast.error('Şablonlar üretilemedi'),
+  });
+
+  const gonder = useMutation({
+    mutationFn: () => butceApi.sablonTesti(true),
+    onSuccess: (d) => {
+      setSonuc(d);
+      const adet = d.filter((x) => x.gonderildi).length;
+      if (adet > 0) toast.success(`${adet} bildirim WhatsApp'a gönderildi`);
+      else toast.error('Gönderilemedi — WhatsApp bağlantısını ve numarayı kontrol edin');
+    },
+    onError: () => toast.error('Gönderilemedi'),
+  });
+
+  return (
+    <Kutu
+      baslik="Bildirim şablonlarını test et"
+      aciklama="Kendi verinizle üretilir. Önce metinleri görün, göndermek isterseniz ayrıca onaylayın."
+      renk={MAVI}
+      sag={
+        <div className="flex flex-wrap gap-2">
+          <Dugme onClick={() => onizle.mutate()} yukleniyor={onizle.isPending}>
+            Önizle
+          </Dugme>
+          <Dugme
+            tur="birincil"
+            renk={MAVI}
+            onClick={() => gonder.mutate()}
+            yukleniyor={gonder.isPending}
+            disabled={!sonuc?.length}
+          >
+            WhatsApp'a gönder
+          </Dugme>
+        </div>
+      }
+    >
+      {!sonuc ? (
+        <p className="text-[11.5px]" style={{ color: MUTED }}>
+          “Önizle” bildirimleri üretir; hiçbir mesaj gönderilmez.
+        </p>
+      ) : sonuc.length === 0 ? (
+        <Bos metin="Şu an gönderilecek bildirim yok." />
+      ) : (
+        <div className="space-y-2">
+          {sonuc.map((m) => (
+            <div
+              key={m.anahtar}
+              className="rounded-xl px-3.5 py-3"
+              style={{ background: 'rgba(0,0,0,0.25)', border: `1px solid ${ROW_SEP}` }}
+            >
+              <div className="mb-1.5 flex items-center justify-between gap-2">
+                <span className="text-[12px] font-medium" style={{ color: TEXT }}>
+                  {m.baslik}
+                </span>
+                {m.gonderildi && <Rozet metin="gönderildi" renk={OK} />}
+              </div>
+              <pre
+                className="whitespace-pre-wrap text-[11.5px] leading-relaxed"
+                style={{ color: MUTED, fontFamily: 'inherit' }}
+              >
+                {m.metin}
+              </pre>
+            </div>
+          ))}
+        </div>
+      )}
     </Kutu>
   );
 }

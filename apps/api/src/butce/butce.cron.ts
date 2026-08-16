@@ -33,6 +33,11 @@ export class ButceCron {
     return this.prisma as any;
   }
 
+  /** Token korumalı dış tetikleme için sahip kimliği (public sarmalayıcı) */
+  async sahipKimligi(): Promise<{ tenantId: string; userId: string } | null> {
+    return this.sahip();
+  }
+
   private async sahip(): Promise<{ tenantId: string; userId: string } | null> {
     const email = OwnerOnlyGuard.ownerEmail();
     if (!email) return null;

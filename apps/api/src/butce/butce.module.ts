@@ -17,6 +17,6 @@ import { ButceFaizOranlariService } from './butce-faiz-oranlari.service';
   imports: [PrismaModule, NotificationsModule, forwardRef(() => WhatsAppModule)],
   controllers: [ButceController],
   providers: [ButceService, ButceAiService, ButceEkstreImportService, ButceCron, ButcePinService, ButcePinGuard, ButceWhatsappService, ButceFaizOranlariService],
-  exports: [ButceService, ButceWhatsappService, ButceFaizOranlariService],
+  exports: [ButceService, ButceWhatsappService, ButceFaizOranlariService, ButceCron],
 })
 export class ButceModule {}
