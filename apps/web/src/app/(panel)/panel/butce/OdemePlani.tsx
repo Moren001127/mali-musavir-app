@@ -58,7 +58,7 @@ export default function OdemePlani({ donem, defter = 'TUMU' }: { donem: string; 
       {/* Kapasite ve strateji */}
       <Kutu
         baslik="Ödeme kapasitesi"
-        aciklama="Her ay tekrar eden kapasite ile bu aya özel birikim ayrı tutulur."
+        aciklama="Her ay tekrar eden kapasite ile bu ay öncesinden devreden bakiye ayrı tutulur."
         sag={
           <div className="flex items-center gap-1.5">
             {(['CIG', 'KARTOPU'] as const).map((st) => (
@@ -95,73 +95,15 @@ export default function OdemePlani({ donem, defter = 'TUMU' }: { donem: string; 
               }
             />
             <KPI
-              etiket="Devreden birikim"
+              etiket="Devreden bakiye"
               deger={`${para(plan.birikim)} ₺`}
               renk={MAVI}
-              altBilgi="Bu ay öncesinden kalan"
+              altBilgi="Bu ay öncesinden devreden para"
             />
             <KPI etiket="Bu ay toplam" deger={`${para(plan.buAyToplam)} ₺`} renk={OK} />
           </div>
         </div>
 
-        {/* Kapasitenin nasıl bulunduğu — Nakit Akışı ile aynı parayı kullanır */}
-        <div
-          className="mt-3 rounded-xl px-3.5 py-3"
-          style={{ background: 'rgba(0,0,0,0.25)', border: `1px solid ${CARD_BORDER}` }}
-        >
-          <div className="text-[11px] uppercase tracking-wider" style={{ color: MUTED }}>
-            Bu tutarlar nasıl bulundu
-          </div>
-          <div className="mt-2 space-y-1.5 text-[12px]">
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-              <span className="w-[150px] shrink-0" style={{ color: MUTED }}>
-                Her ay tekrar eden
-              </span>
-              <span style={{ color: OK }}>{para(plan.ortalamaGelir)} ₺ ortalama gelir</span>
-              <span style={{ color: MUTED }}>−</span>
-              <span style={{ color: KIRMIZI }}>{para(plan.ortalamaGider)} ₺ ortalama gider</span>
-              <span style={{ color: MUTED }}>−</span>
-              <span style={{ color: MUTED }}>{para(plan.nakitYastigi)} ₺ yastık</span>
-              <span style={{ color: MUTED }}>=</span>
-              <span className="font-semibold" style={{ color: GOLD }}>
-                {para(plan.otomatikKapasite)} ₺
-              </span>
-            </div>
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-              <span className="w-[150px] shrink-0" style={{ color: MUTED }}>
-                Devreden birikim
-              </span>
-              <span style={{ color: MAVI }}>{para(plan.bankaBakiyesi)} ₺ bankada</span>
-              {plan.nakitKasasi !== 0 && (
-                <>
-                  <span style={{ color: MUTED }}>+</span>
-                  <span style={{ color: MAVI }}>{para(plan.nakitKasasi)} ₺ elde/kasada</span>
-                </>
-              )}
-              <span style={{ color: MUTED }}>−</span>
-              <span style={{ color: MUTED }}>bu ayın akışı</span>
-              <span style={{ color: MUTED }}>=</span>
-              <span className="font-semibold" style={{ color: MAVI }}>
-                {para(plan.birikim)} ₺
-              </span>
-            </div>
-          </div>
-          <p className="mt-2 text-[10.5px] leading-relaxed" style={{ color: 'rgba(113,113,122,0.9)' }}>
-            Birikim bir kereliktir, gelecek ay tekrar gelmez; bu yüzden borçsuz kalma süresinde yalnız ilk aya
-            eklenir.{' '}
-            {plan.ortalamaAySayisi > 1 ? (
-              <>
-                Aylık kapasite son {plan.ortalamaAySayisi} ayın ortalamasından bulunur — geliriniz düzensiz
-                olduğu için tek ayın rakamı yanıltıcı olurdu.
-              </>
-            ) : (
-              <>
-                Elinizde tek aylık veri olduğu için kapasite bu ayın rakamıyla hesaplandı. Aylar biriktikçe
-                ortalamaya geçer ve isabet artar; şimdilik kendi tahmininizi yukarıdaki kutuya yazabilirsiniz.
-              </>
-            )}
-          </p>
-        </div>
       </Kutu>
 
       {/* Gün bazlı gerçeklik kontrolü — aylık kapasite yetse bile gün tutmayabilir */}
@@ -198,20 +140,21 @@ export default function OdemePlani({ donem, defter = 'TUMU' }: { donem: string; 
               <AlertTriangle size={16} style={{ color: KIRMIZI }} className="mt-0.5" />
               <div>
                 <div className="text-[12.5px] font-semibold" style={{ color: KIRMIZI }}>
-                  Her ay {para(s.acik)} ₺ eksik kalıyor
+                  Zorunlu ödemeleriniz aylık kapasitenizi {para(s.acik)} ₺ aşıyor
                 </div>
                 <div className="mt-0.5 text-[11.5px] leading-relaxed" style={{ color: MUTED }}>
                   {/* Kullanıcı bulgusu: aşağıdaki tabloda her şey ödenmiş görünüyor ama
                       burada "açık" yazıyordu; ikisi farklı şeyi ölçtüğü için çelişik
-                      duruyordu. Tablo BU AYI (birikim dahil), bu uyarı HER AY TEKRAR
+                      duruyordu. Tablo BU AYI (devreden bakiye dahil), bu uyarı HER AY TEKRAR
                       EDENİ ölçer. */}
-                  Aşağıdaki tabloda bu ayın ödemeleri tam görünüyor, çünkü{' '}
-                  <strong style={{ color: TEXT }}>{para(plan.birikim)} ₺ birikiminiz</strong> devreye giriyor.
+                  Bu ay ödemeler tam görünüyor, çünkü{' '}
+                  <strong style={{ color: TEXT }}>{para(plan.birikim)} ₺ devreden bakiyeniz</strong> kullanılıyor.
                   Ancak her ay tekrar eden kapasiteniz{' '}
-                  <strong style={{ color: TEXT }}>{para(plan.kapasite)} ₺</strong>, zorunlu ödemeleriniz ise{' '}
-                  <strong style={{ color: TEXT }}>{para(plan.kapasite + s.acik)} ₺</strong>. Birikim tükendiğinde
-                  bu fark her ay borç olarak birikmeye başlar; kalıcı çözüm için gelir artırmak ya da gideri
-                  azaltmak gerekir.
+                  <strong style={{ color: TEXT }}>{para(plan.kapasite)} ₺</strong>, şu anki zorunlu ödemeleriniz ise{' '}
+                  <strong style={{ color: TEXT }}>{para(plan.kapasite + s.acik)} ₺</strong>. Devreden bakiye
+                  tükendikten sonra kredi taksitini tam ödeyemezsiniz — bu gecikme sayılır, gecikme faizi işler ve
+                  kredi notunuzu etkiler. Yukarıdaki süre bu gecikmeyi hesaba katmaz. Borçlar kapandıkça fark
+                  azalır; kalıcı çözüm için gelir artırmak ya da gideri azaltmak gerekir.
                 </div>
               </div>
             </div>
@@ -219,12 +162,22 @@ export default function OdemePlani({ donem, defter = 'TUMU' }: { donem: string; 
 
           {/* Sonuç şeridi */}
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {/* Zorunlu ödemeler kapasiteyi aşıyorsa süre GÜVENİLİR DEĞİLDİR:
+                simülasyon taksiti eksik ödeyerek ilerliyor, gerçekte bu gecikme
+                demektir (gecikme faizi + kredi notu). Süreyi düz yeşil "20 ay"
+                diye sunmak yanlış güven veriyordu. */}
             <KPI
               etiket="Borçsuz kalma"
-              deger={s.ayAdedi ? `${s.ayAdedi} ay` : 'Kapanmıyor'}
-              renk={s.kapanmiyor ? KIRMIZI : OK}
+              deger={s.kapanmiyor ? 'Kapanmıyor' : s.acik > 0 ? `~${s.ayAdedi} ay` : `${s.ayAdedi} ay`}
+              renk={s.kapanmiyor ? KIRMIZI : s.acik > 0 ? TURUNCU : OK}
               ikon={<CalendarCheck size={14} />}
-              altBilgi={s.ayAdedi ? `Yaklaşık ${bitisAyi(s.ayAdedi)}` : 'Kapasite yetersiz'}
+              altBilgi={
+                s.kapanmiyor
+                  ? 'Bu kapasiteyle borç kapanmıyor'
+                  : s.acik > 0
+                    ? 'Taksitler eksik ödendiği varsayımıyla'
+                    : `Yaklaşık ${bitisAyi(s.ayAdedi!)}`
+              }
               vurgu
             />
             <KPI etiket="Toplam ödenecek faiz" deger={`${para(s.toplamFaiz)} ₺`} renk={TURUNCU} ikon={<TrendingDown size={14} />} />
@@ -245,23 +198,23 @@ export default function OdemePlani({ donem, defter = 'TUMU' }: { donem: string; 
           {/* Bu ay ne ödeyeceğim */}
           <Kutu
             baslik={`${donemTR(donem)} — bu ay hangi borca ne kadar`}
-            aciklama={`Bu ay ${para(plan.buAyToplam)} ₺ ile hesaplandı (her ay ${para(plan.kapasite)} ₺ + birikim ${para(plan.birikim)} ₺). Zorunlu tutarlar önce ayrılır; artan para en fazla fayda sağlayan borca gider.`}
+            aciklama={`Bu ay ${para(plan.buAyToplam)} ₺ ile hesaplandı (her ay ${para(plan.kapasite)} ₺ + devreden ${para(plan.birikim)} ₺). Zorunlu tutarlar önce ayrılır; artan para en fazla fayda sağlayan borca gider.`}
             renk={GOLD}
           >
-            {/* Sabit sütunlu liste: göz aynı hizada tarayabilsin.
-                Satır düzeni: borç · kapanma çubuğu · zorunlu · ekstra · bu ay · kalan */}
-            <div className="min-w-full overflow-x-auto">
-              <div className="min-w-[720px]">
-                {/* Başlık satırı */}
+            {/* Sabit sütunlu liste. Renk düzeni bilinçli sade tutuldu:
+                yalnız ALTIN vurgu rengi, YEŞİL kapanış, KIRMIZI eksik; geri
+                kalan her şey nötr gri tonlarında. */}
+            <div className="overflow-x-auto">
+              <div className="min-w-[700px]">
                 <div
-                  className="grid items-center gap-3 px-3 pb-2 text-[10px] uppercase tracking-[0.12em]"
-                  style={{ gridTemplateColumns: '1.6fr 0.9fr 0.9fr 1fr 1fr', color: 'rgba(113,113,122,0.9)' }}
+                  className="grid items-center gap-4 px-3.5 pb-2 text-[10px] font-medium uppercase tracking-[0.14em]"
+                  style={{ gridTemplateColumns: 'minmax(220px,1.7fr) 1fr 1fr 1.1fr 1.1fr', color: 'rgba(113,113,122,0.75)' }}
                 >
                   <span>Borç</span>
                   <span className="text-right">Zorunlu</span>
                   <span className="text-right">Ekstra</span>
                   <span className="text-right">Bu ay ödenecek</span>
-                  <span className="text-right">Sonraki ay kalan</span>
+                  <span className="text-right">Sonraki ay</span>
                 </div>
 
                 <div className="space-y-1">
@@ -270,126 +223,141 @@ export default function OdemePlani({ donem, defter = 'TUMU' }: { donem: string; 
                     const kapananOran = borcOncesi > 0 ? Math.min((x.toplam / borcOncesi) * 100, 100) : 0;
                     const zorunluOran = borcOncesi > 0 ? Math.min((x.zorunlu / borcOncesi) * 100, 100) : 0;
                     const kapandi = x.kalanSonra <= 0.009;
-                    const hedef = i === 0 && x.ekstra > 0; // strateji sırasında ilk hedef
+                    const hedef = i === 0 && x.ekstra > 0;
                     const turRenk = x.tip === 'KART' ? TURUNCU : MAVI;
+                    const noktaRenk = kapandi ? OK : turRenk;
 
                     return (
                       <div
                         key={x.id}
-                        className="relative grid items-center gap-3 rounded-lg py-2.5 pl-3 pr-3 transition"
+                        className="relative overflow-hidden rounded-xl"
                         style={{
-                          gridTemplateColumns: '1.6fr 0.9fr 0.9fr 1fr 1fr',
-                          background: hedef ? `${GOLD}0d` : 'rgba(255,255,255,0.02)',
-                          border: `1px solid ${hedef ? `${GOLD}2b` : ROW_SEP}`,
+                          background: hedef ? `${GOLD}0a` : 'rgba(255,255,255,0.018)',
+                          border: `1px solid ${hedef ? `${GOLD}26` : ROW_SEP}`,
                         }}
                       >
-                        {/* 1) Borç adı + tür + kapanma çubuğu */}
-                        <div className="min-w-0">
-                          <div className="flex min-w-0 items-center gap-1.5">
+                        <div
+                          className="grid items-center gap-4 px-3.5 py-3"
+                          style={{ gridTemplateColumns: 'minmax(220px,1.7fr) 1fr 1fr 1.1fr 1.1fr' }}
+                        >
+                          {/* Borç adı */}
+                          <div className="flex min-w-0 items-center gap-2">
                             <span
-                              className="h-2 w-2 flex-shrink-0 rounded-full"
-                              style={{ background: kapandi ? OK : turRenk }}
+                              className="h-1.5 w-1.5 flex-shrink-0 rounded-full"
+                              style={{ background: noktaRenk }}
                             />
-                            <span className="truncate text-[12.5px] font-medium" style={{ color: TEXT }}>
+                            <span
+                              className="truncate text-[12.5px] font-medium leading-none"
+                              style={{ color: TEXT }}
+                            >
                               {x.ad}
                             </span>
                             {hedef && (
                               <span
-                                className="flex-shrink-0 rounded px-1.5 py-[1px] text-[9.5px] uppercase tracking-wider"
-                                style={{ background: `${GOLD}1f`, color: GOLD }}
+                                className="flex-shrink-0 rounded-[4px] px-1.5 py-[2px] text-[9px] font-semibold uppercase tracking-[0.1em]"
+                                style={{ background: `${GOLD}1c`, color: GOLD }}
                               >
                                 hedef
                               </span>
                             )}
                           </div>
-                          <div className="mt-1.5 flex items-center gap-2">
-                            <div
-                              className="h-[3px] w-full max-w-[200px] overflow-hidden rounded-full"
-                              style={{ background: 'rgba(255,255,255,0.07)' }}
-                            >
-                              <div className="flex h-full">
-                                <div style={{ width: `${zorunluOran}%`, background: turRenk }} />
-                                <div
-                                  style={{
-                                    width: `${Math.max(kapananOran - zorunluOran, 0)}%`,
-                                    background: GOLD,
-                                  }}
-                                />
-                              </div>
-                            </div>
+
+                          {/* Zorunlu */}
+                          <div className="text-right leading-none">
+                            {x.zorunlu > 0 ? (
+                              <span className="text-[12.5px] tabular-nums" style={{ color: TEXT }}>
+                                {para(x.zorunlu)} ₺
+                              </span>
+                            ) : (
+                              <span className="text-[12.5px]" style={{ color: 'rgba(113,113,122,0.55)' }}>
+                                —
+                              </span>
+                            )}
+                            {x.zorunlu === 0 && (
+                              <span
+                                className="mt-1 block text-[9.5px] uppercase tracking-wider"
+                                style={{ color: 'rgba(113,113,122,0.75)' }}
+                              >
+                                bu ay ödendi
+                              </span>
+                            )}
+                            {x.eksik > 0 && (
+                              <span className="mt-1 block text-[9.5px] tabular-nums" style={{ color: KIRMIZI }}>
+                                {para(x.eksik)} ₺ eksik
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Ekstra */}
+                          <div className="text-right leading-none">
+                            {x.ekstra > 0 ? (
+                              <span className="text-[12.5px] tabular-nums" style={{ color: GOLD }}>
+                                {para(x.ekstra)} ₺
+                              </span>
+                            ) : (
+                              <span className="text-[12.5px]" style={{ color: 'rgba(113,113,122,0.55)' }}>
+                                —
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Bu ay ödenecek — satırın ana rakamı */}
+                          <div className="text-right leading-none">
                             <span
-                              className="flex-shrink-0 text-[10px] tabular-nums"
-                              style={{ color: kapandi ? OK : MUTED }}
+                              className="text-[13.5px] font-semibold tabular-nums"
+                              style={{ color: TEXT }}
                             >
-                              {kapandi ? 'kapanıyor' : `%${Math.round(kapananOran)}`}
+                              {para(x.toplam)} ₺
                             </span>
+                          </div>
+
+                          {/* Sonraki ay */}
+                          <div className="text-right leading-none">
+                            {kapandi ? (
+                              <span
+                                className="text-[11px] font-medium uppercase tracking-wider"
+                                style={{ color: OK }}
+                              >
+                                kapanıyor
+                              </span>
+                            ) : (
+                              <span className="text-[12.5px] tabular-nums" style={{ color: MUTED }}>
+                                {para(x.kalanSonra)} ₺
+                              </span>
+                            )}
                           </div>
                         </div>
 
-                        {/* 2) Zorunlu */}
-                        <div className="text-right">
-                          <span
-                            className="text-[12.5px] tabular-nums"
-                            style={{ color: x.zorunlu > 0 ? TEXT : 'rgba(113,113,122,0.7)' }}
-                          >
-                            {x.zorunlu > 0 ? `${para(x.zorunlu)} ₺` : '—'}
-                          </span>
-                          {x.zorunlu === 0 && (
-                            <span className="block text-[9.5px]" style={{ color: OK }}>
-                              ödendi
-                            </span>
-                          )}
-                          {x.eksik > 0 && (
-                            <span className="block text-[9.5px] tabular-nums" style={{ color: KIRMIZI }}>
-                              {para(x.eksik)} ₺ eksik
-                            </span>
-                          )}
-                        </div>
-
-                        {/* 3) Ekstra */}
-                        <div className="text-right">
-                          <span
-                            className="text-[12.5px] tabular-nums"
-                            style={{ color: x.ekstra > 0 ? GOLD : 'rgba(113,113,122,0.7)' }}
-                          >
-                            {x.ekstra > 0 ? `${para(x.ekstra)} ₺` : '—'}
-                          </span>
-                        </div>
-
-                        {/* 4) Bu ay ödenecek — satırın ana rakamı */}
-                        <div className="text-right">
-                          <span
-                            className="text-[14px] font-semibold tabular-nums"
-                            style={{ color: kapandi ? OK : TEXT }}
-                          >
-                            {para(x.toplam)} ₺
-                          </span>
-                        </div>
-
-                        {/* 5) Sonraki ay kalan */}
-                        <div className="text-right">
-                          <span
-                            className="text-[12.5px] tabular-nums"
-                            style={{ color: kapandi ? OK : MUTED }}
-                          >
-                            {kapandi ? 'bitiyor' : `${para(x.kalanSonra)} ₺`}
-                          </span>
+                        {/* Kapanma oranı — satırın en altında tam genişlikte ince çizgi */}
+                        <div className="h-[2px] w-full" style={{ background: 'rgba(255,255,255,0.05)' }}>
+                          <div className="flex h-full">
+                            <div style={{ width: `${zorunluOran}%`, background: `${turRenk}b3` }} />
+                            <div
+                              style={{
+                                width: `${Math.max(kapananOran - zorunluOran, 0)}%`,
+                                background: `${GOLD}b3`,
+                              }}
+                            />
+                          </div>
                         </div>
                       </div>
                     );
                   })}
                 </div>
 
-                {/* Toplam satırı */}
+                {/* Toplam */}
                 <div
-                  className="mt-1.5 grid items-center gap-3 rounded-lg px-3 py-2.5"
+                  className="mt-2 grid items-center gap-4 rounded-xl px-3.5 py-3"
                   style={{
-                    gridTemplateColumns: '1.6fr 0.9fr 0.9fr 1fr 1fr',
-                    background: 'rgba(0,0,0,0.25)',
+                    gridTemplateColumns: 'minmax(220px,1.7fr) 1fr 1fr 1.1fr 1.1fr',
+                    background: 'rgba(0,0,0,0.22)',
                     border: `1px solid ${CARD_BORDER}`,
                   }}
                 >
-                  <span className="text-[11.5px] uppercase tracking-wider" style={{ color: MUTED }}>
+                  <span
+                    className="text-[10px] font-medium uppercase tracking-[0.14em]"
+                    style={{ color: 'rgba(113,113,122,0.75)' }}
+                  >
                     Toplam
                   </span>
                   <span className="text-right text-[12.5px] tabular-nums" style={{ color: TEXT }}>
@@ -398,7 +366,10 @@ export default function OdemePlani({ donem, defter = 'TUMU' }: { donem: string; 
                   <span className="text-right text-[12.5px] tabular-nums" style={{ color: GOLD }}>
                     {para(s.ilkAy.reduce((t, x) => t + x.ekstra, 0))} ₺
                   </span>
-                  <span className="text-right text-[14px] font-semibold tabular-nums" style={{ color: GOLD }}>
+                  <span
+                    className="text-right text-[13.5px] font-semibold tabular-nums"
+                    style={{ color: GOLD }}
+                  >
                     {para(s.ilkAy.reduce((t, x) => t + x.toplam, 0))} ₺
                   </span>
                   <span className="text-right text-[12.5px] tabular-nums" style={{ color: MUTED }}>

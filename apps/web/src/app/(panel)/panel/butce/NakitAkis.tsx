@@ -219,20 +219,6 @@ export default function NakitAkis() {
                   </div>
                 )}
 
-                {!!o.oGunkuOdemeler?.length && (
-                  <div className="mt-1.5 flex flex-wrap gap-1.5">
-                    {o.oGunkuOdemeler.map((h, k) => (
-                      <span
-                        key={`${o.tarih}-od-${k}`}
-                        className="rounded-md px-2 py-0.5 text-[10.5px]"
-                        style={{ background: `${KIRMIZI}12`, border: `1px solid ${KIRMIZI}2e`, color: MUTED }}
-                      >
-                        {h.ad} · {para(h.tutar)} ₺
-                      </span>
-                    ))}
-                  </div>
-                )}
-
                 {/* Sıralama sunucudan maliyete göre geliyor; burada yeniden sıralamıyoruz. */}
                 <div className="mt-2.5 grid gap-2 md:grid-cols-2">
                   {o.secenekler.map((s, j) => (

@@ -381,9 +381,10 @@ export function akisOnerileri(
       toplamAcik: gun.acik,
       /** Önceki açık günlerinde kapatıldığı varsayılan tutar */
       devredenAcik: devreden,
+      // Tutar sağda ayrıca yazıldığı için başlıkta tekrar edilmez
       baslik: neOdemesi
-        ? `${new Date(gun.tarih).toLocaleDateString('tr-TR')} · ${neOdemesi} — ${ekIhtiyac.toLocaleString('tr-TR')} TL ek para gerekiyor`
-        : `${new Date(gun.tarih).toLocaleDateString('tr-TR')} günü ${ekIhtiyac.toLocaleString('tr-TR')} TL ek para gerekiyor`,
+        ? `${new Date(gun.tarih).toLocaleDateString('tr-TR')} · ${neOdemesi}`
+        : `${new Date(gun.tarih).toLocaleDateString('tr-TR')} · nakit açığı`,
       /** O gün çıkan ödemeler — ekran ayrıntı gösterebilsin */
       oGunkuOdemeler: oGunCikanlar.map((h) => ({ ad: h.ad, tutar: KURUS(Math.abs(h.tutar)), tur: h.tur })),
       secenekler,
