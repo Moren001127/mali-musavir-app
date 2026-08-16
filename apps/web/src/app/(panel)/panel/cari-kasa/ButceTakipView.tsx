@@ -258,19 +258,40 @@ function ViewHeader({ icon: Icon, title, subtitle, actions }: {
   subtitle?: string;
   actions?: React.ReactNode;
 }) {
+  // Portal dili: gradyan zemin + köşede radial parıltı. Dört görünüm de bu
+  // başlığı kullandığı için tek değişiklik hepsini birden dönüştürür.
   return (
-    <div className="flex items-start justify-between gap-4 flex-wrap">
-      <div className="flex items-center gap-3.5 min-w-0">
-        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl text-black" style={{ background: GOLD_GRAD }}>
-          <Icon className="h-5 w-5" />
-        </span>
-        <div className="min-w-0">
-          <h1 className="text-[24px] sm:text-[26px] font-bold tracking-tight leading-none" style={{ color: '#fff' }}>{title}</h1>
-          {subtitle && <p className="mt-1.5 text-[13.5px]" style={{ color: SOFT }}>{subtitle}</p>}
+    <header
+      className="relative overflow-hidden rounded-2xl px-5 py-4"
+      style={{
+        background: 'linear-gradient(140deg, rgba(230,200,120,0.08), rgba(255,255,255,0.01) 58%)',
+        border: `1px solid ${CARD_BORDER}`,
+      }}
+    >
+      <span
+        className="pointer-events-none absolute -right-16 -top-20 h-52 w-52 rounded-full opacity-[0.22]"
+        style={{ background: `radial-gradient(circle, ${GOLD}, transparent 66%)` }}
+      />
+      <div className="relative flex items-start justify-between gap-4 flex-wrap">
+        <div className="flex items-center gap-3.5 min-w-0">
+          <span
+            className="grid h-10 w-10 shrink-0 place-items-center rounded-xl"
+            style={{
+              background: `linear-gradient(140deg, ${GOLD}2e, rgba(255,255,255,0.01) 65%)`,
+              border: `1px solid ${GOLD}3d`,
+              color: GOLD,
+            }}
+          >
+            <Icon className="h-[18px] w-[18px]" />
+          </span>
+          <div className="min-w-0">
+            <h1 className="text-[20px] font-bold tracking-tight leading-none" style={{ color: '#fff' }}>{title}</h1>
+            {subtitle && <p className="mt-1.5 text-[12.5px]" style={{ color: SOFT }}>{subtitle}</p>}
+          </div>
         </div>
+        {actions && <div className="flex items-center gap-2 shrink-0 flex-wrap">{actions}</div>}
       </div>
-      {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}
-    </div>
+    </header>
   );
 }
 
@@ -309,14 +330,32 @@ function KpiCard({ label, value, color = TEXT, accent = false, suffix = '₺' }:
   accent?: boolean;
   suffix?: string;
 }) {
-  const style: React.CSSProperties = accent
-    ? { border: '1px solid rgba(230,200,120,0.45)', background: 'rgba(230,200,120,0.05)' }
-    : cardline;
+  // Vurgu rengi kartın kendi rengidir; altın her karta sabitlenmiyordu,
+  // artık gelir yeşil / gider kırmızı kendi tonuyla parlıyor.
+  const vurguRenk = color || GOLD;
   return (
-    <div className="rounded-2xl px-5 py-4" style={style}>
-      <div className="text-[11px] font-medium uppercase tracking-wider" style={{ color: accent ? '#cbae6e' : SOFT }}>{label}</div>
-      <div className="mt-2.5 text-[24px] sm:text-[27px] font-bold" style={{ color, fontVariantNumeric: 'tabular-nums' }}>
-        {value}{suffix ? <span className="text-[16px] font-semibold ml-1" style={{ color: SOFT }}>{suffix}</span> : null}
+    <div
+      className="relative overflow-hidden rounded-2xl px-4 py-3.5"
+      style={
+        accent
+          ? {
+              background: `linear-gradient(140deg, ${vurguRenk}1f, rgba(255,255,255,0.01) 60%)`,
+              border: `1px solid ${vurguRenk}3d`,
+              boxShadow: '0 14px 32px rgba(0,0,0,0.20)',
+            }
+          : { ...cardline, boxShadow: '0 14px 32px rgba(0,0,0,0.20)' }
+      }
+    >
+      <span
+        className="pointer-events-none absolute -right-6 -top-8 h-24 w-24 rounded-full opacity-[0.16]"
+        style={{ background: `radial-gradient(circle, ${vurguRenk}, transparent 68%)` }}
+      />
+      <div className="relative text-[11px] font-medium uppercase tracking-wider" style={{ color: SOFT }}>{label}</div>
+      <div
+        className="relative mt-1.5 text-[21px] font-semibold"
+        style={{ color: vurguRenk, fontVariantNumeric: 'tabular-nums' }}
+      >
+        {value}{suffix ? <span className="text-[14px] ml-1" style={{ color: SOFT }}>{suffix}</span> : null}
       </div>
     </div>
   );

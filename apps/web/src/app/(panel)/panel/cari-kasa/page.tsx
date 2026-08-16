@@ -339,13 +339,11 @@ function HareketlerView({ hareketler, onDelete }: {
           <table className="w-full text-[14px]">
             <thead>
               <tr className="text-[11px] uppercase tracking-wider" style={{ color: MUTED }}>
-                <th className="px-5 py-3.5 text-left font-medium">Tarih</th>
-                <th className="px-3 py-3.5 text-left font-medium">Tip</th>
-                <th className="px-3 py-3.5 text-left font-medium">Açıklama</th>
-                <th className="px-3 py-3.5 text-right font-medium">Borç</th>
-                <th className="px-3 py-3.5 text-right font-medium">Alacak</th>
-                <th className="px-5 py-3.5 text-left font-medium">Yöntem</th>
-                <th className="px-3 py-3.5"></th>
+                <th className="px-5 py-2.5 text-left font-medium">Tarih</th>
+                <th className="px-3 py-2.5 text-left font-medium">Tip</th>
+                <th className="px-3 py-2.5 text-left font-medium">Açıklama</th>
+                <th className="px-3 py-2.5 text-right font-medium">Tutar</th>
+                <th className="px-3 py-2.5"></th>
               </tr>
             </thead>
             <tbody>
@@ -358,36 +356,47 @@ function HareketlerView({ hareketler, onDelete }: {
                 const badgeStyle = isTahsilat
                   ? { background: 'rgba(90,209,138,0.12)', color: '#6ee29c', border: '1px solid rgba(90,209,138,0.22)' }
                   : { background: 'rgba(230,200,120,0.12)', color: GOLD, border: '1px solid rgba(230,200,120,0.20)' };
+                // Hizmet adı açıklamanın içinde zaten geçiyorsa ikinci kez yazma:
+                // ekranda "Muhasebe Ücreti · Muhasebe Ücreti · 2026-08" çıkıyordu.
+                const hizmetAdi = h.hizmet?.hizmetAdi?.trim() || '';
+                const aciklama = (h.aciklama || '').trim();
+                const aciklamaTekrar =
+                  hizmetAdi &&
+                  aciklama.toLocaleLowerCase('tr').includes(hizmetAdi.toLocaleLowerCase('tr'));
+                const metin = aciklamaTekrar ? aciklama : [hizmetAdi, aciklama].filter(Boolean).join(' · ');
+                // Tek tutar sütunu: tahakkuk borç (+), tahsilat alacak (−).
+                // İki ayrı sütunda biri her satırda boş kalıyordu.
+                const netTutar = borc || -alacak;
                 return (
                   <tr key={h.id} className="group" style={{ borderTop: `1px solid ${ROW_SEP}` }}>
-                    <td className="px-5 py-4 tabular-nums whitespace-nowrap" style={{ color: '#d4d4d8' }}>
+                    <td className="px-5 py-2.5 tabular-nums whitespace-nowrap text-[12.5px]" style={{ color: '#d4d4d8' }}>
                       {new Date(h.tarih).toLocaleDateString('tr-TR')}
                     </td>
-                    <td className="px-3 py-4">
-                      <span className="inline-flex rounded-lg px-2.5 py-1 text-[12px] font-semibold" style={badgeStyle}>{badgeLabel}</span>
+                    <td className="px-3 py-2.5">
+                      <span className="inline-flex rounded-md px-2 py-0.5 text-[11px] font-medium" style={badgeStyle}>{badgeLabel}</span>
                     </td>
-                    <td className="px-3 py-4" style={{ color: '#d4d4d8' }}>
-                      {h.hizmet?.hizmetAdi && <span style={{ color: GOLD }}>{h.hizmet.hizmetAdi}</span>}
-                      {h.hizmet?.hizmetAdi && h.aciklama && ' · '}
-                      {h.aciklama || (!h.hizmet?.hizmetAdi ? '—' : '')}
+                    <td className="px-3 py-2.5" style={{ color: '#d4d4d8' }}>
+                      <span className="block text-[12.5px]">{metin || '—'}</span>
+                      {h.odemeYontemi && (
+                        <span className="mt-0.5 block text-[10.5px]" style={{ color: MUTED }}>
+                          {h.odemeYontemi}
+                        </span>
+                      )}
                     </td>
-                    <td className="px-3 py-4 text-right tabular-nums font-semibold" style={{ color: borc ? DEBT : '#3f3f46' }}>
-                      {borc ? `${fmt(borc)} ₺` : '—'}
+                    <td
+                      className="px-3 py-2.5 text-right tabular-nums text-[13px]"
+                      style={{ color: netTutar > 0 ? DEBT : netTutar < 0 ? OK : '#3f3f46' }}
+                    >
+                      {netTutar === 0 ? '—' : `${netTutar > 0 ? '+' : '−'}${fmt(Math.abs(netTutar))} ₺`}
                     </td>
-                    <td className="px-3 py-4 text-right tabular-nums font-semibold" style={{ color: alacak ? OK : '#3f3f46' }}>
-                      {alacak ? `${fmt(alacak)} ₺` : '—'}
-                    </td>
-                    <td className="px-5 py-4 text-[13px]" style={{ color: h.odemeYontemi ? '#a1a1aa' : '#52525b' }}>
-                      {h.odemeYontemi || '—'}
-                    </td>
-                    <td className="px-3 py-4 text-right">
+                    <td className="px-3 py-2.5 text-right">
                       <button
                         onClick={() => onDelete(h.id)}
                         title="Sil"
-                        className="opacity-55 transition group-hover:opacity-100 p-1.5 rounded-lg"
+                        className="p-1.5 rounded-lg transition hover:bg-white/[0.06]"
                         style={{ color: DEBT }}
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <Trash2 className="h-3.5 w-3.5" />
                       </button>
                     </td>
                   </tr>

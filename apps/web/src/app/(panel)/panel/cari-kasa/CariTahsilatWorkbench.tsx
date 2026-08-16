@@ -329,17 +329,35 @@ export function CariTahsilatWorkspace({ onSelect }: { onSelect: (id: string) => 
   return (
     <div className="min-h-screen" style={{ background: BG, fontFamily: SANS, color: TEXT }}>
       <div className="mx-auto max-w-[1240px] px-6 sm:px-10 py-8">
-        {/* ===== HEADER ===== */}
-        <div className="flex items-start justify-between gap-4">
+        {/* ===== BAŞLIK — portal dili: gradyan zemin + radial parıltı ===== */}
+        <header
+          className="relative overflow-hidden rounded-2xl px-5 py-4"
+          style={{
+            background: 'linear-gradient(140deg, rgba(230,200,120,0.09), rgba(255,255,255,0.01) 58%)',
+            border: `1px solid ${CARD_BORDER}`,
+          }}
+        >
+          <span
+            className="pointer-events-none absolute -right-16 -top-20 h-56 w-56 rounded-full opacity-25"
+            style={{ background: `radial-gradient(circle, ${GOLD}, transparent 66%)` }}
+          />
+          <div className="relative flex flex-wrap items-start justify-between gap-4">
           <div className="flex items-center gap-3.5 min-w-0">
-            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl" style={{ background: 'linear-gradient(135deg,#ecd589,#d4b876)', color: '#000' }}>
+            <span
+              className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl"
+              style={{
+                background: `linear-gradient(140deg, ${GOLD}2e, rgba(255,255,255,0.01) 65%)`,
+                border: `1px solid ${GOLD}3d`,
+                color: GOLD,
+              }}
+            >
               <Coins size={20} strokeWidth={1.7} />
             </span>
             <div className="min-w-0">
-              <h1 className="text-[26px] font-bold tracking-tight leading-none" style={{ color: '#fff' }}>
+              <h1 className="text-[24px] font-bold tracking-tight leading-none" style={{ color: '#fff' }}>
                 Tahsilat Merkezi
               </h1>
-              <p className="mt-1.5 text-[13.5px]" style={{ color: SOFT }}>
+              <p className="mt-1.5 text-[12.5px]" style={{ color: SOFT }}>
                 {ayBaslik()} · {rows.length} mükellef
                 {isFetching && <Loader2 size={12} className="inline ml-2 animate-spin" style={{ color: GOLD }} />}
               </p>
@@ -379,21 +397,31 @@ export function CariTahsilatWorkspace({ onSelect }: { onSelect: (id: string) => 
               <MoreHorizontal size={16} strokeWidth={1.7} />
             </button>
           </div>
-        </div>
+          </div>
+        </header>
 
-        {/* ===== TABS ===== */}
-        <nav className="mt-8 flex items-center gap-8 text-[14.5px]" style={{ borderBottom: `1px solid rgba(255,255,255,0.06)` }}>
+        {/* ===== SEKMELER — kapsül şerit, aktif sekme gradyan dolgulu ===== */}
+        <nav
+          className="mt-5 flex flex-wrap gap-1 rounded-xl p-1"
+          style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${CARD_BORDER}` }}
+        >
           {tabs.map(({ key, label }) => {
             const active = view === key;
             return (
               <button
                 key={key}
                 onClick={() => setView(key)}
-                className="relative -mb-px pb-3 transition"
+                className="relative rounded-lg px-3.5 py-[7px] text-[13px] font-medium transition-all duration-150"
                 style={{
-                  borderBottom: `2px solid ${active ? GOLD : 'transparent'}`,
-                  fontWeight: active ? 600 : 500,
-                  color: active ? '#fff' : SOFT,
+                  background: active ? `linear-gradient(180deg, ${GOLD}2b, ${GOLD}12)` : 'transparent',
+                  boxShadow: active ? `inset 0 0 0 1px ${GOLD}4d` : 'none',
+                  color: active ? GOLD : SOFT,
+                }}
+                onMouseEnter={(e) => {
+                  if (!active) e.currentTarget.style.background = 'rgba(255,255,255,0.045)';
+                }}
+                onMouseLeave={(e) => {
+                  if (!active) e.currentTarget.style.background = 'transparent';
                 }}
               >
                 {label}
