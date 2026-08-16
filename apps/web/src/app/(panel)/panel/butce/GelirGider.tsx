@@ -19,9 +19,9 @@ import {
 
 const bugun = () => new Date().toISOString().slice(0, 10);
 
-/** Şahsi / ofis ayrımı hareket düzeyinde tutulur; aynı kart ve hesap iki defterde de kullanılabilir. */
+/** Ofis / kişisel gider ayrımı hareket düzeyinde tutulur; aynı kart ve hesap ikisinde de kullanılabilir. */
 const DEFTERLER: Array<{ deger: Defter; etiket: string; renk: string }> = [
-  { deger: 'SAHSI', etiket: 'Şahsi', renk: GOLD },
+  { deger: 'SAHSI', etiket: 'Kişisel', renk: GOLD },
   { deger: 'OFIS', etiket: 'Ofis', renk: MAVI },
 ];
 
@@ -87,7 +87,7 @@ function DefterAlani({
   return (
     <div className="block">
       <span className="mb-1 block text-[11px] font-medium" style={{ color: MUTED }}>
-        Defter
+        Gider türü
       </span>
       <DefterSecici deger={deger} degistir={degistir} />
       {ipucu && (
@@ -222,7 +222,7 @@ export default function GelirGider({ donem, defter = 'TUMU' }: { donem: string; 
           {i.kaynak === 'KART' && <CreditCard size={11} style={{ color: MAVI }} />}
           {i.planlanan && <Rozet metin="beklenen" renk={TURUNCU} />}
           {i.transferGrupId && <Rozet metin="aktarım" renk={MAVI} />}
-          {/* Mesleki/kişisel yalnız GİDERDE anlamlı — gelir tek havuzdur */}
+          {/* Ofis/kişisel yalnız GİDERDE anlamlı — gelir tek havuzdur */}
           {i.tur === 'GIDER' && <Rozet metin={DEFTER_ETIKET[i.defter]} renk={defterRenk(i.defter)} />}
         </span>
         <span className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px]" style={{ color: MUTED }}>
@@ -596,12 +596,38 @@ function IslemModal({
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Kaydedilemedi'),
   });
 
-  const uygunKategoriler = kategoriler.filter((c) => c.tur === form.tur && c.aktif);
+  /**
+   * Kategori listesi SEÇİLİ GİDER TÜRÜNE göre süzülür.
+   *
+   * Kullanıcı bulgusu: "Kişisel" seçiliyken de Ofis Kira, Personel Maaşı gibi
+   * ofis kategorileri listeleniyordu. Gelirde ayrım olmadığı için orada süzme
+   * yapılmaz. Düzenlenen kaydın mevcut kategorisi listede kalmalı, yoksa
+   * eski kayıtta seçim kaybolur.
+   */
+  const uygunKategoriler = kategoriler.filter((c) => {
+    if (c.tur !== form.tur || !c.aktif) return false;
+    if (form.tur === 'GELIR') return true; // gelir tek havuz
+    if (c.defter === form.defter) return true;
+    return c.id === form.kategoriId; // düzenlenen kaydın kategorisi listeden düşmesin
+  });
 
-  // Kategorinin defteri kaydın defterini belirler ("Ofis geliri" seçilince şahsiye yazılmasın).
+  // Kategorinin defteri kaydın defterini belirler ("Ofis Kira" seçilince kişisele yazılmasın).
   const kategoriSec = (id: string) => {
     const secilen = kategoriler.find((c) => c.id === id);
     setForm((f) => ({ ...f, kategoriId: id, defter: (secilen?.defter as Defter) || f.defter }));
+  };
+
+  /**
+   * Gider türü değişince, seçili kategori artık o türe ait değilse seçim
+   * temizlenir; aksi hâlde "Kişisel" seçilip listede kalmış bir ofis
+   * kategorisiyle kayıt açılabiliyordu.
+   */
+  const defterSec = (d: Defter) => {
+    setForm((f) => {
+      const secili = kategoriler.find((c) => c.id === f.kategoriId);
+      const uyumsuz = f.tur === 'GIDER' && secili && secili.defter !== d;
+      return { ...f, defter: d, kategoriId: uyumsuz ? '' : f.kategoriId };
+    });
   };
 
   const tutar = paraCoz(form.tutar);
@@ -642,11 +668,11 @@ function IslemModal({
           </Secim>
         </Alan>
 
-        {/* Gelir TEK HAVUZ olduğu için yalnız giderde mesleki/kişisel sorulur */}
+        {/* Gelir TEK HAVUZ olduğu için yalnız giderde ofis/kişisel sorulur */}
         {form.tur === 'GIDER' && (
           <DefterAlani
             deger={form.defter}
-            degistir={(d) => setForm({ ...form, defter: d })}
+            degistir={defterSec}
             ipucu="Ofis gideri kazançtan indirilir; kişisel harcama indirilemez."
           />
         )}

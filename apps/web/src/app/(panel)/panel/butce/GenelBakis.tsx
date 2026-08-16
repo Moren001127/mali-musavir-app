@@ -118,7 +118,6 @@ export default function GenelBakis({
             ikon={<TrendingUp size={14} />}
             altBilgi={donemTR(donem)}
           />
-          {/* Şahsi defterde para iki yoldan gelir: kendi geliriniz + ofisten çekiş */}
                   </div>
 
         <KPI

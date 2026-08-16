@@ -321,7 +321,7 @@ function KategoriYonetimi({ kategoriler }: { kategoriler: Kategori[] }) {
   });
 
   // GELİR TEK HAVUZ: gelir kategorileri deftere göre bölünmez.
-  // Ayrım yalnız giderde anlamlıdır (mesleki indirilir, kişisel indirilmez).
+  // Ayrım yalnız giderde anlamlıdır (ofis gideri indirilir, kişisel indirilmez).
   const gelirler = kategoriler.filter((c) => c.tur === 'GELIR');
   const giderler = (defter: Defter) =>
     kategoriler.filter((c) => c.tur === 'GIDER' && c.defter === defter);
@@ -364,7 +364,7 @@ function KategoriYonetimi({ kategoriler }: { kategoriler: Kategori[] }) {
                 </span>
               </span>
               <span className="flex flex-shrink-0 items-center gap-1.5">
-                {/* Mesleki/kişisel yalnız GİDERDE sorulur — gelirde ayrım yok */}
+                {/* Ofis/kişisel yalnız GİDERDE sorulur — gelirde ayrım yok */}
                 {gider && (
                   <button
                     onClick={() =>
@@ -471,7 +471,7 @@ function KategoriYonetimi({ kategoriler }: { kategoriler: Kategori[] }) {
         </form>
       </div>
 
-      {/* Gelir tek liste; gider mesleki/kişisel iki sütun */}
+      {/* Gelir tek liste; gider ofis/kişisel iki sütun */}
       <div className="space-y-5">
         {liste('Gelir', OK, <TrendingUp size={12} />, gelirler, false)}
         <div className="grid gap-5 md:grid-cols-2">

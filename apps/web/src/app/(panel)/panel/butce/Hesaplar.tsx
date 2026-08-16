@@ -18,7 +18,7 @@ import {
 } from './ui';
 
 const DEFTERLER: Array<{ deger: Defter; etiket: string; renk: string }> = [
-  { deger: 'SAHSI', etiket: 'Şahsi', renk: MAVI },
+  { deger: 'SAHSI', etiket: 'Kişisel', renk: MAVI },
   { deger: 'OFIS', etiket: 'Ofis', renk: MOR },
 ];
 
