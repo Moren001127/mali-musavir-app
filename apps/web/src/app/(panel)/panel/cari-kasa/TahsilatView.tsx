@@ -292,7 +292,8 @@ export default function TahsilatView({
                     </span>
                   </span>
 
-                  <span className="flex flex-shrink-0 items-center gap-1 opacity-0 transition group-hover:opacity-100">
+                  {/* Eylemler HER ZAMAN görünür: hover ardına saklamak işlevi bulunamaz kılıyordu */}
+                  <span className="flex flex-shrink-0 items-center gap-1">
                     <Eylem ikon={<FileText size={13} />} baslik="Ekstre" onClick={() => onOpen(r)} />
                     <Eylem
                       ikon={<MessageCircle size={13} />}
