@@ -110,6 +110,11 @@ export class ButceController {
     return this.butce.kasaOzet(this.kimlik(req));
   }
 
+  @Get('kasa/hareketler')
+  kasaHareketleri(@Req() req: any, @Query('donem') donem?: string) {
+    return this.butce.kasaHareketleri(this.kimlik(req), donem);
+  }
+
   @Post('hesaplar')
   hesapEkle(@Req() req: any, @Body() body: any) {
     return this.butce.bankaHesapKaydet(this.kimlik(req), body);

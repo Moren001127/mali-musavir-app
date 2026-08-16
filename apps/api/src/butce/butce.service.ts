@@ -1,4 +1,5 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException, Inject, forwardRef } from '@nestjs/common';
+import { ButceFaizOranlariService } from './butce-faiz-oranlari.service';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   donemKaydir,
@@ -106,7 +107,28 @@ function kartZorunluOdeme(kart: any): number {
 @Injectable()
 export class ButceService {
   private readonly logger = new Logger(ButceService.name);
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    @Inject(forwardRef(() => ButceFaizOranlariService))
+    private faiz: ButceFaizOranlariService,
+  ) {}
+
+  /**
+   * KMH faizi girilmemiş hesaplar için TAHMİNİ aylık oran.
+   *
+   * TCMB tek bir KMH oranı yayımlamaz; ancak KMH faizi pratikte kart akdi
+   * faizine yakın seyreder. Oran çekilemezse null döner ve hiçbir yerde
+   * uydurma maliyet gösterilmez.
+   */
+  private async tahminiKmhAylikFaiz(): Promise<number | null> {
+    try {
+      const azami = await this.faiz.fetchAzamiOranlar();
+      const akdi = Number(azami?.akdi);
+      return Number.isFinite(akdi) && akdi > 0 ? akdi : null;
+    } catch {
+      return null;
+    }
+  }
 
   private get db(): any {
     return this.prisma as any;
@@ -294,6 +316,8 @@ export class ButceService {
       acilisBakiye: acilis,
       kmhLimiti,
       kmhAylikFaiz: num(h.kmhAylikFaiz),
+      /** Oran girilmemişse ekran "TCMB tahmini kullanılıyor" diyebilsin */
+      kmhFaizGirilmedi: !num(h.kmhAylikFaiz) && kmhLimiti > 0,
       bakiye,
       kmhBorcu,
       kmhKalanLimit: kurus(Math.max(kmhLimiti - kmhBorcu, 0)),
@@ -1197,6 +1221,9 @@ export class ButceService {
       this.duzenliler(k, 'TUMU'),
     ]);
 
+    // KMH oranı girilmemiş hesaplar için TCMB'den tahmini oran
+    const tahminiFaiz = await this.tahminiKmhAylikFaiz();
+
     // Başlangıç nakdi = banka bakiyeleri + nakit kasası.
     // Kasa katılmazsa hesap seçilmeden girilen gelir akışta hiç görünmüyordu.
     const kasa = await this.nakitKasasi(k);
@@ -1302,7 +1329,10 @@ export class ButceService {
           banka: h.bankaAdi,
           ad: h.ad,
           kullanilabilir: h.kmhKalanLimit,
-          aylikFaiz: h.kmhAylikFaiz || 0,
+          // Oran girilmemişse TCMB azami kart akdi faizi TAHMİN olarak kullanılır;
+          // aksi hâlde maliyet 0 çıkıp seçenek "bedava" görünüyordu.
+          aylikFaiz: h.kmhAylikFaiz || tahminiFaiz || 0,
+          faizTahmini: !h.kmhAylikFaiz && !!tahminiFaiz,
         })),
     });
 
@@ -1411,6 +1441,36 @@ export class ButceService {
         return Array.from(harita.values()).sort((a, b) => b.tutar - a.tutar);
       })(),
     };
+  }
+
+  /** Kasadaki tüm hareketler — Hesaplar ekranındaki "Hareketler" penceresi için */
+  async kasaHareketleri(k: Kimlik, donem?: string) {
+    const where: any = {
+      tenantId: k.tenantId,
+      userId: k.userId,
+      planlanan: false,
+      transferGrupId: null,
+      bankaHesapId: null,
+      OR: [{ tur: 'GELIR' }, { tur: 'GIDER', kaynak: { not: 'KART' } }],
+    };
+    if (donem) where.donem = donem;
+
+    const liste = await this.db.butceIslem.findMany({
+      where,
+      orderBy: [{ tarih: 'desc' }, { createdAt: 'desc' }],
+      take: 500,
+      include: { kategori: { select: { ad: true, renk: true } } },
+    });
+    return liste.map((i: any) => ({
+      id: i.id,
+      tarih: i.tarih,
+      donem: i.donem,
+      tur: i.tur,
+      tutar: num(i.tutar),
+      aciklama: i.aciklama,
+      defter: i.defter,
+      kategori: i.kategori,
+    }));
   }
 
   /* ===================== ÖZET ===================== */

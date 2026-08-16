@@ -259,6 +259,13 @@ export default function NakitAkis() {
                             göstermek yanlış yönlendirme olurdu. */}
                         {s.maliyetBilinmiyor ? (
                           <Rozet metin="maliyeti bilinmiyor" renk={TURUNCU} />
+                        ) : s.maliyetTahmini ? (
+                          <span className="flex items-center gap-1.5">
+                            <Rozet metin="tahmini" renk={TURUNCU} />
+                            <span className="text-[11.5px] tabular-nums" style={{ color: MUTED }}>
+                              ~{para(s.maliyet)} ₺
+                            </span>
+                          </span>
                         ) : s.maliyet === 0 ? (
                           <Rozet metin="maliyetsiz" renk={OK} />
                         ) : (

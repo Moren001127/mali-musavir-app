@@ -60,6 +60,8 @@ export interface KmhHesabi {
   kullanilabilir: number;
   /** Aylık faiz oranı (%) */
   aylikFaiz: number;
+  /** Oran kullanıcıdan değil, TCMB ortalamasından tahmin edildi */
+  faizTahmini?: boolean;
 }
 
 export interface AkisOnerisi {
@@ -80,6 +82,8 @@ export interface AkisOnerisi {
     maliyet: number;
     /** Faiz oranı girilmediği için maliyet hesaplanamadı — "maliyetsiz" sanılmasın */
     maliyetBilinmiyor?: boolean;
+    /** Maliyet TCMB ortalamasından tahmin edildi, kesin değil */
+    maliyetTahmini?: boolean;
     onerilen: boolean;
   }>;
 }
@@ -286,6 +290,8 @@ export function akisOnerileri(
       // Faiz oranı girilmemişse maliyet 0 çıkar ve seçenek "maliyetsiz" görünür.
       // KMH'da faiz her zaman vardır; bunu bedava göstermek yanlış yönlendirmedir.
       const faizBilinmiyor = kullanim.length > 0 && kullanim.every((x) => x.hesap.aylikFaiz <= 0);
+      // Oranın kendisi TCMB tahmini ise maliyet hesaplanır ama "tahmin" olduğu söylenir
+      const faizTahminli = kullanim.some((x) => x.hesap.faizTahmini && x.hesap.aylikFaiz > 0);
 
       secenekler.push({
         ad: !yeterli
@@ -299,9 +305,12 @@ export function akisOnerileri(
             : `${hesapMetni} kullansanız bile ${KURUS(ekIhtiyac - kapanan).toLocaleString('tr-TR')} TL eksik kalır.`) +
           (faizBilinmiyor
             ? ' Bu hesabın faiz oranı girilmediği için maliyet hesaplanamıyor — Hesaplar ekranından oranı girin.'
-            : ''),
+            : faizTahminli
+              ? ' Faiz oranı girilmediği için TCMB azami kart faizi üzerinden TAHMİN edildi; bankanızın gerçek KMH oranını Hesaplar ekranından girerseniz maliyet kesinleşir.'
+              : ''),
         maliyet,
         maliyetBilinmiyor: faizBilinmiyor,
+        maliyetTahmini: faizTahminli,
         onerilen: false,
       });
     }

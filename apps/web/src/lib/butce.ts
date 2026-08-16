@@ -69,6 +69,8 @@ export interface BankaHesap {
   acilisTarihi?: string | null;
   kmhLimiti: number;
   kmhAylikFaiz: number;
+  /** Oran girilmemiş — ekran "TCMB tahmini kullanılıyor" diyebilsin */
+  kmhFaizGirilmedi?: boolean;
   renk?: string | null;
   aktif: boolean;
   sira: number;
@@ -105,6 +107,18 @@ export interface AkisGunu {
   acik: number;
 }
 
+/** Kasadaki tek bir hareket */
+export interface KasaHareket {
+  id: string;
+  tarih: string;
+  donem: string;
+  tur: 'GELIR' | 'GIDER';
+  tutar: number;
+  aciklama: string | null;
+  defter: Defter;
+  kategori: { ad: string; renk: string } | null;
+}
+
 /** Nakit kasa: banka hesabı seçilmeden girilmiş hareketlerin toplamı */
 export interface KasaOzet {
   bakiye: number;
@@ -121,6 +135,8 @@ export interface AkisSecenek {
   maliyet: number;
   /** Faiz oranı girilmediği için maliyet hesaplanamadı — "maliyetsiz" sanılmasın */
   maliyetBilinmiyor?: boolean;
+  /** Maliyet TCMB ortalamasından tahmin edildi, kesin değil */
+  maliyetTahmini?: boolean;
   onerilen: boolean;
 }
 
@@ -476,6 +492,8 @@ export const butceApi = {
 
   hesaplar: () => al<BankaHesap[]>(api.get('/butce/hesaplar')),
   kasa: () => al<KasaOzet>(api.get('/butce/kasa')),
+  kasaHareketleri: (donem?: string) =>
+    al<KasaHareket[]>(api.get('/butce/kasa/hareketler', { params: { donem } })),
   hesapEkle: (body: Partial<BankaHesap>) => al<BankaHesap>(api.post('/butce/hesaplar', body)),
   hesapGuncelle: (id: string, body: Partial<BankaHesap>) =>
     al<BankaHesap>(api.put(`/butce/hesaplar/${id}`, body)),

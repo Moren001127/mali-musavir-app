@@ -47,6 +47,7 @@ export default function Hesaplar() {
   const qc = useQueryClient();
   const [hesapModal, setHesapModal] = useState<BankaHesap | 'yeni' | null>(null);
   const [aktarimAcik, setAktarimAcik] = useState(false);
+  const [kasaModalAcik, setKasaModalAcik] = useState(false);
   const [hareketModal, setHareketModal] = useState<BankaHesap | null>(null);
   const [silModal, setSilModal] = useState<BankaHesap | null>(null);
 
@@ -237,7 +238,7 @@ export default function Hesaplar() {
                       >
                         {h.kmhAylikFaiz > 0
                           ? `Aylık faiz %${h.kmhAylikFaiz} · günlük ~${para(gunlukFaiz(h))} ₺`
-                          : 'Faiz oranı girilmedi — öneriler maliyetsiz görünür'}
+                          : 'Faiz oranı girilmedi — öneriler TCMB azami kart faizinden tahmin edilir'}
                       </div>
                     </div>
                   )}
@@ -299,44 +300,11 @@ export default function Hesaplar() {
                   </div>
                 </div>
 
-                {/* Kategori bazlı TOPLAMLAR — son hareket listesi kasanın tamamı
-                    sanılıp "kategori eksik görünüyor" izlenimi veriyordu */}
-                {(kasa!.kirilim?.length ?? 0) > 0 && (
-                  <div
-                    className="mt-2 rounded-lg px-2.5 py-2"
-                    style={{ background: 'rgba(0,0,0,0.25)', border: `1px solid ${ROW_SEP}` }}
-                  >
-                    <div
-                      className="mb-1 text-[10px] uppercase tracking-wider"
-                      style={{ color: 'rgba(113,113,122,0.9)' }}
-                    >
-                      Kategoriye göre
-                    </div>
-                    <div className="max-h-[132px] space-y-1 overflow-y-auto pr-0.5">
-                      {kasa!.kirilim.map((k, i) => (
-                        <div
-                          key={`${k.tur}-${k.ad}-${i}`}
-                          className="flex items-center justify-between gap-2 text-[11px]"
-                        >
-                          <span className="flex min-w-0 items-center gap-1.5" style={{ color: MUTED }}>
-                            <i
-                              className="h-2 w-2 flex-shrink-0 rounded-sm"
-                              style={{ background: k.renk || MUTED }}
-                            />
-                            <span className="truncate">{k.ad}</span>
-                          </span>
-                          <span
-                            className="flex-shrink-0 tabular-nums"
-                            style={{ color: k.tur === 'GELIR' ? OK : KIRMIZI }}
-                          >
-                            {k.tur === 'GELIR' ? '+' : '−'}
-                            {para(k.tutar)} ₺
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                <div className="mt-2.5 flex flex-wrap gap-1.5">
+                  <Dugme renk={MOR} onClick={() => setKasaModalAcik(true)}>
+                    <Receipt size={12} /> Hareketler
+                  </Dugme>
+                </div>
 
                 <p className="mt-2 text-[10px] leading-relaxed" style={{ color: 'rgba(113,113,122,0.9)' }}>
                   Bu paranın hangi bankada olduğunu bilmek isterseniz, ilgili kayıtları düzenleyip
@@ -358,6 +326,8 @@ export default function Hesaplar() {
           }}
         />
       )}
+
+      {kasaModalAcik && <KasaHareketModal kapat={() => setKasaModalAcik(false)} />}
 
       {aktarimAcik && (
         <AktarimModal
@@ -917,6 +887,110 @@ function HareketModal({ hesap, kapat }: { hesap: BankaHesap; kapat: () => void }
           </div>
         </div>
       )}
+    </Modal>
+  );
+}
+
+/**
+ * Nakit kasadaki tüm hareketler.
+ *
+ * Kart üzerinde toplam listesi göstermek yanıltıyordu (kullanıcı onu kasanın
+ * tamamı sanıyordu); ayrıntı artık istendiğinde açılan bu pencerede.
+ */
+function KasaHareketModal({ kapat }: { kapat: () => void }) {
+  const [donem, setDonem] = useState<string>('');
+
+  const { data: hareketler = [], isLoading } = useQuery({
+    queryKey: ['butce-kasa-hareketler', donem],
+    queryFn: () => butceApi.kasaHareketleri(donem || undefined),
+  });
+
+  const giren = hareketler.filter((h) => h.tur === 'GELIR').reduce((t, h) => t + h.tutar, 0);
+  const cikan = hareketler.filter((h) => h.tur === 'GIDER').reduce((t, h) => t + h.tutar, 0);
+
+  return (
+    <Modal baslik="Nakit kasa hareketleri" kapat={kapat} genislik={720}>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <Alan etiket="Dönem" ipucu="Boş bırakırsanız tüm hareketler listelenir">
+          <Girdi type="month" value={donem} onChange={(e) => setDonem(e.target.value)} />
+        </Alan>
+        <div className="flex gap-4 text-[12px]">
+          <span style={{ color: MUTED }}>
+            Giren{' '}
+            <strong className="tabular-nums" style={{ color: OK }}>
+              {para(giren)} ₺
+            </strong>
+          </span>
+          <span style={{ color: MUTED }}>
+            Çıkan{' '}
+            <strong className="tabular-nums" style={{ color: KIRMIZI }}>
+              {para(cikan)} ₺
+            </strong>
+          </span>
+          <span style={{ color: MUTED }}>
+            Kalan{' '}
+            <strong className="tabular-nums" style={{ color: MOR }}>
+              {para(giren - cikan)} ₺
+            </strong>
+          </span>
+        </div>
+      </div>
+
+      <div className="mt-3">
+        {isLoading ? (
+          <Yukleniyor />
+        ) : hareketler.length === 0 ? (
+          <Bos metin="Bu dönemde kasa hareketi yok." ikon={<Receipt size={18} />} />
+        ) : (
+          <div className="max-h-[420px] space-y-1.5 overflow-y-auto pr-1">
+            {hareketler.map((h) => (
+              <div
+                key={h.id}
+                className="flex items-center justify-between gap-3 rounded-lg px-3 py-2"
+                style={{ background: 'rgba(255,255,255,0.02)', border: `1px solid ${ROW_SEP}` }}
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[12.5px]" style={{ color: TEXT }}>
+                    {h.aciklama || h.kategori?.ad || '—'}
+                  </span>
+                  <span className="flex flex-wrap items-center gap-1.5 text-[11px]" style={{ color: MUTED }}>
+                    <span className="tabular-nums">{tarihTR(h.tarih)}</span>
+                    {h.kategori?.ad && (
+                      <>
+                        <span>·</span>
+                        <span className="inline-flex items-center gap-1">
+                          {h.kategori.renk && (
+                            <i className="h-2 w-2 rounded-sm" style={{ background: h.kategori.renk }} />
+                          )}
+                          {h.kategori.ad}
+                        </span>
+                      </>
+                    )}
+                    {h.tur === 'GIDER' && (
+                      <>
+                        <span>·</span>
+                        <span>{h.defter === 'OFIS' ? 'ofis' : 'kişisel'}</span>
+                      </>
+                    )}
+                  </span>
+                </span>
+                <span
+                  className="flex-shrink-0 text-[13px] font-semibold tabular-nums"
+                  style={{ color: h.tur === 'GELIR' ? OK : KIRMIZI }}
+                >
+                  {h.tur === 'GELIR' ? '+' : '−'}
+                  {para(h.tutar)} ₺
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <p className="mt-3 text-[10.5px] leading-relaxed" style={{ color: 'rgba(113,113,122,0.9)' }}>
+        Bu hareketler bir banka hesabına bağlanmadığı için kasada görünür. Bir kaydı düzenleyip ödeme
+        kaynağına hesap seçerseniz tutar o hesabın bakiyesine geçer ve kasadan düşer.
+      </p>
     </Modal>
   );
 }
