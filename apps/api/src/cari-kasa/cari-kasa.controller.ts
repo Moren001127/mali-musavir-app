@@ -539,6 +539,28 @@ export class CariKasaAgentController {
     private readonly prisma: PrismaService,
   ) {}
 
+  /**
+   * Kademe örneklerini OFİS SAHİBİNE gönderir (mükellefe değil).
+   * Deneme token'ıyla korunur; token tanımlı değilse uç kapalıdır.
+   * Gövde: { token, tenantId?, gonder? }
+   */
+  @Post('tahsilat-kademe-ornek')
+  @HttpCode(HttpStatus.OK)
+  async tahsilatKademeOrnek(@Body() body: any) {
+    const beklenen = String(process.env.MOREN_DENEME_TOKEN || '').trim();
+    if (!beklenen || String(body?.token || '') !== beklenen) {
+      throw new UnauthorizedException('yetkisiz');
+    }
+    // Owner tenant'ı: gövdede verilmezse tek tenant varsayımıyla ilk aktif tenant
+    let tenantId = String(body?.tenantId || '').trim();
+    if (!tenantId) {
+      const t = await (this.prisma as any).tenant.findFirst({ select: { id: true } });
+      if (!t) throw new UnauthorizedException('tenant bulunamadi');
+      tenantId = t.id;
+    }
+    return this.service.tahsilatKademeOrnekleri(tenantId, body?.gonder === true);
+  }
+
   @Post('hattat/import')
   @HttpCode(HttpStatus.OK)
   async importHattatCariKasa(

@@ -1371,6 +1371,77 @@ ${rows}
     return 0;
   }
 
+  /**
+   * KADEME ÖRNEKLERİNİ OFİS SAHİBİNE GÖNDER — mükellefe DEĞİL.
+   *
+   * Otomasyon açılmadan önce her kademenin metni gerçek veriyle görülsün diye.
+   * `gonder` false ise hiçbir mesaj gitmez, yalnız metinler döner.
+   */
+  async tahsilatKademeOrnekleri(tenantId: string, gonder = false) {
+    const plan: any = await this.tahsilatOtomasyonPlani(tenantId);
+    const havuz: any[] = [...(plan.gonderilecek || []), ...(plan.onayBekleyen || [])];
+
+    // Her kademeden BİRER örnek — aynı kademeden onlarca mesajın anlamı yok
+    const secilen = new Map<string, any>();
+    for (const x of havuz) {
+      if (x.kademe && x.mesaj && !secilen.has(x.kademe)) secilen.set(x.kademe, x);
+    }
+
+    const KADEME_ADI: Record<string, string> = {
+      K0: 'KADEME 1 · Bilgilendirme (vadesi geldi, henüz gecikmedi)',
+      K1: 'KADEME 2 · Hatırlatma (7+ gün gecikme)',
+      K2: 'KADEME 3 · Hesap dökümü (30+ gün, ekstre PDF ekli)',
+      K3: 'KADEME 4 · Görüşme çağrısı (60+ gün, ONAYINIZ ŞART)',
+    };
+
+    const numara = String(
+      process.env.MOREN_OWNER_WHATSAPP_PHONES || process.env.MOREN_OWNER_WHATSAPP_PHONE || '',
+    )
+      .split(',')[0]
+      .trim();
+
+    const NL = String.fromCharCode(10);
+    const cikti: any[] = [];
+
+    for (const kademe of ['K0', 'K1', 'K2', 'K3']) {
+      const x = secilen.get(kademe);
+      if (!x) {
+        cikti.push({ kademe, durum: 'bu kademede mükellef yok', gonderildi: false });
+        continue;
+      }
+
+      // Başlıkta: hangi kademe, kime gidecekti ve bunun bir ÖRNEK olduğu
+      const metin = [
+        '🔔 *TAHSİLAT OTOMASYONU — ÖRNEK*',
+        KADEME_ADI[kademe],
+        `Alıcı olacaktı: ${x.ad}`,
+        x.ekstreEkle ? 'Ek: hesap dökümü PDF' : '',
+        '──────────────',
+        '',
+        x.mesaj,
+        '',
+        '_Bu mesaj yalnız size gönderildi; mükellefe gitmedi._',
+      ]
+        .filter(Boolean)
+        .join(NL);
+
+      let gonderildi = false;
+      if (gonder && numara) {
+        try {
+          await this.whatsApp.sendMessage(numara, metin, tenantId);
+          gonderildi = true;
+          // Köprüyü boğmamak için araya bekleme
+          await new Promise((r) => setTimeout(r, 1500));
+        } catch (e: any) {
+          this.logger.warn(`kademe örneği gönderilemedi: ${e?.message || e}`);
+        }
+      }
+      cikti.push({ kademe, ad: x.ad, metin, gonderildi });
+    }
+
+    return { ozet: plan.ozet, ornekler: cikti };
+  }
+
   async tahsilatHatirlatmaPreview(tenantId: string, body: { taxpayerIds?: string[]; minBakiye?: number }) {
     const ajanda = await this.tahsilatAjandasi(tenantId);
     const selected = new Set(body.taxpayerIds || []);
