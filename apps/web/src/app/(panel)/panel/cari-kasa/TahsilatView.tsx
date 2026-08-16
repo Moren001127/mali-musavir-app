@@ -1,7 +1,15 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { Search, MessageCircle, Plus, FileText, PhoneOff, ChevronRight } from 'lucide-react';
+import {
+  Search, MessageCircle, Plus, FileText, PhoneOff, ChevronRight,
+  AlertTriangle, PhoneMissed, CalendarX, Users,
+} from 'lucide-react';
+import {
+  SayacKutusu, ListeKarti, KPI, paraTR, paraKisa,
+  OK as UI_OK, KIRMIZI as UI_KIRMIZI, TURUNCU as UI_TURUNCU, MAVI as UI_MAVI,
+  MUTED as UI_MUTED, TEXT as UI_TEXT, CARD_BORDER, CARD_BG,
+} from './ui';
 
 /**
  * TAHSİLAT GÖRÜNÜMÜ — sıfırdan tasarım.
@@ -21,15 +29,15 @@ import { Search, MessageCircle, Plus, FileText, PhoneOff, ChevronRight } from 'l
  *   4. RENK AZ. Kırmızı yalnız gerçekten riskli olanda; gerisi nötr.
  */
 
-const CIZGI = 'rgba(255,255,255,0.06)';
+const CIZGI = CARD_BORDER;
+const KART = CARD_BG;
 const SATIR_CIZGI = 'rgba(255,255,255,0.045)';
-const KART = 'rgba(255,255,255,0.018)';
-const METIN = '#e7e7ea';
-const SOLUK = '#71717a';
-const OK = '#5ad18a';
-const RISK = '#e0697a';
-const UYARI = '#d9a06c';
-const MAVI = '#6aa9e8';
+const METIN = UI_TEXT;
+const SOLUK = UI_MUTED;
+const OK = UI_OK;
+const RISK = UI_KIRMIZI;
+const UYARI = UI_TURUNCU;
+const MAVI = UI_MAVI;
 
 export type TahsilatSatiri = {
   id: string;
@@ -52,15 +60,8 @@ export type TahsilatSatiri = {
 
 type Kuyruk = 'hepsi' | 'riskli' | 'ulasilamiyor' | 'buAy' | 'borclu';
 
-const para = (n?: number | null) =>
-  `${Number(n || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺`;
-
-const kisaPara = (n?: number | null) => {
-  const v = Number(n || 0);
-  if (Math.abs(v) >= 1_000_000) return `${(v / 1_000_000).toLocaleString('tr-TR', { maximumFractionDigits: 1 })}M ₺`;
-  if (Math.abs(v) >= 1_000) return `${Math.round(v / 1_000).toLocaleString('tr-TR')}B ₺`;
-  return `${Math.round(v)} ₺`;
-};
+const para = paraTR;
+const kisaPara = paraKisa;
 
 const tarih = (d?: string | null) =>
   d ? new Date(d).toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: '2-digit' }) : null;
@@ -145,14 +146,30 @@ export default function TahsilatView({
 
   return (
     <div className="mt-6 space-y-5">
-      {/* ÜST ŞERİT — üç rakam, kart kalabalığı yok */}
-      <div className="flex flex-wrap items-baseline gap-x-8 gap-y-3">
-        <Rakam etiket="Toplam alacak" deger={para(toplamBakiye)} renk={METIN} buyuk />
-        <Rakam etiket="Tahsilat oranı" deger={`%${Math.round(tahsilatOrani)}`} renk={tahsilatOrani >= 80 ? OK : UYARI} />
-        <Rakam etiket="90+ gün riskli" deger={para(risk90Tutar)} renk={RISK} />
-        <span className="ml-auto text-[11.5px]" style={{ color: SOLUK }}>
-          {rows.length} mükellef · {sayilar.borclu} tanesi borçlu
-        </span>
+      {/* ÜST ŞERİT — portalın kart dili: renk şeridi + radial parıltı */}
+      <div className="grid gap-3 sm:grid-cols-3">
+        <KPI
+          etiket="Toplam alacak"
+          deger={para(toplamBakiye)}
+          altBilgi={`${rows.length} mükellef · ${sayilar.borclu} tanesi borçlu`}
+          renk={UI_MAVI}
+          ikon={<Users size={14} />}
+          vurgu
+        />
+        <KPI
+          etiket="Tahsilat oranı"
+          deger={`%${Math.round(tahsilatOrani)}`}
+          altBilgi={tahsilatOrani >= 80 ? 'Hedefin üstünde' : 'Hedefin altında'}
+          renk={tahsilatOrani >= 80 ? OK : UYARI}
+        />
+        <KPI
+          etiket="90+ gün riskli"
+          deger={para(risk90Tutar)}
+          altBilgi={`${sayilar.riskli} mükellefte birikmiş`}
+          renk={RISK}
+          ikon={<AlertTriangle size={14} />}
+          vurgu={sayilar.riskli > 0}
+        />
       </div>
 
       {/* BUGÜN NE YAPMALIYIM — asıl navigasyon burası */}
@@ -160,40 +177,44 @@ export default function TahsilatView({
         <div className="mb-2.5 text-[12px]" style={{ color: SOLUK }}>
           Bugün ne yapmalıyım
         </div>
-        <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
-          <Kutu
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <SayacKutusu
             etiket="Elle görüşülmeli"
-            alt="90+ gün · otomasyon durur"
+            aciklama="90+ gün · otomasyon durur"
             sayi={sayilar.riskli}
-            tutar={sayilar.riskliTutar}
+            tutar={kisaPara(sayilar.riskliTutar)}
             renk={RISK}
+            ikon={<AlertTriangle size={13} />}
             aktif={kuyruk === 'riskli'}
             onClick={() => setKuyruk(kuyruk === 'riskli' ? 'hepsi' : 'riskli')}
           />
-          <Kutu
+          <SayacKutusu
             etiket="Ulaşılamıyor"
-            alt="Borcu var, telefonu yok"
+            aciklama="Borcu var, telefonu yok"
             sayi={sayilar.ulasilamiyor}
-            tutar={sayilar.ulasilamiyorTutar}
+            tutar={kisaPara(sayilar.ulasilamiyorTutar)}
             renk={UYARI}
+            ikon={<PhoneMissed size={13} />}
             aktif={kuyruk === 'ulasilamiyor'}
             onClick={() => setKuyruk(kuyruk === 'ulasilamiyor' ? 'hepsi' : 'ulasilamiyor')}
           />
-          <Kutu
+          <SayacKutusu
             etiket="Bu ay ödeme yok"
-            alt="Bu dönem tahsilat görünmüyor"
+            aciklama="Bu dönem tahsilat görünmüyor"
             sayi={sayilar.buAy}
-            tutar={sayilar.buAyTutar}
+            tutar={kisaPara(sayilar.buAyTutar)}
             renk={MAVI}
+            ikon={<CalendarX size={13} />}
             aktif={kuyruk === 'buAy'}
             onClick={() => setKuyruk(kuyruk === 'buAy' ? 'hepsi' : 'buAy')}
           />
-          <Kutu
+          <SayacKutusu
             etiket="Borçlu mükellef"
-            alt="Açık bakiyesi olan herkes"
+            aciklama="Açık bakiyesi olan herkes"
             sayi={sayilar.borclu}
-            tutar={toplamBakiye}
-            renk={SOLUK}
+            tutar={kisaPara(toplamBakiye)}
+            renk={UI_MUTED}
+            ikon={<Users size={13} />}
             aktif={kuyruk === 'borclu'}
             onClick={() => setKuyruk(kuyruk === 'borclu' ? 'hepsi' : 'borclu')}
           />
@@ -315,46 +336,7 @@ export default function TahsilatView({
   );
 }
 
-function Rakam({ etiket, deger, renk, buyuk }: { etiket: string; deger: string; renk: string; buyuk?: boolean }) {
-  return (
-    <span>
-      <span className="block text-[10.5px] uppercase tracking-[0.12em]" style={{ color: SOLUK }}>
-        {etiket}
-      </span>
-      <span className={`block tabular-nums ${buyuk ? 'text-[22px]' : 'text-[17px]'}`} style={{ color: renk }}>
-        {deger}
-      </span>
-    </span>
-  );
-}
 
-function Kutu({
-  etiket, alt, sayi, tutar, renk, aktif, onClick,
-}: {
-  etiket: string; alt: string; sayi: number; tutar?: number; renk: string; aktif: boolean; onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className="rounded-xl px-3.5 py-3 text-left transition"
-      style={{
-        background: aktif ? `${renk}12` : KART,
-        border: `1px solid ${aktif ? `${renk}44` : CIZGI}`,
-      }}
-    >
-      <span className="flex items-baseline justify-between gap-2">
-        <span className="text-[12px]" style={{ color: aktif ? renk : METIN }}>{etiket}</span>
-        <span className="text-[18px] tabular-nums" style={{ color: renk }}>{sayi}</span>
-      </span>
-      <span className="mt-0.5 flex items-baseline justify-between gap-2">
-        <span className="text-[10.5px]" style={{ color: SOLUK }}>{alt}</span>
-        {tutar !== undefined && tutar > 0 && (
-          <span className="text-[10.5px] tabular-nums" style={{ color: SOLUK }}>{kisaPara(tutar)}</span>
-        )}
-      </span>
-    </button>
-  );
-}
 
 function Eylem({
   ikon, baslik, onClick, renk = '#8b8b93', pasif,
