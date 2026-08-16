@@ -22,6 +22,7 @@ import {
 import { api } from '@/lib/api';
 import { ButcePlanView, GelirGiderTablosuView, IstatistikView, KasaBankaView } from './ButceTakipView';
 import TahsilatOtomasyonView from './TahsilatOtomasyonView';
+import TahsilatView from './TahsilatView';
 
 // ===== SADE KOYU PALET (referans HTML'lere göre) =====
 const GOLD = '#e6c878';
@@ -409,56 +410,16 @@ export function CariTahsilatWorkspace({ onSelect }: { onSelect: (id: string) => 
         {view === 'otomasyon' && <TahsilatOtomasyonView />}
 
         {view === 'tahsilat' && (
-          <>
-            {/* ===== METRİKLER (4) — kutulu kartlar; alacak/risk kartları tıklanınca filtreler ===== */}
-            <div className="mt-8 grid grid-cols-2 gap-3 lg:grid-cols-4">
-              <MetricCard index={0} label="Toplam Alacak" value={`${fmt(stats.bakiye)} ₺`} color={DEBT} active={filter === 'debt'} onClick={() => setFilter(filter === 'debt' ? 'all' : 'debt')} />
-              <MetricCard index={1} label="Aylık Ücret (Top.)" value={`${fmt(stats.monthlyTarget)} ₺`} color={GOLD} />
-              <MetricCard index={2} label="Tahsilat Oranı" value={`%${stats.tahsilatOrani.toFixed(0)}`} color={OK} />
-              <MetricCard index={3} label="90+ Gün Risk" value={`${fmt(risk90Tutar)} ₺`} color={DEBT} active={filter === 'over90'} onClick={() => setFilter(filter === 'over90' ? 'all' : 'over90')} />
-            </div>
-
-            {/* ===== ARAMA + FİLTRE ÇİPLERİ ===== */}
-            <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="relative w-full sm:max-w-md">
-                <Search size={16} strokeWidth={1.7} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: SOFT }} />
-                <input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Mükellef ara…"
-                  aria-label="Mükellef ara"
-                  className="w-full rounded-xl py-2.5 pl-10 pr-3 text-[14px] outline-none"
-                  style={{ border: `1px solid ${CARD_BORDER}`, background: 'rgba(255,255,255,0.02)', color: TEXT }}
-                />
-              </div>
-              <div className="flex items-center gap-2">
-                <Chip label="Tümü" active={filter === 'all'} onClick={() => setFilter('all')} />
-                <Chip label="Borçlu" active={filter === 'debt'} onClick={() => setFilter('debt')} />
-                <Chip label="90+ gün" active={filter === 'over90'} onClick={() => setFilter('over90')} />
-              </div>
-            </div>
-
-            {/* ===== WhatsApp önizleme bandı (varsa) ===== */}
-            {preview && (
-              <div className="mt-4 rounded-xl px-4 py-2.5 text-[13px] font-medium" style={{ background: 'rgba(230,200,120,0.06)', border: `1px solid rgba(230,200,120,0.15)`, color: '#d9d9de' }}>
-                WhatsApp önizleme: {preview.gonderilecek || 0} gönderilecek, {preview.atlanacak || 0} atlanacak.
-                {!preview.whatsapp?.ready && <span style={{ color: GOLD }}> WhatsApp ayarı: {preview.whatsapp?.error}</span>}
-              </div>
-            )}
-
-            {/* ===== TABLO ===== */}
-            <TahsilatTable
-              rows={filteredRows}
-              isLoading={isLoading || ajandaLoading}
-              onOpen={onSelect}
-              onQuickTahsilat={setQuickTahsilat}
-              onWhatsAppRow={sendReminderSingle}
-            />
-
-            <p className="mt-5 text-center text-[12px]" style={{ color: '#52525b' }}>
-              Aylık ücret = aktif aylık hizmetlerin toplamı · <span style={{ color: OK }}>Bu Ay = ödendi</span> / <span style={{ color: DEBT }}>ödenmedi</span> · Borç yaşı çubuğu = bakiyenin vade dağılımı
-            </p>
-          </>
+          <TahsilatView
+            rows={rows as any}
+            isLoading={isLoading || ajandaLoading}
+            toplamBakiye={stats.bakiye}
+            risk90Tutar={risk90Tutar}
+            tahsilatOrani={stats.tahsilatOrani}
+            onOpen={(r: any) => onSelect(r.id)}
+            onQuickTahsilat={setQuickTahsilat as any}
+            onWhatsApp={(r: any) => sendReminderSingle(r)}
+          />
         )}
       </div>
 
