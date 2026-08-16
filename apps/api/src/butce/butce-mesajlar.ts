@@ -204,11 +204,34 @@ export function krediTaksiti(p: {
 
 export function nakitAcigi(p: {
   tarih: Date;
+  /** O gün EK olarak gereken para (devreden açık düşülmüş) */
   acik: number;
+  /** O günkü toplam açık — devreden dahil */
+  toplamAcik?: number;
+  /** Önceki açık gününde kapatıldığı varsayılan tutar */
+  devredenAcik?: number;
   odemeToplami?: number;
   nakit?: number;
-  enUcuzSecenek?: { ad: string; aciklama: string; maliyet: number } | null;
+  enUcuzSecenek?: {
+    ad: string;
+    aciklama: string;
+    maliyet: number;
+    /** Faiz oranı girilmediği için maliyet hesaplanamadı */
+    maliyetBilinmiyor?: boolean;
+    /** Maliyet TCMB ortalamasından tahmin edildi */
+    maliyetTahmini?: boolean;
+  } | null;
 }): Mesaj {
+  // Maliyet 0 çıktığında körü körüne "maliyetsiz" demek yanlış: faiz oranı
+  // girilmemiş olabilir. Üç durum ayrı ayrı yazılır.
+  const maliyetMetni = (x: NonNullable<typeof p.enUcuzSecenek>) =>
+    x.maliyetBilinmiyor
+      ? ' (maliyeti hesaplanamıyor — hesabın faiz oranı girilmemiş)'
+      : x.maliyetTahmini
+        ? ` (~${para(x.maliyet)} tahmini maliyet)`
+        : x.maliyet > 0
+          ? ` (~${para(x.maliyet)} maliyet)`
+          : ' (maliyetsiz)';
   return bicimle({
     anahtar: `nakit-acik-${new Date(p.tarih).toISOString().slice(0, 10)}`,
     baslik: 'Nakit açığı görünüyor',
@@ -216,12 +239,17 @@ export function nakitAcigi(p: {
     satirlar: [
       p.odemeToplami !== undefined ? ['O gün ödenecek', para(p.odemeToplami)] : null,
       p.nakit !== undefined ? ['Beklenen nakit', para(p.nakit)] : null,
-      ['Açık', `*${para(p.acik)}*`],
+      // Devreden varsa toplam ve fark ayrı gösterilir; aksi hâlde aynı açık
+      // iki gün üst üste tam tutarıyla istenmiş gibi görünüyordu
+      p.devredenAcik && p.devredenAcik > 0
+        ? ['O günkü toplam açık', para(p.toplamAcik ?? p.acik)]
+        : null,
+      p.devredenAcik && p.devredenAcik > 0
+        ? ['Önceki öneriyle kapatılan', para(p.devredenAcik)]
+        : null,
+      [p.devredenAcik && p.devredenAcik > 0 ? 'Ek gereken' : 'Açık', `*${para(p.acik)}*`],
       p.enUcuzSecenek
-        ? [
-            'En ucuz çözüm',
-            `${p.enUcuzSecenek.ad}${p.enUcuzSecenek.maliyet > 0 ? ` (~${para(p.enUcuzSecenek.maliyet)} maliyet)` : ' (maliyetsiz)'}`,
-          ]
+        ? ['En ucuz çözüm', `${p.enUcuzSecenek.ad}${maliyetMetni(p.enUcuzSecenek)}`]
         : null,
     ],
     aksiyon: p.enUcuzSecenek ? p.enUcuzSecenek.aciklama : 'Ödeme planı ekranından seçeneklere bakın.',
@@ -244,7 +272,7 @@ export function gunlukOzet(p: {
     baslik: 'Bugünün ödemeleri',
     kaynak: `${tarih(p.bugun)} ${gunAdi(p.bugun)}`,
     satirlar: [
-      ['Hesaplarınızdaki para', para(p.nakit)],
+      ['Elinizdeki para (banka + kasa)', para(p.nakit)],
       ...p.odemeler.map((o) => [`• ${o.ad}`, para(o.tutar)] as [string, string]),
       ['Toplam ödeme', `*${para(toplamOdeme)}*`],
       ...(p.beklenenGirisler.length
@@ -304,6 +332,10 @@ export function limitUyarisi(p: { banka: string; kart: string; doluluk: number; 
 const AYLAR = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
 
 export function aylikOzet(p: {
+  /** Ofis gideri — kazançtan indirilebilen kısım */
+  ofisGider?: number;
+  /** Kişisel harcama — indirilemeyen kısım */
+  kisiselGider?: number;
   donem: string;
   gelir: number;
   gider: number;
@@ -321,7 +353,11 @@ export function aylikOzet(p: {
     satirlar: [
       ['Gelir', para(p.gelir)],
       ['Gider', para(p.gider)],
+      // Ofis/kişisel ayrımı vergi açısından anlamlı olan kırılım
+      p.ofisGider !== undefined ? ['• Ofis gideri', para(p.ofisGider)] : null,
+      p.kisiselGider !== undefined ? ['• Kişisel harcama', para(p.kisiselGider)] : null,
       ['Kalan', `*${para(p.net)}*`],
+      p.ofisGider !== undefined ? ['Ofis kazancı (matrah)', para(p.gelir - p.ofisGider)] : null,
       ['Toplam borç', para(p.toplamBorc)],
       ['Borca ayrılabilir', para(p.kapasite)],
       ...(p.ilkAy.length

@@ -17,6 +17,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { OwnerOnlyGuard } from '../auth/guards/owner-only.guard';
 import { ButcePinGuard, PinSerbest } from './butce-pin.guard';
+import { ButceCron } from './butce.cron';
 import { ButcePinService } from './butce-pin.service';
 import { ButceService, Kimlik, DefterSecim } from './butce.service';
 import { ButceAiService } from './butce-ai.service';
@@ -35,6 +36,7 @@ export class ButceController {
     private readonly ai: ButceAiService,
     private readonly ekstreImport: ButceEkstreImportService,
     private readonly pin: ButcePinService,
+    private readonly cron: ButceCron,
   ) {}
 
   private kimlik(req: any): Kimlik {
@@ -108,6 +110,15 @@ export class ButceController {
   @Get('kasa')
   kasa(@Req() req: any) {
     return this.butce.kasaOzet(this.kimlik(req));
+  }
+
+  /**
+   * Bildirim şablonlarını GERÇEK verinizle üretir.
+   * gonder=1 verilmedikçe hiçbir mesaj gönderilmez; yalnız metinler döner.
+   */
+  @Post('sablon-testi')
+  sablonTesti(@Req() req: any, @Body() body: any) {
+    return this.cron.sablonOnizleme(this.kimlik(req), body?.gonder === true || body?.gonder === 1);
   }
 
   @Get('kasa/hareketler')

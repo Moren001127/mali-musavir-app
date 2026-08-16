@@ -296,6 +296,8 @@ export class ButceCron {
       MESAJ.nakitAcigi({
         tarih: new Date(`${ilk.tarih}T00:00:00.000Z`),
         acik: ilk.acik,
+        toplamAcik: ilk.toplamAcik,
+        devredenAcik: ilk.devredenAcik,
         odemeToplami: gun?.cikis,
         nakit: gun ? gun.bakiye + gun.cikis - gun.giris : undefined,
         enUcuzSecenek: ilk.secenekler?.find((x: any) => x.onerilen) || null,
@@ -321,6 +323,8 @@ export class ButceCron {
         k,
         ayar,
         MESAJ.aylikOzet({
+          ofisGider: ozet.meslekiGider,
+          kisiselGider: ozet.kisiselGider,
           donem: oncekiDonem,
           gelir: ozet.gelir,
           gider: ozet.gider,
@@ -341,6 +345,215 @@ export class ButceCron {
    * Bildirim: portal zili (yalnız sahibin kullanıcısına) + WhatsApp.
    * dedupeEk verilirse aynı gün ikinci kez gönderilmez.
    */
+  /**
+   * TÜM ŞABLONLARI GERÇEK VERİYLE ÜRET.
+   *
+   * Amaç: kullanıcı bildirimlerin nasıl görüneceğini önceden görebilsin ve
+   * model değişikliklerinden sonra bozulan şablon varsa yakalansın.
+   * `gonder` false ise HİÇBİR mesaj gitmez; yalnız metinler döner.
+   */
+  async sablonOnizleme(
+    k: { tenantId: string; userId: string },
+    gonder = false,
+  ): Promise<Array<{ anahtar: string; baslik: string; metin: string; gonderildi: boolean }>> {
+    const ayar = await this.butce.ayarGetir(k);
+    const donem = new Date().toISOString().slice(0, 7);
+    const bugun = new Date();
+
+    const [ozet, plan, akis, kartlar, hesaplar, borclar] = await Promise.all([
+      this.butce.ozet(k, donem).catch(() => null),
+      this.butce.plan(k, {}).catch(() => null),
+      this.butce.nakitAkisi(k, { gunSayisi: 30 }).catch(() => null),
+      this.butce.kartlar(k).catch(() => [] as any[]),
+      this.butce.bankaHesaplar(k).catch(() => [] as any[]),
+      this.butce.borclar(k, false, 'TUMU').catch(() => [] as any[]),
+    ]);
+
+    const mesajlar: MESAJ.Mesaj[] = [];
+    const ekle = (m: MESAJ.Mesaj | null) => {
+      if (m) mesajlar.push(m);
+    };
+
+    // 1) Kart ekstreleri — durumuna göre uygun şablon
+    for (const kk of kartlar as any[]) {
+      const e = (kk.ekstreler || [])[0];
+      if (!e) continue;
+      const ortak = { banka: kk.bankaAdi, kart: kk.kartAdi };
+      if (e.borcTutari === null) {
+        ekle(
+          MESAJ.tutarBekleniyor({
+            ...ortak,
+            donem: e.donem,
+            gecenGun: Math.max(0, -(e.kalanGun ?? 0)),
+            sonOdemeTarihi: new Date(e.sonOdemeTarihi),
+            kalanGun: e.kalanGun ?? 0,
+          }),
+        );
+      } else if (e.durum === 'GECIKTI') {
+        ekle(
+          MESAJ.odemeGecikti({
+            ...ortak,
+            gecikmeGun: Math.abs(e.kalanGun ?? 0),
+            kalanTutar: e.kalanTutar ?? 0,
+            asgariTutar: e.asgariTutar ?? undefined,
+            gecikmeFaizi: kk.gecikmeFaizOrani || kk.aylikFaizOrani || 0,
+          }),
+        );
+      } else if (e.durum === 'ASGARI_ODENDI') {
+        ekle(
+          MESAJ.asgariOdendi({
+            ...ortak,
+            kalanTutar: e.kalanTutar ?? 0,
+            aylikFaiz: kk.aylikFaizOrani || 0,
+          }),
+        );
+      } else {
+        ekle(
+          MESAJ.sonOdemeYaklasti({
+            ...ortak,
+            kalanGun: e.kalanGun ?? 0,
+            kalanTutar: e.kalanTutar ?? 0,
+            asgariTutar: e.asgariTutar ?? 0,
+            sonOdemeTarihi: new Date(e.sonOdemeTarihi),
+          }),
+        );
+      }
+      // Limit uyarısı
+      if ((kk.doluluk || 0) >= 90) {
+        ekle(
+          MESAJ.limitUyarisi({
+            ...ortak,
+            doluluk: Math.round(kk.doluluk || 0),
+            kalanLimit: kk.kullanilabilirLimit || 0,
+          }),
+        );
+      }
+    }
+
+    // 2) Kredi taksiti
+    for (const b of borclar as any[]) {
+      if (b.kalanAnapara <= 0) continue;
+      ekle(
+        MESAJ.krediTaksiti({
+          ad: b.ad,
+          tutar: b.taksitTutari,
+          kalanGun: Math.max(0, (b.odemeGunu || 1) - new Date().getUTCDate()),
+          odemeGunu: b.odemeGunu,
+          kalanTaksit: b.kalanTaksit,
+          kalanAnapara: b.kalanAnapara,
+        }),
+      );
+      break; // önizlemede tek örnek yeter
+    }
+
+    // 3) KMH uyarısı
+    for (const h of hesaplar as any[]) {
+      if ((h.kmhBorcu || 0) > 0) {
+        ekle(
+          MESAJ.kmhUyarisi({
+            banka: h.bankaAdi,
+            hesap: h.ad,
+            borc: h.kmhBorcu,
+            limit: h.kmhLimiti,
+            aylikFaiz: h.kmhAylikFaiz || 0,
+          }),
+        );
+        break;
+      }
+    }
+
+    // 4) Nakit açığı
+    if (akis?.oneriler?.length) {
+      const ilk: any = akis.oneriler[0];
+      const gun: any = akis.gunler.find((g: any) => g.tarih === ilk.tarih);
+      ekle(
+        MESAJ.nakitAcigi({
+          tarih: new Date(`${ilk.tarih}T00:00:00.000Z`),
+          acik: ilk.acik,
+          toplamAcik: ilk.toplamAcik,
+          devredenAcik: ilk.devredenAcik,
+          odemeToplami: gun?.cikis,
+          nakit: gun ? gun.bakiye + gun.cikis - gun.giris : undefined,
+          enUcuzSecenek: ilk.secenekler?.find((x: any) => x.onerilen) || null,
+        }),
+      );
+    }
+
+    // 5) Günün ödemeleri
+    if (akis?.gunler?.length) {
+      const bugunKey = bugun.toISOString().slice(0, 10);
+      const g: any = akis.gunler.find((x: any) => x.tarih === bugunKey) || akis.gunler[0];
+      ekle(
+        MESAJ.gunlukOzet({
+          bugun: new Date(`${g.tarih}T00:00:00.000Z`),
+          nakit: ozet?.nakitVarlik ?? 0,
+          odemeler: (g.hareketler || [])
+            .filter((h: any) => h.tutar < 0)
+            .map((h: any) => ({ ad: h.ad, tutar: Math.abs(h.tutar) })),
+          beklenenGirisler: (g.hareketler || [])
+            .filter((h: any) => h.tutar > 0)
+            .map((h: any) => ({ ad: h.ad, tutar: h.tutar })),
+        }),
+      );
+    }
+
+    // 6) Aylık özet
+    if (ozet && plan) {
+      ekle(
+        MESAJ.aylikOzet({
+          donem,
+          gelir: ozet.gelir,
+          gider: ozet.gider,
+          ofisGider: ozet.meslekiGider,
+          kisiselGider: ozet.kisiselGider,
+          net: ozet.net,
+          toplamBorc: ozet.borcOzet.toplam,
+          kapasite: plan.kapasite,
+          ilkAy: plan.secilen.ilkAy
+            .filter((x: any) => x.toplam > 0)
+            .map((x: any) => ({ ad: x.ad, tutar: x.toplam })),
+          kapanisAy: plan.secilen.ayAdedi,
+        }),
+      );
+    }
+
+    // 7) Hesap kesim hatırlatması (ilk kart üzerinden örnek)
+    const ilkKart: any = (kartlar as any[])[0];
+    if (ilkKart) {
+      ekle(
+        MESAJ.kesimGunu({
+          banka: ilkKart.bankaAdi,
+          kart: ilkKart.kartAdi,
+          sonOdemeTarihi: new Date(bugun.getTime() + 10 * 86400000),
+        }),
+      );
+    }
+
+    const numara =
+      ayar.whatsappNumara ||
+      String(process.env.MOREN_OWNER_WHATSAPP_PHONES || process.env.MOREN_OWNER_WHATSAPP_PHONE || '')
+        .split(',')[0]
+        .trim();
+
+    const cikti: Array<{ anahtar: string; baslik: string; metin: string; gonderildi: boolean }> = [];
+    for (const m of mesajlar) {
+      const metin = MESAJ.whatsappMetni(m);
+      let gonderildi = false;
+      if (gonder && numara) {
+        try {
+          await this.whatsapp.sendMessageDetailed(numara, metin, k.tenantId);
+          gonderildi = true;
+          // Köprüyü boğmamak için araya kısa bekleme
+          await new Promise((r) => setTimeout(r, 1200));
+        } catch (e: any) {
+          this.logger.warn(`şablon testi gönderilemedi: ${e?.message || e}`);
+        }
+      }
+      cikti.push({ anahtar: m.anahtar, baslik: m.baslik, metin, gonderildi });
+    }
+    return cikti;
+  }
+
   private async bildir(
     k: { tenantId: string; userId: string },
     ayar: any,
