@@ -10,10 +10,11 @@
  * cevaplanır.
  */
 
-export type Kademe = 'K0' | 'K1' | 'K2' | 'K3' | 'ELLE';
+/** 'TEK' = kademe süzgeci kaldırıldıktan sonraki tek tip hatırlatma */
+export type Kademe = 'TEK' | 'K0' | 'K1' | 'K2' | 'K3' | 'ELLE';
 
 /** Kademe eşikleri — en eski açık borcun gecikme günü */
-export const KADEME_ESIK: Record<Exclude<Kademe, 'ELLE'>, number> = {
+export const KADEME_ESIK: Record<'K0' | 'K1' | 'K2' | 'K3', number> = {
   K0: 0, // vadesi bugün gelmiş, henüz gecikmemiş
   K1: 7,
   K2: 30,
@@ -131,61 +132,27 @@ export function kademeBelirle(gecikmeGun: number, sonKademe?: Kademe | null): Ka
 }
 
 /**
- * Kademe metinleri — MUHASEBE OFİSİ KURUMSAL DİLİ.
+ * TEK TİP HATIRLATMA METNİ.
  *
- * Resmî iş yazışması tonu: "Sayın" hitabı, nazik ama net fiiller,
- * "Saygılarımızla" kapanışı. Sistem dili ("ödeme kaydı bulunmuyor") yerine
- * ofis dili ("ödemesi tarafımıza ulaşmamıştır") kullanılır.
- * Tehdit dili ve hatırlatmayı geçersiz kılan kalıplar yoktur.
+ * Kademeye göre farklı metin yazma fikri kaldırıldı (kullanıcı kararı):
+ * mali müşavir–mükellef ilişkisinde borcun 10 günlük mü 60 günlük mü olduğuna
+ * göre dil değiştirmek yapay duruyordu. Herkese aynı, kısa ve net mesaj gider;
+ * değişen tek şey tutardır.
  */
+export function hatirlatmaMesaji(p: { ad: string; bakiye: number; ofisAdi: string }): string {
+  return (
+    `Sayın ${p.ad},\n\n` +
+    `Cari hesabınızda *${paraTR(p.bakiye)}* borç görünüyor.\n\n` +
+    `Bilginize.\n\n${p.ofisAdi}`
+  );
+}
+
+/** Eski çağrı yolu korunuyor; kademeden bağımsız aynı metni döndürür. */
 export function kademeMesaji(
-  kademe: Kademe,
+  _kademe: Kademe,
   p: { ad: string; bakiye: number; gecikmeGun: number; ofisAdi: string; sonTahsilat?: Date | null },
 ): string {
-  const tutar = paraTR(p.bakiye);
-  const kapanis = `\n\nSaygılarımızla,\n${p.ofisAdi}`;
-
-  switch (kademe) {
-    case 'K0':
-      return (
-        `Sayın ${p.ad},\n\n` +
-        `Cari hesabınızda *${tutar}* tutarında bakiye bulunmaktadır.\n\n` +
-        `Ödemenizi tamamlamanızı rica eder, bilginize sunarız.` +
-        kapanis
-      );
-
-    case 'K1':
-      return (
-        `Sayın ${p.ad},\n\n` +
-        `Cari hesabınızda bulunan *${tutar}* tutarındaki bakiyenin vadesi geçmiş olup, ` +
-        `ödemesi tarafımıza ulaşmamıştır.\n\n` +
-        `Ödemenizi tamamlamanızı ya da ödeme planınızı tarafımıza bildirmenizi rica ederiz.` +
-        kapanis
-      );
-
-    case 'K2':
-      return (
-        `Sayın ${p.ad},\n\n` +
-        `Cari hesabınızda *${tutar}* tutarında ve ${p.gecikmeGun} gündür bekleyen bakiye ` +
-        `bulunmaktadır. Hesap dökümünüz ekte bilgilerinize sunulmuştur.\n\n` +
-        `Dökümde mutabık kalmadığınız bir husus varsa tarafımıza bildirmenizi, ` +
-        `aksi hâlde ödemenizi tamamlamanızı rica ederiz.` +
-        kapanis
-      );
-
-    case 'K3':
-      return (
-        `Sayın ${p.ad},\n\n` +
-        `Cari hesabınızdaki *${tutar}* tutarındaki bakiye ${p.gecikmeGun} gündür açık olup, ` +
-        `hatırlatmalarımıza tarafınızdan dönüş sağlanamamıştır.\n\n` +
-        `Konunun görüşülmesi için size uygun bir zaman bildirmenizi rica ederiz. ` +
-        `Talebiniz hâlinde ödeme planı düzenlenebilir.` +
-        kapanis
-      );
-
-    default:
-      return '';
-  }
+  return hatirlatmaMesaji(p);
 }
 
 /**
@@ -247,9 +214,9 @@ export function kademeKarari(
     return bos(`Son hatırlatmadan ${gunFarki(bugun, sonTemas)} gün geçti (en az ${bekleme} gün)`);
   }
 
-  const kademe = kademeBelirle(a.gecikmeGun, a.sonKademe);
-
-  if (kademe === 'ELLE') {
+  // 90 günü geçen borçta bot susar; bu bir metin tercihi değil, ilişkiyi
+  // koruyan frendir — kademe merdiveni kalksa da yerinde duruyor.
+  if (a.gecikmeGun >= ELLE_ESIK) {
     return {
       taxpayerId: a.taxpayerId,
       ad: a.ad,
@@ -262,22 +229,16 @@ export function kademeKarari(
     };
   }
 
+  // Kademe süzgeci kaldırıldı: herkese aynı metin gider.
   return {
     taxpayerId: a.taxpayerId,
     ad: a.ad,
-    kademe,
+    kademe: 'TEK',
     gonderilebilir: true,
     sebep: null,
-    // K3 "görüşme çağrısı" — ilişki hassas, sahip görmeden gitmez
-    onayGerekli: kademe === 'K3',
-    mesaj: kademeMesaji(kademe, {
-      ad: a.ad,
-      bakiye: a.bakiye,
-      gecikmeGun: a.gecikmeGun,
-      ofisAdi,
-      sonTahsilat,
-    }),
-    ekstreEkle: kademe === 'K2',
+    onayGerekli: false,
+    mesaj: hatirlatmaMesaji({ ad: a.ad, bakiye: a.bakiye, ofisAdi }),
+    ekstreEkle: false,
   };
 }
 
@@ -303,13 +264,10 @@ export function gunlukPlan(
   const atlanan = kararlar.filter((k) => !k.gonderilebilir && k.kademe !== 'ELLE');
 
   const otomatik = kararlar.filter((k) => k.gonderilebilir && !k.onayGerekli);
-  // Riskli olan önce: yüksek kademe, sonra büyük bakiye
-  const sira: Record<string, number> = { K3: 3, K2: 2, K1: 1, K0: 0 };
+  // Kademe kalktığı için öncelik ölçüsü artık tek: büyük bakiye önce.
   const bakiyeHarita = new Map(adaylar.map((a) => [a.taxpayerId, a.bakiye]));
   otomatik.sort(
-    (x, y) =>
-      (sira[y.kademe || 'K0'] || 0) - (sira[x.kademe || 'K0'] || 0) ||
-      (bakiyeHarita.get(y.taxpayerId) || 0) - (bakiyeHarita.get(x.taxpayerId) || 0),
+    (x, y) => (bakiyeHarita.get(y.taxpayerId) || 0) - (bakiyeHarita.get(x.taxpayerId) || 0),
   );
 
   const tavan = ayar.gunlukTavan ?? VARSAYILAN_AYAR.gunlukTavan;

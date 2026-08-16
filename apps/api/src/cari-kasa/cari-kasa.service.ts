@@ -1333,6 +1333,8 @@ ${rows}
         sonGelenMesajTarihi: sonGelen.get(r.id) || null,
         susturmaBitis: sus?.bitis || null,
         susturmaSebebi: sus?.not || sus?.sebep || null,
+        // Ekranda satır bazında aç/kapat düğmesi için
+        otomasyonKapali: (ayar.haricTutulan || []).includes(r.id),
         isiBirakti: Boolean(r.isiBirakti),
         aktif: r.aktif !== false,
       };
@@ -1369,6 +1371,46 @@ ${rows}
     if (Number(r.d31_60 || 0) > 0) return 31;
     if (Number(r.d0_30 || 0) > 0) return 1;
     return 0;
+  }
+
+  /**
+   * MÜKELLEF BAZINDA OTOMASYON AÇ/KAPAT.
+   *
+   * Kullanıcı: "zaten aylık düzenli ödeme yapan firmalara sürekli mesaj
+   * atmasını istemiyorum." Düzenli ödeyen mükellefe hatırlatma göndermek
+   * ilişkiyi yıpratır; bu yüzden kişi bazında kalıcı kapatma gerekiyor.
+   *
+   * SmartDispatchSetting.excludedTaxpayerIds kullanılır — süreli susturmadan
+   * (TahsilatSusturma) farkı: bu kalıcıdır, elle geri açılana kadar sürer.
+   */
+  async tahsilatOtomasyonMukellefDurum(tenantId: string, taxpayerId: string, acik: boolean) {
+    const kayit = await (this.prisma as any).smartDispatchSetting.findFirst({
+      where: { tenantId, kategori: 'TAHSILAT' },
+    });
+
+    const mevcut: string[] = kayit?.excludedTaxpayerIds || [];
+    const yeni = acik
+      ? mevcut.filter((x) => x !== taxpayerId)
+      : Array.from(new Set([...mevcut, taxpayerId]));
+
+    if (kayit) {
+      await (this.prisma as any).smartDispatchSetting.update({
+        where: { id: kayit.id },
+        data: { excludedTaxpayerIds: yeni },
+      });
+    } else {
+      // Kayıt yoksa GÜVENLİ varsayılanla oluştur: otomasyon kapalı, test modu açık
+      await (this.prisma as any).smartDispatchSetting.create({
+        data: {
+          tenantId,
+          kategori: 'TAHSILAT',
+          enabled: false,
+          testMode: true,
+          excludedTaxpayerIds: yeni,
+        },
+      });
+    }
+    return { taxpayerId, otomasyonAcik: acik, haricTutulanSayisi: yeni.length };
   }
 
   /**

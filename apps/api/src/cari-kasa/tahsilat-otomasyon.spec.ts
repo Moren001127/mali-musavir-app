@@ -1,5 +1,4 @@
 import {
-  kademeBelirle,
   kademeKarari,
   gunlukPlan,
   TahsilatAdayi,
@@ -18,34 +17,6 @@ const aday = (o: Partial<TahsilatAdayi> = {}): TahsilatAdayi => ({
   bakiye: 12000,
   gecikmeGun: 10,
   ...o,
-});
-
-describe('tahsilat otomasyonu — kademe merdiveni', () => {
-  it('gecikme gününe göre kademe seçer', () => {
-    expect(kademeBelirle(0)).toBe('K0');
-    expect(kademeBelirle(6)).toBe('K0');
-    expect(kademeBelirle(7, 'K0')).toBe('K1');
-    expect(kademeBelirle(35, 'K1')).toBe('K2');
-    expect(kademeBelirle(70, 'K2')).toBe('K3');
-    expect(kademeBelirle(95)).toBe('ELLE');
-  });
-
-  it('KADEME ATLANMAZ: 60 gün gecikmiş ama hiç yazılmamışsa önce K0 gider', () => {
-    // Yeni devralınan borç senaryosu — ilk temas "görüşme çağrısı" olmamalı
-    expect(kademeBelirle(60, null)).toBe('K0');
-    expect(kademeBelirle(60, 'K0')).toBe('K1');
-    expect(kademeBelirle(60, 'K1')).toBe('K2');
-    expect(kademeBelirle(60, 'K2')).toBe('K3');
-  });
-
-  it('hedefi aşmaz: 10 gün gecikmede K2 gitmez', () => {
-    expect(kademeBelirle(10, 'K1')).toBe('K1');
-  });
-
-  it('90 gün üstü her hâlükârda ELLE — bot susar', () => {
-    expect(kademeBelirle(120, 'K2')).toBe('ELLE');
-    expect(kademeBelirle(90, null)).toBe('ELLE');
-  });
 });
 
 describe('tahsilat otomasyonu — durdurma kuralları', () => {
@@ -131,11 +102,29 @@ describe('tahsilat otomasyonu — durdurma kuralları', () => {
 });
 
 describe('tahsilat otomasyonu — mesajlar', () => {
-  it('K0 adı ve tutarı net verir', () => {
+  it('adı ve tutarı net verir', () => {
     const k = kademeKarari(aday({ gecikmeGun: 0 }), AYAR, BUGUN);
     expect(k.mesaj).toContain('AHMET ATALAY');
     expect(k.mesaj).toContain('12.000,00 TL');
-    expect(k.mesaj).toMatch(/ödemenizi tamamlamanızı/i);
+    expect(k.mesaj).toMatch(/borç görünüyor/i);
+  });
+
+  it('TEK TİP: gecikme ne olursa olsun aynı metin gider', () => {
+    // Kademe süzgeci kaldırıldı (kullanıcı kararı). Değişen tek şey tutar.
+    const a = kademeKarari(aday({ gecikmeGun: 2 }), AYAR, BUGUN).mesaj;
+    const b = kademeKarari(aday({ gecikmeGun: 45 }), AYAR, BUGUN).mesaj;
+    const c = kademeKarari(aday({ gecikmeGun: 80 }), AYAR, BUGUN).mesaj;
+    expect(a).toBe(b);
+    expect(b).toBe(c);
+  });
+
+  it('ekstre eki ve sahip onayı kavramları kalktı', () => {
+    for (const g of [5, 40, 75]) {
+      const k = kademeKarari(aday({ gecikmeGun: g }), AYAR, BUGUN);
+      expect(k.ekstreEkle).toBe(false);
+      expect(k.onayGerekli).toBe(false);
+      expect(k.kademe).toBe('TEK');
+    }
   });
 
   it('GEVŞETİCİ KALIPLAR YOK — hatırlatmayı geçersiz kılan ifadeler kullanılmaz', () => {
@@ -145,29 +134,15 @@ describe('tahsilat otomasyonu — mesajlar', () => {
     // geçersiz kılan ve isteğe çeviren kalıplardır.
     const yasak = /uygun olduğunuzda|dikkate almay|dekont iletm|seviniriz/i;
     for (const [g, onceki] of [[0, null], [10, 'K0'], [40, 'K1'], [75, 'K2']] as const) {
-      const k = kademeKarari(aday({ gecikmeGun: g, sonKademe: onceki as any }), AYAR, BUGUN);
+      const k = kademeKarari(aday({ gecikmeGun: g }), AYAR, BUGUN);
       if (k.mesaj) expect(k.mesaj).not.toMatch(yasak);
     }
-  });
-
-  it('K2 hesap dökümünden bahseder ve ekstre eklenir', () => {
-    const k = kademeKarari(aday({ gecikmeGun: 40, sonKademe: 'K1' }), AYAR, BUGUN);
-    expect(k.kademe).toBe('K2');
-    expect(k.ekstreEkle).toBe(true);
-    expect(k.mesaj).toMatch(/hesap dökümü/i);
-  });
-
-  it('K3 görüşme çağrısıdır ve SAHİP ONAYI ister', () => {
-    const k = kademeKarari(aday({ gecikmeGun: 75, sonKademe: 'K2' }), AYAR, BUGUN);
-    expect(k.kademe).toBe('K3');
-    expect(k.onayGerekli).toBe(true);
-    expect(k.mesaj).toMatch(/görüşülmesi|ödeme planı/i);
   });
 
   it('hiçbir mesaj tehditkâr dil içermez', () => {
     const yasak = /icra|haciz|dava|yasal işlem|avukat|savcı/i;
     for (const g of [0, 10, 40, 75]) {
-      const k = kademeKarari(aday({ gecikmeGun: g, sonKademe: g > 60 ? 'K2' : g > 30 ? 'K1' : 'K0' }), AYAR, BUGUN);
+      const k = kademeKarari(aday({ gecikmeGun: g }), AYAR, BUGUN);
       if (k.mesaj) expect(k.mesaj).not.toMatch(yasak);
     }
   });
@@ -192,21 +167,17 @@ describe('tahsilat otomasyonu — günlük plan', () => {
 
   it('tavan dolduğunda önce RİSKLİ olanlar gider', () => {
     const adaylar: TahsilatAdayi[] = [
-      aday({ taxpayerId: 'kucuk', bakiye: 1000, gecikmeGun: 8, sonKademe: 'K0' }),
-      aday({ taxpayerId: 'buyuk', bakiye: 90000, gecikmeGun: 45, sonKademe: 'K1' }),
+      aday({ taxpayerId: 'kucuk', bakiye: 1000, gecikmeGun: 8 }),
+      aday({ taxpayerId: 'buyuk', bakiye: 90000, gecikmeGun: 45 }),
     ];
     const p = gunlukPlan(adaylar, { ...AYAR, gunlukTavan: 1 }, BUGUN);
     expect(p.gonderilecek[0].taxpayerId).toBe('buyuk');
   });
 
-  it('K3 adayları onay kuyruğuna düşer, doğrudan gönderilmez', () => {
-    const p = gunlukPlan(
-      [aday({ taxpayerId: 'k3', gecikmeGun: 70, sonKademe: 'K2' })],
-      AYAR,
-      BUGUN,
-    );
-    expect(p.gonderilecek).toHaveLength(0);
-    expect(p.onayBekleyen).toHaveLength(1);
+  it('onay kuyruğu boş kalır — kademe kalktığı için onay gerekmiyor', () => {
+    const p = gunlukPlan([aday({ taxpayerId: 'x', gecikmeGun: 70 })], AYAR, BUGUN);
+    expect(p.onayBekleyen).toHaveLength(0);
+    expect(p.gonderilecek).toHaveLength(1);
   });
 
   it('90+ mükellefler ayrı kulvarda toplanır', () => {

@@ -207,6 +207,16 @@ export class CariKasaController {
     return this.service.tahsilatOtomasyonPlani(req.user.tenantId);
   }
 
+  /** Mükellef bazında otomasyonu aç/kapat */
+  @Put('tahsilat-otomasyon/mukellef/:id')
+  tahsilatOtomasyonMukellef(@Req() req: any, @Param('id') id: string, @Body() body: any) {
+    return this.service.tahsilatOtomasyonMukellefDurum(
+      req.user.tenantId,
+      id,
+      body?.acik === true,
+    );
+  }
+
   @Post('tahsilat-hatirlatma/preview')
   tahsilatHatirlatmaPreview(@Req() req: any, @Body() body: any) {
     return this.service.tahsilatHatirlatmaPreview(req.user.tenantId, body || {});
