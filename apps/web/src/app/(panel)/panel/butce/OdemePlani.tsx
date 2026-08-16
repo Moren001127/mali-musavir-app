@@ -198,11 +198,20 @@ export default function OdemePlani({ donem, defter = 'TUMU' }: { donem: string; 
               <AlertTriangle size={16} style={{ color: KIRMIZI }} className="mt-0.5" />
               <div>
                 <div className="text-[12.5px] font-semibold" style={{ color: KIRMIZI }}>
-                  Aylık açık: {para(s.acik)} ₺
+                  Her ay {para(s.acik)} ₺ eksik kalıyor
                 </div>
-                <div className="mt-0.5 text-[11.5px]" style={{ color: MUTED }}>
-                  Kapasiteniz zorunlu ödemeleri (kart asgarileri + kredi taksitleri) karşılamıyor. Bu tutar kadar
-                  ek gelir bulmak ya da gideri kısmak gerekiyor; aksi hâlde borç faizle büyür.
+                <div className="mt-0.5 text-[11.5px] leading-relaxed" style={{ color: MUTED }}>
+                  {/* Kullanıcı bulgusu: aşağıdaki tabloda her şey ödenmiş görünüyor ama
+                      burada "açık" yazıyordu; ikisi farklı şeyi ölçtüğü için çelişik
+                      duruyordu. Tablo BU AYI (birikim dahil), bu uyarı HER AY TEKRAR
+                      EDENİ ölçer. */}
+                  Aşağıdaki tabloda bu ayın ödemeleri tam görünüyor, çünkü{' '}
+                  <strong style={{ color: TEXT }}>{para(plan.birikim)} ₺ birikiminiz</strong> devreye giriyor.
+                  Ancak her ay tekrar eden kapasiteniz{' '}
+                  <strong style={{ color: TEXT }}>{para(plan.kapasite)} ₺</strong>, zorunlu ödemeleriniz ise{' '}
+                  <strong style={{ color: TEXT }}>{para(plan.kapasite + s.acik)} ₺</strong>. Birikim tükendiğinde
+                  bu fark her ay borç olarak birikmeye başlar; kalıcı çözüm için gelir artırmak ya da gideri
+                  azaltmak gerekir.
                 </div>
               </div>
             </div>
@@ -236,7 +245,7 @@ export default function OdemePlani({ donem, defter = 'TUMU' }: { donem: string; 
           {/* Bu ay ne ödeyeceğim */}
           <Kutu
             baslik={`${donemTR(donem)} — bu ay hangi borca ne kadar`}
-            aciklama="Zorunlu tutarlar önce ayrılır; artan para en fazla fayda sağlayan borca gider."
+            aciklama={`Bu ay ${para(plan.buAyToplam)} ₺ ile hesaplandı (her ay ${para(plan.kapasite)} ₺ + birikim ${para(plan.birikim)} ₺). Zorunlu tutarlar önce ayrılır; artan para en fazla fayda sağlayan borca gider.`}
             renk={GOLD}
           >
             <table className="w-full text-[12.5px]">

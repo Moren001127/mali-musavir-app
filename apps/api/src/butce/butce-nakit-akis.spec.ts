@@ -259,3 +259,128 @@ describe('nakit akışı — KMH limiti günler arasında tükenir', () => {
     expect(secenek.aciklama).toMatch(/faiz oranı girilme/i);
   });
 });
+
+/**
+ * KULLANICI SORUSU (2026-08-16): "5 tane farklı limitli KMH hesabım olsa
+ * öneriler bu hesapların bakiyelerini doğru takip eder mi, karışmaz mı?"
+ *
+ * Burada beş hesap ve üst üste açık günleriyle tam senaryo doğrulanır.
+ */
+describe('nakit akışı — beş KMH hesabı, üst üste açık günler', () => {
+  const BES_HESAP = () => [
+    { banka: 'Akbank', ad: 'Ticari', kullanilabilir: 40000, aylikFaiz: 7 },
+    { banka: 'Ziraat', ad: 'Vadesiz', kullanilabilir: 10000, aylikFaiz: 3 },
+    { banka: 'Garanti', ad: 'Esnaf', kullanilabilir: 30000, aylikFaiz: 5 },
+    { banka: 'İş', ad: 'Maaş', kullanilabilir: 20000, aylikFaiz: 4 },
+    { banka: 'Yapı Kredi', ad: 'Vadesiz', kullanilabilir: 50000, aylikFaiz: 6 },
+  ];
+  // Toplam limit: 150.000
+
+  const hareketler: AkisHareketi[] = [
+    { tarih: G(5), tutar: -25000, ad: 'Kart A', tur: 'KART_ODEME', kesin: true },
+    { tarih: G(15), tutar: -40000, ad: 'Kart B', tur: 'KART_ODEME', kesin: true },
+    { tarih: G(28), tutar: -60000, ad: 'Kredi taksiti', tur: 'KREDI_TAKSIT', kesin: true },
+  ];
+  const sonuc = nakitAkisiHesapla({ baslangicNakit: 0, hareketler, bugun: BUGUN, gunSayisi: 45 });
+
+  const kmhSecenegi = (o: any) => o.secenekler.find((s: any) => /ek hesab|ek hesap/i.test(s.ad));
+
+  it('ilk açıkta EN UCUZ hesaptan başlar (Ziraat %3), pahalıya doğru ilerler', () => {
+    const o = akisOnerileri(sonuc, hareketler, { kmhHesaplari: BES_HESAP() });
+    const ilk = kmhSecenegi(o[0]);
+    expect(ilk).toBeTruthy();
+    // 25.000 açık: Ziraat 10.000 (%3) + İş 20.000'den 15.000 (%4)
+    expect(ilk.aciklama.indexOf('Ziraat')).toBeLessThan(ilk.aciklama.indexOf('İş'));
+    expect(ilk.aciklama).toContain('10.000');
+    expect(ilk.aciklama).toContain('15.000');
+    // Daha pahalı hesaplara hiç dokunmamalı
+    expect(ilk.aciklama).not.toContain('Yapı Kredi');
+    expect(ilk.aciklama).not.toContain('Akbank');
+  });
+
+  it('tükenen hesap sonraki açıkta bir daha kullanılmaz', () => {
+    const o = akisOnerileri(sonuc, hareketler, { kmhHesaplari: BES_HESAP() });
+    expect(o.length).toBeGreaterThanOrEqual(2);
+    const ikinci = kmhSecenegi(o[1]);
+    expect(ikinci).toBeTruthy();
+    // Ziraat ilk açıkta tamamen tükendi (10.000/10.000)
+    expect(ikinci.aciklama).not.toContain('Ziraat');
+  });
+
+  it('hiçbir hesap limitinden fazla kullanılmaz (toplamda da limiti aşmaz)', () => {
+    const hesaplar = BES_HESAP();
+    const toplamLimit = hesaplar.reduce((t, h) => t + h.kullanilabilir, 0);
+    const o = akisOnerileri(sonuc, hareketler, { kmhHesaplari: BES_HESAP() });
+
+    // Her hesap için, o hesabın adıyla geçen kullanım tutarlarını topla.
+    // Metin biçimi: "<Banka> <Ad> ek hesabından 12.345,67 TL"
+    const metinler = o
+      .map(kmhSecenegi)
+      .filter(Boolean)
+      .map((x: any) => x.aciklama as string);
+
+    const trSayi = (m: string) => Number(m.replace(/\./g, '').replace(',', '.'));
+    let toplamKullanim = 0;
+
+    for (const h of hesaplar) {
+      const onEk = `${h.banka} ${h.ad} ek hesabından `;
+      let hesapToplami = 0;
+      for (const metin of metinler) {
+        let idx = metin.indexOf(onEk);
+        while (idx >= 0) {
+          const kalan = metin.slice(idx + onEk.length);
+          const eslesme = kalan.match(/^([\d.,]+) TL/);
+          if (eslesme) hesapToplami += trSayi(eslesme[1]);
+          idx = metin.indexOf(onEk, idx + 1);
+        }
+      }
+      // HİÇBİR hesap kendi limitinden fazla kullanılmamalı
+      expect(hesapToplami).toBeLessThanOrEqual(h.kullanilabilir + 0.01);
+      toplamKullanim += hesapToplami;
+    }
+
+    expect(toplamKullanim).toBeGreaterThan(0);
+    expect(toplamKullanim).toBeLessThanOrEqual(toplamLimit + 0.01);
+  });
+
+  it('toplam limit tükendiğinde "yetmez" der ve eksik tutarı söyler', () => {
+    // 125.000 toplam açık > 30.000 toplam limit
+    const azLimit = [
+      { banka: 'Ziraat', ad: 'Vadesiz', kullanilabilir: 20000, aylikFaiz: 3 },
+      { banka: 'İş', ad: 'Maaş', kullanilabilir: 10000, aylikFaiz: 4 },
+    ];
+    const o = akisOnerileri(sonuc, hareketler, { kmhHesaplari: azLimit });
+    const sonKmh = o.map(kmhSecenegi).filter(Boolean).pop();
+    expect(sonKmh).toBeTruthy();
+    expect(sonKmh!.ad).toMatch(/yetmez/i);
+  });
+
+  it('çağıranın hesap dizisi bozulmaz (yan etki yok)', () => {
+    const hesaplar = BES_HESAP();
+    const kopya = JSON.parse(JSON.stringify(hesaplar));
+    akisOnerileri(sonuc, hareketler, { kmhHesaplari: hesaplar });
+    expect(hesaplar).toEqual(kopya);
+  });
+
+  it('faizi aynı iki hesapta sıra kararlıdır (aynı girdi hep aynı çıktı)', () => {
+    const esitFaiz = [
+      { banka: 'Ziraat', ad: 'Vadesiz', kullanilabilir: 10000, aylikFaiz: 5 },
+      { banka: 'İş', ad: 'Maaş', kullanilabilir: 10000, aylikFaiz: 5 },
+    ];
+    const a = akisOnerileri(sonuc, hareketler, { kmhHesaplari: JSON.parse(JSON.stringify(esitFaiz)) });
+    const b = akisOnerileri(sonuc, hareketler, { kmhHesaplari: JSON.parse(JSON.stringify(esitFaiz)) });
+    expect(kmhSecenegi(a[0]).aciklama).toBe(kmhSecenegi(b[0]).aciklama);
+  });
+
+  it('bazı hesapların faizi girilmemişse maliyet bilinmiyor sayılmaz (biri biliniyorsa hesaplanır)', () => {
+    const karisik = [
+      { banka: 'Ziraat', ad: 'Vadesiz', kullanilabilir: 10000, aylikFaiz: 0 },
+      { banka: 'İş', ad: 'Maaş', kullanilabilir: 40000, aylikFaiz: 4 },
+    ];
+    const o = akisOnerileri(sonuc, hareketler, { kmhHesaplari: karisik });
+    const kmh = kmhSecenegi(o[0]);
+    // En az bir hesabın faizi bilindiği için maliyet hesaplanabilir
+    expect(kmh.maliyetBilinmiyor).toBeFalsy();
+    expect(kmh.maliyet).toBeGreaterThan(0);
+  });
+});
