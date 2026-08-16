@@ -1275,7 +1275,11 @@ ${rows}
       .catch(() => null);
 
     const ayar: OtomasyonAyari = {
-      enabled: Boolean(ayarKaydi?.enabled),
+      // KURU TESTTE "açık olsaydı ne giderdi" hesaplanır. Kapalıyken herkes
+      // "otomasyon kapalı" diye elenip ekranda hep 0 görünüyordu; kullanıcı
+      // kademelerin nasıl çalıştığını göremiyordu. Gerçek gönderim yine de
+      // yapılmaz — bu metodun içinde tek bir WhatsApp çağrısı yoktur.
+      enabled: true,
       testMode: ayarKaydi?.testMode !== false,
       testPhone: ayarKaydi?.testPhone || null,
       haricTutulan: ayarKaydi?.excludedTaxpayerIds || [],
@@ -1338,7 +1342,7 @@ ${rows}
 
     return {
       // Sistem açık mı — kapalıysa hiçbir şey gönderilmez
-      otomasyonAcik: ayar.enabled,
+      otomasyonAcik: Boolean(ayarKaydi?.enabled),
       testModu: ayar.testMode,
       /** KURU TEST: bu uç asla mesaj göndermez */
       kuruTest: true,
