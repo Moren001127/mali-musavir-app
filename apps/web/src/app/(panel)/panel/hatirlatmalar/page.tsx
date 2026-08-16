@@ -110,7 +110,9 @@ export default function HatirlatmalarPage() {
   });
 
   const tahsilatSend = useMutation({
-    mutationFn: () => api.post('/cari-kasa/tahsilat-hatirlatma/send', {}).then((r) => r.data),
+    // Toplu gönderim ARTIK AÇIKÇA istenir. Boş gövde göndermek sunucuda
+    // "hepsi" sayılıyordu; tek yanlış tıklama 75 mükellefe mesaj demekti.
+    mutationFn: () => api.post('/cari-kasa/tahsilat-hatirlatma/send', { tumu: true }).then((r) => r.data),
     onSuccess: (r) => {
       toast.success(`Tahsilat hatırlatma tamam: ${r.basarili || 0} gönderildi`);
       qc.invalidateQueries({ queryKey: ['tahsilat-reminder-preview'] });

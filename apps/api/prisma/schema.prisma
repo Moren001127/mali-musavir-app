@@ -11,33 +11,33 @@ datasource db {
 // TENANT (Ofis / Multi-tenant izolasyon)
 // ============================================================
 model Tenant {
-  id          String   @id @default(cuid())
-  name        String
-  slug        String   @unique
-  email       String?
-  phone       String?
-  address     String?
+  id              String   @id @default(cuid())
+  name            String
+  slug            String   @unique
+  email           String?
+  phone           String?
+  address         String?
   // Galeri HGS ihlal sorgu sonuc ozetinin gonderilecegi WhatsApp numaralari.
   // Bos ise runner'daki eski sabit liste / owner devreye girer.
   galeriHgsPhones String[] @default([])
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  users                 User[]
-  taxpayers             Taxpayer[]
-  integrationConnections IntegrationConnection[]
-  portalCredentials      PortalCredential[]
-  portalAutomationJobs   PortalAutomationJob[]
-  portalDocuments        PortalDocument[]
-  consents              Consent[]
-  dataRetentionPolicies DataRetentionPolicy[]
-  notifications         Notification[]
-  officeChatThreads     OfficeChatThread[]
-  kdvSessions           KdvControlSession[]
-  smsTemplate           SmsTemplate?
-  officeBudgetCategories OfficeBudgetCategory[]
-  officeBudgetEntries    OfficeBudgetEntry[]
-  officeBudgetPlans      OfficeBudgetPlan[]
+  users                   User[]
+  taxpayers               Taxpayer[]
+  integrationConnections  IntegrationConnection[]
+  portalCredentials       PortalCredential[]
+  portalAutomationJobs    PortalAutomationJob[]
+  portalDocuments         PortalDocument[]
+  consents                Consent[]
+  dataRetentionPolicies   DataRetentionPolicy[]
+  notifications           Notification[]
+  officeChatThreads       OfficeChatThread[]
+  kdvSessions             KdvControlSession[]
+  smsTemplate             SmsTemplate?
+  officeBudgetCategories  OfficeBudgetCategory[]
+  officeBudgetEntries     OfficeBudgetEntry[]
+  officeBudgetPlans       OfficeBudgetPlan[]
   officeFinancialAccounts OfficeFinancialAccount[]
   officeAccountTransfers  OfficeAccountTransfer[]
   automations             Automation[]
@@ -51,40 +51,40 @@ model Tenant {
 // AUTH & RBAC
 // ============================================================
 model User {
-  id           String   @id @default(cuid())
+  id           String    @id @default(cuid())
   tenantId     String
   email        String
   passwordHash String
   firstName    String
   lastName     String
-  isActive     Boolean  @default(true)
+  isActive     Boolean   @default(true)
   lastLoginAt  DateTime?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   // İki adımlı doğrulama (TOTP) — opsiyonel, varsayılan kapalı (mevcut giriş bozulmaz)
-  totpSecret       String?  // base32 secret, crypto.ts ile şifreli saklanır
-  totpEnabled      Boolean  @default(false)
+  totpSecret       String? // base32 secret, crypto.ts ile şifreli saklanır
+  totpEnabled      Boolean   @default(false)
   // Brute-force koruması — hesap bazlı (IP değil; ofis tek-IP'de cezalanmaz)
-  failedLoginCount Int      @default(0)
+  failedLoginCount Int       @default(0)
   lockedUntil      DateTime?
 
-  tenant       Tenant     @relation(fields: [tenantId], references: [id])
-  userRoles    UserRole[]
-  auditLogs    AuditLog[]
-  notifications Notification[]
-  createdOfficeChatThreads OfficeChatThread[] @relation("OfficeChatThreadCreator")
-  officeChatParticipants OfficeChatParticipant[]
-  officeChatMessages OfficeChatMessage[]
+  tenant                   Tenant                  @relation(fields: [tenantId], references: [id])
+  userRoles                UserRole[]
+  auditLogs                AuditLog[]
+  notifications            Notification[]
+  createdOfficeChatThreads OfficeChatThread[]      @relation("OfficeChatThreadCreator")
+  officeChatParticipants   OfficeChatParticipant[]
+  officeChatMessages       OfficeChatMessage[]
 
   // v1.36.74 Faz 1: Gorevler & Hatirlatmalar iliskileri
-  createdTasks       Task[]             @relation("TaskCreator")
-  taskNotes          TaskNote[]
-  taskAttachments    TaskAttachment[]
-  pushSubscriptions  PushSubscription[]
+  createdTasks      Task[]             @relation("TaskCreator")
+  taskNotes         TaskNote[]
+  taskAttachments   TaskAttachment[]
+  pushSubscriptions PushSubscription[]
 
   // Moren AI Otomasyon Motoru
-  createdAutomations Automation[]       @relation("AutomationCreator")
+  createdAutomations Automation[] @relation("AutomationCreator")
 
   // Bildirim tercihleri (hangi tip notification'lari almak istemiyor)
   notificationPreference NotificationPreference?
@@ -94,39 +94,39 @@ model User {
 }
 
 model Role {
-  id          String     @id @default(cuid())
-  name        String     @unique // ADMIN, STAFF, READONLY
+  id          String   @id @default(cuid())
+  name        String   @unique // ADMIN, STAFF, READONLY
   description String?
-  permissions Json       @default("{}")
-  createdAt   DateTime   @default(now())
+  permissions Json     @default("{}")
+  createdAt   DateTime @default(now())
 
-  userRoles   UserRole[]
+  userRoles UserRole[]
 
   @@map("roles")
 }
 
 model UserRole {
-  id        String   @id @default(cuid())
-  userId    String
-  roleId    String
+  id         String   @id @default(cuid())
+  userId     String
+  roleId     String
   assignedAt DateTime @default(now())
 
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role      Role     @relation(fields: [roleId], references: [id])
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id])
 
   @@unique([userId, roleId])
   @@map("user_roles")
 }
 
 model RefreshToken {
-  id          String   @id @default(cuid())
-  userId      String
-  tokenHash   String   @unique
-  expiresAt   DateTime
-  isRevoked   Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  ipAddress   String?
-  userAgent   String?
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  isRevoked Boolean  @default(false)
+  createdAt DateTime @default(now())
+  ipAddress String?
+  userAgent String?
 
   @@index([userId])
   @@map("refresh_tokens")
@@ -136,8 +136,8 @@ model AuditLog {
   id         String   @id @default(cuid())
   tenantId   String
   userId     String?
-  action     String   // CREATE, UPDATE, DELETE, LOGIN, LOGOUT, etc.
-  resource   String   // taxpayer, invoice, document, etc.
+  action     String // CREATE, UPDATE, DELETE, LOGIN, LOGOUT, etc.
+  resource   String // taxpayer, invoice, document, etc.
   resourceId String?
   oldData    Json?
   newData    Json?
@@ -145,7 +145,7 @@ model AuditLog {
   userAgent  String?
   createdAt  DateTime @default(now())
 
-  user       User?    @relation(fields: [userId], references: [id])
+  user User? @relation(fields: [userId], references: [id])
 
   @@index([tenantId, createdAt])
   @@index([resource, resourceId])
@@ -156,91 +156,91 @@ model AuditLog {
 // CRM - MÜKELLEFLEr
 // ============================================================
 model Taxpayer {
-  id          String       @id @default(cuid())
-  tenantId    String
-  type        TaxpayerType // GERCEK_KISI | TUZEL_KISI
-  firstName   String?
-  lastName    String?
-  companyName String?
-  taxNumber   String       // VKN (10 hane) veya TCKN (11 hane) - şifreli
-  taxOffice   String
-  email       String?
-  phone       String?
-  phones      String[]     // 3 telefon numarası
-  emails      String[]     // 3 e-posta adresi
-  address     String?
-  notes       String?
-  startDate   DateTime?    // İşe başlama tarihi
-  endDate     DateTime?    // İşi bırakma tarihi
-  evrakTeslimGunu     Int?          // 1-30 arası, her ayın kaçında bekleniyor
-  whatsappEvrakTalep  Boolean       @default(false)
-  whatsappEvrakGeldi  Boolean       @default(false)
-  lastReminderSentAt  DateTime?
-  isActive    Boolean      @default(true)
+  id                 String       @id @default(cuid())
+  tenantId           String
+  type               TaxpayerType // GERCEK_KISI | TUZEL_KISI
+  firstName          String?
+  lastName           String?
+  companyName        String?
+  taxNumber          String // VKN (10 hane) veya TCKN (11 hane) - şifreli
+  taxOffice          String
+  email              String?
+  phone              String?
+  phones             String[] // 3 telefon numarası
+  emails             String[] // 3 e-posta adresi
+  address            String?
+  notes              String?
+  startDate          DateTime? // İşe başlama tarihi
+  endDate            DateTime? // İşi bırakma tarihi
+  evrakTeslimGunu    Int? // 1-30 arası, her ayın kaçında bekleniyor
+  whatsappEvrakTalep Boolean      @default(false)
+  whatsappEvrakGeldi Boolean      @default(false)
+  lastReminderSentAt DateTime?
+  isActive           Boolean      @default(true)
   // E-Fatura mükellefi mi? (true → e-fatura/e-arşiv akışında dahil)
-  isEFaturaMukellefi  Boolean      @default(false)
+  isEFaturaMukellefi Boolean      @default(false)
   // === OTOMASYON AJANLARI ===
-  lucaSlug           String?  // Luca ZIP dosyasindaki slug ornegi "edeler_yem"
-  mihsapId           String?  // Mihsap URL'indeki mukellef ID (/documents/BILANCO/1/110564)
-  mihsapDefterTuru   String?  // "BILANCO" | "DEFTER_BEYAN"
+  lucaSlug           String? // Luca ZIP dosyasindaki slug ornegi "edeler_yem"
+  mihsapId           String? // Mihsap URL'indeki mukellef ID (/documents/BILANCO/1/110564)
+  mihsapDefterTuru   String? // "BILANCO" | "DEFTER_BEYAN"
   // Defter türü — Banka Takip modülü ve diğer modüller için genel alan.
   // "BILANCO" → Bilanço esasında tutuluyor (bankalar, cari, vs.)
   // "ISLETME" → İşletme defteri tutuluyor
-  defterTuru         String?  // "BILANCO" | "ISLETME"
-  hattatId           String?  // Hattat yazılımındaki iç mükellef kodu (ZIP import eşleştirme için)
+  defterTuru         String? // "BILANCO" | "ISLETME"
+  hattatId           String? // Hattat yazılımındaki iç mükellef kodu (ZIP import eşleştirme için)
 
   // === v1.37.0: Mükellef kartı genişletme (Hattat tarzı) ===
-  logoUrl            String?  // Mükellef logosu (S3/MinIO URL)
-  naceKodu           String?  // NACE faaliyet kodu (örn. "56.10.06")
-  faaliyetAciklama   String?  // Serbest faaliyet/sektör açıklaması (ör. "yemek üretimi") — fatura hesap eşleştirmede öncelikli sinyal
-  ticaretSicilNo    String?  // Ticaret sicil numarası
-  mersisNo           String?  // MERSİS no (16 hane)
-  odaSicilNo         String?  // Oda sicil no (İTO/ATO vb.)
-  bagkurSicilNo     String?  // Bağ-Kur sicil no
-  kepAdresi          String?  // Kayıtlı Elektronik Posta adresi
-  webSitesi          String?  // Şirket web sitesi
-  eFaturaEntegrator String?  // "UYUMSOFT" | "BILGENET" | "FORIBA" | "GIB_PORTAL" | diğer
+  logoUrl           String? // Mükellef logosu (S3/MinIO URL)
+  naceKodu          String? // NACE faaliyet kodu (örn. "56.10.06")
+  faaliyetAciklama  String? // Serbest faaliyet/sektör açıklaması (ör. "yemek üretimi") — fatura hesap eşleştirmede öncelikli sinyal
+  ticaretSicilNo    String? // Ticaret sicil numarası
+  mersisNo          String? // MERSİS no (16 hane)
+  odaSicilNo        String? // Oda sicil no (İTO/ATO vb.)
+  bagkurSicilNo     String? // Bağ-Kur sicil no
+  kepAdresi         String? // Kayıtlı Elektronik Posta adresi
+  webSitesi         String? // Şirket web sitesi
+  eFaturaEntegrator String? // "UYUMSOFT" | "BILGENET" | "FORIBA" | "GIB_PORTAL" | diğer
 
   // === Mükellef self-servis portal girişi (opsiyonel; müşavir açar) ===
-  portalEmail        String?    // portal giriş e-postası (yoksa `email` kullanılır)
-  portalPasswordHash String?    // argon2id hash
-  portalEnabled      Boolean    @default(false)
-  portalLastLoginAt  DateTime?
-  portalFailedLoginCount Int    @default(0)  // brute-force koruması
-  portalLockedUntil  DateTime?               // bu ana kadar giriş kilitli
+  portalEmail            String? // portal giriş e-postası (yoksa `email` kullanılır)
+  portalPasswordHash     String? // argon2id hash
+  portalEnabled          Boolean   @default(false)
+  portalLastLoginAt      DateTime?
+  portalFailedLoginCount Int       @default(0) // brute-force koruması
+  portalLockedUntil      DateTime? // bu ana kadar giriş kilitli
 
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  tenant              Tenant              @relation(fields: [tenantId], references: [id])
-  contacts            Contact[]
-  communicationLogs   CommunicationLog[]
-  tasksReminders      TaskReminder[]
-  taxDeclarations     TaxDeclaration[]
+  tenant               Tenant                  @relation(fields: [tenantId], references: [id])
+  contacts             Contact[]
+  communicationLogs    CommunicationLog[]
+  tasksReminders       TaskReminder[]
+  taxDeclarations      TaxDeclaration[]
   incomeExpenseRecords IncomeExpenseRecord[]
-  invoices            Invoice[]
-  employees           Employee[]
-  documents           Document[]
-  kdvControlSessions  KdvControlSession[]
-  monthlyStatuses     TaxpayerMonthlyStatus[]
-  vendorDecisions     VendorMemoryDecision[]
-  beyanConfig         TaxpayerBeyanConfig?
-  beyanDurumlari      BeyanDurumu[]
-  beyanKayitlari      BeyanKaydi[]
+  invoices             Invoice[]
+  employees            Employee[]
+  documents            Document[]
+  kdvControlSessions   KdvControlSession[]
+  monthlyStatuses      TaxpayerMonthlyStatus[]
+  vendorDecisions      VendorMemoryDecision[]
+  beyanConfig          TaxpayerBeyanConfig?
+  beyanDurumlari       BeyanDurumu[]
+  beyanKayitlari       BeyanKaydi[]
   portalCredentials    PortalCredential[]
   portalAutomationJobs PortalAutomationJob[]
   portalDocuments      PortalDocument[]
-  cariHizmetler       CariHizmet[]
-  cariHareketler      CariHareket[]
-  earsivFaturalar     EarsivFatura[]
-  kdvLucaSnapshots    KdvLucaSnapshot[]
+  cariHizmetler        CariHizmet[]
+  cariHareketler       CariHareket[]
+  earsivFaturalar      EarsivFatura[]
+  kdvLucaSnapshots     KdvLucaSnapshot[]
   isletmeHesapOzetleri IsletmeHesapOzeti[]
-  bankaHesaplar       BankaHesap[]
+  bankaHesaplar        BankaHesap[]
   bankaEkstreKayitlari BankaEkstreKaydi[]
   // v1.36.74 Faz 1: Gorevler iliskisi
-  tasks               Task[]
+  tasks                Task[]
   // v1.37.0: Firma yetkilileri (Hattat tarzı mükellef kartı)
-  yetkililer         TaxpayerYetkili[]
+  yetkililer           TaxpayerYetkili[]
 
   @@index([tenantId])
   @@index([taxNumber])
@@ -253,23 +253,23 @@ model Taxpayer {
 // müdür, ortak, imza yetkilisi, muhasebe sorumlusu vb.
 // ============================================================
 model TaxpayerYetkili {
-  id          String   @id @default(cuid())
-  tenantId    String
-  taxpayerId  String
-  firstName   String
-  lastName    String
-  tcNo        String?  // T.C. Kimlik No (opsiyonel)
-  gorev       String?  // "MUDUR" | "ORTAK" | "IMZA_YETKILI" | "MUHASEBE_SORUMLUSU" | serbest metin
-  telefon     String?
-  eposta      String?
-  notes       String?
-  isPrimary   Boolean  @default(false)  // Birincil iletişim kişisi mi
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id         String   @id @default(cuid())
+  tenantId   String
+  taxpayerId String
+  firstName  String
+  lastName   String
+  tcNo       String? // T.C. Kimlik No (opsiyonel)
+  gorev      String? // "MUDUR" | "ORTAK" | "IMZA_YETKILI" | "MUHASEBE_SORUMLUSU" | serbest metin
+  telefon    String?
+  eposta     String?
+  notes      String?
+  isPrimary  Boolean  @default(false) // Birincil iletişim kişisi mi
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
-  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  taxpayer    Taxpayer @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  taxpayer Taxpayer @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
 
   @@index([tenantId])
   @@index([taxpayerId])
@@ -282,63 +282,63 @@ model TaxpayerYetkili {
 // Ayarlar > Mükellef Beyanname Takip sayfasından düzenlenir.
 // ============================================================
 model TaxpayerBeyanConfig {
-  id              String    @id @default(cuid())
-  taxpayerId      String    @unique
+  id         String @id @default(cuid())
+  taxpayerId String @unique
 
   // Gelir/Kurumlar vergisi mükellef tipi (yıllık beyan için)
-  incomeTaxType   String?   // "KURUMLAR" | "GELIR" | "BASIT_USUL" | null
+  incomeTaxType String? // "KURUMLAR" | "GELIR" | "BASIT_USUL" | null
 
   // KDV1 (Katma Değer Vergisi, 1 No'lu)
-  kdv1Period      String?   // "AYLIK" | "UCAYLIK" | null (KDV mükellefi değilse)
+  kdv1Period String? // "AYLIK" | "UCAYLIK" | null (KDV mükellefi değilse)
 
   // KDV2 (Tevkifat) — aylık zorunlu, enabled bayrağı yeterli
-  kdv2Enabled     Boolean   @default(false)
+  kdv2Enabled Boolean @default(false)
 
   // Muhtasar (MUHSGK — birleşik)
-  muhtasarPeriod  String?   // "AYLIK" | "UCAYLIK" | null
+  muhtasarPeriod String? // "AYLIK" | "UCAYLIK" | null
 
   // Damga Vergisi (sürekli damga vergisi mükellefi mi)
-  damgaEnabled    Boolean   @default(false)
+  damgaEnabled Boolean @default(false)
 
   // Poşet Beyannamesi (3 aylık — plastik poşet kullananlar için)
-  posetEnabled    Boolean   @default(false)
+  posetEnabled Boolean @default(false)
 
   // SGK Aylık Prim ve Hizmet Belgesi (çalışanı olanlar)
   sgkBildirgeEnabled Boolean @default(false)
 
   // E-Defter (bilanço usulü mükellefler için)
-  eDefterPeriod   String?   // "AYLIK" | "UCAYLIK" | null (e-defter mükellefi değilse)
+  eDefterPeriod String? // "AYLIK" | "UCAYLIK" | null (e-defter mükellefi değilse)
 
   // === v1.37.1: Hattat tarzı genişletilmiş beyanname türleri ===
   // KDV4 (özel kdv beyanları - e-ticaret, hizmet ihracatı vb.)
-  kdv4Period           String?   // "AYLIK" | "UCAYLIK" | null
+  kdv4Period        String? // "AYLIK" | "UCAYLIK" | null
   // KDV9015 — Vergi tevkifatı (kıymetli maden, kira vb.)
-  kdv9015Period        String?   // "AYLIK" | null
+  kdv9015Period     String? // "AYLIK" | null
   // Gelir Geçici Vergi (GGECICI) — 3 aylık zorunlu
-  gelirGeciciPeriod    String?   // "UCAYLIK" | null
+  gelirGeciciPeriod String? // "UCAYLIK" | null
   // Kurum Geçici Vergi (KGECICI) — 3 aylık zorunlu
-  kurumGeciciPeriod    String?   // "UCAYLIK" | null
+  kurumGeciciPeriod String? // "UCAYLIK" | null
   // ÖTV türleri
-  otv1Period           String?   // "AYLIK" | null (akaryakıt vb.)
-  otv3aPeriod          String?   // "AYLIK" | null (motorlu taşıt)
-  otv3bPeriod          String?   // "ON_BES_GUNLUK" | "AYLIK" | null (özel akaryakıt)
-  otv4Period           String?   // "AYLIK" | null (alkollü içecek, tütün)
+  otv1Period        String? // "AYLIK" | null (akaryakıt vb.)
+  otv3aPeriod       String? // "AYLIK" | null (motorlu taşıt)
+  otv3bPeriod       String? // "ON_BES_GUNLUK" | "AYLIK" | null (özel akaryakıt)
+  otv4Period        String? // "AYLIK" | null (alkollü içecek, tütün)
   // MUHSGK2 — 3 aylık muhtasar varyantı
-  muhtasar2Period      String?   // "UCAYLIK" | null
+  muhtasar2Period   String? // "UCAYLIK" | null
   // Turizm Payı (3 aylık veya aylık)
-  turizmPeriod         String?   // "AYLIK" | "UCAYLIK" | null
+  turizmPeriod      String? // "AYLIK" | "UCAYLIK" | null
   // Konaklama Vergisi (aylık)
-  konaklamaEnabled     Boolean   @default(false)
+  konaklamaEnabled  Boolean @default(false)
   // ÖİV — Özel İletişim Vergisi
-  oivEnabled           Boolean   @default(false)
+  oivEnabled        Boolean @default(false)
   // GMSİ — Gayrimenkul Sermaye İradı (yıllık)
-  gmsiEnabled          Boolean   @default(false)
+  gmsiEnabled       Boolean @default(false)
 
-  notes           String?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  taxpayer        Taxpayer  @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
+  taxpayer Taxpayer @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
 
   @@map("taxpayer_beyan_configs")
 }
@@ -350,19 +350,19 @@ model TaxpayerBeyanConfig {
 // Dashboard'daki Toplu Beyanname tablosu bu veriyi özetler.
 // ============================================================
 model BeyanDurumu {
-  id              String    @id @default(cuid())
-  tenantId        String
-  taxpayerId      String
-  beyanTipi       String    // "KURUMLAR" | "GELIR" | "KDV1" | "KDV2" | "DAMGA" | "MUHSGK" | "POSET" | "BILDIRGE" | "EDEFTER"
-  donem           String    // "2026-03" format (yyyy-mm)
-  durum           String    @default("beklemede")  // "beklemede" | "onaylandi" | "hatali" | "muaf"
-  onayTarihi      DateTime?
-  tahakkukTutari  Decimal?  @db.Decimal(14, 2)
-  notlar          String?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  id             String    @id @default(cuid())
+  tenantId       String
+  taxpayerId     String
+  beyanTipi      String // "KURUMLAR" | "GELIR" | "KDV1" | "KDV2" | "DAMGA" | "MUHSGK" | "POSET" | "BILDIRGE" | "EDEFTER"
+  donem          String // "2026-03" format (yyyy-mm)
+  durum          String    @default("beklemede") // "beklemede" | "onaylandi" | "hatali" | "muaf"
+  onayTarihi     DateTime?
+  tahakkukTutari Decimal?  @db.Decimal(14, 2)
+  notlar         String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
-  taxpayer        Taxpayer  @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
+  taxpayer Taxpayer @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, taxpayerId, beyanTipi, donem])
   @@index([tenantId, donem])
@@ -378,28 +378,28 @@ model BeyanDurumu {
 // ileride durum takibi eklenecek (gönderildi/onaylandı vb.).
 // ============================================================
 model BeyanKaydi {
-  id              String    @id @default(cuid())
-  tenantId        String
-  taxpayerId      String
-  beyanTipi       String    // "KDV1" | "KDV2" | "MUHSGK" | "DAMGA" | "POSET" | "KURUMLAR" | "GELIR" | "BILDIRGE" | "EDEFTER" | "GGECICI" | "KGECICI" | "GECICI_VERGI" | "DIGER"
-  donem           String    // "2026-03" format (yyyy-mm), yıllık beyanlar için "2025-YIL"
-  beyanTarihi     DateTime? // Beyannamenin verildiği tarih
-  tahakkukTutari  Decimal?  @db.Decimal(14, 2)
-  odemeTutari     Decimal?  @db.Decimal(14, 2) // İleride ödeme takibi için
-  onayNo          String?   // GİB onay numarası / tahakkuk no
+  id             String    @id @default(cuid())
+  tenantId       String
+  taxpayerId     String
+  beyanTipi      String // "KDV1" | "KDV2" | "MUHSGK" | "DAMGA" | "POSET" | "KURUMLAR" | "GELIR" | "BILDIRGE" | "EDEFTER" | "GGECICI" | "KGECICI" | "GECICI_VERGI" | "DIGER"
+  donem          String // "2026-03" format (yyyy-mm), yıllık beyanlar için "2025-YIL"
+  beyanTarihi    DateTime? // Beyannamenin verildiği tarih
+  tahakkukTutari Decimal?  @db.Decimal(14, 2)
+  odemeTutari    Decimal?  @db.Decimal(14, 2) // İleride ödeme takibi için
+  onayNo         String? // GİB onay numarası / tahakkuk no
   // Dosya referansları (opsiyonel)
-  pdfUrl          String?   // Tahakkuk fişi PDF — storage key
-  beyannameUrl    String?   // Beyanname aslı PDF — storage key
-  xmlUrl          String?   // e-Beyanname XML — storage key
+  pdfUrl         String? // Tahakkuk fişi PDF — storage key
+  beyannameUrl   String? // Beyanname aslı PDF — storage key
+  xmlUrl         String? // e-Beyanname XML — storage key
   // İçe aktarım izleme
-  kaynak          String    @default("manuel") // "hattat_excel" | "gib_agent" | "manuel"
-  importBatchId   String?   // Aynı anda import edilen grubu tanımlar
-  notlar          String?
+  kaynak         String    @default("manuel") // "hattat_excel" | "gib_agent" | "manuel"
+  importBatchId  String? // Aynı anda import edilen grubu tanımlar
+  notlar         String?
 
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  taxpayer        Taxpayer  @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
+  taxpayer Taxpayer @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
 
   // Aynı mükellefin aynı dönem aynı tipinden 2 kayıt olmamalı
   @@unique([tenantId, taxpayerId, beyanTipi, donem])
@@ -419,7 +419,7 @@ model TaxpayerChatMessage {
   id         String   @id @default(cuid())
   tenantId   String
   taxpayerId String
-  role       String   // "user" | "assistant"
+  role       String // "user" | "assistant"
   text       String   @db.Text
   createdAt  DateTime @default(now())
 
@@ -443,7 +443,7 @@ model Contact {
   isPrimary  Boolean  @default(false)
   createdAt  DateTime @default(now())
 
-  taxpayer   Taxpayer @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
+  taxpayer Taxpayer @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
 
   @@map("contacts")
 }
@@ -451,13 +451,13 @@ model Contact {
 model CommunicationLog {
   id         String   @id @default(cuid())
   taxpayerId String
-  channel    String   // EMAIL, PHONE, MEETING, OTHER
+  channel    String // EMAIL, PHONE, MEETING, OTHER
   subject    String
   content    String?
   occurredAt DateTime
   createdAt  DateTime @default(now())
 
-  taxpayer   Taxpayer @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
+  taxpayer Taxpayer @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
 
   @@index([taxpayerId])
   @@map("communication_logs")
@@ -473,7 +473,7 @@ model TaskReminder {
   completedAt DateTime?
   createdAt   DateTime  @default(now())
 
-  taxpayer    Taxpayer  @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
+  taxpayer Taxpayer @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
 
   @@index([taxpayerId, dueDate])
   @@map("tasks_reminders")
@@ -483,16 +483,16 @@ model TaskReminder {
 // BEYANNAME & VERGİ TAKVİMİ
 // ============================================================
 model TaxCalendar {
-  id              String              @id @default(cuid())
-  declarationType String              // DeclarationType enum value
-  periodMonth     Int?                // 1-12
+  id              String   @id @default(cuid())
+  declarationType String // DeclarationType enum value
+  periodMonth     Int? // 1-12
   periodYear      Int
-  periodQuarter   Int?                // 1-4
+  periodQuarter   Int? // 1-4
   dueDate         DateTime
   description     String?
-  createdAt       DateTime            @default(now())
+  createdAt       DateTime @default(now())
 
-  declarations    TaxDeclaration[]
+  declarations TaxDeclaration[]
 
   @@index([dueDate])
   @@map("tax_calendar")
@@ -503,15 +503,15 @@ model TaxDeclaration {
   taxpayerId      String
   taxCalendarId   String
   declarationType String
-  periodLabel     String            // "2025/03" gibi
+  periodLabel     String // "2025/03" gibi
   status          DeclarationStatus @default(PENDING)
   assignedUserId  String?
   notes           String?
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
 
-  taxpayer          Taxpayer           @relation(fields: [taxpayerId], references: [id])
-  taxCalendar       TaxCalendar        @relation(fields: [taxCalendarId], references: [id])
+  taxpayer           Taxpayer           @relation(fields: [taxpayerId], references: [id])
+  taxCalendar        TaxCalendar        @relation(fields: [taxCalendarId], references: [id])
   submissionStatuses SubmissionStatus[]
 
   @@index([taxpayerId, declarationType])
@@ -528,14 +528,14 @@ enum DeclarationStatus {
 }
 
 model SubmissionStatus {
-  id              String         @id @default(cuid())
+  id              String            @id @default(cuid())
   declarationId   String
   status          DeclarationStatus
   referenceNumber String?
   notes           String?
-  changedAt       DateTime       @default(now())
+  changedAt       DateTime          @default(now())
 
-  declaration     TaxDeclaration @relation(fields: [declarationId], references: [id], onDelete: Cascade)
+  declaration TaxDeclaration @relation(fields: [declarationId], references: [id], onDelete: Cascade)
 
   @@index([declarationId])
   @@map("submission_statuses")
@@ -545,24 +545,24 @@ model SubmissionStatus {
 // FATURA / GELİR-GİDER / RAPORLAMA
 // ============================================================
 model Invoice {
-  id           String        @id @default(cuid())
-  taxpayerId   String
-  invoiceNo    String
-  status       InvoiceStatus @default(DRAFT)
-  type         InvoiceType   // SATIS | ALIS | ARSIV
-  issueDate    DateTime
-  dueDate      DateTime?
-  subtotal     Decimal       @db.Decimal(15, 2)
-  vatAmount    Decimal       @db.Decimal(15, 2)
-  totalAmount  Decimal       @db.Decimal(15, 2)
-  currency     String        @default("TRY")
-  notes        String?
-  ublXml       String?       // UBL-TR XML içeriği (e-Fatura)
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+  id          String        @id @default(cuid())
+  taxpayerId  String
+  invoiceNo   String
+  status      InvoiceStatus @default(DRAFT)
+  type        InvoiceType // SATIS | ALIS | ARSIV
+  issueDate   DateTime
+  dueDate     DateTime?
+  subtotal    Decimal       @db.Decimal(15, 2)
+  vatAmount   Decimal       @db.Decimal(15, 2)
+  totalAmount Decimal       @db.Decimal(15, 2)
+  currency    String        @default("TRY")
+  notes       String?
+  ublXml      String? // UBL-TR XML içeriği (e-Fatura)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
 
-  taxpayer     Taxpayer      @relation(fields: [taxpayerId], references: [id])
-  lines        InvoiceLine[]
+  taxpayer Taxpayer      @relation(fields: [taxpayerId], references: [id])
+  lines    InvoiceLine[]
 
   @@index([taxpayerId, status])
   @@map("invoices")
@@ -584,35 +584,35 @@ enum InvoiceType {
 }
 
 model InvoiceLine {
-  id          String   @id @default(cuid())
+  id          String  @id @default(cuid())
   invoiceId   String
   description String
-  quantity    Decimal  @db.Decimal(15, 4)
-  unitPrice   Decimal  @db.Decimal(15, 4)
-  vatRate     Decimal  @db.Decimal(5, 4) // 0.20, 0.10, 0.01, 0.00
-  lineTotal   Decimal  @db.Decimal(15, 2)
-  vatAmount   Decimal  @db.Decimal(15, 2)
-  sortOrder   Int      @default(0)
+  quantity    Decimal @db.Decimal(15, 4)
+  unitPrice   Decimal @db.Decimal(15, 4)
+  vatRate     Decimal @db.Decimal(5, 4) // 0.20, 0.10, 0.01, 0.00
+  lineTotal   Decimal @db.Decimal(15, 2)
+  vatAmount   Decimal @db.Decimal(15, 2)
+  sortOrder   Int     @default(0)
 
-  invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
 
   @@map("invoice_lines")
 }
 
 model IncomeExpenseRecord {
-  id           String      @id @default(cuid())
-  taxpayerId   String
-  type         RecordType  // INCOME | EXPENSE
-  category     String
-  description  String?
-  amount       Decimal     @db.Decimal(15, 2)
-  vatAmount    Decimal     @db.Decimal(15, 2) @default(0)
-  currency     String      @default("TRY")
-  recordDate   DateTime
-  invoiceId    String?
-  createdAt    DateTime    @default(now())
+  id          String     @id @default(cuid())
+  taxpayerId  String
+  type        RecordType // INCOME | EXPENSE
+  category    String
+  description String?
+  amount      Decimal    @db.Decimal(15, 2)
+  vatAmount   Decimal    @default(0) @db.Decimal(15, 2)
+  currency    String     @default("TRY")
+  recordDate  DateTime
+  invoiceId   String?
+  createdAt   DateTime   @default(now())
 
-  taxpayer     Taxpayer    @relation(fields: [taxpayerId], references: [id])
+  taxpayer Taxpayer @relation(fields: [taxpayerId], references: [id])
 
   @@index([taxpayerId, recordDate])
   @@map("income_expense_records")
@@ -624,13 +624,13 @@ enum RecordType {
 }
 
 model ReportSnapshot {
-  id         String   @id @default(cuid())
-  tenantId   String
-  taxpayerId String?
-  reportType String   // MONTHLY_INCOME, YEARLY_SUMMARY, etc.
-  periodLabel String  // "2025/03"
-  data       Json
-  createdAt  DateTime @default(now())
+  id          String   @id @default(cuid())
+  tenantId    String
+  taxpayerId  String?
+  reportType  String // MONTHLY_INCOME, YEARLY_SUMMARY, etc.
+  periodLabel String // "2025/03"
+  data        Json
+  createdAt   DateTime @default(now())
 
   @@index([tenantId, reportType, periodLabel])
   @@map("report_snapshots")
@@ -640,18 +640,18 @@ model ReportSnapshot {
 // BORDRO & SGK
 // ============================================================
 model Employee {
-  id           String    @id @default(cuid())
-  taxpayerId   String
-  firstName    String
-  lastName     String
-  tcNo         String    // TCKN - şifreli
-  startDate    DateTime
-  endDate      DateTime?
-  jobTitle     String?
-  grossSalary  Decimal   @db.Decimal(15, 2)
-  isActive     Boolean   @default(true)
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  id          String    @id @default(cuid())
+  taxpayerId  String
+  firstName   String
+  lastName    String
+  tcNo        String // TCKN - şifreli
+  startDate   DateTime
+  endDate     DateTime?
+  jobTitle    String?
+  grossSalary Decimal   @db.Decimal(15, 2)
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   taxpayer     Taxpayer      @relation(fields: [taxpayerId], references: [id])
   payrollItems PayrollItem[]
@@ -663,7 +663,7 @@ model Employee {
 model PayrollPeriod {
   id          String    @id @default(cuid())
   tenantId    String
-  periodMonth Int       // 1-12
+  periodMonth Int // 1-12
   periodYear  Int
   isClosed    Boolean   @default(false)
   closedAt    DateTime?
@@ -677,37 +677,37 @@ model PayrollPeriod {
 }
 
 model PayrollItem {
-  id               String        @id @default(cuid())
+  id               String   @id @default(cuid())
   payrollPeriodId  String
   employeeId       String
-  grossSalary      Decimal       @db.Decimal(15, 2)
-  sgkWorkerShare   Decimal       @db.Decimal(15, 2)
-  sgkEmployerShare Decimal       @db.Decimal(15, 2)
-  unempWorkerShare Decimal       @db.Decimal(15, 2)
-  incomeTax        Decimal       @db.Decimal(15, 2)
-  stampTax         Decimal       @db.Decimal(15, 2)
-  agi              Decimal       @db.Decimal(15, 2) @default(0)
-  netSalary        Decimal       @db.Decimal(15, 2)
-  calculationData  Json          // Hesaplama detayları
-  createdAt        DateTime      @default(now())
+  grossSalary      Decimal  @db.Decimal(15, 2)
+  sgkWorkerShare   Decimal  @db.Decimal(15, 2)
+  sgkEmployerShare Decimal  @db.Decimal(15, 2)
+  unempWorkerShare Decimal  @db.Decimal(15, 2)
+  incomeTax        Decimal  @db.Decimal(15, 2)
+  stampTax         Decimal  @db.Decimal(15, 2)
+  agi              Decimal  @default(0) @db.Decimal(15, 2)
+  netSalary        Decimal  @db.Decimal(15, 2)
+  calculationData  Json // Hesaplama detayları
+  createdAt        DateTime @default(now())
 
-  payrollPeriod    PayrollPeriod @relation(fields: [payrollPeriodId], references: [id])
-  employee         Employee      @relation(fields: [employeeId], references: [id])
+  payrollPeriod PayrollPeriod @relation(fields: [payrollPeriodId], references: [id])
+  employee      Employee      @relation(fields: [employeeId], references: [id])
 
   @@unique([payrollPeriodId, employeeId])
   @@map("payroll_items")
 }
 
 model SgkDeclaration {
-  id              String        @id @default(cuid())
+  id              String    @id @default(cuid())
   payrollPeriodId String
-  xmlContent      String?       // APHB XML
-  status          String        @default("DRAFT") // DRAFT, READY, SUBMITTED
+  xmlContent      String? // APHB XML
+  status          String    @default("DRAFT") // DRAFT, READY, SUBMITTED
   submittedAt     DateTime?
   referenceNumber String?
-  createdAt       DateTime      @default(now())
+  createdAt       DateTime  @default(now())
 
-  payrollPeriod   PayrollPeriod @relation(fields: [payrollPeriodId], references: [id])
+  payrollPeriod PayrollPeriod @relation(fields: [payrollPeriodId], references: [id])
 
   @@map("sgk_declarations")
 }
@@ -716,27 +716,27 @@ model SgkDeclaration {
 // EVRAK YÖNETİMİ
 // ============================================================
 model Document {
-  id           String           @id @default(cuid())
-  taxpayerId   String
-  title        String
-  category     DocumentCategory @default(DIGER)
-  mimeType     String
-  sizeBytes    Int
-  s3Key        String           // S3 object key
+  id               String           @id @default(cuid())
+  taxpayerId       String
+  title            String
+  category         DocumentCategory @default(DIGER)
+  mimeType         String
+  sizeBytes        Int
+  s3Key            String // S3 object key
   currentVersionId String?
-  isDeleted    Boolean          @default(false)
+  isDeleted        Boolean          @default(false)
   // Geçerlilik / yenileme — vekaletname, imza sirküleri, ticaret sicil, vergi levhası gibi
   // belgelerin son kullanım tarihi. NULL = süresiz / takip edilmeyen.
-  expiresAt    DateTime?
+  expiresAt        DateTime?
   // Bitime kaç gün kala dashboard'da uyar (default 30 gün)
-  reminderDays Int              @default(30)
-  notes        String?
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
+  reminderDays     Int              @default(30)
+  notes            String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
 
-  taxpayer     Taxpayer         @relation(fields: [taxpayerId], references: [id])
-  versions     DocumentVersion[]
-  tags         DocumentTag[]
+  taxpayer Taxpayer          @relation(fields: [taxpayerId], references: [id])
+  versions DocumentVersion[]
+  tags     DocumentTag[]
 
   @@index([taxpayerId, category])
   @@index([expiresAt])
@@ -761,18 +761,18 @@ model DocumentVersion {
   notes      String?
   createdAt  DateTime @default(now())
 
-  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
 
   @@unique([documentId, versionNo])
   @@map("document_versions")
 }
 
 model DocumentTag {
-  id         String   @id @default(cuid())
+  id         String @id @default(cuid())
   documentId String
   tag        String
 
-  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
 
   @@unique([documentId, tag])
   @@map("document_tags")
@@ -782,19 +782,19 @@ model DocumentTag {
 // BİLDİRİMLER
 // ============================================================
 model Notification {
-  id         String   @id @default(cuid())
-  tenantId   String
-  userId     String?
-  title      String
-  body       String
-  type       String   // TAX_DEADLINE, TASK_DUE, SYSTEM, etc.
-  isRead     Boolean  @default(false)
-  readAt     DateTime?
-  metadata   Json?
-  createdAt  DateTime @default(now())
+  id        String    @id @default(cuid())
+  tenantId  String
+  userId    String?
+  title     String
+  body      String
+  type      String // TAX_DEADLINE, TASK_DUE, SYSTEM, etc.
+  isRead    Boolean   @default(false)
+  readAt    DateTime?
+  metadata  Json?
+  createdAt DateTime  @default(now())
 
-  tenant     Tenant   @relation(fields: [tenantId], references: [id])
-  user       User?    @relation(fields: [userId], references: [id])
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  user   User?  @relation(fields: [userId], references: [id])
 
   @@index([tenantId, isRead])
   @@map("notifications")
@@ -805,14 +805,14 @@ model Notification {
 // Liste 'AUTH_NEW_DEVICE', 'TASK_DUE' gibi notification-types.ts'deki sabitler.
 // Liste'de olmayan tipler default olarak GONDERILIR.
 model NotificationPreference {
-  id          String   @id @default(cuid())
-  tenantId    String
-  userId      String   @unique
-  mutedTypes  String[] @default([])
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id         String   @id @default(cuid())
+  tenantId   String
+  userId     String   @unique
+  mutedTypes String[] @default([])
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([tenantId])
   @@map("notification_preferences")
@@ -830,8 +830,8 @@ model OfficeChatThread {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  createdBy   User?    @relation("OfficeChatThreadCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  tenant       Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy    User?                   @relation("OfficeChatThreadCreator", fields: [createdById], references: [id], onDelete: SetNull)
   participants OfficeChatParticipant[]
   messages     OfficeChatMessage[]
 
@@ -841,16 +841,16 @@ model OfficeChatThread {
 }
 
 model OfficeChatParticipant {
-  id         String   @id @default(cuid())
+  id         String    @id @default(cuid())
   tenantId   String
   threadId   String
   userId     String
   lastReadAt DateTime?
-  muted      Boolean  @default(false)
-  createdAt  DateTime @default(now())
+  muted      Boolean   @default(false)
+  createdAt  DateTime  @default(now())
 
-  thread     OfficeChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
-  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  thread OfficeChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  user   User             @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([threadId, userId])
   @@index([tenantId, userId])
@@ -858,16 +858,16 @@ model OfficeChatParticipant {
 }
 
 model OfficeChatMessage {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   tenantId  String
   threadId  String
   senderId  String
-  content   String   @db.Text
+  content   String    @db.Text
   editedAt  DateTime?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
-  thread    OfficeChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
-  sender    User             @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  thread OfficeChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  sender User             @relation(fields: [senderId], references: [id], onDelete: Cascade)
 
   @@index([threadId, createdAt])
   @@index([tenantId, createdAt])
@@ -878,37 +878,37 @@ model OfficeChatMessage {
 // ENTEGRASYON
 // ============================================================
 model IntegrationConnection {
-  id          String   @id @default(cuid())
-  tenantId    String
-  provider    String   // GIB, EFATURA, SGK, LOGO, MIKRO, LUCA
-  config      Json     // Şifreli kimlik bilgileri ve ayarlar
-  isActive    Boolean  @default(true)
-  lastSyncAt  DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id         String    @id @default(cuid())
+  tenantId   String
+  provider   String // GIB, EFATURA, SGK, LOGO, MIKRO, LUCA
+  config     Json // Şifreli kimlik bilgileri ve ayarlar
+  isActive   Boolean   @default(true)
+  lastSyncAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
-  tenant      Tenant          @relation(fields: [tenantId], references: [id])
-  jobs        IntegrationJob[]
+  tenant Tenant           @relation(fields: [tenantId], references: [id])
+  jobs   IntegrationJob[]
 
   @@unique([tenantId, provider])
   @@map("integration_connections")
 }
 
 model IntegrationJob {
-  id             String   @id @default(cuid())
-  connectionId   String
-  jobType        String   // DECLARATION_SUBMIT, INVOICE_SEND, SGK_SUBMIT, etc.
-  status         String   @default("PENDING") // PENDING, RUNNING, SUCCESS, FAILED
-  payload        Json?
-  result         Json?
-  errorMessage   String?
-  attempts       Int      @default(0)
-  scheduledAt    DateTime?
-  startedAt      DateTime?
-  completedAt    DateTime?
-  createdAt      DateTime @default(now())
+  id           String    @id @default(cuid())
+  connectionId String
+  jobType      String // DECLARATION_SUBMIT, INVOICE_SEND, SGK_SUBMIT, etc.
+  status       String    @default("PENDING") // PENDING, RUNNING, SUCCESS, FAILED
+  payload      Json?
+  result       Json?
+  errorMessage String?
+  attempts     Int       @default(0)
+  scheduledAt  DateTime?
+  startedAt    DateTime?
+  completedAt  DateTime?
+  createdAt    DateTime  @default(now())
 
-  connection     IntegrationConnection @relation(fields: [connectionId], references: [id])
+  connection IntegrationConnection @relation(fields: [connectionId], references: [id])
 
   @@index([connectionId, status])
   @@map("integration_jobs")
@@ -921,9 +921,9 @@ model IntegrationJob {
 model PortalCredential {
   id                         String    @id @default(cuid())
   tenantId                   String
-  provider                   String    // GIB_EBEYANNAME | GIB_IVD | SGK_EBILDIRGE
-  ownerType                  String    // TENANT | TAXPAYER
-  ownerId                    String    // TENANT icin tenantId, TAXPAYER icin taxpayerId
+  provider                   String // GIB_EBEYANNAME | GIB_IVD | SGK_EBILDIRGE
+  ownerType                  String // TENANT | TAXPAYER
+  ownerId                    String // TENANT icin tenantId, TAXPAYER icin taxpayerId
   taxpayerId                 String?
   username                   String?
   userCode                   String?
@@ -940,8 +940,8 @@ model PortalCredential {
   createdAt                  DateTime  @default(now())
   updatedAt                  DateTime  @updatedAt
 
-  tenant                     Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  taxpayer                   Taxpayer? @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  taxpayer Taxpayer? @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, provider, ownerType, ownerId])
   @@index([tenantId, provider, isActive])
@@ -953,9 +953,9 @@ model PortalAutomationJob {
   id             String    @id @default(cuid())
   tenantId       String
   taxpayerId     String?
-  jobType        String    // EBEYANNAME_DAILY_DOWNLOAD | E_TEBLIGAT_CHECK | SGK_HIZMET_LISTESI | SGK_TAHAKKUK | SGK_ISE_GIRIS_CIKIS | SGK_ISGOREMEZLIK
+  jobType        String // EBEYANNAME_DAILY_DOWNLOAD | E_TEBLIGAT_CHECK | SGK_HIZMET_LISTESI | SGK_TAHAKKUK | SGK_ISE_GIRIS_CIKIS | SGK_ISGOREMEZLIK
   status         String    @default("pending") // pending | running | done | failed | cancelled
-  source         String    @default("manual")  // manual | nightly | agent
+  source         String    @default("manual") // manual | nightly | agent
   periodStart    DateTime?
   periodEnd      DateTime?
   donem          String?
@@ -973,9 +973,9 @@ model PortalAutomationJob {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  tenant         Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  taxpayer       Taxpayer? @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
-  documents      PortalDocument[]
+  tenant    Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  taxpayer  Taxpayer?        @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
+  documents PortalDocument[]
 
   @@index([tenantId, status, createdAt])
   @@index([tenantId, jobType, createdAt])
@@ -989,8 +989,8 @@ model PortalDocument {
   tenantId       String
   taxpayerId     String?
   jobId          String?
-  belgeTuru      String    // E_TEBLIGAT | SGK_HIZMET_LISTESI | SGK_TAHAKKUK | SGK_ISE_GIRIS | SGK_ISTEN_CIKIS | SGK_ISGOREMEZLIK | DIGER
-  sourceProvider String    // GIB_EBEYANNAME | GIB_IVD | SGK_EBILDIRGE
+  belgeTuru      String // E_TEBLIGAT | SGK_HIZMET_LISTESI | SGK_TAHAKKUK | SGK_ISE_GIRIS | SGK_ISTEN_CIKIS | SGK_ISGOREMEZLIK | DIGER
+  sourceProvider String // GIB_EBEYANNAME | GIB_IVD | SGK_EBILDIRGE
   title          String
   referenceNo    String?
   period         String?
@@ -1005,9 +1005,9 @@ model PortalDocument {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  tenant         Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  taxpayer       Taxpayer? @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
-  job            PortalAutomationJob? @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  tenant   Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  taxpayer Taxpayer?            @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
+  job      PortalAutomationJob? @relation(fields: [jobId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, belgeTuru, createdAt])
   @@index([tenantId, sourceProvider, createdAt])
@@ -1020,18 +1020,18 @@ model PortalDocument {
 // KVKK
 // ============================================================
 model Consent {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   tenantId    String
-  subjectType String   // TAXPAYER, USER
+  subjectType String // TAXPAYER, USER
   subjectId   String
-  consentType String   // DATA_PROCESSING, MARKETING, etc.
+  consentType String // DATA_PROCESSING, MARKETING, etc.
   isGranted   Boolean
   grantedAt   DateTime?
   revokedAt   DateTime?
   ipAddress   String?
-  createdAt   DateTime @default(now())
+  createdAt   DateTime  @default(now())
 
-  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  tenant Tenant @relation(fields: [tenantId], references: [id])
 
   @@index([tenantId, subjectId])
   @@map("consents")
@@ -1040,12 +1040,12 @@ model Consent {
 model DataRetentionPolicy {
   id              String   @id @default(cuid())
   tenantId        String
-  resourceType    String   // taxpayer, invoice, payroll, document
+  resourceType    String // taxpayer, invoice, payroll, document
   retentionMonths Int
-  legalBasis      String?  // VUK 5 YIL, SGK 10 YIL, etc.
+  legalBasis      String? // VUK 5 YIL, SGK 10 YIL, etc.
   updatedAt       DateTime @updatedAt
 
-  tenant          Tenant   @relation(fields: [tenantId], references: [id])
+  tenant Tenant @relation(fields: [tenantId], references: [id])
 
   @@unique([tenantId, resourceType])
   @@map("data_retention_policies")
@@ -1057,62 +1057,62 @@ model DataRetentionPolicy {
 
 // Bir kontrol oturumu (191 veya 391 dönemi)
 model KdvControlSession {
-  id          String          @id @default(cuid())
+  id          String        @id @default(cuid())
   tenantId    String
   taxpayerId  String?
-  type        KdvType         // ALIS (191) | SATIS (391)
-  periodLabel String          // "2025/03" gibi
-  status      SessionStatus   @default(DRAFT)
+  type        KdvType // ALIS (191) | SATIS (391)
+  periodLabel String // "2025/03" gibi
+  status      SessionStatus @default(DRAFT)
   notes       String?
   createdBy   String
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
 
-  tenant      Tenant          @relation(fields: [tenantId], references: [id])
-  taxpayer    Taxpayer?       @relation(fields: [taxpayerId], references: [id])
-  kdvRecords  KdvRecord[]
-  images      ReceiptImage[]
-  results     ReconciliationResult[]
+  tenant     Tenant                 @relation(fields: [tenantId], references: [id])
+  taxpayer   Taxpayer?              @relation(fields: [taxpayerId], references: [id])
+  kdvRecords KdvRecord[]
+  images     ReceiptImage[]
+  results    ReconciliationResult[]
 
   @@index([tenantId, type, periodLabel])
   @@map("kdv_control_sessions")
 }
 
 enum KdvType {
-  KDV_191         // 191 - İndirilecek KDV (alış)
-  KDV_391         // 391 - Hesaplanan KDV (satış)
-  ISLETME_GELIR   // İşletme defteri - Gelir sayfası
-  ISLETME_GIDER   // İşletme defteri - Gider sayfası
+  KDV_191 // 191 - İndirilecek KDV (alış)
+  KDV_391 // 391 - Hesaplanan KDV (satış)
+  ISLETME_GELIR // İşletme defteri - Gelir sayfası
+  ISLETME_GIDER // İşletme defteri - Gider sayfası
 }
 
 enum SessionStatus {
-  DRAFT       // Yeni oturum
-  PROCESSING  // İşleniyor
-  REVIEWING   // Kullanıcı inceliyor
-  COMPLETED   // Tamamlandı
+  DRAFT // Yeni oturum
+  PROCESSING // İşleniyor
+  REVIEWING // Kullanıcı inceliyor
+  COMPLETED // Tamamlandı
 }
 
 // Excel'den parse edilen her bir KDV satırı
 model KdvRecord {
-  id          String     @id @default(cuid())
-  sessionId   String
-  rowIndex    Int
-  belgeNo     String?    // Belge/Fiş numarası
-  belgeDate   DateTime?  // Belge tarihi
-  karsiTaraf  String?    // Karşı taraf adı
-  kdvMatrahi  Decimal?   @db.Decimal(15, 2)
-  kdvTutari   Decimal    @db.Decimal(15, 2)
-  kdvOrani    Decimal?   @db.Decimal(5, 2)
-  aciklama    String?
-  rawData     Json       // Ham Excel satır verisi
-  createdAt   DateTime   @default(now())
+  id         String    @id @default(cuid())
+  sessionId  String
+  rowIndex   Int
+  belgeNo    String? // Belge/Fiş numarası
+  belgeDate  DateTime? // Belge tarihi
+  karsiTaraf String? // Karşı taraf adı
+  kdvMatrahi Decimal?  @db.Decimal(15, 2)
+  kdvTutari  Decimal   @db.Decimal(15, 2)
+  kdvOrani   Decimal?  @db.Decimal(5, 2)
+  aciklama   String?
+  rawData    Json // Ham Excel satır verisi
+  createdAt  DateTime  @default(now())
 
-  session     KdvControlSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  session KdvControlSession      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   // Çok oranlı KDV: aynı Luca kaydı birden fazla eşleşme sonucuna sahip OLAMAZ,
   // ama ReconciliationResult tarafında imageId artık non-unique olduğu için
   // one-to-many ilişki (dizi) olarak tanımlanmalı. UI'da bir kaydın result'u
   // results[0] olarak alınır.
-  results     ReconciliationResult[]
+  results ReconciliationResult[]
 
   @@index([sessionId])
   @@map("kdv_records")
@@ -1120,46 +1120,46 @@ model KdvRecord {
 
 // Yüklenen belge görselleri (JPEG/PNG)
 model ReceiptImage {
-  id           String    @id @default(cuid())
-  sessionId    String
-  s3Key        String
-  originalName String
-  mimeType     String
-  sizeBytes    Int
+  id                     String    @id @default(cuid())
+  sessionId              String
+  s3Key                  String
+  originalName           String
+  mimeType               String
+  sizeBytes              Int
   // OCR sonuçları
-  ocrStatus    OcrStatus @default(PENDING)
-  ocrBelgeNo   String?
-  ocrDate      String?
-  ocrKdvTutari String?            // NET KDV (tevkifatlıysa tam − tevkifat); reconciliation'da Luca ile karşılaştırılan değer
-  ocrKdvTevkifat String?          // Tevkifat tutarı (varsa); null/0,00 = tevkifatsız fatura
+  ocrStatus              OcrStatus @default(PENDING)
+  ocrBelgeNo             String?
+  ocrDate                String?
+  ocrKdvTutari           String? // NET KDV (tevkifatlıysa tam − tevkifat); reconciliation'da Luca ile karşılaştırılan değer
+  ocrKdvTevkifat         String? // Tevkifat tutarı (varsa); null/0,00 = tevkifatsız fatura
   // OCR'dan gelen satıcı/tedarikçi unvanı — aynı belge no'lu farklı firmaları ayırmak için reconciliation'da kullanılır
   // @map: Railway DB'sinde kolon "ocrsatici" (lowercase) olarak yaratıldı (UI'dan elle eklendi).
   // Prisma client camelCase görür, DB'ye lowercase yazar/okur.
-  ocrSatici    String?            @map("ocrsatici")
+  ocrSatici              String?   @map("ocrsatici")
   // Satıcı VKN/TCKN (10/11 hane) — reconciliation'da PRIMARY match key.
   // Ad benzerliğinden çok daha güvenilir.
-  ocrSaticiVkn String?
-  ocrRawText   String?   // Ham OCR çıktısı
-  ocrConfidence Float?   // 0-1 arası genel güven skoru
+  ocrSaticiVkn           String?
+  ocrRawText             String? // Ham OCR çıktısı
+  ocrConfidence          Float? // 0-1 arası genel güven skoru
   // Alan-bazlı güven skorları (null = alan okunamadı)
-  ocrBelgeNoConfidence Float?
-  ocrDateConfidence    Float?
-  ocrKdvConfidence     Float?
-  ocrEngine    String?   // claude-haiku-4-5 | azure-vision | filename-only | ubl-xml-direct
+  ocrBelgeNoConfidence   Float?
+  ocrDateConfidence      Float?
+  ocrKdvConfidence       Float?
+  ocrEngine              String? // claude-haiku-4-5 | azure-vision | filename-only | ubl-xml-direct
   // Belge tipi (EFATURA / EARSIV / OKC_FIS / Z_RAPORU / MAKBUZ)
-  ocrBelgeTipi String?
+  ocrBelgeTipi           String?
   // Çok oranlı KDV kırılımı (JSON) — [{oran, tutar, matrah}]
   // tutar = NET (tevkifat düşülmüş) tutar — kdvTutari toplamı = breakdown.tutar toplamı
-  ocrKdvBreakdown Json?
+  ocrKdvBreakdown        Json?
   // OCR validation skoru — multi-pass doğrulama sonucu (0-1).
   // breakdown.tutar.sum === kdvTutari, matrah×rate consistency, geçerli oran kontrolü.
   // null = doğrulama yapılmadı (ör. UBL XML doğrudan parse).
-  ocrValidationScore Float?
+  ocrValidationScore     Float?
   // Görüntü SHA-256 hash — aynı görüntü tekrar gelirse Claude'a hiç gitmeden cache'den dön.
   // 64 hex karakter (256 bit). Index ile hızlı arama. Maliyet ~%30-50 düşürür.
-  imageHash    String?  @db.VarChar(64)
+  imageHash              String?   @db.VarChar(64)
   // Otomatik kategori — Claude prompt'undan: yakit, yemek, kirtasiye, telekom, kira, vb.
-  ocrKategori  String?
+  ocrKategori            String?
   // Belge içerik uygunluk denetimi. Mevcut OCR/KDV eşleştirme akışından bağımsızdır.
   contentAuditStatus     String?
   contentAuditRisk       String?
@@ -1171,19 +1171,19 @@ model ReceiptImage {
   contentAuditCostUsd    Float?
   contentAuditCheckedAt  DateTime?
   // Kullanıcı düzeltmesi
-  confirmedBelgeNo   String?
-  confirmedDate      String?
-  confirmedKdvTutari String?
-  confirmedKdvTevkifat String?    // Kullanıcı düzeltmiş tevkifat tutarı
+  confirmedBelgeNo       String?
+  confirmedDate          String?
+  confirmedKdvTutari     String?
+  confirmedKdvTevkifat   String? // Kullanıcı düzeltmiş tevkifat tutarı
   // Kullanıcı onaylı KDV kırılımı (JSON)
-  confirmedKdvBreakdown Json?
-  isManuallyConfirmed Boolean @default(false)
-  uploadedAt   DateTime  @default(now())
+  confirmedKdvBreakdown  Json?
+  isManuallyConfirmed    Boolean   @default(false)
+  uploadedAt             DateTime  @default(now())
 
-  session      KdvControlSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  session KdvControlSession      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   // Çok oranlı fatura: bir image birden fazla Luca kaydıyla (ayrı orandaki
   // satırlarla) eşleşir → one-to-many.
-  results      ReconciliationResult[]
+  results ReconciliationResult[]
 
   @@index([sessionId, ocrStatus])
   @@index([sessionId, contentAuditStatus])
@@ -1192,70 +1192,70 @@ model ReceiptImage {
 }
 
 enum OcrStatus {
-  PENDING         // Henüz işlenmedi
-  PROCESSING      // OCR çalışıyor
-  SUCCESS         // Tüm alanlar yüksek güvenle okundu
-  NEEDS_REVIEW    // Bir veya daha fazla alan eşik altında — kullanıcı teyidi bekler
-  LOW_CONFIDENCE  // Hiçbir alan okunamadı
-  FAILED          // OCR teknik olarak başarısız
+  PENDING // Henüz işlenmedi
+  PROCESSING // OCR çalışıyor
+  SUCCESS // Tüm alanlar yüksek güvenle okundu
+  NEEDS_REVIEW // Bir veya daha fazla alan eşik altında — kullanıcı teyidi bekler
+  LOW_CONFIDENCE // Hiçbir alan okunamadı
+  FAILED // OCR teknik olarak başarısız
 }
 
 // Eşleştirme sonuçları
 model ReconciliationResult {
-  id          String      @id @default(cuid())
-  sessionId   String
+  id              String      @id @default(cuid())
+  sessionId       String
   // @unique KALDIRILDI — çok oranlı Luca faturaları (aynı fatura için %20+%10
   // iki ayrı Luca satırı) tek fatura görselini paylaşır. Eski @unique constraint
   // bu durumu engelliyordu.
-  kdvRecordId String?
-  imageId     String?
-  status      MatchStatus @default(UNMATCHED)
-  matchScore  Float?      // 0-1 eşleşme skoru
+  kdvRecordId     String?
+  imageId         String?
+  status          MatchStatus @default(UNMATCHED)
+  matchScore      Float? // 0-1 eşleşme skoru
   mismatchReasons String[] // Uyumsuzluk nedenleri
-  resolvedBy  String?     // Kullanıcı ID
-  resolvedAt  DateTime?
-  notes       String?
-  createdAt   DateTime    @default(now())
+  resolvedBy      String? // Kullanıcı ID
+  resolvedAt      DateTime?
+  notes           String?
+  createdAt       DateTime    @default(now())
 
-  session     KdvControlSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  kdvRecord   KdvRecord?  @relation(fields: [kdvRecordId], references: [id])
-  image       ReceiptImage? @relation(fields: [imageId], references: [id])
+  session   KdvControlSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  kdvRecord KdvRecord?        @relation(fields: [kdvRecordId], references: [id])
+  image     ReceiptImage?     @relation(fields: [imageId], references: [id])
 
   @@index([sessionId, status])
   @@map("reconciliation_results")
 }
 
 enum MatchStatus {
-  MATCHED         // Tam eşleşme
-  PARTIAL_MATCH   // Kısmi eşleşme (1-2 alan uyuşmuyor)
-  MISMATCH        // Uyumsuz
-  UNMATCHED       // Eşleşme bulunamadı
-  NEEDS_REVIEW    // Kullanıcı incelemesi gerekli
-  CONFIRMED       // Kullanıcı tarafından teyit edildi
-  REJECTED        // Kullanıcı tarafından reddedildi
+  MATCHED // Tam eşleşme
+  PARTIAL_MATCH // Kısmi eşleşme (1-2 alan uyuşmuyor)
+  MISMATCH // Uyumsuz
+  UNMATCHED // Eşleşme bulunamadı
+  NEEDS_REVIEW // Kullanıcı incelemesi gerekli
+  CONFIRMED // Kullanıcı tarafından teyit edildi
+  REJECTED // Kullanıcı tarafından reddedildi
 }
 
 // ============================================================
 // MÜKELLEF AYLIK DURUM TAKİBİ
 // ============================================================
 model TaxpayerMonthlyStatus {
-  id               String   @id @default(cuid())
-  taxpayerId       String
-  tenantId         String
-  year             Int
-  month            Int      // 1-12
-  evraklarGeldi          Boolean  @default(false)
-  yuklendi               Boolean  @default(false) // evrak geldi → sisteme yüklendi (fiş görselleri, portal faturaları); işlemden önce
-  evraklarIslendi        Boolean  @default(false)
-  kontrolEdildi          Boolean  @default(false)
-  beyannameVerildi       Boolean  @default(false)
-  kdvKontrolEdildi       Boolean  @default(false)
-  indirilecekKdvKontrol  Boolean  @default(false)
-  hesaplananKdvKontrol   Boolean  @default(false)
-  eArsivKontrol          Boolean  @default(false)
-  notes                  String?  @db.Text
-  createdAt              DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  id                    String   @id @default(cuid())
+  taxpayerId            String
+  tenantId              String
+  year                  Int
+  month                 Int // 1-12
+  evraklarGeldi         Boolean  @default(false)
+  yuklendi              Boolean  @default(false) // evrak geldi → sisteme yüklendi (fiş görselleri, portal faturaları); işlemden önce
+  evraklarIslendi       Boolean  @default(false)
+  kontrolEdildi         Boolean  @default(false)
+  beyannameVerildi      Boolean  @default(false)
+  kdvKontrolEdildi      Boolean  @default(false)
+  indirilecekKdvKontrol Boolean  @default(false)
+  hesaplananKdvKontrol  Boolean  @default(false)
+  eArsivKontrol         Boolean  @default(false)
+  notes                 String?  @db.Text
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 
   taxpayer Taxpayer @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
 
@@ -1268,21 +1268,21 @@ model TaxpayerMonthlyStatus {
 // OTOMASYON AJANLARI (Local script → Portal bridge)
 // ============================================================
 model AgentEvent {
-  id         String   @id @default(cuid())
-  tenantId   String
-  agent      String   // "luca" | "mihsap" | "tebligat" ...
-  action     String?  // "F2" | "F9" | "ZIP_MOVE" ...
-  status     String   // "onaylandi" | "atlandi" | "hata" | "basarili" | "bilgi"
-  message    String?
-  mukellef   String?
-  firma      String?
-  fisNo      String?
-  tutar      Decimal? @db.Decimal(14, 2)
-  hesapKodu  String?
-  kdv        String?
-  meta       Json?
+  id               String    @id @default(cuid())
+  tenantId         String
+  agent            String // "luca" | "mihsap" | "tebligat" ...
+  action           String? // "F2" | "F9" | "ZIP_MOVE" ...
+  status           String // "onaylandi" | "atlandi" | "hata" | "basarili" | "bilgi"
+  message          String?
+  mukellef         String?
+  firma            String?
+  fisNo            String?
+  tutar            Decimal?  @db.Decimal(14, 2)
+  hesapKodu        String?
+  kdv              String?
+  meta             Json?
   memoryImportedAt DateTime?
-  ts         DateTime @default(now())
+  ts               DateTime  @default(now())
 
   @@index([tenantId, ts])
   @@index([tenantId, agent, ts])
@@ -1307,19 +1307,19 @@ model AgentRule {
 }
 
 model AgentStatus {
-  id        String   @id @default(cuid())
-  tenantId  String
-  agent     String
+  id           String    @id @default(cuid())
+  tenantId     String
+  agent        String
   // Multi-device support: aynı agent için birden çok cihaz (ofis local-agent,
   // Chrome uzantısı, ev PC'si vb.) ayrı satırlarda. "" = legacy default.
-  deviceId  String   @default("")
-  running   Boolean  @default(false)
-  hedefAy   String?
-  lastPing  DateTime @default(now())
-  meta      Json?
+  deviceId     String    @default("")
+  running      Boolean   @default(false)
+  hedefAy      String?
+  lastPing     DateTime  @default(now())
+  meta         Json?
   // Pause/Resume kontrolu - portaldan set edilir, agent okur
   // null veya 'RUNNING' = devam, 'PAUSED' = durdur, 'STOP' = tamamen kapat
-  controlState String? @default("RUNNING")
+  controlState String?   @default("RUNNING")
   controlSetBy String?
   controlSetAt DateTime?
 
@@ -1331,24 +1331,24 @@ model AgentStatus {
 // AI API kullanım takibi — tüm Claude çağrılarında bir kayıt
 // source: "mihsap-fatura" | "fis-yazdirma" | diğer modüller
 model AiUsageLog {
-  id            String   @id @default(cuid())
-  tenantId      String
-  taxpayerId    String?  // Mükellef foreign key — karlılık raporunda mükellef başına maliyet için
-  source        String   @default("mihsap-fatura") // hangi modül çağırdı
-  mukellef      String?  // İşlem yapılan mükellef adı (legacy — yeni kayıtlar taxpayerId kullanmalı)
-  model         String   // "claude-haiku-4-5-20251001"
-  inputTokens   Int      @default(0)
-  outputTokens  Int      @default(0)
-  cacheReadTokens  Int   @default(0)
-  cacheWriteTokens Int   @default(0)
-  costUsd       Float    @default(0) // Hesaplanan USD maliyet
-  karar         String?  // "onay" | "atla" | "emin_degil" | "ok" | "error"
-  sebep         String?  @db.VarChar(200)
-  belgeNo       String?
-  durationMs    Int?     // API çağrı süresi
+  id               String   @id @default(cuid())
+  tenantId         String
+  taxpayerId       String? // Mükellef foreign key — karlılık raporunda mükellef başına maliyet için
+  source           String   @default("mihsap-fatura") // hangi modül çağırdı
+  mukellef         String? // İşlem yapılan mükellef adı (legacy — yeni kayıtlar taxpayerId kullanmalı)
+  model            String // "claude-haiku-4-5-20251001"
+  inputTokens      Int      @default(0)
+  outputTokens     Int      @default(0)
+  cacheReadTokens  Int      @default(0)
+  cacheWriteTokens Int      @default(0)
+  costUsd          Float    @default(0) // Hesaplanan USD maliyet
+  karar            String? // "onay" | "atla" | "emin_degil" | "ok" | "error"
+  sebep            String?  @db.VarChar(200)
+  belgeNo          String?
+  durationMs       Int? // API çağrı süresi
   // Cache hit ise true → bu çağrıda gerçekten Claude'a gidilmedi, sadece istatistik
-  cacheHit      Boolean  @default(false)
-  createdAt     DateTime @default(now())
+  cacheHit         Boolean  @default(false)
+  createdAt        DateTime @default(now())
 
   @@index([tenantId, createdAt])
   @@index([tenantId, karar])
@@ -1365,8 +1365,8 @@ model BotQualityLog {
   taxpayerId     String?
   conversationId String?
   messageId      String?
-  source         String   // ONLINE_EVAL | SYNTHETIC_TEST
-  status         String   // PASSED | LOW_SCORE | RETRY_USED | FALLBACK_USED | SYNTHETIC_FAIL | EVAL_WARN
+  source         String // ONLINE_EVAL | SYNTHETIC_TEST
+  status         String // PASSED | LOW_SCORE | RETRY_USED | FALLBACK_USED | SYNTHETIC_FAIL | EVAL_WARN
   score          Int      @default(0)
   intent         String?
   reasons        Json     @default("[]")
@@ -1394,7 +1394,7 @@ model BotQualityFeedback {
   qualityLogId   String?
   conversationId String?
   messageId      String?
-  rating         String   // UP | DOWN
+  rating         String // UP | DOWN
   reason         String?
   createdBy      String?
   createdAt      DateTime @default(now())
@@ -1405,12 +1405,12 @@ model BotQualityFeedback {
 }
 
 model AiCreditTopup {
-  id         String   @id @default(cuid())
-  tenantId   String
-  amountUsd  Float    // Yüklenen tutar (USD)
-  note       String?  // Kullanıcı notu (ör. "Nisan yüklemesi")
-  addedAt    DateTime @default(now())
-  addedBy    String?  // userId
+  id        String   @id @default(cuid())
+  tenantId  String
+  amountUsd Float // Yüklenen tutar (USD)
+  note      String? // Kullanıcı notu (ör. "Nisan yüklemesi")
+  addedAt   DateTime @default(now())
+  addedBy   String? // userId
 
   @@index([tenantId, addedAt])
   @@map("ai_credit_topups")
@@ -1419,19 +1419,19 @@ model AiCreditTopup {
 // MOREN AI hafizasi: ofis, portal, mukellef ve ileride mobil uygulama baglamini
 // kalici olarak saklar. PII/ozel notlar tenant izolasyonuyla tutulur.
 model AiMemory {
-  id          String   @id @default(cuid())
-  tenantId    String
-  taxpayerId  String?
-  scope       String   @default("office") // office | taxpayer | portal | mobile | agent
-  title       String
-  content     String   @db.Text
-  source      String?  // moren-ai | user | agent | mobile | system
-  importance  Int      @default(3) // 1 dusuk, 5 kritik
-  tags        String[] @default([])
-  isActive    Boolean  @default(true)
-  createdBy   String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id         String   @id @default(cuid())
+  tenantId   String
+  taxpayerId String?
+  scope      String   @default("office") // office | taxpayer | portal | mobile | agent
+  title      String
+  content    String   @db.Text
+  source     String? // moren-ai | user | agent | mobile | system
+  importance Int      @default(3) // 1 dusuk, 5 kritik
+  tags       String[] @default([])
+  isActive   Boolean  @default(true)
+  createdBy  String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   @@index([tenantId, scope, isActive])
   @@index([tenantId, taxpayerId, isActive])
@@ -1445,47 +1445,47 @@ model AiMemory {
 
 // MIHSAP oturum token'ı — eklenti tarafından otomatik senkronize edilir
 model MihsapSession {
-  id           String   @id @default(cuid())
-  tenantId     String   @unique  // Her tenant için tek token
-  token        String   @db.Text // JWT (şifreli saklanır — AES-GCM)
-  email        String?  // Bilgi amaçlı (hangi hesap)
-  updatedBy    String?  // userId / "extension"
-  updatedAt    DateTime @updatedAt
-  createdAt    DateTime @default(now())
+  id        String   @id @default(cuid())
+  tenantId  String   @unique // Her tenant için tek token
+  token     String   @db.Text // JWT (şifreli saklanır — AES-GCM)
+  email     String? // Bilgi amaçlı (hangi hesap)
+  updatedBy String? // userId / "extension"
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
 
   @@map("mihsap_sessions")
 }
 
 // MIHSAP'tan çekilen faturalar — metadata + storage path
 model MihsapInvoice {
-  id                 String   @id @default(cuid())
-  tenantId           String
-  mukellefId         String   // Kendi sistemimizdeki mükellef ID
-  mukellefMihsapId   String   // MIHSAP'taki userFirmaBilgisiId
-  donem              String   // "2026-03" formatı (yıl-ay)
-  faturaTuru         String   // "ALIS" | "SATIS" | "TEVKIFATLI_ALIS" vb.
-  belgeTuru          String   // "E_FATURA" | "FIS" | "E_ARSIV" vb.
-  faturaNo           String
-  firmaKimlikNo      String?  // Karşı firma VKN/TCKN
-  firmaUnvan         String?  // Karşı firma adı
-  faturaTarihi       DateTime
-  toplamTutar        Float
-  onayDurumu         String?  // "ONAYLANMIS" vb.
-  mihsapId           String   @unique  // MIHSAP'taki id (duplicate koruma)
-  mihsapFileId       String?
-  mihsapFaturaId     String?
-  orjDosyaTuru       String?  // "XML" | "JPEG" vb.
-  storageKey         String?  // Railway volume / S3 path: {tenant}/{mukellef}/{ay}/{belgeNo}.jpg
-  storageUrl         String?  // Download URL (presigned veya internal)
-  mihsapFileLink     String?  // Orijinal MIHSAP link (fallback)
+  id               String    @id @default(cuid())
+  tenantId         String
+  mukellefId       String // Kendi sistemimizdeki mükellef ID
+  mukellefMihsapId String // MIHSAP'taki userFirmaBilgisiId
+  donem            String // "2026-03" formatı (yıl-ay)
+  faturaTuru       String // "ALIS" | "SATIS" | "TEVKIFATLI_ALIS" vb.
+  belgeTuru        String // "E_FATURA" | "FIS" | "E_ARSIV" vb.
+  faturaNo         String
+  firmaKimlikNo    String? // Karşı firma VKN/TCKN
+  firmaUnvan       String? // Karşı firma adı
+  faturaTarihi     DateTime
+  toplamTutar      Float
+  onayDurumu       String? // "ONAYLANMIS" vb.
+  mihsapId         String    @unique // MIHSAP'taki id (duplicate koruma)
+  mihsapFileId     String?
+  mihsapFaturaId   String?
+  orjDosyaTuru     String? // "XML" | "JPEG" vb.
+  storageKey       String? // Railway volume / S3 path: {tenant}/{mukellef}/{ay}/{belgeNo}.jpg
+  storageUrl       String? // Download URL (presigned veya internal)
+  mihsapFileLink   String? // Orijinal MIHSAP link (fallback)
   // Kayit hangi MIHSAP kaynagindan geldi: "arsiv" (Arsivim) | "bekleyen" (gelen evraklar).
   // Islenen Faturalar modulu YALNIZ arsiv kaynakli kayitlari listeler; Fatura Isleme
   // Merkezi'nin "Mihsap'tan Cek"i bekleyen ceker, o kayitlar Islenen Faturalar'da gorunmez.
-  kaynak             String?
-  downloadedAt       DateTime?
-  raw                Json?    // Orijinal MIHSAP payload
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  kaynak           String?
+  downloadedAt     DateTime?
+  raw              Json? // Orijinal MIHSAP payload
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   @@index([tenantId, mukellefId, donem])
   @@index([tenantId, donem, faturaTuru])
@@ -1495,19 +1495,19 @@ model MihsapInvoice {
 
 // Toplu çekme komutları — async çalıştırma + progress takibi
 model MihsapFetchJob {
-  id          String   @id @default(cuid())
-  tenantId    String
-  mukellefId  String
-  donem       String   // "2026-03"
-  faturaTuru  String?  // "ALIS" | "SATIS" | null (ikisi birden)
-  status      String   @default("pending") // pending | running | done | failed
-  totalCount  Int      @default(0)
-  fetchedCount Int     @default(0)
-  errorMsg    String?
-  createdBy   String?
-  createdAt   DateTime @default(now())
-  startedAt   DateTime?
-  finishedAt  DateTime?
+  id           String    @id @default(cuid())
+  tenantId     String
+  mukellefId   String
+  donem        String // "2026-03"
+  faturaTuru   String? // "ALIS" | "SATIS" | null (ikisi birden)
+  status       String    @default("pending") // pending | running | done | failed
+  totalCount   Int       @default(0)
+  fetchedCount Int       @default(0)
+  errorMsg     String?
+  createdBy    String?
+  createdAt    DateTime  @default(now())
+  startedAt    DateTime?
+  finishedAt   DateTime?
 
   @@index([tenantId, createdAt])
   @@index([tenantId, status])
@@ -1525,12 +1525,12 @@ model MihsapFetchJob {
 model GoogleDriveAccount {
   id                    String    @id @default(cuid())
   tenantId              String    @unique
-  email                 String?   // Bağlanan Google hesabı
-  encryptedRefreshToken String    @db.Text  // AES-GCM şifreli refresh token
-  accessToken           String?   @db.Text  // Son erişim token'ı (cache)
+  email                 String? // Bağlanan Google hesabı
+  encryptedRefreshToken String    @db.Text // AES-GCM şifreli refresh token
+  accessToken           String?   @db.Text // Son erişim token'ı (cache)
   accessTokenExpiresAt  DateTime?
   scope                 String?
-  rootFolderId          String?   // "FATURALAR" kök klasör id (cache)
+  rootFolderId          String? // "FATURALAR" kök klasör id (cache)
   rootFolderName        String    @default("FATURALAR")
   connectedAt           DateTime?
   lastError             String?
@@ -1547,13 +1547,13 @@ model GoogleDriveAccount {
 model DriveBackup {
   id            String   @id @default(cuid())
   tenantId      String
-  mihsapId      String   // MihsapInvoice.mihsapId (kaynak fatura kimliği)
+  mihsapId      String // MihsapInvoice.mihsapId (kaynak fatura kimliği)
   mukellefId    String?
   donem         String?
-  faturaTuru    String?  // ALIS | SATIS
-  driveFileId   String   // Drive dosya id
-  driveFolderId String?  // Bulunduğu klasör id
-  filePath      String?  // FATURALAR/.../Alış/dosya.jpg (okunabilirlik)
+  faturaTuru    String? // ALIS | SATIS
+  driveFileId   String // Drive dosya id
+  driveFolderId String? // Bulunduğu klasör id
+  filePath      String? // FATURALAR/.../Alış/dosya.jpg (okunabilirlik)
   fileName      String?
   sizeBytes     Int?
   backedUpAt    DateTime @default(now())
@@ -1567,7 +1567,7 @@ model DriveBackup {
 model DriveFolder {
   id            String   @id @default(cuid())
   tenantId      String
-  path          String   // "FATURALAR/{mükellef}/2026/04 Nisan/Alış"
+  path          String // "FATURALAR/{mükellef}/2026/04 Nisan/Alış"
   driveFolderId String
   createdAt     DateTime @default(now())
 
@@ -1606,14 +1606,14 @@ model DriveBackupJob {
 model LucaCredential {
   id                String    @id @default(cuid())
   tenantId          String    @unique
-  uyeNo             String    // Luca üye numarası (müşavir no)
-  username          String    // Luca kullanıcı adı (mali müşavirin hesabı)
-  encryptedPassword String    @db.Text  // AES-GCM şifrelenmiş
+  uyeNo             String // Luca üye numarası (müşavir no)
+  username          String // Luca kullanıcı adı (mali müşavirin hesabı)
+  encryptedPassword String    @db.Text // AES-GCM şifrelenmiş
   // Cache edilmiş session cookies — her istek için yeniden login olmasın
-  encryptedCookies  String?   @db.Text  // AES-GCM şifrelenmiş JSON
+  encryptedCookies  String?   @db.Text // AES-GCM şifrelenmiş JSON
   cookiesExpiresAt  DateTime?
   lastLoginAt       DateTime?
-  lastError         String?   // Son login denemesinde hata varsa
+  lastError         String? // Son login denemesinde hata varsa
   isActive          Boolean   @default(true)
   updatedBy         String?
   updatedAt         DateTime  @updatedAt
@@ -1625,15 +1625,15 @@ model LucaCredential {
 // Luca oturum token/cookie'si — tarayıcı eklentisi tarafından senkronize edilir
 // (Eski bookmarklet akışı için; credential tablosu varsa kullanılmaz)
 model LucaSession {
-  id          String   @id @default(cuid())
-  tenantId    String   @unique   // Her tenant için tek oturum
-  token       String   @db.Text  // JWT ya da cookie header değeri
-  cookies     String?  @db.Text  // Luca için ek cookie header (PHPSESSID vs.)
-  origin      String?            // "web.luca.com.tr" gibi
-  email       String?            // Luca hesabı (bilgi amaçlı)
-  updatedBy   String?            // userId / "extension"
-  updatedAt   DateTime @updatedAt
-  createdAt   DateTime @default(now())
+  id        String   @id @default(cuid())
+  tenantId  String   @unique // Her tenant için tek oturum
+  token     String   @db.Text // JWT ya da cookie header değeri
+  cookies   String?  @db.Text // Luca için ek cookie header (PHPSESSID vs.)
+  origin    String? // "web.luca.com.tr" gibi
+  email     String? // Luca hesabı (bilgi amaçlı)
+  updatedBy String? // userId / "extension"
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
 
   @@map("luca_sessions")
 }
@@ -1670,28 +1670,28 @@ model LucaCaptchaChallenge {
 
 // Luca'dan çekilen mizan snapshot'ı (tek dönem için tüm hesap kodları)
 model Mizan {
-  id          String        @id @default(cuid())
+  id          String    @id @default(cuid())
   tenantId    String
   taxpayerId  String
-  donem       String        // "2026-03"
-  donemTipi   String        @default("AYLIK") // AYLIK | GECICI_Q1 | GECICI_Q2 | GECICI_Q3 | GECICI_Q4 | YILLIK
-  kaynak      String        @default("LUCA")  // LUCA | MANUEL | EXCEL
-  status      String        @default("READY") // PENDING | READY | FAILED
+  donem       String // "2026-03"
+  donemTipi   String    @default("AYLIK") // AYLIK | GECICI_Q1 | GECICI_Q2 | GECICI_Q3 | GECICI_Q4 | YILLIK
+  kaynak      String    @default("LUCA") // LUCA | MANUEL | EXCEL
+  status      String    @default("READY") // PENDING | READY | FAILED
   notes       String?
-  rawExcelKey String?       // Mizan Excel orijinali (arşiv için)
+  rawExcelKey String? // Mizan Excel orijinali (arşiv için)
   // Kesin Kayıt (lock) — kilitlendiğinde değişiklik/silme reddedilir
-  locked      Boolean       @default(false)
+  locked      Boolean   @default(false)
   lockedAt    DateTime?
   lockedBy    String?
   lockNote    String?
   createdBy   String?
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
-  hesaplar    MizanHesap[]
+  hesaplar       MizanHesap[]
   gelirTablolari GelirTablosu[]
-  bilancolar  Bilanco[]
-  anomaliler  MizanAnomali[]
+  bilancolar     Bilanco[]
+  anomaliler     MizanAnomali[]
 
   @@index([tenantId, taxpayerId, donem])
   @@index([tenantId, createdAt])
@@ -1700,19 +1700,19 @@ model Mizan {
 
 // Mizan içindeki her hesap kodu satırı
 model MizanHesap {
-  id              String   @id @default(cuid())
-  mizanId         String
-  hesapKodu       String   // "600", "600.01", "120.01.001" gibi
-  hesapAdi        String
+  id            String  @id @default(cuid())
+  mizanId       String
+  hesapKodu     String // "600", "600.01", "120.01.001" gibi
+  hesapAdi      String
   // Alt kırılım seviyesi (kaç nokta var): 0 = ana hesap, 1 = alt, 2 = detay
-  seviye          Int      @default(0)
-  borcToplami     Decimal  @default(0) @db.Decimal(18, 2)
-  alacakToplami   Decimal  @default(0) @db.Decimal(18, 2)
-  borcBakiye      Decimal  @default(0) @db.Decimal(18, 2)
-  alacakBakiye    Decimal  @default(0) @db.Decimal(18, 2)
-  rowIndex        Int      @default(0)
+  seviye        Int     @default(0)
+  borcToplami   Decimal @default(0) @db.Decimal(18, 2)
+  alacakToplami Decimal @default(0) @db.Decimal(18, 2)
+  borcBakiye    Decimal @default(0) @db.Decimal(18, 2)
+  alacakBakiye  Decimal @default(0) @db.Decimal(18, 2)
+  rowIndex      Int     @default(0)
 
-  mizan           Mizan    @relation(fields: [mizanId], references: [id], onDelete: Cascade)
+  mizan Mizan @relation(fields: [mizanId], references: [id], onDelete: Cascade)
 
   @@index([mizanId, hesapKodu])
   @@map("mizan_hesaplar")
@@ -1720,15 +1720,15 @@ model MizanHesap {
 
 // Mizan denetim sonucu — hesap kodu anomalileri
 model MizanAnomali {
-  id           String   @id @default(cuid())
-  mizanId      String
-  hesapKodu    String?
-  tip          String   // "TDHP_DISI" | "ZIT_BAKIYE" | "EKSIK_HESAP" | "NET_OLMAYAN"
-  seviye       String   @default("WARN") // INFO | WARN | ERROR
-  mesaj        String
-  detay        Json?
+  id        String  @id @default(cuid())
+  mizanId   String
+  hesapKodu String?
+  tip       String // "TDHP_DISI" | "ZIT_BAKIYE" | "EKSIK_HESAP" | "NET_OLMAYAN"
+  seviye    String  @default("WARN") // INFO | WARN | ERROR
+  mesaj     String
+  detay     Json?
 
-  mizan        Mizan    @relation(fields: [mizanId], references: [id], onDelete: Cascade)
+  mizan Mizan @relation(fields: [mizanId], references: [id], onDelete: Cascade)
 
   @@index([mizanId])
   @@map("mizan_anomaliler")
@@ -1736,19 +1736,19 @@ model MizanAnomali {
 
 // Mizandan üretilen gelir tablosu snapshot'ı
 model MizanDenetimKriteri {
-  id            String   @id @default(cuid())
-  tenantId      String
-  ad            String
-  aktif         Boolean  @default(true)
-  hesapPattern  String
-  kosul         String
-  esik          Decimal? @db.Decimal(18, 2)
-  seviye        String   @default("WARN")
-  mesaj         String
-  taxpayerId    String?
-  createdBy     String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id           String   @id @default(cuid())
+  tenantId     String
+  ad           String
+  aktif        Boolean  @default(true)
+  hesapPattern String
+  kosul        String
+  esik         Decimal? @db.Decimal(18, 2)
+  seviye       String   @default("WARN")
+  mesaj        String
+  taxpayerId   String?
+  createdBy    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   @@index([tenantId, aktif])
   @@index([tenantId, taxpayerId])
@@ -1758,27 +1758,27 @@ model MizanDenetimKriteri {
 // e-Defter on kontrol icin Luca Detay Fis Listesi snapshot'i.
 // Kaynak yevmiye defteri degil, defter olusmadan once muhasebe fis satirlaridir.
 model EDefterControlSession {
-  id             String   @id @default(cuid())
+  id             String    @id @default(cuid())
   tenantId       String
   taxpayerId     String
-  donem          String   // "2026-Q1", "2026-04" veya "2026"
-  donemTipi      String   @default("GECICI_Q1") // GECICI_Q1..Q4 | AYLIK | YILLIK
+  donem          String // "2026-Q1", "2026-04" veya "2026"
+  donemTipi      String    @default("GECICI_Q1") // GECICI_Q1..Q4 | AYLIK | YILLIK
   donemBaslangic DateTime?
   donemBitis     DateTime?
-  kaynak         String   @default("LUCA") // LUCA | EXCEL
-  status         String   @default("READY") // READY | REVIEWING | FAILED
-  totalLines     Int      @default(0)
-  totalVouchers  Int      @default(0)
-  findingCount   Int      @default(0)
+  kaynak         String    @default("LUCA") // LUCA | EXCEL
+  status         String    @default("READY") // READY | REVIEWING | FAILED
+  totalLines     Int       @default(0)
+  totalVouchers  Int       @default(0)
+  findingCount   Int       @default(0)
   rawExcelBytes  Bytes?
-  rawExcelSize   Int      @default(0)
+  rawExcelSize   Int       @default(0)
   notes          String?
   createdBy      String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
-  lines          EDefterVoucherLine[]
-  findings       EDefterFinding[]
+  lines    EDefterVoucherLine[]
+  findings EDefterFinding[]
 
   @@index([tenantId, taxpayerId, donem])
   @@index([tenantId, createdAt])
@@ -1786,28 +1786,28 @@ model EDefterControlSession {
 }
 
 model EDefterVoucherLine {
-  id            String   @id @default(cuid())
-  sessionId     String
-  rowIndex      Int      @default(0)
-  voucherKey    String
-  fisNo         String?
-  yevmiyeNo     String?
-  fisTarihi     DateTime?
-  fisTipi       String?
-  evrakNo       String?
-  evrakTarihi   DateTime?
-  belgeTuru     String?
-  hesapKodu     String?
-  hesapAdi      String?
-  aciklama      String?
-  karsiHesap    String?
-  vknTckn       String?
-  borc          Decimal  @default(0) @db.Decimal(18, 2)
-  alacak        Decimal  @default(0) @db.Decimal(18, 2)
-  rawData       Json?
-  createdAt     DateTime @default(now())
+  id          String    @id @default(cuid())
+  sessionId   String
+  rowIndex    Int       @default(0)
+  voucherKey  String
+  fisNo       String?
+  yevmiyeNo   String?
+  fisTarihi   DateTime?
+  fisTipi     String?
+  evrakNo     String?
+  evrakTarihi DateTime?
+  belgeTuru   String?
+  hesapKodu   String?
+  hesapAdi    String?
+  aciklama    String?
+  karsiHesap  String?
+  vknTckn     String?
+  borc        Decimal   @default(0) @db.Decimal(18, 2)
+  alacak      Decimal   @default(0) @db.Decimal(18, 2)
+  rawData     Json?
+  createdAt   DateTime  @default(now())
 
-  session       EDefterControlSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  session EDefterControlSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   @@index([sessionId, voucherKey])
   @@index([sessionId, hesapKodu])
@@ -1815,19 +1815,19 @@ model EDefterVoucherLine {
 }
 
 model EDefterFinding {
-  id            String   @id @default(cuid())
-  sessionId     String
-  severity      String   @default("WARN") // INFO | WARN | ERROR
-  category      String
-  message       String
-  voucherKey    String?
-  rowIndex      Int?
-  hesapKodu     String?
-  detail        Json?
-  status        String   @default("OPEN") // OPEN | RESOLVED | IGNORED
-  createdAt     DateTime @default(now())
+  id         String   @id @default(cuid())
+  sessionId  String
+  severity   String   @default("WARN") // INFO | WARN | ERROR
+  category   String
+  message    String
+  voucherKey String?
+  rowIndex   Int?
+  hesapKodu  String?
+  detail     Json?
+  status     String   @default("OPEN") // OPEN | RESOLVED | IGNORED
+  createdAt  DateTime @default(now())
 
-  session       EDefterControlSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  session EDefterControlSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   @@index([sessionId, severity])
   @@index([sessionId, category])
@@ -1849,49 +1849,49 @@ model EDefterControlRuleSetting {
 }
 
 model GelirTablosu {
-  id           String   @id @default(cuid())
-  tenantId     String
-  taxpayerId   String
-  mizanId      String?  // Hangi mizandan üretildi
-  donem        String   // "2026-Q1" | "2026-03" | "2026-YILLIK"
-  donemTipi    String   @default("GECICI_Q1")
+  id             String    @id @default(cuid())
+  tenantId       String
+  taxpayerId     String
+  mizanId        String? // Hangi mizandan üretildi
+  donem          String // "2026-Q1" | "2026-03" | "2026-YILLIK"
+  donemTipi      String    @default("GECICI_Q1")
   donemBaslangic DateTime?
-  donemBitis   DateTime?
+  donemBitis     DateTime?
 
   // Standart gelir tablosu kalemleri (TDHP)
-  brutSatislar       Decimal  @default(0) @db.Decimal(18, 2)
-  satisIndirimleri   Decimal  @default(0) @db.Decimal(18, 2)
-  netSatislar        Decimal  @default(0) @db.Decimal(18, 2)
-  satisMaliyeti      Decimal  @default(0) @db.Decimal(18, 2)
-  brutSatisKari      Decimal  @default(0) @db.Decimal(18, 2)
-  faaliyetGiderleri  Decimal  @default(0) @db.Decimal(18, 2)
-  faaliyetKari       Decimal  @default(0) @db.Decimal(18, 2)
-  digerGelirler      Decimal  @default(0) @db.Decimal(18, 2)
-  digerGiderler      Decimal  @default(0) @db.Decimal(18, 2)
-  finansmanGiderleri Decimal  @default(0) @db.Decimal(18, 2)
-  olaganKar          Decimal  @default(0) @db.Decimal(18, 2)
-  olaganDisiGelir    Decimal  @default(0) @db.Decimal(18, 2)
-  olaganDisiGider    Decimal  @default(0) @db.Decimal(18, 2)
-  donemKari          Decimal  @default(0) @db.Decimal(18, 2)
-  vergiKarsiligi     Decimal  @default(0) @db.Decimal(18, 2)
-  donemNetKari       Decimal  @default(0) @db.Decimal(18, 2)
+  brutSatislar       Decimal @default(0) @db.Decimal(18, 2)
+  satisIndirimleri   Decimal @default(0) @db.Decimal(18, 2)
+  netSatislar        Decimal @default(0) @db.Decimal(18, 2)
+  satisMaliyeti      Decimal @default(0) @db.Decimal(18, 2)
+  brutSatisKari      Decimal @default(0) @db.Decimal(18, 2)
+  faaliyetGiderleri  Decimal @default(0) @db.Decimal(18, 2)
+  faaliyetKari       Decimal @default(0) @db.Decimal(18, 2)
+  digerGelirler      Decimal @default(0) @db.Decimal(18, 2)
+  digerGiderler      Decimal @default(0) @db.Decimal(18, 2)
+  finansmanGiderleri Decimal @default(0) @db.Decimal(18, 2)
+  olaganKar          Decimal @default(0) @db.Decimal(18, 2)
+  olaganDisiGelir    Decimal @default(0) @db.Decimal(18, 2)
+  olaganDisiGider    Decimal @default(0) @db.Decimal(18, 2)
+  donemKari          Decimal @default(0) @db.Decimal(18, 2)
+  vergiKarsiligi     Decimal @default(0) @db.Decimal(18, 2)
+  donemNetKari       Decimal @default(0) @db.Decimal(18, 2)
 
   // Detay: hangi hesap kodundan hangi tutar geldi (audit için)
-  detay        Json?
+  detay       Json?
   // Manuel düzeltmeler: kullanıcı 2. dönem için mizana kaydetmeden önce
   // maliyet/gider tahmini yapabilsin diye — her kalem için ek tutar
-  duzeltmeler  Json?
+  duzeltmeler Json?
   // Kesin Kayıt — kilitlendiğinde değişiklik/silme reddedilir
-  locked       Boolean  @default(false)
-  lockedAt     DateTime?
-  lockedBy     String?
-  lockNote     String?
-  notes        String?
-  createdBy    String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  locked      Boolean   @default(false)
+  lockedAt    DateTime?
+  lockedBy    String?
+  lockNote    String?
+  notes       String?
+  createdBy   String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
-  mizan        Mizan?   @relation(fields: [mizanId], references: [id], onDelete: SetNull)
+  mizan Mizan? @relation(fields: [mizanId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, taxpayerId, donem])
   @@index([tenantId, createdAt])
@@ -1900,40 +1900,40 @@ model GelirTablosu {
 
 // Mizandan üretilen bilanço snapshot'ı
 model Bilanco {
-  id           String   @id @default(cuid())
-  tenantId     String
-  taxpayerId   String
-  mizanId      String?
-  donem        String   // "2026-03"
-  donemTipi    String   @default("AYLIK")
-  tarih        DateTime?
+  id         String    @id @default(cuid())
+  tenantId   String
+  taxpayerId String
+  mizanId    String?
+  donem      String // "2026-03"
+  donemTipi  String    @default("AYLIK")
+  tarih      DateTime?
 
   // Aktif toplamları (Dönen + Duran = Aktif Toplamı)
-  donenVarliklar    Decimal @default(0) @db.Decimal(18, 2)
-  duranVarliklar    Decimal @default(0) @db.Decimal(18, 2)
-  aktifToplami      Decimal @default(0) @db.Decimal(18, 2)
+  donenVarliklar Decimal @default(0) @db.Decimal(18, 2)
+  duranVarliklar Decimal @default(0) @db.Decimal(18, 2)
+  aktifToplami   Decimal @default(0) @db.Decimal(18, 2)
 
   // Pasif toplamları (KVYK + UVYK + Özkaynak = Pasif Toplamı)
-  kvYabanciKaynak   Decimal @default(0) @db.Decimal(18, 2)
-  uvYabanciKaynak   Decimal @default(0) @db.Decimal(18, 2)
-  ozkaynaklar       Decimal @default(0) @db.Decimal(18, 2)
-  pasifToplami      Decimal @default(0) @db.Decimal(18, 2)
+  kvYabanciKaynak Decimal @default(0) @db.Decimal(18, 2)
+  uvYabanciKaynak Decimal @default(0) @db.Decimal(18, 2)
+  ozkaynaklar     Decimal @default(0) @db.Decimal(18, 2)
+  pasifToplami    Decimal @default(0) @db.Decimal(18, 2)
 
   // Detaylı kırılım (aktif + pasif tam hesap kodu bazlı)
-  aktif        Json     // {"10": {...}, "12": {...}, ...}
-  pasif        Json
-  detay        Json?
+  aktif     Json // {"10": {...}, "12": {...}, ...}
+  pasif     Json
+  detay     Json?
   // Kesin Kayıt — kilitlendiğinde değişiklik/silme reddedilir
-  locked       Boolean  @default(false)
-  lockedAt     DateTime?
-  lockedBy     String?
-  lockNote     String?
-  notes        String?
-  createdBy    String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  locked    Boolean   @default(false)
+  lockedAt  DateTime?
+  lockedBy  String?
+  lockNote  String?
+  notes     String?
+  createdBy String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
-  mizan        Mizan?   @relation(fields: [mizanId], references: [id], onDelete: SetNull)
+  mizan Mizan? @relation(fields: [mizanId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, taxpayerId, donem])
   @@index([tenantId, createdAt])
@@ -1942,23 +1942,23 @@ model Bilanco {
 
 // KDV Kontrol çıktılarının arşivi — fiş yazdırmadaki gibi geriye dönük erişim
 model KdvControlOutput {
-  id            String   @id @default(cuid())
-  tenantId      String
-  sessionId     String?  // Hangi KDV kontrol oturumundan üretildi
-  taxpayerId    String?
-  mukellefName  String?  // Snapshot — görüntüleme için
-  donem         String?  // "2026-02"
-  tip           String?  // "KDV_191" | "KDV_391" | "ISLETME_GELIR" | "ISLETME_GIDER"
-  matchedCount  Int      @default(0)
-  partialCount  Int      @default(0)
-  unmatchedCount Int     @default(0)
-  totalRecords  Int      @default(0)
-  totalImages   Int      @default(0)
-  filename      String   // İndirme adı
-  fileBytes     Bytes    // Excel dosyasının ikili içeriği
-  fileSize      Int      @default(0)
-  createdBy     String?
-  createdAt     DateTime @default(now())
+  id             String   @id @default(cuid())
+  tenantId       String
+  sessionId      String? // Hangi KDV kontrol oturumundan üretildi
+  taxpayerId     String?
+  mukellefName   String? // Snapshot — görüntüleme için
+  donem          String? // "2026-02"
+  tip            String? // "KDV_191" | "KDV_391" | "ISLETME_GELIR" | "ISLETME_GIDER"
+  matchedCount   Int      @default(0)
+  partialCount   Int      @default(0)
+  unmatchedCount Int      @default(0)
+  totalRecords   Int      @default(0)
+  totalImages    Int      @default(0)
+  filename       String // İndirme adı
+  fileBytes      Bytes // Excel dosyasının ikili içeriği
+  fileSize       Int      @default(0)
+  createdBy      String?
+  createdAt      DateTime @default(now())
 
   @@index([tenantId, createdAt])
   @@index([tenantId, taxpayerId, donem])
@@ -1968,36 +1968,36 @@ model KdvControlOutput {
 
 // Luca'dan çekilen komutlar — hangi mükellef/dönem için ne tür muavin alındı
 model LucaFetchJob {
-  id            String    @id @default(cuid())
-  tenantId      String
-  sessionId     String?   // Bağlı KDV kontrol oturumu (varsa)
-  mukellefId    String
-  donem         String    // "2026-03"
-  tip           String    // "KDV_191" | "KDV_391" | "ISLETME_GELIR" | "ISLETME_GIDER" | "INVOICE_POST"
-  status        String    @default("pending") // pending | running | done | failed
-  recordCount   Int       @default(0)
-  errorMsg      String?
-  targetDeviceId String?
-  createdBy     String?
+  id                String    @id @default(cuid())
+  tenantId          String
+  sessionId         String? // Bağlı KDV kontrol oturumu (varsa)
+  mukellefId        String
+  donem             String // "2026-03"
+  tip               String // "KDV_191" | "KDV_391" | "ISLETME_GELIR" | "ISLETME_GIDER" | "INVOICE_POST"
+  status            String    @default("pending") // pending | running | done | failed
+  recordCount       Int       @default(0)
+  errorMsg          String?
+  targetDeviceId    String?
+  createdBy         String?
   // Boyut B — Job affinity: hangi ajan tipi tercih edilir
   // null = herkes alabilir, 'local-node' = sadece headless worker,
   // 'browser-ext' = sadece Chrome uzantısı
-  preferredAgent String?
+  preferredAgent    String?
   // Boyut C — Priority: yüksek = önce işle (default 0)
   // Beyanname dönemi yaklaşınca portal otomatik 1-5 arası yükseltir
-  priority      Int       @default(0)
+  priority          Int       @default(0)
   // Retry policy — DENİZ patrol direkt iptal etmeden önce 2 kez retry
   // her retry'da nextRetryAt exponential backoff (5dk, 15dk, 45dk)
-  retryCount    Int       @default(0)
-  nextRetryAt   DateTime?
+  retryCount        Int       @default(0)
+  nextRetryAt       DateTime?
   // v1.38: INVOICE_POST tipi için iş yükü (belge ID, satırlar vs).
   // Diğer tipler de gelecekte serbest payload taşıyabilir.
-  payload       Json?
+  payload           Json?
   // v1.38: INVOICE_POST için bağlı belgeye direct FK index (kolay sorgu)
   invoiceDocumentId String?
-  createdAt     DateTime  @default(now())
-  startedAt     DateTime?
-  finishedAt    DateTime?
+  createdAt         DateTime  @default(now())
+  startedAt         DateTime?
+  finishedAt        DateTime?
 
   @@index([tenantId, createdAt])
   @@index([tenantId, status])
@@ -2012,20 +2012,20 @@ model LucaFetchJob {
 // Her conversation bir kullanıcı sohbet oturumu; messages JSON array
 // (kullanıcı + ajan cevapları, sırasıyla).
 model MorenOfisConversation {
-  id              String   @id @default(cuid())
-  tenantId        String
-  createdBy       String
-  title           String?
+  id             String   @id @default(cuid())
+  tenantId       String
+  createdBy      String
+  title          String?
   // OfisMessage[] — see apps/api/src/moren-ofis/moren-ofis.service.ts
-  messages        Json     @default("[]")
+  messages       Json     @default("[]")
   // ARDA'nın sohbet sonu üretttiği 1-2 cümle özet — gelecek sohbetlerde
   // yeni sorguya inject edilir (long-term memory).
-  summary         String?
+  summary        String?
   // Sohbet konusu / ana entity (mükellef adı vb.) — filter için
-  entities        String[] @default([])
-  totalCostUsd    Decimal  @default(0) @db.Decimal(10, 6)
-  createdAt       DateTime @default(now())
-  lastActivityAt  DateTime @default(now()) @updatedAt
+  entities       String[] @default([])
+  totalCostUsd   Decimal  @default(0) @db.Decimal(10, 6)
+  createdAt      DateTime @default(now())
+  lastActivityAt DateTime @default(now()) @updatedAt
 
   @@index([tenantId, lastActivityAt])
   @@map("moren_ofis_conversations")
@@ -2039,26 +2039,26 @@ model MorenOfisConversation {
 //
 // Ajan cevap üretirken ARDA bu gerçekleri context'e enjekte eder.
 model MorenOfisFact {
-  id              String   @id @default(cuid())
-  tenantId        String
+  id             String   @id @default(cuid())
+  tenantId       String
   // Gerçeği oluşturan ajan (genelde ARDA, ama her ajan kendi gerçeğini de saklayabilir)
-  createdByAgent  String?
-  subject         String   // "Ahmet Yılmaz", "ofis", "PETRAVET", "Muzaffer Bey", "muhsap_login"
-  predicate       String   // "tercih_eder", "son_kdv_donemi", "ortalama_gelir", "calisan_sayisi"
-  object          String   // değer — serbest metin
+  createdByAgent String?
+  subject        String // "Ahmet Yılmaz", "ofis", "PETRAVET", "Muzaffer Bey", "muhsap_login"
+  predicate      String // "tercih_eder", "son_kdv_donemi", "ortalama_gelir", "calisan_sayisi"
+  object         String // değer — serbest metin
   // Önem skoru: 1-10 arası. Düşükse zaman içinde silinir.
-  importance      Int      @default(5)
+  importance     Int      @default(5)
   // Kaynağı — hangi conversation'dan çıkarıldı (audit + revoke için)
-  sourceConvId    String?
+  sourceConvId   String?
   // Kaç kez context'e yüklendi — popüler olanlar ilk gelir
-  accessCount     Int      @default(0)
-  lastAccessedAt  DateTime @default(now())
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  accessCount    Int      @default(0)
+  lastAccessedAt DateTime @default(now())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
+  @@unique([tenantId, subject, predicate])
   @@index([tenantId, subject])
   @@index([tenantId, importance, lastAccessedAt])
-  @@unique([tenantId, subject, predicate])
   @@map("moren_ofis_facts")
 }
 
@@ -2088,26 +2088,26 @@ model MorenOfisProposal {
 // Boyut D — Zamanlanmış otomatik Luca işleri
 // Cron benzeri: belirlenen aralıkta scheduler servisi LucaFetchJob yaratır.
 model ScheduledLucaJob {
-  id          String    @id @default(cuid())
-  tenantId    String
-  name        String    // Kullanıcıya gösterilen ad — "Ay başı tüm mükellefler mizan"
-  active      Boolean   @default(true)
+  id             String    @id @default(cuid())
+  tenantId       String
+  name           String // Kullanıcıya gösterilen ad — "Ay başı tüm mükellefler mizan"
+  active         Boolean   @default(true)
   // Cron string (standart 5-field: dakika saat gün ay haftaGünü)
   // Örn: "0 6 1 * *" = her ayın 1'inde 06:00
-  cron        String
+  cron           String
   // Yaratılacak job parametreleri
-  jobTip      String    // "MIZAN" | "ACCOUNT_PLAN" | "EARSIV_ALIS" vb.
+  jobTip         String // "MIZAN" | "ACCOUNT_PLAN" | "EARSIV_ALIS" vb.
   // Mükellef seçimi: null=tüm aktif mükellefler, string[]=spesifik id listesi
-  mukellefIds String[]  @default([])
+  mukellefIds    String[]  @default([])
   // İlave parametreler (donem hesaplama vb.)
-  options     Json?
+  options        Json?
   preferredAgent String?
-  priority    Int       @default(0)
-  lastRunAt   DateTime?
-  nextRunAt   DateTime?
-  createdBy   String?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  priority       Int       @default(0)
+  lastRunAt      DateTime?
+  nextRunAt      DateTime?
+  createdBy      String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   @@index([tenantId, active, nextRunAt])
   @@map("scheduled_luca_jobs")
@@ -2117,22 +2117,22 @@ model ScheduledLucaJob {
 model FisYazdirmaOutput {
   id            String   @id @default(cuid())
   tenantId      String
-  mukellefId    String?  // Seçili mükellef (varsa)
-  mukellefName  String?  // Snapshot — görüntüleme için
-  donem         String?  // "2026-02" (varsa)
+  mukellefId    String? // Seçili mükellef (varsa)
+  mukellefName  String? // Snapshot — görüntüleme için
+  donem         String? // "2026-02" (varsa)
   fileCount     Int      @default(0)
   pagesPerSheet Int?
-  filename      String   // İndirme sırasında kullanılan orijinal ad
-  fileBytes     Bytes    // Word belgesinin ikili içeriği
+  filename      String // İndirme sırasında kullanılan orijinal ad
+  fileBytes     Bytes // Word belgesinin ikili içeriği
   fileSize      Int      @default(0)
   createdBy     String?
   createdAt     DateTime @default(now())
 
   // Otomatik yazdırma — lokal agent tarafından pull edilir
-  printStatus   String?  // null | "REQUESTED" | "PRINTING" | "DONE" | "FAILED"
+  printStatus   String? // null | "REQUESTED" | "PRINTING" | "DONE" | "FAILED"
   printedAt     DateTime?
-  printError    String?  // hata olursa mesaj
-  printDeviceId String?  // hangi agent yazdıracak (null = ilk uygun cihaz)
+  printError    String? // hata olursa mesaj
+  printDeviceId String? // hangi agent yazdıracak (null = ilk uygun cihaz)
 
   @@index([tenantId, createdAt])
   @@index([tenantId, mukellefId, donem])
@@ -2141,17 +2141,17 @@ model FisYazdirmaOutput {
 }
 
 model AgentCommand {
-  id         String   @id @default(cuid())
+  id         String    @id @default(cuid())
   tenantId   String
-  agent      String   // "luca" | "mihsap" | ...
-  action     String   // "basla" | "durdur" | "isle" | "ay_degistir"
-  payload    Json     // {mukellefIds: [...], ay: "2026-03", ...}
-  status     String   @default("pending") // pending | running | done | failed
-  result     Json?    // Çalıştırma sonucu / hata
-  createdAt  DateTime @default(now())
+  agent      String // "luca" | "mihsap" | ...
+  action     String // "basla" | "durdur" | "isle" | "ay_degistir"
+  payload    Json // {mukellefIds: [...], ay: "2026-03", ...}
+  status     String    @default("pending") // pending | running | done | failed
+  result     Json? // Çalıştırma sonucu / hata
+  createdAt  DateTime  @default(now())
   startedAt  DateTime?
   finishedAt DateTime?
-  createdBy  String?  // userId
+  createdBy  String? // userId
 
   @@index([tenantId, status])
   @@index([tenantId, agent, createdAt])
@@ -2159,24 +2159,24 @@ model AgentCommand {
 }
 
 model OwnerApprovalRequest {
-  id               String   @id @default(cuid())
+  id               String    @id @default(cuid())
   tenantId         String
-  previewId        String   @unique
+  previewId        String    @unique
   userId           String?
   ownerPhone       String?
   aiConversationId String?
   agent            String
   action           String
   payload          Json
-  impact           String?  @db.Text
-  status           String   @default("PENDING") // PENDING | EXECUTED | EXPIRED | REJECTED
+  impact           String?   @db.Text
+  status           String    @default("PENDING") // PENDING | EXECUTED | EXPIRED | REJECTED
   expiresAt        DateTime
   approvedAt       DateTime?
   rejectedAt       DateTime?
   consumedAt       DateTime?
   responseText     String?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   @@index([tenantId, status, expiresAt])
   @@index([tenantId, createdAt])
@@ -2187,13 +2187,13 @@ model OwnerApprovalRequest {
 // SMS / WHATSAPP ŞABLONLARI
 // ============================================================
 model SmsTemplate {
-  id               String   @id @default(cuid())
-  tenantId         String   @unique
-  evrakTalepMesaji String   @default("Sayın {ad}, {dönem} dönemi evraklarınızı tarafımıza teslim etmenizi rica ederiz. Moren Mali Müşavirlik")
-  evrakGeldiMesaji String   @default("Sayın {ad}, {dönem} dönemi evraklarınız tarafımıza ulaşmıştır. İşlemlerinize başlanmıştır. Moren Mali Müşavirlik")
-  tahsilatHatirlatmaMesaji String @default("Sayin {ad}, cari hesabinizda {bakiye} acik bakiye gorunmektedir. Odeme yaptiysaniz dekontu iletmenizi rica ederiz. Moren Mali Musavirlik")
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  id                       String   @id @default(cuid())
+  tenantId                 String   @unique
+  evrakTalepMesaji         String   @default("Sayın {ad}, {dönem} dönemi evraklarınızı tarafımıza teslim etmenizi rica ederiz. Moren Mali Müşavirlik")
+  evrakGeldiMesaji         String   @default("Sayın {ad}, {dönem} dönemi evraklarınız tarafımıza ulaşmıştır. İşlemlerinize başlanmıştır. Moren Mali Müşavirlik")
+  tahsilatHatirlatmaMesaji String   @default("Sayin {ad}, cari hesabinizda {bakiye} acik bakiye gorunmektedir. Odeme yaptiysaniz dekontu iletmenizi rica ederiz. Moren Mali Musavirlik")
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id])
 
@@ -2203,23 +2203,23 @@ model SmsTemplate {
 // Owner'ın portalda kendi tanımladığı mesaj şablonları (WhatsApp + e-posta).
 // Toplu/otomatik gönderim bunları okur; body içinde {ad} {tutar} {vade} ... placeholder'ları.
 model MessageTemplate {
-  id           String   @id @default(cuid())
-  tenantId     String
-  ad           String
-  kanal        String   @default("BOTH")    // WHATSAPP | EMAIL | BOTH
-  kategori     String   @default("genel")   // evrak | beyanname | sgk | odeme | tebligat | ekstre | genel
-  emailSubject String?
-  body         String
-  attachPdf    Boolean  @default(false)
-  auto         Boolean  @default(false)
-  autoEvent    String?
-  sirano       Int      @default(0)
-  isActive     Boolean  @default(true)
-  favori         Boolean  @default(false)  // sık kullanılan — galeride sabitlenir
-  kullanimSayisi Int      @default(0)      // toplam gönderim sayısı (test + gerçek)
-  sonKullanim    DateTime?                 // en son ne zaman gönderildi
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id             String    @id @default(cuid())
+  tenantId       String
+  ad             String
+  kanal          String    @default("BOTH") // WHATSAPP | EMAIL | BOTH
+  kategori       String    @default("genel") // evrak | beyanname | sgk | odeme | tebligat | ekstre | genel
+  emailSubject   String?
+  body           String
+  attachPdf      Boolean   @default(false)
+  auto           Boolean   @default(false)
+  autoEvent      String?
+  sirano         Int       @default(0)
+  isActive       Boolean   @default(true)
+  favori         Boolean   @default(false) // sık kullanılan — galeride sabitlenir
+  kullanimSayisi Int       @default(0) // toplam gönderim sayısı (test + gerçek)
+  sonKullanim    DateTime? // en son ne zaman gönderildi
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   @@index([tenantId, kategori])
   @@map("message_templates")
@@ -2230,22 +2230,22 @@ model MessageTemplate {
 // ============================================================
 // Her konuşma (thread), tenant başına izole.
 model AiConversation {
-  id         String   @id @default(cuid())
-  tenantId   String
-  userId     String?  // Konuşmayı başlatan kullanıcı
-  title      String   @default("Yeni Konuşma")
+  id                   String   @id @default(cuid())
+  tenantId             String
+  userId               String? // Konuşmayı başlatan kullanıcı
+  title                String   @default("Yeni Konuşma")
   // Konuşmanın odaklandığı mükellef (varsa) — tool çağrıları bunu default alır
-  taxpayerId String?
+  taxpayerId           String?
   // İstatistik — kümüle token/maliyet
-  totalInputTokens     Int    @default(0)
-  totalOutputTokens    Int    @default(0)
-  totalCacheReadTokens Int    @default(0)
-  totalCostUsd         Float  @default(0)
-  isArchived Boolean  @default(false)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  totalInputTokens     Int      @default(0)
+  totalOutputTokens    Int      @default(0)
+  totalCacheReadTokens Int      @default(0)
+  totalCostUsd         Float    @default(0)
+  isArchived           Boolean  @default(false)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
-  messages   AiMessage[]
+  messages AiMessage[]
 
   @@index([tenantId, updatedAt])
   @@index([tenantId, taxpayerId])
@@ -2254,27 +2254,27 @@ model AiConversation {
 
 // Konuşma içindeki her mesaj — user/assistant/tool roller
 model AiMessage {
-  id             String   @id @default(cuid())
-  conversationId String
-  role           String   // "user" | "assistant" | "tool"
+  id               String   @id @default(cuid())
+  conversationId   String
+  role             String // "user" | "assistant" | "tool"
   // Ham metin (markdown destekli). Sesli mesajlarda transcript burada.
-  content        String   @db.Text
+  content          String   @db.Text
   // Tool-use mesajlarında: hangi tool, hangi input, hangi output (JSON)
-  toolCalls      Json?    // [{ id, name, input }]
-  toolResults    Json?    // [{ toolUseId, content }]
+  toolCalls        Json? // [{ id, name, input }]
+  toolResults      Json? // [{ toolUseId, content }]
   // Sesli giriş/çıkış için
-  audioKey       String?  // Storage key (opsiyonel, uzun saklama)
+  audioKey         String? // Storage key (opsiyonel, uzun saklama)
   // Token maliyeti (assistant mesajları için)
-  inputTokens    Int?
-  outputTokens  Int?
+  inputTokens      Int?
+  outputTokens     Int?
   cacheReadTokens  Int?
   cacheWriteTokens Int?
-  costUsd       Float?
-  model         String?  // "claude-sonnet-4-5"
-  durationMs    Int?
-  createdAt     DateTime @default(now())
+  costUsd          Float?
+  model            String? // "claude-sonnet-4-5"
+  durationMs       Int?
+  createdAt        DateTime @default(now())
 
-  conversation  AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  conversation AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   @@index([conversationId, createdAt])
   @@map("ai_messages")
@@ -2291,14 +2291,14 @@ model AiMessage {
 model VendorMemory {
   id            String   @id @default(cuid())
   tenantId      String
-  firmaKimlikNo String   // VKN (10 hane) veya TCKN (11 hane)
-  firmaUnvan    String?  // Son gorulen unvan (degisebilir)
+  firmaKimlikNo String // VKN (10 hane) veya TCKN (11 hane)
+  firmaUnvan    String? // Son gorulen unvan (degisebilir)
   toplamOnay    Int      @default(0)
   sonKullanim   DateTime @default(now())
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  decisions     VendorMemoryDecision[]
+  decisions VendorMemoryDecision[]
 
   @@unique([tenantId, firmaKimlikNo])
   @@index([tenantId, sonKullanim])
@@ -2309,23 +2309,23 @@ model VendorMemory {
 // fatura: kararTipi='fatura', kategori=hesapKodu, altKategori=null
 // isletme: kararTipi='isletme', kategori=kayitTuru, altKategori=altTuru
 model VendorMemoryDecision {
-  id              String   @id @default(cuid())
-  vendorMemoryId  String
-  taxpayerId      String?  // YENİ — hangi mükellef için öğrenildi (null = eski ortak kayıtlar)
-  kararTipi       String   // "fatura" | "isletme"
-  kategori        String   // fatura: hesapKodu; isletme: kayitTuru
-  altKategori     String?  // sadece isletme: altTuru
+  id             String   @id @default(cuid())
+  vendorMemoryId String
+  taxpayerId     String? // YENİ — hangi mükellef için öğrenildi (null = eski ortak kayıtlar)
+  kararTipi      String // "fatura" | "isletme"
+  kategori       String // fatura: hesapKodu; isletme: kayitTuru
+  altKategori    String? // sadece isletme: altTuru
   // İÇERİK-BAZLI ÖĞRENME (2026-07-04): kalem içeriğinden türetilen kararlı imza
   //   (ör. "kase|kirtasiye|murekkep"). null = eski/satıcı-geneli kayıt (geriye-uyumlu). Aynı satıcının
   //   FARKLI içerikli faturaları (biri kase, biri baska) ayrı öğrenilir; "sadece cariye göre değil
   //   içeriğe göre de hafıza" (kullanıcı talebi).
-  icerikImza      String?
-  onayAdedi       Int      @default(0)
-  sonKullanim     DateTime @default(now())
-  createdAt       DateTime @default(now())
+  icerikImza     String?
+  onayAdedi      Int      @default(0)
+  sonKullanim    DateTime @default(now())
+  createdAt      DateTime @default(now())
 
-  vendorMemory    VendorMemory @relation(fields: [vendorMemoryId], references: [id], onDelete: Cascade)
-  taxpayer        Taxpayer?    @relation(fields: [taxpayerId], references: [id], onDelete: SetNull)
+  vendorMemory VendorMemory @relation(fields: [vendorMemoryId], references: [id], onDelete: Cascade)
+  taxpayer     Taxpayer?    @relation(fields: [taxpayerId], references: [id], onDelete: SetNull)
 
   // Nullable taxpayerId ile standart @@unique çalışmadığı için SQL migration'da
   // COALESCE indexi oluşturuldu. Burada indeksleme yalnızca performans için:
@@ -2338,28 +2338,28 @@ model VendorMemoryDecision {
 
 // Onay Kuyrugu — AI sapma tespit ettiginde insan onayi bekler.
 model PendingDecision {
-  id              String   @id @default(cuid())
-  tenantId        String
-  taxpayerId      String?  // YENİ: Firma Hafızası mükellef-bazlı öğrenme için
-  mukellef        String?
-  firmaKimlikNo   String?
-  firmaUnvan      String?
-  belgeNo         String?
-  belgeTuru       String?
-  faturaTarihi    DateTime?
-  tutar           Decimal? @db.Decimal(14, 2)
-  kararTipi       String   // "fatura" | "isletme"
-  aiKarari        Json     // AI'nin onerdigi karar (tam response)
-  gecmisBeklenen  Json?    // VendorMemory'den top kategori + sayi
-  sapmaSebep      String   @db.VarChar(500)
-  imageBase64     String?  @db.Text  // Fatura gorseli (kucuk tutulur)
-  durum           String   @default("bekliyor") // "bekliyor" | "onaylandi" | "reddedildi"
-  sonucKarari     Json?    // Kullanici override ettiyse final karar
-  onayAlan        String?  // userId
-  onayTarihi      DateTime?
-  notlar          String?  @db.Text
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id             String    @id @default(cuid())
+  tenantId       String
+  taxpayerId     String? // YENİ: Firma Hafızası mükellef-bazlı öğrenme için
+  mukellef       String?
+  firmaKimlikNo  String?
+  firmaUnvan     String?
+  belgeNo        String?
+  belgeTuru      String?
+  faturaTarihi   DateTime?
+  tutar          Decimal?  @db.Decimal(14, 2)
+  kararTipi      String // "fatura" | "isletme"
+  aiKarari       Json // AI'nin onerdigi karar (tam response)
+  gecmisBeklenen Json? // VendorMemory'den top kategori + sayi
+  sapmaSebep     String    @db.VarChar(500)
+  imageBase64    String?   @db.Text // Fatura gorseli (kucuk tutulur)
+  durum          String    @default("bekliyor") // "bekliyor" | "onaylandi" | "reddedildi"
+  sonucKarari    Json? // Kullanici override ettiyse final karar
+  onayAlan       String? // userId
+  onayTarihi     DateTime?
+  notlar         String?   @db.Text
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   @@index([tenantId, durum, createdAt])
   @@index([tenantId, createdAt])
@@ -2377,26 +2377,26 @@ model PendingDecision {
 // Manuel OKC fisi yukleme ve ileride mobil uygulama ayni endpointleri kullanir.
 // ============================================================
 model InvoiceAccountingDocument {
-  id           String   @id @default(cuid())
-  tenantId     String
-  taxpayerId   String?
-  source       String   @default("manual-web") // manual-web | mobile | mihsap | luca
-  sourceRefId  String?
-  documentType String   @default("OKC_FIS") // OKC_FIS | E_FATURA | E_ARSIV | FIS | DIGER
-  invoiceKind  String   @default("ALIS") // ALIS | SATIS
-  status       String   @default("NEEDS_REVIEW") // NEEDS_REVIEW | READY | APPROVED | REJECTED
-  duplicateOfId String?
-  duplicateReason String?
+  id                String  @id @default(cuid())
+  tenantId          String
+  taxpayerId        String?
+  source            String  @default("manual-web") // manual-web | mobile | mihsap | luca
+  sourceRefId       String?
+  documentType      String  @default("OKC_FIS") // OKC_FIS | E_FATURA | E_ARSIV | FIS | DIGER
+  invoiceKind       String  @default("ALIS") // ALIS | SATIS
+  status            String  @default("NEEDS_REVIEW") // NEEDS_REVIEW | READY | APPROVED | REJECTED
+  duplicateOfId     String?
+  duplicateReason   String?
   duplicateSeverity String? // WARNING | BLOCKING
 
   originalName String
   mimeType     String
   sizeBytes    Int
   s3Key        String
-  imageHash    String?  @db.VarChar(64)
+  imageHash    String? @db.VarChar(64)
 
-  currency     String   @default("TL")
-  exchangeRate Decimal  @default(1) @db.Decimal(14, 6)
+  currency     String    @default("TL")
+  exchangeRate Decimal   @default(1) @db.Decimal(14, 6)
   belgeNo      String?
   seriNo       String?
   faturaTarihi DateTime?
@@ -2404,19 +2404,19 @@ model InvoiceAccountingDocument {
   buyerVkn     String?
   vendorName   String?
   customerName String?
-  totalAmount  Decimal? @db.Decimal(14, 2)
+  totalAmount  Decimal?  @db.Decimal(14, 2)
 
-  ocrStatus    String   @default("PENDING")
-  ocrEngine    String?
-  ocrRawText   String?  @db.Text
+  ocrStatus     String  @default("PENDING")
+  ocrEngine     String?
+  ocrRawText    String? @db.Text
   ocrConfidence Float?
-  ocrData      Json?
+  ocrData       Json?
 
-  approvedBy   String?
-  approvedAt   DateTime?
-  createdBy    String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  approvedBy String?
+  approvedAt DateTime?
+  createdBy  String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
   // v1.38: Luca'ya aktarim izi (INVOICE_POST job ile islenir)
   // lucaStatus: NOT_STARTED | QUEUED | POSTING | POSTED | FAILED
@@ -2425,17 +2425,17 @@ model InvoiceAccountingDocument {
   lucaPostedAt     DateTime?
   lucaErrorMessage String?
   lucaAttemptCount Int       @default(0)
-  lucaFisNo        String?   // Luca'nin atadığı yevmiye fiş numarasi
+  lucaFisNo        String? // Luca'nin atadığı yevmiye fiş numarasi
 
   // v2.1: Veri kalitesi & sahiplik kontrolü
   // validationStatus: OK | INCOMPLETE (matrah/KDV eksik) | INVALID (denge/uyum bozuk)
-  validationStatus String?
+  validationStatus    String?
   // [{ code, severity, message, expected?, actual? }]
   // codes: INCOMPLETE_AMOUNTS | BALANCE_MISMATCH | TOTAL_MISMATCH | OWNERSHIP_MISMATCH
   validationIssues    Json?
   validationCheckedAt DateTime?
 
-  lines        InvoiceAccountingLine[]
+  lines InvoiceAccountingLine[]
 
   @@index([tenantId, status, createdAt])
   @@index([tenantId, taxpayerId, createdAt])
@@ -2455,37 +2455,37 @@ model InvoiceAccountingLine {
   accountCode String?
   description String?
   rate        String?
-  kaynak      String?  // kodun kaynağı: KULLANICI | HAFIZA | AI | KURAL | VKN | ISIM | VARSAYILAN (öğrenme yalnız güvenilir kaynaktan)
+  kaynak      String? // kodun kaynağı: KULLANICI | HAFIZA | AI | KURAL | VKN | ISIM | VARSAYILAN (öğrenme yalnız güvenilir kaynaktan)
   debit       Decimal  @default(0) @db.Decimal(14, 2)
   credit      Decimal  @default(0) @db.Decimal(14, 2)
   orderNo     Int      @default(0)
   createdAt   DateTime @default(now())
 
   // v3.0: İşletme defteri desteği
-  isletmeYon       String?  // "GIDER" | "GELIR" — işletme hesabı için
-  isletmeGiderTuru String?  // IsletmeGiderTurleri.kod — gider/gelir türü
-  isletmeMatrah    Decimal? @db.Decimal(14, 2)  // bilgi amaçlı (deftere yazılmaz, VUK kuralı)
+  isletmeYon       String? // "GIDER" | "GELIR" — işletme hesabı için
+  isletmeGiderTuru String? // IsletmeGiderTurleri.kod — gider/gelir türü
+  isletmeMatrah    Decimal? @db.Decimal(14, 2) // bilgi amaçlı (deftere yazılmaz, VUK kuralı)
 
-  updatedAt   DateTime @updatedAt
+  updatedAt DateTime @updatedAt
 
-  document    InvoiceAccountingDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  document InvoiceAccountingDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
 
   @@index([documentId, orderNo])
   @@map("invoice_accounting_lines")
 }
 
 model LucaAccountPlanSnapshot {
-  id          String   @id @default(cuid())
-  tenantId    String
-  taxpayerId  String
-  sourceJobId String?
-  status      String   @default("READY")
-  accountCount Int     @default(0)
-  createdBy   String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id           String   @id @default(cuid())
+  tenantId     String
+  taxpayerId   String
+  sourceJobId  String?
+  status       String   @default("READY")
+  accountCount Int      @default(0)
+  createdBy    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  lines       LucaAccountPlanLine[]
+  lines LucaAccountPlanLine[]
 
   @@index([tenantId, taxpayerId, createdAt])
   @@index([sourceJobId])
@@ -2493,40 +2493,40 @@ model LucaAccountPlanSnapshot {
 }
 
 model LucaAccountPlanLine {
-  id          String   @id @default(cuid())
-  snapshotId  String
-  accountCode String
-  accountName String
-  level       Int      @default(0)
-  debitBalance Decimal @default(0) @db.Decimal(14, 2)
-  creditBalance Decimal @default(0) @db.Decimal(14, 2)
-  createdAt   DateTime @default(now())
+  id            String   @id @default(cuid())
+  snapshotId    String
+  accountCode   String
+  accountName   String
+  level         Int      @default(0)
+  debitBalance  Decimal  @default(0) @db.Decimal(14, 2)
+  creditBalance Decimal  @default(0) @db.Decimal(14, 2)
+  createdAt     DateTime @default(now())
 
   // v2: Fatura Merkezi hesap planı senkronizasyonu
-  source       String?  // null=Luca'dan geldi, "LOCAL"=yerel olarak eklendi
-  syncedToLuca Boolean  @default(true)
+  source       String? // null=Luca'dan geldi, "LOCAL"=yerel olarak eklendi
+  syncedToLuca Boolean @default(true)
   // Mihsap modeli — yeni hesap açma: Luca formundaki "Cari Hesap Mı?" + VKN/TCKN
-  isCari       Boolean  @default(false)
+  isCari       Boolean @default(false)
   vkn          String?
 
-  snapshot    LucaAccountPlanSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  snapshot LucaAccountPlanSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
 
   @@index([snapshotId, accountCode])
   @@map("luca_account_plan_lines")
 }
 
 model Arac {
-  id          String   @id @default(cuid())
-  tenantId    String
-  plaka       String   // "34 ABC 123" veya "34ABC123" — normalize edilir
-  marka       String?  // Opsiyonel: araç markası
-  model       String?  // Opsiyonel: araç modeli
-  sahipAd     String?  // Opsiyonel: araç sahibi (galerici müşteri vb.)
-  taxpayerId  String?  // Opsiyonel: portaldaki mükellefe bağlama
-  aktif       Boolean  @default(true)
-  notlar      String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id         String   @id @default(cuid())
+  tenantId   String
+  plaka      String // "34 ABC 123" veya "34ABC123" — normalize edilir
+  marka      String? // Opsiyonel: araç markası
+  model      String? // Opsiyonel: araç modeli
+  sahipAd    String? // Opsiyonel: araç sahibi (galerici müşteri vb.)
+  taxpayerId String? // Opsiyonel: portaldaki mükellefe bağlama
+  aktif      Boolean  @default(true)
+  notlar     String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   hgsSonuclari HgsIhlalSorguSonucu[]
 
@@ -2538,19 +2538,19 @@ model Arac {
 
 // Her sorgu bir kayıt — aynı plaka için dönem dönem birden fazla kayıt olur
 model HgsIhlalSorguSonucu {
-  id           String   @id @default(cuid())
-  tenantId     String
-  aracId       String
-  sorguTarihi  DateTime @default(now())
-  durum        String   @default("beklemede") // "beklemede" | "basarili" | "hatali"
-  ihlalSayisi  Int      @default(0)
-  toplamTutar  Decimal? @db.Decimal(14, 2)
-  detaylar     Json?    // Ham ihlal detayları (tarih, tutar, ücret noktası vb. array)
-  rawHtml      String?  @db.Text // Sorgu HTML snapshoti (debug için)
-  hataMesaji   String?  // durum=hatali ise sebep
-  kaynak       String   @default("manuel") // "manuel" | "cron_pazartesi" | "tek_sefer"
+  id          String   @id @default(cuid())
+  tenantId    String
+  aracId      String
+  sorguTarihi DateTime @default(now())
+  durum       String   @default("beklemede") // "beklemede" | "basarili" | "hatali"
+  ihlalSayisi Int      @default(0)
+  toplamTutar Decimal? @db.Decimal(14, 2)
+  detaylar    Json? // Ham ihlal detayları (tarih, tutar, ücret noktası vb. array)
+  rawHtml     String?  @db.Text // Sorgu HTML snapshoti (debug için)
+  hataMesaji  String? // durum=hatali ise sebep
+  kaynak      String   @default("manuel") // "manuel" | "cron_pazartesi" | "tek_sefer"
 
-  arac         Arac     @relation(fields: [aracId], references: [id], onDelete: Cascade)
+  arac Arac @relation(fields: [aracId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, sorguTarihi])
   @@index([aracId, sorguTarihi])
@@ -2564,22 +2564,22 @@ model HgsIhlalSorguSonucu {
 // Mükellefe tanımlanan tekrar eden hizmetler (muhasebe ücreti, bordro, SGK, vb.)
 // Her ayın 1. günü cron otomatik tahakkuk kaydı oluşturur.
 model CariHizmet {
-  id            String    @id @default(cuid())
+  id            String   @id @default(cuid())
   tenantId      String
   taxpayerId    String
-  hizmetAdi     String    // "Muhasebe Ücreti", "Bordro", "SGK", "Yıllık Kapanış", vb.
-  tutar         Decimal   @db.Decimal(14, 2)
-  periyot       String    // "AYLIK" | "UCAYLIK" | "ALTIAYLIK" | "YILLIK"
-  baslangicAy   String    // "2026-01" formatı — bu aydan itibaren tahakkuk geçer
-  bitisAy       String?   // opsiyonel, belirtilirse o aya kadar tahakkuk edilir
-  aktif         Boolean   @default(true)
-  sonTahakkukAy String?   // "2026-04" — duplicate önleme (cron kontrolü)
+  hizmetAdi     String // "Muhasebe Ücreti", "Bordro", "SGK", "Yıllık Kapanış", vb.
+  tutar         Decimal  @db.Decimal(14, 2)
+  periyot       String // "AYLIK" | "UCAYLIK" | "ALTIAYLIK" | "YILLIK"
+  baslangicAy   String // "2026-01" formatı — bu aydan itibaren tahakkuk geçer
+  bitisAy       String? // opsiyonel, belirtilirse o aya kadar tahakkuk edilir
+  aktif         Boolean  @default(true)
+  sonTahakkukAy String? // "2026-04" — duplicate önleme (cron kontrolü)
   notlar        String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  taxpayer      Taxpayer       @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
-  hareketler    CariHareket[]
+  taxpayer   Taxpayer      @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
+  hareketler CariHareket[]
 
   @@index([tenantId, taxpayerId])
   @@index([tenantId, aktif])
@@ -2589,28 +2589,28 @@ model CariHizmet {
 // Cari hareketler — tahakkuk (borç) ve tahsilat (alacak) kayıtları.
 // Bakiye = SUM(TAHAKKUK) - SUM(TAHSILAT) olarak hesaplanır.
 model CariHareket {
-  id             String    @id @default(cuid())
+  id             String   @id @default(cuid())
   tenantId       String
   taxpayerId     String
-  accountId      String?   // Tahsilat hangi banka/kasa hesabına girdi
-  hizmetId       String?   // Tahakkuksa hizmete bağlı; manuel ödeme ise null
+  accountId      String? // Tahsilat hangi banka/kasa hesabına girdi
+  hizmetId       String? // Tahakkuksa hizmete bağlı; manuel ödeme ise null
   tarih          DateTime
-  tip            String    // "TAHAKKUK" | "TAHSILAT" | "IADE" | "DUZELTME"
-  tutar          Decimal   @db.Decimal(14, 2)
+  tip            String // "TAHAKKUK" | "TAHSILAT" | "IADE" | "DUZELTME"
+  tutar          Decimal  @db.Decimal(14, 2)
   aciklama       String?
-  odemeYontemi   String?   // "NAKIT" | "HAVALE" | "POS" | "CEK" | "SENET" | null
-  belgeNo        String?   // Dekont/makbuz no
-  donem          String?   // "2026-04" — tahakkuk hangi ayın, tahsilat hangi aya ait
-  otoOlusturuldu Boolean   @default(false)
+  odemeYontemi   String? // "NAKIT" | "HAVALE" | "POS" | "CEK" | "SENET" | null
+  belgeNo        String? // Dekont/makbuz no
+  donem          String? // "2026-04" — tahakkuk hangi ayın, tahsilat hangi aya ait
+  otoOlusturuldu Boolean  @default(false)
   source         String?
   sourceRef      String?
   importBatchId  String?
-  createdAt      DateTime  @default(now())
+  createdAt      DateTime @default(now())
   createdBy      String?
 
-  taxpayer       Taxpayer     @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
-  hizmet         CariHizmet?  @relation(fields: [hizmetId], references: [id], onDelete: SetNull)
-  account        OfficeFinancialAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  taxpayer Taxpayer                @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
+  hizmet   CariHizmet?             @relation(fields: [hizmetId], references: [id], onDelete: SetNull)
+  account  OfficeFinancialAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, taxpayerId, tarih])
   @@index([tenantId, tarih])
@@ -2624,7 +2624,7 @@ model OfficeFinancialAccount {
   id             String   @id @default(cuid())
   tenantId       String
   name           String
-  type           String   // "BANKA" | "NAKIT" | "KREDI_KARTI" | "DIGER"
+  type           String // "BANKA" | "NAKIT" | "KREDI_KARTI" | "DIGER"
   color          String   @default("#d4b876")
   openingBalance Decimal  @default(0) @db.Decimal(14, 2)
   openingDate    DateTime @default(now())
@@ -2633,7 +2633,7 @@ model OfficeFinancialAccount {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  tenant         Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant         Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   budgetEntries  OfficeBudgetEntry[]
   cariHareketler CariHareket[]
   transfersFrom  OfficeAccountTransfer[] @relation("TransferFromAccount")
@@ -2651,7 +2651,7 @@ model OfficeAccountTransfer {
   fromAccountId String
   toAccountId   String
   date          DateTime
-  period        String   // "2026-05"
+  period        String // "2026-05"
   amount        Decimal  @db.Decimal(14, 2)
   description   String?
   documentNo    String?
@@ -2659,9 +2659,9 @@ model OfficeAccountTransfer {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  tenant        Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  fromAccount   OfficeFinancialAccount @relation("TransferFromAccount", fields: [fromAccountId], references: [id], onDelete: Restrict)
-  toAccount     OfficeFinancialAccount @relation("TransferToAccount", fields: [toAccountId], references: [id], onDelete: Restrict)
+  tenant      Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  fromAccount OfficeFinancialAccount @relation("TransferFromAccount", fields: [fromAccountId], references: [id], onDelete: Restrict)
+  toAccount   OfficeFinancialAccount @relation("TransferToAccount", fields: [toAccountId], references: [id], onDelete: Restrict)
 
   @@index([tenantId, period])
   @@index([fromAccountId, date])
@@ -2674,7 +2674,7 @@ model OfficeBudgetCategory {
   id        String   @id @default(cuid())
   tenantId  String
   name      String
-  type      String   // "GELIR" | "GIDER"
+  type      String // "GELIR" | "GIDER"
   color     String   @default("#d4b876")
   icon      String?
   sortOrder Int      @default(0)
@@ -2682,9 +2682,9 @@ model OfficeBudgetCategory {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tenant    Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  entries   OfficeBudgetEntry[]
-  plans     OfficeBudgetPlan[]
+  tenant  Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  entries OfficeBudgetEntry[]
+  plans   OfficeBudgetPlan[]
 
   @@unique([tenantId, name, type])
   @@index([tenantId, type])
@@ -2698,8 +2698,8 @@ model OfficeBudgetEntry {
   categoryId    String
   accountId     String?
   date          DateTime
-  period        String   // "2026-05"
-  type          String   // "GELIR" | "GIDER"
+  period        String // "2026-05"
+  type          String // "GELIR" | "GIDER"
   amount        Decimal  @db.Decimal(14, 2)
   description   String?
   paymentMethod String?
@@ -2710,9 +2710,9 @@ model OfficeBudgetEntry {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  tenant        Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  category      OfficeBudgetCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  account       OfficeFinancialAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  tenant   Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  category OfficeBudgetCategory    @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  account  OfficeFinancialAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, period])
   @@index([tenantId, type])
@@ -2725,14 +2725,14 @@ model OfficeBudgetPlan {
   id            String   @id @default(cuid())
   tenantId      String
   categoryId    String
-  period        String   // "2026-05"
+  period        String // "2026-05"
   plannedAmount Decimal  @db.Decimal(14, 2)
   notes         String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  tenant        Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  category      OfficeBudgetCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  tenant   Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  category OfficeBudgetCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
 
   @@unique([tenantId, categoryId, period])
   @@index([tenantId, period])
@@ -2744,44 +2744,44 @@ model OfficeBudgetPlan {
 // Luca'dan toplu çekilen e-arşiv (SATIŞ) ve e-fatura (ALIŞ) faturaları.
 // Orijinal UBL XML + PDF saklanır (denetim için), parse edilen alanlar ayrı kolonlarda.
 model EarsivFatura {
-  id             String     @id @default(cuid())
-  tenantId       String
-  taxpayerId     String
-  tip            EarsivTip  // SATIS | ALIS
-  belgeKaynak    BelgeKaynak @default(EARSIV) // EFATURA | EARSIV — Luca'da iki ayrı tab
-  donem          String     // "2026-03" YYYY-MM
-  faturaNo       String
-  faturaTarihi   DateTime
-  ettn           String?    // E-fatura/e-arşiv UUID
-  satici         String?
-  saticiVergiNo  String?
-  alici          String?
-  aliciVergiNo   String?
-  matrah         Decimal?   @db.Decimal(18, 2)
-  kdvTutari      Decimal?   @db.Decimal(18, 2)
-  kdvOrani       Decimal?   @db.Decimal(5, 2)
-  toplamTutar    Decimal?   @db.Decimal(18, 2)
-  paraBirimi     String?    @default("TL")
+  id                 String      @id @default(cuid())
+  tenantId           String
+  taxpayerId         String
+  tip                EarsivTip // SATIS | ALIS
+  belgeKaynak        BelgeKaynak @default(EARSIV) // EFATURA | EARSIV — Luca'da iki ayrı tab
+  donem              String // "2026-03" YYYY-MM
+  faturaNo           String
+  faturaTarihi       DateTime
+  ettn               String? // E-fatura/e-arşiv UUID
+  satici             String?
+  saticiVergiNo      String?
+  alici              String?
+  aliciVergiNo       String?
+  matrah             Decimal?    @db.Decimal(18, 2)
+  kdvTutari          Decimal?    @db.Decimal(18, 2)
+  kdvOrani           Decimal?    @db.Decimal(5, 2)
+  toplamTutar        Decimal?    @db.Decimal(18, 2)
+  paraBirimi         String?     @default("TL")
   // Çoklu KDV oranı desteği — UBL TaxSubtotal'lardan parse edilir.
   // Şekil: [{ rate: 20, base: 1000.00, amount: 200.00 }, { rate: 1, base: 500, amount: 5 }]
   // matrah/kdvTutari/kdvOrani alanları geriye uyumluluk için tutulur (toplamlar).
-  kdvBreakdown   Json?
-  aciklama       String?
-  durum          String?    // KABUL | RED | IPTAL | BEKLEMEDE
-  xmlContent     String?    @db.Text  // orijinal UBL XML
-  pdfStorageKey  String?    // S3 key veya disk path; ham PDF
-  htmlStorageKey String?    // S3 key; Luca'nin verdigi orijinal HTML gorunum
-  zipSourceName  String?    // Hangi ZIP'ten geldi
-  fetchJobId     String?    // Hangi LucaFetchJob ile çekildi
+  kdvBreakdown       Json?
+  aciklama           String?
+  durum              String? // KABUL | RED | IPTAL | BEKLEMEDE
+  xmlContent         String?     @db.Text // orijinal UBL XML
+  pdfStorageKey      String? // S3 key veya disk path; ham PDF
+  htmlStorageKey     String? // S3 key; Luca'nin verdigi orijinal HTML gorunum
+  zipSourceName      String? // Hangi ZIP'ten geldi
+  fetchJobId         String? // Hangi LucaFetchJob ile çekildi
   // Mihsap upload tracking — gelen e-arşiv faturasını gider faturası olarak Mihsap'a yükleme
-  mihsapUploadedAt    DateTime?  // başarıyla yüklendi
-  mihsapUploadStatus  String?    // pending | uploaded | failed
-  mihsapUploadError   String?    // hata mesajı (varsa)
-  mihsapUploadJobId   String?    // takip için job referansı
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
+  mihsapUploadedAt   DateTime? // başarıyla yüklendi
+  mihsapUploadStatus String? // pending | uploaded | failed
+  mihsapUploadError  String? // hata mesajı (varsa)
+  mihsapUploadJobId  String? // takip için job referansı
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
 
-  taxpayer       Taxpayer   @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
+  taxpayer Taxpayer @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, taxpayerId, tip, belgeKaynak, faturaNo])
   @@index([tenantId, taxpayerId, donem, tip, belgeKaynak])
@@ -2797,8 +2797,8 @@ enum EarsivTip {
 }
 
 enum BelgeKaynak {
-  EFATURA  // E-fatura mükellefleri arası gelen/giden
-  EARSIV   // E-arşiv (kamuya, e-fatura mükellefi olmayan müşteri)
+  EFATURA // E-fatura mükellefleri arası gelen/giden
+  EARSIV // E-arşiv (kamuya, e-fatura mükellefi olmayan müşteri)
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -2809,17 +2809,17 @@ enum BelgeKaynak {
 // hamMizan Json'da TÜM hesap satırları durur; UI'da sadece 190/191/391 + 600/770
 // gibi KDV-ilgili olanlar gösterilir.
 model KdvLucaSnapshot {
-  id            String   @id @default(cuid())
-  tenantId      String
-  taxpayerId    String
-  donem         String   // "2026-03"
-  cekildiAt     DateTime @default(now())
-  cekenUserId   String?
-  fetchJobId    String?  // Hangi LucaFetchJob ile çekildi
-  hamMizan      Json     // Tüm mizan satırları: [{ kod, ad, borcToplami, alacakToplami, borcBakiye, alacakBakiye }]
-  toplamHesapAdet Int    @default(0)
+  id              String   @id @default(cuid())
+  tenantId        String
+  taxpayerId      String
+  donem           String // "2026-03"
+  cekildiAt       DateTime @default(now())
+  cekenUserId     String?
+  fetchJobId      String? // Hangi LucaFetchJob ile çekildi
+  hamMizan        Json // Tüm mizan satırları: [{ kod, ad, borcToplami, alacakToplami, borcBakiye, alacakBakiye }]
+  toplamHesapAdet Int      @default(0)
 
-  taxpayer      Taxpayer @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
+  taxpayer Taxpayer @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, taxpayerId, donem])
   @@index([tenantId, taxpayerId, cekildiAt])
@@ -2844,44 +2844,44 @@ model KdvLucaSnapshot {
 //   - hesaplananGecVergi  = gecVergiMatrahi * 0.15  (işletme için %15)
 //   - odenecekGecVergi    = max(0, hesaplananGecVergi - oncekiOdenenGecVergi)
 model IsletmeHesapOzeti {
-  id              String    @id @default(cuid())
-  tenantId        String
-  taxpayerId      String
-  yil             Int
-  donem           Int
+  id         String @id @default(cuid())
+  tenantId   String
+  taxpayerId String
+  yil        Int
+  donem      Int
 
-  satisHasilati   Decimal   @db.Decimal(15, 2) @default(0)
-  digerGelir      Decimal   @db.Decimal(15, 2) @default(0)
+  satisHasilati Decimal @default(0) @db.Decimal(15, 2)
+  digerGelir    Decimal @default(0) @db.Decimal(15, 2)
 
-  malAlisi        Decimal   @db.Decimal(15, 2) @default(0)
-  donemBasiStok   Decimal   @db.Decimal(15, 2) @default(0)
-  kalanStok       Decimal   @db.Decimal(15, 2) @default(0)
-  toplamStok      Decimal   @db.Decimal(15, 2) @default(0)
-  satilanMalMaliyeti Decimal @db.Decimal(15, 2) @default(0)
-  netSatislar     Decimal   @db.Decimal(15, 2) @default(0)
+  malAlisi           Decimal @default(0) @db.Decimal(15, 2)
+  donemBasiStok      Decimal @default(0) @db.Decimal(15, 2)
+  kalanStok          Decimal @default(0) @db.Decimal(15, 2)
+  toplamStok         Decimal @default(0) @db.Decimal(15, 2)
+  satilanMalMaliyeti Decimal @default(0) @db.Decimal(15, 2)
+  netSatislar        Decimal @default(0) @db.Decimal(15, 2)
 
-  donemIciGiderler Decimal  @db.Decimal(15, 2) @default(0)
+  donemIciGiderler Decimal @default(0) @db.Decimal(15, 2)
 
-  donemKari       Decimal   @db.Decimal(15, 2) @default(0)
+  donemKari Decimal @default(0) @db.Decimal(15, 2)
 
-  gecmisYilZarari Decimal   @db.Decimal(15, 2) @default(0)
-  gecVergiMatrahi Decimal   @db.Decimal(15, 2) @default(0)
-  hesaplananGecVergi Decimal @db.Decimal(15, 2) @default(0)
-  oncekiOdenenGecVergi Decimal @db.Decimal(15, 2) @default(0)
-  odenecekGecVergi Decimal  @db.Decimal(15, 2) @default(0)
+  gecmisYilZarari      Decimal @default(0) @db.Decimal(15, 2)
+  gecVergiMatrahi      Decimal @default(0) @db.Decimal(15, 2)
+  hesaplananGecVergi   Decimal @default(0) @db.Decimal(15, 2)
+  oncekiOdenenGecVergi Decimal @default(0) @db.Decimal(15, 2)
+  odenecekGecVergi     Decimal @default(0) @db.Decimal(15, 2)
 
-  not             String?
+  not String?
 
-  locked          Boolean   @default(false)
-  lockedAt        DateTime?
-  lockedBy        String?
-  lockNote        String?
+  locked   Boolean   @default(false)
+  lockedAt DateTime?
+  lockedBy String?
+  lockNote String?
 
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  createdBy       String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
 
-  taxpayer        Taxpayer  @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
+  taxpayer Taxpayer @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, taxpayerId, yil, donem])
   @@index([tenantId, yil])
@@ -2894,22 +2894,22 @@ model IsletmeHesapOzeti {
 // Mükellef başına birden fazla hesap (Ziraat, İş Bankası, Garanti vb.)
 // ============================================================
 model BankaHesap {
-  id          String    @id @default(cuid())
-  tenantId    String
-  taxpayerId  String
-  bankaAdi    String    // "Ziraat Bankası", "İş Bankası", "Garanti BBVA" vb.
-  hesapNo     String?   // hesap numarası (opsiyonel - IBAN yeterli olabilir)
-  iban        String?
-  sube        String?
-  paraBirimi  String    @default("TRY") // TRY, USD, EUR
-  aciklama    String?   // "Ana hesap", "Maaş hesabı" gibi notlar
-  aktif       Boolean   @default(true)
-  sira        Int       @default(0) // gösterim sırası
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id         String   @id @default(cuid())
+  tenantId   String
+  taxpayerId String
+  bankaAdi   String // "Ziraat Bankası", "İş Bankası", "Garanti BBVA" vb.
+  hesapNo    String? // hesap numarası (opsiyonel - IBAN yeterli olabilir)
+  iban       String?
+  sube       String?
+  paraBirimi String   @default("TRY") // TRY, USD, EUR
+  aciklama   String? // "Ana hesap", "Maaş hesabı" gibi notlar
+  aktif      Boolean  @default(true)
+  sira       Int      @default(0) // gösterim sırası
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
-  taxpayer    Taxpayer  @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
-  ekstreler   BankaEkstreKaydi[]
+  taxpayer  Taxpayer           @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
+  ekstreler BankaEkstreKaydi[]
 
   @@index([tenantId])
   @@index([taxpayerId])
@@ -2921,31 +2921,30 @@ model BankaHesap {
 // Hem mükellef başına (genel ekstre durumu) hem hesap-bazında detay
 // ============================================================
 model BankaEkstreKaydi {
-  id              String    @id @default(cuid())
-  tenantId        String
-  taxpayerId      String
-  bankaHesapId    String?   // null ise mükellef-genel ekstre durumu (tüm hesaplar birlikte)
-  donem           String    // "YYYY-MM" — örn "2026-04"
+  id            String    @id @default(cuid())
+  tenantId      String
+  taxpayerId    String
+  bankaHesapId  String? // null ise mükellef-genel ekstre durumu (tüm hesaplar birlikte)
+  donem         String // "YYYY-MM" — örn "2026-04"
   // Ekstre geldi mi? (ne zaman alındığı bilgisi varsa geldiTarihi)
-  ekstreGeldi     Boolean   @default(false)
-  geldiTarihi     DateTime?
+  ekstreGeldi   Boolean   @default(false)
+  geldiTarihi   DateTime?
   // Ekstre işlendi mi? (cari kasaya/muhasebeye işlendi mi?)
-  ekstreIslendi   Boolean   @default(false)
-  islenmeTarihi   DateTime?
-  islenmeNotu     String?   // "31.12 itibariyle hareketler işlendi" vb.
-  notlar          String?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  ekstreIslendi Boolean   @default(false)
+  islenmeTarihi DateTime?
+  islenmeNotu   String? // "31.12 itibariyle hareketler işlendi" vb.
+  notlar        String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
-  taxpayer        Taxpayer    @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
-  bankaHesap      BankaHesap? @relation(fields: [bankaHesapId], references: [id], onDelete: SetNull)
+  taxpayer   Taxpayer    @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
+  bankaHesap BankaHesap? @relation(fields: [bankaHesapId], references: [id], onDelete: SetNull)
 
   @@unique([tenantId, taxpayerId, bankaHesapId, donem])
   @@index([tenantId, donem])
   @@index([taxpayerId, donem])
   @@map("banka_ekstre_kayitlari")
 }
-
 
 // ============================================================
 // SISTEM SAGLIK KONTROLU (System Health Watchdog)
@@ -2954,20 +2953,20 @@ model BankaEkstreKaydi {
 // /system/health endpoint'inden bunlari okur.
 // ============================================================
 model SystemHealthCheck {
-  id          String   @id @default(cuid())
-  tenantId    String?  // null = tum tenantlari etkileyen sistem-genel kontrol
-  type        String   // "AGENT_PING_MIHSAP", "AGENT_PING_LUCA", "LUCA_TOKEN_AGE",
-                       // "MIHSAP_TOKEN_AGE", "PENDING_QUEUE", "FAILED_RATIO",
-                       // "MODULE_HASH", "AGENT_VERSION", "DB_HEALTH"
-  severity    String   // "OK" | "WARNING" | "CRITICAL"
-  status      String   // "HEALTHY" | "DEGRADED" | "DOWN"
-  message     String   // kullaniciya gosterilecek aciklama
-  detail      Json?    // metric: pendingCount, lastPingAge, hash, etc.
-  acilTavsiye String?  // "Bookmarklet'i kapat-ac" gibi action
-  resolved    Boolean  @default(false)
+  id          String    @id @default(cuid())
+  tenantId    String? // null = tum tenantlari etkileyen sistem-genel kontrol
+  type        String // "AGENT_PING_MIHSAP", "AGENT_PING_LUCA", "LUCA_TOKEN_AGE",
+  // "MIHSAP_TOKEN_AGE", "PENDING_QUEUE", "FAILED_RATIO",
+  // "MODULE_HASH", "AGENT_VERSION", "DB_HEALTH"
+  severity    String // "OK" | "WARNING" | "CRITICAL"
+  status      String // "HEALTHY" | "DEGRADED" | "DOWN"
+  message     String // kullaniciya gosterilecek aciklama
+  detail      Json? // metric: pendingCount, lastPingAge, hash, etc.
+  acilTavsiye String? // "Bookmarklet'i kapat-ac" gibi action
+  resolved    Boolean   @default(false)
   resolvedAt  DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   @@index([tenantId, severity, resolved])
   @@index([type, createdAt])
@@ -2983,12 +2982,12 @@ model SystemHealthCheck {
 model LockedModule {
   id          String   @id @default(cuid())
   path        String   @unique // "apps/web/src/.../page.tsx" gibi repo-relative path
-  sha256      String   // beklenen baseline hash (re-baseline yapilirsa guncellenir)
-  reason      String   // kilitlenme sebebi: "tam otomasyon, dokunma" gibi
-  lockedBy    String   // userId (kilitleyen admin)
+  sha256      String // beklenen baseline hash (re-baseline yapilirsa guncellenir)
+  reason      String // kilitlenme sebebi: "tam otomasyon, dokunma" gibi
+  lockedBy    String // userId (kilitleyen admin)
   lockedAt    DateTime @default(now())
   rebaselined Int      @default(0) // kac kez baseline guncellendi
-  notes       String?  // ek not
+  notes       String? // ek not
   active      Boolean  @default(true) // false = unlock (audit icin satir kalir)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -3022,65 +3021,65 @@ enum TaskStatus {
 }
 
 model Task {
-  id              String       @id @default(cuid())
-  tenantId        String
+  id       String @id @default(cuid())
+  tenantId String
 
   // Icerik
-  title           String
-  description     String?      @db.Text
-  category        String?      // BEYANNAME, BORDRO, MIHSAP, OFIS, MUKELLEF, vb.
-  priority        TaskPriority @default(MEDIUM)
-  color           String?      // hex (UI icin)
-  tags            String[]     @default([])
+  title       String
+  description String?      @db.Text
+  category    String? // BEYANNAME, BORDRO, MIHSAP, OFIS, MUKELLEF, vb.
+  priority    TaskPriority @default(MEDIUM)
+  color       String? // hex (UI icin)
+  tags        String[]     @default([])
 
   // Mukellef bagi (opsiyonel)
-  taxpayerId      String?
-  taxpayer        Taxpayer?    @relation(fields: [taxpayerId], references: [id], onDelete: SetNull)
+  taxpayerId String?
+  taxpayer   Taxpayer? @relation(fields: [taxpayerId], references: [id], onDelete: SetNull)
 
   // Atayan
-  createdById     String
-  createdBy       User         @relation("TaskCreator", fields: [createdById], references: [id])
+  createdById String
+  createdBy   User   @relation("TaskCreator", fields: [createdById], references: [id])
 
   // Zaman
-  dueDate         DateTime?
-  dueTime         String?      // "09:00" formati (HH:mm), null ise tum gun
-  allDay          Boolean      @default(true)
+  dueDate DateTime?
+  dueTime String? // "09:00" formati (HH:mm), null ise tum gun
+  allDay  Boolean   @default(true)
 
   // Tekrar
-  recurrence      Json?        // RecurrenceConfig (TS interface)
-  parentTaskId    String?
-  parent          Task?        @relation("TaskRecurrence", fields: [parentTaskId], references: [id], onDelete: Cascade)
-  children        Task[]       @relation("TaskRecurrence")
-  isTemplate      Boolean      @default(false) // Tekrar sablonu mu, gercek instance mi
-  nextOccurrence  DateTime?    // Bir sonraki olusturulacak tekrar tarihi
+  recurrence     Json? // RecurrenceConfig (TS interface)
+  parentTaskId   String?
+  parent         Task?     @relation("TaskRecurrence", fields: [parentTaskId], references: [id], onDelete: Cascade)
+  children       Task[]    @relation("TaskRecurrence")
+  isTemplate     Boolean   @default(false) // Tekrar sablonu mu, gercek instance mi
+  nextOccurrence DateTime? // Bir sonraki olusturulacak tekrar tarihi
 
   // Hatirlatma stratejisi
-  reminderConfig  Json?        // RemindConfig (TS interface)
+  reminderConfig Json? // RemindConfig (TS interface)
 
   // Bildirim kanallari
-  notifyInApp     Boolean      @default(true)
-  notifyEmail     Boolean      @default(false)
-  notifyBrowser   Boolean      @default(true)
-  notifySound     Boolean      @default(false)
+  notifyInApp   Boolean @default(true)
+  notifyEmail   Boolean @default(false)
+  notifyBrowser Boolean @default(true)
+  notifySound   Boolean @default(false)
 
   // Durum
-  status          TaskStatus   @default(OPEN)
-  completedAt     DateTime?
-  completedById   String?
-  snoozedUntil    DateTime?
+  status        TaskStatus @default(OPEN)
+  completedAt   DateTime?
+  completedById String?
+  snoozedUntil  DateTime?
 
   // Eskalasyon
-  escalationLevel Int          @default(0) // 0..5 arasi (5=mali musavire mail gitti)
+  escalationLevel Int       @default(0) // 0..5 arasi (5=mali musavire mail gitti)
   lastReminderAt  DateTime?
 
   // Audit
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Iliskiler
-  notes           TaskNote[]
-  attachments     TaskAttachment[]
-  reminderLogs    TaskReminderLog[]
+  notes        TaskNote[]
+  attachments  TaskAttachment[]
+  reminderLogs TaskReminderLog[]
 
   @@index([tenantId, status, dueDate])
   @@index([tenantId, taxpayerId])
@@ -3097,25 +3096,25 @@ model TaskNote {
   content   String   @db.Text
   createdAt DateTime @default(now())
 
-  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  user      User     @relation(fields: [userId], references: [id])
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id])
 
   @@index([taskId])
   @@map("task_notes")
 }
 
 model TaskAttachment {
-  id            String   @id @default(cuid())
-  taskId        String
-  filename      String
-  s3Key         String
-  size          Int
-  mimeType      String?
-  uploadedById  String
-  createdAt     DateTime @default(now())
+  id           String   @id @default(cuid())
+  taskId       String
+  filename     String
+  s3Key        String
+  size         Int
+  mimeType     String?
+  uploadedById String
+  createdAt    DateTime @default(now())
 
-  task          Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  uploadedBy    User     @relation(fields: [uploadedById], references: [id])
+  task       Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  uploadedBy User @relation(fields: [uploadedById], references: [id])
 
   @@index([taskId])
   @@map("task_attachments")
@@ -3126,13 +3125,13 @@ model TaskReminderLog {
   taskId       String
   scheduledFor DateTime
   sentAt       DateTime?
-  channel      String    // IN_APP | EMAIL | PUSH | SOUND
-  status       String    // PENDING | SENT | FAILED | SKIPPED
+  channel      String // IN_APP | EMAIL | PUSH | SOUND
+  status       String // PENDING | SENT | FAILED | SKIPPED
   recipientId  String?
   errorMsg     String?
   createdAt    DateTime  @default(now())
 
-  task         Task      @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
 
   @@index([taskId, status])
   @@index([scheduledFor, status])
@@ -3141,17 +3140,17 @@ model TaskReminderLog {
 
 // Browser Push abonelikleri (her cihaz/tarayici icin)
 model PushSubscription {
-  id           String   @id @default(cuid())
-  tenantId     String
-  userId       String
-  endpoint     String   @unique // Browser push service URL
-  p256dh       String   // Public key
-  auth         String   // Auth secret
-  userAgent    String?  // Hangi tarayici/OS
-  createdAt    DateTime @default(now())
-  lastUsedAt   DateTime @default(now())
+  id         String   @id @default(cuid())
+  tenantId   String
+  userId     String
+  endpoint   String   @unique // Browser push service URL
+  p256dh     String // Public key
+  auth       String // Auth secret
+  userAgent  String? // Hangi tarayici/OS
+  createdAt  DateTime @default(now())
+  lastUsedAt DateTime @default(now())
 
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, userId])
   @@map("push_subscriptions")
@@ -3175,15 +3174,15 @@ model PushSubscription {
 model PendingAction {
   id                String    @id @default(cuid())
   tenantId          String
-  source            String    // moren_ofis | portal_dev | mukellef_msg | github_merge | migration | mobile
-  sourceRef         String?   // kaynak id (conversation, task, pr no, ...)
-  type              String    // create | update | delete | send_message | merge_pr | run_migration | deploy
+  source            String // moren_ofis | portal_dev | mukellef_msg | github_merge | migration | mobile
+  sourceRef         String? // kaynak id (conversation, task, pr no, ...)
+  type              String // create | update | delete | send_message | merge_pr | run_migration | deploy
   title             String
   summary           String    @db.Text
-  payload           Json      // uygulamada parse edilecek değişiklik verisi
+  payload           Json // uygulamada parse edilecek değişiklik verisi
   riskLevel         String    @default("low") // low | medium | high | critical
-  requestedByAgent  String?   // ajan adı (arda, nevra, ..., seda, eren)
-  requestedByUserId String?   // kullanıcı tetiklediyse user id
+  requestedByAgent  String? // ajan adı (arda, nevra, ..., seda, eren)
+  requestedByUserId String? // kullanıcı tetiklediyse user id
   requestedAt       DateTime  @default(now())
   status            String    @default("pending") // pending | approved | rejected | expired | applied | failed
   reviewedByUserId  String?
@@ -3211,26 +3210,26 @@ model PendingAction {
 // kapanır (ya da kendi elinden uygular).
 // ------------------------------------------------------------
 model PortalDevTask {
-  id                String   @id @default(cuid())
-  tenantId          String
-  title             String
-  description       String   @db.Text
-  status            String   @default("backlog") // backlog | in_progress | in_review | done | cancelled
-  priority          String   @default("medium")  // high | medium | low
-  type              String   @default("feature") // feature | bug | refactor | doc | infra
-  riskLevel         String   @default("medium")  // low | medium | high | critical
-  assignee          String?                      // eren|melis|seda|okan|berk
-  createdByUserId   String
-  acceptance        String?  @db.Text             // kabul kriteri
+  id               String   @id @default(cuid())
+  tenantId         String
+  title            String
+  description      String   @db.Text
+  status           String   @default("backlog") // backlog | in_progress | in_review | done | cancelled
+  priority         String   @default("medium") // high | medium | low
+  type             String   @default("feature") // feature | bug | refactor | doc | infra
+  riskLevel        String   @default("medium") // low | medium | high | critical
+  assignee         String? // eren|melis|seda|okan|berk
+  createdByUserId  String
+  acceptance       String?  @db.Text // kabul kriteri
   // PR planı çıktıları — SEDA üretir
-  proposedFiles     String[] @default([])         // değişecek dosya listesi
-  proposedDiff      String?  @db.Text             // markdown ile diff/yapılacaklar
-  estimateHrs       Float?
-  sourceProposalId  String?  // DENİZ proposal'ı tetiklediyse link
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  proposedFiles    String[] @default([]) // değişecek dosya listesi
+  proposedDiff     String?  @db.Text // markdown ile diff/yapılacaklar
+  estimateHrs      Float?
+  sourceProposalId String? // DENİZ proposal'ı tetiklediyse link
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
-  messages          PortalDevMessage[]
+  messages PortalDevMessage[]
 
   @@index([tenantId, status])
   @@index([assignee, status])
@@ -3238,15 +3237,15 @@ model PortalDevTask {
 }
 
 model PortalDevMessage {
-  id              String   @id @default(cuid())
-  tenantId        String
-  taskId          String?
-  agent           String   // eren|melis|seda|okan|berk|user
-  userId          String?
-  content         String   @db.Text
-  ts              DateTime @default(now())
+  id       String   @id @default(cuid())
+  tenantId String
+  taskId   String?
+  agent    String // eren|melis|seda|okan|berk|user
+  userId   String?
+  content  String   @db.Text
+  ts       DateTime @default(now())
 
-  task            PortalDevTask? @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  task PortalDevTask? @relation(fields: [taskId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, taskId])
   @@map("portal_dev_messages")
@@ -3260,18 +3259,18 @@ model PortalDevMessage {
 // ve kaçak yakalama bu tablo üzerinden yapılır.
 // ------------------------------------------------------------
 model ToolCallLog {
-  id          String   @id @default(cuid())
-  tenantId    String
-  caller      String   // moren_ofis | moren_ai | portal_dev | patrol
-  callerRef   String?  // conversation id / task id / agent name
-  agent       String?  // arda|nevra|cem|... (kim çağırdı)
-  tool        String   // list_taxpayers, get_kdv_summary, ...
-  input       Json
-  ok          Boolean
-  durationMs  Int
-  resultSize  Int?     // dönen JSON byte boyutu (yaklaşık)
-  errorMsg    String?
-  ts          DateTime @default(now())
+  id         String   @id @default(cuid())
+  tenantId   String
+  caller     String // moren_ofis | moren_ai | portal_dev | patrol
+  callerRef  String? // conversation id / task id / agent name
+  agent      String? // arda|nevra|cem|... (kim çağırdı)
+  tool       String // list_taxpayers, get_kdv_summary, ...
+  input      Json
+  ok         Boolean
+  durationMs Int
+  resultSize Int? // dönen JSON byte boyutu (yaklaşık)
+  errorMsg   String?
+  ts         DateTime @default(now())
 
   @@index([tenantId, ts])
   @@index([tenantId, tool])
@@ -3287,46 +3286,46 @@ model ToolCallLog {
 // MOREN_AI_OTOMASYON_MOTORU_PLAN.md
 // ============================================================
 model Automation {
-  id          String   @id @default(cuid())
+  id          String @id @default(cuid())
   tenantId    String
   createdById String
 
   // Kullanıcının yazdığı orijinal cümle (örn. "Her ayın 22'sinde KDV gecikenlere WhatsApp at")
-  prompt      String   @db.Text
+  prompt String @db.Text
 
   // Moren AI'nın cümleden çıkardığı insan-okur özet
   title       String
-  description String?  @db.Text
+  description String? @db.Text
 
   // Tetikleyici
   triggerType   AutomationTriggerType
-  triggerConfig Json    // { cron: "0 10 22 * *" } | { eventName: "WhatsApp.MessageReceived", filters: {...} } | { secret: "..." }
+  triggerConfig Json // { cron: "0 10 22 * *" } | { eventName: "WhatsApp.MessageReceived", filters: {...} } | { secret: "..." }
 
   // Aksiyon adımları — sıralı liste (workflow JSON)
   // Şema versiyonlu: { schemaVersion: 1, steps: [...] }
-  steps       Json
+  steps Json
 
   // Durum yönetimi
-  status        AutomationStatus  @default(DRAFT)
+  status        AutomationStatus @default(DRAFT)
   lastRunAt     DateTime?
-  lastRunStatus String?           // "success" | "failure" | "partial"
+  lastRunStatus String? // "success" | "failure" | "partial"
   nextRunAt     DateTime?
-  totalRuns     Int               @default(0)
-  successRuns   Int               @default(0)
-  failureRuns   Int               @default(0)
+  totalRuns     Int              @default(0)
+  successRuns   Int              @default(0)
+  failureRuns   Int              @default(0)
 
   // Hata politikası: "notify" | "pause_after_3" | "ignore"
-  failurePolicy String   @default("notify")
+  failurePolicy String @default("notify")
 
   // Tahmini run başına Claude maliyeti (USD, kurulurken hesaplanır)
   estimatedCostPerRun Float?
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  tenant      Tenant   @relation(fields: [tenantId], references: [id])
-  createdBy   User     @relation("AutomationCreator", fields: [createdById], references: [id])
-  runs        AutomationRun[]
+  tenant    Tenant          @relation(fields: [tenantId], references: [id])
+  createdBy User            @relation("AutomationCreator", fields: [createdById], references: [id])
+  runs      AutomationRun[]
 
   @@index([tenantId, status])
   @@index([tenantId, triggerType])
@@ -3350,30 +3349,30 @@ enum AutomationStatus {
 }
 
 model AutomationRun {
-  id           String   @id @default(cuid())
+  id           String @id @default(cuid())
   automationId String
 
-  startedAt    DateTime @default(now())
-  finishedAt   DateTime?
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
 
   // "running" | "success" | "failure" | "partial"
-  status       String   @default("running")
+  status String @default("running")
 
   // Tetikleyici payload'ı (event verisi, webhook body, manuel input)
   triggerPayload Json?
 
   // Adım adım yürütme logu
   // [{ stepId: "step_1", tool: "...", input: {...}, output: {...}, error: null, ms: 1240 }, ...]
-  stepLogs     Json     @default("[]")
+  stepLogs Json @default("[]")
 
   // Kullanıcının liste sayfasında göreceği kısa özet (örn. "12 mükellefe mesaj atıldı, 0 hata")
-  summary      String?  @db.Text
-  errorMessage String?  @db.Text
+  summary      String? @db.Text
+  errorMessage String? @db.Text
 
   // Bu run'da harcanan Claude maliyeti (USD)
-  costUsd      Float?
+  costUsd Float?
 
-  automation   Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+  automation Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
 
   @@index([automationId, startedAt])
   @@index([status, startedAt])
@@ -3386,31 +3385,31 @@ model AutomationRun {
 // @@unique([entegrator, uuid]) ile aynı fatura iki kez giremez.
 // ============================================================
 model EFaturaInbox {
-  id            String    @id @default(cuid())
-  tenantId      String
-  taxpayerId    String
-  entegrator    String    // "NILVERA" | "IZIBIZ" | "UYUMSOFT" | "TURKCELL" | "EDM" | "FORIBA" | "PARASUT" | "ELOGO" | "GIB_PORTAL"
-  uuid          String
-  ettn          String?
-  senderVkn     String?
-  senderTitle   String?
-  receiverVkn   String?
-  faturaNo      String?
-  faturaDate    DateTime?
-  matrah        Decimal?  @db.Decimal(14, 2)
-  kdv           Decimal?  @db.Decimal(14, 2)
-  toplam        Decimal?  @db.Decimal(14, 2)
-  paraBirimi    String    @default("TRY")
-  direction     String    @default("IN")   // IN | OUT
-  invoiceProfile String?  // TEMELFATURA | TICARIFATURA | IHRACAT vb.
-  ublXmlKey     String?   // S3 storage key — UBL-TR XML
-  ublXmlRaw     String?   @db.Text  // Küçük XML'leri doğrudan saklama seçeneği (<50KB)
-  rawJson       Json?     // Entegratörden gelen özet metadata
-  isTransferred Boolean   @default(false)  // accounting modülüne aktarıldı mı
-  documentId    String?   // InvoiceAccountingDocument.id ile ilişki (işlendikten sonra)
-  syncedAt      DateTime  @default(now())
-  markedAt      DateTime? // Entegratöre "aktarıldı" bayrağı atıldığı an
-  processedAt   DateTime? // Muhasebe modülüne aktarıldığı an
+  id             String    @id @default(cuid())
+  tenantId       String
+  taxpayerId     String
+  entegrator     String // "NILVERA" | "IZIBIZ" | "UYUMSOFT" | "TURKCELL" | "EDM" | "FORIBA" | "PARASUT" | "ELOGO" | "GIB_PORTAL"
+  uuid           String
+  ettn           String?
+  senderVkn      String?
+  senderTitle    String?
+  receiverVkn    String?
+  faturaNo       String?
+  faturaDate     DateTime?
+  matrah         Decimal?  @db.Decimal(14, 2)
+  kdv            Decimal?  @db.Decimal(14, 2)
+  toplam         Decimal?  @db.Decimal(14, 2)
+  paraBirimi     String    @default("TRY")
+  direction      String    @default("IN") // IN | OUT
+  invoiceProfile String? // TEMELFATURA | TICARIFATURA | IHRACAT vb.
+  ublXmlKey      String? // S3 storage key — UBL-TR XML
+  ublXmlRaw      String?   @db.Text // Küçük XML'leri doğrudan saklama seçeneği (<50KB)
+  rawJson        Json? // Entegratörden gelen özet metadata
+  isTransferred  Boolean   @default(false) // accounting modülüne aktarıldı mı
+  documentId     String? // InvoiceAccountingDocument.id ile ilişki (işlendikten sonra)
+  syncedAt       DateTime  @default(now())
+  markedAt       DateTime? // Entegratöre "aktarıldı" bayrağı atıldığı an
+  processedAt    DateTime? // Muhasebe modülüne aktarıldığı an
 
   // Mükellef izolasyonu: aynı UUID birden çok mükellef/tenant'ta çekilebilir
   // (aynı entegratör hesabı çok mükellefe hizmet verince). Eskiden (entegrator,uuid)
@@ -3433,11 +3432,11 @@ model MaliYorum {
   id         String   @id @default(cuid())
   tenantId   String
   taxpayerId String
-  kaynak     String   // MIZAN | BILANCO | GELIR_TABLOSU | IHO
-  kaynakId   String   // ilgili kaydın id'si (IHO için "taxpayerId:yil")
-  donem      String?  // görüntüleme için dönem etiketi
+  kaynak     String // MIZAN | BILANCO | GELIR_TABLOSU | IHO
+  kaynakId   String // ilgili kaydın id'si (IHO için "taxpayerId:yil")
+  donem      String? // görüntüleme için dönem etiketi
   ozet       String   @db.Text // serbest metin değerlendirme
-  model      String   // üreten model
+  model      String // üreten model
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
@@ -3451,17 +3450,17 @@ model MaliYorum {
 model SmartDispatchSetting {
   id                  String   @id @default(cuid())
   tenantId            String
-  kategori            String   // VERGI | SGK | ETEBLIGAT
+  kategori            String // VERGI | SGK | ETEBLIGAT
   whatsapp            Boolean  @default(true)
   email               Boolean  @default(true)
   sendHour            Int      @default(9)
-  manualInstant       Boolean  @default(true)  // elle cekilen de ayni formatla aninda iletilsin
+  manualInstant       Boolean  @default(true) // elle cekilen de ayni formatla aninda iletilsin
   enabled             Boolean  @default(false) // guvenli baslangic: kapali
-  testMode            Boolean  @default(true)  // acikken gonderimler test alicisina gider
+  testMode            Boolean  @default(true) // acikken gonderimler test alicisina gider
   testPhone           String?
   testEmail           String?
-  senderName          String?  // mesajlardaki "Gönderen" adı (boşsa varsayılan ofis adı)
-  reportEmail         String?  // günlük iletim raporunun gideceği müşavir e-postası
+  senderName          String? // mesajlardaki "Gönderen" adı (boşsa varsayılan ofis adı)
+  reportEmail         String? // günlük iletim raporunun gideceği müşavir e-postası
   excludedTaxpayerIds String[] @default([])
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
@@ -3474,15 +3473,15 @@ model DocumentDispatch {
   id          String    @id @default(cuid())
   tenantId    String
   taxpayerId  String
-  kategori    String    // VERGI | SGK | ETEBLIGAT | ODEME_LISTESI
+  kategori    String // VERGI | SGK | ETEBLIGAT | ODEME_LISTESI
   donem       String?
-  channel     String    // WHATSAPP | EMAIL
+  channel     String // WHATSAPP | EMAIL
   status      String    @default("PENDING") // PENDING | SENT | FAILED | SKIPPED
   error       String?
   itemCount   Int       @default(0)
   totalAmount Decimal?  @db.Decimal(14, 2)
   docRefs     Json?
-  dedupeKey   String    // kategori + belge id'leri hash — ayni belgeler ikinci kez gonderilmez
+  dedupeKey   String // kategori + belge id'leri hash — ayni belgeler ikinci kez gonderilmez
   testMode    Boolean   @default(false)
   sentAt      DateTime?
   createdAt   DateTime  @default(now())
@@ -3510,24 +3509,24 @@ model ShortLink {
 // Tüm kayıtlar (tenantId, userId) ikilisiyle izole edilir.
 
 model ButceKategori {
-  id        String   @id @default(cuid())
-  tenantId  String
-  userId    String
-  defter    String   @default("SAHSI") // SAHSI | OFIS
-  ad        String
-  tur       String   // GELIR | GIDER
-  renk      String?
+  id         String   @id @default(cuid())
+  tenantId   String
+  userId     String
+  defter     String   @default("SAHSI") // SAHSI | OFIS
+  ad         String
+  tur        String // GELIR | GIDER
+  renk       String?
   /// Aylık harcama sınırı (yalnız gider kategorilerinde anlamlı). Boş = sınır yok
   aylikLimit Decimal? @db.Decimal(14, 2)
-  zorunlu   Boolean  @default(false) // gider: kira/fatura gibi kısılamaz kalem
-  aktif     Boolean  @default(true)
-  sira      Int      @default(0)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  zorunlu    Boolean  @default(false) // gider: kira/fatura gibi kısılamaz kalem
+  aktif      Boolean  @default(true)
+  sira       Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
-  islemler  ButceIslem[]
-  duzenliler ButceDuzenliOdeme[]
-  hareketler ButceKartHareket[]
+  islemler     ButceIslem[]
+  duzenliler   ButceDuzenliOdeme[]
+  hareketler   ButceKartHareket[]
   saticiHafiza ButceSaticiHafiza[]
 
   @@unique([tenantId, userId, defter, tur, ad])
@@ -3536,28 +3535,28 @@ model ButceKategori {
 }
 
 model ButceIslem {
-  id         String   @id @default(cuid())
-  tenantId   String
-  userId     String
-  tarih      DateTime
-  donem      String   // YYYY-MM
-  tur        String   // GELIR | GIDER
-  tutar      Decimal  @db.Decimal(14, 2)
-  kategoriId String?
-  aciklama   String?
-  kaynak     String   @default("NAKIT") // NAKIT | BANKA | KART
-  kartId     String?
-  bankaHesapId String? // kaynak=BANKA ise hangi hesaptan
-  duzenliId  String?
-  planlanan  Boolean  @default(false) // henüz gerçekleşmedi (beklenen)
+  id             String   @id @default(cuid())
+  tenantId       String
+  userId         String
+  tarih          DateTime
+  donem          String // YYYY-MM
+  tur            String // GELIR | GIDER
+  tutar          Decimal  @db.Decimal(14, 2)
+  kategoriId     String?
+  aciklama       String?
+  kaynak         String   @default("NAKIT") // NAKIT | BANKA | KART
+  kartId         String?
+  bankaHesapId   String? // kaynak=BANKA ise hangi hesaptan
+  duzenliId      String?
+  planlanan      Boolean  @default(false) // henüz gerçekleşmedi (beklenen)
   // ŞAHSİ mi OFİS mi — ofis kirası ile kişisel harcama aynı torbaya girmesin
-  defter     String   @default("SAHSI") // SAHSI | OFIS
+  defter         String   @default("SAHSI") // SAHSI | OFIS
   // Hesaplar/defterler arası aktarımın iki bacağını eşleştirir; gelir-gider toplamlarına GİRMEZ
   transferGrupId String?
   // Ekstre PDF satırından üretildiyse dolu olur (elle girilenlerde boş)
   kartHareketId  String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   kategori   ButceKategori?     @relation(fields: [kategoriId], references: [id], onDelete: SetNull)
   kart       ButceKart?         @relation(fields: [kartId], references: [id], onDelete: SetNull)
@@ -3576,17 +3575,17 @@ model ButceDuzenliOdeme {
   userId           String
   defter           String   @default("SAHSI") // SAHSI | OFIS
   ad               String
-  tur              String   // GELIR | GIDER
+  tur              String // GELIR | GIDER
   tutar            Decimal  @db.Decimal(14, 2)
   kategoriId       String?
   ayinGunu         Int      @default(1)
-  baslangicDonem   String   // YYYY-MM
+  baslangicDonem   String // YYYY-MM
   bitisDonem       String?
   kaynak           String   @default("NAKIT")
   kartId           String?
   zorunlu          Boolean  @default(true)
   aktif            Boolean  @default(true)
-  sonUretilenDonem String?  // otomatik işlem üretiminde tekrar koruması
+  sonUretilenDonem String? // otomatik işlem üretiminde tekrar koruması
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
@@ -3608,9 +3607,9 @@ model ButceKart {
   kartAdi          String
   sonDortHane      String?
   kartLimiti       Decimal  @default(0) @db.Decimal(14, 2)
-  kesimGunu        Int      // ayın kaçında hesap kesiliyor (1-31)
+  kesimGunu        Int // ayın kaçında hesap kesiliyor (1-31)
   sonOdemeGunFarki Int      @default(10) // kesim + bu kadar gün = son ödeme
-  asgariOran       Decimal  @default(20) @db.Decimal(5, 2)  // %
+  asgariOran       Decimal  @default(20) @db.Decimal(5, 2) // %
   aylikFaizOrani   Decimal  @default(4.25) @db.Decimal(6, 3) // akdi aylık faiz %
   gecikmeFaizOrani Decimal  @default(4.75) @db.Decimal(6, 3)
   renk             String?
@@ -3632,7 +3631,7 @@ model ButceKartEkstre {
   tenantId       String
   userId         String
   kartId         String
-  donem          String    // YYYY-MM (kesim ayı)
+  donem          String // YYYY-MM (kesim ayı)
   kesimTarihi    DateTime
   sonOdemeTarihi DateTime
   borcTutari     Decimal?  @db.Decimal(14, 2)
@@ -3641,12 +3640,12 @@ model ButceKartEkstre {
   durum          String    @default("TUTAR_BEKLENIYOR") // TUTAR_BEKLENIYOR | ODENMEDI | KISMI | ODENDI | GECIKTI
   odemeTarihi    DateTime?
   notlar         String?
-  hatirlatmalar  Json?     // gönderilen hatırlatma anahtarları (tekrar koruması)
+  hatirlatmalar  Json? // gönderilen hatırlatma anahtarları (tekrar koruması)
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  kart      ButceKart          @relation(fields: [kartId], references: [id], onDelete: Cascade)
-  odemeler  ButceOdeme[]
+  kart       ButceKart          @relation(fields: [kartId], references: [id], onDelete: Cascade)
+  odemeler   ButceOdeme[]
   hareketler ButceKartHareket[]
 
   @@unique([tenantId, kartId, donem])
@@ -3660,7 +3659,7 @@ model ButceBorc {
   userId            String
   defter            String    @default("SAHSI") // SAHSI | OFIS
   ad                String
-  tur               String    // IHTIYAC | TASIT | KONUT | KMH | SENET | KISISEL | DIGER
+  tur               String // IHTIYAC | TASIT | KONUT | KMH | SENET | KISISEL | DIGER
   kurum             String?
   toplamTutar       Decimal   @db.Decimal(14, 2)
   kalanAnapara      Decimal   @db.Decimal(14, 2)
@@ -3688,12 +3687,12 @@ model ButceOdeme {
   tenantId     String
   userId       String
   tarih        DateTime
-  donem        String   // YYYY-MM
+  donem        String // YYYY-MM
   tutar        Decimal  @db.Decimal(14, 2)
-  hedefTur     String   // BORC | KART
+  hedefTur     String // BORC | KART
   borcId       String?
   kartEkstreId String?
-  bankaHesapId String?  // ödeme hangi hesaptan çıktı (nakit ödemede boş)
+  bankaHesapId String? // ödeme hangi hesaptan çıktı (nakit ödemede boş)
   tip          String   @default("NORMAL") // NORMAL | ASGARI | EKSTRA | KAPAMA
   aciklama     String?
   createdAt    DateTime @default(now())
@@ -3707,25 +3706,25 @@ model ButceOdeme {
 }
 
 model ButceAyar {
-  id                 String   @id @default(cuid())
-  tenantId           String
-  userId             String
-  nakitYastigi       Decimal  @default(0) @db.Decimal(14, 2) // acil durum tamponu
-  strateji           String   @default("CIG") // CIG (avalanche) | KARTOPU (snowball)
-  hatirlatmaWhatsapp Boolean  @default(true)
-  hatirlatmaPortal   Boolean  @default(true)
-  hatirlatmaEmail    Boolean  @default(false)
-  whatsappNumara     String?
-  sabahSaati         Int      @default(9)
+  id                   String    @id @default(cuid())
+  tenantId             String
+  userId               String
+  nakitYastigi         Decimal   @default(0) @db.Decimal(14, 2) // acil durum tamponu
+  strateji             String    @default("CIG") // CIG (avalanche) | KARTOPU (snowball)
+  hatirlatmaWhatsapp   Boolean   @default(true)
+  hatirlatmaPortal     Boolean   @default(true)
+  hatirlatmaEmail      Boolean   @default(false)
+  whatsappNumara       String?
+  sabahSaati           Int       @default(9)
   // Modül girişinde sorulan 6 haneli PIN (argon2 ile saklanır). Boşsa PIN kurulmamıştır.
-  pinHash            String?
-  pinDenemeSayisi    Int      @default(0)
-  pinKilitBitis      DateTime?
+  pinHash              String?
+  pinDenemeSayisi      Int       @default(0)
+  pinKilitBitis        DateTime?
   // TCMB azami kart faizi değişince kartların oranı kendiliğinden güncellensin mi?
   // Kapalıysa yalnız bildirim gider, oran elle güncellenir.
-  faizOtomatikGuncelle Boolean @default(true)
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  faizOtomatikGuncelle Boolean   @default(true)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
   @@unique([tenantId, userId])
   @@map("butce_ayarlar")
@@ -3735,7 +3734,7 @@ model ButceAiRapor {
   id        String   @id @default(cuid())
   tenantId  String
   userId    String
-  tur       String   // AYLIK_YORUM | PLAN_YORUM | SORU
+  tur       String // AYLIK_YORUM | PLAN_YORUM | SORU
   donem     String?
   soru      String?
   icerik    String
@@ -3754,14 +3753,14 @@ model ButceKartHareket {
   ekstreId       String
   tarih          DateTime
   aciklama       String
-  satici         String?  // normalize edilmiş satıcı anahtarı (öğrenme için)
+  satici         String? // normalize edilmiş satıcı anahtarı (öğrenme için)
   defter         String   @default("SAHSI") // SAHSI | OFIS — satır bazında
   tutar          Decimal  @db.Decimal(14, 2) // harcama +, iade/puan -
-  taksitBilgi    String?  // "3/12"
+  taksitBilgi    String? // "3/12"
   kategoriId     String?
   kategoriKaynak String   @default("AI") // HAFIZA | AI | ELLE
   onaylandi      Boolean  @default(false)
-  islemId        String?  // onaylanınca üretilen ButceIslem kaydı
+  islemId        String? // onaylanınca üretilen ButceIslem kaydı
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -3776,7 +3775,7 @@ model ButceSaticiHafiza {
   id         String   @id @default(cuid())
   tenantId   String
   userId     String
-  satici     String   // normalize anahtar (küçük harf, sadeleştirilmiş)
+  satici     String // normalize anahtar (küçük harf, sadeleştirilmiş)
   defter     String   @default("SAHSI") // bu satıcı hangi deftere yazılıyor
   kategoriId String
   sayac      Int      @default(1)
@@ -3790,28 +3789,51 @@ model ButceSaticiHafiza {
 }
 
 model ButceBankaHesap {
-  id            String    @id @default(cuid())
-  tenantId      String
-  userId        String
+  id               String    @id @default(cuid())
+  tenantId         String
+  userId           String
   // Hesap hem şahsi hem ofis için kullanılabilir; bu yalnız yeni kayıtta ÖN SEÇİM
-  varsayilanDefter String @default("SAHSI") // SAHSI | OFIS
-  ad            String    // "Maaş hesabı", "Ofis hesabı"
-  bankaAdi      String
-  iban4         String?   // IBAN son 4 hane (tamamı saklanmaz)
-  tur           String    @default("VADESIZ") // VADESIZ | KMH
-  acilisBakiye  Decimal   @default(0) @db.Decimal(14, 2) // sisteme giriş anındaki bakiye
-  acilisTarihi  DateTime?
-  kmhLimiti     Decimal   @default(0) @db.Decimal(14, 2)
-  kmhAylikFaiz  Decimal   @default(0) @db.Decimal(6, 3) // % aylık
-  renk          String?
-  aktif         Boolean   @default(true)
-  sira          Int       @default(0)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  varsayilanDefter String    @default("SAHSI") // SAHSI | OFIS
+  ad               String // "Maaş hesabı", "Ofis hesabı"
+  bankaAdi         String
+  iban4            String? // IBAN son 4 hane (tamamı saklanmaz)
+  tur              String    @default("VADESIZ") // VADESIZ | KMH
+  acilisBakiye     Decimal   @default(0) @db.Decimal(14, 2) // sisteme giriş anındaki bakiye
+  acilisTarihi     DateTime?
+  kmhLimiti        Decimal   @default(0) @db.Decimal(14, 2)
+  kmhAylikFaiz     Decimal   @default(0) @db.Decimal(6, 3) // % aylık
+  renk             String?
+  aktif            Boolean   @default(true)
+  sira             Int       @default(0)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   islemler ButceIslem[]
   odemeler ButceOdeme[]
 
   @@index([tenantId, userId, aktif])
   @@map("butce_banka_hesaplar")
+}
+
+/// Tahsilat otomasyonunda bir mükellefi GEÇİCİ olarak susturur.
+///
+/// Mükellef "ödedim", "gelecek hafta", "itiraz ediyorum" dediğinde ya da özel
+/// bir durum olduğunda bot yazmayı keser. Kalıcı dışlama için
+/// SmartDispatchSetting.excludedTaxpayerIds kullanılır; burası SÜRELİ olandır.
+model TahsilatSusturma {
+  id         String   @id @default(cuid())
+  tenantId   String
+  taxpayerId String
+  /// ODEME_BEYANI | SOZ_VERDI | ITIRAZ | HASSAS | ELLE
+  sebep      String
+  /// Serbest not — sahibin ekranda göreceği açıklama
+  not        String?
+  /// Bu tarihe kadar mesaj gönderilmez
+  bitis      DateTime
+  /// Kim sustur(du): SISTEM (bot yakaladı) | KULLANICI
+  kaynak     String   @default("KULLANICI")
+  createdAt  DateTime @default(now())
+
+  @@index([tenantId, taxpayerId])
+  @@index([tenantId, bitis])
 }

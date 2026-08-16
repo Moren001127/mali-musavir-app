@@ -198,6 +198,15 @@ export class CariKasaController {
     return this.service.tahsilatAjandasi(req.user.tenantId);
   }
 
+  /**
+   * TAHSİLAT OTOMASYON PLANI — KURU TEST.
+   * Bugün kime hangi mesajın gideceğini gösterir; HİÇBİR MESAJ GÖNDERMEZ.
+   */
+  @Get('tahsilat-otomasyon/plan')
+  tahsilatOtomasyonPlani(@Req() req: any) {
+    return this.service.tahsilatOtomasyonPlani(req.user.tenantId);
+  }
+
   @Post('tahsilat-hatirlatma/preview')
   tahsilatHatirlatmaPreview(@Req() req: any, @Body() body: any) {
     return this.service.tahsilatHatirlatmaPreview(req.user.tenantId, body || {});

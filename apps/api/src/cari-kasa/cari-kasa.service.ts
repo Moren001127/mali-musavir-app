@@ -1,4 +1,12 @@
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  gunlukPlan,
+  kademeKarari,
+  TahsilatAdayi,
+  OtomasyonAyari,
+  VARSAYILAN_AYAR,
+  Kademe,
+} from './tahsilat-otomasyon';
 import { createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
@@ -1247,6 +1255,118 @@ ${rows}
     };
   }
 
+  /**
+   * TAHSİLAT OTOMASYON PLANI — KURU TEST.
+   *
+   * Gerçek veriden "bugün kime ne gitmeli" listesini üretir ama HİÇBİR MESAJ
+   * GÖNDERMEZ. Bu metodun içinde tek bir WhatsApp çağrısı yoktur; amacı ofis
+   * sahibinin sistemi açmadan önce davranışını görmesidir.
+   *
+   * Kademeler: K0 bilgilendirme · K1 hatırlatma · K2 hesap dökümü ·
+   * K3 görüşme çağrısı (sahip onayı şart) · 90+ gün bot susar.
+   */
+  async tahsilatOtomasyonPlani(tenantId: string) {
+    const ajanda = await this.tahsilatAjandasi(tenantId);
+    const bugun = new Date();
+
+    // Ayar: kategori 'TAHSILAT'. Kayıt yoksa GÜVENLİ VARSAYILAN — kapalı.
+    const ayarKaydi = await (this.prisma as any).smartDispatchSetting
+      .findFirst({ where: { tenantId, kategori: 'TAHSILAT' } })
+      .catch(() => null);
+
+    const ayar: OtomasyonAyari = {
+      enabled: Boolean(ayarKaydi?.enabled),
+      testMode: ayarKaydi?.testMode !== false,
+      testPhone: ayarKaydi?.testPhone || null,
+      haricTutulan: ayarKaydi?.excludedTaxpayerIds || [],
+      ofisAdi: ayarKaydi?.senderName || VARSAYILAN_AYAR.ofisAdi,
+    };
+
+    // Aktif susturmalar
+    const susturmalar = await (this.prisma as any).tahsilatSusturma
+      .findMany({ where: { tenantId, bitis: { gt: bugun } } })
+      .catch(() => [] as any[]);
+    const susturmaHarita = new Map<string, any>();
+    for (const x of susturmalar) if (!susturmaHarita.has(x.taxpayerId)) susturmaHarita.set(x.taxpayerId, x);
+
+    // Daha önce hangi kademeye gelindi (DocumentDispatch kategori=TAHSILAT)
+    const gecmis = await (this.prisma as any).documentDispatch
+      .findMany({
+        where: { tenantId, kategori: 'TAHSILAT', status: 'SENT' },
+        orderBy: { createdAt: 'desc' },
+        select: { taxpayerId: true, donem: true, createdAt: true },
+      })
+      .catch(() => [] as any[]);
+    const sonKademe = new Map<string, Kademe>();
+    for (const g of gecmis) {
+      if (!sonKademe.has(g.taxpayerId) && g.donem) sonKademe.set(g.taxpayerId, g.donem as Kademe);
+    }
+
+    // Mükelleften gelen son mesaj — konuşma sürüyorsa bot araya girmemeli
+    const gelenler = await (this.prisma as any).communicationLog
+      .findMany({
+        where: { taxpayer: { tenantId }, channel: 'WHATSAPP', direction: 'INBOUND' },
+        orderBy: { occurredAt: 'desc' },
+        select: { taxpayerId: true, occurredAt: true },
+      })
+      .catch(() => [] as any[]);
+    const sonGelen = new Map<string, Date>();
+    for (const g of gelenler) if (!sonGelen.has(g.taxpayerId)) sonGelen.set(g.taxpayerId, g.occurredAt);
+
+    const adaylar: TahsilatAdayi[] = ajanda.rows.map((r: any) => {
+      const sus = susturmaHarita.get(r.id);
+      return {
+        taxpayerId: r.id,
+        ad: r.ad,
+        phone: r.phone,
+        bakiye: Number(r.bakiye || 0),
+        // En eski açık borcun yaşı: yaşlandırma kovalarından türetilir
+        gecikmeGun: this.enEskiBorcYasi(r),
+        aylikUcret: Number(r.aylikUcret || 0) || null,
+        sonTahsilatTarihi: r.sonTahsilatTarihi || null,
+        sonTemasTarihi: r.sonHatirlatmaTarihi || null,
+        sonKademe: sonKademe.get(r.id) || null,
+        sonGelenMesajTarihi: sonGelen.get(r.id) || null,
+        susturmaBitis: sus?.bitis || null,
+        susturmaSebebi: sus?.not || sus?.sebep || null,
+        isiBirakti: Boolean(r.isiBirakti),
+        aktif: r.aktif !== false,
+      };
+    });
+
+    const plan = gunlukPlan(adaylar, ayar, bugun);
+
+    return {
+      // Sistem açık mı — kapalıysa hiçbir şey gönderilmez
+      otomasyonAcik: ayar.enabled,
+      testModu: ayar.testMode,
+      /** KURU TEST: bu uç asla mesaj göndermez */
+      kuruTest: true,
+      tarih: bugun.toISOString().slice(0, 10),
+      ozet: {
+        gonderilecek: plan.gonderilecek.length,
+        onayBekleyen: plan.onayBekleyen.length,
+        elleGorusulecek: plan.elleGorusulecek.length,
+        atlanan: plan.atlanan.length,
+        yarinaKalan: plan.yarinaKalan.length,
+        toplamAday: adaylar.length,
+      },
+      ...plan,
+    };
+  }
+
+  /**
+   * En eski açık borcun kaç gündür beklediği. Yaşlandırma kovaları
+   * (d0_30 / d31_60 / d61_90 / d90plus) doluluğuna göre alt sınır verir.
+   */
+  private enEskiBorcYasi(r: any): number {
+    if (Number(r.d90plus || 0) > 0) return 90;
+    if (Number(r.d61_90 || 0) > 0) return 61;
+    if (Number(r.d31_60 || 0) > 0) return 31;
+    if (Number(r.d0_30 || 0) > 0) return 1;
+    return 0;
+  }
+
   async tahsilatHatirlatmaPreview(tenantId: string, body: { taxpayerIds?: string[]; minBakiye?: number }) {
     const ajanda = await this.tahsilatAjandasi(tenantId);
     const selected = new Set(body.taxpayerIds || []);
@@ -1284,7 +1404,23 @@ ${rows}
     };
   }
 
-  async tahsilatHatirlatmaSend(tenantId: string, body: { taxpayerIds?: string[]; minBakiye?: number }) {
+  async tahsilatHatirlatmaSend(
+    tenantId: string,
+    body: { taxpayerIds?: string[]; minBakiye?: number; tumu?: boolean },
+  ) {
+    // KAZARA TOPLU GÖNDERİM KORUMASI
+    //
+    // Önizlemede boş `taxpayerIds` "hepsi" anlamına gelir. Gönderimde de aynı
+    // varsayım tek bir yanlış tıklamayı 75 mükellefe mesaja çeviriyordu.
+    // Artık toplu gönderim AÇIKÇA istenmeli: ya kişi listesi verilir ya da
+    // `tumu: true` gönderilir.
+    const secilenVar = Array.isArray(body?.taxpayerIds) && body.taxpayerIds.length > 0;
+    if (!secilenVar && body?.tumu !== true) {
+      throw new BadRequestException(
+        'Kime gönderileceği belirtilmedi. Mükellefleri seçin ya da toplu gönderim için onaylayın.',
+      );
+    }
+
     const preview = await this.tahsilatHatirlatmaPreview(tenantId, body);
     const results: any[] = [];
 
