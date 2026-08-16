@@ -201,182 +201,124 @@ export default function OdemePlani({ donem, defter = 'TUMU' }: { donem: string; 
             aciklama={`Bu ay ${para(plan.buAyToplam)} ₺ ile hesaplandı (her ay ${para(plan.kapasite)} ₺ + devreden ${para(plan.birikim)} ₺). Zorunlu tutarlar önce ayrılır; artan para en fazla fayda sağlayan borca gider.`}
             renk={GOLD}
           >
-            {/* Sabit sütunlu liste. Renk düzeni bilinçli sade tutuldu:
-                yalnız ALTIN vurgu rengi, YEŞİL kapanış, KIRMIZI eksik; geri
-                kalan her şey nötr gri tonlarında. */}
+            {/* Düz tablo. Grid + ilerleme çubuğu denendi, hizayı bozuyordu:
+                gerçek <table> sütun genişliğini tarayıcıya bırakır ve sayılar
+                her satırda aynı hizada durur. */}
             <div className="overflow-x-auto">
-              <div className="min-w-[700px]">
-                <div
-                  className="grid items-center gap-4 px-3.5 pb-2 text-[10px] font-medium uppercase tracking-[0.14em]"
-                  style={{ gridTemplateColumns: 'minmax(220px,1.7fr) 1fr 1fr 1.1fr 1.1fr', color: 'rgba(113,113,122,0.75)' }}
-                >
-                  <span>Borç</span>
-                  <span className="text-right">Zorunlu</span>
-                  <span className="text-right">Ekstra</span>
-                  <span className="text-right">Bu ay ödenecek</span>
-                  <span className="text-right">Sonraki ay</span>
-                </div>
-
-                <div className="space-y-1">
+              <table className="w-full min-w-[640px] border-collapse">
+                <thead>
+                  <tr>
+                    {['Borç', 'Zorunlu', 'Ekstra', 'Bu ay ödenecek', 'Sonraki ay'].map((b, i) => (
+                      <th
+                        key={b}
+                        className={`pb-2.5 text-[10px] font-medium uppercase tracking-[0.14em] ${
+                          i === 0 ? 'text-left' : 'text-right'
+                        }`}
+                        style={{ color: 'rgba(113,113,122,0.7)' }}
+                      >
+                        {b}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
                   {s.ilkAy.map((x, i) => {
-                    const borcOncesi = x.kalanSonra + x.toplam;
-                    const kapananOran = borcOncesi > 0 ? Math.min((x.toplam / borcOncesi) * 100, 100) : 0;
-                    const zorunluOran = borcOncesi > 0 ? Math.min((x.zorunlu / borcOncesi) * 100, 100) : 0;
                     const kapandi = x.kalanSonra <= 0.009;
                     const hedef = i === 0 && x.ekstra > 0;
                     const turRenk = x.tip === 'KART' ? TURUNCU : MAVI;
-                    const noktaRenk = kapandi ? OK : turRenk;
 
                     return (
-                      <div
+                      <tr
                         key={x.id}
-                        className="relative overflow-hidden rounded-xl"
                         style={{
-                          background: hedef ? `${GOLD}0a` : 'rgba(255,255,255,0.018)',
-                          border: `1px solid ${hedef ? `${GOLD}26` : ROW_SEP}`,
+                          borderTop: `1px solid ${ROW_SEP}`,
+                          background: hedef ? `${GOLD}0a` : 'transparent',
                         }}
                       >
-                        <div
-                          className="grid items-center gap-4 px-3.5 py-3"
-                          style={{ gridTemplateColumns: 'minmax(220px,1.7fr) 1fr 1fr 1.1fr 1.1fr' }}
-                        >
-                          {/* Borç adı */}
-                          <div className="flex min-w-0 items-center gap-2">
+                        <td className="py-3 pr-4">
+                          <span className="flex items-center gap-2">
                             <span
                               className="h-1.5 w-1.5 flex-shrink-0 rounded-full"
-                              style={{ background: noktaRenk }}
+                              style={{ background: kapandi ? OK : turRenk }}
                             />
-                            <span
-                              className="truncate text-[12.5px] font-medium leading-none"
-                              style={{ color: TEXT }}
-                            >
+                            <span className="text-[12.5px]" style={{ color: TEXT }}>
                               {x.ad}
                             </span>
                             {hedef && (
                               <span
-                                className="flex-shrink-0 rounded-[4px] px-1.5 py-[2px] text-[9px] font-semibold uppercase tracking-[0.1em]"
+                                className="rounded px-1.5 py-[1px] text-[9px] font-semibold uppercase tracking-[0.1em]"
                                 style={{ background: `${GOLD}1c`, color: GOLD }}
                               >
                                 hedef
                               </span>
                             )}
-                          </div>
+                          </span>
+                        </td>
 
-                          {/* Zorunlu */}
-                          <div className="text-right leading-none">
-                            {x.zorunlu > 0 ? (
-                              <span className="text-[12.5px] tabular-nums" style={{ color: TEXT }}>
-                                {para(x.zorunlu)} ₺
-                              </span>
-                            ) : (
-                              <span className="text-[12.5px]" style={{ color: 'rgba(113,113,122,0.55)' }}>
-                                —
-                              </span>
-                            )}
-                            {x.zorunlu === 0 && (
-                              <span
-                                className="mt-1 block text-[9.5px] uppercase tracking-wider"
-                                style={{ color: 'rgba(113,113,122,0.75)' }}
-                              >
-                                bu ay ödendi
-                              </span>
-                            )}
-                            {x.eksik > 0 && (
-                              <span className="mt-1 block text-[9.5px] tabular-nums" style={{ color: KIRMIZI }}>
-                                {para(x.eksik)} ₺ eksik
-                              </span>
-                            )}
-                          </div>
-
-                          {/* Ekstra */}
-                          <div className="text-right leading-none">
-                            {x.ekstra > 0 ? (
-                              <span className="text-[12.5px] tabular-nums" style={{ color: GOLD }}>
-                                {para(x.ekstra)} ₺
-                              </span>
-                            ) : (
-                              <span className="text-[12.5px]" style={{ color: 'rgba(113,113,122,0.55)' }}>
-                                —
-                              </span>
-                            )}
-                          </div>
-
-                          {/* Bu ay ödenecek — satırın ana rakamı */}
-                          <div className="text-right leading-none">
-                            <span
-                              className="text-[13.5px] font-semibold tabular-nums"
-                              style={{ color: TEXT }}
-                            >
-                              {para(x.toplam)} ₺
+                        <td className="py-3 pl-4 text-right text-[12.5px] tabular-nums" style={{ color: TEXT }}>
+                          {para(x.zorunlu)} ₺
+                          {x.eksik > 0 && (
+                            <span className="ml-1.5 text-[10.5px] tabular-nums" style={{ color: KIRMIZI }}>
+                              ({para(x.eksik)} eksik)
                             </span>
-                          </div>
+                          )}
+                        </td>
 
-                          {/* Sonraki ay */}
-                          <div className="text-right leading-none">
-                            {kapandi ? (
-                              <span
-                                className="text-[11px] font-medium uppercase tracking-wider"
-                                style={{ color: OK }}
-                              >
-                                kapanıyor
-                              </span>
-                            ) : (
-                              <span className="text-[12.5px] tabular-nums" style={{ color: MUTED }}>
-                                {para(x.kalanSonra)} ₺
-                              </span>
-                            )}
-                          </div>
-                        </div>
+                        <td
+                          className="py-3 pl-4 text-right text-[12.5px] tabular-nums"
+                          style={{ color: x.ekstra > 0 ? GOLD : 'rgba(113,113,122,0.5)' }}
+                        >
+                          {x.ekstra > 0 ? `${para(x.ekstra)} ₺` : '—'}
+                        </td>
 
-                        {/* Kapanma oranı — satırın en altında tam genişlikte ince çizgi */}
-                        <div className="h-[2px] w-full" style={{ background: 'rgba(255,255,255,0.05)' }}>
-                          <div className="flex h-full">
-                            <div style={{ width: `${zorunluOran}%`, background: `${turRenk}b3` }} />
-                            <div
-                              style={{
-                                width: `${Math.max(kapananOran - zorunluOran, 0)}%`,
-                                background: `${GOLD}b3`,
-                              }}
-                            />
-                          </div>
-                        </div>
-                      </div>
+                        <td
+                          className="py-3 pl-4 text-right text-[13px] font-semibold tabular-nums"
+                          style={{ color: TEXT }}
+                        >
+                          {para(x.toplam)} ₺
+                        </td>
+
+                        <td className="py-3 pl-4 text-right">
+                          {kapandi ? (
+                            <span className="text-[11.5px] font-medium" style={{ color: OK }}>
+                              kapanıyor
+                            </span>
+                          ) : (
+                            <span className="text-[12.5px] tabular-nums" style={{ color: MUTED }}>
+                              {para(x.kalanSonra)} ₺
+                            </span>
+                          )}
+                        </td>
+                      </tr>
                     );
                   })}
-                </div>
-
-                {/* Toplam */}
-                <div
-                  className="mt-2 grid items-center gap-4 rounded-xl px-3.5 py-3"
-                  style={{
-                    gridTemplateColumns: 'minmax(220px,1.7fr) 1fr 1fr 1.1fr 1.1fr',
-                    background: 'rgba(0,0,0,0.22)',
-                    border: `1px solid ${CARD_BORDER}`,
-                  }}
-                >
-                  <span
-                    className="text-[10px] font-medium uppercase tracking-[0.14em]"
-                    style={{ color: 'rgba(113,113,122,0.75)' }}
-                  >
-                    Toplam
-                  </span>
-                  <span className="text-right text-[12.5px] tabular-nums" style={{ color: TEXT }}>
-                    {para(s.ilkAy.reduce((t, x) => t + x.zorunlu, 0))} ₺
-                  </span>
-                  <span className="text-right text-[12.5px] tabular-nums" style={{ color: GOLD }}>
-                    {para(s.ilkAy.reduce((t, x) => t + x.ekstra, 0))} ₺
-                  </span>
-                  <span
-                    className="text-right text-[13.5px] font-semibold tabular-nums"
-                    style={{ color: GOLD }}
-                  >
-                    {para(s.ilkAy.reduce((t, x) => t + x.toplam, 0))} ₺
-                  </span>
-                  <span className="text-right text-[12.5px] tabular-nums" style={{ color: MUTED }}>
-                    {para(s.ilkAy.reduce((t, x) => t + x.kalanSonra, 0))} ₺
-                  </span>
-                </div>
-              </div>
+                </tbody>
+                <tfoot>
+                  <tr style={{ borderTop: `1px solid ${CARD_BORDER}` }}>
+                    <td
+                      className="pt-3 text-[10px] font-medium uppercase tracking-[0.14em]"
+                      style={{ color: 'rgba(113,113,122,0.7)' }}
+                    >
+                      Toplam
+                    </td>
+                    <td className="pt-3 pl-4 text-right text-[12.5px] tabular-nums" style={{ color: TEXT }}>
+                      {para(s.ilkAy.reduce((t, x) => t + x.zorunlu, 0))} ₺
+                    </td>
+                    <td className="pt-3 pl-4 text-right text-[12.5px] tabular-nums" style={{ color: GOLD }}>
+                      {para(s.ilkAy.reduce((t, x) => t + x.ekstra, 0))} ₺
+                    </td>
+                    <td
+                      className="pt-3 pl-4 text-right text-[13px] font-semibold tabular-nums"
+                      style={{ color: GOLD }}
+                    >
+                      {para(s.ilkAy.reduce((t, x) => t + x.toplam, 0))} ₺
+                    </td>
+                    <td className="pt-3 pl-4 text-right text-[12.5px] tabular-nums" style={{ color: MUTED }}>
+                      {para(s.ilkAy.reduce((t, x) => t + x.kalanSonra, 0))} ₺
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
             </div>
             <p className="mt-3 text-[10.5px]" style={{ color: 'rgba(113,113,122,0.85)' }}>
               {plan.not}
