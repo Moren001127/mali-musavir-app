@@ -248,110 +248,164 @@ export default function OdemePlani({ donem, defter = 'TUMU' }: { donem: string; 
             aciklama={`Bu ay ${para(plan.buAyToplam)} ₺ ile hesaplandı (her ay ${para(plan.kapasite)} ₺ + birikim ${para(plan.birikim)} ₺). Zorunlu tutarlar önce ayrılır; artan para en fazla fayda sağlayan borca gider.`}
             renk={GOLD}
           >
-            {/* Tablo yerine kart listesi: her borcun bu ay ne kadarının kapandığı
-                çubukla görünsün. Sayı yığını pasif ve okunması zor kalıyordu. */}
-            <div className="space-y-2">
-              {s.ilkAy.map((x) => {
-                const borcOncesi = x.kalanSonra + x.toplam;
-                const kapananOran = borcOncesi > 0 ? Math.min((x.toplam / borcOncesi) * 100, 100) : 0;
-                const zorunluOran = borcOncesi > 0 ? Math.min((x.zorunlu / borcOncesi) * 100, 100) : 0;
-                const kapandi = x.kalanSonra <= 0.009;
-                const cizgiRenk = x.tip === 'KART' ? TURUNCU : MAVI;
+            {/* Sabit sütunlu liste: göz aynı hizada tarayabilsin.
+                Satır düzeni: borç · kapanma çubuğu · zorunlu · ekstra · bu ay · kalan */}
+            <div className="min-w-full overflow-x-auto">
+              <div className="min-w-[720px]">
+                {/* Başlık satırı */}
+                <div
+                  className="grid items-center gap-3 px-3 pb-2 text-[10px] uppercase tracking-[0.12em]"
+                  style={{ gridTemplateColumns: '1.6fr 0.9fr 0.9fr 1fr 1fr', color: 'rgba(113,113,122,0.9)' }}
+                >
+                  <span>Borç</span>
+                  <span className="text-right">Zorunlu</span>
+                  <span className="text-right">Ekstra</span>
+                  <span className="text-right">Bu ay ödenecek</span>
+                  <span className="text-right">Sonraki ay kalan</span>
+                </div>
 
-                return (
-                  <div
-                    key={x.id}
-                    className="relative overflow-hidden rounded-xl px-3.5 py-3"
-                    style={{
-                      background: kapandi
-                        ? `linear-gradient(120deg, ${OK}12, rgba(255,255,255,0.012) 60%)`
-                        : x.ekstra > 0
-                          ? `linear-gradient(120deg, ${GOLD}0f, rgba(255,255,255,0.012) 60%)`
-                          : 'rgba(255,255,255,0.022)',
-                      border: `1px solid ${kapandi ? `${OK}33` : x.ekstra > 0 ? `${GOLD}2e` : ROW_SEP}`,
-                    }}
-                  >
-                    {/* Sol kenarda tür şeridi */}
-                    <span
-                      className="absolute inset-y-0 left-0 w-[3px]"
-                      style={{ background: kapandi ? OK : cizgiRenk }}
-                    />
+                <div className="space-y-1">
+                  {s.ilkAy.map((x, i) => {
+                    const borcOncesi = x.kalanSonra + x.toplam;
+                    const kapananOran = borcOncesi > 0 ? Math.min((x.toplam / borcOncesi) * 100, 100) : 0;
+                    const zorunluOran = borcOncesi > 0 ? Math.min((x.zorunlu / borcOncesi) * 100, 100) : 0;
+                    const kapandi = x.kalanSonra <= 0.009;
+                    const hedef = i === 0 && x.ekstra > 0; // strateji sırasında ilk hedef
+                    const turRenk = x.tip === 'KART' ? TURUNCU : MAVI;
 
-                    <div className="flex flex-wrap items-start justify-between gap-2 pl-1.5">
-                      <span className="flex min-w-0 flex-wrap items-center gap-1.5">
-                        <span className="text-[13px] font-semibold" style={{ color: TEXT }}>
-                          {x.ad}
-                        </span>
-                        <Rozet metin={x.tip === 'KART' ? 'kart' : 'kredi'} renk={cizgiRenk} />
-                        {x.ekstra > 0 && <Rozet metin="bu ayın hedefi" renk={GOLD} />}
-                        {kapandi && <Rozet metin="bu ay kapanıyor" renk={OK} />}
-                        {x.eksik > 0 && <Rozet metin="eksik kalıyor" renk={KIRMIZI} />}
-                      </span>
-                      <span className="text-right">
-                        <span
-                          className="block text-[17px] font-semibold leading-tight tabular-nums"
-                          style={{ color: kapandi ? OK : GOLD }}
-                        >
-                          {para(x.toplam)} ₺
-                        </span>
-                        <span className="text-[10.5px]" style={{ color: MUTED }}>
-                          bu ay ödenecek
-                        </span>
-                      </span>
-                    </div>
+                    return (
+                      <div
+                        key={x.id}
+                        className="relative grid items-center gap-3 rounded-lg py-2.5 pl-3 pr-3 transition"
+                        style={{
+                          gridTemplateColumns: '1.6fr 0.9fr 0.9fr 1fr 1fr',
+                          background: hedef ? `${GOLD}0d` : 'rgba(255,255,255,0.02)',
+                          border: `1px solid ${hedef ? `${GOLD}2b` : ROW_SEP}`,
+                        }}
+                      >
+                        {/* 1) Borç adı + tür + kapanma çubuğu */}
+                        <div className="min-w-0">
+                          <div className="flex min-w-0 items-center gap-1.5">
+                            <span
+                              className="h-2 w-2 flex-shrink-0 rounded-full"
+                              style={{ background: kapandi ? OK : turRenk }}
+                            />
+                            <span className="truncate text-[12.5px] font-medium" style={{ color: TEXT }}>
+                              {x.ad}
+                            </span>
+                            {hedef && (
+                              <span
+                                className="flex-shrink-0 rounded px-1.5 py-[1px] text-[9.5px] uppercase tracking-wider"
+                                style={{ background: `${GOLD}1f`, color: GOLD }}
+                              >
+                                hedef
+                              </span>
+                            )}
+                          </div>
+                          <div className="mt-1.5 flex items-center gap-2">
+                            <div
+                              className="h-[3px] w-full max-w-[200px] overflow-hidden rounded-full"
+                              style={{ background: 'rgba(255,255,255,0.07)' }}
+                            >
+                              <div className="flex h-full">
+                                <div style={{ width: `${zorunluOran}%`, background: turRenk }} />
+                                <div
+                                  style={{
+                                    width: `${Math.max(kapananOran - zorunluOran, 0)}%`,
+                                    background: GOLD,
+                                  }}
+                                />
+                              </div>
+                            </div>
+                            <span
+                              className="flex-shrink-0 text-[10px] tabular-nums"
+                              style={{ color: kapandi ? OK : MUTED }}
+                            >
+                              {kapandi ? 'kapanıyor' : `%${Math.round(kapananOran)}`}
+                            </span>
+                          </div>
+                        </div>
 
-                    {/* Kapanma çubuğu: koyu kısım zorunlu, açık kısım ekstra */}
-                    <div
-                      className="mt-2.5 h-2 w-full overflow-hidden rounded-full"
-                      style={{ background: 'rgba(255,255,255,0.06)' }}
-                    >
-                      <div className="flex h-full">
-                        <div style={{ width: `${zorunluOran}%`, background: cizgiRenk }} />
-                        <div
-                          style={{
-                            width: `${Math.max(kapananOran - zorunluOran, 0)}%`,
-                            background: GOLD,
-                            opacity: 0.85,
-                          }}
-                        />
+                        {/* 2) Zorunlu */}
+                        <div className="text-right">
+                          <span
+                            className="text-[12.5px] tabular-nums"
+                            style={{ color: x.zorunlu > 0 ? TEXT : 'rgba(113,113,122,0.7)' }}
+                          >
+                            {x.zorunlu > 0 ? `${para(x.zorunlu)} ₺` : '—'}
+                          </span>
+                          {x.zorunlu === 0 && (
+                            <span className="block text-[9.5px]" style={{ color: OK }}>
+                              ödendi
+                            </span>
+                          )}
+                          {x.eksik > 0 && (
+                            <span className="block text-[9.5px] tabular-nums" style={{ color: KIRMIZI }}>
+                              {para(x.eksik)} ₺ eksik
+                            </span>
+                          )}
+                        </div>
+
+                        {/* 3) Ekstra */}
+                        <div className="text-right">
+                          <span
+                            className="text-[12.5px] tabular-nums"
+                            style={{ color: x.ekstra > 0 ? GOLD : 'rgba(113,113,122,0.7)' }}
+                          >
+                            {x.ekstra > 0 ? `${para(x.ekstra)} ₺` : '—'}
+                          </span>
+                        </div>
+
+                        {/* 4) Bu ay ödenecek — satırın ana rakamı */}
+                        <div className="text-right">
+                          <span
+                            className="text-[14px] font-semibold tabular-nums"
+                            style={{ color: kapandi ? OK : TEXT }}
+                          >
+                            {para(x.toplam)} ₺
+                          </span>
+                        </div>
+
+                        {/* 5) Sonraki ay kalan */}
+                        <div className="text-right">
+                          <span
+                            className="text-[12.5px] tabular-nums"
+                            style={{ color: kapandi ? OK : MUTED }}
+                          >
+                            {kapandi ? 'bitiyor' : `${para(x.kalanSonra)} ₺`}
+                          </span>
+                        </div>
                       </div>
-                    </div>
+                    );
+                  })}
+                </div>
 
-                    <div
-                      className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 pl-1.5 text-[11.5px]"
-                      style={{ color: MUTED }}
-                    >
-                      <span>
-                        Zorunlu{' '}
-                        <strong className="tabular-nums" style={{ color: x.zorunlu > 0 ? TEXT : MUTED }}>
-                          {para(x.zorunlu)} ₺
-                        </strong>
-                        {x.zorunlu === 0 && <span> · bu ay ödendi</span>}
-                      </span>
-                      {x.ekstra > 0 && (
-                        <span>
-                          Ekstra{' '}
-                          <strong className="tabular-nums" style={{ color: GOLD }}>
-                            {para(x.ekstra)} ₺
-                          </strong>
-                        </span>
-                      )}
-                      {x.eksik > 0 && (
-                        <span style={{ color: KIRMIZI }}>
-                          Eksik{' '}
-                          <strong className="tabular-nums">{para(x.eksik)} ₺</strong>
-                        </span>
-                      )}
-                      <span className="ml-auto">
-                        Sonraki ay kalan{' '}
-                        <strong className="tabular-nums" style={{ color: kapandi ? OK : TEXT }}>
-                          {para(x.kalanSonra)} ₺
-                        </strong>
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
+                {/* Toplam satırı */}
+                <div
+                  className="mt-1.5 grid items-center gap-3 rounded-lg px-3 py-2.5"
+                  style={{
+                    gridTemplateColumns: '1.6fr 0.9fr 0.9fr 1fr 1fr',
+                    background: 'rgba(0,0,0,0.25)',
+                    border: `1px solid ${CARD_BORDER}`,
+                  }}
+                >
+                  <span className="text-[11.5px] uppercase tracking-wider" style={{ color: MUTED }}>
+                    Toplam
+                  </span>
+                  <span className="text-right text-[12.5px] tabular-nums" style={{ color: TEXT }}>
+                    {para(s.ilkAy.reduce((t, x) => t + x.zorunlu, 0))} ₺
+                  </span>
+                  <span className="text-right text-[12.5px] tabular-nums" style={{ color: GOLD }}>
+                    {para(s.ilkAy.reduce((t, x) => t + x.ekstra, 0))} ₺
+                  </span>
+                  <span className="text-right text-[14px] font-semibold tabular-nums" style={{ color: GOLD }}>
+                    {para(s.ilkAy.reduce((t, x) => t + x.toplam, 0))} ₺
+                  </span>
+                  <span className="text-right text-[12.5px] tabular-nums" style={{ color: MUTED }}>
+                    {para(s.ilkAy.reduce((t, x) => t + x.kalanSonra, 0))} ₺
+                  </span>
+                </div>
+              </div>
             </div>
             <p className="mt-3 text-[10.5px]" style={{ color: 'rgba(113,113,122,0.85)' }}>
               {plan.not}
