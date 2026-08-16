@@ -132,6 +132,12 @@ export interface AkisSecenek {
 
 export interface AkisOnerisi {
   tarih: string;
+  /** O günkü toplam açık (devreden dahil) */
+  toplamAcik?: number;
+  /** Önceki açık günlerinde kapatıldığı varsayılan tutar */
+  devredenAcik?: number;
+  /** O gün çıkan ödemeler */
+  oGunkuOdemeler?: Array<{ ad: string; tutar: number; tur: string }>;
   acik: number;
   baslik: string;
   secenekler: AkisSecenek[];

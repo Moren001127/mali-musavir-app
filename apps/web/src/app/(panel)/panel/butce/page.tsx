@@ -10,6 +10,7 @@ import { butceApi, buDonem, donemKaydir, donemTR, pinBileti, DefterSecim } from 
 import Hesaplar from './Hesaplar';
 import NakitAkis from './NakitAkis';
 import PinEkrani from './PinEkrani';
+import HataSiniri from './HataSiniri';
 import GenelBakis from './GenelBakis';
 import GelirGider from './GelirGider';
 import Kartlar from './Kartlar';
@@ -187,17 +188,19 @@ export default function ButcePage() {
         </nav>
       </div>
 
-      {/* İçerik */}
-      {sekme === 'genel' &&
-        (ozet.isLoading || !ozet.data ? <Yukleniyor /> : <GenelBakis ozet={ozet.data} donem={donem} />)}
-      {sekme === 'gelir-gider' && <GelirGider donem={donem} defter="TUMU" />}
-      {sekme === 'hesaplar' && <Hesaplar />}
-      {sekme === 'kartlar' && <Kartlar />}
-      {sekme === 'borclar' && <Borclar />}
-      {sekme === 'nakit' && <NakitAkis />}
-      {sekme === 'plan' && <OdemePlani donem={donem} defter="TUMU" />}
-      {sekme === 'danisman' && <Danisman />}
-      {sekme === 'ayarlar' && <Ayarlar />}
+      {/* İçerik — her sekme kendi hata sınırında: biri çökerse diğerleri açılmaya devam eder */}
+      <HataSiniri ad={SEKMELER.find((x) => x.anahtar === sekme)?.etiket} key={sekme}>
+        {sekme === 'genel' &&
+          (ozet.isLoading || !ozet.data ? <Yukleniyor /> : <GenelBakis ozet={ozet.data} donem={donem} />)}
+        {sekme === 'gelir-gider' && <GelirGider donem={donem} defter="TUMU" />}
+        {sekme === 'hesaplar' && <Hesaplar />}
+        {sekme === 'kartlar' && <Kartlar />}
+        {sekme === 'borclar' && <Borclar />}
+        {sekme === 'nakit' && <NakitAkis />}
+        {sekme === 'plan' && <OdemePlani donem={donem} defter="TUMU" />}
+        {sekme === 'danisman' && <Danisman />}
+        {sekme === 'ayarlar' && <Ayarlar />}
+      </HataSiniri>
     </div>
   );
 }

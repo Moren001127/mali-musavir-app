@@ -64,8 +64,15 @@ export interface KmhHesabi {
 
 export interface AkisOnerisi {
   tarih: string;
+  /** Bu gün EK olarak gereken para — devreden açık düşülmüştür */
   acik: number;
+  /** O günkü toplam nakit açığı (devreden dahil) */
+  toplamAcik?: number;
+  /** Önceki açık günlerinde kapatıldığı varsayılan tutar */
+  devredenAcik?: number;
   baslik: string;
+  /** O gün çıkan ödemeler — "neden açık çıktı" sorusunun cevabı */
+  oGunkuOdemeler?: Array<{ ad: string; tutar: number; tur: string }>;
   secenekler: Array<{
     ad: string;
     aciklama: string;
@@ -200,13 +207,15 @@ export function akisOnerileri(
     : Math.max(p.kmhKullanilabilir ?? 0, 0);
   const oneriler: AkisOnerisi[] = [];
 
+  // Önceki günlerde önerilerle ZATEN kapatılmış en derin açık.
+  // Açık günleri birbirinden bağımsız değildir: bakiye eksideyken daha da
+  // derinleşirse, yalnız ARADAKİ FARK kadar yeni para gerekir.
+  let kapatilmisAcik = 0;
+
   for (const gun of sonuc.acikGunler) {
-    // Aynı açığın devamı olan günleri tekrar tekrar raporlama
-    const oncekiVar = oneriler.some((o) => {
-      const fark = (new Date(gun.tarih).getTime() - new Date(o.tarih).getTime()) / 86400000;
-      return fark > 0 && fark <= 7;
-    });
-    if (oncekiVar) continue;
+    // Bu güne özgü EK ihtiyaç. Sıfırsa açık zaten önceki öneriyle kapanmıştır.
+    const ekIhtiyac = KURUS(gun.acik - kapatilmisAcik);
+    if (ekIhtiyac <= 0.009) continue;
 
     // Açığın kapandığı ilk giriş: sonraki günlerde bakiyenin artıya döndüğü gün
     const idx = sonuc.gunler.findIndex((g) => g.tarih === gun.tarih);
@@ -229,7 +238,7 @@ export function akisOnerileri(
       const asgari = Math.max(kart.esnek!.asgari, 0);
       const ertelenen = KURUS(tam - asgari);
       if (ertelenen <= 0) continue;
-      const rahatlama = Math.min(ertelenen, gun.acik);
+      const rahatlama = Math.min(ertelenen, ekIhtiyac);
       const maliyet = KURUS(ertelenen * kart.esnek!.aylikFaiz);
       secenekler.push({
         ad: `${kart.ad}: asgari öde`,
@@ -241,8 +250,8 @@ export function akisOnerileri(
 
     // 2) Ek hesap (KMH) — hangi hesaptan ne kadar, adıyla ve faiziyle
     if (kmhSerbest > 0) {
-      const yeterli = kmhSerbest >= gun.acik;
-      const kapanan = KURUS(Math.min(kmhSerbest, gun.acik));
+      const yeterli = kmhSerbest >= ekIhtiyac;
+      const kapanan = KURUS(Math.min(kmhSerbest, ekIhtiyac));
 
       // Açığı en ucuz hesaptan başlayarak dağıt
       let kalanIhtiyac = kapanan;
@@ -287,7 +296,7 @@ export function akisOnerileri(
         aciklama:
           (yeterli
             ? `${kacGun} gün için ${hesapMetni} kullanın. Faiz günlük işler; para girince hemen kapatılırsa maliyet sınırlı kalır.`
-            : `${hesapMetni} kullansanız bile ${(gun.acik - kapanan).toLocaleString('tr-TR')} TL eksik kalır.`) +
+            : `${hesapMetni} kullansanız bile ${KURUS(ekIhtiyac - kapanan).toLocaleString('tr-TR')} TL eksik kalır.`) +
           (faizBilinmiyor
             ? ' Bu hesabın faiz oranı girilmediği için maliyet hesaplanamıyor — Hesaplar ekranından oranı girin.'
             : ''),
@@ -341,12 +350,38 @@ export function akisOnerileri(
       if (enUcuz) enUcuz.onerilen = true;
     }
 
+    // O gün NE ÖDEMESİ olduğu başlıkta yazsın; yalnız tarih ve tutar görmek
+    // "neden açık çıkmış" sorusunu cevapsız bırakıyordu.
+    const oGunCikanlar = gun.hareketler
+      .filter((h) => h.tutar < 0)
+      .sort((a, b) => a.tutar - b.tutar);
+    const oGunToplam = KURUS(oGunCikanlar.reduce((t, h) => t + Math.abs(h.tutar), 0));
+    const neOdemesi =
+      oGunCikanlar.length === 0
+        ? ''
+        : oGunCikanlar.length === 1
+          ? `${oGunCikanlar[0].ad} ${Math.abs(oGunCikanlar[0].tutar).toLocaleString('tr-TR')} TL`
+          : `${oGunCikanlar[0].ad} ve ${oGunCikanlar.length - 1} ödeme daha (toplam ${oGunToplam.toLocaleString('tr-TR')} TL)`;
+
+    const devreden = KURUS(kapatilmisAcik);
     oneriler.push({
       tarih: gun.tarih,
-      acik: gun.acik,
-      baslik: `${new Date(gun.tarih).toLocaleDateString('tr-TR')} günü ${gun.acik.toLocaleString('tr-TR')} TL nakit açığı`,
+      /** Bu gün için EK olarak gereken para (önceki günlerde kapatılan düşülmüş) */
+      acik: ekIhtiyac,
+      /** O günkü toplam nakit açığı — devreden dahil */
+      toplamAcik: gun.acik,
+      /** Önceki açık günlerinde kapatıldığı varsayılan tutar */
+      devredenAcik: devreden,
+      baslik: neOdemesi
+        ? `${new Date(gun.tarih).toLocaleDateString('tr-TR')} · ${neOdemesi} — ${ekIhtiyac.toLocaleString('tr-TR')} TL ek para gerekiyor`
+        : `${new Date(gun.tarih).toLocaleDateString('tr-TR')} günü ${ekIhtiyac.toLocaleString('tr-TR')} TL ek para gerekiyor`,
+      /** O gün çıkan ödemeler — ekran ayrıntı gösterebilsin */
+      oGunkuOdemeler: oGunCikanlar.map((h) => ({ ad: h.ad, tutar: KURUS(Math.abs(h.tutar)), tur: h.tur })),
       secenekler,
     });
+
+    // Bu gün de kapatılmış sayılır; sonraki günler yalnız farkı ister
+    kapatilmisAcik = gun.acik;
   }
 
   return oneriler;

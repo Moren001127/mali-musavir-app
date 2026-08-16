@@ -29,6 +29,15 @@ export interface PlanKalemi {
    */
   asgariOran?: number;
   taksitTutari?: number;
+  /**
+   * YALNIZ İLK AY için geçerli zorunlu tutar.
+   *
+   * Bu ayın asgarisi kısmen ya da tamamen ödenmişse kalan borç üzerinden
+   * yeniden asgari hesaplamak yanlıştır: banka bu dönem için ikinci bir
+   * asgari istemez. Servis "asgari − ödenen" farkını buraya verir; sonraki
+   * aylar normal asgari hesabıyla yürür. Verilmezse davranış değişmez.
+   */
+  ilkAyZorunlu?: number;
 }
 
 export interface PlanGirdi {
@@ -158,8 +167,12 @@ interface SimKalem extends PlanKalemi {
   _kalan: number;
 }
 
-function zorunluOdeme(k: SimKalem): number {
+function zorunluOdeme(k: SimKalem, ay = 2): number {
   if (k._kalan <= 0) return 0;
+  // İlk ayda, bu dönemin asgarisi ödenmişse servis 0 (ya da kalan farkı) verir
+  if (ay === 1 && k.ilkAyZorunlu !== undefined && k.ilkAyZorunlu !== null) {
+    return KURUS(Math.min(Math.max(k.ilkAyZorunlu, 0), k._kalan));
+  }
   if (k.tip === 'KART') return asgariTutarHesapla(k._kalan, k.asgariOran ?? 0.2);
   const taksit = KURUS(k.taksitTutari ?? 0);
   return Math.min(k._kalan, taksit > 0 ? taksit : k._kalan);
@@ -225,7 +238,7 @@ export function odemePlaniHesapla(girdi: PlanGirdi): PlanSonuc {
     for (const k of kalemler) {
       // Gerçek zorunlu tutar kapasiteye göre KIRPILMAZ: kredi taksiti bölünemez,
       // kart asgarisi de öyle. Kapasite yetmiyorsa fark "eksik" olarak raporlanır.
-      const gercekZorunlu = KURUS(zorunluOdeme(k));
+      const gercekZorunlu = KURUS(zorunluOdeme(k, ay));
       const odenen = KURUS(Math.min(gercekZorunlu, kalanKapasite > 0 ? kalanKapasite : 0));
       if (odenen > 0) {
         k._kalan = KURUS(k._kalan - odenen);
@@ -304,8 +317,10 @@ export function odemePlaniHesapla(girdi: PlanGirdi): PlanSonuc {
   const gereken = (girdi.kalemler || [])
     .filter((k) => KURUS(k.kalan) > 0)
     .reduce((t, k) => {
+      // ay=2 verilir: "her ay tekrar eden" zorunlu yük ölçülür, bu ayın
+      // ödenmiş olması açığı gizlemesin
       const gecici: SimKalem = { ...k, _kalan: KURUS(k.kalan) };
-      return t + zorunluOdeme(gecici);
+      return t + zorunluOdeme(gecici, 2);
     }, 0);
   sonuc.acik = KURUS(Math.max(gereken - aylikKapasite, 0));
 

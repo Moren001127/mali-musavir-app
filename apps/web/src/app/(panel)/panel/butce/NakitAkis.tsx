@@ -198,10 +198,40 @@ export default function NakitAkis() {
                     <Lightbulb size={13} style={{ color: MOR }} />
                     {o.baslik}
                   </span>
-                  <span className="text-[12px] tabular-nums" style={{ color: KIRMIZI }}>
-                    {tarihTR(o.tarih)} · {para(Math.abs(o.acik))} ₺ açık
+                  <span className="text-right text-[12px] tabular-nums" style={{ color: KIRMIZI }}>
+                    {para(Math.abs(o.acik))} ₺ ek para
                   </span>
                 </div>
+
+                {/* Devreden açık: bir önceki açık gününde kapatıldığı varsayılan tutar.
+                    Bu ayrım olmadan aynı açık iki gün üst üste tam tutarıyla isteniyordu. */}
+                {!!o.devredenAcik && o.devredenAcik > 0 && (
+                  <div className="mt-1 text-[11px] leading-relaxed" style={{ color: MUTED }}>
+                    O günkü toplam açık{' '}
+                    <span className="tabular-nums" style={{ color: TEXT }}>
+                      {para(o.toplamAcik ?? o.acik)} ₺
+                    </span>
+                    ; bunun{' '}
+                    <span className="tabular-nums" style={{ color: TEXT }}>
+                      {para(o.devredenAcik)} ₺
+                    </span>{' '}
+                    kısmı önceki öneriyle kapatılmış sayılır, bu yüzden burada yalnız aradaki fark isteniyor.
+                  </div>
+                )}
+
+                {!!o.oGunkuOdemeler?.length && (
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    {o.oGunkuOdemeler.map((h, k) => (
+                      <span
+                        key={`${o.tarih}-od-${k}`}
+                        className="rounded-md px-2 py-0.5 text-[10.5px]"
+                        style={{ background: `${KIRMIZI}12`, border: `1px solid ${KIRMIZI}2e`, color: MUTED }}
+                      >
+                        {h.ad} · {para(h.tutar)} ₺
+                      </span>
+                    ))}
+                  </div>
+                )}
 
                 {/* Sıralama sunucudan maliyete göre geliyor; burada yeniden sıralamıyoruz. */}
                 <div className="mt-2.5 grid gap-2 md:grid-cols-2">

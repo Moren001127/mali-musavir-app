@@ -1830,6 +1830,8 @@ export class ButceService {
           kalan: kk.ekstreBorcu,
           aylikFaiz: (kk.aylikFaizOrani || 0) / 100,
           asgariOran: (kk.asgariOran || 20) / 100,
+          // Bu dönemin asgarisi ödendiyse 0 gelir; plan ikinci kez asgari istemez
+          ilkAyZorunlu: kartZorunluOdeme(kk),
         });
       }
     }

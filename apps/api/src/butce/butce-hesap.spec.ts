@@ -251,3 +251,69 @@ describe('ödeme planı — birikim yalnız ilk aya sayılır', () => {
     expect(b.toplamFaiz).toBe(a.toplamFaiz);
   });
 });
+
+/**
+ * KULLANICI BULGUSU (2026-08-16): Akbank ekstresi 9.000 TL, 6.000 TL ödendi
+ * (asgari 1.876,50 zaten karşılandı). Plan tablosu kalan 3.000 TL üzerinden
+ * YENİ bir asgari (625,50) hesaplıyordu. Banka bu dönem için ikinci asgari
+ * istemez; bu ay zorunlu ödeme kalmamıştır.
+ */
+describe('ödeme planı — bu ayın asgarisi ödendiyse tekrar istenmez', () => {
+  const kart = (ilkAyZorunlu?: number) => [
+    {
+      id: 'kart:akbank',
+      ad: 'AKBANK',
+      tip: 'KART' as const,
+      kalan: 3000,
+      aylikFaiz: 0.0425,
+      asgariOran: 0.2085,
+      ...(ilkAyZorunlu !== undefined ? { ilkAyZorunlu } : {}),
+    },
+  ];
+
+  it('ilkAyZorunlu 0 verilirse ilk ayda zorunlu tutar 0 olur', () => {
+    const p = odemePlaniHesapla({ aylikKapasite: 0, kalemler: kart(0), strateji: 'CIG' });
+    expect(p.ilkAy[0].zorunlu).toBe(0);
+    expect(p.ilkAy[0].eksik).toBe(0);
+  });
+
+  it('ilkAyZorunlu verilmezse eski davranış korunur (faiz sonrası kalan × asgari oran)', () => {
+    const p = odemePlaniHesapla({ aylikKapasite: 0, kalemler: kart(), strateji: 'CIG' });
+    // Simülasyon önce ayın faizini işler: 3.000 × 1,0425 = 3.127,50 → × %20,85
+    expect(p.ilkAy[0].zorunlu).toBeCloseTo(652.08, 1);
+  });
+
+  it('asgarinin bir kısmı ödendiyse yalnız kalan fark zorunludur', () => {
+    // Asgari 1.876,50 · ödenen 1.000 → bu ay kalan zorunlu 876,50
+    const p = odemePlaniHesapla({ aylikKapasite: 5000, kalemler: kart(876.5), strateji: 'CIG' });
+    expect(p.ilkAy[0].zorunlu).toBeCloseTo(876.5, 1);
+  });
+
+  it('SONRAKİ aylarda normal asgari hesabına döner', () => {
+    // Kapasite yalnız zorunluları karşılasın ki borç birden kapanmasın
+    const p = odemePlaniHesapla({
+      aylikKapasite: 700,
+      kalemler: [
+        {
+          id: 'k',
+          ad: 'Kart',
+          tip: 'KART',
+          kalan: 50000,
+          aylikFaiz: 0.0425,
+          asgariOran: 0.2,
+          ilkAyZorunlu: 0,
+        },
+      ],
+      strateji: 'CIG',
+    });
+    // İlk ay zorunlu 0 olduğu için ödeme yapılmadı; borç kapanmadan sürer
+    expect(p.ilkAy[0].zorunlu).toBe(0);
+    expect(p.ayAdedi === null || p.ayAdedi > 1).toBe(true);
+  });
+
+  it('aylık açık ilk ayın ödenmişliğinden etkilenmez (tekrar eden yükü ölçer)', () => {
+    // ilkAyZorunlu 0 olsa da her ay 625,50 asgari gerekir; kapasite 100 ise açık var
+    const p = odemePlaniHesapla({ aylikKapasite: 100, kalemler: kart(0), strateji: 'CIG' });
+    expect(p.acik).toBeCloseTo(525.5, 1);
+  });
+});

@@ -384,3 +384,67 @@ describe('nakit akışı — beş KMH hesabı, üst üste açık günler', () =>
     expect(kmh.maliyet).toBeGreaterThan(0);
   });
 });
+
+/**
+ * KRİTİK — KULLANICI BULGUSU (2026-08-16):
+ *   30.08 açık 12.710,44 → "Ziraat KMH'dan 12.710,44 kullan"
+ *   07.09 açık 15.710,44 → "Ziraat KMH'dan 15.710,44 kullan"
+ * İkinci açığın 12.710,44'ü zaten ilkinde kapatılmıştı; gerçekte 07.09 için
+ * EK olarak yalnız 3.000 TL gerekir. Açık günleri birbirinden bağımsız değildir.
+ */
+describe('nakit akışı — devreden açık iki kez istenmez', () => {
+  const hareketler: AkisHareketi[] = [
+    { tarih: G(5), tutar: -12000, ad: 'Kart A', tur: 'KART_ODEME', kesin: true },
+    { tarih: G(20), tutar: -3000, ad: 'Kart B', tur: 'KART_ODEME', kesin: true },
+  ];
+  const sonuc = nakitAkisiHesapla({ baslangicNakit: 0, hareketler, bugun: BUGUN, gunSayisi: 40 });
+
+  it('ikinci açık gününde yalnız FARK kadar ek para istenir', () => {
+    const o = akisOnerileri(sonuc, hareketler, {
+      kmhHesaplari: [{ banka: 'Ziraat', ad: 'Vadesiz', kullanilabilir: 100000, aylikFaiz: 4 }],
+    });
+    expect(o.length).toBe(2);
+    expect(o[0].acik).toBe(12000);
+    // 15.000 toplam açığın 12.000'i devretti → yalnız 3.000 ek gerekir
+    expect(o[1].acik).toBe(3000);
+    expect(o[1].toplamAcik).toBe(15000);
+    expect(o[1].devredenAcik).toBe(12000);
+  });
+
+  it('KMH limiti yalnız EK ihtiyaç kadar tüketilir', () => {
+    const o = akisOnerileri(sonuc, hareketler, {
+      kmhHesaplari: [{ banka: 'Ziraat', ad: 'Vadesiz', kullanilabilir: 100000, aylikFaiz: 4 }],
+    });
+    const kmh1 = o[0].secenekler.find((s) => /ek hesab/i.test(s.ad))!;
+    const kmh2 = o[1].secenekler.find((s) => /ek hesab/i.test(s.ad))!;
+    // İlk gün 12.000 → kalan 88.000; ikinci gün 3.000 → kalan 85.000
+    expect(kmh1.aciklama).toContain('12.000');
+    expect(kmh1.aciklama).toContain('kalan limit 88.000');
+    expect(kmh2.aciklama).toContain('3.000');
+    expect(kmh2.aciklama).toContain('kalan limit 85.000');
+  });
+
+  it('açık derinleşmiyorsa (aynı seviyede kalıyorsa) ikinci öneri üretilmez', () => {
+    const tekAcik: AkisHareketi[] = [
+      { tarih: G(5), tutar: -12000, ad: 'Kart', tur: 'KART_ODEME', kesin: true },
+    ];
+    const s2 = nakitAkisiHesapla({ baslangicNakit: 0, hareketler: tekAcik, bugun: BUGUN, gunSayisi: 40 });
+    // Bakiye 5'inden itibaren hep -12.000; onlarca açık gün var ama tek öneri olmalı
+    expect(s2.acikGunler.length).toBeGreaterThan(5);
+    const o = akisOnerileri(s2, tekAcik, {
+      kmhHesaplari: [{ banka: 'Ziraat', ad: 'Vadesiz', kullanilabilir: 50000, aylikFaiz: 4 }],
+    });
+    expect(o.length).toBe(1);
+    expect(o[0].acik).toBe(12000);
+  });
+
+  it('toplam KMH kullanımı, en derin açığı aşmaz', () => {
+    const o = akisOnerileri(sonuc, hareketler, {
+      kmhHesaplari: [{ banka: 'Ziraat', ad: 'Vadesiz', kullanilabilir: 100000, aylikFaiz: 4 }],
+    });
+    const toplamEk = o.reduce((t, x) => t + x.acik, 0);
+    const enDerin = Math.abs(sonuc.enDusuk.tutar);
+    expect(toplamEk).toBeLessThanOrEqual(enDerin + 0.01);
+    expect(toplamEk).toBe(15000);
+  });
+});
