@@ -3,6 +3,7 @@
 import React, { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { api } from '@/lib/api';
 import {
   Plus, Landmark, Pencil, Trash2, ArrowLeftRight, Receipt, Wallet, PiggyBank,
   AlertTriangle, ChevronLeft, ChevronRight, Link2, Building2,
@@ -393,6 +394,7 @@ export default function Hesaplar() {
  */
 function OfisHesapKoprusu() {
   const qc = useQueryClient();
+  const [ekleAcik, setEkleAcik] = useState(false);
   const { data, isLoading } = useQuery({
     queryKey: ['butce-ofis-hesaplar'],
     queryFn: butceApi.ofisHesaplar,
@@ -414,6 +416,21 @@ function OfisHesapKoprusu() {
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Bağlanamadı', { duration: 8000 }),
   });
 
+  // Ofis hesabı ekleme buraya taşındı (2026-08-18): Cari Kasa'nın Kasa & Banka
+  // sekmesi kalktı ve orası portalda ofis hesabı OLUŞTURAN tek yerdi. Kapanmış
+  // olsaydı yeni banka hesabı hiç tanımlanamaz, Tahsilat formunun hesap kutusu
+  // mevcut hesaplarla donardı.
+  const ekle = useMutation({
+    mutationFn: (ad: string) =>
+      api.post('/cari-kasa/accounts', { name: ad, type: 'BANKA', color: GOLD }).then((r) => r.data),
+    onSuccess: () => {
+      toast.success('Ofis hesabı eklendi');
+      setEkleAcik(false);
+      qc.invalidateQueries({ queryKey: ['butce-ofis-hesaplar'] });
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Hesap eklenemedi'),
+  });
+
   if (isLoading) {
     return (
       <Kutu baslik="Cari Kasa hesap bağlantısı" renk={MOR}>
@@ -425,13 +442,21 @@ function OfisHesapKoprusu() {
 
   const bagli = data.hesaplar.filter((h) => h.butceBankaHesapId).length;
   const hesapsiz = data.hesabiSecilmemisTahsilat;
+  const arsiv = data.arsivTahsilat;
 
   return (
     <Kutu
       baslik="Cari Kasa hesap bağlantısı"
       aciklama="Müşteri tahsilatı Cari Kasa'da kalır; bağlanan hesabın bakiyesine buradan okunur."
       renk={MOR}
-      sag={<Rozet metin={`${bagli}/${data.hesaplar.length} bağlı`} renk={bagli > 0 ? OK : MUTED} />}
+      sag={
+        <div className="flex items-center gap-2">
+          <Rozet metin={`${bagli}/${data.hesaplar.length} bağlı`} renk={bagli > 0 ? OK : MUTED} />
+          <Dugme onClick={() => setEkleAcik(true)}>
+            <Plus size={12} /> Ofis hesabı
+          </Dugme>
+        </div>
+      }
     >
       {data.hesaplar.length === 0 ? (
         <Bos metin="Cari Kasa'da tanımlı ofis hesabı yok." ikon={<Building2 size={18} />} />
@@ -464,12 +489,78 @@ function OfisHesapKoprusu() {
         </div>
       )}
 
+      {arsiv.adet > 0 && (
+        <p className="mt-3 text-[10.5px] leading-relaxed" style={{ color: 'rgba(113,113,122,0.9)' }}>
+          Hattat&apos;tan aktarılan <strong style={{ color: MUTED }}>{arsiv.adet} eski tahsilat</strong> (
+          {para(arsiv.toplam)} ₺) arşivdir: hesap bilgisi taşımaz ve hiçbir bakiyeye girmez. Açılış
+          bakiyeniz o dönemi zaten içerdiği için ikinci kez sayılmaması gerekir.
+        </p>
+      )}
+
+      {ekleAcik && (
+        <OfisHesapEkleModal
+          kapat={() => setEkleAcik(false)}
+          kaydet={(ad) => ekle.mutate(ad)}
+          kaydediliyor={ekle.isPending}
+        />
+      )}
+
       <p className="mt-3 text-[10.5px] leading-relaxed" style={{ color: 'rgba(113,113,122,0.9)' }}>
         Kesim tarihi, bağladığınız bütçe hesabının <strong style={{ color: MUTED }}>açılış tarihidir</strong>.
         Öncesindeki tahsilatlar Cari Kasa'da arşiv kalır — açılış bakiyeniz o parayı zaten içerdiği
         için ikinci kez sayılmaz.
       </p>
     </Kutu>
+  );
+}
+
+/**
+ * Ofis hesabı = tahsilatın hangi cüzdana girdiğini işaretleyen etiket.
+ * Para tutmaz; bakiyenin sahibi bağlandığı bütçe hesabıdır. Bu yüzden form
+ * tek alan: ad. Açılış bakiyesi bilerek sorulmuyor, sorulsaydı iki yerde iki
+ * açılış bakiyesi olurdu.
+ */
+function OfisHesapEkleModal({
+  kapat,
+  kaydet,
+  kaydediliyor,
+}: {
+  kapat: () => void;
+  kaydet: (ad: string) => void;
+  kaydediliyor: boolean;
+}) {
+  const [ad, setAd] = useState('');
+  return (
+    <Modal
+      baslik="Ofis hesabı ekle"
+      aciklama="Tahsilat girilirken seçilecek cüzdan adı — bakiye tutmaz."
+      kapat={kapat}
+      genislik={440}
+    >
+      <div className="space-y-3">
+        <Alan etiket="Hesap adı" ipucu="Örnek: Ziraat Bankası, Nakit, POS">
+          <Girdi
+            autoFocus
+            value={ad}
+            onChange={(e) => setAd(e.target.value)}
+            placeholder="Ziraat Bankası"
+          />
+        </Alan>
+        <div className="flex justify-end gap-2">
+          <Dugme tur="sade" onClick={kapat}>
+            Vazgeç
+          </Dugme>
+          <Dugme
+            tur="birincil"
+            yukleniyor={kaydediliyor}
+            disabled={!ad.trim()}
+            onClick={() => kaydet(ad.trim())}
+          >
+            Ekle
+          </Dugme>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
