@@ -5,10 +5,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   Plus, Landmark, Pencil, Trash2, ArrowLeftRight, Receipt, Wallet, PiggyBank,
-  AlertTriangle, ChevronLeft, ChevronRight,
+  AlertTriangle, ChevronLeft, ChevronRight, Link2, Building2,
 } from 'lucide-react';
 import {
-  butceApi, BankaHesap, HesapHareket, Defter,
+  butceApi, BankaHesap, HesapHareket, Defter, OfisHesap,
   para, tarihTR, donemTR, buDonem, donemKaydir,
 } from '@/lib/butce';
 import {
@@ -316,6 +316,8 @@ export default function Hesaplar() {
         )}
       </Kutu>
 
+      <OfisHesapKoprusu />
+
       {hesapModal && (
         <HesapModal
           hesap={hesapModal === 'yeni' ? null : hesapModal}
@@ -376,6 +378,170 @@ export default function Hesaplar() {
 }
 
 /* ===================== HESAP MODALI ===================== */
+
+/* ===================== CARİ KASA HESAP KÖPRÜSÜ ===================== */
+
+/**
+ * Aynı banka hesabı bugün iki yerde ayrı bakiye tutuyor: Cari Kasa'da ofis
+ * hesabı, burada bütçe hesabı. Eşleştirme yapılınca bakiyenin tek sahibi bu
+ * ekran olur; ofis hesabı "para hangi cüzdana girdi" etiketine döner.
+ *
+ * Eşleştirme ELLE yapılır. İsim benzerliğine bakan otomatik eşleştirme bilerek
+ * yok: yanlış eşleşme bakiyeyi bozar ve fark aylar sonra anlaşılır.
+ */
+function OfisHesapKoprusu() {
+  const qc = useQueryClient();
+  const { data, isLoading } = useQuery({
+    queryKey: ['butce-ofis-hesaplar'],
+    queryFn: butceApi.ofisHesaplar,
+    staleTime: 60_000,
+  });
+
+  const esle = useMutation({
+    mutationFn: ({ id, hedef }: { id: string; hedef: string | null }) =>
+      butceApi.ofisHesapEslestir(id, hedef),
+    onSuccess: (s) => {
+      toast.success(s.eslesti ? 'Hesap bağlandı' : 'Bağlantı kaldırıldı');
+      qc.invalidateQueries({ queryKey: ['butce-ofis-hesaplar'] });
+      qc.invalidateQueries({ queryKey: ['butce-hesaplar'] });
+      qc.invalidateQueries({ queryKey: ['butce-ozet'] });
+      qc.invalidateQueries({ queryKey: ['butce-islemler'] });
+      qc.invalidateQueries({ queryKey: ['butce-nakit-akis'] });
+      qc.invalidateQueries({ queryKey: ['butce-hesap-hareketler'] });
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Bağlanamadı', { duration: 8000 }),
+  });
+
+  if (isLoading) {
+    return (
+      <Kutu baslik="Cari Kasa hesap bağlantısı" renk={MOR}>
+        <Yukleniyor metin="Ofis hesapları okunuyor…" />
+      </Kutu>
+    );
+  }
+  if (!data) return null;
+
+  const bagli = data.hesaplar.filter((h) => h.butceBankaHesapId).length;
+  const hesapsiz = data.hesabiSecilmemisTahsilat;
+
+  return (
+    <Kutu
+      baslik="Cari Kasa hesap bağlantısı"
+      aciklama="Müşteri tahsilatı Cari Kasa'da kalır; bağlanan hesabın bakiyesine buradan okunur."
+      renk={MOR}
+      sag={<Rozet metin={`${bagli}/${data.hesaplar.length} bağlı`} renk={bagli > 0 ? OK : MUTED} />}
+    >
+      {data.hesaplar.length === 0 ? (
+        <Bos metin="Cari Kasa'da tanımlı ofis hesabı yok." ikon={<Building2 size={18} />} />
+      ) : (
+        <div className="space-y-2">
+          {data.hesaplar.map((h) => (
+            <OfisHesapSatiri
+              key={h.id}
+              hesap={h}
+              butceHesaplar={data.butceHesaplar}
+              kaydediliyor={esle.isPending}
+              sec={(hedef) => esle.mutate({ id: h.id, hedef })}
+            />
+          ))}
+        </div>
+      )}
+
+      {hesapsiz.adet > 0 && (
+        <div
+          className="mt-3 flex items-start gap-2 rounded-xl px-3 py-2.5 text-[11.5px]"
+          style={{ background: `${TURUNCU}12`, border: `1px solid ${TURUNCU}30`, color: MUTED }}
+        >
+          <AlertTriangle size={13} style={{ color: TURUNCU }} className="mt-0.5 flex-shrink-0" />
+          <span>
+            <strong style={{ color: TURUNCU }}>{hesapsiz.adet} tahsilatta</strong> banka/kasa hesabı
+            seçilmemiş (toplam {para(hesapsiz.toplam)} ₺). Paranın hangi cüzdana girdiği bilinmediği
+            için hiçbir bakiyeye eklenmedi. Cari Kasa &gt; Tahsilat ekranından hesabı seçilince
+            kendiliğinden görünür.
+          </span>
+        </div>
+      )}
+
+      <p className="mt-3 text-[10.5px] leading-relaxed" style={{ color: 'rgba(113,113,122,0.9)' }}>
+        Kesim tarihi, bağladığınız bütçe hesabının <strong style={{ color: MUTED }}>açılış tarihidir</strong>.
+        Öncesindeki tahsilatlar Cari Kasa'da arşiv kalır — açılış bakiyeniz o parayı zaten içerdiği
+        için ikinci kez sayılmaz.
+      </p>
+    </Kutu>
+  );
+}
+
+function OfisHesapSatiri({
+  hesap,
+  butceHesaplar,
+  kaydediliyor,
+  sec,
+}: {
+  hesap: OfisHesap;
+  butceHesaplar: Array<{ id: string; ad: string; bankaAdi: string; kesimTarihiVar: boolean }>;
+  kaydediliyor: boolean;
+  sec: (hedef: string | null) => void;
+}) {
+  const bagli = !!hesap.butceBankaHesapId;
+  const renk = bagli ? OK : MUTED;
+  const disarida = hesap.tahsilatAdet - hesap.akanAdet;
+
+  return (
+    <div
+      className="relative overflow-hidden rounded-xl px-3 py-2.5"
+      style={{
+        background: `linear-gradient(140deg, ${renk}12, rgba(255,255,255,0.012) 60%)`,
+        border: `1px solid ${renk}2e`,
+      }}
+    >
+      <div
+        className="pointer-events-none absolute -right-6 -top-8 h-20 w-20 rounded-full opacity-20"
+        style={{ background: `radial-gradient(circle, ${renk}, transparent 68%)` }}
+      />
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5 text-[12.5px] font-semibold" style={{ color: TEXT }}>
+            <Building2 size={13} style={{ color: hesap.renk || GOLD }} />
+            {hesap.ad}
+            {!hesap.aktif && <Rozet metin="pasif" renk={MUTED} />}
+          </div>
+          <div className="mt-0.5 text-[11px]" style={{ color: MUTED }}>
+            {hesap.tahsilatAdet === 0
+              ? 'Bu hesaba girmiş tahsilat yok'
+              : bagli
+                ? `${hesap.akanAdet} tahsilat bütçeye akıyor · ${para(hesap.akanToplam)} ₺`
+                : `${hesap.tahsilatAdet} tahsilat bekliyor · ${para(hesap.tahsilatToplam)} ₺`}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Link2 size={13} style={{ color: renk }} />
+          <Secim
+            value={hesap.butceBankaHesapId || ''}
+            disabled={kaydediliyor}
+            onChange={(e) => sec(e.target.value || null)}
+            style={{ minWidth: 220 }}
+          >
+            <option value="">— bağlı değil —</option>
+            {butceHesaplar.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.bankaAdi} · {b.ad}
+                {b.kesimTarihiVar ? '' : ' (açılış tarihi yok)'}
+              </option>
+            ))}
+          </Secim>
+        </div>
+      </div>
+
+      {bagli && disarida > 0 && (
+        <div className="mt-1.5 text-[10.5px]" style={{ color: 'rgba(113,113,122,0.9)' }}>
+          Kesim tarihi {hesap.kesimTarihi ? tarihTR(hesap.kesimTarihi) : '—'} · öncesindeki {disarida}{' '}
+          tahsilat ({para(hesap.tahsilatToplam - hesap.akanToplam)} ₺) arşivde kaldı.
+        </div>
+      )}
+    </div>
+  );
+}
 
 function HesapModal({
   hesap,

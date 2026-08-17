@@ -4,7 +4,9 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
+import Link from 'next/link';
 import {
+  Archive,
   ArrowRightLeft,
   BarChart3,
   Check,
@@ -252,6 +254,36 @@ function useCashflowSummary(year: number, period: string) {
 }
 
 // ===== Genel UI parçaları =====
+/**
+ * ARŞİV BANDI — ofis gelir/gider takibi Kişisel Bütçe'ye taşındı (2026-08-18).
+ *
+ * Bu ekranlar geçmişi göstermeye devam ediyor ama yeni kayıt kabul etmiyor.
+ * Rakamların kesim tarihinden sonrasını içermediği ekranda YAZILI olmalı;
+ * yoksa eksik toplam doğru sanılır.
+ */
+function ArsivBandi() {
+  return (
+    <div
+      className="mt-5 flex flex-wrap items-start gap-2.5 rounded-2xl px-4 py-3 text-[13px]"
+      style={{
+        background: 'linear-gradient(140deg, rgba(230,200,120,0.09), rgba(255,255,255,0.01) 60%)',
+        border: `1px solid ${GOLD}2e`,
+        color: TEXT,
+      }}
+    >
+      <Archive className="mt-[2px] h-4 w-4 shrink-0" style={{ color: GOLD }} />
+      <span className="min-w-0">
+        <strong style={{ color: GOLD }}>Arşiv görünümü.</strong> Ofis gelir/gider takibi{' '}
+        <Link href="/panel/butce" className="underline underline-offset-2" style={{ color: GOLD }}>
+          Kişisel Bütçe
+        </Link>{' '}
+        ekranına taşındı. Buradaki rakamlar taşınma tarihine kadarki kayıtları gösterir; yeni kayıt
+        eklenemez. Müşteri tahsilatı eskisi gibi Tahsilat ekranından girilmeye devam eder.
+      </span>
+    </div>
+  );
+}
+
 function ViewHeader({ icon: Icon, title, subtitle, actions }: {
   icon: React.ElementType;
   title: string;
@@ -581,12 +613,15 @@ export function KasaBankaView() {
         actions={(
           <>
             <PeriodSelect year={year} period={period} onYear={(next) => { setYear(next); setPeriod(`${next}-${period.slice(5, 7)}`); }} onPeriod={setPeriod} />
-            <GoldBtn onClick={() => setModal('entry')}><Plus className="h-4 w-4" /> Hareket</GoldBtn>
-            <SecondaryBtn onClick={() => setModal('transfer')}><ArrowRightLeft className="h-4 w-4" /> Transfer</SecondaryBtn>
+            {/* Hareket ve Transfer kaldırıldı: ofis gelir/gideri artık Kişisel
+                Bütçe'den girilir. Hesap ekleme duruyor — tahsilatın hangi cüzdana
+                girdiğini işaretlemek ve bütçe hesabına bağlamak için gerekli. */}
             <SecondaryBtn onClick={() => setModal('account')}><Plus className="h-4 w-4" /> Hesap</SecondaryBtn>
           </>
         )}
       />
+
+      <ArsivBandi />
 
       {kpi.unassignedCollectionsCount > 0 && (
         <div className="mt-5 rounded-2xl px-4 py-3 text-[13.5px] font-medium" style={{ background: 'rgba(230,200,120,0.06)', border: '1px solid rgba(230,200,120,0.22)', color: '#e6c878' }}>
@@ -869,6 +904,8 @@ export function GelirGiderTablosuView() {
         actions={<PeriodSelect year={year} period={period} onYear={(next) => { setYear(next); setPeriod(`${next}-${period.slice(5, 7)}`); }} onPeriod={setPeriod} />}
       />
 
+      <ArsivBandi />
+
       {/* KPI */}
       <div className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-3">
         <KpiCard label="Yıllık Gelir" value={fmt(kpi.annualIncome)} color={OK} />
@@ -1051,13 +1088,14 @@ export function ButcePlanView() {
         actions={(
           <>
             <PeriodSelect year={year} period={period} onYear={(next) => { setYear(next); setPeriod(`${next}-${period.slice(5, 7)}`); }} onPeriod={setPeriod} />
+            {/* "Planı Kaydet" kaldırıldı: plan da Kişisel Bütçe'ye taşındı.
+                Kategoriler duruyor — arşivdeki kalemlerin adı/rengi düzeltilebilsin. */}
             <SecondaryBtn onClick={() => setShowCategoriesModal(true)}><Edit3 className="h-4 w-4" /> Kategoriler</SecondaryBtn>
-            <GoldBtn onClick={savePlans} disabled={savingPlan}>
-              {savingPlan ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Planı Kaydet
-            </GoldBtn>
           </>
         )}
       />
+
+      <ArsivBandi />
 
       {/* KPI */}
       <div className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-3">

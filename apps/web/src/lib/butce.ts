@@ -174,6 +174,36 @@ export interface NakitAkis {
   hesaplar: Array<{ id: string; ad: string; bankaAdi: string; bakiye: number; renk?: string | null }>;
 }
 
+/** Cari Kasa (ofis) hesabı ve Kişisel Bütçe'deki karşılığı */
+export interface OfisHesap {
+  id: string;
+  ad: string;
+  tur: string;
+  renk?: string | null;
+  aktif: boolean;
+  butceBankaHesapId: string | null;
+  eslesenAd: string | null;
+  kesimTarihi: string | null;
+  tahsilatAdet: number;
+  tahsilatToplam: number;
+  /** Kesim tarihinden sonrası — bütçeye gerçekten akan kısım */
+  akanAdet: number;
+  akanToplam: number;
+}
+
+export interface OfisHesapDurum {
+  hesaplar: OfisHesap[];
+  butceHesaplar: Array<{
+    id: string;
+    ad: string;
+    bankaAdi: string;
+    aktif: boolean;
+    acilisTarihi: string | null;
+    kesimTarihiVar: boolean;
+  }>;
+  hesabiSecilmemisTahsilat: { adet: number; toplam: number };
+}
+
 export type Strateji = 'CIG' | 'KARTOPU';
 export type EkstreDurum = 'TUTAR_BEKLENIYOR' | 'ODENMEDI' | 'KISMI' | 'ODENDI' | 'GECIKTI';
 
@@ -204,6 +234,10 @@ export interface Islem {
   kaynak: 'NAKIT' | 'BANKA' | 'KART';
   kartId?: string | null;
   planlanan: boolean;
+  /** BUTCE = bu modülün kaydı · CARI_TAHSILAT = Cari Kasa'dan okunan tahsilat */
+  kaynakTur?: 'BUTCE' | 'CARI_TAHSILAT';
+  /** Cari Kasa'dan okunan satırlar burada düzenlenemez/silinemez */
+  duzenlenebilir?: boolean;
 }
 
 export interface DuzenliOdeme {
@@ -489,6 +523,9 @@ export const butceApi = {
     al<Ozet>(api.get('/butce/ozet', { params: { donem, defter } })),
 
   hesaplar: () => al<BankaHesap[]>(api.get('/butce/hesaplar')),
+  ofisHesaplar: () => al<OfisHesapDurum>(api.get('/butce/ofis-hesaplar')),
+  ofisHesapEslestir: (id: string, butceBankaHesapId: string | null) =>
+    al<{ ok: boolean; eslesti: boolean }>(api.put(`/butce/ofis-hesaplar/${id}`, { butceBankaHesapId })),
   kasa: () => al<KasaOzet>(api.get('/butce/kasa')),
   sablonTesti: (gonder = false) =>
     al<SablonOnizleme[]>(api.post('/butce/sablon-testi', { gonder })),

@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   Plus, Trash2, Repeat, Pencil, CreditCard, PlayCircle, ArrowLeftRight,
-  Search, SlidersHorizontal, CheckCircle2, AlertTriangle, TrendingUp, TrendingDown,
+  Search, SlidersHorizontal, CheckCircle2, AlertTriangle, TrendingUp, TrendingDown, Lock,
 } from 'lucide-react';
 import {
   butceApi, Islem, Kategori, DuzenliOdeme, Kart, BankaHesap, Defter,
@@ -14,10 +14,17 @@ import {
 import {
   Kutu, Dugme, Modal, Alan, Girdi, Secim, Bos, Rozet, Yukleniyor, Anahtar,
   ParaGirdi, paraCoz, paraGiris,
-  GOLD, OK, KIRMIZI, MUTED, TEXT, ROW_SEP, MAVI, TURUNCU, CARD_BORDER,
+  GOLD, OK, KIRMIZI, MUTED, TEXT, ROW_SEP, MAVI, MOR, TURUNCU, CARD_BORDER,
 } from './ui';
 
 const bugun = () => new Date().toISOString().slice(0, 10);
+
+/**
+ * ÇİFT SAYIM KİLİDİ — bu kategoriye elle GELİR girilemez.
+ * Müşavirlik geliri Cari Kasa'daki tahsilattan okunur; bir de elle yazılırsa
+ * aynı para iki kez sayılır. Sunucu da aynı kilidi uyguluyor.
+ */
+const KILITLI_GELIR_KATEGORISI = 'Müşavirlik Ücreti';
 
 /** Ofis / kişisel gider ayrımı hareket düzeyinde tutulur; aynı kart ve hesap ikisinde de kullanılabilir. */
 const DEFTERLER: Array<{ deger: Defter; etiket: string; renk: string }> = [
@@ -206,7 +213,11 @@ export default function GelirGider({ donem, defter = 'TUMU' }: { donem: string; 
       : `${gosterilen.length} / ${islemler.length} kayıt`;
 
   /** Tek kayıt satırı — iki sütunda da aynı görünür */
-  const satirCiz = (i: Islem) => (
+  const satirCiz = (i: Islem) => {
+    // Cari Kasa'dan okunan tahsilat: kopya değil, o modülün kaydı.
+    // Buradan düzenlenirse iki modül ayrışır; düzeltme Cari Kasa'da yapılır.
+    const cariTahsilat = i.kaynakTur === 'CARI_TAHSILAT';
+    return (
     <div
       key={i.id}
       className="group flex items-start justify-between gap-3 rounded-lg px-3 py-2 transition"
@@ -222,6 +233,7 @@ export default function GelirGider({ donem, defter = 'TUMU' }: { donem: string; 
           {i.kaynak === 'KART' && <CreditCard size={11} style={{ color: MAVI }} />}
           {i.planlanan && <Rozet metin="beklenen" renk={TURUNCU} />}
           {i.transferGrupId && <Rozet metin="aktarım" renk={MAVI} />}
+          {cariTahsilat && <Rozet metin="tahsilat" renk={MOR} />}
           {/* Ofis/kişisel yalnız GİDERDE anlamlı — gelir tek havuzdur */}
           {i.tur === 'GIDER' && <Rozet metin={DEFTER_ETIKET[i.defter]} renk={defterRenk(i.defter)} />}
         </span>
@@ -262,26 +274,39 @@ export default function GelirGider({ donem, defter = 'TUMU' }: { donem: string; 
               <CheckCircle2 size={11} /> Gerçekleşti
             </button>
           )}
-          <button
-            onClick={() => setModal(i)}
-            className="rounded-md p-1 opacity-0 transition group-hover:opacity-100 hover:bg-white/[0.06]"
-            style={{ color: MUTED }}
-            title="Düzenle"
-          >
-            <Pencil size={12} />
-          </button>
-          <button
-            onClick={() => sil.mutate(i.id)}
-            className="rounded-md p-1 opacity-0 transition group-hover:opacity-100 hover:bg-white/[0.06]"
-            style={{ color: KIRMIZI }}
-            title="Sil"
-          >
-            <Trash2 size={12} />
-          </button>
+          {cariTahsilat ? (
+            <span
+              className="inline-flex items-center gap-1 whitespace-nowrap rounded-lg px-2 py-0.5 text-[10.5px]"
+              style={{ background: `${MOR}14`, border: `1px solid ${MOR}3d`, color: MOR }}
+              title="Bu kayıt Cari Kasa'nın tahsilatıdır; düzeltme Cari Kasa > Tahsilat ekranından yapılır"
+            >
+              <Lock size={11} /> Cari Kasa
+            </span>
+          ) : (
+            <>
+              <button
+                onClick={() => setModal(i)}
+                className="rounded-md p-1 opacity-0 transition group-hover:opacity-100 hover:bg-white/[0.06]"
+                style={{ color: MUTED }}
+                title="Düzenle"
+              >
+                <Pencil size={12} />
+              </button>
+              <button
+                onClick={() => sil.mutate(i.id)}
+                className="rounded-md p-1 opacity-0 transition group-hover:opacity-100 hover:bg-white/[0.06]"
+                style={{ color: KIRMIZI }}
+                title="Sil"
+              >
+                <Trash2 size={12} />
+              </button>
+            </>
+          )}
         </span>
       </span>
     </div>
-  );
+    );
+  };
 
   return (
     <div className="space-y-4">
@@ -606,6 +631,8 @@ function IslemModal({
    */
   const uygunKategoriler = kategoriler.filter((c) => {
     if (c.tur !== form.tur || !c.aktif) return false;
+    // Tahsilat kategorisi elle seçilemez; o gelir Cari Kasa'dan okunur
+    if (c.tur === 'GELIR' && c.ad === KILITLI_GELIR_KATEGORISI) return false;
     if (form.tur === 'GELIR') return true; // gelir tek havuz
     if (c.defter === form.defter) return true;
     return c.id === form.kategoriId; // düzenlenen kaydın kategorisi listeden düşmesin
@@ -657,7 +684,14 @@ function IslemModal({
         <Alan etiket="Tarih">
           <Girdi type="date" value={form.tarih} onChange={(e) => setForm({ ...form, tarih: e.target.value })} />
         </Alan>
-        <Alan etiket="Kategori">
+        <Alan
+          etiket="Kategori"
+          ipucu={
+            form.tur === 'GELIR'
+              ? `"${KILITLI_GELIR_KATEGORISI}" listede yok: o gelir Cari Kasa > Tahsilat'tan otomatik gelir.`
+              : undefined
+          }
+        >
           <Secim value={form.kategoriId} onChange={(e) => kategoriSec(e.target.value)}>
             <option value="">Seçiniz</option>
             {uygunKategoriler.map((c) => (
@@ -1085,11 +1119,15 @@ function DuzenliModal({
         <Alan etiket="Kategori">
           <Secim value={form.kategoriId} onChange={(e) => setForm({ ...form, kategoriId: e.target.value })}>
             <option value="">Seçiniz</option>
-            {kategoriler.filter((c) => c.tur === form.tur).map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.ad}
-              </option>
-            ))}
+            {kategoriler
+              .filter((c) => c.tur === form.tur)
+              // Tahsilat kategorisi düzenli gelir olarak da tanımlanamaz — her ay çift sayardı
+              .filter((c) => !(c.tur === 'GELIR' && c.ad === KILITLI_GELIR_KATEGORISI))
+              .map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.ad}
+                </option>
+              ))}
           </Secim>
         </Alan>
         <Alan etiket="Ödeme kaynağı">

@@ -1686,6 +1686,7 @@ ${rows}
   }
 
   async createAccountTransfer(tenantId: string, data: any, createdBy?: string) {
+    this.butceArsivde('Hesaplar arası aktarım');
     if (!data?.fromAccountId || !data?.toAccountId) throw new BadRequestException('Cikis ve giris hesabi zorunlu');
     if (data.fromAccountId === data.toAccountId) throw new BadRequestException('Ayni hesaplar arasinda transfer yapilamaz');
     const amount = Number(data?.amount || 0);
@@ -1783,7 +1784,25 @@ ${rows}
     });
   }
 
+  /**
+   * ARŞİV MODU — ofis gelir/gider takibi Kişisel Bütçe'ye taşındı (2026-08-18).
+   *
+   * Cari Kasa'nın bütçe ekranları geçmişi göstermeye devam eder ama YENİ KAYIT
+   * kabul etmez: aynı gideri iki ekrandan girebilmek karışıklığın kendisiydi.
+   * Yanlış girilmiş eski bir satır hâlâ silinebilir — arşivi düzeltmek kapalı
+   * değil, arşive eklemek kapalı.
+   */
+  // Dönüş tipi bilerek `void`: `never` yazılırsa TypeScript metodun geri kalanını
+  // ulaşılmaz sayıp `this`i daraltıyor ve gövde derlenmiyor. Uygulama kodu
+  // yerinde duruyor ki arşiv kararı geri alınmak istenirse tek satır yeter.
+  private butceArsivde(ne: string): void {
+    throw new BadRequestException(
+      `${ne} artık Kişisel Bütçe'den girilir. Bu ekran geçmişi göstermek için açık; yeni kayıt kabul etmiyor.`,
+    );
+  }
+
   async createBudgetEntry(tenantId: string, data: any, createdBy?: string) {
+    this.butceArsivde('Ofis gelir/gider kaydı');
     const category = await this.getBudgetCategory(tenantId, data?.categoryId);
     if (!data?.accountId) throw new BadRequestException('Hesap secimi zorunlu');
     const account = await this.getFinancialAccount(tenantId, data.accountId);
@@ -1811,6 +1830,7 @@ ${rows}
   }
 
   async updateBudgetEntry(tenantId: string, id: string, data: any) {
+    this.butceArsivde('Ofis gelir/gider kaydının düzenlenmesi');
     const entry = await (this.prisma as any).officeBudgetEntry.findFirst({ where: { tenantId, id } });
     if (!entry) throw new NotFoundException('Bütçe hareketi bulunamadı');
     const update: any = {};
@@ -1863,6 +1883,7 @@ ${rows}
   }
 
   async upsertBudgetPlans(tenantId: string, data: any) {
+    this.butceArsivde('Ofis bütçe planı');
     await this.ensureBudgetCategories(tenantId);
     const period = this.normalizePeriod(data?.period);
     const items = Array.isArray(data?.items) ? data.items : [data];

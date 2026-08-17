@@ -2621,23 +2621,27 @@ model CariHareket {
 }
 
 model OfficeFinancialAccount {
-  id             String   @id @default(cuid())
-  tenantId       String
-  name           String
-  type           String // "BANKA" | "NAKIT" | "KREDI_KARTI" | "DIGER"
-  color          String   @default("#d4b876")
-  openingBalance Decimal  @default(0) @db.Decimal(14, 2)
-  openingDate    DateTime @default(now())
-  sortOrder      Int      @default(0)
-  isActive       Boolean  @default(true)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id                String   @id @default(cuid())
+  tenantId          String
+  name              String
+  type              String // "BANKA" | "NAKIT" | "KREDI_KARTI" | "DIGER"
+  color             String   @default("#d4b876")
+  openingBalance    Decimal  @default(0) @db.Decimal(14, 2)
+  openingDate       DateTime @default(now())
+  sortOrder         Int      @default(0)
+  isActive          Boolean  @default(true)
+  /// Kisisel Butce'deki karsiligi. Doluysa bakiyenin TEK SAHIBI orasidir;
+  /// bu hesap "para hangi cuzdana girdi" etiketine doner.
+  butceBankaHesapId String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
-  tenant         Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  budgetEntries  OfficeBudgetEntry[]
-  cariHareketler CariHareket[]
-  transfersFrom  OfficeAccountTransfer[] @relation("TransferFromAccount")
-  transfersTo    OfficeAccountTransfer[] @relation("TransferToAccount")
+  tenant          Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  butceBankaHesap ButceBankaHesap?        @relation(fields: [butceBankaHesapId], references: [id], onDelete: SetNull)
+  budgetEntries   OfficeBudgetEntry[]
+  cariHareketler  CariHareket[]
+  transfersFrom   OfficeAccountTransfer[] @relation("TransferFromAccount")
+  transfersTo     OfficeAccountTransfer[] @relation("TransferToAccount")
 
   @@unique([tenantId, name])
   @@index([tenantId, type])
@@ -3808,8 +3812,9 @@ model ButceBankaHesap {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
-  islemler ButceIslem[]
-  odemeler ButceOdeme[]
+  islemler      ButceIslem[]
+  odemeler      ButceOdeme[]
+  ofisHesaplari OfficeFinancialAccount[]
 
   @@index([tenantId, userId, aktif])
   @@map("butce_banka_hesaplar")

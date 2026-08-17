@@ -94,6 +94,20 @@ export class ButceController {
     });
   }
 
+  /* ===== CARİ KASA KÖPRÜSÜ ===== */
+
+  /** Ofis (Cari Kasa) hesapları + Kişisel Bütçe karşılıkları */
+  @Get('ofis-hesaplar')
+  ofisHesaplar(@Req() req: any) {
+    return this.butce.ofisHesaplar(this.kimlik(req));
+  }
+
+  /** Ofis hesabını bir bütçe hesabına bağla; butceBankaHesapId boş verilirse bağ kopar */
+  @Put('ofis-hesaplar/:id')
+  ofisHesapEslestir(@Req() req: any, @Param('id') id: string, @Body() body: any) {
+    return this.butce.ofisHesapEslestir(this.kimlik(req), id, body?.butceBankaHesapId ?? null);
+  }
+
   /* ===== BANKA HESAPLARI ===== */
   @Get('hesaplar')
   hesaplar(@Req() req: any) {
