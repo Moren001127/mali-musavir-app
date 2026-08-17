@@ -4,13 +4,13 @@ import React from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import {
   TrendingUp, TrendingDown, Wallet, CreditCard, AlertTriangle, Info,
-  CalendarClock, Landmark, Coins, Scale, ArrowLeftRight, Building2, PiggyBank,
+  CalendarClock, Landmark, Coins, Scale,
 } from 'lucide-react';
 import {
-  butceApi, Ozet, OfisOzet, DefterSecim, para, tarihTR, donemTR, ekstreDurumBilgi,
+  butceApi, Ozet, para, tarihTR, donemTR, ekstreDurumBilgi,
 } from '@/lib/butce';
 import {
-  Kutu, KPI, Rozet, Bos, Yukleniyor, TrendGrafik, OranCubugu,
+  Kutu, KPI, Rozet, Bos, TrendGrafik, OranCubugu,
   GOLD, OK, KIRMIZI, TURUNCU, MAVI, MOR, MUTED, TEXT, ROW_SEP,
 } from './ui';
 import AiKutu from './AiKutu';
@@ -24,41 +24,17 @@ type OzetAkis = Ozet & {
   toplamNakitGirisi?: number;
 };
 
-type OfisOzetGenis = OfisOzet & {
-  tumZamanlar?: {
-    gelir: number;
-    gider: number;
-    kar: number;
-    cekis: number;
-    ofisteKalan: number;
-    yatirim: number;
-  };
-};
-
 export default function GenelBakis({
   ozet,
   donem,
-  defter = 'TUMU',
 }: {
   ozet: Ozet;
   donem: string;
-  defter?: DefterSecim;
 }) {
   const akis = ozet as OzetAkis;
   const aktarimGiris = akis.aktarimGiris ?? 0;
   const aktarimCikis = akis.aktarimCikis ?? 0;
   const toplamGiris = akis.toplamNakitGirisi ?? ozet.gelir + aktarimGiris;
-
-  const sahsi = defter === 'SAHSI';
-  const ofis = defter === 'OFIS';
-
-  // Ofis kâr/zarar ve ofiste biriken para yalnız ofis defteri açıkken çekilir.
-  const ofisSorgu = useQuery({
-    queryKey: ['butce-ofis-ozet', donem],
-    queryFn: () => butceApi.ofisOzet(donem) as Promise<OfisOzetGenis>,
-    enabled: ofis,
-    staleTime: 5 * 60 * 1000,
-  });
 
   const aiSorgu = useQuery({
     queryKey: ['butce-ai-aylik', donem],
@@ -171,20 +147,6 @@ export default function GenelBakis({
           vurgu={ozet.netVarlik < 0}
         />
       </div>
-
-      {/* Ofis defteri: kâr/zarar ve ofiste biriken para */}
-      {ofis &&
-        (ofisSorgu.isLoading ? (
-          <Kutu baslik="Ofis kâr/zarar" aciklama={donemTR(donem)} renk={MOR}>
-            <Yukleniyor metin="Ofis özeti hazırlanıyor…" />
-          </Kutu>
-        ) : !ofisSorgu.data ? (
-          <Kutu baslik="Ofis kâr/zarar" aciklama={donemTR(donem)} renk={MOR}>
-            <Bos metin="Ofis özeti alınamadı." ikon={<Building2 size={18} />} />
-          </Kutu>
-        ) : (
-          <OfisKutulari veri={ofisSorgu.data} donem={donem} />
-        ))}
 
       <div className="grid gap-4 xl:grid-cols-3">
         {/* Trend */}
@@ -310,85 +272,6 @@ export default function GenelBakis({
         yukleniyor={aiSorgu.isLoading || aiYenile.isPending}
         yenile={() => aiYenile.mutate()}
       />
-    </div>
-  );
-}
-
-/* ===================== OFİS KUTULARI ===================== */
-
-function Satir({ etiket, deger, renk = TEXT }: { etiket: string; deger: string; renk?: string }) {
-  return (
-    <div className="flex items-center justify-between gap-3 text-[11.5px]">
-      <span style={{ color: MUTED }}>{etiket}</span>
-      <span className="tabular-nums" style={{ color: renk }}>
-        {deger}
-      </span>
-    </div>
-  );
-}
-
-function OfisKutulari({ veri, donem }: { veri: OfisOzetGenis; donem: string }) {
-  // ŞAHIS FİRMASI: ofisin geliri zaten sahibinin geliri. Burada gösterilen şey
-  // "ofisin ayrı kasası" değil, MESLEKİ KAZANÇ — yani vergi matrahına esas rakam.
-  const karRenk = veri.kar >= 0 ? OK : KIRMIZI;
-  const tz = veri.tumZamanlar;
-
-  return (
-    <div className="grid gap-4 xl:grid-cols-2">
-      <Kutu
-        baslik="Ofis kazancı"
-        aciklama={`${donemTR(donem)} · gelir − ofis gideri`}
-        renk={MOR}
-        sag={<Building2 size={14} style={{ color: MOR }} />}
-      >
-        <div className="flex items-end justify-between gap-3">
-          <div>
-            <div className="text-[11px] uppercase tracking-wider" style={{ color: MUTED }}>
-              Dönem kazancı
-            </div>
-            <div className="mt-0.5 text-[26px] font-semibold tabular-nums" style={{ color: karRenk }}>
-              {para(veri.kar)} ₺
-            </div>
-          </div>
-          <Rozet metin={`kazanç oranı %${veri.karMarji}`} renk={karRenk} />
-        </div>
-
-        <div className="mt-3 space-y-1 border-t pt-2" style={{ borderColor: ROW_SEP }}>
-          <Satir etiket="Gelir" deger={`${para(veri.gelir)} ₺`} renk={OK} />
-          <Satir etiket="Ofis gideri" deger={`${para(veri.gider)} ₺`} renk={KIRMIZI} />
-          <Satir etiket="Yıl başından beri kazanç" deger={`${para(veri.yilBasindanBeri.kar)} ₺`} renk={GOLD} />
-        </div>
-
-        <p className="mt-3 text-[10.5px] leading-relaxed" style={{ color: 'rgba(113,113,122,0.85)' }}>
-          Vergi matrahınıza esas olan rakam budur: kişisel harcamalarınız bu hesaba girmez.
-        </p>
-      </Kutu>
-
-      <Kutu
-        baslik="Ofis yatırımı"
-        aciklama="Demirbaş, araç ve benzeri ofis alımları"
-        renk={GOLD}
-        sag={<PiggyBank size={14} style={{ color: GOLD }} />}
-      >
-        <div className="text-[11px] uppercase tracking-wider" style={{ color: MUTED }}>
-          Bugüne kadar
-        </div>
-        <div
-          className="mt-0.5 text-[30px] font-semibold leading-tight tabular-nums"
-          style={{ color: tz && tz.yatirim > 0 ? GOLD : MUTED }}
-        >
-          {tz ? `${para(tz.yatirim)} ₺` : '—'}
-        </div>
-        <p className="mt-1 text-[11px] leading-relaxed" style={{ color: MUTED }}>
-          Ofise aldığınız demirbaş ve araç ofis gideridir; kişisel harcamanız sayılmaz ve kazançtan indirilir.
-        </p>
-
-        <div className="mt-3 space-y-1 border-t pt-2" style={{ borderColor: ROW_SEP }}>
-          <Satir etiket="Toplam gelir (tüm zamanlar)" deger={tz ? `${para(tz.gelir)} ₺` : '—'} renk={OK} />
-          <Satir etiket="Toplam ofis gideri" deger={tz ? `${para(tz.gider)} ₺` : '—'} renk={KIRMIZI} />
-          <Satir etiket="Toplam kazanç" deger={tz ? `${para(tz.kar)} ₺` : '—'} renk={GOLD} />
-        </div>
-      </Kutu>
     </div>
   );
 }

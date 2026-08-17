@@ -86,12 +86,6 @@ export class ButceController {
     return this.butce.ozet(this.kimlik(req), donem, (defter as DefterSecim) || 'TUMU');
   }
 
-  /** Ofis kâr/zarar özeti (yalnız OFIS defteri) */
-  @Get('ofis-ozet')
-  ofisOzet(@Req() req: any, @Query('donem') donem?: string) {
-    return this.butce.ofisOzet(this.kimlik(req), donem);
-  }
-
   /** Gün gün nakit akışı projeksiyonu + açık günler için öneriler */
   @Get('nakit-akis')
   nakitAkis(@Req() req: any, @Query('gunSayisi') gunSayisi?: string) {

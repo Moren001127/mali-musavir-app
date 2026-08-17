@@ -174,15 +174,6 @@ export interface NakitAkis {
   hesaplar: Array<{ id: string; ad: string; bankaAdi: string; bakiye: number; renk?: string | null }>;
 }
 
-export interface OfisOzet {
-  donem: string;
-  gelir: number;
-  gider: number;
-  kar: number;
-  karMarji: number;
-  sahipCekisi: number;
-  yilBasindanBeri: { gelir: number; gider: number; kar: number };
-}
 export type Strateji = 'CIG' | 'KARTOPU';
 export type EkstreDurum = 'TUTAR_BEKLENIYOR' | 'ODENMEDI' | 'KISMI' | 'ODENDI' | 'GECIKTI';
 
@@ -496,7 +487,6 @@ export const butceApi = {
 
   ozet: (donem?: string, defter?: DefterSecim) =>
     al<Ozet>(api.get('/butce/ozet', { params: { donem, defter } })),
-  ofisOzet: (donem?: string) => al<OfisOzet>(api.get('/butce/ofis-ozet', { params: { donem } })),
 
   hesaplar: () => al<BankaHesap[]>(api.get('/butce/hesaplar')),
   kasa: () => al<KasaOzet>(api.get('/butce/kasa')),
