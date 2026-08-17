@@ -461,7 +461,7 @@ export class ButceService {
    * bakan otomatik eşleştirme bilerek yoktur, yanlış eşleşme bakiyeyi bozar.
    */
   async ofisHesaplar(k: Kimlik) {
-    const [ofis, butce, hesapsiz] = await Promise.all([
+    const [ofis, butce, hesapsiz, arsiv] = await Promise.all([
       this.db.officeFinancialAccount.findMany({
         where: { tenantId: k.tenantId },
         orderBy: [{ isActive: 'desc' }, { sortOrder: 'asc' }, { name: 'asc' }],
@@ -472,9 +472,17 @@ export class ButceService {
         select: { id: true, ad: true, bankaAdi: true, acilisTarihi: true, aktif: true },
       }),
       // Hesabı seçilmemiş tahsilat: hangi cüzdana girdiği bilinmediği için
-      // hiçbir bakiyeye giremez. Sayısı gizlenmez, ekranda uyarı olur.
+      // hiçbir bakiyeye giremez. DÜZELTİLEBİLİR bir eksiktir — uyarı olur.
       this.db.cariHareket.aggregate({
         where: { tenantId: k.tenantId, tip: 'TAHSILAT', source: null, accountId: null },
+        _count: { _all: true },
+        _sum: { tutar: true },
+      }),
+      // Aktarımla gelen geçmiş (Hattat vb.). Beyaz liste gereği ASLA akmaz;
+      // düzeltilecek bir şey yok. Uyarı değil, bilgi olarak gösterilir —
+      // yoksa "3,5 milyon ₺ kayıp" gibi okunup her gün tedirgin eder.
+      this.db.cariHareket.aggregate({
+        where: { tenantId: k.tenantId, tip: 'TAHSILAT', source: { not: null } },
         _count: { _all: true },
         _sum: { tutar: true },
       }),
@@ -530,6 +538,11 @@ export class ButceService {
       hesabiSecilmemisTahsilat: {
         adet: hesapsiz?._count?._all || 0,
         toplam: num(hesapsiz?._sum?.tutar),
+      },
+      /** Aktarımla gelen geçmiş — akmaz, düzeltilmez, yalnız bilgi */
+      arsivTahsilat: {
+        adet: arsiv?._count?._all || 0,
+        toplam: num(arsiv?._sum?.tutar),
       },
     };
   }

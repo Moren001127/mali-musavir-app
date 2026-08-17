@@ -202,6 +202,8 @@ export interface OfisHesapDurum {
     kesimTarihiVar: boolean;
   }>;
   hesabiSecilmemisTahsilat: { adet: number; toplam: number };
+  /** Aktarımla gelen geçmiş (Hattat) — beyaz liste gereği akmaz, düzeltilmez */
+  arsivTahsilat: { adet: number; toplam: number };
 }
 
 export type Strateji = 'CIG' | 'KARTOPU';

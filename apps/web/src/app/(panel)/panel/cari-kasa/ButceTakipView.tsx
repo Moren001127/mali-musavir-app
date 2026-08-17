@@ -504,6 +504,7 @@ function OfisNakitDurumu() {
   const bankada = liste.reduce((t, h) => t + h.bakiye, 0);
   const kmh = liste.reduce((t, h) => t + h.kmhBorcu, 0);
   const hesapsiz = ofis.data?.hesabiSecilmemisTahsilat;
+  const arsiv = ofis.data?.arsivTahsilat;
 
   return (
     <>
@@ -512,7 +513,8 @@ function OfisNakitDurumu() {
           className="mt-5 rounded-2xl px-4 py-3 text-[13.5px] font-medium"
           style={{ background: 'rgba(230,200,120,0.06)', border: '1px solid rgba(230,200,120,0.22)', color: GOLD }}
         >
-          {hesapsiz.adet} eski tahsilatın hesabı atanmamış. Toplam {fmt(hesapsiz.toplam)} ₺ bakiyeye dahil edilmedi.
+          {hesapsiz.adet} tahsilatta banka/kasa hesabı seçilmemiş ({fmt(hesapsiz.toplam)} ₺). Paranın hangi
+          cüzdana girdiği bilinmediği için bakiyeye eklenmedi — Tahsilat ekranından hesabı seçilince düzelir.
         </div>
       )}
 
@@ -522,6 +524,13 @@ function OfisNakitDurumu() {
         <KpiCard label="Kasada" value={fmt(kasaBakiye)} />
         <KpiCard label="KMH Borcu" value={fmt(kmh)} color={kmh > 0 ? DEBT : TEXT} />
       </div>
+
+      {!!arsiv?.adet && (
+        <p className="mt-3 text-[12px] leading-relaxed" style={{ color: SOFT }}>
+          Ayrıca Hattat'tan aktarılan {arsiv.adet} eski tahsilat ({fmt(arsiv.toplam)} ₺) arşivdir: hesap bilgisi
+          taşımaz ve bakiyeye girmez. Açılış bakiyeniz o dönemi zaten içerdiği için ikinci kez sayılmaması gerekir.
+        </p>
+      )}
 
       {liste.length === 0 ? (
         <div className="mt-5"><EmptyState label="Kişisel Bütçe'de banka hesabı tanımlı değil." /></div>
