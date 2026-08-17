@@ -303,7 +303,9 @@ const PROVIDER_DEFAULT_BASE_URL: Record<string, string> = {
   IZIBIZ: 'https://efaturaws.izibiz.com.tr/EInvoiceWS',
   FORIBA: 'https://api.fitbulut.com/servis',
   PARASUT: 'https://api.parasut.com/v4',
-  MIKRO: 'https://apidocs.mikro.com.tr',
+  // ⚠️ ESKİDEN 'https://apidocs.mikro.com.tr' YAZIYORDU — orası DOKÜMAN sitesi, API DEĞİL; bu yüzden
+  //   Mikro hiç çalışmadı, genel REST denemesine düşüp hata veriyordu. Doğrusu Firmbox web servisi.
+  MIKRO: 'https://firma.myefatura.com.tr/EFatura/Firmbox/Firmbox.asmx',
   ELOGO: 'https://pb.elogo.com.tr/postboxservice.svc',
   LOGO_ISBASI: 'https://api.isbasi.com',
   KOLAYSOFT: 'https://efatura.kolaysoft.com.tr',
@@ -317,7 +319,7 @@ export const PROVIDER_AUTH_HINTS: Record<string, string> = {
   IZIBIZ: "Izibiz kullanici ve sifre, opsiyonel test/canli URL.",
   FORIBA: "Sovos Foriba bulut API icin kullanici ve sifre. URL Sovos tarafindan verilir.",
   PARASUT: "Parasut OAuth2: client_id (apiKey), client_secret (apiSecret), kullanici, sifre ve Firma No gerekir.",
-  MIKRO: "Mikro API anahtari ile baglanir. apidestek@mikro.com.tr adresinden anahtar talep edin.",
+  MIKRO: "Mikro (e-Mikro / Mikrogrup e-Portal): e-Portal'a girdiğiniz e-posta ve parolayı yazın. Servis adresi otomatik dolar (Firmbox). Giriş 'yetkiniz yok' derse Mikro'dan web servis erişimi açtırılması gerekir.",
   ELOGO: "eLogo web servis: Kullanıcı adı = eLogo panelindeki WEB SERVİS KULLANICI KODU (örn 3961368714), Şifre = web servis şifresi. Servis adresi otomatik (pb.elogo.com.tr). SMS gitmez.",
   LOGO_ISBASI: "Logo Isbasi API anahtari. developers.isbasi.com adresinden alin.",
   KOLAYSOFT: "Kolaysoft kullanici ve sifresi. Servis URL hesabiniza ozeldir.",
@@ -327,6 +329,8 @@ export const PROVIDER_AUTH_HINTS: Record<string, string> = {
 };
 
 const I2I_SOAP_PROVIDERS = new Set(['IZIBIZ', 'FORIBA']);
+/** Mikro özel entegratör (e-Mikro) posta kutusu servisi — Mikrogrup e-Portal'ın arka ucu. */
+const MIKRO_FIRMBOX_URL = 'https://firma.myefatura.com.tr/EFatura/Firmbox/Firmbox.asmx';
 const GOODS_ACCOUNT_PREFIXES = ['150', '151', '152', '153', '157'];
 const EXPENSE_ACCOUNT_PREFIXES = ['7'];
 const SALES_ACCOUNT_PREFIXES = ['600', '601', '602'];
@@ -6487,6 +6491,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       if (!cfg.apiKey && !(cfg.username && cfg.password)) return 'Turkcell API anahtarı veya kullanıcı+şifre gerekli';
       return null;
     }
+    // Mikro (e-Mikro / e-Portal) Firmbox: e-posta + parola yeter; servis adresi varsayılandan gelir.
+    if (cfg.provider === 'MIKRO') {
+      if (!cfg.username || !cfg.password) return 'Mikro e-Portal kullanıcı adı (e-posta) ve parolası gerekli';
+      return null;
+    }
     // eLogo posta kutusu web servisi: web servis kullanıcı kodu + şifresi yeter; servis adresi varsayılandan.
     if (cfg.provider === 'ELOGO') {
       if (!cfg.username || !cfg.password) return 'eLogo web servis kullanıcı adı (kod) ve şifresi gerekli';
@@ -6643,6 +6652,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     if (cfg.provider === 'PARASUT') return this.fetchParasutInvoices(cfg, opts);
     if (cfg.provider === 'TURKCELL') return this.fetchTurkcellInvoices(cfg, opts);
     if (cfg.provider === 'ELOGO') return this.fetchElogoInvoices(cfg, opts);
+    if (cfg.provider === 'MIKRO') return this.fetchMikroInvoices(cfg, opts);
     return this.fetchGenericRestInvoices(cfg, opts);
   }
 
@@ -9400,6 +9410,150 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       cur.setUTCDate(cur.getUTCDate() + 1);
     }
     return out;
+  }
+
+  /**
+   * MİKRO özel entegratör — "Firmbox" web servisi (e-Mikro; Mikrogrup e-Portal'ın arka ucu).
+   * Adres: https://firma.myefatura.com.tr/EFatura/Firmbox/Firmbox.asmx — Mikro'nun kendi destek
+   *   sayfası (buluo.mikro.com.tr) firewall izin listesinde bu adresi veriyor (443/4443).
+   * ⚠️ ASMX SOAP 1.1 ÖZELLİĞİ: SOAPAction metodun ADIdır ("login"), tam URI DEĞİL; parametreler
+   *   SARMALAYICI ELEMAN OLMADAN doğrudan Body altında durur ve her biri kendi
+   *   xmlns="http://tempuri.org/" bildirimini taşır. (Servisin kendi örnek zarfından birebir.)
+   * Akış: login → sessionId → getInvoiceFromDate | getEArchiveFromDate → her belge için
+   *   getInvoiceData (binaryData = base64, zip olabilir) → UBL XML.
+   * YÖN: itemPosition = Incoming (ALIŞ/gelen) | Submitted (SATIŞ/giden).
+   */
+  private async fetchMikroInvoices(
+    cfg: RuntimeIntegrationConfig,
+    opts: {
+      taxpayer: any;
+      direction: 'ALIS' | 'SATIS';
+      period: { donem: string; startDate: string; endDate: string };
+      limit: number;
+      channel?: string;
+    },
+  ): Promise<ProviderInvoicePayload[]> {
+    if (!cfg.username || !cfg.password) {
+      throw new Error('Mikro (e-Portal) kullanıcı adı ve şifresi gerekli');
+    }
+    let endpoint = String(cfg.baseUrl || '').trim();
+    if (!/Firmbox\.asmx/i.test(endpoint)) endpoint = MIKRO_FIRMBOX_URL;
+
+    const sessionId = await this.mikroLogin(endpoint, cfg.username, cfg.password);
+
+    try {
+      const channel = String(opts.channel || (opts.direction === 'SATIS' ? 'OUT_EFATURA' : 'IN_EFATURA')).toUpperCase();
+      const isEarsiv = channel === 'OUT_EARSIV';
+      // e-Arşiv YALNIZ giden olur; e-Fatura'da kanal yönü belirler.
+      const itemPosition = (isEarsiv || channel === 'OUT_EFATURA') ? 'Submitted' : 'Incoming';
+      const method = isEarsiv ? 'getEArchiveFromDate' : 'getInvoiceFromDate';
+      const criteriaType = isEarsiv ? 'ctEArchiveInvoiceDate' : 'ctInvoiceDate';
+
+      // eLogo'daki kural burada da geçerli: dönem fatura tarihiyle süzülür ama SORGU penceresi
+      //   bugüne genişletilir (ay sonunda kesilip sonraki ay entegratöre düşen fatura kaçmasın).
+      const faturaStart = String(opts.period.startDate).slice(0, 10);
+      const faturaEnd = String(opts.period.endDate).slice(0, 10);
+      const bugun = new Date().toISOString().slice(0, 10);
+      const sorguEnd = bugun > faturaEnd ? bugun : faturaEnd;
+
+      const ns = ' xmlns="http://tempuri.org/"';
+      const searchCriteria =
+        `<searchCriteria${ns}>` +
+        `<IsCustomDetailQueried>false</IsCustomDetailQueried>` +
+        `<CriteriaType>${criteriaType}</CriteriaType>` +
+        `<IsTokenGenerated>false</IsTokenGenerated>` +
+        `</searchCriteria>`;
+
+      const listBody =
+        `<sessionId${ns}>${this.xmlEscape(sessionId)}</sessionId>` +
+        `<itemPosition${ns}>${itemPosition}</itemPosition>` +
+        `<firstDate${ns}>${faturaStart}T00:00:00</firstDate>` +
+        `<lastDate${ns}>${sorguEnd}T23:59:59</lastDate>` +
+        searchCriteria;
+      const listResp = await this.soapPost(endpoint, method, listBody);
+
+      // Liste yanıtı InvoiceDataInfo dizisi; belge kimliği <Id>. UBL XML listede YOK → getInvoiceData.
+      const ids = (listResp.match(/<InvoiceDataInfo\b[\s\S]*?<\/InvoiceDataInfo>/gi) || [])
+        .map((blok) => this.tagText(blok, 'Id') || '')
+        .map((s) => String(s).trim())
+        .filter(Boolean);
+
+      const ublIssueYmd = (x: string) => {
+        const m = x.match(/<cbc:IssueDate>\s*([0-9]{4}-[0-9]{2}-[0-9]{2})/i) || x.match(/<IssueDate>\s*([0-9]{4}-[0-9]{2}-[0-9]{2})/i);
+        return m ? m[1] : '';
+      };
+
+      const payloads: ProviderInvoicePayload[] = [];
+      const seen = new Set<string>();
+      for (const id of ids) {
+        if (payloads.length >= opts.limit) break;
+        if (seen.has(id)) continue;
+        seen.add(id);
+        let xml: string | null = null;
+        try {
+          const dataBody =
+            `<sessionId${ns}>${this.xmlEscape(sessionId)}</sessionId>` +
+            `<invoiceData${ns}>` +
+            `<InvoiceHeaderDataInfo>` +
+            `<Id>${this.xmlEscape(id)}</Id>` +
+            `<ItemPosition>${itemPosition}</ItemPosition>` +
+            `</InvoiceHeaderDataInfo>` +
+            `</invoiceData>`;
+          const dataResp = await this.soapPost(endpoint, 'getInvoiceData', dataBody);
+          const b64 = this.tagText(dataResp, 'binaryData');
+          // binaryData zip ya da düz XML olabilir — eLogo'daki çözücü ikisini de kaldırır.
+          if (b64) xml = await this.elogoUnzipXml(Buffer.from(b64, 'base64'));
+        } catch (e: any) {
+          this.logger.warn(`Mikro getInvoiceData ${id} hata: ${e?.message}`);
+        }
+        if (!xml || !xml.includes('<')) continue;
+        const iss = ublIssueYmd(xml);
+        if (iss && (iss < faturaStart || iss > faturaEnd)) continue; // sorgu penceresi geniş → döneme süz
+        payloads.push({ externalId: `mikro:${id}`, originalName: `${id}.xml`, xml });
+      }
+      return payloads;
+    } catch (err: any) {
+      // Oturum düştüyse önbelleği temizle → sonraki çekim yeniden giriş yapsın.
+      if (/login|session|oturum|expired|yetki/i.test(String(err?.message || ''))) {
+        FaturaMuhasebelestirmeService.mikroSessions.delete(`${endpoint}|${cfg.username}`);
+      }
+      throw err;
+    }
+  }
+
+  private static readonly mikroSessions = new Map<string, { sid: string; ts: number }>();
+
+  /** Mikro Firmbox oturumu — kullanıcı bazında önbellekli (~8 dk); her çekimde yeniden giriş yapıp
+   *  hesabı hatalı-giriş kilidine sokmamak için sessionId tekrar kullanılır. */
+  private async mikroLogin(endpoint: string, username: string, password: string): Promise<string> {
+    const key = `${endpoint}|${username}`;
+    const cached = FaturaMuhasebelestirmeService.mikroSessions.get(key);
+    if (cached && Date.now() - cached.ts < 8 * 60 * 1000) return cached.sid;
+    const ns = ' xmlns="http://tempuri.org/"';
+    const loginBody =
+      `<userName${ns}>${this.xmlEscape(username)}</userName>` +
+      `<password${ns}>${this.xmlEscape(password)}</password>` +
+      `<version${ns}>1.0</version>` +
+      // isOnlySelf=false → müşavirin yetkili olduğu tüm posta kutuları (tek firmaya kilitleme).
+      `<isOnlySelf${ns}>false</isOnlySelf>`;
+    // Mikro hatalı kimlikte SOAP Fault döner ve mesajı JENERİK olabilir ("Sistem hatası", kod 2005) →
+    //   soapPost bunu ham haliyle fırlatıyordu, kullanıcı "bizde bir şey bozuk" sanıyordu. Anlamlı sar.
+    let resp: string;
+    try {
+      resp = await this.soapPost(endpoint, 'login', loginBody);
+    } catch (e: any) {
+      const ham = String(e?.message || '').trim();
+      throw new Error(
+        `Mikro girişi reddedildi (${ham || 'sebep bildirilmedi'}). ` +
+        `e-Portal e-posta/parolanızı kontrol edin; doğruysa Mikro'dan bu hesaba web servis erişimi açtırılması gerekir.`,
+      );
+    }
+    const sid = String(this.tagText(resp, 'loginResult') || '').trim();
+    if (!sid) {
+      throw new Error('Mikro girişi başarısız (kullanıcı adı/şifre): ' + (this.tagText(resp, 'faultstring') || 'oturum kimliği alınamadı'));
+    }
+    FaturaMuhasebelestirmeService.mikroSessions.set(key, { sid, ts: Date.now() });
+    return sid;
   }
 
   private async fetchGenericRestInvoices(
