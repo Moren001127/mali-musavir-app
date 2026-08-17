@@ -1785,19 +1785,19 @@ ${rows}
   }
 
   /**
-   * ARŞİV MODU — ofis gelir/gider takibi Kişisel Bütçe'ye taşındı (2026-08-18).
+   * KAPALI — ofis gelir/gider takibi Kişisel Bütçe'ye taşındı (2026-08-18).
    *
-   * Cari Kasa'nın bütçe ekranları geçmişi göstermeye devam eder ama YENİ KAYIT
-   * kabul etmez: aynı gideri iki ekrandan girebilmek karışıklığın kendisiydi.
-   * Yanlış girilmiş eski bir satır hâlâ silinebilir — arşivi düzeltmek kapalı
-   * değil, arşive eklemek kapalı.
+   * office_budget_* tabloları hiç kullanılmamıştı (canlıda 0 satır); Cari Kasa
+   * ekranları artık Kişisel Bütçe'yi CANLI okuyor, kendi tablosuna yazmıyor.
+   * Uçlar 400 döner ki yarın bir ekran yanlışlıkla buraya yazmaya kalkarsa
+   * sessizce ikinci bir gerçek kaynak doğmasın.
    */
   // Dönüş tipi bilerek `void`: `never` yazılırsa TypeScript metodun geri kalanını
   // ulaşılmaz sayıp `this`i daraltıyor ve gövde derlenmiyor. Uygulama kodu
   // yerinde duruyor ki arşiv kararı geri alınmak istenirse tek satır yeter.
   private butceArsivde(ne: string): void {
     throw new BadRequestException(
-      `${ne} artık Kişisel Bütçe'den girilir. Bu ekran geçmişi göstermek için açık; yeni kayıt kabul etmiyor.`,
+      `${ne} artık Kişisel Bütçe'den girilir. Cari Kasa bu rakamları yalnız gösterir, kaydetmez.`,
     );
   }
 

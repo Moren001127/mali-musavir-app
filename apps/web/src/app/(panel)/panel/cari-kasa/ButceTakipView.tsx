@@ -1,21 +1,20 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
 import Link from 'next/link';
+import { butceApi, pinBileti } from '@/lib/butce';
+import PinEkrani from '../butce/PinEkrani';
 import {
-  Archive,
-  ArrowRightLeft,
   BarChart3,
   Check,
-  Edit3,
+  ChevronLeft,
+  ChevronRight,
   Loader2,
+  Lock,
   Plus,
-  Power,
-  Save,
-  Trash2,
   X,
 } from 'lucide-react';
 
@@ -44,6 +43,8 @@ export type FinancialAccount = {
   openingDate: string;
   sortOrder?: number;
   isActive: boolean;
+  /** Kişisel Bütçe'deki karşılığı — doluysa bakiyenin tek sahibi orasıdır */
+  butceBankaHesapId?: string | null;
   currentBalance: number;
   monthInflow: number;
   monthOutflow: number;
@@ -52,112 +53,6 @@ export type FinancialAccount = {
   monthTransferIn: number;
   monthTransferOut: number;
   monthNet: number;
-};
-
-type BudgetCategory = {
-  id: string;
-  name: string;
-  type: 'GELIR' | 'GIDER';
-  color: string;
-  icon?: string | null;
-  sortOrder: number;
-  isActive: boolean;
-};
-
-type BudgetMonth = {
-  period: string;
-  label: string;
-  income: number;
-  expense: number;
-  net: number;
-  plannedIncome?: number;
-  plannedExpense?: number;
-  plannedNet?: number;
-  variance?: number;
-};
-
-type BudgetCategoryRow = {
-  categoryId: string;
-  name: string;
-  type: 'GELIR' | 'GIDER';
-  color: string;
-  isActive: boolean;
-  planned: number;
-  actual: number;
-  variance: number;
-  realizationPct: number;
-  annualActual: number;
-  annualPlanned: number;
-  months?: Array<{ period: string; label: string; actual: number; planned: number; variance: number }>;
-};
-
-type BudgetEntry = {
-  id: string;
-  source: 'MANUAL' | 'CARI_TAHSILAT' | string;
-  date: string;
-  period: string;
-  type: 'GELIR' | 'GIDER';
-  amount: number;
-  description?: string | null;
-  paymentMethod?: string | null;
-  documentNo?: string | null;
-  account?: { id: string; name: string; type: string; color: string } | null;
-  category?: { id: string; name: string; color: string; type: 'GELIR' | 'GIDER' } | null;
-};
-
-type BudgetSummary = {
-  year: number;
-  period: string;
-  categories: BudgetCategory[];
-  accounts?: FinancialAccount[];
-  months: BudgetMonth[];
-  categoryRows: BudgetCategoryRow[];
-  categoryMonthlyRows?: BudgetCategoryRow[];
-  entries: BudgetEntry[];
-  unassignedCollections?: { count: number; amount: number };
-  kpi: {
-    periodIncome: number;
-    periodExpense: number;
-    periodNet: number;
-    periodPlannedIncome: number;
-    periodPlannedExpense: number;
-    periodPlannedNet: number;
-    periodVariance: number;
-    annualIncome: number;
-    annualExpense: number;
-    annualNet: number;
-    annualPlannedIncome: number;
-    annualPlannedExpense: number;
-    annualPlannedNet: number;
-  };
-};
-
-type CashflowSummary = {
-  year: number;
-  period: string;
-  accounts: FinancialAccount[];
-  months: Array<{ period: string; label: string; income: number; expense: number; transferIn: number; transferOut: number; net: number }>;
-  recentEntries: BudgetEntry[];
-  transfers: Array<{
-    id: string;
-    date: string;
-    period: string;
-    amount: number;
-    description?: string | null;
-    documentNo?: string | null;
-    fromAccount: { id: string; name: string; type: string; color: string };
-    toAccount: { id: string; name: string; type: string; color: string };
-  }>;
-  kpi: {
-    totalBalance: number;
-    monthIncome: number;
-    monthExpense: number;
-    monthNet: number;
-    monthInflow: number;
-    monthOutflow: number;
-    unassignedCollectionsCount: number;
-    unassignedCollectionsAmount: number;
-  };
 };
 
 type Istatistik = {
@@ -237,49 +132,98 @@ const selectStyle: React.CSSProperties = { ...inputStyle, colorScheme: 'dark' };
 const cardline: React.CSSProperties = { border: `1px solid ${CARD_BORDER}`, background: CARD_BG };
 const panelStyle: React.CSSProperties = { background: PANEL, border: '1px solid rgba(255,255,255,0.07)' };
 
-function useBudgetSummary(year: number, period: string) {
-  return useQuery<BudgetSummary>({
-    queryKey: ['cari-budget-summary', year, period],
-    queryFn: () => api.get('/cari-kasa/budget/summary', { params: { year, period } }).then((r) => r.data),
-    refetchInterval: 60000,
-  });
-}
-
-function useCashflowSummary(year: number, period: string) {
-  return useQuery<CashflowSummary>({
-    queryKey: ['cari-cashflow-summary', year, period],
-    queryFn: () => api.get('/cari-kasa/cashflow-summary', { params: { year, period } }).then((r) => r.data),
-    refetchInterval: 45000,
-  });
-}
-
 // ===== Genel UI parçaları =====
 /**
- * ARŞİV BANDI — ofis gelir/gider takibi Kişisel Bütçe'ye taşındı (2026-08-18).
- *
- * Bu ekranlar geçmişi göstermeye devam ediyor ama yeni kayıt kabul etmiyor.
- * Rakamların kesim tarihinden sonrasını içermediği ekranda YAZILI olmalı;
- * yoksa eksik toplam doğru sanılır.
+ * Bu ekranların para rakamları Kişisel Bütçe'den okunur; buradan giriş yapılmaz.
+ * Not kısa tutuluyor — ekranın işi rakamı göstermek, kendini anlatmak değil.
  */
-function ArsivBandi() {
+function CanliNot() {
   return (
-    <div
-      className="mt-5 flex flex-wrap items-start gap-2.5 rounded-2xl px-4 py-3 text-[13px]"
-      style={{
-        background: 'linear-gradient(140deg, rgba(230,200,120,0.09), rgba(255,255,255,0.01) 60%)',
-        border: `1px solid ${GOLD}2e`,
-        color: TEXT,
-      }}
-    >
-      <Archive className="mt-[2px] h-4 w-4 shrink-0" style={{ color: GOLD }} />
-      <span className="min-w-0">
-        <strong style={{ color: GOLD }}>Arşiv görünümü.</strong> Ofis gelir/gider takibi{' '}
-        <Link href="/panel/butce" className="underline underline-offset-2" style={{ color: GOLD }}>
-          Kişisel Bütçe
-        </Link>{' '}
-        ekranına taşındı. Buradaki rakamlar taşınma tarihine kadarki kayıtları gösterir; yeni kayıt
-        eklenemez. Müşteri tahsilatı eskisi gibi Tahsilat ekranından girilmeye devam eder.
-      </span>
+    <p className="mt-4 text-[12.5px]" style={{ color: SOFT }}>
+      Rakamlar{' '}
+      <Link href="/panel/butce" className="underline underline-offset-2" style={{ color: GOLD }}>
+        Kişisel Bütçe
+      </Link>
+      'den canlı okunur; gelir/gider girişi oradan yapılır. Müşteri tahsilatı eskisi gibi Tahsilat
+      ekranından girilir.
+    </p>
+  );
+}
+
+/**
+ * Kişisel Bütçe'den okuyan blokların kapısı.
+ *
+ * Yetki ve PIN koruması /butce uçlarından MİRAS alınır — burada ikinci bir
+ * yetki mantığı yazılmaz. Yazılsaydı ikisi zamanla ayrışır ve biri gevşerdi.
+ * Ofis sahibi olmayan kullanıcı 404 alır; ekran bunu "yalnız ofis sahibi"
+ * diye gösterir, çünkü ofis gider tablosunda kira ve personel maaşı var.
+ */
+function ButceKapisi({ baslik, children }: { baslik?: string; children: React.ReactNode }) {
+  const [kilitAcik, setKilitAcik] = useState(false);
+
+  useEffect(() => {
+    setKilitAcik(!!pinBileti.al());
+    const kilitle = () => setKilitAcik(false);
+    window.addEventListener('butce-pin-gerekli', kilitle);
+    return () => window.removeEventListener('butce-pin-gerekli', kilitle);
+  }, []);
+
+  const erisim = useQuery({ queryKey: ['butce-erisim'], queryFn: butceApi.erisim, retry: false });
+
+  const sarmala = (icerik: React.ReactNode) => (
+    <div className="mt-7">
+      {baslik && (
+        <h2 className="mb-3 text-[13px] font-semibold uppercase tracking-wider" style={{ color: '#a1a1aa' }}>
+          {baslik}
+        </h2>
+      )}
+      {icerik}
+    </div>
+  );
+
+  if (erisim.isLoading) return sarmala(<LoadingPanel label="Yetki kontrol ediliyor..." />);
+
+  if (erisim.isError) {
+    return sarmala(
+      <div className="rounded-2xl px-5 py-6 text-center" style={cardline}>
+        <Lock className="mx-auto h-5 w-5" style={{ color: SOFT }} />
+        <div className="mt-2.5 text-[14px] font-semibold" style={{ color: TEXT }}>
+          Bu bilgi yalnız ofis sahibine görünür
+        </div>
+        <div className="mt-1 text-[12.5px]" style={{ color: SOFT }}>
+          Ofis gelir/gider tablosu kira ve personel bilgisi içerdiği için kapalıdır.
+        </div>
+      </div>,
+    );
+  }
+
+  if (!kilitAcik) {
+    return sarmala(
+      <div className="rounded-2xl px-5 py-5" style={cardline}>
+        <PinEkrani acildi={() => setKilitAcik(true)} />
+      </div>,
+    );
+  }
+
+  return sarmala(children);
+}
+
+/** Ay seçici — yıl+dönem ikilisine gerek yok, tek ay yeter. */
+function DonemSecici({ donem, onDonem }: { donem: string; onDonem: (d: string) => void }) {
+  const kaydir = (adim: number) => {
+    const [y, a] = donem.split('-').map(Number);
+    const d = new Date(y, a - 1 + adim, 1);
+    onDonem(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+  };
+  return (
+    <div className="flex items-center gap-1 rounded-xl px-1 py-1" style={{ border: `1px solid ${CARD_BORDER}` }}>
+      <button onClick={() => kaydir(-1)} className="rounded-lg p-1.5 transition hover:bg-white/[0.06]" style={{ color: SOFT }} title="Önceki ay">
+        <ChevronLeft className="h-4 w-4" />
+      </button>
+      <span className="px-2 text-[13px] font-medium tabular-nums" style={{ color: TEXT }}>{donem}</span>
+      <button onClick={() => kaydir(1)} className="rounded-lg p-1.5 transition hover:bg-white/[0.06]" style={{ color: SOFT }} title="Sonraki ay">
+        <ChevronRight className="h-4 w-4" />
+      </button>
     </div>
   );
 }
@@ -324,34 +268,6 @@ function ViewHeader({ icon: Icon, title, subtitle, actions }: {
         {actions && <div className="flex items-center gap-2 shrink-0 flex-wrap">{actions}</div>}
       </div>
     </header>
-  );
-}
-
-function PeriodSelect({ year, period, onYear, onPeriod }: {
-  year: number;
-  period: string;
-  onYear: (year: number) => void;
-  onPeriod: (period: string) => void;
-}) {
-  return (
-    <div className="inline-flex items-center gap-1.5">
-      <select
-        value={year}
-        onChange={(e) => onYear(Number(e.target.value))}
-        className="rounded-xl px-3 py-2 text-[13px] font-medium"
-        style={selectStyle}
-      >
-        {[year - 1, year, year + 1].map((y) => <option key={y} value={y} style={OPTION_STYLE}>{y}</option>)}
-      </select>
-      <select
-        value={period}
-        onChange={(e) => onPeriod(e.target.value)}
-        className="rounded-xl px-3 py-2 text-[13px] font-medium"
-        style={selectStyle}
-      >
-        {monthsOf(year).map((p) => <option key={p} value={p} style={OPTION_STYLE}>{p}</option>)}
-      </select>
-    </div>
   );
 }
 
@@ -406,19 +322,6 @@ function SecondaryBtn({ children, onClick, disabled }: { children: React.ReactNo
   );
 }
 
-function GoldBtn({ children, onClick, disabled }: { children: React.ReactNode; onClick?: () => void; disabled?: boolean }) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13.5px] font-semibold text-black transition disabled:opacity-60"
-      style={{ background: GOLD_GRAD }}
-    >
-      {children}
-    </button>
-  );
-}
-
 function LoadingPanel({ label = 'Hesaplanıyor...' }: { label?: string }) {
   return (
     <div className="py-16 text-center text-[14px] font-medium" style={{ color: SOFT }}>
@@ -466,31 +369,20 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
 }
 
 // ====================================================================
-// KASA / BANKA
+// KASA / BANKA — rakamlar Kişisel Bütçe'den CANLI okunur
 // ====================================================================
+
+/**
+ * Bu ekran para YAZMAZ, gösterir.
+ *
+ * Üst blok tahsilat hesapları: paranın hangi cüzdana girdiğini işaretlemek
+ * için kullanılır, herkese açıktır, bakiye tutmaz. Alt blok ofisin gerçek
+ * nakit durumu — Kişisel Bütçe'den canlı okunur ve yalnız ofis sahibine
+ * görünür (ofis gider tablosunda kira ve personel maaşı var).
+ */
 export function KasaBankaView() {
   const qc = useQueryClient();
-  const [year, setYear] = useState(() => new Date().getFullYear());
-  const [period, setPeriod] = useState(currentPeriod());
-  const [modal, setModal] = useState<null | 'entry' | 'transfer' | 'account'>(null);
-
-  const [entryForm, setEntryForm] = useState({
-    type: 'GIDER' as 'GELIR' | 'GIDER',
-    accountId: '',
-    categoryId: '',
-    date: today(),
-    amount: 0,
-    description: '',
-    paymentMethod: 'HAVALE',
-    documentNo: '',
-  });
-  const [transferForm, setTransferForm] = useState({
-    fromAccountId: '',
-    toAccountId: '',
-    date: today(),
-    amount: 0,
-    description: '',
-  });
+  const [modal, setModal] = useState<null | 'account'>(null);
   const [accountForm, setAccountForm] = useState({
     name: '',
     type: 'BANKA',
@@ -498,80 +390,12 @@ export function KasaBankaView() {
     openingDate: today(),
     color: '#d4b876',
   });
-  const [savingEntry, setSavingEntry] = useState(false);
-  const [savingTransfer, setSavingTransfer] = useState(false);
   const [savingAccount, setSavingAccount] = useState(false);
 
-  const { data, isLoading } = useCashflowSummary(year, period);
-  const { data: budget } = useBudgetSummary(year, period);
-  const accounts = data?.accounts || [];
-  const categories = useMemo(() => (budget?.categories || []).filter((c) => c.isActive), [budget?.categories]);
-  const entryCategories = useMemo(
-    () => categories.filter((c) => c.type === entryForm.type),
-    [categories, entryForm.type],
-  );
-
-  useEffect(() => {
-    if (accounts.length && !entryForm.accountId) setEntryForm((old) => ({ ...old, accountId: accounts[0].id }));
-    if (accounts.length && !transferForm.fromAccountId) setTransferForm((old) => ({ ...old, fromAccountId: accounts[0].id, toAccountId: accounts[1]?.id || accounts[0].id }));
-  }, [accounts, entryForm.accountId, transferForm.fromAccountId]);
-
-  useEffect(() => {
-    if (!entryCategories.length) return;
-    if (!entryCategories.some((c) => c.id === entryForm.categoryId)) {
-      setEntryForm((old) => ({ ...old, categoryId: entryCategories[0].id }));
-    }
-  }, [entryCategories, entryForm.categoryId]);
-
-  const invalidate = () => {
-    qc.invalidateQueries({ queryKey: ['cari-cashflow-summary'] });
-    qc.invalidateQueries({ queryKey: ['cari-budget-summary'] });
-    qc.invalidateQueries({ queryKey: ['cari-accounts'] });
-  };
-
-  const saveEntry = async () => {
-    if (!entryForm.accountId) { toast.error('Hesap seçin'); return; }
-    if (!entryForm.categoryId) { toast.error('Kategori seçin'); return; }
-    if (entryForm.amount <= 0) { toast.error('Tutar pozitif olmalı'); return; }
-    setSavingEntry(true);
-    try {
-      await api.post('/cari-kasa/budget/entries', {
-        accountId: entryForm.accountId,
-        categoryId: entryForm.categoryId,
-        date: entryForm.date,
-        amount: entryForm.amount,
-        description: entryForm.description || undefined,
-        paymentMethod: entryForm.paymentMethod || undefined,
-        documentNo: entryForm.documentNo || undefined,
-      });
-      toast.success('Hareket kaydedildi');
-      setEntryForm((old) => ({ ...old, amount: 0, description: '', documentNo: '' }));
-      invalidate();
-      setModal(null);
-    } catch (e: any) {
-      toast.error(e?.response?.data?.message || 'Kaydedilemedi');
-    } finally {
-      setSavingEntry(false);
-    }
-  };
-
-  const saveTransfer = async () => {
-    if (!transferForm.fromAccountId || !transferForm.toAccountId) { toast.error('Transfer hesaplarını seçin'); return; }
-    if (transferForm.fromAccountId === transferForm.toAccountId) { toast.error('İki farklı hesap seçin'); return; }
-    if (transferForm.amount <= 0) { toast.error('Tutar pozitif olmalı'); return; }
-    setSavingTransfer(true);
-    try {
-      await api.post('/cari-kasa/account-transfers', transferForm);
-      toast.success('Transfer işlendi');
-      setTransferForm((old) => ({ ...old, amount: 0, description: '' }));
-      invalidate();
-      setModal(null);
-    } catch (e: any) {
-      toast.error(e?.response?.data?.message || 'Transfer kaydedilemedi');
-    } finally {
-      setSavingTransfer(false);
-    }
-  };
+  const { data: accounts = [], isLoading } = useQuery<FinancialAccount[]>({
+    queryKey: ['cari-accounts'],
+    queryFn: () => api.get('/cari-kasa/accounts').then((r) => r.data),
+  });
 
   const saveAccount = async () => {
     if (!accountForm.name.trim()) { toast.error('Hesap adı girin'); return; }
@@ -579,9 +403,9 @@ export function KasaBankaView() {
     try {
       await api.post('/cari-kasa/accounts', accountForm);
       toast.success('Hesap eklendi');
-      setAccountForm((old) => ({ ...old, name: '', openingBalance: 0 }));
-      invalidate();
       setModal(null);
+      setAccountForm((old) => ({ ...old, name: '', openingBalance: 0 }));
+      qc.invalidateQueries({ queryKey: ['cari-accounts'] });
     } catch (e: any) {
       toast.error(e?.response?.data?.message || 'Hesap eklenemedi');
     } finally {
@@ -589,119 +413,75 @@ export function KasaBankaView() {
     }
   };
 
-  const deleteTransfer = async (id: string) => {
-    if (!confirm('Bu transfer kaydını silmek istiyor musunuz?')) return;
-    try {
-      await api.delete(`/cari-kasa/account-transfers/${id}`);
-      toast.success('Transfer silindi');
-      invalidate();
-    } catch (e: any) {
-      toast.error(e?.response?.data?.message || 'Silinemedi');
-    }
-  };
-
-  if (isLoading || !data) return <LoadingPanel />;
-
-  const kpi = data.kpi;
+  if (isLoading) return <LoadingPanel />;
 
   return (
     <div style={{ fontFamily: SANS }}>
       <ViewHeader
         icon={LandmarkIcon}
         title="Kasa & Banka"
-        subtitle={`${period} · ${accounts.length} hesap`}
-        actions={(
-          <>
-            <PeriodSelect year={year} period={period} onYear={(next) => { setYear(next); setPeriod(`${next}-${period.slice(5, 7)}`); }} onPeriod={setPeriod} />
-            {/* Hareket ve Transfer kaldırıldı: ofis gelir/gideri artık Kişisel
-                Bütçe'den girilir. Hesap ekleme duruyor — tahsilatın hangi cüzdana
-                girdiğini işaretlemek ve bütçe hesabına bağlamak için gerekli. */}
-            <SecondaryBtn onClick={() => setModal('account')}><Plus className="h-4 w-4" /> Hesap</SecondaryBtn>
-          </>
-        )}
+        subtitle={`${accounts.length} tahsilat hesabı · bakiyeler Kişisel Bütçe'den`}
+        actions={<SecondaryBtn onClick={() => setModal('account')}><Plus className="h-4 w-4" /> Hesap</SecondaryBtn>}
       />
 
-      <ArsivBandi />
+      <CanliNot />
 
-      {kpi.unassignedCollectionsCount > 0 && (
-        <div className="mt-5 rounded-2xl px-4 py-3 text-[13.5px] font-medium" style={{ background: 'rgba(230,200,120,0.06)', border: '1px solid rgba(230,200,120,0.22)', color: '#e6c878' }}>
-          {kpi.unassignedCollectionsCount} eski tahsilatın hesabı atanmamış. Toplam {fmt(kpi.unassignedCollectionsAmount)} ₺ kasa/banka bakiyesine dahil edilmedi.
-        </div>
-      )}
-
-      {/* KPI */}
-      <div className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <KpiCard label="Toplam Bakiye" value={fmt(kpi.totalBalance)} />
-        <KpiCard label="Bu Ay Giriş" value={fmt(kpi.monthIncome)} color={OK} />
-        <KpiCard label="Bu Ay Çıkış" value={fmt(kpi.monthExpense)} color={DEBT} />
-        <KpiCard label="Net" value={(kpi.monthNet >= 0 ? '+' : '') + fmt(kpi.monthNet)} color={kpi.monthNet >= 0 ? GOLD : DEBT} accent />
-      </div>
-
-      {/* HESAPLAR */}
-      <h2 className="mt-7 mb-3 text-[13px] font-semibold uppercase tracking-wider" style={{ color: '#a1a1aa' }}>Hesaplar</h2>
-      {accounts.length === 0 ? <EmptyState label="Henüz hesap yok. Sağ üstten Hesap ekleyin." /> : (
+      <h2 className="mt-7 mb-3 text-[13px] font-semibold uppercase tracking-wider" style={{ color: '#a1a1aa' }}>
+        Tahsilat hesapları
+      </h2>
+      {accounts.length === 0 ? (
+        <EmptyState label="Henüz hesap yok. Sağ üstten Hesap ekleyin." />
+      ) : (
         <div className="overflow-hidden rounded-2xl" style={{ border: `1px solid ${CARD_BORDER}` }}>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[680px] text-[14px]">
+            <table className="w-full min-w-[520px] text-[14px]">
               <thead>
                 <tr className="text-[11px] uppercase tracking-wider" style={{ color: SOFT }}>
                   <th className="px-5 py-3.5 text-left font-medium">Hesap</th>
                   <th className="px-3 py-3.5 text-left font-medium">Tür</th>
-                  <th className="px-3 py-3.5 text-right font-medium">Güncel Bakiye</th>
-                  <th className="px-3 py-3.5 text-right font-medium">Bu Ay Giriş</th>
-                  <th className="px-5 py-3.5 text-right font-medium">Bu Ay Çıkış</th>
+                  <th className="px-5 py-3.5 text-left font-medium">Bütçe bağlantısı</th>
                 </tr>
               </thead>
               <tbody>
-                {accounts.map((a) => {
-                  const typeLabel = a.type === 'NAKIT' ? 'Nakit' : a.type === 'BANKA' ? 'Banka' : a.type === 'KREDI_KARTI' ? 'Kredi Kartı' : a.type;
-                  return (
-                    <tr key={a.id} className="group" style={{ borderTop: `1px solid ${ROW_LINE}` }}>
-                      <td className="px-5 py-4">
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: a.color || GOLD }} />
-                          <span className="font-semibold truncate" style={{ color: '#fff' }}>{a.name}</span>
-                        </div>
-                      </td>
-                      <td className="px-3 py-4">
-                        <span className="inline-flex rounded-lg px-2.5 py-1 text-[12px] font-semibold" style={{ background: 'rgba(140,160,190,0.10)', color: '#aab4c4', border: '1px solid rgba(140,160,190,0.20)' }}>{typeLabel}</span>
-                      </td>
-                      <td className="px-3 py-4 text-right font-bold" style={{ fontVariantNumeric: 'tabular-nums', color: '#fff' }}>{fmt(a.currentBalance)} ₺</td>
-                      <td className="px-3 py-4 text-right font-semibold" style={{ fontVariantNumeric: 'tabular-nums', color: a.monthInflow ? OK : SOFT }}>{fmt(a.monthInflow)} ₺</td>
-                      <td className="px-5 py-4 text-right font-semibold" style={{ fontVariantNumeric: 'tabular-nums', color: a.monthOutflow ? DEBT : SOFT }}>{fmt(a.monthOutflow)} ₺</td>
-                    </tr>
-                  );
-                })}
+                {accounts.map((a) => (
+                  <tr key={a.id} style={{ borderTop: `1px solid ${ROW_LINE}` }}>
+                    <td className="px-5 py-3.5">
+                      <span className="inline-flex items-center gap-2.5">
+                        <span className="h-2.5 w-2.5 rounded-full" style={{ background: a.color || GOLD }} />
+                        <span style={{ color: TEXT }}>{a.name}</span>
+                      </span>
+                    </td>
+                    <td className="px-3 py-3.5" style={{ color: SOFT }}>{a.type}</td>
+                    <td className="px-5 py-3.5">
+                      {a.butceBankaHesapId ? (
+                        <span className="inline-flex items-center gap-1.5 text-[12.5px]" style={{ color: OK }}>
+                          <Check className="h-3.5 w-3.5" /> bağlı
+                        </span>
+                      ) : (
+                        <span className="text-[12.5px]" style={{ color: SOFT }}>bağlı değil</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
         </div>
       )}
+      <p className="mt-2.5 text-[12px]" style={{ color: SOFT }}>
+        Bağlantı{' '}
+        <Link href="/panel/butce" className="underline underline-offset-2" style={{ color: GOLD }}>
+          Kişisel Bütçe &gt; Hesaplar
+        </Link>{' '}
+        ekranından kurulur. Bağlanmayan hesaba giren tahsilat bakiyeye işlenmez.
+      </p>
 
-      {/* HAREKETLER */}
-      <h2 className="mt-7 mb-3 text-[13px] font-semibold uppercase tracking-wider" style={{ color: '#a1a1aa' }}>Bu ay hareketleri</h2>
-      <MovementTable entries={data.recentEntries} transfers={data.transfers} onDeleteTransfer={deleteTransfer} />
+      <ButceKapisi baslik="Ofis nakit durumu">
+        <OfisNakitDurumu />
+      </ButceKapisi>
 
-      {/* MODALLAR */}
-      {modal === 'entry' && (
-        <Modal title="Gelir / Gider Hareketi" onClose={() => setModal(null)}>
-          <EntryFormBody
-            form={entryForm}
-            setForm={setEntryForm}
-            accounts={accounts}
-            categories={entryCategories}
-            saving={savingEntry}
-            onSave={saveEntry}
-          />
-        </Modal>
-      )}
-      {modal === 'transfer' && (
-        <Modal title="Hesaplar Arası Transfer" onClose={() => setModal(null)}>
-          <TransferFormBody form={transferForm} setForm={setTransferForm} accounts={accounts} saving={savingTransfer} onSave={saveTransfer} />
-        </Modal>
-      )}
       {modal === 'account' && (
-        <Modal title="Yeni Hesap" onClose={() => setModal(null)}>
+        <Modal title="Hesap ekle" onClose={() => setModal(null)}>
           <AccountFormBody form={accountForm} setForm={setAccountForm} saving={savingAccount} onSave={saveAccount} />
         </Modal>
       )}
@@ -709,81 +489,82 @@ export function KasaBankaView() {
   );
 }
 
+/**
+ * Kişisel Bütçe'nin hesap bakiyeleri — burada yalnız GÖSTERİLİR.
+ * Aynı uçtan okunur ki iki ekran asla farklı sayı gösteremesin.
+ */
+function OfisNakitDurumu() {
+  const hesaplar = useQuery({ queryKey: ['butce-hesaplar'], queryFn: butceApi.hesaplar });
+  const kasa = useQuery({ queryKey: ['butce-kasa'], queryFn: () => butceApi.kasa(), staleTime: 30_000 });
+  const ofis = useQuery({ queryKey: ['butce-ofis-hesaplar'], queryFn: butceApi.ofisHesaplar, staleTime: 60_000 });
+
+  if (hesaplar.isLoading) return <LoadingPanel />;
+  const liste = (hesaplar.data || []).filter((h) => h.aktif);
+  const kasaBakiye = kasa.data?.bakiye || 0;
+  const bankada = liste.reduce((t, h) => t + h.bakiye, 0);
+  const kmh = liste.reduce((t, h) => t + h.kmhBorcu, 0);
+  const hesapsiz = ofis.data?.hesabiSecilmemisTahsilat;
+
+  return (
+    <>
+      {!!hesapsiz?.adet && (
+        <div
+          className="mt-5 rounded-2xl px-4 py-3 text-[13.5px] font-medium"
+          style={{ background: 'rgba(230,200,120,0.06)', border: '1px solid rgba(230,200,120,0.22)', color: GOLD }}
+        >
+          {hesapsiz.adet} eski tahsilatın hesabı atanmamış. Toplam {fmt(hesapsiz.toplam)} ₺ bakiyeye dahil edilmedi.
+        </div>
+      )}
+
+      <div className="mt-5 grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <KpiCard label="Toplam Nakit" value={fmt(bankada + kasaBakiye)} accent />
+        <KpiCard label="Bankada" value={fmt(bankada)} />
+        <KpiCard label="Kasada" value={fmt(kasaBakiye)} />
+        <KpiCard label="KMH Borcu" value={fmt(kmh)} color={kmh > 0 ? DEBT : TEXT} />
+      </div>
+
+      {liste.length === 0 ? (
+        <div className="mt-5"><EmptyState label="Kişisel Bütçe'de banka hesabı tanımlı değil." /></div>
+      ) : (
+        <div className="mt-5 overflow-hidden rounded-2xl" style={{ border: `1px solid ${CARD_BORDER}` }}>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[560px] text-[14px]">
+              <thead>
+                <tr className="text-[11px] uppercase tracking-wider" style={{ color: SOFT }}>
+                  <th className="px-5 py-3.5 text-left font-medium">Hesap</th>
+                  <th className="px-3 py-3.5 text-right font-medium">Bakiye</th>
+                  <th className="px-5 py-3.5 text-right font-medium">Kullanılabilir</th>
+                </tr>
+              </thead>
+              <tbody>
+                {liste.map((h) => (
+                  <tr key={h.id} style={{ borderTop: `1px solid ${ROW_LINE}` }}>
+                    <td className="px-5 py-3.5">
+                      <span className="inline-flex items-center gap-2.5">
+                        <span className="h-2.5 w-2.5 rounded-full" style={{ background: h.renk || GOLD }} />
+                        <span style={{ color: TEXT }}>{h.bankaAdi} · {h.ad}</span>
+                      </span>
+                    </td>
+                    <td className="px-3 py-3.5 text-right" style={{ color: h.bakiye < 0 ? DEBT : TEXT, fontVariantNumeric: 'tabular-nums' }}>
+                      {fmt(h.bakiye)} ₺
+                    </td>
+                    <td className="px-5 py-3.5 text-right" style={{ color: SOFT, fontVariantNumeric: 'tabular-nums' }}>
+                      {fmt(h.kullanilabilir)} ₺
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 function LandmarkIcon(props: React.ComponentProps<typeof BarChart3>) {
   // referans header ikonu yerine paket içi ikon kullan
   return <BarChart3 {...props} />;
-}
-
-function EntryFormBody({ form, setForm, accounts, categories, saving, onSave }: {
-  form: any;
-  setForm: React.Dispatch<React.SetStateAction<any>>;
-  accounts: FinancialAccount[];
-  categories: BudgetCategory[];
-  saving: boolean;
-  onSave: () => void;
-}) {
-  return (
-    <div className="space-y-3">
-      <div className="grid grid-cols-2 gap-2">
-        <button onClick={() => setForm((old: any) => ({ ...old, type: 'GELIR' }))} className="py-2.5 rounded-xl text-[14px] font-bold" style={{ background: form.type === 'GELIR' ? 'rgba(90,209,138,0.14)' : 'rgba(255,255,255,0.04)', color: form.type === 'GELIR' ? OK : SOFT, border: `1px solid ${form.type === 'GELIR' ? 'rgba(90,209,138,0.30)' : 'rgba(255,255,255,0.08)'}` }}>Gelir</button>
-        <button onClick={() => setForm((old: any) => ({ ...old, type: 'GIDER' }))} className="py-2.5 rounded-xl text-[14px] font-bold" style={{ background: form.type === 'GIDER' ? 'rgba(224,105,122,0.14)' : 'rgba(255,255,255,0.04)', color: form.type === 'GIDER' ? DEBT : SOFT, border: `1px solid ${form.type === 'GIDER' ? 'rgba(224,105,122,0.30)' : 'rgba(255,255,255,0.08)'}` }}>Gider</button>
-      </div>
-      <Field label="Hesap">
-        <select value={form.accountId} onChange={(e) => setForm((old: any) => ({ ...old, accountId: e.target.value }))} className="w-full px-3 py-2.5 rounded-xl" style={selectStyle}>
-          <option value="" style={OPTION_STYLE}>Hesap seçin</option>
-          {accounts.map((a) => <option key={a.id} value={a.id} style={OPTION_STYLE}>{a.name}</option>)}
-        </select>
-      </Field>
-      <Field label="Kategori">
-        <select value={form.categoryId} onChange={(e) => setForm((old: any) => ({ ...old, categoryId: e.target.value }))} className="w-full px-3 py-2.5 rounded-xl" style={selectStyle}>
-          <option value="" style={OPTION_STYLE}>Kategori seçin</option>
-          {categories.map((c) => <option key={c.id} value={c.id} style={OPTION_STYLE}>{c.name}</option>)}
-        </select>
-      </Field>
-      <div className="rounded-xl px-3 py-2.5 text-[12px] leading-relaxed" style={{ background: 'rgba(230,200,120,0.05)', border: '1px solid rgba(230,200,120,0.18)', color: '#cbae6e' }}>
-        Bu alan ofis gelir/gider hareketidir. Mükellef cari bakiyesine işlemek için Cari Liste içinden Tahsilat Ekle kullanılır.
-      </div>
-      <div className="grid grid-cols-2 gap-2">
-        <Field label="Tarih"><input type="date" value={form.date} onChange={(e) => setForm((old: any) => ({ ...old, date: e.target.value }))} className="w-full px-3 py-2.5 rounded-xl" style={inputStyle} /></Field>
-        <Field label="Tutar"><input type="number" step="0.01" value={form.amount} onChange={(e) => setForm((old: any) => ({ ...old, amount: Number(e.target.value) }))} className="w-full px-3 py-2.5 rounded-xl" style={{ ...inputStyle, fontVariantNumeric: 'tabular-nums' }} /></Field>
-      </div>
-      <Field label="Açıklama"><input value={form.description} onChange={(e) => setForm((old: any) => ({ ...old, description: e.target.value }))} className="w-full px-3 py-2.5 rounded-xl" style={inputStyle} /></Field>
-      <button onClick={onSave} disabled={saving} className="w-full py-2.5 rounded-xl text-[14px] font-bold text-black disabled:opacity-60" style={{ background: GOLD_GRAD }}>
-        {saving ? <Loader2 size={14} className="animate-spin inline" /> : <><Save size={14} className="inline mr-1" /> Kaydet</>}
-      </button>
-    </div>
-  );
-}
-
-function TransferFormBody({ form, setForm, accounts, saving, onSave }: {
-  form: any;
-  setForm: React.Dispatch<React.SetStateAction<any>>;
-  accounts: FinancialAccount[];
-  saving: boolean;
-  onSave: () => void;
-}) {
-  return (
-    <div className="space-y-3">
-      <Field label="Çıkış Hesabı">
-        <select value={form.fromAccountId} onChange={(e) => setForm((old: any) => ({ ...old, fromAccountId: e.target.value }))} className="w-full px-3 py-2.5 rounded-xl" style={selectStyle}>
-          {accounts.map((a) => <option key={a.id} value={a.id} style={OPTION_STYLE}>{a.name}</option>)}
-        </select>
-      </Field>
-      <Field label="Giriş Hesabı">
-        <select value={form.toAccountId} onChange={(e) => setForm((old: any) => ({ ...old, toAccountId: e.target.value }))} className="w-full px-3 py-2.5 rounded-xl" style={selectStyle}>
-          {accounts.map((a) => <option key={a.id} value={a.id} style={OPTION_STYLE}>{a.name}</option>)}
-        </select>
-      </Field>
-      <div className="grid grid-cols-2 gap-2">
-        <Field label="Tarih"><input type="date" value={form.date} onChange={(e) => setForm((old: any) => ({ ...old, date: e.target.value }))} className="w-full px-3 py-2.5 rounded-xl" style={inputStyle} /></Field>
-        <Field label="Tutar"><input type="number" step="0.01" value={form.amount} onChange={(e) => setForm((old: any) => ({ ...old, amount: Number(e.target.value) }))} className="w-full px-3 py-2.5 rounded-xl" style={{ ...inputStyle, fontVariantNumeric: 'tabular-nums' }} /></Field>
-      </div>
-      <Field label="Açıklama"><input value={form.description} onChange={(e) => setForm((old: any) => ({ ...old, description: e.target.value }))} className="w-full px-3 py-2.5 rounded-xl" style={inputStyle} /></Field>
-      <button onClick={onSave} disabled={saving} className="w-full py-2.5 rounded-xl text-[14px] font-bold disabled:opacity-60" style={{ background: 'rgba(255,255,255,0.05)', color: TEXT, border: '1px solid rgba(255,255,255,0.12)' }}>
-        {saving ? <Loader2 size={14} className="animate-spin inline" /> : <><ArrowRightLeft size={14} className="inline mr-1" /> Transferi İşle</>}
-      </button>
-    </div>
-  );
 }
 
 function AccountFormBody({ form, setForm, saving, onSave }: {
@@ -814,452 +595,117 @@ function AccountFormBody({ form, setForm, saving, onSave }: {
   );
 }
 
-function MovementTable({ entries, transfers, onDeleteTransfer }: {
-  entries: BudgetEntry[];
-  transfers: CashflowSummary['transfers'];
-  onDeleteTransfer: (id: string) => void;
-}) {
-  const rows = [
-    ...entries.map((e) => ({ ...e, rowType: 'ENTRY' as const })),
-    ...transfers.map((t) => ({ ...t, rowType: 'TRANSFER' as const, type: 'TRANSFER' as const, date: t.date })),
-  ].sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  if (!rows.length) {
-    return <EmptyState label="Bu ay hareket yok." />;
-  }
-  return (
-    <div className="overflow-hidden rounded-2xl" style={{ border: `1px solid ${CARD_BORDER}` }}>
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[720px] text-[14px]">
-          <thead>
-            <tr className="text-[11px] uppercase tracking-wider" style={{ color: SOFT }}>
-              <th className="px-5 py-3.5 text-left font-medium">Tarih</th>
-              <th className="px-3 py-3.5 text-left font-medium">Açıklama</th>
-              <th className="px-3 py-3.5 text-left font-medium">Hesap / Kategori</th>
-              <th className="px-3 py-3.5 text-left font-medium">Tür</th>
-              <th className="px-5 py-3.5 text-right font-medium">Tutar</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row: any) => {
-              const isTransfer = row.rowType === 'TRANSFER';
-              const isGelir = !isTransfer && row.type === 'GELIR';
-              const color = isTransfer ? GOLD : isGelir ? OK : DEBT;
-              const badge = isTransfer
-                ? { background: 'rgba(230,200,120,0.12)', color: '#e6c878', border: '1px solid rgba(230,200,120,0.22)' }
-                : isGelir
-                  ? { background: 'rgba(90,209,138,0.12)', color: '#6ee29c', border: '1px solid rgba(90,209,138,0.22)' }
-                  : { background: 'rgba(224,105,122,0.13)', color: '#eaa3ad', border: '1px solid rgba(224,105,122,0.22)' };
-              const label = isTransfer ? 'Transfer' : isGelir ? 'Gelir' : 'Gider';
-              return (
-                <tr key={`${row.rowType}-${row.id}`} style={{ borderTop: `1px solid ${ROW_LINE}` }}>
-                  <td className="px-5 py-4 whitespace-nowrap" style={{ color: '#a1a1aa', fontVariantNumeric: 'tabular-nums' }}>{new Date(row.date).toLocaleDateString('tr-TR')}</td>
-                  <td className="px-3 py-4 font-medium" style={{ color: TEXT }}>{row.description || '-'}</td>
-                  <td className="px-3 py-4" style={{ color: '#a1a1aa' }}>
-                    {isTransfer ? `${row.fromAccount?.name} → ${row.toAccount?.name}` : `${row.account?.name || 'Hesapsız'} / ${row.category?.name || 'Cari Tahsilat'}`}
-                  </td>
-                  <td className="px-3 py-4">
-                    <span className="inline-flex rounded-lg px-2.5 py-1 text-[12px] font-semibold" style={badge}>{label}</span>
-                  </td>
-                  <td className="px-5 py-4 text-right font-bold" style={{ fontVariantNumeric: 'tabular-nums', color }}>
-                    {isTransfer ? '' : isGelir ? '+' : '-'}{fmt(row.amount)} ₺
-                  </td>
-                  <td className="px-3 py-4 text-right">
-                    {isTransfer && (
-                      <button onClick={() => onDeleteTransfer(row.id)} className="p-1.5 rounded-lg" style={{ color: '#eaa3ad', background: 'rgba(224,105,122,0.10)' }} title="Transferi sil">
-                        <Trash2 size={13} />
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
 // ====================================================================
-// GELİR - GİDER TABLOSU
+// GELİR - GİDER — Kişisel Bütçe'nin ofis rakamları, CANLI ve salt okunur
 // ====================================================================
 export function GelirGiderTablosuView() {
-  const [year, setYear] = useState(() => new Date().getFullYear());
-  const [period, setPeriod] = useState(currentPeriod());
-  const { data, isLoading } = useBudgetSummary(year, period);
-  if (isLoading || !data) return <LoadingPanel />;
-
-  const rows = data.categoryMonthlyRows || data.categoryRows;
-  const incomeRows = rows.filter((r) => r.type === 'GELIR');
-  const expenseRows = rows.filter((r) => r.type === 'GIDER');
-  const kpi = data.kpi;
+  const [donem, setDonem] = useState(currentPeriod());
 
   return (
     <div style={{ fontFamily: SANS }}>
       <ViewHeader
         icon={BarChart3}
         title="Gelir-Gider"
-        subtitle={`${year} · ofis gelir-gider özeti`}
-        actions={<PeriodSelect year={year} period={period} onYear={(next) => { setYear(next); setPeriod(`${next}-${period.slice(5, 7)}`); }} onPeriod={setPeriod} />}
+        subtitle={`${donem} · ofis gelir-gider özeti`}
+        actions={<DonemSecici donem={donem} onDonem={setDonem} />}
       />
-
-      <ArsivBandi />
-
-      {/* KPI */}
-      <div className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <KpiCard label="Yıllık Gelir" value={fmt(kpi.annualIncome)} color={OK} />
-        <KpiCard label="Yıllık Gider" value={fmt(kpi.annualExpense)} color={DEBT} />
-        <KpiCard label="Net" value={(kpi.annualNet >= 0 ? '+' : '') + fmt(kpi.annualNet)} color={kpi.annualNet >= 0 ? GOLD : DEBT} accent />
-        <KpiCard label="Plan Farkı" value={(kpi.periodVariance >= 0 ? '+' : '') + fmt(kpi.periodVariance)} color={kpi.periodVariance >= 0 ? OK : DEBT} />
-      </div>
-
-      <IncomeExpenseTable title="Gelir kalemleri" dot={OK} rows={incomeRows} color={OK} />
-      <IncomeExpenseTable title="Gider kalemleri" dot={DEBT} rows={expenseRows} color={DEBT} />
-
-      <p className="mt-4 text-center text-[12px]" style={{ color: '#52525b' }}>
-        Net = gelir − gider · Plan farkı = gerçekleşen − planlanan
-      </p>
+      <CanliNot />
+      <ButceKapisi>
+        <OfisGelirGider donem={donem} />
+      </ButceKapisi>
     </div>
   );
 }
 
-function IncomeExpenseTable({ title, dot, rows, color }: { title: string; dot: string; rows: BudgetCategoryRow[]; color: string }) {
+function OfisGelirGider({ donem }: { donem: string }) {
+  const ozet = useQuery({
+    queryKey: ['butce-ozet', donem, 'OFIS'],
+    queryFn: () => butceApi.ozet(donem, 'OFIS'),
+  });
+
+  if (ozet.isLoading || !ozet.data) return <LoadingPanel />;
+  const o = ozet.data;
+  // Şahıs firmasında gelir TEK HAVUZ; ayrım yalnız giderde. Gösterilen kazanç
+  // vergi matrahına esas rakamdır: kişisel harcamalar bu hesaba girmez.
+  const kazanc = o.meslekiKazanc;
+  const giderler = (o.kategoriKirilim || []).filter((k) => k.defter === 'OFIS');
+  const trend = o.trend || [];
+  const enBuyuk = Math.max(...trend.map((t) => Math.max(t.gelir, t.gider)), 1);
+
   return (
-    <div className="mt-7">
-      <div className="mb-3 flex items-center gap-2.5">
-        <span className="h-2 w-2 rounded-full" style={{ background: dot }} />
-        <h2 className="text-[15px] font-semibold" style={{ color: '#fff' }}>{title}</h2>
-        <span className="text-[12px]" style={{ color: SOFT }}>· {rows.length} kalem</span>
+    <>
+      <div className="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <KpiCard label="Gelir" value={fmt(o.gelir)} color={OK} />
+        <KpiCard label="Ofis Gideri" value={fmt(o.meslekiGider)} color={DEBT} />
+        <KpiCard label="Kazanç" value={(kazanc >= 0 ? '+' : '') + fmt(kazanc)} color={kazanc >= 0 ? GOLD : DEBT} accent />
       </div>
-      {rows.length === 0 ? <EmptyState label="Bu türde kalem yok." /> : (
-        <div className="overflow-hidden rounded-2xl" style={{ border: `1px solid ${CARD_BORDER}` }}>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[480px] text-[14px]">
-              <thead>
-                <tr className="text-[11px] uppercase tracking-wider" style={{ color: SOFT }}>
-                  <th className="px-5 py-3.5 text-left font-medium">Kategori</th>
-                  <th className="px-3 py-3.5 text-right font-medium">Bu Ay</th>
-                  <th className="px-5 py-3.5 text-right font-medium">Yıl Toplam</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => (
-                  <tr key={r.categoryId} style={{ borderTop: `1px solid ${ROW_LINE}` }}>
-                    <td className="px-5 py-4">
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: r.color || dot }} />
-                        <span className="font-semibold truncate" style={{ color: '#fff' }}>{r.name}</span>
-                      </div>
-                    </td>
-                    <td className="px-3 py-4 text-right font-medium" style={{ fontVariantNumeric: 'tabular-nums', color: r.actual ? color : SOFT }}>{fmt(r.actual)} ₺</td>
-                    <td className="px-5 py-4 text-right font-bold" style={{ fontVariantNumeric: 'tabular-nums', color }}>{fmt(r.annualActual)} ₺</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+
+      <div className="mt-6 rounded-2xl px-5 sm:px-6 py-5" style={cardline}>
+        <div className="text-[14px] font-semibold" style={{ color: TEXT }}>Son 6 ay · gelir / gider</div>
+        <div className="mt-6 flex items-end justify-between gap-2 sm:gap-3" style={{ height: 170 }}>
+          {trend.map((m) => (
+            <div
+              key={m.donem}
+              className="flex h-full flex-1 items-end justify-center gap-[3px] sm:gap-1.5"
+              title={`${m.donem} · Gelir ${fmt(m.gelir)} ₺ · Gider ${fmt(m.gider)} ₺`}
+            >
+              <div className="w-full max-w-[14px]" style={{ height: `${Math.max(2, (m.gelir / enBuyuk) * 100)}%`, background: OK, borderRadius: '5px 5px 2px 2px' }} />
+              <div className="w-full max-w-[14px]" style={{ height: `${Math.max(2, (m.gider / enBuyuk) * 100)}%`, background: DEBT, borderRadius: '5px 5px 2px 2px' }} />
+            </div>
+          ))}
         </div>
-      )}
-    </div>
-  );
-}
+        <div className="mt-2.5 flex items-center justify-between gap-2 sm:gap-3 text-[11px]" style={{ color: SOFT }}>
+          {trend.map((m) => (
+            <div key={m.donem} className="flex-1 text-center" style={{ fontVariantNumeric: 'tabular-nums' }}>
+              {m.donem.slice(5, 7)}/{m.donem.slice(2, 4)}
+            </div>
+          ))}
+        </div>
+      </div>
 
-// ====================================================================
-// BÜTÇE PLANI
-// ====================================================================
-export function ButcePlanView() {
-  const qc = useQueryClient();
-  const [year, setYear] = useState(() => new Date().getFullYear());
-  const [period, setPeriod] = useState(currentPeriod());
-  const [planDraft, setPlanDraft] = useState<Record<string, string>>({});
-  const [categoryForm, setCategoryForm] = useState({ type: 'GIDER' as 'GELIR' | 'GIDER', name: '', color: '#e0697a' });
-  const [categoryDrafts, setCategoryDrafts] = useState<Record<string, { name: string; color: string; sortOrder: string; isActive: boolean }>>({});
-  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
-  const [savingPlan, setSavingPlan] = useState(false);
-  const [savingCategory, setSavingCategory] = useState(false);
-  const [savingCategoryId, setSavingCategoryId] = useState<string | null>(null);
-  const [showCategoriesModal, setShowCategoriesModal] = useState(false);
-  const { data, isLoading } = useBudgetSummary(year, period);
-  const categoriesById = useMemo(() => new Map((data?.categories || []).map((c) => [c.id, c])), [data?.categories]);
-
-  useEffect(() => {
-    if (!data) return;
-    const next: Record<string, string> = {};
-    for (const row of data.categoryRows) next[row.categoryId] = row.planned ? fmt(row.planned) : '';
-    setPlanDraft(next);
-  }, [data?.period, data?.categoryRows]);
-
-  useEffect(() => {
-    if (!data) return;
-    const next: Record<string, { name: string; color: string; sortOrder: string; isActive: boolean }> = {};
-    for (const category of data.categories) {
-      next[category.id] = {
-        name: category.name,
-        color: category.color || (category.type === 'GELIR' ? OK : DEBT),
-        sortOrder: String(category.sortOrder ?? 100),
-        isActive: category.isActive,
-      };
-    }
-    setCategoryDrafts(next);
-  }, [data?.categories]);
-
-  const invalidate = () => qc.invalidateQueries({ queryKey: ['cari-budget-summary'] });
-
-  const savePlans = async () => {
-    if (!data) return;
-    setSavingPlan(true);
-    try {
-      await api.put('/cari-kasa/budget/plans', {
-        period,
-        items: data.categoryRows
-          .filter((r) => r.isActive)
-          .map((r) => ({ categoryId: r.categoryId, plannedAmount: parseMoneyValue(planDraft[r.categoryId]) })),
-      });
-      toast.success('Bütçe planı güncellendi');
-      invalidate();
-    } catch (e: any) {
-      toast.error(e?.response?.data?.message || 'Plan kaydedilemedi');
-    } finally {
-      setSavingPlan(false);
-    }
-  };
-
-  const saveCategory = async () => {
-    if (!categoryForm.name.trim()) { toast.error('Kategori adı girin'); return; }
-    setSavingCategory(true);
-    try {
-      await api.post('/cari-kasa/budget/categories', categoryForm);
-      toast.success('Kategori eklendi');
-      setCategoryForm((old) => ({ ...old, name: '' }));
-      invalidate();
-    } catch (e: any) {
-      toast.error(e?.response?.data?.message || 'Kategori eklenemedi');
-    } finally {
-      setSavingCategory(false);
-    }
-  };
-
-  const saveCategoryEdit = async (row: BudgetCategoryRow) => {
-    const draft = categoryDrafts[row.categoryId];
-    if (!draft?.name.trim()) { toast.error('Kategori adı girin'); return; }
-    setSavingCategoryId(row.categoryId);
-    try {
-      await api.put(`/cari-kasa/budget/categories/${row.categoryId}`, {
-        name: draft.name.trim(),
-        color: draft.color,
-        sortOrder: Number(draft.sortOrder || 100),
-        isActive: draft.isActive,
-      });
-      toast.success('Kategori güncellendi');
-      setEditingCategoryId(null);
-      invalidate();
-    } catch (e: any) {
-      toast.error(e?.response?.data?.message || 'Kategori güncellenemedi');
-    } finally {
-      setSavingCategoryId(null);
-    }
-  };
-
-  const toggleCategoryActive = async (row: BudgetCategoryRow) => {
-    setSavingCategoryId(row.categoryId);
-    try {
-      if (row.isActive) await api.delete(`/cari-kasa/budget/categories/${row.categoryId}`);
-      else await api.put(`/cari-kasa/budget/categories/${row.categoryId}`, { isActive: true });
-      toast.success(row.isActive ? 'Kategori pasifleştirildi' : 'Kategori aktifleştirildi');
-      invalidate();
-    } catch (e: any) {
-      toast.error(e?.response?.data?.message || 'Kategori güncellenemedi');
-    } finally {
-      setSavingCategoryId(null);
-    }
-  };
-
-  if (isLoading || !data) return <LoadingPanel />;
-
-  const kpi = data.kpi;
-
-  return (
-    <div style={{ fontFamily: SANS }}>
-      <ViewHeader
-        icon={BarChart3}
-        title="Bütçe Planı"
-        subtitle={`${year} · plan / gerçekleşen`}
-        actions={(
-          <>
-            <PeriodSelect year={year} period={period} onYear={(next) => { setYear(next); setPeriod(`${next}-${period.slice(5, 7)}`); }} onPeriod={setPeriod} />
-            {/* "Planı Kaydet" kaldırıldı: plan da Kişisel Bütçe'ye taşındı.
-                Kategoriler duruyor — arşivdeki kalemlerin adı/rengi düzeltilebilsin. */}
-            <SecondaryBtn onClick={() => setShowCategoriesModal(true)}><Edit3 className="h-4 w-4" /> Kategoriler</SecondaryBtn>
-          </>
+      <div className="mt-7">
+        <div className="mb-3 flex items-center gap-2.5">
+          <span className="h-2 w-2 rounded-full" style={{ background: DEBT }} />
+          <h2 className="text-[15px] font-semibold" style={{ color: '#fff' }}>Ofis gider kalemleri</h2>
+          <span className="text-[12px]" style={{ color: SOFT }}>· {giderler.length} kalem</span>
+        </div>
+        {giderler.length === 0 ? (
+          <EmptyState label="Bu dönemde ofis gideri kaydı yok." />
+        ) : (
+          <div className="overflow-hidden rounded-2xl" style={{ border: `1px solid ${CARD_BORDER}` }}>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[420px] text-[14px]">
+                <thead>
+                  <tr className="text-[11px] uppercase tracking-wider" style={{ color: SOFT }}>
+                    <th className="px-5 py-3.5 text-left font-medium">Kalem</th>
+                    <th className="px-5 py-3.5 text-right font-medium">Tutar</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {giderler.map((k) => (
+                    <tr key={k.ad} style={{ borderTop: `1px solid ${ROW_LINE}` }}>
+                      <td className="px-5 py-3.5">
+                        <span className="inline-flex items-center gap-2.5">
+                          <span className="h-2.5 w-2.5 rounded-full" style={{ background: k.renk || DEBT }} />
+                          <span style={{ color: TEXT }}>{k.ad}</span>
+                        </span>
+                      </td>
+                      <td className="px-5 py-3.5 text-right" style={{ color: TEXT, fontVariantNumeric: 'tabular-nums' }}>
+                        {fmt(k.tutar)} ₺
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         )}
-      />
-
-      <ArsivBandi />
-
-      {/* KPI */}
-      <div className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <KpiCard label="Plan Gelir" value={fmt(kpi.periodPlannedIncome)} color="#7fd9a4" />
-        <KpiCard label="Gerçek Gelir" value={fmt(kpi.periodIncome)} color={OK} />
-        <KpiCard label="Plan Gider" value={fmt(kpi.periodPlannedExpense)} color="#e09aa6" />
-        <KpiCard label="Gerçek Gider" value={fmt(kpi.periodExpense)} color={DEBT} />
-      </div>
-
-      {/* PLAN TABLOSU */}
-      <div className="mt-6 overflow-hidden rounded-2xl" style={{ border: `1px solid ${CARD_BORDER}` }}>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[760px] text-[14px]">
-            <thead>
-              <tr className="text-[11px] uppercase tracking-wider" style={{ color: SOFT }}>
-                <th className="px-5 py-3.5 text-left font-medium">Kategori</th>
-                <th className="px-3 py-3.5 text-right font-medium">Plan</th>
-                <th className="px-3 py-3.5 text-right font-medium">Gerçekleşen</th>
-                <th className="px-3 py-3.5 text-right font-medium">Fark</th>
-                <th className="px-5 py-3.5 text-left font-medium w-[230px]">Oran</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.categoryRows.map((row) => {
-                const isGelir = row.type === 'GELIR';
-                const farkColor = row.variance === 0 ? '#9a9aa1' : row.variance >= 0 ? OK : DEBT;
-                const oran = row.realizationPct;
-                const barColor = oran <= 100 ? OK : isGelir ? OK : DEBT;
-                const tipBadge = isGelir
-                  ? { background: 'rgba(90,209,138,0.12)', color: '#6ee29c', border: '1px solid rgba(90,209,138,0.22)' }
-                  : { background: 'rgba(224,105,122,0.13)', color: '#eaa3ad', border: '1px solid rgba(224,105,122,0.22)' };
-                return (
-                  <tr key={row.categoryId} style={{ borderTop: `1px solid ${ROW_LINE}`, opacity: row.isActive ? 1 : 0.55 }}>
-                    <td className="px-5 py-4">
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: row.color || (isGelir ? OK : DEBT) }} />
-                        <span className="font-semibold truncate" style={{ color: '#fff' }}>{row.name}</span>
-                        <span className="inline-flex rounded-md px-2 py-0.5 text-[11px] font-semibold" style={tipBadge}>{isGelir ? 'gelir' : 'gider'}</span>
-                        {!row.isActive && <span className="rounded-md px-2 py-0.5 text-[10px] font-bold uppercase" style={{ background: 'rgba(255,255,255,0.06)', color: SOFT }}>pasif</span>}
-                      </div>
-                    </td>
-                    <td className="px-3 py-4 text-right">
-                      <PlanInput value={planDraft[row.categoryId] ?? ''} onChange={(v) => setPlanDraft((old) => ({ ...old, [row.categoryId]: v }))} />
-                    </td>
-                    <td className="px-3 py-4 text-right font-semibold" style={{ fontVariantNumeric: 'tabular-nums', color: '#fff' }}>{fmt(row.actual)} ₺</td>
-                    <td className="px-3 py-4 text-right font-semibold" style={{ fontVariantNumeric: 'tabular-nums', color: farkColor }}>{(row.variance >= 0 ? '+' : '') + fmt(row.variance)}</td>
-                    <td className="px-5 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="flex-1 overflow-hidden rounded-full" style={{ height: 6, background: 'rgba(255,255,255,0.07)' }}>
-                          <div className="h-full rounded-full" style={{ width: `${Math.min(oran, 100)}%`, background: barColor }} />
-                        </div>
-                        <span className="text-[12.5px] font-semibold w-12 text-right" style={{ color: '#a1a1aa', fontVariantNumeric: 'tabular-nums' }}>%{oran.toFixed(0)}</span>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
       </div>
 
       <p className="mt-4 text-center text-[12px]" style={{ color: '#52525b' }}>
-        Fark = gerçekleşen − plan · gider kaleminde plan aşımı <span style={{ color: DEBT }}>bordo</span>
+        Kazanç = gelir − ofis gideri · kişisel harcamalar bu hesaba girmez
       </p>
-
-      {/* KATEGORİLER MODALI */}
-      {showCategoriesModal && (
-        <Modal title="Kategoriler" onClose={() => setShowCategoriesModal(false)}>
-          <div className="space-y-3">
-            {/* Yeni kategori */}
-            <div className="rounded-xl p-3" style={{ border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.02)' }}>
-              <div className="text-[12.5px] font-semibold mb-2" style={{ color: TEXT }}>Yeni Kategori</div>
-              <div className="grid grid-cols-2 gap-2 mb-2">
-                <button onClick={() => setCategoryForm((old) => ({ ...old, type: 'GELIR', color: '#5ad18a' }))} className="py-2 rounded-lg text-[13px] font-bold" style={{ background: categoryForm.type === 'GELIR' ? 'rgba(90,209,138,0.14)' : 'rgba(255,255,255,0.04)', color: categoryForm.type === 'GELIR' ? OK : SOFT, border: `1px solid ${categoryForm.type === 'GELIR' ? 'rgba(90,209,138,0.30)' : 'rgba(255,255,255,0.08)'}` }}>Gelir</button>
-                <button onClick={() => setCategoryForm((old) => ({ ...old, type: 'GIDER', color: '#e0697a' }))} className="py-2 rounded-lg text-[13px] font-bold" style={{ background: categoryForm.type === 'GIDER' ? 'rgba(224,105,122,0.14)' : 'rgba(255,255,255,0.04)', color: categoryForm.type === 'GIDER' ? DEBT : SOFT, border: `1px solid ${categoryForm.type === 'GIDER' ? 'rgba(224,105,122,0.30)' : 'rgba(255,255,255,0.08)'}` }}>Gider</button>
-              </div>
-              <div className="grid grid-cols-[1fr_56px] gap-2">
-                <input value={categoryForm.name} onChange={(e) => setCategoryForm((old) => ({ ...old, name: e.target.value }))} placeholder="Kategori adı" className="w-full px-3 py-2 rounded-lg" style={inputStyle} />
-                <input type="color" value={categoryForm.color} onChange={(e) => setCategoryForm((old) => ({ ...old, color: e.target.value }))} className="h-[38px] w-full rounded-lg" style={{ ...inputStyle, padding: 4 }} />
-              </div>
-              <button onClick={saveCategory} disabled={savingCategory} className="mt-2 w-full py-2 rounded-lg text-[13px] font-bold disabled:opacity-60" style={{ background: 'rgba(230,200,120,0.14)', color: GOLD, border: '1px solid rgba(230,200,120,0.34)' }}>
-                {savingCategory ? <Loader2 size={13} className="animate-spin inline" /> : <><Plus size={13} className="inline mr-1" /> Kategori Ekle</>}
-              </button>
-            </div>
-
-            {/* Mevcut kategoriler */}
-            <div className="max-h-[360px] overflow-auto space-y-2 pr-1">
-              {data.categoryRows.map((row) => {
-                const category = categoriesById.get(row.categoryId);
-                const draft = categoryDrafts[row.categoryId] || {
-                  name: row.name,
-                  color: row.color || (row.type === 'GELIR' ? OK : DEBT),
-                  sortOrder: String(category?.sortOrder ?? 100),
-                  isActive: row.isActive,
-                };
-                const editing = editingCategoryId === row.categoryId;
-                const color = draft.color || (row.type === 'GELIR' ? OK : DEBT);
-                return (
-                  <div key={row.categoryId} className="rounded-xl p-3" style={{ border: `1px solid ${editing ? 'rgba(230,200,120,0.38)' : 'rgba(255,255,255,0.08)'}`, background: 'rgba(255,255,255,0.02)' }}>
-                    {editing ? (
-                      <div className="space-y-2">
-                        <div className="grid grid-cols-[1fr_56px] gap-2">
-                          <input value={draft.name} onChange={(e) => setCategoryDrafts((old) => ({ ...old, [row.categoryId]: { ...draft, name: e.target.value } }))} className="w-full px-3 py-2 rounded-lg" style={inputStyle} />
-                          <input type="color" value={color} onChange={(e) => setCategoryDrafts((old) => ({ ...old, [row.categoryId]: { ...draft, color: e.target.value } }))} className="h-[38px] w-full rounded-lg" style={{ ...inputStyle, padding: 4 }} />
-                        </div>
-                        <div className="grid grid-cols-[80px_1fr] gap-2">
-                          <input type="number" value={draft.sortOrder} onChange={(e) => setCategoryDrafts((old) => ({ ...old, [row.categoryId]: { ...draft, sortOrder: e.target.value } }))} className="w-full px-3 py-2 rounded-lg" style={{ ...inputStyle, fontVariantNumeric: 'tabular-nums' }} />
-                          <button onClick={() => setCategoryDrafts((old) => ({ ...old, [row.categoryId]: { ...draft, isActive: !draft.isActive } }))} className="rounded-lg px-3 py-2 text-[12.5px] font-bold" style={{ background: draft.isActive ? 'rgba(90,209,138,0.12)' : 'rgba(255,255,255,0.05)', color: draft.isActive ? OK : SOFT, border: '1px solid rgba(255,255,255,0.10)' }}>
-                            {draft.isActive ? 'Aktif' : 'Pasif'}
-                          </button>
-                        </div>
-                        <div className="grid grid-cols-2 gap-2">
-                          <button onClick={() => saveCategoryEdit(row)} disabled={savingCategoryId === row.categoryId} className="rounded-lg px-3 py-2 text-[12.5px] font-bold disabled:opacity-60" style={{ background: 'rgba(230,200,120,0.14)', color: GOLD, border: '1px solid rgba(230,200,120,0.34)' }}>
-                            {savingCategoryId === row.categoryId ? <Loader2 size={13} className="animate-spin inline" /> : <><Check size={13} className="inline mr-1" /> Kaydet</>}
-                          </button>
-                          <button onClick={() => setEditingCategoryId(null)} className="rounded-lg px-3 py-2 text-[12.5px] font-bold" style={{ background: 'rgba(255,255,255,0.05)', color: TEXT, border: '1px solid rgba(255,255,255,0.10)' }}>
-                            <X size={13} className="inline mr-1" /> Vazgeç
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: row.color || color }} />
-                            <span className="truncate text-[14px] font-semibold" style={{ color: row.isActive ? '#fff' : SOFT }}>{row.name}</span>
-                            <span className="rounded-md px-2 py-0.5 text-[10px] font-bold uppercase" style={{ background: row.type === 'GELIR' ? 'rgba(90,209,138,0.12)' : 'rgba(224,105,122,0.13)', color: row.type === 'GELIR' ? OK : DEBT }}>{row.type}</span>
-                          </div>
-                          <div className="mt-1 text-[11.5px]" style={{ color: SOFT }}>Sıra {category?.sortOrder ?? 100} · {row.isActive ? 'Aktif' : 'Pasif'}</div>
-                        </div>
-                        <div className="flex shrink-0 gap-1.5">
-                          <button onClick={() => setEditingCategoryId(row.categoryId)} className="rounded-lg p-2" style={{ color: GOLD, background: 'rgba(230,200,120,0.10)' }} title="Düzenle"><Edit3 size={14} /></button>
-                          <button onClick={() => toggleCategoryActive(row)} disabled={savingCategoryId === row.categoryId} className="rounded-lg p-2 disabled:opacity-50" style={{ color: row.isActive ? DEBT : OK, background: row.isActive ? 'rgba(224,105,122,0.10)' : 'rgba(90,209,138,0.10)' }} title={row.isActive ? 'Pasifleştir' : 'Aktifleştir'}>
-                            {savingCategoryId === row.categoryId ? <Loader2 size={14} className="animate-spin" /> : <Power size={14} />}
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </Modal>
-      )}
-    </div>
-  );
-}
-
-function PlanInput({ value, onChange }: { value: string; onChange: (value: string) => void }) {
-  return (
-    <div className="relative ml-auto w-[140px]">
-      <input
-        type="text"
-        inputMode="decimal"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onBlur={() => onChange(formatMoneyDraft(value))}
-        className="h-9 w-full rounded-lg py-1.5 pl-3 pr-8 text-right"
-        style={{ ...inputStyle, fontVariantNumeric: 'tabular-nums' }}
-      />
-      <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[12px] font-bold" style={{ color: SOFT }}>₺</span>
-    </div>
+    </>
   );
 }
 
