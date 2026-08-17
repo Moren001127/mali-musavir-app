@@ -88,7 +88,7 @@ export interface HesapHareket {
   kategori: string | null;
   defter: string | null;
   tutar: number;
-  kayitTuru: 'ISLEM' | 'ODEME' | 'TRANSFER';
+  kayitTuru: 'ISLEM' | 'ODEME' | 'TRANSFER' | 'CARI_TAHSILAT';
 }
 
 export interface AkisHareketOzet {

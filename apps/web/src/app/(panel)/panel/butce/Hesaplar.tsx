@@ -28,6 +28,8 @@ const KAYIT_TURU: Record<HesapHareket['kayitTuru'], { etiket: string; renk: stri
   ISLEM: { etiket: 'işlem', renk: MUTED },
   ODEME: { etiket: 'ödeme', renk: TURUNCU },
   TRANSFER: { etiket: 'aktarım', renk: MAVI },
+  // Cari Kasa'nın kaydı — burada yalnız okunur
+  CARI_TAHSILAT: { etiket: 'tahsilat', renk: MOR },
 };
 
 const bugun = () => new Date().toISOString().slice(0, 10);

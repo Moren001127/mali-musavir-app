@@ -633,7 +633,13 @@ export class ButceService {
     return harita;
   }
 
-  /** Hesap hareketleri: işlemler + o hesaptan yapılan borç/kart ödemeleri */
+  /**
+   * Hesap hareketleri: işlemler + o hesaptan yapılan borç/kart ödemeleri
+   * + o hesaba bağlı ofis hesaplarına giren müşteri tahsilatı.
+   *
+   * Tahsilat bakiyeye giriyorsa listede de görünmeli: aksi hâlde bakiye
+   * listeden toplanamaz ve "para nereden geldi" sorusu cevapsız kalır.
+   */
   async bankaHareketleri(k: Kimlik, hesapId: string, donem?: string) {
     await this.sahiplikDogrula('butceBankaHesap', k, hesapId);
     const islemWhere: any = { tenantId: k.tenantId, userId: k.userId, bankaHesapId: hesapId };
@@ -660,7 +666,22 @@ export class ButceService {
       }),
     ]);
 
+    const tahsilatlar = await this.cariTahsilatSatirlari(k, {
+      bankaHesapId: hesapId,
+      ...(donem ? { donem } : {}),
+    });
+
     return [
+      ...tahsilatlar.map((t: any) => ({
+        id: t.id,
+        tarih: t.tarih,
+        aciklama: `Müşteri tahsilatı — ${t.aciklama}`,
+        kategori: t.kategori?.ad || null,
+        // Gelir tek havuz: defter yalnız giderde anlamlı
+        defter: null,
+        tutar: t.tutar,
+        kayitTuru: 'CARI_TAHSILAT',
+      })),
       ...islemler.map((i: any) => ({
         id: i.id,
         tarih: i.tarih,
