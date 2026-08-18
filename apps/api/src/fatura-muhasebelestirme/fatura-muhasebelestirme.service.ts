@@ -305,7 +305,9 @@ const PROVIDER_DEFAULT_BASE_URL: Record<string, string> = {
   PARASUT: 'https://api.parasut.com/v4',
   // ⚠️ ESKİDEN 'https://apidocs.mikro.com.tr' YAZIYORDU — orası DOKÜMAN sitesi, API DEĞİL; bu yüzden
   //   Mikro hiç çalışmadı, genel REST denemesine düşüp hata veriyordu. Doğrusu Firmbox web servisi.
-  MIKRO: 'https://firma.myefatura.com.tr/EFatura/Firmbox/Firmbox.asmx',
+  // VARSAYILAN = e-PORTAL. (Kısa süre Firmbox yazıldı ama o altyapı bu hesapları tanımıyor: 2005 =
+  //   "kullanıcı bilgisi sistemde bulunamadı". Firmbox'a düşmek için baseUrl'e AÇIKÇA Firmbox.asmx yazılmalı.)
+  MIKRO: 'https://eportal.mikrogrup.com',
   ELOGO: 'https://pb.elogo.com.tr/postboxservice.svc',
   LOGO_ISBASI: 'https://api.isbasi.com',
   KOLAYSOFT: 'https://efatura.kolaysoft.com.tr',
