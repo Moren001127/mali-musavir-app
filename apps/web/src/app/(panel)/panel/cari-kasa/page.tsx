@@ -290,33 +290,43 @@ export default function CariKasaPage() {
 
 // ==================== BİLEŞENLER ====================
 
+/**
+ * Kompakt gösterge. Eskiden 30px+ rakamlarla dört devasa kart vardı ve ekranın
+ * üçte birini kaplıyordu; asıl iş olan defter tablosu aşağı itiliyordu.
+ * Rakam okunur kalsın ama sayfayı yönetmesin.
+ */
 function MetricCard({ label, value, text, valueColor, debt }: {
   label: string;
-  value?: number;
+  value?: number | string | null;
   text?: string;
   valueColor?: string;
   debt?: boolean;
 }) {
   return (
     <div
-      className="rounded-2xl px-5 py-4"
-      style={debt
-        ? { background: 'rgba(224,105,122,0.07)', border: '1px solid rgba(224,105,122,0.22)' }
-        : { background: CARD_BG, border: `1px solid ${CARD_BORDER}` }}
+      className="relative overflow-hidden rounded-xl px-3.5 py-2.5"
+      style={{
+        background: debt
+          ? `linear-gradient(140deg, ${DEBT}12, rgba(255,255,255,0.012) 60%)`
+          : CARD_BG,
+        border: `1px solid ${debt ? `${DEBT}2e` : CARD_BORDER}`,
+      }}
     >
-      <div
-        className="text-[11px] font-medium uppercase tracking-wider"
-        style={{ color: debt ? 'rgba(234,163,173,0.85)' : MUTED }}
-      >
+      {debt && (
+        <span
+          className="pointer-events-none absolute -right-6 -top-8 h-20 w-20 rounded-full opacity-20"
+          style={{ background: `radial-gradient(circle, ${DEBT}, transparent 68%)` }}
+        />
+      )}
+      <div className="text-[10.5px] uppercase tracking-wider" style={{ color: MUTED }}>
         {label}
       </div>
-      {text !== undefined ? (
-        <div className="mt-2.5 text-[27px] font-bold tabular-nums" style={{ color: MUTED }}>{text}</div>
-      ) : (
-        <div className="mt-2.5 text-[27px] font-bold tabular-nums" style={{ color: valueColor || TEXT }}>
-          {fmt(value)} <span className="text-[16px] font-semibold" style={{ color: debt ? 'rgba(234,163,173,0.6)' : MUTED }}>₺</span>
-        </div>
-      )}
+      <div
+        className="mt-0.5 text-[17px] font-semibold leading-tight tabular-nums"
+        style={{ color: valueColor || TEXT }}
+      >
+        {text ?? `${fmt(value)} ₺`}
+      </div>
     </div>
   );
 }
@@ -470,6 +480,16 @@ function HizmetlerView({ hizmetler, onYeni, onEdit, onDelete }: {
   );
 }
 
+/**
+ * EKSTRE — hesap dökümü.
+ *
+ * Eskiden üstte dört devasa sayaç daha vardı; sayfa başlığındaki dördün
+ * tekrarıydı ve tabloyu ekranın dışına itiyordu. Artık dönem özeti tablonun
+ * ALTINDA, defterin kendi dilinde (borç toplamı / alacak toplamı / bakiye).
+ *
+ * Tablo ekrana sığar ve KENDİ İÇİNDE kayar: başlık satırı sabit kalır, uzun
+ * dönemde bile hangi sütuna baktığınız kaybolmaz.
+ */
 function EkstreView({ taxpayerId, taxpayers }: { taxpayerId: string; taxpayers: Taxpayer[] }) {
   const [baslangic, setBaslangic] = useState(() => {
     const d = new Date(); d.setMonth(d.getMonth() - 3); d.setDate(1);
@@ -516,103 +536,179 @@ function EkstreView({ taxpayerId, taxpayers }: { taxpayerId: string; taxpayers: 
 
   const dateInput: React.CSSProperties = {
     background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)',
-    color: TEXT, outline: 'none', borderRadius: 12, padding: '10px 12px', fontSize: 13,
+    color: TEXT, outline: 'none', borderRadius: 10, padding: '7px 10px', fontSize: 13,
   };
 
+  const satirlar = ekstre?.satirlar || [];
+
+  /** Hareket tipini okunur etikete çevirir — Hattat'ta ayrı sütun olarak var */
+  const turEtiket = (tip: string) =>
+    tip === 'TAHAKKUK' ? 'Hizmet' : tip === 'TAHSILAT' ? 'Tahsilat' : tip === 'IADE' ? 'İade' : 'Düzeltme';
+
   return (
-    <div className="space-y-4">
-      <div className="rounded-2xl px-5 py-4 flex items-end gap-3 flex-wrap" style={{ background: CARD_BG, border: `1px solid ${CARD_BORDER}` }}>
-        <div>
-          <label className="text-[11px] font-medium uppercase tracking-wider block mb-1.5" style={{ color: MUTED }}>Başlangıç</label>
+    <div
+      className="overflow-hidden rounded-2xl"
+      style={{ background: PANEL, border: `1px solid ${CARD_BORDER}` }}
+    >
+      {/* ARAÇ ÇUBUĞU — tarih aralığı ve çıktılar tek satırda */}
+      <div
+        className="flex flex-wrap items-end gap-2.5 px-4 py-3"
+        style={{ borderBottom: `1px solid ${CARD_BORDER}`, background: 'rgba(255,255,255,0.015)' }}
+      >
+        <label className="flex flex-col gap-1">
+          <span className="text-[10.5px] uppercase tracking-wider" style={{ color: MUTED }}>Başlangıç</span>
           <input type="date" value={baslangic} onChange={(e) => setBaslangic(e.target.value)} style={dateInput} />
-        </div>
-        <div>
-          <label className="text-[11px] font-medium uppercase tracking-wider block mb-1.5" style={{ color: MUTED }}>Bitiş</label>
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-[10.5px] uppercase tracking-wider" style={{ color: MUTED }}>Bitiş</span>
           <input type="date" value={bitis} onChange={(e) => setBitis(e.target.value)} style={dateInput} />
-        </div>
-        <button
-          onClick={acPdf}
-          className="ml-auto inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-medium transition"
-          style={{ border: '1px solid rgba(255,255,255,0.10)', background: 'rgba(255,255,255,0.02)', color: '#d4d4d8' }}
-        >
-          <FileText className="h-4 w-4" /> PDF yazdır
-        </button>
-        <button
-          onClick={indirXlsx}
-          className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-semibold"
-          style={{ background: 'linear-gradient(135deg,#ecd589,#d4b876)', color: '#000' }}
-        >
-          <Download className="h-4 w-4" /> Excel indir
-        </button>
+        </label>
+        <span className="ml-auto flex items-center gap-2">
+          <button
+            onClick={acPdf}
+            className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-[12.5px] font-medium transition hover:brightness-125"
+            style={{ border: '1px solid rgba(255,255,255,0.10)', background: 'rgba(255,255,255,0.02)', color: '#d4d4d8' }}
+          >
+            <FileText className="h-3.5 w-3.5" /> PDF
+          </button>
+          <button
+            onClick={indirXlsx}
+            className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-[12.5px] font-semibold"
+            style={{ background: 'linear-gradient(135deg,#ecd589,#d4b876)', color: '#000' }}
+          >
+            <Download className="h-3.5 w-3.5" /> Excel
+          </button>
+        </span>
       </div>
 
-      {isLoading && (
-        <div className="py-8 text-center text-[13px]" style={{ color: MUTED }}>
+      {isLoading ? (
+        <div className="py-12 text-center text-[13px]" style={{ color: MUTED }}>
           <Loader2 className="animate-spin inline mr-2 h-4 w-4" />Hesaplanıyor…
         </div>
-      )}
-
-      {ekstre && (
+      ) : !ekstre ? (
+        <div className="py-12 text-center text-[13px]" style={{ color: MUTED }}>Ekstre alınamadı.</div>
+      ) : (
         <>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <MetricCard label="Açılış Bakiye" value={ekstre.acilisBakiye} />
-            <MetricCard label="Dönem Tahakkuk" value={ekstre.toplamTahakkuk} />
-            <MetricCard label="Dönem Tahsilat" value={ekstre.toplamTahsilat} valueColor={OK} />
-            <MetricCard label="Kapanış Bakiye" value={ekstre.kapanisBakiye} valueColor={DEBT} debt />
-          </div>
+          {/* DEFTER — ekrana sığar, kendi içinde kayar, başlık satırı sabit */}
+          <div className="overflow-auto" style={{ maxHeight: 'calc(100vh - 420px)', minHeight: 260 }}>
+            <table className="w-full min-w-[720px] text-[13px]">
+              <thead className="sticky top-0 z-10">
+                <tr
+                  className="text-[10.5px] uppercase tracking-wider"
+                  style={{ color: MUTED, background: '#101013' }}
+                >
+                  <th className="px-4 py-2.5 text-left font-medium">Tarih</th>
+                  <th className="px-3 py-2.5 text-left font-medium">Tür</th>
+                  <th className="px-3 py-2.5 text-left font-medium">Açıklama</th>
+                  <th className="px-3 py-2.5 text-right font-medium">Borç</th>
+                  <th className="px-3 py-2.5 text-right font-medium">Alacak</th>
+                  <th className="px-4 py-2.5 text-right font-medium">Bakiye</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr style={{ background: 'rgba(255,255,255,0.022)' }}>
+                  <td className="px-4 py-2.5 font-semibold" colSpan={5} style={{ color: TEXT }}>
+                    Açılış bakiyesi
+                  </td>
+                  <td className="px-4 py-2.5 text-right font-semibold tabular-nums" style={{ color: TEXT }}>
+                    {fmt(ekstre.acilisBakiye)} ₺
+                  </td>
+                </tr>
 
-          <div className="overflow-hidden rounded-2xl" style={{ border: `1px solid ${CARD_BORDER}` }}>
-            <div className="overflow-x-auto">
-              <table className="w-full text-[13.5px]">
-                <thead>
-                  <tr className="text-[11px] uppercase tracking-wider" style={{ color: MUTED }}>
-                    <th className="px-5 py-3.5 text-left font-medium">Tarih</th>
-                    <th className="px-3 py-3.5 text-left font-medium">Açıklama</th>
-                    <th className="px-3 py-3.5 text-right font-medium">Borç</th>
-                    <th className="px-3 py-3.5 text-right font-medium">Alacak</th>
-                    <th className="px-5 py-3.5 text-right font-medium">Bakiye</th>
+                {satirlar.length === 0 ? (
+                  <tr style={{ borderTop: `1px solid ${ROW_SEP}` }}>
+                    <td className="px-4 py-8 text-center text-[12.5px]" colSpan={6} style={{ color: MUTED }}>
+                      Bu tarih aralığında hareket yok.
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  <tr style={{ background: 'rgba(255,255,255,0.022)' }}>
-                    <td className="px-5 py-3.5 font-semibold" colSpan={4} style={{ color: TEXT }}>Açılış Bakiyesi</td>
-                    <td className="px-5 py-3.5 text-right tabular-nums font-bold" style={{ color: TEXT }}>{fmt(ekstre.acilisBakiye)} ₺</td>
-                  </tr>
-                  {ekstre.satirlar.map((s: any) => {
+                ) : (
+                  satirlar.map((s: any) => {
                     const tutar = moneyValue(s.tutar);
                     const borc = s.tip === 'TAHAKKUK' ? tutar : s.tip === 'IADE' ? -tutar : 0;
                     const alacak = s.tip === 'TAHSILAT' ? tutar : s.tip === 'DUZELTME' ? -tutar : 0;
+                    const alacakli = moneyValue(s.runningBakiye) < 0;
                     return (
                       <tr key={s.id} style={{ borderTop: `1px solid ${ROW_SEP}` }}>
-                        <td className="px-5 py-3.5 tabular-nums whitespace-nowrap" style={{ color: '#d4d4d8' }}>
+                        <td className="whitespace-nowrap px-4 py-2.5 tabular-nums" style={{ color: '#a1a1aa' }}>
                           {new Date(s.tarih).toLocaleDateString('tr-TR')}
                         </td>
-                        <td className="px-3 py-3.5" style={{ color: '#d4d4d8' }}>
+                        <td className="whitespace-nowrap px-3 py-2.5">
+                          <span
+                            className="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10.5px]"
+                            style={
+                              alacak
+                                ? { background: `${OK}18`, color: OK, border: `1px solid ${OK}33` }
+                                : { background: `${DEBT}15`, color: DEBT, border: `1px solid ${DEBT}30` }
+                            }
+                          >
+                            {turEtiket(s.tip)}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2.5" style={{ color: '#d4d4d8' }}>
                           {s.hizmet?.hizmetAdi && <span style={{ color: GOLD }}>{s.hizmet.hizmetAdi}</span>}
                           {s.hizmet?.hizmetAdi && s.aciklama && ' · '}
                           {s.aciklama}
                         </td>
-                        <td className="px-3 py-3.5 text-right tabular-nums font-semibold" style={{ color: borc ? DEBT : '#3f3f46' }}>
+                        <td className="px-3 py-2.5 text-right font-semibold tabular-nums" style={{ color: borc ? DEBT : '#3f3f46' }}>
                           {borc ? `${fmt(borc)} ₺` : '—'}
                         </td>
-                        <td className="px-3 py-3.5 text-right tabular-nums font-semibold" style={{ color: alacak ? OK : '#3f3f46' }}>
+                        <td className="px-3 py-2.5 text-right font-semibold tabular-nums" style={{ color: alacak ? OK : '#3f3f46' }}>
                           {alacak ? `${fmt(alacak)} ₺` : '—'}
                         </td>
-                        <td className="px-5 py-3.5 text-right tabular-nums" style={{ color: TEXT }}>{fmt(s.runningBakiye)} ₺</td>
+                        <td className="whitespace-nowrap px-4 py-2.5 text-right tabular-nums" style={{ color: TEXT }}>
+                          {fmt(Math.abs(moneyValue(s.runningBakiye)))} ₺
+                          {/* (B) borç, (A) alacak — yürüyen bakiyenin yönü rakamdan okunmuyordu */}
+                          <span className="ml-1 text-[10.5px]" style={{ color: alacakli ? OK : MUTED }}>
+                            {alacakli ? '(A)' : '(B)'}
+                          </span>
+                        </td>
                       </tr>
                     );
-                  })}
-                  <tr style={{ background: 'rgba(224,105,122,0.06)', borderTop: '1px solid rgba(224,105,122,0.22)' }}>
-                    <td className="px-5 py-4 font-bold" colSpan={4} style={{ color: DEBT }}>Kapanış Bakiyesi</td>
-                    <td className="px-5 py-4 text-right tabular-nums font-bold text-[15px]" style={{ color: DEBT }}>{fmt(ekstre.kapanisBakiye)} ₺</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* DÖNEM ÖZETİ — defterin kendi dilinde, tablonun altında */}
+          <div
+            className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
+            style={{ borderTop: `1px solid ${CARD_BORDER}`, background: 'rgba(255,255,255,0.015)' }}
+          >
+            <span className="text-[11.5px]" style={{ color: MUTED }}>
+              {satirlar.length} hareket · {fmtDate(baslangic)} – {fmtDate(bitis)}
+            </span>
+            <span className="flex flex-wrap items-center gap-2">
+              <ToplamRozet etiket="Borç" tutar={ekstre.toplamTahakkuk} renk={DEBT} />
+              <ToplamRozet etiket="Alacak" tutar={ekstre.toplamTahsilat} renk={OK} />
+              <ToplamRozet etiket="Kapanış bakiyesi" tutar={ekstre.kapanisBakiye} renk={GOLD} vurgu />
+            </span>
           </div>
         </>
       )}
     </div>
+  );
+}
+
+function ToplamRozet({ etiket, tutar, renk, vurgu }: {
+  etiket: string;
+  tutar: number | string | null | undefined;
+  renk: string;
+  vurgu?: boolean;
+}) {
+  return (
+    <span
+      className="inline-flex items-baseline gap-2 rounded-lg px-3 py-1.5"
+      style={{
+        background: vurgu ? `${renk}1a` : 'rgba(255,255,255,0.025)',
+        border: `1px solid ${vurgu ? `${renk}44` : CARD_BORDER}`,
+      }}
+    >
+      <span className="text-[10.5px] uppercase tracking-wider" style={{ color: MUTED }}>{etiket}</span>
+      <span className="text-[13.5px] font-semibold tabular-nums" style={{ color: renk }}>
+        {fmt(tutar)} ₺
+      </span>
+    </span>
   );
 }
 
