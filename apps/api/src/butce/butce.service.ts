@@ -865,7 +865,12 @@ export class ButceService {
 
     // Defter sırası: elle seçilen → KATEGORİNİN defteri → kartın/hesabın varsayılanı → ŞAHSİ.
     // Kategoriye bakılmadığı için "Müşavirlik Ofisi Geliri" seçilen kayıt bile şahsi yazılıyordu.
-    let secilenDefter: Defter | null = DEFTERLER.includes(body.defter) ? body.defter : null;
+    // Defter YALNIZ GİDER'de anlamlı. Gelirde elle gelen değer yok sayılır:
+    // form tür değişince defteri sıfırlamıyor, o yüzden "kategorisi OFİS olan
+    // gelir" defter=SAHSI diye kaydediliyordu. Bugün zararsız (gelir süzgeci
+    // defteri yok sayar) ama veritabanında yanlış etiket birikirdi.
+    let secilenDefter: Defter | null =
+      body.tur === 'GIDER' && DEFTERLER.includes(body.defter) ? body.defter : null;
     if (body.kategoriId) {
       const kategori = await this.db.butceKategori.findFirst({
         where: { id: body.kategoriId, tenantId: k.tenantId, userId: k.userId },
@@ -1777,6 +1782,10 @@ export class ButceService {
       userId: k.userId,
       planlanan: false,
       bankaHesapId: null,
+      // Kart iadesi/puanı kasaya para GİRİŞİ değildir; kart borcunu azaltır
+      // (bkz. kartNormalize). Şart yalnız gider tarafında olsaydı iade GELİR
+      // sayılıp kasayı yoktan şişirirdi.
+      kaynak: { not: 'KART' as const },
     };
     const [giris, cikis, tahsilat] = await Promise.all([
       this.db.butceIslem.aggregate({ where: { ...ortak, tur: 'GELIR' }, _sum: { tutar: true } }),
@@ -1807,6 +1816,8 @@ export class ButceService {
       userId: k.userId,
       planlanan: false,
       bankaHesapId: null,
+      // Kart iadesi kasaya girmez — bkz. nakitKasasi
+      kaynak: { not: 'KART' as const },
     };
     const [giris, cikis, sayi, sonHareketler, nakitTahsilat] = await Promise.all([
       this.db.butceIslem.aggregate({ where: { ...ortak, tur: 'GELIR' }, _sum: { tutar: true } }),
@@ -1876,7 +1887,10 @@ export class ButceService {
       userId: k.userId,
       planlanan: false,
       bankaHesapId: null,
-      OR: [{ tur: 'GELIR' }, { tur: 'GIDER', kaynak: { not: 'KART' } }],
+      // Kart hareketleri kasaya girmez — ne gider (borçlanma) ne iade (borç
+      // azalması). Bakiye böyle hesaplanıyor; liste de aynı süzgeci kullanmalı,
+      // yoksa kasa bakiyesi listeden toplanamaz.
+      kaynak: { not: 'KART' },
     };
     if (donem) where.donem = donem;
 

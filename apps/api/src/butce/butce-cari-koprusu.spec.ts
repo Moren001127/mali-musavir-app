@@ -152,6 +152,35 @@ describe('nakit kasa — hesap ile kasa karışmasın', () => {
   });
 });
 
+describe('gelir — defter yalnız giderde', () => {
+  const kaydeden = () => {
+    const yazilan: any[] = [];
+    const servis: any = servisKur({
+      butceIslem: { create: async ({ data }: any) => { yazilan.push(data); return { id: 'i1', ...data }; } },
+      butceKategori: { findFirst: async () => ({ id: 'kat-1', defter: 'OFIS', ad: 'Danışmanlık' }) },
+    });
+    return { servis, yazilan };
+  };
+
+  it('GELİR kaydında elle gönderilen defter yok sayılır, kategorininki yazılır', async () => {
+    // Form tür değişince defteri sıfırlamıyordu; kategorisi OFİS olan gelir
+    // defter=SAHSI diye kaydediliyordu ve veritabanında yanlış etiket birikiyordu.
+    const { servis, yazilan } = kaydeden();
+    await servis.islemKaydet(KIMLIK, {
+      tur: 'GELIR', tutar: 100, kategoriId: 'kat-1', defter: 'SAHSI',
+    });
+    expect(yazilan[0].defter).toBe('OFIS');
+  });
+
+  it('GİDER kaydında elle seçilen defter korunur', async () => {
+    const { servis, yazilan } = kaydeden();
+    await servis.islemKaydet(KIMLIK, {
+      tur: 'GIDER', tutar: 100, kategoriId: 'kat-1', defter: 'SAHSI',
+    });
+    expect(yazilan[0].defter).toBe('SAHSI');
+  });
+});
+
 describe('gelir — çift sayım kilidi', () => {
   const kilitli = (ad: string) =>
     servisKur({ butceKategori: { findFirst: async () => ({ ad }) } }) as any;

@@ -607,12 +607,25 @@ function IslemModal({
         <Alan etiket="Tarih">
           <Girdi type="date" value={form.tarih} onChange={(e) => setForm({ ...form, tarih: e.target.value })} />
         </Alan>
+        {/* Gelir TEK HAVUZ olduğu için yalnız giderde ofis/kişisel sorulur.
+            KATEGORİDEN ÖNCE duruyor: kategori listesini süzen şey bu seçim;
+            sonra gelseydi kullanıcı listeyi neyin daralttığını göremezdi. */}
+        {form.tur === 'GIDER' && (
+          <DefterAlani
+            deger={form.defter}
+            degistir={defterSec}
+            ipucu="Ofis gideri kazançtan indirilir; kişisel harcama indirilemez."
+          />
+        )}
+
         <Alan
           etiket="Kategori"
           ipucu={
             form.tur === 'GELIR'
               ? `"${KILITLI_GELIR_KATEGORISI}" listede yok: o gelir Cari Kasa > Tahsilat'tan otomatik gelir.`
-              : undefined
+              : uygunKategoriler.length === 0
+                ? `Bu gider türü için Ayarlar > Kategoriler'de tanımlı kategori yok.`
+                : `${DEFTER_ETIKET[form.defter]} gider kategorileri listeleniyor.`
           }
         >
           <Secim value={form.kategoriId} onChange={(e) => kategoriSec(e.target.value)}>
@@ -624,15 +637,6 @@ function IslemModal({
             ))}
           </Secim>
         </Alan>
-
-        {/* Gelir TEK HAVUZ olduğu için yalnız giderde ofis/kişisel sorulur */}
-        {form.tur === 'GIDER' && (
-          <DefterAlani
-            deger={form.defter}
-            degistir={defterSec}
-            ipucu="Ofis gideri kazançtan indirilir; kişisel harcama indirilemez."
-          />
-        )}
 
         <Alan etiket="Ödeme kaynağı">
           <Secim value={form.kaynak} onChange={(e) => setForm({ ...form, kaynak: e.target.value as any })}>
@@ -667,7 +671,11 @@ function IslemModal({
           <Alan etiket="Kart">
             <Secim value={form.kartId} onChange={(e) => setForm({ ...form, kartId: e.target.value })}>
               <option value="">Seçiniz</option>
-              {kartlar.map((k) => (
+              {/* Kapatılmış kart yeni kayıtta seçilemesin; düzenlenen eski kaydın
+                  kartı listede kalsın ki seçim kaybolmasın */}
+              {kartlar
+                .filter((k) => k.aktif || k.id === form.kartId)
+                .map((k) => (
                 <option key={k.id} value={k.id}>
                   {k.bankaAdi} {k.kartAdi}
                 </option>
@@ -1002,14 +1010,15 @@ function KayitSutunu({
 
 /* ===================== AYLIK KIRILIM ===================== */
 
+const AY_KISA = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'];
+
 /**
  * "Ağustos'ta neye ne harcadım" ile "bu yıl kiraya toplam ne verdim" iki ayrı
- * soru. Tek dönemlik liste ikincisini cevaplayamıyordu; bu tablo satırda
- * kategoriyi, sütunda ayı gösterir.
+ * soru; tek dönemlik liste ikincisini cevaplayamıyordu.
  *
- * Gider ÜÇ değil İKİ tabloda: ofis gideri kazançtan indirilir, kişisel harcama
- * indirilemez. Tek tabloda toplanınca mesleki kazanç her seferinde elle
- * ayıklanıyordu.
+ * İki görünüm BİLEREK farklı biçimde: tek ay için 12 sütunlu tablo kurmak
+ * ekranın %90'ını boşluğa harcıyordu. Tek ayda pay çubuklu liste, tüm yılda
+ * matris tablo.
  */
 function AylikKirilim({ donem }: { donem: string }) {
   const yil = Number(donem.slice(0, 4));
@@ -1021,40 +1030,39 @@ function AylikKirilim({ donem }: { donem: string }) {
     staleTime: 60_000,
   });
 
-  const sutunlar = useMemo(() => {
-    if (!data) return [];
-    return tumYil ? data.donemler : data.donemler.filter((d) => d === donem);
-  }, [data, tumYil, donem]);
+  const bolumler = data
+    ? ([
+        { baslik: 'Gelir', renk: OK, satirlar: data.gelir },
+        { baslik: 'Ofis gideri', renk: MOR, satirlar: data.giderOfis },
+        { baslik: 'Kişisel gider', renk: KIRMIZI, satirlar: data.giderSahsi },
+      ] as const)
+    : [];
 
   return (
     <Kutu
       baslik="Aylık kırılım"
-      aciklama={
-        tumYil
-          ? `${yil} · kategori bazında ay ay`
-          : `${donemTR(donem)} · kategori bazında`
-      }
+      aciklama={tumYil ? `${yil} · kategori bazında ay ay` : `${donemTR(donem)} · kategori bazında`}
       renk={GOLD}
       sag={
         <div
           className="flex rounded-lg p-0.5"
-          style={{ background: 'rgba(0,0,0,0.3)', border: `1px solid ${CARD_BORDER}` }}
+          style={{ background: 'rgba(0,0,0,0.32)', border: `1px solid ${CARD_BORDER}` }}
         >
           {[
             { deger: false, etiket: 'Bu ay' },
             { deger: true, etiket: 'Tüm yıl' },
-          ].map((s) => (
+          ].map((x) => (
             <button
-              key={String(s.deger)}
-              onClick={() => setTumYil(s.deger)}
-              className="rounded-md px-2.5 py-1 text-[11.5px] font-medium transition"
+              key={String(x.deger)}
+              onClick={() => setTumYil(x.deger)}
+              className="rounded-md px-3 py-1 text-[11.5px] font-medium transition"
               style={
-                tumYil === s.deger
+                tumYil === x.deger
                   ? { background: `${GOLD}26`, color: GOLD, boxShadow: `inset 0 0 0 1px ${GOLD}4d` }
                   : { color: MUTED }
               }
             >
-              {s.etiket}
+              {x.etiket}
             </button>
           ))}
         </div>
@@ -1063,110 +1071,134 @@ function AylikKirilim({ donem }: { donem: string }) {
       {isLoading || !data ? (
         <Yukleniyor metin="Kırılım hazırlanıyor…" />
       ) : (
-        <div className="space-y-5">
-          <KirilimTablosu baslik="Gelir" renk={OK} satirlar={data.gelir} sutunlar={sutunlar} />
-          <KirilimTablosu baslik="Ofis gideri" renk={MOR} satirlar={data.giderOfis} sutunlar={sutunlar} />
-          <KirilimTablosu baslik="Kişisel gider" renk={KIRMIZI} satirlar={data.giderSahsi} sutunlar={sutunlar} />
+        <div className="space-y-4">
+          {bolumler.map((b) => (
+            <KirilimBolumu
+              key={b.baslik}
+              baslik={b.baslik}
+              renk={b.renk}
+              satirlar={b.satirlar}
+              sutunlar={tumYil ? data.donemler : [donem]}
+              tumYil={tumYil}
+            />
+          ))}
         </div>
       )}
     </Kutu>
   );
 }
 
-function KirilimTablosu({
+function KirilimBolumu({
   baslik,
   renk,
   satirlar,
   sutunlar,
+  tumYil,
 }: {
   baslik: string;
   renk: string;
   satirlar: KirilimSatiri[];
   sutunlar: string[];
+  tumYil: boolean;
 }) {
-  // Seçili sütunlarda hiç rakamı olmayan kategori tabloyu uzatmasın
-  const dolu = satirlar.filter((s) => sutunlar.some((d) => s.aylar[d]));
+  // Seçili sütunlarda rakamı olmayan kategori tabloyu uzatmasın
+  const dolu = satirlar
+    .map((s) => ({ ...s, secilenToplam: sutunlar.reduce((t, d) => t + (s.aylar[d] || 0), 0) }))
+    .filter((s) => s.secilenToplam > 0)
+    .sort((a, b) => b.secilenToplam - a.secilenToplam);
+
+  const genelToplam = dolu.reduce((t, s) => t + s.secilenToplam, 0);
   const sutunToplam = (d: string) => dolu.reduce((t, s) => t + (s.aylar[d] || 0), 0);
-  const genelToplam = dolu.reduce(
-    (t, s) => t + sutunlar.reduce((x, d) => x + (s.aylar[d] || 0), 0),
-    0,
-  );
 
   return (
-    <div>
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <span className="text-[11px] uppercase tracking-wider" style={{ color: renk }}>
-          {baslik} <span style={{ color: MUTED }}>({dolu.length})</span>
+    <section
+      className="overflow-hidden rounded-xl"
+      style={{ background: 'rgba(0,0,0,0.18)', border: `1px solid ${CARD_BORDER}` }}
+    >
+      {/* Başlık şeridi — portal dili: solda renk çubuğu, sağda toplam */}
+      <header
+        className="flex items-center justify-between gap-3 px-3.5 py-2.5"
+        style={{ background: `linear-gradient(90deg, ${renk}14, transparent 60%)` }}
+      >
+        <span className="flex items-center gap-2">
+          <i className="h-3.5 w-[3px] rounded-full" style={{ background: renk }} />
+          <span className="text-[12px] font-semibold" style={{ color: TEXT }}>
+            {baslik}
+          </span>
+          <span className="text-[11px]" style={{ color: MUTED }}>
+            {dolu.length} kalem
+          </span>
         </span>
-        <span className="text-[13px] font-semibold tabular-nums" style={{ color: renk }}>
+        <span className="text-[13.5px] font-semibold tabular-nums" style={{ color: renk }}>
           {para(genelToplam)} ₺
         </span>
-      </div>
+      </header>
 
       {dolu.length === 0 ? (
-        <div
-          className="rounded-lg px-3 py-5 text-center text-[11.5px]"
-          style={{ border: `1px dashed ${ROW_SEP}`, color: MUTED }}
-        >
+        <div className="px-3.5 py-5 text-center text-[11.5px]" style={{ color: MUTED }}>
           Bu dönemde kayıt yok.
         </div>
-      ) : (
-        /* Tablo kendi içinde kayar; 12 ay dar ekranda sayfayı yana kaydırmasın */
-        <div className="overflow-x-auto rounded-lg" style={{ border: `1px solid ${ROW_SEP}` }}>
+      ) : tumYil ? (
+        /* TÜM YIL — matris. Tablo kendi içinde kayar, sayfayı yana kaydırmaz. */
+        <div className="overflow-x-auto">
           <table className="w-full min-w-max text-[12px]">
             <thead>
-              <tr style={{ color: MUTED }}>
-                <th className="sticky left-0 px-3 py-2 text-left font-medium" style={{ background: '#0c0c0e' }}>
+              <tr style={{ color: MUTED, borderTop: `1px solid ${ROW_SEP}` }}>
+                <th
+                  className="sticky left-0 z-10 px-3.5 py-2 text-left text-[10.5px] font-medium uppercase tracking-wider"
+                  style={{ background: '#0e0e11' }}
+                >
                   Kategori
                 </th>
                 {sutunlar.map((d) => (
-                  <th key={d} className="px-3 py-2 text-right font-medium tabular-nums">
-                    {d.slice(5, 7)}/{d.slice(2, 4)}
+                  <th
+                    key={d}
+                    className="px-3 py-2 text-right text-[10.5px] font-medium uppercase tracking-wider"
+                  >
+                    {AY_KISA[Number(d.slice(5, 7)) - 1]}
                   </th>
                 ))}
-                {sutunlar.length > 1 && (
-                  <th className="px-3 py-2 text-right font-medium">Toplam</th>
-                )}
+                <th
+                  className="px-3.5 py-2 text-right text-[10.5px] font-medium uppercase tracking-wider"
+                  style={{ color: renk }}
+                >
+                  Toplam
+                </th>
               </tr>
             </thead>
             <tbody>
-              {dolu.map((s) => {
-                const satirToplam = sutunlar.reduce((t, d) => t + (s.aylar[d] || 0), 0);
-                return (
-                  <tr key={s.ad} style={{ borderTop: `1px solid ${ROW_SEP}` }}>
-                    <td
-                      className="sticky left-0 whitespace-nowrap px-3 py-2"
-                      style={{ background: '#0c0c0e', color: TEXT }}
-                    >
-                      <span className="inline-flex items-center gap-2">
-                        <i className="h-2 w-2 rounded-sm" style={{ background: s.renk }} />
-                        {s.ad}
-                      </span>
+              {dolu.map((s) => (
+                <tr key={s.ad} className="group" style={{ borderTop: `1px solid ${ROW_SEP}` }}>
+                  <td
+                    className="sticky left-0 z-10 whitespace-nowrap px-3.5 py-2"
+                    style={{ background: '#0e0e11', color: TEXT }}
+                  >
+                    <span className="inline-flex items-center gap-2">
+                      <i className="h-2 w-2 rounded-sm" style={{ background: s.renk }} />
+                      {s.ad}
+                    </span>
+                  </td>
+                  {sutunlar.map((d) => (
+                    <td key={d} className="whitespace-nowrap px-3 py-2 text-right tabular-nums">
+                      {s.aylar[d] ? (
+                        <span style={{ color: TEXT }}>{para(s.aylar[d])}</span>
+                      ) : (
+                        <span style={{ color: 'rgba(113,113,122,0.35)' }}>·</span>
+                      )}
                     </td>
-                    {sutunlar.map((d) => (
-                      <td
-                        key={d}
-                        className="whitespace-nowrap px-3 py-2 text-right tabular-nums"
-                        style={{ color: s.aylar[d] ? TEXT : 'rgba(113,113,122,0.5)' }}
-                      >
-                        {s.aylar[d] ? para(s.aylar[d]) : '—'}
-                      </td>
-                    ))}
-                    {sutunlar.length > 1 && (
-                      <td
-                        className="whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums"
-                        style={{ color: renk }}
-                      >
-                        {para(satirToplam)}
-                      </td>
-                    )}
-                  </tr>
-                );
-              })}
-              <tr style={{ borderTop: `1px solid ${ROW_SEP}` }}>
+                  ))}
+                  <td
+                    className="whitespace-nowrap px-3.5 py-2 text-right font-semibold tabular-nums"
+                    style={{ color: renk }}
+                  >
+                    {para(s.secilenToplam)}
+                  </td>
+                </tr>
+              ))}
+              <tr style={{ borderTop: `1px solid ${renk}33`, background: 'rgba(255,255,255,0.022)' }}>
                 <td
-                  className="sticky left-0 px-3 py-2 font-semibold"
-                  style={{ background: '#0c0c0e', color: MUTED }}
+                  className="sticky left-0 z-10 px-3.5 py-2 text-[11px] uppercase tracking-wider"
+                  style={{ background: '#111114', color: MUTED }}
                 >
                   Toplam
                 </td>
@@ -1174,24 +1206,61 @@ function KirilimTablosu({
                   <td
                     key={d}
                     className="whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums"
-                    style={{ color: renk }}
+                    style={{ color: sutunToplam(d) ? renk : 'rgba(113,113,122,0.35)' }}
                   >
-                    {sutunToplam(d) ? para(sutunToplam(d)) : '—'}
+                    {sutunToplam(d) ? para(sutunToplam(d)) : '·'}
                   </td>
                 ))}
-                {sutunlar.length > 1 && (
-                  <td
-                    className="whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums"
-                    style={{ color: renk }}
-                  >
-                    {para(genelToplam)}
-                  </td>
-                )}
+                <td
+                  className="whitespace-nowrap px-3.5 py-2 text-right font-semibold tabular-nums"
+                  style={{ color: renk }}
+                >
+                  {para(genelToplam)} ₺
+                </td>
               </tr>
             </tbody>
           </table>
         </div>
+      ) : (
+        /* BU AY — tek sütun için tablo kurmak yerine pay çubuklu liste.
+           "Neyin payı ne" sorusu rakam sütunundan okunmuyordu. */
+        <div style={{ borderTop: `1px solid ${ROW_SEP}` }}>
+          {dolu.map((s) => {
+            const oran = genelToplam > 0 ? (s.secilenToplam / genelToplam) * 100 : 0;
+            return (
+              <div
+                key={s.ad}
+                className="flex items-center gap-3 px-3.5 py-2.5"
+                style={{ borderBottom: `1px solid ${ROW_SEP}` }}
+              >
+                <i className="h-2 w-2 flex-shrink-0 rounded-sm" style={{ background: s.renk }} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[12.5px]" style={{ color: TEXT }}>
+                    {s.ad}
+                  </span>
+                  <span
+                    className="mt-1 block h-[3px] w-full overflow-hidden rounded-full"
+                    style={{ background: 'rgba(255,255,255,0.05)' }}
+                  >
+                    <span
+                      className="block h-full rounded-full"
+                      style={{ width: `${Math.max(oran, 1.5)}%`, background: s.renk }}
+                    />
+                  </span>
+                </span>
+                <span className="flex-shrink-0 text-right">
+                  <span className="block text-[13px] font-semibold tabular-nums" style={{ color: TEXT }}>
+                    {para(s.secilenToplam)} ₺
+                  </span>
+                  <span className="block text-[10.5px] tabular-nums" style={{ color: MUTED }}>
+                    %{oran.toFixed(oran < 10 ? 1 : 0)}
+                  </span>
+                </span>
+              </div>
+            );
+          })}
+        </div>
       )}
-    </div>
+    </section>
   );
 }
