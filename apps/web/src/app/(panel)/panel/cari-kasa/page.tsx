@@ -825,7 +825,17 @@ function TahsilatModal({ taxpayerId, mukellefAd, taxNumber, acikBakiye, onClose,
           <Field label="Tarih"><input type="date" value={form.tarih} onChange={(e) => setForm({ ...form, tarih: e.target.value })} style={inpStyle} /></Field>
           <Field label="Tutar (₺)"><input type="number" step="0.01" value={form.tutar} onChange={(e) => setForm({ ...form, tutar: Number(e.target.value) })} autoFocus style={{ ...inpStyle, fontSize: 18, fontWeight: 700, color: GOLD }} /></Field>
           <Field label="Ödeme Yöntemi">
-            <select value={form.odemeYontemi} onChange={(e) => setForm({ ...form, odemeYontemi: e.target.value })} style={inpStyle}>
+            <select value={form.odemeYontemi} onChange={(e) => {
+                  // Nakit seçilince para kasaya girmiştir; hesabı da ona göre
+                  // ön-seç ki kullanıcı iki ayrı yerde aynı şeyi söylemesin.
+                  // Elden alıp bankaya yatırdıysa hesabı elle değiştirebilir.
+                  const yontem = e.target.value;
+                  setForm((f: any) => ({
+                    ...f,
+                    odemeYontemi: yontem,
+                    accountId: yontem === 'NAKIT' ? 'NAKIT_KASA' : f.accountId,
+                  }));
+                }} style={inpStyle}>
               <option value="NAKIT">Nakit</option>
               <option value="HAVALE">Havale/EFT</option>
               <option value="POS">POS/Kart</option>

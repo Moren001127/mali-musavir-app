@@ -759,7 +759,17 @@ function QuickTahsilatModal({ row, onClose, onSaved }: { row: WorkspaceRow; onCl
               <input type="number" step="0.01" value={form.tutar} onChange={(e) => setForm({ ...form, tutar: Number(e.target.value) })} autoFocus style={{ ...inpStyle, fontSize: 18, fontWeight: 700, color: GOLD }} />
             </Field>
             <Field label="Ödeme Yöntemi">
-              <select value={form.odemeYontemi} onChange={(e) => setForm({ ...form, odemeYontemi: e.target.value })} style={selStyle}>
+              <select value={form.odemeYontemi} onChange={(e) => {
+                  // Nakit seçilince para kasaya girmiştir; hesabı da ona göre
+                  // ön-seç ki kullanıcı iki ayrı yerde aynı şeyi söylemesin.
+                  // Elden alıp bankaya yatırdıysa hesabı elle değiştirebilir.
+                  const yontem = e.target.value;
+                  setForm((f: any) => ({
+                    ...f,
+                    odemeYontemi: yontem,
+                    accountId: yontem === 'NAKIT' ? 'NAKIT_KASA' : f.accountId,
+                  }));
+                }} style={selStyle}>
                 <option value="HAVALE">Havale / EFT</option>
                 <option value="NAKIT">Nakit</option>
                 <option value="POS">Kredi Kartı</option>

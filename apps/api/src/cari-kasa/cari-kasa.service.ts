@@ -10,6 +10,14 @@ import {
 import { createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { OwnerOnlyGuard } from '../auth/guards/owner-only.guard';
+
+/**
+ * Tahsilat hesap listesindeki "Nakit kasa" takma kimliği.
+ *
+ * Kişisel Bütçe'de kasa ayrı bir hesap kaydı DEĞİL; hesap seçilmeden girilen
+ * hareketlerin toplamı. Bu yüzden gerçek bir id yok, sabit bir işaret var.
+ */
+const NAKIT_KASA = 'NAKIT_KASA';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import { StorageService } from '../storage/storage.service';
 import { chromium } from 'playwright-core';
@@ -395,12 +403,19 @@ export class CariKasaService {
       orderBy: [{ sira: 'asc' }, { bankaAdi: 'asc' }],
       select: { id: true, ad: true, bankaAdi: true, renk: true },
     });
-    return hesaplar.map((h: any) => ({
-      id: h.id,
-      // Tahsilat formunda tek satırda okunsun: "Ziraat · Ofis hesabı"
-      name: h.bankaAdi && h.bankaAdi !== h.ad ? `${h.bankaAdi} · ${h.ad}` : h.ad,
-      color: h.renk || '#d4b876',
-    }));
+    return [
+      // NAKİT KASA: Kişisel Bütçe'de bir hesap kaydı değil, "hesap seçilmeden
+      // girilen hareketler"in toplamıdır. Elden alınan tahsilat oraya girsin
+      // diye listeye takma bir seçenek olarak konuyor; kaydederken accountId
+      // NULL yazılır ve bütçe tarafı bunu kasa hareketi sayar.
+      { id: NAKIT_KASA, name: 'Nakit kasa', color: '#a78bfa' },
+      ...hesaplar.map((h: any) => ({
+        id: h.id,
+        // Tahsilat formunda tek satırda okunsun: "Ziraat · Ofis hesabı"
+        name: h.bankaAdi && h.bankaAdi !== h.ad ? `${h.bankaAdi} · ${h.ad}` : h.ad,
+        color: h.renk || '#d4b876',
+      })),
+    ];
   }
 
   /**
@@ -447,15 +462,19 @@ export class CariKasaService {
         'Seçilen hesap tahsilat listesinde değil. Kişisel Bütçe > Hesaplar ekranından hesabı "cari tahsilatta görünsün" olarak işaretleyin.',
       );
     }
+    // NAKİT KASA: accountId NULL yazılır (bütçe tarafında kasa = hesapsız hareket).
+    // Ödeme yöntemi de NAKİT'e sabitlenir; "Nakit kasa + Çek" çelişkili olurdu ve
+    // bütçe tarafı "hesabı seçilmemiş" ile "kasaya girdi"yi bu ikiliden ayırıyor.
+    const kasayaGirdi = data.accountId === NAKIT_KASA;
     return (this.prisma as any).cariHareket.create({
       data: {
         tenantId,
         taxpayerId: data.taxpayerId,
-        accountId: data.accountId,
+        accountId: kasayaGirdi ? null : data.accountId,
         tarih: data.tarih ? new Date(data.tarih) : new Date(),
         tip: 'TAHSILAT',
         tutar: data.tutar,
-        odemeYontemi: data.odemeYontemi || 'NAKIT',
+        odemeYontemi: kasayaGirdi ? 'NAKIT' : data.odemeYontemi || 'NAKIT',
         belgeNo: data.belgeNo || null,
         aciklama: data.aciklama || null,
         donem: data.donem || null,

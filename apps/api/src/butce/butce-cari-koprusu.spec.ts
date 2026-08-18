@@ -112,6 +112,29 @@ describe('tahsilat — sayaçlar karışmasın', () => {
   });
 });
 
+describe('nakit kasa — hesap ile kasa karışmasın', () => {
+  const servis: any = servisKur({});
+
+  it('kasa süzgeci İKİ şartı birden arar', () => {
+    const w = servis.nakitTahsilatWhere('kiracı-1');
+    expect(w.accountId).toBeNull();
+    // odemeYontemi şartı düşerse, hesabı YANLIŞLIKLA seçilmemiş tahsilat da
+    // kasaya girer ve "hesabı seçilmemiş" uyarısı sessizce kaybolur.
+    expect(w.odemeYontemi).toBe('NAKIT');
+    expect(w.source).toBeNull();
+  });
+
+  it('kasa süzgecinde tarih sınırı YOK (kasanın açılış tarihi yok)', () => {
+    expect((servis.nakitTahsilatWhere('kiracı-1') as any).tarih).toBeUndefined();
+  });
+
+  it('hesaplı tahsilat süzgeci kasayı içine almaz', () => {
+    const w = servis.aktarilabilirTahsilatWhere('kiracı-1', 'hesap-1');
+    expect(w.accountId).toBe('hesap-1');
+    expect((w as any).odemeYontemi).toBeUndefined();
+  });
+});
+
 describe('gelir — çift sayım kilidi', () => {
   const kilitli = (ad: string) =>
     servisKur({ butceKategori: { findFirst: async () => ({ ad }) } }) as any;

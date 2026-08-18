@@ -528,13 +528,29 @@ export class ButceService {
       where: { tenantId: k.tenantId, userId: k.userId, acilisTarihi: { not: null } },
       select: { id: true, acilisTarihi: true },
     });
-    if (!hesaplar.length) return harita;
 
     const sirali = [...donemler].sort();
     const [ilkYil, ilkAy] = sirali[0].split('-').map(Number);
     const [sonYil, sonAy] = sirali[sirali.length - 1].split('-').map(Number);
     const pencereBas = new Date(ilkYil, ilkAy - 1, 1);
     const pencereBit = new Date(sonYil, sonAy, 1);
+
+    /** Hareketi ait olduğu döneme ekler */
+    const ekle = (t: any) => {
+      const d = new Date(t.tarih);
+      const donem = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      harita.set(donem, kurus((harita.get(donem) || 0) + num(t.tutar)));
+    };
+
+    // Kasaya giren tahsilat da grafikte görünmeli
+    const nakitler = await this.db.cariHareket.findMany({
+      where: {
+        ...this.nakitTahsilatWhere(k.tenantId),
+        tarih: { gte: pencereBas, lt: pencereBit },
+      },
+      select: { tarih: true, tutar: true },
+    });
+    for (const t of nakitler) ekle(t);
 
     for (const h of hesaplar) {
       const acilis = new Date(h.acilisTarihi);
@@ -547,18 +563,34 @@ export class ButceService {
         },
         select: { tarih: true, tutar: true },
       });
-      for (const t of hareketler) {
-        const d = new Date(t.tarih);
-        const donem = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-        harita.set(donem, kurus((harita.get(donem) || 0) + num(t.tutar)));
-      }
+      for (const t of hareketler) ekle(t);
     }
     return harita;
   }
 
   /**
+   * NAKİT KASAYA GİREN TAHSİLAT — beyaz listenin kasa karşılığı.
+   *
+   * Cari Kasa'da "Nakit kasa" seçilen tahsilat `accountId` boş, `odemeYontemi`
+   * NAKİT olarak yazılır. İkili şart gerekli: yalnız `accountId` boş bakılsaydı,
+   * hesabı yanlışlıkla seçilmemiş tahsilat da kasaya girer ve hata gizlenirdi.
+   *
+   * Kesim tarihi YOK: kasanın açılış tarihi diye bir şey yok. Geçmişi dışarıda
+   * tutan şey `source` boş şartı — aktarımla gelen 600 kayıt zaten elenir.
+   */
+  private nakitTahsilatWhere(tenantId: string) {
+    return {
+      tenantId,
+      tip: 'TAHSILAT',
+      source: null,
+      accountId: null,
+      odemeYontemi: 'NAKIT',
+    };
+  }
+
+  /**
    * Hesap hareketleri: işlemler + o hesaptan yapılan borç/kart ödemeleri
-   * + o hesaba bağlı ofis hesaplarına giren müşteri tahsilatı.
+   * + o hesaba giren müşteri tahsilatı.
    *
    * Tahsilat bakiyeye giriyorsa listede de görünmeli: aksi hâlde bakiye
    * listeden toplanamaz ve "para nereden geldi" sorusu cevapsız kalır.
@@ -707,66 +739,90 @@ export class ButceService {
       },
       select: { id: true, ad: true, bankaAdi: true, acilisTarihi: true },
     });
-    if (!hesaplar.length) return [];
 
     const kategori = await this.musavirlikGelirKategorisi(k);
     if (filtre.kategoriId && filtre.kategoriId !== kategori?.id) return [];
 
+    const SECIM = {
+      id: true,
+      tarih: true,
+      tutar: true,
+      aciklama: true,
+      belgeNo: true,
+      odemeYontemi: true,
+      taxpayer: { select: { firstName: true, lastName: true, companyName: true } },
+    };
+
+    /** Cari Kasa kaydını bütçe işlem satırına çevirir; hesap boşsa kasa satırı olur. */
+    const satirYap = (t: any, h: any) => {
+      const tarih = new Date(t.tarih);
+      const donem = `${tarih.getFullYear()}-${String(tarih.getMonth() + 1).padStart(2, '0')}`;
+      if (filtre.donem && filtre.donem !== donem) return null;
+      const mukellef =
+        t.taxpayer?.companyName ||
+        [t.taxpayer?.firstName, t.taxpayer?.lastName].filter(Boolean).join(' ') ||
+        null;
+      return {
+        id: t.id,
+        tenantId: k.tenantId,
+        userId: k.userId,
+        tarih: t.tarih,
+        donem,
+        tur: 'GELIR',
+        tutar: num(t.tutar),
+        kategoriId: kategori?.id || null,
+        aciklama: mukellef || t.aciklama || 'Müşteri tahsilatı',
+        // Hesap yoksa para kasaya girmiştir; bütçenin kasa tanımı budur
+        kaynak: h ? 'BANKA' : 'NAKIT',
+        kartId: null,
+        bankaHesapId: h ? h.id : null,
+        duzenliId: null,
+        planlanan: false,
+        // Gelir tek havuzdur; defter yalnız giderde anlamlıdır
+        defter: 'OFIS',
+        transferGrupId: null,
+        kartHareketId: null,
+        belgeNo: t.belgeNo || null,
+        odemeYontemi: t.odemeYontemi || null,
+        kategori: kategori
+          ? { id: kategori.id, ad: kategori.ad, renk: kategori.renk, zorunlu: false }
+          : null,
+        kart: null,
+        bankaHesap: h ? { id: h.id, ad: h.ad, bankaAdi: h.bankaAdi } : null,
+        /** Cari Kasa'nın kaydı — Kişisel Bütçe'den düzenlenemez/silinemez */
+        kaynakTur: 'CARI_TAHSILAT',
+        duzenlenebilir: false,
+      };
+    };
+
     const satirlar: any[] = [];
+
+    // NAKİT KASA: hesabı olmayan tahsilat. Belirli bir hesap süzülüyorsa
+    // kasa satırları o hesaba ait değildir, dışarıda kalır.
+    if (!filtre.bankaHesapId) {
+      const nakitler = await this.db.cariHareket.findMany({
+        where: this.nakitTahsilatWhere(k.tenantId),
+        orderBy: [{ tarih: 'desc' }, { createdAt: 'desc' }],
+        take: 1000,
+        select: SECIM,
+      });
+      for (const t of nakitler) {
+        const satir = satirYap(t, null);
+        if (satir) satirlar.push(satir);
+      }
+    }
+
     for (const h of hesaplar) {
       const where = this.aktarilabilirTahsilatWhere(k.tenantId, h.id, h.acilisTarihi);
       const hareketler = await this.db.cariHareket.findMany({
         where,
         orderBy: [{ tarih: 'desc' }, { createdAt: 'desc' }],
         take: 1000,
-        select: {
-          id: true,
-          tarih: true,
-          tutar: true,
-          aciklama: true,
-          belgeNo: true,
-          odemeYontemi: true,
-          taxpayer: { select: { firstName: true, lastName: true, companyName: true } },
-        },
+        select: SECIM,
       });
       for (const t of hareketler) {
-        const tarih = new Date(t.tarih);
-        const donem = `${tarih.getFullYear()}-${String(tarih.getMonth() + 1).padStart(2, '0')}`;
-        if (filtre.donem && filtre.donem !== donem) continue;
-        const mukellef =
-          t.taxpayer?.companyName ||
-          [t.taxpayer?.firstName, t.taxpayer?.lastName].filter(Boolean).join(' ') ||
-          null;
-        satirlar.push({
-          id: t.id,
-          tenantId: k.tenantId,
-          userId: k.userId,
-          tarih: t.tarih,
-          donem,
-          tur: 'GELIR',
-          tutar: num(t.tutar),
-          kategoriId: kategori?.id || null,
-          aciklama: mukellef || t.aciklama || 'Müşteri tahsilatı',
-          kaynak: 'BANKA',
-          kartId: null,
-          bankaHesapId: h.id,
-          duzenliId: null,
-          planlanan: false,
-          // Gelir tek havuzdur; defter yalnız giderde anlamlıdır
-          defter: 'OFIS',
-          transferGrupId: null,
-          kartHareketId: null,
-          belgeNo: t.belgeNo || null,
-          odemeYontemi: t.odemeYontemi || null,
-          kategori: kategori
-            ? { id: kategori.id, ad: kategori.ad, renk: kategori.renk, zorunlu: false }
-            : null,
-          kart: null,
-          bankaHesap: { id: h.id, ad: h.ad, bankaAdi: h.bankaAdi },
-          /** Cari Kasa'nın kaydı — Kişisel Bütçe'den düzenlenemez/silinemez */
-          kaynakTur: 'CARI_TAHSILAT',
-          duzenlenebilir: false,
-        });
+        const satir = satirYap(t, h);
+        if (satir) satirlar.push(satir);
       }
     }
     return satirlar;
@@ -1713,14 +1769,19 @@ export class ButceService {
       planlanan: false,
       bankaHesapId: null,
     };
-    const [giris, cikis] = await Promise.all([
+    const [giris, cikis, tahsilat] = await Promise.all([
       this.db.butceIslem.aggregate({ where: { ...ortak, tur: 'GELIR' }, _sum: { tutar: true } }),
       this.db.butceIslem.aggregate({
         where: { ...ortak, tur: 'GIDER', kaynak: { not: 'KART' } },
         _sum: { tutar: true },
       }),
+      // Elden alınan müşteri tahsilatı da kasaya girer
+      this.db.cariHareket.aggregate({
+        where: this.nakitTahsilatWhere(k.tenantId),
+        _sum: { tutar: true },
+      }),
     ]);
-    return kurus(num(giris._sum.tutar) - num(cikis._sum.tutar));
+    return kurus(num(giris._sum.tutar) + num(tahsilat._sum.tutar) - num(cikis._sum.tutar));
   }
 
   /**
@@ -1738,7 +1799,7 @@ export class ButceService {
       planlanan: false,
       bankaHesapId: null,
     };
-    const [giris, cikis, sayi, sonHareketler] = await Promise.all([
+    const [giris, cikis, sayi, sonHareketler, nakitTahsilat] = await Promise.all([
       this.db.butceIslem.aggregate({ where: { ...ortak, tur: 'GELIR' }, _sum: { tutar: true } }),
       this.db.butceIslem.aggregate({
         where: { ...ortak, tur: 'GIDER', kaynak: { not: 'KART' } },
@@ -1754,18 +1815,34 @@ export class ButceService {
         where: { ...ortak, OR: [{ tur: 'GELIR' }, { tur: 'GIDER', kaynak: { not: 'KART' } }] },
         include: { kategori: { select: { ad: true, renk: true } } },
       }),
+      // Elden alınan müşteri tahsilatı da kasa girişidir
+      this.db.cariHareket.aggregate({
+        where: this.nakitTahsilatWhere(k.tenantId),
+        _count: { _all: true },
+        _sum: { tutar: true },
+      }),
     ]);
 
-    const toplamGiris = kurus(num(giris._sum.tutar));
+    const toplamGiris = kurus(num(giris._sum.tutar) + num(nakitTahsilat._sum.tutar));
     const toplamCikis = kurus(num(cikis._sum.tutar));
     return {
       bakiye: kurus(toplamGiris - toplamCikis),
       giris: toplamGiris,
       cikis: toplamCikis,
-      hareketSayisi: sayi,
+      hareketSayisi: sayi + (nakitTahsilat?._count?._all || 0),
       /** Kategori bazlı toplamlar — büyükten küçüğe, giriş ve çıkış ayrı işaretli */
       kirilim: (() => {
         const harita = new Map<string, { ad: string; renk: string; tur: string; tutar: number }>();
+        // Tahsilat kendi satırında dursun: kasadaki paranın nereden geldiği
+        // "kategorisiz gelir" diye görünürse kimse anlamaz.
+        if (num(nakitTahsilat._sum.tutar) > 0) {
+          harita.set('GELIR:Müşteri tahsilatı', {
+            ad: 'Müşteri tahsilatı',
+            renk: '#a78bfa',
+            tur: 'GELIR',
+            tutar: kurus(num(nakitTahsilat._sum.tutar)),
+          });
+        }
         for (const i of sonHareketler as any[]) {
           const ad = i.kategori?.ad || (i.tur === 'GELIR' ? 'Kategorisiz gelir' : 'Kategorisiz gider');
           const anahtar = `${i.tur}:${ad}`;
@@ -1800,16 +1877,34 @@ export class ButceService {
       take: 500,
       include: { kategori: { select: { ad: true, renk: true } } },
     });
-    return liste.map((i: any) => ({
-      id: i.id,
-      tarih: i.tarih,
-      donem: i.donem,
-      tur: i.tur,
-      tutar: num(i.tutar),
-      aciklama: i.aciklama,
-      defter: i.defter,
-      kategori: i.kategori,
-    }));
+    // Kasaya giren müşteri tahsilatı da listede olmalı: bakiye onu sayıyorsa
+    // liste de saymalı, yoksa kasa bakiyesi listeden toplanamaz.
+    const nakitler = await this.cariTahsilatSatirlari(k, { ...(donem ? { donem } : {}) });
+
+    return [
+      ...nakitler
+        .filter((t: any) => !t.bankaHesapId)
+        .map((t: any) => ({
+          id: t.id,
+          tarih: t.tarih,
+          donem: t.donem,
+          tur: 'GELIR',
+          tutar: t.tutar,
+          aciklama: `Müşteri tahsilatı — ${t.aciklama}`,
+          defter: null,
+          kategori: t.kategori,
+        })),
+      ...liste.map((i: any) => ({
+        id: i.id,
+        tarih: i.tarih,
+        donem: i.donem,
+        tur: i.tur,
+        tutar: num(i.tutar),
+        aciklama: i.aciklama,
+        defter: i.defter,
+        kategori: i.kategori,
+      })),
+    ].sort((a, b) => new Date(b.tarih).getTime() - new Date(a.tarih).getTime());
   }
 
   /* ===================== ÖZET ===================== */
