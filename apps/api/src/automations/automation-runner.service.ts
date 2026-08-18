@@ -404,6 +404,23 @@ export class AutomationRunnerService implements OnModuleInit {
       // Tenant izolasyonu — bu otomasyon başka tenant'ın event'ini dinlemesin
       if (payload.tenantId !== automation.tenantId) return;
 
+      // EVRAK ŞALTERİ (2026-08-18): Taxpayer.Evrak* olayları evrak otomasyonuna
+      // ait; o akışın gönderim izni MOREN_EVRAK_CANLI + proaktif şalterle
+      // yönetiliyor. Otomasyon motoru bu şalterleri hiç bilmediği için, bu
+      // olaylara bağlı bir WhatsApp kuralı tanımlanmışsa mesaj şalter kapalıyken
+      // de, gece de, cumartesi de mükellefe gidiyordu.
+      if (eventName.startsWith('Taxpayer.Evrak')) {
+        const canli = process.env.MOREN_EVRAK_CANLI === '1';
+        const proaktif = process.env.MOREN_CLIENT_PROACTIVE_REMINDERS === '1';
+        if (!canli || !proaktif) {
+          this.logger.warn(
+            `Evrak olayı atlandı (şalter kapalı): id=${automation.id} event=${eventName}. ` +
+            'Açmak için MOREN_EVRAK_CANLI=1 ve MOREN_CLIENT_PROACTIVE_REMINDERS=1.',
+          );
+          return;
+        }
+      }
+
       // Filter eşleşmesi — her filter key'i payload'a eşit olmalı
       for (const [key, expected] of Object.entries(filters)) {
         if ((payload as any)[key] !== expected) {

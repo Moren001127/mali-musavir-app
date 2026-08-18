@@ -30,6 +30,15 @@ function parseTokenMap(raw: string) {
 export async function resolveTenantFromAgentToken(
   token: string | undefined,
   prisma?: { tenant?: { findFirst: (args: any) => Promise<{ id: string } | null> } },
+  /**
+   * SIKI MOD — ofis kısa adı (slug) yedeğine DÜŞMEZ.
+   *
+   * Geriye dönük uyumluluk için normalde slug da anahtar sayılıyor; slug
+   * ofis adından türetiliyor (küçük harf + tire), yani tahmin edilebilir ve
+   * gizli değil. Yeni uçlar bunu kabul etmemeli. Mevcut ajan/eklenti
+   * kurulumları kırılmasın diye eski uçlar sıkı mod KULLANMAZ.
+   */
+  opts: { strict?: boolean } = {},
 ): Promise<string> {
   const presented = String(token || '').trim();
   if (!presented) throw new UnauthorizedException('Missing X-Agent-Token');
@@ -38,6 +47,8 @@ export async function resolveTenantFromAgentToken(
   for (const pair of pairs) {
     if (safeEqual(presented, pair.token)) return pair.tenantId;
   }
+
+  if (opts.strict) throw new UnauthorizedException('Invalid agent token');
 
   const allowLegacyLookup =
     envFlag(process.env.AGENT_TOKEN_ALLOW_TENANT_ID) || process.env.NODE_ENV !== 'production';

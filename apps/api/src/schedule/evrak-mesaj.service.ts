@@ -7,13 +7,12 @@ import { WhatsAppService } from '../whatsapp/whatsapp.service';
  *
  * Evrak talep hatırlatması ve "evrak geldi" bilgilendirmesi buradan çıkar.
  * Tek kapı olması şart: gönderim kararı (test mi canlı mı, mesai içinde mi,
- * telefon var mı) iki ayrı yerde tekrarlansaydı biri gevşediğinde mükellefe
- * istenmeyen mesaj giderdi. Geçmişte bir belge akışında bu koruma yoktu ve
- * üç gerçek mesaj mükellefe ulaştı.
+ * resmî tatil mi, telefon var mı) iki ayrı yerde tekrarlansaydı biri
+ * gevşediğinde mükellefe istenmeyen mesaj giderdi. Geçmişte bir belge
+ * akışında bu koruma yoktu ve üç gerçek mesaj mükellefe ulaştı.
  *
- * VARSAYILAN: TEST. Mesaj mükellefe DEĞİL, ofis sahibine gider ve başına
- * "kime gidecekti / neden" bilgisi eklenir. Gerçek gönderim yalnız
- * MOREN_EVRAK_CANLI=1 ile açılır — env değişikliği bilinçli bir adımdır.
+ * VARSAYILAN: TEST. Mesaj mükellefe DEĞİL, ofis sahibine gider. Gerçek
+ * gönderim yalnız MOREN_EVRAK_CANLI=1 ile açılır — bilinçli bir adım.
  */
 @Injectable()
 export class EvrakMesajService {
@@ -24,9 +23,108 @@ export class EvrakMesajService {
     private whatsapp: WhatsAppService,
   ) {}
 
+  // ---------------------------------------------------------------- TAKVİM
+
+  /**
+   * Türkiye resmî tatilleri. Bayram tarihleri her yıl kayar, elle güncellenir.
+   *
+   * Burada duruyor çünkü hem hatırlatma hem "evrak geldi" onayı aynı takvimi
+   * kullanmalı. Önce yalnız hatırlatma tarafında vardı; 23 Nisan'da hatırlatma
+   * susarken onay mesajı gidiyordu.
+   */
+  static readonly RESMI_TATILLER = new Set<string>([
+    // 2026
+    '2026-01-01', '2026-03-19', '2026-03-20', '2026-03-21', '2026-03-22',
+    '2026-04-23', '2026-05-01', '2026-05-19', '2026-05-26', '2026-05-27',
+    '2026-05-28', '2026-05-29', '2026-05-30', '2026-07-15', '2026-08-30',
+    '2026-10-28', '2026-10-29',
+    // 2027
+    '2027-01-01', '2027-03-09', '2027-03-10', '2027-03-11', '2027-04-23',
+    '2027-05-01', '2027-05-16', '2027-05-17', '2027-05-18', '2027-05-19',
+    '2027-07-15', '2027-08-30', '2027-10-29',
+  ]);
+
+  /**
+   * Verilen anın TÜRKİYE saatindeki takvim parçaları.
+   *
+   * Sunucu UTC çalışıyor; yerel saate güvenmek yaz/kış saatinde kaydırır,
+   * bu yüzden saat dilimi açıkça veriliyor.
+   */
+  private trParcala(an: Date) {
+    const p = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Europe/Istanbul',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', weekday: 'short', hour12: false,
+    }).formatToParts(an);
+    const al = (t: string) => p.find((x) => x.type === t)?.value || '';
+    const gunAdi = al('weekday');
+    return {
+      tarih: `${al('year')}-${al('month')}-${al('day')}`,
+      // 24:00 tuzagı: hour12:false bazı ortamlarda gece yarısını "24" verir
+      saat: Number(al('hour')) % 24,
+      haftaSonu: gunAdi === 'Sat' || gunAdi === 'Sun',
+    };
+  }
+
+  /** O gün Türkiye resmî tatili mi */
+  resmiTatilMi(an: Date = new Date()): boolean {
+    return EvrakMesajService.RESMI_TATILLER.has(this.trParcala(an).tarih);
+  }
+
+  /**
+   * MESAİ PENCERESİ — Pazartesi–Cuma, 09:00–17:00 (Türkiye saati),
+   * resmî tatil hariç.
+   */
+  mesaiIcindeMi(an: Date = new Date()): boolean {
+    const { saat, haftaSonu, tarih } = this.trParcala(an);
+    if (haftaSonu) return false;
+    if (EvrakMesajService.RESMI_TATILLER.has(tarih)) return false;
+    return saat >= 9 && saat < 17;
+  }
+
+  // ---------------------------------------------------------------- DÖNEM
+
+  private static readonly AYLAR = [
+    'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
+    'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık',
+  ];
+
+  /** (2026, 7) → "Temmuz 2026" */
+  donemAdi(yil: number, ay: number): string {
+    return `${EvrakMesajService.AYLAR[ay - 1]} ${yil}`;
+  }
+
+  /**
+   * MÜKELLEFE YAZILAN DÖNEM = işlem ayının BİR ÖNCESİ.
+   *
+   * Aylık durum kayıtları İŞLEM ayına göre tutulur; Ağustos'ta işlenen evrak
+   * TEMMUZ dönemine aittir. Mesajda işlem ayı yazılırsa mükellef bir ay ileri
+   * bir dönem için sıkıştırılmış olur. Olay yükündeki beyannamePeriodLabel de
+   * aynı hesabı yapıyor (taxpayers.service.ts).
+   */
+  beyannameDonemi(islemYili: number, islemAyi: number): { yil: number; ay: number; etiket: string } {
+    const yil = islemAyi === 1 ? islemYili - 1 : islemYili;
+    const ay = islemAyi === 1 ? 12 : islemAyi - 1;
+    return { yil, ay, etiket: this.donemAdi(yil, ay) };
+  }
+
+  // ---------------------------------------------------------------- ŞALTER
+
   /** Gerçek gönderim açık mı — varsayılan KAPALI (test). */
   canliMi(): boolean {
     return process.env.MOREN_EVRAK_CANLI === '1';
+  }
+
+  /**
+   * Proaktif (mükellefin yazmasını beklemeden) mesaj izni.
+   *
+   * Hem hatırlatma hem "evrak geldi" onayı proaktiftir; ikisi de bu şaltere
+   * bağlı. Onay yolu bir süre şaltersizdi ve otomasyon motoru üzerinden de
+   * tetiklenebiliyordu — evrak modülünü hiç bilmeyen bir otomasyon toplu
+   * mesaj gönderebilirdi.
+   */
+  proaktifAcikMi(): boolean {
+    return process.env.MOREN_CLIENT_PROACTIVE_REMINDERS === '1';
   }
 
   /** Test mesajlarının gideceği numaralar (ofis sahibi). */
@@ -39,19 +137,7 @@ export class EvrakMesajService {
       .filter(Boolean);
   }
 
-  /**
-   * MESAİ PENCERESİ — Pazartesi–Cuma, 09:00–17:00 (Türkiye saati).
-   *
-   * Sunucu UTC çalışıyor; TR saatini yerel saate güvenerek hesaplamak yaz/kış
-   * saatinde kayar. Bu yüzden saat dilimi açıkça veriliyor.
-   */
-  mesaiIcindeMi(an: Date = new Date()): boolean {
-    const tr = new Date(an.toLocaleString('en-US', { timeZone: 'Europe/Istanbul' }));
-    const gun = tr.getDay(); // 0 Pazar, 6 Cumartesi
-    if (gun === 0 || gun === 6) return false;
-    const saat = tr.getHours();
-    return saat >= 9 && saat < 17;
-  }
+  // ---------------------------------------------------------------- METİN
 
   /** Mükellefin ekranda görünen adı */
   ad(t: any): string {
@@ -62,21 +148,11 @@ export class EvrakMesajService {
     );
   }
 
-  /** "2026-07" → "Temmuz 2026" */
-  donemAdi(yil: number, ay: number): string {
-    const aylar = [
-      'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
-      'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık',
-    ];
-    return `${aylar[ay - 1]} ${yil}`;
-  }
-
   /**
    * GÖVDE METİNLERİ — kullanıcının verdiği metinler (2026-08-18), başlıksız.
    *
    * Hitap ("Sayın {ad},") ve ofis adı buraya YAZILMAZ; ikisini de sarmala()
-   * ekliyor. Gövdeye de konsaydı mesajda iki kez "Sayın MUZAFFER ÖREN" ve iki
-   * kez ofis adı görünürdü.
+   * ekliyor. Gövdeye de konsaydı mesajda iki kez "Sayın ..." görünürdü.
    */
   static readonly VARSAYILAN = {
     TALEP:
@@ -94,26 +170,20 @@ export class EvrakMesajService {
     return (kayitli || '').trim() || EvrakMesajService.VARSAYILAN[tur];
   }
 
-  /** Kayıtlı şablonları koddaki varsayılan metinlere döndürür */
-  async sablonuVarsayilanaAl(tenantId: string) {
-    const veri = {
-      evrakTalepMesaji: EvrakMesajService.VARSAYILAN.TALEP,
-      evrakGeldiMesaji: EvrakMesajService.VARSAYILAN.GELDI,
-    };
-    await this.prisma.smsTemplate.upsert({
-      where: { tenantId },
-      update: veri,
-      create: { tenantId, ...veri },
-    });
-    return veri;
-  }
-
   /** Ofis adı — Akıllı Bildirim ayarındaki gönderen adı (ekstre ile aynı kaynak) */
   async ofisAdi(tenantId: string): Promise<string> {
     const ayar = await (this.prisma as any).smartDispatchSetting
       .findUnique({ where: { tenantId_kategori: { tenantId, kategori: 'VERGI' } } })
       .catch(() => null);
     return String(ayar?.senderName || 'MOREN MALİ MÜŞAVİRLİK');
+  }
+
+  /** {ad} / {dönem} yer tutucularını doldurur */
+  doldur(sablon: string, ad: string, donem: string): string {
+    return sablon
+      .replace(/\{ad\}/g, ad)
+      .replace(/\{dönem\}/g, donem)
+      .replace(/\{donem\}/g, donem);
   }
 
   /**
@@ -126,12 +196,13 @@ export class EvrakMesajService {
     return ['*Gönderen*', ofis, '', '*Sayın*', `${ad},`, '', govde].join('\n');
   }
 
-  /** {ad} / {dönem} yer tutucularını doldurur */
-  doldur(sablon: string, ad: string, donem: string): string {
-    return sablon
-      .replace(/\{ad\}/g, ad)
-      .replace(/\{dönem\}/g, donem)
-      .replace(/\{donem\}/g, donem);
+  /** Tam mesaj: şablonu oku, doldur, başlığı sar */
+  async mesajKur(tenantId: string, tur: 'TALEP' | 'GELDI', ad: string, donem: string): Promise<string> {
+    return this.sarmala(
+      await this.ofisAdi(tenantId),
+      ad,
+      this.doldur(await this.sablon(tenantId, tur), ad, donem),
+    );
   }
 
   /** Mükellefin telefonları — phones[] öncelikli, yoksa phone */
@@ -139,11 +210,12 @@ export class EvrakMesajService {
     return t?.phones?.length ? t.phones.filter(Boolean) : t?.phone ? [t.phone] : [];
   }
 
+  // ---------------------------------------------------------------- GÖNDER
+
   /**
    * TEK GÖNDERİM KAPISI.
    *
-   * Test modunda mükellefe HİÇBİR mesaj gitmez; metin ofis sahibine, kime ve
-   * neden gideceği başlıkta yazılı olarak iletilir.
+   * Test modunda mükellefe HİÇBİR mesaj gitmez; metin ofis sahibine iletilir.
    */
   async gonder(opts: {
     tenantId: string;
@@ -152,27 +224,22 @@ export class EvrakMesajService {
     tur: 'TALEP' | 'GELDI';
     donem: string;
     sebep: string;
-    /** Önizleme: mesai penceresini uygulama (yalnız sahibe giden testte) */
+    /** Önizleme: mesai/tatil penceresini uygulama (yalnız sahibe giden testte) */
     mesaiYokSay?: boolean;
     /** Önizleme: MOREN_EVRAK_CANLI açık olsa bile mükellefe GÖNDERME */
     zorlaTest?: boolean;
-    /**
-     * Test başlığını EKLEME — metin mükellefe gideceği haliyle görünsün.
-     * Şablon önizlemesinde açık: kullanıcı son hâli değerlendiriyor, üstteki
-     * bilgi bloğu değerlendirmeyi zorlaştırıyordu.
-     */
+    /** Test başlığını EKLEME — metin mükellefe gideceği haliyle görünsün */
     baslikSiz?: boolean;
   }): Promise<{ gonderildi: boolean; test: boolean; atlandi?: string }> {
     const { tenantId, taxpayer, metin, tur, donem, sebep } = opts;
     // zorlaTest, canlı şalterinin ÜSTÜNDE. Önizleme ucu bunu hep true verir;
-    // böylece ileride MOREN_EVRAK_CANLI=1 açıldığında bile o uç mükellefe
-    // mesaj atamaz — önizleme, gönderim yetkisi kazanmış olmaz.
+    // böylece MOREN_EVRAK_CANLI=1 açıldığında bile o uç mükellefe mesaj atamaz.
     const test = opts.zorlaTest === true || !this.canliMi();
 
-    // Mesai dışı gönderim yalnız önizlemede atlanabilir: gerçek akışta gece
-    // mesaj atmamak bu kontrolün tek işi.
+    // Mesai + resmî tatil. Gerçek akışta gece/hafta sonu/tatilde mesaj atmamak
+    // bu kontrolün tek işi; yalnız önizlemede atlanabilir.
     if (!opts.mesaiYokSay && !this.mesaiIcindeMi()) {
-      return { gonderildi: false, test, atlandi: 'mesai dışı' };
+      return { gonderildi: false, test, atlandi: this.resmiTatilMi() ? 'resmî tatil' : 'mesai dışı' };
     }
 
     const acik = await this.whatsapp.isAutomationActive(tenantId).catch(() => false);
@@ -185,30 +252,27 @@ export class EvrakMesajService {
         this.logger.warn('[EvrakMesaj] TEST modu ama MOREN_OWNER_WHATSAPP_PHONES tanımlı değil — hiçbir yere gönderilmedi.');
         return { gonderildi: false, test: true, atlandi: 'test numarası tanımsız' };
       }
-      // Başlıksız: mesaj birebir mükellefe gidecek metin. Yine de mükellefe
-      // DEĞİL, yalnız sahibin numarasına gider — kapı burası, başlık değil.
-      if (opts.baslikSiz) {
-        let sade = false;
-        for (const n of numaralar) {
-          if (await this.whatsapp.sendMessage(n, metin, tenantId)) sade = true;
-        }
-        return { gonderildi: sade, test: true };
-      }
 
-      const hedefler = this.telefonlar(taxpayer);
-      const baslik =
-        `🧪 EVRAK OTOMASYONU — TEST\n` +
-        `Tür: ${tur === 'TALEP' ? 'Evrak talep hatırlatması' : 'Evrak geldi bilgilendirmesi'}\n` +
-        `Mükellef: ${this.ad(taxpayer)}\n` +
-        `Dönem: ${donem}\n` +
-        `Gidecekti: ${hedefler.length ? hedefler.join(', ') : '(telefon yok — canlıda atlanırdı)'}\n` +
-        `Sebep: ${sebep}\n` +
-        `──────────\n`;
+      // Başlıksız: metin birebir mükellefe gidecek hali. Yine de mükellefe
+      // DEĞİL, yalnız sahibin numarasına gider — kapı burası, başlık değil.
+      const govde = opts.baslikSiz
+        ? metin
+        : `🧪 EVRAK OTOMASYONU — TEST\n` +
+          `Tür: ${tur === 'TALEP' ? 'Evrak talep hatırlatması' : 'Evrak geldi bilgilendirmesi'}\n` +
+          `Mükellef: ${this.ad(taxpayer)}\n` +
+          `Dönem: ${donem}\n` +
+          `Gidecekti: ${this.telefonlar(taxpayer).join(', ') || '(telefon yok — canlıda atlanırdı)'}\n` +
+          `Sebep: ${sebep}\n` +
+          `──────────\n${metin}`;
+
       let ok = false;
       for (const n of numaralar) {
-        if (await this.whatsapp.sendMessage(n, baslik + metin, tenantId)) ok = true;
+        if (await this.whatsapp.sendMessage(n, govde, tenantId)) ok = true;
       }
-      return { gonderildi: ok, test: true };
+      await this.izYaz({ tenantId, taxpayer, tur, donem, metin, test: true, basarili: ok, hedefler: numaralar, sebep });
+      // Başarısızlıkta sebep DOLU dönmeli: çağıran "geçici engel mi" kararını
+      // buna bakarak veriyor; boş kalırsa kayıt beklemeye alınmıyordu.
+      return ok ? { gonderildi: true, test: true } : { gonderildi: false, test: true, atlandi: 'WhatsApp gönderimi başarısız' };
     }
 
     // ---- CANLI ----
@@ -223,23 +287,42 @@ export class EvrakMesajService {
         ulasan.push(n);
       }
     }
+    await this.izYaz({
+      tenantId, taxpayer, tur, donem, metin,
+      test: false, basarili: ok, hedefler: ok ? ulasan : hedefler, sebep,
+    });
+    return ok ? { gonderildi: true, test: false } : { gonderildi: false, test: false, atlandi: 'WhatsApp gönderimi başarısız' };
+  }
 
-    if (ok) {
-      try {
-        await this.prisma.communicationLog.create({
-          data: {
-            taxpayerId: taxpayer.id,
-            channel: 'WHATSAPP',
-            subject: `${tur === 'TALEP' ? 'Evrak hatırlatma' : 'Evrak geldi bilgisi'} — ${donem}`,
-            content: this.telefonBasligi(metin, ulasan[0]),
-            occurredAt: new Date(),
-          },
-        });
-      } catch (err: any) {
-        this.logger.warn(`[EvrakMesaj] CommunicationLog yazılamadı: ${err?.message}`);
-      }
+  /**
+   * GÖNDERİM İZİ — her denemeyi kaydeder.
+   *
+   * Önce yalnız canlı + başarılı gönderim yazılıyordu; "gitti mi gitmedi mi"
+   * sorusu veritabanından yanıtlanamıyor, yalnız uygulama logunda kalıyordu.
+   * Test gönderimleri de yazılır ama başlığında TEST der, gerçekle karışmaz.
+   */
+  private async izYaz(o: {
+    tenantId: string; taxpayer: any; tur: 'TALEP' | 'GELDI'; donem: string;
+    metin: string; test: boolean; basarili: boolean; hedefler: string[]; sebep: string;
+  }) {
+    try {
+      const tur = o.tur === 'TALEP' ? 'Evrak hatırlatma' : 'Evrak geldi bilgisi';
+      const durum = o.basarili ? 'Gönderildi' : 'Başarısız';
+      await this.prisma.communicationLog.create({
+        data: {
+          taxpayerId: o.taxpayer.id,
+          channel: 'WHATSAPP',
+          subject: `${o.test ? '[TEST] ' : ''}${tur} — ${o.donem} — ${durum}`,
+          content: this.telefonBasligi(
+            `${o.metin}\n\n— Hedef: ${o.hedefler.join(', ') || '(yok)'} · Sebep: ${o.sebep}`,
+            o.hedefler[0],
+          ),
+          occurredAt: new Date(),
+        },
+      });
+    } catch (err: any) {
+      this.logger.warn(`[EvrakMesaj] CommunicationLog yazılamadı: ${err?.message}`);
     }
-    return { gonderildi: ok, test: false };
   }
 
   private normalizeTelefon(value?: string | null): string {

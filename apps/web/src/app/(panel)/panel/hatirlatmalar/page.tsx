@@ -203,7 +203,16 @@ export default function HatirlatmalarPage() {
         />
         <SummaryCard icon={FileInput} label="Evrak Mesajı" value={String(totals.evrak)} tone="gold" sub={`${evrakQuery.data?.atlanacak || 0} atlanacak`} />
         <SummaryCard icon={Wallet} label="Tahsilat Mesajı" value={String(totals.tahsilat)} tone="blue" sub={`${formatMoney(totals.tahsilatTutar)} TL açık bakiye`} />
-        <SummaryCard icon={Calendar} label="Dönem" value={evrakQuery.data?.donem || `${AYLAR[month - 1]} ${year}`} tone="neutral" sub="Evrak hatırlatma dönemi" />
+        <SummaryCard
+          icon={Calendar}
+          label="Dönem"
+          /* API donemi ISLEM ayi - 1 donduruyor (Agustos'ta islenen = Temmuz
+             evraki). Yedek ifade de ayni hesabi yapmali; yoksa kart yuklenirken
+             bir ay ileri gosterip veri gelince atliyordu. */
+          value={evrakQuery.data?.donem || `${AYLAR[month === 1 ? 11 : month - 2]} ${month === 1 ? year - 1 : year}`}
+          tone="neutral"
+          sub={`İşlem ayı: ${AYLAR[month - 1]} ${year}`}
+        />
       </div>
 
       {!qrBagli && (

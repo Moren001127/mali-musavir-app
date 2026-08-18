@@ -1254,6 +1254,20 @@ model TaxpayerMonthlyStatus {
   hesaplananKdvKontrol  Boolean  @default(false)
   eArsivKontrol         Boolean  @default(false)
   notes                 String?  @db.Text
+
+  // ---- EVRAK MESAJ DAMGALARI (2026-08-18) ----
+  // Damgalar DÖNEM bazında. Önceden Taxpayer.lastReminderSentAt tek alanda
+  // tutuluyordu; ay değişince eski dönemin takibi düşüyor ve aynı damga farklı
+  // dönemleri kilitliyordu.
+  /// Bu dönem için son evrak TALEP hatırlatması (2 günde bir kuralı buradan)
+  evrakTalepSonGonderimAt   DateTime?
+  /// Bu dönem için kaç hatırlatma gitti (izleme)
+  evrakTalepGonderimSayisi  Int       @default(0)
+  /// "Evrak geldi" mesai dışında işaretlendi, ilk mesai saatinde gönderilecek
+  evrakGeldiMesajBekliyor   Boolean   @default(false)
+  /// "Evrak geldi" onayı gönderildi — dolu ise TEKRAR gönderilmez
+  evrakGeldiMesajGonderimAt DateTime?
+
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
@@ -1261,6 +1275,8 @@ model TaxpayerMonthlyStatus {
 
   @@unique([taxpayerId, year, month])
   @@index([tenantId, year, month])
+  // Mesai basindaki "bekleyen onay" taramasi bu indeksi kullanir
+  @@index([evrakGeldiMesajBekliyor])
   @@map("taxpayer_monthly_statuses")
 }
 

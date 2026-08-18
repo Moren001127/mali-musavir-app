@@ -10,6 +10,7 @@ import { StorageService } from '../storage/storage.service';
 import { OwnerDigestService } from './owner-digest.service';
 import { OwnerBriefingCron } from './owner-briefing.cron';
 import { EvrakMesajService } from '../schedule/evrak-mesaj.service';
+import { ReminderCron } from '../schedule/reminder.cron';
 
 type EvrakReminderBody = {
   taxpayerIds?: string[];
@@ -1099,30 +1100,42 @@ export class WhatsAppController {
     // parametreleri tire ile birlestirip duz metin gonderiyordu, yani mukellefe
     // "AD - DONEM" gidiyor, gunluge ise row.mesaj yaziliyordu (gonderilen ile
     // gorunen ayrisiyordu). Artik her zaman gunluge yazilan metnin AYNISI gider.
+    // TEK KAPI (2026-08-18): bu uç doğrudan mükellefin numarasına yazıyordu —
+    // test modu yok, mesai/hafta sonu penceresi yok, resmî tatil yok. Cumartesi
+    // gecesi butona basılınca gerçek mesaj gidiyordu. Artık otomasyonla aynı
+    // korumaların arkasında; gönderim izini de kapı yazıyor.
     for (const row of preview.rows.filter((r: any) => r.gonderilebilir)) {
-      let delivered = false;
-      for (const phone of row.phones) {
-        const ok = await this.whatsappService.sendMessage(phone, row.mesaj, req.user.tenantId);
-        delivered = delivered || ok;
-      }
-
-      await this.prisma.communicationLog.create({
-        data: {
-          taxpayerId: row.taxpayerId,
-          channel: 'WHATSAPP',
-          subject: `Evrak hatirlatma - ${preview.donem} - ${delivered ? 'Gonderildi' : 'Basarisiz'}`,
-          content: row.mesaj,
-          occurredAt: new Date(),
-        },
+      const sonuc = await this.evrakMesaj.gonder({
+        tenantId: req.user.tenantId,
+        taxpayer: { id: row.taxpayerId, companyName: row.ad, phones: row.phones },
+        metin: row.mesaj,
+        tur: 'TALEP',
+        donem: preview.donem,
+        sebep: 'Panel > Hatırlatmalar ekranından elle gönderildi',
       });
+      const delivered = sonuc.gonderildi && !sonuc.test;
 
+      // Damga YALNIZ gerçek gönderimde. Test modunda da atılsaydı, canlıya
+      // geçilen gün "son 2 günde gönderildi" denip elle gönderim de engellenirdi.
       if (delivered) {
-        await this.prisma.taxpayer.update({
-          where: { id: row.taxpayerId },
-          data: { lastReminderSentAt: new Date() },
+        await this.prisma.taxpayerMonthlyStatus.upsert({
+          where: { taxpayerId_year_month: { taxpayerId: row.taxpayerId, year: preview.year, month: preview.month } },
+          update: { evrakTalepSonGonderimAt: new Date(), evrakTalepGonderimSayisi: { increment: 1 } },
+          create: {
+            tenantId: req.user.tenantId, taxpayerId: row.taxpayerId,
+            year: preview.year, month: preview.month,
+            evrakTalepSonGonderimAt: new Date(), evrakTalepGonderimSayisi: 1,
+          },
         });
       }
-      results.push({ taxpayerId: row.taxpayerId, ad: row.ad, phones: row.phones, ok: delivered });
+      results.push({
+        taxpayerId: row.taxpayerId,
+        ad: row.ad,
+        phones: row.phones,
+        ok: delivered,
+        test: sonuc.test,
+        atlandi: sonuc.atlandi || null,
+      });
     }
 
     return {
@@ -1583,13 +1596,38 @@ export class WhatsAppController {
     const year = Number(body.year) || now.getFullYear();
     const monthInput = Number(body.month) || now.getMonth() + 1;
     const month = Math.min(12, Math.max(1, monthInput));
-    const donem = `${this.aylarTr[month - 1]} ${year}`;
+    // Mükellefe yazılan dönem = İŞLEM ayı − 1. Kayıtlar işlem ayında tutulur;
+    // mesajda işlem ayı yazılırsa mükellef bir ay ileri dönem için sıkıştırılır.
+    const donem = this.evrakMesaj.beyannameDonemi(year, month).etiket;
     const currentPeriod = year === now.getFullYear() && month === now.getMonth() + 1;
-    const dueCutoffDay = currentPeriod ? now.getDate() : 31;
-    const twoDaysAgo = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000);
+    // AY SONU KIRPMASI cron ile aynı olmalı: 30 Nisan'da cron teslim günü 31
+    // olana mesaj gönderirken panel aynı satırı "teslim günü gelmedi" diye
+    // atlıyordu ve gönderim ucu bu önizlemeyi kullandığı için elle gönderim
+    // de imkânsızdı.
+    const ayinSonGunu = new Date(year, month, 0).getDate();
+    const dueCutoffDay = currentPeriod ? (now.getDate() >= ayinSonGunu ? 31 : now.getDate()) : 31;
+    // İki gün eşiği cron ile AYNI kaynaktan: panel 48 saat (kayan), cron
+    // takvim günü kullanıyordu; panel "kilitli" derken cron yarım saat sonra
+    // gönderiyordu.
+    const twoDaysAgo = ReminderCron.ikiGunEsigi(now);
     const selectedIds = Array.isArray(body.taxpayerIds) ? body.taxpayerIds.filter(Boolean) : [];
 
-    const where: any = { tenantId, isActive: true };
+    // AYLIK TAKİP LİSTESİ KÜMESİ + TESLİM GÜNÜ ŞARTI (kullanıcı kararı 2026-08-18).
+    // Önce yalnız isActive'e bakılıyordu: işi BIRAKMIŞ mükellef listeye giriyor,
+    // teslim günü hiç girilmemiş mükellef ise aşağıda "1" sayılıp vadesi gelmiş
+    // gösteriliyordu. İkisi de mesaj alabiliyordu.
+    const ilkGun = new Date(year, month - 1, 1);
+    const sonGun = new Date(year, month, 0, 23, 59, 59);
+    const where: any = {
+      tenantId,
+      isActive: true,
+      evrakTeslimGunu: { not: null },
+      AND: [
+        { OR: [{ startDate: null }, { startDate: { lte: sonGun } }] },
+        { OR: [{ endDate: null }, { endDate: { gte: ilkGun } }] },
+        { NOT: { taxNumber: { startsWith: 'WHATSAPP-' } } },
+      ],
+    };
     if (selectedIds.length) where.id = { in: selectedIds };
 
     const taxpayers = await this.prisma.taxpayer.findMany({
@@ -1613,7 +1651,7 @@ export class WhatsAppController {
       ids.length
         ? this.prisma.taxpayerMonthlyStatus.findMany({
             where: { tenantId, year, month, taxpayerId: { in: ids } },
-            select: { taxpayerId: true, evraklarGeldi: true },
+            select: { taxpayerId: true, evraklarGeldi: true, evrakTalepSonGonderimAt: true },
           })
         : Promise.resolve([]),
       ids.length
@@ -1645,15 +1683,21 @@ export class WhatsAppController {
       const ad = this.taxpayerDisplayName(t);
       const phones = this.taxpayerPhones(t);
       const evraklarGeldi = Boolean(statusMap.get(t.id)?.evraklarGeldi);
-      const dueDay = Number(t.evrakTeslimGunu || 1);
-      const lastReminder = lastLogMap.get(t.id) || t.lastReminderSentAt || null;
+      // Teslim günü artık sorguda zorunlu; yine de savunma amaçlı 31 (asla
+      // "vadesi geldi" sayılmasın). Önceden `|| 1` idi ve boş teslim günü
+      // ayın 1'i gibi davranıp her gün vadesi gelmiş görünüyordu.
+      const dueDay = Number(t.evrakTeslimGunu ?? 31);
+      // DONEM BAZLI damga onceliklidir; Taxpayer.lastReminderSentAt tek alan
+      // oldugu icin ay degisince eski donemin damgasi yeni donemi kilitliyordu.
+      const lastReminder =
+        statusMap.get(t.id)?.evrakTalepSonGonderimAt || lastLogMap.get(t.id) || null;
       const reasons: string[] = [];
 
       if (!t.whatsappEvrakTalep) reasons.push('WhatsApp evrak talebi kapali');
       if (!phones.length) reasons.push('Telefon yok');
       if (evraklarGeldi) reasons.push('Bu ay evrak geldi isaretli');
       if (!body.includeNotDue && dueDay > dueCutoffDay) reasons.push(`Evrak teslim gunu gelmedi (${dueDay})`);
-      if (!body.force && lastReminder && lastReminder > twoDaysAgo) reasons.push('Son 2 gunde hatirlatma gonderildi');
+      if (!body.force && lastReminder && lastReminder >= twoDaysAgo) reasons.push('Son 2 gunde hatirlatma gonderildi');
 
       // BAŞLIK ŞART: şablon gövdesinde artık hitap yok (onu sarmala ekliyor).
       // Sarmalasız gönderilirse mesaj "Sayın ..." olmadan, doğrudan dönem

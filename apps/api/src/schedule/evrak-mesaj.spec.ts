@@ -4,11 +4,14 @@ import { EvrakMesajService } from './evrak-mesaj.service';
  * EVRAK MESAJLARI — mükellefe istenmeyen mesaj gitmesini önleyen kurallar.
  *
  * Geçmişte bir belge akışında koruma yokken üç gerçek mesaj mükellefe gitti.
- * Buradaki üç kural o hatanın tekrarını engelliyor ve hiçbiri bozulduğunda
- * ekran hata vermez — yalnız mesaj yanlış kişiye gider. O yüzden kilitli.
+ * Buradaki kuralların hiçbiri bozulduğunda ekran hata vermez — yalnız mesaj
+ * yanlış kişiye, yanlış saatte veya yanlış dönemle gider. O yüzden kilitli.
  */
 
 const servisKur = () => new EvrakMesajService({} as any, {} as any);
+
+/** Türkiye saatiyle verilen anı Date'e çevirir (yaz saati +03, sabit) */
+const tr = (iso: string) => new Date(`${iso}+03:00`);
 
 describe('evrak mesajı — varsayılan TEST', () => {
   const eski = process.env.MOREN_EVRAK_CANLI;
@@ -35,10 +38,28 @@ describe('evrak mesajı — varsayılan TEST', () => {
   });
 });
 
+describe('evrak mesajı — proaktif şalter iki mesaj türünü de kapsar', () => {
+  const eski = process.env.MOREN_CLIENT_PROACTIVE_REMINDERS;
+  afterEach(() => {
+    if (eski === undefined) delete process.env.MOREN_CLIENT_PROACTIVE_REMINDERS;
+    else process.env.MOREN_CLIENT_PROACTIVE_REMINDERS = eski;
+  });
+
+  it('env yokken proaktif KAPALI', () => {
+    delete process.env.MOREN_CLIENT_PROACTIVE_REMINDERS;
+    expect(servisKur().proaktifAcikMi()).toBe(false);
+  });
+
+  it('yalnız "1" açar', () => {
+    process.env.MOREN_CLIENT_PROACTIVE_REMINDERS = 'evet';
+    expect(servisKur().proaktifAcikMi()).toBe(false);
+    process.env.MOREN_CLIENT_PROACTIVE_REMINDERS = '1';
+    expect(servisKur().proaktifAcikMi()).toBe(true);
+  });
+});
+
 describe('evrak mesajı — mesai penceresi (Pzt-Cum 09:00-17:00 TR)', () => {
   const s = servisKur();
-  /** Türkiye saatiyle verilen anı UTC Date'e çevirir (yaz saati +03) */
-  const tr = (iso: string) => new Date(`${iso}+03:00`);
 
   it('hafta içi 09:00 açılış — dahil', () => {
     expect(s.mesaiIcindeMi(tr('2026-08-18T09:00:00'))).toBe(true); // Salı
@@ -57,7 +78,7 @@ describe('evrak mesajı — mesai penceresi (Pzt-Cum 09:00-17:00 TR)', () => {
   });
 
   it('gece yarısı mesaj GİTMEZ', () => {
-    expect(s.mesaiIcindeMi(tr('2026-08-18T03:00:00'))).toBe(false);
+    expect(s.mesaiIcindeMi(tr('2026-08-18T00:30:00'))).toBe(false);
   });
 
   it('Cumartesi kapalı', () => {
@@ -70,6 +91,43 @@ describe('evrak mesajı — mesai penceresi (Pzt-Cum 09:00-17:00 TR)', () => {
 
   it('Cuma öğlen açık', () => {
     expect(s.mesaiIcindeMi(tr('2026-08-21T12:00:00'))).toBe(true);
+  });
+
+  it('UTC gece yarısını aşan an TR gününe göre değerlendirilir', () => {
+    // Cuma 23:00 UTC = Cumartesi 02:00 TR → kapalı olmalı.
+    expect(s.mesaiIcindeMi(new Date('2026-08-21T23:00:00Z'))).toBe(false);
+  });
+});
+
+describe('evrak mesajı — resmî tatil iki mesaj türünde de geçerli', () => {
+  const s = servisKur();
+
+  it('23 Nisan hafta içi ve mesai saatinde bile KAPALI', () => {
+    // 2026-04-23 Perşembe
+    expect(s.resmiTatilMi(tr('2026-04-23T11:00:00'))).toBe(true);
+    expect(s.mesaiIcindeMi(tr('2026-04-23T11:00:00'))).toBe(false);
+  });
+
+  it('tatil olmayan hafta içi gün açık', () => {
+    expect(s.resmiTatilMi(tr('2026-04-24T11:00:00'))).toBe(false);
+    expect(s.mesaiIcindeMi(tr('2026-04-24T11:00:00'))).toBe(true);
+  });
+});
+
+describe('evrak mesajı — dönem', () => {
+  const s = servisKur();
+
+  it('mükellefe yazılan dönem = işlem ayı − 1', () => {
+    // Ağustos'ta işlenen evrak TEMMUZ dönemine aittir
+    expect(s.beyannameDonemi(2026, 8).etiket).toBe('Temmuz 2026');
+  });
+
+  it('Ocak işlem ayında yıl da geriye kayar', () => {
+    expect(s.beyannameDonemi(2026, 1)).toEqual({ yil: 2025, ay: 12, etiket: 'Aralık 2025' });
+  });
+
+  it('dönem adı Türkçe ay ile yazılır', () => {
+    expect(s.donemAdi(2026, 7)).toBe('Temmuz 2026');
   });
 });
 
@@ -87,10 +145,6 @@ describe('evrak mesajı — metin', () => {
     expect(s.ad({})).toBe('Sayın Mükellef');
   });
 
-  it('dönem adı Türkçe ay ile yazılır', () => {
-    expect(s.donemAdi(2026, 7)).toBe('Temmuz 2026');
-  });
-
   it('phones[] öncelikli, yoksa phone alanına düşer', () => {
     expect(s.telefonlar({ phones: ['0555', '0533'], phone: '0111' })).toEqual(['0555', '0533']);
     expect(s.telefonlar({ phones: [], phone: '0111' })).toEqual(['0111']);
@@ -98,85 +152,13 @@ describe('evrak mesajı — metin', () => {
   });
 });
 
-describe('evrak mesajı — önizleme mükellefe GÖNDEREMEZ', () => {
-  const eski = process.env.MOREN_EVRAK_CANLI;
-  const eskiTel = process.env.MOREN_OWNER_WHATSAPP_PHONES;
-
-  /** Gönderilen (numara, metin) çiftlerini toplayan sahte WhatsApp servisi */
-  const kur = () => {
-    const gidenler: Array<{ no: string; metin: string }> = [];
-    const whatsapp = {
-      isAutomationActive: async () => true,
-      sendMessage: async (no: string, metin: string) => {
-        gidenler.push({ no, metin });
-        return true;
-      },
-    };
-    const prisma = { communicationLog: { create: async () => ({}) } };
-    return { gidenler, servis: new EvrakMesajService(prisma as any, whatsapp as any) };
-  };
-
-  const mukellef = { id: 'x', companyName: 'DENEME LTD', phones: ['905550000001'] };
-  const cagri = (ek: any = {}) => ({
-    tenantId: 't1',
-    taxpayer: mukellef,
-    metin: 'Metin',
-    tur: 'TALEP' as const,
-    donem: 'Temmuz 2026',
-    sebep: 'test',
-    mesaiYokSay: true,
-    ...ek,
-  });
-
-  beforeEach(() => {
-    process.env.MOREN_OWNER_WHATSAPP_PHONES = '905350587475';
-  });
-  afterEach(() => {
-    if (eski === undefined) delete process.env.MOREN_EVRAK_CANLI;
-    else process.env.MOREN_EVRAK_CANLI = eski;
-    if (eskiTel === undefined) delete process.env.MOREN_OWNER_WHATSAPP_PHONES;
-    else process.env.MOREN_OWNER_WHATSAPP_PHONES = eskiTel;
-  });
-
-  it('CANLI açıkken bile zorlaTest mükellefin numarasına göndermez', async () => {
-    process.env.MOREN_EVRAK_CANLI = '1';
-    const { gidenler, servis } = kur();
-    const r = await servis.gonder(cagri({ zorlaTest: true }));
-
-    expect(r.test).toBe(true);
-    expect(gidenler.map((g) => g.no)).toEqual(['905350587475']);
-    expect(gidenler.some((g) => g.no === '905550000001')).toBe(false);
-    expect(gidenler[0].metin).toContain('EVRAK OTOMASYONU — TEST');
-    expect(gidenler[0].metin).toContain('DENEME LTD');
-  });
-
-  it('zorlaTest yokken CANLI gerçekten mükellefe gider', async () => {
-    process.env.MOREN_EVRAK_CANLI = '1';
-    const { gidenler, servis } = kur();
-    const r = await servis.gonder(cagri());
-
-    expect(r.test).toBe(false);
-    expect(gidenler.map((g) => g.no)).toEqual(['905550000001']);
-  });
-
-  it('mesaiYokSay verilmezse mesai dışında hiçbir şey gönderilmez', async () => {
-    const { gidenler, servis } = kur();
-    jest.spyOn(servis, 'mesaiIcindeMi').mockReturnValue(false);
-    const r = await servis.gonder(cagri({ mesaiYokSay: false, zorlaTest: true }));
-
-    expect(r.gonderildi).toBe(false);
-    expect(r.atlandi).toBe('mesai dışı');
-    expect(gidenler).toHaveLength(0);
-  });
-});
-
 describe('evrak mesajı — başlık sarmalı (ekstre ile aynı düzen)', () => {
   const s = servisKur();
 
   it('Gönderen ve Sayın kalın, ofis ve ad ayrı satırda', () => {
+    // Ad'ın önünde BOŞLUK YOK: ekstre kalıbından ` ${ad},` diye kopyalanmıştı,
+    // WhatsApp'ta satır bir tık içeriden başlıyordu (kullanıcı fark etti).
     expect(s.sarmala('MOREN MALİ MÜŞAVİRLİK', 'FİGEN KABAKCI', 'Gövde metni.')).toBe(
-      // Ad'ın önünde BOŞLUK YOK: ekstre kalıbından ` ${ad},` diye kopyalanmıştı,
-      // WhatsApp'ta satır bir tık içeriden başlıyordu (kullanıcı fark etti).
       '*Gönderen*\nMOREN MALİ MÜŞAVİRLİK\n\n*Sayın*\nFİGEN KABAKCI,\n\nGövde metni.',
     );
   });
@@ -190,52 +172,182 @@ describe('evrak mesajı — başlık sarmalı (ekstre ile aynı düzen)', () => 
   });
 });
 
-describe('evrak mesajı — başlıksız gönderim', () => {
+// ----------------------------------------------------------------- GÖNDERİM
+
+const gonderimKur = () => {
+  const gidenler: Array<{ no: string; metin: string }> = [];
+  const izler: any[] = [];
+  const whatsapp = {
+    isAutomationActive: async () => true,
+    sendMessage: async (no: string, metin: string) => { gidenler.push({ no, metin }); return true; },
+  };
+  const prisma = { communicationLog: { create: async (a: any) => { izler.push(a.data); return {}; } } };
+  return { gidenler, izler, servis: new EvrakMesajService(prisma as any, whatsapp as any) };
+};
+
+const CAGRI = {
+  tenantId: 't1',
+  taxpayer: { id: 'x', companyName: 'DENEME LTD', phones: ['905550000001'] },
+  metin: 'Birebir gidecek metin.',
+  tur: 'TALEP' as const,
+  donem: 'Temmuz 2026',
+  sebep: 'test',
+  mesaiYokSay: true,
+};
+
+describe('evrak mesajı — önizleme mükellefe GÖNDEREMEZ', () => {
+  const eski = process.env.MOREN_EVRAK_CANLI;
   const eskiTel = process.env.MOREN_OWNER_WHATSAPP_PHONES;
 
-  const kur = () => {
-    const gidenler: Array<{ no: string; metin: string }> = [];
-    const whatsapp = {
-      isAutomationActive: async () => true,
-      sendMessage: async (no: string, metin: string) => { gidenler.push({ no, metin }); return true; },
-    };
-    return { gidenler, servis: new EvrakMesajService({} as any, whatsapp as any) };
-  };
+  beforeEach(() => { process.env.MOREN_OWNER_WHATSAPP_PHONES = '905350587475'; });
+  afterEach(() => {
+    if (eski === undefined) delete process.env.MOREN_EVRAK_CANLI;
+    else process.env.MOREN_EVRAK_CANLI = eski;
+    if (eskiTel === undefined) delete process.env.MOREN_OWNER_WHATSAPP_PHONES;
+    else process.env.MOREN_OWNER_WHATSAPP_PHONES = eskiTel;
+  });
 
+  it('CANLI açıkken bile zorlaTest mükellefin numarasına göndermez', async () => {
+    process.env.MOREN_EVRAK_CANLI = '1';
+    const { gidenler, servis } = gonderimKur();
+    const r = await servis.gonder({ ...CAGRI, zorlaTest: true });
+
+    expect(r.test).toBe(true);
+    expect(gidenler.map((g) => g.no)).toEqual(['905350587475']);
+    expect(gidenler.some((g) => g.no === '905550000001')).toBe(false);
+    expect(gidenler[0].metin).toContain('EVRAK OTOMASYONU — TEST');
+    expect(gidenler[0].metin).toContain('DENEME LTD');
+  });
+
+  it('zorlaTest yokken CANLI gerçekten mükellefe gider', async () => {
+    process.env.MOREN_EVRAK_CANLI = '1';
+    const { gidenler, servis } = gonderimKur();
+    const r = await servis.gonder({ ...CAGRI });
+
+    expect(r.test).toBe(false);
+    expect(gidenler.map((g) => g.no)).toEqual(['905550000001']);
+  });
+
+  it('mesaiYokSay verilmezse mesai dışında hiçbir şey gönderilmez', async () => {
+    const { gidenler, servis } = gonderimKur();
+    jest.spyOn(servis, 'mesaiIcindeMi').mockReturnValue(false);
+    const r = await servis.gonder({ ...CAGRI, mesaiYokSay: false, zorlaTest: true });
+
+    expect(r.gonderildi).toBe(false);
+    expect(r.atlandi).toBe('mesai dışı');
+    expect(gidenler).toHaveLength(0);
+  });
+
+  it('resmî tatilde atlama sebebi ayrı yazılır — erteleme kararı buna bakar', async () => {
+    const { servis } = gonderimKur();
+    jest.spyOn(servis, 'mesaiIcindeMi').mockReturnValue(false);
+    jest.spyOn(servis, 'resmiTatilMi').mockReturnValue(true);
+    const r = await servis.gonder({ ...CAGRI, mesaiYokSay: false });
+    expect(r.atlandi).toBe('resmî tatil');
+  });
+});
+
+describe('evrak mesajı — başlıksız gönderim', () => {
+  const eskiTel = process.env.MOREN_OWNER_WHATSAPP_PHONES;
   beforeEach(() => { process.env.MOREN_OWNER_WHATSAPP_PHONES = '905350587475'; });
   afterEach(() => {
     if (eskiTel === undefined) delete process.env.MOREN_OWNER_WHATSAPP_PHONES;
     else process.env.MOREN_OWNER_WHATSAPP_PHONES = eskiTel;
   });
 
-  const cagri = (ek: any) => ({
-    tenantId: 't1',
-    taxpayer: { id: 'x', companyName: 'DENEME LTD', phones: ['905550000001'] },
-    metin: 'Birebir gidecek metin.',
-    tur: 'TALEP' as const,
-    donem: 'Temmuz 2026',
-    sebep: 'test',
-    mesaiYokSay: true,
-    zorlaTest: true,
-    ...ek,
-  });
-
   it('baslikSiz ile metnin ÖNÜNE hiçbir şey eklenmez', async () => {
-    const { gidenler, servis } = kur();
-    await servis.gonder(cagri({ baslikSiz: true }));
+    const { gidenler, servis } = gonderimKur();
+    await servis.gonder({ ...CAGRI, zorlaTest: true, baslikSiz: true });
     expect(gidenler).toHaveLength(1);
     expect(gidenler[0].metin).toBe('Birebir gidecek metin.');
   });
 
   it('baslikSiz olsa da hedef yine SAHİP, mükellef değil', async () => {
-    const { gidenler, servis } = kur();
-    await servis.gonder(cagri({ baslikSiz: true }));
+    const { gidenler, servis } = gonderimKur();
+    await servis.gonder({ ...CAGRI, zorlaTest: true, baslikSiz: true });
     expect(gidenler[0].no).toBe('905350587475');
   });
 
   it('baslikSiz yokken TEST başlığı eklenir', async () => {
-    const { gidenler, servis } = kur();
-    await servis.gonder(cagri({}));
+    const { gidenler, servis } = gonderimKur();
+    await servis.gonder({ ...CAGRI, zorlaTest: true });
     expect(gidenler[0].metin).toContain('EVRAK OTOMASYONU — TEST');
+  });
+});
+
+describe('evrak mesajı — gönderim izi', () => {
+  const eskiTel = process.env.MOREN_OWNER_WHATSAPP_PHONES;
+  beforeEach(() => { process.env.MOREN_OWNER_WHATSAPP_PHONES = '905350587475'; });
+  afterEach(() => {
+    if (eskiTel === undefined) delete process.env.MOREN_OWNER_WHATSAPP_PHONES;
+    else process.env.MOREN_OWNER_WHATSAPP_PHONES = eskiTel;
+  });
+
+  it('test gönderimi de kaydedilir ve başlığında TEST der', async () => {
+    const { izler, servis } = gonderimKur();
+    await servis.gonder({ ...CAGRI, zorlaTest: true });
+    expect(izler).toHaveLength(1);
+    expect(izler[0].subject).toContain('[TEST]');
+    expect(izler[0].subject).toContain('Temmuz 2026');
+  });
+
+  it('gerçek gönderim TEST etiketi TAŞIMAZ', async () => {
+    const eski = process.env.MOREN_EVRAK_CANLI;
+    process.env.MOREN_EVRAK_CANLI = '1';
+    try {
+      const { izler, servis } = gonderimKur();
+      await servis.gonder({ ...CAGRI });
+      expect(izler[0].subject).not.toContain('[TEST]');
+      expect(izler[0].subject).toContain('Gönderildi');
+    } finally {
+      if (eski === undefined) delete process.env.MOREN_EVRAK_CANLI;
+      else process.env.MOREN_EVRAK_CANLI = eski;
+    }
+  });
+});
+
+describe('evrak mesajı — başarısızlıkta sebep DOLU döner', () => {
+  const eskiTel = process.env.MOREN_OWNER_WHATSAPP_PHONES;
+  beforeEach(() => { process.env.MOREN_OWNER_WHATSAPP_PHONES = '905350587475'; });
+  afterEach(() => {
+    if (eskiTel === undefined) delete process.env.MOREN_OWNER_WHATSAPP_PHONES;
+    else process.env.MOREN_OWNER_WHATSAPP_PHONES = eskiTel;
+  });
+
+  /**
+   * Çağıran "geçici engel mi, kalıcı ret mi" kararını `atlandi` alanına
+   * bakarak veriyor. Boş kalırsa kayıt beklemeye ALINMIYOR ve onay mesajı
+   * kalıcı olarak düşüyordu.
+   */
+  const kopukKur = () => {
+    const whatsapp = { isAutomationActive: async () => true, sendMessage: async () => false };
+    const prisma = { communicationLog: { create: async () => ({}) } };
+    return new EvrakMesajService(prisma as any, whatsapp as any);
+  };
+
+  const cagri = {
+    tenantId: 't1',
+    taxpayer: { id: 'x', companyName: 'DENEME LTD', phones: ['905550000001'] },
+    metin: 'Metin', tur: 'GELDI' as const, donem: 'Temmuz 2026',
+    sebep: 'test', mesaiYokSay: true,
+  };
+
+  it('test modunda köprü kopuksa sebep yazılır', async () => {
+    const r = await kopukKur().gonder({ ...cagri, zorlaTest: true });
+    expect(r.gonderildi).toBe(false);
+    expect(r.atlandi).toBe('WhatsApp gönderimi başarısız');
+  });
+
+  it('canlı modda köprü kopuksa sebep yazılır', async () => {
+    const eski = process.env.MOREN_EVRAK_CANLI;
+    process.env.MOREN_EVRAK_CANLI = '1';
+    try {
+      const r = await kopukKur().gonder({ ...cagri });
+      expect(r.gonderildi).toBe(false);
+      expect(r.atlandi).toBe('WhatsApp gönderimi başarısız');
+    } finally {
+      if (eski === undefined) delete process.env.MOREN_EVRAK_CANLI;
+      else process.env.MOREN_EVRAK_CANLI = eski;
+    }
   });
 });

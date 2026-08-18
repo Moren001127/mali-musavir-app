@@ -6,67 +6,26 @@ import { EvrakMesajService } from './evrak-mesaj.service';
 import { AutomationEventBus } from '../automations/automation-event-bus.service';
 
 /**
- * Evrak teslim hatırlatma cron'u.
+ * EVRAK OTOMASYONU — hatırlatma + "evrak geldi" onayı.
  *
- * Her iş günü (Pzt-Cum) saat 10:00 TR (07:00 UTC) çalışır.
- * Resmi tatillerde (Türkiye) atılmaz.
- * Kuralları:
- *   1) Mükellefin evrakTeslimGunu <= bugünün günü olmalı (vade geldi/geçti)
- *   2) whatsappEvrakTalep = true olmalı (mükellef bu tipi onaylamış)
- *   3) Bu ay için TaxpayerMonthlyStatus.evraklarGeldi = false olmalı
- *      (mükellef listesinde "evraklar geldi" işaretlenmediyse devam eder)
- *   4) Son 2 günde hatırlatma gönderilmemiş olmalı (spam koruma)
- *   5) Mükellef aktif olmalı
- *   6) Bugün Türkiye resmi tatili olmamalı
+ * ÇALIŞMA ŞARTLARI (kullanıcı kararı 2026-08-18):
+ *   TALEP  — Mükellef kartında evrak teslim günü TANIMLI olacak; boşsa hiçbir
+ *            mesaj gitmez. O gün geldiğinde Aylık Takip Listesi'nde "evrak
+ *            geldi" işaretli değilse, o günden başlayarak 2 günde bir
+ *            hatırlatma gider. Pazartesi–Cuma, saat 10:00 (TR).
+ *   GELDI  — "Evrak geldi" işaretlenince onay mesajı gider. Pazartesi–Cuma
+ *            09:00–17:00 (TR). Mesai dışında işaretlenirse mesaj DÜŞMEZ,
+ *            beklemeye alınır ve ilk iş günü 09:00'da gönderilir.
+ *   İkisi de yalnız Aylık Takip Listesi kümesindeki mükelleflere gider,
+ *   resmî tatilde gitmez ve MOREN_CLIENT_PROACTIVE_REMINDERS=1 şartına bağlı.
  *
- * Mesaj kaynağı: SmsTemplate.evrakTalepMesaji (tenant başına özel)
- * Değişkenler: {ad}, {dönem}
+ * Gönderim kararının tamamı EvrakMesajService'te (tek kapı). Burada yalnız
+ * KİME ve NE ZAMAN sorusu çözülür.
+ *
+ * Damgalar TaxpayerMonthlyStatus üzerinde, DÖNEM bazında tutulur. Önceden
+ * Taxpayer.lastReminderSentAt tek alandaydı: ay değişince eski dönemin takibi
+ * düşüyor, aynı damga farklı dönemleri kilitliyordu.
  */
-
-// Türkiye resmi tatil günleri (2026-2028) — sabit + dini bayramlar
-// Kaynak: T.C. resmi takvim. Bayram tarihleri her yıl değişir, manuel güncellenmeli.
-const TURKIYE_RESMI_TATILLERI = new Set<string>([
-  // 2026
-  '2026-01-01', // Yılbaşı
-  '2026-03-19', // Ramazan Bayramı arifesi (yarım gün - tam tatil sayıyoruz)
-  '2026-03-20', // Ramazan Bayramı 1. gün
-  '2026-03-21', // Ramazan Bayramı 2. gün
-  '2026-03-22', // Ramazan Bayramı 3. gün
-  '2026-04-23', // Ulusal Egemenlik ve Çocuk Bayramı
-  '2026-05-01', // Emek ve Dayanışma Günü
-  '2026-05-19', // Atatürk'ü Anma, Gençlik ve Spor Bayramı
-  '2026-05-26', // Kurban Bayramı arifesi (yarım gün)
-  '2026-05-27', // Kurban Bayramı 1. gün
-  '2026-05-28', // Kurban Bayramı 2. gün
-  '2026-05-29', // Kurban Bayramı 3. gün
-  '2026-05-30', // Kurban Bayramı 4. gün
-  '2026-07-15', // Demokrasi ve Milli Birlik Günü
-  '2026-08-30', // Zafer Bayramı
-  '2026-10-28', // Cumhuriyet Bayramı arifesi (yarım gün)
-  '2026-10-29', // Cumhuriyet Bayramı
-  // 2027
-  '2027-01-01', // Yılbaşı
-  '2027-03-09', // Ramazan Bayramı 1. gün (tahmini)
-  '2027-03-10', // Ramazan Bayramı 2. gün
-  '2027-03-11', // Ramazan Bayramı 3. gün
-  '2027-04-23', // Çocuk Bayramı
-  '2027-05-01', // İşçi Bayramı
-  '2027-05-16', // Kurban Bayramı 1. gün (tahmini)
-  '2027-05-17', // Kurban Bayramı 2. gün
-  '2027-05-18', // Kurban Bayramı 3. gün
-  '2027-05-19', // Atatürk'ü Anma + Kurban Bayramı 4. gün
-  '2027-07-15', // Demokrasi Günü
-  '2027-08-30', // Zafer Bayramı
-  '2027-10-29', // Cumhuriyet Bayramı
-]);
-
-function bugunResmiTatilMi(date: Date): boolean {
-  const yyyy = date.getFullYear();
-  const mm = String(date.getMonth() + 1).padStart(2, '0');
-  const dd = String(date.getDate()).padStart(2, '0');
-  return TURKIYE_RESMI_TATILLERI.has(`${yyyy}-${mm}-${dd}`);
-}
-
 @Injectable()
 export class ReminderCron {
   private readonly logger = new Logger(ReminderCron.name);
@@ -78,143 +37,16 @@ export class ReminderCron {
     private eventBus: AutomationEventBus,
   ) {}
 
-  /**
-   * EVRAK GELDİ BİLGİLENDİRMESİ — olay tetikli.
-   *
-   * Aylık Takip Listesi'nde "evrak geldi" işaretlendiği anda çalışır.
-   * Cron değil, çünkü kullanıcı işaretler işaretlemez haber gitmeli; günde
-   * bir tarama, sabah işaretlenen evrakın bilgisini ertesi güne bırakırdı.
-   *
-   * Mesai dışında işaretlenirse mesaj GİTMEZ (gece bildirim atmamak için) —
-   * EvrakMesajService.mesaiIcindeMi bunu kapatır.
-   */
-  onModuleInit() {
-    this.eventBus.on('Taxpayer.EvrakDurumuChanged', async (p: any) => {
-      // Yalnız "geldi" tarafı; işaret geri alınınca mesaj atılmaz
-      if (p?.newValue !== true) return;
-      try {
-        await this.evrakGeldiBildir(p.tenantId, p.taxpayerId, p.year, p.month);
-      } catch (err: any) {
-        this.logger.error(`[EvrakGeldi] Hata: ${err?.message}`);
-      }
-    });
-  }
-
-  /** Tek mükellef için "evraklarınız ulaştı" bilgilendirmesi */
-  async evrakGeldiBildir(
-    tenantId: string,
-    taxpayerId: string,
-    yil: number,
-    ay: number,
-    opts: { onizleme?: boolean } = {},
-  ) {
-    const t = await this.prisma.taxpayer.findFirst({
-      where: {
-        id: taxpayerId,
-        tenantId,
-        // Bilgilendirme de yalnız Aylık Takip Listesi kümesine gider; işi
-        // bırakmış mükellefe "işlemleriniz başlatıldı" mesajı gitmemeli.
-        ...(opts.onizleme ? {} : { AND: this.takipPenceresi(yil, ay) }),
-      },
-    });
-    if (!t) return { atlandi: 'mükellef Aylık Takip Listesi kümesinde değil' };
-    // Anahtar kapalıysa hiç üretme — kullanıcı bu mükellef için istemiyor.
-    // Önizlemede metni görmek için bu iki kontrol atlanır; mesaj zaten
-    // mükellefe değil, ofis sahibine gidiyor.
-    if (!opts.onizleme && !t.whatsappEvrakGeldi) return { atlandi: '"Evrak geldi onayı" anahtarı kapalı' };
-    if (!opts.onizleme && !t.isActive) return { atlandi: 'mükellef pasif' };
-
-    const donem = this.evrakMesaj.donemAdi(yil, ay);
-    const ad = this.evrakMesaj.ad(t);
-    const metin = this.evrakMesaj.sarmala(
-      await this.evrakMesaj.ofisAdi(tenantId),
-      ad,
-      this.evrakMesaj.doldur(await this.evrakMesaj.sablon(tenantId, 'GELDI'), ad, donem),
-    );
-    const sonuc = await this.evrakMesaj.gonder({
-      tenantId,
-      taxpayer: t,
-      metin,
-      tur: 'GELDI',
-      donem,
-      sebep: 'Aylık Takip Listesi\'nde "evrak geldi" işaretlendi',
-      mesaiYokSay: opts.onizleme,
-      zorlaTest: opts.onizleme,
-    });
-    this.logger.log(
-      `[EvrakGeldi] ${this.evrakMesaj.ad(t)} · ${donem} · ` +
-      `${sonuc.gonderildi ? (sonuc.test ? 'TEST gönderildi' : 'gönderildi') : `atlandı (${sonuc.atlandi || 'bilinmiyor'})`}`,
-    );
-    return { mukellef: this.evrakMesaj.ad(t), donem, ...sonuc };
-  }
+  // ================================================================
+  //  AYLIK TAKİP LİSTESİ KÜMESİ
+  // ================================================================
 
   /**
-   * ŞABLON ÖNİZLEMESİ — iki metni de ofis sahibine gönderir.
+   * Mesaj yalnız bu mükelleflere gider.
    *
-   * Tarama ucu yalnız o an şartı tutan mükellef varsa mesaj üretir; hiç aday
-   * yoksa kullanıcı metinleri göremezdi. Bu uç şarta bakmaz: gerçek bir
-   * mükellef adı ve dönemle iki şablonu da doldurup gösterir.
-   */
-  async evrakSablonOnizle(tenantId: string) {
-    const t =
-      (await this.prisma.taxpayer.findFirst({
-        where: { tenantId, isActive: true, evrakTeslimGunu: { not: null } },
-        orderBy: { createdAt: 'asc' },
-      })) ||
-      (await this.prisma.taxpayer.findFirst({ where: { tenantId, isActive: true } }));
-    if (!t) return { hata: 'Aktif mükellef bulunamadı' };
-
-    // Evrak dönemi = içinde bulunulan ayın BİR ÖNCESİ (Ağustos'ta Temmuz evrakı)
-    const bugun = new Date();
-    const d = new Date(bugun.getFullYear(), bugun.getMonth() - 1, 1);
-    const donem = this.evrakMesaj.donemAdi(d.getFullYear(), d.getMonth() + 1);
-    const ad = this.evrakMesaj.ad(t);
-
-    const ofis = await this.evrakMesaj.ofisAdi(tenantId);
-    const cikti: any[] = [];
-    for (const tur of ['TALEP', 'GELDI'] as const) {
-      const metin = this.evrakMesaj.sarmala(
-        ofis,
-        ad,
-        this.evrakMesaj.doldur(await this.evrakMesaj.sablon(tenantId, tur), ad, donem),
-      );
-      const sonuc = await this.evrakMesaj.gonder({
-        tenantId,
-        taxpayer: t,
-        metin,
-        tur,
-        donem,
-        sebep:
-          tur === 'TALEP'
-            ? `Teslim günü ${t.evrakTeslimGunu ?? '(tanımsız)'} geçti, evrak hâlâ işaretlenmedi (ŞABLON ÖNİZLEMESİ)`
-            : 'Aylık Takip Listesi\'nde "evrak geldi" işaretlendi (ŞABLON ÖNİZLEMESİ)',
-        mesaiYokSay: true,
-        zorlaTest: true,
-        // Metin mükellefe gideceği haliyle görünsün; bilgi bloğu yok.
-        baslikSiz: true,
-      });
-      cikti.push({ tur, metin, ...sonuc });
-    }
-    return { ornekMukellef: ad, donem, mesajlar: cikti };
-  }
-
-  // ÖĞLEN: 09:00 UTC = 12:00 TR. Kullanıcı "öğlen saatlerinde" dedi;
-  // eskiden 07:00 UTC (10:00 TR) idi.
-  @Cron('0 9 * * 1-5')
-  async sendEvrakReminderMessages() {
-    return this.evrakTalepTara({});
-  }
-
-  /**
-   * AYLIK TAKİP LİSTESİ KÜMESİ — mesaj yalnız bu mükelleflere gider.
-   *
-   * Kullanıcı kararı (2026-08-18): "bu mesajlar aylık takip listesinde yer
-   * alan mükellefler için gönderilecek sadece." Liste sayfası mükellefi işe
-   * başlama/bitiş tarihine göre süzüyor; sadece isActive'e bakmak işi BIRAKMIŞ
-   * (endDate geçmiş) veya henüz BAŞLAMAMIŞ mükellefe hatırlatma gönderirdi.
-   *
-   * Koşullar monthly-status.shared.ts ile birebir aynı; oradan kaymaması için
-   * yorumda kaynak açıkça yazılı.
+   * Liste sayfası mükellefi işe başlama/bitiş tarihine göre süzüyor; yalnız
+   * isActive'e bakmak işi BIRAKMIŞ veya henüz BAŞLAMAMIŞ mükellefe mesaj
+   * gönderirdi. Koşullar monthly-status.shared.ts ile birebir aynı.
    */
   private takipPenceresi(yil: number, ay: number) {
     const ilkGun = new Date(yil, ay - 1, 1);
@@ -228,62 +60,310 @@ export class ReminderCron {
   }
 
   /**
+   * İKİ GÜN EŞİĞİ — takvim günü bazında, tek kaynak.
+   *
+   * Panel ekranı ve cron ayrı formül kullanınca ekran "kilitli" derken cron
+   * yarım saat sonra gönderiyordu. İkisi de burayı çağırır.
+   */
+  static ikiGunEsigi(an: Date = new Date()): Date {
+    return new Date(an.getFullYear(), an.getMonth(), an.getDate() - 1, 0, 0, 0);
+  }
+
+  /**
+   * Bu ay, bugünden SONRA hatırlatma taraması çalışacak bir gün var mı.
+   *
+   * Yoksa bugün o dönemin son şansıdır; teslim günü büyük olanlar da vadesi
+   * gelmiş sayılır. Cron Pzt–Cum ve tatil dışı çalıştığı için "ayın son günü"
+   * ölçüsü yetmiyordu.
+   */
+  private buAyBaskaTaramaVarMi(yil: number, ay: number, bugun: number): boolean {
+    const sonGun = new Date(yil, ay, 0).getDate();
+    for (let g = bugun + 1; g <= sonGun; g++) {
+      const d = new Date(yil, ay - 1, g, 12, 0, 0);
+      const hafta = d.getDay();
+      if (hafta === 0 || hafta === 6) continue;
+      if (this.evrakMesaj.resmiTatilMi(d)) continue;
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Gönderim kalıcı olarak mı reddedildi.
+   *
+   * Kalıcı retlerde beklemeye almanın anlamı yok; geçici engellerde (mesai,
+   * tatil, şalter, köprü kopukluğu, `atlandi` hiç set edilmeden başarısızlık)
+   * kayıt beklemeye alınır ve ilk mesai saatinde tekrar denenir.
+   */
+  private kaliciRet(atlandi?: string): boolean {
+    return atlandi === 'telefon yok' || atlandi === 'test numarası tanımsız';
+  }
+
+  /** İşlem ayı = içinde bulunulan takvim ayı (durum kayıtları buna göre) */
+  private islemAyi(an: Date = new Date()) {
+    return { yil: an.getFullYear(), ay: an.getMonth() + 1 };
+  }
+
+  /** Durum kaydını oluşturmadan bulur; yoksa null */
+  private durumBul(taxpayerId: string, yil: number, ay: number) {
+    return this.prisma.taxpayerMonthlyStatus.findUnique({
+      where: { taxpayerId_year_month: { taxpayerId, year: yil, month: ay } },
+    });
+  }
+
+  /** Durum kaydına damga yazar; kayıt yoksa oluşturur */
+  private async durumDamgala(
+    tenantId: string,
+    taxpayerId: string,
+    yil: number,
+    ay: number,
+    veri: Record<string, any>,
+  ) {
+    await this.prisma.taxpayerMonthlyStatus.upsert({
+      where: { taxpayerId_year_month: { taxpayerId, year: yil, month: ay } },
+      update: veri,
+      create: { tenantId, taxpayerId, year: yil, month: ay, ...veri },
+    });
+  }
+
+  // ================================================================
+  //  "EVRAK GELDİ" ONAYI — olay tetikli + bekleyen taraması
+  // ================================================================
+
+  /**
+   * Aylık Takip Listesi'nde "evrak geldi" işaretlendiği anda çalışır.
+   *
+   * Cron değil, çünkü kullanıcı işaretler işaretlemez haber gitmeli. Mesai
+   * dışındaysa mesaj DÜŞMEZ; kayda "bekliyor" damgası yazılır ve ilk iş günü
+   * 09:00 taraması gönderir.
+   */
+  onModuleInit() {
+    this.eventBus.on('Taxpayer.EvrakDurumuChanged', async (p: any) => {
+      // Yalnız "geldi" tarafı; işaret geri alınınca mesaj atılmaz
+      if (p?.newValue !== true) return;
+      try {
+        await this.evrakGeldiBildir(p.tenantId, p.taxpayerId, p.year, p.month);
+      } catch (err: any) {
+        this.logger.error(`[EvrakGeldi] Hata: ${err?.message}`);
+      }
+    });
+  }
+
+  /**
+   * BEKLEYEN ONAYLAR — her iş günü 09:00 TR.
+   *
+   * Cumartesi/gece işaretlenen evrakların onayı burada gönderilir. Kullanıcının
+   * tarifi: "Cumartesi işaretledim → Pazartesi sabah 09:00'da gitsin."
+   */
+  @Cron('0 9 * * 1-5', { timeZone: 'Europe/Istanbul' })
+  async bekleyenEvrakGeldiOnaylari() {
+    return this.evrakGeldiBekleyenleriGonder();
+  }
+
+  async evrakGeldiBekleyenleriGonder(opts: { tenantId?: string } = {}) {
+    if (!this.evrakMesaj.proaktifAcikMi()) {
+      this.logger.log('[EvrakGeldi] Proaktif mesaj KAPALI — bekleyenler gönderilmedi.');
+      return { atlandi: 'proaktif şalter kapalı' };
+    }
+    if (!this.evrakMesaj.mesaiIcindeMi()) {
+      // Tatil gününe denk gelirse bir sonraki iş günü tekrar denenecek;
+      // damga duruyor, kayıp yok.
+      this.logger.log('[EvrakGeldi] Mesai dışı/tatil — bekleyenler ertelendi.');
+      return { atlandi: 'mesai dışı' };
+    }
+
+    // DURUMA DAYALI TARAMA — bayrağa değil.
+    //
+    // Önce yalnız `evrakGeldiMesajBekliyor` bakılıyordu; o bayrak da yalnız
+    // "mesai dışı/tatil" dönüşünde yazılıyordu. Oysa gönderim WhatsApp şalteri
+    // kapalıyken, telefon yokken veya köprü anlık koptuğunda da başarısız
+    // dönüyor; o kayıtlar bayraksız kalıp bir daha HİÇ taranmıyordu ve onay
+    // mesajı kalıcı olarak düşüyordu.
+    //
+    // ESKİ KAYIT TAŞMASI: geçmişteki tüm işaretli dönemler taranırsa şalter
+    // açıldığı gün toplu mesaj gider. Bu yüzden yalnız BU ay ve BİR ÖNCEKİ ay.
+    const simdi = new Date();
+    const buAy = this.islemAyi(simdi);
+    const oncekiAyTarih = new Date(simdi.getFullYear(), simdi.getMonth() - 1, 1);
+    const oncekiAy = this.islemAyi(oncekiAyTarih);
+
+    const bekleyenler = await this.prisma.taxpayerMonthlyStatus.findMany({
+      where: {
+        evraklarGeldi: true,
+        evrakGeldiMesajGonderimAt: null,
+        OR: [
+          { year: buAy.yil, month: buAy.ay },
+          { year: oncekiAy.yil, month: oncekiAy.ay },
+        ],
+        ...(opts.tenantId ? { tenantId: opts.tenantId } : {}),
+      },
+      take: 500,
+    });
+
+    let gonderilen = 0;
+    let atlanan = 0;
+    for (const b of bekleyenler) {
+      const r = await this.evrakGeldiBildir(b.tenantId, b.taxpayerId, b.year, b.month);
+      if ((r as any)?.gonderildi) gonderilen++;
+      else atlanan++;
+    }
+    const ozet = { bekleyen: bekleyenler.length, gonderilen, atlanan };
+    this.logger.log(`[EvrakGeldi] Bekleyen taraması: ${JSON.stringify(ozet)}`);
+    return ozet;
+  }
+
+  /** Tek mükellef için "evraklarınız ulaştı" bilgilendirmesi */
+  async evrakGeldiBildir(
+    tenantId: string,
+    taxpayerId: string,
+    yil: number,
+    ay: number,
+    opts: { onizleme?: boolean } = {},
+  ) {
+    // Proaktif şalter onay yolunu da kapsar. Bir süre yalnız hatırlatmadaydı;
+    // onay mesajı şaltersizdi ve otomasyon motoru üzerinden de tetiklenebiliyordu.
+    if (!opts.onizleme && !this.evrakMesaj.proaktifAcikMi()) {
+      return { atlandi: 'proaktif şalter kapalı' };
+    }
+
+    const t = await this.prisma.taxpayer.findFirst({
+      where: {
+        id: taxpayerId,
+        tenantId,
+        // Bilgilendirme de yalnız Aylık Takip Listesi kümesine gider; işi
+        // bırakmış mükellefe "işlemleriniz başlatıldı" mesajı gitmemeli.
+        ...(opts.onizleme ? {} : { AND: this.takipPenceresi(yil, ay) }),
+      },
+    });
+    if (!t) return { atlandi: 'mükellef Aylık Takip Listesi kümesinde değil' };
+    // Önizlemede bu kontroller atlanır; mesaj zaten sahibe gidiyor.
+    if (!opts.onizleme && !t.whatsappEvrakGeldi) return { atlandi: '"Evrak geldi onayı" anahtarı kapalı' };
+    if (!opts.onizleme && !t.isActive) return { atlandi: 'mükellef pasif' };
+    // TESLİM GÜNÜ BOŞSA MESAJ YOK (kullanıcı kararı 2026-08-18) — evrak takibi
+    // tanımlanmamış mükellefe otomatik mesaj gitmez.
+    if (!opts.onizleme && t.evrakTeslimGunu == null) return { atlandi: 'teslim günü tanımsız' };
+
+    if (!opts.onizleme) {
+      const durum = await this.durumBul(taxpayerId, yil, ay);
+      // TEKRAR GÖNDERİM ENGELİ: personel işareti açıp kapatıp tekrar açarsa
+      // mükellef aynı dönem için ikinci kez mesaj almasın.
+      if (durum?.evrakGeldiMesajGonderimAt) {
+        return { atlandi: 'bu dönem için onay zaten gönderildi' };
+      }
+    }
+
+    // Mükellefe yazılan dönem = işlem ayı − 1 (Ağustos'ta işlenen = Temmuz
+    // evrakı). Önizleme de AYNI hesabı kullanır; ayrışsaydı kullanıcı
+    // onayladığı metinden bir ay farklı mesaj gönderilirdi.
+    const donem = this.evrakMesaj.beyannameDonemi(yil, ay).etiket;
+    const ad = this.evrakMesaj.ad(t);
+    const metin = await this.evrakMesaj.mesajKur(tenantId, 'GELDI', ad, donem);
+
+    const sonuc = await this.evrakMesaj.gonder({
+      tenantId,
+      taxpayer: t,
+      metin,
+      tur: 'GELDI',
+      donem,
+      sebep: 'Aylık Takip Listesi\'nde "evrak geldi" işaretlendi',
+      mesaiYokSay: opts.onizleme,
+      zorlaTest: opts.onizleme,
+    });
+
+    if (!opts.onizleme) {
+      // DAMGA YALNIZ GERÇEK GÖNDERİMDE. Test gönderimi de damgalasaydı, şalter
+      // kapalıyken işaretlenen her dönem "onay gönderildi" sayılır ve canlıya
+      // geçildiğinde mükellefe o dönemin onayı BİR DAHA hiç gitmezdi.
+      // (Aynı tuzak TALEP tarafında görülmüş, burada unutulmuştu.)
+      if (sonuc.gonderildi && !sonuc.test) {
+        await this.durumDamgala(tenantId, taxpayerId, yil, ay, {
+          evrakGeldiMesajBekliyor: false,
+          evrakGeldiMesajGonderimAt: new Date(),
+        });
+      } else if (!sonuc.gonderildi && !this.kaliciRet(sonuc.atlandi)) {
+        // GEÇİCİ engel (mesai dışı, tatil, şalter kapalı, köprü kopuk): kayıt
+        // beklemeye alınır, mesai başındaki tarama gönderir. Kalıcı retlerde
+        // (anahtar kapalı, pasif mükellef) beklemeye almanın anlamı yok.
+        await this.durumDamgala(tenantId, taxpayerId, yil, ay, { evrakGeldiMesajBekliyor: true });
+      }
+    }
+
+    this.logger.log(
+      `[EvrakGeldi] ${ad} · ${donem} · ` +
+      `${sonuc.gonderildi ? (sonuc.test ? 'TEST gönderildi' : 'gönderildi') : `atlandı (${sonuc.atlandi || 'bilinmiyor'})`}`,
+    );
+    return { mukellef: ad, donem, ...sonuc };
+  }
+
+  // ================================================================
+  //  EVRAK TALEP HATIRLATMASI
+  // ================================================================
+
+  /**
+   * SAAT 10:00 (TR), Pazartesi–Cuma — kullanıcı kararı 2026-08-18.
+   *
+   * Saat dilimi AÇIKÇA veriliyor: ifade tek başına sunucunun UTC kalmasına
+   * bağlı kalırsa, ortama TZ tanımlandığı gün mesaj başka saatte gider.
+   */
+  @Cron('0 10 * * 1-5', { timeZone: 'Europe/Istanbul' })
+  async sendEvrakReminderMessages() {
+    return this.evrakTalepTara({});
+  }
+
+  /**
    * Evrak talep taraması.
    *
-   * Cron bunu env şalteriyle çağırır; test ucu ise şalteri ve iki-gün
-   * aralığını yok sayarak çağırır — böylece kullanıcı metinleri beklemeden
-   * görebilir. Gerçek gönderim kararı yine tek kapıda (EvrakMesajService).
+   * Cron bunu şalterle çağırır; önizleme ucu şalteri, aralığı ve mesai
+   * penceresini yok sayarak çağırır. Gönderim kararı yine tek kapıda.
    */
   async evrakTalepTara(opts: {
     salteriYokSay?: boolean;
     aralikYokSay?: boolean;
     /** Önizleme: mesai/tatil penceresini ve canlı şalterini yok say */
     onizleme?: boolean;
+    /** Yalnız bu ofis — önizleme ucu kendi ofisiyle sınırlı kalsın */
+    tenantId?: string;
   }) {
-    // Kullanıcı talimatı (2026-06-15): ŞİMDİLİK mükelleflere kendiliğinden
-    // (proaktif) mesaj ATILMAYACAK — bot yalnız mükellef YAZINCA cevap verir.
-    // Bu evrak hatırlatması proaktif gönderim olduğu için varsayılan KAPALI.
-    // Tekrar açmak için: MOREN_CLIENT_PROACTIVE_REMINDERS=1
-    if (!opts.salteriYokSay && process.env.MOREN_CLIENT_PROACTIVE_REMINDERS !== '1') {
-      this.logger.log('[ReminderCron] Proaktif evrak hatırlatması KAPALI (MOREN_CLIENT_PROACTIVE_REMINDERS!=1) — mükellefe mesaj atılmadı.');
-      return;
+    if (!opts.salteriYokSay && !this.evrakMesaj.proaktifAcikMi()) {
+      this.logger.log('[ReminderCron] Proaktif evrak hatırlatması KAPALI (MOREN_CLIENT_PROACTIVE_REMINDERS!=1).');
+      return { hata: 'proaktif şalter kapalı' };
     }
-    const today = new Date();
 
-    // Resmi tatil kontrolü - tatildeyse erken çık
-    if (!opts.onizleme && bugunResmiTatilMi(today)) {
-      this.logger.log(`[ReminderCron] ${today.toISOString().slice(0, 10)} resmi tatil — hatırlatma atılmadı.`);
+    const today = new Date();
+    if (!opts.onizleme && this.evrakMesaj.resmiTatilMi(today)) {
+      this.logger.log(`[ReminderCron] Bugün resmî tatil — hatırlatma atılmadı.`);
       return { hata: 'bugün resmi tatil' };
     }
 
+    const { yil: year, ay: month } = this.islemAyi(today);
     const todayDay = today.getDate();
-    const year = today.getFullYear();
-    const month = today.getMonth() + 1;
-    const donem = `${this.aylarTr[month - 1]} ${year}`;
+    // Mükellefe yazılan dönem = işlem ayı − 1
+    const donem = this.evrakMesaj.beyannameDonemi(year, month).etiket;
 
     try {
-      const twoDaysAgo = new Date(today.getTime() - 2 * 24 * 60 * 60 * 1000);
+      // AY SONU KIRPMA: teslim günü 29/30 girilmiş mükellef, Şubat gibi kısa
+      // aylarda "teslim günü <= bugün" şartını HİÇ sağlamıyordu.
+      //
+      // Ölçü "ayın son takvim günü" DEĞİL, "bu ay taramanın çalışacağı son
+      // gün". Cron yalnız hafta içi ve tatil dışı çalışıyor; ayın son günü
+      // cumartesiye düşerse son tarama son cuma olur ve kırpma hiç devreye
+      // girmezdi (2026/02, 2026/05, 2027/01 … hep böyle).
+      const etkinGun = this.buAyBaskaTaramaVarMi(year, month, todayDay) ? todayDay : 31;
+
+      // İKİ GÜNDE BİR — takvim günü bazında. Saat farkıyla kıyaslanınca damga
+      // her zaman birkaç saniye ileride kalıyor ve ritim 3 güne kayıyordu.
+      const esik = ReminderCron.ikiGunEsigi(today);
 
       const taxpayers = await this.prisma.taxpayer.findMany({
         where: {
           isActive: true,
           whatsappEvrakTalep: true,
-          // YALNIZ AYLIK TAKİP LİSTESİNDEKİLER (kullanıcı kararı 2026-08-18)
+          ...(opts.tenantId ? { tenantId: opts.tenantId } : {}),
+          // YALNIZ AYLIK TAKİP LİSTESİNDEKİLER
           AND: this.takipPenceresi(year, month),
-          // TESLİM GÜNÜNÜN KENDİSİNDEN İTİBAREN (kullanıcı kararı 2026-08-18).
-          // Kısa süre "ertesi gün" yapılmıştı; geri alındı — teslim günü öğlen
-          // hâlâ evrak yoksa hatırlatma o gün başlar.
-          evrakTeslimGunu: { lte: todayDay },
-          // İKİ GÜNDE BİR. Test taramasında bu aralık yok sayılır, yoksa
-          // kullanıcı metni görmek için iki gün beklemek zorunda kalırdı.
-          ...(opts.aralikYokSay
-            ? {}
-            : {
-                OR: [
-                  { lastReminderSentAt: null },
-                  { lastReminderSentAt: { lte: twoDaysAgo } },
-                ],
-              }),
+          // TESLİM GÜNÜ TANIMLI OLACAK (null bu koşulla zaten elenir) ve
+          // vadesi gelmiş olacak. Hatırlatma teslim gününün KENDİSİNDE başlar.
+          evrakTeslimGunu: { not: null, lte: etkinGun },
         },
       });
 
@@ -292,61 +372,34 @@ export class ReminderCron {
         const active = await this.whatsapp.isAutomationActive(tenantId);
         tenantActiveCache.set(tenantId, active);
         if (!active) {
-          this.logger.log(`[ReminderCron] tenant=${tenantId} WhatsApp master switch pasif - evrak hatirlatmalari atlanacak.`);
+          this.logger.log(`[ReminderCron] tenant=${tenantId} WhatsApp şalteri pasif — atlanacak.`);
         }
       }
 
-      // Tenant başına şablon ve ofis adı önbelleği — mükellef başına ayrı SQL
-      // atmamak için. Metin EvrakMesajService'ten alınır; burada ikinci bir
-      // yedek metin tutulmuyordu değil, tutuluyordu ve varsayılan
-      // değiştiğinde sessizce geride kalıyordu (2026-08-18 temizliği).
-      const templateCache = new Map<string, string>();
-      const ofisCache = new Map<string, string>();
-      const getTemplate = async (tenantId: string): Promise<string> => {
-        if (!templateCache.has(tenantId)) {
-          templateCache.set(tenantId, await this.evrakMesaj.sablon(tenantId, 'TALEP'));
-        }
-        return templateCache.get(tenantId)!;
-      };
-      const getOfis = async (tenantId: string): Promise<string> => {
-        if (!ofisCache.has(tenantId)) ofisCache.set(tenantId, await this.evrakMesaj.ofisAdi(tenantId));
-        return ofisCache.get(tenantId)!;
-      };
-
-      let sent = 0, skippedAlreadyArrived = 0, skippedNoPhone = 0, skippedMasterSwitch = 0, failed = 0;
+      let sent = 0, skippedAlreadyArrived = 0, skippedNoPhone = 0,
+        skippedMasterSwitch = 0, skippedAralik = 0, failed = 0;
 
       for (const taxpayer of taxpayers) {
         if (tenantActiveCache.get(taxpayer.tenantId) === false) { skippedMasterSwitch++; continue; }
 
-        // 3) Evraklar zaten geldiyse atla
-        const status = await this.prisma.taxpayerMonthlyStatus.findUnique({
-          where: {
-            taxpayerId_year_month: { taxpayerId: taxpayer.id, year, month },
-          },
-        });
-        if (status?.evraklarGeldi) { skippedAlreadyArrived++; continue; }
+        const durum = await this.durumBul(taxpayer.id, year, month);
+        if (durum?.evraklarGeldi) { skippedAlreadyArrived++; continue; }
 
-        // Telefonları topla — hem phones[] hem fallback olarak phone alanı
-        const phones = (taxpayer.phones && taxpayer.phones.length > 0)
-          ? taxpayer.phones.filter(Boolean)
-          : (taxpayer.phone ? [taxpayer.phone] : []);
-        if (phones.length === 0) { skippedNoPhone++; continue; }
+        // İki gün kuralı — damga DÖNEM bazında
+        if (!opts.aralikYokSay && durum?.evrakTalepSonGonderimAt && durum.evrakTalepSonGonderimAt >= esik) {
+          skippedAralik++;
+          continue;
+        }
 
-        const ad = taxpayer.companyName
-          || `${taxpayer.firstName || ''} ${taxpayer.lastName || ''}`.trim()
-          || 'Sayın Mükellef';
+        if (!this.evrakMesaj.telefonlar(taxpayer).length) { skippedNoPhone++; continue; }
 
-        const renderedMessage = this.evrakMesaj.sarmala(
-          await getOfis(taxpayer.tenantId),
-          ad,
-          this.evrakMesaj.doldur(await getTemplate(taxpayer.tenantId), ad, donem),
-        );
+        const ad = this.evrakMesaj.ad(taxpayer);
+        const metin = await this.evrakMesaj.mesajKur(taxpayer.tenantId, 'TALEP', ad, donem);
 
-        // TEK KAPI: test/canlı kararı, mesai penceresi ve loglama orada.
         const sonuc = await this.evrakMesaj.gonder({
           tenantId: taxpayer.tenantId,
           taxpayer,
-          metin: renderedMessage,
+          metin,
           tur: 'TALEP',
           donem,
           sebep: `Teslim günü ${taxpayer.evrakTeslimGunu}, bugün ${todayDay} — evrak hâlâ işaretlenmedi`,
@@ -356,12 +409,13 @@ export class ReminderCron {
 
         if (sonuc.gonderildi) {
           sent++;
-          // Damga YALNIZ normal akışta atılır. Test taraması damga atsaydı
-          // gerçek hatırlatma iki gün boyunca kilitlenirdi.
-          if (!opts.aralikYokSay) {
-            await this.prisma.taxpayer.update({
-              where: { id: taxpayer.id },
-              data: { lastReminderSentAt: new Date() },
+          // DAMGA YALNIZ GERÇEK GÖNDERİMDE. Test gönderiminde de atılsaydı,
+          // canlıya geçilen gün ilk tarama bu mükellefleri "2 gün kuralı" ile
+          // atlar ve kimseye mesaj gitmezdi.
+          if (!sonuc.test && !opts.onizleme) {
+            await this.durumDamgala(taxpayer.tenantId, taxpayer.id, year, month, {
+              evrakTalepSonGonderimAt: new Date(),
+              evrakTalepGonderimSayisi: (durum?.evrakTalepGonderimSayisi ?? 0) + 1,
             });
           }
         } else {
@@ -374,6 +428,7 @@ export class ReminderCron {
         aday: taxpayers.length,
         gonderilen: sent,
         evrakZatenGeldi: skippedAlreadyArrived,
+        aralikBeklemede: skippedAralik,
         telefonYok: skippedNoPhone,
         salterKapali: skippedMasterSwitch,
         basarisiz: failed,
@@ -387,21 +442,46 @@ export class ReminderCron {
     }
   }
 
-  private aylarTr = [
-    'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
-    'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık',
-  ];
+  // ================================================================
+  //  ÖNİZLEME
+  // ================================================================
 
-  private normalizePhone(value?: string | null): string {
-    let digits = String(value || '').replace(/[^\d]/g, '');
-    if (digits.startsWith('00')) digits = digits.slice(2);
-    if (digits.startsWith('0') && digits.length === 11) digits = `90${digits.slice(1)}`;
-    if (digits.length === 10 && digits.startsWith('5')) digits = `90${digits}`;
-    return digits;
-  }
+  /**
+   * ŞABLON ÖNİZLEMESİ — iki metni de ofis sahibine gönderir.
+   *
+   * Tarama ucu yalnız o an şartı tutan mükellef varsa mesaj üretir; hiç aday
+   * yoksa kullanıcı metinleri göremezdi. Bu uç şarta bakmaz.
+   */
+  async evrakSablonOnizle(tenantId: string) {
+    const t =
+      (await this.prisma.taxpayer.findFirst({
+        where: { tenantId, isActive: true, evrakTeslimGunu: { not: null } },
+        orderBy: { createdAt: 'asc' },
+      })) ||
+      (await this.prisma.taxpayer.findFirst({ where: { tenantId, isActive: true } }));
+    if (!t) return { hata: 'Aktif mükellef bulunamadı' };
 
-  private withWhatsAppPhone(content: string, phone?: string | null): string {
-    const normalized = this.normalizePhone(phone);
-    return normalized ? `[[wa_phone:${normalized}]]\n${content}` : content;
+    const { yil, ay } = this.islemAyi();
+    const donem = this.evrakMesaj.beyannameDonemi(yil, ay).etiket;
+    const ad = this.evrakMesaj.ad(t);
+
+    const cikti: any[] = [];
+    for (const tur of ['TALEP', 'GELDI'] as const) {
+      const metin = await this.evrakMesaj.mesajKur(tenantId, tur, ad, donem);
+      const sonuc = await this.evrakMesaj.gonder({
+        tenantId,
+        taxpayer: t,
+        metin,
+        tur,
+        donem,
+        sebep: 'Şablon önizlemesi',
+        mesaiYokSay: true,
+        zorlaTest: true,
+        // Metin mükellefe gideceği haliyle görünsün; bilgi bloğu yok.
+        baslikSiz: true,
+      });
+      cikti.push({ tur, metin, ...sonuc });
+    }
+    return { ornekMukellef: ad, donem, mesajlar: cikti };
   }
 }
