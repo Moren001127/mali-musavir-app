@@ -4,12 +4,13 @@ import React, { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
-  Plus, Trash2, Repeat, Pencil, CreditCard, PlayCircle, ArrowLeftRight,
+  Plus, Trash2, Pencil, CreditCard, ArrowLeftRight,
   Search, SlidersHorizontal, CheckCircle2, AlertTriangle, TrendingUp, TrendingDown, Lock,
+  Building2,
 } from 'lucide-react';
 import {
-  butceApi, Islem, Kategori, DuzenliOdeme, Kart, BankaHesap, Defter,
-  para, tarihTR, buDonem, DefterSecim, DEFTER_ETIKET,
+  butceApi, Islem, Kategori, Kart, BankaHesap, Defter, KirilimSatiri,
+  para, tarihTR, donemTR, buDonem, DefterSecim, DEFTER_ETIKET,
 } from '@/lib/butce';
 import {
   Kutu, Dugme, Modal, Alan, Girdi, Secim, Bos, Rozet, Yukleniyor, Anahtar,
@@ -111,7 +112,6 @@ function DefterAlani({
 export default function GelirGider({ donem, defter = 'TUMU' }: { donem: string; defter?: DefterSecim }) {
   const qc = useQueryClient();
   const [modal, setModal] = useState<Islem | 'yeni' | null>(null);
-  const [duzenliModal, setDuzenliModal] = useState<DuzenliOdeme | 'yeni' | null>(null);
   const [aktarimAcik, setAktarimAcik] = useState(false);
   const [gerceklesKayit, setGerceklesKayit] = useState<Islem | null>(null);
 
@@ -130,7 +130,6 @@ export default function GelirGider({ donem, defter = 'TUMU' }: { donem: string; 
   const { data: kategoriler = [] } = useQuery({ queryKey: ['butce-kategoriler'], queryFn: () => butceApi.kategoriler() });
   const { data: kartlar = [] } = useQuery({ queryKey: ['butce-kartlar'], queryFn: butceApi.kartlar });
   const { data: hesaplar = [] } = useQuery({ queryKey: ['butce-hesaplar'], queryFn: butceApi.hesaplar });
-  const { data: duzenliler = [] } = useQuery({ queryKey: ['butce-duzenliler'], queryFn: () => butceApi.duzenliler() });
 
   const aktifHesaplar = useMemo(() => hesaplar.filter((h) => h.aktif), [hesaplar]);
 
@@ -160,23 +159,6 @@ export default function GelirGider({ donem, defter = 'TUMU' }: { donem: string; 
       tazele();
     },
     onError: (e: any) => toast.error(e?.response?.data?.message || 'İşaretlenemedi'),
-  });
-
-  const duzenliUygula = useMutation({
-    mutationFn: () => butceApi.duzenliUygula(donem),
-    onSuccess: (d) => {
-      toast.success(d.eklenen > 0 ? `${d.eklenen} düzenli kayıt bu aya eklendi` : 'Bu ay için eklenecek yeni kayıt yok');
-      tazele();
-    },
-    onError: () => toast.error('Uygulanamadı'),
-  });
-
-  const duzenliSil = useMutation({
-    mutationFn: (id: string) => butceApi.duzenliSil(id),
-    onSuccess: () => {
-      toast.success('Düzenli kayıt silindi');
-      qc.invalidateQueries({ queryKey: ['butce-duzenliler'] });
-    },
   });
 
   const gosterilen = useMemo(() => {
@@ -422,7 +404,10 @@ export default function GelirGider({ donem, defter = 'TUMU' }: { donem: string; 
             }
           />
         ) : (
-          /* Gelir solda, gider sağda — para nereden geliyor / nereye gidiyor tek bakışta */
+          /* Gelir solda; gider sağda ve KENDİ İÇİNDE ikiye ayrık.
+             Ofis gideri kazançtan indirilir, kişisel harcama indirilemez —
+             ikisi tek listede toplanınca "mesleki kazancım ne" sorusu her
+             seferinde elle ayıklama istiyordu. */
           <div className="grid gap-4 lg:grid-cols-2">
             <KayitSutunu
               baslik="Gelir"
@@ -433,82 +418,32 @@ export default function GelirGider({ donem, defter = 'TUMU' }: { donem: string; 
               bosMetin="Bu dönemde gelir kaydı yok."
               satir={satirCiz}
             />
-            <KayitSutunu
-              baslik="Gider"
-              renk={KIRMIZI}
-              ikon={<TrendingDown size={12} />}
-              kayitlar={gosterilen.filter((i) => i.tur === 'GIDER')}
-              toplam={gosterilen.filter((i) => i.tur === 'GIDER').reduce((t, i) => t + i.tutar, 0)}
-              bosMetin="Bu dönemde gider kaydı yok."
-              satir={satirCiz}
-            />
+            <div className="space-y-4">
+              {(['OFIS', 'SAHSI'] as const).map((d) => {
+                const kayitlar = gosterilen.filter((i) => i.tur === 'GIDER' && i.defter === d);
+                return (
+                  <KayitSutunu
+                    key={d}
+                    baslik={d === 'OFIS' ? 'Ofis gideri' : 'Kişisel gider'}
+                    renk={d === 'OFIS' ? MOR : KIRMIZI}
+                    ikon={d === 'OFIS' ? <Building2 size={12} /> : <TrendingDown size={12} />}
+                    kayitlar={kayitlar}
+                    toplam={kayitlar.reduce((t, i) => t + i.tutar, 0)}
+                    bosMetin={
+                      d === 'OFIS'
+                        ? 'Bu dönemde ofis gideri yok.'
+                        : 'Bu dönemde kişisel gider yok.'
+                    }
+                    satir={satirCiz}
+                  />
+                );
+              })}
+            </div>
           </div>
         )}
       </Kutu>
 
-      <Kutu
-        baslik="Düzenli gelir ve giderler"
-        aciklama="Her ay tekrar eden kalemler (kira, maaş, abonelik). Bir kez tanımlayın, her ay otomatik düşsün."
-        renk={MAVI}
-        sag={
-          <div className="flex gap-2">
-            <Dugme renk={MAVI} onClick={() => duzenliUygula.mutate()} yukleniyor={duzenliUygula.isPending}>
-              <PlayCircle size={13} /> Bu aya uygula
-            </Dugme>
-            <Dugme tur="birincil" renk={MAVI} onClick={() => setDuzenliModal('yeni')}>
-              <Plus size={13} /> Ekle
-            </Dugme>
-          </div>
-        }
-      >
-        {duzenliler.length === 0 ? (
-          <Bos metin="Düzenli kalem tanımlanmadı." ikon={<Repeat size={18} />} />
-        ) : (
-          <div className="grid gap-2 sm:grid-cols-2">
-            {duzenliler.map((d) => (
-              <div
-                key={d.id}
-                className="flex items-center justify-between gap-3 rounded-xl px-3.5 py-2.5"
-                style={{ background: 'rgba(255,255,255,0.02)', border: `1px solid ${ROW_SEP}` }}
-              >
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2 text-[12.5px]" style={{ color: TEXT }}>
-                    <span className="truncate">{d.ad}</span>
-                    <Rozet metin={DEFTER_ETIKET[d.defter]} renk={defterRenk(d.defter)} />
-                    {!d.aktif && <Rozet metin="pasif" renk={MUTED} />}
-                  </div>
-                  <div className="text-[10.5px]" style={{ color: MUTED }}>
-                    Her ayın {d.ayinGunu}. günü · {d.kategori?.ad || 'kategorisiz'}
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span
-                    className="whitespace-nowrap text-[13px] font-medium tabular-nums"
-                    style={{ color: d.tur === 'GELIR' ? OK : KIRMIZI }}
-                  >
-                    {d.tur === 'GELIR' ? '+' : '−'}
-                    {para(d.tutar)} ₺
-                  </span>
-                  <button
-                    onClick={() => setDuzenliModal(d)}
-                    className="rounded-md p-1 transition hover:bg-white/[0.06]"
-                    style={{ color: MUTED }}
-                  >
-                    <Pencil size={12} />
-                  </button>
-                  <button
-                    onClick={() => duzenliSil.mutate(d.id)}
-                    className="rounded-md p-1 transition hover:bg-white/[0.06]"
-                    style={{ color: KIRMIZI }}
-                  >
-                    <Trash2 size={12} />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </Kutu>
+      <AylikKirilim donem={donem} />
 
       {modal && (
         <IslemModal
@@ -548,18 +483,6 @@ export default function GelirGider({ donem, defter = 'TUMU' }: { donem: string; 
         />
       )}
 
-      {duzenliModal && (
-        <DuzenliModal
-          kayit={duzenliModal === 'yeni' ? null : duzenliModal}
-          kategoriler={kategoriler}
-          kartlar={kartlar}
-          kapat={() => setDuzenliModal(null)}
-          kaydedildi={() => {
-            setDuzenliModal(null);
-            qc.invalidateQueries({ queryKey: ['butce-duzenliler'] });
-          }}
-        />
-      )}
     </div>
   );
 }
@@ -1029,151 +952,6 @@ function AktarimModal({
   );
 }
 
-/* ===================== DÜZENLİ ÖDEME MODALI ===================== */
-
-function DuzenliModal({
-  kayit,
-  kategoriler,
-  kartlar,
-  kapat,
-  kaydedildi,
-}: {
-  kayit: DuzenliOdeme | null;
-  kategoriler: Kategori[];
-  kartlar: Kart[];
-  kapat: () => void;
-  kaydedildi: () => void;
-}) {
-  const [form, setForm] = useState({
-    ad: kayit?.ad || '',
-    tur: kayit?.tur || ('GIDER' as 'GELIR' | 'GIDER'),
-    tutar: paraGiris(kayit?.tutar),
-    ayinGunu: String(kayit?.ayinGunu || 1),
-    kategoriId: kayit?.kategoriId || '',
-    kaynak: kayit?.kaynak || 'NAKIT',
-    kartId: kayit?.kartId || '',
-    zorunlu: kayit?.zorunlu ?? true,
-    aktif: kayit?.aktif ?? true,
-    baslangicDonem: kayit?.baslangicDonem || buDonem(),
-    bitisDonem: kayit?.bitisDonem || '',
-  });
-
-  const kaydet = useMutation({
-    mutationFn: () => {
-      const body = {
-        ad: form.ad,
-        tur: form.tur,
-        tutar: paraCoz(form.tutar),
-        ayinGunu: Number(form.ayinGunu),
-        kategoriId: form.kategoriId || null,
-        kaynak: form.kaynak,
-        kartId: form.kaynak === 'KART' ? form.kartId || null : null,
-        zorunlu: form.zorunlu,
-        aktif: form.aktif,
-        baslangicDonem: form.baslangicDonem,
-        bitisDonem: form.bitisDonem || null,
-      } as any;
-      return kayit ? butceApi.duzenliGuncelle(kayit.id, body) : butceApi.duzenliEkle(body);
-    },
-    onSuccess: () => {
-      toast.success('Düzenli kalem kaydedildi');
-      kaydedildi();
-    },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Kaydedilemedi'),
-  });
-
-  return (
-    <Modal
-      baslik={kayit ? 'Düzenli kalemi düzenle' : 'Yeni düzenli kalem'}
-      aciklama="Her ay tekrar eden gelir/gider. “Bu aya uygula” ile döneme yansır."
-      kapat={kapat}
-    >
-      <form
-        className="grid gap-3 sm:grid-cols-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          kaydet.mutate();
-        }}
-      >
-        <Alan etiket="Ad" genis>
-          <Girdi autoFocus value={form.ad} onChange={(e) => setForm({ ...form, ad: e.target.value })} placeholder="Örn. Ev kirası" />
-        </Alan>
-        <Alan etiket="Tür">
-          <Secim value={form.tur} onChange={(e) => setForm({ ...form, tur: e.target.value as any, kategoriId: '' })}>
-            <option value="GIDER">Gider</option>
-            <option value="GELIR">Gelir</option>
-          </Secim>
-        </Alan>
-        <Alan etiket="Tutar">
-          <ParaGirdi value={form.tutar} onChange={(v) => setForm({ ...form, tutar: v })} />
-        </Alan>
-        <Alan etiket="Ayın kaçında">
-          <Girdi
-            type="number"
-            min={1}
-            max={31}
-            value={form.ayinGunu}
-            onChange={(e) => setForm({ ...form, ayinGunu: e.target.value })}
-          />
-        </Alan>
-        <Alan etiket="Kategori">
-          <Secim value={form.kategoriId} onChange={(e) => setForm({ ...form, kategoriId: e.target.value })}>
-            <option value="">Seçiniz</option>
-            {kategoriler
-              .filter((c) => c.tur === form.tur)
-              // Tahsilat kategorisi düzenli gelir olarak da tanımlanamaz — her ay çift sayardı
-              .filter((c) => !(c.tur === 'GELIR' && c.ad === KILITLI_GELIR_KATEGORISI))
-              .map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.ad}
-                </option>
-              ))}
-          </Secim>
-        </Alan>
-        <Alan etiket="Ödeme kaynağı">
-          <Secim value={form.kaynak} onChange={(e) => setForm({ ...form, kaynak: e.target.value })}>
-            <option value="NAKIT">Nakit</option>
-            <option value="BANKA">Banka / otomatik ödeme</option>
-            <option value="KART">Kredi kartı</option>
-          </Secim>
-        </Alan>
-        {form.kaynak === 'KART' && (
-          <Alan etiket="Kart">
-            <Secim value={form.kartId} onChange={(e) => setForm({ ...form, kartId: e.target.value })}>
-              <option value="">Seçiniz</option>
-              {kartlar.map((k) => (
-                <option key={k.id} value={k.id}>
-                  {k.bankaAdi} {k.kartAdi}
-                </option>
-              ))}
-            </Secim>
-          </Alan>
-        )}
-        <Alan etiket="Başlangıç dönemi">
-          <Girdi type="month" value={form.baslangicDonem} onChange={(e) => setForm({ ...form, baslangicDonem: e.target.value })} />
-        </Alan>
-        <Alan etiket="Bitiş dönemi (boş = süresiz)">
-          <Girdi type="month" value={form.bitisDonem} onChange={(e) => setForm({ ...form, bitisDonem: e.target.value })} />
-        </Alan>
-        <div className="flex items-center gap-4 sm:col-span-2">
-          <label className="flex items-center gap-2 text-[12px]" style={{ color: MUTED }}>
-            <input type="checkbox" checked={form.aktif} onChange={(e) => setForm({ ...form, aktif: e.target.checked })} />
-            Aktif
-          </label>
-        </div>
-        <div className="mt-1 flex justify-end gap-2 sm:col-span-2">
-          <Dugme tur="sade" onClick={kapat}>
-            Vazgeç
-          </Dugme>
-          <Dugme type="submit" tur="birincil" renk={MAVI} yukleniyor={kaydet.isPending}>
-            Kaydet
-          </Dugme>
-        </div>
-      </form>
-    </Modal>
-  );
-}
-
 /** Gelir ya da gider tarafını gösteren sütun — başlıkta kendi toplamı yazar */
 function KayitSutunu({
   baslik,
@@ -1217,6 +995,202 @@ function KayitSutunu({
         </div>
       ) : (
         <div className="max-h-[460px] space-y-1.5 overflow-y-auto pr-1">{kayitlar.map(satir)}</div>
+      )}
+    </div>
+  );
+}
+
+/* ===================== AYLIK KIRILIM ===================== */
+
+/**
+ * "Ağustos'ta neye ne harcadım" ile "bu yıl kiraya toplam ne verdim" iki ayrı
+ * soru. Tek dönemlik liste ikincisini cevaplayamıyordu; bu tablo satırda
+ * kategoriyi, sütunda ayı gösterir.
+ *
+ * Gider ÜÇ değil İKİ tabloda: ofis gideri kazançtan indirilir, kişisel harcama
+ * indirilemez. Tek tabloda toplanınca mesleki kazanç her seferinde elle
+ * ayıklanıyordu.
+ */
+function AylikKirilim({ donem }: { donem: string }) {
+  const yil = Number(donem.slice(0, 4));
+  const [tumYil, setTumYil] = useState(false);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['butce-kirilim', yil],
+    queryFn: () => butceApi.kirilim(yil),
+    staleTime: 60_000,
+  });
+
+  const sutunlar = useMemo(() => {
+    if (!data) return [];
+    return tumYil ? data.donemler : data.donemler.filter((d) => d === donem);
+  }, [data, tumYil, donem]);
+
+  return (
+    <Kutu
+      baslik="Aylık kırılım"
+      aciklama={
+        tumYil
+          ? `${yil} · kategori bazında ay ay`
+          : `${donemTR(donem)} · kategori bazında`
+      }
+      renk={GOLD}
+      sag={
+        <div
+          className="flex rounded-lg p-0.5"
+          style={{ background: 'rgba(0,0,0,0.3)', border: `1px solid ${CARD_BORDER}` }}
+        >
+          {[
+            { deger: false, etiket: 'Bu ay' },
+            { deger: true, etiket: 'Tüm yıl' },
+          ].map((s) => (
+            <button
+              key={String(s.deger)}
+              onClick={() => setTumYil(s.deger)}
+              className="rounded-md px-2.5 py-1 text-[11.5px] font-medium transition"
+              style={
+                tumYil === s.deger
+                  ? { background: `${GOLD}26`, color: GOLD, boxShadow: `inset 0 0 0 1px ${GOLD}4d` }
+                  : { color: MUTED }
+              }
+            >
+              {s.etiket}
+            </button>
+          ))}
+        </div>
+      }
+    >
+      {isLoading || !data ? (
+        <Yukleniyor metin="Kırılım hazırlanıyor…" />
+      ) : (
+        <div className="space-y-5">
+          <KirilimTablosu baslik="Gelir" renk={OK} satirlar={data.gelir} sutunlar={sutunlar} />
+          <KirilimTablosu baslik="Ofis gideri" renk={MOR} satirlar={data.giderOfis} sutunlar={sutunlar} />
+          <KirilimTablosu baslik="Kişisel gider" renk={KIRMIZI} satirlar={data.giderSahsi} sutunlar={sutunlar} />
+        </div>
+      )}
+    </Kutu>
+  );
+}
+
+function KirilimTablosu({
+  baslik,
+  renk,
+  satirlar,
+  sutunlar,
+}: {
+  baslik: string;
+  renk: string;
+  satirlar: KirilimSatiri[];
+  sutunlar: string[];
+}) {
+  // Seçili sütunlarda hiç rakamı olmayan kategori tabloyu uzatmasın
+  const dolu = satirlar.filter((s) => sutunlar.some((d) => s.aylar[d]));
+  const sutunToplam = (d: string) => dolu.reduce((t, s) => t + (s.aylar[d] || 0), 0);
+  const genelToplam = dolu.reduce(
+    (t, s) => t + sutunlar.reduce((x, d) => x + (s.aylar[d] || 0), 0),
+    0,
+  );
+
+  return (
+    <div>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <span className="text-[11px] uppercase tracking-wider" style={{ color: renk }}>
+          {baslik} <span style={{ color: MUTED }}>({dolu.length})</span>
+        </span>
+        <span className="text-[13px] font-semibold tabular-nums" style={{ color: renk }}>
+          {para(genelToplam)} ₺
+        </span>
+      </div>
+
+      {dolu.length === 0 ? (
+        <div
+          className="rounded-lg px-3 py-5 text-center text-[11.5px]"
+          style={{ border: `1px dashed ${ROW_SEP}`, color: MUTED }}
+        >
+          Bu dönemde kayıt yok.
+        </div>
+      ) : (
+        /* Tablo kendi içinde kayar; 12 ay dar ekranda sayfayı yana kaydırmasın */
+        <div className="overflow-x-auto rounded-lg" style={{ border: `1px solid ${ROW_SEP}` }}>
+          <table className="w-full min-w-max text-[12px]">
+            <thead>
+              <tr style={{ color: MUTED }}>
+                <th className="sticky left-0 px-3 py-2 text-left font-medium" style={{ background: '#0c0c0e' }}>
+                  Kategori
+                </th>
+                {sutunlar.map((d) => (
+                  <th key={d} className="px-3 py-2 text-right font-medium tabular-nums">
+                    {d.slice(5, 7)}/{d.slice(2, 4)}
+                  </th>
+                ))}
+                {sutunlar.length > 1 && (
+                  <th className="px-3 py-2 text-right font-medium">Toplam</th>
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              {dolu.map((s) => {
+                const satirToplam = sutunlar.reduce((t, d) => t + (s.aylar[d] || 0), 0);
+                return (
+                  <tr key={s.ad} style={{ borderTop: `1px solid ${ROW_SEP}` }}>
+                    <td
+                      className="sticky left-0 whitespace-nowrap px-3 py-2"
+                      style={{ background: '#0c0c0e', color: TEXT }}
+                    >
+                      <span className="inline-flex items-center gap-2">
+                        <i className="h-2 w-2 rounded-sm" style={{ background: s.renk }} />
+                        {s.ad}
+                      </span>
+                    </td>
+                    {sutunlar.map((d) => (
+                      <td
+                        key={d}
+                        className="whitespace-nowrap px-3 py-2 text-right tabular-nums"
+                        style={{ color: s.aylar[d] ? TEXT : 'rgba(113,113,122,0.5)' }}
+                      >
+                        {s.aylar[d] ? para(s.aylar[d]) : '—'}
+                      </td>
+                    ))}
+                    {sutunlar.length > 1 && (
+                      <td
+                        className="whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums"
+                        style={{ color: renk }}
+                      >
+                        {para(satirToplam)}
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
+              <tr style={{ borderTop: `1px solid ${ROW_SEP}` }}>
+                <td
+                  className="sticky left-0 px-3 py-2 font-semibold"
+                  style={{ background: '#0c0c0e', color: MUTED }}
+                >
+                  Toplam
+                </td>
+                {sutunlar.map((d) => (
+                  <td
+                    key={d}
+                    className="whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums"
+                    style={{ color: renk }}
+                  >
+                    {sutunToplam(d) ? para(sutunToplam(d)) : '—'}
+                  </td>
+                ))}
+                {sutunlar.length > 1 && (
+                  <td
+                    className="whitespace-nowrap px-3 py-2 text-right font-semibold tabular-nums"
+                    style={{ color: renk }}
+                  >
+                    {para(genelToplam)}
+                  </td>
+                )}
+              </tr>
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );

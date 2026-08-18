@@ -94,6 +94,13 @@ export class ButceController {
     });
   }
 
+  /** Aylık kırılım: satır kategori, sütun ay. Gider ofis/şahsi ayrı döner. */
+  @Get('kirilim')
+  kirilim(@Req() req: any, @Query('yil') yil?: string) {
+    const y = Number(yil) || new Date().getFullYear();
+    return this.butce.kategoriKirilimYillik(this.kimlik(req), y);
+  }
+
   /** Tahsilat sayaçları: hesabı seçilmemiş (düzeltilebilir) + arşiv (akmaz) */
   @Get('tahsilat-ozet')
   tahsilatOzeti(@Req() req: any) {

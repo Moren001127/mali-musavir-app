@@ -1916,6 +1916,85 @@ export class ButceService {
     ].sort((a, b) => new Date(b.tarih).getTime() - new Date(a.tarih).getTime());
   }
 
+  /**
+   * AYLIK KIRILIM — satır kategori, sütun ay.
+   *
+   * "Ağustos'ta neye ne harcadım" ile "bu yıl kiraya toplam ne verdim" iki ayrı
+   * soru; tek dönemlik özet ikincisini cevaplayamıyordu. Gider OFİS ve ŞAHSİ
+   * diye ayrı döner: biri kazançtan indirilir, öteki indirilemez — tek listede
+   * toplanınca mesleki kazanç her seferinde elle ayıklanıyordu.
+   *
+   * Müşteri tahsilatı da gelire dahildir (Cari Kasa'da kalır, buradan okunur).
+   */
+  async kategoriKirilimYillik(k: Kimlik, yil: number) {
+    const donemler = Array.from(
+      { length: 12 },
+      (_, i) => `${yil}-${String(i + 1).padStart(2, '0')}`,
+    );
+
+    const [kayitlar, kategoriler, tahsilat] = await Promise.all([
+      this.db.butceIslem.groupBy({
+        by: ['donem', 'kategoriId', 'tur', 'defter'],
+        where: {
+          tenantId: k.tenantId,
+          userId: k.userId,
+          planlanan: false,
+          // Aktarım gelir/gider değildir; iki bacağı da sayılırsa tablo şişer
+          transferGrupId: null,
+          donem: { gte: donemler[0], lte: donemler[11] },
+        },
+        _sum: { tutar: true },
+      }),
+      this.db.butceKategori.findMany({
+        where: { tenantId: k.tenantId, userId: k.userId },
+        select: { id: true, ad: true, renk: true, tur: true, defter: true },
+      }),
+      this.cariTahsilatDonemHaritasi(k, donemler),
+    ]);
+
+    const katMap = new Map(kategoriler.map((c: any) => [c.id, c]));
+    type Satir = { ad: string; renk: string; aylar: Record<string, number>; toplam: number };
+    const gruplar: Record<'gelir' | 'giderOfis' | 'giderSahsi', Map<string, Satir>> = {
+      gelir: new Map(),
+      giderOfis: new Map(),
+      giderSahsi: new Map(),
+    };
+
+    const yaz = (grup: keyof typeof gruplar, ad: string, renk: string, donem: string, tutar: number) => {
+      if (!tutar) return;
+      const harita = gruplar[grup];
+      const satir = harita.get(ad) || { ad, renk, aylar: {}, toplam: 0 };
+      satir.aylar[donem] = kurus((satir.aylar[donem] || 0) + tutar);
+      satir.toplam = kurus(satir.toplam + tutar);
+      harita.set(ad, satir);
+    };
+
+    for (const r of kayitlar as any[]) {
+      const kat: any = r.kategoriId ? katMap.get(r.kategoriId) : null;
+      const ad = kat?.ad || (r.tur === 'GELIR' ? 'Kategorisiz gelir' : 'Kategorisiz gider');
+      const renk = kat?.renk || '#9c9c9c';
+      const grup =
+        r.tur === 'GELIR' ? 'gelir' : r.defter === 'OFIS' ? 'giderOfis' : 'giderSahsi';
+      yaz(grup, ad, renk, r.donem, num(r._sum?.tutar));
+    }
+
+    // Müşteri tahsilatı tek satırda: kategorisi zaten "Müşavirlik Ücreti"
+    for (const [donem, tutar] of tahsilat) {
+      yaz('gelir', MUSAVIRLIK_GELIR_KATEGORISI, '#5ad18a', donem, tutar);
+    }
+
+    const dizi = (m: Map<string, Satir>) =>
+      Array.from(m.values()).sort((a, b) => b.toplam - a.toplam);
+
+    return {
+      yil,
+      donemler,
+      gelir: dizi(gruplar.gelir),
+      giderOfis: dizi(gruplar.giderOfis),
+      giderSahsi: dizi(gruplar.giderSahsi),
+    };
+  }
+
   /* ===================== ÖZET ===================== */
 
   async ozet(k: Kimlik, donem = bugunDonem(), defter: DefterSecim = 'TUMU') {

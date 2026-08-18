@@ -176,6 +176,22 @@ export interface NakitAkis {
   hesaplar: Array<{ id: string; ad: string; bankaAdi: string; bakiye: number; renk?: string | null }>;
 }
 
+export interface KirilimSatiri {
+  ad: string;
+  renk: string;
+  /** dönem ("2026-08") → tutar */
+  aylar: Record<string, number>;
+  toplam: number;
+}
+
+export interface Kirilim {
+  yil: number;
+  donemler: string[];
+  gelir: KirilimSatiri[];
+  giderOfis: KirilimSatiri[];
+  giderSahsi: KirilimSatiri[];
+}
+
 export interface TahsilatOzet {
   /** source boş + hesap boş — düzeltilebilir, hesabı seçilince bakiyeye girer */
   hesabiSecilmemis: { adet: number; toplam: number };
@@ -503,6 +519,7 @@ export const butceApi = {
 
   hesaplar: () => al<BankaHesap[]>(api.get('/butce/hesaplar')),
   tahsilatOzeti: () => al<TahsilatOzet>(api.get('/butce/tahsilat-ozet')),
+  kirilim: (yil: number) => al<Kirilim>(api.get('/butce/kirilim', { params: { yil } })),
   kasa: () => al<KasaOzet>(api.get('/butce/kasa')),
   sablonTesti: (gonder = false) =>
     al<SablonOnizleme[]>(api.post('/butce/sablon-testi', { gonder })),

@@ -321,7 +321,6 @@ export default function Hesaplar() {
         )}
       </Kutu>
 
-      <TahsilatDurumu />
 
       {hesapModal && (
         <HesapModal
@@ -383,55 +382,6 @@ export default function Hesaplar() {
 }
 
 /* ===================== HESAP MODALI ===================== */
-
-/**
- * Tahsilat sayaçları — iki ayrı gerçek, ayrı ayrı.
- *
- * Eskiden burada "Cari Kasa hesap bağlantısı" diye bir kutu vardı: ofis
- * hesaplarını bütçe hesaplarına elle eşleştiriyordunuz. İki ayrı hesap tablosu
- * olduğu için uydurulmuş bir adımdı ve kimseye bir şey anlatmıyordu. Artık tek
- * liste var: hesabı burada açarsınız, "cari tahsilatta görünsün" derseniz
- * tahsilat formunda çıkar. Geriye yalnız şu iki sayaç kaldı.
- */
-function TahsilatDurumu() {
-  const { data } = useQuery({
-    queryKey: ['butce-tahsilat-ozet'],
-    queryFn: butceApi.tahsilatOzeti,
-    staleTime: 60_000,
-  });
-  if (!data) return null;
-  const { hesabiSecilmemis, arsiv } = data;
-  if (!hesabiSecilmemis.adet && !arsiv.adet) return null;
-
-  return (
-    <Kutu baslik="Müşteri tahsilatı" aciklama="Cari Kasa'dan gelen tahsilatın bu ekrana yansıma durumu" renk={MOR}>
-      {hesabiSecilmemis.adet > 0 && (
-        <div
-          className="flex items-start gap-2 rounded-xl px-3 py-2.5 text-[11.5px]"
-          style={{ background: `${TURUNCU}12`, border: `1px solid ${TURUNCU}30`, color: MUTED }}
-        >
-          <AlertTriangle size={13} style={{ color: TURUNCU }} className="mt-0.5 flex-shrink-0" />
-          <span>
-            <strong style={{ color: TURUNCU }}>{hesabiSecilmemis.adet} tahsilatta</strong> hesap
-            seçilmemiş (toplam {para(hesabiSecilmemis.toplam)} ₺). Paranın hangi hesaba girdiği
-            bilinmediği için bakiyeye eklenmedi; Cari Kasa &gt; Tahsilat ekranından hesabı seçilince
-            kendiliğinden görünür.
-          </span>
-        </div>
-      )}
-      {arsiv.adet > 0 && (
-        <p
-          className={`text-[10.5px] leading-relaxed ${hesabiSecilmemis.adet > 0 ? 'mt-3' : ''}`}
-          style={{ color: 'rgba(113,113,122,0.9)' }}
-        >
-          Hattat&apos;tan aktarılan <strong style={{ color: MUTED }}>{arsiv.adet} eski tahsilat</strong> (
-          {para(arsiv.toplam)} ₺) arşivdir: hiçbir bakiyeye girmez. Açılış bakiyeniz o dönemi zaten
-          içerdiği için ikinci kez sayılmaması gerekir.
-        </p>
-      )}
-    </Kutu>
-  );
-}
 
 function HesapModal({
   hesap,
