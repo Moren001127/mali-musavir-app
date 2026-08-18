@@ -9200,7 +9200,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           <ExecutionEndDate>${opts.period.endDate}T23:59:59</ExecutionEndDate>
         </query>
       </${method}>`;
-    const text = await this.soapPost(cfg.baseUrl || PROVIDER_DEFAULT_BASE_URL.UYUMSOFT, action, body);
+    const text = await this.soapPost(cfg.baseUrl || PROVIDER_DEFAULT_BASE_URL.UYUMSOFT, action, body, { trProxy: true });
     return this.extractPayloadsFromProviderResponse(text, ['Data']);
   }
 
@@ -9470,7 +9470,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         `<firstDate${ns}>${faturaStart}T00:00:00</firstDate>` +
         `<lastDate${ns}>${sorguEnd}T23:59:59</lastDate>` +
         searchCriteria;
-      const listResp = await this.soapPost(endpoint, method, listBody);
+      const listResp = await this.soapPost(endpoint, method, listBody, { trProxy: true });
 
       // Liste yanıtı InvoiceDataInfo dizisi; belge kimliği <Id>. UBL XML listede YOK → getInvoiceData.
       const ids = (listResp.match(/<InvoiceDataInfo\b[\s\S]*?<\/InvoiceDataInfo>/gi) || [])
@@ -9499,7 +9499,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             `<ItemPosition>${itemPosition}</ItemPosition>` +
             `</InvoiceHeaderDataInfo>` +
             `</invoiceData>`;
-          const dataResp = await this.soapPost(endpoint, 'getInvoiceData', dataBody);
+          const dataResp = await this.soapPost(endpoint, 'getInvoiceData', dataBody, { trProxy: true });
           const b64 = this.tagText(dataResp, 'binaryData');
           // binaryData zip ya da düz XML olabilir — eLogo'daki çözücü ikisini de kaldırır.
           if (b64) xml = await this.elogoUnzipXml(Buffer.from(b64, 'base64'));
@@ -9540,7 +9540,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   soapPost bunu ham haliyle fırlatıyordu, kullanıcı "bizde bir şey bozuk" sanıyordu. Anlamlı sar.
     let resp: string;
     try {
-      resp = await this.soapPost(endpoint, 'login', loginBody);
+      resp = await this.soapPost(endpoint, 'login', loginBody, { trProxy: true });
     } catch (e: any) {
       const ham = String(e?.message || '').trim();
       throw new Error(
@@ -9618,7 +9618,35 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     return headers;
   }
 
-  private async soapPost(url: string, soapAction: string, body: string) {
+  /**
+   * TÜRKİYE ÇIKIŞI (2026-08-18): sunucu Railway **US East**'te; Türk entegratörlerinin bir kısmı
+   *   yurtdışı IP'yi eliyor. Kanıt: (a) Uyumsoft `s:Permission` hatasında IP'yi AÇIKÇA yazıyor
+   *   ("Kullanıcı: …, Ip: 162.220.234.15"); (b) Mikro'da SAHTE ve GERÇEK şifre BİREBİR aynı 2005
+   *   hatasını veriyor → istek şifre kontrolüne hiç ulaşmıyor, öncesinde eleniyor; (c) AYNI kimlikle
+   *   Türkiye'den çalışan başka bir program (Mihsap) fatura çekebiliyor.
+   * TÜRMOB için zaten kurulu olan proxy (TURMOB_PROXY_URL) burada da kullanılır. Proxy tanımlı
+   *   değilse davranış DEĞİŞMEZ (doğrudan çıkış) — yerelde/proxysiz ortamda kırılmaz.
+   */
+  private _trDispatcher: any;
+  private trFetch(url: string, init: any = {}): Promise<Response> {
+    if (this._trDispatcher === undefined) {
+      const purl = String(process.env.TURMOB_PROXY_URL || process.env.PORTAL_TR_PROXY_URL || '').trim();
+      if (purl) {
+        try {
+          this._trDispatcher = new (require('undici').ProxyAgent)(purl);
+          this.logger.log('Entegratör Türkiye çıkışı aktif (proxy)');
+        } catch (e: any) {
+          this.logger.warn(`Türkiye çıkış proxy kurulamadı: ${e?.message}`);
+          this._trDispatcher = null;
+        }
+      } else {
+        this._trDispatcher = null;
+      }
+    }
+    return fetch(url, this._trDispatcher ? { ...init, dispatcher: this._trDispatcher } : init) as any;
+  }
+
+  private async soapPost(url: string, soapAction: string, body: string, opts: { trProxy?: boolean } = {}) {
     const envelope = `<?xml version="1.0" encoding="utf-8"?>
       <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/">
         <soapenv:Body>${body}</soapenv:Body>
@@ -9630,7 +9658,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     };
     if (soapAction) headers.SOAPAction = `"${soapAction}"`;
     // Timeout: sağlayıcı bağlantıyı açık tutup yanıt vermezse istek süresiz asılı kalıyordu.
-    const res = await fetch(url, { method: 'POST', headers, body: envelope, signal: AbortSignal.timeout(60_000) });
+    const doFetch = opts.trProxy ? this.trFetch.bind(this) : fetch;
+    const res = await doFetch(url, { method: 'POST', headers, body: envelope, signal: AbortSignal.timeout(60_000) });
     const text = await res.text();
     if (!res.ok) throw new Error(`SOAP ${res.status}: ${text.slice(0, 400)}`);
     if (/<(?:[^:>]+:)?Fault\b/i.test(text)) throw new Error(this.tagText(text, 'faultstring') || 'SOAP Fault');
