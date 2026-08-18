@@ -97,3 +97,75 @@ describe('evrak mesajı — metin', () => {
     expect(s.telefonlar({})).toEqual([]);
   });
 });
+
+describe('evrak mesajı — önizleme mükellefe GÖNDEREMEZ', () => {
+  const eski = process.env.MOREN_EVRAK_CANLI;
+  const eskiTel = process.env.MOREN_OWNER_WHATSAPP_PHONES;
+
+  /** Gönderilen (numara, metin) çiftlerini toplayan sahte WhatsApp servisi */
+  const kur = () => {
+    const gidenler: Array<{ no: string; metin: string }> = [];
+    const whatsapp = {
+      isAutomationActive: async () => true,
+      sendMessage: async (no: string, metin: string) => {
+        gidenler.push({ no, metin });
+        return true;
+      },
+    };
+    const prisma = { communicationLog: { create: async () => ({}) } };
+    return { gidenler, servis: new EvrakMesajService(prisma as any, whatsapp as any) };
+  };
+
+  const mukellef = { id: 'x', companyName: 'DENEME LTD', phones: ['905550000001'] };
+  const cagri = (ek: any = {}) => ({
+    tenantId: 't1',
+    taxpayer: mukellef,
+    metin: 'Metin',
+    tur: 'TALEP' as const,
+    donem: 'Temmuz 2026',
+    sebep: 'test',
+    mesaiYokSay: true,
+    ...ek,
+  });
+
+  beforeEach(() => {
+    process.env.MOREN_OWNER_WHATSAPP_PHONES = '905350587475';
+  });
+  afterEach(() => {
+    if (eski === undefined) delete process.env.MOREN_EVRAK_CANLI;
+    else process.env.MOREN_EVRAK_CANLI = eski;
+    if (eskiTel === undefined) delete process.env.MOREN_OWNER_WHATSAPP_PHONES;
+    else process.env.MOREN_OWNER_WHATSAPP_PHONES = eskiTel;
+  });
+
+  it('CANLI açıkken bile zorlaTest mükellefin numarasına göndermez', async () => {
+    process.env.MOREN_EVRAK_CANLI = '1';
+    const { gidenler, servis } = kur();
+    const r = await servis.gonder(cagri({ zorlaTest: true }));
+
+    expect(r.test).toBe(true);
+    expect(gidenler.map((g) => g.no)).toEqual(['905350587475']);
+    expect(gidenler.some((g) => g.no === '905550000001')).toBe(false);
+    expect(gidenler[0].metin).toContain('EVRAK OTOMASYONU — TEST');
+    expect(gidenler[0].metin).toContain('DENEME LTD');
+  });
+
+  it('zorlaTest yokken CANLI gerçekten mükellefe gider', async () => {
+    process.env.MOREN_EVRAK_CANLI = '1';
+    const { gidenler, servis } = kur();
+    const r = await servis.gonder(cagri());
+
+    expect(r.test).toBe(false);
+    expect(gidenler.map((g) => g.no)).toEqual(['905550000001']);
+  });
+
+  it('mesaiYokSay verilmezse mesai dışında hiçbir şey gönderilmez', async () => {
+    const { gidenler, servis } = kur();
+    jest.spyOn(servis, 'mesaiIcindeMi').mockReturnValue(false);
+    const r = await servis.gonder(cagri({ mesaiYokSay: false, zorlaTest: true }));
+
+    expect(r.gonderildi).toBe(false);
+    expect(r.atlandi).toBe('mesai dışı');
+    expect(gidenler).toHaveLength(0);
+  });
+});

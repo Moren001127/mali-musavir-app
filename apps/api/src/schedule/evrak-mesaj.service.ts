@@ -115,18 +115,28 @@ export class EvrakMesajService {
     tur: 'TALEP' | 'GELDI';
     donem: string;
     sebep: string;
+    /** Önizleme: mesai penceresini uygulama (yalnız sahibe giden testte) */
+    mesaiYokSay?: boolean;
+    /** Önizleme: MOREN_EVRAK_CANLI açık olsa bile mükellefe GÖNDERME */
+    zorlaTest?: boolean;
   }): Promise<{ gonderildi: boolean; test: boolean; atlandi?: string }> {
     const { tenantId, taxpayer, metin, tur, donem, sebep } = opts;
+    // zorlaTest, canlı şalterinin ÜSTÜNDE. Önizleme ucu bunu hep true verir;
+    // böylece ileride MOREN_EVRAK_CANLI=1 açıldığında bile o uç mükellefe
+    // mesaj atamaz — önizleme, gönderim yetkisi kazanmış olmaz.
+    const test = opts.zorlaTest === true || !this.canliMi();
 
-    if (!this.mesaiIcindeMi()) {
-      return { gonderildi: false, test: !this.canliMi(), atlandi: 'mesai dışı' };
+    // Mesai dışı gönderim yalnız önizlemede atlanabilir: gerçek akışta gece
+    // mesaj atmamak bu kontrolün tek işi.
+    if (!opts.mesaiYokSay && !this.mesaiIcindeMi()) {
+      return { gonderildi: false, test, atlandi: 'mesai dışı' };
     }
 
     const acik = await this.whatsapp.isAutomationActive(tenantId).catch(() => false);
-    if (!acik) return { gonderildi: false, test: !this.canliMi(), atlandi: 'WhatsApp ana şalter kapalı' };
+    if (!acik) return { gonderildi: false, test, atlandi: 'WhatsApp ana şalter kapalı' };
 
     // ---- TEST: mükellefe gitmez, sahibe gider ----
-    if (!this.canliMi()) {
+    if (test) {
       const numaralar = this.testNumaralari();
       if (!numaralar.length) {
         this.logger.warn('[EvrakMesaj] TEST modu ama MOREN_OWNER_WHATSAPP_PHONES tanımlı değil — hiçbir yere gönderilmedi.');

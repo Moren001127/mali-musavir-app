@@ -101,12 +101,20 @@ export class ReminderCron {
   }
 
   /** Tek mükellef için "evraklarınız ulaştı" bilgilendirmesi */
-  async evrakGeldiBildir(tenantId: string, taxpayerId: string, yil: number, ay: number) {
+  async evrakGeldiBildir(
+    tenantId: string,
+    taxpayerId: string,
+    yil: number,
+    ay: number,
+    opts: { onizleme?: boolean } = {},
+  ) {
     const t = await this.prisma.taxpayer.findFirst({ where: { id: taxpayerId, tenantId } });
-    if (!t) return;
-    // Anahtar kapalıysa hiç üretme — kullanıcı bu mükellef için istemiyor
-    if (!t.whatsappEvrakGeldi) return;
-    if (!t.isActive) return;
+    if (!t) return { atlandi: 'mükellef bulunamadı' };
+    // Anahtar kapalıysa hiç üretme — kullanıcı bu mükellef için istemiyor.
+    // Önizlemede metni görmek için bu iki kontrol atlanır; mesaj zaten
+    // mükellefe değil, ofis sahibine gidiyor.
+    if (!opts.onizleme && !t.whatsappEvrakGeldi) return { atlandi: '"Evrak geldi onayı" anahtarı kapalı' };
+    if (!opts.onizleme && !t.isActive) return { atlandi: 'mükellef pasif' };
 
     const donem = this.evrakMesaj.donemAdi(yil, ay);
     const metin = this.evrakMesaj.doldur(
@@ -121,11 +129,57 @@ export class ReminderCron {
       tur: 'GELDI',
       donem,
       sebep: 'Aylık Takip Listesi\'nde "evrak geldi" işaretlendi',
+      mesaiYokSay: opts.onizleme,
+      zorlaTest: opts.onizleme,
     });
     this.logger.log(
       `[EvrakGeldi] ${this.evrakMesaj.ad(t)} · ${donem} · ` +
       `${sonuc.gonderildi ? (sonuc.test ? 'TEST gönderildi' : 'gönderildi') : `atlandı (${sonuc.atlandi || 'bilinmiyor'})`}`,
     );
+    return { mukellef: this.evrakMesaj.ad(t), donem, ...sonuc };
+  }
+
+  /**
+   * ŞABLON ÖNİZLEMESİ — iki metni de ofis sahibine gönderir.
+   *
+   * Tarama ucu yalnız o an şartı tutan mükellef varsa mesaj üretir; hiç aday
+   * yoksa kullanıcı metinleri göremezdi. Bu uç şarta bakmaz: gerçek bir
+   * mükellef adı ve dönemle iki şablonu da doldurup gösterir.
+   */
+  async evrakSablonOnizle(tenantId: string) {
+    const t =
+      (await this.prisma.taxpayer.findFirst({
+        where: { tenantId, isActive: true, evrakTeslimGunu: { not: null } },
+        orderBy: { createdAt: 'asc' },
+      })) ||
+      (await this.prisma.taxpayer.findFirst({ where: { tenantId, isActive: true } }));
+    if (!t) return { hata: 'Aktif mükellef bulunamadı' };
+
+    // Evrak dönemi = içinde bulunulan ayın BİR ÖNCESİ (Ağustos'ta Temmuz evrakı)
+    const bugun = new Date();
+    const d = new Date(bugun.getFullYear(), bugun.getMonth() - 1, 1);
+    const donem = this.evrakMesaj.donemAdi(d.getFullYear(), d.getMonth() + 1);
+    const ad = this.evrakMesaj.ad(t);
+
+    const cikti: any[] = [];
+    for (const tur of ['TALEP', 'GELDI'] as const) {
+      const metin = this.evrakMesaj.doldur(await this.evrakMesaj.sablon(tenantId, tur), ad, donem);
+      const sonuc = await this.evrakMesaj.gonder({
+        tenantId,
+        taxpayer: t,
+        metin,
+        tur,
+        donem,
+        sebep:
+          tur === 'TALEP'
+            ? `Teslim günü ${t.evrakTeslimGunu ?? '(tanımsız)'} geçti, evrak hâlâ işaretlenmedi (ŞABLON ÖNİZLEMESİ)`
+            : 'Aylık Takip Listesi\'nde "evrak geldi" işaretlendi (ŞABLON ÖNİZLEMESİ)',
+        mesaiYokSay: true,
+        zorlaTest: true,
+      });
+      cikti.push({ tur, metin, ...sonuc });
+    }
+    return { ornekMukellef: ad, donem, mesajlar: cikti };
   }
 
   // ÖĞLEN: 09:00 UTC = 12:00 TR. Kullanıcı "öğlen saatlerinde" dedi;
@@ -142,7 +196,12 @@ export class ReminderCron {
    * aralığını yok sayarak çağırır — böylece kullanıcı metinleri beklemeden
    * görebilir. Gerçek gönderim kararı yine tek kapıda (EvrakMesajService).
    */
-  async evrakTalepTara(opts: { salteriYokSay?: boolean; aralikYokSay?: boolean }) {
+  async evrakTalepTara(opts: {
+    salteriYokSay?: boolean;
+    aralikYokSay?: boolean;
+    /** Önizleme: mesai/tatil penceresini ve canlı şalterini yok say */
+    onizleme?: boolean;
+  }) {
     // Kullanıcı talimatı (2026-06-15): ŞİMDİLİK mükelleflere kendiliğinden
     // (proaktif) mesaj ATILMAYACAK — bot yalnız mükellef YAZINCA cevap verir.
     // Bu evrak hatırlatması proaktif gönderim olduğu için varsayılan KAPALI.
@@ -154,9 +213,9 @@ export class ReminderCron {
     const today = new Date();
 
     // Resmi tatil kontrolü - tatildeyse erken çık
-    if (bugunResmiTatilMi(today)) {
+    if (!opts.onizleme && bugunResmiTatilMi(today)) {
       this.logger.log(`[ReminderCron] ${today.toISOString().slice(0, 10)} resmi tatil — hatırlatma atılmadı.`);
-      return;
+      return { hata: 'bugün resmi tatil' };
     }
 
     const todayDay = today.getDate();
@@ -245,6 +304,8 @@ export class ReminderCron {
           tur: 'TALEP',
           donem,
           sebep: `Teslim günü ${taxpayer.evrakTeslimGunu}, bugün ${todayDay} — evrak hâlâ işaretlenmedi`,
+          mesaiYokSay: opts.onizleme,
+          zorlaTest: opts.onizleme,
         });
 
         if (sonuc.gonderildi) {
