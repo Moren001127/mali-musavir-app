@@ -284,7 +284,18 @@ export default function TahsilatView({
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[760px] text-[13px]">
+            {/* table-fixed + colgroup ŞART: serbest genişlikte uzun firma adı
+                hücreyi büyütüp "İşlem" sütununu ekranın sağ dışına itiyordu ve
+                düğmeler kayboluyordu. Sabit sütunla ad kesilir, düğmeler kalır. */}
+            <table className="w-full table-fixed text-[13px]">
+              <colgroup>
+                <col />
+                <col style={{ width: 120 }} />
+                <col style={{ width: 132 }} />
+                <col style={{ width: 132 }} />
+                <col style={{ width: 132 }} />
+                <col style={{ width: 128 }} />
+              </colgroup>
               <thead>
                 <tr
                   className="text-[10.5px] uppercase tracking-wider"
@@ -312,7 +323,7 @@ export default function TahsilatView({
                       style={{ borderTop: `1px solid ${SATIR_CIZGI}` }}
                     >
                       <td className="px-4 py-2.5">
-                        <button onClick={() => onOpen(r)} className="flex min-w-0 items-center gap-2.5 text-left">
+                        <button onClick={() => onOpen(r)} className="flex w-full min-w-0 items-center gap-2.5 text-left">
                           <span
                             className="h-1.5 w-1.5 flex-shrink-0 rounded-full"
                             style={{ background: borclu ? yas.renk : OK }}
