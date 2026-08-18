@@ -331,6 +331,17 @@ export const PROVIDER_AUTH_HINTS: Record<string, string> = {
 const I2I_SOAP_PROVIDERS = new Set(['IZIBIZ', 'FORIBA']);
 /** Mikro özel entegratör (e-Mikro) posta kutusu servisi — Mikrogrup e-Portal'ın arka ucu. */
 const MIKRO_FIRMBOX_URL = 'https://firma.myefatura.com.tr/EFatura/Firmbox/Firmbox.asmx';
+/**
+ * Mikrogrup e-PORTAL — mükellefin GERÇEK hesabının bulunduğu yer (eportal.mikrogrup.com).
+ * Firmbox (eski e-Mikro altyapısı) bu hesabı TANIMIYOR: login → ns2:code 2005 = "kullanıcı bilgisi
+ *   sistemde bulunamadı". Sahte şifre ile gerçek şifre AYNI hatayı verdi (şifre kontrolüne ulaşılmıyor),
+ *   Türkiye proxy'sinden de aynı sonuç → ne şifre ne IP; YANLIŞ SERVİS.
+ * e-Portal yığını: ASP.NET MVC + AngularJS. Giriş: POST /home/loginEmikro {email,password}
+ *   → {Success, IsTwoFactorRequired}. Sayfa/uç kalıbı: /cp/{accountGuid}/{controller}/{action}.
+ * Rota keşfi (kimliksiz, NotFound-vs-yönlendirme farkıyla doğrulandı):
+ *   inbox/index · inbox/detail · outbox/index · outbox/detail · earchive/index · earchive/list · earchive/detail
+ */
+const MIKRO_EPORTAL_URL = 'https://eportal.mikrogrup.com';
 const GOODS_ACCOUNT_PREFIXES = ['150', '151', '152', '153', '157'];
 const EXPENSE_ACCOUNT_PREFIXES = ['7'];
 const SALES_ACCOUNT_PREFIXES = ['600', '601', '602'];
@@ -9436,8 +9447,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     if (!cfg.username || !cfg.password) {
       throw new Error('Mikro (e-Portal) kullanıcı adı ve şifresi gerekli');
     }
-    let endpoint = String(cfg.baseUrl || '').trim();
-    if (!/Firmbox\.asmx/i.test(endpoint)) endpoint = MIKRO_FIRMBOX_URL;
+    // ÖNCE e-PORTAL: mükellefin hesabı burada. Firmbox yolu (aşağısı) yalnız baseUrl'de AÇIKÇA
+    //   Firmbox.asmx yazılmışsa kullanılır — o altyapı bu hesabı tanımıyor (2005).
+    if (!/Firmbox\.asmx/i.test(String(cfg.baseUrl || ''))) {
+      return this.fetchMikroEportalInvoices(cfg, opts);
+    }
+    const endpoint = String(cfg.baseUrl || '').trim() || MIKRO_FIRMBOX_URL;
 
     const sessionId = await this.mikroLogin(endpoint, cfg.username, cfg.password);
 
@@ -9519,6 +9534,84 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       }
       throw err;
     }
+  }
+
+  /**
+   * MİKRO e-PORTAL yolu (eportal.mikrogrup.com) — KEŞİF SÜRÜMÜ.
+   * Giriş sözleşmesi sitenin kendi JS paketinden alındı (tahmin YOK):
+   *   POST /home/loginEmikro  gövde {email,password}  → {Success, IsTwoFactorRequired}
+   *   başarı → /accounts (firma seçimi) → /cp/{accountGuid}/{controller}/{action}
+   * Bu sürüm giriş yapar, /accounts ve inbox sayfasının ŞEKLİNİ loga yazar; liste ayrıştırma
+   *   bir sonraki adımda o loga bakılarak yazılacak. Şifre YALNIZ şifreli kayıttan okunur.
+   */
+  private async fetchMikroEportalInvoices(
+    cfg: RuntimeIntegrationConfig,
+    opts: { taxpayer: any; direction: 'ALIS' | 'SATIS'; period: { donem: string; startDate: string; endDate: string }; limit: number; channel?: string },
+  ): Promise<ProviderInvoicePayload[]> {
+    const B = MIKRO_EPORTAL_URL;
+    const jar = new Map<string, string>();
+    const cookieHeader = () => [...jar.entries()].map(([k, v]) => `${k}=${v}`).join('; ');
+    const soak = (res: Response) => {
+      const all: string[] = (res.headers as any).getSetCookie?.() || [];
+      for (const c of all) {
+        const [pair] = String(c).split(';');
+        const ix = pair.indexOf('=');
+        if (ix > 0) jar.set(pair.slice(0, ix).trim(), pair.slice(ix + 1).trim());
+      }
+    };
+    const go = async (path: string, init: any = {}) => {
+      const res = await this.trFetch(B + path, {
+        ...init,
+        redirect: 'manual',
+        headers: { 'User-Agent': 'Mozilla/5.0', Accept: 'text/html,application/json,*/*', Cookie: cookieHeader(), ...(init.headers || {}) },
+        signal: AbortSignal.timeout(60_000),
+      });
+      soak(res);
+      return res;
+    };
+
+    // 1) Giriş sayfası — oturum/antiforgery çerezi
+    await go('/');
+    // 2) Giriş
+    const loginRes = await go('/home/loginEmikro', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: cfg.username, password: cfg.password }),
+    });
+    const loginTxt = await loginRes.text();
+    let loginJson: any = null;
+    try { loginJson = JSON.parse(loginTxt); } catch { /* HTML dönebilir */ }
+    this.logger.log(`[MIKRO-EPORTAL] login HTTP=${loginRes.status} Success=${loginJson?.Success} 2FA=${loginJson?.IsTwoFactorRequired} govde=${loginTxt.slice(0, 300).replace(/\s+/g, ' ')}`);
+
+    if (loginJson && loginJson.Success === false) {
+      throw new Error(`Mikro e-Portal girişi reddedildi: ${JSON.stringify(loginJson).slice(0, 300)}`);
+    }
+    if (loginJson?.IsTwoFactorRequired) {
+      throw new Error('Mikro e-Portal telefon doğrulaması (2FA) istiyor — portalda "iletişim bilgilerini doğrula" adımını tamamlayın, sonra tekrar deneyin.');
+    }
+
+    // 3) Firma listesi — accountGuid'i bul
+    const accRes = await go('/accounts');
+    const accTxt = accRes.status < 400 ? await accRes.text() : '';
+    const guids = [...new Set([...accTxt.matchAll(/\/cp\/([0-9a-f-]{36})\//gi)].map((m) => m[1]))];
+    this.logger.log(`[MIKRO-EPORTAL] /accounts HTTP=${accRes.status} len=${accTxt.length} bulunanFirma=${guids.length} ${guids.slice(0, 5).join(',')}`);
+    if (!guids.length) {
+      this.logger.warn(`[MIKRO-EPORTAL] /accounts ornek: ${accTxt.slice(0, 700).replace(/\s+/g, ' ')}`);
+      throw new Error('Mikro e-Portal: giriş yapıldı ama firma listesi çözülemedi (log: MIKRO-EPORTAL /accounts).');
+    }
+
+    // 4) Gelen/giden/e-arşiv ekranının ŞEKLİNİ öğren (ayrıştırma bir sonraki adımda)
+    const channel = String(opts.channel || (opts.direction === 'SATIS' ? 'OUT_EFATURA' : 'IN_EFATURA')).toUpperCase();
+    const ctrl = channel === 'OUT_EARSIV' ? 'earchive' : channel === 'OUT_EFATURA' ? 'outbox' : 'inbox';
+    for (const guid of guids.slice(0, 2)) {
+      const pRes = await go(`/cp/${guid}/${ctrl}/index`);
+      const pTxt = pRes.status < 400 ? await pRes.text() : '';
+      const scripts = [...pTxt.matchAll(/<script[^>]+src=["']([^"']+)["']/gi)].map((m) => m[1]).filter((s) => /\/Ng\//i.test(s));
+      this.logger.log(`[MIKRO-EPORTAL] ${ctrl}/index guid=${guid} HTTP=${pRes.status} len=${pTxt.length} ngScripts=${scripts.slice(0, 8).join(' | ')}`);
+      this.logger.log(`[MIKRO-EPORTAL] ${ctrl} govde ornegi: ${pTxt.slice(0, 900).replace(/\s+/g, ' ')}`);
+    }
+
+    throw new Error('Mikro e-Portal: giriş BAŞARILI, ekran yapısı loga yazıldı (MIKRO-EPORTAL). Liste ayrıştırma bir sonraki adımda eklenecek.');
   }
 
   private static readonly mikroSessions = new Map<string, { sid: string; ts: number }>();
