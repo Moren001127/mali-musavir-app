@@ -71,22 +71,59 @@ export class EvrakMesajService {
     return `${aylar[ay - 1]} ${yil}`;
   }
 
+  /**
+   * GÖVDE METİNLERİ — kullanıcının verdiği metinler (2026-08-18), başlıksız.
+   *
+   * Hitap ("Sayın {ad},") ve ofis adı buraya YAZILMAZ; ikisini de sarmala()
+   * ekliyor. Gövdeye de konsaydı mesajda iki kez "Sayın MUZAFFER ÖREN" ve iki
+   * kez ofis adı görünürdü.
+   */
+  static readonly VARSAYILAN = {
+    TALEP:
+      '{dönem} dönemine ait muhasebe evraklarınız tarafımıza henüz ulaşmamıştır. ' +
+      'Beyanname sürecinin aksamaması için evraklarınızı en kısa sürede iletmenizi rica ederiz.',
+    GELDI:
+      '{dönem} dönemine ait evraklarınız tarafımıza ulaşmış olup işlemleriniz başlatılmıştır. ' +
+      'Bilginize sunarız.',
+  };
+
   /** Tenant şablonu; yoksa varsayılan metin */
   async sablon(tenantId: string, tur: 'TALEP' | 'GELDI'): Promise<string> {
     const tpl = await this.prisma.smsTemplate.findUnique({ where: { tenantId } }).catch(() => null);
-    if (tur === 'TALEP') {
-      return (
-        tpl?.evrakTalepMesaji ||
-        'Sayın {ad}, {dönem} dönemine ait muhasebe evraklarınız tarafımıza henüz ulaşmamıştır. ' +
-          'Beyanname sürecinin aksamaması için evraklarınızı en kısa sürede iletmenizi rica ederiz. ' +
-          'Moren Mali Müşavirlik'
-      );
-    }
-    return (
-      tpl?.evrakGeldiMesaji ||
-      'Sayın {ad}, {dönem} dönemine ait evraklarınız tarafımıza ulaşmış olup işlemleriniz başlatılmıştır. ' +
-        'Bilginize sunarız. Moren Mali Müşavirlik'
-    );
+    const kayitli = tur === 'TALEP' ? tpl?.evrakTalepMesaji : tpl?.evrakGeldiMesaji;
+    return (kayitli || '').trim() || EvrakMesajService.VARSAYILAN[tur];
+  }
+
+  /** Kayıtlı şablonları koddaki varsayılan metinlere döndürür */
+  async sablonuVarsayilanaAl(tenantId: string) {
+    const veri = {
+      evrakTalepMesaji: EvrakMesajService.VARSAYILAN.TALEP,
+      evrakGeldiMesaji: EvrakMesajService.VARSAYILAN.GELDI,
+    };
+    await this.prisma.smsTemplate.upsert({
+      where: { tenantId },
+      update: veri,
+      create: { tenantId, ...veri },
+    });
+    return veri;
+  }
+
+  /** Ofis adı — Akıllı Bildirim ayarındaki gönderen adı (ekstre ile aynı kaynak) */
+  async ofisAdi(tenantId: string): Promise<string> {
+    const ayar = await (this.prisma as any).smartDispatchSetting
+      .findUnique({ where: { tenantId_kategori: { tenantId, kategori: 'VERGI' } } })
+      .catch(() => null);
+    return String(ayar?.senderName || 'MOREN MALİ MÜŞAVİRLİK');
+  }
+
+  /**
+   * BAŞLIK SARMALI — cari ekstre mesajıyla birebir aynı düzen (kullanıcı
+   * kararı 2026-08-18): kalın "Gönderen" / ofis adı / kalın "Sayın" /
+   * mükellef adı / gövde. Tek yerde durması şart: iki mesaj türü ayrı ayrı
+   * biçimlenseydi biri değiştiğinde diğeri geride kalırdı.
+   */
+  sarmala(ofis: string, ad: string, govde: string): string {
+    return ['*Gönderen* ', ofis, '', '*Sayın* ', ` ${ad},`, '', govde].join('\n');
   }
 
   /** {ad} / {dönem} yer tutucularını doldurur */

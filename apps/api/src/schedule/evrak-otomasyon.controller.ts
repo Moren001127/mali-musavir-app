@@ -60,6 +60,20 @@ export class EvrakOtomasyonController {
   }
 
   /**
+   * KAYITLI ŞABLONLARI VARSAYILANA DÖNDÜR.
+   *
+   * Ayarlar > Mesaj Şablonları'ndaki metin, koddaki varsayılanı ezer. Kayıtlı
+   * metin eski/kısa kalınca mesaj yanlış görünüyordu; bu uç iki alanı koddaki
+   * metne geri yazar. Gövde kabul etmez — serbest metin alsaydı X-Agent-Token
+   * taşıyan her yerel ajan mükelleflere gidecek metni değiştirebilirdi.
+   */
+  @Post('sablon/varsayilana-al')
+  async sablonuVarsayilanaAl(@Headers('x-agent-token') token: string) {
+    const tenantId = await this.tenant(token);
+    return { ok: true, yazilan: await this.evrakMesaj.sablonuVarsayilanaAl(tenantId) };
+  }
+
+  /**
    * ŞABLON ÖNİZLEMESİ — iki metni de gönderir.
    *
    * Tarama ucundan farkı: o an şartı tutan mükellef olmasa da metinleri

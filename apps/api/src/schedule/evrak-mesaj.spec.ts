@@ -169,3 +169,21 @@ describe('evrak mesajı — önizleme mükellefe GÖNDEREMEZ', () => {
     expect(gidenler).toHaveLength(0);
   });
 });
+
+describe('evrak mesajı — başlık sarmalı (ekstre ile aynı düzen)', () => {
+  const s = servisKur();
+
+  it('Gönderen ve Sayın kalın, ofis ve ad ayrı satırda', () => {
+    expect(s.sarmala('MOREN MALİ MÜŞAVİRLİK', 'FİGEN KABAKCI', 'Gövde metni.')).toBe(
+      '*Gönderen* \nMOREN MALİ MÜŞAVİRLİK\n\n*Sayın* \n FİGEN KABAKCI,\n\nGövde metni.',
+    );
+  });
+
+  it('gövde metinlerinde hitap ve ofis adı YOK — başlıkta zaten var', () => {
+    for (const m of Object.values(EvrakMesajService.VARSAYILAN)) {
+      expect(m).not.toContain('Sayın');
+      expect(m).not.toMatch(/Moren Mali M/i);
+      expect(m).toContain('{dönem}');
+    }
+  });
+});

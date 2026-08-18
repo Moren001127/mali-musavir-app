@@ -117,10 +117,11 @@ export class ReminderCron {
     if (!opts.onizleme && !t.isActive) return { atlandi: 'mükellef pasif' };
 
     const donem = this.evrakMesaj.donemAdi(yil, ay);
-    const metin = this.evrakMesaj.doldur(
-      await this.evrakMesaj.sablon(tenantId, 'GELDI'),
-      this.evrakMesaj.ad(t),
-      donem,
+    const ad = this.evrakMesaj.ad(t);
+    const metin = this.evrakMesaj.sarmala(
+      await this.evrakMesaj.ofisAdi(tenantId),
+      ad,
+      this.evrakMesaj.doldur(await this.evrakMesaj.sablon(tenantId, 'GELDI'), ad, donem),
     );
     const sonuc = await this.evrakMesaj.gonder({
       tenantId,
@@ -161,9 +162,14 @@ export class ReminderCron {
     const donem = this.evrakMesaj.donemAdi(d.getFullYear(), d.getMonth() + 1);
     const ad = this.evrakMesaj.ad(t);
 
+    const ofis = await this.evrakMesaj.ofisAdi(tenantId);
     const cikti: any[] = [];
     for (const tur of ['TALEP', 'GELDI'] as const) {
-      const metin = this.evrakMesaj.doldur(await this.evrakMesaj.sablon(tenantId, tur), ad, donem);
+      const metin = this.evrakMesaj.sarmala(
+        ofis,
+        ad,
+        this.evrakMesaj.doldur(await this.evrakMesaj.sablon(tenantId, tur), ad, donem),
+      );
       const sonuc = await this.evrakMesaj.gonder({
         tenantId,
         taxpayer: t,
@@ -256,15 +262,21 @@ export class ReminderCron {
         }
       }
 
-      // Tenant başına şablonu önbelleğe al — tek tenant için tek SQL sorgusu
+      // Tenant başına şablon ve ofis adı önbelleği — mükellef başına ayrı SQL
+      // atmamak için. Metin EvrakMesajService'ten alınır; burada ikinci bir
+      // yedek metin tutulmuyordu değil, tutuluyordu ve varsayılan
+      // değiştiğinde sessizce geride kalıyordu (2026-08-18 temizliği).
       const templateCache = new Map<string, string>();
+      const ofisCache = new Map<string, string>();
       const getTemplate = async (tenantId: string): Promise<string> => {
-        if (templateCache.has(tenantId)) return templateCache.get(tenantId)!;
-        const tpl = await this.prisma.smsTemplate.findUnique({ where: { tenantId } });
-        const text = tpl?.evrakTalepMesaji
-          || 'Sayın {ad}, {dönem} dönemi evraklarınızı tarafımıza teslim etmenizi rica ederiz.';
-        templateCache.set(tenantId, text);
-        return text;
+        if (!templateCache.has(tenantId)) {
+          templateCache.set(tenantId, await this.evrakMesaj.sablon(tenantId, 'TALEP'));
+        }
+        return templateCache.get(tenantId)!;
+      };
+      const getOfis = async (tenantId: string): Promise<string> => {
+        if (!ofisCache.has(tenantId)) ofisCache.set(tenantId, await this.evrakMesaj.ofisAdi(tenantId));
+        return ofisCache.get(tenantId)!;
       };
 
       let sent = 0, skippedAlreadyArrived = 0, skippedNoPhone = 0, skippedMasterSwitch = 0, failed = 0;
@@ -290,11 +302,11 @@ export class ReminderCron {
           || `${taxpayer.firstName || ''} ${taxpayer.lastName || ''}`.trim()
           || 'Sayın Mükellef';
 
-        const template = await getTemplate(taxpayer.tenantId);
-        const renderedMessage = template
-          .replace(/\{ad\}/g, ad)
-          .replace(/\{dönem\}/g, donem)
-          .replace(/\{donem\}/g, donem);
+        const renderedMessage = this.evrakMesaj.sarmala(
+          await getOfis(taxpayer.tenantId),
+          ad,
+          this.evrakMesaj.doldur(await getTemplate(taxpayer.tenantId), ad, donem),
+        );
 
         // TEK KAPI: test/canlı kararı, mesai penceresi ve loglama orada.
         const sonuc = await this.evrakMesaj.gonder({
