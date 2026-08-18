@@ -475,7 +475,16 @@ export class ButceService {
   async tahsilatOzeti(k: Kimlik) {
     const [hesapsiz, arsiv] = await Promise.all([
       this.db.cariHareket.aggregate({
-        where: { tenantId: k.tenantId, tip: 'TAHSILAT', source: null, accountId: null },
+        where: {
+          tenantId: k.tenantId,
+          tip: 'TAHSILAT',
+          source: null,
+          accountId: null,
+          // NAKİT KASA HARİÇ. Kasaya giren tahsilatın da hesabı boştur ama o
+          // BİLEREK boştur ve bakiyeye girer. Bu şart olmazsa aynı kayıt hem
+          // kasa bakiyesine eklenir hem "bakiyeye eklenmedi" diye uyarı verir.
+          odemeYontemi: { not: 'NAKIT' },
+        },
         _count: { _all: true },
         _sum: { tutar: true },
       }),

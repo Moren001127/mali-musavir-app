@@ -89,6 +89,23 @@ describe('tahsilat — kesim tarihi zorunluluğu', () => {
 });
 
 describe('tahsilat — sayaçlar karışmasın', () => {
+  it('kasaya giren tahsilatı "hesabı seçilmemiş" saymaz', async () => {
+    // GERÇEK HATA (2026-08-18): kasa süzgeci iki şart ararken bu sayaç yalnız
+    // accountId'ye bakıyordu. Nakit tahsilat hem kasa bakiyesine giriyor hem
+    // "bakiyeye eklenmedi" uyarısı veriyordu — ekranda apaçık çelişki.
+    let hesapsizWhere: any = null;
+    const servis: any = servisKur({
+      cariHareket: {
+        aggregate: async ({ where }: any) => {
+          if (where.source === null) hesapsizWhere = where;
+          return { _count: { _all: 0 }, _sum: { tutar: 0 } };
+        },
+      },
+    });
+    await servis.tahsilatOzeti(KIMLIK);
+    expect(hesapsizWhere.odemeYontemi).toEqual({ not: 'NAKIT' });
+  });
+
   it('düzeltilebilir eksik ile arşivi AYRI sayar', async () => {
     const sorgular: any[] = [];
     const servis: any = servisKur({
