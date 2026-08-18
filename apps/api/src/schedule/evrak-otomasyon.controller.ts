@@ -45,7 +45,7 @@ export class EvrakOtomasyonController {
   /** Otomasyon o an ne yapardı — gönderim yapmaz */
   @Post('durum')
   async durum(@Headers('x-agent-token') token: string) {
-    await this.tenant(token);
+    const tenantId = await this.tenant(token);
     return {
       canliGonderim: this.evrakMesaj.canliMi(),
       mesaiIcinde: this.evrakMesaj.mesaiIcindeMi(),
@@ -56,6 +56,32 @@ export class EvrakOtomasyonController {
       aciklama: this.evrakMesaj.canliMi()
         ? 'Zamanlı gönderim CANLI: cron mükelleflere mesaj atar.'
         : 'Zamanlı gönderim TEST: mesajlar yalnız ofis sahibine gider. Açmak için MOREN_EVRAK_CANLI=1.',
+      kapsam: await this.kapsam(tenantId),
+    };
+  }
+
+  /**
+   * KAPSAM — otomasyon kaç mükellefi kapsıyor.
+   *
+   * Tarama yalnız o an şartı tutanı sayar; "hiç kimseye gitmedi" ile
+   * "kimsede ayar açık değil" aynı görünüyordu. Bu sayılar ikisini ayırır.
+   */
+  private async kapsam(tenantId: string) {
+    const t = (where: any) => this.prisma.taxpayer.count({ where: { tenantId, isActive: true, ...where } });
+    const [aktif, gunTanimli, talepAcik, geldiAcik, calisir] = await Promise.all([
+      t({}),
+      t({ evrakTeslimGunu: { not: null } }),
+      t({ whatsappEvrakTalep: true }),
+      t({ whatsappEvrakGeldi: true }),
+      t({ evrakTeslimGunu: { not: null }, whatsappEvrakTalep: true }),
+    ]);
+    return {
+      aktifMukellef: aktif,
+      teslimGunuTanimli: gunTanimli,
+      talepAnahtariAcik: talepAcik,
+      geldiAnahtariAcik: geldiAcik,
+      hatirlatmaCalisir: calisir,
+      not: 'Hatırlatma için HEM teslim günü HEM "Evrak talep mesajı" anahtarı gerekli.',
     };
   }
 
