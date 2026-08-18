@@ -9,6 +9,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { OwnerDigestService } from './owner-digest.service';
 import { OwnerBriefingCron } from './owner-briefing.cron';
+import { EvrakMesajService } from '../schedule/evrak-mesaj.service';
 
 type EvrakReminderBody = {
   taxpayerIds?: string[];
@@ -81,6 +82,7 @@ export class WhatsAppController {
     private baileys: BaileysService,
     private ownerDigest: OwnerDigestService,
     private ownerBriefing: OwnerBriefingCron,
+    private evrakMesaj: EvrakMesajService,
   ) {}
 
   /**
@@ -1634,9 +1636,10 @@ export class WhatsAppController {
       if (!lastLogMap.has(log.taxpayerId)) lastLogMap.set(log.taxpayerId, log.occurredAt);
     }
 
-    const messageTemplate =
-      template?.evrakTalepMesaji ||
-      'Sayin {ad}, {donem} donemi evraklarinizi tarafimiza teslim etmenizi rica ederiz. Moren Mali Musavirlik';
+    // ŞABLON TEK KAYNAK: burada ayrı bir yedek metin tutuluyordu; koddaki
+    // varsayılan değişince sessizce geride kalıyordu (2026-08-18).
+    const messageTemplate = await this.evrakMesaj.sablon(tenantId, 'TALEP');
+    const ofisAdi = await this.evrakMesaj.ofisAdi(tenantId);
 
     const rows = taxpayers.map((t: any) => {
       const ad = this.taxpayerDisplayName(t);
@@ -1652,10 +1655,14 @@ export class WhatsAppController {
       if (!body.includeNotDue && dueDay > dueCutoffDay) reasons.push(`Evrak teslim gunu gelmedi (${dueDay})`);
       if (!body.force && lastReminder && lastReminder > twoDaysAgo) reasons.push('Son 2 gunde hatirlatma gonderildi');
 
-      const mesaj = messageTemplate
-        .replace(/\{ad\}/g, ad)
-        .replace(/\{dönem\}/g, donem)
-        .replace(/\{donem\}/g, donem);
+      // BAŞLIK ŞART: şablon gövdesinde artık hitap yok (onu sarmala ekliyor).
+      // Sarmalasız gönderilirse mesaj "Sayın ..." olmadan, doğrudan dönem
+      // cümlesiyle başlar — panelden giden mesajda tam bu olmuştu.
+      const mesaj = this.evrakMesaj.sarmala(
+        ofisAdi,
+        ad,
+        this.evrakMesaj.doldur(messageTemplate, ad, donem),
+      );
 
       return {
         taxpayerId: t.id,
