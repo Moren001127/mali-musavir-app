@@ -50,6 +50,8 @@ import { MaliYorumModule } from './mali-yorum/mali-yorum.module';
 import { AkilliBildirimModule } from './akilli-bildirim/akilli-bildirim.module';
 import { ButceModule } from './butce/butce.module';
 import { ReminderCron } from './schedule/reminder.cron';
+import { EvrakMesajService } from './schedule/evrak-mesaj.service';
+import { EvrakOtomasyonController } from './schedule/evrak-otomasyon.controller';
 import { HgsCron } from './schedule/hgs.cron';
 import { TaskReminderCron } from './schedule/task-reminder.cron';
 import { BeyannameDeadlineCron } from './schedule/beyanname-deadline.cron';
@@ -107,9 +109,11 @@ import { InvoiceOverdueCron } from './schedule/invoice-overdue.cron';
     AkilliBildirimModule,
     ButceModule,
   ],
+  controllers: [EvrakOtomasyonController],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     ReminderCron,
+    EvrakMesajService,
     HgsCron,
     TaskReminderCron,
     BeyannameDeadlineCron,
