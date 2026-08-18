@@ -108,8 +108,16 @@ export class ReminderCron {
     ay: number,
     opts: { onizleme?: boolean } = {},
   ) {
-    const t = await this.prisma.taxpayer.findFirst({ where: { id: taxpayerId, tenantId } });
-    if (!t) return { atlandi: 'mükellef bulunamadı' };
+    const t = await this.prisma.taxpayer.findFirst({
+      where: {
+        id: taxpayerId,
+        tenantId,
+        // Bilgilendirme de yalnız Aylık Takip Listesi kümesine gider; işi
+        // bırakmış mükellefe "işlemleriniz başlatıldı" mesajı gitmemeli.
+        ...(opts.onizleme ? {} : { AND: this.takipPenceresi(yil, ay) }),
+      },
+    });
+    if (!t) return { atlandi: 'mükellef Aylık Takip Listesi kümesinde değil' };
     // Anahtar kapalıysa hiç üretme — kullanıcı bu mükellef için istemiyor.
     // Önizlemede metni görmek için bu iki kontrol atlanır; mesaj zaten
     // mükellefe değil, ofis sahibine gidiyor.
@@ -182,6 +190,8 @@ export class ReminderCron {
             : 'Aylık Takip Listesi\'nde "evrak geldi" işaretlendi (ŞABLON ÖNİZLEMESİ)',
         mesaiYokSay: true,
         zorlaTest: true,
+        // Metin mükellefe gideceği haliyle görünsün; bilgi bloğu yok.
+        baslikSiz: true,
       });
       cikti.push({ tur, metin, ...sonuc });
     }
@@ -193,6 +203,28 @@ export class ReminderCron {
   @Cron('0 9 * * 1-5')
   async sendEvrakReminderMessages() {
     return this.evrakTalepTara({});
+  }
+
+  /**
+   * AYLIK TAKİP LİSTESİ KÜMESİ — mesaj yalnız bu mükelleflere gider.
+   *
+   * Kullanıcı kararı (2026-08-18): "bu mesajlar aylık takip listesinde yer
+   * alan mükellefler için gönderilecek sadece." Liste sayfası mükellefi işe
+   * başlama/bitiş tarihine göre süzüyor; sadece isActive'e bakmak işi BIRAKMIŞ
+   * (endDate geçmiş) veya henüz BAŞLAMAMIŞ mükellefe hatırlatma gönderirdi.
+   *
+   * Koşullar monthly-status.shared.ts ile birebir aynı; oradan kaymaması için
+   * yorumda kaynak açıkça yazılı.
+   */
+  private takipPenceresi(yil: number, ay: number) {
+    const ilkGun = new Date(yil, ay - 1, 1);
+    const sonGun = new Date(yil, ay, 0, 23, 59, 59);
+    return [
+      { OR: [{ startDate: null }, { startDate: { lte: sonGun } }] },
+      { OR: [{ endDate: null }, { endDate: { gte: ilkGun } }] },
+      // Sanal WhatsApp kayıtları gerçek mükellef değil
+      { NOT: { taxNumber: { startsWith: 'WHATSAPP-' } } },
+    ];
   }
 
   /**
@@ -236,6 +268,8 @@ export class ReminderCron {
         where: {
           isActive: true,
           whatsappEvrakTalep: true,
+          // YALNIZ AYLIK TAKİP LİSTESİNDEKİLER (kullanıcı kararı 2026-08-18)
+          AND: this.takipPenceresi(year, month),
           // TESLİM GÜNÜNÜN KENDİSİNDEN İTİBAREN (kullanıcı kararı 2026-08-18).
           // Kısa süre "ertesi gün" yapılmıştı; geri alındı — teslim günü öğlen
           // hâlâ evrak yoksa hatırlatma o gün başlar.

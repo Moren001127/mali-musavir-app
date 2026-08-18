@@ -175,7 +175,9 @@ describe('evrak mesajı — başlık sarmalı (ekstre ile aynı düzen)', () => 
 
   it('Gönderen ve Sayın kalın, ofis ve ad ayrı satırda', () => {
     expect(s.sarmala('MOREN MALİ MÜŞAVİRLİK', 'FİGEN KABAKCI', 'Gövde metni.')).toBe(
-      '*Gönderen* \nMOREN MALİ MÜŞAVİRLİK\n\n*Sayın* \n FİGEN KABAKCI,\n\nGövde metni.',
+      // Ad'ın önünde BOŞLUK YOK: ekstre kalıbından ` ${ad},` diye kopyalanmıştı,
+      // WhatsApp'ta satır bir tık içeriden başlıyordu (kullanıcı fark etti).
+      '*Gönderen*\nMOREN MALİ MÜŞAVİRLİK\n\n*Sayın*\nFİGEN KABAKCI,\n\nGövde metni.',
     );
   });
 
@@ -185,5 +187,55 @@ describe('evrak mesajı — başlık sarmalı (ekstre ile aynı düzen)', () => 
       expect(m).not.toMatch(/Moren Mali M/i);
       expect(m).toContain('{dönem}');
     }
+  });
+});
+
+describe('evrak mesajı — başlıksız gönderim', () => {
+  const eskiTel = process.env.MOREN_OWNER_WHATSAPP_PHONES;
+
+  const kur = () => {
+    const gidenler: Array<{ no: string; metin: string }> = [];
+    const whatsapp = {
+      isAutomationActive: async () => true,
+      sendMessage: async (no: string, metin: string) => { gidenler.push({ no, metin }); return true; },
+    };
+    return { gidenler, servis: new EvrakMesajService({} as any, whatsapp as any) };
+  };
+
+  beforeEach(() => { process.env.MOREN_OWNER_WHATSAPP_PHONES = '905350587475'; });
+  afterEach(() => {
+    if (eskiTel === undefined) delete process.env.MOREN_OWNER_WHATSAPP_PHONES;
+    else process.env.MOREN_OWNER_WHATSAPP_PHONES = eskiTel;
+  });
+
+  const cagri = (ek: any) => ({
+    tenantId: 't1',
+    taxpayer: { id: 'x', companyName: 'DENEME LTD', phones: ['905550000001'] },
+    metin: 'Birebir gidecek metin.',
+    tur: 'TALEP' as const,
+    donem: 'Temmuz 2026',
+    sebep: 'test',
+    mesaiYokSay: true,
+    zorlaTest: true,
+    ...ek,
+  });
+
+  it('baslikSiz ile metnin ÖNÜNE hiçbir şey eklenmez', async () => {
+    const { gidenler, servis } = kur();
+    await servis.gonder(cagri({ baslikSiz: true }));
+    expect(gidenler).toHaveLength(1);
+    expect(gidenler[0].metin).toBe('Birebir gidecek metin.');
+  });
+
+  it('baslikSiz olsa da hedef yine SAHİP, mükellef değil', async () => {
+    const { gidenler, servis } = kur();
+    await servis.gonder(cagri({ baslikSiz: true }));
+    expect(gidenler[0].no).toBe('905350587475');
+  });
+
+  it('baslikSiz yokken TEST başlığı eklenir', async () => {
+    const { gidenler, servis } = kur();
+    await servis.gonder(cagri({}));
+    expect(gidenler[0].metin).toContain('EVRAK OTOMASYONU — TEST');
   });
 });

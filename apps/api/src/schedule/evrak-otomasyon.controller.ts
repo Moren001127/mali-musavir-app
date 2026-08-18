@@ -67,7 +67,18 @@ export class EvrakOtomasyonController {
    * "kimsede ayar açık değil" aynı görünüyordu. Bu sayılar ikisini ayırır.
    */
   private async kapsam(tenantId: string) {
-    const t = (where: any) => this.prisma.taxpayer.count({ where: { tenantId, isActive: true, ...where } });
+    // Sayılar da Aylık Takip Listesi kümesi üzerinden; aksi hâlde "75 aktif"
+    // deyip listede 65 kişi görünüyordu ve sayılar tutmuyordu.
+    const simdi = new Date();
+    const ilkGun = new Date(simdi.getFullYear(), simdi.getMonth(), 1);
+    const sonGun = new Date(simdi.getFullYear(), simdi.getMonth() + 1, 0, 23, 59, 59);
+    const takipte = [
+      { OR: [{ startDate: null }, { startDate: { lte: sonGun } }] },
+      { OR: [{ endDate: null }, { endDate: { gte: ilkGun } }] },
+      { NOT: { taxNumber: { startsWith: 'WHATSAPP-' } } },
+    ];
+    const t = (where: any) =>
+      this.prisma.taxpayer.count({ where: { tenantId, isActive: true, AND: takipte, ...where } });
     const [aktif, gunTanimli, talepAcik, geldiAcik, calisir] = await Promise.all([
       t({}),
       t({ evrakTeslimGunu: { not: null } }),
@@ -76,7 +87,7 @@ export class EvrakOtomasyonController {
       t({ evrakTeslimGunu: { not: null }, whatsappEvrakTalep: true }),
     ]);
     return {
-      aktifMukellef: aktif,
+      takiptekiMukellef: aktif,
       teslimGunuTanimli: gunTanimli,
       talepAnahtariAcik: talepAcik,
       geldiAnahtariAcik: geldiAcik,

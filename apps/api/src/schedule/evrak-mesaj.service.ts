@@ -123,7 +123,7 @@ export class EvrakMesajService {
    * biçimlenseydi biri değiştiğinde diğeri geride kalırdı.
    */
   sarmala(ofis: string, ad: string, govde: string): string {
-    return ['*Gönderen* ', ofis, '', '*Sayın* ', ` ${ad},`, '', govde].join('\n');
+    return ['*Gönderen*', ofis, '', '*Sayın*', `${ad},`, '', govde].join('\n');
   }
 
   /** {ad} / {dönem} yer tutucularını doldurur */
@@ -156,6 +156,12 @@ export class EvrakMesajService {
     mesaiYokSay?: boolean;
     /** Önizleme: MOREN_EVRAK_CANLI açık olsa bile mükellefe GÖNDERME */
     zorlaTest?: boolean;
+    /**
+     * Test başlığını EKLEME — metin mükellefe gideceği haliyle görünsün.
+     * Şablon önizlemesinde açık: kullanıcı son hâli değerlendiriyor, üstteki
+     * bilgi bloğu değerlendirmeyi zorlaştırıyordu.
+     */
+    baslikSiz?: boolean;
   }): Promise<{ gonderildi: boolean; test: boolean; atlandi?: string }> {
     const { tenantId, taxpayer, metin, tur, donem, sebep } = opts;
     // zorlaTest, canlı şalterinin ÜSTÜNDE. Önizleme ucu bunu hep true verir;
@@ -179,6 +185,16 @@ export class EvrakMesajService {
         this.logger.warn('[EvrakMesaj] TEST modu ama MOREN_OWNER_WHATSAPP_PHONES tanımlı değil — hiçbir yere gönderilmedi.');
         return { gonderildi: false, test: true, atlandi: 'test numarası tanımsız' };
       }
+      // Başlıksız: mesaj birebir mükellefe gidecek metin. Yine de mükellefe
+      // DEĞİL, yalnız sahibin numarasına gider — kapı burası, başlık değil.
+      if (opts.baslikSiz) {
+        let sade = false;
+        for (const n of numaralar) {
+          if (await this.whatsapp.sendMessage(n, metin, tenantId)) sade = true;
+        }
+        return { gonderildi: sade, test: true };
+      }
+
       const hedefler = this.telefonlar(taxpayer);
       const baslik =
         `🧪 EVRAK OTOMASYONU — TEST\n` +
