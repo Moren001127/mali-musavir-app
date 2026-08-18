@@ -6,7 +6,7 @@ import {
   AlertTriangle, PhoneMissed, CalendarX, Users,
 } from 'lucide-react';
 import {
-  SayacKutusu, ListeKarti, KPI, paraTR, paraKisa,
+  SayacKutusu, KPI, paraTR, paraKisa,
   OK as UI_OK, KIRMIZI as UI_KIRMIZI, TURUNCU as UI_TURUNCU, MAVI as UI_MAVI,
   MUTED as UI_MUTED, TEXT as UI_TEXT, CARD_BORDER, CARD_BG,
 } from './ui';
@@ -22,8 +22,10 @@ import {
  * Yeni düzenin kuralları:
  *   1. ÖNCE KARAR, SONRA VERİ. En üstte "bugün ne yapmalıyım" kuyrukları var;
  *      liste onların altında ve seçime göre süzülüyor.
- *   2. TEK SAYI SÜTUNU. Satırda sağda yalnız bakiye var; aylık ücret, son
- *      tahsilat, borç yaşı ikincil satırda tek stil gri metin.
+ *   2. DÖRT SAYI SÜTUNU (2026-08-18 kullanıcı kararı). Önce yalnız bakiye
+ *      gösteriliyordu; "bu mükellefe ne kestim, ne aldım" sorusu ekstreyi
+ *      açmadan cevaplanamıyordu. Artık ücret / borç / alacak / bakiye ayrı
+ *      sütunlarda ve altta toplam satırı var.
  *   3. ÇUBUK YOK. Borç yaşı "94 gündür açık" diye yazıyor — renkli çubuk
  *      okunmuyordu.
  *   4. RENK AZ. Kırmızı yalnız gerçekten riskli olanda; gerisi nötr.
@@ -143,6 +145,21 @@ export default function TahsilatView({
       return rb - ra || b.bakiye - a.bakiye || a.ad.localeCompare(b.ad, 'tr');
     });
   }, [rows, kuyruk, arama]);
+
+  /** Alt toplam satırı — SÜZGEÇTEN GEÇEN satırların toplamı, hepsinin değil */
+  const toplamlar = useMemo(
+    () =>
+      gosterilen.reduce(
+        (t, r) => ({
+          ucret: t.ucret + Number(r.aylikMuhasebeUcreti || 0),
+          tahakkuk: t.tahakkuk + Number(r.tahakkuk || 0),
+          tahsilat: t.tahsilat + Number(r.tahsilat || 0),
+          bakiye: t.bakiye + Number(r.bakiye || 0),
+        }),
+        { ucret: 0, tahakkuk: 0, tahsilat: 0, bakiye: 0 },
+      ),
+    [gosterilen],
+  );
 
   return (
     <div className="mt-6 space-y-5">
@@ -266,69 +283,112 @@ export default function TahsilatView({
             Bu süzgece uyan mükellef yok.
           </div>
         ) : (
-          <div>
-            {gosterilen.map((r, i) => {
-              const yas = borcYasiMetni(r);
-              const borclu = r.bakiye > 0.004;
-              const odendi = Number(r.buAyTahsilat || 0) > 0.004;
-              const sonT = gunFarki(r.sonTahsilatTarihi);
-
-              // İkincil satır: tek stil gri metin, parça parça renkli sayı yok
-              const detay = [
-                `Aylık ${kisaPara(r.aylikMuhasebeUcreti)}`,
-                odendi ? 'bu ay ödendi' : 'bu ay ödeme yok',
-                sonT === null ? 'hiç tahsilat yok' : `son tahsilat ${tarih(r.sonTahsilatTarihi)}`,
-              ].join(' · ');
-
-              return (
-                <div
-                  key={r.id}
-                  className="group flex items-center gap-3 px-4 py-3 transition"
-                  style={{ borderTop: i === 0 ? 'none' : `1px solid ${SATIR_CIZGI}` }}
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[760px] text-[13px]">
+              <thead>
+                <tr
+                  className="text-[10.5px] uppercase tracking-wider"
+                  style={{ color: SOLUK, borderTop: `1px solid ${SATIR_CIZGI}` }}
                 >
-                  <button onClick={() => onOpen(r)} className="flex min-w-0 flex-1 items-center gap-2.5 text-left">
-                    <span
-                      className="h-1.5 w-1.5 flex-shrink-0 rounded-full"
-                      style={{ background: borclu ? yas.renk : OK }}
-                    />
-                    <span className="min-w-0">
-                      <span className="flex items-center gap-1.5">
-                        <span className="truncate text-[13px]" style={{ color: METIN }}>{r.ad}</span>
-                        {!r.telefonVar && borclu && (
-                          <PhoneOff size={11} style={{ color: UYARI }} />
-                        )}
-                      </span>
-                      <span className="mt-0.5 block truncate text-[11px]" style={{ color: SOLUK }}>
-                        {detay}
-                      </span>
-                    </span>
-                  </button>
+                  <th className="px-4 py-2.5 text-left font-medium">Mükellef</th>
+                  <th className="px-3 py-2.5 text-right font-medium">Aylık ücret</th>
+                  <th className="px-3 py-2.5 text-right font-medium">Borç</th>
+                  <th className="px-3 py-2.5 text-right font-medium">Alacak</th>
+                  <th className="px-3 py-2.5 text-right font-medium">Bakiye</th>
+                  <th className="px-4 py-2.5 text-right font-medium">İşlem</th>
+                </tr>
+              </thead>
+              <tbody>
+                {gosterilen.map((r) => {
+                  const yas = borcYasiMetni(r);
+                  const borclu = r.bakiye > 0.004;
+                  const odendi = Number(r.buAyTahsilat || 0) > 0.004;
+                  const sonT = gunFarki(r.sonTahsilatTarihi);
 
-                  <span className="flex-shrink-0 text-right">
-                    <span className="block text-[14px] tabular-nums" style={{ color: borclu ? METIN : SOLUK }}>
-                      {para(r.bakiye)}
-                    </span>
-                    <span className="block text-[10.5px]" style={{ color: yas.renk }}>
-                      {yas.metin}
-                    </span>
-                  </span>
+                  return (
+                    <tr
+                      key={r.id}
+                      className="group transition"
+                      style={{ borderTop: `1px solid ${SATIR_CIZGI}` }}
+                    >
+                      <td className="px-4 py-2.5">
+                        <button onClick={() => onOpen(r)} className="flex min-w-0 items-center gap-2.5 text-left">
+                          <span
+                            className="h-1.5 w-1.5 flex-shrink-0 rounded-full"
+                            style={{ background: borclu ? yas.renk : OK }}
+                          />
+                          <span className="min-w-0">
+                            <span className="flex items-center gap-1.5">
+                              <span className="truncate text-[13px]" style={{ color: METIN }}>{r.ad}</span>
+                              {!r.telefonVar && borclu && <PhoneOff size={11} style={{ color: UYARI }} />}
+                            </span>
+                            {/* İkincil satır: borç yaşı ve son tahsilat — sayı sütunlarında yeri yok */}
+                            <span className="mt-0.5 block truncate text-[11px]" style={{ color: SOLUK }}>
+                              {borclu ? yas.metin : 'borcu yok'}
+                              {' · '}
+                              {odendi ? 'bu ay ödendi' : 'bu ay ödeme yok'}
+                              {' · '}
+                              {sonT === null ? 'hiç tahsilat yok' : `son tahsilat ${tarih(r.sonTahsilatTarihi)}`}
+                            </span>
+                          </span>
+                        </button>
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums" style={{ color: r.aylikMuhasebeUcreti > 0 ? METIN : 'rgba(113,113,122,0.5)' }}>
+                        {r.aylikMuhasebeUcreti > 0 ? para(r.aylikMuhasebeUcreti) : '—'}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums" style={{ color: SOLUK }}>
+                        {para(r.tahakkuk)}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums" style={{ color: OK }}>
+                        {para(r.tahsilat)}
+                      </td>
+                      <td
+                        className="whitespace-nowrap px-3 py-2.5 text-right font-semibold tabular-nums"
+                        style={{ color: borclu ? yas.renk : SOLUK }}
+                      >
+                        {para(r.bakiye)}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        {/* Eylemler HER ZAMAN görünür: hover ardına saklamak işlevi bulunamaz kılıyordu */}
+                        <span className="flex flex-shrink-0 items-center justify-end gap-1">
+                          <Eylem ikon={<FileText size={13} />} baslik="Ekstre" onClick={() => onOpen(r)} />
+                          <Eylem
+                            ikon={<MessageCircle size={13} />}
+                            baslik={r.whatsappUygun ? 'Hatırlatma gönder' : 'WhatsApp uygun değil'}
+                            renk={r.whatsappUygun ? OK : SOLUK}
+                            onClick={() => r.whatsappUygun && onWhatsApp(r)}
+                            pasif={!r.whatsappUygun}
+                          />
+                          <Eylem ikon={<Plus size={13} />} baslik="Tahsilat ekle" renk={MAVI} onClick={() => onQuickTahsilat(r)} />
+                          <ChevronRight size={14} style={{ color: SOLUK }} />
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
 
-                  {/* Eylemler HER ZAMAN görünür: hover ardına saklamak işlevi bulunamaz kılıyordu */}
-                  <span className="flex flex-shrink-0 items-center gap-1">
-                    <Eylem ikon={<FileText size={13} />} baslik="Ekstre" onClick={() => onOpen(r)} />
-                    <Eylem
-                      ikon={<MessageCircle size={13} />}
-                      baslik={r.whatsappUygun ? 'Hatırlatma gönder' : 'WhatsApp uygun değil'}
-                      renk={r.whatsappUygun ? OK : SOLUK}
-                      onClick={() => r.whatsappUygun && onWhatsApp(r)}
-                      pasif={!r.whatsappUygun}
-                    />
-                    <Eylem ikon={<Plus size={13} />} baslik="Tahsilat ekle" renk={MAVI} onClick={() => onQuickTahsilat(r)} />
-                    <ChevronRight size={14} style={{ color: SOLUK }} />
-                  </span>
-                </div>
-              );
-            })}
+                {/* TOPLAM — süzgeçten geçen satırların toplamı; hangi kümeye
+                    baktığınızın karşılığı aşağıda dursun. */}
+                <tr style={{ borderTop: `1px solid ${CIZGI}`, background: 'rgba(255,255,255,0.022)' }}>
+                  <td className="px-4 py-3 text-[11.5px] uppercase tracking-wider" style={{ color: SOLUK }}>
+                    Toplam · {gosterilen.length} mükellef
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-3 text-right font-semibold tabular-nums" style={{ color: METIN }}>
+                    {para(toplamlar.ucret)}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-3 text-right font-semibold tabular-nums" style={{ color: METIN }}>
+                    {para(toplamlar.tahakkuk)}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-3 text-right font-semibold tabular-nums" style={{ color: OK }}>
+                    {para(toplamlar.tahsilat)}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-3 text-right font-semibold tabular-nums" style={{ color: RISK }}>
+                    {para(toplamlar.bakiye)}
+                  </td>
+                  <td />
+                </tr>
+              </tbody>
+            </table>
           </div>
         )}
       </div>

@@ -7,7 +7,7 @@ import { api } from '@/lib/api';
 import { toast } from 'sonner';
 import { CariTahsilatWorkspace } from './CariTahsilatWorkbench';
 import {
-  Plus, Download, Trash2, Loader2, X, Edit3, ArrowLeft, FileText, HandCoins,
+  Plus, Download, Trash2, Loader2, X, Edit3, ArrowLeft, FileText, HandCoins, MessageCircle,
 } from 'lucide-react';
 
 // ===== Palet (cari-06 / cari-07 referansı) =====
@@ -101,7 +101,7 @@ export default function CariKasaPage() {
     if (id) router.push(`/panel/cari-kasa?mukellef=${id}`);
     else router.push('/panel/cari-kasa');
   };
-  const [tab, setTab] = useState<'hareketler' | 'hizmetler' | 'ekstre'>('hareketler');
+  const [tab, setTab] = useState<'defter' | 'hizmetler'>('defter');
   const [hizmetModal, setHizmetModal] = useState<Hizmet | 'yeni' | null>(null);
   const [tahsilatModal, setTahsilatModal] = useState(false);
 
@@ -142,10 +142,12 @@ export default function CariKasaPage() {
     ? hareketler.reduce((en, h) => (new Date(h.tarih) > new Date(en) ? h.tarih : en), hareketler[0].tarih)
     : null;
 
-  const tabs: Array<['hareketler' | 'hizmetler' | 'ekstre', string]> = [
-    ['hareketler', 'Hareketler'],
+  // Eskiden "Hareketler" ve "Ekstre" ayrı sekmelerdi; ikisi de aynı defteri
+  // çiziyordu. Tek farkları şuydu: Hareketler'de silme vardı, Ekstre'de tarih
+  // aralığı + yürüyen bakiye + çıktı. İkisi birleşti, hepsi tek tabloda.
+  const tabs: Array<['defter' | 'hizmetler', string]> = [
+    ['defter', 'Hesap hareketleri'],
     ['hizmetler', 'Hizmetler'],
-    ['ekstre', 'Ekstre'],
   ];
 
   return (
@@ -185,7 +187,7 @@ export default function CariKasaPage() {
               <Plus className="h-4 w-4" /> Tahsilat al
             </button>
             <button
-              onClick={() => setTab('ekstre')}
+              onClick={() => setTab('defter')}
               className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13.5px] font-medium transition"
               style={{ border: '1px solid rgba(255,255,255,0.10)', background: 'rgba(255,255,255,0.02)', color: '#d4d4d8' }}
             >
@@ -224,21 +226,6 @@ export default function CariKasaPage() {
         </nav>
 
         <div className="mt-5">
-          {tab === 'hareketler' && (
-            <HareketlerView
-              hareketler={hareketler}
-              onDelete={async (id) => {
-                if (!confirm('Bu hareketi silmek istediğinizden emin misiniz?')) return;
-                try {
-                  await api.delete(`/cari-kasa/hareket/${id}`);
-                  toast.success('Hareket silindi');
-                  qc.invalidateQueries({ queryKey: ['cari-hareketler'] });
-                  qc.invalidateQueries({ queryKey: ['cari-bakiye'] });
-                } catch (e: any) { toast.error(e?.response?.data?.message || 'Silinemedi'); }
-              }}
-            />
-          )}
-
           {tab === 'hizmetler' && (
             <HizmetlerView
               hizmetler={hizmetler}
@@ -255,7 +242,14 @@ export default function CariKasaPage() {
             />
           )}
 
-          {tab === 'ekstre' && <EkstreView taxpayerId={taxpayerId} taxpayers={taxpayers} />}
+          {tab === 'defter' && (
+            <EkstreView
+              taxpayerId={taxpayerId}
+              taxpayers={taxpayers}
+              onTahsilat={() => setTahsilatModal(true)}
+              onHizmet={() => setHizmetModal('yeni')}
+            />
+          )}
         </div>
       </div>
 
@@ -331,98 +325,6 @@ function MetricCard({ label, value, text, valueColor, debt }: {
   );
 }
 
-function HareketlerView({ hareketler, onDelete }: {
-  hareketler: Hareket[];
-  onDelete: (id: string) => void;
-}) {
-  if (hareketler.length === 0) {
-    return (
-      <div className="rounded-2xl py-10 text-center text-[14px]" style={{ border: `1px solid ${CARD_BORDER}`, color: MUTED }}>
-        Henüz hareket yok.
-      </div>
-    );
-  }
-  return (
-    <div>
-      <div className="overflow-hidden rounded-2xl" style={{ border: `1px solid ${CARD_BORDER}` }}>
-        <div className="overflow-x-auto">
-          <table className="w-full text-[14px]">
-            <thead>
-              <tr className="text-[11px] uppercase tracking-wider" style={{ color: MUTED }}>
-                <th className="px-5 py-2.5 text-left font-medium">Tarih</th>
-                <th className="px-3 py-2.5 text-left font-medium">Tip</th>
-                <th className="px-3 py-2.5 text-left font-medium">Açıklama</th>
-                <th className="px-3 py-2.5 text-right font-medium">Tutar</th>
-                <th className="px-3 py-2.5"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {hareketler.map((h) => {
-                const tutar = moneyValue(h.tutar);
-                const borc = h.tip === 'TAHAKKUK' ? tutar : h.tip === 'IADE' ? -tutar : 0;
-                const alacak = h.tip === 'TAHSILAT' ? tutar : h.tip === 'DUZELTME' ? -tutar : 0;
-                const isTahsilat = h.tip === 'TAHSILAT';
-                const badgeLabel = h.tip === 'TAHAKKUK' ? 'Tahakkuk' : isTahsilat ? 'Tahsilat' : h.tip === 'IADE' ? 'İade' : 'Düzeltme';
-                const badgeStyle = isTahsilat
-                  ? { background: 'rgba(90,209,138,0.12)', color: '#6ee29c', border: '1px solid rgba(90,209,138,0.22)' }
-                  : { background: 'rgba(230,200,120,0.12)', color: GOLD, border: '1px solid rgba(230,200,120,0.20)' };
-                // Hizmet adı açıklamanın içinde zaten geçiyorsa ikinci kez yazma:
-                // ekranda "Muhasebe Ücreti · Muhasebe Ücreti · 2026-08" çıkıyordu.
-                const hizmetAdi = h.hizmet?.hizmetAdi?.trim() || '';
-                const aciklama = (h.aciklama || '').trim();
-                const aciklamaTekrar =
-                  hizmetAdi &&
-                  aciklama.toLocaleLowerCase('tr').includes(hizmetAdi.toLocaleLowerCase('tr'));
-                const metin = aciklamaTekrar ? aciklama : [hizmetAdi, aciklama].filter(Boolean).join(' · ');
-                // Tek tutar sütunu: tahakkuk borç (+), tahsilat alacak (−).
-                // İki ayrı sütunda biri her satırda boş kalıyordu.
-                const netTutar = borc || -alacak;
-                return (
-                  <tr key={h.id} className="group" style={{ borderTop: `1px solid ${ROW_SEP}` }}>
-                    <td className="px-5 py-2.5 tabular-nums whitespace-nowrap text-[12.5px]" style={{ color: '#d4d4d8' }}>
-                      {new Date(h.tarih).toLocaleDateString('tr-TR')}
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <span className="inline-flex rounded-md px-2 py-0.5 text-[11px] font-medium" style={badgeStyle}>{badgeLabel}</span>
-                    </td>
-                    <td className="px-3 py-2.5" style={{ color: '#d4d4d8' }}>
-                      <span className="block text-[12.5px]">{metin || '—'}</span>
-                      {h.odemeYontemi && (
-                        <span className="mt-0.5 block text-[10.5px]" style={{ color: MUTED }}>
-                          {h.odemeYontemi}
-                        </span>
-                      )}
-                    </td>
-                    <td
-                      className="px-3 py-2.5 text-right tabular-nums text-[13px]"
-                      style={{ color: netTutar > 0 ? DEBT : netTutar < 0 ? OK : '#3f3f46' }}
-                    >
-                      {netTutar === 0 ? '—' : `${netTutar > 0 ? '+' : '−'}${fmt(Math.abs(netTutar))} ₺`}
-                    </td>
-                    <td className="px-3 py-2.5 text-right">
-                      <button
-                        onClick={() => onDelete(h.id)}
-                        title="Sil"
-                        className="p-1.5 rounded-lg transition hover:bg-white/[0.06]"
-                        style={{ color: DEBT }}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
-      <p className="mt-4 text-center text-[12px]" style={{ color: '#52525b' }}>
-        Bakiye = tahakkuk − tahsilat · <span style={{ color: DEBT }}>borç bordo</span>, <span style={{ color: OK }}>alacak yeşil</span>
-      </p>
-    </div>
-  );
-}
-
 function HizmetlerView({ hizmetler, onYeni, onEdit, onDelete }: {
   hizmetler: Hizmet[];
   onYeni: () => void;
@@ -481,27 +383,60 @@ function HizmetlerView({ hizmetler, onYeni, onEdit, onDelete }: {
 }
 
 /**
- * EKSTRE — hesap dökümü.
+ * HESAP HAREKETLERİ — mükellefin defteri. Tek tablo.
  *
- * Eskiden üstte dört devasa sayaç daha vardı; sayfa başlığındaki dördün
- * tekrarıydı ve tabloyu ekranın dışına itiyordu. Artık dönem özeti tablonun
- * ALTINDA, defterin kendi dilinde (borç toplamı / alacak toplamı / bakiye).
+ * Eskiden "Hareketler" ve "Ekstre" diye iki sekme vardı ve ikisi de aynı
+ * satırları çiziyordu; tek farkları biri silebiliyor, öteki tarih aralığı ve
+ * yürüyen bakiye gösteriyordu. Ayrı durmalarının gerekçesi yoktu.
  *
- * Tablo ekrana sığar ve KENDİ İÇİNDE kayar: başlık satırı sabit kalır, uzun
- * dönemde bile hangi sütuna baktığınız kaybolmaz.
+ * Tablo ekrana sığar ve kendi içinde kayar; başlık satırı sabit kalır.
  */
-function EkstreView({ taxpayerId, taxpayers }: { taxpayerId: string; taxpayers: Taxpayer[] }) {
+function EkstreView({ taxpayerId, taxpayers, onTahsilat, onHizmet }: {
+  taxpayerId: string;
+  taxpayers: Taxpayer[];
+  onTahsilat: () => void;
+  onHizmet: () => void;
+}) {
+  const qc = useQueryClient();
   const [baslangic, setBaslangic] = useState(() => {
     const d = new Date(); d.setMonth(d.getMonth() - 3); d.setDate(1);
     return d.toISOString().slice(0, 10);
   });
   const [bitis, setBitis] = useState(today());
+  const [secili, setSecili] = useState<Set<string>>(new Set());
+  const [sifirSonrasi, setSifirSonrasi] = useState(false);
+  const [siliniyor, setSiliniyor] = useState(false);
 
   const { data: ekstre, isLoading } = useQuery({
     queryKey: ['cari-ekstre', taxpayerId, baslangic, bitis],
     queryFn: () => api.get(`/cari-kasa/ekstre/${taxpayerId}`, { params: { baslangic, bitis } }).then((r) => r.data),
     enabled: !!taxpayerId && !!baslangic && !!bitis,
   });
+
+  const tazele = () => {
+    setSecili(new Set());
+    qc.invalidateQueries({ queryKey: ['cari-ekstre'] });
+    qc.invalidateQueries({ queryKey: ['cari-hareketler'] });
+    qc.invalidateQueries({ queryKey: ['cari-bakiye'] });
+  };
+
+  const sil = async (idler: string[]) => {
+    if (!idler.length) return;
+    const soru = idler.length === 1
+      ? 'Bu hareketi silmek istediğinizden emin misiniz?'
+      : `${idler.length} hareket silinecek. Emin misiniz?`;
+    if (!confirm(soru)) return;
+    setSiliniyor(true);
+    try {
+      for (const id of idler) await api.delete(`/cari-kasa/hareket/${id}`);
+      toast.success(idler.length === 1 ? 'Hareket silindi' : `${idler.length} hareket silindi`);
+      tazele();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || 'Silinemedi');
+    } finally {
+      setSiliniyor(false);
+    }
+  };
 
   const indirXlsx = async () => {
     try {
@@ -534,23 +469,50 @@ function EkstreView({ taxpayerId, taxpayers }: { taxpayerId: string; taxpayers: 
       .catch((e: any) => toast.error(e?.response?.data?.message || 'PDF açılamadı'));
   };
 
+  const whatsappGonder = async () => {
+    if (!confirm('Ekstre WhatsApp ile mükellefe gönderilecek. Onaylıyor musunuz?')) return;
+    try {
+      await api.post(`/cari-kasa/ekstre-whatsapp/${taxpayerId}`);
+      toast.success('Ekstre WhatsApp ile gönderildi');
+    } catch (e: any) { toast.error(e?.response?.data?.message || 'Gönderilemedi'); }
+  };
+
+  const tumSatirlar: any[] = ekstre?.satirlar || [];
+
+  /**
+   * "Bakiye sıfırlandıktan sonrası" — hesabın kapandığı son andan bugüne.
+   * Kapanmış dönemleri her seferinde gözle atlamak gerekiyordu.
+   */
+  const satirlar = useMemo(() => {
+    if (!sifirSonrasi) return tumSatirlar;
+    let son = -1;
+    tumSatirlar.forEach((s, i) => { if (Math.abs(moneyValue(s.runningBakiye)) < 0.005) son = i; });
+    return son >= 0 ? tumSatirlar.slice(son + 1) : tumSatirlar;
+  }, [tumSatirlar, sifirSonrasi]);
+
+  const hepsiSecili = satirlar.length > 0 && satirlar.every((s) => secili.has(s.id));
+  const secimDegistir = (id: string) => {
+    setSecili((o) => {
+      const y = new Set(o);
+      if (y.has(id)) y.delete(id); else y.add(id);
+      return y;
+    });
+  };
+
   const dateInput: React.CSSProperties = {
     background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)',
     color: TEXT, outline: 'none', borderRadius: 10, padding: '7px 10px', fontSize: 13,
   };
+  const dugme: React.CSSProperties = {
+    border: '1px solid rgba(255,255,255,0.10)', background: 'rgba(255,255,255,0.02)', color: '#d4d4d8',
+  };
 
-  const satirlar = ekstre?.satirlar || [];
-
-  /** Hareket tipini okunur etikete çevirir — Hattat'ta ayrı sütun olarak var */
   const turEtiket = (tip: string) =>
     tip === 'TAHAKKUK' ? 'Hizmet' : tip === 'TAHSILAT' ? 'Tahsilat' : tip === 'IADE' ? 'İade' : 'Düzeltme';
 
   return (
-    <div
-      className="overflow-hidden rounded-2xl"
-      style={{ background: PANEL, border: `1px solid ${CARD_BORDER}` }}
-    >
-      {/* ARAÇ ÇUBUĞU — tarih aralığı ve çıktılar tek satırda */}
+    <div className="overflow-hidden rounded-2xl" style={{ background: PANEL, border: `1px solid ${CARD_BORDER}` }}>
+      {/* ARAÇ ÇUBUĞU */}
       <div
         className="flex flex-wrap items-end gap-2.5 px-4 py-3"
         style={{ borderBottom: `1px solid ${CARD_BORDER}`, background: 'rgba(255,255,255,0.015)' }}
@@ -563,61 +525,104 @@ function EkstreView({ taxpayerId, taxpayers }: { taxpayerId: string; taxpayers: 
           <span className="text-[10.5px] uppercase tracking-wider" style={{ color: MUTED }}>Bitiş</span>
           <input type="date" value={bitis} onChange={(e) => setBitis(e.target.value)} style={dateInput} />
         </label>
-        <span className="ml-auto flex items-center gap-2">
-          <button
-            onClick={acPdf}
-            className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-[12.5px] font-medium transition hover:brightness-125"
-            style={{ border: '1px solid rgba(255,255,255,0.10)', background: 'rgba(255,255,255,0.02)', color: '#d4d4d8' }}
-          >
+
+        <button
+          onClick={() => setSifirSonrasi((v) => !v)}
+          className="rounded-lg px-3 py-2 text-[12.5px] font-medium transition"
+          style={sifirSonrasi
+            ? { background: `${GOLD}1f`, color: GOLD, border: `1px solid ${GOLD}4d` }
+            : dugme}
+          title="Bakiyenin sıfırlandığı son andan bugüne kadarki hareketleri göster"
+        >
+          Bakiye sıfırlandıktan sonrası
+        </button>
+
+        <span className="ml-auto flex flex-wrap items-center gap-2">
+          <button onClick={acPdf} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12.5px] font-medium transition hover:brightness-125" style={dugme}>
             <FileText className="h-3.5 w-3.5" /> PDF
           </button>
-          <button
-            onClick={indirXlsx}
-            className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-[12.5px] font-semibold"
-            style={{ background: 'linear-gradient(135deg,#ecd589,#d4b876)', color: '#000' }}
-          >
+          <button onClick={indirXlsx} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12.5px] font-medium transition hover:brightness-125" style={dugme}>
             <Download className="h-3.5 w-3.5" /> Excel
+          </button>
+          <button onClick={whatsappGonder} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12.5px] font-medium transition hover:brightness-125" style={{ ...dugme, color: '#6ee29c', borderColor: 'rgba(90,209,138,0.28)' }}>
+            <MessageCircle className="h-3.5 w-3.5" /> WhatsApp
+          </button>
+          <span className="mx-1 h-5 w-px" style={{ background: CARD_BORDER }} />
+          <button onClick={onHizmet} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12.5px] font-medium transition hover:brightness-125" style={dugme}>
+            <Plus className="h-3.5 w-3.5" /> Hizmet
+          </button>
+          <button onClick={onTahsilat} className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[12.5px] font-semibold" style={{ background: 'linear-gradient(135deg,#ecd589,#d4b876)', color: '#000' }}>
+            <Plus className="h-3.5 w-3.5" /> Tahsilat
           </button>
         </span>
       </div>
+
+      {/* SEÇİM ŞERİDİ — yalnız seçim varken */}
+      {secili.size > 0 && (
+        <div
+          className="flex items-center justify-between gap-3 px-4 py-2"
+          style={{ borderBottom: `1px solid ${CARD_BORDER}`, background: `${DEBT}0f` }}
+        >
+          <span className="text-[12.5px]" style={{ color: TEXT }}>{secili.size} hareket seçildi</span>
+          <span className="flex items-center gap-2">
+            <button onClick={() => setSecili(new Set())} className="rounded-lg px-3 py-1.5 text-[12px]" style={dugme}>Vazgeç</button>
+            <button
+              onClick={() => sil([...secili])}
+              disabled={siliniyor}
+              className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-semibold disabled:opacity-50"
+              style={{ background: `${DEBT}22`, color: DEBT, border: `1px solid ${DEBT}55` }}
+            >
+              <Trash2 className="h-3.5 w-3.5" /> Seçilenleri sil
+            </button>
+          </span>
+        </div>
+      )}
 
       {isLoading ? (
         <div className="py-12 text-center text-[13px]" style={{ color: MUTED }}>
           <Loader2 className="animate-spin inline mr-2 h-4 w-4" />Hesaplanıyor…
         </div>
       ) : !ekstre ? (
-        <div className="py-12 text-center text-[13px]" style={{ color: MUTED }}>Ekstre alınamadı.</div>
+        <div className="py-12 text-center text-[13px]" style={{ color: MUTED }}>Hareketler alınamadı.</div>
       ) : (
         <>
-          {/* DEFTER — ekrana sığar, kendi içinde kayar, başlık satırı sabit */}
-          <div className="overflow-auto" style={{ maxHeight: 'calc(100vh - 420px)', minHeight: 260 }}>
-            <table className="w-full min-w-[720px] text-[13px]">
+          <div className="overflow-auto" style={{ maxHeight: 'calc(100vh - 400px)', minHeight: 260 }}>
+            <table className="w-full min-w-[860px] text-[13px]">
               <thead className="sticky top-0 z-10">
-                <tr
-                  className="text-[10.5px] uppercase tracking-wider"
-                  style={{ color: MUTED, background: '#101013' }}
-                >
-                  <th className="px-4 py-2.5 text-left font-medium">Tarih</th>
+                <tr className="text-[10.5px] uppercase tracking-wider" style={{ color: MUTED, background: '#101013' }}>
+                  <th className="w-9 px-3 py-2.5">
+                    <input
+                      type="checkbox"
+                      checked={hepsiSecili}
+                      onChange={() => setSecili(hepsiSecili ? new Set() : new Set(satirlar.map((s) => s.id)))}
+                      className="h-3.5 w-3.5 cursor-pointer accent-amber-300"
+                    />
+                  </th>
+                  <th className="px-3 py-2.5 text-left font-medium">Tarih</th>
+                  <th className="px-3 py-2.5 text-left font-medium">Hizmet</th>
                   <th className="px-3 py-2.5 text-left font-medium">Tür</th>
                   <th className="px-3 py-2.5 text-left font-medium">Açıklama</th>
                   <th className="px-3 py-2.5 text-right font-medium">Borç</th>
                   <th className="px-3 py-2.5 text-right font-medium">Alacak</th>
-                  <th className="px-4 py-2.5 text-right font-medium">Bakiye</th>
+                  <th className="px-3 py-2.5 text-right font-medium">Bakiye</th>
+                  <th className="w-10 px-3 py-2.5"></th>
                 </tr>
               </thead>
               <tbody>
-                <tr style={{ background: 'rgba(255,255,255,0.022)' }}>
-                  <td className="px-4 py-2.5 font-semibold" colSpan={5} style={{ color: TEXT }}>
-                    Açılış bakiyesi
-                  </td>
-                  <td className="px-4 py-2.5 text-right font-semibold tabular-nums" style={{ color: TEXT }}>
-                    {fmt(ekstre.acilisBakiye)} ₺
-                  </td>
-                </tr>
+                {!sifirSonrasi && (
+                  <tr style={{ background: 'rgba(255,255,255,0.022)' }}>
+                    <td className="px-3 py-2.5" />
+                    <td className="px-3 py-2.5 font-semibold" colSpan={6} style={{ color: TEXT }}>Açılış bakiyesi</td>
+                    <td className="px-3 py-2.5 text-right font-semibold tabular-nums" style={{ color: TEXT }}>
+                      {fmt(ekstre.acilisBakiye)} ₺
+                    </td>
+                    <td />
+                  </tr>
+                )}
 
                 {satirlar.length === 0 ? (
                   <tr style={{ borderTop: `1px solid ${ROW_SEP}` }}>
-                    <td className="px-4 py-8 text-center text-[12.5px]" colSpan={6} style={{ color: MUTED }}>
+                    <td className="px-4 py-8 text-center text-[12.5px]" colSpan={9} style={{ color: MUTED }}>
                       Bu tarih aralığında hareket yok.
                     </td>
                   </tr>
@@ -626,41 +631,62 @@ function EkstreView({ taxpayerId, taxpayers }: { taxpayerId: string; taxpayers: 
                     const tutar = moneyValue(s.tutar);
                     const borc = s.tip === 'TAHAKKUK' ? tutar : s.tip === 'IADE' ? -tutar : 0;
                     const alacak = s.tip === 'TAHSILAT' ? tutar : s.tip === 'DUZELTME' ? -tutar : 0;
-                    const alacakli = moneyValue(s.runningBakiye) < 0;
+                    const bakiye = moneyValue(s.runningBakiye);
+                    const secilidir = secili.has(s.id);
                     return (
-                      <tr key={s.id} style={{ borderTop: `1px solid ${ROW_SEP}` }}>
-                        <td className="whitespace-nowrap px-4 py-2.5 tabular-nums" style={{ color: '#a1a1aa' }}>
+                      <tr
+                        key={s.id}
+                        className="group"
+                        style={{ borderTop: `1px solid ${ROW_SEP}`, background: secilidir ? 'rgba(255,255,255,0.03)' : undefined }}
+                      >
+                        <td className="px-3 py-2.5">
+                          <input
+                            type="checkbox"
+                            checked={secilidir}
+                            onChange={() => secimDegistir(s.id)}
+                            className="h-3.5 w-3.5 cursor-pointer accent-amber-300"
+                          />
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-2.5 tabular-nums" style={{ color: '#a1a1aa' }}>
                           {new Date(s.tarih).toLocaleDateString('tr-TR')}
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-2.5" style={{ color: s.hizmet?.hizmetAdi ? GOLD : '#3f3f46' }}>
+                          {s.hizmet?.hizmetAdi || '—'}
                         </td>
                         <td className="whitespace-nowrap px-3 py-2.5">
                           <span
                             className="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10.5px]"
-                            style={
-                              alacak
-                                ? { background: `${OK}18`, color: OK, border: `1px solid ${OK}33` }
-                                : { background: `${DEBT}15`, color: DEBT, border: `1px solid ${DEBT}30` }
-                            }
+                            style={alacak
+                              ? { background: `${OK}18`, color: OK, border: `1px solid ${OK}33` }
+                              : { background: `${DEBT}15`, color: DEBT, border: `1px solid ${DEBT}30` }}
                           >
                             {turEtiket(s.tip)}
                           </span>
                         </td>
-                        <td className="px-3 py-2.5" style={{ color: '#d4d4d8' }}>
-                          {s.hizmet?.hizmetAdi && <span style={{ color: GOLD }}>{s.hizmet.hizmetAdi}</span>}
-                          {s.hizmet?.hizmetAdi && s.aciklama && ' · '}
-                          {s.aciklama}
-                        </td>
+                        <td className="px-3 py-2.5" style={{ color: '#d4d4d8' }}>{s.aciklama || '—'}</td>
                         <td className="px-3 py-2.5 text-right font-semibold tabular-nums" style={{ color: borc ? DEBT : '#3f3f46' }}>
                           {borc ? `${fmt(borc)} ₺` : '—'}
                         </td>
                         <td className="px-3 py-2.5 text-right font-semibold tabular-nums" style={{ color: alacak ? OK : '#3f3f46' }}>
                           {alacak ? `${fmt(alacak)} ₺` : '—'}
                         </td>
-                        <td className="whitespace-nowrap px-4 py-2.5 text-right tabular-nums" style={{ color: TEXT }}>
-                          {fmt(Math.abs(moneyValue(s.runningBakiye)))} ₺
-                          {/* (B) borç, (A) alacak — yürüyen bakiyenin yönü rakamdan okunmuyordu */}
-                          <span className="ml-1 text-[10.5px]" style={{ color: alacakli ? OK : MUTED }}>
-                            {alacakli ? '(A)' : '(B)'}
+                        <td className="whitespace-nowrap px-3 py-2.5 text-right tabular-nums" style={{ color: TEXT }}>
+                          {fmt(Math.abs(bakiye))} ₺
+                          {/* (B) borç / (A) alacak — yönü rakamdan okunmuyordu */}
+                          <span className="ml-1 text-[10.5px]" style={{ color: bakiye < 0 ? OK : MUTED }}>
+                            {bakiye < 0 ? '(A)' : '(B)'}
                           </span>
+                        </td>
+                        <td className="px-3 py-2.5 text-right">
+                          <button
+                            onClick={() => sil([s.id])}
+                            disabled={siliniyor}
+                            title="Bu hareketi sil"
+                            className="rounded-md p-1 opacity-60 transition hover:opacity-100 disabled:opacity-30"
+                            style={{ color: DEBT }}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
                         </td>
                       </tr>
                     );
@@ -670,18 +696,21 @@ function EkstreView({ taxpayerId, taxpayers }: { taxpayerId: string; taxpayers: 
             </table>
           </div>
 
-          {/* DÖNEM ÖZETİ — defterin kendi dilinde, tablonun altında */}
           <div
             className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
             style={{ borderTop: `1px solid ${CARD_BORDER}`, background: 'rgba(255,255,255,0.015)' }}
           >
             <span className="text-[11.5px]" style={{ color: MUTED }}>
-              {satirlar.length} hareket · {fmtDate(baslangic)} – {fmtDate(bitis)}
+              {satirlar.length} hareket
+              {sifirSonrasi && tumSatirlar.length !== satirlar.length
+                ? ` · ${tumSatirlar.length - satirlar.length} kapanmış hareket gizli`
+                : ''}
+              {' · '}{fmtDate(baslangic)} – {fmtDate(bitis)}
             </span>
             <span className="flex flex-wrap items-center gap-2">
               <ToplamRozet etiket="Borç" tutar={ekstre.toplamTahakkuk} renk={DEBT} />
               <ToplamRozet etiket="Alacak" tutar={ekstre.toplamTahsilat} renk={OK} />
-              <ToplamRozet etiket="Kapanış bakiyesi" tutar={ekstre.kapanisBakiye} renk={GOLD} vurgu />
+              <ToplamRozet etiket="Bakiye" tutar={ekstre.kapanisBakiye} renk={GOLD} vurgu />
             </span>
           </div>
         </>
