@@ -858,6 +858,9 @@ export class TaxpayersService {
             durum: c.durum,
             kritikEksikSayisi: c.kritikEksikSayisi,
             eksikSayisi: c.eksikSayisi,
+            // HANGI alan eksik — yalniz sayi dondurulunce "neyi doldurayim"
+            // sorusu ekrandan yanitlanamiyordu (2026-08-18).
+            eksikAlanlar: (c.eksikler || []).map((f: any) => ({ anahtar: f.key, alan: f.label, onem: f.tier })),
           };
         } catch {
           return null;
