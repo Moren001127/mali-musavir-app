@@ -177,6 +177,12 @@ export class CariKasaController {
     await this.service.deleteFinancialAccount(req.user.tenantId, id);
   }
 
+  /** Tahsilat formundaki hesap listesi — Kişisel Bütçe'nin tahsilata açık hesapları */
+  @Get('tahsilat-hesaplari')
+  tahsilatHesaplari(@Req() req: any) {
+    return this.service.tahsilatHesaplari(req.user.tenantId);
+  }
+
   @Post('account-transfers')
   createAccountTransfer(@Req() req: any, @Body() body: any) {
     return this.service.createAccountTransfer(req.user.tenantId, body || {}, req.user.sub);

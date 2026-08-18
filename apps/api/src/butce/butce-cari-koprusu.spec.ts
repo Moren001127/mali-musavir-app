@@ -1,14 +1,13 @@
 import { ButceService } from './butce.service';
 
 /**
- * CARİ KASA ↔ KİŞİSEL BÜTÇE KÖPRÜSÜ — sessizce bozulabilecek üç kural.
+ * TAHSİLAT ↔ BÜTÇE HESABI — sessizce bozulabilecek üç kural.
  *
- * Bu üç kuralın ortak özelliği şu: bozulduklarında ekran hata vermez, yalnız
- * rakam yanlış çıkar ve fark aylar sonra anlaşılır. Bu yüzden her biri ayrı
- * ayrı kilitleniyor.
- *   1) BEYAZ LİSTE — yalnız `source` boş tahsilat akar. Kural "neyi dışla"
- *      diye yazılırsa yarın eklenen aktarım kaynağı sessizce içeri sızar.
- *   2) KESİM TARİHİ — açılış tarihi olmayan hesaba bağlanma reddedilir; yoksa
+ * Üçünün ortak özelliği: bozulduklarında ekran hata vermez, yalnız rakam
+ * yanlış çıkar ve fark aylar sonra anlaşılır.
+ *   1) BEYAZ LİSTE — yalnız `source` boş tahsilat akar. Kural "neyi dışla" diye
+ *      yazılırsa yarın eklenen aktarım kaynağı sessizce içeri sızar.
+ *   2) KESİM TARİHİ — tahsilata açılan hesapta açılış tarihi zorunlu; yoksa
  *      yılların tahsilatı açılış bakiyesinin üstüne ikinci kez eklenir.
  *   3) ÇİFT SAYIM KİLİDİ — "Müşavirlik Ücreti" geliri elle girilemez.
  */
@@ -18,74 +17,102 @@ const KIMLIK = { tenantId: 'kiracı-1', userId: 'kullanici-1' };
 /** Servisi sahte veritabanıyla kurar — Nest kabı ve gerçek Prisma gerekmez. */
 const servisKur = (db: any) => new ButceService(db as any, {} as any);
 
-describe('köprü — beyaz liste', () => {
+describe('tahsilat — beyaz liste', () => {
   const servis: any = servisKur({});
 
-  it('yalnız source boş tahsilatı alır', () => {
-    const w = servis.aktarilabilirTahsilatWhere('kiracı-1', ['ofis-1']);
+  it('yalnız source boş tahsilatı alır ve tek hesaba bakar', () => {
+    const w = servis.aktarilabilirTahsilatWhere('kiracı-1', 'hesap-1');
     expect(w.source).toBeNull();
     expect(w.tip).toBe('TAHSILAT');
-    expect(w.accountId).toEqual({ in: ['ofis-1'] });
+    // Ofis hesabı dolayımı kalktı: doğrudan bütçe hesabının kimliği
+    expect(w.accountId).toBe('hesap-1');
   });
 
   it('kesim tarihi verilince tarih alt sınırı koyar', () => {
     const kesim = new Date('2026-08-01T00:00:00.000Z');
-    const w = servis.aktarilabilirTahsilatWhere('kiracı-1', ['ofis-1'], kesim);
+    const w = servis.aktarilabilirTahsilatWhere('kiracı-1', 'hesap-1', kesim);
     expect(w.tarih).toEqual({ gte: kesim });
   });
 
   it('kesim tarihi yoksa tarih süzgeci HİÇ konmaz (çağıran akışı kapatmalı)', () => {
-    const w = servis.aktarilabilirTahsilatWhere('kiracı-1', ['ofis-1'], null);
+    const w = servis.aktarilabilirTahsilatWhere('kiracı-1', 'hesap-1', null);
     expect(w.tarih).toBeUndefined();
   });
 });
 
-describe('köprü — kesim tarihi zorunluluğu', () => {
-  const koprukur = (acilisTarihi: Date | null) =>
-    servisKur({
-      officeFinancialAccount: {
-        findFirst: async () => ({ id: 'ofis-1', name: 'Ziraat' }),
-        update: async ({ data }: any) => ({ id: 'ofis-1', ...data }),
-      },
+describe('tahsilat — kesim tarihi zorunluluğu', () => {
+  const kaydeden = () => {
+    const yazilan: any[] = [];
+    const servis: any = servisKur({
       butceBankaHesap: {
-        findFirst: async () => ({ id: 'butce-1', ad: 'Ofis hesabı', acilisTarihi }),
-      },
-    }) as any;
-
-  it('açılış tarihi olmayan bütçe hesabına bağlanmayı reddeder', async () => {
-    await expect(koprukur(null).ofisHesapEslestir(KIMLIK, 'ofis-1', 'butce-1')).rejects.toThrow(
-      /açılış tarihini girin/,
-    );
-  });
-
-  it('açılış tarihi varsa bağlar', async () => {
-    const s = koprukur(new Date('2026-08-01'));
-    await expect(s.ofisHesapEslestir(KIMLIK, 'ofis-1', 'butce-1')).resolves.toEqual({
-      ok: true,
-      eslesti: true,
-    });
-  });
-
-  it('boş hedefle bağı koparır — bütçe hesabına hiç bakmadan', async () => {
-    const s = servisKur({
-      officeFinancialAccount: {
-        findFirst: async () => ({ id: 'ofis-1', name: 'Ziraat' }),
-        update: async () => ({ id: 'ofis-1' }),
-      },
-      butceBankaHesap: {
-        findFirst: async () => {
-          throw new Error('bağ koparılırken bütçe hesabına bakılmamalı');
+        create: async ({ data }: any) => {
+          yazilan.push(data);
+          return { id: 'yeni-1', ...data };
         },
       },
-    }) as any;
-    await expect(s.ofisHesapEslestir(KIMLIK, 'ofis-1', null)).resolves.toEqual({
-      ok: true,
-      eslesti: false,
+      // bankaHesapNormalize'ın sorguları
+      butceIslem: { aggregate: async () => ({ _sum: { tutar: 0 } }) },
+      butceOdeme: { aggregate: async () => ({ _sum: { tutar: 0 } }) },
+      cariHareket: { aggregate: async () => ({ _sum: { tutar: 0 } }) },
     });
+    return { servis, yazilan };
+  };
+
+  const govde = (ekle: any) => ({
+    ad: 'Ofis hesabı',
+    bankaAdi: 'Ziraat',
+    ...ekle,
+  });
+
+  it('tahsilata açık hesapta açılış tarihi yoksa reddeder', async () => {
+    const { servis } = kaydeden();
+    await expect(
+      servis.bankaHesapKaydet(KIMLIK, govde({ tahsilataAcik: true })),
+    ).rejects.toThrow(/açılış tarihini girin/);
+  });
+
+  it('açılış tarihi varsa tahsilata açık hesabı kaydeder', async () => {
+    const { servis, yazilan } = kaydeden();
+    await servis.bankaHesapKaydet(
+      KIMLIK,
+      govde({ tahsilataAcik: true, acilisTarihi: '2026-08-17' }),
+    );
+    expect(yazilan[0].tahsilataAcik).toBe(true);
+  });
+
+  it('tahsilata kapalı hesap açılış tarihi olmadan da kaydedilir', async () => {
+    const { servis, yazilan } = kaydeden();
+    await servis.bankaHesapKaydet(KIMLIK, govde({}));
+    expect(yazilan[0].tahsilataAcik).toBe(false);
+    expect(yazilan[0].acilisTarihi).toBeNull();
   });
 });
 
-describe('köprü — çift sayım kilidi', () => {
+describe('tahsilat — sayaçlar karışmasın', () => {
+  it('düzeltilebilir eksik ile arşivi AYRI sayar', async () => {
+    const sorgular: any[] = [];
+    const servis: any = servisKur({
+      cariHareket: {
+        aggregate: async ({ where }: any) => {
+          sorgular.push(where);
+          // İlki hesabı seçilmemiş, ikincisi arşiv
+          return where.source === null
+            ? { _count: { _all: 2 }, _sum: { tutar: 500 } }
+            : { _count: { _all: 600 }, _sum: { tutar: 3494600.05 } };
+        },
+      },
+    });
+    const ozet = await servis.tahsilatOzeti(KIMLIK);
+    expect(ozet.hesabiSecilmemis).toEqual({ adet: 2, toplam: 500 });
+    expect(ozet.arsiv).toEqual({ adet: 600, toplam: 3494600.05 });
+    // Arşiv sorgusu source DOLU olanları arar; ikisi aynı süzgeci kullanırsa
+    // biri diğerini gizler (bir kez böyle bir gerileme yaşandı).
+    expect(sorgular[0].accountId).toBeNull();
+    expect(sorgular[1].source).toEqual({ not: null });
+  });
+});
+
+describe('gelir — çift sayım kilidi', () => {
   const kilitli = (ad: string) =>
     servisKur({ butceKategori: { findFirst: async () => ({ ad }) } }) as any;
 

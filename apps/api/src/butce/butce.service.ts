@@ -371,8 +371,17 @@ export class ButceService {
       kmhAylikFaiz: tur === 'KMH' ? Number(body.kmhAylikFaiz) || 0 : 0,
       renk: body.renk || null,
       aktif: body.aktif === undefined ? true : !!body.aktif,
+      tahsilataAcik: !!body.tahsilataAcik,
       sira: Number(body.sira) || 0,
     };
+    // KESİM TARİHİ ZORUNLU: tahsilat akacaksa bir başlangıç günü olmalı.
+    // Boş kalırsa süzgeç tarih sınırı bulamaz, yılların tahsilatı açılış
+    // bakiyesinin üstüne ikinci kez eklenirdi.
+    if (data.tahsilataAcik && !data.acilisTarihi) {
+      throw new BadRequestException(
+        'Tahsilat listesine ekleyeceğiniz hesabın açılış tarihini girin — tahsilatlar o günden itibaren bu hesaba işlenir.',
+      );
+    }
     if (id) {
       await this.sahiplikDogrula('butceBankaHesap', k, id);
       const h = await this.db.butceBankaHesap.update({ where: { id }, data });
@@ -386,9 +395,19 @@ export class ButceService {
 
   async bankaHesapSil(k: Kimlik, id: string) {
     await this.sahiplikDogrula('butceBankaHesap', k, id);
-    const kullanim = await this.db.butceIslem.count({
-      where: { tenantId: k.tenantId, userId: k.userId, bankaHesapId: id },
-    });
+    // TAHSİLAT DA SAYILIR: hesabı silmek, o hesaba girmiş tahsilatların "hangi
+    // hesaba girdi" bilgisini geri getirilemez şekilde siler (FK SET NULL) ve
+    // bu bilginin başka bir kopyası yok. Ödemeler de aynı sebeple sayılır.
+    const [islemler, tahsilatlar, odemeler] = await Promise.all([
+      this.db.butceIslem.count({
+        where: { tenantId: k.tenantId, userId: k.userId, bankaHesapId: id },
+      }),
+      this.db.cariHareket.count({ where: { tenantId: k.tenantId, accountId: id } }),
+      this.db.butceOdeme.count({
+        where: { tenantId: k.tenantId, userId: k.userId, bankaHesapId: id },
+      }),
+    ]);
+    const kullanim = islemler + tahsilatlar + odemeler;
     if (kullanim > 0) {
       await this.db.butceBankaHesap.update({ where: { id }, data: { aktif: false } });
       return { ok: true, pasifeAlindi: true, kullanim };
@@ -432,170 +451,63 @@ export class ButceService {
    * `accountId` boş tahsilat sayılmaz: paranın hangi cüzdana girdiği bilinmiyor.
    * Bu tahsilatlar ekranda ayrıca uyarı olarak gösterilir, sessizce kaybolmaz.
    */
-  private aktarilabilirTahsilatWhere(tenantId: string, ofisHesapIdler: string[], kesim?: Date | null) {
+  private aktarilabilirTahsilatWhere(tenantId: string, bankaHesapId: string, kesim?: Date | null) {
     const where: any = {
       tenantId,
       tip: 'TAHSILAT',
       source: null,
-      accountId: { in: ofisHesapIdler },
+      accountId: bankaHesapId,
     };
     if (kesim) where.tarih = { gte: kesim };
     return where;
   }
 
-  /** Bir bütçe hesabına bağlanmış ofis (Cari Kasa) hesaplarının kimlikleri */
-  private async bagliOfisHesapIdler(k: Kimlik, butceBankaHesapId: string): Promise<string[]> {
-    const liste = await this.db.officeFinancialAccount.findMany({
-      where: { tenantId: k.tenantId, butceBankaHesapId },
-      select: { id: true },
-    });
-    return liste.map((x: any) => x.id);
-  }
-
   /**
-   * Ofis hesapları ve Kişisel Bütçe karşılıkları.
+   * Tahsilat sayaçları — Hesaplar ekranında gösterilir.
    *
-   * Aynı banka hesabı bugün iki tabloda ayrı bakiye tutuyor. Eşleştirme
-   * yapılınca bakiyenin tek sahibi Kişisel Bütçe olur; ofis hesabı "para hangi
-   * cüzdana girdi" etiketine döner. Eşleştirme ELLE yapılır — isim benzerliğine
-   * bakan otomatik eşleştirme bilerek yoktur, yanlış eşleşme bakiyeyi bozar.
+   * İki ayrı gerçeği ayrı ayrı sayar; birbirine karıştırılırsa biri diğerini
+   * gizler:
+   *  · hesabiSecilmemis = `source` boş + `accountId` boş → DÜZELTİLEBİLİR,
+   *    tahsilatın hesabı seçilince bakiyeye girer.
+   *  · arsiv = `source` dolu (Hattat aktarımı) → beyaz liste gereği ASLA akmaz,
+   *    düzeltilecek bir şey yok. Uyarı değil, bilgi.
    */
-  async ofisHesaplar(k: Kimlik) {
-    const [ofis, butce, hesapsiz, arsiv] = await Promise.all([
-      this.db.officeFinancialAccount.findMany({
-        where: { tenantId: k.tenantId },
-        orderBy: [{ isActive: 'desc' }, { sortOrder: 'asc' }, { name: 'asc' }],
-      }),
-      this.db.butceBankaHesap.findMany({
-        where: { tenantId: k.tenantId, userId: k.userId },
-        orderBy: [{ aktif: 'desc' }, { sira: 'asc' }, { bankaAdi: 'asc' }],
-        select: { id: true, ad: true, bankaAdi: true, acilisTarihi: true, aktif: true },
-      }),
-      // Hesabı seçilmemiş tahsilat: hangi cüzdana girdiği bilinmediği için
-      // hiçbir bakiyeye giremez. DÜZELTİLEBİLİR bir eksiktir — uyarı olur.
+  async tahsilatOzeti(k: Kimlik) {
+    const [hesapsiz, arsiv] = await Promise.all([
       this.db.cariHareket.aggregate({
         where: { tenantId: k.tenantId, tip: 'TAHSILAT', source: null, accountId: null },
         _count: { _all: true },
         _sum: { tutar: true },
       }),
-      // Aktarımla gelen geçmiş (Hattat vb.). Beyaz liste gereği ASLA akmaz;
-      // düzeltilecek bir şey yok. Uyarı değil, bilgi olarak gösterilir —
-      // yoksa "3,5 milyon ₺ kayıp" gibi okunup her gün tedirgin eder.
       this.db.cariHareket.aggregate({
         where: { tenantId: k.tenantId, tip: 'TAHSILAT', source: { not: null } },
         _count: { _all: true },
         _sum: { tutar: true },
       }),
     ]);
-
-    const butceMap = new Map(butce.map((b: any) => [b.id, b]));
-    const hesaplar: any[] = [];
-    for (const h of ofis) {
-      const eslesen: any = h.butceBankaHesapId ? butceMap.get(h.butceBankaHesapId) : null;
-      const kesim = eslesen?.acilisTarihi || null;
-      const [tumu, akan] = await Promise.all([
-        this.db.cariHareket.aggregate({
-          where: this.aktarilabilirTahsilatWhere(k.tenantId, [h.id]),
-          _count: { _all: true },
-          _sum: { tutar: true },
-        }),
-        kesim
-          ? this.db.cariHareket.aggregate({
-              where: this.aktarilabilirTahsilatWhere(k.tenantId, [h.id], kesim),
-              _count: { _all: true },
-              _sum: { tutar: true },
-            })
-          : Promise.resolve(null),
-      ]);
-      hesaplar.push({
-        id: h.id,
-        ad: h.name,
-        tur: h.type,
-        renk: h.color,
-        aktif: h.isActive,
-        butceBankaHesapId: h.butceBankaHesapId || null,
-        eslesenAd: eslesen ? `${eslesen.ad} · ${eslesen.bankaAdi}` : null,
-        kesimTarihi: kesim,
-        tahsilatAdet: tumu?._count?._all || 0,
-        tahsilatToplam: num(tumu?._sum?.tutar),
-        /** Kesim tarihinden sonra kalan, yani bütçeye gerçekten akan kısım */
-        akanAdet: akan?._count?._all || 0,
-        akanToplam: num(akan?._sum?.tutar),
-      });
-    }
-
     return {
-      hesaplar,
-      butceHesaplar: butce.map((b: any) => ({
-        id: b.id,
-        ad: b.ad,
-        bankaAdi: b.bankaAdi,
-        aktif: b.aktif,
-        acilisTarihi: b.acilisTarihi,
-        /** Kesim tarihi yoksa eşleştirme kabul edilmez; ekran bunu önceden söylesin */
-        kesimTarihiVar: !!b.acilisTarihi,
-      })),
-      hesabiSecilmemisTahsilat: {
+      hesabiSecilmemis: {
         adet: hesapsiz?._count?._all || 0,
         toplam: num(hesapsiz?._sum?.tutar),
       },
-      /** Aktarımla gelen geçmiş — akmaz, düzeltilmez, yalnız bilgi */
-      arsivTahsilat: {
+      arsiv: {
         adet: arsiv?._count?._all || 0,
         toplam: num(arsiv?._sum?.tutar),
       },
     };
   }
 
-  /** Ofis hesabını bir bütçe hesabına bağlar; `butceBankaHesapId` boş verilirse bağı koparır. */
-  async ofisHesapEslestir(k: Kimlik, ofisHesapId: string, butceBankaHesapId?: string | null) {
-    const ofisHesap = await this.db.officeFinancialAccount.findFirst({
-      where: { id: ofisHesapId, tenantId: k.tenantId },
-      select: { id: true, name: true },
-    });
-    if (!ofisHesap) throw new NotFoundException('Ofis hesabı bulunamadı');
-
-    if (!butceBankaHesapId) {
-      await this.db.officeFinancialAccount.update({
-        where: { id: ofisHesapId },
-        data: { butceBankaHesapId: null },
-      });
-      return { ok: true, eslesti: false };
-    }
-
-    const hedef = await this.db.butceBankaHesap.findFirst({
-      where: { id: butceBankaHesapId, tenantId: k.tenantId, userId: k.userId },
-      select: { id: true, ad: true, acilisTarihi: true },
-    });
-    if (!hedef) throw new NotFoundException('Bütçe hesabı bulunamadı');
-    // KESİM TARİHİ ZORUNLU. Boş kalırsa süzgeç tarih sınırı bulamaz ve yılların
-    // tahsilatı bütçeye akar; açılış bakiyesi zaten o parayı içerdiği için
-    // aynı para iki kez sayılırdı.
-    if (!hedef.acilisTarihi) {
-      throw new BadRequestException(
-        `Önce "${hedef.ad}" hesabının açılış tarihini girin — kesim tarihi odur. Öncesi Cari Kasa'da arşiv kalır.`,
-      );
-    }
-
-    await this.db.officeFinancialAccount.update({
-      where: { id: ofisHesapId },
-      data: { butceBankaHesapId },
-    });
-    return { ok: true, eslesti: true };
-  }
-
   /**
-   * Bu bütçe hesabına bağlı ofis hesaplarına giren müşteri tahsilatı toplamı.
+   * Bu hesaba giren müşteri tahsilatı toplamı.
    *
    * KOPYA SATIR ÜRETİLMEZ: rakam Cari Kasa'da kalır, buraya yalnız okunur.
-   * Kesim tarihi yoksa akış da yoktur (güvenli varsayılan).
+   * Kesim tarihi (hesabın açılış tarihi) yoksa akış da yoktur — açılış bakiyesi
+   * o dönemi zaten içerdiği için sınırsız geçmiş akarsa para iki kez sayılır.
    */
   private async cariTahsilatToplami(k: Kimlik, h: any): Promise<number> {
     if (!h?.acilisTarihi) return 0;
-    const ofisIdler = await this.bagliOfisHesapIdler(k, h.id);
-    if (!ofisIdler.length) return 0;
     const t = await this.db.cariHareket.aggregate({
-      where: this.aktarilabilirTahsilatWhere(k.tenantId, ofisIdler, h.acilisTarihi),
+      where: this.aktarilabilirTahsilatWhere(k.tenantId, h.id, h.acilisTarihi),
       _sum: { tutar: true },
     });
     return num(t._sum.tutar);
@@ -625,14 +537,12 @@ export class ButceService {
     const pencereBit = new Date(sonYil, sonAy, 1);
 
     for (const h of hesaplar) {
-      const ofisIdler = await this.bagliOfisHesapIdler(k, h.id);
-      if (!ofisIdler.length) continue;
       const acilis = new Date(h.acilisTarihi);
       const bas = acilis > pencereBas ? acilis : pencereBas;
       if (bas >= pencereBit) continue;
       const hareketler = await this.db.cariHareket.findMany({
         where: {
-          ...this.aktarilabilirTahsilatWhere(k.tenantId, ofisIdler),
+          ...this.aktarilabilirTahsilatWhere(k.tenantId, h.id),
           tarih: { gte: bas, lt: pencereBit },
         },
         select: { tarih: true, tutar: true },
@@ -804,9 +714,7 @@ export class ButceService {
 
     const satirlar: any[] = [];
     for (const h of hesaplar) {
-      const ofisIdler = await this.bagliOfisHesapIdler(k, h.id);
-      if (!ofisIdler.length) continue;
-      const where = this.aktarilabilirTahsilatWhere(k.tenantId, ofisIdler, h.acilisTarihi);
+      const where = this.aktarilabilirTahsilatWhere(k.tenantId, h.id, h.acilisTarihi);
       const hareketler = await this.db.cariHareket.findMany({
         where,
         orderBy: [{ tarih: 'desc' }, { createdAt: 'desc' }],
@@ -2013,19 +1921,16 @@ export class ButceService {
 
     // Hesabı seçilmemiş tahsilat hiçbir bakiyeye giremez. Sessizce kaybolursa
     // "bankada param eksik görünüyor" diye aranan hata burada saklı kalırdı.
-    const hesapsizTahsilat = await this.db.cariHareket.aggregate({
-      where: { tenantId: k.tenantId, tip: 'TAHSILAT', source: null, accountId: null },
-      _count: { _all: true },
-      _sum: { tutar: true },
-    });
-    if ((hesapsizTahsilat?._count?._all || 0) > 0) {
+    const tahsilatDurum = await this.tahsilatOzeti(k);
+    if (tahsilatDurum.hesabiSecilmemis.adet > 0) {
       uyarilar.push({
         seviye: 'BILGI',
         baslik: 'Hesabı seçilmemiş tahsilat',
         mesaj:
-          `${hesapsizTahsilat._count._all} tahsilatta (toplam ${kurus(num(hesapsizTahsilat._sum.tutar))} ₺) ` +
-          'banka/kasa hesabı seçilmemiş; paranın hangi cüzdana girdiği bilinmediği için bakiyeye eklenmedi. ' +
-          'Cari Kasa > Tahsilat ekranından hesabı seçilince kendiliğinden görünür.',
+          `${tahsilatDurum.hesabiSecilmemis.adet} tahsilatta (toplam ` +
+          `${kurus(tahsilatDurum.hesabiSecilmemis.toplam)} ₺) hesap seçilmemiş; paranın hangi cüzdana ` +
+          'girdiği bilinmediği için bakiyeye eklenmedi. Cari Kasa > Tahsilat ekranından hesabı ' +
+          'seçilince kendiliğinden görünür.',
       });
     }
 

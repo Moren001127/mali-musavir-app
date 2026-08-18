@@ -678,8 +678,8 @@ function QuickTahsilatModal({ row, onClose, onSaved }: { row: WorkspaceRow; onCl
 
   // ===== API: hesaplar (KORUNDU — aynı queryKey) =====
   const { data: accounts = [] } = useQuery<FinancialAccount[]>({
-    queryKey: ['cari-accounts'],
-    queryFn: () => api.get('/cari-kasa/accounts').then((r) => r.data),
+    queryKey: ['cari-tahsilat-hesaplari'],
+    queryFn: () => api.get('/cari-kasa/tahsilat-hesaplari').then((r) => r.data),
   });
 
   useEffect(() => {
@@ -769,11 +769,17 @@ function QuickTahsilatModal({ row, onClose, onSaved }: { row: WorkspaceRow; onCl
             </Field>
             <Field label="Hesap">
               <select value={form.accountId} onChange={(e) => setForm({ ...form, accountId: e.target.value })} style={selStyle}>
-                <option value="">Hesap seçin</option>
+                <option value="">{accounts.length ? 'Hesap seçin' : 'Tahsilata açık hesap yok'}</option>
                 {accounts.map((account) => (
                   <option key={account.id} value={account.id}>{account.name}</option>
                 ))}
               </select>
+              {accounts.length === 0 && (
+                <p className="mt-1.5 text-[12px]" style={{ color: '#e6c878' }}>
+                  Tahsilata açık hesap yok. Kişisel Bütçe &gt; Hesaplar ekranından hesabın
+                  &quot;cari tahsilatta görünsün&quot; anahtarını açın.
+                </p>
+              )}
             </Field>
             <Field label="Belge No">
               <input value={form.belgeNo} onChange={(e) => setForm({ ...form, belgeNo: e.target.value })} placeholder="Dekont veya makbuz no" style={inpStyle} />

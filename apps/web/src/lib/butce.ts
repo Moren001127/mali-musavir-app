@@ -73,6 +73,8 @@ export interface BankaHesap {
   kmhFaizGirilmedi?: boolean;
   renk?: string | null;
   aktif: boolean;
+  /** Cari Kasa > Tahsilat formundaki hesap kutusunda çıksın mı */
+  tahsilataAcik: boolean;
   sira: number;
   bakiye: number;
   kmhBorcu: number;
@@ -174,36 +176,11 @@ export interface NakitAkis {
   hesaplar: Array<{ id: string; ad: string; bankaAdi: string; bakiye: number; renk?: string | null }>;
 }
 
-/** Cari Kasa (ofis) hesabı ve Kişisel Bütçe'deki karşılığı */
-export interface OfisHesap {
-  id: string;
-  ad: string;
-  tur: string;
-  renk?: string | null;
-  aktif: boolean;
-  butceBankaHesapId: string | null;
-  eslesenAd: string | null;
-  kesimTarihi: string | null;
-  tahsilatAdet: number;
-  tahsilatToplam: number;
-  /** Kesim tarihinden sonrası — bütçeye gerçekten akan kısım */
-  akanAdet: number;
-  akanToplam: number;
-}
-
-export interface OfisHesapDurum {
-  hesaplar: OfisHesap[];
-  butceHesaplar: Array<{
-    id: string;
-    ad: string;
-    bankaAdi: string;
-    aktif: boolean;
-    acilisTarihi: string | null;
-    kesimTarihiVar: boolean;
-  }>;
-  hesabiSecilmemisTahsilat: { adet: number; toplam: number };
-  /** Aktarımla gelen geçmiş (Hattat) — beyaz liste gereği akmaz, düzeltilmez */
-  arsivTahsilat: { adet: number; toplam: number };
+export interface TahsilatOzet {
+  /** source boş + hesap boş — düzeltilebilir, hesabı seçilince bakiyeye girer */
+  hesabiSecilmemis: { adet: number; toplam: number };
+  /** Aktarımla gelen geçmiş (Hattat) — beyaz liste gereği asla akmaz */
+  arsiv: { adet: number; toplam: number };
 }
 
 export type Strateji = 'CIG' | 'KARTOPU';
@@ -525,9 +502,7 @@ export const butceApi = {
     al<Ozet>(api.get('/butce/ozet', { params: { donem, defter } })),
 
   hesaplar: () => al<BankaHesap[]>(api.get('/butce/hesaplar')),
-  ofisHesaplar: () => al<OfisHesapDurum>(api.get('/butce/ofis-hesaplar')),
-  ofisHesapEslestir: (id: string, butceBankaHesapId: string | null) =>
-    al<{ ok: boolean; eslesti: boolean }>(api.put(`/butce/ofis-hesaplar/${id}`, { butceBankaHesapId })),
+  tahsilatOzeti: () => al<TahsilatOzet>(api.get('/butce/tahsilat-ozet')),
   kasa: () => al<KasaOzet>(api.get('/butce/kasa')),
   sablonTesti: (gonder = false) =>
     al<SablonOnizleme[]>(api.post('/butce/sablon-testi', { gonder })),

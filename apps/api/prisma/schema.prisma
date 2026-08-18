@@ -2592,7 +2592,9 @@ model CariHareket {
   id             String   @id @default(cuid())
   tenantId       String
   taxpayerId     String
-  accountId      String? // Tahsilat hangi banka/kasa hesabına girdi
+  /// Tahsilat hangi hesaba girdi — Kişisel Bütçe'deki banka hesabı.
+  /// Ofis için ayrı hesap tablosu YOK: tek liste var, sahibi Kişisel Bütçe.
+  accountId      String?
   hizmetId       String? // Tahakkuksa hizmete bağlı; manuel ödeme ise null
   tarih          DateTime
   tip            String // "TAHAKKUK" | "TAHSILAT" | "IADE" | "DUZELTME"
@@ -2608,9 +2610,9 @@ model CariHareket {
   createdAt      DateTime @default(now())
   createdBy      String?
 
-  taxpayer Taxpayer                @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
-  hizmet   CariHizmet?             @relation(fields: [hizmetId], references: [id], onDelete: SetNull)
-  account  OfficeFinancialAccount? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  taxpayer Taxpayer         @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
+  hizmet   CariHizmet?      @relation(fields: [hizmetId], references: [id], onDelete: SetNull)
+  account  ButceBankaHesap? @relation(fields: [accountId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, taxpayerId, tarih])
   @@index([tenantId, tarih])
@@ -2621,27 +2623,22 @@ model CariHareket {
 }
 
 model OfficeFinancialAccount {
-  id                String   @id @default(cuid())
-  tenantId          String
-  name              String
-  type              String // "BANKA" | "NAKIT" | "KREDI_KARTI" | "DIGER"
-  color             String   @default("#d4b876")
-  openingBalance    Decimal  @default(0) @db.Decimal(14, 2)
-  openingDate       DateTime @default(now())
-  sortOrder         Int      @default(0)
-  isActive          Boolean  @default(true)
-  /// Kisisel Butce'deki karsiligi. Doluysa bakiyenin TEK SAHIBI orasidir;
-  /// bu hesap "para hangi cuzdana girdi" etiketine doner.
-  butceBankaHesapId String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id             String   @id @default(cuid())
+  tenantId       String
+  name           String
+  type           String // "BANKA" | "NAKIT" | "KREDI_KARTI" | "DIGER"
+  color          String   @default("#d4b876")
+  openingBalance Decimal  @default(0) @db.Decimal(14, 2)
+  openingDate    DateTime @default(now())
+  sortOrder      Int      @default(0)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  tenant          Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  butceBankaHesap ButceBankaHesap?        @relation(fields: [butceBankaHesapId], references: [id], onDelete: SetNull)
-  budgetEntries   OfficeBudgetEntry[]
-  cariHareketler  CariHareket[]
-  transfersFrom   OfficeAccountTransfer[] @relation("TransferFromAccount")
-  transfersTo     OfficeAccountTransfer[] @relation("TransferToAccount")
+  tenant        Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  budgetEntries OfficeBudgetEntry[]
+  transfersFrom OfficeAccountTransfer[] @relation("TransferFromAccount")
+  transfersTo   OfficeAccountTransfer[] @relation("TransferToAccount")
 
   @@unique([tenantId, name])
   @@index([tenantId, type])
@@ -3808,13 +3805,16 @@ model ButceBankaHesap {
   kmhAylikFaiz     Decimal   @default(0) @db.Decimal(6, 3) // % aylık
   renk             String?
   aktif            Boolean   @default(true)
+  /// Cari Kasa > Tahsilat formundaki hesap kutusunda çıksın mı.
+  /// Bazı hesaba hiç tahsilat gelmez; hepsini listelemek kutuyu kalabalıklaştırır.
+  tahsilataAcik    Boolean   @default(false)
   sira             Int       @default(0)
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
-  islemler      ButceIslem[]
-  odemeler      ButceOdeme[]
-  ofisHesaplari OfficeFinancialAccount[]
+  islemler       ButceIslem[]
+  odemeler       ButceOdeme[]
+  cariHareketler CariHareket[]
 
   @@index([tenantId, userId, aktif])
   @@map("butce_banka_hesaplar")

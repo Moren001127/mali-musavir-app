@@ -9,6 +9,7 @@ import {
 } from './tahsilat-otomasyon';
 import { createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
+import { OwnerOnlyGuard } from '../auth/guards/owner-only.guard';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import { StorageService } from '../storage/storage.service';
 import { chromium } from 'playwright-core';
@@ -357,16 +358,65 @@ export class CariKasaService {
       if (params.baslangic) where.tarih.gte = new Date(params.baslangic);
       if (params.bitis) where.tarih.lte = new Date(params.bitis);
     }
-    return (this.prisma as any).cariHareket.findMany({
+    const satirlar = await (this.prisma as any).cariHareket.findMany({
       where,
       orderBy: [{ tarih: 'desc' }, { createdAt: 'desc' }],
       take: params.limit || 500,
       include: {
         hizmet: { select: { id: true, hizmetAdi: true } },
-        account: { select: { id: true, name: true, type: true, color: true } },
+        account: { select: { id: true, ad: true, bankaAdi: true, tur: true, renk: true } },
         taxpayer: { select: { id: true, firstName: true, lastName: true, companyName: true, taxNumber: true } },
       },
     });
+    // Ekranların sözleşmesi {id,name,type,color}; bütçe hesabının alan adları farklı
+    return satirlar.map((h: any) => ({ ...h, account: this.hesapGorunumu(h.account) }));
+  }
+
+  /**
+   * TAHSİLAT HESAPLARI — Kişisel Bütçe'de "cari tahsilatta görünsün" işaretli hesaplar.
+   *
+   * Cari Kasa'nın ayrı hesap tablosu YOK. Hesabı Kişisel Bütçe'de açan kişi
+   * onu burada da görür; ikinci bir liste ve "bağlama" adımı gereksizdi.
+   *
+   * Bu uç PERSONELE de açık (tahsilatı personel giriyor) ama yalnız AD döner:
+   * bakiye, açılış tutarı, KMH gibi hiçbir para bilgisi sızmaz. Hesap sahibi
+   * ofis sahibidir; onu MOREN_BUTCE_OWNER_EMAIL üzerinden buluyoruz.
+   */
+  async tahsilatHesaplari(tenantId: string) {
+    const ownerEmail = OwnerOnlyGuard.ownerEmail();
+    if (!ownerEmail) return [];
+    const owner = await (this.prisma as any).user.findFirst({
+      where: { tenantId, email: { equals: ownerEmail, mode: 'insensitive' } },
+      select: { id: true },
+    });
+    if (!owner) return [];
+    const hesaplar = await (this.prisma as any).butceBankaHesap.findMany({
+      where: { tenantId, userId: owner.id, aktif: true, tahsilataAcik: true },
+      orderBy: [{ sira: 'asc' }, { bankaAdi: 'asc' }],
+      select: { id: true, ad: true, bankaAdi: true, renk: true },
+    });
+    return hesaplar.map((h: any) => ({
+      id: h.id,
+      // Tahsilat formunda tek satırda okunsun: "Ziraat · Ofis hesabı"
+      name: h.bankaAdi && h.bankaAdi !== h.ad ? `${h.bankaAdi} · ${h.ad}` : h.ad,
+      color: h.renk || '#d4b876',
+    }));
+  }
+
+  /**
+   * Bütçe hesabını, ekranların beklediği {id,name,type,color} biçimine çevirir.
+   *
+   * `cari_hareketler.account` artık ButceBankaHesap'ı gösteriyor; alan adları
+   * ad/bankaAdi/tur/renk. Cevap şeklini değiştirmiyoruz ki ekranlar aynı kalsın.
+   */
+  private hesapGorunumu(a: any) {
+    if (!a) return null;
+    return {
+      id: a.id,
+      name: a.bankaAdi && a.bankaAdi !== a.ad ? `${a.bankaAdi} · ${a.ad}` : a.ad,
+      type: a.tur || 'BANKA',
+      color: a.renk || '#d4b876',
+    };
   }
 
   async createTahsilat(
@@ -389,12 +439,19 @@ export class CariKasaService {
     if (Number(data.tutar) <= 0) {
       throw new BadRequestException('Tahsilat tutarı pozitif olmalı');
     }
-    const account = await this.getFinancialAccount(tenantId, data.accountId);
+    // Hesap, Kişisel Bütçe'nin tahsilata açık hesaplarından biri olmalı.
+    // Rastgele bir kimlik gönderilirse tahsilat sahipsiz bir hesaba yazılırdı.
+    const secilebilir = await this.tahsilatHesaplari(tenantId);
+    if (!secilebilir.some((h: any) => h.id === data.accountId)) {
+      throw new BadRequestException(
+        'Seçilen hesap tahsilat listesinde değil. Kişisel Bütçe > Hesaplar ekranından hesabı "cari tahsilatta görünsün" olarak işaretleyin.',
+      );
+    }
     return (this.prisma as any).cariHareket.create({
       data: {
         tenantId,
         taxpayerId: data.taxpayerId,
-        accountId: account.id,
+        accountId: data.accountId,
         tarih: data.tarih ? new Date(data.tarih) : new Date(),
         tip: 'TAHSILAT',
         tutar: data.tutar,
@@ -1971,7 +2028,7 @@ ${rows}
           belgeNo: true,
           aciklama: true,
           accountId: true,
-          account: { select: { id: true, name: true, type: true, color: true } },
+          account: { select: { id: true, ad: true, bankaAdi: true, tur: true, renk: true } },
           taxpayer: { select: { firstName: true, lastName: true, companyName: true, taxNumber: true } },
         },
         orderBy: [{ tarih: 'desc' }, { createdAt: 'desc' }],
@@ -2106,12 +2163,7 @@ ${rows}
         description: this.taxpayerName(h.taxpayer) || h.aciklama || 'Müşteri tahsilatı',
         paymentMethod: h.odemeYontemi,
         documentNo: h.belgeNo,
-        account: h.account ? {
-          id: h.account.id,
-          name: h.account.name,
-          type: h.account.type,
-          color: h.account.color,
-        } : null,
+        account: this.hesapGorunumu(h.account),
         category: customerIncomeCategory ? {
           id: customerIncomeCategory.id,
           name: customerIncomeCategory.name,
@@ -2215,7 +2267,7 @@ ${rows}
           odemeYontemi: true,
           belgeNo: true,
           aciklama: true,
-          account: { select: { id: true, name: true, type: true, color: true } },
+          account: { select: { id: true, ad: true, bankaAdi: true, tur: true, renk: true } },
           taxpayer: { select: { firstName: true, lastName: true, companyName: true, taxNumber: true } },
         },
         orderBy: [{ tarih: 'desc' }, { createdAt: 'desc' }],
@@ -2333,7 +2385,7 @@ ${rows}
           description: this.taxpayerName(h.taxpayer) || h.aciklama || 'Musteri tahsilati',
           paymentMethod: h.odemeYontemi,
           documentNo: h.belgeNo,
-          account: h.account || null,
+          account: this.hesapGorunumu(h.account),
           category: null,
         });
       }
