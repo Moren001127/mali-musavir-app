@@ -3791,6 +3791,8 @@ const PROVIDER_OPTS = [
   { v: 'NILVERA', l: 'Nilvera' },
   { v: 'GIB_PORTAL', l: 'GİB e-Arşiv' },
   { v: 'ELOGO', l: 'e-Logo' },
+  // Mikro = e-Mikro / Mikrogrup e-Portal (eportal.mikrogrup.com). Kimlik: e-Portal e-postası + parolası.
+  { v: 'MIKRO', l: 'Mikro (e-Portal)' },
 ];
 function provKisalt(label: string, provider: string): string {
   if (provider === 'TURMOB_EFATURA') return 'TR';
@@ -3822,6 +3824,8 @@ function ScreenEntegrator({ taxpayerId, period }: { taxpayerId: string; period: 
   const [editMode, setEditMode] = useState(false);
   const isParasut = provider === 'PARASUT';
   const isTurkcell = provider === 'TURKCELL';
+  // Mikro (e-Mikro/e-Portal) yalnız kullanıcı+parola ister; client_id/secret/firma no BOŞ kalır.
+  const isMikro = provider === 'MIKRO';
   const resetForm = () => { setUsername(''); setPassword(''); setApiKey(''); setApiSecret(''); setAccountId(''); };
   const openAdd = () => { setEditMode(false); resetForm(); setProvider('PARASUT'); setShowAddForm(true); };
   const openEdit = (c: any) => { setEditMode(true); setProvider(c.provider); setUsername(c.username || ''); setAccountId(c.accountId || ''); setApiKey(''); setApiSecret(''); setPassword(''); setShowAddForm(true); };
@@ -3926,7 +3930,7 @@ function ScreenEntegrator({ taxpayerId, period }: { taxpayerId: string; period: 
                 <div className="fld"><label>{isParasut ? 'Firma No (opsiyonel)' : 'Hesap / Firma No'}</label><input autoComplete="off" value={accountId} onChange={(e) => setAccountId(e.target.value)} placeholder={isParasut ? 'boş bırak → otomatik bulunur' : '—'} /></div>
               </div>
               <div className="erw">
-                <div className="fld"><label>Kullanıcı adı</label><input autoComplete="off" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="mükellefin giriş kullanıcısı" /></div>
+                <div className="fld"><label>{isMikro ? 'Kullanıcı adı (e-Portal e-postası)' : 'Kullanıcı adı'}</label><input autoComplete="off" value={username} onChange={(e) => setUsername(e.target.value)} placeholder={isMikro ? 'eportal.mikrogrup.com girişindeki e-posta' : 'mükellefin giriş kullanıcısı'} /></div>
                 <div className="fld"><label>Şifre</label><input type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={editMode ? 'değiştirmek için yaz — boş bırakırsan eski şifre korunur' : '••••••••'} /></div>
               </div>
               <div className="erw">
