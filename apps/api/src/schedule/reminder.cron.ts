@@ -236,12 +236,12 @@ export class ReminderCron {
       },
     });
     if (!t) return { atlandi: 'mükellef Aylık Takip Listesi kümesinde değil' };
-    // Önizlemede bu kontroller atlanır; mesaj zaten sahibe gidiyor.
-    if (!opts.onizleme && !t.whatsappEvrakGeldi) return { atlandi: '"Evrak geldi onayı" anahtarı kapalı' };
-    if (!opts.onizleme && !t.isActive) return { atlandi: 'mükellef pasif' };
-    // TESLİM GÜNÜ BOŞSA MESAJ YOK (kullanıcı kararı 2026-08-18) — evrak takibi
-    // tanımlanmamış mükellefe otomatik mesaj gitmez.
-    if (!opts.onizleme && t.evrakTeslimGunu == null) return { atlandi: 'teslim günü tanımsız' };
+    // TEK KURAL: teslim günü tanımlı + "Evrak geldi onayı" açık + aktif + telefon.
+    // Önizlemede atlanır; metin zaten mükellefe değil ofis sahibine gidiyor.
+    if (!opts.onizleme) {
+      const uygun = this.evrakMesaj.uygunMu(t, 'GELDI');
+      if (!uygun.uygun) return { atlandi: uygun.sebep };
+    }
 
     if (!opts.onizleme) {
       const durum = await this.durumBul(taxpayerId, yil, ay);
@@ -377,7 +377,7 @@ export class ReminderCron {
       }
 
       let sent = 0, skippedAlreadyArrived = 0, skippedNoPhone = 0,
-        skippedMasterSwitch = 0, skippedAralik = 0, failed = 0;
+        skippedMasterSwitch = 0, skippedAralik = 0, skippedUygunDegil = 0, failed = 0;
 
       for (const taxpayer of taxpayers) {
         if (tenantActiveCache.get(taxpayer.tenantId) === false) { skippedMasterSwitch++; continue; }
@@ -391,7 +391,14 @@ export class ReminderCron {
           continue;
         }
 
-        if (!this.evrakMesaj.telefonlar(taxpayer).length) { skippedNoPhone++; continue; }
+        // Sorgu zaten süzüyor; burada TEK KURAL son kapı olarak tekrar bakar.
+        // Sorgu ile bu kontrol birlikte kaymadıkça istenmeyen mesaj sızmaz.
+        const uygun = this.evrakMesaj.uygunMu(taxpayer, 'TALEP');
+        if (!uygun.uygun) {
+          if (uygun.sebep === 'telefon yok') skippedNoPhone++;
+          else skippedUygunDegil++;
+          continue;
+        }
 
         const ad = this.evrakMesaj.ad(taxpayer);
         const metin = await this.evrakMesaj.mesajKur(taxpayer.tenantId, 'TALEP', ad, donem);
@@ -430,6 +437,7 @@ export class ReminderCron {
         evrakZatenGeldi: skippedAlreadyArrived,
         aralikBeklemede: skippedAralik,
         telefonYok: skippedNoPhone,
+        kuralaUymayan: skippedUygunDegil,
         salterKapali: skippedMasterSwitch,
         basarisiz: failed,
         canli: this.evrakMesaj.canliMi(),

@@ -351,3 +351,70 @@ describe('evrak mesajı — başarısızlıkta sebep DOLU döner', () => {
     }
   });
 });
+
+describe('evrak mesajı — TEK KURAL: teslim günü + anahtar', () => {
+  const s = servisKur();
+  /**
+   * Kullanıcı kararı 2026-08-18: "Teslim günü tanımlanmayan mükellefe mesaj
+   * gitmeyecek; sadece teslim tarihi tanımlı OLUP evrak talep / evrak geldi
+   * anahtarları açık ise mesajlar gidecek."
+   *
+   * Bu kural bozulduğunda ekran hata vermez — yalnız istenmeyen mükellefe
+   * gerçek mesaj gider. Kilitli.
+   */
+  const tam = {
+    isActive: true, evrakTeslimGunu: 10,
+    whatsappEvrakTalep: true, whatsappEvrakGeldi: true,
+    phones: ['905550000001'],
+  };
+
+  it('teslim günü YOKSA hiçbir mesaj gitmez — anahtarlar açık olsa bile', () => {
+    const t = { ...tam, evrakTeslimGunu: null };
+    expect(s.uygunMu(t, 'TALEP')).toEqual({ uygun: false, sebep: 'teslim günü tanımsız' });
+    expect(s.uygunMu(t, 'GELDI')).toEqual({ uygun: false, sebep: 'teslim günü tanımsız' });
+  });
+
+  it('teslim günü 0 değil ama undefined ise de gitmez', () => {
+    const { evrakTeslimGunu, ...eksik } = tam;
+    expect(s.uygunMu(eksik, 'TALEP').uygun).toBe(false);
+  });
+
+  it('teslim günü VAR ama talep anahtarı kapalıysa TALEP gitmez', () => {
+    expect(s.uygunMu({ ...tam, whatsappEvrakTalep: false }, 'TALEP')).toEqual({
+      uygun: false, sebep: '"Evrak talep mesajı" anahtarı kapalı',
+    });
+  });
+
+  it('teslim günü VAR ama geldi anahtarı kapalıysa GELDI gitmez', () => {
+    expect(s.uygunMu({ ...tam, whatsappEvrakGeldi: false }, 'GELDI')).toEqual({
+      uygun: false, sebep: '"Evrak geldi onayı" anahtarı kapalı',
+    });
+  });
+
+  it('iki anahtar BİRBİRİNDEN bağımsız — biri açıkken diğeri gitmez', () => {
+    const yalnizTalep = { ...tam, whatsappEvrakGeldi: false };
+    expect(s.uygunMu(yalnizTalep, 'TALEP').uygun).toBe(true);
+    expect(s.uygunMu(yalnizTalep, 'GELDI').uygun).toBe(false);
+  });
+
+  it('anahtar "truthy" değil TAM OLARAK true olmalı', () => {
+    for (const v of [1, 'true', 'evet', {}]) {
+      expect(s.uygunMu({ ...tam, whatsappEvrakTalep: v }, 'TALEP').uygun).toBe(false);
+    }
+  });
+
+  it('pasif mükellefe gitmez', () => {
+    expect(s.uygunMu({ ...tam, isActive: false }, 'TALEP').uygun).toBe(false);
+  });
+
+  it('telefonu olmayana gitmez', () => {
+    expect(s.uygunMu({ ...tam, phones: [], phone: null }, 'TALEP')).toEqual({
+      uygun: false, sebep: 'telefon yok',
+    });
+  });
+
+  it('hepsi tamamsa gider', () => {
+    expect(s.uygunMu(tam, 'TALEP')).toEqual({ uygun: true });
+    expect(s.uygunMu(tam, 'GELDI')).toEqual({ uygun: true });
+  });
+});

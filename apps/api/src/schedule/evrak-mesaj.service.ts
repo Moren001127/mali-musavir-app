@@ -205,6 +205,38 @@ export class EvrakMesajService {
     );
   }
 
+  // ------------------------------------------------------------- UYGUNLUK
+
+  /**
+   * MESAJ GİDER Mİ — TEK KURAL (kullanıcı kararı 2026-08-18).
+   *
+   * "Teslim günü tanımlanmayan mükellefe mesaj gitmeyecek; sadece teslim
+   * tarihi tanımlı OLUP ilgili anahtar AÇIK ise gidecek."
+   *
+   * Kural üç ayrı yerde tekrarlanıyordu (cron sorgusu, olay tetikli onay,
+   * Panel > Hatırlatmalar). Biri gevşediğinde ekran hata vermez, yalnız
+   * istenmeyen mükellefe mesaj gider — o yüzden tek kaynak.
+   *
+   * NOT: Prisma sorgusu bu fonksiyonu çağıramaz (veritabanı tarafında süzmek
+   * gerekiyor); sorgular aynı koşulları kurar, bu fonksiyon da son kapıda
+   * tekrar doğrular. İkisi birden kaymadıkça mesaj sızmaz.
+   */
+  uygunMu(t: any, tur: 'TALEP' | 'GELDI'): { uygun: boolean; sebep?: string } {
+    if (!t) return { uygun: false, sebep: 'mükellef bulunamadı' };
+    if (t.isActive === false) return { uygun: false, sebep: 'mükellef pasif' };
+    // TESLİM GÜNÜ ŞARTI — her iki mesaj türü için de geçerli
+    if (t.evrakTeslimGunu == null) return { uygun: false, sebep: 'teslim günü tanımsız' };
+    const anahtar = tur === 'TALEP' ? t.whatsappEvrakTalep : t.whatsappEvrakGeldi;
+    if (anahtar !== true) {
+      return {
+        uygun: false,
+        sebep: tur === 'TALEP' ? '"Evrak talep mesajı" anahtarı kapalı' : '"Evrak geldi onayı" anahtarı kapalı',
+      };
+    }
+    if (!this.telefonlar(t).length) return { uygun: false, sebep: 'telefon yok' };
+    return { uygun: true };
+  }
+
   /** Mükellefin telefonları — phones[] öncelikli, yoksa phone */
   telefonlar(t: any): string[] {
     return t?.phones?.length ? t.phones.filter(Boolean) : t?.phone ? [t.phone] : [];

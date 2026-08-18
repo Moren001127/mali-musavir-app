@@ -1693,8 +1693,11 @@ export class WhatsAppController {
         statusMap.get(t.id)?.evrakTalepSonGonderimAt || lastLogMap.get(t.id) || null;
       const reasons: string[] = [];
 
-      if (!t.whatsappEvrakTalep) reasons.push('WhatsApp evrak talebi kapali');
-      if (!phones.length) reasons.push('Telefon yok');
+      // TEK KURAL (EvrakMesajService.uygunMu): teslim günü tanımlı + "Evrak
+      // talep mesajı" anahtarı açık + aktif + telefon. Burada ayrı ayrı
+      // yazılıydı; cron ile ayrışma riski vardı.
+      const uygun = this.evrakMesaj.uygunMu(t, 'TALEP');
+      if (!uygun.uygun) reasons.push(uygun.sebep!);
       if (evraklarGeldi) reasons.push('Bu ay evrak geldi isaretli');
       if (!body.includeNotDue && dueDay > dueCutoffDay) reasons.push(`Evrak teslim gunu gelmedi (${dueDay})`);
       if (!body.force && lastReminder && lastReminder >= twoDaysAgo) reasons.push('Son 2 gunde hatirlatma gonderildi');
