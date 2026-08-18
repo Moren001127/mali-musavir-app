@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { IstatistikView } from './IstatistikView';
+import TahsilatlarView from './TahsilatlarView';
 import TahsilatOtomasyonView from './TahsilatOtomasyonView';
 import TahsilatView from './TahsilatView';
 
@@ -81,7 +82,7 @@ type WorkspaceRow = OzetSatir & {
 
 type FinancialAccount = { id: string; name: string; type: string; color: string; isActive: boolean };
 type FilterKey = 'all' | 'debt' | 'over90';
-type ViewKey = 'tahsilat' | 'otomasyon' | 'istatistik';
+type ViewKey = 'tahsilat' | 'otomasyon' | 'tahsilatlar' | 'istatistik';
 
 const emptyAging = { current: 0, d1_30: 0, d31_60: 0, d61_90: 0, d90plus: 0 };
 
@@ -320,6 +321,7 @@ export function CariTahsilatWorkspace({ onSelect }: { onSelect: (id: string) => 
   const tabs: { key: ViewKey; label: string }[] = [
     { key: 'tahsilat', label: 'Tahsilat' },
     { key: 'otomasyon', label: 'Otomasyon' },
+    { key: 'tahsilatlar', label: 'Tahsilatlar' },
     { key: 'istatistik', label: 'İstatistik' },
   ];
 
@@ -430,6 +432,8 @@ export function CariTahsilatWorkspace({ onSelect }: { onSelect: (id: string) => 
         {view === 'istatistik' && <div className="mt-6"><IstatistikView /></div>}
 
         {view === 'otomasyon' && <TahsilatOtomasyonView />}
+
+        {view === 'tahsilatlar' && <TahsilatlarView />}
 
         {view === 'tahsilat' && (
           <TahsilatView
