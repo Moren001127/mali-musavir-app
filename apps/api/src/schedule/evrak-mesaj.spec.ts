@@ -418,3 +418,34 @@ describe('evrak mesajı — TEK KURAL: teslim günü + anahtar', () => {
     expect(s.uygunMu(tam, 'GELDI')).toEqual({ uygun: true });
   });
 });
+
+describe('evrak mesajı — gönderim aralığı', () => {
+  const s = servisKur();
+  const eski = process.env.MOREN_EVRAK_GONDERIM_ARALIK_MS;
+  afterEach(() => {
+    if (eski === undefined) delete process.env.MOREN_EVRAK_GONDERIM_ARALIK_MS;
+    else process.env.MOREN_EVRAK_GONDERIM_ARALIK_MS = eski;
+  });
+
+  it('varsayılan 5 saniye — toplu gönderim aralıksız olmasın', () => {
+    delete process.env.MOREN_EVRAK_GONDERIM_ARALIK_MS;
+    expect(s.gonderimAralikMs()).toBe(5000);
+  });
+
+  it('env ile ayarlanabilir', () => {
+    process.env.MOREN_EVRAK_GONDERIM_ARALIK_MS = '12000';
+    expect(s.gonderimAralikMs()).toBe(12000);
+  });
+
+  it('0 verilirse bekleme kapanır', () => {
+    process.env.MOREN_EVRAK_GONDERIM_ARALIK_MS = '0';
+    expect(s.gonderimAralikMs()).toBe(0);
+  });
+
+  it('bozuk/negatif değer varsayılana döner — kazayla hız sınırı kalkmasın', () => {
+    for (const v of ['abc', '-1', 'çok']) {
+      process.env.MOREN_EVRAK_GONDERIM_ARALIK_MS = v;
+      expect(s.gonderimAralikMs()).toBe(5000);
+    }
+  });
+});

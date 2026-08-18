@@ -113,6 +113,75 @@ export class EvrakOtomasyonController {
   }
 
   /**
+   * KAPSAM LİSTESİ — otomasyonun dokunacağı mükelleflerin ADLARI.
+   *
+   * Sayı tek başına yetmiyor: şalteri açmadan önce "kimlere gidecek" sorusunun
+   * isim isim cevaplanması gerekiyor. Telefon numarası DÖNMEZ, yalnız kaç
+   * numara tanımlı olduğu — liste teyit içindir, rehber değil.
+   */
+  @Post('kapsam/liste')
+  async kapsamListe(@Headers('x-agent-token') token: string) {
+    const tenantId = await this.tenant(token);
+    const simdi = new Date();
+    const yil = simdi.getFullYear();
+    const ay = simdi.getMonth() + 1;
+    const ilkGun = new Date(yil, ay - 1, 1);
+    const sonGun = new Date(yil, ay, 0, 23, 59, 59);
+
+    const mukellefler = await this.prisma.taxpayer.findMany({
+      where: {
+        tenantId,
+        isActive: true,
+        // Herhangi bir evrak ayarı olan herkes — anahtarı açık olmayan da
+        // görünsün ki "açtım sandım ama açılmamış" durumu fark edilsin.
+        OR: [
+          { evrakTeslimGunu: { not: null } },
+          { whatsappEvrakTalep: true },
+          { whatsappEvrakGeldi: true },
+        ],
+        AND: [
+          { OR: [{ startDate: null }, { startDate: { lte: sonGun } }] },
+          { OR: [{ endDate: null }, { endDate: { gte: ilkGun } }] },
+          { NOT: { taxNumber: { startsWith: 'WHATSAPP-' } } },
+        ],
+      },
+      orderBy: [{ evrakTeslimGunu: 'asc' }, { companyName: 'asc' }, { firstName: 'asc' }],
+    });
+
+    const durumlar = await this.prisma.taxpayerMonthlyStatus.findMany({
+      where: { tenantId, year: yil, month: ay, taxpayerId: { in: mukellefler.map((m) => m.id) } },
+      select: { taxpayerId: true, evraklarGeldi: true, evrakTalepSonGonderimAt: true },
+    });
+    const durumHarita = new Map(durumlar.map((d) => [d.taxpayerId, d]));
+
+    const donem = this.evrakMesaj.beyannameDonemi(yil, ay);
+    return {
+      islemAyi: `${yil}-${String(ay).padStart(2, '0')}`,
+      mukellefeYazilanDonem: donem.etiket,
+      bugun: simdi.getDate(),
+      satirlar: mukellefler.map((m) => {
+        const d = durumHarita.get(m.id);
+        const talep = this.evrakMesaj.uygunMu(m, 'TALEP');
+        const geldi = this.evrakMesaj.uygunMu(m, 'GELDI');
+        return {
+          ad: this.evrakMesaj.ad(m),
+          vkn: m.taxNumber,
+          teslimGunu: m.evrakTeslimGunu,
+          talepAnahtari: m.whatsappEvrakTalep,
+          geldiAnahtari: m.whatsappEvrakGeldi,
+          telefonSayisi: this.evrakMesaj.telefonlar(m).length,
+          evrakGeldiIsaretli: !!d?.evraklarGeldi,
+          sonHatirlatma: d?.evrakTalepSonGonderimAt ?? null,
+          hatirlatmaGider: talep.uygun,
+          hatirlatmaEngeli: talep.sebep ?? null,
+          onayGider: geldi.uygun,
+          onayEngeli: geldi.sebep ?? null,
+        };
+      }),
+    };
+  }
+
+  /**
    * KAPSAM — otomasyon kaç mükellefi kapsıyor.
    *
    * Tarama yalnız o an şartı tutanı sayar; "hiç kimseye gitmedi" ile "kimsede

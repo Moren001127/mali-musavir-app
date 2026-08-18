@@ -127,6 +127,26 @@ export class EvrakMesajService {
     return process.env.MOREN_CLIENT_PROACTIVE_REMINDERS === '1';
   }
 
+  /**
+   * GÖNDERİMLER ARASI BEKLEME (ms).
+   *
+   * WhatsApp QR hattında arka arkaya aralıksız toplu mesaj, numaranın
+   * işaretlenmesine yol açabiliyor. Şalter açıldığı gün 10:00'da şartı tutan
+   * herkese peş peşe gönderim yapılacağı için aralık şart.
+   * MOREN_EVRAK_GONDERIM_ARALIK_MS ile ayarlanır; 0 vermek beklemeyi kapatır.
+   */
+  gonderimAralikMs(): number {
+    const ham = process.env.MOREN_EVRAK_GONDERIM_ARALIK_MS;
+    if (ham === undefined || ham === '') return 5000;
+    const n = Number(ham);
+    return Number.isFinite(n) && n >= 0 ? n : 5000;
+  }
+
+  /** Verilen süre kadar bekler (0 ise hiç beklemez) */
+  async bekle(ms: number): Promise<void> {
+    if (ms > 0) await new Promise((r) => setTimeout(r, ms));
+  }
+
   /** Test mesajlarının gideceği numaralar (ofis sahibi). */
   private testNumaralari(): string[] {
     return String(

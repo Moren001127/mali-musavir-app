@@ -428,6 +428,10 @@ export class ReminderCron {
         } else {
           failed++;
         }
+
+        // TOPLU GÖNDERİM ARALIĞI: aralıksız peş peşe mesaj WhatsApp hattını
+        // riske atıyor. Yalnız gerçekten gönderim denendiyse beklenir.
+        await this.evrakMesaj.bekle(this.evrakMesaj.gonderimAralikMs());
       }
 
       const ozet = {
