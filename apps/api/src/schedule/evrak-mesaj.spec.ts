@@ -449,3 +449,41 @@ describe('evrak mesajı — gönderim aralığı', () => {
     }
   });
 });
+
+describe('evrak mesajı — iz kaydı gönderilenin AYNISI olmalı', () => {
+  const eskiTel = process.env.MOREN_OWNER_WHATSAPP_PHONES;
+  beforeEach(() => { process.env.MOREN_OWNER_WHATSAPP_PHONES = '905350587475'; });
+  afterEach(() => {
+    if (eskiTel === undefined) delete process.env.MOREN_OWNER_WHATSAPP_PHONES;
+    else process.env.MOREN_OWNER_WHATSAPP_PHONES = eskiTel;
+  });
+
+  /**
+   * 20 Ağustos 2026: teşhis bilgisi ("— Hedef: … · Sebep: …") kayıt metninin
+   * ALTINA ekleniyordu. Mesaj Merkezi ekranı bu kaydı gösterdiği için
+   * "gönderilen" ile "görünen" ayrıştı; mükellefe gitmeyen satır gitmiş gibi
+   * göründü. Kayıt metni = gönderilen metin.
+   */
+  it('kayıt içeriğinde teşhis satırı YOK', async () => {
+    const izler: any[] = [];
+    const whatsapp = { isAutomationActive: async () => true, sendMessage: async () => true };
+    const prisma = { communicationLog: { create: async (a: any) => { izler.push(a.data); return {}; } } };
+    const servis = new EvrakMesajService(prisma as any, whatsapp as any);
+
+    await servis.gonder({
+      tenantId: 't1',
+      taxpayer: { id: 'x', companyName: 'DENEME LTD', phones: ['905550000001'] },
+      metin: 'Sadece bu metin gitti.',
+      tur: 'GELDI', donem: 'Temmuz 2026',
+      sebep: 'teşhis bilgisi', mesaiYokSay: true, zorlaTest: true,
+    });
+
+    expect(izler).toHaveLength(1);
+    expect(izler[0].content).not.toContain('Hedef:');
+    expect(izler[0].content).not.toContain('teşhis bilgisi');
+    expect(izler[0].content).toContain('Sadece bu metin gitti.');
+    // Teşhis başlıkta durur
+    expect(izler[0].subject).toContain('Hedef:');
+    expect(izler[0].subject).toContain('teşhis bilgisi');
+  });
+});

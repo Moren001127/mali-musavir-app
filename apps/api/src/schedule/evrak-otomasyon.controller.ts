@@ -113,6 +113,42 @@ export class EvrakOtomasyonController {
   }
 
   /**
+   * GÖNDERİM DÖKÜMÜ — son N günde evrak akışından kime ne gitti.
+   *
+   * 20 Ağustos 2026 olayından sonra eklendi: "kaç mesaj gitti, hangisi
+   * yanlıştı" sorusu uygulama logundan değil veritabanından yanıtlanmalı.
+   * Metin gövdesi DÖNMEZ; yalnız başlık (tür/dönem/durum/hedef) ve zaman.
+   */
+  @Post('gonderim-dokumu')
+  async gonderimDokumu(@Headers('x-agent-token') token: string) {
+    const tenantId = await this.tenant(token);
+    const bes = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
+    const kayitlar = await this.prisma.communicationLog.findMany({
+      where: {
+        channel: 'WHATSAPP',
+        occurredAt: { gte: bes },
+        OR: [
+          { subject: { startsWith: 'Evrak' } },
+          { subject: { startsWith: '[TEST] Evrak' } },
+        ],
+        taxpayer: { tenantId },
+      },
+      select: { subject: true, occurredAt: true, taxpayer: { select: { companyName: true, firstName: true, lastName: true } } },
+      orderBy: { occurredAt: 'desc' },
+      take: 500,
+    });
+    return {
+      aralik: '5 gün',
+      adet: kayitlar.length,
+      kayitlar: kayitlar.map((k) => ({
+        zaman: k.occurredAt,
+        mukellef: this.evrakMesaj.ad(k.taxpayer),
+        baslik: k.subject,
+      })),
+    };
+  }
+
+  /**
    * KAPSAM LİSTESİ — otomasyonun dokunacağı mükelleflerin ADLARI.
    *
    * Sayı tek başına yetmiyor: şalteri açmadan önce "kimlere gidecek" sorusunun

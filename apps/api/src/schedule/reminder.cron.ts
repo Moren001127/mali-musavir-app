@@ -172,29 +172,27 @@ export class ReminderCron {
       return { atlandi: 'mesai dışı' };
     }
 
-    // DURUMA DAYALI TARAMA — bayrağa değil.
+    // YALNIZ BAYRAKLI KAYITLAR — durum taraması DEĞİL.
     //
-    // Önce yalnız `evrakGeldiMesajBekliyor` bakılıyordu; o bayrak da yalnız
-    // "mesai dışı/tatil" dönüşünde yazılıyordu. Oysa gönderim WhatsApp şalteri
-    // kapalıyken, telefon yokken veya köprü anlık koptuğunda da başarısız
-    // dönüyor; o kayıtlar bayraksız kalıp bir daha HİÇ taranmıyordu ve onay
-    // mesajı kalıcı olarak düşüyordu.
+    // 20 Ağustos 2026 OLAYI: bu tarama bir süre "evraklarGeldi=true ve mesaj
+    // damgası boş" satırlarını topluyordu. Kayıtların çoğu otomasyon var
+    // olmadan ÖNCE işaretlenmişti; hepsi bu koşulu sağlıyordu. Sonuç: şalter
+    // açıldığının ertesi sabahı mükelleflere HAFTALAR ÖNCE gelen evraklar için
+    // "evraklarınız ulaştı" mesajı gitti (Temmuz işlem ayı satırları → mesajda
+    // "Haziran 2026" yazdı). "Bu ay + önceki ay" sınırı bunu durdurmuyor,
+    // çünkü önceki ayın satırları da eski.
     //
-    // ESKİ KAYIT TAŞMASI: geçmişteki tüm işaretli dönemler taranırsa şalter
-    // açıldığı gün toplu mesaj gider. Bu yüzden yalnız BU ay ve BİR ÖNCEKİ ay.
-    const simdi = new Date();
-    const buAy = this.islemAyi(simdi);
-    const oncekiAyTarih = new Date(simdi.getFullYear(), simdi.getMonth() - 1, 1);
-    const oncekiAy = this.islemAyi(oncekiAyTarih);
-
+    // Doğrusu: mesaj YALNIZ, otomasyon çalışırken işaretlenip o an
+    // gönderilemeyen kayıtlar için gönderilir. O kayıtları olay dinleyicisi
+    // `evrakGeldiMesajBekliyor = true` diye işaretler (geçici engellerin
+    // HEPSİNDE — mesai dışı, tatil, şalter kapalı, köprü kopuk). Geçmiş
+    // kayıtlarda bu bayrak hiç yoktur, dolayısıyla toplu geçmiş gönderimi
+    // yapısal olarak imkânsız.
     const bekleyenler = await this.prisma.taxpayerMonthlyStatus.findMany({
       where: {
+        evrakGeldiMesajBekliyor: true,
         evraklarGeldi: true,
         evrakGeldiMesajGonderimAt: null,
-        OR: [
-          { year: buAy.yil, month: buAy.ay },
-          { year: oncekiAy.yil, month: oncekiAy.ay },
-        ],
         ...(opts.tenantId ? { tenantId: opts.tenantId } : {}),
       },
       take: 500,

@@ -360,15 +360,18 @@ export class EvrakMesajService {
     try {
       const tur = o.tur === 'TALEP' ? 'Evrak hatırlatma' : 'Evrak geldi bilgisi';
       const durum = o.basarili ? 'Gönderildi' : 'Başarısız';
+      // İÇERİK = GÖNDERİLEN METNİN AYNISI. Teşhis bilgisi (hedef numara,
+      // sebep) bir süre metnin ALTINA ekleniyordu; Mesaj Merkezi ekranı bu
+      // kaydı gösterdiği için "gönderilen" ile "görünen" ayrışıyor, mükellefe
+      // gitmeyen satırlar gitmiş gibi duruyordu. Teşhis artık başlıkta.
       await this.prisma.communicationLog.create({
         data: {
           taxpayerId: o.taxpayer.id,
           channel: 'WHATSAPP',
-          subject: `${o.test ? '[TEST] ' : ''}${tur} — ${o.donem} — ${durum}`,
-          content: this.telefonBasligi(
-            `${o.metin}\n\n— Hedef: ${o.hedefler.join(', ') || '(yok)'} · Sebep: ${o.sebep}`,
-            o.hedefler[0],
-          ),
+          subject:
+            `${o.test ? '[TEST] ' : ''}${tur} — ${o.donem} — ${durum}` +
+            ` · Hedef: ${o.hedefler.join(', ') || '(yok)'} · ${o.sebep}`,
+          content: this.telefonBasligi(o.metin, o.hedefler[0]),
           occurredAt: new Date(),
         },
       });
