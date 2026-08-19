@@ -14117,7 +14117,23 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           const curVknOk = !!curAcc && !!svkn && normVkn((curAcc as any).vkn) === svkn;
           const curNameOk = !!curAcc && cariNames.some((nm: any) => nm && this.nameMatchScore(String(nm), String((curAcc as any).accountName || '')) > 0);
           const curIsPick = !!curAcc && !!cariMatch && String((curAcc as any).accountCode) === String((cariMatch as any).accountCode);
-          if (current && (curVknOk || curNameOk || curIsPick)) continue; // doğrulanmış cari — dokunma
+          if (current && (curVknOk || curNameOk || curIsPick)) {
+            // KAYNAK YÜKSELTME (ölçüm bulgusu 2026-08-20): kod DOĞRU olduğu için satıra hiç
+            //   dokunulmuyordu → plana VKN yazılsa bile satır 'ISIM' etiketiyle kalıyordu.
+            //   Bu etiket sadece kozmetik değil: güven skoru (computeDocConfidence) ve CARİ
+            //   ÖĞRENME KAPISI (recordInvoiceAccountingMemory: KULLANICI|HAFIZA|VKN) bunu okur.
+            //   Etiket 'ISIM' kaldıkça cari asla öğrenilmiyor, karne "0 güvenli" gösteriyordu.
+            //   Artık VKN birebir doğruluyorsa etiketi VKN'e çek. KULLANICI seçimi DAHA GÜÇLÜ →
+            //   ona dokunma. Hesap kodu değişmez, yalnız kaynak izi düzelir.
+            const curKaynak = String((line as any).kaynak || '').toUpperCase();
+            if (curVknOk && curKaynak !== 'VKN' && curKaynak !== 'KULLANICI') {
+              await (this.prisma as any).invoiceAccountingLine.update({
+                where: { id: line.id },
+                data: { kaynak: 'VKN' },
+              }).catch(() => {});
+            }
+            continue; // doğrulanmış cari — hesap koduna dokunma
+          }
           await (this.prisma as any).invoiceAccountingLine.update({
             where: { id: line.id },
             data: cariMatch
