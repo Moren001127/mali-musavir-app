@@ -132,6 +132,7 @@ export class TaxpayersService {
         emails: true,
         phone: true,
         phones: true,
+        telefonAdlari: true, // rehber: numara -> ad
         address: true,
         evrakTeslimGunu: true,
         whatsappEvrakTalep: true,

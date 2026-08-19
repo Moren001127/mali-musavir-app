@@ -355,10 +355,48 @@ const REPORT_EPSILON = 0.005;
 //       tevkifatlı düzenlenmelidir. Yeni yıl haddi değişince burayı GÜNCELLE.
 const VUK_HAD_TL = 12_000;
 
+/**
+ * Tutar ayrıştırma — HEM Türkçe ("1.234,56") HEM makine biçimini ("1234.56") doğru okur.
+ *
+ * 🔴 KÖK HATA (canlı bulgu 2026-08-20): eski hâli `replace(/\./g,'')` ile TÜM noktaları siliyordu.
+ *   Editör satırları `String(Number)` ile gönderiyor (page.tsx: `debit: String(l.debit || 0)`),
+ *   yani "4635.49" → nokta silinince **463549** oluyordu: her "Kaydet"te kuruşlu tutar 100 KATINA
+ *   çıkıyor, yevmiye TOTAL_MISMATCH'e düşüyordu (canlıda 4 belge bu şekilde bozulmuştu:
+ *   5.562,59 ₺ → 556.259 ₺). Sessiz veri bozulması — kullanıcı fark etmiyor.
+ *
+ * KURAL: ondalık ayracı, en SAĞDAKİ ayraçtır.
+ *   "1.234,56" → , ondalık · "1,234.56" → . ondalık · "4635.49" → . ondalık (tek nokta, ≤2 hane)
+ *   "1.234"    → TR binlik (3 hane) → 1234 · "1.234.567" → binlik → 1234567
+ */
 function parseDecimal(value: any, fallback = '0') {
   if (value === null || value === undefined || value === '') return new Prisma.Decimal(fallback);
-  const normalized = String(value).replace(/\./g, '').replace(',', '.');
-  return new Prisma.Decimal(normalized || fallback);
+  if (typeof value === 'number' && Number.isFinite(value)) return new Prisma.Decimal(String(value));
+  let s = String(value).trim().replace(/\s|₺|TL/gi, '');
+  if (!s) return new Prisma.Decimal(fallback);
+  const neg = /^-/.test(s);
+  s = s.replace(/^[-+]/, '');
+  const sonNokta = s.lastIndexOf('.');
+  const sonVirgul = s.lastIndexOf(',');
+  let normalized: string;
+  if (sonNokta >= 0 && sonVirgul >= 0) {
+    // İkisi de var → sağdaki ondalık, soldaki binlik
+    const [ondalikIx, binlik] = sonVirgul > sonNokta ? [sonVirgul, /\./g] : [sonNokta, /,/g];
+    normalized = s.slice(0, ondalikIx).replace(binlik, '') + '.' + s.slice(ondalikIx + 1).replace(/\D/g, '');
+  } else if (sonVirgul >= 0) {
+    normalized = s.slice(0, sonVirgul).replace(/\D/g, '') + '.' + s.slice(sonVirgul + 1).replace(/\D/g, '');
+  } else if (sonNokta >= 0) {
+    const kesir = s.slice(sonNokta + 1);
+    const tekNokta = s.indexOf('.') === sonNokta;
+    // Tek nokta + 1-2 haneli kesir → ONDALIK (makine biçimi). Aksi (çok nokta ya da 3 haneli grup) → TR binlik.
+    normalized = (tekNokta && /^\d{1,2}$/.test(kesir))
+      ? s.slice(0, sonNokta).replace(/\D/g, '') + '.' + kesir
+      : s.replace(/\D/g, '');
+  } else {
+    normalized = s.replace(/\D/g, '');
+  }
+  if (!normalized || normalized === '.') return new Prisma.Decimal(fallback);
+  const out = (neg ? '-' : '') + normalized;
+  try { return new Prisma.Decimal(out); } catch { return new Prisma.Decimal(fallback); }
 }
 
 // Tarihi DAİMA UTC gece-yarısı olarak üretir → slice(0,10) her saat diliminde doğru günü
@@ -5758,6 +5796,26 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
 
     // v2.1: Manuel değişiklik sonrası validation'ı tekrar çalıştır
     await this.revalidateDocument(tenantId, id);
+
+    // ── DÜZELTME ANINDA ÖĞREN (ölçüm bulgusu 2026-08-20) ──
+    //   Öğrenme SADECE approve() içinde tetikleniyordu. Müşavir kodu düzeltip "Kaydet" derse
+    //   hiçbir şey öğrenilmiyor, yalnız "Kaydet ve Onayla" öğretiyordu. Üretimde toplam 16 onaylı
+    //   belge var → hafıza fiilen büyümüyordu (186 karar, içerik-imzalı 0, cari kararı 6).
+    //   Artık elle DEĞİŞTİRİLEN (kaynak=KULLANICI) bir kod varsa onay beklemeden öğreniyoruz.
+    //   Kapı aynı kalıyor: recordInvoiceAccountingMemory yalnız KULLANICI/HAFIZA kaynaklı satırı
+    //   öğrenir → otomatik atamalar hâlâ hafızaya yazılmaz (zehirlenme koruması bozulmadı).
+    if (Array.isArray(body.lines)) {
+      const fresh = await (this.prisma as any).invoiceAccountingDocument.findFirst({
+        where: { id, tenantId },
+        include: { lines: { orderBy: { orderNo: 'asc' } } },
+      }).catch(() => null);
+      const elleDegisen = (fresh?.lines || []).some((l: any) => String(l.kaynak || '').toUpperCase() === 'KULLANICI');
+      if (fresh && elleDegisen) {
+        await this.recordInvoiceAccountingMemory(tenantId, fresh).catch((e: any) => {
+          this.logger.warn(`Düzeltmeden öğrenme başarısız (${id}): ${e?.message || e}`);
+        });
+      }
+    }
 
     // Faz C: denetim izi — belge bilgileri/satırları elle değiştirilince kaydet.
     await this.logAudit(tenantId, userId, 'UPDATE', id,

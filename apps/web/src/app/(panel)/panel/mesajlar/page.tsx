@@ -75,6 +75,8 @@ interface Conversation {
   conversationId?: string;
   taxpayerId: string;
   taxpayerName: string;
+  /** REHBER: bu numaraya mükellef kartında verilen ad. Yoksa null. */
+  kisiAdi?: string | null;
   phone: string | null;
   lastMessage: string;
   lastMessageAt: string;
@@ -102,7 +104,7 @@ interface ChatMessage {
 
 interface ChatData {
   conversationId?: string;
-  taxpayer: { id: string; name: string; phone: string | null; taxNumber: string; unknownContact?: boolean; avatarUrl?: string | null; about?: string | null; aboutSetAt?: string | null };
+  taxpayer: { id: string; name: string; kisiAdi?: string | null; phone: string | null; taxNumber: string; unknownContact?: boolean; avatarUrl?: string | null; about?: string | null; aboutSetAt?: string | null };
   messages: ChatMessage[];
   windowOpen: boolean;
   windowExpiresAt: string | null;
@@ -487,6 +489,8 @@ export default function MesajlarPage() {
     if (!q) return conversations;
     return conversations.filter((c) =>
       c.taxpayerName.toLocaleLowerCase('tr-TR').includes(q) ||
+      // Rehber adıyla da aranabilsin: kullanıcı firmayı değil kişiyi arıyor olabilir
+      (c.kisiAdi || '').toLocaleLowerCase('tr-TR').includes(q) ||
       (c.phone || '').includes(q),
     );
   }, [conversations, search]);
@@ -655,12 +659,14 @@ export default function MesajlarPage() {
                   }}
                 >
                   {/* Avatar */}
-                  <WhatsAppAvatar name={c.taxpayerName} url={c.avatarUrl} active={isLivePresence(c.presence)} />
+                  {/* REHBER ADI önce: kullanıcı bu numaraya ad yazdıysa firma
+                      adı yerine o görünür. Firma bağı değişmez. */}
+                  <WhatsAppAvatar name={c.kisiAdi || c.taxpayerName} url={c.avatarUrl} active={isLivePresence(c.presence)} />
 
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-[16px] font-semibold truncate" style={{ color: '#fafaf9' }}>
-                        {c.taxpayerName}
+                        {c.kisiAdi || c.taxpayerName}
                       </span>
                       <span className="text-[12.5px] tabular-nums flex-shrink-0" style={{ color: 'rgba(250,250,249,0.55)' }}>
                         {fmtTime(c.lastMessageAt)}
@@ -706,13 +712,18 @@ export default function MesajlarPage() {
             {/* Sohbet başlık */}
             <div className="px-6 py-3 flex items-center gap-3.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.02)' }}>
               <button type="button" onClick={() => setShowProfilePanel(true)} className="rounded-full" title="Kişi bilgisi">
-                <WhatsAppAvatar name={chatData?.taxpayer?.name} url={chatData?.taxpayer?.avatarUrl} active={isLivePresence(chatData?.presence)} />
+                <WhatsAppAvatar name={chatData?.taxpayer?.kisiAdi || chatData?.taxpayer?.name} url={chatData?.taxpayer?.avatarUrl} active={isLivePresence(chatData?.presence)} />
               </button>
               <button type="button" onClick={() => setShowProfilePanel(true)} className="flex-1 min-w-0 text-left">
                 <div className="text-[17px] font-semibold" style={{ color: '#fafaf9' }}>
-                  {chatData?.taxpayer?.name || 'Yükleniyor...'}
+                  {chatData?.taxpayer?.kisiAdi || chatData?.taxpayer?.name || 'Yükleniyor...'}
                 </div>
                 <div className="flex items-center gap-3 text-[13px]" style={{ color: 'rgba(250,250,249,0.62)' }}>
+                  {/* Rehber adı gösteriliyorsa firma adı kaybolmasın — hangi
+                      mükellefle konuşulduğu görünür kalmalı. */}
+                  {chatData?.taxpayer?.kisiAdi && chatData?.taxpayer?.name && (
+                    <span className="truncate">{chatData.taxpayer.name}</span>
+                  )}
                   {chatData?.taxpayer?.phone && (
                     <span className="flex items-center gap-1">
                       <Phone size={12} /> {chatData.taxpayer.phone}

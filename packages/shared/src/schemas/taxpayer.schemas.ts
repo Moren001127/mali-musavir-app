@@ -20,6 +20,9 @@ export const CreateTaxpayerSchema = z.object({
   ),
   phone: z.string().optional().or(z.literal('')),
   phones: z.array(z.string()).optional().default([]),
+  /** REHBER: numara -> ad. Anahtar normalize numara ("905339233674"). */
+  telefonAdlari: z.record(z.string(), z.string()).nullable().optional(),
+
   address: z.string().optional().or(z.literal('')),
   notes: z.string().optional().or(z.literal('')),
   startDate: z.string().nullable().optional(),
@@ -73,6 +76,9 @@ export const UpdateTaxpayerSchema = z.object({
   ),
   phone: z.string().optional().or(z.literal('')),
   phones: z.array(z.string()).optional(),
+  /** REHBER: numara -> ad. Anahtar normalize numara ("905339233674"). */
+  telefonAdlari: z.record(z.string(), z.string()).nullable().optional(),
+
   address: z.string().optional().or(z.literal('')),
   notes: z.string().optional().or(z.literal('')),
   startDate: z.string().nullable().optional(),

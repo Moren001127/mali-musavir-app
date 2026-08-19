@@ -10,6 +10,7 @@ import { StorageService } from '../storage/storage.service';
 import { OwnerDigestService } from './owner-digest.service';
 import { OwnerBriefingCron } from './owner-briefing.cron';
 import { EvrakMesajService } from '../schedule/evrak-mesaj.service';
+import { telefonAdi } from '../common/telefon';
 import { ReminderCron } from '../schedule/reminder.cron';
 
 type EvrakReminderBody = {
@@ -141,6 +142,7 @@ export class WhatsAppController {
             firstName: true,
             lastName: true,
             phone: true,
+            telefonAdlari: true,
           },
         },
       },
@@ -162,6 +164,10 @@ export class WhatsAppController {
         taxpayer: {
           id: log.taxpayer.id,
           name: taxpayerName,
+          kisiAdi: telefonAdi(
+            (log.taxpayer as any).telefonAdlari,
+            this.extractWhatsAppPhone(log.content) || log.taxpayer.phone,
+          ),
           phone: log.taxpayer.phone,
         },
       };
@@ -201,6 +207,7 @@ export class WhatsAppController {
             taxNumber: true,
             phone: true,
             phones: true,
+            telefonAdlari: true,
           },
         },
       },
@@ -219,12 +226,17 @@ export class WhatsAppController {
         log.taxpayer.companyName ||
         `${log.taxpayer.firstName || ''} ${log.taxpayer.lastName || ''}`.trim() ||
         'Mukellef';
+      // REHBER: bu numaraya kullanıcının verdiği ad. Firma adı (taxpayerName)
+      // AYNEN kalır — bot hangi firma yazdığını bilmeye devam eder; değişen
+      // yalnız ekranda görünen isim.
+      const kisiAdi = telefonAdi((log.taxpayer as any).telefonAdlari, phone);
 
       if (!conversations.has(conversationId)) {
         conversations.set(conversationId, {
           conversationId,
           taxpayerId: tId,
           taxpayerName: name,
+          kisiAdi,
           unknownContact: this.isWhatsAppVirtualTaxNumber(log.taxpayer.taxNumber),
           phone,
           lastMessage: this.publicMessageContent(log.content).slice(0, 100),
@@ -295,6 +307,7 @@ export class WhatsAppController {
         taxNumber: true,
         phone: true,
         phones: true,
+        telefonAdlari: true, // rehber adi: taxpayerContactPhones label'i buradan
         yetkililer: {
           where: { isActive: true },
           select: { firstName: true, lastName: true, gorev: true, telefon: true, isPrimary: true },
@@ -456,6 +469,9 @@ export class WhatsAppController {
       taxpayer: {
         id: taxpayer.id,
         name: taxpayer.companyName || `${taxpayer.firstName || ''} ${taxpayer.lastName || ''}`.trim() || 'Mükellef',
+        // Liste ile detayın ismi AYNI kaynaktan gelmeli; ayrışırsa listede yeni
+        // ad, sohbeti açınca eski ad görünür.
+        kisiAdi: telefonAdi((taxpayer as any).telefonAdlari, phone),
         phone,
         taxNumber: this.publicTaxNumber(taxpayer.taxNumber),
         unknownContact: this.isWhatsAppVirtualTaxNumber(taxpayer.taxNumber),
@@ -1822,9 +1838,15 @@ export class WhatsAppController {
       result.push({ phone: value, label, primary });
     };
 
-    add(t.phone, 'Ana telefon', true);
+    // REHBER ADI önce: kullanıcı bu numaraya ad yazdıysa "Ana telefon" /
+    // "Telefon 2" gibi genel etiket yerine o ad görünür.
+    const ad = (p: any, yedek: string) => telefonAdi((t as any).telefonAdlari, p) || yedek;
+
+    add(t.phone, ad(t.phone, 'Ana telefon'), true);
     if (Array.isArray(t.phones)) {
-      t.phones.forEach((phone: string, index: number) => add(phone, `Telefon ${index + 1}`, result.length === 0));
+      t.phones.forEach((phone: string, index: number) =>
+        add(phone, ad(phone, `Telefon ${index + 1}`), result.length === 0),
+      );
     }
     if (Array.isArray(t.yetkililer)) {
       for (const y of t.yetkililer) {

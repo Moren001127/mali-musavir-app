@@ -121,6 +121,9 @@ type FormState = {
   taxNumber: string;
   taxOffice: string;
   phones: string[];
+  /** REHBER: phones ile aynı sıradaki adlar. Form içinde dizi tutulur; sunucuya
+   *  numara->ad HARİTASI gönderilir (dizi sırası arka planda değişebiliyor). */
+  telefonAdlari: string[];
   emails: string[];
   address: string;
   notes: string;
@@ -156,6 +159,7 @@ function emptyForm(): FormState {
     taxNumber: '',
     taxOffice: '',
     phones: ['', '', ''],
+    telefonAdlari: ['', '', ''],
     emails: ['', '', ''],
     address: '',
     notes: '',
@@ -413,6 +417,18 @@ export default function MukellefDetayPage() {
     if (!taxpayer) return;
 
     const phones = [...(taxpayer.phones || []), '', '', ''].slice(0, 3);
+    // Haritadan diziye: sunucu numara->ad tutuyor, form sıra bazlı çalışıyor.
+    // Eşleşme RAKAMLAR üzerinden — kartta "0533 923 36 74", haritada
+    // "905339233674" yazabilir; ham metin karşılaştırılsa ad kaybolurdu.
+    const adHaritasi = ((taxpayer as any).telefonAdlari || {}) as Record<string, string>;
+    const rakam = (v: string) => String(v || '').replace(/[^\d]/g, '').replace(/^0+/, '').replace(/^90/, '');
+    const adBul = (tel: string) => {
+      const hedef = rakam(tel);
+      if (!hedef) return '';
+      const bulunan = Object.entries(adHaritasi).find(([no]) => rakam(no) === hedef);
+      return bulunan ? String(bulunan[1] || '') : '';
+    };
+    const telefonAdlari = phones.map(adBul);
     const emails = [...(taxpayer.emails || []), '', '', ''].slice(0, 3);
     const defterTuru = (((taxpayer as any).defterTuru || taxpayer.mihsapDefterTuru) === 'DEFTER_BEYAN'
       ? 'ISLETME'
@@ -420,6 +436,7 @@ export default function MukellefDetayPage() {
 
     setForm({
       type: taxpayer.type || 'TUZEL_KISI',
+      telefonAdlari,
       companyName: taxpayer.companyName || '',
       firstName: taxpayer.firstName || '',
       lastName: taxpayer.lastName || '',
@@ -490,6 +507,14 @@ export default function MukellefDetayPage() {
   const buildPayload = () => ({
       ...form,
       phones: form.phones.filter(Boolean),
+      // Diziden haritaya: numara anahtar. Paralel dizi gönderilseydi, phones
+      // dizisi arka planda yeniden yazıldığında (bot yeni numara ekleyince)
+      // ad yanlış numaraya yapışırdı.
+      telefonAdlari: form.phones.reduce<Record<string, string>>((acc, tel, i) => {
+        const ad = (form.telefonAdlari[i] || '').trim();
+        if (tel && ad) acc[tel] = ad;
+        return acc;
+      }, {}),
       emails: form.emails.filter(Boolean),
       evrakTeslimGunu: form.evrakTeslimGunu ? parseInt(String(form.evrakTeslimGunu), 10) : null,
       startDate: form.startDate || null,
@@ -1017,22 +1042,41 @@ function BilgilerTab({
         <div className="space-y-4">
           <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
             <FormCluster title="Telefonlar">
+              {/* REHBER: her numaranın yanında kime ait olduğu. WhatsApp
+                  Mesajlar ekranında firma adı yerine bu ad görünür; numara →
+                  mükellef eşleştirmesi değişmez. */}
               <div className="space-y-3">
                 {form.phones.map((phone, index) => (
-                  <InputBase
-                    key={index}
-                    type="tel"
-                    inputMode="numeric"
-                    value={formatTrPhone(phone)}
-                    onChange={(e) =>
-                      setForm((prev) => {
-                        const phones = [...prev.phones];
-                        phones[index] = cleanTrPhone(e.target.value);
-                        return { ...prev, phones };
-                      })
-                    }
-                    placeholder={index === 0 ? '0(5__) ___ __ __' : `Telefon ${index + 1}`}
-                  />
+                  <div key={index} className="flex gap-2">
+                    <div className="flex-1">
+                      <InputBase
+                        type="tel"
+                        inputMode="numeric"
+                        value={formatTrPhone(phone)}
+                        onChange={(e) =>
+                          setForm((prev) => {
+                            const phones = [...prev.phones];
+                            phones[index] = cleanTrPhone(e.target.value);
+                            return { ...prev, phones };
+                          })
+                        }
+                        placeholder={index === 0 ? '0(5__) ___ __ __' : `Telefon ${index + 1}`}
+                      />
+                    </div>
+                    <div className="w-[42%]">
+                      <InputBase
+                        value={form.telefonAdlari[index] || ''}
+                        onChange={(e) =>
+                          setForm((prev) => {
+                            const telefonAdlari = [...prev.telefonAdlari];
+                            telefonAdlari[index] = e.target.value;
+                            return { ...prev, telefonAdlari };
+                          })
+                        }
+                        placeholder="Ad Soyad"
+                      />
+                    </div>
+                  </div>
                 ))}
               </div>
             </FormCluster>

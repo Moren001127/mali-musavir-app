@@ -167,6 +167,11 @@ model Taxpayer {
   email              String?
   phone              String?
   phones             String[] // 3 telefon numarası
+  /// REHBER: numara -> ad. Anahtar NORMALIZE numara ("905339233674").
+  /// Dizi yerine harita: phones dizisini arka planda yeniden yazan 9 ayri yer
+  /// var (bot yeni numara gorunce ekliyor, Set ile sira degisiyor). Paralel
+  /// dizi olsaydi sira kayinca ad YANLIS numaraya yapisirdi ve fark edilmezdi.
+  telefonAdlari      Json?
   emails             String[] // 3 e-posta adresi
   address            String?
   notes              String?
