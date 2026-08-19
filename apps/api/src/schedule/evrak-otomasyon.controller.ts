@@ -186,7 +186,12 @@ export class EvrakOtomasyonController {
 
     const durumlar = await this.prisma.taxpayerMonthlyStatus.findMany({
       where: { tenantId, year: yil, month: ay, taxpayerId: { in: mukellefler.map((m) => m.id) } },
-      select: { taxpayerId: true, evraklarGeldi: true, evrakTalepSonGonderimAt: true },
+      select: {
+        taxpayerId: true, evraklarGeldi: true, evrakTalepSonGonderimAt: true,
+        // Onay mesaji kuyrukta mi / gonderildi mi — mesai disi isaretlemenin
+        // gercekten beklemeye alindigini gormeden 09:00'i beklemek gerekiyordu.
+        evrakGeldiMesajBekliyor: true, evrakGeldiMesajGonderimAt: true,
+      },
     });
     const durumHarita = new Map(durumlar.map((d) => [d.taxpayerId, d]));
 
@@ -208,6 +213,8 @@ export class EvrakOtomasyonController {
           telefonSayisi: this.evrakMesaj.telefonlar(m).length,
           evrakGeldiIsaretli: !!d?.evraklarGeldi,
           sonHatirlatma: d?.evrakTalepSonGonderimAt ?? null,
+          onayKuyrukta: !!d?.evrakGeldiMesajBekliyor,
+          onayGonderimi: d?.evrakGeldiMesajGonderimAt ?? null,
           hatirlatmaGider: talep.uygun,
           hatirlatmaEngeli: talep.sebep ?? null,
           onayGider: geldi.uygun,
