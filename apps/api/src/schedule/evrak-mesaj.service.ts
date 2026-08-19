@@ -332,11 +332,13 @@ export class EvrakMesajService {
           `Sebep: ${sebep}\n` +
           `──────────\n${metin}`;
 
-      let ok = false;
+      // Numara BASINA sonuc: iz kaydi her numara icin ayri yazilir.
+      const sonuclar: Array<{ no: string; basarili: boolean }> = [];
       for (const n of numaralar) {
-        if (await this.whatsapp.sendMessage(n, govde, tenantId)) ok = true;
+        sonuclar.push({ no: n, basarili: await this.whatsapp.sendMessage(n, govde, tenantId) });
       }
-      await this.izYaz({ tenantId, taxpayer, tur, donem, metin, test: true, basarili: ok, hedefler: numaralar, sebep });
+      const ok = sonuclar.some((x) => x.basarili);
+      await this.izYaz({ tenantId, taxpayer, tur, donem, metin, test: true, hedefler: sonuclar, sebep });
       // Başarısızlıkta sebep DOLU dönmeli: çağıran "geçici engel mi" kararını
       // buna bakarak veriyor; boş kalırsa kayıt beklemeye alınmıyordu.
       return ok ? { gonderildi: true, test: true } : { gonderildi: false, test: true, atlandi: 'WhatsApp gönderimi başarısız' };
@@ -346,18 +348,12 @@ export class EvrakMesajService {
     const hedefler = this.telefonlar(taxpayer);
     if (!hedefler.length) return { gonderildi: false, test: false, atlandi: 'telefon yok' };
 
-    let ok = false;
-    const ulasan: string[] = [];
+    const sonuclar: Array<{ no: string; basarili: boolean }> = [];
     for (const n of hedefler) {
-      if (await this.whatsapp.sendMessage(n, metin, tenantId)) {
-        ok = true;
-        ulasan.push(n);
-      }
+      sonuclar.push({ no: n, basarili: await this.whatsapp.sendMessage(n, metin, tenantId) });
     }
-    await this.izYaz({
-      tenantId, taxpayer, tur, donem, metin,
-      test: false, basarili: ok, hedefler: ok ? ulasan : hedefler, sebep,
-    });
+    const ok = sonuclar.some((x) => x.basarili);
+    await this.izYaz({ tenantId, taxpayer, tur, donem, metin, test: false, hedefler: sonuclar, sebep });
     return ok ? { gonderildi: true, test: false } : { gonderildi: false, test: false, atlandi: 'WhatsApp gönderimi başarısız' };
   }
 
@@ -370,26 +366,47 @@ export class EvrakMesajService {
    */
   private async izYaz(o: {
     tenantId: string; taxpayer: any; tur: 'TALEP' | 'GELDI'; donem: string;
-    metin: string; test: boolean; basarili: boolean; hedefler: string[]; sebep: string;
+    metin: string; test: boolean; hedefler: Array<{ no: string; basarili: boolean }>; sebep: string;
   }) {
     try {
       const tur = o.tur === 'TALEP' ? 'Evrak hatırlatma' : 'Evrak geldi bilgisi';
-      const durum = o.basarili ? 'Gönderildi' : 'Başarısız';
-      // İÇERİK = GÖNDERİLEN METNİN AYNISI. Teşhis bilgisi (hedef numara,
-      // sebep) bir süre metnin ALTINA ekleniyordu; Mesaj Merkezi ekranı bu
-      // kaydı gösterdiği için "gönderilen" ile "görünen" ayrışıyor, mükellefe
-      // gitmeyen satırlar gitmiş gibi duruyordu. Teşhis artık başlıkta.
-      await this.prisma.communicationLog.create({
-        data: {
-          taxpayerId: o.taxpayer.id,
-          channel: 'WHATSAPP',
-          subject:
-            `${o.test ? '[TEST] ' : ''}${tur} — ${o.donem} — ${durum}` +
-            ` · Hedef: ${o.hedefler.join(', ') || '(yok)'} · ${o.sebep}`,
-          content: this.telefonBasligi(o.metin, o.hedefler[0]),
-          occurredAt: new Date(),
-        },
-      });
+
+      // HER NUMARAYA AYRI KAYIT.
+      //
+      // Önce gönderim başına TEK kayıt yazılıyordu ve o kayıt yalnız İLK
+      // numarayla damgalanıyordu. Konuşmalar bu damgaya göre gruplandığı için
+      // (conversationId = taxpayerId__wa__numara), iki numarası olan mükellefte
+      // mesaj İKİSİNE DE gittiği hâlde ekranda tek konuşma görünüyordu —
+      // ikinci numaraya giden mesajın izi hiçbir yerde yoktu.
+      if (!o.hedefler.length) {
+        await this.prisma.communicationLog.create({
+          data: {
+            taxpayerId: o.taxpayer.id,
+            channel: 'WHATSAPP',
+            subject: `${o.test ? '[TEST] ' : ''}${tur} — ${o.donem} — Başarısız · Hedef: (yok) · ${o.sebep}`,
+            content: o.metin,
+            occurredAt: new Date(),
+          },
+        });
+        return;
+      }
+
+      for (const h of o.hedefler) {
+        await this.prisma.communicationLog.create({
+          data: {
+            taxpayerId: o.taxpayer.id,
+            channel: 'WHATSAPP',
+            subject:
+              `${o.test ? '[TEST] ' : ''}${tur} — ${o.donem} — ` +
+              `${h.basarili ? 'Gönderildi' : 'Başarısız'} · Hedef: ${h.no} · ${o.sebep}`,
+            // İÇERİK = GÖNDERİLEN METNİN AYNISI. Teşhis bilgisi bir süre metnin
+            // ALTINA ekleniyordu; Mesaj Merkezi ekranı bu kaydı gösterdiği için
+            // "gönderilen" ile "görünen" ayrışıyordu. Teşhis artık başlıkta.
+            content: this.telefonBasligi(o.metin, h.no),
+            occurredAt: new Date(),
+          },
+        });
+      }
     } catch (err: any) {
       this.logger.warn(`[EvrakMesaj] CommunicationLog yazılamadı: ${err?.message}`);
     }

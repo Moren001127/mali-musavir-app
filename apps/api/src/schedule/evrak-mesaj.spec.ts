@@ -522,3 +522,63 @@ describe('evrak mesajı — onay bekleme süresi', () => {
     }
   });
 });
+
+describe('evrak mesajı — her numaraya AYRI kayıt', () => {
+  const eski = process.env.MOREN_EVRAK_CANLI;
+  afterEach(() => {
+    if (eski === undefined) delete process.env.MOREN_EVRAK_CANLI;
+    else process.env.MOREN_EVRAK_CANLI = eski;
+  });
+
+  /**
+   * Gönderim başına TEK kayıt yazılıyordu ve o kayıt yalnız İLK numarayla
+   * damgalanıyordu. Konuşmalar bu damgaya göre gruplandığı için, iki numaralı
+   * mükellefte mesaj İKİSİNE DE gittiği hâlde ekranda tek konuşma görünüyordu.
+   */
+  it('iki numaraya gönderim İKİ kayıt açar, her biri kendi numarasıyla damgalı', async () => {
+    process.env.MOREN_EVRAK_CANLI = '1';
+    const izler: any[] = [];
+    const whatsapp = { isAutomationActive: async () => true, sendMessage: async () => true };
+    const prisma = { communicationLog: { create: async (a: any) => { izler.push(a.data); return {}; } } };
+    const servis = new EvrakMesajService(prisma as any, whatsapp as any);
+
+    await servis.gonder({
+      tenantId: 't1',
+      taxpayer: { id: 'x', companyName: 'DENEME LTD', phones: ['0533 923 36 74', '0507 927 08 70'] },
+      metin: 'Metin',
+      tur: 'TALEP', donem: 'Temmuz 2026', sebep: 'test', mesaiYokSay: true,
+    });
+
+    expect(izler).toHaveLength(2);
+    // Her kayıt KENDİ numarasının damgasını taşır — konuşma ayrımı buna bağlı
+    expect(izler[0].content).toContain('[[wa_phone:905339233674]]');
+    expect(izler[1].content).toContain('[[wa_phone:905079270870]]');
+    // Başlıkta da tek hedef görünür, ikisi bir arada değil
+    expect(izler[0].subject).toContain('Hedef: 0533 923 36 74');
+    expect(izler[1].subject).toContain('Hedef: 0507 927 08 70');
+  });
+
+  it('numara başına başarı durumu ayrı yazılır', async () => {
+    process.env.MOREN_EVRAK_CANLI = '1';
+    const izler: any[] = [];
+    let cagri = 0;
+    const whatsapp = {
+      isAutomationActive: async () => true,
+      // İlk numara başarılı, ikincisi başarısız
+      sendMessage: async () => { cagri++; return cagri === 1; },
+    };
+    const prisma = { communicationLog: { create: async (a: any) => { izler.push(a.data); return {}; } } };
+    const servis = new EvrakMesajService(prisma as any, whatsapp as any);
+
+    const r = await servis.gonder({
+      tenantId: 't1',
+      taxpayer: { id: 'x', companyName: 'DENEME LTD', phones: ['05339233674', '05079270870'] },
+      metin: 'Metin',
+      tur: 'GELDI', donem: 'Temmuz 2026', sebep: 'test', mesaiYokSay: true,
+    });
+
+    expect(r.gonderildi).toBe(true); // en az biri gitti
+    expect(izler[0].subject).toContain('Gönderildi');
+    expect(izler[1].subject).toContain('Başarısız');
+  });
+});
