@@ -2804,7 +2804,11 @@ function InlineBelge({ id }: { id: string }) {
             : isXml
               ? <iframe ref={frameRef} onLoad={onFrameLoad} className="bpframe-h" src={blobUrl || url} title="Belge" scrolling="no" style={{ zoom: appliedScale } as any} />
               : isPdf
-                ? <iframe className="bppdf" src={url.includes('#') ? url : `${url}#view=FitH`} title="Belge" />
+                // PDF: tarayıcının kendi görüntüleyici çerçevesi (üst araç çubuğu + sol küçük-resim
+                //   paneli) alanın yarısını yiyip faturayı küçültüyordu. toolbar=0&navpanes=0 ile
+                //   yalnız BELGE kalır; view=FitH genişliğe sığdırır. (Kullanıcı: "sadece fatura
+                //   sığacak şekilde görülsün".) Zaten '#' taşıyan URL'e dokunulmaz.
+                ? <iframe className="bppdf" src={url.includes('#') ? url : `${url}#toolbar=0&navpanes=0&statusbar=0&view=FitH`} title="Belge" />
                 : <div className="bpempty">Belge görüntüsü yok</div>}
       </div>
     </div>
