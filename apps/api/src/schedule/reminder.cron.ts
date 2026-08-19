@@ -139,10 +139,16 @@ export class ReminderCron {
    */
   onModuleInit() {
     this.eventBus.on('Taxpayer.EvrakDurumuChanged', async (p: any) => {
-      // Yalnız "geldi" tarafı; işaret geri alınınca mesaj atılmaz
-      if (p?.newValue !== true) return;
       try {
-        await this.evrakGeldiBildir(p.tenantId, p.taxpayerId, p.year, p.month);
+        if (p?.newValue === true) {
+          await this.evrakGeldiBildir(p.tenantId, p.taxpayerId, p.year, p.month);
+        } else if (p?.newValue === false) {
+          // İŞARET GERİ ALINDI. Mesaj atılmaz; ama dönemin onay durumu
+          // SIFIRLANMALI. Aksi hâlde yanlışlıkla işaretleyip geri alındığında
+          // "gönderildi" damgası kalıyor ve evrak GERÇEKTEN geldiğinde tekrar
+          // işaretlense onay mesajı bir daha hiç gitmiyordu.
+          await this.evrakGeldiGeriAl(p.taxpayerId, p.year, p.month);
+        }
       } catch (err: any) {
         this.logger.error(`[EvrakGeldi] Hata: ${err?.message}`);
       }
@@ -208,6 +214,31 @@ export class ReminderCron {
     const ozet = { bekleyen: bekleyenler.length, gonderilen, atlanan };
     this.logger.log(`[EvrakGeldi] Bekleyen taraması: ${JSON.stringify(ozet)}`);
     return ozet;
+  }
+
+  /**
+   * "Evrak geldi" işareti geri alındığında dönemin onay durumunu sıfırlar.
+   *
+   * İki damgayı da temizler:
+   *  - bekliyor  → kuyrukta bekleyen mesaj varsa iptal olur (zaten 09:00
+   *    taraması `evraklarGeldi=true` de aradığı için gitmezdi, ama bayat
+   *    bayrak bırakmanın anlamı yok)
+   *  - gönderimAt → evrak gerçekten geldiğinde tekrar işaretlenince onay
+   *    mesajı yeniden gönderilebilsin
+   *
+   * updateMany kullanılıyor: kayıt yoksa OLUŞTURULMAZ. upsert olsaydı, hiç
+   * durum kaydı olmayan mükellef için boş satır açardı.
+   */
+  private async evrakGeldiGeriAl(taxpayerId: string, yil: number, ay: number) {
+    const r = await this.prisma.taxpayerMonthlyStatus.updateMany({
+      where: { taxpayerId, year: yil, month: ay },
+      data: { evrakGeldiMesajBekliyor: false, evrakGeldiMesajGonderimAt: null },
+    });
+    if (r.count) {
+      this.logger.log(
+        `[EvrakGeldi] İşaret geri alındı — ${yil}-${ay} onay durumu sıfırlandı (${r.count} kayıt).`,
+      );
+    }
   }
 
   /** Tek mükellef için "evraklarınız ulaştı" bilgilendirmesi */
