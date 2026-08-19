@@ -1263,8 +1263,12 @@ model TaxpayerMonthlyStatus {
   evrakTalepSonGonderimAt   DateTime?
   /// Bu dönem için kaç hatırlatma gitti (izleme)
   evrakTalepGonderimSayisi  Int       @default(0)
-  /// "Evrak geldi" mesai dışında işaretlendi, ilk mesai saatinde gönderilecek
+  /// "Evrak geldi" mesaji kuyrukta — bekleme suresi dolunca gonderilir
   evrakGeldiMesajBekliyor   Boolean   @default(false)
+  /// Kuyruga alindigi an. Bekleme suresi (yanlis isareti fark etme payi)
+  /// bu andan itibaren sayilir. updatedAt kullanilamaz: baska bir alan
+  /// guncellenince sifirlanir ve mesaj surekli ertelenirdi.
+  evrakGeldiMesajKuyrukAt   DateTime?
   /// "Evrak geldi" onayı gönderildi — dolu ise TEKRAR gönderilmez
   evrakGeldiMesajGonderimAt DateTime?
 

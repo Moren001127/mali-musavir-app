@@ -147,6 +147,21 @@ export class EvrakMesajService {
     if (ms > 0) await new Promise((r) => setTimeout(r, ms));
   }
 
+  /**
+   * ONAY MESAJI BEKLEME SÜRESİ (dakika).
+   *
+   * "Evrak geldi" işaretlenince mesaj ANINDA gidiyordu; yanlış işaretleme fark
+   * edilse bile iş işten geçmiş oluyordu. Artık işaretleme kuyruğa alınır ve bu
+   * süre dolunca gönderilir — süre içinde işaret kaldırılırsa mesaj HİÇ gitmez.
+   * MOREN_EVRAK_ONAY_BEKLEME_DK ile ayarlanır; 0 anında gönderim demektir.
+   */
+  onayBeklemeDk(): number {
+    const ham = process.env.MOREN_EVRAK_ONAY_BEKLEME_DK;
+    if (ham === undefined || ham === '') return 5;
+    const n = Number(ham);
+    return Number.isFinite(n) && n >= 0 ? n : 5;
+  }
+
   /** Test mesajlarının gideceği numaralar (ofis sahibi). */
   private testNumaralari(): string[] {
     return String(

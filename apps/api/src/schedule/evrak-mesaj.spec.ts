@@ -487,3 +487,38 @@ describe('evrak mesajı — iz kaydı gönderilenin AYNISI olmalı', () => {
     expect(izler[0].subject).toContain('teşhis bilgisi');
   });
 });
+
+describe('evrak mesajı — onay bekleme süresi', () => {
+  const s = servisKur();
+  const eski = process.env.MOREN_EVRAK_ONAY_BEKLEME_DK;
+  afterEach(() => {
+    if (eski === undefined) delete process.env.MOREN_EVRAK_ONAY_BEKLEME_DK;
+    else process.env.MOREN_EVRAK_ONAY_BEKLEME_DK = eski;
+  });
+
+  /**
+   * Kullanıcı kararı 2026-08-20: işaretleme ile mesaj arasına pay konsun ki
+   * yanlış işaretleme fark edilip geri alınabilsin.
+   */
+  it('varsayılan 5 dakika', () => {
+    delete process.env.MOREN_EVRAK_ONAY_BEKLEME_DK;
+    expect(s.onayBeklemeDk()).toBe(5);
+  });
+
+  it('env ile ayarlanabilir', () => {
+    process.env.MOREN_EVRAK_ONAY_BEKLEME_DK = '2';
+    expect(s.onayBeklemeDk()).toBe(2);
+  });
+
+  it('0 = anında gönderim', () => {
+    process.env.MOREN_EVRAK_ONAY_BEKLEME_DK = '0';
+    expect(s.onayBeklemeDk()).toBe(0);
+  });
+
+  it('bozuk/negatif değer varsayılana döner — kazayla anında gönderime düşmesin', () => {
+    for (const v of ['abc', '-3', 'iki']) {
+      process.env.MOREN_EVRAK_ONAY_BEKLEME_DK = v;
+      expect(s.onayBeklemeDk()).toBe(5);
+    }
+  });
+});

@@ -55,6 +55,7 @@ export class EvrakOtomasyonController {
       proaktifSalter: this.evrakMesaj.proaktifAcikMi(),
       mesaiIcinde: this.evrakMesaj.mesaiIcindeMi(),
       resmiTatil: this.evrakMesaj.resmiTatilMi(),
+      onayBeklemeDk: this.evrakMesaj.onayBeklemeDk(),
       testNumarasiTanimli: !!(
         process.env.MOREN_OWNER_WHATSAPP_PHONES || process.env.MOREN_OWNER_WHATSAPP_PHONE
       ),
@@ -190,7 +191,7 @@ export class EvrakOtomasyonController {
         taxpayerId: true, evraklarGeldi: true, evrakTalepSonGonderimAt: true,
         // Onay mesaji kuyrukta mi / gonderildi mi — mesai disi isaretlemenin
         // gercekten beklemeye alindigini gormeden 09:00'i beklemek gerekiyordu.
-        evrakGeldiMesajBekliyor: true, evrakGeldiMesajGonderimAt: true,
+        evrakGeldiMesajBekliyor: true, evrakGeldiMesajKuyrukAt: true, evrakGeldiMesajGonderimAt: true,
       },
     });
     const durumHarita = new Map(durumlar.map((d) => [d.taxpayerId, d]));
@@ -214,6 +215,7 @@ export class EvrakOtomasyonController {
           evrakGeldiIsaretli: !!d?.evraklarGeldi,
           sonHatirlatma: d?.evrakTalepSonGonderimAt ?? null,
           onayKuyrukta: !!d?.evrakGeldiMesajBekliyor,
+          onayKuyrukAt: d?.evrakGeldiMesajKuyrukAt ?? null,
           onayGonderimi: d?.evrakGeldiMesajGonderimAt ?? null,
           hatirlatmaGider: talep.uygun,
           hatirlatmaEngeli: talep.sebep ?? null,

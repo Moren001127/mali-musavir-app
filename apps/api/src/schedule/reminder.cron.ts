@@ -141,7 +141,9 @@ export class ReminderCron {
     this.eventBus.on('Taxpayer.EvrakDurumuChanged', async (p: any) => {
       try {
         if (p?.newValue === true) {
-          await this.evrakGeldiBildir(p.tenantId, p.taxpayerId, p.year, p.month);
+          // ANINDA GÖNDERME. Kuyruğa alınır; bekleme süresi dolunca tarama
+          // gönderir. Yanlış işaretleme o süre içinde geri alınabilsin diye.
+          await this.evrakGeldiKuyrukla(p.tenantId, p.taxpayerId, p.year, p.month);
         } else if (p?.newValue === false) {
           // İŞARET GERİ ALINDI. Mesaj atılmaz; ama dönemin onay durumu
           // SIFIRLANMALI. Aksi hâlde yanlışlıkla işaretleyip geri alındığında
@@ -156,12 +158,17 @@ export class ReminderCron {
   }
 
   /**
-   * BEKLEYEN ONAYLAR — her iş günü 09:00 TR.
+   * BEKLEYEN ONAYLAR — mesai boyunca iki dakikada bir (Pzt–Cum 09:00–16:58).
    *
-   * Cumartesi/gece işaretlenen evrakların onayı burada gönderilir. Kullanıcının
-   * tarifi: "Cumartesi işaretledim → Pazartesi sabah 09:00'da gitsin."
+   * İki işi birden yapar:
+   *  1. Bekleme süresi dolan işaretlemelerin mesajını gönderir.
+   *  2. Mesai dışında/hafta sonu işaretlenenleri ilk iş günü sabahı gönderir
+   *     (kullanıcının tarifi: "Cumartesi işaretledim → Pazartesi 09:00").
+   *
+   * Günde bir kez 09:00'da çalışıyordu; bekleme süresi eklenince gün içi
+   * işaretlemeler ertesi güne kalırdı.
    */
-  @Cron('0 9 * * 1-5', { timeZone: 'Europe/Istanbul' })
+  @Cron('*/2 9-16 * * 1-5', { timeZone: 'Europe/Istanbul' })
   async bekleyenEvrakGeldiOnaylari() {
     return this.evrakGeldiBekleyenleriGonder();
   }
@@ -194,11 +201,17 @@ export class ReminderCron {
     // HEPSİNDE — mesai dışı, tatil, şalter kapalı, köprü kopuk). Geçmiş
     // kayıtlarda bu bayrak hiç yoktur, dolayısıyla toplu geçmiş gönderimi
     // yapısal olarak imkânsız.
+    // BEKLEME SÜRESİ: kuyruğa alınalı yeterince olmuş kayıtlar. Süre dolmadan
+    // işaret kaldırılırsa kayıt kuyruktan çıkar ve mesaj hiç gitmez.
+    const kesim = new Date(Date.now() - this.evrakMesaj.onayBeklemeDk() * 60_000);
     const bekleyenler = await this.prisma.taxpayerMonthlyStatus.findMany({
       where: {
         evrakGeldiMesajBekliyor: true,
         evraklarGeldi: true,
         evrakGeldiMesajGonderimAt: null,
+        // kuyrukAt boş olanlar eski kayıtlar (alan sonradan eklendi) — onları
+        // bekletmenin anlamı yok, süresi dolmuş say.
+        OR: [{ evrakGeldiMesajKuyrukAt: null }, { evrakGeldiMesajKuyrukAt: { lte: kesim } }],
         ...(opts.tenantId ? { tenantId: opts.tenantId } : {}),
       },
       take: 500,
@@ -212,7 +225,8 @@ export class ReminderCron {
       else atlanan++;
     }
     const ozet = { bekleyen: bekleyenler.length, gonderilen, atlanan };
-    this.logger.log(`[EvrakGeldi] Bekleyen taraması: ${JSON.stringify(ozet)}`);
+    // İki dakikada bir çalışıyor; boş turlarda log basmak gürültü yapar.
+    if (bekleyenler.length) this.logger.log(`[EvrakGeldi] Bekleyen taraması: ${JSON.stringify(ozet)}`);
     return ozet;
   }
 
@@ -232,13 +246,58 @@ export class ReminderCron {
   private async evrakGeldiGeriAl(taxpayerId: string, yil: number, ay: number) {
     const r = await this.prisma.taxpayerMonthlyStatus.updateMany({
       where: { taxpayerId, year: yil, month: ay },
-      data: { evrakGeldiMesajBekliyor: false, evrakGeldiMesajGonderimAt: null },
+      data: {
+        evrakGeldiMesajBekliyor: false,
+        evrakGeldiMesajKuyrukAt: null,
+        evrakGeldiMesajGonderimAt: null,
+      },
     });
     if (r.count) {
       this.logger.log(
         `[EvrakGeldi] İşaret geri alındı — ${yil}-${ay} onay durumu sıfırlandı (${r.count} kayıt).`,
       );
     }
+  }
+
+  /**
+   * "Evrak geldi" işaretlendi — mesajı KUYRUĞA alır, göndermez.
+   *
+   * Kullanıcı kararı (2026-08-20): işaretleme ile mesaj arasına bir pay
+   * konsun ki yanlış işaretleme fark edilip geri alınabilsin. Bekleme
+   * `setTimeout` ile YAPILMAZ: sunucu her dağıtımda yeniden başlıyor,
+   * bellekteki zamanlayıcı kaybolur ve mesaj sessizce düşerdi. Kuyruk
+   * veritabanında; tarama süresi dolanları gönderir.
+   *
+   * Uygunluk BURADA da kontrol edilir: hiç gönderilemeyecek kayıt kuyruğa
+   * girip her taramada boşuna denenmesin.
+   */
+  private async evrakGeldiKuyrukla(tenantId: string, taxpayerId: string, yil: number, ay: number) {
+    if (!this.evrakMesaj.proaktifAcikMi()) return;
+
+    const t = await this.prisma.taxpayer.findFirst({
+      where: { id: taxpayerId, tenantId, AND: this.takipPenceresi(yil, ay) },
+    });
+    if (!t) return;
+    const uygun = this.evrakMesaj.uygunMu(t, 'GELDI');
+    if (!uygun.uygun) {
+      this.logger.log(`[EvrakGeldi] Kuyruğa alınmadı — ${this.evrakMesaj.ad(t)}: ${uygun.sebep}`);
+      return;
+    }
+
+    const durum = await this.durumBul(taxpayerId, yil, ay);
+    // Bu dönem için onay zaten gitmişse tekrar kuyruğa alma.
+    if (durum?.evrakGeldiMesajGonderimAt) return;
+    // Zaten kuyruktaysa süreyi SIFIRLAMA — aksi hâlde her dokunuşta mesaj ertelenir.
+    if (durum?.evrakGeldiMesajBekliyor && durum?.evrakGeldiMesajKuyrukAt) return;
+
+    await this.durumDamgala(tenantId, taxpayerId, yil, ay, {
+      evrakGeldiMesajBekliyor: true,
+      evrakGeldiMesajKuyrukAt: new Date(),
+    });
+    this.logger.log(
+      `[EvrakGeldi] Kuyruğa alındı — ${this.evrakMesaj.ad(t)} · ` +
+      `${this.evrakMesaj.onayBeklemeDk()} dk sonra gönderilecek (bu sürede işaret kaldırılırsa gitmez).`,
+    );
   }
 
   /** Tek mükellef için "evraklarınız ulaştı" bilgilendirmesi */
@@ -307,6 +366,7 @@ export class ReminderCron {
       if (sonuc.gonderildi && !sonuc.test) {
         await this.durumDamgala(tenantId, taxpayerId, yil, ay, {
           evrakGeldiMesajBekliyor: false,
+          evrakGeldiMesajKuyrukAt: null,
           evrakGeldiMesajGonderimAt: new Date(),
         });
       } else if (!sonuc.gonderildi && !this.kaliciRet(sonuc.atlandi)) {
