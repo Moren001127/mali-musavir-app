@@ -117,8 +117,22 @@ EXCEPTION WHEN undefined_object THEN NULL; END $$;
 DO $$ BEGIN
   ALTER TABLE "earsiv_faturalar" DROP CONSTRAINT IF EXISTS "earsiv_faturalar_tenantId_taxpayerId_tip_faturaNo_key";
 EXCEPTION WHEN undefined_object THEN NULL; END $$;
-CREATE UNIQUE INDEX IF NOT EXISTS "earsiv_faturalar_tenant_taxpayer_tip_kaynak_no_key"
-  ON "earsiv_faturalar"("tenantId", "taxpayerId", "tip", "belgeKaynak", "faturaNo");
+-- 🔴 SATICI VKN ANAHTARA DAHİL (canlı bulgu 2026-08-20): GİB belge numarası KÜRESEL BENZERSİZ
+--   DEĞİL — farklı satıcılar aynı numarayı kullanabiliyor (YORGUN NAKLİYAT Temmuz: GIB2026000000063
+--   hem ALİ AKÇAY hem MEHMET ÖZBEK'te). Satıcısız anahtar ikinci faturayı P2002 ile REDDEDİYOR:
+--   ZIP'te 41 fatura geldi, 36'sı kaydedilebildi, 5'i "mükerrer" sanılıp düştü.
+-- ⚠️ BU BETİK HER AÇILIŞTA ÇALIŞIR: eski satırı bırakırsan migration ile düşürülen indeksi GERİ
+--   GETİRİR ve düzeltme sessizce geri alınır (bir kez başımıza geldi). Şema ile AYNI kalmalı.
+DO $$ BEGIN
+  ALTER TABLE "earsiv_faturalar" DROP CONSTRAINT IF EXISTS "earsiv_faturalar_tenant_taxpayer_tip_kaynak_no_key";
+EXCEPTION WHEN undefined_object THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER TABLE "earsiv_faturalar" DROP CONSTRAINT IF EXISTS "earsiv_faturalar_tenantId_taxpayerId_tip_belgeKaynak_faturaNo_k";
+EXCEPTION WHEN undefined_object THEN NULL; END $$;
+DROP INDEX IF EXISTS "earsiv_faturalar_tenant_taxpayer_tip_kaynak_no_key";
+DROP INDEX IF EXISTS "earsiv_faturalar_tenantId_taxpayerId_tip_belgeKaynak_faturaNo_k";
+CREATE UNIQUE INDEX IF NOT EXISTS "earsiv_faturalar_tenant_taxpayer_tip_kaynak_no_satici_key"
+  ON "earsiv_faturalar"("tenantId", "taxpayerId", "tip", "belgeKaynak", "faturaNo", "saticiVergiNo");
 
 CREATE INDEX IF NOT EXISTS "earsiv_faturalar_mihsap_status_idx"
   ON "earsiv_faturalar"("mihsapUploadStatus");
