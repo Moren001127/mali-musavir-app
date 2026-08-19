@@ -4,6 +4,38 @@ import { getEFaturaAdapter, SUPPORTED_PROVIDERS } from './efatura-adapter.factor
 import { EFaturaCredentials } from './efatura-adapter.interface';
 import { tryDecrypt } from '../common/crypto';
 
+/** Sağlayıcıların ünvan yerine koyduğu anlamsız değerler (Paraşüt giden faturada "Mükellef" yazıyor). */
+function isPlaceholderTitle(value: any): boolean {
+  const text = String(value || '').trim();
+  if (!text) return true;
+  if (/^[0-9]{10,11}$/.test(text)) return true;                 // ünvan yerine VKN/TCKN
+  return /^(m[üu]kellef|firma|al[ıi]c[ıi]|sat[ıi]c[ıi]|-|bilinmiyor)$/i.test(text);
+}
+
+/**
+ * UBL-TR faturasından taraf ünvanını çıkarır.
+ *   which='CUSTOMER' → AccountingCustomerParty (alıcı) · 'SUPPLIER' → AccountingSupplierParty (satıcı)
+ * Öncelik: PartyName/Name → PartyLegalEntity/RegistrationName → Person(FirstName+FamilyName).
+ * Ad alanı ön ek (cac:/cbc:) taşıyabilir ya da taşımayabilir → ön ek opsiyonel eşleşir.
+ */
+function partyTitleFromUbl(xml: any, which: 'CUSTOMER' | 'SUPPLIER'): string | null {
+  const text = String(xml || '');
+  if (!text || text.length < 40) return null;
+  const tag = which === 'CUSTOMER' ? 'AccountingCustomerParty' : 'AccountingSupplierParty';
+  const blockRe = new RegExp(`<(?:\\w+:)?${tag}[\\s\\S]*?</(?:\\w+:)?${tag}>`, 'i');
+  const block = text.match(blockRe)?.[0];
+  if (!block) return null;
+  const pick = (re: RegExp) => block.match(re)?.[1]?.replace(/\s+/g, ' ').trim() || '';
+  const name =
+    pick(/<(?:\w+:)?PartyName>[\s\S]*?<(?:\w+:)?Name>([\s\S]*?)<\/(?:\w+:)?Name>/i) ||
+    pick(/<(?:\w+:)?RegistrationName>([\s\S]*?)<\/(?:\w+:)?RegistrationName>/i) ||
+    [
+      pick(/<(?:\w+:)?FirstName>([\s\S]*?)<\/(?:\w+:)?FirstName>/i),
+      pick(/<(?:\w+:)?FamilyName>([\s\S]*?)<\/(?:\w+:)?FamilyName>/i),
+    ].filter(Boolean).join(' ').trim();
+  return name && !isPlaceholderTitle(name) ? name : null;
+}
+
 @Injectable()
 export class EFaturaSyncService {
   private readonly logger = new Logger(EFaturaSyncService.name);
@@ -260,10 +292,19 @@ export class EFaturaSyncService {
       .map((row: any) => {
         const linkedDocId = row.documentId && existingDocIds.has(String(row.documentId)) ? String(row.documentId) : null;
         const hasAccountingDocument = !!linkedDocId;
+        // KARŞI TARAF ÜNVANI (kullanıcı bulgusu 2026-08-20: "ünvan kısmında vergi numarası görünüyor"):
+        //   efatura_inbox'ta ALICI ünvanı için kolon YOK (yalnız senderTitle var) ve GİDEN faturada
+        //   senderTitle mükellefin kendisidir ("Mükellef" yer tutucusu) → ekran alıcı adını bulamayıp
+        //   VKN'ye düşüyordu. Ad aslında UBL XML'in içinde duruyor; okuyup döndürüyoruz. Şema
+        //   değişikliği/migrasyon GEREKMEZ, mevcut kayıtlarda da anında düzelir.
+        const receiverTitle = row.receiverTitle || partyTitleFromUbl(row.ublXmlRaw, 'CUSTOMER');
+        const senderTitle = isPlaceholderTitle(row.senderTitle)
+          ? (partyTitleFromUbl(row.ublXmlRaw, 'SUPPLIER') || row.senderTitle)
+          : row.senderTitle;
         if (staleIds.has(row.id) || missingOriginalDocument(row)) {
-          return { ...row, documentId: null, isTransferred: false, processedAt: null, hasAccountingDocument: false };
+          return { ...row, senderTitle, receiverTitle, documentId: null, isTransferred: false, processedAt: null, hasAccountingDocument: false };
         }
-        return { ...row, documentId: linkedDocId || null, isTransferred: hasAccountingDocument, hasAccountingDocument };
+        return { ...row, senderTitle, receiverTitle, documentId: linkedDocId || null, isTransferred: hasAccountingDocument, hasAccountingDocument };
       });
   }
 

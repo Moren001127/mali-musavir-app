@@ -2350,7 +2350,12 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
               <tbody>
                 {efaturaRows.map((r) => {
                   const raw = r.rawJson || {};
-                  const title = efaturaDirection === 'OUT' ? (raw.receiverTitle || raw.alici || r.receiverVkn) : (r.senderTitle || raw.senderTitle || raw.satici);
+                  // Karşı taraf ünvanı: artık backend UBL'den çözüp r.receiverTitle/r.senderTitle olarak
+                  //   döndürüyor (giden faturada alıcı adı için kolon yoktu → VKN görünüyordu). Sunucudan
+                  //   geleni ÖNCE dene, eskisi yedek kalsın.
+                  const title = efaturaDirection === 'OUT'
+                    ? (r.receiverTitle || raw.receiverTitle || raw.alici || r.receiverVkn)
+                    : (r.senderTitle || raw.senderTitle || raw.satici);
                   const taxNo = efaturaDirection === 'OUT' ? (r.receiverVkn || raw.receiverVkn || raw.aliciVergiNo) : (r.senderVkn || raw.senderVkn || raw.saticiVergiNo);
                   const approval = raw.onayDurumu || raw.approvalStatus || raw.status || raw.invoiceStatus || '—';
                   const transferred = efaturaIsTransferred(r);
