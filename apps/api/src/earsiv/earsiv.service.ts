@@ -450,9 +450,19 @@ export class EarsivService {
         const ettnKey = (f.ettn || '').trim();
         const noKey = (f.faturaNo || '').trim();
         const noKullanilabilir = !!noKey && !/^(BILINMIYOR|NaN)$/i.test(noKey);
+        // 🔴 SATICI AYIRIMI (canlı bulgu 2026-08-20): GİB belge numarası KÜRESEL BENZERSİZ DEĞİL —
+        //   farklı satıcılar aynı numarayı kullanabiliyor (YORGUN NAKLİYAT Temmuz: GIB2026000000083
+        //   hem FEDAT AYDOĞDU hem EFE NAKLİYAT'ta). Eski kod faturaNo eşleşmesini TEK BAŞINA yeterli
+        //   sayıp ikinci faturayı "zaten var" diye eliyordu → Luca'da 30, portalda 25 fatura.
+        //   YENİ KURAL: ETTN varsa YALNIZ ona bak (gerçekten benzersiz). ETTN yoksa faturaNo'ya
+        //   bakılır ama SATICI VKN'si de tutmalı; satıcı bilinmiyorsa numara eşleşmesi tek başına
+        //   yeterli sayılır (eski davranış — bozuk/boş numaralı belgeleri çoğaltmamak için).
+        const saticiKey = String((f as any).saticiVergiNo || '').replace(/\D/g, '');
         const orKeys: any[] = [];
         if (ettnKey) orKeys.push({ ettn: ettnKey });
-        if (noKullanilabilir) orKeys.push({ faturaNo: noKey });
+        if (noKullanilabilir) {
+          orKeys.push(saticiKey ? { faturaNo: noKey, saticiVergiNo: saticiKey } : { faturaNo: noKey });
+        }
         // Ne ETTN ne geçerli faturaNo varsa: KAYBETMEKTENSE yeni kabul et (existing=null).
         const existing = orKeys.length
           ? await (this.prisma as any).earsivFatura.findFirst({

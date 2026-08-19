@@ -2809,7 +2809,12 @@ model EarsivFatura {
 
   taxpayer Taxpayer @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
 
-  @@unique([tenantId, taxpayerId, tip, belgeKaynak, faturaNo])
+  // 🔴 SATICI VKN ANAHTARA DAHİL (canlı bulgu 2026-08-20 — YORGUN NAKLİYAT Temmuz: Luca'da 30,
+  //   portalda 25 fatura). GİB belge numarası KÜRESEL BENZERSİZ DEĞİLDİR; farklı satıcılar aynı
+  //   numarayı kullanabilir (ör. GIB2026000000083 hem FEDAT AYDOĞDU hem EFE NAKLİYAT'ta). Eski
+  //   anahtar satıcıyı içermediği için ikinci fatura "aynı kayıt" sanılıp SESSİZCE ELENİYORDU —
+  //   hangisinin kalacağı da geliş sırasına bağlı, rastgeleydi. 5 çift = 5 kayıp fatura.
+  @@unique([tenantId, taxpayerId, tip, belgeKaynak, faturaNo, saticiVergiNo])
   @@index([tenantId, taxpayerId, donem, tip, belgeKaynak])
   @@index([tenantId, faturaTarihi])
   @@index([fetchJobId])
