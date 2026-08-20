@@ -4257,7 +4257,16 @@ function ScreenFaturaKes({ taxpayerId, taxpayers }: { taxpayerId: string; taxpay
     onError: (e: any) => toast.error(e?.response?.data?.message || 'İptal edilemedi'),
   });
 
-  const inp: any = { padding: '9px 11px', border: '1px solid #e7e5e4', borderRadius: 8, fontSize: 14, width: '100%', background: '#fff' };
+  // RENK AÇIKÇA VERİLİR (kullanıcı bulgusu 2026-08-20): tarih ve KDV oranı kutularında
+  //   yazı GÖRÜNMÜYORDU. Düz metin kutuları görünürken <select> ve <input type=date>'in
+  //   TARAYICI-İÇİ metni kayboluyordu — bu iç metin `color`/`-webkit-text-fill-color`
+  //   ile boyanır ve sayfa CSS'i onu eziyordu. Sayfanın kendi tarih alanları (.dmi) da
+  //   rengi zaten açıkça tanımlıyor; aynısını burada da yapıyoruz.
+  const inp: any = {
+    padding: '9px 11px', border: '1px solid #e7e5e4', borderRadius: 8, fontSize: 14,
+    width: '100%', background: '#fff', color: '#1c1917', WebkitTextFillColor: '#1c1917',
+    fontFamily: 'inherit', appearance: 'auto', WebkitAppearance: 'auto', opacity: 1,
+  };
   const lbl: any = { fontSize: 11, letterSpacing: '.08em', color: '#78716c', fontWeight: 600, marginBottom: 5, display: 'block' };
 
   return (
