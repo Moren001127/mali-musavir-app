@@ -53,7 +53,7 @@
   // ne DOM değişimi oluyor → "bitti" sinyali hiç gelmiyordu (PERİHAN ŞAHİN: tıklama
   // öncesi de sonrası da 18 satır). Artık 30sn boyunca ekran hiç değişmediyse sorgu
   // bitmiş sayılır. Ayrıca teşhis için ekrandaki durum metni loglanır.
-  const AGENT_VERSION = '1.47.20';
+  const AGENT_VERSION = '1.47.21';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -5355,6 +5355,58 @@
         throw new Error('faturalari-getir-btn bulunamadı');
       }
       await log(`⏳ Belgeleri Getir tıklandı, sonuçlar bekleniyor (${etiket})…`);
+
+      // ─── TETIKLEME DOGRULAMA (2026-08-20) ───
+      // GERCEK VAKA: AYHAN BOZOGLU — portaldan sorgulaninca 1 fatura, Luca'da elle
+      // sorgulaninca 2 fatura. Ekranda INDIR penceresi DOGRU TARIHLERLE acik kaliyor,
+      // "Belgeleri Getir" DOM tiklamasi hicbir sey yapmiyor: GIB sorgusu hic baslamiyor,
+      // Islem Takip penceresi acilmiyor. Ajan da ekranda ZATEN duran eski listeyi indirip
+      // "hepsi mukerrer" diyor — disaridan "yeni fatura yok" gibi gorunuyor.
+      // COZUM: 3 saniye icinde hicbir belirti yoksa (aktivite yok VE pencere hala acik)
+      // modalin KENDI penceresinde gonder('indir') DOGRUDAN cagrilir. Indirme adimi
+      // (gonder('zip-window')/gonder('zip')) zaten bu yolla sorunsuz calisiyor.
+      try {
+        await sleep(3000);
+        const __modalHalaAcik = (() => {
+          try {
+            const el = datePair && datePair.t1;
+            if (!el) return false;
+            if (el.offsetParent !== null) return true;
+            const r = el.getBoundingClientRect && el.getBoundingClientRect();
+            return !!(r && r.width > 0 && r.height > 0);
+          } catch { return false; }
+        })();
+        const __aktiviteVar = getAgentActivityCount() > activityBeforeClick;
+        if (!__aktiviteVar && __modalHalaAcik) {
+          const __modalWin = (datePair && datePair.doc && datePair.doc.defaultView) || null;
+          let __ikinciDeneme = false;
+          try {
+            if (__modalWin && typeof __modalWin.gonder === 'function') {
+              await log(`⚠ ${etiket}: "Belgeleri Getir" tıklaması sonuç vermedi — pencere hâlâ açık, GİB sorgusu başlamadı. Modal penceresinde gonder('indir') DOĞRUDAN çağrılıyor…`);
+              __modalWin.gonder('indir');
+              __ikinciDeneme = true;
+            }
+          } catch (e2) {
+            await log(`⚠ ${etiket}: gonder('indir') hata: ${String(e2 && e2.message || e2).slice(0, 90)}`);
+          }
+          if (!__ikinciDeneme) {
+            // Son care: butonu yeniden bul ve GORUNUR olani tikla.
+            try {
+              const __btn2 = findGetirButtonEverywhere(datePair && datePair.doc);
+              if (__btn2) {
+                await log(`⚠ ${etiket}: "Belgeleri Getir" yeniden tıklanıyor (${describeEbelgeElementForLog(__btn2)})`);
+                clickEbelgeActionElement(__btn2);
+                __ikinciDeneme = true;
+              }
+            } catch {}
+          }
+          if (!__ikinciDeneme) {
+            await log(`🔴 ${etiket}: GİB sorgusu BAŞLATILAMADI — "Belgeleri Getir" tetiklenemedi. Bu çalışmanın "fatura yok" sonucuna GÜVENMEYİN.`);
+          }
+        }
+      } catch (e) {
+        await log(`⚠ ${etiket}: tetikleme doğrulaması hata: ${String(e && e.message || e).slice(0, 90)}`);
+      }
 
       // İşlem Takip popup'ı açılır, GİB sorgu yapar.
       // Çok fatura varsa bu 60-90sn sürebilir (örn 333 belge → her biri ayrı GİB sorgusu).
