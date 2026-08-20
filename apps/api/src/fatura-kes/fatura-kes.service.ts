@@ -375,8 +375,24 @@ export class FaturaKesService {
       const context = await browser.newContext();
       const page = await context.newPage();
       await page.setContent(html, { waitUntil: 'networkidle' });
+      // TEK SAYFA (kullanici bulgusu 2026-08-20: "fatura onizlemesi 2. sayfaya kaymis").
+      //   GIB belgesinde bir suru bos tablo satiri var; sabit A4 bunu ikiye boluyordu.
+      //   Sayfayi ICERIGE gore boyutlandiriyoruz -> belge tek parca kaliyor (telefonda da rahat).
+      //   Asiri uzun icerikte (bozuk HTML vb.) A4'e geri donulur.
+      const olcu = await page.evaluate(() => ({
+        w: Math.ceil(document.documentElement.scrollWidth),
+        h: Math.ceil(document.documentElement.scrollHeight),
+      })).catch(() => null as any);
+      const tekSayfa = olcu && olcu.w > 200 && olcu.h > 200 && olcu.h < 6000;
       const pdf = Buffer.from(
-        await page.pdf({ format: 'A4', landscape: true, margin: { top: '8mm', right: '8mm', bottom: '8mm', left: '8mm' }, printBackground: true }),
+        tekSayfa
+          ? await page.pdf({
+              width: `${olcu.w + 40}px`,
+              height: `${olcu.h + 40}px`,
+              margin: { top: '20px', right: '20px', bottom: '20px', left: '20px' },
+              printBackground: true,
+            })
+          : await page.pdf({ format: 'A4', landscape: true, margin: { top: '8mm', right: '8mm', bottom: '8mm', left: '8mm' }, printBackground: true }),
       );
       const kim = String(draft.aliciUnvan || '').replace(/[^\p{L}\p{N} .-]/gu, '').slice(0, 40).trim() || 'fatura';
       const ad = `${gercek ? (draft.faturaNo || 'fatura') : 'onizleme'} - ${kim}.pdf`;
