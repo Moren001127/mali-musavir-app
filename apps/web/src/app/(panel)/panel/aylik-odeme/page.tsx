@@ -111,8 +111,33 @@ export default function AylikOdemePage() {
     queryKey: ['aylik-odeme-eksik', month],
     queryFn: () => api.get('/aylik-odeme/eksikler', { params: { month } }).then((r) => r.data),
   });
-  const eksikler: Array<{ taxpayerId: string; unvan: string; kaynak: string; sebep: string }> =
-    eksikData?.eksik || [];
+  interface EksikSatiri {
+    taxpayerId: string;
+    unvan: string;
+    kaynak: string;
+    sebep: string;
+    beyanTipi?: string;
+    donem?: string;
+    listedeVar: boolean;
+  }
+  const eksikler: EksikSatiri[] = eksikData?.eksik || [];
+
+  // "Listede görünmeyen" başlığı altında listede OLAN mükellefi göstermek
+  // yanlıştı; iki grup ayrıldı ve sayılar dürüst hâle geldi.
+  const listeDisi = useMemo(() => eksikler.filter((e) => !e.listedeVar), [eksikler]);
+  const listedeAmaEksik = useMemo(() => eksikler.filter((e) => e.listedeVar), [eksikler]);
+
+  /** Sebep metnini beyanname adı + dönemle birlikte okunur hâle getirir */
+  const eksikMetni = (e: EksikSatiri): string => {
+    const ad = e.beyanTipi
+      ? (BEYAN_ETIKETLER as Record<string, string>)[e.beyanTipi] || e.beyanTipi
+      : null;
+    const donem = e.donem ? donemAdi(e.donem) : null;
+    if (ad && donem) return `${ad} (${donem}) — ${e.sebep}`;
+    if (ad) return `${ad} — ${e.sebep}`;
+    if (donem) return `${donem} — ${e.sebep}`;
+    return e.sebep;
+  };
 
   const rows = data || [];
   const active = useMemo(
@@ -170,15 +195,20 @@ export default function AylikOdemePage() {
         </div>
       </header>
 
-      {/* LİSTEDE NEDEN YOK — kapalı başlar, sayı görünür kalır */}
-      {eksikler.length > 0 && (
+      {/* LİSTEDE NEDEN YOK — iki ayrı grup, kapalı başlar */}
+      {(listeDisi.length > 0 || listedeAmaEksik.length > 0) && (
         <div className="rounded-2xl border" style={{ borderColor: 'rgba(251,191,36,0.24)', background: 'rgba(251,191,36,0.045)' }}>
           <button
             onClick={() => setEksikAcik((v) => !v)}
             className="flex w-full items-center justify-between gap-3 px-5 py-3.5 text-left"
           >
-            <span className="text-[13px] font-semibold" style={{ color: '#fbbf24' }}>
-              Listede görünmeyen {eksikler.length} mükellef — sebepleriyle
+            <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] font-semibold" style={{ color: '#fbbf24' }}>
+              <span>Listede görünmeyen {new Set(listeDisi.map((e) => e.taxpayerId)).size} mükellef</span>
+              {listedeAmaEksik.length > 0 && (
+                <span className="text-[12px] font-medium" style={{ color: MUTED }}>
+                  · listede olup eksiği olan {new Set(listedeAmaEksik.map((e) => e.taxpayerId)).size}
+                </span>
+              )}
             </span>
             <ChevronDown
               size={16}
@@ -186,23 +216,37 @@ export default function AylikOdemePage() {
             />
           </button>
           {eksikAcik && (
-            <div className="max-h-[320px] overflow-y-auto border-t px-5 py-3" style={{ borderColor: 'rgba(251,191,36,0.18)' }}>
-              {eksikler.map((e, i) => (
-                <div key={`${e.taxpayerId}-${i}`} className="flex items-start justify-between gap-4 py-1.5 text-[12.5px]">
-                  <span className="min-w-0 flex-1 truncate text-white">{e.unvan}</span>
-                  <span
-                    className="flex-shrink-0 rounded px-1.5 py-0.5 text-[9.5px] font-bold uppercase"
-                    style={
-                      e.kaynak === 'SGK'
-                        ? { background: 'rgba(140,189,232,0.12)', color: '#8cbde8' }
-                        : { background: 'rgba(212,184,118,0.12)', color: GOLD }
-                    }
-                  >
-                    {e.kaynak === 'SGK' ? 'SGK' : 'Vergi'}
-                  </span>
-                  <span className="flex-shrink-0 text-right" style={{ color: MUTED }}>{e.sebep}</span>
-                </div>
-              ))}
+            <div className="max-h-[420px] overflow-y-auto border-t px-5 py-3" style={{ borderColor: 'rgba(251,191,36,0.18)' }}>
+              {([
+                ['Listede hiç yok', listeDisi],
+                ['Listede var, ama eksiği var', listedeAmaEksik],
+              ] as Array<[string, EksikSatiri[]]>).map(([baslik, grup]) =>
+                grup.length === 0 ? null : (
+                  <div key={baslik} className="mb-3 last:mb-0">
+                    <div className="mb-1.5 text-[10.5px] font-bold uppercase tracking-wider" style={{ color: MUTED }}>
+                      {baslik} ({grup.length} kalem)
+                    </div>
+                    {grup.map((e, i) => (
+                      <div key={`${e.taxpayerId}-${i}`} className="flex items-start gap-3 py-1.5 text-[12.5px]">
+                        <span className="min-w-0 flex-1 truncate text-white" title={e.unvan}>{e.unvan}</span>
+                        <span
+                          className="flex-shrink-0 rounded px-1.5 py-0.5 text-[9.5px] font-bold uppercase"
+                          style={
+                            e.kaynak === 'SGK'
+                              ? { background: 'rgba(140,189,232,0.12)', color: '#8cbde8' }
+                              : { background: 'rgba(212,184,118,0.12)', color: GOLD }
+                          }
+                        >
+                          {e.kaynak === 'SGK' ? 'SGK' : 'Vergi'}
+                        </span>
+                        <span className="w-[300px] flex-shrink-0 text-right" style={{ color: MUTED }}>
+                          {eksikMetni(e)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ),
+              )}
             </div>
           )}
         </div>

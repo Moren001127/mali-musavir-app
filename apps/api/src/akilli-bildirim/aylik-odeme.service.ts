@@ -6,6 +6,7 @@ import { EmailService } from '../email/email.service';
 import { calculateBeyannameDeadline } from '../schedule/beyanname-deadline.util';
 import { DEFAULT_SENDER } from './akilli-bildirim.service';
 import { ShortLinkService } from './short-link.controller';
+import { BeyannameTakipService } from '../beyanname-takip/beyanname-takip.service';
 import { mergePdfBuffers } from './pdf-merge.util';
 import { randomUUID } from 'crypto';
 
@@ -50,7 +51,48 @@ export class AylikOdemeService {
     private readonly whatsapp: WhatsAppService,
     private readonly email: EmailService,
     private readonly shortLink: ShortLinkService,
+    // "Bu mükellef bu dönem şu beyannameleri vermeli" hesabı TEK YERDE durur.
+    // Mantığı kopyalamak yerine sahibini çağırıyoruz — repoda bu mantığın
+    // sapmış bir kopyası zaten var (tool-executor.service.ts) ve ikisi
+    // birbirini tutmuyor.
+    private readonly beyannameTakip: BeyannameTakipService,
   ) {}
+
+  /**
+   * AYLIK TAKİP LİSTESİ ÜYELİĞİ — dört koşul.
+   * `reminder.cron.ts:52-60` (takipPenceresi) ile birebir aynı kural; orası
+   * private olduğu için buraya aynı koşullar yazıldı.
+   *
+   * İŞİ BIRAKMIŞ mükellefi eleyen alan `endDate`'tir, `isActive` DEĞİL.
+   * endDate dolu olsa bile kayıt aktif kalabilir. Bu yüzden ikisi de şart:
+   * `isActive` elle pasifleştirilenleri, `endDate` işi bırakanları eler.
+   *
+   * Pencere ÖDEME AYINA değil, TAKİP EDİLEN DÖNEME kurulur (Ağustos listesi
+   * Temmuz dönemini takip eder). Temmuz'da işi bırakan mükellef Temmuz
+   * beyannamesini/primini yine ödeyecektir — listede KALMALI.
+   */
+  private async takipUyeleri(tenantId: string, donemIlkGun: Date, donemSonGun: Date) {
+    const uyeler = await (this.prisma as any).taxpayer.findMany({
+      where: {
+        tenantId,
+        isActive: true,
+        AND: [
+          { OR: [{ startDate: null }, { startDate: { lte: donemSonGun } }] },
+          { OR: [{ endDate: null }, { endDate: { gte: donemIlkGun } }] },
+          // WHATSAPP-* kayıtlar gerçek mükellef değil, sanal sohbet kaydı
+          { NOT: { taxNumber: { startsWith: 'WHATSAPP-' } } },
+        ],
+      },
+      select: { id: true, companyName: true, firstName: true, lastName: true },
+      orderBy: [{ companyName: 'asc' }, { firstName: 'asc' }],
+    });
+    return new Map<string, string>(
+      uyeler.map((t: any) => [
+        t.id,
+        t.companyName || `${t.firstName || ''} ${t.lastName || ''}`.trim() || t.id,
+      ]),
+    );
+  }
 
   /**
    * month: ÖDEME AYI ('YYYY-MM'). Tahakkuklar bir önceki DÖNEME aittir
@@ -145,22 +187,34 @@ export class AylikOdemeService {
   /**
    * LİSTEDE NEDEN YOK — ödeme listesine girmeyen mükellefler ve sebepleri.
    *
-   * Kullanıcı tespiti: "bazı mükelleflerde SGK tahakkuku olmasına rağmen
-   * onları bu ödeme listesine dahil etmiyor." Ölçüm, elemenin çoğunlukla
-   * yanlış olmadığını gösterdi: o mükelleflerin O DÖNEME AİT SGK BELGESİ
-   * HENÜZ YOK. Ama liste bunu söylemiyordu — mükellef listede yoksa sebebi
-   * hiçbir yerde görünmüyordu, hata mı eksik mi ayırt edilemiyordu.
+   * İKİ KURAL:
+   *  1. AYLIK TAKİP LİSTESİNDE OLMAYAN MÜKELLEF BURAYA YAZILMAZ. Önceki hâli
+   *     hiç süzmüyordu; işi bırakmış mükellefin ESKİ SGK fişi yüzünden o
+   *     mükellef her ay "eksik" olarak görünüyordu. Kök neden şuydu: geçmiş
+   *     SGK taraması DÖNEM SINIRSIZDI — kapanmış mükellefin yıllar önceki
+   *     fişi bile "bu dönem fişi yok" satırı üretiyordu.
+   *  2. Sadece SGK değil, VERİLMEMİŞ BEYANNAMELER de yazılır. Verilmemiş
+   *     beyannamenin tahakkuku da olmaz, dolayısıyla ödeme listesine de
+   *     yansımaz — kullanıcının göremediği ikinci grup buydu.
    *
-   * Burası yalnız OKUR ve `list()`'i hiç değiştirmez; mesaj şablonu da
-   * etkilenmez (kullanıcı talimatı: mesaja dokunma).
+   * Beklenen beyanname listesi BeyannameTakipService'ten gelir. O servis
+   * mükellefin dönem tercihlerini (TaxpayerBeyanConfig), vergi döneminde
+   * aktif olup olmadığını, 3 aylık/yıllık takvimi ve "SGK tahakkuk fişi
+   * geldiyse bildirge verilmiş sayılır" kuralını zaten uyguluyor.
+   *
+   * Yalnız OKUR. `list()` ve `composeMessage` etkilenmez.
    */
   async eksikler(tenantId: string, month: string) {
     const [my, mm] = month.split('-').map(Number);
     const prev = new Date(my, mm - 2, 1);
     const donem = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}`;
     const sgkPeriod = donem.replace('-', '/');
+    const donemIlkGun = new Date(prev.getFullYear(), prev.getMonth(), 1);
+    const donemSonGun = new Date(prev.getFullYear(), prev.getMonth() + 1, 0, 23, 59, 59);
 
-    const [sgkDocs, gecmisSgk, beyanlar] = await Promise.all([
+    const uyeAdi = await this.takipUyeleri(tenantId, donemIlkGun, donemSonGun);
+
+    const [sgkDocs, beyanTutarsiz, beyanDetay, listeSatirlari] = await Promise.all([
       // Bu döneme ait SGK fişleri — tutarı okunamayanları görmek için
       (this.prisma as any).portalDocument.findMany({
         where: {
@@ -168,78 +222,103 @@ export class AylikOdemeService {
           belgeTuru: 'SGK_TAHAKKUK',
           OR: [{ period: sgkPeriod }, { period: donem }],
         },
-        select: { taxpayerId: true, raw: true, title: true, taxpayer: { select: { companyName: true, firstName: true, lastName: true } } },
+        select: { taxpayerId: true, raw: true },
         take: 5000,
       }),
-      // Daha önce SGK fişi gelmiş mükellefler — bu dönem hiç yoksa "belge
-      // çekilmemiş" demektir; sisteme hiç SGK'sı olmayan mükellef karışmasın
-      (this.prisma as any).portalDocument.findMany({
-        where: { tenantId, belgeTuru: 'SGK_TAHAKKUK' },
-        select: { taxpayerId: true, period: true, taxpayer: { select: { companyName: true, firstName: true, lastName: true } } },
-        orderBy: { createdAt: 'desc' },
-        take: 5000,
-      }),
-      // Beyanname kaydı var ama tahakkuk tutarı okunmamış olanlar
+      // Beyanname kaydı var ama tahakkuk tutarı okunmamış → satır üretilemiyor
       (this.prisma as any).beyanKaydi.findMany({
         where: { tenantId, donem, tahakkukTutari: null },
-        select: { taxpayerId: true, beyanTipi: true, taxpayer: { select: { companyName: true, firstName: true, lastName: true } } },
+        select: { taxpayerId: true, beyanTipi: true },
         take: 5000,
       }),
+      // `month` = VERİLME ayı. Ödeme ayı ile aynıdır (Ağustos'ta Temmuz
+      // beyannamesi verilir ve ödenir).
+      this.beyannameTakip.listDonemDetay(tenantId, month, 'VERILME'),
+      // Mükellef listede zaten var mı — "listede görünmeyen" başlığı
+      // altında listede OLAN mükellefi göstermemek için
+      this.list(tenantId, month),
     ]);
 
-    const ad = (t: any, id: string) =>
-      t?.companyName || `${t?.firstName || ''} ${t?.lastName || ''}`.trim() || id;
+    const listedeVar = new Set<string>(listeSatirlari.map((r: any) => r.taxpayerId));
+    const eksik: Array<{
+      taxpayerId: string;
+      unvan: string;
+      kaynak: 'VERGI' | 'SGK';
+      sebep: string;
+      beyanTipi?: string;
+      donem?: string;
+      listedeVar: boolean;
+    }> = [];
+    const gorulen = new Set<string>();
 
-    const eksik: Array<{ taxpayerId: string; unvan: string; kaynak: 'VERGI' | 'SGK'; sebep: string }> = [];
+    const ekle = (
+      taxpayerId: string,
+      kaynak: 'VERGI' | 'SGK',
+      sebep: string,
+      ek?: { beyanTipi?: string; donem?: string },
+    ) => {
+      const unvan = uyeAdi.get(taxpayerId);
+      if (!unvan) return; // AYLIK TAKİP LİSTESİ KAPISI — üye değilse yazılmaz
+      const anahtar = `${taxpayerId}|${kaynak}|${ek?.beyanTipi || ''}|${sebep}`;
+      if (gorulen.has(anahtar)) return; // aynı sebep iki kez sayılmasın
+      gorulen.add(anahtar);
+      eksik.push({ taxpayerId, unvan, kaynak, sebep, ...ek, listedeVar: listedeVar.has(taxpayerId) });
+    };
 
     // 1) SGK fişi var ama tutar okunamıyor / sıfır → satır sessizce düşüyordu
     for (const d of sgkDocs) {
       if (!d.taxpayerId) continue;
       if (parseTutar((d.raw as any)?.tutar) != null) continue;
       const ham = (d.raw as any)?.tutar;
-      eksik.push({
-        taxpayerId: d.taxpayerId,
-        unvan: ad(d.taxpayer, d.taxpayerId),
-        kaynak: 'SGK',
-        sebep:
-          ham == null
-            ? 'SGK fişinde tutar alanı yok'
-            : `SGK tahakkuku ${String(ham)} — ödenecek tutar yok`,
-      });
+      ekle(
+        d.taxpayerId,
+        'SGK',
+        ham == null ? 'SGK fişinde tutar alanı yok' : `SGK tahakkuku ${String(ham)} — ödenecek tutar yok`,
+        { donem: sgkPeriod },
+      );
     }
 
-    // 2) Geçmişte SGK'sı olan ama bu döneme ait fişi hiç gelmemiş olanlar
-    const buDonem = new Set<string>(sgkDocs.map((d: any) => d.taxpayerId).filter(Boolean));
-    const gecmiste = new Map<string, string>();
-    for (const d of gecmisSgk) {
-      if (!d.taxpayerId || buDonem.has(d.taxpayerId)) continue;
-      if (!gecmiste.has(d.taxpayerId)) gecmiste.set(d.taxpayerId, ad(d.taxpayer, d.taxpayerId));
-    }
-    for (const [id, unvan] of gecmiste) {
-      eksik.push({
-        taxpayerId: id,
-        unvan,
-        kaynak: 'SGK',
-        sebep: `${sgkPeriod} dönemine ait SGK tahakkuk fişi henüz çekilmemiş`,
-      });
+    // 2) VERİLMEMİŞ BEYANNAMELER — beklenen ama 'kalan' durumda olanlar.
+    //    BILDIRGE burada SGK tarafını da kapsar: o döneme ait SGK tahakkuk
+    //    fişi geldiyse BeyannameTakipService bunu 'onaylandi' sayar, gelmediyse
+    //    'kalan' bırakır. Eski "geçmişte SGK'sı vardı" kuralının yerini bu alır
+    //    ve kapanmış mükellef üretmez.
+    for (const row of beyanDetay as any[]) {
+      for (const b of row.beyanlar || []) {
+        if (b.durum !== 'kalan') continue;
+        ekle(
+          row.taxpayerId,
+          b.beyanTipi === 'BILDIRGE' ? 'SGK' : 'VERGI',
+          b.beyanTipi === 'BILDIRGE'
+            ? 'SGK bildirgesi verilmemiş — tahakkuk fişi de yok'
+            : 'beyanname verilmemiş',
+          { beyanTipi: b.beyanTipi, donem: b.vergiDonem },
+        );
+      }
     }
 
-    // 3) Beyanname var, tahakkuk tutarı okunmamış
-    for (const b of beyanlar) {
+    // 3) Beyanname verilmiş ama tahakkuk tutarı okunmamış
+    for (const b of beyanTutarsiz) {
       if (!b.taxpayerId) continue;
-      eksik.push({
-        taxpayerId: b.taxpayerId,
-        unvan: ad(b.taxpayer, b.taxpayerId),
-        kaynak: 'VERGI',
-        sebep: `${b.beyanTipi} beyannamesi var, tahakkuk tutarı okunmamış`,
-      });
+      ekle(b.taxpayerId, 'VERGI', 'tahakkuk tutarı okunmamış', { beyanTipi: b.beyanTipi, donem });
+    }
+
+    // 4) Mükellefiyet/dönem bilgisi hiç girilmemiş olanlar sessizce kaybolur:
+    //    beklenen beyanname üretilemediği için 2. maddede hiç görünmezler.
+    const detayliIdler = new Set((beyanDetay as any[]).map((r) => r.taxpayerId));
+    for (const [id] of uyeAdi) {
+      if (detayliIdler.has(id)) continue;
+      ekle(id, 'VERGI', 'mükellefiyet/dönem bilgisi girilmemiş — beklenen beyanname üretilemiyor');
     }
 
     return {
       month,
       donem,
       sgkDonemi: sgkPeriod,
-      eksik: eksik.sort((a, b) => a.unvan.localeCompare(b.unvan, 'tr')),
+      takipUyeSayisi: uyeAdi.size,
+      eksik: eksik.sort(
+        (a, b) => a.unvan.localeCompare(b.unvan, 'tr') || a.kaynak.localeCompare(b.kaynak),
+      ),
     };
   }
 
