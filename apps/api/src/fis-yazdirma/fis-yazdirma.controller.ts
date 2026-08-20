@@ -22,8 +22,27 @@ import { FisYazdirmaService } from './fis-yazdirma.service';
 import { memoryStorage } from 'multer';
 import { resolveTenantFromAgentToken as resolveAgentTenant } from '../common/agent-token';
 
+/**
+ * Tek istekte kabul edilen en fazla gorsel sayisi.
+ *
+ * 300'DU VE SESSIZ BIR TAVAN OLUSTURUYORDU: multer 301. dosyada
+ * LIMIT_UNEXPECTED_FILE atip istegi tarayici HALA govdeyi yuklerken
+ * kesiyordu; tarayici yanitı hic goremeyip "Failed to fetch" yaziyordu.
+ * Kullanici 454 fisin neden gecmedigini ekranda anlayamiyordu.
+ *
+ * KANIT (canli veri, 2026-08-20): 300'u asan iki cikti (468 ve 462 fis)
+ * TARAYICIDAN DEGIL, sunucu tarafindaki generateFromInvoices yolundan
+ * uretilmis (pagesPerSheet bos). Tarayici yolundan gelen 56 ciktinin
+ * en buyugu 292 fis — tam sinirin altinda.
+ *
+ * Not: bu sayiyi degistirirsen web tarafindaki FIS_MAX_GORSEL sabitini de
+ * guncelle (apps/web/.../fis-yazdirma/page.tsx) — orasi kullaniciyi
+ * yuklemeden ONCE uyariyor.
+ */
+export const FIS_MAX_GORSEL = 1000;
+
 const imageInterceptor = () =>
-  FilesInterceptor('images', 300, {
+  FilesInterceptor('images', FIS_MAX_GORSEL, {
     storage: memoryStorage(),
     limits: { fileSize: 15 * 1024 * 1024 },
     fileFilter: (_req, file, cb) => {

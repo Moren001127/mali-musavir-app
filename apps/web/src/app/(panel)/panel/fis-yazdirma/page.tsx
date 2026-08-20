@@ -53,6 +53,14 @@ interface ScanResponse {
 /* ─── Yardımcı ──────────────────────────────────────────────── */
 const API = API_BASE;
 
+/**
+ * Tek seferde gonderilebilecek en fazla gorsel — sunucudaki FIS_MAX_GORSEL
+ * (apps/api/src/fis-yazdirma/fis-yazdirma.controller.ts) ile AYNI olmali.
+ * Asilirsa multer istegi govde yuklenirken keser ve tarayici sebebini
+ * goremeden "Failed to fetch" yazar.
+ */
+const FIS_MAX_GORSEL = 1000;
+
 function isoToDisplay(iso: string) {
   if (!iso) return '';
   const [y, m, d] = iso.split('-');
@@ -544,6 +552,15 @@ export default function FisYazdirmaPage() {
       return;
     }
 
+    if (filesNeedOcr.length > FIS_MAX_GORSEL) {
+      setError(
+        `${filesNeedOcr.length} görselin tarihi okunacak. Bu ekran tek seferde en fazla ` +
+        `${FIS_MAX_GORSEL} görsel gönderebilir. Fişleri iki gruba bölün.`,
+      );
+      setStage('error');
+      return;
+    }
+
     // Sadece OCR gereken dosyaları backend'e yolla
     startSimCounter(filesNeedOcr.length);
     const fd = new FormData();
@@ -591,12 +608,25 @@ export default function FisYazdirmaPage() {
   };
 
   /* ── Word Oluştur ── */
+  // Sunucudaki FIS_MAX_GORSEL ile AYNI olmalı (fis-yazdirma.controller.ts).
+  // Aşılırsa multer isteği gövde yüklenirken keser ve tarayıcı sebebini
+  // göremeden "Failed to fetch" yazar — bu yüzden GÖNDERMEDEN ÖNCE bakıyoruz.
+  
   const handleGenerate = async () => {
     if (!scanResult) return;
 
     const missing = scanResult.unread.filter((u) => !allDates[u.filename]);
     if (missing.length > 0) {
       alert(`Lütfen şu ${missing.length} fiş için tarih girin:\n${missing.map((u) => u.filename).join('\n')}`);
+      return;
+    }
+
+    if (files.length > FIS_MAX_GORSEL) {
+      setError(
+        `${files.length} görsel seçili. Bu ekran tek seferde en fazla ${FIS_MAX_GORSEL} görsel ` +
+        `gönderebilir. Fişleri iki gruba bölüp iki ayrı Word oluşturun.`,
+      );
+      setStage('error');
       return;
     }
 
@@ -632,7 +662,15 @@ export default function FisYazdirmaPage() {
       // Arşiv listesini yenile
       loadOutputs();
     } catch (e: any) {
-      setError(e.message ?? 'Word oluşturma hatası');
+      // Ham "Failed to fetch" kullanıcıya hiçbir şey anlatmıyor; bağlantının
+      // koptuğunu söyleyip ne yapacağını yazıyoruz.
+      const ham = String(e?.message || '');
+      setError(
+        /failed to fetch|networkerror|load failed/i.test(ham)
+          ? `Sunucuyla bağlantı koptu (${files.length} görsel gönderilirken). ` +
+            'İnternet bağlantınızı kontrol edip tekrar deneyin; sürerse fişleri iki gruba bölün.'
+          : ham || 'Word oluşturma hatası',
+      );
       setStage('error');
     }
   };
