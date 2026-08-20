@@ -117,5 +117,21 @@ for (const [n, b] of yaziTestleri) ok(`yaziyla(${n}) = ${b}`, yaziyla(n) === b, 
 ok('ublTutar tam sayida ondalik eklemez', ublTutar(68000) === '68000');
 ok('ublTutar kurusu korur', ublTutar(1234.56) === '1234.56');
 
+
+// ---------- 7) ONIZLEMEDE FATURA NUMARASI OLMAMALI ----------
+// KULLANICI KURALI (2026-08-20): "eLogo'da fatura numarasi verildikten sonra fatura iptal
+//   edilemiyor, silinemiyor -> fatura numarasiz onizleme gondermeli."
+//   Bu yuzden onizleme icin uretilen UBL'de GERCEK bir seri numarasi BULUNMAMALI.
+const onizlemeXml = svc.ublOlustur({
+  saticiVkn: '3961368714', saticiUnvan: 'GITO', saticiAdres: 'x', saticiIlce: 'y', saticiIl: 'z',
+  aliciVkn: '7601043666', aliciUnvan: 'SELIM', aliciAdres: 'adres', aliciIlce: 'a', aliciIl: 'b',
+  faturaNo: 'ONIZLEME', faturaTarihi: new Date('2026-08-20T10:00:00'), aciklama: 'TEST',
+  miktar: 1, matrah: 100, kdvOrani: 10, kdvTutari: 10, toplam: 110,
+}, 'AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE');
+const seriKalibi = /<cbc:ID>[A-Z]{3}\d{4}\d{9}<\/cbc:ID>/;
+ok('onizleme UBL icinde GERCEK seri numarasi YOK', !seriKalibi.test(onizlemeXml),
+  'numarali fatura eLogoda iptal edilemez');
+ok('onizlemede fatura no yer tutucu', onizlemeXml.includes('<cbc:ID>ONIZLEME</cbc:ID>'));
+
 if (hata) process.exit(1);
 console.log('[elogo-ubl-regression] OK: UBL bicimi, sozlesme sabitleri ve aritmetik kilitli');

@@ -6,6 +6,7 @@ import { BaileysService } from './baileys.service';
 import { FaturaKesKomutService } from '../fatura-kes/fatura-kes-komut.service';
 import { FaturaKesService } from '../fatura-kes/fatura-kes.service';
 import { FaturaKesGibService } from '../fatura-kes/fatura-kes-gib.service';
+import { ElogoFaturaService } from '../fatura-kes/elogo-fatura.service';
 import { BAILEYS_PROVIDER } from './baileys-auth-store';
 import { AutomationEventBus } from '../automations/automation-event-bus.service';
 import { StorageService } from '../storage/storage.service';
@@ -77,6 +78,7 @@ export class WhatsAppBotController implements OnModuleInit {
     private readonly faturaKomut: FaturaKesKomutService,
     private readonly faturaKes: FaturaKesService,
     private readonly faturaKesGib: FaturaKesGibService,
+    private readonly elogoFatura: ElogoFaturaService,
     // Kişisel Bütçe komutları (owner hattı). forwardRef: ButceModule bu modülü import ediyor.
     @Inject(forwardRef(() => ButceWhatsappService))
     private readonly butceWhatsapp: ButceWhatsappService,
@@ -1129,9 +1131,28 @@ export class WhatsAppBotController implements OnModuleInit {
       const kanal = await this.faturaKes.kanalTespit(ownerTenant.id, sonuc.toplanan.taxpayerId as string)
         .catch(() => null as any);
       if (kanal && kanal.sebep === 'ENTEGRATOR') {
+        // eLOGO: önizlemeyi ENTEGRATÖRÜN KENDİSİ bassın (kullanıcı isteği 2026-08-20:
+        //   "ben e-Logo'dan alınmış önizleme istiyorum, fatura numarası verilmemiş haliyle").
+        //   Fatura numarası BU AŞAMADA ALINMAZ — kullanıcı kuralı: "eLogo'da fatura numarası
+        //   verildikten sonra fatura iptal edilemiyor, silinemiyor".
+        let ek = `Bu mükellef *${kanal.saglayici}* kullanıyor — fatura oradan kesilir.`;
+        if (kanal.saglayici === 'ELOGO') {
+          try {
+            const pv: any = await this.elogoFatura.taslaktanOnizleme(ownerTenant.id, sonuc.taslakId);
+            await (this.prisma as any).salesInvoiceDraft.update({
+              where: { id: sonuc.taslakId },
+              data: { gorselHtml: Buffer.from(pv.icerik).toString('utf8').slice(0, 400_000) },
+            }).catch(() => null);
+            ek = `Önizlemeyi *eLogo* bastı · belge türü *${pv.belgeTuru === 'EARCHIVE' ? 'e-Arşiv' : 'e-Fatura'}*` +
+              `${pv.turNotu ? ` (${pv.turNotu})` : ''}` +
+              `${pv.etiketler?.length > 1 ? `\nAlıcının ${pv.etiketler.length} etiketi var — gönderimde hangisi kullanılacak seçilmeli.` : ''}`;
+          } catch (e: any) {
+            ek = `eLogo önizlemesi alınamadı (${String(e?.message || '').slice(0, 120)}) — aşağıdaki bizim önizlememizdir.`;
+          }
+        }
         await this.faturaKesBelgeGonder(ownerTenant.id, sonuc.taslakId, msg,
-          `${sonuc.ozet}\n\nBu mükellef *${kanal.saglayici}* kullanıyor — fatura oradan kesilir.\n` +
-          `Yukarıdaki *önizlemedir*, hiçbir yere gönderilmedi.`);
+          `${sonuc.ozet}\n\n${ek}\n*Fatura numarası ALINMADI*, hiçbir yere gönderilmedi.\n` +
+          `Onaylarsan numara verilip imzalanacak ve gönderilecek.`);
         return true;
       }
 

@@ -362,8 +362,11 @@ export class FaturaKesService {
       where: { id: draft.taxpayerId, tenantId },
       select: { id: true, companyName: true, firstName: true, lastName: true, taxNumber: true, taxOffice: true, address: true, email: true, phone: true },
     });
-    const gercek = typeof draft.gorselHtml === 'string' && draft.gorselHtml.length > 100;
-    const html = gercek ? draft.gorselHtml : this.onizleme(draft, taxpayer);
+    // "GERÇEK BELGE" = GİB'de/entegratörde OLUŞMUŞ belge. eLogo ÖNİZLEMESİ de gorselHtml'e
+    //   yazılıyor ama o henüz belge DEĞİL — bu yüzden ölçüt DURUM, sadece html'in varlığı değil.
+    const html5 = typeof draft.gorselHtml === 'string' && draft.gorselHtml.length > 100 ? draft.gorselHtml : null;
+    const gercek = !!html5 && (draft.durum === 'GIB_TASLAK' || draft.durum === 'KESILDI');
+    const html = html5 || this.onizleme(draft, taxpayer);
 
     let browser: any;
     try {
@@ -506,13 +509,13 @@ export class FaturaKesService {
         <tr><td style="${hucre};font-weight:700">Özelleştirme No:</td><td style="${hucre}">TR1.2</td></tr>
         <tr><td style="${hucre};font-weight:700">Senaryo:</td><td style="${hucre}">EARSIVFATURA</td></tr>
         <tr><td style="${hucre};font-weight:700">Fatura Tipi:</td><td style="${hucre}">SATIS</td></tr>
-        <tr><td style="${hucre};font-weight:700">Fatura No:</td><td style="${hucre};color:#999">GİB verecek</td></tr>
+        <tr><td style="${hucre};font-weight:700">Fatura No:</td><td style="${hucre};color:#999">— gönderimde verilecek</td></tr>
         <tr><td style="${hucre};font-weight:700">Fatura Tarihi:</td><td style="${hucre}">${esc(tarih)}</td></tr>
       </table>
     </div>
   </div>
   <div style="${cizgi}"></div>
-  <div style="font-size:13px"><b>ETTN:</b> <span style="color:#999">GİB verecek</span></div>
+  <div style="font-size:13px"><b>ETTN:</b> <span style="color:#999">— gönderimde verilecek</span></div>
 
   <table style="width:100%;border-collapse:collapse;margin-top:12px">
     <thead><tr>
@@ -546,7 +549,9 @@ export class FaturaKesService {
   </table>
 
   <div style="margin-top:12px;font-size:12px;color:#b91c1c;font-family:system-ui,sans-serif">
-    Bu bir ÖNİZLEMEDİR — GİB'e gönderilmemiştir. Fatura numarası ve karekod, belge GİB'de oluştuğunda gelir.${
+    Bu bir ÖNİZLEMEDİR — hiçbir yere gönderilmemiştir. <b>Fatura numarası HENÜZ ALINMADI</b>;
+    numara yalnız gerçek gönderim anında verilir (numara verilmiş fatura artık iptal/silme
+    kabul etmez).${
       taxpayer?.address ? '' : '<br/>Satıcı adresi mükellef kartında boş; gerçek faturada GİB kendi kaydından basar.'
     }
   </div>

@@ -36,11 +36,13 @@ import * as JSZip from 'jszip';
  *              Eksikse "BadRequest (DOCUMENTTYPE parametresi eksik ya da geçersiz)".
  *   ✓ ÜRETTİĞİMİZ UBL KABUL EDİLDİ: GetDocumentPreView resultCode=1 "Başarılı" döndü —
  *              yani eLogo zip'i açtı, XML'i çözdü, şemayı kabul etti.
- *   ✗ AÇIK İŞ: outDocument.binaryData.Value BOŞ (nil) geliyor. Görüntüyü hangi parametreyle
- *              ürettiği BİLİNMİYOR. Denendi ve olmadı: DATAFORMAT=PDF, yalnız DOCUMENTTYPE.
- *              TAHMİN YÜRÜTÜLMEDİ — eLogo entegrasyon dokümanından öğrenilmeli
- *              (muhtemelen bir çıktı biçimi ya da xsltUuid parametresi).
- *   ⇒ Bu yüzden kullanıcıya giden önizleme ŞU AN kendi üreticimizle basılıyor.
+ *   ✓ ÖNİZLEME ÇÖZÜLDÜ (eLogo dokümanı, "Belge görsel tasarımını belirleme"):
+ *              paramList'e **UseDefaultXSLT=1** eklenince eLogo belgeyi hesabın ÖN TANIMLI
+ *              tasarımıyla basıyor ve HTML olarak döndürüyor (~66 KB). Eksikken içerik boş
+ *              geliyordu; hangi tasarımla basacağını bilmiyordu.
+ *              (XSLTUUID=... ile belirli bir tasarım da seçilebilir.)
+ *   ✓ CEVAP AYRIŞTIRMA TUZAĞI: içerik <a:binaryData><a:Value>BASE64</a:Value> içindedir.
+ *              binaryData bloğunun TAMAMINI base64 çözünce 66 KB anlamsız ikili veri çıkar.
  */
 
 const VARSAYILAN_SERVIS = 'https://pb.elogo.com.tr/PostBoxService.svc';
@@ -380,6 +382,7 @@ export class ElogoFaturaService {
         <paramList xmlns:b="${NS_ARR}">
           <b:string>DOCUMENTTYPE=${belgeTuru}</b:string>
           <b:string>DATAFORMAT=UBL</b:string>
+          <b:string>UseDefaultXSLT=1</b:string>
         </paramList>
         <document xmlns:d="${NS}">
           <d:binaryData><d:Value>${b64}</d:Value><d:contentType>application/zip</d:contentType></d:binaryData>
@@ -389,7 +392,11 @@ export class ElogoFaturaService {
         </document>
       </GetDocumentPreView>`);
 
-      const donen = this.etiket(xml, 'binaryData');
+      // CEVAP: <outDocument><a:binaryData><a:Value>BASE64</a:Value>...  — Value'yu AL,
+      //   binaryData blogunun TAMAMINI degil. (Ilk yazimda blogu alip base64 cozunce
+      //   66 KB'lik anlamsiz ikili veri cikti; ne zip ne PDF ne metin.)
+      const disBlok = this.etiket(xml, 'binaryData') || '';
+      const donen = (disBlok.match(/<(?:[\w.-]+:)?Value[^>]*>([\s\S]*?)<\/(?:[\w.-]+:)?Value>/) || [])[1] || '';
       if (!donen || donen.trim().length < 100) {
         const hata = this.etiket(xml, 'resultMsg') || this.etiket(xml, 'Text') || this.etiket(xml, 'ErrorMessage') || this.etiket(xml, 'faultstring') || '';
         throw new BadRequestException(
@@ -519,7 +526,24 @@ export class ElogoFaturaService {
       kdvTutari: Number(d.kdvTutari),
       toplam: Number(d.toplam),
     });
-    const { icerik, tur } = await this.onizlemeAl(tenantId, d.taxpayerId, ubl, `${d.faturaNo || 'onizleme'}.xml`, 'EINVOICE');
-    return { icerik, tur, ubl };
+    // BELGE TÜRÜ VKN'DEN TÜRETİLİR (kullanıcı kuralı): alıcı e-Fatura mükellefiyse EINVOICE,
+    //   değilse EARCHIVE. Sorgu başarısız olursa e-Fatura varsayılır ve bu NOT olarak döner —
+    //   sessizce yanlış tür seçilmez.
+    let belgeTuru: 'EINVOICE' | 'EARCHIVE' = 'EINVOICE';
+    let etiketler: string[] = [];
+    let turNotu: string | null = null;
+    try {
+      const sorgu = await this.mukellefSorgu(tenantId, d.taxpayerId, [String(d.aliciVkn)]);
+      const bulunan = sorgu.mukellefler.find((m) => m.vkn === String(d.aliciVkn));
+      if (bulunan) {
+        belgeTuru = bulunan.eFaturaMi ? 'EINVOICE' : 'EARCHIVE';
+        etiketler = bulunan.etiketler;
+      } else turNotu = 'Alıcı GİB listesinde bulunamadı — e-Fatura varsayıldı';
+    } catch (e: any) {
+      turNotu = `Alıcı sorgulanamadı (${e?.message || 'hata'}) — e-Fatura varsayıldı`;
+    }
+
+    const { icerik, tur } = await this.onizlemeAl(tenantId, d.taxpayerId, ubl, `${d.faturaNo || 'onizleme'}.xml`, belgeTuru);
+    return { icerik, tur, ubl, belgeTuru, etiketler, turNotu };
   }
 }
