@@ -14069,6 +14069,33 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           else m = leafOnly(aiMatrahAcc);
           if (m) mKaynak = 'AI';
         }
+        // ─── TEVKİFAT UYUM DENETİMİ (kullanıcı bulgusu 2026-08-20, GÜLŞEN DEMİRCİ) ───
+        // SATIŞTA matrah hesabının "tevkifatlı" olup olmaması, faturanın GERÇEK tevkifat durumuyla
+        // UYUŞMAK ZORUNDA. KDV tarafı bunu zaten doğru yapıyor (tevkifatsız → "391.01.003 HESAPLANAN
+        // KDV %20", tevkifatlı → "391.01.004 HESAPLANAN KDV %20 2/10"). Matrah tarafı ise HAFIZA ya da
+        // AI ne derse onu alıyordu: GÜLŞEN DEMİRCİ Temmuz'da 10 satış faturasının 10'u da
+        // "600.01.003 TEVKİFATLI NAKLİYE GELİRLERİ %20"ye yazılmıştı; oysa 8'i TEVKİFATSIZ'dı
+        // (KDV tam %20, cari = matrah + tam KDV) ve "600.01.004 NAKLİYE GELİRLERİ %20"ye gitmeliydi.
+        // Uyuşmazlıkta öğrenilmiş/AI kodu REDDEDİLİR → aşağıdaki tevkifat-farkında oran seçimi ve
+        // saleMatrahDefault devreye girer (ikisi de tevkPay'e bakar, yani doğru tarafı seçer).
+        // NOT: planda yalnız tek taraf varsa (örn. hiç tevkifatsız 600 yok) fallback yine aynı hesabı
+        // döndürür — kayıp olmaz, sadece kaynak KURAL olur.
+        if (m && isSale && !isReturn && !faDet.is) {
+          const _kod = String((m as any).accountCode || '');
+          if (_kod.startsWith('600')) {
+            const _ad = String((m as any).accountName || '');
+            const _hesapTevkifatli = this.isTevkifatAccountName(_ad); // Turkce 'İ' dahil; X/10 oranini da kapsar
+            const _belgeTevkifatli = tevkPay >= 1;
+            if (_hesapTevkifatli !== _belgeTevkifatli) {
+              this.logger.warn(
+                `[TEVKIFAT-UYUM] ${doc.belgeNo || doc.id}: matrah hesabi "${_kod} ${_ad}" belgenin tevkifat durumuyla uyusmuyor ` +
+                `(belge ${_belgeTevkifatli ? 'TEVKIFATLI' : 'tevkifatsiz'}, hesap ${_hesapTevkifatli ? 'TEVKIFATLI' : 'tevkifatsiz'}) — kod reddedildi, tevkifat-farkinda secim uygulanacak`,
+              );
+              m = null;
+              mKaynak = null;
+            }
+          }
+        }
         // ORAN-bazlı matrah (KDV gibi orana DUYARLI): kategori/600 grubunda adında satırın oranı geçen
         //   leaf'i seç (153.01.001 "%1" / .002 "%10" / .003 "%20"; satışta 600 aynı). Eskiden hep en
         //   genel leaf (153.01.001=%1) atanıyordu → çok-oranlı faturada %10 matrahı da %1 hesabına
