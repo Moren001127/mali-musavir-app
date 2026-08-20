@@ -216,10 +216,20 @@ export class FaturaKesService {
     const where: any = { tenantId };
     if (opts.taxpayerId) where.taxpayerId = opts.taxpayerId;
     if (opts.durum) where.durum = opts.durum;
+    // SUTUN SECIMI ZORUNLU: gorselHtml faturanin GIB'deki tam HTML'i (belge basina ~400 KB'a
+    //   kadar). Select verilmezse 500 satirlik liste yuz megabaytlik veriyi bosuna tasiyor —
+    //   sonuc() zaten bu alani DONDURMUYOR. Yalniz listede gosterilen sutunlar cekilir.
     const rows = await (this.prisma as any).salesInvoiceDraft.findMany({
       where,
       orderBy: { createdAt: 'desc' },
       take: Math.min(Math.max(Number(opts.limit) || 100, 1), 500),
+      select: {
+        id: true, taxpayerId: true, kanal: true, durum: true,
+        aliciVkn: true, aliciUnvan: true, aliciAdres: true, aliciVd: true,
+        faturaTarihi: true, aciklama: true, miktar: true, birim: true,
+        matrah: true, kdvOrani: true, kdvTutari: true, toplam: true,
+        faturaNo: true, ettn: true, hata: true, kaynak: true, createdAt: true,
+      },
     });
     const ids = [...new Set(rows.map((r: any) => r.taxpayerId))];
     const tps = ids.length
