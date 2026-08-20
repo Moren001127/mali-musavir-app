@@ -77,5 +77,28 @@ esit('KDV %0 gecerli', S.eksikSorusu({ ...T, kdvOrani: 0 }), null);
 esit('KDV %18 (artik yok) reddedilir', S.eksikSorusu({ ...T, kdvOrani: 18 }),
   'KDV oranı %18 olamaz. %0, %1, %10 ya da %20 olmalı — hangisi?');
 
+
+// --- CANLI HATA (2026-08-20): bot adresi sordu, kullanici adresi yazdi, bot YINE sordu ---
+//   Sebep: cevap YENI KOMUT sanilip AI'ya veriliyordu; duz adresten fatura alani cikmayinca
+//   ayni soru tekrar ediyordu. Artik sorulan alanin cevabi DOGRUDAN o alana yazilir.
+const eksikAdres = { ...T, aliciAdres: null };
+const sorulan = S.eksikAlan(eksikAdres);
+esit('once adres alani sorulur', sorulan && sorulan.alan, 'aliciAdres');
+const cevap = S.cevabiAlanaYaz('aliciAdres', 'Hastane Mah. Özcan Taşkınbaş Cad. No 16/6 Arnavutköy / İstanbul');
+esit('adres cevabi alana YAZILIR', cevap && cevap.aliciAdres,
+  'Hastane Mah. Özcan Taşkınbaş Cad. No 16/6 Arnavutköy / İstanbul');
+esit('adres yazilinca soru TEKRARLAMAZ', S.eksikSorusu({ ...eksikAdres, ...cevap }), null);
+
+// Sitem cumlesi cevap sayilmaz (yoksa faturaya "yazdim ya" diye adres basilirdi)
+esit('"yazdim ya" adres sayilmaz', S.cevabiAlanaYaz('aliciAdres', 'yazdım ya'), null);
+esit('"zaten soyledim" adres sayilmaz', S.cevabiAlanaYaz('aliciAdres', 'zaten söyledim'), null);
+
+// Diger alanlarin cevaplari
+esit('VKN cevabinda noktalama temizlenir', S.cevabiAlanaYaz('aliciVkn', '3241199696 dir').aliciVkn, '3241199696');
+esit('tutar cevabi TR binlik cozer', S.cevabiAlanaYaz('matrah', '8.000').matrah, 8000);
+esit('tutar cevabi kurus cozer', S.cevabiAlanaYaz('matrah', '1.234,56').matrah, 1234.56);
+esit('KDV cevabi %10 -> 10', S.cevabiAlanaYaz('kdvOrani', '%10').kdvOrani, 10);
+esit('KDV cevabi "10" -> 10', S.cevabiAlanaYaz('kdvOrani', '10').kdvOrani, 10);
+
 if (hata) process.exit(1);
 console.log('[fatura-kes-komut-regression] OK: eksik alan uydurulmuyor, KDV orani varsayilani yok');

@@ -54,7 +54,7 @@ export class FaturaKesKomutService {
    * yazabilir; o yüzden toplanan alanlar numara başına saklanır.
    * Bellekte tutulur ve süre dolunca silinir — kaybolursa bot yeniden sorar, yanlış iş yapmaz.
    */
-  private readonly bekleyen = new Map<string, { alanlar: KomutAlanlari; ts: number }>();
+  private readonly bekleyen = new Map<string, { alanlar: KomutAlanlari; beklenen: string | null; ts: number }>();
   private static readonly BEKLEME_MS = 20 * 60 * 1000;
 
   /**
@@ -191,6 +191,63 @@ export class FaturaKesKomutService {
     }
   }
 
+  /** TR biçimli sayıyı çöz — sunucudaki sayi() ile AYNI kural ("8.000" = sekiz bin). */
+  private static sayiCoz(v: any): number {
+    const ham = String(v || '').trim().replace(/\s|₺|TL/gi, '');
+    if (!ham) return NaN;
+    const s = ham.replace(/^[-+]/, '');
+    const sonVirgul = s.lastIndexOf(',');
+    const sonNokta = s.lastIndexOf('.');
+    let d: string;
+    if (sonVirgul >= 0) d = s.slice(0, sonVirgul).replace(/\D/g, '') + '.' + s.slice(sonVirgul + 1).replace(/\D/g, '');
+    else if (sonNokta >= 0) {
+      const kesir = s.slice(sonNokta + 1);
+      const tekNokta = s.indexOf('.') === sonNokta;
+      d = tekNokta && /^\d{1,2}$/.test(kesir) ? s.slice(0, sonNokta).replace(/\D/g, '') + '.' + kesir : s.replace(/\D/g, '');
+    } else d = s.replace(/\D/g, '');
+    const n = Number(d);
+    return Number.isFinite(n) ? n : NaN;
+  }
+
+  /**
+   * SORDUĞUMUZ ALANIN CEVABINI DOĞRUDAN YAZ — yapay zekâya hiç gitmeden.
+   *
+   * Canlı hata (2026-08-20): "Alıcının adresi nedir?" sorusuna kullanıcı adresi yazdı,
+   * cevap YENİ KOMUT sanılıp AI'ya verildi, düz adresten fatura alanı çıkmayınca aynı soru
+   * tekrar edildi. Sorulan alan biliniyorsa cevabı doğrudan o alana yazmak hem doğru hem ucuz.
+   */
+  static cevabiAlanaYaz(alan: string, metin: string): KomutAlanlari | null {
+    const t = String(metin || '').trim();
+    if (!t) return null;
+    // SİTEM/İTİRAZ cümlesi cevap DEĞİLDİR. Bu eleme olmasa "yazdım ya" gibi bir mesaj
+    //   doğrudan adres alanına yazılır ve faturaya öyle basılırdı.
+    if (/^(yazd[ıi]m|dedim|g[öo]nderdim|s[öo]yledim|verdim|ya|i[şs]te|hani|zaten|olmad[ıi]|anlamad[ıi])/i.test(t)) return null;
+    switch (alan) {
+      case 'aliciVkn': {
+        const rakam = t.replace(/\D/g, '');
+        return rakam ? { aliciVkn: rakam } : null;
+      }
+      case 'matrah': {
+        const n = FaturaKesKomutService.sayiCoz(t);
+        return Number.isFinite(n) ? { matrah: n } : null;
+      }
+      case 'kdvOrani': {
+        const m = t.match(/\d+/);
+        return m ? { kdvOrani: Number(m[0]) } : null;
+      }
+      case 'saticiAdi':
+        return { saticiAdi: t };
+      case 'aliciUnvan':
+        return { aliciUnvan: t };
+      case 'aliciAdres':
+        return { aliciAdres: t };
+      case 'aciklama':
+        return { aciklama: t };
+      default:
+        return null;
+    }
+  }
+
   /** Mükellef adını listeyle eşleştir. Tek aday → seç, çok aday → sor, yok → sor. */
   private mukellefEslestir(ad: string | null | undefined, liste: any[]): { secilen?: any; adaylar: any[] } {
     const aranan = this.norm(ad);
@@ -210,21 +267,38 @@ export class FaturaKesKomutService {
    * EKSİK ALAN DENETİMİ — saf fonksiyon (test edilebilir).
    * Sıra ÖNEMLİ: en belirleyici eksikten başlanır ki bot tek tek doğru soru sorsun.
    */
+  /**
+   * Eksik alanı VE sorusunu birlikte döndürür.
+   *
+   * "Hangi alanı sorduk" bilgisi ŞART (canlı hata 2026-08-20): bot adresi sordu, kullanıcı
+   * adresi yazdı, bot yine adresi sordu. Sebep: gelen cevap YENİ BİR KOMUT sanılıp yapay
+   * zekâya "bundan fatura bilgisi çıkar" diye veriliyordu; düz bir adres metninden fatura
+   * çıkmayınca alan boş kalıyor ve aynı soru tekrar ediyordu.
+   */
+  static eksikAlan(a: KomutAlanlari): { alan: string; soru: string } | null {
+    const s = FaturaKesKomutService.eksikSorusuHam(a);
+    return s;
+  }
+
   static eksikSorusu(a: KomutAlanlari): string | null {
-    if (!a.taxpayerId) return 'Hangi mükelleften keselim?';
-    if (!a.aliciVkn) return 'Alıcının vergi kimlik numarası (ya da TC kimlik numarası) nedir?';
+    return FaturaKesKomutService.eksikSorusuHam(a)?.soru || null;
+  }
+
+  private static eksikSorusuHam(a: KomutAlanlari): { alan: string; soru: string } | null {
+    if (!a.taxpayerId) return { alan: 'saticiAdi', soru: 'Hangi mükelleften keselim?' };
+    if (!a.aliciVkn) return { alan: 'aliciVkn', soru: 'Alıcının vergi kimlik numarası (ya da TC kimlik numarası) nedir?' };
     if (!/^\d{10}$|^\d{11}$/.test(String(a.aliciVkn))) {
-      return `"${a.aliciVkn}" geçerli bir vergi/TC kimlik numarası değil (10 ya da 11 hane olmalı). Doğrusu nedir?`;
+      return { alan: 'aliciVkn', soru: `"${a.aliciVkn}" geçerli bir vergi/TC kimlik numarası değil (10 ya da 11 hane olmalı). Doğrusu nedir?` };
     }
-    if (!a.aliciUnvan || String(a.aliciUnvan).trim().length < 2) return 'Alıcının ünvanı (ya da ad soyadı) nedir?';
+    if (!a.aliciUnvan || String(a.aliciUnvan).trim().length < 2) return { alan: 'aliciUnvan', soru: 'Alıcının ünvanı (ya da ad soyadı) nedir?' };
     // ADRES ZORUNLU (kullanıcı talimatı 2026-08-20: "alıcının adresini sormadı, onu da sorsun mutlaka").
     //   GİB payload'ında bulvarcaddesokak alanına gider; boş gitmesi faturayı eksik bırakır.
-    if (!a.aliciAdres || String(a.aliciAdres).trim().length < 5) return 'Alıcının adresi nedir?';
-    if (!a.aciklama || String(a.aciklama).trim().length < 2) return 'Fatura içeriği ne yazsın?';
-    if (!Number.isFinite(Number(a.matrah)) || Number(a.matrah) <= 0) return 'Tutar (KDV hariç) ne kadar?';
-    if (a.kdvOrani === null || a.kdvOrani === undefined) return 'KDV oranı kaç? (%0, %1, %10, %20)';
+    if (!a.aliciAdres || String(a.aliciAdres).trim().length < 5) return { alan: 'aliciAdres', soru: 'Alıcının adresi nedir?' };
+    if (!a.aciklama || String(a.aciklama).trim().length < 2) return { alan: 'aciklama', soru: 'Fatura içeriği ne yazsın?' };
+    if (!Number.isFinite(Number(a.matrah)) || Number(a.matrah) <= 0) return { alan: 'matrah', soru: 'Tutar (KDV hariç) ne kadar?' };
+    if (a.kdvOrani === null || a.kdvOrani === undefined) return { alan: 'kdvOrani', soru: 'KDV oranı kaç? (%0, %1, %10, %20)' };
     if (!GECERLI_KDV.includes(Number(a.kdvOrani))) {
-      return `KDV oranı %${a.kdvOrani} olamaz. %0, %1, %10 ya da %20 olmalı — hangisi?`;
+      return { alan: 'kdvOrani', soru: `KDV oranı %${a.kdvOrani} olamaz. %0, %1, %10 ya da %20 olmalı — hangisi?` };
     }
     return null;
   }
@@ -259,7 +333,14 @@ export class FaturaKesKomutService {
       select: { id: true, companyName: true, firstName: true, lastName: true, taxNumber: true },
     }).catch(() => [] as any[]);
 
-    const yeni = await this.alanlariCikar(metin, (mukellefler || []).map((t: any) => this.mukellefAdi(t)));
+    // SORDUĞUMUZ ALAN VARSA: gelen mesaj o alanın cevabıdır. Kullanıcı araya YENİ bir
+    //   fatura komutu yazmadıysa yapay zekâya hiç gitmeyiz (döngüyü kıran kısım budur).
+    const beklenenAlan = oncekiKayit?.beklenen || null;
+    let yeni: KomutAlanlari | null = null;
+    if (beklenenAlan && !FaturaKesKomutService.faturaKomutuMu(metin)) {
+      yeni = FaturaKesKomutService.cevabiAlanaYaz(beklenenAlan, metin);
+    }
+    if (!yeni) yeni = await this.alanlariCikar(metin, (mukellefler || []).map((t: any) => this.mukellefAdi(t)));
     if (!yeni && !devam) {
       return { tip: 'SORU', soru: 'Şu an mesajı çözemedim. Kısaca yazar mısın: hangi mükelleften, kime, ne içerik, ne kadar?', toplanan: {} };
     }
@@ -275,7 +356,7 @@ export class FaturaKesKomutService {
       const { secilen, adaylar } = this.mukellefEslestir(a.saticiAdi, mukellefler || []);
       if (secilen) a.taxpayerId = secilen.id;
       else if (adaylar.length > 1) {
-        this.bekleyen.set(kimlik, { alanlar: a, ts: Date.now() });
+        this.bekleyen.set(kimlik, { alanlar: a, beklenen: 'saticiAdi', ts: Date.now() });
         return {
           tip: 'SECIM',
           soru: `"${a.saticiAdi}" birden fazla mükellefe uyuyor. Hangisi?`,
@@ -285,10 +366,10 @@ export class FaturaKesKomutService {
       }
     }
 
-    const soru = FaturaKesKomutService.eksikSorusu(a);
-    if (soru) {
-      this.bekleyen.set(kimlik, { alanlar: a, ts: Date.now() });
-      return { tip: 'SORU', soru, toplanan: a };
+    const eksik = FaturaKesKomutService.eksikAlan(a);
+    if (eksik) {
+      this.bekleyen.set(kimlik, { alanlar: a, beklenen: eksik.alan, ts: Date.now() });
+      return { tip: 'SORU', soru: eksik.soru, toplanan: a };
     }
 
     // Taslak oluştur (yalnız bizde; hiçbir yere gitmez)
