@@ -53,7 +53,7 @@
   // ne DOM değişimi oluyor → "bitti" sinyali hiç gelmiyordu (PERİHAN ŞAHİN: tıklama
   // öncesi de sonrası da 18 satır). Artık 30sn boyunca ekran hiç değişmediyse sorgu
   // bitmiş sayılır. Ayrıca teşhis için ekrandaki durum metni loglanır.
-  const AGENT_VERSION = '1.47.21';
+  const AGENT_VERSION = '1.47.22';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -1876,8 +1876,13 @@
                 try {
                   const t = (doc.body && doc.body.textContent) || '';
                   if (/(ge[çc]ersiz|ba[şs]ar[ıi]s[ıi]z|y[üu]klenemedi|eksik\s+alan|zorunlu\s+alan|hatal[ıi]\s+format|i[şs]lem\s+yap[ıi]lamad)/i.test(t)) hata = true;
-                  const m = t.match(/(i[şs]lem\s+takip[\s\S]{0,120}|\d+\s*hesap[^.!\n]{0,40}|aktar[ıi]ld[ıi][^.!\n]{0,30})/i);
-                  if (m && !sonuc) sonuc = m[0].replace(/\s+/g, ' ').trim().slice(0, 130);
+                  // 2026-08-20: eski desendeki "\d+\s*hesap" ekrandaki hesap planı listesinden
+                  //   "391 HESAPLANAN"ı yakalayıp Luca'nın hata mesajı sanıyordu (GÜLŞEN DEMİRCİ
+                  //   logunda "HATA · 391 HESAPLANAN KDV" — 391 hesabıyla hiçbir ilgisi yoktu,
+                  //   kullanıcı haklı olarak "391'de ne sorun var" diye sordu). Artık YALNIZ
+                  //   gerçek hata/sonuç ifadesi ve çevresi alınır.
+                  const m = t.match(/(ge[çc]ersiz|ba[şs]ar[ıi]s[ıi]z|y[üu]klenemedi|eksik\s+alan|zorunlu\s+alan|hatal[ıi]\s+format|i[şs]lem\s+yap[ıi]lamad|aktar[ıi]ld[ıi])[\s\S]{0,120}/i);
+                  if (m && !sonuc) sonuc = m[0].replace(/\s+/g, ' ').trim().slice(0, 150);
                 } catch {}
               }
               const basari = !hata;
@@ -1896,7 +1901,7 @@
               setStatus(basari ? `Luca: ${cnt} hesap açıldı` : 'Luca: hesap CSV yüklendi');
               await log(basari
                 ? `✅ ${cnt} hesap Luca'da açıldı (Hesap Planı Aktar).`
-                : `✅ Hesap CSV yüklendi + "Yükle" tıklandı. Luca Hesap Planı'ndan teyit et.`);
+                : `⚠ Hesap CSV yüklendi ama ekranda hata izi var — hesap AÇILMAMIŞ olabilir, Luca Hesap Planı'ndan TEYİT ET. (Ekran metni: ${sonuc || 'yok'})`);
             } catch (e) {
               await log(`✗ ACCOUNT_PLAN_PUSH hata: ${(e && e.message) || e}`);
               await fetch(API + `/agent/luca/jobs/${job.id}/fail`, {
@@ -2347,6 +2352,23 @@
               //   takılsa bile en az bir GERÇEK ESC bas (eskiden if(islemTakipAcik()) yanlış false olunca
               //   blok tümden atlanıyor, ESC HİÇ basılmıyordu). Kapanmazsa DUR — açık popup altında
               //   "Fiş Kes" boşa gider ve yalan başarı üretir.
+              // ─── LUCA'NIN GERÇEK MESAJINI YAKALA (2026-08-20, GÜLŞEN DEMİRCİ vakası) ───
+              // Excel yüklendikten sonra Luca bir pencere gösteriyor; ajan onu OKUMADAN ESC ile
+              // kapatıyordu. Fiş oluşmayınca "seçilecek fiş bulunamadı" deyip çıkıyor ve SEBEP
+              // tamamen kayboluyordu (10 satış faturası iki denemede de başarısız, sebebi bilinmiyordu).
+              // Artık pencere metni ÖNCE okunur, loga yazılır ve hata mesajına eklenir.
+              let lucaMesaji = '';
+              try {
+                for (const doc of lucaDocuments()) {
+                  const t = ((doc.body && doc.body.textContent) || '').replace(/\s+/g, ' ').trim();
+                  if (!t) continue;
+                  const takip = t.match(/i[şs]lem\s+takip[\s\S]{0,300}/i);
+                  const uyari = t.match(/(hata|ge[çc]ersiz|ba[şs]ar[ıi]s[ıi]z|eksik|zorunlu|bulunamad[ıi]|y[üu]klenemedi|uygun\s+de[ğg]il|i[şs]lem\s+yap[ıi]lamad)[\s\S]{0,200}/i);
+                  const parca = (takip && takip[0]) || (uyari && uyari[0]) || '';
+                  if (parca && parca.length > lucaMesaji.length) lucaMesaji = parca.slice(0, 300);
+                }
+              } catch {}
+              if (lucaMesaji) await log(`LUCA EKRAN MESAJI: ${lucaMesaji}`);
               await nativePressEscape(1);
               await sleep(700);
               let kapandi = !islemTakipAcik();
@@ -2386,7 +2408,8 @@
               let secim = secimSayi ? 'secim:' + secimSayi : null;
               await log(secim ? `✓ Fiş seçildi (input.secim ${secimSayi} işaretlendi)` : '⚠ Fiş seçimi yapılamadı (.secim yok)');
               if (!secim && !yukleBasladi) {
-                throw new Error('Yükleme doğrulanamadı ve seçilecek fiş bulunamadı — Luca ekranını kontrol et (fiş oluşturulmadı).');
+                throw new Error('Yükleme doğrulanamadı ve seçilecek fiş bulunamadı — Luca ekranını kontrol et (fiş oluşturulmadı).'
+                  + (lucaMesaji ? ` LUCA EKRANINDA YAZAN: "${lucaMesaji}"` : ''));
               }
               await sleep(700);
               // 6c) "Fiş Kes" → deftere yazan GERÇEK fişi oluşturur. SORUN (kullanıcı doğru tespit etti):
