@@ -4211,6 +4211,14 @@ function ScreenFaturaKes({ taxpayerId, taxpayers }: { taxpayerId: string; taxpay
 
   const mukellef = taxpayers.find((t) => t.id === taxpayerId);
 
+  // KANAL: fatura hangi kapıdan kesilecek? Entegratörlü mükellefte GİB'den kesmek belge
+  //   numarasını çakıştırdığı için sunucu engelliyor; kullanıcı bunu ÖNCEDEN görmeli.
+  const kanalQ = useQuery({
+    queryKey: ['fatura-kes', 'kanal', taxpayerId],
+    queryFn: () => api.get('/fatura-kes/kanal', { params: { taxpayerId } }).then((r) => r.data as any),
+    enabled: !!taxpayerId,
+  });
+
   const listQ = useQuery({
     queryKey: ['fatura-kes', 'taslak', taxpayerId],
     queryFn: () => api.get('/fatura-kes/taslak', { params: { taxpayerId: taxpayerId || undefined, limit: 50 } }).then((r) => r.data as any[]),
@@ -4304,9 +4312,20 @@ function ScreenFaturaKes({ taxpayerId, taxpayers }: { taxpayerId: string; taxpay
       {taxpayerId && (
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 320px', gap: 20, alignItems: 'start' }}>
           <div style={{ border: '1px solid #e7e5e4', borderRadius: 12, padding: 18, background: '#fff' }}>
-            <div style={{ fontSize: 12, color: '#78716c', marginBottom: 14 }}>
-              Satıcı: <b style={{ color: '#1c1917' }}>{mukellef ? (mukellef.companyName || `${mukellef.firstName || ''} ${mukellef.lastName || ''}`.trim()) : ''}</b>
+            <div style={{ fontSize: 12, color: '#78716c', marginBottom: 14, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+              <span>Satıcı: <b style={{ color: '#1c1917' }}>{mukellef ? (mukellef.companyName || `${mukellef.firstName || ''} ${mukellef.lastName || ''}`.trim()) : ''}</b></span>
+              {kanalQ.data && (
+                <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 20, fontWeight: 600, background: kanalQ.data.gibdenKesilebilir ? '#dcfce7' : '#fee2e2', color: kanalQ.data.gibdenKesilebilir ? '#166534' : '#991b1b' }}>
+                  {kanalQ.data.kanal === 'ENTEGRATOR' ? `kanal: ${kanalQ.data.saglayici}` : 'kanal: GİB e-Arşiv'}
+                </span>
+              )}
             </div>
+
+            {kanalQ.data?.uyari && (
+              <div style={{ marginBottom: 14, background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 9, padding: '11px 13px', fontSize: 13, color: '#7f1d1d', lineHeight: 1.55 }}>
+                <b>Dikkat.</b> {kanalQ.data.uyari}
+              </div>
+            )}
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <div>

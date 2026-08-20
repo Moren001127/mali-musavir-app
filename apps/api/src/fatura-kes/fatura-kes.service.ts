@@ -64,6 +64,58 @@ export class FaturaKesService {
    * Taslak oluştur. Hiçbir yere gönderilmez — yalnız hesaplanır, kaydedilir, önizlenir.
    * Doğrulama BİLEREK katıdır: eksik/şüpheli veriyle GİB'e gidilmesindense burada durulur.
    */
+  /**
+   * KANAL TESPİTİ — fatura hangi kapıdan kesilecek?
+   *
+   * Mükellef bir entegratöre bağlıysa satış faturalarını ORADAN kesiyordur. Aynı mükellef için
+   * GİB portalından da fatura kesmek BELGE NUMARASINI ÇAKIŞTIRIR: iki ayrı sistem ayrı seri
+   * üretir, aynı numara iki kez doğabilir. Bu yüzden entegratörlü mükellefte GİB gönderimi
+   * VARSAYILAN OLARAK DURDURULUR — kullanıcı bile bile isterse açıkça geçer.
+   *
+   * Canlı veri (2026-08-20): 76 aktif mükellefin 76'sında GİB e-Arşiv kimliği var,
+   * 11'i ayrıca entegratöre bağlı (ELOGO/PARASUT/TURMOB_EFATURA/UYUMSOFT/TURKCELL/MIKRO).
+   * Entegratör adaptörleri şu an SADECE OKUMA yapıyor — oradan fatura kesme henüz yok.
+   */
+  async kanalTespit(
+    tenantId: string,
+    taxpayerId: string,
+  ): Promise<{ kanal: 'GIB_EARSIV' | 'ENTEGRATOR'; saglayici: string | null; gibdenKesilebilir: boolean; uyari: string | null }> {
+    // Entegratör olmayan bağlantılar (mesajlaşma/eposta/Luca) kanal sayılmaz.
+    const KANAL_DISI = new Set(['EMAIL_SMTP', 'WHATSAPP_BAILEYS', 'WHATSAPP_META', 'LUCA_WORKER_ACCOUNTS']);
+    const baglantilar = await (this.prisma as any).integrationConnection
+      .findMany({ where: { tenantId, isActive: true }, select: { provider: true, config: true } })
+      .catch(() => [] as any[]);
+
+    for (const b of baglantilar || []) {
+      const saglayici = String(b?.provider || '').toUpperCase();
+      if (!saglayici || KANAL_DISI.has(saglayici)) continue;
+      const mukellefler = (b?.config as any)?.taxpayers || {};
+      if (mukellefler && mukellefler[taxpayerId]) {
+        return {
+          kanal: 'ENTEGRATOR',
+          saglayici,
+          gibdenKesilebilir: false,
+          uyari:
+            `Bu mükellef ${saglayici} entegratörüne bağlı. Faturalarını oradan kesiyorsa ` +
+            `GİB portalından kesmek belge numarasını çakıştırır. Entegratörden kesme henüz yok.`,
+        };
+      }
+    }
+
+    const gib = await (this.prisma as any).portalCredential
+      .findFirst({ where: { tenantId, taxpayerId, provider: 'GIB_IVD', isActive: true }, select: { id: true } })
+      .catch(() => null);
+    if (!gib) {
+      return {
+        kanal: 'GIB_EARSIV',
+        saglayici: null,
+        gibdenKesilebilir: false,
+        uyari: 'Bu mükellefin GİB e-Arşiv kimliği tanımlı değil — fatura kesilemez.',
+      };
+    }
+    return { kanal: 'GIB_EARSIV', saglayici: null, gibdenKesilebilir: true, uyari: null };
+  }
+
   async createDraft(tenantId: string, userId: string | null, input: FaturaKesInput) {
     if (!input?.taxpayerId) throw new BadRequestException('Mükellef seçilmeli');
 
@@ -121,11 +173,14 @@ export class FaturaKesService {
       }
     }
 
+    // Kanal ELLE DEĞİL tespitle belirlenir: entegratörlü mükellefte GİB'e gönderim engellenir.
+    const kanalBilgi = await this.kanalTespit(tenantId, taxpayer.id);
+
     const draft = await (this.prisma as any).salesInvoiceDraft.create({
       data: {
         tenantId,
         taxpayerId: taxpayer.id,
-        kanal: input.kanal === 'ENTEGRATOR' ? 'ENTEGRATOR' : 'GIB_EARSIV',
+        kanal: kanalBilgi.kanal,
         durum: 'TASLAK',
         aliciVkn: vkn,
         aliciUnvan: unvan,

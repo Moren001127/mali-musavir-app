@@ -33,6 +33,12 @@ export class FaturaKesController {
     return this.service.createDraft(req.user.tenantId, req.user?.userId || req.user?.sub || null, body);
   }
 
+  /** Bu mükellefte fatura hangi kanaldan kesilir? (entegratör mü, GİB mi) */
+  @Get('kanal')
+  kanal(@Req() req: any, @Query('taxpayerId') taxpayerId: string) {
+    return this.service.kanalTespit(req.user.tenantId, taxpayerId);
+  }
+
   @Get('taslak')
   list(@Req() req: any, @Query() q: any) {
     return this.service.listDrafts(req.user.tenantId, {
@@ -64,7 +70,8 @@ export class FaturaKesController {
   @HttpCode(HttpStatus.OK)
   gibeGonder(@Req() req: any, @Param('id') id: string, @Body() body: any) {
     const kuruTest = body?.kuruTest !== false; // güvenli varsayılan: KURU TEST
-    return this.gib.gibeGonder(req.user.tenantId, id, { kuruTest });
+    // gibdeIsrar: entegratörlü mükellefte kanal engelini bile bile geçmek için (varsayılan KAPALI)
+    return this.gib.gibeGonder(req.user.tenantId, id, { kuruTest, gibdeIsrar: body?.gibdeIsrar === true });
   }
 
   @Delete('taslak/:id')

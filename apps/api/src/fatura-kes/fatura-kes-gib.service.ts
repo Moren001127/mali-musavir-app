@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { tryDecrypt } from '../common/crypto';
 import { gibFaturaPayload, GIB_ZORUNLU_ALANLAR, GIB_KALEM_ALANLARI } from './gib-earsiv-payload';
+import { FaturaKesService } from './fatura-kes.service';
 
 /**
  * GİB e-Arşiv Portalı'na TASLAK fatura gönderimi.
@@ -21,7 +22,10 @@ const BASE = 'https://earsivportal.efatura.gov.tr/earsiv-services';
 export class FaturaKesGibService {
   private readonly logger = new Logger(FaturaKesGibService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly faturaKes: FaturaKesService,
+  ) {}
 
   private async gibLogin(kod: string, sifre: string): Promise<string | null> {
     const body = new URLSearchParams();
@@ -110,13 +114,20 @@ export class FaturaKesGibService {
    * Taslağı GİB'e gönder (ya da kuru testte yalnız göstereceğini göster).
    * Sonuç: GİB'de TASLAK oluşur — resmî belge DEĞİL.
    */
-  async gibeGonder(tenantId: string, draftId: string, opts: { kuruTest?: boolean } = {}) {
+  async gibeGonder(tenantId: string, draftId: string, opts: { kuruTest?: boolean; gibdeIsrar?: boolean } = {}) {
     const draft: any = await (this.prisma as any).salesInvoiceDraft.findFirst({ where: { id: draftId, tenantId } });
     if (!draft) throw new NotFoundException('Taslak bulunamadı');
     if (draft.durum === 'KESILDI') throw new BadRequestException('Bu fatura zaten kesinleşmiş');
     if (draft.durum === 'IPTAL') throw new BadRequestException('İptal edilmiş taslak gönderilemez');
     if (draft.durum === 'GIB_TASLAK') {
       throw new BadRequestException('Bu taslak GİB’e zaten gönderilmiş — mükerrer taslak oluşmasın diye durduruldu');
+    }
+
+    // KANAL DENETİMİ: mükellef entegratöre bağlıysa GİB portalından kesmek belge numarasını
+    //   çakıştırır (iki sistem ayrı seri üretir). Varsayılan DUR; kullanıcı bile bile geçebilir.
+    const kanalBilgi = await this.faturaKes.kanalTespit(tenantId, draft.taxpayerId);
+    if (!kanalBilgi.gibdenKesilebilir && !opts.gibdeIsrar) {
+      throw new BadRequestException(kanalBilgi.uyari || 'Bu mükellefte GİB portalından fatura kesilemez');
     }
 
     const payload = gibFaturaPayload({
