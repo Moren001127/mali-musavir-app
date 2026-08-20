@@ -27,7 +27,46 @@ export class FaturaKesGibService {
     private readonly faturaKes: FaturaKesService,
   ) {}
 
-  private async gibLogin(kod: string, sifre: string): Promise<string | null> {
+  /**
+   * TÜRKİYE ÇIKIŞI — projedeki diğer tüm GİB e-Arşiv çağrıları TURMOB_PROXY_URL üzerinden
+   * çıkıyor (portal-automation runner ile aynı desen). Bu servis doğrudan çıkıyordu; env
+   * tanımlıysa artık aynı kapıyı kullanır. Env yoksa DAVRANIŞ DEĞİŞMEZ (doğrudan çıkış).
+   */
+  private _dispatcher: any = undefined;
+  private gibFetch(url: string, init: any) {
+    if (this._dispatcher === undefined) {
+      const purl = String(process.env.TURMOB_PROXY_URL || process.env.PORTAL_TR_PROXY_URL || '').trim();
+      if (purl) {
+        try {
+          this._dispatcher = new (require('undici').ProxyAgent)(purl);
+          this.logger.log('[FATURA-KES/GIB] Turkiye proxy aktif');
+        } catch (e: any) {
+          this.logger.warn(`[FATURA-KES/GIB] proxy kurulamadi: ${e?.message}`);
+          this._dispatcher = null;
+        }
+      } else {
+        this._dispatcher = null;
+      }
+    }
+    return fetch(url, this._dispatcher ? { ...init, dispatcher: this._dispatcher } : init);
+  }
+
+  /** GİB'in kendi mesajını (varsa) düz metne çevir — teşhis buradan çıkıyor. */
+  private gibMesaji(j: any): string {
+    if (!j) return '';
+    const m = Array.isArray(j.messages)
+      ? j.messages.map((x: any) => String(x?.text || '').trim()).filter(Boolean).join(' | ')
+      : '';
+    return m || String(j.message || '').trim();
+  }
+
+  /**
+   * GİB girişi. Başarısızsa GİB'İN KENDİ MESAJINI döndürür.
+   * (Denetim 2026-08-20: mesaj yutuluyordu ve her hataya "kullanıcı kodu/şifre kontrol
+   *  edilmeli" deniyordu. Oysa gerçek sebep çoğu kez "Sisteme aynı anda birden fazla giriş
+   *  yapamazsınız" oluyor — yanlış teşhis kullanıcıyı şifre değiştirmeye yöneltiyordu.)
+   */
+  private async gibLogin(kod: string, sifre: string): Promise<{ token: string | null; mesaj: string }> {
     const body = new URLSearchParams();
     body.set('assoscmd', 'anologin');
     body.set('rtype', 'json');
@@ -35,14 +74,14 @@ export class FaturaKesGibService {
     body.set('sifre', sifre);
     body.set('sifre2', sifre);
     body.set('parola', '1');
-    const res = await fetch(`${BASE}/assos-login`, {
+    const res = await this.gibFetch(`${BASE}/assos-login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=utf-8' },
       body,
       signal: AbortSignal.timeout(30_000),
     });
     const j: any = await res.json().catch(() => null);
-    return j?.token || null;
+    return { token: j?.token || null, mesaj: this.gibMesaji(j) };
   }
 
   private async dispatch(token: string, cmd: string, pageName: string, jp: any) {
@@ -52,7 +91,7 @@ export class FaturaKesGibService {
     body.set('cmd', cmd);
     body.set('pageName', pageName);
     body.set('jp', JSON.stringify(jp));
-    const res = await fetch(`${BASE}/dispatch`, {
+    const res = await this.gibFetch(`${BASE}/dispatch`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
       body,
@@ -83,7 +122,7 @@ export class FaturaKesGibService {
       body.set('assoscmd', 'logout');
       body.set('rtype', 'json');
       body.set('token', token);
-      await fetch(`${BASE}/assos-login`, {
+      await this.gibFetch(`${BASE}/assos-login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=utf-8' },
         body,
@@ -210,6 +249,11 @@ export class FaturaKesGibService {
     if (draft.durum === 'GIB_TASLAK') {
       throw new BadRequestException('Bu taslak GİB’e zaten gönderilmiş — mükerrer taslak oluşmasın diye durduruldu');
     }
+    if (draft.durum === 'GONDERILIYOR') {
+      throw new BadRequestException(
+        'Bu taslağın GİB gönderimi sürüyor ya da yanıtı belirsiz kaldı. Körü körüne tekrar göndermek MÜKERRER FATURA doğurur — önce GİB portalından belge oluşup oluşmadığına bakın.',
+      );
+    }
 
     // KANAL DENETİMİ: mükellef entegratöre bağlıysa GİB portalından kesmek belge numarasını
     //   çakıştırır (iki sistem ayrı seri üretir). Varsayılan DUR; kullanıcı bile bile geçebilir.
@@ -262,19 +306,60 @@ export class FaturaKesGibService {
       };
     }
 
+    // ATOMİK KİLİT (denetim 2026-08-20 — KRİTİK):
+    //   GİB isteği alıp belgeyi oluşturduktan SONRA cevap gecikirse (40 sn zaman aşımı) ya da
+    //   bağlantı koparsa, eskiden hiçbir şey yazılmıyordu: durum 'TASLAK' kalıyor, ekranda
+    //   "gönderilemedi" yazıyordu. Kullanıcı tekrar basınca GİB'de AYNI faturadan İKİ taslak
+    //   oluşuyordu. Aynı anda iki tıklama da aynı deliği kullanıyordu.
+    //   Çözüm: gönderimden ÖNCE durumu atomik olarak 'GONDERILIYOR' yap. Yalnızca GİB'in
+    //   AÇIKÇA reddettiği (belge oluşmadığı kesin) durumda 'TASLAK'a geri alınır.
+    const kilit = await (this.prisma as any).salesInvoiceDraft.updateMany({
+      where: { id: draftId, tenantId, durum: 'TASLAK' },
+      data: { durum: 'GONDERILIYOR', hata: 'GİB’e gönderiliyor, yanıt bekleniyor' },
+    });
+    if (kilit.count !== 1) {
+      throw new BadRequestException('Bu taslak için gönderim zaten sürüyor ya da yapılmış — GİB taslak listesini kontrol edin');
+    }
+
     const { kod, sifreler } = await this.kimlik(tenantId, draft.taxpayerId);
     let token: string | null = null;
+    let girisMesaji = '';
     for (const s of sifreler) {
-      token = await this.gibLogin(kod, s).catch(() => null);
+      const r = await this.gibLogin(kod, s).catch((e: any) => ({ token: null, mesaj: e?.message || '' }));
+      token = r.token;
+      if (r.mesaj) girisMesaji = r.mesaj;
       if (token) break;
     }
-    if (!token) throw new BadRequestException('GİB e-Arşiv girişi başarısız — kullanıcı kodu/şifre kontrol edilmeli');
+    if (!token) {
+      // GİB'in kendi cümlesi teşhisin ta kendisi: "aynı anda birden fazla giriş yapamazsınız"
+      //   ile "şifre yanlış" bambaşka işlerdir; yutulursa yanlış yere bakılır.
+      await (this.prisma as any).salesInvoiceDraft
+        .update({ where: { id: draftId }, data: { durum: 'TASLAK', hata: `GİB girişi başarısız: ${girisMesaji || 'sebep bildirilmedi'}` } })
+        .catch(() => null);
+      throw new BadRequestException(
+        girisMesaji
+          ? `GİB e-Arşiv girişi başarısız — GİB'in cevabı: ${girisMesaji}`
+          : 'GİB e-Arşiv girişi başarısız — kullanıcı kodu/şifre kontrol edilmeli',
+      );
+    }
 
     let sonuc: any;
     let belge: any = { faturaNo: null, ettn: null, onay: null, not: null };
     let gorsel: string | null = null;
     try {
-      sonuc = await this.dispatch(token, 'EARSIV_PORTAL_FATURA_OLUSTUR', 'RG_BASITFATURA', payload);
+      try {
+        sonuc = await this.dispatch(token, 'EARSIV_PORTAL_FATURA_OLUSTUR', 'RG_BASITFATURA', payload);
+      } catch (e: any) {
+        // YANIT BELİRSİZ: GİB belgeyi OLUŞTURMUŞ OLABİLİR. Durumu 'TASLAK'a GERİ ALMIYORUZ —
+        //   geri alsak düğme yeniden çıkar ve tek tıkla mükerrer fatura kesilir.
+        await (this.prisma as any).salesInvoiceDraft
+          .update({
+            where: { id: draftId },
+            data: { hata: `GİB yanıtı alınamadı (${e?.message || 'bağlantı/zaman aşımı'}) — belge GİB'de OLUŞMUŞ OLABİLİR, portaldan kontrol edin` },
+          })
+          .catch(() => null);
+        throw e;
+      }
       // Numara ve görsel ÇIKIŞTAN ÖNCE alınır — sonradan ayrı girişle bakmak mümkün değil.
       const mesajOn = typeof sonuc?.data === 'string' ? sonuc.data : '';
       if (mesajOn && !/hata|ba[şs]ar[ıi]s[ıi]z|ge[çc]ersiz/i.test(mesajOn)) {
@@ -286,12 +371,22 @@ export class FaturaKesGibService {
       await this.gibLogout(token);
     }
     const mesaj = typeof sonuc?.data === 'string' ? sonuc.data : '';
-    // GİB başarıda belge numarasını metin içinde döndürür; hata metni de aynı alandan gelir.
-    const basarisiz = !mesaj || /hata|ba[şs]ar[ıi]s[ıi]z|ge[çc]ersiz/i.test(mesaj);
+    // BELİRSİZ SONUÇ ≠ RED. data string değilse GİB ne dediği anlaşılmıyor demektir; belge
+    //   oluşmuş olabilir. Bu durumda 'TASLAK'a geri alma YAPILMAZ (mükerrer riski), kayda
+    //   "kontrol edin" notu düşülür ve kullanıcı uyarılır.
+    if (!mesaj) {
+      const gibNot = this.gibMesaji(sonuc) || JSON.stringify(sonuc).slice(0, 200);
+      await (this.prisma as any).salesInvoiceDraft
+        .update({ where: { id: draftId }, data: { hata: `GİB yanıtı anlaşılamadı: ${gibNot} — belge GİB'de OLUŞMUŞ OLABİLİR, portaldan kontrol edin` } })
+        .catch(() => null);
+      throw new BadRequestException(`GİB yanıtı anlaşılamadı: ${gibNot}. Belge oluşmuş olabilir — GİB portalından kontrol edin.`);
+    }
+    const basarisiz = /hata|ba[şs]ar[ıi]s[ıi]z|ge[çc]ersiz/i.test(mesaj);
     if (basarisiz) {
+      // GİB AÇIKÇA reddetti → belge oluşmadı; tekrar denenebilsin diye TASLAK'a geri alınır.
       await (this.prisma as any).salesInvoiceDraft.update({
         where: { id: draftId },
-        data: { hata: `GİB reddetti: ${mesaj || JSON.stringify(sonuc).slice(0, 300)}` },
+        data: { durum: 'TASLAK', hata: `GİB reddetti: ${mesaj || JSON.stringify(sonuc).slice(0, 300)}` },
       });
       throw new BadRequestException(`GİB taslağı oluşturmadı: ${mesaj || 'yanıt boş'}`);
     }

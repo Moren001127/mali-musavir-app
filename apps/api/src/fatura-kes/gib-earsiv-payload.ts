@@ -59,6 +59,63 @@ export function gibTutar(n: number): string {
 }
 
 /**
+ * BİRİM KODLARI — GİB birim ADI değil KODU bekler (UN/ECE Rec.20).
+ * Eskiden "ADET" dışındaki her şey ham metin olarak gidiyordu: kullanıcı "KG" yazınca
+ * GİB'e "KG" gidiyordu; doğrusu "KGM". Tanınmayan birim SESSİZCE gönderilmez —
+ * taslak oluşturulurken hata verilir (bkz. fatura-kes.service.ts).
+ */
+export const GIB_BIRIM: Record<string, string> = {
+  ADET: 'C62', AD: 'C62', 'C62': 'C62',
+  KG: 'KGM', KILOGRAM: 'KGM', KGM: 'KGM',
+  GRAM: 'GRM', GR: 'GRM', GRM: 'GRM',
+  TON: 'TNE', TNE: 'TNE',
+  LITRE: 'LTR', LT: 'LTR', LTR: 'LTR',
+  METRE: 'MTR', M: 'MTR', MTR: 'MTR',
+  M2: 'MTK', METREKARE: 'MTK', MTK: 'MTK',
+  M3: 'MTQ', METREKUP: 'MTQ', MTQ: 'MTQ',
+  KM: 'KMT', KILOMETRE: 'KMT', KMT: 'KMT',
+  PAKET: 'PK', PK: 'PK',
+  KUTU: 'BX', BX: 'BX',
+  KOLI: 'CT', CT: 'CT',
+  CIFT: 'PR', PR: 'PR',
+  DUZINE: 'DZN', DZN: 'DZN',
+  TAKIM: 'SET', SET: 'SET',
+  SAAT: 'HUR', HUR: 'HUR',
+  GUN: 'DAY', DAY: 'DAY',
+  AY: 'MON', MON: 'MON',
+  YIL: 'ANN', ANN: 'ANN',
+};
+
+/** Türkçe birim adını GİB koduna çevirir. Tanınmazsa null (sessizce varsayma). */
+export function birimKodu(v: any): string | null {
+  const ham = String(v || '').trim().toUpperCase();
+  if (!ham) return 'C62';
+  const sade = ham
+    .replace(/İ/g, 'I').replace(/Ş/g, 'S').replace(/Ğ/g, 'G')
+    .replace(/Ü/g, 'U').replace(/Ö/g, 'O').replace(/Ç/g, 'C')
+    .replace(/[^A-Z0-9]/g, '');
+  return GIB_BIRIM[sade] || null;
+}
+
+/**
+ * BİRİM FİYAT — miktar × birim fiyat, matrahı TUTMALIDIR.
+ *
+ * Eskiden birim fiyat koşulsuz 2 haneye yuvarlanıyordu: matrah 100 / miktar 3 →
+ * "33.33", 3 × 33,33 = 99,99 ≠ 100. GİB tutarsız kalemi anlamsız hatayla reddeder.
+ * Artık 2 hane tutuyorsa AYNEN 2 hane kullanılır (doğrulanmış miktar=1 yolu hiç
+ * değişmez); tutmuyorsa tutana kadar hane artırılır.
+ */
+export function gibBirimFiyat(matrah: number, miktar: number): string {
+  const adet = Number.isFinite(miktar) && miktar > 0 ? miktar : 1;
+  const ham = matrah / adet;
+  for (let hane = 2; hane <= 6; hane++) {
+    const aday = Number(ham.toFixed(hane));
+    if (Math.abs(aday * adet - matrah) < 0.005) return String(aday);
+  }
+  return String(Number(ham.toFixed(6)));
+}
+
+/**
  * Draft → GİB payload. 52 alanın tamamı üretilir.
  * Alıcı 11 haneli (TCKN) ise ad/soyad, 10 haneli (VKN) ise ünvan alanı doldurulur —
  * portalın kendi davranışı budur.
@@ -74,8 +131,8 @@ export function gibFaturaPayload(g: GibFaturaGirdi, simdi: Date = new Date()): R
   const kalem = {
     malHizmet: String(g.aciklama || '').trim(),
     miktar: g.miktar,
-    birim: String(g.birim || 'C62'),
-    birimFiyat: gibTutar(g.miktar > 0 ? g.matrah / g.miktar : g.matrah),
+    birim: birimKodu(g.birim) || 'C62',
+    birimFiyat: gibBirimFiyat(g.matrah, g.miktar),
     fiyat: gibTutar(g.matrah),
     iskontoOrani: 0,
     iskontoTutari: '0',

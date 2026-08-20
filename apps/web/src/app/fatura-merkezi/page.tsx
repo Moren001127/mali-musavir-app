@@ -4189,6 +4189,7 @@ function ScreenKdv({ taxpayerId, period }: { taxpayerId: string; period: string 
 //   GIB_TASLAK RESMI BELGE DEGILDIR: imzalanmamistir, portaldan silinebilir, vergi dogurmaz.
 const FK_DURUM: Record<string, { etiket: string; bg: string; renk: string }> = {
   TASLAK: { etiket: 'gönderilmedi', bg: '#fef3c7', renk: '#92400e' },
+  GONDERILIYOR: { etiket: 'GİB yanıtı belirsiz — portaldan kontrol edin', bg: '#ffedd5', renk: '#9a3412' },
   GIB_TASLAK: { etiket: "GİB'de taslak · imzasız", bg: '#dbeafe', renk: '#1e40af' },
   KESILDI: { etiket: 'kesildi', bg: '#dcfce7', renk: '#166534' },
   IPTAL: { etiket: 'iptal', bg: '#f5f5f4', renk: '#78716c' },
@@ -4196,7 +4197,11 @@ const FK_DURUM: Record<string, { etiket: string; bg: string; renk: string }> = {
 
 function ScreenFaturaKes({ taxpayerId, taxpayers }: { taxpayerId: string; taxpayers: any[] }) {
   const qc = useQueryClient();
-  const bugun = new Date().toISOString().slice(0, 10);
+  // TÜRKİYE GÜNÜ (denetim 2026-08-20): toISOString UTC verir; gece 00:00-03:00 arasında
+  //   varsayılan tarih bir gün geri geliyor ve max=bugun yüzünden bugünü seçmek imkânsızlaşıyordu.
+  const bugun = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Istanbul', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date());
   const [aliciVkn, setAliciVkn] = useState('');
   const [aliciUnvan, setAliciUnvan] = useState('');
   const [aliciVd, setAliciVd] = useState('');
@@ -4225,12 +4230,28 @@ function ScreenFaturaKes({ taxpayerId, taxpayers }: { taxpayerId: string; taxpay
   });
 
   // Tutarlar ANLIK hesaplanır — kullanıcı hazırlamadan önce ne olacağını görür.
+  // PARA HATASI DÜZELTİLDİ (denetim 2026-08-20): "en sağdaki ayraç ondalıktır" kuralı
+  //   "8.000" değerini 8 TL okuyordu (kutunun kendi ipucu metni de "8.000,00" diyor).
+  //   Sunucudaki sayi() ile AYNI kural: virgül ondalık; yalnız nokta ise TEK nokta +
+  //   1-2 haneli kesir ondalık, aksi hâlde TR binlik ayracı.
   const mNum = (() => {
     const t = String(matrah).trim().replace(/\s|₺|TL/gi, '');
     if (!t) return NaN;
-    const son = Math.max(t.lastIndexOf(','), t.lastIndexOf('.'));
-    if (son < 0) return Number(t);
-    return Number(`${t.slice(0, son).replace(/[.,]/g, '')}.${t.slice(son + 1).replace(/[^0-9]/g, '')}`);
+    const sonVirgul = t.lastIndexOf(',');
+    const sonNokta = t.lastIndexOf('.');
+    let d: string;
+    if (sonVirgul >= 0) {
+      d = t.slice(0, sonVirgul).replace(/\D/g, '') + '.' + t.slice(sonVirgul + 1).replace(/\D/g, '');
+    } else if (sonNokta >= 0) {
+      const kesir = t.slice(sonNokta + 1);
+      const tekNokta = t.indexOf('.') === sonNokta;
+      d = tekNokta && /^\d{1,2}$/.test(kesir)
+        ? t.slice(0, sonNokta).replace(/\D/g, '') + '.' + kesir
+        : t.replace(/\D/g, '');
+    } else {
+      d = t.replace(/\D/g, '');
+    }
+    return d && d !== '.' ? Number(d) : NaN;
   })();
   const kdvNum = Number.isFinite(mNum) ? Math.round(mNum * kdvOrani) / 100 : NaN;
   const toplamNum = Number.isFinite(mNum) ? mNum + kdvNum : NaN;
@@ -4265,10 +4286,15 @@ function ScreenFaturaKes({ taxpayerId, taxpayers }: { taxpayerId: string; taxpay
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Taslak oluşturulamadı'),
   });
 
+  // İPTAL: GİB'e gönderilmiş taslakta "iptal" YALNIZ BİZDEKİ kaydı kapatır — GİB'deki
+  //   taslak durmaya devam eder ve imzalanabilir. Kullanıcı bunu ÖNCEDEN görmeli.
+  const [iptalOnay, setIptalOnay] = useState<any>(null);
   const iptalMut = useMutation({
     mutationFn: (id: string) => api.delete(`/fatura-kes/taslak/${id}`).then((r) => r.data),
-    onSuccess: () => {
-      toast.success('Taslak iptal edildi');
+    onSuccess: (d: any) => {
+      setIptalOnay(null);
+      if (d?.gibdeDuruyor) toast(d.uyari || "Bizde iptal edildi — GİB'deki taslak duruyor", { icon: '⚠️', duration: 8000 });
+      else toast.success('Taslak iptal edildi');
       qc.invalidateQueries({ queryKey: ['fatura-kes', 'taslak'] });
     },
     onError: (e: any) => toast.error(e?.response?.data?.message || 'İptal edilemedi'),
@@ -4372,7 +4398,11 @@ function ScreenFaturaKes({ taxpayerId, taxpayers }: { taxpayerId: string; taxpay
               </div>
               <div>
                 <label style={lbl}>BİRİM</label>
-                <input style={inp} value={birim} onChange={(e) => setBirim(e.target.value)} />
+                <select style={inp} value={birim} onChange={(e) => setBirim(e.target.value)}>
+                  {['ADET', 'KG', 'GRAM', 'TON', 'LİTRE', 'METRE', 'M2', 'M3', 'KM', 'PAKET', 'KUTU', 'KOLİ', 'ÇİFT', 'DÜZİNE', 'TAKIM', 'SAAT', 'GÜN', 'AY', 'YIL'].map((b) => (
+                    <option key={b} value={b}>{b}</option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label style={lbl}>KDV ORANI</label>
@@ -4401,7 +4431,9 @@ function ScreenFaturaKes({ taxpayerId, taxpayers }: { taxpayerId: string; taxpay
           <div style={{ border: '1px solid #e7e5e4', borderRadius: 12, background: '#fff', overflow: 'hidden' }}>
             <div style={{ padding: '11px 14px', borderBottom: '1px solid #f5f5f4', fontSize: 12, fontWeight: 600, letterSpacing: '.06em', color: '#57534e' }}>TASLAKLAR</div>
             <div style={{ maxHeight: 460, overflowY: 'auto' }}>
-              {(listQ.data || []).length === 0 && (<div style={{ padding: 16, fontSize: 13, color: '#a8a29e' }}>Henüz taslak yok.</div>)}
+              {listQ.isLoading && (<div style={{ padding: 16, fontSize: 13, color: '#a8a29e' }}>Yükleniyor…</div>)}
+              {listQ.isError && (<div style={{ padding: 16, fontSize: 13, color: '#b91c1c' }}>Taslaklar getirilemedi — sayfayı yenileyin.</div>)}
+              {!listQ.isLoading && !listQ.isError && (listQ.data || []).length === 0 && (<div style={{ padding: 16, fontSize: 13, color: '#a8a29e' }}>Henüz taslak yok.</div>)}
               {(listQ.data || []).map((d: any) => (
                 <div key={d.id} style={{ padding: '11px 14px', borderBottom: '1px solid #fafaf9', fontSize: 13 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
@@ -4418,10 +4450,13 @@ function ScreenFaturaKes({ taxpayerId, taxpayers }: { taxpayerId: string; taxpay
                     {d.faturaNo && (<span style={{ fontSize: 11, color: '#57534e', fontFamily: 'ui-monospace,monospace' }}>{d.faturaNo}</span>)}
                     <button onClick={() => setAcikTaslak(d.id)} style={{ fontSize: 12, background: 'none', border: 'none', color: '#2563eb', cursor: 'pointer', padding: 0 }}>önizle</button>
                     {d.durum === 'TASLAK' && (
-                      <button onClick={() => setGibOnay(d)} style={{ fontSize: 12, background: 'none', border: 'none', color: '#b45309', cursor: 'pointer', padding: 0, fontWeight: 600 }}>GİB&apos;e gönder</button>
+                      <button onClick={() => { setGibdeIsrar(false); setGibOnay(d); }} style={{ fontSize: 12, background: 'none', border: 'none', color: '#b45309', cursor: 'pointer', padding: 0, fontWeight: 600 }}>GİB&apos;e gönder</button>
                     )}
-                    {d.durum !== 'KESILDI' && d.durum !== 'IPTAL' && (
-                      <button onClick={() => iptalMut.mutate(d.id)} style={{ fontSize: 12, background: 'none', border: 'none', color: '#b91c1c', cursor: 'pointer', padding: 0 }}>iptal</button>
+                    {d.durum !== 'KESILDI' && d.durum !== 'IPTAL' && d.durum !== 'GONDERILIYOR' && (
+                      <button
+                        onClick={() => (d.durum === 'GIB_TASLAK' ? setIptalOnay(d) : iptalMut.mutate(d.id))}
+                        style={{ fontSize: 12, background: 'none', border: 'none', color: '#b91c1c', cursor: 'pointer', padding: 0 }}
+                      >iptal</button>
                     )}
                   </div>
                 </div>
@@ -4431,8 +4466,30 @@ function ScreenFaturaKes({ taxpayerId, taxpayers }: { taxpayerId: string; taxpay
         </div>
       )}
 
+      {iptalOnay && (
+        <div onClick={() => !iptalMut.isPending && setIptalOnay(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(28,25,23,.5)', zIndex: 70, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 14, width: 'min(520px,100%)', overflow: 'hidden', boxShadow: '0 24px 60px rgba(28,25,23,.28)' }}>
+            <div style={{ padding: '16px 20px', background: 'radial-gradient(120% 140% at 0% 0%, #fecaca 0%, #ef4444 55%, #991b1b 100%)', color: '#fff' }}>
+              <div style={{ fontSize: 11, letterSpacing: '.1em', opacity: .9, fontWeight: 600 }}>DİKKAT</div>
+              <div style={{ fontSize: 17, fontWeight: 700, marginTop: 2 }}>GİB&apos;deki taslak SİLİNMEZ</div>
+            </div>
+            <div style={{ padding: '18px 20px', fontSize: 14, color: '#292524', lineHeight: 1.6 }}>
+              <b>{iptalOnay.aliciUnvan}</b>{iptalOnay.faturaNo ? ` · ${iptalOnay.faturaNo}` : ''}<br />
+              Bu iptal <b>yalnız bizdeki kaydı</b> kapatır. Fatura GİB&apos;de <b>taslak olarak durmaya devam eder</b> ve
+              oradan imzalanırsa <b>resmî fatura olur</b>. Gerçekten kaldırmak için GİB portalından da silinmeli.
+            </div>
+            <div style={{ display: 'flex', gap: 9, justifyContent: 'flex-end', padding: '0 20px 18px' }}>
+              <button disabled={iptalMut.isPending} onClick={() => setIptalOnay(null)} style={{ padding: '9px 16px', borderRadius: 9, border: '1px solid #e7e5e4', background: '#fff', fontSize: 14, cursor: 'pointer', color: '#57534e' }}>Vazgeç</button>
+              <button disabled={iptalMut.isPending} onClick={() => iptalMut.mutate(iptalOnay.id)} style={{ padding: '9px 18px', borderRadius: 9, border: 'none', fontSize: 14, fontWeight: 600, color: '#fff', cursor: iptalMut.isPending ? 'wait' : 'pointer', background: 'linear-gradient(135deg,#991b1b,#dc2626)' }}>
+                {iptalMut.isPending ? 'İptal ediliyor…' : 'Anladım, bizdeki kaydı iptal et'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {gibOnay && (
-        <div onClick={() => !gibMut.isPending && setGibOnay(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(28,25,23,.5)', zIndex: 70, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+        <div onClick={() => { if (!gibMut.isPending) { setGibdeIsrar(false); setGibOnay(null); } }} style={{ position: 'fixed', inset: 0, background: 'rgba(28,25,23,.5)', zIndex: 70, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
           <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 14, width: 'min(520px,100%)', overflow: 'hidden', boxShadow: '0 24px 60px rgba(28,25,23,.28)' }}>
             <div style={{ padding: '16px 20px', background: 'radial-gradient(120% 140% at 0% 0%, #fde68a 0%, #f59e0b 55%, #b45309 100%)', color: '#fff' }}>
               <div style={{ fontSize: 11, letterSpacing: '.1em', opacity: .9, fontWeight: 600 }}>GİB E-ARŞİV</div>
@@ -4466,7 +4523,7 @@ function ScreenFaturaKes({ taxpayerId, taxpayers }: { taxpayerId: string; taxpay
               )}
             </div>
             <div style={{ display: 'flex', gap: 9, justifyContent: 'flex-end', padding: '0 20px 18px' }}>
-              <button disabled={gibMut.isPending} onClick={() => setGibOnay(null)} style={{ padding: '9px 16px', borderRadius: 9, border: '1px solid #e7e5e4', background: '#fff', fontSize: 14, cursor: 'pointer', color: '#57534e' }}>Vazgeç</button>
+              <button disabled={gibMut.isPending} onClick={() => { setGibdeIsrar(false); setGibOnay(null); }} style={{ padding: '9px 16px', borderRadius: 9, border: '1px solid #e7e5e4', background: '#fff', fontSize: 14, cursor: 'pointer', color: '#57534e' }}>Vazgeç</button>
               {(() => {
                 const engelli = kanalQ.data?.sebep === 'KIMLIK_YOK' || (kanalQ.data?.sebep === 'ENTEGRATOR' && !gibdeIsrar);
                 return (

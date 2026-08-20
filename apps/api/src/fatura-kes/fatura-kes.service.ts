@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { birimKodu, GIB_BIRIM } from './gib-earsiv-payload';
 
 /**
  * FATURA KES — satış faturası hazırlama motoru.
@@ -43,17 +44,52 @@ export class FaturaKesService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  /** TR biçimli ya da düz sayıyı Decimal'e çevirir. "1.234,56" ve "1234.56" ikisi de doğru okunur. */
+  /**
+   * TR biçimli ya da düz sayıyı sayıya çevirir.
+   *
+   * PARA HATASI DÜZELTİLDİ (denetim 2026-08-20): eski hal "en sağdaki ayraç ondalıktır"
+   * diyordu ve "8.000" değerini 8 TL okuyordu — fatura 1000 KAT KÜÇÜK kesiliyordu.
+   * Ekranın kendi ipucu metni de "8.000,00" yazdığı için kullanıcıyı tam bu yazıma
+   * yönlendiriyordu.
+   *
+   * Kural (projenin parseDecimal'i ile AYNI — fatura-muhasebelestirme.service.ts):
+   *   • virgül varsa → ondalık virgüldür, noktalar binliktir      "1.234,56" → 1234.56
+   *   • yalnız nokta + TEK nokta + 1-2 haneli kesir → ondalıktır  "1234.56"  → 1234.56
+   *   • yalnız nokta, aksi her durum → TR BİNLİK ayracıdır        "8.000"    → 8000
+   *                                                               "1.234.567"→ 1234567
+   */
   private sayi(v: any): number {
     if (v === null || v === undefined || v === '') return NaN;
     if (typeof v === 'number') return Number.isFinite(v) ? v : NaN;
-    let s = String(v).trim().replace(/\s|₺|TL/gi, '');
-    // KURAL: ondalık ayracı EN SAĞDAKİ ayraçtır (parseDecimal ile aynı mantık).
-    const son = Math.max(s.lastIndexOf(','), s.lastIndexOf('.'));
-    if (son < 0) return Number(s);
-    const tam = s.slice(0, son).replace(/[.,]/g, '');
-    const kesir = s.slice(son + 1).replace(/[^0-9]/g, '');
-    return Number(`${tam}.${kesir}`);
+    const ham = String(v).trim().replace(/\s|₺|TL/gi, '');
+    if (!ham) return NaN;
+    const eksi = /^-/.test(ham);
+    const s = ham.replace(/^[-+]/, '');
+    const sonVirgul = s.lastIndexOf(',');
+    const sonNokta = s.lastIndexOf('.');
+    let d: string;
+    if (sonVirgul >= 0) {
+      // Virgül ondalıktır; solundaki tüm ayraçlar binliktir.
+      d = s.slice(0, sonVirgul).replace(/\D/g, '') + '.' + s.slice(sonVirgul + 1).replace(/\D/g, '');
+    } else if (sonNokta >= 0) {
+      const kesir = s.slice(sonNokta + 1);
+      const tekNokta = s.indexOf('.') === sonNokta;
+      d = tekNokta && /^\d{1,2}$/.test(kesir)
+        ? s.slice(0, sonNokta).replace(/\D/g, '') + '.' + kesir
+        : s.replace(/\D/g, '');
+    } else {
+      d = s.replace(/\D/g, '');
+    }
+    if (!d || d === '.') return NaN;
+    const n = Number((eksi ? '-' : '') + d);
+    return Number.isFinite(n) ? n : NaN;
+  }
+
+  /** Türkiye takvim günü (YYYY-MM-DD). Sunucu UTC olsa da doğru günü verir. */
+  private gunTR(d: Date): string {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Europe/Istanbul', year: 'numeric', month: '2-digit', day: '2-digit',
+    }).format(d);
   }
 
   private yuvarla(n: number): number {
@@ -154,9 +190,10 @@ export class FaturaKesService {
     if (isNaN(tarih.getTime())) throw new BadRequestException('Fatura tarihi geçersiz');
     // GELECEK TARİH ENGELİ: e-Arşiv'de ileri tarihli fatura düzenlenemez; sessizce göndermek
     //   yerine burada durdurulur (GİB tarafında anlaşılmaz hata dönüyor).
-    const bugunSonu = new Date();
-    bugunSonu.setHours(23, 59, 59, 999);
-    if (tarih.getTime() > bugunSonu.getTime()) {
+    // TÜRKİYE SAATİ (denetim 2026-08-20): sunucu UTC çalışıyor. Sunucunun yerel gününe
+    //   bakılınca Türkiye'de gece 00:00-03:00 arasında BUGÜNÜN faturası "ileri tarihli"
+    //   sayılıp reddediliyordu. Karşılaştırma Türkiye takvim gününe göre yapılır.
+    if (this.gunTR(tarih) > this.gunTR(new Date())) {
       throw new BadRequestException('Fatura tarihi ileri tarihli olamaz');
     }
 
@@ -176,6 +213,15 @@ export class FaturaKesService {
       }
     }
 
+    // BİRİM: GİB birim ADI değil KODU bekler. Tanınmayan birim SESSİZCE gönderilmez —
+    //   yanlış kodla fatura kesmektense burada dururuz.
+    const birimAdi = String(input.birim || 'ADET').trim().toUpperCase().slice(0, 16);
+    if (!birimKodu(birimAdi)) {
+      throw new BadRequestException(
+        `Birim tanınmadı: "${birimAdi}". Kullanılabilir birimler: ${[...new Set(Object.keys(GIB_BIRIM))].slice(0, 14).join(', ')} ...`,
+      );
+    }
+
     // Kanal ELLE DEĞİL tespitle belirlenir: entegratörlü mükellefte GİB'e gönderim engellenir.
     const kanalBilgi = await this.kanalTespit(tenantId, taxpayer.id);
 
@@ -193,7 +239,7 @@ export class FaturaKesService {
         faturaTarihi: tarih,
         aciklama,
         miktar: new Prisma.Decimal(miktarNum.toFixed(3)),
-        birim: String(input.birim || 'ADET').trim().toUpperCase().slice(0, 16),
+        birim: birimAdi,
         matrah: new Prisma.Decimal(matrah.toFixed(2)),
         kdvOrani,
         kdvTutari: new Prisma.Decimal(kdvTutari.toFixed(2)),
@@ -259,15 +305,44 @@ export class FaturaKesService {
     };
   }
 
-  /** Taslağı iptal et. KESILDI durumundaki resmî belge BURADAN silinemez. */
+  /**
+   * Taslağı iptal et.
+   *
+   * DÜRÜSTLÜK KURALI (denetim 2026-08-20): GİB'e gönderilmiş bir taslak burada "iptal"
+   * edilince GİB tarafındaki taslak SİLİNMEZ — orada durmaya devam eder ve mükellef
+   * kendi portalından onu imzalayıp RESMİ FATURA yapabilir. Eskiden kullanıcıya sadece
+   * "iptal edildi" deniyordu; bu yanıltıcıydı. Artık sonuçta açıkça bildirilir ve kayda
+   * not düşülür. (GİB'de silme komutu HENÜZ YAKALANMADI — tahminle silme yapılmaz.)
+   */
   async cancelDraft(tenantId: string, id: string) {
     const draft = await (this.prisma as any).salesInvoiceDraft.findFirst({ where: { id, tenantId } });
     if (!draft) throw new NotFoundException('Taslak bulunamadı');
     if (draft.durum === 'KESILDI') {
       throw new BadRequestException('Bu fatura kesinleşmiş — iptali GİB/entegratör tarafında ayrı süreçtir, buradan silinemez');
     }
-    await (this.prisma as any).salesInvoiceDraft.update({ where: { id }, data: { durum: 'IPTAL' } });
-    return { ok: true };
+    if (draft.durum === 'GONDERILIYOR') {
+      throw new BadRequestException(
+        'Bu taslağın GİB gönderimi sürüyor ya da yarıda kaldı. Önce GİB portalından belge oluşup oluşmadığına bakılmalı.',
+      );
+    }
+    const gibdeDuruyor = draft.durum === 'GIB_TASLAK';
+    await (this.prisma as any).salesInvoiceDraft.update({
+      where: { id },
+      data: {
+        durum: 'IPTAL',
+        hata: gibdeDuruyor
+          ? `Bizde iptal edildi ama GİB'deki taslak DURUYOR${draft.faturaNo ? ' (' + draft.faturaNo + ')' : ''} — GİB portalından silinmeli`
+          : draft.hata,
+      },
+    });
+    return {
+      ok: true,
+      gibdeDuruyor,
+      faturaNo: draft.faturaNo || null,
+      uyari: gibdeDuruyor
+        ? `Yalnız bizdeki kayıt iptal edildi. GİB'de taslak${draft.faturaNo ? ' ' + draft.faturaNo : ''} DURUYOR ve imzalanabilir — GİB portalından silinmeli.`
+        : null,
+    };
   }
 
   private mukellefAdi(t: any): string {
