@@ -12,6 +12,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
 import { Loader2, Printer, Send, Wallet } from 'lucide-react';
+import { BEYAN_ETIKETLER } from '@/lib/beyanname-takip';
 
 const GOLD = '#d4b876';
 const MUTED = 'rgba(250,250,249,0.45)';
@@ -19,12 +20,73 @@ const TEXT2 = 'rgba(250,250,249,0.75)';
 const CARD_BG = 'rgba(255,255,255,0.028)';
 const CARD_BORDER = 'rgba(212,184,118,0.16)';
 
-interface OdemeSatiri { tur: string; donem: string; sonGun: string | null; tutar: number; }
+interface OdemeSatiri {
+  tur: string;
+  donem: string;
+  sonGun: string | null;
+  tutar: number;
+  /** 'VERGI' | 'SGK' — sunucu zaten gönderiyordu, arayüz almıyordu */
+  kaynak?: string;
+}
 interface OdemeListesi { taxpayerId: string; unvan: string; phone: string | null; email: string | null; satirlar: OdemeSatiri[]; toplam: number; }
 
 function trMoney(n: number): string {
   return new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n) + ' ₺';
 }
+const AYLAR = [
+  'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
+  'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık',
+];
+
+/**
+ * ÖDEME ADI — yalnız EKRANDA okunur hâle getirilir.
+ *
+ * Sunucudaki `tur` alanı WhatsApp mesajında da kullanılıyor
+ * (aylik-odeme.service.ts:159); orada değiştirmek mesajı bozar. Bu yüzden
+ * çeviri burada, ekranda yapılıyor.
+ *   VERGİ → "KDV1" gibi ham kod, BEYAN_ETIKETLER ile okunur ada çevrilir
+ *   SGK   → sunucu başlıktan "SGK " kelimesini kırpıp "Tahakkuk Fişi"
+ *           bırakıyor; ekranda tam adıyla gösterilir
+ */
+function odemeAdi(s: OdemeSatiri): string {
+  const ham = (s.tur || '').trim();
+  if (s.kaynak === 'SGK') {
+    return /tahakkuk/i.test(ham) ? 'SGK Prim Tahakkuku' : `SGK ${ham}`.trim();
+  }
+  return (BEYAN_ETIKETLER as Record<string, string>)[ham] || ham || '—';
+}
+
+/** "2026-07" ve "2026/07" → "Temmuz 2026". Vergi ile SGK farklı yazıyordu. */
+function donemAdi(donem: string): string {
+  const m = String(donem || '').match(/^(\d{4})[-/](\d{1,2})$/);
+  if (!m) return donem || '—';
+  const ay = Number(m[2]);
+  if (ay < 1 || ay > 12) return donem;
+  return `${AYLAR[ay - 1]} ${m[1]}`;
+}
+
+/** "28.8.2026" → "28.08.2026" (sunucu sıfırsız gönderiyor) */
+function tarihAdi(t: string | null): string {
+  if (!t) return '—';
+  const m = String(t).match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+  if (!m) return t;
+  return `${m[1].padStart(2, '0')}.${m[2].padStart(2, '0')}.${m[3]}`;
+}
+
+/** Son ödeme gününe kalan gün — vadesi yaklaşan satır öne çıksın */
+function vadeDurumu(t: string | null): { renk: string; etiket: string | null } {
+  const m = t && String(t).match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+  if (!m) return { renk: TEXT2, etiket: null };
+  const son = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+  const bugun = new Date();
+  bugun.setHours(0, 0, 0, 0);
+  const gun = Math.round((son.getTime() - bugun.getTime()) / 86400000);
+  if (gun < 0) return { renk: '#f87171', etiket: 'geçti' };
+  if (gun === 0) return { renk: '#f87171', etiket: 'bugün' };
+  if (gun <= 3) return { renk: '#fbbf24', etiket: `${gun} gün` };
+  return { renk: TEXT2, etiket: null };
+}
+
 function currentMonth(): string {
   const n = new Date();
   return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}`;
@@ -153,30 +215,89 @@ export default function AylikOdemePage() {
                   </button>
                 </span>
               </div>
-              <table className="w-full border-collapse text-[13px]">
-                <thead>
-                  <tr>
-                    {['Ödeme', 'Dönem', 'Son Gün', 'Tutar'].map((h, i) => (
-                      <th key={h} className={`border-b px-3 py-2.5 text-[11px] font-medium uppercase tracking-wider ${i === 3 ? 'text-right' : 'text-left'}`} style={{ color: MUTED, borderColor: 'rgba(255,255,255,0.1)' }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {active.satirlar.map((s, i) => (
-                    <tr key={i}>
-                      <td className="border-b px-3 py-2.5 text-white" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>{s.tur}</td>
-                      <td className="border-b px-3 py-2.5" style={{ borderColor: 'rgba(255,255,255,0.06)', color: TEXT2 }}>{s.donem}</td>
-                      <td className="border-b px-3 py-2.5" style={{ borderColor: 'rgba(255,255,255,0.06)', color: TEXT2 }}>{s.sonGun || '—'}</td>
-                      <td className="border-b px-3 py-2.5 text-right font-mono" style={{ borderColor: 'rgba(255,255,255,0.06)', color: TEXT2 }}>{trMoney(s.tutar)}</td>
+{/* Uzun ödeme adı sütunları itip tutarı ekran dışına taşımasın:
+                  table-fixed + colgroup. Cari listede bir kez bu hataya düşüldü. */}
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[520px] table-fixed border-collapse text-[13px]">
+                  <colgroup>
+                    <col />
+                    <col style={{ width: 150 }} />
+                    <col style={{ width: 130 }} />
+                    <col style={{ width: 150 }} />
+                  </colgroup>
+                  <thead>
+                    <tr style={{ background: 'rgba(212,184,118,0.06)' }}>
+                      {['Ödeme', 'Dönem', 'Son Ödeme', 'Tutar'].map((h, i) => (
+                        <th
+                          key={h}
+                          className={`border-b px-3 py-2.5 text-[10.5px] font-semibold uppercase tracking-wider ${i === 3 ? 'text-right' : 'text-left'}`}
+                          style={{ color: GOLD, borderColor: 'rgba(212,184,118,0.22)' }}
+                        >
+                          {h}
+                        </th>
+                      ))}
                     </tr>
-                  ))}
-                  <tr>
-                    <td className="px-3 py-3 font-bold text-white">TOPLAM</td>
-                    <td /><td />
-                    <td className="px-3 py-3 text-right font-mono font-bold" style={{ color: GOLD }}>{trMoney(active.toplam)}</td>
-                  </tr>
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {active.satirlar.map((s, i) => {
+                      const sgk = s.kaynak === 'SGK';
+                      const vade = vadeDurumu(s.sonGun);
+                      return (
+                        <tr key={i} className="transition hover:bg-white/[0.02]">
+                          <td className="border-b px-3 py-3" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+                            <span className="flex min-w-0 items-center gap-2">
+                              {/* VERGİ / SGK ayrımı: iki farklı kurum, iki farklı renk */}
+                              <i
+                                className="h-1.5 w-1.5 flex-shrink-0 rounded-full"
+                                style={{ background: sgk ? '#8cbde8' : GOLD }}
+                              />
+                              <span className="truncate font-medium text-white">{odemeAdi(s)}</span>
+                              <span
+                                className="flex-shrink-0 rounded px-1.5 py-0.5 text-[9.5px] font-bold uppercase tracking-wide"
+                                style={
+                                  sgk
+                                    ? { background: 'rgba(140,189,232,0.12)', color: '#8cbde8' }
+                                    : { background: 'rgba(212,184,118,0.12)', color: GOLD }
+                                }
+                              >
+                                {sgk ? 'SGK' : 'Vergi'}
+                              </span>
+                            </span>
+                          </td>
+                          <td className="border-b px-3 py-3 whitespace-nowrap" style={{ borderColor: 'rgba(255,255,255,0.06)', color: TEXT2 }}>
+                            {donemAdi(s.donem)}
+                          </td>
+                          <td className="border-b px-3 py-3 whitespace-nowrap tabular-nums" style={{ borderColor: 'rgba(255,255,255,0.06)', color: vade.renk }}>
+                            {tarihAdi(s.sonGun)}
+                            {vade.etiket && (
+                              <span className="ml-1.5 text-[10.5px] font-semibold">({vade.etiket})</span>
+                            )}
+                          </td>
+                          <td
+                            className="border-b px-3 py-3 text-right font-semibold tabular-nums text-white"
+                            style={{ borderColor: 'rgba(255,255,255,0.06)' }}
+                          >
+                            {trMoney(s.tutar)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    <tr style={{ background: 'rgba(212,184,118,0.05)' }}>
+                      <td className="border-t px-3 py-3.5 text-[11.5px] font-bold uppercase tracking-wider" style={{ borderColor: 'rgba(212,184,118,0.28)', color: TEXT2 }}>
+                        Toplam · {active.satirlar.length} kalem
+                      </td>
+                      <td className="border-t" style={{ borderColor: 'rgba(212,184,118,0.28)' }} />
+                      <td className="border-t" style={{ borderColor: 'rgba(212,184,118,0.28)' }} />
+                      <td
+                        className="border-t px-3 py-3.5 text-right text-[15px] font-bold tabular-nums"
+                        style={{ borderColor: 'rgba(212,184,118,0.28)', color: GOLD }}
+                      >
+                        {trMoney(active.toplam)}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
               <div className="mt-4 rounded-r-xl border-l-[3px] py-2.5 pl-4 text-[12.5px]" style={{ borderColor: GOLD, background: 'rgba(212,184,118,0.08)', color: TEXT2 }}>
                 <b className="text-white">Toplu mod:</b> &quot;Tümüne Gönder&quot; ile her mükellefe kendi cetveli gider; sonuç İletim Raporu&apos;na işlenir.
               </div>

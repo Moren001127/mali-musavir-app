@@ -9,9 +9,11 @@ import { StorageModule } from '../storage/storage.module';
 import { WhatsAppModule } from '../whatsapp/whatsapp.module';
 import { EmailModule } from '../email/email.module';
 
+import { SgkTeshisController } from './sgk-teshis.controller';
+
 @Module({
   imports: [StorageModule, WhatsAppModule, EmailModule],
-  controllers: [AkilliBildirimController, AylikOdemeController, ShortLinkController],
+  controllers: [AkilliBildirimController, AylikOdemeController, ShortLinkController, SgkTeshisController],
   providers: [AkilliBildirimService, AkilliBildirimCron, AylikOdemeService, ShortLinkService],
   exports: [AkilliBildirimService, AylikOdemeService, ShortLinkService],
 })
