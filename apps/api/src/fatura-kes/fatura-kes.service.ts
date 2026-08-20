@@ -236,7 +236,14 @@ export class FaturaKesService {
       where: { id: draft.taxpayerId, tenantId },
       select: { id: true, companyName: true, firstName: true, lastName: true, taxNumber: true },
     });
-    return { ...this.sonuc(draft, taxpayer), onizlemeHtml: this.onizleme(draft, taxpayer) };
+    // GİB'de belge oluştuysa GERÇEK belgeyi göster; yoksa bizim önizlememizi.
+    //   (gorselHtml gönderim anında, aynı GİB oturumunda alınır.)
+    const gercek = typeof draft.gorselHtml === 'string' && draft.gorselHtml.length > 100 ? draft.gorselHtml : null;
+    return {
+      ...this.sonuc(draft, taxpayer),
+      gercekBelge: !!gercek,
+      onizlemeHtml: gercek || this.onizleme(draft, taxpayer),
+    };
   }
 
   /** Taslağı iptal et. KESILDI durumundaki resmî belge BURADAN silinemez. */

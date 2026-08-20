@@ -95,6 +95,92 @@ export class FaturaKesGibService {
     }
   }
 
+  /** GİB satırlarında alan adları değişkendir; ilk dolu olanı al. */
+  private oku(row: any, adlar: string[]): string {
+    for (const a of adlar) {
+      const v = row?.[a];
+      if (v !== undefined && v !== null && String(v).trim() !== '') return String(v).trim();
+    }
+    return '';
+  }
+
+  /** GİB tutarı "1,20" da olabilir "1.2" de — ikisini de çöz. */
+  private tutar(ham: string): number {
+    const t = String(ham || '').replace(/[^\d.,-]/g, '');
+    if (!t) return NaN;
+    const sonVirgul = t.lastIndexOf(',');
+    const sonNokta = t.lastIndexOf('.');
+    let d = t;
+    if (sonVirgul > sonNokta) {
+      d = t.replace(/\./g, '').replace(',', '.'); // 1.234,56 -> 1234.56
+    } else if (sonVirgul < 0 && /\.\d{3}$/.test(t)) {
+      d = t.replace(/\./g, ''); // 12.000 -> 12000 (virgul yok + tam 3 hane = binlik ayraci)
+    } else {
+      d = t.replace(/,/g, ''); // 1,234.56 -> 1234.56 / 1.2 -> 1.2
+    }
+    return Number(d);
+  }
+
+  /**
+   * BELGE NUMARASI + GÖRSEL — AYNI OTURUMDA ALINIR.
+   *
+   * GİB oluşturma cevabında numara YOKTUR ("Faturanız başarıyla oluşturulmuştur" der, numarayı
+   * vermez). Sonradan ayrı bir girişle bakmak İMKANSIZ: GİB aynı anda tek oturuma izin verir,
+   * güvenli çıkış yapılmadan ikinci giriş reddedilir. Bu yüzden numara ve görsel, çıkıştan
+   * ÖNCE, aynı oturumda alınır.
+   *
+   * EŞLEŞTİRME DÜRÜST YAPILIR: alıcı VKN + ödenecek tutar ile aday aranır. Tek aday varsa
+   * alınır; birden çok aday varsa TAHMİN EDİLMEZ (yanlış belgeyi kaydetmektense boş bırakılır).
+   */
+  private async belgeyiBul(token: string, payload: Record<string, any>) {
+    const tarih = String(payload.faturaTarihi || '');
+    const liste: any = await this.dispatch(token, 'EARSIV_PORTAL_TASLAKLARI_GETIR', 'RG_TASLAKLAR', {
+      baslangic: tarih,
+      bitis: tarih,
+      hangiTip: '5000/30000',
+      onayDurumu: 'Hepsi',
+    }).catch(() => null);
+    const rows: any[] = Array.isArray(liste?.data) ? liste.data : [];
+    if (!rows.length) return { faturaNo: null, ettn: null, onay: null, not: 'GİB listesi boş döndü' };
+
+    const hedef = Number(payload.odenecekTutar);
+    const vkn = String(payload.vknTckn || '');
+    const adaylar = rows.filter((r) => {
+      const rv = this.oku(r, ['vknTckn', 'aliciVknTckn', 'vkn', 'aliciVkn']);
+      const rt = this.tutar(this.oku(r, ['odenecekTutar', 'vergilerDahilToplamTutar', 'tutar', 'toplamTutar']));
+      const vknUyar = !rv || rv === vkn;
+      const tutarUyar = Number.isFinite(rt) && Number.isFinite(hedef) ? Math.abs(rt - hedef) < 0.01 : false;
+      return vknUyar && tutarUyar;
+    });
+
+    if (adaylar.length !== 1) {
+      return {
+        faturaNo: null,
+        ettn: null,
+        onay: null,
+        not: adaylar.length === 0 ? 'Listede eşleşen belge bulunamadı' : `${adaylar.length} aday eşleşti — tahmin edilmedi`,
+      };
+    }
+    const r = adaylar[0];
+    return {
+      faturaNo: this.oku(r, ['belgeNumarasi', 'faturaNo', 'faturaNumarasi', 'belgeNo']) || null,
+      ettn: this.oku(r, ['ettn', 'uuid', 'faturaUuid', 'belgeUuid']) || null,
+      onay: this.oku(r, ['onayDurumu', 'durum']) || null,
+      not: null,
+    };
+  }
+
+  /** Faturanın GİB'deki kendi görüntüsü (HTML). Bizim önizlememiz değil, GERÇEK belge. */
+  private async gorselAl(token: string, ettn: string, onay: string) {
+    const r: any = await this.dispatch(token, 'EARSIV_PORTAL_FATURA_GOSTER', 'RG_TASLAKLAR', {
+      ettn,
+      onayDurumu: onay || 'Onaylanmadı',
+    }).catch(() => null);
+    const html = typeof r?.data === 'string' ? r.data : '';
+    if (!html || html.length < 100 || !/</.test(html)) return null;
+    return html.slice(0, 400_000); // aşırı büyük belge satırı şişirmesin
+  }
+
   /** Mükellefin GİB e-Arşiv (GIB_IVD) kimliğini çöz. */
   private async kimlik(tenantId: string, taxpayerId: string) {
     const row: any = await (this.prisma as any).portalCredential.findFirst({
@@ -178,8 +264,16 @@ export class FaturaKesGibService {
     if (!token) throw new BadRequestException('GİB e-Arşiv girişi başarısız — kullanıcı kodu/şifre kontrol edilmeli');
 
     let sonuc: any;
+    let belge: any = { faturaNo: null, ettn: null, onay: null, not: null };
+    let gorsel: string | null = null;
     try {
       sonuc = await this.dispatch(token, 'EARSIV_PORTAL_FATURA_OLUSTUR', 'RG_BASITFATURA', payload);
+      // Numara ve görsel ÇIKIŞTAN ÖNCE alınır — sonradan ayrı girişle bakmak mümkün değil.
+      const mesajOn = typeof sonuc?.data === 'string' ? sonuc.data : '';
+      if (mesajOn && !/hata|ba[şs]ar[ıi]s[ıi]z|ge[çc]ersiz/i.test(mesajOn)) {
+        belge = await this.belgeyiBul(token, payload).catch(() => belge);
+        if (belge?.ettn) gorsel = await this.gorselAl(token, belge.ettn, belge.onay).catch(() => null);
+      }
     } finally {
       // HATA OLSA DA ÇIK: açık kalan oturum mükellefin kendi girişini de kilitler.
       await this.gibLogout(token);
@@ -195,12 +289,31 @@ export class FaturaKesGibService {
       throw new BadRequestException(`GİB taslağı oluşturmadı: ${mesaj || 'yanıt boş'}`);
     }
 
-    const belgeNo = (mesaj.match(/[A-Z]{3}\d{13}/) || [])[0] || null;
+    // Numara önce listeden (kesin), olmazsa mesaj içinden (nadiren geçiyor).
+    const belgeNo = belge?.faturaNo || (mesaj.match(/[A-Z]{3}\d{13}/) || [])[0] || null;
     await (this.prisma as any).salesInvoiceDraft.update({
       where: { id: draftId },
-      data: { durum: 'GIB_TASLAK', faturaNo: belgeNo, hata: null },
+      data: {
+        durum: 'GIB_TASLAK',
+        faturaNo: belgeNo,
+        ettn: belge?.ettn || null,
+        gorselHtml: gorsel,
+        hata: belgeNo ? null : (belge?.not ? `Belge oluştu ama numara okunamadı: ${belge.not}` : null),
+      },
     });
-    this.logger.log(`[FATURA-KES/GIB] ${draftId} · GİB TASLAĞI oluşturuldu${belgeNo ? ' · ' + belgeNo : ''} (KESİNLEŞTİRİLMEDİ)`);
-    return { kuruTest: false, gonderildi: true, durum: 'GIB_TASLAK', faturaNo: belgeNo, gibMesaj: mesaj.slice(0, 300) };
+    this.logger.log(
+      `[FATURA-KES/GIB] ${draftId} · GİB TASLAĞI oluşturuldu${belgeNo ? ' · ' + belgeNo : ' · numara okunamadi'}` +
+        `${gorsel ? ' · gorsel alindi' : ''} (KESİNLEŞTİRİLMEDİ)`,
+    );
+    return {
+      kuruTest: false,
+      gonderildi: true,
+      durum: 'GIB_TASLAK',
+      faturaNo: belgeNo,
+      ettn: belge?.ettn || null,
+      gorselVar: !!gorsel,
+      not: belge?.not || null,
+      gibMesaj: mesaj.slice(0, 300),
+    };
   }
 }
