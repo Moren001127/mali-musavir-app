@@ -25,9 +25,10 @@ import { EmailModule } from '../email/email.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { ButceModule } from '../butce/butce.module';
 import { EvrakMesajService } from '../schedule/evrak-mesaj.service';
+import { FaturaKesModule } from '../fatura-kes/fatura-kes.module';
 
 @Module({
-  imports: [forwardRef(() => ButceModule), PrismaModule, MorenAiModule, StorageModule, EmailModule, NotificationsModule, CalisanModule],
+  imports: [forwardRef(() => ButceModule), PrismaModule, MorenAiModule, StorageModule, EmailModule, NotificationsModule, CalisanModule, FaturaKesModule],
   providers: [
     // Durumsuz servis (cron/dinleyici yok), bu yuzden AppModule'deki ornekten
     // ayri bir ornek olusmasi zararsiz. ReminderCron'da AYNI SEYI YAPMA:

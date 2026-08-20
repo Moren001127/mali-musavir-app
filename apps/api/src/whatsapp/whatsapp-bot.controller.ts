@@ -3,6 +3,9 @@ import { PrismaService } from '../prisma/prisma.service';
 import { MorenAiService } from '../moren-ai/moren-ai.service';
 import { WhatsAppService } from './whatsapp.service';
 import { BaileysService } from './baileys.service';
+import { FaturaKesKomutService } from '../fatura-kes/fatura-kes-komut.service';
+import { FaturaKesService } from '../fatura-kes/fatura-kes.service';
+import { FaturaKesGibService } from '../fatura-kes/fatura-kes-gib.service';
 import { BAILEYS_PROVIDER } from './baileys-auth-store';
 import { AutomationEventBus } from '../automations/automation-event-bus.service';
 import { StorageService } from '../storage/storage.service';
@@ -70,6 +73,10 @@ export class WhatsAppBotController implements OnModuleInit {
     private readonly qualityLog: QualityLogService,
     private readonly baileys: BaileysService,
     private readonly calisan: CalisanService,
+    // FATURA KES (owner hattı): serbest metinden fatura komutu + önizleme + onaylı gönderim.
+    private readonly faturaKomut: FaturaKesKomutService,
+    private readonly faturaKes: FaturaKesService,
+    private readonly faturaKesGib: FaturaKesGibService,
     // Kişisel Bütçe komutları (owner hattı). forwardRef: ButceModule bu modülü import ediyor.
     @Inject(forwardRef(() => ButceWhatsappService))
     private readonly butceWhatsapp: ButceWhatsappService,
@@ -1039,6 +1046,119 @@ export class WhatsAppBotController implements OnModuleInit {
    * Kişisel Bütçe modülü komutları. Modül owner-only olduğu için kayıt, modülün
    * sahibi olan kullanıcı adına yapılır; e-posta eşleşmezse hiçbir şey yapılmaz.
    */
+  /**
+   * FATURA KES — owner hattı. Kullanıcının tarif ettiği akış (2026-08-20):
+   *   yaz → bot anlar, eksiği sorar → ÖNİZLEME görüntüsünü yollar → sen bakarsın
+   *   → "onayla" → GİB'de oluşturur ve GERÇEK belgeyi yollar.
+   *
+   * GÜVENLİK:
+   *   • ONAY OLMADAN GİB'E HİÇBİR ŞEY GİTMEZ. Önizleme yalnız bizde üretilir.
+   *   • Kuru testte (msg.__dryRun) ne mesaj ne GİB isteği gider — yalnız metin kaydedilir.
+   *   • Yalnız owner hattında çağrılır (çağrı yeri owner dalının içindedir).
+   */
+  private async maybeHandleFaturaKes(ownerTenant: any, msg: any, ownerContactId: string): Promise<boolean> {
+    try {
+      const kimlik = String(msg.from || '').replace(/\D/g, '');
+      if (!kimlik) return false;
+      const metin = String(msg.text || '');
+      const bekleyenTaslak = this.faturaKomut.bekleyenOnay(kimlik);
+
+      // 1) ÖNİZLEMESİ GÖNDERİLMİŞ TASLAK VARSA: onayla / vazgeç
+      if (bekleyenTaslak) {
+        if (FaturaKesKomutService.vazgecMi(metin)) {
+          this.faturaKomut.onayiUnut(kimlik);
+          await this.faturaKes.cancelDraft(ownerTenant.id, bekleyenTaslak).catch(() => null);
+          await this.ownerCevapGonder(msg, ownerTenant.id, ownerContactId,
+            'Tamam, vazgeçtim. Fatura kesilmedi.', 'owner:fatura-kes:vazgec', 'WhatsApp owner fatura vazgec');
+          return true;
+        }
+        if (FaturaKesKomutService.onayMi(metin)) {
+          this.faturaKomut.onayiUnut(kimlik);
+          if (msg.__dryRun) {
+            msg.__dryReply = 'KURU TEST: onay alındı, GİB’e GÖNDERİLMEDİ.';
+            msg.__dryKind = 'owner:fatura-kes:onay';
+            return true;
+          }
+          const sonuc: any = await this.faturaKesGib
+            .gibeGonder(ownerTenant.id, bekleyenTaslak, { kuruTest: false })
+            .catch((e: any) => ({ __hata: e?.response?.message || e?.message || 'bilinmeyen hata' }));
+          if (sonuc?.__hata) {
+            await this.ownerCevapGonder(msg, ownerTenant.id, ownerContactId,
+              `GİB faturayı oluşturmadı: ${String(sonuc.__hata).slice(0, 300)}`,
+              'owner:fatura-kes:hata', 'WhatsApp owner fatura hata');
+            return true;
+          }
+          await this.faturaKesBelgeGonder(ownerTenant.id, bekleyenTaslak, msg,
+            `GİB'de oluştu${sonuc?.faturaNo ? ' · ' + sonuc.faturaNo : ''} — *imzasız taslak*, henüz resmî belge değil.`);
+          return true;
+        }
+        // Başka bir şey yazdıysa aşağı düşer: yeni komut ya da eksik alan cevabı olabilir.
+      }
+
+      // 2) YENİ KOMUT ya da EKSİK ALAN CEVABI
+      const sonuc = await this.faturaKomut.isle(ownerTenant.id, kimlik, metin);
+      if (sonuc.tip === 'ILGISIZ') return false;
+
+      if (sonuc.tip === 'SORU') {
+        await this.ownerCevapGonder(msg, ownerTenant.id, ownerContactId, sonuc.soru,
+          'owner:fatura-kes:soru', 'WhatsApp owner fatura soru');
+        return true;
+      }
+      if (sonuc.tip === 'SECIM') {
+        const liste = sonuc.adaylar.map((a, i) => `${i + 1}) ${a.ad}`).join('\n');
+        await this.ownerCevapGonder(msg, ownerTenant.id, ownerContactId, `${sonuc.soru}\n${liste}`,
+          'owner:fatura-kes:secim', 'WhatsApp owner fatura secim');
+        return true;
+      }
+
+      // HAZIR → önizlemeyi gönder, ONAY BEKLE (GİB'e hâlâ hiçbir şey gitmedi)
+      this.faturaKomut.onayaAl(kimlik, sonuc.taslakId);
+      if (msg.__dryRun) {
+        msg.__dryReply = sonuc.ozet;
+        msg.__dryKind = 'owner:fatura-kes:onizleme';
+        return true;
+      }
+      await this.faturaKesBelgeGonder(ownerTenant.id, sonuc.taslakId, msg, sonuc.ozet);
+      return true;
+    } catch (e: any) {
+      this.logger.warn(`[FaturaKes WhatsApp] islem hatasi: ${e?.message || e}`);
+      return false;
+    }
+  }
+
+  /**
+   * Fatura görüntüsünü (PDF) WhatsApp'tan gönder. Kalıp Cari Kasa ekstresiyle AYNI:
+   * depoya yükle → süreli bağlantı → TEK mesaj (belge + altında açıklama).
+   * PDF üretilemezse SESSİZ KALMAZ; en azından özet metni gider.
+   */
+  private async faturaKesBelgeGonder(tenantId: string, taslakId: string, msg: any, aciklama: string): Promise<void> {
+    // KURU TEST KAPISI — BURADA DA olmalı. Çağıran taraf zaten kontrol ediyor ama bu
+    //   fonksiyon ileride başka yerden çağrılırsa koruma çağırana bağlı kalmasın.
+    //   (Hafıza: belge akışında koruma yokken 3 gerçek mesaj gitmişti.)
+    if (msg.__dryRun) {
+      msg.__dryReply = aciklama;
+      msg.__dryKind = msg.__dryKind || 'owner:fatura-kes:belge';
+      return;
+    }
+    try {
+      if (!this.storage) throw new Error('dosya deposu yok');
+      const { pdf, ad } = await this.faturaKes.onizlemePdf(tenantId, taslakId);
+      const key = `${tenantId}/fatura-kes/${taslakId}-${Date.now()}.pdf`;
+      await this.storage.putBuffer(key, pdf, 'application/pdf');
+      const url = await this.storage.getPresignedInlineUrl(key, ad, 'application/pdf', 3600);
+      const med: any = await this.whatsapp.sendMediaDetailed(
+        this.replyTarget(msg), { url, mimeType: 'application/pdf', filename: ad, caption: aciklama },
+        tenantId, { quote: false } as any,
+      );
+      if (!med?.ok) throw new Error(med?.error || 'medya gönderilemedi');
+    } catch (e: any) {
+      this.logger.warn(`[FaturaKes WhatsApp] PDF gonderilemedi: ${e?.message || e}`);
+      await this.whatsapp
+        .sendMessage(this.replyTarget(msg), `${aciklama}\n\n_(Fatura görüntüsü gönderilemedi — portaldan bakabilirsin.)_`, tenantId)
+        .catch(() => null);
+    }
+  }
+
   private async maybeHandleButce(ownerTenant: any, msg: any, ownerContactId: string): Promise<boolean> {
     try {
       if (!ButceWhatsappService.butceIstegiMi(msg.text)) return false;
@@ -2130,6 +2250,12 @@ ${not}` : not;
       // borç tutarı 95.000 TL" / "ofisten 20 bin çektim" gibi yazınca kaydı burada yapar.
       // Yalnız MODÜL SAHİBİ için çalışır; başka owner numarası olsa bile veri karışmaz.
       if (await this.maybeHandleButce(ownerTenant, msg, ownerContact?.id)) {
+        return;
+      }
+
+      // FATURA KES (owner): "edelerden şu firmaya şu tutarda fatura kes" gibi serbest metin.
+      //   Bütçe'den SONRA: bütçe komutları daha dar kalıplı, önce onlar elensin.
+      if (await this.maybeHandleFaturaKes(ownerTenant, msg, ownerContact?.id)) {
         return;
       }
 

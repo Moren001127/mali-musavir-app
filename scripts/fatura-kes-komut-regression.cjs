@@ -30,11 +30,22 @@ const esit = (ad, olan, beklenen) => {
 const KOMUT = [
   ['edelerden ahmet yilmaza 5 bin lira danismanlik faturasi kes', true],
   ['EDELER YEMEK bugun metro insaata fatura kessin', true],
-  ['fatura kesme ekranini acar misin', true],
+  // SORU/GEZINME cumleleri komut DEGILDIR — yoksa normal sohbet komut sanilir ve bot
+  //   "hangi mukelleften keselim?" diye sacmalar.
+  ['fatura kesme ekranini acar misin', false],
+  ['nasil fatura kesilir', false],
+  ['fatura kes menusu nerede', false],
   ['merhaba nasilsin', false],
   ['temmuz kdv beyannamesi ne durumda', false],
   ['', false],
 ];
+
+// --- Onay / vazgec kelimeleri ---
+const ONAY = [['onayla', true], ['onaylayabilirsin', true], ['tamam', true], ['evet', true],
+  ['gonder', true], ['yok once bir bakayim', false], ['vazgec', false]];
+for (const [m, b] of ONAY) esit(`onay: "${m}"`, S.onayMi(m), b);
+const VAZGEC = [['vazgec', true], ['iptal', true], ['hayir', true], ['onayla', false]];
+for (const [m, b] of VAZGEC) esit(`vazgec: "${m}"`, S.vazgecMi(m), b);
 for (const [metin, b] of KOMUT) esit(`on eleme: "${metin.slice(0, 34)}"`, S.faturaKomutuMu(metin), b);
 
 // --- Eksik alan sorulari: SIRA onemli ---

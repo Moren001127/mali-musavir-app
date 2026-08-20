@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, Logger, NotFoundException } from '@nes
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { birimKodu, GIB_BIRIM } from './gib-earsiv-payload';
+import { chromium } from 'playwright-core';
 
 /**
  * FATURA KES — satış faturası hazırlama motoru.
@@ -343,6 +344,49 @@ export class FaturaKesService {
         ? `Yalnız bizdeki kayıt iptal edildi. GİB'de taslak${draft.faturaNo ? ' ' + draft.faturaNo : ''} DURUYOR ve imzalanabilir — GİB portalından silinmeli.`
         : null,
     };
+  }
+
+  /**
+   * ONIZLEMEYI PDF YAP — WhatsApp'a goruntu gondermek icin.
+   *
+   * WhatsApp HTML gonderemez; GIB'in belgesi de HTML olarak geliyor. Ayni HTML Chromium ile
+   * PDF'e cevrilir. Kalip Cari Kasa ekstresiyle AYNI (playwright-core, imajin sistem
+   * Chromium'u — kendi Chromium'unu indirmez).
+   *
+   * Belge GIB'de olustuysa GERCEK belge, yoksa onizleme basilir; dosya adi bunu soyler.
+   */
+  async onizlemePdf(tenantId: string, id: string): Promise<{ pdf: Buffer; ad: string; gercek: boolean }> {
+    const draft: any = await (this.prisma as any).salesInvoiceDraft.findFirst({ where: { id, tenantId } });
+    if (!draft) throw new NotFoundException('Taslak bulunamadı');
+    const taxpayer = await (this.prisma as any).taxpayer.findFirst({
+      where: { id: draft.taxpayerId, tenantId },
+      select: { id: true, companyName: true, firstName: true, lastName: true, taxNumber: true, taxOffice: true, address: true, email: true, phone: true },
+    });
+    const gercek = typeof draft.gorselHtml === 'string' && draft.gorselHtml.length > 100;
+    const html = gercek ? draft.gorselHtml : this.onizleme(draft, taxpayer);
+
+    let browser: any;
+    try {
+      browser = await chromium.launch({
+        headless: true,
+        executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || process.env.CHROMIUM_PATH || undefined,
+        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      });
+      const context = await browser.newContext();
+      const page = await context.newPage();
+      await page.setContent(html, { waitUntil: 'networkidle' });
+      const pdf = Buffer.from(
+        await page.pdf({ format: 'A4', landscape: true, margin: { top: '8mm', right: '8mm', bottom: '8mm', left: '8mm' }, printBackground: true }),
+      );
+      const kim = String(draft.aliciUnvan || '').replace(/[^\p{L}\p{N} .-]/gu, '').slice(0, 40).trim() || 'fatura';
+      const ad = `${gercek ? (draft.faturaNo || 'fatura') : 'onizleme'} - ${kim}.pdf`;
+      return { pdf, ad, gercek };
+    } catch (e: any) {
+      this.logger.error(`[FATURA-KES] PDF uretilemedi: ${e?.message}`);
+      throw new BadRequestException(`Fatura PDF'i üretilemedi: ${e?.message || e}`);
+    } finally {
+      try { if (browser) await browser.close(); } catch { /* onemsiz */ }
+    }
   }
 
   private mukellefAdi(t: any): string {

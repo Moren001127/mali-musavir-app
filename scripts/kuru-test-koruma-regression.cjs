@@ -15,9 +15,15 @@ const path = require('path');
 const dosya = path.join(__dirname, '..', 'apps', 'api', 'src', 'whatsapp', 'whatsapp-bot.controller.ts');
 const satirlar = fs.readFileSync(dosya, 'utf8').split('\n');
 
-const GONDERIM = /this\.whatsapp\.sendMessage\(|this\.baileys\.sendMedia\(/;
+// sendMediaDetailed EKLENDI (2026-08-20 bulgusu): PDF/gorsel gonderimi taranmiyordu,
+//   yani kuru testte MEDYA GERCEKTEN GIDEBILIRDI. Metin kadar tehlikeli.
+const GONDERIM = /this\.whatsapp\.sendMessage\(|this\.whatsapp\.sendMediaDetailed\(|this\.baileys\.sendMedia\(/;
 const KAPI = /if\s*\(\s*msg\.__dryRun/;
-const FONKSIYON_BASI = /^\s{2,6}(private|public|async|const)\s|^\s{4}const\s+\w+\s*=\s*async/;
+// FONKSIYON BASI KESKINLESTIRILDI (2026-08-20): eski kalip araya giren HERHANGI bir
+//   `const x = ...` satirini fonksiyon basi saniyordu; geriye arama orada durup
+//   yukaridaki gercek kuru-test kapisini GOREMIYOR, YANLIS ALARM veriyordu.
+//   Artik yalniz sinif metodu (2 bosluk girinti) ya da ok-fonksiyon atamasi sayilir.
+const FONKSIYON_BASI = /^ {2}(private|public|protected|async)\s|^\s{2,6}const\s+\w+\s*=\s*(async\s*)?\(/;
 
 const korumasiz = [];
 for (let i = 0; i < satirlar.length; i++) {

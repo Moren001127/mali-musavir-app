@@ -81,6 +81,15 @@ export class FaturaKesController {
     return this.gib.gorseliTazele(req.user.tenantId, id);
   }
 
+  /** Önizlemeyi/GİB belgesini PDF olarak ver (yazdırma + WhatsApp gönderimi için). */
+  @Get('taslak/:id/pdf')
+  async pdf(@Req() req: any, @Param('id') id: string, @Res() res: any) {
+    const { pdf, ad } = await this.service.onizlemePdf(req.user.tenantId, id);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(ad)}"`);
+    res.send(pdf);
+  }
+
   @Delete('taslak/:id')
   cancel(@Req() req: any, @Param('id') id: string) {
     return this.service.cancelDraft(req.user.tenantId, id);

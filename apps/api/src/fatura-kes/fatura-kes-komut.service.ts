@@ -56,6 +56,28 @@ export class FaturaKesKomutService {
   private readonly bekleyen = new Map<string, { alanlar: KomutAlanlari; ts: number }>();
   private static readonly BEKLEME_MS = 20 * 60 * 1000;
 
+  /**
+   * ÖNİZLEMESİ GÖNDERİLMİŞ, ONAY BEKLEYEN TASLAK (numara başına tek).
+   * Kullanıcı akışı: "önizleme görüntüsünü gönderecek, ben inceleyeceğim, sorun yoksa
+   * onaylayabilirsin diyeceğim". Onay gelmeden GİB'e HİÇBİR ŞEY gitmez.
+   */
+  private readonly onayBekleyen = new Map<string, { taslakId: string; ts: number }>();
+
+  onayaAl(kimlik: string, taslakId: string) {
+    this.onayBekleyen.set(kimlik, { taslakId, ts: Date.now() });
+  }
+
+  bekleyenOnay(kimlik: string): string | null {
+    const k = this.onayBekleyen.get(kimlik);
+    if (!k) return null;
+    if (Date.now() - k.ts > FaturaKesKomutService.BEKLEME_MS) { this.onayBekleyen.delete(kimlik); return null; }
+    return k.taslakId;
+  }
+
+  onayiUnut(kimlik: string) {
+    this.onayBekleyen.delete(kimlik);
+  }
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly faturaKes: FaturaKesService,
@@ -65,9 +87,25 @@ export class FaturaKesKomutService {
   static faturaKomutuMu(metin: string): boolean {
     const t = String(metin || '').toLowerCase();
     if (!t.trim()) return false;
+    // SORU/GEZINME cumlelerini ELE: "fatura kesme ekranini acar misin", "nasil fatura kesilir"
+    //   gibi mesajlar komut DEGILDIR; bot bunlara "hangi mukelleften keselim?" diye
+    //   sormamali. (Bu ayrim olmazsa normal sohbet komut sanilir.)
+    if (/ekran|men[üu]|nas[ıi]l|a[çc]ar m[ıi]s[ıi]n|a[çc]abilir|nerede|ne zaman/.test(t)) return false;
     const fatura = /fatura|e-?ar[şs]iv/.test(t);
     const eylem = /kes|kese(lim|cek)?|d[üu]zenle|olu[şs]tur|hazirla|hazırla/.test(t);
     return fatura && eylem;
+  }
+
+  /** Onay kelimeleri — sadece bunlar GİB'e göndermeyi tetikler. */
+  static onayMi(metin: string): boolean {
+    const t = String(metin || '').toLowerCase().trim();
+    return /^(onayla|onaylayabilirsin|onay|tamam|olur|evet|g[öo]nder|kes)\b/.test(t);
+  }
+
+  /** Vazgeçme kelimeleri. */
+  static vazgecMi(metin: string): boolean {
+    const t = String(metin || '').toLowerCase().trim();
+    return /^(vazge[çc]|iptal|hay[ıi]r|dur|bo[şs] ver)\b/.test(t);
   }
 
   private temizle() {
