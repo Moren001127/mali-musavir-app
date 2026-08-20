@@ -385,6 +385,10 @@ export class WhatsAppController {
       select: {
         id: true, companyName: true, firstName: true, lastName: true,
         phone: true, phones: true, taxNumber: true,
+        // REHBER ADI: bu select'te YOKTU — kisiAdi hep bos donuyor, sohbeti
+        // acinca baslik firma adina dusuyordu. Listede calisip detayda
+        // calismamasinin sebebi buydu.
+        telefonAdlari: true,
       },
     });
     if (!taxpayer) return { error: 'Mükellef bulunamadı', messages: [] };
