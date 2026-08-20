@@ -4195,6 +4195,36 @@ const FK_DURUM: Record<string, { etiket: string; bg: string; renk: string }> = {
   IPTAL: { etiket: 'iptal', bg: '#f5f5f4', renk: '#78716c' },
 };
 
+/** Islem dugmesi bicimi. Islevler hover'a SAKLANMAZ (tasarim kurali) — hep gorunur. */
+const fkIslem = (renk: string): any => ({
+  fontSize: 12, fontWeight: 600, color: renk, background: '#fff',
+  border: '1px solid ' + renk + '33', borderRadius: 8, padding: '4px 10px', cursor: 'pointer',
+});
+
+const FK_BIRLER = ['', 'Bir', 'İki', 'Üç', 'Dört', 'Beş', 'Altı', 'Yedi', 'Sekiz', 'Dokuz'];
+const FK_ONLAR = ['', 'On', 'Yirmi', 'Otuz', 'Kırk', 'Elli', 'Altmış', 'Yetmiş', 'Seksen', 'Doksan'];
+function fkUcBasamak(n: number): string {
+  const y = Math.floor(n / 100), o = Math.floor((n % 100) / 10), b = n % 10;
+  return (y ? (y === 1 ? 'Yüz' : FK_BIRLER[y] + 'Yüz') : '') + FK_ONLAR[o] + FK_BIRLER[b];
+}
+/**
+ * Tutari yaziya cevirir — gerceklik hissi icin fatura altindaki "Yalniz ... TL" satiri.
+ * Sunucudaki yaziyla() ile AYNI kural: "Bin" tek basina yazilir (BirBin degil).
+ * NOT: bu yalniz EKRAN icindir; belgeye giden metni entegrator/sunucu uretir.
+ */
+function tutarYaziyla(n: number): string {
+  if (!Number.isFinite(n)) return '';
+  const tam = Math.floor(Math.abs(n));
+  const kurus = Math.round((Math.abs(n) - tam) * 100);
+  if (tam === 0 && !kurus) return 'Sıfır';
+  const mil = Math.floor(tam / 1000000), bin = Math.floor((tam % 1000000) / 1000), kalan = tam % 1000;
+  let s = '';
+  if (mil) s += fkUcBasamak(mil) + 'Milyon';
+  if (bin) s += (bin === 1 ? 'Bin' : fkUcBasamak(bin) + 'Bin');
+  s += fkUcBasamak(kalan);
+  return kurus ? s + ' TL ' + fkUcBasamak(kurus) + ' Kuruş' : s + ' TL';
+}
+
 function ScreenFaturaKes({ taxpayerId, taxpayers }: { taxpayerId: string; taxpayers: any[] }) {
   const qc = useQueryClient();
   // TÜRKİYE GÜNÜ (denetim 2026-08-20): toISOString UTC verir; gece 00:00-03:00 arasında
@@ -4361,146 +4391,202 @@ function ScreenFaturaKes({ taxpayerId, taxpayers }: { taxpayerId: string; taxpay
       )}
 
       {taxpayerId && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 320px', gap: 20, alignItems: 'start' }}>
-          <div style={{ border: '1px solid #e7e5e4', borderRadius: 12, padding: 18, background: '#fff' }}>
-            <div style={{ fontSize: 12, color: '#78716c', marginBottom: 14, display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-              <span>Satıcı: <b style={{ color: '#1c1917' }}>{mukellef ? (mukellef.companyName || `${mukellef.firstName || ''} ${mukellef.lastName || ''}`.trim()) : ''}</b></span>
-              {kanalQ.data && (
-                <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 20, fontWeight: 600, background: kanalQ.data.gibdenKesilebilir ? '#dcfce7' : '#fee2e2', color: kanalQ.data.gibdenKesilebilir ? '#166534' : '#991b1b' }}>
-                  {kanalQ.data.kanal === 'ENTEGRATOR' ? `kanal: ${kanalQ.data.saglayici}` : 'kanal: GİB e-Arşiv'}
-                </span>
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 340px', gap: 20, alignItems: 'start' }}>
+          {/* ---------- BELGE: gerçek fatura kâğıdı düzeni ---------- */}
+          <div style={{ border: '1px solid #e7e5e4', borderRadius: 14, background: '#fff', overflow: 'hidden', boxShadow: '0 18px 40px rgba(28,25,23,.07)' }}>
+            <div style={{ background: 'radial-gradient(130% 180% at 0% 0%, #334155 0%, #1e293b 45%, #0f172a 100%)', color: '#fff', padding: '17px 22px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 14 }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 11, letterSpacing: '.22em', color: '#fcd34d', fontWeight: 700 }}>SATICI</div>
+                <div style={{ fontSize: 16, fontWeight: 700, marginTop: 3, lineHeight: 1.3 }}>
+                  {mukellef ? (mukellef.companyName || [mukellef.firstName, mukellef.lastName].filter(Boolean).join(' ')) : ''}
+                </div>
+                <div style={{ fontSize: 12, color: '#cbd5e1', marginTop: 3 }}>
+                  {mukellef?.taxNumber ? 'VKN ' + mukellef.taxNumber : ''}{mukellef?.taxOffice ? ' · ' + mukellef.taxOffice + ' VD' : ''}
+                </div>
+              </div>
+              <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: '.16em', color: '#fbbf24' }}>FATURA</div>
+                {kanalQ.data && (
+                  <div style={{ fontSize: 11, marginTop: 5, padding: '3px 9px', borderRadius: 20, fontWeight: 600, display: 'inline-block', background: 'rgba(255,255,255,.12)', color: '#e2e8f0' }}>
+                    {kanalQ.data.kanal === 'ENTEGRATOR' ? kanalQ.data.saglayici : 'GİB e-Arşiv'}
+                  </div>
+                )}
+              </div>
+            </div>
+            <div style={{ height: 3, background: 'linear-gradient(90deg,#b45309,#fbbf24 35%,#fde68a 50%,#fbbf24 65%,#b45309)' }} />
+
+            <div style={{ padding: '20px 22px' }}>
+              {kanalQ.data?.uyari && (
+                <div style={{ marginBottom: 16, background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 9, padding: '11px 13px', fontSize: 13, color: '#7f1d1d', lineHeight: 1.55 }}>
+                  <b>Dikkat.</b> {kanalQ.data.uyari}
+                </div>
               )}
+
+              {/* ALICI + BELGE KÜNYESİ */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 250px', gap: 16, alignItems: 'start' }}>
+                <div style={{ border: '1px solid #f0ede8', borderRadius: 11, padding: 15, background: 'linear-gradient(160deg,#fffdf7,#fff 60%)' }}>
+                  <div style={{ fontSize: 10, letterSpacing: '.18em', color: '#b45309', fontWeight: 700, marginBottom: 12 }}>SAYIN (ALICI)</div>
+                  <div style={{ marginBottom: 10 }}>
+                    <label style={lbl}>ÜNVAN / AD SOYAD</label>
+                    <input style={inp} value={aliciUnvan} onChange={(e) => setAliciUnvan(e.target.value)} placeholder="Firma ünvanı ya da ad soyad" />
+                  </div>
+                  <div style={{ marginBottom: 10 }}>
+                    <label style={lbl}>ADRES</label>
+                    <input style={inp} value={aliciAdres} onChange={(e) => setAliciAdres(e.target.value)} placeholder="Mahalle, cadde, no — İLÇE / İL" />
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <div>
+                      <label style={lbl}>VKN / TCKN</label>
+                      <input style={{ ...inp, borderColor: aliciVkn && !vknGecerli ? '#fca5a5' : '#e7e5e4', fontFamily: 'ui-monospace,monospace' }} value={aliciVkn} onChange={(e) => setAliciVkn(e.target.value)} placeholder="10 veya 11 hane" inputMode="numeric" />
+                    </div>
+                    <div>
+                      <label style={lbl}>VERGİ DAİRESİ</label>
+                      <input style={inp} value={aliciVd} onChange={(e) => setAliciVd(e.target.value)} />
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ border: '1px solid #e2e8f0', borderRadius: 11, overflow: 'hidden' }}>
+                  <div style={{ background: '#1e293b', color: '#e2e8f0', fontSize: 10, letterSpacing: '.16em', fontWeight: 700, padding: '8px 12px' }}>BELGE BİLGİLERİ</div>
+                  <div style={{ padding: 12, fontSize: 12 }}>
+                    <label style={lbl}>FATURA TARİHİ</label>
+                    <input type="date" style={inp} value={tarih} max={bugun} onChange={(e) => setTarih(e.target.value)} />
+                    {/* NUMARA/ETTN ÖNİZLEMEDE VERİLMEZ — kullanıcı kuralı: numara alındıktan
+                        sonra fatura iptal/silme yapılamıyor. Numara ONAY anında alınır. */}
+                    <div style={{ marginTop: 12, paddingTop: 11, borderTop: '1px dashed #e2e8f0', color: '#64748b', lineHeight: 1.9 }}>
+                      <div>Fatura No <b style={{ color: '#94a3b8', fontWeight: 600 }}>— onayda verilecek</b></div>
+                      <div>ETTN <b style={{ color: '#94a3b8', fontWeight: 600 }}>— onayda verilecek</b></div>
+                      <div>Belge Türü <b style={{ color: '#334155' }}>{kanalQ.data?.kanal === 'ENTEGRATOR' ? 'e-Fatura / e-Arşiv' : 'e-Arşiv'}</b></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* KALEM TABLOSU */}
+              <div style={{ marginTop: 18, border: '1px solid #e2e8f0', borderRadius: 11, overflow: 'hidden' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '34px minmax(0,1fr) 82px 92px 120px 96px', background: '#1e293b', color: '#cbd5e1', fontSize: 10, letterSpacing: '.08em', fontWeight: 700 }}>
+                  <div style={{ padding: '9px 8px' }}>SIRA</div>
+                  <div style={{ padding: '9px 8px' }}>MAL / HİZMET</div>
+                  <div style={{ padding: '9px 8px', textAlign: 'right' }}>MİKTAR</div>
+                  <div style={{ padding: '9px 8px' }}>BİRİM</div>
+                  <div style={{ padding: '9px 8px', textAlign: 'right' }}>TUTAR (KDV HARİÇ)</div>
+                  <div style={{ padding: '9px 8px', textAlign: 'right' }}>KDV ORANI</div>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '34px minmax(0,1fr) 82px 92px 120px 96px', alignItems: 'center', background: '#fff' }}>
+                  <div style={{ padding: 8, fontSize: 13, color: '#78716c', textAlign: 'center' }}>1</div>
+                  <div style={{ padding: 6 }}>
+                    <input style={{ ...inp, border: 'none', background: 'transparent', padding: '7px 6px' }} value={aciklama} onChange={(e) => setAciklama(e.target.value)} placeholder="Örn: Nakliye hizmet bedeli — İstanbul / Ankara" />
+                  </div>
+                  <div style={{ padding: 6 }}>
+                    <input style={{ ...inp, border: 'none', background: 'transparent', padding: '7px 6px', textAlign: 'right' }} value={miktar} onChange={(e) => setMiktar(e.target.value)} inputMode="decimal" />
+                  </div>
+                  <div style={{ padding: 6 }}>
+                    <select style={{ ...inp, border: 'none', background: 'transparent', padding: '7px 4px' }} value={birim} onChange={(e) => setBirim(e.target.value)}>
+                      {['ADET', 'KG', 'GRAM', 'TON', 'LİTRE', 'METRE', 'M2', 'M3', 'KM', 'PAKET', 'KUTU', 'KOLİ', 'ÇİFT', 'DÜZİNE', 'TAKIM', 'SAAT', 'GÜN', 'AY', 'YIL'].map((b) => (
+                        <option key={b} value={b}>{b}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div style={{ padding: 6 }}>
+                    <input style={{ ...inp, border: 'none', background: 'transparent', padding: '7px 6px', textAlign: 'right', fontWeight: 600 }} value={matrah} onChange={(e) => setMatrah(e.target.value)} placeholder="8.000,00" inputMode="decimal" />
+                  </div>
+                  <div style={{ padding: 6 }}>
+                    <select style={{ ...inp, border: 'none', background: 'transparent', padding: '7px 4px', textAlign: 'right' }} value={kdvOrani} onChange={(e) => setKdvOrani(Number(e.target.value))}>
+                      {[20, 10, 1, 0].map((o) => (<option key={o} value={o}>%{o}</option>))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* TOPLAMLAR */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 18, marginTop: 16, alignItems: 'flex-end' }}>
+                <div style={{ fontSize: 12, color: '#57534e', lineHeight: 1.7, maxWidth: 320 }}>
+                  <div style={{ fontSize: 10, letterSpacing: '.16em', color: '#a8a29e', fontWeight: 700 }}>YALNIZ</div>
+                  <div style={{ color: '#1c1917' }}>
+                    {Number.isFinite(toplamNum) && toplamNum > 0 ? tutarYaziyla(toplamNum) : '—'}
+                  </div>
+                </div>
+                <div style={{ width: 300, border: '1px solid #e2e8f0', borderRadius: 11, overflow: 'hidden', fontSize: 13 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '9px 13px', background: '#fafaf9' }}>
+                    <span style={{ color: '#57534e' }}>Vergiler hariç toplam</span><b>{tl(mNum)} ₺</b>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '9px 13px', borderTop: '1px solid #f1f5f9' }}>
+                    <span style={{ color: '#57534e' }}>Hesaplanan KDV %{kdvOrani}</span><b>{tl(kdvNum)} ₺</b>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', padding: '11px 13px', background: 'linear-gradient(135deg,#fffbeb,#fef3c7)', borderTop: '1px solid #fde68a' }}>
+                    <span style={{ color: '#92400e', fontWeight: 700, fontSize: 12, letterSpacing: '.04em' }}>ÖDENECEK TUTAR</span>
+                    <b style={{ fontSize: 16, color: '#78350f' }}>{tl(toplamNum)} ₺</b>
+                  </div>
+                </div>
+              </div>
             </div>
 
-            {kanalQ.data?.uyari && (
-              <div style={{ marginBottom: 14, background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 9, padding: '11px 13px', fontSize: 13, color: '#7f1d1d', lineHeight: 1.55 }}>
-                <b>Dikkat.</b> {kanalQ.data.uyari}
-              </div>
-            )}
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <div>
-                <label style={lbl}>ALICI VKN / TCKN</label>
-                <input style={{ ...inp, borderColor: aliciVkn && !vknGecerli ? '#fca5a5' : '#e7e5e4' }} value={aliciVkn} onChange={(e) => setAliciVkn(e.target.value)} placeholder="10 veya 11 hane" inputMode="numeric" />
-              </div>
-              <div>
-                <label style={lbl}>FATURA TARİHİ</label>
-                <input type="date" style={inp} value={tarih} max={bugun} onChange={(e) => setTarih(e.target.value)} />
-              </div>
-            </div>
-
-            <div style={{ marginTop: 12 }}>
-              <label style={lbl}>ALICI ÜNVAN / AD SOYAD</label>
-              <input style={inp} value={aliciUnvan} onChange={(e) => setAliciUnvan(e.target.value)} placeholder="Firma ünvanı ya da ad soyad" />
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
-              <div>
-                <label style={lbl}>VERGİ DAİRESİ (opsiyonel)</label>
-                <input style={inp} value={aliciVd} onChange={(e) => setAliciVd(e.target.value)} />
-              </div>
-              <div>
-                <label style={lbl}>ADRES (opsiyonel)</label>
-                <input style={inp} value={aliciAdres} onChange={(e) => setAliciAdres(e.target.value)} />
-              </div>
-            </div>
-
-            <div style={{ marginTop: 12 }}>
-              <label style={lbl}>FATURA İÇERİĞİ</label>
-              <input style={inp} value={aciklama} onChange={(e) => setAciklama(e.target.value)} placeholder="Örn: Nakliye hizmet bedeli — İstanbul / Ankara" />
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 100px 110px 120px', gap: 12, marginTop: 12 }}>
-              <div>
-                <label style={lbl}>TUTAR (KDV HARİÇ)</label>
-                <input style={inp} value={matrah} onChange={(e) => setMatrah(e.target.value)} placeholder="8.000,00" inputMode="decimal" />
-              </div>
-              <div>
-                <label style={lbl}>MİKTAR</label>
-                <input style={inp} value={miktar} onChange={(e) => setMiktar(e.target.value)} inputMode="decimal" />
-              </div>
-              <div>
-                <label style={lbl}>BİRİM</label>
-                <select style={inp} value={birim} onChange={(e) => setBirim(e.target.value)}>
-                  {['ADET', 'KG', 'GRAM', 'TON', 'LİTRE', 'METRE', 'M2', 'M3', 'KM', 'PAKET', 'KUTU', 'KOLİ', 'ÇİFT', 'DÜZİNE', 'TAKIM', 'SAAT', 'GÜN', 'AY', 'YIL'].map((b) => (
-                    <option key={b} value={b}>{b}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label style={lbl}>KDV ORANI</label>
-                <select style={inp} value={kdvOrani} onChange={(e) => setKdvOrani(Number(e.target.value))}>
-                  {[20, 10, 1, 0].map((o) => (<option key={o} value={o}>%{o}</option>))}
-                </select>
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 18, paddingTop: 16, borderTop: '1px solid #f5f5f4' }}>
-              <div style={{ fontSize: 14 }}>
-                <span style={{ color: '#78716c' }}>Matrah</span> <b>{tl(mNum)} ₺</b>
-                <span style={{ color: '#78716c', marginLeft: 14 }}>KDV %{kdvOrani}</span> <b>{tl(kdvNum)} ₺</b>
-                <span style={{ color: '#78716c', marginLeft: 14 }}>Toplam</span> <b style={{ fontSize: 16 }}>{tl(toplamNum)} ₺</b>
+            <div style={{ borderTop: '1px solid #f5f5f4', padding: '14px 22px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, background: '#fcfcfb' }}>
+              <div style={{ fontSize: 12, color: '#78716c', lineHeight: 1.5 }}>
+                Bu ekran fatura <b>göndermez</b>. Taslak hazırlar, önizler; numara ve imza onay adımında verilir.
               </div>
               <button
                 disabled={!hazir || olusturMut.isPending}
                 onClick={() => olusturMut.mutate()}
-                style={{ padding: '10px 20px', borderRadius: 9, border: 'none', fontSize: 14, fontWeight: 600, color: '#fff', cursor: hazir ? 'pointer' : 'not-allowed', background: hazir ? 'linear-gradient(135deg,#b45309,#d97706)' : '#d6d3d1' }}
+                style={{ padding: '11px 22px', borderRadius: 10, border: 'none', fontSize: 14, fontWeight: 700, color: '#fff', whiteSpace: 'nowrap', cursor: hazir ? 'pointer' : 'not-allowed', background: hazir ? 'linear-gradient(135deg,#92400e,#d97706)' : '#d6d3d1', boxShadow: hazir ? '0 8px 18px rgba(180,83,9,.25)' : 'none' }}
               >
                 {olusturMut.isPending ? 'Hazırlanıyor…' : 'Taslak hazırla'}
               </button>
             </div>
           </div>
 
-          <div style={{ border: '1px solid #e7e5e4', borderRadius: 12, background: '#fff', overflow: 'hidden' }}>
-            <div style={{ padding: '11px 14px', borderBottom: '1px solid #f5f5f4', fontSize: 12, fontWeight: 600, letterSpacing: '.06em', color: '#57534e', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-              <span>TASLAKLAR</span>
+          {/* ---------- TASLAKLAR ---------- */}
+          <div style={{ border: '1px solid #e7e5e4', borderRadius: 14, background: '#fff', overflow: 'hidden', boxShadow: '0 18px 40px rgba(28,25,23,.06)' }}>
+            <div style={{ padding: '13px 15px', background: 'radial-gradient(130% 200% at 0% 0%, #44403c 0%, #292524 60%, #1c1917 100%)', color: '#fff', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.16em', color: '#fcd34d' }}>TASLAKLAR</span>
               {(listQ.data || []).some((x: any) => x.durum === 'IPTAL') && (
                 <button
                   onClick={() => setIptalleriGoster((v) => !v)}
-                  style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: 11, cursor: 'pointer', padding: 0, letterSpacing: 0, fontWeight: 600 }}
+                  style={{ background: 'rgba(255,255,255,.12)', border: 'none', color: '#e7e5e4', fontSize: 11, cursor: 'pointer', padding: '3px 9px', borderRadius: 20, fontWeight: 600 }}
                 >
-                  {iptalleriGoster ? 'iptalleri gizle' : `iptalleri göster (${(listQ.data || []).filter((x: any) => x.durum === 'IPTAL').length})`}
+                  {iptalleriGoster ? 'iptalleri gizle' : 'iptalleri göster (' + (listQ.data || []).filter((x: any) => x.durum === 'IPTAL').length + ')'}
                 </button>
               )}
             </div>
-            <div style={{ maxHeight: 460, overflowY: 'auto' }}>
+            <div style={{ maxHeight: 560, overflowY: 'auto' }}>
               {listQ.isLoading && (<div style={{ padding: 16, fontSize: 13, color: '#a8a29e' }}>Yükleniyor…</div>)}
               {listQ.isError && (<div style={{ padding: 16, fontSize: 13, color: '#b91c1c' }}>Taslaklar getirilemedi — sayfayı yenileyin.</div>)}
               {!listQ.isLoading && !listQ.isError && gorunenTaslaklar.length === 0 && (<div style={{ padding: 16, fontSize: 13, color: '#a8a29e' }}>Henüz taslak yok.</div>)}
-              {gorunenTaslaklar.map((d: any) => (
-                <div key={d.id} style={{ padding: '11px 14px', borderBottom: '1px solid #fafaf9', fontSize: 13 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                    <b style={{ color: '#1c1917' }}>{d.aliciUnvan}</b>
-                    <span style={{ color: '#78716c', whiteSpace: 'nowrap' }}>{tl(d.toplam)} ₺</span>
+              {gorunenTaslaklar.map((d: any) => {
+                const dur = FK_DURUM[d.durum] || FK_DURUM.TASLAK;
+                return (
+                  <div key={d.id} style={{ position: 'relative', padding: '12px 14px 12px 17px', borderBottom: '1px solid #fafaf9', fontSize: 13 }}>
+                    <div style={{ position: 'absolute', left: 0, top: 8, bottom: 8, width: 3, borderRadius: 3, background: dur.renk }} />
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline' }}>
+                      <b style={{ color: '#1c1917', lineHeight: 1.35 }}>{d.aliciUnvan}</b>
+                      <span style={{ color: '#1c1917', whiteSpace: 'nowrap', fontWeight: 700 }}>{tl(d.toplam)} ₺</span>
+                    </div>
+                    <div style={{ color: '#78716c', marginTop: 3, fontSize: 12 }}>
+                      {new Date(d.faturaTarihi).toLocaleDateString('tr-TR')} · {String(d.aciklama || '').slice(0, 42)}
+                    </div>
+                    <div style={{ display: 'flex', gap: 7, marginTop: 9, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: 11, padding: '3px 8px', borderRadius: 20, fontWeight: 600, background: dur.bg, color: dur.renk }}>
+                        {dur.etiket}
+                      </span>
+                      {d.faturaNo && (<span style={{ fontSize: 11, color: '#57534e', fontFamily: 'ui-monospace,monospace' }}>{d.faturaNo}</span>)}
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
+                      <button onClick={() => setAcikTaslak(d.id)} style={fkIslem('#1e293b')}>önizle</button>
+                      {d.durum === 'GIB_TASLAK' && !d.faturaNo && (
+                        <button disabled={gorselMut.isPending} onClick={() => gorselMut.mutate(d.id)} style={fkIslem('#0f766e')}>
+                          {gorselMut.isPending ? 'getiriliyor…' : 'GİB görüntüsü'}
+                        </button>
+                      )}
+                      {d.durum === 'TASLAK' && (
+                        <button onClick={() => { setGibdeIsrar(false); setGibOnay(d); }} style={fkIslem('#b45309')}>GİB&apos;e gönder</button>
+                      )}
+                      {d.durum !== 'KESILDI' && d.durum !== 'IPTAL' && d.durum !== 'GONDERILIYOR' && (
+                        <button onClick={() => (d.durum === 'GIB_TASLAK' ? setIptalOnay(d) : iptalMut.mutate(d.id))} style={fkIslem('#b91c1c')}>iptal</button>
+                      )}
+                    </div>
                   </div>
-                  <div style={{ color: '#78716c', marginTop: 2 }}>
-                    {new Date(d.faturaTarihi).toLocaleDateString('tr-TR')} · {String(d.aciklama || '').slice(0, 40)}
-                  </div>
-                  <div style={{ display: 'flex', gap: 8, marginTop: 7, alignItems: 'center' }}>
-                    <span style={{ fontSize: 11, padding: '2px 7px', borderRadius: 20, fontWeight: 600, background: (FK_DURUM[d.durum] || FK_DURUM.TASLAK).bg, color: (FK_DURUM[d.durum] || FK_DURUM.TASLAK).renk }}>
-                      {(FK_DURUM[d.durum] || { etiket: String(d.durum).toLowerCase() }).etiket}
-                    </span>
-                    {d.faturaNo && (<span style={{ fontSize: 11, color: '#57534e', fontFamily: 'ui-monospace,monospace' }}>{d.faturaNo}</span>)}
-                    <button onClick={() => setAcikTaslak(d.id)} style={{ fontSize: 12, background: 'none', border: 'none', color: '#2563eb', cursor: 'pointer', padding: 0 }}>önizle</button>
-                    {d.durum === 'GIB_TASLAK' && !d.faturaNo && (
-                      <button
-                        disabled={gorselMut.isPending}
-                        onClick={() => gorselMut.mutate(d.id)}
-                        style={{ fontSize: 12, background: 'none', border: 'none', color: '#0f766e', cursor: gorselMut.isPending ? 'wait' : 'pointer', padding: 0, fontWeight: 600 }}
-                      >{gorselMut.isPending ? 'getiriliyor…' : 'GİB görüntüsü'}</button>
-                    )}
-                    {d.durum === 'TASLAK' && (
-                      <button onClick={() => { setGibdeIsrar(false); setGibOnay(d); }} style={{ fontSize: 12, background: 'none', border: 'none', color: '#b45309', cursor: 'pointer', padding: 0, fontWeight: 600 }}>GİB&apos;e gönder</button>
-                    )}
-                    {d.durum !== 'KESILDI' && d.durum !== 'IPTAL' && d.durum !== 'GONDERILIYOR' && (
-                      <button
-                        onClick={() => (d.durum === 'GIB_TASLAK' ? setIptalOnay(d) : iptalMut.mutate(d.id))}
-                        style={{ fontSize: 12, background: 'none', border: 'none', color: '#b91c1c', cursor: 'pointer', padding: 0 }}
-                      >iptal</button>
-                    )}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>
