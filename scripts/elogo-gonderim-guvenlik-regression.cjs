@@ -169,6 +169,32 @@ const ok = (ad, sart, ek) => {
   ok('kilit, seri kontrolunden SONRA', iKilit > iSeri && iSeri > 0);
   ok('kilit, UBL hazirligindan SONRA', iKilit > iUblHazir && iUblHazir > 0);
 
+  // ---------- 12) GORSEL TASARIM + TEKRAR GONDERIM (canli olay 2026-08-20 22:56) ----------
+  // eLogo numarayi verdi (GTO2026000000001) ama belgeyi REDDETTI:
+  //   "[-1] e-Belge gorsel tasarim icermelidir"
+  // Kok neden: UseDefaultXSLT=1 yalniz onizleme cagrisindaydi, GONDERIMDE yoktu.
+  const iSend = servis.indexOf("'SendDocument'");
+  const sendBlok = iSend > 0 ? servis.slice(iSend, iSend + 1200) : '';
+  ok('SendDocument gorsel tasarim parametresini gonderiyor', sendBlok.includes('UseDefaultXSLT=1'),
+    'eLogo tasarimsiz belgeyi reddeder; numara alinmis olur ama fatura kesilmez');
+  ok('onizleme de gorsel tasarim gonderiyor', servis.split('UseDefaultXSLT=1').length - 1 >= 2);
+
+  // Tekrar denendiginde YENI NUMARA ALINMAMALI — yoksa her denemede bir numara yanar.
+  ok('mevcut numara tekrar kullaniliyor',
+    /let numara = String\(d\.faturaNo/.test(servis) && /d\.durum === 'GONDERILIYOR'/.test(servis),
+    'her denemede yeni numara alinirsa seri bosa harcanir');
+  const iNumaraAl = servis.indexOf('numara = await this.numaraAl(');
+  const iTekrar = servis.indexOf("tekrar gonderim");
+  ok('numara alma, tekrar-gonderim kontrolunden SONRA', iTekrar > 0 && iNumaraAl > iTekrar);
+
+  // Sikismis (numarali) taslak, saate karsi yarisilmadan onaya acilabilmeli.
+  ok('sikismis taslak icin genis kurtarma penceresi',
+    /durum: 'GONDERILIYOR'[\s\S]{0,120}faturaNo: \{ not: null \}/.test(bot2)
+    && /24 \* 60 \* 60 \* 1000/.test(bot2),
+    'numara zaten yandiysa kullanicinin 2 saat icinde yetismesi gerekmemeli');
+  ok('normal taslak penceresi hala kisa (2 saat)',
+    /durum: 'TASLAK', createdAt: \{ gte: new Date\(Date\.now\(\) - 2 \* 60 \* 60 \* 1000\)/.test(bot2));
+
   if (hata) process.exit(1);
   console.log('[elogo-gonderim-guvenlik] OK: acik onaysiz gonderim yok, kilit ve etiket kurallari saglam');
 })();

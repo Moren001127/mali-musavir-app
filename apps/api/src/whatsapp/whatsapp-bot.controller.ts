@@ -1119,12 +1119,23 @@ export class WhatsAppBotController implements OnModuleInit {
         const son: any = await (this.prisma as any).salesInvoiceDraft.findFirst({
           where: {
             tenantId: ownerTenant.id,
-            // TEKRAR GONDERIM (canli olay 2026-08-20 22:56): numara alindi ama eLogo
-            //   "gorsel tasarim" hatasi verdi; taslak GONDERILIYOR'da kaldi. Boyle bir
-            //   taslak da onaya acilir — yeni numara ALINMAZ, ayni numarayla gonderilir.
-            durum: { in: ['TASLAK', 'GONDERILIYOR'] },
             kaynak: 'WHATSAPP',
-            createdAt: { gte: new Date(Date.now() - 2 * 60 * 60 * 1000) },
+            OR: [
+              // (a) Normal kurtarma: onizlemesi gonderilmis, henuz kesilmemis taslak.
+              //     Kisa pencere (2 saat) — eski bir taslagin yanlislikla acilmasini onler.
+              { durum: 'TASLAK', createdAt: { gte: new Date(Date.now() - 2 * 60 * 60 * 1000) } },
+              // (b) TEKRAR GONDERIM (canli olay 2026-08-20 22:56): numara alindi ama eLogo
+              //     "gorsel tasarim" hatasi verdi; taslak GONDERILIYOR'da asili kaldi.
+              //     Bunlar SIKISMIS kayittir — numara zaten yanmis durumda, kullanicinin
+              //     saate karsi yarismasi anlamsiz. 24 saat boyunca onaya acilir; yeni
+              //     numara ALINMAZ, ayni numarayla tekrar gonderilir. Guvenli, cunku
+              //     yine OZET gosterilip ayrica "EVET KES" istenir.
+              {
+                durum: 'GONDERILIYOR',
+                faturaNo: { not: null },
+                createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+              },
+            ],
           },
           orderBy: { createdAt: 'desc' },
           select: { id: true },
