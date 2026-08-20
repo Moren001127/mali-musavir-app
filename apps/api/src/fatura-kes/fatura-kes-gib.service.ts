@@ -104,23 +104,6 @@ export class FaturaKesGibService {
     return '';
   }
 
-  /** GİB tutarı "1,20" da olabilir "1.2" de — ikisini de çöz. */
-  private tutar(ham: string): number {
-    const t = String(ham || '').replace(/[^\d.,-]/g, '');
-    if (!t) return NaN;
-    const sonVirgul = t.lastIndexOf(',');
-    const sonNokta = t.lastIndexOf('.');
-    let d = t;
-    if (sonVirgul > sonNokta) {
-      d = t.replace(/\./g, '').replace(',', '.'); // 1.234,56 -> 1234.56
-    } else if (sonVirgul < 0 && /\.\d{3}$/.test(t)) {
-      d = t.replace(/\./g, ''); // 12.000 -> 12000 (virgul yok + tam 3 hane = binlik ayraci)
-    } else {
-      d = t.replace(/,/g, ''); // 1,234.56 -> 1234.56 / 1.2 -> 1.2
-    }
-    return Number(d);
-  }
-
   /**
    * BELGE NUMARASI + GÖRSEL — AYNI OTURUMDA ALINIR.
    *
@@ -129,10 +112,16 @@ export class FaturaKesGibService {
    * güvenli çıkış yapılmadan ikinci giriş reddedilir. Bu yüzden numara ve görsel, çıkıştan
    * ÖNCE, aynı oturumda alınır.
    *
-   * EŞLEŞTİRME DÜRÜST YAPILIR: alıcı VKN + ödenecek tutar ile aday aranır. Tek aday varsa
-   * alınır; birden çok aday varsa TAHMİN EDİLMEZ (yanlış belgeyi kaydetmektense boş bırakılır).
+   * EŞLEŞTİRME GERÇEK VERİYE DAYANIR (2026-08-20 canlı liste çıktısı). Liste satırında
+   * DÖNEN ALANLAR YALNIZCA ŞUNLARDIR:
+   *   belgeNumarasi, aliciVknTckn, aliciUnvanAdSoyad, belgeTarihi, belgeTuru, onayDurumu, ettn
+   * TUTAR ALANI YOKTUR — ilk yazdığım tutar eşleştirmesi bu yüzden hiçbir zaman tutmazdı.
+   *
+   * Kural: aynı gün + aynı alıcı VKN + henüz imzalanmamış ("Onaylanmadı") + bizim
+   * veritabanımızda ETTN'i kayıtlı OLMAYAN satır. Tek aday kalırsa alınır; birden fazla
+   * kalırsa TAHMİN EDİLMEZ (yanlış belgeyi kaydetmektense boş bırakılır).
    */
-  private async belgeyiBul(token: string, payload: Record<string, any>) {
+  private async belgeyiBul(token: string, payload: Record<string, any>, tenantId: string, taxpayerId: string) {
     const tarih = String(payload.faturaTarihi || '');
     const liste: any = await this.dispatch(token, 'EARSIV_PORTAL_TASLAKLARI_GETIR', 'RG_TASLAKLAR', {
       baslangic: tarih,
@@ -143,14 +132,24 @@ export class FaturaKesGibService {
     const rows: any[] = Array.isArray(liste?.data) ? liste.data : [];
     if (!rows.length) return { faturaNo: null, ettn: null, onay: null, not: 'GİB listesi boş döndü' };
 
-    const hedef = Number(payload.odenecekTutar);
     const vkn = String(payload.vknTckn || '');
+
+    // Bu mükellefte DAHA ÖNCE kaydettiğimiz ETTN'ler — aynı alıcıya kesilmiş eski faturayı
+    //   yanlışlıkla "yeni belge" sanmamak için elenir.
+    const oncekiler = await (this.prisma as any).salesInvoiceDraft
+      .findMany({ where: { tenantId, taxpayerId, ettn: { not: null } }, select: { ettn: true } })
+      .catch(() => [] as any[]);
+    const bilinen = new Set((oncekiler || []).map((x: any) => String(x.ettn)));
+
     const adaylar = rows.filter((r) => {
-      const rv = this.oku(r, ['vknTckn', 'aliciVknTckn', 'vkn', 'aliciVkn']);
-      const rt = this.tutar(this.oku(r, ['odenecekTutar', 'vergilerDahilToplamTutar', 'tutar', 'toplamTutar']));
-      const vknUyar = !rv || rv === vkn;
-      const tutarUyar = Number.isFinite(rt) && Number.isFinite(hedef) ? Math.abs(rt - hedef) < 0.01 : false;
-      return vknUyar && tutarUyar;
+      const rv = this.oku(r, ['aliciVknTckn', 'vknTckn', 'vkn', 'aliciVkn']);
+      if (rv && rv !== vkn) return false;
+      const onay = this.oku(r, ['onayDurumu', 'durum']);
+      if (/silin|iptal/i.test(onay)) return false; // silinmiş/iptal satır bizim belgemiz değil
+      if (onay && !/onaylanmad/i.test(onay)) return false; // yeni oluşan belge İMZASIZDIR
+      const ettn = this.oku(r, ['ettn', 'uuid', 'faturaUuid', 'belgeUuid']);
+      if (ettn && bilinen.has(ettn)) return false; // zaten bizde kayıtlı → eski belge
+      return true;
     });
 
     if (adaylar.length !== 1) {
@@ -158,7 +157,10 @@ export class FaturaKesGibService {
         faturaNo: null,
         ettn: null,
         onay: null,
-        not: adaylar.length === 0 ? 'Listede eşleşen belge bulunamadı' : `${adaylar.length} aday eşleşti — tahmin edilmedi`,
+        not:
+          adaylar.length === 0
+            ? 'Listede eşleşen imzasız belge bulunamadı'
+            : `${adaylar.length} aday eşleşti — tahmin edilmedi`,
       };
     }
     const r = adaylar[0];
@@ -276,7 +278,7 @@ export class FaturaKesGibService {
       // Numara ve görsel ÇIKIŞTAN ÖNCE alınır — sonradan ayrı girişle bakmak mümkün değil.
       const mesajOn = typeof sonuc?.data === 'string' ? sonuc.data : '';
       if (mesajOn && !/hata|ba[şs]ar[ıi]s[ıi]z|ge[çc]ersiz/i.test(mesajOn)) {
-        belge = await this.belgeyiBul(token, payload).catch(() => belge);
+        belge = await this.belgeyiBul(token, payload, tenantId, draft.taxpayerId).catch(() => belge);
         if (belge?.ettn) gorsel = await this.gorselAl(token, belge.ettn, belge.onay).catch(() => null);
       }
     } finally {
