@@ -13873,7 +13873,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         } else if (aiAccCalls < AI_GIDER_LIMIT) {
           aiAccCalls++;
           const aiPick = leafOnly(await this.aiPickGiderAccount(accounts, tpFaaliyet, giderIcerik, vendorName));
-          aiGiderCache.set(ck, aiPick);
+          // BOŞ SONUCU ÖNBELLEĞE ALMA (2026-08-20, HÜSEYİN YILDIZ HY02026000000202 vakası):
+          //   AI bir kez boş dönünce (geçici aksama / zaman aşımı) bu sonuç tur boyunca
+          //   önbellekte kalıyordu ve AYNI içerikteki TÜM faturaların gider kodu siliniyordu
+          //   (aşağıdaki "match yoksa BOŞALT" kuralı devreye giriyor). Tek bir aksama koca
+          //   partiyi boşaltıyordu. Artık yalnız KESİN cevap önbelleğe alınır; boş sonuçta
+          //   sonraki belge yeniden sorar (AI_GIDER_LIMIT tavanı korumayı zaten sağlıyor).
+          if (aiPick) aiGiderCache.set(ck, aiPick);
           categoryMatrah = aiPick;
         }
       }
@@ -14454,7 +14460,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           const curAcc = accounts.find((a: any) => String(a.accountCode || '') === current);
           if (curAcc) {
             const matchCode = match ? String((match as any).accountCode) : '';
-            const typeOk = !!giderTuru && this.nameMatchScore(giderTuru, String(curAcc.accountName || '')) > 0;
+            // 2026-08-20: burada FİRMA ADI eşleştirici (nameMatchScore) kullanılıyordu; sektör
+            //   kelimelerini elediği için "nakliye taşıma" ↔ "NAKLİYE GİDERİ" hiç eşleşmiyor ve
+            //   doğru hesap siliniyordu. Gider türü için ayrı, sektör-koruyan karşılaştırma.
+            const typeOk = !!giderTuru && this.giderTuruHesapUyumlu(giderTuru, String(curAcc.accountName || ''));
             if (current !== matchCode && !typeOk) {
               await (this.prisma as any).invoiceAccountingLine.update({
                 where: { id: line.id },
@@ -14868,6 +14877,31 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   // İki firma/cari ünvanı arasında AYIRT EDİCİ kelime örtüşme skoru. Jenerik hukuk/adres
   // kelimeleri (san, tic, ltd, şti, mah...) elenir; kalan kelimelerden en az 2 ortak veya
   // ipucu kelimelerinin yarısı ortaksa eşleşme sayılır. Skor yoksa 0 → eşleşme yok.
+  /**
+   * GİDER TÜRÜ ↔ HESAP ADI uyumu (2026-08-20, HÜSEYİN YILDIZ HY02026000000202 vakası).
+   *
+   * Eskiden bu kontrol nameMatchScore ile yapılıyordu — ama o fonksiyon FİRMA ADI eşleştirmek için
+   * yazılmıştır ve durak listesinde "nakliye / nakliyat / lojistik / taşımacılık / hizmet" gibi
+   * SEKTÖR kelimelerini KASTEN eler (firma adlarında ortak oldukları için yanlış cari üretirler).
+   * Gider hesabında ise tam tersi: "NAKLİYE" o hesabın ANLAMLI kelimesidir. Sonuç: nakliye
+   * firmasında giderTuru "nakliye taşıma" ile "740.01.004 NAKLİYE GİDERİ" HİÇBİR ZAMAN eşleşmiyor,
+   * hesap "içerikle uyumsuz" sanılıp SİLİNİYORDU (ekranda "Gider kodu boş").
+   *
+   * Burada yalnız GENEL MUHASEBE kelimeleri elenir; sektör kelimeleri korunur.
+   */
+  private giderTuruHesapUyumlu(hint: string, name: string): boolean {
+    const GENEL = new Set([
+      'gider', 'giderler', 'giderleri', 'gideri', 'gelir', 'gelirler', 'gelirleri', 'geliri',
+      'hesap', 'hesabi', 'tutar', 'tutari', 'diger', 'cesitli', 'genel', 'yonetim', 'yonetimi',
+      'maliyet', 'maliyeti', 'satis', 'satislar', 'satislari', 'bedeli', 'bedel',
+    ]);
+    const tok = (s: string) => this.norm(String(s || '')).split(/\s+/).filter((w) => w.length > 3 && !GENEL.has(w));
+    const a = tok(hint);
+    const b = tok(name);
+    if (!a.length || !b.length) return false;
+    return a.some((w) => b.some((x) => x === w || x.startsWith(w) || w.startsWith(x)));
+  }
+
   private nameMatchScore(hint: string, name: string): number {
     const STOP = new Set([
       // hukuk/biçim
