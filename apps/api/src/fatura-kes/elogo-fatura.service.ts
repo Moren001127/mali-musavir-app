@@ -691,6 +691,62 @@ export class ElogoFaturaService {
   }
 
   /** Taslak kaydından UBL üret + eLogo önizlemesini getir. GÖNDERİM YOK. */
+  /** Onizleme UBL'inde numara yerine konan yer tutucu. */
+  static readonly ONIZLEME_ID = '<cbc:ID>ONIZLEME</cbc:ID>';
+
+  /**
+   * UBL GONDERIME HAZIR MI? (numara ALMADAN once bakilir)
+   *
+   * IKI MESRU DURUM VAR (canli olay 2026-08-20 23:14):
+   *  (a) ILK gonderim   — taslakta numara yok, UBL'de ONIZLEME yer tutucusu var.
+   *  (b) TEKRAR gonderim — taslakta numara VAR; taslaktanOnizleme UBL'i zaten o
+   *      numarayla uretir (faturaNo || 'ONIZLEME'), yer tutucu HIC OLMAZ.
+   * Eski kontrol yalniz yer tutucu ariyordu; (b) durumunda "XML hazirlanamadi"
+   * deyip duruyordu — numara alinmis taslak bir daha gonderilemiyordu.
+   */
+  static ublHazirMi(hamUbl: string, mevcutNo?: string | null): boolean {
+    const x = String(hamUbl || '');
+    if (!x) return false;
+    if (x.includes(ElogoFaturaService.ONIZLEME_ID)) return true;
+    const no = String(mevcutNo || '').trim();
+    return !!no && x.includes(`<cbc:ID>${no}</cbc:ID>`);
+  }
+
+  /**
+   * UBL'e fatura numarasini yazar. Sonucta <cbc:ID>NUMARA</cbc:ID> yoksa null doner
+   * ve cagiran taraf GONDERIM YAPMAZ — yanlis numarali belge gitmesindense hic gitmesin.
+   */
+  static ublNumaraYaz(hamUbl: string, numara: string): string | null {
+    const x = String(hamUbl || '');
+    const no = String(numara || '').trim();
+    if (!x || !no) return null;
+    const hedef = `<cbc:ID>${no}</cbc:ID>`;
+    const y = x.includes(ElogoFaturaService.ONIZLEME_ID)
+      ? x.replace(ElogoFaturaService.ONIZLEME_ID, hedef)
+      : x;
+    return y.includes(hedef) ? y : null;
+  }
+
+  /**
+   * ETTN'i UBL'e sabitler. TEKRAR gonderimde ETTN degisirse eLogo ayni numaradan
+   * IKINCI bir belge olusturabilir; ayni ETTN ile gelirse "mukerrer" deyip reddeder.
+   * Bu yuzden ilk gonderimde uretilen ETTN taslaga yazilir ve sonra hep o kullanilir.
+   */
+  static ublEttnYaz(hamUbl: string, ettn: string): string {
+    const no = String(ettn || '').trim();
+    if (!no) return hamUbl;
+    return String(hamUbl || '').replace(
+      /<cbc:UUID>[^<]*<\/cbc:UUID>/,
+      `<cbc:UUID>${no}</cbc:UUID>`,
+    );
+  }
+
+  /** UBL'deki ETTN'i okur (yoksa bos string). */
+  static ublEttnOku(hamUbl: string): string {
+    const m = String(hamUbl || '').match(/<cbc:UUID>([^<]+)<\/cbc:UUID>/);
+    return m ? m[1].trim() : '';
+  }
+
   async taslaktanOnizleme(tenantId: string, draftId: string) {
     const d: any = await (this.prisma as any).salesInvoiceDraft.findFirst({ where: { id: draftId, tenantId } });
     if (!d) throw new NotFoundException('Taslak bulunamadı');
@@ -925,10 +981,19 @@ export class ElogoFaturaService {
     //   Eskiden once numara aliniyor, sonra taslaktanOnizleme cagriliyordu; o cagri
     //   eLogo'ya iki ag isteği daha yapiyor (login + sorgu). Orada bir hata olsa
     //   NUMARA ALINMIS ama fatura gonderilmemis olurdu — numara yanar, geri alinamaz.
-    const hazir: any = await this.taslaktanOnizleme(tenantId, draftId).catch(() => null);
+    let hazirlikHatasi = '';
+    const hazir: any = await this.taslaktanOnizleme(tenantId, draftId).catch((e: any) => {
+      // SEBEBI YUTMA (canli olay 2026-08-20 23:14): hata mesaji kaybolunca kullaniciya
+      //   "XML hazirlanamadi" diyip neden oldugunu soyleyemiyorduk.
+      hazirlikHatasi = String(e?.response?.message || e?.message || 'bilinmeyen hata');
+      return null;
+    });
     const hamUbl = String(hazir?.ubl || '');
-    if (!hamUbl || hamUbl.indexOf('<cbc:ID>ONIZLEME</cbc:ID>') < 0) {
-      throw new BadRequestException('Fatura XML hazirlanamadi — NUMARA ALINMADI, gonderim yapilmadi.');
+    if (!ElogoFaturaService.ublHazirMi(hamUbl, d.faturaNo)) {
+      throw new BadRequestException(
+        `Fatura XML hazirlanamadi (${hazirlikHatasi || 'UBL beklenen fatura numarasini icermiyor'})` +
+        ' — NUMARA ALINMADI, gonderim yapilmadi.',
+      );
     }
 
     // KILIT EN SONA ALINDI (canli olay 2026-08-20 22:24): once kilit aliniyordu, seri
@@ -957,7 +1022,22 @@ export class ElogoFaturaService {
       }).catch(() => null);
     }
 
-    const ubl = hamUbl.replace('<cbc:ID>ONIZLEME</cbc:ID>', `<cbc:ID>${numara}</cbc:ID>`);
+    // ETTN SABITLENIR: ilk gonderimde uretilen ETTN taslaga yazilir, tekrar gonderimde
+    //   ayni ETTN kullanilir. Boylece eLogo tarafinda ayni numaradan IKINCI belge olusamaz.
+    const ettn = String(d.ettn || '').trim() || ElogoFaturaService.ublEttnOku(hamUbl);
+    if (!String(d.ettn || '').trim() && ettn) {
+      await (this.prisma as any).salesInvoiceDraft.update({
+        where: { id: draftId },
+        data: { ettn },
+      }).catch(() => null);
+    }
+
+    const ubl = ElogoFaturaService.ublNumaraYaz(ElogoFaturaService.ublEttnYaz(hamUbl, ettn), numara);
+    if (!ubl) {
+      throw new BadRequestException(
+        `Fatura XML'ine numara yazilamadi (${numara}) — gonderim YAPILMADI.`,
+      );
+    }
 
     const sonuc = await this.belgeGonder(tenantId, d.taxpayerId, ubl, `${numara}.xml`, belgeTuru, etiket);
     if (sonuc.basarili) {

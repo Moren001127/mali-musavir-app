@@ -195,6 +195,41 @@ const ok = (ad, sart, ek) => {
   ok('normal taslak penceresi hala kisa (2 saat)',
     /durum: 'TASLAK', createdAt: \{ gte: new Date\(Date\.now\(\) - 2 \* 60 \* 60 \* 1000\)/.test(bot2));
 
+  // ---------- 13) TEKRAR GONDERIM: NUMARALI TASLAK DA HAZIR SAYILIR ----------
+  // CANLI OLAY 2026-08-20 23:14: taslakta numara vardi, taslaktanOnizleme UBL'i o
+  // numarayla uretti (ONIZLEME yer tutucusu yoktu), eski kontrol bulamayip
+  // "Fatura XML hazirlanamadi" dedi. Fatura kesilemedi.
+  const NO = 'GTO2026000000001';
+  const ublYerTutucu = '<x><cbc:UUID>AAA-BBB</cbc:UUID><cbc:ID>ONIZLEME</cbc:ID></x>';
+  const ublNumarali = `<x><cbc:UUID>AAA-BBB</cbc:UUID><cbc:ID>${NO}</cbc:ID></x>`;
+  const ublYabanci = '<x><cbc:UUID>AAA-BBB</cbc:UUID><cbc:ID>BASKA1</cbc:ID></x>';
+
+  ok('ilk gonderim: yer tutuculu UBL hazir', ElogoFaturaService.ublHazirMi(ublYerTutucu, null) === true);
+  ok('tekrar gonderim: numarali UBL hazir', ElogoFaturaService.ublHazirMi(ublNumarali, NO) === true,
+    'numara alinmis taslak bir daha gonderilemez hale gelir');
+  ok('numara uyusmuyorsa hazir DEGIL', ElogoFaturaService.ublHazirMi(ublYabanci, NO) === false,
+    'yanlis numarali belge gonderilmemeli');
+  ok('bos UBL hazir DEGIL', ElogoFaturaService.ublHazirMi('', NO) === false);
+  ok('numarasiz taslakta rastgele UBL hazir DEGIL', ElogoFaturaService.ublHazirMi(ublYabanci, null) === false);
+
+  const yazilan = ElogoFaturaService.ublNumaraYaz(ublYerTutucu, NO);
+  ok('yer tutucu numarayla degistirilir',
+    !!yazilan && yazilan.includes(`<cbc:ID>${NO}</cbc:ID>`) && !yazilan.includes('ONIZLEME'));
+  ok('zaten numarali UBL bozulmaz',
+    ElogoFaturaService.ublNumaraYaz(ublNumarali, NO) === ublNumarali);
+  ok('numara yazilamiyorsa NULL (gonderim yapilmaz)',
+    ElogoFaturaService.ublNumaraYaz(ublYabanci, NO) === null,
+    'yanlis numarali belge gonderilmesindense hic gonderilmesin');
+
+  // ETTN sabitleme: tekrar gonderimde ETTN degisirse ayni numaradan IKINCI belge olusabilir.
+  const ettnli = ElogoFaturaService.ublEttnYaz(ublNumarali, 'SABIT-ETTN-1');
+  ok('ETTN UBL icine yazilir', ElogoFaturaService.ublEttnOku(ettnli) === 'SABIT-ETTN-1');
+  ok('ETTN bos gecilirse UBL degismez', ElogoFaturaService.ublEttnYaz(ublNumarali, '') === ublNumarali);
+  ok('gonderimde ETTN taslaktan alinir', /const ettn = String\(d\.ettn/.test(kaynak),
+    'her denemede yeni ETTN uretilirse mukerrer fatura riski dogar');
+  ok('hazirlik hatasi kullaniciya soylenir', /hazirlikHatasi/.test(kaynak),
+    'sebep yutulursa bir daha teshis edemeyiz');
+
   if (hata) process.exit(1);
   console.log('[elogo-gonderim-guvenlik] OK: acik onaysiz gonderim yok, kilit ve etiket kurallari saglam');
 })();
