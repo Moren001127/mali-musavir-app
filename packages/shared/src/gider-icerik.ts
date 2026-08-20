@@ -86,6 +86,16 @@ const ICERIK_KURAL: Array<[RegExp, string, string]> = [
   // ── GENEL BAKIM / FİNANS (en sonda) ──
   [/bakim onarim|\bonarim\b|\btamir\b|servis bedeli|tadilat|tesisat onarim/, 'bakım onarım', 'genel_gider'],
   [/\bfaiz\b|finansman gider|kredi faiz|vade farki/, 'faiz finansman', 'genel_gider'],
+  // ── PLAKA + GÜZERGÂH (EN SON — en düşük öncelik) ──
+  // Nakliye/lojistik firmaları taşeronlardan sefer faturası alır ve kalem metni çoğu kez SADECE
+  // "PLAKA + KALKIŞ + VARIŞ" olur; "nakliye" kelimesi hiç geçmez. Örn: "66FE566 GAZİOSMANPAŞA
+  // SANCAKTEPE" (YORGUN NAKLİYAT / DURAK BOZDAĞ EFT2026000000182). Kural tanımayınca iş AI'a
+  // kalıyor, AI da yer adlarını görüp "770.01.001 OTOYOL VE OTOPARK GİDERLERİ" gibi alakasız bir
+  // hesap seçiyordu (gerekçesi de "mal/malzeme almış" diyordu — tamamen uydurma).
+  // GÜVENLİK: bu kural EN SONDA; akaryakıt/bakım/lastik gibi açık anahtar kelimeler ÖNCE eşleşir.
+  //   Ayrıca plakadan sonra EN AZ İKİ uzun kelime (kalkış + varış) şartı var → "34ABC123 MUAYENE"
+  //   gibi tek kelimelik satırlar nakliye sayılmaz.
+  [/\b(0[1-9]|[1-7]\d|8[01])\s?[a-z]{1,3}\s?\d{2,4}\b\s+[a-z]{4,}[a-z\s]*\s+[a-z]{4,}/, 'nakliye taşıma', 'genel_gider'],
 ];
 
 function icerikNorm(s: any): string {
