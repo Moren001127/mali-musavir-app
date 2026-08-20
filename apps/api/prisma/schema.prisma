@@ -3467,7 +3467,7 @@ model SalesInvoiceDraft {
   tenantId       String
   taxpayerId     String
   kanal          String    @default("GIB_EARSIV") // GIB_EARSIV | ENTEGRATOR
-  durum          String    @default("TASLAK") // TASLAK | GIB_TASLAK | KESILDI | IPTAL
+  durum          String    @default("TASLAK") // TASLAK | GONDERILIYOR | GIB_TASLAK | KESILDI | IPTAL
   aliciVkn       String
   aliciUnvan     String
   aliciAdres     String?
