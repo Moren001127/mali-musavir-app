@@ -78,8 +78,40 @@ export class SgkTeshisController {
       }
     }
 
+    // ISTENEN AYIN SGK DONEMI — aylik-odeme.service.ts:61-63 ile AYNI hesap.
+    // Agustos listesi 2026/07 donemini arar (Temmuz primi Agustos'ta odenir).
+    const [ay1, ay2] = ay.split('-').map(Number);
+    const oncekiAy = new Date(ay1, ay2 - 2, 1);
+    const arananDonem =
+      `${oncekiAy.getFullYear()}/${String(oncekiAy.getMonth() + 1).padStart(2, '0')}`;
+
+    const oDonem = belgeler.filter((d: any) => {
+      const p = String(d.period || '');
+      return p === arananDonem || p === arananDonem.replace('/', '-');
+    });
+    const oDonemGecerli = oDonem.filter((d: any) => tutarOku(((d.raw || {}) as any).tutar) != null);
+
+    // Bu ay SGK belgesi HIC olmayan, ama daha once SGK belgesi gelmis
+    // mukellefler — "tahakkuku var ama listede yok" sikayetinin en olasi
+    // kaynagi: belge henuz cekilmemis olabilir.
+    const oDonemMukellefleri = new Set(oDonem.map((d: any) => d.taxpayerId));
+    const gecmisteSgkOlanlar = new Map<string, string>();
+    for (const d of belgeler) {
+      if (d.taxpayerId && !oDonemMukellefleri.has(d.taxpayerId)) {
+        gecmisteSgkOlanlar.set(d.taxpayerId, ad(d.taxpayer));
+      }
+    }
+
     return {
       istenenAy: ay,
+      arananSgkDonemi: arananDonem,
+      buDonemBelgeSayisi: oDonem.length,
+      buDonemListeyeGiren: oDonemGecerli.length,
+      buDonemElenenTutarSifir: oDonem.length - oDonemGecerli.length,
+      gecmisteSgkVarBuDonemYok: {
+        adet: gecmisteSgkOlanlar.size,
+        mukellefler: [...gecmisteSgkOlanlar.values()].slice(0, 30),
+      },
       toplamSgkBelgesi: belgeler.length,
       listeyeGirebilecek: saglam,
       elenen: {
