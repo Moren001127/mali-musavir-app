@@ -483,13 +483,29 @@ export class ElogoFaturaService {
       //   uretilir" diyor, o yuzden etiketleri de dondurmek zorundayiz.
       const sonuc = this.etiket(xml, 'resultCode');
       const mesaj = this.etiket(xml, 'resultMsg') || '';
-      const mukellefler: Array<{ vkn: string; eFaturaMi: boolean; etiketler: string[] }> = [];
+      // ETIKET AYRIMI — CANLI YAPI (2026-08-20 dogrulandi):
+      //   <a:Invoice> icinde IKI ayri liste var:
+      //     <a:InvoicePkList> = POSTA KUTUSU  -> BIZ GONDERIRKEN bunu kullaniriz (ALIAS)
+      //     <a:InvoiceGbList> = GONDERICI BIRIM -> karsi taraf gonderirken kullanir
+      //   Ikisini tek listede toplamak, gonderimde YANLIS etiket secilmesine yol acar
+      //   (dokuman: birden fazla etikette etiket gonderilmezse HATA uretilir).
+      //   SELIM ornegi: PK=defaultpk@seliminsaat.com.tr, GB=defaultgb@seliminsaat.com.tr
+      //   eLogo portali da gonderimde PK'yi seciyor — bizim de oyle yapmamiz sart.
+      const listeEtiketleri = (govde: string, liste: string): string[] => {
+        const bas = govde.indexOf(`<a:${liste}>`);
+        if (bas < 0) return [];
+        const son = govde.indexOf(`</a:${liste}>`, bas);
+        const parca = son < 0 ? govde.slice(bas) : govde.slice(bas, son);
+        return [...parca.matchAll(/<a:Alias>([^<]*)<\/a:Alias>/g)].map((m) => m[1].trim()).filter(Boolean);
+      };
+      const mukellefler: Array<{ vkn: string; eFaturaMi: boolean; etiketler: string[]; gbEtiketleri: string[] }> = [];
       for (const blok of xml.split(/<a:GibUserType>/).slice(1)) {
         const govde = blok.split('</a:GibUserType>')[0];
         const kimlikler = [...govde.matchAll(/<a:Identifier>([^<]*)<\/a:Identifier>/g)].map((m) => m[1].trim());
-        const etiketler = [...govde.matchAll(/<a:Alias>([^<]*)<\/a:Alias>/g)].map((m) => m[1].trim()).filter(Boolean);
+        const postaKutulari = listeEtiketleri(govde, 'InvoicePkList');
+        const gonderici = listeEtiketleri(govde, 'InvoiceGbList');
         const vkn = kimlikler.find((k) => /^\d{10}$|^\d{11}$/.test(k)) || kimlikler[0] || '';
-        if (vkn) mukellefler.push({ vkn, eFaturaMi: etiketler.length > 0, etiketler });
+        if (vkn) mukellefler.push({ vkn, eFaturaMi: postaKutulari.length > 0, etiketler: postaKutulari, gbEtiketleri: gonderici });
       }
       return { sonucKodu: Number(sonuc || 0), mesaj, mukellefler, hamXml: xml };
     } finally {
@@ -712,4 +728,173 @@ export class ElogoFaturaService {
     const { icerik, tur } = await this.onizlemeAl(tenantId, d.taxpayerId, ubl, `${d.faturaNo || 'onizleme'}.xml`, belgeTuru);
     return { icerik, tur, ubl, belgeTuru, etiketler, turNotu, uyarilar, kaynakNotu };
   }
+
+  // ————————————————————————————————————————————————————————————————
+  // ONAY ADIMI: NUMARA VER + IMZALA + GÖNDER
+  //
+  // BU BÖLÜM KENDİLİĞİNDEN ÇALIŞMAZ. Yalnız kullanıcı AÇIKÇA onay verince çağrılır
+  //   (onaylaVeGonder → opts.onay === true). Bot bu yolu tek başına tetikleyemez.
+  //
+  // KULLANICI KURALI (2026-08-20): "eLogo'da fatura numarası verildikten sonra fatura
+  //   iptal edilemiyor, silinemiyor." Bu yüzden numara EN SON anda alınır ve alınır
+  //   alınmaz veritabanına YAZILIR — gönderim yarıda kalsa bile numara kaybolmaz.
+  // ————————————————————————————————————————————————————————————————
+
+  /**
+   * FATURA NUMARASI ÜRETİR (createElementId).
+   * WSDL: createElementId(sessionID, year, invoicePrefix, docType).
+   * AÇIK SORU (eLogo'ya soruldu): numara alınıp gönderilmezse boşa mı gider?
+   *   Bu yüzden çağrı, gönderimin HEMEN öncesinde yapılır.
+   */
+  async numaraAl(tenantId: string, taxpayerId: string, onEk: string, belgeTuru: 'EINVOICE' | 'EARCHIVE', yil?: number): Promise<string> {
+    const { kullanici, sifre, url } = await this.kimlik(tenantId, taxpayerId);
+    const oturum = await this.girisYap(url, kullanici, sifre);
+    try {
+      const y = String(yil || new Date().getFullYear());
+      const tur = belgeTuru === 'EARCHIVE' ? 'EARCHIVE' : 'EINVOICE';
+      const xml = await this.soap(url, 'createElementId', `<createElementId xmlns="${SOAP_NS}">
+        <sessionID>${this.esc(oturum)}</sessionID>
+        <year>${this.esc(y)}</year>
+        <invoicePrefix>${this.esc(onEk)}</invoicePrefix>
+        <docType>${tur}</docType>
+      </createElementId>`);
+      const numara = (this.etiket(xml, 'createElementIdResult') || '').trim();
+      if (!numara) {
+        const mesaj = this.etiket(xml, 'resultMsg') || xml.slice(0, 300);
+        throw new BadRequestException(`eLogo numara vermedi: ${mesaj}`);
+      }
+      return numara;
+    } finally {
+      await this.cikisYap(url, oturum);
+    }
+  }
+
+  /**
+   * BELGEYİ GÖNDERİR (SendDocument). İMZAYI ENTEGRATÖR ATAR.
+   * Belge ZIP olmalı — ham XML "Cannot read that as a ZipFile" hatası verir.
+   */
+  async belgeGonder(
+    tenantId: string,
+    taxpayerId: string,
+    ubl: string,
+    dosyaAdi: string,
+    belgeTuru: 'EINVOICE' | 'EARCHIVE',
+    etiket?: string,
+  ): Promise<{ basarili: boolean; kod: number; mesaj: string; refId: string | null }> {
+    const { kullanici, sifre, url } = await this.kimlik(tenantId, taxpayerId);
+    const oturum = await this.girisYap(url, kullanici, sifre);
+    try {
+      const icXmlAdi = dosyaAdi.replace(/\.(xml|zip)$/i, '') + '.xml';
+      const zip = new (JSZip as any)();
+      zip.file(icXmlAdi, ubl);
+      const zipBuf: Buffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+      const b64 = zipBuf.toString('base64');
+      const hash = createHash('md5').update(zipBuf).digest('hex');
+      const simdi = new Date().toISOString();
+      const NS = 'http://schemas.datacontract.org/2004/07/eFaturaWebService';
+      const NS_ARR = 'http://schemas.microsoft.com/2003/10/Serialization/Arrays';
+      const ekEtiket = etiket ? `<b:string>ALIAS=${this.esc(etiket)}</b:string>` : '';
+      const xml = await this.soap(url, 'SendDocument', `<SendDocument xmlns="${SOAP_NS}">
+        <sessionID>${this.esc(oturum)}</sessionID>
+        <paramList xmlns:b="${NS_ARR}">
+          <b:string>DOCUMENTTYPE=${belgeTuru}</b:string>
+          ${ekEtiket}
+        </paramList>
+        <document xmlns:d="${NS}">
+          <d:binaryData><d:Value>${b64}</d:Value><d:contentType>application/zip</d:contentType></d:binaryData>
+          <d:currentDate>${simdi}</d:currentDate>
+          <d:fileName>${this.esc(icXmlAdi.replace(/\.xml$/i, '.zip'))}</d:fileName>
+          <d:hash>${hash}</d:hash>
+        </document>
+      </SendDocument>`);
+      const kod = Number(this.etiket(xml, 'resultCode') || 0);
+      const mesaj = (this.etiket(xml, 'resultMsg') || '').trim();
+      return { basarili: kod === 1, kod, mesaj, refId: this.etiket(xml, 'refId') };
+    } finally {
+      await this.cikisYap(url, oturum);
+    }
+  }
+
+  /**
+   * ONAY: taslağı numaralandırır, imzalatır, gönderir.
+   *
+   * KORUMALAR:
+   *  - opts.onay açıkça true olmalı; yanlışlıkla çağrı gönderim yapmaz.
+   *  - Durum atomik olarak TASLAK -> GONDERILIYOR çevrilir; ikinci çağrı giremez.
+   *  - Alıcının birden fazla posta kutusu etiketi varsa hangisi olduğu SORULUR, seçilmez.
+   *  - Numara alınır alınmaz veritabanına yazılır.
+   *  - Belirsiz yanıtta durum TASLAK'a DÖNDÜRÜLMEZ (mükerrer fatura riski).
+   */
+  async onaylaVeGonder(
+    tenantId: string,
+    draftId: string,
+    opts: { onay: boolean; etiket?: string },
+  ): Promise<{ faturaNo: string; belgeTuru: string; mesaj: string; refId: string | null }> {
+    if (opts?.onay !== true) {
+      throw new BadRequestException('Gönderim için açık onay gerekir (onay: true). Bu adım fatura keser ve GERİ ALINAMAZ.');
+    }
+    const d: any = await (this.prisma as any).salesInvoiceDraft.findFirst({ where: { id: draftId, tenantId } });
+    if (!d) throw new NotFoundException('Taslak bulunamadı');
+
+    const sorgu = await this.mukellefSorgu(tenantId, d.taxpayerId, [String(d.aliciVkn)]);
+    const alici = sorgu.mukellefler.find((m) => m.vkn === String(d.aliciVkn));
+    const belgeTuru: 'EINVOICE' | 'EARCHIVE' = alici?.eFaturaMi ? 'EINVOICE' : 'EARCHIVE';
+    const postaKutulari = alici?.etiketler || [];
+    let etiket = opts.etiket;
+    if (belgeTuru === 'EINVOICE') {
+      if (!etiket && postaKutulari.length === 1) etiket = postaKutulari[0];
+      if (!etiket && postaKutulari.length > 1) {
+        throw new BadRequestException(
+          `Alıcının ${postaKutulari.length} posta kutusu etiketi var; hangisine gönderileceği seçilmeli: ${postaKutulari.join(' | ')}`,
+        );
+      }
+      if (!etiket) throw new BadRequestException('Alıcının e-Fatura posta kutusu etiketi bulunamadı.');
+    }
+
+    const kilit = await (this.prisma as any).salesInvoiceDraft.updateMany({
+      where: { id: draftId, tenantId, durum: 'TASLAK' },
+      data: { durum: 'GONDERILIYOR', hata: 'eLogo gönderimi başladı, yanıt bekleniyor' },
+    });
+    if (kilit.count !== 1) {
+      throw new BadRequestException('Bu taslak için gönderim zaten sürüyor ya da yapılmış — durumu kontrol edin.');
+    }
+
+    // ON EK TAHMIN EDILMEZ: mukellefin eLogo'da KULLANDIGI seri sorulur
+    //   (GetPrefixLastNumberList - salt okuma, numara harcamaz). Sayaci en buyuk olan seri
+    //   kullanimdaki seridir. Bulunamazsa gonderim YAPILMAZ; sabit bir seri uydurmak
+    //   yanlis seriden fatura kesilmesine yol acar.
+    const seri = await this.sonNumara(tenantId, d.taxpayerId, belgeTuru);
+    const onEk = String(seri?.kullanilan?.onEk || '').trim();
+    if (!onEk) {
+      throw new BadRequestException('eLogo tarafinda kullanilabilir fatura serisi (on ek) bulunamadi - gonderim yapilmadi.');
+    }
+    const numara = await this.numaraAl(tenantId, d.taxpayerId, onEk, belgeTuru);
+    await (this.prisma as any).salesInvoiceDraft.update({
+      where: { id: draftId },
+      data: { faturaNo: numara, hata: `Numara alındı (${numara}), gönderiliyor` },
+    }).catch(() => null);
+
+    const hazir: any = await this.taslaktanOnizleme(tenantId, draftId).catch(() => null);
+    const ubl = String(hazir?.ubl || '').replace('<cbc:ID>ONIZLEME</cbc:ID>', `<cbc:ID>${numara}</cbc:ID>`);
+    if (!ubl || ubl.indexOf(`<cbc:ID>${numara}</cbc:ID>`) < 0) {
+      throw new BadRequestException(`Fatura XML'ine numara yazılamadı (${numara}) — gönderim YAPILMADI.`);
+    }
+
+    const sonuc = await this.belgeGonder(tenantId, d.taxpayerId, ubl, `${numara}.xml`, belgeTuru, etiket);
+    if (sonuc.basarili) {
+      await (this.prisma as any).salesInvoiceDraft.update({
+        where: { id: draftId },
+        data: { durum: 'KESILDI', hata: null },
+      });
+      this.logger.log(`[ELOGO] FATURA GONDERILDI · ${numara} · ${belgeTuru} · ${d.aliciUnvan}`);
+    } else {
+      await (this.prisma as any).salesInvoiceDraft.update({
+        where: { id: draftId },
+        data: { hata: `eLogo yaniti: [${sonuc.kod}] ${sonuc.mesaj || 'belirsiz'} - eLogo portalindan DOGRULAYIN` },
+      });
+      this.logger.warn(`[ELOGO] gonderim belirsiz · ${numara} · kod=${sonuc.kod} · ${sonuc.mesaj}`);
+    }
+    return { faturaNo: numara, belgeTuru, mesaj: sonuc.mesaj, refId: sonuc.refId };
+  }
+
 }
