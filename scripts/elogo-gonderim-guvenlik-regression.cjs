@@ -230,6 +230,58 @@ const ok = (ad, sart, ek) => {
   ok('hazirlik hatasi kullaniciya soylenir', /hazirlikHatasi/.test(kaynak),
     'sebep yutulursa bir daha teshis edemeyiz');
 
+  // ---------- 14) e-ARSIV UBL SENARYOSU (canli hata 2026-08-20 23:27) ----------
+  // eLogo: "Fatura Senaryosu (cbc:ProfileID) gecersizdir. e-Arsiv faturalarinin
+  //         senaryosu EARSIVFATURA olmalidir."
+  // Beklenen sekil TAHMIN DEGIL: mukellefin gercek e-Arsiv faturasi OZL2026000000002
+  // (alicisi TCKN'li gercek kisi) ornek alindi.
+  const girdi = (ek2) => Object.assign({
+    saticiVkn: '4531058886', saticiUnvan: 'GITO', saticiAdres: 'X', saticiIlce: 'A', saticiIl: 'B',
+    saticiTel: '0', saticiVergiDairesi: 'V', aliciVkn: '33248357162', aliciUnvan: 'MUZAFFER OREN',
+    aliciAdres: 'Y', aliciIlce: 'C', aliciIl: 'D', faturaNo: 'ONIZLEME',
+    faturaTarihi: new Date('2026-08-20T12:00:00+03:00'), aciklama: 'Yemek', miktar: 1,
+    matrah: 10000, kdvOrani: 10, kdvTutari: 1000, toplam: 11000,
+  }, ek2 || {});
+  const arsiv = svc.ublOlustur(girdi({ belgeTuru: 'EARCHIVE' }));
+  const efatura = svc.ublOlustur(girdi({ belgeTuru: 'EINVOICE', aliciVkn: '6201689449', aliciUnvan: 'X A.S.' }));
+
+  ok('e-Arsiv senaryosu EARSIVFATURA', arsiv.includes('<cbc:ProfileID>EARSIVFATURA</cbc:ProfileID>'),
+    'eLogo yanlis senaryolu belgeyi reddeder');
+  ok('e-Fatura senaryosu EARSIVFATURA DEGIL', efatura.includes('<cbc:ProfileID>TICARIFATURA</cbc:ProfileID>'));
+  ok('e-Arsivde GONDERIMSEKLI blogu var', /<cbc:DocumentType>GONDERIMSEKLI<\/cbc:DocumentType>/.test(arsiv));
+  ok('e-Arsivde INTERNETSATISI blogu var', /<cbc:DocumentType>INTERNETSATISI<\/cbc:DocumentType>/.test(arsiv));
+  ok('e-Faturada bu bloklar YOK', !/GONDERIMSEKLI|INTERNETSATISI/.test(efatura),
+    'e-Faturada e-Arsiv bloklari bulunursa belge gecersiz olur');
+  ok('e-posta yoksa gonderim sekli KAGIT',
+    /<cbc:DocumentType>GONDERIMSEKLI<\/cbc:DocumentType>\s*<cbc:DocumentDescription>KAGIT</.test(arsiv),
+    'e-posta olmadan ELEKTRONIK yazmak GIB tarafinda gecersiz');
+  const arsivPosta = svc.ublOlustur(girdi({ belgeTuru: 'EARCHIVE', aliciEposta: 'a@b.com' }));
+  ok('e-posta varsa ELEKTRONIK',
+    /<cbc:DocumentType>GONDERIMSEKLI<\/cbc:DocumentType>\s*<cbc:DocumentDescription>ELEKTRONIK</.test(arsivPosta));
+  ok('e-posta UBL icine yazilir', arsivPosta.includes('<cbc:ElectronicMail>a@b.com</cbc:ElectronicMail>'));
+
+  // Gercek kisi alici: TCKN semasi + Person blogu (PartyName YOK)
+  ok('gercek kisi alici TCKN semasiyla yazilir', arsiv.includes('schemeID="TCKN">33248357162'));
+  ok('gercek kisi icin Person blogu var',
+    arsiv.includes('<cbc:FirstName>MUZAFFER</cbc:FirstName>') && arsiv.includes('<cbc:FamilyName>OREN</cbc:FamilyName>'));
+  ok('tuzel kisi alici VKN semasiyla ve unvanla yazilir',
+    efatura.includes('schemeID="VKN">6201689449') && efatura.includes('<cbc:Name>X A.S.</cbc:Name>')
+    && !efatura.includes('<cac:Person>'));
+  ok('bos etiket uretilmiyor', !/<cbc:[A-Za-z]+><\/cbc:[A-Za-z]+>/.test(arsiv),
+    'bos <cbc:Name></cbc:Name> gibi etiketler dogrulamada takilir');
+
+  // Belge turu UBL'DEN ONCE belirlenmeli — sonra belirlenirse senaryo hep e-Fatura kalir.
+  const iTur = kaynak.indexOf("let belgeTuru: 'EINVOICE' | 'EARCHIVE' = 'EINVOICE'");
+  const iUblUret = kaynak.indexOf('const ubl = this.ublOlustur(');
+  ok('belge turu, UBL uretiminden ONCE belirleniyor', iTur > 0 && iUblUret > 0 && iTur < iUblUret);
+
+  const as1 = ElogoFaturaService.adSoyadAyir('MUZAFFER OREN');
+  const as2 = ElogoFaturaService.adSoyadAyir('ALI VELI KIRK DOKUZ');
+  const as3 = ElogoFaturaService.adSoyadAyir('TEK');
+  ok('ad/soyad ayrimi dogru', as1.ad === 'MUZAFFER' && as1.soyad === 'OREN'
+    && as2.ad === 'ALI VELI KIRK' && as2.soyad === 'DOKUZ'
+    && as3.ad === 'TEK' && as3.soyad === 'TEK');
+
   if (hata) process.exit(1);
   console.log('[elogo-gonderim-guvenlik] OK: acik onaysiz gonderim yok, kilit ve etiket kurallari saglam');
 })();

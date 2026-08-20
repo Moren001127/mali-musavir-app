@@ -74,6 +74,10 @@ export type ElogoFaturaGirdi = {
   kdvOrani: number;
   kdvTutari: number;
   toplam: number;
+  /** e-Arsiv ile e-Fatura UBL'i AYNI DEGILDIR (bkz. ublOlustur). */
+  belgeTuru?: 'EINVOICE' | 'EARCHIVE';
+  /** Varsa e-Arsiv ELEKTRONIK gonderilir; yoksa KAGIT. */
+  aliciEposta?: string;
 };
 
 /** UBL tutar biçimi: NOKTA ondalık, gereksiz sıfır yok (GİTO'nun kendi faturasında da böyle). */
@@ -201,6 +205,20 @@ export class ElogoFaturaService {
     'UŞAK', 'VAN', 'YALOVA', 'YOZGAT', 'ZONGULDAK', 'AFYON', 'İÇEL',
   ]);
 
+  /**
+   * GERCEK KISI ALICIDA AD/SOYAD AYRIMI.
+   * e-Arsiv UBL'inde gercek kisi alici <cac:Person><cbc:FirstName>/<cbc:FamilyName>
+   * ile yazilir (mukellefin gercek faturasi OZL2026000000002 boyle). Son kelime soyad,
+   * oncekiler ad kabul edilir. Tek kelimelik isimde ikisi de ayni yazilir — bos birakmak
+   * sema hatasi verir.
+   */
+  static adSoyadAyir(tamAd: string): { ad: string; soyad: string } {
+    const parcalar = String(tamAd || '').trim().split(/\s+/).filter(Boolean);
+    if (!parcalar.length) return { ad: '', soyad: '' };
+    if (parcalar.length === 1) return { ad: parcalar[0], soyad: parcalar[0] };
+    return { ad: parcalar.slice(0, -1).join(' '), soyad: parcalar[parcalar.length - 1] };
+  }
+
   ublOlustur(g: ElogoFaturaGirdi, uuid = randomUUID().toUpperCase()): string {
     // TARIH/SAAT — KULLANICI BULGUSU 2026-08-20: onizlemede saat "03:00:00" cikiyordu.
     //   KOK NEDEN: taslagin faturaTarihi'ni Prisma UTC gece yarisi olarak veriyor
@@ -212,11 +230,39 @@ export class ElogoFaturaService {
     const { tarih, saat } = ElogoFaturaService.tarihSaatTR(g.faturaTarihi);
     const e = (x: any) => this.esc(x);
 
+    // e-ARSIV ile e-FATURA UBL'i AYNI DEGILDIR (canli hata 2026-08-20 23:27):
+    //   eLogo: "Girmis oldugunuz Fatura Senaryosu (cbc:ProfileID) gecersizdir.
+    //   e-Arsiv faturalarinin senaryosu EARSIVFATURA olmalidir."
+    // Asagidaki fark listesi TAHMIN DEGIL: mukellefin kendi gercek e-Arsiv
+    //   faturasindan (OZL2026000000002, alicisi TCKN'li gercek kisi) cikarildi.
+    const eArsiv = g.belgeTuru === 'EARCHIVE';
+    const profil = eArsiv ? 'EARSIVFATURA' : 'TICARIFATURA';
+    // 11 hane = TCKN (gercek kisi), 10 hane = VKN (tuzel kisi).
+    const kimlikTuru = (v: any) => (String(v || '').replace(/[^0-9]/g, '').length === 11 ? 'TCKN' : 'VKN');
+    const saticiKimlik = kimlikTuru(g.saticiVkn);
+    const aliciKimlik = kimlikTuru(g.aliciVkn);
+    const aliciKisi = aliciKimlik === 'TCKN';
+    const adParca = ElogoFaturaService.adSoyadAyir(g.aliciUnvan);
+    // GONDERIM SEKLI: e-posta varsa ELEKTRONIK, yoksa KAGIT. E-posta olmadan
+    //   ELEKTRONIK yazmak GIB tarafinda gecersizdir (gercek ornek de KAGIT idi).
+    const gonderimSekli = String(g.aliciEposta || '').trim() ? 'ELEKTRONIK' : 'KAGIT';
+    const ekBelge = (tip: string, aciklama: string) => `
+  <cac:AdditionalDocumentReference>
+    <cbc:ID>${randomUUID()}</cbc:ID>
+    <cbc:IssueDate>${tarih}</cbc:IssueDate>
+    <cbc:DocumentType>${tip}</cbc:DocumentType>
+    <cbc:DocumentDescription>${aciklama}</cbc:DocumentDescription>
+  </cac:AdditionalDocumentReference>`;
+    // e-Arsiv'de bu iki blok ZORUNLUDUR; e-Fatura'da BULUNMAZ.
+    const eArsivBloklari = eArsiv
+      ? ekBelge('GONDERIMSEKLI', gonderimSekli) + ekBelge('INTERNETSATISI', 'HAYIR')
+      : '';
+
     // PROLOG YOK: GİTO'nun eLogo'dan gelen gerçek faturaları da <Invoice ile başlıyor.
     return `<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2" xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2" xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2" xmlns:ext="urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2 UBL-Invoice-2.1.xsd">
   <cbc:UBLVersionID>2.1</cbc:UBLVersionID>
   <cbc:CustomizationID>TR1.2</cbc:CustomizationID>
-  <cbc:ProfileID>TICARIFATURA</cbc:ProfileID>
+  <cbc:ProfileID>${profil}</cbc:ProfileID>
   <cbc:ID>${e(g.faturaNo)}</cbc:ID>
   <cbc:CopyIndicator>false</cbc:CopyIndicator>
   <cbc:UUID>${e(uuid)}</cbc:UUID>
@@ -226,11 +272,12 @@ export class ElogoFaturaService {
   <cbc:Note>Yalnız ${e(yaziyla(g.toplam))} TL</cbc:Note>
   <cbc:DocumentCurrencyCode listAgencyName="United Nations Economic Commission for Europe" listID="ISO 4217 Alpha" listName="Currency" listVersionID="2001">TRY</cbc:DocumentCurrencyCode>
   <cbc:LineCountNumeric>1</cbc:LineCountNumeric>
+${eArsivBloklari}
   <cac:Signature>
     <cbc:ID schemeID="VKN_TCKN">${e(g.saticiVkn)}</cbc:ID>
     <cac:SignatoryParty>
       <cac:PartyIdentification>
-        <cbc:ID schemeID="VKN">${e(g.saticiVkn)}</cbc:ID>
+        <cbc:ID schemeID="${saticiKimlik}">${e(g.saticiVkn)}</cbc:ID>
       </cac:PartyIdentification>
       <cac:PostalAddress>
         <cbc:CitySubdivisionName>${e(g.saticiIlce)}</cbc:CitySubdivisionName>
@@ -245,7 +292,7 @@ export class ElogoFaturaService {
   <cac:AccountingSupplierParty>
     <cac:Party>
       <cac:PartyIdentification>
-        <cbc:ID schemeID="VKN">${e(g.saticiVkn)}</cbc:ID>
+        <cbc:ID schemeID="${saticiKimlik}">${e(g.saticiVkn)}</cbc:ID>
       </cac:PartyIdentification>${g.saticiMersis ? `
       <cac:PartyIdentification>
         <cbc:ID schemeID="MERSISNO">${e(g.saticiMersis)}</cbc:ID>
@@ -263,11 +310,12 @@ export class ElogoFaturaService {
           <cbc:Name>Türkiye</cbc:Name>
         </cac:Country>
       </cac:PostalAddress>
+${g.saticiVergiDairesi ? `
       <cac:PartyTaxScheme>
         <cac:TaxScheme>
-          <cbc:Name>${e(g.saticiVergiDairesi || '')}</cbc:Name>
+          <cbc:Name>${e(g.saticiVergiDairesi)}</cbc:Name>
         </cac:TaxScheme>
-      </cac:PartyTaxScheme>
+      </cac:PartyTaxScheme>` : ''}
       <cac:Contact>
         <cbc:Telephone>${e(g.saticiTel || '')}</cbc:Telephone>
       </cac:Contact>
@@ -276,11 +324,11 @@ export class ElogoFaturaService {
   <cac:AccountingCustomerParty>
     <cac:Party>
       <cac:PartyIdentification>
-        <cbc:ID schemeID="VKN">${e(g.aliciVkn)}</cbc:ID>
-      </cac:PartyIdentification>
+        <cbc:ID schemeID="${aliciKimlik}">${e(g.aliciVkn)}</cbc:ID>
+      </cac:PartyIdentification>${aliciKisi ? '' : `
       <cac:PartyName>
         <cbc:Name>${e(g.aliciUnvan)}</cbc:Name>
-      </cac:PartyName>
+      </cac:PartyName>`}
       <cac:PostalAddress>
         <cbc:StreetName>${e(g.aliciAdres)}</cbc:StreetName>
         <cbc:CitySubdivisionName>${e(g.aliciIlce || '')}</cbc:CitySubdivisionName>
@@ -290,14 +338,21 @@ export class ElogoFaturaService {
           <cbc:Name>Türkiye</cbc:Name>
         </cac:Country>
       </cac:PostalAddress>
+${g.aliciVergiDairesi ? `
       <cac:PartyTaxScheme>
         <cac:TaxScheme>
-          <cbc:Name>${e(g.aliciVergiDairesi || '')}</cbc:Name>
+          <cbc:Name>${e(g.aliciVergiDairesi)}</cbc:Name>
         </cac:TaxScheme>
-      </cac:PartyTaxScheme>
+      </cac:PartyTaxScheme>` : ''}
+${String(g.aliciEposta || '').trim() ? `
       <cac:Contact>
-        <cbc:Telephone />
-      </cac:Contact>
+        <cbc:ElectronicMail>${e(g.aliciEposta)}</cbc:ElectronicMail>
+      </cac:Contact>` : `
+      <cac:Contact />`}${aliciKisi ? `
+      <cac:Person>
+        <cbc:FirstName>${e(adParca.ad)}</cbc:FirstName>
+        <cbc:FamilyName>${e(adParca.soyad)}</cbc:FamilyName>
+      </cac:Person>` : ''}
     </cac:Party>
   </cac:AccountingCustomerParty>
   <cac:TaxTotal>
@@ -793,6 +848,27 @@ export class ElogoFaturaService {
       `${gunD.getUTCFullYear()}-${this.ik(gunD.getUTCMonth() + 1)}-${this.ik(gunD.getUTCDate())}T${saatTR}+03:00`,
     );
 
+    // BELGE TÜRÜ VKN'DEN TÜRETİLİR (kullanıcı kuralı): alıcı e-Fatura mükellefiyse EINVOICE,
+    //   değilse EARCHIVE. Sorgu başarısız olursa e-Fatura varsayılır ve bu NOT olarak döner —
+    //   sessizce yanlış tür seçilmez.
+    let belgeTuru: 'EINVOICE' | 'EARCHIVE' = 'EINVOICE';
+    let etiketler: string[] = [];
+    let turNotu: string | null = null;
+    try {
+      const sorgu = await this.mukellefSorgu(tenantId, d.taxpayerId, [String(d.aliciVkn)]);
+      const bulunan = sorgu.mukellefler.find((m) => m.vkn === String(d.aliciVkn));
+      if (bulunan) {
+        belgeTuru = bulunan.eFaturaMi ? 'EINVOICE' : 'EARCHIVE';
+        etiketler = bulunan.etiketler;
+      } else turNotu = 'Alıcı GİB listesinde bulunamadı — e-Fatura varsayıldı';
+    } catch (e: any) {
+      turNotu = `Alıcı sorgulanamadı (${e?.message || 'hata'}) — e-Fatura varsayıldı`;
+    }
+    // SIRA ONEMLI (canli hata 2026-08-20 23:27): belge turu UBL'DEN ONCE belirlenir,
+    //   cunku e-Arsiv ile e-Fatura'nin senaryosu (ProfileID) ve zorunlu bloklari farkli.
+    //   Eskiden bu blok UBL uretildikten SONRA calisiyordu; UBL hep e-Fatura olarak
+    //   uretiliyor, eLogo da e-Arsiv gonderiminde reddediyordu.
+
     const ubl = this.ublOlustur({
       saticiVkn: String(tp?.taxNumber || ''),
       saticiUnvan: saticiAd,
@@ -817,24 +893,9 @@ export class ElogoFaturaService {
       kdvOrani: Number(d.kdvOrani),
       kdvTutari: Number(d.kdvTutari),
       toplam: Number(d.toplam),
+      belgeTuru,
+      aliciEposta: String(d.aliciEposta || '') || undefined,
     });
-    // BELGE TÜRÜ VKN'DEN TÜRETİLİR (kullanıcı kuralı): alıcı e-Fatura mükellefiyse EINVOICE,
-    //   değilse EARCHIVE. Sorgu başarısız olursa e-Fatura varsayılır ve bu NOT olarak döner —
-    //   sessizce yanlış tür seçilmez.
-    let belgeTuru: 'EINVOICE' | 'EARCHIVE' = 'EINVOICE';
-    let etiketler: string[] = [];
-    let turNotu: string | null = null;
-    try {
-      const sorgu = await this.mukellefSorgu(tenantId, d.taxpayerId, [String(d.aliciVkn)]);
-      const bulunan = sorgu.mukellefler.find((m) => m.vkn === String(d.aliciVkn));
-      if (bulunan) {
-        belgeTuru = bulunan.eFaturaMi ? 'EINVOICE' : 'EARCHIVE';
-        etiketler = bulunan.etiketler;
-      } else turNotu = 'Alıcı GİB listesinde bulunamadı — e-Fatura varsayıldı';
-    } catch (e: any) {
-      turNotu = `Alıcı sorgulanamadı (${e?.message || 'hata'}) — e-Fatura varsayıldı`;
-    }
-
     const { icerik, tur } = await this.onizlemeAl(tenantId, d.taxpayerId, ubl, `${d.faturaNo || 'onizleme'}.xml`, belgeTuru);
     return { icerik, tur, ubl, belgeTuru, etiketler, turNotu, uyarilar, kaynakNotu };
   }
