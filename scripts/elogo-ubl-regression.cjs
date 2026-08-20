@@ -133,5 +133,56 @@ ok('onizleme UBL icinde GERCEK seri numarasi YOK', !seriKalibi.test(onizlemeXml)
   'numarali fatura eLogoda iptal edilemez');
 ok('onizlemede fatura no yer tutucu', onizlemeXml.includes('<cbc:ID>ONIZLEME</cbc:ID>'));
 
+// ---------- 8) TARIH/SAAT: ISTANBUL'A SABIT ----------
+// KULLANICI BULGUSU 2026-08-20: onizlemede "20-08-2026 03:00:00" ciktiydi. Kok neden,
+//   Prisma'nin UTC gece yarisi verdigi tarihi YEREL getHours() ile okumakti (+3 kayma).
+//   Bicimlendirme artik acikca Europe/Istanbul; sunucu TZ'i degisse bile ayni cikmali.
+const t1 = new Date('2026-08-20T12:50:27Z'); // Istanbul: 15:50:27
+const bic = ElogoFaturaService.tarihSaatTR(t1);
+ok('tarih Istanbul gununu verir', bic.tarih === '2026-08-20', `olan: ${bic.tarih}`);
+ok('saat Istanbul saatini verir', bic.saat === '15:50:27', `olan: ${bic.saat}`);
+const t2 = new Date('2026-08-19T21:30:00Z'); // Istanbul: ertesi gun 00:30
+const bic2 = ElogoFaturaService.tarihSaatTR(t2);
+ok('gece yarisi gecisi dogru', bic2.tarih === '2026-08-20' && bic2.saat === '00:30:00',
+  `olan: ${bic2.tarih} ${bic2.saat}`);
+const xmlSaat = svc.ublOlustur({
+  saticiVkn: '1', saticiUnvan: 'A', saticiAdres: 'x', saticiIlce: '', saticiIl: '',
+  aliciVkn: '2', aliciUnvan: 'B', aliciAdres: 'y', aliciIlce: '', aliciIl: '',
+  faturaNo: 'ONIZLEME', faturaTarihi: t1, aciklama: 'T',
+  miktar: 1, matrah: 100, kdvOrani: 10, kdvTutari: 10, toplam: 110,
+}, 'AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE');
+ok('UBL IssueTime gercek saati tasir', xmlSaat.includes('<cbc:IssueTime>15:50:27</cbc:IssueTime>'));
+ok('UBL saati 03:00 DEGIL (eski hata)', !xmlSaat.includes('<cbc:IssueTime>03:00:00</cbc:IssueTime>'));
+
+// ---------- 9) ADRESTEN ILCE/IL ----------
+const adresler = [
+  ['KARAAGAC MAH. HADIMKOY ISTANBUL CAD. NO 38/4 BUYUKCEKMECE / ISTANBUL', 'BUYUKCEKMECE', 'ISTANBUL'],
+  ['OMERLI MAH. ADNAN KAHVECI CAD. NO: 1 /1 ARNAVUTKOY/ ISTANBUL', 'ARNAVUTKOY', 'ISTANBUL'],
+  ['OMERLI MAH. ADNAN KAHVECI CAD. 1 /1 1 ARNAVUTKOY 34', '', ''],  // cikarilamaz -> BOS, uydurulmaz
+];
+for (const [adres, ilce, il] of adresler) {
+  const r = ElogoFaturaService.adresParcala(adres);
+  ok(`adres ayristirma: "${adres.slice(-28)}"`, r.ilce === ilce && r.il === il,
+    `olan: ilce=${r.ilce} il=${r.il}`);
+}
+// Cikarilamayan adres icin IL UYDURULMAMALI (eski kod alici icin 'ISTANBUL' varsayiyordu)
+ok('bilinmeyen il varsayilan ISTANBUL DEGIL', ElogoFaturaService.adresParcala('BILINMEYEN ADRES').il === '');
+
+// ---------- 10) SUNUCU SAAT DILIMINDEN BAGIMSIZLIK ----------
+// TESTIN KENDI TUZAGI: bu makine zaten Europe/Istanbul oldugu icin ESKI (yerel getter'li)
+//   kod da 15:50:27 uretirdi ve test bosuna gecerdi. Bu yuzden ayni dosya bir de TZ=UTC
+//   ile calistirilir; bicimlendirme Istanbul'a sabit degilse orada CAKAR.
+if (!process.env.ELOGO_TZ_TEST) {
+  const { spawnSync } = require('child_process');
+  const alt = spawnSync(process.execPath, [__filename], {
+    env: { ...process.env, TZ: 'UTC', ELOGO_TZ_TEST: '1' }, stdio: 'pipe', encoding: 'utf8',
+  });
+  if (alt.status !== 0) {
+    console.error('  ✗ TZ=UTC altinda CAKTI — tarih/saat sunucu saat dilimine bagli kalmis');
+    for (const l of (alt.stdout || '').split(/\r?\n/)) if (l.includes('✗')) console.error(l);
+    hata++;
+  } else console.log('  ✓ TZ=UTC altinda da ayni sonuc (saat dilimi bagimsiz)');
+}
+
 if (hata) process.exit(1);
 console.log('[elogo-ubl-regression] OK: UBL bicimi, sozlesme sabitleri ve aritmetik kilitli');

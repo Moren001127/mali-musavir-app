@@ -129,10 +129,43 @@ export class ElogoFaturaService {
    * BİREBİR aynıdır (sıra UBL'de zorunludur, karıştırılırsa belge reddedilir).
    * İmza bloğu (ext:UBLExtensions) ve gömülü XSLT KOYULMAZ — onları entegratör ekler.
    */
+  /**
+   * Bir ani Europe/Istanbul saatiyle "YYYY-MM-DD" + "HH:mm:ss" olarak yazar.
+   * Sunucunun TZ ayarina BAGLI DEGILDIR (Railway'de TZ=Europe/Istanbul ama yerelde/testte
+   * baska olabilir; ayni belge her yerde ayni cikmali).
+   */
+  static tarihSaatTR(t: Date): { tarih: string; saat: string } {
+    const p = new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Europe/Istanbul', year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+    }).formatToParts(t);
+    const al = (k: string) => (p.find((x) => x.type === k) || ({} as any)).value || '00';
+    return { tarih: `${al('year')}-${al('month')}-${al('day')}`, saat: `${al('hour')}:${al('minute')}:${al('second')}` };
+  }
+
+  /**
+   * Serbest yazilmis adres metninden ilce/il ayiklar.
+   * NEDEN METINDEN: mukellef kaydinda ayri il/ilce alani YOK — sema'da yalniz `address` var.
+   * Cikaramazsak BOS doneriz; UYDURMAYIZ (bos il, faturada eksik adres demektir ve
+   * cagiran taraf bunu kullaniciya UYARI olarak bildirir).
+   *   "... NO 38/4 BUYUKCEKMECE / ISTANBUL"   -> ilce=BUYUKCEKMECE  il=ISTANBUL
+   *   "... CAD. NO: 1 /1 ARNAVUTKOY/ ISTANBUL" -> ilce=ARNAVUTKOY    il=ISTANBUL
+   */
+  static adresParcala(adres: string): { ilce: string; il: string } {
+    const m = String(adres || '').trim()
+      .match(/([A-Za-zÇĞİIÖŞÜçğıöşü]{3,})\s*\/\s*([A-Za-zÇĞİIÖŞÜçğıöşü]{3,})\s*$/);
+    return m ? { ilce: m[1].trim(), il: m[2].trim() } : { ilce: '', il: '' };
+  }
+
   ublOlustur(g: ElogoFaturaGirdi, uuid = randomUUID().toUpperCase()): string {
-    const t = g.faturaTarihi;
-    const tarih = `${t.getFullYear()}-${this.ik(t.getMonth() + 1)}-${this.ik(t.getDate())}`;
-    const saat = `${this.ik(t.getHours())}:${this.ik(t.getMinutes())}:${this.ik(t.getSeconds())}`;
+    // TARIH/SAAT — KULLANICI BULGUSU 2026-08-20: onizlemede saat "03:00:00" cikiyordu.
+    //   KOK NEDEN: taslagin faturaTarihi'ni Prisma UTC gece yarisi olarak veriyor
+    //   (2026-08-20T00:00:00Z); bunu getHours() ile YEREL okuyunca (TZ=Europe/Istanbul)
+    //   3'e kayiyordu. Cozum: bicimlendirmeyi ACIKCA Istanbul'a sabitle — boylece sunucu
+    //   saat dilimi ne olursa olsun ayni ciktiyi verir. Cagiran taraf da gercek duzenleme
+    //   anini gonderir (bkz. taslaktanOnizleme). Gercek eLogo faturasi da gercek saati
+    //   tasiyor: AAA2026000000045 -> IssueTime 15:30:41.
+    const { tarih, saat } = ElogoFaturaService.tarihSaatTR(g.faturaTarihi);
     const e = (x: any) => this.esc(x);
 
     // PROLOG YOK: GİTO'nun eLogo'dan gelen gerçek faturaları da <Invoice ile başlıyor.
@@ -501,24 +534,39 @@ export class ElogoFaturaService {
     });
     const saticiAd = tp?.companyName || [tp?.firstName, tp?.lastName].filter(Boolean).join(' ') || '';
     const adres = String(d.aliciAdres || '');
-    const ilce = (adres.match(/([A-ZÇĞİÖŞÜa-zçğıöşü]+)\s*\/\s*[A-ZÇĞİÖŞÜa-zçğıöşü]+\s*$/) || [])[1] || '';
-    const il = (adres.match(/\/\s*([A-ZÇĞİÖŞÜa-zçğıöşü]+)\s*$/) || [])[1] || 'İSTANBUL';
+    const alici = ElogoFaturaService.adresParcala(adres);
+    const saticiAdres = String(tp?.address || '');
+    const satici = ElogoFaturaService.adresParcala(saticiAdres);
+
+    // UYARILAR: eksik veriyi SESSIZ gecmeyiz. Satici il/ilce bos kalirsa fatura adresi
+    //   eksik basilir (kullanici bulgusu: onizlemede "ARNAVUTKOY 34 /" gibi yarim satir).
+    const uyarilar: string[] = [];
+    if (!satici.il) uyarilar.push('Satıcının il/ilçe bilgisi mükellef kaydındaki adresten okunamadı — fatura adresi eksik basılıyor.');
+    if (!alici.il) uyarilar.push('Alıcının il/ilçe bilgisi adresten okunamadı.');
+
+    // DUZENLEME ANI: gun taslagin fatura tarihinden (Prisma bunu UTC gece yarisi verir,
+    //   bu yuzden UTC bilesenleri alinir), SAAT ise taslagin olusturuldugu gercek andan.
+    const gunD = new Date(d.faturaTarihi);
+    const saatTR = ElogoFaturaService.tarihSaatTR(new Date(d.createdAt || Date.now())).saat;
+    const duzenlemeAni = new Date(
+      `${gunD.getUTCFullYear()}-${this.ik(gunD.getUTCMonth() + 1)}-${this.ik(gunD.getUTCDate())}T${saatTR}+03:00`,
+    );
 
     const ubl = this.ublOlustur({
       saticiVkn: String(tp?.taxNumber || ''),
       saticiUnvan: saticiAd,
-      saticiAdres: String(tp?.address || ''),
-      saticiIlce: '',
-      saticiIl: '',
+      saticiAdres: saticiAdres,
+      saticiIlce: satici.ilce,
+      saticiIl: satici.il,
       saticiTel: String(tp?.phone || ''),
       aliciVkn: String(d.aliciVkn),
       aliciUnvan: String(d.aliciUnvan),
       aliciAdres: adres,
-      aliciIlce: ilce,
-      aliciIl: il,
+      aliciIlce: alici.ilce,
+      aliciIl: alici.il,
       aliciVergiDairesi: String(d.aliciVd || ''),
       faturaNo: String(d.faturaNo || 'ONIZLEME'),
-      faturaTarihi: new Date(d.faturaTarihi),
+      faturaTarihi: duzenlemeAni,
       aciklama: String(d.aciklama),
       miktar: Number(d.miktar) || 1,
       matrah: Number(d.matrah),
@@ -544,6 +592,6 @@ export class ElogoFaturaService {
     }
 
     const { icerik, tur } = await this.onizlemeAl(tenantId, d.taxpayerId, ubl, `${d.faturaNo || 'onizleme'}.xml`, belgeTuru);
-    return { icerik, tur, ubl, belgeTuru, etiketler, turNotu };
+    return { icerik, tur, ubl, belgeTuru, etiketler, turNotu, uyarilar };
   }
 }

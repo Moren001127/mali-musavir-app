@@ -1145,7 +1145,8 @@ export class WhatsAppBotController implements OnModuleInit {
             }).catch(() => null);
             ek = `Önizlemeyi *eLogo* bastı · belge türü *${pv.belgeTuru === 'EARCHIVE' ? 'e-Arşiv' : 'e-Fatura'}*` +
               `${pv.turNotu ? ` (${pv.turNotu})` : ''}` +
-              `${pv.etiketler?.length > 1 ? `\nAlıcının ${pv.etiketler.length} etiketi var — gönderimde hangisi kullanılacak seçilmeli.` : ''}`;
+              `${pv.etiketler?.length > 1 ? `\nAlıcının ${pv.etiketler.length} etiketi var — gönderimde hangisi kullanılacak seçilmeli.` : ''}` +
+              `${pv.uyarilar?.length ? `\n⚠️ ${pv.uyarilar.join(`\n⚠️ `)}` : ''}`;
           } catch (e: any) {
             ek = `eLogo önizlemesi alınamadı (${String(e?.message || '').slice(0, 120)}) — aşağıdaki bizim önizlememizdir.`;
           }
