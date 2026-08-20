@@ -377,9 +377,13 @@ export default function FisYazdirmaPage() {
         setFetchProgress({ current: i + 1, total: invoices.length });
 
         try {
-          // Backend proxy üzerinden direkt binary al (CORS yok, JWT var)
+          // ÖNCE KENDİ ARŞİVİMİZ (Drive), bulunamazsa uç kendisi MIHSAP'a düşer.
+          // Eskiden doğrudan MIHSAP CDN'ine gidiliyordu: her fiş için canlı
+          // dış istek demekti — MIHSAP yavaşlarsa/kesilirse fiş sessizce
+          // düşüyordu. Oysa belgeler zaten Drive'a yedekleniyor
+          // (Haziran/YORGUN NAKLİYAT: 456 fişin 456'sı yedekli).
           const imgRes = await authorizedFetch(
-            `${API}/agent/mihsap/invoices/${inv.id}/file`,
+            `${API}/agent/drive/invoices/${inv.id}/file`,
           );
           if (!imgRes.ok) {
             basarisiz++;

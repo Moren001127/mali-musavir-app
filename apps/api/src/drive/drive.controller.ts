@@ -11,8 +11,15 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
+import { SkipThrottle } from '@nestjs/throttler';
 import { DriveService } from './drive.service';
 
+/**
+ * Fiş Yazdırma bir dönemin fişlerini TEK TEK indiriyor (Haziran/YORGUN
+ * NAKLİYAT = 456 istek). Global 100 istek/dk sayacı bunu kesiyor, istemci de
+ * düşen indirmeyi sessizce atlıyordu. Uçlar JWT korumalı, ofis içi.
+ */
+@SkipThrottle()
 @Controller('agent/drive')
 export class DriveController {
   constructor(private readonly service: DriveService) {}
