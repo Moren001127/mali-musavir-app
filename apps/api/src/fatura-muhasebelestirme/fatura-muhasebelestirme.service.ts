@@ -2789,6 +2789,43 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       await tx.lucaAccountPlanLine.createMany({
         data: rows.map((r) => ({ ...r, snapshotId: snap.id })),
       });
+      // YEREL HESAPLARI KAYBETME (2026-08-20): yeni snapshot YALNIZ Luca satırlarından
+      //   oluşuyordu. Portalda açılmış ama henüz Luca'ya gönderilmemiş yerel hesaplar
+      //   plan tazelenince SESSİZCE siliniyordu — o hesabı kullanan faturaların kodu
+      //   boşa düşerdi. Artık: önceki snapshot'taki LOCAL satırlardan, Luca'dan gelen
+      //   listede BULUNMAYANLAR yeni snapshot'a taşınır. Luca'da artık VAR olanlar
+      //   taşınmaz; zaten gerçek Luca satırı olarak geldi (rozet kendiliğinden "Luca'da").
+      try {
+        const prev = await tx.lucaAccountPlanSnapshot.findFirst({
+          where: { tenantId: params.tenantId, taxpayerId: params.taxpayerId, id: { not: snap.id } },
+          orderBy: { createdAt: 'desc' },
+          select: { id: true },
+        });
+        if (prev?.id) {
+          const yereller = await tx.lucaAccountPlanLine.findMany({
+            where: { snapshotId: prev.id, source: 'LOCAL' },
+            select: { accountCode: true, accountName: true, level: true, isCari: true, vkn: true, syncedToLuca: true },
+          });
+          const lucadaVar = new Set(rows.map((r) => String(r.accountCode)));
+          const tasinacak = yereller.filter((y: any) => !lucadaVar.has(String(y.accountCode)));
+          if (tasinacak.length) {
+            await tx.lucaAccountPlanLine.createMany({
+              data: tasinacak.map((y: any) => ({
+                snapshotId: snap.id,
+                accountCode: y.accountCode,
+                accountName: y.accountName,
+                level: y.level || 0,
+                debitBalance: new Prisma.Decimal(0),
+                creditBalance: new Prisma.Decimal(0),
+                source: 'LOCAL',
+                syncedToLuca: false,
+                isCari: y.isCari ?? null,
+                vkn: y.vkn ?? null,
+              })),
+            });
+          }
+        }
+      } catch { /* taşıma opsiyonel — snapshot yazımını bozma */ }
       return snap;
     });
     // AI-EŞLEŞTİRME ARKA PLANDA (kullanıcı bulgusu — "hesap planı çekildiği halde iş bitmiyor"):

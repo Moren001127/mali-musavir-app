@@ -614,6 +614,26 @@ export class LucaController {
   ) {
     await this.resolveTenantFromAgentToken(agentToken);
     await this.luca.markJobDone(id, body.recordCount ?? 0);
+    // HESAP GÖNDERİMİ SONRASI PLANI LUCA'DAN TAZELE (2026-08-20, kullanıcı bulgusu:
+    //   "hesap planı aktarılınca otomatik kendisi güncellemeyecek mi, hâlâ yerel görünüyor").
+    //   Ajan "hesap açıldı mı" kararını sayfa metnindeki kelimelere bakarak veriyordu ve
+    //   yanılıyordu → syncedToLuca işaretlenmiyor, portalda hesap "yerel · gönderilmedi"
+    //   kalıyordu (ARGES METAL 120.01.A011 Luca'da AÇIK olduğu hâlde). Tahmin yerine
+    //   KAYNAĞA SOR: push biter bitmez planı Luca'dan çek; yeni snapshot doğrudan Luca'dan
+    //   geldiği için durum kendiliğinden doğru olur.
+    try {
+      const job = await (this.prisma as any).lucaFetchJob.findUnique({
+        where: { id },
+        select: { tip: true, tenantId: true, mukellefId: true, targetDeviceId: true, createdBy: true },
+      });
+      if (job?.tip === 'ACCOUNT_PLAN_PUSH' && job.mukellefId) {
+        await this.faturaMuhasebelestirme.refreshAccountPlan(job.tenantId, {
+          taxpayerId: job.mukellefId,
+          createdBy: job.createdBy || undefined,
+          targetDeviceId: job.targetDeviceId || undefined,
+        });
+      }
+    } catch { /* tazeleme opsiyonel — işi bitirmeyi engelleme */ }
     return { ok: true };
   }
 
