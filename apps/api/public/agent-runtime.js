@@ -53,7 +53,7 @@
   // ne DOM değişimi oluyor → "bitti" sinyali hiç gelmiyordu (PERİHAN ŞAHİN: tıklama
   // öncesi de sonrası da 18 satır). Artık 30sn boyunca ekran hiç değişmediyse sorgu
   // bitmiş sayılır. Ayrıca teşhis için ekrandaki durum metni loglanır.
-  const AGENT_VERSION = '1.47.19';
+  const AGENT_VERSION = '1.47.20';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -4385,8 +4385,27 @@
     const ayinSonGunu = (y, m) => new Date(y, m, 0).getDate(); // m=1-12, son gün
     const fmt = (d, m, y) => `${String(d).padStart(2,'0')}/${String(m).padStart(2,'0')}/${y}`;
 
+    const bugun = new Date();
+    const buAy = bugun.getMonth() + 1;
+    const buYil = bugun.getFullYear();
+
     const sorgu1Bas = fmt(1, ay, yil);
-    const sorgu1Bit = fmt(ayinSonGunu(yil, ay), ay, yil);
+    // ─── BITIS TARIHI BUGUNU ASMASIN (2026-08-20 kok duzeltme) ───
+    // Icinde bulundugumuz ay secilince buraya ayin SON gunu yaziliyordu; ornegin
+    // 20 Agustos'ta "01/08/2026 → 31/08/2026". GELECEK tarihli aralikta GIB sorgusu
+    // hicbir sey dondurmuyor: Islem Takip penceresi bile acilmiyor, ajan ekranda
+    // zaten duran listeyi indirip "hepsi mukerrer" diyor.
+    // KANIT (AYSEGUL ARSLAN, Agustos 2026): portaldaki 13 Agustos faturasinin HEPSI
+    // Temmuz donemli islerin "Sorgu 2"sinden (01/08 → BUGUN) geldi —
+    //   07/08 isi → 01/08-07/08 → 10 fatura
+    //   08/08 isi → 01/08-08/08 →  1 fatura
+    //   10/08 isi → 01/08-10/08 →  2 fatura
+    // Agustos donemi SECILEREK yapilan hicbir sorgudan tek fatura gelmedi; 10/08 ve
+    // 12/08 tarihli 6 fatura bu yuzden eksikti (elle sorgulaninca aninda geldiler).
+    const __ayinSonGunu = ayinSonGunu(yil, ay);
+    const __buAyMi = (yil === buYil && ay === buAy);
+    const __bitisGunu = __buAyMi ? Math.min(bugun.getDate(), __ayinSonGunu) : __ayinSonGunu;
+    const sorgu1Bit = fmt(__bitisGunu, ay, yil);
 
     // Sorgu 2 (sonraki ay başı → bugün) — Luca'nın tarih kesimi her zaman seçili dönem sonunda
     // bittiği için, bir sonraki ay başından bugüne kadar olan faturaları da yakalamak için 2. sorgu.
@@ -4394,9 +4413,6 @@
     // Seçili ay zaten ŞU ANKI ay ise gereksiz (zaten Sorgu1 bugünü kapsıyor).
     const sonAy = ay === 12 ? 1 : ay + 1;
     const sonYil = ay === 12 ? yil + 1 : yil;
-    const bugun = new Date();
-    const buAy = bugun.getMonth() + 1;
-    const buYil = bugun.getFullYear();
     // Seçili ay bu aydan ÖNCE ise Sorgu2 gerekli
     const sorgu2Gerekli = (yil < buYil) || (yil === buYil && ay < buAy);
     const sorgu2Bas = fmt(1, sonAy, sonYil);
@@ -4406,7 +4422,7 @@
       await log(`📅 Sorgu 1: ${sorgu1Bas} → ${sorgu1Bit}`);
       await log(`📅 Sorgu 2: ${sorgu2Bas} → ${sorgu2Bit} (sonraki ay → bugün)`);
     } else {
-      await log(`📅 Sorgu: ${sorgu1Bas} → ${sorgu1Bit} (Sorgu 2 atlandı — seçili ay = bu ay)`);
+      await log(`📅 Sorgu: ${sorgu1Bas} → ${sorgu1Bit} (seçili ay = bu ay → bitiş BUGÜN'e çekildi, gelecek tarihli aralık GİB'den sonuç döndürmüyor)`);
     }
 
     const ebelgeContext = findEbelgePageContext();
