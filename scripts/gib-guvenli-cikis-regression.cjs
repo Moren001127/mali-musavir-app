@@ -54,5 +54,22 @@ for (const d of DOSYALAR) {
   else console.log(`  \u2713 ${d.ad}: assoscmd=logout gonderiliyor`);
 }
 
+// 2) HER GIRIS CAGRISI icin bir CIKIS cagrisi olmali.
+//    Ileride IKINCI bir giris yolu acilirsa (cikissiz), varlik kontrolu bunu kaciririr;
+//    sayim kacirmaz. Tanim satirlari ("private async ...") sayilmaz.
+const SAYIM = [
+  { ad: 'railway-runner', yol: DOSYALAR[1].yol, giris: /this\.earsivLoginHttp\(/g, cikis: /this\.earsivLogoutHttp\(/g },
+  { ad: 'fatura-kes-gib', yol: DOSYALAR[0].yol, giris: /this\.gibLogin\(/g, cikis: /this\.gibLogout\(/g },
+];
+for (const d of SAYIM) {
+  const src = fs.readFileSync(d.yol, 'utf8');
+  const g = (src.match(d.giris) || []).length;
+  const c = (src.match(d.cikis) || []).length;
+  if (g > c) {
+    console.error(`  ✗ ${d.ad}: ${g} giris cagrisi ama ${c} cikis cagrisi — cikissiz giris yolu var`);
+    hata++;
+  } else console.log(`  ✓ ${d.ad}: ${g} giris / ${c} cikis cagrisi (cikissiz giris yok)`);
+}
+
 if (hata) process.exit(1);
 console.log('[gib-guvenli-cikis-regression] OK: GIB girisi yapan her akis guvenli cikis yapiyor');
