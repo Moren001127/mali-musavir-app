@@ -151,6 +151,16 @@ const ok = (ad, sart, ek) => {
   for (const m of olumsuz) ok(`onayMi("${m}") = false`, FaturaKesKomutService.onayMi(m) === false);
   for (const m of ['vazgeçiyorum', 'iptal', 'hayır', 'kesme']) ok(`vazgecMi("${m}") = true`, FaturaKesKomutService.vazgecMi(m) === true);
 
+  // ---------- 10) SERI SECIMI: PORTAL SERISI KULLANILMAZ (canli kanit 2026-08-20) ----------
+  // eLogo'da her on ekin KULLANIM TURU var: Type=0 Portal, Type=2 Web Servis.
+  // GITO: AAA(48,Portal) · BBB(0,Web Servis) · e-Arsiv GTO(0,Web Servis).
+  // Eski kod "sayaci en buyuk" secip PORTAL serisini kullanacakti.
+  ok('Type alani okunuyor', servis.includes('<a:Type>'));
+  ok('Web Servis tipi (2) tercih ediliyor', servis.includes('const WEB_SERVIS = 2') && servis.includes('x.tip === WEB_SERVIS'));
+  ok('Web Servis serisi yoksa kullanilan NULL', /kullanilan: webServis\[0\] \|\| null/.test(servis),
+    'portal serisi kullanilirsa yanlis seriden fatura kesilir');
+  ok('hata mesaji nereye bakilacagini soyluyor', servis.includes('Belge Numarasi On Ek Tanimlari'));
+
   if (hata) process.exit(1);
   console.log('[elogo-gonderim-guvenlik] OK: acik onaysiz gonderim yok, kilit ve etiket kurallari saglam');
 })();

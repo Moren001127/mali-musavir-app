@@ -661,16 +661,30 @@ export class ElogoFaturaService {
       </GetPrefixLastNumberList>`);
       // HER BLOK AYRI OKUNUR. Ilk yazdigim regex iki blogu karistirip AA9'un numarasini
       //   AAA'nin sayacindan aliyordu (canli: AA9=0, AAA=48). Blok blok ayirmak sart.
-      const onEkler: Array<{ onEk: string; sonNo: number }> = [];
+      const onEkler: Array<{ onEk: string; sonNo: number; tip: number }> = [];
       for (const blok of xml.split(/<a:PrefixLastNumber>/).slice(1)) {
         const govde = blok.split('</a:PrefixLastNumber>')[0];
         const onEk = (govde.match(/<a:InvoicePrefix>([^<]*)<\/a:InvoicePrefix>/) || [])[1];
         const sayac = (govde.match(/<a:Counter>(\d+)<\/a:Counter>/) || [])[1];
-        if (onEk) onEkler.push({ onEk: onEk.trim(), sonNo: Number(sayac || 0) });
+        const tip = (govde.match(/<a:Type>(\d+)<\/a:Type>/) || [])[1];
+        if (onEk) onEkler.push({ onEk: onEk.trim(), sonNo: Number(sayac || 0), tip: Number(tip || 0) });
       }
-      // Kullanimda olan seri = sayaci EN BUYUK olan (hic kullanilmamis on ekler 0 doner).
-      onEkler.sort((a, b) => b.sonNo - a.sonNo);
-      return { onEkler, kullanilan: onEkler[0] || null, mesaj: this.etiket(xml, 'resultMsg') || '', hamXml: xml };
+      // SERI SECIMI — CANLI KANIT (2026-08-20): eLogo'da her on ekin bir KULLANIM TURU var.
+      //   Type=0 -> Portal (yalniz eLogo arayuzunden kesilir)
+      //   Type=2 -> Web Servis (bizim kullanmamiz gereken)
+      //   GITO ornegi: AAA(48, Portal) · BBB(0, Web Servis) · e-Arsiv GTO(0, Web Servis).
+      //   Eskiden "sayaci en buyuk" seciliyordu; bu PORTAL serisini secip yanlis seriden
+      //   fatura kesilmesine yol acardi. Once Web Servis serileri, sonra sayaca gore.
+      const WEB_SERVIS = 2;
+      const webServis = onEkler.filter((x) => x.tip === WEB_SERVIS).sort((a, b) => b.sonNo - a.sonNo);
+      const digerleri = onEkler.filter((x) => x.tip !== WEB_SERVIS).sort((a, b) => b.sonNo - a.sonNo);
+      return {
+        onEkler: [...webServis, ...digerleri],
+        kullanilan: webServis[0] || null,   // Web Servis serisi YOKSA null — Portal serisi KULLANILMAZ
+        portalSerileri: digerleri,
+        mesaj: this.etiket(xml, 'resultMsg') || '',
+        hamXml: xml,
+      };
     } finally {
       await this.cikisYap(url, oturum);
     }
@@ -906,7 +920,13 @@ export class ElogoFaturaService {
     const seri = await this.sonNumara(tenantId, d.taxpayerId, belgeTuru);
     const onEk = String(seri?.kullanilan?.onEk || '').trim();
     if (!onEk) {
-      throw new BadRequestException('eLogo tarafinda kullanilabilir fatura serisi (on ek) bulunamadi - gonderim yapilmadi.');
+      const portal = (seri?.portalSerileri || []).map((x: any) => x.onEk).join(', ');
+      throw new BadRequestException(
+        'eLogo tarafinda WEB SERVIS kullanimina acik fatura serisi yok - gonderim yapilmadi.' +
+        (portal ? ` (Portal serileri: ${portal})` : '') +
+        ' eLogo > Tanimlar > Belge Numarasi On Ek Tanimlari ekranindan, ilgili belge turu icin' +
+        ' "Kullanim Turu: Web Servis" ve "On Deger: Evet" olan bir on ek tanimlanmali.',
+      );
     }
     // SIRA ONEMLI (denetim bulgusu 2026-08-20): UBL numaradan ONCE hazirlanir.
     //   Eskiden once numara aliniyor, sonra taslaktanOnizleme cagriliyordu; o cagri
