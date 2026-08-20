@@ -405,6 +405,85 @@ export class ElogoFaturaService {
     }
   }
 
+  /**
+   * ALICI e-FATURA MÜKELLEFİ Mİ? — fatura TÜRÜNÜ bu belirler.
+   *
+   * Doküman (eLogo Arabirim Dokümanı, CheckGibUser): "Mükellef bilgisi sorgular. Gelir
+   * İdaresinin yayınladığı mükellef listesinden mükellef durumunu kontrol eder ve etiket
+   * bilgilerini döner. Bir seferde en fazla 100 adet mükellef sorgulanabilir."
+   *
+   *   kayıtlı  → e-Fatura  (DOCUMENTTYPE=EINVOICE)
+   *   kayıtsız → e-Arşiv   (DOCUMENTTYPE=EARCHIVE)
+   *
+   * SALT OKUMA. Cevap byte[] (userInfo) olarak geliyor; içeriği zip ya da düz metin
+   * olabilir — ikisi de denenir, TAHMİN EDİLMEZ.
+   */
+  async mukellefSorgu(tenantId: string, taxpayerId: string, vknListesi: string[]) {
+    const { kullanici, sifre, url } = await this.kimlik(tenantId, taxpayerId);
+    const oturum = await this.girisYap(url, kullanici, sifre);
+    try {
+      const NS_ARR = 'http://schemas.microsoft.com/2003/10/Serialization/Arrays';
+      const liste = vknListesi.slice(0, 100).map((v) => `<b:string>${this.esc(v)}</b:string>`).join('');
+      const xml = await this.soap(url, 'CheckGibUser', `<CheckGibUser xmlns="${SOAP_NS}">
+        <sessionID>${this.esc(oturum)}</sessionID>
+        <vknTcknList xmlns:b="${NS_ARR}">${liste}</vknTcknList>
+      </CheckGibUser>`);
+      // CEVAP YAPISI CANLI GORULDU (2026-08-20): dokumanda "out byte[] userInfo" yaziyor ama
+      //   servis <userList> icinde DUZ XML donduruyor: her <a:GibUserType> bir mukellef,
+      //   icindeki <a:GibUserInfoType> bloklarinda <a:Identifier> (VKN) ve <a:Alias> (etiket).
+      //   ETIKET SAYISI ONEMLI: dokuman "etiket gonderilmezse birden fazla etikette HATA
+      //   uretilir" diyor, o yuzden etiketleri de dondurmek zorundayiz.
+      const sonuc = this.etiket(xml, 'resultCode');
+      const mesaj = this.etiket(xml, 'resultMsg') || '';
+      const mukellefler: Array<{ vkn: string; eFaturaMi: boolean; etiketler: string[] }> = [];
+      for (const blok of xml.split(/<a:GibUserType>/).slice(1)) {
+        const govde = blok.split('</a:GibUserType>')[0];
+        const kimlikler = [...govde.matchAll(/<a:Identifier>([^<]*)<\/a:Identifier>/g)].map((m) => m[1].trim());
+        const etiketler = [...govde.matchAll(/<a:Alias>([^<]*)<\/a:Alias>/g)].map((m) => m[1].trim()).filter(Boolean);
+        const vkn = kimlikler.find((k) => /^\d{10}$|^\d{11}$/.test(k)) || kimlikler[0] || '';
+        if (vkn) mukellefler.push({ vkn, eFaturaMi: etiketler.length > 0, etiketler });
+      }
+      return { sonucKodu: Number(sonuc || 0), mesaj, mukellefler, hamXml: xml };
+    } finally {
+      await this.cikisYap(url, oturum);
+    }
+  }
+
+  /**
+   * FATURA NUMARASI — portalda tanımlı ön ek ve kalınan son numara.
+   * Doküman: GetPrefixLastNumberList(sessionID, paramList{DOCUMENTTYPE, PREFIXYEAR}).
+   * SALT OKUMA — numara TÜKETMEZ, yalnız mevcut durumu okur.
+   */
+  async sonNumara(tenantId: string, taxpayerId: string, belgeTuru: 'EINVOICE' | 'EARCHIVE' = 'EINVOICE', yil?: number) {
+    const { kullanici, sifre, url } = await this.kimlik(tenantId, taxpayerId);
+    const oturum = await this.girisYap(url, kullanici, sifre);
+    try {
+      const NS_ARR = 'http://schemas.microsoft.com/2003/10/Serialization/Arrays';
+      const y = yil || new Date().getFullYear();
+      const xml = await this.soap(url, 'GetPrefixLastNumberList', `<GetPrefixLastNumberList xmlns="${SOAP_NS}">
+        <sessionID>${this.esc(oturum)}</sessionID>
+        <paramList xmlns:b="${NS_ARR}">
+          <b:string>DOCUMENTTYPE=${belgeTuru}</b:string>
+          <b:string>PREFIXYEAR=${y}</b:string>
+        </paramList>
+      </GetPrefixLastNumberList>`);
+      // HER BLOK AYRI OKUNUR. Ilk yazdigim regex iki blogu karistirip AA9'un numarasini
+      //   AAA'nin sayacindan aliyordu (canli: AA9=0, AAA=48). Blok blok ayirmak sart.
+      const onEkler: Array<{ onEk: string; sonNo: number }> = [];
+      for (const blok of xml.split(/<a:PrefixLastNumber>/).slice(1)) {
+        const govde = blok.split('</a:PrefixLastNumber>')[0];
+        const onEk = (govde.match(/<a:InvoicePrefix>([^<]*)<\/a:InvoicePrefix>/) || [])[1];
+        const sayac = (govde.match(/<a:Counter>(\d+)<\/a:Counter>/) || [])[1];
+        if (onEk) onEkler.push({ onEk: onEk.trim(), sonNo: Number(sayac || 0) });
+      }
+      // Kullanimda olan seri = sayaci EN BUYUK olan (hic kullanilmamis on ekler 0 doner).
+      onEkler.sort((a, b) => b.sonNo - a.sonNo);
+      return { onEkler, kullanilan: onEkler[0] || null, mesaj: this.etiket(xml, 'resultMsg') || '', hamXml: xml };
+    } finally {
+      await this.cikisYap(url, oturum);
+    }
+  }
+
   /** Taslak kaydından UBL üret + eLogo önizlemesini getir. GÖNDERİM YOK. */
   async taslaktanOnizleme(tenantId: string, draftId: string) {
     const d: any = await (this.prisma as any).salesInvoiceDraft.findFirst({ where: { id: draftId, tenantId } });
