@@ -156,10 +156,50 @@ export class ElogoFaturaService {
    *   "... CAD. NO: 1 /1 ARNAVUTKOY/ ISTANBUL" -> ilce=ARNAVUTKOY    il=ISTANBUL
    */
   static adresParcala(adres: string): { ilce: string; il: string } {
-    const m = String(adres || '').trim()
-      .match(/([A-Za-zÇĞİIÖŞÜçğıöşü]{3,})\s*\/\s*([A-Za-zÇĞİIÖŞÜçğıöşü]{3,})\s*$/);
-    return m ? { ilce: m[1].trim(), il: m[2].trim() } : { ilce: '', il: '' };
+    const ham = String(adres || '').trim();
+    // 1) "... İLÇE / İL" kalıbı
+    const m = ham.match(/([A-Za-zÇĞİIÖŞÜçğıöşü]{3,})\s*\/\s*([A-Za-zÇĞİIÖŞÜçğıöşü]{3,})\s*$/);
+    if (m) return { ilce: m[1].trim(), il: m[2].trim() };
+
+    // 2) BÖLÜ İŞARETİ OLMAYAN ADRESLER (kullanıcı bulgusu 2026-08-20):
+    //    "Hastane Mah. Özcan Taşkınbaş Cad No 16 6 Arnavutköy İstanbul" gibi yazımlarda
+    //    il/ilçe okunamıyordu ve fatura adresi eksik basılıyordu. Çözüm TAHMİN DEĞİL:
+    //    adresin SON sözcüğü GERÇEK bir il adıyla birebir eşleşiyorsa il odur; bir
+    //    öncesi de ilçe sayılır. Eşleşme yoksa yine BOŞ döner, uydurma yapılmaz.
+    const bul = (x: string) => x.replace(/[.,;]/g, ' ').trim().replace(/\s+/g, ' ');
+    const sozler = bul(ham).split(' ').filter(Boolean);
+    if (sozler.length >= 2) {
+      const buyuk = (x: string) => x.toLocaleUpperCase('tr-TR');
+      const sonIki = buyuk(sozler.slice(-2).join(' '));
+      const son = buyuk(sozler[sozler.length - 1]);
+      // Once iki sozcuklu iller (AFYONKARAHISAR degil ama "KAHRAMANMARAS" tek; "ZONGULDAK" tek)
+      const ikiSozcukluIl = ElogoFaturaService.ILLER.has(sonIki);
+      if (ikiSozcukluIl && sozler.length >= 3) {
+        return { ilce: sozler[sozler.length - 3], il: sozler.slice(-2).join(' ') };
+      }
+      if (ElogoFaturaService.ILLER.has(son)) {
+        const onceki = sozler[sozler.length - 2];
+        const ilce = /^[A-Za-zÇĞİIÖŞÜçğıöşü]{3,}$/.test(onceki) ? onceki : '';
+        return { ilce, il: sozler[sozler.length - 1] };
+      }
+    }
+    return { ilce: '', il: '' };
   }
+
+  /** 81 il — adresin sonundaki il adını TANIMAK için. Tahmin değil, birebir eşleşme. */
+  private static readonly ILLER = new Set([
+    'ADANA', 'ADIYAMAN', 'AFYONKARAHİSAR', 'AĞRI', 'AKSARAY', 'AMASYA', 'ANKARA', 'ANTALYA',
+    'ARDAHAN', 'ARTVİN', 'AYDIN', 'BALIKESİR', 'BARTIN', 'BATMAN', 'BAYBURT', 'BİLECİK',
+    'BİNGÖL', 'BİTLİS', 'BOLU', 'BURDUR', 'BURSA', 'ÇANAKKALE', 'ÇANKIRI', 'ÇORUM',
+    'DENİZLİ', 'DİYARBAKIR', 'DÜZCE', 'EDİRNE', 'ELAZIĞ', 'ERZİNCAN', 'ERZURUM',
+    'ESKİŞEHİR', 'GAZİANTEP', 'GİRESUN', 'GÜMÜŞHANE', 'HAKKARİ', 'HATAY', 'IĞDIR',
+    'ISPARTA', 'İSTANBUL', 'İZMİR', 'KAHRAMANMARAŞ', 'KARABÜK', 'KARAMAN', 'KARS',
+    'KASTAMONU', 'KAYSERİ', 'KIRIKKALE', 'KIRKLARELİ', 'KIRŞEHİR', 'KİLİS', 'KOCAELİ',
+    'KONYA', 'KÜTAHYA', 'MALATYA', 'MANİSA', 'MARDİN', 'MERSİN', 'MUĞLA', 'MUŞ',
+    'NEVŞEHİR', 'NİĞDE', 'ORDU', 'OSMANİYE', 'RİZE', 'SAKARYA', 'SAMSUN', 'SİİRT',
+    'SİNOP', 'SİVAS', 'ŞANLIURFA', 'ŞIRNAK', 'TEKİRDAĞ', 'TOKAT', 'TRABZON', 'TUNCELİ',
+    'UŞAK', 'VAN', 'YALOVA', 'YOZGAT', 'ZONGULDAK', 'AFYON', 'İÇEL',
+  ]);
 
   ublOlustur(g: ElogoFaturaGirdi, uuid = randomUUID().toUpperCase()): string {
     // TARIH/SAAT — KULLANICI BULGUSU 2026-08-20: onizlemede saat "03:00:00" cikiyordu.

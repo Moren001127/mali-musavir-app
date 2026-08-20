@@ -137,14 +137,33 @@ export class FaturaKesKomutService {
 
   /** Onay kelimeleri — sadece bunlar GİB'e göndermeyi tetikler. */
   static onayMi(metin: string): boolean {
-    const t = String(metin || '').toLowerCase().trim();
-    return /^(onayla|onaylayabilirsin|onay|tamam|olur|evet|g[öo]nder|kes)\b/.test(t);
+    // CANLI HATA (2026-08-20 22:02): kullanici "onayliyorum" yazdi, ESLESMEDI.
+    //   Eski kalip "onayla|onay" idi; "onayliyorum" ikisine de uymuyordu (5. harf i,
+    //   ve "onay" sonrasi kelime sonu bekleniyordu). Mesaj genel asistana dustu.
+    //   GUVENLI: bu YALNIZ birinci kademe; fatura hala "EVET KES" olmadan kesilmez.
+    const t = FaturaKesKomutService.sadeMetin(metin);
+    // OLUMSUZ EKLER onay SAYILMAZ: onaylamiyorum, kesme, gonderme
+    if (/^(onayla(m|ma|mi|miyor)|kesme|gonderme|gondermeyin)/.test(t)) return false;
+    return /^(onay[a-z]*|tamam|olur|evet|gonder[a-z]*|kes[a-z]*)\b/.test(t);
+  }
+
+  /** Turkce harfleri sadelestirir: "onaylıyorum" -> "onayliyorum". */
+  private static sadeMetin(metin: string): string {
+    return String(metin || '')
+      .replace(/İ/g, 'i').replace(/I/g, 'i').replace(/ı/g, 'i')
+      .replace(/Ş/g, 's').replace(/ş/g, 's')
+      .replace(/Ğ/g, 'g').replace(/ğ/g, 'g')
+      .replace(/Ü/g, 'u').replace(/ü/g, 'u')
+      .replace(/Ö/g, 'o').replace(/ö/g, 'o')
+      .replace(/Ç/g, 'c').replace(/ç/g, 'c')
+      .toLowerCase()
+      .trim();
   }
 
   /** Vazgeçme kelimeleri. */
   static vazgecMi(metin: string): boolean {
-    const t = String(metin || '').toLowerCase().trim();
-    return /^(vazge[çc]|iptal|hay[ıi]r|dur|bo[şs] ver)\b/.test(t);
+    const t = FaturaKesKomutService.sadeMetin(metin);
+    return /^(vazgec[a-z]*|iptal|hayir|dur|bos ver|kesme|gonderme)\b/.test(t);
   }
 
   private temizle() {
@@ -259,7 +278,7 @@ export class FaturaKesKomutService {
     if (!t) return null;
     // SİTEM/İTİRAZ cümlesi cevap DEĞİLDİR. Bu eleme olmasa "yazdım ya" gibi bir mesaj
     //   doğrudan adres alanına yazılır ve faturaya öyle basılırdı.
-    if (/^(yazd[ıi]m|dedim|g[öo]nderdim|s[öo]yledim|verdim|ya|i[şs]te|hani|zaten|olmad[ıi]|anlamad[ıi])/i.test(t)) return null;
+    if (/^(yazd[ıi]m|dedim|g[öo]nderdim|s[öo]yledim|verdim|ya\b|i[şs]te|hani|zaten|olmad[ıi]|anlamad[ıi])/i.test(t)) return null;
     switch (alan) {
       case 'aliciVkn': {
         const rakam = t.replace(/\D/g, '');

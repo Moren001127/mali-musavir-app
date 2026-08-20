@@ -143,6 +143,14 @@ const ok = (ad, sart, ek) => {
   ok('kanal belirlenemezse hata firlatilir (fail-closed)',
     /Kanal belirlenemedi/.test(bot2) && !/kanalTespit\([^)]*\)\.catch\(\(\) => null\)[\s\S]{0,80}ENTEGRATOR/.test(bot2));
 
+  // ---------- 9) TURKCE ONAY KELIMELERI (canli hata 2026-08-20 22:02) ----------
+  // Kullanici "onayliyorum" yazdi, eski kalip ESLESMEDI; mesaj genel asistana dustu.
+  const olumlu = ['onaylıyorum', 'ONAYLIYORUM', 'onayla', 'tamam', 'evet', 'gönder', 'kes', 'onay veriyorum'];
+  const olumsuz = ['onaylamıyorum', 'onaylamam', 'vazgeç', 'hayır', 'kesme', 'gönderme', 'iptal'];
+  for (const m of olumlu) ok(`onayMi("${m}") = true`, FaturaKesKomutService.onayMi(m) === true);
+  for (const m of olumsuz) ok(`onayMi("${m}") = false`, FaturaKesKomutService.onayMi(m) === false);
+  for (const m of ['vazgeçiyorum', 'iptal', 'hayır', 'kesme']) ok(`vazgecMi("${m}") = true`, FaturaKesKomutService.vazgecMi(m) === true);
+
   if (hata) process.exit(1);
   console.log('[elogo-gonderim-guvenlik] OK: acik onaysiz gonderim yok, kilit ve etiket kurallari saglam');
 })();
