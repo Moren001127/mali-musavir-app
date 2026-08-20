@@ -5909,7 +5909,41 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // fişi (360/KDV2 sorumlu sıfatı) kurulmamışsa onayda blokla (düz KDV ile gitmesin).
     // numFromOcr: upload-OCR yolunda kdvTevkifat TR-biçimli STRING gelir ("1.894,00") — Number() NaN
     //   verip tevkifatlı belgeyi kontrolden kaçırıyordu.
-    const tevkifatli = this.numFromOcr(ocrData?.kdvTevkifat) > 0 || Number(ocrData?.tevkifatOrani || 0) > 0 || ocrData?.tevkifatHint === true;
+    // ── TEVKİFAT: GERÇEK VERİ mi, yoksa yalnız KELİME İPUCU mu? ──
+    // tevkifatHint, faturanın HERHANGİ bir yerinde "tevkifat" kelimesi geçince true oluyor
+    // (nakliye faturalarındaki "tevkifata tabi değildir" gibi standart notlar dahil). Bu tek
+    // başına belgeyi tevkifatlı saymaya yetiyordu → YORGUN NAKLİYAT / BARANLAR BRN2026000000483:
+    // matrah 10.000, KDV 2.000 (TAM %20), toplam 12.000 — yani tevkifat YOK — ama "Tevkifatlı
+    // ALIŞ, 360 satırı eksik" çelişkisi veriliyor, belge onaylanamıyordu.
+    // KURAL: gerçek veri (kdvTevkifat / tevkifatOrani) varsa ona güvenilir. Yalnızca kelime
+    // ipucu varsa ARİTMETİĞE bakılır: tahsil edilen KDV, matrah × oran'a eşitse tevkifat YOKTUR.
+    const tevkifatGercekVeri = this.numFromOcr(ocrData?.kdvTevkifat) > 0 || Number(ocrData?.tevkifatOrani || 0) > 0;
+    let tevkifatli = tevkifatGercekVeri || ocrData?.tevkifatHint === true;
+    if (tevkifatli && !tevkifatGercekVeri) {
+      let tamKdv = 0;
+      let okunanKdv = 0;
+      if (Array.isArray(breakdown) && breakdown.length) {
+        for (const b of breakdown) {
+          const m = this.numFromOcr(b?.matrah);
+          const o = Number(b?.oran || 0);
+          const t = this.numFromOcr(b?.tutar);
+          if (m > 0 && o > 0) tamKdv += m * (o / 100);
+          if (t > 0) okunanKdv += t;
+        }
+      } else {
+        const m = this.numFromOcr(ocrData?.matrah);
+        const o = Number(ocrData?.kdvOrani || 0);
+        if (m > 0 && o > 0) tamKdv = m * (o / 100);
+        okunanKdv = this.numFromOcr(ocrData?.kdvTutari);
+      }
+      if (tamKdv > 0 && okunanKdv > 0 && Math.abs(okunanKdv - tamKdv) <= Math.max(1, tamKdv * 0.01)) {
+        this.logger.log(
+          `[TEVKIFAT-ARITMETIK] ${doc.belgeNo || id}: "tevkifat" kelimesi geciyor ama KDV TAM oranda `
+          + `(matrah x oran = ${tamKdv.toFixed(2)}, okunan KDV = ${okunanKdv.toFixed(2)}) -> tevkifatsiz sayildi`,
+        );
+        tevkifatli = false;
+      }
+    }
     const tevkifatOrani = Number(ocrData?.tevkifatOrani || 0);
     const hasTevkifatLine = (doc.lines || []).some((l: any) => String(l.accountCode || '').startsWith('360'));
     // Faz D/1: iade/iptal — normal kayıt yapılmasın (ters kayıt/610 gerekli). 610 satırı
