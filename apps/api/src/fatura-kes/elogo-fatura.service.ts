@@ -852,6 +852,7 @@ export class ElogoFaturaService {
         <sessionID>${this.esc(oturum)}</sessionID>
         <paramList xmlns:b="${NS_ARR}">
           <b:string>DOCUMENTTYPE=${belgeTuru}</b:string>
+          <b:string>UseDefaultXSLT=1</b:string>
           ${ekEtiket}
         </paramList>
         <document xmlns:d="${NS}">
@@ -934,19 +935,27 @@ export class ElogoFaturaService {
     //   bulunamayinca taslak kalici olarak GONDERILIYOR'da kaliyordu ve kullanici bir daha
     //   deneyemiyordu. Artik TUM dogrulamalar (alici, seri, UBL) bittikten SONRA kilitlenir;
     //   dogrulama hatalarinda taslak TASLAK olarak kalir.
-    const kilit = await (this.prisma as any).salesInvoiceDraft.updateMany({
-      where: { id: draftId, tenantId, durum: 'TASLAK' },
-      data: { durum: 'GONDERILIYOR', hata: 'eLogo gönderimi başladı, yanıt bekleniyor' },
-    });
-    if (kilit.count !== 1) {
-      throw new BadRequestException('Bu taslak için gönderim zaten sürüyor ya da yapılmış — durumu kontrol edin.');
+    // NUMARA ZATEN ALINMISSA YENIDEN ALINMAZ (canli olay 2026-08-20 22:56):
+    //   GTO2026000000001 alindi, gonderim "gorsel tasarim" hatasiyla dondu. Tekrar
+    //   denendiginde yeni numara alinsa o numara YANARDI. Ayni numarayla tekrar gonderilir.
+    //   Dokuman: 1163 disindaki hata kodlarinda ayni belge tekrar gonderilebilir.
+    let numara = String(d.faturaNo || '').trim();
+    if (numara && d.durum === 'GONDERILIYOR') {
+      this.logger.warn(`[ELOGO] tekrar gonderim · mevcut numara kullaniliyor: ${numara}`);
+    } else {
+      const kilit = await (this.prisma as any).salesInvoiceDraft.updateMany({
+        where: { id: draftId, tenantId, durum: 'TASLAK' },
+        data: { durum: 'GONDERILIYOR', hata: 'eLogo gönderimi başladı, yanıt bekleniyor' },
+      });
+      if (kilit.count !== 1) {
+        throw new BadRequestException('Bu taslak için gönderim zaten sürüyor ya da yapılmış — durumu kontrol edin.');
+      }
+      numara = await this.numaraAl(tenantId, d.taxpayerId, onEk, belgeTuru);
+      await (this.prisma as any).salesInvoiceDraft.update({
+        where: { id: draftId },
+        data: { faturaNo: numara, hata: `Numara alındı (${numara}), gönderiliyor` },
+      }).catch(() => null);
     }
-
-    const numara = await this.numaraAl(tenantId, d.taxpayerId, onEk, belgeTuru);
-    await (this.prisma as any).salesInvoiceDraft.update({
-      where: { id: draftId },
-      data: { faturaNo: numara, hata: `Numara alındı (${numara}), gönderiliyor` },
-    }).catch(() => null);
 
     const ubl = hamUbl.replace('<cbc:ID>ONIZLEME</cbc:ID>', `<cbc:ID>${numara}</cbc:ID>`);
 

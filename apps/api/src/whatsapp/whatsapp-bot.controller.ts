@@ -1091,11 +1091,14 @@ export class WhatsAppBotController implements OnModuleInit {
       });
       const satici = tp?.companyName || [tp?.firstName, tp?.lastName].filter(Boolean).join(' ') || '';
       const para = (n: any) => Number(n || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const tekrar = d.durum === 'GONDERILIYOR' && d.faturaNo
+        ? `\n_Numara zaten alınmış (${d.faturaNo}) — yeni numara alınmayacak, aynı numarayla tekrar gönderilecek._`
+        : '';
       return `*KESİLECEK FATURA*\n` +
         `Satıcı: ${satici}\n` +
         `Alıcı: ${d.aliciUnvan} · VKN ${d.aliciVkn}\n` +
         `İçerik: ${d.aciklama}\n` +
-        `Tutar: ${para(d.matrah)} + KDV %${d.kdvOrani} (${para(d.kdvTutari)}) = *${para(d.toplam)} ₺*`;
+        `Tutar: ${para(d.matrah)} + KDV %${d.kdvOrani} (${para(d.kdvTutari)}) = *${para(d.toplam)} ₺*` + tekrar;
     } catch {
       return 'Özet hazırlanamadı.';
     }
@@ -1116,7 +1119,10 @@ export class WhatsAppBotController implements OnModuleInit {
         const son: any = await (this.prisma as any).salesInvoiceDraft.findFirst({
           where: {
             tenantId: ownerTenant.id,
-            durum: 'TASLAK',
+            // TEKRAR GONDERIM (canli olay 2026-08-20 22:56): numara alindi ama eLogo
+            //   "gorsel tasarim" hatasi verdi; taslak GONDERILIYOR'da kaldi. Boyle bir
+            //   taslak da onaya acilir — yeni numara ALINMAZ, ayni numarayla gonderilir.
+            durum: { in: ['TASLAK', 'GONDERILIYOR'] },
             kaynak: 'WHATSAPP',
             createdAt: { gte: new Date(Date.now() - 2 * 60 * 60 * 1000) },
           },
