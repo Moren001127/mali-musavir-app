@@ -388,13 +388,13 @@ export class AylikOdemeService {
         if (merged) {
           const key = `${tenantId}/${row.taxpayerId}/bildirim/ODEME_${grup.kaynak}_${randomUUID()}.pdf`;
           await this.storage.putBuffer(key, merged, 'application/pdf');
-          links = [await this.shortLink.create(tenantId, key, mergedName, 7)];
+          links = [await this.shortLink.create(tenantId, key, mergedName)];
           emailAttachments = [{ filename: mergedName, content: merged, contentType: 'application/pdf' }];
         } else {
           for (const s of grup.satirlar) {
             if (!s.storageKey) continue;
             try {
-              links.push(await this.shortLink.create(tenantId, s.storageKey, `${s.tur}-${s.donem}.pdf`, 7));
+              links.push(await this.shortLink.create(tenantId, s.storageKey, `${s.tur}-${s.donem}.pdf`));
             } catch (e: any) {
               this.logger.warn(`link üretilemedi ${s.tur} ${s.donem}: ${e?.message}`);
             }

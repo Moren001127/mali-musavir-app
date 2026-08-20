@@ -328,7 +328,7 @@ export default function AkilliBildirimPage() {
               <span style={{ color: '#8cbde8', wordBreak: 'break-all' }}>https://…/belge.pdf</span>
               <br />
               <br />
-              <span className="inline-flex items-center gap-1.5"><Mail size={13} /> Belgeler mesaj sonundaki linkle açılır (7 gün geçerli); e-postada ayrıca ek olarak gider</span>
+              <span className="inline-flex items-center gap-1.5"><Mail size={13} /> Belgeler mesaj sonundaki linkle açılır (1 yıl geçerli); e-postada ayrıca ek olarak gider</span>
             </div>
           </div>
         </div>

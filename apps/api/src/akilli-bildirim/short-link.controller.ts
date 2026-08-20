@@ -5,12 +5,35 @@ import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { Injectable } from '@nestjs/common';
 
-/** Mesajlara konan kısa belge linki üretici. */
+/**
+ * Mesajlara konan kısa belge linki üretici.
+ *
+ * ÖMÜR TEK YERDE TANIMLIDIR — çağıranlar süre geçmez. Önceden dört ayrı
+ * çağrı da elle `7` geçiyordu; süreyi değiştirmek dört dosyayı değiştirmek
+ * demekti ve biri unutulursa fark edilmezdi.
+ *
+ * NEDEN SINIRLI: `/b/:token` ucunda kimlik doğrulama YOKTUR (tek koruma
+ * dakikada 100 istek sınırı). Adres 48 bitlik rastgele anahtar olduğu için
+ * tahmin edilemez, ama linkin kendisi dolaşır: WhatsApp mesajı iletilir,
+ * ekran görüntüsü alınır, telefon el değiştirir. Belgeler beyanname/SGK
+ * tahakkukları — VKN, tutar, çalışan bilgisi taşırlar.
+ *
+ * 1 YIL: mükellef pratikte hiç ölü linkle karşılaşmasın diye (kullanıcı
+ * kararı 2026-08-20). Kalıcı ve güvenli olan yol mükellef portalıdır;
+ * oraya geçilince bu link kısaltılabilir.
+ */
+export const KISA_LINK_OMRU_GUN = 365;
+
 @Injectable()
 export class ShortLinkService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(tenantId: string, storageKey: string, filename: string, days = 7): Promise<string> {
+  async create(
+    tenantId: string,
+    storageKey: string,
+    filename: string,
+    days = KISA_LINK_OMRU_GUN,
+  ): Promise<string> {
     const token = randomBytes(6).toString('base64url'); // 8 karakter
     await (this.prisma as any).shortLink.create({
       data: { token, tenantId, storageKey, filename, expiresAt: new Date(Date.now() + days * 24 * 3600 * 1000) },

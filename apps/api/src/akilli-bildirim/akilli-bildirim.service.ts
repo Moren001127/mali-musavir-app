@@ -414,7 +414,7 @@ export class AkilliBildirimService {
       if (merged) {
         const key = `${tenantId}/${bundle.taxpayerId}/bildirim/${kategori}_${randomUUID()}.pdf`;
         await this.storage.putBuffer(key, merged, 'application/pdf');
-        links = [await this.shortLink.create(tenantId, key, mergedName, 7)];
+        links = [await this.shortLink.create(tenantId, key, mergedName)];
         emailAttachments = [{ filename: mergedName, content: merged, contentType: 'application/pdf' }];
       } else {
         // birleştirme mümkün olmazsa tek tek linkle (yedek yol)
@@ -424,7 +424,7 @@ export class AkilliBildirimService {
         for (const it of bundle.items) {
           for (const f of it.files) {
             try {
-              links.push(await this.shortLink.create(tenantId, f.storageKey, f.filename, 7));
+              links.push(await this.shortLink.create(tenantId, f.storageKey, f.filename));
             } catch (e: any) {
               this.logger.warn(`link üretilemedi ${f.filename}: ${e?.message}`);
             }
