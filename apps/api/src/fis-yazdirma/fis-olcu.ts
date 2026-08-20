@@ -154,3 +154,20 @@ export function fisleriSutunlaraBol(
   sayfayiKapat();
   return sayfalar;
 }
+
+/**
+ * ÖLÇÜLDÜ, İŞE YARAMADI — bir daha denenmesin.
+ *
+ * "Fişe %10 küçülme payı verip sütunun dibindeki boşluğu doldurmak" denendi
+ * (2026-08-20, 456 gerçek fiş): 69 sayfa -> 69 sayfa. HİÇBİR KAZANÇ YOK.
+ * Sebep geometrik: 1:3,8 oranındaki bir fiş 1056 px'lik sütunda 263 px boşluk
+ * bırakıyor, oraya en kısa fiş (420 px) ancak %37 küçülerek girer — %10 payın
+ * çok ötesinde. %20 pay 63 sayfa veriyor ama 90 fişi 4,3 cm'ye düşürüyor;
+ * bu, doğrudan "Küçük" boyutu seçmekle aynı şey, üstelik habersizce.
+ *
+ * "Sıradaki fiş sığmıyorsa birkaç ileriden sığanı öne al" da denendi:
+ * pencere 5/10/20/50 -> hepsi 69 sayfa. Kazanç yok.
+ *
+ * SONUÇ: bu genişlikte 69 sayfa gerçek tabandır. Tek gerçek kaldıraç
+ * FİŞ GENİŞLİĞİDİR (sütun sayısı): 4 sütun 69 sayfa, 5 sütun 46 sayfa.
+ */
