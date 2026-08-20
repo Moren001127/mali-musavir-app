@@ -905,14 +905,6 @@ export class ElogoFaturaService {
       if (!etiket) throw new BadRequestException('Alıcının e-Fatura posta kutusu etiketi bulunamadı.');
     }
 
-    const kilit = await (this.prisma as any).salesInvoiceDraft.updateMany({
-      where: { id: draftId, tenantId, durum: 'TASLAK' },
-      data: { durum: 'GONDERILIYOR', hata: 'eLogo gönderimi başladı, yanıt bekleniyor' },
-    });
-    if (kilit.count !== 1) {
-      throw new BadRequestException('Bu taslak için gönderim zaten sürüyor ya da yapılmış — durumu kontrol edin.');
-    }
-
     // ON EK TAHMIN EDILMEZ: mukellefin eLogo'da KULLANDIGI seri sorulur
     //   (GetPrefixLastNumberList - salt okuma, numara harcamaz). Sayaci en buyuk olan seri
     //   kullanimdaki seridir. Bulunamazsa gonderim YAPILMAZ; sabit bir seri uydurmak
@@ -936,6 +928,18 @@ export class ElogoFaturaService {
     const hamUbl = String(hazir?.ubl || '');
     if (!hamUbl || hamUbl.indexOf('<cbc:ID>ONIZLEME</cbc:ID>') < 0) {
       throw new BadRequestException('Fatura XML hazirlanamadi — NUMARA ALINMADI, gonderim yapilmadi.');
+    }
+
+    // KILIT EN SONA ALINDI (canli olay 2026-08-20 22:24): once kilit aliniyordu, seri
+    //   bulunamayinca taslak kalici olarak GONDERILIYOR'da kaliyordu ve kullanici bir daha
+    //   deneyemiyordu. Artik TUM dogrulamalar (alici, seri, UBL) bittikten SONRA kilitlenir;
+    //   dogrulama hatalarinda taslak TASLAK olarak kalir.
+    const kilit = await (this.prisma as any).salesInvoiceDraft.updateMany({
+      where: { id: draftId, tenantId, durum: 'TASLAK' },
+      data: { durum: 'GONDERILIYOR', hata: 'eLogo gönderimi başladı, yanıt bekleniyor' },
+    });
+    if (kilit.count !== 1) {
+      throw new BadRequestException('Bu taslak için gönderim zaten sürüyor ya da yapılmış — durumu kontrol edin.');
     }
 
     const numara = await this.numaraAl(tenantId, d.taxpayerId, onEk, belgeTuru);

@@ -161,6 +161,14 @@ const ok = (ad, sart, ek) => {
     'portal serisi kullanilirsa yanlis seriden fatura kesilir');
   ok('hata mesaji nereye bakilacagini soyluyor', servis.includes('Belge Numarasi On Ek Tanimlari'));
 
+  // ---------- 11) KILIT, DOGRULAMALARDAN SONRA ALINIR (canli olay 2026-08-20 22:24) ----------
+  // Once kilit alininca, seri bulunamayan taslak kalici olarak GONDERILIYOR'da kaliyordu.
+  const iKilit = servis.indexOf("const kilit = await");
+  const iSeri = servis.indexOf('const seri = await this.sonNumara(');
+  const iUblHazir = servis.indexOf('const hamUbl');
+  ok('kilit, seri kontrolunden SONRA', iKilit > iSeri && iSeri > 0);
+  ok('kilit, UBL hazirligindan SONRA', iKilit > iUblHazir && iUblHazir > 0);
+
   if (hata) process.exit(1);
   console.log('[elogo-gonderim-guvenlik] OK: acik onaysiz gonderim yok, kilit ve etiket kurallari saglam');
 })();
