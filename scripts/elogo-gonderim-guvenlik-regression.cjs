@@ -248,16 +248,22 @@ const ok = (ad, sart, ek) => {
   ok('e-Arsiv senaryosu EARSIVFATURA', arsiv.includes('<cbc:ProfileID>EARSIVFATURA</cbc:ProfileID>'),
     'eLogo yanlis senaryolu belgeyi reddeder');
   ok('e-Fatura senaryosu EARSIVFATURA DEGIL', efatura.includes('<cbc:ProfileID>TICARIFATURA</cbc:ProfileID>'));
-  ok('e-Arsivde GONDERIMSEKLI blogu var', /<cbc:DocumentType>GONDERIMSEKLI<\/cbc:DocumentType>/.test(arsiv));
-  ok('e-Arsivde INTERNETSATISI blogu var', /<cbc:DocumentType>INTERNETSATISI<\/cbc:DocumentType>/.test(arsiv));
-  ok('e-Faturada bu bloklar YOK', !/GONDERIMSEKLI|INTERNETSATISI/.test(efatura),
-    'e-Faturada e-Arsiv bloklari bulunursa belge gecersiz olur');
+  // BICIM ONEMLI (canli hata 2026-08-20 23:39): eLogo blogu YANLIS BICIMDE yazilinca
+  // "gonderim sekli belirtilmelidir" dedi. Dogru bicim GIB kilavuzundaki:
+  //   <cbc:DocumentTypeCode>SendingType</cbc:DocumentTypeCode><cbc:DocumentType>KAGIT</cbc:DocumentType>
+  ok('e-Arsivde SendingType blogu var',
+    /<cbc:DocumentTypeCode>SendingType<\/cbc:DocumentTypeCode>/.test(arsiv),
+    'eLogo bu blogu gormezse faturayi reddeder');
+  ok('eski (okunmayan) GONDERIMSEKLI bicimi KULLANILMIYOR',
+    !/GONDERIMSEKLI/.test(arsiv),
+    'o bicim eLogo tarafindan okunmuyor — canli kanit 2026-08-20 23:39');
+  ok('e-Faturada SendingType blogu YOK', !/SendingType/.test(efatura));
   ok('e-posta yoksa gonderim sekli KAGIT',
-    /<cbc:DocumentType>GONDERIMSEKLI<\/cbc:DocumentType>\s*<cbc:DocumentDescription>KAGIT</.test(arsiv),
+    /<cbc:DocumentTypeCode>SendingType<\/cbc:DocumentTypeCode>\s*<cbc:DocumentType>KAGIT</.test(arsiv),
     'e-posta olmadan ELEKTRONIK yazmak GIB tarafinda gecersiz');
   const arsivPosta = svc.ublOlustur(girdi({ belgeTuru: 'EARCHIVE', aliciEposta: 'a@b.com' }));
   ok('e-posta varsa ELEKTRONIK',
-    /<cbc:DocumentType>GONDERIMSEKLI<\/cbc:DocumentType>\s*<cbc:DocumentDescription>ELEKTRONIK</.test(arsivPosta));
+    /<cbc:DocumentTypeCode>SendingType<\/cbc:DocumentTypeCode>\s*<cbc:DocumentType>ELEKTRONIK</.test(arsivPosta));
   ok('e-posta UBL icine yazilir', arsivPosta.includes('<cbc:ElectronicMail>a@b.com</cbc:ElectronicMail>'));
 
   // Gercek kisi alici: TCKN semasi + Person blogu (PartyName YOK)

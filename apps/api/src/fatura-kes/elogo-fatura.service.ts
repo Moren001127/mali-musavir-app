@@ -246,16 +246,23 @@ export class ElogoFaturaService {
     // GONDERIM SEKLI: e-posta varsa ELEKTRONIK, yoksa KAGIT. E-posta olmadan
     //   ELEKTRONIK yazmak GIB tarafinda gecersizdir (gercek ornek de KAGIT idi).
     const gonderimSekli = String(g.aliciEposta || '').trim() ? 'ELEKTRONIK' : 'KAGIT';
-    const ekBelge = (tip: string, aciklama: string) => `
-  <cac:AdditionalDocumentReference>
-    <cbc:ID>${randomUUID()}</cbc:ID>
-    <cbc:IssueDate>${tarih}</cbc:IssueDate>
-    <cbc:DocumentType>${tip}</cbc:DocumentType>
-    <cbc:DocumentDescription>${aciklama}</cbc:DocumentDescription>
-  </cac:AdditionalDocumentReference>`;
-    // e-Arsiv'de bu iki blok ZORUNLUDUR; e-Fatura'da BULUNMAZ.
+    // GONDERIM SEKLI BLOGUNUN BICIMI (canli hata 2026-08-20 23:39):
+    //   eLogo "Faturanin gonderim sekli belirtilmelidir" dedi — blok VARDI ama
+    //   YANLIS BICIMDEYDI. Piyasada iki bicim dolasiyor:
+    //     (A) <cbc:DocumentType>GONDERIMSEKLI</> + <cbc:DocumentDescription>KAGIT</>
+    //     (B) <cbc:DocumentTypeCode>SendingType</> + <cbc:DocumentType>ELEKTRONIK</>  ← GIB kilavuzu
+    //   Once (A) yazilmisti (baska entegratorun faturasindan kopyalanmisti); eLogo
+    //   OKUMADI. Dogrusu (B) — RF02026000000016 numarali gercek faturada boyle.
+    //   INTERNETSATISI blogu ZORUNLU DEGIL (o gercek faturada hic yok) ve bicimi
+    //   belirsiz oldugu icin YAZILMIYOR; eLogo isterse dogru bicimiyle eklenir.
     const eArsivBloklari = eArsiv
-      ? ekBelge('GONDERIMSEKLI', gonderimSekli) + ekBelge('INTERNETSATISI', 'HAYIR')
+      ? `
+  <cac:AdditionalDocumentReference>
+    <cbc:ID>1</cbc:ID>
+    <cbc:IssueDate>${tarih}</cbc:IssueDate>
+    <cbc:DocumentTypeCode>SendingType</cbc:DocumentTypeCode>
+    <cbc:DocumentType>${gonderimSekli}</cbc:DocumentType>
+  </cac:AdditionalDocumentReference>`
       : '';
 
     // PROLOG YOK: GİTO'nun eLogo'dan gelen gerçek faturaları da <Invoice ile başlıyor.
