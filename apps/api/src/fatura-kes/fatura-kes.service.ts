@@ -79,7 +79,7 @@ export class FaturaKesService {
   async kanalTespit(
     tenantId: string,
     taxpayerId: string,
-  ): Promise<{ kanal: 'GIB_EARSIV' | 'ENTEGRATOR'; saglayici: string | null; gibdenKesilebilir: boolean; uyari: string | null }> {
+  ): Promise<{ kanal: 'GIB_EARSIV' | 'ENTEGRATOR'; saglayici: string | null; gibdenKesilebilir: boolean; sebep: 'ENTEGRATOR' | 'KIMLIK_YOK' | null; uyari: string | null }> {
     // Entegratör olmayan bağlantılar (mesajlaşma/eposta/Luca) kanal sayılmaz.
     const KANAL_DISI = new Set(['EMAIL_SMTP', 'WHATSAPP_BAILEYS', 'WHATSAPP_META', 'LUCA_WORKER_ACCOUNTS']);
     const baglantilar = await (this.prisma as any).integrationConnection
@@ -95,9 +95,11 @@ export class FaturaKesService {
           kanal: 'ENTEGRATOR',
           saglayici,
           gibdenKesilebilir: false,
+          sebep: 'ENTEGRATOR',
           uyari:
-            `Bu mükellef ${saglayici} entegratörüne bağlı. Faturalarını oradan kesiyorsa ` +
-            `GİB portalından kesmek belge numarasını çakıştırır. Entegratörden kesme henüz yok.`,
+            `Bu mükellef ${saglayici} ile bağlı. Bu bağlantı fatura ÇEKMEK için kurulmuş olabilir; ` +
+            `mükellefin faturalarını oradan KESTİĞİNİ kanıtlamaz. Eğer oradan kesiyorsa GİB portalından ` +
+            `kesmek belge numarasını çakıştırır — bu yüzden onayın isteniyor.`,
         };
       }
     }
@@ -110,10 +112,11 @@ export class FaturaKesService {
         kanal: 'GIB_EARSIV',
         saglayici: null,
         gibdenKesilebilir: false,
+        sebep: 'KIMLIK_YOK',
         uyari: 'Bu mükellefin GİB e-Arşiv kimliği tanımlı değil — fatura kesilemez.',
       };
     }
-    return { kanal: 'GIB_EARSIV', saglayici: null, gibdenKesilebilir: true, uyari: null };
+    return { kanal: 'GIB_EARSIV', saglayici: null, gibdenKesilebilir: true, sebep: null, uyari: null };
   }
 
   async createDraft(tenantId: string, userId: string | null, input: FaturaKesInput) {

@@ -4277,10 +4277,12 @@ function ScreenFaturaKes({ taxpayerId, taxpayers }: { taxpayerId: string; taxpay
   // GİB'E GÖNDER — GİB'de TASLAK oluşur, RESMİ BELGE DEĞİL (imzalama yapılmaz, SMS adımına gelinmez).
   //   Tek tıkla gönderim YOK: kullanıcı ayrı kutuda ne olacağını görüp açıkça onaylar.
   const [gibOnay, setGibOnay] = useState<any>(null);
+  const [gibdeIsrar, setGibdeIsrar] = useState(false);
   const gibMut = useMutation({
-    mutationFn: (id: string) => api.post(`/fatura-kes/taslak/${id}/gib`, { kuruTest: false }).then((r) => r.data),
+    mutationFn: (id: string) => api.post(`/fatura-kes/taslak/${id}/gib`, { kuruTest: false, gibdeIsrar }).then((r) => r.data),
     onSuccess: (d: any) => {
       setGibOnay(null);
+      setGibdeIsrar(false);
       toast.success(d?.faturaNo ? `GİB'de taslak oluştu · ${d.faturaNo}` : "GİB'de taslak oluştu — imzalanmadı");
       qc.invalidateQueries({ queryKey: ['fatura-kes', 'taslak'] });
     },
@@ -4446,12 +4448,33 @@ function ScreenFaturaKes({ taxpayerId, taxpayers }: { taxpayerId: string; taxpay
                 GİB&apos;de <b>taslak</b> oluşur. <b>İmzalanmaz</b> — resmî belge değildir, vergi doğurmaz, portaldan silinebilir.
                 Kesinleştirme (SMS onayı) ayrı bir adımdır, bu düğme oraya gitmez.
               </div>
+
+              {kanalQ.data?.sebep === 'ENTEGRATOR' && (
+                <label style={{ display: 'flex', gap: 9, alignItems: 'flex-start', marginTop: 12, background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 9, padding: '11px 13px', fontSize: 13, color: '#78350f', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={gibdeIsrar} onChange={(e) => setGibdeIsrar(e.target.checked)} style={{ marginTop: 3 }} />
+                  <span>
+                    Bu mükellef <b>{kanalQ.data.saglayici}</b> ile bağlı. Faturalarını oradan kesiyorsa GİB&apos;den kesmek
+                    belge numarasını çakıştırır. <b>Kestiğini biliyorum, yine de GİB&apos;den kesilsin.</b>
+                  </span>
+                </label>
+              )}
+
+              {kanalQ.data?.sebep === 'KIMLIK_YOK' && (
+                <div style={{ marginTop: 12, background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 9, padding: '11px 13px', fontSize: 13, color: '#7f1d1d' }}>
+                  Bu mükellefin GİB e-Arşiv kimliği tanımlı değil — gönderilemez.
+                </div>
+              )}
             </div>
             <div style={{ display: 'flex', gap: 9, justifyContent: 'flex-end', padding: '0 20px 18px' }}>
               <button disabled={gibMut.isPending} onClick={() => setGibOnay(null)} style={{ padding: '9px 16px', borderRadius: 9, border: '1px solid #e7e5e4', background: '#fff', fontSize: 14, cursor: 'pointer', color: '#57534e' }}>Vazgeç</button>
-              <button disabled={gibMut.isPending} onClick={() => gibMut.mutate(gibOnay.id)} style={{ padding: '9px 18px', borderRadius: 9, border: 'none', fontSize: 14, fontWeight: 600, color: '#fff', cursor: gibMut.isPending ? 'wait' : 'pointer', background: 'linear-gradient(135deg,#b45309,#d97706)' }}>
+              {(() => {
+                const engelli = kanalQ.data?.sebep === 'KIMLIK_YOK' || (kanalQ.data?.sebep === 'ENTEGRATOR' && !gibdeIsrar);
+                return (
+              <button disabled={gibMut.isPending || engelli} onClick={() => gibMut.mutate(gibOnay.id)} style={{ padding: '9px 18px', borderRadius: 9, border: 'none', fontSize: 14, fontWeight: 600, color: '#fff', cursor: gibMut.isPending ? 'wait' : engelli ? 'not-allowed' : 'pointer', background: engelli ? '#d6d3d1' : 'linear-gradient(135deg,#b45309,#d97706)' }}>
                 {gibMut.isPending ? 'Gönderiliyor…' : "Evet, GİB'e gönder"}
               </button>
+                );
+              })()}
             </div>
           </div>
         </div>

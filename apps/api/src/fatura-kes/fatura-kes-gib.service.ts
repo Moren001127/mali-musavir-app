@@ -212,6 +212,11 @@ export class FaturaKesGibService {
     // KANAL DENETİMİ: mükellef entegratöre bağlıysa GİB portalından kesmek belge numarasını
     //   çakıştırır (iki sistem ayrı seri üretir). Varsayılan DUR; kullanıcı bile bile geçebilir.
     const kanalBilgi = await this.faturaKes.kanalTespit(tenantId, draft.taxpayerId);
+    // KİMLİK YOKSA ISRAR DA GEÇMEZ — şifresiz zaten gönderilemez.
+    if (kanalBilgi.sebep === 'KIMLIK_YOK') {
+      throw new BadRequestException(kanalBilgi.uyari || 'Bu mükellefin GİB e-Arşiv kimliği yok');
+    }
+    // ENTEGRATÖRLÜ mükellefte varsayılan DUR; kullanıcı bile bile onaylarsa geçilir.
     if (!kanalBilgi.gibdenKesilebilir && !opts.gibdeIsrar) {
       throw new BadRequestException(kanalBilgi.uyari || 'Bu mükellefte GİB portalından fatura kesilemez');
     }
