@@ -50,25 +50,39 @@ const ok = (ad, sart, ek) => {
       firlattiMi ? 'mesaj: ' + mesaj.slice(0, 80) : 'HIC HATA FIRLATMADI — gonderim yolu acik!');
   }
 
-  // ---------- 2) KENDILIGINDEN TETIKLEYEN CAGRI YOK ----------
-  const otoCagri = [];
-  const tarananlar = ['apps/api/src/whatsapp', 'apps/api/src/fatura-kes'];
+  // ---------- 2) GONDERIMI SADECE ONAY DALI CAGIRABILIR ----------
+  // Kullanici 2026-08-20 aksami "bagla, amac zaten kesmesi" dedi. Artik TEK bir cagri yeri
+  // var: WhatsApp owner hattindaki IKINCI KADEME onay dali. Baska bir dosyadan cagrilirsa
+  // (ornegin bir cron, bir toplu is) bu test cakar.
+  const IZINLI = ['apps/api/src/whatsapp/whatsapp-bot.controller.ts'];
+  const cagiranlar = [];
   const gez = (dizin) => {
     for (const ad of fs.readdirSync(dizin)) {
       const tam = path.join(dizin, ad);
-      const st = fs.statSync(tam);
-      if (st.isDirectory()) { gez(tam); continue; }
+      if (fs.statSync(tam).isDirectory()) { gez(tam); continue; }
       if (!ad.endsWith('.ts')) continue;
-      if (tam.endsWith('elogo-fatura.service.ts')) continue;   // tanimin kendisi
-      const s = fs.readFileSync(tam, 'utf8');
-      if (s.includes('onaylaVeGonder') || s.includes('belgeGonder(') || s.includes('numaraAl(')) {
-        otoCagri.push(path.relative(ROOT, tam));
-      }
+      if (tam.endsWith('elogo-fatura.service.ts')) continue;
+      const s2 = fs.readFileSync(tam, 'utf8');
+      if (s2.includes('onaylaVeGonder')) cagiranlar.push(path.relative(ROOT, tam));
     }
   };
-  for (const d of tarananlar) gez(path.join(ROOT, d));
-  ok('gonderimi kendiliginden cagiran dosya YOK', otoCagri.length === 0,
-    'cagiran: ' + otoCagri.join(', ') + ' — bot tek basina fatura kesmemeli');
+  for (const d of ['apps/api/src/whatsapp', 'apps/api/src/fatura-kes']) gez(path.join(ROOT, d));
+  const izinsiz = cagiranlar.filter((c) => !IZINLI.includes(c.split(path.sep).join('/')));
+  ok('gonderimi yalniz onay dali cagiriyor', izinsiz.length === 0, 'izinsiz cagiran: ' + izinsiz.join(', '));
+
+  // Cagri KESIN ONAY ve KURU TEST korumasinin ARDINDA olmali.
+  const bot = fs.readFileSync(path.join(ROOT, 'apps/api/src/whatsapp/whatsapp-bot.controller.ts'), 'utf8');
+  const i = bot.indexOf('onaylaVeGonder');
+  const oncesi = bot.slice(Math.max(0, i - 1200), i);
+  ok('cagri KESIN ONAY (EVET KES) kontrolunun ardinda', oncesi.includes('kesinOnayMi'));
+  ok('cagri KURU TEST korumasinin ardinda', oncesi.includes('__dryRun'));
+
+  // ---------- 2b) "EVET KES" KATI ESLESIR ----------
+  const { FaturaKesKomutService } = require(path.join(ROOT, 'apps/api/src/fatura-kes/fatura-kes-komut.service.ts'));
+  const kesenler = ['EVET KES', 'evet kes', '  Evet   Kes  ', 'EVET  KES'];
+  const kesmeyenler = ['evet', 'tamam', 'olur', 'onayla', 'kes', 'evet kesme', 'evet kes lutfen', 'hayir kes'];
+  for (const m of kesenler) ok(`"${m}" -> KESIN ONAY`, FaturaKesKomutService.kesinOnayMi(m) === true);
+  for (const m of kesmeyenler) ok(`"${m}" -> kesin onay DEGIL`, FaturaKesKomutService.kesinOnayMi(m) === false);
 
   // ---------- 3) ATOMIK KILIT ----------
   ok('atomik durum kilidi var (TASLAK -> GONDERILIYOR)',
@@ -93,6 +107,41 @@ const ok = (ad, sart, ek) => {
   ok('InvoicePkList ile InvoiceGbList ayri okunuyor',
     kaynak.includes("listeEtiketleri(govde, 'InvoicePkList')") && kaynak.includes("listeEtiketleri(govde, 'InvoiceGbList')"));
   ok('eFaturaMi PK listesine bakar', kaynak.includes('eFaturaMi: postaKutulari.length > 0'));
+
+  // ---------- 8) DENETIM BULGULARI (2026-08-20 karsi-gorus) ----------
+  const bot2 = fs.readFileSync(path.join(ROOT, 'apps/api/src/whatsapp/whatsapp-bot.controller.ts'), 'utf8');
+  const servis = fs.readFileSync(SERVIS, 'utf8');
+
+  // R1: kimliksiz HTTP webhook'undan gelen mesajla GERCEK FATURA KESILEMEZ
+  ok('HTTP webhook mesajlari isaretleniyor', bot2.includes("__kaynak = 'http'"));
+  const kesimDali = bot2.slice(bot2.indexOf('kesinOnayMi(metin)'), bot2.indexOf('onaylaVeGonder'));
+  ok('EVET KES, HTTP kaynakli mesajda REDDEDILIR', kesimDali.includes("__kaynak === 'http'"),
+    'kimliksiz webhook ile disaridan fatura kesilebilir');
+
+  // R2: eLogo reddederse "kesildi" DENMEZ
+  const basarisiz = servis.slice(servis.indexOf('if (sonuc.basarili)'));
+  ok('basarisiz/belirsiz yanitta HATA firlatilir', /else \{[\s\S]{0,900}throw new BadRequestException/.test(basarisiz),
+    'sessizce donerse cagiran taraf FATURA KESILDI der');
+
+  // R3: numara alindiktan SONRA ag cagrisi kalmasin
+  const iUbl = servis.indexOf('const hamUbl');
+  const iNumara = servis.indexOf('const numara = await this.numaraAl(');
+  ok('UBL numaradan ONCE hazirlaniyor', iUbl > 0 && iNumara > 0 && iUbl < iNumara,
+    'numara alinip sonra hata olursa numara yanar');
+
+  // R6: kuru testte onay yuvasi kurulmaz
+  const iDry = bot2.indexOf("owner:fatura-kes:kesin-onay-soru");
+  const iArm = bot2.indexOf('kesimOnayinaAl(kimlik, bekleyenTaslak)');
+  ok('kuru test kontrolu YUVA KURMADAN once', iDry > 0 && iArm > 0 && iDry < iArm,
+    'deneme, gercek hatta EVET KES yuvasi kuruyor');
+
+  // R5: mukerrer korumasi WhatsApp yolunda kullaniliyor
+  const komut = fs.readFileSync(path.join(ROOT, 'apps/api/src/fatura-kes/fatura-kes-komut.service.ts'), 'utf8');
+  ok('WhatsApp taslaginda idempotencyKey var', komut.includes('idempotencyKey:'));
+
+  // R7: kanal belirlenemezse fail-closed
+  ok('kanal belirlenemezse hata firlatilir (fail-closed)',
+    /Kanal belirlenemedi/.test(bot2) && !/kanalTespit\([^)]*\)\.catch\(\(\) => null\)[\s\S]{0,80}ENTEGRATOR/.test(bot2));
 
   if (hata) process.exit(1);
   console.log('[elogo-gonderim-guvenlik] OK: acik onaysiz gonderim yok, kilit ve etiket kurallari saglam');

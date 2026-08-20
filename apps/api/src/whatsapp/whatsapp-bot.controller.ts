@@ -130,6 +130,12 @@ export class WhatsAppBotController implements OnModuleInit {
   async receive(@Body() body: any) {
     const messages = this.extractMessages(body);
     for (const msg of messages) {
+      // KAYNAK ISARETI (denetim bulgusu 2026-08-20): bu uc KIMLIK DOGRULAMASI YAPMIYOR.
+      //   Disaridan biri govdeye owner numarasini yazip mesaj uydurabilir. Bu yuzden
+      //   buradan gelen mesajlar "http" olarak isaretlenir ve GERCEK FATURA KESIMI
+      //   (EVET KES) bu kaynaktan KABUL EDILMEZ. Gercek WhatsApp baglantisindan
+      //   (Baileys) gelen mesajlarda boyle bir isaret olmaz.
+      (msg as any).__kaynak = 'http';
       await this.handleMessage(msg).catch((e) => {
         this.logger.warn(`WhatsApp bot mesajı işlenemedi: ${e?.message || e}`);
       });
@@ -1058,12 +1064,95 @@ export class WhatsAppBotController implements OnModuleInit {
    *   • Kuru testte (msg.__dryRun) ne mesaj ne GİB isteği gider — yalnız metin kaydedilir.
    *   • Yalnız owner hattında çağrılır (çağrı yeri owner dalının içindedir).
    */
+  /** Taslağın kanalı eLogo mu? (gerçek fatura kesimi yalnız burada iki kademeli olur) */
+  private async faturaKesElogoKanali(tenantId: string, taslakId: string): Promise<boolean> {
+    try {
+      const d: any = await (this.prisma as any).salesInvoiceDraft.findFirst({
+        where: { id: taslakId, tenantId }, select: { taxpayerId: true },
+      });
+      if (!d?.taxpayerId) return false;
+      const kanal: any = await this.faturaKes.kanalTespit(tenantId, d.taxpayerId);
+      return !!kanal && kanal.sebep === 'ENTEGRATOR' && kanal.saglayici === 'ELOGO';
+    } catch (e: any) {
+      // FAIL-CLOSED (denetim bulgusu): kanal belirlenemiyorsa "eLogo degil" demek,
+      //   ikinci kademe onayi sessizce atlamak demektir. Hata firlatilir; cagiran
+      //   taraf kullaniciyi uyarir, hicbir sey kesilmez.
+      throw new Error(`Kanal belirlenemedi: ${e?.message || 'bilinmeyen'}`);
+    }
+  }
+
+  /** Kesin onay öncesi gösterilen özet — ne kesileceği tek bakışta görünsün. */
+  private async faturaKesKesimOzeti(tenantId: string, taslakId: string): Promise<string> {
+    try {
+      const d: any = await (this.prisma as any).salesInvoiceDraft.findFirst({ where: { id: taslakId, tenantId } });
+      if (!d) return 'Taslak bulunamadı.';
+      const tp: any = await (this.prisma as any).taxpayer.findFirst({
+        where: { id: d.taxpayerId }, select: { companyName: true, firstName: true, lastName: true },
+      });
+      const satici = tp?.companyName || [tp?.firstName, tp?.lastName].filter(Boolean).join(' ') || '';
+      const para = (n: any) => Number(n || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      return `*KESİLECEK FATURA*\n` +
+        `Satıcı: ${satici}\n` +
+        `Alıcı: ${d.aliciUnvan} · VKN ${d.aliciVkn}\n` +
+        `İçerik: ${d.aciklama}\n` +
+        `Tutar: ${para(d.matrah)} + KDV %${d.kdvOrani} (${para(d.kdvTutari)}) = *${para(d.toplam)} ₺*`;
+    } catch {
+      return 'Özet hazırlanamadı.';
+    }
+  }
+
   private async maybeHandleFaturaKes(ownerTenant: any, msg: any, ownerContactId: string): Promise<boolean> {
     try {
       const kimlik = String(msg.from || '').replace(/\D/g, '');
       if (!kimlik) return false;
       const metin = String(msg.text || '');
       const bekleyenTaslak = this.faturaKomut.bekleyenOnay(kimlik);
+
+      // 0) KESİN ONAY BEKLİYOR MU? ("onayla" dendi, "EVET KES" bekleniyor)
+      //    Buraya YALNIZ eLogo kanalında gelinir; gerçek fatura burada kesilir.
+      const bekleyenKesim = this.faturaKomut.bekleyenKesim(kimlik);
+      if (bekleyenKesim) {
+        if (FaturaKesKomutService.vazgecMi(metin)) {
+          this.faturaKomut.kesimiUnut(kimlik);
+          await this.ownerCevapGonder(msg, ownerTenant.id, ownerContactId,
+            'Tamam, kesmedim. Taslak duruyor.', 'owner:fatura-kes:vazgec', 'WhatsApp owner fatura vazgec');
+          return true;
+        }
+        if (FaturaKesKomutService.kesinOnayMi(metin)) {
+          this.faturaKomut.kesimiUnut(kimlik);
+          // GERCEK FATURA YALNIZ GERCEK WHATSAPP BAGLANTISINDAN KESILIR.
+          //   HTTP webhook'u kimliksiz oldugu icin oradan gelen "EVET KES" kabul edilmez.
+          if ((msg as any).__kaynak === 'http') {
+            this.logger.warn('[FATURA-KES] HTTP webhook kaynakli EVET KES REDDEDILDI');
+            await this.ownerCevapGonder(msg, ownerTenant.id, ownerContactId,
+              'Bu istek gerçek WhatsApp bağlantısından gelmediği için fatura KESİLMEDİ. Lütfen WhatsApp üzerinden yaz.',
+              'owner:fatura-kes:kaynak-red', 'WhatsApp owner fatura kaynak red');
+            return true;
+          }
+          if (msg.__dryRun) {
+            msg.__dryReply = 'KURU TEST: EVET KES alındı, FATURA KESİLMEDİ.';
+            msg.__dryKind = 'owner:fatura-kes:kesim';
+            return true;
+          }
+          const kesim: any = await this.elogoFatura
+            .onaylaVeGonder(ownerTenant.id, bekleyenKesim, { onay: true })
+            .catch((e: any) => ({ __hata: e?.response?.message || e?.message || 'bilinmeyen hata' }));
+          if (kesim?.__hata) {
+            await this.ownerCevapGonder(msg, ownerTenant.id, ownerContactId,
+              `Fatura KESİLEMEDİ: ${String(kesim.__hata).slice(0, 400)}\n` +
+              `Taslak duruyor; eLogo portalından da kontrol et.`,
+              'owner:fatura-kes:kesim-hata', 'WhatsApp owner fatura kesim hata');
+            return true;
+          }
+          await this.faturaKesBelgeGonder(ownerTenant.id, bekleyenKesim, msg,
+            `*FATURA KESİLDİ* · ${kesim.faturaNo}\n` +
+            `Belge türü: ${kesim.belgeTuru === 'EARCHIVE' ? 'e-Arşiv' : 'e-Fatura'}\n` +
+            `${kesim.mesaj ? 'eLogo: ' + String(kesim.mesaj).slice(0, 200) : ''}`);
+          return true;
+        }
+        // Başka bir şey yazdıysa kesin onay DÜŞER — yanlış anlaşılmayla fatura kesilmez.
+        this.faturaKomut.kesimiUnut(kimlik);
+      }
 
       // 1) ÖNİZLEMESİ GÖNDERİLMİŞ TASLAK VARSA: onayla / vazgeç
       if (bekleyenTaslak) {
@@ -1075,6 +1164,36 @@ export class WhatsAppBotController implements OnModuleInit {
           return true;
         }
         if (FaturaKesKomutService.onayMi(metin)) {
+          // KANALA GÖRE AYRIM:
+          //   • eLOGO (gerçek fatura kesilecek)  -> İKİNCİ KADEME ONAY iste ("EVET KES").
+          //   • GİB e-Arşiv (imzasız taslak)     -> eski davranış (tek kademe) korunur.
+          let kanalOnay = false;
+          try {
+            kanalOnay = await this.faturaKesElogoKanali(ownerTenant.id, bekleyenTaslak);
+          } catch (e: any) {
+            await this.ownerCevapGonder(msg, ownerTenant.id, ownerContactId,
+              `Mükellefin fatura kanalı belirlenemedi (${String(e?.message || '').slice(0, 120)}). Güvenlik için hiçbir şey yapılmadı.`,
+              'owner:fatura-kes:kanal-hata', 'WhatsApp owner fatura kanal hata');
+            return true;
+          }
+          if (kanalOnay) {
+            this.faturaKomut.onayiUnut(kimlik);
+            const ozet = await this.faturaKesKesimOzeti(ownerTenant.id, bekleyenTaslak);
+            // KURU TESTTE YUVA KURULMAZ (denetim bulgusu 2026-08-20): once kontrol edilir.
+            //   Aksi halde deneme, owner'in GERCEK hattinda "EVET KES" yuvasini kurar ve
+            //   sonraki gercek bir "EVET KES" istenmeyen faturayi keserdi.
+            if (msg.__dryRun) {
+              msg.__dryReply = `KURU TEST: kesin onay soruldu, FATURA KESİLMEDİ.\n${ozet}`;
+              msg.__dryKind = 'owner:fatura-kes:kesin-onay-soru';
+              return true;
+            }
+            this.faturaKomut.kesimOnayinaAl(kimlik, bekleyenTaslak);
+            await this.ownerCevapGonder(msg, ownerTenant.id, ownerContactId,
+              `${ozet}\n\n*Bu adım GERİ ALINAMAZ* — numara alınır, imzalanır, alıcıya gider.\n` +
+              `Kesilsin diyorsan *EVET KES* yaz. Vazgeçmek için *vazgeç*.`,
+              'owner:fatura-kes:kesin-onay-soru', 'WhatsApp owner fatura kesin onay soruldu');
+            return true;
+          }
           this.faturaKomut.onayiUnut(kimlik);
           if (msg.__dryRun) {
             msg.__dryReply = 'KURU TEST: onay alındı, GİB’e GÖNDERİLMEDİ.';
@@ -1118,12 +1237,13 @@ export class WhatsAppBotController implements OnModuleInit {
       //   önizleme dosyasını göndersin". Yani kendi çizdiğimiz önizleme değil, GERÇEK belge.
       //   Oluşan belge İMZASIZ taslaktır (resmî değil) ama otomatik SİLME henüz yok —
       //   bu yüzden mesajda açıkça yazılır.
-      this.faturaKomut.onayaAl(kimlik, sonuc.taslakId);
+      // KURU TESTTE ONAY YUVASI KURULMAZ — sira bilerek boyle (denetim bulgusu).
       if (msg.__dryRun) {
         msg.__dryReply = sonuc.ozet;
         msg.__dryKind = 'owner:fatura-kes:onizleme';
         return true;
       }
+      this.faturaKomut.onayaAl(kimlik, sonuc.taslakId);
       // KANAL AYRIMI: entegratörlü mükellefte (GİTO -> eLogo) GİB'e HİÇ GİDİLMEZ.
       //   O mükellefin faturası eLogo'dan kesilir; GİB portalından kesmek belge numarasını
       //   çakıştırır. eLogo'ya GÖNDERİM henüz yok (görüntü üretme parametresi eLogo

@@ -868,17 +868,23 @@ export class ElogoFaturaService {
     if (!onEk) {
       throw new BadRequestException('eLogo tarafinda kullanilabilir fatura serisi (on ek) bulunamadi - gonderim yapilmadi.');
     }
+    // SIRA ONEMLI (denetim bulgusu 2026-08-20): UBL numaradan ONCE hazirlanir.
+    //   Eskiden once numara aliniyor, sonra taslaktanOnizleme cagriliyordu; o cagri
+    //   eLogo'ya iki ag isteği daha yapiyor (login + sorgu). Orada bir hata olsa
+    //   NUMARA ALINMIS ama fatura gonderilmemis olurdu — numara yanar, geri alinamaz.
+    const hazir: any = await this.taslaktanOnizleme(tenantId, draftId).catch(() => null);
+    const hamUbl = String(hazir?.ubl || '');
+    if (!hamUbl || hamUbl.indexOf('<cbc:ID>ONIZLEME</cbc:ID>') < 0) {
+      throw new BadRequestException('Fatura XML hazirlanamadi — NUMARA ALINMADI, gonderim yapilmadi.');
+    }
+
     const numara = await this.numaraAl(tenantId, d.taxpayerId, onEk, belgeTuru);
     await (this.prisma as any).salesInvoiceDraft.update({
       where: { id: draftId },
       data: { faturaNo: numara, hata: `Numara alındı (${numara}), gönderiliyor` },
     }).catch(() => null);
 
-    const hazir: any = await this.taslaktanOnizleme(tenantId, draftId).catch(() => null);
-    const ubl = String(hazir?.ubl || '').replace('<cbc:ID>ONIZLEME</cbc:ID>', `<cbc:ID>${numara}</cbc:ID>`);
-    if (!ubl || ubl.indexOf(`<cbc:ID>${numara}</cbc:ID>`) < 0) {
-      throw new BadRequestException(`Fatura XML'ine numara yazılamadı (${numara}) — gönderim YAPILMADI.`);
-    }
+    const ubl = hamUbl.replace('<cbc:ID>ONIZLEME</cbc:ID>', `<cbc:ID>${numara}</cbc:ID>`);
 
     const sonuc = await this.belgeGonder(tenantId, d.taxpayerId, ubl, `${numara}.xml`, belgeTuru, etiket);
     if (sonuc.basarili) {
@@ -893,6 +899,14 @@ export class ElogoFaturaService {
         data: { hata: `eLogo yaniti: [${sonuc.kod}] ${sonuc.mesaj || 'belirsiz'} - eLogo portalindan DOGRULAYIN` },
       });
       this.logger.warn(`[ELOGO] gonderim belirsiz · ${numara} · kod=${sonuc.kod} · ${sonuc.mesaj}`);
+      // BASARISIZ/BELIRSIZ YANIT BASARI SAYILMAZ (denetim bulgusu 2026-08-20):
+      //   eskiden burada normal donuyordu, cagiran taraf da "FATURA KESILDI" yaziyordu.
+      //   Kullanici faturayi bulamayip komutu tekrarlayinca IKINCI numara/fatura riski dogar.
+      //   Durum GONDERILIYOR birakilir (mukerrer korumasi bozulmasin), ama HATA firlatilir.
+      throw new BadRequestException(
+        `eLogo faturayi KESMEDI/durum belirsiz. Numara ${numara} alindi. eLogo yaniti: [${sonuc.kod}] ` +
+        `${sonuc.mesaj || 'bos'} — eLogo portalindan DOGRULAYIN, tekrar denemeden once kontrol edin.`,
+      );
     }
     return { faturaNo: numara, belgeTuru, mesaj: sonuc.mesaj, refId: sonuc.refId };
   }

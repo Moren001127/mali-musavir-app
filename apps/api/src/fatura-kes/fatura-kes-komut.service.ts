@@ -79,6 +79,44 @@ export class FaturaKesKomutService {
     this.onayBekleyen.delete(kimlik);
   }
 
+  // ————————————————————————————————————————————————————————————————
+  // İKİNCİ KADEME ONAY — GERÇEK FATURA KESİMİ
+  //
+  // "onayla" TEK BAŞINA fatura kesmez. Kullanıcı ayrıca "EVET KES" yazmalıdır.
+  // Sebep: eLogo'da numara verilmiş fatura İPTAL/SİLME kabul etmiyor (kullanıcı kuralı
+  // 2026-08-20). Tek kelimeyle kaza kesim olmamalı. 10 dakikada kendiliğinden düşer;
+  // araya başka bir mesaj girerse de düşer (çağıran taraf temizler).
+  // ————————————————————————————————————————————————————————————————
+  private readonly kesimBekleyen = new Map<string, { taslakId: string; ts: number }>();
+  private static readonly KESIM_BEKLEME_MS = 10 * 60 * 1000;
+
+  kesimOnayinaAl(kimlik: string, taslakId: string) {
+    this.kesimBekleyen.set(kimlik, { taslakId, ts: Date.now() });
+  }
+
+  bekleyenKesim(kimlik: string): string | null {
+    const k = this.kesimBekleyen.get(kimlik);
+    if (!k) return null;
+    if (Date.now() - k.ts > FaturaKesKomutService.KESIM_BEKLEME_MS) {
+      this.kesimBekleyen.delete(kimlik);
+      return null;
+    }
+    return k.taslakId;
+  }
+
+  kesimiUnut(kimlik: string) {
+    this.kesimBekleyen.delete(kimlik);
+  }
+
+  /**
+   * KESİN ONAY SÖZCÜĞÜ — yalnız "EVET KES". Gevşek eşleşme YOK:
+   * "evet", "tamam", "olur" gibi sıradan onaylar fatura KESMEZ.
+   */
+  static kesinOnayMi(metin: string): boolean {
+    const n = String(metin || '').trim().replace(/İ/g, 'i').toLocaleLowerCase('tr-TR');
+    return /^evet\s+kes$/.test(n.replace(/\s+/g, ' '));
+  }
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly faturaKes: FaturaKesService,
@@ -386,6 +424,13 @@ export class FaturaKesKomutService {
       miktar: a.miktar || 1,
       birim: a.birim || 'ADET',
       kaynak: 'WHATSAPP',
+      // MUKERRER KORUMASI (denetim bulgusu 2026-08-20): semada idempotencyKey + unique
+      //   VAR ama WhatsApp yolunda gonderilmiyordu; webhook tekrari ayni faturadan iki
+      //   taslak uretebilirdi. Anahtar = hat + mukellef + alici + tutar + tarih.
+      idempotencyKey: [
+        'wa', kimlik, String(a.taxpayerId), String(a.aliciVkn),
+        String(a.matrah), String(a.kdvOrani), String(a.faturaTarihi || this.bugunTR()),
+      ].join(':').slice(0, 190),
       komutMetni: String(metin).slice(0, 1000),
     });
 
