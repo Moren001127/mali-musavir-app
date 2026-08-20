@@ -53,7 +53,7 @@
   // ne DOM değişimi oluyor → "bitti" sinyali hiç gelmiyordu (PERİHAN ŞAHİN: tıklama
   // öncesi de sonrası da 18 satır). Artık 30sn boyunca ekran hiç değişmediyse sorgu
   // bitmiş sayılır. Ayrıca teşhis için ekrandaki durum metni loglanır.
-  const AGENT_VERSION = '1.47.18';
+  const AGENT_VERSION = '1.47.19';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -5273,17 +5273,50 @@
       setDateInputValue(datePair.t2, bit);
       await sleep(200);
 
+      // ─── TARIH DOGRULAMA (2026-08-20, AYSEGUL ARSLAN vakasi) ───
+      // Eskiden yazdigimiz tarihin Luca'ya GERCEKTEN islenip islenmedigi HIC kontrol
+      // edilmiyordu. setDateInputValue deger yaziyor, input/change gonderiyor ve blur()
+      // ile alandan cikiyor. Luca'nin tarih secicisi blur'da kendi varsayilanina (son
+      // kullanilan aralik) donerse sorgu YANLIS donem icin calisir; yeni faturalar hic
+      // gelmez ve disaridan "bu donemde fatura yok" gibi gorunur.
+      // KANIT: AYSEGUL ARSLAN Agustos — portalda 07/08'e kadar her sey var, 10/08 ve
+      // 12/08 tarihli 6 fatura hic gelmemis; elle sorgulaninca aninda geldiler.
+      // Simdilik ENGELLEMIYORUZ (yanlis alarm calisan cekimleri durdurmasin), ama
+      // ekrandaki GERCEK degeri okuyup loga yaziyoruz ve tutmuyorsa yeniden deniyoruz.
+      const __sadeceRakam = (x) => String(x || '').replace(/\D/g, '');
+      const __tarihOku = () => [
+        String(datePair.t1 && datePair.t1.value || '').trim(),
+        String(datePair.t2 && datePair.t2.value || '').trim(),
+      ];
+      let [__okuT1, __okuT2] = __tarihOku();
+      let __tarihTuttu = __sadeceRakam(__okuT1) === __sadeceRakam(bas) && __sadeceRakam(__okuT2) === __sadeceRakam(bit);
+      for (let __deneme = 1; __deneme <= 2 && !__tarihTuttu; __deneme++) {
+        await log(`⚠ ${etiket}: tarih alanlarina yazilan deger TUTMADI — ekranda "${__okuT1}" → "${__okuT2}", olmasi gereken "${bas}" → "${bit}". ${__deneme}. kez yeniden yaziliyor…`);
+        setDateInputValue(datePair.t1, bas);
+        setDateInputValue(datePair.t2, bit);
+        await sleep(400);
+        [__okuT1, __okuT2] = __tarihOku();
+        __tarihTuttu = __sadeceRakam(__okuT1) === __sadeceRakam(bas) && __sadeceRakam(__okuT2) === __sadeceRakam(bit);
+      }
+      if (__tarihTuttu) {
+        await log(`✓ ${etiket}: tarih alanlari EKRANDAN DOGRULANDI (${__okuT1} → ${__okuT2})`);
+      } else {
+        await log(`🔴 ${etiket}: TARIH EKRANA ISLENEMEDI — Luca "${__okuT1}" → "${__okuT2}" gosteriyor, biz "${bas}" → "${bit}" istedik. Sorgu YANLIS DONEM icin calisabilir; sonuc "fatura yok" cikarsa GUVENME.`);
+      }
+
       // Belgeleri Getir butonu
       const activityBeforeClick = getAgentActivityCount();
       // v1.47.16: Tıklamadan ÖNCEKİ satır sayısı — sorgunun gerçekten sonuç
       // ürettiğini uç adresinden bağımsız anlamak için tek güvenilir taban.
       const sayEbelgeRows = () => {
+        // 2026-08-20: eskiden fatura satiri (.sec) bulunamayinca ekrandaki TUM
+        // kutucuklar sayiliyordu. Bu, 5 AYRI mukellefte de tipatip "18 satir"
+        // yaziyordu — cunku o 18 kutucuk fatura degil, sabit arayuz ogeleri.
+        // Yanlis sayim hem logu yaniltiyor hem "sorgu sonuc uretti mi" kontrolunu
+        // koru ediyordu (18 → 18, degisim yok sanilip 90sn bosuna bekleniyordu).
         let n = 0;
         for (const d of collectEbelgeDocsDeep()) {
-          try {
-            n += d.querySelectorAll('.sec').length;
-            if (!n) n += d.querySelectorAll('table tr input[type=checkbox]').length;
-          } catch {}
+          try { n += d.querySelectorAll('.sec').length; } catch {}
         }
         return n;
       };
