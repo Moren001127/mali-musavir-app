@@ -3415,6 +3415,29 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     throw new Error(`Portal sifresi reddedildi: ${this.compact(lastError || 'GIB e-Arsiv login basarisiz')}`);
   }
 
+  // GIB GUVENLI CIKIS — ATLANMAZ (canli kanit 2026-08-20).
+  //   Cikis yapilmazsa oturum GIB'de acik kalir ve sonraki giris su cevapla reddedilir:
+  //   "Sisteme ayni anda birden fazla giris yapamazsiniz. Lutfen 'Guvenli Cikis' ... "
+  //   Bu MUKELLEFIN KENDI girisini de kilitler; o yuzden login yapan her akis bunu cagirir.
+  private async earsivLogoutHttp(token: string): Promise<void> {
+    if (!token) return;
+    try {
+      const body = new URLSearchParams();
+      body.set('assoscmd', 'logout');
+      body.set('rtype', 'json');
+      body.set('token', token);
+      await this.earsivFetch('https://earsivportal.efatura.gov.tr/earsiv-services/assos-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=utf-8' },
+        body,
+        signal: AbortSignal.timeout(20_000),
+      });
+      this.logger.log('[EARSIV-ADIM] guvenli cikis yapildi — oturum serbest');
+    } catch (err: any) {
+      this.logger.warn(`[EARSIV-ADIM] GUVENLI CIKIS YAPILAMADI: ${this.compact(err?.message || err)} — mukellefin GIB girisi bir sure kilitli kalabilir`);
+    }
+  }
+
   // GIB e-Arsiv isi — tarayici acmadan (chromium yuku YOK): login token al -> liste/indirme API.
   private async runEarsivPortalJobHttp(tenantId: string, bundle: RunnerJobBundle) {
     const credential = bundle.credential;
@@ -3427,29 +3450,34 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     const token = await this.earsivLoginHttp(credential);
     this.logger.log(`[EARSIV-ADIM] login OK ${Date.now() - tLogin}ms, token=${token ? token.length : 0}k, liste sorgusu basliyor`);
 
-    if (bundle.job?.payload?.validationOnly === true) {
-      await this.jobProgress(tenantId, bundle.job, 'validated', 'GIB e-Arsiv girisi dogrulandi.');
-      return {
-        documents: [],
-        recordCount: 0,
-        result: {
-          runner: 'railway',
-          phase: 'credential_validation',
-          validationOnly: true,
-          jobType: 'EARSIV_PORTAL_FETCH',
-          notes: ['GIB e-Arsiv girisi basarili; belge taramasi yapilmadi'],
-        },
-      };
-    }
+    // GUVENLI CIKIS GARANTISI: hangi yoldan cikilirsa cikilsin (erken return / hata) oturum kapanir.
+    try {
+      if (bundle.job?.payload?.validationOnly === true) {
+        await this.jobProgress(tenantId, bundle.job, 'validated', 'GIB e-Arsiv girisi dogrulandi.');
+        return {
+          documents: [],
+          recordCount: 0,
+          result: {
+            runner: 'railway',
+            phase: 'credential_validation',
+            validationOnly: true,
+            jobType: 'EARSIV_PORTAL_FETCH',
+            notes: ['GIB e-Arsiv girisi basarili; belge taramasi yapilmadi'],
+          },
+        };
+      }
 
-    // #5 EŞ ZAMANLI HESAP PLANI (kullanıcı kuralı): GİB e-Arşiv sorgusu yapılan BİLANÇO mükellefinde
-    //   Luca'dan hesap planını da tazele (plan VARSA da → Luca'da yeni açılan hesaplar plana yansır,
-    //   faturalar işlenirken MÜKERRER hesap olmaz). Fire-and-forget + 1-saat throttle.
-    this.maybeQueueAccountPlanRefresh(tenantId, bundle.job?.taxpayerId || bundle.taxpayer?.id).catch(() => {});
-    const earsiv = await this.collectEarsivPortalViaApi(token, bundle.job, tenantId);
-    const modeLabel = bundle.job?.payload?.earsivMode === 'query' ? 'satir listelendi' : 'belge indirildi';
-    await this.jobProgress(tenantId, bundle.job, 'earsiv_done', `GIB e-Arsiv sorgusu: ${earsiv.recordCount} ${modeLabel}.`);
-    return earsiv;
+      // #5 EŞ ZAMANLI HESAP PLANI (kullanıcı kuralı): GİB e-Arşiv sorgusu yapılan BİLANÇO mükellefinde
+      //   Luca'dan hesap planını da tazele (plan VARSA da → Luca'da yeni açılan hesaplar plana yansır,
+      //   faturalar işlenirken MÜKERRER hesap olmaz). Fire-and-forget + 1-saat throttle.
+      this.maybeQueueAccountPlanRefresh(tenantId, bundle.job?.taxpayerId || bundle.taxpayer?.id).catch(() => {});
+      const earsiv = await this.collectEarsivPortalViaApi(token, bundle.job, tenantId);
+      const modeLabel = bundle.job?.payload?.earsivMode === 'query' ? 'satir listelendi' : 'belge indirildi';
+      await this.jobProgress(tenantId, bundle.job, 'earsiv_done', `GIB e-Arsiv sorgusu: ${earsiv.recordCount} ${modeLabel}.`);
+      return earsiv;
+    } finally {
+      await this.earsivLogoutHttp(token);
+    }
   }
 
   /** #5: GİB e-Arşiv sorgusunda BİLANÇO mükellefi için Luca hesap planı tazeleme işi yaratır (plan

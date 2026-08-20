@@ -62,6 +62,35 @@ export class FaturaKesGibService {
     }
   }
 
+  /**
+   * GİB GÜVENLİ ÇIKIŞ — ATLANMAZ.
+   *
+   * Çıkış yapılmazsa oturum GİB'de açık kalır ve bir sonraki giriş şu cevapla REDDEDİLİR:
+   *   "Sisteme aynı anda birden fazla giriş yapamazsınız.
+   *    Lütfen 'Güvenli Çıkış' seçeneğini kullanarak çıkış yapınız."
+   *
+   * CANLI KANIT (2026-08-20): fatura gönderiminden sonra EDELER'in girişi kilitlendi;
+   * aynı makineden BAŞKA mükellef sorunsuz girebiliyordu → sebep IP değil, AÇIK OTURUM.
+   * Bu yalnız bizi değil MÜKELLEFİN KENDİ girişini de kilitlediği için zorunlu adımdır.
+   */
+  private async gibLogout(token: string): Promise<void> {
+    try {
+      const body = new URLSearchParams();
+      body.set('assoscmd', 'logout');
+      body.set('rtype', 'json');
+      body.set('token', token);
+      await fetch(`${BASE}/assos-login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=utf-8' },
+        body,
+        signal: AbortSignal.timeout(20_000),
+      });
+      this.logger.log('[FATURA-KES/GIB] guvenli cikis yapildi — oturum serbest');
+    } catch (e: any) {
+      this.logger.warn(`[FATURA-KES/GIB] GUVENLI CIKIS YAPILAMADI: ${e?.message} — mukellefin GIB girisi bir sure kilitli kalabilir`);
+    }
+  }
+
   /** Mükellefin GİB e-Arşiv (GIB_IVD) kimliğini çöz. */
   private async kimlik(tenantId: string, taxpayerId: string) {
     const row: any = await (this.prisma as any).portalCredential.findFirst({
@@ -137,7 +166,13 @@ export class FaturaKesGibService {
     }
     if (!token) throw new BadRequestException('GİB e-Arşiv girişi başarısız — kullanıcı kodu/şifre kontrol edilmeli');
 
-    const sonuc: any = await this.dispatch(token, 'EARSIV_PORTAL_FATURA_OLUSTUR', 'RG_BASITFATURA', payload);
+    let sonuc: any;
+    try {
+      sonuc = await this.dispatch(token, 'EARSIV_PORTAL_FATURA_OLUSTUR', 'RG_BASITFATURA', payload);
+    } finally {
+      // HATA OLSA DA ÇIK: açık kalan oturum mükellefin kendi girişini de kilitler.
+      await this.gibLogout(token);
+    }
     const mesaj = typeof sonuc?.data === 'string' ? sonuc.data : '';
     // GİB başarıda belge numarasını metin içinde döndürür; hata metni de aynı alandan gelir.
     const basarisiz = !mesaj || /hata|ba[şs]ar[ıi]s[ıi]z|ge[çc]ersiz/i.test(mesaj);
