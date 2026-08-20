@@ -52,6 +52,7 @@ export class TaxpayersController {
     @Query('month') month?: string,
     @Query('scope') scope?: string,
     @Query('status') status?: string,
+    @Query('periodShift') periodShift?: string,
   ) {
     return this.taxpayersService.findAll(
       req.user.tenantId,
@@ -61,6 +62,10 @@ export class TaxpayersController {
       {
         scope: scope === 'directory' ? 'directory' : 'monthly',
         status: status === 'inactive' || status === 'all' ? status : 'active',
+        // AYLIK TAKİP LİSTESİ: year/month = İŞLEM AYI, takip edilen dönem BİR ÖNCEKİ ay
+        //   (Ağustos'ta Temmuz beyannameleri/evrakı takip edilir) → periodShift=-1 gönderir.
+        //   e-Arşiv gibi ekranlar year/month'u BELGE DÖNEMİ olarak geçer → kaydırma YOK (0).
+        periodShift: periodShift ? parseInt(periodShift) : 0,
       },
     );
   }

@@ -195,7 +195,11 @@ export default function MukelleflerPage() {
   const { data: raw = [], isLoading } = useQuery<Taxpayer[]>({
     queryKey: ['taxpayers', 'list', search, year, month],
     queryFn: () =>
-      api.get('/taxpayers', { params: { search: search || undefined, year, month } }).then(r => r.data),
+      // periodShift=-1: bu ekranda year/month İŞLEM AYI'dır, takip edilen dönem BİR ÖNCEKİ aydır
+      //   (Ağustos işlem ayında Temmuz evrakı/beyannamesi takip edilir). İşe başlama/bırakma
+      //   süzgeci takip dönemine göre çalışsın diye backend'e kaydırma bildirilir — aksi hâlde
+      //   19.08'de açılan mükellef Temmuz listesinde "Evrak bekleniyor" olarak çıkıyordu.
+      api.get('/taxpayers', { params: { search: search || undefined, year, month, periodShift: -1 } }).then(r => r.data),
     // Arka planda (otomasyon/başka kullanıcı) veya başka sayfada (KDV kilidi) yapılan
     // durum değişikliklerini anlık yansıt. ÖNEMLİ: Portal içinde sayfa değişimi (KDV
     // kontrol → aylık takip) "window focus" saymaz; o yüzden sayfaya her gelişte taze

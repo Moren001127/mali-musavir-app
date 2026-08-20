@@ -6,6 +6,13 @@ import { AutomationEventBus } from '../automations/automation-event-bus.service'
 type TaxpayerListOptions = {
   scope?: 'monthly' | 'directory';
   status?: 'active' | 'inactive' | 'all';
+  /**
+   * Dönem kaydırması (ay). Aylık Takip Listesi'nde year/month = İŞLEM AYI'dır ama takip edilen
+   * dönem BİR ÖNCEKİ aydır (Ağustos'ta Temmuz evrakı/beyannamesi). O ekran -1 gönderir; böylece
+   * işe başlama/bırakma süzgeci gerçek TAKİP DÖNEMİNE göre çalışır. e-Arşiv gibi ekranlar
+   * year/month'u doğrudan BELGE DÖNEMİ olarak geçtiği için kaydırma göndermez (0).
+   */
+  periodShift?: number;
 };
 
 @Injectable()
@@ -85,8 +92,19 @@ export class TaxpayersService {
 
     // İşe başlama / işi bırakma tarihi filtreleri
     if (options.scope !== 'directory' && year && month) {
-      const firstDay = new Date(year, month - 1, 1);   // Ayın 1'i
-      const lastDay = new Date(year, month, 0, 23, 59, 59); // Ayın son günü
+      // TAKİP DÖNEMİ = year/month + periodShift (Aylık Takip -1 gönderir → işlem ayı Ağustos,
+      //   takip dönemi Temmuz). KULLANICI BULGUSU 2026-08-20: 19.08.2026'da açılan TOLGA
+      //   TORUNOĞLU, Temmuz dönemi takip listesinde "Evrak bekleniyor" olarak çıkıyordu —
+      //   Ağustos'ta açılan mükellefin Temmuz evrakı olamaz. Süzgeç işlem ayına (31 Ağustos)
+      //   bakıyordu; artık takip dönemine (31 Temmuz) bakıyor. Aynı düzeltme kapanışta da
+      //   simetrik çalışır: Temmuz'da işi bırakan mükellef, Temmuz evrakı Ağustos'ta işlendiği
+      //   için listede KALIR.
+      const shift = Number(options.periodShift || 0);
+      const donem = new Date(year, month - 1 + shift, 1);
+      const dYear = donem.getFullYear();
+      const dMonth = donem.getMonth() + 1;
+      const firstDay = new Date(dYear, dMonth - 1, 1);   // Dönemin 1'i
+      const lastDay = new Date(dYear, dMonth, 0, 23, 59, 59); // Dönemin son günü
       andConditions.push({
         // İşe başlama: null VEYA seçili ayın son gününden önce başlayanlar
         OR: [
