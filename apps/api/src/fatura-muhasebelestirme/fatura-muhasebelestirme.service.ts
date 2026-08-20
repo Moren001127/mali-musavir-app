@@ -14264,6 +14264,32 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           m = bakim ? leafOnly(bakim) : null;
           if (m) mKaynak = 'KURAL';
         }
+        // ─── TEVKİFAT UYUMU: SON SÖZ (2026-08-20) ───
+        // Yukarıdaki erken denetim yalnız ÖĞRENİLMİŞ/AI kodunu görüyor; oysa alışta hesap çoğu kez
+        // EN SONDAKİ varsayılan adımda doluyor (kaynak=VARSAYILAN) → denetim onu hiç göremiyordu.
+        // YORGUN NAKLİYAT / BARANLAR BRN2026000000492: belge tevkifatlı (tevkifatOrani 0,2 · 360
+        // satırı kurulu) ama matrah yine "740.01.004 NAKLİYE GİDERİ"ye düşüyordu; planda
+        // "740.01.003 NAKLİYE GİDERLERİ TEVKİFATLI" duruyor. Bu son geçiş, hangi yoldan gelirse
+        // gelsin nihai hesabı belgenin tevkifat durumuyla uyumlu kardeşine çevirir.
+        // GÜVENLİK: burada hesap ASLA boşaltılmaz — kardeş yoksa mevcut hesap korunur.
+        if (m && !isReturn && !faDet.is) {
+          const _sonAd = String((m as any).accountName || '');
+          const _sonKod = String((m as any).accountCode || '');
+          if (this.isTevkifatAccountName(_sonAd) !== (tevkPay >= 1)) {
+            const _sonKardes = _tevkifatKardesi(m, tevkPay >= 1);
+            if (_sonKardes) {
+              const _yeni = leafOnly(_sonKardes);
+              if (_yeni) {
+                this.logger.log(
+                  `[TEVKIFAT-UYUM/son] ${doc.belgeNo || doc.id}: belge ${tevkPay >= 1 ? 'TEVKIFATLI' : 'tevkifatsiz'} `
+                  + `-> "${_sonKod} ${_sonAd}" yerine "${(_yeni as any).accountCode} ${(_yeni as any).accountName}"`,
+                );
+                m = _yeni;
+                mKaynak = 'KURAL';
+              }
+            }
+          }
+        }
         const mOut = m ? { ...(m as any), _kaynak: mKaynak || 'KURAL' } : null;
         matrahCache.set(rate, mOut);
         return mOut;
