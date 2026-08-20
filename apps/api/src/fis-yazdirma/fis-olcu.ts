@@ -98,3 +98,59 @@ export function fisleriSayfalaraBol(
   if (sayfa.length > 0) sayfalar.push(sayfa);
   return sayfalar;
 }
+
+/**
+ * SÜTUN YERLEŞİMİ — gazete kolonu gibi.
+ *
+ * NEDEN SATIR DEĞİL: fişler farklı boylarda (ölçüm 2026-08-20: boy/en oranı
+ * ortanca 2,30 · en uzun 3,81). Satır düzeninde bir satırdaki TEK uzun fiş
+ * bütün satırı uzatır; fişlerin yarısı uzun olduğu için hemen her satır tek
+ * başına sayfayı doldurup 456 fiş 105 sayfaya çıkıyordu.
+ *
+ * Sütunda ise uzun fiş yalnız KENDİ sütununu etkiler; diğer sütunlar dolmaya
+ * devam eder. Aynı okunabilirlikte (tam sütun genişliği) kâğıt neredeyse
+ * yarıya iner.
+ *
+ * Sıra korunur: sütun sütun aşağı doğru okunur (1. sütun bitince 2. sütun).
+ *
+ * @returns sayfa -> sütun -> öğe indeksi
+ */
+export function fisleriSutunlaraBol(
+  yukseklikler: number[],
+  cols: number,
+  sayfaYuksekligiPx: number,
+): number[][][] {
+  const sayfalar: number[][][] = [];
+  let sayfa: number[][] = Array.from({ length: cols }, () => []);
+  let doluluk = new Array(cols).fill(0);
+
+  const sayfayiKapat = () => {
+    if (sayfa.some((k) => k.length > 0)) sayfalar.push(sayfa);
+    sayfa = Array.from({ length: cols }, () => []);
+    doluluk = new Array(cols).fill(0);
+  };
+
+  for (let i = 0; i < yukseklikler.length; i++) {
+    const h = yukseklikler[i];
+
+    // İLK SIĞAN SÜTUN. Önce "sıradaki sütuna geç" deniyordu ama geçilen sütuna
+    // bir daha dönülmüyordu: yarısı boş bir sütun varken sayfa kapanıyor,
+    // 456 fiş yine 103 sayfa ediyordu. Her fiş için sütunların HEPSİNE bakılır.
+    let s = -1;
+    for (let k = 0; k < cols; k++) {
+      if (doluluk[k] === 0 || doluluk[k] + h <= sayfaYuksekligiPx) {
+        s = k;
+        break;
+      }
+    }
+
+    if (s === -1) {
+      sayfayiKapat();
+      s = 0;
+    }
+    sayfa[s].push(i);
+    doluluk[s] += h;
+  }
+  sayfayiKapat();
+  return sayfalar;
+}

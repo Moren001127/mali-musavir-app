@@ -9,7 +9,7 @@
  * Bu testler yerleşimin matematiğini kilitler: gerçek Word üretmeden,
  * "seçilen sıra sayısı sayfaya SIĞIYOR MU" sorusunu doğrudan sorar.
  */
-import { fisGorselOlcusu, satirYuksekligi, fisleriSayfalaraBol } from './fis-olcu';
+import { fisGorselOlcusu, satirYuksekligi, fisleriSayfalaraBol, fisleriSutunlaraBol } from './fis-olcu';
 
 const SAYFA_H_MM = 279.4; // Letter
 const SAYFA_H_PX = (SAYFA_H_MM / 25.4) * 96; // ≈ 1056
@@ -136,5 +136,70 @@ describe('Akıllı sayfalama — boşluk israfı', () => {
     const n = 457;
     const plan = fisleriSayfalaraBol(Array(n).fill(300), 4, 1056);
     expect(plan.flat().flat().length).toBe(n);
+  });
+});
+
+describe('Sütun yerleşimi — uzun fiş bütün satırı uzatmasın', () => {
+  const SAYFA = 1056;
+
+  it('GERÇEK ÖLÇÜMLE: satır yerleşimi 105 sayfa, sütun yerleşimi YARIYA İNER', () => {
+    // 40 gerçek fişten ölçülen oran dağılımı (2026-08-20): ortanca 2,30,
+    // yarısı 2,48'in üstünde. Sütun genişliği 5,2 cm = 197 px.
+    const SUTUN_PX = 197;
+    const ETIKET = 42;
+    const oranlar = [2.21, 3.81, 1.92, 3.81, 2.0, 3.07, 2.32, 3.22, 3.81, 1.92];
+    const yukseklikler: number[] = [];
+    for (let i = 0; i < 456; i++) {
+      yukseklikler.push(Math.round(SUTUN_PX * oranlar[i % oranlar.length]) + ETIKET);
+    }
+
+    const satirPlan = fisleriSayfalaraBol(yukseklikler, 4, SAYFA);
+    const sutunPlan = fisleriSutunlaraBol(yukseklikler, 4, SAYFA);
+
+    // Satır düzeni gerçekte 105 sayfa üretmişti — model bunu yakalıyor
+    expect(satirPlan.length).toBeGreaterThan(90);
+    // Sütun düzeni AYNI okunabilirlikte belirgin şekilde az sayfa.
+    // (Gerçek oran dağılımıyla ölçüm: 114 -> 69 sayfa.)
+    expect(sutunPlan.length).toBeLessThan(satirPlan.length * 0.85);
+    // Teorik alt sınıra makul yakınlık — paketleme çöpe atmıyor
+    const altSinir = Math.ceil(yukseklikler.reduce((a, b) => a + b, 0) / (4 * SAYFA));
+    expect(sutunPlan.length).toBeLessThan(altSinir * 1.7);
+  });
+
+  it('hiçbir sütun sayfayı taşırmaz', () => {
+    const h = [900, 300, 250, 400, 700, 200, 180, 950, 260, 300, 310, 280, 500, 520];
+    const plan = fisleriSutunlaraBol(h, 4, SAYFA);
+    for (const sayfa of plan) {
+      for (const sutun of sayfa) {
+        if (sutun.length <= 1) continue; // tek başına uzun fiş kabul
+        const toplam = sutun.reduce((a, i) => a + h[i], 0);
+        expect(toplam).toBeLessThanOrEqual(SAYFA);
+      }
+    }
+  });
+
+  it('sıra korunur (sütun sütun aşağı okunur)', () => {
+    const plan = fisleriSutunlaraBol(Array(20).fill(300), 4, SAYFA);
+    expect(plan.flat().flat()).toEqual([...Array(20).keys()]);
+  });
+
+  it('hiçbir fiş kaybolmaz', () => {
+    const n = 457;
+    const plan = fisleriSutunlaraBol(Array(n).fill(400), 4, SAYFA);
+    expect(plan.flat().flat().length).toBe(n);
+  });
+
+  it('sayfadan uzun tek fiş sonsuz döngü yapmaz', () => {
+    const plan = fisleriSutunlaraBol([5000, 5000, 300], 4, SAYFA);
+    expect(plan.flat().flat().length).toBe(3);
+    expect(plan.length).toBeLessThanOrEqual(2);
+  });
+
+  it('uzun fiş yalnız KENDİ sütununu etkiler', () => {
+    // 1 uzun + 7 kısa: satır düzeninde uzun fiş satırı şişirir,
+    // sütunda diğer sütunlar dolmaya devam eder
+    const h = [1000, 200, 200, 200, 200, 200, 200, 200];
+    const sutun = fisleriSutunlaraBol(h, 4, SAYFA);
+    expect(sutun.length).toBe(1); // hepsi TEK sayfaya sığar
   });
 });

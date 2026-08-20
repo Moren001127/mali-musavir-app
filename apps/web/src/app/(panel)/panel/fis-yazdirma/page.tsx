@@ -849,22 +849,32 @@ export default function FisYazdirmaPage() {
               </div>
               <div>
                 <label className="block text-xs mb-1" style={{ color: 'rgba(250,250,249,0.45)' }}>
-                  Sayfa Başına Fiş
+                  Fiş Boyutu
                 </label>
                 <div className="flex gap-1">
-                  {[4, 8, 12].map((n) => (
+                  {/* Eskiden "Sayfa Başına Fiş" yazıyordu ama bu söz TUTULMUYORDU:
+                      8 seçilse bile sayfada 4 fiş çıkıyordu, çünkü sayfaya kaç
+                      fiş sığacağı fişlerin BOYUNA bağlı. Seçim aslında fişin
+                      büyüklüğünü belirliyor; etiket artık bunu dürüstçe söylüyor. */}
+                  {([
+                    [4, 'Büyük', '10,6 cm'],
+                    [8, 'Orta', '5,2 cm'],
+                    [12, 'Küçük', '4,1 cm'],
+                  ] as Array<[number, string, string]>).map(([n, ad, cm]) => (
                     <button
                       key={n}
                       type="button"
                       onClick={() => setPagesPerSheet(n as any)}
-                      className="flex-1 px-3 py-2 rounded-lg text-sm font-medium border"
+                      title={`Fiş genişliği ${cm} — büyük seçim daha okunaklı, küçük seçim daha az sayfa`}
+                      className="flex-1 rounded-lg border px-2 py-2 text-sm font-medium leading-tight"
                       style={{
                         background: pagesPerSheet === n ? 'rgba(184,160,111,.15)' : 'rgba(255,255,255,0.03)',
                         borderColor: pagesPerSheet === n ? '#b8a06f' : 'rgba(255,255,255,0.05)',
                         color: pagesPerSheet === n ? '#b8a06f' : '#fafaf9',
                       }}
                     >
-                      {n}
+                      {ad}
+                      <span className="block text-[10px] opacity-60">{cm}</span>
                     </button>
                   ))}
                 </div>

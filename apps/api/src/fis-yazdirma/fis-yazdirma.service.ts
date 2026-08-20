@@ -1,6 +1,6 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { fisGorselOlcusu, satirYuksekligi, fisleriSayfalaraBol } from './fis-olcu';
+import { fisGorselOlcusu, fisleriSutunlaraBol } from './fis-olcu';
 import { MihsapService } from '../mihsap/mihsap.service';
 import { logAiUsage, canSpendOnApi } from '../common/ai-usage-logger';
 import { createWorker } from 'tesseract.js';
@@ -1075,10 +1075,16 @@ export class FisYazdirmaService {
     const PAGE_W_MM  = 215.9;
     const PAGE_H_MM  = 279.4;
     const MARGIN_MM  = 0;
-    // pagesPerSheet: 4 (2x2 büyük) / 8 (4x2 - default) / 12 (4x3 küçük)
+    // Ayar artık SÜTUN SAYISI = YOĞUNLUK demek. Sütun yerleşiminde sayfaya kaç
+    // fiş gireceği fişlerin boyuna göre değişir; sabit "sayfa başına N" sözü
+    // zaten tutulamıyordu (8 seçilse bile 4 çıkıyordu). Kullanıcının gerçekten
+    // seçtiği şey fişin BÜYÜKLÜĞÜ:
+    //   4  -> 2 sütun (10,6 cm — en okunaklı, en çok kâğıt)
+    //   8  -> 4 sütun ( 5,2 cm — dengeli, varsayılan)
+    //   12 -> 5 sütun ( 4,1 cm — en az kâğıt, hâlâ okunur)
+    // Ölçüm (456 gerçek fiş): 4 sütun 69 sayfa, 5 sütun 46 sayfa.
     const perPage = opts.pagesPerSheet && [4, 8, 12].includes(opts.pagesPerSheet) ? opts.pagesPerSheet : 8;
-    const COLS = perPage === 4 ? 2 : 4;
-    const ROWS_PER_PAGE = perPage / COLS;
+    const COLS = perPage === 4 ? 2 : perPage === 8 ? 4 : 5;
 
     const pageWTwip  = convertMillimetersToTwip(PAGE_W_MM);
     const pageHTwip  = convertMillimetersToTwip(PAGE_H_MM);
@@ -1090,21 +1096,19 @@ export class FisYazdirmaService {
     const DISPLAY_W_CM = (usableCM / COLS) - 0.2;
     const DISPLAY_W    = Math.round((DISPLAY_W_CM / 2.54) * 96);
 
-    // Tarih etiketi + satır aralığı payı (13pt yazı ≈ 0,9 cm). Ayrılmazsa
-    // etiketin kendisi de satırı taşırır.
-    const TARIH_ETIKETI_PX = 42;
-    // Bir satıra düşen AZAMİ görsel yüksekliği. ESKİDEN HİÇ SINIRLANMIYORDU:
-    // uzun ÖKC fişleri 5,2 cm genişlikte ~15-20 cm boyunda çıkıyor, 2 sıra
-    // sayfaya sığmıyor ve ikinci sıra sonraki sayfaya taşıyordu. "Sayfa başına
-    // 8" seçilse bile sayfada tek sıra (4 fiş) görünmesinin sebebi buydu.
-    const MAX_H = satirYuksekligi(PAGE_H_MM, ROWS_PER_PAGE, TARIH_ETIKETI_PX);
-    // OKUNABİLİRLİK TABANI: ÖKC fişi aslında ~8 cm genişliğinde basılır.
-    // 4,5 cm'nin altına inince yazı milimetre altına düşüp okunmaz oluyor.
-    // Yükseklik sınırı bir fişi bu tabanın altına itiyorsa fiş KÜÇÜLTÜLMEZ;
-    // o satır uzar ve sayfaya daha az fiş girer.
-    const MIN_W = Math.round((4.5 / 2.54) * 96);
-    // Hiçbir fiş sayfadan uzun olamaz (yoksa hiç basılamaz)
-    const SAYFA_H_PX_LIMIT = Math.floor((PAGE_H_MM / 25.4) * 96) - TARIH_ETIKETI_PX;
+    // Tarih etiketi + aralık payı. 13pt idi; fiş başına 1,1 cm demekti ve
+    // 456 fişte ~18 sayfalık YER KAYBI ediyordu. 10pt hem baskıda okunur
+    // hem de fiş başına 0,3 cm kazandırıyor.
+    const TARIH_ETIKETI_PX = 30;
+    const SAYFA_H_PX = Math.floor((PAGE_H_MM / 25.4) * 96);
+    // Hiçbir fiş sayfadan uzun olamaz — olursa hiç basılamaz
+    const SAYFA_H_PX_LIMIT = SAYFA_H_PX - TARIH_ETIKETI_PX;
+
+    // OKUNABİLİRLİK: fiş TAM SÜTUN GENİŞLİĞİNDE basılır, küçültülmez.
+    // Ölçüm (2026-08-20, 40 gerçek fiş): boy/en oranı ortanca 2,30 · en uzun
+    // 3,81. 5,2 cm genişlikte ortanca fiş 11,96 cm boyunda — sayfaya iki tane
+    // sığar. Eskiden yüksekliği sıkıştırmak için fişi daraltıyorduk; artık
+    // gerek yok, sütun yerleşimi bu işi yapıyor.
 
     const emptyCell = (): TableCell =>
       new TableCell({
@@ -1115,8 +1119,11 @@ export class FisYazdirmaService {
       });
 
     // Tüm hücreleri oluştur
+    // Her fiş = [görsel paragrafı, tarih paragrafı]. Sütun yerleşiminde bir
+    // SÜTUN tek hücredir ve içinde birden çok fiş alt alta durur; bu yüzden
+    // artık fiş başına TableCell değil, paragraf çifti üretiyoruz.
     const olculer: number[] = [];
-    const cells: TableCell[] = await Promise.all(
+    const parcalar: Paragraph[][] = await Promise.all(
       sorted.map(async (file) => {
         const embedded = await sharp(file.buffer)
           .rotate() // EXIF auto-orient
@@ -1127,7 +1134,8 @@ export class FisYazdirmaService {
         const imgW  = meta.width ?? 800;
         const imgH  = meta.height ?? 600;
         // Hem sütun genişliğine HEM satır yüksekliğine sığdır (oran korunur)
-        const olcu = fisGorselOlcusu(imgW, imgH, DISPLAY_W, MAX_H, MIN_W, SAYFA_H_PX_LIMIT);
+        // Tam sütun genişliği; yalnız sayfa boyu sınırlar
+        const olcu = fisGorselOlcusu(imgW, imgH, DISPLAY_W, SAYFA_H_PX_LIMIT);
         olculer[sorted.indexOf(file)] = olcu.height + TARIH_ETIKETI_PX;
 
         const dateStr = allDates[file.originalname] ?? '';
@@ -1137,40 +1145,33 @@ export class FisYazdirmaService {
           displayDate = `${d}.${mo}.${y}`;
         }
 
-        return new TableCell({
-          borders: NO_BORDER,
-          width: { size: colW, type: WidthType.DXA },
-          verticalAlign: VerticalAlign.BOTTOM,
-          margins: { top: 0, bottom: 0, left: 0, right: 0 },
-          children: [
-            new Paragraph({
-              alignment: AlignmentType.CENTER,
-              spacing: { before: 0, after: 0 },
-              children: [
-                new ImageRun({
-                  data: embedded,
-                  transformation: { width: olcu.width, height: olcu.height },
-                  type: 'jpg',
-                }),
-              ],
-            }),
-            new Paragraph({
-              alignment: AlignmentType.CENTER,
-              spacing: { before: 60, after: 40 },
-              children: [
-                // Bold yerine semibold tone — küçük puntoda harf birleşmesini önler
-                // Punto da büyütüldü (11pt → 13pt) ki baskıda net çıksın
-                new TextRun({
-                  text: displayDate,
-                  size: 26,
-                  bold: false,
-                  font: 'Arial',
-                  color: '333333',
-                }),
-              ],
-            }),
-          ],
-        });
+        return [
+          new Paragraph({
+            alignment: AlignmentType.CENTER,
+            spacing: { before: 0, after: 0 },
+            children: [
+              new ImageRun({
+                data: embedded,
+                transformation: { width: olcu.width, height: olcu.height },
+                type: 'jpg',
+              }),
+            ],
+          }),
+          new Paragraph({
+            alignment: AlignmentType.CENTER,
+            spacing: { before: 40, after: 80 },
+            children: [
+              // Bold yerine semibold tone — küçük puntoda harf birleşmesini önler
+              new TextRun({
+                text: displayDate,
+                size: 20, // 10pt — tarih için yeterli, fiş başına yer kazandırır
+                bold: false,
+                font: 'Arial',
+                color: '333333',
+              }),
+            ],
+          }),
+        ];
       }),
     );
 
@@ -1293,21 +1294,26 @@ export class FisYazdirmaService {
       });
     }
 
-    // AKILLI SAYFALAMA — satır yüksekliği o satırdaki en uzun fişten gelir,
-    // sayfa doldukça yeni sayfaya geçilir. Sabit ızgarada sayfanın altında
-    // kocaman boşluk kalıyordu; kısa fişlerden oluşan sayfaya artık seçilenden
-    // daha çok satır sığıyor (daha az kâğıt).
-    const SAYFA_H_PX = Math.floor((PAGE_H_MM / 25.4) * 96);
-    const sayfaPlani = fisleriSayfalaraBol(olculer, COLS, SAYFA_H_PX);
+    // SÜTUN YERLEŞİMİ — her sayfa tek satır, o satırda COLS adet sütun hücresi;
+    // fişler sütunlarda alt alta akar. Satır düzeninde bir satırdaki tek uzun
+    // fiş bütün satırı uzatıyordu (456 fiş = 105 sayfa); sütunda uzun fiş
+    // yalnız kendi sütununu etkiler.
+    const sayfaPlani = fisleriSutunlaraBol(olculer, COLS, SAYFA_H_PX);
 
-    for (const sayfaSatirlari of sayfaPlani) {
-      const rows: TableRow[] = [];
-      for (const satirIndeksleri of sayfaSatirlari) {
-        const rowCells = satirIndeksleri.map((i) => cells[i]);
-        // Son satır eksikse dolgu — hücreler sola yaslı kalsın
-        while (rowCells.length < COLS) rowCells.push(emptyCell());
-        rows.push(new TableRow({ children: rowCells }));
-      }
+    for (const sayfaSutunlari of sayfaPlani) {
+      const sutunHucreleri = sayfaSutunlari.map((indeksler) =>
+        indeksler.length === 0
+          ? emptyCell()
+          : new TableCell({
+              borders: NO_BORDER,
+              width: { size: colW, type: WidthType.DXA },
+              verticalAlign: VerticalAlign.TOP,
+              margins: { top: 0, bottom: 0, left: 0, right: 0 },
+              children: indeksler.flatMap((i) => parcalar[i]),
+            }),
+      );
+      while (sutunHucreleri.length < COLS) sutunHucreleri.push(emptyCell());
+      const rows: TableRow[] = [new TableRow({ children: sutunHucreleri })];
 
       const table = new Table({
         layout: TableLayoutType.FIXED,
