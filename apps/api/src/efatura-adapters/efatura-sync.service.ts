@@ -83,7 +83,11 @@ export class EFaturaSyncService {
         });
 
         const batch = invoices.filter((inv) => inv.uuid && !seenUuids.has(inv.uuid));
-        if (batch.length === 0) break; // boş sayfa ya da aynı sayfa tekrar geldi
+        // FATURA KAYBI DÜZELTMESİ (2026-08-20): eskiden boş sayfada `break` vardı. Bazı sağlayıcılarda
+        //   (örn e-Logo) liste ucu TARİH FİLTRESİ ALMAZ; tarih süzgeci belge indirildikten SONRA
+        //   uygulanır. Dolayısıyla bir sayfanın tamamı tarih aralığı dışında kalabilir — bu, listenin
+        //   bittiği anlamına GELMEZ. Orada durmak sonraki sayfalardaki faturaları sessizce kaybettiriyordu.
+        //   Artık yalnız sağlayıcı "başka sayfa yok" (hasMore=false) dediğinde duruyoruz.
         batch.forEach((inv) => seenUuids.add(inv.uuid));
 
         // Gerçek yeni/mevcut ayrımı: mevcut uuid'leri tek sorguyla çek
