@@ -4567,6 +4567,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         }
 
         let providerAdded = 0, providerUpdated = 0, providerSkipped = 0, providerFetched = 0;
+        const atlananlar: string[] = []; // neden atlandi — kullaniciya ve loga aciklama
         // Tek fatura yazımı — ARTIMLI persistence için closure. Turkcell gibi çok-belgeli/uzun çekimlerde
         //   onPayload olarak GEÇİLİR → her UBL inince ANINDA yazılır (uzun/kesintili sorguda ilerleme kaybolmaz;
         //   frontend efatura-inbox'u poll edip satırların gelişini görür). Diğer sağlayıcılarda dönüş dizisi üstünde çalışır.
@@ -4574,11 +4575,29 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           providerFetched++;
           try {
             const parsed = this.parseProviderUblInvoice(payload.xml) || this.regexProviderInvoiceFallback(payload.xml);
-            if (!parsed) { providerSkipped++; return; }
+            if (!parsed) {
+              providerSkipped++;
+              // SESSIZ KAYIP YASAK: neden atlandigi her zaman kayda gecer.
+              const atlanan = `${payload.originalName || payload.externalId || '?'}: UBL okunamadi`;
+              atlananlar.push(atlanan);
+              this.logger.warn(`[${cfg.provider}] fatura atlandi — ${atlanan}`);
+              return;
+            }
             const docType = this.documentTypeFromProviderXml(payload.xml);
-            if (channel === 'OUT_EARSIV' && docType !== 'E_ARSIV') { providerSkipped++; return; }
-            if (channel === 'OUT_EFATURA' && docType === 'E_ARSIV') { providerSkipped++; return; }
-            if (channel === 'IN_EFATURA' && docType === 'E_ARSIV') { providerSkipped++; return; }
+            // ALIS kanali: entegratorun GELEN kutusundan ne geldiyse mukellefin alis belgesidir.
+            //   Tur tespiti bir gun yine yanilirsa fatura KAYBOLMASIN diye burada ELEME YAPILMAZ.
+            if (channel !== 'IN_EFATURA') {
+              const kanalDisi =
+                (channel === 'OUT_EARSIV' && docType !== 'E_ARSIV') ||
+                (channel === 'OUT_EFATURA' && docType === 'E_ARSIV');
+              if (kanalDisi) {
+                providerSkipped++;
+                const atlanan = `${parsed.faturaNo || payload.externalId || '?'}: ${docType} belgesi ${channel} kanalinda degil`;
+                atlananlar.push(atlanan);
+                this.logger.warn(`[${cfg.provider}] fatura atlandi — ${atlanan}`);
+                return;
+              }
+            }
             const uuid = String(payload.externalId || parsed.ettn || parsed.faturaNo || createHash('sha1').update(payload.xml).digest('hex'));
             const total = parsed.toplamTutar ?? ((parsed.matrah || 0) + (parsed.kdvTutari || 0));
             let existing = await (this.prisma as any).eFaturaInbox.findUnique({
@@ -4685,6 +4704,16 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           // Sayfalama yok: dönen adet limite ULAŞTIYSA dönemde daha fazla fatura olabilir — sessiz
           //   kırpma yerine görünür uyarı (kullanıcı limiti artırır ya da aralığı böler).
           ...(providerFetched >= limit ? { truncated: true, warning: `Sağlayıcı ${limit} kayıt sınırına ulaştı — dönemde daha fazla fatura olabilir; tarih aralığını bölerek tekrar sorgulayın.` } : {}),
+          // SESSIZ KAYIP ALARMI: entegratörden inen belge sayısı ile portala yazılan sayı tutmuyorsa
+          //   kullanıcı BUNU GÖRSÜN. (2026-08-20: BİM faturaları e-posta adresindeki "earsiv" kelimesi
+          //   yüzünden e-Arşiv sanılıp atılıyordu; ekranda hiçbir uyarı çıkmadığı için fark edilmiyordu.)
+          ...(atlananlar.length > 0
+            ? {
+                atlanan: atlananlar.length,
+                atlananlar: atlananlar.slice(0, 20),
+                warning: `${atlananlar.length} belge indirildi ama kaydedilmedi: ${atlananlar.slice(0, 3).join(' · ')}${atlananlar.length > 3 ? ' …' : ''}`,
+              }
+            : {}),
         });
       } catch (e: any) {
         failed++;
@@ -10458,8 +10487,23 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     return { created: true, document: doc };
   }
 
+  /**
+   * Belge turu (e-Fatura / e-Arsiv) tespiti.
+   *
+   * KOK DUZELTME (2026-08-20): eskiden TUM XML metninde "EARSIV|EARCHIVE" kelimesi araniyordu.
+   * BIM'in faturasindaki <cbc:ElectronicMail>earsiv@bim.com.tr</cbc:ElectronicMail> yuzunden
+   * GERCEK e-Faturalar e-Arsiv sanilip Alis e-Fatura kanalinda sessizce ATILIYORDU
+   * (GITO Temmuz 2026: entegrator 28 dondurdu, portala 25 girdi — 5 BIM faturasi kayip).
+   * Dogrusu: UBL-TR'de belge turunu ProfileID alani soyler (EARSIVFATURA / TEMELFATURA /
+   * TICARIFATURA / IHRACAT ...). Serbest metin (e-posta, adres, not) ASLA olcut degildir.
+   */
   private documentTypeFromProviderXml(xml: string) {
-    return /EARSIV|E-ARSIV|EARCHIVE|E-ARCHIVE/i.test(xml) ? 'E_ARSIV' : 'E_FATURA';
+    const profile = (xml.match(/<(?:[\w.-]+:)?ProfileID[^>]*>\s*([^<]+)</i) || [])[1] || '';
+    if (/EARSIV|EARCHIVE/i.test(profile)) return 'E_ARSIV';
+    // ProfileID e-arsiv demiyorsa yalniz BELGE TURU alanlarina bak (yine serbest metne degil).
+    if (/<(?:[\w.-]+:)?InvoiceTypeCode[^>]*>\s*EARSIV/i.test(xml)) return 'E_ARSIV';
+    if (/<(?:[\w.-]+:)?ArchiveInvoice/i.test(xml)) return 'E_ARSIV';
+    return 'E_FATURA';
   }
 
   private parseProviderUblInvoice(xml: string): ParsedProviderInvoice | null {
