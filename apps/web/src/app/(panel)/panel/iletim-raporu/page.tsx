@@ -15,7 +15,10 @@ import React, { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
-import { Loader2, Send, ClipboardList, AlertTriangle } from 'lucide-react';
+import {
+  Loader2, Send, ClipboardList, AlertTriangle,
+  Check, X, Clock, Ban, FlaskConical, Minus, Settings2,
+} from 'lucide-react';
 
 const GOLD = '#d4b876';
 const MUTED = 'rgba(250,250,249,0.45)';
@@ -64,50 +67,47 @@ function hucreIpucu(v: Hucre): string {
   return satirlar.join('\n');
 }
 
-function Cell({ v }: { v: Hucre | null }) {
-  const kutu = 'inline-flex h-[26px] min-w-[26px] items-center justify-center rounded-lg px-1 font-extrabold';
-  if (!v) {
-    return (
-      <span title="Bu ay bu kategoride belge yok" className={kutu} style={{ background: 'rgba(255,255,255,0.05)', color: 'rgba(255,255,255,0.35)' }}>
-        –
-      </span>
-    );
-  }
-  // BEKLİYOR: belge var, gönderim kaydı hiç yok — asıl aranan grup
-  if (v.status === 'BEKLIYOR') {
-    return (
-      <span title={hucreIpucu(v)} className={kutu} style={{ background: 'rgba(251,191,36,0.13)', color: '#fbbf24' }}>
-        ⏳
-      </span>
-    );
-  }
-  if (v.status === 'SENT') {
-    // Test modunda gönderim mükellefe ULAŞMADI — yeşil ✓ ile karıştırılmamalı
-    if (v.testMode) {
-      return (
-        <span title={hucreIpucu(v)} className={kutu} style={{ background: 'rgba(140,189,232,0.13)', color: '#8cbde8' }}>
-          T
-        </span>
-      );
-    }
-    return (
-      <span title={hucreIpucu(v)} className={kutu} style={{ background: 'rgba(34,197,94,0.13)', color: '#4ade80' }}>
-        ✓
-      </span>
-    );
-  }
-  if (v.status === 'SKIPPED') {
-    return (
-      <span title={hucreIpucu(v)} className={kutu} style={{ background: 'rgba(255,255,255,0.06)', color: TEXT2 }}>
-        ·
-      </span>
-    );
-  }
+/**
+ * Hücre görünümü — emoji/harf yerine NET İKON.
+ * Önceki hâlinde ⏳ ve "T" vardı; ikisi de ne anlama geldiği okunmadan
+ * anlaşılmıyordu ve satır yüksekliğini bozuyordu.
+ */
+const DURUMLAR = {
+  iletildi:   { ikon: Check,        renk: '#4ade80', zemin: 'rgba(34,197,94,0.14)',   cerceve: 'rgba(34,197,94,0.35)' },
+  hata:       { ikon: X,            renk: '#f87171', zemin: 'rgba(248,113,113,0.14)', cerceve: 'rgba(248,113,113,0.35)' },
+  kapali:     { ikon: Ban,          renk: '#fbbf24', zemin: 'rgba(251,191,36,0.14)',  cerceve: 'rgba(251,191,36,0.35)' },
+  bekliyor:   { ikon: Clock,        renk: '#fbbf24', zemin: 'rgba(251,191,36,0.14)',  cerceve: 'rgba(251,191,36,0.35)' },
+  test:       { ikon: FlaskConical, renk: '#8cbde8', zemin: 'rgba(140,189,232,0.14)', cerceve: 'rgba(140,189,232,0.35)' },
+  yok:        { ikon: Minus,        renk: 'rgba(255,255,255,0.28)', zemin: 'rgba(255,255,255,0.04)', cerceve: 'rgba(255,255,255,0.08)' },
+} as const;
+
+type DurumAnahtari = keyof typeof DURUMLAR;
+
+/** Hücrenin hangi görsel duruma karşılık geldiği — tek karar noktası */
+function hucreDurumu(v: Hucre | null): DurumAnahtari {
+  if (!v) return 'yok';
+  if (v.status === 'BEKLIYOR') return /kapalı|kapsam dışı|pasif/i.test(String(v.error || '')) ? 'kapali' : 'bekliyor';
+  if (v.status === 'SENT') return v.testMode ? 'test' : 'iletildi';
+  if (v.status === 'SKIPPED') return 'yok';
+  return 'hata';
+}
+
+function Rozet({ durum, ipucu, boyut = 26 }: { durum: DurumAnahtari; ipucu?: string; boyut?: number }) {
+  const d = DURUMLAR[durum];
+  const Ikon = d.ikon;
   return (
-    <span title={hucreIpucu(v)} className={kutu} style={{ background: 'rgba(248,113,113,0.13)', color: '#f87171' }}>
-      !
+    <span
+      title={ipucu}
+      className="inline-flex items-center justify-center rounded-full border"
+      style={{ width: boyut, height: boyut, background: d.zemin, borderColor: d.cerceve, color: d.renk }}
+    >
+      <Ikon size={Math.round(boyut * 0.54)} strokeWidth={2.6} />
     </span>
   );
+}
+
+function Cell({ v }: { v: Hucre | null }) {
+  return <Rozet durum={hucreDurumu(v)} ipucu={v ? hucreIpucu(v) : 'Bu ay bu kategoride belge yok'} />;
 }
 
 function Stat({ n, label, color, sub }: { n: number; label: string; color: string; sub?: string }) {
@@ -157,6 +157,42 @@ export default function IletimRaporuPage() {
   const totals = data?.totals || { total: 0, sent: 0, failed: 0, badContact: 0, bekleyen: 0, testGonderim: 0 };
   const tumRows: any[] = data?.taxpayers || [];
 
+  /**
+   * SATIR ÖZETİ — durum sütununda ne yazacağını tek yerde karar verir.
+   *
+   * Eski hâlinde sebep cümlesi ("Gönderilmedi · kategori kapalı (Ayarlar >
+   * Akıllı Bildirim)") HER SATIRDA tam olarak yazılıyordu. 82 satırın hepsinde
+   * aynı cümle olduğu için sütun iki satıra taşıyor ve tabloyu okunmaz
+   * hâle getiriyordu. Artık satırda KISA etiket var, tam cümle üstüne
+   * gelince; tekrar eden sebep ise tablonun üstünde TEK bandda yazıyor.
+   */
+  const satirOzeti = (r: any): { durum: DurumAnahtari; kisa: string; tam: string } => {
+    const bekleyen = KATEGORI_COLS.filter((k) => r[k.key]?.status === 'BEKLIYOR');
+    const hatali = KATEGORI_COLS.filter((k) => r[k.key]?.status === 'FAILED');
+    const testli = KATEGORI_COLS.filter((k) => r[k.key]?.status === 'SENT' && r[k.key]?.testMode);
+
+    if (hatali.length) {
+      const iletisim = hatali.some((k) => String(r[k.key]?.error || '').startsWith('ILETISIM-'));
+      const tam = hatali.map((k) => `${k.label}: ${sebepMetni(r[k.key]?.error)}`).join('\n');
+      return {
+        durum: 'hata',
+        kisa: iletisim ? 'İletişim eksik' : hatali.length > 1 ? `${hatali.length} iletilemedi` : 'İletilemedi',
+        tam,
+      };
+    }
+    if (bekleyen.length) {
+      const sebep = sebepMetni(r[bekleyen[0].key]?.error);
+      const kapali = /kapalı|kapsam dışı|pasif/i.test(sebep);
+      return {
+        durum: kapali ? 'kapali' : 'bekliyor',
+        kisa: kapali ? 'Kapalı' : 'Bekliyor',
+        tam: bekleyen.map((k) => `${k.label}: ${sebepMetni(r[k.key]?.error)}`).join('\n'),
+      };
+    }
+    if (testli.length) return { durum: 'test', kisa: 'Test', tam: 'Test alıcısına gitti, mükellef almadı' };
+    return { durum: 'iletildi', kisa: 'Tamam', tam: 'Tüm belgeler mükellefe iletildi' };
+  };
+
   const sorunluMu = (r: any) =>
     KATEGORI_COLS.some((k) => r[k.key] && r[k.key].status !== 'SENT') ||
     KATEGORI_COLS.some((k) => r[k.key]?.status === 'SENT' && r[k.key]?.testMode);
@@ -166,6 +202,25 @@ export default function IletimRaporuPage() {
     [tumRows, yalnizSorunlu],
   );
   const sorunluSayisi = useMemo(() => tumRows.filter(sorunluMu).length, [tumRows]);
+
+  /**
+   * BASKIN SEBEP — tek bir ayar yüzünden yüzlerce satır aynı şeyi yazıyorsa
+   * o cümle satırlara değil, tablonun üstüne aittir.
+   */
+  const baskinSebep = useMemo(() => {
+    const say = new Map<string, number>();
+    for (const r of tumRows) {
+      for (const k of KATEGORI_COLS) {
+        const h = r[k.key];
+        if (h?.status !== 'BEKLIYOR') continue;
+        const s = sebepMetni(h.error);
+        say.set(s, (say.get(s) || 0) + 1);
+      }
+    }
+    const en = [...say].sort((a, b) => b[1] - a[1])[0];
+    // yalnız gerçekten tekrar eden bir sebep varsa banda çıkar
+    return en && en[1] >= 5 ? { sebep: en[0], adet: en[1] } : null;
+  }, [tumRows]);
 
   return (
     <div className="mx-auto max-w-6xl space-y-5 pb-12">
@@ -208,8 +263,19 @@ export default function IletimRaporuPage() {
           <AlertTriangle size={16} className="mt-0.5 flex-shrink-0" />
           <span>
             <b>{totals.testGonderim} gönderim test modunda</b> yapıldı — belgeler mükellefe değil, test
-            numarasına/e-postasına gitti. Tabloda <b style={{ color: '#8cbde8' }}>T</b> ile gösterilir ve
+            numarasına/e-postasına gitti. Tabloda deney şişesi simgesiyle gösterilir ve
             &quot;iletildi&quot; sayılmaz. Gerçek gönderim için Ayarlar &gt; Akıllı Bildirim&apos;de test modunu kapatın.
+          </span>
+        </div>
+      )}
+
+      {/* Tekrar eden sebep tek yerde — satırlarda 82 kez yazılmasına gerek yok */}
+      {baskinSebep && (
+        <div className="flex items-start gap-2.5 rounded-2xl border p-4 text-[12.5px]" style={{ borderColor: 'rgba(251,191,36,0.28)', background: 'rgba(251,191,36,0.05)', color: '#fbbf24' }}>
+          <Settings2 size={16} className="mt-0.5 flex-shrink-0" />
+          <span>
+            <b>{baskinSebep.adet} gönderim</b> aynı sebeple bekliyor: <b>{baskinSebep.sebep}</b>.
+            Tabloda bu satırlar <b>Kapalı</b> olarak işaretli.
           </span>
         </div>
       )}
@@ -257,55 +323,48 @@ export default function IletimRaporuPage() {
               : 'Bu ay ne gönderim kaydı ne de gönderilecek belge var. Gönderimler Ayarlar > Akıllı Bildirim’den yönetilir.'}
           </div>
         ) : (
-          <table className="w-full border-collapse text-[13px]">
+// table-fixed + colgroup: uzun ünvan sütunları itip durumu ekran dışına
+          // taşımasın. Durum sütunu SABİT dar — eskiden serbest genişlikteydi ve
+          // uzun sebep cümlesi tabloyu eziyordu.
+          <table className="w-full min-w-[640px] table-fixed border-collapse text-[13px]">
+            <colgroup>
+              <col />
+              <col style={{ width: 74 }} />
+              <col style={{ width: 74 }} />
+              <col style={{ width: 90 }} />
+              <col style={{ width: 152 }} />
+            </colgroup>
             <thead>
-              <tr>
-                <th className="border-b px-3 py-2.5 text-left text-[11px] font-medium uppercase tracking-wider" style={{ color: MUTED, borderColor: 'rgba(255,255,255,0.1)' }}>Mükellef</th>
+              <tr style={{ background: 'rgba(212,184,118,0.05)' }}>
+                <th className="border-b px-3 py-2.5 text-left text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: GOLD, borderColor: 'rgba(212,184,118,0.2)' }}>Mükellef</th>
                 {KATEGORI_COLS.map((k) => (
-                  <th key={k.key} className="border-b px-3 py-2.5 text-left text-[11px] font-medium uppercase tracking-wider" style={{ color: MUTED, borderColor: 'rgba(255,255,255,0.1)' }}>{k.label}</th>
+                  <th key={k.key} className="border-b px-3 py-2.5 text-center text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: GOLD, borderColor: 'rgba(212,184,118,0.2)' }}>{k.label}</th>
                 ))}
-                <th className="border-b px-3 py-2.5 text-right text-[11px] font-medium uppercase tracking-wider" style={{ color: MUTED, borderColor: 'rgba(255,255,255,0.1)' }}>Durum</th>
+                <th className="border-b px-3 py-2.5 text-right text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: GOLD, borderColor: 'rgba(212,184,118,0.2)' }}>Durum</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((r) => {
-                const bekleyen = KATEGORI_COLS.filter((k) => r[k.key]?.status === 'BEKLIYOR');
-                const hatali = KATEGORI_COLS.filter((k) => r[k.key]?.status === 'FAILED');
-                const testli = KATEGORI_COLS.filter((k) => r[k.key]?.status === 'SENT' && r[k.key]?.testMode);
-                // Sebep artık sabit koddan okunuyor; serbest metin araması
-                // metin değiştiği anda sessizce bozuluyordu.
-                const iletisimHata = hatali.some((k) => String(r[k.key]?.error || '').startsWith('ILETISIM-'));
-                // Neden gönderilmediği ROZETİN İÇİNDE yazsın — kullanıcının
-                // hücrenin üstüne gelmesi gerekmesin.
-                const bekleyenSebep = bekleyen.length ? sebepMetni(r[bekleyen[0].key]?.error) : null;
+                const ozet = satirOzeti(r);
+                const d = DURUMLAR[ozet.durum];
                 return (
-                  <tr key={r.taxpayerId}>
-                    <td className="border-b px-3 py-2.5 text-white" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>{r.unvan}</td>
+                  <tr key={r.taxpayerId} className="transition hover:bg-white/[0.02]">
+                    <td className="border-b px-3 py-2.5" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+                      <span className="block truncate text-white" title={r.unvan}>{r.unvan}</span>
+                    </td>
                     {KATEGORI_COLS.map((k) => (
-                      <td key={k.key} className="border-b px-3 py-2.5" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+                      <td key={k.key} className="border-b px-3 py-2.5 text-center" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
                         <Cell v={r[k.key]} />
                       </td>
                     ))}
                     <td className="border-b px-3 py-2.5 text-right" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-                      {bekleyen.length > 0 ? (
-                        <span className="rounded-full px-3 py-0.5 text-[11.5px] font-bold" style={{ background: 'rgba(251,191,36,0.12)', color: '#fbbf24' }}>
-                          Gönderilmedi · {bekleyenSebep}
-                        </span>
-                      ) : iletisimHata ? (
-                        <span className="rounded-full px-3 py-0.5 text-[11.5px] font-bold" style={{ background: 'rgba(251,191,36,0.12)', color: '#fbbf24' }}>İletişim bilgisi eksik</span>
-                      ) : hatali.length > 0 ? (
-                        <span
-                          title={sebepMetni(r[hatali[0].key]?.error)}
-                          className="rounded-full px-3 py-0.5 text-[11.5px] font-bold"
-                          style={{ background: 'rgba(248,113,113,0.12)', color: '#f87171' }}
-                        >
-                          {hatali.length} iletilemedi
-                        </span>
-                      ) : testli.length > 0 ? (
-                        <span className="rounded-full px-3 py-0.5 text-[11.5px] font-bold" style={{ background: 'rgba(140,189,232,0.12)', color: '#8cbde8' }}>Test gönderimi</span>
-                      ) : (
-                        <span className="rounded-full px-3 py-0.5 text-[11.5px] font-bold" style={{ background: 'rgba(34,197,94,0.12)', color: '#4ade80' }}>Tamam</span>
-                      )}
+                      <span
+                        title={ozet.tam}
+                        className="inline-flex max-w-full items-center gap-1.5 truncate rounded-full border px-2.5 py-1 text-[11px] font-bold"
+                        style={{ background: d.zemin, borderColor: d.cerceve, color: d.renk }}
+                      >
+                        {ozet.kisa}
+                      </span>
                     </td>
                   </tr>
                 );
@@ -313,12 +372,20 @@ export default function IletimRaporuPage() {
             </tbody>
           </table>
         )}
-        <div className="mt-3 flex flex-wrap gap-4 text-[11.5px]" style={{ color: MUTED }}>
-          <span><span style={{ color: '#4ade80' }}>✓</span> mükellefe iletildi</span>
-          <span><span style={{ color: '#8cbde8' }}>T</span> test alıcısına gitti (mükellef almadı)</span>
-          <span><span style={{ color: '#f87171' }}>!</span> denendi, iletilemedi</span>
-          <span><span style={{ color: '#fbbf24' }}>⏳</span> belge var, hiç gönderilmedi</span>
-          <span>– bu kategoride belge yok</span>
+<div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-2.5 text-[11.5px]" style={{ color: MUTED }}>
+          {([
+            ['iletildi', 'mükellefe iletildi'],
+            ['test', 'test alıcısına gitti — mükellef almadı'],
+            ['hata', 'denendi, iletilemedi'],
+            ['kapali', 'kategori kapalı / kapsam dışı'],
+            ['bekliyor', 'belge var, hiç gönderilmedi'],
+            ['yok', 'bu kategoride belge yok'],
+          ] as Array<[DurumAnahtari, string]>).map(([k, metin]) => (
+            <span key={k} className="inline-flex items-center gap-1.5">
+              <Rozet durum={k} boyut={18} />
+              {metin}
+            </span>
+          ))}
         </div>
       </div>
     </div>
