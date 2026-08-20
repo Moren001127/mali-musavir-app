@@ -14159,19 +14159,70 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         // saleMatrahDefault devreye girer (ikisi de tevkPay'e bakar, yani doğru tarafı seçer).
         // NOT: planda yalnız tek taraf varsa (örn. hiç tevkifatsız 600 yok) fallback yine aynı hesabı
         // döndürür — kayıp olmaz, sadece kaynak KURAL olur.
-        if (m && isSale && !isReturn && !faDet.is) {
+        // ALIŞ TARAFI DA AYNI KURALA TABİ (kullanıcı bulgusu 2026-08-20, YORGUN NAKLİYAT /
+        //   BARANLAR BRN2026000000492): fatura TEVKİFATLI (tevkifatOrani 0,2 · tevkifat KDV 800 ·
+        //   360.01.001 ÖDENECEK KDV 2 satırı kurulmuş) ama matrah "740.01.004 NAKLİYE GİDERİ"ne
+        //   yazılmış; mükellefin planında "740.01.003 NAKLİYE GİDERLERİ TEVKİFATLI" DURUYOR.
+        //   Alışta gider hesabını AI içerik-benzerliğiyle seçiyor ve tevkifatı hiç dikkate almıyordu.
+        //   ÇÖZÜM: aynı grupta, adı benzeyen ama tevkifat durumu DOĞRU olan "kardeş" hesap varsa ona geç.
+        //   Kardeş yoksa satışta eski davranış (kodu bırak, tevkifat-farkında havuz seçsin); alışta
+        //   güvenli tarafta kal (hesabı BOŞALTMA — planda tek karşılık olabilir), yalnız uyar.
+        const _tevkifatKardesi = (acc: any, istenenTevkifat: boolean) => {
+          try {
+            const kod = String(acc?.accountCode || '');
+            const grup = kod.split('.').slice(0, 2).join('.') + '.';
+            const adaylar = accounts.filter((a: any) => {
+              const c = String(a.accountCode || '');
+              return c.startsWith(grup) && c !== kod && isPostableLeaf(c)
+                && this.isTevkifatAccountName(String(a.accountName || '')) === istenenTevkifat;
+            });
+            if (!adaylar.length) return null;
+            // Ad benzerliği: "tevkifat" ve GENEL muhasebe kelimeleri dışındaki AYIRT EDİCİ kelimeler
+            //   ne kadar örtüşüyor? (Regresyon testi yakaladı: "gider/giderleri" gibi genel kelimeler
+            //   "ARAÇ YAKIT GİDERLERİ"ni "NAKLİYE GİDERLERİ TEVKİFATLI" ile eşleştiriyordu.)
+            const _genelKelime = new Set([
+              'gider', 'giderler', 'giderleri', 'gideri', 'gelir', 'gelirler', 'gelirleri', 'geliri',
+              'satis', 'satislar', 'satislari', 'maliyet', 'maliyeti', 'hesap', 'hesabi',
+              'tutar', 'tutari', 'odenecek', 'indirilecek', 'hesaplanan', 'sorumlu', 'yurtici',
+            ]);
+            const kelimeler = this.norm(String(acc?.accountName || ''))
+              .split(/\s+/)
+              .filter((w: string) => w.length > 3 && !/tevk/i.test(w) && !_genelKelime.has(w));
+            let best: any = null; let bestScore = 0;
+            for (const a of adaylar) {
+              const ad = this.norm(String(a.accountName || ''));
+              const score = kelimeler.reduce((s: number, w: string) => s + (ad.includes(w) ? 1 : 0), 0);
+              if (score > bestScore) { bestScore = score; best = a; }
+            }
+            return bestScore > 0 ? best : null; // ad GERÇEKTEN benzemiyorsa geçiş yapma
+          } catch { return null; }
+        };
+        if (m && !isReturn && !faDet.is) {
           const _kod = String((m as any).accountCode || '');
-          if (_kod.startsWith('600')) {
-            const _ad = String((m as any).accountName || '');
-            const _hesapTevkifatli = this.isTevkifatAccountName(_ad); // Turkce 'İ' dahil; X/10 oranini da kapsar
-            const _belgeTevkifatli = tevkPay >= 1;
-            if (_hesapTevkifatli !== _belgeTevkifatli) {
+          const _ad = String((m as any).accountName || '');
+          const _hesapTevkifatli = this.isTevkifatAccountName(_ad); // Turkce 'İ' dahil; X/10 oranini da kapsar
+          const _belgeTevkifatli = tevkPay >= 1;
+          if (_hesapTevkifatli !== _belgeTevkifatli) {
+            const _kardes = _tevkifatKardesi(m, _belgeTevkifatli);
+            if (_kardes) {
+              this.logger.log(
+                `[TEVKIFAT-UYUM] ${doc.belgeNo || doc.id}: belge ${_belgeTevkifatli ? 'TEVKIFATLI' : 'tevkifatsiz'} `
+                + `ama hesap "${_kod} ${_ad}" degil -> kardes hesaba gecildi: "${_kardes.accountCode} ${_kardes.accountName}"`,
+              );
+              m = leafOnly(_kardes) || m;
+              mKaynak = 'KURAL';
+            } else if (isSale && _kod.startsWith('600')) {
               this.logger.warn(
-                `[TEVKIFAT-UYUM] ${doc.belgeNo || doc.id}: matrah hesabi "${_kod} ${_ad}" belgenin tevkifat durumuyla uyusmuyor ` +
-                `(belge ${_belgeTevkifatli ? 'TEVKIFATLI' : 'tevkifatsiz'}, hesap ${_hesapTevkifatli ? 'TEVKIFATLI' : 'tevkifatsiz'}) — kod reddedildi, tevkifat-farkinda secim uygulanacak`,
+                `[TEVKIFAT-UYUM] ${doc.belgeNo || doc.id}: satis matrah hesabi "${_kod} ${_ad}" belgenin tevkifat durumuyla uyusmuyor `
+                + `(belge ${_belgeTevkifatli ? 'TEVKIFATLI' : 'tevkifatsiz'}) — kod reddedildi, tevkifat-farkinda secim uygulanacak`,
               );
               m = null;
               mKaynak = null;
+            } else {
+              this.logger.warn(
+                `[TEVKIFAT-UYUM] ${doc.belgeNo || doc.id}: belge ${_belgeTevkifatli ? 'TEVKIFATLI' : 'tevkifatsiz'} `
+                + `ama hesap "${_kod} ${_ad}" degil; planda uygun kardes hesap YOK -> mevcut hesap korundu`,
+              );
             }
           }
         }

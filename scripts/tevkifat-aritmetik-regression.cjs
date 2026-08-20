@@ -82,5 +82,53 @@ for (const v of vakalar) {
   if (s === v.bekle) console.log(`  \u2713 ${v.ad} -> ${s ? 'tevkifatli' : 'tevkifatsiz'}`);
   else { console.error(`  \u2717 ${v.ad} -> ${s} (beklenen ${v.bekle})`); hata++; }
 }
+
+// ─── KARDES HESAP SECIMI (2026-08-20, YORGUN NAKLIYAT / BARANLAR BRN2026000000492) ───
+// Fatura TEVKIFATLI (tevkifatOrani 0,2 · 360 satiri kurulmus) ama matrah "740.01.004 NAKLIYE
+// GIDERI"ne yazilmisti; planda "740.01.003 NAKLIYE GIDERLERI TEVKIFATLI" duruyordu. Alista gider
+// hesabi AI icerik-benzerligiyle seciliyor ve tevkifati hic dikkate almiyordu.
+const isTevk = (ad) => /tevk[iıİ]fat/i.test(String(ad||'')) || /(?:10|[1-9])\s*\/\s*10/.test(String(ad||''));
+const norm = (s) => String(s||'').toLocaleLowerCase('tr').replace(/[^a-z0-9çğıöşü ]/gi,' ').replace(/\s+/g,' ').trim();
+function kardesSec(plan, kod, istenen) {
+  const acc = plan.find((a) => a.k === kod);
+  if (!acc) return null;
+  const grup = kod.split('.').slice(0,2).join('.') + '.';
+  const adaylar = plan.filter((a) => a.k.startsWith(grup) && a.k !== kod && isTevk(a.a) === istenen);
+  if (!adaylar.length) return null;
+  const GENEL = new Set(['gider','giderler','giderleri','gideri','gelir','gelirler','gelirleri','geliri',
+    'satis','satislar','satislari','maliyet','maliyeti','hesap','hesabi','tutar','tutari',
+    'odenecek','indirilecek','hesaplanan','sorumlu','yurtici']);
+  const kelimeler = norm(acc.a).split(/\s+/).filter((w) => w.length > 3 && !/tevk/i.test(w) && !GENEL.has(w));
+  let best = null, bestScore = 0;
+  for (const a of adaylar) {
+    const ad = norm(a.a);
+    const sc = kelimeler.reduce((s,w) => s + (ad.includes(w) ? 1 : 0), 0);
+    if (sc > bestScore) { bestScore = sc; best = a; }
+  }
+  return bestScore > 0 ? best.k : null;
+}
+
+const PLAN = [
+  { k: '740.01.001', a: 'ARAÇ YAKIT GİDERLERİ' },
+  { k: '740.01.002', a: 'ARAÇ BAKIM ONARIM GİDERLERİ' },
+  { k: '740.01.003', a: 'NAKLİYE GİDERLERİ TEVKİFATLI' },
+  { k: '740.01.004', a: 'NAKLİYE GİDERİ' },
+  { k: '740.01.005', a: 'KOMİSYON GİDERLERİ' },
+  { k: '600.01.003', a: 'TEVKIFATLI NAKLİYE GELİRLERİ %20' },
+  { k: '600.01.004', a: 'NAKLİYE GELİRLERİ %20' },
+];
+
+const kVakalar = [
+  { ad: 'ALIS tevkifatli — NAKLIYE GIDERI -> TEVKIFATLI kardes (GERCEK VAKA)', kod: '740.01.004', istenen: true,  bekle: '740.01.003' },
+  { ad: 'ALIS tevkifatsiz — TEVKIFATLI hesaptan normale don',                  kod: '740.01.003', istenen: false, bekle: '740.01.004' },
+  { ad: 'SATIS tevkifatsiz — TEVKIFATLI gelirden normale don (GULSEN)',        kod: '600.01.003', istenen: false, bekle: '600.01.004' },
+  { ad: 'Alakasiz hesap (YAKIT) — tevkifatli kardes YOK, gecis YAPMA',         kod: '740.01.001', istenen: true,  bekle: null },
+  { ad: 'KOMISYON — tevkifatli kardes YOK, gecis YAPMA',                       kod: '740.01.005', istenen: true,  bekle: null },
+];
+for (const v of kVakalar) {
+  const s = kardesSec(PLAN, v.kod, v.istenen);
+  if (s === v.bekle) console.log(`  ✓ ${v.ad} -> ${s || 'gecis yok'}`);
+  else { console.error(`  ✗ ${v.ad} -> ${s} (beklenen ${v.bekle})`); hata++; }
+}
 if (hata) process.exit(1);
-console.log('[tevkifat-aritmetik-regression] OK: kelime ipucu aritmetigi ezemiyor');
+console.log('[tevkifat-aritmetik-regression] OK: kelime ipucu aritmetigi ezemiyor + kardes hesap secimi dogru');
