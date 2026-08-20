@@ -13802,7 +13802,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             if (!leaves.length) continue;
             categoryGroupLeaves = leaves; // ORAN-bazlı seçim için sakla (giderTuru eşleşse de)
             if (!categoryMatrah) {
-              const byName = giderTuru ? leaves.find((a: any) => this.nameMatchScore(giderTuru, String(a.accountName || '')) > 0) : null;
+              // 2026-08-20: burada da FİRMA ADI eşleştirici (nameMatchScore) kullanılıyordu; sektör
+              //   kelimelerini (nakliye/lojistik/taşımacılık/hizmet) eleyip attığı için nakliye
+              //   firmasında "nakliye taşıma" ↔ "NAKLİYE GİDERİ" hiç bulunamıyor, hesap BOŞ kalıyordu.
+              //   Gider türü için sektör-koruyan karşılaştırma kullanılır (silme tarafıyla simetrik).
+              const byName = giderTuru ? leaves.find((a: any) => this.giderTuruHesapUyumlu(giderTuru, String(a.accountName || ''))) : null;
               if (byName) {
                 categoryMatrah = byName; // içerik ↔ hesap adı birebir → kesin ata
               } else if (/^15/.test(key)) {

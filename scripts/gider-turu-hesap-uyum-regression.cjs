@@ -19,7 +19,15 @@ if (!/giderTuruHesapUyumlu/.test(src)) {
   process.exit(1);
 }
 if (/const typeOk = !!giderTuru && this\.nameMatchScore\(/.test(src)) {
-  console.error('HATA: gider turu kontrolu yine FIRMA ADI eslestiriciye (nameMatchScore) baglanmis.');
+  console.error('HATA: gider turu SILME kontrolu yine nameMatchScore ile yapiliyor.');
+  process.exit(1);
+}
+if (/leaves\.find\(\(a: any\) => this\.nameMatchScore\(giderTuru/.test(src)) {
+  console.error('HATA: gider turu DOLDURMA yolu yine nameMatchScore ile yapiliyor (sektor kelimeleri eleniyor).');
+  process.exit(1);
+}
+if ((src.match(/giderTuruHesapUyumlu/g) || []).length < 3) {
+  console.error('HATA: giderTuruHesapUyumlu her iki cagri yerinde de kullanilmali (tanim + silme + doldurma).');
   process.exit(1);
 }
 
