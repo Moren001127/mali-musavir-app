@@ -1096,10 +1096,14 @@ export class FisYazdirmaService {
     const DISPLAY_W_CM = (usableCM / COLS) - 0.2;
     const DISPLAY_W    = Math.round((DISPLAY_W_CM / 2.54) * 96);
 
-    // Tarih etiketi + aralık payı. 13pt idi; fiş başına 1,1 cm demekti ve
-    // 456 fişte ~18 sayfalık YER KAYBI ediyordu. 10pt hem baskıda okunur
-    // hem de fiş başına 0,3 cm kazandırıyor.
-    const TARIH_ETIKETI_PX = 30;
+    // Tarih etiketi + ayraç çizgisi + aralık payı.
+    // 13pt idi (fiş başına 1,1 cm = 456 fişte ~18 sayfa kayıp); 10pt'ye indi.
+    // Sütunda fişler alt alta akınca birbirine giriyordu, bu yüzden tarihin
+    // altına ince ayraç çizgisi ve biraz boşluk eklendi — payı da ona göre.
+    // 34 px SINIRDIR: ölçümde 34'te "Orta" 69 sayfa, 36'da 77 sayfaya
+    // fırlıyor. Ayraç çizgisi + boşluk bu bütçeye sığacak şekilde ayarlandı
+    // (önce 40 px denendi, 8 sayfaya mal oluyordu).
+    const TARIH_ETIKETI_PX = 34;
     const SAYFA_H_PX = Math.floor((PAGE_H_MM / 25.4) * 96);
     // Hiçbir fiş sayfadan uzun olamaz — olursa hiç basılamaz
     const SAYFA_H_PX_LIMIT = SAYFA_H_PX - TARIH_ETIKETI_PX;
@@ -1157,17 +1161,24 @@ export class FisYazdirmaService {
               }),
             ],
           }),
+          // TARİH + AYRAÇ. Sütun yerleşiminde fişler alt alta akıyor ve
+          // aralarında hiçbir sınır yoktu — "bitişik gibi duruyor" şikâyeti
+          // buydu. Tarih koyulaştırıldı, altına ince gri çizgi kondu ve
+          // sonraki fişten önce boşluk bırakıldı.
           new Paragraph({
             alignment: AlignmentType.CENTER,
-            spacing: { before: 40, after: 80 },
+            spacing: { before: 40, after: 120 },
+            border: {
+              // space PUNTO cinsinden — 6pt fiş başına ~8px yer yiyordu
+              bottom: { style: BorderStyle.SINGLE, size: 4, color: 'BBBBBB', space: 2 },
+            },
             children: [
-              // Bold yerine semibold tone — küçük puntoda harf birleşmesini önler
               new TextRun({
                 text: displayDate,
-                size: 20, // 10pt — tarih için yeterli, fiş başına yer kazandırır
-                bold: false,
+                size: 20, // 10pt
+                bold: true,
                 font: 'Arial',
-                color: '333333',
+                color: '111111',
               }),
             ],
           }),
