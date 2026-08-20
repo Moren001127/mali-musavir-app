@@ -74,6 +74,13 @@ export class FaturaKesController {
     return this.gib.gibeGonder(req.user.tenantId, id, { kuruTest, gibdeIsrar: body?.gibdeIsrar === true });
   }
 
+  /** GİB'deki belgenin KENDİ görüntüsünü getir (salt okuma; oluşturmaz/imzalamaz/silmez). */
+  @Post('taslak/:id/gorsel')
+  @HttpCode(HttpStatus.OK)
+  gorsel(@Req() req: any, @Param('id') id: string) {
+    return this.gib.gorseliTazele(req.user.tenantId, id);
+  }
+
   @Delete('taslak/:id')
   cancel(@Req() req: any, @Param('id') id: string) {
     return this.service.cancelDraft(req.user.tenantId, id);

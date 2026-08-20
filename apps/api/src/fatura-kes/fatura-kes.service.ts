@@ -293,7 +293,7 @@ export class FaturaKesService {
     if (!draft) throw new NotFoundException('Taslak bulunamadı');
     const taxpayer = await (this.prisma as any).taxpayer.findFirst({
       where: { id: draft.taxpayerId, tenantId },
-      select: { id: true, companyName: true, firstName: true, lastName: true, taxNumber: true },
+      select: { id: true, companyName: true, firstName: true, lastName: true, taxNumber: true, taxOffice: true, address: true, email: true, phone: true },
     });
     // GİB'de belge oluştuysa GERÇEK belgeyi göster; yoksa bizim önizlememizi.
     //   (gorselHtml gönderim anında, aynı GİB oturumunda alınır.)
@@ -379,49 +379,116 @@ export class FaturaKesService {
   }
 
   /** Basit, yazdırılabilir önizleme. GİB'e giden belge DEĞİL — yalnız kontrol içindir. */
+  /**
+   * ÖNİZLEME — GİB e-Arşiv Portalı'nın KENDİ fatura düzeni.
+   *
+   * Kullanıcı isteği (2026-08-20): "önizleme tıkladığımda açılan görüntü GİB e-Arşiv
+   * portaldaki gibi olsa". Düzen GİB'in kendi belgesinden birebir alındı: satıcı bloğu,
+   * kalın çizgiler, "e-Arşiv Fatura" başlığı, Özelleştirme No/Senaryo/Fatura Tipi/No/Tarih
+   * tablosu, ETTN satırı ve 11 sütunlu kalem tablosu.
+   *
+   * FARK AÇIKÇA GÖSTERİLİR: bu belge GİB'de HENÜZ OLUŞMADIĞI için karekod ve fatura
+   * numarası YOKTUR; GİB'in "İMZASIZ" filigranının yerinde "TASLAK" filigranı durur.
+   * Belge GİB'de oluştuysa zaten GERÇEK GİB görüntüsü gösterilir, bu düzen kullanılmaz.
+   */
   private onizleme(d: any, taxpayer?: any): string {
     const tl = (n: any) => Number(n).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    const tarih = new Date(d.faturaTarihi).toLocaleDateString('tr-TR');
-    const esc = (s: any) => String(s ?? '').replace(/[<>&]/g, (m) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[m] as string));
+    const t = new Date(d.faturaTarihi);
+    const ik = (n: number) => String(n).padStart(2, '0');
+    const tarih = `${ik(t.getDate())}-${ik(t.getMonth() + 1)}-${t.getFullYear()}`;
+    const esc = (x: any) => String(x ?? '').replace(/[<>&]/g, (m) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[m] as string));
+    const tckn = String(d.aliciVkn || '').replace(/\D/g, '').length === 11;
+    const cizgi = 'border-top:3px solid #111;margin:10px 0';
+    const hucre = 'border:1px solid #999;padding:6px 8px;font-size:12px';
+    const bas = 'border:1px solid #999;padding:6px 8px;font-size:12px;font-weight:700;text-align:center;background:#fff';
+
     return `<!doctype html><meta charset="utf-8">
-<div style="font-family:system-ui,Segoe UI,sans-serif;max-width:720px;margin:24px auto;color:#1c1917">
-  <div style="border:1px solid #e7e5e4;border-radius:12px;padding:24px">
-    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px">
-      <div>
-        <div style="font-size:12px;color:#78716c;letter-spacing:.08em">SATICI</div>
-        <div style="font-weight:600;font-size:15px">${esc(this.mukellefAdi(taxpayer))}</div>
-        <div style="font-size:13px;color:#57534e">VKN ${esc(taxpayer?.taxNumber || '')}</div>
-      </div>
-      <div style="text-align:right">
-        <div style="font-size:12px;color:#78716c;letter-spacing:.08em">TASLAK — GÖNDERİLMEDİ</div>
-        <div style="font-size:13px;color:#57534e">Tarih: ${esc(tarih)}</div>
-      </div>
+<div style="font-family:'Times New Roman',Georgia,serif;color:#111;background:#fff;padding:18px 22px;position:relative">
+  <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none">
+    <div style="transform:rotate(-32deg);font-size:96px;font-weight:700;color:rgba(239,68,68,.35);letter-spacing:6px">TASLAK</div>
+  </div>
+
+  <div style="${cizgi}"></div>
+  <div style="display:flex;gap:18px;align-items:flex-start">
+    <div style="flex:1.2;font-size:13px;line-height:1.45">
+      <div style="font-weight:700">${esc(this.mukellefAdi(taxpayer))}</div>
+      ${taxpayer?.address ? `<div>${esc(taxpayer.address)}</div>` : ''}
+      <div>Tel: ${esc(taxpayer?.phone || '')} Fax:</div>
+      <div>Web Sitesi:</div>
+      <div>E-Posta: ${esc(taxpayer?.email || '')}</div>
+      <div>Vergi Dairesi: ${esc(taxpayer?.taxOffice || '')}</div>
+      <div>VKN: ${esc(taxpayer?.taxNumber || '')}</div>
     </div>
-    <div style="margin-top:18px;padding-top:18px;border-top:1px solid #f5f5f4">
-      <div style="font-size:12px;color:#78716c;letter-spacing:.08em">ALICI</div>
-      <div style="font-weight:600">${esc(d.aliciUnvan)}</div>
-      <div style="font-size:13px;color:#57534e">VKN/TCKN ${esc(d.aliciVkn)}${d.aliciVd ? ' · ' + esc(d.aliciVd) : ''}</div>
-      ${d.aliciAdres ? `<div style="font-size:13px;color:#57534e">${esc(d.aliciAdres)}</div>` : ''}
+    <div style="flex:.8;text-align:center;padding-top:26px">
+      <div style="font-size:19px;font-weight:700">e-Arşiv Fatura</div>
     </div>
-    <table style="width:100%;margin-top:18px;border-collapse:collapse;font-size:14px">
-      <thead><tr style="background:#fafaf9">
-        <th style="text-align:left;padding:8px 10px;font-weight:600">Açıklama</th>
-        <th style="text-align:right;padding:8px 10px;font-weight:600">Miktar</th>
-        <th style="text-align:right;padding:8px 10px;font-weight:600">Tutar</th>
-      </tr></thead>
-      <tbody><tr>
-        <td style="padding:10px;border-top:1px solid #f5f5f4">${esc(d.aciklama)}</td>
-        <td style="padding:10px;border-top:1px solid #f5f5f4;text-align:right">${tl(d.miktar)} ${esc(d.birim)}</td>
-        <td style="padding:10px;border-top:1px solid #f5f5f4;text-align:right">${tl(d.matrah)} ₺</td>
-      </tr></tbody>
-    </table>
-    <div style="margin-top:14px;margin-left:auto;width:260px;font-size:14px">
-      <div style="display:flex;justify-content:space-between;padding:4px 0"><span style="color:#57534e">Matrah</span><span>${tl(d.matrah)} ₺</span></div>
-      <div style="display:flex;justify-content:space-between;padding:4px 0"><span style="color:#57534e">KDV %${d.kdvOrani}</span><span>${tl(d.kdvTutari)} ₺</span></div>
-      <div style="display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid #e7e5e4;font-weight:600"><span>Toplam</span><span>${tl(d.toplam)} ₺</span></div>
+    <div style="flex:.9;text-align:right">
+      <div style="display:inline-block;width:150px;height:150px;border:1px dashed #bbb;color:#999;font-size:11px;font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;text-align:center;padding:8px">
+        Karekod<br />GİB'de belge oluşunca gelir
+      </div>
     </div>
   </div>
-  <div style="margin-top:10px;font-size:12px;color:#a8a29e">Bu bir ÖNİZLEMEDİR; hiçbir yere gönderilmemiştir.</div>
+  <div style="${cizgi}"></div>
+
+  <div style="display:flex;gap:18px;align-items:flex-start;margin-top:8px">
+    <div style="flex:1.4;font-size:13px;line-height:1.45">
+      <div style="font-weight:700">SAYIN</div>
+      <div>${esc(d.aliciUnvan)}</div>
+      ${d.aliciAdres ? `<div>${esc(d.aliciAdres)}</div>` : ''}
+      <div>Web Sitesi:</div>
+      <div>E-Posta: ${esc(d.aliciEposta || '')}</div>
+      <div>Tel: Fax:</div>
+      <div>Vergi Dairesi: ${esc(d.aliciVd || '')}</div>
+      <div>${tckn ? 'TCKN' : 'VKN'}: ${esc(d.aliciVkn)}</div>
+    </div>
+    <div style="flex:1">
+      <table style="width:100%;border-collapse:collapse">
+        <tr><td style="${hucre};font-weight:700">Özelleştirme No:</td><td style="${hucre}">TR1.2</td></tr>
+        <tr><td style="${hucre};font-weight:700">Senaryo:</td><td style="${hucre}">EARSIVFATURA</td></tr>
+        <tr><td style="${hucre};font-weight:700">Fatura Tipi:</td><td style="${hucre}">SATIS</td></tr>
+        <tr><td style="${hucre};font-weight:700">Fatura No:</td><td style="${hucre};color:#999">GİB verecek</td></tr>
+        <tr><td style="${hucre};font-weight:700">Fatura Tarihi:</td><td style="${hucre}">${esc(tarih)}</td></tr>
+      </table>
+    </div>
+  </div>
+  <div style="${cizgi}"></div>
+  <div style="font-size:13px"><b>ETTN:</b> <span style="color:#999">GİB verecek</span></div>
+
+  <table style="width:100%;border-collapse:collapse;margin-top:12px">
+    <thead><tr>
+      <th style="${bas}">Sıra No</th><th style="${bas}">Mal Hizmet</th><th style="${bas}">Miktar</th>
+      <th style="${bas}">Birim Fiyat</th><th style="${bas}">İskonto/<br/>Arttırım Oranı</th>
+      <th style="${bas}">İskonto/<br/>Arttırım Tutarı</th><th style="${bas}">İskonto/<br/>Arttırım Nedeni</th>
+      <th style="${bas}">KDV Oranı</th><th style="${bas}">KDV Tutarı</th>
+      <th style="${bas}">Diğer Vergiler</th><th style="${bas}">Mal Hizmet Tutarı</th>
+    </tr></thead>
+    <tbody><tr>
+      <td style="${hucre};text-align:center">1</td>
+      <td style="${hucre}">${esc(d.aciklama)}</td>
+      <td style="${hucre};text-align:right">${tl(d.miktar)} ${esc(d.birim)}</td>
+      <td style="${hucre};text-align:right">${tl(Number(d.miktar) > 0 ? Number(d.matrah) / Number(d.miktar) : d.matrah)} TL</td>
+      <td style="${hucre};text-align:right">%0,00</td>
+      <td style="${hucre};text-align:right">0,00 TL</td>
+      <td style="${hucre}">İskonto -</td>
+      <td style="${hucre};text-align:right">%${tl(d.kdvOrani)}</td>
+      <td style="${hucre};text-align:right">${tl(d.kdvTutari)} TL</td>
+      <td style="${hucre}"></td>
+      <td style="${hucre};text-align:right">${tl(d.matrah)} TL</td>
+    </tr></tbody>
+  </table>
+
+  <table style="border-collapse:collapse;margin-top:14px;margin-left:auto">
+    <tr><td style="${hucre};font-weight:700">Mal Hizmet Toplam Tutarı</td><td style="${hucre};text-align:right">${tl(d.matrah)} TL</td></tr>
+    <tr><td style="${hucre};font-weight:700">Toplam İskonto</td><td style="${hucre};text-align:right">0,00 TL</td></tr>
+    <tr><td style="${hucre};font-weight:700">Hesaplanan KDV (%${tl(d.kdvOrani)})</td><td style="${hucre};text-align:right">${tl(d.kdvTutari)} TL</td></tr>
+    <tr><td style="${hucre};font-weight:700">Vergiler Dahil Toplam Tutar</td><td style="${hucre};text-align:right">${tl(d.toplam)} TL</td></tr>
+    <tr><td style="${hucre};font-weight:700">Ödenecek Tutar</td><td style="${hucre};text-align:right;font-weight:700">${tl(d.toplam)} TL</td></tr>
+  </table>
+
+  <div style="margin-top:12px;font-size:12px;color:#b91c1c;font-family:system-ui,sans-serif">
+    Bu bir ÖNİZLEMEDİR — GİB'e gönderilmemiştir. Fatura numarası ve karekod, belge GİB'de oluştuğunda gelir.
+  </div>
 </div>`;
   }
+
 }

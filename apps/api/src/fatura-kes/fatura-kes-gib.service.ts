@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, Logger, NotFoundException } from '@nes
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { tryDecrypt } from '../common/crypto';
-import { gibFaturaPayload, GIB_ZORUNLU_ALANLAR, GIB_KALEM_ALANLARI } from './gib-earsiv-payload';
+import { gibFaturaPayload, gibTarih, GIB_ZORUNLU_ALANLAR, GIB_KALEM_ALANLARI } from './gib-earsiv-payload';
 import { FaturaKesService } from './fatura-kes.service';
 
 /**
@@ -235,6 +235,67 @@ export class FaturaKesGibService {
       .filter((s): s is string => !!s && s.length > 0);
     if (!kod || !sifreler.length) throw new BadRequestException('GİB kullanıcı kodu ya da şifresi eksik');
     return { kod: String(kod), sifreler };
+  }
+
+  /**
+   * GİB'DEKİ BELGENİN KENDİ GÖRÜNTÜSÜNÜ GETİR (ve eksikse numarayı tamamla).
+   *
+   * Neden gerekli: numara+görsel çekme düzeltmesinden ÖNCE gönderilmiş kayıtlarda
+   * belge numarası ve görüntü boş kaldı. GİB tek oturuma izin verdiği için bunu
+   * sonradan almanın tek yolu ayrı bir giriş+çıkış turudur.
+   *
+   * SALT OKUMA: hiçbir belge oluşturmaz, imzalamaz, silmez.
+   */
+  async gorseliTazele(tenantId: string, draftId: string) {
+    const draft: any = await (this.prisma as any).salesInvoiceDraft.findFirst({ where: { id: draftId, tenantId } });
+    if (!draft) throw new NotFoundException('Taslak bulunamadı');
+    if (draft.durum !== 'GIB_TASLAK' && draft.durum !== 'KESILDI') {
+      throw new BadRequestException('Bu kayıt GİB’e gönderilmemiş — getirilecek GİB görüntüsü yok');
+    }
+
+    const { kod, sifreler } = await this.kimlik(tenantId, draft.taxpayerId);
+    let token: string | null = null;
+    let girisMesaji = '';
+    for (const sf of sifreler) {
+      const r = await this.gibLogin(kod, sf).catch((e: any) => ({ token: null, mesaj: e?.message || '' }));
+      token = r.token;
+      if (r.mesaj) girisMesaji = r.mesaj;
+      if (token) break;
+    }
+    if (!token) {
+      throw new BadRequestException(
+        girisMesaji ? `GİB girişi başarısız — GİB'in cevabı: ${girisMesaji}` : 'GİB girişi başarısız',
+      );
+    }
+
+    try {
+      let faturaNo = draft.faturaNo || null;
+      let ettn = draft.ettn || null;
+      let onay = 'Onaylanmadı';
+      if (!ettn) {
+        const bulunan = await this.belgeyiBul(
+          token,
+          { faturaTarihi: gibTarih(new Date(draft.faturaTarihi)), vknTckn: String(draft.aliciVkn || '') },
+          tenantId,
+          draft.taxpayerId,
+        );
+        if (!bulunan.ettn) {
+          return { ok: false, not: bulunan.not || 'GİB listesinde eşleşen belge bulunamadı' };
+        }
+        faturaNo = bulunan.faturaNo;
+        ettn = bulunan.ettn;
+        onay = bulunan.onay || onay;
+      }
+      const gorsel = await this.gorselAl(token, ettn as string, onay).catch(() => null);
+      await (this.prisma as any).salesInvoiceDraft.update({
+        where: { id: draftId },
+        data: { faturaNo, ettn, gorselHtml: gorsel, hata: gorsel ? null : draft.hata },
+      });
+      this.logger.log(`[FATURA-KES/GIB] ${draftId} · gorsel tazelendi${faturaNo ? ' · ' + faturaNo : ''}`);
+      return { ok: true, faturaNo, ettn, gorselVar: !!gorsel };
+    } finally {
+      await this.gibLogout(token);
+    }
   }
 
   /**

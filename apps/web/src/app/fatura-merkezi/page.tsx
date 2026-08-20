@@ -4257,6 +4257,8 @@ function ScreenFaturaKes({ taxpayerId, taxpayers }: { taxpayerId: string; taxpay
   const toplamNum = Number.isFinite(mNum) ? mNum + kdvNum : NaN;
   const tl = (n: number) => (Number.isFinite(n) ? n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—');
 
+  const gorunenTaslaklar = (listQ.data || []).filter((x: any) => iptalleriGoster || x.durum !== 'IPTAL');
+
   const vknGecerli = /^\d{10}$|^\d{11}$/.test(aliciVkn.replace(/\D/g, ''));
   const hazir = !!taxpayerId && vknGecerli && aliciUnvan.trim().length > 1 && aciklama.trim().length > 1 && Number.isFinite(mNum) && mNum > 0;
 
@@ -4289,6 +4291,20 @@ function ScreenFaturaKes({ taxpayerId, taxpayers }: { taxpayerId: string; taxpay
   // İPTAL: GİB'e gönderilmiş taslakta "iptal" YALNIZ BİZDEKİ kaydı kapatır — GİB'deki
   //   taslak durmaya devam eder ve imzalanabilir. Kullanıcı bunu ÖNCEDEN görmeli.
   const [iptalOnay, setIptalOnay] = useState<any>(null);
+  // GİB'deki belgenin KENDİ görüntüsünü getir (salt okuma).
+  const gorselMut = useMutation({
+    mutationFn: (id: string) => api.post(`/fatura-kes/taslak/${id}/gorsel`).then((r) => r.data),
+    onSuccess: (d: any, id: string) => {
+      if (d?.ok) {
+        toast.success(d.faturaNo ? `GİB görüntüsü alındı · ${d.faturaNo}` : 'GİB görüntüsü alındı');
+        qc.invalidateQueries({ queryKey: ['fatura-kes', 'taslak'] });
+        qc.invalidateQueries({ queryKey: ['fatura-kes', 'onizleme', id] });
+        setAcikTaslak(id);
+      } else toast.error(d?.not || 'GİB görüntüsü bulunamadı');
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'GİB görüntüsü alınamadı'),
+  });
+
   const iptalMut = useMutation({
     mutationFn: (id: string) => api.delete(`/fatura-kes/taslak/${id}`).then((r) => r.data),
     onSuccess: (d: any) => {
@@ -4302,6 +4318,9 @@ function ScreenFaturaKes({ taxpayerId, taxpayers }: { taxpayerId: string; taxpay
 
   // GİB'E GÖNDER — GİB'de TASLAK oluşur, RESMİ BELGE DEĞİL (imzalama yapılmaz, SMS adımına gelinmez).
   //   Tek tıkla gönderim YOK: kullanıcı ayrı kutuda ne olacağını görüp açıkça onaylar.
+  // İPTAL EDİLENLER VARSAYILAN GİZLİ: iptal edilmiş taslak liste doldurup işi
+  //   gölgeliyordu (kullanıcı bulgusu: "bir sürü fatura görünüyor").
+  const [iptalleriGoster, setIptalleriGoster] = useState(false);
   const [gibOnay, setGibOnay] = useState<any>(null);
   const [gibdeIsrar, setGibdeIsrar] = useState(false);
   const gibMut = useMutation({
@@ -4429,12 +4448,22 @@ function ScreenFaturaKes({ taxpayerId, taxpayers }: { taxpayerId: string; taxpay
           </div>
 
           <div style={{ border: '1px solid #e7e5e4', borderRadius: 12, background: '#fff', overflow: 'hidden' }}>
-            <div style={{ padding: '11px 14px', borderBottom: '1px solid #f5f5f4', fontSize: 12, fontWeight: 600, letterSpacing: '.06em', color: '#57534e' }}>TASLAKLAR</div>
+            <div style={{ padding: '11px 14px', borderBottom: '1px solid #f5f5f4', fontSize: 12, fontWeight: 600, letterSpacing: '.06em', color: '#57534e', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+              <span>TASLAKLAR</span>
+              {(listQ.data || []).some((x: any) => x.durum === 'IPTAL') && (
+                <button
+                  onClick={() => setIptalleriGoster((v) => !v)}
+                  style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: 11, cursor: 'pointer', padding: 0, letterSpacing: 0, fontWeight: 600 }}
+                >
+                  {iptalleriGoster ? 'iptalleri gizle' : `iptalleri göster (${(listQ.data || []).filter((x: any) => x.durum === 'IPTAL').length})`}
+                </button>
+              )}
+            </div>
             <div style={{ maxHeight: 460, overflowY: 'auto' }}>
               {listQ.isLoading && (<div style={{ padding: 16, fontSize: 13, color: '#a8a29e' }}>Yükleniyor…</div>)}
               {listQ.isError && (<div style={{ padding: 16, fontSize: 13, color: '#b91c1c' }}>Taslaklar getirilemedi — sayfayı yenileyin.</div>)}
-              {!listQ.isLoading && !listQ.isError && (listQ.data || []).length === 0 && (<div style={{ padding: 16, fontSize: 13, color: '#a8a29e' }}>Henüz taslak yok.</div>)}
-              {(listQ.data || []).map((d: any) => (
+              {!listQ.isLoading && !listQ.isError && gorunenTaslaklar.length === 0 && (<div style={{ padding: 16, fontSize: 13, color: '#a8a29e' }}>Henüz taslak yok.</div>)}
+              {gorunenTaslaklar.map((d: any) => (
                 <div key={d.id} style={{ padding: '11px 14px', borderBottom: '1px solid #fafaf9', fontSize: 13 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
                     <b style={{ color: '#1c1917' }}>{d.aliciUnvan}</b>
@@ -4449,6 +4478,13 @@ function ScreenFaturaKes({ taxpayerId, taxpayers }: { taxpayerId: string; taxpay
                     </span>
                     {d.faturaNo && (<span style={{ fontSize: 11, color: '#57534e', fontFamily: 'ui-monospace,monospace' }}>{d.faturaNo}</span>)}
                     <button onClick={() => setAcikTaslak(d.id)} style={{ fontSize: 12, background: 'none', border: 'none', color: '#2563eb', cursor: 'pointer', padding: 0 }}>önizle</button>
+                    {d.durum === 'GIB_TASLAK' && !d.faturaNo && (
+                      <button
+                        disabled={gorselMut.isPending}
+                        onClick={() => gorselMut.mutate(d.id)}
+                        style={{ fontSize: 12, background: 'none', border: 'none', color: '#0f766e', cursor: gorselMut.isPending ? 'wait' : 'pointer', padding: 0, fontWeight: 600 }}
+                      >{gorselMut.isPending ? 'getiriliyor…' : 'GİB görüntüsü'}</button>
+                    )}
                     {d.durum === 'TASLAK' && (
                       <button onClick={() => { setGibdeIsrar(false); setGibOnay(d); }} style={{ fontSize: 12, background: 'none', border: 'none', color: '#b45309', cursor: 'pointer', padding: 0, fontWeight: 600 }}>GİB&apos;e gönder</button>
                     )}
@@ -4556,14 +4592,24 @@ function ScreenFaturaKes({ taxpayerId, taxpayers }: { taxpayerId: string; taxpay
 function FaturaKesOnizleme({ id }: { id: string }) {
   const q = useQuery({
     queryKey: ['fatura-kes', 'onizleme', id],
-    queryFn: () => api.get(`/fatura-kes/taslak/${id}`).then((r) => (r.data as any)?.onizlemeHtml || ''),
+    queryFn: () => api.get(`/fatura-kes/taslak/${id}`).then((r) => r.data as any),
   });
+  const gercek = !!q.data?.gercekBelge;
   return (
-    <iframe
-      title="taslak-onizleme"
-      srcDoc={q.data || '<p style="font-family:system-ui;padding:24px;color:#78716c">Yükleniyor…</p>'}
-      style={{ border: 'none', width: '100%', height: '70vh', background: '#fff' }}
-    />
+    <>
+      {q.data && (
+        <div style={{ padding: '7px 16px', fontSize: 12, background: gercek ? '#ecfdf5' : '#fffbeb', color: gercek ? '#065f46' : '#92400e', borderBottom: '1px solid #f5f5f4' }}>
+          {gercek
+            ? `GİB'deki belgenin kendi görüntüsü${q.data.faturaNo ? ' · ' + q.data.faturaNo : ''}`
+            : 'Bu bir ÖNİZLEME — belge GİB\'de henüz oluşmadı, numara ve karekod yok'}
+        </div>
+      )}
+      <iframe
+        title="taslak-onizleme"
+        srcDoc={q.data?.onizlemeHtml || '<p style="font-family:system-ui;padding:24px;color:#78716c">Yükleniyor…</p>'}
+        style={{ border: 'none', width: '100%', height: '70vh', background: '#fff' }}
+      />
+    </>
   );
 }
 
