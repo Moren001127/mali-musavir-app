@@ -1122,6 +1122,19 @@ export class WhatsAppBotController implements OnModuleInit {
         msg.__dryKind = 'owner:fatura-kes:onizleme';
         return true;
       }
+      // KANAL AYRIMI: entegratörlü mükellefte (GİTO -> eLogo) GİB'e HİÇ GİDİLMEZ.
+      //   O mükellefin faturası eLogo'dan kesilir; GİB portalından kesmek belge numarasını
+      //   çakıştırır. eLogo'ya GÖNDERİM henüz yok (görüntü üretme parametresi eLogo
+      //   dokümanından öğrenilecek), bu yüzden ÖNİZLEME gönderilir ve durum açıkça yazılır.
+      const kanal = await this.faturaKes.kanalTespit(ownerTenant.id, sonuc.toplanan.taxpayerId as string)
+        .catch(() => null as any);
+      if (kanal && kanal.sebep === 'ENTEGRATOR') {
+        await this.faturaKesBelgeGonder(ownerTenant.id, sonuc.taslakId, msg,
+          `${sonuc.ozet}\n\nBu mükellef *${kanal.saglayici}* kullanıyor — fatura oradan kesilir.\n` +
+          `Yukarıdaki *önizlemedir*, hiçbir yere gönderilmedi.`);
+        return true;
+      }
+
       const olustur: any = await this.faturaKesGib
         .gibeGonder(ownerTenant.id, sonuc.taslakId, { kuruTest: false })
         .catch((e: any) => ({ __hata: e?.response?.message || e?.message || 'bilinmeyen hata' }));
