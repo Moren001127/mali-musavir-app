@@ -27,6 +27,7 @@ export type KomutAlanlari = {
   taxpayerId?: string | null;
   aliciVkn?: string | null;
   aliciUnvan?: string | null;
+  aliciAdres?: string | null;
   aliciVd?: string | null;
   faturaTarihi?: string | null; // YYYY-MM-DD
   aciklama?: string | null;
@@ -142,7 +143,8 @@ export class FaturaKesKomutService {
       'Türk mali müşavirlik ofisinde çalışan bir yardımcısın.',
       'Sana gelen serbest metinden SATIŞ FATURASI bilgilerini çıkaracaksın.',
       'YALNIZCA JSON döndür, başka hiçbir şey yazma.',
-      'Alanlar: saticiAdi, aliciVkn, aliciUnvan, aliciVd, faturaTarihi (YYYY-MM-DD), aciklama, matrah (sayı), kdvOrani (sayı), miktar (sayı), birim.',
+      'Alanlar: saticiAdi, aliciVkn, aliciUnvan, aliciAdres, aliciVd, faturaTarihi (YYYY-MM-DD), aciklama, matrah (sayı), kdvOrani (sayı), miktar (sayı), birim.',
+      'aliciAdres = alıcının açık adresi (mahalle/cadde/no/ilçe/il). Metinde yoksa null bırak.',
       'Bulamadığın alanı null bırak. ASLA TAHMİN ETME, ASLA UYDURMA.',
       'saticiAdi = faturayı KESEN firma (mali müşavirin mükellefi). aliciUnvan = faturanın KESİLDİĞİ firma.',
       'matrah KDV HARİÇ tutardır. "5 bin" gibi yazımları sayıya çevir (5000).',
@@ -174,6 +176,7 @@ export class FaturaKesKomutService {
         saticiAdi: j.saticiAdi ?? null,
         aliciVkn: j.aliciVkn ? String(j.aliciVkn).replace(/\D/g, '') : null,
         aliciUnvan: j.aliciUnvan ?? null,
+        aliciAdres: j.aliciAdres ?? null,
         aliciVd: j.aliciVd ?? null,
         faturaTarihi: j.faturaTarihi ?? null,
         aciklama: j.aciklama ?? null,
@@ -214,6 +217,9 @@ export class FaturaKesKomutService {
       return `"${a.aliciVkn}" geçerli bir vergi/TC kimlik numarası değil (10 ya da 11 hane olmalı). Doğrusu nedir?`;
     }
     if (!a.aliciUnvan || String(a.aliciUnvan).trim().length < 2) return 'Alıcının ünvanı (ya da ad soyadı) nedir?';
+    // ADRES ZORUNLU (kullanıcı talimatı 2026-08-20: "alıcının adresini sormadı, onu da sorsun mutlaka").
+    //   GİB payload'ında bulvarcaddesokak alanına gider; boş gitmesi faturayı eksik bırakır.
+    if (!a.aliciAdres || String(a.aliciAdres).trim().length < 5) return 'Alıcının adresi nedir?';
     if (!a.aciklama || String(a.aciklama).trim().length < 2) return 'Fatura içeriği ne yazsın?';
     if (!Number.isFinite(Number(a.matrah)) || Number(a.matrah) <= 0) return 'Tutar (KDV hariç) ne kadar?';
     if (a.kdvOrani === null || a.kdvOrani === undefined) return 'KDV oranı kaç? (%0, %1, %10, %20)';
@@ -231,11 +237,11 @@ export class FaturaKesKomutService {
     return [
       `*Satıcı:* ${mukellefAdi}`,
       `*Alıcı:* ${taslak.aliciUnvan} · VKN/TCKN ${taslak.aliciVkn}`,
+      taslak.aliciAdres ? `${taslak.aliciAdres}` : '',
       `${g} · ${taslak.aciklama}`,
       `Matrah ${tl(taslak.matrah)} ₺ + KDV %${taslak.kdvOrani} ${tl(taslak.kdvTutari)} ₺ = *${tl(taslak.toplam)} ₺*`,
       '',
-      'Keseyim mi? *onayla* / *vazgeç*',
-    ].join('\n');
+    ].filter(Boolean).join('\n');
   }
 
   /**
@@ -290,6 +296,7 @@ export class FaturaKesKomutService {
       taxpayerId: a.taxpayerId!,
       aliciVkn: String(a.aliciVkn),
       aliciUnvan: String(a.aliciUnvan),
+      aliciAdres: a.aliciAdres || undefined,
       aliciVd: a.aliciVd || undefined,
       faturaTarihi: a.faturaTarihi || this.bugunTR(),
       aciklama: String(a.aciklama),

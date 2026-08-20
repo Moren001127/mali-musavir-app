@@ -456,9 +456,7 @@ export class FaturaKesService {
   <div style="display:flex;gap:18px;align-items:flex-start">
     <div style="flex:1.2;font-size:13px;line-height:1.45">
       <div style="font-weight:700">${esc(this.mukellefAdi(taxpayer))}</div>
-      ${taxpayer?.address
-        ? `<div>${esc(taxpayer.address)}</div>`
-        : `<div style="color:#999;font-style:italic;font-size:12px">adres mükellef kartında boş — gerçek faturada GİB kendi kaydından basar</div>`}
+      ${taxpayer?.address ? `<div>${esc(taxpayer.address)}</div>` : ''}
       <div>Tel: ${esc(taxpayer?.phone || '')} Fax:</div>
       <div>Web Sitesi:</div>
       <div>E-Posta: ${esc(taxpayer?.email || '')}</div>
@@ -532,7 +530,9 @@ export class FaturaKesService {
   </table>
 
   <div style="margin-top:12px;font-size:12px;color:#b91c1c;font-family:system-ui,sans-serif">
-    Bu bir ÖNİZLEMEDİR — GİB'e gönderilmemiştir. Fatura numarası ve karekod, belge GİB'de oluştuğunda gelir.
+    Bu bir ÖNİZLEMEDİR — GİB'e gönderilmemiştir. Fatura numarası ve karekod, belge GİB'de oluştuğunda gelir.${
+      taxpayer?.address ? '' : '<br/>Satıcı adresi mükellef kartında boş; gerçek faturada GİB kendi kaydından basar.'
+    }
   </div>
 </div>`;
   }

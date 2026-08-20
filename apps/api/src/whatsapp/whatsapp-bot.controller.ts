@@ -1111,14 +1111,30 @@ export class WhatsAppBotController implements OnModuleInit {
         return true;
       }
 
-      // HAZIR → önizlemeyi gönder, ONAY BEKLE (GİB'e hâlâ hiçbir şey gitmedi)
+      // HAZIR → GİB'DE OLUŞTUR ve GİB'İN KENDİ BELGESİNİ gönder.
+      //   Kullanıcı talimatı (2026-08-20): "WhatsApp'tan bana gönderirken GİB'den alınan
+      //   önizleme dosyasını göndersin". Yani kendi çizdiğimiz önizleme değil, GERÇEK belge.
+      //   Oluşan belge İMZASIZ taslaktır (resmî değil) ama otomatik SİLME henüz yok —
+      //   bu yüzden mesajda açıkça yazılır.
       this.faturaKomut.onayaAl(kimlik, sonuc.taslakId);
       if (msg.__dryRun) {
         msg.__dryReply = sonuc.ozet;
         msg.__dryKind = 'owner:fatura-kes:onizleme';
         return true;
       }
-      await this.faturaKesBelgeGonder(ownerTenant.id, sonuc.taslakId, msg, sonuc.ozet);
+      const olustur: any = await this.faturaKesGib
+        .gibeGonder(ownerTenant.id, sonuc.taslakId, { kuruTest: false })
+        .catch((e: any) => ({ __hata: e?.response?.message || e?.message || 'bilinmeyen hata' }));
+      if (olustur?.__hata) {
+        // GİB oluşturmadıysa taslak bizde kalır; kullanıcı düzeltip tekrar yazabilir.
+        await this.ownerCevapGonder(msg, ownerTenant.id, ownerContactId,
+          `${sonuc.ozet}\n\n⚠️ GİB oluşturmadı: ${String(olustur.__hata).slice(0, 250)}`,
+          'owner:fatura-kes:gib-hata', 'WhatsApp owner fatura GIB hata');
+        return true;
+      }
+      await this.faturaKesBelgeGonder(ownerTenant.id, sonuc.taslakId, msg,
+        `${sonuc.ozet}\n\nGİB'de oluştu${olustur?.faturaNo ? ' · ' + olustur.faturaNo : ''} — *imzasız taslak*, resmî belge değil.\n` +
+        `Uygunsa *onayla* de; yanlışsa şimdilik GİB portalından silinmeli (otomatik silme henüz yok).`);
       return true;
     } catch (e: any) {
       this.logger.warn(`[FaturaKes WhatsApp] islem hatasi: ${e?.message || e}`);

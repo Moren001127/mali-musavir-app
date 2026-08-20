@@ -49,7 +49,9 @@ for (const [m, b] of VAZGEC) esit(`vazgec: "${m}"`, S.vazgecMi(m), b);
 for (const [metin, b] of KOMUT) esit(`on eleme: "${metin.slice(0, 34)}"`, S.faturaKomutuMu(metin), b);
 
 // --- Eksik alan sorulari: SIRA onemli ---
-const T = { taxpayerId: 'x', aliciVkn: '1234567890', aliciUnvan: 'ABC LTD', aciklama: 'YEMEK BEDELI', matrah: 1000, kdvOrani: 20 };
+const T = { taxpayerId: 'x', aliciVkn: '1234567890', aliciUnvan: 'ABC LTD',
+  aliciAdres: 'Merkez Mah. Ataturk Cad. No 5 Sisli / Istanbul',
+  aciklama: 'YEMEK BEDELI', matrah: 1000, kdvOrani: 20 };
 esit('tam veri -> soru yok', S.eksikSorusu(T), null);
 esit('mukellef yoksa once o sorulur', S.eksikSorusu({ ...T, taxpayerId: null }), 'Hangi mükelleften keselim?');
 esit('alici vkn yoksa sorulur', S.eksikSorusu({ ...T, aliciVkn: null }),
@@ -58,6 +60,12 @@ esit('9 haneli vkn reddedilir', S.eksikSorusu({ ...T, aliciVkn: '123456789' }),
   '"123456789" geçerli bir vergi/TC kimlik numarası değil (10 ya da 11 hane olmalı). Doğrusu nedir?');
 esit('11 hane (TCKN) kabul', S.eksikSorusu({ ...T, aliciVkn: '33248357162' }), null);
 esit('unvan yoksa sorulur', S.eksikSorusu({ ...T, aliciUnvan: '' }), 'Alıcının ünvanı (ya da ad soyadı) nedir?');
+// ADRES ZORUNLU (kullanici talimati 2026-08-20): GIB payload'inda bulvarcaddesokak
+//   alanina gider; sorulmazsa fatura eksik adresle kesilir.
+esit('adres yoksa SORULUR', S.eksikSorusu({ ...T, aliciAdres: null }), 'Alıcının adresi nedir?');
+esit('cok kisa adres kabul edilmez', S.eksikSorusu({ ...T, aliciAdres: 'abc' }), 'Alıcının adresi nedir?');
+esit('adres unvandan SONRA sorulur', S.eksikSorusu({ ...T, aliciUnvan: '', aliciAdres: null }),
+  'Alıcının ünvanı (ya da ad soyadı) nedir?');
 esit('icerik yoksa sorulur', S.eksikSorusu({ ...T, aciklama: null }), 'Fatura içeriği ne yazsın?');
 esit('tutar yoksa sorulur', S.eksikSorusu({ ...T, matrah: null }), 'Tutar (KDV hariç) ne kadar?');
 esit('tutar 0 kabul edilmez', S.eksikSorusu({ ...T, matrah: 0 }), 'Tutar (KDV hariç) ne kadar?');
