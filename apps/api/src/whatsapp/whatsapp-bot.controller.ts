@@ -1106,7 +1106,28 @@ export class WhatsAppBotController implements OnModuleInit {
       const kimlik = String(msg.from || '').replace(/\D/g, '');
       if (!kimlik) return false;
       const metin = String(msg.text || '');
-      const bekleyenTaslak = this.faturaKomut.bekleyenOnay(kimlik);
+      let bekleyenTaslak = this.faturaKomut.bekleyenOnay(kimlik);
+      // ONAY YUVASI BELLEKTE TUTULUYOR — sunucu yeniden baslarsa KAYBOLUR.
+      //   CANLI OLAY 2026-08-20 22:13: deploy indi, 22:00'daki onizlemenin yuvasi silindi;
+      //   kullanici 22:15'te "onaylıyorum" yazdi, bot bulamadi, mesaj genel asistana dustu.
+      //   KURTARMA: yuva yoksa son WhatsApp taslagi (2 saat icinde, hala TASLAK) alinir.
+      //   Guvenli, cunku yine OZET gosterilip "EVET KES" istenir; tek kelimeyle kesim yok.
+      if (!bekleyenTaslak && FaturaKesKomutService.onayMi(metin)) {
+        const son: any = await (this.prisma as any).salesInvoiceDraft.findFirst({
+          where: {
+            tenantId: ownerTenant.id,
+            durum: 'TASLAK',
+            kaynak: 'WHATSAPP',
+            createdAt: { gte: new Date(Date.now() - 2 * 60 * 60 * 1000) },
+          },
+          orderBy: { createdAt: 'desc' },
+          select: { id: true },
+        }).catch(() => null);
+        if (son?.id) {
+          bekleyenTaslak = son.id;
+          this.logger.log(`[FATURA-KES] onay yuvasi kurtarildi (restart sonrasi) · taslak=${son.id}`);
+        }
+      }
 
       // 0) KESİN ONAY BEKLİYOR MU? ("onayla" dendi, "EVET KES" bekleniyor)
       //    Buraya YALNIZ eLogo kanalında gelinir; gerçek fatura burada kesilir.
