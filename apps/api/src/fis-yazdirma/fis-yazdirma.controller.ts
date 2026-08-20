@@ -13,11 +13,13 @@ import {
   UseInterceptors,
   UploadedFiles,
   BadRequestException,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthGuard } from '@nestjs/passport';
 import { FilesInterceptor } from '@nestjs/platform-express';
+import { SkipThrottle } from '@nestjs/throttler';
 import { FisYazdirmaService } from './fis-yazdirma.service';
 import { memoryStorage } from 'multer';
 import { resolveTenantFromAgentToken as resolveAgentTenant } from '../common/agent-token';
@@ -54,9 +56,29 @@ const imageInterceptor = () =>
     },
   });
 
+/**
+ * SKIPTHROTTLE — GENEL SINIR BU EKRANI KİLİTLİYORDU.
+ *
+ * Global ThrottlerGuard 60 saniyede 100 istek. "Faturalardan Çek" tek başına
+ * 1 liste + N adet dosya isteği atıyor (Haziran/YORGUN NAKLİYAT = 457 istek).
+ * Bütçe tükendikten sonra basılan Word/OCR isteği, guard tarafından multer
+ * gövdeyi OKUMADAN 429 ile reddediliyor; tarayıcı hâlâ onlarca MB yüklerken
+ * bağlantı kopuyor ve sebep yerine "Failed to fetch" görünüyor.
+ *
+ * AYRICA: `trust proxy` ayarlı olmadığı için Express req.ip Railway'in vekil
+ * adresini görüyor — yani bu 100'lük kova TÜM kullanıcılar ve ajanlar için
+ * ORTAK. Bir ajanın yoğun dakikası bu ekranı da düşürebiliyor.
+ *
+ * Bu uçlar JWT ile korumalı ve yalnız ofis içi kullanılıyor; sayaç dışına
+ * alınmaları güvenlik kaybı yaratmıyor. (Aynı çözüm repoda daha önce agent
+ * uçları için uygulandı.)
+ */
 @Controller('fis-yazdirma')
 @UseGuards(AuthGuard('jwt'))
+@SkipThrottle()
 export class FisYazdirmaController {
+  private readonly logger = new Logger(FisYazdirmaController.name);
+
   constructor(
     private fisYazdirmaService: FisYazdirmaService,
     private prisma: PrismaService,
@@ -73,6 +95,10 @@ export class FisYazdirmaController {
     @Req() req: any,
   ) {
     if (!files?.length) throw new BadRequestException('En az bir görsel gerekli');
+    // Teşhis: istek sunucuya ULAŞTI MI? Önceden hiçbir iz yoktu, hata
+    // "Failed to fetch" olarak yalnız tarayıcıda görünüyordu.
+    const mb = files.reduce((a, f) => a + (f.size || 0), 0) / 1048576;
+    this.logger.log(`[scan] ${files.length} görsel · ${mb.toFixed(1)} MB · donem=${donem || '-'}`);
     const hintDonem = donem && /^\d{4}-\d{2}$/.test(donem) ? donem : undefined;
     return this.fisYazdirmaService.scanImages(files, req.user?.tenantId, hintDonem);
   }
@@ -93,6 +119,10 @@ export class FisYazdirmaController {
     @Res() res: any,
   ) {
     if (!files?.length) throw new BadRequestException('En az bir görsel gerekli');
+    const mbProcess = files.reduce((a, f) => a + (f.size || 0), 0) / 1048576;
+    this.logger.log(
+      `[process] ${files.length} görsel · ${mbProcess.toFixed(1)} MB · mukellef=${mukellef || '-'} donem=${donem || '-'}`,
+    );
 
     let allDates: Record<string, string> = {};
     if (allDatesJson) {
@@ -127,8 +157,11 @@ export class FisYazdirmaController {
         createdBy: req.user?.userId,
       });
       outputId = rec.id;
-    } catch (e) {
-      // Kaydetme başarısızsa indirme devam etsin
+    } catch (e: any) {
+      // Kaydetme başarısızsa indirme devam etsin — ama SESSİZ kalmasın:
+      // 37 MB'lık kayıt patlarsa arşivde belge görünmüyor ve sebebi hiçbir
+      // yerde yazmıyordu.
+      this.logger.error(`[process] Arşive kaydedilemedi: ${e?.message}`);
     }
 
     res.set({

@@ -366,6 +366,11 @@ export default function FisYazdirmaPage() {
       const fetched: File[] = [];
       const datesFromDb: Record<string, string> = {};
       let skippedNonImage = 0;
+      // İNDİRİLEMEYEN FİŞ SESSİZCE DÜŞÜYORDU: döngü hatada `continue` diyor,
+      // uyarı ise YALNIZCA hiçbiri inmediğinde gösteriliyordu. 456 fişin
+      // 454'ü inince ekran "454 fiş yüklendi" yazıyor, Word 2 EKSİK fişle
+      // üretiliyordu ve kimse fark etmiyordu. Artık sayılıyor ve söyleniyor.
+      let basarisiz = 0;
       let firstError: { status: number; message: string } | null = null;
       for (let i = 0; i < invoices.length; i++) {
         const inv = invoices[i];
@@ -377,6 +382,7 @@ export default function FisYazdirmaPage() {
             `${API}/agent/mihsap/invoices/${inv.id}/file`,
           );
           if (!imgRes.ok) {
+            basarisiz++;
             if (!firstError) {
               let msg = imgRes.statusText || '';
               try {
@@ -430,6 +436,7 @@ export default function FisYazdirmaPage() {
             }
           }
         } catch (e: any) {
+          basarisiz++;
           if (!firstError) firstError = { status: 0, message: e?.message || 'network' };
           continue;
         }
@@ -472,6 +479,20 @@ export default function FisYazdirmaPage() {
       const withDate = Object.keys(datesFromDb).length;
       const skipNote = skippedNonImage > 0 ? ` (${skippedNonImage} adet görsel olmayan atlandı)` : '';
       const dateNote = withDate > 0 ? ` — ${withDate} tanesinin kabul tarihi DB'den hazır, OCR'a girmez.` : '';
+
+      if (basarisiz > 0) {
+        // EKSİK BELGEYLE DEVAM ETMEK, eksik olduğunu bilmemekten iyidir —
+        // ama kullanıcı bunu GÖRMELİ. Modal kapanmıyor ki fark edilsin.
+        setFetchStatus(
+          `DİKKAT: ${invoices.length} fişten ${basarisiz} tanesi indirilemedi, ${fetched.length} tanesi yüklendi. ` +
+          `Bu hâliyle Word ${basarisiz} fiş EKSİK olur. "Faturalardan Çek"e tekrar basarsanız eksikler tamamlanır` +
+          (firstError ? ` (ilk hata: ${firstError.status || 'ağ'} ${firstError.message})` : '') + '.',
+        );
+        setFetchLoading(false);
+        setFetchProgress(null);
+        return; // modal AÇIK kalsın
+      }
+
       setFetchStatus(`${fetched.length} fiş başarıyla yüklendi${skipNote}.${dateNote}`);
       setTimeout(() => {
         setShowFetchModal(false);

@@ -13,10 +13,18 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
+import { SkipThrottle } from '@nestjs/throttler';
 import { MihsapService } from './mihsap.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { resolveTenantFromAgentToken as resolveAgentTenant } from '../common/agent-token';
 
+/**
+ * Fiş Yazdırma ekranı bir dönemin fişlerini TEK TEK indiriyor (Haziran/
+ * YORGUN NAKLİYAT = 456 istek). Global 100 istek/dk sayacı bunu kesiyordu ve
+ * istemci başarısız indirmeleri SESSİZCE atlıyordu: ekranda 456 yerine 454
+ * görsel çıkıyor, Word 2 eksik fişle üretiliyordu. Uçlar JWT korumalı.
+ */
+@SkipThrottle()
 @Controller('agent/mihsap')
 export class MihsapController {
   constructor(
