@@ -1156,6 +1156,7 @@ export class PortalAutomationService {
     return {
       job: {
         id: job.id,
+        taxpayerId: job.taxpayerId,
         jobType: job.jobType,
         source: job.source,
         periodStart: job.periodStart,

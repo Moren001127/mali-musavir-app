@@ -53,7 +53,7 @@
   // ne DOM değişimi oluyor → "bitti" sinyali hiç gelmiyordu (PERİHAN ŞAHİN: tıklama
   // öncesi de sonrası da 18 satır). Artık 30sn boyunca ekran hiç değişmediyse sorgu
   // bitmiş sayılır. Ayrıca teşhis için ekrandaki durum metni loglanır.
-  const AGENT_VERSION = '1.47.17';
+  const AGENT_VERSION = '1.47.18';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -5318,6 +5318,32 @@
       let lastProgress = '';
       let lastProgressLogTs = 0;
       let sawQueryActivity = false;
+      // 🔴 İŞLEM TAKİP PENCERESİ = GERÇEK İLERLEME (canlı bulgu 2026-08-20, FAMCOFFEE):
+      //   Aktivite kararı YALNIZ e-belge listesinin satır sayısına bakıyordu. Ama GİB sorgusu
+      //   sürerken liste DEĞİŞMEZ — hareket "İşlem Takip" penceresindedir:
+      //     "Belgeler sorgulandı. (02/08/2026)" … "(21/08/2026)" → "[OK] 8 adet belge kaydı bulundu."
+      //     → "[ 1/16] … kayıtlıdır" … → "Fatura kaydetme işlemi sona erdi."
+      //   Ajan oraya bakmadığı için "30sn hiç değişmedi → yeni fatura yok" deyip GİB cevap
+      //   vermeden çıkıyordu: portal 2 fatura gösteriyordu, Luca'da elle sorgulayınca 7 geliyordu.
+      //   Artık pencere metnindeki bu satırlar SAYILIR; sayı arttıkça sessizlik sayacı sıfırlanır.
+      const isTakipImzasi = () => {
+        try {
+          let gun = 0, kayit = 0, ozet = '';
+          for (const d of collectEbelgeDocsDeep()) {
+            const t = d && d.body ? d.body.textContent : '';
+            if (!t) continue;
+            gun += (t.match(/Belgeler\s+sorguland[ıi]\.\s*\(/gi) || []).length;
+            kayit += (t.match(/\[\s*\d+\s*\/\s*\d+\s*\]/g) || []).length;
+            const m = t.match(/(\d+)\s+adet\s+belge\s+kayd[ıi]\s+bulundu/i);
+            if (m) ozet = m[1];
+          }
+          return `${gun}|${kayit}|${ozet}`;
+        } catch { return ''; }
+      };
+      // Tıklamadan ÖNCEKİ imza + bitiş yazısı: pencerede ÖNCEKİ sorgudan kalan metin varsa
+      //   onu "bitti" sanmayalım (bayat-yazı tuzağı).
+      const takipImzaBefore = isTakipImzasi();
+      let lastTakipImza = takipImzaBefore;
       // AKTIVITE-SESSİZLİK ERKEN ÇIKIŞ (hız): "Fatura kaydetme işlemi sona erdi" yazısı küçük
       //   sorgularda yakalanamayıp 5dk timeout'a düşürüyordu (ör. 2 fatura → dakikalarca boşuna
       //   bekleme). Kayıt XHR'ları (fatura_kaydet/gib530) SILENCE_DONE_MS boyunca hiç artmadıysa
@@ -5345,6 +5371,14 @@
           if (rowsNow !== rowsBeforeClick) sawQueryActivity = true;
           if (rowsNow !== lastRowCount) {
             lastRowCount = rowsNow;
+            lastActChangeTs = Date.now();
+          }
+          // İŞLEM TAKİP penceresi ilerlemesi de AKTİVİTEDİR (GİB gün gün sorguluyor).
+          //   Liste hiç değişmese bile bu satırlar arttıkça sorgu SÜRÜYOR demektir → erken çıkma.
+          const takipNow = isTakipImzasi();
+          if (takipNow !== takipImzaBefore) sawQueryActivity = true;
+          if (takipNow !== lastTakipImza) {
+            lastTakipImza = takipNow;
             lastActChangeTs = Date.now();
           }
         } catch {}
@@ -5398,11 +5432,17 @@
         // ne XHR ne DOM değişimi olur → eski kod 5 DAKİKA boşuna bekliyordu
         // (PERİHAN ŞAHİN: tıklamadan önce de sonra da 18 satır). Tıklamadan bu yana
         // 30sn boyunca ekran hiç değişmediyse sorgu bitmiştir; devam et.
-        const STABIL_NO_CHANGE_MS = 30000;
+        // 🔴 30sn → 90sn (canlı bulgu 2026-08-20, FAMCOFFEE): "30sn hiç değişmedi" GİB'in cevap
+        //   VERMEDİĞİ anlamına da geliyordu; ajan "yeni fatura yok" deyip çıkıyor, faturalar
+        //   kaçıyordu (portal 2 / Luca 7). Artık İşlem Takip penceresindeki gün-gün ilerleme de
+        //   AKTİVİTE sayıldığı için gerçek sorguda bu yol ZATEN tetiklenmez; burası yalnızca
+        //   "hiçbir şey olmadı" hâli için son çare. Süre uzatıldı ki yavaş başlayan GİB kaçmasın.
+        //   Gerçekten boş sorguda bedel 60sn'dir, kayıp fatura bedeli ise mali hatadır.
+        const STABIL_NO_CHANGE_MS = 90000;
         if (!queryDone && !sawQueryActivity && now - pollStart > STABIL_NO_CHANGE_MS
             && now - lastActChangeTs > STABIL_NO_CHANGE_MS) {
           queryDone = true;
-          await log(`✓ GİB sorgu bitti (${lastRowCount} satır, 30sn hiç değişmedi — yeni fatura yok sayılıyor)`);
+          await log(`✓ GİB sorgu bitti (${lastRowCount} satır, 90sn boyunca ne liste ne İşlem Takip değişti — yeni fatura yok sayılıyor)`);
           break;
         }
         if (sawQueryActivity && now - pollStart > 4000 && now - lastActChangeTs > SILENCE_DONE_MS) {

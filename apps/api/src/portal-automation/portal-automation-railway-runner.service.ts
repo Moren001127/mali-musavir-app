@@ -3445,7 +3445,7 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
     // #5 EŞ ZAMANLI HESAP PLANI (kullanıcı kuralı): GİB e-Arşiv sorgusu yapılan BİLANÇO mükellefinde
     //   Luca'dan hesap planını da tazele (plan VARSA da → Luca'da yeni açılan hesaplar plana yansır,
     //   faturalar işlenirken MÜKERRER hesap olmaz). Fire-and-forget + 1-saat throttle.
-    this.maybeQueueAccountPlanRefresh(tenantId, bundle.job?.taxpayerId).catch(() => {});
+    this.maybeQueueAccountPlanRefresh(tenantId, bundle.job?.taxpayerId || bundle.taxpayer?.id).catch(() => {});
     const earsiv = await this.collectEarsivPortalViaApi(token, bundle.job, tenantId);
     const modeLabel = bundle.job?.payload?.earsivMode === 'query' ? 'satir listelendi' : 'belge indirildi';
     await this.jobProgress(tenantId, bundle.job, 'earsiv_done', `GIB e-Arsiv sorgusu: ${earsiv.recordCount} ${modeLabel}.`);
