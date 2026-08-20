@@ -14,6 +14,14 @@ export class AylikOdemeController {
     return this.svc.list(req.user.tenantId, ay, taxpayerId || undefined);
   }
 
+  /** Listeye girmeyen mükellefler ve sebepleri — yalnız okur, gönderim yok. */
+  @Get('eksikler')
+  eksikler(@Req() req: any, @Query('month') month?: string) {
+    const now = new Date();
+    const ay = month || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    return this.svc.eksikler(req.user.tenantId, ay);
+  }
+
   @Post('send')
   send(@Req() req: any, @Body() body: { month?: string; taxpayerId?: string }) {
     const now = new Date();

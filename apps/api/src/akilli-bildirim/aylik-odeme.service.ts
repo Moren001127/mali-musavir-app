@@ -142,6 +142,107 @@ export class AylikOdemeService {
       .sort((a, b) => a.unvan.localeCompare(b.unvan, 'tr'));
   }
 
+  /**
+   * LİSTEDE NEDEN YOK — ödeme listesine girmeyen mükellefler ve sebepleri.
+   *
+   * Kullanıcı tespiti: "bazı mükelleflerde SGK tahakkuku olmasına rağmen
+   * onları bu ödeme listesine dahil etmiyor." Ölçüm, elemenin çoğunlukla
+   * yanlış olmadığını gösterdi: o mükelleflerin O DÖNEME AİT SGK BELGESİ
+   * HENÜZ YOK. Ama liste bunu söylemiyordu — mükellef listede yoksa sebebi
+   * hiçbir yerde görünmüyordu, hata mı eksik mi ayırt edilemiyordu.
+   *
+   * Burası yalnız OKUR ve `list()`'i hiç değiştirmez; mesaj şablonu da
+   * etkilenmez (kullanıcı talimatı: mesaja dokunma).
+   */
+  async eksikler(tenantId: string, month: string) {
+    const [my, mm] = month.split('-').map(Number);
+    const prev = new Date(my, mm - 2, 1);
+    const donem = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}`;
+    const sgkPeriod = donem.replace('-', '/');
+
+    const [sgkDocs, gecmisSgk, beyanlar] = await Promise.all([
+      // Bu döneme ait SGK fişleri — tutarı okunamayanları görmek için
+      (this.prisma as any).portalDocument.findMany({
+        where: {
+          tenantId,
+          belgeTuru: 'SGK_TAHAKKUK',
+          OR: [{ period: sgkPeriod }, { period: donem }],
+        },
+        select: { taxpayerId: true, raw: true, title: true, taxpayer: { select: { companyName: true, firstName: true, lastName: true } } },
+        take: 5000,
+      }),
+      // Daha önce SGK fişi gelmiş mükellefler — bu dönem hiç yoksa "belge
+      // çekilmemiş" demektir; sisteme hiç SGK'sı olmayan mükellef karışmasın
+      (this.prisma as any).portalDocument.findMany({
+        where: { tenantId, belgeTuru: 'SGK_TAHAKKUK' },
+        select: { taxpayerId: true, period: true, taxpayer: { select: { companyName: true, firstName: true, lastName: true } } },
+        orderBy: { createdAt: 'desc' },
+        take: 5000,
+      }),
+      // Beyanname kaydı var ama tahakkuk tutarı okunmamış olanlar
+      (this.prisma as any).beyanKaydi.findMany({
+        where: { tenantId, donem, tahakkukTutari: null },
+        select: { taxpayerId: true, beyanTipi: true, taxpayer: { select: { companyName: true, firstName: true, lastName: true } } },
+        take: 5000,
+      }),
+    ]);
+
+    const ad = (t: any, id: string) =>
+      t?.companyName || `${t?.firstName || ''} ${t?.lastName || ''}`.trim() || id;
+
+    const eksik: Array<{ taxpayerId: string; unvan: string; kaynak: 'VERGI' | 'SGK'; sebep: string }> = [];
+
+    // 1) SGK fişi var ama tutar okunamıyor / sıfır → satır sessizce düşüyordu
+    for (const d of sgkDocs) {
+      if (!d.taxpayerId) continue;
+      if (parseTutar((d.raw as any)?.tutar) != null) continue;
+      const ham = (d.raw as any)?.tutar;
+      eksik.push({
+        taxpayerId: d.taxpayerId,
+        unvan: ad(d.taxpayer, d.taxpayerId),
+        kaynak: 'SGK',
+        sebep:
+          ham == null
+            ? 'SGK fişinde tutar alanı yok'
+            : `SGK tahakkuku ${String(ham)} — ödenecek tutar yok`,
+      });
+    }
+
+    // 2) Geçmişte SGK'sı olan ama bu döneme ait fişi hiç gelmemiş olanlar
+    const buDonem = new Set<string>(sgkDocs.map((d: any) => d.taxpayerId).filter(Boolean));
+    const gecmiste = new Map<string, string>();
+    for (const d of gecmisSgk) {
+      if (!d.taxpayerId || buDonem.has(d.taxpayerId)) continue;
+      if (!gecmiste.has(d.taxpayerId)) gecmiste.set(d.taxpayerId, ad(d.taxpayer, d.taxpayerId));
+    }
+    for (const [id, unvan] of gecmiste) {
+      eksik.push({
+        taxpayerId: id,
+        unvan,
+        kaynak: 'SGK',
+        sebep: `${sgkPeriod} dönemine ait SGK tahakkuk fişi henüz çekilmemiş`,
+      });
+    }
+
+    // 3) Beyanname var, tahakkuk tutarı okunmamış
+    for (const b of beyanlar) {
+      if (!b.taxpayerId) continue;
+      eksik.push({
+        taxpayerId: b.taxpayerId,
+        unvan: ad(b.taxpayer, b.taxpayerId),
+        kaynak: 'VERGI',
+        sebep: `${b.beyanTipi} beyannamesi var, tahakkuk tutarı okunmamış`,
+      });
+    }
+
+    return {
+      month,
+      donem,
+      sgkDonemi: sgkPeriod,
+      eksik: eksik.sort((a, b) => a.unvan.localeCompare(b.unvan, 'tr')),
+    };
+  }
+
   /** Hattat ile BİREBİR kalıp. baslik: 'Beyanname' | 'SGK'. */
   composeMessage(senderName: string, unvan: string, baslik: string, satirlar: OdemeSatiri[], links: string[] = []): string {
     const lines: string[] = [];

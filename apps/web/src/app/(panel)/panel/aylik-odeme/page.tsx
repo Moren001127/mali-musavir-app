@@ -11,7 +11,7 @@ import React, { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
-import { Loader2, Printer, Send, Wallet } from 'lucide-react';
+import { Loader2, Printer, Send, Wallet, ChevronDown } from 'lucide-react';
 import { BEYAN_ETIKETLER } from '@/lib/beyanname-takip';
 
 const GOLD = '#d4b876';
@@ -98,10 +98,21 @@ export default function AylikOdemePage() {
   const [selected, setSelected] = useState<string | null>(null);
   const [sending, setSending] = useState<string | null>(null);
 
+  const [eksikAcik, setEksikAcik] = useState(false);
+
   const { data, isLoading } = useQuery({
     queryKey: ['aylik-odeme', month],
     queryFn: () => api.get('/aylik-odeme', { params: { month } }).then((r) => r.data as OdemeListesi[]),
   });
+
+  // LİSTEDE NEDEN YOK — mükellef listede görünmüyorsa hata mı, eksik belge mi
+  // olduğu hiçbir yerde yazmıyordu. Bu uç yalnız okur, gönderim yapmaz.
+  const { data: eksikData } = useQuery({
+    queryKey: ['aylik-odeme-eksik', month],
+    queryFn: () => api.get('/aylik-odeme/eksikler', { params: { month } }).then((r) => r.data),
+  });
+  const eksikler: Array<{ taxpayerId: string; unvan: string; kaynak: string; sebep: string }> =
+    eksikData?.eksik || [];
 
   const rows = data || [];
   const active = useMemo(
@@ -158,6 +169,44 @@ export default function AylikOdemePage() {
           </button>
         </div>
       </header>
+
+      {/* LİSTEDE NEDEN YOK — kapalı başlar, sayı görünür kalır */}
+      {eksikler.length > 0 && (
+        <div className="rounded-2xl border" style={{ borderColor: 'rgba(251,191,36,0.24)', background: 'rgba(251,191,36,0.045)' }}>
+          <button
+            onClick={() => setEksikAcik((v) => !v)}
+            className="flex w-full items-center justify-between gap-3 px-5 py-3.5 text-left"
+          >
+            <span className="text-[13px] font-semibold" style={{ color: '#fbbf24' }}>
+              Listede görünmeyen {eksikler.length} mükellef — sebepleriyle
+            </span>
+            <ChevronDown
+              size={16}
+              style={{ color: '#fbbf24', transform: eksikAcik ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }}
+            />
+          </button>
+          {eksikAcik && (
+            <div className="max-h-[320px] overflow-y-auto border-t px-5 py-3" style={{ borderColor: 'rgba(251,191,36,0.18)' }}>
+              {eksikler.map((e, i) => (
+                <div key={`${e.taxpayerId}-${i}`} className="flex items-start justify-between gap-4 py-1.5 text-[12.5px]">
+                  <span className="min-w-0 flex-1 truncate text-white">{e.unvan}</span>
+                  <span
+                    className="flex-shrink-0 rounded px-1.5 py-0.5 text-[9.5px] font-bold uppercase"
+                    style={
+                      e.kaynak === 'SGK'
+                        ? { background: 'rgba(140,189,232,0.12)', color: '#8cbde8' }
+                        : { background: 'rgba(212,184,118,0.12)', color: GOLD }
+                    }
+                  >
+                    {e.kaynak === 'SGK' ? 'SGK' : 'Vergi'}
+                  </span>
+                  <span className="flex-shrink-0 text-right" style={{ color: MUTED }}>{e.sebep}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {isLoading ? (
         <div className="flex items-center gap-2 p-8 text-[13px]" style={{ color: MUTED }}>

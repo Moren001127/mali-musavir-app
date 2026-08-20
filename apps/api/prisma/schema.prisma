@@ -1244,21 +1244,21 @@ enum MatchStatus {
 // MÜKELLEF AYLIK DURUM TAKİBİ
 // ============================================================
 model TaxpayerMonthlyStatus {
-  id                    String   @id @default(cuid())
+  id                    String  @id @default(cuid())
   taxpayerId            String
   tenantId              String
   year                  Int
   month                 Int // 1-12
-  evraklarGeldi         Boolean  @default(false)
-  yuklendi              Boolean  @default(false) // evrak geldi → sisteme yüklendi (fiş görselleri, portal faturaları); işlemden önce
-  evraklarIslendi       Boolean  @default(false)
-  kontrolEdildi         Boolean  @default(false)
-  beyannameVerildi      Boolean  @default(false)
-  kdvKontrolEdildi      Boolean  @default(false)
-  indirilecekKdvKontrol Boolean  @default(false)
-  hesaplananKdvKontrol  Boolean  @default(false)
-  eArsivKontrol         Boolean  @default(false)
-  notes                 String?  @db.Text
+  evraklarGeldi         Boolean @default(false)
+  yuklendi              Boolean @default(false) // evrak geldi → sisteme yüklendi (fiş görselleri, portal faturaları); işlemden önce
+  evraklarIslendi       Boolean @default(false)
+  kontrolEdildi         Boolean @default(false)
+  beyannameVerildi      Boolean @default(false)
+  kdvKontrolEdildi      Boolean @default(false)
+  indirilecekKdvKontrol Boolean @default(false)
+  hesaplananKdvKontrol  Boolean @default(false)
+  eArsivKontrol         Boolean @default(false)
+  notes                 String? @db.Text
 
   // ---- EVRAK MESAJ DAMGALARI (2026-08-18) ----
   // Damgalar DÖNEM bazında. Önceden Taxpayer.lastReminderSentAt tek alanda
@@ -1277,8 +1277,8 @@ model TaxpayerMonthlyStatus {
   /// "Evrak geldi" onayı gönderildi — dolu ise TEKRAR gönderilmez
   evrakGeldiMesajGonderimAt DateTime?
 
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   taxpayer Taxpayer @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
 
@@ -3450,6 +3450,56 @@ model EFaturaInbox {
   @@index([tenantId, isTransferred])
   @@index([tenantId, entegrator, syncedAt])
   @@map("efatura_inbox")
+}
+
+// ============================================================
+// SATIŞ FATURASI TASLAĞI — "Fatura Kes" (2026-08-20)
+// Mükellef adına kesilecek satış faturasının portal/WhatsApp tarafında
+// hazırlanan hâli. GÜVENLİK MODELİ: burada oluşan kayıt RESMİ BELGE DEĞİLDİR.
+//   TASLAK      → yalnız bizde, hiçbir yere gönderilmedi (önizleme)
+//   GIB_TASLAK  → GİB e-Arşiv portalında taslak oluşturuldu (silinebilir, resmî değil)
+//   KESILDI     → kesinleştirildi, resmî belge (geri alınamaz; iptal ayrı süreç)
+//   IPTAL       → taslak silindi / vazgeçildi
+// Tek mesajla asla KESILDI'ye geçilmez: kesinleştirme AYRI komut + AYRI onaydır.
+// ============================================================
+model SalesInvoiceDraft {
+  id             String    @id @default(cuid())
+  tenantId       String
+  taxpayerId     String
+  kanal          String    @default("GIB_EARSIV") // GIB_EARSIV | ENTEGRATOR
+  durum          String    @default("TASLAK") // TASLAK | GIB_TASLAK | KESILDI | IPTAL
+  aliciVkn       String
+  aliciUnvan     String
+  aliciAdres     String?
+  aliciVd        String?
+  aliciEposta    String?
+  faturaTarihi   DateTime
+  aciklama       String    @db.Text
+  miktar         Decimal   @default(1) @db.Decimal(14, 3)
+  birim          String    @default("ADET")
+  matrah         Decimal   @db.Decimal(14, 2)
+  kdvOrani       Int       @default(20)
+  kdvTutari      Decimal   @db.Decimal(14, 2)
+  toplam         Decimal   @db.Decimal(14, 2)
+  paraBirimi     String    @default("TRY")
+  gibBelgeId     String? // GİB e-Arşiv taslak/fatura kimliği (UUID)
+  faturaNo       String?
+  ettn           String?
+  gorselHtml     String?   @db.Text // önizleme / GİB'den dönen görüntü
+  hata           String?   @db.Text
+  kaynak         String    @default("PORTAL") // PORTAL | WHATSAPP
+  komutMetni     String?   @db.Text // WhatsApp'tan geldiyse ham komut (denetim izi)
+  idempotencyKey String? // aynı komutun iki kez fatura kesmesini engeller
+  createdBy      String?
+  onaylayan      String?
+  onayZamani     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, taxpayerId, createdAt])
+  @@index([tenantId, durum])
+  @@map("sales_invoice_drafts")
 }
 
 // ============================================================
