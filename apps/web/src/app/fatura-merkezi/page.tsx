@@ -4257,8 +4257,6 @@ function ScreenFaturaKes({ taxpayerId, taxpayers }: { taxpayerId: string; taxpay
   const toplamNum = Number.isFinite(mNum) ? mNum + kdvNum : NaN;
   const tl = (n: number) => (Number.isFinite(n) ? n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—');
 
-  const gorunenTaslaklar = (listQ.data || []).filter((x: any) => iptalleriGoster || x.durum !== 'IPTAL');
-
   const vknGecerli = /^\d{10}$|^\d{11}$/.test(aliciVkn.replace(/\D/g, ''));
   const hazir = !!taxpayerId && vknGecerli && aliciUnvan.trim().length > 1 && aciklama.trim().length > 1 && Number.isFinite(mNum) && mNum > 0;
 
@@ -4322,6 +4320,12 @@ function ScreenFaturaKes({ taxpayerId, taxpayers }: { taxpayerId: string; taxpay
   //   gölgeliyordu (kullanıcı bulgusu: "bir sürü fatura görünüyor").
   const [iptalleriGoster, setIptalleriGoster] = useState(false);
   const [gibOnay, setGibOnay] = useState<any>(null);
+
+  // TANIM SIRASI ONEMLI: bu satir iptalleriGoster'i ANINDA okur (.filter hemen calisir).
+  //   Onceki halinde state tanimindan ONCE duruyordu -> render aninda
+  //   "Cannot access 'iptalleriGoster' before initialization" ile EKRAN KOMPLE PATLIYORDU.
+  //   TypeScript yakalamaz, cunku kullanim bir ok fonksiyonunun icinde.
+  const gorunenTaslaklar = (listQ.data || []).filter((x: any) => iptalleriGoster || x.durum !== 'IPTAL');
   const [gibdeIsrar, setGibdeIsrar] = useState(false);
   const gibMut = useMutation({
     mutationFn: (id: string) => api.post(`/fatura-kes/taslak/${id}/gib`, { kuruTest: false, gibdeIsrar }).then((r) => r.data),
