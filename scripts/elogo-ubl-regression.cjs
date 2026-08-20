@@ -168,6 +168,88 @@ for (const [adres, ilce, il] of adresler) {
 // Cikarilamayan adres icin IL UYDURULMAMALI (eski kod alici icin 'ISTANBUL' varsayiyordu)
 ok('bilinmeyen il varsayilan ISTANBUL DEGIL', ElogoFaturaService.adresParcala('BILINMEYEN ADRES').il === '');
 
+// ---------- 11) TARAF BILGISI KENDI FATURASINDAN OKUNUR ----------
+// KULLANICI SORUSU 2026-08-20: "eLogo kullanan her firma icin sana bilgi mi verecegim?"
+//   HAYIR — mukellefin kendi giden faturasinin UBL'i veritabaninda duruyor, satici blogu
+//   oradan AYNEN okunur. Bu test okuyucuyu kilitler.
+// Sablon GITO'nun GERCEK faturasindaki alan sirasiyla ayni (AAA2026000000048).
+const ORNEK_UBL = [
+  '<Invoice>',
+  '  <cac:AccountingSupplierParty>',
+  '    <cac:Party>',
+  '      <cbc:WebsiteURI />',
+  '      <cac:PartyIdentification><cbc:ID schemeID="VKN">3961368714</cbc:ID></cac:PartyIdentification>',
+  '      <cac:PartyIdentification><cbc:ID schemeID="MERSISNO">0396136871400001</cbc:ID></cac:PartyIdentification>',
+  '      <cac:PartyName><cbc:Name>GİTO GIDA İNŞAAT TİCARET LİMİTED ŞİRKETİ</cbc:Name></cac:PartyName>',
+  '      <cac:PostalAddress>',
+  '        <cbc:Room />',
+  '        <cbc:StreetName>ÖMERLİ MAH. ADNAN KAHVECİ CAD. NO: 1 /1 İÇ KAPI NO: 1 ARNAVUTKÖY/ İSTANBUL</cbc:StreetName>',
+  '        <cbc:BuildingNumber />',
+  '        <cbc:CitySubdivisionName>ARNAVUTKÖY</cbc:CitySubdivisionName>',
+  '        <cbc:CityName>İSTANBUL</cbc:CityName>',
+  '        <cbc:PostalZone>34000</cbc:PostalZone>',
+  '        <cac:Country><cbc:IdentificationCode>TR</cbc:IdentificationCode><cbc:Name>Türkiye</cbc:Name></cac:Country>',
+  '      </cac:PostalAddress>',
+  '      <cac:PartyTaxScheme><cac:TaxScheme><cbc:Name>BÜYÜKÇEKMECE VERGİ DAİRESİ</cbc:Name></cac:TaxScheme></cac:PartyTaxScheme>',
+  '      <cac:Contact><cbc:Telephone>90 (534) 337-6764</cbc:Telephone><cbc:Telefax /></cac:Contact>',
+  '    </cac:Party>',
+  '  </cac:AccountingSupplierParty>',
+  '  <cac:AccountingCustomerParty>',
+  '    <cac:Party>',
+  '      <cac:PartyIdentification><cbc:ID schemeID="VKN">7601043666</cbc:ID></cac:PartyIdentification>',
+  '      <cac:PartyName><cbc:Name>SELİM İNŞAAT GIDA SANAYİ VE TİCARET ANONİM ŞİRKETİ</cbc:Name></cac:PartyName>',
+  '      <cac:PostalAddress>',
+  '        <cbc:StreetName>KARAAĞAÇ MAH. HADIMKÖY İSTANBUL CAD. NO 38/4 BÜYÜKÇEKMECE / İSTANBUL</cbc:StreetName>',
+  '        <cbc:CitySubdivisionName>BÜYÜKÇEKMECE</cbc:CitySubdivisionName>',
+  '        <cbc:CityName>İSTANBUL</cbc:CityName>',
+  '        <cbc:PostalZone />',
+  '      </cac:PostalAddress>',
+  '      <cac:PartyTaxScheme><cac:TaxScheme><cbc:Name>BÜYÜKÇEKMECE</cbc:Name></cac:TaxScheme></cac:PartyTaxScheme>',
+  '    </cac:Party>',
+  '  </cac:AccountingCustomerParty>',
+  '</Invoice>',
+].join(String.fromCharCode(10));
+
+const sat = ElogoFaturaService.ublTarafOku(ORNEK_UBL, 'AccountingSupplierParty');
+ok('satici blogu okundu', !!sat);
+if (sat) {
+  ok('satici VKN', sat.vkn === '3961368714', 'olan: ' + sat.vkn);
+  ok('satici MERSIS', sat.mersis === '0396136871400001', 'olan: ' + sat.mersis);
+  ok('satici adres tam', sat.adres.includes('İÇ KAPI NO: 1') && sat.adres.endsWith('İSTANBUL'), 'olan: ' + sat.adres);
+  ok('satici ilce/il', sat.ilce === 'ARNAVUTKÖY' && sat.il === 'İSTANBUL', `olan: ${sat.ilce}/${sat.il}`);
+  ok('satici posta kodu', sat.postaKodu === '34000', 'olan: ' + sat.postaKodu);
+  ok('satici vergi dairesi', sat.vergiDairesi === 'BÜYÜKÇEKMECE VERGİ DAİRESİ', 'olan: ' + sat.vergiDairesi);
+  ok('satici telefon', sat.telefon === '90 (534) 337-6764', 'olan: ' + sat.telefon);
+  ok('unvan Country adiyla karismaz', sat.unvan.startsWith('GİTO'), 'olan: ' + sat.unvan);
+  ok('kendi kendini kapatan etiket bos okunur', ElogoFaturaService.ublTarafOku(ORNEK_UBL, 'AccountingCustomerParty').postaKodu === '');
+}
+const alc = ElogoFaturaService.ublTarafOku(ORNEK_UBL, 'AccountingCustomerParty');
+ok('alici blogu satici ile karismaz', !!alc && alc.vkn === '7601043666' && alc.ilce === 'BÜYÜKÇEKMECE',
+  alc ? `olan: ${alc.vkn}/${alc.ilce}` : 'okunamadi');
+ok('taraf yoksa null doner', ElogoFaturaService.ublTarafOku('<Invoice></Invoice>', 'AccountingSupplierParty') === null);
+
+// ---------- 12) YENI ALANLAR UBL'E YAZILIYOR ----------
+const xmlYeni = svc.ublOlustur({
+  saticiVkn: '3961368714', saticiUnvan: 'GİTO', saticiAdres: 'adres', saticiIlce: 'ARNAVUTKÖY', saticiIl: 'İSTANBUL',
+  saticiTel: '90 (534) 337-6764', saticiPostaKodu: '34000', saticiMersis: '0396136871400001',
+  saticiVergiDairesi: 'BÜYÜKÇEKMECE VERGİ DAİRESİ',
+  aliciVkn: '7601043666', aliciUnvan: 'SELİM', aliciAdres: 'x', aliciIlce: 'BÜYÜKÇEKMECE', aliciIl: 'İSTANBUL',
+  faturaNo: 'ONIZLEME', faturaTarihi: new Date('2026-08-20T10:00:00'), aciklama: 'T',
+  miktar: 1, matrah: 100, kdvOrani: 10, kdvTutari: 10, toplam: 110,
+}, 'AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE');
+ok('MERSIS UBL e yazildi', xmlYeni.includes('<cbc:ID schemeID="MERSISNO">0396136871400001</cbc:ID>'));
+ok('posta kodu UBL e yazildi', xmlYeni.includes('<cbc:PostalZone>34000</cbc:PostalZone>'));
+ok('satici vergi dairesi UBL e yazildi', xmlYeni.includes('<cbc:Name>BÜYÜKÇEKMECE VERGİ DAİRESİ</cbc:Name>'));
+const xmlEksik = svc.ublOlustur({
+  saticiVkn: '1', saticiUnvan: 'A', saticiAdres: 'x', saticiIlce: '', saticiIl: '',
+  aliciVkn: '2', aliciUnvan: 'B', aliciAdres: 'y',
+  faturaNo: 'ONIZLEME', faturaTarihi: new Date('2026-08-20T10:00:00'), aciklama: 'T',
+  miktar: 1, matrah: 100, kdvOrani: 10, kdvTutari: 10, toplam: 110,
+}, 'AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE');
+ok('MERSIS yoksa etiket HIC yazilmaz', !xmlEksik.includes('MERSISNO'));
+ok('posta kodu yoksa etiket HIC yazilmaz', !xmlEksik.includes('PostalZone'));
+ok('eksik surumde de XML iyi bicimli', !iyiBicimli(xmlEksik));
+
 // ---------- 10) SUNUCU SAAT DILIMINDEN BAGIMSIZLIK ----------
 // TESTIN KENDI TUZAGI: bu makine zaten Europe/Istanbul oldugu icin ESKI (yerel getter'li)
 //   kod da 15:50:27 uretirdi ve test bosuna gecerdi. Bu yuzden ayni dosya bir de TZ=UTC

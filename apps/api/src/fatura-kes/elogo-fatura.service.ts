@@ -56,12 +56,16 @@ export type ElogoFaturaGirdi = {
   saticiIlce: string;
   saticiIl: string;
   saticiTel?: string;
+  saticiPostaKodu?: string;
+  saticiMersis?: string;
+  saticiVergiDairesi?: string;
   aliciVkn: string;
   aliciUnvan: string;
   aliciAdres: string;
   aliciIlce?: string;
   aliciIl?: string;
   aliciVergiDairesi?: string;
+  aliciPostaKodu?: string;
   faturaNo: string;
   faturaTarihi: Date;
   aciklama: string;
@@ -202,14 +206,18 @@ export class ElogoFaturaService {
     <cac:Party>
       <cac:PartyIdentification>
         <cbc:ID schemeID="VKN">${e(g.saticiVkn)}</cbc:ID>
-      </cac:PartyIdentification>
+      </cac:PartyIdentification>${g.saticiMersis ? `
+      <cac:PartyIdentification>
+        <cbc:ID schemeID="MERSISNO">${e(g.saticiMersis)}</cbc:ID>
+      </cac:PartyIdentification>` : ''}
       <cac:PartyName>
         <cbc:Name>${e(g.saticiUnvan)}</cbc:Name>
       </cac:PartyName>
       <cac:PostalAddress>
         <cbc:StreetName>${e(g.saticiAdres)}</cbc:StreetName>
         <cbc:CitySubdivisionName>${e(g.saticiIlce)}</cbc:CitySubdivisionName>
-        <cbc:CityName>${e(g.saticiIl)}</cbc:CityName>
+        <cbc:CityName>${e(g.saticiIl)}</cbc:CityName>${g.saticiPostaKodu ? `
+        <cbc:PostalZone>${e(g.saticiPostaKodu)}</cbc:PostalZone>` : ''}
         <cac:Country>
           <cbc:IdentificationCode>TR</cbc:IdentificationCode>
           <cbc:Name>Türkiye</cbc:Name>
@@ -217,7 +225,7 @@ export class ElogoFaturaService {
       </cac:PostalAddress>
       <cac:PartyTaxScheme>
         <cac:TaxScheme>
-          <cbc:Name />
+          <cbc:Name>${e(g.saticiVergiDairesi || '')}</cbc:Name>
         </cac:TaxScheme>
       </cac:PartyTaxScheme>
       <cac:Contact>
@@ -490,6 +498,94 @@ export class ElogoFaturaService {
   }
 
   /**
+   * Bir UBL bloğundan etiket değeri okur. REGEX YOK — kaçış karakteri tuzağına düşmemek
+   * ve kendi kendini kapatan boş etiketleri (<cbc:Room />) yanlış okumamak için düz arama.
+   */
+  private static ublDeger(blok: string, etiket: string): string {
+    const bas = blok.indexOf('<' + etiket);
+    if (bas < 0) return '';
+    const kapa = blok.indexOf('>', bas);
+    if (kapa < 0) return '';
+    if (blok[kapa - 1] === '/') return '';
+    const son = blok.indexOf('</' + etiket + '>', kapa);
+    return son < 0 ? '' : blok.slice(kapa + 1, son).trim();
+  }
+
+  /** <cbc:ID schemeID="VKN"> / schemeID="MERSISNO" gibi kimlik alanlarını okur. */
+  private static ublKimlik(blok: string, sema: string): string {
+    const im = 'schemeID="' + sema + '"';
+    const i = blok.indexOf(im);
+    if (i < 0) return '';
+    const kapa = blok.indexOf('>', i);
+    const son = blok.indexOf('</cbc:ID>', kapa);
+    return son < 0 ? '' : blok.slice(kapa + 1, son).trim();
+  }
+
+  /**
+   * Bir faturanın SATICI ya da ALICI tarafını olduğu gibi çıkarır.
+   */
+  static ublTarafOku(xml: string, taraf: 'AccountingSupplierParty' | 'AccountingCustomerParty') {
+    const bas = xml.indexOf('<cac:' + taraf);
+    const son = xml.indexOf('</cac:' + taraf + '>');
+    if (bas < 0 || son < 0 || son < bas) return null;
+    const b = xml.slice(bas, son);
+    const adresBlok = (b.split('<cac:PostalAddress>')[1] || '').split('</cac:PostalAddress>')[0] || '';
+    const adBlok = b.split('<cac:PartyName>')[1] || '';
+    const vergiBlok = b.split('<cac:PartyTaxScheme>')[1] || '';
+    const vkn = ElogoFaturaService.ublKimlik(b, 'VKN') || ElogoFaturaService.ublKimlik(b, 'TCKN');
+    if (!vkn) return null;
+    return {
+      vkn,
+      mersis: ElogoFaturaService.ublKimlik(b, 'MERSISNO'),
+      unvan: ElogoFaturaService.ublDeger(adBlok, 'cbc:Name'),
+      adres: ElogoFaturaService.ublDeger(adresBlok, 'cbc:StreetName'),
+      ilce: ElogoFaturaService.ublDeger(adresBlok, 'cbc:CitySubdivisionName'),
+      il: ElogoFaturaService.ublDeger(adresBlok, 'cbc:CityName'),
+      postaKodu: ElogoFaturaService.ublDeger(adresBlok, 'cbc:PostalZone'),
+      vergiDairesi: ElogoFaturaService.ublDeger(vergiBlok, 'cbc:Name'),
+      telefon: ElogoFaturaService.ublDeger(b, 'cbc:Telephone'),
+    };
+  }
+
+  /**
+   * TARAF BİLGİSİ MÜKELLEFİN KENDİ FATURALARINDAN GELİR.
+   * Kullanıcı sorusu (2026-08-20): "eLogo kullanan her firma için sana bilgi mi vereceğim?"
+   *   HAYIR. Mükellefin entegratörden çekilmiş GİDEN faturaları UBL'iyle veritabanında
+   *   duruyor (efatura_inbox · direction=OUT · ublXmlRaw). Satıcı bloğunu oradan AYNEN
+   *   alırız: adres, ilçe/il, posta kodu, vergi dairesi, MERSİS, telefon.
+   *   Aynı alıcıya daha önce fatura kesilmişse ALICI adresi de oradan gelir — bot bir daha
+   *   adres sormaz.
+   * Hiç giden fatura yoksa null döner; çağıran taraf mükellef kaydına düşer ve eksikse
+   *   kullanıcıyı UYARIR (uydurmaz).
+   */
+  async taraflarGecmisten(tenantId: string, taxpayerId: string, aliciVkn?: string) {
+    const kayitlar: any[] = await (this.prisma as any).eFaturaInbox.findMany({
+      where: { tenantId, taxpayerId, direction: 'OUT', ublXmlRaw: { not: null } },
+      orderBy: { faturaDate: 'desc' },
+      take: 30,
+      select: { ublXmlRaw: true, faturaNo: true, faturaDate: true },
+    }).catch(() => [] as any[]);
+
+    let satici: any = null;
+    let saticiKaynak: string | null = null;
+    let alici: any = null;
+    let aliciKaynak: string | null = null;
+    for (const k of kayitlar) {
+      const xml = String(k.ublXmlRaw || '');
+      if (!satici) {
+        const t = ElogoFaturaService.ublTarafOku(xml, 'AccountingSupplierParty');
+        if (t) { satici = t; saticiKaynak = k.faturaNo || null; }
+      }
+      if (aliciVkn && !alici) {
+        const t = ElogoFaturaService.ublTarafOku(xml, 'AccountingCustomerParty');
+        if (t && t.vkn === String(aliciVkn)) { alici = t; aliciKaynak = k.faturaNo || null; }
+      }
+      if (satici && (alici || !aliciVkn)) break;
+    }
+    return { satici, alici, saticiKaynak, aliciKaynak, bakilanFatura: kayitlar.length };
+  }
+
+  /**
    * FATURA NUMARASI — portalda tanımlı ön ek ve kalınan son numara.
    * Doküman: GetPrefixLastNumberList(sessionID, paramList{DOCUMENTTYPE, PREFIXYEAR}).
    * SALT OKUMA — numara TÜKETMEZ, yalnız mevcut durumu okur.
@@ -533,16 +629,35 @@ export class ElogoFaturaService {
       select: { companyName: true, firstName: true, lastName: true, taxNumber: true, address: true, phone: true, taxOffice: true },
     });
     const saticiAd = tp?.companyName || [tp?.firstName, tp?.lastName].filter(Boolean).join(' ') || '';
-    const adres = String(d.aliciAdres || '');
-    const alici = ElogoFaturaService.adresParcala(adres);
-    const saticiAdres = String(tp?.address || '');
-    const satici = ElogoFaturaService.adresParcala(saticiAdres);
 
-    // UYARILAR: eksik veriyi SESSIZ gecmeyiz. Satici il/ilce bos kalirsa fatura adresi
-    //   eksik basilir (kullanici bulgusu: onizlemede "ARNAVUTKOY 34 /" gibi yarim satir).
+    // KAYNAK SIRASI: (1) mükellefin KENDİ kesilmiş faturaları — kesin bilgi, elle giriş yok,
+    //   (2) mükellef kaydı — elle girilmiş, eksik olabilir. Hiçbiri yetmezse UYARI.
+    const gecmis: any = await this.taraflarGecmisten(tenantId, d.taxpayerId, String(d.aliciVkn))
+      .catch(() => ({ satici: null, alici: null, saticiKaynak: null, aliciKaynak: null, bakilanFatura: 0 }));
+
+    const kayitAdres = String(tp?.address || '');
+    const kayitParca = ElogoFaturaService.adresParcala(kayitAdres);
+    const saticiAdres = gecmis.satici?.adres || kayitAdres;
+    const satici = {
+      ilce: gecmis.satici?.ilce || kayitParca.ilce,
+      il: gecmis.satici?.il || kayitParca.il,
+    };
+
+    // ALICI: kullanıcının yazdığı adres ÖNCELİKLİ (güncel olan odur); yoksa aynı alıcıya
+    //   daha önce kesilmiş faturadan alınır — böylece bot aynı müşteri için adresi tekrar sormaz.
+    const adres = String(d.aliciAdres || '') || gecmis.alici?.adres || '';
+    const adresParca = ElogoFaturaService.adresParcala(adres);
+    const alici = {
+      ilce: adresParca.ilce || gecmis.alici?.ilce || '',
+      il: adresParca.il || gecmis.alici?.il || '',
+    };
+
     const uyarilar: string[] = [];
-    if (!satici.il) uyarilar.push('Satıcının il/ilçe bilgisi mükellef kaydındaki adresten okunamadı — fatura adresi eksik basılıyor.');
+    if (!satici.il) uyarilar.push('Satıcının il/ilçe bilgisi bulunamadı (ne kendi faturalarında ne mükellef kaydında) — fatura adresi eksik basılıyor.');
     if (!alici.il) uyarilar.push('Alıcının il/ilçe bilgisi adresten okunamadı.');
+    const kaynakNotu = gecmis.satici
+      ? `Satıcı bilgileri kendi faturasından alındı${gecmis.saticiKaynak ? ` (${gecmis.saticiKaynak})` : ''}`
+      : 'Satıcı bilgileri mükellef kaydından alındı — kendi kesilmiş faturası bulunamadı';
 
     // DUZENLEME ANI: gun taslagin fatura tarihinden (Prisma bunu UTC gece yarisi verir,
     //   bu yuzden UTC bilesenleri alinir), SAAT ise taslagin olusturuldugu gercek andan.
@@ -558,13 +673,16 @@ export class ElogoFaturaService {
       saticiAdres: saticiAdres,
       saticiIlce: satici.ilce,
       saticiIl: satici.il,
-      saticiTel: String(tp?.phone || ''),
+      saticiTel: gecmis.satici?.telefon || String(tp?.phone || ''),
+      saticiPostaKodu: gecmis.satici?.postaKodu || undefined,
+      saticiMersis: gecmis.satici?.mersis || undefined,
+      saticiVergiDairesi: gecmis.satici?.vergiDairesi || String(tp?.taxOffice || ''),
       aliciVkn: String(d.aliciVkn),
       aliciUnvan: String(d.aliciUnvan),
       aliciAdres: adres,
       aliciIlce: alici.ilce,
       aliciIl: alici.il,
-      aliciVergiDairesi: String(d.aliciVd || ''),
+      aliciVergiDairesi: String(d.aliciVd || '') || gecmis.alici?.vergiDairesi || '',
       faturaNo: String(d.faturaNo || 'ONIZLEME'),
       faturaTarihi: duzenlemeAni,
       aciklama: String(d.aciklama),
@@ -592,6 +710,6 @@ export class ElogoFaturaService {
     }
 
     const { icerik, tur } = await this.onizlemeAl(tenantId, d.taxpayerId, ubl, `${d.faturaNo || 'onizleme'}.xml`, belgeTuru);
-    return { icerik, tur, ubl, belgeTuru, etiketler, turNotu, uyarilar };
+    return { icerik, tur, ubl, belgeTuru, etiketler, turNotu, uyarilar, kaynakNotu };
   }
 }
