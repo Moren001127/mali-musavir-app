@@ -213,6 +213,117 @@ export class AkilliBildirimService {
     return [...map.values()].filter((b) => b.items.length > 0);
   }
 
+  /**
+   * BEKLENEN GÖNDERİMLER — "gönderilmesi gerekip gönderilmeyenler".
+   *
+   * Rapor evreni şimdiye kadar YALNIZ gönderim kayıtlarından türüyordu: bir
+   * mükellefe hiç denenmemişse tabloda satırı bile olmuyordu. Kullanıcının
+   * gördüğü "kimlere gönderilmediğini göremiyorum" sorununun kaynağı buydu —
+   * en önemli grup (hiç denenmemişler) görünmez olan gruptu.
+   *
+   * Burada belge kaynağından (beyanname kaydı / portal belgesi) ay içinde
+   * belgesi olan mükellefler çıkarılır; gönderim kaydı olmayanlar "bekliyor"
+   * olarak işaretlenir ve SEBEBİ yazılır.
+   *
+   * Yalnız OKUR, hiçbir şey göndermez.
+   */
+  private async beklenenler(tenantId: string, start: Date, end: Date) {
+    // Ay sonunda gelen belge ertesi ayın ilk günlerinde gönderilir. Gönderim
+    // kaydını YALNIZ ay içinde ararsak bu belgeler haksız yere "gönderilmedi"
+    // görünür; bu yüzden gönderim tarafına 10 günlük tolerans veriliyor.
+    const gonderimSonu = new Date(end.getTime() + 10 * 86_400_000);
+
+    const [beyanlar, belgeler, gonderimler, ayarlar] = await Promise.all([
+      (this.prisma as any).beyanKaydi.findMany({
+        where: {
+          tenantId,
+          updatedAt: { gte: start, lt: end },
+          OR: [{ pdfUrl: { not: null } }, { beyannameUrl: { not: null } }],
+        },
+        select: { taxpayerId: true },
+        take: 5000,
+      }),
+      (this.prisma as any).portalDocument.findMany({
+        where: {
+          tenantId,
+          belgeTuru: { in: ['SGK_TAHAKKUK', 'SGK_HIZMET_LISTESI', 'E_TEBLIGAT'] },
+          createdAt: { gte: start, lt: end },
+          storageKey: { not: null },
+        },
+        select: { taxpayerId: true, belgeTuru: true },
+        take: 5000,
+      }),
+      (this.prisma as any).documentDispatch.findMany({
+        where: { tenantId, createdAt: { gte: start, lt: gonderimSonu } },
+        select: { taxpayerId: true, kategori: true },
+      }),
+      this.getSettings(tenantId),
+    ]);
+
+    // kategori -> mükellef kümesi
+    const beklenen = new Map<string, Set<string>>([
+      ['VERGI', new Set<string>()],
+      ['SGK', new Set<string>()],
+      ['ETEBLIGAT', new Set<string>()],
+    ]);
+    for (const b of beyanlar) if (b.taxpayerId) beklenen.get('VERGI')!.add(b.taxpayerId);
+    for (const d of belgeler) {
+      if (!d.taxpayerId) continue;
+      const kat = d.belgeTuru === 'E_TEBLIGAT' ? 'ETEBLIGAT' : 'SGK';
+      beklenen.get(kat)!.add(d.taxpayerId);
+    }
+
+    const denenmis = new Set<string>(gonderimler.map((g: any) => `${g.kategori}:${g.taxpayerId}`));
+
+    // Sebep için ayar ve iletişim bilgisi
+    const ayarHarita = new Map<string, any>(ayarlar.map((a: any) => [a.kategori, a]));
+    const tumIdler = new Set<string>();
+    for (const kume of beklenen.values()) for (const id of kume) tumIdler.add(id);
+    const mukellefler = tumIdler.size
+      ? await (this.prisma as any).taxpayer.findMany({
+          where: { tenantId, id: { in: [...tumIdler] } },
+          select: {
+            id: true, companyName: true, firstName: true, lastName: true,
+            phone: true, phones: true, email: true, emails: true, isActive: true,
+          },
+        })
+      : [];
+    const tpHarita = new Map<string, any>(mukellefler.map((t: any) => [t.id, t]));
+
+    const sonuc: Array<{ taxpayerId: string; unvan: string; kategori: string; sebep: string }> = [];
+    for (const [kategori, kume] of beklenen) {
+      const ayar = ayarHarita.get(kategori);
+      const haricTutulan = new Set<string>(ayar?.excludedTaxpayerIds || []);
+      for (const id of kume) {
+        if (denenmis.has(`${kategori}:${id}`)) continue;
+        const t = tpHarita.get(id);
+        const unvan = t
+          ? t.companyName || `${t.firstName || ''} ${t.lastName || ''}`.trim() || id
+          : id;
+
+        let sebep: string;
+        if (!ayar) sebep = 'kategori ayarı tanımlı değil';
+        else if (!ayar.enabled) sebep = 'kategori kapalı (Ayarlar > Akıllı Bildirim)';
+        else if (haricTutulan.has(id)) sebep = 'bu mükellef kapsam dışı bırakılmış';
+        else if (t && t.isActive === false) sebep = 'mükellef pasif';
+        else {
+          const tel = t?.phone || (t?.phones || [])[0] || null;
+          const eposta = t?.email || (t?.emails || [])[0] || null;
+          // Kanallar ayrı iki boolean: SmartDispatchSetting.whatsapp / .email
+          const telGerek = ayar.whatsapp === true;
+          const epostaGerek = ayar.email === true;
+          if (!telGerek && !epostaGerek) sebep = 'gönderim kanalı seçilmemiş';
+          else if (telGerek && epostaGerek && !tel && !eposta) sebep = 'telefon ve e-posta yok';
+          else if (telGerek && !epostaGerek && !tel) sebep = 'telefon numarası yok';
+          else if (epostaGerek && !telGerek && !eposta) sebep = 'e-posta adresi yok';
+          else sebep = 'henüz denenmedi';
+        }
+        sonuc.push({ taxpayerId: id, unvan, kategori, sebep });
+      }
+    }
+    return sonuc;
+  }
+
   // ---------- MESAJ ----------
 
   /** Hattat ile birebir format: Gönderen → Merhaba ÜNVAN → satırlar → Toplam → PDF link(ler)i. */
@@ -345,13 +456,16 @@ export class AkilliBildirimService {
         let error: string | null = null;
         try {
           if (channel === 'WHATSAPP') {
-            if (!targetPhone) throw new Error(settings.testMode ? 'test telefonu girilmemiş' : 'mükellefin telefon numarası yok');
+            // ILETISIM- on-eki: rapor bu kodu ariyor. Once serbest metinde
+            // 'telefon' kelimesi araniyordu; metin degisince sayac sessizce
+            // sifirlanirdi.
+            if (!targetPhone) throw new Error(settings.testMode ? 'ILETISIM-test telefonu girilmemiş' : 'ILETISIM-mükellefin telefon numarası yok');
             // Hattat birebir: tek mesaj, belge LİNK ile (ek balonu yok)
             const sent = await this.whatsapp.sendMessageDetailed(targetPhone, message, tenantId, { quote: false } as any);
             if (!(sent as any)?.ok) throw new Error((sent as any)?.error || 'whatsapp gönderilemedi');
             status = 'SENT';
           } else {
-            if (!targetEmail) throw new Error(settings.testMode ? 'test e-postası girilmemiş' : 'mükellefin e-postası yok');
+            if (!targetEmail) throw new Error(settings.testMode ? 'ILETISIM-test e-postası girilmemiş' : 'ILETISIM-mükellefin e-postası yok');
             const res = await this.email.send(
               {
                 to: targetEmail,
@@ -414,6 +528,7 @@ export class AkilliBildirimService {
       where: { tenantId, createdAt: { gte: start, lt: end } },
       orderBy: { createdAt: 'desc' },
     });
+    const bekleyenler = await this.beklenenler(tenantId, start, end);
     const taxpayers = await (this.prisma as any).taxpayer.findMany({
       where: { tenantId, id: { in: [...new Set(rows.map((r: any) => r.taxpayerId))] } },
       select: { id: true, companyName: true, firstName: true, lastName: true },
@@ -426,6 +541,7 @@ export class AkilliBildirimService {
     let sent = 0;
     let failed = 0;
     let badContact = 0;
+    let testGonderim = 0;
     for (const r of rows) {
       const key = r.taxpayerId;
       let row = perTaxpayer.get(key);
@@ -433,19 +549,57 @@ export class AkilliBildirimService {
         row = { taxpayerId: key, unvan: tpName.get(key) || key, VERGI: null, SGK: null, ETEBLIGAT: null, ODEME_LISTESI: null };
         perTaxpayer.set(key, row);
       }
+
+      // HÜCREDE EN KÖTÜ DURUM GÖSTERİLİR — eskiden "en iyi" gösteriliyordu
+      // (SENT > FAILED). WhatsApp başarısız + e-posta başarılı olduğunda hücre
+      // ✓ oluyor ve HATA METNİ TAMAMEN SİLİNİYORDU; sayaçta "2 iletilmedi"
+      // yazarken tabloda hepsi "Tamam" görünmesinin sebebi buydu.
+      const oncelik = (st: string | null) =>
+        st === 'FAILED' ? 4 : st === 'PENDING' ? 3 : st === 'SKIPPED' ? 2 : st === 'SENT' ? 1 : 0;
       const prev = row[r.kategori];
-      // aynı kategori için en iyi durumu göster (SENT > FAILED > SKIPPED)
-      const rank = (s: string | null) => (s === 'SENT' ? 3 : s === 'FAILED' ? 2 : s === 'SKIPPED' ? 1 : 0);
-      if (rank(r.status) > rank(prev?.status || null)) row[r.kategori] = { status: r.status, error: r.error, channel: r.channel };
-      if (r.status === 'SENT') sent += 1;
-      else if (r.status === 'FAILED') {
+      const kanalDurum = { status: r.status, error: r.error, channel: r.channel, testMode: !!r.testMode };
+      if (!prev || oncelik(r.status) > oncelik(prev.status)) {
+        row[r.kategori] = { ...kanalDurum, kanallar: [...(prev?.kanallar || []), kanalDurum] };
+      } else {
+        prev.kanallar = [...(prev.kanallar || []), kanalDurum];
+      }
+
+      if (r.status === 'SENT') {
+        // TEST MODU İLETİLDİ SAYILMAZ. Mükellefin eline hiçbir şey geçmemişken
+        // rapor ✓ gösteriyordu; "kim aldı" sorusunun cevabı yanlış oluyordu.
+        if (r.testMode) testGonderim += 1;
+        else sent += 1;
+      } else if (r.status === 'FAILED') {
         failed += 1;
-        if ((r.error || '').includes('telefon') || (r.error || '').includes('e-posta')) badContact += 1;
+        // Sabit hata kodu — serbest metin araması metin değişince sessizce bozulur
+        if ((r.error || '').startsWith('ILETISIM-')) badContact += 1;
       }
     }
+    // BEKLEYENLERİ TABLOYA KAT — gönderim kaydı hiç olmayan mükellef de satır
+    // alsın. Bu satırlar olmadan "gönderilmesi gerekip gönderilmeyenler"
+    // ekranda hiç görünmüyordu.
+    for (const b of bekleyenler) {
+      let row = perTaxpayer.get(b.taxpayerId);
+      if (!row) {
+        row = { taxpayerId: b.taxpayerId, unvan: b.unvan, VERGI: null, SGK: null, ETEBLIGAT: null, ODEME_LISTESI: null };
+        perTaxpayer.set(b.taxpayerId, row);
+      }
+      if (!row[b.kategori]) row[b.kategori] = { status: 'BEKLIYOR', error: b.sebep, channel: null };
+    }
+
     return {
       month: ay,
-      totals: { total: rows.length, sent, failed, badContact },
+      totals: {
+        total: rows.length,
+        sent,
+        failed,
+        bekleyen: bekleyenler.length,
+        // badContact, failed'in ALT KÜMESİ — ayrı kart olarak gösterilirse
+        // 2+2=4 sanılır. Ekran bunu alt satır olarak yazar.
+        badContact,
+        testGonderim,
+        mukellefSayisi: perTaxpayer.size,
+      },
       taxpayers: [...perTaxpayer.values()].sort((a, b) => a.unvan.localeCompare(b.unvan, 'tr')),
       today: await this.todaySummary(tenantId),
     };
@@ -564,21 +718,49 @@ export class AkilliBildirimService {
     return { sent: res.sent, to, count: items.length };
   }
 
-  /** FAILED kayıtları yeniden dener. */
+  /**
+   * FAILED kayıtları yeniden dener.
+   *
+   * ÖNEMLİ — eski davranış tehlikeliydi: `force: true` hem "kategori kapalı"
+   * korumasını hem "bu belge zaten gönderildi" korumasını deliyordu. Tek bir
+   * e-posta hatası yüzünden o mükellefe SON 40 GÜNÜN TÜM BELGELERİ yeniden
+   * gidebiliyordu. Düğmenin adı ("Eksikleri Şimdi Gönder") bunu hiç
+   * düşündürmüyordu.
+   *
+   * Yeni davranış:
+   *  - `force` YOK. Zaten başarıyla gönderilmiş belge bir daha gönderilmez.
+   *  - Kategori kapalıysa yine gönderilmez (kullanıcı bilerek kapatmış).
+   *  - Pencere 40 gün değil, raporun baktığı AYIN kendisi.
+   *  - Ayarı olmayan kategori (ör. ODEME_LISTESI, ayrı serviste) sessizce
+   *    "denendi" sayılmaz; ayrı raporlanır.
+   */
   async resendFailed(tenantId: string, month?: string) {
     const now = new Date();
     const ay = month || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     const [y, m] = ay.split('-').map(Number);
+    const ayBasi = new Date(y, m - 1, 1);
     const failedRows = await (this.prisma as any).documentDispatch.findMany({
-      where: { tenantId, status: 'FAILED', createdAt: { gte: new Date(y, m - 1, 1), lt: new Date(y, m, 1) } },
+      where: { tenantId, status: 'FAILED', createdAt: { gte: ayBasi, lt: new Date(y, m, 1) } },
       select: { taxpayerId: true, kategori: true },
     });
+
+    // Ay basindan bugune kac saat — 40 gunluk sabit pencere yerine
+    const saat = Math.max(1, Math.ceil((Date.now() - ayBasi.getTime()) / 3_600_000));
+
     const pairs = new Set<string>(failedRows.map((r: any) => `${r.kategori}:${r.taxpayerId}`));
     const out: any[] = [];
+    let denenen = 0;
+    let atlanan = 0;
     for (const pair of pairs) {
       const [kategori, taxpayerId] = pair.split(':');
-      out.push(await this.runKategori(tenantId, kategori as DispatchKategori, { taxpayerId, sinceHours: 24 * 40, force: true }));
+      const r = await this.runKategori(tenantId, kategori as DispatchKategori, {
+        taxpayerId,
+        sinceHours: saat,
+      });
+      if ((r as any)?.ok === false) atlanan++;
+      else denenen++;
+      out.push({ kategori, taxpayerId, ...r });
     }
-    return { retried: pairs.size, out };
+    return { denenen, atlanan, toplamCift: pairs.size, out };
   }
 }
