@@ -479,4 +479,216 @@ export class FaturaKesGibService {
       gibMesaj: mesaj.slice(0, 300),
     };
   }
+
+  // ————————————————————————————————————————————————————————————————
+  // GİB e-ARŞİV İŞLEMLERİ: LİSTELE · SİL · DÜZELT
+  //
+  // SÖZLEŞMELER CANLIDAN ÇIKARILDI (2026-08-21, EDELER hesabıyla, çöp taslaklar üzerinde):
+  //   • Silme      : cmd=EARSIV_PORTAL_FATURA_SIL, pageName=RG_TASLAKLAR,
+  //                  jp={ silinecekler:[LİSTEDEN GELEN TAM SATIR], aciklama:"..." }
+  //                  Cevap {"data":"1 fatura başarıyla silindi."} → satır "Silinmiş" olur.
+  //   • Tam içerik : cmd=EARSIV_PORTAL_FATURA_GETIR (faturaUuid, kalemler, tutarlar…)
+  //   • GÜNCELLEME KOMUTU YOKTUR. Denenen adların hepsi "Bu işlem için yetkiniz yok" döndü:
+  //     FATURA_GUNCELLE / FATURA_DUZENLE / TASLAK_GUNCELLE / FATURA_DUZELT.
+  //     ⇒ DÜZELTME = SİL + YENİDEN OLUŞTUR. Belge numarası DEĞİŞİR; kullanıcıya söylenir.
+  // ————————————————————————————————————————————————————————————————
+
+  /** GİB tarih penceresi: belge tarihi biliniyorsa o gün, bilinmiyorsa içinde bulunulan ay. */
+  private pencere(tarih?: Date | string | null): { baslangic: string; bitis: string } {
+    const d = tarih ? new Date(tarih) : null;
+    if (d && !isNaN(d.getTime())) {
+      const g = gibTarih(d);
+      return { baslangic: g, bitis: g };
+    }
+    const simdi = new Date();
+    const ilk = new Date(simdi.getFullYear(), simdi.getMonth(), 1);
+    const sonGun = new Date(simdi.getFullYear(), simdi.getMonth() + 1, 0);
+    return { baslangic: gibTarih(ilk), bitis: gibTarih(sonGun) };
+  }
+
+  /** GİB oturumu açar (şifre alanlarının ikisi de denenir). */
+  private async oturumAc(tenantId: string, taxpayerId: string): Promise<string> {
+    const { kod, sifreler } = await this.kimlik(tenantId, taxpayerId);
+    let mesaj = '';
+    for (const sifre of sifreler) {
+      const r = await this.gibLogin(kod, sifre);
+      if (r.token) return r.token;
+      mesaj = r.mesaj || mesaj;
+    }
+    throw new BadRequestException(`GİB girişi başarısız${mesaj ? ' — ' + mesaj : ''}`);
+  }
+
+  /** GİB listesinden ETTN'ye göre satırı bulur. Silme çağrısı satırın TAMAMINI ister. */
+  private async satirBul(token: string, ettn: string, tarih?: Date | string | null) {
+    const { baslangic, bitis } = this.pencere(tarih);
+    const liste: any = await this.dispatch(token, 'EARSIV_PORTAL_TASLAKLARI_GETIR', 'RG_TASLAKLAR', {
+      baslangic, bitis, hangiTip: '5000/30000', onayDurumu: 'Hepsi',
+    });
+    const rows: any[] = Array.isArray(liste?.data) ? liste.data : [];
+    return rows.find((r) => String(r?.ettn || '').toLowerCase() === String(ettn).toLowerCase()) || null;
+  }
+
+  /** GİB'DEKİ BELGELERİ LİSTELER — SALT OKUMA. Tarih verilmezse içinde bulunulan ay. */
+  async gibListe(
+    tenantId: string,
+    taxpayerId: string,
+    opts: { baslangic?: string; bitis?: string } = {},
+  ): Promise<Array<{ faturaNo: string; aliciVkn: string; alici: string; tarih: string; durum: string; ettn: string }>> {
+    const varsayilan = this.pencere(null);
+    const token = await this.oturumAc(tenantId, taxpayerId);
+    try {
+      const liste: any = await this.dispatch(token, 'EARSIV_PORTAL_TASLAKLARI_GETIR', 'RG_TASLAKLAR', {
+        baslangic: opts.baslangic || varsayilan.baslangic,
+        bitis: opts.bitis || varsayilan.bitis,
+        hangiTip: '5000/30000',
+        onayDurumu: 'Hepsi',
+      });
+      const rows: any[] = Array.isArray(liste?.data) ? liste.data : [];
+      return rows.map((r) => ({
+        faturaNo: String(r.belgeNumarasi || ''),
+        aliciVkn: String(r.aliciVknTckn || ''),
+        alici: String(r.aliciUnvanAdSoyad || ''),
+        tarih: String(r.belgeTarihi || ''),
+        durum: String(r.onayDurumu || ''),
+        ettn: String(r.ettn || ''),
+      }));
+    } finally {
+      await this.gibLogout(token);
+    }
+  }
+
+  /**
+   * GİB'DEKİ İMZASIZ TASLAĞI SİLER.
+   *
+   * KORUMALAR:
+   *  - `onay` açıkça true olmalı (yanlışlıkla çağrı silmez).
+   *  - Belge GİB listesinde bulunamazsa silme YAPILMAZ.
+   *  - İMZALANMIŞ ("Onaylandı") belge SİLİNMEZ — o resmî faturadır, iptali ayrı iştir.
+   *  - Silme, listeden TEKRAR OKUNARAK doğrulanır; "Silinmiş" görülmezse HATA verilir
+   *    (kayıt yanlışlıkla "silindi" diye işaretlenmez).
+   *  - Her yolda güvenli çıkış yapılır.
+   */
+  async gibTaslakSil(
+    tenantId: string,
+    draftId: string,
+    opts: { onay: boolean; aciklama?: string },
+  ): Promise<{ silindi: boolean; faturaNo: string | null; zatenSilinmisti: boolean; gibMesaj: string }> {
+    if (opts?.onay !== true) {
+      throw new BadRequestException('Silme için açık onay gerekir (onay: true).');
+    }
+    const draft: any = await (this.prisma as any).salesInvoiceDraft.findFirst({ where: { id: draftId, tenantId } });
+    if (!draft) throw new NotFoundException('Taslak bulunamadı');
+    if (draft.durum === 'KESILDI') {
+      throw new BadRequestException('Bu fatura kesinleşmiş — silinemez, iptal edilmesi gerekir.');
+    }
+    if (draft.durum !== 'GIB_TASLAK') {
+      throw new BadRequestException(
+        `Bu kayıt GİB'e gönderilmemiş (durum: ${draft.durum}) — GİB'de silinecek bir belge yok.`,
+      );
+    }
+    const ettn = String(draft.ettn || '').trim();
+    if (!ettn) {
+      throw new BadRequestException(
+        "Bu kaydın ETTN'i yok — GİB'de hangi belge olduğu kesinleştirilemiyor, silme YAPILMADI.",
+      );
+    }
+
+    const token = await this.oturumAc(tenantId, draft.taxpayerId);
+    let gibMesaj = '';
+    let zatenSilinmisti = false;
+    try {
+      const satir = await this.satirBul(token, ettn, draft.faturaTarihi);
+      if (!satir) {
+        throw new BadRequestException('Belge GİB listesinde bulunamadı — silme YAPILMADI.');
+      }
+      const durum = String(satir.onayDurumu || '');
+      if (durum === 'Silinmiş') {
+        zatenSilinmisti = true;
+      } else if (durum !== 'Onaylanmadı') {
+        throw new BadRequestException(
+          `Bu belge "${durum}" durumunda — İMZALANMIŞ fatura SİLİNEMEZ. Resmî belgedir, iptal işlemi gerekir.`,
+        );
+      } else {
+        const c: any = await this.dispatch(token, 'EARSIV_PORTAL_FATURA_SIL', 'RG_TASLAKLAR', {
+          silinecekler: [satir],
+          aciklama: String(opts.aciklama || 'Moren portalından silindi'),
+        });
+        gibMesaj = typeof c?.data === 'string' ? c.data : this.gibMesaji(c);
+        const sonra = await this.satirBul(token, ettn, draft.faturaTarihi);
+        if (String(sonra?.onayDurumu || '') !== 'Silinmiş') {
+          throw new BadRequestException(
+            `GİB silme DOĞRULANAMADI (belge hâlâ "${sonra?.onayDurumu || 'bilinmiyor'}"). GİB cevabı: ${gibMesaj || 'boş'}`,
+          );
+        }
+      }
+    } finally {
+      await this.gibLogout(token);
+    }
+
+    await (this.prisma as any).salesInvoiceDraft.update({
+      where: { id: draftId },
+      data: {
+        durum: 'IPTAL',
+        hata: zatenSilinmisti ? 'GİB’de zaten silinmişti' : `GİB’de silindi: ${gibMesaj || 'onaylandı'}`,
+      },
+    });
+    this.logger.log(
+      `[FATURA-KES/GIB] ${draftId} · ${draft.faturaNo || ettn} GİB'de SİLİNDİ` +
+        `${zatenSilinmisti ? ' (zaten silinmisti)' : ''}`,
+    );
+    return { silindi: true, faturaNo: draft.faturaNo || null, zatenSilinmisti, gibMesaj };
+  }
+
+  /**
+   * DÜZELTME = SİL + YENİDEN OLUŞTUR.
+   *
+   * GİB'de güncelleme komutu YOKTUR (canlı denendi, hepsi "yetkiniz yok" döndü). Eski belge
+   * silinir, Moren'deki taslak güncellenir, GİB'e YENİ taslak gönderilir.
+   * BELGE NUMARASI DEĞİŞİR — çağıran taraf bunu kullanıcıya söylemek zorundadır.
+   *
+   * SIRA ÖNEMLİ: önce SİL, sonra oluştur. Ters sıra GİB'de İKİ belge bırakır.
+   */
+  async gibTaslakDuzelt(
+    tenantId: string,
+    draftId: string,
+    degisiklikler: Partial<{
+      aciklama: string; miktar: number; birim: string; matrah: number; kdvOrani: number;
+      aliciVkn: string; aliciUnvan: string; aliciAdres: string; aliciVd: string; aliciEposta: string;
+      faturaTarihi: Date;
+    }>,
+    opts: { onay: boolean },
+  ) {
+    if (opts?.onay !== true) {
+      throw new BadRequestException(
+        'Düzeltme için açık onay gerekir (onay: true) — eski belge SİLİNİR ve numara değişir.',
+      );
+    }
+    const eski: any = await (this.prisma as any).salesInvoiceDraft.findFirst({ where: { id: draftId, tenantId } });
+    if (!eski) throw new NotFoundException('Taslak bulunamadı');
+    const eskiNo: string | null = eski.faturaNo || null;
+
+    await this.gibTaslakSil(tenantId, draftId, { onay: true, aciklama: 'Düzeltme için silindi' });
+
+    // Matrah ya da oran değiştiyse KDV ve toplam YENİDEN hesaplanır — eski tutar kalmasın.
+    const matrah = degisiklikler.matrah != null ? Number(degisiklikler.matrah) : Number(eski.matrah);
+    const kdvOrani = degisiklikler.kdvOrani != null ? Number(degisiklikler.kdvOrani) : Number(eski.kdvOrani);
+    const kdvTutari = Math.round(matrah * kdvOrani) / 100;
+    const toplam = Math.round((matrah + kdvTutari) * 100) / 100;
+
+    await (this.prisma as any).salesInvoiceDraft.update({
+      where: { id: draftId },
+      data: {
+        ...degisiklikler,
+        matrah, kdvOrani, kdvTutari, toplam,
+        durum: 'TASLAK',
+        faturaNo: null,
+        ettn: null,
+        gorselHtml: null,
+        hata: `Düzeltiliyor — eski belge ${eskiNo || '(numarasız)'} GİB'de silindi`,
+      },
+    });
+
+    const yeni: any = await this.gibeGonder(tenantId, draftId, { gibdeIsrar: true });
+    return { ...yeni, eskiFaturaNo: eskiNo, numaraDegisti: true };
+  }
 }

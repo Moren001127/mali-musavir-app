@@ -108,6 +108,103 @@ export class FaturaKesKomutService {
     this.kesimBekleyen.delete(kimlik);
   }
 
+  // ————————————————————————————————————————————————————————————————
+  // GİB e-ARŞİV İŞLEMLERİ: LİSTELE · SİL · DÜZELT
+  //
+  // Bunlar fatura KESME akışından ayrıdır. Silme ve düzeltme YIKICI olduğu için
+  // ikinci kademe onay ister ("EVET SİL" / "EVET DÜZELT") — tek kelimeyle olmaz.
+  // Düzeltme GİB'de güncelleme olmadığı için sil+yeniden oluştur demektir; numara değişir.
+  // ————————————————————————————————————————————————————————————————
+  private readonly islemBekleyen = new Map<
+    string,
+    { tur: 'SIL' | 'DUZELT'; taslakId: string; degisiklikler?: any; ts: number }
+  >();
+
+  islemOnayinaAl(kimlik: string, tur: 'SIL' | 'DUZELT', taslakId: string, degisiklikler?: any) {
+    this.islemBekleyen.set(kimlik, { tur, taslakId, degisiklikler, ts: Date.now() });
+  }
+
+  bekleyenIslem(kimlik: string): { tur: 'SIL' | 'DUZELT'; taslakId: string; degisiklikler?: any } | null {
+    const k = this.islemBekleyen.get(kimlik);
+    if (!k) return null;
+    if (Date.now() - k.ts > FaturaKesKomutService.KESIM_BEKLEME_MS) {
+      this.islemBekleyen.delete(kimlik);
+      return null;
+    }
+    return { tur: k.tur, taslakId: k.taslakId, degisiklikler: k.degisiklikler };
+  }
+
+  islemiUnut(kimlik: string) {
+    this.islemBekleyen.delete(kimlik);
+  }
+
+  /** Kesin onay sözcükleri — gevşek eşleşme YOK. */
+  static evetSilMi(metin: string): boolean {
+    return /^evet sil$/.test(FaturaKesKomutService.sadeMetin(metin).replace(/\s+/g, ' '));
+  }
+
+  static evetDuzeltMi(metin: string): boolean {
+    return /^evet duzelt$/.test(FaturaKesKomutService.sadeMetin(metin).replace(/\s+/g, ' '));
+  }
+
+  /**
+   * GİB İŞLEM NİYETİ. Deterministik — AI'ya gitmez, çünkü yıkıcı işlemde
+   * "sanırım şunu demek istedi" kabul edilemez.
+   *
+   * Belge referansı: "GIB2026000000137", "137 nolu", "son fatura".
+   */
+  static gibIslemMi(metin: string): { tur: 'LISTELE' | 'SIL' | 'DUZELT'; belgeNo: string | null; sonMu: boolean } | null {
+    const t = FaturaKesKomutService.sadeMetin(metin);
+    if (!t) return null;
+    const faturadanBahsediyor = /(fatura|belge|gib\d{10,})/.test(t);
+    if (!faturadanBahsediyor) return null;
+
+    const tam = (metin.match(/GIB\d{13}/i) || [])[0] || null;
+    const kisa = tam ? null : (t.match(/\b(\d{1,4})\s*(nolu|numarali|no'?lu)?\b/) || [])[1] || null;
+    const belgeNo = tam || kisa;
+    const sonMu = /\bson\b/.test(t);
+
+    if (/(listele|listesi|listeyi|hangi faturalar|kesilen faturalar)/.test(t)) {
+      return { tur: 'LISTELE', belgeNo: null, sonMu: false };
+    }
+    // "sil" / "iptal et" — yıkıcı; belge referansı ŞART (yanlış belge silinmesin).
+    if (/\b(sil|silelim|silsene|iptal et|iptal edelim)\b/.test(t)) {
+      if (!belgeNo && !sonMu) return null;
+      return { tur: 'SIL', belgeNo, sonMu };
+    }
+    if (/\b(duzelt|duzeltelim|degistir|degistirelim)\b/.test(t)) {
+      if (!belgeNo && !sonMu) return null;
+      return { tur: 'DUZELT', belgeNo, sonMu };
+    }
+    return null;
+  }
+
+  /**
+   * DÜZELTMEDE NE DEĞİŞECEK? Deterministik okuma — belirsizse BOŞ döner ve sorulur.
+   * Uydurma yok: yalnız açıkça yazılmış alanlar alınır.
+   */
+  static duzeltmeDegisiklikleri(metin: string): { matrah?: number; kdvOrani?: number; aciklama?: string } {
+    const t = String(metin || '');
+    const sonuc: { matrah?: number; kdvOrani?: number; aciklama?: string } = {};
+
+    const tutar = t.match(/(?:tutar|matrah|bedel)\s*:?\s*([0-9][0-9.,]*)/i);
+    if (tutar) {
+      const n = FaturaKesKomutService.sayiCoz(tutar[1]);
+      if (n > 0) sonuc.matrah = n;
+    }
+    const kdv = t.match(/(?:kdv|oran)\s*:?\s*%?\s*(\d{1,2})/i);
+    if (kdv) {
+      const o = Number(kdv[1]);
+      if ([0, 1, 8, 10, 18, 20].includes(o)) sonuc.kdvOrani = o;
+    }
+    const ack = t.match(/(?:aciklama|açıklama|icerik|içerik)\s*:?\s*(.+)$/i);
+    if (ack) {
+      const v = ack[1].trim().replace(/["']/g, '');
+      if (v.length >= 2) sonuc.aciklama = v.slice(0, 120);
+    }
+    return sonuc;
+  }
+
   /**
    * KESİN ONAY SÖZCÜĞÜ — yalnız "EVET KES". Gevşek eşleşme YOK:
    * "evet", "tamam", "olur" gibi sıradan onaylar fatura KESMEZ.
@@ -148,7 +245,7 @@ export class FaturaKesKomutService {
   }
 
   /** Turkce harfleri sadelestirir: "onaylıyorum" -> "onayliyorum". */
-  private static sadeMetin(metin: string): string {
+  static sadeMetin(metin: string): string {
     return String(metin || '')
       .replace(/İ/g, 'i').replace(/I/g, 'i').replace(/ı/g, 'i')
       .replace(/Ş/g, 's').replace(/ş/g, 's')
@@ -249,7 +346,7 @@ export class FaturaKesKomutService {
   }
 
   /** TR biçimli sayıyı çöz — sunucudaki sayi() ile AYNI kural ("8.000" = sekiz bin). */
-  private static sayiCoz(v: any): number {
+  static sayiCoz(v: any): number {
     const ham = String(v || '').trim().replace(/\s|₺|TL/gi, '');
     if (!ham) return NaN;
     const s = ham.replace(/^[-+]/, '');

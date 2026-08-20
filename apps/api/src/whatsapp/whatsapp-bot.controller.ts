@@ -1104,6 +1104,163 @@ export class WhatsAppBotController implements OnModuleInit {
     }
   }
 
+  /**
+   * GİB e-ARŞİV İŞLEMLERİ (owner): LİSTELE · SİL · DÜZELT.
+   *
+   * Fatura KESME akışından ÖNCE çalışır: "faturayı düzelt" gibi cümleler kesme komutu
+   * sanılmasın. Yıkıcı işlemler (sil/düzelt) İKİ KADEMELİDİR — özet gösterilir, ayrıca
+   * "EVET SİL" / "EVET DÜZELT" istenir.
+   *
+   * DÜZELTME = SİL + YENİDEN OLUŞTUR (GİB'de güncelleme komutu yok) → NUMARA DEĞİŞİR.
+   */
+  private async maybeHandleGibIslem(ownerTenant: any, msg: any, ownerContactId: string): Promise<boolean> {
+    const metin = String(msg?.text || '').trim();
+    if (!metin) return false;
+    const kimlik = String(msg?.from || '');
+
+    // 0) BEKLEYEN İŞLEM ONAYI
+    const bekleyen = this.faturaKomut.bekleyenIslem(kimlik);
+    if (bekleyen) {
+      if (FaturaKesKomutService.vazgecMi(metin)) {
+        this.faturaKomut.islemiUnut(kimlik);
+        await this.ownerCevapGonder(msg, ownerTenant.id, ownerContactId,
+          'Tamam, dokunmadım.', 'owner:gib-islem:vazgec', 'WhatsApp owner GİB işlem vazgeç');
+        return true;
+      }
+      const onaylandi = bekleyen.tur === 'SIL'
+        ? FaturaKesKomutService.evetSilMi(metin)
+        : FaturaKesKomutService.evetDuzeltMi(metin);
+      if (onaylandi) {
+        this.faturaKomut.islemiUnut(kimlik);
+        // KİMLİKSİZ HTTP webhook'undan yıkıcı işlem KABUL EDİLMEZ (fatura kesimiyle aynı kural).
+        if ((msg as any).__kaynak === 'http') {
+          await this.ownerCevapGonder(msg, ownerTenant.id, ownerContactId,
+            'Bu istek gerçek WhatsApp bağlantısından gelmediği için işlem YAPILMADI.',
+            'owner:gib-islem:kaynak-red', 'WhatsApp owner GİB işlem kaynak red');
+          return true;
+        }
+        if (msg.__dryRun) {
+          msg.__dryReply = `KURU TEST: ${bekleyen.tur} onayı alındı, GİB'e DOKUNULMADI.`;
+          msg.__dryKind = 'owner:gib-islem:kuru';
+          return true;
+        }
+        if (bekleyen.tur === 'SIL') {
+          const r: any = await this.faturaKesGib
+            .gibTaslakSil(ownerTenant.id, bekleyen.taslakId, { onay: true, aciklama: 'WhatsApp komutuyla silindi' })
+            .catch((e: any) => ({ __hata: e?.response?.message || e?.message || 'bilinmeyen hata' }));
+          await this.ownerCevapGonder(msg, ownerTenant.id, ownerContactId,
+            r?.__hata
+              ? `Silinemedi: ${String(r.__hata).slice(0, 400)}`
+              : `*SİLİNDİ* · ${r.faturaNo || '(numarasız)'}${r.zatenSilinmisti ? '\n_(GİB’de zaten silinmişti)_' : ''}`,
+            'owner:gib-islem:sil', 'WhatsApp owner GİB belge sil');
+          return true;
+        }
+        const r: any = await this.faturaKesGib
+          .gibTaslakDuzelt(ownerTenant.id, bekleyen.taslakId, bekleyen.degisiklikler || {}, { onay: true })
+          .catch((e: any) => ({ __hata: e?.response?.message || e?.message || 'bilinmeyen hata' }));
+        if (r?.__hata) {
+          await this.ownerCevapGonder(msg, ownerTenant.id, ownerContactId,
+            `Düzeltilemedi: ${String(r.__hata).slice(0, 400)}`,
+            'owner:gib-islem:duzelt-hata', 'WhatsApp owner GİB belge düzelt hata');
+          return true;
+        }
+        await this.faturaKesBelgeGonder(ownerTenant.id, bekleyen.taslakId,
+          msg,
+          `*DÜZELTİLDİ*\nEski belge: ${r.eskiFaturaNo || '(numarasız)'} — GİB’de silindi\n` +
+          `Yeni belge: *${r.faturaNo || '(numara okunamadı)'}*`);
+        return true;
+      }
+      // Başka bir şey yazıldıysa onay DÜŞER — yanlış anlaşılmayla belge silinmez.
+      this.faturaKomut.islemiUnut(kimlik);
+    }
+
+    const niyet = FaturaKesKomutService.gibIslemMi(metin);
+    if (!niyet) return false;
+
+    const para = (n: any) => Number(n || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    // 1) LİSTELE — Moren kayıtlarından (GİB'e giriş yapmaz, anında döner).
+    if (niyet.tur === 'LISTELE') {
+      const kayitlar: any[] = await (this.prisma as any).salesInvoiceDraft.findMany({
+        where: { tenantId: ownerTenant.id, faturaNo: { not: null } },
+        orderBy: { createdAt: 'desc' }, take: 10,
+        select: { faturaNo: true, durum: true, aliciUnvan: true, toplam: true, taxpayerId: true },
+      }).catch(() => []);
+      if (!kayitlar.length) {
+        await this.ownerCevapGonder(msg, ownerTenant.id, ownerContactId,
+          'Kayıtlı fatura yok.', 'owner:gib-islem:liste', 'WhatsApp owner fatura listesi');
+        return true;
+      }
+      const etiket: Record<string, string> = {
+        GIB_TASLAK: 'imzasız taslak', KESILDI: 'kesildi', IPTAL: 'silindi/iptal',
+        TASLAK: 'hazırlanıyor', GONDERILIYOR: 'gönderiliyor',
+      };
+      const satirlar = kayitlar.map((k) =>
+        `• *${k.faturaNo}* · ${k.aliciUnvan} · ${para(k.toplam)} ₺ · _${etiket[k.durum] || k.durum}_`).join('\n');
+      await this.ownerCevapGonder(msg, ownerTenant.id, ownerContactId,
+        `*SON FATURALAR*\n${satirlar}\n\n_Silmek için: "137 nolu faturayı sil"_`,
+        'owner:gib-islem:liste', 'WhatsApp owner fatura listesi');
+      return true;
+    }
+
+    // 2) HANGİ BELGE? — numara ya da "son"
+    const kosul: any = { tenantId: ownerTenant.id, durum: 'GIB_TASLAK' };
+    if (niyet.belgeNo) kosul.faturaNo = { contains: niyet.belgeNo };
+    const adaylar: any[] = await (this.prisma as any).salesInvoiceDraft.findMany({
+      where: kosul, orderBy: { createdAt: 'desc' }, take: 5,
+      select: { id: true, faturaNo: true, aliciUnvan: true, toplam: true, aciklama: true, matrah: true, kdvOrani: true },
+    }).catch(() => []);
+
+    if (!adaylar.length) {
+      await this.ownerCevapGonder(msg, ownerTenant.id, ownerContactId,
+        niyet.belgeNo
+          ? `"${niyet.belgeNo}" ile eşleşen, GİB'de duran imzasız taslak bulamadım.`
+          : 'GİB’de duran imzasız taslak yok.',
+        'owner:gib-islem:bulunamadi', 'WhatsApp owner GİB belge bulunamadı');
+      return true;
+    }
+    if (adaylar.length > 1 && niyet.belgeNo) {
+      const liste = adaylar.map((a) => `• ${a.faturaNo} · ${a.aliciUnvan} · ${para(a.toplam)} ₺`).join('\n');
+      await this.ownerCevapGonder(msg, ownerTenant.id, ownerContactId,
+        `Birden fazla belge eşleşti, tam numarayı yaz:\n${liste}`,
+        'owner:gib-islem:coklu', 'WhatsApp owner GİB belge çoklu');
+      return true;
+    }
+    const hedef = adaylar[0];
+
+    // 3) ONAY İSTE
+    if (niyet.tur === 'SIL') {
+      this.faturaKomut.islemOnayinaAl(kimlik, 'SIL', hedef.id);
+      await this.ownerCevapGonder(msg, ownerTenant.id, ownerContactId,
+        `*SİLİNECEK BELGE*\n${hedef.faturaNo} · ${hedef.aliciUnvan}\n${hedef.aciklama} · ${para(hedef.toplam)} ₺\n\n` +
+        `Bu belge GİB’den silinecek (imzasız taslak, resmî belge değil).\n` +
+        `Onaylıyorsan *EVET SİL* yaz. Vazgeçmek için *vazgeç*.`,
+        'owner:gib-islem:sil-onay', 'WhatsApp owner GİB silme onayı');
+      return true;
+    }
+
+    const degisiklikler = FaturaKesKomutService.duzeltmeDegisiklikleri(metin);
+    if (!Object.keys(degisiklikler).length) {
+      await this.ownerCevapGonder(msg, ownerTenant.id, ownerContactId,
+        `${hedef.faturaNo} için neyi değiştireyim? Örnek: _"${hedef.faturaNo} düzelt tutar 2000 kdv 20"_\n` +
+        `Şu an: ${hedef.aciklama} · ${para(hedef.matrah)} + KDV %${hedef.kdvOrani}`,
+        'owner:gib-islem:duzelt-soru', 'WhatsApp owner GİB düzeltme sorusu');
+      return true;
+    }
+    this.faturaKomut.islemOnayinaAl(kimlik, 'DUZELT', hedef.id, degisiklikler);
+    const dList = [
+      degisiklikler.matrah != null ? `tutar → ${para(degisiklikler.matrah)} ₺` : null,
+      degisiklikler.kdvOrani != null ? `KDV → %${degisiklikler.kdvOrani}` : null,
+      degisiklikler.aciklama ? `açıklama → ${degisiklikler.aciklama}` : null,
+    ].filter(Boolean).join('\n');
+    await this.ownerCevapGonder(msg, ownerTenant.id, ownerContactId,
+      `*DÜZELTİLECEK BELGE*\n${hedef.faturaNo} · ${hedef.aliciUnvan}\n\n${dList}\n\n` +
+      `⚠️ GİB’de düzeltme diye bir işlem YOK: eski belge SİLİNİR, yenisi *YENİ NUMARAYLA* kesilir.\n` +
+      `Onaylıyorsan *EVET DÜZELT* yaz. Vazgeçmek için *vazgeç*.`,
+      'owner:gib-islem:duzelt-onay', 'WhatsApp owner GİB düzeltme onayı');
+    return true;
+  }
+
   private async maybeHandleFaturaKes(ownerTenant: any, msg: any, ownerContactId: string): Promise<boolean> {
     try {
       const kimlik = String(msg.from || '').replace(/\D/g, '');
@@ -2464,6 +2621,12 @@ ${not}` : not;
 
       // FATURA KES (owner): "edelerden şu firmaya şu tutarda fatura kes" gibi serbest metin.
       //   Bütçe'den SONRA: bütçe komutları daha dar kalıplı, önce onlar elensin.
+      // GİB İŞLEMLERİ (owner): listele / sil / düzelt.
+      //   KESMEDEN ÖNCE: "faturayı düzelt" cümlesi kesme komutu sanılmasın.
+      if (await this.maybeHandleGibIslem(ownerTenant, msg, ownerContact?.id)) {
+        return;
+      }
+
       if (await this.maybeHandleFaturaKes(ownerTenant, msg, ownerContact?.id)) {
         return;
       }
