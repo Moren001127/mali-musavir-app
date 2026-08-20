@@ -141,8 +141,11 @@ export default function IletimRaporuPage() {
       const atlanan = d.atlanan ?? 0;
       toast.success(
         `${denenen} mükellef için yeniden denendi` +
-          (atlanan ? ` · ${atlanan} tanesi atlandı (kategori kapalı veya ayar yok)` : ''),
+          (atlanan ? ` · ${atlanan} tanesi atlandı` : ''),
       );
+      // Aylık Ödeme Listesi buradan yeniden gönderilemez (cetvelin tamamı
+      // yeniden giderdi); kullanıcı doğru ekrana yönlendiriliyor.
+      if (d.not) toast.info(d.not, { duration: 9000 });
       qc.invalidateQueries({ queryKey: ['iletim-raporu', month] });
     } catch (e: any) {
       toast.error(e?.response?.data?.message || 'Yeniden gönderilemedi');

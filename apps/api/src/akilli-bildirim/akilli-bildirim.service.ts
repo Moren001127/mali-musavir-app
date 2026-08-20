@@ -761,6 +761,17 @@ export class AkilliBildirimService {
       else denenen++;
       out.push({ kategori, taxpayerId, ...r });
     }
-    return { denenen, atlanan, toplamCift: pairs.size, out };
+    // ODEME_LISTESI ayri serviste (AylikOdemeService) uretilir; runKategori
+    // onu tanimaz. Buradan otomatik yeniden gondermek de DOGRU DEGIL: o servis
+    // mukellefin TUM odeme cetvelini yeniden gonderir, basarili giden vergi
+    // mesaji da tekrar gider. Kullaniciyi dogru yere yonlendiriyoruz.
+    const odemeAtlanan = [...pairs].filter((k) => k.startsWith('ODEME_LISTESI:')).length;
+    const not = odemeAtlanan
+      ? `${odemeAtlanan} başarısız gönderim Aylık Ödeme Listesi'ne ait. ` +
+        'Tekrar denemek için Aylık Ödeme Listesi ekranından o mükellefe "Gönder" deyin ' +
+        '(buradan denenirse cetvelin tamamı yeniden gider).'
+      : null;
+
+    return { denenen, atlanan, odemeAtlanan, not, toplamCift: pairs.size, out };
   }
 }
