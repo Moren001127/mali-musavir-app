@@ -27,6 +27,7 @@ import { WhatsAppModule } from './whatsapp/whatsapp.module';
 import { VendorMemoryModule } from './vendor-memory/vendor-memory.module';
 import { PendingDecisionsModule } from './pending-decisions/pending-decisions.module';
 import { BeyannameTakipModule } from './beyanname-takip/beyanname-takip.module';
+import { FaturaKesModule } from './fatura-kes/fatura-kes.module';
 import { BeyanKayitlariModule } from './beyan-kayitlari/beyan-kayitlari.module';
 import { KdvBeyannameModule } from './kdv-beyanname/kdv-beyanname.module';
 import { GaleriModule } from './galeri/galeri.module';
@@ -87,6 +88,7 @@ import { InvoiceOverdueCron } from './schedule/invoice-overdue.cron';
     VendorMemoryModule,
     PendingDecisionsModule,
     BeyannameTakipModule,
+    FaturaKesModule,
     BeyanKayitlariModule,
     KdvBeyannameModule,
     GaleriModule,

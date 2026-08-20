@@ -722,6 +722,7 @@ const TITLES: Record<string, string> = {
   kdv: 'Kurulum · <b>KDV Raporu</b>',
   ayarlar: 'Kurulum · <b>Hesap Planı</b>',
   mukellefler: 'Çalışma · <b>Mükellefler</b>',
+  faturaKes: 'Belgeler · <b>Fatura Kes</b>',
   earsivSorgu: 'Belgeler · <b>GIB e-Arşiv Sorgu</b>',
   efaturaSorgu: 'Belgeler · <b>e-Fatura Sorgu</b>',
   genel: '<b>Genel Bakış</b>',
@@ -935,6 +936,7 @@ export default function FaturaMerkeziPage() {
       <div className="ncap">Belgeler</div>
       <div className={`nitem${screen === 'earsivSorgu' ? ' on' : ''}`} style={{ ['--icc' as any]: '#0f766e' }} onClick={() => go('earsivSorgu')}><Ico html={I.file} /> GIB e-Arşiv Sorgu</div>
       <div className={`nitem${screen === 'efaturaSorgu' ? ' on' : ''}`} style={{ ['--icc' as any]: '#2563eb' }} onClick={() => go('efaturaSorgu')}><Ico html={I.plug} /> e-Fatura Sorgu</div>
+      <div className={`nitem${screen === 'faturaKes' ? ' on' : ''}`} style={{ ['--icc' as any]: '#b45309' }} onClick={() => go('faturaKes')}><Ico html={I.file} /> Fatura Kes</div>
       <div className={`nitem${screen === 'faturalar' || screen === 'satis' ? ' on' : ''}`} style={{ ['--icc' as any]: '#15803d' }} onClick={() => go('faturalar')}><Ico html={I.file} /> Gelen Faturalar</div>
       <div className={`nsub${screen === 'faturalar' ? ' on' : ''}`} onClick={() => go('faturalar')}><span className="d" /> Alış Faturaları {badge(sum.alisPending)}</div>
       <div className={`nsub${screen === 'satis' ? ' on' : ''}`} onClick={() => go('satis')}><span className="d" /> Satış Faturaları {badge(sum.satisPending)}</div>
@@ -1006,6 +1008,7 @@ export default function FaturaMerkeziPage() {
             {screen === 'arsiv' && <ScreenAktarilanlar taxpayerId={taxpayerId} period={period} mode="arsiv" isIsletme={(() => { const t = taxpayers.find((x) => x.id === taxpayerId); return /i[şs]letme|defter.?beyan|basit/i.test(`${t?.defterTuru || ''} ${(t as any)?.mihsapDefterTuru || ''}`); })()} />}
             {screen === 'entegrator' && <ScreenEntegrator taxpayerId={taxpayerId} period={period} />}
             {screen === 'kdv' && <ScreenKdv taxpayerId={taxpayerId} period={period} />}
+            {screen === 'faturaKes' && <ScreenFaturaKes taxpayerId={taxpayerId} taxpayers={taxpayers} />}
             {screen === 'ayarlar' && <ScreenAyarlar taxpayerId={taxpayerId} />}
             {screen === 'genel' && <ScreenGenel taxpayers={taxpayers} period={period} onOpen={(id) => { setTaxpayerId(id); setScreen('faturalar'); }} />}
           </div>
@@ -4175,6 +4178,233 @@ function ScreenKdv({ taxpayerId, period }: { taxpayerId: string; period: string 
 }
 
 /* ===================== EKRAN: AYARLAR ===================== */
+/* ═══════════════════════════════════════════════════════════════════════════
+   FATURA KES — satış faturası hazırlama (2026-08-20)
+
+   GÜVENLİK: Bu ekran hiçbir yere belge GÖNDERMEZ. Yalnız taslak hazırlar ve
+   önizler. GİB'e/entegratöre gönderim AYRI bir adım olarak, AYRI onayla
+   eklenecektir — tek tıkla resmî fatura oluşmaz.
+   ═══════════════════════════════════════════════════════════════════════════ */
+function ScreenFaturaKes({ taxpayerId, taxpayers }: { taxpayerId: string; taxpayers: any[] }) {
+  const qc = useQueryClient();
+  const bugun = new Date().toISOString().slice(0, 10);
+  const [aliciVkn, setAliciVkn] = useState('');
+  const [aliciUnvan, setAliciUnvan] = useState('');
+  const [aliciVd, setAliciVd] = useState('');
+  const [aliciAdres, setAliciAdres] = useState('');
+  const [tarih, setTarih] = useState(bugun);
+  const [aciklama, setAciklama] = useState('');
+  const [matrah, setMatrah] = useState('');
+  const [kdvOrani, setKdvOrani] = useState(20);
+  const [miktar, setMiktar] = useState('1');
+  const [birim, setBirim] = useState('ADET');
+  const [acikTaslak, setAcikTaslak] = useState<string | null>(null);
+
+  const mukellef = taxpayers.find((t) => t.id === taxpayerId);
+
+  const listQ = useQuery({
+    queryKey: ['fatura-kes', 'taslak', taxpayerId],
+    queryFn: () => api.get('/fatura-kes/taslak', { params: { taxpayerId: taxpayerId || undefined, limit: 50 } }).then((r) => r.data as any[]),
+  });
+
+  // Tutarlar ANLIK hesaplanır — kullanıcı hazırlamadan önce ne olacağını görür.
+  const mNum = (() => {
+    const t = String(matrah).trim().replace(/\s|₺|TL/gi, '');
+    if (!t) return NaN;
+    const son = Math.max(t.lastIndexOf(','), t.lastIndexOf('.'));
+    if (son < 0) return Number(t);
+    return Number(`${t.slice(0, son).replace(/[.,]/g, '')}.${t.slice(son + 1).replace(/[^0-9]/g, '')}`);
+  })();
+  const kdvNum = Number.isFinite(mNum) ? Math.round(mNum * kdvOrani) / 100 : NaN;
+  const toplamNum = Number.isFinite(mNum) ? mNum + kdvNum : NaN;
+  const tl = (n: number) => (Number.isFinite(n) ? n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—');
+
+  const vknGecerli = /^\d{10}$|^\d{11}$/.test(aliciVkn.replace(/\D/g, ''));
+  const hazir = !!taxpayerId && vknGecerli && aliciUnvan.trim().length > 1 && aciklama.trim().length > 1 && Number.isFinite(mNum) && mNum > 0;
+
+  const olusturMut = useMutation({
+    mutationFn: () =>
+      api.post('/fatura-kes/taslak', {
+        taxpayerId,
+        aliciVkn: aliciVkn.replace(/\D/g, ''),
+        aliciUnvan: aliciUnvan.trim(),
+        aliciVd: aliciVd.trim() || undefined,
+        aliciAdres: aliciAdres.trim() || undefined,
+        faturaTarihi: tarih,
+        aciklama: aciklama.trim(),
+        matrah,
+        kdvOrani,
+        miktar,
+        birim,
+        kaynak: 'PORTAL',
+      }).then((r) => r.data),
+    onSuccess: (d: any) => {
+      toast.success('Taslak hazırlandı — hiçbir yere gönderilmedi');
+      qc.invalidateQueries({ queryKey: ['fatura-kes', 'taslak'] });
+      setAcikTaslak(d?.id || null);
+      setAciklama('');
+      setMatrah('');
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Taslak oluşturulamadı'),
+  });
+
+  const iptalMut = useMutation({
+    mutationFn: (id: string) => api.delete(`/fatura-kes/taslak/${id}`).then((r) => r.data),
+    onSuccess: () => {
+      toast.success('Taslak iptal edildi');
+      qc.invalidateQueries({ queryKey: ['fatura-kes', 'taslak'] });
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'İptal edilemedi'),
+  });
+
+  const inp: any = { padding: '9px 11px', border: '1px solid #e7e5e4', borderRadius: 8, fontSize: 14, width: '100%', background: '#fff' };
+  const lbl: any = { fontSize: 11, letterSpacing: '.08em', color: '#78716c', fontWeight: 600, marginBottom: 5, display: 'block' };
+
+  return (
+    <div style={{ padding: 20 }}>
+      <div style={{ background: 'linear-gradient(135deg,#fffbeb,#fff)', border: '1px solid #fde68a', borderRadius: 12, padding: '12px 16px', marginBottom: 18, fontSize: 13, color: '#92400e' }}>
+        <b>Bu ekran fatura GÖNDERMEZ.</b> Girdiğin bilgilerden taslak hazırlar ve önizler. GİB’e kesinleştirme ayrı bir adımdır ve ayrıca onay ister.
+      </div>
+
+      {!taxpayerId && (
+        <div style={{ padding: 16, background: '#fafaf9', borderRadius: 10, color: '#57534e', fontSize: 14 }}>Önce üstten bir mükellef seç.</div>
+      )}
+
+      {taxpayerId && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 320px', gap: 20, alignItems: 'start' }}>
+          <div style={{ border: '1px solid #e7e5e4', borderRadius: 12, padding: 18, background: '#fff' }}>
+            <div style={{ fontSize: 12, color: '#78716c', marginBottom: 14 }}>
+              Satıcı: <b style={{ color: '#1c1917' }}>{mukellef ? (mukellef.companyName || `${mukellef.firstName || ''} ${mukellef.lastName || ''}`.trim()) : ''}</b>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div>
+                <label style={lbl}>ALICI VKN / TCKN</label>
+                <input style={{ ...inp, borderColor: aliciVkn && !vknGecerli ? '#fca5a5' : '#e7e5e4' }} value={aliciVkn} onChange={(e) => setAliciVkn(e.target.value)} placeholder="10 veya 11 hane" inputMode="numeric" />
+              </div>
+              <div>
+                <label style={lbl}>FATURA TARİHİ</label>
+                <input type="date" style={inp} value={tarih} max={bugun} onChange={(e) => setTarih(e.target.value)} />
+              </div>
+            </div>
+
+            <div style={{ marginTop: 12 }}>
+              <label style={lbl}>ALICI ÜNVAN / AD SOYAD</label>
+              <input style={inp} value={aliciUnvan} onChange={(e) => setAliciUnvan(e.target.value)} placeholder="Firma ünvanı ya da ad soyad" />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
+              <div>
+                <label style={lbl}>VERGİ DAİRESİ (opsiyonel)</label>
+                <input style={inp} value={aliciVd} onChange={(e) => setAliciVd(e.target.value)} />
+              </div>
+              <div>
+                <label style={lbl}>ADRES (opsiyonel)</label>
+                <input style={inp} value={aliciAdres} onChange={(e) => setAliciAdres(e.target.value)} />
+              </div>
+            </div>
+
+            <div style={{ marginTop: 12 }}>
+              <label style={lbl}>FATURA İÇERİĞİ</label>
+              <input style={inp} value={aciklama} onChange={(e) => setAciklama(e.target.value)} placeholder="Örn: Nakliye hizmet bedeli — İstanbul / Ankara" />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 100px 110px 120px', gap: 12, marginTop: 12 }}>
+              <div>
+                <label style={lbl}>TUTAR (KDV HARİÇ)</label>
+                <input style={inp} value={matrah} onChange={(e) => setMatrah(e.target.value)} placeholder="8.000,00" inputMode="decimal" />
+              </div>
+              <div>
+                <label style={lbl}>MİKTAR</label>
+                <input style={inp} value={miktar} onChange={(e) => setMiktar(e.target.value)} inputMode="decimal" />
+              </div>
+              <div>
+                <label style={lbl}>BİRİM</label>
+                <input style={inp} value={birim} onChange={(e) => setBirim(e.target.value)} />
+              </div>
+              <div>
+                <label style={lbl}>KDV ORANI</label>
+                <select style={inp} value={kdvOrani} onChange={(e) => setKdvOrani(Number(e.target.value))}>
+                  {[20, 10, 1, 0].map((o) => (<option key={o} value={o}>%{o}</option>))}
+                </select>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 18, paddingTop: 16, borderTop: '1px solid #f5f5f4' }}>
+              <div style={{ fontSize: 14 }}>
+                <span style={{ color: '#78716c' }}>Matrah</span> <b>{tl(mNum)} ₺</b>
+                <span style={{ color: '#78716c', marginLeft: 14 }}>KDV %{kdvOrani}</span> <b>{tl(kdvNum)} ₺</b>
+                <span style={{ color: '#78716c', marginLeft: 14 }}>Toplam</span> <b style={{ fontSize: 16 }}>{tl(toplamNum)} ₺</b>
+              </div>
+              <button
+                disabled={!hazir || olusturMut.isPending}
+                onClick={() => olusturMut.mutate()}
+                style={{ padding: '10px 20px', borderRadius: 9, border: 'none', fontSize: 14, fontWeight: 600, color: '#fff', cursor: hazir ? 'pointer' : 'not-allowed', background: hazir ? 'linear-gradient(135deg,#b45309,#d97706)' : '#d6d3d1' }}
+              >
+                {olusturMut.isPending ? 'Hazırlanıyor…' : 'Taslak hazırla'}
+              </button>
+            </div>
+          </div>
+
+          <div style={{ border: '1px solid #e7e5e4', borderRadius: 12, background: '#fff', overflow: 'hidden' }}>
+            <div style={{ padding: '11px 14px', borderBottom: '1px solid #f5f5f4', fontSize: 12, fontWeight: 600, letterSpacing: '.06em', color: '#57534e' }}>TASLAKLAR</div>
+            <div style={{ maxHeight: 460, overflowY: 'auto' }}>
+              {(listQ.data || []).length === 0 && (<div style={{ padding: 16, fontSize: 13, color: '#a8a29e' }}>Henüz taslak yok.</div>)}
+              {(listQ.data || []).map((d: any) => (
+                <div key={d.id} style={{ padding: '11px 14px', borderBottom: '1px solid #fafaf9', fontSize: 13 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                    <b style={{ color: '#1c1917' }}>{d.aliciUnvan}</b>
+                    <span style={{ color: '#78716c', whiteSpace: 'nowrap' }}>{tl(d.toplam)} ₺</span>
+                  </div>
+                  <div style={{ color: '#78716c', marginTop: 2 }}>
+                    {new Date(d.faturaTarihi).toLocaleDateString('tr-TR')} · {String(d.aciklama || '').slice(0, 40)}
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, marginTop: 7, alignItems: 'center' }}>
+                    <span style={{ fontSize: 11, padding: '2px 7px', borderRadius: 20, fontWeight: 600, background: d.durum === 'TASLAK' ? '#fef3c7' : d.durum === 'IPTAL' ? '#f5f5f4' : '#dcfce7', color: d.durum === 'TASLAK' ? '#92400e' : d.durum === 'IPTAL' ? '#78716c' : '#166534' }}>
+                      {d.durum === 'TASLAK' ? 'gönderilmedi' : String(d.durum).toLowerCase()}
+                    </span>
+                    <button onClick={() => setAcikTaslak(d.id)} style={{ fontSize: 12, background: 'none', border: 'none', color: '#2563eb', cursor: 'pointer', padding: 0 }}>önizle</button>
+                    {d.durum !== 'KESILDI' && d.durum !== 'IPTAL' && (
+                      <button onClick={() => iptalMut.mutate(d.id)} style={{ fontSize: 12, background: 'none', border: 'none', color: '#b91c1c', cursor: 'pointer', padding: 0 }}>iptal</button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {acikTaslak && (
+        <div onClick={() => setAcikTaslak(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(28,25,23,.5)', zIndex: 60, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 12, width: 'min(780px,100%)', maxHeight: '90vh', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ padding: '12px 16px', borderBottom: '1px solid #f5f5f4', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <b style={{ fontSize: 14 }}>Taslak önizleme</b>
+              <button onClick={() => setAcikTaslak(null)} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#78716c' }}>×</button>
+            </div>
+            <FaturaKesOnizleme id={acikTaslak} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Önizleme HTML'ini API'den çekip gösterir (iframe src'de token taşımamak için). */
+function FaturaKesOnizleme({ id }: { id: string }) {
+  const q = useQuery({
+    queryKey: ['fatura-kes', 'onizleme', id],
+    queryFn: () => api.get(`/fatura-kes/taslak/${id}`).then((r) => (r.data as any)?.onizlemeHtml || ''),
+  });
+  return (
+    <iframe
+      title="taslak-onizleme"
+      srcDoc={q.data || '<p style="font-family:system-ui;padding:24px;color:#78716c">Yükleniyor…</p>'}
+      style={{ border: 'none', width: '100%', height: '70vh', background: '#fff' }}
+    />
+  );
+}
+
 function ScreenAyarlar({ taxpayerId }: { taxpayerId: string }) {
   const qc = useQueryClient();
   const [q, setQ] = useState('');
