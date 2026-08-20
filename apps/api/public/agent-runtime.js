@@ -53,7 +53,7 @@
   // ne DOM değişimi oluyor → "bitti" sinyali hiç gelmiyordu (PERİHAN ŞAHİN: tıklama
   // öncesi de sonrası da 18 satır). Artık 30sn boyunca ekran hiç değişmediyse sorgu
   // bitmiş sayılır. Ayrıca teşhis için ekrandaki durum metni loglanır.
-  const AGENT_VERSION = '1.47.22';
+  const AGENT_VERSION = '1.47.23';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -1965,6 +1965,36 @@
                 return false;
               };
               let input = findFileInput();
+              // ─── EKRAN DOĞRULAMASI (2026-08-20, GÜLŞEN DEMİRCİ vakası) ───
+              // Eskiden "herhangi bir dosya alanı bulunduysa ekran doğrudur" varsayılıyordu. Ama
+              // hesap gönderme işi (ACCOUNT_PLAN_PUSH) "Hesap Planı Aktar" ekranını AÇIK BIRAKIYOR ve
+              // o ekranda da bir dosya alanı var → fiş Excel'i oraya yükleniyordu. Luca da onu hesap
+              // planı sanıp reddediyordu: "Zorunlu Alanlar: Hesap Kodu, Hesap Adı … 2. satır Hesap
+              // Kodu alanına geçersiz karakter girişi yapıldı". Fiş HİÇ oluşmuyordu ve sebebi
+              // görünmüyordu (10 satış faturası, üç ayrı denemede).
+              const hesapPlaniAktarEkrani = () => {
+                for (const d of lucaDocuments()) {
+                  try {
+                    const t = ((d.body && d.body.textContent) || '');
+                    if (/zorunlu\s+alanlar[\s\S]{0,80}hesap\s+kodu[\s\S]{0,40}hesap\s+ad/i.test(t)) return true;
+                  } catch {}
+                }
+                return false;
+              };
+              if (input && !isCsv && hesapPlaniAktarEkrani()) {
+                await log('⚠ Ekranda HESAP PLANI AKTAR açık (fiş ekranı değil) — fiş Excel\'i oraya YÜKLENMEYECEK');
+                // Luca'nın kendi geçiş bağlantısı: "Fiş Listesi yüklemek için buraya tıklayınız."
+                let gecti = await nativeClickLucaText('Fiş Listesi yüklemek için buraya tıklayınız', { settleMs: 1500, timeoutMs: 5000 });
+                if (!gecti) gecti = lucaClickByText('Fiş Listesi yüklemek için buraya tıklayınız');
+                await sleep(1200);
+                if (gecti && !hesapPlaniAktarEkrani()) {
+                  await log('✓ Fiş yükleme moduna geçildi');
+                  input = findFileInput();
+                } else {
+                  await log('⚠ Geçiş bağlantısı işe yaramadı — "Excel Veri Aktarımı" menüden açılacak');
+                  input = null; // aşağıdaki menü navigasyonu devreye girsin
+                }
+              }
               if (!input && isCsv) {
                 // ── İŞLETME DEFTERİ: Bilanço "Muhasebe › Excel Veri Aktarımı" ekranı bu mükellefte YOK.
                 //   Doğru yol (kullanıcı doğruladı): İşletme Defteri › Gelir Gider İşlemleri › Gelir Gider
