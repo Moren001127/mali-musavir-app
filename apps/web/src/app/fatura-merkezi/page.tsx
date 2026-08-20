@@ -4185,6 +4185,15 @@ function ScreenKdv({ taxpayerId, period }: { taxpayerId: string; period: string 
    önizler. GİB'e/entegratöre gönderim AYRI bir adım olarak, AYRI onayla
    eklenecektir — tek tıkla resmî fatura oluşmaz.
    ═══════════════════════════════════════════════════════════════════════════ */
+// Taslak durumlari — kullaniciya NE OLDUGU acikca yazilir ("gonderilmedi" / "GIB'de taslak").
+//   GIB_TASLAK RESMI BELGE DEGILDIR: imzalanmamistir, portaldan silinebilir, vergi dogurmaz.
+const FK_DURUM: Record<string, { etiket: string; bg: string; renk: string }> = {
+  TASLAK: { etiket: 'gönderilmedi', bg: '#fef3c7', renk: '#92400e' },
+  GIB_TASLAK: { etiket: "GİB'de taslak · imzasız", bg: '#dbeafe', renk: '#1e40af' },
+  KESILDI: { etiket: 'kesildi', bg: '#dcfce7', renk: '#166534' },
+  IPTAL: { etiket: 'iptal', bg: '#f5f5f4', renk: '#78716c' },
+};
+
 function ScreenFaturaKes({ taxpayerId, taxpayers }: { taxpayerId: string; taxpayers: any[] }) {
   const qc = useQueryClient();
   const bugun = new Date().toISOString().slice(0, 10);
@@ -4255,6 +4264,19 @@ function ScreenFaturaKes({ taxpayerId, taxpayers }: { taxpayerId: string; taxpay
       qc.invalidateQueries({ queryKey: ['fatura-kes', 'taslak'] });
     },
     onError: (e: any) => toast.error(e?.response?.data?.message || 'İptal edilemedi'),
+  });
+
+  // GİB'E GÖNDER — GİB'de TASLAK oluşur, RESMİ BELGE DEĞİL (imzalama yapılmaz, SMS adımına gelinmez).
+  //   Tek tıkla gönderim YOK: kullanıcı ayrı kutuda ne olacağını görüp açıkça onaylar.
+  const [gibOnay, setGibOnay] = useState<any>(null);
+  const gibMut = useMutation({
+    mutationFn: (id: string) => api.post(`/fatura-kes/taslak/${id}/gib`, { kuruTest: false }).then((r) => r.data),
+    onSuccess: (d: any) => {
+      setGibOnay(null);
+      toast.success(d?.faturaNo ? `GİB'de taslak oluştu · ${d.faturaNo}` : "GİB'de taslak oluştu — imzalanmadı");
+      qc.invalidateQueries({ queryKey: ['fatura-kes', 'taslak'] });
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'GİB taslağı oluşturulamadı'),
   });
 
   // RENK AÇIKÇA VERİLİR (kullanıcı bulgusu 2026-08-20): tarih ve KDV oranı kutularında
@@ -4369,16 +4391,48 @@ function ScreenFaturaKes({ taxpayerId, taxpayers }: { taxpayerId: string; taxpay
                     {new Date(d.faturaTarihi).toLocaleDateString('tr-TR')} · {String(d.aciklama || '').slice(0, 40)}
                   </div>
                   <div style={{ display: 'flex', gap: 8, marginTop: 7, alignItems: 'center' }}>
-                    <span style={{ fontSize: 11, padding: '2px 7px', borderRadius: 20, fontWeight: 600, background: d.durum === 'TASLAK' ? '#fef3c7' : d.durum === 'IPTAL' ? '#f5f5f4' : '#dcfce7', color: d.durum === 'TASLAK' ? '#92400e' : d.durum === 'IPTAL' ? '#78716c' : '#166534' }}>
-                      {d.durum === 'TASLAK' ? 'gönderilmedi' : String(d.durum).toLowerCase()}
+                    <span style={{ fontSize: 11, padding: '2px 7px', borderRadius: 20, fontWeight: 600, background: (FK_DURUM[d.durum] || FK_DURUM.TASLAK).bg, color: (FK_DURUM[d.durum] || FK_DURUM.TASLAK).renk }}>
+                      {(FK_DURUM[d.durum] || { etiket: String(d.durum).toLowerCase() }).etiket}
                     </span>
+                    {d.faturaNo && (<span style={{ fontSize: 11, color: '#57534e', fontFamily: 'ui-monospace,monospace' }}>{d.faturaNo}</span>)}
                     <button onClick={() => setAcikTaslak(d.id)} style={{ fontSize: 12, background: 'none', border: 'none', color: '#2563eb', cursor: 'pointer', padding: 0 }}>önizle</button>
+                    {d.durum === 'TASLAK' && (
+                      <button onClick={() => setGibOnay(d)} style={{ fontSize: 12, background: 'none', border: 'none', color: '#b45309', cursor: 'pointer', padding: 0, fontWeight: 600 }}>GİB&apos;e gönder</button>
+                    )}
                     {d.durum !== 'KESILDI' && d.durum !== 'IPTAL' && (
                       <button onClick={() => iptalMut.mutate(d.id)} style={{ fontSize: 12, background: 'none', border: 'none', color: '#b91c1c', cursor: 'pointer', padding: 0 }}>iptal</button>
                     )}
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {gibOnay && (
+        <div onClick={() => !gibMut.isPending && setGibOnay(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(28,25,23,.5)', zIndex: 70, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 14, width: 'min(520px,100%)', overflow: 'hidden', boxShadow: '0 24px 60px rgba(28,25,23,.28)' }}>
+            <div style={{ padding: '16px 20px', background: 'radial-gradient(120% 140% at 0% 0%, #fde68a 0%, #f59e0b 55%, #b45309 100%)', color: '#fff' }}>
+              <div style={{ fontSize: 11, letterSpacing: '.1em', opacity: .9, fontWeight: 600 }}>GİB E-ARŞİV</div>
+              <div style={{ fontSize: 17, fontWeight: 700, marginTop: 2 }}>Taslak GİB&apos;e gönderilsin mi?</div>
+            </div>
+            <div style={{ padding: '18px 20px', fontSize: 14, color: '#292524', lineHeight: 1.6 }}>
+              <div style={{ marginBottom: 12 }}>
+                <b>{gibOnay.aliciUnvan}</b><br />
+                {new Date(gibOnay.faturaTarihi).toLocaleDateString('tr-TR')} · {String(gibOnay.aciklama || '')}<br />
+                <b style={{ fontSize: 16 }}>{tl(gibOnay.toplam)} ₺</b> <span style={{ color: '#78716c' }}>(matrah {tl(gibOnay.matrah)} + KDV {tl(gibOnay.kdvTutari)})</span>
+              </div>
+              <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 9, padding: '11px 13px', fontSize: 13, color: '#0c4a6e' }}>
+                GİB&apos;de <b>taslak</b> oluşur. <b>İmzalanmaz</b> — resmî belge değildir, vergi doğurmaz, portaldan silinebilir.
+                Kesinleştirme (SMS onayı) ayrı bir adımdır, bu düğme oraya gitmez.
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 9, justifyContent: 'flex-end', padding: '0 20px 18px' }}>
+              <button disabled={gibMut.isPending} onClick={() => setGibOnay(null)} style={{ padding: '9px 16px', borderRadius: 9, border: '1px solid #e7e5e4', background: '#fff', fontSize: 14, cursor: 'pointer', color: '#57534e' }}>Vazgeç</button>
+              <button disabled={gibMut.isPending} onClick={() => gibMut.mutate(gibOnay.id)} style={{ padding: '9px 18px', borderRadius: 9, border: 'none', fontSize: 14, fontWeight: 600, color: '#fff', cursor: gibMut.isPending ? 'wait' : 'pointer', background: 'linear-gradient(135deg,#b45309,#d97706)' }}>
+                {gibMut.isPending ? 'Gönderiliyor…' : "Evet, GİB'e gönder"}
+              </button>
             </div>
           </div>
         </div>
