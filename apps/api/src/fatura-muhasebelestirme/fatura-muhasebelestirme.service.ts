@@ -11853,6 +11853,14 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   Boşsa tüm mükellef (eski davranış). Retro-cari + gate tüm mükellefte kalır (ucuz), rematch filtreli.
     if (documentIds && documentIds.length) {
       await this.rematchDocumentsWithLatestAccountPlan(tenantId, taxpayerId, documentIds).catch(() => {});
+      // YENİDEN DOĞRULA (2026-08-20): seçili-belge yolu kodları düzeltiyor ama doğrulamayı
+      //   ATLIYORDU → ekrandaki "Çelişki" metni ESKİ kalıyordu. Tüm-mükellef yolu zaten
+      //   revalidateDocument çağırıyor (bkz. aşağısı); ikisi artık simetrik.
+      //   (BARANLAR BRN2026000000483: matrah kodu 740.01.004'e düzeldi ama tevkifat çelişkisi
+      //    ekranda duruyordu — kod düzeldiği hâlde belge onaylanamıyordu.)
+      for (const did of documentIds) {
+        await this.revalidateDocument(tenantId, did).catch(() => {});
+      }
       return { ok: true, scope: 'documents', count: documentIds.length };
     }
     // RETROAKTİF CARİ DÜZELTME: ALIŞ'ta satıcı (sellerVkn/vendorName) = MÜKELLEF olan belgeler hatalı
