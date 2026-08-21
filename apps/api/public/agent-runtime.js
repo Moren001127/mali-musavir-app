@@ -53,7 +53,7 @@
   // ne DOM değişimi oluyor → "bitti" sinyali hiç gelmiyordu (PERİHAN ŞAHİN: tıklama
   // öncesi de sonrası da 18 satır). Artık 30sn boyunca ekran hiç değişmediyse sorgu
   // bitmiş sayılır. Ayrıca teşhis için ekrandaki durum metni loglanır.
-  const AGENT_VERSION = '1.47.29';
+  const AGENT_VERSION = '1.47.30';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -412,10 +412,21 @@
   //  (a) Bu pencere bir popup ise (opener var, aynı köken) → kendini opener.top listesine kaydet.
   //  (b) window.open'ı ŞEFFAF sarmala → açılanı window.top listesine yaz (hangi frame açarsa açsın).
   // İş yürüten örnek lucaDocuments()'te window.top listesini okur → popup'ı görür. Davranış değişmez.
+  // Kayit TEK SEFER denenirse kaciyor: document_start aninda opener bagi henuz
+  // kurulmamis olabiliyor. Kisa araliklarla birkac kez tekrar dene (cift kayit
+  // includes ile engellenir). Luca raporlari target="_blank" ile aciliyor, yani
+  // asagidaki window.open sarmalayicisi devreye girmiyor — tek dayanak bu kayittir.
   try {
-    if (window.opener && window.opener !== window) {
-      try { const t = window.opener.top || window.opener; t.__morenLucaPopups = t.__morenLucaPopups || []; if (!t.__morenLucaPopups.includes(window)) t.__morenLucaPopups.push(window); } catch {}
-    }
+    const kendiniKaydet = () => {
+      try {
+        if (!window.opener || window.opener === window) return;
+        const t = window.opener.top || window.opener;
+        t.__morenLucaPopups = t.__morenLucaPopups || [];
+        if (!t.__morenLucaPopups.includes(window)) t.__morenLucaPopups.push(window);
+      } catch {}
+    };
+    kendiniKaydet();
+    for (const gecikme of [300, 1000, 3000]) setTimeout(kendiniKaydet, gecikme);
   } catch {}
   try {
     if (!window.__morenOpenHooked) {
@@ -439,6 +450,8 @@
     };
     add(window.top || window);
     add(window);
+    // Rol ters donmus olabilir (is popup'ta yuruyorsa): acan pencereyi de tara.
+    try { if (window.opener && window.opener !== window) add(window.opener.top || window.opener); } catch {}
     // Ayrı-pencere popup'lar (HIZLI FİŞ vb.) — PAYLAŞILAN window.top listesinden; kapananları ele
     try {
       let pops = null;
@@ -804,14 +817,31 @@
   }
 
   function readLucaScreenSnapshot() {
-    const snap = { url: location.href, frames: [], text: '', fields: [], buttons: [], links: [] };
+    // pencereler: Luca raporlari/listeleri AYRI PENCEREDE aciliyor. Eskiden bu
+    // pencerelerin metni ana ekranin metniyle ayni 12000 karakterlik kotaya
+    // giriyordu ve SONA eklendigi icin kirpilip tamamen kayboluyordu (gecmis fis
+    // satirlari bu yuzden okunamiyordu). Artik ayri alanda, kendi payiyla tasinir.
+    const snap = { url: location.href, frames: [], text: '', fields: [], buttons: [], links: [], pencereler: [] };
     const texts = [];
     for (const doc of lucaDocuments()) {
       try {
         const fname = (doc.defaultView && doc.defaultView.name) || '';
-        snap.frames.push(fname || '(ana)');
+        let ayriPencere = false;
+        try {
+          const w = doc.defaultView;
+          ayriPencere = Boolean(w && w.opener && w.opener !== w && w === w.top);
+        } catch {}
+        snap.frames.push(fname || (ayriPencere ? '(ayri-pencere)' : '(ana)'));
         const bt = (doc.body && (doc.body.innerText || doc.body.textContent) || '').replace(/\s+/g, ' ').trim();
-        if (bt) texts.push(bt.slice(0, 4000));
+        if (bt && ayriPencere && snap.pencereler.length < 4) {
+          snap.pencereler.push({
+            url: String(doc.location && doc.location.href || '').slice(0, 160),
+            baslik: String(doc.title || '').slice(0, 120),
+            metin: bt.slice(0, 6000),
+          });
+        } else if (bt) {
+          texts.push(bt.slice(0, 4000));
+        }
         for (const el of Array.from(doc.querySelectorAll('input, textarea, select'))) {
           if (!visible(el)) continue;
           const type = String(el.getAttribute('type') || el.tagName).toLowerCase();
@@ -1618,6 +1648,15 @@
       // yani üst pencerede yürür. İçerik frame'lerinde agent sadece DOM yardımcı
       // (frame-aware Excel button arama vs.).
       if (window !== window.top) return;
+      // AYRI PENCERE (rapor/HIZLI FIS popup'i) da bir "top" penceredir ve is
+      // dongusunu calistirir. Operator isleri (ekran oku / islem / kesif) o an
+      // hangi pencere kaparsa onun DOM'unu dondurur -> bazen yalniz rapor,
+      // bazen yalniz ana ekran gorunur. Bu isler ANA pencerede islensin; popup
+      // yalnizca DOM kaynagi olarak kalsin. Diger is tipleri (INVOICE_POST /
+      // HIZLI FIS akisi) AYNEN eskisi gibi calisir — dokunulmadi.
+      try {
+        if (window.opener && window.opener !== window) window.__morenOperatorIsleriniAlma = true;
+      } catch {}
       if (!isCurrentAgentInstance()) return;
       if (window.__morenAgent.stopRequested) return;
       if (window.__lucaJobRunning) return;
@@ -2050,6 +2089,14 @@
           // İlk satır: agent versiyonu — cache debug için kritik
           await throwIfCancelled();
           await log(`🤖 Moren Agent v${AGENT_VER} | URL=${location.href.slice(0, 80)}`);
+
+          // Operatör işleri yalnız ANA pencerede işlenir (yukarıdaki nota bak).
+          if (
+            window.__morenOperatorIsleriniAlma === true &&
+            (job.tip === 'EKRAN_OKU' || job.tip === 'LUCA_ACTION' || job.tip === 'LUCA_KESIF')
+          ) {
+            continue;
+          }
 
           // ─── LUCA_KESIF: menü/ekran yapısının ham dökümü (SADECE OKUMA, tıklama YOK) ───
           if (job.tip === 'LUCA_KESIF') {
