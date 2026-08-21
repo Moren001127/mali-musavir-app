@@ -181,9 +181,11 @@ const SUPPORTED_JOB_TYPES = Object.freeze([
   // Bunlari YALNIZ operator modundaki ajan alir (asagida JOB_TYPES ayrimi).
   'EKRAN_OKU',
   'LUCA_ACTION',
+  // Kesif: Luca menu/ekran yapisinin ham dokumu (salt-okuma, tiklama yok).
+  'LUCA_KESIF',
 ]);
-// Operator modunda ajan SADECE bu iki tipi yapar; veri cekme islerine karismaz.
-const OPERATOR_JOB_TYPES = Object.freeze(['EKRAN_OKU', 'LUCA_ACTION']);
+// Operator modunda ajan SADECE bu tipleri yapar; veri cekme islerine karismaz.
+const OPERATOR_JOB_TYPES = Object.freeze(['EKRAN_OKU', 'LUCA_ACTION', 'LUCA_KESIF']);
 const LEGACY_DEFAULT_JOB_TYPES = Object.freeze(['ACCOUNT_PLAN', 'MIZAN', 'KDV_MIZAN', 'MUAVIN']);
 
 function normalizeJobTypeConfig(rawJobTypes) {

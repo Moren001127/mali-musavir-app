@@ -311,6 +311,34 @@ export class LucaService {
     });
   }
 
+  /**
+   * LUCA OPERATÖRÜ — KEŞİF işi (LUCA_KESIF): Luca'nın o an açık ekranındaki
+   * menü/düğüm yapısını HAM olarak döker. Salt okuma; tıklama/yazma YOK.
+   * Amaç: operatörün Luca'yı elle öğretilmeden, kendi gezerek tanıması.
+   */
+  async createKesifJob(
+    tenantId: string,
+    payload: { limit?: number } = {},
+    opts: { createdBy?: string; targetDeviceId?: string } = {},
+  ) {
+    const operatorDeviceId = opts.targetDeviceId || (await this.findOnlineOperatorDevice(tenantId));
+    return (this.prisma as any).lucaFetchJob.create({
+      data: {
+        tenantId,
+        sessionId: null,
+        mukellefId: '',
+        donem: '',
+        tip: 'LUCA_KESIF',
+        status: 'pending',
+        createdBy: opts.createdBy || null,
+        targetDeviceId: operatorDeviceId || null,
+        preferredAgent: operatorDeviceId ? 'operator' : 'browser-ext',
+        priority: 4,
+        payload: payload as any,
+      },
+    });
+  }
+
   /** LUCA OPERATÖRÜ — operatör tarayıcısı çevrimiçi mi? (panel/beyin bilgisi) */
   async getOperatorDeviceStatus(tenantId: string) {
     const deviceId = await this.findOnlineOperatorDevice(tenantId);
@@ -396,7 +424,7 @@ export class LucaService {
     const deviceId = opts.deviceId?.trim();
     let canClaimUnassigned = this.canClaimUnassignedLucaJob(deviceId);
     // EKRAN_OKU/LUCA_ACTION görünür ekranda çalışır → browser-ext de atamasız alabilsin.
-    if (job.tip === 'EKRAN_OKU' || job.tip === 'LUCA_ACTION') canClaimUnassigned = true;
+    if (job.tip === 'EKRAN_OKU' || job.tip === 'LUCA_ACTION' || job.tip === 'LUCA_KESIF') canClaimUnassigned = true;
     // Slot işçisi temel cihaza atanmış işi de üstlenebilir (aynı bilgisayar havuzu).
     const slotBaseDeviceId =
       deviceId && /-slot\d+-/.test(deviceId) ? deviceId.split('-slot')[0] : null;
@@ -1053,7 +1081,7 @@ export class LucaService {
               ...(slotBaseDeviceId ? [{ targetDeviceId: slotBaseDeviceId }] : []),
               // EKRAN_OKU/LUCA_ACTION görünür ekranda çalışır → atamasız olsa da
               // browser-ext görür (affinity 'browser-ext' yerel worker'ı dışlar).
-              { tip: { in: ['EKRAN_OKU', 'LUCA_ACTION'] }, targetDeviceId: null },
+              { tip: { in: ['EKRAN_OKU', 'LUCA_ACTION', 'LUCA_KESIF'] }, targetDeviceId: null },
             ],
           },
           affinityFilter,

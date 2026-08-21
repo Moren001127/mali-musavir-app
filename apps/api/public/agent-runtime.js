@@ -53,7 +53,7 @@
   // ne DOM değişimi oluyor → "bitti" sinyali hiç gelmiyordu (PERİHAN ŞAHİN: tıklama
   // öncesi de sonrası da 18 satır). Artık 30sn boyunca ekran hiç değişmediyse sorgu
   // bitmiş sayılır. Ayrıca teşhis için ekrandaki durum metni loglanır.
-  const AGENT_VERSION = '1.47.23';
+  const AGENT_VERSION = '1.47.24';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -468,6 +468,72 @@
     } catch {}
     return '';
   }
+  // LUCA OPERATÖRÜ — KEŞİF (salt-okuma): Luca'nın menü/ekran yapısını HAM olarak döker.
+  // Hiçbir şeye tıklamaz, hiçbir alanı doldurmaz. Menü Luca'da <a> değil JS ağacı
+  // olduğundan ekran anlık görüntüsünde görünmüyor; burada tıklanabilir görünen her
+  // düğümün etiketi + kimliği + hiyerarşisi çıkarılır, yorumlamayı sunucu yapar.
+  function readLucaKesif(opts) {
+    const o = opts || {};
+    const enFazlaDugum = Math.min(Number(o.limit) || 600, 1500);
+    const out = { url: location.href, frames: [] };
+    const kisaMetin = (el) => {
+      try {
+        // Yalnız düğümün KENDİ metni (çocukların metni değil) — ağaçta tekrar olmasın.
+        let t = '';
+        for (const n of Array.from(el.childNodes)) {
+          if (n.nodeType === 3) t += n.nodeValue;
+        }
+        t = t.replace(/\s+/g, ' ').trim();
+        if (!t) t = (el.getAttribute('title') || el.getAttribute('alt') || el.value || '').replace(/\s+/g, ' ').trim();
+        return t.slice(0, 80);
+      } catch { return ''; }
+    };
+    const tiklanabilir = (el) => {
+      try {
+        const tag = el.tagName.toLowerCase();
+        if (tag === 'a' || tag === 'button') return true;
+        if (tag === 'input' && /button|submit/i.test(el.type || '')) return true;
+        if (el.hasAttribute('onclick') || el.getAttribute('role') === 'button') return true;
+        if (typeof el.onclick === 'function') return true;
+        const c = String(el.className || '');
+        if (/menu|tree|nav|tab|node|folder|link|item/i.test(c)) return true;
+        return false;
+      } catch { return false; }
+    };
+    for (const doc of lucaDocuments()) {
+      try {
+        const fname = (doc.defaultView && doc.defaultView.name) || '(ana)';
+        const dugumler = [];
+        const yol = [];
+        const gez = (el, derinlik, ustIndex) => {
+          if (dugumler.length >= enFazlaDugum || derinlik > 14) return;
+          let benim = ustIndex;
+          if (tiklanabilir(el) && visible(el)) {
+            const metin = kisaMetin(el);
+            if (metin) {
+              benim = dugumler.length;
+              dugumler.push({
+                i: benim,
+                ust: ustIndex,
+                d: derinlik,
+                tag: el.tagName.toLowerCase(),
+                id: el.id || null,
+                sinif: String(el.className || '').slice(0, 60) || null,
+                metin,
+                href: el.getAttribute && el.getAttribute('href') ? String(el.getAttribute('href')).slice(0, 120) : null,
+                onclick: el.getAttribute && el.getAttribute('onclick') ? String(el.getAttribute('onclick')).slice(0, 160) : null,
+              });
+            }
+          }
+          for (const c of Array.from(el.children || [])) gez(c, derinlik + 1, benim);
+        };
+        if (doc.body) gez(doc.body, 0, null);
+        out.frames.push({ ad: fname, url: (doc.location && doc.location.href || '').slice(0, 160), dugumSayisi: dugumler.length, dugumler });
+      } catch {}
+    }
+    return out;
+  }
+
   function readLucaScreenSnapshot() {
     const snap = { url: location.href, frames: [], text: '', fields: [], buttons: [], links: [] };
     const texts = [];
@@ -1715,6 +1781,33 @@
           // İlk satır: agent versiyonu — cache debug için kritik
           await throwIfCancelled();
           await log(`🤖 Moren Agent v${AGENT_VER} | URL=${location.href.slice(0, 80)}`);
+
+          // ─── LUCA_KESIF: menü/ekran yapısının ham dökümü (SADECE OKUMA, tıklama YOK) ───
+          if (job.tip === 'LUCA_KESIF') {
+            try {
+              const snapshot = readLucaKesif(job.payload || {});
+              const toplam = snapshot.frames.reduce((a, f) => a + f.dugumSayisi, 0);
+              await log(`🗺 Keşif: ${snapshot.frames.length} frame, ${toplam} düğüm okundu`);
+              await fetch(API + `/agent/luca/jobs/${job.id}/screen`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
+                body: JSON.stringify({ snapshot }),
+              }).catch(() => {});
+              await fetch(API + `/agent/luca/jobs/${job.id}/done`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
+                body: JSON.stringify({ recordCount: toplam }),
+              }).catch(() => {});
+              setStatus('Luca: keşif tamam');
+            } catch (e) {
+              await fetch(API + `/agent/luca/jobs/${job.id}/fail`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
+                body: JSON.stringify({ error: (e && e.message) || 'keşif okunamadı' }),
+              }).catch(() => {});
+            }
+            continue;
+          }
 
           // ─── EKRAN_OKU: Luca operatörü için o an açık ekranı oku (SADECE OKUMA) ───
           if (job.tip === 'EKRAN_OKU') {
