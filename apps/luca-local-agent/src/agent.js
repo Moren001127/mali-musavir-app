@@ -253,6 +253,11 @@ const BROWSER_KEEPALIVE_INTERVAL = configuredKeepAliveSeconds > 0
   ? configuredKeepAliveSeconds * 1000
   : Math.max(60_000, Math.min(10 * 60 * 1000, BROWSER_IDLE_TTL / 4));
 const nativeBridgePages = new WeakSet();
+// AYRI PENCERELER (Luca rapor/liste ciktilari target=_blank ile ayri pencerede
+// aciliyor). Tarayici ici runtime bunlari her zaman goremiyor (opener bagi
+// kopuk olabiliyor); Playwright'in sayfa listesi ise KESIN kaynak. Operator
+// isleri bittiginde bu pencerelerin metni ayrica gonderilir.
+const auxPages = new Set();
 
 // --------- Logger ---------
 // DONMA WATCHDOG heartbeat'i: ajan herhangi bir log satiri yazinca tazelenir.
@@ -972,6 +977,18 @@ async function nativeClickText(page, payload = {}) {
 async function setupAuxiliaryPage(page) {
   try {
     if (browserSession && page === browserSession.page) return; // ana sayfa zaten kurulu
+    auxPages.add(page);
+    page.once('close', () => auxPages.delete(page));
+    // Pencere kendini ana pencerenin popup listesine yazsin (runtime bunu
+    // document_start'ta deniyor ama opener bagi o an kurulmamis olabiliyor).
+    page.evaluate(() => {
+      try {
+        if (!window.opener || window.opener === window) return;
+        const t = window.opener.top || window.opener;
+        t.__morenLucaPopups = t.__morenLucaPopups || [];
+        if (!t.__morenLucaPopups.includes(window)) t.__morenLucaPopups.push(window);
+      } catch {}
+    }).catch(() => {});
     await installNativeClickBridge(page).catch(() => {});
     page.on('dialog', async (dialog) => {
       const msg = String(dialog.message() || '').trim();
@@ -1284,7 +1301,32 @@ async function runJobWithMorenRuntime(job) {
     } else {
       await gotoLucaWithFallback(page, LUCA_URLS.login, jobId, 'Luca giris');
     }
+    const operatorIsi = ['EKRAN_OKU', 'LUCA_ACTION', 'LUCA_KESIF'].includes(String(job.tip || ''));
     const final = await waitForJobFinalStatus(jobId);
+    if (operatorIsi) {
+      // Ayri pencereleri Playwright'tan oku (kesin kaynak) ve snapshot'a ekle.
+      try {
+        const ekPencereler = [];
+        for (const p of context.pages()) {
+          if (p === page) continue;
+          if (p.isClosed && p.isClosed()) continue;
+          let metin = '';
+          let baslik = '';
+          try { metin = await p.evaluate(() => (document.body && (document.body.innerText || document.body.textContent) || '').replace(/\s+/g, ' ').trim()); } catch {}
+          try { baslik = await p.title(); } catch {}
+          const url = (p.url() || '').slice(0, 200);
+          if (!metin && !baslik) continue;
+          ekPencereler.push({ url, baslik: String(baslik).slice(0, 120), metin: String(metin).slice(0, 6000) });
+          if (ekPencereler.length >= 4) break;
+        }
+        if (ekPencereler.length) {
+          await logJob(jobId, `Ayri pencere okundu: ${ekPencereler.length} (${ekPencereler.map((x) => x.baslik || x.url.slice(0, 40)).join(' | ')})`);
+          await api.post(`/agent/luca/jobs/${jobId}/screen`, { snapshot: { ekPencereler } });
+        }
+      } catch (err) {
+        log.debug?.(`Ayri pencere okuma hatasi: ${err.message}`);
+      }
+    }
     if (final?.status !== 'done') {
       const runtimeStopRequested = await page
         .evaluate(() => !!window.__morenAgent?.stopRequested)

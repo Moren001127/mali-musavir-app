@@ -266,9 +266,19 @@ export class LucaService {
     const job = await (this.prisma as any).lucaFetchJob.findUnique({ where: { id: jobId } });
     if (!job || job.tenantId !== tenantId) return { ok: false };
     const payload = job.payload && typeof job.payload === 'object' ? job.payload : {};
+    // AYRI PENCERELER: tarayıcı içi runtime bazı rapor pencerelerini göremiyor
+    // (opener bağı kopuk olabiliyor). Yerel ajan bunları Playwright'ın kendi
+    // sayfa listesinden okuyup AYRI bir çağrıyla gönderir. O çağrı ekranın
+    // tamamını DEĞİL, yalnız pencere listesini taşır → üzerine yazma, BİRLEŞTİR.
+    const sadecePencere =
+      snapshot && typeof snapshot === 'object' && Array.isArray((snapshot as any).ekPencereler);
+    const mevcut: any = (payload as any).screen || null;
+    const yeniScreen = sadecePencere
+      ? { ...(mevcut || {}), pencereler: (snapshot as any).ekPencereler }
+      : snapshot;
     await (this.prisma as any).lucaFetchJob.update({
       where: { id: jobId },
-      data: { payload: { ...payload, screen: snapshot, screenAt: new Date().toISOString() } },
+      data: { payload: { ...payload, screen: yeniScreen, screenAt: new Date().toISOString() } },
     });
     return { ok: true };
   }
