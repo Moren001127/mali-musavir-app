@@ -242,6 +242,9 @@ export class LucaService {
     tenantId: string,
     opts: { createdBy?: string; targetDeviceId?: string } = {},
   ) {
+    // Hedef: önce OPERATÖR tarayıcısı (kullanıcının PC'sinde ayrı Chrome profili).
+    // Çevrimdışıysa eski davranış: Chrome uzantısı (browser-ext).
+    const operatorDeviceId = opts.targetDeviceId || (await this.findOnlineOperatorDevice(tenantId));
     return (this.prisma as any).lucaFetchJob.create({
       data: {
         tenantId,
@@ -251,10 +254,8 @@ export class LucaService {
         tip: 'EKRAN_OKU',
         status: 'pending',
         createdBy: opts.createdBy || null,
-        targetDeviceId: opts.targetDeviceId || null,
-        // Ekran okuma GÖRÜNÜR ekranı okur → sadece Chrome eklentisi (browser-ext)
-        // alsın; yerel headless worker almasın (onun ekranı kullanıcının ekranı değil).
-        preferredAgent: 'browser-ext',
+        targetDeviceId: operatorDeviceId || null,
+        preferredAgent: operatorDeviceId ? 'operator' : 'browser-ext',
         priority: 5,
       },
     });
@@ -290,8 +291,9 @@ export class LucaService {
   async createActionJob(
     tenantId: string,
     payload: { action: string; etiket?: string; hedef?: string; deger?: string; confirmed?: boolean },
-    opts: { createdBy?: string } = {},
+    opts: { createdBy?: string; targetDeviceId?: string } = {},
   ) {
+    const operatorDeviceId = opts.targetDeviceId || (await this.findOnlineOperatorDevice(tenantId));
     return (this.prisma as any).lucaFetchJob.create({
       data: {
         tenantId,
@@ -301,12 +303,18 @@ export class LucaService {
         tip: 'LUCA_ACTION',
         status: 'pending',
         createdBy: opts.createdBy || null,
-        targetDeviceId: null,
-        preferredAgent: 'browser-ext',
+        targetDeviceId: operatorDeviceId || null,
+        preferredAgent: operatorDeviceId ? 'operator' : 'browser-ext',
         priority: 6,
         payload: payload as any,
       },
     });
+  }
+
+  /** LUCA OPERATÖRÜ — operatör tarayıcısı çevrimiçi mi? (panel/beyin bilgisi) */
+  async getOperatorDeviceStatus(tenantId: string) {
+    const deviceId = await this.findOnlineOperatorDevice(tenantId);
+    return { online: Boolean(deviceId), deviceId };
   }
 
   /**
@@ -315,11 +323,39 @@ export class LucaService {
    * - DEV-* (Chrome extension generated) → 'browser-ext'
    * - null/empty → null (hiçbiri)
    */
-  private agentKindForDeviceId(deviceId?: string | null): 'local-node' | 'browser-ext' | null {
+  private agentKindForDeviceId(
+    deviceId?: string | null,
+  ): 'local-node' | 'browser-ext' | 'operator' | null {
     const id = (deviceId || '').trim();
     if (!id) return null;
+    // LUCA OPERATÖRÜ: kullanıcının bilgisayarında AYRI Chrome profiliyle çalışan
+    // ajan. Cihaz adı `-operator` ile biter. Yalnız operatör işlerini alır;
+    // sunucudaki veri çekme ajanı (local-node) bu işlere karışmaz.
+    if (/-operator$/i.test(id)) return 'operator';
     if (/^DEV-/i.test(id)) return 'browser-ext';
     return 'local-node';
+  }
+
+  /**
+   * LUCA OPERATÖRÜ — çevrimiçi operatör tarayıcısını bul.
+   * Operatör ajanı 5 sn'de bir yoklama yapar; 3 dakikadır ping yoksa çevrimdışı say.
+   * Yoksa null döner → iş eski yola (Chrome uzantısı) düşer, davranış bozulmaz.
+   */
+  private async findOnlineOperatorDevice(tenantId: string): Promise<string | null> {
+    const since = new Date(Date.now() - 3 * 60 * 1000);
+    const row = await (this.prisma as any).agentStatus
+      .findFirst({
+        where: {
+          tenantId,
+          agent: 'luca',
+          deviceId: { endsWith: '-operator' },
+          lastPing: { gte: since },
+        },
+        orderBy: { lastPing: 'desc' },
+        select: { deviceId: true },
+      })
+      .catch(() => null);
+    return row?.deviceId || null;
   }
 
   async markJobRunning(

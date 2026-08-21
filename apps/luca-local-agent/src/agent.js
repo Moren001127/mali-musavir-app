@@ -26,13 +26,26 @@ const { chromium } = require('playwright');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
 // --------- Konfigürasyon yükleme ---------
-const CONFIG_PATH = path.join(__dirname, '..', 'config.json');
+// Ayni klasorden IKINCI bir ornek calistirabilmek icin config yolu env ile
+// degistirilebilir: operator ajani `MOREN_LUCA_CONFIG=config.operator.json` ile
+// baslar (kilit, tarayici profili ve cihaz adi zaten operator moduna gore ayrilir).
+const CONFIG_PATH = process.env.MOREN_LUCA_CONFIG
+  ? path.resolve(process.env.MOREN_LUCA_CONFIG)
+  : path.join(__dirname, '..', 'config.json');
 const DEVICE_ID_PATH = path.join(__dirname, '..', '.device-id');
 if (!fs.existsSync(CONFIG_PATH)) {
-  console.error('HATA: config.json bulunamadı. config.example.json dosyasını config.json olarak kopyalayıp doldurun.');
+  console.error(`HATA: yapılandırma bulunamadı: ${CONFIG_PATH}. config.example.json dosyasını config.json olarak kopyalayıp doldurun.`);
   process.exit(1);
 }
 const cfg = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8').replace(/^\uFEFF/, ''));
+
+// LUCA OPERATORU MODU (config.json -> worker.role = "operator")
+//   Kullanicinin kendi bilgisayarinda, KENDI Chrome profilinden AYRI bir
+//   Chromium penceresi acar ve YALNIZ operator islerini (EKRAN_OKU / LUCA_ACTION)
+//   alir. Veri cekme isleri sunucudaki ajanda kalir; bu ajan onlara dokunmaz.
+//   Cihaz adi `-operator` ile biter -> sunucu isleri buraya yonlendirir.
+const OPERATOR_MODE =
+  String(cfg.worker?.role || '').trim().toLowerCase() === 'operator';
 
 const PORTAL_WORKER = (() => {
   const raw = process.env.MOREN_LUCA_WORKER_JSON;
@@ -90,9 +103,14 @@ const BASE_DEVICE_ID = getOrCreateDeviceId();
 const WORKER_SLOT_ID = PORTAL_WORKER
   ? slugify(PORTAL_WORKER.id || PORTAL_WORKER.username || PORTAL_WORKER.displayName)
   : '';
-const DEVICE_ID = PORTAL_WORKER
+const RAW_DEVICE_ID = PORTAL_WORKER
   ? (PORTAL_WORKER.deviceId || `${BASE_DEVICE_ID}-${WORKER_SLOT_ID}`)
   : BASE_DEVICE_ID;
+// Operator ajani cihaz adini `-operator` ile bitirir: sunucu (luca.service.ts
+// agentKindForDeviceId) bu eke bakip operator islerini SADECE bu cihaza yollar.
+const DEVICE_ID = OPERATOR_MODE && !/-operator$/i.test(RAW_DEVICE_ID)
+  ? `${RAW_DEVICE_ID}-operator`
+  : RAW_DEVICE_ID;
 const WORKER_NAME = PORTAL_WORKER?.displayName || cfg.worker?.workerName || os.hostname();
 const WORKER_POOL_INDEX = Math.max(0, Number(PORTAL_WORKER?.slotIndex || 0));
 const WORKER_POOL_SIZE = Math.max(1, Number(PORTAL_WORKER?.poolSize || 1));
@@ -104,7 +122,11 @@ const WORKER_POOL_SIZE = Math.max(1, Number(PORTAL_WORKER?.poolSize || 1));
 const SINGLE_INSTANCE_LOCK_PATH = path.join(
   __dirname,
   '..',
-  PORTAL_WORKER ? `.agent.lock-${WORKER_SLOT_ID || 'worker'}` : '.agent.lock',
+  OPERATOR_MODE
+    ? '.agent.lock-operator'
+    : PORTAL_WORKER
+      ? `.agent.lock-${WORKER_SLOT_ID || 'worker'}`
+      : '.agent.lock',
 );
 let singleInstanceLockAcquired = false;
 
@@ -117,7 +139,11 @@ if ((!cfg.luca?.uyeNo || !cfg.luca?.username || !cfg.luca?.password) && (PORTAL_
   process.exit(1);
 }
 
-const POLL_INTERVAL = (cfg.worker?.pollIntervalSeconds || 30) * 1000;
+// Operator canli sohbetten komut alir: 30 sn'lik yoklama "cevap gelmiyor" hissi
+// verir. Operator modunda varsayilan 5 sn.
+const POLL_INTERVAL = OPERATOR_MODE
+  ? (cfg.worker?.pollIntervalSeconds || 5) * 1000
+  : (cfg.worker?.pollIntervalSeconds || 30) * 1000;
 const BROWSER_TIMEOUT = (cfg.worker?.browserTimeoutSeconds || 120) * 1000;
 // DUZELTME (2026-06-08): Varsayilan artik HEADFUL (gorunur). Luca'nin klasik
 // frameset'i (firma/frm4 ekrani) HEADLESS Chromium'da duzgun yuklenmiyordu ->
@@ -125,7 +151,9 @@ const BROWSER_TIMEOUT = (cfg.worker?.browserTimeoutSeconds || 120) * 1000;
 // isler hic tamamlanamiyordu). Gorunur modda Luca duzgun aciliyor ve isler akiyor
 // (canli dogrulandi: EARSIV_ALIS 2 dk'da done). Gercekten headless gereken (masaustu
 // olmayan) bir kurulum varsa config.json'da "headless": true ile acikca secilebilir.
-const HEADLESS = cfg.worker?.headless === true;
+// Operator modunda pencere HER ZAMAN gorunur: kullanici operatorun ne yaptigini
+// izleyebilmeli (ve gerekirse Luca guvenlik kodunu kendisi girebilmeli).
+const HEADLESS = OPERATOR_MODE ? false : cfg.worker?.headless === true;
 // COKLU BILGISAYAR YONLENDIRME: bu worker yalniz "ownerEmail" panel kullanicisinin
 // verdigi isleri yapar (sunucu createdBy ile eslestirir). Bos ise eski davranis (hepsi).
 // alsoUnowned=true ise sahipsiz/otomatik isleri de bu worker ustlenir.
@@ -149,7 +177,13 @@ const SUPPORTED_JOB_TYPES = Object.freeze([
   // Service tarafinda approve() metodu bu tipte LucaFetchJob yaratir.
   // Scraper agent-runtime.js icinde postInvoiceVoucher() ile implement.
   'INVOICE_POST',
+  // LUCA OPERATORU: portaldan gelen canli komutlar (ekrani oku / yaz-sec-tikla).
+  // Bunlari YALNIZ operator modundaki ajan alir (asagida JOB_TYPES ayrimi).
+  'EKRAN_OKU',
+  'LUCA_ACTION',
 ]);
+// Operator modunda ajan SADECE bu iki tipi yapar; veri cekme islerine karismaz.
+const OPERATOR_JOB_TYPES = Object.freeze(['EKRAN_OKU', 'LUCA_ACTION']);
 const LEGACY_DEFAULT_JOB_TYPES = Object.freeze(['ACCOUNT_PLAN', 'MIZAN', 'KDV_MIZAN', 'MUAVIN']);
 
 function normalizeJobTypeConfig(rawJobTypes) {
@@ -164,22 +198,26 @@ function normalizeJobTypeConfig(rawJobTypes) {
     raw.length === LEGACY_DEFAULT_JOB_TYPES.length &&
     LEGACY_DEFAULT_JOB_TYPES.every((t) => raw.includes(t));
 
+  // Operator isleri varsayilan listeye GIRMEZ: yalniz operator modundaki ajan alir.
+  const defaultJobTypes = SUPPORTED_JOB_TYPES.filter((t) => !OPERATOR_JOB_TYPES.includes(t));
   if (raw.length === 0 || (!strict && legacyDefaultConfig)) {
     return {
-      jobTypes: [...SUPPORTED_JOB_TYPES],
+      jobTypes: [...defaultJobTypes],
       upgradedFromLegacy: legacyDefaultConfig,
       unknown,
     };
   }
 
   return {
-    jobTypes: accepted.length ? accepted : [...SUPPORTED_JOB_TYPES],
+    jobTypes: accepted.length ? accepted : [...defaultJobTypes],
     upgradedFromLegacy: false,
     unknown,
   };
 }
 
-const JOB_TYPE_CONFIG = normalizeJobTypeConfig(cfg.worker?.jobTypes);
+const JOB_TYPE_CONFIG = OPERATOR_MODE
+  ? { jobTypes: [...OPERATOR_JOB_TYPES], upgradedFromLegacy: false, unknown: [] }
+  : normalizeJobTypeConfig(cfg.worker?.jobTypes);
 const JOB_TYPES = new Set(JOB_TYPE_CONFIG.jobTypes);
 const LOG_LEVEL = cfg.log?.level || 'info';
 const LOCAL_AGENT_VERSION = 'local-1.1.8';
@@ -605,10 +643,16 @@ function getCurrentRuntimeVersionForApi() {
 }
 
 function getBrowserUserDataDir() {
+  // Operatorun KENDI profili: kullanicinin gunluk Chrome'undan tamamen ayri
+  // (gecmis/sekme/oturum karismaz), ama Luca cerezi burada kalici saklanir.
   return path.join(
     __dirname,
     '..',
-    PORTAL_WORKER ? `.browser-data-${WORKER_SLOT_ID}` : '.browser-data',
+    OPERATOR_MODE
+      ? '.browser-data-operator'
+      : PORTAL_WORKER
+        ? `.browser-data-${WORKER_SLOT_ID}`
+        : '.browser-data',
   );
 }
 
@@ -1832,6 +1876,9 @@ async function mainLoop() {
   log.info(`Polling: her ${POLL_INTERVAL / 1000} saniyede bir`);
   log.info(`Job tipleri: ${[...JOB_TYPES].join(', ')}`);
   log.info(`Headless: ${HEADLESS}`);
+  if (OPERATOR_MODE) {
+    log.info('MOD: LUCA OPERATORU — ayri Chrome profili, yalniz operator isleri, komutla acilir.');
+  }
   log.info(`Device: ${DEVICE_ID} (${WORKER_NAME})`);
   log.info(
     OWNER_EMAIL
@@ -1842,9 +1889,11 @@ async function mainLoop() {
 
   // Agent başlangıcında ilk pre-warm gerçek job yoksa çalışır. Aksi halde
   // aynı Playwright sayfasında iki navigation çakışıp job'u pending bırakabiliyor.
-  let initialPreWarmPending = true;
+  // Operator modunda tarayici KOMUTLA acilir: ajan basladi diye kendiliginden
+  // pencere acmaz (kullanici ekraninda bos Chrome durmasin).
+  let initialPreWarmPending = !OPERATOR_MODE;
   // Her sabah PRE_WARM_HOUR'de tekrar
-  schedulePreWarm();
+  if (!OPERATOR_MODE) schedulePreWarm();
 
   while (!stopped) {
     try {

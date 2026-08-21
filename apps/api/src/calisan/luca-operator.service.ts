@@ -54,6 +54,10 @@ const ALLOWED_TOOLS = new Set<string>([
   'preview_agent_command', 'create_confirmed_agent_command',
 ]);
 
+// Operator isi bekleme suresi. Operator tarayicisi soguk acilista (ayri Chrome
+// profili + Luca girisi) 30-60 sn alabilir; sonraki komutlar saniyeler icinde doner.
+const OPERATOR_JOB_TIMEOUT_MS = 90000;
+
 interface ChatHistoryItem {
   role: 'user' | 'assistant';
   content: string;
@@ -76,6 +80,17 @@ export class LucaOperatorService {
     private readonly luca: LucaService,
   ) {}
 
+  /** Zaman aşımı mesajı — operatör tarayıcısı çevrimiçi mi bilgisine göre. */
+  private async timeoutHint(tenantId: string, prefix: string): Promise<string> {
+    const st = await this.luca
+      .getOperatorDeviceStatus(tenantId)
+      .catch(() => ({ online: false }) as any);
+    if (st?.online) {
+      return `${prefix} (zaman aşımı). Operatör tarayıcısı açık görünüyor ama iş bitmedi — Luca girişi güvenlik kodu bekliyor olabilir. Tekrar deneyeyim mi?`;
+    }
+    return `${prefix} (zaman aşımı). Operatör tarayıcısı çevrimiçi değil — bilgisayarında Luca Operatör ajanı çalışmıyor. Ajanı başlat, sonra tekrar dene.`;
+  }
+
   /** LUCA OPERATÖRÜ — o an açık Luca ekranını oku (EKRAN_OKU işi + sonucu yokla). */
   private async readLucaScreen(ctx: { tenantId: string; userId?: string | null }): Promise<any> {
     let job: any;
@@ -86,17 +101,14 @@ export class LucaOperatorService {
     }
     const jobId = job?.id;
     if (!jobId) return { ok: false, error: 'Ekran okuma işi oluşturulamadı.' };
-    const deadline = Date.now() + 25000;
+    const deadline = Date.now() + OPERATOR_JOB_TIMEOUT_MS;
     while (Date.now() < deadline) {
       await new Promise((r) => setTimeout(r, 1500));
       const r = await this.luca.getScreenSnapshot(jobId, ctx.tenantId).catch(() => null);
       if (r && r.status === 'done' && r.snapshot) return { ok: true, ekran: r.snapshot };
       if (r && r.status === 'failed') return { ok: false, error: r.errorMsg || 'ekran okunamadı' };
     }
-    return {
-      ok: false,
-      error: 'Ekran okunamadı (zaman aşımı). Chrome\'da Luca açık ve Moren Agent çalışıyor mu? Tekrar dener misin?',
-    };
+    return { ok: false, error: await this.timeoutHint(ctx.tenantId, 'Ekran okunamadı') };
   }
 
   /** LUCA OPERATÖRÜ — Luca'da işlem yap (yaz/seç/tıkla); sonucu + işlem sonrası ekranı döndürür. */
@@ -112,14 +124,14 @@ export class LucaOperatorService {
     }
     const jobId = job?.id;
     if (!jobId) return { ok: false, error: 'İşlem oluşturulamadı.' };
-    const deadline = Date.now() + 25000;
+    const deadline = Date.now() + OPERATOR_JOB_TIMEOUT_MS;
     while (Date.now() < deadline) {
       await new Promise((r) => setTimeout(r, 1500));
       const r = await this.luca.getScreenSnapshot(jobId, ctx.tenantId).catch(() => null);
       if (r && r.status === 'done' && r.snapshot) return r.snapshot; // { ok, message, screen, blocked? }
       if (r && r.status === 'failed') return { ok: false, error: r.errorMsg || 'işlem başarısız' };
     }
-    return { ok: false, error: 'İşlem zaman aşımı. Chrome\'da Luca açık ve operatör hesabı girişli mi?' };
+    return { ok: false, error: await this.timeoutHint(ctx.tenantId, 'İşlem tamamlanamadı') };
   }
 
   // ─── FAZ 4: ÖĞRENME / BECERİ KÜTÜPHANESİ (AiMemory üzerinde; migration yok) ───
