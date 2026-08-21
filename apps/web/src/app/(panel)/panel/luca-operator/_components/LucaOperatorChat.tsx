@@ -17,8 +17,9 @@ interface Msg {
 }
 
 const ORNEKLER = [
-  'Petravet için Mayıs mizanını çek',
-  'Hangi mükelleflerin işletme defteri var?',
+  'Luca menüsünü keşfet ve haritasını çıkar',
+  'Muhtasar beyanname ekranını aç ve ne gördüğünü söyle',
+  'Firmayı değiştir',
   'Bu ay KDV son günü olan mükellefler kim?',
 ];
 
@@ -213,30 +214,57 @@ export function LucaOperatorChat() {
       className="flex h-full flex-col overflow-hidden rounded-2xl"
       style={{ background: 'rgba(15,13,9,0.85)', border: `1px solid ${ACCENT}26`, backdropFilter: 'blur(10px)' }}
     >
-      {/* Başlık */}
-      <div className="flex flex-shrink-0 items-center justify-between gap-2 border-b px-4 py-3" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-        <div className="min-w-0">
-          <div className="text-[10px] font-bold uppercase tracking-[.16em]" style={{ color: ACCENT }}>
-            Luca Operatörü ile Konuşma
-          </div>
-          <div className="text-xs" style={{ color: 'rgba(250,250,249,0.55)' }}>
-            {voiceMode
-              ? 'Sohbet modu açık — konuş, cevap versin, mikrofon tekrar açılır'
-              : messages.length === 0
-                ? 'Bir şey iste — gerekirse sana soru sorar'
-                : `${messages.length} mesaj · kaydedildi`}
-          </div>
-        </div>
-        {messages.length > 0 && (
+      {/* Başlık — modül adı üstteki başlıkta zaten var; burada yalnız DURUM ve KONTROLLER */}
+      <div
+        className="flex flex-shrink-0 flex-wrap items-center gap-2 border-b px-4 py-2.5"
+        style={{ borderColor: 'rgba(255,255,255,0.06)' }}
+      >
+        <span className="text-xs" style={{ color: 'rgba(250,250,249,0.55)' }}>
+          {voiceMode
+            ? 'Sohbet modu açık — konuş, cevap versin'
+            : messages.length === 0
+              ? 'Bir şey iste; gerekirse sana soru sorar'
+              : `${messages.length} mesaj`}
+        </span>
+
+        <div className="ml-auto flex items-center gap-1.5">
           <button
-            onClick={clearChat}
-            className="flex-shrink-0 rounded-lg px-2 py-1 text-[11px] transition-colors hover:bg-white/5"
-            style={{ color: 'rgba(250,250,249,0.5)', border: '1px solid rgba(255,255,255,0.08)' }}
-            title="Sohbeti temizle"
+            onClick={toggleSpeak}
+            className="flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] transition-colors"
+            style={{
+              background: speakEnabled ? `${ACCENT}1a` : 'rgba(255,255,255,0.04)',
+              color: speakEnabled ? ACCENT : 'rgba(250,250,249,0.5)',
+              border: `1px solid ${speakEnabled ? `${ACCENT}44` : 'rgba(255,255,255,0.07)'}`,
+            }}
+            title={speakEnabled ? 'Sesli yanıt açık — kapat' : 'Sesli yanıt — aç'}
           >
-            Temizle
+            {speakEnabled ? <Volume2 size={11} /> : <VolumeX size={11} />}
+            {speakEnabled ? 'Sesli' : 'Sessiz'}
           </button>
-        )}
+          <button
+            onClick={toggleVoiceMode}
+            className="flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-semibold transition-colors"
+            style={{
+              background: voiceMode ? `${ACCENT}22` : 'rgba(255,255,255,0.04)',
+              color: voiceMode ? ACCENT : 'rgba(250,250,249,0.5)',
+              border: `1px solid ${voiceMode ? `${ACCENT}55` : 'rgba(255,255,255,0.07)'}`,
+            }}
+            title="Karşılıklı sesli sohbet — konuş, cevap versin, mikrofon tekrar açılsın"
+          >
+            <Mic size={11} />
+            {voiceMode ? 'Sohbet açık' : 'Sohbet modu'}
+          </button>
+          {messages.length > 0 && (
+            <button
+              onClick={clearChat}
+              className="rounded-lg px-2 py-1 text-[11px] transition-colors hover:bg-white/5"
+              style={{ color: 'rgba(250,250,249,0.45)', border: '1px solid rgba(255,255,255,0.07)' }}
+              title="Sohbeti temizle"
+            >
+              Temizle
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Mesajlar */}
@@ -306,35 +334,7 @@ export function LucaOperatorChat() {
       </div>
 
       {/* Girdi + ses */}
-      <div className="flex-shrink-0 space-y-2 border-t px-3 py-3" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-        <div className="flex flex-wrap items-center gap-2 text-[10px]" style={{ color: 'rgba(250,250,249,0.55)' }}>
-          <button
-            onClick={toggleSpeak}
-            className="flex items-center gap-1 rounded px-2 py-1 transition-colors"
-            style={{
-              background: speakEnabled ? `${ACCENT}1a` : 'rgba(255,255,255,0.04)',
-              color: speakEnabled ? ACCENT : 'rgba(250,250,249,0.5)',
-            }}
-            title={speakEnabled ? 'Sesli yanıt açık - kapat' : 'Sesli yanıt - aç'}
-          >
-            {speakEnabled ? <Volume2 size={11} /> : <VolumeX size={11} />}
-            {speakEnabled ? 'Sesli Yanıt' : 'Sessiz'}
-          </button>
-          <button
-            onClick={toggleVoiceMode}
-            className="flex items-center gap-1 rounded px-2 py-1 font-bold transition-colors"
-            style={{
-              background: voiceMode ? `${ACCENT}22` : 'rgba(255,255,255,0.04)',
-              color: voiceMode ? ACCENT : 'rgba(250,250,249,0.5)',
-              border: voiceMode ? `1px solid ${ACCENT}55` : '1px solid transparent',
-            }}
-            title="Karşılıklı sesli sohbet — konuş, cevap versin, mikrofon tekrar açılsın"
-          >
-            {voiceMode ? '🎙 SOHBET AÇIK' : '🎙 Sohbet Modu'}
-          </button>
-          <span className="opacity-50">·</span>
-          <span>{voiceMode ? 'Konuşunca otomatik gönderilir' : 'Enter ile gönder, mikrofonla konuş'}</span>
-        </div>
+      <div className="flex-shrink-0 border-t px-3 py-3" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
         <div className="flex gap-2">
           <button
             onClick={toggleMic}
@@ -358,7 +358,13 @@ export function LucaOperatorChat() {
                 submit();
               }
             }}
-            placeholder={listening ? 'Dinliyorum...' : 'Luca operatörüne talimat ver...'}
+            placeholder={
+              listening
+                ? 'Dinliyorum...'
+                : voiceMode
+                  ? 'Konuş — otomatik gönderilir'
+                  : 'Luca operatörüne talimat ver… (Enter ile gönder)'
+            }
             disabled={sending}
             className="flex-1 rounded-lg px-3 py-2 text-sm outline-none"
             style={{
