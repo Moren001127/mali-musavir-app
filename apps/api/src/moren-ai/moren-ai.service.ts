@@ -2158,7 +2158,7 @@ export class MorenAiService {
 
       const [coreMemories, taxpayerMemories, relevantMemories] = await Promise.all([
         aiMemory.findMany({
-          where: { tenantId, isActive: true, scope: { in: ['office', 'portal', 'agent'] } },
+          where: { tenantId, isActive: true, scope: { in: ['office', 'portal', 'agent', 'luca-kural'] } },
           orderBy: [{ importance: 'desc' }, { updatedAt: 'desc' }],
           take: 8,
         }).catch(() => []),

@@ -154,8 +154,9 @@ export class LucaOperatorService {
     const rows = await this.prisma.aiMemory
       .findMany({
         where: { tenantId: tenantId || 'default', scope: 'luca-kural', isActive: true },
-        orderBy: { updatedAt: 'desc' },
-        take: 60,
+        // Bütçe dolarsa önemsiz olan düşsün: önem, sonra tazelik.
+        orderBy: [{ importance: 'desc' }, { updatedAt: 'desc' }],
+        take: 40,
       })
       .catch(() => [] as any[]);
     return (rows as any[]).map((r) => ({ id: r.id, baslik: r.title, kural: String(r.content || '') }));
@@ -166,10 +167,15 @@ export class LucaOperatorService {
     ctx: { tenantId: string; userId?: string | null },
     baslik: string,
     kural: string,
+    onem?: number,
   ): Promise<any> {
     const b = String(baslik || '').trim();
     const k = String(kural || '').trim();
     if (!b || !k) return { ok: false, error: 'baslik ve kural gerekli' };
+    // Kural kalıcıdır ve her istekte prompta girer — içine gizli bilgi girmesin.
+    if (/(şifre|sifre|parola|password|token|api\s*key|gizli anahtar)/i.test(`${b} ${k}`)) {
+      return { ok: false, error: 'Kural içinde şifre/token gibi gizli bilgi olamaz. Kuralı bu bilgi olmadan yaz.' };
+    }
     try {
       await this.prisma.aiMemory
         .updateMany({
@@ -184,14 +190,35 @@ export class LucaOperatorService {
           source: 'luca-operator',
           title: b.slice(0, 120),
           content: k.slice(0, 4000),
-          importance: 5,
+          importance: Math.min(Math.max(Number(onem) || 5, 3), 5),
           tags: ['luca-kural'],
+          createdBy: ctx.userId || null,
         },
       });
-      return { ok: true, message: `Kural kaydedildi: "${b}". Bundan sonra her işte uygulayacağım.` };
+      return {
+        ok: true,
+        message: `Kural kaydedildi: "${b}" — ${k.slice(0, 200)}`,
+        hatirlatma: 'Kullanıcıya kaydettiğin kuralın METNİNİ tek cümleyle geri oku ki yanlışı hemen görsün.',
+      };
     } catch (e: any) {
       return { ok: false, error: e?.message || 'kural kaydedilemedi' };
     }
+  }
+
+  /** Kuralı kaldır (başlığa göre) — kullanıcı "şu kural artık geçerli değil" derse. */
+  private async kuralSil(ctx: { tenantId: string }, baslik: string): Promise<any> {
+    const b = String(baslik || '').trim();
+    if (!b) return { ok: false, error: 'baslik gerekli' };
+    const r = await this.prisma.aiMemory
+      .updateMany({
+        where: { tenantId: ctx.tenantId, scope: 'luca-kural', title: b, isActive: true },
+        data: { isActive: false },
+      })
+      .catch(() => ({ count: 0 }));
+    if (!(r as any)?.count) {
+      return { ok: false, error: `"${b}" başlıklı kural bulunamadı. luca_kural_listele ile tam başlığa bak.` };
+    }
+    return { ok: true, message: `Kural kaldırıldı: "${b}".` };
   }
 
   /** UI: kuralları listele. */
@@ -488,13 +515,28 @@ export class LucaOperatorService {
     voiceMode?: boolean,
     kurallar?: Array<{ baslik: string; kural: string }>,
   ): string {
-    const kurallarBolumu = kurallar?.length
-      ? [
-          '## OFİS KURALLARI (kullanıcının kalıcı kararları — HER İŞTE UYGULA)',
-          ...kurallar.map((k) => `- ${k.baslik}: ${k.kural}`),
-          '',
-        ].join('\n')
-      : '';
+    // Prompt bütçesi: kural sayısı arttıkça sistem promptu şişip dikkati dağıtmasın.
+    // Tam metin veritabanında kalır; prompta kısaltılmış hali girer.
+    const KURAL_KARAKTER = 300;
+    const KURAL_TOPLAM = 12000;
+    let kurallarBolumu = '';
+    if (kurallar?.length) {
+      const satirlar: string[] = [];
+      let toplam = 0;
+      let atlanan = 0;
+      for (const k of kurallar) {
+        const metin = k.kural.length > KURAL_KARAKTER ? `${k.kural.slice(0, KURAL_KARAKTER)}…` : k.kural;
+        const satir = `- ${k.baslik}: ${metin}`;
+        if (toplam + satir.length > KURAL_TOPLAM) {
+          atlanan++;
+          continue;
+        }
+        satirlar.push(satir);
+        toplam += satir.length;
+      }
+      if (atlanan) satirlar.push(`- (+${atlanan} kural yer darlığından gösterilmedi — luca_kural_listele ile görebilirsin)`);
+      kurallarBolumu = ['## OFİS KURALLARI (kullanıcının kalıcı kararları — HER İŞTE UYGULA)', ...satirlar, ''].join('\n');
+    }
     const base = [
       'Sen Moren Mali Müşavirlik portalının "Luca Operatörü" adlı AI çalışanısın. Sahip: Muzaffer Ören.',
       'Kullanıcı (mali müşavir veya personel) ile Türkçe konuşur, portal verisini okur ve istenen işleri hazırlarsın.',
@@ -519,7 +561,9 @@ export class LucaOperatorService {
       'Cevabını GEREKSİZ uzatma; net ve kısa tut. Emin değilsen veya bilgi eksikse ASLA varsayma — kullanıcıya kısa bir soru sor.',
       'Kritik mali/hukuki konularda (beyanname, KDV, mizan, tahakkuk) en yüksek doğrulukla çalış; görmediğini görmüş gibi söyleme.',
       'Mükellef PII (şifre, token, TC, IBAN) sızdırma, loglama.',
-      'KURAL KAYDETME: Kullanıcı sana bir çalışma kuralı söylediğinde veya seni DÜZELTTİĞİNDE (ör. "ödenecek çıkıyorsa 360, çıkmıyorsa 190"), bunu KENDİLİĞİNDEN portal({name:"luca_kural_kaydet", args:{baslik:"<kısa başlık>", kural:"<kuralın tam metni>"}}) ile kaydet ve tek cümleyle bildir. Aynı şeyi bir daha sorma.',
+      'KURAL KAYDETME: Kullanıcı sana bir çalışma kuralı söylediğinde veya seni DÜZELTTİĞİNDE (ör. "ödenecek çıkıyorsa 360, çıkmıyorsa 190"), bunu KENDİLİĞİNDEN portal({name:"luca_kural_kaydet", args:{baslik:"<kısa başlık>", kural:"<kuralın tam metni>"}}) ile kaydet ve KAYDETTİĞİN METNİ tek cümleyle geri oku (kullanıcı yanlışı hemen görsün). Aynı şeyi bir daha sorma.',
+      'YALNIZ GENELLENEBİLİR kararı kural yap. "Bu ay şunu yap", "bugünlük böyle olsun" gibi TEK SEFERLİK talimatı kural olarak KAYDETME — o iş bitince geçerliliği kalmaz.',
+      'KURAL DEĞİŞİRSE: önce portal({name:"luca_kural_listele"}) ile TAM başlığı bul, AYNI başlıkla kaydet (üzerine yazılır). Kullanıcı bir kuralın kalkmasını isterse portal({name:"luca_kural_sil", args:{baslik:"<tam başlık>"}}) kullan. Çelişen iki kural aynı anda durmasın.',
       'KURALLAR GEÇMİŞ ÖRNEKTEN ÜSTÜNDÜR: Geçmiş kayıt ile aşağıdaki ofis kuralı çelişirse KURAL geçerlidir. Geçmiş kayıt tek bir durumu gösteriyor olabilir; ondan genel kural UYDURMA.',
       '',
       kurallarBolumu,
@@ -626,7 +670,19 @@ export class LucaOperatorService {
             const args = a?.args || {};
             toolUses.push({ name: toolName, args });
             emit({ type: 'tool', name: toolName });
-            const r = await this.kuralKaydet(ctx, String(args.baslik || ''), String(args.kural || args.metin || ''));
+            const r = await this.kuralKaydet(
+              ctx,
+              String(args.baslik || ''),
+              String(args.kural || args.metin || ''),
+              args.onem,
+            );
+            return { content: [{ type: 'text', text: JSON.stringify(r) }] };
+          }
+          if (toolName === 'luca_kural_sil') {
+            const args = a?.args || {};
+            toolUses.push({ name: toolName, args });
+            emit({ type: 'tool', name: toolName });
+            const r = await this.kuralSil(ctx, String(args.baslik || ''));
             return { content: [{ type: 'text', text: JSON.stringify(r) }] };
           }
           if (toolName === 'luca_kural_listele') {
