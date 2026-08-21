@@ -472,6 +472,14 @@ export class LucaController {
       //   Yerel ajanı gate'ten muaf tut (tarayıcı-ext DEV-* agent'lar 'local-*' göndermez; onlar
       //   gerçek runtime sürümü gönderir → onlar için gate aynen işler).
       if (/^local-/i.test(String(agentVersion || ''))) return true;
+      // AYNI DEADLOCK'IN IKINCI YUZU (2026-08-21): yerel/operator ajanin TARAYICISI
+      //   ACIKKEN sunum sürümü gerçek runtime sürümüne döner (ör. 1.47.24). Yeni bir iş
+      //   tipi daha yüksek sürüm isterse iş süzülür → ajan işi hiç görmez → sayfayı
+      //   yenilemez → sürüm hep eski kalır. Oysa yerel ajan runtime'ı HER İŞTE sunucudan
+      //   taze çeker ve sürüm uyuşmazsa sayfayı kendisi yeniler. Bu yüzden DEV-* olmayan
+      //   (yerel Node / operatör) cihazlar sürüm kapısından muaf.
+      const localLikeDevice = deviceId && !/^DEV-/i.test(String(deviceId));
+      if (localLikeDevice) return true;
       return this.compareAgentVersions(agentVersion, requiredVersion) >= 0;
     });
   }
