@@ -96,7 +96,7 @@ export function LucaYanPanel() {
 
   return (
     <aside
-      className="flex min-h-0 flex-col overflow-hidden rounded-2xl"
+      className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl"
       style={{
         background: 'linear-gradient(180deg, rgba(24,20,12,0.72), rgba(10,9,7,0.72))',
         border: `1px solid ${ACCENT}1f`,
