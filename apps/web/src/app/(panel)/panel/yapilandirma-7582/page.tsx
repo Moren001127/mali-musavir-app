@@ -21,7 +21,7 @@ const fmt = (n: any) =>
   Number(n || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 type Defter = 'BILANCO' | 'ISLETME' | 'DIGER';
-type BorcSatiri = { vergiTuru: string; tutar: number; turElle?: string };
+type BorcSatiri = { vergiTuru: string; tutar: number; turElle?: string; donem?: string };
 
 const TUR_ETIKET: Record<string, string> = {
   KDV_BSMV: 'KDV / BSMV',
@@ -47,6 +47,9 @@ export default function Yapilandirma7582Page() {
   // Borçlar
   const [satirlar, setSatirlar] = useState<BorcSatiri[]>([{ vergiTuru: '', tutar: 0 }]);
   const [sonuc, setSonuc] = useState<any>(null);
+  const [mod, setMod] = useState<'TEK' | 'TOPLU'>('TOPLU');
+  const [toplu, setToplu] = useState<any>(null);
+  const topluRef = useRef<HTMLInputElement>(null);
   const [plan, setPlan] = useState<any>(null);
   const dosyaRef = useRef<HTMLInputElement>(null);
 
@@ -103,6 +106,29 @@ export default function Yapilandirma7582Page() {
   }, [defter, elle]);
 
   const oran = defter === 'BILANCO' ? (likidite?.oran ?? null) : defter === 'ISLETME' ? elleOran : null;
+
+  // ——— TOPLU LİSTE (65 mükellef tek dosyada) ———
+  const topluYukle = useMutation({
+    mutationFn: async (file: File) => {
+      const fd = new FormData();
+      fd.append('file', file);
+      return api.post('/yapilandirma-7582/excel-toplu', fd).then((r) => r.data);
+    },
+    onSuccess: (d: any) => {
+      setToplu(d);
+      toast.success(`${d.mukellefSayisi} mükellef · ${d.satirSayisi} satır okundu`);
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Liste okunamadı'),
+  });
+
+  /** Toplu listeden bir mükellefi seçip tek-mükellef akışına aktarır. */
+  const mukellefeGec = (m: any) => {
+    setSatirlar(m.satirlar.map((x: any) => ({ vergiTuru: x.vergiTuru, tutar: x.tutar, donem: x.donem })));
+    if (m.taxpayerId) setTaxpayerId(m.taxpayerId);
+    setLikidite(null); setLucaJobId(null); setSonuc(null); setPlan(null);
+    setMod('TEK');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   // ——— Excel ———
   const excelYukle = useMutation({
@@ -187,6 +213,122 @@ export default function Yapilandirma7582Page() {
         </div>
       </div>
 
+      {/* Mod seçici */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+        {([['TOPLU', 'Toplu liste (tüm mükellefler)'], ['TEK', 'Tek mükellef']] as const).map(([k, b]) => (
+          <button
+            key={k} onClick={() => setMod(k)}
+            style={{
+              background: mod === k ? `linear-gradient(135deg, ${GOLD}, #8b7649)` : '#0f0d0b',
+              color: mod === k ? '#1a1713' : '#9c937f',
+              border: mod === k ? 0 : '1px solid rgba(212,184,118,0.25)',
+              borderRadius: 9, padding: '8px 14px', fontWeight: 600, cursor: 'pointer', fontSize: 13,
+            }}
+          >{b}</button>
+        ))}
+      </div>
+
+      {mod === 'TOPLU' && (
+        <div style={{ ...kutu, marginBottom: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <div>
+              <div style={{ fontWeight: 600 }}>GİB borç listesi</div>
+              <div style={{ fontSize: 12, color: '#9c937f' }}>
+                Mükellef başlıklı blok biçimindeki dosyayı olduğu gibi yükleyin; kapsam ayrımı otomatik yapılır.
+              </div>
+            </div>
+            <input
+              ref={topluRef} type="file" accept=".xlsx,.xls" style={{ display: 'none' }}
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) topluYukle.mutate(f); e.target.value = ''; }}
+            />
+            <button
+              onClick={() => topluRef.current?.click()} disabled={topluYukle.isPending}
+              style={{
+                background: `linear-gradient(135deg, ${GOLD}, #8b7649)`, color: '#1a1713', border: 0,
+                borderRadius: 9, padding: '9px 14px', fontWeight: 700, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: 8,
+              }}
+            >
+              {topluYukle.isPending ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
+              Listeyi yükle
+            </button>
+          </div>
+
+          {toplu && (
+            <>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10, marginBottom: 12 }}>
+                {[
+                  ['Toplam borç', toplu.genel.toplam, '#e8e2d5'],
+                  ['Kapsamda', toplu.genel.kapsamda, GOLD],
+                  ['Kapsam dışı', toplu.genel.kapsamDisi, '#a88b8b'],
+                  ['Kısmen', toplu.genel.kismen, '#d9964a'],
+                  ['Vadesi belirsiz', toplu.genel.belirsizVade, '#a88b8b'],
+                ].map(([b, v, renk]: any) => (
+                  <div key={b} style={{ background: '#0f0d0b', borderRadius: 10, padding: 10 }}>
+                    <div style={{ fontSize: 11, color: '#9c937f' }}>{b}</div>
+                    <div style={{ fontVariantNumeric: 'tabular-nums', color: renk, fontWeight: 600 }}>{fmt(v)} ₺</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ fontSize: 12, color: '#9c937f', marginBottom: 8 }}>
+                Kapsamdaki borcun ayrımı: <b style={{ color: GOLD }}>{fmt(toplu.genel.kdv)} ₺</b> KDV (12 taksit) ·
+                {' '}<b style={{ color: GOLD }}>{fmt(toplu.genel.diger)} ₺</b> diğer (36/48/72) —
+                {' '}{toplu.eslesenMukellef}/{toplu.mukellefSayisi} mükellef portal kaydıyla eşleşti
+              </div>
+
+              <div style={{ maxHeight: 420, overflowY: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ color: '#9c937f', textAlign: 'right' }}>
+                      <th style={{ textAlign: 'left', padding: '6px 8px' }}>Mükellef</th>
+                      <th style={{ padding: '6px 8px' }}>Toplam</th>
+                      <th style={{ padding: '6px 8px' }}>Kapsamda</th>
+                      <th style={{ padding: '6px 8px' }}>KDV</th>
+                      <th style={{ padding: '6px 8px' }}>Diğer</th>
+                      <th style={{ padding: '6px 8px' }}>Kısmen</th>
+                      <th style={{ padding: '6px 8px' }}>Belirsiz</th>
+                      <th />
+                    </tr>
+                  </thead>
+                  <tbody style={{ fontVariantNumeric: 'tabular-nums' }}>
+                    {[...toplu.mukellefler].sort((a: any, b: any) => b.kapsamda - a.kapsamda).map((m: any) => (
+                      <tr key={m.sira} style={{ borderTop: '1px solid rgba(212,184,118,0.12)', textAlign: 'right' }}>
+                        <td style={{ textAlign: 'left', padding: '6px 8px' }}>
+                          {m.ad}
+                          {!m.taxpayerId && <span style={{ color: '#d9964a', fontSize: 11 }} title="Portal kaydıyla eşleşmedi"> ●</span>}
+                          {m.toplamUyumsuz && (
+                            <span style={{ color: '#9c937f', fontSize: 11 }} title="GİB’in yazdığı 'Vadesi Geçmiş' toplamı satır toplamıyla farklı">
+                              {' '}⚠
+                            </span>
+                          )}
+                        </td>
+                        <td style={{ padding: '6px 8px', color: '#9c937f' }}>{fmt(m.toplam)}</td>
+                        <td style={{ padding: '6px 8px', color: GOLD, fontWeight: 600 }}>{fmt(m.kapsamda)}</td>
+                        <td style={{ padding: '6px 8px' }}>{fmt(m.kdv)}</td>
+                        <td style={{ padding: '6px 8px' }}>{fmt(m.diger)}</td>
+                        <td style={{ padding: '6px 8px', color: m.kismen ? '#d9964a' : '#5a5449' }}>{fmt(m.kismen)}</td>
+                        <td style={{ padding: '6px 8px', color: '#5a5449' }}>{fmt(m.belirsizVade)}</td>
+                        <td style={{ padding: '6px 8px' }}>
+                          <button
+                            onClick={() => mukellefeGec(m)} disabled={!m.kapsamda}
+                            style={{
+                              background: 'transparent', border: `1px solid ${m.kapsamda ? GOLD : '#3a352d'}`,
+                              color: m.kapsamda ? GOLD : '#5a5449', borderRadius: 7, padding: '3px 9px',
+                              fontSize: 12, cursor: m.kapsamda ? 'pointer' : 'default',
+                            }}
+                          >Seçenekler</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {mod === 'TEK' && (<>
       {/* 1) Mükellef ve durum */}
       <div style={{ ...kutu, marginBottom: 12 }}>
         <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: 12 }}>
@@ -490,6 +632,7 @@ export default function Yapilandirma7582Page() {
           )}
         </div>
       )}
+      </>)}
     </div>
   );
 }

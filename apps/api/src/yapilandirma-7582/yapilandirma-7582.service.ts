@@ -8,6 +8,7 @@ import {
   BASVURU_SON, TECIL_FAIZI_YILLIK, TEMINATSIZ_SINIR,
 } from './yapilandirma-7582.hesap';
 import { kapsamDurumu } from './vade';
+import { adAnahtari, borcListesiCoz, BorcListesiMukellefi } from './borc-listesi';
 
 /**
  * 7582 / Seri:B Sıra No:20 YAPILANDIRMA (tecil-taksitlendirme) SERVİSİ.
@@ -83,6 +84,91 @@ export class Yapilandirma7582Service {
     const satirlar = XLSX.utils.sheet_to_json<Record<string, any>>(wb.Sheets[sayfa], { defval: null });
     const basliklar = satirlar.length ? Object.keys(satirlar[0]) : [];
     return { basliklar, satirlar };
+  }
+
+  /**
+   * GİB BORÇ LİSTESİ EXCEL'İNİ TOPLU OKUR (65 mükellefin hepsi tek dosyada).
+   *
+   * Dosya düz tablo DEĞİL, tekrar eden bloklar (bkz. borc-listesi.ts). Her mükellef için
+   * kapsam elemesi uygulanır ve dört kova çıkar:
+   *   • kapsamda    → taksitlendirilecek (KDV / diğer ayrımıyla)
+   *   • kapsamDisi  → vadesi 5/6/2026 sonrası ya da ÖTV / 2026 geçici vergi
+   *   • kismen      → MTV ve yıllık gelir vergisi: taksitleri sınırın iki yanında
+   *   • vadesiBelirsiz → ceza, harç, tecilli borç: vade dönemden türetilemiyor
+   *
+   * MÜKELLEF EŞLEŞTİRME: Excel'deki ad portal kaydıyla sadeleştirilmiş metin üzerinden
+   * eşleştirilir. Bulunamazsa UYDURULMAZ (null) — kullanıcı elle seçer. Eşleşen mükellefte
+   * Luca'dan mizan çekip likidite oranı hesaplanabilir.
+   */
+  async excelTopluOku(tenantId: string, buf: Buffer) {
+    const wb = XLSX.read(buf, { type: 'buffer', cellDates: false, raw: false });
+    const sayfa = wb.SheetNames[0];
+    if (!sayfa) throw new BadRequestException('Excel dosyasında sayfa yok');
+    const matris = XLSX.utils.sheet_to_json<any[]>(wb.Sheets[sayfa], { header: 1, defval: null, blankrows: true });
+    const bloklar: BorcListesiMukellefi[] = borcListesiCoz(matris);
+    if (!bloklar.length) {
+      throw new BadRequestException(
+        'Dosyada mükellef bloğu bulunamadı. Beklenen biçim: "1. AD SOYAD" satırı, ardından ' +
+        '"Vergi Dairesi | Belge No | Vergi Türü | Vergi Dönemi | Plaka | Toplam Borç" tablosu.',
+      );
+    }
+
+    const kayitli: any[] = await (this.prisma as any).taxpayer
+      .findMany({ where: { tenantId }, select: { id: true, companyName: true, firstName: true, lastName: true } })
+      .catch(() => []);
+    const dizin = new Map<string, string>();
+    for (const t of kayitli) {
+      const ad = t.companyName || [t.firstName, t.lastName].filter(Boolean).join(' ');
+      const a = adAnahtari(ad);
+      if (a && !dizin.has(a)) dizin.set(a, t.id);
+    }
+
+    const yuvarla = (n: number) => Math.round(n * 100) / 100;
+    const mukellefler = bloklar.map((b) => {
+      let kapsamda = 0, kapsamDisi = 0, kismen = 0, belirsizVade = 0, kdv = 0, diger = 0;
+      const satirlar = b.satirlar.map((s) => {
+        const k = kapsamDurumu(s.vergiTuru, s.donem);
+        const t = borcTuruBelirle(s.vergiTuru);
+        if (k.durum === 'ICINDE') {
+          kapsamda = yuvarla(kapsamda + s.tutar);
+          if (t === 'KDV_BSMV') kdv = yuvarla(kdv + s.tutar);
+          else diger = yuvarla(diger + s.tutar);
+        } else if (k.durum === 'DISINDA') kapsamDisi = yuvarla(kapsamDisi + s.tutar);
+        else if (k.durum === 'KISMEN') kismen = yuvarla(kismen + s.tutar);
+        else belirsizVade = yuvarla(belirsizVade + s.tutar);
+        return { ...s, durum: k.durum, vade: k.vade.vade, ikinciVade: k.vade.ikinciVade ?? null, not: k.not };
+      });
+      const toplam = yuvarla(satirlar.reduce((x, s) => x + s.tutar, 0));
+      return {
+        sira: b.sira,
+        ad: b.ad,
+        taxpayerId: dizin.get(adAnahtari(b.ad)) || null,
+        toplam,
+        beyanEdilenToplam: b.beyanEdilenToplam,
+        // GİB'in yazdığı toplamla bizim topladığımız tutmuyorsa SESSİZ GEÇME — satır atlanmış olabilir.
+        toplamUyumsuz:
+          b.beyanEdilenToplam != null && Math.abs(b.beyanEdilenToplam - toplam) > 1,
+        kapsamda, kapsamDisi, kismen, belirsizVade, kdv, diger,
+        satirlar,
+      };
+    });
+
+    const top = (alan: string) => yuvarla(mukellefler.reduce((t, m: any) => t + (m[alan] || 0), 0));
+    return {
+      mukellefSayisi: mukellefler.length,
+      satirSayisi: mukellefler.reduce((t, m) => t + m.satirlar.length, 0),
+      eslesenMukellef: mukellefler.filter((m) => m.taxpayerId).length,
+      genel: {
+        toplam: top('toplam'),
+        kapsamda: top('kapsamda'),
+        kapsamDisi: top('kapsamDisi'),
+        kismen: top('kismen'),
+        belirsizVade: top('belirsizVade'),
+        kdv: top('kdv'),
+        diger: top('diger'),
+      },
+      mukellefler,
+    };
   }
 
   /**

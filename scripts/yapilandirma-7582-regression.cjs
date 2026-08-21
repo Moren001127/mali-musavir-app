@@ -179,5 +179,53 @@ ok('MTV 2026 KISMEN', kd('9034 MTV', '01/2026-12/2026').durum === 'KISMEN');
 ok('vade türetilemeyende kapsamda VARSAYILMAZ',
   kd('9085 TRAFIK CEZALARI', '06/2026-06/2026').durum === 'BELIRSIZ');
 
+// ---------- 12) GİB BORÇ LİSTESİ AYRIŞTIRICISI ----------
+// Dosya düz tablo DEĞİL: tekrar eden mükellef blokları. Standart okuma mükellef adını
+// veri sanar ve tutarları karıştırır. Canlı dosyada doğrulandı (65 mükellef / 1.392 satır).
+const BL = require(path.join(ROOT, 'apps/api/src/yapilandirma-7582/borc-listesi.ts'));
+
+ok('binlik nokta + ondalik virgul', BL.tutarOku('1.960,65  TL') === 1960.65,
+  'yanlis okunursa 1.960,65 TL borc 1,96 TL gorunur');
+ok('kucuk tutar', BL.tutarOku('843,69 TL') === 843.69);
+ok('tire sifirdir', BL.tutarOku('-') === 0);
+ok('bos sifirdir', BL.tutarOku(null) === 0);
+ok('sayi aynen gecer', BL.tutarOku(1234.5) === 1234.5);
+
+const matris = [
+  ['1.  FİGEN KABAKCI', null, null, null, null, null],
+  ['Vadesi Geçmiş: 4.709,32  TL', null, null, null, null, null],
+  ['Vergi Dairesi', 'Belge No', 'Vergi Türü', 'Vergi Dönemi', 'Plaka', 'Toplam Borç'],
+  ['BÜYÜKÇEKMECE', '2026061801Azr0000214', '0015 GERÇEK USULDE KATMA DEĞER VERGİSİ', '05/2026-05/2026', '-', '843,69  TL'],
+  ['BÜYÜKÇEKMECE', '2026071601Azr0000169', '0003 GELİR VERGİSİ S. (MUHTASAR)', '04/2026-04/2026', '-', '1.960,65  TL'],
+  [null, null, null, null, null, null],
+  ['2.  MUZAFFER ÖREN', null, null, null, null, null],
+  ['Vadesi Geçmiş: 100,00 TL', null, null, null, null, null],
+  ['Vergi Dairesi', 'Belge No', 'Vergi Türü', 'Vergi Dönemi', 'Plaka', 'Toplam Borç'],
+  ['ŞİŞLİ', '2025010101Azr0000001', '9034 MOTORLU TAŞITLAR VERGİSİ', '01/2025-12/2025', '34ABC01', '100,00 TL'],
+];
+const bloklar = BL.borcListesiCoz(matris);
+ok('iki mukellef blogu ayrildi', bloklar.length === 2);
+ok('mukellef adi basliktan alindi', bloklar[0].ad === 'FİGEN KABAKCI' && bloklar[1].ad === 'MUZAFFER ÖREN');
+ok('sira numarasi okundu', bloklar[0].sira === 1 && bloklar[1].sira === 2);
+ok('GIB beyan toplami okundu', bloklar[0].beyanEdilenToplam === 4709.32);
+ok('tablo basligi veri sayilmadi', bloklar[0].satirlar.length === 2,
+  '"Vergi Dairesi" satiri borc satiri olarak eklenirse tutarlar bozulur');
+ok('satir alanlari dogru yerlestirildi', (() => { const s = bloklar[0].satirlar[1];
+  return s.vergiTuru.startsWith('0003') && s.donem === '04/2026-04/2026' && s.tutar === 1960.65; })());
+ok('plaka okunur (MTV her tasit ayri basvuru ister)', bloklar[1].satirlar[0].plaka === '34ABC01');
+ok('bos satir blogu bozmaz', bloklar[1].satirlar.length === 1);
+
+// Kapsam elemesi bu satirlara uygulandiginda:
+ok('KDV 05/2026 kapsam disi kaldi',
+  V.kapsamDurumu(bloklar[0].satirlar[0].vergiTuru, bloklar[0].satirlar[0].donem).durum === 'DISINDA');
+ok('Muhtasar 04/2026 kapsamda',
+  V.kapsamDurumu(bloklar[0].satirlar[1].vergiTuru, bloklar[0].satirlar[1].donem).durum === 'ICINDE');
+
+ok('ad anahtari sirket ekini eler',
+  BL.adAnahtari('IŞIKLAR LOJİSTİK SANAYİ VE TİCARET LİMİTED ŞİRKETİ') === BL.adAnahtari('Işıklar Lojistik Ltd. Şti.'),
+  'portal kaydiyla Excel adi farkli yazilabiliyor');
+ok('farkli mukellef ayni anahtari almaz',
+  BL.adAnahtari('AHMET YILMAZ') !== BL.adAnahtari('MEHMET YILMAZ'));
+
 if (hata) process.exit(1);
 console.log('[yapilandirma-7582] OK: taksit kuralları, faiz formülü ve kapsam kilitli');

@@ -46,6 +46,17 @@ export class Yapilandirma7582Controller {
     return this.servis.plan(body);
   }
 
+  /**
+   * GİB borç listesini TOPLU yükle: bütün mükellefler tek dosyadan, kapsam elemesi
+   * uygulanmış olarak döner. Hiçbir şey kaydetmez; salt hesap.
+   */
+  @Post('excel-toplu')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } }))
+  excelToplu(@Req() req: any, @UploadedFile() file: Express.Multer.File) {
+    if (!file) throw new BadRequestException('Excel dosyası gerekli');
+    return this.servis.excelTopluOku(req.user.tenantId, file.buffer);
+  }
+
   /** Excel yükle → başlıklar + ham satırlar (eşleştirme ekranda yapılır). */
   @Post('excel')
   @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 15 * 1024 * 1024 } }))
