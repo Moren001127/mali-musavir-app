@@ -53,7 +53,7 @@
   // ne DOM değişimi oluyor → "bitti" sinyali hiç gelmiyordu (PERİHAN ŞAHİN: tıklama
   // öncesi de sonrası da 18 satır). Artık 30sn boyunca ekran hiç değişmediyse sorgu
   // bitmiş sayılır. Ayrıca teşhis için ekrandaki durum metni loglanır.
-  const AGENT_VERSION = '1.47.28';
+  const AGENT_VERSION = '1.47.29';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -640,41 +640,82 @@
 
     const dugumler = [];
     const gorulen = new Set();
+    const acilamayan = [];
+
+    // Düğümü ID ile TAZE bul. Menü kapanıp yeniden kurulunca eski element
+    // referansı DOM'dan kopuyor; kopuk düğüme olay göndermek sessizce hiçbir şey
+    // yapmıyordu (haritada dallar kayboluyordu). Bu yüzden element saklamıyoruz,
+    // her adımda ID'den yeniden buluyoruz.
+    const idIleBul = (id) => {
+      for (const doc of lucaDocuments()) {
+        try {
+          const e = doc.getElementById(id);
+          if (e && visible(e)) return e;
+        } catch {}
+      }
+      return null;
+    };
+
+    // Apycom menüsünde bir alt menü, ancak ATA ZİNCİRİNİN TAMAMI "fare üzerinde"
+    // sayıldığı sürece açık kalır. Eskiden yalnız son düğüme hover ediliyordu →
+    // 3. seviyeden sonra zincir kapanıyor, alt dallar hiç görünmüyordu.
+    const zinciriAc = async (zincirIdler) => {
+      for (let i = 0; i < zincirIdler.length; i++) {
+        const el = idIleBul(zincirIdler[i]);
+        if (!el) return null;
+        uzerineGel(el);
+        await sleep(i === zincirIdler.length - 1 ? bekleMs : 60);
+      }
+      return idIleBul(zincirIdler[zincirIdler.length - 1]);
+    };
+
     const kok = tumOgeler(true);
+    const kokIdler = [];
     for (const [id, el] of kok) {
+      const ad = metniAl(el);
+      if (!ad) continue; // menü çubuğundaki boş ayraç hücreleri sahte kök sayılmasın
       gorulen.add(id);
-      dugumler.push({ id, ad: metniAl(el), ust: null, seviye: 0 });
+      dugumler.push({ id, ad, ust: null, seviye: 0 });
+      kokIdler.push(id);
     }
 
-    async function dal(el, ustId, seviye) {
+    async function dal(zincirIdler, seviye) {
       if (seviye >= maxDerinlik || dugumler.length >= enFazla) return;
-      uzerineGel(el);
-      await sleep(bekleMs);
+      const el = await zinciriAc(zincirIdler);
+      if (!el) {
+        acilamayan.push(zincirIdler[zincirIdler.length - 1]);
+        return;
+      }
       const simdi = tumOgeler(true);
-      const yeniler = [];
+      const yeniIdler = [];
       for (const [id, e2] of simdi) {
         if (gorulen.has(id)) continue;
-        gorulen.add(id);
         const ad = metniAl(e2);
-        if (!ad) continue;
-        dugumler.push({ id, ad, ust: ustId, seviye: seviye + 1 });
-        yeniler.push([id, e2]);
+        if (!ad) continue; // adı boş düğümü "görüldü" sayma — sonra dolu gelebilir
+        gorulen.add(id);
+        dugumler.push({ id, ad, ust: zincirIdler[zincirIdler.length - 1], seviye });
+        yeniIdler.push(id);
         if (dugumler.length >= enFazla) break;
       }
-      for (const [id, e2] of yeniler) {
-        uzerineGel(el);
-        await sleep(100);
-        await dal(e2, id, seviye + 1);
+      for (const id of yeniIdler) {
+        await dal(zincirIdler.concat([id]), seviye + 1);
       }
-      cik(el);
-      await sleep(80);
+      // cik() ÇAĞRILMIYOR: bubbles:true mouseout menü kabına kadar çıkıp
+      // kütüphaneye "fare menüden çıktı" dedirtiyor ve KARDEŞ dalları kapatıyordu.
+      // Bir sonraki dal zaten kendi zincirini kökten açıyor.
     }
 
-    for (const [id, el] of kok) {
+    for (const id of kokIdler) {
       if (dugumler.length >= enFazla) break;
-      await dal(el, id, 0);
+      await dal([id], 1);
     }
-    return { ok: true, url: location.href, toplam: dugumler.length, teshis, dugumler };
+    // Gezinti bitti — menüyü kapat (tek sefer, kök öğeden).
+    try {
+      const ilk = kokIdler.length ? idIleBul(kokIdler[0]) : null;
+      if (ilk) cik(ilk);
+    } catch {}
+
+    return { ok: true, url: location.href, toplam: dugumler.length, teshis, acilamayan, dugumler };
   }
 
   function readLucaKesif(opts) {
