@@ -53,7 +53,7 @@
   // ne DOM değişimi oluyor → "bitti" sinyali hiç gelmiyordu (PERİHAN ŞAHİN: tıklama
   // öncesi de sonrası da 18 satır). Artık 30sn boyunca ekran hiç değişmediyse sorgu
   // bitmiş sayılır. Ayrıca teşhis için ekrandaki durum metni loglanır.
-  const AGENT_VERSION = '1.47.25';
+  const AGENT_VERSION = '1.47.26';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -472,6 +472,97 @@
   // Hiçbir şeye tıklamaz, hiçbir alanı doldurmaz. Menü Luca'da <a> değil JS ağacı
   // olduğundan ekran anlık görüntüsünde görünmüyor; burada tıklanabilir görünen her
   // düğümün etiketi + kimliği + hiyerarşisi çıkarılır, yorumlamayı sunucu yapar.
+  // LUCA OPERATÖRÜ — MENÜ HARİTASI (salt-okuma): Luca menüsü alt seviyeleri ancak
+  // ÜZERİNE GELİNCE (hover) oluşturuyor; bu yüzden DOM dökümünde görünmüyorlar.
+  // Burada yalnızca "üzerine gel" olayı gönderilir, HİÇBİR ŞEYE TIKLANMAZ.
+  // Sonuç: menü ağacı (ad + kimlik + üst düğüm). Yorumlama/saklama sunucuda.
+  async function readLucaMenuHaritasi(opts) {
+    const o = opts || {};
+    const maxDerinlik = Math.min(Number(o.derinlik) || 4, 6);
+    const bekleMs = Math.min(Math.max(Number(o.bekle) || 320, 120), 1500);
+    const enFazla = Math.min(Number(o.limit) || 800, 3000);
+
+    // Menü çerçevesini bul (menu.do). Bulunamazsa en çok "apy...I" düğümü olan doc.
+    let mdoc = null;
+    for (const doc of lucaDocuments()) {
+      try { if (/menu\.do/i.test(doc.location && doc.location.href || '')) { mdoc = doc; break; } } catch {}
+    }
+    if (!mdoc) {
+      let enIyi = 0;
+      for (const doc of lucaDocuments()) {
+        try {
+          const n = doc.querySelectorAll('table[id^="apy"][id$="I"]').length;
+          if (n > enIyi) { enIyi = n; mdoc = doc; }
+        } catch {}
+      }
+    }
+    if (!mdoc) return { ok: false, hata: 'Menü çerçevesi bulunamadı.' };
+
+    const SEC = 'table[id^="apy"][id$="I"]';
+    const metniAl = (el) => {
+      try { return (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 80); } catch { return ''; }
+    };
+    const gorunurOgeler = () => {
+      const map = new Map();
+      for (const el of Array.from(mdoc.querySelectorAll(SEC))) {
+        try { if (visible(el)) map.set(el.id, el); } catch {}
+      }
+      return map;
+    };
+    const uzerineGel = (el) => {
+      try {
+        const w = mdoc.defaultView;
+        el.dispatchEvent(new w.MouseEvent('mouseover', { bubbles: true, cancelable: true, view: w }));
+        el.dispatchEvent(new w.MouseEvent('mouseenter', { bubbles: true, cancelable: true, view: w }));
+      } catch {}
+    };
+    const cik = (el) => {
+      try {
+        const w = mdoc.defaultView;
+        el.dispatchEvent(new w.MouseEvent('mouseout', { bubbles: true, cancelable: true, view: w }));
+      } catch {}
+    };
+
+    const dugumler = [];
+    const gorulen = new Set();
+    const kok = gorunurOgeler();
+    for (const [id, el] of kok) {
+      gorulen.add(id);
+      dugumler.push({ id, ad: metniAl(el), ust: null, seviye: 0 });
+    }
+
+    async function dal(el, ustId, seviye) {
+      if (seviye >= maxDerinlik || dugumler.length >= enFazla) return;
+      uzerineGel(el);
+      await sleep(bekleMs);
+      const simdi = gorunurOgeler();
+      const yeniler = [];
+      for (const [id, e2] of simdi) {
+        if (gorulen.has(id)) continue;
+        gorulen.add(id);
+        const ad = metniAl(e2);
+        if (!ad) continue;
+        dugumler.push({ id, ad, ust: ustId, seviye: seviye + 1 });
+        yeniler.push([id, e2]);
+        if (dugumler.length >= enFazla) break;
+      }
+      for (const [id, e2] of yeniler) {
+        // Üst zinciri açık tutmak için önce üstüne tekrar gel, sonra çocuğa in.
+        uzerineGel(el);
+        await sleep(80);
+        await dal(e2, id, seviye + 1);
+      }
+      cik(el);
+      await sleep(60);
+    }
+
+    for (const [id, el] of kok) {
+      if (dugumler.length >= enFazla) break;
+      await dal(el, id, 0);
+    }
+    return { ok: true, url: location.href, toplam: dugumler.length, dugumler };
+  }
+
   function readLucaKesif(opts) {
     const o = opts || {};
     const enFazlaDugum = Math.min(Number(o.limit) || 600, 2000);
@@ -1808,9 +1899,14 @@
           // ─── LUCA_KESIF: menü/ekran yapısının ham dökümü (SADECE OKUMA, tıklama YOK) ───
           if (job.tip === 'LUCA_KESIF') {
             try {
-              const snapshot = readLucaKesif(job.payload || {});
-              const toplam = snapshot.frames.reduce((a, f) => a + f.dugumSayisi, 0);
-              await log(`🗺 Keşif: ${snapshot.frames.length} frame, ${toplam} düğüm okundu`);
+              const kp = job.payload || {};
+              const snapshot = String(kp.mod || '') === 'menu'
+                ? await readLucaMenuHaritasi(kp)
+                : readLucaKesif(kp);
+              const toplam = snapshot.frames
+                ? snapshot.frames.reduce((a, f) => a + f.dugumSayisi, 0)
+                : (snapshot.toplam || 0);
+              await log(`🗺 Keşif: ${snapshot.frames ? snapshot.frames.length + ' frame, ' : 'menü, '}${toplam} düğüm okundu`);
               await fetch(API + `/agent/luca/jobs/${job.id}/screen`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
