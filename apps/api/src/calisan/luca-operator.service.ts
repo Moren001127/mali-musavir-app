@@ -762,7 +762,10 @@ export class LucaOperatorService {
           mcpServers: { portal: server },
           allowedTools: [PORTAL_TOOL],
           canUseTool,
-          maxTurns: 40, // çok adımlı Luca işleri tek mesajda bitebilsin (her oku/yaz/tıkla bir tur)
+          // Her ekran-oku/yaz/seç/tıkla BİR tur harcıyor: menü keşfi + form doldurma
+          // gibi işler 40 turu aşabiliyordu ("Reached maximum number of turns").
+          // Max aboneliğiyle çalıştığı için tur başına ek maliyet yok.
+          maxTurns: 80,
           includePartialMessages: true,
           env: childEnv,
         },
@@ -800,6 +803,13 @@ export class LucaOperatorService {
     if (isError && !answer.trim()) {
       emit({ type: 'error', error: 'Agent SDK (Max) sonucu hata döndü.' });
       return;
+    }
+    // Adım sınırına takıldıysa kullanıcı ne yapacağını bilsin (yarım kalan iş sessiz kalmasın).
+    if (isError && /maximum number of turns|max.*turns/i.test(answer)) {
+      emit({
+        type: 'text',
+        delta: String.fromCharCode(10, 10) + "[Adim sinirina gelindi — is yarim kaldi. 'devam et' dersen kaldigim yerden surdururum.]",
+      });
     }
     emit({ type: 'done', model, toolUses, durationMs });
   }
