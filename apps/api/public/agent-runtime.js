@@ -53,7 +53,7 @@
   // ne DOM değişimi oluyor → "bitti" sinyali hiç gelmiyordu (PERİHAN ŞAHİN: tıklama
   // öncesi de sonrası da 18 satır). Artık 30sn boyunca ekran hiç değişmediyse sorgu
   // bitmiş sayılır. Ayrıca teşhis için ekrandaki durum metni loglanır.
-  const AGENT_VERSION = '1.47.27';
+  const AGENT_VERSION = '1.47.28';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -476,6 +476,103 @@
   // ÜZERİNE GELİNCE (hover) oluşturuyor; bu yüzden DOM dökümünde görünmüyorlar.
   // Burada yalnızca "üzerine gel" olayı gönderilir, HİÇBİR ŞEYE TIKLANMAZ.
   // Sonuç: menü ağacı (ad + kimlik + üst düğüm). Yorumlama/saklama sunucuda.
+  // LUCA OPERATÖRÜ — MENÜDE GEZİNME. "İşletme Defteri > Beyannameler > KDV" gibi bir
+  // yolu izler: üst öğeye gelir, alt menü açılınca sıradakine geçer, SONUNCUYA TIKLAR.
+  //
+  // GÜVENLİK: tıklama YALNIZCA menü öğelerine (apy...I) yapılır — ekrandaki
+  // Kaydet/Gönder/Tahakkuk gibi butonlara buradan erişilemez. Menüden bir ekranı
+  // açmak veri değiştirmez; bu yüzden onay istemez. Ekran içindeki geri dönülmez
+  // butonlar için LUCA_ACTION'daki onay kilidi aynen geçerlidir.
+  async function lucaMenuGit(yol, opts) {
+    const o = opts || {};
+    const bekleMs = Math.min(Math.max(Number(o.bekle) || 450, 150), 2000);
+    const adimlar = Array.isArray(yol)
+      ? yol.slice()
+      : String(yol || '').split(/\s*>\s*|\s*\/\s*/).filter(Boolean);
+    if (!adimlar.length) return { ok: false, message: 'Menü yolu boş.' };
+
+    const SEC = 'table[id^="apy"][id$="I"]';
+    const norm = (x) => String(x || '')
+      .replace(/[\u00a0\s]+/g, ' ')
+      .replace(/[►▶»]/g, '')
+      .trim()
+      .toLocaleLowerCase('tr-TR');
+    const metniAl = (el) => {
+      try { return (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim(); } catch { return ''; }
+    };
+    const gorunurOgeler = () => {
+      const liste = [];
+      for (const doc of lucaDocuments()) {
+        try {
+          for (const el of Array.from(doc.querySelectorAll(SEC))) {
+            try { if (visible(el)) liste.push(el); } catch {}
+          }
+        } catch {}
+      }
+      return liste;
+    };
+    const uzerineGel = (el) => {
+      const w = el.ownerDocument.defaultView;
+      let evt = null;
+      try {
+        evt = new w.MouseEvent('mouseover', { bubbles: true, cancelable: true, view: w, clientX: 5, clientY: 5 });
+        el.dispatchEvent(evt);
+        el.dispatchEvent(new w.MouseEvent('mousemove', { bubbles: true, cancelable: true, view: w, clientX: 6, clientY: 6 }));
+      } catch {}
+      try { if (typeof el.onmouseover === 'function') el.onmouseover.call(el, evt || { type: 'mouseover', target: el }); } catch {}
+      try {
+        const attr = el.getAttribute && el.getAttribute('onmouseover');
+        const mm = attr && attr.match(/([A-Za-z_$][\w$]*)\s*\(\s*event\s*,\s*["']([^"']+)["']/);
+        if (mm && typeof w[mm[1]] === 'function') w[mm[1]](evt || { type: 'mouseover', target: el }, mm[2]);
+      } catch {}
+    };
+    const tikla = (el) => {
+      const w = el.ownerDocument.defaultView;
+      let evt = null;
+      try {
+        evt = new w.MouseEvent('click', { bubbles: true, cancelable: true, view: w, clientX: 5, clientY: 5 });
+        el.dispatchEvent(evt);
+      } catch {}
+      try { if (typeof el.onclick === 'function') el.onclick.call(el, evt || { type: 'click', target: el }); } catch {}
+      try {
+        const attr = el.getAttribute && el.getAttribute('onclick');
+        const mm = attr && attr.match(/([A-Za-z_$][\w$]*)\s*\(\s*event\s*,\s*["']([^"']+)["']\s*,\s*["']([^"']*)["']/);
+        if (mm && typeof w[mm[1]] === 'function') w[mm[1]](evt || { type: 'click', target: el }, mm[2], mm[3]);
+      } catch {}
+    };
+    const bul = (etiket) => {
+      const t = norm(etiket);
+      const liste = gorunurOgeler();
+      let el = liste.find((e) => norm(metniAl(e)) === t);
+      if (!el) el = liste.find((e) => norm(metniAl(e)).startsWith(t));
+      if (!el) el = liste.find((e) => norm(metniAl(e)).includes(t));
+      return el || null;
+    };
+
+    const izlenen = [];
+    for (let i = 0; i < adimlar.length; i++) {
+      const etiket = adimlar[i];
+      const el = bul(etiket);
+      if (!el) {
+        const gorunenler = gorunurOgeler().map(metniAl).filter(Boolean).slice(0, 40);
+        return {
+          ok: false,
+          message: `Menüde bulunamadı: "${etiket}" (yol: ${izlenen.join(' > ') || 'kök'}).`,
+          gorunenSecenekler: gorunenler,
+        };
+      }
+      izlenen.push(metniAl(el));
+      if (i === adimlar.length - 1) {
+        tikla(el);
+        await sleep(Math.max(bekleMs, 900));
+      } else {
+        uzerineGel(el);
+        await sleep(bekleMs);
+      }
+    }
+    return { ok: true, message: `Menü açıldı: ${izlenen.join(' > ')}`, yol: izlenen };
+  }
+
   async function readLucaMenuHaritasi(opts) {
     const o = opts || {};
     const maxDerinlik = Math.min(Number(o.derinlik) || 4, 6);
@@ -1994,6 +2091,9 @@
               } else if (action === 'select' || action === 'sec') {
                 const ok = lucaSelectByHint(String(p.etiket || hedef), deger);
                 res = ok ? { ok: true, message: `'${p.etiket || hedef}' = '${deger}' seçildi` } : { ok: false, message: `Seçim yapılamadı: ${p.etiket || hedef}` };
+              } else if (action === 'menu' || action === 'menugit') {
+                // Menüden ekran açma: yalnız menü öğelerine tıklar (veri değiştirmez).
+                res = await lucaMenuGit(p.yol || p.hedef || p.etiket, { bekle: p.bekle });
               } else if (action === 'click' || action === 'tikla') {
                 const ok = lucaClickByText(hedef);
                 res = ok ? { ok: true, message: `Tıklandı: ${hedef}` } : { ok: false, message: `Bulunamadı: ${hedef}` };

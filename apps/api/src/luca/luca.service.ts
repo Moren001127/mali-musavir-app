@@ -290,7 +290,7 @@ export class LucaService {
    */
   async createActionJob(
     tenantId: string,
-    payload: { action: string; etiket?: string; hedef?: string; deger?: string; confirmed?: boolean },
+    payload: { action: string; etiket?: string; hedef?: string; deger?: string; confirmed?: boolean; yol?: string[] | string },
     opts: { createdBy?: string; targetDeviceId?: string } = {},
   ) {
     const operatorDeviceId = opts.targetDeviceId || (await this.findOnlineOperatorDevice(tenantId));
@@ -318,7 +318,7 @@ export class LucaService {
    */
   async createKesifJob(
     tenantId: string,
-    payload: { limit?: number } = {},
+    payload: { limit?: number; mod?: string; derinlik?: number; bekle?: number; frame?: string; html?: boolean; gizliDahil?: boolean } = {},
     opts: { createdBy?: string; targetDeviceId?: string } = {},
   ) {
     const operatorDeviceId = opts.targetDeviceId || (await this.findOnlineOperatorDevice(tenantId));
