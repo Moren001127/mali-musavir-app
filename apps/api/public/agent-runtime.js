@@ -53,7 +53,7 @@
   // ne DOM değişimi oluyor → "bitti" sinyali hiç gelmiyordu (PERİHAN ŞAHİN: tıklama
   // öncesi de sonrası da 18 satır). Artık 30sn boyunca ekran hiç değişmediyse sorgu
   // bitmiş sayılır. Ayrıca teşhis için ekrandaki durum metni loglanır.
-  const AGENT_VERSION = '1.47.26';
+  const AGENT_VERSION = '1.47.27';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -479,53 +479,71 @@
   async function readLucaMenuHaritasi(opts) {
     const o = opts || {};
     const maxDerinlik = Math.min(Number(o.derinlik) || 4, 6);
-    const bekleMs = Math.min(Math.max(Number(o.bekle) || 320, 120), 1500);
+    const bekleMs = Math.min(Math.max(Number(o.bekle) || 400, 120), 2000);
     const enFazla = Math.min(Number(o.limit) || 800, 3000);
-
-    // Menü çerçevesini bul (menu.do). Bulunamazsa en çok "apy...I" düğümü olan doc.
-    let mdoc = null;
-    for (const doc of lucaDocuments()) {
-      try { if (/menu\.do/i.test(doc.location && doc.location.href || '')) { mdoc = doc; break; } } catch {}
-    }
-    if (!mdoc) {
-      let enIyi = 0;
-      for (const doc of lucaDocuments()) {
-        try {
-          const n = doc.querySelectorAll('table[id^="apy"][id$="I"]').length;
-          if (n > enIyi) { enIyi = n; mdoc = doc; }
-        } catch {}
-      }
-    }
-    if (!mdoc) return { ok: false, hata: 'Menü çerçevesi bulunamadı.' };
-
     const SEC = 'table[id^="apy"][id$="I"]';
+
+    // Menü düğümleri hangi dokümanda olursa olsun bulunsun (alt menü üst dokümana
+    // eklenebiliyor). Teşhis için her dokümandaki sayıyı da raporla.
+    const dokumanlar = lucaDocuments();
+    const teshis = [];
+    for (const doc of dokumanlar) {
+      try {
+        const hepsi = Array.from(doc.querySelectorAll(SEC));
+        if (!hepsi.length) continue;
+        teshis.push({
+          url: (doc.location && doc.location.href || '').slice(0, 100),
+          toplam: hepsi.length,
+          gorunur: hepsi.filter((e) => { try { return visible(e); } catch { return false; } }).length,
+        });
+      } catch {}
+    }
+
     const metniAl = (el) => {
       try { return (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 80); } catch { return ''; }
     };
-    const gorunurOgeler = () => {
+    const tumOgeler = (yalnizGorunur) => {
       const map = new Map();
-      for (const el of Array.from(mdoc.querySelectorAll(SEC))) {
-        try { if (visible(el)) map.set(el.id, el); } catch {}
+      for (const doc of dokumanlar) {
+        try {
+          for (const el of Array.from(doc.querySelectorAll(SEC))) {
+            if (yalnizGorunur) { try { if (!visible(el)) continue; } catch {} }
+            if (!map.has(el.id)) map.set(el.id, el);
+          }
+        } catch {}
       }
       return map;
     };
+    // Menüyü açmanın ÜÇ yolu birden denenir (kütüphane sentetik olaya kapalı olabilir):
+    //   1) mouseover/mouseenter olayı  2) öğenin kendi onmouseover işleyicisi
+    //   3) onmouseover metnindeki fonksiyonu (ör. l1la) doğrudan çağırmak
     const uzerineGel = (el) => {
+      const doc = el.ownerDocument;
+      const w = doc.defaultView;
+      let evt = null;
       try {
-        const w = mdoc.defaultView;
-        el.dispatchEvent(new w.MouseEvent('mouseover', { bubbles: true, cancelable: true, view: w }));
+        evt = new w.MouseEvent('mouseover', { bubbles: true, cancelable: true, view: w, clientX: 5, clientY: 5 });
+        el.dispatchEvent(evt);
         el.dispatchEvent(new w.MouseEvent('mouseenter', { bubbles: true, cancelable: true, view: w }));
+        el.dispatchEvent(new w.MouseEvent('mousemove', { bubbles: true, cancelable: true, view: w, clientX: 6, clientY: 6 }));
+      } catch {}
+      try { if (typeof el.onmouseover === 'function') el.onmouseover.call(el, evt || { type: 'mouseover', target: el }); } catch {}
+      try {
+        const attr = el.getAttribute && el.getAttribute('onmouseover');
+        const mm = attr && attr.match(/([A-Za-z_$][\w$]*)\s*\(\s*event\s*,\s*["']([^"']+)["']/);
+        if (mm && typeof w[mm[1]] === 'function') w[mm[1]](evt || { type: 'mouseover', target: el }, mm[2]);
       } catch {}
     };
     const cik = (el) => {
       try {
-        const w = mdoc.defaultView;
+        const w = el.ownerDocument.defaultView;
         el.dispatchEvent(new w.MouseEvent('mouseout', { bubbles: true, cancelable: true, view: w }));
       } catch {}
     };
 
     const dugumler = [];
     const gorulen = new Set();
-    const kok = gorunurOgeler();
+    const kok = tumOgeler(true);
     for (const [id, el] of kok) {
       gorulen.add(id);
       dugumler.push({ id, ad: metniAl(el), ust: null, seviye: 0 });
@@ -535,7 +553,7 @@
       if (seviye >= maxDerinlik || dugumler.length >= enFazla) return;
       uzerineGel(el);
       await sleep(bekleMs);
-      const simdi = gorunurOgeler();
+      const simdi = tumOgeler(true);
       const yeniler = [];
       for (const [id, e2] of simdi) {
         if (gorulen.has(id)) continue;
@@ -547,20 +565,19 @@
         if (dugumler.length >= enFazla) break;
       }
       for (const [id, e2] of yeniler) {
-        // Üst zinciri açık tutmak için önce üstüne tekrar gel, sonra çocuğa in.
         uzerineGel(el);
-        await sleep(80);
+        await sleep(100);
         await dal(e2, id, seviye + 1);
       }
       cik(el);
-      await sleep(60);
+      await sleep(80);
     }
 
     for (const [id, el] of kok) {
       if (dugumler.length >= enFazla) break;
       await dal(el, id, 0);
     }
-    return { ok: true, url: location.href, toplam: dugumler.length, dugumler };
+    return { ok: true, url: location.href, toplam: dugumler.length, teshis, dugumler };
   }
 
   function readLucaKesif(opts) {
