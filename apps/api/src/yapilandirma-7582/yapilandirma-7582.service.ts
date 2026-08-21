@@ -7,6 +7,7 @@ import {
   azamiTaksit, borcTuruBelirle, likiditeOrani, odemePlani, taksitSecenekleri,
   BASVURU_SON, TECIL_FAIZI_YILLIK, TEMINATSIZ_SINIR,
 } from './yapilandirma-7582.hesap';
+import { kapsamDurumu } from './vade';
 
 /**
  * 7582 / Seri:B Sıra No:20 YAPILANDIRMA (tecil-taksitlendirme) SERVİSİ.
@@ -108,9 +109,36 @@ export class Yapilandirma7582Service {
       KAPSAM_DISI: { tutar: 0, satirlar: [] },
       BELIRSIZ: { tutar: 0, satirlar: [] },
     };
+    // VADE ELEMESİ (satırda dönem varsa): tebliğ yalnız 5/6/2026'ya kadar vadesi gelmiş
+    //   borçları kapsıyor. Vadesi sonra olan satır, türü uygun olsa bile taksitlendirmeye
+    //   GİRMEZ. Vade türetilemeyen (ceza/harç) ve taksitleri sınırın iki yanına düşen
+    //   (MTV, yıllık gelir vergisi) satırlar da toplama katılmaz — ayrıca listelenir.
+    const kismenSatirlar: any[] = [];
+    const belirsizVade: any[] = [];
+    let kismenTutar = 0;
+    let belirsizVadeTutar = 0;
+
     for (const s of g.satirlar || []) {
-      const tur: BorcTuru = s.turElle || borcTuruBelirle(s.vergiTuru);
       const tutar = Number(s.tutar) || 0;
+      if (s.donem) {
+        const k = kapsamDurumu(s.vergiTuru, s.donem);
+        if (k.durum === 'KISMEN') {
+          kismenTutar = Math.round((kismenTutar + tutar) * 100) / 100;
+          kismenSatirlar.push({ ...s, vade: k.vade.vade, ikinciVade: k.vade.ikinciVade, not: k.not });
+          continue;
+        }
+        if (k.durum === 'BELIRSIZ') {
+          belirsizVadeTutar = Math.round((belirsizVadeTutar + tutar) * 100) / 100;
+          belirsizVade.push({ ...s, not: k.not });
+          continue;
+        }
+        if (k.durum === 'DISINDA') {
+          gruplar.KAPSAM_DISI.tutar = Math.round((gruplar.KAPSAM_DISI.tutar + tutar) * 100) / 100;
+          gruplar.KAPSAM_DISI.satirlar.push({ ...s, turElle: 'KAPSAM_DISI', not: k.not } as any);
+          continue;
+        }
+      }
+      const tur: BorcTuru = s.turElle || borcTuruBelirle(s.vergiTuru);
       gruplar[tur].tutar = Math.round((gruplar[tur].tutar + tutar) * 100) / 100;
       gruplar[tur].satirlar.push({ ...s, turElle: tur });
     }
@@ -165,6 +193,10 @@ export class Yapilandirma7582Service {
       paketler,
       kapsamDisi: gruplar.KAPSAM_DISI,
       belirsiz: gruplar.BELIRSIZ,
+      // Taksitleri 5/6/2026'nın iki yanına düşenler — tutarın bölünmesi kullanıcıya ait.
+      kismen: { tutar: kismenTutar, satirlar: kismenSatirlar },
+      // Vadesi dönemden türetilemeyenler (ceza, harç, tecilli borç) — elle bakılmalı.
+      vadesiBelirsiz: { tutar: belirsizVadeTutar, satirlar: belirsizVade },
       uyarilar: [
         gruplar.BELIRSIZ.tutar > 0
           ? `${gruplar.BELIRSIZ.satirlar.length} satırın borç türü belirlenemedi (${gruplar.BELIRSIZ.tutar} TL) — KDV/BSMV mi değil mi işaretlenmeli, yoksa taksit sayısı yanlış çıkar.`
@@ -174,6 +206,12 @@ export class Yapilandirma7582Service {
           : null,
         oran == null && (g.defter === 'BILANCO' || g.defter === 'ISLETME') && faalMi
           ? 'Likidite oranı girilmedi — taksit sayısı belirlenemez, tüm seçenekler yine de gösterilir.'
+          : null,
+        kismenTutar > 0
+          ? `${kismenSatirlar.length} satır (${kismenTutar} TL) KISMEN kapsamda: MTV/yıllık gelir vergisinin 1. taksiti kapsamda, 2. taksiti değil — tutarı bölmeniz gerekir.`
+          : null,
+        belirsizVadeTutar > 0
+          ? `${belirsizVade.length} satırın (${belirsizVadeTutar} TL) vadesi dönemden türetilemiyor (ceza, harç, tecilli borç) — kapsamda VARSAYILMADI, elle kontrol edin.`
           : null,
       ].filter(Boolean) as string[],
     };

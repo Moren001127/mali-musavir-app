@@ -9,6 +9,7 @@
  *
  * BU BİR AF DEĞİLDİR: borç aslı silinmez, sadece tecil faiziyle taksitlendirilir.
  */
+import { sadeTr } from './vade';
 
 /** Tebliğ kapsamı: 5/6/2026 (dahil) itibarıyla vadesi gelmiş borçlar. */
 export const KAPSAM_VADE_SON = '2026-06-05';
@@ -36,6 +37,8 @@ export type BorcSatiri = {
   tutar: number;
   /** Sınıflandırma elle yapıldıysa buraya yazılır; yoksa metinden türetilir. */
   turElle?: BorcTuru;
+  /** "05/2026-05/2026" — VARSA vade türetilip kapsam elemesi YAPILIR (bkz. vade.ts). */
+  donem?: string;
 };
 
 // ————————————————————————————————————————————————————————————————
@@ -54,11 +57,7 @@ export type BorcSatiri = {
 // yanlış taksit sayısı ve yanlış plan demektir.
 // ————————————————————————————————————————————————————————————————
 export function borcTuruBelirle(vergiTuru: string): BorcTuru {
-  const t = String(vergiTuru || '')
-    .replace(/İ/g, 'i').replace(/I/g, 'ı')
-    .toLocaleLowerCase('tr-TR')
-    .replace(/\s+/g, ' ')
-    .trim();
+  const t = sadeTr(vergiTuru);
   if (!t) return 'BELIRSIZ';
 
   // KAPSAM DIŞI önce bakılır: "özel tüketim vergisi gecikme zammı" hem ÖTV hem zam içerir.

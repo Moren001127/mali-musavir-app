@@ -141,5 +141,43 @@ ok('başvuru son tarihi 31/8/2026', H.BASVURU_SON === '2026-08-31');
 ok('teminatsız sınır 10 milyon', H.TEMINATSIZ_SINIR === 10_000_000);
 ok('kapsam vadesi 5/6/2026', H.KAPSAM_VADE_SON === '2026-06-05');
 
+// ---------- 11) VADE TESPİTİ (GİB Vergi Takvimi 2026) ----------
+// Tebliğ yalnız 5/6/2026'ya kadar VADESİ GELMİŞ borçları kapsıyor; GİB borç listesinde
+// vade sütunu YOK. Vade, vergi türü kodu + dönemden türetiliyor.
+const V = require(path.join(ROOT, 'apps/api/src/yapilandirma-7582/vade.ts'));
+const vd = (t, d) => V.vadeBelirle(t, d);
+const kd = (t, d) => V.kapsamDurumu(t, d);
+
+ok('KDV: dönemi izleyen ayın 28i', vd('0015 KATMA DEGER', '04/2026-04/2026').vade === '2026-05-28');
+ok('KDV 05/2026 hafta sonuna kayar', vd('0015 KATMA DEGER', '05/2026-05/2026').vade === '2026-06-29',
+  '28.06.2026 Pazar → 29.06.2026');
+ok('Muhtasar: izleyen ayın 26sı', vd('0003 MUHTASAR', '04/2026-04/2026').vade === '2026-05-26');
+ok('3 aylık muhtasarda dönem SONU esas', vd('0003 MUHTASAR', '04/2026-06/2026').vade === '2026-07-27',
+  'dönem başı alınsaydı yanlışlıkla kapsama girerdi');
+ok('Geçici vergi: izleyen 2. ayın 17si', vd('0032 GECICI', '01/2026-03/2026').vade === '2026-05-18',
+  'GİB takvimi de 17.05.2026 Pazar olduğu için 18e kaydırmıştı — canlı doğrulama');
+ok('Kurumlar: izleyen yıl 30 Nisan', vd('0010 KURUMLAR', '01/2025-12/2025').vade === '2026-04-30');
+ok('Yıllık gelir vergisi İKİ taksit', (() => { const r = vd('0001 YILLIK GELIR', '01/2025-12/2025');
+  return r.vade === '2026-03-31' && r.ikinciVade === '2026-07-31' && r.kesinlik === 'KARISIK'; })());
+ok('MTV 31 Ocak cumartesiyse pazartesiye kayar', vd('9034 MTV', '01/2026-12/2026').vade === '2026-02-02');
+ok('Trafik cezasına vade UYDURULMAZ', vd('9085 TRAFIK CEZALARI', '06/2026-06/2026').kesinlik === 'YOK',
+  'vadesi tebliğ tarihine bağlı, dönemden çıkmaz');
+ok('Tecilli borçta vade türetilmez', vd('6183 TECILLI TAHSILAT', '-').kesinlik === 'YOK');
+
+// Kapsam kararı: vade + tür elemesi birlikte
+ok('KDV 04/2026 kapsam İÇİNDE', kd('0015 KATMA DEGER', '04/2026-04/2026').durum === 'ICINDE');
+ok('KDV 05/2026 kapsam DIŞINDA', kd('0015 KATMA DEGER', '05/2026-05/2026').durum === 'DISINDA');
+ok('2026 geçici vergi vadesi UYGUN OLSA DA dışarıda',
+  kd('0032 GECICI', '01/2026-03/2026').durum === 'DISINDA',
+  'vade 18.05.2026 kapsamda ama tebliğ 2026 geçici vergiyi ayrıca hariç tutuyor');
+ok('2025 geçici vergi kapsam İÇİNDE', kd('0032 GECICI', '10/2025-12/2025').durum === 'ICINDE');
+ok('ÖTV her hâlükârda dışarıda', kd('9071 OZEL TUKETIM VERGISI', '01/2024-01/2024').durum === 'DISINDA');
+ok('Yıllık gelir 2025 KISMEN (taksitler sınırın iki yanında)',
+  kd('0001 YILLIK GELIR', '01/2025-12/2025').durum === 'KISMEN');
+ok('MTV 2025 tamamen kapsamda', kd('9034 MTV', '01/2025-12/2025').durum === 'ICINDE');
+ok('MTV 2026 KISMEN', kd('9034 MTV', '01/2026-12/2026').durum === 'KISMEN');
+ok('vade türetilemeyende kapsamda VARSAYILMAZ',
+  kd('9085 TRAFIK CEZALARI', '06/2026-06/2026').durum === 'BELIRSIZ');
+
 if (hata) process.exit(1);
 console.log('[yapilandirma-7582] OK: taksit kuralları, faiz formülü ve kapsam kilitli');
