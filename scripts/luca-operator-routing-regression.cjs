@@ -39,8 +39,8 @@ if (!svc) {
     `${SVC}: operatör cihazı araması (deviceId endsWith '-operator') bozulmuş.`);
   // Hem ekran okuma hem işlem işi operatöre yönlensin; operatör yoksa eski yola düşsün.
   const fallbackCount = (svc.match(/preferredAgent:\s*operatorDeviceId\s*\?\s*'operator'\s*:\s*'browser-ext'/g) || []).length;
-  need(fallbackCount === 2,
-    `${SVC}: EKRAN_OKU + LUCA_ACTION işlerinin operatör yönlendirmesi eksik (beklenen 2, bulunan ${fallbackCount}).`);
+  need(fallbackCount === 3,
+    `${SVC}: operatör işlerinin (EKRAN_OKU + LUCA_ACTION + LUCA_KESIF) yönlendirmesi eksik (beklenen 3, bulunan ${fallbackCount}).`);
   need(/async getOperatorDeviceStatus\s*\(/.test(svc),
     `${SVC}: getOperatorDeviceStatus() kaldırılmış — panel/beyin operatörün açık olup olmadığını göremez.`);
 }
@@ -73,8 +73,8 @@ if (!ag) {
     `${AG}: operatör ayrı Chrome profili kullanmıyor (kullanıcının günlük tarayıcısına karışır).`);
   need(/'\.agent\.lock-operator'/.test(ag),
     `${AG}: operatör ayrı kilit dosyası kullanmıyor → mevcut veri çekme ajanıyla çakışır.`);
-  need(/const OPERATOR_JOB_TYPES\s*=\s*Object\.freeze\(\['EKRAN_OKU',\s*'LUCA_ACTION'\]\)/.test(ag),
-    `${AG}: operatör iş tipleri listesi bozulmuş.`);
+  need(/const OPERATOR_JOB_TYPES\s*=\s*Object\.freeze\(\[[^\]]*'EKRAN_OKU'[^\]]*'LUCA_ACTION'[^\]]*'LUCA_KESIF'[^\]]*\]\)/.test(ag),
+    `${AG}: operatör iş tipleri listesi bozulmuş (EKRAN_OKU + LUCA_ACTION + LUCA_KESIF).`);
   need(/const defaultJobTypes\s*=\s*SUPPORTED_JOB_TYPES\.filter\(\(t\)\s*=>\s*!OPERATOR_JOB_TYPES\.includes\(t\)\)/.test(ag),
     `${AG}: normal (veri çekme) ajanı artık operatör işlerini de alabiliyor — komut yanlış bilgisayarda çalışır.`);
   need(/OPERATOR_MODE\s*\?\s*false\s*:\s*cfg\.worker\?\.headless === true/.test(ag),
@@ -83,6 +83,32 @@ if (!ag) {
     `${AG}: operatör modunda ön ısıtma kapalı değil — ajan başlar başlamaz boş pencere açar.`);
   need(/process\.env\.MOREN_LUCA_CONFIG/.test(ag),
     `${AG}: MOREN_LUCA_CONFIG desteği kaldırılmış — aynı klasörden ikinci (operatör) örnek çalışmaz.`);
+}
+
+// ─── 4) Menü keşfi + menüde gezinme (kendi öğrenme) ──────────────────────────
+const RT = 'apps/api/public/agent-runtime.js';
+const rt = read(RT);
+if (!rt) {
+  fails.push(`${RT} bulunamadı`);
+} else {
+  need(/async function readLucaMenuHaritasi\s*\(/.test(rt),
+    `${RT}: menü haritası keşfi kaldırılmış — operatör Luca'yı kendi tanıyamaz.`);
+  need(/async function lucaMenuGit\s*\(/.test(rt),
+    `${RT}: lucaMenuGit kaldırılmış — operatör menüden ekran açamaz.`);
+  need(/action === 'menu' \|\| action === 'menugit'/.test(rt),
+    `${RT}: LUCA_ACTION'da 'menu' işlemi bağlı değil.`);
+  // Menü tıklaması yalnız menü öğelerine olmalı; ekran butonlarının onay kilidi durmalı.
+  need(/const SUBMIT_RE = /.test(rt) && /if \(action === 'click' && SUBMIT_RE\.test\(hedef\) && p\.confirmed !== true\)/.test(rt),
+    `${RT}: geri dönülmez buton onay kilidi bozulmuş.`);
+}
+
+if (ops) {
+  need(/luca_menu_haritasi_cikar/.test(ops) && /luca_menu_ara/.test(ops) && /luca_menu_git/.test(ops),
+    `${OPS}: menü araçlarından biri kaldırılmış (harita çıkar / ara / git).`);
+  need(/scope: 'luca-map'/.test(ops),
+    `${OPS}: menü haritası saklama (scope='luca-map') kaldırılmış.`);
+  need(/TAHMİN ETME|TAHMİN ETME/.test(ops),
+    `${OPS}: "menü yolunu tahmin etme" kuralı sistem promptundan çıkmış.`);
 }
 
 // ─── Sonuç ───────────────────────────────────────────────────────────────────
