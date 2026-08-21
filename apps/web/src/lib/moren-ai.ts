@@ -87,7 +87,12 @@ export async function getLucaSkills(): Promise<LucaSkill[]> {
 export type LucaOperatorDurum = {
   tarayici: { acik: boolean; cihaz: string | null };
   haritalar: Array<{ baslik: string; basliksayisi: number }>;
+  kurallar: Array<{ id: string; baslik: string; kural: string }>;
 };
+
+export async function deleteLucaRule(id: string): Promise<void> {
+  await api.delete(`/luca-operator/kurallar/${id}`);
+}
 
 export async function getLucaOperatorDurum(): Promise<LucaOperatorDurum> {
   const { data } = await api.get('/luca-operator/durum');

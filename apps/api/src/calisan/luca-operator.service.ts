@@ -141,6 +141,74 @@ export class LucaOperatorService {
     return { ok: false, error: await this.timeoutHint(ctx.tenantId, 'İşlem tamamlanamadı') };
   }
 
+  // ─── OFİS KURALLARI: ekrandan/geçmişten ÇIKARILAMAYAN kararlar ───
+  //
+  // Geçmiş kayda bakarak öğrenmenin sınırı var: geçmiş örnek tek bir durumu
+  // gösteriyorsa operatör kuralı eksik genelleyebilir. (Gerçek örnek: bir firma
+  // sürekli devreden KDV'li olduğu için operatör "fark hep 190'a atılır" sandı;
+  // doğrusu "ödenecek çıkarsa 360, çıkmazsa 190".) Bu yüzden kullanıcının
+  // söylediği kural KALICI saklanır ve HER sohbette sistem promptuna yüklenir.
+
+  /** Kayıtlı ofis kurallarını getir (en yeni önce). */
+  private async ofisKurallari(tenantId: string): Promise<Array<{ id: string; baslik: string; kural: string }>> {
+    const rows = await this.prisma.aiMemory
+      .findMany({
+        where: { tenantId: tenantId || 'default', scope: 'luca-kural', isActive: true },
+        orderBy: { updatedAt: 'desc' },
+        take: 60,
+      })
+      .catch(() => [] as any[]);
+    return (rows as any[]).map((r) => ({ id: r.id, baslik: r.title, kural: String(r.content || '') }));
+  }
+
+  /** Kullanıcının söylediği bir kuralı kalıcı kaydet (aynı başlık varsa günceller). */
+  private async kuralKaydet(
+    ctx: { tenantId: string; userId?: string | null },
+    baslik: string,
+    kural: string,
+  ): Promise<any> {
+    const b = String(baslik || '').trim();
+    const k = String(kural || '').trim();
+    if (!b || !k) return { ok: false, error: 'baslik ve kural gerekli' };
+    try {
+      await this.prisma.aiMemory
+        .updateMany({
+          where: { tenantId: ctx.tenantId, scope: 'luca-kural', title: b, isActive: true },
+          data: { isActive: false },
+        })
+        .catch(() => undefined);
+      await this.prisma.aiMemory.create({
+        data: {
+          tenantId: ctx.tenantId,
+          scope: 'luca-kural',
+          source: 'luca-operator',
+          title: b.slice(0, 120),
+          content: k.slice(0, 4000),
+          importance: 5,
+          tags: ['luca-kural'],
+        },
+      });
+      return { ok: true, message: `Kural kaydedildi: "${b}". Bundan sonra her işte uygulayacağım.` };
+    } catch (e: any) {
+      return { ok: false, error: e?.message || 'kural kaydedilemedi' };
+    }
+  }
+
+  /** UI: kuralları listele. */
+  async getRulesForUi(tenantId: string) {
+    const k = await this.ofisKurallari(tenantId || 'default');
+    return k;
+  }
+
+  /** UI: kuralı sil (pasifle). */
+  async deleteRule(tenantId: string, id: string) {
+    await this.prisma.aiMemory.updateMany({
+      where: { id, tenantId: tenantId || 'default', scope: 'luca-kural' },
+      data: { isActive: false },
+    });
+    return { ok: true };
+  }
+
   // ─── MENÜ HARİTASI: operatör Luca'yı KENDİ gezerek tanır (elle öğretme gerekmez) ───
 
   /**
@@ -377,6 +445,7 @@ export class LucaOperatorService {
         baslik: h.baslik.replace(/^menu:/, ''),
         basliksayisi: h.dugumler.length,
       })),
+      kurallar: await this.getRulesForUi(tid).catch(() => []),
     };
   }
 
@@ -415,7 +484,17 @@ export class LucaOperatorService {
       .join('\n');
   }
 
-  private buildSystemPrompt(voiceMode?: boolean): string {
+  private buildSystemPrompt(
+    voiceMode?: boolean,
+    kurallar?: Array<{ baslik: string; kural: string }>,
+  ): string {
+    const kurallarBolumu = kurallar?.length
+      ? [
+          '## OFİS KURALLARI (kullanıcının kalıcı kararları — HER İŞTE UYGULA)',
+          ...kurallar.map((k) => `- ${k.baslik}: ${k.kural}`),
+          '',
+        ].join('\n')
+      : '';
     const base = [
       'Sen Moren Mali Müşavirlik portalının "Luca Operatörü" adlı AI çalışanısın. Sahip: Muzaffer Ören.',
       'Kullanıcı (mali müşavir veya personel) ile Türkçe konuşur, portal verisini okur ve istenen işleri hazırlarsın.',
@@ -440,7 +519,10 @@ export class LucaOperatorService {
       'Cevabını GEREKSİZ uzatma; net ve kısa tut. Emin değilsen veya bilgi eksikse ASLA varsayma — kullanıcıya kısa bir soru sor.',
       'Kritik mali/hukuki konularda (beyanname, KDV, mizan, tahakkuk) en yüksek doğrulukla çalış; görmediğini görmüş gibi söyleme.',
       'Mükellef PII (şifre, token, TC, IBAN) sızdırma, loglama.',
+      'KURAL KAYDETME: Kullanıcı sana bir çalışma kuralı söylediğinde veya seni DÜZELTTİĞİNDE (ör. "ödenecek çıkıyorsa 360, çıkmıyorsa 190"), bunu KENDİLİĞİNDEN portal({name:"luca_kural_kaydet", args:{baslik:"<kısa başlık>", kural:"<kuralın tam metni>"}}) ile kaydet ve tek cümleyle bildir. Aynı şeyi bir daha sorma.',
+      'KURALLAR GEÇMİŞ ÖRNEKTEN ÜSTÜNDÜR: Geçmiş kayıt ile aşağıdaki ofis kuralı çelişirse KURAL geçerlidir. Geçmiş kayıt tek bir durumu gösteriyor olabilir; ondan genel kural UYDURMA.',
       '',
+      kurallarBolumu,
       '## Kullanabileceğin portal araçları',
       this.buildToolCatalog(),
     ].join('\n');
@@ -497,6 +579,8 @@ export class LucaOperatorService {
     childEnv.CLAUDE_CODE_OAUTH_TOKEN = token;
 
     const ctx = { tenantId, userId: params.userId ?? null };
+    // Ofis kuralları her sohbette taze yüklenir (kullanıcı yeni kural söylemiş olabilir).
+    const kurallar = await this.ofisKurallari(tenantId).catch(() => [] as any[]);
     const started = Date.now();
     let answer = '';
     const toolUses: Array<{ name: string; args: any }> = [];
@@ -536,6 +620,20 @@ export class LucaOperatorService {
               confirmed: args.confirmed === true,
             });
             return { content: [{ type: 'text', text: JSON.stringify(r) }] };
+          }
+          // Ofis kuralları: kaydet / listele
+          if (toolName === 'luca_kural_kaydet') {
+            const args = a?.args || {};
+            toolUses.push({ name: toolName, args });
+            emit({ type: 'tool', name: toolName });
+            const r = await this.kuralKaydet(ctx, String(args.baslik || ''), String(args.kural || args.metin || ''));
+            return { content: [{ type: 'text', text: JSON.stringify(r) }] };
+          }
+          if (toolName === 'luca_kural_listele') {
+            toolUses.push({ name: toolName, args: {} });
+            emit({ type: 'tool', name: toolName });
+            const r = await this.ofisKurallari(ctx.tenantId);
+            return { content: [{ type: 'text', text: JSON.stringify({ ok: true, kurallar: r }) }] };
           }
           // Menü: haritayı çıkar / ara / menüden ekran aç
           if (toolName === 'luca_menu_haritasi_cikar') {
@@ -603,7 +701,7 @@ export class LucaOperatorService {
         prompt,
         options: {
           model,
-          systemPrompt: this.buildSystemPrompt(params.voiceMode),
+          systemPrompt: this.buildSystemPrompt(params.voiceMode, kurallar),
           mcpServers: { portal: server },
           allowedTools: [PORTAL_TOOL],
           canUseTool,

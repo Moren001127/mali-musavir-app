@@ -61,6 +61,18 @@ export class LucaOperatorController {
     return this.operator.getSkillsForUi(req.user?.tenantId);
   }
 
+  /** Ofis kuralları (portal paneli). */
+  @Get('kurallar')
+  kurallar(@Req() req: any) {
+    return this.operator.getRulesForUi(req.user?.tenantId);
+  }
+
+  /** Kuralı sil. */
+  @Delete('kurallar/:id')
+  deleteRule(@Req() req: any, @Param('id') id: string) {
+    return this.operator.deleteRule(req.user?.tenantId, id);
+  }
+
   /** Beceriyi sil. */
   @Delete('skills/:id')
   deleteSkill(@Req() req: any, @Param('id') id: string) {

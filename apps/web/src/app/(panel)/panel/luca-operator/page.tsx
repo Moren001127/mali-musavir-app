@@ -2,6 +2,7 @@ import { BotMessageSquare, Info } from 'lucide-react';
 import { LucaOperatorChat } from './_components/LucaOperatorChat';
 import { LucaSkillsPanel } from './_components/LucaSkillsPanel';
 import { LucaOperatorDurum } from './_components/LucaOperatorDurum';
+import { LucaKurallarPanel } from './_components/LucaKurallarPanel';
 
 const ACCENT = '#d4b876'; // altın — Luca Operatörü modül kimliği
 
@@ -84,6 +85,9 @@ export default function LucaOperatorPage() {
           <b style={{ color: '#fafaf9' }}> geçen dönemin kaydından</b> öğrenmeye çalışır.
         </span>
       </div>
+
+      {/* Ofis kuralları (kullanıcının kalıcı kararları) */}
+      <LucaKurallarPanel />
 
       {/* Öğrenilen beceriler */}
       <LucaSkillsPanel />
