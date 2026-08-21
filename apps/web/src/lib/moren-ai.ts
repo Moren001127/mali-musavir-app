@@ -83,6 +83,17 @@ export async function getLucaSkills(): Promise<LucaSkill[]> {
   return data;
 }
 
+/** Operatör tarayıcısı durumu + öğrenilen menü haritaları. */
+export type LucaOperatorDurum = {
+  tarayici: { acik: boolean; cihaz: string | null };
+  haritalar: Array<{ baslik: string; basliksayisi: number }>;
+};
+
+export async function getLucaOperatorDurum(): Promise<LucaOperatorDurum> {
+  const { data } = await api.get('/luca-operator/durum');
+  return data;
+}
+
 export async function deleteLucaSkill(id: string): Promise<void> {
   await api.delete(`/luca-operator/skills/${id}`);
 }

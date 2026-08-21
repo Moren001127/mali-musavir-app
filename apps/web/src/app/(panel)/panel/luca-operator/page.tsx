@@ -1,6 +1,7 @@
 import { BotMessageSquare, Info } from 'lucide-react';
 import { LucaOperatorChat } from './_components/LucaOperatorChat';
 import { LucaSkillsPanel } from './_components/LucaSkillsPanel';
+import { LucaOperatorDurum } from './_components/LucaOperatorDurum';
 
 const ACCENT = '#d4b876'; // altın — Luca Operatörü modül kimliği
 
@@ -61,7 +62,10 @@ export default function LucaOperatorPage() {
         </div>
       </header>
 
-      {/* Kapsam notu — Faz 1 (slim) */}
+      {/* Operatör tarayıcısı durumu + öğrendiği menü haritaları */}
+      <LucaOperatorDurum />
+
+      {/* Kapsam notu */}
       <div
         className="flex flex-shrink-0 items-start gap-2 rounded-xl px-4 py-2.5 text-xs"
         style={{
@@ -72,9 +76,12 @@ export default function LucaOperatorPage() {
       >
         <Info size={14} className="mt-0.5 flex-shrink-0" style={{ color: ACCENT }} />
         <span>
-          <b style={{ color: '#fafaf9' }}>Yapabildikleri:</b> konuşur, mükellef/mali veriyi okur, Luca ekranını
-          görür ve Luca&apos;da <b style={{ color: '#fafaf9' }}>işlem yapar</b> (alan doldur, seç, tıkla).
-          <b style={{ color: '#fafaf9' }}> Gönder/Kaydet/Onayla</b> gibi geri dönülmez adımlarda önce senin onayını alır.
+          <b style={{ color: '#fafaf9' }}>Yapabildikleri:</b> senin bilgisayarında <b style={{ color: '#fafaf9' }}>kendi
+          Chrome penceresini</b> açar (günlük tarayıcına karışmaz), Luca menüsünü <b style={{ color: '#fafaf9' }}>kendi
+          keşfeder</b>, ekranı bulup açar, okur ve doldurur; mükellef/mali veriyi de görür.
+          <b style={{ color: '#fafaf9' }}> Gönder/Kaydet/Onayla/Tahakkuk</b> gibi geri dönülmez adımlarda durur,
+          ne yapacağını özetler ve senin onayını bekler. Bilmediği işi önce ekrandan ve
+          <b style={{ color: '#fafaf9' }}> geçen dönemin kaydından</b> öğrenmeye çalışır.
         </span>
       </div>
 

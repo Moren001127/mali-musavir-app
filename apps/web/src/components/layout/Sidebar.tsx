@@ -145,7 +145,9 @@ const navGroups = [
     color: STEEL,
     icon: Settings2,
     items: [
-      // { href: '/panel/luca-operator', label: 'Luca Operatörü', icon: BotMessageSquare }, // gizlendi 2026-08-06 (sayfa+backend duruyor, sadece menüden kaldırıldı)
+      // 2026-08-21: menüye GERİ AÇILDI — operatör artık kendi Chrome penceresinde çalışıyor
+      // ve Luca menüsünü kendi keşfediyor; kullanıcı buradan konuşarak iş yaptıracak.
+      { href: '/panel/luca-operator', label: 'Luca Operatörü', icon: BotMessageSquare },
       { href: '/panel/otomasyonlar', label: 'Otomasyonlar', icon: WandSparkles },
       // { href: '/panel/hatirlatmalar', label: 'WhatsApp Otomasyonu', icon: MessageSquareText }, // gizlendi 2026-08-06 (sayfa+otomasyon duruyor, sadece menüden kaldırıldı)
       { href: '/panel/sablonlar', label: 'Mesaj Şablonları', icon: MessageCircle },

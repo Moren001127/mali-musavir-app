@@ -360,6 +360,26 @@ export class LucaOperatorService {
     });
   }
 
+  /**
+   * UI: operatör tarayıcısı açık mı + öğrenilen menü haritaları.
+   * Portal ekranı bunu gösterir; kullanıcı ajanı açmayı unutursa hemen görsün.
+   */
+  async getOperatorUiDurum(tenantId: string) {
+    const tid = tenantId || 'default';
+    const cihaz = await this.luca.getOperatorDeviceStatus(tid).catch(() => ({ online: false, deviceId: null }));
+    const haritalar = await this.menuHaritalari(tid).catch(() => []);
+    return {
+      tarayici: {
+        acik: Boolean((cihaz as any)?.online),
+        cihaz: (cihaz as any)?.deviceId || null,
+      },
+      haritalar: haritalar.map((h) => ({
+        baslik: h.baslik.replace(/^menu:/, ''),
+        basliksayisi: h.dugumler.length,
+      })),
+    };
+  }
+
   /** UI: beceriyi sil (pasifle). */
   async deleteSkill(tenantId: string, id: string) {
     await this.prisma.aiMemory.updateMany({

@@ -49,6 +49,12 @@ export class LucaOperatorController {
     }
   }
 
+  /** Operatör tarayıcısı açık mı + öğrenilen menü haritaları (portal paneli). */
+  @Get('durum')
+  durum(@Req() req: any) {
+    return this.operator.getOperatorUiDurum(req.user?.tenantId);
+  }
+
   /** Öğrenilen beceriler (portal paneli). */
   @Get('skills')
   skills(@Req() req: any) {
