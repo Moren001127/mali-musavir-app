@@ -125,6 +125,7 @@ const navGroups = [
       { href: '/panel/bilanco', label: 'Bilanço', icon: Scale },
       { href: '/panel/isletme-hesap-ozeti', label: 'İşletme Hesap Özeti', icon: BookOpenText },
       { href: '/panel/ajanlar/e-defter', label: 'E-Defter Kontrol', icon: BookMarked },
+      { href: '/panel/yapilandirma-7582', label: '7582 Yapılandırma', icon: Landmark },
     ],
   },
   {
