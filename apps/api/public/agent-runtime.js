@@ -53,7 +53,7 @@
   // ne DOM değişimi oluyor → "bitti" sinyali hiç gelmiyordu (PERİHAN ŞAHİN: tıklama
   // öncesi de sonrası da 18 satır). Artık 30sn boyunca ekran hiç değişmediyse sorgu
   // bitmiş sayılır. Ayrıca teşhis için ekrandaki durum metni loglanır.
-  const AGENT_VERSION = '1.47.24';
+  const AGENT_VERSION = '1.47.25';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -474,42 +474,62 @@
   // düğümün etiketi + kimliği + hiyerarşisi çıkarılır, yorumlamayı sunucu yapar.
   function readLucaKesif(opts) {
     const o = opts || {};
-    const enFazlaDugum = Math.min(Number(o.limit) || 600, 1500);
+    const enFazlaDugum = Math.min(Number(o.limit) || 600, 2000);
+    const gizliDahil = o.gizliDahil === true;      // menü açılır kutuları kapalıyken de görünsün
+    const istenenFrame = o.frame ? String(o.frame) : null;
+    const htmlIste = o.html === true;              // ham HTML (yalnız istenen frame)
     const out = { url: location.href, frames: [] };
-    const kisaMetin = (el) => {
+
+    const ownText = (el) => {
       try {
-        // Yalnız düğümün KENDİ metni (çocukların metni değil) — ağaçta tekrar olmasın.
         let t = '';
-        for (const n of Array.from(el.childNodes)) {
-          if (n.nodeType === 3) t += n.nodeValue;
-        }
-        t = t.replace(/\s+/g, ' ').trim();
-        if (!t) t = (el.getAttribute('title') || el.getAttribute('alt') || el.value || '').replace(/\s+/g, ' ').trim();
-        return t.slice(0, 80);
+        for (const n of Array.from(el.childNodes)) if (n.nodeType === 3) t += n.nodeValue;
+        return t.replace(/\s+/g, ' ').trim();
       } catch { return ''; }
+    };
+    const etiketAl = (el) => {
+      let t = ownText(el);
+      if (!t) {
+        // Kendi metni yok ama sarmalayıcı olabilir (ör. <td><span>Muhasebe</span></td>).
+        try {
+          const inner = (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim();
+          if (inner && inner.length <= 120) t = inner;
+        } catch {}
+      }
+      if (!t) {
+        try { t = (el.getAttribute('title') || el.getAttribute('alt') || el.value || '').replace(/\s+/g, ' ').trim(); } catch {}
+      }
+      return t.slice(0, 80);
     };
     const tiklanabilir = (el) => {
       try {
         const tag = el.tagName.toLowerCase();
         if (tag === 'a' || tag === 'button') return true;
         if (tag === 'input' && /button|submit/i.test(el.type || '')) return true;
-        if (el.hasAttribute('onclick') || el.getAttribute('role') === 'button') return true;
+        if (el.hasAttribute('onclick') || el.hasAttribute('onmouseover') || el.getAttribute('role') === 'button') return true;
         if (typeof el.onclick === 'function') return true;
         const c = String(el.className || '');
         if (/menu|tree|nav|tab|node|folder|link|item/i.test(c)) return true;
+        const id = String(el.id || '');
+        if (/menu|tree|nav/i.test(id)) return true;
         return false;
       } catch { return false; }
     };
+
     for (const doc of lucaDocuments()) {
       try {
         const fname = (doc.defaultView && doc.defaultView.name) || '(ana)';
-        const dugumler = [];
-        const yol = [];
+        if (istenenFrame && fname !== istenenFrame) continue;
+        const kayit = { ad: fname, url: (doc.location && doc.location.href || '').slice(0, 160), dugumSayisi: 0, dugumler: [] };
+        if (htmlIste) {
+          try { kayit.html = String(doc.body ? doc.body.innerHTML : '').slice(0, 60000); } catch {}
+        }
+        const dugumler = kayit.dugumler;
         const gez = (el, derinlik, ustIndex) => {
-          if (dugumler.length >= enFazlaDugum || derinlik > 14) return;
+          if (dugumler.length >= enFazlaDugum || derinlik > 16) return;
           let benim = ustIndex;
-          if (tiklanabilir(el) && visible(el)) {
-            const metin = kisaMetin(el);
+          if (tiklanabilir(el) && (gizliDahil || visible(el))) {
+            const metin = etiketAl(el);
             if (metin) {
               benim = dugumler.length;
               dugumler.push({
@@ -519,16 +539,19 @@
                 tag: el.tagName.toLowerCase(),
                 id: el.id || null,
                 sinif: String(el.className || '').slice(0, 60) || null,
+                gorunur: visible(el),
                 metin,
                 href: el.getAttribute && el.getAttribute('href') ? String(el.getAttribute('href')).slice(0, 120) : null,
-                onclick: el.getAttribute && el.getAttribute('onclick') ? String(el.getAttribute('onclick')).slice(0, 160) : null,
+                onclick: el.getAttribute && el.getAttribute('onclick') ? String(el.getAttribute('onclick')).slice(0, 200) : null,
+                onmouseover: el.getAttribute && el.getAttribute('onmouseover') ? String(el.getAttribute('onmouseover')).slice(0, 200) : null,
               });
             }
           }
           for (const c of Array.from(el.children || [])) gez(c, derinlik + 1, benim);
         };
         if (doc.body) gez(doc.body, 0, null);
-        out.frames.push({ ad: fname, url: (doc.location && doc.location.href || '').slice(0, 160), dugumSayisi: dugumler.length, dugumler });
+        kayit.dugumSayisi = dugumler.length;
+        out.frames.push(kayit);
       } catch {}
     }
     return out;

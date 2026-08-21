@@ -115,6 +115,9 @@ export class LucaController {
   private requiredAgentVersionForJobTip(tip?: string | null) {
     if (tip === 'EKRAN_OKU') return '1.38.1'; // operatör ekran okuma; sadece güncel ajan
     if (tip === 'LUCA_ACTION') return '1.38.2'; // operatör yaz/seç/tıkla; sadece güncel ajan
+    // Keşif (menü/ekran ham dökümü) v1.47.24'te geldi. Sürüm kapısı ŞART: açık
+    // duran ESKİ runtime işi kapıp "desteklenmeyen job tipi" ile düşürüyordu.
+    if (tip === 'LUCA_KESIF') return '1.47.25';
     const lucaBrowserJobTips = new Set([
       'EARSIV_SATIS',
       'EARSIV_ALIS',
