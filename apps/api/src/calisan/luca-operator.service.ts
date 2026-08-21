@@ -236,6 +236,133 @@ export class LucaOperatorService {
     return { ok: true };
   }
 
+  // ─── LUCA'DAN TAZE VERİ: mizanı o an Luca'dan çek ───
+  //
+  // Portalda saklanan mizan, daha önce Luca'dan çekilmiş olabilir ama BAYAT
+  // olabilir. Beyanname hazırlarken karşılaştırma yapılacaksa veri o anki
+  // Luca fişlerini yansıtmalı. Bu araç mevcut Luca çekme hattını (MIZAN işi →
+  // ajan → Excel → portal) tetikler ve bitmesini bekler; okumayı get_mizan yapar.
+
+  /** Mükellefi ada göre bul (tek eşleşme şart; birden çok ise seçtir). */
+  private async mukellefBul(tenantId: string, ad: string): Promise<any> {
+    const q = String(ad || '').trim();
+    if (!q) return { ok: false, error: 'mükellef adı gerekli' };
+    const rows = await this.prisma.taxpayer.findMany({
+      where: {
+        tenantId,
+        isActive: true,
+        OR: [
+          { companyName: { contains: q, mode: 'insensitive' } },
+          { firstName: { contains: q, mode: 'insensitive' } },
+          { lastName: { contains: q, mode: 'insensitive' } },
+          { taxNumber: { contains: q } },
+        ],
+      },
+      select: { id: true, companyName: true, firstName: true, lastName: true, taxNumber: true, lucaSlug: true },
+      take: 8,
+    });
+    if (!rows.length) return { ok: false, error: `Mükellef bulunamadı: "${q}"` };
+    if (rows.length > 1) {
+      return {
+        ok: false,
+        error: 'Birden çok mükellef eşleşti, hangisi?',
+        adaylar: rows.map((r) => ({
+          id: r.id,
+          ad: r.companyName || [r.firstName, r.lastName].filter(Boolean).join(' '),
+          vkn: r.taxNumber,
+        })),
+      };
+    }
+    return { ok: true, mukellef: rows[0] };
+  }
+
+  /** Mizanı Luca'dan taze çek (MIZAN işi) ve bitmesini bekle. */
+  private async mizanCek(
+    ctx: { tenantId: string; userId?: string | null },
+    args: { mukellef?: string; taxpayerId?: string; donem?: string },
+  ): Promise<any> {
+    const donem = String(args.donem || '').trim();
+    if (!/^\d{4}-\d{2}$/.test(donem)) {
+      return { ok: false, error: 'donem "YYYY-AA" biçiminde olmalı (ör. 2026-07).' };
+    }
+
+    let taxpayerId = String(args.taxpayerId || '').trim();
+    let ad = '';
+    if (!taxpayerId) {
+      const bulundu = await this.mukellefBul(ctx.tenantId, String(args.mukellef || ''));
+      if (!bulundu.ok) return bulundu;
+      taxpayerId = bulundu.mukellef.id;
+      ad =
+        bulundu.mukellef.companyName ||
+        [bulundu.mukellef.firstName, bulundu.mukellef.lastName].filter(Boolean).join(' ');
+      if (!bulundu.mukellef.lucaSlug) {
+        return { ok: false, error: `"${ad}" için Luca eşleşmesi (lucaSlug) tanımlı değil — Luca'dan çekilemez.` };
+      }
+    }
+
+    // Çekme işini yapan ajan operatör tarayıcısı DEĞİL, veri çekme ajanıdır.
+    // O ayakta değilse iş sonsuza kadar bekler; peşinen söyle.
+    const cekenAjan = await this.prisma.agentStatus
+      .findFirst({
+        where: {
+          tenantId: ctx.tenantId,
+          agent: 'luca',
+          lastPing: { gte: new Date(Date.now() - 5 * 60 * 1000) },
+          NOT: { deviceId: { endsWith: '-operator' } },
+        },
+        orderBy: { lastPing: 'desc' },
+      })
+      .catch(() => null);
+    if (!cekenAjan) {
+      return {
+        ok: false,
+        error:
+          'Luca veri çekme ajanı çevrimdışı (mizanı çeken ajan operatör tarayıcısından ayrıdır). Ajan açılınca tekrar dene.',
+      };
+    }
+
+    let job: any;
+    try {
+      job = await this.luca.createFetchJob({
+        tenantId: ctx.tenantId,
+        sessionId: undefined as any,
+        mukellefId: taxpayerId,
+        donem,
+        tip: 'MIZAN',
+        createdBy: ctx.userId || undefined,
+        mukellefAdi: ad || undefined,
+      });
+    } catch (e: any) {
+      return { ok: false, error: 'Mizan çekme işi oluşturulamadı: ' + (e?.message || e) };
+    }
+
+    const jobId = job?.id;
+    if (!jobId) return { ok: false, error: 'Mizan çekme işi oluşturulamadı.' };
+    // Luca mizan işi tipik 1-3 dk; üst sınır 9 dk (iş tipi penceresi 10 dk).
+    const deadline = Date.now() + 9 * 60 * 1000;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 5000));
+      const j = await this.prisma.lucaFetchJob.findUnique({ where: { id: jobId } }).catch(() => null);
+      if (!j) break;
+      if (j.status === 'done') {
+        return {
+          ok: true,
+          message: `Mizan Luca'dan çekildi (${ad || taxpayerId} · ${donem}, ${j.recordCount} satır). Şimdi get_mizan ile oku.`,
+          taxpayerId,
+          donem,
+          satir: j.recordCount,
+        };
+      }
+      if (j.status === 'failed') {
+        return { ok: false, error: `Mizan çekilemedi: ${j.errorMsg || 'bilinmeyen hata'}` };
+      }
+    }
+    return {
+      ok: false,
+      error: 'Mizan çekme zaman aşımına uğradı. Ajan meşgul olabilir; portaldaki Luca işlerine bak.',
+    };
+  }
+
   // ─── MENÜ HARİTASI: operatör Luca'yı KENDİ gezerek tanır (elle öğretme gerekmez) ───
 
   /**
@@ -543,6 +670,7 @@ export class LucaOperatorService {
       'Portal verisi için "portal" aracını çağır: name=araç adı, args=parametre nesnesi. Sonucu yorumla.',
       'Luca\'da O AN AÇIK ekranı görmek için: portal({ name: "luca_ekran_oku" }) — mükellef/dönem gerekmez; kullanıcının Chrome\'undaki açık Luca ekranını okur (0-15 sn). Dönen "ekran" (frames/fields/buttons/text) verisini yorumla. Kullanıcı "ekrana bak / ne görüyorsun" derse bunu kullan.',
       'Luca\'da İŞLEM yapabilirsin: alan doldur → portal({name:"luca_yaz", args:{etiket:"<alan>", deger:"<değer>"}}); açılır liste → portal({name:"luca_sec", args:{etiket:"<alan>", deger:"<seçenek>"}}); buton/menü → portal({name:"luca_tikla", args:{hedef:"<metin>"}}). Her işlemden sonra dönen "screen" ile sonucu doğrula; gerekirse luca_ekran_oku ile bak.',
+      'MİZAN — TAZE OLACAK: Beyanname/karşılaştırma işlerinde mizanı portal deposundan OKUMA; önce portal({name:"luca_mizan_cek", args:{mukellef:"<ad>", donem:"YYYY-AA"}}) ile Luca\'dan o an çektir, iş bitince portal({name:"get_mizan", args:{taxpayerId:"...", period:"YYYY-AA"}}) ile oku. Çekme 1-3 dakika sürebilir; bekle. Bu çekimi operatör tarayıcısı değil, ayrı veri çekme ajanı yapar — bu sırada Luca ekranında başka iş yapabilirsin.',
       'MENÜ (Luca\'da ekran açma): Bir ekranı bulmak için ÖNCE portal({name:"luca_menu_ara", args:{sorgu:"muhtasar"}}) ile menü yolunu ara; dönen yolu portal({name:"luca_menu_git", args:{yol:"İşletme Defteri > Beyannameler > Muhtasar ve Prim Hizmet > Muhtasar Kartı Listesi"}}) ile aç. Menüde arama "kayıtlı harita yok" derse portal({name:"luca_menu_haritasi_cikar"}) ile Luca menüsünü kendin keşfet (birkaç dakika sürer, sadece okur), sonra aramayı tekrarla. Menüden ekran açmak veri değiştirmez, onay gerektirmez.',
       'Menü yolunu TAHMİN ETME. Ekranı menü haritasında bulamıyorsan kullanıcıya sor.',
       'GÜVENLİK — geri dönülmez adımlar: "Kaydet/Gönder/Onayla/İmzala/Sil/Tahakkuk/Tamamla" gibi butonlara ASLA kendiliğinden tıklama. Önce ne yapacağını ve hangi mükellef/dönem/tutar olduğunu KISACA özetle, kullanıcıdan AÇIK onay iste. Kullanıcı net onay verirse luca_tikla\'yı args.confirmed=true ile çağır. Onay olmadan confirmed=true GÖNDERME — agent zaten onaysız bu butonları bloke eder.',
@@ -664,6 +792,14 @@ export class LucaOperatorService {
               deger: args.deger ?? args.value,
               confirmed: args.confirmed === true,
             });
+            return { content: [{ type: 'text', text: JSON.stringify(r) }] };
+          }
+          // Luca'dan TAZE mizan çek
+          if (toolName === 'luca_mizan_cek') {
+            const args = a?.args || {};
+            toolUses.push({ name: toolName, args });
+            emit({ type: 'tool', name: toolName });
+            const r = await this.mizanCek(ctx, args);
             return { content: [{ type: 'text', text: JSON.stringify(r) }] };
           }
           // Ofis kuralları: kaydet / listele
