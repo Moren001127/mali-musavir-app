@@ -10,3 +10,4 @@ config.json
 config.operator.json
 .agent.lock-operator
 .browser-data-operator/
+.indirilen-raporlar/

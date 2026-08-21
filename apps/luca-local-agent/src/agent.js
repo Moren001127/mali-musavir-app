@@ -258,6 +258,12 @@ const nativeBridgePages = new WeakSet();
 // kopuk olabiliyor); Playwright'in sayfa listesi ise KESIN kaynak. Operator
 // isleri bittiginde bu pencerelerin metni ayrica gonderilir.
 const auxPages = new Set();
+// INDIRILEN RAPORLAR: Luca'nin rapor ciktilari (Mizan, Fis Listesi, Muavin...)
+// ayri pencere DEGIL, Luca.downloadPost ile acilan gecici sekme uzerinden NATIVE
+// INDIRME olarak geliyor; sekme aninda kapandigi icin okunacak sayfa kalmiyor.
+// Operator isleri sirasinda inen dosyalari burada tutup metne cevirip gonderiyoruz.
+const sonIndirilenler = [];  // { ad, yol, zaman }
+const MAX_INDIRILEN = 6;
 
 // --------- Logger ---------
 // DONMA WATCHDOG heartbeat'i: ajan herhangi bir log satiri yazinca tazelenir.
@@ -796,6 +802,21 @@ async function getBrowserSession() {
   // HIZLI FİŞ gibi AYRI-PENCERE popup'lar açıldığında native köprü + onay kabulünü kur
   //   (İşletme fiş aktarımı popup'ta trusted Yükle/Fiş Kes ister).
   context.on('page', (p) => { setupAuxiliaryPage(p).catch(() => {}); });
+  // Rapor indirmelerini diske al (operator sonra metne cevirip okur).
+  context.on('download', async (dl) => {
+    try {
+      const ad = (await dl.suggestedFilename().catch(() => '')) || 'rapor';
+      const klasor = path.join(__dirname, '..', '.indirilen-raporlar');
+      if (!fs.existsSync(klasor)) fs.mkdirSync(klasor, { recursive: true });
+      const hedef = path.join(klasor, `${Date.now()}-${ad}`.slice(0, 180));
+      await dl.saveAs(hedef);
+      sonIndirilenler.push({ ad, yol: hedef, zaman: Date.now() });
+      while (sonIndirilenler.length > MAX_INDIRILEN) sonIndirilenler.shift();
+      log.info(`Rapor indirildi: ${ad}`);
+    } catch (e) {
+      log.debug?.(`Indirme yakalama hatasi: ${e.message}`);
+    }
+  });
   log.info(`Luca browser oturumu acildi (persistent: ${userDataDir}, idle TTL ${Math.round(BROWSER_IDLE_TTL/60000)}dk) — cookie'ler kayitli kalir.`);
   return browserSession;
 }
@@ -974,6 +995,44 @@ async function nativeClickText(page, payload = {}) {
 // Ana Luca sayfası zaten runJobWithMorenRuntime + installMorenRuntimeBridge'te kuruluyor; burada
 // YALNIZ yeni açılan popup sayfaları için. Böylece İşletme HIZLI FİŞ penceresindeki "Yükle"/"Fiş Kes"
 // Luca'nın kabul ettiği trusted tıklamalarla çalışır ve Fiş Kes onay confirm'i otomatik KABUL edilir.
+/** Inen rapor dosyasini okunabilir metne cevir (xlsx/csv/html/txt). */
+function raporuMetneCevir(dosyaYolu, ad) {
+  const uzanti = String(ad || dosyaYolu).toLowerCase().split('.').pop();
+  try {
+    if (uzanti === 'xls' || uzanti === 'xlsx') {
+      const XLSX = require('xlsx');
+      const wb = XLSX.readFile(dosyaYolu);
+      const parcalar = [];
+      for (const sayfaAdi of wb.SheetNames.slice(0, 3)) {
+        const satirlar = XLSX.utils.sheet_to_json(wb.Sheets[sayfaAdi], { header: 1, blankrows: false });
+        parcalar.push(
+          `# ${sayfaAdi}\n` +
+            satirlar
+              .slice(0, 200)
+              .map((r) => (Array.isArray(r) ? r.map((c) => (c == null ? '' : String(c))).join(' | ') : ''))
+              .join('\n'),
+        );
+      }
+      return parcalar.join('\n\n');
+    }
+    const ham = fs.readFileSync(dosyaYolu, 'utf8');
+    if (uzanti === 'htm' || uzanti === 'html') {
+      return ham
+        .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+        .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+        .replace(/<\/(tr|div|p|table)>/gi, '\n')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/[ \t]+/g, ' ')
+        .replace(/\n{2,}/g, '\n')
+        .trim();
+    }
+    return ham;
+  } catch (e) {
+    return `(rapor okunamadi: ${e.message})`;
+  }
+}
+
 async function setupAuxiliaryPage(page) {
   try {
     if (browserSession && page === browserSession.page) return; // ana sayfa zaten kurulu
@@ -1318,6 +1377,19 @@ async function runJobWithMorenRuntime(job) {
           if (!metin && !baslik) continue;
           ekPencereler.push({ url, baslik: String(baslik).slice(0, 120), metin: String(metin).slice(0, 6000) });
           if (ekPencereler.length >= 4) break;
+        }
+        // Bu is sirasinda inen raporlari metne cevirip ekle (ayri pencere yerine
+        // indirme olarak gelen Luca raporlari icin tek yol budur).
+        const isBaslangici = activeJobsStartTime.get(jobId) || (Date.now() - 300000);
+        for (const ind of sonIndirilenler.filter((x) => x.zaman >= isBaslangici - 5000)) {
+          const metin = raporuMetneCevir(ind.yol, ind.ad);
+          if (!metin) continue;
+          ekPencereler.push({
+            url: `indirilen://${ind.ad}`,
+            baslik: `Rapor dosyasi: ${ind.ad}`,
+            metin: String(metin).slice(0, 12000),
+          });
+          if (ekPencereler.length >= 6) break;
         }
         if (ekPencereler.length) {
           await logJob(jobId, `Ayri pencere okundu: ${ekPencereler.length} (${ekPencereler.map((x) => x.baslik || x.url.slice(0, 40)).join(' | ')})`);
