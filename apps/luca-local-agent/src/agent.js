@@ -1332,6 +1332,17 @@ async function runJobWithMorenRuntime(job) {
       await page.waitForTimeout(3000).catch(() => {});
       currentUrl = page.url();
     }
+    // Captcha ekrani her adreste cikabilir (main.erp dahil) -> once onu coz.
+    try {
+      if (await page.$('#captcha-input')) {
+        await logJob(jobId, 'Luca captcha ekrani acik; 2captcha ile cozuluyor.').catch(() => {});
+        await captchaVarsaCoz(page);
+        await page.waitForTimeout(1500).catch(() => {});
+        currentUrl = page.url();
+      }
+    } catch (err) {
+      await logJob(jobId, `Captcha cozumu basarisiz: ${err.message}`).catch(() => {});
+    }
     const isLucaLoginPage = /^https:\/\/agiris\.luca\.com\.tr\/LUCASSO\/giris\.erp/i.test(currentUrl || '');
     const isLucaPage = /^https:\/\/(agiris|auygs)\.luca\.com\.tr\//i.test(currentUrl || '');
     if (isLucaPage) {
@@ -1426,57 +1437,17 @@ async function runJobWithMorenRuntime(job) {
   });
 }
 
-async function loginToLuca(page) {
-  log.info('Luca login sayfasına gidiliyor...');
-  await gotoLucaWithFallback(page, LUCA_URLS.login, null, 'Luca giris');
-  // Form alanları render olsun
-  await page.waitForLoadState('networkidle', { timeout: 30_000 }).catch(() => {});
-  await page.waitForTimeout(1500);
-
-  // Zaten girişliyse (persistent oturum geçerli) login formu olmaz → boşuna doldurma.
-  if (!/giris\.erp/i.test(page.url()) && !(await page.$('#parola, input[type="password"]'))) {
-    log.info(`Login gerekmedi, oturum geçerli: ${page.url()}`);
-    return;
-  }
-
-  // Luca form alanları — placeholder ile bulunabilir (Üye Numarası / Kullanıcı Adı / Parola)
-  const uyeNoSelector = 'input[name="uyeNo"], input[name="musteriNo"], input#uyeNo, input[placeholder*="Üye" i], input[placeholder*="ye Numara" i]';
-  const usernameSelector = 'input[name="kullaniciAdi"], input[name="username"], input#username, input[placeholder*="Kullan" i]';
-  const passwordSelector = 'input[name="sifre"], input[name="password"], input[type="password"], input[placeholder*="Parola" i]';
-
-  // Doldur
-  await page.fill(uyeNoSelector, cfg.luca.uyeNo);
-  await page.fill(usernameSelector, cfg.luca.username);
-  await page.fill(passwordSelector, cfg.luca.password);
-
-  // ── ADIM 1: Kimlik gönder → captcha sayfası (captchaKontrol.erp) gelir ──
-  // 2026-06-11 doğrulandı: 2FA kapalı Luca hesabında girişte CAPTCHA ZORUNLU.
-  // Doğru akış: girisbtn() ile kimlik gönder → captcha sayfasında 2captcha ile çöz →
-  // "Tamam" (forms[0].submit) → main.erp. (Eski kod captcha'yı submit'ten ÖNCE arayıp
-  // boş buluyor, kimliği captcha olmadan gönderip sürekli login sayfasında kalıyordu.)
-  const navP1 = page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 30_000 }).catch(() => null);
-  const girisGonderildi = await page.evaluate(() => {
-    try { if (typeof girisbtn === 'function') { girisbtn(); return 'girisbtn'; } } catch (_) {}
-    const b = document.querySelector('input[value="GİRİŞ"], input[onclick*="giris" i]');
-    if (b) { b.click(); return 'giris-button'; }
-    if (document.girisForm) { document.girisForm.submit(); return 'form.submit'; }
-    return null;
-  });
-  if (!girisGonderildi) {
-    await page.press(passwordSelector, 'Enter').catch(() => {});
-  } else {
-    log.info(`Kimlik gönderildi (${girisGonderildi}); captcha bekleniyor...`);
-  }
-  await navP1;
-  await page.waitForTimeout(2000);
-
-  // Captcha gerekmeden giriş tamamlandıysa (oturum hâlâ geçerliyse) → bitir.
-  if (!/giris\.erp|captchaKontrol/i.test(page.url())) {
-    log.info(`Login başarılı (captcha gerekmedi): ${page.url()}`);
-    return;
-  }
-
-  // ── ADIM 2: CAPTCHA — 2captcha ile otomatik çöz (en çok 3 deneme) ──
+/**
+ * Luca captcha ekrani NEREDE cikarsa cozer (2captcha).
+ *
+ * Onceden bu mantik yalniz loginToLuca icindeydi ve captcha yalnizca
+ * giris.erp/captchaKontrol adresinde beklenirdi. Oysa Luca, oturum acikken de
+ * main.erp uzerinde "Iki asamali dogrulama kapali oldugundan Captcha
+ * dogrulamasi zorunludur" ekranini cikarabiliyor. O durumda ajan ekrani
+ * tanimiyor, oturum acik saniyor ve is sonsuza kadar bekliyordu (operator
+ * penceresi captcha ekraninda takili kaldi - 2026-08-22 canli goruldu).
+ */
+async function captchaVarsaCoz(page) {
   await page.waitForSelector('#captcha-input', { timeout: 15_000 }).catch(() => {});
   if (await page.$('#captcha-input')) {
     const twoCaptchaKey = process.env.TWOCAPTCHA_API_KEY || process.env.TWO_CAPTCHA_API_KEY;
@@ -1536,6 +1507,61 @@ async function loginToLuca(page) {
       throw new Error('Luca captcha 6 denemede çözülemedi (2captcha). Oturum gardiyanı/sonraki iş tekrar deneyecek.');
     }
   }
+
+  return true;
+}
+
+async function loginToLuca(page) {
+  log.info('Luca login sayfasına gidiliyor...');
+  await gotoLucaWithFallback(page, LUCA_URLS.login, null, 'Luca giris');
+  // Form alanları render olsun
+  await page.waitForLoadState('networkidle', { timeout: 30_000 }).catch(() => {});
+  await page.waitForTimeout(1500);
+
+  // Zaten girişliyse (persistent oturum geçerli) login formu olmaz → boşuna doldurma.
+  if (!/giris\.erp/i.test(page.url()) && !(await page.$('#parola, input[type="password"]'))) {
+    log.info(`Login gerekmedi, oturum geçerli: ${page.url()}`);
+    return;
+  }
+
+  // Luca form alanları — placeholder ile bulunabilir (Üye Numarası / Kullanıcı Adı / Parola)
+  const uyeNoSelector = 'input[name="uyeNo"], input[name="musteriNo"], input#uyeNo, input[placeholder*="Üye" i], input[placeholder*="ye Numara" i]';
+  const usernameSelector = 'input[name="kullaniciAdi"], input[name="username"], input#username, input[placeholder*="Kullan" i]';
+  const passwordSelector = 'input[name="sifre"], input[name="password"], input[type="password"], input[placeholder*="Parola" i]';
+
+  // Doldur
+  await page.fill(uyeNoSelector, cfg.luca.uyeNo);
+  await page.fill(usernameSelector, cfg.luca.username);
+  await page.fill(passwordSelector, cfg.luca.password);
+
+  // ── ADIM 1: Kimlik gönder → captcha sayfası (captchaKontrol.erp) gelir ──
+  // 2026-06-11 doğrulandı: 2FA kapalı Luca hesabında girişte CAPTCHA ZORUNLU.
+  // Doğru akış: girisbtn() ile kimlik gönder → captcha sayfasında 2captcha ile çöz →
+  // "Tamam" (forms[0].submit) → main.erp. (Eski kod captcha'yı submit'ten ÖNCE arayıp
+  // boş buluyor, kimliği captcha olmadan gönderip sürekli login sayfasında kalıyordu.)
+  const navP1 = page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 30_000 }).catch(() => null);
+  const girisGonderildi = await page.evaluate(() => {
+    try { if (typeof girisbtn === 'function') { girisbtn(); return 'girisbtn'; } } catch (_) {}
+    const b = document.querySelector('input[value="GİRİŞ"], input[onclick*="giris" i]');
+    if (b) { b.click(); return 'giris-button'; }
+    if (document.girisForm) { document.girisForm.submit(); return 'form.submit'; }
+    return null;
+  });
+  if (!girisGonderildi) {
+    await page.press(passwordSelector, 'Enter').catch(() => {});
+  } else {
+    log.info(`Kimlik gönderildi (${girisGonderildi}); captcha bekleniyor...`);
+  }
+  await navP1;
+  await page.waitForTimeout(2000);
+
+  // Captcha gerekmeden giriş tamamlandıysa (oturum hâlâ geçerliyse) → bitir.
+  if (!/giris\.erp|captchaKontrol/i.test(page.url())) {
+    log.info(`Login başarılı (captcha gerekmedi): ${page.url()}`);
+    return;
+  }
+
+  await captchaVarsaCoz(page);
 
   // ── Sonuç doğrula ──
   const url = page.url();
