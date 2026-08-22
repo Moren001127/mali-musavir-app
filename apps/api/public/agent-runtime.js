@@ -53,7 +53,7 @@
   // ne DOM değişimi oluyor → "bitti" sinyali hiç gelmiyordu (PERİHAN ŞAHİN: tıklama
   // öncesi de sonrası da 18 satır). Artık 30sn boyunca ekran hiç değişmediyse sorgu
   // bitmiş sayılır. Ayrıca teşhis için ekrandaki durum metni loglanır.
-  const AGENT_VERSION = '1.47.30';
+  const AGENT_VERSION = '1.47.31';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -2183,8 +2183,39 @@
                 // Menüden ekran açma: yalnız menü öğelerine tıklar (veri değiştirmez).
                 res = await lucaMenuGit(p.yol || p.hedef || p.etiket, { bekle: p.bekle });
               } else if (action === 'click' || action === 'tikla') {
-                const ok = lucaClickByText(hedef);
-                res = ok ? { ok: true, message: `Tıklandı: ${hedef}` } : { ok: false, message: `Bulunamadı: ${hedef}` };
+                // Luca'nın bazı butonları (rapor üretimi, yükleme, fiş kesme) sayfa-içi
+                // taklit tıklamayı YOK SAYIYOR; gerçek fare tıklaması (isTrusted) istiyor.
+                // Yerel ajan bunun için `__morenNativeClickText` köprüsünü kuruyor.
+                // Sıra: önce sayfa-içi (hızlı, her yerde çalışır) → ekran değişmediyse
+                // gerçek tıklama ile bir daha dene.
+                const ekranImzasi = () => {
+                  try {
+                    let t = '';
+                    for (const d of lucaDocuments()) {
+                      t += (d.body && (d.body.innerText || '') || '').slice(0, 3000);
+                    }
+                    return t.length + '|' + t.slice(0, 400);
+                  } catch { return String(Math.random()); }
+                };
+                const oncesi = ekranImzasi();
+                let ok = lucaClickByText(hedef);
+                await sleep(1200);
+                const degisti = ekranImzasi() !== oncesi;
+                let gercekTik = false;
+                if (!degisti) {
+                  try {
+                    let bridge = null;
+                    try { bridge = window.__morenNativeClickText; } catch {}
+                    if (!bridge) { try { bridge = window.top && window.top.__morenNativeClickText; } catch {} }
+                    if (typeof bridge === 'function') {
+                      const r = await Promise.resolve(bridge({ text: hedef, exact: false, timeoutMs: 6000 }));
+                      if (r && r.ok) { gercekTik = true; ok = true; await sleep(1200); }
+                    }
+                  } catch {}
+                }
+                res = ok
+                  ? { ok: true, message: `Tıklandı: ${hedef}${gercekTik ? ' (gerçek tıklama)' : ''}`, ekranDegisti: degisti || gercekTik }
+                  : { ok: false, message: `Bulunamadı: ${hedef}` };
               } else {
                 res = { ok: false, message: `Bilinmeyen işlem: ${action}` };
               }
