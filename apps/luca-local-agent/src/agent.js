@@ -775,10 +775,17 @@ async function getBrowserSession() {
   if (!fs.existsSync(userDataDir)) {
     fs.mkdirSync(userDataDir, { recursive: true });
   }
+  // INDIRME KLASORU: Luca raporlari (Excel) buraya iner. Olay dinleyicisine
+  // GUVENMIYORUZ — dosya dinleyici baglanmadan once inip kaybolabiliyor.
+  // Playwright'a kalici klasor veriyoruz, ayrica CDP ile tarayici seviyesinde
+  // de ayni klasore yazdiriyoruz; is bitince klasordeki YENI dosyalar okunur.
+  const indirmeKlasoru = path.join(__dirname, '..', '.indirilen-raporlar');
+  if (!fs.existsSync(indirmeKlasoru)) fs.mkdirSync(indirmeKlasoru, { recursive: true });
   const context = await chromium.launchPersistentContext(userDataDir, {
     headless: HEADLESS,
     timeout: BROWSER_TIMEOUT,
     acceptDownloads: true,
+    downloadsPath: indirmeKlasoru,
     viewport: { width: 1366, height: 900 },
     userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     args: [
@@ -831,6 +838,18 @@ async function getBrowserSession() {
   // Dinleyiciler TANIMDAN SONRA baglanir (const TDZ hatasi yasandi).
   indirmeDinle(page);
   context.on('page', (p) => { indirmeDinle(p); setupAuxiliaryPage(p).catch(() => {}); });
+  // CDP: dosya adiyla birlikte dogrudan klasore yaz (olaydan bagimsiz saglam yol).
+  try {
+    const cdp = await context.newCDPSession(page);
+    await cdp.send('Browser.setDownloadBehavior', {
+      behavior: 'allowAndName',
+      downloadPath: indirmeKlasoru,
+      eventsEnabled: true,
+    });
+    log.info(`Indirme klasoru ayarlandi: ${indirmeKlasoru}`);
+  } catch (e) {
+    log.debug?.(`CDP indirme ayari yapilamadi: ${e.message}`);
+  }
   log.info(`Luca browser oturumu acildi (persistent: ${userDataDir}, idle TTL ${Math.round(BROWSER_IDLE_TTL/60000)}dk) — cookie'ler kayitli kalir.`);
   return browserSession;
 }
@@ -1407,6 +1426,22 @@ async function runJobWithMorenRuntime(job) {
         // Bu is sirasinda inen raporlari metne cevirip ekle (ayri pencere yerine
         // indirme olarak gelen Luca raporlari icin tek yol budur).
         const isBaslangici = activeJobsStartTime.get(jobId) || (Date.now() - 300000);
+        // Olay dinleyicisi kacirmis olabilir: klasordeki yeni dosyalari da tara.
+        try {
+          const klasor = path.join(__dirname, '..', '.indirilen-raporlar');
+          if (fs.existsSync(klasor)) {
+            for (const ad of fs.readdirSync(klasor)) {
+              const tam = path.join(klasor, ad);
+              const st = fs.statSync(tam);
+              if (!st.isFile() || st.mtimeMs < isBaslangici - 5000) continue;
+              if (sonIndirilenler.some((x) => x.yol === tam)) continue;
+              sonIndirilenler.push({ ad, yol: tam, zaman: st.mtimeMs });
+              log.info(`Indirilen dosya bulundu (klasor taramasi): ${ad}`);
+            }
+          }
+        } catch (err) {
+          log.debug?.(`Indirme klasoru taranamadi: ${err.message}`);
+        }
         for (const ind of sonIndirilenler.filter((x) => x.zaman >= isBaslangici - 5000)) {
           const metin = raporuMetneCevir(ind.yol, ind.ad);
           if (!metin) continue;
