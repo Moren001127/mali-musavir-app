@@ -117,11 +117,13 @@ export type LucaStreamEvent =
 export async function lucaOperatorChatStream(
   body: { message: string; history?: Array<{ role: 'user' | 'assistant'; content: string }>; voiceMode?: boolean },
   onEvent: (e: LucaStreamEvent) => void,
+  signal?: AbortSignal,
 ): Promise<void> {
   const res = await authorizedFetch(`${API_BASE}/luca-operator/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
+    signal,
   });
   if (!res.ok || !res.body) {
     onEvent({ type: 'error', error: `Sunucu hatası (${res.status})` });

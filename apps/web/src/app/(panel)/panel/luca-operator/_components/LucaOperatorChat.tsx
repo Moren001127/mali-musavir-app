@@ -36,6 +36,11 @@ export function LucaOperatorChat() {
   const voiceModeRef = useRef(false);
   const speakEnabledRef = useRef(false);
   const sendingRef = useRef(false);
+  // Çalışan işi kesebilmek için: kullanıcı iş sürerken yeni talimat yazabilir
+  // (ör. "ben elle yaptım, mizanı yeniden çek"). Enter'a basınca akış durur ve
+  // yeni mesaj gönderilir. Eskiden girdi kutusu KİLİTLİYDİ, kullanıcı işi
+  // yönlendiremiyordu — canlı şikayet.
+  const abortRef = useRef<AbortController | null>(null);
   voiceModeRef.current = voiceMode;
   speakEnabledRef.current = speakEnabled;
   sendingRef.current = sending;
@@ -131,6 +136,7 @@ export function LucaOperatorChat() {
       { role: 'assistant', content: '', tools: [], ts: now + 1 },
     ]);
     setText('');
+    abortRef.current = new AbortController();
     setSending(true);
     setCurrentTool(null);
 
@@ -154,7 +160,7 @@ export function LucaOperatorChat() {
           acc = (acc ? acc + '\n\n' : '') + `⚠️ ${e.error || 'Yanıt alınamadı'}`;
           patchLastAssistant((m) => ({ ...m, content: acc }));
         }
-      });
+      }, abortRef.current?.signal);
     } catch (err: any) {
       hadError = true;
       acc = (acc ? acc + '\n\n' : '') + `⚠️ Hata: ${err?.message || err}`;
@@ -205,8 +211,22 @@ export function LucaOperatorChat() {
   };
 
   const submit = () => {
-    if (!text.trim() || sending) return;
+    if (!text.trim()) return;
+    // İş sürüyorsa KES ve yeni talimatı gönder (kullanıcı yönlendirebilsin).
+    if (sending) {
+      try { abortRef.current?.abort(); } catch { /* yoksay */ }
+      setSending(false);
+      sendingRef.current = false;
+      setTimeout(() => send(text), 150);
+      return;
+    }
     send(text);
+  };
+
+  const durdur = () => {
+    try { abortRef.current?.abort(); } catch { /* yoksay */ }
+    setSending(false);
+    sendingRef.current = false;
   };
 
   return (
@@ -254,6 +274,16 @@ export function LucaOperatorChat() {
             <Mic size={11} />
             {voiceMode ? 'Sohbet açık' : 'Sohbet modu'}
           </button>
+          {sending && (
+            <button
+              onClick={durdur}
+              className="rounded-lg px-2 py-1 text-[11px] font-semibold transition-colors"
+              style={{ background: 'rgba(248,113,113,0.14)', border: '1px solid rgba(248,113,113,0.32)', color: '#fca5a5' }}
+              title="Çalışan işi durdur"
+            >
+              ■ Durdur
+            </button>
+          )}
           {messages.length > 0 && (
             <button
               onClick={clearChat}
@@ -361,11 +391,12 @@ export function LucaOperatorChat() {
             placeholder={
               listening
                 ? 'Dinliyorum...'
-                : voiceMode
-                  ? 'Konuş — otomatik gönderilir'
-                  : 'Luca operatörüne talimat ver… (Enter ile gönder)'
+                : sending
+                  ? 'Çalışıyor — yazıp Enter’a basarsan durdurup bunu yapar'
+                  : voiceMode
+                    ? 'Konuş — otomatik gönderilir'
+                    : 'Luca operatörüne talimat ver… (Enter ile gönder)'
             }
-            disabled={sending}
             className="flex-1 rounded-lg px-3 py-2 text-sm outline-none"
             style={{
               background: 'rgba(0,0,0,0.3)',
@@ -375,7 +406,7 @@ export function LucaOperatorChat() {
           />
           <button
             onClick={submit}
-            disabled={!text.trim() || sending}
+            disabled={!text.trim()}
             className="rounded-lg px-3 disabled:opacity-50"
             style={{ background: ACCENT, color: '#15110b' }}
           >
