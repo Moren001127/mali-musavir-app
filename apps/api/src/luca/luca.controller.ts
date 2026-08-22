@@ -463,6 +463,13 @@ export class LucaController {
       alsoUnowned: alsoUnowned === '1' || alsoUnowned === 'true',
     });
     return jobs.filter((job: any) => {
+      // EKRAN_GORUNTU'yu YALNIZ yerel ajan (Playwright) yapabilir; tarayıcı içi
+      // runtime sayfanın kendi PNG'sini alamaz. Runtime bu işi kapınca
+      // "Desteklenmeyen Luca job tipi" ile düşürüyordu. Yerel ajan sürümü
+      // 'local-*' gönderir; tarayıcı içi runtime gerçek sürüm (1.47.x) gönderir.
+      if (job.tip === 'EKRAN_GORUNTU' && !/^local-/i.test(String(agentVersion || ''))) {
+        return false;
+      }
       const requiredVersion = this.requiredAgentVersionForJobTip(job.tip);
       if (!requiredVersion) return true;
       // DEADLOCK KIRICI: Yerel/VPS ajanı (bootstrap sürümü 'local-*') runtime'ı HER İŞTE sunucudan
