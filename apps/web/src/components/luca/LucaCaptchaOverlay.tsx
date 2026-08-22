@@ -98,7 +98,9 @@ export function LucaCaptchaOverlay() {
         <div className="mb-3 rounded-md px-3 py-2 text-[11.5px]" style={{ background: 'rgba(245,158,11,0.10)', color: 'rgba(250,250,249,0.72)', border: '1px solid rgba(245,158,11,0.22)' }}>
           {autoOcr.skippedReason
             ? autoOcr.skippedReason
-            : `Otomatik okuma güvenli olmadı${autoOcr.confidence != null ? ` · güven ${Math.round(autoOcr.confidence)}%` : ''}. Kodu elle girin.`}
+            : autoOcr.ocrKapali
+              ? 'Kod otomatik çözülüyor (2captcha) — birkaç saniye. Beklemek istemezsen elle de girebilirsin.'
+              : `Otomatik okuma güvenli olmadı${autoOcr.confidence != null ? ` · güven ${Math.round(autoOcr.confidence)}%` : ''}. Kodu elle girin.`}
         </div>
       )}
 

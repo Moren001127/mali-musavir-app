@@ -1384,7 +1384,8 @@ export class LucaService {
     const context: any = {
       ...(challenge.context || {}),
       autoOcr: {
-        attempted: true,
+        attempted: ocrEnabled,
+        ocrKapali: !ocrEnabled,
         autoSubmitted: accepted,
         text: ocr.text || null,
         confidence: ocr.confidence,
@@ -1426,8 +1427,29 @@ export class LucaService {
         ).catch(() => {});
       }
       try {
-        const twoResult = await this.solveCaptchaWith2Captcha(challenge.captchaImage, twoCaptchaKey);
-        const cleanText = String(twoResult.text || '').replace(/[^0-9A-Za-z]/g, '');
+        // TEKRAR DENEME: 2captcha bazen kisa/bos okuyor ("0") ya da servis HTML
+        // hata sayfasi donduruyor. Tek denemede pes edilince is KULLANICIYA
+        // manuel soruluyordu ("niye 2captcha doldurmadi"). 3 deneme yapiyoruz.
+        const denemeSayisi = Math.max(1, Math.min(Number(process.env.LUCA_2CAPTCHA_RETRY || 3), 5));
+        let twoResult: { text: string; id: string | null } = { text: '', id: null };
+        let cleanText = '';
+        let sonHata: any = null;
+        for (let deneme = 1; deneme <= denemeSayisi; deneme++) {
+          try {
+            twoResult = await this.solveCaptchaWith2Captcha(challenge.captchaImage, twoCaptchaKey);
+            cleanText = String(twoResult.text || '').replace(/[^0-9A-Za-z]/g, '');
+            if (cleanText.length >= minLength && cleanText.length <= maxLength) break;
+            sonHata = `kisa/gecersiz cevap ("${twoResult.text || '-'}")`;
+          } catch (e: any) {
+            sonHata = e?.message || String(e);
+          }
+          if (challenge.jobId) {
+            await this.appendJobLog(
+              challenge.jobId,
+              `Luca guvenlik kodu 2captcha denemesi ${deneme}/${denemeSayisi} basarisiz: ${String(sonHata).slice(0, 120)}`,
+            ).catch(() => {});
+          }
+        }
         const twoOk = cleanText.length >= minLength && cleanText.length <= maxLength;
 
         context.twoCaptcha = {
