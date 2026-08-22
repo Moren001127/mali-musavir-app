@@ -53,7 +53,7 @@
   // ne DOM değişimi oluyor → "bitti" sinyali hiç gelmiyordu (PERİHAN ŞAHİN: tıklama
   // öncesi de sonrası da 18 satır). Artık 30sn boyunca ekran hiç değişmediyse sorgu
   // bitmiş sayılır. Ayrıca teşhis için ekrandaki durum metni loglanır.
-  const AGENT_VERSION = '1.47.31';
+  const AGENT_VERSION = '1.47.32';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -821,7 +821,11 @@
     // pencerelerin metni ana ekranin metniyle ayni 12000 karakterlik kotaya
     // giriyordu ve SONA eklendigi icin kirpilip tamamen kayboluyordu (gecmis fis
     // satirlari bu yuzden okunamiyordu). Artik ayri alanda, kendi payiyla tasinir.
-    const snap = { url: location.href, frames: [], text: '', fields: [], buttons: [], links: [], pencereler: [] };
+    // frameMetin: her çerçevenin metni AYRI durur. Eskiden hepsi tek bir 12.000
+    // karakterlik havuza akıyordu; Mizan gibi uzun hesap listesi olan ekranlarda
+    // havuz dolup YENİ AÇILAN panelin metni tamamen kırpılıyordu ("ekran değişti
+    // ama göremiyorum" durumu).
+    const snap = { url: location.href, frames: [], text: '', frameMetin: [], fields: [], buttons: [], links: [], pencereler: [] };
     const texts = [];
     for (const doc of lucaDocuments()) {
       try {
@@ -833,6 +837,13 @@
         } catch {}
         snap.frames.push(fname || (ayriPencere ? '(ayri-pencere)' : '(ana)'));
         const bt = (doc.body && (doc.body.innerText || doc.body.textContent) || '').replace(/\s+/g, ' ').trim();
+        if (bt && snap.frameMetin.length < 12) {
+          snap.frameMetin.push({
+            ad: fname || (ayriPencere ? '(ayri-pencere)' : '(ana)'),
+            url: String(doc.location && doc.location.href || '').slice(0, 120),
+            metin: bt.slice(0, 6000),
+          });
+        }
         if (bt && ayriPencere && snap.pencereler.length < 4) {
           snap.pencereler.push({
             url: String(doc.location && doc.location.href || '').slice(0, 160),
