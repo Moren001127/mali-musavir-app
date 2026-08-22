@@ -801,9 +801,12 @@ async function getBrowserSession() {
   startKeepAlive(browserSession);
   // HIZLI FİŞ gibi AYRI-PENCERE popup'lar açıldığında native köprü + onay kabulünü kur
   //   (İşletme fiş aktarımı popup'ta trusted Yükle/Fiş Kes ister).
-  context.on('page', (p) => { setupAuxiliaryPage(p).catch(() => {}); });
+  indirmeDinle(page);
+  context.on('page', (p) => { indirmeDinle(p); setupAuxiliaryPage(p).catch(() => {}); });
   // Rapor indirmelerini diske al (operator sonra metne cevirip okur).
-  context.on('download', async (dl) => {
+  // DIKKAT: Playwright'ta 'download' olayi SAYFA (page) uzerinde tetiklenir,
+  // BrowserContext'te DEGIL. Once context'e baglanmisti ve hic ates almiyordu.
+  const indirmeYakala = async (dl) => {
     try {
       const ad = (await dl.suggestedFilename().catch(() => '')) || 'rapor';
       const klasor = path.join(__dirname, '..', '.indirilen-raporlar');
@@ -816,7 +819,15 @@ async function getBrowserSession() {
     } catch (e) {
       log.debug?.(`Indirme yakalama hatasi: ${e.message}`);
     }
-  });
+  };
+  const indirmeDinle = (pg) => {
+    try {
+      if (!pg || pg.__morenIndirmeDinleniyor) return;
+      pg.__morenIndirmeDinleniyor = true;
+      pg.on('download', indirmeYakala);
+    } catch {}
+  };
+  globalThis.__morenIndirmeDinle = indirmeDinle;
   log.info(`Luca browser oturumu acildi (persistent: ${userDataDir}, idle TTL ${Math.round(BROWSER_IDLE_TTL/60000)}dk) — cookie'ler kayitli kalir.`);
   return browserSession;
 }
@@ -1038,6 +1049,7 @@ async function setupAuxiliaryPage(page) {
     if (browserSession && page === browserSession.page) return; // ana sayfa zaten kurulu
     auxPages.add(page);
     page.once('close', () => auxPages.delete(page));
+    try { globalThis.__morenIndirmeDinle && globalThis.__morenIndirmeDinle(page); } catch {}
     // Pencere kendini ana pencerenin popup listesine yazsin (runtime bunu
     // document_start'ta deniyor ama opener bagi o an kurulmamis olabiliyor).
     page.evaluate(() => {
