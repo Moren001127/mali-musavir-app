@@ -803,8 +803,6 @@ async function getBrowserSession() {
   startKeepAlive(browserSession);
   // HIZLI FİŞ gibi AYRI-PENCERE popup'lar açıldığında native köprü + onay kabulünü kur
   //   (İşletme fiş aktarımı popup'ta trusted Yükle/Fiş Kes ister).
-  indirmeDinle(page);
-  context.on('page', (p) => { indirmeDinle(p); setupAuxiliaryPage(p).catch(() => {}); });
   // Rapor indirmelerini diske al (operator sonra metne cevirip okur).
   // DIKKAT: Playwright'ta 'download' olayi SAYFA (page) uzerinde tetiklenir,
   // BrowserContext'te DEGIL. Once context'e baglanmisti ve hic ates almiyordu.
@@ -830,6 +828,9 @@ async function getBrowserSession() {
     } catch {}
   };
   globalThis.__morenIndirmeDinle = indirmeDinle;
+  // Dinleyiciler TANIMDAN SONRA baglanir (const TDZ hatasi yasandi).
+  indirmeDinle(page);
+  context.on('page', (p) => { indirmeDinle(p); setupAuxiliaryPage(p).catch(() => {}); });
   log.info(`Luca browser oturumu acildi (persistent: ${userDataDir}, idle TTL ${Math.round(BROWSER_IDLE_TTL/60000)}dk) — cookie'ler kayitli kalir.`);
   return browserSession;
 }
