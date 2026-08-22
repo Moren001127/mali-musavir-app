@@ -53,7 +53,7 @@
   // ne DOM değişimi oluyor → "bitti" sinyali hiç gelmiyordu (PERİHAN ŞAHİN: tıklama
   // öncesi de sonrası da 18 satır). Artık 30sn boyunca ekran hiç değişmediyse sorgu
   // bitmiş sayılır. Ayrıca teşhis için ekrandaki durum metni loglanır.
-  const AGENT_VERSION = '1.47.33';
+  const AGENT_VERSION = '1.47.34';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -905,25 +905,92 @@
 
   // LUCA OPERATÖRÜ — etikete göre açılır liste (select) seç
   function lucaSelectByHint(hint, optionText) {
-    const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim().toLocaleLowerCase('tr-TR');
+    // Luca ekranlarinda acilir listenin ADI teknik olur (report_type) ama kullanici
+    // EKRANDA GORUNEN ETIKETI soyler ("Rapor Turu"). Eskiden yalniz name/id/aria
+    // aranıyordu -> "Secim yapilamadi: Rapor Turu" (canli yasandi, Excel ciktisi
+    // secilemedigi icin rapor hic inmedi). Artik gorunen etiket de araniyor:
+    // label[for], sarmalayan label, ayni satirdaki (tr) onceki hucre, onceki kardes.
+    const norm = (x) => String(x || '')
+      .replace(/\s+/g, ' ')
+      .replace(/[:*]/g, '')
+      .trim()
+      .toLocaleLowerCase('tr-TR');
     const h = norm(hint);
     const o = norm(optionText);
     if (!o) return false;
-    for (const doc of lucaDocuments()) {
+
+    const etiketMetni = (sel) => {
+      const parcalar = [];
       try {
-        const selects = Array.from(doc.querySelectorAll('select')).filter(visible);
-        for (const sel of selects) {
-          const hay = norm(`${sel.name || ''} ${sel.id || ''} ${sel.getAttribute('aria-label') || ''}`);
-          if (h && !hay.includes(h)) continue;
-          const opt = Array.from(sel.options).find((op) => norm(op.text) === o)
-            || Array.from(sel.options).find((op) => norm(op.text).includes(o));
-          if (opt) {
-            sel.value = opt.value;
-            sel.dispatchEvent(new Event('change', { bubbles: true }));
-            return true;
+        const doc = sel.ownerDocument;
+        if (sel.id) {
+          const lab = doc.querySelector(`label[for="${sel.id}"]`);
+          if (lab) parcalar.push(lab.textContent);
+        }
+        const sarmal = sel.closest && sel.closest('label');
+        if (sarmal) parcalar.push(sarmal.textContent);
+        const hucre = sel.closest && sel.closest('td');
+        if (hucre) {
+          let onceki = hucre.previousElementSibling;
+          let adim = 0;
+          while (onceki && adim++ < 2) {
+            parcalar.push(onceki.textContent);
+            onceki = onceki.previousElementSibling;
           }
+          const satir = hucre.closest('tr');
+          if (satir) parcalar.push(satir.textContent);
+        }
+        let kardes = sel.previousElementSibling;
+        let n = 0;
+        while (kardes && n++ < 2) {
+          parcalar.push(kardes.textContent);
+          kardes = kardes.previousElementSibling;
         }
       } catch {}
+      return parcalar.map(norm).filter(Boolean);
+    };
+
+    const secenekBul = (sel) => {
+      const secenekler = Array.from(sel.options || []);
+      return (
+        secenekler.find((op) => norm(op.text) === o) ||
+        secenekler.find((op) => norm(op.text).startsWith(o)) ||
+        secenekler.find((op) => norm(op.text).includes(o)) ||
+        secenekler.find((op) => o.includes(norm(op.text)) && norm(op.text).length >= 3) ||
+        null
+      );
+    };
+
+    const uygula = (sel, opt) => {
+      try {
+        sel.value = opt.value;
+        sel.dispatchEvent(new Event('input', { bubbles: true }));
+        sel.dispatchEvent(new Event('change', { bubbles: true }));
+        // Luca bazi listelerde onchange'i attribute olarak tutuyor.
+        try { if (typeof sel.onchange === 'function') sel.onchange(new Event('change')); } catch {}
+        return true;
+      } catch { return false; }
+    };
+
+    // 1) Teknik ad (name/id/aria) 2) gorunen etiket — iki turda ara.
+    for (const tur of [1, 2]) {
+      for (const doc of lucaDocuments()) {
+        try {
+          const selects = Array.from(doc.querySelectorAll('select')).filter(visible);
+          for (const sel of selects) {
+            let eslesti = false;
+            if (tur === 1) {
+              const hay = norm(`${sel.name || ''} ${sel.id || ''} ${sel.getAttribute('aria-label') || ''}`);
+              eslesti = !h || hay.includes(h);
+            } else {
+              eslesti = etiketMetni(sel).some((t) => t.includes(h));
+            }
+            if (!eslesti) continue;
+            const opt = secenekBul(sel);
+            if (opt && uygula(sel, opt)) return true;
+          }
+        } catch {}
+      }
     }
     return false;
   }
