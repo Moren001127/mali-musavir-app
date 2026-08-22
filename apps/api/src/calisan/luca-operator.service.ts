@@ -109,7 +109,21 @@ export class LucaOperatorService {
     while (Date.now() < deadline) {
       await new Promise((r) => setTimeout(r, 1500));
       const r = await this.luca.getScreenSnapshot(jobId, ctx.tenantId).catch(() => null);
-      if (r && r.status === 'done' && r.snapshot) return { ok: true, ekran: r.snapshot };
+      if (r && r.status === 'done' && r.snapshot) {
+        // İNEN RAPOR YARIŞI: ajan, indirilen Excel'i çözümleyip ekrana "pencereler"
+        // olarak İŞ BİTTİKTEN 1-3 sn SONRA ekliyor. Operatör "done" görür görmez
+        // okuyup geçince rapor metnini KAÇIRIYORDU (mizan indi ama okunamadı).
+        // Pencere yoksa kısa bir kez daha bak.
+        const bos = !Array.isArray((r.snapshot as any).pencereler) || !(r.snapshot as any).pencereler.length;
+        if (bos) {
+          await new Promise((x) => setTimeout(x, 3500));
+          const r2 = await this.luca.getScreenSnapshot(jobId, ctx.tenantId).catch(() => null);
+          if (r2?.snapshot && Array.isArray((r2.snapshot as any).pencereler) && (r2.snapshot as any).pencereler.length) {
+            return { ok: true, ekran: r2.snapshot };
+          }
+        }
+        return { ok: true, ekran: r.snapshot };
+      }
       if (r && r.status === 'failed') return { ok: false, error: r.errorMsg || 'ekran okunamadı' };
     }
     return { ok: false, error: await this.timeoutHint(ctx.tenantId, 'Ekran okunamadı') };
@@ -139,7 +153,18 @@ export class LucaOperatorService {
     while (Date.now() < deadline) {
       await new Promise((r) => setTimeout(r, 1500));
       const r = await this.luca.getScreenSnapshot(jobId, ctx.tenantId).catch(() => null);
-      if (r && r.status === 'done' && r.snapshot) return r.snapshot; // { ok, message, screen, blocked? }
+      if (r && r.status === 'done' && r.snapshot) {
+        // Aynı yarış: tıklama sonucu rapor indirdiyse metin biraz sonra düşer.
+        const sc: any = (r.snapshot as any).screen || r.snapshot;
+        const bos = !Array.isArray(sc?.pencereler) || !sc.pencereler.length;
+        if (bos) {
+          await new Promise((x) => setTimeout(x, 3500));
+          const r2 = await this.luca.getScreenSnapshot(jobId, ctx.tenantId).catch(() => null);
+          const sc2: any = (r2?.snapshot as any)?.screen || r2?.snapshot;
+          if (Array.isArray(sc2?.pencereler) && sc2.pencereler.length) return r2!.snapshot;
+        }
+        return r.snapshot; // { ok, message, screen, blocked? }
+      }
       if (r && r.status === 'failed') return { ok: false, error: r.errorMsg || 'işlem başarısız' };
     }
     return { ok: false, error: await this.timeoutHint(ctx.tenantId, 'İşlem tamamlanamadı') };
@@ -296,6 +321,43 @@ export class LucaOperatorService {
       ok: false,
       error:
         "Bu yol KAPALI: mizani Luca'dan cekmek portalin Mizan moduluna kayit yaziyordu; o modul kullanicinin gelir tablosu icin kullandigi kendi verisi. Mizan rakami gerekiyorsa Luca ekranindan oku ya da kullanicidan iste.",
+    };
+  }
+
+  /**
+   * SON İNEN RAPORU OKU — zamanlamadan bağımsız.
+   * Ajan, inen Excel'i çözümleyip işin ekran verisine "pencereler" olarak ekler
+   * ama bu, iş "bitti" göründükten 1-3 sn SONRA olur; operatör o an okuyup
+   * geçerse raporu kaçırır (canlı yaşandı). Bu araç son işlerde rapor arar.
+   * Portala hiçbir şey YAZMAZ.
+   */
+  private async sonRaporuOku(ctx: { tenantId: string }): Promise<any> {
+    const isler = await this.prisma.lucaFetchJob
+      .findMany({
+        where: {
+          tenantId: ctx.tenantId,
+          tip: { in: ['EKRAN_OKU', 'LUCA_ACTION', 'LUCA_KESIF'] },
+          createdAt: { gte: new Date(Date.now() - 20 * 60 * 1000) },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 25,
+      })
+      .catch(() => [] as any[]);
+    for (const j of isler as any[]) {
+      const sc: any = j?.payload?.screen?.screen || j?.payload?.screen;
+      const pen: any[] = Array.isArray(sc?.pencereler) ? sc.pencereler : [];
+      const rapor = pen.filter((x) => x && String(x.metin || '').trim());
+      if (!rapor.length) continue;
+      return {
+        ok: true,
+        kaynak: 'Luca raporu (indirilen dosya)',
+        zaman: j.createdAt,
+        raporlar: rapor.map((x) => ({ baslik: x.baslik || x.url, metin: String(x.metin).slice(0, 12000) })),
+      };
+    }
+    return {
+      ok: false,
+      error: 'Son 20 dakikada okunmus rapor yok. Raporu uret (Rapor Turu = Excel, yesil Rapor), 10 sn bekle, tekrar dene.',
     };
   }
 
@@ -607,7 +669,7 @@ export class LucaOperatorService {
       'Luca\'da O AN AÇIK ekranı görmek için: portal({ name: "luca_ekran_oku" }) — mükellef/dönem gerekmez; kullanıcının Chrome\'undaki açık Luca ekranını okur (0-15 sn). Dönen "ekran" (frames/fields/buttons/text) verisini yorumla. Kullanıcı "ekrana bak / ne görüyorsun" derse bunu kullan.',
       'Luca\'da İŞLEM yapabilirsin: alan doldur → portal({name:"luca_yaz", args:{etiket:"<alan>", deger:"<değer>"}}); açılır liste → portal({name:"luca_sec", args:{etiket:"<alan>", deger:"<seçenek>"}}); buton/menü → portal({name:"luca_tikla", args:{hedef:"<metin>"}}). Her işlemden sonra dönen "screen" ile sonucu doğrula; gerekirse luca_ekran_oku ile bak.',
       'PORTALA YAZMA YASAĞI: Portalda HİÇBİR modüle (Mizan dahil) kayıt yazma, veri işleme, içeri aktarma YAPMA. Portal verisini yalnızca OKUYABİLİRSİN. Kullanıcının kendi kayıtları karışmamalı. Luca ekranında iş yapmak bunun dışındadır (orada da geri dönülmez adımda onay istersin).',
-      "MIZAN: Mizan rakami gerekiyorsa (a) Luca ekranindan oku, (b) kullanicidan iste, (c) portalda ZATEN duran mizani get_mizan ile oku ve ne zaman cekildigini soyle. Portala YENI mizan cektirme; Mizan modulu kullanicinin gelir tablosu icin kullandigi kendi verisidir.",
+      "MIZAN/RAPOR OKUMA: Luca raporu (mizan vb.) Excel olarak iner ve ekran okumada \"pencereler\" alaninda gelir. Orada YOKSA hemen pes etme: portal({name:\"luca_rapor_oku\"}) cagir — son inen raporu zamanlamadan bagimsiz getirir. Portala hicbir kayit yazma; Mizan modulu kullanicinin kendi verisidir.",
       'MENÜ (Luca\'da ekran açma): Bir ekranı bulmak için ÖNCE portal({name:"luca_menu_ara", args:{sorgu:"muhtasar"}}) ile menü yolunu ara; dönen yolu portal({name:"luca_menu_git", args:{yol:"İşletme Defteri > Beyannameler > Muhtasar ve Prim Hizmet > Muhtasar Kartı Listesi"}}) ile aç. Menüde arama "kayıtlı harita yok" derse portal({name:"luca_menu_haritasi_cikar"}) ile Luca menüsünü kendin keşfet (birkaç dakika sürer, sadece okur), sonra aramayı tekrarla. Menüden ekran açmak veri değiştirmez, onay gerektirmez.',
       'Menü yolunu TAHMİN ETME. Ekranı menü haritasında bulamıyorsan kullanıcıya sor.',
       'GÜVENLİK — geri dönülmez adımlar: "Kaydet/Gönder/Onayla/İmzala/Sil/Tahakkuk/Tamamla" gibi butonlara ASLA kendiliğinden tıklama. Önce ne yapacağını ve hangi mükellef/dönem/tutar olduğunu KISACA özetle, kullanıcıdan AÇIK onay iste. Kullanıcı net onay verirse luca_tikla\'yı args.confirmed=true ile çağır. Onay olmadan confirmed=true GÖNDERME — agent zaten onaysız bu butonları bloke eder.',
@@ -732,6 +794,12 @@ export class LucaOperatorService {
             return { content: [{ type: 'text', text: JSON.stringify(r) }] };
           }
           // Luca'dan TAZE mizan çek
+          if (toolName === 'luca_rapor_oku') {
+            toolUses.push({ name: toolName, args: {} });
+            emit({ type: 'tool', name: toolName });
+            const r = await this.sonRaporuOku(ctx);
+            return { content: [{ type: 'text', text: JSON.stringify(r) }] };
+          }
           if (toolName === 'luca_mizan_cek') {
             const args = a?.args || {};
             toolUses.push({ name: toolName, args });
