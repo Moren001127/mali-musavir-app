@@ -1030,7 +1030,14 @@ async function nativeClickText(page, payload = {}) {
 // Luca'nın kabul ettiği trusted tıklamalarla çalışır ve Fiş Kes onay confirm'i otomatik KABUL edilir.
 /** Inen rapor dosyasini okunabilir metne cevir (xlsx/csv/html/txt). */
 function raporuMetneCevir(dosyaYolu, ad) {
-  const uzanti = String(ad || dosyaYolu).toLowerCase().split('.').pop();
+  let uzanti = String(ad || dosyaYolu).toLowerCase().split('.').pop();
+  // Tarayici indirmeyi GUID adiyla kaydediyor (uzanti YOK) -> icerige bak.
+  // PK imzasi = zip = xlsx/docx; '<' ile baslayan = html.
+  try {
+    const bas = fs.readFileSync(dosyaYolu).subarray(0, 8);
+    if (bas[0] === 0x50 && bas[1] === 0x4b) uzanti = 'xlsx';
+    else if (String(bas.toString('utf8')).trim().startsWith('<')) uzanti = 'html';
+  } catch {}
   try {
     if (uzanti === 'xls' || uzanti === 'xlsx') {
       const XLSX = require('xlsx');
@@ -1433,7 +1440,9 @@ async function runJobWithMorenRuntime(job) {
             for (const ad of fs.readdirSync(klasor)) {
               const tam = path.join(klasor, ad);
               const st = fs.statSync(tam);
-              if (!st.isFile() || st.mtimeMs < isBaslangici - 5000) continue;
+              // Rapor, isten hemen once de inmis olabilir (kullanici/onceki adim);
+              // 10 dakikalik pencere kullan.
+              if (!st.isFile() || st.mtimeMs < isBaslangici - 10 * 60 * 1000) continue;
               if (sonIndirilenler.some((x) => x.yol === tam)) continue;
               sonIndirilenler.push({ ad, yol: tam, zaman: st.mtimeMs });
               log.info(`Indirilen dosya bulundu (klasor taramasi): ${ad}`);
