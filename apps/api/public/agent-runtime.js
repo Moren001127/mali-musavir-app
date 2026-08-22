@@ -53,7 +53,7 @@
   // ne DOM değişimi oluyor → "bitti" sinyali hiç gelmiyordu (PERİHAN ŞAHİN: tıklama
   // öncesi de sonrası da 18 satır). Artık 30sn boyunca ekran hiç değişmediyse sorgu
   // bitmiş sayılır. Ayrıca teşhis için ekrandaki durum metni loglanır.
-  const AGENT_VERSION = '1.47.34';
+  const AGENT_VERSION = '1.47.35';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -865,7 +865,10 @@
           if (el.tagName.toLowerCase() === 'select') {
             f.secenekler = Array.from(el.options || []).slice(0, 40).map((o) => o.text).filter(Boolean);
           }
-          if (snap.fields.length < 200) snap.fields.push(f);
+          // KDV beyanname gibi ekranlarda yuzlerce alan var (TUTAR_THB/TUTAR_KDV
+          // satirlari). 200'luk sinir tutar alanlarini kesip operatorun
+          // 'rakamlari goremiyorum' demesine yol aciyordu.
+          if (snap.fields.length < 800) snap.fields.push(f);
         }
         for (const el of Array.from(doc.querySelectorAll('button, input[type=button], input[type=submit], a'))) {
           if (!visible(el)) continue;
