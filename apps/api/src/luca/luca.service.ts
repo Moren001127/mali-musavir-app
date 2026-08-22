@@ -434,7 +434,7 @@ export class LucaService {
     const deviceId = opts.deviceId?.trim();
     let canClaimUnassigned = this.canClaimUnassignedLucaJob(deviceId);
     // EKRAN_OKU/LUCA_ACTION görünür ekranda çalışır → browser-ext de atamasız alabilsin.
-    if (job.tip === 'EKRAN_OKU' || job.tip === 'LUCA_ACTION' || job.tip === 'LUCA_KESIF') canClaimUnassigned = true;
+    if (job.tip === 'EKRAN_OKU' || job.tip === 'LUCA_ACTION' || job.tip === 'LUCA_KESIF' || job.tip === 'EKRAN_GORUNTU') canClaimUnassigned = true;
     // Slot işçisi temel cihaza atanmış işi de üstlenebilir (aynı bilgisayar havuzu).
     const slotBaseDeviceId =
       deviceId && /-slot\d+-/.test(deviceId) ? deviceId.split('-slot')[0] : null;
@@ -1091,7 +1091,7 @@ export class LucaService {
               ...(slotBaseDeviceId ? [{ targetDeviceId: slotBaseDeviceId }] : []),
               // EKRAN_OKU/LUCA_ACTION görünür ekranda çalışır → atamasız olsa da
               // browser-ext görür (affinity 'browser-ext' yerel worker'ı dışlar).
-              { tip: { in: ['EKRAN_OKU', 'LUCA_ACTION', 'LUCA_KESIF'] }, targetDeviceId: null },
+              { tip: { in: ['EKRAN_OKU', 'LUCA_ACTION', 'LUCA_KESIF', 'EKRAN_GORUNTU'] }, targetDeviceId: null },
             ],
           },
           affinityFilter,

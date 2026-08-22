@@ -183,9 +183,11 @@ const SUPPORTED_JOB_TYPES = Object.freeze([
   'LUCA_ACTION',
   // Kesif: Luca menu/ekran yapisinin ham dokumu (salt-okuma, tiklama yok).
   'LUCA_KESIF',
+  // Ekran goruntusu: operator penceresinin PNG'si (DOM metni yetmedigi durumlar).
+  'EKRAN_GORUNTU',
 ]);
 // Operator modunda ajan SADECE bu tipleri yapar; veri cekme islerine karismaz.
-const OPERATOR_JOB_TYPES = Object.freeze(['EKRAN_OKU', 'LUCA_ACTION', 'LUCA_KESIF']);
+const OPERATOR_JOB_TYPES = Object.freeze(['EKRAN_OKU', 'LUCA_ACTION', 'LUCA_KESIF', 'EKRAN_GORUNTU']);
 const LEGACY_DEFAULT_JOB_TYPES = Object.freeze(['ACCOUNT_PLAN', 'MIZAN', 'KDV_MIZAN', 'MUAVIN']);
 
 function normalizeJobTypeConfig(rawJobTypes) {
@@ -1627,6 +1629,30 @@ async function processJob(job) {
 
   activeJobCount += 1;
   await pingAgentStatus(true, { activeJobId: jobId, activeJobType: tip });
+
+  // EKRAN_GORUNTU: tarayici-ici runtime bunu yapamaz (sayfanin kendi PNG'sini
+  // alamaz); Playwright alir. Bu yuzden AJAN tarafinda islenir.
+  if (tip === 'EKRAN_GORUNTU') {
+    try {
+      const sonuc = await withBrowser(async (page) => {
+        const klasor = path.join(__dirname, '..', '.ekran-goruntuleri');
+        if (!fs.existsSync(klasor)) fs.mkdirSync(klasor, { recursive: true });
+        const dosya = path.join(klasor, `ekran-${Date.now()}.png`);
+        await page.screenshot({ path: dosya, fullPage: false });
+        return { ok: true, dosya, url: page.url() };
+      });
+      await api.post(`/agent/luca/jobs/${jobId}/screen`, { snapshot: sonuc });
+      await api.post(`/agent/luca/jobs/${jobId}/done`, { recordCount: 1 });
+      log.info(`Ekran goruntusu alindi: ${sonuc.dosya}`);
+    } catch (err) {
+      log.warn(`Ekran goruntusu hatasi: ${err.message}`);
+      await api.post(`/agent/luca/jobs/${jobId}/fail`, { error: err.message }).catch(() => {});
+    } finally {
+      activeJobCount = Math.max(0, activeJobCount - 1);
+      activeJobsStartTime.delete(jobId);
+    }
+    return;
+  }
 
   try {
     // v2.3: INVOICE_POST artik RUNTIME'da islenir — agent-runtime.js Luca
