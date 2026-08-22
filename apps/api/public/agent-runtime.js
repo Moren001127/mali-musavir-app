@@ -53,7 +53,7 @@
   // ne DOM değişimi oluyor → "bitti" sinyali hiç gelmiyordu (PERİHAN ŞAHİN: tıklama
   // öncesi de sonrası da 18 satır). Artık 30sn boyunca ekran hiç değişmediyse sorgu
   // bitmiş sayılır. Ayrıca teşhis için ekrandaki durum metni loglanır.
-  const AGENT_VERSION = '1.47.32';
+  const AGENT_VERSION = '1.47.33';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -2219,7 +2219,14 @@
                     try { bridge = window.__morenNativeClickText; } catch {}
                     if (!bridge) { try { bridge = window.top && window.top.__morenNativeClickText; } catch {} }
                     if (typeof bridge === 'function') {
-                      const r = await Promise.resolve(bridge({ text: hedef, exact: false, timeoutMs: 6000 }));
+                      // ÖNCE TAM EŞLEŞME: Luca ekranlarında "Rapor" ararken "Rapor Türü",
+                      // "Rapor Dili", "Rapor Takip", "Kümülatif Rapor" da eşleşiyor ve
+                      // yanlış öğeye tıklanıyordu (buton basılmış gibi görünüp hiçbir şey
+                      // olmuyordu). Tam eşleşme tutmazsa gevşek eşleşmeye düşülür.
+                      let r = await Promise.resolve(bridge({ text: hedef, exact: true, timeoutMs: 5000 }));
+                      if (!(r && r.ok)) {
+                        r = await Promise.resolve(bridge({ text: hedef, exact: false, timeoutMs: 5000 }));
+                      }
                       if (r && r.ok) { gercekTik = true; ok = true; await sleep(1200); }
                     }
                   } catch {}
