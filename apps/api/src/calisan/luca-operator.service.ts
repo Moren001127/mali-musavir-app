@@ -155,13 +155,22 @@ export class LucaOperatorService {
       const r = await this.luca.getScreenSnapshot(jobId, ctx.tenantId).catch(() => null);
       if (r && r.status === 'done' && r.snapshot) {
         // Aynı yarış: tıklama sonucu rapor indirdiyse metin biraz sonra düşer.
-        const sc: any = (r.snapshot as any).screen || r.snapshot;
-        const bos = !Array.isArray(sc?.pencereler) || !sc.pencereler.length;
+        const disK: any = r.snapshot as any;
+        const icK: any = disK?.screen;
+        const bos =
+          !(Array.isArray(disK?.pencereler) && disK.pencereler.length) &&
+          !(Array.isArray(icK?.pencereler) && icK.pencereler.length);
         if (bos) {
           await new Promise((x) => setTimeout(x, 3500));
           const r2 = await this.luca.getScreenSnapshot(jobId, ctx.tenantId).catch(() => null);
-          const sc2: any = (r2?.snapshot as any)?.screen || r2?.snapshot;
-          if (Array.isArray(sc2?.pencereler) && sc2.pencereler.length) return r2!.snapshot;
+          const d2: any = r2?.snapshot as any;
+          const i2: any = d2?.screen;
+          if (
+            (Array.isArray(d2?.pencereler) && d2.pencereler.length) ||
+            (Array.isArray(i2?.pencereler) && i2.pencereler.length)
+          ) {
+            return r2!.snapshot;
+          }
         }
         return r.snapshot; // { ok, message, screen, blocked? }
       }
@@ -344,8 +353,15 @@ export class LucaOperatorService {
       })
       .catch(() => [] as any[]);
     for (const j of isler as any[]) {
-      const sc: any = j?.payload?.screen?.screen || j?.payload?.screen;
-      const pen: any[] = Array.isArray(sc?.pencereler) ? sc.pencereler : [];
+      // PENCERELER İKİ KATMANDA OLABİLİR: LUCA_ACTION sonucu {ok,message,screen}
+      // biçiminde; ajan raporu DIŞ katmana ekliyor, EKRAN_OKU'da ise tek katman.
+      // Eskiden yalnız iç katmana bakılıyordu → rapor "yok" görünüyordu.
+      const dis: any = j?.payload?.screen;
+      const ic: any = dis?.screen;
+      const pen: any[] = [
+        ...(Array.isArray(dis?.pencereler) ? dis.pencereler : []),
+        ...(Array.isArray(ic?.pencereler) ? ic.pencereler : []),
+      ];
       const rapor = pen.filter((x) => x && String(x.metin || '').trim());
       if (!rapor.length) continue;
       return {
