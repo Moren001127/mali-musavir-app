@@ -53,7 +53,7 @@
   // ne DOM değişimi oluyor → "bitti" sinyali hiç gelmiyordu (PERİHAN ŞAHİN: tıklama
   // öncesi de sonrası da 18 satır). Artık 30sn boyunca ekran hiç değişmediyse sorgu
   // bitmiş sayılır. Ayrıca teşhis için ekrandaki durum metni loglanır.
-  const AGENT_VERSION = '1.47.36';
+  const AGENT_VERSION = '1.47.37';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -337,7 +337,11 @@
   let activeCaptchaRequestSignature = '';
   let activeCaptchaRequestPromise = null;
   const captchaChallengeCounts = new Map();
-  const MAX_CAPTCHA_CHALLENGES_PER_JOB = 5;
+  // Luca guvenlik kodu zor; 2captcha bazen 2-3 denemede tutturuyor ve her yanlis
+  // cevap Luca'ya YENI kod urettiriyor. 5'lik tavan, dogru cevaba ulasmadan
+  // isi olduruyordu (10 Eylul 2026 canli: 5 denemenin biri 4 harfli okundugu
+  // icin gonderilmedi bile, kalan 4 deneme yetmedi). Tavan 12.
+  const MAX_CAPTCHA_CHALLENGES_PER_JOB = 12;
   let lucaLoginBusy = false;
 
   async function getLucaCredentialForAgent() {
