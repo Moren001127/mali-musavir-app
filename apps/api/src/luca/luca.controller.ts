@@ -869,7 +869,26 @@ export class LucaController {
             orderBy: { createdAt: 'desc' },
             select: { id: true },
           });
-          if (oturum?.id) {
+          // KULLANICI ISARETLERINI EZME: reanalyzeSession bulgulari silip yeniden
+          // uretir; "cozuldu / yok sayildi" isaretleri de gider. Mizan normalde
+          // saniyeler icinde gelir (kimse isaret koymamistir), ama ajan mesgulse
+          // dakikalar surebilir. Isaretlenmis bulgu varsa OTOMATIK tazeleme yapma —
+          // kullanici "Yeniden Analiz" dugmesiyle bilerek karar versin.
+          const isaretli = oturum?.id
+            ? await (this.prisma as any).eDefterFinding.count({
+                where: { sessionId: oturum.id, status: { not: 'OPEN' } },
+              })
+            : 0;
+          if (oturum?.id && isaretli > 0) {
+            if (jobId) {
+              await this.luca
+                .appendJobLog(
+                  jobId,
+                  `Mizan yuklendi ama denetimde ${isaretli} isaretli bulgu var; isaretler silinmesin diye otomatik yeniden analiz YAPILMADI — ekrandan "Yeniden Analiz" ile calistirin`,
+                )
+                .catch(() => undefined);
+            }
+          } else if (oturum?.id) {
             await this.edefterControl.reanalyzeSession(oturum.id, tenantId);
             if (jobId) {
               await this.luca
