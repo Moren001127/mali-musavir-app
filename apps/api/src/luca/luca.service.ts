@@ -1373,7 +1373,7 @@ export class LucaService {
       ? await this.readCaptchaWithOcr(challenge.captchaImage)
       : { text: '', confidence: 0, rawText: null };
     const minConfidence = Math.max(0, Math.min(100, Number(process.env.LUCA_CAPTCHA_OCR_MIN_CONFIDENCE || 70)));
-    const minLength = Math.max(3, Number(process.env.LUCA_CAPTCHA_OCR_MIN_LENGTH || 5)); // 4 harfli okumalar Luca'da reddediliyordu
+    const minLength = Math.max(3, Number(process.env.LUCA_CAPTCHA_OCR_MIN_LENGTH || 4)); // Luca kodu 4 hane de olabiliyor (canli: "ij65")
     const maxLength = Math.max(minLength, Number(process.env.LUCA_CAPTCHA_OCR_MAX_LENGTH || 8));
     const accepted =
       !!ocr.text
@@ -1546,7 +1546,9 @@ export class LucaService {
     // zaten vardı; sunucu tarafına da eklendi.
     inForm.append('regsense', '1'); // büyük/küçük harf korunsun
     inForm.append('numeric', '0'); // harf+rakam karışık
-    inForm.append('min_len', '5');
+    // UZUNLUK: Luca kodlari 4-6 hane arasinda degisiyor (canli ornek: "ij65" = 4).
+    // min_len=5 verilince DOGRU 4 haneli cevaplar eleniyor ve dongu uzuyordu.
+    inForm.append('min_len', '4');
     inForm.append('max_len', '7');
     inForm.append('language', '0');
 
