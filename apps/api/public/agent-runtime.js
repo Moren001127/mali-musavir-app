@@ -53,7 +53,7 @@
   // ne DOM değişimi oluyor → "bitti" sinyali hiç gelmiyordu (PERİHAN ŞAHİN: tıklama
   // öncesi de sonrası da 18 satır). Artık 30sn boyunca ekran hiç değişmediyse sorgu
   // bitmiş sayılır. Ayrıca teşhis için ekrandaki durum metni loglanır.
-  const AGENT_VERSION = '1.47.35';
+  const AGENT_VERSION = '1.47.36';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -1549,6 +1549,18 @@
   async function openClassicLucaFromSsoMainForJobs(jobs, logPendingJob) {
     if (!isLucaSsoMainPage()) return false;
     const url = location.href.slice(0, 120);
+    // GIRIS BASARILI -> guvenlik kodu sayacini SIFIRLA.
+    // Sayac is basina toplam captcha sayiyordu ve basarili girisde
+    // sifirlanmiyordu: giris tamamlandiktan 1 saniye sonra "5 kez tekrarlandi"
+    // uyarisiyla is oldurulebiliyordu (10 Eylul 2026 canli: giris main.erp'ye
+    // gecti, hemen ardindan ajan durduruldu). Artik girisden sonra sayac sifir.
+    try {
+      const anahtarlar = ['global', ...(Array.isArray(jobs) ? jobs.map((x) => x && x.id).filter(Boolean) : [])];
+      for (const kkey of anahtarlar) {
+        captchaChallengeCounts.set(kkey, 0);
+        try { localStorage.removeItem(`moren_luca_captcha_count_${kkey}`); } catch {}
+      }
+    } catch {}
     setStatus('Luca girisi tamam; klasik Luca ekranina geciliyor');
     for (const job of jobs) {
       await logPendingJob(job, `Luca girisi tamam; klasik Luca ekranina geciliyor. URL=${url}`);
