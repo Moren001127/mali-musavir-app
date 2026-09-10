@@ -1422,7 +1422,15 @@ async function runJobWithMorenRuntime(job) {
       await gotoLucaWithFallback(page, LUCA_URLS.login, jobId, 'Luca giris');
     }
     const operatorIsi = ['EKRAN_OKU', 'LUCA_ACTION', 'LUCA_KESIF'].includes(String(job.tip || ''));
-    const final = await waitForJobFinalStatus(jobId);
+    // Guvenlik kodu is ORTASINDA da cikabiliyor; is boyunca ajan tarafi da
+    // bakiyor olsun (tarayici icindeki kopru tek basina birakilmasin).
+    const kodGardiyani = captchaGardiyaniBaslat(page, jobId);
+    let final;
+    try {
+      final = await waitForJobFinalStatus(jobId);
+    } finally {
+      await kodGardiyani.durdur();
+    }
     if (operatorIsi) {
       // Ayri pencereleri Playwright'tan oku (kesin kaynak) ve snapshot'a ekle.
       try {
@@ -1488,6 +1496,72 @@ async function runJobWithMorenRuntime(job) {
       throw new Error(`Job ${final?.status || 'bilinmeyen'} durumunda kapandı`);
     }
   });
+}
+
+/**
+ * GUVENLIK KODU GARDIYANI (10 Eylul 2026).
+ *
+ * KOK NEDEN: Is calisirken (waitForJobFinalStatus beklerken) butun kontrol
+ * tarayici icindeki koprude (agent-runtime.js bridgeLucaCaptchaToPortal)
+ * kaliyordu. Canli sayim: kopru 161 kez "otomatik cozuldu; uygulaniyor" dedi,
+ * ama yalnizca 2 kez "guvenlik kodu uygulandi"ya varabildi (Haziran-Agustos
+ * 150 denemede 0). Yani kod DOGRU cozuluyor (kanit: veritabanindaki
+ * goruntuler acilip okundu — "yv88", "6ztkj" cevaplari goruntuyle birebir),
+ * ama Luca'ya hicbir zaman yazilamiyor.
+ *
+ * Ajanin KENDI cozucusu (captchaVarsaCoz) daha saglam calisiyor:
+ *   - goruntuyu ekrandan alir (capImg.screenshot); resmin adresine IKINCI
+ *     istek atmaz — Luca o uca her istekte yeni kod uretebiliyor.
+ *   - page.fill ile gercek tus vurusu yazar (Luca sentetik olaylari yok
+ *     sayabiliyor), tek sefer gonderir.
+ * Ama bu cozucu yalnizca is BASLARKEN cagriliyordu; kod is ORTASINDA cikinca
+ * devreye girmiyordu. Gardiyan bu bosluğu kapatir: is boyunca 4 saniyede bir
+ * bakar, kod ekrani gorurse ajanin cozucusunu calistirir.
+ *
+ * Kopruyle cakismasin diye cozerken window.__lucaJobRunning = true yapilir —
+ * runtime is dongusu bu bayrak aciksa hic girmiyor (agent-runtime.js:1759),
+ * dolayisiyla kopru ayni forma yazmaya kalkmaz. Onceki deger geri konur.
+ */
+function captchaGardiyaniBaslat(page, jobId) {
+  let durduruldu = false;
+  let calisiyor = false;
+  const zamanlayici = setInterval(async () => {
+    if (durduruldu || calisiyor) return;
+    calisiyor = true;
+    let oncekiBayrak = false;
+    let bayrakKuruldu = false;
+    try {
+      const alan = await page.$('#captcha-input').catch(() => null);
+      if (!alan) return;
+      oncekiBayrak = await page
+        .evaluate(() => {
+          const onceki = !!window.__lucaJobRunning;
+          window.__lucaJobRunning = true;
+          return onceki;
+        })
+        .catch(() => false);
+      bayrakKuruldu = true;
+      log.info('Guvenlik kodu ekrani goruldu; ajan kendi cozucusuyle giriyor.');
+      await logJob(jobId, 'Luca guvenlik kodu ekrani goruldu; ajan kendi cozucusu devrede').catch(() => {});
+      await captchaVarsaCoz(page);
+      await logJob(jobId, 'Luca guvenlik kodu ajan tarafindan girildi').catch(() => {});
+    } catch (err) {
+      await logJob(jobId, `Guvenlik kodu ajan tarafindan cozulemedi: ${err.message}`).catch(() => {});
+    } finally {
+      if (bayrakKuruldu) {
+        await page
+          .evaluate((v) => { window.__lucaJobRunning = v; }, oncekiBayrak)
+          .catch(() => {});
+      }
+      calisiyor = false;
+    }
+  }, 4000);
+  return {
+    async durdur() {
+      durduruldu = true;
+      clearInterval(zamanlayici);
+    },
+  };
 }
 
 /**
