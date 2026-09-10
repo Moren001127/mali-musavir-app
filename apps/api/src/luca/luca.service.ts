@@ -1373,7 +1373,7 @@ export class LucaService {
       ? await this.readCaptchaWithOcr(challenge.captchaImage)
       : { text: '', confidence: 0, rawText: null };
     const minConfidence = Math.max(0, Math.min(100, Number(process.env.LUCA_CAPTCHA_OCR_MIN_CONFIDENCE || 70)));
-    const minLength = Math.max(3, Number(process.env.LUCA_CAPTCHA_OCR_MIN_LENGTH || 4));
+    const minLength = Math.max(3, Number(process.env.LUCA_CAPTCHA_OCR_MIN_LENGTH || 5)); // 4 harfli okumalar Luca'da reddediliyordu
     const maxLength = Math.max(minLength, Number(process.env.LUCA_CAPTCHA_OCR_MAX_LENGTH || 8));
     const accepted =
       !!ocr.text
@@ -1539,6 +1539,16 @@ export class LucaService {
     inForm.append('method', 'base64');
     inForm.append('body', base64);
     inForm.append('json', '0');
+    // 2captcha'ya KODUN BİÇİMİNİ söyle. Bunlar yokken servis 4 harfli tahminler
+    // döndürüyordu ("wfgd", "nsjh"); Luca 5-6 haneli ve BÜYÜK/küçük harf duyarlı
+    // kod istiyor → kod reddediliyor, Luca yeni kod üretiyor, 5 denemede iş
+    // düşüyordu (10 Eylül 2026 canlı). Yerel ajanın kendi çağrısında bu ipuçları
+    // zaten vardı; sunucu tarafına da eklendi.
+    inForm.append('regsense', '1'); // büyük/küçük harf korunsun
+    inForm.append('numeric', '0'); // harf+rakam karışık
+    inForm.append('min_len', '5');
+    inForm.append('max_len', '7');
+    inForm.append('language', '0');
 
     const inRes = await fetch('https://2captcha.com/in.php', {
       method: 'POST',
