@@ -148,11 +148,15 @@ export class EDefterControlController {
       targetDeviceId: body.targetDeviceId,
       createdBy: req.user.sub,
     });
+    // Mizan isi artik cekimle BIRLIKTE aciliyor; ekran ikisini de takip edebilsin.
+    // mizanHata dolu ise mizan hic acilamamis demektir — ekran bunu soylemeli,
+    // sessizce "guncellendi" DEMEMELI.
     return {
       jobId: jobs.detailJob.id,
-      mizanJobId: null,
+      mizanJobId: jobs.mizanJob?.id || null,
       status: jobs.detailJob.status,
-      mizanStatus: null,
+      mizanStatus: jobs.mizanJob?.status || null,
+      mizanHata: jobs.mizanHata || null,
     };
   }
 

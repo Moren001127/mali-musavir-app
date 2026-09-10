@@ -28,6 +28,9 @@ node scripts/luca-isolation-regression.cjs
 # 5c. Luca operator ayri tarayici yonlendirmesi (2026-08-21)
 node scripts/luca-operator-routing-regression.cjs
 
+# 5d. e-Defter eslik eden Mizan baglantisi (birlikte cekim + otomatik yeniden analiz)
+node scripts/edefter-mizan-companion-regression.cjs
+
 # 6. KDV reconciliation senaryoları (0622, 0647, GKN038 vb. pinli senaryolar)
 node scripts/kdv-reconciliation-regression.cjs
 

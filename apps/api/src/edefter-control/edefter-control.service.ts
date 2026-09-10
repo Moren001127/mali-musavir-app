@@ -212,7 +212,40 @@ export class EDefterControlService {
       .appendJobLog(detailJob.id, 'e-Defter on kontrol icin Detay Fis Listesi cekimi siraya alindi')
       .catch(() => undefined);
 
-    return { detailJob, mizanJob: null };
+    // 10 Eylul 2026 — ESLIK EDEN MIZAN ARTIK BURADA SIRAYA GIRIYOR.
+    // Eskiden mizan isi, fis listesi Excel'i sunucuya geldikten SONRA (upload
+    // ucunda) olusturuluyordu. Uc ayri kusur uretiyordu:
+    //   (a) Kullanici "Luca'dan Cek"e basinca ekranda tek is goruyordu; mizanin
+    //       da cekildigini anlamasinin yolu yoktu -> "mizani cekmiyor".
+    //   (b) Fis listesi tarafi duserse/iptal olursa mizan HIC denenmiyordu.
+    //   (c) Analiz, fis Excel'i gelir gelmez calisiyor; mizan ~40 sn sonra
+    //       geldigi icin ilk analiz HER ZAMAN mizansiz yapiliyor, kasa/stok/banka
+    //       kontrolleri "acilis bakiyesi haric" zayif haline dusuyordu.
+    // Artik iki is birlikte kuyruga giriyor; hangisi once biterse bitsin,
+    // mizan yuklenince oturum bir kez yeniden analiz ediliyor (luca.controller).
+    let mizanJob: any = null;
+    let mizanHata: string | null = null;
+    try {
+      mizanJob = await this.createCompanionMizanJob({
+        tenantId: params.tenantId,
+        detailJobId: detailJob.id,
+        mukellefId: params.mukellefId,
+        donem: params.donem,
+        donemTipi: params.donemTipi,
+        targetDeviceId,
+        createdBy: params.createdBy || null,
+      });
+    } catch (err: any) {
+      // SESSIZ BASARISIZLIK YASAK: eskiden bu hata yalnizca is gunlugune
+      // yaziliyordu, ekran yine "mizan da guncellendi" diyordu. Artik cagirana
+      // dondurulup kullaniciya gosteriliyor.
+      mizanHata = err?.message || 'bilinmeyen';
+      await this.luca
+        .appendJobLog(detailJob.id, `e-Defter eslik eden Mizan cekimi olusturulamadi: ${mizanHata}`)
+        .catch(() => undefined);
+    }
+
+    return { detailJob, mizanJob, mizanHata };
   }
 
   async createCompanionMizanJob(params: {
@@ -229,6 +262,15 @@ export class EDefterControlService {
       select: { id: true, firstName: true, lastName: true, companyName: true, taxNumber: true },
     });
     if (!taxpayer) throw new NotFoundException('Mukellef bulunamadi');
+
+    // Ayni fis listesi isine bagli mizan isi ZATEN varsa ikincisini acma.
+    // (Cekim baslarken olusturuluyor; upload ucu de emniyet icin cagiriyor —
+    //  eski, mizansiz baslamis isler icin. Ikisi ayni ise dusmemeli.)
+    const mevcut = await (this.prisma as any).lucaFetchJob.findFirst({
+      where: { tenantId: params.tenantId, sessionId: params.detailJobId, tip: 'MIZAN' },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (mevcut) return mevcut;
 
     const requestedDeviceId = params.targetDeviceId?.trim() || undefined;
     const targetDeviceId =

@@ -40,6 +40,7 @@ import { MizanParserService } from '../mizan/mizan-parser.service';
 import { FaturaMuhasebelestirmeService } from '../fatura-muhasebelestirme/fatura-muhasebelestirme.service';
 import { buildLucaImportExcel, buildLucaIsletmeHizliFisCsv, buildAccountPlanCsv } from '../fatura-muhasebelestirme/luca-excel.service';
 import { resolveTenantFromAgentToken as resolveAgentTenant } from '../common/agent-token';
+import { EDefterControlService } from '../edefter-control/edefter-control.service';
 
 /**
  * Luca entegrasyon controller'ı.
@@ -62,6 +63,8 @@ export class LucaController {
     private readonly mizanParser: MizanParserService,
     @Inject(forwardRef(() => FaturaMuhasebelestirmeService))
     private readonly faturaMuhasebelestirme: FaturaMuhasebelestirmeService,
+    @Inject(forwardRef(() => EDefterControlService))
+    private readonly edefterControl: EDefterControlService,
   ) {}
 
   // ÇOKLU BİLGİSAYAR YÖNLENDİRME: worker yoklarken "ownerEmail" gönderir; biz onu
@@ -849,6 +852,42 @@ export class LucaController {
         replaceExisting: !job?.sessionId,
       });
       if (jobId) await this.luca.markJobDone(jobId, (result as any)?.rows || 0).catch(() => undefined);
+
+      // 10 Eylul 2026 — MIZAN GELDI, DENETIMI TAZELE.
+      // e-Defter on kontrolunde fis listesi ile mizan iki AYRI is. Fis Excel'i
+      // gelir gelmez analiz calisiyor; mizan saniyeler sonra bittigi icin ilk
+      // analiz mizansiz kaliyordu ve kasa/stok/banka kontrolleri "acilis bakiyesi
+      // haric" zayif halinde kaliyor, Mizan-fis mutabakati ile ozellikli hesap
+      // uyarilari HIC uretilmiyordu. Kullanici bunu "mizani cekmiyor" olarak
+      // goruyordu (canli: ZEKI OZKAYNAK 2026-Q2, 15 bulgunun 12'si "acilis haric").
+      // Yeniden analiz oturumda saklanan Excel'den calisir — Luca'ya IKINCI bir
+      // cekim YAPMAZ, ucuzdur. Hangi is once biterse bitsin sonuc dogru olur.
+      if (job?.sessionId) {
+        try {
+          const oturum = await (this.prisma as any).eDefterControlSession.findFirst({
+            where: { tenantId, createdBy: `edefter-control:${job.sessionId}` },
+            orderBy: { createdAt: 'desc' },
+            select: { id: true },
+          });
+          if (oturum?.id) {
+            await this.edefterControl.reanalyzeSession(oturum.id, tenantId);
+            if (jobId) {
+              await this.luca
+                .appendJobLog(jobId, 'Mizan yuklendi; e-Defter denetimi mizanla yeniden calistirildi')
+                .catch(() => undefined);
+            }
+          }
+        } catch (e: any) {
+          // Analiz tazelemesi patlarsa mizan yine de kayitli — yuklemeyi dusurme,
+          // sadece is gunlugune yaz ki sessiz kalmasin.
+          if (jobId) {
+            await this.luca
+              .appendJobLog(jobId, `Mizan yuklendi ama e-Defter yeniden analizi basarisiz: ${e?.message || 'bilinmeyen'}`)
+              .catch(() => undefined);
+          }
+        }
+      }
+
       return {
         ok: true,
         mizanId: (result as any)?.id,

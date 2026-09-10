@@ -441,8 +441,16 @@ export default function EDefterAgentPage() {
     mutationFn: () => edefterControlApi.fetchFromLucaAgent({ mukellefId: taxpayerId, donem, donemTipi, targetDeviceId: preferredDeviceId ?? undefined }),
     onSuccess: (data) => {
       setLucaJobId(data.jobId); setSelectedSessionId(null);
-      setLucaStatus(data.mizanJobId ? 'Luca ajanı Detay Fiş Listesi ve Mizan raporlarını hazırlıyor...' : 'Luca ajanı Detay Fiş Listesi raporunu hazırlıyor; bitince Mizan otomatik sıraya alınacak...');
-      toast.info('e-Defter Detay Fiş Listesi işi oluşturuldu');
+      // Mizan işi artık çekimle BİRLİKTE açılıyor. Açılamadıysa bunu sakla —
+      // eskiden sessizce yutuluyor, ekran yine "mizan da güncellendi" diyordu.
+      if (data.mizanJobId) {
+        setLucaStatus('Luca ajanı Detay Fiş Listesi ve Mizan raporlarını hazırlıyor...');
+        toast.info('Detay Fiş Listesi + Mizan işleri oluşturuldu');
+      } else {
+        const neden = (data as any)?.mizanHata ? `: ${(data as any).mizanHata}` : '';
+        setLucaStatus(`Detay Fiş Listesi hazırlanıyor — ancak eşlik eden Mizan işi AÇILAMADI${neden}`);
+        toast.warning(`Mizan işi oluşturulamadı${neden}`);
+      }
     },
     onError: (e: any) => toast.error(e?.response?.data?.message || e?.message || 'Luca işi oluşturulamadı'),
   });
@@ -495,10 +503,24 @@ export default function EDefterAgentPage() {
     const lastLine = cleanLucaStatus(lines[lines.length - 1]);
     const mizanJob = data.mizanJob;
     const mizanStatus = String(mizanJob?.status || '').toLowerCase();
-    const mizanDone = !mizanJob || ['done', 'failed', 'cancelled'].includes(mizanStatus);
+    // "Mizan işi hiç yok" ile "mizan işi bitti" AYRI şeylerdir. Eskiden ikisi de
+    // mizanDone sayılıp ekran "Mizan kontrolü de güncellendi" diyordu; mizan hiç
+    // gelmemişken sistem başarı raporluyordu — kullanıcının "çekmiyor ama çektim
+    // diyor" şikâyetinin kaynağı buydu.
+    const mizanYok = !mizanJob;
+    const mizanBitti = ['done', 'failed', 'cancelled'].includes(mizanStatus);
+    const mizanDone = mizanYok || mizanBitti;
     if (job.status === 'running') setLucaStatus(lastLine || 'Luca Detay Fiş Listesi Excel hazırlanıyor...');
     if (job.status === 'done') {
-      setLucaStatus(mizanDone ? 'Detay Fiş Listesi alındı, Mizan kontrolü de güncellendi' : 'Detay Fiş Listesi alındı; eşlik eden Mizan kontrolü sürüyor...');
+      setLucaStatus(
+        mizanYok
+          ? 'Detay Fiş Listesi alındı — eşlik eden Mizan işi AÇILMAMIŞ, açılış bakiyeleri hesaba katılamadı'
+          : mizanStatus === 'done'
+            ? 'Detay Fiş Listesi ve Mizan alındı; denetim mizanla birlikte çalıştırıldı'
+            : mizanBitti
+              ? `Detay Fiş Listesi alındı; Mizan işi ${mizanStatus === 'failed' ? 'hata verdi' : 'iptal edildi'}`
+              : 'Detay Fiş Listesi alındı; eşlik eden Mizan kontrolü sürüyor...',
+      );
       if (data.session?.id) setSelectedSessionId(data.session.id);
       qc.invalidateQueries({ queryKey: ['edefter-control-list', taxpayerId] });
       qc.invalidateQueries({ queryKey: ['edefter-control-session'] });
@@ -506,8 +528,10 @@ export default function EDefterAgentPage() {
       if (data.session?.id) qc.refetchQueries({ queryKey: ['edefter-control-session', data.session.id] });
       if (mizanDone) setLucaJobId(null);
       if (!mizanDone) return;
+      if (mizanYok) { toast.warning('Detay Fiş Listesi hazır; Mizan işi hiç açılmamış — açılış bakiyesi hesaba katılamadı'); return; }
       if (mizanStatus === 'failed') { toast.warning('Detay Fiş Listesi hazır; Mizan işi hata verdi'); return; }
-      toast.success('e-Defter ön kontrol verisi hazır');
+      if (mizanStatus === 'cancelled') { toast.warning('Detay Fiş Listesi hazır; Mizan işi iptal edilmiş'); return; }
+      toast.success('e-Defter ön kontrol verisi hazır (mizan dahil)');
     }
     if (job.status === 'failed') {
       const friendly = lastLine || cleanLucaStatus(job.errorMsg) || 'Luca işi hata verdi';
@@ -741,6 +765,31 @@ export default function EDefterAgentPage() {
                 <span style={{ color: MUTED2 }}>·</span><span className="tabular-nums">{session?.totalVouchers ?? 0} fiş</span>
                 <span style={{ color: MUTED2 }}>·</span><span className="tabular-nums">{session?.totalLines ?? 0} satır</span>
                 {session?.createdAt && (<><span style={{ color: MUTED2 }}>·</span><span>Son kontrol {fmtDateTime(session.createdAt)}</span></>)}
+                {/* MİZAN GÖSTERGESİ — eskiden mizanın gelip gelmediğini anlamanın tek
+                    yolu Mizan sekmesine tıklamaktı; kullanıcı mizan çekilmiş olsa bile
+                    "çekmiyor" sanıyordu. Artık başlıkta her zaman görünüyor. */}
+                {session && (
+                  <>
+                    <span style={{ color: MUTED2 }}>·</span>
+                    {mizan ? (
+                      <span
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold"
+                        style={{ background: 'rgba(52,211,153,0.14)', color: '#34d399', border: '1px solid rgba(52,211,153,0.32)' }}
+                        title={`Mizan ${fmtDateTime(mizan.createdAt)} tarihinde çekildi ve denetimde kullanıldı`}
+                      >
+                        <FileSpreadsheet size={11} /> Mizan {mizan.hesapCount} hesap
+                      </span>
+                    ) : (
+                      <span
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold"
+                        style={{ background: 'rgba(248,113,113,0.12)', color: '#f87171', border: '1px solid rgba(248,113,113,0.30)' }}
+                        title="Mizan bu denetime bağlanmadı — açılış bakiyeleri hesaba katılamıyor"
+                      >
+                        <FileSpreadsheet size={11} /> Mizan yok
+                      </span>
+                    )}
+                  </>
+                )}
               </div>
             </div>
           </div>
