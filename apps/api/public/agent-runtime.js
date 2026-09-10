@@ -53,7 +53,7 @@
   // ne DOM değişimi oluyor → "bitti" sinyali hiç gelmiyordu (PERİHAN ŞAHİN: tıklama
   // öncesi de sonrası da 18 satır). Artık 30sn boyunca ekran hiç değişmediyse sorgu
   // bitmiş sayılır. Ayrıca teşhis için ekrandaki durum metni loglanır.
-  const AGENT_VERSION = '1.47.37';
+  const AGENT_VERSION = '1.47.38';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -10496,6 +10496,9 @@
     return await fetchMizanByClickIntercept(form, job, log, {
       label: 'Detay Fis Listesi',
       raporTur: 'detayFisListesi',
+      // FİŞ LİSTESİ KÜMÜLATİF DEĞİL: 2. dönem seçilince yalnız Nisan-Haziran
+      // fişleri gelir (mizan tarafı Ocak-Haziran kümülatif kalır).
+      kumulatif: false,
     });
   }
 
@@ -10656,7 +10659,19 @@
    * Örnek: "2026-Q1" → {bas:"01.01.2026", bit:"31.03.2026"}
    *        "2026-03" → {bas:"01.03.2026", bit:"31.03.2026"}  (aylık)
    */
-  function donemToTarihAraligi(donem, donemTipi) {
+  /**
+   * Dönemi Luca tarih aralığına çevirir.
+   *
+   * KÜMÜLATİF KURALI (geçici vergi): Q2 mizanı Nisan-Haziran DEĞİL, Ocak-Haziran
+   * çekilir — mizan yıl başından birikir. Bu MİZAN için doğrudur.
+   * AMA FİŞ LİSTESİ için YANLIŞ: kullanıcı 2. dönemi seçtiğinde yalnız
+   * Nisan-Haziran fişlerini görmek ister. (10 Eylül 2026 canlı: Q2 seçilmiş,
+   * çekilen 1060 satırın 533'ü Ocak-Mart'tı ve hepsi "dönem dışında" hatası
+   * ürettiği için 533 hata çıkıyordu.)
+   * Bu yüzden `opts.kumulatif = false` verildiğinde çeyreğin KENDİ aralığı döner.
+   */
+  function donemToTarihAraligi(donem, donemTipi, opts = {}) {
+    const kumulatif = opts.kumulatif !== false;
     const s = String(donem || '').trim();
 
     // Format 0: "2026-01-01_2026-03-31" - IHO_FETCH gibi aralik bazli job'lar
@@ -10673,10 +10688,9 @@
     if (qMatch) {
       const yil = +qMatch[1];
       const ceyrek = +qMatch[2];
-      // GEÇİCİ VERGİ KÜMÜLATİF: her dönem yılbaşından birikir → başlangıç HEP Ocak (basAy=1).
-      //   Q2 mizanı Nisan-Haziran değil OCAK-Haziran çekilmeli (devamı niteliğinde). Q sadece geçici
-      //   vergi çekimlerinde tetiklenir (aylık KDV bu dala girmez) → yan etki yok.
-      const basAy = 1;
+      // GEÇİCİ VERGİ KÜMÜLATİF: mizanda her dönem yılbaşından birikir → başlangıç Ocak.
+      //   Fiş listesinde ise çeyreğin KENDİ aralığı istenir (kumulatif=false).
+      const basAy = kumulatif ? 1 : (ceyrek - 1) * 3 + 1;
       const bitAy = ceyrek * 3;
       const basMM = String(basAy).padStart(2, '0');
       const bitMM = String(bitAy).padStart(2, '0');
@@ -10703,9 +10717,10 @@
           bit: `${lastDay}.${mm}.${yil}`,
         };
       }
-      // donemTipi quarter ama format aylık verilmiş → ayın bulunduğu çeyreği al (KÜMÜLATİF: bas=Ocak)
+      // donemTipi quarter ama format aylık verilmiş → ayın bulunduğu çeyreği al.
+      // Mizan kümülatif (Ocak'tan), fiş listesi çeyreğin kendi aralığı.
       const ceyrek = Math.ceil(ayMo / 3);
-      const basAy = 1;
+      const basAy = kumulatif ? 1 : (ceyrek - 1) * 3 + 1;
       const bitAy = ceyrek * 3;
       const basMM = String(basAy).padStart(2, '0');
       const bitMM = String(bitAy).padStart(2, '0');
@@ -10992,7 +11007,7 @@
     // sadece rapor turunu Excel'e alir.
     const skipDates = options.skipDates === true;
     const forceReportFormat = Boolean(options.raporTur || options.forceReportFormat || skipDates);
-    const tarih = skipDates ? null : donemToTarihAraligi(job.donem, job.donemTipi);
+    const tarih = skipDates ? null : donemToTarihAraligi(job.donem, job.donemTipi, { kumulatif: options.kumulatif !== false });
     if (!skipDates && !tarih) throw new Error(`Tarih hesaplanamadı: ${job.donem}`);
     // TEŞHİS (kullanıcı: "mizan alanına hangi tarihleri giriyorsun"): Başlangıç/Bitiş Fiş Tarihi'ne
     //   YAZILAN değeri + kaynağı (dönem/tip) açıkça iş kaydına yaz — geçici vergi Q2 = 01.01→30.06 olmalı.
