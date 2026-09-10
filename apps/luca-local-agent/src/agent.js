@@ -789,8 +789,17 @@ async function getBrowserSession() {
     viewport: { width: 1366, height: 900 },
     userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     args: [
-      '--disable-features=DnsOverHttps,AsyncDns',
+      // TEK --disable-features satiri olmali: Chromium ayni anahtari ikinci kez
+      // gorurse yalnizca SONUNCUSUNU okur, oncekiler sessizce duser.
+      "--disable-features=DnsOverHttps,AsyncDns" + (process.platform === 'linux' ? ',VizDisplayCompositor' : ''),
       '--dns-over-https-mode=off',
+      // 10 Eylul 2026 — VPS (Xvfb altinda headful): Luca guvenlik kodu sayfasi
+      // Chromium'u SIGSEGV ile cokertiyordu ("Aw, Snap"). Ajan kendini yine
+      // kod ekraninda buluyor ve sonsuz dongu gibi gorunuyordu. GPU/rasterizer
+      // yollarini kapatmak cokmeyi onluyor. Windows'ta gerek yok, dokunma.
+      ...(process.platform === 'linux'
+        ? ['--disable-gpu', '--disable-software-rasterizer', '--disable-dev-shm-usage']
+        : []),
     ],
   });
   // Persistent context'ta browser bir gizli wrapper — page'leri context üzerinden al.
@@ -1501,9 +1510,9 @@ async function captchaVarsaCoz(page) {
     const { Solver } = require('2captcha');
     const solver = new Solver(twoCaptchaKey);
     let cozuldu = false;
-    // 6 deneme: 2captcha bazen yanlış/kısa okuyor (ör. "46c"); Luca captcha'sı 6 hane.
+    // 10 deneme: 2captcha bazen yanlış okuyor; Luca captcha'sı 4-6 hane.
     // Yanlış gönderim Luca'da YENİ captcha üretir (hesap kilidi yok) → tekrar dene.
-    for (let deneme = 1; deneme <= 6; deneme++) {
+    for (let deneme = 1; deneme <= 10; deneme++) {
       const capImg = await page.$('#captcha');
       if (!capImg) { cozuldu = true; break; } // captcha kalktı → giriş olmuş
       let cozum;
@@ -1511,9 +1520,11 @@ async function captchaVarsaCoz(page) {
         const buffer = await capImg.screenshot({ type: 'png' });
         const t0 = Date.now();
         // regsense:1 → büyük/küçük harf korunur. min/max_len: 2captcha'ya beklenen
-        // uzunluğu söyler (Luca captcha'sı 6 hane) → kısa yanlış okumalar azalır.
+        // uzunluğu söyler. 10 Eylül 2026 DÜZELTME: Luca kodu 6 hane DEĞİL, 4-6 hane
+        // (kullanıcının ekran görüntüsü: "ij65" = 4 hane). min_len 5 iken 2captcha
+        // 4 haneli doğru okumayı 5'e tamamlayıp YANLIŞ gönderiyordu; alt sınır 4 oldu.
         cozum = await solver.imageCaptcha(buffer.toString('base64'), {
-          numeric: 0, min_len: 5, max_len: 7, language: 0, regsense: 1,
+          numeric: 0, min_len: 4, max_len: 6, language: 0, regsense: 1,
         });
         log.info(`Luca captcha 2captcha [${deneme}]: "${cozum.data}" (${Date.now() - t0}ms)`);
       } catch (err) {
@@ -1521,8 +1532,9 @@ async function captchaVarsaCoz(page) {
         await page.waitForTimeout(1500);
         continue;
       }
-      // Açıkça kısa okuma (<5) muhtemelen yanlış → boşa gönderme, yeni captcha iste.
-      if (String(cozum.data || '').trim().length < 5) {
+      // Açıkça kısa okuma (<4) muhtemelen yanlış → boşa gönderme, yeni captcha iste.
+      // (4 hane GEÇERLİ: eski <5 eşiği doğru kodları çöpe atıp döngü yaratıyordu.)
+      if (String(cozum.data || '').trim().length < 4) {
         try { await solver.reportBad(cozum.id); } catch (_) {}
         log.warn(`Luca captcha çok kısa okundu ("${cozum.data}"); yeni captcha isteniyor.`);
         // captcha'yı yenile (resme tıkla / formu yeniden yükle yerine: boş gönder → Luca yeniler)
