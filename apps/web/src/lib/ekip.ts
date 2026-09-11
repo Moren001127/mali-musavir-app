@@ -162,7 +162,25 @@ export async function getIsler(params?: { ajanId?: string; limit?: number }): Pr
     const { data } = await api.get('/ekip/isler', {
       params: { ajanId: params?.ajanId || undefined, limit: params?.limit ?? 50 },
     });
-    return Array.isArray(data?.isler) ? data.isler : [];
+    // Backend düz dizi döndürür; {isler:[]} de kabul edilir. Liste satırı özet alanlarla gelir
+    // (toolSayisi, kuruTestSayisi, onayBekleyenSayisi, ogrenilenSayisi, raporOzet); tam `result` detayda.
+    const liste: any[] = Array.isArray(data) ? data : Array.isArray(data?.isler) ? data.isler : [];
+    return liste.map((r) => ({
+      ...r,
+      result:
+        r.result ||
+        (r.raporOzet || r.toolSayisi || r.kuruTestSayisi || r.onayBekleyenSayisi
+          ? {
+              rapor: r.raporOzet || '',
+              toolUses: Array.from({ length: Number(r.toolSayisi || 0) }, () => ({ name: '…' })),
+              kuruTestYapilacaktilar: Array.from({ length: Number(r.kuruTestSayisi || 0) }, () => ({ name: '…' })),
+              onayBekleyen: Array.from({ length: Number(r.onayBekleyenSayisi || 0) }, () => ({})),
+              ogrenilen: Array.from({ length: Number(r.ogrenilenSayisi || 0) }, () => '…'),
+              model: r.model || undefined,
+              durationMs: r.durationMs ?? undefined,
+            }
+          : null),
+    }));
   } catch (e) {
     return cevir404(e);
   }
