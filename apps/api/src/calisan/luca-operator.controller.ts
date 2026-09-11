@@ -31,6 +31,16 @@ export class LucaOperatorController {
       }
     };
 
+    // SSE NABIZ: model düşünürken / Luca işi beklenirken 30-40 sn veri akmıyor; ara katman (proxy)
+    // boş bağlantıyı kesiyordu ("terminated"). 15 sn'de bir yorum satırı bağlantıyı canlı tutar.
+    const nabiz = setInterval(() => {
+      try {
+        res.write(': ping\n\n');
+      } catch {
+        /* istemci koptu */
+      }
+    }, 15000);
+
     try {
       await this.operator.chatStream(
         {
@@ -45,6 +55,7 @@ export class LucaOperatorController {
     } catch (e: any) {
       send({ type: 'error', error: e?.message || 'Beklenmeyen hata.' });
     } finally {
+      clearInterval(nabiz);
       res.end();
     }
   }
