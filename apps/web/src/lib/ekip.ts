@@ -28,6 +28,19 @@ export interface KademeOzeti {
   disari_gonder: number;
 }
 
+export type EkipKaynak = 'portal' | 'ses' | 'cron' | 'koordinator';
+
+/** Backend #3 (isteğe bağlı) — kadro satırına son koşu/bekleyen onay eklerse doğrudan kullanılır; yoksa FE isler(200)'den hesaplar. */
+export interface AjanSonKosu {
+  id?: string;
+  createdAt?: string;
+  status?: IsDurumu;
+  dryRun?: boolean;
+  toolSayisi?: number;
+  durationMs?: number | null;
+  startedAt?: string | null;
+}
+
 export interface Ajan {
   id: AjanId | string;
   ad: string;
@@ -40,6 +53,10 @@ export interface Ajan {
   kademeOzeti: KademeOzeti;
   modelKimligi?: string | null;
   aracSayisi?: number;
+  /** Backend #3 gelince (opsiyonel). */
+  sonKosu?: AjanSonKosu | null;
+  bekleyenOnay?: number;
+  bugunKosu?: number;
 }
 
 export type IsDurumu = 'pending' | 'running' | 'done' | 'failed';
@@ -69,10 +86,22 @@ export interface IsDosyasi {
   createdAt: string;
   finishedAt?: string | null;
   result?: IsSonucu | null;
+  // Liste özeti (backend isOzeti zaten döndürüyor)
+  kaynak?: EkipKaynak | null;
+  hata?: string | null;
+  startedAt?: string | null;
+  model?: string | null;
+  durationMs?: number | null;
+  toolSayisi?: number;
+  kuruTestSayisi?: number;
+  onayBekleyenSayisi?: number;
+  ogrenilenSayisi?: number;
+  raporOzet?: string | null;
 }
 
 export type AsamaDurumu = 'tamam' | 'eksik' | 'yok';
-export type AsamaAdi = 'evrak' | 'isleme' | 'kontrol' | 'beyanname' | 'gonderim' | 'tahakkukIletildi';
+/** 5 aşama — tahakkukIletildi kalktı (MonthlyStatusRow'da gerçek alan yok). */
+export type AsamaAdi = 'evrak' | 'isleme' | 'kontrol' | 'beyanname' | 'gonderim';
 
 export interface PanoDonem {
   donem: string; // '2026-08'
@@ -83,7 +112,24 @@ export interface PanoSatiri {
   taxpayerId: string;
   unvan: string;
   defterTuru?: string | null;
+  /** Dönem bazında kayıt var mı (aylık takip satırı açık mı). */
+  kayitVar?: Partial<Record<string, boolean>>;
   donemler: PanoDonem[];
+}
+
+/** Dönem özeti — backend pano() `donemler[].ozet/toplam/hata/bosDonemFallback`. */
+export interface PanoDonemOzeti {
+  donem: string;
+  beyannameDonem?: string | null;
+  toplam: number;
+  hata?: string | null;
+  bosDonemFallback: boolean;
+  ozet: { kayitVar: number; evrak: number; isleme: number; kontrol: number; beyannameHazir: number; beyanname: number };
+}
+
+export interface Pano {
+  satirlar: PanoSatiri[];
+  donemOzetleri: PanoDonemOzeti[];
 }
 
 export interface EkipDurum {
@@ -93,6 +139,10 @@ export interface EkipDurum {
   kota?: { kullanilan: number; limit?: number };
   sabahOzeti?: boolean;
   maxBagli?: boolean;
+  /** Backend #2 (opsiyonel) — yoksa FE isler(200)'den hesaplar. */
+  calisan?: number;
+  bugunHata?: number;
+  sonSabahOzeti?: { isId: string; createdAt: string; raporIlkSatir?: string | null } | null;
 }
 
 export type EkipStreamEvent =
@@ -157,10 +207,21 @@ export async function getKadro(): Promise<Ajan[]> {
   }
 }
 
-export async function getIsler(params?: { ajanId?: string; limit?: number }): Promise<IsDosyasi[]> {
+export interface IslerParametreleri {
+  ajanId?: string;
+  limit?: number;
+  /** Backend #4 gelene kadar sunucuya GÖNDERİLMEZ; istemci süzer. */
+  gun?: 'bugun' | '7' | 'tumu';
+  status?: IsDurumu;
+  dryRun?: boolean;
+  kaynak?: EkipKaynak;
+}
+
+export async function getIsler(params?: IslerParametreleri): Promise<IsDosyasi[]> {
   try {
     const { data } = await api.get('/ekip/isler', {
-      params: { ajanId: params?.ajanId || undefined, limit: params?.limit ?? 50 },
+      // gun/status/dryRun/kaynak: backend süzgeçleri (#4) gelene kadar gönderilmez — istemci süzer.
+      params: { ajanId: params?.ajanId || undefined, limit: Math.min(params?.limit ?? 50, 200) },
     });
     // Backend düz dizi döndürür; {isler:[]} de kabul edilir. Liste satırı özet alanlarla gelir
     // (toolSayisi, kuruTestSayisi, onayBekleyenSayisi, ogrenilenSayisi, raporOzet); tam `result` detayda.
@@ -195,23 +256,44 @@ export async function getIs(id: string): Promise<IsDosyasi> {
   }
 }
 
-export async function getPano(): Promise<PanoSatiri[]> {
+export async function getPano(): Promise<Pano> {
   try {
     const { data } = await api.get('/ekip/pano');
-    if (Array.isArray(data?.satirlar)) return data.satirlar;
-    // Backend şekli: {donemler:[{istenenDonem, mukellefler:[{taxpayerId, ad, tip, kayitVar, asamalar:{evrak,isleme,kontrol,beyannameHazir,beyanname}}]}]}
-    // Ekran şekli: mükellef satırı × dönem sütunu. Burada çevrilir; ekran bileşenleri değişmez.
+    if (Array.isArray(data?.satirlar)) {
+      return { satirlar: data.satirlar, donemOzetleri: Array.isArray(data?.donemOzetleri) ? data.donemOzetleri : [] };
+    }
+    // Backend şekli: {donemler:[{istenenDonem, beyannameDonem, bosDonemFallback, hata, toplam, ozet:{…}, mukellefler:[{taxpayerId, ad, tip, kayitVar, asamalar:{evrak,isleme,kontrol,beyannameHazir,beyanname}}]}]}
+    // Ekran şekli: mükellef satırı × dönem sütunu + dönem özetleri. Burada çevrilir.
     const donemler: any[] = Array.isArray(data?.donemler) ? data.donemler : [];
     const satirlar = new Map<string, PanoSatiri>();
+    const donemOzetleri: PanoDonemOzeti[] = [];
     const durum = (v: unknown, kayitVar: boolean): AsamaDurumu => (v === true ? 'tamam' : kayitVar ? 'eksik' : 'yok');
     for (const d of donemler) {
       const donem = String(d?.istenenDonem || d?.beyannameDonem || '');
+      const o = d?.ozet || {};
+      donemOzetleri.push({
+        donem,
+        beyannameDonem: d?.beyannameDonem ?? null,
+        toplam: Number(d?.toplam ?? (Array.isArray(d?.mukellefler) ? d.mukellefler.length : 0)),
+        hata: d?.hata || null,
+        bosDonemFallback: d?.bosDonemFallback === true,
+        ozet: {
+          kayitVar: Number(o.kayitVar || 0),
+          evrak: Number(o.evrak || 0),
+          isleme: Number(o.isleme || 0),
+          kontrol: Number(o.kontrol || 0),
+          beyannameHazir: Number(o.beyannameHazir || 0),
+          beyanname: Number(o.beyanname || 0),
+        },
+      });
       for (const m of Array.isArray(d?.mukellefler) ? d.mukellefler : []) {
         const id = String(m?.taxpayerId || m?.ad || '');
         if (!id) continue;
         const kayitVar = m?.kayitVar === true;
         const a = m?.asamalar || {};
-        const satir: PanoSatiri = satirlar.get(id) || { taxpayerId: id, unvan: m?.ad || id, defterTuru: m?.tip || null, donemler: [] as PanoDonem[] };
+        const satir: PanoSatiri =
+          satirlar.get(id) || { taxpayerId: id, unvan: m?.ad || id, defterTuru: m?.tip || null, kayitVar: {}, donemler: [] as PanoDonem[] };
+        satir.kayitVar = { ...(satir.kayitVar || {}), [donem]: kayitVar };
         satir.donemler.push({
           donem,
           asamalar: {
@@ -220,13 +302,15 @@ export async function getPano(): Promise<PanoSatiri[]> {
             kontrol: durum(a.kontrol, kayitVar),
             beyanname: durum(a.beyannameHazir, kayitVar),
             gonderim: durum(a.beyanname, kayitVar),
-            tahakkukIletildi: 'yok' as AsamaDurumu,
           },
         });
         satirlar.set(id, satir);
       }
     }
-    return Array.from(satirlar.values()).sort((x, y) => x.unvan.localeCompare(y.unvan, 'tr'));
+    return {
+      satirlar: Array.from(satirlar.values()).sort((x, y) => x.unvan.localeCompare(y.unvan, 'tr')),
+      donemOzetleri,
+    };
   } catch (e) {
     return cevir404(e);
   }
@@ -246,8 +330,61 @@ export async function getEkipDurum(): Promise<EkipDurum> {
       kota: data?.kota,
       sabahOzeti: data?.sabahOzeti,
       maxBagli: data?.maxBagli,
+      calisan: typeof data?.calisan === 'number' ? data.calisan : undefined,
+      bugunHata: typeof data?.bugunHata === 'number' ? data.bugunHata : undefined,
+      sonSabahOzeti: data?.sonSabahOzeti ?? undefined,
     };
   } catch (e) {
+    return cevir404(e);
+  }
+}
+
+/** Sabah özeti zaman aşımı (150 sn) — koşu sunucuda sürer, sonuç İş Dosyaları'nda görünür. */
+export class SabahOzetiZamanAsimi extends Error {
+  constructor() {
+    super("Sürüyor — İş Dosyaları'nda görünecek");
+    this.name = 'SabahOzetiZamanAsimi';
+  }
+}
+export function isZamanAsimi(err: unknown): boolean {
+  return err instanceof SabahOzetiZamanAsimi || (err as any)?.name === 'SabahOzetiZamanAsimi';
+}
+
+export interface SabahOzetiSonucu {
+  isId?: string;
+  rapor: string;
+  hata?: string;
+  gonderildi: number;
+  model?: string;
+  durationMs?: number;
+  toolUses?: AracCagrisi[];
+  kuruTestYapilacaktilar?: AracCagrisi[];
+  onayBekleyen?: any[];
+  ogrenilen?: string[];
+}
+
+/**
+ * Koordinatörü hemen koştur: POST /ekip/koordinator/sabah-ozeti {gonder}.
+ * gonder:false → yalnız üretir; gonder:true → SAHİBE GERÇEK WhatsApp gider (yalnız kart içi teyitten sonra çağrılır).
+ * Uç eşzamanlı (backend #6 gelene kadar): 150 sn zaman aşımı.
+ */
+export async function sabahOzetiUret(opts: { gonder: boolean }): Promise<SabahOzetiSonucu> {
+  try {
+    const { data } = await api.post('/ekip/koordinator/sabah-ozeti', { gonder: opts.gonder === true }, { timeout: 150_000 });
+    return {
+      isId: data?.isId || undefined,
+      rapor: typeof data?.rapor === 'string' ? data.rapor : '',
+      hata: data?.hata || undefined,
+      gonderildi: Number(data?.gonderildi || 0),
+      model: data?.model || undefined,
+      durationMs: data?.durationMs ?? undefined,
+      toolUses: Array.isArray(data?.toolUses) ? data.toolUses : [],
+      kuruTestYapilacaktilar: Array.isArray(data?.kuruTestYapilacaktilar) ? data.kuruTestYapilacaktilar : [],
+      onayBekleyen: Array.isArray(data?.onayBekleyen) ? data.onayBekleyen : [],
+      ogrenilen: Array.isArray(data?.ogrenilen) ? data.ogrenilen : [],
+    };
+  } catch (e: any) {
+    if (e?.code === 'ECONNABORTED' || /timeout/i.test(String(e?.message || ''))) throw new SabahOzetiZamanAsimi();
     return cevir404(e);
   }
 }
@@ -346,6 +483,8 @@ export interface EkipOnay {
   approvedAt?: string | null;
   responseText?: string | null;
   confirmationText: string;
+  /** Backend #7 (opsiyonel): taxpayerId/telefon → ad. Yoksa FE mükellef haritasından çözer. */
+  mukellefAd?: string | null;
 }
 
 export async function getOnaylar(durum: 'PENDING' | 'tumu' = 'PENDING', limit = 50): Promise<EkipOnay[]> {

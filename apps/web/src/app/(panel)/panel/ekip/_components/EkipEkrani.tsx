@@ -1,155 +1,220 @@
 'use client';
 
-import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Monitor, MonitorOff, ShieldAlert, Activity, Gauge } from 'lucide-react';
-import { getKadro, getEkipDurum, isOmurgaYok, type Ajan } from '@/lib/ekip';
-import { AjanKarti } from './AjanKarti';
-import { GorevPaneli } from './GorevPaneli';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { Loader2 } from 'lucide-react';
+import { isOmurgaYok, mukellefAdi } from '@/lib/ekip';
+import { SORGU, useKosular } from './kosular';
+import { SabahBandi } from './SabahBandi';
+import { AjanSeridi } from './AjanSeridi';
+import { KomutKutusu, type KomutTaslak } from './KomutKutusu';
+import { CanliAkis } from './CanliAkis';
 import { IsDosyalari } from './IsDosyalari';
+import { OnayKuyrugu } from './OnayBekleyenler';
+import { AjanDetayKarti } from './AjanDetayKarti';
 import { DonemPanosu } from './DonemPanosu';
-import { OnayBekleyenler } from './OnayBekleyenler';
 import { OmurgaYokBilgi } from './OmurgaYokBilgi';
-import { EKIP_ACCENT } from './ortak';
+import { RENK, depoOku, depoYaz } from './ortak';
 
-/** Başlıktaki durum rozetleri — operatör, bekleyen onay, bugünkü koşu, kota. */
-export function DurumRozetleri() {
-  const { data, error, isLoading } = useQuery({
-    queryKey: ['ekip-durum'],
-    queryFn: getEkipDurum,
-    refetchInterval: 20_000,
-    retry: (n, e) => !isOmurgaYok(e) && n < 2,
-  });
+const DEPO_AJAN = 'ekip.seciliAjan';
+const DEPO_DONEM = 'ekip.donem';
 
-  const rozet = (ikon: ReactNode, metin: string, renk: string, title?: string) => (
-    <span
-      className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold"
-      style={{ background: `${renk}14`, border: `1px solid ${renk}44`, color: renk }}
-      title={title}
-    >
-      {ikon} {metin}
-    </span>
-  );
-
-  if (isLoading) return rozet(<Loader2 size={11} className="animate-spin" />, 'Durum alınıyor', 'rgba(250,250,249,0.6)');
-  if (error) {
-    return rozet(<MonitorOff size={11} />, isOmurgaYok(error) ? 'Omurga yayında değil' : 'Durum alınamadı', '#a3a3a3');
-  }
-  if (!data) return null;
-  return (
-    <>
-      {data.operator?.acik
-        ? rozet(<Monitor size={11} />, `VPS operatör açık${data.operator.cihaz ? ` · ${data.operator.cihaz}` : ''}`, '#4ade80', 'Luca operatörü tarayıcısı açık')
-        : rozet(<MonitorOff size={11} />, 'Operatör kapalı', '#f87171', 'Luca operatörü tarayıcısı kapalı')}
-      {rozet(<ShieldAlert size={11} />, `${data.bekleyenOnay ?? 0} bekleyen onay`, data.bekleyenOnay ? '#fdba74' : 'rgba(250,250,249,0.6)')}
-      {rozet(<Activity size={11} />, `${data.bugunKosu ?? 0} koşu bugün`, EKIP_ACCENT)}
-      {data.kota &&
-        rozet(
-          <Gauge size={11} />,
-          data.kota.limit ? `Kota ${data.kota.kullanilan}/${data.kota.limit}` : `Kota ${data.kota.kullanilan}`,
-          '#c4b5fd',
-        )}
-    </>
-  );
-}
-
-/** Ekranın gövdesi: 13 ajan kartı + görev paneli + iş dosyaları + dönem panosu. */
+/**
+ * Yerleşim omurgası + ORTAK DURUM: seçili ajan, seçili dönem, komut taslağı, koşu haritası (useKosular), açık iş.
+ * Ortak sorgular burada tek yerde; alt bileşenlere props ile iner. Yapışkan öğe YOK; sayfa yatay kaymaz.
+ *
+ * Yerleşim:
+ *  - xl (≥1280): [AjanSeridi | KomutKutusu→CanliAkis→IsDosyalari | OnayKuyrugu→AjanDetayKarti] + DonemPanosu tam genişlik
+ *  - lg (1024–1279): [AjanSeridi | OnayKuyrugu→KomutKutusu→CanliAkis→AjanDetayKarti→IsDosyalari]
+ *  - <1024: tek kolon: Onay → Komut → AjanSeridi(yatay) → CanliAkis → IsDosyalari → AjanDetay → Pano
+ *  Sağ kolon sarmalayıcı xl altında `contents` olur; öğeler `order-*` ile mobil sıraya girer.
+ */
 export function EkipEkrani() {
-  const qc = useQueryClient();
-  const [seciliId, setSeciliId] = useState<string | null>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
+  const [seciliAjanId, setSeciliAjanIdState] = useState('koordinator');
+  const [seciliDonem, setSeciliDonemState] = useState<string | null>(null);
+  const [komutTaslak, setKomutTaslak] = useState<KomutTaslak | null>(null);
+  const [acikIsId, setAcikIsId] = useState<string | null>(null);
+  const [odakNonce, setOdakNonce] = useState(0);
+  const [escNonce, setEscNonce] = useState(0);
+  const [isSuzgec, setIsSuzgec] = useState<{ nonce: number; gun?: 'bugun' | '7' | 'tumu' } | null>(null);
+  const [eksiklerNonce, setEksiklerNonce] = useState(0);
 
-  const { data: ajanlar = [], isLoading, error } = useQuery({
-    queryKey: ['ekip-kadro'],
-    queryFn: getKadro,
-    staleTime: 5 * 60_000,
-    retry: (n, e) => !isOmurgaYok(e) && n < 2,
-  });
+  const komutRef = useRef<HTMLElement>(null);
+  const onayRef = useRef<HTMLElement>(null);
+  const isRef = useRef<HTMLElement>(null);
+  const panoRef = useRef<HTMLElement>(null);
 
-  const secili: Ajan | undefined = ajanlar.find((a) => a.id === seciliId);
+  const kosular = useKosular();
+  const kosuVar = !!kosular.aktifKosu;
 
-  // Kart seçilince panele kaydır (mobilde panel altta)
+  // Hatırlanan seçimler (Kuru/Canlı ASLA depoya yazılmaz)
   useEffect(() => {
-    if (secili && panelRef.current) {
-      panelRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }
-  }, [secili?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+    const a = depoOku(DEPO_AJAN);
+    if (a) setSeciliAjanIdState(a);
+    const d = depoOku(DEPO_DONEM);
+    if (d) setSeciliDonemState(d);
+  }, []);
+  const setSeciliAjanId = useCallback((id: string) => {
+    setSeciliAjanIdState(id);
+    depoYaz(DEPO_AJAN, id);
+  }, []);
+  const setSeciliDonem = useCallback((d: string) => {
+    setSeciliDonemState(d);
+    depoYaz(DEPO_DONEM, d);
+  }, []);
+
+  // Ortak sorgular
+  const kadroS = useQuery(SORGU.kadro);
+  const durumS = useQuery(SORGU.durum);
+  const islerS = useQuery(SORGU.isler(kosuVar));
+  const onaylarS = useQuery(SORGU.onaylarBekleyen);
+  const panoS = useQuery(SORGU.pano);
+  const mukelleflerS = useQuery(SORGU.mukellefler);
+
+  const ajanlar = kadroS.data || [];
+  const isler = useMemo(() => islerS.data || [], [islerS.data]);
+  const onaylar = useMemo(() => onaylarS.data || [], [onaylarS.data]);
+  const mukellefler = useMemo(() => mukelleflerS.data || [], [mukelleflerS.data]);
+
+  // Mükellef haritası — her yerde ad çözümü
+  const mukellefHaritasi = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const t of mukellefler) m.set(t.id, mukellefAdi(t));
+    return m;
+  }, [mukellefler]);
+  const mukellefAd = useCallback((id?: string | null) => (id ? mukellefHaritasi.get(id) : undefined), [mukellefHaritasi]);
+  const ajanAd = useCallback((id: string) => ajanlar.find((a) => a.id === id)?.ad || id, [ajanlar]);
+
+  const taslakVer = useCallback((t: Omit<KomutTaslak, 'nonce'>) => {
+    setKomutTaslak({ ...t, nonce: Date.now() });
+  }, []);
+
+  const isAc = useCallback((isId: string) => {
+    setAcikIsId(isId);
+    setTimeout(() => isRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 50);
+  }, []);
+
+  // Klavye — tek dinleyici: '/' komut kutusuna odak (input dışındaysa); Esc teyit/listeyi kapatır (KOŞUYU DURDURMAZ)
+  useEffect(() => {
+    const dinle = (e: KeyboardEvent) => {
+      const hedef = e.target as HTMLElement | null;
+      const girisIcinde = !!hedef && (hedef.tagName === 'INPUT' || hedef.tagName === 'TEXTAREA' || hedef.tagName === 'SELECT' || hedef.isContentEditable);
+      if (e.key === '/' && !girisIcinde) {
+        e.preventDefault();
+        setOdakNonce((n) => n + 1);
+        komutRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      } else if (e.key === 'Escape') {
+        setEscNonce((n) => n + 1);
+      }
+    };
+    window.addEventListener('keydown', dinle);
+    return () => window.removeEventListener('keydown', dinle);
+  }, []);
+
+  const seciliAjan = ajanlar.find((a) => a.id === seciliAjanId);
+  const omurgaYok = isOmurgaYok(kadroS.error);
 
   return (
-    <div className="flex flex-col gap-4">
-      {/* Kadro */}
-      <section>
-        <div className="mb-2 flex items-center gap-2 px-1">
-          <h2 className="text-sm font-bold" style={{ color: '#fafaf9' }}>Kadro</h2>
-          <span className="text-[11px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
-            {ajanlar.length ? `${ajanlar.length} ajan — karta tıkla, görev ver` : '13 ajan'}
-          </span>
+    <div className="flex min-w-0 flex-col gap-3">
+      {omurgaYok && <OmurgaYokBilgi />}
+      {!!kadroS.error && !omurgaYok && (
+        <div className="rounded-xl px-4 py-3 text-xs" style={{ background: 'rgba(248,113,113,0.10)', border: '1px solid rgba(248,113,113,0.35)', color: '#fecaca' }}>
+          Kadro alınamadı: {(kadroS.error as any)?.message || 'hata'}
+        </div>
+      )}
+      {kadroS.isLoading && (
+        <div className="flex items-center gap-2 text-xs" style={{ color: RENK.ikincil }}>
+          <Loader2 size={12} className="animate-spin" /> Kadro yükleniyor…
+        </div>
+      )}
+
+      <SabahBandi
+        durum={durumS.data}
+        onaylar={onaylar}
+        isler={isler}
+        pano={panoS.data}
+        panoYukleniyor={panoS.isLoading}
+        ajanAd={ajanAd}
+        mukellefAd={mukellefAd}
+        kosular={kosular}
+        onOnayaGit={() => onayRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+        onBugunKosulara={() => {
+          setIsSuzgec({ nonce: Date.now(), gun: 'bugun' });
+          isRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }}
+        onPanoyaGit={() => {
+          setEksiklerNonce((n) => n + 1);
+          panoRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }}
+        onKomutOdak={() => {
+          setOdakNonce((n) => n + 1);
+          komutRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }}
+      />
+
+      {/* Kolonlar — bkz. yerleşim notu */}
+      <div className="flex min-w-0 flex-col gap-3 lg:grid lg:grid-cols-[212px_minmax(0,1fr)] lg:grid-rows-[auto_auto_auto_auto_1fr] lg:items-start xl:grid-cols-[236px_minmax(0,1fr)_340px] xl:grid-rows-[auto_auto_1fr] 2xl:grid-cols-[260px_minmax(0,1fr)_380px]">
+        {/* SOL */}
+        <div className="order-3 min-w-0 lg:order-none lg:col-start-1 lg:row-start-1 lg:row-span-5 xl:row-span-3">
+          <AjanSeridi ajanlar={ajanlar} isler={isler} onaylar={onaylar} kosular={kosular.kosular} seciliAjanId={seciliAjanId} onSec={setSeciliAjanId} yukleniyor={kadroS.isLoading} />
         </div>
 
-        {isLoading ? (
-          <div className="flex items-center gap-2 py-8 text-xs" style={{ color: 'rgba(250,250,249,0.5)' }}>
-            <Loader2 size={12} className="animate-spin" /> Kadro yükleniyor…
-          </div>
-        ) : error ? (
-          isOmurgaYok(error) ? (
-            <OmurgaYokBilgi />
-          ) : (
-            <div
-              className="rounded-xl px-4 py-3 text-xs"
-              style={{ background: 'rgba(248,113,113,0.10)', border: '1px solid rgba(248,113,113,0.35)', color: '#fecaca' }}
-            >
-              Kadro alınamadı: {(error as any)?.message || 'hata'}
-            </div>
-          )
-        ) : !ajanlar.length ? (
-          <div className="py-8 text-center text-xs" style={{ color: 'rgba(250,250,249,0.45)' }}>Kadro boş.</div>
-        ) : (
-          <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_400px]">
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {ajanlar.map((a) => (
-                <AjanKarti
-                  key={a.id}
-                  ajan={a}
-                  secili={a.id === seciliId}
-                  onSec={() => setSeciliId((s) => (s === a.id ? null : a.id))}
-                />
-              ))}
-            </div>
-            <div ref={panelRef} className="order-first lg:order-none lg:self-start">
-              {secili ? (
-                <GorevPaneli
-                  ajan={secili}
-                  onKapat={() => setSeciliId(null)}
-                  onIsBitti={() => {
-                    qc.invalidateQueries({ queryKey: ['ekip-isler'] });
-                    qc.invalidateQueries({ queryKey: ['ekip-durum'] });
-                    qc.invalidateQueries({ queryKey: ['ekip-pano'] });
-                  }}
-                />
-              ) : (
-                <div
-                  className="hidden items-center justify-center rounded-2xl px-6 py-10 text-center text-xs lg:flex"
-                  style={{
-                    background: `radial-gradient(120% 120% at 50% 0%, ${EKIP_ACCENT}12, transparent 55%), rgba(255,255,255,0.02)`,
-                    border: `1px dashed ${EKIP_ACCENT}44`,
-                    color: 'rgba(250,250,249,0.5)',
-                  }}
-                >
-                  <p className="leading-relaxed">
-                    Bir ajan kartında <b style={{ color: EKIP_ACCENT }}>Görev ver</b>’e bas; panel burada açılır.
-                    <br />
-                    Kuru test varsayılan açıktır: mesaj gitmez, Luca’ya yazılmaz.
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </section>
+        {/* ORTA */}
+        <div className="order-2 min-w-0 lg:order-none lg:col-start-2 lg:row-start-2 xl:row-start-1">
+          <KomutKutusu
+            ref={komutRef}
+            ajanlar={ajanlar}
+            seciliAjanId={seciliAjanId}
+            onAjanSec={setSeciliAjanId}
+            mukellefler={mukellefler}
+            mukellefAd={mukellefAd}
+            seciliDonem={seciliDonem}
+            komutTaslak={komutTaslak}
+            kosular={kosular}
+            odakNonce={odakNonce}
+            escNonce={escNonce}
+            maxBagli={durumS.data?.maxBagli}
+          />
+        </div>
+        <div className="order-4 min-w-0 lg:order-none lg:col-start-2 lg:row-start-3 xl:row-start-2">
+          <CanliAkis
+            kosu={kosular.kosular.get(seciliAjanId)}
+            ajanId={seciliAjanId}
+            ajanAd={ajanAd}
+            sonIs={isler[0]}
+            onIsAc={isAc}
+            onCevapla={(metin) => taslakVer({ ajanId: seciliAjanId, gorev: `Cevap: ${metin}`, taxpayerId: kosular.kosular.get(seciliAjanId)?.taxpayerId, dryRun: true, kaynak: 'cevap' })}
+            kosular={kosular}
+          />
+        </div>
+        <div className="order-5 min-w-0 lg:order-none lg:col-start-2 lg:row-start-5 xl:row-start-3">
+          <IsDosyalari
+            ref={isRef}
+            isler={isler}
+            isLoading={islerS.isLoading}
+            error={islerS.error}
+            ajanlar={ajanlar}
+            seciliAjanId={seciliAjanId}
+            mukellefAd={mukellefAd}
+            acikIsId={acikIsId}
+            onAcikIsId={setAcikIsId}
+            onTaslak={taslakVer}
+            disSuzgec={isSuzgec}
+          />
+        </div>
 
-      <OnayBekleyenler />
-      <IsDosyalari ajanlar={ajanlar} />
-      <DonemPanosu />
+        {/* SAĞ — xl'de kolon; altında `contents` (öğeler kendi sıralarına girer) */}
+        <div className="contents xl:col-start-3 xl:row-start-1 xl:row-span-3 xl:flex xl:min-w-0 xl:flex-col xl:gap-3">
+          <div className="order-1 min-w-0 lg:order-none lg:col-start-2 lg:row-start-1">
+            <OnayKuyrugu ref={onayRef} onaylar={onaylar} isLoading={onaylarS.isLoading} error={onaylarS.error} mukellefAd={mukellefAd} onIsAc={isAc} />
+          </div>
+          <div className="order-6 min-w-0 lg:order-none lg:col-start-2 lg:row-start-4">
+            <AjanDetayKarti ajan={seciliAjan} isler={isler} onIsAc={isAc} />
+          </div>
+        </div>
+      </div>
+
+      <DonemPanosu ref={panoRef} pano={panoS.data} isLoading={panoS.isLoading} error={panoS.error} seciliDonem={seciliDonem} onDonemSec={setSeciliDonem} onTaslak={taslakVer} eksiklerNonce={eksiklerNonce} />
     </div>
   );
 }

@@ -41,15 +41,87 @@ export class EkipOnayService {
       orderBy: { createdAt: 'desc' },
       take: Math.min(Math.max(Number(opts.limit) || 50, 1), 200),
     });
-    return {
-      onaylar: (rows as any[]).map((r) => this.ozet(r)),
-    };
+    const ozetler = (rows as any[]).map((r) => this.ozet(r));
+    await this.mukellefAdlariniCoz(tenantId, ozetler);
+    return { onaylar: ozetler };
+  }
+
+  /** Telefonu WhatsApp/rehber biçimine getir ("905xxxxxxxxx"); sayı değilse null. */
+  private telefonNormalize(raw: any): string | null {
+    let d = String(raw || '').replace(/[^\d]/g, '');
+    if (!d) return null;
+    if (d.startsWith('00')) d = d.slice(2);
+    if (d.startsWith('0') && d.length === 11) d = '90' + d.slice(1);
+    else if (d.length === 10 && d.startsWith('5')) d = '90' + d;
+    if (d.length < 7 || d.length > 15) return null;
+    return d;
+  }
+
+  private mukellefGorunenAd(t: any): string | null {
+    const ad = String(t?.companyName || '').trim() || `${String(t?.firstName || '').trim()} ${String(t?.lastName || '').trim()}`.trim();
+    return ad || null;
+  }
+
+  /**
+   * Onay özetlerine mükellef adını yazar (PLAN/14 §7-7): payload.taxpayerId → mükellef adı;
+   * hedef telefonsa → o numaranın kayıtlı olduğu mükellef (phone/phones) + rehber adı (telefonAdlari[numara]).
+   * Sorgu hatasında sessizce boş bırakır; liste yine döner.
+   */
+  private async mukellefAdlariniCoz(tenantId: string, ozetler: any[]): Promise<void> {
+    const idler = new Set<string>();
+    const telefonlar = new Set<string>();
+    for (const o of ozetler) {
+      if (o.mukellefId) idler.add(o.mukellefId);
+      if (o.hedefTuru === 'telefon' && o.hedefNormalize) telefonlar.add(o.hedefNormalize);
+    }
+    if (!idler.size && !telefonlar.size) return;
+    const select = { id: true, firstName: true, lastName: true, companyName: true, phone: true, phones: true, telefonAdlari: true };
+    const or: any[] = [];
+    if (idler.size) or.push({ id: { in: Array.from(idler) } });
+    if (telefonlar.size) {
+      const tels = Array.from(telefonlar);
+      // Kayıtlı numara normalize ("905…") olabilir ya da ham ("0532…") — iki biçimi de ara
+      const varyantlar = Array.from(new Set(tels.flatMap((t) => [t, t.startsWith('90') ? '0' + t.slice(2) : t])));
+      or.push({ phone: { in: varyantlar } }, { phones: { hasSome: varyantlar } });
+    }
+    const kayitlar: any[] = await (this.prisma as any).taxpayer
+      .findMany({ where: { tenantId, OR: or }, select })
+      .catch(() => []);
+    const idHarita = new Map<string, any>();
+    const telHarita = new Map<string, any>();
+    for (const t of kayitlar) {
+      idHarita.set(t.id, t);
+      for (const p of [t.phone, ...(Array.isArray(t.phones) ? t.phones : [])]) {
+        const n = this.telefonNormalize(p);
+        if (n && !telHarita.has(n)) telHarita.set(n, t);
+      }
+    }
+    for (const o of ozetler) {
+      let t: any = o.mukellefId ? idHarita.get(o.mukellefId) : null;
+      if (!t && o.hedefTuru === 'telefon' && o.hedefNormalize) t = telHarita.get(o.hedefNormalize) || null;
+      if (!t) continue;
+      o.mukellefAd = this.mukellefGorunenAd(t);
+      if (!o.mukellefId) o.mukellefId = t.id;
+      if (o.hedefTuru === 'telefon' && o.hedefNormalize) {
+        const rehber = t.telefonAdlari && typeof t.telefonAdlari === 'object' ? t.telefonAdlari[o.hedefNormalize] : null;
+        if (rehber && String(rehber).trim()) o.hedefAd = String(rehber).trim();
+      }
+    }
   }
 
   private ozet(r: any) {
     const ajanId = String(r.agent || '').replace(/^ekip:/, '');
     const ajan = ajanBul(ajanId);
     const payload = r.payload && typeof r.payload === 'object' ? r.payload : {};
+    const hedef = payload.to || payload.phone || payload.email || payload.taxpayerId || null;
+    const hedefTelefon = payload.to || payload.phone ? this.telefonNormalize(payload.to || payload.phone) : null;
+    const hedefTuru: 'telefon' | 'eposta' | 'mukellef' | null = hedefTelefon
+      ? 'telefon'
+      : payload.email
+        ? 'eposta'
+        : payload.taxpayerId
+          ? 'mukellef'
+          : null;
     return {
       id: r.id,
       previewId: r.previewId,
@@ -57,7 +129,13 @@ export class EkipOnayService {
       ajanAd: ajan?.ad || ajanId,
       arac: r.action,
       kademe: aracKademesi(r.action),
-      hedef: payload.to || payload.phone || payload.email || payload.taxpayerId || null,
+      hedef,
+      // Ekler (PLAN/14 §7-7): listele() içinde mükellefAdlariniCoz doldurur
+      hedefTuru,
+      hedefNormalize: hedefTelefon,
+      mukellefId: payload.taxpayerId || null,
+      mukellefAd: null as string | null,
+      hedefAd: null as string | null,
       mesaj: payload.message || payload.text || payload.body || payload.mesaj || null,
       payload,
       etki: r.impact || null,

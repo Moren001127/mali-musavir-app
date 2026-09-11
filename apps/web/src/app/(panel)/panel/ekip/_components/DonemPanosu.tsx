@@ -1,84 +1,193 @@
 'use client';
 
-import { useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { CalendarRange, Loader2 } from 'lucide-react';
-import { getPano, isOmurgaYok, type PanoSatiri } from '@/lib/ekip';
-import { ASAMALAR, asamaRengi, donemEtiketi, kartArkaPlan } from './ortak';
+import { forwardRef, useEffect, useMemo, useState } from 'react';
+import { CalendarRange, Loader2, Search, AlertTriangle } from 'lucide-react';
+import { isOmurgaYok, type Pano, type PanoSatiri } from '@/lib/ekip';
+import type { KomutTaslak } from './KomutKutusu';
+import { ASAMALAR, RENK, SABLONLAR, ajanKisaltma, ajanRengi, asamaRengi, donemEtiketi, ikonStili, kartArkaPlan, sablonDoldur, seritStili, sonrakiAdim } from './ortak';
 import { OmurgaYokBilgi } from './OmurgaYokBilgi';
 
-const ACCENT = '#a78bfa'; // dönem panosu — mor
-
-/** Son 3 dönemi (tüm satırlardan) azalan sırayla topla. */
-function sonDonemler(satirlar: PanoSatiri[], n = 3): string[] {
-  const s = new Set<string>();
-  for (const r of satirlar) for (const d of r.donemler || []) if (d.donem) s.add(d.donem);
-  return [...s].sort().reverse().slice(0, n);
-}
+const ACCENT = RENK.mor; // dönem panosu — mor
 
 function AsamaNoktalari({ satir, donem }: { satir: PanoSatiri; donem: string }) {
   const d = satir.donemler?.find((x) => x.donem === donem);
-  if (!d) {
-    return <span className="text-[10px]" style={{ color: 'rgba(250,250,249,0.25)' }}>—</span>;
-  }
-  const tamam = ASAMALAR.filter((a) => d.asamalar?.[a.key] === 'tamam').length;
+  if (!d) return <span className="text-[10px]" style={{ color: RENK.sonuk }}>—</span>;
   return (
-    <div className="flex items-center gap-2">
-      <div className="flex items-center gap-1">
-        {ASAMALAR.map((a) => {
-          const durum = d.asamalar?.[a.key];
-          return (
-            <span
-              key={a.key}
-              className="inline-block h-2.5 w-2.5 rounded-full"
-              style={{
-                background: asamaRengi(durum),
-                boxShadow: durum === 'tamam' ? '0 0 6px rgba(74,222,128,0.6)' : durum === 'eksik' ? '0 0 6px rgba(251,146,60,0.5)' : 'none',
-              }}
-              title={`${a.ad}: ${durum === 'tamam' ? 'tamam' : durum === 'eksik' ? 'eksik' : 'yok'}`}
-            />
-          );
-        })}
-      </div>
-      <span className="text-[10px] tabular-nums" style={{ color: 'rgba(250,250,249,0.45)' }}>
-        {tamam}/{ASAMALAR.length}
-      </span>
+    <div className="flex items-center gap-1">
+      {ASAMALAR.map((a) => {
+        const durum = d.asamalar?.[a.key];
+        return (
+          <span
+            key={a.key}
+            className="inline-block h-2.5 w-2.5 rounded-full"
+            style={{
+              background: asamaRengi(durum),
+              boxShadow: durum === 'tamam' ? '0 0 6px rgba(74,222,128,0.6)' : durum === 'eksik' ? '0 0 6px rgba(251,146,60,0.5)' : 'none',
+            }}
+            title={`${a.ad}: ${durum === 'tamam' ? 'tamam' : durum === 'eksik' ? 'eksik' : 'yok'}`}
+          />
+        );
+      })}
     </div>
   );
 }
 
-/** Mükellef × son 3 dönem × 6 aşama. Tablo kendi içinde kayar; sayfa yatay kaymaz. */
-export function DonemPanosu() {
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['ekip-pano'],
-    queryFn: getPano,
-    refetchInterval: 60_000,
-    retry: (n, e) => !isOmurgaYok(e) && n < 2,
-  });
-  const donemler = useMemo(() => sonDonemler(data || []), [data]);
+/**
+ * Dönem Panosu — tek dönem sekmesi; özet satırı; "Sadece eksikler"; her satırda sonraki adım + görev düğmesi
+ * (KomutKutusu'nu doldurur, ÇALIŞTIRMAZ). Tablo kendi içinde kayar; sayfa yatay kaymaz.
+ */
+export const DonemPanosu = forwardRef<
+  HTMLElement,
+  {
+    pano: Pano | undefined;
+    isLoading: boolean;
+    error: unknown;
+    seciliDonem: string | null;
+    onDonemSec: (d: string) => void;
+    onTaslak: (t: Omit<KomutTaslak, 'nonce'>) => void;
+    /** SabahBandi "beyanname hazır" → "Sadece eksikler" açılır. */
+    eksiklerNonce: number;
+  }
+>(function DonemPanosu({ pano, isLoading, error, seciliDonem, onDonemSec, onTaslak, eksiklerNonce }, ref) {
+  const [sadeceEksik, setSadeceEksik] = useState(false);
+  const [arama, setArama] = useState('');
+  const [siralama, setSiralama] = useState<'acil' | 'ad'>('acil');
+
+  useEffect(() => {
+    if (eksiklerNonce) setSadeceEksik(true);
+  }, [eksiklerNonce]);
+
+  const donemler = useMemo(() => {
+    const s = new Set<string>();
+    for (const o of pano?.donemOzetleri || []) if (o.donem) s.add(o.donem);
+    for (const r of pano?.satirlar || []) for (const d of r.donemler || []) if (d.donem) s.add(d.donem);
+    return [...s].sort().reverse().slice(0, 3);
+  }, [pano]);
+
+  // Varsayılan: en yeni dönem (hatırlanan dönem listede yoksa da en yeni)
+  const donem = seciliDonem && donemler.includes(seciliDonem) ? seciliDonem : donemler[0] || null;
+  useEffect(() => {
+    if (donem && donem !== seciliDonem) onDonemSec(donem);
+  }, [donem]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const ozet = pano?.donemOzetleri.find((o) => o.donem === donem);
+
+  const satirlar = useMemo(() => {
+    if (!pano || !donem) return [];
+    const q = arama.trim().toLocaleLowerCase('tr-TR');
+    const liste = pano.satirlar
+      .map((s) => {
+        const d = s.donemler.find((x) => x.donem === donem);
+        const kayitVar = s.kayitVar?.[donem] ?? !!d;
+        const adim = sonrakiAdim(d?.asamalar, kayitVar);
+        const tamam = ASAMALAR.filter((a) => d?.asamalar?.[a.key] === 'tamam').length;
+        return { s, d, kayitVar, adim, tamam };
+      })
+      .filter((r) => (!sadeceEksik || r.d?.asamalar?.gonderim !== 'tamam') && (!q || r.s.unvan.toLocaleLowerCase('tr-TR').includes(q)));
+    if (siralama === 'acil') liste.sort((a, b) => a.adim.sira - b.adim.sira || a.s.unvan.localeCompare(b.s.unvan, 'tr'));
+    else liste.sort((a, b) => a.s.unvan.localeCompare(b.s.unvan, 'tr'));
+    return liste;
+  }, [pano, donem, sadeceEksik, arama, siralama]);
+
+  const verilmemis = (d: string) => {
+    const o = pano?.donemOzetleri.find((x) => x.donem === d);
+    if (!o) return 0;
+    return Math.max(0, o.toplam - o.ozet.beyanname);
+  };
+
+  const cip = (aktif: boolean, onClick: () => void, metin: string, renk: string = ACCENT, title?: string) => (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      className="rounded-md px-2 py-0.5 text-[11px] font-semibold transition-colors"
+      style={aktif ? { background: `${renk}22`, border: `1px solid ${renk}66`, color: renk } : { background: 'transparent', border: '1px solid rgba(255,255,255,0.08)', color: RENK.ikincil }}
+    >
+      {metin}
+    </button>
+  );
 
   return (
-    <section className="relative overflow-hidden rounded-2xl" style={kartArkaPlan(ACCENT)}>
-      <div className="h-1 w-full" style={{ background: `linear-gradient(90deg, ${ACCENT}, ${ACCENT}55 55%, transparent)` }} />
-      <div className="flex flex-wrap items-center gap-2 px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-        <CalendarRange size={16} style={{ color: ACCENT }} />
-        <h2 className="text-sm font-bold" style={{ color: '#fafaf9' }}>Dönem Panosu</h2>
-        <span className="text-[11px]" style={{ color: 'rgba(250,250,249,0.45)' }}>mükellef × dönem × aşama — koordinatörün ana verisi</span>
-        <div className="ml-auto flex flex-wrap items-center gap-3 text-[10px]" style={{ color: 'rgba(250,250,249,0.55)' }}>
-          <span className="inline-flex items-center gap-1"><i className="inline-block h-2 w-2 rounded-full" style={{ background: asamaRengi('tamam') }} /> tamam</span>
-          <span className="inline-flex items-center gap-1"><i className="inline-block h-2 w-2 rounded-full" style={{ background: asamaRengi('eksik') }} /> eksik</span>
-          <span className="inline-flex items-center gap-1"><i className="inline-block h-2 w-2 rounded-full" style={{ background: asamaRengi('yok') }} /> yok</span>
+    <section ref={ref} className="relative min-w-0 overflow-hidden rounded-2xl" style={kartArkaPlan(ACCENT)}>
+      <div className="h-1 w-full" style={seritStili(ACCENT)} />
+      <div className="flex flex-wrap items-center gap-2 px-3 py-2.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+        <CalendarRange size={15} style={{ color: ACCENT }} />
+        <h2 className="text-sm font-bold" style={{ color: RENK.metin }}>Dönem Panosu</h2>
+        {/* Dönem sekmeleri */}
+        <div className="flex items-center gap-1">
+          {donemler.map((d) => {
+            const v = verilmemis(d);
+            return (
+              <button
+                key={d}
+                type="button"
+                onClick={() => onDonemSec(d)}
+                className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-bold"
+                style={d === donem ? { background: `${ACCENT}22`, border: `1px solid ${ACCENT}66`, color: ACCENT } : { background: 'transparent', border: '1px solid rgba(255,255,255,0.08)', color: RENK.ikincil }}
+              >
+                {d === donem ? donemEtiketi(d) : donemEtiketi(d).split(' ')[0]}
+                {v > 0 && (
+                  <span className="rounded-full px-1 text-[9px] leading-4" style={{ background: `${RENK.turuncu}22`, color: RENK.turuncu }} title={`${v} verilmemiş`}>
+                    {v}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+        {cip(siralama === 'acil', () => setSiralama('acil'), 'Acil önce')}
+        {cip(siralama === 'ad', () => setSiralama('ad'), 'Ada göre')}
+        {cip(sadeceEksik, () => setSadeceEksik((e) => !e), 'Sadece eksikler', RENK.turuncu, 'Beyannamesi verilmemiş mükellefler')}
+        <div className="relative ml-auto flex min-w-[140px] items-center">
+          <Search size={11} className="pointer-events-none absolute left-2" style={{ color: RENK.ikincil }} />
+          <input
+            value={arama}
+            onChange={(e) => setArama(e.target.value)}
+            placeholder="Unvan ara…"
+            className="w-full rounded-md py-1 pl-6 pr-2 text-[11px] outline-none"
+            style={{ background: 'rgba(0,0,0,0.3)', border: `1px solid ${ACCENT}3a`, color: RENK.metin }}
+          />
         </div>
       </div>
 
-      <div className="px-2 py-2 text-[10px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
-        Nokta sırası: {ASAMALAR.map((a) => a.ad).join(' · ')}
-      </div>
+      {/* Özet satırı */}
+      {ozet && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1.5 text-[11px]" style={{ color: RENK.ikincil }}>
+          <span>kayıt <b style={{ color: RENK.metin }}>{ozet.ozet.kayitVar}/{ozet.toplam}</b></span>
+          <span>evrak <b style={{ color: RENK.metin }}>{ozet.ozet.evrak}</b></span>
+          <span>işleme <b style={{ color: RENK.metin }}>{ozet.ozet.isleme}</b></span>
+          <span>kontrol <b style={{ color: RENK.metin }}>{ozet.ozet.kontrol}</b></span>
+          <span>hazır <b style={{ color: RENK.metin }}>{ozet.ozet.beyannameHazir}</b></span>
+          <span>verildi <b style={{ color: RENK.yesil }}>{ozet.ozet.beyanname}</b></span>
+          <span className="ml-auto flex items-center gap-2 text-[10px]">
+            {ASAMALAR.map((a) => (
+              <span key={a.key} title={a.ad}>
+                <b style={{ color: RENK.metin }}>{a.harf}</b> {a.kisa}
+              </span>
+            ))}
+          </span>
+        </div>
+      )}
+      {ozet?.hata && (
+        <div className="mx-3 mb-1.5 flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px]" style={{ background: `${RENK.turuncu}12`, border: `1px solid ${RENK.turuncu}55`, color: RENK.turuncu }}>
+          <AlertTriangle size={12} /> Bu dönem verisi alınamadı: {ozet.hata}
+        </div>
+      )}
+      {ozet?.bosDonemFallback && donem && (
+        <div className="mx-3 mb-1.5 flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px]" style={{ background: `${RENK.turuncu}12`, border: `1px solid ${RENK.turuncu}55`, color: RENK.turuncu }}>
+          <AlertTriangle size={12} /> {donemEtiketi(donem)} boştu, önceki ay gösteriliyor
+        </div>
+      )}
 
-      <div className="p-3 pt-0">
+      <div className="px-3 pb-3">
         {isLoading ? (
-          <div className="flex items-center gap-2 py-6 text-xs" style={{ color: 'rgba(250,250,249,0.5)' }}>
-            <Loader2 size={12} className="animate-spin" /> Pano yükleniyor…
+          <div className="space-y-1.5 py-2">
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} className="h-8 animate-pulse rounded-lg" style={{ background: `${ACCENT}0f` }} />
+            ))}
+            <div className="flex items-center gap-2 text-xs" style={{ color: RENK.ikincil }}>
+              <Loader2 size={12} className="animate-spin" /> Pano yükleniyor (ilk açılış yavaş olabilir)…
+            </div>
           </div>
         ) : error ? (
           isOmurgaYok(error) ? (
@@ -86,41 +195,73 @@ export function DonemPanosu() {
           ) : (
             <div className="py-4 text-xs" style={{ color: '#fca5a5' }}>Pano alınamadı: {(error as any)?.message || 'hata'}</div>
           )
-        ) : !data?.length ? (
-          <div className="py-8 text-center text-xs" style={{ color: 'rgba(250,250,249,0.45)' }}>
+        ) : !pano?.satirlar.length ? (
+          <div className="py-8 text-center text-xs" style={{ color: RENK.ikincil }}>
             Pano boş — koordinatör ilk koşusunda dönemleri dolduracak.
           </div>
+        ) : !satirlar.length ? (
+          <div className="py-6 text-center text-xs" style={{ color: RENK.ikincil }}>
+            {sadeceEksik ? 'Bu dönemde eksik yok — hepsi verildi.' : 'Eşleşen mükellef yok.'}
+          </div>
         ) : (
-          <div className="max-h-[520px] overflow-auto rounded-xl" style={{ border: '1px solid rgba(255,255,255,0.06)' }}>
+          <div className="max-h-[480px] overflow-auto rounded-xl" style={{ border: '1px solid rgba(255,255,255,0.06)' }}>
             <table className="w-full min-w-[640px] border-collapse text-xs">
               <thead>
-                <tr style={{ background: 'rgba(0,0,0,0.35)' }}>
-                  <th className="px-3 py-2 text-left font-semibold" style={{ color: 'rgba(250,250,249,0.7)' }}>Mükellef</th>
-                  <th className="px-3 py-2 text-left font-semibold" style={{ color: 'rgba(250,250,249,0.7)' }}>Defter</th>
-                  {donemler.map((d) => (
-                    <th key={d} className="px-3 py-2 text-left font-semibold" style={{ color: ACCENT }}>
-                      {donemEtiketi(d)}
-                    </th>
-                  ))}
+                <tr style={{ background: 'rgba(0,0,0,0.35)', color: 'rgba(250,250,249,0.6)' }}>
+                  <th className="px-3 py-2 text-left font-semibold">Mükellef</th>
+                  <th className="px-3 py-2 text-left font-semibold">
+                    <span className="inline-flex gap-1.5">
+                      {ASAMALAR.map((a) => (
+                        <span key={a.key} title={a.ad} className="w-2.5 text-center">{a.harf}</span>
+                      ))}
+                    </span>
+                  </th>
+                  <th className="px-2 py-2 text-left font-semibold" />
+                  <th className="px-3 py-2 text-left font-semibold">Sonraki adım</th>
+                  <th className="px-3 py-2 text-left font-semibold" />
                 </tr>
               </thead>
               <tbody>
-                {data.map((s, i) => (
-                  <tr
-                    key={s.taxpayerId}
-                    style={{ background: i % 2 ? 'rgba(255,255,255,0.02)' : 'transparent', borderTop: '1px solid rgba(255,255,255,0.05)' }}
-                  >
-                    <td className="max-w-[260px] truncate px-3 py-2 font-medium" style={{ color: '#fafaf9' }} title={s.unvan}>
-                      {s.unvan}
-                    </td>
-                    <td className="px-3 py-2" style={{ color: 'rgba(250,250,249,0.55)' }}>{s.defterTuru || '-'}</td>
-                    {donemler.map((d) => (
-                      <td key={d} className="px-3 py-2">
-                        <AsamaNoktalari satir={s} donem={d} />
+                {satirlar.map(({ s, adim, tamam }, i) => {
+                  const sablon = adim.sablonId ? SABLONLAR.find((x) => x.id === adim.sablonId) : undefined;
+                  const ajanId = adim.ajanId;
+                  const renk = ajanId ? ajanRengi(ajanId) : ACCENT;
+                  return (
+                    <tr key={s.taxpayerId} style={{ background: i % 2 ? 'rgba(255,255,255,0.02)' : 'transparent', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                      <td className="max-w-[240px] px-3 py-1.5">
+                        <div className="truncate font-medium" style={{ color: RENK.metin }} title={s.unvan}>{s.unvan}</div>
+                        {s.defterTuru && <div className="truncate text-[10px]" style={{ color: RENK.sonuk }}>{s.defterTuru}</div>}
                       </td>
-                    ))}
-                  </tr>
-                ))}
+                      <td className="px-3 py-1.5">{donem && <AsamaNoktalari satir={s} donem={donem} />}</td>
+                      <td className="px-2 py-1.5 tabular-nums" style={{ color: RENK.ikincil }}>{tamam}/{ASAMALAR.length}</td>
+                      <td className="px-3 py-1.5" style={{ color: adim.sira >= 5 ? RENK.yesil : RENK.metin }} title={`Panoya göre: ${adim.metin}`}>
+                        {adim.metin}
+                      </td>
+                      <td className="px-3 py-1.5">
+                        {sablon && ajanId && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              onTaslak({
+                                ajanId,
+                                gorev: sablonDoldur(sablon.gorev, s.unvan, donem),
+                                taxpayerId: s.taxpayerId,
+                                dryRun: true,
+                                kaynak: 'pano',
+                              })
+                            }
+                            className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md px-2 py-1 text-[11px] font-semibold"
+                            style={{ background: `${renk}14`, border: `1px solid ${renk}55`, color: RENK.metin }}
+                            title="Komut kutusunu doldurur; çalıştırmaz"
+                          >
+                            <span className="flex h-4 w-4 items-center justify-center rounded text-[8px] font-black" style={ikonStili(renk)}>{ajanKisaltma(ajanId)}</span>
+                            {sablon.ad}
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -128,4 +269,4 @@ export function DonemPanosu() {
       </div>
     </section>
   );
-}
+});

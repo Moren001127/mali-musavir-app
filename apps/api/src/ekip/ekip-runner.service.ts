@@ -41,8 +41,26 @@ const MAX_TUR = 80;
 /** Onay kaydı geçerliliği: ajan koşusu arka planda biter, sahip sonra bakar → 24 saat. */
 const ONAY_GECERLILIK_MS = 24 * 60 * 60 * 1000;
 const PORTAL_ARAC_ADLARI = new Set<string>(MOREN_AI_TOOLS.map((t) => t.name));
+/** Dönem panosu önbelleği: tenant başına 60 sn (SabahBandi + DonemPanosu aynı anda çekince 2×3 araç koşusu olmasın). */
+const PANO_ONBELLEK_MS = 60 * 1000;
+/** İş dosyası durumları (AgentCommand.status) — /ekip/isler süzgeci yalnız bunları kabul eder. */
+const IS_DURUMLARI = new Set<string>(['pending', 'running', 'done', 'failed']);
+const KAYNAKLAR = new Set<string>(['portal', 'ses', 'cron', 'koordinator']);
 
 export type EkipKaynak = 'portal' | 'ses' | 'cron' | 'koordinator';
+
+/** /ekip/isler süzgeçleri (hepsi isteğe bağlı; verilmezse eski davranış). */
+export interface IsSuzgeci {
+  ajanId?: string | null;
+  limit?: number;
+  /** bugun = Istanbul günü, 7 = son 7 gün, tumu = süzme yok */
+  gun?: 'bugun' | '7' | 'tumu' | null;
+  /** pending | running | done | failed — virgülle birden fazla ("running,failed") */
+  status?: string | null;
+  /** true/false → payload.dryRun */
+  dryRun?: boolean | null;
+  kaynak?: EkipKaynak | null;
+}
 
 export interface EkipCalistirParametreleri {
   ajanId: string;
@@ -338,18 +356,69 @@ export class EkipRunnerService {
 
   // ─── EKİBİN İÇ ARAÇLARI ───
 
-  /** Son iş dosyaları (koordinatör ve pano için). */
-  async isleriListele(tenantId: string, opts: { ajanId?: string | null; limit?: number } = {}) {
+  /** Istanbul gününün başlangıcı (UTC Date) — bugün süzgeçleri için tek yer. */
+  private gunBasiIstanbul(): Date {
+    const istanbulTarih = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Istanbul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+    return new Date(`${istanbulTarih}T00:00:00+03:00`);
+  }
+
+  /** /ekip/isler where koşulu — süzgeçler isteğe bağlı; hiçbiri yoksa eski koşul (tenant + ekip:*). */
+  private isWhere(tenantId: string, opts: IsSuzgeci): any {
+    const where: any = {
+      tenantId,
+      agent: opts.ajanId ? `ekip:${opts.ajanId}` : { startsWith: 'ekip:' },
+    };
+    if (opts.gun === 'bugun') where.createdAt = { gte: this.gunBasiIstanbul() };
+    else if (opts.gun === '7') where.createdAt = { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) };
+    const durumlar = String(opts.status || '')
+      .split(',')
+      .map((s) => s.trim().toLowerCase())
+      .filter((s) => IS_DURUMLARI.has(s));
+    if (durumlar.length === 1) where.status = durumlar[0];
+    else if (durumlar.length > 1) where.status = { in: durumlar };
+    const and: any[] = [];
+    if (opts.dryRun === true || opts.dryRun === false) {
+      // payload.dryRun eski kayıtlarda eksik olabilir; eksik = kuru (isOzeti ile aynı kural: dryRun !== false)
+      and.push(
+        opts.dryRun
+          ? { NOT: [{ payload: { path: ['dryRun'], equals: false } }] }
+          : { payload: { path: ['dryRun'], equals: false } },
+      );
+    }
+    if (opts.kaynak && KAYNAKLAR.has(opts.kaynak)) and.push({ payload: { path: ['kaynak'], equals: opts.kaynak } });
+    if (and.length) where.AND = and;
+    return where;
+  }
+
+  /** Son iş dosyaları (koordinatör ve pano için). Süzgeçler (gun/status/dryRun/kaynak) isteğe bağlı. */
+  async isleriListele(tenantId: string, opts: IsSuzgeci = {}) {
     const limit = Math.min(Math.max(Number(opts.limit) || 30, 1), 200);
     const rows = await (this.prisma as any).agentCommand.findMany({
-      where: {
-        tenantId,
-        agent: opts.ajanId ? `ekip:${opts.ajanId}` : { startsWith: 'ekip:' },
-      },
+      where: this.isWhere(tenantId, opts),
       orderBy: { createdAt: 'desc' },
       take: limit,
     });
     return (rows as any[]).map((r) => this.isOzeti(r));
+  }
+
+  /** Süzgeçli liste + süzgece uyan TOPLAM kayıt sayısı (limit'ten bağımsız) — /ekip/isler?gun=&status=&dryRun=&kaynak=. */
+  async isleriSuz(tenantId: string, opts: IsSuzgeci = {}) {
+    const [isler, toplam] = await Promise.all([
+      this.isleriListele(tenantId, opts),
+      (this.prisma as any).agentCommand.count({ where: this.isWhere(tenantId, opts) }).catch(() => 0),
+    ]);
+    return {
+      isler,
+      toplam,
+      suzgec: {
+        ajanId: opts.ajanId || null,
+        gun: opts.gun || 'tumu',
+        status: opts.status || null,
+        dryRun: opts.dryRun === true || opts.dryRun === false ? opts.dryRun : null,
+        kaynak: opts.kaynak || null,
+        limit: Math.min(Math.max(Number(opts.limit) || 30, 1), 200),
+      },
+    };
   }
 
   async isGetir(tenantId: string, id: string) {
@@ -381,9 +450,33 @@ export class EkipRunnerService {
     };
   }
 
-  /** Mükellef × dönem × aşama panosu — son N dönem, list_taxpayers_monthly_status verisinden. */
-  async pano(tenantId: string, donemSayisi = 3) {
+  /**
+   * Pano önbelleği: anahtar tenant+dönem sayısı; değer {t, veri}. `veri` bir Promise'tir — aynı anda gelen
+   * iki istek (SabahBandi + DonemPanosu) tek üretimi paylaşır, ikinci istek 3 araç koşusu daha başlatmaz.
+   */
+  private readonly panoOnbellek = new Map<string, { t: number; veri: Promise<any> }>();
+
+  /** Mükellef × dönem × aşama panosu — 60 sn tenant önbelleği; `yenile=true` önbelleği atlar. */
+  async pano(tenantId: string, donemSayisi = 3, yenile = false) {
     const n = Math.min(Math.max(Number(donemSayisi) || 3, 1), 6);
+    const anahtar = `${tenantId}:${n}`;
+    const simdiMs = Date.now();
+    const eldeki = this.panoOnbellek.get(anahtar);
+    if (!yenile && eldeki && simdiMs - eldeki.t < PANO_ONBELLEK_MS) {
+      const veri = await eldeki.veri;
+      return { ...veri, onbellek: { vurdu: true, yasSn: Math.round((Date.now() - eldeki.t) / 1000) } };
+    }
+    const uretim = this.panoUret(tenantId, n).catch((e) => {
+      this.panoOnbellek.delete(anahtar); // hata önbelleğe girmesin
+      throw e;
+    });
+    this.panoOnbellek.set(anahtar, { t: simdiMs, veri: uretim });
+    const veri = await uretim;
+    return { ...veri, onbellek: { vurdu: false, yasSn: 0 } };
+  }
+
+  /** Panoyu gerçekten üretir (önbelleksiz). */
+  private async panoUret(tenantId: string, n: number) {
     const simdi = new Date();
     const donemler: string[] = [];
     for (let i = 0; i < n; i++) {
@@ -714,12 +807,69 @@ export class EkipRunnerService {
 
   /** Bugün (Istanbul) başlayan ekip koşusu sayısı — /ekip/durum için. */
   async bugunkuKosuSayisi(tenantId: string): Promise<number> {
-    const simdi = new Date();
-    const istanbulTarih = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Istanbul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(simdi);
-    const gunBasi = new Date(`${istanbulTarih}T00:00:00+03:00`);
     return (this.prisma as any).agentCommand
-      .count({ where: { tenantId, agent: { startsWith: 'ekip:' }, createdAt: { gte: gunBasi } } })
+      .count({ where: { tenantId, agent: { startsWith: 'ekip:' }, createdAt: { gte: this.gunBasiIstanbul() } } })
       .catch(() => 0);
+  }
+
+  /** Şu an koşan (status=running) ekip işi sayısı — /ekip/durum `calisan`. */
+  async calisanSayisi(tenantId: string): Promise<number> {
+    return (this.prisma as any).agentCommand
+      .count({ where: { tenantId, agent: { startsWith: 'ekip:' }, status: 'running' } })
+      .catch(() => 0);
+  }
+
+  /** Bugün (Istanbul) hata ile biten ekip işi sayısı — /ekip/durum `bugunHata`. */
+  async bugunHataSayisi(tenantId: string): Promise<number> {
+    return (this.prisma as any).agentCommand
+      .count({ where: { tenantId, agent: { startsWith: 'ekip:' }, status: 'failed', createdAt: { gte: this.gunBasiIstanbul() } } })
+      .catch(() => 0);
+  }
+
+  /** Raporun ilk anlamlı satırı: "RAPOR:" sonrası; madde/markdown işaretleri soyulur; en çok 200 karakter. */
+  private raporIlkSatir(rapor: any): string | null {
+    const t = String(rapor || '');
+    if (!t.trim()) return null;
+    const i = t.search(/RAPOR\s*:/i);
+    const govde = i >= 0 ? t.slice(i).replace(/^RAPOR\s*[*_`]*:\s*/i, '') : t;
+    for (const ham of govde.split(/\r?\n/)) {
+      // Baştaki madde/başlık işaretleri + satır içi kalın (**) / kod (`) işaretleri soyulur; alt çizgi korunur (araç adları)
+      const satir = ham.replace(/^[\s*_`#>\-•]+/, '').replace(/\*\*|`/g, '').replace(/[*_]+$/, '').trim();
+      if (!satir) continue;
+      if (/^(ÖĞRENDİM|OGRENDIM|SORU)\s*:/i.test(satir)) continue;
+      return satir.slice(0, 200);
+    }
+    return null;
+  }
+
+  /**
+   * Son sabah özeti koşusu (koordinatör + payload.kaynak='cron'; hem 08:30 cron'u hem portaldaki "Şimdi üret"
+   * bu kaynakla yazar) — /ekip/durum `sonSabahOzeti`. Yoksa null.
+   */
+  async sonSabahOzeti(tenantId: string): Promise<{
+    isId: string;
+    createdAt: Date;
+    finishedAt: Date | null;
+    status: string;
+    raporIlkSatir: string | null;
+    hata: string | null;
+  } | null> {
+    const r = await (this.prisma as any).agentCommand
+      .findFirst({
+        where: { tenantId, agent: 'ekip:koordinator', payload: { path: ['kaynak'], equals: 'cron' } },
+        orderBy: { createdAt: 'desc' },
+      })
+      .catch(() => null);
+    if (!r) return null;
+    const res = r.result && typeof r.result === 'object' ? r.result : {};
+    return {
+      isId: r.id,
+      createdAt: r.createdAt,
+      finishedAt: r.finishedAt || null,
+      status: r.status,
+      raporIlkSatir: this.raporIlkSatir(res.rapor),
+      hata: res.hata || null,
+    };
   }
 
   /** Ekipten açılmış bekleyen sahip onayı sayısı. */
@@ -729,8 +879,39 @@ export class EkipRunnerService {
       .catch(() => 0);
   }
 
-  /** Kadro özeti (araç sayıları + kademe dökümü) — /ekip/kadro. */
-  kadroOzeti() {
+  /**
+   * Kadro özeti (araç sayıları + kademe dökümü) — /ekip/kadro.
+   * tenantId verilirse her ajana koşu alanları eklenir: sonKosu (isOzeti şekli, yoksa null), bekleyenOnay,
+   * bugunKosu, calisiyor. Sorgu hatasında alanlar boş/0 döner; kadro yine gelir.
+   */
+  async kadroOzeti(tenantId?: string | null) {
+    const sonKosular = new Map<string, any>();
+    const bekleyenOnaylar = new Map<string, number>();
+    const bugunKosular = new Map<string, number>();
+    const calisanlar = new Map<string, number>();
+    if (tenantId) {
+      const ekipWhere = { tenantId, agent: { startsWith: 'ekip:' } };
+      const [sonlar, onaylar, bugunler, kosanlar] = await Promise.all([
+        // distinct + createdAt desc → her ajan için EN SON kayıt
+        (this.prisma as any).agentCommand
+          .findMany({ where: ekipWhere, orderBy: { createdAt: 'desc' }, distinct: ['agent'] })
+          .catch(() => [] as any[]),
+        (this.prisma as any).ownerApprovalRequest
+          .groupBy({ by: ['agent'], where: { ...ekipWhere, status: 'PENDING', expiresAt: { gt: new Date() } }, _count: { _all: true } })
+          .catch(() => [] as any[]),
+        (this.prisma as any).agentCommand
+          .groupBy({ by: ['agent'], where: { ...ekipWhere, createdAt: { gte: this.gunBasiIstanbul() } }, _count: { _all: true } })
+          .catch(() => [] as any[]),
+        (this.prisma as any).agentCommand
+          .groupBy({ by: ['agent'], where: { ...ekipWhere, status: 'running' }, _count: { _all: true } })
+          .catch(() => [] as any[]),
+      ]);
+      const ajanIdsi = (agent: any) => String(agent || '').replace(/^ekip:/, '');
+      for (const r of sonlar as any[]) sonKosular.set(ajanIdsi(r.agent), this.isOzeti(r));
+      for (const g of onaylar as any[]) bekleyenOnaylar.set(ajanIdsi(g.agent), Number(g?._count?._all || 0));
+      for (const g of bugunler as any[]) bugunKosular.set(ajanIdsi(g.agent), Number(g?._count?._all || 0));
+      for (const g of kosanlar as any[]) calisanlar.set(ajanIdsi(g.agent), Number(g?._count?._all || 0));
+    }
     return AJAN_TANIMLARI.map((a) => {
       const kademeler: Record<string, number> = {};
       for (const ad of a.araclar) {
@@ -750,6 +931,11 @@ export class EkipRunnerService {
         onayNoktalari: a.onayNoktalari,
         tetikler: a.tetikler,
         kimlikKlasoru: a.kimlikKlasoru,
+        // Koşu alanları (tenant verildiyse dolu; yoksa null/0)
+        sonKosu: sonKosular.get(a.id) || null,
+        bekleyenOnay: bekleyenOnaylar.get(a.id) || 0,
+        bugunKosu: bugunKosular.get(a.id) || 0,
+        calisiyor: (calisanlar.get(a.id) || 0) > 0,
       };
     });
   }
