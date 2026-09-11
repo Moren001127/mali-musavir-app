@@ -122,3 +122,21 @@ describe('ajan-tanimlari', () => {
     expect(k.araclar).toEqual(expect.arrayContaining(['ekip_isler', 'ekip_pano', 'get_operation_briefing', 'get_tax_calendar']));
   });
 });
+
+// "ÖĞRENDİM:" ayıklama — model kalın/madde/başlık biçimlese de yakalanmalı (canlı koşuda 0 çıkmıştı)
+describe('ÖĞRENDİM ayıklama (runner)', () => {
+  const { EkipRunnerService } = require('./ekip-runner.service');
+  const ayikla = (m: string) => (EkipRunnerService.prototype as any).ogrenilenleriAyikla.call({}, m) as string[];
+  it('kalın, madde ve başlık biçimlerini yakalar', () => {
+    const metin = [
+      '**ÖĞRENDİM:** get_tax_calendar boş dönebiliyor; ofis kuralından hesapla.',
+      '- ÖĞRENDİM: ikinci ders burada yazıyor',
+      '### ÖĞRENDİM: üçüncü ders başlık gibi',
+      'ÖĞRENDİM: kısa', // 8 karakterden kısa → alınmaz
+      'Bu satır ders değil.',
+    ].join('\n');
+    const r = ayikla(metin);
+    expect(r).toHaveLength(3);
+    expect(r[0]).toMatch(/^get_tax_calendar/);
+  });
+});

@@ -454,9 +454,12 @@ export class EkipRunnerService {
 
   private ogrenilenleriAyikla(metin: string): string[] {
     const out: string[] = [];
-    for (const satir of String(metin || '').split(/\r?\n/)) {
-      const m = satir.match(/^\s*[-*•]?\s*ÖĞRENDİM\s*:\s*(.+)$/i);
-      if (m && m[1].trim().length >= 8) out.push(m[1].trim().slice(0, 1000));
+    for (const ham of String(metin || '').split(/\r?\n/)) {
+      // Model çoğu zaman "**ÖĞRENDİM:**", "- ÖĞRENDİM:", "### ÖĞRENDİM" gibi biçimliyor; işaretleri soy.
+      // Yalnız satır BAŞINDAKİ işaretler soyulur; içerikteki alt çizgi (get_tax_calendar) korunur.
+      const satir = ham.replace(/^[\s*_`#>\-•]+/, '').trim();
+      const m = satir.match(/^(?:Ö|O)(?:Ğ|G)REND(?:İ|I)M\s*[*_`]*\s*:\s*[*_`]*\s*(.+)$/i);
+      if (m && m[1].trim().length >= 8) out.push(m[1].trim().replace(/[*_`]+$/, '').trim().slice(0, 1000));
     }
     return Array.from(new Set(out)).slice(0, 10);
   }
