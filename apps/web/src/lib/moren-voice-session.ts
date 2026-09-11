@@ -86,12 +86,17 @@ const PORTAL_NAVIGATE_TOOL = {
   },
 };
 
-function realtimeInstructions(s: VoiceSnapshot) {
+/**
+ * Oturum talimatı. `sunucuTalimati` = backend'in jeton üretirken gömdüğü metin (sahibin kimliği,
+ * "asla bilmiyorum deme" kuralı vb.). session.update talimatı BÜTÜNÜYLE değiştirdiği için
+ * o metin taban alınır; buraya yalnız bağlam satırları eklenir — yoksa sayfa değişince kimlik silinir.
+ */
+function realtimeInstructions(s: VoiceSnapshot, sunucuTalimati: string) {
   const moduleList = PORTAL_ROUTES.map((route) => `${route.label}: ${route.path}`).join(' | ');
   return [
-    'Türkçe konuş. Kadın sesli, doğal, sıcak ve sakin ol.',
+    sunucuTalimati || 'Türkçe konuş. Kadın sesli, doğal, sıcak ve sakin ol.',
     'Sen portal genelinde çalışan canlı MOREN AI ses katmanısın; sayfa değişse de konuşma sürer.',
-    s.koordinator
+    !sunucuTalimati && s.koordinator
       ? 'Muhatabın ofisin yapay çalışan ekibinin KOORDİNATÖRÜ (Ofis Müdürü): portal_query doğrudan ona gider; o veriyi toplar, işi ekibe dağıtır, riskli işi sahibin onayına düşürür. Cevap 10-60 saniye sürebilir; bekle, kendin uydurma. Kullanıcı "canlı yap", "gerçek çalıştır", "kuru test olmasın" derse bu sözleri question metnine AYNEN koy. Koordinatör "ONAYLIYORUM #PRV-…" beklediğini söylerse kullanıcı bunu söyleyince aynen question olarak ilet.'
       : '',
     'Kullanıcı bir modüle geçmek isterse portal_navigate toolunu kullan; konuşmayı kapatma.',
@@ -138,6 +143,28 @@ class MorenVoiceStore {
   private loggedResponses = new Set<string>();
   private longWaitTimer: number | null = null;
   private starting = false;
+  /** Backend'in jeton cevabında gömdüğü talimat (kimlik satırı dahil); session.update tabanı. */
+  private sunucuTalimati = '';
+  /** Her start() bir nesil; eski oturumun geç gelen sorgu cevabı yeni oturuma karışmaz. */
+  private oturumNo = 0;
+  /** Bekleyen portal_query iptali (stop → abort). */
+  private sorguAbort: AbortController | null = null;
+  /**
+   * Bir portal_query sonucu gönderildi ama henüz seslendirilmedi. Olay kuyruğu seri olduğu için
+   * VAD'ın araya girip ürettiği ikinci portal_query, birincisi bittikten SONRA işlenir; o an
+   * aynı işi yeniden koşturmak yerine "sonuç hazır, söylüyorum" der (koordinatöre çift iş açılmaz).
+   */
+  private ciktiBekliyor = false;
+  /** Ses çalarken output_audio_buffer.stopped gelmezse 'speaking'te takılmamak için emniyet. */
+  private konusmaTimer: number | null = null;
+  /** OpenAI tarafında üretim süren bir cevap var mı (response.created → response.done). */
+  private aktifCevap = false;
+  /** Aktif cevap varken gönderilemeyen response.create; sıradaki response.done'da gider. */
+  private bekleyenCevapIstegi: any = null;
+  /** Veri kanalı olayları tek kuyrukta sırayla işlenir (araç çağrısı beklerken sonrakiler öne geçmesin). */
+  private olayKuyrugu: Promise<void> = Promise.resolve();
+  /** WebRTC 'disconnected' geçici olabilir; hemen kapatma, kısa bekle. */
+  private kopmaTimer: number | null = null;
 
   // ─── depo ───
   getSnapshot = () => this.snapshot;
@@ -188,11 +215,32 @@ class MorenVoiceStore {
       session: {
         // OpenAI Realtime (GA) session.update'te zorunlu; yoksa "Missing required parameter: 'session.type'".
         type: 'realtime',
-        instructions: realtimeInstructions(this.snapshot),
+        instructions: realtimeInstructions(this.snapshot, this.sunucuTalimati),
         tools: [PORTAL_QUERY_TOOL, PORTAL_NAVIGATE_TOOL],
         tool_choice: 'auto',
       },
     });
+  }
+
+  /** Araç çıktısından sonra modelin sesli cevabı; aktif cevap varsa sıraya alınır (çakışma hatası önlenir). */
+  private cevapIste() {
+    const istek = {
+      type: 'response.create',
+      response: {
+        tool_choice: 'none',
+        instructions:
+          'Tool çıktısındaki answer alanlarını temel alarak kısa, doğal Türkçe cevap ver. En fazla 1-3 cümle; answer "CANLI modda" ile başlıyorsa bunu ilk cümlede söyle. Konuşmanın devam ettiğini hissettir.',
+      },
+    };
+    if (this.aktifCevap) {
+      this.bekleyenCevapIstegi = istek;
+      return;
+    }
+    // Tek response.create konuşmadaki tüm function_call_output'ları kapsar; eski bekleyen istek
+    // sonraki response.done'da ikinci kez gitmesin (aynı cevap iki kez seslendiriliyordu).
+    this.bekleyenCevapIstegi = null;
+    this.aktifCevap = true;
+    this.send(istek);
   }
 
   private send(payload: any) {
@@ -243,7 +291,8 @@ class MorenVoiceStore {
   }
   private thinkingEnd() {
     this.clearLongWait();
-    this.set({ thinkingSince: null, longWait: false });
+    // Sorgu bitti: 'thinking' göstergesi kalmasın (sesli cevap gelince response.created yeniden kurar).
+    this.set({ thinkingSince: null, longWait: false, ...(this.snapshot.status === 'thinking' ? { status: 'listening' as VoiceStatus } : {}) });
   }
   private clearLongWait() {
     if (this.longWaitTimer && typeof window !== 'undefined') window.clearTimeout(this.longWaitTimer);
@@ -284,16 +333,29 @@ class MorenVoiceStore {
     });
   }
 
-  private async runPortalQuery(call: any, args: any) {
+  private async runPortalQuery(call: any, args: any, nesil: number) {
     const question = String(args?.question || '').trim();
     if (!question) {
       this.sendFunctionOutput(call, { ok: false, answer: 'Soruyu net duyamadım, tekrar söyler misiniz?' });
       return;
     }
+    if (this.ciktiBekliyor) {
+      // Kullanıcı beklerken konuştu, VAD ikinci bir portal_query üretti; kuyruk seri olduğu için buraya
+      // ilk sorgu bittikten sonra gelinir. Aynı işi yeniden koşturma; hazır sonucu seslendir.
+      this.sendFunctionOutput(call, {
+        ok: true,
+        answer: this.snapshot.lastAnswer || 'Önceki isteğinizin sonucu hazır; onu söylüyorum.',
+        tekrar: true,
+      });
+      return;
+    }
+    const abort = new AbortController();
+    this.sorguAbort = abort;
     this.set({ lastQuestion: question });
     this.thinkingStart();
     try {
       const conversationId = await this.resolveConversationId();
+      if (nesil !== this.oturumNo) return;
       const result = await realtimePortalQuery(
         {
           conversationId: conversationId || undefined,
@@ -301,19 +363,26 @@ class MorenVoiceStore {
           question,
           currentPath: this.snapshot.currentPath || undefined,
         },
-        { timeoutMs: REALTIME_PORTAL_QUERY_TIMEOUT_MS },
+        { timeoutMs: REALTIME_PORTAL_QUERY_TIMEOUT_MS, signal: abort.signal },
       );
       setStoredMorenAiConversationId(result.conversationId);
       this.hooks.onQueryDone?.(result.conversationId);
+      // Oturum bu arada kapanıp yeniden açıldıysa eski call_id yeni oturuma gönderilmez.
+      if (nesil !== this.oturumNo) return;
       this.set({ lastAnswer: result.assistantMessage || '', lastAction: 'Yanıt hazırlandı' });
+      this.ciktiBekliyor = true;
       this.sendFunctionOutput(call, {
         ok: true,
         answer: result.assistantMessage,
         conversationId: result.conversationId,
         usage: result.usage,
       });
+    } catch (error: any) {
+      if (nesil !== this.oturumNo || abort.signal.aborted) return; // stop() iptal etti; sessizce çık
+      throw error;
     } finally {
-      this.thinkingEnd();
+      if (this.sorguAbort === abort) this.sorguAbort = null;
+      if (nesil === this.oturumNo) this.thinkingEnd();
     }
   }
 
@@ -334,18 +403,24 @@ class MorenVoiceStore {
     });
   }
 
-  private async handleFunctionCall(call: any) {
+  /** true → çıktı gönderildi, sesli cevap istenmeli; false → yarım/bozuk çağrı ya da oturum değişti, atlandı. */
+  private async handleFunctionCall(call: any, nesil: number): Promise<boolean> {
+    // Kullanıcı araya girince (interrupt_response) model argümanı yarım bırakır: item.status 'incomplete',
+    // arguments bozuk JSON. Öyle bir çağrıyı işlemek "Soruyu duyamadım" + gereksiz response.create üretir.
+    if (call?.status === 'incomplete') return false;
     let args: any = {};
     try {
       args = call?.arguments ? JSON.parse(call.arguments) : {};
     } catch {
-      args = {};
+      return false;
     }
     try {
       if (call?.name === 'portal_navigate') this.runNavigation(call, args);
-      else if (call?.name === 'portal_query') await this.runPortalQuery(call, args);
+      else if (call?.name === 'portal_query') await this.runPortalQuery(call, args, nesil);
       else this.sendFunctionOutput(call, { ok: false, answer: 'Bu sesli işlem şu an desteklenmiyor.' });
+      if (nesil !== this.oturumNo) return false; // stop()/yeniden start: eski oturuma cevap isteme
     } catch (error: any) {
+      if (nesil !== this.oturumNo) return false;
       const zamanAsimi = error?.code === 'ECONNABORTED' || /timeout/i.test(String(error?.message || ''));
       const mesaj = zamanAsimi
         ? 'Koordinatörden cevap gelmedi; iş arka planda sürüyor olabilir, mesajlaşma ekranından bakabilirsiniz.'
@@ -361,48 +436,134 @@ class MorenVoiceStore {
         lastAction: zamanAsimi ? 'Cevap gecikti' : 'İşlem tamamlanamadı',
       });
     }
+    return true;
   }
 
-  private async handleRealtimeEvent(raw: MessageEvent) {
+  /** Veri kanalı olayı → kuyruk. Araç çağrısı 60-90 sn sürerken gelen olaylar sırayla işlenir, öne geçmez. */
+  private enqueueRealtimeEvent(raw: MessageEvent) {
     let event: any;
     try {
       event = JSON.parse(String(raw.data || '{}'));
     } catch {
       return;
     }
-
-    if (event.type === 'input_audio_buffer.speech_started') {
-      // Cevabı manuel iptal ETME: sunucudaki semantic_vad + interrupt_response doğal yönetir.
-      this.set({ status: 'listening', errorText: '' });
-    }
-    if (event.type === 'input_audio_buffer.speech_stopped' || event.type === 'response.created') {
-      if (!this.snapshot.thinkingSince) this.set({ status: 'thinking' });
-    }
-    if (event.type === 'response.audio.delta' || event.type === 'response.audio_transcript.delta') {
-      this.set({ status: 'speaking' });
-    }
-    if (event.type === 'error') {
-      const msg = event?.error?.message || 'Ses oturumu hatası';
-      this.set({ errorText: String(msg).slice(0, 200) });
-    }
+    // Hızlı durum olayları kuyruğu beklemesin (kullanıcı konuştu / model konuşuyor göstergesi).
+    this.handleQuickEvent(event);
     if (event.type !== 'response.done') return;
+    const nesil = this.oturumNo;
+    this.olayKuyrugu = this.olayKuyrugu
+      .then(() => (nesil === this.oturumNo ? this.handleResponseDone(event, nesil) : undefined))
+      .catch(() => {});
+  }
 
-    await this.recordUsage(event);
-    const calls = (event?.response?.output || []).filter((item: any) => item?.type === 'function_call');
+  /** Araç beklerken (thinkingSince dolu) gösterge 'thinking'e döner; yoksa 'listening'. */
+  private dinlemeyeDon() {
+    if (!this.snapshot.active) return;
+    this.set({ status: this.snapshot.thinkingSince ? 'thinking' : 'listening' });
+  }
+
+  private konusmaEmniyetiKur() {
+    if (typeof window === 'undefined') return;
+    if (this.konusmaTimer != null) window.clearTimeout(this.konusmaTimer);
+    // output_audio_buffer.stopped gelmezse 'Konuşuyor'da takılı kalmasın.
+    this.konusmaTimer = window.setTimeout(() => {
+      this.konusmaTimer = null;
+      if (this.snapshot.status === 'speaking') this.dinlemeyeDon();
+    }, 12_000);
+  }
+
+  private handleQuickEvent(event: any) {
+    switch (event.type) {
+      case 'input_audio_buffer.speech_started':
+        // Cevabı manuel iptal ETME: sunucudaki semantic_vad + interrupt_response doğal yönetir.
+        this.set({ status: 'listening', errorText: '' });
+        break;
+      case 'input_audio_buffer.speech_stopped':
+        this.set({ status: 'thinking' });
+        break;
+      case 'response.created':
+        this.aktifCevap = true;
+        this.set({ status: 'thinking' });
+        break;
+      // GA adları: response.output_audio_transcript.delta / response.output_audio.delta.
+      // WebRTC'de ses veri kanalından değil medya kanalından akar; çalma başlangıcını output_audio_buffer.started verir.
+      // Eski (beta) adlar geriye uyumluluk için duruyor.
+      case 'output_audio_buffer.started':
+      case 'response.output_audio_transcript.delta':
+      case 'response.output_audio.delta':
+      case 'response.audio_transcript.delta':
+      case 'response.audio.delta':
+        if (this.snapshot.status !== 'speaking') this.set({ status: 'speaking' });
+        this.konusmaEmniyetiKur();
+        break;
+      case 'output_audio_buffer.stopped':
+        // Hoparlörden çalma bitti (response.done üretim bitişidir, çalma birkaç sn sürer).
+        if (this.konusmaTimer != null && typeof window !== 'undefined') window.clearTimeout(this.konusmaTimer);
+        this.konusmaTimer = null;
+        this.dinlemeyeDon();
+        break;
+      case 'error': {
+        const kod = String(event?.error?.code || '');
+        const msg = event?.error?.message || 'Ses oturumu hatası';
+        if (kod === 'conversation_already_has_active_response') {
+          // Bizim response.create, VAD'ın başlattığı cevapla çakıştı; o cevap bitince yeniden istenir.
+          this.aktifCevap = true;
+          if (!this.bekleyenCevapIstegi) this.bekleyenCevapIstegi = { type: 'response.create', response: { tool_choice: 'none' } };
+          return;
+        }
+        this.set({ errorText: String(msg).slice(0, 200) });
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
+  private async handleResponseDone(event: any, nesil: number) {
+    this.aktifCevap = false;
+    // Kullanım kaydı ağ isteği; kuyruğu BLOKLAMASIN (asılı kalan tek POST tüm araç çağrılarını dondurur).
+    void this.recordUsage(event);
+
+    // Kullanıcı araya girdiyse (cancelled/incomplete) yarım araç çağrılarını işleme.
+    const durum = String(event?.response?.status || 'completed');
+    const output: any[] = event?.response?.output || [];
+    const calls =
+      durum === 'completed' ? output.filter((item: any) => item?.type === 'function_call' && item?.status !== 'incomplete') : [];
+
     if (calls.length > 0) {
-      for (const call of calls) await this.handleFunctionCall(call);
-      this.send({
-        type: 'response.create',
-        response: {
-          tool_choice: 'none',
-          instructions:
-            'Tool çıktısındaki answer alanlarını temel alarak kısa, doğal Türkçe cevap ver. En fazla 1-3 cümle; answer "CANLI modda" ile başlıyorsa bunu ilk cümlede söyle. Konuşmanın devam ettiğini hissettir.',
-        },
-      });
+      let ciktiVar = false;
+      for (const call of calls) {
+        if (await this.handleFunctionCall(call, nesil)) ciktiVar = true;
+        if (nesil !== this.oturumNo) return; // oturum bu arada kapandı/yenilendi
+      }
+      if (ciktiVar) {
+        this.cevapIste();
+        return;
+      }
+    }
+
+    // Bu cevap araç çıktısını seslendirdiyse "sonuç hazır" bayrağı düşer.
+    if (calls.length === 0 && this.ciktiBekliyor) this.ciktiBekliyor = false;
+
+    // Aktif cevap varken sıraya alınmış istek şimdi gönderilebilir.
+    if (this.bekleyenCevapIstegi) {
+      const istek = this.bekleyenCevapIstegi;
+      this.bekleyenCevapIstegi = null;
+      this.aktifCevap = true;
+      this.send(istek);
       return;
     }
 
-    if (this.snapshot.active) this.set({ status: 'listening' });
+    // Sesli çıktı varsa hoparlörde çalma birkaç sn daha sürer → geçişi output_audio_buffer.stopped'a bırak.
+    const sesVar = output.some(
+      (item: any) =>
+        item?.type === 'message' && Array.isArray(item?.content) && item.content.some((c: any) => c?.type === 'audio' || c?.type === 'output_audio'),
+    );
+    if (sesVar) {
+      if (this.snapshot.status === 'speaking') this.konusmaEmniyetiKur();
+      return;
+    }
+    this.dinlemeyeDon();
   }
 
   // ─── başlat / durdur ───
@@ -410,14 +571,37 @@ class MorenVoiceStore {
     if (this.pc || this.starting) return;
     if (typeof window === 'undefined') return;
     this.starting = true;
-    this.set({ status: 'connecting', active: true, errorText: '', lastAction: 'Bağlanıyor', sessionCost: 0, sessionTokens: 0 });
+    this.oturumNo += 1;
+    const nesil = this.oturumNo;
+    this.aktifCevap = false;
+    this.bekleyenCevapIstegi = null;
+    this.ciktiBekliyor = false;
+    this.olayKuyrugu = Promise.resolve();
+    this.set({ status: 'connecting', active: true, errorText: '', lastAction: 'Bağlanıyor', sessionCost: 0, sessionTokens: 0, thinkingSince: null, longWait: false });
     this.startedAt = Date.now();
     this.loggedResponses = new Set();
+    // Bağlantı kurulurken stop() çağrılırsa (jeton/mikrofon/SDP beklerken) yarım kalan kaynaklar
+    // kapatılıp sessizce çıkılır; yoksa görünürde kapalı ama mikrofonu açık "zombi oturum" kalıyordu.
+    let pcYerel: RTCPeerConnection | null = null;
+    let streamYerel: MediaStream | null = null;
+    const iptalEdildi = () => {
+      if (nesil === this.oturumNo) return false;
+      try {
+        pcYerel?.close();
+      } catch {}
+      streamYerel?.getTracks().forEach((t) => t.stop());
+      if (this.pc === pcYerel) this.pc = null;
+      if (this.stream === streamYerel) this.stream = null;
+      return true;
+    };
 
     try {
       const tokenData = await getRealtimeVoiceToken();
+      if (iptalEdildi()) return;
       const model = tokenData?.model || tokenData?.session?.model || DEFAULT_MODEL;
       const koordinator = tokenData?.morenKoordinator !== false;
+      // Backend'in gömdüğü talimat (kimlik + koordinatör kuralları) taban; session.update bunu ezmesin.
+      this.sunucuTalimati = String(tokenData?.session?.instructions || tokenData?.instructions || '');
       this.set({ model, koordinator });
       const ephemeralKey =
         tokenData?.value || tokenData?.client_secret?.value || tokenData?.clientSecret?.value || tokenData?.secret?.value;
@@ -425,6 +609,7 @@ class MorenVoiceStore {
 
       const pc = new RTCPeerConnection();
       this.pc = pc;
+      pcYerel = pc;
 
       const audio = this.ensureAudio();
       pc.ontrack = async (event) => {
@@ -433,22 +618,44 @@ class MorenVoiceStore {
         await audio.play().catch(() => {});
       };
       pc.onconnectionstatechange = () => {
-        if (['failed', 'closed', 'disconnected'].includes(pc.connectionState) && this.pc === pc) {
+        if (this.pc !== pc) return;
+        const st = pc.connectionState;
+        if (st === 'failed' || st === 'closed') {
           this.stop('Bağlantı koptu');
+          return;
+        }
+        if (st === 'disconnected') {
+          // Geçici ICE kopması çoğu zaman saniyeler içinde toparlar; 60-90 sn'lik araç beklemesinde
+          // ufak dalgalanma oturumu bitirmesin. 8 sn sonra hâlâ kopuksa kapat.
+          if (this.kopmaTimer == null) {
+            this.set({ lastAction: 'Bağlantı dalgalanıyor…' });
+            this.kopmaTimer = window.setTimeout(() => {
+              this.kopmaTimer = null;
+              if (this.pc === pc && (pc.connectionState === 'disconnected' || pc.connectionState === 'failed')) {
+                this.stop('Bağlantı koptu');
+              }
+            }, 8000);
+          }
+          return;
+        }
+        if (st === 'connected' && this.kopmaTimer != null) {
+          window.clearTimeout(this.kopmaTimer);
+          this.kopmaTimer = null;
+          this.set({ lastAction: 'Bağlantı toparlandı' });
         }
       };
 
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       });
+      streamYerel = stream;
+      if (iptalEdildi()) return;
       this.stream = stream;
       stream.getAudioTracks().forEach((track) => pc.addTrack(track, stream));
 
       const dc = pc.createDataChannel('oai-events');
       this.dc = dc;
-      dc.onmessage = (event) => {
-        this.handleRealtimeEvent(event).catch(() => {});
-      };
+      dc.onmessage = (event) => this.enqueueRealtimeEvent(event);
       dc.onopen = () => {
         this.set({ status: 'listening', lastAction: 'Dinliyor' });
         this.pushSessionUpdate();
@@ -456,6 +663,7 @@ class MorenVoiceStore {
 
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
+      if (iptalEdildi()) return;
       const sdpResponse = await fetch('https://api.openai.com/v1/realtime/calls', {
         method: 'POST',
         body: offer.sdp,
@@ -465,8 +673,11 @@ class MorenVoiceStore {
         const text = await sdpResponse.text();
         throw new Error(text.slice(0, 200) || 'Canlı ses bağlantısı kurulamadı');
       }
-      await pc.setRemoteDescription({ type: 'answer', sdp: await sdpResponse.text() });
+      const cevapSdp = await sdpResponse.text();
+      if (iptalEdildi()) return;
+      await pc.setRemoteDescription({ type: 'answer', sdp: cevapSdp });
     } catch (error: any) {
+      if (iptalEdildi()) return; // stop() geldi; hata gösterme
       const message = error?.response?.data?.message || error?.message || 'Canlı ses başlatılamadı';
       this.stop();
       this.set({ status: 'error', errorText: message, lastAction: 'Başlatılamadı' });
@@ -478,6 +689,19 @@ class MorenVoiceStore {
 
   stop(reason = 'Durduruldu') {
     this.clearLongWait();
+    if (this.kopmaTimer != null && typeof window !== 'undefined') window.clearTimeout(this.kopmaTimer);
+    this.kopmaTimer = null;
+    // Bekleyen koordinatör sorgusu iptal; eski nesil cevabı yeni oturuma karışmasın.
+    this.oturumNo += 1;
+    try {
+      this.sorguAbort?.abort();
+    } catch {}
+    this.sorguAbort = null;
+    this.ciktiBekliyor = false;
+    this.aktifCevap = false;
+    this.bekleyenCevapIstegi = null;
+    if (this.konusmaTimer != null && typeof window !== 'undefined') window.clearTimeout(this.konusmaTimer);
+    this.konusmaTimer = null;
     try {
       this.dc?.close();
     } catch {}

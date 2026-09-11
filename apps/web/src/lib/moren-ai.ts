@@ -40,7 +40,8 @@ export interface ChatResponse {
 }
 
 export async function listConversations(limit = 30): Promise<ConversationSummary[]> {
-  const { data } = await api.get('/moren-ai/conversations', { params: { limit } });
+  // Ses oturumu bu çağrıyı olay kuyruğunda bekliyor; asılı kalmasın (varsayılan axios timeout=0=sınırsız).
+  const { data } = await api.get('/moren-ai/conversations', { params: { limit }, timeout: 15_000 });
   return data;
 }
 
@@ -213,9 +214,11 @@ export async function realtimePortalQuery(body: {
   taxpayerId?: string;
   question: string;
   currentPath?: string;
-}, opts: { timeoutMs?: number } = {}): Promise<ChatResponse> {
+}, opts: { timeoutMs?: number; signal?: AbortSignal } = {}): Promise<ChatResponse> {
   const { data } = await api.post('/moren-ai/voice/realtime-portal-query', body, {
     timeout: opts.timeoutMs ?? REALTIME_PORTAL_QUERY_TIMEOUT_MS,
+    // Ses oturumu kapanınca bekleyen sorgu iptal edilir (eski oturumun cevabı yeni oturuma karışmasın).
+    signal: opts.signal,
   });
   return data;
 }
@@ -234,6 +237,6 @@ export async function logRealtimeVoiceUsage(body: {
   cacheReadTokens: number;
   costUsd: number;
 }> {
-  const { data } = await api.post('/moren-ai/voice/realtime-usage', body);
+  const { data } = await api.post('/moren-ai/voice/realtime-usage', body, { timeout: 15_000 });
   return data;
 }
