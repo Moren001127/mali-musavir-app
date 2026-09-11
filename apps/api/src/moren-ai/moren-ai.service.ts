@@ -1,4 +1,6 @@
 import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
+import type { EkipAkisOlayi, EkipKosuSonucu, EkipRunnerService } from '../ekip/ekip-runner.service';
 import { hesaplaCariBakiyeler } from '../common/cari-bakiye';
 import { PrismaService } from '../prisma/prisma.service';
 import { ToolExecutorService } from './tool-executor.service';
@@ -9,6 +11,13 @@ import { buildOwnerStatusReply, buildOwnerTaxPayableReply, buildOwnerRevenueRank
 import { computeCostUsd, computeRealtimeCostUsd, canSpendOnApi, logAiUsage } from '../common/ai-usage-logger';
 import { claudeTextViaMax, isMaxAvailable, MAX_MODEL_CHEAP } from '../common/max-inference';
 import { sablonForTool, sablonZatenVar } from './whatsapp-sablon';
+import {
+  canliModIstendi,
+  SES_KOORDINATOR_ZAMAN_ASIMI_MS,
+  sesCevabiOlustur,
+  sesGoreviOlustur,
+  sesKoordinatorAcik,
+} from './ses-koordinator';
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 // Hibrit model secimi — maliyet/kalite dengesi:
@@ -414,6 +423,10 @@ export class MorenAiService {
   constructor(
     private prisma: PrismaService,
     private toolExecutor: ToolExecutorService,
+    // EKİP koordinatörü ÇAĞRI ANINDA çözülür: MorenAiModule → EkipModule modül importu
+    // döngü yaratır (EkipModule zaten MorenAiModule/Calisan/Automations/WhatsApp'ı import
+    // ediyor, onlar da MorenAiModule'ü) → fatura-muhasebelestirme kalıbı: ModuleRef + dinamik import.
+    private readonly moduleRef: ModuleRef,
   ) {}
 
   // ==========================================================
@@ -964,6 +977,23 @@ export class MorenAiService {
     const question = String(body?.question || '').replace(/\s+/g, ' ').trim();
     if (!question) throw new BadRequestException('question zorunlu');
     const currentPath = String(body?.currentPath || '').trim().slice(0, 180);
+
+    // SESLİ MUHATAP = KOORDİNATÖR (PLAN/13 §7). Varsayılan açık; EKIP_SES_KOORDINATOR=off ile
+    // eski chat(voiceMode) yoluna döner. Koordinatör yolu herhangi bir sebeple kurulamazsa
+    // (omurga yok, Max bağlı değil) yine chat'e düşer — ses hiç cevapsız kalmaz.
+    if (sesKoordinatorAcik()) {
+      const koordinatorCevabi = await this.koordinatorSesYaniti(tenantId, userId, {
+        conversationId: body.conversationId,
+        taxpayerId: body.taxpayerId,
+        question,
+        currentPath,
+      }).catch((e: any) => {
+        this.logger.warn(`[SES→KOORDİNATÖR] köprü hatası, chat yoluna düşülüyor: ${e?.message || e}`);
+        return null;
+      });
+      if (koordinatorCevabi) return koordinatorCevabi;
+    }
+
     const routeContext = currentPath ? `[Aktif portal yolu: ${currentPath}]\n` : '';
     return this.chat(tenantId, userId, {
       conversationId: body.conversationId,
@@ -972,6 +1002,185 @@ export class MorenAiService {
       message: `${routeContext}${question.slice(0, 1200)}`,
       voiceMode: true,
     });
+  }
+
+  /**
+   * Sesli soruyu EKİP koordinatörüne verir (kaynak:'ses', sesModu, dryRun varsayılan true;
+   * kullanıcı sözlü "canlı yap / gerçek çalıştır" dediyse dryRun:false ve cevap "CANLI modda" ile başlar).
+   * Konuşma kaydı chat() ile aynı tabloya yazılır (kullanıcı + asistan mesajı) → mesajlaşma
+   * ekranı sesli sorguyu da gösterir. 90 sn tavan: aşarsa kısa "hâlâ çalışıyorum" cevabı döner,
+   * koşu arka planda biter ve sonucu aynı konuşmaya ek asistan mesajı olarak düşer.
+   * Dönen şekil ChatResponse (frontend realtimePortalQuery bunu bekler). null → chat yoluna düş.
+   */
+  private async koordinatorSesYaniti(
+    tenantId: string,
+    userId: string | null,
+    p: { conversationId?: string; taxpayerId?: string; question: string; currentPath: string },
+  ): Promise<ChatResponse | null> {
+    let runner: EkipRunnerService | null = null;
+    try {
+      // Dinamik import + ModuleRef: modül-düzeyi döngü yok (bkz. constructor notu).
+      const mod = await import('../ekip/ekip-runner.service');
+      runner = this.moduleRef.get(mod.EkipRunnerService, { strict: false });
+    } catch (e: any) {
+      this.logger.warn(`[SES→KOORDİNATÖR] EkipRunnerService bulunamadı: ${e?.message || e}`);
+      return null;
+    }
+    if (!runner) return null;
+    if (!process.env.CLAUDE_CODE_OAUTH_TOKEN) {
+      this.logger.warn('[SES→KOORDİNATÖR] Max bağlı değil (CLAUDE_CODE_OAUTH_TOKEN yok) → chat yolu');
+      return null;
+    }
+
+    const started = Date.now();
+    const canli = canliModIstendi(p.question);
+    const dryRun = !canli;
+
+    // Konuşma: chat() ile aynı kalıp (getir/oluştur + kullanıcı mesajı).
+    let conversation: any = p.conversationId
+      ? await this.prisma.aiConversation.findFirst({ where: { id: p.conversationId, tenantId } })
+      : null;
+    let konusmaBizOlusturduk = false;
+    if (!conversation) {
+      conversation = await this.prisma.aiConversation.create({
+        data: { tenantId, userId, taxpayerId: p.taxpayerId || null, title: this.generateTitle(p.question) },
+      });
+      konusmaBizOlusturduk = true;
+    }
+    const kullaniciMesaji = await this.prisma.aiMessage.create({
+      data: { conversationId: conversation.id, role: 'user', content: p.question },
+    });
+
+    const taxpayerId = p.taxpayerId || conversation.taxpayerId || null;
+    let taxpayerAdi: string | null = null;
+    if (taxpayerId) {
+      const t = await this.prisma.taxpayer
+        .findFirst({ where: { id: taxpayerId, tenantId }, select: { companyName: true, firstName: true, lastName: true } })
+        .catch(() => null);
+      taxpayerAdi = t ? (t.companyName || [t.firstName, t.lastName].filter(Boolean).join(' ') || null) : null;
+    }
+
+    const gorev = sesGoreviOlustur({ question: p.question, currentPath: p.currentPath, taxpayerAdi, canli });
+    const akis: EkipAkisOlayi[] = [];
+    let isId = '';
+    const kosu: Promise<EkipKosuSonucu> = runner.calistir({
+      ajanId: 'koordinator',
+      gorev,
+      tenantId,
+      userId,
+      taxpayerId,
+      dryRun,
+      kaynak: 'ses',
+      sesModu: true,
+      emit: (e) => {
+        akis.push(e);
+        if (e.type === 'baslangic') isId = e.isId;
+      },
+    });
+
+    // 90 sn yarış: koşu kazanırsa tam cevap; süre dolarsa "hâlâ çalışıyorum" + arka planda bitiş.
+    let zamanlayici: NodeJS.Timeout | null = null;
+    const zamanAsimi = new Promise<'zaman-asimi'>((resolve) => {
+      zamanlayici = setTimeout(() => resolve('zaman-asimi'), SES_KOORDINATOR_ZAMAN_ASIMI_MS);
+    });
+    const sonuc = await Promise.race([kosu, zamanAsimi]).finally(() => {
+      if (zamanlayici) clearTimeout(zamanlayici);
+    });
+
+    const modelEtiketi = (m: string) => `ekip-koordinator:${m || 'sonnet'}`;
+    const asistanMesajiKaydet = async (text: string, model: string, s: EkipKosuSonucu | null, ekDurum: number) => {
+      const messageData: any = {
+        conversationId: conversation.id,
+        role: 'assistant',
+        content: text || '(Cevap boş)',
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
+        costUsd: s?.costUsd || 0,
+        model,
+        durationMs: ekDurum,
+      };
+      if (s?.toolUses?.length) {
+        messageData.toolCalls = s.toolUses.map((t) => ({ name: t.name, input: t.args }));
+        messageData.toolResults = s.toolUses.map((t) => ({ name: t.name, input: t.args, result: null }));
+      }
+      await this.prisma.aiMessage.create({ data: messageData }).catch((e: any) =>
+        this.logger.warn(`[SES→KOORDİNATÖR] asistan mesajı kaydedilemedi: ${e?.message || e}`),
+      );
+    };
+
+    if (sonuc === 'zaman-asimi') {
+      const text = sesCevabiOlustur({
+        rapor: '',
+        kuruTestSayisi: 0,
+        onayBekleyen: [],
+        dryRun,
+        zamanAsimi: true,
+        isId,
+      });
+      const durationMs = Date.now() - started;
+      await asistanMesajiKaydet(`${text}${isId ? ` (iş dosyası: ${isId})` : ''}`, modelEtiketi('sonnet'), null, durationMs);
+      // Arka plan: koşu bitince tam raporu aynı konuşmaya ek mesaj olarak düşür.
+      kosu
+        .then(async (s) => {
+          const tam = sesCevabiOlustur({
+            rapor: s.rapor,
+            kuruTestSayisi: s.kuruTestYapilacaktilar.length,
+            onayBekleyen: s.onayBekleyen,
+            dryRun,
+            hata: s.hata,
+            isId: s.isId,
+          });
+          await asistanMesajiKaydet(`Koordinatör tamamladı (iş dosyası: ${s.isId || isId}). ${tam}`, modelEtiketi(s.model), s, s.durationMs);
+        })
+        .catch((e: any) => this.logger.warn(`[SES→KOORDİNATÖR] arka plan koşu hatası: ${e?.message || e}`));
+      this.logger.warn(`[SES→KOORDİNATÖR] 90 sn aşıldı, iş arka planda sürüyor: ${isId || '-'}`);
+      return {
+        conversationId: conversation.id,
+        assistantMessage: text,
+        toolUses: akis.filter((e) => e.type === 'tool').map((e: any) => ({ name: e.name, input: e.args, result: null })),
+        usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: 0, durationMs, model: modelEtiketi('sonnet') },
+      };
+    }
+
+    const s = sonuc as EkipKosuSonucu;
+    // Omurga düzeyinde koşu hiç başlamadıysa (bilinmeyen ajan / Max yok) chat yoluna düş.
+    if (s.hata && !s.rapor && !s.isId) {
+      this.logger.warn(`[SES→KOORDİNATÖR] koşu başlamadı: ${s.hata} → chat yolu`);
+      // chat() kullanıcı mesajını yeniden yazar; bizim yazdığımız kaydı (ve boş konuşmayı) geri al.
+      await this.prisma.aiMessage.delete({ where: { id: kullaniciMesaji.id } }).catch(() => undefined);
+      if (konusmaBizOlusturduk) await this.prisma.aiConversation.delete({ where: { id: conversation.id } }).catch(() => undefined);
+      return null;
+    }
+    const text = sesCevabiOlustur({
+      rapor: s.rapor,
+      kuruTestSayisi: s.kuruTestYapilacaktilar.length,
+      onayBekleyen: s.onayBekleyen,
+      dryRun,
+      hata: s.hata,
+      isId: s.isId,
+    });
+    const durationMs = Date.now() - started;
+    await asistanMesajiKaydet(text, modelEtiketi(s.model), s, durationMs);
+    await this.prisma.aiConversation
+      .update({ where: { id: conversation.id }, data: { taxpayerId: conversation.taxpayerId || taxpayerId || null } })
+      .catch(() => undefined);
+    this.logger.log(`[SES→KOORDİNATÖR] ${s.isId} ${durationMs}ms araç=${s.toolUses.length} kuruTest=${s.kuruTestYapilacaktilar.length} onay=${s.onayBekleyen.length} canli=${canli}`);
+    return {
+      conversationId: conversation.id,
+      assistantMessage: text,
+      toolUses: s.toolUses.map((t) => ({ name: t.name, input: t.args, result: null })),
+      usage: {
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
+        costUsd: s.costUsd || 0,
+        durationMs,
+        model: modelEtiketi(s.model),
+      },
+    };
   }
 
   /**

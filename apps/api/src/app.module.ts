@@ -51,6 +51,7 @@ import { TaxpayerPortalModule } from './taxpayer-portal/taxpayer-portal.module';
 import { MaliYorumModule } from './mali-yorum/mali-yorum.module';
 import { AkilliBildirimModule } from './akilli-bildirim/akilli-bildirim.module';
 import { ButceModule } from './butce/butce.module';
+import { EkipModule } from './ekip/ekip.module';
 import { ReminderCron } from './schedule/reminder.cron';
 import { EvrakMesajService } from './schedule/evrak-mesaj.service';
 import { EvrakOtomasyonController } from './schedule/evrak-otomasyon.controller';
@@ -112,6 +113,7 @@ import { InvoiceOverdueCron } from './schedule/invoice-overdue.cron';
     TaxpayerPortalModule,
     AkilliBildirimModule,
     ButceModule,
+    EkipModule,
   ],
   controllers: [EvrakOtomasyonController],
   providers: [

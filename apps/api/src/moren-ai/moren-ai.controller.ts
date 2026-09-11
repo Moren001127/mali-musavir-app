@@ -9,6 +9,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { MorenAiService } from './moren-ai.service';
 import { VoiceService } from './voice.service';
 import { ToolExecutorService } from './tool-executor.service';
+import { SES_KOORDINATOR_ZAMAN_ASIMI_MS, sesKoordinatorAcik } from './ses-koordinator';
 
 @Controller('moren-ai')
 @UseGuards(AuthGuard('jwt'))
@@ -152,7 +153,9 @@ export class MorenAiController {
     const identity = await this.service
       .getVoiceIdentity(req.user.tenantId, req.user.sub)
       .catch(() => ({}));
-    return this.voice.createRealtimeClientSecret(identity);
+    const token = await this.voice.createRealtimeClientSecret(identity);
+    // Frontend session.update talimatını kendisi kurar; koordinatör köprüsü açık mı bilsin.
+    return { ...(token || {}), morenKoordinator: sesKoordinatorAcik(), morenKoordinatorZamanAsimiMs: SES_KOORDINATOR_ZAMAN_ASIMI_MS };
   }
 
   // -------- KISA YOL: ses dosyası → chat → ses (tek uç) --------

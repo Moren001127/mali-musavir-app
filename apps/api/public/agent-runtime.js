@@ -53,7 +53,13 @@
   // ne DOM değişimi oluyor → "bitti" sinyali hiç gelmiyordu (PERİHAN ŞAHİN: tıklama
   // öncesi de sonrası da 18 satır). Artık 30sn boyunca ekran hiç değişmediyse sorgu
   // bitmiş sayılır. Ayrıca teşhis için ekrandaki durum metni loglanır.
-  const AGENT_VERSION = '1.47.38';
+  // v1.47.39 (2026-09-11): LUCA OPERATÖRÜ iki açık eksik. (1) Ekran okuma artık
+  // açık popup pencerelerini (Fiş Listesi vb.) `popuplar` alanında YAPILANDIRILMIŞ
+  // okur: metin (60 KB, kırpıldıysa kirpildi:true) + tablolar (başlık/satır);
+  // çerçevelerdeki veri tabloları da frameMetin[].tablolar'a düşer. (2) Menü keşfi
+  // derinliği 4→6 (tavan 8), alt menünün yüklenmesi yoklamayla beklenir, boş dönen
+  // dal bir kez daha denenir; her düğümde `derinlik` alanı var.
+  const AGENT_VERSION = '1.47.39';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -592,9 +598,12 @@
 
   async function readLucaMenuHaritasi(opts) {
     const o = opts || {};
-    const maxDerinlik = Math.min(Number(o.derinlik) || 4, 6);
+    // v1.47.39: varsayılan derinlik 4→6, tavan 8. Bilanço menüsünde
+    // "Muhasebe > Beyannameler > KDV > ..." 4. seviyeyi geçiyor; eski tavanla
+    // KDV beyanname düğümü haritaya hiç girmiyordu.
+    const maxDerinlik = Math.min(Number(o.derinlik) || 6, 8);
     const bekleMs = Math.min(Math.max(Number(o.bekle) || 400, 120), 2000);
-    const enFazla = Math.min(Number(o.limit) || 800, 3000);
+    const enFazla = Math.min(Number(o.limit) || 1500, 4000);
     const SEC = 'table[id^="apy"][id$="I"]';
 
     // Menü düğümleri hangi dokümanda olursa olsun bulunsun (alt menü üst dokümana
@@ -676,12 +685,53 @@
     // Apycom menüsünde bir alt menü, ancak ATA ZİNCİRİNİN TAMAMI "fare üzerinde"
     // sayıldığı sürece açık kalır. Eskiden yalnız son düğüme hover ediliyordu →
     // 3. seviyeden sonra zincir kapanıyor, alt dallar hiç görünmüyordu.
+    // v1.47.39: ALT MENÜNÜN YÜKLENMESİNİ BEKLE. Sabit bekleme derin dallarda
+    // yetmiyordu (alt menü DOM'a gecikmeli geliyor; sayım o an değişmemişse
+    // "çocuk yok" sanılıp dal atlanıyordu). Artık görünür düğüm sayısı kısa
+    // aralıklarla yoklanır: sayı artınca iki tur üst üste SABİT kalana kadar
+    // beklenir; hiç artmazsa en fazla bekleMs+600 ms sonra vazgeçilir.
+    // Üzerine gelince alt menü açması BEKLENEN düğüm mü? (onmouseover işleyicisi
+    // taşıyan apycom düğümleri). Boş dönerse bir kez daha, daha uzun bekleyerek dene.
+    const altMenuBeklenir = (el) => {
+      try {
+        if (typeof el.onmouseover === 'function') return true;
+        const attr = el.getAttribute && el.getAttribute('onmouseover');
+        return Boolean(attr && /\w+\s*\(/.test(attr));
+      } catch { return false; }
+    };
+    const gorunurSayi = () => tumOgeler(true).size;
+    // SÜRE BÜTÇESİ: yaprak düğümde tam bekleme harcanırsa 350 düğümlü bilanço
+    // menüsü sunucunun 7 dk sınırını aşar. Alt menü beklenmeyen (işleyicisiz)
+    // düğümde yalnız bekleMs; beklenen düğümde bekleMs+600 ms tavan. Toplam
+    // süre sureSiniri'ni (varsayılan 6 dk) aşarsa iniş durdurulur, sureAsildi:true.
+    const sureSiniri = Math.min(Math.max(Number(o.sureSiniri) || 360000, 30000), 420000);
+    const kesifBaslangic = Date.now();
+    let sureAsildi = false;
+    const sureDoldu = () => {
+      if (!sureAsildi && Date.now() - kesifBaslangic > sureSiniri) sureAsildi = true;
+      return sureAsildi;
+    };
+    const altMenuBekle = async (oncekiSayi, uzunBekle) => {
+      const sinir = uzunBekle ? bekleMs + 600 : bekleMs;
+      const baslangic = Date.now();
+      let son = -1; let sabit = 0;
+      while (Date.now() - baslangic < sinir) {
+        await sleep(70);
+        const n = gorunurSayi();
+        if (n > oncekiSayi) {
+          if (n === son) { sabit++; if (sabit >= 2) return n; } else { sabit = 0; son = n; }
+        }
+      }
+      return gorunurSayi();
+    };
     const zinciriAc = async (zincirIdler) => {
       for (let i = 0; i < zincirIdler.length; i++) {
         const el = idIleBul(zincirIdler[i]);
         if (!el) return null;
+        const onceki = gorunurSayi();
         uzerineGel(el);
-        await sleep(i === zincirIdler.length - 1 ? bekleMs : 60);
+        if (i === zincirIdler.length - 1) await altMenuBekle(onceki, altMenuBeklenir(el));
+        else await sleep(60);
       }
       return idIleBul(zincirIdler[zincirIdler.length - 1]);
     };
@@ -692,25 +742,43 @@
       const ad = metniAl(el);
       if (!ad) continue; // menü çubuğundaki boş ayraç hücreleri sahte kök sayılmasın
       gorulen.add(id);
-      dugumler.push({ id, ad, ust: null, seviye: 0 });
+      dugumler.push({ id, ad, ust: null, seviye: 0, derinlik: 0 });
       kokIdler.push(id);
     }
+    let enDerin = 0;
+    let tekrarDenenen = 0;
 
     async function dal(zincirIdler, seviye) {
-      if (seviye >= maxDerinlik || dugumler.length >= enFazla) return;
-      const el = await zinciriAc(zincirIdler);
+      if (seviye >= maxDerinlik || dugumler.length >= enFazla || sureDoldu()) return;
+      let el = await zinciriAc(zincirIdler);
       if (!el) {
         acilamayan.push(zincirIdler[zincirIdler.length - 1]);
         return;
       }
-      const simdi = tumOgeler(true);
+      const yeniBul = () => {
+        const simdi = tumOgeler(true);
+        const liste = [];
+        for (const [id, e2] of simdi) {
+          if (gorulen.has(id)) continue;
+          const ad = metniAl(e2);
+          if (!ad) continue; // adı boş düğümü "görüldü" sayma — sonra dolu gelebilir
+          liste.push([id, ad]);
+        }
+        return liste;
+      };
+      let yeni = yeniBul();
+      // Alt menü beklenen düğümde hiç çocuk gelmediyse: zinciri yeniden aç, daha uzun bekle.
+      if (!yeni.length && altMenuBeklenir(el) && tekrarDenenen < 40 && !sureDoldu()) {
+        tekrarDenenen++;
+        await sleep(bekleMs);
+        el = await zinciriAc(zincirIdler); // zincir yeniden açılır; alt menü yoklamayla beklenir
+        if (el) yeni = yeniBul();
+      }
       const yeniIdler = [];
-      for (const [id, e2] of simdi) {
-        if (gorulen.has(id)) continue;
-        const ad = metniAl(e2);
-        if (!ad) continue; // adı boş düğümü "görüldü" sayma — sonra dolu gelebilir
+      for (const [id, ad] of yeni) {
         gorulen.add(id);
-        dugumler.push({ id, ad, ust: zincirIdler[zincirIdler.length - 1], seviye });
+        dugumler.push({ id, ad, ust: zincirIdler[zincirIdler.length - 1], seviye, derinlik: seviye });
+        if (seviye > enDerin) enDerin = seviye;
         yeniIdler.push(id);
         if (dugumler.length >= enFazla) break;
       }
@@ -732,7 +800,19 @@
       if (ilk) cik(ilk);
     } catch {}
 
-    return { ok: true, url: location.href, toplam: dugumler.length, teshis, acilamayan, dugumler };
+    return {
+      ok: true,
+      url: location.href,
+      toplam: dugumler.length,
+      teshis,
+      acilamayan,
+      dugumler,
+      enDerin,
+      maxDerinlik,
+      tekrarDenenen,
+      sureAsildi,
+      sureMs: Date.now() - kesifBaslangic,
+    };
   }
 
   function readLucaKesif(opts) {
@@ -820,7 +900,164 @@
     return out;
   }
 
+  // v1.47.39 — TABLO OKUYUCU (salt-okuma). Fiş Listesi gibi rapor sonuçları
+  // <table> içinde gelir; düz metin olarak okununca sütunlar birbirine karışıyor
+  // (fiş no / tarih / açıklama / borç / alacak ayırt edilemiyordu). Burada her
+  // görünür veri tablosu başlık + satır dizisi olarak yapılandırılır.
+  //   - thead varsa başlık oradan; yoksa <th> içeren ilk satır; o da yoksa İLK SATIR
+  //     başlık sayılır.
+  //   - Düzen (layout) tabloları elenir: en az 2 sütun ve en az 1 veri satırı,
+  //     hücrelerinin çoğu iç içe tablo DEĞİL.
+  //   - Sınırlar: tablo başına enFazlaSatir satır, belge başına enFazlaTablo tablo;
+  //     kırpıldıysa `kirpildi:true`.
+  function readLucaTablolar(doc, opts) {
+    const o = opts || {};
+    const enFazlaTablo = Math.min(Number(o.enFazlaTablo) || 6, 20);
+    const enFazlaSatir = Math.min(Number(o.enFazlaSatir) || 300, 2000);
+    const enAzVeriSatiri = Math.max(Number(o.enAzVeriSatiri) || 1, 1);
+    const hucreMetni = (c) => {
+      try { return (c.innerText || c.textContent || '').replace(/[ \s]+/g, ' ').trim().slice(0, 200); } catch { return ''; }
+    };
+    const out = [];
+    let tablolar = [];
+    try { tablolar = Array.from(doc.querySelectorAll('table')); } catch { return out; }
+    for (const t of tablolar) {
+      if (out.length >= enFazlaTablo) break;
+      try {
+        if (!visible(t)) continue;
+        // Yalnız BU tablonun kendi satırları (iç içe tabloların satırları değil)
+        const satirlar = Array.from(t.rows || []).filter((r) => {
+          try { return r.closest('table') === t; } catch { return true; }
+        });
+        if (satirlar.length < 2) continue;
+        // Düzen tablosu mu? Hücrelerin çoğunda iç tablo varsa atla.
+        let icTabloluHucre = 0; let toplamHucre = 0;
+        for (const r of satirlar.slice(0, 5)) {
+          for (const c of Array.from(r.cells || [])) {
+            toplamHucre++;
+            try { if (c.querySelector('table')) icTabloluHucre++; } catch {}
+          }
+        }
+        if (toplamHucre && icTabloluHucre / toplamHucre > 0.5) continue;
+        // Başlık satırı
+        let baslikSatiri = null;
+        try {
+          const th = t.tHead && Array.from(t.tHead.rows || []).find((r) => r.cells && r.cells.length);
+          if (th) baslikSatiri = th;
+        } catch {}
+        if (!baslikSatiri) {
+          baslikSatiri = satirlar.find((r) => { try { return r.querySelector('th'); } catch { return false; } }) || satirlar[0];
+        }
+        const basliklar = Array.from(baslikSatiri.cells || []).map(hucreMetni);
+        if (basliklar.length < 2) continue;
+        const veri = [];
+        let kirpildi = false;
+        for (const r of satirlar) {
+          if (r === baslikSatiri) continue;
+          const hucreler = Array.from(r.cells || []).map(hucreMetni);
+          if (!hucreler.some(Boolean)) continue; // tamamen boş satır
+          if (veri.length >= enFazlaSatir) { kirpildi = true; break; }
+          veri.push(hucreler);
+        }
+        if (veri.length < enAzVeriSatiri) continue;
+        const kayit = {
+          id: t.id || null,
+          sinif: String(t.className || '').slice(0, 60) || null,
+          basliklar,
+          satirlar: veri,
+          satirSayisi: veri.length,
+          kirpildi,
+        };
+        try {
+          const cap = t.caption && hucreMetni(t.caption);
+          if (cap) kayit.baslik = cap.slice(0, 120);
+        } catch {}
+        out.push(kayit);
+      } catch {}
+    }
+    return out;
+  }
+
+  // v1.47.39 — AÇIK POPUP PENCERELERİ (aynı köken, kapanmamış). Fiş Listesi
+  // sonucu window.open ile AYRI PENCEREDE açılıyor; kayıt listesi zaten var
+  // (window.top.__morenLucaPopups). Her popup: kendi tüm çerçeveleriyle birlikte
+  // okunur → { baslik, url, metin, tablolar, kirpildi }.
+  function readLucaPopuplar(opts) {
+    const o = opts || {};
+    const enFazlaPopup = Math.min(Number(o.enFazlaPopup) || 4, 8);
+    const metinSiniri = Math.min(Number(o.metinSiniri) || 60000, 200000);
+    const out = [];
+    const pencereler = [];
+    const ekle = (w) => {
+      try {
+        if (!w || w.closed || w === window || w === (window.top || window)) return;
+        if (pencereler.includes(w)) return;
+        void w.document; // aynı köken değilse burada patlar → yakalanır, eklenmez
+        pencereler.push(w);
+      } catch {}
+    };
+    try {
+      let pops = null;
+      try { pops = (window.top || window).__morenLucaPopups; } catch { pops = window.__morenLucaPopups; }
+      if (Array.isArray(pops)) {
+        for (let i = pops.length - 1; i >= 0; i--) {
+          try { if (!pops[i] || pops[i].closed) { pops.splice(i, 1); continue; } } catch {}
+          ekle(pops[i]);
+        }
+      }
+    } catch {}
+    // Rol ters dönmüşse (runtime popup'ta yürüyorsa) opener'ın listesine de bak
+    try {
+      if (window.opener && window.opener !== window) {
+        const arr = (window.opener.top || window.opener).__morenLucaPopups;
+        if (Array.isArray(arr)) for (const w of arr) ekle(w);
+      }
+    } catch {}
+    for (const w of pencereler) {
+      if (out.length >= enFazlaPopup) break;
+      try {
+        const docs = [];
+        const topla = (x, d) => {
+          try {
+            if (d > 5 || !x || !x.document || docs.includes(x.document)) return;
+            docs.push(x.document);
+            for (const fr of Array.from(x.frames || [])) topla(fr, d + 1);
+          } catch {}
+        };
+        topla(w, 0);
+        const parcalar = [];
+        let tablolar = [];
+        for (const doc of docs) {
+          try {
+            const bt = (doc.body && (doc.body.innerText || doc.body.textContent) || '').replace(/[ \s]+/g, ' ').trim();
+            if (bt) parcalar.push(bt);
+          } catch {}
+          if (tablolar.length < 6) {
+            try { tablolar = tablolar.concat(readLucaTablolar(doc, { enFazlaTablo: 6 - tablolar.length, enFazlaSatir: 300 })); } catch {}
+          }
+        }
+        const tamMetin = parcalar.join('\n---\n');
+        let url = ''; let baslik = '';
+        try { url = String(w.location && w.location.href || '').slice(0, 200); } catch {}
+        try { baslik = String(w.document && w.document.title || '').slice(0, 120); } catch {}
+        out.push({
+          baslik,
+          url,
+          metin: tamMetin.slice(0, metinSiniri),
+          kirpildi: tamMetin.length > metinSiniri || tablolar.some((t) => t.kirpildi),
+          tablolar,
+          cerceveSayisi: docs.length,
+        });
+      } catch {}
+    }
+    return out;
+  }
+
   function readLucaScreenSnapshot() {
+    // popuplar (v1.47.39): açık popup pencereleri YAPILANDIRILMIŞ okunur
+    // (metin + tablolar[basliklar/satirlar]) — bkz. readLucaPopuplar. `pencereler`
+    // alanı geriye uyumluluk için aynen duruyor (yerel ajan indirilen raporu da
+    // oraya birleştiriyor).
     // pencereler: Luca raporlari/listeleri AYRI PENCEREDE aciliyor. Eskiden bu
     // pencerelerin metni ana ekranin metniyle ayni 12000 karakterlik kotaya
     // giriyordu ve SONA eklendigi icin kirpilip tamamen kayboluyordu (gecmis fis
@@ -829,8 +1066,10 @@
     // karakterlik havuza akıyordu; Mizan gibi uzun hesap listesi olan ekranlarda
     // havuz dolup YENİ AÇILAN panelin metni tamamen kırpılıyordu ("ekran değişti
     // ama göremiyorum" durumu).
-    const snap = { url: location.href, frames: [], text: '', frameMetin: [], fields: [], buttons: [], links: [], pencereler: [] };
+    const snap = { url: location.href, frames: [], text: '', frameMetin: [], fields: [], buttons: [], links: [], pencereler: [], popuplar: [] };
     const texts = [];
+    try { snap.popuplar = readLucaPopuplar({ enFazlaPopup: 4, metinSiniri: 60000 }); } catch {}
+    let cerceveTabloSayisi = 0;
     for (const doc of lucaDocuments()) {
       try {
         const fname = (doc.defaultView && doc.defaultView.name) || '';
@@ -842,11 +1081,20 @@
         snap.frames.push(fname || (ayriPencere ? '(ayri-pencere)' : '(ana)'));
         const bt = (doc.body && (doc.body.innerText || doc.body.textContent) || '').replace(/\s+/g, ' ').trim();
         if (bt && snap.frameMetin.length < 12) {
-          snap.frameMetin.push({
+          const fm = {
             ad: fname || (ayriPencere ? '(ayri-pencere)' : '(ana)'),
             url: String(doc.location && doc.location.href || '').slice(0, 120),
             metin: bt.slice(0, 6000),
-          });
+          };
+          // Çerçeve içindeki liste tabloları (Fiş Listesi frm3'te açılırsa) —
+          // yalnız gerçek veri tabloları (>=3 satır), toplamda 3 tablo.
+          if (cerceveTabloSayisi < 3) {
+            try {
+              const tb = readLucaTablolar(doc, { enFazlaTablo: 3 - cerceveTabloSayisi, enFazlaSatir: 150, enAzVeriSatiri: 3 });
+              if (tb.length) { fm.tablolar = tb; cerceveTabloSayisi += tb.length; }
+            } catch {}
+          }
+          snap.frameMetin.push(fm);
         }
         if (bt && ayriPencere && snap.pencereler.length < 4) {
           snap.pencereler.push({
@@ -2231,7 +2479,7 @@
           if (job.tip === 'EKRAN_OKU') {
             try {
               const snapshot = readLucaScreenSnapshot();
-              await log(`👁 Ekran okundu: ${snapshot.frames.length} frame, ${snapshot.fields.length} alan, ${snapshot.buttons.length} buton`);
+              await log(`👁 Ekran okundu: ${snapshot.frames.length} frame, ${snapshot.fields.length} alan, ${snapshot.buttons.length} buton, ${(snapshot.popuplar || []).length} popup`);
               await fetch(API + `/agent/luca/jobs/${job.id}/screen`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },

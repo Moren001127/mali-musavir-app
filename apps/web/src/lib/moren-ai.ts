@@ -205,13 +205,18 @@ export async function getRealtimeVoiceToken(): Promise<any> {
   return data;
 }
 
+/** Sesli soru → koordinatör/chat. Sunucu 90 sn'de "hâlâ çalışıyorum" der; istemci tavanı biraz üstünde. */
+export const REALTIME_PORTAL_QUERY_TIMEOUT_MS = 100_000;
+
 export async function realtimePortalQuery(body: {
   conversationId?: string;
   taxpayerId?: string;
   question: string;
   currentPath?: string;
-}): Promise<ChatResponse> {
-  const { data } = await api.post('/moren-ai/voice/realtime-portal-query', body);
+}, opts: { timeoutMs?: number } = {}): Promise<ChatResponse> {
+  const { data } = await api.post('/moren-ai/voice/realtime-portal-query', body, {
+    timeout: opts.timeoutMs ?? REALTIME_PORTAL_QUERY_TIMEOUT_MS,
+  });
   return data;
 }
 

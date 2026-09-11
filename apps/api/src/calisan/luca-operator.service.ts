@@ -32,6 +32,24 @@ async function loadSdk(): Promise<any> {
 const MODEL_CRITICAL = 'claude-opus-4-8';
 const MODEL_DEFAULT = 'claude-sonnet-4-6';
 const MODEL_CHEAP = MAX_MODEL_CHEAP; // claude-haiku-4-5 — kısa/basit sorular (hız)
+
+/** Ekip (ajan kadrosu) aynı model kimliklerini kullansın — tek kaynak burası. */
+export const OPERATOR_MODELLERI = {
+  opus: MODEL_CRITICAL,
+  sonnet: MODEL_DEFAULT,
+  haiku: MODEL_CHEAP,
+} as const;
+
+/** Luca operatörünün kendi araçları (portal araçları DEĞİL) — ekip runner da bunları aynı yoldan çağırır. */
+export const LUCA_OPERATOR_ARACLARI = [
+  'luca_ekran_oku', 'luca_yaz', 'luca_sec', 'luca_tikla', 'luca_rapor_oku', 'luca_mizan_cek',
+  'luca_kural_kaydet', 'luca_kural_sil', 'luca_kural_listele',
+  'luca_menu_haritasi_cikar', 'luca_menu_ara', 'luca_menu_git',
+  'luca_beceri_kaydet', 'luca_beceri_listele', 'luca_beceri_getir',
+] as const;
+const LUCA_OPERATOR_ARAC_SETI = new Set<string>(LUCA_OPERATOR_ARACLARI);
+// Bu araçlar parametre almaz; iş kaydına boş args yazılır (eski davranış).
+const ARGSIZ_LUCA_ARACLARI = new Set<string>(['luca_ekran_oku', 'luca_rapor_oku', 'luca_kural_listele', 'luca_beceri_listele']);
 const CRITICAL_PATTERNS: RegExp[] = [
   /beyanname|tahakkuk|muhtasar|muhsgk|geçici vergi|gecici vergi|kurumlar|kdv\s?[12]/i,
   /mizan|bilanço|bilanco|gelir tablosu|e-?defter|yevmiye|denetim/i,
@@ -393,7 +411,9 @@ export class LucaOperatorService {
     try {
       job = await this.luca.createKesifJob(
         ctx.tenantId,
-        { mod: 'menu', derinlik: Math.min(Math.max(Number(opts.derinlik) || 4, 2), 6), bekle: 420, limit: 900 },
+        // v1.47.39: derinlik varsayılanı 4→6 (tavan 8), tavan 900→1500 düğüm.
+        // Bilanço menüsünde "Beyannameler > KDV" 4. seviyeyi geçtiği için haritaya girmiyordu.
+        { mod: 'menu', derinlik: Math.min(Math.max(Number(opts.derinlik) || 6, 2), 8), bekle: 420, limit: 1500 },
         { createdBy: ctx.userId || undefined },
       );
     } catch (e: any) {
@@ -401,8 +421,9 @@ export class LucaOperatorService {
     }
     const jobId = job?.id;
     if (!jobId) return { ok: false, error: 'Keşif işi oluşturulamadı.' };
-    // Menü gezme uzun sürer (her başlık için üzerine gel + bekle): 5 dakikaya kadar.
-    const deadline = Date.now() + 300000;
+    // Menü gezme uzun sürer (her başlık için üzerine gel + bekle): 7 dakikaya kadar
+    // (runtime kendi süre bütçesini 6 dk'da keser; takılı-iş temizleyici 8 dk).
+    const deadline = Date.now() + 420000;
     while (Date.now() < deadline) {
       await new Promise((r) => setTimeout(r, 3000));
       const r = await this.luca.getScreenSnapshot(jobId, ctx.tenantId).catch(() => null);
@@ -413,6 +434,14 @@ export class LucaOperatorService {
         if (!dugumler.length) return { ok: false, error: 'Menü okunamadı (boş sonuç).' };
         const kokler = dugumler.filter((d) => !d.ust && d.ad).map((d) => d.ad);
         const baslik = ('menu:' + kokler.slice(0, 3).join(' | ')).slice(0, 120);
+        // v1.47.39: içerik 200 KB'ı aşarsa metni ORTASINDAN KESMEK JSON'u bozuyordu
+        // (harita sessizce kayboluyordu). Sığana kadar en derin düğümler atılır.
+        let kayitDugumler = dugumler;
+        let icerik = JSON.stringify({ kokler, dugumler: kayitDugumler });
+        while (icerik.length > 200000 && kayitDugumler.length > 50) {
+          kayitDugumler = kayitDugumler.slice(0, Math.floor(kayitDugumler.length * 0.9));
+          icerik = JSON.stringify({ kokler, dugumler: kayitDugumler });
+        }
         await this.prisma.aiMemory
           .updateMany({
             where: { tenantId: ctx.tenantId, scope: 'luca-map', title: baslik, isActive: true },
@@ -425,15 +454,18 @@ export class LucaOperatorService {
             scope: 'luca-map',
             source: 'luca-operator',
             title: baslik,
-            content: JSON.stringify({ kokler, dugumler }).slice(0, 200000),
+            content: icerik,
             importance: 5,
             tags: ['luca-map'],
           },
         });
         return {
           ok: true,
-          message: `Luca menü haritası çıkarıldı: ${dugumler.length} başlık. Kök menüler: ${kokler.join(', ')}.`,
+          message: `Luca menü haritası çıkarıldı: ${dugumler.length} başlık (en derin seviye: ${Number(snap?.enDerin) || 0}${snap?.sureAsildi ? '; süre bütçesi doldu, harita eksik olabilir' : ''}). Kök menüler: ${kokler.join(', ')}.`,
           toplam: dugumler.length,
+          kaydedilen: kayitDugumler.length,
+          enDerin: Number(snap?.enDerin) || 0,
+          acilamayan: Array.isArray(snap?.acilamayan) ? snap.acilamayan.length : 0,
           kokler,
         };
       }
@@ -626,6 +658,73 @@ export class LucaOperatorService {
     return { ok: true };
   }
 
+  /** Bu ad Luca operatörünün kendi aracı mı? */
+  static lucaAraciMi(toolName: string): boolean {
+    return LUCA_OPERATOR_ARAC_SETI.has(String(toolName || ''));
+  }
+
+  /**
+   * LUCA OPERATÖR ARACINI ÇALIŞTIR — sohbet akışı ve ekip runner'ı AYNI yoldan geçer.
+   * Yalnız luca_* araçlarını bilir; portal araçları ToolExecutorService'e aittir.
+   * Geri dönülmez tıklama (Kaydet/Gönder...) agent tarafında onaysız bloke edilir;
+   * bu metot o kilidi gevşetmez (args.confirmed yalnız açıkça true ise geçer).
+   */
+  public async executeOperatorTool(
+    toolName: string,
+    args: any,
+    ctx: { tenantId: string; userId?: string | null },
+    emit?: (e: StreamEvent) => void,
+  ): Promise<any> {
+    const a = args && typeof args === 'object' ? args : {};
+    if (emit) emit({ type: 'tool', name: toolName });
+    switch (toolName) {
+      // Özel: Luca'da o an açık ekranı oku (EKRAN_OKU işi → snapshot)
+      case 'luca_ekran_oku':
+        return this.readLucaScreen(ctx);
+      // Luca'da işlem: yaz / seç / tıkla (geri dönülmez tıklama agent tarafında onaysız bloke)
+      case 'luca_yaz':
+      case 'luca_sec':
+      case 'luca_tikla': {
+        const action = toolName === 'luca_yaz' ? 'fill' : toolName === 'luca_sec' ? 'select' : 'click';
+        return this.runLucaAction(ctx, {
+          action,
+          yol: a.yol,
+          etiket: a.etiket || a.alan || a.hint,
+          hedef: a.hedef || a.metin || a.buton || a.etiket,
+          deger: a.deger ?? a.value,
+          confirmed: a.confirmed === true,
+        });
+      }
+      case 'luca_rapor_oku':
+        return this.sonRaporuOku(ctx);
+      case 'luca_mizan_cek':
+        return this.mizanCek(ctx, a);
+      // Ofis kuralları: kaydet / sil / listele
+      case 'luca_kural_kaydet':
+        return this.kuralKaydet(ctx, String(a.baslik || ''), String(a.kural || a.metin || ''), a.onem);
+      case 'luca_kural_sil':
+        return this.kuralSil(ctx, String(a.baslik || ''));
+      case 'luca_kural_listele':
+        return { ok: true, kurallar: await this.ofisKurallari(ctx.tenantId) };
+      // Menü: haritayı çıkar / ara / menüden ekran aç
+      case 'luca_menu_haritasi_cikar':
+        return this.cikarMenuHaritasi(ctx, { derinlik: a.derinlik });
+      case 'luca_menu_ara':
+        return this.araMenu(ctx.tenantId, String(a.sorgu || a.q || ''));
+      case 'luca_menu_git':
+        return this.runLucaAction(ctx, { action: 'menu', yol: a.yol || a.hedef });
+      // Öğrenme: beceri kaydet / listele / getir
+      case 'luca_beceri_kaydet':
+        return this.saveSkill(ctx, String(a.ad || ''), Array.isArray(a.adimlar) ? a.adimlar : [], a.aciklama);
+      case 'luca_beceri_listele':
+        return this.listSkills(ctx);
+      case 'luca_beceri_getir':
+        return this.getSkill(ctx, String(a.ad || ''));
+      default:
+        return { ok: false, error: `Bilinmeyen Luca operatör aracı: ${toolName}` };
+    }
+  }
+
   private pickModel(text: string): string {
     const t = text || '';
     if (CRITICAL_PATTERNS.some((p) => p.test(t))) return MODEL_CRITICAL;
@@ -689,7 +788,7 @@ export class LucaOperatorService {
       'MENÜ (Luca\'da ekran açma): Bir ekranı bulmak için ÖNCE portal({name:"luca_menu_ara", args:{sorgu:"muhtasar"}}) ile menü yolunu ara; dönen yolu portal({name:"luca_menu_git", args:{yol:"İşletme Defteri > Beyannameler > Muhtasar ve Prim Hizmet > Muhtasar Kartı Listesi"}}) ile aç. Menüde arama "kayıtlı harita yok" derse portal({name:"luca_menu_haritasi_cikar"}) ile Luca menüsünü kendin keşfet (birkaç dakika sürer, sadece okur), sonra aramayı tekrarla. Menüden ekran açmak veri değiştirmez, onay gerektirmez.',
       'Menü yolunu TAHMİN ETME. Ekranı menü haritasında bulamıyorsan kullanıcıya sor.',
       'GÜVENLİK — geri dönülmez adımlar: "Kaydet/Gönder/Onayla/İmzala/Sil/Tahakkuk/Tamamla" gibi butonlara ASLA kendiliğinden tıklama. Önce ne yapacağını ve hangi mükellef/dönem/tutar olduğunu KISACA özetle, kullanıcıdan AÇIK onay iste. Kullanıcı net onay verirse luca_tikla\'yı args.confirmed=true ile çağır. Onay olmadan confirmed=true GÖNDERME — agent zaten onaysız bu butonları bloke eder.',
-      'AYRI PENCERE: Luca ekranlarinda rapor/liste sonuclari (or. Fis Listesi) AYRI BIR PENCEREDE acilir. luca_ekran_oku sonucundaki "pencereler" alanina bak — o pencerenin basligi, adresi ve metni oradadir. Bos gorunuyorsa 2-3 saniye bekleyip bir kez daha oku (pencere gec acilmis olabilir).',
+      'AYRI PENCERE: Luca ekranlarinda rapor/liste sonuclari (or. Fis Listesi) AYRI BIR PENCEREDE acilir. luca_ekran_oku sonucundaki "popuplar" alanina bak — her acik popup icin baslik, adres, metin ve YAPILANDIRILMIS "tablolar" (basliklar + satirlar: fis no / tarih / aciklama / borc / alacak) oradadir; "kirpildi:true" ise liste tamami sigmamistir. Indirilen rapor (Excel) ise "pencereler" alanindadir. Bos gorunuyorsa 2-3 saniye bekleyip bir kez daha oku (pencere gec acilmis olabilir). Cerceve icinde acilan listeler icin frameMetin[].tablolar alanina bak.',
       'Bir işi adım adım yap (gör → doldur/seç → kontrol et → onayla → gönder). Emin değilsen dur ve sor.',
       '\u0130Ş ÖĞRENME — KULLANICIYA "BANA GÖSTER" DEME. Bilmediğin bir iş istendiğinde şu sırayla KENDİN öğren:',
       '  1) BECERİ: luca_beceri_listele — bu iş daha önce kaydedilmiş mi?',
@@ -786,110 +885,12 @@ export class LucaOperatorService {
         { name: z.string(), args: z.record(z.any()).optional() },
         async (a: { name: string; args?: any }) => {
           const toolName = String(a?.name || '');
-          // Özel: Luca'da o an açık ekranı oku (EKRAN_OKU işi → snapshot)
-          if (toolName === 'luca_ekran_oku') {
-            toolUses.push({ name: toolName, args: {} });
-            emit({ type: 'tool', name: toolName });
-            const r = await this.readLucaScreen(ctx);
-            return { content: [{ type: 'text', text: JSON.stringify(r) }] };
-          }
-          // Luca'da işlem: yaz / seç / tıkla (geri dönülmez tıklama agent tarafında onaysız bloke)
-          if (toolName === 'luca_yaz' || toolName === 'luca_sec' || toolName === 'luca_tikla') {
+          // Luca operatör araçları (ekran oku/yaz/seç/tıkla/menü/kural/beceri) — tek dağıtıcı.
+          if (LucaOperatorService.lucaAraciMi(toolName)) {
             const args = a?.args || {};
-            toolUses.push({ name: toolName, args });
+            toolUses.push({ name: toolName, args: ARGSIZ_LUCA_ARACLARI.has(toolName) ? {} : args });
             emit({ type: 'tool', name: toolName });
-            const action = toolName === 'luca_yaz' ? 'fill' : toolName === 'luca_sec' ? 'select' : 'click';
-            const r = await this.runLucaAction(ctx, {
-              action,
-              yol: args.yol,
-              etiket: args.etiket || args.alan || args.hint,
-              hedef: args.hedef || args.metin || args.buton || args.etiket,
-              deger: args.deger ?? args.value,
-              confirmed: args.confirmed === true,
-            });
-            return { content: [{ type: 'text', text: JSON.stringify(r) }] };
-          }
-          // Luca'dan TAZE mizan çek
-          if (toolName === 'luca_rapor_oku') {
-            toolUses.push({ name: toolName, args: {} });
-            emit({ type: 'tool', name: toolName });
-            const r = await this.sonRaporuOku(ctx);
-            return { content: [{ type: 'text', text: JSON.stringify(r) }] };
-          }
-          if (toolName === 'luca_mizan_cek') {
-            const args = a?.args || {};
-            toolUses.push({ name: toolName, args });
-            emit({ type: 'tool', name: toolName });
-            const r = await this.mizanCek(ctx, args);
-            return { content: [{ type: 'text', text: JSON.stringify(r) }] };
-          }
-          // Ofis kuralları: kaydet / listele
-          if (toolName === 'luca_kural_kaydet') {
-            const args = a?.args || {};
-            toolUses.push({ name: toolName, args });
-            emit({ type: 'tool', name: toolName });
-            const r = await this.kuralKaydet(
-              ctx,
-              String(args.baslik || ''),
-              String(args.kural || args.metin || ''),
-              args.onem,
-            );
-            return { content: [{ type: 'text', text: JSON.stringify(r) }] };
-          }
-          if (toolName === 'luca_kural_sil') {
-            const args = a?.args || {};
-            toolUses.push({ name: toolName, args });
-            emit({ type: 'tool', name: toolName });
-            const r = await this.kuralSil(ctx, String(args.baslik || ''));
-            return { content: [{ type: 'text', text: JSON.stringify(r) }] };
-          }
-          if (toolName === 'luca_kural_listele') {
-            toolUses.push({ name: toolName, args: {} });
-            emit({ type: 'tool', name: toolName });
-            const r = await this.ofisKurallari(ctx.tenantId);
-            return { content: [{ type: 'text', text: JSON.stringify({ ok: true, kurallar: r }) }] };
-          }
-          // Menü: haritayı çıkar / ara / menüden ekran aç
-          if (toolName === 'luca_menu_haritasi_cikar') {
-            const args = a?.args || {};
-            toolUses.push({ name: toolName, args });
-            emit({ type: 'tool', name: toolName });
-            const r = await this.cikarMenuHaritasi(ctx, { derinlik: args.derinlik });
-            return { content: [{ type: 'text', text: JSON.stringify(r) }] };
-          }
-          if (toolName === 'luca_menu_ara') {
-            const args = a?.args || {};
-            toolUses.push({ name: toolName, args });
-            emit({ type: 'tool', name: toolName });
-            const r = await this.araMenu(ctx.tenantId, String(args.sorgu || args.q || ''));
-            return { content: [{ type: 'text', text: JSON.stringify(r) }] };
-          }
-          if (toolName === 'luca_menu_git') {
-            const args = a?.args || {};
-            toolUses.push({ name: toolName, args });
-            emit({ type: 'tool', name: toolName });
-            const r = await this.runLucaAction(ctx, { action: 'menu', yol: args.yol || args.hedef });
-            return { content: [{ type: 'text', text: JSON.stringify(r) }] };
-          }
-          // Öğrenme: beceri kaydet / listele / getir
-          if (toolName === 'luca_beceri_kaydet') {
-            const args = a?.args || {};
-            toolUses.push({ name: toolName, args });
-            emit({ type: 'tool', name: toolName });
-            const r = await this.saveSkill(ctx, String(args.ad || ''), Array.isArray(args.adimlar) ? args.adimlar : [], args.aciklama);
-            return { content: [{ type: 'text', text: JSON.stringify(r) }] };
-          }
-          if (toolName === 'luca_beceri_listele') {
-            toolUses.push({ name: toolName, args: {} });
-            emit({ type: 'tool', name: toolName });
-            const r = await this.listSkills(ctx);
-            return { content: [{ type: 'text', text: JSON.stringify(r) }] };
-          }
-          if (toolName === 'luca_beceri_getir') {
-            const args = a?.args || {};
-            toolUses.push({ name: toolName, args });
-            emit({ type: 'tool', name: toolName });
-            const r = await this.getSkill(ctx, String(args.ad || ''));
+            const r = await this.executeOperatorTool(toolName, args, ctx);
             return { content: [{ type: 'text', text: JSON.stringify(r) }] };
           }
           if (!ALLOWED_TOOLS.has(toolName)) {

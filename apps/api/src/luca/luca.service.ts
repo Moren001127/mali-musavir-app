@@ -381,6 +381,21 @@ export class LucaService {
    */
   private async findOnlineOperatorDevice(tenantId: string): Promise<string | null> {
     const since = new Date(Date.now() - 3 * 60 * 1000);
+    // TERCİHLİ CİHAZ: Türkiye VPS'indeki 7/24 operatör (systemd luca-operator).
+    // Çevrimiçiyse PC operatörü açık olsa bile o seçilir; değilse eski
+    // davranış (en son ping atan -operator cihazı). Boş env = tercih yok.
+    const preferred = String(
+      process.env.LUCA_OPERATOR_PREFERRED_DEVICE ?? 'vps-radore-luca-operator',
+    ).trim();
+    if (preferred) {
+      const pref = await (this.prisma as any).agentStatus
+        .findFirst({
+          where: { tenantId, agent: 'luca', deviceId: preferred, lastPing: { gte: since } },
+          select: { deviceId: true },
+        })
+        .catch(() => null);
+      if (pref?.deviceId) return pref.deviceId;
+    }
     const row = await (this.prisma as any).agentStatus
       .findFirst({
         where: {

@@ -55,6 +55,8 @@ import { AutomationsService } from './automations.service';
     AutomationParserService,
     AutomationRunnerService,
     AutomationEventBus,
+    // Ekip (ajan kadrosu) eylem kataloğundaki araçları aynı dağıtıcıdan çalıştırır.
+    ActionDispatcherService,
   ],
 })
 export class AutomationsModule {}

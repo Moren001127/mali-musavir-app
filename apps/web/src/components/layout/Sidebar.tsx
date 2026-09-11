@@ -8,6 +8,7 @@ import {
   BookMarked,
   BookOpenText,
   BotMessageSquare,
+  Users,
   BrainCircuit,
   Building2,
   ChevronRight,
@@ -72,6 +73,7 @@ const navGroups = [
     icon: BrainCircuit,
     items: [
       { href: '/panel/moren-ai', label: 'MOREN AI', icon: BrainCircuit },
+      { href: '/panel/ekip', label: 'Ekip', icon: Users },
       { href: '/panel/mesajlar', label: 'WhatsApp Mesajlar', icon: MessageCircle },
     ],
   },

@@ -4,22 +4,17 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom';
 import { usePathname, useRouter } from 'next/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Bot, Loader2, MessageSquareText, Mic, MicOff, Minimize2, Radio, Send, Sparkles, X } from 'lucide-react';
+import { Bot, Loader2, Maximize2, MessageSquareText, Mic, MicOff, Minimize2, Send, Sparkles, X } from 'lucide-react';
 import { toast } from 'sonner';
-import {
-  chat,
-  getConversation,
-  getRealtimeVoiceToken,
-  listConversations,
-  logRealtimeVoiceUsage,
-  realtimePortalQuery,
-  type Message,
-} from '@/lib/moren-ai';
+import { chat, getConversation, listConversations, type Message } from '@/lib/moren-ai';
 import {
   getStoredMorenAiConversationId,
   MOREN_AI_CONVERSATION_EVENT,
   setStoredMorenAiConversationId,
 } from '@/lib/moren-ai-conversation-state';
+import { getCurrentRoute, resolveLocalPortalCommand } from '@/lib/moren-voice-routes';
+import { morenVoice, voiceStatusLabel } from '@/lib/moren-voice-session';
+import { useMorenVoice } from '@/hooks/useMorenVoice';
 import OfficeChatWidget from '@/components/office-chat/OfficeChatWidget';
 
 const ROSE = '#f09aa8';
@@ -32,154 +27,7 @@ const CHAT_PANEL_DEFAULT_WIDTH = 380;
 const CHAT_PANEL_DEFAULT_HEIGHT = 520;
 const CHAT_PANEL_POSITION_KEY = 'moren-ai-chat-panel-position';
 
-type VoiceStatus = 'idle' | 'connecting' | 'listening' | 'thinking' | 'speaking' | 'error';
-
-type PortalRoute = {
-  label: string;
-  path: string;
-  aliases?: string[];
-};
-
 type FloatingPoint = { x: number; y: number };
-
-const PORTAL_ROUTES: PortalRoute[] = [
-  { label: 'Gösterge Paneli', path: '/panel', aliases: ['dashboard', 'ana ekran', 'gösterge'] },
-  { label: 'MOREN AI', path: '/panel/moren-ai', aliases: ['moren ai', 'yapay zeka', 'ai'] },
-  { label: 'Otomasyonlar', path: '/panel/otomasyonlar', aliases: ['otomasyon'] },
-  { label: 'Mükellef Listesi', path: '/panel/mukellef-listesi', aliases: ['mükellefler', 'mukellef listesi'] },
-  { label: 'Aylık Takip Listesi', path: '/panel/mukellefler', aliases: ['aylık takip', 'aylik takip', 'takip listesi'] },
-  { label: 'İş Akışı', path: '/panel/is-yuku', aliases: ['iş yükü', 'is akisi', 'işler'] },
-  { label: 'Görevler & Notlar', path: '/panel/gorevler', aliases: ['görevler', 'notlar'] },
-  { label: 'Bildirimler', path: '/panel/bildirimler', aliases: ['bildirim'] },
-  { label: 'Fatura İşleme Merkezi', path: '/fatura-merkezi', aliases: ['fatura merkezi', 'fatura muhasebe'] },
-  { label: 'E-Fatura / E-Arşiv Sorgulama', path: '/panel/e-arsiv', aliases: ['e arşiv', 'e fatura', 'earsiv'] },
-  { label: 'Fatura İşleme', path: '/panel/ajanlar/mihsap', aliases: ['mihsap', 'mihsap fatura'] },
-  { label: 'İşlenen Faturalar', path: '/panel/faturalar', aliases: ['faturalar'] },
-  { label: 'Fiş Yazdırma', path: '/panel/fis-yazdirma', aliases: ['fiş', 'fis yazdirma'] },
-  { label: 'Banka Takip', path: '/panel/banka-takip', aliases: ['banka'] },
-  { label: 'Mükellef Profilleri', path: '/panel/ajanlar/profiller', aliases: ['profiller'] },
-  { label: 'KDV Kontrol', path: '/panel/kdv-kontrol', aliases: ['kdv'] },
-  { label: 'KDV Beyanname', path: '/panel/kdv-beyanname', aliases: ['kdv beyan'] },
-  { label: 'Beyannameler', path: '/panel/beyannameler', aliases: ['beyanname'] },
-  { label: 'e-Tebligat Kontrol', path: '/panel/ajanlar/tebligat', aliases: ['tebligat'] },
-  { label: 'SGK Otomasyonu', path: '/panel/ajanlar/sgk', aliases: ['sgk'] },
-  { label: 'Mizan', path: '/panel/mizan', aliases: ['mizan'] },
-  { label: 'İşletme Hesap Özeti', path: '/panel/isletme-hesap-ozeti', aliases: ['işletme', 'isletme hesap'] },
-  { label: 'Gelir Tablosu', path: '/panel/gelir-tablosu', aliases: ['gelir'] },
-  { label: 'Bilanço', path: '/panel/bilanco', aliases: ['bilanço', 'bilanco'] },
-  { label: 'E-Defter Kontrol', path: '/panel/ajanlar/e-defter', aliases: ['edefter', 'e defter'] },
-  { label: 'Cari Kasa & Tahsilat', path: '/panel/cari-kasa', aliases: ['cari', 'kasa', 'tahsilat'] },
-  { label: 'Duyurular', path: '/panel/duyurular', aliases: ['duyuru'] },
-  { label: 'HGS İhlal Sorgulama', path: '/panel/galeri/hgs-ihlal', aliases: ['hgs'] },
-  { label: 'WhatsApp Otomasyonu', path: '/panel/hatirlatmalar', aliases: ['whatsapp otomasyon', 'hatırlatmalar'] },
-  { label: 'Tüm Ajanlar', path: '/panel/ajanlar', aliases: ['ajanlar', 'tüm ajanlar'] },
-  { label: 'Luca Oturumu', path: '/panel/ajanlar/luca', aliases: ['luca'] },
-  { label: 'Sağlık Panosu', path: '/panel/ajan-saglik', aliases: ['sağlık', 'ajan sağlık'] },
-  { label: 'Ayarlar', path: '/panel/ayarlar', aliases: ['ayar'] },
-  { label: 'Denetim Günlüğü', path: '/panel/ayarlar/denetim', aliases: ['denetim'] },
-  { label: 'Kilitli Modüller', path: '/panel/sistem/kilitli-moduller', aliases: ['kilitli'] },
-];
-
-const PORTAL_QUERY_TOOL = {
-  type: 'function',
-  name: 'portal_query',
-  description:
-    'Portal verisi, mükellef, vergi, SGK, beyan, mali tablo, hafıza, WhatsApp ve ofis işi sorularını MOREN AI backendine iletir.',
-  parameters: {
-    type: 'object',
-    properties: {
-      question: {
-        type: 'string',
-        description: 'Kullanıcının sesli isteğinin kısa ve net metin hali.',
-      },
-    },
-    required: ['question'],
-  },
-};
-
-const PORTAL_NAVIGATE_TOOL = {
-  type: 'function',
-  name: 'portal_navigate',
-  description:
-    'Kullanıcı portalda bir modüle geçmek istediğinde sayfa değiştirmek için kullanılır. Konuşma devam eder.',
-  parameters: {
-    type: 'object',
-    properties: {
-      target: {
-        type: 'string',
-        description: 'Gidilecek modül adı veya portal yolu.',
-      },
-    },
-    required: ['target'],
-  },
-};
-
-function normalizeKey(value: string) {
-  return value
-    .toLocaleLowerCase('tr-TR')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9/]+/g, '');
-}
-
-function resolveRoute(target: string) {
-  const raw = String(target || '').trim();
-  if (!raw) return null;
-  if ((raw === '/fatura-merkezi' || raw.startsWith('/panel')) && !raw.includes('://')) {
-    const exact = PORTAL_ROUTES.find((route) => route.path === raw);
-    return exact || { label: raw, path: raw };
-  }
-
-  const key = normalizeKey(raw);
-  return PORTAL_ROUTES.find((route) => {
-    if (normalizeKey(route.label) === key) return true;
-    if (normalizeKey(route.path) === key) return true;
-    return (route.aliases || []).some((alias) => normalizeKey(alias) === key);
-  }) || null;
-}
-
-function getCurrentRoute(pathname: string | null) {
-  const path = pathname || '';
-  const exact = PORTAL_ROUTES.find((route) => route.path === path);
-  if (exact) return exact;
-  return [...PORTAL_ROUTES]
-    .sort((a, b) => b.path.length - a.path.length)
-    .find((route) => route.path !== '/panel' && path.startsWith(route.path)) || PORTAL_ROUTES[0];
-}
-
-function resolveLocalPortalCommand(text: string) {
-  const key = normalizeKey(text);
-  if (!key) return null;
-
-  if (/^(tamam|ok|olur|evet|hayir|hayır|sagol|sağol|tesekkurler|teşekkürler)$/.test(key)) {
-    return { type: 'ack' as const, message: 'Tamam.' };
-  }
-
-  const hasCommand = /(ac|aç|git|gid|gec|geç|goster|göster|listele|ekran|sayfa)/i.test(text);
-  for (const route of PORTAL_ROUTES) {
-    const names = [route.label, route.path, ...(route.aliases || [])].map(normalizeKey);
-    if (names.some((name) => key === name || (hasCommand && key.includes(name)))) {
-      return { type: 'navigate' as const, route };
-    }
-  }
-
-  return null;
-}
-
-function realtimeInstructions(currentModule: string, currentPath: string) {
-  const moduleList = PORTAL_ROUTES.map((route) => `${route.label}: ${route.path}`).join(' | ');
-  return [
-    'Türkçe konuş. Kadın sesli, doğal, sıcak ve sakin ol.',
-    'Sen portal genelinde çalışan canlı MOREN AI ses katmanısın.',
-    'Kullanıcı bir modüle geçmek isterse portal_navigate toolunu kullan; konuşmayı kapatma.',
-    'Kullanıcı veri, mükellef, mali tablo, beyan, SGK, WhatsApp veya ofis işi sorarsa portal_query toolunu kullan.',
-    'Selamlaşma, tamam/evet/hayır gibi kısa onaylar ve sohbet niteliğindeki cümlelerde portal_query kullanma; doğrudan çok kısa cevap ver.',
-    'Cevapları kısa, net ve mesleki tut: 1-3 cümle.',
-    'Karşındaki kişi mali müşavir meslek mensubu; "mali müşavire danışın", "uzmana başvurun" veya sorumluluk reddi deme.',
-    `Aktif ekran: ${currentModule} (${currentPath || '/panel'}).`,
-    `Gezilebilir modüller: ${moduleList}.`,
-  ].join(' ');
-}
 
 function clampFloatingRect(point: FloatingPoint, width: number, height: number): FloatingPoint {
   if (typeof window === 'undefined') return point;
@@ -191,33 +39,123 @@ function clampFloatingRect(point: FloatingPoint, width: number, height: number):
   };
 }
 
+/**
+ * Üst bar "Konuş" düğmesi — her portal sayfasında. Tıklayınca global ses oturumu
+ * başlar/durur; konuşurken orb + halka + dalga göstergesi. Portal dili: gradyan,
+ * az altın vurgu, düz gri kutu yok.
+ */
+function TopbarTalkButton({
+  onToggle,
+  onExpand,
+  showExpand,
+}: {
+  onToggle: () => void;
+  onExpand: () => void;
+  showExpand: boolean;
+}) {
+  const voice = useMorenVoice();
+  const active = voice.active;
+  const busy = voice.status === 'connecting';
+  const thinking = voice.status === 'thinking';
+  const label = active ? voiceStatusLabel(voice) : voice.status === 'error' ? 'Tekrar dene' : 'Konuş';
+  const isError = voice.status === 'error';
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <button
+        type="button"
+        onClick={onToggle}
+        disabled={busy}
+        className="group relative flex h-9 items-center gap-2 rounded-full pl-1.5 pr-3.5 transition disabled:opacity-70"
+        style={{
+          background: active
+            ? `linear-gradient(135deg, ${ROSE}, #b8687a 60%, #9f5260)`
+            : 'linear-gradient(135deg, rgba(240,154,168,0.18), rgba(212,184,118,0.10) 70%, rgba(255,255,255,0.03))',
+          border: `1px solid ${isError ? 'rgba(248,113,113,0.5)' : active ? 'rgba(255,255,255,0.22)' : 'rgba(240,154,168,0.34)'}`,
+          boxShadow: active
+            ? '0 10px 26px rgba(240,154,168,0.32), inset 0 1px 0 rgba(255,255,255,0.28)'
+            : 'inset 0 1px 0 rgba(255,255,255,0.05)',
+          color: active ? '#1a1012' : '#fbe3e8',
+        }}
+        title={active ? 'Sesi kapat' : 'Canlı MOREN AI ile konuş'}
+        aria-label={active ? 'Canlı sesi kapat' : 'Canlı MOREN AI ile konuş'}
+        aria-pressed={active}
+      >
+        <span className="relative grid h-6 w-6 shrink-0 place-items-center">
+          {active && !busy ? (
+            <>
+              <span className="moren-voice-ring absolute inset-0 rounded-full" style={{ border: '1.5px solid rgba(255,255,255,0.55)' }} />
+              <span className="moren-voice-ring absolute inset-0 rounded-full" style={{ border: '1.5px solid rgba(255,255,255,0.45)', animationDelay: '1.2s' }} />
+            </>
+          ) : null}
+          <span
+            className={`grid h-6 w-6 place-items-center rounded-full ${active ? 'moren-voice-orb-live' : ''}`}
+            style={{
+              background: active
+                ? 'radial-gradient(circle at 35% 30%, #fff1f4, #ffd9e0 45%, #f09aa8)'
+                : `radial-gradient(circle at 35% 30%, #ffd9e0, ${ROSE} 55%, #9f5260)`,
+              color: '#1a1012',
+              boxShadow: active ? '0 0 14px rgba(255,255,255,0.35)' : '0 4px 12px rgba(240,154,168,0.35)',
+            }}
+          >
+            {busy || thinking ? <Loader2 size={12} className="animate-spin" /> : voice.status === 'speaking' ? <Sparkles size={12} /> : active ? <MicOff size={12} /> : <Mic size={12} />}
+          </span>
+        </span>
+        <span className="flex items-center gap-2">
+          <span className="text-[12.5px] font-black tracking-wide">{label}</span>
+          {active && (voice.status === 'listening' || voice.status === 'speaking') ? (
+            <span className="flex items-end gap-[2px]" style={{ height: 12 }} aria-hidden>
+              {Array.from({ length: 5 }).map((_, index) => (
+                <span
+                  key={index}
+                  className="moren-voice-bar w-[2px] rounded-full"
+                  style={{ background: 'rgba(26,16,18,0.75)', animationDelay: `${index * 0.09}s` }}
+                />
+              ))}
+            </span>
+          ) : null}
+        </span>
+        {!active ? (
+          <span
+            className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full"
+            style={{
+              background: isError ? '#f87171' : GOLD,
+              border: '2px solid #080807',
+              boxShadow: isError ? '0 0 10px rgba(248,113,113,0.8)' : `0 0 10px ${GOLD}`,
+            }}
+          />
+        ) : null}
+      </button>
+      {showExpand ? (
+        <button
+          type="button"
+          onClick={onExpand}
+          className="flex h-9 w-9 items-center justify-center rounded-lg transition hover:bg-white/[0.06]"
+          style={{ border: '1px solid rgba(240,154,168,0.22)', color: ROSE, background: 'rgba(240,154,168,0.08)' }}
+          title="Ses panelini aç"
+          aria-label="Ses panelini aç"
+        >
+          <Maximize2 size={15} />
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 export default function GlobalMorenVoice() {
   const pathname = usePathname();
   const router = useRouter();
   const qc = useQueryClient();
+  const voice = useMorenVoice();
   const [expanded, setExpanded] = useState(false);
-  const [status, setStatus] = useState<VoiceStatus>('idle');
-  const [conversationId, setConversationId] = useState<string | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
   const [chatConversationId, setChatConversationId] = useState<string | null>(null);
   const [chatInput, setChatInput] = useState('');
   const [localChatNotice, setLocalChatNotice] = useState('');
-  const [lastAction, setLastAction] = useState('Hazır');
-  const [errorText, setErrorText] = useState('');
-  const [sessionCost, setSessionCost] = useState(0);
-  const [sessionTokens, setSessionTokens] = useState(0);
   const [chatPanelPosition, setChatPanelPosition] = useState<FloatingPoint | null>(null);
   const [topbarActionsEl, setTopbarActionsEl] = useState<HTMLElement | null>(null);
   const [desktopTopbar, setDesktopTopbar] = useState(false);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
   const chatPanelRef = useRef<HTMLDivElement | null>(null);
-  const peerRef = useRef<RTCPeerConnection | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const dataChannelRef = useRef<RTCDataChannel | null>(null);
-  const activeRef = useRef(false);
-  const modelRef = useRef('gpt-realtime-mini');
-  const startedAtRef = useRef(0);
-  const loggedResponsesRef = useRef<Set<string>>(new Set());
   const conversationIdRef = useRef<string | null>(null);
   const chatPanelDragRef = useRef<{
     pointerId: number;
@@ -231,10 +169,37 @@ export default function GlobalMorenVoice() {
   } | null>(null);
 
   const isPortalPath = !!pathname && (pathname.startsWith('/panel') || pathname.startsWith('/fatura-merkezi'));
-  // MOREN AI sayfasının kendi tam ses katmanı var; orada bu global yüzen paneli
-  // göstermeyiz (iki ses paneli üst üste binmesin). Ofis sohbeti etkilenmez.
+  // MOREN AI sayfasının kendi ses şeridi var; orada yüzen paneli göstermeyiz (üst bar
+  // "Konuş" düğmesi her sayfada kalır, sayfa aynı global oturumu gösterir).
   const isMorenAiPage = !!pathname && pathname.startsWith('/panel/moren-ai');
   const currentRoute = useMemo(() => getCurrentRoute(pathname), [pathname]);
+  const status = voice.status;
+  const active = voice.active;
+
+  // Global ses oturumu kancaları: gezinme (router) + sorgu bitince önbellek tazeleme.
+  useEffect(() => {
+    morenVoice.setHooks({
+      navigate: (path) => {
+        router.push(path);
+        setExpanded(true);
+      },
+      onQueryDone: (conversationId) => {
+        conversationIdRef.current = conversationId;
+        setChatConversationId(conversationId);
+        qc.invalidateQueries({ queryKey: ['ai-conversations'] }).catch(() => {});
+        qc.invalidateQueries({ queryKey: ['ai-conversation', conversationId] }).catch(() => {});
+      },
+    });
+  }, [qc, router]);
+
+  // Sayfa değişince oturum KOPMAZ; yalnız bağlam (aktif ekran) güncellenir.
+  useEffect(() => {
+    if (isPortalPath) morenVoice.setContext(pathname);
+  }, [isPortalPath, pathname]);
+
+  useEffect(() => {
+    if (!isPortalPath && voice.active) morenVoice.stop('Portal dışına çıkıldı');
+  }, [isPortalPath, voice.active]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -329,27 +294,20 @@ export default function GlobalMorenVoice() {
 
   const rememberConversationId = useCallback((id: string | null) => {
     conversationIdRef.current = id;
-    setConversationId(id);
     setChatConversationId(id);
     setStoredMorenAiConversationId(id);
   }, []);
 
   useEffect(() => {
-    conversationIdRef.current = conversationId;
-  }, [conversationId]);
-
-  useEffect(() => {
     const stored = getStoredMorenAiConversationId();
     if (stored) {
       conversationIdRef.current = stored;
-      setConversationId(stored);
       setChatConversationId(stored);
     }
 
     const handler = (event: Event) => {
       const id = (event as CustomEvent<{ conversationId?: string | null }>).detail?.conversationId || null;
       conversationIdRef.current = id;
-      setConversationId(id);
       setChatConversationId(id);
     };
     window.addEventListener(MOREN_AI_CONVERSATION_EVENT, handler);
@@ -421,281 +379,28 @@ export default function GlobalMorenVoice() {
       setChatInput('');
       router.push(localCommand.route.path);
       setLocalChatNotice(`${localCommand.route.label} açıldı.`);
-      setLastAction(`${localCommand.route.label} açıldı`);
       return;
     }
 
     sendMiniMessage.mutate(text);
   }, [chatInput, router, sendMiniMessage]);
 
-  const sendRealtimeEvent = useCallback((payload: any) => {
-    const dc = dataChannelRef.current;
-    if (dc?.readyState === 'open') dc.send(JSON.stringify(payload));
-  }, []);
-
-  const stopVoice = useCallback(() => {
-    activeRef.current = false;
-    dataChannelRef.current?.close();
-    dataChannelRef.current = null;
-    peerRef.current?.close();
-    peerRef.current = null;
-    streamRef.current?.getTracks().forEach((track) => track.stop());
-    streamRef.current = null;
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.srcObject = null;
-    }
-    setStatus('idle');
-    setLastAction('Durduruldu');
-  }, []);
-
-  const recordUsage = useCallback(async (event: any) => {
-    const response = event?.response;
-    const usage = response?.usage;
-    const responseId = response?.id || event?.event_id;
-    if (!usage || !responseId || loggedResponsesRef.current.has(responseId)) return;
-    loggedResponsesRef.current.add(responseId);
-    try {
-      const activeConversationId = await resolveActiveConversationId();
-      const logged = await logRealtimeVoiceUsage({
-        conversationId: activeConversationId || undefined,
-        model: modelRef.current,
-        responseId,
-        usage,
-        durationMs: startedAtRef.current ? Date.now() - startedAtRef.current : undefined,
-      });
-      setSessionCost((value) => value + (logged.costUsd || 0));
-      setSessionTokens((value) => value + (logged.inputTokens || 0) + (logged.outputTokens || 0));
-    } catch {
-      // Ses akışı maliyet logu yüzünden kesilmesin.
-    }
-  }, [resolveActiveConversationId]);
-
-  const sendFunctionOutput = useCallback((call: any, output: any) => {
-    sendRealtimeEvent({
-      type: 'conversation.item.create',
-      item: {
-        type: 'function_call_output',
-        call_id: call.call_id,
-        output: JSON.stringify(output),
-      },
-    });
-  }, [sendRealtimeEvent]);
-
-  const runPortalQuery = useCallback(async (call: any, args: any) => {
-    const question = String(args?.question || '').trim();
-    if (!question) {
-      sendFunctionOutput(call, { ok: false, answer: 'Soruyu net duyamadım, tekrar söyler misiniz?' });
-      return;
-    }
-
-    setStatus('thinking');
-    setLastAction('Yanıt hazırlanıyor');
-    const activeConversationId = await resolveActiveConversationId();
-    const result = await realtimePortalQuery({
-      conversationId: activeConversationId || undefined,
-      question,
-      currentPath: pathname || undefined,
-    });
-    rememberConversationId(result.conversationId);
-    await qc.invalidateQueries({ queryKey: ['ai-conversations'] });
-    await qc.invalidateQueries({ queryKey: ['ai-conversation', result.conversationId] });
-    sendFunctionOutput(call, {
-      ok: true,
-      answer: result.assistantMessage,
-      conversationId: result.conversationId,
-      usage: result.usage,
-    });
-    setLastAction('Yanıt hazırlandı');
-  }, [pathname, qc, rememberConversationId, resolveActiveConversationId, sendFunctionOutput]);
-
-  const runNavigation = useCallback((call: any, args: any) => {
-    const route = resolveRoute(String(args?.target || ''));
-    if (!route) {
-      sendFunctionOutput(call, {
-        ok: false,
-        answer: 'Bu modülü bulamadım. Modül adını bir kez daha söyleyin.',
-      });
-      return;
-    }
-    router.push(route.path);
-    setExpanded(true);
-    setLastAction(`${route.label} açıldı`);
-    sendFunctionOutput(call, {
-      ok: true,
-      answer: `${route.label} ekranını açtım. Konuşmaya devam edebilirsiniz.`,
-      path: route.path,
-      label: route.label,
-    });
-  }, [router, sendFunctionOutput]);
-
-  const handleFunctionCall = useCallback(async (call: any) => {
-    let args: any = {};
-    try {
-      args = call?.arguments ? JSON.parse(call.arguments) : {};
-    } catch {
-      args = {};
-    }
-
-    try {
-      if (call?.name === 'portal_navigate') {
-        runNavigation(call, args);
-      } else if (call?.name === 'portal_query') {
-        await runPortalQuery(call, args);
-      } else {
-        sendFunctionOutput(call, { ok: false, answer: 'Bu sesli işlem şu an desteklenmiyor.' });
-      }
-    } catch (error: any) {
-      sendFunctionOutput(call, {
-        ok: false,
-        answer: 'Portal işlemi tamamlanamadı; bağlantıyı kontrol edip tekrar deneyelim.',
-        error: error?.response?.data?.message || error?.message || 'tool_failed',
-      });
-      setStatus('error');
-      setErrorText(error?.response?.data?.message || error?.message || 'İşlem tamamlanamadı');
-    }
-  }, [runNavigation, runPortalQuery, sendFunctionOutput]);
-
-  const handleRealtimeEvent = useCallback(async (raw: MessageEvent) => {
-    let event: any;
-    try {
-      event = JSON.parse(String(raw.data || '{}'));
-    } catch {
-      return;
-    }
-
-    if (event.type === 'input_audio_buffer.speech_started') {
-      // Sadece arayüzü güncelle. Cevabı manuel İPTAL ETME: bu satır küçük/ani
-      // seslerde bile AI'ı anında susturuyordu. Gerçekten araya girmeyi sunucudaki
-      // akıllı sıra-algılama (semantic_vad + interrupt_response) doğal yönetir.
-      setStatus('listening');
-      setErrorText('');
-    }
-    if (event.type === 'input_audio_buffer.speech_stopped') setStatus('thinking');
-    if (event.type === 'response.created') setStatus('thinking');
-    if (event.type === 'response.audio.delta' || event.type === 'response.audio_transcript.delta') setStatus('speaking');
-    if (event.type !== 'response.done') return;
-
-    await recordUsage(event);
-    const calls = (event?.response?.output || []).filter((item: any) => item?.type === 'function_call');
-    if (calls.length > 0) {
-      for (const call of calls) await handleFunctionCall(call);
-      sendRealtimeEvent({
-        type: 'response.create',
-        response: {
-          tool_choice: 'none',
-          instructions:
-            'Tool çıktısındaki answer alanlarını temel alarak kısa, doğal Türkçe cevap ver. En fazla 1-3 cümle. Konuşmanın devam ettiğini hissettir.',
-        },
-      });
-      return;
-    }
-
-    if (activeRef.current) setStatus('listening');
-  }, [handleFunctionCall, recordUsage, sendRealtimeEvent]);
-
   const startVoice = useCallback(async () => {
-    if (peerRef.current) return;
-    setExpanded(true);
-    setStatus('connecting');
-    setErrorText('');
-    setLastAction('Bağlanıyor');
-    setSessionCost(0);
-    setSessionTokens(0);
-    startedAtRef.current = Date.now();
-    loggedResponsesRef.current = new Set();
-
     try {
-      const tokenData = await getRealtimeVoiceToken();
-      modelRef.current = tokenData?.model || tokenData?.session?.model || 'gpt-realtime-mini';
-      const ephemeralKey =
-        tokenData?.value ||
-        tokenData?.client_secret?.value ||
-        tokenData?.clientSecret?.value ||
-        tokenData?.secret?.value;
-      if (!ephemeralKey) throw new Error('Realtime oturum anahtarı alınamadı');
-
-      const pc = new RTCPeerConnection();
-      peerRef.current = pc;
-      activeRef.current = true;
-
-      pc.ontrack = async (event) => {
-        if (!audioRef.current) return;
-        audioRef.current.srcObject = event.streams[0];
-        audioRef.current.autoplay = true;
-        await audioRef.current.play().catch(() => {});
-      };
-      pc.onconnectionstatechange = () => {
-        if (['failed', 'closed', 'disconnected'].includes(pc.connectionState)) {
-          stopVoice();
-        }
-      };
-
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-      });
-      streamRef.current = stream;
-      stream.getAudioTracks().forEach((track) => pc.addTrack(track, stream));
-
-      const dc = pc.createDataChannel('oai-events');
-      dataChannelRef.current = dc;
-      dc.onmessage = (event) => {
-        handleRealtimeEvent(event).catch(() => {});
-      };
-      dc.onopen = () => {
-        setStatus('listening');
-        setLastAction('Dinliyor');
-        dc.send(JSON.stringify({
-          type: 'session.update',
-          session: {
-            instructions: realtimeInstructions(currentRoute.label, pathname || '/panel'),
-            tools: [PORTAL_QUERY_TOOL, PORTAL_NAVIGATE_TOOL],
-            tool_choice: 'auto',
-          },
-        }));
-      };
-
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-      const sdpResponse = await fetch('https://api.openai.com/v1/realtime/calls', {
-        method: 'POST',
-        body: offer.sdp,
-        headers: {
-          Authorization: `Bearer ${ephemeralKey}`,
-          'Content-Type': 'application/sdp',
-        },
-      });
-      if (!sdpResponse.ok) {
-        const text = await sdpResponse.text();
-        throw new Error(text.slice(0, 200) || 'Canlı ses bağlantısı kurulamadı');
-      }
-      await pc.setRemoteDescription({ type: 'answer', sdp: await sdpResponse.text() });
+      await morenVoice.start();
     } catch (error: any) {
-      stopVoice();
-      setStatus('error');
-      setErrorText(error?.response?.data?.message || error?.message || 'Canlı ses başlatılamadı');
-      toast.error('Canlı MOREN AI başlatılamadı: ' + (error?.response?.data?.message || error?.message || 'Bağlantı hatası'));
+      toast.error('Canlı MOREN AI başlatılamadı: ' + (error?.message || 'Bağlantı hatası'));
     }
-  }, [currentRoute.label, handleRealtimeEvent, pathname, stopVoice]);
+  }, []);
 
-  useEffect(() => {
-    if (!isPortalPath && activeRef.current) stopVoice();
-  }, [isPortalPath, stopVoice]);
-
-  useEffect(() => () => stopVoice(), [stopVoice]);
-
-  useEffect(() => {
-    if (!activeRef.current || dataChannelRef.current?.readyState !== 'open') return;
-    sendRealtimeEvent({
-      type: 'session.update',
-      session: {
-        instructions: realtimeInstructions(currentRoute.label, pathname || '/panel'),
-        tools: [PORTAL_QUERY_TOOL, PORTAL_NAVIGATE_TOOL],
-        tool_choice: 'auto',
-      },
-    });
-    setLastAction(`${currentRoute.label} ekranındasınız`);
-  }, [currentRoute.label, pathname, sendRealtimeEvent]);
+  const toggleVoice = useCallback(() => {
+    if (voice.active) {
+      morenVoice.stop();
+      return;
+    }
+    if (!isMorenAiPage) setExpanded(true);
+    startVoice().catch(() => {});
+  }, [isMorenAiPage, startVoice, voice.active]);
 
   const openMessaging = useCallback(() => {
     setExpanded(false);
@@ -703,64 +408,46 @@ export default function GlobalMorenVoice() {
     resolveActiveConversationId().catch(() => {});
   }, [resolveActiveConversationId]);
 
-  const statusLabel = status === 'connecting'
-    ? 'Bağlanıyor'
-    : status === 'listening'
-      ? 'Dinliyor'
-      : status === 'thinking'
-        ? 'Düşünüyor'
-        : status === 'speaking'
-          ? 'Konuşuyor'
-          : status === 'error'
-            ? 'Hata'
-            : 'Hazır';
+  // "Düşünüyor" sayacı: uzun bekleyişte saniye aksın (depo yalnız değişimde tetikler).
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (!voice.thinkingSince || !expanded) return;
+    const id = window.setInterval(() => setTick((v) => v + 1), 1000);
+    return () => window.clearInterval(id);
+  }, [voice.thinkingSince, expanded]);
+
+  const statusLabel = voiceStatusLabel(voice);
+  const thinkingSeconds = voice.thinkingSince ? Math.max(0, Math.round((Date.now() - voice.thinkingSince) / 1000)) : 0;
 
   if (!isPortalPath) return null;
 
   const useTopbarActions = desktopTopbar && !!topbarActionsEl;
-  const voiceTrigger = (!expanded && !isMorenAiPage) ? (
+
+  const mobileTrigger = (!expanded && !isMorenAiPage && !useTopbarActions) ? (
     <button
       type="button"
       onClick={() => {
         setExpanded(true);
-        if (status === 'idle' || status === 'error') startVoice().catch(() => {});
+        if (!voice.active) startVoice().catch(() => {});
       }}
-      className={
-        useTopbarActions
-          ? 'relative flex h-10 w-10 items-center justify-center rounded-lg transition hover:bg-white/[0.06]'
-          : 'fixed right-6 bottom-6 z-[85] flex h-14 w-14 items-center justify-center rounded-full transition hover:scale-[1.04] lg:hidden'
-      }
+      className="fixed right-6 bottom-6 z-[85] flex h-14 w-14 items-center justify-center rounded-full transition hover:scale-[1.04] lg:hidden"
       style={{
-        background: useTopbarActions ? 'rgba(212,184,118,0.10)' : `linear-gradient(135deg, ${GOLD}, #8b7649)`,
-        border: useTopbarActions ? '1px solid rgba(212,184,118,0.28)' : undefined,
-        boxShadow: useTopbarActions ? 'none' : '0 18px 45px rgba(212,184,118,0.28), inset 0 1px 0 rgba(255,255,255,0.28)',
-        color: useTopbarActions ? GOLD : '#0f0d0b',
+        background: active ? `linear-gradient(135deg, ${ROSE}, #9f5260)` : `linear-gradient(135deg, ${GOLD}, #8b7649)`,
+        boxShadow: active ? '0 18px 45px rgba(240,154,168,0.34), inset 0 1px 0 rgba(255,255,255,0.28)' : '0 18px 45px rgba(212,184,118,0.28), inset 0 1px 0 rgba(255,255,255,0.28)',
+        color: '#0f0d0b',
       }}
-      title={useTopbarActions ? undefined : 'Canlı MOREN AI'}
+      title="Canlı MOREN AI"
       aria-label="Canlı MOREN AI"
     >
-      <Radio size={useTopbarActions ? 18 : 22} />
-      {!useTopbarActions ? (
-        <span
-          className="absolute -bottom-1 -left-1 flex h-6 w-6 items-center justify-center rounded-full"
-          style={{
-            background: '#17110f',
-            border: '1px solid rgba(212,184,118,0.48)',
-            color: GOLD,
-            boxShadow: '0 8px 18px rgba(0,0,0,0.28)',
-          }}
-        >
-          <MessageSquareText size={12} />
-        </span>
-      ) : null}
+      <span className={`grid h-9 w-9 place-items-center rounded-full ${active ? 'moren-voice-orb-live' : ''}`} style={{ background: 'rgba(255,255,255,0.18)' }}>
+        {status === 'connecting' || status === 'thinking' ? <Loader2 size={20} className="animate-spin" /> : active ? <MicOff size={20} /> : <Mic size={20} />}
+      </span>
       <span
-        className="absolute -right-1 -top-1 h-3.5 w-3.5 rounded-full"
-        style={{
-          background: status === 'idle' || status === 'error' ? GOLD : '#22c55e',
-          border: '2px solid #0f0d0b',
-          boxShadow: status === 'idle' || status === 'error' ? `0 0 12px ${GOLD}` : '0 0 12px rgba(34,197,94,0.8)',
-        }}
-      />
+        className="absolute -bottom-1 -left-1 flex h-6 w-6 items-center justify-center rounded-full"
+        style={{ background: '#17110f', border: '1px solid rgba(212,184,118,0.48)', color: GOLD, boxShadow: '0 8px 18px rgba(0,0,0,0.28)' }}
+      >
+        <MessageSquareText size={12} />
+      </span>
     </button>
   ) : null;
 
@@ -768,7 +455,11 @@ export default function GlobalMorenVoice() {
     ? createPortal(
         <>
           <OfficeChatWidget enabled={isPortalPath} triggerMode="topbar" />
-          {voiceTrigger}
+          <TopbarTalkButton
+            onToggle={toggleVoice}
+            onExpand={() => setExpanded(true)}
+            showExpand={active && !expanded && !isMorenAiPage}
+          />
         </>,
         topbarActionsEl,
       )
@@ -778,28 +469,31 @@ export default function GlobalMorenVoice() {
     <>
       {topbarActions}
       {!useTopbarActions ? <OfficeChatWidget enabled={isPortalPath} /> : null}
-      <audio ref={audioRef} />
-      {isMorenAiPage ? null : !expanded ? (
-        !useTopbarActions ? voiceTrigger : null
-      ) : (
+      {mobileTrigger}
+      {isMorenAiPage || !expanded ? null : (
         <div
           className="fixed right-6 top-16 z-[85] w-[330px] overflow-hidden rounded-xl border shadow-2xl"
           style={{
-            background: 'linear-gradient(180deg, rgba(26,18,19,0.98), rgba(10,9,6,0.98))',
+            background: 'radial-gradient(120% 90% at 0% 0%, rgba(240,154,168,0.14), transparent 55%), linear-gradient(180deg, rgba(26,18,19,0.98), rgba(10,9,6,0.98))',
             borderColor: status === 'error' ? 'rgba(248,113,113,0.38)' : 'rgba(240,154,168,0.32)',
             boxShadow: '0 22px 70px rgba(0,0,0,0.46), 0 0 35px rgba(240,154,168,0.12)',
           }}
         >
+          <div className="absolute inset-x-0 top-0 h-[3px]" style={{ background: 'linear-gradient(90deg,#f09aa8,#e7b6a0,#d4b876,#c8a25e,#f09aa8)' }} />
           <div className="flex items-center gap-3 border-b px-4 py-3" style={{ borderColor: LINE }}>
-            <div
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg"
-              style={{
-                background: 'rgba(240,154,168,0.14)',
-                border: '1px solid rgba(240,154,168,0.28)',
-                color: ROSE,
-              }}
-            >
-              {status === 'connecting' ? <Loader2 size={18} className="animate-spin" /> : <Bot size={18} />}
+            <div className="relative grid h-10 w-10 shrink-0 place-items-center">
+              {active && status !== 'connecting' ? (
+                <>
+                  <span className="moren-voice-ring absolute inset-0 rounded-full" style={{ border: '2px solid rgba(240,154,168,0.5)' }} />
+                  <span className="moren-voice-ring absolute inset-0 rounded-full" style={{ border: '2px solid rgba(240,154,168,0.5)', animationDelay: '1.2s' }} />
+                </>
+              ) : null}
+              <div
+                className={`grid h-9 w-9 place-items-center rounded-full ${active ? 'moren-voice-orb-live' : ''}`}
+                style={{ background: 'radial-gradient(circle at 35% 30%, #ffd9e0, #f09aa8 55%, #9f5260)', color: '#1a1012' }}
+              >
+                {status === 'connecting' ? <Loader2 size={17} className="animate-spin" /> : <Bot size={17} />}
+              </div>
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
@@ -807,14 +501,16 @@ export default function GlobalMorenVoice() {
                 <span
                   className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
                   style={{
-                    background: status === 'error' ? 'rgba(248,113,113,0.14)' : 'rgba(34,197,94,0.12)',
-                    color: status === 'error' ? '#fca5a5' : '#86efac',
+                    background: status === 'error' ? 'rgba(248,113,113,0.14)' : active ? 'rgba(34,197,94,0.12)' : 'rgba(212,184,118,0.14)',
+                    color: status === 'error' ? '#fca5a5' : active ? '#86efac' : GOLD,
                   }}
                 >
                   {statusLabel}
                 </span>
               </div>
-              <p className="mt-0.5 truncate text-[11px]" style={{ color: MUTED }}>{currentRoute.label}</p>
+              <p className="mt-0.5 truncate text-[11px]" style={{ color: MUTED }}>
+                {voice.koordinator ? 'Muhatap: Koordinatör · ' : ''}{currentRoute.label}
+              </p>
             </div>
             <button
               type="button"
@@ -828,7 +524,7 @@ export default function GlobalMorenVoice() {
             <button
               type="button"
               onClick={() => {
-                stopVoice();
+                morenVoice.stop();
                 setExpanded(false);
               }}
               className="flex h-8 w-8 items-center justify-center rounded-lg transition hover:bg-white/[0.06]"
@@ -840,38 +536,59 @@ export default function GlobalMorenVoice() {
           </div>
 
           <div className="space-y-3 px-4 py-4">
-            <div className="flex items-center gap-3 rounded-lg border px-3 py-2.5" style={{ borderColor: LINE, background: 'rgba(255,255,255,0.025)' }}>
+            <div
+              className="flex items-center gap-3 rounded-lg border px-3 py-2.5"
+              style={{
+                borderColor: voice.longWait ? 'rgba(212,184,118,0.34)' : LINE,
+                background: voice.longWait
+                  ? 'linear-gradient(135deg, rgba(212,184,118,0.12), rgba(255,255,255,0.02))'
+                  : 'linear-gradient(135deg, rgba(240,154,168,0.07), rgba(255,255,255,0.02))',
+              }}
+            >
               <div
                 className="flex h-8 w-8 items-center justify-center rounded-full"
                 style={{
-                  background: status === 'idle' || status === 'error' ? 'rgba(212,184,118,0.13)' : 'rgba(34,197,94,0.14)',
-                  color: status === 'idle' || status === 'error' ? GOLD : '#86efac',
+                  background: !active || status === 'error' ? 'rgba(212,184,118,0.13)' : 'rgba(34,197,94,0.14)',
+                  color: !active || status === 'error' ? GOLD : '#86efac',
                 }}
               >
                 {status === 'speaking' ? <Sparkles size={15} /> : status === 'thinking' ? <Loader2 size={15} className="animate-spin" /> : <Mic size={15} />}
               </div>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-[12.5px] font-semibold" style={{ color: TEXT }}>{lastAction}</p>
+                <p className="truncate text-[12.5px] font-semibold" style={{ color: TEXT }}>{voice.lastAction}</p>
                 <p className="truncate text-[10.5px]" style={{ color: MUTED }}>
-                  Ses açıkken modüller arasında çalışmaya devam edebilirsiniz.
+                  {status === 'thinking'
+                    ? voice.longWait
+                      ? `${thinkingSeconds} sn — iş uzun sürüyor; sonuç mesajlaşmaya da düşer.`
+                      : 'Koordinatör veriyi topluyor…'
+                    : 'Ses açıkken modüller arasında çalışmaya devam edebilirsiniz.'}
                 </p>
               </div>
             </div>
 
-            {errorText ? (
+            {voice.errorText ? (
               <p className="rounded-lg border px-3 py-2 text-[11.5px]" style={{ borderColor: 'rgba(248,113,113,0.28)', color: '#fca5a5', background: 'rgba(248,113,113,0.08)' }}>
-                {errorText}
+                {voice.errorText}
+              </p>
+            ) : null}
+
+            {voice.lastAnswer ? (
+              <p
+                className="rounded-lg border px-3 py-2 text-[11.5px] leading-relaxed"
+                style={{ borderColor: 'rgba(240,154,168,0.18)', color: 'rgba(250,250,249,0.82)', background: 'rgba(240,154,168,0.06)', whiteSpace: 'pre-wrap' }}
+              >
+                {voice.lastAnswer.slice(0, 420)}
               </p>
             ) : null}
 
             <div className="grid grid-cols-2 gap-2 text-[11px]">
-              <div className="rounded-lg border px-3 py-2" style={{ borderColor: LINE, color: MUTED }}>
+              <div className="rounded-lg border px-3 py-2" style={{ borderColor: LINE, color: MUTED, background: 'linear-gradient(180deg, rgba(255,255,255,0.03), transparent)' }}>
                 <p>Oturum maliyeti</p>
-                <p className="mt-1 text-[13px] font-semibold tabular-nums" style={{ color: TEXT }}>${sessionCost.toFixed(4)}</p>
+                <p className="mt-1 text-[13px] font-semibold tabular-nums" style={{ color: TEXT }}>${voice.sessionCost.toFixed(4)}</p>
               </div>
-              <div className="rounded-lg border px-3 py-2" style={{ borderColor: LINE, color: MUTED }}>
+              <div className="rounded-lg border px-3 py-2" style={{ borderColor: LINE, color: MUTED, background: 'linear-gradient(180deg, rgba(255,255,255,0.03), transparent)' }}>
                 <p>Canlı token</p>
-                <p className="mt-1 text-[13px] font-semibold tabular-nums" style={{ color: TEXT }}>{sessionTokens}</p>
+                <p className="mt-1 text-[13px] font-semibold tabular-nums" style={{ color: TEXT }}>{voice.sessionTokens}</p>
               </div>
             </div>
 
@@ -887,20 +604,21 @@ export default function GlobalMorenVoice() {
               </button>
               <button
                 type="button"
-                onClick={() => (activeRef.current ? stopVoice() : startVoice())}
+                onClick={toggleVoice}
+                disabled={status === 'connecting'}
                 className="flex h-10 flex-1 items-center justify-center gap-2 rounded-lg text-[12.5px] font-semibold transition disabled:opacity-50"
                 style={{
-                  background: activeRef.current ? 'rgba(248,113,113,0.16)' : `linear-gradient(135deg, ${ROSE}, #9f5260)`,
-                  border: activeRef.current ? '1px solid rgba(248,113,113,0.34)' : '1px solid rgba(255,255,255,0.12)',
-                  color: activeRef.current ? '#fca5a5' : '#160d10',
+                  background: active ? 'rgba(248,113,113,0.16)' : `linear-gradient(135deg, ${ROSE}, #9f5260)`,
+                  border: active ? '1px solid rgba(248,113,113,0.34)' : '1px solid rgba(255,255,255,0.12)',
+                  color: active ? '#fca5a5' : '#160d10',
                 }}
               >
                 {status === 'connecting'
                   ? <Loader2 size={15} className="animate-spin" />
-                  : activeRef.current
+                  : active
                     ? <MicOff size={15} />
                     : <Mic size={15} />}
-                {activeRef.current ? 'Sesi Kapat' : 'Canlı Konuş'}
+                {active ? 'Sesi Kapat' : 'Canlı Konuş'}
               </button>
             </div>
           </div>

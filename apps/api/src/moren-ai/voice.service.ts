@@ -1,9 +1,12 @@
 import { Injectable, BadRequestException, Logger } from '@nestjs/common';
+import { sesKoordinatorAcik } from './ses-koordinator';
 
 /**
- * Sesli konuşma için STT (Speech-to-Text) + TTS (Text-to-Speech).
+ * Sesli konuşma için STT (Speech-to-Text) + TTS (Text-to-Speech) + Realtime oturum anahtarı.
  *
- * Yaklaşım: OpenAI Whisper (STT) + OpenAI TTS. Varsayılan kapalıdır.
+ * Yaklaşım: OpenAI Whisper (STT) + OpenAI TTS + OpenAI Realtime (kulak+ağız). Varsayılan kapalıdır.
+ * Beyin Max'tedir: Realtime'ın portal_query aracı → realtimePortalQuery → EKİP koordinatörü
+ * (EKIP_SES_KOORDINATOR != off) ya da chat(voiceMode).
  *
  * Fallback: MOREN_AI_ALLOW_OPENAI_API=1 yoksa frontend browser Web Speech API kullanır.
  */
@@ -40,6 +43,10 @@ export class VoiceService {
           `Türkçe konuş. Kadın sesli, doğal ve sakin ol. Sen ${office} ofisinin canlı ses katmanı MOREN AI'sın. ` +
           identityLine +
           'Karşındaki kişi bu ofisin mali müşavir meslek mensubu; asla "mali müşavire danışın", "uzmana başvurun" veya sorumluluk reddi deme. ' +
+          (sesKoordinatorAcik()
+            ? 'Muhatabın ofisin yapay çalışan ekibinin KOORDİNATÖRÜ (Ofis Müdürü): portal_query çağrısı doğrudan ona gider; o veriyi toplar, işi ekibe dağıtır, riskli işi sahibin onayına düşürür. Cevap gelmesi 10-60 saniye sürebilir; bekle, uydurma. Kullanıcı "canlı yap", "gerçek çalıştır", "kuru test olmasın" derse bu sözleri question metnine AYNEN koy (canlı mod bu sözle açılır). ' +
+              'Koordinatör "ONAYLIYORUM #PRV-…" beklediğini söylerse kullanıcı aynen bu sözü söyleyince onu question olarak ilet. '
+            : '') +
           'ARAÇ KULLANIMI: Veri, mükellef, vergi, SGK, beyan, mali tablo, hafıza, portal işlemi GEREKEN sorularda VE kullanıcının kendisi/kimliği/portal/kabiliyetleri ("neler yapabilirsin", "portal ne işe yarar") hakkındaki sorularda portal_query toolunu çağır ve dönen cevabı söyle. SADECE düz selamlaşma ve tamam/evet/hayır gibi tek kelimelik onaylarda tool kullanma; o zaman çok kısa cevap ver. ' +
           'Cevaplar kısa, net ve mesleki olsun: 1-3 cümle.',
         tool_choice: 'auto',
