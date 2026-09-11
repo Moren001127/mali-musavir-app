@@ -44,6 +44,10 @@ export interface VoiceSnapshot {
   taxpayerName: string | null;
   lastQuestion: string;
   lastAnswer: string;
+  /** Mikrofon giriş seviyesi 0-1 (150 ms'de bir). Kullanıcı "duyuyor mu?" diye bakabilsin. */
+  micLevel: number;
+  /** Mikrofon açık ama ses gelmiyor: parça 'muted' ya da 3 sn boyunca seviye 0. */
+  micSessiz: boolean;
 }
 
 export interface VoiceHooks {
@@ -132,6 +136,8 @@ class MorenVoiceStore {
     taxpayerName: null,
     lastQuestion: '',
     lastAnswer: '',
+    micLevel: 0,
+    micSessiz: false,
   };
   private listeners = new Set<Listener>();
   private hooks: VoiceHooks = {};
@@ -165,6 +171,10 @@ class MorenVoiceStore {
   private olayKuyrugu: Promise<void> = Promise.resolve();
   /** WebRTC 'disconnected' geçici olabilir; hemen kapatma, kısa bekle. */
   private kopmaTimer: number | null = null;
+  /** Mikrofon seviye ölçümü (AnalyserNode). */
+  private micCtx: AudioContext | null = null;
+  private micTimer: number | null = null;
+  private micSessizSayac = 0;
 
   // ─── depo ───
   getSnapshot = () => this.snapshot;
@@ -246,6 +256,62 @@ class MorenVoiceStore {
   private send(payload: any) {
     const dc = this.dc;
     if (dc?.readyState === 'open') dc.send(JSON.stringify(payload));
+  }
+
+  /**
+   * Mikrofon seviye ölçümü: 150 ms'de bir tepe genlik → micLevel; parça 'muted' ya da
+   * ~3 sn (20 örnek) sıfır seviye → micSessiz (Windows ses vermiyor: mikrofon tuşu / gizlilik / başka uygulama).
+   * Canlı teşhis (2026-09-12): bağlantı açıkken parça muted, seviye 0 → OpenAI hiç ses almıyordu.
+   */
+  private micOlcumBaslat(stream: MediaStream) {
+    this.micOlcumDurdur();
+    if (typeof window === 'undefined') return;
+    const AC: typeof AudioContext | undefined = (window as any).AudioContext || (window as any).webkitAudioContext;
+    if (!AC) return;
+    try {
+      const ctx = new AC();
+      const src = ctx.createMediaStreamSource(stream);
+      const an = ctx.createAnalyser();
+      an.fftSize = 1024;
+      src.connect(an);
+      const buf = new Uint8Array(an.fftSize);
+      this.micCtx = ctx;
+      this.micSessizSayac = 0;
+      const track = stream.getAudioTracks()[0];
+      const olc = () => {
+        an.getByteTimeDomainData(buf);
+        let max = 0;
+        for (let i = 0; i < buf.length; i++) {
+          const v = Math.abs(buf[i] - 128);
+          if (v > max) max = v;
+        }
+        const level = Math.min(1, max / 64);
+        const parcaSessiz = !track || track.muted || track.readyState !== 'live';
+        if (max <= 1) this.micSessizSayac += 1;
+        else this.micSessizSayac = 0;
+        const micSessiz = parcaSessiz || this.micSessizSayac >= 20;
+        if (level !== this.snapshot.micLevel || micSessiz !== this.snapshot.micSessiz) this.set({ micLevel: level, micSessiz });
+      };
+      this.micTimer = window.setInterval(olc, 150);
+      track?.addEventListener('mute', () => this.set({ micSessiz: true }));
+      track?.addEventListener('unmute', () => {
+        this.micSessizSayac = 0;
+        this.set({ micSessiz: false });
+      });
+    } catch {
+      /* ölçüm kurulamadı; ses akışını etkilemez */
+    }
+  }
+
+  private micOlcumDurdur() {
+    if (this.micTimer != null && typeof window !== 'undefined') window.clearInterval(this.micTimer);
+    this.micTimer = null;
+    try {
+      this.micCtx?.close();
+    } catch {}
+    this.micCtx = null;
+    this.micSessizSayac = 0;
+    if (this.snapshot.micLevel !== 0 || this.snapshot.micSessiz) this.set({ micLevel: 0, micSessiz: false });
   }
 
   private ensureAudio(): HTMLAudioElement | null {
@@ -652,6 +718,7 @@ class MorenVoiceStore {
       if (iptalEdildi()) return;
       this.stream = stream;
       stream.getAudioTracks().forEach((track) => pc.addTrack(track, stream));
+      this.micOlcumBaslat(stream);
 
       const dc = pc.createDataChannel('oai-events');
       this.dc = dc;
@@ -710,6 +777,7 @@ class MorenVoiceStore {
       this.pc?.close();
     } catch {}
     this.pc = null;
+    this.micOlcumDurdur();
     this.stream?.getTracks().forEach((track) => track.stop());
     this.stream = null;
     if (this.audio) {

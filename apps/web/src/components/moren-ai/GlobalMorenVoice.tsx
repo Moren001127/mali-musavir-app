@@ -566,6 +566,56 @@ export default function GlobalMorenVoice() {
               </div>
             </div>
 
+            {active ? (
+              <div
+                className="rounded-lg border px-3 py-2"
+                style={{
+                  borderColor: voice.micSessiz ? 'rgba(248,113,113,0.34)' : LINE,
+                  background: voice.micSessiz
+                    ? 'linear-gradient(135deg, rgba(248,113,113,0.10), rgba(255,255,255,0.02))'
+                    : 'linear-gradient(180deg, rgba(255,255,255,0.03), transparent)',
+                }}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-[10.5px] font-semibold" style={{ color: voice.micSessiz ? '#fca5a5' : MUTED }}>
+                    Mikrofon
+                  </span>
+                  {/* Seviye çubukları — kullanıcı "duyuyor mu?" diye bakınca cevabı burada görür */}
+                  <div className="flex h-4 flex-1 items-end gap-[3px]" aria-label="Mikrofon seviyesi">
+                    {Array.from({ length: 14 }, (_, i) => {
+                      const esik = (i + 1) / 14;
+                      const dolu = voice.micLevel >= esik;
+                      return (
+                        <span
+                          key={i}
+                          className="flex-1 rounded-sm transition-all duration-150"
+                          style={{
+                            height: `${35 + i * 4.5}%`,
+                            background: dolu
+                              ? i > 10
+                                ? '#f87171'
+                                : i > 7
+                                  ? GOLD
+                                  : '#4ade80'
+                              : 'rgba(255,255,255,0.08)',
+                          }}
+                        />
+                      );
+                    })}
+                  </div>
+                  <span className="w-8 text-right text-[10px] tabular-nums" style={{ color: MUTED }}>
+                    {Math.round(voice.micLevel * 100)}
+                  </span>
+                </div>
+                {voice.micSessiz ? (
+                  <p className="mt-1.5 text-[11px] leading-snug" style={{ color: '#fca5a5' }}>
+                    Mikrofondan ses gelmiyor. Klavyedeki mikrofon kapatma tuşunu, Windows Ayarlar → Ses → Giriş seviyesini ve mikrofonu
+                    kullanan başka bir uygulamayı (arama vb.) kontrol edin.
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+
             {voice.errorText ? (
               <p className="rounded-lg border px-3 py-2 text-[11.5px]" style={{ borderColor: 'rgba(248,113,113,0.28)', color: '#fca5a5', background: 'rgba(248,113,113,0.08)' }}>
                 {voice.errorText}
