@@ -186,6 +186,8 @@ class MorenVoiceStore {
     this.send({
       type: 'session.update',
       session: {
+        // OpenAI Realtime (GA) session.update'te zorunlu; yoksa "Missing required parameter: 'session.type'".
+        type: 'realtime',
         instructions: realtimeInstructions(this.snapshot),
         tools: [PORTAL_QUERY_TOOL, PORTAL_NAVIGATE_TOOL],
         tool_choice: 'auto',
