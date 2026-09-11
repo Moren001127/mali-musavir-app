@@ -1,51 +1,33 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Mic, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import type { Ajan, AjanSonKosu, EkipOnay, IsDosyasi } from '@/lib/ekip';
 import type { Kosu } from './kosular';
-import { AJAN_RENK, EKIP_ACCENT, RENK, ajanKisaltma, ajanRengi, goreliSaat, ikonStili, kartArkaPlan, modelRengi, sayacMetni, seritStili } from './ortak';
+import { EKIP_ACCENT, RENK, ajanKisaAd, ajanKisaltma, ajanRengi, avatarHalkaStili, goreliSaat, sayacMetni } from './ortak';
 
-/** Ajan satırının alt bilgi metni + rengi. */
-function sonDurum(
-  ajan: Ajan,
-  isler: IsDosyasi[],
-  kosu: Kosu | undefined,
-  simdi: number,
-): { metin: string; renk: string; nokta: 'calisiyor' | 'hata' | null } {
-  if (kosu && !kosu.bitti) {
-    return { metin: `çalışıyor · ${sayacMetni(simdi - kosu.basladi)}`, renk: EKIP_ACCENT, nokta: 'calisiyor' };
-  }
-  // İki kaynak var: backend #3 `kadro[].sonKosu` (30 sn) ve isler(200) (30 sn / koşuda 10 sn).
-  // Hangisi daha YENİ ise o kazanır; aynı iş ise status/süre isler'den alınır (kadro takılı 'running' göstermesin).
+/** Ajanın anlık durumu: nokta türü + araç ipucu metni. */
+function sonDurum(ajan: Ajan, isler: IsDosyasi[], kosu: Kosu | undefined, simdi: number): { metin: string; nokta: 'calisiyor' | 'hata' | null } {
+  if (kosu && !kosu.bitti) return { metin: `çalışıyor · ${sayacMetni(simdi - kosu.basladi)}`, nokta: 'calisiyor' };
+  // İki kaynak: backend #3 `kadro[].sonKosu` (30 sn) ve isler(200). Daha YENİ olan kazanır; aynı işse status isler'den.
   const isKaydi = isler.find((i) => i.ajanId === ajan.id) ?? null;
   const kadroKaydi = ajan.sonKosu ?? null;
   let son: AjanSonKosu | null;
-  if (isKaydi && kadroKaydi && kadroKaydi.id && kadroKaydi.id === isKaydi.id) {
-    son = { ...kadroKaydi, ...isKaydi };
-  } else if (isKaydi && (!kadroKaydi?.createdAt || new Date(isKaydi.createdAt).getTime() >= new Date(kadroKaydi.createdAt).getTime())) {
-    son = isKaydi;
-  } else {
-    son = kadroKaydi;
-  }
-  if (!son || !son.createdAt) {
-    return { metin: isler.length >= 200 ? 'son 200 işte yok' : 'hiç koşmadı', renk: RENK.sonuk, nokta: null };
-  }
+  if (isKaydi && kadroKaydi && kadroKaydi.id && kadroKaydi.id === isKaydi.id) son = { ...kadroKaydi, ...isKaydi };
+  else if (isKaydi && (!kadroKaydi?.createdAt || new Date(isKaydi.createdAt).getTime() >= new Date(kadroKaydi.createdAt).getTime())) son = isKaydi;
+  else son = kadroKaydi;
+  if (!son || !son.createdAt) return { metin: isler.length >= 200 ? 'son 200 işte yok' : 'hiç koşmadı', nokta: null };
   const mod = son.dryRun === false ? 'CANLI' : 'KURU';
-  if (son.status === 'running') {
-    const ms = simdi - new Date(son.startedAt || son.createdAt).getTime();
-    return { metin: `çalışıyor · ${sayacMetni(ms)}`, renk: EKIP_ACCENT, nokta: 'calisiyor' };
-  }
-  if (son.status === 'failed') {
-    return { metin: `${goreliSaat(son.createdAt)} · ${mod} · Hata`, renk: RENK.kirmizi, nokta: 'hata' };
-  }
+  if (son.status === 'running') return { metin: `çalışıyor · ${sayacMetni(simdi - new Date(son.startedAt || son.createdAt).getTime())}`, nokta: 'calisiyor' };
+  if (son.status === 'failed') return { metin: `${goreliSaat(son.createdAt)} · ${mod} · Hata`, nokta: 'hata' };
   const arac = son.toolSayisi != null ? ` · ${son.toolSayisi} araç` : '';
-  return { metin: `${goreliSaat(son.createdAt)} · ${mod}${arac} · ${son.status === 'done' ? 'Bitti' : 'Bekliyor'}`, renk: RENK.ikincil, nokta: null };
+  return { metin: `${goreliSaat(son.createdAt)} · ${mod}${arac} · ${son.status === 'done' ? 'Bitti' : 'Bekliyor'}`, nokta: null };
 }
 
 /**
- * Kadro şeridi — masaüstünde 13 satırlık ince liste, mobilde yatay avatar şeridi.
- * Tık → seçili ajan değişir; KOŞU KESİLMEZ. Açıklama / onay noktası / "Görev ver" satırda YOK.
+ * Kadro — 13 ajan TEK SIRA avatar (48px gradyan halka + kısaltma; altında tek kelime ad).
+ * Sarmalanmaz; dar ekranda yatay kayar (sayfa gövdesi kaymaz). Tık → seçili ajan; KOŞU KESİLMEZ.
+ * Durum noktası: çalışıyor (nabızlı gök mavi) · hata (kırmızı) · bekleyen onay (turuncu sayı).
  */
 export function AjanSeridi({
   ajanlar,
@@ -67,125 +49,77 @@ export function AjanSeridi({
   const [simdi, setSimdi] = useState(() => Date.now());
   const seritRef = useRef<HTMLDivElement>(null);
 
-  // Canlı sayaç (çalışan koşu varken saniyede bir; yoksa dakikada bir "12 dk önce" tazelenir)
   const aktifVar = Array.from(kosular.values()).some((k) => !k.bitti) || isler.some((i) => i.status === 'running');
   useEffect(() => {
     const t = setInterval(() => setSimdi(Date.now()), aktifVar ? 1000 : 60_000);
     return () => clearInterval(t);
   }, [aktifVar]);
 
-  // Mobil şeritte seçili avatarı ortala
+  // Seçili avatarı görünür tut (yatay kayan sırada)
   useEffect(() => {
     const kap = seritRef.current;
-    if (!kap || kap.offsetParent === null) return;
-    const el = kap.querySelector<HTMLElement>(`[data-ajan="${seciliAjanId}"]`);
-    el?.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+    if (!kap || kap.scrollWidth <= kap.clientWidth) return;
+    kap.querySelector<HTMLElement>(`[data-ajan="${seciliAjanId}"]`)?.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
   }, [seciliAjanId]);
 
   const bekleyenOnay = (a: Ajan) => a.bekleyenOnay ?? onaylar.filter((o) => o.ajanId === a.id).length;
 
+  if (yukleniyor && !ajanlar.length) {
+    return (
+      <div className="flex items-center gap-2 px-1 text-[11.5px]" style={{ color: RENK.ikincil }}>
+        <Loader2 size={12} className="animate-spin" /> Kadro yükleniyor…
+      </div>
+    );
+  }
+
   return (
-    <section className="relative min-w-0 overflow-hidden rounded-2xl" style={kartArkaPlan(EKIP_ACCENT)}>
-      <div className="h-1 w-full" style={seritStili(EKIP_ACCENT)} />
-      <div className="flex items-center gap-2 px-3 py-2">
-        <span className="text-xs font-bold" style={{ color: RENK.metin }}>
-          Kadro · {ajanlar.length || 13}
-        </span>
-        {yukleniyor && <Loader2 size={11} className="animate-spin" style={{ color: RENK.ikincil }} />}
-      </div>
-
-      {/* Masaüstü / tablet: 13 satır */}
-      <div className="hidden flex-col pb-1 lg:flex">
-        {ajanlar.map((a) => {
-          const renk = ajanRengi(a.id);
-          const secili = a.id === seciliAjanId;
-          const d = sonDurum(a, isler, kosular.get(a.id), simdi);
-          const onay = bekleyenOnay(a);
-          const koordinator = a.id === 'koordinator';
-          return (
-            <button
-              key={a.id}
-              type="button"
-              onClick={() => onSec(a.id)}
-              className="flex h-12 w-full items-center gap-2.5 px-3 text-left transition-colors hover:bg-white/[0.03]"
-              style={secili ? { background: kartArkaPlan(renk, true).background, borderLeft: `3px solid ${renk}` } : { borderLeft: '3px solid transparent' }}
-              title={a.unvan}
-            >
-              <span className="relative flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-[10px] font-black" style={{ ...ikonStili(renk), ...(koordinator ? { boxShadow: `0 0 0 2px ${AJAN_RENK.koordinator}88` } : {}) }}>
-                {ajanKisaltma(a.id, a.ad)}
-                {koordinator && (
-                  <Mic size={10} className="absolute -bottom-1 -right-1 rounded-full p-[1px]" style={{ background: '#0f0d0b', color: renk }} />
-                )}
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="flex items-center gap-1.5">
-                  <span className="truncate text-[13px] font-bold leading-tight" style={{ color: RENK.metin }}>{a.ad}</span>
-                  <span className="flex-shrink-0 rounded px-1 text-[9px] font-bold leading-4" style={{ background: `${modelRengi(a.model)}1a`, color: modelRengi(a.model) }}>
-                    {a.model}
-                  </span>
-                </span>
-                <span className="block truncate text-[11px] leading-tight" style={{ color: d.renk }}>{d.metin}</span>
-              </span>
-              <span className="flex flex-shrink-0 items-center gap-1.5">
-                {onay > 0 && (
-                  <span className="rounded-full px-1.5 text-[10px] font-bold leading-4" style={{ background: `${RENK.turuncu}22`, border: `1px solid ${RENK.turuncu}66`, color: RENK.turuncu }} title={`${onay} bekleyen onay`}>
-                    {onay}
-                  </span>
-                )}
-                {d.nokta === 'calisiyor' && <span className="h-2 w-2 animate-pulse rounded-full" style={{ background: EKIP_ACCENT, boxShadow: `0 0 8px ${EKIP_ACCENT}` }} />}
-                {d.nokta === 'hata' && <span className="h-2 w-2 rounded-full" style={{ background: RENK.kirmizi }} />}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Mobil: yatay avatar şeridi */}
-      <div ref={seritRef} className="flex snap-x gap-3 overflow-x-auto px-3 pb-3 pt-1 lg:hidden">
-        {ajanlar.map((a) => {
-          const renk = ajanRengi(a.id);
-          const secili = a.id === seciliAjanId;
-          const d = sonDurum(a, isler, kosular.get(a.id), simdi);
-          const onay = bekleyenOnay(a);
-          const koordinator = a.id === 'koordinator';
-          return (
-            <button
-              key={a.id}
-              type="button"
-              data-ajan={a.id}
-              onClick={() => onSec(a.id)}
-              className="flex w-16 flex-shrink-0 snap-center flex-col items-center gap-1"
-              title={`${a.ad} — ${d.metin}`}
-            >
+    <div ref={seritRef} className="flex min-w-0 items-start gap-1.5 overflow-x-auto px-0.5 pb-1 pt-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      {ajanlar.map((a) => {
+        const renk = ajanRengi(a.id);
+        const secili = a.id === seciliAjanId;
+        const d = sonDurum(a, isler, kosular.get(a.id), simdi);
+        const onay = bekleyenOnay(a);
+        return (
+          <button
+            key={a.id}
+            type="button"
+            data-ajan={a.id}
+            onClick={() => onSec(a.id)}
+            className="group flex min-w-[66px] max-w-[112px] flex-1 flex-shrink-0 flex-col items-center gap-1.5 rounded-xl px-0.5 py-1.5 transition-[transform,opacity] duration-150 hover:-translate-y-px"
+            style={{ opacity: secili ? 1 : 0.65 }}
+            title={`${a.ad} — ${a.unvan}\n${d.metin}`}
+            aria-pressed={secili}
+          >
+            <span className="relative flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full p-[2px] transition-[box-shadow] duration-150" style={avatarHalkaStili(renk, secili)}>
               <span
-                className={`relative flex h-14 w-14 items-center justify-center rounded-full text-[13px] font-black ${d.nokta === 'calisiyor' ? 'animate-pulse' : ''}`}
-                style={{
-                  ...ikonStili(renk),
-                  boxShadow: secili
-                    ? `0 0 0 3px ${renk}, 0 0 0 5px rgba(0,0,0,0.6)`
-                    : koordinator
-                      ? `0 0 0 2px ${AJAN_RENK.koordinator}88`
-                      : d.nokta === 'calisiyor'
-                        ? `0 0 0 2px ${EKIP_ACCENT}`
-                        : d.nokta === 'hata'
-                          ? `0 0 0 2px ${RENK.kirmizi}`
-                          : 'none',
-                }}
+                className="flex h-full w-full items-center justify-center rounded-full text-[12px] font-black tracking-wide"
+                style={{ background: 'linear-gradient(160deg, #1a1815, #0b0a08)', color: renk }}
               >
                 {ajanKisaltma(a.id, a.ad)}
-                {onay > 0 && (
-                  <span className="absolute -right-1 -top-1 rounded-full px-1.5 text-[10px] font-bold leading-4" style={{ background: RENK.turuncu, color: '#0f0d0b' }}>
-                    {onay}
-                  </span>
-                )}
               </span>
-              <span className="w-full truncate text-center text-[10px] font-semibold" style={{ color: secili ? RENK.metin : RENK.ikincil }}>
-                {a.ad.split(' ')[0]}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-    </section>
+              {/* Durum noktası */}
+              {d.nokta === 'calisiyor' && (
+                <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 animate-pulse rounded-full" style={{ background: EKIP_ACCENT, boxShadow: `0 0 0 2px #0b0a08, 0 0 10px ${EKIP_ACCENT}` }} title="çalışıyor" />
+              )}
+              {d.nokta === 'hata' && (
+                <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full" style={{ background: RENK.kirmizi, boxShadow: '0 0 0 2px #0b0a08' }} title="son koşu hatalı" />
+              )}
+              {onay > 0 && (
+                <span
+                  className="absolute -right-1 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[10px] font-black leading-none"
+                  style={{ background: RENK.turuncu, color: '#0f0d0b', boxShadow: '0 0 0 2px #0b0a08' }}
+                  title={`${onay} bekleyen onay`}
+                >
+                  {onay}
+                </span>
+              )}
+            </span>
+            <span className="w-full truncate text-center text-[10.5px] font-semibold leading-tight" style={{ color: secili ? RENK.metin : 'rgba(250,250,249,0.8)' }}>
+              {ajanKisaAd(a.id, a.ad)}
+            </span>
+          </button>
+        );
+      })}
+    </div>
   );
 }

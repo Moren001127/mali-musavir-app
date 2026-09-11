@@ -1,11 +1,12 @@
 'use client';
 
-import { Fragment, forwardRef, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { FolderOpen, Loader2, Wrench, ShieldAlert, GraduationCap, FlaskConical, ChevronDown, RefreshCw, RotateCcw, X } from 'lucide-react';
+import { FolderOpen, Loader2, Wrench, ShieldAlert, GraduationCap, FlaskConical, ChevronDown, RefreshCw, RotateCcw, X, Filter } from 'lucide-react';
 import { getIs, isOmurgaYok, type Ajan, type IsDosyasi } from '@/lib/ekip';
 import type { KomutTaslak } from './KomutKutusu';
-import { EKIP_ACCENT, RENK, ajanKisaltma, ajanRengi, aracAdi, bugunMu, ikonStili, isDurumu, kartArkaPlan, kaynakEtiketi, seritStili, sureKisa, tarihKisa } from './ortak';
+import { BosDurum } from './Kart';
+import { EKIP_ACCENT, RENK, ajanKisaltma, ajanRengi, aracAdi, bugunMu, ikonStili, isDurumu, kaynakEtiketi, sureKisa, tarihKisa } from './ortak';
 import { OmurgaYokBilgi } from './OmurgaYokBilgi';
 
 type Gun = 'bugun' | '7' | 'tumu';
@@ -143,7 +144,7 @@ function Cip({ aktif, onClick, children, renk = EKIP_ACCENT, title }: { aktif: b
       type="button"
       onClick={onClick}
       title={title}
-      className="rounded-md px-2 py-0.5 text-[11px] font-semibold transition-colors"
+      className="rounded-full px-2.5 py-0.5 text-[11px] font-semibold transition-[background-color,border-color,color] duration-150"
       style={aktif ? { background: `${renk}22`, border: `1px solid ${renk}66`, color: renk } : { background: 'transparent', border: '1px solid rgba(255,255,255,0.08)', color: RENK.ikincil }}
     >
       {children}
@@ -159,22 +160,30 @@ function onayBekliyorMu(is: IsDosyasi): boolean {
  * İş Dosyaları — isler(200) üzerinde istemci süzgeçleri; yoğun tablo (masaüstü) / kart-satır (mobil).
  * Satır tık → IsDetay + "Tekrar çalıştır (kuru)". Dışarıdan `acikIsId` ile satır açılır (süzgeç gerekirse gevşer).
  */
-export const IsDosyalari = forwardRef<
-  HTMLElement,
-  {
-    isler: IsDosyasi[];
-    isLoading: boolean;
-    error: unknown;
-    ajanlar: Ajan[];
-    seciliAjanId: string;
-    mukellefAd: (id?: string | null) => string | undefined;
-    acikIsId: string | null;
-    onAcikIsId: (id: string | null) => void;
-    onTaslak: (t: Omit<KomutTaslak, 'nonce'>) => void;
-    /** SabahBandi "koşu bugün" → gün süzgecini "Bugün"e alır. */
-    disSuzgec: { nonce: number; gun?: Gun } | null;
-  }
->(function IsDosyalari({ isler, isLoading, error, ajanlar, seciliAjanId, mukellefAd, acikIsId, onAcikIsId, onTaslak, disSuzgec }, ref) {
+export function IsDosyalari({
+  isler,
+  isLoading,
+  error,
+  ajanlar,
+  seciliAjanId,
+  mukellefAd,
+  acikIsId,
+  onAcikIsId,
+  onTaslak,
+  disSuzgec,
+}: {
+  isler: IsDosyasi[];
+  isLoading: boolean;
+  error: unknown;
+  ajanlar: Ajan[];
+  seciliAjanId: string;
+  mukellefAd: (id?: string | null) => string | undefined;
+  acikIsId: string | null;
+  onAcikIsId: (id: string | null) => void;
+  onTaslak: (t: Omit<KomutTaslak, 'nonce'>) => void;
+  /** Başlık rozeti "koşu bugün" → gün süzgecini "Bugün"e alır. */
+  disSuzgec: { nonce: number; gun?: Gun } | null;
+}) {
   const qc = useQueryClient();
   const [gun, setGun] = useState<Gun>('bugun');
   const [durum, setDurum] = useState<Durum>('tumu');
@@ -255,28 +264,19 @@ export const IsDosyalari = forwardRef<
     );
   };
 
-  return (
-    <section ref={ref} className="relative min-w-0 overflow-hidden rounded-2xl" style={kartArkaPlan(EKIP_ACCENT)}>
-      <div className="h-1 w-full" style={seritStili(EKIP_ACCENT)} />
-      <div className="flex flex-wrap items-center gap-2 px-3 py-2.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-        <FolderOpen size={15} style={{ color: EKIP_ACCENT }} />
-        <h2 className="text-sm font-bold" style={{ color: RENK.metin }}>İş Dosyaları</h2>
-        <span className="text-[11px]" style={{ color: RENK.sonuk }}>
-          {suzulmus.length}/{isler.length}
-        </span>
-        <button
-          type="button"
-          onClick={yenile}
-          className="ml-auto flex items-center gap-1 rounded-lg px-2 py-1 text-[11px]"
-          style={{ color: RENK.ikincil, border: '1px solid rgba(255,255,255,0.08)' }}
-          title="Yenile"
-        >
-          <RefreshCw size={11} className={yenileniyor ? 'animate-spin' : ''} /> Yenile
-        </button>
-      </div>
+  const suzgecleriKaldir = () => {
+    setGun('tumu');
+    setDurum('tumu');
+    setMod('hepsi');
+    setKaynak('');
+    setAjanSuzgec(null);
+  };
 
-      {/* Süzgeç çipleri */}
-      <div className="flex flex-wrap items-center gap-1.5 px-3 py-2">
+  return (
+    <div className="flex min-w-0 flex-col gap-3">
+      {/* Araç çubuğu: süzgeç çipleri · sayı · Yenile (sekme adı zaten "İş dosyaları" → ikinci başlık yok) */}
+      <div className="flex flex-wrap items-center gap-1.5 pb-2.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+        <Filter size={12} style={{ color: RENK.sonuk }} />
         <Cip aktif={gun === 'bugun'} onClick={() => setGun('bugun')}>Bugün</Cip>
         <Cip aktif={gun === '7'} onClick={() => setGun('7')}>7 gün</Cip>
         <Cip aktif={gun === 'tumu'} onClick={() => setGun('tumu')}>Tümü</Cip>
@@ -293,7 +293,7 @@ export const IsDosyalari = forwardRef<
         <select
           value={kaynak}
           onChange={(e) => setKaynak(e.target.value)}
-          className="rounded-md px-1.5 py-0.5 text-[11px] outline-none"
+          className="rounded-full px-2 py-0.5 text-[11px] outline-none"
           style={{ background: 'rgba(0,0,0,0.3)', border: `1px solid ${kaynak ? `${EKIP_ACCENT}66` : 'rgba(255,255,255,0.08)'}`, color: kaynak ? EKIP_ACCENT : RENK.ikincil }}
           title="Kaynak"
         >
@@ -308,7 +308,7 @@ export const IsDosyalari = forwardRef<
           <button
             type="button"
             onClick={() => setAjanSuzgec(null)}
-            className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold"
+            className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
             style={{ background: `${ajanRengi(ajanSuzgec)}1a`, border: `1px solid ${ajanRengi(ajanSuzgec)}66`, color: RENK.metin }}
             title="Süzgeci kaldır — tüm ajanlar"
           >
@@ -320,43 +320,49 @@ export const IsDosyalari = forwardRef<
             tüm ajanlar
           </Cip>
         )}
+        <span className="ml-auto flex items-center gap-2">
+          <span className="text-[11px] tabular-nums" style={{ color: RENK.sonuk }}>
+            {suzulmus.length}/{isler.length}
+          </span>
+          <button
+            type="button"
+            onClick={yenile}
+            className="flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px]"
+            style={{ color: RENK.ikincil, border: '1px solid rgba(255,255,255,0.10)' }}
+            title="Yenile"
+          >
+            <RefreshCw size={11} className={yenileniyor ? 'animate-spin' : ''} /> Yenile
+          </button>
+        </span>
       </div>
 
-      <div className="px-3 pb-3">
+      <div>
         {isLoading ? (
-          <div className="flex items-center gap-2 py-6 text-xs" style={{ color: RENK.ikincil }}>
+          <div className="flex items-center justify-center gap-2 py-10 text-[12.5px]" style={{ color: RENK.ikincil }}>
             <Loader2 size={12} className="animate-spin" /> Yükleniyor…
           </div>
         ) : error ? (
           isOmurgaYok(error) ? (
             <OmurgaYokBilgi kucuk />
           ) : (
-            <div className="py-4 text-xs" style={{ color: '#fca5a5' }}>İş listesi alınamadı: {(error as any)?.message || 'hata'}</div>
+            <div className="py-4 text-[12.5px]" style={{ color: '#fca5a5' }}>İş listesi alınamadı: {(error as any)?.message || 'hata'}</div>
           )
         ) : !isler.length ? (
-          <div className="py-8 text-center text-xs" style={{ color: RENK.ikincil }}>
-            Henüz iş dosyası yok — bir ajana görev verince burada görünür.
-          </div>
+          <BosDurum ikon={<FolderOpen size={18} />} metin="Henüz iş dosyası yok — bir ajana görev verince burada görünür." />
         ) : !suzulmus.length ? (
-          <div className="flex flex-wrap items-center justify-center gap-2 py-6 text-center text-xs" style={{ color: RENK.ikincil }}>
-            Bu süzgeçte iş yok.
-            <Cip
-              aktif={false}
-              onClick={() => {
-                setGun('tumu');
-                setDurum('tumu');
-                setMod('hepsi');
-                setKaynak('');
-                setAjanSuzgec(null);
-              }}
-            >
-              Süzgeçleri kaldır
-            </Cip>
-          </div>
+          <BosDurum
+            ikon={<Filter size={18} />}
+            metin="Bu süzgeçte iş yok."
+            ek={
+              <Cip aktif={false} onClick={suzgecleriKaldir}>
+                Süzgeçleri kaldır
+              </Cip>
+            }
+          />
         ) : (
           <>
             {/* Masaüstü/tablet: tablo (kendi içinde kayar; sayfa kaymaz) */}
-            <div className="hidden max-h-[380px] overflow-auto rounded-xl lg:block" style={{ border: '1px solid rgba(255,255,255,0.06)' }}>
+            <div className="hidden max-h-[440px] overflow-auto rounded-xl lg:block" style={{ border: '1px solid rgba(255,255,255,0.06)' }}>
               <table className="w-full min-w-[720px] border-collapse text-xs">
                 <thead>
                   <tr style={{ background: 'rgba(0,0,0,0.35)', color: 'rgba(250,250,249,0.6)' }}>
@@ -453,6 +459,6 @@ export const IsDosyalari = forwardRef<
           </>
         )}
       </div>
-    </section>
+    </div>
   );
-});
+}

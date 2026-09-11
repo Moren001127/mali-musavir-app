@@ -72,15 +72,71 @@ export function ajanKisaltma(id: string, ad?: string): string {
   return (ad || id).slice(0, 2).toLocaleUpperCase('tr-TR');
 }
 
-/** Gradyan + radial parıltı kart arka planı (düz gri kutu YOK). */
+/**
+ * Sakin kart zemini (düz gri kutu YOK): koyu gradyan + sol-üst radial parıltı + 1px rgba(255,255,255,.08) kenar.
+ * `secili` → kenar ve parıltı ajan/modül renginde belirginleşir.
+ */
 export function kartArkaPlan(renk: string, secili = false): CSSProperties {
   return {
-    background: `radial-gradient(120% 120% at 0% 0%, ${renk}${secili ? '2e' : '1c'}, transparent 48%), radial-gradient(100% 100% at 100% 100%, ${renk}0f, transparent 44%), linear-gradient(160deg, rgba(22,20,17,0.94), rgba(10,9,7,0.94))`,
-    border: `1px solid ${renk}${secili ? '66' : '2a'}`,
+    background: `radial-gradient(120% 100% at 0% 0%, ${renk}${secili ? '2a' : '16'}, transparent 50%), linear-gradient(160deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01)), linear-gradient(160deg, rgba(20,18,16,0.96), rgba(9,8,7,0.96))`,
+    border: `1px solid ${secili ? `${renk}66` : 'rgba(255,255,255,0.08)'}`,
     boxShadow: secili
-      ? `0 0 0 1px ${renk}33, 0 18px 40px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.05)`
+      ? `0 0 0 1px ${renk}22, 0 18px 40px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.05)`
       : 'inset 0 1px 0 rgba(255,255,255,0.04), 0 12px 30px rgba(0,0,0,0.25)',
   };
+}
+
+/**
+ * Kahraman kart (komut kutusu): 1px GRADYAN çerçeve + dış parıltı + iç beyaz gradyan + sol-üst radial parıltı.
+ * `canli` → çerçeve/parıltı kırmızıya döner (kırmızı yalnız CANLI ve hata).
+ */
+export function kahramanKartStili(renk: string, canli = false): CSSProperties {
+  const r = canli ? RENK.kirmizi : renk;
+  return {
+    border: '1px solid transparent',
+    background: [
+      `radial-gradient(90% 70% at 0% 0%, ${r}2e, transparent 55%) padding-box`,
+      'linear-gradient(160deg, rgba(255,255,255,0.045), rgba(255,255,255,0.01)) padding-box',
+      'linear-gradient(160deg, rgba(20,18,16,0.98), rgba(9,8,7,0.98)) padding-box',
+      `linear-gradient(135deg, ${r}bb, ${r}33 55%, rgba(255,255,255,0.10)) border-box`,
+    ].join(', '),
+    boxShadow: `0 0 0 1px ${r}22, 0 20px 60px ${r}14, inset 0 1px 0 rgba(255,255,255,0.05)`,
+  };
+}
+
+/** Küçük hap rozet (başlık kartı, sekme sayaçları). */
+export function hapStili(renk: string, dolu = false): CSSProperties {
+  return dolu
+    ? { background: `linear-gradient(135deg, ${renk}, ${renk}bb)`, border: '1px solid transparent', color: '#0b1218' }
+    : { background: `${renk}12`, border: `1px solid ${renk}3d`, color: renk };
+}
+
+/** Avatar halkası (48px daire): conic gradyan halka, içi koyu, kısaltma ajan renginde. */
+export function avatarHalkaStili(renk: string, secili: boolean): CSSProperties {
+  return {
+    background: `conic-gradient(from 210deg, ${renk}, ${renk}55 40%, ${renk}cc 70%, ${renk})`,
+    boxShadow: secili ? `0 0 0 3px ${renk}2e, 0 0 22px ${renk}66` : `0 0 0 1px rgba(0,0,0,0.5)`,
+  };
+}
+
+/** Tek kelimelik kısa ad (avatar sırası altı). */
+export function ajanKisaAd(id: string, ad?: string): string {
+  const map: Record<string, string> = {
+    koordinator: 'Koordinatör',
+    evrak: 'Evrak',
+    fatura: 'Fatura',
+    'banka-kasa': 'Banka',
+    beyanname: 'Beyanname',
+    'bordro-sgk': 'Bordro',
+    edefter: 'e-Defter',
+    'luca-operator': 'Luca',
+    denetci: 'Denetçi',
+    analist: 'Analist',
+    mevzuat: 'Mevzuat',
+    risk: 'Risk',
+    musteri: 'Müşteri',
+  };
+  return map[id] || (ad || id).split(' ')[0];
 }
 
 /** Her bölümün üstündeki 1px/4px renk şeridi (§0.2). */

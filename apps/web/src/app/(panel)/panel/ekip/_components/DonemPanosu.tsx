@@ -1,10 +1,11 @@
 'use client';
 
-import { forwardRef, useEffect, useMemo, useState } from 'react';
-import { CalendarRange, Loader2, Search, AlertTriangle } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { CalendarRange, Loader2, Search, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { isOmurgaYok, type Pano, type PanoSatiri } from '@/lib/ekip';
 import type { KomutTaslak } from './KomutKutusu';
-import { ASAMALAR, RENK, SABLONLAR, ajanKisaltma, ajanRengi, asamaRengi, donemEtiketi, ikonStili, kartArkaPlan, sablonDoldur, seritStili, sonrakiAdim } from './ortak';
+import { BosDurum } from './Kart';
+import { ASAMALAR, RENK, SABLONLAR, ajanKisaltma, ajanRengi, asamaRengi, donemEtiketi, ikonStili, sablonDoldur, sonrakiAdim } from './ortak';
 import { OmurgaYokBilgi } from './OmurgaYokBilgi';
 
 const ACCENT = RENK.mor; // dönem panosu — mor
@@ -36,19 +37,24 @@ function AsamaNoktalari({ satir, donem }: { satir: PanoSatiri; donem: string }) 
  * Dönem Panosu — tek dönem sekmesi; özet satırı; "Sadece eksikler"; her satırda sonraki adım + görev düğmesi
  * (KomutKutusu'nu doldurur, ÇALIŞTIRMAZ). Tablo kendi içinde kayar; sayfa yatay kaymaz.
  */
-export const DonemPanosu = forwardRef<
-  HTMLElement,
-  {
-    pano: Pano | undefined;
-    isLoading: boolean;
-    error: unknown;
-    seciliDonem: string | null;
-    onDonemSec: (d: string) => void;
-    onTaslak: (t: Omit<KomutTaslak, 'nonce'>) => void;
-    /** SabahBandi "beyanname hazır" → "Sadece eksikler" açılır. */
-    eksiklerNonce: number;
-  }
->(function DonemPanosu({ pano, isLoading, error, seciliDonem, onDonemSec, onTaslak, eksiklerNonce }, ref) {
+export function DonemPanosu({
+  pano,
+  isLoading,
+  error,
+  seciliDonem,
+  onDonemSec,
+  onTaslak,
+  eksiklerNonce,
+}: {
+  pano: Pano | undefined;
+  isLoading: boolean;
+  error: unknown;
+  seciliDonem: string | null;
+  onDonemSec: (d: string) => void;
+  onTaslak: (t: Omit<KomutTaslak, 'nonce'>) => void;
+  /** Başlık rozeti "beyanname hazır" → "Sadece eksikler" açılır. */
+  eksiklerNonce: number;
+}) {
   const [sadeceEksik, setSadeceEksik] = useState(false);
   const [arama, setArama] = useState('');
   const [siralama, setSiralama] = useState<'acil' | 'ad'>('acil');
@@ -100,7 +106,7 @@ export const DonemPanosu = forwardRef<
       type="button"
       onClick={onClick}
       title={title}
-      className="rounded-md px-2 py-0.5 text-[11px] font-semibold transition-colors"
+      className="rounded-full px-2.5 py-0.5 text-[11px] font-semibold transition-[background-color,border-color,color] duration-150"
       style={aktif ? { background: `${renk}22`, border: `1px solid ${renk}66`, color: renk } : { background: 'transparent', border: '1px solid rgba(255,255,255,0.08)', color: RENK.ikincil }}
     >
       {metin}
@@ -108,11 +114,10 @@ export const DonemPanosu = forwardRef<
   );
 
   return (
-    <section ref={ref} className="relative min-w-0 overflow-hidden rounded-2xl" style={kartArkaPlan(ACCENT)}>
-      <div className="h-1 w-full" style={seritStili(ACCENT)} />
-      <div className="flex flex-wrap items-center gap-2 px-3 py-2.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-        <CalendarRange size={15} style={{ color: ACCENT }} />
-        <h2 className="text-sm font-bold" style={{ color: RENK.metin }}>Dönem Panosu</h2>
+    <div className="flex min-w-0 flex-col gap-3">
+      {/* Araç çubuğu: dönem sekmeleri · sıralama · eksikler · arama (sekme adı zaten "Dönem panosu" → ikinci başlık yok) */}
+      <div className="flex flex-wrap items-center gap-2 pb-2.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+        <CalendarRange size={13} style={{ color: ACCENT }} />
         {/* Dönem sekmeleri */}
         <div className="flex items-center gap-1">
           {donemler.map((d) => {
@@ -122,7 +127,7 @@ export const DonemPanosu = forwardRef<
                 key={d}
                 type="button"
                 onClick={() => onDonemSec(d)}
-                className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-bold"
+                className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-bold transition-[background-color,border-color,color] duration-150"
                 style={d === donem ? { background: `${ACCENT}22`, border: `1px solid ${ACCENT}66`, color: ACCENT } : { background: 'transparent', border: '1px solid rgba(255,255,255,0.08)', color: RENK.ikincil }}
               >
                 {d === donem ? donemEtiketi(d) : donemEtiketi(d).split(' ')[0]}
@@ -144,7 +149,7 @@ export const DonemPanosu = forwardRef<
             value={arama}
             onChange={(e) => setArama(e.target.value)}
             placeholder="Unvan ara…"
-            className="w-full rounded-md py-1 pl-6 pr-2 text-[11px] outline-none"
+            className="w-full rounded-full py-1 pl-6 pr-2 text-[11px] outline-none"
             style={{ background: 'rgba(0,0,0,0.3)', border: `1px solid ${ACCENT}3a`, color: RENK.metin }}
           />
         </div>
@@ -152,7 +157,7 @@ export const DonemPanosu = forwardRef<
 
       {/* Özet satırı */}
       {ozet && (
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1.5 text-[11px]" style={{ color: RENK.ikincil }}>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11.5px]" style={{ color: RENK.ikincil }}>
           <span>kayıt <b style={{ color: RENK.metin }}>{ozet.ozet.kayitVar}/{ozet.toplam}</b></span>
           <span>evrak <b style={{ color: RENK.metin }}>{ozet.ozet.evrak}</b></span>
           <span>işleme <b style={{ color: RENK.metin }}>{ozet.ozet.isleme}</b></span>
@@ -169,17 +174,17 @@ export const DonemPanosu = forwardRef<
         </div>
       )}
       {ozet?.hata && (
-        <div className="mx-3 mb-1.5 flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px]" style={{ background: `${RENK.turuncu}12`, border: `1px solid ${RENK.turuncu}55`, color: RENK.turuncu }}>
+        <div className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-[11.5px]" style={{ background: `${RENK.turuncu}12`, border: `1px solid ${RENK.turuncu}55`, color: RENK.turuncu }}>
           <AlertTriangle size={12} /> Bu dönem verisi alınamadı: {ozet.hata}
         </div>
       )}
       {ozet?.bosDonemFallback && donem && (
-        <div className="mx-3 mb-1.5 flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px]" style={{ background: `${RENK.turuncu}12`, border: `1px solid ${RENK.turuncu}55`, color: RENK.turuncu }}>
+        <div className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-[11.5px]" style={{ background: `${RENK.turuncu}12`, border: `1px solid ${RENK.turuncu}55`, color: RENK.turuncu }}>
           <AlertTriangle size={12} /> {donemEtiketi(donem)} boştu, önceki ay gösteriliyor
         </div>
       )}
 
-      <div className="px-3 pb-3">
+      <div>
         {isLoading ? (
           <div className="space-y-1.5 py-2">
             {[0, 1, 2, 3].map((i) => (
@@ -196,13 +201,13 @@ export const DonemPanosu = forwardRef<
             <div className="py-4 text-xs" style={{ color: '#fca5a5' }}>Pano alınamadı: {(error as any)?.message || 'hata'}</div>
           )
         ) : !pano?.satirlar.length ? (
-          <div className="py-8 text-center text-xs" style={{ color: RENK.ikincil }}>
-            Pano boş — koordinatör ilk koşusunda dönemleri dolduracak.
-          </div>
+          <BosDurum ikon={<CalendarRange size={18} />} renk={ACCENT} metin="Pano boş — koordinatör ilk koşusunda dönemleri dolduracak." />
         ) : !satirlar.length ? (
-          <div className="py-6 text-center text-xs" style={{ color: RENK.ikincil }}>
-            {sadeceEksik ? 'Bu dönemde eksik yok — hepsi verildi.' : 'Eşleşen mükellef yok.'}
-          </div>
+          sadeceEksik ? (
+            <BosDurum ikon={<CheckCircle2 size={18} />} renk={RENK.yesil} metin="Bu dönemde eksik yok — hepsi verildi." />
+          ) : (
+            <BosDurum ikon={<Search size={18} />} renk={ACCENT} metin="Eşleşen mükellef yok." />
+          )
         ) : (
           <div className="max-h-[480px] overflow-auto rounded-xl" style={{ border: '1px solid rgba(255,255,255,0.06)' }}>
             <table className="w-full min-w-[640px] border-collapse text-xs">
@@ -250,7 +255,7 @@ export const DonemPanosu = forwardRef<
                                 kaynak: 'pano',
                               })
                             }
-                            className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md px-2 py-1 text-[11px] font-semibold"
+                            className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-semibold transition-[transform] duration-150 hover:-translate-y-px"
                             style={{ background: `${renk}14`, border: `1px solid ${renk}55`, color: RENK.metin }}
                             title="Komut kutusunu doldurur; çalıştırmaz"
                           >
@@ -267,6 +272,6 @@ export const DonemPanosu = forwardRef<
           </div>
         )}
       </div>
-    </section>
+    </div>
   );
-});
+}

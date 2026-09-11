@@ -7,7 +7,8 @@ import { toast } from 'sonner';
 import { onayla, reddet, sabahOzetiUret, isZamanAsimi, type IsDosyasi } from '@/lib/ekip';
 import type { Adim, Kosu, KosularApi } from './kosular';
 import { OnayTeyit } from './OnayBekleyenler';
-import { EKIP_ACCENT, RENK, ajanYuzeyRengi, aracAdi, cevapAyristir, saatKisa, sayacMetni, seritStili, sureKisa, kartArkaPlan, tarihKisa } from './ortak';
+import { BosDurum } from './Kart';
+import { EKIP_ACCENT, RENK, ajanYuzeyRengi, aracAdi, cevapAyristir, saatKisa, sayacMetni, sureKisa, tarihKisa } from './ortak';
 
 function AdimSatiri({ adim, renk, onOnaylandi }: { adim: Adim; renk: string; onOnaylandi: (previewId: string, sonuc: string) => void }) {
   const [teyit, setTeyit] = useState(false);
@@ -229,27 +230,22 @@ export function CanliAkis({
     }
   };
 
-  // Koşu yok → son iş özeti
+  // Koşu yok → boş durum + son iş kısayolu
   if (!kosu) {
     return (
-      <section className="relative min-w-0 overflow-hidden rounded-2xl" style={kartArkaPlan(renk)}>
-        <div className="h-1 w-full" style={seritStili(renk)} />
-        <div className="flex flex-col gap-1.5 px-3 py-3 text-xs">
-          <div className="flex items-center gap-2">
-            <Activity size={14} style={{ color: renk }} />
-            <span className="font-bold" style={{ color: RENK.metin }}>Canlı akış</span>
-          </div>
-          {sonIs ? (
-            <button type="button" onClick={() => onIsAc(sonIs.id)} className="w-fit text-left underline-offset-2 hover:underline" style={{ color: RENK.ikincil }} title="İş dosyasını aç">
+      <BosDurum
+        ikon={<Activity size={18} />}
+        renk={renk}
+        metin={sonIs ? 'Bu oturumda koşu yok — hazır görevlerden birine bas ya da yukarıya yaz.' : 'Henüz koşu yok — hazır görevlerden birine bas ya da yukarıya yaz.'}
+        ek={
+          sonIs ? (
+            <button type="button" onClick={() => onIsAc(sonIs.id)} className="mt-1 text-[11.5px] underline-offset-2 hover:underline" style={{ color: RENK.ikincil }} title="İş dosyasını aç">
               Son koşu: {ajanAd(sonIs.ajanId)} · {tarihKisa(sonIs.createdAt)} · {sonIs.dryRun ? 'KURU' : 'CANLI'} ·{' '}
               {sonIs.status === 'done' ? 'Bitti' : sonIs.status === 'failed' ? 'Hata' : sonIs.status === 'running' ? 'Çalışıyor' : 'Bekliyor'}
             </button>
-          ) : (
-            <span style={{ color: RENK.ikincil }}>Henüz koşu yok.</span>
-          )}
-          <span style={{ color: RENK.sonuk }}>Hazır görevlerden birine bas ya da yukarıya yaz.</span>
-        </div>
-      </section>
+          ) : undefined
+        }
+      />
     );
   }
 
@@ -258,11 +254,9 @@ export function CanliAkis({
   const aracSayisi = kosu.adimlar.filter((a) => a.tip === 'arac').length;
 
   return (
-    <section className="relative min-w-0 overflow-hidden rounded-2xl" style={kartArkaPlan(renk)}>
-      <div className="h-1 w-full" style={seritStili(renk)} />
-
-      {/* Başlık satırı */}
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-3 py-2 text-[11px]" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', color: RENK.ikincil }}>
+    <div className="flex min-w-0 flex-col gap-3">
+      {/* Tek başlık satırı: koşu kimliği · mod · model · süre · durum */}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 pb-2.5 text-[11.5px]" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', color: RENK.ikincil }}>
         {sabahOzetiMi ? (
           <span className="inline-flex items-center gap-1 font-bold" style={{ color: RENK.metin }}>
             <Sunrise size={12} style={{ color: EKIP_ACCENT }} />{' '}
@@ -290,14 +284,14 @@ export function CanliAkis({
           </span>
         )}
         {kosu.bitti && kosu.isId && (
-          <button type="button" onClick={() => onIsAc(kosu.isId!)} className="ml-auto inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold" style={{ background: `${renk}14`, border: `1px solid ${renk}44`, color: renk }}>
+          <button type="button" onClick={() => onIsAc(kosu.isId!)} className="ml-auto inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold transition-[transform] duration-150 hover:-translate-y-px" style={{ background: `${renk}14`, border: `1px solid ${renk}44`, color: renk }}>
             <FolderOpen size={11} /> İş dosyası ▸
           </button>
         )}
       </div>
 
-      <div className="flex flex-col gap-2 p-3">
-        <div className="truncate text-xs" style={{ color: RENK.ikincil }} title={kosu.gorev}>
+      <div className="flex flex-col gap-2.5">
+        <div className="truncate text-[12.5px]" style={{ color: RENK.ikincil }} title={kosu.gorev}>
           {kosu.gorev}
         </div>
 
@@ -316,26 +310,26 @@ export function CanliAkis({
         )}
 
         {kosu.hata && (
-          <div className="rounded-lg px-3 py-2 text-xs" style={{ background: 'rgba(248,113,113,0.12)', border: '1px solid rgba(248,113,113,0.35)', color: '#fecaca' }}>
+          <div className="rounded-xl px-3.5 py-2.5 text-[12.5px]" style={{ background: 'rgba(248,113,113,0.12)', border: '1px solid rgba(248,113,113,0.35)', color: '#fecaca' }}>
             ⚠️ {kosu.hata}
           </div>
         )}
 
         {/* Cevap */}
         {!kosu.bitti && kosu.cevap && (
-          <div ref={cevapRef} className="max-h-[320px] overflow-y-auto whitespace-pre-wrap rounded-lg px-3 py-2 text-sm leading-relaxed" style={{ background: 'rgba(0,0,0,0.25)', border: `1px solid ${renk}22`, color: 'rgba(250,250,249,0.92)' }}>
+          <div ref={cevapRef} className="max-h-[360px] overflow-y-auto whitespace-pre-wrap rounded-xl px-4 py-3 text-[13.5px] leading-relaxed" style={{ background: 'rgba(0,0,0,0.25)', border: `1px solid ${renk}22`, color: 'rgba(250,250,249,0.92)' }}>
             {kosu.cevap}
           </div>
         )}
         {kosu.bitti && ayrisik && (
           <>
             {(ayrisik.rapor || (!ayrisik.sorular.length && !ayrisik.ogrenilen.length && ayrisik.ham)) && (
-              <div className="max-h-[320px] overflow-y-auto whitespace-pre-wrap rounded-lg px-3 py-2 text-sm leading-relaxed" style={{ background: 'rgba(0,0,0,0.25)', border: `1px solid ${renk}55`, color: 'rgba(250,250,249,0.92)' }}>
+              <div className="max-h-[360px] overflow-y-auto whitespace-pre-wrap rounded-xl px-4 py-3 text-[13.5px] leading-relaxed" style={{ background: 'rgba(0,0,0,0.25)', border: `1px solid ${renk}55`, color: 'rgba(250,250,249,0.92)' }}>
                 {ayrisik.rapor || ayrisik.ham}
               </div>
             )}
             {ayrisik.sorular.length > 0 && (
-              <div className="flex flex-col gap-2 rounded-lg px-3 py-2 text-xs" style={{ background: `${RENK.turuncu}12`, border: `1px solid ${RENK.turuncu}55` }}>
+              <div className="flex flex-col gap-2 rounded-xl px-3.5 py-2.5 text-[12.5px]" style={{ background: `${RENK.turuncu}12`, border: `1px solid ${RENK.turuncu}55` }}>
                 <div className="font-bold" style={{ color: RENK.turuncu }}>Ajan soruyor</div>
                 {ayrisik.sorular.map((s, i) => (
                   <div key={i} className="whitespace-pre-wrap" style={{ color: RENK.metin }}>{s}</div>
@@ -392,7 +386,7 @@ export function CanliAkis({
               disabled={gonderMesgul || gonderTeyit || !!kosular.aktifKosu}
               onClick={() => setGonderTeyit(true)}
               title={kosular.aktifKosu ? 'Bir koşu sürüyor — bitince' : 'Kart içi teyit açılır; koordinatör yeniden üretir ve gönderir'}
-              className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold disabled:opacity-50"
+              className="flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-bold disabled:opacity-50"
               style={{ background: 'linear-gradient(135deg,#16a34a,#4ade80)', color: '#052e16' }}
             >
               {gonderMesgul ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />} Sahibe WhatsApp gönder
@@ -412,6 +406,6 @@ export function CanliAkis({
           </div>
         )}
       </div>
-    </section>
+    </div>
   );
 }
