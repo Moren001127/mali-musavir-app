@@ -489,6 +489,13 @@ export class FaturaMuhasebelestirmeController {
     });
   }
 
+  /** Faz 1 (2026-09-12): okunmuş ama SINIFLANMAMIŞ (giderTuru/matrahKategori boş) bekleyen belgeleri sınıflandırma kuyruğuna alır —
+   *  başlangıçtaki CLASSIFY-kurtarma ile aynı seçim, ama sahip elle ve daha büyük tavanla tetikler (canlı: 419 alış belgesi planlı ama hiç sınıflanmamış). */
+  @Post('documents/classify-pending')
+  @UseGuards(OwnerOnlyGuard)
+  classifyPending(@Req() req: any, @Body() body: { taxpayerId?: string; limit?: number; yon?: string }) {
+    return this.service.classifyPending(req.user.tenantId, { taxpayerId: body?.taxpayerId || undefined, limit: body?.limit, yon: body?.yon });
+  }
   @Get('documents/:id')
   get(@Req() req: any, @Param('id') id: string) {
     return this.service.get(req.user.tenantId, id);

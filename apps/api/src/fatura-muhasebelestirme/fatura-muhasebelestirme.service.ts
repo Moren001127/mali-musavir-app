@@ -9,9 +9,11 @@ import { OcrService, OcrResult } from '../kdv-control/ocr';
 import { KdvControlService } from '../kdv-control/kdv-control.service';
 import { EarsivRenderService } from '../earsiv/earsiv-render.service';
 import { encrypt, tryDecrypt } from '../common/crypto';
-import { claudeTextViaMax, MAX_MODEL_CHEAP } from '../common/max-inference';
+import { claudeTextViaMax, MAX_MODEL_CHEAP, MAX_MODEL_DEFAULT } from '../common/max-inference';
 import { buildLucaImportExcel, buildLucaIsletmeHizliFisCsv } from './luca-excel.service';
 import { reconcileMatrahSplit } from './kalem-split';
+// PLAN/15 Faz 1-B (2026-09-12): plan adayları TEK kaynaktan (yön sıralı + rol etiketli + grup tavanlı) + satış gelir kuralı sabiti.
+import { planAdaylariHazirla, planAdayKodSeti, SATIS_GELIR_HESABI_KURALI, PLAN_ADAY_ROL_ACIKLAMASI } from './plan-adaylari';
 import { parseUblInvoice, ublOcrDataFields, clearUblOnlyOcrFields, resolveTevkifatOrani, ParsedProviderInvoice } from './ubl-parse';
 import { VendorMemoryService } from '../vendor-memory/vendor-memory.service';
 import { MihsapService } from '../mihsap/mihsap.service';
@@ -490,7 +492,14 @@ type ClassifyResult = {
   //   Yoksa/kapalıysa undefined → tüm downstream mantık bugünkü tek-hesap davranışına düşer.
   kalemler?: Array<{ ad: string; tutar: number; oran: number; hesap?: string }>;
   matrahHesapKodu?: string;
+  // PLAN/15 Faz 1-B (2026-09-12): plan verildiğinde AI'ın hesap seçimine güveni (yuksek|orta|dusuk);
+  //   'dusuk' ya da boş/geçersiz kod → Sonnet eskalasyonu (aiClassifyAccounting). Plan yoksa undefined.
+  guven?: 'yuksek' | 'orta' | 'dusuk';
 };
+
+/** Classify yolu ek girdileri (PLAN/15 Faz 1-B): kelime kuralı İPUCU (AI körü körüne kopyalamasın),
+ *  plan aday kod kümesi (dönen kodun geçerliliği), güçlü model isteği (Sonnet eskalasyonu — iç kullanım). */
+type ClassifyEk = { ipucu?: string; planKodlari?: Set<string>; strongModel?: boolean };
 
 @Injectable()
 export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDestroy {
@@ -540,9 +549,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   private readonly classifyBatchSize = Math.max(1, Number(process.env.MAX_CLASSIFY_BATCH || 6));
   private readonly classifyBatchDebounceMs = Math.max(0, Number(process.env.MAX_CLASSIFY_BATCH_MS || 1500));
   private readonly classifyBatchBuffers = new Map<string, {
-    items: Array<{ contentText: string; resolve: (v: ClassifyResult | null) => void }>;
+    // ipucu: belge-bazlı kelime kuralı ipucu (PLAN/15 Faz 1-B) — parti anahtarına GİRMEZ (partiler bölünmesin), belge bloğuna yazılır.
+    items: Array<{ contentText: string; resolve: (v: ClassifyResult | null) => void; ipucu?: string }>;
     timer: NodeJS.Timeout | null;
-    shared: { mukellefBilgi: string; isIsletme: boolean; invoiceKind?: 'ALIS' | 'SATIS'; planAdaylar?: string };
+    shared: { mukellefBilgi: string; isIsletme: boolean; invoiceKind?: 'ALIS' | 'SATIS'; planAdaylar?: string; planKodlari?: Set<string> };
   }>();
   private readonly uploadOcrActiveIds = new Set<string>(); // işlenmekte olan belge id'leri (resume çift-işlemesin)
   private ocrResumeTimer: NodeJS.Timeout | null = null;
@@ -680,6 +690,35 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     } finally {
       this.ocrResuming = false;
     }
+  }
+
+  /** Faz 1 (2026-09-12): okunmuş ama SINIFLANMAMIŞ bekleyen belgeleri sınıflandırma kuyruğuna alır (sahip tetikler).
+   *  Seçim, resumeStuckOcr içindeki CLASSIFY-kurtarma ile aynı (içerik var + giderTuru/matrahKategori boş), ama tavan
+   *  büyük ve mükellef süzgeci var. CANLI BULGU: 419 alış belgesi hesap planı olduğu hâlde hiç sınıflanmamış → matrah boş.
+   *  Kuyruk belge başına 1 Haiku (yeni karar çekirdeği: ipucu + plan adayları + gerekirse Sonnet). clsRescued yoklanmaz
+   *  (elle tetik = bilinçli yeniden deneme). Sonuç: kuyruğa alınan / atlanan sayıları. */
+  async classifyPending(tenantId: string, opts: { taxpayerId?: string; limit?: number; yon?: string } = {}) {
+    const limit = Math.min(Math.max(Number(opts.limit) || 100, 1), 1000);
+    const yon = String(opts.yon || 'ALIS').toUpperCase() === 'SATIS' ? 'SATIS' : 'ALIS';
+    const adaylar = await (this.prisma as any).invoiceAccountingDocument.findMany({
+      where: { tenantId, status: { in: ['READY', 'NEEDS_REVIEW', 'DRAFT'] }, invoiceKind: yon, ...(opts.taxpayerId ? { taxpayerId: opts.taxpayerId } : {}) },
+      orderBy: { updatedAt: 'desc' },
+      select: { id: true, tenantId: true, ocrData: true },
+      take: 3000,
+    }).catch(() => []);
+    const kuyruktakiler = new Set(this.uploadOcrQueue.map((j: any) => String(j.documentId || '')));
+    let alinan = 0; let icerikYok = 0; let zatenSinifli = 0; let zatenKuyrukta = 0;
+    for (const d of adaylar as any[]) {
+      if (alinan >= limit) break;
+      const o: any = d.ocrData || {};
+      if (!String(o.icerikMetni || '').trim() && !(Array.isArray(o.kalemler) && o.kalemler.length)) { icerikYok++; continue; }
+      if (String(o.matrahKategori || o.kategori || '').trim() || String(o.giderTuru || '').trim()) { zatenSinifli++; continue; }
+      if (kuyruktakiler.has(d.id) || this.uploadOcrActiveIds.has(d.id)) { zatenKuyrukta++; continue; }
+      this.uploadOcrQueue.push({ tenantId: d.tenantId, documentId: d.id, kind: 'classify' });
+      alinan++;
+    }
+    if (alinan) { this.logger.log(`[CLASSIFY-PENDING] ${alinan} belge sınıflandırma kuyruğuna alındı (tp=${opts.taxpayerId || 'tümü'}, yön=${yon})`); this.drainUploadedOcrQueue(); }
+    return { ok: true, kuyrugaAlinan: alinan, icerikYok, zatenSinifli, zatenKuyrukta, kuyrukUzunlugu: this.uploadOcrQueue.length, aktif: this.uploadOcrActive };
   }
 
   // Plan YOK → kod ASLA görünmesin (kullanıcı talebi). Mükellefin hesap planı çekilmemişse
@@ -3462,7 +3501,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       }
     }
     const kind = doc.invoiceKind === 'SATIS' ? 'SATIS' : 'ALIS';
-    // ⚡ DETERMİNİSTİK ATLAMA (bkz. aiReadDocument): kalemlerin HEPSİ tanınan gider ise ~100s Max'i atla.
+    // KELİME KURALI (giderIcerikSinifla): kalemlerin HEPSİ aynı kategoriyi veriyorsa detC dolar.
+    //   PLAN/15 Faz 1-B (2026-09-12): eskiden detC varsa Max HİÇ çağrılmıyordu → kategori kelimeden geliyor,
+    //   mükellef faaliyeti hesaba katılmıyordu (ambalajcıda "streç film" ticari mal iken sarf oluyordu).
+    //   Artık detC yalnız İPUCU: AI yine çağrılır, ipucu prompt'a yazılır; AI boş dönerse detC yedek.
+    //   Acil geri dönüş: FM_DET_ATLA=1 → eski atlama (detAtlamaAcikMi).
     let detC: any = null;
     {
       const detAdlar = (Array.isArray(od.kalemler) ? od.kalemler : []).map((k: any) => String(k?.ad || '').trim()).filter(Boolean);
@@ -3472,8 +3515,35 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         if (ok) { const whole = giderIcerikSinifla(detAdlar.join(' ')); if (whole) detC = { giderTuru: whole.hint, kategori: whole.kategori }; }
       }
     }
-    const c = detC || await this.aiClassifyAccounting(content, mukellefBilgi, isIsletme, kind).catch(() => null);
-    if (detC) this.logger.log(`[CLS-SKIP] det icerik=${detC.kategori} → Max ATLANDI doc=${documentId}`);
+    // PLAN ADAYLARI (B4): bilanço mükellefinin GÜNCEL planı (READY snapshot) varsa yön-sıralı, rol etiketli liste
+    //   (Haiku → toplam tavan 150). AI matrahHesapKodu + guven döndürür; geçerli yaprak ise ocrData.aiMatrahKodu'na
+    //   yazılır (rematch onu okur). İşletme mükellefinde plan YOK (eski davranış).
+    let planMetni = '';
+    let planKodlari: Set<string> | undefined;
+    if (doc.taxpayerId && !isIsletme) {
+      // Plan kaynağı: getPlanCodeSet (30 sn önbellek, READY snapshot → kod kümesi + ad haritası) — kuyrukta ardışık
+      //   belgeler için plan satırları her seferinde DB'den çekilmez.
+      const planKodSeti = await this.getPlanCodeSet(tenantId, doc.taxpayerId).catch(() => null);
+      const planAdlari = this.planCodeCache.get(`${tenantId}:${doc.taxpayerId}`)?.names;
+      if (planKodSeti && planKodSeti.size) {
+        const lines = [...planKodSeti].map((c) => ({ accountCode: c, accountName: planAdlari?.get(c) || '' }));
+        const pa = planAdaylariHazirla(lines, { yon: kind, toplamTavan: 150, iade: od?.isReturn === true });
+        if (pa.adaylar.length) { planMetni = pa.metin; planKodlari = planAdayKodSeti(pa.adaylar); }
+      }
+    }
+    let c: any = null;
+    if (detC && this.detAtlamaAcikMi()) {
+      c = detC;
+      this.logger.log(`[CLS-SKIP] det icerik=${detC.kategori} → Max ATLANDI (FM_DET_ATLA=1) doc=${documentId}`);
+    } else {
+      if (detC) this.logger.log(`[CLS-IPUCU] det kategori=${detC.kategori} → AI'a ipucu verildi doc=${documentId}`);
+      c = await this.aiClassifyAccounting(content, mukellefBilgi, isIsletme, kind, planMetni || undefined, {
+        ipucu: detC ? `kategori=${detC.kategori}, gider türü=${detC.giderTuru}` : undefined,
+        planKodlari,
+      }).catch(() => null);
+      // AI boş/hatalı → eski ipucu sonucu yedek (davranış eskisinden kötü olmasın).
+      if (!c && detC) { c = detC; this.logger.warn(`[CLS-IPUCU] AI yanıt vermedi → kelime kuralı yedek kullanıldı (${detC.kategori}) doc=${documentId}`); }
+    }
     // A.8 — Max çağrısı ~100 sn sürebilir; bu arada revalidate (uyarilar), sahip kararları (demirbasKarar/mukerrerKarar),
     //   editör düzeltmeleri ocrData'ya yazılmış olabilir. Baştaki `od` kopyasıyla yazmak bunları EZİYORDU → yazmadan
     //   önce GÜNCEL ocrData yeniden okunur; yalnız sınıflandırma alanları (giderTuru / matrahKategori / isletme)
@@ -3483,6 +3553,16 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     if (c) {
       if (c.giderTuru) patch.giderTuru = String(c.giderTuru).slice(0, 40);
       if (c.kategori) patch.matrahKategori = c.kategori;
+      // B4: AI'ın plandan seçtiği matrah hesabı — yalnız aday listesindeki (kaydedilebilir yaprak) kod yazılır;
+      //   geçersiz/boş ise DOKUNMA (eski aiMatrahKodu varsa kalır). rematch aiMatrahKodu'nu okur (aiKod).
+      {
+        const aiKod = String(c.matrahHesapKodu || '').trim();
+        if (aiKod && planKodlari && planKodlari.has(aiKod)) {
+          patch.aiMatrahKodu = aiKod;
+          if (c.guven) patch.aiMatrahGuven = c.guven;
+          this.logger.log(`[CLS-PLAN] AI matrah hesabı=${aiKod} guven=${c.guven || '-'} doc=${documentId}`);
+        }
+      }
       // userEdited korunur: kullanıcı işletme sınıfını elle düzelttiyse sınıflandırma yeniden EZMEZ
       //   (backfill'deki korumanın buradaki simetriği — eksikti, elle düzeltme kaybolabiliyordu).
       if (isIsletme && od?.isletme?.userEdited !== true) {
@@ -6974,19 +7054,38 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           kaynak: 'dogrulama',
         }));
       }
-      // — ICERIK_HESAP_UYUMSUZ (uyum kararı; hesap silinmez, "Öneriyi uygula") —
-      if (ocrData?.hesapUyumsuz === true) {
-        const onerilen = String(ocrData?.onerilenHesap || '').trim();
-        turetilen.push(uyariYap({
-          kod: UYARI_KOD.ICERIK_HESAP_UYUMSUZ,
-          seviye: 'uyari',
-          baslik: 'İçerik ↔ hesap uyumsuz',
-          aciklama: String(ocrData?.hesapUyumNot || 'Fatura içeriği seçilen hesapla/ana faaliyetle uyuşmuyor.') + (onerilen ? ` Önerilen hesap: ${onerilen}.` : ''),
-          oneri: onerilen ? '"Öneriyi uygula" ile matrah hesabını değiştirin ya da editörde elle seçin.' : 'Doğru hesabı editörde seçin.',
-          eylemler: onerilen ? [{ id: 'oneriyi-uygula', etiket: 'Öneriyi uygula' }] : undefined,
-          meta: { onerilenHesap: onerilen || null },
-          kaynak: 'dogrulama',
-        }));
+      // — ICERIK_HESAP_UYUMSUZ (uyum kararı + rematch şüphesi; hesap SİLİNMEZ, "Öneriyi uygula") — PLAN/15 Faz 1 (2026-09-12):
+      //   (1) AI uyum kararı (ocrData.hesapUyumsuz; yargılanan kod hesapUyumKod) — kod hâlâ matrahta duruyorsa geçerli;
+      //       kullanıcı/rematch kodu değiştirdiyse BAYAT sayılır, uyarı üretilmez (yeni yorum üretiminde yeniden değerlendirilir).
+      //   (2) rematch şüphe kaydı (ocrData.hesapSuphe = { neden, kod, not }): araç-bağlamsız hesap / motor yağı-bakım hesabı yok —
+      //       kod korunur, seviye 'uyari', başlık "Hesap şüpheli: <not>". İkisi tek uyarıda birleşir (aynı kod → tek kayıt).
+      {
+        const matrahKodlari = new Set<string>((doc.lines || []).filter((l: any) => String(l.group || '') === 'matrah').map((l: any) => String(l.accountCode || '').trim()).filter(Boolean));
+        const uyumKod = String(ocrData?.hesapUyumKod || '').trim();
+        const uyumsuzGecerli = ocrData?.hesapUyumsuz === true && (!uyumKod || matrahKodlari.has(uyumKod));
+        const suphe: any = ocrData?.hesapSuphe && typeof ocrData.hesapSuphe === 'object' ? ocrData.hesapSuphe : null;
+        const supheKod = String(suphe?.kod || '').trim();
+        const supheGecerli = !!suphe && (!supheKod || matrahKodlari.has(supheKod));
+        if (uyumsuzGecerli || supheGecerli) {
+          const onerilen = String(ocrData?.onerilenHesap || '').trim();
+          const onerilenFarkli = !!onerilen && !matrahKodlari.has(onerilen); // öneri zaten uygulanmışsa eylem gösterme
+          const supheNot = supheGecerli ? String(suphe.not || 'hesap şüpheli').trim() : '';
+          const aciklama = [
+            uyumsuzGecerli ? String(ocrData?.hesapUyumNot || 'Fatura içeriği seçilen hesapla/ana faaliyetle uyuşmuyor — hesap korundu.') : '',
+            supheGecerli ? `Şüphe: ${supheNot}${supheKod ? ` (${supheKod})` : ''}.` : '',
+            onerilenFarkli ? `Önerilen hesap: ${onerilen}.` : '',
+          ].filter(Boolean).join(' ');
+          turetilen.push(uyariYap({
+            kod: UYARI_KOD.ICERIK_HESAP_UYUMSUZ,
+            seviye: 'uyari',
+            baslik: uyumsuzGecerli ? 'İçerik ↔ hesap uyumsuz' : `Hesap şüpheli: ${supheNot}`,
+            aciklama,
+            oneri: onerilenFarkli ? '"Öneriyi uygula" ile matrah hesabını değiştirin ya da editörde elle seçin (mevcut hesap silinmedi).' : 'Hesap korundu — doğruysa onaylayın, değilse editörde doğru hesabı seçin.',
+            eylemler: onerilenFarkli ? [{ id: 'oneriyi-uygula', etiket: 'Öneriyi uygula' }] : undefined,
+            meta: { onerilenHesap: onerilenFarkli ? onerilen : null, ...(supheGecerli ? { suphe: { neden: String(suphe.neden || ''), kod: supheKod || null } } : {}) },
+            kaynak: 'dogrulama',
+          }));
+        }
       }
       // — IADE (bilgi; hata varsa dogrulamaUyarilari engel üretir) —
       if (isReturn && !validation.issues.some((i: any) => i.code === 'RETURN_NEEDS_REVERSAL' || i.code === 'RETURN_DIRECTION_REVERSED')) {
@@ -7629,7 +7728,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         where: { documentId: id, group: 'matrah' },
         data: { accountCode: onerilen, kaynak: 'KULLANICI', ...(names?.get(onerilen) ? { description: names.get(onerilen) } : {}) },
       });
-      await (this.prisma as any).invoiceAccountingDocument.update({ where: { id }, data: { ocrData: { ...(doc.ocrData || {}), hesapUyumsuz: false, hesapUyumNot: null, uyumUygulandi: onerilen } } });
+      // Öneri uygulandı → uyum işareti, öneri VE rematch'in şüphe kaydı (hesapSuphe) temizlenir (2026-09-12, PLAN/15):
+      //   kullanıcı seçimi (kaynak=KULLANICI) artık rematch'te de korunur; bayat şüphe uyarısı kalmasın.
+      await (this.prisma as any).invoiceAccountingDocument.update({ where: { id }, data: { ocrData: { ...(doc.ocrData || {}), hesapUyumsuz: false, hesapUyumNot: null, hesapUyumKod: null, onerilenHesap: null, hesapSuphe: null, uyumUygulandi: onerilen } } });
       await this.logAudit(tenantId, userId, 'UYARI_EYLEM', id, null, { eylem, onerilen });
       await this.revalidateDocument(tenantId, id).catch(() => null);
       return { ok: true, eylem, onerilen, document: await this.get(tenantId, id) };
@@ -14033,19 +14134,45 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         status: { in: ['READY', 'NEEDS_REVIEW', 'DRAFT'] },
         ...(documentIds?.length ? { id: { in: documentIds } } : {}),
       },
-      select: { id: true, sellerVkn: true, ocrData: true, lines: { where: { group: 'matrah' }, select: { id: true, accountCode: true, rate: true } } },
+      select: { id: true, sellerVkn: true, ocrData: true, faturaTarihi: true, lines: { where: { group: 'matrah' }, select: { id: true, accountCode: true, rate: true, kaynak: true } } },
       take: 1000,
     });
     if (!docs.length) return 0;
     // Öğrenilen kod, plan varsa plana karşı doğrulanır (plansız mükellefte serbest — sıfır risk).
     const planCodes = await this.getPlanCodeSet(tenantId, taxpayerId);
+    // MEVZUAT AĞI için had-üstü demirbaş tespiti (2026-09-12, PLAN/15): eskiden AI'ın 'demirbas' KATEGORİSİ
+    //   fixedAsset diye geçiriliyordu (= kategori vetosu). Artık rematch ile aynı içerik+faaliyet tespiti
+    //   (detectFixedAsset + belge kararı + satıcı "demirbaş değil" notu + VUK 313 haddi) kullanılır.
+    const tpRow: any = await (this.prisma as any).taxpayer.findFirst({ where: { id: taxpayerId, tenantId }, select: { companyName: true, firstName: true, lastName: true, naceKodu: true, faaliyetAciklama: true, sektorEtiketi: true, kurumTuru: true } }).catch(() => null);
+    const demirbasDegilNot = new Map<string, Set<string>>();
+    try {
+      const notlar: any[] = await (this.prisma as any).vendorMemoryDecision.findMany({
+        where: { kararTipi: 'demirbas_degil', taxpayerId, vendorMemory: { tenantId } },
+        select: { kategori: true, vendorMemory: { select: { firmaKimlikNo: true } } },
+      });
+      for (const n of notlar) {
+        const v = String(n?.vendorMemory?.firmaKimlikNo || '');
+        if (!v) continue;
+        if (!demirbasDegilNot.has(v)) demirbasDegilNot.set(v, new Set());
+        demirbasDegilNot.get(v)!.add(String(n.kategori || ''));
+      }
+    } catch { /* not opsiyonel */ }
     // (vkn|rate) → öğrenilmiş kod önbelleği. Her matrah satırı KENDİ oranına göre kodlanır.
     const cache = new Map<string, string | null>();
     let applied = 0;
     for (const doc of docs) {
       const vkn = String(doc.sellerVkn || '').replace(/\D/g, '');
       if (!vkn) continue;
+      const ocr: any = doc.ocrData || {};
+      let fa = this.detectFixedAsset(doc.ocrData, tpRow, 'ALIS');
+      if (fa.is && (String(ocr?.demirbasKarar?.karar || '') === 'demirbas_degil' || demirbasDegilNot.get(vkn)?.has(fa.reason))) fa = { is: false, reason: '' };
+      const fixedAsset = fa.is && !this.demirbasHaddiAltinda(doc.ocrData, fa.reason, doc.faturaTarihi ? new Date(doc.faturaTarihi).getUTCFullYear() : undefined);
       for (const l of (doc.lines || [])) {
+        const cur = String(l.accountCode || '').trim();
+        // KULLANICI KORUMASI (2026-09-12, PLAN/15 sentezi; sahip kararı "kullanıcı satırı ezilmez"): müşavirin
+        //   ELLE seçtiği hesap (kaynak=KULLANICI) planda geçerliyse öğrenilmiş kod ÜZERİNE YAZILMAZ.
+        //   Kod planda yoksa eski davranış (öğrenilmiş geçerli kodla değişebilir).
+        if (String(l.kaynak || '').toUpperCase() === 'KULLANICI' && cur && (!planCodes || planCodes.has(cur))) continue;
         const rate = String(l.rate || '').replace(/[^0-9]/g, '');
         const key = `${vkn}|${rate}`;
         let learned = cache.get(key);
@@ -14053,8 +14180,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           learned = await this.pickLearnedAccountCode(tenantId, taxpayerId, vkn, rate);
           cache.set(key, learned);
         }
-        if (learned && !this.learnedMatrahCompatibleWithContent(learned, String((doc.ocrData as any)?.matrahKategori || ''), String((doc.ocrData as any)?.giderTuru || ''), String((doc.ocrData as any)?.matrahKategori || '').toLowerCase().trim() === 'demirbas')) continue;
-        if (!learned || String(l.accountCode || '').trim() === learned) continue;
+        // MEVZUAT AĞI (yalnız): alışta 6xx / had-üstü demirbaşta 25x-dışı öğrenilmiş kod uygulanmaz. Kelime-kuralı
+        //   kategorisiyle uyuşmazlık artık VETO DEĞİL (yalnız debug izi; "düzelttim ama geri döndü" bitti).
+        if (learned && !this.learnedMatrahCompatibleWithContent(learned, String(ocr?.matrahKategori || ''), String(ocr?.giderTuru || ''), fixedAsset, false)) continue;
+        if (learned && !this.kategoriKodUyumluMu(learned, String(ocr?.matrahKategori || ''))) {
+          this.logger.debug(`[HAFIZA] ${doc.id}: öğrenilmiş kod ${learned} kelime kategorisiyle (${String(ocr?.matrahKategori || '')}) uyuşmuyor — yine de uygulanır (kategori vetosu kalktı)`);
+        }
+        if (!learned || cur === learned) continue;
         if (planCodes && !planCodes.has(learned)) continue; // öğrenilen kod planda yok → uygulama (plan varsa doğrula)
         await (this.prisma as any).invoiceAccountingLine.update({
           where: { id: l.id },
@@ -14456,19 +14588,20 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           where: { snapshotId: snap.id },
           select: { accountCode: true, accountName: true },
         }).catch(() => []);
-        // Leaf = noktalı + alt-hesabı OLMAYAN kod (grup/ana hesaba fiş kesilmez).
-        const grpCodes = new Set<string>();
-        for (const a of allLines) { const c = String(a.accountCode || ''); let ix = c.indexOf('.'); while (ix !== -1) { grpCodes.add(c.slice(0, ix)); ix = c.indexOf('.', ix + 1); } }
-        const isLeaf = (c: string) => c.includes('.') && !grpCodes.has(c);
-        // MATRAH adayları: stok 15x, sabit kıymet 25x, gider 6xx/7xx, gelir 600 leaf'leri (79x hariç).
-        const cand = allLines.filter((a) => { const c = String(a.accountCode || ''); return /^(15\d|25\d|6\d\d|7\d\d)/.test(c) && !c.startsWith('79') && isLeaf(c); });
         for (const a of allLines) { const c = String(a.accountCode || ''); if (c) planNameByCode.set(c, String(a.accountName || '')); }
-        for (const a of cand) planLeafSet.add(String(a.accountCode));
-        // HIZ: aday listesi kısa tutulur (220→100) + ad 40 karaktere kırpılır → Max prompt'u küçülür,
-        //   okuma hızlanır. En olası kodlar zaten ilk sıralarda (leaf filtresi sonrası), doğruluk düşmez.
-        // SEMANTİK MOTOR pilotunda aday listesi GENİŞ + ad kırpması gevşek (doğru hesap listede/tam görünsün);
-        //   kapalıyken eski dar liste (100/40) korunur → diğer mükelleflerde hız/davranış aynı.
-        if (cand.length) planAdaylar = cand.slice(0, semMotor ? 400 : 100).map((a) => `${a.accountCode} = ${String(a.accountName || '').slice(0, semMotor ? 80 : 40)}`).join('\n');
+        // PLAN/15 Faz 1-B (2026-09-12): aday listesi TEK kaynaktan (plan-adaylari.ts) — YÖN SIRALI (alışta
+        //   15x→25x→7xx, 6xx YASAK; satışta 60x→64x/67x, 7xx/15x/25x YOK), ROL ETİKETLİ (`kod = ad [rol]`) ve
+        //   GRUP TAVANLI (ana hesap başına ≤60). Eskiden plan sırasında, etiketsiz "kod = ad" + ilk 400/100 idi
+        //   (153 altındaki yüzlerce ürün hesabı 770'i düşürebiliyordu). planLeafSet = aday kümesi → AI'ın döndürdüğü
+        //   matrahHesapKodu / kalem hesabı YALNIZ yön-uyumlu kaydedilebilir yaprak ise kabul edilir.
+        //   SEMANTİK MOTOR kapalıyken (kill-switch) liste dar tutulur (100) — eski hız davranışı korunur.
+        const pa = planAdaylariHazirla(allLines, {
+          yon: d.invoiceKind === 'SATIS' ? 'SATIS' : 'ALIS',
+          toplamTavan: semMotor ? undefined : 100,
+          iade: (preParsed as any)?.iade === true || (d.ocrData as any)?.isReturn === true,
+        });
+        for (const a of pa.adaylar) planLeafSet.add(a.kod);
+        if (pa.adaylar.length) planAdaylar = pa.metin;
       }
     }
     // ── KALICI MOTOR Faz 2: GEÇMİŞ DÜZELTMELER (retrieval-augmented öğrenme) ──
@@ -14507,8 +14640,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       mukellefBilgi
         ? `BU FATURAYI ALAN MÜKELLEFİN İŞİ: ${mukellefBilgi}. kategoriyi mükellefin ANA FAALİYETİNE göre seç: üretim/imalat/LOKANTA/RESTORAN/KAFE/PASTANE/YEMEK işletmesi ana işinde KULLANDIĞI/işlediği/pişirdiği malı (gıda, yağ, un, et, sebze, süt, baharat, içecek, ambalaj…) alırsa "hammadde"; alım-satım (toptan/perakende/market) firması SATACAĞI ürünü alırsa "ticari_mal"; uzun ömürlü makine/cihaz/mobilya/bilgisayar/taşıt = "demirbas"; reklam/ilan/kargo/nakliye = "pazarlama"; SADECE işletmeyi yürüten sarf (kira, elektrik, su, doğalgaz, telefon, internet, akaryakıt, kırtasiye, temizlik, danışmanlık) = "genel_gider". ⚠️ KRİTİK-1: LOKANTA/RESTORAN/YEMEK üreticisinin aldığı GIDA / MUTFAK MALZEMESİ (yağ, un, et, sebze…) ASLA "genel_gider" ya da "demirbas" DEĞİLDİR — "hammadde"dir. ⚠️ KRİTİK-2: Mükellefin ANA FAALİYETİNDE SATMADIĞI bir CİHAZ/MAKİNE/EKİPMAN/MOBİLYA/KLİMA/BEYAZ EŞYA/BİLGİSAYAR/TELEVİZYON alımı = "demirbas" (sabit kıymet); ASLA "ticari_mal" DEĞİLDİR. "ticari_mal" YALNIZCA mükellefin o ürünü SATARAK ticaret yaptığı durumdur — ör. LOKANTA/YEMEK üreticisi KLİMA alırsa "demirbas"; klima TİCARETİ yapan firma klima alırsa "ticari_mal". ⚠️ KRİTİK-3: Mükellefin SATMADIĞI TÜKETİM/SARF malzemesi (ambalaj, poşet, streç, tek-kullanımlık bardak/tabak/çatal/kaşık, eldiven, temizlik, kırtasiye, servis malzemesi) hizmet/eğitim/ofis/lokanta gibi MAL TİCARETİ YAPMAYAN işletmede "genel_gider"dir (sarf malzeme); ASLA "ticari_mal" DEĞİLDİR (mükellef bunları satmıyor, kendi işinde tüketiyor). Bunları SATARAK ticaret yapan ambalaj/kırtasiye toptancısı alırsa "ticari_mal".`
         : '',
-      planAdaylar ? `\nMÜKELLEFİN HESAP PLANI — matrah/gider için aday hesaplar (matrahHesapKodu'nu SADECE bu listeden seç):\n${planAdaylar}\n→ matrahHesapKodu: bu faturanın matrahını (mal/hizmet/gider tutarını) mükellefin İŞİNE ve fatura İÇERİĞİNE göre yukarıdaki listeden EN UYGUN TAM koda ata. Mükellefin SATARAK ticaret yaptığı emtia → stok (15x); kendi işinde KULLANDIĞI/tükettiği şey → ilgili gider (7xx/6xx; ör. mutfak malzemesi/çatal-kaşık→mutfak gideri, yakıt→akaryakıt gideri); uzun ömürlü makine/cihaz/mobilya/demirbaş → sabit kıymet (25x); SATIŞ faturasıysa gelir (600). ⚠️ İçeriğe gerçekten uyan hesap yoksa BOŞ bırak — listede OLMAYAN kodu ASLA yazma, uydurma.` : '',
-      (semMotor && planAdaylar) ? `\nSATIŞ GELİR HESABI (mükellef SATICIYSA, matrahHesapKodu): MAL satışı → yurtiçi satışlar (600); HİZMET satışı → planında hizmet geliri için varsa 600/601; İHRACAT/yurtdışı → 601. ⚠️ PRİM / CİRO PRİMİ / HAKEDİŞ / KOMİSYON / KUR FARKI / FAİZ gibi MAL-HİZMET SATIŞI OLMAYAN gelirler → 602 DİĞER GELİRLER (yoksa 649 DİĞER OLAĞAN GELİR VE KÂRLAR); bunları 600 MAL SATIŞ hesabına ASLA yazma. Uygun gelir hesabı planda yoksa matrahHesapKodu BOŞ.` : '',
+      planAdaylar ? `\nMÜKELLEFİN HESAP PLANI — matrah/gider için aday hesaplar (matrahHesapKodu'nu SADECE bu listeden seç):\n${planAdaylar}\n→ matrahHesapKodu: bu faturanın matrahını (mal/hizmet/gider tutarını) mükellefin İŞİNE ve fatura İÇERİĞİNE göre yukarıdaki listeden EN UYGUN TAM koda ata. Mükellefin SATARAK ticaret yaptığı emtia → stok (15x); kendi işinde KULLANDIĞI/tükettiği şey → ilgili gider (7xx/6xx; ör. mutfak malzemesi/çatal-kaşık→mutfak gideri, yakıt→akaryakıt gideri); uzun ömürlü makine/cihaz/mobilya/demirbaş → sabit kıymet (25x); SATIŞ faturasıysa gelir (600). ${PLAN_ADAY_ROL_ACIKLAMASI} ⚠️ İçeriğe gerçekten uyan hesap yoksa BOŞ bırak — listede OLMAYAN kodu ASLA yazma, uydurma.` : '',
+      // SATIŞ GELİR kuralı TEK KAYNAK (plan-adaylari.ts) — classify yolu (classifyBodySegments) da aynı metni kullanır.
+      (semMotor && planAdaylar) ? `\n${SATIS_GELIR_HESABI_KURALI}` : '',
       gecmisDuzeltme ? `\n⚠️ GEÇMİŞ DÜZELTMELER — bu mükellef bu satıcıda aşağıdaki hesap seçimlerini KENDİ ONAYLADI. BENZER içerikte AYNI hesabı seç (mükellefin yerleşik tercihini EZME); yalnız içerik gerçekten farklı bir niteliktEYSE serbestsin:\n${gecmisDuzeltme}` : '',
       isImage ? '' : ('\nİÇERİK:\n' + html.replace(/<(script|style)[^>]*>[\s\S]*?<\/(script|style)>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/&[a-z#0-9]+;/gi, ' ').replace(/\s+/g, ' ').trim().slice(0, 16000)),
     ].filter(Boolean).join('\n');
@@ -14593,12 +14727,18 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // ── İKİ-AŞAMALI OKUMA (pilot, 2026-08-11): Haiku sonucu BELİRSİZse (güven<0.6 VEYA plan var ama
     //   matrahHesapKodu boş) → YALNIZ BU belgeyi Sonnet'e ESKALE et. Böylece parçaların çoğu Haiku'da HIZLI
     //   kalır (toplu-Sonnet stall'ı OLMAZ), yalnız zor/ikircikli belge güvenilir modele gider ("saf AI" orada).
+    // PLAN/15 Faz 1-B (2026-09-12): bu blok yalnız GÖRSEL/METİN okuma yolunda (parsed !== preParsed) çalışır;
+    //   UBL/entegratör belgeleri (parsed === preParsed) aşağıdaki classify yolundan geçer ve Sonnet eskalasyonunu
+    //   ORADA alır (aiClassifyAccounting: guven==='dusuk' | kod boş/geçersiz → saatte ≤60). Burada tetik genişletildi:
+    //   sayısal güven<0.4 VEYA metinsel guven==='dusuk' VEYA kod boş/aday listesinde yok.
     if (semMotor && parsed && parsed !== preParsed && planAdaylar && !sonnetKullanildi) {
       const _g = Number((parsed as any).guven);
-      const _kodBos = !String((parsed as any).matrahHesapKodu || '').trim();
+      const _guvenDusuk = String((parsed as any).guven ?? '').trim().toLowerCase() === 'dusuk';
+      const _kodStr = String((parsed as any).matrahHesapKodu || '').trim();
+      const _kodBos = !_kodStr || !planLeafSet.has(_kodStr); // geçersiz (listede olmayan) kod = boş sayılır (zaten kabul edilmez)
       // GLOBAL stall-koruması: eskalasyon YALNIZ hesap BOŞ (AI seçemedi — objektif, düşük hacim) VEYA
-      //   güven ÇOK düşükse (<0.4). Böylece çok-mükellefte Sonnet yükü patlamaz (toplu-stall önlenir).
-      if (_kodBos || (Number.isFinite(_g) && _g < 0.4)) {
+      //   güven ÇOK düşükse (<0.4 / "dusuk"). Böylece çok-mükellefte Sonnet yükü patlamaz (toplu-stall önlenir).
+      if (_kodBos || _guvenDusuk || (Number.isFinite(_g) && _g < 0.4)) {
         const res2: any = await claudeTextViaMax(
           (isImage && !useAzureText)
             ? { prompt: callPrompt, images: [{ base64: imgBuf!.toString('base64'), mediaType: imgMedia }], timeoutMs: 90000, model: undefined }
@@ -14624,12 +14764,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       // TEMİZ içerik: HTML-HIZLI yolunda _htmlText zaten script/style atılmış + 8000 char (sınıflandırma
       //   AI'ı 23KB ham HTML gürültüsünde boğuluyordu → NULL/boş kategori). Önce onu kullan; yoksa eski yol.
       const contentText = (parsed._htmlText || parsed._azureText || (imgBuf ? imgBuf.toString('utf8') : (html || ''))).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 9000);
-      // ⚡ HIZ — DETERMİNİSTİK ATLAMA: e-Fatura/e-Arşiv'de kalemler AI'sız (XML/HTML) okunuyor. İÇERİK
-      //   net bir gider türüne (nakliye/akaryakıt/elektrik/kira/kargo/müşavirlik…) uyuyorsa, ~100s'lik
-      //   Max sınıflandırma çağrısını YAPMA — hesabı içerikten zaten biliyoruz (matcher'ın kullandığı
-      //   giderIcerikSinifla ile aynı kural). GÜVENLİK (kullanıcı kuralı: içeriğe bakmadan atlama yok):
-      //   yalnız HER kalem tanınan bir gider ise (HOMOJEN) atlanır → tek belirsiz/ticari-mal/demirbaş
-      //   kalem varsa AI çalışır. İşletme defteri (kayıt türü gerekir) ve SATIŞ bu hızlı-yoldan HARİÇ.
+      // KELİME KURALI (giderIcerikSinifla): e-Fatura/e-Arşiv'de kalemler AI'sız (XML/HTML) okunuyor; İÇERİK
+      //   net bir gider türüne (nakliye/akaryakıt/elektrik/kira/kargo/müşavirlik…) uyuyorsa detHit dolar
+      //   (yalnız HER kalem tanınan ve AYNI hint'i veren gider ise — HOMOJEN). İşletme defteri ve SATIŞ hariç.
+      //   PLAN/15 Faz 1-B (2026-09-12): eskiden detHit varsa Max HİÇ çağrılmıyordu → kategori kelimeden geliyor,
+      //   mükellef faaliyeti dikkate alınmıyordu (ambalajcıda "streç film" ticari mal iken sarf oluyordu).
+      //   Artık detHit yalnız İPUCU: AI yine çağrılır (prompt'a "KELİME KURALI İPUCU" satırı), AI boş dönerse
+      //   detHit yedek. Acil geri dönüş: FM_DET_ATLA=1 → eski atlama (detAtlamaAcikMi, deploy gerektirmez).
       const detAdlar = (Array.isArray(parsed.kalemler) ? parsed.kalemler : []).map((k: any) => String(k?.ad || '').trim()).filter(Boolean);
       let detHit: { giderTuru: string; kategori: string } | null = null;
       if (!isIsletmeMukellef && d.invoiceKind !== 'SATIS' && detAdlar.length) {
@@ -14655,8 +14796,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       //   → FARKLI içerik (taşıt/demirbaş) farklı imza → EŞLEŞMEZ → Max çalışır. detectFixedAsset her hâlde
       //   içeriğe bakar (demirbaş yön-bağımsız yakalanır). Genel (imzasız) karar burada KABUL EDİLMEZ —
       //   içerik körü atlamayı önler. Yalnız ilk-kez satıcıda değil, TEKRAR eden faturalarda hızlandırır.
+      // detAtla: kelime kuralı ATLAMASI yalnız FM_DET_ATLA=1 iken (eski davranış); yoksa detHit ipucudur.
+      const detAtla = !!detHit && this.detAtlamaAcikMi();
       let ogrenilmisAtla = false;
-      if (!detHit && !isIsletmeMukellef && d.taxpayerId) {
+      // Öğrenilmiş atlama artık detHit varken de bakılır (det atlamıyorsa AI'ı boşuna çağırmamak için).
+      if (!detAtla && !isIsletmeMukellef && d.taxpayerId) {
         try {
           const vkn = String((d.invoiceKind === 'SATIS' ? d.buyerVkn : d.sellerVkn) || parsed.saticiVergiNo || parsed.aliciVergiNo || '').replace(/\D/g, '');
           const imza = VendorMemoryService.buildIcerikImza(Array.isArray(parsed.kalemler) ? parsed.kalemler.map((k: any) => k?.ad) : []);
@@ -14672,20 +14816,29 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           }
         } catch { /* hafıza okunamadıysa normal AI yoluna düş */ }
       }
-      // TOPLU: aynı mükellef+plan+yön grubundaki belgeler tek Max çağrısında sınıflanır (alt-süreç N× azalır).
-      const c: any = detHit
+      // Kelime kuralı sonucu (yedek / eski atlama): muhasebeNeden'siz kalmasın diye deterministik kısa gerekçe.
+      const detSonuc = detHit
         ? {
             giderTuru: detHit.giderTuru,
             kategori: detHit.kategori,
-            // Hızlı-yol (Max atlanır) muhasebeNeden'siz kalıyordu → kullanıcıya yorum boş görünüyordu;
-            //   deterministik kısa gerekçe yaz (zengin yorum istenirse lazy generateRichMuhasebeNeden var).
             muhasebeNeden: `Fatura kalemleri "${detHit.giderTuru}" niteliğinde — içerik kuralıyla otomatik sınıflandırıldı.`,
           }
+        : null;
+      // TOPLU: aynı mükellef+plan+yön grubundaki belgeler tek Max çağrısında sınıflanır (alt-süreç N× azalır).
+      //   Kelime kuralı ipucu belge bloğuna yazılır (parti anahtarını bölmez); plan aday kümesi kod doğrulaması için.
+      let c: any = detAtla
+        ? detSonuc
         : ogrenilmisAtla
-        ? { giderTuru: '', kategori: '', muhasebeNeden: 'Bu satıcı + aynı içerik daha önce onaylandı — öğrenilmiş hesap uygulanacak (AI atlandı).' }
-        : await this.aiClassifyAccountingCoalesced(contentText, mukellefBilgi, isIsletmeMukellef, d.invoiceKind === 'SATIS' ? 'SATIS' : 'ALIS', planAdaylar).catch(() => null);
-      if (detHit) this.logger.log(`[CLS-SKIP] det icerik=${detHit.kategori} (${detAdlar.length} kalem) → Max ATLANDI belge=${d.belgeNo || d.id}`);
+        ? { giderTuru: detHit?.giderTuru || '', kategori: detHit?.kategori || '', muhasebeNeden: 'Bu satıcı + aynı içerik daha önce onaylandı — öğrenilmiş hesap uygulanacak (AI atlandı).' }
+        : await this.aiClassifyAccountingCoalesced(contentText, mukellefBilgi, isIsletmeMukellef, d.invoiceKind === 'SATIS' ? 'SATIS' : 'ALIS', planAdaylar, {
+            ipucu: detHit ? `kategori=${detHit.kategori}, gider türü=${detHit.giderTuru}` : undefined,
+            planKodlari: planLeafSet.size ? planLeafSet : undefined,
+          }).catch(() => null);
+      if (detAtla) this.logger.log(`[CLS-SKIP] det icerik=${detHit!.kategori} (${detAdlar.length} kalem) → Max ATLANDI (FM_DET_ATLA=1) belge=${d.belgeNo || d.id}`);
+      else if (detHit && !ogrenilmisAtla) this.logger.log(`[CLS-IPUCU] det kategori=${detHit.kategori} (${detAdlar.length} kalem) → AI'a ipucu verildi belge=${d.belgeNo || d.id}`);
       if (ogrenilmisAtla) this.logger.log(`[CLS-SKIP-LEARNED] satici+icerik ogrenilmis → Max ATLANDI (hesap rematch'ten) belge=${d.belgeNo || d.id}`);
+      // AI boş/hatalı döndüyse kelime kuralı sonucu YEDEK (davranış eskisinden kötü olmasın).
+      if (!c && detSonuc && !ogrenilmisAtla) { c = detSonuc; this.logger.warn(`[CLS-IPUCU] AI yanıt vermedi → kelime kuralı yedek kullanıldı (${detHit!.kategori}) belge=${d.belgeNo || d.id}`); }
       if (c) {
         if (!parsed.giderTuru && c.giderTuru) parsed.giderTuru = c.giderTuru;
         if (!parsed.kategori && c.kategori) parsed.kategori = c.kategori;
@@ -15005,6 +15158,25 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     return { ok: true, matrah, kdv, oranSayisi: breakdown.length };
   }
 
+  /** Kelime kuralı (giderIcerikSinifla) DETERMİNİSTİK ATLAMASI açık mı? PLAN/15 Faz 1-B (2026-09-12): varsayılan
+   *  KAPALI → kelime kuralı yalnız İPUCU, AI yine çağrılır (mükellef faaliyeti hesaba katılsın). Acil geri dönüş
+   *  (kod deploy'u GEREKTİRMEZ): Railway ortam değişkeni FM_DET_ATLA=1 → eski atlama davranışı ([CLS-SKIP]).
+   *  İki yerde kullanılır: runQueuedClassify (detC) + aiReadDocument (detHit). */
+  private detAtlamaAcikMi(): boolean {
+    return String(process.env.FM_DET_ATLA || '').trim() === '1';
+  }
+  /** Classify yolu SONNET ESKALASYON sayacı (süreç başına, statik): saatte en çok 60 eskalasyon — aşınca Haiku
+   *  sonucu kalır (log). Amaç: çok-mükellefte toplu okumada Sonnet yükünün patlamasını (stall) önlemek. */
+  private static eskalasyonSayaci = { pencereBaslangic: 0, adet: 0 };
+  private static readonly ESKALASYON_SAAT_TAVANI = 60;
+  private eskalasyonHakkiAl(): boolean {
+    const s = FaturaMuhasebelestirmeService.eskalasyonSayaci;
+    const simdi = Date.now();
+    if (simdi - s.pencereBaslangic >= 3600_000) { s.pencereBaslangic = simdi; s.adet = 0; }
+    if (s.adet >= FaturaMuhasebelestirmeService.ESKALASYON_SAAT_TAVANI) return false;
+    s.adet++;
+    return true;
+  }
   // UBL/XML (max-vision AI'ı ATLAYAN) belgeler için MUHASEBE SINIFLANDIRMASI — bir mali müşavir gibi
   // içeriğe + mükellefin faaliyetine bakıp giderTuru/kategori (+ İşletme ise kayıt türü/alt türü) belirler.
   // e-Fatura/e-Arşiv XML'leri AI okumadan geçtiği için sınıf BURADA ayrı çağrıyla üretilir. Max aboneliği.
@@ -15023,15 +15195,22 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       + 'Niteliğe gerçekten uyan hesap planda YOKSA BOŞ bırak — uydurma, zorlama, yanlış hesaba YAZMA.';
     return [muhakeme, yon, mukellefBilgi ? `Faturanın tarafı olan mükellef: ${mukellefBilgi}.` : ''].filter(Boolean);
   }
-  private classifyBodySegments(isIsletme: boolean, invoiceKind?: 'ALIS' | 'SATIS', planAdaylar?: string): string[] {
+  private classifyBodySegments(isIsletme: boolean, invoiceKind?: 'ALIS' | 'SATIS', planAdaylar?: string, ek?: ClassifyEk): string[] {
     return [
+      // PLAN/15 Faz 1-B (2026-09-12): kelime kuralı sonucu artık AI'ı ATLATMAZ, yalnız ipucu olarak verilir.
+      ek?.ipucu ? `KELİME KURALI İPUCU: ${ek.ipucu} — mükellef faaliyetine göre farklı düşünüyorsan kendi kararını ver, ipucuyu körü körüne kopyalama.` : '',
+      // Sonnet eskalasyonu (guven==='dusuk' | kod boş/geçersiz): aynı prompt + dikkat uyarısı.
+      ek?.strongModel ? 'ÖNCEKİ DENEME DÜŞÜK GÜVENLİ; daha dikkatli karar ver — niteliği ve hesap planındaki rolü ([köşeli parantez]) yeniden değerlendir.' : '',
       'giderTuru: ALIŞ ise faturadaki ANA mal/hizmetin kısa adı (yakıt/motorin→"akaryakıt"; ayrıca "elektrik","su","doğalgaz","telefon","internet","kira","kırtasiye","danışmanlık","nakliye","yedek parça","bakım onarım","yemek","temizlik","sigorta","reklam" vb). Net değilse "". SATIŞ ise "".',
       'kategori: mükellefin ANA FAALİYETİNE göre → "ticari_mal" (SADECE mükellefin SATARAK ticaretini yaptığı emtia), "hammadde" (üretim girdisi), "demirbas" (makine/cihaz/sabit kıymet), "pazarlama" (reklam/kargo/nakliye), "genel_gider" (kira/elektrik/sarf/abonelik + satılmayan tüketim/sarf malzemesi). Emin değilsen "genel_gider". ⚠️ KRİTİK — LOKANTA/RESTORAN/KAFE/PASTANE/YEMEK ÜRETİM/CATERING işletmesinin aldığı GIDA / MUTFAK MALZEMESİ (et, tavuk, sebze, meyve, süt, peynir, yumurta, un, yağ, baharat, içecek, ekmek, bakliyat) = "hammadde" (üründe kullanılan girdi); ASLA "genel_gider" DEĞİL. ⚠️ Mükellefin SATMADIĞI cihaz/klima/makine/ekipman/mobilya/bilgisayar = "demirbas", ASLA "ticari_mal" değil (lokanta klima alırsa demirbas). ⚠️ "demirbas" YALNIZ uzun ömürlü bir sabit kıymetin KOMPLE SATIN ALIMIDIR (makine/araç/römork/cihaz/mobilya). YEDEK PARÇA, BAKIM, ONARIM, SERVİS, DİAGNOSTİK, LASTİK, AKARYAKIT, İŞÇİLİK = GİDER (genel_gider; araçla ilgiliyse "araç bakım"), demirbaş DEĞİLDİR. ⚠️ Mükellef MAL TİCARETİ/ÜRETİMİ yapmıyorsa (saf hizmet/eğitim/ofis) aldığı tüketim/sarf malzemesi (ambalaj, tek-kullanımlık, temizlik, kırtasiye, servis) = "genel_gider", ASLA "ticari_mal" değil. Araç/taşıt kiralama = "genel_gider" ama giderTuru "araç kiralama" (kira değil). ⚠️ LOKANTA örneği GENELLENİR — HER ÜRETİM/İMALAT işletmesinde (tabela/reklam imalatı, matbaa, mobilya, tekstil, metal işleme…) ürüne GİREN malzeme (pleksi, dekota, folyo, LED modül, alüminyum levha/profil, boya, kumaş, ahşap, sac…) = "hammadde"; reklam İMALATÇISININ aldığı pleksi/LED reklam GİDERİ ("pazarlama") DEĞİLDİR. ⚠️ Kategoriyi KALEM İÇERİĞİNDEN türet — SATICININ ünvanı/sektörü tek başına belirleyici DEĞİL (hırdavatçıdan alınan "şarjlı alet seti" alet/ekipmandır, "danışmanlık" olamaz; ünvanda "hizmet/danışmanlık" geçmesi kalemi hizmet yapmaz).',
       'kalemler: faturadaki mal/hizmet satırlarını listele (ad + KDV hariç tutar + KDV oranı sayı). ÇOK KALEMLİYSE (>15) KDV oranına ve benzer ürün grubuna göre BİRLEŞTİR — en fazla 15 nesne (ör. "%1 gıda ürünleri", "%20 temizlik"). Okunamazsa [].',
       (planAdaylar && this.kalemBazliHesapOn) ? 'KALEM-BAZLI HESAP: Yukarıdaki hesap planından HER kaleme, o kalemin NİTELİĞİNE + KDV ORANINA göre kendi "hesap" kodunu ata (matrahHesapKodu ile AYNI 2 adımlı mantık, ama KALEM KALEM). AYNI nitelikteki kalemleri birleştirebilirsin; FARKLI nitelikteki kalemleri AYRI tut ve AYRI hesaba ver (ör. nakliyecinin sattığı LASTİK ≠ verdiği NAKLİYE HİZMETİ; market faturasında GIDA ≠ TEMİZLİK malzemesi; farklı gider türleri). Bir kalemin niteliğine gerçekten uyan hesap planda YOKSA o kalemin "hesap"ını BOŞ bırak — uydurma. Tüm kalemler AYNI hesaba gidiyorsa hepsine aynı kodu ver (bu normaldir).' : '',
       'muhasebeNeden: Bir mali müşavir ağzından AKICI, DOĞAL Türkçe 1-2 cümlelik değerlendirme (kalıp DEĞİL — gerçekten yorumla). Faturada özetle NE alınmış/satılmış ve mükellefin faaliyetine göre bu NİYE o nitelikte (ticari mal / hammadde / demirbaş / gider). İçerik faaliyetle uyumsuzsa nedenini söyle. ⚠️ "alış"/"satış" kelimesini ve hesap NUMARASINI YAZMA — yönü ve kesin hesabı sistem ekler; sen YALNIZ içeriği ve niteliği yorumla. ⛔ İçeriğin "OKUNAMADIĞINI", "şifreli/anlaşılmaz formatta" olduğunu ya da "niteliğin belirlenemediğini" ASLA YAZMA — kalem adı neyse (ör. "plaka", "danışmanlık") ona göre yorumla; gerçekten hiçbir bilgi yoksa muhasebeNeden\'i BOŞ ("") bırak (mazeret cümlesi kurma). ⚠️ KİŞİSEL/KKEG: içerik mükellefin FAALİYETİYLE ALAKASIZ kişisel/şahsi tüketimse (ör. NAKLİYECİNİN aldığı kozmetik/makyaj/saç-cilt bakım/parfüm/şampuan, şahsi giyim, kişisel gıda) bunu "kişisel harcama; kanunen gider yazılamaz (KKEG), müşavir manuel değerlendirmeli" diye açıkça belirt ve matrahHesapKodu\'nu BOŞ bırak (uygun gider hesabı yoktur — plandan hesap SEÇME). Örnek: "Faturada ofis için yazıcı ve toner alınmış; işte kullanılan sabit kıymet/demirbaş niteliğindedir."',
       isIsletme ? islPromptSeg(invoiceKind) : 'isletmeKayitTuru ve isletmeAltTuru = "" bırak (mükellef İşletme defteri değil).',
-      planAdaylar ? `\nMÜKELLEFİN HESAP PLANI — matrah/gider için aday hesaplar (matrahHesapKodu'nu SADECE bu listeden seç):\n${planAdaylar}\n→ matrahHesapKodu seçimi İKİ ADIM: (A) yukarıda belirlediğin NİTELİĞE göre DOĞRU ANA grubu bul — mükellefin SATARAK ticaret yaptığı emtia → stok (15x); ÜRETİMDE kullandığı girdi (LOKANTA gıda/mutfak malzemesi) → ilk madde/üretim maliyeti (15x/74x); kendi işinde tükettiği gider → ilgili GİDER (7xx/6xx); uzun ömürlü makine/cihaz/demirbaş → sabit kıymet (25x); SATIŞ ise gelir (60x). (B) O grubun ALT HESAPLARINDAN, faturanın İÇERİĞİNE (ne alınmış) + KDV ORANINA göre EN UYGUN TAM kodu seç — ör. "araç bakım" niteliği için adında "araç/taşıt bakım" geçen alt hesabı; çok-oranlıysa o orana ait alt hesabı. ⚠️ Yüzeysel kelime benzerliği (kira≈kiralama, "genel"≈"genel yönetim 632") YETMEZ — NİTELİK uymalı; 6xx GELİR-TABLOSU/YANSITMA hesaplarına (630/631/632) ALIŞ gideri YAZMA, gider 7xx maliyet hesabına gider. ⚠️ İÇERİĞE GERÇEKTEN uyan hesap planda YOKSA BOŞ bırak — listede OLMAYAN kodu ASLA yazma. ⚠️ TUTARLI OL: aynı tür içerik (ör. nakliye) HER faturada aynı hesaba gitsin, zıplama.` : '',
+      planAdaylar ? `\nMÜKELLEFİN HESAP PLANI — matrah/gider için aday hesaplar (matrahHesapKodu'nu SADECE bu listeden seç):\n${planAdaylar}\n→ matrahHesapKodu seçimi İKİ ADIM: (A) yukarıda belirlediğin NİTELİĞE göre DOĞRU ANA grubu bul — mükellefin SATARAK ticaret yaptığı emtia → stok (15x); ÜRETİMDE kullandığı girdi (LOKANTA gıda/mutfak malzemesi) → ilk madde/üretim maliyeti (15x/74x); kendi işinde tükettiği gider → ilgili GİDER (7xx/6xx); uzun ömürlü makine/cihaz/demirbaş → sabit kıymet (25x); SATIŞ ise gelir (60x). (B) O grubun ALT HESAPLARINDAN, faturanın İÇERİĞİNE (ne alınmış) + KDV ORANINA göre EN UYGUN TAM kodu seç — ör. "araç bakım" niteliği için adında "araç/taşıt bakım" geçen alt hesabı; çok-oranlıysa o orana ait alt hesabı. ⚠️ Yüzeysel kelime benzerliği (kira≈kiralama, "genel"≈"genel yönetim 632") YETMEZ — NİTELİK uymalı; 6xx GELİR-TABLOSU/YANSITMA hesaplarına (630/631/632) ALIŞ gideri YAZMA, gider 7xx maliyet hesabına gider. ⚠️ İÇERİĞE GERÇEKTEN uyan hesap planda YOKSA BOŞ bırak — listede OLMAYAN kodu ASLA yazma. ⚠️ TUTARLI OL: aynı tür içerik (ör. nakliye) HER faturada aynı hesaba gitsin, zıplama. ${PLAN_ADAY_ROL_ACIKLAMASI} guven: matrahHesapKodu seçimine güvenin — "yuksek" (nitelik + hesap adı kesin uyuyor), "orta", "dusuk" (zorlayarak/en yakınını seçtin ya da tereddüt var; kod boşsa da "dusuk").` : '',
+      // SATIŞ GELİR kuralı TEK KAYNAK (plan-adaylari.ts): eskiden yalnız görsel okuma promptunda vardı; UBL/entegratör
+      //   belgeleri bu classify yolundan geçtiği için satışta prim/komisyon/kur farkı 600'e gidiyordu.
+      (planAdaylar && invoiceKind === 'SATIS' && this.semantikMotorFor()) ? `\n${SATIS_GELIR_HESABI_KURALI}` : '',
     ].filter(Boolean);
   }
   /** KALEM-BAZLI HESAP modu (varsayılan KAPALI). Açıkken okuma AI'ı her kaleme kendi hesabını üretir ve
@@ -15072,7 +15251,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   }
   private classifyJsonShape(planAdaylar?: string): string {
     const kalemHesap = (planAdaylar && this.kalemBazliHesapOn) ? ',"hesap":""' : '';
-    return `{"giderTuru":"","kategori":"","isletmeKayitTuru":"","isletmeAltTuru":"","isletmeNeden":"","muhasebeNeden":"","kalemler":[{"ad":"","tutar":0,"oran":0${kalemHesap}}]${planAdaylar ? ',"matrahHesapKodu":""' : ''}}`;
+    // guven (yuksek|orta|dusuk) yalnız plan verildiğinde — Sonnet eskalasyon tetiği (PLAN/15 Faz 1-B).
+    return `{"giderTuru":"","kategori":"","isletmeKayitTuru":"","isletmeAltTuru":"","isletmeNeden":"","muhasebeNeden":"","kalemler":[{"ad":"","tutar":0,"oran":0${kalemHesap}}]${planAdaylar ? ',"matrahHesapKodu":"","guven":"yuksek|orta|dusuk"' : ''}}`;
   }
   private parseClassifyObject(j: any): ClassifyResult | null {
     if (!j || typeof j !== 'object') return null;
@@ -15087,7 +15267,20 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         ? j.kalemler.slice(0, 15).map((k: any) => ({ ad: String(k?.ad || '').slice(0, 80), tutar: Number(k?.tutar) || 0, oran: Number(k?.oran) || 0, ...(typeof k?.hesap === 'string' && k.hesap.trim() ? { hesap: String(k.hesap).trim() } : {}) })).filter((k: any) => k.ad)
         : undefined,
       matrahHesapKodu: typeof j.matrahHesapKodu === 'string' ? String(j.matrahHesapKodu).trim() : undefined,
+      guven: (() => {
+        // Türkçe karakterli/büyük harfli yanıtı da tanı ("Yüksek", "DÜŞÜK"); tanınmayan değer → undefined (eskalasyon tetiklemez).
+        const g = String(j.guven ?? '').trim().toLowerCase().replace(/ü/g, 'u').replace(/ş/g, 's').replace(/ı/g, 'i');
+        return g === 'yuksek' || g === 'orta' || g === 'dusuk' ? g : undefined;
+      })(),
     };
+  }
+  /** Classify sonucu Sonnet'e ESKALE edilmeli mi? (plan verilmişken) guven==='dusuk' | kod boş | kod aday listesinde yok. */
+  private classifyEskalasyonGerekli(r: ClassifyResult | null, planAdaylar?: string, planKodlari?: Set<string>): boolean {
+    if (!planAdaylar || !r) return false;
+    if (r.guven === 'dusuk') return true;
+    const kod = String(r.matrahHesapKodu || '').trim();
+    if (!kod) return true;
+    return !!(planKodlari && planKodlari.size && !planKodlari.has(kod));
   }
 
   /** TOPLU sınıflandırma: aynı mükellef+plan+yön grubundaki N belgeyi TEK Max çağrısında değerlendir.
@@ -15098,11 +15291,14 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     isIsletme: boolean,
     invoiceKind?: 'ALIS' | 'SATIS',
     planAdaylar?: string,
+    // PLAN/15 Faz 1-B: belge-bazlı kelime kuralı ipuçları (belge bloğuna yazılır; parti anahtarını bölmez).
+    ek?: { ipucular?: Array<string | undefined> },
   ): Promise<Array<ClassifyResult | null>> {
     const n = contents.length;
     if (!n) return [];
+    const ipucular = ek?.ipucular || [];
     const docBlocks = contents
-      .map((c, i) => `=== BELGE ${i + 1} ===\n${String(c || '').replace(/\s+/g, ' ').trim().slice(0, 6000)}`)
+      .map((c, i) => `=== BELGE ${i + 1} ===\n${ipucular[i] ? `KELİME KURALI İPUCU (bu belge): ${ipucular[i]} — mükellef faaliyetine göre farklı düşünüyorsan kendi kararını ver, ipucuyu körü körüne kopyalama.\n` : ''}${String(c || '').replace(/\s+/g, ' ').trim().slice(0, 6000)}`)
       .join('\n\n');
     const prompt = [
       `Aşağıda ${n} adet Türk e-Fatura/e-Arşiv belgesinin metin içeriği var (1..${n} numaralı). HER BİRİNİ ayrı ayrı, bir MALİ MÜŞAVİR gibi değerlendir. Tüm kurallar HER belge için ayrı geçerlidir.`,
@@ -15137,6 +15333,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       if (allValidUnique) {
         const aligned: Array<ClassifyResult | null> = new Array(n).fill(null);
         for (const j of arr) aligned[Number(j.no) - 1] = this.parseClassifyObject(j);
+        // Sonnet eskalasyonu (düşük güven / boş-geçersiz kod) burada DEĞİL, flushClassifyBatch'te belge bazında yapılır
+        //   → eskalasyon gerektirmeyen belgeler partiyi beklemeden hemen çözülür.
         return aligned;
       }
       // "no" eksik/çakışık/aralık-dışı → SIRALI eşleme GÜVENSİZ (karışma riski). Boş dön → çağıran
@@ -15153,19 +15351,22 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     isIsletme: boolean,
     invoiceKind?: 'ALIS' | 'SATIS',
     planAdaylar?: string,
+    // PLAN/15 Faz 1-B: ipucu belge-bazlı (parti anahtarına GİRMEZ); planKodlari plan ile birebir → partide paylaşılır.
+    ek?: ClassifyEk,
   ): Promise<ClassifyResult | null> {
     if (!contentText || contentText.length < 20) return Promise.resolve(null);
     if (this.classifyBatchSize <= 1) {
-      return this.aiClassifyAccounting(contentText, mukellefBilgi, isIsletme, invoiceKind, planAdaylar).catch(() => null);
+      return this.aiClassifyAccounting(contentText, mukellefBilgi, isIsletme, invoiceKind, planAdaylar, ek).catch(() => null);
     }
     const key = `${isIsletme ? '1' : '0'}|${invoiceKind || 'ALIS'}|${planAdaylar || ''}|${mukellefBilgi}`;
     return new Promise<ClassifyResult | null>((resolve) => {
       let buf = this.classifyBatchBuffers.get(key);
       if (!buf) {
-        buf = { items: [], timer: null, shared: { mukellefBilgi, isIsletme, invoiceKind, planAdaylar } };
+        buf = { items: [], timer: null, shared: { mukellefBilgi, isIsletme, invoiceKind, planAdaylar, planKodlari: ek?.planKodlari } };
         this.classifyBatchBuffers.set(key, buf);
       }
-      buf.items.push({ contentText, resolve });
+      if (!buf.shared.planKodlari && ek?.planKodlari) buf.shared.planKodlari = ek.planKodlari;
+      buf.items.push({ contentText, resolve, ipucu: ek?.ipucu });
       if (buf.items.length >= this.classifyBatchSize) {
         if (buf.timer) { clearTimeout(buf.timer); buf.timer = null; }
         void this.flushClassifyBatch(key).catch(() => {});
@@ -15190,16 +15391,33 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       try {
         results = await this.aiClassifyAccountingMulti(
           items.map((i) => i.contentText), buf.shared.mukellefBilgi, buf.shared.isIsletme, buf.shared.invoiceKind, buf.shared.planAdaylar,
+          { ipucular: items.map((i) => i.ipucu) },
         );
       } catch { results = []; }
       if (Array.isArray(results) && results.length === items.length) {
         this.logger.log(`[CLS-BATCH] grup=${items.length} sonuc=OK sure=${Date.now() - t0}ms (tek Max cagrisi)`);
-        items.forEach((_, i) => resolveAt(i, results[i] || null));
+        // SONNET ESKALASYONU (PLAN/15 Faz 1-B): toplu Haiku sonucunda güveni düşük / hesabı boş-geçersiz belgeler
+        //   TEK TEK güçlü modele gider (saatlik tavan aiClassifyAccounting içinde); diğerleri partiyi BEKLEMEDEN
+        //   hemen çözülür. Sonnet çözemez / tavan doluysa Haiku sonucu KALIR.
+        const eskale: number[] = [];
+        items.forEach((_, i) => {
+          if (buf.shared.planAdaylar && this.classifyEskalasyonGerekli(results[i], buf.shared.planAdaylar, buf.shared.planKodlari)) eskale.push(i);
+          else resolveAt(i, results[i] || null);
+        });
+        if (eskale.length) {
+          await Promise.all(eskale.map(async (i) => {
+            const r2 = await this.aiClassifyAccounting(items[i].contentText, buf.shared.mukellefBilgi, buf.shared.isIsletme, buf.shared.invoiceKind, buf.shared.planAdaylar, {
+              ipucu: items[i].ipucu, planKodlari: buf.shared.planKodlari, strongModel: true,
+            }).catch(() => null);
+            if (r2) this.logger.log(`[CLS-ESKALASYON] toplu: Haiku guven=${results[i]?.guven || '-'} kod=${results[i]?.matrahHesapKodu || '-'} → Sonnet kod=${r2.matrahHesapKodu || '-'} guven=${r2.guven || '-'}`);
+            resolveAt(i, r2 || results[i] || null);
+          }));
+        }
         return;
       }
       this.logger.warn(`[CLS-BATCH] uyumsuz (istenen=${items.length} donen=${Array.isArray(results) ? results.length : 0}) → tek-tek fallback`);
       await Promise.all(items.map(async (it, i) => {
-        const r = await this.aiClassifyAccounting(it.contentText, buf.shared.mukellefBilgi, buf.shared.isIsletme, buf.shared.invoiceKind, buf.shared.planAdaylar).catch(() => null);
+        const r = await this.aiClassifyAccounting(it.contentText, buf.shared.mukellefBilgi, buf.shared.isIsletme, buf.shared.invoiceKind, buf.shared.planAdaylar, { ipucu: it.ipucu, planKodlari: buf.shared.planKodlari }).catch(() => null);
         resolveAt(i, r);
       }));
     } catch {
@@ -15213,34 +15431,56 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     isIsletme: boolean,
     invoiceKind?: 'ALIS' | 'SATIS',
     planAdaylar?: string,
+    // PLAN/15 Faz 1-B (2026-09-12): ipucu (kelime kuralı), planKodlari (kod doğrulama), strongModel (Sonnet eskalasyonu — iç).
+    ek?: ClassifyEk,
   ): Promise<ClassifyResult | null> {
     if (!contentText || contentText.length < 20) return null;
+    const strong = ek?.strongModel === true;
+    // ESKALASYON TAVANI: saatte ≤60 (süreç başına, statik sayaç). Dolduysa güçlü model ÇAĞRILMAZ → çağıran Haiku sonucunu korur.
+    if (strong && !this.eskalasyonHakkiAl()) {
+      this.logger.warn(`[CLS-ESKALASYON] saatlik tavan (${FaturaMuhasebelestirmeService.ESKALASYON_SAAT_TAVANI}) doldu → Haiku sonucu kalıyor`);
+      return null;
+    }
     const prompt = [
       'Aşağıda bir Türk e-Fatura/e-Arşiv belgesinin metin içeriği var. İçindeki MAL/HİZMET kalemlerini bir MALİ MÜŞAVİR gibi değerlendir.',
       ...this.classifyHeadSegments(mukellefBilgi, invoiceKind),
       `YALNIZCA şu JSON: ${this.classifyJsonShape(planAdaylar)}`,
-      ...this.classifyBodySegments(isIsletme, invoiceKind, planAdaylar),
+      ...this.classifyBodySegments(isIsletme, invoiceKind, planAdaylar, ek),
       '\nİÇERİK:\n' + contentText.slice(0, 12000),
     ].filter(Boolean).join('\n');
     // 429/hız-limitinde sınıflandırma sessizce düşmesin (matrah buna bağlı) → 1 kez GERİ-ÇEKİLMELİ tekrar dene.
     // EŞZAMANLILIK KAPISI: 6 belge aynı anda buraya gelip 6 Max alt-süreci doğurunca hepsi timeout'a
     //   düşüyordu → düşük kapıdan (classifyConcurrency) geçir, her çağrıya yeterli süre (classifyTimeoutMs).
+    // Sonnet eskalasyonu TEK deneme (yavaş model; başarısızsa Haiku sonucu zaten elde).
     const releaseSlot = await this.acquireClassifySlot();
     let res: any = null;
     try {
-      for (let att = 1; att <= 2 && (!res || !res.ok || !res.text); att++) {
-        res = await claudeTextViaMax({ prompt, timeoutMs: this.classifyTimeoutMs, model: MAX_MODEL_CHEAP }).catch(() => null);
-        if ((!res || !res.ok || !res.text) && att < 2) await new Promise((r) => setTimeout(r, /rate|429|limit|overload|too many/i.test(String(res?.error || '')) ? 3500 : 600));
+      const denemeSayisi = strong ? 1 : 2;
+      for (let att = 1; att <= denemeSayisi && (!res || !res.ok || !res.text); att++) {
+        res = await claudeTextViaMax({ prompt, timeoutMs: this.classifyTimeoutMs, model: strong ? MAX_MODEL_DEFAULT : MAX_MODEL_CHEAP }).catch(() => null);
+        if ((!res || !res.ok || !res.text) && att < denemeSayisi) await new Promise((r) => setTimeout(r, /rate|429|limit|overload|too many/i.test(String(res?.error || '')) ? 3500 : 600));
       }
     } finally {
       releaseSlot();
     }
     if (!res || !res.ok || !res.text) return null;
+    let r: ClassifyResult | null = null;
     try {
       const m = res.text.match(/\{[\s\S]*\}/);
       const j = m ? JSON.parse(m[0]) : null;
-      return this.parseClassifyObject(j);
+      r = this.parseClassifyObject(j);
     } catch { return null; }
+    // SONNET ESKALASYONU (PLAN/15 Faz 1-B): plan verilmişken Haiku sonucu guven==='dusuk' ya da matrahHesapKodu
+    //   boş/geçersiz ise aynı prompt + "ÖNCEKİ DENEME DÜŞÜK GÜVENLİ" notuyla MAX_MODEL_DEFAULT (Sonnet) bir kez.
+    //   Sonnet çözemez / tavan doluysa Haiku sonucu KALIR (davranış eskisinden kötü olmaz).
+    if (!strong && this.classifyEskalasyonGerekli(r, planAdaylar, ek?.planKodlari)) {
+      const r2 = await this.aiClassifyAccounting(contentText, mukellefBilgi, isIsletme, invoiceKind, planAdaylar, { ...(ek || {}), strongModel: true }).catch(() => null);
+      if (r2) {
+        this.logger.log(`[CLS-ESKALASYON] Haiku guven=${r?.guven || '-'} kod=${r?.matrahHesapKodu || '-'} → Sonnet kod=${r2.matrahHesapKodu || '-'} guven=${r2.guven || '-'}`);
+        return r2;
+      }
+    }
+    return r;
   }
 
   // AI ile GİDER hesabı seçimi (kural/ad eşleşmesi bulamadığında ESKALASYON). Mükellefin FAALİYETİ +
@@ -15306,6 +15546,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       .replace(/```/g, '')
       .replace(/^\s*[-*•]\s*/gm, '')
       .replace(/^\s*HESAP_UYUMU\s*:.*$/gim, '') // #3 yapısal uyum satırı — kullanıcıya GÖSTERİLMEZ
+      .replace(/^\s*ONERILEN_HESAP\s*:.*$/gim, '') // PLAN/15 Faz 1: öneri satırı da yapısal — gösterilmez (ocrData.onerilenHesap'a gider)
       .trim();
     if (!out) return '';
     const fa = out.match(/Faaliyet\s*:?[ \t]*(.+?)(?:\n+|$)/i);
@@ -15400,18 +15641,23 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const det = this.buildMuhasebeNeden(tpFaaliyet, isSale, kat, giderTuru, matrahAccForNeden, isReturn);
     // Hesap atanmamışsa zengin yorum anlamsız → deterministik özet (AI çağırma).
     if (!hesapStr || !matrahAccForNeden) {
-      // #3 HESAP-UYUMSUZ (hesap BOŞALTILMIŞ): AI yeniden çağrılamaz (hesap yok) ve deterministik det
-      //   YANILTICI olur ("olağan satış 600"). Saklı zengin yorumdaki "…hesabına işlenmiştir" kapanışını
-      //   temizleyip "hesap atanmadı, seçin" yap (AI gerekçesi korunur); yoksa net mesaj üret. Sakla da.
+      // #3 HESAP-UYUMSUZ ama hesap BOŞ: uyum kararı artık hesabı SİLMEZ (PLAN/15 Faz 1, 2026-09-12 — "hesap korunur,
+      //   öneri sunulur"); bu dal yalnız eski (silinmiş) ya da elle boşaltılmış belgede çalışır. AI yeniden çağrılamaz
+      //   (hesap yok) ve deterministik det YANILTICI olur ("olağan satış 600"). Saklı zengin yorumdaki "…hesabına
+      //   işlenmiştir" (ve eski "OTOMATİK HESAP ATANMADI") kapanışını "hesap silinmedi / öneri" diline çevir; yoksa net mesaj üret.
       if ((ocr as any)?.hesapUyumsuz) {
+        const onerilenBos = String((ocr as any)?.onerilenHesap || '').trim();
+        const secimMetni = onerilenBos ? `önerilen hesap ${onerilenBos} — "Öneriyi uygula" ya da editörde seçin` : 'doğru hesabı editörde seçin';
         let z = String(ocr.muhasebeNedenZengin || '').trim();
         if (z) {
           z = z
-            .replace(/,?\s*[\dA-ZÇĞİÖŞÜ.\s]+hesab[ıi]na işlenmiştir\.?\s*$/i, '; ancak içerik ana faaliyetle uyuşmadığından OTOMATİK HESAP ATANMADI — doğru gelir hesabını manuel seçin.')
-            .replace(/işlenmiştir\.?\s*$/i, 'için otomatik hesap atanmadı — doğru gelir hesabını seçin.')
+            .replace(/,?\s*[\dA-ZÇĞİÖŞÜ.\s]+hesab[ıi]na işlenmiştir\.?\s*$/i, `; ancak içerik ana faaliyetle uyuşmadığından hesap seçilmedi (uyum kararı hesap silmez) — ${secimMetni}.`)
+            .replace(/işlenmiştir\.?\s*$/i, `için hesap seçilmedi — ${secimMetni}.`)
+            .replace(/OTOMATİK HESAP ATANMADI — doğru gelir hesabını manuel seçin\.?\s*$/, `hesap seçilmedi (uyum kararı hesap silmez) — ${secimMetni}.`)
+            .replace(/için otomatik hesap atanmadı — doğru gelir hesabını seçin\.?\s*$/, `için hesap seçilmedi — ${secimMetni}.`)
             .trim();
         } else {
-          z = `Faaliyet: ${tpFaaliyet || 'belirtilmemiş'}\nYorum: Faturanın içeriği mükellefin ana faaliyetiyle uyuşmadığından otomatik gelir hesabı atanmadı — doğru hesabı manuel seçin.`;
+          z = `Faaliyet: ${tpFaaliyet || 'belirtilmemiş'}\nYorum: Faturanın içeriği mükellefin ana faaliyetiyle uyuşmuyor; uyum kararı hesabı silmez — bu belgede hesap boş: ${secimMetni}.`;
         }
         if (z && z !== String(ocr.muhasebeNedenZengin || '')) {
           await (this.prisma as any).invoiceAccountingDocument
@@ -15430,6 +15676,19 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         ? 'mükellef için bir SATIŞ (gelir) faturasıdır — bu mal/hizmeti mükellef SATMIŞTIR'
         : 'mükellef için bir ALIŞ (gider/gelen) faturasıdır — bu mal/hizmeti mükellef ALMIŞTIR';
 
+    // ONERILEN_HESAP adayları (PLAN/15 Faz 1, 2026-09-12): uyum kararı UYUMSUZ derse hesap SİLİNMEZ; AI mükellefin
+    //   GERÇEK planından (yön filtreli yapraklar: alışta 15x/25x/7xx, satışta 60x/64x/67x, satıştan iadede 61x/60x)
+    //   bir hesap ÖNERİR → ocrData.onerilenHesap → uyarı katmanında "Öneriyi uygula". En çok 80 aday "kod = ad".
+    //   Plan kaynağı: getPlanCodeSet + planCodeCache (uyariEylem ile aynı; yaprak = planda var, grup değil, noktalı, ana segment ≥3 hane).
+    const planKodlari = await this.getPlanCodeSet(tenantId, doc.taxpayerId).catch(() => null);
+    const planOnbellek = this.planCodeCache.get(`${tenantId}:${doc.taxpayerId}`);
+    const planYaprakMi = (c: string) => !!planKodlari && planKodlari.has(c) && !planOnbellek?.groups?.has(c) && c.includes('.') && c.split('.')[0].replace(/\D/g, '').length >= 3;
+    const oneriYonRe = isReturn ? (isSale ? /^(15|25|7)/ : /^(61|60)/) : (isSale ? /^(60|64|67)/ : /^(15|25|7)/);
+    const oneriAdaylari: string[] = planKodlari
+      ? [...planKodlari].filter((c) => oneriYonRe.test(c) && planYaprakMi(c)).sort().slice(0, 80).map((c) => `${c} = ${planOnbellek?.names?.get(c) || ''}`.trim())
+      : [];
+    const mevcutMatrahKodlari = new Set<string>(matrahLines.map((l: any) => String(l.accountCode || '').trim()).filter(Boolean));
+
     const prompt = [
       'Sen deneyimli bir Türk mali müşavirisin. Aşağıdaki fatura için KISA, AKICI ve DOĞAL Türkçe ile bir muhasebe değerlendirmesi yaz.',
       '⚠️ YÖN ve HESAP KESİN olarak verildi — bunları SORGULAMA, DEĞİŞTİRME, yönü TERS çevirme. Sen YALNIZ faturanın İÇERİĞİNİ yorumla; kararı sistem verdi.',
@@ -15438,8 +15697,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       kalemStr ? `Faturadaki kalemler: ${kalemStr}.` : `Faturanın içeriği: ${giderTuru || kat || 'belirsiz'}.`,
       `Sistemin işlediği muhasebe hesabı: ${hesapStr}.`,
       '',
-      'ÇIKTI — TAM OLARAK aşağıdaki ÜÇ satır; başka HİÇBİR şey yazma (kod bloğu, yıldız, madde işareti, ek başlık YOK):',
+      'ÇIKTI — TAM OLARAK aşağıdaki DÖRT satır; başka HİÇBİR şey yazma (kod bloğu, yıldız, madde işareti, ek başlık YOK):',
       'HESAP_UYUMU: <UYUMLU | UYUMSUZ>',
+      'ONERILEN_HESAP: <yalnız UYUMSUZ ise aşağıdaki ADAY LİSTESİNDEN en uygun TEK hesap kodu; UYUMLU ise ya da uygun aday yoksa YOK>',
       'Faaliyet: <mükellefin ne iş yaptığını tek cümleyle açıkla>',
       'Yorum: <Faturada özetle nelerin alındığını/satıldığını içerikten özetle; mükellefin faaliyetine göre bunların NİYE ticari mal / üretim girdisi(hammadde) / demirbaş / gider niteliğinde olduğunu açıkla; içerik faaliyetle uyumsuzsa (ör. lokantanın aldığı klima → demirbaş) nedenini belirt; cümleyi "... bu nedenle ' + hesapStr + ' hesabına işlenmiştir." ile bitir>',
       '',
@@ -15449,6 +15709,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       //   yazılamaz. Bu DAR ve NET kalıpta "emin değilsen UYUMLU" varsayılanı GEÇERSİZ.
       ...(isSale && !isReturn ? ['SATIŞTA ÖZEL UYUMSUZLUK: Mükellef bir HİZMET işletmesiyse (nakliye, lojistik, taşımacılık, depolama, danışmanlık, temizlik, kiralama, yazılım-hizmet, tamir-bakım vb.) ve bu SATIŞ faturasında sattığı şey mükellefin sunduğu hizmet DEĞİL, FİZİKSEL BİR MAL/EŞYA ise (ör. lastik, araç yedek parçası, cihaz, makine, malzeme, hurda, sabit kıymet/demirbaş çıkışı), bunu HİZMET-GELİRİ hesabına (ör. NAKLİYE GELİRLERİ) yazmak YANLIŞTIR → net "UYUMSUZ" yaz. Bu DAR kalıpta "emin değilsen UYUMLU" GEÇERSİZDİR. (Mükellef zaten MAL TİCARETİ yapıyorsa ya da satılan şey onun asıl hizmetiyse UYUMLU.)'] : []),
       'KURALLAR: Yönü MÜKELLEF gözünden anlat (ALIŞ ise "mükellef almış"; satıcının ne sattığı önemli değil). Hesap kodunu (' + hesapStr + ') Yorum cümlesinde AYNEN kullan. Faturada olmayan şey UYDURMA. Toplam ~60 kelimeyi geçme.',
+      // ONERILEN_HESAP kuralı + aday listesi (yalnız sistem içindir; kullanıcıya gösterilmez). Aday yoksa hep YOK.
+      ...(oneriAdaylari.length
+        ? ['ONERILEN_HESAP KURALI: yalnız "UYUMSUZ" dediğinde, aşağıdaki mükellef hesap planı ADAYLARINDAN içeriğe GERÇEKTEN uyan TEK hesabın kodunu yaz; listede OLMAYAN kodu ASLA yazma; hiçbiri uymuyorsa YOK. (Bu satır kullanıcıya gösterilmez.)', 'ADAY LİSTESİ:', ...oneriAdaylari]
+        : ['ONERILEN_HESAP KURALI: mükellefin hesap planı aday listesi yok → her durumda YOK yaz.']),
     ].join('\n');
 
     // AI DENETÇİ KALDIRILDI (kullanıcı talebi 2026-07-27): yalnız "AI değerlendirmesi" (zengin yorum)
@@ -15459,28 +15723,42 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const rawText = yRes && yRes.ok && yRes.text ? String(yRes.text) : '';
       const text = this.cleanRichMuhasebeNeden(rawText, hesapStr, isSale, isReturn);
       const denetim = null;
-      // #3 HESAP-UYUM (kullanıcı kuralı): AI, faturanın İÇERİĞİNİ işlendiği hesapla AÇIKÇA uyumsuz
-      //   (faaliyet dışı — ör. yedek parça satıcısının personel taşıma geliri) bulduysa, hesabı ZORLA
-      //   ATAMA → matrah kodunu BOŞALT + işaret koy. Belge "hesap eksik" görünür, kullanıcı doğru hesabı
-      //   seçer, otomatik Luca'ya atılmaz. Muhafazakâr: yalnız net UYUMSUZ (prompt "emin değilsen UYUMLU").
+      // #3 HESAP-UYUM — PLAN/15 Faz 1 "Karar çekirdeği" (2026-09-12; sahip kararı: "hesap silinmez, öneri sunulur"):
+      //   AI, faturanın İÇERİĞİNİ işlendiği hesapla AÇIKÇA uyumsuz (faaliyet dışı — ör. yedek parça satıcısının
+      //   personel taşıma geliri) bulduysa hesap KORUNUR (eskiden matrah kodu BOŞALTILIYORDU → belge "kod eksik"
+      //   oluyor, rematch de boş bırakıyordu); işaret + plandan ÖNERİ yazılır → uyarı katmanı ICERIK_HESAP_UYUMSUZ
+      //   ("Öneriyi uygula") üretir, kullanıcı karar verir. Muhafazakâr: yalnız net UYUMSUZ (prompt "emin değilsen UYUMLU").
       const uyumM = rawText.match(/HESAP_UYUMU\s*:?\s*(UYUMSUZ|UYUMLU)/i);
       const uyumsuz = !!uyumM && /UYUMSUZ/i.test(uyumM[1]);
-      // UYUMSUZ ise hesap BOŞALTILIYOR → yorumdaki "... 600.01.001 ... hesabına işlenmiştir." kapanışı
-      //   ÇELİŞİR (kullanıcı bulgusu). O kapanışı "otomatik hesap atanmadı, doğru hesabı seçin" ile değiştir.
+      // ONERILEN_HESAP ayrıştırma: planda geçerli yaprak + yön filtresi + mevcut hesaptan FARKLI olmalı (hallüsinasyon koruması).
+      const oneriM = rawText.match(/ONERILEN_HESAP\s*:?\s*([0-9][0-9.]*|YOK)/i);
+      const oneriHam = oneriM ? String(oneriM[1] || '').trim().replace(/\.$/, '') : '';
+      const onerilen = (uyumsuz && oneriHam && !/^YOK$/i.test(oneriHam) && planYaprakMi(oneriHam) && oneriYonRe.test(oneriHam) && !mevcutMatrahKodlari.has(oneriHam)) ? oneriHam : null;
+      // UYUMSUZ'da yorumun "... 600.01.001 ... hesabına işlenmiştir." kapanışı yanıltır (kullanıcı bulgusu) →
+      //   "hesap korundu, öneri: X" kapanışıyla değiştir (eski metin "hesap atanmadı, manuel seçin" idi — artık boşaltma yok).
       let finalText = text;
       if (uyumsuz && finalText) {
-        const yeni = finalText.replace(/,?\s*[\dA-ZÇĞİÖŞÜ.\s]+hesab[ıi]na işlenmiştir\.?\s*$/i, '; ancak bu içerik ana faaliyetle uyuşmadığından OTOMATİK HESAP ATANMADI — doğru gelir hesabını manuel seçin.');
-        finalText = (yeni !== finalText ? yeni : finalText.replace(/işlenmiştir\.?\s*$/i, 'için otomatik hesap atanmadı — doğru gelir hesabını seçin.')).trim();
+        const kapanis = onerilen
+          ? `; ancak bu içerik ana faaliyetle uyuşmadığından hesap (${hesapStr}) yalnız KORUNDU — önerilen hesap: ${onerilen} ("Öneriyi uygula" ya da editörde düzeltin).`
+          : `; ancak bu içerik ana faaliyetle uyuşmadığından hesap (${hesapStr}) yalnız KORUNDU — doğru hesabı editörde seçin.`;
+        const yeni = finalText.replace(/,?\s*[\dA-ZÇĞİÖŞÜ.\s]+hesab[ıi]na işlenmiştir\.?\s*$/i, kapanis);
+        finalText = (yeni !== finalText ? yeni : finalText.replace(/işlenmiştir\.?\s*$/i, `için hesap korundu — ${onerilen ? `önerilen hesap: ${onerilen}` : 'doğru hesabı editörde seçin'}.`)).trim();
       }
-      const patch: any = { hesapUyumsuz: uyumsuz, hesapUyumNot: uyumsuz ? 'Fatura içeriği ana faaliyet/hesapla uyuşmuyor — otomatik hesap atanmadı, doğru hesabı seçin.' : null };
+      const patch: any = {
+        hesapUyumsuz: uyumsuz,
+        hesapUyumNot: uyumsuz ? 'Fatura içeriği ana faaliyet/hesapla uyuşmuyor — hesap KORUNDU; öneriyi uygulayın ya da editörde düzeltin.' : null,
+        // Yargılanan kod: kullanıcı/rematch hesabı değiştirirse revalidate uyarıyı BAYAT sayar (yeniden değerlendirilene kadar sessiz).
+        hesapUyumKod: uyumsuz ? (String(matrahLines[0]?.accountCode || '').trim() || null) : null,
+        onerilenHesap: uyumsuz ? onerilen : null,
+      };
       if (finalText) patch.muhasebeNedenZengin = finalText; // Deterministik muhasebeNeden'e DOKUNMA (anlık fallback).
       await (this.prisma as any).invoiceAccountingDocument
         .update({ where: { id: doc.id }, data: { ocrData: { ...ocr, ...patch } } })
         .catch(() => {});
-      if (uyumsuz) {
-        await (this.prisma as any).invoiceAccountingLine
-          .updateMany({ where: { documentId: doc.id, group: 'matrah' }, data: { accountCode: null } })
-          .catch(() => {});
+      // (matrah satırı BOŞALTILMAZ — eski updateMany accountCode:null kaldırıldı.) Uyarı katmanı tazelensin:
+      //   UYUMSUZ ise ICERIK_HESAP_UYUMSUZ üretilir; UYUMLU'ya döndüyse eski uyarı kalkar.
+      if (uyumsuz || (ocr as any)?.hesapUyumsuz === true) {
+        await this.revalidateDocument(tenantId, doc.id).catch(() => null);
       }
       return { text: finalText, denetim };
     };
@@ -15507,17 +15785,18 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   6xx HARİÇ: 60x gelir, 62x maliyet ÖZETİ, 63x faaliyet gideri GELİR TABLOSU/YANSITMA hesabı —
     //   fatura DOĞRUDAN buraya işlenmez (gider 770'e gider, dönem sonu 771 ile 632'ye yansıtılır).
     //   Ad benzerliği "632 GENEL YÖNETİM GİDERLERİ"yi seçtiriyordu → yalnız 7xx maliyet hesabı aday.
-    const cand = accounts.filter((a) => /^(15\d|25\d|7\d\d)/.test(String(a.accountCode || '')));
-    if (!cand.length) return null;
-    const codes = cand.map((a) => String(a.accountCode));
-    const leaves = cand.filter((a) => { const c = String(a.accountCode); return !codes.some((o) => o !== c && o.startsWith(c + '.')); });
-    const pool = (leaves.length ? leaves : cand).slice(0, 250);
-    const liste = pool.map((a) => `${a.accountCode} = ${a.accountName}`).join('\n');
+    // PLAN/15 Faz 1-B (2026-09-12): liste TEK kaynaktan (planAdaylariHazirla, yön ALIŞ) — yön sıralı (15x→25x→7xx),
+    //   rol etiketli (`kod = ad [rol]`), grup tavanlı (ana hesap başına ≤60, toplam ≤300). Eskiden plan sırasında,
+    //   etiketsiz ilk 250 yaprak idi (79x dahil, alt hesabı olmayan ana hesap da girebiliyordu).
+    const pa = planAdaylariHazirla(accounts, { yon: 'ALIS' });
+    if (!pa.adaylar.length) return null;
+    const adayKodlari = planAdayKodSeti(pa.adaylar);
+    const liste = pa.metin;
     const prompt = [
       `Mükellefin işi: ${faaliyet || 'bilinmiyor'}.`,
       `Bu bir ALIŞ (gider) faturası. İçindeki ana mal/hizmet: "${giderTuru}"${vendorName ? `, satıcı: "${vendorName}"` : ''}.`,
       'Aşağıdaki mükellefin GERÇEK hesap planından, bu gideri MÜKELLEFİN İŞİNE göre yazacağın EN UYGUN TEK hesabı seç.',
-      'KURAL: Alınan şey mükellefin SATTIĞI emtia ise stok (15x). Kendi işinde KULLANDIĞI gider ise ilgili gider hesabı (7xx/6xx). Uzun ömürlü makine/cihaz/taşıt/demirbaş ise sabit kıymet (25x).',
+      `KURAL: Alınan şey mükellefin SATTIĞI emtia ise stok (15x). Kendi işinde KULLANDIĞI gider ise ilgili gider hesabı (7xx). Uzun ömürlü makine/cihaz/taşıt/demirbaş ise sabit kıymet (25x). ${PLAN_ADAY_ROL_ACIKLAMASI}`,
       'İŞİN GİRDİSİ KURALI (önemli — boş bırakmadan önce düşün): Fatura, mükellefin ÜRETTİĞİ/SATTIĞI işin HAM ya da YARI malzemesi/girdisi ise BOŞ bırakma → hizmet/üretim maliyeti (740 HİZMET ÜRETİM MALİYETİ) veya ilk madde (150) veya ticari mal (153) hesabına yaz. ÖRNEK: reklamcı/tabelacı reklam malzemesi-baskı-folyo-levha alır → 740 HİZMET ÜRETİM MALİYETİ (ya da 153 hazır satıyorsa); matbaa kağıt/mürekkep alır → 150/153; terzi kumaş alır → 150/153; inşaatçı demir/çimento → 150/153. Bu bir "genel işletme gideri" (elektrik/telefon/kira) DEĞİL, işin doğrudan girdisidir.',
       'AMA genel işletme gideri (elektrik/su/telefon/kira/kırtasiye/temizlik) → 770; bunları 740/150/153 SANMA.',
       'ÖRNEK: NAKLİYECİ kendi aracına yedek parça/lastik/tamir alır → taşıt giderleri / bakım-onarım gider hesabı (STOK DEĞİL). Oto yedek parça TİCARETİ yapan satmak için alır → ticari mal stok (153).',
@@ -15539,7 +15818,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // Düşük güvende ATAMA YAPMA (boş bırak → müşavir 1 kez seçer, öğrenilir). Güven alanı gelmezse
     //   (eski/kısa yanıt) eskisi gibi kabul et — regresyon yaratma; yalnız AÇIKÇA "dusuk" olan elenir.
     if (guven === 'dusuk') { this.logger.log(`[AI-GIDER] düşük güven → boş bırakıldı (gider="${giderTuru}" kod=${kod})`); return null; }
-    const hit = accounts.find((a) => String(a.accountCode) === kod); // hallüsinasyon koruması: plan'da var mı?
+    // Hallüsinasyon koruması: kod ADAY LİSTESİNDE (yön-uyumlu kaydedilebilir yaprak) olmalı — plan'daki grup/6xx kodu da reddedilir.
+    if (!adayKodlari.has(kod)) return null;
+    const hit = accounts.find((a) => String(a.accountCode) === kod);
     return hit ? { accountCode: hit.accountCode, accountName: hit.accountName } : null;
   }
 
@@ -15698,10 +15979,15 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       //   servis satıcısı) varsa geçerli. Aksi halde araç ipucunu DÜŞÜR → genel gider + AI semantik
       //   doğru hesabı seçer. Nakliyeciyi (araç-yoğun faaliyet) ETKİLEMEZ.
       let _giderTuruEfektif = _giderTuruRaw;
-      // araç bağlamı yok → araç ipucu VE araç-adlı AI/öğrenilmiş hesap kodu reddedilir (aşağıda kullanılır).
+      // araç bağlamı yok → araç ipucu DÜŞER; araç-adlı AI/öğrenilmiş hesap kodu ise artık REDDEDİLMEZ, KORUNUR +
+      //   ocrData.hesapSuphe işareti (PLAN/15 Faz 1, 2026-09-12: "hesap silinmez, öneri sunulur") — uyarı katmanı
+      //   "Hesap şüpheli" der, kullanıcı karar verir.
       let _aracBaglamYok = false;
       // PİLOT TİCARET firması + fiziksel-mal alışı → sattığı TİCARİ MAL (153); AI'ın 7xx gider tahmini reddedilir.
       let _forceTicariMal = false;
+      // HESAP ŞÜPHESİ (rematch başında temizlenir, bu turda yeniden hesaplanır; belge güncellemesinde ocrData'ya yazılır):
+      //   { neden: 'arac-baglam-yok' | 'yag-bakim-hesabi-yok', kod, not } — hesap korunur, revalidate uyarı üretir.
+      let _hesapSuphe: { neden: string; kod: string; not: string } | null = null;
       // KRİTİK: this.norm() Türkçe karakteri KORUR ("araç"→"araç"); regex'ler ASCII ("arac"). Bu yüzden
       //   ASCII-fold (_af) ŞART — yoksa araç denetimi hiç eşleşmez (ilk fix'lerin SERİOFİS'te çalışmama nedeni).
       const _af = (s: string) => this.norm(s).replace(/ş/g, 's').replace(/ğ/g, 'g').replace(/ı/g, 'i').replace(/ç/g, 'c').replace(/ö/g, 'o').replace(/ü/g, 'u');
@@ -15716,6 +16002,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const _yagIcerik = /\b(motor yag|madeni yag|sanziman yag|vites yag|hidrolik yag|dislibox yag)\b|\bgres\b/.test(_af(_kalemAd))
         && !/\b(motorin|benzin|mazot|dizel|akaryakit yakit|yakit gideri)\b/.test(_af(_kalemAd));
       const _isYakitHesapAd = (ad: string) => /\b(yakit|akaryak)\b/.test(_af(ad)) && !/\b(bakim|onarim|servis|tamir)\b/.test(_af(ad));
+      // Plandaki ARAÇ BAKIM/ONARIM yaprağı (yağ→bakım deterministik düzeltmesinin hedefi). YOKSA yakıt hesabı artık
+      //   BOŞALTILMAZ: AI/öğrenilmiş/mevcut kod korunur + hesapSuphe 'yag-bakim-hesabi-yok' (PLAN/15 Faz 1, 2026-09-12).
+      const _bakimAcc: any = _yagIcerik ? (accounts.find((a: any) => {
+        const ad = _af(String(a.accountName || ''));
+        return /\b(bakim|onarim)\b/.test(ad) && /\b(arac|tasit|motor)\b/.test(ad) && isPostableLeaf(String(a.accountCode || ''));
+      }) || null) : null;
       {
         const aracHintRe = /\b(arac|tasit|yakit|akaryak|otoyol|otopark|kasko|motorlu tas|mtv|bakim onarim)\b/;
         const detAracHint = detIcerik ? aracHintRe.test(_af(detIcerik.hint || '')) : false;
@@ -15754,8 +16046,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         kat = 'ticari_mal';            // → categoryMatrah 153 (sattığı emtia)
         detIcerik = null;             // deterministik gider hint'i EZMESİN
         _giderTuruEfektif = '';
-        _aracBaglamYok = true;         // araç-adlı 740 AI/öğrenilmiş kodu 13287/13560'ta reddedilir
-        _forceTicariMal = true;        // AI'ın 7xx gider tahmini de reddedilir (770 dahil)
+        _aracBaglamYok = true;         // araç-adlı 740 AI/öğrenilmiş kodu artık silinmez → hesapSuphe işareti (uyarı)
+        _forceTicariMal = true;        // AI'ın 7xx gider tahmini reddedilir (770 dahil) — deterministik 153 düzeltmesi KALIR
       }
       if (detIcerik) kat = detIcerik.kategori;
       const KAT_PREFIX: Record<string, string[]> = {
@@ -15837,15 +16129,17 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const _aiCand = (aiKod && isPostableLeaf(aiKod) && !(faDet.is && !/^25/.test(aiKod))
         && (!isSale ? !/^6/.test(aiKod) : (_semMotor && /^6/.test(aiKod))))
         ? accounts.find((a: any) => String(a.accountCode || '') === aiKod) : null;
-      // ARAÇ-ÇELİŞKİ: AI okuma anında araç-adlı hesap (740 ARAÇ BAKIM) seçmiş olsa da, mükellef+fatura
-      //   araç-dışıysa (_aracBaglamYok) bu kodu REDDET → AI semantik/boş doğru hesabı bulur. (SERİOFİS toneri.)
-      // KEYWORD GÜVENLİK AĞI (2026-08-11): Haiku okumada hız için Sonnet'ten döndük; AI yanılabilir.
-      //   Bu yüzden keyword vetoları "ince güvenlik ağı" olarak KALIR — AI fiziksel-mal alışını 7xx gidere
-      //   (740/770), araç-bağlamsız hesaba ya da yağ→yakıt hesabına atarsa REDDET → doğru kategoriye düşsün.
-      //   Bu bir GENEL koşuldur (mükellef-başı kural DEĞİL); pilotta da diğer mükelleflerde de aynı çalışır.
+      // ARAÇ-ÇELİŞKİ (PLAN/15 Faz 1, 2026-09-12 — sahip kararı "hesap silinmez, öneri sunulur"): AI okuma anında
+      //   araç-adlı hesap (740 ARAÇ BAKIM) seçmiş ve mükellef+fatura araç-dışıysa (_aracBaglamYok) kod artık
+      //   REDDEDİLMEZ — KORUNUR, matrahForRate'te hesapSuphe {'arac-baglam-yok'} işaretlenir → uyarı katmanı
+      //   "Hesap şüpheli" der, kullanıcı karar verir. (Eski davranış SERİOFİS toneri için kodu siliyordu.)
+      // KEYWORD GÜVENLİK AĞI (2026-08-11): Haiku okumada hız için Sonnet'ten döndük; AI yanılabilir. Deterministik
+      //   DÜZELTMELER KALIR: (1) TİCARET firmasında fiziksel-mal alışının 7xx gider tahmini reddedilir → 153 (İlgi Oto);
+      //   (2) motor yağı içeriğinde yakıt hesabı, planda ARAÇ BAKIM/ONARIM yaprağı VARSA reddedilir → akış bakımı
+      //   bulur (ELİT PETROLCÜLÜK); bakım hesabı YOKSA AI kodu korunur, SON GÜVENLİK hesapSuphe yazar (boşaltma yok).
+      //   Bu GENEL koşullardır (mükellef-başı kural DEĞİL); pilotta da diğer mükelleflerde de aynı çalışır.
       const aiMatrahAcc = (_aiCand && (
-          (_aracBaglamYok && _aracHesapAdRe.test(_af(String((_aiCand as any).accountName || ''))))
-          || (_yagIcerik && _isYakitHesapAd(String((_aiCand as any).accountName || '')))
+          (_yagIcerik && !!_bakimAcc && _isYakitHesapAd(String((_aiCand as any).accountName || '')))
           || (_forceTicariMal && /^7/.test(String((_aiCand as any).accountCode || '')))
         ))
         ? null : _aiCand;
@@ -16124,31 +16418,37 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         // KAYNAK İZİ: satıra yazılan kodun nereden geldiği (HAFIZA/AI/KURAL/VARSAYILAN) satırın
         //   kaynak alanına işlenir — öğrenme kapısı ve arayüz rozeti bunu kullanır.
         let mKaynak: string | null = m ? 'HAFIZA' : null;
-        if (m && !this.learnedMatrahCompatibleWithContent(String((m as any).accountCode || ''), kat, giderTuru, faDet.is)) {
+        // ÖĞRENİLMİŞ KOD — YALNIZ MEVZUAT AĞI (PLAN/15 Faz 1, 2026-09-12; sahip kararı: "öğrenilmiş kod kategori
+        //   vetosuyla silinmez"): alışta 6xx / (normal) satışta 7xx-15x-25x / had-üstü demirbaşta 25x-dışı → red.
+        //   Kelime-kuralı kategorisi (ticari_mal/hammadde/pazarlama/genel_gider) ile uyuşmazlık artık VETO DEĞİL
+        //   (eskiden müşavirin onayladığı kod siliniyor, "düzelttim ama geri döndü" oluyordu) — yalnız debug izi.
+        //   Alıştan iade (isSale && isReturn) matrahı stok/gider olduğundan yön "alış" sayılır.
+        if (m && !this.learnedMatrahCompatibleWithContent(String((m as any).accountCode || ''), kat, giderTuru, faDet.is, isSale && !isReturn)) {
           m = null;
         }
-        // ARAÇ-ÇELİŞKİ (2026-07-05): ÖĞRENİLMİŞ kod bile araç-adlı hesap (740 ARAÇ BAKIM) ise ve mükellef+
-        //   fatura araç-dışıysa (_aracBaglamYok) REDDET. Öğrenilmiş kod aiMatrahAcc'tan ÖNCE geliyordu →
-        //   aiMatrahAcc reddini by-pass ediyordu (SERİOFİS toneri, VKN'ye 740 öğrenilmiş kalmıştı).
+        if (m && !this.kategoriKodUyumluMu(String((m as any).accountCode || ''), kat)) {
+          this.logger.debug(`[HAFIZA] ${doc.belgeNo || doc.id}: öğrenilmiş kod ${(m as any).accountCode} kelime kategorisiyle (${kat}) uyuşmuyor — yine de korunur (kategori vetosu kalktı; uyum AI kararıyla denetlenir)`);
+        }
+        // ARAÇ-ÇELİŞKİ (2026-07-05 → PLAN/15 Faz 1, 2026-09-12): ÖĞRENİLMİŞ kod araç-adlı hesap (740 ARAÇ BAKIM) ve
+        //   mükellef+fatura araç-dışıysa (_aracBaglamYok) eskiden REDDEDİLİYORDU (SERİOFİS toneri). Artık müşavirin
+        //   onayladığı kod KORUNUR, hesapSuphe işaretlenir → uyarı katmanı "Hesap şüpheli" der; kullanıcı karar verir.
         if (m && _aracBaglamYok && _aracHesapAdRe.test(_af(String((m as any).accountName || '')))) {
-          m = null;
+          _hesapSuphe = { neden: 'arac-baglam-yok', kod: String((m as any).accountCode || ''), not: `Araç-adlı hesap (${(m as any).accountName}) seçili; mükellef faaliyetinde/faturada araç bağlamı yok` };
         }
-        // MADENİ/MOTOR YAĞI çelişkisi: öğrenilmiş kod ARAÇ YAKIT hesabına bağlıysa (poisoned) reddet.
-        if (m && _yagIcerik && _isYakitHesapAd(String((m as any).accountName || ''))) {
+        // MADENİ/MOTOR YAĞI çelişkisi: öğrenilmiş kod ARAÇ YAKIT hesabına bağlıysa (poisoned) ve planda ARAÇ BAKIM/
+        //   ONARIM yaprağı VARSA reddet → akış bakımı bulur (deterministik düzeltme KALIR). Bakım hesabı YOKSA kod
+        //   korunur; SON GÜVENLİK hesapSuphe 'yag-bakim-hesabi-yok' yazar (boşaltma yok — PLAN/15 Faz 1).
+        if (m && _yagIcerik && !!_bakimAcc && _isYakitHesapAd(String((m as any).accountName || ''))) {
           m = null;
         }
         // 6xx REDDİ öğrenilmiş kod için de: alışta doğrudan 632/62x/60x'e yazma (dönem-sonu/gelir hesabı).
         if (m && !isSale && /^6/.test(String((m as any).accountCode || ''))) {
           m = null;
         }
-        // İÇERİK-HESAP UYUMSUZ (lastik→nakliye geliri, kullanıcı bulgusu 2026-08-11): AI faturayı işlendiği
-        //   hesapla UYUMSUZ bulup matrahı boşaltmayı işaretlediyse (ocrData.hesapUyumsuz), ÖĞRENİLMİŞ
-        //   (kullanıcı/hafıza) kod YOKSA hiçbir OTOMATİK kaynağı (aiMatrahAcc / oran-leaf / saleMatrahDefault)
-        //   UYGULAMA → matrah BOŞ kalır (müşavir doğru hesabı seçer). Eski guard yalnız VARSAYILAN'ı
-        //   engelliyordu; read AI'ın matrahHesapKodu=600'ü aiMatrahAcc olarak yeniden dolduruyordu →
-        //   yorum "otomatik hesap atanmadı" derken tabloda hesap DOLU kalıyordu. Kullanıcı seçimi HAFIZA/
-        //   KULLANICI kaynaklı öğrenildiği için 'm' dolu gelir ve KORUNUR (bu guard onu etkilemez).
-        if (!m && (doc.ocrData as any)?.hesapUyumsuz === true) { matrahCache.set(rate, null); return null; }
+        // İÇERİK-HESAP UYUMSUZ (lastik→nakliye geliri, 2026-08-11 → PLAN/15 Faz 1, 2026-09-12): uyum kararı artık
+        //   hesabı BOŞALTMAZ; burada da "hesapUyumsuz ise null dön" kapısı KALDIRILDI — mevcut/öğrenilmiş/AI/oran
+        //   kodu normal akışla seçilir. Yalnız içerik-KÖR VARSAYILAN fallback'i aşağıda bloklu kalır (boş satır,
+        //   AI'ın uyumsuz dediği 600 varsayılanıyla körlemesine dolmasın); dolu satır korunur, uyarı+öneri kullanıcıya.
         // ③ AI doğrudan seçim (öğrenilmiş kod YOKSA): AI'ın okuma anında plandan seçtiği matrah
         //   hesabı. Çok-oranlı faturada AI grubunun bu orana ait varyantı (153.01.001 %1 / .003 %20)
         //   varsa onu, yoksa AI'ın seçtiği kodu. Mekanik kategori/varsayılandan ÖNCE gelir.
@@ -16156,6 +16456,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           if (rate) { const v = aiGroupLeaves.find((a: any) => this.rateTokenInName(String(a.accountName || ''), rate)); m = leafOnly(v) || leafOnly(aiMatrahAcc); }
           else m = leafOnly(aiMatrahAcc);
           if (m) mKaynak = 'AI';
+          // ARAÇ-ÇELİŞKİ (AI seçimi): araç-dışı mükellefte araç-adlı AI kodu KORUNUR + hesapSuphe (eski red kalktı).
+          if (m && _aracBaglamYok && _aracHesapAdRe.test(_af(String((m as any).accountName || '')))) {
+            _hesapSuphe = { neden: 'arac-baglam-yok', kod: String((m as any).accountCode || ''), not: `Araç-adlı hesap (${(m as any).accountName}) AI tarafından seçildi; mükellef faaliyetinde/faturada araç bağlamı yok` };
+          }
         }
         // ─── TEVKİFAT UYUM DENETİMİ (kullanıcı bulgusu 2026-08-20, GÜLŞEN DEMİRCİ) ───
         // SATIŞTA matrah hesabının "tevkifatlı" olup olmaması, faturanın GERÇEK tevkifat durumuyla
@@ -16254,24 +16558,25 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             return null;
           }
         }
-        // İÇERİK-HESAP UYUMSUZ (lastik→nakliye geliri bulgusu 2026-08-11): AI, içeriği hesapla UYUMSUZ
-        //   bulup hesabı boşalttıysa (ocrData.hesapUyumsuz), içerik-KÖR VARSAYILAN fallback'i UYGULAMA →
-        //   matrah BOŞ kalsın (müşavir doğru hesabı seçer). Öğrenilmiş/AI/oran-eşleşmeli kodlar bu satırdan
-        //   ÖNCE geldiği için kullanıcının seçtiği doğru hesap KORUNUR; yalnız kör-varsayılan bloklanır.
-        //   Aksi halde "Kodları düzelt"/rematch, kapının boşalttığı hesabı tekrar 600'e dolduruyordu.
+        // İÇERİK-HESAP UYUMSUZ (lastik→nakliye geliri bulgusu 2026-08-11; PLAN/15 Faz 1 2026-09-12): AI, içeriği
+        //   hesapla UYUMSUZ işaretlediyse (ocrData.hesapUyumsuz) içerik-KÖR VARSAYILAN fallback'i UYGULAMA — kararın
+        //   "uyumsuz" dediği 600 varsayılanı boş satıra körlemesine dolmasın. Uyum kararı artık hesabı SİLMEZ:
+        //   dolu satır (mevcut/öğrenilmiş/AI/oran-eşleşmeli kod) yukarıdaki normal akışla korunur; yalnız bu
+        //   kör-varsayılan bloklanır, uyarı katmanı öneriyi sunar (müşavir "Öneriyi uygula" ya da editörde seçer).
         if (!m && (doc.ocrData as any)?.hesapUyumsuz !== true) { m = leafOnly(saleMatrahDefault); if (m) mKaynak = 'VARSAYILAN'; }
         // SON GÜVENLİK (yağ ≠ yakıt): hangi yoldan gelirse gelsin (AI-kod / öğrenilmiş /
         //   içerik-sınıf / varsayılan), içerik madeni/motor yağı iken seçilen hesap ARAÇ YAKIT/
-        //   AKARYAKIT ise plandaki ARAÇ BAKIM ONARIM'a çevir; bakım hesabı yoksa BOŞ bırak (yakıta
-        //   ASLA yazma). Deterministik gider-icerik düzeltmesi canlıya yansımasa bile bu api-içi
-        //   koruma motor yağını yakıt hesabından uzak tutar. (ELİT PETROLCÜLÜK "MOTOR YAĞI" vakası.)
+        //   AKARYAKIT ise plandaki ARAÇ BAKIM ONARIM'a çevir (deterministik düzeltme KALIR — ELİT PETROLCÜLÜK
+        //   "MOTOR YAĞI" vakası). Bakım hesabı YOKSA eskiden BOŞ bırakılıyordu; PLAN/15 Faz 1 (2026-09-12):
+        //   hesap BOŞALTILMAZ — AI/mevcut kod korunur + hesapSuphe 'yag-bakim-hesabi-yok' → uyarı katmanı
+        //   "Hesap şüpheli" der, kullanıcı doğru hesabı açar/seçer.
         if (m && _yagIcerik && _isYakitHesapAd(String((m as any).accountName || ''))) {
-          const bakim = accounts.find((a: any) => {
-            const ad = _af(String(a.accountName || ''));
-            return /\b(bakim|onarim)\b/.test(ad) && /\b(arac|tasit|motor)\b/.test(ad) && isPostableLeaf(String(a.accountCode || ''));
-          });
-          m = bakim ? leafOnly(bakim) : null;
-          if (m) mKaynak = 'KURAL';
+          if (_bakimAcc) {
+            m = leafOnly(_bakimAcc) || m;
+            if (m) mKaynak = 'KURAL';
+          } else {
+            _hesapSuphe = { neden: 'yag-bakim-hesabi-yok', kod: String((m as any).accountCode || ''), not: 'Motor yağı içeriği; planda araç bakım/onarım hesabı yok' };
+          }
         }
         // ─── TEVKİFAT UYUMU: SON SÖZ (2026-08-20) ───
         // Yukarıdaki erken denetim yalnız ÖĞRENİLMİŞ/AI kodunu görüyor; oysa alışta hesap çoğu kez
@@ -16321,6 +16626,14 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
               data: want ? { accountCode: want, description: (dm as any).accountName, kaynak: 'KURAL' } : { accountCode: '', kaynak: null },
             });
           }
+          continue;
+        }
+        // ── KULLANICI KORUMASI — MATRAH (PLAN/15 Faz 1 "Karar çekirdeği", 2026-09-12; sahip kararı: "kullanıcı satırı
+        //   ezilmez") ── Müşavirin ELLE seçtiği (kaynak=KULLANICI) matrah hesabı planda geçerli bir YAPRAKSA hiçbir
+        //   alt blok (iade 610 geçişi, tevkifat kardeş geçişi, saleMatrahDefault düzeltmesi, alış giderTuru kapısı,
+        //   oran/isPlaceholder) ona dokunmaz — alış VE satış. Cari ve satışta koruma vardı, ALIŞ matrahında yoktu
+        //   ("Kodları düzelt" elle seçilen hesabı eziyordu). Kod planda yoksa/yaprak değilse eski davranış (boşaltılabilir).
+        if (group === 'matrah' && String(line.kaynak || '').toUpperCase() === 'KULLANICI' && isPostableLeaf(String(line.accountCode || '').trim())) {
           continue;
         }
         // İADE/İPTAL: matrah → 610 (satıştan iade), vergi → iade-KDV (191/391 "İADE"). Plandaki gerçek
@@ -16489,6 +16802,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             const tevkOkM = String(line.kaynak || '').toUpperCase() === 'KULLANICI'
               || this.isTevkifatAccountName(String(curAcc.accountName || '')) === (tevkPay >= 1);
             if (current !== matchCode && (!typeOk || (!tevkOkM && matchCode))) {
+              // UYUM KARARI HESAP SİLMEZ (PLAN/15 Faz 1, 2026-09-12): AI "içerik↔hesap uyumsuz" işaretli belgede alternatif
+              //   (match) YOKSA planda geçerli mevcut yaprak BOŞALTILMAZ — uyarı katmanı öneriyi sunar, kullanıcı karar verir.
+              //   (Eskiden uyum kararı hesabı zaten silmişti; artık koruduğu için bu kapı boşaltmasın.)
+              if (!matchCode && (doc.ocrData as any)?.hesapUyumsuz === true && isPostableLeaf(current)) continue;
               await (this.prisma as any).invoiceAccountingLine.update({
                 where: { id: line.id },
                 data: matchCode ? { accountCode: matchCode, kaynak: (match as any)?._kaynak || 'KURAL' } : { accountCode: '', description: '', kaynak: null },
@@ -16545,6 +16862,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         } else if (current) {
           // Planda uygun kod YOK → var olmayan placeholder'ı (ör. 770.01.010) BOŞALT.
           // "Eksik hesap kodu" görünür; kullanıcı 1 kez seçer → satıcı için öğrenilir.
+          // İSTİSNA (PLAN/15 Faz 1, 2026-09-12): uyum kararı işaretli belgede (hesapUyumsuz) planda GEÇERLİ yaprak olan
+          //   mevcut kod (ör. gerçek 600.01.001) yalnız kör-varsayılan bloklandı diye BOŞALTILMAZ — hesap korunur, öneri sunulur.
+          if (group === 'matrah' && (doc.ocrData as any)?.hesapUyumsuz === true && isPostableLeaf(current)) continue;
           await (this.prisma as any).invoiceAccountingLine.update({
             where: { id: line.id },
             data: { accountCode: '', description: '', kaynak: null },
@@ -16696,11 +17016,20 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         const uyChanged = uyariImza(yeniUy) !== uyariImza(prevUyAll);
         // Kod değiştiyse zengin yorum + denetçiyi sil (bayat); değişmediyse ELLEME (koru).
         const zenginDenetimPatch = kodDegisti ? { muhasebeNedenZengin: '', denetim: null } : {};
-        if (nedenChanged || (hadZengin && kodDegisti) || uyChanged) {
+        // HESAP ŞÜPHESİ (PLAN/15 Faz 1, 2026-09-12): her rematch turunda SIFIRDAN hesaplanır (eski kayıt temizlenir);
+        //   bu turda üretilen şüphe (araç-bağlamsız hesap / yağ-bakım hesabı yok) ocrData.hesapSuphe'ye yazılır,
+        //   revalidate "Hesap şüpheli" uyarısını üretir. Değiştiyse belge hemen yeniden doğrulanır (rematch'i
+        //   revalidate izlemeyen çağrı yollarında da uyarı gecikmesin).
+        const prevSuphe = prevOcr.hesapSuphe && typeof prevOcr.hesapSuphe === 'object' ? prevOcr.hesapSuphe : null;
+        const supheDegisti = JSON.stringify(prevSuphe) !== JSON.stringify(_hesapSuphe);
+        if (nedenChanged || (hadZengin && kodDegisti) || uyChanged || supheDegisti) {
+          const ocrYeni: any = { ...prevOcr, ...(neden ? { muhasebeNeden: neden } : {}), ...zenginDenetimPatch, uyarilar: yeniUy.length ? yeniUy : undefined };
+          if (_hesapSuphe) ocrYeni.hesapSuphe = _hesapSuphe; else delete ocrYeni.hesapSuphe; // temizle (bayat şüphe kalmasın)
           await (this.prisma as any).invoiceAccountingDocument.update({
             where: { id: doc.id },
-            data: { ocrData: { ...prevOcr, ...(neden ? { muhasebeNeden: neden } : {}), ...zenginDenetimPatch, uyarilar: yeniUy.length ? yeniUy : undefined } },
+            data: { ocrData: ocrYeni },
           });
+          if (supheDegisti) await this.revalidateDocument(tenantId, doc.id).catch(() => null);
         }
       }
     }
@@ -17018,16 +17347,36 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     return m[String(kat || '').toLowerCase().trim()] || (kat || 'genel gider');
   }
 
-  private learnedMatrahCompatibleWithContent(code: string, kat: string, giderTuru: string, fixedAsset: boolean): boolean {
+  /** ÖĞRENİLMİŞ (müşavirin onayladığı) matrah kodu için YALNIZ MEVZUAT AĞI (2026-09-12, PLAN/15 denetim sentezi;
+   *  sahip kararı: "öğrenilmiş kod kategori vetosuyla silinmez, yalnız mevzuat ağı"). Eskiden kelime-kuralı
+   *  kategorisi (ticari_mal/hammadde/pazarlama/genel_gider) ile uyuşmayan öğrenilmiş kod REDDEDİLİYORDU →
+   *  kullanıcı "düzelttim ama geri döndü" diyordu (iki çağrı yeri: applyLearnedVendorCodes + rematch).
+   *  Artık yalnız mevzuata aykırı YÖN reddedilir:
+   *    (c) had-üstü demirbaş tespiti (fixedAsset) → yalnız 25x kabul (yön fark etmez: alışta giriş, satışta çıkış);
+   *    (b) satışta 7xx/15x/25x (gider/stok/sabit kıymet) kodu → red;
+   *    (a) alışta 6xx (60x gelir / 62x maliyet özeti / 63x yansıtma) kodu → red;
+   *    diğer her durum UYUMLU. İmza korundu; kat/giderTuru artık veto ÜRETMEZ (çağıran yalnız debug log yazar —
+   *    içerik-hesap uyumu AI uyum kararıyla ayrıca denetlenir, uyarı katmanı öneri sunar; hesap silinmez). */
+  private learnedMatrahCompatibleWithContent(code: string, kat: string, giderTuru: string, fixedAsset: boolean, isSale?: boolean): boolean {
+    const c = String(code || '').trim();
+    if (!c) return false;
+    void kat; void giderTuru; // kategori/gider türü veto DEĞİL (bkz. kategoriKodUyumluMu — yalnız debug)
+    if (fixedAsset) return /^25/.test(c);
+    if (isSale === true) return !/^(7|15|25)/.test(c);
+    return !/^6/.test(c);
+  }
+
+  /** Yalnız TEŞHİS (logger.debug): öğrenilmiş kod, kelime-kuralı kategorisiyle uyuşuyor mu? Eski veto kuralının
+   *  bilgi amaçlı kopyası — karar ÜRETMEZ, kod silmez. Uyuşmazlık zaten AI uyum kararı/uyarı katmanında ele alınır. */
+  private kategoriKodUyumluMu(code: string, kat: string): boolean {
     const c = String(code || '').trim();
     const k = String(kat || '').toLowerCase().trim();
-    if (!c) return false;
-    if (fixedAsset || k === 'demirbas') return /^25/.test(c);
-    if (k === 'ticari_mal') return /^(15[03]|153)/.test(c);
+    if (!c || !k) return true;
+    if (k === 'demirbas') return /^25/.test(c);
+    if (k === 'ticari_mal') return /^15/.test(c);
     if (k === 'hammadde') return /^(15|73|74)/.test(c);
     if (k === 'pazarlama') return /^(760|770|740|730)/.test(c);
     if (k === 'genel_gider') return !/^(15|25|60)/.test(c);
-    if (giderTuru && /^(15|25|60)/.test(c)) return false;
     return true;
   }
 
