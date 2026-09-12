@@ -22,6 +22,8 @@ import { FaturaMuhasebelestirmeService } from './fatura-muhasebelestirme.service
 import { IcerikEslestirmeService } from './icerik-eslestirme.service';
 import { EFaturaSyncService } from '../efatura-adapters/efatura-sync.service';
 import { PortalAutomationRailwayRunnerService } from '../portal-automation/portal-automation-railway-runner.service';
+import { BelgeAkisiService } from './belge-akisi.service';
+import { KdvTeyitService } from './kdv-teyit.service';
 
 const documentUploadInterceptor = () =>
   AnyFilesInterceptor({
@@ -40,6 +42,9 @@ export class FaturaMuhasebelestirmeController {
     private readonly icerikEslestirme: IcerikEslestirmeService,
     private readonly eFaturaSyncService: EFaturaSyncService,
     private readonly portalRunner: PortalAutomationRailwayRunnerService,
+    // PLAN/16 §E Belge Akışı + §D KDV teyit (ayrı servisler; service.ts şişmesin).
+    private readonly belgeAkisi: BelgeAkisiService,
+    private readonly kdvTeyit: KdvTeyitService,
   ) {}
 
   @Get('documents')
@@ -155,6 +160,17 @@ export class FaturaMuhasebelestirmeController {
     return this.service.kdvClientReport(req.user.tenantId, { taxpayerId, period });
   }
 
+  /** PLAN/16 §D — KDV TEYİT paneli: aynı dönem Fatura Merkezi · KDV Kontrol · Luca mizanı 191/391 · önceki beyanname
+   *  devreden yan yana; farklar (±1 TL eşik) + drilldown belge id listeleri. */
+  @Get('kdv-teyit')
+  kdvTeyitPaneli(
+    @Req() req: any,
+    @Query('taxpayerId') taxpayerId?: string,
+    @Query('period') period?: string,
+  ) {
+    return this.kdvTeyit.teyit(req.user.tenantId, { taxpayerId, period });
+  }
+
   /** KDV Raporu → mükellefe WhatsApp bilgilendirme. dryRun=true mesaj önizlemesi döner (göndermez);
    *  gerçek gönderim kullanıcı modalda onaylayınca dryRun'suz ikinci çağrıyla yapılır. */
   @Post('kdv-raporu/whatsapp')
@@ -188,7 +204,7 @@ export class FaturaMuhasebelestirmeController {
     @Body('forceClaude') forceClaude?: string,
     @Body('period') period?: string,
   ) {
-    return this.service.uploadAndOcr(req.user.tenantId, req.user?.userId, files, {
+    return this.service.uploadAndOcr(req.user.tenantId, req.user?.userId || req.user?.sub, files, {
       taxpayerId: taxpayerId || undefined,
       source: source || 'manual-web',
       documentType: documentType || 'OKC_FIS',
@@ -432,10 +448,32 @@ export class FaturaMuhasebelestirmeController {
     return this.service.iptalSayac(req.user.tenantId, { taxpayerId, period });
   }
 
+  /** PLAN/16 §E — BELGE AKIŞI (ofis geneli). sekme=yuklenen|entegrator|gib|silinen (varsayılan yuklenen);
+   *  taxpayerId, kaynak (source kodu, virgülle çoklu), yon=ALIS|SATIS, durum (hata|okunuyor|lucada|onayli|
+   *  karar_bekliyor|okundu|iptal), from/to (geliş zamanı, YYYY-MM-DD), q (ünvan/belge no/VKN), page (1..), limit (50).
+   *  Yanıt: { sekme, toplam, sayfa, limit, satirlar[], kaynaklar[], sayaclar, akisDurmus[] }.
+   *  `documents/:id` rotasından ÖNCE kalmalı. */
+  @Get('documents/akis')
+  belgeAkisiListesi(
+    @Req() req: any,
+    @Query('sekme') sekme?: string,
+    @Query('taxpayerId') taxpayerId?: string,
+    @Query('kaynak') kaynak?: string,
+    @Query('yon') yon?: string,
+    @Query('durum') durum?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('q') q?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.belgeAkisi.akis(req.user.tenantId, { sekme, taxpayerId, kaynak, yon, durum, from, to, q, page, limit });
+  }
+
   /** Alıcı tipi (kurum türü): { taraf: 'mukellef'|'cari', taxpayerId?, vkn?, unvan?, kurumTuru: kamu|banka|belediye|universite|kit|belirlenmis_diger|diger|kdv_mukellefi_degil|null, documentId? } */
   @Post('alici-tipi')
   aliciTipi(@Req() req: any, @Body() body: any) {
-    return this.service.setAliciTipi(req.user.tenantId, body || {}, req.user?.userId);
+    return this.service.setAliciTipi(req.user.tenantId, body || {}, req.user?.userId || req.user?.sub);
   }
 
   /** A.6 — Deploy sonrası tek seferlik TOPLU YENİDEN DOĞRULAMA (owner): bekleyen belgelerin uyarı listesi yeni kurallarla
@@ -463,13 +501,13 @@ export class FaturaMuhasebelestirmeController {
 
   @Patch('documents/:id')
   update(@Req() req: any, @Param('id') id: string, @Body() body: any) {
-    return this.service.update(req.user.tenantId, id, body, req.user?.userId);
+    return this.service.update(req.user.tenantId, id, body, req.user?.userId || req.user?.sub);
   }
 
   @Post('documents/:id/approve')
   approve(@Req() req: any, @Param('id') id: string, @Body() body: any) {
     // body.force=true → AI denetçi "yanlis" dese de bilinçli onay (varsayılan engelli).
-    return this.service.approve(req.user.tenantId, id, req.user?.userId, body?.force === true);
+    return this.service.approve(req.user.tenantId, id, req.user?.userId || req.user?.sub, body?.force === true);
   }
 
   /** Toplu onay — tek HTTP çağrısı (belge-başına 50 ayrı istek yerine). En fazla 200 id.
@@ -477,7 +515,7 @@ export class FaturaMuhasebelestirmeController {
    *  Body: { ids: string[]; force?: boolean } → { approved, skipped: [{id, belgeNo?, reason}] } */
   @Post('documents/approve-batch')
   approveBatch(@Req() req: any, @Body() body: { ids: string[]; force?: boolean }) {
-    return this.service.approveBatch(req.user.tenantId, body?.ids || [], req.user?.userId, body?.force === true);
+    return this.service.approveBatch(req.user.tenantId, body?.ids || [], req.user?.userId || req.user?.sub, body?.force === true);
   }
 
   /** Faz 2 — DEMİRBAŞ KARARI: { karar: 'elle_islendi' | 'yine_de_isle' | 'demirbas_degil', not? }
@@ -485,26 +523,52 @@ export class FaturaMuhasebelestirmeController {
    *  (işletme: Sabit Kıymet Alışı); demirbas_degil → uyarı kalkar + VendorMemory notu. */
   @Post('documents/:id/demirbas-karari')
   demirbasKarari(@Req() req: any, @Param('id') id: string, @Body() body: { karar?: string; not?: string }) {
-    return this.service.demirbasKarari(req.user.tenantId, id, body || {}, req.user?.userId);
+    return this.service.demirbasKarari(req.user.tenantId, id, body || {}, req.user?.userId || req.user?.sub);
   }
 
   /** Faz 2 — uyarı tek-tık eylemi (sunucu tarafı): { eylem: 'oneriyi-uygula' } */
   @Post('documents/:id/uyari-eylem')
   uyariEylem(@Req() req: any, @Param('id') id: string, @Body() body: { eylem?: string }) {
-    return this.service.uyariEylem(req.user.tenantId, id, body || {}, req.user?.userId);
+    return this.service.uyariEylem(req.user.tenantId, id, body || {}, req.user?.userId || req.user?.sub);
   }
 
   /** A.2 — MÜKERRER KARARI: { karar: 'mukerrer_degil' | 'mukerrer', not? } → ocrData.mukerrerKarar;
-   *  mukerrer_degil → revalidate mükerrer aramaz, MUKERRER uyarısı + duplicateOfId kalkar. */
+   *  mukerrer_degil → revalidate mükerrer aramaz, MUKERRER uyarısı + duplicateOfId kalkar.
+   *  PLAN/16 §C: aynı karar MUKERRER_GORSEL / MUKERRER_FIS şüphesini de kapatır ('mukerrer' teyidi → ENGEL). */
   @Post('documents/:id/mukerrer-karari')
   mukerrerKarari(@Req() req: any, @Param('id') id: string, @Body() body: { karar?: string; not?: string }) {
-    return this.service.mukerrerKarari(req.user.tenantId, id, body || {}, req.user?.userId);
+    return this.service.mukerrerKarari(req.user.tenantId, id, body || {}, req.user?.userId || req.user?.sub);
   }
 
-  /** Faz C: onayı geri al (Luca'ya gitmemişse) — tekrar düzenlenebilir. */
+  /**
+   * PLAN/16 §G — GERİ AL (ters fiş YOK). Body: { onay?: boolean, not?: string }.
+   *   APPROVED / QUEUED / FAILED → NEEDS_REVIEW (satırlar korunur, öğrenme geri alınır). POSTING → 400.
+   *   POSTED: onay!==true → 409 { teyitGerekli:true, mesaj, lucaFisNo } (UI teyit kutusu); onay===true → geri alınır,
+   *   ocrData.lucaElleDuzeltilecek yazılır, belge bir daha Luca'ya otomatik gitmez.
+   */
   @Post('documents/:id/reopen')
-  reopen(@Req() req: any, @Param('id') id: string) {
-    return this.service.reopen(req.user.tenantId, id, req.user?.userId);
+  reopen(@Req() req: any, @Param('id') id: string, @Body() body?: { onay?: boolean; not?: string }) {
+    return this.service.reopen(req.user.tenantId, id, req.user?.userId || req.user?.sub, { onay: body?.onay === true, not: body?.not });
+  }
+
+  /** PLAN/16 §G — "Luca'da elle düzelttim": lucaElleDuzeltilecek işaretini kapatır ({ not? }); belge arşivde normal görünür. */
+  @Post('documents/:id/luca-elle-duzeltildi')
+  lucaElleDuzeltildi(@Req() req: any, @Param('id') id: string, @Body() body?: { not?: string }) {
+    return this.service.lucaElleDuzeltildi(req.user.tenantId, id, body || {}, req.user?.userId || req.user?.sub);
+  }
+
+  /** PLAN/16 §C.2 — geçmiş görsellerin algısal hash'ini doldur (owner): { dryRun?: boolean (varsayılan TRUE), taxpayerId?, period?, limit? (500) }. */
+  @Post('documents/phash-doldur')
+  @UseGuards(OwnerOnlyGuard)
+  phashDoldur(@Req() req: any, @Body() body: { dryRun?: boolean; taxpayerId?: string; period?: string; limit?: number; documentIds?: string[] }) {
+    return this.service.reprocessBrokenDocuments(req.user.tenantId, {
+      mode: 'phash-doldur',
+      dryRun: body?.dryRun !== false,
+      taxpayerId: body?.taxpayerId || undefined,
+      period: body?.period || undefined,
+      limit: body?.limit,
+      documentIds: Array.isArray(body?.documentIds) ? body.documentIds : undefined,
+    });
   }
 
   /** Zengin AI muhasebe yorumu (Faaliyet + Yorum) — belge açılınca lazy çağrılır, cache'lenir. */
@@ -516,7 +580,7 @@ export class FaturaMuhasebelestirmeController {
   // v1.38: Luca aktarimi basarisiz olursa veya kullanici manuel tekrarlamak isterse
   @Post('documents/:id/retry-luca')
   retryLuca(@Req() req: any, @Param('id') id: string) {
-    return this.service.retryLucaPost(req.user.tenantId, id, req.user?.userId);
+    return this.service.retryLucaPost(req.user.tenantId, id, req.user?.userId || req.user?.sub);
   }
 
   // v1.38: Bir mukellef+donem icin TUM QUEUED belgeleri tek toplu Excel olarak
@@ -525,7 +589,7 @@ export class FaturaMuhasebelestirmeController {
   // Body: { taxpayerId: string; period?: "YYYY-MM"; documentIds?: string[] }
   @Post('batch-post-to-luca')
   batchPostToLuca(@Req() req: any, @Body() body: any) {
-    return this.service.batchPostToLuca(req.user.tenantId, body, req.user?.userId);
+    return this.service.batchPostToLuca(req.user.tenantId, body, req.user?.userId || req.user?.sub);
   }
 
   /** Aktarım'daki toplu fişi (yön/dönem) Luca'ya GİTMEDEN Excel/CSV indir — kullanıcı elle yükler/arşivler. */
@@ -557,7 +621,7 @@ export class FaturaMuhasebelestirmeController {
 
   @Delete('documents/:id')
   remove(@Req() req: any, @Param('id') id: string) {
-    return this.service.remove(req.user.tenantId, id, req.user?.userId);
+    return this.service.remove(req.user.tenantId, id, req.user?.userId || req.user?.sub);
   }
 
   /** İçerik tabanlı hesap kodu / gider türü önerisi */

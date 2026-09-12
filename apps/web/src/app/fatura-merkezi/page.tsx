@@ -1230,18 +1230,47 @@ function isWaitingTransfer(d: any): boolean {
 function isInAktarim(d: any): boolean {
   return isWaitingTransfer(d) || isArchived(d);
 }
+/* ── PLAN16-B: Gelen Faturalar — güven rozeti + "Ne yapmam gerekiyor" kümeleri (saf yardımcılar) ── */
+type GfGuven = { seviye: 'yuksek' | 'orta' | 'dusuk'; neden: string };
+type GfKume = 'hazir' | 'karar' | 'incele' | 'ham';
+const GF_KAYNAK_AD: Record<string, string> = { KULLANICI: 'senden', HAFIZA: 'hafızadan', VKN: "VKN'den", AI: 'AI tahmini', KURAL: 'kelime kuralından', ISIM: 'isimden', VARSAYILAN: 'varsayılan' };
+const GF_GUVEN_ETIKET: Record<GfGuven['seviye'], string> = { yuksek: 'Yüksek', orta: 'Orta', dusuk: 'Düşük' };
+/** Belge güveni: backend `guven` (computeDocConfidence) + satır KAYNAĞI ile tek satır sebep.
+ *  İşletme defterinde hesap kodu/cari olmadığından backend "Cari eksik" der → orada kayıt türünden türetilir. */
+function gfGuvenOf(d: any, isIsletme: boolean): GfGuven {
+  const uyariAdet = uyariListeFE((d?.ocrData as any)?.uyarilar).length;
+  if (isIsletme) {
+    const ready = isletmeDocReady(d);
+    if (!ready.ok) return { seviye: 'dusuk', neden: ready.reason || 'Kayıt türü çözülemedi' };
+    return { seviye: 'orta', neden: uyariAdet ? 'Kayıt türü çözüldü · uyarı var' : 'Kayıt türü çözüldü — teyit et' };
+  }
+  const g = d?.guven;
+  const seviye: GfGuven['seviye'] = g?.seviye === 'yuksek' || g?.seviye === 'orta' || g?.seviye === 'dusuk' ? g.seviye : 'dusuk';
+  const lines: any[] = Array.isArray(d?.lines) ? d.lines : [];
+  const kaynakOf = (grp: string) => { const l = lines.find((x) => String(x?.group || '') === grp && x?.accountCode); return GF_KAYNAK_AD[String(l?.kaynak || '').toUpperCase()] || ''; };
+  const cariK = kaynakOf('cari');
+  const hesapK = kaynakOf('matrah');
+  if (seviye === 'yuksek') return { seviye, neden: `${cariK ? `cari ${cariK}` : 'cari eşleşti'} · ${hesapK ? `hesap ${hesapK}` : 'hesap kesin'}` };
+  if (seviye === 'orta') return { seviye, neden: `${hesapK ? `hesap ${hesapK}` : 'AI tahmini'} — teyit et${uyariAdet ? ' · uyarı var' : ''}` };
+  return { seviye, neden: String(g?.neden || 'Eksik / çelişkili') };
+}
+/** "Ne yapmam gerekiyor" kümesi — her belge TAM BİR kümeye düşer:
+ *  ham = okunmamış/okunuyor/okunamadı · karar = demirbaş kararı / mükerrer(+şüphe) / tevkifat eksik / alıcı tipi / engel ·
+ *  hazir = güven yüksek + uyarı yok + kodlar tam · incele = geri kalan (düşük/orta güven, kod eksik, çelişki, tutar). */
+function gfKumeOf(d: any, du: { cat: string }, guven: GfGuven): GfKume {
+  if (du.cat === 'ham' || du.cat === 'okunuyor' || du.cat === 'okunamadi') return 'ham';
+  const list = uyariListeFE((d?.ocrData as any)?.uyarilar);
+  const kararKod = (u: UyariFE) => (u.kod === 'DEMIRBAS' ? !u.meta?.karar : ['MUKERRER', 'MUKERRER_GORSEL', 'MUKERRER_FIS', 'TEVKIFAT_EKSIK', 'ALICI_TIPI_GEREKLI'].includes(u.kod));
+  if (du.cat === 'demirbas' || du.cat === 'mukerrer' || !!d?.duplicateOfId || list.some((u) => u.seviye === 'engel' || kararKod(u))) return 'karar';
+  if (guven.seviye === 'yuksek' && list.length === 0 && du.cat === 'ready' && d?.status !== 'APPROVED') return 'hazir';
+  return 'incele';
+}
 function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false, taxpayerNace = '', taxpayerFaaliyet = '', onOpenSorgu, onOpenMuhasebe }: { taxpayerId: string; period: string; kind?: 'ALIS' | 'SATIS'; isIsletme?: boolean; taxpayerNace?: string; taxpayerFaaliyet?: string; onOpenSorgu?: () => void; onOpenMuhasebe?: (id: string) => void }) {
   const qc = useQueryClient();
   const docsQ = useDocuments(taxpayerId, period);
   const all: any[] = docsQ.data || [];
-  // OTO-EŞLEŞME KARNESİ (iyileştirme #4): otomatik oran + en çok "bakılmalı" çıkan cariler.
-  const [karneAcik, setKarneAcik] = useState(false);
-  const karneQ = useQuery({
-    queryKey: ['fm2', 'karne', taxpayerId, period],
-    queryFn: async () => (await api.get('/fatura-muhasebelestirme/eslesme-karnesi', { params: { taxpayerId, period } })).data,
-    enabled: !!taxpayerId,
-  });
-  const karne: any = karneQ.data || null;
+  // PLAN16-B: "Oto-eşleşme karnesi" kutusu KALDIRILDI (kullanıcı kararı) — yerine "Ne yapmam gerekiyor" şeridi
+  //   + belge bazında güven rozeti. Backend ucu (eslesme-karnesi) duruyor, bu ekran çağırmıyor.
   // Gelen kutusu: yalnız HENÜZ İŞLENMEMİŞ gelen belgeler. Onaylanan/aktarıma alınan/aktarılan
   //   belgeler buradan çıkar (Aktarım arşivinde görünür) — kullanıcı talebi.
   // useMemo: docsAll/docs referansı her render'da yenilenmesin → justDone/richNotes efektleri
@@ -1295,23 +1324,56 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
   });
   const iptalSayac: any = iptalSayacQ.data;
   const dd = (d: any) => deriveDurum(d, isIsletme, '');
-  // Durum filtresi (Hepsi / Eşleşti / İncele / Kod eksik / Çelişki / …)
+  // Durum filtresi (Hepsi / Eşleşti / İncele / Kod eksik / Çelişki / …) — ikincil (küçük) sayaç satırı.
   const [durumF, setDurumF] = useState('all');
   const durumCount = (cat: string) => cat === 'all' ? docsAll.length : docsAll.filter((d) => dd(d).cat === cat).length;
+  // PLAN16-B — "Ne yapmam gerekiyor" kümesi (hazir/karar/incele/ham): tıkla süz, tekrar tıkla kalkar.
+  //   Durum süzgeciyle birlikte çalışır (VE). Belge başına güven + küme bir kez hesaplanır (Map).
+  const [gorevF, setGorevF] = useState<GfKume | ''>('');
+  const gfBilgi = useMemo(() => {
+    const m = new Map<string, { guven: GfGuven; kume: GfKume }>();
+    for (const d of docsAll) { const guven = gfGuvenOf(d, isIsletme); m.set(d.id, { guven, kume: gfKumeOf(d, deriveDurum(d, isIsletme, ''), guven) }); }
+    return m;
+  }, [docsAll, isIsletme]);
+  const gfKumeSayac = useMemo(() => {
+    const s: Record<GfKume, number> = { hazir: 0, karar: 0, incele: 0, ham: 0 };
+    gfBilgi.forEach((v) => { s[v.kume]++; });
+    return s;
+  }, [gfBilgi]);
+  // Sütun sıralama (başlığa tıkla): güven · tarih · tutar · firma. Varsayılan = tarih (eskiden yeniye, mevcut davranış).
+  const [sortKey, setSortKey] = useState<'guven' | 'tarih' | 'tutar' | 'firma'>('tarih');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const sirala = (k: 'guven' | 'tarih' | 'tutar' | 'firma') => {
+    if (sortKey === k) { setSortDir((v) => (v === 'asc' ? 'desc' : 'asc')); return; }
+    setSortKey(k);
+    // İlk tık: güven → Düşük önce (işi olan üstte), tutar → büyük önce, tarih/firma → artan.
+    setSortDir(k === 'tutar' ? 'desc' : 'asc');
+  };
   const docs = useMemo(
     () => {
-      const base = durumF === 'all' ? docsAll : docsAll.filter((d) => deriveDurum(d, isIsletme, '').cat === durumF);
+      let base = durumF === 'all' ? docsAll : docsAll.filter((d) => deriveDurum(d, isIsletme, '').cat === durumF);
+      if (gorevF) base = base.filter((d) => gfBilgi.get(d.id)?.kume === gorevF);
       // TARİH SIRASI (kullanıcı isteği: liste karışık gelmesin) — kronolojik eskiden yeniye,
       //   eşit tarihte belge no'ya göre. Alış ve Satış listelerinin ikisinde de geçerli.
       const dnum = (d: any) => { const s = String(d.faturaTarihi || d.createdAt || '').slice(0, 10); return s ? Number(s.replace(/-/g, '')) || 0 : 0; };
-      return [...base].sort((a, b) => dnum(a) - dnum(b) || String(a.belgeNo || '').localeCompare(String(b.belgeNo || ''), 'tr'));
+      const tarihCmp = (a: any, b: any) => dnum(a) - dnum(b) || String(a.belgeNo || '').localeCompare(String(b.belgeNo || ''), 'tr');
+      const guvenSira: Record<string, number> = { dusuk: 0, orta: 1, yuksek: 2 };
+      const firmaAd = (d: any) => String(((d.invoiceKind || 'ALIS') === 'SATIS' ? d.customerName : d.vendorName) || '');
+      const cmp = (a: any, b: any): number => {
+        if (sortKey === 'guven') return (guvenSira[gfBilgi.get(a.id)?.guven.seviye || 'dusuk'] - guvenSira[gfBilgi.get(b.id)?.guven.seviye || 'dusuk']) || tarihCmp(a, b);
+        if (sortKey === 'tutar') return (Number(a.totalAmount || 0) - Number(b.totalAmount || 0)) || tarihCmp(a, b);
+        if (sortKey === 'firma') return firmaAd(a).localeCompare(firmaAd(b), 'tr') || tarihCmp(a, b);
+        return tarihCmp(a, b);
+      };
+      const sorted = [...base].sort(cmp);
+      return sortDir === 'desc' ? sorted.reverse() : sorted;
     },
-    [docsAll, durumF, isIsletme],
+    [docsAll, durumF, gorevF, gfBilgi, sortKey, sortDir, isIsletme],
   );
   const [sel, setSel] = useState<Set<string>>(new Set());
   // Mükellef/dönem/sekme değişince ESKİ seçim ve durum filtresi taşınmasın — yoksa "AI ile oku"
   //   önceki ekranda seçilmiş (artık görünmeyen) belgeleri de okuturdu.
-  useEffect(() => { setSel(new Set()); setDurumF('all'); }, [taxpayerId, period, kind]);
+  useEffect(() => { setSel(new Set()); setDurumF('all'); setGorevF(''); }, [taxpayerId, period, kind]);
   const toggle = (id: string) =>
     setSel((prev) => {
       const n = new Set(prev);
@@ -1363,6 +1425,45 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
     onSuccess: () => { toast.success('Belge silindi'); qc.invalidateQueries({ queryKey: ['fm2'] }); },
     onError: (e: any) => toast.error('Silinemedi: ' + (e?.response?.data?.message || e?.message || 'hata')),
   });
+  // PLAN16-B — TOPLU SİL: seçilenler tek tek DELETE (toplu uç yok); Luca'ya gitmiş/elle işlenmiş (POSTED/MANUAL_DONE) atlanır.
+  const bulkDelMut = useMutation({
+    mutationFn: async (ids: string[]) => {
+      let ok = 0; const hata: string[] = [];
+      for (const id of ids) {
+        try { await api.delete(`/fatura-muhasebelestirme/documents/${id}`); ok++; }
+        catch (e: any) { hata.push(e?.response?.data?.message || e?.message || 'hata'); }
+      }
+      return { ok, hata };
+    },
+    onSuccess: ({ ok, hata }) => {
+      if (ok > 0) toast.success(`${ok} belge silindi`);
+      if (hata.length) toast.error(`${hata.length} belge silinemedi: ${hata[0]}`);
+      setSel(new Set());
+      qc.invalidateQueries({ queryKey: ['fm2'] });
+    },
+    onError: (e: any) => toast.error('Toplu silme başarısız: ' + (e?.response?.data?.message || e?.message || 'hata')),
+  });
+  const topluSil = () => {
+    // Yalnız ŞU AN görünür listedeki seçimler (bayat/başka sekme seçimi gitmesin) + aktarılmış/elle işlenmiş atlanır.
+    const ids = docs.filter((d: any) => sel.has(d.id) && !isArchived(d)).map((d: any) => d.id);
+    const atlanan = sel.size - ids.length;
+    if (!ids.length) { toast.error(atlanan > 0 ? 'Seçilenler Luca\'ya aktarılmış/elle işlenmiş — silinemez' : 'Önce belge seç'); return; }
+    if (!window.confirm(`${ids.length} belge silinsin mi?${atlanan > 0 ? `\n(${atlanan} belge aktarılmış/elle işlenmiş olduğundan atlanacak)` : ''}\nBu işlem geri alınamaz.`)) return;
+    bulkDelMut.mutate(ids);
+  };
+  // PLAN16-B — DEMİRBAŞ KARARI satır içinde (UyariKutusu açılmadan): aynı uç, aynı mesajlar.
+  const demirbasSatirMut = useMutation({
+    mutationFn: (p: { id: string; karar: string }) => api.post(`/fatura-muhasebelestirme/documents/${p.id}/demirbas-karari`, { karar: p.karar }),
+    onSuccess: (_r, p) => {
+      toast.success(p.karar === 'elle_islendi' ? 'Belge kapatıldı — Luca\'da elle işlendi (Luca\'ya gitmez)' : p.karar === 'yine_de_isle' ? 'Demirbaş fişi kuruldu — hesabı kontrol edip onaylayın' : 'Demirbaş değil olarak işaretlendi — bir daha sorulmaz');
+      qc.invalidateQueries({ queryKey: ['fm2'] });
+    },
+    onError: (e: any) => toast.error('Demirbaş kararı kaydedilemedi: ' + (e?.response?.data?.message || e?.message || 'hata')),
+  });
+  const demirbasKarar = (id: string, karar: string) => {
+    if (karar === 'elle_islendi' && !window.confirm('Belge "Luca\'da elle işlendi" olarak KAPATILACAK ve Luca\'ya gönderilmeyecek. Onaylıyor musun?')) return;
+    demirbasSatirMut.mutate({ id, karar });
+  };
   // Hızlı: belgeleri tekrar OKUMADAN hesap kodlarını plana göre yeniden eşleştir (yanlış cari temizlenir).
   const recodeMut = useMutation({
     mutationFn: () => api.post('/fatura-muhasebelestirme/documents/reapply-codes', { taxpayerId }),
@@ -1563,58 +1664,52 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
     const normal = hazir.filter((d) => !docTevkifatliFE(d));
     if (tevk.length) setTevkGrup(tevk.map((d) => ({ id: d.id, belgeNo: d.belgeNo, firma: (d.invoiceKind === 'SATIS' ? d.customerName : d.vendorName) || '', tutar: d.totalAmount, oran: uyariListeFE((d.ocrData as any)?.uyarilar).find((u) => u.kod === 'TEVKIFAT_VAR')?.meta?.oranMetni || '' })));
     if (normal.length) approveMut.mutate({ ids: normal.map((d) => d.id) });
-    else if (tevk.length) toast.info(`Seçilenlerin ${tevk.length}'i tevkifatlı — aşağıdaki gruptan onayla`, { duration: 5000 });
+    else if (tevk.length) toast.info(`Seçilenlerin ${tevk.length}'i tevkifatlı — tablonun altındaki gruptan onayla`, { duration: 5000 });
   };
-  // GÜVEN SKORU (iyileştirme #1): backend her belgeye `guven.seviye` (yuksek|orta|dusuk) verir.
-  //   "yuksek" = öğrenilmiş/kesin eşleşme → otomatik onaya hazır. Müşavir tek tıkla güvenlileri onaylar,
-  //   geriye yalnız "bakılmalı" (orta+düşük) kalır → asıl zaman tasarrufu. (İşletme'de güven backend'de
-  //   satır kodu aramaz; orada mevcut "Seçilenleri onayla" akışı kullanılır — güvenli-buton yalnız kod olan bilançoda anlamlı.)
-  const guvenliDocs = docs.filter((d: any) => d.status !== 'APPROVED' && d?.guven?.seviye === 'yuksek');
-  const bakilmaliCount = docs.filter((d: any) => d.status !== 'APPROVED' && d?.guven && d.guven.seviye !== 'yuksek').length;
-  const guvenliOnayla = () => {
-    if (!guvenliDocs.length) { toast.error('Otomatik onaya hazır (yüksek güvenli) belge yok'); return; }
-    approveMut.mutate({ ids: guvenliDocs.map((d: any) => d.id) });
+  // PLAN16-B — "HAZIR OLANLARI ONAYLA": yalnız "Onaya hazır" kümesi (güven yüksek = matrah+cari KULLANICI/HAFIZA/VKN
+  //   kaynaklı [backend computeDocConfidence] + uyarı yok + kodlar tam + okunmuş). Süzgeçten bağımsız, gelen kutusunun tamamı.
+  //   (İşletme'de hesap kodu olmadığından yüksek güven üretilmez → düğme görünmez; oradaki akış "Onayla".)
+  const hazirDocs = useMemo(() => docsAll.filter((d: any) => gfBilgi.get(d.id)?.kume === 'hazir'), [docsAll, gfBilgi]);
+  const hazirOnayla = () => {
+    if (!hazirDocs.length) { toast.error('Onaya hazır (yüksek güvenli, uyarısız) belge yok'); return; }
+    approveMut.mutate({ ids: hazirDocs.map((d: any) => d.id) });
   };
+  const gfBusy = approveMut.isPending || bulkDelMut.isPending || recodeMut.isPending;
 
   return (
     <section className="screen">
       <div className="h2">{kind === 'SATIS' ? 'Bekleyen Satış Faturaları' : 'Bekleyen Alış Faturaları'}</div>
       <div className="sub">{kind === 'SATIS' ? 'Mükellefin kestiği satış faturaları — kuralla otomatik eşleşir.' : 'Entegratörden çekilen gelen faturalar — kuralla otomatik eşleşir, sadece eksik/çelişkili olana bakarsın.'}</div>
-      {karne && karne.toplam > 0 && (() => {
-        // BÜYÜK yüzde = "hesap atandı" oranı (listedeki "Eşleşti" ile tutarlı). "Güvenli" AYRI ve daha
-        //   katı ölçüt (öğrenilmiş + carisi dolu) — sen onayladıkça büyür. Eski büyük yüzde=güvenli oranı
-        //   olduğu için "76 Eşleşti ama %0" çelişkisi görünüyordu (kullanıcı bulgusu 2026-08-11).
-        const oran = Number(karne.hesapAtananOran ?? karne.otomatikOran) || 0;
-        const atanan = Number(karne.hesapAtanan ?? 0);
-        const oc = oran >= 70 ? '#15803d' : oran >= 40 ? '#d97706' : '#e5484d';
-        return (
-          <div style={{ margin: '0 0 8px', border: '1px solid #e2e8f0', borderRadius: 10, background: 'linear-gradient(135deg,#f8fafc,#ffffff)', overflow: 'hidden' }}>
-            <div onClick={() => setKarneAcik((v) => !v)} style={{ cursor: karne.zayifSaticilar?.length ? 'pointer' : 'default', display: 'flex', alignItems: 'center', gap: 12, padding: '7px 14px', flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 13, fontWeight: 700, color: '#334155' }}>Oto-eşleşme karnesi</span>
-              <span style={{ fontSize: 18, fontWeight: 800, color: oc }} title={`${atanan}/${karne.toplam} belgeye otomatik hesap kodu atandı`}>%{oran}</span>
-              <span style={{ fontSize: 12, color: '#64748b' }}>hesap atandı ({atanan}/{karne.toplam})</span>
-              <div style={{ flex: 1 }} />
-              <span style={{ fontSize: 12.5, fontWeight: 700, color: '#15803d' }} title="Öğrenilmiş kaynaktan (sen onaylamış) + carisi dolu + uyarısız. Sen düzelttikçe/onayladıkça artar; ilk okumada 0 olması normaldir.">{karne.yuksek} güvenli</span>
-              <span style={{ fontSize: 12.5, fontWeight: 700, color: '#d97706' }} title="Bir bakılması gereken (orta + düşük güven) belge sayısı.">{karne.bakilmali} bakılmalı</span>
-              <span style={{ fontSize: 12.5, fontWeight: 600, color: '#94a3b8' }}>{karne.onaylanmis} onaylı</span>
-              {karne.zayifSaticilar?.length ? <span style={{ fontSize: 12, color: '#64748b' }}>{karneAcik ? '▲' : '▼'}</span> : null}
-            </div>
-            {karneAcik && karne.zayifSaticilar?.length > 0 && (
-              <div style={{ padding: '0 15px 12px', borderTop: '1px solid #eef2f7' }}>
-                <div style={{ fontSize: 11.5, color: '#94a3b8', margin: '10px 0 6px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.3 }}>En çok bakılan cariler (kural/öğretme buraya)</div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                  {karne.zayifSaticilar.map((z: any) => (
-                    <span key={z.ad} title={z.neden} style={{ fontSize: 12, background: '#fff7ed', border: '1px solid #fed7aa', color: '#9a3412', borderRadius: 8, padding: '4px 9px', fontWeight: 600 }}>
-                      {z.ad} <b style={{ color: '#c2410c' }}>{z.adet}</b>{z.neden ? <span style={{ color: '#c2710c', fontWeight: 500 }}> · {z.neden}</span> : null}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
+      {/* PLAN16-B — "NE YAPMAM GEREKİYOR" şeridi: 4 küme sayacı (tıkla süz, tekrar tıkla kalkar) + "Hazır olanları onayla". */}
+      {docsAll.length > 0 && (
+        <div className="card gf-strip">
+          <div className="gf-strip-h">
+            <span className="gf-strip-t">Ne yapmam gerekiyor?</span>
+            <span className="gf-strip-s">{docsAll.length} belge · {gorevF ? 'küme süzgeci açık — tekrar tıkla kaldır' : 'kümeye tıkla, liste süzülsün'}</span>
           </div>
-        );
-      })()}
-      <div className="filttiles">
+          <div className="gf-strip-row">
+            <div className="filttiles gf-tiles">
+              {([
+                { v: 'hazir', l: 'Onaya hazır', c: '#15803d', t: 'Güven YÜKSEK (cari + hesap senden/hafızadan/VKN\'den) · uyarı yok · kodlar tam · okunmuş → "Hazır olanları onayla" bunları onaylar' },
+                { v: 'karar', l: 'Karar bekliyor', c: '#7c3aed', t: 'Demirbaş kararı · mükerrer / mükerrer şüphesi · tevkifat eksik · alıcı tipi · engel — sahip karar verir' },
+                { v: 'incele', l: 'İncele', c: '#d97706', t: 'Güven düşük/orta · kod eksik · çelişki · tutar okunamadı — bir bak, düzelt, onayla' },
+                { v: 'ham', l: 'Okunmadı (ham)', c: '#64748b', t: 'İçerik henüz okunmadı / okunuyor / okunamadı — "AI ile oku"' },
+              ] as Array<{ v: GfKume; l: string; c: string; t: string }>).map((t) => (
+                <button key={t.v} type="button" className={`ftile gf-tile${gorevF === t.v ? ' on' : ''}`} style={{ ['--tc' as any]: t.c }} title={t.t} onClick={() => setGorevF((v) => (v === t.v ? '' : t.v))}>
+                  <span className="ftdot" />
+                  <span className="fttx"><span className="ftn">{gfKumeSayac[t.v]}</span><span className="ftl">{t.l}</span></span>
+                </button>
+              ))}
+            </div>
+            <div className="sp" />
+            <button type="button" className="btn gf-hazir" disabled={gfBusy || hazirDocs.length === 0} onClick={hazirOnayla}
+              title={hazirDocs.length ? 'Yalnız "Onaya hazır" kümesini (yüksek güven + uyarısız + kodlar tam) TEK TIKLA onayla — Luca kuyruğuna alınır. Süzgeçten bağımsız, gelen kutusunun tamamı.' : 'Onaya hazır belge yok — güven, sen düzelttikçe/onayladıkça (hafıza) büyür'}>
+              <Ico html={I.checkSm} size={14} /> {approveMut.isPending ? 'İşleniyor…' : `Hazır olanları onayla${hazirDocs.length ? ` (${hazirDocs.length})` : ''}`}
+            </button>
+          </div>
+        </div>
+      )}
+      <div className="filttiles gf-sub">
         {([
           { v: 'all', l: 'Tümü', c: 'var(--accent)' },
           { v: 'ready', l: 'Eşleşti', c: '#15803d' },
@@ -1648,7 +1743,7 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
       </div>
       <div className="card invcard">
         <div className="ch invactions">
-          <h3>{docsQ.isLoading ? 'Yükleniyor…' : <>{docs.length} belge{sel.size > 0 ? <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--accent)' }}> · {sel.size} seçili</span> : null}{guvenliDocs.length > 0 ? <span style={{ fontSize: 12, fontWeight: 700, color: '#15803d' }}> · {guvenliDocs.length} güvenli</span> : null}{bakilmaliCount > 0 ? <span style={{ fontSize: 12, fontWeight: 700, color: '#d97706' }}> · {bakilmaliCount} bakılmalı</span> : null}</>}</h3><div className="sp" />
+          <h3>{docsQ.isLoading ? 'Yükleniyor…' : <>{docs.length} belge{sel.size > 0 ? <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--accent)' }}> · {sel.size} seçili</span> : null}{(gorevF || durumF !== 'all') && docs.length !== docsAll.length ? <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)' }}> · süzgeç: {docsAll.length} içinden</span> : null}</>}</h3><div className="sp" />
           <input ref={fileRef} type="file" multiple accept=".pdf,.jpg,.jpeg,.jpe,.jfif,.png,.webp,.gif,.tif,.tiff,.bmp,.heic,.heif,.avif,.xml,.ubl,.zip" style={{ display: 'none' }} onChange={(e) => { const files = Array.from(e.currentTarget.files || []); e.currentTarget.value = ''; if (files.length) uploadMut.mutate(files); }} />
           <button className="btn sm upload" disabled={!taxpayerId || uploadMut.isPending} onClick={() => setUploadPick(true)} title={!taxpayerId ? 'Önce mükellef seç' : 'Gelir/Gider seç, sonra JPEG / PDF / XML belge yükle'}><Ico html={I.upload} size={13} /> {uploadMut.isPending ? 'Yükleniyor…' : 'Belge Yükle'}</button>
           {uploadPick && (
@@ -1671,13 +1766,8 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
             </div>
           )}
           <button className="btn sm fix" disabled={!taxpayerId || recodeMut.isPending} onClick={() => recodeMut.mutate()} title="Belgeleri TEKRAR OKUMADAN hesap kodlarını plana göre yeniden eşleştir — yanlış carileri düzeltir/temizler (saniyeler sürer)"><Ico html={I.wand} size={13} /> {recodeMut.isPending ? 'Düzeltiliyor…' : 'Kodları düzelt'}</button>
-          <button className="btn sm ai" disabled={aiBusy || sel.size === 0} onClick={aiOku} title="Seçili faturaları yapay zeka (Max) ile oku — sunucuda okur, sayfa değişince durmaz"><Ico html={I.spark} size={13} /> {aiBusy ? 'Başlatılıyor…' : `AI ile oku${sel.size ? ` (${sel.size})` : ''}`}</button>
-          {guvenliDocs.length > 0 && (
-            <button className="btn sm" style={{ ['--tc' as any]: '#15803d', background: 'linear-gradient(135deg,#16a34a,#15803d)', color: '#fff', border: '1px solid #15803d' }} disabled={approveMut.isPending} onClick={guvenliOnayla} title="Öğrenilmiş/kesin eşleşen (yüksek güvenli) belgeleri TEK TIKLA onayla — geriye yalnız bakılması gerekenler kalır. Güven büyüdükçe (sen düzelttikçe) bu sayı artar.">
-              <Ico html={I.checkSm} size={13} /> {approveMut.isPending ? 'İşleniyor…' : `Güvenli ${guvenliDocs.length}'i onayla`}
-            </button>
-          )}
-          <button className="btn sm primary" disabled={approveMut.isPending} onClick={muhasebelestir} title="Seçili, kodu tam olan belgeleri toplu onayla (Luca kuyruğuna alır). Tek tek inceleme için soldaki 'Muhasebeleştir' ekranını kullan."><Ico html={I.checkSm} size={13} /> {approveMut.isPending ? 'İşleniyor…' : `Seçilenleri onayla${sel.size ? ` (${sel.size})` : ''}`}</button>
+          {/* PLAN16-B: seçime bağlı toplu işlemler (AI ile oku · Onayla · Sil) tablonun ALTINDAKİ çubukta — seçim yapınca görünür. */}
+          {sel.size === 0 && docs.length > 0 ? <span className="gf-hint">Toplu işlem için satır seç — çubuk tablonun altında açılır</span> : null}
         </div>
         {skipInfo && skipInfo.length > 0 && (() => {
           // Toplu onayda atlananlar — sebep gruplarıyla (hafıza çelişki / diğer hata). (AI denetçi kaldırıldı.)
@@ -1705,7 +1795,7 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
               {demirbas.length > 0 && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                   <span>• <b style={{ color: '#7c3aed' }}>{demirbas.length} belge demirbaş kararı bekliyor</b> — belgeyi açıp "Luca'da elle işledim → kapat" / "yine de işle" / "demirbaş değil" seçin{noLabel(demirbas)}.</span>
-                  <button className="btn sm" style={{ borderColor: '#e3d4fb', color: '#7c3aed' }} onClick={() => { setDurumF('demirbas'); setFisDetayId(demirbas[0].id); }}>Karar bekleyenleri göster</button>
+                  <button className="btn sm" style={{ borderColor: '#e3d4fb', color: '#7c3aed' }} onClick={() => { setGorevF(''); setDurumF('demirbas'); setFisDetayId(demirbas[0].id); }}>Karar bekleyenleri göster</button>
                 </div>
               )}
               {mukerrer.length > 0 && <div>• <b style={{ color: '#c0353a' }}>{mukerrer.length} belge mükerrer</b> — aynı belge no/VKN/tutar/yönde daha eski belge var; kopyayı silin{noLabel(mukerrer)}.</div>}
@@ -1713,22 +1803,6 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
             </div>
           );
         })()}
-        {tevkGrup && tevkGrup.length > 0 && (
-          // Faz 2 — TEVKİFATLI AYRI ONAY GRUBU: "Seçilenleri onayla" bu belgeleri otomatik onaylamaz; burada görünür, ayrıca onaylanır.
-          <div style={{ margin: '8px 12px 0', padding: '9px 12px', border: '1px solid #c9d6ea', borderRadius: 9, background: '#eef2f8', fontSize: 12.5, color: '#3b5b8a', display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <b style={{ fontSize: 13 }}>Tevkifatlı belgeler — ayrı onay grubu ({tevkGrup.length})</b>
-              <span style={{ opacity: 0.8 }}>191 tam KDV + 360 sorumlu (alış) / 391 net KDV (satış) fişleri; oran ↔ tevkifat kodu ↔ hesap uyumunu kontrol edip onaylayın.</span>
-              <div className="sp" />
-              <button className="btn sm primary" disabled={approveMut.isPending} onClick={() => { approveMut.mutate({ ids: tevkGrup.map((t) => t.id) }); setTevkGrup(null); }}>Tevkifatlı {tevkGrup.length} belgeyi onayla</button>
-              <button className="btn sm" onClick={() => setTevkGrup(null)}>Kapat</button>
-            </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {tevkGrup.slice(0, 12).map((t) => <span key={t.id} className="uycip" style={{ color: UYARI_RENK.bilgi.fg, background: '#fff', borderColor: UYARI_RENK.bilgi.bd, cursor: 'pointer' }} onClick={() => setFisDetayId(t.id)}>{t.belgeNo || '—'} · {t.firma.slice(0, 22)} · {fmtMoney(t.tutar)} ₺{t.oran ? ` · ${t.oran}` : ''}</span>)}
-              {tevkGrup.length > 12 ? <span className="uycip" style={{ color: '#64748b', background: '#fff', borderColor: '#e2e8f0' }}>+{tevkGrup.length - 12}</span> : null}
-            </div>
-          </div>
-        )}
         {docsQ.isError && (
           <div className="yuklenemedi">
             <span><Ico html={I.info} size={14} /> Belgeler yüklenemedi (bağlantı/sunucu hatası) — "veri yok" değil.</span>
@@ -1816,12 +1890,33 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
             </div>
           </div>
         )}
-        <div className="twrap">
-          <table>
-            <thead><tr><th style={{ width: 30 }}><Check checked={allSelected} onToggle={toggleAll} /></th><th>Tarih</th><th>Fatura No</th><th>Firma Adı</th><th>Tip</th><th className="num">KDV Hariç</th><th className="num">KDV</th><th className="num">Tutar</th>{!isIsletme && <th>Hesap Kodu</th>}<th>Durum</th><th className="actcol" style={{ width: 40 }} /></tr></thead>
+        <div className="twrap gf-twrap">
+          <table className="gf-table">
+            <thead><tr>
+              <th style={{ width: 30 }}><Check checked={allSelected} onToggle={toggleAll} /></th>
+              {/* PLAN16-B: başlığa tıkla → sırala (güven · tarih · tutar · firma); ok işareti yönü gösterir */}
+              <th className={`gf-sortable${sortKey === 'tarih' ? ' gf-sorted' : ''}`} onClick={() => sirala('tarih')} title="Tarihe göre sırala">Tarih<span className="gf-sort">{sortKey === 'tarih' ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}</span></th>
+              <th>Fatura No</th>
+              <th className={`gf-sortable${sortKey === 'firma' ? ' gf-sorted' : ''}`} onClick={() => sirala('firma')} title="Firma adına göre sırala">Firma / VKN<span className="gf-sort">{sortKey === 'firma' ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}</span></th>
+              <th>Tip</th>
+              <th className="num">KDV Hariç</th>
+              <th className="num">KDV</th>
+              <th className={`num gf-sortable${sortKey === 'tutar' ? ' gf-sorted' : ''}`} onClick={() => sirala('tutar')} title="Tutara göre sırala">Tutar<span className="gf-sort">{sortKey === 'tutar' ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}</span></th>
+              {!isIsletme && <th>Hesap</th>}
+              <th className={`gf-sortable${sortKey === 'guven' ? ' gf-sorted' : ''}`} onClick={() => sirala('guven')} title="Güvene göre sırala (ilk tık: Düşük önce)">Güven<span className="gf-sort">{sortKey === 'guven' ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}</span></th>
+              <th>Durum</th>
+              <th className="actcol gf-actcol">Eylemler</th>
+            </tr></thead>
             <tbody>
               {docs.map((d) => {
                 const du = dd(d);
+                const gfb = gfBilgi.get(d.id);
+                const guven: GfGuven = gfb?.guven || gfGuvenOf(d, isIsletme);
+                // Demirbaş kararı satır içi: backend eylemleri (etiketler) varsa onlar; yoksa 3 sabit düğme.
+                const demUyari = uyariListeFE((d.ocrData as any)?.uyarilar).find((u) => u.kod === 'DEMIRBAS' && !u.meta?.karar);
+                const demEylemler: Array<{ id: string; etiket: string }> = demUyari
+                  ? ((demUyari.eylemler || []).filter((e) => e.id.startsWith('demirbas:')).length ? (demUyari.eylemler || []).filter((e) => e.id.startsWith('demirbas:')) : [{ id: 'demirbas:elle_islendi', etiket: 'Luca\'da elle işledim → kapat' }, { id: 'demirbas:yine_de_isle', etiket: 'Yine de işle' }, { id: 'demirbas:demirbas_degil', etiket: 'Demirbaş değil' }])
+                  : [];
                 const sat = (d.invoiceKind || 'ALIS') === 'SATIS';
                 // İşletme "Kayıt Türü" sütunu: içerik = ALT türü (örn. "Elektrik Giderleri"). Seçili ise o,
                 //   değilse satıcı adından otomatik (Elektrik/Yakıt/Doğalgaz/Su/Telefon/Kargo/HGS…); alt yoksa ana türe düşer.
@@ -1835,10 +1930,10 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
                 const vkn = sat ? d.buyerVkn : d.sellerVkn;
                 // HESAP KODU sütunu = SADECE matrah/gider kodu. Gider boşsa KDV/cari koduna DÜŞME →
                 //   boş kalsın (kullanıcı: gider kodu boşsa bu sütun da boş olmalı).
-                const code = (() => {
-                  const ls = Array.isArray(d.lines) ? d.lines : [];
-                  return accountCodeOnly(ls.find((l: any) => String(l.group) === 'matrah' && l.accountCode)?.accountCode || '');
-                })();
+                const matrahLine = (Array.isArray(d.lines) ? d.lines : []).find((l: any) => String(l.group) === 'matrah' && l.accountCode);
+                const code = accountCodeOnly(matrahLine?.accountCode || '');
+                // Hesap ADI: satır açıklaması (eşleştirmede hesap adı buraya yazılır); yoksa yalnız kod.
+                const codeAd = code ? String(matrahLine?.description || '').trim() : '';
                 const { matrah, kdv } = kdvParts(d);
                 const ocrCls = d.ocrStatus === 'IN_PROGRESS' ? 'scanning' : justDone.has(d.id) ? 'justdone' : d.ocrStatus === 'PENDING' ? 'queued' : undefined;
                 const fisAcik = fisDetayId === d.id;
@@ -1856,7 +1951,8 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
                 const fisLines: any[] = (Array.isArray(d.lines) ? [...d.lines] : [])
                   .sort((a: any, b: any) => fisSira(a) - fisSira(b));
                 const docUyarilar: any[] = Array.isArray((d.ocrData as any)?.uyarilar) ? (d.ocrData as any).uyarilar : [];
-                const docUyariHata = docUyarilar.filter((u: any) => u?.siddet === 'hata').length;
+                // Engel sayısı Faz 2 modelinden (seviye=engel); eski kayıtlarda siddet=hata → uyariListeFE normalize eder.
+                const docUyariHata = uyariListeFE(docUyarilar).filter((u) => u.seviye === 'engel').length;
                 const docUyariRenk = docUyariHata > 0 ? '#dc2626' : '#d97706';
                 return (
                   <Fragment key={d.id}>
@@ -1869,25 +1965,34 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
                     <td className="num">{matrah != null ? fmtMoney(matrah) : '—'}</td>
                     <td className="num">{kdv != null ? fmtMoney(kdv) : '—'}</td>
                     <td className="num">{fmtMoney(d.totalAmount)}</td>
-                    {!isIsletme && <td>{code ? <span className="hk">{code}</span> : <span className="hk no">— yok —</span>}</td>}
-                    <td><span className={`pill ${du.k}`} title={du.cat === 'okunamadi' && d.lucaErrorMessage ? `Neden: ${d.lucaErrorMessage}` : du.cat === 'celiski' ? ((Array.isArray(d.validationIssues) ? d.validationIssues : (Array.isArray(d.ocrData?.validationIssues) ? d.ocrData.validationIssues : [])).filter((i: any) => i?.code && i.code !== 'INCOMPLETE_AMOUNTS' && i?.severity !== 'WARNING').map((i: any) => i.message).filter(Boolean).join(' · ') || du.t) : du.t}>{du.t}</span>{du.cat === 'okunamadi' && d.lucaErrorMessage ? <div className="oneden">{d.lucaErrorMessage}</div> : null}{du.cat === 'celiski' ? <div className="oneden" style={{ fontSize: 10.5, opacity: 0.85 }}>↓ sebebi fiş detayında</div> : null}<UyariCipler raw={(d.ocrData as any)?.uyarilar} onClick={() => setFisDetayId(fisAcik ? '' : d.id)} /></td>
-                    {/* DİKKAT: td'ye display:flex verme — hücre tablo düzeninden çıkıp durum sütununun
-                        üstüne biniyordu (kullanıcı bulgusu). Flex hizalama İÇ div'de. */}
-                    <td className="actcol"><div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                      {docUyarilar.length > 0 && (
-                        <span className="dnt-bdg" style={{ color: docUyariRenk, borderColor: docUyariRenk }} title={docUyarilar.map((u: any) => `⚠ ${u.baslik}: ${u.mesaj}`).join('\n\n')} onClick={() => setFisDetayId(fisAcik ? '' : d.id)}>
-                          ⚠{docUyarilar.length}
-                        </span>
+                    {!isIsletme && <td className="gf-hesap">{code ? <><span className="hk">{code}</span>{codeAd ? <small title={codeAd}>{codeAd}</small> : null}</> : <span className="hk no">— yok —</span>}</td>}
+                    {/* PLAN16-B — GÜVEN ROZETİ: Yüksek/Orta/Düşük hapı + tek satır sebep (kaynak: backend guven + satır kaynağı) */}
+                    <td className="gf-guvencell"><span className={`gf-guven ${guven.seviye}`} title={`Güven: ${GF_GUVEN_ETIKET[guven.seviye]} — ${guven.neden}`}>{GF_GUVEN_ETIKET[guven.seviye]}</span><small className="gf-neden" title={guven.neden}>{guven.neden}</small></td>
+                    <td><span className={`pill ${du.k}`} title={du.cat === 'okunamadi' && d.lucaErrorMessage ? `Neden: ${d.lucaErrorMessage}` : du.cat === 'celiski' ? ((Array.isArray(d.validationIssues) ? d.validationIssues : (Array.isArray(d.ocrData?.validationIssues) ? d.ocrData.validationIssues : [])).filter((i: any) => i?.code && i.code !== 'INCOMPLETE_AMOUNTS' && i?.severity !== 'WARNING').map((i: any) => i.message).filter(Boolean).join(' · ') || du.t) : du.t}>{du.t}</span>{du.cat === 'okunamadi' && d.lucaErrorMessage ? <div className="oneden">{d.lucaErrorMessage}</div> : null}{du.cat === 'celiski' ? <div className="oneden" style={{ fontSize: 10.5, opacity: 0.85 }}>↓ sebebi fiş detayında</div> : null}<UyariCipler raw={(d.ocrData as any)?.uyarilar} onClick={() => setFisDetayId(fisAcik ? '' : d.id)} />
+                      {/* PLAN16-B — DEMİRBAŞ KARARI satır içi 3 küçük düğme (UyariKutusu açılmadan; aynı uç). */}
+                      {demEylemler.length > 0 && (
+                        <div className="gf-demirbas">
+                          {demEylemler.map((e) => { const karar = e.id.split(':')[1]; return (
+                            <button key={e.id} type="button" className={`gf-dem ${karar}`} disabled={demirbasSatirMut.isPending}
+                              title={karar === 'elle_islendi' ? 'Belge kapanır: Luca\'da elle işlendi — Luca\'ya gönderilmez' : karar === 'yine_de_isle' ? 'Bilanço: 25x + KDV (satışta 679/689 taslağı); İşletme: Sabit Kıymet Alışı' : 'Uyarı kalkar, normal gider/gelir akışı; bu satıcı+içerik için bir daha sorulmaz'}
+                              onClick={() => demirbasKarar(d.id, karar)}>{karar === 'elle_islendi' ? 'Elle işledim → kapat' : e.etiket}</button>
+                          ); })}
+                        </div>
                       )}
-                      <span className="eye" onClick={() => setFisDetayId(fisAcik ? '' : d.id)} title={fisAcik ? 'Detayı gizle' : (isIsletme ? 'Kayıt türünü göster' : 'Yevmiye fişini göster')} style={{ color: fisAcik ? 'var(--accent,#2563eb)' : '#2563eb' }}><Ico html={I.ledger} size={15} /></span>
-                      <span className="eye" onClick={() => onOpenMuhasebe?.(d.id)} title="Muhasebeleştir ekranında aç" style={{ color: '#7c3aed' }}><Ico html={I.edit} size={15} /></span>
-                      <span className="eye" onClick={() => openDocFile(d.id)} title="Belgeyi aç" style={{ color: '#0891b2' }}><Ico html={I.eye} size={15} /></span>
-                      <span className="eye del" title="Belgeyi sil" onClick={() => { if (window.confirm(`Bu belge silinsin mi?\n${firma} · ${fmtMoney(d.totalAmount)} ₺${d.belgeNo ? ' · ' + d.belgeNo : ''}`)) delMut.mutate(d.id); }} style={{ color: '#dc2626' }}><Ico html={I.trash} size={14} /></span>
+                    </td>
+                    {/* DİKKAT: td'ye display:flex verme — hücre tablo düzeninden çıkıp durum sütununun
+                        üstüne biniyordu (kullanıcı bulgusu). Flex/grid hizalama İÇ div'de.
+                        PLAN16-B: eylemler ETİKETLİ ve görünür (İncele · Düzenle · Önizle · Sil) — hover'a saklanmaz. */}
+                    <td className="actcol gf-actcol"><div className="gf-acts">
+                      <button type="button" className={`gf-act incele${fisAcik ? ' on' : ''}`} onClick={() => setFisDetayId(fisAcik ? '' : d.id)} title={fisAcik ? 'Detayı gizle' : (isIsletme ? 'Kayıt türü + uyarılar + AI yorumu' : 'Yevmiye fişi + uyarılar + AI yorumu')}><Ico html={I.ledger} size={13} /> {fisAcik ? 'Gizle' : 'İncele'}{docUyarilar.length > 0 ? <i className="gf-actn" style={{ color: docUyariRenk }} title={docUyarilar.map((u: any) => `⚠ ${u.baslik}: ${u.mesaj || u.aciklama || ''}`).join('\n\n')}>⚠{docUyarilar.length}</i> : null}</button>
+                      <button type="button" className="gf-act duzenle" onClick={() => onOpenMuhasebe?.(d.id)} title="Muhasebeleştir ekranında aç — hesapları düzenle"><Ico html={I.edit} size={13} /> Düzenle</button>
+                      <button type="button" className="gf-act onizle" onClick={() => openDocFile(d.id)} title="Belgeyi aç (PDF/görsel/XML)"><Ico html={I.eye} size={13} /> Önizle</button>
+                      <button type="button" className="gf-act sil" disabled={delMut.isPending || bulkDelMut.isPending} title="Belgeyi sil" onClick={() => { if (window.confirm(`Bu belge silinsin mi?\n${firma} · ${fmtMoney(d.totalAmount)} ₺${d.belgeNo ? ' · ' + d.belgeNo : ''}`)) delMut.mutate(d.id); }}><Ico html={I.trash} size={13} /> Sil</button>
                     </div></td>
                   </tr>
                   {fisAcik && (
                     <tr className="detayrow">
-                      <td colSpan={isIsletme ? 10 : 11}>
+                      <td colSpan={isIsletme ? 11 : 12}>
                         <div className="detaybox">
                           {(() => {
                             const rn = richNotes[d.id];
@@ -1968,13 +2073,43 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
                 );
               })}
               {!docsQ.isLoading && docs.length === 0 && (
-                <tr><td colSpan={11}><div className="empty">Bu dönemde {kind === 'SATIS' ? 'satış' : 'alış'} faturası yok. Üstten mükellef/dönem seç ya da entegratörden çek.</div></td></tr>
+                <tr><td colSpan={isIsletme ? 11 : 12}><div className="empty">{docsAll.length > 0 && (gorevF || durumF !== 'all')
+                  ? <>Bu süzgeçte belge yok. <a href="#tumu" onClick={(ev) => { ev.preventDefault(); setGorevF(''); setDurumF('all'); }}>Süzgeçleri kaldır</a> ({docsAll.length} belge)</>
+                  : <>Bu dönemde {kind === 'SATIS' ? 'satış' : 'alış'} faturası yok. Üstten mükellef/dönem seç ya da entegratörden çek.</>}</div></td></tr>
               )}
             </tbody>
           </table>
         </div>
+        {tevkGrup && tevkGrup.length > 0 && (
+          // Faz 2 — TEVKİFATLI AYRI ONAY GRUBU: "Onayla" bu belgeleri otomatik onaylamaz; burada (toplu çubuğun üstünde) görünür, ayrıca onaylanır.
+          <div className="gf-tevk">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <b style={{ fontSize: 13 }}>Tevkifatlı belgeler — ayrı onay grubu ({tevkGrup.length})</b>
+              <span style={{ opacity: 0.8 }}>191 tam KDV + 360 sorumlu (alış) / 391 net KDV (satış) fişleri; oran ↔ tevkifat kodu ↔ hesap uyumunu kontrol edip onaylayın.</span>
+              <div className="sp" />
+              <button className="btn sm primary" disabled={approveMut.isPending} onClick={() => { approveMut.mutate({ ids: tevkGrup.map((t) => t.id) }); setTevkGrup(null); }}>Tevkifatlı {tevkGrup.length} belgeyi onayla</button>
+              <button className="btn sm" onClick={() => setTevkGrup(null)}>Kapat</button>
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {tevkGrup.slice(0, 12).map((t) => <span key={t.id} className="uycip" style={{ color: UYARI_RENK.bilgi.fg, background: '#fff', borderColor: UYARI_RENK.bilgi.bd, cursor: 'pointer' }} onClick={() => setFisDetayId(t.id)}>{t.belgeNo || '—'} · {t.firma.slice(0, 22)} · {fmtMoney(t.tutar)} ₺{t.oran ? ` · ${t.oran}` : ''}</span>)}
+              {tevkGrup.length > 12 ? <span className="uycip" style={{ color: '#64748b', background: '#fff', borderColor: '#e2e8f0' }}>+{tevkGrup.length - 12}</span> : null}
+            </div>
+          </div>
+        )}
+        {/* PLAN16-B — TOPLU ALT ÇUBUK (seçim varken; sabit DEĞİL): AI ile oku · Kodları düzelt · Onayla · Sil + "N seçili · temizle" */}
+        {sel.size > 0 && (
+          <div className="gf-bulk">
+            <span className="gf-selinfo"><b>{sel.size}</b> belge seçili</span>
+            <button type="button" className="btn sm ghost gf-clear" onClick={() => setSel(new Set())} title="Seçimi temizle">✕ temizle</button>
+            <div className="sp" />
+            <button type="button" className="btn sm ai" disabled={aiBusy} onClick={aiOku} title="Seçili faturaları yapay zeka (Max) ile oku — sunucuda okur, sayfa değişince durmaz"><Ico html={I.spark} size={13} /> {aiBusy ? 'Başlatılıyor…' : `AI ile oku (${sel.size})`}</button>
+            <button type="button" className="btn sm fix" disabled={!taxpayerId || recodeMut.isPending} onClick={() => recodeMut.mutate()} title="Belgeleri TEKRAR OKUMADAN hesap kodlarını plana göre yeniden eşleştir (mükellefin tüm gelen belgeleri; saniyeler sürer)"><Ico html={I.wand} size={13} /> {recodeMut.isPending ? 'Düzeltiliyor…' : 'Kodları düzelt'}</button>
+            <button type="button" className="btn sm primary gf-onayla" disabled={approveMut.isPending} onClick={muhasebelestir} title="Seçili, kodu tam olan belgeleri toplu onayla (Luca kuyruğuna alır). Tevkifatlılar ayrı grupta sorulur; demirbaş kararı bekleyen / mükerrer atlanır."><Ico html={I.checkSm} size={13} /> {approveMut.isPending ? 'İşleniyor…' : `Onayla (${sel.size})`}</button>
+            <button type="button" className="btn sm red gf-sil" disabled={bulkDelMut.isPending} onClick={topluSil} title="Seçili belgeleri sil — Luca'ya aktarılmış / elle işlenmiş olanlar atlanır"><Ico html={I.trash} size={13} /> {bulkDelMut.isPending ? 'Siliniyor…' : `Sil (${sel.size})`}</button>
+          </div>
+        )}
         <div className="foot">
-          <div className="selinfo">{docsAll.length} belge · {sayac.ok} {isIsletme ? 'hazır' : 'eşleşti'}{isIsletme ? '' : ` · ${sayac.miss} eksik kod`} · {sayac.warn} {isIsletme ? 'tutar/çelişki' : 'çelişki'}{durumF !== 'all' ? ` · (filtre: ${docs.length})` : ''}</div>
+          <div className="selinfo">{docsAll.length} belge · {sayac.ok} {isIsletme ? 'hazır' : 'eşleşti'}{isIsletme ? '' : ` · ${sayac.miss} eksik kod`} · {sayac.warn} {isIsletme ? 'tutar/çelişki' : 'çelişki'}{durumF !== 'all' || gorevF ? ` · (süzgeç: ${docs.length})` : ''}</div>
           <div className="sp" />
           {docsAll.length >= 300 && <div className="pg">İlk 300 gösteriliyor — dönem/durum filtresiyle daralt</div>}
         </div>
@@ -1984,6 +2119,111 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
 }
 
 /* ===================== EKRAN: MÜKELLEFLER ===================== */
+/* ===================== PLAN16-A: SORGU EKRANI YARDIMCILARI ===================== */
+// Hazır tarih aralığı hapları (Sorgu şeridi). 'donem' = takvimdeki ayın tamamı (eski varsayılan: aralık
+//   boş, sunucu ay dönemini kullanır), 'ozel' = elle girilen aralık. Diğerleri rangeFrom/rangeTo'yu
+//   otomatik doldurur ve ay dönemini uyumlu tutar.
+type SorguAralikHap = 'donem' | 'bu-ay' | 'gecen-ay' | 'son-30' | 'ceyrek' | 'ozel';
+const SORGU_ARALIK_HAPLAR: Array<{ v: SorguAralikHap; l: string; t: string }> = [
+  { v: 'donem', l: 'Seçili ay', t: 'Takvimdeki ayın tamamı (aralık girilmez)' },
+  { v: 'bu-ay', l: 'Bu ay', t: 'Ayın 1’inden bugüne' },
+  { v: 'gecen-ay', l: 'Geçen ay', t: 'Geçen ayın tamamı' },
+  { v: 'son-30', l: 'Son 30 gün', t: 'Bugün dahil son 30 gün' },
+  { v: 'ceyrek', l: 'Bu çeyrek', t: 'Çeyreğin ilk gününden bugüne' },
+  { v: 'ozel', l: 'Özel', t: 'Başlangıç ve bitiş tarihini elle gir' },
+];
+function sorguYmd(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+/** "2026-09-01" → "01.09.2026" (saat dilimi kaymasız, düz metin dönüşümü). */
+function sorguTarihTr(ymd: string): string {
+  const m = String(ymd || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? `${m[3]}.${m[2]}.${m[1]}` : String(ymd || '');
+}
+/** Hap → {from,to,donem}. 'donem' ve 'ozel' için null (aralık boş kalır / elle girilir). */
+function sorguAralikHesapla(hap: SorguAralikHap, bugun: Date = new Date()): { from: string; to: string; donem: string } | null {
+  const y = bugun.getFullYear();
+  const m = bugun.getMonth();
+  const ay = (yy: number, mm: number) => `${yy}-${String(mm + 1).padStart(2, '0')}`;
+  if (hap === 'bu-ay') return { from: sorguYmd(new Date(y, m, 1)), to: sorguYmd(bugun), donem: ay(y, m) };
+  if (hap === 'gecen-ay') {
+    const ilk = new Date(y, m - 1, 1);
+    return { from: sorguYmd(ilk), to: sorguYmd(new Date(y, m, 0)), donem: ay(ilk.getFullYear(), ilk.getMonth()) };
+  }
+  if (hap === 'son-30') return { from: sorguYmd(new Date(y, m, bugun.getDate() - 29)), to: sorguYmd(bugun), donem: ay(y, m) };
+  if (hap === 'ceyrek') return { from: sorguYmd(new Date(y, Math.floor(m / 3) * 3, 1)), to: sorguYmd(bugun), donem: ay(y, m) };
+  return null;
+}
+/** Aralığın kaç takvim ayına yayıldığı — liste uçları tek ayı süzdüğü için uyarı gösterilir. */
+function sorguAralikAyAdedi(from: string, to: string): number {
+  const a = String(from || '').match(/^(\d{4})-(\d{2})/);
+  const b = String(to || '').match(/^(\d{4})-(\d{2})/);
+  if (!a || !b) return 0;
+  return (Number(b[1]) - Number(a[1])) * 12 + (Number(b[2]) - Number(a[2])) + 1;
+}
+/** İş dönem etiketi ("2026-09" ya da aralıklı sorguda "2026-09-01_2026-09-12") seçili ay/aralıkla
+ *  örtüşüyor mu? Eski birebir karşılaştırma aralıklı işleri kaçırıyordu → "çekiliyor" şeridi çıkmıyordu. */
+function sorguIsDonemUyar(jobDonem: string, donem: string, from: string, to: string): boolean {
+  const jd = String(jobDonem || '').trim();
+  if (!jd || jd === donem) return true;
+  if (from && to && jd === `${from}_${to}`) return true;
+  const m = jd.match(/^(\d{4}-\d{2}-\d{2})_(\d{4}-\d{2}-\d{2})$/);
+  if (!m) return jd.startsWith(donem);
+  return m[1] <= `${donem}-31` && m[2] >= `${donem}-01`;
+}
+/** Saat etiketi: bugünse "12:41", değilse "26.08 12:41". */
+function sorguSaat(v: any): string {
+  if (!v) return '';
+  const d = new Date(v);
+  if (isNaN(d.getTime())) return '';
+  const saat = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  if (d.toDateString() === new Date().toDateString()) return saat;
+  return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')} ${saat}`;
+}
+/** ONAY hapı: GİB/entegratör durum metnini sınıfa indirger (Onaylandı / Otomatik / Onay bekliyor /
+ *  İptal / Red / İtiraz / Silinmiş). İptal-itiraz metni öncelikli; tanınmayan metin olduğu gibi kalır. */
+function sorguOnayHap(onay: any, iptal?: any): { k: 'onay' | 'oto' | 'bekliyor' | 'iptal' | 'red' | 'itiraz' | 'silinmis' | 'diger'; l: string } {
+  const o = String(onay || '').trim();
+  const oN = o.toLocaleLowerCase('tr-TR');
+  const iN = String(iptal || '').trim().toLocaleLowerCase('tr-TR');
+  if (iN && iN !== 'yok' && iN !== '-' && iN !== '—') {
+    if (/iptal|cancel/.test(iN)) return { k: 'iptal', l: 'İptal' };
+    if (/itiraz/.test(iN)) return { k: 'itiraz', l: 'İtiraz' };
+    if (/red|reject/.test(iN)) return { k: 'red', l: 'Red' };
+  }
+  if (/iptal|cancel/.test(oN)) return { k: 'iptal', l: 'İptal' };
+  if (/itiraz/.test(oN)) return { k: 'itiraz', l: 'İtiraz' };
+  if (/^red|\bred\b|reddedil|reject/.test(oN)) return { k: 'red', l: 'Red' };
+  if (/silin|delete/.test(oN)) return { k: 'silinmis', l: 'Silinmiş' };
+  if (/onaylanmad|bekl|wait|pending|taslak|draft|imzasız|imzasiz/.test(oN)) return { k: 'bekliyor', l: 'Onay bekliyor' };
+  if (/otomatik|auto/.test(oN)) return { k: 'oto', l: 'Otomatik' };
+  if (/onayland|approved|success|imzal|signed|kabul|accept|\bok\b/.test(oN)) return { k: 'onay', l: 'Onaylandı' };
+  return { k: 'diger', l: o || '—' };
+}
+/** e-Arşiv iş ilerlemesi: payload.progress.current/total varsa belirli (login denemesi sayacı hariç);
+ *  yoksa ilerleme mesajındaki "N/M satir"; o da yoksa belirsiz animasyon. */
+function sorguIsIlerleme(job: any): { belirli: boolean; cur: number; tot: number; pct: number; mesaj: string } {
+  const p = job?.payload?.progress && typeof job.payload.progress === 'object' ? job.payload.progress : null;
+  const mesaj = String(p?.message || '').trim();
+  const step = String(p?.step || '').toLowerCase();
+  let cur = /login/.test(step) ? NaN : Number(p?.current);
+  let tot = /login/.test(step) ? NaN : Number(p?.total);
+  if (!(tot > 0)) {
+    const m = mesaj.match(/(\d+)\s*\/\s*(\d+)\s*sat[ıi]r/i);
+    if (m) { cur = Number(m[1]); tot = Number(m[2]); }
+  }
+  const belirli = tot > 0 && Number.isFinite(cur) && cur >= 0;
+  return { belirli, cur: belirli ? cur : 0, tot: belirli ? tot : 0, pct: belirli ? Math.min(100, Math.round((cur / tot) * 100)) : 0, mesaj };
+}
+/** Entegratör rozeti rengi (sağlayıcı koduna göre sabit palet; bilinmeyen → accent). */
+const SORGU_PROV_RENK: Record<string, string> = {
+  GIB_PORTAL: '#b45309', TURMOB_EFATURA: '#b91c1c', TURKCELL: '#ca8a04', PARASUT: '#7c3aed', ELOGO: '#2563eb',
+  UYUMSOFT: '#2563eb', MIKRO: '#7c3aed', IZIBIZ: '#4f46e5', KOLAYSOFT: '#15803d', FORIBA: '#b45309', LOGO_ISBASI: '#a16207', NILVERA: '#0891b2',
+};
+function sorguProvRenk(provider: any): string {
+  return SORGU_PROV_RENK[String(provider || '').toUpperCase()] || 'var(--accent)';
+}
+
 function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; period: string; source: 'earsiv' | 'efatura' }) {
   const qc = useQueryClient();
   const [sel, setSel] = useState<Set<string>>(new Set());
@@ -1991,10 +2231,43 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
   //   ay/dönem seçici) geçerli kalır; doldurulursa Sorgula bu aralığa göre çalışır.
   const [rangeFrom, setRangeFrom] = useState('');
   const [rangeTo, setRangeTo] = useState('');
+  // PLAN16-A — Sorgu şeridi: hazır aralık hapı + şeritteki dönem takvimi. Şerit dönemi üst çubuktaki
+  //   dönemden başlar, üst çubuk değişince yeniden eşitlenir; haplar aralığı doldurup ayı uyumlu tutar.
+  const [aralikHap, setAralikHap] = useState<SorguAralikHap>('donem');
+  const [sorguDonem, setSorguDonem] = useState(period);
+  // PLAN16-A — Özet sayaç süzgeci, tablo içi arama, sütun sıralama, e-Fatura son sorgu zamanı.
+  const [ozetF, setOzetF] = useState<'' | 'aktarilabilir' | 'aktarilmis' | 'iptal' | 'bekleyen'>('');
+  const [ara, setAra] = useState('');
+  const [sirala, setSirala] = useState<{ k: 'tarih' | 'tutar' | 'unvan'; d: 'asc' | 'desc' }>({ k: 'tarih', d: 'desc' });
+  const [efaturaSonSorguAt, setEfaturaSonSorguAt] = useState(0);
+  // Etkin dönem: tüm veri çağrıları (liste, sorgu, aktarım, eşitleme) bu ayı kullanır.
+  const donem = sorguDonem || period;
+  const aralikHapRef = useRef<SorguAralikHap>('donem');
+  aralikHapRef.current = aralikHap;
+  useEffect(() => {
+    // Üst çubuktaki dönem değişti → şerit takvimi ona uyar; "bugüne" bağlı haplar anlamını yitirir → Seçili ay.
+    setSorguDonem(period);
+    if (aralikHapRef.current !== 'ozel' && aralikHapRef.current !== 'donem') { setAralikHap('donem'); setRangeFrom(''); setRangeTo(''); }
+  }, [period]);
+  useEffect(() => { setOzetF(''); setAra(''); }, [source, taxpayerId]);
+  const aralikUygula = (hap: SorguAralikHap) => {
+    setAralikHap(hap);
+    if (hap === 'donem') { setRangeFrom(''); setRangeTo(''); return; }
+    const r = sorguAralikHesapla(hap);
+    if (!r) return; // Özel: mevcut alanlar korunur, kullanıcı elle girer
+    setRangeFrom(r.from); setRangeTo(r.to); setSorguDonem(r.donem);
+  };
+  const donemSec = (v: string) => {
+    setSorguDonem(v);
+    // Takvimden ay seçildi: "Bu ay / Geçen ay" bugüne bağlıdır, artık o ayı anlatmaz → Seçili ay (tam ay).
+    if (aralikHap === 'bu-ay' || aralikHap === 'gecen-ay') { setAralikHap('donem'); setRangeFrom(''); setRangeTo(''); }
+  };
   // Aralık doğrulama: başlangıç > bitiş = sorgu YAPILMAZ (buton kilitli + uyarı). Tek alan doluysa
   //   aralık sorguya GİTMEZ (backend ay dönemine düşer) — kullanıcıya sessizce değil, açıkça söyle.
   const rangeInvalid = !!rangeFrom && !!rangeTo && rangeFrom > rangeTo;
   const rangePartial = !rangeInvalid && (!!rangeFrom !== !!rangeTo);
+  const rangeAktif = !!rangeFrom && !!rangeTo && !rangeInvalid;
+  const aralikAyAdedi = rangeAktif ? sorguAralikAyAdedi(rangeFrom, rangeTo) : 1;
   const [efaturaChannel, setEfaturaChannel] = useState<'IN_EFATURA' | 'OUT_EFATURA' | 'OUT_EARSIV'>('IN_EFATURA');
   const [lastEfaturaSync, setLastEfaturaSync] = useState<any>(null);
   const [efaturaPollUntil, setEfaturaPollUntil] = useState(0);
@@ -2004,8 +2277,8 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
   const isEarsivJobActive = (jobs: any): boolean =>
     Array.isArray(jobs) && jobs.some((j: any) => ['pending', 'running'].includes(String(j.status || '').toLowerCase()));
   const earsivQ = useQuery({
-    queryKey: ['fm-earsiv-sorgu', taxpayerId, period],
-    queryFn: async () => (await api.get('/portal-automation/earsiv/invoices', { params: { taxpayerId, period, limit: 500 } })).data,
+    queryKey: ['fm-earsiv-sorgu', taxpayerId, donem],
+    queryFn: async () => (await api.get('/portal-automation/earsiv/invoices', { params: { taxpayerId, period: donem, limit: 500 } })).data,
     enabled: !!taxpayerId && source === 'earsiv',
     // Aktif iş varken hızlı (2sn) → satırlar canlı insin; iş yokken seyrelt (10sn) → boş yük olmasın.
     refetchInterval: () => source === 'earsiv'
@@ -2015,7 +2288,9 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
   const jobsQ = useQuery({
     queryKey: ['fm-earsiv-jobs', taxpayerId],
     queryFn: async () => {
-      const r = await api.get('/portal-automation/jobs', { params: { jobType: 'EARSIV_PORTAL_FETCH', limit: 12 } });
+      // limit 12→40: liste kiracı geneli döner, mükellefe göre burada süzülür; çok mükellefli ofiste
+      //   "son sorgu" bilgisi 12 kayıtla kaybolabiliyordu (PLAN16-A).
+      const r = await api.get('/portal-automation/jobs', { params: { jobType: 'EARSIV_PORTAL_FETCH', limit: 40 } });
       return Array.isArray(r.data) ? r.data.filter((j: any) => !taxpayerId || j.taxpayerId === taxpayerId) : [];
     },
     enabled: !!taxpayerId && source === 'earsiv',
@@ -2034,7 +2309,8 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
     const status = String(j.status || '').toLowerCase();
     if (!['pending', 'running'].includes(status)) return false;
     const jobPeriod = String(j?.payload?.donem || j?.donem || '').trim();
-    if (jobPeriod && jobPeriod !== period) return false;
+    // Aralıklı sorgu işleri "AA-GG_AA-GG" etiketi taşır → birebir eşitlik yerine örtüşme (PLAN16-A).
+    if (!sorguIsDonemUyar(jobPeriod, donem, rangeFrom, rangeTo)) return false;
     const updated = new Date(j.updatedAt || j.createdAt || 0).getTime();
     return !updated || Date.now() - updated < 10 * 60 * 1000;
   });
@@ -2043,23 +2319,30 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
   //   iş (belge indirme/prefetch) hâlâ pending/running ise gösterge kalsın (hesap planındaki gibi).
   const earsivJobRunning = !!activeJob;
   const lastJob = (jobsQ.data || [])[0];
+  // "Son sorgu: 12:41 · 26 satır" bilgisi — seçili ay/aralıkla örtüşen son TAMAMLANMIŞ iş (PLAN16-A).
+  const sonBitenIs = (jobsQ.data || []).find((j: any) =>
+    ['done', 'success', 'completed', 'failed', 'cancelled'].includes(String(j.status || '').toLowerCase())
+    && sorguIsDonemUyar(String(j?.payload?.donem || j?.donem || '').trim(), donem, rangeFrom, rangeTo));
+  const earsivSonSorgu = sonBitenIs
+    ? { saat: sorguSaat(sonBitenIs.finishedAt || sonBitenIs.updatedAt), satir: Number(sonBitenIs.recordCount || 0), durum: String(sonBitenIs.status || '').toLowerCase(), hata: String(sonBitenIs.errorMessage || '') }
+    : null;
+  const earsivIlerleme = sorguIsIlerleme(activeJob);
   useEffect(() => {
     if (source !== 'earsiv' || !taxpayerId) return;
     const status = String(lastJob?.status || '').toLowerCase();
     if (['done', 'success', 'completed', 'failed'].includes(status)) {
-      qc.invalidateQueries({ queryKey: ['fm-earsiv-sorgu', taxpayerId, period] });
+      qc.invalidateQueries({ queryKey: ['fm-earsiv-sorgu', taxpayerId, donem] });
     }
-  }, [source, taxpayerId, period, lastJob?.id, lastJob?.status, lastJob?.updatedAt, qc]);
+  }, [source, taxpayerId, donem, lastJob?.id, lastJob?.status, lastJob?.updatedAt, qc]);
   const processable = rows.filter((r) => r.isProcessable && !r.aktarildi);
   const selectedRefs = [...sel];
   const toggle = (ref: string) => setSel((prev) => { const n = new Set(prev); n.has(ref) ? n.delete(ref) : n.add(ref); return n; });
-  const toggleAll = () => setSel(() => selectedRefs.length === processable.length ? new Set() : new Set(processable.map((r) => r.sourceRefId).filter(Boolean)));
 
   const sorgulaMut = useMutation({
     mutationFn: () => api.post('/fatura-muhasebelestirme/integrations/fetch', {
       taxpayerId,
       direction: 'SATIS',
-      donem: period,
+      donem,
       ...(rangeFrom && rangeTo ? { dateFrom: rangeFrom, dateTo: rangeTo } : {}),
       providers: ['GIB_PORTAL'],
       mode: 'query',
@@ -2082,7 +2365,7 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
       const refs = selectedRefs.length ? selectedRefs : processable.map((r) => r.sourceRefId).filter(Boolean);
       const sync = await api.post('/portal-automation/earsiv/accounting-sync', {
         taxpayerId,
-        period,
+        period: donem,
         selectedRefs: refs,
       });
       const imported = Number(sync?.data?.imported || 0);
@@ -2091,7 +2374,7 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
         const fallback = await api.post('/fatura-muhasebelestirme/integrations/fetch', {
           taxpayerId,
           direction: 'SATIS',
-          donem: period,
+          donem,
           providers: ['GIB_PORTAL'],
           mode: 'download',
           selectedRefs: refs,
@@ -2114,12 +2397,24 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
   });
   const earsivOverlayBusy = aktarMut.isPending || waitForFirstRows || sorgulaMut.isPending;
   const syncMut = useMutation({
-    mutationFn: () => api.post('/portal-automation/earsiv/accounting-sync', { taxpayerId, period }),
+    mutationFn: () => api.post('/portal-automation/earsiv/accounting-sync', { taxpayerId, period: donem }),
     onSuccess: (r: any) => {
       toast.success(`Senkron tamamlandı · ${r?.data?.imported || 0} yeni belge`);
       qc.invalidateQueries({ queryKey: ['fm-earsiv-sorgu'] });
       qc.invalidateQueries({ queryKey: ['fm2'] });
     },
+    onError: (e: any) => toast.error('Durum eşitlenemedi: ' + (e?.response?.data?.message || e?.message || 'hata')),
+  });
+  // PLAN16-A — süren e-Arşiv işini iptal et (POST /portal-automation/jobs/:id/cancel, gövde boş).
+  //   e-Fatura senkronu için iptal ucu YOK → orada iptal düğmesi gösterilmez.
+  const cancelMut = useMutation({
+    mutationFn: (jobId: string) => api.post(`/portal-automation/jobs/${jobId}/cancel`, {}),
+    onSuccess: () => {
+      toast.success('Sorgu iptal edildi.');
+      qc.invalidateQueries({ queryKey: ['fm-earsiv-jobs'] });
+      qc.invalidateQueries({ queryKey: ['fm-earsiv-sorgu'] });
+    },
+    onError: (e: any) => toast.error('İptal edilemedi: ' + (e?.response?.data?.message || e?.message || 'hata')),
   });
 
   const integrations: any[] = Array.isArray(integrationsQ.data) ? integrationsQ.data : [];
@@ -2130,8 +2425,8 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
   const connectedEfaturaProviders = efaturaProviders.filter(providerConnected);
   const activeEfaturaProvider = connectedEfaturaProviders[0] || efaturaProviders[0];
   const efaturaInboxQ = useQuery({
-    queryKey: ['fm-efatura-inbox', taxpayerId, period, efaturaDirection, efaturaChannel],
-    queryFn: async () => (await api.get('/fatura-muhasebelestirme/efatura-inbox', { params: { taxpayerId, period, direction: efaturaDirection, channel: efaturaChannel, limit: 2000 } })).data,
+    queryKey: ['fm-efatura-inbox', taxpayerId, donem, efaturaDirection, efaturaChannel],
+    queryFn: async () => (await api.get('/fatura-muhasebelestirme/efatura-inbox', { params: { taxpayerId, period: donem, direction: efaturaDirection, channel: efaturaChannel, limit: 2000 } })).data,
     enabled: !!taxpayerId && source === 'efatura',
     refetchInterval: source === 'efatura' && efaturaPollUntil > Date.now() ? 2500 : 6000,
   });
@@ -2189,23 +2484,23 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
   const efaturaTransferredCount = efaturaRows.filter((r) => efaturaIsTransferred(r)).length;
   const efaturaPendingImportable = efaturaTransferableRows.filter((r) => efaturaDocumentStatus(r) === 'READY').length;
   const efaturaTransferTotal = efaturaTransferredCount + efaturaPendingImportable;
-  const toggleEfaturaAll = () => setSel(() => efaturaSelectedIds.length === efaturaTransferableIds.length ? new Set() : new Set(efaturaTransferableIds));
   useEffect(() => {
     setLastEfaturaSync(null);
     setSel(new Set());
-  }, [source, taxpayerId, period, efaturaChannel]);
+  }, [source, taxpayerId, donem, efaturaChannel]);
   const efaturaFetchMut = useMutation({
     mutationFn: (v: { provider: string }) => api.post('/fatura-muhasebelestirme/efatura-sync', {
       taxpayerId,
       direction: efaturaDirection,
       channel: efaturaChannel,
-      period,
+      period: donem,
       ...(rangeFrom && rangeTo ? { dateFrom: rangeFrom, dateTo: rangeTo } : {}),
       providers: [v.provider],
       limit: 2000,
     }),
     onSuccess: (r: any) => {
       const data = r?.data || null;
+      setEfaturaSonSorguAt(Date.now());
       setLastEfaturaSync(data);
       if (data?.background) {
         // Turkcell gibi çok-faturalı: kopuk arka plan çekim. Durum ucunu bir süre poll et (ilerleme/bitiş görünsün).
@@ -2259,7 +2554,7 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
       taxpayerId,
       direction: efaturaDirection,
       channel: efaturaChannel,
-      period,
+      period: donem,
       ids: efaturaSelectedIds.length ? efaturaSelectedIds : efaturaTransferableIds,
       limit: 2000,
       background: true,
@@ -2389,129 +2684,388 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
     });
   }, [efaturaQueuedImport, efaturaRows, efaturaFetchMut.isPending, efaturaImportMut.isPending, efaturaInboxQ.isFetching, activeEfaturaProvider?.provider, activeEfaturaProvider?.label]);
 
-  return (
-    <section className="screen sorgu-screen">
-      <div className="h2">{source === 'earsiv' ? 'GIB e-Arşiv Portal Sorgusu' : 'e-Fatura Entegratör Sorgusu'}</div>
+  // ══ PLAN16-A GÖRÜNÜM KATMANI — özet sayaçları, sayaç süzgeci, tablo içi arama, sütun sıralama.
+  //    Yalnız GÖSTERİMİ düzenler; yukarıdaki veri/uç mantığına dokunmaz.
+  const araN = ara.trim().toLocaleLowerCase('tr-TR');
+  const araUyar = (...parcalar: any[]) => !araN || parcalar.some((p) => String(p || '').toLocaleLowerCase('tr-TR').includes(araN));
+  const siralaTikla = (k: 'tarih' | 'tutar' | 'unvan') => setSirala((s) => (s.k === k ? { k, d: s.d === 'asc' ? 'desc' : 'asc' } : { k, d: k === 'unvan' ? 'asc' : 'desc' }));
+  const siralaOk = (k: 'tarih' | 'tutar' | 'unvan') => (sirala.k === k ? (sirala.d === 'asc' ? '▲' : '▼') : '↕');
+  const zaman = (v: any) => { const t = new Date(v || 0).getTime(); return v && Number.isFinite(t) ? t : -Infinity; };
+  const sayi = (v: any) => { const n = Number(v); return v == null || !Number.isFinite(n) ? -Infinity : n; };
+  const karsilastir = (a: { tarih: number; tutar: number; unvan: string }, b: { tarih: number; tutar: number; unvan: string }) => {
+    const yon = sirala.d === 'asc' ? 1 : -1;
+    if (sirala.k === 'unvan') return yon * a.unvan.localeCompare(b.unvan, 'tr-TR');
+    const av = sirala.k === 'tarih' ? a.tarih : a.tutar;
+    const bv = sirala.k === 'tarih' ? b.tarih : b.tutar;
+    if (av === bv) return b.tarih - a.tarih || 0;
+    return yon * (av < bv ? -1 : 1);
+  };
+  type SqAkt = { k: 'ok' | 'kuyruk' | 'muh' | 'yok'; l: string; t: string };
+  // e-Arşiv satırları: ONAY hapı (onayDurumu + iptalDurumu), AKTARIM (lucaDurumu/aktarildi/zatenVar), seçilebilirlik.
+  const earsivGorunum = rows.map((r) => {
+    const onay = sorguOnayHap(r.onayDurumu, r.iptalDurumu);
+    const luca = String(r.lucaDurumu || '').toUpperCase();
+    const akt: SqAkt = luca === 'POSTED'
+      ? { k: 'ok', l: '✓ aktarıldı', t: "Luca'ya aktarıldı" }
+      : (r.aktarildi || luca === 'QUEUED' || String(r.muhasebeDurumu || '').toUpperCase() === 'APPROVED')
+        ? { k: 'kuyruk', l: '⏳ kuyrukta', t: 'Luca aktarım kuyruğunda' }
+        : r.zatenVar
+          ? { k: 'muh', l: '◐ muhasebede', t: "Muhasebeleştirildi — Luca'ya henüz gitmedi" }
+          : { k: 'yok', l: '—', t: 'Henüz aktarılmadı' };
+    return { r, onay, akt, secilebilir: !!r.isProcessable && !r.aktarildi && !!r.sourceRefId, tarih: zaman(r.issuedAt), tutar: sayi(r.toplam), unvan: String(r.buyerName || '') };
+  });
+  const earsivSayac = {
+    toplam: rows.length,
+    aktarilabilir: processable.length,
+    aktarilmis: rows.filter((r) => r.aktarildi).length,
+    iptal: rows.filter((r) => !r.isProcessable).length,
+    bekleyen: earsivGorunum.filter((g) => g.r.isProcessable && g.onay.k === 'bekliyor').length,
+  };
+  const earsivSuz = earsivGorunum.filter((g) => {
+    if (ozetF === 'aktarilabilir' && !(g.r.isProcessable && !g.r.aktarildi)) return false;
+    if (ozetF === 'aktarilmis' && !g.r.aktarildi) return false;
+    if (ozetF === 'iptal' && g.r.isProcessable) return false;
+    if (ozetF === 'bekleyen' && !(g.r.isProcessable && g.onay.k === 'bekliyor')) return false;
+    return araUyar(g.r.buyerName, g.r.buyerVkn, g.r.belgeNo, g.r.referenceNo, g.r.ettn);
+  }).sort(karsilastir);
+  const earsivGorunenSecilebilir = earsivSuz.filter((g) => g.secilebilir).map((g) => String(g.r.sourceRefId));
+  const earsivHepsiSecili = earsivGorunenSecilebilir.length > 0 && earsivGorunenSecilebilir.every((ref) => sel.has(ref));
+  const earsivGorunenSec = () => setSel((prev) => {
+    const n = new Set(prev);
+    if (earsivHepsiSecili) earsivGorunenSecilebilir.forEach((ref) => n.delete(ref)); else earsivGorunenSecilebilir.forEach((ref) => n.add(ref));
+    return n;
+  });
+  // e-Fatura satırları: karşı taraf ünvanı (backend UBL'den çözüp receiverTitle/senderTitle döndürüyor;
+  //   eskisi yedek), ONAY hapı (approvalStatus + iptalItiraz), AKTARIM (aktarıldı / kuyrukta / belge iniyor / inemedi).
+  const efaturaGorunum = efaturaRows.map((r) => {
+    const raw = r.rawJson && typeof r.rawJson === 'object' ? r.rawJson : {};
+    const title = efaturaDirection === 'OUT'
+      ? (r.receiverTitle || raw.receiverTitle || raw.alici || r.receiverVkn)
+      : (r.senderTitle || raw.senderTitle || raw.satici);
+    const taxNo = efaturaDirection === 'OUT' ? (r.receiverVkn || raw.receiverVkn || raw.aliciVergiNo) : (r.senderVkn || raw.senderVkn || raw.saticiVergiNo);
+    const approvalRaw = raw.onayDurumu || raw.approvalStatus || raw.status || raw.invoiceStatus || '';
+    const onay = sorguOnayHap(approvalRaw, raw.iptalItiraz);
+    const transferred = efaturaIsTransferred(r);
+    const docStatus = efaturaDocumentStatus(r);
+    const missingOriginal = docStatus === 'MISSING' || docStatus === 'SUMMARY_ONLY';
+    const rowId = String(r.id || '').trim();
+    const selectable = efaturaCanImport(r) && !!rowId;
+    const iptalMi = !transferred && !efaturaCanImport(r);
+    const kuyrukta = !transferred && selectable && docStatus === 'READY' && (efaturaImportMut.isPending || efaturaQueuedImport || efaturaImportRunning);
+    const akt: SqAkt = transferred
+      ? { k: 'ok', l: '✓ aktarıldı', t: 'Bekleyen listeye aktarıldı' }
+      : kuyrukta
+        ? { k: 'kuyruk', l: '⏳ kuyrukta', t: 'Aktarım sırasında' }
+        : docStatus === 'PENDING_DOWNLOAD'
+          ? { k: 'kuyruk', l: '⏳ belge iniyor', t: 'Belge arka planda indiriliyor' }
+          : missingOriginal
+            ? { k: 'yok', l: '— inemedi', t: 'Orijinal belge indirilemedi; aktarımda yeniden denenir' }
+            : { k: 'yok', l: '—', t: 'Aktarılmadı' };
+    const prov = String(r.entegrator || '');
+    const provLabel = integrations.find((p) => String(p?.provider || '') === prov)?.label || prov || 'Entegratör';
+    return { r, title, taxNo, approvalRaw, onay, akt, transferred, missingOriginal, rowId, selectable, iptalMi, prov, provLabel, tarih: zaman(r.faturaDate), tutar: sayi(r.toplam), unvan: String(title || '') };
+  });
+  const efaturaSayac = {
+    toplam: efaturaRows.length,
+    aktarilabilir: efaturaTransferableRows.length,
+    aktarilmis: efaturaTransferredCount,
+    iptal: efaturaGorunum.filter((g) => g.iptalMi).length,
+    bekleyen: efaturaGorunum.filter((g) => !g.iptalMi && g.onay.k === 'bekliyor').length,
+  };
+  const efaturaSuz = efaturaGorunum.filter((g) => {
+    if (ozetF === 'aktarilabilir' && !g.selectable) return false;
+    if (ozetF === 'aktarilmis' && !g.transferred) return false;
+    if (ozetF === 'iptal' && !g.iptalMi) return false;
+    if (ozetF === 'bekleyen' && !(!g.iptalMi && g.onay.k === 'bekliyor')) return false;
+    return araUyar(g.title, g.taxNo, g.r.faturaNo, g.r.uuid);
+  }).sort(karsilastir);
+  const efaturaGorunenSecilebilir = efaturaSuz.filter((g) => g.selectable).map((g) => g.rowId);
+  const efaturaHepsiSecili = efaturaGorunenSecilebilir.length > 0 && efaturaGorunenSecilebilir.every((id) => sel.has(id));
+  const efaturaGorunenSec = () => setSel((prev) => {
+    const n = new Set(prev);
+    if (efaturaHepsiSecili) efaturaGorunenSecilebilir.forEach((id) => n.delete(id)); else efaturaGorunenSecilebilir.forEach((id) => n.add(id));
+    return n;
+  });
+  const sayac = source === 'earsiv' ? earsivSayac : efaturaSayac;
+  const ozetKartlar: Array<{ v: '' | 'aktarilabilir' | 'aktarilmis' | 'iptal' | 'bekleyen'; l: string; c: string; n: number }> = [
+    { v: '', l: 'Toplam', c: 'var(--accent)', n: sayac.toplam },
+    { v: 'aktarilabilir', l: 'Aktarılabilir', c: '#15803d', n: sayac.aktarilabilir },
+    { v: 'aktarilmis', l: 'Aktarılmış', c: '#2563eb', n: sayac.aktarilmis },
+    { v: 'iptal', l: 'İptal / İtiraz / Red', c: '#e5484d', n: sayac.iptal },
+    { v: 'bekleyen', l: 'Onay bekleyen', c: '#d97706', n: sayac.bekleyen },
+  ];
+  // e-Fatura sorgu aşaması (arka plan senkron dâhil) sürüyor mu? Sunucu durumu + yerel poll penceresi.
+  const efaturaBgProvider = ['TURKCELL', 'TURMOB_EFATURA'].includes(String(activeEfaturaProvider?.provider));
+  const efaturaBgSyncRunning = efaturaBgProvider
+    && (efaturaSyncPollUntil > Date.now() || efaturaSyncStatus?.state === 'running')
+    && (!efaturaSyncStatus || (efaturaSyncStatus.state !== 'done' && efaturaSyncStatus.state !== 'error'));
+  const efaturaSorguSuruyor = efaturaFetchMut.isPending || (efaturaQueuedActive && efaturaQueuedSync) || efaturaBgSyncRunning;
+  // e-Fatura "son sorgu" bilgisi: arka plan senkronun sunucu kaydı (finishedAt + added) daha yeniyse o;
+  //   değilse bu oturumdaki son Sorgula yanıtı (fetched toplamı).
+  const efaturaSrvBitisAt = efaturaSyncStatus?.finishedAt ? new Date(efaturaSyncStatus.finishedAt).getTime() : 0;
+  const efaturaSonSorgu = (efaturaSrvBitisAt && efaturaSrvBitisAt >= efaturaSonSorguAt && ['done', 'error'].includes(String(efaturaSyncStatus?.state)))
+    ? { saat: sorguSaat(efaturaSyncStatus.finishedAt), satir: Number(efaturaSyncStatus.added || 0), yeni: true, hata: efaturaSyncStatus.state === 'error' ? String(efaturaSyncStatus.error || 'sorgu tamamlanamadı') : '' }
+    : efaturaSonSorguAt
+      ? { saat: sorguSaat(efaturaSonSorguAt), satir: efaturaStatusRows.reduce((a, p) => a + Number(p?.fetched || 0), 0) || efaturaRows.length, yeni: false, hata: '' }
+      : null;
+  const providerKimlikDetay = (p: any) => [
+    p?.username ? `kullanıcı: ${p.username}` : null,
+    p?.hasApiKey ? 'API anahtarı tanımlı' : null,
+    p?.hasPassword ? 'şifre tanımlı' : null,
+    p?.lastSyncAt ? `son çekim: ${fmtDate(p.lastSyncAt)}` : null,
+  ].filter(Boolean).join(' · ');
+  const sorgulaDisabled = source === 'earsiv'
+    ? (!taxpayerId || rangeInvalid || sorgulaMut.isPending || waitForFirstRows || earsivJobRunning)
+    : (!taxpayerId || rangeInvalid || !providerConnected(activeEfaturaProvider) || efaturaOverlayBusy);
+  const sorgulaMetin = source === 'earsiv'
+    ? (sorgulaMut.isPending ? 'Sorgulanıyor…' : earsivJobRunning ? 'Sorgu sürüyor…' : 'Sorgula')
+    : ((efaturaFetchMut.isPending || efaturaQueuedSync) ? 'Sorgulanıyor…' : 'Sorgula');
+  const sorgula = () => {
+    if (source === 'earsiv') { sorgulaMut.mutate(); return; }
+    if (activeEfaturaProvider?.provider) efaturaFetchMut.mutate({ provider: activeEfaturaProvider.provider });
+  };
+  const aralikMetin = rangeAktif ? `${sorguTarihTr(rangeFrom)} – ${sorguTarihTr(rangeTo)}` : `${periodLabel(donem)} (ayın tamamı)`;
+  const gorunenAdet = source === 'earsiv' ? earsivSuz.length : efaturaSuz.length;
+  const toplamAdet = source === 'earsiv' ? rows.length : efaturaRows.length;
+  const secimAdet = source === 'earsiv' ? selectedRefs.length : efaturaSelectedIds.length;
+  const efaturaKanalSecenek: Array<{ v: 'IN_EFATURA' | 'OUT_EFATURA' | 'OUT_EARSIV'; l: string }> = [
+    { v: 'IN_EFATURA', l: 'Alış e-Fatura' }, { v: 'OUT_EFATURA', l: 'Satış e-Fatura' }, { v: 'OUT_EARSIV', l: 'Satış e-Arşiv' },
+  ];
 
-      <div className="card daterange">
-        <span className="drlabel">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
-          Tarih aralığı
-        </span>
-        <div className="drio">
-          <input className="dmi" type="date" value={rangeFrom} onChange={(e) => setRangeFrom(e.target.value)} />
-          <span className="drsep">—</span>
-          <input className="dmi" type="date" value={rangeTo} onChange={(e) => setRangeTo(e.target.value)} />
+  return (
+    <section className="screen sorgu-screen sq-screen">
+      <div className="h2">{source === 'earsiv' ? 'GİB e-Arşiv Sorgu' : 'e-Fatura Sorgu'}</div>
+
+      {/* ── SORGU ŞERİDİ (tek kart): dönem takvimi + hazır aralık hapları + tarih aralığı + Sorgula + ilerleme/iptal + son sorgu ── */}
+      <div className="card sq-strip">
+        <div className="sq-row">
+          <span className="sq-lbl">Dönem</span>
+          <FmPeriod value={donem} onChange={donemSec} />
+          <span className="sq-lbl">Aralık</span>
+          <div className="sq-haps">
+            {SORGU_ARALIK_HAPLAR.map((h) => (
+              <button key={h.v} type="button" className={`sq-hap${aralikHap === h.v ? ' on' : ''}`} title={h.t} onClick={() => aralikUygula(h.v)}>{h.l}</button>
+            ))}
+          </div>
+          {aralikHap === 'ozel' && (
+            <div className="sq-dates">
+              <input type="date" value={rangeFrom} onChange={(e) => setRangeFrom(e.target.value)} aria-label="Başlangıç tarihi" />
+              <span className="drsep">—</span>
+              <input type="date" value={rangeTo} onChange={(e) => setRangeTo(e.target.value)} aria-label="Bitiş tarihi" />
+              {(rangeFrom || rangeTo) && <button type="button" className="sq-x" title="Aralığı temizle" onClick={() => { setRangeFrom(''); setRangeTo(''); }}>×</button>}
+            </div>
+          )}
+          <div className="sp" />
+          <button type="button" className="btn sq-main" disabled={sorgulaDisabled} title={rangeInvalid ? 'Tarih aralığı hatalı: başlangıç bitişten sonra' : !taxpayerId ? 'Önce mükellef seç' : undefined} onClick={sorgula}>
+            <Ico html={I.sync} size={14} /> {sorgulaMetin}
+          </button>
         </div>
-        {(rangeFrom || rangeTo) && (
-          <button type="button" className="btn sm ghost" onClick={() => { setRangeFrom(''); setRangeTo(''); }}>Temizle</button>
+        <div className="sq-row sq-meta">
+          <span className="sq-pill"><Ico html={I.clock} size={12} /> Sorgu aralığı: <b>{aralikMetin}</b></span>
+          {rangeAktif && aralikAyAdedi > 1 && (
+            <span className="sq-pill warn" title="Sorgu tüm aralığı çeker; liste ucu tek ayı süzer. Diğer ayları görmek için takvimden ayı değiştir.">Aralık {aralikAyAdedi} aya yayılıyor — tablo yalnız <b>{periodLabel(donem)}</b> ayını gösterir</span>
+          )}
+          {rangeInvalid && <span className="sq-pill err">Başlangıç bitişten sonra olamaz — düzeltmeden sorgulanamaz</span>}
+          {rangePartial && <span className="sq-pill warn">İki tarih de gerekli — tek tarihle aralık gitmez, {periodLabel(donem)} ayı kullanılır</span>}
+          {source === 'earsiv' ? (
+            earsivSonSorgu ? (
+              <span className="sq-last">son sorgu: <b>{earsivSonSorgu.saat || '—'}</b>{earsivSonSorgu.durum === 'failed' ? <> · <b className="sq-kirmizi">başarısız</b></> : earsivSonSorgu.durum === 'cancelled' ? ' · iptal edildi' : <> · <b>{earsivSonSorgu.satir}</b> satır</>}</span>
+            ) : <span className="sq-last">henüz sorgu yok</span>
+          ) : (
+            efaturaSonSorgu ? (
+              <span className="sq-last">son sorgu: <b>{efaturaSonSorgu.saat || '—'}</b>{efaturaSonSorgu.hata ? <> · <b className="sq-kirmizi">tamamlanamadı</b></> : <> · <b>{efaturaSonSorgu.satir}</b> {efaturaSonSorgu.yeni ? 'yeni' : 'satır'}</>}</span>
+            ) : <span className="sq-last">bu oturumda sorgu yok</span>
+          )}
+        </div>
+        {/* İLERLEME: e-Arşiv — aktif iş (jobs) + iptal; e-Fatura — sorgu/arka plan senkron (iptal ucu yok) */}
+        {source === 'earsiv' && earsivJobRunning && (
+          <div className="sq-prog">
+            <span className="sq-spin" aria-hidden="true" />
+            <span className="sq-ptx">{earsivIlerleme.belirli ? <><b>{earsivIlerleme.cur}</b> / {earsivIlerleme.tot} satır</> : <>Faturalar çekiliyor… <b>{rows.length}</b> satır geldi</>}</span>
+            <span className="sq-track"><span className={`sq-fill${earsivIlerleme.belirli ? '' : ' belirsiz'}`} style={earsivIlerleme.belirli ? { width: `${earsivIlerleme.pct}%` } : undefined} /></span>
+            {earsivIlerleme.mesaj ? <span className="sq-psub" title={earsivIlerleme.mesaj}>{earsivIlerleme.mesaj}</span> : <span className="sq-psub">satır geliyor…</span>}
+            <button type="button" className="btn sm sq-cancel" disabled={cancelMut.isPending || !activeJob?.id} onClick={() => { if (activeJob?.id) cancelMut.mutate(String(activeJob.id)); }}>{cancelMut.isPending ? 'İptal ediliyor…' : 'İptal'}</button>
+          </div>
         )}
-        {rangeInvalid ? (
-          <span className="drmsg err">Başlangıç tarihi bitişten sonra olamaz — düzeltmeden sorgulanamaz.</span>
-        ) : rangePartial ? (
-          <span className="drmsg warn">Aralık için İKİ tarih de gerekli — tek tarihle aralık sorguya gitmez, üstteki dönem (ay) kullanılır.</span>
-        ) : (
-          <span className="drmsg hint">Boş bırakılırsa üstteki dönem (ay) kullanılır.</span>
+        {source === 'earsiv' && !earsivJobRunning && sorgulaMut.isPending && (
+          <div className="sq-prog"><span className="sq-spin" aria-hidden="true" /><span className="sq-ptx">Sorgu kuyruğa alınıyor…</span><span className="sq-track"><span className="sq-fill belirsiz" /></span></div>
+        )}
+        {source === 'efatura' && efaturaSorguSuruyor && (
+          <div className="sq-prog">
+            <span className="sq-spin" aria-hidden="true" />
+            <span className="sq-ptx">{efaturaFetchMut.isPending ? 'Sorgu gönderiliyor…' : <>Sorgulanıyor… <b>{efaturaRows.length}</b> fatura geldi</>}</span>
+            <span className="sq-track"><span className="sq-fill belirsiz" /></span>
+            {efaturaSyncStatus?.rateLimited
+              ? <span className="sq-psub">Hız sınırı uygulandı; otomatik bekleyip devam ediyor — TAMAMLANMADI.</span>
+              : efaturaBgSyncRunning && Number(efaturaSyncStatus?.rounds) > 0
+                ? <span className="sq-psub">{efaturaSyncStatus.rounds}. tur · {Number(efaturaSyncStatus.added || 0)} yeni</span>
+                : <span className="sq-psub">satır geliyor…</span>}
+          </div>
+        )}
+        {/* HATA / DURUM BANTLARI */}
+        {source === 'earsiv' && earsivSonSorgu && earsivSonSorgu.durum === 'failed' && !earsivJobRunning && (
+          <div className="banner sq-err"><Ico html={I.info} size={15} /><span><b>Son sorgu başarısız</b>{earsivSonSorgu.saat ? ` (${earsivSonSorgu.saat})` : ''}{earsivSonSorgu.hata ? `: ${earsivSonSorgu.hata}` : ' — GİB’e ulaşılamamış olabilir.'} Tekrar Sorgula ile deneyin.</span></div>
+        )}
+        {source === 'efatura' && efaturaStatusRows.length > 0 && efaturaStatusTone === 'bad' && (
+          <div className="banner sq-err"><Ico html={I.info} size={15} /><span>{efaturaStatusRows.map((p, i) => <span key={`${p?.provider || i}-${i}`} style={{ display: 'block' }}><b>{efaturaProviderLabel(p)}</b>: {efaturaStatusText(p)}</span>)}</span></div>
+        )}
+        {source === 'efatura' && efaturaStatusRows.length > 0 && efaturaStatusTone !== 'bad' && !efaturaQueuedActive && (
+          <div className={`banner ${efaturaStatusTone === 'warn' ? 'sq-warn' : 'sq-ok'}`}><Ico html={I.info} size={15} /><span>{efaturaStatusRows.map((p, i) => <span key={`${p?.provider || i}-${i}`} style={{ display: 'block' }}><b>{efaturaProviderLabel(p)}</b>: {efaturaStatusText(p)}</span>)}</span></div>
+        )}
+        {source === 'efatura' && efaturaBgProvider && efaturaSyncStatus && efaturaSyncStatus.state === 'done' && efaturaSyncPollUntil > Date.now() && (
+          <div className="banner sq-ok"><Ico html={I.checkSm} size={14} /><span><b>Sorgu tamamlandı</b> — dönemdeki tüm faturalar çekildi ({efaturaRows.length} fatura).</span></div>
+        )}
+        {source === 'efatura' && efaturaBgProvider && efaturaSyncStatus && efaturaSyncStatus.state === 'error' && efaturaSyncPollUntil > Date.now() && (
+          <div className="banner sq-err"><Ico html={I.info} size={15} /><span><b>Sorgu tamamlanamadı</b> ({efaturaRows.length} fatura indirildi). Bir süre sonra tekrar Sorgula — inmeyenler tamamlanır.</span></div>
         )}
       </div>
 
+      {/* ── SONUÇ ÖZETİ ŞERİDİ: renkli sayaç kartları; tıkla → tabloyu süz, tekrar tıkla → süzgeç kalkar ── */}
+      <div className="filttiles sq-tiles">
+        {ozetKartlar.map((t) => (
+          <button key={t.v || 'toplam'} type="button" className={`ftile${ozetF === t.v ? ' on' : ''}`} style={{ ['--tc' as any]: t.c }} title={t.v ? 'Tıkla: tabloyu süz · tekrar tıkla: süzgeci kaldır' : 'Tüm satırlar'} onClick={() => setOzetF((f) => (f === t.v ? '' : t.v))}>
+            <span className="ftdot" />
+            <span className="fttx"><span className="ftn">{t.n}</span><span className="ftl">{t.l}</span></span>
+          </button>
+        ))}
+        {source === 'earsiv' && <span className="sq-pill gray sq-tilenote" title="GİB’de iptal, itirazlı veya reddedilmiş faturalar listede kalır; aktarıma alınmaz.">İptal / itiraz tabloda görünür, aktarılmaz</span>}
+      </div>
+
       {source === 'earsiv' ? (
-        <div className={`card sourcepanel ${(earsivOverlayBusy || earsivJobRunning) ? 'isbusy' : ''}`}>
-          <div className="ch sourcehead">
-            <span className="mu">{earsivJobRunning ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#0891b2', fontWeight: 600 }}><span className="qspin" /> Faturalar çekiliyor…</span> : lastJob ? `Son iş: ${lastJob.status} · ${fmtDate(lastJob.updatedAt || lastJob.createdAt)}` : 'Henüz sorgu yok'}</span>
+        <div className={`card sourcepanel sq-panel${earsivOverlayBusy ? ' isbusy' : ''}${earsivJobRunning ? ' sq-running' : ''}`}>
+          <div className="ch sourcehead sq-head">
+            <h3>
+              <span className="sq-src" style={{ ['--sc' as any]: sorguProvRenk('GIB_PORTAL') }}><i>GİB</i>e-Arşiv Portal</span>
+              <span className="mu">{periodLabel(donem)}</span>
+            </h3>
             <div className="sp" />
-            <button className="btn sm fetch" disabled={!taxpayerId || rangeInvalid || sorgulaMut.isPending || waitForFirstRows} title={rangeInvalid ? 'Tarih aralığı hatalı: başlangıç bitişten sonra' : undefined} onClick={() => sorgulaMut.mutate()}><Ico html={I.sync} size={13} /> {sorgulaMut.isPending ? 'Sorgulanıyor…' : 'Sorgula'}</button>
-            <button className="btn sm primary" disabled={!taxpayerId || aktarMut.isPending || waitForFirstRows || processable.length === 0} onClick={() => aktarMut.mutate()}><Ico html={I.download} size={13} /> {aktarMut.isPending ? 'Aktarılıyor…' : `${selectedRefs.length ? selectedRefs.length : processable.length} faturayı aktar`}</button>
-            <button className="btn sm ghost" disabled={!taxpayerId || syncMut.isPending || rows.length === 0} onClick={() => syncMut.mutate()}><Ico html={I.checkSm} size={13} /> Durumu eşitle</button>
+            <label className="sq-search">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></svg>
+              <input value={ara} onChange={(e) => setAra(e.target.value)} placeholder="Ünvan, belge no, VKN ara…" />
+              {ara && <button type="button" onClick={() => setAra('')} title="Aramayı temizle">×</button>}
+            </label>
+            <span className="mu">{gorunenAdet}{gorunenAdet !== toplamAdet ? ` / ${toplamAdet}` : ''} satır</span>
           </div>
-          <div className="sourcehint">İptal, itirazlı veya reddedilmiş faturalar tabloda görünür ama aktarıma alınmaz.</div>
           {(earsivQ.isError || jobsQ.isError) && (
             <div className="yuklenemedi">
               <span><Ico html={I.info} size={14} /> Liste alınamadı (bağlantı/sunucu hatası) — "kayıt yok" demek değil.</span>
               <button className="btn sm" onClick={() => { earsivQ.refetch(); jobsQ.refetch(); }}><Ico html={I.sync} size={12} /> Tekrar dene</button>
             </div>
           )}
-          <div className="sourcetablewrap">
+          <div className="sourcetablewrap sq-tablewrap">
             {earsivOverlayBusy && (
               <div className="queryveil">
                 <div className="querydoc" aria-hidden="true"><span /><i /><i /><i /></div>
-                <b>{aktarMut.isPending ? 'Faturalar aktariliyor...' : 'Faturalar getiriliyor...'}</b>
+                <b>{aktarMut.isPending ? 'Faturalar aktarılıyor…' : 'Faturalar getiriliyor…'}</b>
               </div>
             )}
-            <table className="sourcetable earsivtable">
+            <table className="sourcetable sq-table">
               <thead>
                 <tr>
-                  <th><Check checked={processable.length > 0 && selectedRefs.length === processable.length} onToggle={toggleAll} /></th>
-                  <th>Alıcı</th><th>VKN/TCKN</th><th>Belge No</th><th>Tarih</th><th>Onay</th><th>İptal/İtiraz</th><th>Görsel</th><th>Aktarım</th>
+                  <th className="center"><Check checked={earsivHepsiSecili} disabled={earsivGorunenSecilebilir.length === 0} onToggle={earsivGorunenSec} title="Görünen aktarılabilir satırların hepsini seç / bırak" /></th>
+                  <th>Kaynak</th>
+                  <th className={`sortable${sirala.k === 'unvan' ? ' sorted' : ''}`} onClick={() => siralaTikla('unvan')} title="Ünvana göre sırala">Alıcı / VKN <span className="sq-sort">{siralaOk('unvan')}</span></th>
+                  <th>Belge No</th>
+                  <th className={`sortable${sirala.k === 'tarih' ? ' sorted' : ''}`} onClick={() => siralaTikla('tarih')} title="Tarihe göre sırala">Tarih <span className="sq-sort">{siralaOk('tarih')}</span></th>
+                  <th>Tür</th>
+                  <th className={`num sortable${sirala.k === 'tutar' ? ' sorted' : ''}`} onClick={() => siralaTikla('tutar')} title="Tutara göre sırala (tutar yalnız muhasebeleştirilmiş satırlarda bilinir)">Tutar <span className="sq-sort">{siralaOk('tutar')}</span></th>
+                  <th>Onay</th>
+                  <th className="center">Görsel</th>
+                  <th className="center">Aktarım</th>
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r) => (
-                  <tr key={r.id} className={!r.isProcessable ? 'blocked' : r.aktarildi ? 'done' : ''}>
-                    <td>
-                      {r.isProcessable && !r.aktarildi ? (
+                {earsivSuz.map(({ r, onay, akt, secilebilir }) => (
+                  <tr key={r.id} className={`${!r.isProcessable ? 'blocked' : r.aktarildi ? 'done' : ''}${secilebilir && sel.has(r.sourceRefId) ? ' sel' : ''}`}>
+                    <td className="center">
+                      {secilebilir ? (
                         <Check checked={sel.has(r.sourceRefId)} onToggle={() => toggle(r.sourceRefId)} />
                       ) : (
-                        <Check checked={false} disabled title={r.aktarildi ? 'Zaten aktarilmis' : 'Aktarima alinmaz'} />
+                        <Check checked={false} disabled title={r.aktarildi ? 'Zaten aktarılmış' : 'Aktarıma alınmaz'} />
                       )}
                     </td>
-                    <td className="partyname">{r.buyerName || '—'}</td>
-                    <td>{r.buyerVkn || '—'}</td>
-                    <td>{r.belgeNo || r.referenceNo || '—'}</td>
+                    <td><span className="sq-src" style={{ ['--sc' as any]: sorguProvRenk('GIB_PORTAL') }}><i>GİB</i>e-Arşiv</span></td>
+                    <td><div className="sq-party"><b>{r.buyerName || '—'}</b><small>{r.buyerVkn || '—'}</small></div></td>
+                    <td><span className="sq-mono">{r.belgeNo || r.referenceNo || '—'}</span></td>
                     <td>{fmtDate(r.issuedAt)}</td>
-                    <td className="plainstatus">{r.onayDurumu || '—'}</td>
-                    <td>{r.iptalDurumu || 'Yok'}</td>
+                    <td><span className="sq-pill gray">e-Arşiv</span></td>
+                    <td className="num">{r.toplam != null ? fmtMoney(r.toplam) : '—'}</td>
                     <td>
+                      <span className={`sq-onay ${onay.k}`} title={`${r.onayDurumu || ''}${r.iptalDurumu && r.iptalDurumu !== 'Yok' ? ` · ${r.iptalDurumu}` : ''}`}>{onay.l}</span>
+                      {r.iptalDurumu && r.iptalDurumu !== 'Yok' && <small className="sq-onaysub">{r.iptalDurumu}</small>}
+                    </td>
+                    <td className="center">
                       {r.muhasebeBelgeId ? (
-                        <span className="eye" onClick={() => openDocFile(r.muhasebeBelgeId)} title="Fatura görselini aç" style={{ color: '#0891b2' }}><Ico html={I.eye} size={15} /></span>
+                        <span className="eye" onClick={() => openDocFile(r.muhasebeBelgeId)} title="Fatura görselini aç" style={{ color: '#0891b2', margin: '0 auto' }}><Ico html={I.eye} size={15} /></span>
                       ) : '—'}
                     </td>
-                    <td>
-                      {r.aktarildi ? (
-                        <span title="Luca'ya aktarıldı" style={{ display: 'inline-flex', alignItems: 'center', gap: 3, color: '#15803d', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap' }}>✓ Aktarıldı</span>
-                      ) : r.zatenVar ? (
-                        <span title="Muhasebeleştirildi — Luca'ya henüz aktarılmadı" style={{ display: 'inline-flex', alignItems: 'center', gap: 3, color: '#b8862b', fontWeight: 700, fontSize: 11, whiteSpace: 'nowrap' }}>◐ Muhasebe</span>
-                      ) : (
-                        <span title="Henüz muhasebeleştirilmedi / aktarılmadı" style={{ display: 'inline-flex', alignItems: 'center', gap: 3, color: '#94a3b8', fontWeight: 600, fontSize: 11, whiteSpace: 'nowrap' }}>× Yok</span>
-                      )}
-                    </td>
+                    <td className="center"><span className={`sq-akt ${akt.k}`} title={akt.t}>{akt.l}</span></td>
                   </tr>
                 ))}
-                {!rows.length && (
-                  <tr><td colSpan={12} className="emptyrow">{
+                {!earsivSuz.length && (
+                  <tr><td colSpan={10} className="emptyrow">{
                     !taxpayerId
                       ? 'Önce mükellef seç.'
-                      : lastJob && /fail/i.test(String(lastJob.status || ''))
-                        ? `Son sorgu başarısız oldu${(lastJob as any)?.errorMessage ? `: ${(lastJob as any).errorMessage}` : ''} — GİB'e ulaşılamamış olabilir, tekrar deneyin.`
-                        : lastJob && /done|success/i.test(String(lastJob.status || ''))
-                          ? 'GİB bu dönem için e-Arşiv faturası döndürmedi (0 kayıt). Mükellef bu dönemde GİB portalından e-Arşiv kesmediyse (entegratör/e-Fatura kullanıyorsa) bu normaldir; kestiyse tarih aralığını kontrol edip tekrar deneyin.'
-                          : 'Önce Sorgula ile GIB listesini getir.'
+                      : rows.length
+                        ? 'Süzgece / aramaya uyan satır yok.'
+                        : lastJob && /fail/i.test(String(lastJob.status || ''))
+                          ? `Son sorgu başarısız oldu${(lastJob as any)?.errorMessage ? `: ${(lastJob as any).errorMessage}` : ''} — GİB'e ulaşılamamış olabilir, tekrar deneyin.`
+                          : lastJob && /done|success/i.test(String(lastJob.status || ''))
+                            ? 'GİB bu dönem için e-Arşiv faturası döndürmedi (0 kayıt). Mükellef bu dönemde GİB portalından e-Arşiv kesmediyse (entegratör/e-Fatura kullanıyorsa) bu normaldir; kestiyse tarih aralığını kontrol edip tekrar deneyin.'
+                            : 'Önce Sorgula ile GİB listesini getir.'
                   }</td></tr>
                 )}
               </tbody>
             </table>
           </div>
+          {/* ALT TOPLU İŞLEM ÇUBUĞU — tablonun hemen altında (sabit değil); seçim varken vurgulanır */}
+          {rows.length > 0 && (
+            <div className={`sq-bulk${secimAdet ? ' secili' : ''}`}>
+              {secimAdet
+                ? <span className="sq-selinfo"><b>{secimAdet}</b> fatura seçili</span>
+                : <span className="sq-selinfo mu">Seçim yoksa aktarılabilir satırların tümü aktarılır</span>}
+              {secimAdet > 0 && <button type="button" className="btn sm ghost" onClick={() => setSel(new Set())}>Seçimi temizle</button>}
+              <button type="button" className="btn sm ghost" disabled={!taxpayerId || syncMut.isPending || rows.length === 0} onClick={() => syncMut.mutate()} title="Listedeki faturaların muhasebe / Luca durumunu yeniden eşitler"><Ico html={I.checkSm} size={13} /> {syncMut.isPending ? 'Eşitleniyor…' : 'Durumu eşitle'}</button>
+              <span className="sq-pill gray" title="İptal, itirazlı veya reddedilmiş faturalar tabloda görünür ama aktarıma alınmaz.">İptal / itiraz aktarılmaz</span>
+              <div className="sp" />
+              <button type="button" className="btn sm primary" disabled={!taxpayerId || aktarMut.isPending || waitForFirstRows || processable.length === 0} onClick={() => aktarMut.mutate()}><Ico html={I.download} size={13} /> {aktarMut.isPending ? 'Aktarılıyor…' : `${secimAdet ? secimAdet : processable.length} faturayı aktar`}</button>
+            </div>
+          )}
         </div>
       ) : (
-        <div className={`card sourcepanel ${efaturaOverlayBusy ? 'isbusy' : ''}`}>
-          <div className="ch sourcehead">
+        <div className={`card sourcepanel sq-panel${efaturaOverlayBusy ? ' isbusy' : ''}${efaturaSorguSuruyor ? ' sq-running' : ''}`}>
+          <div className="ch sourcehead sq-head">
             <div className="segmini">
-              <button className={efaturaChannel === 'IN_EFATURA' ? 'on' : ''} onClick={() => setEfaturaChannel('IN_EFATURA')}>Alış e-Fatura</button>
-              <button className={efaturaChannel === 'OUT_EFATURA' ? 'on' : ''} onClick={() => setEfaturaChannel('OUT_EFATURA')}>Satış e-Fatura</button>
-              <button className={efaturaChannel === 'OUT_EARSIV' ? 'on' : ''} onClick={() => setEfaturaChannel('OUT_EARSIV')}>Satış e-Arşiv</button>
+              {efaturaKanalSecenek.map((k) => (
+                <button key={k.v} type="button" className={efaturaChannel === k.v ? 'on' : ''} onClick={() => setEfaturaChannel(k.v)}>{k.l}</button>
+              ))}
             </div>
-          </div>
-          <div className="sourcebar">
-            <div>
-              <b>{efaturaProviderLabel(activeEfaturaProvider) || 'Entegrator yok'}</b>
-              <span>{providerConnected(activeEfaturaProvider) ? 'Kimlik bilgisi hazir' : 'Entegratorler ekranindan sifre tanimlanmali'}</span>
+            {/* Entegratör adı + kimlik rozeti (integrations: connected = configured && isActive; hasApiKey/hasPassword/username ayrıntı) */}
+            <div className="sq-prov">
+              <span className="sq-src" style={{ ['--sc' as any]: sorguProvRenk(activeEfaturaProvider?.provider) }} title={providerKimlikDetay(activeEfaturaProvider) || undefined}>
+                <i>{activeEfaturaProvider ? provKisalt(String(activeEfaturaProvider.label || ''), String(activeEfaturaProvider.provider || '')) : '?'}</i>
+                {activeEfaturaProvider ? efaturaProviderLabel(activeEfaturaProvider) : 'Entegratör tanımsız'}
+              </span>
+              {!activeEfaturaProvider ? (
+                <span className="sq-pill err" title="Entegratörler ekranından bu mükellefe bir e-Fatura entegratörü ekle">● entegratör yok</span>
+              ) : providerConnected(activeEfaturaProvider) ? (
+                <span className="sq-pill ok" title={providerKimlikDetay(activeEfaturaProvider) || 'Kimlik bilgisi tanımlı'}>● kimlik hazır</span>
+              ) : activeEfaturaProvider.configured && activeEfaturaProvider.isActive === false ? (
+                <span className="sq-pill warn" title="Bağlantı tanımlı ama pasif — Entegratörler ekranından etkinleştir">● bağlantı pasif</span>
+              ) : (
+                <span className="sq-pill err" title="Entegratörler ekranından kullanıcı/şifre ya da API anahtarı tanımla">● kimlik eksik</span>
+              )}
+              {connectedEfaturaProviders.length > 1 && (
+                <span className="sq-pill gray" title={connectedEfaturaProviders.map((p) => p.label || p.provider).join(' · ')}>+{connectedEfaturaProviders.length - 1} bağlı entegratör daha</span>
+              )}
             </div>
-            <button className="btn sm fetch" disabled={!taxpayerId || rangeInvalid || !providerConnected(activeEfaturaProvider) || efaturaOverlayBusy} title={rangeInvalid ? 'Tarih aralığı hatalı: başlangıç bitişten sonra' : undefined} onClick={() => efaturaFetchMut.mutate({ provider: activeEfaturaProvider.provider })}>
-              <Ico html={I.sync} size={13} /> {(efaturaFetchMut.isPending || efaturaQueuedSync) ? 'Sorgulaniyor...' : 'Sorgula'}
-            </button>
-            <button className="btn sm primary" disabled={!taxpayerId || efaturaOverlayBusy || efaturaDownloading || efaturaTransferableRows.length === 0} onClick={() => efaturaImportMut.mutate()} title={efaturaDownloading ? 'Belgeler iniyor; bitince aktarabilirsin (görseller önceden inecek)' : undefined}>
-              <Ico html={I.download} size={13} /> {efaturaDownloading ? 'Belgeler iniyor…' : (efaturaImportMut.isPending || efaturaQueuedImport) ? 'Aktariliyor...' : `${efaturaSelectedIds.length ? efaturaSelectedIds.length : efaturaTransferableRows.length} faturayi aktar`}
-            </button>
+            <div className="sp" />
+            <label className="sq-search">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></svg>
+              <input value={ara} onChange={(e) => setAra(e.target.value)} placeholder="Ünvan, belge no, VKN ara…" />
+              {ara && <button type="button" onClick={() => setAra('')} title="Aramayı temizle">×</button>}
+            </label>
+            <span className="mu">{gorunenAdet}{gorunenAdet !== toplamAdet ? ` / ${toplamAdet}` : ''} satır</span>
           </div>
           {efaturaDownloading && (
             <div className="efdownbar">
@@ -2536,111 +3090,86 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
                   </>}
             </div>
           )}
-          {/* ARKA PLAN ÇEKİM DURUMU: Sorgula'ya basar basmaz (yerel poll) VE sunucu 'running' iken görünür
-              → sayfayı değiştirip geri gelince de sunucu durumundan devam eder. */}
-          {['TURKCELL', 'TURMOB_EFATURA'].includes(String(activeEfaturaProvider?.provider)) && (efaturaSyncPollUntil > Date.now() || efaturaSyncStatus?.state === 'running') && (!efaturaSyncStatus || (efaturaSyncStatus.state !== 'done' && efaturaSyncStatus.state !== 'error')) && (
-            <div className={`efdownbar ${efaturaSyncStatus?.rateLimited ? 'import' : ''}`}>
-              <span className="efspin" aria-hidden="true" />
-              <span className="eftext">
-                {efaturaSyncStatus?.rateLimited
-                  ? <><b>Sorgu sürüyor — TAMAMLANMADI.</b> Hız sınırı uygulandı; otomatik bekleyip devam ediyor. Şu ana kadar <b>{efaturaRows.length}</b> fatura indirildi.</>
-                  : <>Sorgulanıyor… entegratörden faturalar çekiliyor. Şu ana kadar <b>{efaturaRows.length}</b> fatura geldi. Bitince burada belirtilecek.</>}
-              </span>
-            </div>
-          )}
-          {['TURKCELL', 'TURMOB_EFATURA'].includes(String(activeEfaturaProvider?.provider)) && efaturaSyncStatus && efaturaSyncStatus.state === 'done' && efaturaSyncPollUntil > Date.now() && (
-            <div className="providerdiag ok">
-              <b>Durum</b>
-              <span>Sorgu tamamlandı — dönemdeki tüm faturalar çekildi ({efaturaRows.length} fatura).</span>
-            </div>
-          )}
-          {['TURKCELL', 'TURMOB_EFATURA'].includes(String(activeEfaturaProvider?.provider)) && efaturaSyncStatus && efaturaSyncStatus.state === 'error' && efaturaSyncPollUntil > Date.now() && (
-            <div className="providerdiag err">
-              <b>Durum</b>
-              <span>Sorgu tamamlanamadı ({efaturaRows.length} fatura indirildi). Bir süre sonra tekrar Sorgula — inmeyenler tamamlanır.</span>
-            </div>
-          )}
-          {efaturaStatusRows.length > 0 && (
-            <div className={`providerdiag ${efaturaStatusTone}`}>
-              <b>Durum</b>
-              {efaturaStatusRows.map((p, i) => (
-                <span key={`${p?.provider || i}-${i}`}>
-                  {efaturaProviderLabel(p)}: {efaturaStatusText(p)}
-                </span>
-              ))}
-            </div>
-          )}
+          {/* ARKA PLAN ÇEKİM DURUMU (sorgu/bitti/hata) ve sağlayıcı durum satırları PLAN16-A ile üstteki
+              sorgu şeridine taşındı (ilerleme çubuğu + renkli bantlar); mantık aynen orada. */}
           {efaturaInboxQ.isError && (
             <div className="yuklenemedi">
               <span><Ico html={I.info} size={14} /> Liste alınamadı (bağlantı/sunucu hatası) — "kayıt yok" demek değil.</span>
               <button className="btn sm" onClick={() => efaturaInboxQ.refetch()}><Ico html={I.sync} size={12} /> Tekrar dene</button>
             </div>
           )}
-          <div className="sourcetablewrap efatura">
+          <div className="sourcetablewrap efatura sq-tablewrap">
             {efaturaOverlayBusy && (
               <div className="queryveil">
                 <div className="querydoc" aria-hidden="true"><span /><i /><i /><i /></div>
-                <b>{(efaturaImportMut.isPending || efaturaQueuedImport) ? 'Faturalar aktariliyor...' : 'Faturalar getiriliyor...'}</b>
+                <b>{(efaturaImportMut.isPending || efaturaQueuedImport) ? 'Faturalar aktarılıyor…' : 'Faturalar getiriliyor…'}</b>
               </div>
             )}
-            <table className="sourcetable">
+            <table className="sourcetable sq-table">
               <thead>
                 <tr>
-                  <th><Check checked={efaturaTransferableIds.length > 0 && efaturaSelectedIds.length === efaturaTransferableIds.length} disabled={efaturaTransferableIds.length === 0} onToggle={toggleEfaturaAll} /></th>
-                  <th>Entegratör</th><th>Unvan</th><th>VKN/TCKN</th><th>Belge No</th><th>Tarih</th><th>Tür</th><th>Onay</th><th>Aktarım</th>
+                  <th className="center"><Check checked={efaturaHepsiSecili} disabled={efaturaGorunenSecilebilir.length === 0} onToggle={efaturaGorunenSec} title="Görünen aktarılabilir satırların hepsini seç / bırak" /></th>
+                  <th>Entegratör</th>
+                  <th className={`sortable${sirala.k === 'unvan' ? ' sorted' : ''}`} onClick={() => siralaTikla('unvan')} title="Ünvana göre sırala">Ünvan / VKN <span className="sq-sort">{siralaOk('unvan')}</span></th>
+                  <th>Belge No</th>
+                  <th className={`sortable${sirala.k === 'tarih' ? ' sorted' : ''}`} onClick={() => siralaTikla('tarih')} title="Tarihe göre sırala">Tarih <span className="sq-sort">{siralaOk('tarih')}</span></th>
+                  <th>Tür</th>
+                  <th className={`num sortable${sirala.k === 'tutar' ? ' sorted' : ''}`} onClick={() => siralaTikla('tutar')} title="Tutara göre sırala">Tutar <span className="sq-sort">{siralaOk('tutar')}</span></th>
+                  <th>Onay</th>
+                  <th className="center">Aktarım</th>
                 </tr>
               </thead>
               <tbody>
-                {efaturaRows.map((r) => {
-                  const raw = r.rawJson || {};
-                  // Karşı taraf ünvanı: artık backend UBL'den çözüp r.receiverTitle/r.senderTitle olarak
-                  //   döndürüyor (giden faturada alıcı adı için kolon yoktu → VKN görünüyordu). Sunucudan
-                  //   geleni ÖNCE dene, eskisi yedek kalsın.
-                  const title = efaturaDirection === 'OUT'
-                    ? (r.receiverTitle || raw.receiverTitle || raw.alici || r.receiverVkn)
-                    : (r.senderTitle || raw.senderTitle || raw.satici);
-                  const taxNo = efaturaDirection === 'OUT' ? (r.receiverVkn || raw.receiverVkn || raw.aliciVergiNo) : (r.senderVkn || raw.senderVkn || raw.saticiVergiNo);
-                  const approval = raw.onayDurumu || raw.approvalStatus || raw.status || raw.invoiceStatus || '—';
-                  const transferred = efaturaIsTransferred(r);
-                  const docStatus = efaturaDocumentStatus(r);
-                  const missingOriginal = docStatus === 'MISSING' || docStatus === 'SUMMARY_ONLY';
-                  const rowId = String(r.id || '').trim();
-                  const selectable = efaturaCanImport(r) && !!rowId;
-                  return (
-                    <tr key={r.id} className={`${transferred ? 'done' : ''}${missingOriginal ? ' missingdoc' : ''}`}>
-                      <td>
-                        <Check
-                          checked={selectable && sel.has(rowId)}
-                          disabled={!selectable}
-                          title={transferred ? 'Zaten aktarilmis' : missingOriginal ? 'Aktarimda orijinal belge yeniden indirilecek' : selectable ? 'Aktarim icin sec' : 'Satir kimligi yok'}
-                          onToggle={() => toggle(rowId)}
-                        />
-                      </td>
-                      <td>{r.entegrator}</td>
-                      <td className="partyname">{title || '—'}</td>
-                      <td>{taxNo || '—'}</td>
-                      <td>{r.faturaNo || '—'}</td>
-                      <td>{fmtDate(r.faturaDate)}</td>
-                      <td>{r.invoiceProfile || 'e-Fatura'}</td>
-                      <td className="plainstatus">{approval}</td>
-                      <td>
-                        <span className={`transferstate ${transferred ? 'ok' : 'no'}`} title={transferred ? 'Aktarıldı' : missingOriginal ? 'Orijinal belge indirilemedi' : 'Aktarılmadı'} aria-label={transferred ? 'Aktarıldı' : 'Aktarılmadı'}>
-                          {transferred ? <span className="okico">✓</span> : <span className="xico">×</span>}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
-                {!efaturaRows.length && (
+                {efaturaSuz.map(({ r, title, taxNo, approvalRaw, onay, akt, transferred, missingOriginal, rowId, selectable, prov, provLabel }) => (
+                  <tr key={r.id} className={`${transferred ? 'done' : ''}${missingOriginal ? ' missingdoc' : ''}${selectable && sel.has(rowId) ? ' sel' : ''}`}>
+                    <td className="center">
+                      <Check
+                        checked={selectable && sel.has(rowId)}
+                        disabled={!selectable}
+                        title={transferred ? 'Zaten aktarılmış' : missingOriginal ? 'Aktarımda orijinal belge yeniden indirilecek' : selectable ? 'Aktarım için seç' : 'Satır kimliği yok'}
+                        onToggle={() => toggle(rowId)}
+                      />
+                    </td>
+                    <td><span className="sq-src" style={{ ['--sc' as any]: sorguProvRenk(prov) }} title={prov}><i>{provKisalt(provLabel, prov)}</i>{provLabel}</span></td>
+                    <td><div className="sq-party"><b>{title || '—'}</b><small>{taxNo || '—'}</small></div></td>
+                    <td><span className="sq-mono">{r.faturaNo || '—'}</span></td>
+                    <td>{fmtDate(r.faturaDate)}</td>
+                    <td><span className="sq-pill gray">{r.invoiceProfile || 'e-Fatura'}</span></td>
+                    <td className="num">{r.toplam != null ? fmtMoney(r.toplam) : '—'}</td>
+                    <td><span className={`sq-onay ${onay.k}`} title={String(approvalRaw || '') || undefined}>{onay.l}</span></td>
+                    <td className="center"><span className={`sq-akt ${akt.k}`} title={akt.t}>{akt.l}</span></td>
+                  </tr>
+                ))}
+                {!efaturaSuz.length && (
                   (efaturaInboxQ.isLoading || (efaturaInboxQ.isFetching && !efaturaInboxQ.data))
                     // İLK YÜKLEME (kullanıcı bulgusu #10): ekran ÖNCE boş "sorgu satırı yok" flaşlıyordu →
                     //   veri gelene kadar boş mesaj yerine yükleniyor göster; mükellef/dönem değişince de böyle.
                     ? <tr><td colSpan={9} className="emptyrow loadingrow">Faturalar yükleniyor…</td></tr>
-                    : <tr><td colSpan={9} className="emptyrow">{taxpayerId ? `Bu yönde ${efaturaChannelTitle} sorgu satırı yok. Entegratör satırından Sorgula ile getir.` : 'Önce mükellef seç.'}</td></tr>
+                    : <tr><td colSpan={9} className="emptyrow">{
+                      !taxpayerId
+                        ? 'Önce mükellef seç.'
+                        : efaturaRows.length
+                          ? 'Süzgece / aramaya uyan satır yok.'
+                          : `Bu yönde ${efaturaChannelTitle} sorgu satırı yok. Üstteki Sorgula ile getir.`
+                    }</td></tr>
                 )}
               </tbody>
             </table>
           </div>
+          {/* ALT TOPLU İŞLEM ÇUBUĞU — tablonun hemen altında (sabit değil); seçim varken vurgulanır */}
+          {efaturaRows.length > 0 && (
+            <div className={`sq-bulk${secimAdet ? ' secili' : ''}`}>
+              {secimAdet
+                ? <span className="sq-selinfo"><b>{secimAdet}</b> fatura seçili</span>
+                : <span className="sq-selinfo mu">Seçim yoksa aktarılabilir satırların tümü aktarılır (eşleştirme yapılmaz; sonra "AI ile oku")</span>}
+              {secimAdet > 0 && <button type="button" className="btn sm ghost" onClick={() => setSel(new Set())}>Seçimi temizle</button>}
+              <span className="sq-pill gray" title="İptal, itirazlı veya reddedilmiş faturalar tabloda görünür ama aktarıma alınmaz.">İptal / itiraz aktarılmaz</span>
+              <div className="sp" />
+              <button type="button" className="btn sm primary" disabled={!taxpayerId || efaturaOverlayBusy || efaturaDownloading || efaturaTransferableRows.length === 0} onClick={() => efaturaImportMut.mutate()} title={efaturaDownloading ? 'Belgeler iniyor; bitince aktarabilirsin (görseller önceden inecek)' : undefined}>
+                <Ico html={I.download} size={13} /> {efaturaDownloading ? 'Belgeler iniyor…' : (efaturaImportMut.isPending || efaturaQueuedImport) ? 'Aktarılıyor…' : `${secimAdet ? secimAdet : efaturaTransferableRows.length} faturayı aktar`}
+              </button>
+            </div>
+          )}
         </div>
       )}
     </section>
@@ -6540,4 +7069,232 @@ const CSS = `
   #fm-root .screen-muhasebe .muhmain .fispane > .ph{position:static}
   #fm-root .screen-muhasebe .muhmain .fispane > .wactions{position:static;background:none}
 }
+
+/* === PLAN16-A: SORGU EKRANLARI === */
+/* Ekran: sabit yükseklikli dikey akış; içerik sığmazsa yalnız DİKEY kayar (yatay asla), tablo kendi kabında kayar. */
+#fm-root .sq-screen{overflow-y:auto;overflow-x:hidden;gap:0}
+#fm-root .sq-screen > .h2{margin-bottom:10px}
+/* Sorgu şeridi (tek kart): üst renk çizgisi + sağ üst radial parıltı + hafif accent degrade — hepsi
+   arka plan katmanı (overflow:hidden YOK → FmPeriod takvim penceresi kırpılmaz) */
+#fm-root .sq-strip{position:relative;overflow:visible;flex:0 0 auto;padding:14px 16px 13px;margin-bottom:12px;border:1px solid var(--accent-line);background:linear-gradient(90deg,var(--accent),#2dd4bf 60%,#60a5fa) top/100% 3px no-repeat,radial-gradient(circle at 100% 0%,color-mix(in srgb,var(--accent) 16%,transparent),transparent 42%),linear-gradient(135deg,color-mix(in srgb,var(--accent) 9%,#fff) 0%,#fff 52%,color-mix(in srgb,var(--accent) 5%,#fff) 100%);box-shadow:0 16px 34px -28px var(--accent)}
+#fm-root .sq-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;position:relative}
+/* Takvim penceresi (ilk satırda) alt satırların/tablonun üstünde kalsın */
+#fm-root .sq-strip > .sq-row:first-child{z-index:30}
+#fm-root .sq-row + .sq-row{margin-top:9px}
+#fm-root .sq-lbl{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.55px;color:var(--faint)}
+#fm-root .sq-strip .fmdd-btn{background:#fff}
+/* Takvim penceresi şeritte SOLA hizalı açılır (üst çubuktaki sağa hizalı sürüm burada sol kenardan taşıp kırpılırdı) */
+#fm-root .sq-strip .fmdd-pop{left:0;right:auto}
+/* Hazır aralık hapları */
+#fm-root .sq-haps{display:inline-flex;gap:3px;padding:3px;border:1px solid var(--line2);border-radius:999px;background:#fff}
+#fm-root .sq-hap{height:28px;padding:0 12px;border:0;border-radius:999px;background:transparent;color:var(--muted);font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;transition:background .12s,color .12s,box-shadow .12s}
+#fm-root .sq-hap:hover{background:var(--accent-soft);color:var(--accent)}
+#fm-root .sq-hap.on{background:var(--accent);color:#fff;box-shadow:0 6px 14px -8px var(--accent)}
+/* Özel tarih aralığı alanları */
+#fm-root .sq-dates{display:flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--line2);border-radius:10px;padding:2px 10px;transition:border-color .12s,box-shadow .12s}
+#fm-root .sq-dates:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+#fm-root .sq-dates input{height:29px;border:0;background:transparent;font-family:inherit;font-size:12.5px;font-weight:600;color:var(--text);outline:none;cursor:pointer}
+#fm-root .sq-dates .drsep{color:var(--faint);font-weight:700}
+#fm-root .sq-dates .sq-x{border:0;background:none;color:var(--faint);font-size:17px;line-height:1;cursor:pointer;padding:0 2px}
+#fm-root .sq-dates .sq-x:hover{color:var(--red)}
+/* Sorgula — gradyan ana düğme (accent ailesi) */
+#fm-root .btn.sq-main{height:40px;padding:0 20px;border:0;border-radius:11px;font-size:13px;font-weight:800;color:#fff;background:linear-gradient(135deg,#0f766e 0%,var(--accent) 55%,#14b8a6 100%);box-shadow:0 10px 20px -10px var(--accent);transition:transform .12s,box-shadow .14s,filter .14s}
+#fm-root .btn.sq-main:hover:not(:disabled){filter:brightness(1.06);transform:translateY(-1px);box-shadow:0 14px 26px -10px var(--accent);color:#fff;border-color:transparent}
+#fm-root .btn.sq-main:disabled{opacity:.55;cursor:not-allowed;transform:none}
+/* Şerit meta satırı: aralık bilgisi, uyarı hapları, son sorgu */
+#fm-root .sq-meta{font-size:12px;color:var(--muted)}
+#fm-root .sq-meta b{color:var(--text);font-weight:700}
+#fm-root .sq-pill{display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 10px;border-radius:999px;font-size:11.5px;font-weight:700;background:var(--accent-soft);color:var(--th-text);border:1px solid var(--accent-line);white-space:nowrap;line-height:1}
+#fm-root .sq-pill .ico{color:var(--accent)}
+#fm-root .sq-pill.warn{background:#fff7e6;color:#9a5d0a;border-color:#f3d9a4}
+#fm-root .sq-pill.err{background:#fdeaea;color:#b91c1c;border-color:#f3c0c0}
+#fm-root .sq-pill.ok{background:#e7f6ec;color:#15803d;border-color:#bfe5cc}
+#fm-root .sq-pill.gray{background:#f1f4f8;color:#526070;border-color:#dfe5ee}
+#fm-root .sq-meta .sq-pill b{color:inherit}
+#fm-root .sq-last{margin-left:auto;font-size:12px;color:var(--muted);white-space:nowrap}
+#fm-root .sq-last b{color:var(--text)}
+#fm-root .sq-kirmizi{color:#b91c1c!important}
+/* İlerleme çubuğu (aktif iş / arka plan senkron) + iptal */
+#fm-root .sq-prog{display:flex;align-items:center;gap:12px;margin-top:10px;padding:10px 13px;border-radius:11px;background:#fff;border:1px solid var(--accent-line);position:relative;z-index:1;box-shadow:0 8px 20px -18px var(--accent)}
+#fm-root .sq-prog .sq-spin{width:15px;height:15px;border-radius:50%;border:2px solid var(--accent-line);border-top-color:var(--accent);animation:efspin .7s linear infinite;flex-shrink:0}
+#fm-root .sq-prog .sq-ptx{font-size:12.5px;font-weight:600;color:var(--text);white-space:nowrap}
+#fm-root .sq-prog .sq-ptx b{color:var(--accent);font-weight:800;font-variant-numeric:tabular-nums}
+#fm-root .sq-prog .sq-psub{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;max-width:38%}
+#fm-root .sq-prog .sq-track{flex:1;min-width:120px;height:7px;border-radius:99px;background:var(--accent-soft);overflow:hidden;position:relative}
+#fm-root .sq-prog .sq-fill{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--accent),#2dd4bf);transition:width .4s ease}
+#fm-root .sq-prog .sq-fill.belirsiz{width:42%;position:absolute;left:0;top:0;animation:fmBar 1.15s ease-in-out infinite}
+#fm-root .sq-prog .btn.sq-cancel{height:30px;padding:0 12px;border:1px solid #f3c0c0;color:#b91c1c;background:#fff;font-weight:800}
+#fm-root .sq-prog .btn.sq-cancel:hover:not(:disabled){background:#fdeaea;border-color:#e59a9a;color:#991b1b}
+/* Hata / uyarı / tamam bantları (.banner kırmızı-amber-yeşil varyantları) */
+#fm-root .banner.sq-err,#fm-root .banner.sq-warn,#fm-root .banner.sq-ok{margin:10px 0 0;position:relative;z-index:1;align-items:center;font-size:12.5px}
+#fm-root .banner.sq-err{background:#fdeaea;border:1px solid #f3b9b9;color:#7f1d1d}
+#fm-root .banner.sq-err b{color:#991b1b}
+#fm-root .banner.sq-err .ico{color:#b91c1c}
+#fm-root .banner.sq-warn{background:#fff7e6;border:1px solid #f3d9a4;color:#7c4a03}
+#fm-root .banner.sq-warn .ico{color:#b45309}
+#fm-root .banner.sq-ok{background:#e7f6ec;border:1px solid #bfe5cc;color:#14532d}
+#fm-root .banner.sq-ok .ico{color:#15803d}
+/* Sonuç özeti şeridi (.ftile sayaçları) */
+#fm-root .sq-tiles{margin:0 0 12px;flex:0 0 auto;align-items:center}
+#fm-root .sq-tilenote{margin-left:auto}
+/* Tablo kartı: ekranın kalanını doldurur, tablo kabı kendi içinde kayar (sayfa değil) */
+#fm-root .sq-panel{flex:1 1 auto;min-height:300px}
+#fm-root .sq-panel.sq-running{position:relative}
+#fm-root .sq-panel.sq-running::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,transparent 0%,var(--accent) 50%,transparent 100%);background-size:45% 100%;background-repeat:no-repeat;animation:fmshimmer 1.15s linear infinite;z-index:6;border-radius:12px 12px 0 0}
+#fm-root .card .sq-head{gap:10px;flex-wrap:wrap;padding:11px 14px}
+#fm-root .card .sq-head h3{font-size:14px;font-weight:800;color:#0d1626;display:flex;align-items:center;gap:9px;margin:0}
+#fm-root .sq-head .mu{font-size:11.5px;white-space:nowrap}
+#fm-root .sq-panel .efdownbar{margin:10px 14px 2px}
+#fm-root .sq-panel .yuklenemedi{margin:10px 14px 0}
+#fm-root .sq-search{display:flex;align-items:center;gap:7px;height:34px;padding:0 11px;border:1.5px solid var(--line2);border-radius:10px;background:#fff;min-width:250px;transition:border-color .12s,box-shadow .12s}
+#fm-root .sq-search:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+#fm-root .sq-search svg{color:var(--faint);flex-shrink:0}
+#fm-root .sq-search input{border:0;outline:0;background:none;font-family:inherit;font-size:12.5px;color:var(--text);width:100%}
+#fm-root .sq-search button{border:0;background:none;color:var(--faint);cursor:pointer;font-size:16px;line-height:1;padding:0 2px}
+#fm-root .sq-search button:hover{color:var(--red)}
+#fm-root .sq-prov{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+#fm-root .sq-tablewrap{overflow:auto;flex:1 1 auto;min-height:140px;max-height:none;position:relative}
+/* Tablo: rozet, ünvan+VKN alt alta, belge no mono, sıralanabilir başlıklar (sticky YOK) */
+#fm-root .sq-table{width:100%;border-collapse:separate;border-spacing:0;font-size:12.5px;table-layout:auto;min-width:900px}
+#fm-root .sq-table thead th{height:38px;background:#f6faf9;color:#35564f;font-size:10.5px;letter-spacing:.35px;text-transform:uppercase;font-weight:800;padding:0 11px;border-bottom:1px solid var(--line2);white-space:nowrap;text-align:left}
+#fm-root .sq-table thead th.sortable{cursor:pointer;user-select:none}
+#fm-root .sq-table thead th.sortable:hover{color:var(--accent);background:var(--accent-soft)}
+#fm-root .sq-table thead th.sorted{color:var(--accent)}
+#fm-root .sq-table thead th .sq-sort{display:inline-block;margin-left:3px;font-size:9px;opacity:.5}
+#fm-root .sq-table thead th.sorted .sq-sort{opacity:1}
+#fm-root .sq-table tbody td{height:46px;padding:7px 11px;border-bottom:1px solid #eef1f4;vertical-align:middle;white-space:nowrap;font-size:12.5px}
+#fm-root .sq-table tbody tr:hover td{background:#fafcfb}
+#fm-root .sq-table tbody tr.sel td{background:color-mix(in srgb,var(--accent) 7%,#fff)}
+#fm-root .sq-table tbody tr.blocked td{color:#9a5c5c;background:#fffafa}
+#fm-root .sq-table tbody tr.done td{background:#f8fdfb}
+#fm-root .sq-table tbody tr.missingdoc td{background:#fffdf7}
+#fm-root .sq-table td.num,#fm-root .sq-table th.num{text-align:right;font-variant-numeric:tabular-nums}
+#fm-root .sq-table td.center,#fm-root .sq-table th.center{text-align:center}
+#fm-root .sq-table th:last-child,#fm-root .sq-table td:last-child{text-align:center}
+#fm-root .sq-table .sq-party{display:flex;flex-direction:column;gap:1px;min-width:180px;max-width:330px;white-space:normal}
+#fm-root .sq-table .sq-party b{font-weight:650;color:#17212f;line-height:1.3;overflow-wrap:anywhere}
+#fm-root .sq-table .sq-party small{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:10.5px;color:var(--faint);letter-spacing:.2px}
+#fm-root .sq-table .sq-mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11.5px;color:#334155;letter-spacing:.1px}
+#fm-root .sq-table .sq-pill{height:22px;font-size:10.5px}
+/* Entegratör / kaynak rozeti: --sc sağlayıcı rengi */
+#fm-root .sq-src{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 9px 0 3px;border-radius:999px;font-size:11px;font-weight:800;background:color-mix(in srgb,var(--sc,var(--accent)) 10%,#fff);color:var(--sc,var(--accent));border:1px solid color-mix(in srgb,var(--sc,var(--accent)) 32%,#fff);white-space:nowrap;letter-spacing:.1px}
+#fm-root .sq-src i{width:18px;height:18px;border-radius:50%;display:grid;place-items:center;background:var(--sc,var(--accent));color:#fff;font-size:8.5px;font-style:normal;font-weight:900;letter-spacing:.2px;flex-shrink:0}
+/* ONAY hapı */
+#fm-root .sq-onay{display:inline-flex;align-items:center;gap:5px;height:23px;padding:0 9px;border-radius:999px;font-size:11px;font-weight:750;white-space:nowrap;border:1px solid transparent;line-height:1}
+#fm-root .sq-onay::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0}
+#fm-root .sq-onay.onay{background:#e7f6ec;color:#15803d;border-color:#bfe5cc}
+#fm-root .sq-onay.oto{background:#e8f0ff;color:#1d4ed8;border-color:#c9daff}
+#fm-root .sq-onay.bekliyor{background:#fff4e0;color:#b45309;border-color:#f6d7a4}
+#fm-root .sq-onay.iptal,#fm-root .sq-onay.red,#fm-root .sq-onay.itiraz{background:#fdeaea;color:#b91c1c;border-color:#f3c0c0}
+#fm-root .sq-onay.silinmis,#fm-root .sq-onay.diger{background:#f1f4f8;color:#64748b;border-color:#dfe5ee}
+#fm-root .sq-onaysub{display:block;margin-top:3px;font-size:10px;color:#9a5c5c;line-height:1.1}
+/* AKTARIM durumu */
+#fm-root .sq-akt{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:750;white-space:nowrap}
+#fm-root .sq-akt.ok{color:#15803d}
+#fm-root .sq-akt.kuyruk{color:#b45309}
+#fm-root .sq-akt.muh{color:#0f766e}
+#fm-root .sq-akt.yok{color:#94a3b8;font-weight:600}
+/* Alt toplu işlem çubuğu — tablonun hemen altında, sabit DEĞİL */
+#fm-root .sq-bulk{display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding:10px 14px;border-top:1px solid var(--line);background:#fbfcfe;flex:0 0 auto;border-radius:0 0 14px 14px}
+#fm-root .sq-bulk.secili{background:linear-gradient(90deg,color-mix(in srgb,var(--accent) 13%,#fff),color-mix(in srgb,var(--accent) 4%,#fff));border-top-color:var(--accent-line)}
+#fm-root .sq-bulk .sq-selinfo{font-size:12.5px;color:var(--text)}
+#fm-root .sq-bulk .sq-selinfo.mu{font-size:11.5px;color:var(--muted)}
+#fm-root .sq-bulk .sq-selinfo b{color:var(--accent);font-weight:800}
+#fm-root .sq-bulk .btn{height:34px;border-radius:9px}
+#fm-root .sq-bulk .btn.primary{background:linear-gradient(135deg,#0f766e,var(--accent) 60%,#14b8a6);border:0;color:#fff;box-shadow:0 8px 18px -10px var(--accent)}
+#fm-root .sq-bulk .btn.primary:hover:not(:disabled){filter:brightness(1.06);color:#fff}
+#fm-root .sq-bulk .btn.primary:disabled{opacity:.5;box-shadow:none}
+/* Dar ekran: haplar ve arama alt satıra iner, yatay taşma olmaz */
+@media(max-width:1180px){
+  #fm-root .sq-search{min-width:200px}
+  #fm-root .sq-prog .sq-psub{display:none}
+}
+
+/* === PLAN16-B: GELEN FATURALAR === */
+/* "Ne yapmam gerekiyor" şeridi: tek kart, üst renk çizgisi + sağ üst radial parıltı + hafif accent degrade (sq-strip dili) */
+#fm-root .card.gf-strip{position:relative;overflow:hidden;margin:0 0 10px;padding:12px 16px 13px;border:1px solid var(--accent-line);background:linear-gradient(90deg,var(--accent),#2dd4bf 60%,#60a5fa) top/100% 3px no-repeat,radial-gradient(circle at 100% 0%,color-mix(in srgb,var(--accent) 16%,transparent),transparent 42%),linear-gradient(135deg,color-mix(in srgb,var(--accent) 9%,#fff) 0%,#fff 52%,color-mix(in srgb,var(--accent) 5%,#fff) 100%);box-shadow:0 16px 34px -28px var(--accent)}
+#fm-root .gf-strip-h{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:9px}
+#fm-root .gf-strip-t{font-size:14px;font-weight:800;color:#0d1626;letter-spacing:-.2px}
+#fm-root .gf-strip-s{font-size:11.5px;color:var(--muted)}
+#fm-root .gf-strip-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+#fm-root .gf-strip .filttiles.gf-tiles{margin:0;gap:8px}
+#fm-root .gf-tile .ftn{font-size:21px}
+#fm-root .gf-tile .ftl{font-size:11.5px}
+#fm-root .gf-tile.on{box-shadow:inset 0 0 0 2px var(--tc,var(--accent)),0 10px 22px -14px var(--tc,var(--accent))}
+/* "Hazır olanları onayla" — yeşil gradyan ana düğme */
+#fm-root .btn.gf-hazir{height:40px;padding:0 18px;border:0;border-radius:11px;font-size:13px;font-weight:800;color:#fff;background:linear-gradient(135deg,#15803d 0%,#16a34a 55%,#22c55e 100%);box-shadow:0 10px 20px -10px #15803d;transition:transform .12s,box-shadow .14s,filter .14s}
+#fm-root .btn.gf-hazir:hover:not(:disabled){filter:brightness(1.06);transform:translateY(-1px);box-shadow:0 14px 26px -10px #15803d;color:#fff;border-color:transparent}
+#fm-root .btn.gf-hazir:disabled{opacity:.5;cursor:not-allowed;transform:none;box-shadow:none}
+/* İkincil (ayrıntılı durum) sayaç satırı — daha küçük, sessiz */
+#fm-root .filttiles.gf-sub{gap:6px;margin:0 0 10px}
+#fm-root .gf-sub .ftile{padding:4px 10px 4px 8px;border-radius:9px;gap:7px;border-width:1px;background:color-mix(in srgb,var(--tc,var(--accent)) 4%,#fff)}
+#fm-root .gf-sub .ftile .ftdot{width:7px;height:7px}
+#fm-root .gf-sub .ftile .fttx{flex-direction:row;align-items:baseline;gap:5px}
+#fm-root .gf-sub .ftile .ftn{font-size:13px}
+#fm-root .gf-sub .ftile .ftl{font-size:10.5px;font-weight:650}
+#fm-root .gf-sub .ftile:hover{transform:none;box-shadow:none}
+#fm-root .gf-sub .ftile.on{background:color-mix(in srgb,var(--tc,var(--accent)) 14%,#fff);box-shadow:inset 0 0 0 1.5px var(--tc,var(--accent))}
+#fm-root .gf-hint{font-size:11.5px;color:var(--faint);margin-left:4px}
+/* Tablo: kendi kabında kayar (sayfa değil); sıralanabilir başlıklar (sticky YOK) */
+#fm-root .gf-twrap{overflow:auto}
+#fm-root .gf-table thead th.gf-sortable{cursor:pointer;user-select:none;transition:color .12s,background .12s}
+#fm-root .gf-table thead th.gf-sortable:hover{color:var(--accent);background:var(--accent-soft)}
+#fm-root .gf-table thead th.gf-sorted{color:var(--accent)}
+#fm-root .gf-table thead th .gf-sort{display:inline-block;margin-left:4px;font-size:9px;opacity:.45}
+#fm-root .gf-table thead th.gf-sorted .gf-sort{opacity:1}
+#fm-root .gf-table tbody td{vertical-align:middle}
+/* Hesap kodu + adı alt alta */
+#fm-root .gf-table td.gf-hesap{max-width:170px}
+#fm-root .gf-table td.gf-hesap small{display:block;font-size:10.5px;color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px;line-height:1.25;margin-top:1px}
+/* Güven rozeti: hap + tek satır sebep */
+#fm-root .gf-table td.gf-guvencell{max-width:190px}
+#fm-root .gf-guven{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 9px;border-radius:999px;font-size:11px;font-weight:800;white-space:nowrap;border:1px solid transparent;line-height:1}
+#fm-root .gf-guven::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0}
+#fm-root .gf-guven.yuksek{background:#e7f6ec;color:#15803d;border-color:#bfe5cc}
+#fm-root .gf-guven.orta{background:#fff4e0;color:#b45309;border-color:#f6d7a4}
+#fm-root .gf-guven.dusuk{background:#fdeaea;color:#b91c1c;border-color:#f3c0c0}
+#fm-root .gf-neden{display:block;font-size:10.5px;color:var(--muted);line-height:1.25;margin-top:3px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* Demirbaş kararı satır içi 3 küçük düğme (mor küme) */
+#fm-root .gf-demirbas{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px;max-width:220px}
+#fm-root .gf-dem{height:22px;padding:0 8px;border-radius:7px;border:1px solid #e3d4fb;background:#fff;color:#7c3aed;font-family:inherit;font-size:10.5px;font-weight:700;cursor:pointer;white-space:nowrap;line-height:1;transition:background .12s,border-color .12s,color .12s}
+#fm-root .gf-dem:hover:not(:disabled){background:#f3e8ff;border-color:#c4b5fd}
+#fm-root .gf-dem.yine_de_isle{color:#3b5b8a;border-color:#c9d6ea}
+#fm-root .gf-dem.yine_de_isle:hover:not(:disabled){background:#eef2f8;border-color:#a9bcd9}
+#fm-root .gf-dem.demirbas_degil{color:#b45309;border-color:#f4d19b}
+#fm-root .gf-dem.demirbas_degil:hover:not(:disabled){background:#fff5e6;border-color:#e9b96f}
+#fm-root .gf-dem:disabled{opacity:.55;cursor:wait}
+/* Eylemler: etiketli, görünür, 2×2 ızgara (hover'a saklanmaz) */
+#fm-root th.gf-actcol{text-align:left}
+#fm-root td.gf-actcol{padding-top:7px;padding-bottom:7px}
+#fm-root .gf-acts{display:grid;grid-template-columns:1fr 1fr;gap:4px;min-width:150px}
+#fm-root .gf-act{display:inline-flex;align-items:center;justify-content:flex-start;gap:5px;height:25px;padding:0 8px;border-radius:7px;border:1px solid var(--line2);background:#fff;color:#34415a;font-family:inherit;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;line-height:1;transition:background .12s,border-color .12s,color .12s,transform .1s,box-shadow .12s}
+#fm-root .gf-act .ico{display:inline-flex;flex-shrink:0}
+#fm-root .gf-act:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 3px 7px -3px rgba(15,23,42,.18)}
+#fm-root .gf-act.incele{color:#1d4ed8;border-color:#c9daff;background:#f4f7ff}
+#fm-root .gf-act.incele:hover:not(:disabled),#fm-root .gf-act.incele.on{background:#e8f0ff;border-color:#93b4ff}
+#fm-root .gf-act.duzenle{color:#6d28d9;border-color:#e3d4fb;background:#faf7ff}
+#fm-root .gf-act.duzenle:hover:not(:disabled){background:#f3e8ff;border-color:#c4b5fd}
+#fm-root .gf-act.onizle{color:#0f766e;border-color:#bfe6e1;background:#f2fbf9}
+#fm-root .gf-act.onizle:hover:not(:disabled){background:#e3f4f2;border-color:#7fd1c6}
+#fm-root .gf-act.sil{color:#b91c1c;border-color:#f3c0c0;background:#fff7f7}
+#fm-root .gf-act.sil:hover:not(:disabled){background:#fdeaea;border-color:#e59a9a}
+#fm-root .gf-act:disabled{opacity:.5;cursor:not-allowed;transform:none;box-shadow:none}
+#fm-root .gf-act .gf-actn{font-style:normal;font-size:10px;font-weight:800;margin-left:2px}
+/* Tevkifatlı ayrı onay grubu — tablonun altında, toplu çubuğun üstünde */
+#fm-root .gf-tevk{margin:10px 14px 0;padding:9px 12px;border:1px solid #c9d6ea;border-radius:9px;background:#eef2f8;font-size:12.5px;color:#3b5b8a;display:flex;flex-direction:column;gap:6px}
+/* Toplu alt çubuk — tablonun hemen altında, sabit DEĞİL */
+#fm-root .gf-bulk{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-top:10px;padding:10px 14px;border-top:1px solid var(--accent-line);background:linear-gradient(90deg,color-mix(in srgb,var(--accent) 13%,#fff),color-mix(in srgb,var(--accent) 4%,#fff))}
+#fm-root .gf-bulk .gf-selinfo{font-size:12.5px;color:var(--text)}
+#fm-root .gf-bulk .gf-selinfo b{color:var(--accent);font-weight:800}
+#fm-root .gf-bulk .btn{height:34px;border-radius:9px;box-shadow:none}
+#fm-root .gf-bulk .btn.gf-clear{height:28px;padding:0 9px;font-size:11.5px;color:var(--muted)}
+#fm-root .gf-bulk .btn.ai{background:linear-gradient(135deg,#123a6b 0%,#12717c 55%,#0d9488 100%);border:0;color:#fff}
+#fm-root .gf-bulk .btn.ai:hover:not(:disabled){filter:brightness(1.08);color:#fff}
+#fm-root .gf-bulk .btn.gf-onayla{background:linear-gradient(135deg,#15803d,#1aa050);border:0;color:#fff}
+#fm-root .gf-bulk .btn.gf-onayla:hover:not(:disabled){filter:brightness(1.05);color:#fff}
+#fm-root .gf-bulk .btn.gf-sil{background:#fff;color:#b91c1c;border:1px solid #f3c0c0}
+#fm-root .gf-bulk .btn.gf-sil:hover:not(:disabled){background:#fdeaea;border-color:#e59a9a;color:#991b1b;filter:none}
+#fm-root .gf-bulk .btn:disabled{opacity:.5;box-shadow:none}
+/* Süzgeç boş sonuç bağlantısı */
+#fm-root .gf-table .empty a{color:var(--accent);font-weight:700;text-decoration:underline}
 `;

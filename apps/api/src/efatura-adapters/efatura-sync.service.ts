@@ -319,7 +319,14 @@ export class EFaturaSyncService {
    */
   async syncAll(
     tenantId: string,
-    opts: { direction?: 'IN' | 'OUT' } = {},
+    opts: {
+      direction?: 'IN' | 'OUT';
+      /**
+       * PLAN/16 §H: yalnız bu mükellef × sağlayıcı çiftleri senkronlansın (gece cron'u talimat=true olanları verir).
+       * Verilmezse eski davranış (bağlantısı olan HER mükellef). Boş dizi → hiçbir şey senkronlanmaz.
+       */
+      only?: Array<{ taxpayerId: string; provider: string }>;
+    } = {},
   ): Promise<{ added: number; skipped: number; errors: string[]; connections: number }> {
     const connections = await (this.prisma as any).integrationConnection.findMany({
       where: {
@@ -332,12 +339,18 @@ export class EFaturaSyncService {
     let totalAdded = 0;
     let totalSkipped = 0;
     const totalErrors: string[] = [];
+    const izinli = Array.isArray(opts.only)
+      ? new Set(opts.only.map((o) => `${String(o.provider || '').toUpperCase()}|${o.taxpayerId}`))
+      : null;
 
     for (const conn of connections) {
       const cfg: any = conn.config || {};
       const taxpayers: Record<string, any> = cfg.taxpayers || {};
 
-      const entries = Object.entries(taxpayers).filter(([k, v]) => v && k !== 'global');
+      const entries = Object.entries(taxpayers).filter(([k, v]) => v && k !== 'global'
+        && (!izinli || izinli.has(`${String(conn.provider).toUpperCase()}|${k}`)));
+      // Süzgeç verildiyse 'global' kimlik bilgisiyle toplu senkron YAPILMAZ (mükellef bazlı anahtar kuralı).
+      if (izinli && entries.length === 0) continue;
 
       if (entries.length > 0) {
         for (const [taxpayerId, tpCfg] of entries) {

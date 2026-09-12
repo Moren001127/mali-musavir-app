@@ -208,6 +208,8 @@ model Taxpayer {
   // Faz 2 (PLAN/15): KDV kısmi tevkifatta "belirlenmiş alıcı" ayrımı — mükellefin kendi kurum türü
   //   (ALIŞ faturasında alıcı = mükellef). kamu | banka | belediye | universite | kit | diger | null(bilinmiyor)
   kurumTuru         String?
+  // PLAN/16 §F: kısa sektör etiketi ("gıda", "inşaat", "nakliye"…) — Mükellefler listesi "Faaliyet" sütunu + motor beslemesi
+  sektorEtiketi     String?
 
   // === Mükellef self-servis portal girişi (opsiyonel; müşavir açar) ===
   portalEmail            String? // portal giriş e-postası (yoksa `email` kullanılır)
@@ -2425,6 +2427,9 @@ model InvoiceAccountingDocument {
   sizeBytes    Int
   s3Key        String
   imageHash    String? @db.VarChar(64)
+  // PLAN/16 §C — algısal hash (dHash 64 bit, hex 16): aynı fişin ikinci fotoğrafı (Hamming ≤ 6) uyarısı.
+  //   Yalnız görselde hesaplanır; PDF/HEIC raster üretilemezse null kalır.
+  imagePhash   String? @db.VarChar(16)
 
   currency     String    @default("TL")
   exchangeRate Decimal   @default(1) @db.Decimal(14, 6)
@@ -2474,6 +2479,7 @@ model InvoiceAccountingDocument {
   @@index([tenantId, source, sourceRefId])
   @@index([tenantId, duplicateOfId])
   @@index([imageHash])
+  @@index([tenantId, imagePhash])
   @@index([tenantId, lucaStatus])
   @@index([tenantId, validationStatus])
   @@map("invoice_accounting_documents")

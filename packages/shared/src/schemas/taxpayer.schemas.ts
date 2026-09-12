@@ -1,5 +1,13 @@
 import { z } from 'zod';
 import { TaxpayerType } from '../types';
+import { KURUM_TURU_KODLARI, DEFTER_TURU_KODLARI } from '../constants/kurum-turu';
+
+// PLAN/16 §F — Mükellef faaliyet alanları (Fatura Merkezi > Mükellefler listesi).
+//   kurumTuru: KDV kısmi tevkifat "belirlenmiş alıcı" ayrımı (kamu | banka | belediye | universite | kit |
+//              belirlenmis_diger | diger | kdv_mukellefi_degil | null = bilinmiyor).
+//   sektorEtiketi: kısa serbest etiket ("gıda", "inşaat", "nakliye"…) — motor beslemesi + liste süzgeci.
+const KurumTuruAlani = z.enum(KURUM_TURU_KODLARI).optional().nullable().or(z.literal(''));
+const SektorEtiketiAlani = z.string().max(60, 'Sektör etiketi en fazla 60 karakter').optional().nullable().or(z.literal(''));
 
 export const CreateTaxpayerSchema = z.object({
   type: z.nativeEnum(TaxpayerType),
@@ -52,6 +60,9 @@ export const CreateTaxpayerSchema = z.object({
   kepAdresi: z.string().email('Geçerli KEP adresi giriniz').optional().nullable().or(z.literal('')),
   webSitesi: z.string().optional().nullable().or(z.literal('')),
   eFaturaEntegrator: z.string().max(50).optional().nullable().or(z.literal('')),
+  // PLAN/16 §F — faaliyet tanımı
+  kurumTuru: KurumTuruAlani,
+  sektorEtiketi: SektorEtiketiAlani,
 });
 
 export type CreateTaxpayerDto = z.infer<typeof CreateTaxpayerSchema>;
@@ -102,9 +113,38 @@ export const UpdateTaxpayerSchema = z.object({
   kepAdresi: z.string().email('Gecerli KEP adresi giriniz').optional().nullable().or(z.literal('')),
   webSitesi: z.string().optional().nullable().or(z.literal('')),
   eFaturaEntegrator: z.string().max(50).optional().nullable().or(z.literal('')),
+  // PLAN/16 §F — faaliyet tanımı (şema .strict(): alan burada yoksa form kaydedilemez)
+  kurumTuru: KurumTuruAlani,
+  sektorEtiketi: SektorEtiketiAlani,
 }).strict();
 
 export type UpdateTaxpayerDto = z.infer<typeof UpdateTaxpayerSchema>;
+
+// ============================================================
+// PLAN/16 §F: PATCH taxpayers/:id/faaliyet gövdesi — yalnız faaliyet alanları.
+//   Boş string → null (alanı temizle); gönderilmeyen alan (undefined) dokunulmaz.
+//   naceKodu: "56.10.06" biçimi (2/4/6 hane, nokta ayraçlı); boşluk/trim toleranslı.
+// ============================================================
+export const NACE_KODU_DESENI = /^\d{2}(\.\d{2}){0,2}$/;
+
+export const TaxpayerFaaliyetSchema = z.object({
+  naceKodu: z.preprocess(
+    (v) => (typeof v === 'string' ? v.trim() : v),
+    z.string().max(20).regex(NACE_KODU_DESENI, 'NACE kodu 56.10.06 biçiminde olmalı').optional().nullable().or(z.literal('')),
+  ),
+  faaliyetAciklama: z.preprocess(
+    (v) => (typeof v === 'string' ? v.trim() : v),
+    z.string().max(300, 'Faaliyet açıklaması en fazla 300 karakter').optional().nullable().or(z.literal('')),
+  ),
+  sektorEtiketi: z.preprocess((v) => (typeof v === 'string' ? v.trim() : v), SektorEtiketiAlani),
+  kurumTuru: z.preprocess((v) => (typeof v === 'string' ? v.trim().toLowerCase() : v), KurumTuruAlani),
+  defterTuru: z.preprocess(
+    (v) => (typeof v === 'string' ? v.trim().toUpperCase() : v),
+    z.enum(DEFTER_TURU_KODLARI).optional().nullable().or(z.literal('')),
+  ),
+}).strict();
+
+export type TaxpayerFaaliyetDto = z.infer<typeof TaxpayerFaaliyetSchema>;
 
 // ============================================================
 // v1.37.0: TaxpayerYetkili (firma yetkilileri) şemaları

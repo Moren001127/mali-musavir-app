@@ -229,6 +229,70 @@ Yanlış ipucuna uyup yanlış karar vermek, ipucu olmamasından DAHA KÖTÜDÜR
     }
   }
 
+  /**
+   * PLAN/16 §G — ÖĞRENMEYİ GERİ AL (onay geri alınınca). recordDecision'ın tersi:
+   *   • aynı anahtarlı (mükellef + karar tipi + kategori + altKategori + içerik imzası) kararın
+   *     onayAdedi boost kadar düşer; 0'a inerse kayıt SİLİNİR,
+   *   • VendorMemory.toplamOnay 1 düşer (recordDecision her çağrıda 1 artırır), 0'ın altına inmez.
+   *   İdempotentlik çağıranın işi: geri alınan kayıt listesi (ocrData.ogrenmeKayitlari) temizlenir,
+   *   ikinci "geri al" aynı kaydı bir daha düşürmez.
+   *   NOT: recordDecision'ın RAKİP kararları 1 zayıflatması geri alınamaz (hangi rakiplerin
+   *   etkilendiği bilinmiyor) — küçük ve kendini onarır (sonraki onaylar yeniden pekiştirir).
+   */
+  async revertDecision(params: {
+    tenantId: string;
+    firmaKimlikNo: string | null | undefined;
+    kararTipi: 'fatura' | 'isletme';
+    kategori: string;
+    altKategori?: string | null;
+    icerikImza?: string | null;
+    taxpayerId?: string | null;
+    onayBoost?: number;
+  }): Promise<{ geriAlindi: boolean; silindi: boolean }> {
+    const { tenantId, firmaKimlikNo, kararTipi, kategori, altKategori, taxpayerId } = params;
+    const boost = Math.max(1, Math.min(Number(params.onayBoost || 1), 10));
+    const icerikImza = params.icerikImza ? String(params.icerikImza).slice(0, 200) : null;
+    if (!firmaKimlikNo || !taxpayerId || !kategori) return { geriAlindi: false, silindi: false };
+    const vkn = String(firmaKimlikNo).replace(/\D/g, '');
+    if (vkn.length !== 10 && vkn.length !== 11) return { geriAlindi: false, silindi: false };
+
+    const memory = await (this.prisma as any).vendorMemory.findUnique({
+      where: { tenantId_firmaKimlikNo: { tenantId, firmaKimlikNo: vkn } },
+      select: { id: true, toplamOnay: true },
+    });
+    if (!memory) return { geriAlindi: false, silindi: false };
+
+    const existing = await (this.prisma as any).vendorMemoryDecision.findFirst({
+      where: {
+        vendorMemoryId: memory.id,
+        taxpayerId: taxpayerId || null,
+        kararTipi,
+        kategori,
+        altKategori: altKategori || null,
+        icerikImza: icerikImza || null,
+      },
+      select: { id: true, onayAdedi: true },
+    });
+    let geriAlindi = false;
+    let silindi = false;
+    if (existing) {
+      const kalan = (Number(existing.onayAdedi) || 0) - boost;
+      if (kalan <= 0) {
+        await (this.prisma as any).vendorMemoryDecision.delete({ where: { id: existing.id } }).catch(() => null);
+        silindi = true;
+      } else {
+        await (this.prisma as any).vendorMemoryDecision.update({ where: { id: existing.id }, data: { onayAdedi: kalan } });
+      }
+      geriAlindi = true;
+    }
+    // Firma toplam onayı: kayıt anında +1 yazılmıştı → 1 düşür (0 altına inmez).
+    await (this.prisma as any).vendorMemory.updateMany({
+      where: { id: memory.id, toplamOnay: { gt: 0 } },
+      data: { toplamOnay: { decrement: 1 } },
+    }).catch(() => null);
+    return { geriAlindi, silindi };
+  }
+
   /** Kalem adlarından KARARLI içerik imzası: ascii-katlı, ≥4 harfli, jenerik/sayı elenmiş token'lar,
    *  sıralı-tekil, en fazla 6 tanesi '|' ile. Yazma (approve) ve okuma (rematch) AYNI fonksiyonu
    *  kullanmalı ki aynı fatura aynı imzayı üretsin. Kalem yoksa null (satıcı-geneli davranış). */

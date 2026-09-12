@@ -1,4 +1,4 @@
-import { BadRequestException, forwardRef, Inject, Injectable, Logger, NotFoundException, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { BadRequestException, ConflictException, forwardRef, Inject, Injectable, Logger, NotFoundException, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { createHash, randomUUID } from 'crypto';
 import { Prisma } from '@prisma/client';
 import * as JSZip from 'jszip';
@@ -20,6 +20,11 @@ import { BeyanKayitlariService } from '../beyan-kayitlari/beyan-kayitlari.servic
 import { ModuleRef } from '@nestjs/core';
 import { demirbasHaddiTL, tevkifatEksikDegerlendir, tevkifatTutarlilik, tevkifatKuralBul, oranMetni, KURUM_TURLERI } from './tevkifat-kurallari';
 import { Uyari, uyariYap, dogrulamaUyarilari, uyarilariBirlestir, uyariOzet, uyariImza, UYARI_KOD } from './uyari-katmani';
+// PLAN/16 §H — gece çekim anahtarı kuralları (saf modül: talimat girdisi, saat, 'global' reddi).
+import { geceTalimatGirdisiDogrula, geceSaatiNormalize, GECE_VARSAYILAN_SAAT } from './gece-cekim';
+// PLAN/16 §C — görsel benzerlik (dHash) + fiş (ÖKC) mükerrer anahtarı (saf modüller).
+import { computeImagePhash, hamming, MUKERRER_GORSEL_HAMMING_ESIK, phashGecerliMi, phashDejenereMi } from './gorsel-hash';
+import { fisEslesmeAnahtari, gunAraligi, tutarAraligi, belgeSaati, ettnAyikla, belgeNoYerTutucuMu, belgeNoUzunMu } from './mukerrer-fis';
 import { isletmeRef, getKayitAltList, isletmeAlisSatisTuru, isletmeIslemTuru, defaultBelgeTuruKod, normalizeDocumentType, isletmeGiderSinifi, isletmeAutoKayitAltKod, isletmeAutoKayitTuru, defaultKayitAltKod, denetimUyariOlustur, giderIcerikSinifla } from '@mali-musavir/shared';
 
 // ── İşletme defteri AI sınıflandırması ──
@@ -201,7 +206,26 @@ type DuplicateSignal = {
   duplicateOfId: string;
   duplicateReason: string;
   duplicateSeverity: 'WARNING' | 'BLOCKING';
+  /** PLAN/16 §C — eşleşme türü: SHA256 aynı dosya (bu mükellef) · SHA256_BASKA_MUKELLEF aynı dosya başka mükellefte ·
+   *  BELGE_NO uzun benzersiz belge no (ENGEL) · FIS_NO kısa fiş no + VKN + tutar + gün (uyarı) · FIS_SAAT VKN + gün + saat + tutar (uyarı). */
+  kod?: 'SHA256' | 'SHA256_BASKA_MUKELLEF' | 'BELGE_NO' | 'FIS_NO' | 'FIS_SAAT';
+  /** Eşleşen (ilk) belgenin künyesi — UI "ilk belgeyi aç" + toast için. */
+  mevcut?: { id: string; belgeNo?: string | null; faturaTarihi?: Date | null; taxpayerId?: string | null };
+  /** Fiş eşleşme anahtarı (log/meta). */
+  anahtar?: string;
 } | null;
+
+/** PLAN/16 §G — onayda VendorMemory'ye yazılan bir kararın anahtarı (ocrData.ogrenmeKayitlari[]); "Geri al" bunu revertDecision'a verir. */
+type OgrenmeKaydi = {
+  kararTipi: 'fatura' | 'isletme';
+  kategori: string;
+  altKategori: string | null;
+  icerikImza: string | null;
+  firmaKimlikNo: string;
+  taxpayerId: string;
+  boost: number;
+  tarih?: string;
+};
 
 type IntegrationSaveInput = {
   provider?: string;
@@ -760,6 +784,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     return { seviye: 'orta', neden: uyarilar.length ? 'AI tahmini + uyarı' : 'AI tahmini (teyit edilmemiş)' };
   }
 
+  /** Belge güveni — dış modüller için (Belge Akışı §E). computeDocConfidence ile birebir aynı; lines yalnız
+   *  group/accountCode/kaynak alanlarıyla verilebilir. */
+  docGuven(doc: any): { seviye: 'yuksek' | 'orta' | 'dusuk'; neden: string } {
+    return this.computeDocConfidence(doc);
+  }
+
   /** OTO-EŞLEŞME KARNESİ (iyileştirme #4): otomatik-eşleşme oranı + en çok "bakılmalı" çıkan cariler.
    *  Nerede zayıf olduğumuzu TAHMİNLE değil VERİYLE gösterir → oraya kural/öğretme yapılır. */
   async eslesmeKarnesi(tenantId: string, opts: { taxpayerId?: string; period?: string } = {}) {
@@ -965,9 +995,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         hasApiSecret,
         hasPassword,
         globalApiConfigured: Boolean(globalConfig?.hasApiKey || globalConfig?.hasApiSecret || hasProviderEnvApiKey || hasProviderEnvApiSecret),
-        // v2: Talimat - otomatik gece cekim aktif mi?
-        talimat: Boolean(taxpayerConfig?.talimat),
-        talimatUpdatedAt: taxpayerConfig?.talimatUpdatedAt || null,
+        // v2: Talimat - otomatik gece cekim aktif mi? (PLAN/16 §H: yalnız MÜKELLEF anahtarında; 'global'de hep kapalı)
+        talimat: taxpayerKey !== 'global' && scopedConfig?.talimat === true,
+        talimatUpdatedAt: (taxpayerKey !== 'global' && scopedConfig?.talimatUpdatedAt) || null,
+        // PLAN/16 §H: çekim saati 'HH:MM' (00:00–06:59); kayıt yoksa/bozuksa varsayılan 02:00
+        saat: geceSaatiNormalize(scopedConfig?.saat) ?? GECE_VARSAYILAN_SAAT,
         lastSyncAt: row?.lastSyncAt || null,
         updatedAt: taxpayerConfig?.updatedAt || row?.updatedAt || null,
       };
@@ -1003,17 +1035,26 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   }
 
   /**
-   * Talimat ver/kaldır — config.taxpayers[key].talimat alanını günceller.
-   * Aktif olduğunda scheduler her gece son 9 günün faturalarını çeker.
+   * Talimat ver/kaldır — config.taxpayers[key].talimat (+ saat) alanını günceller.
+   * PLAN/16 §H (kullanıcı kararı 2026-09-12): gece çekimi VARSAYILAN KAPALI, mükellef × entegratör bazında
+   *   TEK TEK açılır; 'global' anahtarıyla AÇILAMAZ ("hepsini aç/kapat" yok); saat 'HH:MM' 00:00–06:59,
+   *   varsayılan 02:00. Aktifken cron (gece-cekim.ts) yalnız o saatte içinde bulunulan dönemi çeker.
    */
   async setIntegrationTalimat(
     tenantId: string,
-    input: { taxpayerId?: string | null; provider?: string; active?: boolean },
+    input: { taxpayerId?: string | null; provider?: string; active?: boolean; saat?: string | null },
   ) {
-    const provider = String(input.provider || '').trim().toUpperCase();
-    if (!provider) throw new BadRequestException('Sağlayıcı belirtilmedi');
-    const taxpayerKey = input.taxpayerId || 'global';
-    const active = input.active === undefined ? true : Boolean(input.active);
+    let girdi: ReturnType<typeof geceTalimatGirdisiDogrula>;
+    try {
+      girdi = geceTalimatGirdisiDogrula(input || {});
+    } catch (e: any) {
+      throw new BadRequestException(e?.message || 'Talimat girdisi geçersiz');
+    }
+    const { provider, taxpayerKey, active } = girdi;
+    const talimatUpdatedAt = new Date().toISOString();
+    // Saat: gönderildiyse doğrulanmış değer; gönderilmediyse mevcut kayıt korunur (yoksa 02:00).
+    const saatGonderildi = input?.saat !== undefined && input?.saat !== null && String(input.saat).trim() !== '';
+    let kaydedilenSaat = girdi.saat;
 
     // config.taxpayers oku-değiştir-yaz: farklı mükelleflerin eşzamanlı düzenlemesinde kayıp güncelleme
     //   olmaması için transaction içinde config'i TAZE oku, yalnız bu mükellefin alanını birleştir, yaz.
@@ -1024,17 +1065,27 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       if (!existing) throw new BadRequestException('Entegratör tanımlı değil. Önce kaydet.');
       const config = (existing.config || {}) as any;
       config.taxpayers = config.taxpayers || {};
+      const onceki = config.taxpayers[taxpayerKey] || {};
+      kaydedilenSaat = saatGonderildi ? girdi.saat : (geceSaatiNormalize(onceki.saat) ?? GECE_VARSAYILAN_SAAT);
       config.taxpayers[taxpayerKey] = {
-        ...(config.taxpayers[taxpayerKey] || {}),
+        ...onceki,
         talimat: active,
-        talimatUpdatedAt: new Date().toISOString(),
+        talimatUpdatedAt,
+        saat: kaydedilenSaat,
       };
       await tx.integrationConnection.update({
         where: { tenantId_provider: { tenantId, provider } },
         data: { config },
       });
     });
-    return { ok: true, provider, taxpayerId: input.taxpayerId || null, talimat: active };
+    return {
+      ok: true,
+      provider,
+      taxpayerId: taxpayerKey === 'global' ? null : taxpayerKey,
+      talimat: active,
+      talimatUpdatedAt,
+      saat: kaydedilenSaat,
+    };
   }
 
   /**
@@ -1294,9 +1345,36 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       this.buildKdvControlReport(tenantId, taxpayerId, period),
     ]);
 
+    // ── §D DURUM SÜZGECİ (PLAN/16): iptal/red (CANCELLED/REJECTED) ve mükerrer (duplicateOfId dolu ya da
+    //    MUKERRER uyarısı) belgeler toplamlara GİRMEZ; onaysız (NEEDS_REVIEW/READY) belgeler girer ama ayrı
+    //    sayılır. Sahibin iptal/mükerrer dediği belgeye bağlı GİB sorgu satırı da sayılmaz. ──
+    const haricNeden = new Map<string, 'iptal' | 'mukerrer'>();
+    for (const doc of accountingDocs) {
+      const neden = this.reportDocHaricNedeni(doc);
+      if (neden) haricNeden.set(String(doc.id), neden);
+    }
+    const kaynakSayac = { belge: 0, fmBelge: 0, gibYalniz: 0, onaysiz: 0, iptalHaric: 0, mukerrerHaric: 0, tevkifatli: 0, iade: 0 };
+    const drill: Record<string, string[]> = {
+      hesaplananBelgeler: [], indirilecekBelgeler: [], onaysizBelgeler: [], iptalHaricBelgeler: [],
+      mukerrerHaricBelgeler: [], tevkifatliBelgeler: [], iadeBelgeler: [], hesapAtanmamisBelgeler: [],
+    };
+    for (const [id, neden] of haricNeden) {
+      if (neden === 'iptal') { kaynakSayac.iptalHaric += 1; drill.iptalHaricBelgeler.push(id); }
+      else { kaynakSayac.mukerrerHaric += 1; drill.mukerrerHaricBelgeler.push(id); }
+    }
+    const notlar: string[] = [];
+    let tevkifEdilenToplam = 0;   // SATIŞ: alıcının tevkif ettiği KDV (alıcı KDV2 ile beyan eder)
+    let kdv2SorumluToplam = 0;    // ALIŞ: sorumlu sıfatıyla (KDV2) beyan edilecek kısım
+    let digerVergiToplam = 0;     // KDV dışı vergiler (ÖTV/ÖİV/konaklama/damga) — KDV'ye karışmaz
+
+    // Eşleştirme haritaları: AKTİF belgeler önce, hariç tutulanlar yalnız boşluk doldurur.
     const docBySourceRef = new Map<string, any>();
     const docByInvoiceNo = new Map<string, any>();
-    for (const doc of accountingDocs) {
+    const docSirali = [
+      ...accountingDocs.filter((d: any) => !haricNeden.has(String(d.id))),
+      ...accountingDocs.filter((d: any) => haricNeden.has(String(d.id))),
+    ];
+    for (const doc of docSirali) {
       const sourceRefId = String(doc.sourceRefId || '').trim();
       const inlineRefId = String(doc.s3Key || '').startsWith('earsiv-inline://')
         ? String(doc.s3Key || '').slice('earsiv-inline://'.length)
@@ -1331,10 +1409,19 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
 
     for (const invoice of invoices) {
       const side = String(invoice.tip || '').toUpperCase() === 'SATIS' ? 'SATIS' : 'ALIS';
-      const base = this.reportNumber(invoice.matrah);
-      const vat = this.reportNumber(invoice.kdvTutari);
-      const total = this.reportNumber(invoice.toplamTutar) || base + vat;
-      const breakdown = this.normalizeReportBreakdown(breakdownByInvoiceId.get(invoice.id), invoice.kdvOrani, base, vat);
+      const invoiceNoKey = `${side}|${String(invoice.faturaNo || '').trim().toUpperCase()}`;
+      const doc = docBySourceRef.get(invoice.id) || docByInvoiceNo.get(invoiceNoKey);
+      // Sahip belgeyi iptal/mükerrer saydıysa GİB sorgu satırı da toplamlara girmez (sayaç yukarıda tutuldu).
+      if (doc && haricNeden.has(String(doc.id))) continue;
+      const detay = this.reportDocKdvDetay(doc);
+      const isaret = detay.isReturn ? -1 : 1; // İADE: ters işaret (satış iadesi satışı, alış iadesi alış KDV'sini düşürür)
+      const base = this.reportNumber(invoice.matrah) * isaret;
+      const vat = this.reportNumber(invoice.kdvTutari) * isaret;
+      const total = (this.reportNumber(invoice.toplamTutar) || Math.abs(base + vat)) * isaret;
+      const breakdown = this.normalizeReportBreakdown(breakdownByInvoiceId.get(invoice.id), invoice.kdvOrani, Math.abs(base), Math.abs(vat))
+        .map((b) => ({ ...b, base: b.base * isaret, vat: b.vat * isaret }));
+      this.reportKaynakSay(kaynakSayac, drill, doc, side, detay, invoice.id);
+      digerVergiToplam += detay.digerVergi * isaret;
 
       if (invoice.belgeKaynak === 'EFATURA') sourceCounts.efatura += 1;
       else sourceCounts.earsiv += 1;
@@ -1346,6 +1433,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         salesBase += base;
         salesVat += vat;
         salesTotal += total;
+        tevkifEdilenToplam += detay.tevkifEdilen * isaret;
         this.addReportBucket(categories.sales, base, vat, total);
         this.addReportCounterparty(topCustomers, {
           name: invoice.alici || 'Bilinmeyen alıcı',
@@ -1359,6 +1447,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         purchaseBase += base;
         purchaseVat += vat;
         purchaseTotal += total;
+        kdv2SorumluToplam += detay.kdv2Sorumlu * isaret;
         this.addReportCounterparty(topSuppliers, {
           name: invoice.satici || 'Bilinmeyen satıcı',
           taxNo: invoice.saticiVergiNo,
@@ -1367,9 +1456,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           total,
         });
 
-        const invoiceNoKey = `ALIS|${String(invoice.faturaNo || '').trim().toUpperCase()}`;
-        const doc = docBySourceRef.get(invoice.id) || docByInvoiceNo.get(invoiceNoKey);
-        const classified = this.classifyPurchaseInvoiceForReport(doc, { base, vat, total });
+        const classified = this.classifyPurchaseInvoiceForReport(doc, { base: Math.abs(base), vat: Math.abs(vat), total: Math.abs(total) })
+          .map((row) => (isaret < 0 ? { ...row, base: -row.base, vat: -row.vat, total: -row.total } : row));
         for (const row of classified) {
           this.addReportBucket(categories[row.key], row.base, row.vat, row.total, row.count);
         }
@@ -1394,32 +1482,79 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         const inlineRefId = String(doc.s3Key || '').startsWith('earsiv-inline://') ? String(doc.s3Key || '').slice('earsiv-inline://'.length) : '';
         if ((sourceRefId && earsivIdSet.has(sourceRefId)) || (inlineRefId && earsivIdSet.has(inlineRefId))) continue;
         if (belgeNo && earsivNoSet.has(`${kind}|${belgeNo}`)) continue;
+        if (haricNeden.has(String(doc.id))) continue; // iptal/red/mükerrer — sayaçta tutuldu, toplama girmez
         const od: any = doc.ocrData || {};
+        // KDV = 'vergi' + 'vergi-sorumlu' satırları (alışta tevkifatlı faturanın 191 + sorumlu-191'i = TAM KDV);
+        //   'diger_vergi' (ÖTV/ÖİV vb.), 'tevkifat' (360) ve 'kesinti' satırları KDV'ye KARIŞMAZ.
         const vergiSum = (doc.lines || []).filter((l: any) => ['vergi', 'vergi-sorumlu'].includes(String(l.group || '').toLowerCase()))
           .reduce((s: number, l: any) => s + this.reportNumber(l.debit) + this.reportNumber(l.credit), 0);
         const matrahSum = (doc.lines || []).filter((l: any) => String(l.group || '').toLowerCase() === 'matrah')
           .reduce((s: number, l: any) => s + this.reportNumber(l.debit) + this.reportNumber(l.credit), 0);
-        const base = this.reportNumber(od.matrah) || matrahSum;
-        const vat = this.reportNumber(od.kdvTutari) || vergiSum;
-        const total = this.reportNumber(doc.totalAmount) || base + vat;
-        if (!(base > 0 || vat > 0 || total > 0)) continue;
+        const detay = this.reportDocKdvDetay(doc);
+        const isaret = detay.isReturn ? -1 : 1;
+        const baseAbs = Math.abs(this.reportNumber(od.matrah) || matrahSum);
+        const vatAbs = Math.abs(this.reportNumber(od.kdvTutari) || vergiSum);
+        const totalAbs = Math.abs(this.reportNumber(doc.totalAmount)) || baseAbs + vatAbs;
+        if (!(baseAbs > 0 || vatAbs > 0 || totalAbs > 0)) continue;
+        const base = baseAbs * isaret, vat = vatAbs * isaret, total = totalAbs * isaret;
         mergedDocCount += 1;
-        const breakdown = this.normalizeReportBreakdown(od.kdvBreakdown, od.kdvOrani, base, vat);
+        this.reportKaynakSay(kaynakSayac, drill, doc, kind, detay);
+        digerVergiToplam += detay.digerVergi * isaret;
+        const breakdown = this.normalizeReportBreakdown(od.kdvBreakdown, od.kdvOrani, baseAbs, vatAbs)
+          .map((b) => ({ ...b, base: b.base * isaret, vat: b.vat * isaret }));
         this.addReportVatBreakdown(vatByRate, kind, breakdown, base, vat);
         if (kind === 'SATIS') {
           sourceCounts.sales += 1;
           salesBase += base; salesVat += vat; salesTotal += total;
+          tevkifEdilenToplam += detay.tevkifEdilen * isaret;
           this.addReportBucket(categories.sales, base, vat, total);
           this.addReportCounterparty(topCustomers, { name: doc.customerName || 'Bilinmeyen alıcı', taxNo: doc.buyerVkn, base, vat, total });
         } else {
           sourceCounts.purchase += 1;
           purchaseBase += base; purchaseVat += vat; purchaseTotal += total;
+          kdv2SorumluToplam += detay.kdv2Sorumlu * isaret;
           this.addReportCounterparty(topSuppliers, { name: doc.vendorName || 'Bilinmeyen satıcı', taxNo: doc.sellerVkn, base, vat, total });
-          const classified = this.classifyPurchaseInvoiceForReport(doc, { base, vat, total });
+          const classified = this.classifyPurchaseInvoiceForReport(doc, { base: baseAbs, vat: vatAbs, total: totalAbs })
+            .map((row) => (isaret < 0 ? { ...row, base: -row.base, vat: -row.vat, total: -row.total } : row));
           for (const row of classified) this.addReportBucket(categories[row.key], row.base, row.vat, row.total, row.count);
           if (classified.some((row) => row.key === 'unclassified' && Math.abs(row.base) > REPORT_EPSILON)) unclassifiedPurchaseInvoiceCount += 1;
         }
       }
+    }
+
+    // ── HESAP ATANMAMIŞ (PLAN/16 §D): toplamlara giren FM belgelerinden matrah satırı hesap kodsuz olanlar
+    //    ("Sınıflandırılamayan" yerine net sayı; "Kodları düzelt / AI ile oku" kısayolu bunu hedefler). ──
+    const hesapAtanmamis = { count: 0, base: 0, vat: 0, total: 0 };
+    for (const doc of accountingDocs) {
+      if (haricNeden.has(String(doc.id))) continue;
+      const lines: any[] = Array.isArray(doc.lines) ? doc.lines : [];
+      const matrah = lines.filter((l: any) => String(l.group || '').toLowerCase() === 'matrah');
+      if (matrah.length > 0 && matrah.every((l: any) => String(l.accountCode || '').trim())) continue;
+      const od: any = doc.ocrData || {};
+      const base = Math.abs(this.reportNumber(od.matrah) || matrah.reduce((s: number, l: any) => s + this.reportNumber(l.debit) + this.reportNumber(l.credit), 0));
+      const vat = Math.abs(this.reportNumber(od.kdvTutari));
+      hesapAtanmamis.count += 1;
+      hesapAtanmamis.base += base;
+      hesapAtanmamis.vat += vat;
+      hesapAtanmamis.total += Math.abs(this.reportNumber(doc.totalAmount)) || base + vat;
+      drill.hesapAtanmamisBelgeler.push(String(doc.id));
+    }
+
+    // ── VERGİ KURALI NOTLARI (sessiz varsayım yok — PLAN/16 §D) ──
+    if (Math.abs(tevkifEdilenToplam) > REPORT_EPSILON) {
+      notlar.push(`Tevkifatlı SATIŞ: faturadaki hesaplanan KDV TAM gösterilir (calculatedVat); alıcının tevkif ettiği ${this.formatReportMoney(tevkifEdilenToplam)} TL ayrı satırdır (tevkifEdilenVat). Kısmi tevkifatta satıcı 1 no'lu KDV'de yalnız KALAN kısmı beyan eder (KDV GUT I/C-2.1.1.1) → beyan tutarı calculatedVatBeyan = TAM − tevkif edilen; ödenecek/devreden bu tutarla hesaplandı.`);
+    }
+    if (Math.abs(kdv2SorumluToplam) > REPORT_EPSILON) {
+      notlar.push(`Tevkifatlı ALIŞ: indirilecek KDV'de faturanın TAM KDV'si sayıldı (191 + sorumlu-191); sorumlu sıfatıyla 2 no'lu KDV ile beyan edilecek ${this.formatReportMoney(kdv2SorumluToplam)} TL ayrıca kdv2SorumluVat'ta. KDV2 ile ödenen kısım ödendiği dönem 1 no'lu KDV'de indirilir; KDV Kontrol bu kısmı KDV1 indiriminden DÜŞER — karşılaştırmada deductibleVatTevkifatHaric kullanılır.`);
+    }
+    if (Math.abs(digerVergiToplam) > REPORT_EPSILON) {
+      notlar.push(`KDV dışı vergiler (ÖTV/ÖİV/konaklama/damga) ${this.formatReportMoney(digerVergiToplam)} TL KDV toplamlarına KATILMADI (otherTaxesTotal).`);
+    }
+    if (kaynakSayac.iade > 0) {
+      notlar.push(`${kaynakSayac.iade} iade belgesi ters işaretle sayıldı (satış iadesi satış matrah/KDV'sini, alış iadesi alış KDV'sini düşürür). Beyannamede satıştan iade KDV'si "indirimler" bölümünde yer alır; net sonuç aynıdır.`);
+    }
+    if (kaynakSayac.onaysiz > 0) {
+      notlar.push(`${kaynakSayac.onaysiz} onaysız (bekleyen) belge toplamlara dahil; onay/düzeltme sonrası rakamlar değişebilir.`);
     }
 
     // ── ÖNCEKİ DÖNEMDEN DEVREDEN KDV — kaynak: önceki dönemin GERÇEK KDV1 BEYANNAMESİ
@@ -1469,14 +1604,31 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       unclassifiedPurchaseBase: this.roundReportMoney(categories.unclassified.base),
       unclassifiedPurchaseVat: this.roundReportMoney(categories.unclassified.vat),
       unclassifiedPurchaseTotal: this.roundReportMoney(categories.unclassified.total),
+      // İndirilecek KDV (191) = alış KDV'sinin TAMAMI (tevkifatlı alışta 191 + sorumlu-191).
       deductibleVat: this.roundReportMoney(purchaseVat),
+      // Hesaplanan KDV (391) = satış faturalarındaki KDV'nin TAMAMI (tevkifatlı satışta da tam).
       calculatedVat: this.roundReportMoney(salesVat),
-      periodVatDifference: this.roundReportMoney(salesVat - purchaseVat),
+      // §D tevkifat ayrımı: satışta alıcının tevkif ettiği KDV (alıcı KDV2 ile beyan eder) ve KDV1'de beyan
+      //   edilecek hesaplanan (kısmi tevkifatta satıcı yalnız kalan kısmı beyan eder: TAM − tevkif edilen).
+      tevkifEdilenVat: this.roundReportMoney(tevkifEdilenToplam),
+      calculatedVatBeyan: this.roundReportMoney(salesVat - tevkifEdilenToplam),
+      // Alışta sorumlu sıfatıyla (2 no'lu KDV) beyan edilecek kısım; KDV Kontrol ile karşılaştırma için tevkifat-hariç indirilecek.
+      kdv2SorumluVat: this.roundReportMoney(kdv2SorumluToplam),
+      deductibleVatTevkifatHaric: this.roundReportMoney(purchaseVat - kdv2SorumluToplam),
+      // KDV dışı vergiler (ÖTV/ÖİV/konaklama/damga) — KDV toplamlarına KARIŞMAZ, ayrı gösterilir.
+      otherTaxesTotal: this.roundReportMoney(digerVergiToplam),
+      // Dönem farkı KDV1 beyan tabanıyla: (hesaplanan − tevkif edilen) − indirilecek.
+      periodVatDifference: this.roundReportMoney(salesVat - tevkifEdilenToplam - purchaseVat),
       // Önceki dönem beyannamesindeki devreden bulunduysa TAHMİNİ sonuç hesaplanır
       // (fark − devreden): pozitif = ödenecek yönü, negatif = sonraki döneme devreden.
       prevCarryForwardVat: devredenOnceki ? devredenOnceki.tutar : null,
-      payableVat: devredenOnceki ? this.roundReportMoney(Math.max(0, salesVat - purchaseVat - devredenOnceki.tutar)) : null,
-      carryForwardVat: devredenOnceki ? this.roundReportMoney(Math.max(0, -(salesVat - purchaseVat - devredenOnceki.tutar))) : null,
+      payableVat: devredenOnceki ? this.roundReportMoney(Math.max(0, salesVat - tevkifEdilenToplam - purchaseVat - devredenOnceki.tutar)) : null,
+      carryForwardVat: devredenOnceki ? this.roundReportMoney(Math.max(0, -(salesVat - tevkifEdilenToplam - purchaseVat - devredenOnceki.tutar))) : null,
+      // Hesap atanmamış (matrah satırı kodsuz) belgeler — kategori "unclassified"dan AYRI, net sayı.
+      hesapAtanmamisCount: hesapAtanmamis.count,
+      hesapAtanmamisBase: this.roundReportMoney(hesapAtanmamis.base),
+      hesapAtanmamisVat: this.roundReportMoney(hesapAtanmamis.vat),
+      hesapAtanmamisTotal: this.roundReportMoney(hesapAtanmamis.total),
     };
 
     const categoryRows = [
@@ -1502,25 +1654,36 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         ...this.roundReportBucket(categories.expenses),
       },
       {
+        // Geriye uyum: anahtar 'unclassified' KORUNUR. Kova = kodsuz + mal/gider prefix'i dışındaki (25x, 18x…)
+        //   kodlu alışlar; kesin "kodsuz belge" sayısı ayrı: totals.hesapAtanmamis* / hesapAtanmamis.
         key: 'unclassified',
-        label: 'Sınıflandırılamayan alışlar',
+        alias: 'hesapAtanmamis',
+        label: 'Hesap atanmamış / diğer alışlar',
         side: 'ALIS',
         accountPrefixes: [],
         ...this.roundReportBucket(categories.unclassified),
+        hesapAtanmamisCount: hesapAtanmamis.count,
       },
     ];
 
     const quality = {
-      // invoiceCount = sorgu tablosu satırları + oradan gelmeyen (entegratör) muhasebe belgeleri.
-      invoiceCount: invoices.length + mergedDocCount,
+      // invoiceCount = TOPLAMA GİREN sorgu tablosu satırları + oradan gelmeyen (entegratör) muhasebe belgeleri
+      //   (iptal/mükerrer hariç tutulanlar sayılmaz; kaynak.belge ile aynı sayı).
+      invoiceCount: kaynakSayac.belge,
+      earsivRowCount: invoices.length,
       mergedDocCount,
       accountingDocCount: accountingDocs.length,
       missingAccountCodeCount,
       unclassifiedCount: unclassifiedPurchaseInvoiceCount,
+      hesapAtanmamisCount: hesapAtanmamis.count,
       pendingReviewCount,
       validationIssueCount,
       sourceCounts,
       statusCounts,
+      // §D durum süzgeci sayaçları (toplamlara giren / girmeyen).
+      iptalHaricCount: kaynakSayac.iptalHaric,
+      mukerrerHaricCount: kaynakSayac.mukerrerHaric,
+      onaysizCount: kaynakSayac.onaysiz,
     };
 
     const report = {
@@ -1548,6 +1711,19 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       topCustomers: this.topReportCounterparties(topCustomers),
       // NOT: Ba/Bs taslağı KALDIRILDI — Ba/Bs bildirimi artık verilmiyor (kullanıcı, 2026-07-19).
       quality,
+      // §D "kaynak: N belge (X onaysız, Y iptal hariç, Z mükerrer hariç)" rozeti.
+      kaynak: { ...kaynakSayac },
+      // §D drilldown: her sayının belge id listesi (FM belge id; yalnız GİB sorgu satırı olanlar 'earsiv:<id>').
+      drilldown: drill,
+      hesapAtanmamis: {
+        count: hesapAtanmamis.count,
+        base: this.roundReportMoney(hesapAtanmamis.base),
+        vat: this.roundReportMoney(hesapAtanmamis.vat),
+        total: this.roundReportMoney(hesapAtanmamis.total),
+        belgeler: drill.hesapAtanmamisBelgeler,
+      },
+      // Vergi kuralı notları (tevkifat / iade / KDV dışı vergi / onaysız) — sessiz varsayım yok.
+      notlar,
       controls,
       warnings: controls.warnings,
       assessment: [] as string[],
@@ -1555,6 +1731,67 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
 
     report.assessment = this.buildKdvClientAssessment(report);
     return report;
+  }
+
+  /** §D durum süzgeci: belge toplamlara neden girmez? ('iptal' | 'mukerrer' | null). */
+  private reportDocHaricNedeni(doc: any): 'iptal' | 'mukerrer' | null {
+    const status = String(doc?.status || '').toUpperCase();
+    if (status === 'CANCELLED' || status === 'REJECTED') return 'iptal';
+    if (doc?.duplicateOfId) return 'mukerrer';
+    const uyarilar: any[] = Array.isArray(doc?.ocrData?.uyarilar) ? doc.ocrData.uyarilar : [];
+    if (uyarilar.some((u) => String(u?.kod || '') === UYARI_KOD.MUKERRER)) return 'mukerrer';
+    return null;
+  }
+
+  /**
+   * §D belge KDV ayrıntısı: iade işareti, tevkifat (satışta tevkif edilen / alışta sorumlu-KDV2 kısmı),
+   * KDV dışı vergi. Kaynak sırası: ocrData.tevkifatKdv|kdvTevkifat → 'vergi-sorumlu'/'tevkifat' satırları →
+   * tevkifatOrani × TAM KDV. Belge yoksa (yalnız GİB sorgu satırı) hepsi 0.
+   */
+  private reportDocKdvDetay(doc: any | null | undefined) {
+    const od: any = doc?.ocrData || {};
+    const lines: any[] = Array.isArray(doc?.lines) ? doc.lines : [];
+    const grup = (g: string) => lines.filter((l: any) => String(l.group || '').toLowerCase() === g);
+    const topla = (ls: any[]) => ls.reduce((s: number, l: any) => s + this.reportNumber(l.debit) + this.reportNumber(l.credit), 0);
+    const kind = String(doc?.invoiceKind || '').toUpperCase();
+    const isReturn = od.isReturn === true;
+    const kdvTam = this.reportNumber(od.kdvTutari);
+    const tevkOran = this.reportNumber(od.tevkifatOrani);
+    let tevkifat = this.reportNumber(od.tevkifatKdv) || this.reportNumber(od.kdvTevkifat);
+    if (!tevkifat) tevkifat = topla(grup('vergi-sorumlu')) || topla(grup('tevkifat'));
+    if (!tevkifat && tevkOran > 0 && tevkOran <= 1 && kdvTam > 0) tevkifat = this.roundReportMoney(kdvTam * tevkOran);
+    const digerVergi = this.reportNumber(od.digerVergiToplam) || topla(grup('diger_vergi'));
+    return {
+      isReturn,
+      tevkifatli: tevkifat > REPORT_EPSILON,
+      tevkifEdilen: kind === 'SATIS' ? tevkifat : 0,
+      kdv2Sorumlu: kind === 'ALIS' ? tevkifat : 0,
+      digerVergi: Math.max(0, digerVergi),
+    };
+  }
+
+  /** §D kaynak sayacı + drilldown listeleri (toplama giren her satır için bir kez). */
+  private reportKaynakSay(
+    sayac: { belge: number; fmBelge: number; gibYalniz: number; onaysiz: number; tevkifatli: number; iade: number },
+    drill: Record<string, string[]>,
+    doc: any | null | undefined,
+    side: 'ALIS' | 'SATIS',
+    detay: { isReturn: boolean; tevkifatli: boolean },
+    earsivId?: string,
+  ) {
+    sayac.belge += 1;
+    const hedef = side === 'SATIS' ? drill.hesaplananBelgeler : drill.indirilecekBelgeler;
+    if (!doc) {
+      sayac.gibYalniz += 1;
+      if (earsivId) hedef.push(`earsiv:${earsivId}`);
+      return;
+    }
+    const id = String(doc.id);
+    sayac.fmBelge += 1;
+    hedef.push(id);
+    if (String(doc.status || '').toUpperCase() !== 'APPROVED') { sayac.onaysiz += 1; drill.onaysizBelgeler.push(id); }
+    if (detay.tevkifatli) { sayac.tevkifatli += 1; drill.tevkifatliBelgeler.push(id); }
+    if (detay.isReturn) { sayac.iade += 1; drill.iadeBelgeler.push(id); }
   }
 
   /** KDV Raporu → mükellefe WHATSAPP bilgilendirme. dryRun=true: göndermez, mesaj+telefon önizlemesi
@@ -2979,8 +3216,25 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     }
     const created: any[] = [];
     const uploadPeriodDate = periodAnchorDate(opts.period);
+    // PLAN/16 §C.1 — birebir aynı dosya (SHA-256) ya da aynı ETTN'li XML bu mükellefte zaten varsa belge OLUŞTURULMAZ;
+    //   diğer dosyalar devam eder, atlananlar yanıtta listelenir (UI toast + "ilk belgeyi aç" bağlantısı).
+    const atlananlar: Array<{ name: string; reason: string; zatenYuklu: true; tur: 'sha256' | 'ettn'; mevcutId: string; mevcutBelgeNo: string | null; mevcutTarih: string | null; mesaj: string }> = [];
+    const skipped: Array<{ name: string; reason: string; zatenYuklu?: true; mevcutId?: string }> = [...expandedUpload.skipped];
 
     for (const file of uploadFiles) {
+      const imageHash = this.ocr.computeImageHash(file.buffer);
+      const zaten = await this.zatenYukluMu(tenantId, {
+        taxpayerId: opts.taxpayerId || null, imageHash, buffer: file.buffer, mimeType: file.mimetype, invoiceKind: opts.invoiceKind || null,
+      });
+      if (zaten) {
+        const mesaj = this.zatenYukluMesaji(zaten);
+        const mevcutTarih = zaten.faturaTarihi ? new Date(zaten.faturaTarihi).toISOString() : null;
+        atlananlar.push({ name: file.originalname, reason: mesaj, zatenYuklu: true, tur: zaten.tur, mevcutId: zaten.id, mevcutBelgeNo: zaten.belgeNo, mevcutTarih, mesaj });
+        skipped.push({ name: file.originalname, reason: mesaj, zatenYuklu: true, mevcutId: zaten.id });
+        this.logger.log(`[ZATEN-YUKLU] tenant=${tenantId} dosya=${file.originalname} tur=${zaten.tur} mevcut=${zaten.id} (${zaten.belgeNo || '-'}) → belge oluşturulmadı`);
+        continue;
+      }
+
       const ext = (file.originalname.split('.').pop() || 'bin').replace(/[^a-zA-Z0-9]/g, '').slice(0, 8) || 'bin';
       const s3Key = `invoice-accounting/${tenantId}/${opts.taxpayerId || 'general'}/${randomUUID()}.${ext}`;
       await this.storage.putBuffer(s3Key, file.buffer, file.mimetype, {
@@ -2990,7 +3244,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       });
 
       const isOcrSupported = this.isOcrSupportedUpload(file.originalname, file.mimetype);
-      const imageHash = this.ocr.computeImageHash(file.buffer);
+      // §C.2 — algısal hash (dHash 64 bit): yalnız görselde; PDF/HEIC raster üretilemezse null (hata yutulur).
+      const imagePhash = await computeImagePhash(file.buffer, file.mimetype);
+      // Aynı dosya BAŞKA mükellefte varsa uyarı sinyali (aynı mükellef yukarıda atlandı).
       const duplicate = await this.findDuplicate(tenantId, {
         taxpayerId: opts.taxpayerId || null,
         imageHash,
@@ -3013,6 +3269,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           sizeBytes: file.size,
           s3Key,
           imageHash,
+          ...(imagePhash ? { imagePhash } : {}),
           ocrStatus: isOcrSupported ? 'PENDING' : 'FAILED',
           ocrEngine: isOcrSupported ? null : 'unsupported',
           ocrRawText: isOcrSupported ? null : 'OCR desteklenmeyen dosya tipi',
@@ -3029,10 +3286,21 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     }
 
     this.logger.log(
-      `Belge yukleme tamamlandi: tenant=${tenantId} input=${files.length} expanded=${uploadFiles.length} skipped=${expandedUpload.skipped.length} created=${created.length}`,
+      `Belge yukleme tamamlandi: tenant=${tenantId} input=${files.length} expanded=${uploadFiles.length} skipped=${expandedUpload.skipped.length} zatenYuklu=${atlananlar.length} created=${created.length}`,
     );
 
-    return { uploaded: created.length, documents: created, skipped: expandedUpload.skipped };
+    // Dönüş: eski alanlar (uploaded/documents/skipped) korunur; §C.1 alanları eklenir.
+    //   Tek dosya zaten yüklüyse: { created:false, zatenYuklu:true, mevcutId, mevcutBelgeNo, mevcutTarih, mesaj }.
+    const ilkAtlanan = atlananlar[0];
+    return {
+      uploaded: created.length,
+      documents: created,
+      skipped,
+      atlananlar,
+      created: created.length > 0,
+      zatenYuklu: atlananlar.length > 0,
+      ...(ilkAtlanan ? { mevcutId: ilkAtlanan.mevcutId, mevcutBelgeNo: ilkAtlanan.mevcutBelgeNo, mevcutTarih: ilkAtlanan.mevcutTarih, mesaj: ilkAtlanan.mesaj } : {}),
+    };
   }
 
   private enqueueUploadedDocumentOcr(
@@ -3380,14 +3648,16 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
    */
   async reprocessBrokenDocuments(
     tenantId: string,
-    opts: { mode?: 'oku' | 'temizle' | 'iptal-temizle'; dryRun?: boolean; taxpayerId?: string; period?: string; limit?: number; documentIds?: string[] },
+    opts: { mode?: 'oku' | 'temizle' | 'iptal-temizle' | 'phash-doldur'; dryRun?: boolean; taxpayerId?: string; period?: string; limit?: number; documentIds?: string[] },
   ) {
     const dryRun = opts.dryRun !== false;
-    const mode = opts.mode === 'temizle' ? 'temizle' : opts.mode === 'iptal-temizle' ? 'iptal-temizle' : 'oku';
+    const mode = opts.mode === 'temizle' ? 'temizle' : opts.mode === 'iptal-temizle' ? 'iptal-temizle' : opts.mode === 'phash-doldur' ? 'phash-doldur' : 'oku';
     const LUCA_DISI = ['POSTED', 'POSTING', 'QUEUED'];
     if (mode === 'temizle') return this.cleanupCodeNameMixups(tenantId, { dryRun, taxpayerId: opts.taxpayerId });
     // Faz 2 — yanlış oluşmuş iptal/red/taslak belgeleri CANCELLED'a çek (POSTED/POSTING hariç).
     if (mode === 'iptal-temizle') return this.iptalTemizle(tenantId, { dryRun, taxpayerId: opts.taxpayerId, period: opts.period, limit: opts.limit });
+    // PLAN/16 §C — geçmiş görsellerin algısal hash'ini doldur (yalnız hash yazar; POSTED dahil; 500'er parti).
+    if (mode === 'phash-doldur') return this.phashDoldur(tenantId, { dryRun, taxpayerId: opts.taxpayerId, period: opts.period, limit: opts.limit, documentIds: opts.documentIds });
 
     const STD_RATES = new Set([0, 1, 8, 10, 18, 20]);
     const TELEKOM_RE = /t[üu]rk\s*telekom|ttnet|turkcell|vodafone|superonline|t[üu]rksat|kablonet|netgsm|d-?smart|digit[üu]rk|millenicom|enerjisa|bedaş|ayedaş|ck\s*(?:boğaziçi|akdeniz)|elektrik\s*perakende|aydem|osmangazi\s*elektrik|başkent\s*elektrik|uludağ\s*elektrik|gediz|toroslar|igda[sş]|başkentgaz|doğalgaz/i;
@@ -3469,6 +3739,47 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     }
     this.logger.log(`[REPROCESS-BROKEN] tenant=${tenantId} aday=${adaylar.length} kuyruk=${queued} xmlYok=${xmlYok.length} elleDuzeltilmis=${elleDuzeltilmis.length} nedenler=${JSON.stringify(nedenSayac)}`);
     return { ...ozet, kuyruk: queued, xmlYok: xmlYok.length, belgeler: secilen, xmlYokBelgeler: xmlYok.slice(0, 200), elleDuzeltilmisBelgeler: elleDuzeltilmis.slice(0, 200) };
+  }
+
+  /**
+   * PLAN/16 §C.2 — GEÇMİŞ GÖRSELLERİN ALGISAL HASH'İNİ DOLDUR (reprocess-broken {mode:'phash-doldur'}).
+   *   Aday: imagePhash boş + görsel MIME (image/*) + depoda dosyası olan (earsiv-inline hariç) belgeler; POSTED DAHİL
+   *   (yalnız hash yazılır, başka alana dokunulmaz, uyarı üretilmez — uyarı sonraki doğrulamada çıkar).
+   *   limit varsayılan 500 (parti); dryRun=true yalnız sayar. Dönüş: { aday, islenen, yazilan, bos, hata }.
+   */
+  private async phashDoldur(tenantId: string, opts: { dryRun: boolean; taxpayerId?: string; period?: string; limit?: number; documentIds?: string[] }) {
+    const limit = Math.max(1, Math.min(2000, Number(opts.limit) || 500));
+    const where: any = {
+      tenantId,
+      imagePhash: null,
+      mimeType: { startsWith: 'image/' },
+      NOT: { s3Key: { startsWith: 'earsiv-inline://' } },
+      ...(opts.taxpayerId ? { taxpayerId: opts.taxpayerId } : {}),
+      ...periodWhere(opts.period),
+      ...(Array.isArray(opts.documentIds) && opts.documentIds.length ? { id: { in: opts.documentIds } } : {}),
+    };
+    const toplamAday = await (this.prisma as any).invoiceAccountingDocument.count({ where }).catch(() => 0);
+    const docs: Array<{ id: string; belgeNo: string | null; s3Key: string; mimeType: string }> = await (this.prisma as any).invoiceAccountingDocument.findMany({
+      where, select: { id: true, belgeNo: true, s3Key: true, mimeType: true }, orderBy: { createdAt: 'desc' }, take: limit,
+    }).catch(() => []);
+    const ozet = { mode: 'phash-doldur', dryRun: opts.dryRun, aday: toplamAday, secilen: docs.length, limit, islenen: 0, yazilan: 0, bos: 0, hata: 0, kalan: Math.max(0, toplamAday - docs.length) };
+    if (opts.dryRun) return ozet;
+    for (const d of docs) {
+      ozet.islenen++;
+      try {
+        const buf = await this.storage.getBuffer(d.s3Key).catch(() => null as any);
+        const ph = buf?.length ? await computeImagePhash(buf, d.mimeType) : null;
+        if (ph) {
+          await (this.prisma as any).invoiceAccountingDocument.updateMany({ where: { id: d.id, tenantId }, data: { imagePhash: ph } });
+          ozet.yazilan++;
+        } else ozet.bos++;
+      } catch (e: any) {
+        ozet.hata++;
+        this.logger.warn(`[PHASH-DOLDUR] ${d.belgeNo || d.id}: ${e?.message || e}`);
+      }
+    }
+    this.logger.log(`[PHASH-DOLDUR] tenant=${tenantId} aday=${toplamAday} islenen=${ozet.islenen} yazilan=${ozet.yazilan} bos=${ozet.bos} hata=${ozet.hata} kalan=${ozet.kalan}`);
+    return ozet;
   }
 
   /** Faz 0 — kod-ad karışıklığı temizliği (bkz. reprocessBrokenDocuments 'temizle'). */
@@ -3783,6 +4094,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           duplicateReason: true,
           duplicateSeverity: true,
           imageHash: true,
+          imagePhash: true,
+          mimeType: true,
           faturaTarihi: true,
         },
       });
@@ -3798,12 +4111,22 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const isSale = invoiceKind === 'SATIS';
 
       const imageHash = ocrResult.imageHash || existing.imageHash || this.ocr.computeImageHash(buf);
+      // §C.2 — algısal hash (yükleme anında hesaplanmadıysa burada; görsel değilse null kalır).
+      const imagePhash = (phashGecerliMi(existing.imagePhash) ? existing.imagePhash : null) || await computeImagePhash(buf, existing.mimeType);
+      // §C — XML yüklemede ETTN'i ocrData'ya yaz (sonraki yüklemeler/entegratör çekimi aynı ETTN'i tanısın).
+      const ettn = /xml/i.test(String(existing.mimeType || '')) || /xml/i.test(String(ocrResult.engine || '')) ? ettnAyikla(buf) : null;
+      const okunanTarih = parseDate(ocrResult.date || null) || existing.faturaTarihi || null;
+      // §C.4 — fiş (ÖKC) eşleşmesi: kısa no + VKN + tutar + gün, ya da no yoksa VKN + gün + saat + tutar (uyarı).
       const duplicate = await this.findDuplicate(tenantId, {
         taxpayerId: existing.taxpayerId || null,
         belgeNo: ocrResult.belgeNo || null,
         sellerVkn: ocrResult.saticiVkn || null,
         totalAmount: ocrResult.totalTutari || null,
         imageHash,
+        faturaTarihi: okunanTarih,
+        saat: (ocrResult as any).saat || null,
+        rawText: ocrResult.rawText || null,
+        invoiceKind,
       }, documentId);
 
       const duplicateOfId = duplicate?.duplicateOfId || existing.duplicateOfId || null;
@@ -3835,8 +4158,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             duplicateReason: duplicate?.duplicateReason || existing.duplicateReason || null,
             duplicateSeverity: duplicate?.duplicateSeverity || existing.duplicateSeverity || null,
             imageHash,
+            ...(imagePhash ? { imagePhash } : {}),
             belgeNo: ocrResult.belgeNo || null,
-            faturaTarihi: parseDate(ocrResult.date || null) || existing.faturaTarihi || null,
+            faturaTarihi: okunanTarih,
             // v2.3: SATIS belgesinde OCR'in okudugu taraf bizim mukellef olur —
             // satici alanlarina yazip mukellefi "satici" gibi gostermeyelim.
             sellerVkn: isSale ? null : (ocrResult.saticiVkn || null),
@@ -3846,7 +4170,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             ocrEngine: ocrResult.engine || null,
             ocrRawText: ocrResult.rawText || null,
             ocrConfidence: ocrResult.confidence ?? null,
-            ocrData: ocrResult as any,
+            ocrData: { ...(ocrResult as any), ...(ettn ? { ettn } : {}) },
           },
         });
       });
@@ -6048,7 +6372,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // MÜKERRER İŞARETİNİ YALNIZ mükerrer-alanları gelince yeniden hesapla. Kullanıcı sadece satırları
     //   (lines) düzenlediğinde belgeNo/VKN body'de gelmez → eskiden duplicate null dönüp mükerrer işareti
     //   SESSİZCE siliniyordu. Bu alanlar body'de yoksa mevcut işareti KORU (data'ya hiç yazma).
-    const dedupFieldsPresent = ['belgeNo', 'sellerVkn', 'buyerVkn', 'totalAmount', 'taxpayerId']
+    const dedupFieldsPresent = ['belgeNo', 'sellerVkn', 'buyerVkn', 'totalAmount', 'taxpayerId', 'faturaTarihi']
       .some((k) => k in body);
     if (dedupFieldsPresent) {
       const duplicate = await this.findDuplicate(tenantId, {
@@ -6057,6 +6381,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         sellerVkn: 'sellerVkn' in body ? body.sellerVkn : (before as any).sellerVkn,
         buyerVkn: 'buyerVkn' in body ? body.buyerVkn : (before as any).buyerVkn,
         totalAmount: 'totalAmount' in body ? body.totalAmount : (before as any).totalAmount,
+        // §C.4 — fiş eşleşmesi gün/saat ister (kısa fiş no gün bazında tekrar eder).
+        faturaTarihi: 'faturaTarihi' in body ? parseDate(body.faturaTarihi) : (before as any).faturaTarihi,
+        invoiceKind: 'invoiceKind' in body ? body.invoiceKind : (before as any).invoiceKind,
+        rawText: (before as any).ocrRawText || (before as any).ocrData?.rawText || null,
+        saat: (before as any).ocrData?.saat || null,
       }, id);
       data.duplicateOfId = duplicate?.duplicateOfId || null;
       data.duplicateReason = duplicate?.duplicateReason || null;
@@ -6234,37 +6563,80 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   • KISA numara (ÖKC fiş no "0049" gibi gün/satıcı bazında tekrar eder) → ek olarak FATURA TARİHİ eşitliği şart,
     //   • yer tutucu belge no ('BILINMIYOR', boş, '-', ETTN/uuid) → mükerrer aranmaz,
     //   • sahip kararı ocrData.mukerrerKarar.karar='mukerrer_degil' → aranmaz; duplicateOfId temizlenir.
-    let mukerrer: { ilkBelgeId: string; belgeNo?: string | null; tutar?: any; createdAt?: any } | null = null;
+    //   PLAN/16 §C (kullanıcı kararı 2026-09-12): ENGEL yalnız UZUN belge no'da (e-Fatura/e-Arşiv benzersiz). KISA fiş no
+    //   eşleşmesi (VKN + tutar + gün) → MUKERRER_FIS UYARISI; belge no yoksa VKN + gün + SAAT + tutar → MUKERRER_FIS;
+    //   algısal hash (dHash) Hamming ≤ 6 → MUKERRER_GORSEL uyarısı ("aynı fişin ikinci fotoğrafı gibi"). Sahip
+    //   "mükerrer" derse (mukerrerKarar='mukerrer') şüphe ENGEL'e döner; "mükerrer değil" derse hiçbiri aranmaz.
+    let mukerrer: { ilkBelgeId: string; belgeNo?: string | null; tutar?: any; createdAt?: any; tur?: 'uzun' | 'kisa' | 'saat' | 'gorsel' } | null = null;
+    let mukerrerSuphe: { kod: string; tur: 'kisa' | 'saat' | 'gorsel'; ilkBelgeId: string; belgeNo?: string | null; tutar?: any; createdAt?: any; hamming?: number; saat?: string | null } | null = null;
     const mukerrerKarar: string | null = String(ocrData?.mukerrerKarar?.karar || '').trim() || null;
     {
       const belgeNoM = String(doc.belgeNo || '').trim();
       const karsiVkn = String((isSaleDoc ? doc.buyerVkn : doc.sellerVkn) || '').replace(/\D/g, '');
       const totalM = Number(doc.totalAmount || 0);
-      const yerTutucu = !belgeNoM
-        || /^(bilinmiyor|bilinmeyen|yok|-+|n\/a|na|null|undefined|belge ?no|fatura ?no)$/i.test(belgeNoM)
-        || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(belgeNoM)
-        || belgeNoM === String(doc.id || '');
-      const belgeNoUzun = belgeNoM.replace(/\D/g, '').length >= 10;
+      const yerTutucu = belgeNoYerTutucuMu(belgeNoM, String(doc.id || ''));
+      const belgeNoUzun = belgeNoUzunMu(belgeNoM);
       const faturaTarihiM = doc.faturaTarihi ? new Date(doc.faturaTarihi) : null;
-      if (!yerTutucu && karsiVkn && totalM > 0 && doc.taxpayerId && mukerrerKarar !== 'mukerrer_degil' && (belgeNoUzun || faturaTarihiM)) {
+      const gunM = gunAraligi(faturaTarihiM);
+      const aramaAcik = !!doc.taxpayerId && mukerrerKarar !== 'mukerrer_degil';
+      const teyitli = mukerrerKarar === 'mukerrer'; // sahip kopya olduğunu teyit etti → şüphe değil, ENGEL
+      const eskiOlan = { OR: [{ createdAt: { lt: doc.createdAt } }, { createdAt: doc.createdAt, id: { lt: id } }] };
+      const ortak = { tenantId, id: { not: id }, taxpayerId: doc.taxpayerId, invoiceKind: doc.invoiceKind, status: { notIn: ['REJECTED', 'CANCELLED'] } };
+      const tutarAralik = totalM > 0 ? tutarAraligi(totalM) : null;
+      if (aramaAcik && !yerTutucu && karsiVkn && tutarAralik && (belgeNoUzun || gunM)) {
         const ilk = await (this.prisma as any).invoiceAccountingDocument.findFirst({
           where: {
-            tenantId,
-            id: { not: id },
-            taxpayerId: doc.taxpayerId,
+            ...ortak,
             belgeNo: belgeNoM,
-            invoiceKind: doc.invoiceKind,
-            status: { notIn: ['REJECTED', 'CANCELLED'] },
             ...(isSaleDoc ? { buyerVkn: karsiVkn } : { sellerVkn: karsiVkn }),
-            totalAmount: { gte: Math.round((totalM - 0.01) * 100) / 100, lte: Math.round((totalM + 0.01) * 100) / 100 },
+            totalAmount: tutarAralik,
             // kısa numarada aynı gün şartı (gün bazında; saat farkı olabilir)
-            ...(!belgeNoUzun && faturaTarihiM ? { faturaTarihi: { gte: new Date(Date.UTC(faturaTarihiM.getUTCFullYear(), faturaTarihiM.getUTCMonth(), faturaTarihiM.getUTCDate())), lt: new Date(Date.UTC(faturaTarihiM.getUTCFullYear(), faturaTarihiM.getUTCMonth(), faturaTarihiM.getUTCDate() + 1)) } } : {}),
-            OR: [{ createdAt: { lt: doc.createdAt } }, { createdAt: doc.createdAt, id: { lt: id } }],
+            ...(!belgeNoUzun && gunM ? { faturaTarihi: gunM } : {}),
+            ...eskiOlan,
           },
           orderBy: { createdAt: 'asc' },
           select: { id: true, belgeNo: true, totalAmount: true, createdAt: true },
         }).catch(() => null);
-        if (ilk) mukerrer = { ilkBelgeId: ilk.id, belgeNo: ilk.belgeNo, tutar: ilk.totalAmount, createdAt: ilk.createdAt };
+        if (ilk) {
+          if (belgeNoUzun || teyitli) mukerrer = { ilkBelgeId: ilk.id, belgeNo: ilk.belgeNo, tutar: ilk.totalAmount, createdAt: ilk.createdAt, tur: belgeNoUzun ? 'uzun' : 'kisa' };
+          else mukerrerSuphe = { kod: UYARI_KOD.MUKERRER_FIS, tur: 'kisa', ilkBelgeId: ilk.id, belgeNo: ilk.belgeNo, tutar: ilk.totalAmount, createdAt: ilk.createdAt };
+        }
+      } else if (aramaAcik && yerTutucu && karsiVkn && tutarAralik && gunM) {
+        // §C.4 — fiş no okunmadı: VKN + aynı gün + SAAT + tutar (saat ocrData.saat / ham metinden).
+        const saatM = belgeSaati(doc);
+        if (saatM) {
+          const adaylar = await this.belgeAdaylari({
+            where: { ...ortak, ...(isSaleDoc ? { buyerVkn: karsiVkn } : { sellerVkn: karsiVkn }), totalAmount: tutarAralik, faturaTarihi: gunM, ...eskiOlan },
+            orderBy: { createdAt: 'asc' },
+            select: { id: true, belgeNo: true, totalAmount: true, createdAt: true, ocrData: true, ocrRawText: true },
+            take: 50,
+          });
+          const ilk = adaylar.find((a: any) => belgeSaati(a) === saatM);
+          if (ilk) {
+            if (teyitli) mukerrer = { ilkBelgeId: ilk.id, belgeNo: ilk.belgeNo, tutar: ilk.totalAmount, createdAt: ilk.createdAt, tur: 'saat' };
+            else mukerrerSuphe = { kod: UYARI_KOD.MUKERRER_FIS, tur: 'saat', ilkBelgeId: ilk.id, belgeNo: ilk.belgeNo, tutar: ilk.totalAmount, createdAt: ilk.createdAt, saat: saatM };
+          }
+        }
+      }
+      // §C.3 — GÖRSEL BENZERLİK (dHash): aynı mükellef + aynı yön, son 400 gün, daha eski belgeler; Hamming ≤ 6 en yakını.
+      if (aramaAcik && !mukerrer && !mukerrerSuphe && phashGecerliMi(doc.imagePhash) && !phashDejenereMi(doc.imagePhash)) {
+        const baslangic = new Date(new Date(doc.createdAt || Date.now()).getTime() - 400 * 86400000);
+        const adaylar = await this.belgeAdaylari({
+          where: { ...ortak, imagePhash: { not: null }, createdAt: { gte: baslangic }, ...eskiOlan },
+          orderBy: { createdAt: 'desc' },
+          select: { id: true, belgeNo: true, totalAmount: true, createdAt: true, imagePhash: true },
+          take: 3000,
+        });
+        let enIyi: any = null;
+        for (const a of adaylar) {
+          if (phashDejenereMi(a.imagePhash)) continue; // düz beyaz/siyah kare — içerik taşımaz
+          const h = hamming(String(doc.imagePhash), String(a.imagePhash || ''));
+          if (h <= MUKERRER_GORSEL_HAMMING_ESIK && (!enIyi || h < enIyi.hamming)) enIyi = { ...a, hamming: h };
+        }
+        if (enIyi) {
+          if (teyitli) mukerrer = { ilkBelgeId: enIyi.id, belgeNo: enIyi.belgeNo, tutar: enIyi.totalAmount, createdAt: enIyi.createdAt, tur: 'gorsel' };
+          else mukerrerSuphe = { kod: UYARI_KOD.MUKERRER_GORSEL, tur: 'gorsel', ilkBelgeId: enIyi.id, belgeNo: enIyi.belgeNo, tutar: enIyi.totalAmount, createdAt: enIyi.createdAt, hamming: enIyi.hamming };
+        }
       }
     }
 
@@ -6500,15 +6872,43 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         }
       }
       // — MUKERRER (engel) — A.2: sahip "mükerrer değil" diyebilir (ocrData.mukerrerKarar; revalidate okur).
+      //   PLAN/16 §C: uzun belge no ya da sahibin "mükerrer" teyidi (kısa fiş / saat / görsel şüphesi teyit edildi).
       if (mukerrer) {
+        const teyitli = !!mukerrer.tur && mukerrer.tur !== 'uzun';
         turetilen.push(uyariYap({
           kod: UYARI_KOD.MUKERRER,
           seviye: 'engel',
-          baslik: 'Mükerrer belge',
-          aciklama: `Aynı belge no${mukerrer.belgeNo ? ` (${mukerrer.belgeNo})` : ''}, karşı VKN, tutar ve yönde daha eski bir belge var — bu kopya onaylanamaz ve Luca'ya gitmez.`,
-          oneri: 'İlk belgeyi açıp kontrol edin; kopyaysa bu belgeyi silin. Aynı numaralı ama FARKLI bir belgeyse "Mükerrer değil" deyin — engel kalkar.',
+          baslik: teyitli ? 'Mükerrer belge — sahip teyit etti' : 'Mükerrer belge',
+          aciklama: teyitli
+            ? `Bu belgenin${mukerrer.belgeNo ? ` (${mukerrer.belgeNo})` : ''} daha eski bir belgenin kopyası olduğu sahip tarafından teyit edildi — onaylanamaz ve Luca'ya gitmez.`
+            : `Aynı belge no${mukerrer.belgeNo ? ` (${mukerrer.belgeNo})` : ''}, karşı VKN, tutar ve yönde daha eski bir belge var — bu kopya onaylanamaz ve Luca'ya gitmez.`,
+          oneri: teyitli
+            ? 'Kopyayı silin. Yanlışlıkla teyit ettiyseniz "Mükerrer değil" ile kararı geri alın.'
+            : 'İlk belgeyi açıp kontrol edin; kopyaysa bu belgeyi silin. Aynı numaralı ama FARKLI bir belgeyse "Mükerrer değil" deyin — engel kalkar.',
           eylemler: [{ id: 'ilk-belgeyi-ac', etiket: 'İlk belgeyi aç' }, { id: 'mukerrer:mukerrer_degil', etiket: 'Mükerrer değil' }],
-          meta: { ilkBelgeId: mukerrer.ilkBelgeId, ilkBelgeNo: mukerrer.belgeNo || null, karar: mukerrerKarar },
+          meta: { ilkBelgeId: mukerrer.ilkBelgeId, ilkBelgeNo: mukerrer.belgeNo || null, karar: mukerrerKarar, tur: mukerrer.tur || 'uzun' },
+          kaynak: 'dogrulama',
+        }));
+      }
+      // — MUKERRER_FIS / MUKERRER_GORSEL (uyarı; engel DEĞİL — sahip karar verir) — PLAN/16 §C.
+      if (mukerrerSuphe) {
+        const gorsel = mukerrerSuphe.kod === UYARI_KOD.MUKERRER_GORSEL;
+        const ilkAd = mukerrerSuphe.belgeNo ? ` (${mukerrerSuphe.belgeNo})` : '';
+        turetilen.push(uyariYap({
+          kod: mukerrerSuphe.kod,
+          seviye: 'uyari',
+          baslik: gorsel ? 'Aynı fişin ikinci fotoğrafı gibi görünüyor' : 'Mükerrer fiş şüphesi',
+          aciklama: gorsel
+            ? `Görsel, daha önce yüklenen bir belgeye${ilkAd} çok benziyor (fark ${mukerrerSuphe.hamming}/64). Aynı fişin ikinci fotoğrafı olabilir.`
+            : mukerrerSuphe.tur === 'saat'
+              ? `Aynı satıcı, aynı gün, aynı saat (${mukerrerSuphe.saat}) ve aynı tutarda daha eski bir belge${ilkAd} var — fiş numarası okunamadığı için kesin değil.`
+              : `Aynı fiş numarası${ilkAd}, satıcı, tutar ve günde daha eski bir belge var. Kısa fiş numaraları gün içinde tekrar edebilir — kontrol edin.`,
+          oneri: 'İlk belgeyi açıp karşılaştırın; kopyaysa bu belgeyi silin. Farklı bir belgeyse "Mükerrer değil" deyin — uyarı kalkar.',
+          eylemler: [{ id: 'ilk-belgeyi-ac', etiket: 'İlk belgeyi aç' }, { id: 'mukerrer:mukerrer_degil', etiket: 'Mükerrer değil' }],
+          meta: {
+            ilkBelgeId: mukerrerSuphe.ilkBelgeId, ilkBelgeNo: mukerrerSuphe.belgeNo || null, karar: mukerrerKarar, tur: mukerrerSuphe.tur,
+            ...(gorsel ? { hamming: mukerrerSuphe.hamming } : {}), ...(mukerrerSuphe.saat ? { saat: mukerrerSuphe.saat } : {}),
+          },
           kaynak: 'dogrulama',
         }));
       }
@@ -6565,6 +6965,25 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         data: { duplicateOfId: mukerrer.ilkBelgeId, duplicateReason: `Mükerrer — aynı belge no/VKN/tutar/yön (${mukerrer.belgeNo || ''})`, duplicateSeverity: 'BLOCKING' },
       }).catch(() => {});
     }
+    // §C — şüphe (fiş / görsel) kolonlara UYARI seviyesiyle yazılır (liste rozeti + "ilk belgeyi aç"); engel değil.
+    if (mukerrerSuphe && !doc.duplicateOfId) {
+      const neden = mukerrerSuphe.tur === 'gorsel'
+        ? `Aynı fişin ikinci fotoğrafı gibi görünüyor (fark ${mukerrerSuphe.hamming}/64${mukerrerSuphe.belgeNo ? `, ${mukerrerSuphe.belgeNo}` : ''})`
+        : `Mükerrer şüphesi — ${mukerrerSuphe.tur === 'saat' ? 'aynı satıcı/gün/saat/tutar' : 'aynı fiş no/satıcı/tutar/gün'}${mukerrerSuphe.belgeNo ? ` (${mukerrerSuphe.belgeNo})` : ''}`;
+      await (this.prisma as any).invoiceAccountingDocument.update({
+        where: { id },
+        data: { duplicateOfId: mukerrerSuphe.ilkBelgeId, duplicateReason: neden, duplicateSeverity: 'WARNING' },
+      }).catch(() => {});
+    }
+    // Şüphe/engel artık yoksa (ilk belge silindi, tutar/tarih düzeltildi) bayat kolon izi temizlenir — YALNIZ doğrulamanın
+    //   kendi yazdığı izler (metin kalıbıyla tanınır); yükleme anı (findDuplicate: SHA-256 / uzun no / fiş) izleri korunur.
+    const dogrulamaIzi = /^(Mükerrer — aynı belge no\/VKN\/tutar\/yön|Mükerrer şüphesi — aynı (satıcı\/gün\/saat\/tutar|fiş no\/satıcı\/tutar\/gün)|Aynı fişin ikinci fotoğrafı gibi görünüyor \(fark)/;
+    if (!mukerrer && !mukerrerSuphe && doc.duplicateOfId && dogrulamaIzi.test(String(doc.duplicateReason || ''))) {
+      await (this.prisma as any).invoiceAccountingDocument.update({
+        where: { id },
+        data: { duplicateOfId: null, duplicateReason: null, duplicateSeverity: null },
+      }).catch(() => {});
+    }
     // A.2 — sahip "mükerrer değil" dedi: kolonlardaki mükerrer izi temizlenir (liste rozeti + engel kalkar).
     if (mukerrerKarar === 'mukerrer_degil' && doc.duplicateOfId) {
       await (this.prisma as any).invoiceAccountingDocument.update({
@@ -6595,14 +7014,16 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       if (islOzet.kararBekliyor) throw new BadRequestException('Demirbaş kararı bekliyor — bu belge onaylanamaz. Belgeyi açıp "Luca\'da elle işledim → kapat", "yine de işle" ya da "demirbaş değil" seçin.');
       if (!isletmeAmountReady(doc)) throw new BadRequestException('Bu belge onaylanamaz — tutar okunamamış. Önce "AI ile oku" ile tutarları çıkar.');
       if (!ready.ok) throw new BadRequestException(`Bu belge onaylanamaz — İşletme defteri için ${ready.reason}. Muhasebeleştir ekranında belge/kayıt türünü seç.`);
+      // §G — Luca'dan geri alınmış belge (Luca'daki fiş elle düzeltilir) yeniden onaylanınca Luca'ya OTOMATİK GİTMEZ (çift fiş).
+      const elleYoluIsl = this.lucaElleYolu((doc as any).ocrData);
       const data: any = {
         status: 'APPROVED', approvedBy: userId || null, approvedAt: new Date(),
-        lucaStatus: (doc as any).taxpayerId ? 'QUEUED' : 'NOT_STARTED',
-        lucaErrorMessage: (doc as any).taxpayerId ? null : 'Mukellef secilmedigi icin Luca\'ya aktarilamaz',
+        lucaStatus: elleYoluIsl ? 'MANUAL_DONE' : (doc as any).taxpayerId ? 'QUEUED' : 'NOT_STARTED',
+        lucaErrorMessage: elleYoluIsl || (doc as any).taxpayerId ? null : 'Mukellef secilmedigi icin Luca\'ya aktarilamaz',
         ocrData: { ...((doc as any).ocrData || {}), isletme: isletmeWithBelgeDefaults(doc) },
       };
       await (this.prisma as any).invoiceAccountingDocument.update({ where: { id }, data });
-      await this.logAudit(tenantId, userId, 'APPROVE', id, { status: doc.status }, { status: 'APPROVED', isletme: true });
+      await this.logAudit(tenantId, userId, 'APPROVE', id, { status: doc.status }, { status: 'APPROVED', isletme: true, ...(elleYoluIsl ? { lucaStatus: 'MANUAL_DONE', lucaElleYolu: true } : {}) });
       return this.get(tenantId, id);
     }
 
@@ -6640,22 +7061,37 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // Luca'ya GERCEK aktarim per-invoice job ile DEGIL, kullanici Sahne 5'te
     // "Luca'ya Aktar" tiklayinca toplu Excel olarak yapilir (batchPostToLuca).
     // Bu sayede 50 onay = 50 ayri yevmiye fisi degil, 1 toplu fis olur.
+    // §G — Luca'dan geri alınmış belge (ocrData.lucaElleDuzeltilecek / lucaElleDuzeltildi): Luca'daki fiş elle
+    //   düzeltilir; yeniden onay Luca'ya OTOMATİK GİTMEZ → MANUAL_DONE (batchPostToLuca/buildBatchExcel eler).
+    const elleYolu = this.lucaElleYolu((doc as any).ocrData);
     await (this.prisma as any).invoiceAccountingDocument.update({
       where: { id },
       data: {
         status: 'APPROVED',
         approvedBy: userId || null,
         approvedAt: new Date(),
-        lucaStatus: doc.taxpayerId ? 'QUEUED' : 'NOT_STARTED',
-        lucaErrorMessage: doc.taxpayerId ? null : 'Mukellef secilmedigi icin Luca\'ya aktarilamaz',
+        lucaStatus: elleYolu ? 'MANUAL_DONE' : doc.taxpayerId ? 'QUEUED' : 'NOT_STARTED',
+        lucaErrorMessage: elleYolu || doc.taxpayerId ? null : 'Mukellef secilmedigi icin Luca\'ya aktarilamaz',
       },
     });
 
-    await this.recordInvoiceAccountingMemory(tenantId, doc).catch((e: any) => {
+    // §G — onayda yazılan öğrenme kararlarının anahtarları ocrData.ogrenmeKayitlari[]'na eklenir; "Geri al" bunları
+    //   VendorMemoryService.revertDecision ile geri alır (idempotent: geri alınınca liste temizlenir).
+    const ogrenme = await this.recordInvoiceAccountingMemory(tenantId, doc).catch((e: any) => {
       this.logger.warn(`Fatura hafizasi kaydedilemedi (${id}): ${e?.message || e}`);
+      return [] as OgrenmeKaydi[];
     });
+    if (ogrenme.length) {
+      const guncel = await (this.prisma as any).invoiceAccountingDocument.findFirst({ where: { id, tenantId }, select: { ocrData: true } }).catch(() => null);
+      const ocrGuncel: any = guncel?.ocrData || (doc as any).ocrData || {};
+      const eski: OgrenmeKaydi[] = Array.isArray(ocrGuncel.ogrenmeKayitlari) ? ocrGuncel.ogrenmeKayitlari : [];
+      await (this.prisma as any).invoiceAccountingDocument.update({
+        where: { id },
+        data: { ocrData: { ...ocrGuncel, ogrenmeKayitlari: [...eski, ...ogrenme].slice(-40) } },
+      }).catch(() => {});
+    }
     // Faz C: denetim izi — kim ne zaman onayladı.
-    await this.logAudit(tenantId, userId, 'APPROVE', id, { status: doc.status }, { status: 'APPROVED' });
+    await this.logAudit(tenantId, userId, 'APPROVE', id, { status: doc.status }, { status: 'APPROVED', ogrenmeKaydi: ogrenme.length, ...(elleYolu ? { lucaStatus: 'MANUAL_DONE', lucaElleYolu: true } : {}) });
 
     return this.get(tenantId, id);
   }
@@ -6701,6 +7137,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         }
         if (ozet.mukerrer) {
           skipped.push({ id, belgeNo, reason: 'mukerrer' });
+          continue;
+        }
+        // PLAN/16 §C — mükerrer ŞÜPHESİ (görsel/fiş; uyarı): toplu onayda sessizce geçmesin → atlanır (force=true geçirir;
+        //   tekil onay engellenmez — sahip belgeyi açıp bakarak karar verir).
+        if (ozet.mukerrerSuphe && force !== true) {
+          skipped.push({ id, belgeNo, reason: 'mukerrer-suphe' });
           continue;
         }
         await this.approve(tenantId, id, userId, force);
@@ -6766,26 +7208,115 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     } catch { /* audit opsiyonel — akışı bozma */ }
   }
 
-  /** Faz C: geri-alma — onaylı belgeyi tekrar düzenlenebilir yap (Luca'ya GİTMEMİŞSE). */
-  async reopen(tenantId: string, id: string, userId?: string) {
-    const doc = await this.get(tenantId, id);
-    if (doc.status !== 'APPROVED') throw new BadRequestException('Yalnız onaylı belge geri alınabilir.');
-    if (['POSTED', 'POSTING'].includes(String(doc.lucaStatus || ''))) {
-      throw new BadRequestException('Belge Luca\'ya aktarıldı/aktarılıyor — geri alınamaz (Luca\'da ters fiş gerekir).');
+  /** §G — Luca'dan geri alınmış belge işareti: Luca'daki fiş ELLE düzeltilir/düzeltildi → belge bir daha Luca'ya otomatik gitmez. */
+  private lucaElleYolu(ocr: any): boolean {
+    return !!(ocr && (ocr.lucaElleDuzeltilecek || ocr.lucaElleDuzeltildi));
+  }
+
+  /**
+   * PLAN/16 §G — GERİ AL / DÜZELT (TERS FİŞ YOK). Body: { onay?: boolean, not?: string }.
+   *   • APPROVED ya da kuyrukta (lucaStatus QUEUED/FAILED) belge → NEEDS_REVIEW; approvedBy/At temizlenir; lucaStatus
+   *     NOT_STARTED; HESAP SATIRLARI KORUNUR (kullanıcı düzeltip yeniden onaylar).
+   *   • POSTING → reddedilir (aktarım sürüyor; bitince geri alınabilir).
+   *   • POSTED (Luca'ya gitmiş): onay !== true → 409 { teyitGerekli:true, mesaj, lucaFisNo } (UI teyit kutusu);
+   *     onay === true → geri alınır + ocrData.lucaElleDuzeltilecek = { tarih, lucaFisNo, userId, not }, eski fiş no
+   *     ocrData.eskiLucaFisNo'da saklanır; lucaFisNo/lucaPostedAt/lucaJobId temizlenir. Yeniden onaylanınca Luca'ya
+   *     OTOMATİK GİTMEZ (approve → MANUAL_DONE); sahip Luca'daki fişi elle düzeltip "luca-elle-duzeltildi" der.
+   *   • VendorMemory öğrenmesi geri alınır: onayda yazılan ocrData.ogrenmeKayitlari[] → revertDecision; liste temizlenir
+   *     (idempotent — ikinci geri alma bir daha düşürmez).
+   *   • Demirbaş kararı (A.5) silinir → belge "karar bekliyor"a döner. Ters fiş ÜRETİLMEZ, Luca'ya hiçbir şey gönderilmez.
+   *   • AuditLog REOPEN: { lucaStatusEski, lucaFisNo, elleDuzeltilecek, ogrenmeGeriAlindi }.
+   */
+  async reopen(tenantId: string, id: string, userId?: string, body?: { onay?: boolean; not?: string }) {
+    const doc: any = await this.get(tenantId, id);
+    const lucaStatusEski = String(doc.lucaStatus || '');
+    const geriAlinabilir = doc.status === 'APPROVED' || ['QUEUED', 'FAILED', 'POSTED'].includes(lucaStatusEski);
+    if (!geriAlinabilir) throw new BadRequestException('Yalnız onaylı ya da aktarım kuyruğundaki belge geri alınabilir.');
+    if (lucaStatusEski === 'POSTING') {
+      throw new BadRequestException('Belge şu anda Luca\'ya aktarılıyor — aktarım bitince geri alabilirsin.');
     }
+    const lucaFisNo = String(doc.lucaFisNo || '').trim() || null;
+    const postedMi = lucaStatusEski === 'POSTED';
+    if (postedMi && body?.onay !== true) {
+      // 409 — UI teyit kutusu gösterir; kullanıcı "onay:true" ile tekrar çağırır.
+      throw new ConflictException({
+        statusCode: 409,
+        teyitGerekli: true,
+        message: 'Luca\'ya gitmiş — geri alırsan Luca\'daki fişi elle düzeltmen gerekir',
+        mesaj: 'Luca\'ya gitmiş — geri alırsan Luca\'daki fişi elle düzeltmen gerekir',
+        lucaFisNo,
+        lucaPostedAt: doc.lucaPostedAt || null,
+      });
+    }
+    const not = String(body?.not || '').slice(0, 300) || null;
+    const simdi = new Date().toISOString();
     // A.5 — demirbaş kararı (elle_islendi / yine_de_isle) geri alınınca SİLİNİR: belge "karar bekliyor"a döner;
     //   aksi halde MANUAL_DONE kalkmış ama karar kaydı duran belge Luca'ya gidebiliyordu.
-    const ocrEski: any = (doc as any).ocrData || {};
+    const ocrEski: any = doc.ocrData || {};
     const ocrYeni: any = { ...ocrEski };
     const kararVardi = !!ocrYeni.demirbasKarar;
     delete ocrYeni.demirbasKarar;
+    // §G — VendorMemory öğrenmesini geri al (onayda yazılan anahtarlar; başarısız olanlar listede kalır → sonraki geri alma dener).
+    const kayitlar: OgrenmeKaydi[] = Array.isArray(ocrEski.ogrenmeKayitlari) ? ocrEski.ogrenmeKayitlari : [];
+    let ogrenmeGeriAlindi = 0;
+    const kalanKayitlar: OgrenmeKaydi[] = [];
+    for (const k of kayitlar) {
+      try {
+        const r = await this.vendorMemory.revertDecision({
+          tenantId, firmaKimlikNo: k.firmaKimlikNo, kararTipi: k.kararTipi, kategori: k.kategori, altKategori: k.altKategori,
+          icerikImza: k.icerikImza, taxpayerId: k.taxpayerId, onayBoost: k.boost,
+        });
+        if (r.geriAlindi) ogrenmeGeriAlindi++;
+      } catch (e: any) {
+        this.logger.warn(`Öğrenme geri alınamadı (${id} ${k.kategori}): ${e?.message || e}`);
+        kalanKayitlar.push(k);
+      }
+    }
+    if (kalanKayitlar.length) ocrYeni.ogrenmeKayitlari = kalanKayitlar;
+    else delete ocrYeni.ogrenmeKayitlari;
+    if (postedMi) {
+      ocrYeni.lucaElleDuzeltilecek = { tarih: simdi, lucaFisNo, userId: userId || null, not };
+      if (lucaFisNo) ocrYeni.eskiLucaFisNo = lucaFisNo;
+      delete ocrYeni.lucaElleDuzeltildi; // yeni bir düzeltme döngüsü başlıyor
+    }
+    if (not) ocrYeni.geriAlmaNotu = not;
     await (this.prisma as any).invoiceAccountingDocument.update({
       where: { id },
-      data: { status: 'NEEDS_REVIEW', approvedBy: null, approvedAt: null, lucaStatus: 'NOT_STARTED', lucaErrorMessage: null, ...(kararVardi ? { ocrData: ocrYeni } : {}) },
+      data: {
+        status: 'NEEDS_REVIEW', approvedBy: null, approvedAt: null,
+        lucaStatus: 'NOT_STARTED', lucaErrorMessage: null, lucaJobId: null,
+        ...(postedMi ? { lucaFisNo: null, lucaPostedAt: null } : {}),
+        ocrData: ocrYeni,
+      },
     });
-    await this.logAudit(tenantId, userId, 'REOPEN', id, { status: 'APPROVED', lucaStatus: doc.lucaStatus, demirbasKarar: ocrEski.demirbasKarar || null }, { status: 'NEEDS_REVIEW' });
-    if (kararVardi) await this.revalidateDocument(tenantId, id).catch(() => null);
-    return this.get(tenantId, id);
+    await this.logAudit(tenantId, userId, 'REOPEN', id,
+      { status: doc.status, lucaStatus: lucaStatusEski, lucaFisNo, demirbasKarar: ocrEski.demirbasKarar || null, ogrenmeKaydi: kayitlar.length },
+      { status: 'NEEDS_REVIEW', lucaStatusEski, lucaFisNo, elleDuzeltilecek: postedMi, ogrenmeGeriAlindi, not });
+    this.logger.log(`[GERI-AL] ${doc.belgeNo || id}: ${doc.status}/${lucaStatusEski} → NEEDS_REVIEW${postedMi ? ` (Luca fiş ${lucaFisNo || '?'} ELLE düzeltilecek)` : ''} · öğrenme geri alındı=${ogrenmeGeriAlindi}/${kayitlar.length}`);
+    await this.revalidateDocument(tenantId, id).catch(() => null);
+    const guncel = await this.get(tenantId, id);
+    return { ...guncel, geriAlma: { lucaStatusEski, lucaFisNo, elleDuzeltilecek: postedMi, ogrenmeGeriAlindi, ogrenmeToplam: kayitlar.length, demirbasKarariSilindi: kararVardi } };
+  }
+
+  /**
+   * §G — "Luca'da elle düzelttim": geri alınan POSTED belgenin ocrData.lucaElleDuzeltilecek işareti
+   * lucaElleDuzeltildi:{tarih,userId,not,lucaFisNo} olarak kapanır (bayrak kalkar, belge arşivde normal görünür).
+   * Belge yine de Luca'ya otomatik GİTMEZ (fiş Luca'da zaten var; approve → MANUAL_DONE).
+   */
+  async lucaElleDuzeltildi(tenantId: string, id: string, body: { not?: string } | undefined, userId?: string) {
+    const doc: any = await this.get(tenantId, id);
+    const ocr: any = doc.ocrData || {};
+    if (!ocr.lucaElleDuzeltilecek) throw new BadRequestException('Bu belgede "Luca\'da elle düzeltilecek" işareti yok.');
+    const isaret = ocr.lucaElleDuzeltilecek;
+    const ocrYeni: any = { ...ocr };
+    delete ocrYeni.lucaElleDuzeltilecek;
+    ocrYeni.lucaElleDuzeltildi = { tarih: new Date().toISOString(), userId: userId || null, not: String(body?.not || '').slice(0, 300) || null, lucaFisNo: isaret?.lucaFisNo || ocr.eskiLucaFisNo || null };
+    await (this.prisma as any).invoiceAccountingDocument.update({
+      where: { id },
+      data: { ocrData: ocrYeni, ...(doc.status === 'APPROVED' ? { lucaStatus: 'MANUAL_DONE', lucaErrorMessage: null } : {}) },
+    });
+    await this.logAudit(tenantId, userId, 'LUCA_ELLE_DUZELTILDI', id, { lucaElleDuzeltilecek: isaret }, { lucaElleDuzeltildi: ocrYeni.lucaElleDuzeltildi, status: doc.status });
+    return { ok: true, document: await this.get(tenantId, id) };
   }
 
   /**
@@ -6799,8 +7330,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const doc: any = await this.get(tenantId, id);
     if (['POSTED', 'POSTING'].includes(String(doc.lucaStatus || ''))) throw new BadRequestException('Belge Luca\'ya aktarıldı/aktarılıyor — mükerrer kararı değiştirilemez.');
     const ocr: any = doc.ocrData || {};
-    const uyM = (Array.isArray(ocr.uyarilar) ? ocr.uyarilar : []).find((u: any) => String(u?.kod || '') === UYARI_KOD.MUKERRER);
-    const kararKaydi = { karar, not: String(body?.not || '').slice(0, 300) || null, tarih: new Date().toISOString(), userId: userId || null, ilkBelgeId: uyM?.meta?.ilkBelgeId || doc.duplicateOfId || null };
+    // PLAN/16 §C — karar MUKERRER (engel) yanında MUKERRER_GORSEL / MUKERRER_FIS şüphesini de kapatır/teyit eder.
+    const mukerrerKodlari: string[] = [UYARI_KOD.MUKERRER, UYARI_KOD.MUKERRER_GORSEL, UYARI_KOD.MUKERRER_FIS];
+    const uyM = (Array.isArray(ocr.uyarilar) ? ocr.uyarilar : []).find((u: any) => mukerrerKodlari.includes(String(u?.kod || '')));
+    const kararKaydi = { karar, not: String(body?.not || '').slice(0, 300) || null, tarih: new Date().toISOString(), userId: userId || null, ilkBelgeId: uyM?.meta?.ilkBelgeId || doc.duplicateOfId || null, kod: uyM?.kod || null, tur: uyM?.meta?.tur || null };
     await (this.prisma as any).invoiceAccountingDocument.update({ where: { id }, data: { ocrData: { ...ocr, mukerrerKarar: kararKaydi } } });
     await this.logAudit(tenantId, userId, 'MUKERRER_KARARI', id, { mukerrerKarar: ocr.mukerrerKarar || null, duplicateOfId: doc.duplicateOfId || null }, kararKaydi);
     // revalidate kararı okur: mukerrer_degil → uyarı üretilmez + duplicateOfId temizlenir.
@@ -7133,12 +7666,27 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     return { ...ozet, temizlenen, belgeler: secilen };
   }
 
-  private async recordInvoiceAccountingMemory(tenantId: string, doc: any) {
-    if (!doc?.taxpayerId) return;
+  /**
+   * Onay/düzeltme anında VendorMemory öğrenmesi. PLAN/16 §G: yazılan her kararın anahtarı (OgrenmeKaydi[]) döner —
+   * approve bunları ocrData.ogrenmeKayitlari'na yazar, "Geri al" revertDecision ile geri alır.
+   */
+  private async recordInvoiceAccountingMemory(tenantId: string, doc: any): Promise<OgrenmeKaydi[]> {
+    const kayitlar: OgrenmeKaydi[] = [];
+    if (!doc?.taxpayerId) return kayitlar;
     const isSale = String(doc.invoiceKind || '').toUpperCase() === 'SATIS';
     const firmaKimlikNo = String((isSale ? doc.buyerVkn : doc.sellerVkn) || '').replace(/\D/g, '');
-    if (!firmaKimlikNo) return;
+    if (!firmaKimlikNo) return kayitlar;
     const firmaUnvan = String((isSale ? doc.customerName : doc.vendorName) || '').trim() || null;
+    const simdi = new Date().toISOString();
+    // Karar yaz + anahtarını listeye ekle (geri alma için). Hata yutulur (öğrenme akışı bozmasın).
+    const kaydet = async (p: { kararTipi: 'fatura' | 'isletme'; kategori: string; altKategori: string | null; icerikImza: string | null; onayBoost?: number }, firlat = false) => {
+      try {
+        await this.vendorMemory.recordDecision({ tenantId, firmaKimlikNo, firmaUnvan, taxpayerId: doc.taxpayerId, ...p });
+        kayitlar.push({ kararTipi: p.kararTipi, kategori: p.kategori, altKategori: p.altKategori, icerikImza: p.icerikImza, firmaKimlikNo, taxpayerId: String(doc.taxpayerId), boost: Math.max(1, Math.min(Number(p.onayBoost || 1), 10)), tarih: simdi });
+      } catch (e) {
+        if (firlat) throw e;
+      }
+    };
     // ORAN-BAZLI ÖĞRENME: her matrah satırının kodunu KENDİ KDV oranıyla (altKategori) öğren —
     // aynı satıcının %1/%10/%20 alımları farklı koda gidebilsin (ör. A101 market). Oran yoksa
     // altKategori=null (genel kural).
@@ -7170,17 +7718,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       //   → zehirli-hafıza koruması bozulmaz. (İşletme/Kurallar yolları zaten boost'lu; editör eksikti.)
       const boost = src === 'KULLANICI' ? 2 : undefined;
       // Hem içerik-imzalı (spesifik) HEM satıcı-geneli (imzasız) kayıt yaz → geriye-uyum + içerik-öğrenme.
-      await this.vendorMemory.recordDecision({
-        tenantId, firmaKimlikNo, firmaUnvan, kararTipi: 'fatura',
-        kategori: code, altKategori: rate, icerikImza, taxpayerId: doc.taxpayerId,
-        onayBoost: boost,
-      });
+      await kaydet({ kararTipi: 'fatura', kategori: code, altKategori: rate, icerikImza, onayBoost: boost }, true);
       if (icerikImza) {
-        await this.vendorMemory.recordDecision({
-          tenantId, firmaKimlikNo, firmaUnvan, kararTipi: 'fatura',
-          kategori: code, altKategori: rate, icerikImza: null, taxpayerId: doc.taxpayerId,
-          onayBoost: boost,
-        }).catch(() => {});
+        await kaydet({ kararTipi: 'fatura', kategori: code, altKategori: rate, icerikImza: null, onayBoost: boost });
       }
     }
 
@@ -7195,11 +7735,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     if (cariCode && /^(120|320|329|331)/.test(cariCode) && ['KULLANICI', 'HAFIZA', 'VKN'].includes(cariSrc)) {
       // Elle seçilen (KULLANICI) ya da VKN ile kesin eşleşen cari → onayBoost=2 (tek seferde uygulanır);
       //   HAFIZA pekişmesi normal +1. (Aynı "tek düzeltmede öğren" kuralı cari için de.)
-      await this.vendorMemory.recordDecision({
-        tenantId, firmaKimlikNo, firmaUnvan, kararTipi: 'fatura',
-        kategori: cariCode, altKategori: 'CARI', taxpayerId: doc.taxpayerId,
-        onayBoost: (cariSrc === 'KULLANICI' || cariSrc === 'VKN') ? 2 : undefined,
-      }).catch(() => {});
+      await kaydet({ kararTipi: 'fatura', kategori: cariCode, altKategori: 'CARI', icerikImza: null, onayBoost: (cariSrc === 'KULLANICI' || cariSrc === 'VKN') ? 2 : undefined });
       // PLAN VKN DOLDURMA (iyileştirme #2): müşavir cariyi onayladıysa (KULLANICI/HAFIZA = kesin), o cari
       //   hesabının PLANDAKİ VKN'sini karşı tarafın VKN'siyle DOLDUR (yalnız BOŞsa; üzerine yazma yok).
       //   Böylece sonraki faturalar `cariByVkn` (en güvenilir, deterministik katman) ile eşleşir → isim
@@ -7227,14 +7763,15 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   AI/kural tahmininden ÖNCE bunu uygular. Elle düzeltme açık irade → boost ile eşik anında geçer.
     const islObj: any = (doc.ocrData as any)?.isletme;
     if (islObj && islObj.userEdited === true && String(islObj.kayitTuruKod || '').trim()) {
-      await this.vendorMemory.recordDecision({
-        tenantId, firmaKimlikNo, firmaUnvan, kararTipi: 'isletme',
+      await kaydet({
+        kararTipi: 'isletme',
         kategori: String(islObj.kayitTuruKod).trim(),
         altKategori: String(islObj.kayitAltKod || '').trim() || null,
-        icerikImza, taxpayerId: doc.taxpayerId,
+        icerikImza,
         onayBoost: 2,
-      }).catch(() => {});
+      });
     }
+    return kayitlar;
   }
 
   private memoryAccountCodesFromLines(lines: any[]) {
@@ -7284,6 +7821,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       if (uyariOzet(d.ocrData?.uyarilar).kararBekliyor) return false;
       // A.5 — demirbaş kararı "Luca'da elle işlendi" olan belge (lucaStatus henüz MANUAL_DONE değilse bile) Excel'e girmez.
       if (String(d.ocrData?.demirbasKarar?.karar || '') === 'elle_islendi') return false;
+      // §G — Luca'dan geri alınmış (fiş Luca'da elle düzeltilir/düzeltildi) belge Excel'e girmez (çift fiş).
+      if (this.lucaElleYolu(d.ocrData)) return false;
       const lines = d.lines || [];
       if (isIsletme) {
         return isletmeDocumentReady(d).ok;
@@ -7381,7 +7920,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const docs = allDocs.filter((d: any) => {
       const v = String((d as any).validationStatus || d.ocrData?.validationStatus || '').toUpperCase();
       if (v === 'INVALID' || v === 'INCOMPLETE') { skippedCount++; return false; }
-      if (String(d.lucaStatus || '') === 'MANUAL_DONE' || String(d.ocrData?.demirbasKarar?.karar || '') === 'elle_islendi') { skippedElleIslendi++; return false; }
+      // §G — Luca'dan geri alınmış (ocrData.lucaElleDuzeltilecek/lucaElleDuzeltildi) belge de gönderilmez (fiş Luca'da var → çift fiş).
+      if (String(d.lucaStatus || '') === 'MANUAL_DONE' || String(d.ocrData?.demirbasKarar?.karar || '') === 'elle_islendi' || this.lucaElleYolu(d.ocrData)) { skippedElleIslendi++; return false; }
       if (uyariOzet(d.ocrData?.uyarilar).kararBekliyor) { skippedDemirbas++; return false; }
       const lines = d.lines || [];
       if (isIsletme) {
@@ -7538,6 +8078,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     if (String(doc.lucaStatus || '') === 'MANUAL_DONE' || String((doc as any).ocrData?.demirbasKarar?.karar || '') === 'elle_islendi') {
       throw new BadRequestException('Bu belge "Luca\'da elle işlendi" olarak kapatılmış — Luca\'ya gönderilmez (çift kayıt olur). Göndermek istiyorsanız önce onayı geri alın (karar silinir).');
     }
+    // §G — Luca'dan geri alınmış belge: fiş Luca'da zaten var, elle düzeltilir → yeniden gönderilmez.
+    if (this.lucaElleYolu((doc as any).ocrData)) {
+      throw new BadRequestException('Bu belge Luca\'dan geri alınmış — Luca\'daki fiş elle düzeltilir, yeniden gönderilmez (çift fiş olur).');
+    }
 
     // Eski aktif job'u iptal et (varsa)
     if (doc.lucaJobId) {
@@ -7570,8 +8114,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       throw new BadRequestException('Luca\'ya aktarılmış belge silinemez, önce geri alın');
     }
     // Faz C: denetim izi — silinen belgenin künyesini sakla (kim/ne sildi).
+    // PLAN/16-E: Belge Akışı "Silinen" sekmesi bu kayıttan beslenir → mükellef/ünvan/kaynak da saklanır.
     await this.logAudit(tenantId, userId, 'DELETE', id,
-      { belgeNo: doc.belgeNo, invoiceKind: doc.invoiceKind, totalAmount: String(doc.totalAmount ?? ''), status: doc.status }, null);
+      {
+        belgeNo: doc.belgeNo, invoiceKind: doc.invoiceKind, totalAmount: String(doc.totalAmount ?? ''), status: doc.status,
+        taxpayerId: (doc as any).taxpayerId || null, vendorName: (doc as any).vendorName || null, customerName: (doc as any).customerName || null,
+        source: (doc as any).source || null, documentType: (doc as any).documentType || null, faturaTarihi: (doc as any).faturaTarihi || null,
+      }, null);
     await (this.prisma as any).invoiceAccountingDocument.delete({ where: { id } });
     await (this.prisma as any).eFaturaInbox.updateMany({
       where: { tenantId, documentId: id },
@@ -11488,6 +12037,17 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       return { created: false, document: updated, refreshed: true };
     }
 
+    // PLAN/16 §C — ETTN aynı mükellef+yönde MEVCUT bir belgeyle (başka kaynak/kanal: XML yükleme, başka entegratör,
+    //   eski uuid türetimi) eşleşiyorsa YENİ BELGE OLUŞTURULMAZ; mevcut belge döner (çağıran inbox satırını ona bağlar).
+    if (!opts.existingDocumentId && parsed.ettn) {
+      const ayni = await this.ettnIleMevcutBelge(tenantId, taxpayer.id, parsed.ettn, direction, null);
+      if (ayni) {
+        const mesaj = this.zatenYukluMesaji(ayni);
+        this.logger.warn(`[ZATEN-YUKLU] ETTN ${parsed.ettn} (${parsed.faturaNo || '?'}) mevcut belge ${ayni.id} [${ayni.source}] ile eşleşti → ${cfg.provider} belgesi oluşturulmadı`);
+        return { created: false, document: ayni as any, zatenYuklu: true, mevcutId: ayni.id, mevcutBelgeNo: ayni.belgeNo || null, mevcutTarih: ayni.faturaTarihi || null, mesaj };
+      }
+    }
+
     const stored = await this.buildProviderDocumentStorage(tenantId, taxpayer.id, cfg, xml, payload, parsed, source, sourceRefId);
 
     const total = this.providerDocumentTotal(parsed, direction);
@@ -11497,6 +12057,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       sellerVkn: parsed.saticiVergiNo || null,
       buyerVkn: parsed.aliciVergiNo || null,
       totalAmount: total,
+      faturaTarihi: parsed.faturaTarihi || null,
+      invoiceKind: direction,
     });
     // skipMatching: hesap satırı ÜRETME (Aktar sadece belgeyi koyar; eşleştirme sonra "AI ile işle").
     const lines = skipMatching ? [] : await this.gateCodesByPlan(tenantId, taxpayer.id, this.linesFromAmounts({
@@ -11772,6 +12334,17 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     };
   }
 
+  /**
+   * PLAN/16 §C — MÜKERRER ARAMA (kayıt/güncelleme anı). Sıra ve seviye:
+   *   1) SHA-256 aynı dosya → bu mükellefte ENGEL (SHA256; yükleme ucu artık belge OLUŞTURMADAN atlar, bkz. zatenYukluMu),
+   *      başka mükellefte UYARI (SHA256_BASKA_MUKELLEF — iki tarafı da ofis müşterisi olan fatura meşru olabilir).
+   *   2) UZUN belge no (≥10 rakam; e-Fatura/e-Arşiv benzersiz) + karşı VKN → ENGEL (BELGE_NO; tutar şartı yok — iki
+   *      okuma 0,31 TL sapabiliyor, mükerrer kaçıyordu).
+   *   3) KISA fiş no (ÖKC "0049" gün/satıcı bazında tekrar eder) + VKN + tutar ±0,01 + AYNI GÜN → UYARI (FIS_NO).
+   *   4) Belge no yok/yer tutucu: VKN + AYNI GÜN + SAAT + tutar ±0,01 → UYARI (FIS_SAAT; saat ocrData.saat / rawText'ten).
+   *   KARAR (2026-09-12): ENGEL yalnız uzun belge no'da; gerisi uyarı — sahip karar verir (mukerrerKarari).
+   *   İptal/ret edilmiş belgeler aday değildir.
+   */
   private async findDuplicate(
     tenantId: string,
     input: {
@@ -11781,55 +12354,186 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       buyerVkn?: string | null;
       totalAmount?: string | number | null;
       imageHash?: string | null;
+      faturaTarihi?: Date | string | null;
+      saat?: string | null;
+      rawText?: string | null;
+      invoiceKind?: string | null;
     },
     excludeId?: string,
   ): Promise<DuplicateSignal> {
     const notSelf = excludeId ? { id: { not: excludeId } } : {};
+    const tpFilter = input.taxpayerId ? { taxpayerId: input.taxpayerId } : {};
+    const aktif = { status: { notIn: ['REJECTED', 'CANCELLED'] } };
+    const kunye = (r: any) => ({ id: String(r.id), belgeNo: r.belgeNo || null, faturaTarihi: r.faturaTarihi || null, taxpayerId: r.taxpayerId || null });
     if (input.imageHash) {
-      const byHash = await (this.prisma as any).invoiceAccountingDocument.findFirst({
-        where: { tenantId, imageHash: input.imageHash, ...notSelf },
-        select: { id: true, belgeNo: true, originalName: true },
+      const secim = { id: true, belgeNo: true, originalName: true, taxpayerId: true, faturaTarihi: true };
+      // Önce AYNI mükellef (engel), sonra herhangi bir mükellef (uyarı).
+      const byHashAyni = input.taxpayerId
+        ? await (this.prisma as any).invoiceAccountingDocument.findFirst({ where: { tenantId, imageHash: input.imageHash, taxpayerId: input.taxpayerId, ...aktif, ...notSelf }, select: secim, orderBy: { createdAt: 'asc' } })
+        : null;
+      const byHash = byHashAyni || await (this.prisma as any).invoiceAccountingDocument.findFirst({
+        where: { tenantId, imageHash: input.imageHash, ...aktif, ...notSelf },
+        select: secim,
+        orderBy: { createdAt: 'asc' },
       });
       if (byHash) {
+        const ayniMukellef = !input.taxpayerId || !byHash.taxpayerId || String(byHash.taxpayerId) === String(input.taxpayerId);
+        const ad = byHash.belgeNo || byHash.originalName || byHash.id;
         return {
           duplicateOfId: byHash.id,
-          duplicateReason: `Aynı belge görseli daha önce işlendi (${byHash.belgeNo || byHash.originalName})`,
-          duplicateSeverity: 'BLOCKING',
+          duplicateReason: ayniMukellef
+            ? `Aynı belge görseli daha önce işlendi (${ad})`
+            : `Aynı dosya başka bir mükellefte de yüklü (${ad}) — iki taraf da ofis müşterisiyse normal, değilse yanlış mükellefe yüklenmiş olabilir`,
+          duplicateSeverity: ayniMukellef ? 'BLOCKING' : 'WARNING',
+          kod: ayniMukellef ? 'SHA256' : 'SHA256_BASKA_MUKELLEF',
+          mevcut: kunye(byHash),
         };
       }
     }
 
-    const belgeNo = input.belgeNo?.trim();
-    const total = money(input.totalAmount);
-    const vkns = [input.sellerVkn, input.buyerVkn].map((v) => v?.trim()).filter(Boolean);
-    // e-Fatura/e-Arşiv belge no'su BENZERSİZDİR (10+ rakam). Aynı satıcı (VKN) + aynı uzun belge no =
-    //   KESİN aynı fatura → TUTAR şartı arama (iki okuma 0,31 TL fark verebiliyor, mükerrer kaçıyordu).
-    //   Kısa fiş no'su (ÖKC "0049" gibi) gün/satıcı bazında tekrar edebilir → onda tutar şartı KORUNUR.
-    const belgeNoUzun = !!belgeNo && belgeNo.replace(/\D/g, '').length >= 10;
-    if (belgeNo && vkns.length && (belgeNoUzun || total)) {
+    const belgeNo = String(input.belgeNo || '').trim();
+    const ham = [input.sellerVkn, input.buyerVkn].map((v) => String(v || '').trim()).filter(Boolean);
+    const vkns = Array.from(new Set([...ham, ...ham.map((v) => v.replace(/\D/g, ''))].filter((v) => v.length >= 10)));
+    if (!vkns.length) return null;
+    const yon = String(input.invoiceKind || '').toUpperCase();
+    // Karşı taraf VKN'si (anahtar için): satışta alıcı, alışta satıcı; yön bilinmiyorsa eldeki ilk VKN.
+    const karsiVkn = (yon === 'SATIS' ? input.buyerVkn : yon === 'ALIS' ? input.sellerVkn : null) || input.sellerVkn || input.buyerVkn;
+    const anahtar = fisEslesmeAnahtari({
+      belgeNo, vkn: karsiVkn, tutar: input.totalAmount, tarih: input.faturaTarihi ?? null, saat: input.saat, rawText: input.rawText, docId: excludeId || null,
+    });
+    if (!anahtar) return null;
+    const vknOr = { OR: [{ sellerVkn: { in: vkns } }, { buyerVkn: { in: vkns } }] };
+
+    if (anahtar.tur === 'uzun') {
       const byFields = await (this.prisma as any).invoiceAccountingDocument.findFirst({
-        where: {
-          tenantId,
-          belgeNo,
-          ...(input.taxpayerId ? { taxpayerId: input.taxpayerId } : {}),
-          ...(belgeNoUzun ? {} : { totalAmount: total }),
-          OR: [
-            { sellerVkn: { in: vkns } },
-            { buyerVkn: { in: vkns } },
-          ],
-          ...notSelf,
-        },
-        select: { id: true, belgeNo: true, vendorName: true, customerName: true },
+        where: { tenantId, belgeNo, ...tpFilter, ...aktif, ...vknOr, ...notSelf },
+        select: { id: true, belgeNo: true, vendorName: true, customerName: true, taxpayerId: true, faturaTarihi: true },
+        orderBy: { createdAt: 'asc' },
       });
       if (byFields) {
         return {
           duplicateOfId: byFields.id,
           duplicateReason: `Aynı belge no/satıcı daha önce yüklendi (${byFields.belgeNo || byFields.vendorName || byFields.customerName})`,
           duplicateSeverity: 'BLOCKING',
+          kod: 'BELGE_NO',
+          mevcut: kunye(byFields),
+          anahtar: anahtar.anahtar,
         };
       }
+      return null;
+    }
+
+    const gun = gunAraligi(input.faturaTarihi ?? null);
+    if (!gun || anahtar.tutar == null) return null;
+    const tutar = tutarAraligi(anahtar.tutar);
+    if (anahtar.tur === 'kisa') {
+      const fis = await (this.prisma as any).invoiceAccountingDocument.findFirst({
+        where: { tenantId, belgeNo, ...tpFilter, ...aktif, totalAmount: tutar, faturaTarihi: gun, ...vknOr, ...notSelf },
+        select: { id: true, belgeNo: true, vendorName: true, customerName: true, taxpayerId: true, faturaTarihi: true },
+        orderBy: { createdAt: 'asc' },
+      });
+      if (fis) {
+        return {
+          duplicateOfId: fis.id,
+          duplicateReason: `Mükerrer şüphesi — aynı fiş no (${fis.belgeNo || belgeNo}), satıcı, tutar ve gün`,
+          duplicateSeverity: 'WARNING',
+          kod: 'FIS_NO',
+          mevcut: kunye(fis),
+          anahtar: anahtar.anahtar,
+        };
+      }
+      return null;
+    }
+
+    // tur === 'saat': belge no yok → VKN + gün + tutar adayları, SAAT eşitliği JS'te (ocrData.saat / rawText).
+    const adaylar = await this.belgeAdaylari({
+      where: { tenantId, ...tpFilter, ...aktif, totalAmount: tutar, faturaTarihi: gun, ...(yon === 'ALIS' || yon === 'SATIS' ? { invoiceKind: yon } : {}), ...vknOr, ...notSelf },
+      select: { id: true, belgeNo: true, vendorName: true, customerName: true, taxpayerId: true, faturaTarihi: true, ocrData: true, ocrRawText: true },
+      orderBy: { createdAt: 'asc' },
+      take: 50,
+    });
+    const ayniSaat = adaylar.find((a: any) => belgeSaati(a) === anahtar.saat);
+    if (ayniSaat) {
+      return {
+        duplicateOfId: ayniSaat.id,
+        duplicateReason: `Mükerrer şüphesi — aynı satıcı, gün, saat (${anahtar.saat}) ve tutar`,
+        duplicateSeverity: 'WARNING',
+        kod: 'FIS_SAAT',
+        mevcut: kunye(ayniSaat),
+        anahtar: anahtar.anahtar,
+      };
     }
     return null;
+  }
+
+  /** Belge aday listesi (findMany) — hata/eksik istemcide (test mock'u) boş liste döner, akışı bozmaz. */
+  private async belgeAdaylari(args: any): Promise<any[]> {
+    try {
+      const r = await (this.prisma as any).invoiceAccountingDocument.findMany(args);
+      return Array.isArray(r) ? r : [];
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * PLAN/16 §C.1 — YÜKLEME ÖNCESİ "zaten yüklü" kontrolü: birebir aynı dosya (SHA-256) ya da aynı ETTN'li UBL XML
+   * bu mükellefte zaten varsa belge OLUŞTURULMAZ; çağıran yanıtta {zatenYuklu, mevcutId, mevcutBelgeNo, mevcutTarih} döner.
+   * Mükellef verilmediyse (genel yükleme) SHA-256 kiracı genelinde aranır. İptal/ret belgeler sayılmaz (yeniden yükleme serbest).
+   */
+  private async zatenYukluMu(
+    tenantId: string,
+    p: { taxpayerId?: string | null; imageHash?: string | null; buffer?: Buffer | null; mimeType?: string | null; invoiceKind?: string | null },
+  ): Promise<{ id: string; belgeNo: string | null; faturaTarihi: Date | null; tur: 'sha256' | 'ettn'; ettn?: string } | null> {
+    const secim = { id: true, belgeNo: true, faturaTarihi: true };
+    if (p.imageHash) {
+      const ayni = await (this.prisma as any).invoiceAccountingDocument.findFirst({
+        where: { tenantId, imageHash: p.imageHash, status: { notIn: ['REJECTED', 'CANCELLED'] }, ...(p.taxpayerId ? { taxpayerId: p.taxpayerId } : {}) },
+        select: secim,
+        orderBy: { createdAt: 'asc' },
+      }).catch(() => null);
+      if (ayni) return { id: ayni.id, belgeNo: ayni.belgeNo || null, faturaTarihi: ayni.faturaTarihi || null, tur: 'sha256' };
+    }
+    const xmlMi = /xml/i.test(String(p.mimeType || '')) || !p.mimeType;
+    const ettn = xmlMi && p.buffer ? ettnAyikla(p.buffer) : null;
+    if (ettn && p.taxpayerId) {
+      const ayni = await this.ettnIleMevcutBelge(tenantId, p.taxpayerId, ettn, p.invoiceKind || null, null);
+      if (ayni) return { id: ayni.id, belgeNo: ayni.belgeNo || null, faturaTarihi: ayni.faturaTarihi || null, tur: 'ettn', ettn };
+    }
+    return null;
+  }
+
+  /** "Zaten yüklü" mesajı: "Zaten yüklü: belge X (tarih)". */
+  private zatenYukluMesaji(m: { belgeNo?: string | null; faturaTarihi?: Date | string | null; id: string }): string {
+    const ad = String(m.belgeNo || '').trim() || m.id;
+    const t = m.faturaTarihi ? new Date(m.faturaTarihi) : null;
+    const tarih = t && !Number.isNaN(t.getTime()) ? t.toLocaleDateString('tr-TR', { timeZone: 'UTC' }) : 'tarih yok';
+    return `Zaten yüklü: belge ${ad} (${tarih})`;
+  }
+
+  /**
+   * PLAN/16 §C — ETTN ile mevcut belge (aynı mükellef, isteğe bağlı aynı yön): sourceRefId = ETTN (entegratör/GİB)
+   * ya da ocrData.ettn = ETTN (Aktar/XML yükleme). Büyük/küçük harf farkı gözetilmez.
+   */
+  private async ettnIleMevcutBelge(tenantId: string, taxpayerId: string, ettn: string, invoiceKind?: string | null, excludeId?: string | null) {
+    const e = String(ettn || '').trim();
+    if (!e || !taxpayerId) return null;
+    const cesitler = Array.from(new Set([e, e.toLowerCase(), e.toUpperCase()]));
+    const yon = String(invoiceKind || '').toUpperCase();
+    return (this.prisma as any).invoiceAccountingDocument.findFirst({
+      where: {
+        tenantId,
+        taxpayerId,
+        ...(yon === 'ALIS' || yon === 'SATIS' ? { invoiceKind: yon } : {}),
+        ...(excludeId ? { id: { not: excludeId } } : {}),
+        OR: [
+          { sourceRefId: { in: cesitler } },
+          ...cesitler.map((v) => ({ ocrData: { path: ['ettn'], equals: v } })),
+        ],
+      },
+      select: { id: true, belgeNo: true, faturaTarihi: true, source: true, taxpayerId: true, invoiceKind: true, createdAt: true },
+      orderBy: { createdAt: 'asc' },
+    }).catch(() => null);
   }
 
   // v2.3: Upload-OCR yolu da satis/alis yon-duyarli olsun (eskiden hep ALIS
@@ -12555,8 +13259,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     stopajTutari?: any;
     /** Faz 2 — demirbaş sahip kararı (ocrData.demirbasKarar.karar): elle_islendi | yine_de_isle | demirbas_degil | null. */
     fixedAssetKarar?: string | null;
-    /** Faz 2 — MÜKERRER (belge no + karşı VKN + tutar ±0,01 + yön aynı; ilk belge kalır) → ENGEL. */
-    mukerrer?: { ilkBelgeId: string; belgeNo?: string | null; tutar?: any; createdAt?: any } | null;
+    /** Faz 2 — MÜKERRER (belge no + karşı VKN + tutar ±0,01 + yön aynı; ilk belge kalır) → ENGEL.
+     *  PLAN/16 §C: yalnız UZUN belge no ('uzun') ya da sahibin "mükerrer" teyidi ('kisa'/'saat'/'gorsel') buraya gelir. */
+    mukerrer?: { ilkBelgeId: string; belgeNo?: string | null; tutar?: any; createdAt?: any; tur?: 'uzun' | 'kisa' | 'saat' | 'gorsel' } | null;
   }): Promise<{
     status: 'OK' | 'INCOMPLETE' | 'INVALID';
     issues: Array<{ code: string; severity: 'WARNING' | 'ERROR'; message: string; expected?: any; actual?: any }>;
@@ -12859,10 +13564,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // ── 10) MUKERRER — Faz 2 (PLAN/15): belge no + karşı VKN + tutar (±0,01) + yön aynı olan DAHA ESKİ bir belge
     //     varsa bu belge mükerrerdir → ENGEL (onay ve Luca gönderimi engellenir; ilk belge kalır).
     if (opts.mukerrer?.ilkBelgeId) {
+      const teyitli = opts.mukerrer.tur && opts.mukerrer.tur !== 'uzun';
       issues.push({
         code: 'MUKERRER',
         severity: 'ERROR',
-        message: `Mükerrer belge — aynı belge no${opts.mukerrer.belgeNo ? ` (${opts.mukerrer.belgeNo})` : ''}, karşı taraf VKN, tutar ve yönde daha önce kaydedilmiş bir belge var. Bu kopya onaylanamaz; ilk belgeyi açıp kontrol edin, bu belgeyi silin.`,
+        message: teyitli
+          ? `Mükerrer belge — sahip bu belgenin${opts.mukerrer.belgeNo ? ` (${opts.mukerrer.belgeNo})` : ''} daha önce kaydedilmiş belgenin kopyası olduğunu teyit etti. Bu kopya onaylanamaz; silin (ya da "Mükerrer değil" ile kararı geri alın).`
+          : `Mükerrer belge — aynı belge no${opts.mukerrer.belgeNo ? ` (${opts.mukerrer.belgeNo})` : ''}, karşı taraf VKN, tutar ve yönde daha önce kaydedilmiş bir belge var. Bu kopya onaylanamaz; ilk belgeyi açıp kontrol edin, bu belgeyi silin.`,
         expected: opts.mukerrer.ilkBelgeId,
       });
     }

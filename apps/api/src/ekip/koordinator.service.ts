@@ -3,6 +3,7 @@ import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import { EkipKosuSonucu, EkipRunnerService } from './ekip-runner.service';
+import { geceOzetSatiri } from '../fatura-muhasebelestirme/gece-cekim';
 
 /**
  * KOORDİNATÖR (Ofis Müdürü) — PLAN/13-AJAN-KADROSU.md §3.1, §8-D.
@@ -42,33 +43,57 @@ export class KoordinatorService {
       .filter(Boolean);
   }
 
-  private sabahGorevi(): string {
+  private sabahGorevi(geceSatiri: string): string {
     const tarih = new Date().toLocaleDateString('tr-TR', {
       timeZone: 'Europe/Istanbul', weekday: 'long', day: '2-digit', month: 'long', year: 'numeric',
     });
     return [
       `Bugün ${tarih}. Sahibe WhatsApp'tan gidecek "BUGÜNÜN OFİS ÖZETİ"ni hazırla.`,
       'Sırayla bak: get_operation_briefing → get_tax_calendar → get_beyanname_readiness_summary → get_collection_risk_summary → ekip_pano (son 3 dönem) → ekip_isler (son 20; kuru test / onay bekleyen).',
+      // PLAN/16 §H: gece çekimi özeti sistemden hazır gelir (AuditLog GECE_CEKIM, son 24 saat) — araç çağrısı gerekmez.
+      `Hazır veri (sistemden, araç çağırmadan aynen kullan): ${geceSatiri}. Bunu 🤖 EKİP başlığına tek madde olarak yaz.`,
       'Sonra "Günaydın." ile başlayan, şu 5 başlığı bu sırayla taşıyan TEK mesaj yaz:',
-      '📊 DURUM · ⚠️ RİSKLİ/ACİL · 📝 YAKLAŞAN SÜRELER · 🤖 EKİP (dün ne yaptı, onay bekleyen) · ▶️ BUGÜN ÖNCELİK',
+      '📊 DURUM · ⚠️ RİSKLİ/ACİL · 📝 YAKLAŞAN SÜRELER · 🤖 EKİP (dün ne yaptı, onay bekleyen, gece çekimi) · ▶️ BUGÜN ÖNCELİK',
       'Her başlıkta en fazla üç madde, her madde TEK satır; toplam 1100 karakteri aşma. Çift yıldız ve markdown başlığı kullanma; • madde, Türk sayı biçimi.',
-      'SADECE araç çıktısındaki rakamları kullan; toplama/yüzde HESAPLAMA, tarih UYDURMA. Veri yoksa "veri alınamadı" yaz (sıfır ile karıştırma).',
+      'SADECE araç çıktısındaki ve hazır verideki rakamları kullan; toplama/yüzde HESAPLAMA, tarih UYDURMA. Veri yoksa "veri alınamadı" yaz (sıfır ile karıştırma).',
       'Araç adı ya da "çağırıyorum" gibi iç adım yazma. Mesaj metnini "RAPOR:" satırından SONRA ver.',
     ].join('\n');
   }
 
+  /**
+   * PLAN/16 §H: son 24 saatin GECE_CEKIM AuditLog kayıtlarından "gece çekimi: N belge geldi (X mükellef, Y hata)".
+   * Kayıt yoksa / sorgu düşerse "çalışmadı" satırı — akış bozulmaz.
+   */
+  async geceCekimSatiri(tenantId: string): Promise<string> {
+    try {
+      const rows = await (this.prisma as any).auditLog.findMany({
+        where: { tenantId, action: 'GECE_CEKIM', createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } },
+        select: { newData: true },
+        orderBy: { createdAt: 'desc' },
+        take: 500,
+      });
+      return geceOzetSatiri((rows || []).map((r: any) => r?.newData));
+    } catch (e: any) {
+      this.logger.warn(`[Koordinator] ${tenantId}: gece çekimi kayıtları okunamadı: ${e?.message || e}`);
+      return 'gece çekimi: veri alınamadı';
+    }
+  }
+
   /** Koordinatörü koştur ve sahibe gönder. Dönen sonuç iş dosyasıyla aynıdır. */
   async sabahOzeti(tenantId: string, opts: { gonder?: boolean } = {}): Promise<EkipKosuSonucu & { gonderildi: number }> {
+    const geceSatiri = await this.geceCekimSatiri(tenantId);
     const sonuc = await this.runner.calistir({
       ajanId: 'koordinator',
-      gorev: this.sabahGorevi(),
+      gorev: this.sabahGorevi(geceSatiri),
       tenantId,
       userId: null,
       dryRun: true,
       kaynak: 'cron',
     });
     let gonderildi = 0;
-    const metin = this.raporMetni(sonuc.rapor);
+    let metin = this.raporMetni(sonuc.rapor);
+    // Ajan satırı atladıysa özetin sonuna sistem satırı olarak ekle (gece çekimi bilgisi hep gitsin).
+    if (metin && !/gece çekimi/i.test(metin)) metin = `${metin}\n🌙 ${geceSatiri}`.slice(0, 3500);
     const gonder = opts.gonder !== false;
     if (gonder && metin && !sonuc.hata) {
       const aktif = await this.whatsapp.isAutomationActive(tenantId).catch(() => false);

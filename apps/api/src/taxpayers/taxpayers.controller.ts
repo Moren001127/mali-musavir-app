@@ -70,9 +70,42 @@ export class TaxpayersController {
     );
   }
 
+  /**
+   * PLAN/16 §F: kurum türü / defter türü seçenekleri (kod → Türkçe etiket).
+   * `:id` yolundan ÖNCE tanımlı olmalı — aksi halde "faaliyet-secenekler" id sanılır.
+   */
+  @Get('faaliyet-secenekler')
+  faaliyetSecenekler() {
+    return this.taxpayersService.faaliyetSecenekler();
+  }
+
   @Get(':id')
   findOne(@Req() req: any, @Param('id') id: string) {
     return this.taxpayersService.findOne(id, req.user.tenantId);
+  }
+
+  /**
+   * PLAN/16 §F: Mükellef faaliyet tanımı — yalnız gönderilen alanlar güncellenir.
+   * Body: { naceKodu?, faaliyetAciklama?, sektorEtiketi?, kurumTuru?, defterTuru? } ('' → null = temizle)
+   * Yanıt: { ok, degisenAlanlar, taxpayer: { id, naceKodu, faaliyetAciklama, sektorEtiketi, kurumTuru, defterTuru, … } }
+   */
+  @Patch(':id/faaliyet')
+  @Roles('ADMIN', 'STAFF')
+  updateFaaliyet(@Req() req: any, @Param('id') id: string, @Body() body: any) {
+    return this.taxpayersService.updateFaaliyet(
+      id, req.user.tenantId, body || {}, req.user?.userId || req.user?.sub || null,
+    );
+  }
+
+  /**
+   * PLAN/16 §F: "NACE öner" — AI tahmini (ünvan + son faturalar). YAZMAZ; sahip onaylayınca PATCH ile kaydedilir.
+   * Yanıt: { ok:true, oneri: { naceKodu, naceAdi, faaliyetAciklama, sektorEtiketi, kurumTuru, guven, gerekce }, mevcut, belgeSayisi }
+   *        | { ok:false, neden }
+   */
+  @Post(':id/faaliyet-oner')
+  @Roles('ADMIN', 'STAFF')
+  faaliyetOner(@Req() req: any, @Param('id') id: string) {
+    return this.taxpayersService.faaliyetOner(id, req.user.tenantId);
   }
 
   @Post()

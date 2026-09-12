@@ -228,6 +228,86 @@ async function main() {
   const noControlReport = await noControlService.kdvClientReport('tenant-1', { taxpayerId: 'tp1', period: '2026-05' });
   assert.ok(noControlReport.controls.warnings.some((line) => line.includes('kontrol oturumu bulunamadı')));
 
+  // ── PLAN/16 §D — durum süzgeci + iade + tevkifat + KDV dışı vergi + hesap atanmamış + drilldown ──
+  // Temel: yalnız onaylı alış (1000/200) + satış (2000/400). kaynak sayaçları.
+  assert.strictEqual(report.kaynak.belge, 4, 'kaynak.belge = toplama giren satır sayısı');
+  assert.strictEqual(report.kaynak.onaysiz, 2, 'READY + NEEDS_REVIEW onaysız sayılır');
+  assert.strictEqual(report.kaynak.iptalHaric, 0);
+  assert.strictEqual(report.kaynak.mukerrerHaric, 0);
+  assert.strictEqual(report.quality.invoiceCount, 4);
+  assert.strictEqual(report.hesapAtanmamis.count, 1, 'kodsuz matrah satırlı belge = hesap atanmamış');
+  assert.strictEqual(report.hesapAtanmamis.base, 100);
+  assert.deepStrictEqual(report.hesapAtanmamis.belgeler, ['doc-alis-kodsuz']);
+  assert.ok(report.drilldown.hesaplananBelgeler.includes('doc-satis'));
+  assert.strictEqual(report.drilldown.indirilecekBelgeler.length, 3);
+  assert.deepStrictEqual(report.drilldown.onaysizBelgeler.sort(), ['doc-alis-kodsuz', 'doc-alis-masraf']);
+  assert.strictEqual(report.categoryRows.find((r) => r.key === 'unclassified').alias, 'hesapAtanmamis', 'eski anahtar korunur, alias eklenir');
+  assert.strictEqual(report.totals.calculatedVatBeyan, 400);
+  assert.strictEqual(report.totals.deductibleVatTevkifatHaric, 270);
+  assert.strictEqual(report.totals.otherTaxesTotal, 0);
+
+  // 1) İPTAL / RED / MÜKERRER belgeler toplama GİRMEZ; bağlı GİB sorgu satırı da sayılmaz.
+  const iptalDocs = [
+    ...docs,
+    { id: 'doc-iptal', source: 'earsiv', sourceRefId: 'alis-iptal', s3Key: '', invoiceKind: 'ALIS', belgeNo: 'X-1', status: 'CANCELLED', ocrData: {}, lines: [{ group: 'matrah', accountCode: '770.01.010', debit: 9000, credit: 0 }, { group: 'vergi', accountCode: '191.01.020', debit: 1800, credit: 0 }] },
+    { id: 'doc-red', source: 'manual-web', sourceRefId: null, s3Key: 'k1', invoiceKind: 'ALIS', belgeNo: 'X-2', status: 'REJECTED', ocrData: { matrah: 5000, kdvTutari: 1000 }, totalAmount: 6000, lines: [] },
+    { id: 'doc-mukerrer-bag', source: 'manual-web', sourceRefId: null, s3Key: 'k2', invoiceKind: 'ALIS', belgeNo: 'X-3', status: 'NEEDS_REVIEW', duplicateOfId: 'doc-alis-mal', ocrData: { matrah: 5000, kdvTutari: 1000 }, totalAmount: 6000, lines: [] },
+    { id: 'doc-mukerrer-uyari', source: 'manual-web', sourceRefId: null, s3Key: 'k3', invoiceKind: 'SATIS', belgeNo: 'X-4', status: 'NEEDS_REVIEW', ocrData: { matrah: 7000, kdvTutari: 1400, uyarilar: [{ kod: 'MUKERRER', seviye: 'engel', baslik: 'Mükerrer', aciklama: 'aynı belge' }] }, totalAmount: 8400, lines: [] },
+  ];
+  const iptalInvoices = [
+    ...invoices,
+    { id: 'alis-iptal', tip: 'ALIS', belgeKaynak: 'EARSIV', donem: '2026-05', faturaNo: 'X-1', faturaTarihi: new Date('2026-05-06T00:00:00Z'), satici: 'İptal Ltd', saticiVergiNo: '5555555555', alici: 'Demo Ltd', aliciVergiNo: '1234567890', matrah: 9000, kdvTutari: 1800, kdvOrani: 20, toplamTutar: 10800, durum: 'KABUL' },
+  ];
+  const iptalReport = await makeService({ invoices: iptalInvoices, docs: iptalDocs }).kdvClientReport('tenant-1', { taxpayerId: 'tp1', period: '2026-05' });
+  assert.strictEqual(iptalReport.totals.deductibleVat, 270, 'iptal/red/mükerrer alış KDV toplama girmedi');
+  assert.strictEqual(iptalReport.totals.calculatedVat, 400, 'MUKERRER uyarılı satış toplama girmedi');
+  assert.strictEqual(iptalReport.kaynak.iptalHaric, 2, 'CANCELLED + REJECTED');
+  assert.strictEqual(iptalReport.kaynak.mukerrerHaric, 2, 'duplicateOfId + MUKERRER uyarısı');
+  assert.strictEqual(iptalReport.kaynak.belge, 4, 'GİB satırı iptal belgeye bağlıysa o da sayılmaz');
+  assert.deepStrictEqual(iptalReport.drilldown.iptalHaricBelgeler.sort(), ['doc-iptal', 'doc-red']);
+  assert.deepStrictEqual(iptalReport.drilldown.mukerrerHaricBelgeler.sort(), ['doc-mukerrer-bag', 'doc-mukerrer-uyari']);
+  assert.strictEqual(iptalReport.quality.iptalHaricCount, 2);
+
+  // 2) İADE ters işaret: satış iadesi satış matrah/KDV'yi, alış iadesi alış KDV'yi düşürür.
+  const iadeDocs = [
+    ...docs,
+    { id: 'doc-satis-iade', source: 'manual-web', sourceRefId: null, s3Key: 'i1', invoiceKind: 'SATIS', belgeNo: 'I-1', status: 'APPROVED', ocrData: { matrah: 500, kdvTutari: 100, isReturn: true }, totalAmount: 600, lines: [{ group: 'matrah', accountCode: '610.01.001', debit: 500, credit: 0 }, { group: 'vergi', accountCode: '391.01.020', debit: 100, credit: 0 }] },
+    { id: 'doc-alis-iade', source: 'manual-web', sourceRefId: null, s3Key: 'i2', invoiceKind: 'ALIS', belgeNo: 'I-2', status: 'APPROVED', ocrData: { matrah: 200, kdvTutari: 40, isReturn: true }, totalAmount: 240, lines: [{ group: 'matrah', accountCode: '153.01.001', debit: 0, credit: 200 }, { group: 'vergi', accountCode: '191.01.020', debit: 0, credit: 40 }] },
+  ];
+  const iadeReport = await makeService({ invoices, docs: iadeDocs }).kdvClientReport('tenant-1', { taxpayerId: 'tp1', period: '2026-05' });
+  assert.strictEqual(iadeReport.totals.salesBase, 1500, 'satış iadesi matrahı düşürdü');
+  assert.strictEqual(iadeReport.totals.calculatedVat, 300, 'satış iadesi hesaplanan KDV\'yi düşürdü');
+  assert.strictEqual(iadeReport.totals.deductibleVat, 230, 'alış iadesi indirilecek KDV\'yi düşürdü');
+  assert.strictEqual(iadeReport.totals.purchaseGoodsBase, 800, 'alış iadesi mal/stok kovasını düşürdü');
+  assert.strictEqual(iadeReport.kaynak.iade, 2);
+  assert.deepStrictEqual(iadeReport.drilldown.iadeBelgeler.sort(), ['doc-alis-iade', 'doc-satis-iade']);
+  assert.ok(iadeReport.notlar.some((n) => n.includes('iade')));
+
+  // 3) TEVKİFATLI SATIŞ: hesaplanan KDV TAM (calculatedVat), tevkif edilen ayrı satır, beyan tabanı = TAM − tevkif edilen.
+  //    TEVKİFATLI ALIŞ: indirilecek TAM (191 + sorumlu-191), KDV2 kısmı kdv2SorumluVat'ta ayrı; KDV dışı vergi karışmaz.
+  const tevkDocs = [
+    ...docs,
+    { id: 'doc-satis-tevk', source: 'manual-web', sourceRefId: null, s3Key: 't1', invoiceKind: 'SATIS', belgeNo: 'T-1', status: 'APPROVED',
+      ocrData: { matrah: 10000, kdvTutari: 2000, tevkifatOrani: 0.5, tevkifatKdv: 1000 }, totalAmount: 11000,
+      lines: [{ group: 'cari', accountCode: '120.01.001', debit: 11000, credit: 0 }, { group: 'matrah', accountCode: '600.01.001', debit: 0, credit: 10000 }, { group: 'vergi', accountCode: '391.01.020', debit: 0, credit: 1000 }] },
+    { id: 'doc-alis-tevk', source: 'manual-web', sourceRefId: null, s3Key: 't2', invoiceKind: 'ALIS', belgeNo: 'T-2', status: 'APPROVED',
+      ocrData: { matrah: 4000, kdvTutari: 800, tevkifatOrani: 0.5, digerVergiToplam: 150 }, totalAmount: 4550,
+      lines: [{ group: 'matrah', accountCode: '770.01.010', debit: 4000, credit: 0 }, { group: 'vergi', accountCode: '191.01.020', debit: 400, credit: 0 }, { group: 'vergi-sorumlu', accountCode: '191.02.001', debit: 400, credit: 0 }, { group: 'diger_vergi', accountCode: '770.01.010', debit: 150, credit: 0 }, { group: 'cari', accountCode: '320.01.001', debit: 0, credit: 4550 }, { group: 'tevkifat', accountCode: '360.01.001', debit: 0, credit: 400 }] },
+  ];
+  const tevkReport = await makeService({ invoices, docs: tevkDocs }).kdvClientReport('tenant-1', { taxpayerId: 'tp1', period: '2026-05' });
+  assert.strictEqual(tevkReport.totals.calculatedVat, 2400, 'tevkifatlı satışta hesaplanan KDV TAM');
+  assert.strictEqual(tevkReport.totals.tevkifEdilenVat, 1000, 'tevkif edilen ayrı satır');
+  assert.strictEqual(tevkReport.totals.calculatedVatBeyan, 1400, 'KDV1 beyan tabanı = TAM − tevkif edilen');
+  assert.strictEqual(tevkReport.totals.deductibleVat, 1070, 'tevkifatlı alışta indirilecek TAM (191 + sorumlu-191)');
+  assert.strictEqual(tevkReport.totals.kdv2SorumluVat, 400, 'KDV2 (sorumlu) kısmı ayrı');
+  assert.strictEqual(tevkReport.totals.deductibleVatTevkifatHaric, 670);
+  assert.strictEqual(tevkReport.totals.otherTaxesTotal, 150, 'KDV dışı vergi ayrı, KDV\'ye karışmadı');
+  assert.strictEqual(tevkReport.totals.periodVatDifference, 330, '(2400 − 1000) − 1070');
+  assert.strictEqual(tevkReport.kaynak.tevkifatli, 2);
+  assert.deepStrictEqual(tevkReport.drilldown.tevkifatliBelgeler.sort(), ['doc-alis-tevk', 'doc-satis-tevk']);
+  assert.ok(tevkReport.notlar.some((n) => n.includes('Tevkifatlı SATIŞ')) && tevkReport.notlar.some((n) => n.includes('Tevkifatlı ALIŞ')));
+  assert.ok(tevkReport.notlar.some((n) => n.includes('KDV dışı')));
+
   console.log('kdv-client-report-regression ok');
 }
 

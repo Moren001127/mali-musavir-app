@@ -1,7 +1,33 @@
-import { BadRequestException, Injectable, NotFoundException, Optional } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { CreateTaxpayerDto } from '@mali-musavir/shared';
+import { CreateTaxpayerDto, KURUM_TURU_SECENEKLERI, DEFTER_TURU_KODLARI, DEFTER_TURU_ETIKETLERI } from '@mali-musavir/shared';
 import { AutomationEventBus } from '../automations/automation-event-bus.service';
+import { claudeTextViaMax, MAX_MODEL_CHEAP } from '../common/max-inference';
+import { kurumTuruTahmin } from '../fatura-muhasebelestirme/tevkifat-kurallari';
+import {
+  FAALIYET_ALANLARI,
+  faaliyetBelgeOzeti,
+  faaliyetOnerCevabiCoz,
+  faaliyetOnerIstemi,
+  faaliyetPatchDogrula,
+} from './mukellef-faaliyet';
+
+/** PLAN/16 §F: faaliyet uçlarının döndürdüğü mükellef alanları. */
+const FAALIYET_SELECT = {
+  id: true,
+  type: true,
+  companyName: true,
+  firstName: true,
+  lastName: true,
+  taxNumber: true,
+  naceKodu: true,
+  faaliyetAciklama: true,
+  sektorEtiketi: true,
+  kurumTuru: true,
+  defterTuru: true,
+  mihsapDefterTuru: true,
+  updatedAt: true,
+} as const;
 
 type TaxpayerListOptions = {
   scope?: 'monthly' | 'directory';
@@ -17,6 +43,8 @@ type TaxpayerListOptions = {
 
 @Injectable()
 export class TaxpayersService {
+  private readonly logger = new Logger(TaxpayersService.name);
+
   constructor(
     private prisma: PrismaService,
     @Optional() private readonly eventBus?: AutomationEventBus,
@@ -162,6 +190,9 @@ export class TaxpayersService {
         hattatId: true,
         naceKodu: true,
         faaliyetAciklama: true,
+        // PLAN/16 §F: Mükellefler listesi "Faaliyet" sütunu (sektör etiketi + kurum türü; NACE/faaliyet/defter zaten var)
+        sektorEtiketi: true,
+        kurumTuru: true,
         ticaretSicilNo: true,
         mersisNo: true,
         odaSicilNo: true,
@@ -425,6 +456,133 @@ export class TaxpayersService {
     const taxpayer = await this.prisma.taxpayer.findFirst({ where: { id, tenantId } });
     if (!taxpayer) throw new NotFoundException();
     return this.prisma.taxpayer.update({ where: { id }, data: this.normalizeDefterFields(dto as any) });
+  }
+
+  // ============================================================
+  // PLAN/16 §F: Mükellef FAALİYET tanımı (Fatura Merkezi > Mükellefler listesi)
+  // ============================================================
+
+  /** Seçim kutuları için kurum türü + defter türü listesi (kod → Türkçe etiket). */
+  faaliyetSecenekler() {
+    return {
+      kurumTurleri: KURUM_TURU_SECENEKLERI,
+      defterTurleri: DEFTER_TURU_KODLARI.map((value) => ({ value, label: DEFTER_TURU_ETIKETLERI[value] })),
+      alanlar: FAALIYET_ALANLARI,
+    };
+  }
+
+  /**
+   * PATCH taxpayers/:id/faaliyet — yalnız gönderilen faaliyet alanlarını günceller ('' → null = temizle).
+   * defterTuru gelirse mihsapDefterTuru da normalizeDefterFields ile hizalanır. Eski→yeni AuditLog'a yazılır.
+   */
+  async updateFaaliyet(id: string, tenantId: string, body: unknown, userId?: string | null) {
+    const dogrulama = faaliyetPatchDogrula(body);
+    if (!dogrulama.ok) throw new BadRequestException(dogrulama.hatalar);
+    const mevcut = await (this.prisma as any).taxpayer.findFirst({ where: { id, tenantId }, select: FAALIYET_SELECT });
+    if (!mevcut) throw new NotFoundException('Mükellef bulunamadı');
+
+    const data: Record<string, any> = { ...dogrulama.data };
+    if (data.defterTuru !== undefined) {
+      if (data.defterTuru === null) {
+        // defter türü temizleniyor → Mihsap defter türüne dokunma
+      } else {
+        const n = this.normalizeDefterFields({ defterTuru: data.defterTuru, mihsapDefterTuru: mevcut.mihsapDefterTuru });
+        data.defterTuru = n.defterTuru;
+        if (n.mihsapDefterTuru) data.mihsapDefterTuru = n.mihsapDefterTuru;
+      }
+    }
+
+    const guncel = await (this.prisma as any).taxpayer.update({ where: { id }, data, select: FAALIYET_SELECT });
+
+    const eski: Record<string, any> = {};
+    const yeni: Record<string, any> = {};
+    for (const alan of dogrulama.degisenAlanlar) {
+      eski[alan] = (mevcut as any)[alan] ?? null;
+      yeni[alan] = (guncel as any)[alan] ?? null;
+    }
+    try {
+      await (this.prisma as any).auditLog.create({
+        data: {
+          tenantId,
+          userId: userId || null,
+          action: 'FAALIYET_GUNCELLE',
+          resource: 'taxpayer',
+          resourceId: id,
+          oldData: eski,
+          newData: yeni,
+        },
+      });
+    } catch { /* denetim izi opsiyonel — akışı bozma */ }
+
+    return { ok: true, degisenAlanlar: dogrulama.degisenAlanlar, taxpayer: guncel };
+  }
+
+  /**
+   * POST taxpayers/:id/faaliyet-oner — AI (Max) ile NACE / faaliyet / sektör / kurum türü ÖNERİSİ. YAZMAZ;
+   * sahip ekranda onaylayınca PATCH ile kaydedilir. Girdi: ünvan + mevcut tanım + son 15 alış + 15 satış
+   * faturasının karşı taraf ünvanı ve kalem adları (≤ 2 KB). AI yanıtı gelmezse { ok:false, neden }.
+   */
+  async faaliyetOner(id: string, tenantId: string) {
+    const tp = await (this.prisma as any).taxpayer.findFirst({ where: { id, tenantId }, select: FAALIYET_SELECT });
+    if (!tp) throw new NotFoundException('Mükellef bulunamadı');
+    const unvan = (tp.companyName || `${tp.firstName || ''} ${tp.lastName || ''}`.trim() || '').trim();
+
+    const belgeSec = {
+      invoiceKind: true, vendorName: true, customerName: true, faturaTarihi: true, ocrData: true,
+    };
+    const belgeWhere = { tenantId, taxpayerId: id, status: { notIn: ['REJECTED', 'CANCELLED'] } };
+    const belgeSirasi = [{ faturaTarihi: 'desc' as const }, { createdAt: 'desc' as const }];
+    const [alislar, satislar] = await Promise.all([
+      (this.prisma as any).invoiceAccountingDocument
+        .findMany({ where: { ...belgeWhere, invoiceKind: 'ALIS' }, orderBy: belgeSirasi, take: 15, select: belgeSec })
+        .catch(() => []),
+      (this.prisma as any).invoiceAccountingDocument
+        .findMany({ where: { ...belgeWhere, invoiceKind: 'SATIS' }, orderBy: belgeSirasi, take: 15, select: belgeSec })
+        .catch(() => []),
+    ]);
+    const belgeler = [...satislar, ...alislar];
+    const belgeOzeti = faaliyetBelgeOzeti(belgeler, 2000);
+    const unvanKurumIpucu = kurumTuruTahmin(unvan);
+
+    const prompt = faaliyetOnerIstemi({
+      unvan,
+      taxpayerType: tp.type,
+      naceKodu: tp.naceKodu,
+      faaliyetAciklama: tp.faaliyetAciklama,
+      sektorEtiketi: tp.sektorEtiketi,
+      kurumTuru: tp.kurumTuru,
+      defterTuru: tp.defterTuru,
+      belgeOzeti,
+      unvanKurumIpucu,
+    });
+
+    const cevap = await claudeTextViaMax({ prompt, model: MAX_MODEL_CHEAP, maxTurns: 1, timeoutMs: 60_000 })
+      .catch((e: any) => ({ ok: false, text: '', error: String(e?.message || e) } as any));
+    if (!cevap?.ok || !cevap.text) {
+      this.logger.warn(`[FAALIYET-ONER] ${id}: Max cevap vermedi: ${cevap?.error || 'bilinmiyor'}`);
+      return { ok: false, neden: cevap?.error || 'AI yanıt vermedi', belgeSayisi: belgeler.length };
+    }
+    const oneri = faaliyetOnerCevabiCoz(cevap.text);
+    if (!oneri) {
+      this.logger.warn(`[FAALIYET-ONER] ${id}: JSON çözülemedi: ${String(cevap.text).slice(0, 160)}`);
+      return { ok: false, neden: 'AI yanıtı çözülemedi', belgeSayisi: belgeler.length };
+    }
+    // Kurum türü: AI boş bıraktıysa ünvan kuralı bir ipucu veriyorsa onu öner (yine sahip onayı).
+    if (!oneri.kurumTuru && unvanKurumIpucu) {
+      oneri.kurumTuru = unvanKurumIpucu;
+      oneri.gerekce = `${oneri.gerekce ? oneri.gerekce + ' ' : ''}Kurum türü ünvan kuralından (${unvanKurumIpucu}) önerildi.`.trim();
+    }
+    return {
+      ok: true,
+      taxpayerId: id,
+      unvan,
+      belgeSayisi: belgeler.length,
+      mevcut: {
+        naceKodu: tp.naceKodu, faaliyetAciklama: tp.faaliyetAciklama, sektorEtiketi: tp.sektorEtiketi,
+        kurumTuru: tp.kurumTuru, defterTuru: tp.defterTuru,
+      },
+      oneri,
+    };
   }
 
   async setCariTakip(id: string, tenantId: string, cariTakipAktif: boolean) {

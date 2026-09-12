@@ -44,6 +44,10 @@ export const UYARI_KOD = {
   TEVKIFAT_EKSIK: 'TEVKIFAT_EKSIK',
   ICERIK_HESAP_UYUMSUZ: 'ICERIK_HESAP_UYUMSUZ',
   MUKERRER: 'MUKERRER',
+  /** PLAN/16 §C — algısal hash (dHash Hamming ≤ 6): "aynı fişin ikinci fotoğrafı gibi" (uyarı, engel değil). */
+  MUKERRER_GORSEL: 'MUKERRER_GORSEL',
+  /** PLAN/16 §C — kısa fiş no + VKN + tutar + gün ya da VKN + gün + saat + tutar eşleşmesi (uyarı, engel değil). */
+  MUKERRER_FIS: 'MUKERRER_FIS',
   TUTAR_TUTARSIZ: 'TUTAR_TUTARSIZ',
   IADE: 'IADE',
   ALICI_TIPI_GEREKLI: 'ALICI_TIPI_GEREKLI',
@@ -145,6 +149,8 @@ export function dogrulamaUyarilari(issues: Array<{ code: string; severity: strin
       case 'TEVKIFAT_NEEDED':
       case 'TEVKIFAT_NET_NEEDED':
       case 'MUKERRER':
+      case 'MUKERRER_FIS':
+      case 'MUKERRER_GORSEL':
         continue; // bağlamla üretilir
       case 'TOTAL_MISMATCH':
       case 'BALANCE_MISMATCH':
@@ -236,7 +242,10 @@ export interface UyariOzet {
   engel: boolean;
   kararBekliyor: boolean;
   tevkifatli: boolean;
+  /** Kesin mükerrer (MUKERRER, engel). */
   mukerrer: boolean;
+  /** PLAN/16 §C — mükerrer ŞÜPHESİ (MUKERRER_GORSEL / MUKERRER_FIS; uyarı, sahip karar verir). */
+  mukerrerSuphe: boolean;
   enYuksek: UyariSeviye | null;
   engelKodlari: string[];
 }
@@ -250,6 +259,7 @@ export function uyariOzet(uyarilar: any[] | null | undefined): UyariOzet {
     kararBekliyor: !!dem && dem.meta?.karar == null,
     tevkifatli: list.some((u) => u.kod === UYARI_KOD.TEVKIFAT_VAR),
     mukerrer: list.some((u) => u.kod === UYARI_KOD.MUKERRER),
+    mukerrerSuphe: list.some((u) => u.kod === UYARI_KOD.MUKERRER_GORSEL || u.kod === UYARI_KOD.MUKERRER_FIS),
     enYuksek: list.length ? (engelKodlari.length ? 'engel' : list.some((u) => u.seviye === 'uyari') ? 'uyari' : 'bilgi') : null,
     engelKodlari,
   };

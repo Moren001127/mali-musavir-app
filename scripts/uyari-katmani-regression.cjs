@@ -24,7 +24,8 @@
  *  DENETİM UYGULAMASI (gerileme A + mesleki B, 2026-09-12):
  *  10) A.1 eLogo liste durumu: <DOCUMENT> öğe bloğu (4 öğe, 3. iptal → komşular temiz); stateExplanation > stateCode.
  *  11) A.3 belgeDurumuEngelli: kelime sınırlı kalıp; "İptal/Red Talebi Reddedildi" istisnası; "Kredi/Redirect" engelli değil.
- *  12) A.2 MÜKERRER: kısa belge no + aynı gün şartı; yer tutucu (BILINMIYOR/boş/-/uuid) aranmaz; mukerrerKarar=mukerrer_degil → uyarı yok + duplicateOfId temiz; mukerrerKarari ucu.
+ *  12) A.2 MÜKERRER: kısa belge no + aynı gün → PLAN/16 §C ile MUKERRER_FIS UYARISI (engel yalnız uzun belge no'da); yer tutucu
+ *      (BILINMIYOR/boş/-/uuid) aranmaz; mukerrerKarar=mukerrer_degil → uyarı yok + duplicateOfId temiz; mukerrerKarari ucu.
  *  13) B.2 KDV=0 / iade / satıcı KDV mükellefi değil → tevkifat yok; B.4 satışta TCKN + kurum türü boş → bilgi+soru; B.3 belirlenmis_diger;
  *      B.5 216 bilgi; B.13 negatif liste + kelime başı sınırı (araç kasa tadilatı→203, pamuk ipliği/külçe altın/orijinal granül → yok); B.11/B.12 atıflar.
  *  14) B.1 taban TEVKIFAT_EKSIK yeni tablo karar verince atılır (ALICI_TIPI_GEREKLI ile birlikte çıkmaz); A.10 uyariImza (gereksiz UPDATE yok).
@@ -394,10 +395,12 @@ const kodlar = (list) => list.map((u) => u.kod);
       lines: [{ group: 'matrah', accountCode: '770.01.001', debit: 200, credit: 0, rate: '%20' }, { group: 'vergi', accountCode: '191.01.020', debit: 40, credit: 0, rate: '%20' }, { group: 'cari', accountCode: '100.01.001', debit: 0, credit: 240 }], ...over });
     const ayniGun = makeService({ docs: [fis({ id: 'd0', createdAt: new Date('2026-07-30T10:00:00Z'), faturaTarihi: new Date('2026-08-05T09:00:00Z') }), fis({ id: 'd1', faturaTarihi: new Date('2026-08-05T18:30:00Z') })], taxpayer: TP });
     const v1 = await ayniGun.svc.revalidateDocument('t', 'd1');
-    assert(v1.issues.some((i) => i.code === 'MUKERRER'), 'kısa no "0049" + aynı VKN/tutar + AYNI GÜN → mükerrer');
+    // PLAN/16 §C (2026-09-12): kısa fiş no eşleşmesi ENGEL DEĞİL → MUKERRER_FIS UYARISI (engel yalnız uzun belge no'da).
+    const fisUyari = uyOf(ayniGun.state).find((u) => u.kod === 'MUKERRER_FIS');
+    assert(!v1.issues.some((i) => i.code === 'MUKERRER') && v1.status === 'OK' && fisUyari && fisUyari.seviye === 'uyari' && fisUyari.meta.ilkBelgeId === 'd0', 'kısa no "0049" + aynı VKN/tutar + AYNI GÜN → MUKERRER_FIS uyarısı (engel değil, status OK)');
     const farkliGun = makeService({ docs: [fis({ id: 'd0', createdAt: new Date('2026-07-30T10:00:00Z'), faturaTarihi: new Date('2026-08-04T09:00:00Z') }), fis({ id: 'd1', faturaTarihi: new Date('2026-08-05T18:30:00Z') })], taxpayer: TP });
     const v2 = await farkliGun.svc.revalidateDocument('t', 'd1');
-    assert(!v2.issues.some((i) => i.code === 'MUKERRER'), 'kısa no "0049" ama FARKLI GÜN → mükerrer DEĞİL (fiş no tekrar eder)');
+    assert(!v2.issues.some((i) => i.code === 'MUKERRER') && !kodlar(uyOf(farkliGun.state)).includes('MUKERRER_FIS'), 'kısa no "0049" ama FARKLI GÜN → mükerrer/şüphe DEĞİL (fiş no tekrar eder)');
     // uzun numarada tarih şartı yok (mevcut kural)
     const uzun = makeService({ docs: [doc({ id: 'd0', createdAt: new Date('2026-07-30T10:00:00Z'), faturaTarihi: new Date('2026-08-01T00:00:00Z') }), doc({ id: 'd1' })], taxpayer: TP });
     assert((await uzun.svc.revalidateDocument('t', 'd1')).issues.some((i) => i.code === 'MUKERRER'), 'uzun belge no (13 rakam) → tarih farklı olsa da mükerrer (mevcut kural)');
