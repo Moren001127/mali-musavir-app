@@ -1275,13 +1275,16 @@ function gfGuvenOf(d: any, isIsletme: boolean): GfGuven {
 }
 /** "Ne yapmam gerekiyor" kümesi — her belge TAM BİR kümeye düşer:
  *  ham = okunmamış/okunuyor/okunamadı · karar = demirbaş kararı / mükerrer(+şüphe) / tevkifat eksik / alıcı tipi / engel ·
- *  hazir = güven yüksek + uyarı yok + kodlar tam · incele = geri kalan (düşük/orta güven, kod eksik, çelişki, tutar). */
+ *  hazir = kodlar TAM (Eşleşti) + engel/karar uyarısı yok + çelişki yok · incele = kod eksik / çelişki / tutar.
+ *  Kullanıcı bulgusu (2026-09-12): eskiden 'güven yüksek' şartı vardı → eşleşen 14 belge 'İncele'de kalıyor, hazır 0 çıkıyordu;
+ *  güven artık şart değil (toplu onayda hafıza çelişkisi/demirbaş/mükerrer zaten arka uçta atlanır ve atlananlar paneli gösterilir). */
 function gfKumeOf(d: any, du: { cat: string }, guven: GfGuven): GfKume {
   if (du.cat === 'ham' || du.cat === 'okunuyor' || du.cat === 'okunamadi') return 'ham';
   const list = uyariListeFE((d?.ocrData as any)?.uyarilar);
   const kararKod = (u: UyariFE) => (u.kod === 'DEMIRBAS' ? !u.meta?.karar : ['MUKERRER', 'MUKERRER_GORSEL', 'MUKERRER_FIS', 'TEVKIFAT_EKSIK', 'ALICI_TIPI_GEREKLI'].includes(u.kod));
   if (du.cat === 'demirbas' || du.cat === 'mukerrer' || !!d?.duplicateOfId || list.some((u) => u.seviye === 'engel' || kararKod(u))) return 'karar';
-  if (guven.seviye === 'yuksek' && list.length === 0 && du.cat === 'ready' && d?.status !== 'APPROVED') return 'hazir';
+  const engelVar = list.some((u) => u.seviye === 'engel');
+  if (!engelVar && du.cat === 'ready' && d?.status !== 'APPROVED') return 'hazir';
   return 'incele';
 }
 function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false, taxpayerNace = '', taxpayerFaaliyet = '', onOpenSorgu, onOpenMuhasebe }: { taxpayerId: string; period: string; kind?: 'ALIS' | 'SATIS'; isIsletme?: boolean; taxpayerNace?: string; taxpayerFaaliyet?: string; onOpenSorgu?: () => void; onOpenMuhasebe?: (id: string) => void }) {
@@ -1936,6 +1939,8 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
               <col className="gc-tarih" />
               <col className="gc-no" />
               <col className="gc-firma" />
+              <col className="gc-haric" />
+              <col className="gc-kdv" />
               <col className="gc-tutar" />
               {!isIsletme && <col className="gc-hesap" />}
               <col className="gc-durum" />
@@ -1946,6 +1951,8 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
               <th className={`gf-sortable${sortKey === 'tarih' ? ' gf-sorted' : ''}`} onClick={() => sirala('tarih')} title="Tarihe göre sırala">Tarih<span className="gf-sort">{sortKey === 'tarih' ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}</span></th>
               <th>Fatura No</th>
               <th className={`gf-sortable${sortKey === 'firma' ? ' gf-sorted' : ''}`} onClick={() => sirala('firma')} title="Firma adına göre sırala">Firma / VKN<span className="gf-sort">{sortKey === 'firma' ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}</span></th>
+              <th className="num">KDV Hariç</th>
+              <th className="num">KDV</th>
               <th className={`num gf-sortable${sortKey === 'tutar' ? ' gf-sorted' : ''}`} onClick={() => sirala('tutar')} title="Tutara göre sırala">Tutar<span className="gf-sort">{sortKey === 'tutar' ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}</span></th>
               {!isIsletme && <th>Hesap</th>}
               <th>Durum</th>
@@ -2009,7 +2016,9 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
                     <td className="gf-tarih">{fmtDate(d.faturaTarihi || d.createdAt)}</td>
                     <td className="gf-no" title={d.belgeNo || ''}>{d.belgeNo || '—'}</td>
                     <td className="firm gf-firma"><b title={firma}>{firma}</b><small>{vkn ? `VKN ${vkn}` : '—'}{(d as any).duplicateOfId ? <> · <a href="#ilk" className="gf-muk" title={(d as any).duplicateReason || 'Bu fatura daha önce yüklenmiş'} onClick={(ev) => { ev.preventDefault(); const ilk = String((d as any).duplicateOfId || ''); if (docs.some((x: any) => x.id === ilk)) setFisDetayId(ilk); else onOpenMuhasebe?.(ilk); }}>⚠ mükerrer · ilk belgeyi aç</a></> : null}</small></td>
-                    <td className="num gf-tutar"><b>{fmtMoney(d.totalAmount)}</b>{matrah != null || kdv != null ? <small>{matrah != null ? `hariç ${fmtMoney(matrah)}` : ''}{matrah != null && kdv != null ? ' · ' : ''}{kdv != null ? `KDV ${fmtMoney(kdv)}` : ''}</small> : null}</td>
+                    <td className="num gf-sayi">{matrah != null ? fmtMoney(matrah) : '—'}</td>
+                    <td className="num gf-sayi">{kdv != null ? fmtMoney(kdv) : '—'}</td>
+                    <td className="num gf-sayi gf-tutar"><b>{fmtMoney(d.totalAmount)}</b></td>
                     {!isIsletme && <td className="gf-hesap">{code ? <><span className="hk">{code}</span>{codeAd ? <small title={codeAd}>{codeAd}</small> : null}</> : <span className="hk no">— yok —</span>}</td>}
                     <td className="gf-durum">
                       {/* TEK durum hapı; üzerine gelince sebep. Güven yalnız DÜŞÜK ise küçük kırmızı nokta (sebep ipucunda) — orta/yüksek yazılmaz. */}
@@ -2037,7 +2046,7 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
                   </tr>
                   {fisAcik && (
                     <tr className="detayrow">
-                      <td colSpan={isIsletme ? 7 : 8}>
+                      <td colSpan={isIsletme ? 9 : 10}>
                         <div className="detaybox">
                           {(() => {
                             const rn = richNotes[d.id];
@@ -8494,15 +8503,17 @@ const CSS = `
 #fm-root .gf-table td,#fm-root .gf-table th{padding-left:9px;padding-right:9px}
 /* === PLAN16-B3: GELEN FATURALAR — SABİT SÜTUN DÜZENİ (kullanıcı bulgusu 2026-09-12: sütunlar kayıyor/taşıyordu) === */
 #fm-root .gf-twrap{overflow:auto}
-#fm-root .gf-table{table-layout:fixed;width:100%;min-width:980px;border-collapse:separate;border-spacing:0}
-#fm-root .gf-table col.gc-sel{width:42px}
-#fm-root .gf-table col.gc-tarih{width:90px}
-#fm-root .gf-table col.gc-no{width:150px}
+#fm-root .gf-table{table-layout:fixed;width:100%;min-width:1120px;border-collapse:separate;border-spacing:0}
+#fm-root .gf-table col.gc-sel{width:40px}
+#fm-root .gf-table col.gc-tarih{width:86px}
+#fm-root .gf-table col.gc-no{width:140px}
 #fm-root .gf-table col.gc-firma{width:auto}
-#fm-root .gf-table col.gc-tutar{width:135px}
-#fm-root .gf-table col.gc-hesap{width:190px}
-#fm-root .gf-table col.gc-durum{width:170px}
-#fm-root .gf-table col.gc-eylem{width:160px}
+#fm-root .gf-table col.gc-haric{width:108px}
+#fm-root .gf-table col.gc-kdv{width:92px}
+#fm-root .gf-table col.gc-tutar{width:112px}
+#fm-root .gf-table col.gc-hesap{width:172px}
+#fm-root .gf-table col.gc-durum{width:150px}
+#fm-root .gf-table col.gc-eylem{width:152px}
 #fm-root .gf-table th,#fm-root .gf-table td{padding:9px 10px;overflow:hidden;vertical-align:middle}
 #fm-root .gf-table th.gf-th-eylem{text-align:right}
 #fm-root .gf-table td.gf-tarih{white-space:nowrap;font-variant-numeric:tabular-nums}
@@ -8510,9 +8521,9 @@ const CSS = `
 #fm-root .gf-table td.gf-firma b{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #fm-root .gf-table td.gf-firma small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #fm-root .gf-table td.gf-firma .gf-muk{color:#b91c1c;font-weight:700;text-decoration:underline}
-#fm-root .gf-table td.gf-tutar{white-space:nowrap;text-align:right}
-#fm-root .gf-table td.gf-tutar b{display:block;font-variant-numeric:tabular-nums;font-weight:700}
-#fm-root .gf-table td.gf-tutar small{display:block;font-size:10.5px;color:var(--faint);font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis}
+#fm-root .gf-table td.gf-sayi{white-space:nowrap;text-align:right;font-variant-numeric:tabular-nums;padding-left:6px;padding-right:8px}
+#fm-root .gf-table td.gf-tutar b{font-weight:800;color:var(--text)}
+#fm-root .gf-table th.num{text-align:right}
 #fm-root .gf-table td.gf-hesap{max-width:none}
 #fm-root .gf-table td.gf-hesap .hk{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #fm-root .gf-table td.gf-hesap small{display:block;font-size:10.5px;color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;line-height:1.25;margin-top:1px}
@@ -8525,7 +8536,7 @@ const CSS = `
 #fm-root .gf-table td.gf-eylem{text-align:right;white-space:nowrap;padding:7px 8px 7px 6px}
 #fm-root .gf-table td:first-child,#fm-root .gf-table th:first-child{padding-left:8px;padding-right:6px}
 #fm-root .gf-table .gf-acts{display:inline-flex;gap:4px;min-width:0}
-#fm-root .gf-table .gf-act{width:30px;height:28px;padding:0;justify-content:center;font-size:0}
+#fm-root .gf-table .gf-act{width:29px;height:28px;padding:0;justify-content:center;font-size:0}
 #fm-root .gf-table .gf-act .ico{display:inline-flex}
 /* Süzgeç boş sonuç bağlantısı */
 #fm-root .gf-table .empty a{color:var(--accent);font-weight:700;text-decoration:underline}
