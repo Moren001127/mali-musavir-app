@@ -119,6 +119,11 @@ const EYLEM_KADEMELERI: Record<string, Kademe> = {
   format_list: 'oku',
 };
 
+// Katalog açıklamasına eklenen uyarılar (sistem promptu kataloğunda görünür).
+const EYLEM_ACIKLAMA_EKLERI: Record<string, string> = {
+  fetch_kdv_from_luca: " — Luca job açar (ajan makinesinde tarayıcı); kuru testte çağrılmaz, beyan rakamı için get_kdv1_on_hazirlik kullan",
+};
+
 // ─── EKİBİN İÇ ARAÇLARI (runner kendisi çalıştırır) ───
 const EKIP_ARACLARI: AracKaydi[] = [
   {
@@ -206,7 +211,7 @@ function defteriKur(): AracKaydi[] {
       ad: a.name,
       kaynak: 'eylem',
       kademe,
-      aciklama: (a.description || '').split('.')[0].slice(0, 160),
+      aciklama: (a.description || '').split('.')[0].slice(0, 160) + (EYLEM_ACIKLAMA_EKLERI[a.name] || ''),
       parametreler: parametreListesi(a.input_schema),
     });
   }

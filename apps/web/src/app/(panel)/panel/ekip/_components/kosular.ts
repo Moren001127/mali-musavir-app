@@ -10,6 +10,7 @@ import {
   getMukellefler,
   getOnaylar,
   getPano,
+  iptalEt,
   isOmurgaYok,
   type AracCagrisi,
 } from '@/lib/ekip';
@@ -46,6 +47,8 @@ export interface Kosu {
 }
 
 export const BAGLANTI_KESILDI_METNI = "Bağlantı kesildi — ajan sunucuda sürmüş olabilir; sonucu İş Dosyaları'nda gör";
+/** Sahip "Durdur" dedi: sunucuda koşu iptal edildi (iş dosyası failed, hata "iptal edildi (sahip)"). */
+export const DURDURULDU_METNI = 'Durduruldu';
 
 /** Ortak sorgu seçenekleri (tek yerde; KonsolBaslik ve EkipEkrani aynı anahtarları paylaşır → tek ağ isteği). */
 export const SORGU = {
@@ -102,12 +105,16 @@ export const SORGU = {
  * useKosular — ajan başına koşu haritası + SSE yönetimi.
  * - AbortController ajan başına Map'te; ajan değişince HİÇBİR ŞEY abort edilmez.
  * - aktifKosu: herhangi bir bitmemiş koşu → tek aktif koşu kilidi (tek Max hesabı + Luca tek oturum).
- * - baglantiyiKes: yalnız SSE'yi kapatır; sunucuda iptal yok (backend #5 gelene kadar etiket "Bağlantıyı kes").
+ * - durdur: ÖNCE sunucuda iptal (POST /ekip/isler/:id/iptal → Agent SDK abort, iş failed), SONRA SSE'yi kapatır;
+ *   ekranda "Durduruldu". isId henüz gelmediyse yalnız SSE kapanır → sunucu bağlantı kopmasından durdurur.
  */
 export function useKosular() {
   const qc = useQueryClient();
   const [kosular, setKosular] = useState<Map<string, Kosu>>(() => new Map());
   const abortlar = useRef<Map<string, AbortController>>(new Map());
+  /** durdur() render dışından güncel isId'yi okusun (state kapanışa takılmasın). */
+  const kosularRef = useRef(kosular);
+  kosularRef.current = kosular;
 
   const ayarla = useCallback((ajanId: string, kosu: Kosu) => {
     setKosular((prev) => {
@@ -212,7 +219,8 @@ export function useKosular() {
                   : (e.toolUses || []).map((t: AracCagrisi) => ({ tip: 'arac' as const, ad: t.name, zaman, durum: 'bitti' as const })),
               }));
             } else if (e.type === 'error') {
-              guncelle(ajanId, (k) => ({ ...k, hata: e.error || 'Yanıt alınamadı', isId: e.isId || k.isId }));
+              // Sahip durdurduysa sunucunun "iptal edildi (sahip)" metni "Durduruldu"nun üstüne yazılmaz.
+              guncelle(ajanId, (k) => ({ ...k, hata: k.hata === DURDURULDU_METNI ? k.hata : e.error || 'Yanıt alınamadı', isId: e.isId || k.isId }));
             }
           },
           ac.signal,
@@ -238,23 +246,29 @@ export function useKosular() {
     [ayarla, guncelle, tazeleBaslangic, tazeleBitis],
   );
 
-  const baglantiyiKes = useCallback(
-    (ajanId: string) => {
+  /** DURDUR: önce sunucuda iptal (iş dosyası failed), sonra SSE bağlantısını kapat. */
+  const durdur = useCallback(
+    async (ajanId: string) => {
       const ac = abortlar.current.get(ajanId);
       if (!ac) return;
+      const isId = kosularRef.current.get(ajanId)?.isId;
+      guncelle(ajanId, (k) => ({ ...k, hata: DURDURULDU_METNI }));
+      if (isId) {
+        const r = await iptalEt(isId).catch(() => ({ ok: false as const, isId }));
+        if (!r.ok) console.warn('[ekip] sunucu iptali başarısız', isId, (r as any).error);
+      }
       try {
         ac.abort();
       } catch {
         /* yoksay */
       }
-      guncelle(ajanId, (k) => ({ ...k, hata: BAGLANTI_KESILDI_METNI }));
     },
     [guncelle],
   );
 
   const aktifKosu = useMemo(() => Array.from(kosular.values()).find((k) => !k.bitti) || null, [kosular]);
 
-  return { kosular, baslat, baglantiyiKes, ayarla, guncelle, aktifKosu };
+  return { kosular, baslat, durdur, ayarla, guncelle, aktifKosu };
 }
 
 export type KosularApi = ReturnType<typeof useKosular>;

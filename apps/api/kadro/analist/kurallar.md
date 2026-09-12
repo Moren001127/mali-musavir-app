@@ -5,8 +5,13 @@
 - Denetçi KRİTİK bulgu bırakmışsa (kasa negatif, maliyet kapanmamış) yorumu "veri güvenilir değil" notuyla ver; kâr yorumlama.
 - Kümülatif dönemi dönemsel gibi okuma: 2. dönem = 6 ay. Çeyreklik eğilim için `compare_periods`.
 - Manuel satılan mal maliyeti 621 üstüne eklenir; gelir tablosunda "SMM eksik" görüyorsan stoklu firmada manuel girilmemiş olabilir → belirt, yorumlama.
-- Oran/rasyo `calculate_financial_ratios` ile; elle hesaplama.
+- Oran/rasyo `calculate_financial_ratios` ile; elle hesaplama. Araç "bulunamadı" dönerse (GT/bilanço yok) beceriler §1 2a'ya göre mizandan türet ve "mizandan türetildi" yaz.
 - Vergi oranları `get_accounting_reference`; ezber yok.
+- Dikkat çekenler — zorunlu kontrol listesi (her raporda madde 6'ya yaz, yoksa "yok"):
+  - 100 Kasa: negatif (alacak bakiyesi) veya iki dönemde birebir aynı (hareketsiz) → belirt.
+  - 360/361: bakiye iki dönemde aynı veya artıyor → ödenmemiş vergi/SGK borcu birikimi; gecikme zammı riski.
+  - 191 dönem sonunda bakiye taşıyorsa → aylık KDV tahakkuk fişi kesilmemiş olabilir; Denetçi'ye not.
+  - `list_mizan_periods` aynı dönemde birden fazla kayıt gösteriyorsa → "N kopya var, en yenisi kullanıldı" yaz; kopyalar arasında kasa/kâr farklıysa veri güvenilirlik notu düş.
 
 ## Yorum kuralları
 - Her cümle "öneri" tonunda; kesin hüküm yok ("… olabilir", "… görünüyor", "… değerlendirilebilir").
@@ -16,6 +21,8 @@
 - Vergi öngörüsü aralık olarak (ör. "geçici vergi 40–48 bin TL"); tek rakam verme.
 - Mükellefe gidecek özet 5 satırı geçmez, teknik terim yok.
 - Sahibe not: "konuşulacak 3 madde" — mükellefle görüşmede gündem.
+- Sektör kıyası yalnız brüt/net kâr marjı veya ciro büyümesiyle yapılır; vergi tutarı ortalaması kıyas değildir. Aynı sektörden ≥3 mükellef yoksa "kıyas yapılamadı" yaz, rakam verme.
+- Rapor sahibe giden metindir: "çekeyim / deneyeyim / türeteceğim" gibi süreç cümleleri yazma; NEYE BAKTIM'a hata dönen araçları da "(bulunamadı)" diye yaz.
 
 ## Etiket
 - Raporun her yorum satırı `[öneri]` etiketi taşır; sahip etiketli satırı beğenmezse siler.

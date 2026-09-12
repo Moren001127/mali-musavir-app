@@ -463,6 +463,21 @@ export async function ajanCalistirStream(
   }
 }
 
+/**
+ * Çalışan koşuyu sunucuda DURDUR: POST /ekip/isler/:isId/iptal.
+ * Backend Agent SDK'ya abort verir; iş dosyası failed + hata "iptal edildi (sahip)".
+ * Çalışan kayıt yoksa (bitmiş / başka süreç) {ok:false, error} döner — hata fırlatmaz.
+ */
+export async function iptalEt(isId: string): Promise<{ ok: boolean; isId: string; error?: string }> {
+  try {
+    const { data } = await api.post(`/ekip/isler/${encodeURIComponent(isId)}/iptal`, {}, { timeout: 15_000 });
+    return { ok: data?.ok === true, isId: data?.isId || isId, error: data?.error || undefined };
+  } catch (e: any) {
+    if (e?.response?.status === 404) return { ok: false, isId, error: 'Omurga henüz yayında değil (iptal ucu yok)' };
+    return { ok: false, isId, error: e?.message || 'Durdurma isteği gönderilemedi' };
+  }
+}
+
 // ─── ONAYLAR (dışarı gönderim → sahip onayı) ───
 
 export interface EkipOnay {

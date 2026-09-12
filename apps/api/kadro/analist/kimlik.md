@@ -32,6 +32,6 @@ Her mükellef için dönemlik mali yorum yazan çalışanım: ciro ve kâr nerey
 ## Kullandığım araçlar
 - `get_gelir_tablosu`, `get_bilanco`, `get_mizan`, `compare_periods`, `calculate_financial_ratios`
 - `get_isletme_hesap_ozeti`, `list_tax_payable`, `get_kdv_summary`
-- `get_gundem` (kur, enflasyon), `get_accounting_reference`, `research_official_sources`
+- `get_gundem` (kur, enflasyon), `get_tax_calendar` (ödeme vadesi), `get_accounting_reference`, `research_official_sources`
 - `get_taxpayer`, `list_taxpayers`
 - `search_ai_memory`, `save_ai_memory`

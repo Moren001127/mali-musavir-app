@@ -1,7 +1,7 @@
 'use client';
 
 import { forwardRef, useEffect, useMemo, useRef, useState } from 'react';
-import { Play, Loader2, Mic, MicOff, ShieldCheck, AlertTriangle, Unplug, Info, FlaskConical, Zap } from 'lucide-react';
+import { Play, Loader2, Mic, MicOff, ShieldCheck, AlertTriangle, Square, Info, FlaskConical, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Ajan, MukellefOzet } from '@/lib/ekip';
 import { startListening, isSpeechSupported } from '../../luca-operator/_components/voice';
@@ -371,12 +371,12 @@ export const KomutKutusu = forwardRef<
               ) : buCalisiyor ? (
                 <button
                   type="button"
-                  onClick={() => kosular.baglantiyiKes(seciliAjanId)}
+                  onClick={() => void kosular.durdur(seciliAjanId)}
                   className="inline-flex flex-shrink-0 items-center gap-2 rounded-full px-4 py-2 text-[12.5px] font-bold transition-[transform] duration-150 hover:-translate-y-px"
                   style={{ background: 'rgba(248,113,113,0.10)', border: `1px solid ${RENK.kirmizi}`, color: '#fca5a5' }}
-                  title="Yalnız bağlantı kesilir; ajan sunucuda sürer, sonucu İş dosyalarında görürsün"
+                  title="Koşu sunucuda durdurulur; iş dosyası 'Hata: iptal edildi (sahip)' olarak kapanır"
                 >
-                  <Unplug size={14} /> Bağlantıyı kes
+                  <Square size={14} /> Durdur
                 </button>
               ) : (
                 <button

@@ -5,7 +5,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Activity, Check, Loader2, FlaskConical, ShieldAlert, XCircle, FolderOpen, Send, MessageSquareReply, GraduationCap, Sunrise } from 'lucide-react';
 import { toast } from 'sonner';
 import { onayla, reddet, sabahOzetiUret, isZamanAsimi, type IsDosyasi } from '@/lib/ekip';
-import type { Adim, Kosu, KosularApi } from './kosular';
+import { DURDURULDU_METNI, type Adim, type Kosu, type KosularApi } from './kosular';
 import { OnayTeyit } from './OnayBekleyenler';
 import { BosDurum } from './Kart';
 import { EKIP_ACCENT, RENK, ajanYuzeyRengi, aracAdi, cevapAyristir, saatKisa, sayacMetni, sureKisa, tarihKisa } from './ortak';
@@ -277,7 +277,7 @@ export function CanliAkis({
             <Loader2 size={11} className="animate-spin" /> çalışıyor
           </span>
         ) : kosu.hata ? (
-          <span style={{ color: RENK.kirmizi }}>Hata</span>
+          <span style={{ color: RENK.kirmizi }}>{kosu.hata === DURDURULDU_METNI ? 'Durduruldu' : 'Hata'}</span>
         ) : (
           <span className="inline-flex items-center gap-1" style={{ color: RENK.yesil }}>
             <Check size={11} /> Bitti · {aracSayisi} araç
@@ -311,7 +311,7 @@ export function CanliAkis({
 
         {kosu.hata && (
           <div className="rounded-xl px-3.5 py-2.5 text-[12.5px]" style={{ background: 'rgba(248,113,113,0.12)', border: '1px solid rgba(248,113,113,0.35)', color: '#fecaca' }}>
-            ⚠️ {kosu.hata}
+            ⚠️ {kosu.hata === DURDURULDU_METNI ? 'Durduruldu — koşu sunucuda iptal edildi; iş dosyası "iptal edildi (sahip)" olarak kapandı' : kosu.hata}
           </div>
         )}
 

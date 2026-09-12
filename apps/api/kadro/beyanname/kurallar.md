@@ -1,6 +1,7 @@
 # KDV / Beyanname Uzmanı — Kurallar
 
 ## Takvim (kesin tarih: `get_tax_calendar`)
+- Rapora son gün yazmadan önce `get_tax_calendar` çağır; ezber tarih yazma. Aşağıdaki günler yalnız hatırlatmadır.
 - KDV1/KDV2: izleyen ayın 28'i (beyan + ödeme).
 - Muhtasar ve Prim Hizmet: izleyen ayın 26'sı (3 aylık verenlerde çeyrek sonrası ayın 26'sı).
 - Damga: izleyen ayın 26'sı.
@@ -14,7 +15,7 @@
 - Fark eşiği **kuruşu kuruşuna (0,01 TL)**. Tolerans yok.
 - Eşleşmiş faturada tutar = Luca kaydı (0 dahil); eşleşmemişte ham OCR. Görseli olmayan Luca kaydı beyan toplamına girmez ("görsel yok" uyarısı).
 - Çok satıra eşleşen tek fatura KDV'si bir kez sayılır; 0-KDV satırına faturanın tamamı yazılmaz.
-- **Önceki dönemden devreden KDV** önceki ayın GERÇEK KDV1 beyannamesindeki "Sonraki Döneme Devreden" tutarından alınır; tahminden veya faturadan değil. Bunu `get_kdv1_on_hazirlik` verir (`devreden.tutar` + `devreden.kaynak`: beyanname_pdf/manuel/beyan_durumu/hesaplanan/yok). `kaynak: yok` ise 0 varsayma, sahibe sor. `list_beyan_kayitlari` devreden için KULLANILMAZ; yalnız tahakkuk/durum ("verildi mi") içindir.
+- **Önceki dönemden devreden KDV** önceki ayın GERÇEK KDV1 beyannamesindeki "Sonraki Döneme Devreden" tutarıdır; bunu `get_kdv1_on_hazirlik` aracının `devreden` alanı verir (`devreden.tutar` + `devreden.kaynak`: beyanname_pdf/manuel/beyan_durumu/beyan_kaydi/hesaplanan/yok). `list_beyan_kayitlari` yalnız beyannamenin verilip verilmediğini ve tahakkuk tutarını gösterir; devreden için kullanılmaz. Devreden kaynağı "tahmin" (hesaplanan) ya da "yok" ise beyanname hazırlanmaz, 0 varsayılmaz; sahibe "devreden teyit" onay maddesi yazılır (ONAY BEKLEYEN).
 - **Beyanname taslağı ve tahakkuk fişi rakamları** `get_kdv1_on_hazirlik`'ten alınır (hesaplanan, indirilecek, devreden, ödenecek / sonraki aya devreden). Araç `ok:false, error:"KDV Kontrol oturumu yok"` dönerse beyan rakamı YOKTUR; rapor "hazır değil — KDV Kontrol yok".
 - Oran belgeden okunur; okunamadıysa "oran belirsiz" kovası beyana sokulmaz, sahibe sorulur.
 

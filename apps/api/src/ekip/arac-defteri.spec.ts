@@ -162,4 +162,26 @@ describe('ÖĞRENDİM ayıklama (runner)', () => {
     expect(r).toHaveLength(3);
     expect(r[0]).toMatch(/^get_tax_calendar/);
   });
+  it('başlık altındaki maddeleri de alır; sonraki başlıkta durur; "Yok" maddesini almaz', () => {
+    const metin = [
+      '**ÖĞRENDİM:**',
+      '- compare_periods kaynak adı küçük harf olmalı (gelir_tablosu).',
+      '- Q2 gelir tablosu yoksa mizan 6xx hesaplarından türet.',
+      '',
+      '**ONAY BEKLEYEN:**',
+      '- Mükellefe özet gönderimi (kuru test).',
+      '',
+      '### ÖĞRENDİM',
+      '1. get_gelir_tablosu Q2 için boş döndü, önce list_mizan_periods bak.',
+      'Bu satır madde değil, başlığı kapatır.',
+      '- bu madde artık alınmaz çünkü başlık kapandı',
+    ].join('\n');
+    const r = ayikla(metin);
+    expect(r).toEqual([
+      'compare_periods kaynak adı küçük harf olmalı (gelir_tablosu).',
+      'Q2 gelir tablosu yoksa mizan 6xx hesaplarından türet.',
+      'get_gelir_tablosu Q2 için boş döndü, önce list_mizan_periods bak.',
+    ]);
+    expect(ayikla('ÖĞRENDİM: Yok')).toEqual([]);
+  });
 });

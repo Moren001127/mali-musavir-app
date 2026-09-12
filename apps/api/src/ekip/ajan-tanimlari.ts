@@ -213,9 +213,13 @@ export const AJAN_TANIMLARI: AjanTanimi[] = [
     model: 'opus',
     araclar: [
       ...MUKELLEF_OKU, ...HAFIZA, ...MALI_OKU, 'get_kdv_summary', 'list_tax_payable', 'get_cari_hareketler', 'get_bank_status',
-      'get_isletme_hesap_ozeti', 'research_official_sources', 'summarize_with_claude', 'send_whatsapp_freeform', 'send_email', ...ONAY,
+      'get_isletme_hesap_ozeti', 'research_official_sources', 'summarize_with_claude',
+      // kimlik.md: get_gundem (TÜFE/kur → gerçek büyüme düzeltmesi) + vergi takvimi (ödeme vadesi). Pilot 3: kapalı olduğu için enflasyon düzeltmesi yapılamadı.
+      'get_gundem', 'get_tax_calendar',
+      // Gönderim araçları YOK: kimlik.md "Mükellefle doğrudan konuşmam; onaylı özeti Müşteri İlişkileri iletir".
+      ...ONAY,
     ],
-    onayNoktalari: ['Raporun mükellefe gönderimi'],
+    onayNoktalari: ['Raporun mükellefe gönderimi (Müşteri İlişkileri üzerinden, sahip onayıyla)'],
     tetikler: ['dönem kapanışı', 'geçici vergi sonrası', 'sahip komutu'],
     kimlikKlasoru: klasor('analist'),
   },

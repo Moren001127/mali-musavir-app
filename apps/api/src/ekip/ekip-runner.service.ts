@@ -77,6 +77,27 @@ export interface EkipCalistirParametreleri {
   /** Sesli muhatap: rapor sesli okunacak → kısa cümle, okunur rakam, en fazla 3 madde (sistem promptu eki). */
   sesModu?: boolean;
   emit?: (e: EkipAkisOlayi) => void;
+  /**
+   * Dış durdurma sinyali (isteğe bağlı): tetiklenince koşu Agent SDK'da durdurulur, iş dosyası failed kapanır.
+   * Controller bağlantı koptuğunda verir; sahip düğmesi ise iptalEt(isId) ile aynı yola girer.
+   */
+  signal?: AbortSignal;
+}
+
+/** Durdurma nedeni — iş dosyasına yazılan hata metnini belirler. */
+export type IptalNedeni = 'sahip' | 'baglanti';
+
+export const IPTAL_HATA_METNI: Record<IptalNedeni, string> = {
+  sahip: 'iptal edildi (sahip)',
+  baglanti: 'iptal edildi (bağlantı koptu)',
+};
+
+/** Servis içi çalışan koşu kaydı — isId → AbortController (tenant kontrolü iptalEt'te). */
+interface CalisanKosu {
+  ac: AbortController;
+  tenantId: string;
+  ajanId: string;
+  neden: IptalNedeni | null;
 }
 
 export interface YapilacakIs {
@@ -146,6 +167,14 @@ export interface EkipKosuSonucu {
 @Injectable()
 export class EkipRunnerService {
   private readonly logger = new Logger('EkipRunnerService');
+
+  /**
+   * ÇALIŞAN KOŞULAR — isId → AbortController (servis içi, süreç belleği).
+   * calistir() iş dosyasını açınca kaydeder, bitince siler. POST /ekip/isler/:id/iptal ve
+   * SSE bağlantısının gerçekten kopması (controller) buradan durdurur.
+   * Not: tek API süreci varsayımı; başka süreçte koşan iş burada görünmez → {ok:false}.
+   */
+  private readonly calisanKosular = new Map<string, CalisanKosu>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -584,12 +613,35 @@ export class EkipRunnerService {
 
   private ogrenilenleriAyikla(metin: string): string[] {
     const out: string[] = [];
+    const BASLIK = /^(?:Ö|O)(?:Ğ|G)REND(?:İ|I)M\s*[*_`]*\s*:?\s*[*_`]*\s*(.*)$/i;
+    const temizle = (s: string) => s.trim().replace(/[*_`]+$/, '').trim().slice(0, 1000);
+    // "ÖĞRENDİM:" başlığının altına madde madde yazılan dersler (pilot 3'te 2 ders kaybolmuştu).
+    let baslikAltinda = false;
     for (const ham of String(metin || '').split(/\r?\n/)) {
       // Model çoğu zaman "**ÖĞRENDİM:**", "- ÖĞRENDİM:", "### ÖĞRENDİM" gibi biçimliyor; işaretleri soy.
       // Yalnız satır BAŞINDAKİ işaretler soyulur; içerikteki alt çizgi (get_tax_calendar) korunur.
-      const satir = ham.replace(/^[\s*_`#>\-•]+/, '').trim();
-      const m = satir.match(/^(?:Ö|O)(?:Ğ|G)REND(?:İ|I)M\s*[*_`]*\s*:\s*[*_`]*\s*(.+)$/i);
-      if (m && m[1].trim().length >= 8) out.push(m[1].trim().replace(/[*_`]+$/, '').trim().slice(0, 1000));
+      const maddeMi = /^\s*(?:[-*•]|\d+[.)])\s+/.test(ham);
+      const satir = ham.replace(/^[\s*_`#>\-•]+/, '').replace(/^\d+[.)]\s+/, '').trim();
+      const m = satir.match(BASLIK);
+      if (m) {
+        const govde = temizle(m[1] || '');
+        if (govde.length >= 8) out.push(govde);
+        // Aynı satırda ders yoksa (ya da varsa da) sonraki maddeler bu başlığa ait sayılır.
+        baslikAltinda = true;
+        continue;
+      }
+      if (!baslikAltinda) continue;
+      if (!satir) {
+        // Boş satır başlığı kapatmaz; ancak yeni bir başlık (##, **X:**) ya da madde olmayan düz metin kapatır.
+        continue;
+      }
+      const yeniBaslik = /^(#{1,6}\s|\*\*[^*]{2,40}\*\*\s*:?\s*$|[A-ZÇĞİÖŞÜ][A-ZÇĞİÖŞÜ /]{3,40}:)/.test(ham.trim()) || /^(NE YAPTIM|NEYE BAKTIM|NE BULDUM|ONAY BEKLEYEN|RAPOR|SORU)/i.test(satir);
+      if (yeniBaslik) {
+        baslikAltinda = false;
+        continue;
+      }
+      if (maddeMi && satir.length >= 8 && !/^(yok|—|-)\.?$/i.test(satir)) out.push(temizle(satir));
+      else if (!maddeMi) baslikAltinda = false;
     }
     return Array.from(new Set(out)).slice(0, 10);
   }
@@ -616,6 +668,11 @@ export class EkipRunnerService {
   }
 
   // ─── KOŞU ───
+
+  /** Agent SDK yükleyici — spec sahte SDK vermek için üzerine yazar (jest ESM import'u yakalayamaz). */
+  protected sdkYukle(): Promise<any> {
+    return loadSdk();
+  }
 
   /**
    * Tek portal aracının işleyicisi (calistir içinden sdk.tool'a verilir; spec doğrudan çağırabilir).
@@ -732,6 +789,16 @@ export class EkipRunnerService {
     const isId = await this.isDosyasiAc(p, ajan, model);
     emit({ type: 'baslangic', isId, ajanId: ajan.id, model, dryRun });
 
+    // DURDURMA: iş başına AbortController; sahip düğmesi (iptalEt) ve bağlantı kopması (p.signal) buna bağlanır.
+    const ac = new AbortController();
+    const kosuKaydi: CalisanKosu = { ac, tenantId: p.tenantId, ajanId: ajan.id, neden: null };
+    this.calisanKosular.set(isId, kosuKaydi);
+    const disSinyalIptali = () => this.iptalEt(p.tenantId, isId, 'baglanti');
+    if (p.signal) {
+      if (p.signal.aborted) disSinyalIptali();
+      else p.signal.addEventListener('abort', disSinyalIptali, { once: true });
+    }
+
     // İZOLE AUTH: alt süreç Max OAuth token kullansın; ANTHROPIC_* düşür (luca-operator ile aynı).
     const childEnv: Record<string, string> = {};
     for (const [k, v] of Object.entries(process.env)) if (typeof v === 'string') childEnv[k] = v;
@@ -756,7 +823,7 @@ export class EkipRunnerService {
     ].join('\n');
 
     try {
-      const sdk = await loadSdk();
+      const sdk = await this.sdkYukle();
       const sistem = await this.sistemPromptu(ajan, dryRun, p.tenantId, p.sesModu === true);
 
       const portalTool = sdk.tool(
@@ -783,8 +850,10 @@ export class EkipRunnerService {
           maxTurns: MAX_TUR,
           includePartialMessages: true,
           env: childEnv,
+          abortController: ac,
         },
       })) {
+        if (ac.signal.aborted) break; // durduruldu — SDK kuyruğunda kalan olayları işleme
         if (m?.type === 'stream_event') {
           const ev = m.event;
           if (ev?.type === 'content_block_delta' && ev?.delta?.type === 'text_delta') {
@@ -802,7 +871,18 @@ export class EkipRunnerService {
     } catch (e: any) {
       isError = true;
       hata = e?.message || 'Agent SDK (Max) çağrısı başarısız.';
-      this.logger.error(`ekip ${ajan.id} koşu hatası: ${hata}`);
+      if (!ac.signal.aborted) this.logger.error(`ekip ${ajan.id} koşu hatası: ${hata}`);
+    } finally {
+      if (p.signal) p.signal.removeEventListener('abort', disSinyalIptali);
+      this.calisanKosular.delete(isId);
+    }
+
+    // DURDURULDU: SDK AbortError ya da döngüden çıkış — hangi yoldan gelirse gelsin tek metin, iş failed.
+    const iptalEdildi = ac.signal.aborted;
+    if (iptalEdildi) {
+      isError = true;
+      hata = IPTAL_HATA_METNI[kosuKaydi.neden || 'sahip'];
+      this.logger.warn(`ekip ${ajan.id} koşusu durduruldu (${kosuKaydi.neden || 'sahip'}) iş=${isId}`);
     }
 
     const durationMs = Date.now() - started;
@@ -818,11 +898,12 @@ export class EkipRunnerService {
     }).catch(() => undefined);
 
     if (isError && !hata) hata = answer.trim() ? undefined : 'Agent SDK (Max) sonucu hata döndü.';
-    if (isError && /maximum number of turns|max.*turns/i.test(answer)) {
+    if (isError && !iptalEdildi && /maximum number of turns|max.*turns/i.test(answer)) {
       answer += '\n\n[Adım sınırına gelindi — iş yarım kaldı.]';
     }
 
-    const ogrenilen = this.ogrenilenleriAyikla(answer);
+    // Yarım kalan koşudan "öğrenilen" çıkarılmaz (rapor tamamlanmadı).
+    const ogrenilen = iptalEdildi ? [] : this.ogrenilenleriAyikla(answer);
     if (ogrenilen.length) await this.ogrenilenleriKaydet(p, ajan.id, isId, ogrenilen);
 
     const sonuc: EkipKosuSonucu = {
@@ -839,7 +920,8 @@ export class EkipRunnerService {
       costUsd,
       hata,
     };
-    const basarisiz = Boolean(hata) && !answer.trim();
+    // İptalde yarım cevap olsa da iş FAILED (kadro/durum "çalışıyor" sayaçları ve bugunHata bunu görür).
+    const basarisiz = iptalEdildi || (Boolean(hata) && !answer.trim());
     await this.isDosyasiKapat(isId, basarisiz ? 'failed' : 'done', {
       rapor: sonuc.rapor,
       taxpayerId: ctx.taxpayerId,
@@ -858,6 +940,7 @@ export class EkipRunnerService {
       onayBekleyenSayisi: onayBekleyen.length,
       ogrenilenSayisi: ogrenilen.length,
       durationMs,
+      ...(iptalEdildi ? { iptal: kosuKaydi.neden || 'sahip' } : {}),
     });
 
     if (basarisiz) {
@@ -866,6 +949,31 @@ export class EkipRunnerService {
       emit({ type: 'done', isId, model, toolUses, durationMs, kuruTestYapilacaktilar, onayBekleyen, ogrenilen, taxpayerId: ctx.taxpayerId });
     }
     return sonuc;
+  }
+
+  /**
+   * KOŞUYU DURDUR — POST /ekip/isler/:id/iptal ve SSE kopması. Aynı tenant'ın çalışan işi ise Agent SDK'ya
+   * abort verilir; calistir() bunu görüp iş dosyasını failed + hata=IPTAL_HATA_METNI[neden] kapatır, AgentEvent yazar.
+   * Kayıt yoksa (bitmiş / başka süreçte / başka tenant) {ok:false, error}. İkinci çağrı ilk nedeni korur.
+   */
+  iptalEt(tenantId: string, isId: string, neden: IptalNedeni = 'sahip'): { ok: boolean; isId: string; error?: string } {
+    const k = this.calisanKosular.get(isId);
+    if (!k || k.tenantId !== tenantId) return { ok: false, isId, error: 'Çalışan koşu bulunamadı (bitmiş olabilir).' };
+    if (!k.ac.signal.aborted) {
+      k.neden = neden;
+      try {
+        k.ac.abort();
+      } catch (e: any) {
+        this.logger.warn(`ekip koşusu durdurulamadı ${isId}: ${e?.message || e}`);
+        return { ok: false, isId, error: 'Durdurma sinyali verilemedi.' };
+      }
+    }
+    return { ok: true, isId };
+  }
+
+  /** Bu süreçte şu an koşan iş kimlikleri (teşhis/test). */
+  calisanIsIdleri(): string[] {
+    return Array.from(this.calisanKosular.keys());
   }
 
   /** Bugün (Istanbul) başlayan ekip koşusu sayısı — /ekip/durum için. */

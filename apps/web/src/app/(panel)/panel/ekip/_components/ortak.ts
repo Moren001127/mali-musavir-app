@@ -11,7 +11,7 @@ export const RENK = {
   sonuk: 'rgba(250,250,249,0.35)',
   altin: '#fbbf24', // yalnız: Onay kuyruğu şeridi/başlığı + Sabah bandı "bekleyen onay" sayacı + Koordinatör ikon halkası
   turuncu: '#fdba74', // onay bekliyor adımı, ajan başına onay rozeti, süre azaldı, uyarı satırı
-  kirmizi: '#f87171', // hata, CANLI, Max bağlı değil, Operatör kapalı, Bağlantıyı kes
+  kirmizi: '#f87171', // hata, CANLI, Max bağlı değil, Operatör kapalı, Durdur
   yesil: '#4ade80', // KURU, bitti, onaylandı
   mor: '#a78bfa', // pano, ÖĞRENDİM çipleri
   gri: '#a3a3a3', // bekliyor / kapalı metin

@@ -14,6 +14,7 @@ import { EkipOnayService } from './ekip-onay.service';
  *       + gun=bugun|7|tumu&status=running,failed&dryRun=true|false&kaynak=portal|ses|cron|koordinator&toplam=1
  *         → süzgeçli şekil {isler, toplam, suzgec}
  *  GET  /ekip/isler/:id             tek iş dosyası (tam sonuç)
+ *  POST /ekip/isler/:id/iptal       çalışan koşuyu DURDUR → {ok:true,isId} | {ok:false,isId,error} (bitmiş/yok)
  *  GET  /ekip/pano?donemSayisi=&yenile=  mükellef × dönem × aşama (son 3 dönem); 60 sn önbellek
  *  GET  /ekip/durum                 operatör çevrimiçi mi, bekleyen onay, bugünkü koşu, calisan, bugunHata, sonSabahOzeti
  *  POST /ekip/koordinator/sabah-ozeti  body {gonder?} → koordinatörü hemen koştur (canlı test)
@@ -95,6 +96,15 @@ export class EkipController {
     return r || { error: 'İş dosyası bulunamadı.' };
   }
 
+  /**
+   * Çalışan koşuyu DURDUR (sahip düğmesi). Agent SDK'ya abort verilir; iş dosyası failed,
+   * result.hata='iptal edildi (sahip)', AgentEvent yazılır. Çalışan kayıt yoksa {ok:false, error}.
+   */
+  @Post('isler/:id/iptal')
+  iptal(@Req() req: any, @Param('id') id: string) {
+    return this.runner.iptalEt(req.user?.tenantId || 'default', id, 'sahip');
+  }
+
   /** Pano — tenant başına 60 sn önbellek; `yenile=1` önbelleği atlar. Yanıta `onbellek:{vurdu, yasSn}` eklenir. */
   @Get('pano')
   pano(@Req() req: any, @Query('donemSayisi') donemSayisi?: string, @Query('yenile') yenile?: string) {
@@ -134,6 +144,7 @@ export class EkipController {
   /**
    * Ajanı koştur — SSE. Olaylar: baslangic | text | tool | kuruTest | onay | red | done | error
    * (ekip-runner.service.ts EkipAkisOlayi). dryRun varsayılan TRUE.
+   * İstemci bağlantıyı GERÇEKTEN keserse (sekme kapandı, "Durdur" sonrası fetch abort) koşu sunucuda da durur.
    */
   @Post(':ajanId/calistir')
   async calistir(
@@ -166,6 +177,15 @@ export class EkipController {
       }
     }, 15000);
 
+    // BAĞLANTI KOPMASI → koşuyu durdur. DİKKAT: Node 16+ `req.on('close')` gövde okunur okunmaz tetiklenir
+    // (yanıt sürerken, ölçüldü: ~26 ms) — onu kullanmak her koşuyu anında iptal ederdi. Gerçek kopma
+    // `res.on('close')` + `writableEnded=false` ile anlaşılır; nabız sayesinde close yalnız gerçek kopmada gelir.
+    const kopma = new AbortController();
+    let bitti = false;
+    res.on('close', () => {
+      if (!bitti && !res.writableEnded) kopma.abort();
+    });
+
     try {
       await this.runner.calistir({
         ajanId,
@@ -176,10 +196,12 @@ export class EkipController {
         dryRun: body?.dryRun !== false,
         kaynak: 'portal',
         emit: send,
+        signal: kopma.signal,
       });
     } catch (e: any) {
       send({ type: 'error', error: e?.message || 'Beklenmeyen hata.' });
     } finally {
+      bitti = true;
       clearInterval(nabiz);
       res.end();
     }
