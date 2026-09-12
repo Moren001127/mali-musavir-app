@@ -26,6 +26,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     if (!user || !user.isActive) throw new UnauthorizedException();
     return {
       sub: user.id,
+      // KÖK DÜZELTME (2026-09-12): controller'ların çoğu req.user.userId okuyor, strateji yalnız sub veriyordu →
+      //   onaylayan/işlem yapan kullanıcı hep boş kalıyordu (31 onaylı belgede approvedBy null). İkisi de dolu.
+      userId: user.id,
       email: user.email,
       firstName: user.firstName,
       lastName: user.lastName,

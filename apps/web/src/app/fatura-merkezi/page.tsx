@@ -2217,6 +2217,35 @@ function sorguAralikAyAdedi(from: string, to: string): number {
   if (!a || !b) return 0;
   return (Number(b[1]) - Number(a[1])) * 12 + (Number(b[2]) - Number(a[2])) + 1;
 }
+/** Aralığın kapsadığı takvim ayları ('YYYY-MM' listesi; en çok 12). Liste uçları tek ay çektiği için çok-aylı
+ *  aralıkta her ay ayrı istenip birleştirilir (kullanıcı bulgusu 2026-09-12: 'Son 30 gün / Bu çeyrek' seçince tablo
+ *  yalnız seçili ayı gösteriyordu). */
+function sorguAralikAylari(from: string, to: string): string[] {
+  const a = String(from || '').match(/^(\d{4})-(\d{2})/);
+  const b = String(to || '').match(/^(\d{4})-(\d{2})/);
+  if (!a || !b) return [];
+  const out: string[] = [];
+  let y = Number(a[1]); let m = Number(a[2]);
+  const yb = Number(b[1]); const mb = Number(b[2]);
+  while ((y < yb || (y === yb && m <= mb)) && out.length < 12) {
+    out.push(`${y}-${String(m).padStart(2, '0')}`);
+    m += 1; if (m > 12) { m = 1; y += 1; }
+  }
+  return out;
+}
+/** Satırın tarihinden 'YYYY-MM' (geçersizse yedek ay). */
+function sorguSatirAyi(tarih: any, yedek: string): string {
+  const d = tarih ? new Date(tarih) : null;
+  if (!d || Number.isNaN(d.getTime())) return yedek;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+/** Satır tarihi [from, to] içinde mi (gün bazlı, kapsayıcı)? Tarihsiz satır aralıktaki ay etiketiyle geçer. */
+function sorguTarihAralikta(tarih: any, ayEtiketi: string, from: string, to: string, aylar: string[]): boolean {
+  const d = tarih ? new Date(tarih) : null;
+  if (!d || Number.isNaN(d.getTime())) return !ayEtiketi || aylar.includes(ayEtiketi);
+  const ymd = sorguYmd(d);
+  return ymd >= from && ymd <= to;
+}
 /** İş dönem etiketi ("2026-09" ya da aralıklı sorguda "2026-09-01_2026-09-12") seçili ay/aralıkla
  *  örtüşüyor mu? Eski birebir karşılaştırma aralıklı işleri kaçırıyordu → "çekiliyor" şeridi çıkmıyordu. */
 function sorguIsDonemUyar(jobDonem: string, donem: string, from: string, to: string): boolean {
@@ -2324,6 +2353,19 @@ function ScreenSorgu({ taxpayerId, period, source, onOpenEntegrator }: { taxpaye
   const rangePartial = !rangeInvalid && (!!rangeFrom !== !!rangeTo);
   const rangeAktif = !!rangeFrom && !!rangeTo && !rangeInvalid;
   const aralikAyAdedi = rangeAktif ? sorguAralikAyAdedi(rangeFrom, rangeTo) : 1;
+  // Çok-aylı aralıkta liste her ayı ayrı çekip birleştirir (tek ay = eski davranış). Anahtar: ay listesi.
+  const listeAylar: string[] = rangeAktif && aralikAyAdedi > 1 ? sorguAralikAylari(rangeFrom, rangeTo) : [donem];
+  const listeAylarKey = listeAylar.join(',');
+  const cokAyli = listeAylar.length > 1;
+  const cokAyliSuz = (satirlar: any[], tarihAlani: string, ayAlani?: string) => {
+    if (!cokAyli) return satirlar;
+    const gorulen = new Set<string>();
+    return satirlar.filter((r: any) => {
+      const k = String(r?.id || r?.sourceRefId || r?.uuid || '');
+      if (k) { if (gorulen.has(k)) return false; gorulen.add(k); }
+      return sorguTarihAralikta(r?.[tarihAlani], ayAlani ? String(r?.[ayAlani] || '') : '', rangeFrom, rangeTo, listeAylar);
+    });
+  };
   const [efaturaChannel, setEfaturaChannel] = useState<'IN_EFATURA' | 'OUT_EFATURA' | 'OUT_EARSIV'>('IN_EFATURA');
   const [lastEfaturaSync, setLastEfaturaSync] = useState<any>(null);
   const [efaturaPollUntil, setEfaturaPollUntil] = useState(0);
@@ -2333,8 +2375,11 @@ function ScreenSorgu({ taxpayerId, period, source, onOpenEntegrator }: { taxpaye
   const isEarsivJobActive = (jobs: any): boolean =>
     Array.isArray(jobs) && jobs.some((j: any) => ['pending', 'running'].includes(String(j.status || '').toLowerCase()));
   const earsivQ = useQuery({
-    queryKey: ['fm-earsiv-sorgu', taxpayerId, donem],
-    queryFn: async () => (await api.get('/portal-automation/earsiv/invoices', { params: { taxpayerId, period: donem, limit: 500 } })).data,
+    queryKey: ['fm-earsiv-sorgu', taxpayerId, listeAylarKey],
+    queryFn: async () => {
+      const parcalar = await Promise.all(listeAylar.map(async (ay) => (await api.get('/portal-automation/earsiv/invoices', { params: { taxpayerId, period: ay, limit: 500 } })).data));
+      return cokAyliSuz(parcalar.flatMap((x: any) => (Array.isArray(x) ? x : [])), 'issuedAt', 'period');
+    },
     enabled: !!taxpayerId && source === 'earsiv',
     // Aktif iş varken hızlı (2sn) → satırlar canlı insin; iş yokken seyrelt (10sn) → boş yük olmasın.
     refetchInterval: () => source === 'earsiv'
@@ -2387,7 +2432,7 @@ function ScreenSorgu({ taxpayerId, period, source, onOpenEntegrator }: { taxpaye
     if (source !== 'earsiv' || !taxpayerId) return;
     const status = String(lastJob?.status || '').toLowerCase();
     if (['done', 'success', 'completed', 'failed'].includes(status)) {
-      qc.invalidateQueries({ queryKey: ['fm-earsiv-sorgu', taxpayerId, donem] });
+      qc.invalidateQueries({ queryKey: ['fm-earsiv-sorgu', taxpayerId] });
     }
   }, [source, taxpayerId, donem, lastJob?.id, lastJob?.status, lastJob?.updatedAt, qc]);
   // AKTARIM anlamı e-Fatura ile AYNI (kullanıcı bulgusu 2026-09-12): 'aktarıldı' = Fatura Merkezi'ne alındı (zatenVar);
@@ -2423,23 +2468,32 @@ function ScreenSorgu({ taxpayerId, period, source, onOpenEntegrator }: { taxpaye
   const aktarMut = useMutation({
     mutationFn: async () => {
       const refs = selectedRefs.length ? selectedRefs : processable.map((r) => r.sourceRefId).filter(Boolean);
-      const sync = await api.post('/portal-automation/earsiv/accounting-sync', {
-        taxpayerId,
-        period: donem,
-        selectedRefs: refs,
-      });
-      const imported = Number(sync?.data?.imported || 0);
-      const processed = Number(sync?.data?.processed || 0);
+      // Aktarım ucu tek ayı süzer → çok-aylı listede seçimler AYINA göre gruplanır, her ay ayrı çağrılır.
+      const refAyi = new Map<string, string>();
+      rows.forEach((r: any) => { if (r?.sourceRefId) refAyi.set(String(r.sourceRefId), sorguSatirAyi(r.issuedAt, String(r.period || donem))); });
+      const gruplar = new Map<string, string[]>();
+      refs.forEach((ref: string) => { const ay = cokAyli ? (refAyi.get(String(ref)) || donem) : donem; gruplar.set(ay, [...(gruplar.get(ay) || []), ref]); });
+      if (!gruplar.size) gruplar.set(donem, []);
+      let sync: any = null; let imported = 0; let processed = 0;
+      for (const [ay, ayRefs] of gruplar) {
+        sync = await api.post('/portal-automation/earsiv/accounting-sync', { taxpayerId, period: ay, selectedRefs: ayRefs });
+        imported += Number(sync?.data?.imported || 0);
+        processed += Number(sync?.data?.processed || 0);
+      }
+      sync = { ...sync, data: { ...(sync?.data || {}), imported, processed } };
       if (imported === 0 && processed === 0 && refs.length > 0) {
-        const fallback = await api.post('/fatura-muhasebelestirme/integrations/fetch', {
-          taxpayerId,
-          direction: 'SATIS',
-          donem,
-          providers: ['GIB_PORTAL'],
-          mode: 'download',
-          selectedRefs: refs,
-        });
-        return { ...sync, data: { ...(sync.data || {}), fallbackQueued: true, fallback: fallback.data } };
+        let fallback: any = null;
+        for (const [ay, ayRefs] of gruplar) {
+          fallback = await api.post('/fatura-muhasebelestirme/integrations/fetch', {
+            taxpayerId,
+            direction: 'SATIS',
+            donem: ay,
+            providers: ['GIB_PORTAL'],
+            mode: 'download',
+            selectedRefs: ayRefs,
+          });
+        }
+        return { ...sync, data: { ...(sync.data || {}), fallbackQueued: true, fallback: fallback?.data } };
       }
       return sync;
     },
@@ -2490,8 +2544,11 @@ function ScreenSorgu({ taxpayerId, period, source, onOpenEntegrator }: { taxpaye
     || efaturaProviders.find((p) => p?.taxpayerScoped || p?.configured)
     || null;
   const efaturaInboxQ = useQuery({
-    queryKey: ['fm-efatura-inbox', taxpayerId, donem, efaturaDirection, efaturaChannel],
-    queryFn: async () => (await api.get('/fatura-muhasebelestirme/efatura-inbox', { params: { taxpayerId, period: donem, direction: efaturaDirection, channel: efaturaChannel, limit: 2000 } })).data,
+    queryKey: ['fm-efatura-inbox', taxpayerId, listeAylarKey, efaturaDirection, efaturaChannel],
+    queryFn: async () => {
+      const parcalar = await Promise.all(listeAylar.map(async (ay) => (await api.get('/fatura-muhasebelestirme/efatura-inbox', { params: { taxpayerId, period: ay, direction: efaturaDirection, channel: efaturaChannel, limit: 2000 } })).data));
+      return cokAyliSuz(parcalar.flatMap((x: any) => (Array.isArray(x) ? x : [])), 'faturaDate');
+    },
     enabled: !!taxpayerId && source === 'efatura',
     refetchInterval: source === 'efatura' && efaturaPollUntil > Date.now() ? 2500 : 6000,
   });
@@ -2615,15 +2672,24 @@ function ScreenSorgu({ taxpayerId, period, source, onOpenEntegrator }: { taxpaye
   }, [efaturaFetchMut.error, activeEfaturaProvider?.provider, activeEfaturaProvider?.label]);
 
   const efaturaImportMut = useMutation({
-    mutationFn: () => api.post('/fatura-muhasebelestirme/efatura-inbox/import', {
-      taxpayerId,
-      direction: efaturaDirection,
-      channel: efaturaChannel,
-      period: donem,
-      ids: efaturaSelectedIds.length ? efaturaSelectedIds : efaturaTransferableIds,
-      limit: 2000,
-      background: true,
-    }),
+    mutationFn: async () => {
+      const ids = efaturaSelectedIds.length ? efaturaSelectedIds : efaturaTransferableIds;
+      // İçe aktarım ucu tek ayı süzer → çok-aylı listede id'ler AYINA göre gruplanır, her ay ayrı çağrılır.
+      const idAyi = new Map<string, string>();
+      efaturaRows.forEach((r: any) => { if (r?.id) idAyi.set(String(r.id), sorguSatirAyi(r.faturaDate, donem)); });
+      const gruplar = new Map<string, string[]>();
+      ids.forEach((id: string) => { const ay = cokAyli ? (idAyi.get(String(id)) || donem) : donem; gruplar.set(ay, [...(gruplar.get(ay) || []), id]); });
+      if (!gruplar.size) gruplar.set(donem, []);
+      let son: any = null; let imported = 0; let processed = 0; let failed = 0; let queued = false;
+      for (const [ay, ayIds] of gruplar) {
+        son = await api.post('/fatura-muhasebelestirme/efatura-inbox/import', {
+          taxpayerId, direction: efaturaDirection, channel: efaturaChannel, period: ay, ids: ayIds, limit: 2000, background: true,
+        });
+        imported += Number(son?.data?.imported || 0); processed += Number(son?.data?.processed || 0); failed += Number(son?.data?.failed || 0);
+        if (son?.data?.queued) queued = true;
+      }
+      return { ...son, data: { ...(son?.data || {}), imported, processed, failed, ...(queued ? { queued: true } : {}) } };
+    },
     onSuccess: (r: any) => {
       const data = r?.data || {};
       if (data?.queued) {
@@ -2929,7 +2995,7 @@ function ScreenSorgu({ taxpayerId, period, source, onOpenEntegrator }: { taxpaye
         <div className="sq-row sq-meta">
           <span className="sq-pill"><Ico html={I.clock} size={12} /> Sorgu aralığı: <b>{aralikMetin}</b></span>
           {rangeAktif && aralikAyAdedi > 1 && (
-            <span className="sq-pill warn" title="Sorgu tüm aralığı çeker; liste ucu tek ayı süzer. Diğer ayları görmek için takvimden ayı değiştir.">Aralık {aralikAyAdedi} aya yayılıyor — tablo yalnız <b>{periodLabel(donem)}</b> ayını gösterir</span>
+            <span className="sq-pill" title="Aralık birden çok aya yayılıyor; tablo tüm ayları birleştirip aralıktaki belgeleri gösterir.">Tablo <b>{aralikAyAdedi} ayı</b> birleşik gösteriyor</span>
           )}
           {rangeInvalid && <span className="sq-pill err">Başlangıç bitişten sonra olamaz — düzeltmeden sorgulanamaz</span>}
           {rangePartial && <span className="sq-pill warn">İki tarih de gerekli — tek tarihle aralık gitmez, {periodLabel(donem)} ayı kullanılır</span>}
@@ -5055,7 +5121,8 @@ function provKisalt(label: string, provider: string): string {
   return (label || provider).replace(/[^A-Za-zÇĞİÖŞÜ]/g, '').slice(0, 2).toUpperCase();
 }
 /* ── PLAN16-H: gece çekim saati seçenekleri — 00:00…06:00 yarım saat adımlı (backend 00:00–06:59 kabul eder; varsayılan 02:00) ── */
-const GH_GECE_SAATLERI: string[] = ['00:00', '00:30', '01:00', '01:30', '02:00', '02:30', '03:00', '03:30', '04:00', '04:30', '05:00', '05:30', '06:00'];
+// Saat başı adımlar: sunucu cron'u her saat başı (HH:05) tikler ve dakikayı yok sayar — yarım saat seçeneği yanıltıcıydı (2026-09-12).
+const GH_GECE_SAATLERI: string[] = ['00:00', '01:00', '02:00', '03:00', '04:00', '05:00', '06:00'];
 const GH_GECE_VARSAYILAN_SAAT = '02:00';
 
 function ScreenEntegrator({ taxpayerId, period }: { taxpayerId: string; period: string }) {
@@ -5192,7 +5259,7 @@ function ScreenEntegrator({ taxpayerId, period }: { taxpayerId: string; period: 
                               title={kilit ? 'Önce kimlik tanımla — bağlı olmayan entegratörde gece çekimi açılamaz' : acik ? 'Gece çekimini kapat' : 'Gece çekimini aç (yalnız bu mükellef × entegratör)'}
                               onClick={() => talimatMut.mutate({ provider: c.provider, active: !acik })}><i /></button>
                             <b className={`gh-gece-durum${acik ? ' on' : ''}`}>{busy ? '…' : acik ? 'Açık' : 'Kapalı'}</b>
-                            <select className="gh-saat" value={saat} disabled={kilit || busy} title="Çekim saati (00:00–06:00, yarım saat adımlı) — koşu o saatin başında başlar"
+                            <select className="gh-saat" value={saat} disabled={kilit || busy} title="Çekim saati (00:00–06:00, saat başı) — koşu o saatin ilk dakikalarında başlar"
                               onChange={(e) => talimatMut.mutate({ provider: c.provider, active: acik, saat: e.target.value })}>
                               {saatler.map((s) => <option key={s} value={s}>{s}</option>)}
                             </select>
