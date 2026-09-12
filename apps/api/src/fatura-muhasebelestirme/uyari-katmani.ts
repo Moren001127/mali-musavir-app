@@ -164,7 +164,7 @@ export function dogrulamaUyarilari(issues: Array<{ code: string; severity: strin
         break;
       case 'RETURN_NEEDS_REVERSAL':
       case 'RETURN_DIRECTION_REVERSED':
-        ekle(UYARI_KOD.IADE, sev, 'İade belgesi', msg, 'Editörde "Yönü çevir" ile ters kaydı kurun (satıştan iade 610, alıştan iade stok/gider alacak).', [{ id: 'yonu-cevir', etiket: 'Yönü çevir' }]);
+        ekle(UYARI_KOD.IADE, sev, 'İade belgesi', msg, 'Ters kayıt sistemce otomatik kurulur; hâlâ görünüyorsa belge onaylı/Luca\'da olabilir — geri alıp yeniden doğrulayın ya da satırları editörde düzeltin.');
         break;
       case 'DOCUMENT_CANCELLED':
         ekle(UYARI_KOD.IPTAL, 'engel', 'İptal / taslak belge', msg, 'Belge muhasebeleştirilmez; yanlışsa belge durumunu düzeltin.');

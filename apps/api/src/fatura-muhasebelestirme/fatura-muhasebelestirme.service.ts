@@ -6521,6 +6521,29 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // Faz D/1: iade/iptal — normal kayıt yapılmasın (ters kayıt/610 gerekli). 610 satırı
     // varsa müşavir düzeltmiş demektir → engelleme.
     const isReturn = ocrData?.isReturn === true;
+    // KULLANICI KARARI (2026-09-12): editördeki "Yönü çevir" düğmesi KALKTI — iade belgesinde ters kaydı SİSTEM kurar.
+    //   Belge iade (ocrData.isReturn) ve satırlar NORMAL yönde kurulmuşsa (satışta cari BORÇ / alışta cari ALACAK) borç↔alacak
+    //   otomatik takas edilir, açıklamalar "… iade" olur, satışta matrah 600→610 yaprağına taşınır (planda varsa). Yalnız
+    //   düzenlenebilir belgede (onaylı / kuyrukta / Luca'ya gitmiş belgeye dokunulmaz). İkinci çağrıda no-op (idempotent).
+    if (isReturn && String(doc.status || '') !== 'APPROVED' && !['POSTED', 'POSTING', 'MANUAL_DONE', 'QUEUED'].includes(String(doc.lucaStatus || '')) && Array.isArray(doc.lines) && doc.lines.length) {
+      const saleR = String(doc.invoiceKind || '').toUpperCase() === 'SATIS';
+      const cariR = doc.lines.find((l: any) => String(l.group || '') === 'cari');
+      const cariBorcR = Number(cariR?.debit || 0) > 0, cariAlacakR = Number(cariR?.credit || 0) > 0;
+      const normalYon = !!cariR && (saleR ? (cariBorcR && !cariAlacakR) : (cariAlacakR && !cariBorcR));
+      if (normalYon) {
+        const iade610 = saleR ? await this.planYapragiBul(tenantId, doc.taxpayerId, ['610'], /iade/i).catch(() => null) : null;
+        for (const l of doc.lines) {
+          const g = String(l.group || '');
+          const data: any = { debit: l.credit ?? 0, credit: l.debit ?? 0 };
+          if (g === 'matrah') { data.description = saleR ? 'Satıştan iade' : 'Alıştan iade'; if (saleR && iade610?.code) data.accountCode = iade610.code; }
+          else if (g === 'vergi' && !/İADE|IADE/i.test(String(l.description || ''))) data.description = `${saleR ? 'Hesaplanan' : 'İndirilecek'} KDV — İADE ${l.rate || ''}`.trim();
+          await (this.prisma as any).invoiceAccountingLine.update({ where: { id: l.id }, data }).catch(() => null);
+          Object.assign(l, data);
+        }
+        await this.logAudit(tenantId, null, 'IADE_OTO_TERS', id, { yon: 'normal' }, { yon: 'ters', matrah610: iade610?.code || null }).catch(() => null);
+        this.logger.log(`[IADE] ${doc.belgeNo || id}: iade belgesi ters kayda çevrildi (otomatik)${iade610?.code ? ` · 610=${iade610.code}` : ''}`);
+      }
+    }
     // İADE-UYGUN satır var mı? SATIŞTAN iade → 610/611 (matrah ters kayıt). ALIŞTAN iade → matrah
     //   orijinal stok/gider'e (610 DEĞİL) ALACAK yazılır ama KDV "İADE" adlı 391'e işlenir → o satır
     //   kaydın iade olduğunu gösterir; RETURN_NEEDS_REVERSAL yanlış alarm vermesin.

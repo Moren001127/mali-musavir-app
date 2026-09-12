@@ -4099,10 +4099,6 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
     setYonTers(satirlarTers);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selDoc?.id]);
-  const yonuCevir = () => {
-    setYonTers((v) => !v);
-    setLineDraft((arr) => arr.map((l: any) => ({ ...l, debit: Number(l.credit) || 0, credit: Number(l.debit) || 0 })));
-  };
   const lines: any[] = lineDraft;
   const setLine = (i: number, k: string, v: any) => setLineDraft((arr) => arr.map((l, j) => (j === i ? { ...l, [k]: v } : l)));
   const addLine = (group: string) => setLineDraft((arr) => [...arr, { group, accountCode: '', description: '', rate: '', debit: 0, credit: 0 }]);
@@ -4390,7 +4386,7 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                 <UyariKutusu doc={selDoc} taxpayerId={taxpayerId}
                   onIlkBelge={(ilk) => { if (all.some((x: any) => x.id === ilk)) setSelId(ilk); else toast.info('İlk belge bu dönem/listede değil — Gelen Belgeler ekranından arayın'); }}
                   onTevkifatFisi={() => { setMeta((m: any) => ({ ...m, tevkifatli: true })); applyTevkifatMut.mutate(); }}
-                  onYonuCevir={() => yonuCevir()} />
+                />
                 <div className="twrap">
                   {isIsletme ? (
                     <div className="islforms">
@@ -4512,13 +4508,7 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                   ) : (
                     <div className="fgrps">
                       {/* İADE / yön: bölüm tarafları takaslı; kullanıcı düğmeyle çevirebilir. */}
-                      {/* Kullanıcı bulgusu (2026-09-12): 'Yön: normal / Yönü çevir' her belgede anlamsızdı → yalnız İADE belgesinde ya da kayıt ters kurulmuşsa görünür. */}
-                      {(yonTers || selDoc.ocrData?.isReturn === true) && (
-                        <div className={yonTers ? 'fyon ters' : 'fyon'}>
-                          <span>{yonTers ? 'İade faturası — kayıt TERS (borç/alacak çevrildi)' : 'İade faturası — kayıt normal kurulmuş'}</span>
-                          <button type="button" className="fyonbtn" onClick={yonuCevir} title={yonTers ? 'Satırların borç/alacağını normale çevirir' : 'İade için satırların borç/alacağını ters çevirir'}>{yonTers ? 'Normale çevir' : 'Ters kayıt yap (iade)'}</button>
-                        </div>
-                      )}
+                      {/* Kullanıcı kararı (2026-09-12): 'Yönü çevir' KALDIRILDI — iade belgesinde ters kaydı sistem kurar (revalidate). */}
                       {/* Fiş grup/yön: düzenlenmekte olan meta.invoiceKind'i izle (kaydı beklemeden
                           ALIŞ↔SATIŞ dönsün); meta yoksa selDoc.invoiceKind'e düş. */}
                       {(String(meta.invoiceKind || selDoc.invoiceKind || '').includes('SATIS')
@@ -8566,6 +8556,12 @@ const CSS = `
 #fm-root .uykutu.kapali{max-height:none;overflow:hidden}
 #fm-root .uykutu.kapali .uykutu-h{border-bottom:0}
 #fm-root .uykutu-oz{font-style:normal;font-weight:600;color:#64748b;font-size:11.5px}
+/* Kullanıcı isteği (2026-09-12): Sorgu tablolarında ONAY sütunu bilgi amaçlı — renkli hap yerine düz yazı (yalnız red/iptal kırmızı) */
+#fm-root .sq-onay,#fm-root .sq-onay.onay,#fm-root .sq-onay.oto,#fm-root .sq-onay.bekliyor{background:transparent;border-color:transparent;color:var(--muted);font-weight:600;padding:0;height:auto}
+#fm-root .sq-onay::before{background:#cbd5e1}
+#fm-root .sq-onay.red,#fm-root .sq-onay.iptal,#fm-root .sq-onay.itiraz{color:#b91c1c;background:transparent;border-color:transparent;padding:0;height:auto}
+#fm-root .sq-onay.red::before,#fm-root .sq-onay.iptal::before,#fm-root .sq-onay.itiraz::before{background:#e5484d}
+#fm-root .sq-onay.silinmis,#fm-root .sq-onay.diger{background:transparent;border-color:transparent;padding:0;height:auto}
 /* Süzgeç boş sonuç bağlantısı */
 #fm-root .gf-table .empty a{color:var(--accent);font-weight:700;text-decoration:underline}
 
