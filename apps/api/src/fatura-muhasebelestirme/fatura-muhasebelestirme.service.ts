@@ -18,6 +18,8 @@ import { MihsapService } from '../mihsap/mihsap.service';
 import { PortalAutomationService } from '../portal-automation/portal-automation.service';
 import { BeyanKayitlariService } from '../beyan-kayitlari/beyan-kayitlari.service';
 import { ModuleRef } from '@nestjs/core';
+import { demirbasHaddiTL, tevkifatEksikDegerlendir, tevkifatTutarlilik, tevkifatKuralBul, oranMetni, KURUM_TURLERI } from './tevkifat-kurallari';
+import { Uyari, uyariYap, dogrulamaUyarilari, uyarilariBirlestir, uyariOzet, uyariImza, UYARI_KOD } from './uyari-katmani';
 import { isletmeRef, getKayitAltList, isletmeAlisSatisTuru, isletmeIslemTuru, defaultBelgeTuruKod, normalizeDocumentType, isletmeGiderSinifi, isletmeAutoKayitAltKod, isletmeAutoKayitTuru, defaultKayitAltKod, denetimUyariOlustur, giderIcerikSinifla } from '@mali-musavir/shared';
 
 // ── İşletme defteri AI sınıflandırması ──
@@ -248,6 +250,8 @@ type ProviderInvoicePayload = {
   originalName?: string | null;
   pdfBuffer?: Buffer | null;
   htmlContent?: string | null;
+  /** Faz 2 — sağlayıcı liste satırındaki belge durumu (iptal/red/GİB hata/taslak süzgeci). Yoksa UBL'den türetilir. */
+  providerStatus?: { approval?: string | null; iptal?: string | null } | null;
 };
 
 type ProviderPayloadLookup = {
@@ -2228,7 +2232,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     });
     if (!taxpayer) throw new NotFoundException('Mukellef bulunamadi');
 
-    const totals = { created: 0, alreadyQueued: 0, failed: 0, skipped: 0, fetched: 0 };
+    const totals: { created: number; alreadyQueued: number; failed: number; skipped: number; fetched: number; iptalAtlanan?: number } = { created: 0, alreadyQueued: 0, failed: 0, skipped: 0, fetched: 0 };
     const shouldTryGibPortal = !requestedProviders.size || requestedProviders.has('GIB_PORTAL');
     const gibPortalStatus: any[] = [];
     if (shouldTryGibPortal) {
@@ -2381,6 +2385,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
               payload,
             );
             if (result.created) created++;
+            else if ((result as any).skipped) { totals.iptalAtlanan = (totals.iptalAtlanan || 0) + 1; }
             else alreadyQueued++;
           } catch (e: any) {
             failed++;
@@ -3198,8 +3203,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     }
     const c = detC || await this.aiClassifyAccounting(content, mukellefBilgi, isIsletme, kind).catch(() => null);
     if (detC) this.logger.log(`[CLS-SKIP] det icerik=${detC.kategori} → Max ATLANDI doc=${documentId}`);
-    const patch: any = { ...od };
-    delete patch.icerikMetni; delete patch.needsClassify; // snippet'i temizle (DB bloat olmasın)
+    // A.8 — Max çağrısı ~100 sn sürebilir; bu arada revalidate (uyarilar), sahip kararları (demirbasKarar/mukerrerKarar),
+    //   editör düzeltmeleri ocrData'ya yazılmış olabilir. Baştaki `od` kopyasıyla yazmak bunları EZİYORDU → yazmadan
+    //   önce GÜNCEL ocrData yeniden okunur; yalnız sınıflandırma alanları (giderTuru / matrahKategori / isletme)
+    //   üstüne bindirilir, snippet alanları silinir.
+    const patch: any = {};
+    let islPatch: any = null;
     if (c) {
       if (c.giderTuru) patch.giderTuru = String(c.giderTuru).slice(0, 40);
       if (c.kategori) patch.matrahKategori = c.kategori;
@@ -3259,13 +3268,24 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             islemTuruKod: isletmeIslemTuru(kind, islText),
             belgeTuruKod: (() => { const dt = normalizeDocumentType((doc as any).documentType || od?.belgeTuru || od?.documentType); return dt ? defaultBelgeTuruKod(dt, kind) : ''; })(),
           };
-          patch.isletme = isl;
+          islPatch = isl;
         }
       }
     }
-    await (this.prisma as any).invoiceAccountingDocument.update({ where: { id: doc.id }, data: { ocrData: patch } }).catch(() => {});
+    {
+      const guncel = await (this.prisma as any).invoiceAccountingDocument.findFirst({ where: { id: doc.id, tenantId }, select: { ocrData: true } }).catch(() => null);
+      const taze: any = { ...((guncel?.ocrData as any) || od) };
+      delete taze.icerikMetni; delete taze.needsClassify; // snippet'i temizle (DB bloat olmasın)
+      Object.assign(taze, patch);
+      // İşletme sınıfı: bu arada kullanıcı elle düzelttiyse (userEdited) EZME.
+      if (islPatch && taze?.isletme?.userEdited !== true) taze.isletme = islPatch;
+      await (this.prisma as any).invoiceAccountingDocument.update({ where: { id: doc.id }, data: { ocrData: taze } }).catch(() => {});
+    }
     // giderTuru artık dolu → hesap eşleştirmesini yenile (kural + AI eskalasyon arkada çalışır).
     if (doc.taxpayerId) await this.rematchDocumentsWithLatestAccountPlan(tenantId, doc.taxpayerId, [doc.id]).catch(() => {});
+    // A.7 — sınıflandırma + eşleştirme sonrası uyarılar tazelensin (TEVKIFAT_EKSIK / DEMIRBAS giderTuru'na bağlı;
+    //   rematch yalnız taban uyarıları yazar, türetilenleri revalidate üretir).
+    await this.revalidateDocument(tenantId, doc.id).catch(() => null);
   }
 
   private async runQueuedAiRead(tenantId: string, documentId: string) {
@@ -3360,12 +3380,14 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
    */
   async reprocessBrokenDocuments(
     tenantId: string,
-    opts: { mode?: 'oku' | 'temizle'; dryRun?: boolean; taxpayerId?: string; period?: string; limit?: number; documentIds?: string[] },
+    opts: { mode?: 'oku' | 'temizle' | 'iptal-temizle'; dryRun?: boolean; taxpayerId?: string; period?: string; limit?: number; documentIds?: string[] },
   ) {
     const dryRun = opts.dryRun !== false;
-    const mode = opts.mode === 'temizle' ? 'temizle' : 'oku';
+    const mode = opts.mode === 'temizle' ? 'temizle' : opts.mode === 'iptal-temizle' ? 'iptal-temizle' : 'oku';
     const LUCA_DISI = ['POSTED', 'POSTING', 'QUEUED'];
     if (mode === 'temizle') return this.cleanupCodeNameMixups(tenantId, { dryRun, taxpayerId: opts.taxpayerId });
+    // Faz 2 — yanlış oluşmuş iptal/red/taslak belgeleri CANCELLED'a çek (POSTED/POSTING hariç).
+    if (mode === 'iptal-temizle') return this.iptalTemizle(tenantId, { dryRun, taxpayerId: opts.taxpayerId, period: opts.period, limit: opts.limit });
 
     const STD_RATES = new Set([0, 1, 8, 10, 18, 20]);
     const TELEKOM_RE = /t[üu]rk\s*telekom|ttnet|turkcell|vodafone|superonline|t[üu]rksat|kablonet|netgsm|d-?smart|digit[üu]rk|millenicom|enerjisa|bedaş|ayedaş|ck\s*(?:boğaziçi|akdeniz)|elektrik\s*perakende|aydem|osmangazi\s*elektrik|başkent\s*elektrik|uludağ\s*elektrik|gediz|toroslar|igda[sş]|başkentgaz|doğalgaz/i;
@@ -4886,8 +4908,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
                 period: period.donem,
                 queryPeriodStart: period.startDate,
                 queryPeriodEnd: period.endDate,
-                approvalStatus: 'Onaylandi',
-                iptalItiraz: 'Yok',
+                // Faz 2 — entegratör durum süzgeci: sağlayıcı satırı ya da UBL (InvoiceTypeCode IPTAL / TASLAK)
+                //   iptal/red/taslak diyorsa inbox satırında durum TUTULUR; aktarım o satırdan belge OLUŞTURMAZ.
+                ...this.inboxApprovalFields(parsed, payload.providerStatus),
                 queriedBy: userId || null,
               },
             };
@@ -5126,6 +5149,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     };
 
     let processed = 0, imported = 0, alreadyQueued = 0, skipped = 0, failed = 0, staleReset = 0;
+    // Faz 2 — iptal/red/GİB hata/taslak süzgeci: belge OLUŞTURULMAZ, inbox satırında durum tutulur, sayaç döner.
+    let iptalAtlanan = 0;
     const errors: any[] = [];
     // AKTAR İLERLEME DURUMU (sunucu tarafı, kalıcı): ekran değişip geri gelince şerit buradan beslenir.
     const importKey = `${tenantId}:${opts.taxpayerId}:${channel}`;
@@ -5201,7 +5226,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         alreadyQueued++;
         continue;
       }
-      if (/iptal|itiraz|red|cancel/i.test(`${raw.approvalStatus || ''} ${raw.iptalItiraz || ''}`)) { skipped++; continue; }
+      {
+        const eng = this.belgeDurumuEngelli(raw);
+        if (eng.engelli) { skipped++; iptalAtlanan++; continue; }
+      }
       let storedVisual = raw?.originalVisual;
       let hasOriginalVisual = this.hasOriginalProviderVisual(storedVisual, provider);
       let xml = String((savedXmlLooksSynthetic ? '' : savedXml) || '').trim();
@@ -5287,6 +5315,19 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           { skipMatching },
         );
         const parsed = this.parseProviderUblInvoice(xml) || this.regexProviderInvoiceFallback(xml);
+        if ((result as any).skipped === 'iptal' || (result as any).skipped === 'taslak') {
+          // UBL'in kendisi IPTAL/TASLAK diyor → belge oluşturulmadı; durumu inbox satırına yaz, aktarılmadı kalsın.
+          await (this.prisma as any).eFaturaInbox.update({
+            where: { id: row.id },
+            data: {
+              ublXmlRaw: xml,
+              isTransferred: false, documentId: null, processedAt: null,
+              rawJson: { ...raw, belgeDurumu: (result as any).skipped, approvalStatus: (result as any).skipped === 'iptal' ? 'Iptal (UBL)' : 'Taslak (UBL)', iptalItiraz: (result as any).skipped === 'iptal' ? 'Iptal' : (raw?.iptalItiraz || 'Yok') },
+            },
+          });
+          skipped++; iptalAtlanan++;
+          continue;
+        }
         const updateRaw = {
           ...raw,
           needsDocumentDownload: usedSummaryOnly ? true : false,
@@ -5333,7 +5374,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       void this.reapplyAccountCodes(tenantId, opts.taxpayerId)
         .catch((e: any) => this.logger.warn(`Aktar sonrasi otomatik eslestirme hatasi: ${e?.message || e}`));
     }
-    return { processed, imported, alreadyQueued, skipped, failed, staleReset, errors };
+    return { processed, imported, alreadyQueued, skipped, failed, staleReset, iptalAtlanan, errors };
   }
 
   async importFromMihsap(
@@ -6156,18 +6197,82 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       return /^61[01]/.test(c) || (/^(191|391)/.test(c) && /İADE|IADE/i.test(String(l.description || '')));
     });
 
-    // DEMİRBAŞ (sabit kıymet): faaliyet bağlamı için mükellefi çek → demirbaş alış/satışı uyarısı (manuel/Luca).
+    // DEMİRBAŞ (sabit kıymet): faaliyet bağlamı için mükellefi çek → demirbaş alış/satışı uyarısı (karar kutusu).
+    //   Faz 2: kurumTuru (belirlenmiş alıcı) ve companyName (ünvan tahmini) de aynı sorguda.
+    //   kurumTuru kolonu migration'dan önce yoksa sorgu düşmesin diye ikinci deneme kurumTuru'suz (faaliyet kapısı korunur).
+    const tpSelectBase = { faaliyetAciklama: true, naceKodu: true, companyName: true, firstName: true, lastName: true, defterTuru: true, mihsapDefterTuru: true };
     const tpForAsset = doc.taxpayerId
-      ? await (this.prisma as any).taxpayer.findFirst({ where: { id: doc.taxpayerId, tenantId }, select: { faaliyetAciklama: true, naceKodu: true, companyName: true } }).catch(() => null)
+      ? await (this.prisma as any).taxpayer.findFirst({ where: { id: doc.taxpayerId, tenantId }, select: { ...tpSelectBase, kurumTuru: true } })
+          .catch(() => (this.prisma as any).taxpayer.findFirst({ where: { id: doc.taxpayerId, tenantId }, select: tpSelectBase }).catch(() => null))
       : null;
-    let fixedAsset = this.detectFixedAsset(ocrData, tpForAsset);
-    // DEMİRBAŞ HADDİ: bedel KDV hariç haddin altındaysa demirbaş uyarısı (FIXED_ASSET_MANUAL) verme —
+    const isSaleDoc = String(doc.invoiceKind || '').toUpperCase() === 'SATIS';
+    const faturaYili = doc.faturaTarihi ? new Date(doc.faturaTarihi).getUTCFullYear() : new Date().getUTCFullYear();
+    // Faz 2 — sahip kararı (POST documents/:id/demirbas-karari): elle_islendi | yine_de_isle | demirbas_degil.
+    const demirbasKarar: string | null = String(ocrData?.demirbasKarar?.karar || '').trim() || null;
+    let fixedAsset = this.detectFixedAsset(ocrData, tpForAsset, doc.invoiceKind);
+    // DEMİRBAŞ HADDİ (VUK 313, yıla göre): bedel KDV hariç haddin altındaysa demirbaş uyarısı verme —
     //   doğrudan gider yazılır (matcher de 770'e yönlendirir; ikisi tutarlı).
-    if (fixedAsset.is && this.demirbasHaddiAltinda(ocrData, fixedAsset.reason)) fixedAsset = { is: false, reason: '' };
+    //   B.8: had yalnız ALIŞ (iktisadi kıymetin edinimi) yönünde uygulanır; SATIŞ'ta kendi sabit kıymetinin çıkışı
+    //   tutardan bağımsız demirbaş kalır (25x çıkışı + 257 gerekir).
+    if (fixedAsset.is && !isSaleDoc && this.demirbasHaddiAltinda(ocrData, fixedAsset.reason, faturaYili)) fixedAsset = { is: false, reason: '' };
+    // "demirbaş değil" kararı (bu belge) ya da aynı satıcı + aynı içerik için öğrenilmiş "demirbaş değil" notu → uyarı yok.
+    if (fixedAsset.is && demirbasKarar === 'demirbas_degil') fixedAsset = { is: false, reason: '' };
+    if (fixedAsset.is && doc.taxpayerId) {
+      const vendorVknFa = String((isSaleDoc ? doc.buyerVkn : doc.sellerVkn) || '').replace(/\D/g, '');
+      if (vendorVknFa) {
+        const notVar = await (this.prisma as any).vendorMemoryDecision.findFirst({
+          where: { kararTipi: 'demirbas_degil', taxpayerId: doc.taxpayerId, kategori: fixedAsset.reason, vendorMemory: { tenantId, firmaKimlikNo: vendorVknFa } },
+          select: { id: true },
+        }).catch(() => null);
+        if (notVar) fixedAsset = { is: false, reason: '' };
+      }
+    }
+
+    // Faz 2 — MÜKERRER: belge no + karşı VKN + tutar (±0,01) + yön aynı DAHA ESKİ belge → engel (ilk belge kalır).
+    //   Gerileme denetimi A.2:
+    //   • uzun belge no (≥10 rakam; e-Fatura/e-Arşiv numarası benzersiz) → mevcut kural,
+    //   • KISA numara (ÖKC fiş no "0049" gibi gün/satıcı bazında tekrar eder) → ek olarak FATURA TARİHİ eşitliği şart,
+    //   • yer tutucu belge no ('BILINMIYOR', boş, '-', ETTN/uuid) → mükerrer aranmaz,
+    //   • sahip kararı ocrData.mukerrerKarar.karar='mukerrer_degil' → aranmaz; duplicateOfId temizlenir.
+    let mukerrer: { ilkBelgeId: string; belgeNo?: string | null; tutar?: any; createdAt?: any } | null = null;
+    const mukerrerKarar: string | null = String(ocrData?.mukerrerKarar?.karar || '').trim() || null;
+    {
+      const belgeNoM = String(doc.belgeNo || '').trim();
+      const karsiVkn = String((isSaleDoc ? doc.buyerVkn : doc.sellerVkn) || '').replace(/\D/g, '');
+      const totalM = Number(doc.totalAmount || 0);
+      const yerTutucu = !belgeNoM
+        || /^(bilinmiyor|bilinmeyen|yok|-+|n\/a|na|null|undefined|belge ?no|fatura ?no)$/i.test(belgeNoM)
+        || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(belgeNoM)
+        || belgeNoM === String(doc.id || '');
+      const belgeNoUzun = belgeNoM.replace(/\D/g, '').length >= 10;
+      const faturaTarihiM = doc.faturaTarihi ? new Date(doc.faturaTarihi) : null;
+      if (!yerTutucu && karsiVkn && totalM > 0 && doc.taxpayerId && mukerrerKarar !== 'mukerrer_degil' && (belgeNoUzun || faturaTarihiM)) {
+        const ilk = await (this.prisma as any).invoiceAccountingDocument.findFirst({
+          where: {
+            tenantId,
+            id: { not: id },
+            taxpayerId: doc.taxpayerId,
+            belgeNo: belgeNoM,
+            invoiceKind: doc.invoiceKind,
+            status: { notIn: ['REJECTED', 'CANCELLED'] },
+            ...(isSaleDoc ? { buyerVkn: karsiVkn } : { sellerVkn: karsiVkn }),
+            totalAmount: { gte: Math.round((totalM - 0.01) * 100) / 100, lte: Math.round((totalM + 0.01) * 100) / 100 },
+            // kısa numarada aynı gün şartı (gün bazında; saat farkı olabilir)
+            ...(!belgeNoUzun && faturaTarihiM ? { faturaTarihi: { gte: new Date(Date.UTC(faturaTarihiM.getUTCFullYear(), faturaTarihiM.getUTCMonth(), faturaTarihiM.getUTCDate())), lt: new Date(Date.UTC(faturaTarihiM.getUTCFullYear(), faturaTarihiM.getUTCMonth(), faturaTarihiM.getUTCDate() + 1)) } } : {}),
+            OR: [{ createdAt: { lt: doc.createdAt } }, { createdAt: doc.createdAt, id: { lt: id } }],
+          },
+          orderBy: { createdAt: 'asc' },
+          select: { id: true, belgeNo: true, totalAmount: true, createdAt: true },
+        }).catch(() => null);
+        if (ilk) mukerrer = { ilkBelgeId: ilk.id, belgeNo: ilk.belgeNo, tutar: ilk.totalAmount, createdAt: ilk.createdAt };
+      }
+    }
 
     const validation = await this.runValidation({
       tenantId,
       fixedAsset,
+      fixedAssetKarar: demirbasKarar,
+      mukerrer,
       taxpayerId: doc.taxpayerId,
       invoiceKind: doc.invoiceKind,
       tevkifatli,
@@ -6205,19 +6310,267 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     } catch {
       // kolonlar yoksa atla
     }
+
+    // ═══════════════ Faz 2 — TEK UYARI MODELİ: ocrData.uyarilar[] (kod + seviye + öneri + eylem) ═══════════════
+    //   Taban (rematch/aiRead: denetim + hafıza çelişkisi) + burada TÜRETİLEN (doğrulama bağlamı) tek listede.
+    //   Türetilenler kaynak='dogrulama' ile damgalanır; her doğrulamada silinip yeniden üretilir (bayat kalmaz).
+    const turetilen: Uyari[] = [];
+    try {
+      const uyariAdet = (n: number) => n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      // — DEMIRBAS (karar kutusu; kilit değil) —
+      if (fixedAsset.is) {
+        const hadBilgi = demirbasHaddiTL(faturaYili);
+        const r = String(fixedAsset.reason || '').trim();
+        const kararVerildi = demirbasKarar === 'yine_de_isle' || demirbasKarar === 'elle_islendi';
+        // B.7 — binek otomobil işareti (KDVK 30/b: KDV indirilemez → maliyet/gider).
+        const binek = !isSaleDoc && this.binekOtomobilSinyali(ocrData, r);
+        // B.6 — satışta "yine de işle": 25x çıkışı + 257 birikmiş amortisman satırı yoksa ENGEL (Luca'ya gitmez).
+        const satisEksik = validation.issues.find((i: any) => i.code === 'FIXED_ASSET_SALE_INCOMPLETE');
+        turetilen.push(uyariYap({
+          kod: UYARI_KOD.DEMIRBAS,
+          seviye: satisEksik ? 'engel' : kararVerildi ? 'bilgi' : 'uyari',
+          baslik: satisEksik ? 'Demirbaş satışı — fiş eksik (25x / 257)' : kararVerildi ? 'Demirbaş — karar verildi' : 'Demirbaş — karar bekliyor',
+          aciklama: satisEksik
+            ? String(satisEksik.message)
+            : kararVerildi
+              ? (demirbasKarar === 'elle_islendi'
+                ? `Sabit kıymet ${isSaleDoc ? 'satışı' : 'alışı'}${r ? ` (${r})` : ''} — Luca'da elle işlendi, belge kapatıldı (Luca'ya gitmez).`
+                : `Sabit kıymet ${isSaleDoc ? 'satışı' : 'alışı'}${r ? ` (${r})` : ''} — "yine de işle": ${isSaleDoc ? '679/689 taslak fişi (25x çıkışı ve 257 amortisman Luca\'da elle)' : '25x + KDV fişi (amortisman Luca\'da)'} kuruldu.${binek ? ' Binek otomobil: KDV indirilemez (KDVK 30/b) — KDV maliyete/gidere yazıldı.' : ''}`)
+              : `Sabit kıymet ${isSaleDoc ? 'satışı' : 'alışı'} görünüyor${r ? ` (${r})` : ''}${isSaleDoc ? '' : `; KDV hariç bedel VUK 313 haddinin (${uyariAdet(hadBilgi.tutar)} ₺, ${hadBilgi.yil}${hadBilgi.teyit_gerekli ? ' — teyit gerekli' : ''}) üstünde`}. Amortisman/özel kayıt gerektirir.${binek ? ' Binek otomobil: KDV indirilemez (KDVK 30/b); "yine de işle" KDV\'yi maliyete (254) yazar.' : ''}`,
+          oneri: satisEksik
+            ? 'Editörde 25x sabit kıymet çıkışını (alacak) ve 257 birikmiş amortismanı (borç) ekleyin; ya da fişi Luca\'da elle işleyip "Luca\'da elle işledim → kapat" seçin.'
+            : kararVerildi ? undefined : 'Luca\'da elle işlediysen "kapat"; portaldan işlenecekse "yine de işle" (bilanço: 25x + KDV; satışta 679/689 taslağı; işletme: Sabit Kıymet Alışı). Demirbaş değilse "demirbaş değil" — bir daha sorulmaz.',
+          eylemler: satisEksik
+            ? [{ id: 'demirbas:elle_islendi', etiket: 'Luca\'da elle işledim → kapat' }]
+            : kararVerildi ? undefined : [
+              { id: 'demirbas:elle_islendi', etiket: 'Luca\'da elle işledim → kapat' },
+              { id: 'demirbas:yine_de_isle', etiket: 'Yine de işle' },
+              { id: 'demirbas:demirbas_degil', etiket: 'Demirbaş değil' },
+            ],
+          meta: { karar: demirbasKarar, hitWord: r, had: hadBilgi.tutar, hadYil: hadBilgi.yil, hadTeyit: hadBilgi.teyit_gerekli, ...(binek ? { binek: true } : {}), ...(satisEksik ? { satisFisEksik: true } : {}) },
+          kaynak: 'dogrulama',
+        }));
+      }
+      // — TEVKIFAT_VAR (bilgi çipi; oran ↔ kod ↔ hesap adı tutarlılığı) —
+      //   A.11 — gerçek tevkifat verisi yok ama kelime ipucu + aritmetik (KDV tam değil) tevkifatlı diyorsa
+      //   (runValidation TEVKIFAT_NEEDED / TEVKIFAT_NET_NEEDED) uyarı kutusuna ENGEL + "Tevkifat fişini kur" düğmesi.
+      if (!tevkifatGercekVeri && tevkifatli) {
+        const fisEksik = validation.issues.find((i: any) => i.code === 'TEVKIFAT_NEEDED' || i.code === 'TEVKIFAT_NET_NEEDED');
+        if (fisEksik) {
+          turetilen.push(uyariYap({
+            kod: UYARI_KOD.TEVKIFAT_VAR,
+            seviye: 'engel',
+            baslik: `Tevkifatlı ${isSaleDoc ? 'satış' : 'alış'} — oran okunmadı`,
+            aciklama: String(fisEksik.message),
+            oneri: 'Tevkifat oranını seçip "Tevkifat fişini kur" ile fişi oluşturun (KDV oranı + tevkifat payı; belgede "tevkifat" ibaresi var ve KDV tam oranda değil).',
+            eylemler: [{ id: 'tevkifat-fisi-kur', etiket: 'Tevkifat fişini kur' }],
+            meta: { kod: String(ocrData?.tevkifatKodu || '').trim() || null, oran: null, oranMetni: null, tevkifatKdv: 0, sorunlar: [], kaynakSinyal: 'kelime+aritmetik' },
+            kaynak: 'dogrulama',
+          }));
+        }
+      }
+      if (tevkifatGercekVeri) {
+        const kod = String(ocrData?.tevkifatKodu || '').trim();
+        const kural = tevkifatKuralBul(kod);
+        const oranTxt = oranMetni(tevkifatOrani) || oranMetni(ocrData?.tevkifatYuzde);
+        const tevkLines = (doc.lines || []).filter((l: any) => ['tevkifat', 'vergi-sorumlu'].includes(String(l.group || '')) || /^360/.test(String(l.accountCode || '')));
+        const kdvLines = (doc.lines || []).filter((l: any) => String(l.group || '') === 'vergi' && /^(191|391)/.test(String(l.accountCode || '')));
+        const sorunlar = tevkifatTutarlilik({
+          tevkifatOrani,
+          tevkifatKodu: kod,
+          satirOranlari: tevkLines.map((l: any) => l.rate),
+          hesapAdlari: [...tevkLines, ...kdvLines].map((l: any) => l.description),
+        });
+        const fisEksik = validation.issues.find((i: any) => i.code === 'TEVKIFAT_NEEDED' || i.code === 'TEVKIFAT_NET_NEEDED');
+        const seviye: Uyari['seviye'] = fisEksik ? 'engel' : sorunlar.length ? 'uyari' : 'bilgi';
+        turetilen.push(uyariYap({
+          kod: UYARI_KOD.TEVKIFAT_VAR,
+          seviye,
+          baslik: `Tevkifatlı ${isSaleDoc ? 'satış' : 'alış'}${oranTxt ? ` ${oranTxt}` : ''}${kural ? ` · kod ${kural.kod}` : kod ? ` · kod ${kod}` : ''}`,
+          aciklama: fisEksik
+            ? String(fisEksik.message)
+            : sorunlar.length
+              ? `Tevkifat verisi tutarsız: ${sorunlar.join('; ')}.`
+              : `${isSaleDoc ? 'Alıcı KDV\'nin' : 'Mükellef KDV\'nin'} ${oranTxt || 'bir kısmını'} tevkif eder${kural ? ` (${kural.ad})` : ''}. ${isSaleDoc ? '391 net KDV' : '191 tam KDV + 360 sorumlu sıfatıyla KDV'} fişi.`,
+          oneri: fisEksik ? 'Tevkifat oranını seçip "Tevkifat fişini kur" ile fişi oluşturun.' : sorunlar.length ? 'Belge oranı, tevkifat kodu ve fiş satırı oranını aynı değere getirin.' : undefined,
+          // A.11: fiş eksikse iki yönde de "Tevkifat fişini kur" (set-kdv-rate satışta 391 net, alışta 191+360 kurar).
+          eylemler: fisEksik ? [{ id: 'tevkifat-fisi-kur', etiket: 'Tevkifat fişini kur' }] : undefined,
+          meta: { kod: kod || null, kodAd: kural?.ad || null, oran: tevkifatOrani || null, oranMetni: oranTxt || null, tevkifatKdv: this.numFromOcr(ocrData?.tevkifatKdv) || this.numFromOcr(ocrData?.kdvTevkifat) || 0, sorunlar },
+          kaynak: 'dogrulama',
+        }));
+      }
+      // — TEVKIFAT_EKSIK / ALICI_TIPI_GEREKLI (KDVGUT kural tablosu × kapsam × yıllık eşik) —
+      {
+        let aliciKurumTuru: string | null = null;
+        let aliciUnvan = '';
+        if (isSaleDoc) {
+          aliciUnvan = String(doc.customerName || '');
+          const buyerVkn = String(doc.buyerVkn || '').replace(/\D/g, '');
+          if (buyerVkn) {
+            const vm = await (this.prisma as any).vendorMemory.findUnique({ where: { tenantId_firmaKimlikNo: { tenantId, firmaKimlikNo: buyerVkn } }, select: { kurumTuru: true, firmaUnvan: true } }).catch(() => null);
+            aliciKurumTuru = vm?.kurumTuru || null;
+            if (!aliciUnvan) aliciUnvan = String(vm?.firmaUnvan || '');
+          }
+        } else {
+          aliciKurumTuru = tpForAsset?.kurumTuru || null;
+          aliciUnvan = String(tpForAsset?.companyName || `${tpForAsset?.firstName || ''} ${tpForAsset?.lastName || ''}`.trim());
+        }
+        const kdvDahil = Number(doc.totalAmount || 0) || (this.numFromOcr(ocrData?.matrah) + this.numFromOcr(ocrData?.kdvTutari));
+        // B.2 — hesaplanan KDV (breakdown toplamı ya da kdvTutari; hiç okunmadıysa bilinmiyor = undefined).
+        const kdvHesaplanan: number | undefined = (Array.isArray(breakdown) && breakdown.length)
+          ? breakdown.reduce((s: number, b: any) => s + this.numFromOcr(b?.tutar ?? b?.amount), 0)
+          : (ocrData?.kdvTutari != null ? this.numFromOcr(ocrData.kdvTutari) : undefined);
+        // B.2 — satıcı KDV mükellefi değil: gider pusulası / basit usul / muafiyet işareti (okuma alanları ya da belge türü).
+        const saticiKdvMukellefi: boolean | null = (!isSaleDoc && (
+          ocrData?.saticiKdvMukellefiDegil === true || ocrData?.kdvMukellefiDegil === true
+          || /gider\s*pusula/i.test(String(doc.documentType || ocrData?.belgeTuru || ocrData?.documentType || ''))
+          || /basit usul|kdv.den muaf|kdv muafiyet/i.test(String(ocrData?.saticiNotu || ocrData?.notlar || ''))
+        )) ? false : null;
+        // Alıcı kimlik no: iki yönde de belgenin alıcı tarafı (satışta müşteri, alışta mükellefin kendisi).
+        const aliciKimlikNo = String(doc.buyerVkn || '').replace(/\D/g, '');
+        const sonuc = tevkifatEksikDegerlendir({
+          invoiceKind: isSaleDoc ? 'SATIS' : 'ALIS',
+          giderTuru: ocrData?.giderTuru,
+          matrahKategori: ocrData?.matrahKategori,
+          kalemler: Array.isArray(ocrData?.kalemler) ? ocrData.kalemler.map((k: any) => String(k?.ad || '')) : [],
+          kdvDahilTutar: kdvDahil,
+          yil: faturaYili,
+          tevkifatVar: tevkifatGercekVeri,
+          isFixedAsset: fixedAsset.is,
+          aliciKurumTuru,
+          aliciUnvan,
+          aliciKimlikNo,
+          kdvTutari: kdvHesaplanan,
+          isReturn,
+          saticiKdvMukellefi,
+        });
+        const tahminAd: Record<string, string> = { kamu: 'kamu idaresi', banka: 'banka / sigorta', belediye: 'belediye', universite: 'üniversite', kit: 'KİT', belirlenmis_diger: 'diğer belirlenmiş alıcı (BİST/OSB/meslek kuruluşu/döner sermaye…)', diger: 'normal KDV mükellefi', kdv_mukellefi_degil: 'KDV mükellefi değil' };
+        if (sonuc) {
+          const k = sonuc.kural;
+          const teyit = k.teyit_gerekli || sonuc.esik.teyit_gerekli ? ' (mevzuat teyidi bekliyor)' : '';
+          const notVar = ocrData?.tevkifatHint === true && !tevkifatGercekVeri;
+          // B.10 — kod dili: satıcı KDV1/UBL 6xx (2xx+400), alıcı KDV2 2xx; isteğe bağlı tam tevkifat 8xx.
+          const kodSatici = String(Number(k.kod) + 400);
+          if (sonuc.tip === 'TEVKIFAT_EKSIK' && sonuc.digerHizmet216) {
+            // B.5 — 216 "Diğer hizmetler" (5/10): özel kural yok; alıcı 216 kapsamında → BİLGİ.
+            const bistOsbNotu = String(aliciKurumTuru) === 'belirlenmis_diger' ? ' Alıcı BİST şirketi ya da OSB ise 216 uygulanmaz (döner sermaye, meslek kuruluşu, emekli sandığı, kalkınma ajansı ise uygulanır).' : '';
+            turetilen.push(uyariYap({
+              kod: UYARI_KOD.TEVKIFAT_EKSIK,
+              seviye: 'bilgi',
+              baslik: `Tevkifat olabilir — 216 Diğer hizmetler (${k.oran})`,
+              aciklama: `Belirli bir tevkifat kuralı eşleşmedi; ancak alıcı (${tahminAd[String(aliciKurumTuru)] || aliciKurumTuru}) 216 "Diğer hizmetler" kapsamındadır ve KDV dahil ${uyariAdet(kdvDahil)} ₺, ${sonuc.esik.yil} eşiğini (${uyariAdet(sonuc.esik.tutar)} ₺) aşıyor; belgede tevkifat yok (${k.madde}).${bistOsbNotu}${k.not ? ` Not: ${k.not}` : ''}`,
+              oneri: isSaleDoc
+                ? `Hizmet ifasıysa faturayı 5/10 tevkifatlı düzenleyin (UBL/KDV1 kodu ${kodSatici}; alıcı KDV2'de ${k.kod}). Mal teslimiyse bu bilgi geçersizdir.`
+                : `Hizmet alımıysa satıcıdan 5/10 tevkifatlı düzeltme (iptal + yeni) fatura isteyin (alıcı KDV2 kodu ${k.kod}). Mal teslimiyse bu bilgi geçersizdir.`,
+              meta: { kod: k.kod, kodSatici, oran: k.oran, kapsam: k.kapsam, esik: sonuc.esik.tutar, esikYil: sonuc.esik.yil, eslesme: sonuc.eslesme, kelime: '', digerHizmet216: true, teyit_gerekli: !!sonuc.esik.teyit_gerekli },
+              kaynak: 'dogrulama',
+            }));
+          } else if (sonuc.tip === 'TEVKIFAT_EKSIK') {
+            // B.4 — satışta alıcı TCKN'li şahıs + kurum türü boş: KDV mükellefi olmayabilir → bilgi + soru.
+            const soru = sonuc.aliciKdvMukellefiSoru === true;
+            turetilen.push(uyariYap({
+              kod: UYARI_KOD.TEVKIFAT_EKSIK,
+              seviye: sonuc.seviye,
+              baslik: soru ? `Alıcı KDV mükellefi mi? — ${k.oran} tevkifat (kod ${k.kod})` : `Tevkifat eksik olabilir — ${k.oran} (kod ${k.kod})`,
+              aciklama: soru
+                ? `${k.ad}: KDV dahil ${uyariAdet(kdvDahil)} ₺ eşiği (${uyariAdet(sonuc.esik.tutar)} ₺, ${sonuc.esik.yil}) aşıyor; belgede tevkifat yok. Alıcı TCKN'li (${aliciKimlikNo}) — şahıs KDV mükellefi DEĞİLSE tevkifat uygulanmaz; KDV mükellefi (şahıs işletmesi) ise ${k.oran} tevkifat gerekir${k.madde ? ` (${k.madde})` : ''}${teyit}.`
+                : `${k.ad}: KDV dahil ${uyariAdet(kdvDahil)} ₺, ${sonuc.esik.yil} eşiği ${uyariAdet(sonuc.esik.tutar)} ₺ aşıldı; belgede tevkifat yok. ${k.kapsam === 'tum_kdv_mukellefleri' ? 'Tüm KDV mükellefleri tevkifat yapar' : 'Alıcı belirlenmiş alıcı'}${k.madde ? ` (${k.madde})` : ''}${teyit}.${notVar ? ' Faturadaki "tevkifata tabi değildir" notu kuralı kapatmaz — yalnız bilgi.' : ''}${k.not ? ` Not: ${k.not}` : ''}`,
+              // B.14 — alışta tevkifatı portalda "fişle kurmak" faturayı düzeltmez: satıcıdan düzeltme (iptal + yeni) fatura istenir.
+              oneri: soru
+                ? 'Alıcı tipini seçin: "KDV mükellefi değil" ise bu bilgi kapanır; "diğer (normal KDV mükellefi)" ise fatura tevkifatlı düzenlenmelidir.'
+                : isSaleDoc
+                  ? `Faturayı tevkifatlı düzenleyin/düzeltin (UBL/KDV1 tevkifat kodu ${kodSatici}; alıcı KDV2'de ${k.kod}).`
+                  : `Satıcıdan düzeltme faturası isteyin: mevcut faturanın iptali + ${k.oran} tevkifatlı yeni fatura (alıcı KDV2 kodu ${k.kod}, 360 sorumlu sıfatıyla KDV). Portalda fişi tevkifatlı kurmak faturayı düzeltmez.`,
+              eylemler: soru ? [{ id: 'alici-tipi-sec', etiket: 'Alıcı tipini seç' }] : undefined,
+              meta: { kod: k.kod, kodSatici, oran: k.oran, kapsam: k.kapsam, esik: sonuc.esik.tutar, esikYil: sonuc.esik.yil, eslesme: sonuc.eslesme, kelime: sonuc.eslesenKelime, teyit_gerekli: !!(k.teyit_gerekli || sonuc.esik.teyit_gerekli), ...(soru ? { aliciKdvMukellefiSoru: true, aliciUnvan, aliciVkn: aliciKimlikNo, taraf: 'cari' } : {}) },
+              kaynak: 'dogrulama',
+            }));
+          } else {
+            turetilen.push(uyariYap({
+              kod: UYARI_KOD.ALICI_TIPI_GEREKLI,
+              seviye: sonuc.seviye,
+              baslik: 'Alıcı tipini seç',
+              aciklama: `${k.ad} (${k.oran}, kod ${k.kod}) yalnız belirlenmiş alıcılarda tevkifata tabidir; ${isSaleDoc ? 'müşterinin' : 'mükellefin'} kurum türü bilinmiyor${sonuc.tahmin ? ` — ünvandan tahmin: ${tahminAd[sonuc.tahmin] || sonuc.tahmin}` : ''}. KDV dahil ${uyariAdet(kdvDahil)} ₺ eşiği (${uyariAdet(sonuc.esik.tutar)} ₺) aşıyor${teyit}.`,
+              oneri: 'Alıcı tipini seçin: kamu / banka-sigorta / belediye / üniversite / KİT / diğer belirlenmiş alıcı (BİST, OSB, meslek kuruluşu, döner sermaye…) ise tevkifat gerekir; "diğer (normal KDV mükellefi)" ya da "KDV mükellefi değil" ise bu uyarı kapanır.',
+              eylemler: [{ id: 'alici-tipi-sec', etiket: 'Alıcı tipini seç' }],
+              meta: { kod: k.kod, kodSatici, oran: k.oran, kapsam: k.kapsam, tahmin: sonuc.tahmin || null, aliciUnvan, aliciVkn: isSaleDoc ? aliciKimlikNo : null, taraf: isSaleDoc ? 'cari' : 'mukellef', esik: sonuc.esik.tutar },
+              kaynak: 'dogrulama',
+            }));
+          }
+        }
+      }
+      // — MUKERRER (engel) — A.2: sahip "mükerrer değil" diyebilir (ocrData.mukerrerKarar; revalidate okur).
+      if (mukerrer) {
+        turetilen.push(uyariYap({
+          kod: UYARI_KOD.MUKERRER,
+          seviye: 'engel',
+          baslik: 'Mükerrer belge',
+          aciklama: `Aynı belge no${mukerrer.belgeNo ? ` (${mukerrer.belgeNo})` : ''}, karşı VKN, tutar ve yönde daha eski bir belge var — bu kopya onaylanamaz ve Luca'ya gitmez.`,
+          oneri: 'İlk belgeyi açıp kontrol edin; kopyaysa bu belgeyi silin. Aynı numaralı ama FARKLI bir belgeyse "Mükerrer değil" deyin — engel kalkar.',
+          eylemler: [{ id: 'ilk-belgeyi-ac', etiket: 'İlk belgeyi aç' }, { id: 'mukerrer:mukerrer_degil', etiket: 'Mükerrer değil' }],
+          meta: { ilkBelgeId: mukerrer.ilkBelgeId, ilkBelgeNo: mukerrer.belgeNo || null, karar: mukerrerKarar },
+          kaynak: 'dogrulama',
+        }));
+      }
+      // — ICERIK_HESAP_UYUMSUZ (uyum kararı; hesap silinmez, "Öneriyi uygula") —
+      if (ocrData?.hesapUyumsuz === true) {
+        const onerilen = String(ocrData?.onerilenHesap || '').trim();
+        turetilen.push(uyariYap({
+          kod: UYARI_KOD.ICERIK_HESAP_UYUMSUZ,
+          seviye: 'uyari',
+          baslik: 'İçerik ↔ hesap uyumsuz',
+          aciklama: String(ocrData?.hesapUyumNot || 'Fatura içeriği seçilen hesapla/ana faaliyetle uyuşmuyor.') + (onerilen ? ` Önerilen hesap: ${onerilen}.` : ''),
+          oneri: onerilen ? '"Öneriyi uygula" ile matrah hesabını değiştirin ya da editörde elle seçin.' : 'Doğru hesabı editörde seçin.',
+          eylemler: onerilen ? [{ id: 'oneriyi-uygula', etiket: 'Öneriyi uygula' }] : undefined,
+          meta: { onerilenHesap: onerilen || null },
+          kaynak: 'dogrulama',
+        }));
+      }
+      // — IADE (bilgi; hata varsa dogrulamaUyarilari engel üretir) —
+      if (isReturn && !validation.issues.some((i: any) => i.code === 'RETURN_NEEDS_REVERSAL' || i.code === 'RETURN_DIRECTION_REVERSED')) {
+        turetilen.push(uyariYap({ kod: UYARI_KOD.IADE, seviye: 'bilgi', baslik: 'İade belgesi', aciklama: `${isSaleDoc ? 'Satıştan' : 'Alıştan'} iade — ters kayıt kuruldu (${isSaleDoc ? '610 / 391-iade / cari alacak' : 'cari borç / stok-gider alacak'}).`, kaynak: 'dogrulama' }));
+      }
+      // — Doğrulama issue'larının geri kalanı (TUTAR_TUTARSIZ / IPTAL / SAHIPLIK_TERS / OKUNMADI / STOPAJ_EKSIK / HESAP_KODU) —
+      turetilen.push(...dogrulamaUyarilari(validation.issues));
+    } catch (e: any) {
+      this.logger.warn(`uyari katmani hatasi (${doc.belgeNo || id}): ${e?.message || e}`);
+    }
+    // B.1: türetilen liste TAM üretildi → taban (eski kelime kuralı) TEVKIFAT_EKSIK atılır, yeni tablo karar verir.
+    const birlesik = uyarilariBirlestir(ocrData?.uyarilar, turetilen, { tamDogrulama: true });
+    // A.10: anahtar-sıralı imza karşılaştırması (alan sırası / eski-yeni model farkı gereksiz UPDATE üretmesin).
+    const uyarilarDegisti = uyariImza(birlesik) !== uyariImza(ocrData?.uyarilar);
+
     // STALE AKTAR BAYRAĞI TEMİZLE (kullanıcı bulgusu 2026-08-11): entegratör "Aktar" belgeye
     //   ocrData.validationStatus='INCOMPLETE' (+ matchDeferred) koyar (eşleşmemiş işareti). AI-oku/rematch
     //   tutar+hesabı atayınca TOP-LEVEL status OK olur ama ocrData'daki BAYAT bayrak kalıp listede
     //   yanlışlıkla "Tutar okunamadı" gösteriyordu (tutar aslında dolu). Belge artık INCOMPLETE değilse
     //   bu bayat bayrakları ocrData'dan sil (yalnız 1 kez; sonra koşul tutmaz). Tüm mükellefler için.
-    if (validation.status !== 'INCOMPLETE'
-        && ((ocrData as any)?.validationStatus === 'INCOMPLETE' || (ocrData as any)?.matchDeferred)) {
+    const bayatBayrak = validation.status !== 'INCOMPLETE'
+        && ((ocrData as any)?.validationStatus === 'INCOMPLETE' || (ocrData as any)?.matchDeferred);
+    if (bayatBayrak || uyarilarDegisti) {
       const cleaned: any = { ...ocrData };
-      delete cleaned.validationStatus;
-      delete cleaned.matchDeferred;
+      if (bayatBayrak) {
+        delete cleaned.validationStatus;
+        delete cleaned.matchDeferred;
+      }
+      cleaned.uyarilar = birlesik.length ? birlesik : undefined;
       await (this.prisma as any).invoiceAccountingDocument
         .update({ where: { id }, data: { ocrData: cleaned } })
         .catch(() => {});
+    }
+    // Mükerrer sinyalini belge kolonlarına da yaz (liste rozeti + "ilk belgeyi aç"); ilk belge boş kalır.
+    if (mukerrer && !doc.duplicateOfId) {
+      await (this.prisma as any).invoiceAccountingDocument.update({
+        where: { id },
+        data: { duplicateOfId: mukerrer.ilkBelgeId, duplicateReason: `Mükerrer — aynı belge no/VKN/tutar/yön (${mukerrer.belgeNo || ''})`, duplicateSeverity: 'BLOCKING' },
+      }).catch(() => {});
+    }
+    // A.2 — sahip "mükerrer değil" dedi: kolonlardaki mükerrer izi temizlenir (liste rozeti + engel kalkar).
+    if (mukerrerKarar === 'mukerrer_degil' && doc.duplicateOfId) {
+      await (this.prisma as any).invoiceAccountingDocument.update({
+        where: { id },
+        data: { duplicateOfId: null, duplicateReason: null, duplicateSeverity: null },
+      }).catch(() => {});
     }
     return validation;
   }
@@ -6235,6 +6588,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
 
     if (isIsletme) {
       const ready = isletmeDocumentReady(doc);
+      // Faz 2 — MÜKERRER engel (işletme dalı revalidate çağırmıyor; uyarı listesinden kontrol).
+      const islOzet = uyariOzet((doc as any).ocrData?.uyarilar);
+      if (islOzet.mukerrer) throw new BadRequestException('Bu belge onaylanamaz — mükerrer (aynı belge no/VKN/tutar/yönde daha eski belge var). İlk belgeyi kontrol edip bu kopyayı silin.');
+      // A.6 — demirbaş kararı verilmemiş belge tekil onayda da geçmez (karar verilmeden onaylanan demirbaş yanlış kayıt türüne giderdi).
+      if (islOzet.kararBekliyor) throw new BadRequestException('Demirbaş kararı bekliyor — bu belge onaylanamaz. Belgeyi açıp "Luca\'da elle işledim → kapat", "yine de işle" ya da "demirbaş değil" seçin.');
       if (!isletmeAmountReady(doc)) throw new BadRequestException('Bu belge onaylanamaz — tutar okunamamış. Önce "AI ile oku" ile tutarları çıkar.');
       if (!ready.ok) throw new BadRequestException(`Bu belge onaylanamaz — İşletme defteri için ${ready.reason}. Muhasebeleştir ekranında belge/kayıt türünü seç.`);
       const data: any = {
@@ -6267,6 +6625,15 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       throw new BadRequestException(
         `Bu belge onaylanamaz — veri kontrolü başarısız: ${messages}. Önce hatayı düzelt.`,
       );
+    }
+    // A.6 — DEMİRBAŞ kararı verilmemiş belge TEKİL onayda da geçmez (revalidate SONRASI güncel uyarı listesinden;
+    //   FIXED_ASSET_MANUAL WARNING olduğu için status OK kalır, engel burada). Mükerrer zaten INVALID ile yukarıda durur.
+    {
+      const taze = await (this.prisma as any).invoiceAccountingDocument.findFirst({ where: { id, tenantId }, select: { ocrData: true } }).catch(() => null);
+      const ozetTaze = uyariOzet((taze?.ocrData as any)?.uyarilar);
+      if (ozetTaze.kararBekliyor) {
+        throw new BadRequestException('Demirbaş kararı bekliyor — bu belge onaylanamaz. Belgeyi açıp "Luca\'da elle işledim → kapat", "yine de işle" ya da "demirbaş değil" seçin.');
+      }
     }
 
     // v1.38: Tek belge onayi — sadece belgeyi APPROVED + lucaStatus=QUEUED yap.
@@ -6324,13 +6691,66 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           skipped.push({ id, belgeNo, reason: 'hafiza-celiski' });
           continue;
         }
+        // Faz 2 — DEMİRBAŞ karar bekliyor / MÜKERRER: toplu onayda atlanır; force bile geçirmez (karar verilmeden
+        //   onaylanan demirbaş Luca'da yanlış hesaba (770) giderdi). Bu ön kontrol BAYAT listeye bakar (hızlı yol);
+        //   A.6: asıl karar approve() içinde revalidate SONRASI verilir — oradan gelen hata aşağıda aynı sebep koduna eşlenir.
+        const ozet = uyariOzet(uyList);
+        if (ozet.kararBekliyor) {
+          skipped.push({ id, belgeNo, reason: 'demirbas-karar-bekliyor' });
+          continue;
+        }
+        if (ozet.mukerrer) {
+          skipped.push({ id, belgeNo, reason: 'mukerrer' });
+          continue;
+        }
         await this.approve(tenantId, id, userId, force);
         approved++;
       } catch (e: any) {
-        skipped.push({ id, belgeNo, reason: String(e?.message || e || 'onay hatası') });
+        const msg = String(e?.message || e || 'onay hatası');
+        // approve() revalidate sonrası karar bekliyor/mükerrer dediyse FE'nin gruplayabildiği sebep koduyla raporla.
+        const reason = /Demirbaş kararı bekliyor/i.test(msg) ? 'demirbas-karar-bekliyor' : /mükerrer/i.test(msg) ? 'mukerrer' : msg;
+        skipped.push({ id, belgeNo, reason });
       }
     }
     return { approved, skipped };
+  }
+
+  /**
+   * A.6 — Deploy sonrası tek seferlik TOPLU YENİDEN DOĞRULAMA (owner): bekleyen belgelerin (onaysız + onaylı ama
+   * Luca'ya gitmemiş) uyarı listesi yeni kurallarla tazelenir (demirbaş kararı, mükerrer, tevkifat tablosu).
+   * Sıralı çalışır (DB yükü); limit varsayılan 2000. Dönüş: sayılar + karar bekleyen/mükerrer/engelli belge id örnekleri.
+   */
+  async revalidatePending(tenantId: string, opts: { taxpayerId?: string; period?: string; limit?: number; statuses?: string[] }) {
+    const limit = Math.max(1, Math.min(10000, Number(opts?.limit) || 2000));
+    const statuses = Array.isArray(opts?.statuses) && opts.statuses.length ? opts.statuses : ['READY', 'NEEDS_REVIEW', 'DRAFT', 'APPROVED'];
+    const where: any = {
+      tenantId,
+      status: { in: statuses },
+      lucaStatus: { notIn: ['POSTED', 'POSTING', 'MANUAL_DONE'] },
+      ...(opts?.taxpayerId ? { taxpayerId: opts.taxpayerId } : {}),
+      ...periodWhere(opts?.period),
+    };
+    const docs: any[] = await (this.prisma as any).invoiceAccountingDocument.findMany({
+      where, select: { id: true, belgeNo: true }, orderBy: { createdAt: 'desc' }, take: limit,
+    });
+    const sonuc = { toplam: docs.length, dogrulanan: 0, hata: 0, kararBekleyen: 0, mukerrer: 0, engelli: 0, invalid: 0, ornekler: { kararBekleyen: [] as string[], mukerrer: [] as string[], engelli: [] as string[] } };
+    for (const d of docs) {
+      try {
+        const v = await this.revalidateDocument(tenantId, d.id);
+        sonuc.dogrulanan++;
+        if (v.status === 'INVALID') sonuc.invalid++;
+        const taze = await (this.prisma as any).invoiceAccountingDocument.findFirst({ where: { id: d.id }, select: { ocrData: true } }).catch(() => null);
+        const oz = uyariOzet((taze?.ocrData as any)?.uyarilar);
+        if (oz.kararBekliyor) { sonuc.kararBekleyen++; if (sonuc.ornekler.kararBekleyen.length < 20) sonuc.ornekler.kararBekleyen.push(d.id); }
+        if (oz.mukerrer) { sonuc.mukerrer++; if (sonuc.ornekler.mukerrer.length < 20) sonuc.ornekler.mukerrer.push(d.id); }
+        if (oz.engel) { sonuc.engelli++; if (sonuc.ornekler.engelli.length < 20) sonuc.ornekler.engelli.push(d.id); }
+      } catch (e: any) {
+        sonuc.hata++;
+        this.logger.warn(`[REVALIDATE-PENDING] ${d.belgeNo || d.id}: ${e?.message || e}`);
+      }
+    }
+    this.logger.log(`[REVALIDATE-PENDING] tenant=${tenantId} toplam=${sonuc.toplam} dogrulanan=${sonuc.dogrulanan} kararBekleyen=${sonuc.kararBekleyen} mukerrer=${sonuc.mukerrer} hata=${sonuc.hata}`);
+    return sonuc;
   }
 
   /** Faz C: denetim izi — değişiklikleri AuditLog'a yaz (kim/ne zaman/eski→yeni). */
@@ -6353,12 +6773,364 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     if (['POSTED', 'POSTING'].includes(String(doc.lucaStatus || ''))) {
       throw new BadRequestException('Belge Luca\'ya aktarıldı/aktarılıyor — geri alınamaz (Luca\'da ters fiş gerekir).');
     }
+    // A.5 — demirbaş kararı (elle_islendi / yine_de_isle) geri alınınca SİLİNİR: belge "karar bekliyor"a döner;
+    //   aksi halde MANUAL_DONE kalkmış ama karar kaydı duran belge Luca'ya gidebiliyordu.
+    const ocrEski: any = (doc as any).ocrData || {};
+    const ocrYeni: any = { ...ocrEski };
+    const kararVardi = !!ocrYeni.demirbasKarar;
+    delete ocrYeni.demirbasKarar;
     await (this.prisma as any).invoiceAccountingDocument.update({
       where: { id },
-      data: { status: 'NEEDS_REVIEW', approvedBy: null, approvedAt: null, lucaStatus: 'NOT_STARTED', lucaErrorMessage: null },
+      data: { status: 'NEEDS_REVIEW', approvedBy: null, approvedAt: null, lucaStatus: 'NOT_STARTED', lucaErrorMessage: null, ...(kararVardi ? { ocrData: ocrYeni } : {}) },
     });
-    await this.logAudit(tenantId, userId, 'REOPEN', id, { status: 'APPROVED' }, { status: 'NEEDS_REVIEW' });
+    await this.logAudit(tenantId, userId, 'REOPEN', id, { status: 'APPROVED', lucaStatus: doc.lucaStatus, demirbasKarar: ocrEski.demirbasKarar || null }, { status: 'NEEDS_REVIEW' });
+    if (kararVardi) await this.revalidateDocument(tenantId, id).catch(() => null);
     return this.get(tenantId, id);
+  }
+
+  /**
+   * A.2 — MÜKERRER KARARI (sahip): { karar: 'mukerrer_degil' | 'mukerrer', not? } → ocrData.mukerrerKarar.
+   *   mukerrer_degil → revalidate mükerrer aramaz, MUKERRER uyarısı ve duplicateOfId kalkar (aynı numaralı FARKLI belge).
+   *   mukerrer       → sahip kopya olduğunu teyit etti; engel kalır (belgeyi silmesi beklenir).
+   */
+  async mukerrerKarari(tenantId: string, id: string, body: { karar?: string; not?: string }, userId?: string) {
+    const karar = String(body?.karar || '').trim();
+    if (!['mukerrer_degil', 'mukerrer'].includes(karar)) throw new BadRequestException('karar: mukerrer_degil | mukerrer olmalı');
+    const doc: any = await this.get(tenantId, id);
+    if (['POSTED', 'POSTING'].includes(String(doc.lucaStatus || ''))) throw new BadRequestException('Belge Luca\'ya aktarıldı/aktarılıyor — mükerrer kararı değiştirilemez.');
+    const ocr: any = doc.ocrData || {};
+    const uyM = (Array.isArray(ocr.uyarilar) ? ocr.uyarilar : []).find((u: any) => String(u?.kod || '') === UYARI_KOD.MUKERRER);
+    const kararKaydi = { karar, not: String(body?.not || '').slice(0, 300) || null, tarih: new Date().toISOString(), userId: userId || null, ilkBelgeId: uyM?.meta?.ilkBelgeId || doc.duplicateOfId || null };
+    await (this.prisma as any).invoiceAccountingDocument.update({ where: { id }, data: { ocrData: { ...ocr, mukerrerKarar: kararKaydi } } });
+    await this.logAudit(tenantId, userId, 'MUKERRER_KARARI', id, { mukerrerKarar: ocr.mukerrerKarar || null, duplicateOfId: doc.duplicateOfId || null }, kararKaydi);
+    // revalidate kararı okur: mukerrer_degil → uyarı üretilmez + duplicateOfId temizlenir.
+    await this.revalidateDocument(tenantId, id).catch(() => null);
+    return { ok: true, karar, document: await this.get(tenantId, id) };
+  }
+
+  // ═══════════════════════════ Faz 2 (PLAN/15) — UYARI KATMANI EYLEMLERİ ═══════════════════════════
+
+  /** Plan yaprağı bul: verilen kod öneklerinden ilkinde, ad düzenli ifadesine uyan (yoksa ilk) yaprak. */
+  private async planYapragiBul(tenantId: string, taxpayerId: string | null | undefined, prefixes: string[], adRe?: RegExp): Promise<{ code: string; name: string } | null> {
+    if (!taxpayerId) return null;
+    const codes = await this.getPlanCodeSet(tenantId, taxpayerId);
+    if (!codes || !codes.size) return null;
+    const cache = this.planCodeCache.get(`${tenantId}:${taxpayerId}`);
+    const groups = cache?.groups || new Set<string>();
+    const names = cache?.names || new Map<string, string>();
+    for (const pre of prefixes) {
+      const leaves = [...codes].filter((c) => c.startsWith(pre) && c.includes('.') && !groups.has(c)).sort();
+      if (!leaves.length) continue;
+      const byName = adRe ? leaves.find((c) => adRe.test(String(names.get(c) || ''))) : null;
+      const pick = byName || leaves[0];
+      return { code: pick, name: String(names.get(pick) || '') };
+    }
+    return null;
+  }
+
+  /**
+   * DEMİRBAŞ KARARI (sahip): elle_islendi → belge kapanır (APPROVED + lucaStatus MANUAL_DONE, Luca'ya gitmez);
+   * yine_de_isle → bilançoda alışta 25x (plan yaprağı: taşıt 254 / makine 253 / demirbaş 255) + KDV, satışta 679/689
+   * taslağı + KDV; işletmede Kayıt Türü "Sabit Kıymet Alışı"; demirbas_degil → uyarı kalkar, normal akış + VendorMemory notu.
+   */
+  async demirbasKarari(tenantId: string, id: string, body: { karar?: string; not?: string }, userId?: string) {
+    const karar = String(body?.karar || '').trim();
+    if (!['elle_islendi', 'yine_de_isle', 'demirbas_degil'].includes(karar)) {
+      throw new BadRequestException('karar: elle_islendi | yine_de_isle | demirbas_degil olmalı');
+    }
+    const doc: any = await this.get(tenantId, id);
+    if (['POSTED', 'POSTING'].includes(String(doc.lucaStatus || ''))) {
+      throw new BadRequestException('Belge Luca\'ya aktarıldı/aktarılıyor — demirbaş kararı değiştirilemez.');
+    }
+    const ocr: any = doc.ocrData || {};
+    const isSale = String(doc.invoiceKind || '').toUpperCase() === 'SATIS';
+    const tp: any = doc.taxpayerId
+      ? await (this.prisma as any).taxpayer.findFirst({ where: { id: doc.taxpayerId, tenantId }, select: { defterTuru: true, mihsapDefterTuru: true, faaliyetAciklama: true, naceKodu: true, companyName: true } })
+      : null;
+    const isIsletme = isIsletmeLedger(tp?.defterTuru, tp?.mihsapDefterTuru);
+    const uyDem = (Array.isArray(ocr.uyarilar) ? ocr.uyarilar : []).find((u: any) => String(u?.kod || '') === UYARI_KOD.DEMIRBAS);
+    const hitWord = String(uyDem?.meta?.hitWord || this.detectFixedAsset(ocr, tp, doc.invoiceKind).reason || 'demirbaş');
+    const kararKaydi = { karar, not: String(body?.not || '').slice(0, 300) || null, tarih: new Date().toISOString(), userId: userId || null, hitWord };
+    const oncekiOcr = { ...ocr };
+
+    if (karar === 'elle_islendi') {
+      await (this.prisma as any).invoiceAccountingDocument.update({
+        where: { id },
+        data: {
+          status: 'APPROVED', approvedBy: userId || null, approvedAt: new Date(),
+          lucaStatus: 'MANUAL_DONE', lucaErrorMessage: null, lucaPostedAt: null,
+          ocrData: { ...ocr, demirbasKarar: kararKaydi },
+        },
+      });
+      await this.logAudit(tenantId, userId, 'DEMIRBAS_KARARI', id, { status: doc.status, lucaStatus: doc.lucaStatus }, { karar, lucaStatus: 'MANUAL_DONE' });
+      await this.revalidateDocument(tenantId, id).catch(() => null);
+      return { ok: true, karar, document: await this.get(tenantId, id) };
+    }
+
+    if (karar === 'demirbas_degil') {
+      await (this.prisma as any).invoiceAccountingDocument.update({ where: { id }, data: { ocrData: { ...ocr, demirbasKarar: kararKaydi } } });
+      // VendorMemory notu: aynı satıcı + aynı içerik anahtarı için bir daha sorulmasın.
+      const vkn = String((isSale ? doc.buyerVkn : doc.sellerVkn) || '').replace(/\D/g, '');
+      if (vkn && doc.taxpayerId && hitWord) {
+        await this.vendorMemory.recordDecision({
+          tenantId, firmaKimlikNo: vkn, firmaUnvan: String((isSale ? doc.customerName : doc.vendorName) || '') || null,
+          kararTipi: 'demirbas_degil' as any, kategori: hitWord, altKategori: null, icerikImza: null, taxpayerId: doc.taxpayerId, onayBoost: 2,
+        }).catch((e: any) => this.logger.warn(`demirbas_degil notu yazilamadi: ${e?.message || e}`));
+      }
+      await this.logAudit(tenantId, userId, 'DEMIRBAS_KARARI', id, { demirbasKarar: oncekiOcr.demirbasKarar || null }, { karar, hitWord });
+      // Normal akış: hesapları yeniden eşle (demirbaş kategorisi kalktı → gider/gelir hesabı atanır), doğrula.
+      if (doc.taxpayerId) await this.rematchDocumentsWithLatestAccountPlan(tenantId, doc.taxpayerId, [id]).catch(() => {});
+      await this.revalidateDocument(tenantId, id).catch(() => null);
+      return { ok: true, karar, document: await this.get(tenantId, id) };
+    }
+
+    // yine_de_isle
+    // B.7 — binek otomobil (KDVK 30/b): KDV indirilemez → bilançoda 191 satırı 254 maliyetine (yoksa 770 gider);
+    //   işletme dalında Kayıt Türü 13 alt kodu 336/337/338 (binek); detectFixedAsset 'otomobil/binek/egea…' işareti.
+    const binek = !isSale && this.binekOtomobilSinyali(ocr, hitWord);
+    const ocrYeni: any = { ...ocr, demirbasKarar: { ...kararKaydi, ...(binek ? { binek: true } : {}) } };
+    if (isIsletme) {
+      const ref = isletmeRef(isSale ? 'SATIS' : 'ALIS');
+      if (isSale) {
+        // İşletme satışında sabit kıymet çıkışı: Diğer Hasılat → "İkinci El Motorlu Kara Taşıtı veya Taşınmaz Satışı" (185) ya da Diğer.
+        const kt = ref.kayitTuru.find((x: any) => x.kod === '4') || null;
+        const altList = getKayitAltList('SATIS', '4');
+        const tasit = /(romork|treyler|dorse|kamyon|kamyonet|otomobil|binek|minibus|otobus|traktor|tasit|plaka)/.test(hitWord.toLowerCase());
+        const alt = altList.find((x: any) => (tasit ? x.kod === '185' : x.kod === '99001')) || altList[0] || null;
+        const isl = { ...(ocr.isletme || {}), kayitTuruKod: kt?.kod || '4', kayitTuruAd: kt?.ad || 'Diğer Hasılat', kayitAltKod: alt?.kod || '', kayitAltAd: alt?.ad || '', autoMatched: false, neden: `Sabit kıymet satışı (${hitWord}) — sahip kararı: yine de işle` };
+        const satirlar = Array.isArray(isl.satirlar) ? isl.satirlar.map((r: any) => ({ ...r, kayitTuruKod: isl.kayitTuruKod, kayitAltKod: isl.kayitAltKod })) : isl.satirlar;
+        ocrYeni.isletme = { ...isl, ...(satirlar ? { satirlar } : {}) };
+      } else {
+        const kt = ref.kayitTuru.find((x: any) => x.kod === '13') || null; // Sabit Kıymet Alışı
+        const altList = getKayitAltList('ALIS', '13');
+        // B.7 — binek otomobil: 336 (ikinci el) / 337 (sıfır, KDV-ÖTV dâhil maliyet — KDV indirilemediği için varsayılan) / 338 (sıfır, KDV-ÖTV hariç).
+        const ikinciEl = /(ikinci el|2\. ?el|kullanilmis|kullanılmış)/i.test(`${hitWord} ${(Array.isArray(ocr.kalemler) ? ocr.kalemler : []).map((k: any) => String(k?.ad || '')).join(' ')}`);
+        const binekAltKod = binek ? (ikinciEl ? '336' : '337') : null;
+        const alt = (binekAltKod ? altList.find((x: any) => x.kod === binekAltKod) : null)
+          || altList.find((x: any) => x.kod === '253') || altList[0] || null; // Amortisman Giderleri (GVK 40/7)
+        const isl = { ...(ocr.isletme || {}), kayitTuruKod: '13', kayitTuruAd: kt?.ad || 'Sabit Kıymet Alışı', kayitAltKod: alt?.kod || '', kayitAltAd: alt?.ad || '', autoMatched: false, neden: `Sabit kıymet alışı (${hitWord}) — sahip kararı: yine de işle${binek ? ' — binek otomobil (KDVK 30/b: KDV indirilemez, maliyete)' : ''}` };
+        const satirlar = Array.isArray(isl.satirlar) ? isl.satirlar.map((r: any) => ({ ...r, kayitTuruKod: '13', kayitAltKod: isl.kayitAltKod })) : isl.satirlar;
+        ocrYeni.isletme = { ...isl, ...(satirlar ? { satirlar } : {}) };
+      }
+      await (this.prisma as any).invoiceAccountingDocument.update({ where: { id }, data: { ocrData: ocrYeni } });
+    } else {
+      // BİLANÇO: matrah satırlarını 25x (alış) / 679-689 taslağı (satış) hesabına çevir; KDV ve cari satırları korunur.
+      let lines: any[] = Array.isArray(doc.lines) ? doc.lines : [];
+      if (!lines.length) {
+        const bd = Array.isArray(ocr.kdvBreakdown) ? ocr.kdvBreakdown.map((b: any) => ({ rate: Number(b?.oran ?? b?.rate) || 0, base: Number(b?.matrah ?? b?.base) || 0, amount: Number(b?.tutar ?? b?.amount) || 0 })) : undefined;
+        lines = await this.gateCodesByPlan(tenantId, doc.taxpayerId, this.linesFromAmounts({
+          invoiceKind: doc.invoiceKind, matrah: ocr.matrah, kdvTutari: ocr.kdvTutari, kdvOrani: ocr.kdvOrani, total: doc.totalAmount,
+          vendorName: isSale ? doc.customerName : doc.vendorName, kdvBreakdown: bd,
+          tevkifatOrani: Number(ocr.tevkifatOrani) || undefined, tevkifatKdv: Number(ocr.tevkifatKdv) || 0,
+          digerVergiToplam: Number(ocr.digerVergiToplam) || 0, isReturn: ocr.isReturn === true,
+        } as any));
+      }
+      const hw = hitWord.toLowerCase();
+      let hedef: { code: string; name: string } | null = null;
+      let aciklama = '';
+      // B.7 — binek KDV hedefi: 254 maliyet (hedef ile aynı yaprak); 254 yoksa 770/760 gider yaprağı.
+      let binekKdvHedef: { code: string; name: string } | null = null;
+      if (!isSale) {
+        const tasit = binek || /(romork|treyler|dorse|kamyon|kamyonet|otomobil|binek|minibus|otobus|traktor|tasit|plaka|arac)/.test(hw);
+        const makine = /(makine|makina|cnc|tezgah|kompresor|jenerator|forklift|transpalet|vinc|ekskavator|kepce|is makine|silo|lazer|plazma|dokum)/.test(hw);
+        hedef = tasit
+          ? await this.planYapragiBul(tenantId, doc.taxpayerId, ['254', '255', '253'], /ta[şs][iı]t/i)
+          : makine
+            ? await this.planYapragiBul(tenantId, doc.taxpayerId, ['253', '255', '254'], /makin|tesis|cihaz/i)
+            : await this.planYapragiBul(tenantId, doc.taxpayerId, ['255', '253', '254'], /demirba[şs]/i);
+        aciklama = hedef ? hedef.name : `Demirbaş (${tasit ? '254 Taşıtlar' : makine ? '253 Tesis-Makine-Cihaz' : '255 Demirbaşlar'}) — plan yaprağı bulunamadı, hesap seçin`;
+        if (binek) {
+          binekKdvHedef = (hedef && /^254/.test(hedef.code)) ? hedef : await this.planYapragiBul(tenantId, doc.taxpayerId, ['254', '770', '760'], /ta[şs][iı]t|binek|ara[çc]/i);
+        }
+      } else {
+        hedef = await this.planYapragiBul(tenantId, doc.taxpayerId, ['679', '649', '689'], /ola[ğg]an\s*d[iı][şs][iı]|olagandisi|di[ğg]er/i);
+        aciklama = `TASLAK — sabit kıymet satışı${hedef ? ` (${hedef.name})` : ' (679/689 plan yaprağı yok, hesap seçin)'}; 25x çıkışı + 257 birikmiş amortisman EKLENMEDEN Luca'ya gitmez (B.6) — editörde ekleyin ya da "Luca'da elle işledim → kapat"`;
+      }
+      const yeniLines = lines.map((l: any, i: number) => {
+        const grp = String(l.group || 'matrah');
+        const isMatrah = grp === 'matrah';
+        // B.7 — binek otomobil KDV'si (191, 'vergi' grubu) indirilemez (KDVK 30/b) → 254 maliyetine (ya da 770 gider).
+        const isBinekKdv = binek && grp === 'vergi' && /^191/.test(String(l.accountCode || '')) && !!binekKdvHedef;
+        return {
+          documentId: id,
+          group: grp,
+          accountCode: isMatrah ? (hedef?.code || null) : isBinekKdv ? binekKdvHedef!.code : (l.accountCode || null),
+          description: isMatrah ? aciklama : isBinekKdv ? `Binek oto KDV — indirilemez (KDVK 30/b) → ${/^25/.test(binekKdvHedef!.code) ? 'maliyet' : 'gider'} (${binekKdvHedef!.name || binekKdvHedef!.code})` : (l.description || null),
+          rate: l.rate || null,
+          kaynak: (isMatrah || isBinekKdv) ? 'KULLANICI' : (l.kaynak ?? null),
+          debit: parseDecimal(String(l.debit ?? 0)),
+          credit: parseDecimal(String(l.credit ?? 0)),
+          orderNo: i,
+        };
+      });
+      await (this.prisma as any).$transaction(async (tx: any) => {
+        await tx.invoiceAccountingLine.deleteMany({ where: { documentId: id } });
+        if (yeniLines.length) await tx.invoiceAccountingLine.createMany({ data: yeniLines });
+        await tx.invoiceAccountingDocument.update({ where: { id }, data: { ocrData: ocrYeni, status: 'NEEDS_REVIEW' } });
+      });
+    }
+    await this.logAudit(tenantId, userId, 'DEMIRBAS_KARARI', id, { demirbasKarar: oncekiOcr.demirbasKarar || null }, { karar, hitWord, isletme: isIsletme });
+    await this.revalidateDocument(tenantId, id).catch(() => null);
+    return { ok: true, karar, document: await this.get(tenantId, id) };
+  }
+
+  /**
+   * ALICI TİPİ (kurum türü) — belirlenmiş alıcı ayrımı. taraf='mukellef' → Taxpayer.kurumTuru (alışta alıcı = mükellef);
+   * taraf='cari' → VendorMemory.kurumTuru (satışta alıcı = müşteri, VKN ile). Sonra ilgili belge(ler) yeniden doğrulanır.
+   */
+  async setAliciTipi(tenantId: string, body: { taraf?: 'mukellef' | 'cari'; taxpayerId?: string; vkn?: string; unvan?: string; kurumTuru?: string | null; documentId?: string }, userId?: string) {
+    const kt = body?.kurumTuru == null || body.kurumTuru === '' ? null : String(body.kurumTuru).trim().toLowerCase();
+    // B.3/B.4 — belirlenmis_diger (BİST/OSB/meslek kuruluşu/döner sermaye/emekli sandığı/kalkınma ajansı) ve kdv_mukellefi_degil eklendi.
+    if (kt != null && !(KURUM_TURLERI as string[]).includes(kt)) {
+      throw new BadRequestException(`kurumTuru: ${KURUM_TURLERI.join(' | ')} | null olmalı`);
+    }
+    const taraf = body?.taraf === 'cari' ? 'cari' : 'mukellef';
+    let hedef: any = null;
+    if (taraf === 'mukellef') {
+      if (!body?.taxpayerId) throw new BadRequestException('taxpayerId gerekli');
+      const tp = await (this.prisma as any).taxpayer.findFirst({ where: { id: body.taxpayerId, tenantId }, select: { id: true, kurumTuru: true } });
+      if (!tp) throw new NotFoundException('Mükellef bulunamadı');
+      await (this.prisma as any).taxpayer.update({ where: { id: tp.id }, data: { kurumTuru: kt } });
+      hedef = { taraf, taxpayerId: tp.id, onceki: tp.kurumTuru || null, kurumTuru: kt };
+    } else {
+      const vkn = String(body?.vkn || '').replace(/\D/g, '');
+      if (!vkn) throw new BadRequestException('vkn gerekli');
+      const vm = await (this.prisma as any).vendorMemory.upsert({
+        where: { tenantId_firmaKimlikNo: { tenantId, firmaKimlikNo: vkn } },
+        create: { tenantId, firmaKimlikNo: vkn, firmaUnvan: String(body?.unvan || '').trim() || null, kurumTuru: kt },
+        update: { kurumTuru: kt, ...(body?.unvan ? { firmaUnvan: String(body.unvan).trim() } : {}) },
+        select: { id: true, firmaKimlikNo: true, kurumTuru: true },
+      });
+      hedef = { taraf, vkn: vm.firmaKimlikNo, kurumTuru: vm.kurumTuru };
+    }
+    await this.logAudit(tenantId, userId, 'ALICI_TIPI', body?.documentId || hedef.taxpayerId || hedef.vkn || '-', null, hedef);
+    // Etkilenen bekleyen belgeleri yeniden doğrula (ALICI_TIPI_GEREKLI → TEVKIFAT_EKSIK ya da kapanır).
+    //   A.9: yalnız ALICI_TIPI_GEREKLI / TEVKIFAT_EKSIK uyarısı taşıyan belgeler (300 belgeyi körlemesine doğrulamak gereksizdi).
+    const where: any = { tenantId, status: { in: ['READY', 'NEEDS_REVIEW'] } };
+    if (taraf === 'mukellef') { where.taxpayerId = hedef.taxpayerId; where.invoiceKind = 'ALIS'; }
+    else { where.buyerVkn = hedef.vkn; where.invoiceKind = 'SATIS'; }
+    const etkilenen: any[] = await (this.prisma as any).invoiceAccountingDocument.findMany({ where, select: { id: true, ocrData: true }, take: 1000 }).catch(() => []);
+    const ilgiliKodlar: string[] = [UYARI_KOD.ALICI_TIPI_GEREKLI, UYARI_KOD.TEVKIFAT_EKSIK];
+    const ilgili = etkilenen.filter((d: any) => (Array.isArray(d.ocrData?.uyarilar) ? d.ocrData.uyarilar : [])
+      .some((u: any) => ilgiliKodlar.includes(String(u?.kod || ''))));
+    const ids = new Set<string>(ilgili.map((d: any) => d.id));
+    if (body?.documentId) ids.add(body.documentId);
+    let yenidenDogrulanan = 0;
+    for (const did of ids) { await this.revalidateDocument(tenantId, did).catch(() => null); yenidenDogrulanan++; }
+    return { ok: true, ...hedef, yenidenDogrulanan };
+  }
+
+  /** Uyarı tek-tık eylemi (sunucu tarafı gerekenler): oneriyi-uygula → matrah hesabını önerilen hesaba çevirir. */
+  async uyariEylem(tenantId: string, id: string, body: { eylem?: string }, userId?: string) {
+    const eylem = String(body?.eylem || '').trim();
+    const doc: any = await this.get(tenantId, id);
+    if (eylem === 'oneriyi-uygula') {
+      const onerilen = String((doc.ocrData as any)?.onerilenHesap || '').trim();
+      if (!onerilen) throw new BadRequestException('Bu belgede önerilen hesap yok.');
+      const codes = await this.getPlanCodeSet(tenantId, doc.taxpayerId);
+      if (codes && codes.size && !codes.has(onerilen)) throw new BadRequestException(`Önerilen hesap (${onerilen}) mükellefin planında yok.`);
+      const names = this.planCodeCache.get(`${tenantId}:${doc.taxpayerId}`)?.names;
+      await (this.prisma as any).invoiceAccountingLine.updateMany({
+        where: { documentId: id, group: 'matrah' },
+        data: { accountCode: onerilen, kaynak: 'KULLANICI', ...(names?.get(onerilen) ? { description: names.get(onerilen) } : {}) },
+      });
+      await (this.prisma as any).invoiceAccountingDocument.update({ where: { id }, data: { ocrData: { ...(doc.ocrData || {}), hesapUyumsuz: false, hesapUyumNot: null, uyumUygulandi: onerilen } } });
+      await this.logAudit(tenantId, userId, 'UYARI_EYLEM', id, null, { eylem, onerilen });
+      await this.revalidateDocument(tenantId, id).catch(() => null);
+      return { ok: true, eylem, onerilen, document: await this.get(tenantId, id) };
+    }
+    throw new BadRequestException(`Bilinmeyen eylem: ${eylem || '(boş)'}`);
+  }
+
+  /** İptal / red / GİB hata / taslak sayacı (liste kartı): inbox'ta durum yüzünden aktarılmayan satırlar + CANCELLED belgeler. */
+  async iptalSayac(tenantId: string, q: { taxpayerId?: string; period?: string }) {
+    if (!q?.taxpayerId) return { inbox: 0, belge: 0, toplam: 0, ornekler: [] };
+    const where: any = { tenantId, taxpayerId: q.taxpayerId, isTransferred: false };
+    if (q.period && /^\d{4}-\d{2}$/.test(q.period)) {
+      const [y, m] = q.period.split('-').map((n) => parseInt(n, 10));
+      where.OR = [
+        { faturaDate: { gte: new Date(Date.UTC(y, m - 1, 1)), lt: new Date(Date.UTC(y, m, 1)) } },
+        { AND: [{ faturaDate: null }, { rawJson: { path: ['period'], equals: q.period } }] },
+      ];
+    }
+    const rows: any[] = await (this.prisma as any).eFaturaInbox.findMany({ where, select: { id: true, faturaNo: true, rawJson: true, senderTitle: true, direction: true }, take: 2000 }).catch(() => []);
+    const iptal = rows.filter((r) => this.belgeDurumuEngelli(r.rawJson || {}).engelli);
+    const belgeWhere: any = { tenantId, taxpayerId: q.taxpayerId, status: 'CANCELLED' };
+    if (q.period) Object.assign(belgeWhere, periodWhere(q.period));
+    const belge = await (this.prisma as any).invoiceAccountingDocument.count({ where: belgeWhere }).catch(() => 0);
+    return {
+      inbox: iptal.length,
+      belge,
+      toplam: iptal.length + belge,
+      ornekler: iptal.slice(0, 10).map((r) => ({ id: r.id, faturaNo: r.faturaNo, taraf: r.senderTitle, durum: String(r.rawJson?.approvalStatus || r.rawJson?.belgeDurumu || ''), neden: this.belgeDurumuEngelli(r.rawJson || {}).neden })),
+    };
+  }
+
+  /**
+   * reprocess-broken 'iptal-temizle': daha önce YANLIŞ oluşmuş iptal/red/taslak belgeleri (POSTED/POSTING hariç) bulur;
+   * dryRun=false → belge status=CANCELLED (Luca kuyruğundan çıkar), bağlı inbox satırı "aktarılmadı + durum" olarak kalır.
+   */
+  private async iptalTemizle(tenantId: string, opts: { dryRun: boolean; taxpayerId?: string; period?: string; limit?: number }) {
+    const where: any = {
+      tenantId,
+      status: { notIn: ['CANCELLED', 'REJECTED'] },
+      lucaStatus: { notIn: ['POSTED', 'POSTING'] },
+      ...(opts.taxpayerId ? { taxpayerId: opts.taxpayerId } : {}),
+      ...periodWhere(opts.period),
+    };
+    const docs: any[] = await (this.prisma as any).invoiceAccountingDocument.findMany({
+      where, select: { id: true, belgeNo: true, taxpayerId: true, source: true, sourceRefId: true, status: true, lucaStatus: true, ocrData: true, invoiceKind: true, totalAmount: true },
+      orderBy: { createdAt: 'desc' }, take: 5000,
+    });
+    const adaylar: Array<{ id: string; belgeNo: string | null; status: string; lucaStatus: string; neden: string; inboxId?: string | null; approvalStatus?: string | null; iptalItiraz?: string | null }> = [];
+    const inboxByDoc = new Map<string, any>();
+    const docIds = docs.map((d) => d.id);
+    if (docIds.length) {
+      const rows: any[] = await (this.prisma as any).eFaturaInbox.findMany({ where: { tenantId, documentId: { in: docIds } }, select: { id: true, documentId: true, rawJson: true } }).catch(() => []);
+      for (const r of rows) inboxByDoc.set(String(r.documentId), r);
+    }
+    // A.3 — dryRun çıktısında AYRIK durum değerleri sayımı: sahibin hangi metinlerin geldiğini (ve süzgecin neyi
+    //   engelli saydığını) görmesi için. approvalStatus (tüm taranan) + iptalItiraz (tüm taranan) + adaylardaki değerler.
+    const say = (m: Record<string, number>, v: any) => { const k = String(v ?? '').trim() || '(boş)'; m[k] = (m[k] || 0) + 1; };
+    const approvalStatusSayim: Record<string, number> = {};
+    const iptalItirazSayim: Record<string, number> = {};
+    const adayApprovalStatusSayim: Record<string, number> = {};
+    for (const d of docs) {
+      const od: any = d.ocrData || {};
+      const row = inboxByDoc.get(d.id);
+      const rj: any = row?.rawJson || {};
+      say(approvalStatusSayim, rj.approvalStatus);
+      say(iptalItirazSayim, rj.iptalItiraz);
+      const eng = this.belgeDurumuEngelli(rj, od.belgeDurumu);
+      if (!eng.engelli) continue;
+      say(adayApprovalStatusSayim, rj.approvalStatus || od.belgeDurumu);
+      adaylar.push({ id: d.id, belgeNo: d.belgeNo || null, status: String(d.status), lucaStatus: String(d.lucaStatus), neden: eng.neden, inboxId: row?.id || null, approvalStatus: rj.approvalStatus ?? null, iptalItiraz: rj.iptalItiraz ?? null });
+    }
+    const limit = Math.max(1, Math.min(2000, Number(opts.limit) || 500));
+    const secilen = adaylar.slice(0, limit);
+    const ozet = {
+      mode: 'iptal-temizle', dryRun: opts.dryRun, taranan: docs.length, aday: adaylar.length, secilen: secilen.length, limit,
+      haricTutulan: 'Luca POSTED/POSTING + zaten CANCELLED/REJECTED',
+      durumSayim: { approvalStatus: approvalStatusSayim, iptalItiraz: iptalItirazSayim, adayApprovalStatus: adayApprovalStatusSayim },
+    };
+    if (opts.dryRun) return { ...ozet, temizlenen: 0, belgeler: secilen };
+    let temizlenen = 0;
+    for (const a of secilen) {
+      await (this.prisma as any).invoiceAccountingDocument.update({
+        where: { id: a.id },
+        data: { status: 'CANCELLED', lucaStatus: 'NOT_STARTED', lucaErrorMessage: `İptal/red/taslak belge (${a.neden}) — Faz 2 temizliği`, approvedBy: null, approvedAt: null },
+      }).catch(() => null);
+      if (a.inboxId) {
+        const row = await (this.prisma as any).eFaturaInbox.findUnique({ where: { id: a.inboxId }, select: { rawJson: true } }).catch(() => null);
+        await (this.prisma as any).eFaturaInbox.update({
+          where: { id: a.inboxId },
+          data: { isTransferred: false, documentId: null, processedAt: null, rawJson: { ...(row?.rawJson || {}), iptalTemizlendi: new Date().toISOString(), belgeDurumu: a.neden } },
+        }).catch(() => null);
+      }
+      temizlenen++;
+    }
+    this.logger.log(`[IPTAL-TEMIZLE] tenant=${tenantId} aday=${adaylar.length} temizlenen=${temizlenen}`);
+    return { ...ozet, temizlenen, belgeler: secilen };
   }
 
   private async recordInvoiceAccountingMemory(tenantId: string, doc: any) {
@@ -6493,7 +7265,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       where: { id: q.taxpayerId, tenantId }, select: { defterTuru: true, mihsapDefterTuru: true },
     });
     const isIsletme = isIsletmeLedger(tp?.defterTuru, tp?.mihsapDefterTuru);
-    const where: any = { tenantId, taxpayerId: q.taxpayerId, status: 'APPROVED' };
+    // Faz 2: MANUAL_DONE (demirbaş "Luca'da elle işledim → kapat") belgeler Excel'e girmez (Luca'da zaten var).
+    const where: any = { tenantId, taxpayerId: q.taxpayerId, status: 'APPROVED', lucaStatus: { not: 'MANUAL_DONE' } };
     if (q.direction === 'ALIS' || q.direction === 'SATIS') where.invoiceKind = q.direction;
     if (q.period) {
       const [y, m] = String(q.period).split('-').map((n) => parseInt(n, 10));
@@ -6507,6 +7280,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const docs = allDocs.filter((d: any) => {
       const v = String((d as any).validationStatus || d.ocrData?.validationStatus || '').toUpperCase();
       if (v === 'INVALID' || v === 'INCOMPLETE') return false;
+      // Faz 2 — demirbaş kararı verilmemiş belge Excel'e de girmez (karar bekliyor).
+      if (uyariOzet(d.ocrData?.uyarilar).kararBekliyor) return false;
+      // A.5 — demirbaş kararı "Luca'da elle işlendi" olan belge (lucaStatus henüz MANUAL_DONE değilse bile) Excel'e girmez.
+      if (String(d.ocrData?.demirbasKarar?.karar || '') === 'elle_islendi') return false;
       const lines = d.lines || [];
       if (isIsletme) {
         return isletmeDocumentReady(d).ok;
@@ -6597,9 +7374,15 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // GERÇEK denge + boş-kod kontrolü → dengesiz/eksik-kodlu fiş Luca'ya GİTMESİN (sessiz değil).
     let skippedCount = 0;
     let skippedBalance = 0;
+    // Faz 2 — DEMİRBAŞ "karar bekliyor": kilit değil ama karar verilmeden Luca'ya GİTMEZ (raporda ayrı sayı).
+    let skippedDemirbas = 0;
+    // A.5 — "Luca'da elle işlendi" (MANUAL_DONE / demirbaş kararı elle_islendi): Luca'ya GİTMEZ (çift kayıt olur).
+    let skippedElleIslendi = 0;
     const docs = allDocs.filter((d: any) => {
       const v = String((d as any).validationStatus || d.ocrData?.validationStatus || '').toUpperCase();
       if (v === 'INVALID' || v === 'INCOMPLETE') { skippedCount++; return false; }
+      if (String(d.lucaStatus || '') === 'MANUAL_DONE' || String(d.ocrData?.demirbasKarar?.karar || '') === 'elle_islendi') { skippedElleIslendi++; return false; }
+      if (uyariOzet(d.ocrData?.uyarilar).kararBekliyor) { skippedDemirbas++; return false; }
       const lines = d.lines || [];
       if (isIsletme) {
         if (isletmeDocumentReady(d).ok) return true;
@@ -6616,6 +7399,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const parts = [
         skippedCount > 0 ? `${skippedCount} belge veri kontrolü hatası` : '',
         skippedBalance > 0 ? `${skippedBalance} belge dengesiz/eksik kod` : '',
+        skippedDemirbas > 0 ? `${skippedDemirbas} belge demirbaş kararı bekliyor` : '',
+        skippedElleIslendi > 0 ? `${skippedElleIslendi} belge Luca'da elle işlendi (gönderilmez)` : '',
       ].filter(Boolean).join(', ');
       const extra = parts ? ` (${parts} nedeniyle hariç tutuldu — Gelen Belgeler'de düzelt)` : '';
       throw new Error(`Bu mukellef icin Luca'ya aktarilabilir belge bulunamadi${extra}`);
@@ -6734,6 +7519,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       period: jobs[0]?.period,
       documentCount: docs.length,
       skippedInvalid: skippedCount, // v2.1: validation hatası olan + bu yüzden Luca'ya gitmeyen belgeler
+      skippedDemirbas, // Faz 2: demirbaş kararı verilmemiş ("karar bekliyor") belgeler
+      skippedElleIslendi, // A.5: "Luca'da elle işlendi" (MANUAL_DONE / elle_islendi) — gönderilmedi
     };
   }
 
@@ -6746,6 +7533,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     }
     if (!doc.taxpayerId) {
       throw new Error('Belgede mukellef secilmemis, Luca\'ya aktarilamaz');
+    }
+    // A.5 — "Luca'da elle işlendi" (MANUAL_DONE ya da demirbaş kararı elle_islendi) belge Luca'ya GİTMEZ (Luca'da zaten var → çift kayıt).
+    if (String(doc.lucaStatus || '') === 'MANUAL_DONE' || String((doc as any).ocrData?.demirbasKarar?.karar || '') === 'elle_islendi') {
+      throw new BadRequestException('Bu belge "Luca\'da elle işlendi" olarak kapatılmış — Luca\'ya gönderilmez (çift kayıt olur). Göndermek istiyorsanız önce onayı geri alın (karar silinir).');
     }
 
     // Eski aktif job'u iptal et (varsa)
@@ -9174,7 +9965,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         if (buf.length >= 2 && buf[0] === 0x50 && buf[1] === 0x4b) xml = await this.elogoUnzipXml(buf);
         else { const t2 = buf.toString('utf8').trim(); xml = t2.startsWith('<') ? t2 : (/^[A-Za-z0-9+/=\s]+$/.test(t2) ? Buffer.from(t2, 'base64').toString('utf8') : t2); }
         if (!xml || !xml.includes('<')) continue;
-        const payload = { externalId: `turkcell:${box}:${id}`, originalName: `${invoiceNo || id}.xml`, xml };
+        const payload: ProviderInvoicePayload = { externalId: `turkcell:${box}:${id}`, originalName: `${invoiceNo || id}.xml`, xml, providerStatus: this.providerStatusFromListItem(item) };
         kept++;
         if (opts.onPayload) { await opts.onPayload(payload); } // ARTIMLI: anında yaz, bellekte tutma
         else payloads.push(payload);
@@ -9683,6 +10474,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         const uuids = (listResp.match(/<(?:\w+:)?documentUuid>([^<]+)<\/(?:\w+:)?documentUuid>/gi) || [])
           .map((m) => m.replace(/<[^>]+>/g, '').trim())
           .filter(Boolean);
+        // Faz 2 — liste yanıtındaki belge durumu (stateCode/stateExplanation/envelopeStatus) uuid'ye göre.
+        const elogoStatus = this.elogoStatusMapFromList(listResp);
         for (const uuid of uuids) {
           if (payloads.length >= opts.limit) break;
           if (seen.has(uuid)) continue;
@@ -9707,7 +10500,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           // FATURA TARİHİ süzgeci: sorgu penceresi bugüne genişti; asıl ölçüt fatura tarihi → dönem dışını ele.
           const iss = ublIssueYmd(xml);
           if (iss && (iss < faturaStart || iss > faturaEnd)) continue;
-          payloads.push({ externalId: `elogo:${uuid}`, originalName: `${uuid}.xml`, xml });
+          payloads.push({ externalId: `elogo:${uuid}`, originalName: `${uuid}.xml`, xml, providerStatus: elogoStatus.get(uuid) || null });
         }
       }
       return payloads;
@@ -10550,6 +11343,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     }
     const parsed = this.parseProviderUblInvoice(xml) || this.regexProviderInvoiceFallback(xml);
     if (!parsed) throw new Error('UBL/XML fatura okunamadi');
+    // Faz 2 — ENTEGRATÖR DURUM SÜZGECİ: UBL iptal (InvoiceTypeCode IPTAL) ya da taslak ise YENİ belge
+    //   OLUŞTURULMAZ (çağıran inbox satırında durumu tutar). Mevcut belge yenilemesinde (existingDocumentId)
+    //   dokunulmaz — belge zaten var, DOCUMENT_CANCELLED doğrulaması onu işaretler.
+    if (!opts.existingDocumentId && (parsed.belgeDurumu === 'iptal' || parsed.belgeDurumu === 'taslak')) {
+      this.logger.warn(`[DURUM-SUZGECI] ${parsed.faturaNo || payload.externalId || '?'}: UBL ${parsed.belgeDurumu} → belge olusturulmadi`);
+      return { created: false, document: null as any, skipped: parsed.belgeDurumu as 'iptal' | 'taslak' };
+    }
     // CARİ YÖN DÜZELTME: ALIŞ faturasında SATICI (cari) MÜKELLEF OLAMAZ. Bazı XML'lerde satıcı/alıcı
     //   tarafları ters geliyor → parse mükellefi satıcı sanıp cari=mükellef yapıyor ("Yorgun Nakliyat"
     //   cari, hesap boş). Mükellef satıcı tarafına düşmüşse GERÇEK satıcı = alıcı tarafındaki firmadır →
@@ -10779,6 +11579,107 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       await this.revalidateDocument(tenantId, doc.id).catch(() => {});
     }
     return { created: true, document: doc };
+  }
+
+  // ───────────────────────── Faz 2 — ENTEGRATÖR DURUM SÜZGECİ (iptal / red / GİB hata / taslak) ─────────────────────────
+  /** Sağlayıcı liste satırından (Turkcell/isim360 JSON) belge durumu — alan adları sağlayıcıya göre değişir, geniş tarama. */
+  private providerStatusFromListItem(item: any): ProviderInvoicePayload['providerStatus'] {
+    if (!item || typeof item !== 'object') return null;
+    const pick = (...keys: string[]) => {
+      for (const k of keys) { const v = (item as any)[k]; if (v != null && String(v).trim()) return String(v).trim(); }
+      return '';
+    };
+    const approval = pick('StatusText', 'statusText', 'Status', 'status', 'InvoiceStatus', 'invoiceStatus', 'GibStatus', 'gibStatus', 'EnvelopeStatus', 'envelopeStatus', 'DocumentStatus', 'documentStatus');
+    const cancelled = (item as any).IsCancelled === true || (item as any).isCancelled === true || (item as any).Cancelled === true || (item as any).cancelled === true
+      || (item as any).IsDeleted === true || (item as any).isDeleted === true;
+    if (!approval && !cancelled) return null;
+    return { approval: approval || null, iptal: cancelled ? 'Iptal' : null };
+  }
+
+  /** eLogo GetDocumentList yanıtında uuid → durum. Alan yoksa boş harita.
+   *  Gerileme denetimi A.1: ±1500 karakter penceresi komşu öğenin durumunu okuyabiliyordu (4 öğelik listede
+   *  3. öğe iptalken 2./4. öğe de "iptal" görünüyordu). Artık uuid'yi saran <DOCUMENT>…</DOCUMENT> öğe bloğu
+   *  (önek/harf-duyarsız) kullanılır; öğe etiketi yoksa bir önceki uuid'nin sonu ile bir sonraki uuid'nin
+   *  başı arasındaki dilim alınır. Metin önceliği: stateExplanation > stateCode > envelopeStatus > documentStatus > status. */
+  private elogoStatusMapFromList(listResp: string): Map<string, NonNullable<ProviderInvoicePayload['providerStatus']>> {
+    const out = new Map<string, NonNullable<ProviderInvoicePayload['providerStatus']>>();
+    const src = String(listResp || '');
+    const re = /<(?:\w+:)?documentUuid>([^<]+)<\/(?:\w+:)?documentUuid>/gi;
+    const bulunan: Array<{ uuid: string; bas: number; son: number }> = [];
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(src))) bulunan.push({ uuid: String(m[1] || '').trim(), bas: m.index, son: m.index + m[0].length });
+    const acilisRe = /<(?:\w+:)?document\b[^>]*>/gi;   // <a:DOCUMENT> / <Document> — "documentUuid/documentList" eşleşmez (\b)
+    const kapanisRe = /<\/(?:\w+:)?document\s*>/gi;
+    const okuDurum = (blok: string): string => {
+      for (const etiket of ['stateExplanation', 'stateCode', 'envelopeStatus', 'documentStatus', 'status']) {
+        const st = blok.match(new RegExp(`<(?:\\w+:)?${etiket}\\s*>([^<]{1,120})<\\/`, 'i'));
+        if (st && st[1] && st[1].trim()) return st[1].trim();
+      }
+      return '';
+    };
+    for (let i = 0; i < bulunan.length; i++) {
+      const cur = bulunan[i];
+      if (!cur.uuid) continue;
+      const oncekiSon = i > 0 ? bulunan[i - 1].son : 0;
+      const sonrakiBas = i + 1 < bulunan.length ? bulunan[i + 1].bas : src.length;
+      // 1) Öğe bloğu: uuid'den GERİYE en yakın <DOCUMENT> açılışı (önceki uuid'den sonra) + İLERİYE ilk </DOCUMENT> kapanışı (sonraki uuid'den önce).
+      let from = oncekiSon;
+      let to = sonrakiBas;
+      const geri = src.slice(oncekiSon, cur.bas);
+      let a: RegExpExecArray | null; let sonAcilis = -1;
+      acilisRe.lastIndex = 0;
+      while ((a = acilisRe.exec(geri))) sonAcilis = a.index;
+      const ileri = src.slice(cur.son, sonrakiBas);
+      kapanisRe.lastIndex = 0;
+      const k = kapanisRe.exec(ileri);
+      if (sonAcilis >= 0 && k) { from = oncekiSon + sonAcilis; to = cur.son + k.index; }
+      // 2) Yoksa: önceki uuid sonu … sonraki uuid başı dilimi (komşu öğeye taşmaz).
+      const durum = okuDurum(src.slice(from, to));
+      if (durum) out.set(cur.uuid, { approval: durum, iptal: null });
+    }
+    return out;
+  }
+
+  /** İptal / red / GİB hata / taslak sayılır mı? (inbox rawJson.approvalStatus + iptalItiraz + UBL belgeDurumu)
+   *  Gerileme denetimi A.3: eski geniş kalıp (/iptal|itiraz|red|cancel|reject/) "Kredi", "Onaylandı (Redirect)" gibi
+   *  metinlere de takılıyor, "İptal Talebi Reddedildi" (talep reddedildi = belge GEÇERLİ) belgeyi engelliyordu.
+   *  Artık KELİME sınırlı kalıp + talep-reddi istisnası. */
+  private belgeDurumuEngelli(raw: any, belgeDurumu?: string | null): { engelli: boolean; neden: string } {
+    const bd = String(belgeDurumu || raw?.belgeDurumu || '').toLowerCase();
+    if (bd === 'iptal') return { engelli: true, neden: 'iptal' };
+    if (bd === 'taslak') return { engelli: true, neden: 'taslak' };
+    const fold = (s: any) => String(s || '').toLocaleLowerCase('tr-TR')
+      .replace(/ğ/g, 'g').replace(/ü/g, 'u').replace(/ş/g, 's').replace(/ö/g, 'o').replace(/ç/g, 'c').replace(/ı/g, 'i').replace(/i̇/g, 'i')
+      .replace(/\s+/g, ' ').trim();
+    const approval = fold(raw?.approvalStatus);
+    const itiraz = fold(raw?.iptalItiraz);
+    // İSTİSNA: "iptal talebi reddedildi" / "red talebi reddedildi" / "itiraz talebi reddedildi" → talep reddedilmiş, belge GEÇERLİ.
+    const talepReddi = /\b(iptal|red|itiraz)\s*(talebi|talep|istegi|basvurusu)\s*(reddedil|red edil|kabul edilmedi|onaylanmadi)/;
+    // "iptal/red talebi kabul edildi/onaylandı" → belge iptal/red olmuştur.
+    const talepKabul = /\b(iptal|red|itiraz)\s*(talebi|talep|istegi|basvurusu)\s*(kabul|onaylan)/;
+    // Sınırlı engel kalıpları (kelime sınırlı): iptal | reddedil(di) | red edil(di) | rejected | cancel(l)ed | iptal edildi.
+    const engelRe = /\b(iptal|reddedil\w*|red edil\w*|rejected|cancel(?:l)?ed|iptal edildi)\b/;
+    const approvalEngel = !talepReddi.test(approval) && (engelRe.test(approval) || talepKabul.test(approval));
+    if (approvalEngel) return { engelli: true, neden: 'iptal/red' };
+    // iptalItiraz alanı: "Yok/No/None/Hayır/-" değer YOK demektir; talep reddi istisnası burada da geçerli.
+    const itirazYok = !itiraz || /^(yok|no|none|hayir|-|0|false)$/.test(itiraz);
+    if (!itirazYok && !talepReddi.test(itiraz)) {
+      if (engelRe.test(itiraz) || talepKabul.test(itiraz)) return { engelli: true, neden: 'iptal/red' };
+      // TÜRMOB IptalItirazDurumu bayrak ('1' / 'true' / 'Evet') olarak gelebiliyor (canlı: iptalItiraz='1' 1 belge); "itiraz edildi" de engel.
+      if (/^(1|true|evet)$/.test(itiraz) || /\bitiraz\b/.test(itiraz)) return { engelli: true, neden: 'iptal/itiraz' };
+    }
+    if (/\b(taslak|draft)\b/.test(`${approval} ${itiraz}`)) return { engelli: true, neden: 'taslak' };
+    if (/\bgib\b.*\bhata\b|\bhata\b.*\bgib\b|gib error|\berror\b/.test(approval)) return { engelli: true, neden: 'gib-hata' };
+    return { engelli: false, neden: '' };
+  }
+
+  /** persistOne için inbox rawJson durum alanları: sağlayıcı satırı > UBL belgeDurumu > 'Onaylandi'. */
+  private inboxApprovalFields(parsed: ParsedProviderInvoice | null, ps?: ProviderInvoicePayload['providerStatus']): { approvalStatus: string; iptalItiraz: string; belgeDurumu?: string } {
+    const bd = parsed?.belgeDurumu;
+    let approvalStatus = String(ps?.approval || '').trim() || (bd === 'iptal' ? 'Iptal' : bd === 'taslak' ? 'Taslak' : 'Onaylandi');
+    const iptalItiraz = String(ps?.iptal || '').trim() || (bd === 'iptal' ? 'Iptal' : 'Yok');
+    if (bd === 'iptal' && !/iptal|cancel/i.test(approvalStatus)) approvalStatus = `${approvalStatus} (UBL: IPTAL)`;
+    return { approvalStatus, iptalItiraz, ...(bd ? { belgeDurumu: bd } : {}) };
   }
 
   /**
@@ -11440,10 +12341,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
    *  "Nokta-yama" DEĞİL: bir cihaz/makine adı TEK BAŞINA yetmez — mükellef o ürünü TİCARETEN satıyorsa
    *  (faaliyet/ünvan/NACE'de geçiyorsa) o ürün TİCARİ MAL'dır (klima ticareti yapanın kliması = ticari mal),
    *  satmıyorsa (lokantanın kliması) = DEMİRBAŞ. AI'ın "demirbas" kategorisi de birincil sinyaldir. */
-  private detectFixedAsset(ocrData: any, taxpayer: any): { is: boolean; reason: string } {
+  private detectFixedAsset(ocrData: any, taxpayer: any, invoiceKind?: string | null): { is: boolean; reason: string } {
     const ocr = ocrData || {};
     const fold = (s: string) => this.norm(s).replace(/ş/g, 's').replace(/ğ/g, 'g').replace(/ı/g, 'i').replace(/ç/g, 'c').replace(/ö/g, 'o').replace(/ü/g, 'u');
     const kalemAd = Array.isArray(ocr.kalemler) ? ocr.kalemler.map((k: any) => String(k?.ad || '')).join(' ') : '';
+    const isSaleDir = String(invoiceKind || ocr.direction || '').toUpperCase() === 'SATIS';
     // blob YALNIZ kalem + giderTuru (fatura İÇERİĞİ). muhasebeNeden ÇIKARILDI: o AI yorumu; "…demirbaş
     //   niteliğindedir" gibi bir cümle blob'a girince engellemek istediğimiz "AI kelimesine kapılma"
     //   davranışı geri sızıyordu (beyaz eşya tamircisinin onarım geliri yanlış demirbaş oluyordu).
@@ -11462,7 +12364,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       //   ayırt edip uyarsın, Luca'dan ayrıca işleniyor") — nakliyecinin kamyon/otomobil satışı kaçmasın.
       //   'cekici' TEK BAŞINA bilerek YOK (oto kurtarma "çekici ücreti" hizmetiyle karışır).
       'romork', 'treyler', 'dorse', 'cekici dorse',
-      'kamyon', 'kamyonet', 'otomobil', 'binek arac', 'minibus', 'otobus',
+      'kamyon', 'kamyonet', 'otomobil', 'binek arac', 'binek oto', 'hususi oto', 'minibus', 'otobus',
+      // B.7 — binek otomobil model adları (KDVK 30/b işareti için; binekOtomobilSinyali aynı listeyi kullanır).
+      'egea', 'clio', 'megane', 'corolla', 'passat', 'astra', 'sandero', 'octavia', 'fabia', 'yaris', 'civic',
       'traktor', 'ekskavator', 'yukleyici kepce', 'is makine',
       // Denetim eksikleri (2026-08-11): BT/üretim/altyapı sabit kıymetleri — AI "gider" derse kaçıp
       //   770'e yazılıyordu. giderIcerikSinifla (yedek parça/bakım/hizmet) + faaliyet-kökü kapısı
@@ -11509,7 +12413,31 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       }
     }
     if (giderIcerikSinifla(`${kalemAd} ${ocr.giderTuru || ''}`)) return { is: false, reason: '' };
-    const hitWord = ASSET.find((w) => blob.includes(w)) || '';
+    // Faz 2 (PLAN/15 KRİTİK 10) — HİZMET FİİLİ: kalemde cihaz adı geçse de "değişimi / montajı / tamiri /
+    //   bakımı / kurulumu / işçiliği" gibi bir FİİL varsa o kalem bir HİZMETTİR (kompresör DEĞİŞİMİ, klima
+    //   MONTAJI) — sabit kıymetin kendisi değil. giderIcerikSinifla 'değişim/montaj'ı tanımıyordu (NACE 952201
+    //   mükellefinin "Soğuk Oda Kompresörü Değişimi" 28.000 TL satışı INVALID oluyordu). KALEM BAZINDA bakılır:
+    //   "Klima 30.000 + Montaj 1.000" faturasında klima kalemi fiilsiz → demirbaş KALIR (yalnız fiilli kalem hizmet).
+    const hizmetFiil = /(degisim|degistir|degisme|montaj|demontaj|tamir|onarim|bakim|servis hizmet|kurulum|revizyon|tadilat|sokum|ariza|iscilik|isciligi|yenileme hizmet|tamirat)/;
+    const kalemListesi: string[] = Array.isArray(ocr.kalemler) && ocr.kalemler.length
+      ? ocr.kalemler.map((k: any) => fold(String(k?.ad || ''))).filter(Boolean)
+      : [];
+    let hitWord = '';
+    if (kalemListesi.length) {
+      for (const kal of kalemListesi) {
+        const w = ASSET.find((a) => kal.includes(a)) || '';
+        if (w && !hizmetFiil.test(kal)) { hitWord = w; break; }
+      }
+      // Hiçbir kalem fiilsiz eşleşmediyse giderTuru'na bak (AI özeti) — o da fiilliyse hizmet.
+      if (!hitWord) {
+        const gt = fold(String(ocr.giderTuru || ''));
+        const w = ASSET.find((a) => gt.includes(a)) || '';
+        if (w && !hizmetFiil.test(gt)) hitWord = w;
+      }
+    } else {
+      hitWord = ASSET.find((w) => blob.includes(w)) || '';
+      if (hitWord && hizmetFiil.test(blob)) hitWord = '';
+    }
     if (!hitWord) return { is: false, reason: '' };
     // Mükellef bu ürünü TİCARETEN satıyor / üretiyor / ONARIYORSA (faaliyet/ünvan/NACE'de ürün KÖKÜ
     //   geçiyorsa) → o ürün ticari mal / hizmet konusudur, DEMİRBAŞ DEĞİL (klima ticareti/onarımı yapanın
@@ -11517,6 +12445,15 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const faal = fold(`${taxpayer?.faaliyetAciklama || ''} ${taxpayer?.companyName || ''} ${taxpayer?.naceKodu || ''}`);
     const kok = hitWord.split(' ')[0].slice(0, 6); // "klima"→klima, "bilgisayar"→bilgis, "buzdolab"→buzdol
     if (kok.length >= 4 && faal.includes(kok)) return { is: false, reason: '' };
+    // Faz 2 — SATIŞTA demirbaş = mükellefin KENDİ duran varlığının çıkışı. Onarım/servis/tamir faaliyeti
+    //   (NACE 95xx onarım, 33.1x makine bakım-onarım, 45.20 motorlu taşıt bakım) yürüten mükellefin
+    //   satış faturasındaki cihaz/parça adı, verdiği HİZMETİN konusudur (parça + işçilik) — demirbaş sayılmaz.
+    //   Açık "satış/devir" ibaresi ya da plaka (yukarıda) varsa kendi varlığını sattığı anlaşılır → demirbaş kalır.
+    if (isSaleDir) {
+      const onarimFaal = /(onarim|tamir|servis|bakim|repair)/.test(faal) || /^(95|331|3312|3313|3314|3319|452|4520)/.test(String(taxpayer?.naceKodu || '').replace(/\D/g, ''));
+      const satisIbare = /(satis|devir|elden cikar)/.test(blob);
+      if (onarimFaal && !satisIbare) return { is: false, reason: '' };
+    }
     return { is: true, reason: hitWord };
   }
 
@@ -11541,23 +12478,39 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     return total > 0 ? Math.max(total - kdv, 0) : 0;
   }
 
+  /** B.7 — BİNEK OTOMOBİL sinyali (KDVK 30/b: binek otomobil KDV'si indirilemez → maliyet/gider; işletmede 336/337/338).
+   *  Kalem + giderTuru + tespit kelimesinde binek/otomobil/hususi ya da yaygın binek model adı geçer, ticari araç
+   *  (kamyon/kamyonet/minibüs/otobüs/panelvan/pikap/çekici/dorse/traktör/iş makinesi) geçmez. */
+  private binekOtomobilSinyali(ocrData: any, hitWord?: string | null): boolean {
+    const ocr = ocrData || {};
+    const fold = (s: string) => this.norm(s).replace(/ş/g, 's').replace(/ğ/g, 'g').replace(/ı/g, 'i').replace(/ç/g, 'c').replace(/ö/g, 'o').replace(/ü/g, 'u');
+    const kalemAd = Array.isArray(ocr.kalemler) ? ocr.kalemler.map((k: any) => String(k?.ad || '')).join(' ') : '';
+    const blob = fold(`${kalemAd} ${ocr.giderTuru || ''} ${hitWord || ''}`);
+    const binekRe = /(otomobil|binek|hususi|\begea\b|\bclio\b|\bmegane\b|\bcorolla\b|\bpassat\b|\bastra\b|\bsandero\b|\boctavia\b|\bfabia\b|\byaris\b|\bcivic\b|\bsedan\b|hatchback|\bsuv\b)/;
+    const ticariRe = /(kamyon|kamyonet|minibus|otobus|panelvan|panel van|pikap|pick ?up|cekici|\btir\b|dorse|romork|treyler|traktor|is makine|forklift|ambulans)/;
+    return binekRe.test(blob) && !ticariRe.test(blob);
+  }
+
   /** Demirbaş içeriği var AMA KDV hariç bedel VUK haddinin ALTINDA → doğrudan gider (770), demirbaş(255)
    *  DEĞİL ("770'te gider yazılan demirbaş"). Tutar bilinmiyorsa (0) false döner → demirbaş kalır (güvenli).
    *  VUK 313 haddi İKTİSADİ KIYMET BAŞINAdır: karışık faturada (demirbaş + sarf aynı belgede) fatura
    *  TOPLAMI değil, demirbaş KALEMİNİN tutarı esas alınır — hitWord (detectFixedAsset.reason) verilir
    *  ve kalem eşleşirse o kalemlerin toplamı kullanılır; eşleşmezse eski toplam-matrah davranışı. */
-  private demirbasHaddiAltinda(ocr: any, hitWord?: string): boolean {
+  private demirbasHaddiAltinda(ocr: any, hitWord?: string, yil?: number): boolean {
     const o = ocr || {};
+    // Faz 2 — had YIL'a göre (VUK 313 yıl→tutar tablosu; 2026 env DEMIRBAS_HADDI_TL). Yıl yoksa sabit.
+    const had = yil ? demirbasHaddiTL(yil).tutar : VUK_HAD_TL;
+    // B.9 — VUK 313: haddi "AŞMAYAN" doğrudan gider yazılabilir → tam had dahil (<=).
     if (hitWord) {
       const fold = (s: string) => this.norm(s).replace(/ş/g, 's').replace(/ğ/g, 'g').replace(/ı/g, 'i').replace(/ç/g, 'c').replace(/ö/g, 'o').replace(/ü/g, 'u');
       let sum = 0;
       for (const k of (Array.isArray(o.kalemler) ? o.kalemler : [])) {
         if (fold(String(k?.ad || '')).includes(hitWord)) sum += Number(k?.tutar) || 0;
       }
-      if (sum > 0) return sum < VUK_HAD_TL;
+      if (sum > 0) return sum <= had;
     }
     const m = this.matrahHaricTL(o);
-    return m > 0 && m < VUK_HAD_TL;
+    return m > 0 && m <= had;
   }
 
   /**
@@ -11600,6 +12553,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     belgeDurumu?: string | null;
     /** SMM gelir vergisi stopajı (alışta ödenecek = brüt + KDV − stopaj). */
     stopajTutari?: any;
+    /** Faz 2 — demirbaş sahip kararı (ocrData.demirbasKarar.karar): elle_islendi | yine_de_isle | demirbas_degil | null. */
+    fixedAssetKarar?: string | null;
+    /** Faz 2 — MÜKERRER (belge no + karşı VKN + tutar ±0,01 + yön aynı; ilk belge kalır) → ENGEL. */
+    mukerrer?: { ilkBelgeId: string; belgeNo?: string | null; tutar?: any; createdAt?: any } | null;
   }): Promise<{
     status: 'OK' | 'INCOMPLETE' | 'INVALID';
     issues: Array<{ code: string; severity: 'WARNING' | 'ERROR'; message: string; expected?: any; actual?: any }>;
@@ -11662,7 +12619,15 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // ── 3) TOTAL_MISMATCH — yevmiye toplamı ≠ belge toplamı. ÇOK-ORANLI faturada her oran satırı
     //   AYRI yuvarlanır (kuruş) → toplam birkaç kuruş sapabilir; tolerans satır sayısına göre esnetilir
     //   (yoksa A101 gibi çok-oranlı belgeler kuruş farkıyla boş yere "çelişki"ye düşüyordu).
-    if (totalAmount > 0) {
+    // B.6 — SATIŞTA "yine de işle" demirbaş fişi 25x çıkışı + 257 birikmiş amortisman + 679/689 kâr-zarar taşır:
+    //   yevmiye toplamı belge toplamından DOĞAL olarak büyüktür; ölçüt cari (120) satırı = belge toplamıdır.
+    const sabitKiymetSatisFisi = !!opts.fixedAsset?.is
+      && String(opts.invoiceKind || '').toUpperCase() === 'SATIS'
+      && String(opts.fixedAssetKarar || '') === 'yine_de_isle'
+      && opts.lines.some((l) => /^25[0-6]/.test(String((l as any).accountCode || '')))
+      && opts.lines.some((l) => /^257/.test(String((l as any).accountCode || '')));
+    const cariToplam = opts.lines.filter((l) => String((l as any).group || '') === 'cari').reduce((s, l) => s + Number(l.debit || 0) + Number(l.credit || 0), 0);
+    if (totalAmount > 0 && !(sabitKiymetSatisFisi && Math.abs(cariToplam - totalAmount) <= 0.5)) {
       const yevmiyeToplam = Math.max(sumDebit, sumCredit);
       const rateLineCount = opts.lines.filter((l) => ['matrah', 'vergi', 'vergi-sorumlu'].includes(String((l as any).group || ''))).length;
       // KURUŞ yuvarlama toleransı: Türk e-faturasında her kalemin KDV'si AYRI yuvarlanıp toplanır →
@@ -11858,16 +12823,47 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       }
     }
 
-    // ── 9) FIXED_ASSET_MANUAL — DEMİRBAŞ (sabit kıymet) alış/satışı OTOMATİK işlenmez. Amortisman +
-    //     özel kayıt (alışta 255/257/268; satışta 255 çıkış + 679/689 kâr-zarar) gerektirir → kullanıcı
-    //     Luca'dan MANUEL işler. ERROR → status INVALID → otomatik onay/aktarım engellenir (uyarı kalır).
-    if (opts.fixedAsset?.is) {
+    // ── 9) FIXED_ASSET_MANUAL — DEMİRBAŞ (sabit kıymet) alış/satışı. Faz 2 (sahip kararı, PLAN/15 §E-1):
+    //     KİLİT DEĞİL → severity WARNING (status INVALID olmaz; belge "karar bekliyor" kutusunda durur).
+    //     Karar verilmemiş belge toplu onayda ve Luca gönderiminde ELENİR (approveBatch / batchPostToLuca);
+    //     karar: elle_islendi → belge kapanır (MANUAL_DONE) · yine_de_isle → 25x/679 taslak fişi · demirbas_degil → uyarı kalkar.
+    //     Kod korunur (page.tsx deriveDurum 'demirbas' kategorisi bu koda bakar).
+    if (opts.fixedAsset?.is && opts.fixedAssetKarar !== 'demirbas_degil') {
       const sale = String(opts.invoiceKind || '').toUpperCase() === 'SATIS';
       const r = String(opts.fixedAsset.reason || '').trim();
+      const karar = String(opts.fixedAssetKarar || '');
       issues.push({
         code: 'FIXED_ASSET_MANUAL',
+        severity: 'WARNING',
+        message: karar === 'yine_de_isle'
+          ? `Demirbaş / sabit kıymet ${sale ? 'satışı' : 'alışı'}${r && r !== 'demirbaş' ? ` (${r})` : ''} — "yine de işle" kararıyla ${sale ? '679/689 taslak' : '25x'} fişi kuruldu; amortisman/çıkış kaydını Luca'da tamamlayın.`
+          : `Demirbaş / sabit kıymet ${sale ? 'satışı' : 'alışı'}${r && r !== 'demirbaş' ? ` (${r})` : ''} — karar bekliyor: "Luca'da elle işledim → kapat" ya da "yine de işle". Karar verilmeden Luca'ya gitmez.`,
+      });
+      // ── 9b) FIXED_ASSET_SALE_INCOMPLETE — B.6: SATIŞTA "yine de işle" fişi 679/689 TASLAĞIDIR; 25x (sabit kıymet
+      //     çıkışı, alacak) + 257 (birikmiş amortisman, borç) satırları OLMADAN Luca'ya gitmesi yanlış kayıt üretir
+      //     (kâr/zarar yerine tüm bedel 679'a) → ERROR (INVALID). UI "Luca'da elle işledim → kapat" yolunu önerir.
+      if (sale && karar === 'yine_de_isle') {
+        const codes = (opts.lines || []).map((l: any) => String(l.accountCode || '').trim());
+        const has25x = codes.some((c) => /^25[0-6]/.test(c));
+        const has257 = codes.some((c) => /^257/.test(c));
+        if (!has25x || !has257) {
+          issues.push({
+            code: 'FIXED_ASSET_SALE_INCOMPLETE',
+            severity: 'ERROR',
+            message: `Sabit kıymet satışı fişi eksik: ${!has25x ? '25x sabit kıymet çıkışı (alacak)' : ''}${!has25x && !has257 ? ' ve ' : ''}${!has257 ? '257 birikmiş amortisman (borç)' : ''} satırı yok — 679/689 taslağı tek başına Luca'ya gitmez. Editörde satırları ekleyin ya da Luca'da elle işleyip "Luca'da elle işledim → kapat" seçin.`,
+          });
+        }
+      }
+    }
+
+    // ── 10) MUKERRER — Faz 2 (PLAN/15): belge no + karşı VKN + tutar (±0,01) + yön aynı olan DAHA ESKİ bir belge
+    //     varsa bu belge mükerrerdir → ENGEL (onay ve Luca gönderimi engellenir; ilk belge kalır).
+    if (opts.mukerrer?.ilkBelgeId) {
+      issues.push({
+        code: 'MUKERRER',
         severity: 'ERROR',
-        message: `Demirbaş / sabit kıymet ${sale ? 'satışı' : 'alışı'}${r && r !== 'demirbaş' ? ` (${r})` : ''} — otomatik muhasebeleştirilmez. Amortisman ve özel kayıt gerektirir; Luca'dan manuel işleyin.`,
+        message: `Mükerrer belge — aynı belge no${opts.mukerrer.belgeNo ? ` (${opts.mukerrer.belgeNo})` : ''}, karşı taraf VKN, tutar ve yönde daha önce kaydedilmiş bir belge var. Bu kopya onaylanamaz; ilk belgeyi açıp kontrol edin, bu belgeyi silin.`,
+        expected: opts.mukerrer.ilkBelgeId,
       });
     }
 
@@ -13832,6 +14828,21 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const emsalTutarCache = new Map<string, number[]>();
     // SAPMA KUYRUĞU: satıcı başına öğrenilmiş matrah kararları (CARI hariç) 1 kez çekilir.
     const sapmaMemCache = new Map<string, any[]>();
+    // Faz 2 — "demirbaş değil" notları (VendorMemory kararTipi='demirbas_degil'): satıcı VKN → içerik anahtarları.
+    //   Bu mükellef için 1 kez çekilir; eşleşen belgede demirbaş tespiti KAPATILIR (sahip kararı yeniden sorulmaz).
+    const demirbasDegilNot = new Map<string, Set<string>>();
+    try {
+      const notlar: any[] = await (this.prisma as any).vendorMemoryDecision.findMany({
+        where: { kararTipi: 'demirbas_degil', taxpayerId, vendorMemory: { tenantId } },
+        select: { kategori: true, vendorMemory: { select: { firmaKimlikNo: true } } },
+      });
+      for (const n of notlar) {
+        const vkn = String(n?.vendorMemory?.firmaKimlikNo || '');
+        if (!vkn) continue;
+        if (!demirbasDegilNot.has(vkn)) demirbasDegilNot.set(vkn, new Set());
+        demirbasDegilNot.get(vkn)!.add(String(n.kategori || ''));
+      }
+    } catch { /* not opsiyonel */ }
 
     for (const doc of docs) {
       const isSale = doc.invoiceKind === 'SATIS';
@@ -13872,15 +14883,28 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       //   600 gelire yazılmamalı; detectFixedAsset (plaka + faaliyet kapısı) satışta da çalışır → kat='demirbas',
       //   satış matrahı BOŞ kalır (saleMatrahDefault null), FIXED_ASSET_MANUAL ile bloklu (müşavir Luca sabit
       //   kıymet modülünden işler). Araç TİCARETİ (galeri) yapanı faaliyet kapısı zaten eler.
-      const faContent = this.detectFixedAsset(doc.ocrData, tpRow);
-      // DEMİRBAŞ HADDİ (VUK 313, KDV hariç matrah): içerik demirbaş olsa da bedel haddin ALTINDAysa
+      let faContent = this.detectFixedAsset(doc.ocrData, tpRow, doc.invoiceKind);
+      // Faz 2 — sahip kararı "demirbaş değil" (bu belge) ya da öğrenilmiş "demirbaş değil" notu (satıcı + içerik)
+      //   → demirbaş tespiti kapalı; belge normal gider/gelir akışına döner.
+      const kararFa = String((doc.ocrData as any)?.demirbasKarar?.karar || '');
+      let demirbasDegilKarari = kararFa === 'demirbas_degil';
+      if (faContent.is) {
+        const vknFa = String((isSale ? doc.buyerVkn : doc.sellerVkn) || '').replace(/\D/g, '');
+        if (demirbasDegilKarari || (vknFa && demirbasDegilNot.get(vknFa)?.has(faContent.reason))) { faContent = { is: false, reason: '' }; demirbasDegilKarari = true; }
+      }
+      // DEMİRBAŞ HADDİ (VUK 313, KDV hariç matrah, YILA göre): içerik demirbaş olsa da bedel haddin ALTINDAysa
       //   doğrudan GİDER (770) yazılır, demirbaş (255) DEĞİL — kullanıcı "770'te gider yazılan demirbaş"
-      //   diye açıyor. Eşik üstü → demirbaş (manuel/amortisman). Bedel bilinmiyorsa demirbaş kalır (güvenli).
-      const faAltinda = faContent.is && this.demirbasHaddiAltinda(doc.ocrData, faContent.reason);
+      //   diye açıyor. Eşik üstü → demirbaş (karar kutusu/amortisman). Bedel bilinmiyorsa demirbaş kalır (güvenli).
+      //   B.8: had yalnız ALIŞ yönünde (edinim); satışta kendi sabit kıymetinin çıkışı tutardan bağımsız demirbaştır.
+      const faAltinda = faContent.is && !isSale && this.demirbasHaddiAltinda(doc.ocrData, faContent.reason, doc.faturaTarihi ? new Date(doc.faturaTarihi).getUTCFullYear() : undefined);
       const faDet = faAltinda ? { is: false, reason: '' } : faContent;
       if (faDet.is && kat !== 'demirbas') kat = 'demirbas';
       // Eşik-altı demirbaş içeriği: AI 'demirbas' kategorisi vermiş olsa bile gidere çevir (255 değil 770).
       if (faAltinda && kat === 'demirbas') kat = 'genel_gider';
+      // A.4 — "demirbaş değil" kararı/notu varken AI'ın 'demirbas' kategorisi de KALMAZ → genel_gider: alışta
+      //   deterministik gider sınıflandırması (detIcerik) çalışır, satışta normal 600 gelir akışına döner
+      //   (eskiden kat='demirbas' kalıp KAT_PREFIX 255'e / satışta boş matraha düşüyordu).
+      if (demirbasDegilKarari && kat === 'demirbas') kat = 'genel_gider';
       // DETERMİNİSTİK İÇERİK SINIFLANDIRMA (evrensel kural, AI'sız): kalem+giderTuru'ndan gider kategorisi
       //   + plan-adı ipucu. AI'ın TUTARSIZ/SAÇMA kategorisini EZER → aynı içerik HER ZAMAN aynı hesaba
       //   (nakliye→nakliye, akaryakıt→akaryakıt, yedek-parça/bakım→araç bakım). Demirbaş ise dokunma (faDet);
@@ -14882,14 +15906,22 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             }
           }
         }
-        const prevUy = Array.isArray(prevOcr.uyarilar) ? prevOcr.uyarilar : [];
-        const uyChanged = JSON.stringify(_uy) !== JSON.stringify(prevUy);
+        // Faz 2 — TEK UYARI MODELİ: burada yalnız TABAN uyarılar (denetim + hafıza çelişkisi) üretilir;
+        //   revalidateDocument'in TÜRETTİĞİ (kaynak='dogrulama') kayıtlar KORUNUR ve karşılaştırmaya girmez
+        //   (yoksa her eşleştirmede silinip yeniden üretiliyor, gereksiz yazım oluyordu). Taban kayıtlar yeni
+        //   modele (seviye/aciklama) yükseltilerek yazılır; revalidate hemen ardından birleşik listeyi tazeler.
+        const prevUyAll: any[] = Array.isArray(prevOcr.uyarilar) ? prevOcr.uyarilar : [];
+        const prevUy = prevUyAll.filter((u: any) => u?.kaynak !== 'dogrulama');
+        const prevTuretilen = prevUyAll.filter((u: any) => u?.kaynak === 'dogrulama');
+        // A.10: imza (anahtar-sıralı) karşılaştırması; B.1: türetilende tevkifat kararı varsa taban TEVKIFAT_EKSIK zaten atılır.
+        const yeniUy = uyarilariBirlestir(_uy, prevTuretilen as any);
+        const uyChanged = uyariImza(yeniUy) !== uyariImza(prevUyAll);
         // Kod değiştiyse zengin yorum + denetçiyi sil (bayat); değişmediyse ELLEME (koru).
         const zenginDenetimPatch = kodDegisti ? { muhasebeNedenZengin: '', denetim: null } : {};
         if (nedenChanged || (hadZengin && kodDegisti) || uyChanged) {
           await (this.prisma as any).invoiceAccountingDocument.update({
             where: { id: doc.id },
-            data: { ocrData: { ...prevOcr, ...(neden ? { muhasebeNeden: neden } : {}), ...zenginDenetimPatch, uyarilar: _uy.length ? _uy : undefined } },
+            data: { ocrData: { ...prevOcr, ...(neden ? { muhasebeNeden: neden } : {}), ...zenginDenetimPatch, uyarilar: yeniUy.length ? yeniUy : undefined } },
           });
         }
       }

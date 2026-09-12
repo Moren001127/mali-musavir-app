@@ -153,8 +153,13 @@ function deriveDurum(doc: any, isIsletme = false, autoKtKod = ''): { k: string; 
   const nonAmountIssues = issues.filter((i: any) => i?.code && i?.severity !== 'WARNING'
     && !['INCOMPLETE_AMOUNTS', 'TOTAL_MISMATCH', 'BALANCE_MISMATCH'].includes(i.code)
     && !(i.code === 'RETURN_NEEDS_REVERSAL' && hasReturnLine));
-  // DEMİRBAŞ (sabit kıymet) alış/satışı: otomatik işlenmez → Luca'da manuel. "Çelişki"den AYRI/ÖNCE göster.
-  if (issues.some((i: any) => i?.code === 'FIXED_ASSET_MANUAL')) return { k: 'asset', t: 'Demirbaş — manuel', cat: 'demirbas' };
+  // Faz 2 (PLAN/15) — TEK UYARI MODELİ: ocrData.uyarilar[] {kod, seviye: bilgi|uyari|engel, ...}.
+  //   MUKERRER (engel) → onay/Luca engelli; DEMIRBAS karar verilmemiş → "Karar bekliyor" (kilit değil, mor kutu).
+  const uyOzet = uyariOzetFE(od.uyarilar);
+  if (uyOzet.mukerrer) return { k: 'miss', t: 'Mükerrer — engel', cat: 'mukerrer' };
+  // DEMİRBAŞ (sabit kıymet) alış/satışı: sahip kararı bekler ("Luca'da elle işledim → kapat" / "yine de işle").
+  //   Karar verildiyse (yine_de_isle) belge normal akışa döner. "Çelişki"den AYRI/ÖNCE göster.
+  if (uyOzet.kararBekliyor || (issues.some((i: any) => i?.code === 'FIXED_ASSET_MANUAL') && !uyOzet.demirbasKarar)) return { k: 'asset', t: 'Demirbaş — karar bekliyor', cat: 'demirbas' };
   const vissue = dengesiz || toplamUyumsuz || nonAmountIssues.length > 0;
   if (vissue) return { k: 'warn', t: toplamUyumsuz && !dengesiz && !nonAmountIssues.length ? 'Çelişki — toplam belge tutarından farklı' : 'Çelişki — kontrol et', cat: 'celiski' };
   // İŞLETME DEFTERİ (Defter-Beyan): tek-taraflı — hesap planı/kodu YOK, cari kodu açılmaz.
@@ -198,6 +203,185 @@ function deriveDurum(doc: any, isIsletme = false, autoKtKod = ''): { k: string; 
 function taxpayerLabel(t: any): string {
   return t?.companyName || [t?.firstName, t?.lastName].filter(Boolean).join(' ') || t?.taxNumber || 'Mükellef';
 }
+// ── Faz 2 (PLAN/15) — UYARI KATMANI (frontend yardımcıları) ──
+//   Backend tek model: {kod, seviye: bilgi|uyari|engel, baslik, aciklama, oneri?, eylemler?, meta?}; eski kayıtlar
+//   {kod, baslik, mesaj, siddet} da gelebilir → burada normalize edilir. Renk dili: bilgi gri-mavi, uyarı amber,
+//   engel kırmızı, DEMİRBAŞ karar bekliyor mor.
+type UyariFE = { kod: string; seviye: 'bilgi' | 'uyari' | 'engel'; baslik: string; aciklama: string; oneri?: string; eylemler?: Array<{ id: string; etiket: string }>; meta?: any };
+function uyariNormalizeFE(u: any): UyariFE | null {
+  if (!u || !u.kod) return null;
+  const sid = String(u.siddet || '').toLowerCase();
+  const seviye: UyariFE['seviye'] = u.seviye === 'engel' || u.seviye === 'uyari' || u.seviye === 'bilgi' ? u.seviye : sid === 'hata' ? 'engel' : sid === 'uyari' ? 'uyari' : 'bilgi';
+  return { kod: String(u.kod), seviye, baslik: String(u.baslik || u.kod), aciklama: String(u.aciklama ?? u.mesaj ?? ''), oneri: u.oneri || undefined, eylemler: Array.isArray(u.eylemler) ? u.eylemler : undefined, meta: u.meta || undefined };
+}
+function uyariListeFE(raw: any): UyariFE[] {
+  return (Array.isArray(raw) ? raw : []).map(uyariNormalizeFE).filter(Boolean) as UyariFE[];
+}
+function uyariOzetFE(raw: any): { engel: boolean; kararBekliyor: boolean; demirbasKarar: string | null; tevkifatli: boolean; mukerrer: boolean; adet: number } {
+  const list = uyariListeFE(raw);
+  const dem = list.find((u) => u.kod === 'DEMIRBAS');
+  return {
+    engel: list.some((u) => u.seviye === 'engel'),
+    kararBekliyor: !!dem && !dem.meta?.karar,
+    demirbasKarar: dem?.meta?.karar || null,
+    tevkifatli: list.some((u) => u.kod === 'TEVKIFAT_VAR'),
+    mukerrer: list.some((u) => u.kod === 'MUKERRER'),
+    adet: list.length,
+  };
+}
+/** Belgede tevkifat var mı (uyarı çipi ya da ocrData tevkifat verisi) — "Seçilenleri onayla" ayrı grup için. */
+function docTevkifatliFE(d: any): boolean {
+  const od: any = d?.ocrData || {};
+  if (uyariOzetFE(od.uyarilar).tevkifatli) return true;
+  return Number(od.tevkifatOrani || 0) > 0 || Number(od.tevkifatKdv || od.kdvTevkifat || 0) > 0;
+}
+const UYARI_RENK: Record<string, { fg: string; bg: string; bd: string }> = {
+  bilgi: { fg: '#3b5b8a', bg: '#eef2f8', bd: '#c9d6ea' },
+  uyari: { fg: '#b45309', bg: '#fff5e6', bd: '#f4d19b' },
+  engel: { fg: '#c0353a', bg: '#fdeaea', bd: '#f0b9b9' },
+  karar: { fg: '#7c3aed', bg: '#f3e8ff', bd: '#e3d4fb' },
+};
+function uyariRenkFE(u: UyariFE) {
+  if (u.kod === 'DEMIRBAS' && !u.meta?.karar) return UYARI_RENK.karar;
+  return UYARI_RENK[u.seviye] || UYARI_RENK.bilgi;
+}
+function uyariKisaFE(u: UyariFE): string {
+  if (u.kod === 'DEMIRBAS') return u.meta?.satisFisEksik ? 'Demirbaş — fiş eksik' : u.meta?.karar ? 'Demirbaş ✓' : 'Karar bekliyor';
+  if (u.kod === 'TEVKIFAT_VAR') return u.seviye === 'engel' && !u.meta?.oranMetni ? 'Tevkifat — oran?' : `Tevkifatlı${u.meta?.oranMetni ? ' ' + u.meta.oranMetni : ''}${u.meta?.kod ? ' · ' + u.meta.kod : ''}`;
+  if (u.kod === 'TEVKIFAT_EKSIK') return u.meta?.aliciKdvMukellefiSoru ? 'Alıcı KDV mük.?' : u.meta?.digerHizmet216 ? 'Tevkifat 216?' : `Tevkifat eksik?${u.meta?.oran ? ' ' + u.meta.oran : ''}`;
+  if (u.kod === 'MUKERRER') return 'Mükerrer';
+  if (u.kod === 'ALICI_TIPI_GEREKLI') return 'Alıcı tipi?';
+  if (u.kod === 'ICERIK_HESAP_UYUMSUZ') return 'İçerik↔hesap';
+  if (u.kod === 'TUTAR_TUTARSIZ') return 'Tutar tutarsız';
+  if (u.kod === 'IADE') return 'İade';
+  if (u.kod === 'IPTAL') return 'İptal/taslak';
+  if (u.kod === 'KKEG_SUPHESI') return 'KKEG?';
+  if (u.kod === 'HAFIZA_CELISKI') return 'Hafıza çelişkisi';
+  if (u.kod === 'SAHIPLIK_TERS') return 'Sahiplik?';
+  if (u.kod === 'OKUNMADI') return 'Okunmadı';
+  if (u.kod === 'STOPAJ_EKSIK') return 'Stopaj eksik';
+  if (u.kod === 'HESAP_KODU') return 'Hesap kodu';
+  return u.baslik.length > 22 ? u.baslik.slice(0, 21) + '…' : u.baslik;
+}
+/** Liste satırı uyarı çipleri (küçük, tıklanınca detay açılır). */
+function UyariCipler({ raw, onClick, max = 4 }: { raw: any; onClick?: () => void; max?: number }) {
+  const list = uyariListeFE(raw);
+  if (!list.length) return null;
+  const gor = list.slice(0, max);
+  return (
+    <span className="uycips" onClick={onClick} title={list.map((u) => `${u.seviye === 'engel' ? '⛔' : u.seviye === 'uyari' ? '⚠' : 'ℹ'} ${u.baslik}: ${u.aciklama}`).join('\n\n')}>
+      {gor.map((u, i) => { const r = uyariRenkFE(u); return <span key={i} className="uycip" style={{ color: r.fg, background: r.bg, borderColor: r.bd }}>{uyariKisaFE(u)}</span>; })}
+      {list.length > max ? <span className="uycip" style={{ color: '#64748b', background: '#f1f5f9', borderColor: '#e2e8f0' }}>+{list.length - max}</span> : null}
+    </span>
+  );
+}
+const KURUM_TURU_SECENEK: Array<{ value: string; label: string }> = [
+  { value: 'kamu', label: 'Kamu idaresi (5018 cetvel)' }, { value: 'belediye', label: 'Belediye' }, { value: 'universite', label: 'Üniversite' },
+  { value: 'banka', label: 'Banka / sigorta' }, { value: 'kit', label: 'KİT / kamu şirketi' },
+  // B.3 — diğer belirlenmiş alıcılar (KDVGUT I/C-2.1.3.1/b): BİST şirketi, OSB, meslek kuruluşu, döner sermaye, emekli sandığı, kalkınma ajansı, %50+ iştirakleri.
+  { value: 'belirlenmis_diger', label: 'Diğer belirlenmiş alıcı (BİST şirketi, OSB, meslek kuruluşu, döner sermaye, emekli sandığı, kalkınma ajansı, %50+ iştiraki)' },
+  { value: 'diger', label: 'Diğer (normal KDV mükellefi)' },
+  // B.4 — satışta TCKN'li alıcı sorusunun cevabı: nihai tüketici / şahıs → tevkifat uygulanmaz.
+  { value: 'kdv_mukellefi_degil', label: 'KDV mükellefi değil (nihai tüketici / şahıs)' },
+];
+/** Belge detayı / editör "Uyarılar" kutusu — kod + seviye + öneri + tek-tık eylemler (demirbaş 3 düğme, öneriyi uygula,
+ *  ilk belgeyi aç, alıcı tipini seç, tevkifat fişini kur, yönü çevir). Sunucu eylemleri burada; ekran-içi olanlar callback. */
+function UyariKutusu({ doc, taxpayerId, onIlkBelge, onTevkifatFisi, onYonuCevir, onAcEditor }: {
+  doc: any; taxpayerId: string;
+  onIlkBelge?: (id: string) => void; onTevkifatFisi?: () => void; onYonuCevir?: () => void; onAcEditor?: (id: string) => void;
+}) {
+  const qc = useQueryClient();
+  const list = uyariListeFE((doc?.ocrData as any)?.uyarilar);
+  const [aliciSec, setAliciSec] = useState<string>('');
+  const [aliciAcik, setAliciAcik] = useState(false);
+  const [notAcik, setNotAcik] = useState(false);
+  const [notTxt, setNotTxt] = useState('');
+  const demirbasMut = useMutation({
+    mutationFn: (p: { karar: string; not?: string }) => api.post(`/fatura-muhasebelestirme/documents/${doc.id}/demirbas-karari`, p),
+    onSuccess: (_r, p) => {
+      toast.success(p.karar === 'elle_islendi' ? 'Belge kapatıldı — Luca\'da elle işlendi (Luca\'ya gitmez)' : p.karar === 'yine_de_isle' ? 'Demirbaş fişi kuruldu — hesabı kontrol edip onaylayın' : 'Demirbaş değil olarak işaretlendi — bir daha sorulmaz');
+      qc.invalidateQueries({ queryKey: ['fm2'] });
+    },
+    onError: (e: any) => toast.error('Demirbaş kararı kaydedilemedi: ' + (e?.response?.data?.message || e?.message || 'hata')),
+  });
+  const aliciMut = useMutation({
+    mutationFn: (p: any) => api.post('/fatura-muhasebelestirme/alici-tipi', p),
+    onSuccess: (r: any) => { toast.success(`Alıcı tipi kaydedildi (${r?.data?.yenidenDogrulanan ?? 0} belge yeniden doğrulandı)`); setAliciAcik(false); qc.invalidateQueries({ queryKey: ['fm2'] }); },
+    onError: (e: any) => toast.error('Alıcı tipi kaydedilemedi: ' + (e?.response?.data?.message || e?.message || 'hata')),
+  });
+  const eylemMut = useMutation({
+    mutationFn: (p: { eylem: string }) => api.post(`/fatura-muhasebelestirme/documents/${doc.id}/uyari-eylem`, p),
+    onSuccess: () => { toast.success('Öneri uygulandı'); qc.invalidateQueries({ queryKey: ['fm2'] }); },
+    onError: (e: any) => toast.error('Eylem başarısız: ' + (e?.response?.data?.message || e?.message || 'hata')),
+  });
+  // A.2 — sahip "mükerrer değil" kararı: engel + duplicateOfId kalkar (aynı numaralı FARKLI belge).
+  const mukerrerMut = useMutation({
+    mutationFn: (p: { karar: string; not?: string }) => api.post(`/fatura-muhasebelestirme/documents/${doc.id}/mukerrer-karari`, p),
+    onSuccess: (_r, p) => { toast.success(p.karar === 'mukerrer_degil' ? 'Mükerrer değil olarak işaretlendi — engel kalktı' : 'Mükerrer olduğu teyit edildi'); qc.invalidateQueries({ queryKey: ['fm2'] }); },
+    onError: (e: any) => toast.error('Mükerrer kararı kaydedilemedi: ' + (e?.response?.data?.message || e?.message || 'hata')),
+  });
+  if (!list.length) return null;
+  const busy = demirbasMut.isPending || aliciMut.isPending || eylemMut.isPending || mukerrerMut.isPending;
+  const btn = (renk: { fg: string; bd: string }, extra?: any) => ({ padding: '4px 10px', borderRadius: 7, border: `1px solid ${renk.bd}`, background: '#fff', color: renk.fg, fontWeight: 700, fontSize: 11.5, cursor: busy ? 'wait' : 'pointer', opacity: busy ? 0.6 : 1, ...(extra || {}) });
+  return (
+    <div className="uykutu">
+      <div className="uykutu-h"><span>Uyarılar</span><small>{list.length} kayıt · engel {list.filter((u) => u.seviye === 'engel').length} · uyarı {list.filter((u) => u.seviye === 'uyari').length}</small></div>
+      {list.map((u, i) => {
+        const r = uyariRenkFE(u);
+        const ikon = u.kod === 'DEMIRBAS' && !u.meta?.karar ? '🟣' : u.seviye === 'engel' ? '⛔' : u.seviye === 'uyari' ? '⚠️' : 'ℹ️';
+        const eylemler = u.eylemler || [];
+        return (
+          <div key={i} className="uysatir" style={{ borderLeftColor: r.fg, background: r.bg }}>
+            <div className="uybaslik" style={{ color: r.fg }}>{ikon} {u.baslik}{u.meta?.teyit_gerekli ? <em title="Oran/kapsam/eşik mevzuat teyidi bekliyor"> · teyit gerekli</em> : null}</div>
+            <div className="uyacik">{u.aciklama}</div>
+            {u.oneri ? <div className="uyoneri"><b>Öneri:</b> {u.oneri}</div> : null}
+            {eylemler.length > 0 && (
+              <div className="uyeylem">
+                {eylemler.map((e) => {
+                  if (e.id.startsWith('demirbas:')) {
+                    const karar = e.id.split(':')[1];
+                    const renk = karar === 'elle_islendi' ? UYARI_RENK.karar : karar === 'yine_de_isle' ? UYARI_RENK.bilgi : UYARI_RENK.uyari;
+                    return <button key={e.id} type="button" style={btn(renk)} disabled={busy} title={karar === 'elle_islendi' ? 'Belge kapanır: APPROVED + Luca "elle işlendi" — Luca\'ya gönderilmez' : karar === 'yine_de_isle' ? 'Bilanço: 25x + KDV (satışta 679/689 taslağı); İşletme: Sabit Kıymet Alışı' : 'Uyarı kalkar, normal gider/gelir akışı; bu satıcı+içerik için bir daha sorulmaz'}
+                      onClick={() => { if (karar === 'elle_islendi' && !window.confirm('Belge "Luca\'da elle işlendi" olarak KAPATILACAK ve Luca\'ya gönderilmeyecek. Onaylıyor musun?')) return; demirbasMut.mutate({ karar, not: notTxt || undefined }); }}>{e.etiket}</button>;
+                  }
+                  if (e.id === 'ilk-belgeyi-ac') return <button key={e.id} type="button" style={btn(UYARI_RENK.engel)} onClick={() => { const ilk = String(u.meta?.ilkBelgeId || ''); if (ilk) onIlkBelge?.(ilk); }}>{e.etiket}{u.meta?.ilkBelgeNo ? ` (${u.meta.ilkBelgeNo})` : ''}</button>;
+                  if (e.id.startsWith('mukerrer:')) {
+                    const karar = e.id.split(':')[1];
+                    return <button key={e.id} type="button" style={btn(UYARI_RENK.bilgi)} disabled={busy} title="Aynı belge numaralı ama FARKLI bir belgeyse: engel ve mükerrer izi kalkar; kararınız belgeye yazılır"
+                      onClick={() => { if (karar === 'mukerrer_degil' && !window.confirm('Bu belge mükerrer DEĞİL olarak işaretlenecek; onay/Luca engeli kalkacak. İlk belgeyle karşılaştırdınız mı?')) return; mukerrerMut.mutate({ karar, not: notTxt || undefined }); }}>{e.etiket}</button>;
+                  }
+                  if (e.id === 'oneriyi-uygula') return <button key={e.id} type="button" style={btn(UYARI_RENK.uyari)} disabled={busy} onClick={() => eylemMut.mutate({ eylem: 'oneriyi-uygula' })}>{e.etiket}{u.meta?.onerilenHesap ? ` → ${u.meta.onerilenHesap}` : ''}</button>;
+                  if (e.id === 'alici-tipi-sec') return <button key={e.id} type="button" style={btn(UYARI_RENK.uyari)} onClick={() => { setAliciAcik((v) => !v); if (!aliciSec && u.meta?.tahmin) setAliciSec(String(u.meta.tahmin)); }}>{e.etiket}{u.meta?.tahmin ? ` (tahmin: ${u.meta.tahmin})` : ''}</button>;
+                  if (e.id === 'tevkifat-fisi-kur') return <button key={e.id} type="button" style={btn(UYARI_RENK.engel)} onClick={() => (onTevkifatFisi ? onTevkifatFisi() : onAcEditor?.(doc.id))}>{e.etiket}</button>;
+                  if (e.id === 'yonu-cevir') return <button key={e.id} type="button" style={btn(UYARI_RENK.engel)} onClick={() => (onYonuCevir ? onYonuCevir() : onAcEditor?.(doc.id))}>{e.etiket}</button>;
+                  return <button key={e.id} type="button" style={btn(UYARI_RENK.bilgi)} onClick={() => onAcEditor?.(doc.id)}>{e.etiket}</button>;
+                })}
+                {u.kod === 'DEMIRBAS' && !u.meta?.karar ? (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <button type="button" style={btn(UYARI_RENK.bilgi, { fontWeight: 600 })} onClick={() => setNotAcik((v) => !v)}>{notAcik ? 'Notu gizle' : 'Not ekle'}</button>
+                    {notAcik ? <input value={notTxt} onChange={(ev) => setNotTxt(ev.target.value)} placeholder="karar notu (isteğe bağlı)" style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid #d6dbe4', fontSize: 12, minWidth: 220 }} /> : null}
+                  </span>
+                ) : null}
+                {(u.kod === 'ALICI_TIPI_GEREKLI' || u.meta?.aliciKdvMukellefiSoru === true) && aliciAcik ? (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 11.5, color: '#64748b' }}>{u.meta?.taraf === 'cari' ? 'Müşteri (cari kartı)' : 'Mükellef'}: <b>{u.meta?.aliciUnvan || '—'}</b></span>
+                    <select value={aliciSec} onChange={(ev) => setAliciSec(ev.target.value)} style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid #d6dbe4', fontSize: 12 }}>
+                      <option value="">— seç —</option>
+                      {KURUM_TURU_SECENEK.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
+                    <button type="button" style={btn(UYARI_RENK.uyari)} disabled={busy || !aliciSec}
+                      onClick={() => aliciMut.mutate({ taraf: u.meta?.taraf === 'cari' ? 'cari' : 'mukellef', taxpayerId, vkn: u.meta?.aliciVkn || undefined, unvan: u.meta?.aliciUnvan || undefined, kurumTuru: aliciSec, documentId: doc.id })}>Kaydet</button>
+                  </span>
+                ) : null}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // KDV tevkifatı işlem türü kodları (GİB / KDV2 beyannamesi) — Muhasebeleştir'deki
 // "Tevkifat Kodu" seçici bunu kullanır (Mihsap'taki yapıya birebir). Kod seçilince
 // tevkifat satırlarının oranı boşsa otomatik dolar; kullanıcı oranı ayrıca değiştirebilir.
@@ -206,8 +390,9 @@ function taxpayerLabel(t: any): string {
 // Mihsap/BDP resmî tevkifat kod listesiyle BİREBİR eşitlendi (kullanıcı ekran görüntüleriyle
 //   teyit, 2026-07-18). ESKİ LİSTE 217 sonrası BİR KOD KAYIKTI (Yük Taşımacılığı 223 değil 224,
 //   Reklam 225, Demir-Çelik 227) ve 201/203 oranları eskiydi — beyannameye yanlış kod gidiyordu.
-//   2xx = kısmi tevkifat (alış), 1xx = tam tevkifat (10/10), 250 = diğer (oran elle),
-//   3xx = satış bildirim kodları (oran belge oranından gelir).
+//   2xx = kısmi tevkifat (alıcı KDV2 işlem türü), 1xx = tam tevkifat (10/10), 250 = diğer (oran elle),
+//   3xx = Mihsap ekranındaki "(Satış)" seçici kodları (oran belge oranından gelir). NOT (B.10): GİB tarafında
+//   satıcı KDV1/UBL tevkifat kodu 6xx'tir (2xx+400; 224 ↔ 624), isteğe bağlı tam tevkifat 8xx; "3xx" GİB kodu değildir.
 const TEVKIFAT_KODLARI: { kod: string; oran: string; ad: string }[] = [
   { kod: '201', oran: '4/10', ad: 'Yapım İşleri ile Bu İşlerle Birlikte İfa Edilen Mühendislik-Mimarlık ve Etüt-Proje Hizmetleri' },
   { kod: '202', oran: '9/10', ad: 'Etüt, Plan-Proje, Danışmanlık, Denetim ve Benzeri Hizmetler' },
@@ -1036,7 +1221,8 @@ export default function FaturaMerkeziPage() {
 //   isWaitingTransfer  = işlenmiş ama henüz aktarılmamış (onaylı/hazır/hata) → "Aktarım" modülü
 // "Gelen Faturalar" (gelen kutusu) = ikisinin de DIŞI (isInAktarim'in TERSİ). Üç ekran çakışmaz.
 function isArchived(d: any): boolean {
-  return d?.lucaStatus === 'POSTED';
+  // Faz 2: MANUAL_DONE = demirbaş "Luca'da elle işledim → kapat" — Luca'ya gitmez, arşivde "elle işlendi" görünür.
+  return d?.lucaStatus === 'POSTED' || d?.lucaStatus === 'MANUAL_DONE';
 }
 function isWaitingTransfer(d: any): boolean {
   return !isArchived(d) && (d?.status === 'APPROVED' || ['QUEUED', 'POSTING', 'FAILED'].includes(d?.lucaStatus));
@@ -1101,6 +1287,13 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
     }
     return { ktAd: '', altAd: '', ok: false };
   };
+  // Faz 2 — iptal/red/taslak sayacı (belge oluşturulmayan inbox satırları + CANCELLED belgeler).
+  const iptalSayacQ = useQuery({
+    queryKey: ['fm2', 'iptal-sayac', taxpayerId, period],
+    queryFn: () => api.get('/fatura-muhasebelestirme/documents/iptal-sayac', { params: { taxpayerId: taxpayerId || undefined, period } }).then((r) => r.data || null).catch(() => null),
+    enabled: !!taxpayerId,
+  });
+  const iptalSayac: any = iptalSayacQ.data;
   const dd = (d: any) => deriveDurum(d, isIsletme, '');
   // Durum filtresi (Hepsi / Eşleşti / İncele / Kod eksik / Çelişki / …)
   const [durumF, setDurumF] = useState('all');
@@ -1350,6 +1543,8 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
     return <div key={i} style={{ marginTop: i ? 3 : 0 }}>{m ? <><b style={{ color: '#6d28d9' }}>{m[1]}:</b> {m[2]}</> : ln}</div>;
   });
 
+  // Faz 2 — tevkifatlı belgeler ayrı onay grubu ("Seçilenleri onayla" bunları otomatik onaylamaz).
+  const [tevkGrup, setTevkGrup] = useState<Array<{ id: string; belgeNo?: string; firma: string; tutar: any; oran: string }> | null>(null);
   const muhasebelestir = () => {
     // İşletme defteri: hesap kodu YOK — tutarı olan hazır. Bilanço: TÜM satırların kodu dolu (cari dahil).
     const isReadyDoc = (d: any) => {
@@ -1362,7 +1557,13 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
       toast.error(sel.size === 0 ? 'Önce belge seç' : (isIsletme ? 'Seçilenlerde belge türü/kayıt türü eksik, tutar okunamamış ya da zaten onaylı' : 'Seçilenlerde eksik hesap kodu var (cari/KDV/gider) ya da zaten onaylı'));
       return;
     }
-    approveMut.mutate({ ids: hazir.map((d) => d.id) });
+    // Faz 2 — TEVKİFATLI belgeler AYRI ONAY GRUBU: normal belgeler hemen onaylanır; tevkifatlılar (191+360 / 391 net)
+    //   oran-kod-hesap tutarlılığı göz önünde ayrıca onaylanır (aşağıdaki "Tevkifatlı N belgeyi onayla" paneli).
+    const tevk = hazir.filter((d) => docTevkifatliFE(d));
+    const normal = hazir.filter((d) => !docTevkifatliFE(d));
+    if (tevk.length) setTevkGrup(tevk.map((d) => ({ id: d.id, belgeNo: d.belgeNo, firma: (d.invoiceKind === 'SATIS' ? d.customerName : d.vendorName) || '', tutar: d.totalAmount, oran: uyariListeFE((d.ocrData as any)?.uyarilar).find((u) => u.kod === 'TEVKIFAT_VAR')?.meta?.oranMetni || '' })));
+    if (normal.length) approveMut.mutate({ ids: normal.map((d) => d.id) });
+    else if (tevk.length) toast.info(`Seçilenlerin ${tevk.length}'i tevkifatlı — aşağıdaki gruptan onayla`, { duration: 5000 });
   };
   // GÜVEN SKORU (iyileştirme #1): backend her belgeye `guven.seviye` (yuksek|orta|dusuk) verir.
   //   "yuksek" = öğrenilmiş/kesin eşleşme → otomatik onaya hazır. Müşavir tek tıkla güvenlileri onaylar,
@@ -1422,7 +1623,9 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
           { v: 'incele', l: 'Eşleşmedi', c: '#c2710c' },
           { v: 'celiski', l: 'Çelişki', c: '#e5484d' },
           { v: 'tutar', l: 'Tutar okunamadı', c: '#db6e1e' },
-          { v: 'demirbas', l: 'Demirbaş', c: '#7c3aed' },
+          // Faz 2: demirbaş = kilit değil, sahip kararı bekleyen kutu (mor); mükerrer = engel (kırmızı).
+          { v: 'demirbas', l: 'Karar bekliyor', c: '#7c3aed' },
+          { v: 'mukerrer', l: 'Mükerrer', c: '#e5484d' },
           { v: 'okunuyor', l: 'Okunuyor', c: '#0891b2' },
           { v: 'okunamadi', l: 'Okunamadı', c: '#e5484d' },
         ] as Array<{ v: string; l: string; c: string }>).map((t) => {
@@ -1435,6 +1638,13 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
             </button>
           );
         })}
+        {/* Faz 2 — entegratörden iptal/red/GİB hata/taslak gelip BELGE OLUŞTURULMAYAN satırlar (bilgi kartı; listede yer almazlar). */}
+        {Number(iptalSayac?.toplam) > 0 && (
+          <button type="button" className="ftile" style={{ ['--tc' as any]: '#64748b', cursor: 'default' }} title={`Entegratörden iptal/red/GİB hata/taslak durumuyla gelen ${iptalSayac.inbox} satır belge oluşturulmadan atlandı${iptalSayac.belge ? `; ${iptalSayac.belge} belge iptal temizliğiyle kapatıldı` : ''}.\n${(iptalSayac.ornekler || []).slice(0, 5).map((o: any) => `${o.faturaNo || '-'} · ${o.durum || o.neden}`).join('\n')}`}>
+            <span className="ftdot" />
+            <span className="fttx"><span className="ftn">{iptalSayac.toplam}</span><span className="ftl">İptal / taslak</span></span>
+          </button>
+        )}
       </div>
       <div className="card invcard">
         <div className="ch invactions">
@@ -1472,7 +1682,10 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
         {skipInfo && skipInfo.length > 0 && (() => {
           // Toplu onayda atlananlar — sebep gruplarıyla (hafıza çelişki / diğer hata). (AI denetçi kaldırıldı.)
           const celiski = skipInfo.filter((s) => String(s.reason || '').startsWith('hafiza-celiski'));
-          const diger = skipInfo.filter((s) => !celiski.includes(s));
+          // Faz 2: demirbaş kararı bekleyen ve mükerrer belgeler ayrı gruplar (force ile geçilmez).
+          const demirbas = skipInfo.filter((s) => String(s.reason || '') === 'demirbas-karar-bekliyor');
+          const mukerrer = skipInfo.filter((s) => String(s.reason || '') === 'mukerrer');
+          const diger = skipInfo.filter((s) => !celiski.includes(s) && !demirbas.includes(s) && !mukerrer.includes(s));
           const noLabel = (arr: typeof skipInfo) => { const ns = arr.map((s) => s.belgeNo).filter(Boolean); return ns.length ? ` (${ns.slice(0, 5).join(', ')}${ns.length > 5 ? '…' : ''})` : ''; };
           return (
             <div style={{ margin: '8px 12px 0', padding: '9px 12px', border: '1px solid #f0d9b3', borderRadius: 9, background: '#fff9ef', fontSize: 12.5, color: '#7c4a03', display: 'flex', flexDirection: 'column', gap: 5 }}>
@@ -1489,10 +1702,33 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
                     title="Hafıza çelişkisi uyarısını görmezden gel, yalnız bu belgeleri force ile onayla">Yine de onayla ({celiski.length})</button>
                 </div>
               )}
+              {demirbas.length > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <span>• <b style={{ color: '#7c3aed' }}>{demirbas.length} belge demirbaş kararı bekliyor</b> — belgeyi açıp "Luca'da elle işledim → kapat" / "yine de işle" / "demirbaş değil" seçin{noLabel(demirbas)}.</span>
+                  <button className="btn sm" style={{ borderColor: '#e3d4fb', color: '#7c3aed' }} onClick={() => { setDurumF('demirbas'); setFisDetayId(demirbas[0].id); }}>Karar bekleyenleri göster</button>
+                </div>
+              )}
+              {mukerrer.length > 0 && <div>• <b style={{ color: '#c0353a' }}>{mukerrer.length} belge mükerrer</b> — aynı belge no/VKN/tutar/yönde daha eski belge var; kopyayı silin{noLabel(mukerrer)}.</div>}
               {diger.length > 0 && <div>• {diger.length} belge onaylanamadı: {diger.slice(0, 3).map((s) => `${s.belgeNo ? s.belgeNo + ' — ' : ''}${s.reason}`).join(' · ')}{diger.length > 3 ? ' …' : ''}</div>}
             </div>
           );
         })()}
+        {tevkGrup && tevkGrup.length > 0 && (
+          // Faz 2 — TEVKİFATLI AYRI ONAY GRUBU: "Seçilenleri onayla" bu belgeleri otomatik onaylamaz; burada görünür, ayrıca onaylanır.
+          <div style={{ margin: '8px 12px 0', padding: '9px 12px', border: '1px solid #c9d6ea', borderRadius: 9, background: '#eef2f8', fontSize: 12.5, color: '#3b5b8a', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <b style={{ fontSize: 13 }}>Tevkifatlı belgeler — ayrı onay grubu ({tevkGrup.length})</b>
+              <span style={{ opacity: 0.8 }}>191 tam KDV + 360 sorumlu (alış) / 391 net KDV (satış) fişleri; oran ↔ tevkifat kodu ↔ hesap uyumunu kontrol edip onaylayın.</span>
+              <div className="sp" />
+              <button className="btn sm primary" disabled={approveMut.isPending} onClick={() => { approveMut.mutate({ ids: tevkGrup.map((t) => t.id) }); setTevkGrup(null); }}>Tevkifatlı {tevkGrup.length} belgeyi onayla</button>
+              <button className="btn sm" onClick={() => setTevkGrup(null)}>Kapat</button>
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {tevkGrup.slice(0, 12).map((t) => <span key={t.id} className="uycip" style={{ color: UYARI_RENK.bilgi.fg, background: '#fff', borderColor: UYARI_RENK.bilgi.bd, cursor: 'pointer' }} onClick={() => setFisDetayId(t.id)}>{t.belgeNo || '—'} · {t.firma.slice(0, 22)} · {fmtMoney(t.tutar)} ₺{t.oran ? ` · ${t.oran}` : ''}</span>)}
+              {tevkGrup.length > 12 ? <span className="uycip" style={{ color: '#64748b', background: '#fff', borderColor: '#e2e8f0' }}>+{tevkGrup.length - 12}</span> : null}
+            </div>
+          </div>
+        )}
         {docsQ.isError && (
           <div className="yuklenemedi">
             <span><Ico html={I.info} size={14} /> Belgeler yüklenemedi (bağlantı/sunucu hatası) — "veri yok" değil.</span>
@@ -1628,13 +1864,13 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
                     <td><Check checked={sel.has(d.id)} onToggle={() => toggle(d.id)} /></td>
                     <td>{fmtDate(d.faturaTarihi || d.createdAt)}</td>
                     <td>{d.belgeNo || '—'}</td>
-                    <td className="firm"><b>{firma}</b><small>{vkn ? `VKN ${vkn}` : '—'}</small>{(d as any).duplicateOfId ? <small style={{ color: '#c0353a', fontWeight: 700 }} title={(d as any).duplicateReason || 'Bu fatura daha önce yüklenmiş'}>⚠ {(d as any).duplicateReason || 'Mükerrer — daha önce yüklenmiş'}</small> : null}</td>
+                    <td className="firm"><b>{firma}</b><small>{vkn ? `VKN ${vkn}` : '—'}</small>{(d as any).duplicateOfId ? <small style={{ color: '#c0353a', fontWeight: 700 }} title={(d as any).duplicateReason || 'Bu fatura daha önce yüklenmiş'}>⚠ {(d as any).duplicateReason || 'Mükerrer — daha önce yüklenmiş'} <a href="#ilk" onClick={(ev) => { ev.preventDefault(); const ilk = String((d as any).duplicateOfId || ''); if (docs.some((x: any) => x.id === ilk)) setFisDetayId(ilk); else onOpenMuhasebe?.(ilk); }} style={{ color: '#7c3aed', textDecoration: 'underline', marginLeft: 4 }}>ilk belgeyi aç</a></small> : null}</td>
                     <td><span className={`pill ${sat ? 'satis' : 'alis'}`}>{sat ? 'Satış' : 'Alış'}</span></td>
                     <td className="num">{matrah != null ? fmtMoney(matrah) : '—'}</td>
                     <td className="num">{kdv != null ? fmtMoney(kdv) : '—'}</td>
                     <td className="num">{fmtMoney(d.totalAmount)}</td>
                     {!isIsletme && <td>{code ? <span className="hk">{code}</span> : <span className="hk no">— yok —</span>}</td>}
-                    <td><span className={`pill ${du.k}`} title={du.cat === 'okunamadi' && d.lucaErrorMessage ? `Neden: ${d.lucaErrorMessage}` : du.cat === 'celiski' ? ((Array.isArray(d.validationIssues) ? d.validationIssues : (Array.isArray(d.ocrData?.validationIssues) ? d.ocrData.validationIssues : [])).filter((i: any) => i?.code && i.code !== 'INCOMPLETE_AMOUNTS' && i?.severity !== 'WARNING').map((i: any) => i.message).filter(Boolean).join(' · ') || du.t) : du.t}>{du.t}</span>{du.cat === 'okunamadi' && d.lucaErrorMessage ? <div className="oneden">{d.lucaErrorMessage}</div> : null}{du.cat === 'celiski' ? <div className="oneden" style={{ fontSize: 10.5, opacity: 0.85 }}>↓ sebebi fiş detayında</div> : null}</td>
+                    <td><span className={`pill ${du.k}`} title={du.cat === 'okunamadi' && d.lucaErrorMessage ? `Neden: ${d.lucaErrorMessage}` : du.cat === 'celiski' ? ((Array.isArray(d.validationIssues) ? d.validationIssues : (Array.isArray(d.ocrData?.validationIssues) ? d.ocrData.validationIssues : [])).filter((i: any) => i?.code && i.code !== 'INCOMPLETE_AMOUNTS' && i?.severity !== 'WARNING').map((i: any) => i.message).filter(Boolean).join(' · ') || du.t) : du.t}>{du.t}</span>{du.cat === 'okunamadi' && d.lucaErrorMessage ? <div className="oneden">{d.lucaErrorMessage}</div> : null}{du.cat === 'celiski' ? <div className="oneden" style={{ fontSize: 10.5, opacity: 0.85 }}>↓ sebebi fiş detayında</div> : null}<UyariCipler raw={(d.ocrData as any)?.uyarilar} onClick={() => setFisDetayId(fisAcik ? '' : d.id)} /></td>
                     {/* DİKKAT: td'ye display:flex verme — hücre tablo düzeninden çıkıp durum sütununun
                         üstüne biniyordu (kullanıcı bulgusu). Flex hizalama İÇ div'de. */}
                     <td className="actcol"><div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -1677,20 +1913,11 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
                             );
                           })()}
                           {/* AI denetçi rozeti kaldırıldı (kullanıcı talebi 2026-07-27) — yalnız AI değerlendirmesi gösterilir. */}
+                          {/* Faz 2 — TEK UYARI MODELİ kutusu: kod + seviye + öneri + tek-tık eylemler (demirbaş kararı, ilk belgeyi aç, alıcı tipi, öneriyi uygula). */}
                           {docUyarilar.length > 0 && (
-                            <div style={{ marginBottom: 8 }}>
-                              {docUyarilar.map((u: any, i: number) => {
-                                const isHata = u?.siddet === 'hata';
-                                const isUyari = u?.siddet === 'uyari';
-                                const renk = isHata ? '#dc2626' : isUyari ? '#d97706' : '#2563eb';
-                                const bg = isHata ? 'rgba(220,38,38,0.07)' : isUyari ? 'rgba(217,119,6,0.07)' : 'rgba(37,99,235,0.07)';
-                                return (
-                                  <div key={i} style={{ padding: '6px 10px', marginBottom: 4, background: bg, borderLeft: `3px solid ${renk}`, borderRadius: 5, fontSize: 12, lineHeight: 1.5 }}>
-                                    <b style={{ color: renk }}>{isHata ? '🚨' : isUyari ? '⚠️' : 'ℹ️'} {u.baslik}:</b>{' '}{u.mesaj}
-                                  </div>
-                                );
-                              })}
-                            </div>
+                            <UyariKutusu doc={d} taxpayerId={taxpayerId}
+                              onIlkBelge={(ilk) => { if (docs.some((x: any) => x.id === ilk)) setFisDetayId(ilk); else onOpenMuhasebe?.(ilk); }}
+                              onAcEditor={(id) => onOpenMuhasebe?.(id)} />
                           )}
                           {Array.isArray((d.ocrData as any)?.kalemler) && (d.ocrData as any).kalemler.length > 0 ? (
                             <div style={{ padding: '6px 10px', marginBottom: 8, background: 'rgba(255,255,255,0.025)', border: '1px solid var(--line)', borderRadius: 5, fontSize: 11.5, maxWidth: 940 }}>
@@ -3323,6 +3550,11 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                     <span className="tnote">191 (tam KDV indirimi) + 320 net cari + 360 (KDV2 sorumlu sıf.) fişi oluşturur</span>
                   </div>
                 )}
+                {/* Faz 2 — Uyarılar kutusu (editör): demirbaş kararı 3 düğme, öneriyi uygula, ilk belgeyi aç, alıcı tipini seç, tevkifat fişi, yönü çevir. */}
+                <UyariKutusu doc={selDoc} taxpayerId={taxpayerId}
+                  onIlkBelge={(ilk) => { if (all.some((x: any) => x.id === ilk)) setSelId(ilk); else toast.info('İlk belge bu dönem/listede değil — Gelen Belgeler ekranından arayın'); }}
+                  onTevkifatFisi={() => { setMeta((m: any) => ({ ...m, tevkifatli: true })); applyTevkifatMut.mutate(); }}
+                  onYonuCevir={() => yonuCevir()} />
                 <div className="twrap">
                   {isIsletme ? (
                     <div className="islforms">
@@ -3658,7 +3890,9 @@ function ScreenAktarilanlar({ taxpayerId, period, mode = 'bekleyen', isIsletme =
     onSuccess: (r: any) => {
       const d = r?.data || {};
       const yon = aktarYon === 'SATIS' ? 'Satış' : 'Alış';
-      toast.success(`${yon} TEK fiş olarak Luca'ya gönderildi · ${d.documentCount ?? 0} belge${d.skippedInvalid ? ` · ${d.skippedInvalid} veri hatası nedeniyle hariç` : ''}. Ajan açıkken işlenir.`);
+      // A.6 — demirbaş kararı bekleyen / Luca'da elle işlenmiş belgeler gönderilmedi: sayıyı göster.
+      toast.success(`${yon} TEK fiş olarak Luca'ya gönderildi · ${d.documentCount ?? 0} belge${d.skippedInvalid ? ` · ${d.skippedInvalid} veri hatası nedeniyle hariç` : ''}${d.skippedDemirbas ? ` · ${d.skippedDemirbas} belge demirbaş kararı bekliyor (gönderilmedi)` : ''}${d.skippedElleIslendi ? ` · ${d.skippedElleIslendi} belge Luca'da elle işlenmiş (gönderilmedi)` : ''}. Ajan açıkken işlenir.`, { duration: d.skippedDemirbas ? 9000 : undefined });
+      if (d.skippedDemirbas) toast.info(`${d.skippedDemirbas} belge demirbaş kararı bekliyor — Gelen Belgeler'de belgeyi açıp karar verin, sonra tekrar aktarın.`, { duration: 9000 });
       setAktarYon('');
       qc.invalidateQueries({ queryKey: ['fm2'] });
     },
@@ -3669,6 +3903,7 @@ function ScreenAktarilanlar({ taxpayerId, period, mode = 'bekleyen', isIsletme =
   const lucaPill = (d: any) => {
     const s = d.lucaStatus;
     if (s === 'POSTED') return <span className="pill ok">Aktarıldı ✓</span>;
+    if (s === 'MANUAL_DONE') return <span className="pill asset" title="Demirbaş kararı: Luca'da elle işlendi — portaldan gönderilmedi">Luca'da elle işlendi</span>;
     if (s === 'POSTING') return <span className="pill warn">Aktarılıyor…</span>;
     if (s === 'FAILED' || s === 'ERROR') return <span className="pill miss" title={d.lucaErrorMessage || ''}>Hata</span>;
     return <span className="pill n">Aktarıma hazır</span>;
@@ -3778,7 +4013,11 @@ function ScreenAktarilanlar({ taxpayerId, period, mode = 'bekleyen', isIsletme =
     const isSat = yon === 'SATIS';
     const dd = docs.filter((d) => ((d.invoiceKind || 'ALIS') === 'SATIS') === isSat);
     const label = isSat ? 'Satış' : 'Alış';
-    const hazir = dd.filter((d) => d.status === 'APPROVED' && !['POSTED', 'POSTING'].includes(d.lucaStatus));
+    const hazirTum = dd.filter((d) => d.status === 'APPROVED' && !['POSTED', 'POSTING', 'MANUAL_DONE'].includes(d.lucaStatus));
+    // A.6 — demirbaş kararı bekleyen / "Luca'da elle işlendi" kararlı belgeler aktarıma GİRMEZ (backend de eler); kartta ayrı sayı.
+    const kararBekleyen = hazirTum.filter((d) => uyariOzetFE((d.ocrData as any)?.uyarilar).kararBekliyor);
+    const elleIslenen = hazirTum.filter((d) => String((d.ocrData as any)?.demirbasKarar?.karar || '') === 'elle_islendi');
+    const hazir = hazirTum.filter((d) => !kararBekleyen.includes(d) && !elleIslenen.includes(d));
     const toplam = hazir.reduce((s, d) => s + (Number(d.totalAmount) || 0), 0);
     const busy = batchMut.isPending && aktarYon === yon;
     return (
@@ -3791,6 +4030,14 @@ function ScreenAktarilanlar({ taxpayerId, period, mode = 'bekleyen', isIsletme =
               : (hazir.length > 0
                   ? <><b>{hazir.length}</b> belge aktarıma hazır · toplam <b>{fmtMoney(toplam)} ₺</b></>
                   : <>Aktarıma hazır {label.toLowerCase()} belge yok</>)}
+            {!arsiv && kararBekleyen.length > 0 && (
+              <span style={{ marginLeft: 8, color: '#7c3aed', fontWeight: 700 }} title={`Demirbaş kararı verilmeden Luca'ya gönderilmez: ${kararBekleyen.slice(0, 5).map((d) => d.belgeNo || d.id).join(', ')}${kararBekleyen.length > 5 ? '…' : ''}`}>
+                · {kararBekleyen.length} belge demirbaş kararı bekliyor (gönderilmez)
+              </span>
+            )}
+            {!arsiv && elleIslenen.length > 0 && (
+              <span style={{ marginLeft: 8, color: '#64748b', fontWeight: 600 }} title="Demirbaş kararı: Luca'da elle işlendi — portaldan gönderilmez">· {elleIslenen.length} belge Luca'da elle işlenmiş</span>
+            )}
           </div>
           {!arsiv && (
             <>
@@ -5464,6 +5711,20 @@ const CSS = `
 #fm-root .mkbtn{display:inline-flex;align-items:center;padding:5px 11px;border-radius:7px;border:1.5px solid var(--accent-line);background:var(--accent-soft);color:var(--accent);font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;font-family:inherit;transition:background .12s,color .12s}
 #fm-root .mkbtn:hover{background:var(--accent);color:#fff;border-color:var(--accent)}
 #fm-root .dnt-bdg{display:inline-flex;align-items:center;height:20px;padding:0 6px;border-radius:5px;border:1.5px solid;font-size:11px;font-weight:800;cursor:pointer;letter-spacing:.3px;flex-shrink:0;white-space:nowrap}
+/* Faz 2 — uyarı çipleri (liste satırı) ve Uyarılar kutusu (detay/editör). Renk dili: bilgi gri-mavi, uyarı amber, engel kırmızı, karar bekliyor mor. */
+#fm-root .uycips{display:flex;flex-wrap:wrap;gap:3px;margin-top:4px;cursor:pointer;max-width:200px}
+#fm-root .uycip{display:inline-flex;align-items:center;height:17px;padding:0 6px;border-radius:999px;border:1px solid;font-size:10.5px;font-weight:700;white-space:nowrap;line-height:1}
+#fm-root .uykutu{margin:0 0 8px;border:1px solid #dfe5ee;border-radius:9px;background:linear-gradient(135deg,#fbfcfe,#f5f7fb);overflow:hidden;max-width:940px}
+#fm-root .uykutu-h{display:flex;align-items:center;justify-content:space-between;padding:6px 10px;font-size:12px;font-weight:800;color:#334155;border-bottom:1px solid #e7ecf3;background:radial-gradient(circle at 0 0,rgba(124,58,237,.06),transparent 60%)}
+#fm-root .uykutu-h small{font-weight:600;color:#64748b}
+#fm-root .uysatir{padding:6px 10px 7px;border-left:3px solid;border-bottom:1px solid rgba(0,0,0,.04);font-size:12px;line-height:1.45}
+#fm-root .uysatir:last-child{border-bottom:0}
+#fm-root .uybaslik{font-weight:800;margin-bottom:2px}
+#fm-root .uybaslik em{font-style:normal;font-weight:600;font-size:11px;opacity:.75}
+#fm-root .uyacik{color:#334155;white-space:normal;word-break:break-word;overflow-wrap:anywhere}
+#fm-root .uyoneri{margin-top:3px;color:#475569;font-size:11.5px}
+#fm-root .uyeylem{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:6px}
+#fm-root .fispane .uykutu{margin:6px 10px 4px}
 
 /* Fatura merkezi son görsel katman */
 #fm-root .topfiltbar{gap:10px}

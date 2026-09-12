@@ -205,6 +205,9 @@ model Taxpayer {
   kepAdresi         String? // Kayıtlı Elektronik Posta adresi
   webSitesi         String? // Şirket web sitesi
   eFaturaEntegrator String? // "UYUMSOFT" | "BILGENET" | "FORIBA" | "GIB_PORTAL" | diğer
+  // Faz 2 (PLAN/15): KDV kısmi tevkifatta "belirlenmiş alıcı" ayrımı — mükellefin kendi kurum türü
+  //   (ALIŞ faturasında alıcı = mükellef). kamu | banka | belediye | universite | kit | diger | null(bilinmiyor)
+  kurumTuru         String?
 
   // === Mükellef self-servis portal girişi (opsiyonel; müşavir açar) ===
   portalEmail            String? // portal giriş e-postası (yoksa `email` kullanılır)
@@ -2318,6 +2321,9 @@ model VendorMemory {
   tenantId      String
   firmaKimlikNo String // VKN (10 hane) veya TCKN (11 hane)
   firmaUnvan    String? // Son gorulen unvan (degisebilir)
+  // Faz 2 (PLAN/15): cari kartı kurum türü — SATIŞ faturasında alıcı = bu cari; belirlenmiş alıcıysa
+  //   (kamu/banka/belediye/universite/kit) tevkifat-eksik kuralı çalışır. diger = normal KDV mükellefi.
+  kurumTuru     String?
   toplamOnay    Int      @default(0)
   sonKullanim   DateTime @default(now())
   createdAt     DateTime @default(now())

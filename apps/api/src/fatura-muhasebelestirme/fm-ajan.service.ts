@@ -121,11 +121,12 @@ export function belgeBayraklari(doc: any) {
   ]);
   const ajanIsaretleri: any[] = Array.isArray(ocr?.ajanIsaretleri) ? ocr.ajanIsaretleri : [];
   const isaretli = (e: FmEtiket) => ajanIsaretleri.some((i) => i?.etiket === e);
-  const demirbas = kodlar.has('FIXED_ASSET_MANUAL') || ocr?.fixedAsset?.is === true || isaretli('demirbas');
+  // Faz 2: tek uyarı modeli kodları (DEMIRBAS / TEVKIFAT_EKSIK / MUKERRER) da sayılır.
+  const demirbas = kodlar.has('FIXED_ASSET_MANUAL') || kodlar.has('DEMIRBAS') || ocr?.fixedAsset?.is === true || isaretli('demirbas');
   const tevkifatVar = num(ocr?.kdvTevkifat) > 0 || num(ocr?.tevkifatOrani) > 0 || !!String(ocr?.tevkifat?.kod || '').trim()
     || lines.some((l) => String(l.accountCode || '').startsWith('360') || /^(vergi-sorumlu|tevkifat)$/i.test(String(l.group || '')));
-  const tevkifatSupheli = [...kodlar].some((k) => k === 'TEVKIFAT_NEEDED' || k === 'TEVKIFAT_NET_NEEDED' || k === 'SMM_STOPAJ_NEEDED' || /^TEV_.*_EKSIK$/.test(k)) || isaretli('tevkifat_supheli');
-  const mukerrer = !!doc?.duplicateOfId || isaretli('mukerrer_supheli');
+  const tevkifatSupheli = [...kodlar].some((k) => k === 'TEVKIFAT_NEEDED' || k === 'TEVKIFAT_NET_NEEDED' || k === 'SMM_STOPAJ_NEEDED' || k === 'TEVKIFAT_EKSIK' || k === 'ALICI_TIPI_GEREKLI' || /^TEV_.*_EKSIK$/.test(k)) || isaretli('tevkifat_supheli');
+  const mukerrer = !!doc?.duplicateOfId || kodlar.has('MUKERRER') || isaretli('mukerrer_supheli');
   const iade = ocr?.isReturn === true || kodlar.has('RETURN_NEEDS_REVERSAL') || isaretli('iade');
   return { bekleyen, onaylandi, luca, lucaHatali, eslesti: bekleyen && eslesti, kodEksik: bekleyen && kodEksik, okunmadi, celiski, demirbas, tevkifatVar, tevkifatSupheli, mukerrer, iade, kodlar: [...kodlar] };
 }

@@ -367,10 +367,11 @@ export class FaturaMuhasebelestirmeController {
   @UseGuards(OwnerOnlyGuard)
   reprocessBroken(
     @Req() req: any,
-    @Body() body: { mode?: 'oku' | 'temizle'; dryRun?: boolean; taxpayerId?: string; period?: string; limit?: number; documentIds?: string[] },
+    @Body() body: { mode?: 'oku' | 'temizle' | 'iptal-temizle'; dryRun?: boolean; taxpayerId?: string; period?: string; limit?: number; documentIds?: string[] },
   ) {
     return this.service.reprocessBrokenDocuments(req.user.tenantId, {
-      mode: body?.mode === 'temizle' ? 'temizle' : 'oku',
+      // Faz 2: 'iptal-temizle' → yanlış oluşmuş iptal/red/taslak belgeleri CANCELLED (POSTED hariç).
+      mode: body?.mode === 'temizle' ? 'temizle' : body?.mode === 'iptal-temizle' ? 'iptal-temizle' : 'oku',
       dryRun: body?.dryRun !== false,
       taxpayerId: body?.taxpayerId || undefined,
       period: body?.period || undefined,
@@ -424,6 +425,32 @@ export class FaturaMuhasebelestirmeController {
     return this.service.duplicateCheck(req.user.tenantId, body || {});
   }
 
+  // ── Faz 2 (PLAN/15) — UYARI KATMANI ──
+  /** İptal/red/GİB hata/taslak sayacı (entegratörden gelip belge OLUŞTURULMAYAN satırlar + CANCELLED belgeler). */
+  @Get('documents/iptal-sayac')
+  iptalSayac(@Req() req: any, @Query('taxpayerId') taxpayerId?: string, @Query('period') period?: string) {
+    return this.service.iptalSayac(req.user.tenantId, { taxpayerId, period });
+  }
+
+  /** Alıcı tipi (kurum türü): { taraf: 'mukellef'|'cari', taxpayerId?, vkn?, unvan?, kurumTuru: kamu|banka|belediye|universite|kit|belirlenmis_diger|diger|kdv_mukellefi_degil|null, documentId? } */
+  @Post('alici-tipi')
+  aliciTipi(@Req() req: any, @Body() body: any) {
+    return this.service.setAliciTipi(req.user.tenantId, body || {}, req.user?.userId);
+  }
+
+  /** A.6 — Deploy sonrası tek seferlik TOPLU YENİDEN DOĞRULAMA (owner): bekleyen belgelerin uyarı listesi yeni kurallarla
+   *  tazelenir. Body: { taxpayerId?, period?: 'YYYY-MM', limit? (varsayılan 2000), statuses? } → sayılar + örnek id'ler. */
+  @Post('documents/revalidate-pending')
+  @UseGuards(OwnerOnlyGuard)
+  revalidatePending(@Req() req: any, @Body() body: { taxpayerId?: string; period?: string; limit?: number; statuses?: string[] }) {
+    return this.service.revalidatePending(req.user.tenantId, {
+      taxpayerId: body?.taxpayerId || undefined,
+      period: body?.period || undefined,
+      limit: body?.limit,
+      statuses: Array.isArray(body?.statuses) ? body.statuses : undefined,
+    });
+  }
+
   @Get('documents/:id')
   get(@Req() req: any, @Param('id') id: string) {
     return this.service.get(req.user.tenantId, id);
@@ -451,6 +478,27 @@ export class FaturaMuhasebelestirmeController {
   @Post('documents/approve-batch')
   approveBatch(@Req() req: any, @Body() body: { ids: string[]; force?: boolean }) {
     return this.service.approveBatch(req.user.tenantId, body?.ids || [], req.user?.userId, body?.force === true);
+  }
+
+  /** Faz 2 — DEMİRBAŞ KARARI: { karar: 'elle_islendi' | 'yine_de_isle' | 'demirbas_degil', not? }
+   *  elle_islendi → APPROVED + lucaStatus MANUAL_DONE (Luca'ya gitmez); yine_de_isle → 25x / 679-689 taslağı
+   *  (işletme: Sabit Kıymet Alışı); demirbas_degil → uyarı kalkar + VendorMemory notu. */
+  @Post('documents/:id/demirbas-karari')
+  demirbasKarari(@Req() req: any, @Param('id') id: string, @Body() body: { karar?: string; not?: string }) {
+    return this.service.demirbasKarari(req.user.tenantId, id, body || {}, req.user?.userId);
+  }
+
+  /** Faz 2 — uyarı tek-tık eylemi (sunucu tarafı): { eylem: 'oneriyi-uygula' } */
+  @Post('documents/:id/uyari-eylem')
+  uyariEylem(@Req() req: any, @Param('id') id: string, @Body() body: { eylem?: string }) {
+    return this.service.uyariEylem(req.user.tenantId, id, body || {}, req.user?.userId);
+  }
+
+  /** A.2 — MÜKERRER KARARI: { karar: 'mukerrer_degil' | 'mukerrer', not? } → ocrData.mukerrerKarar;
+   *  mukerrer_degil → revalidate mükerrer aramaz, MUKERRER uyarısı + duplicateOfId kalkar. */
+  @Post('documents/:id/mukerrer-karari')
+  mukerrerKarari(@Req() req: any, @Param('id') id: string, @Body() body: { karar?: string; not?: string }) {
+    return this.service.mukerrerKarari(req.user.tenantId, id, body || {}, req.user?.userId);
   }
 
   /** Faz C: onayı geri al (Luca'ya gitmemişse) — tekrar düzenlenebilir. */
