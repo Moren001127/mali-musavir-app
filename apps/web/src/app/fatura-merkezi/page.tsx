@@ -1929,19 +1929,27 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
         )}
         <div className="twrap gf-twrap">
           <table className="gf-table">
+            {/* SABİT sütun düzeni (kullanıcı bulgusu 2026-09-12: sütunlar kayıyor/taşıyordu) — table-layout:fixed +
+                colgroup genişlikleri; toplam %100, taşma imkânsız. Firma sütunu esner, diğerleri sabit. */}
+            <colgroup>
+              <col className="gc-sel" />
+              <col className="gc-tarih" />
+              <col className="gc-no" />
+              <col className="gc-firma" />
+              <col className="gc-tutar" />
+              {!isIsletme && <col className="gc-hesap" />}
+              <col className="gc-durum" />
+              <col className="gc-eylem" />
+            </colgroup>
             <thead><tr>
-              <th style={{ width: 30 }}><Check checked={allSelected} onToggle={toggleAll} /></th>
-              {/* PLAN16-B: başlığa tıkla → sırala (güven · tarih · tutar · firma); ok işareti yönü gösterir */}
+              <th><Check checked={allSelected} onToggle={toggleAll} /></th>
               <th className={`gf-sortable${sortKey === 'tarih' ? ' gf-sorted' : ''}`} onClick={() => sirala('tarih')} title="Tarihe göre sırala">Tarih<span className="gf-sort">{sortKey === 'tarih' ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}</span></th>
               <th>Fatura No</th>
               <th className={`gf-sortable${sortKey === 'firma' ? ' gf-sorted' : ''}`} onClick={() => sirala('firma')} title="Firma adına göre sırala">Firma / VKN<span className="gf-sort">{sortKey === 'firma' ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}</span></th>
-              <th className="num">KDV Hariç</th>
-              <th className="num">KDV</th>
               <th className={`num gf-sortable${sortKey === 'tutar' ? ' gf-sorted' : ''}`} onClick={() => sirala('tutar')} title="Tutara göre sırala">Tutar<span className="gf-sort">{sortKey === 'tutar' ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}</span></th>
               {!isIsletme && <th>Hesap</th>}
-              <th className={`gf-sortable${sortKey === 'guven' ? ' gf-sorted' : ''}`} onClick={() => sirala('guven')} title="Güvene göre sırala (ilk tık: Düşük önce)">Güven<span className="gf-sort">{sortKey === 'guven' ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}</span></th>
               <th>Durum</th>
-              <th className="actcol gf-actcol">Eylemler</th>
+              <th className="gf-th-eylem">Eylemler</th>
             </tr></thead>
             <tbody>
               {docs.map((d) => {
@@ -1990,21 +1998,25 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
                 // Engel sayısı Faz 2 modelinden (seviye=engel); eski kayıtlarda siddet=hata → uyariListeFE normalize eder.
                 const docUyariHata = uyariListeFE(docUyarilar).filter((u) => u.seviye === 'engel').length;
                 const docUyariRenk = docUyariHata > 0 ? '#dc2626' : '#d97706';
+                // Satırda yalnız KARAR/ENGEL/UYARI seviyesi sayılır; bilgi çipleri (ilk kez satıcı, tevkifat var) satırda GÖSTERİLMEZ
+                //   (kullanıcı: "bir sürü bilgi yazmaya gerek yok"); tamamı İncele / uyarı kutusunda.
+                const onemliUyari = uyariListeFE(docUyarilar).filter((u) => u.seviye === 'engel' || u.seviye === 'uyari').length;
+                const durumIpucu = du.cat === 'okunamadi' && d.lucaErrorMessage ? `Neden: ${d.lucaErrorMessage}` : du.cat === 'celiski' ? ((Array.isArray(d.validationIssues) ? d.validationIssues : (Array.isArray(d.ocrData?.validationIssues) ? d.ocrData.validationIssues : [])).filter((i: any) => i?.code && i.code !== 'INCOMPLETE_AMOUNTS' && i?.severity !== 'WARNING').map((i: any) => i.message).filter(Boolean).join(' · ') || du.t) : du.t;
                 return (
                   <Fragment key={d.id}>
                   <tr className={`${ocrCls || ''}${fisAcik ? ' detay-on' : ''}`.trim() || undefined}>
                     <td><Check checked={sel.has(d.id)} onToggle={() => toggle(d.id)} /></td>
-                    <td>{fmtDate(d.faturaTarihi || d.createdAt)}</td>
-                    <td>{d.belgeNo || '—'}</td>
-                    <td className="firm"><b>{firma}</b><small>{vkn ? `VKN ${vkn}` : '—'}</small>{(d as any).duplicateOfId ? <small style={{ color: '#c0353a', fontWeight: 700 }} title={(d as any).duplicateReason || 'Bu fatura daha önce yüklenmiş'}>⚠ {(d as any).duplicateReason || 'Mükerrer — daha önce yüklenmiş'} <a href="#ilk" onClick={(ev) => { ev.preventDefault(); const ilk = String((d as any).duplicateOfId || ''); if (docs.some((x: any) => x.id === ilk)) setFisDetayId(ilk); else onOpenMuhasebe?.(ilk); }} style={{ color: '#7c3aed', textDecoration: 'underline', marginLeft: 4 }}>ilk belgeyi aç</a></small> : null}</td>
-                    <td className="num">{matrah != null ? fmtMoney(matrah) : '—'}</td>
-                    <td className="num">{kdv != null ? fmtMoney(kdv) : '—'}</td>
-                    <td className="num">{fmtMoney(d.totalAmount)}</td>
+                    <td className="gf-tarih">{fmtDate(d.faturaTarihi || d.createdAt)}</td>
+                    <td className="gf-no" title={d.belgeNo || ''}>{d.belgeNo || '—'}</td>
+                    <td className="firm gf-firma"><b title={firma}>{firma}</b><small>{vkn ? `VKN ${vkn}` : '—'}{(d as any).duplicateOfId ? <> · <a href="#ilk" className="gf-muk" title={(d as any).duplicateReason || 'Bu fatura daha önce yüklenmiş'} onClick={(ev) => { ev.preventDefault(); const ilk = String((d as any).duplicateOfId || ''); if (docs.some((x: any) => x.id === ilk)) setFisDetayId(ilk); else onOpenMuhasebe?.(ilk); }}>⚠ mükerrer · ilk belgeyi aç</a></> : null}</small></td>
+                    <td className="num gf-tutar"><b>{fmtMoney(d.totalAmount)}</b>{matrah != null || kdv != null ? <small>{matrah != null ? `hariç ${fmtMoney(matrah)}` : ''}{matrah != null && kdv != null ? ' · ' : ''}{kdv != null ? `KDV ${fmtMoney(kdv)}` : ''}</small> : null}</td>
                     {!isIsletme && <td className="gf-hesap">{code ? <><span className="hk">{code}</span>{codeAd ? <small title={codeAd}>{codeAd}</small> : null}</> : <span className="hk no">— yok —</span>}</td>}
-                    {/* PLAN16-B — GÜVEN ROZETİ: Yüksek/Orta/Düşük hapı + tek satır sebep (kaynak: backend guven + satır kaynağı) */}
-                    <td className="gf-guvencell"><span className={`gf-guven ${guven.seviye}`} title={`Güven: ${GF_GUVEN_ETIKET[guven.seviye]} — ${guven.neden}`}>{GF_GUVEN_ETIKET[guven.seviye]}</span><small className="gf-neden" title={guven.neden}>{guven.neden}</small></td>
-                    <td><span className={`pill ${du.k}`} title={du.cat === 'okunamadi' && d.lucaErrorMessage ? `Neden: ${d.lucaErrorMessage}` : du.cat === 'celiski' ? ((Array.isArray(d.validationIssues) ? d.validationIssues : (Array.isArray(d.ocrData?.validationIssues) ? d.ocrData.validationIssues : [])).filter((i: any) => i?.code && i.code !== 'INCOMPLETE_AMOUNTS' && i?.severity !== 'WARNING').map((i: any) => i.message).filter(Boolean).join(' · ') || du.t) : du.t}>{du.t}</span>{du.cat === 'okunamadi' && d.lucaErrorMessage ? <div className="oneden">{d.lucaErrorMessage}</div> : null}{du.cat === 'celiski' ? <div className="oneden" style={{ fontSize: 10.5, opacity: 0.85 }}>↓ sebebi fiş detayında</div> : null}<UyariCipler raw={(d.ocrData as any)?.uyarilar} onClick={() => setFisDetayId(fisAcik ? '' : d.id)} />
-                      {/* PLAN16-B — DEMİRBAŞ KARARI satır içi 3 küçük düğme (UyariKutusu açılmadan; aynı uç). */}
+                    <td className="gf-durum">
+                      {/* TEK durum hapı; üzerine gelince sebep. Güven yalnız DÜŞÜK ise küçük kırmızı nokta (sebep ipucunda) — orta/yüksek yazılmaz. */}
+                      <button type="button" className={`pill ${du.k} gf-durumhap`} title={`${durumIpucu}${guven.seviye === 'dusuk' ? ` · güven düşük: ${guven.neden}` : ''}${onemliUyari ? ` · ${onemliUyari} uyarı — tıkla, incele` : ''}`} onClick={() => setFisDetayId(fisAcik ? '' : d.id)}>
+                        {guven.seviye === 'dusuk' ? <i className="gf-guvennok" aria-label="güven düşük" /> : null}{du.t}{onemliUyari > 0 ? <i className="gf-uyn" style={{ color: docUyariRenk }}>⚠{onemliUyari}</i> : null}
+                      </button>
+                      {/* DEMİRBAŞ KARARI satır içi 3 küçük düğme (yalnız karar bekleyen belgede; aynı uç). */}
                       {demEylemler.length > 0 && (
                         <div className="gf-demirbas">
                           {demEylemler.map((e) => { const karar = e.id.split(':')[1]; return (
@@ -2015,19 +2027,17 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
                         </div>
                       )}
                     </td>
-                    {/* DİKKAT: td'ye display:flex verme — hücre tablo düzeninden çıkıp durum sütununun
-                        üstüne biniyordu (kullanıcı bulgusu). Flex/grid hizalama İÇ div'de.
-                        PLAN16-B: eylemler ETİKETLİ ve görünür (İncele · Düzenle · Önizle · Sil) — hover'a saklanmaz. */}
-                    <td className="actcol gf-actcol"><div className="gf-acts">
-                      <button type="button" className={`gf-act incele${fisAcik ? ' on' : ''}`} onClick={() => setFisDetayId(fisAcik ? '' : d.id)} title={fisAcik ? 'Detayı gizle' : (isIsletme ? 'Kayıt türü + uyarılar + AI yorumu' : 'Yevmiye fişi + uyarılar + AI yorumu')}><Ico html={I.ledger} size={13} /> {fisAcik ? 'Gizle' : 'İncele'}{docUyarilar.length > 0 ? <i className="gf-actn" style={{ color: docUyariRenk }} title={docUyarilar.map((u: any) => `⚠ ${u.baslik}: ${u.mesaj || u.aciklama || ''}`).join('\n\n')}>⚠{docUyarilar.length}</i> : null}</button>
-                      <button type="button" className="gf-act duzenle" onClick={() => onOpenMuhasebe?.(d.id)} title="Muhasebeleştir ekranında aç — hesapları düzenle"><Ico html={I.edit} size={13} /> Düzenle</button>
-                      <button type="button" className="gf-act onizle" onClick={() => openDocFile(d.id)} title="Belgeyi aç (PDF/görsel/XML)"><Ico html={I.eye} size={13} /> Önizle</button>
-                      <button type="button" className="gf-act sil" disabled={delMut.isPending || bulkDelMut.isPending} title="Belgeyi sil" onClick={() => { if (window.confirm(`Bu belge silinsin mi?\n${firma} · ${fmtMoney(d.totalAmount)} ₺${d.belgeNo ? ' · ' + d.belgeNo : ''}`)) delMut.mutate(d.id); }}><Ico html={I.trash} size={13} /> Sil</button>
+                    {/* Eylemler: 4 küçük ikon düğme (ipuçlu) — tek satır, sabit 140px; taşmaz. */}
+                    <td className="gf-eylem"><div className="gf-acts">
+                      <button type="button" className={`gf-act incele${fisAcik ? ' on' : ''}`} onClick={() => setFisDetayId(fisAcik ? '' : d.id)} title={fisAcik ? 'Detayı gizle' : (isIsletme ? 'İncele: kayıt türü + uyarılar + AI yorumu' : 'İncele: yevmiye fişi + uyarılar + AI yorumu')} aria-label="İncele"><Ico html={I.ledger} size={14} /></button>
+                      <button type="button" className="gf-act duzenle" onClick={() => onOpenMuhasebe?.(d.id)} title="Düzenle: Muhasebeleştir ekranında aç" aria-label="Düzenle"><Ico html={I.edit} size={14} /></button>
+                      <button type="button" className="gf-act onizle" onClick={() => openDocFile(d.id)} title="Önizle: belgeyi aç (PDF/görsel/XML)" aria-label="Önizle"><Ico html={I.eye} size={14} /></button>
+                      <button type="button" className="gf-act sil" disabled={delMut.isPending || bulkDelMut.isPending} title="Sil" aria-label="Sil" onClick={() => { if (window.confirm(`Bu belge silinsin mi?\n${firma} · ${fmtMoney(d.totalAmount)} ₺${d.belgeNo ? ' · ' + d.belgeNo : ''}`)) delMut.mutate(d.id); }}><Ico html={I.trash} size={14} /></button>
                     </div></td>
                   </tr>
                   {fisAcik && (
                     <tr className="detayrow">
-                      <td colSpan={isIsletme ? 11 : 12}>
+                      <td colSpan={isIsletme ? 7 : 8}>
                         <div className="detaybox">
                           {(() => {
                             const rn = richNotes[d.id];
@@ -8482,6 +8492,41 @@ const CSS = `
 #fm-root .gf-table .gf-acts{min-width:0;grid-template-columns:auto auto}
 #fm-root .gf-table .gf-act{height:24px;padding:0 7px;font-size:11px}
 #fm-root .gf-table td,#fm-root .gf-table th{padding-left:9px;padding-right:9px}
+/* === PLAN16-B3: GELEN FATURALAR — SABİT SÜTUN DÜZENİ (kullanıcı bulgusu 2026-09-12: sütunlar kayıyor/taşıyordu) === */
+#fm-root .gf-twrap{overflow:auto}
+#fm-root .gf-table{table-layout:fixed;width:100%;min-width:980px;border-collapse:separate;border-spacing:0}
+#fm-root .gf-table col.gc-sel{width:42px}
+#fm-root .gf-table col.gc-tarih{width:90px}
+#fm-root .gf-table col.gc-no{width:150px}
+#fm-root .gf-table col.gc-firma{width:auto}
+#fm-root .gf-table col.gc-tutar{width:135px}
+#fm-root .gf-table col.gc-hesap{width:190px}
+#fm-root .gf-table col.gc-durum{width:170px}
+#fm-root .gf-table col.gc-eylem{width:160px}
+#fm-root .gf-table th,#fm-root .gf-table td{padding:9px 10px;overflow:hidden;vertical-align:middle}
+#fm-root .gf-table th.gf-th-eylem{text-align:right}
+#fm-root .gf-table td.gf-tarih{white-space:nowrap;font-variant-numeric:tabular-nums}
+#fm-root .gf-table td.gf-no{font-family:ui-monospace,Consolas,monospace;font-size:12px;white-space:nowrap;text-overflow:ellipsis}
+#fm-root .gf-table td.gf-firma b{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#fm-root .gf-table td.gf-firma small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#fm-root .gf-table td.gf-firma .gf-muk{color:#b91c1c;font-weight:700;text-decoration:underline}
+#fm-root .gf-table td.gf-tutar{white-space:nowrap;text-align:right}
+#fm-root .gf-table td.gf-tutar b{display:block;font-variant-numeric:tabular-nums;font-weight:700}
+#fm-root .gf-table td.gf-tutar small{display:block;font-size:10.5px;color:var(--faint);font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis}
+#fm-root .gf-table td.gf-hesap{max-width:none}
+#fm-root .gf-table td.gf-hesap .hk{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#fm-root .gf-table td.gf-hesap small{display:block;font-size:10.5px;color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;line-height:1.25;margin-top:1px}
+#fm-root .gf-table td.gf-durum{white-space:nowrap}
+#fm-root .gf-table .gf-durumhap{cursor:pointer;font-family:inherit;max-width:100%;overflow:hidden;text-overflow:ellipsis;display:inline-flex;align-items:center;gap:5px}
+#fm-root .gf-table .gf-durumhap:hover{filter:brightness(.96)}
+#fm-root .gf-table .gf-guvennok{width:7px;height:7px;border-radius:50%;background:#dc2626;box-shadow:0 0 0 2px #fee2e2;flex-shrink:0}
+#fm-root .gf-table .gf-uyn{font-style:normal;font-size:10px;font-weight:800;margin-left:2px}
+#fm-root .gf-table .gf-demirbas{margin-top:5px;display:flex;flex-wrap:wrap;gap:4px}
+#fm-root .gf-table td.gf-eylem{text-align:right;white-space:nowrap;padding:7px 8px 7px 6px}
+#fm-root .gf-table td:first-child,#fm-root .gf-table th:first-child{padding-left:8px;padding-right:6px}
+#fm-root .gf-table .gf-acts{display:inline-flex;gap:4px;min-width:0}
+#fm-root .gf-table .gf-act{width:30px;height:28px;padding:0;justify-content:center;font-size:0}
+#fm-root .gf-table .gf-act .ico{display:inline-flex}
 /* Süzgeç boş sonuç bağlantısı */
 #fm-root .gf-table .empty a{color:var(--accent);font-weight:700;text-decoration:underline}
 
