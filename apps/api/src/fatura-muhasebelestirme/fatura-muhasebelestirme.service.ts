@@ -3038,6 +3038,18 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       });
       return { snapshotId: empty.id, accountCount: 0 };
     }
+    // KISMİ PLAN KORUMASI (canlı bulgu 2026-09-12, ÖZ ELA): 03:28'deki çekim 839 satırlık planın yalnız 342 satırını
+    //   (7xx alt hesapları hiç yok) getirdi ve READY yazıldı → "son READY" bu olunca elektrik/haberleşme alışları hiçbir 7xx
+    //   yaprağına eşleşemedi (matrah boş). Yeni plan, önceki READY planın %60'ından küçükse (önceki ≥100 satır) READY
+    //   DEĞİL 'PARTIAL' yazılır: sorgular onu seçmez, tam plan kullanılmaya devam eder; log uyarır, sonuçta partial bayrağı döner.
+    const oncekiReady = await (this.prisma as any).lucaAccountPlanSnapshot.findFirst({
+      where: { tenantId: params.tenantId, taxpayerId: params.taxpayerId, status: 'READY' },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, accountCount: true },
+    }).catch(() => null);
+    const oncekiN = Number(oncekiReady?.accountCount || 0);
+    const kismi = oncekiN >= 100 && rows.length < oncekiN * 0.6;
+    if (kismi) this.logger.warn(`[PLAN-KISMI] tp=${params.taxpayerId}: yeni plan ${rows.length} satır, önceki READY ${oncekiN} → PARTIAL yazıldı (READY değil), önceki plan kullanılmaya devam eder`);
     // Satırları snapshot ile TEK transaction'da yaz: createMany patlarsa snapshot da geri alınır →
     //   yarım/0-satırlı READY plan kalmaz (eskiden READY snapshot önce, satırlar sonra yazılıyordu).
     const snapshot = await (this.prisma as any).$transaction(async (tx: any) => {
@@ -3046,7 +3058,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           tenantId: params.tenantId,
           taxpayerId: params.taxpayerId,
           sourceJobId: params.jobId || null,
-          status: 'READY',
+          status: kismi ? 'PARTIAL' : 'READY',
           accountCount: rows.length,
           createdBy: params.createdBy || null,
         },
@@ -3100,7 +3112,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   Luca ajanı panelinde iş "çalışıyor" kalıyordu (hatta 10dk upload timeout'una düşebiliyordu).
     //   Snapshot zaten READY yazıldı → HEMEN dön (job biter), eşleştirme arka planda sürsün.
     void this.rematchPendingDocumentsWithAccountPlan(params.tenantId, params.taxpayerId, snapshot.id).catch(() => undefined);
-    return { snapshotId: snapshot.id, accountCount: rows.length };
+    return { snapshotId: snapshot.id, accountCount: rows.length, ...(kismi ? { partial: true, previousCount: oncekiN } : {}) };
   }
 
   async duplicateCheck(tenantId: string, body: {
