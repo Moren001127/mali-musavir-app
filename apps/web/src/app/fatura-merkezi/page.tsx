@@ -1124,6 +1124,22 @@ export default function FaturaMerkeziPage() {
   const badge = (n: any) => (Number(n) > 0 ? <span className="ct">{Number(n)}</span> : null);
 
   const go = (s: string) => setScreen(s);
+  // Kullanıcı kararı (2026-09-12): mükellef e-Fatura mükellefiyse e-Fatura Sorgu açık, GİB e-Arşiv Sorgu kilitli; değilse tersi.
+  //   Mükellef seçili değilken ikisi de açık (ekranlar zaten 'önce mükellef seç' der). Kilitli ekrandayken mükellef değişirse
+  //   açık olana geçilir. Kaynak: Mükellefler listesindeki 'e-Fatura mükellefi mi?' anahtarı (Taxpayer.isEFaturaMukellefi).
+  const seciliTp: any = taxpayerId ? taxpayers.find((t) => String(t.id) === String(taxpayerId)) : null;
+  const efaturaMi: boolean | null = seciliTp ? seciliTp.isEFaturaMukellefi === true : null;
+  const earsivKilit = efaturaMi === true;
+  const efaturaKilit = efaturaMi === false;
+  useEffect(() => {
+    if (screen === 'earsivSorgu' && earsivKilit) setScreen('efaturaSorgu');
+    else if (screen === 'efaturaSorgu' && efaturaKilit) setScreen('earsivSorgu');
+  }, [screen, earsivKilit, efaturaKilit]);
+  const sorguGit = (hedef: 'earsivSorgu' | 'efaturaSorgu') => {
+    if (hedef === 'earsivSorgu' && earsivKilit) { toast.info('Bu mükellef e-Fatura mükellefi — satışları entegratörden gelir; e-Fatura Sorgu ekranını kullan.'); return; }
+    if (hedef === 'efaturaSorgu' && efaturaKilit) { toast.info('Bu mükellef e-Fatura mükellefi değil — satışları GİB e-Arşiv Sorgu ile çekilir. (Mükellefler listesinden e-Fatura işaretlenebilir.)'); return; }
+    setScreen(hedef);
+  };
 
   const nav = (
     <nav className="nav">
@@ -1133,8 +1149,8 @@ export default function FaturaMerkeziPage() {
       <div className={`nitem${screen === 'mukellefler' ? ' on' : ''}`} style={{ ['--icc' as any]: '#2563eb' }} onClick={() => go('mukellefler')}><Ico html={I.users} /> Mükellefler</div>
 
       <div className="ncap">Belgeler</div>
-      <div className={`nitem${screen === 'earsivSorgu' ? ' on' : ''}`} style={{ ['--icc' as any]: '#0f766e' }} onClick={() => go('earsivSorgu')}><Ico html={I.file} /> GIB e-Arşiv Sorgu</div>
-      <div className={`nitem${screen === 'efaturaSorgu' ? ' on' : ''}`} style={{ ['--icc' as any]: '#2563eb' }} onClick={() => go('efaturaSorgu')}><Ico html={I.plug} /> e-Fatura Sorgu</div>
+      <div className={`nitem${screen === 'earsivSorgu' ? ' on' : ''}${earsivKilit ? ' off' : ''}`} style={{ ['--icc' as any]: '#0f766e' }} onClick={() => sorguGit('earsivSorgu')} title={earsivKilit ? 'Kilitli: bu mükellef e-Fatura mükellefi — GİB e-Arşiv sorgusu kullanılmaz' : undefined}><Ico html={I.file} /> GIB e-Arşiv Sorgu{earsivKilit ? <span className="nlock" aria-label="kilitli">🔒</span> : null}</div>
+      <div className={`nitem${screen === 'efaturaSorgu' ? ' on' : ''}${efaturaKilit ? ' off' : ''}`} style={{ ['--icc' as any]: '#2563eb' }} onClick={() => sorguGit('efaturaSorgu')} title={efaturaKilit ? 'Kilitli: bu mükellef e-Fatura mükellefi değil — GİB e-Arşiv Sorgu kullanılır' : undefined}><Ico html={I.plug} /> e-Fatura Sorgu{efaturaKilit ? <span className="nlock" aria-label="kilitli">🔒</span> : null}</div>
       <div className={`nitem${screen === 'faturaKes' ? ' on' : ''}`} style={{ ['--icc' as any]: '#b45309' }} onClick={() => go('faturaKes')}><Ico html={I.file} /> Fatura Kes</div>
       <div className={`nitem${screen === 'faturalar' || screen === 'satis' ? ' on' : ''}`} style={{ ['--icc' as any]: '#15803d' }} onClick={() => go('faturalar')}><Ico html={I.file} /> Gelen Faturalar</div>
       <div className={`nsub${screen === 'faturalar' ? ' on' : ''}`} onClick={() => go('faturalar')}><span className="d" /> Alış Faturaları {badge(sum.alisPending)}</div>
@@ -1197,7 +1213,7 @@ export default function FaturaMerkeziPage() {
           </div>
 
           <div className="content">
-            {(screen === 'faturalar' || screen === 'satis') && <ScreenFaturalar taxpayerId={taxpayerId} period={period} kind={screen === 'satis' ? 'SATIS' : 'ALIS'} isIsletme={(() => { const t = taxpayers.find((x) => x.id === taxpayerId); return /i[şs]letme|defter.?beyan|basit/i.test(`${t?.defterTuru || ''} ${(t as any)?.mihsapDefterTuru || ''}`); })()} taxpayerNace={(taxpayers.find((t) => t.id === taxpayerId) as any)?.naceKodu || ''} taxpayerFaaliyet={(taxpayers.find((t) => t.id === taxpayerId) as any)?.faaliyetAciklama || ''} onOpenSorgu={() => setScreen(screen === 'satis' ? 'earsivSorgu' : 'efaturaSorgu')} onOpenMuhasebe={(id) => { try { localStorage.setItem('fm-open-doc', id); } catch { /* yok say */ } setScreen('muhasebe'); }} />}
+            {(screen === 'faturalar' || screen === 'satis') && <ScreenFaturalar taxpayerId={taxpayerId} period={period} kind={screen === 'satis' ? 'SATIS' : 'ALIS'} isIsletme={(() => { const t = taxpayers.find((x) => x.id === taxpayerId); return /i[şs]letme|defter.?beyan|basit/i.test(`${t?.defterTuru || ''} ${(t as any)?.mihsapDefterTuru || ''}`); })()} taxpayerNace={(taxpayers.find((t) => t.id === taxpayerId) as any)?.naceKodu || ''} taxpayerFaaliyet={(taxpayers.find((t) => t.id === taxpayerId) as any)?.faaliyetAciklama || ''} onOpenSorgu={() => sorguGit(screen === 'satis' ? (efaturaMi === true ? 'efaturaSorgu' : 'earsivSorgu') : 'efaturaSorgu')} onOpenMuhasebe={(id) => { try { localStorage.setItem('fm-open-doc', id); } catch { /* yok say */ } setScreen('muhasebe'); }} />}
             {screen === 'earsivSorgu' && <ScreenSorgu taxpayerId={taxpayerId} period={period} source="earsiv" onOpenEntegrator={() => go('entegrator')} />}
             {screen === 'efaturaSorgu' && <ScreenSorgu taxpayerId={taxpayerId} period={period} source="efatura" onOpenEntegrator={() => go('entegrator')} />}
             {screen === 'mukellefler' && <ScreenMukellefler taxpayers={taxpayers} period={period} onOpen={(id) => { setTaxpayerId(id); setScreen('faturalar'); }} />}
@@ -3201,22 +3217,22 @@ function ScreenSorgu({ taxpayerId, period, source, onOpenEntegrator }: { taxpaye
   );
 }
 
-/* ===================== PLAN16-F: MÜKELLEF FAALİYET TANIMI — saf yardımcılar + satır-içi form ===================== */
-// Mükellefler listesindeki "Faaliyet" sütunu: NACE + tanım + haplar (sektör · kurum türü · defter); satırın ALTINDA
-//   açılan düzenleme formu; "NACE öner" (AI — YAZMAZ; sahip "Öneriyi uygula" deyince forma dolar, Kaydet'e basınca PATCH).
-//   Uçlar: PATCH /taxpayers/:id/faaliyet (yalnız değişen alanlar, '' = temizle) · POST /taxpayers/:id/faaliyet-oner.
-//   Kurum/defter seçenekleri @mali-musavir/shared (KURUM_TURU_SECENEKLERI / DEFTER_TURU_ETIKETLERI) — uçla aynı kaynak.
-type MfForm = { naceKodu: string; faaliyetAciklama: string; sektorEtiketi: string; kurumTuru: string; defterTuru: string };
-const MF_ALANLAR: Array<keyof MfForm> = ['naceKodu', 'faaliyetAciklama', 'sektorEtiketi', 'kurumTuru', 'defterTuru'];
-const MF_ALAN_ADI: Record<keyof MfForm, string> = { naceKodu: 'NACE', faaliyetAciklama: 'faaliyet tanımı', sektorEtiketi: 'sektör', kurumTuru: 'kurum türü', defterTuru: 'defter türü' };
-/** Satır hapı için KISA kurum türü adı (tam etiket başlıkta; kaynak kodlar shared KURUM_TURU_KODLARI ile aynı). */
-const MF_KURUM_KISA: Record<string, string> = { kamu: 'kamu', banka: 'banka', belediye: 'belediye', universite: 'üniversite', kit: 'KİT', belirlenmis_diger: 'belirlenmiş diğer', diger: 'diğer', kdv_mukellefi_degil: 'KDV mükellefi değil' };
+/* ===================== PLAN16-F2: MÜKELLEFLER — SADE LİSTE + AÇILIR TANIM ALANI (kullanıcı kararı 2026-09-12) ===================== */
+// Kullanıcı: "liste aşırı karışık; NACE/faaliyet metni tabloda görünmesin; tanımlı mı değil mi onay/uyarı versin;
+//   açılır-kapanır alanda tanımlansın; NACE öner olmasın; e-Fatura mı anahtarı olsun." Tabloda yalnız ✓/⚠ işareti,
+//   defter hapı, belge yolu hapı (e-Fatura / GİB e-Arşiv) ve sayılar. Satırın altında açılır tanım alanı:
+//   NACE kodu · faaliyet açıklaması · sektör · defter türü · e-Fatura mükellefi · kurum türü (tevkifat kuralı için).
+//   Uç: PATCH /taxpayers/:id/faaliyet (yalnız değişen alanlar; '' = temizle; isEFaturaMukellefi boolean).
+//   e-Fatura işareti sol menüdeki sorgu ekranlarını kilitler (FaturaMerkeziPage: e-Fatura → e-Fatura Sorgu açık,
+//   GİB e-Arşiv Sorgu kilitli; değilse tersi).
+type MfForm = { naceKodu: string; faaliyetAciklama: string; sektorEtiketi: string; kurumTuru: string; defterTuru: string; isEFaturaMukellefi: boolean };
+const MF_METIN_ALANLAR: Array<'naceKodu' | 'faaliyetAciklama' | 'sektorEtiketi' | 'kurumTuru' | 'defterTuru'> = ['naceKodu', 'faaliyetAciklama', 'sektorEtiketi', 'kurumTuru', 'defterTuru'];
 const MF_NACE_DESENI = /^\d{2}(\.\d{2}){0,2}$/; // shared NACE_KODU_DESENI ile aynı: 56 · 56.10 · 56.10.06
-const MF_GUVEN_ETIKET: Record<string, string> = { yuksek: 'Yüksek güven', orta: 'Orta güven', dusuk: 'Düşük güven' };
 const MF_DEFTER_SECENEKLERI = (Object.keys(DEFTER_TURU_ETIKETLERI) as Array<keyof typeof DEFTER_TURU_ETIKETLERI>).map((v) => ({ v: String(v), l: DEFTER_TURU_ETIKETLERI[v] }));
 const MF_KURUM_SECENEKLERI = KURUM_TURU_SECENEKLERI.map((o) => ({ v: String(o.value), l: o.label }));
+type MfSuzgec = 'tumu' | 'tanimsiz' | 'bekleyen' | 'sorunlu' | 'efatura' | 'earsiv' | 'isletme' | 'bilanco';
 
-/** Defter türü etiketi — Defter sütununun mevcut mantığı + Mihsap defter türünden türetme (BILANCO da sayılır, boş sayılmaz). */
+/** Defter türü etiketi — defterTuru öncelikli, boşsa Mihsap defter türünden türetilir. */
 function mfDefterEtiketi(t: any): '' | 'İşletme' | 'Bilanço' {
   const kaynak = `${t?.defterTuru || ''} ${t?.mihsapDefterTuru || ''}`;
   if (/i[şs]letme|defter.?beyan|basit/i.test(kaynak)) return 'İşletme';
@@ -3224,25 +3240,30 @@ function mfDefterEtiketi(t: any): '' | 'İşletme' | 'Bilanço' {
   return '';
 }
 
-/** Satırın faaliyet durumu: gösterilecek metinler + BOŞ alan listesi ("tanımsız" hapı başlığı, Tanımsız sayacı, süzgeç). */
-function mfFaaliyetDurumu(t: any) {
+/** Satırın tanım durumu: "tanımlı" = NACE + faaliyet açıklaması + defter türü dolu. Sektör/kurum türü isteğe bağlı (eksikse ipucunda söylenir). */
+function mfTanimDurumu(t: any) {
   const nace = String(t?.naceKodu || '').trim();
   const aciklama = String(t?.faaliyetAciklama || '').trim();
   const sektor = String(t?.sektorEtiketi || '').trim();
   const kurumKodu = String(t?.kurumTuru || '').trim().toLowerCase();
-  const kurumTam = kurumTuruEtiketi(kurumKodu) || '';
-  const kurum = kurumTam ? (MF_KURUM_KISA[kurumKodu] || kurumTam) : '';
+  const kurum = kurumTuruEtiketi(kurumKodu) || '';
   const defter = mfDefterEtiketi(t);
-  const eksik: string[] = [];
-  if (!nace) eksik.push(MF_ALAN_ADI.naceKodu);
-  if (!aciklama) eksik.push(MF_ALAN_ADI.faaliyetAciklama);
-  if (!sektor) eksik.push(MF_ALAN_ADI.sektorEtiketi);
-  if (!kurum) eksik.push(MF_ALAN_ADI.kurumTuru);
-  if (!defter) eksik.push(MF_ALAN_ADI.defterTuru);
-  return { nace, aciklama, sektor, kurumKodu, kurum, kurumTam, defter, eksik, tanimsiz: eksik.length > 0 };
+  const efatura = t?.isEFaturaMukellefi === true;
+  const zorunluEksik: string[] = [];
+  if (!nace) zorunluEksik.push('NACE kodu');
+  if (!aciklama) zorunluEksik.push('faaliyet açıklaması');
+  if (!defter) zorunluEksik.push('defter türü');
+  const istegeBagliEksik: string[] = [];
+  if (!sektor) istegeBagliEksik.push('sektör');
+  if (!kurum) istegeBagliEksik.push('kurum türü');
+  const tanimli = zorunluEksik.length === 0;
+  const ipucu = tanimli
+    ? `Tanımlı — NACE ${nace} · ${aciklama}${sektor ? ` · ${sektor}` : ''}${kurum ? ` · ${kurum}` : ''}${istegeBagliEksik.length ? ` (boş: ${istegeBagliEksik.join(', ')})` : ''}`
+    : `Tanımsız — boş: ${zorunluEksik.join(', ')}`;
+  return { nace, aciklama, sektor, kurumKodu, kurum, defter, efatura, tanimli, zorunluEksik, ipucu };
 }
 
-/** Mükellef kaydından form değerleri (defter türü türetilmiş kodla; kurum türü listede yoksa boş = bilinmiyor). */
+/** Mükellef kaydından form değerleri. */
 function mfFormDegerleri(t: any): MfForm {
   const defter = mfDefterEtiketi(t);
   const kurumKodu = String(t?.kurumTuru || '').trim().toLowerCase();
@@ -3252,42 +3273,32 @@ function mfFormDegerleri(t: any): MfForm {
     sektorEtiketi: String(t?.sektorEtiketi || '').trim(),
     kurumTuru: kurumTuruEtiketi(kurumKodu) ? kurumKodu : '',
     defterTuru: defter === 'İşletme' ? 'ISLETME' : defter === 'Bilanço' ? 'BILANCO' : '',
+    isEFaturaMukellefi: t?.isEFaturaMukellefi === true,
   };
 }
 
-/** Yalnız DEĞİŞEN alanlar (PATCH gövdesi; '' → arka uçta temizle, gönderilmeyen alana dokunulmaz). */
-function mfDegisenAlanlar(ilk: MfForm, son: MfForm): Partial<MfForm> {
-  const out: Partial<MfForm> = {};
-  for (const k of MF_ALANLAR) if (son[k].trim() !== ilk[k].trim()) out[k] = son[k].trim();
+/** Yalnız DEĞİŞEN alanlar (PATCH gövdesi; '' → arka uçta temizle). */
+function mfDegisenAlanlar(ilk: MfForm, son: MfForm): Record<string, string | boolean> {
+  const out: Record<string, string | boolean> = {};
+  for (const k of MF_METIN_ALANLAR) if (son[k].trim() !== ilk[k].trim()) out[k] = son[k].trim();
+  if (son.isEFaturaMukellefi !== ilk.isEFaturaMukellefi) out.isEFaturaMukellefi = son.isEFaturaMukellefi;
   return out;
 }
 
 /** Kaydet öncesi ekran doğrulaması (arka uç zod şemasıyla aynı sınırlar). Hata yoksa null. */
 function mfFormHatasi(f: MfForm): string | null {
   if (f.naceKodu.trim() && !MF_NACE_DESENI.test(f.naceKodu.trim())) return 'NACE kodu 56 · 56.10 · 56.10.06 biçiminde olmalı';
-  if (f.faaliyetAciklama.trim().length > 300) return 'Faaliyet tanımı en fazla 300 karakter';
-  if (f.sektorEtiketi.trim().length > 60) return 'Sektör etiketi en fazla 60 karakter';
+  if (f.faaliyetAciklama.trim().length > 300) return 'Faaliyet açıklaması en fazla 300 karakter';
+  if (f.sektorEtiketi.trim().length > 60) return 'Sektör en fazla 60 karakter';
   return null;
 }
 
-/** NACE yazımını toparla: "561006" → "56.10.06" (noktasız 2/4/6 rakam); noktalı yazım olduğu gibi kalır. */
+/** NACE yazımını toparla: "561006" → "56.10.06". */
 function mfNaceDuzelt(s: string): string {
   const ham = String(s || '').trim();
   const rakam = ham.replace(/\D/g, '');
   if (!ham.includes('.') && (rakam.length === 2 || rakam.length === 4 || rakam.length === 6)) return (rakam.match(/.{2}/g) || []).join('.');
   return ham;
-}
-
-/** AI önerisindeki DOLU alanları formun üstüne yazar (boş öneri alanı mevcut değeri ezmez; defter türü öneriye dahil değil). */
-function mfOneriyiForma(f: MfForm, o: any): MfForm {
-  const kurum = String(o?.kurumTuru || '').trim().toLowerCase();
-  return {
-    naceKodu: o?.naceKodu ? String(o.naceKodu).trim() : f.naceKodu,
-    faaliyetAciklama: o?.faaliyetAciklama ? String(o.faaliyetAciklama).trim() : f.faaliyetAciklama,
-    sektorEtiketi: o?.sektorEtiketi ? String(o.sektorEtiketi).trim() : f.sektorEtiketi,
-    kurumTuru: kurumTuruEtiketi(kurum) ? kurum : f.kurumTuru,
-    defterTuru: f.defterTuru,
-  };
 }
 
 /** Axios/Nest hata metni (Nest 400'de message dizi olabilir). */
@@ -3296,103 +3307,63 @@ function mfHataMetni(e: any): string {
   return Array.isArray(m) ? m.join(' · ') : String(m);
 }
 
-/** Hap grubu seçim — açılır liste YERİNE: tablo kabı kendi içinde kaydığından (overflow) açılır kutu kırpılırdı; işlev görünür kalır. */
-function MfHapSecim({ deger, secenekler, onChange, bosEtiket, disabled }: { deger: string; secenekler: Array<{ v: string; l: string }>; onChange: (v: string) => void; bosEtiket: string; disabled?: boolean }) {
-  const hepsi = [{ v: '', l: bosEtiket }, ...secenekler];
+/** Hap grubu seçim (açılır liste yerine — tablo kabı kaydığından açılır kutu kırpılırdı). */
+function MfHapSecim({ deger, secenekler, onChange, bosEtiket }: { deger: string; secenekler: Array<{ v: string; l: string }>; onChange: (v: string) => void; bosEtiket: string }) {
   return (
-    <div className="mf-haplar">
-      {hepsi.map((o) => (
-        <button key={o.v || '__bos'} type="button" className={`mf-hap-sec${deger === o.v ? ' on' : ''}${o.v ? '' : ' bos'}`} disabled={disabled} onClick={() => onChange(o.v)}>{o.l}</button>
+    <div className="mk-haplar">
+      <button type="button" className={`mk-hap${deger === '' ? ' on' : ''}`} onClick={() => onChange('')}>{bosEtiket}</button>
+      {secenekler.map((o) => (
+        <button key={o.v} type="button" className={`mk-hap${deger === o.v ? ' on' : ''}`} onClick={() => onChange(o.v)}>{o.l}</button>
       ))}
     </div>
   );
 }
 
-/** AI öneri kutusu — satırın altında. "Öneriyi uygula" formu doldurur (KAYDETMEZ; sahip Kaydet'e basar), "Kapat" kutuyu kaldırır. */
-function MfOneriKutusu({ sonuc, yukleniyor, onUygula, onKapat, onYenile }: { sonuc: any; yukleniyor: boolean; onUygula: () => void; onKapat: () => void; onYenile: () => void }) {
-  if (!sonuc?.ok) {
-    return (
-      <div className="mf-oneri hata">
-        <div className="mf-oneri-h"><b>Öneri alınamadı</b><span className="mf-oneri-neden">{String(sonuc?.neden || 'AI yanıt vermedi')}</span></div>
-        <div className="mf-oneri-acts">
-          <button type="button" className="btn sm ghost" disabled={yukleniyor} onClick={onYenile}><Ico html={I.sync} size={12} /> {yukleniyor ? 'Deneniyor…' : 'Yeniden dene'}</button>
-          <button type="button" className="btn sm ghost" onClick={onKapat}>Kapat</button>
-        </div>
-      </div>
-    );
-  }
-  const o = sonuc.oneri || {};
-  const guven = String(o.guven || 'dusuk');
-  const kurum = kurumTuruEtiketi(o.kurumTuru);
-  return (
-    <div className="mf-oneri">
-      <div className="mf-oneri-h">
-        <Ico html={I.spark} size={14} />
-        <b>AI önerisi</b>
-        <span className={`mf-guven ${guven}`} title="AI'nın kendi güven düzeyi: ünvan ve faturalar aynı yönü gösteriyorsa yüksek">{MF_GUVEN_ETIKET[guven] || 'Düşük güven'}</span>
-        <span className="mf-oneri-belge">{Number(sonuc.belgeSayisi || 0)} belge incelendi</span>
-      </div>
-      <div className="mf-oneri-grid">
-        <div className="mf-oneri-f"><small>NACE</small><span>{o.naceKodu ? <><b className="mf-nace">{o.naceKodu}</b>{o.naceAdi ? <em> {o.naceAdi}</em> : null}</> : <i className="mf-bos">—</i>}</span></div>
-        <div className="mf-oneri-f"><small>Faaliyet</small><span>{o.faaliyetAciklama || <i className="mf-bos">—</i>}</span></div>
-        <div className="mf-oneri-f"><small>Sektör</small><span>{o.sektorEtiketi || <i className="mf-bos">—</i>}</span></div>
-        <div className="mf-oneri-f"><small>Kurum türü</small><span>{kurum || <i className="mf-bos">belirsiz — sahip seçer</i>}</span></div>
-      </div>
-      {o.gerekce ? <div className="mf-oneri-gerekce">{o.gerekce}</div> : null}
-      <div className="mf-oneri-acts">
-        <button type="button" className="btn sm primary" onClick={onUygula}><Ico html={I.checkSm} size={12} /> Öneriyi uygula</button>
-        <button type="button" className="btn sm ghost" disabled={yukleniyor} onClick={onYenile}><Ico html={I.sync} size={12} /> {yukleniyor ? 'Öneri alınıyor…' : 'Yeniden öner'}</button>
-        <button type="button" className="btn sm ghost" onClick={onKapat}>Kapat</button>
-        <span className="mf-oneri-not">Uygula → form dolar; Kaydet'e basmadan hiçbir şey yazılmaz.</span>
-      </div>
-    </div>
-  );
-}
-
-/** Satır-içi faaliyet formu (kontrollü; değerler üst bileşende — öneri uygulanınca oradan dolar). Enter = Kaydet, Esc = Vazgeç. */
-function MfFaaliyetForm({ deger, onChange, onKaydet, onVazgec, onOner, kaydediliyor, oneriYukleniyor, degisti }: {
-  deger: MfForm; onChange: (d: MfForm) => void; onKaydet: () => void; onVazgec: () => void; onOner: () => void;
-  kaydediliyor: boolean; oneriYukleniyor: boolean; degisti: boolean;
+/** Satırın altında açılan tanım alanı. */
+function MfTanimAlani({ deger, onChange, onKaydet, onVazgec, kaydediliyor, degisti }: {
+  deger: MfForm; onChange: (d: MfForm) => void; onKaydet: () => void; onVazgec: () => void; kaydediliyor: boolean; degisti: boolean;
 }) {
-  const set = (k: keyof MfForm, v: string) => onChange({ ...deger, [k]: v });
-  const kilit = kaydediliyor;
-  const tusla = (e: KeyboardEvent<HTMLDivElement>) => {
-    if (e.key === 'Escape') { e.preventDefault(); if (!kilit) onVazgec(); return; }
-    if (e.key === 'Enter' && (e.target as HTMLElement)?.tagName === 'INPUT' && degisti && !kilit) { e.preventDefault(); onKaydet(); }
+  const set = (k: keyof MfForm, v: string | boolean) => onChange({ ...deger, [k]: v } as MfForm);
+  const klavye = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') { e.preventDefault(); onVazgec(); }
+    if (e.key === 'Enter' && (e.target as HTMLElement).tagName !== 'TEXTAREA') { e.preventDefault(); onKaydet(); }
   };
   return (
-    <div className="mf-form" onKeyDown={tusla}>
-      <div className="mf-form-grid">
-        <div className="fld mf-fld">
-          <label>NACE kodu</label>
-          <input className="mf-nace-in" value={deger.naceKodu} disabled={kilit} placeholder="56.10.06" maxLength={20} autoFocus
-            onChange={(e) => set('naceKodu', e.target.value)} onBlur={(e) => set('naceKodu', mfNaceDuzelt(e.target.value))} />
-          <small className="mf-hint">2 / 4 / 6 hane: 56 · 56.10 · 56.10.06</small>
+    <div className="mk-tanim" onKeyDown={klavye}>
+      <div className="mk-tanim-grid">
+        <label className="mk-alan">
+          <span className="mk-alan-l">NACE kodu</span>
+          <input value={deger.naceKodu} onChange={(e) => set('naceKodu', e.target.value)} onBlur={(e) => set('naceKodu', mfNaceDuzelt(e.target.value))} placeholder="56.10.06" inputMode="numeric" />
+        </label>
+        <label className="mk-alan mk-alan-genis">
+          <span className="mk-alan-l">Faaliyet açıklaması</span>
+          <input value={deger.faaliyetAciklama} onChange={(e) => set('faaliyetAciklama', e.target.value)} placeholder="ör. Motorlu kara taşıtlarının bakım ve onarımı" maxLength={300} />
+        </label>
+        <label className="mk-alan">
+          <span className="mk-alan-l">Sektör</span>
+          <input value={deger.sektorEtiketi} onChange={(e) => set('sektorEtiketi', e.target.value)} placeholder="ör. oto tamirhane" maxLength={60} />
+        </label>
+        <div className="mk-alan">
+          <span className="mk-alan-l">Defter türü</span>
+          <MfHapSecim deger={deger.defterTuru} secenekler={MF_DEFTER_SECENEKLERI} onChange={(v) => set('defterTuru', v)} bosEtiket="Belirsiz" />
         </div>
-        <div className="fld mf-fld mf-fld-wide">
-          <label>Faaliyet tanımı</label>
-          <input value={deger.faaliyetAciklama} disabled={kilit} maxLength={300} placeholder="ör. yemek üretimi ve satışı" onChange={(e) => set('faaliyetAciklama', e.target.value)} />
-          <small className="mf-hint">serbest metin · {deger.faaliyetAciklama.length}/300</small>
+        <div className="mk-alan">
+          <span className="mk-alan-l">e-Fatura mükellefi mi?</span>
+          <button type="button" className={`mk-switch${deger.isEFaturaMukellefi ? ' on' : ''}`} onClick={() => set('isEFaturaMukellefi', !deger.isEFaturaMukellefi)} aria-pressed={deger.isEFaturaMukellefi}>
+            <span className="mk-switch-k" />
+            <span className="mk-switch-t">{deger.isEFaturaMukellefi ? 'Evet — e-Fatura Sorgu açık, GİB e-Arşiv Sorgu kilitli' : 'Hayır — GİB e-Arşiv Sorgu açık, e-Fatura Sorgu kilitli'}</span>
+          </button>
         </div>
-        <div className="fld mf-fld">
-          <label>Sektör etiketi</label>
-          <input value={deger.sektorEtiketi} disabled={kilit} maxLength={60} placeholder="gıda, inşaat, nakliye…" onChange={(e) => set('sektorEtiketi', e.target.value)} />
-          <small className="mf-hint">tek kelime/ikili · {deger.sektorEtiketi.length}/60</small>
+        <div className="mk-alan mk-alan-genis">
+          <span className="mk-alan-l">Kurum türü <small>(KDV tevkifatı "belirlenmiş alıcı" kuralı için; normal mükellef = Diğer)</small></span>
+          <MfHapSecim deger={deger.kurumTuru} secenekler={MF_KURUM_SECENEKLERI} onChange={(v) => set('kurumTuru', v)} bosEtiket="Bilinmiyor" />
         </div>
       </div>
-      <div className="mf-form-sec">
-        <span className="mf-sec-l">Kurum türü <small>(KDV tevkifatında "belirlenmiş alıcı" ayrımı; bilinmiyor = boş)</small></span>
-        <MfHapSecim deger={deger.kurumTuru} secenekler={MF_KURUM_SECENEKLERI} onChange={(v) => set('kurumTuru', v)} bosEtiket="Bilinmiyor" disabled={kilit} />
-      </div>
-      <div className="mf-form-sec">
-        <span className="mf-sec-l">Defter türü</span>
-        <MfHapSecim deger={deger.defterTuru} secenekler={MF_DEFTER_SECENEKLERI} onChange={(v) => set('defterTuru', v)} bosEtiket="Belirsiz" disabled={kilit} />
-      </div>
-      <div className="mf-form-acts">
-        <button type="button" className="btn sm primary" disabled={kilit || !degisti} onClick={onKaydet}><Ico html={I.checkSm} size={12} /> {kaydediliyor ? 'Kaydediliyor…' : 'Kaydet'}</button>
-        <button type="button" className="btn sm ghost" disabled={kilit} onClick={onVazgec}>Vazgeç</button>
-        <button type="button" className="btn sm ai" disabled={kilit || oneriYukleniyor} onClick={onOner} title="Ünvan + son faturalardan AI tahmini; yazmaz, öneri kutusuna gelir"><Ico html={I.spark} size={12} /> {oneriYukleniyor ? 'Öneri alınıyor…' : 'NACE öner'}</button>
-        <span className="mf-form-not">{degisti ? 'Yalnız değişen alanlar kaydedilir' : 'Değişiklik yok'}</span>
+      <div className="mk-tanim-eylem">
+        <span className="mk-tanim-not">{degisti ? 'Kaydedilmemiş değişiklik var' : 'Değişiklik yok'} · Enter kaydeder, Esc kapatır</span>
+        <div className="sp" />
+        <button type="button" className="btn sm ghost" onClick={onVazgec} disabled={kaydediliyor}>Vazgeç</button>
+        <button type="button" className="btn sm primary" onClick={onKaydet} disabled={kaydediliyor || !degisti}>{kaydediliyor ? 'Kaydediliyor…' : 'Kaydet'}</button>
       </div>
     </div>
   );
@@ -3411,56 +3382,54 @@ function ScreenMukellefler({ taxpayers, period, onOpen }: { taxpayers: any[]; pe
   const rows: any[] = sumQ.data || [];
   const byId = new Map(rows.map((r) => [r.taxpayerId, r]));
   const [q, setQ] = useState('');
-  // PLAN16-F: faaliyet tanımı — TEK açık form (satırın altında), AI önerileri (mükellef id → uç yanıtı),
-  //   "Tanımsız" kart süzgeci, toplu öneri ilerlemesi (sırayla, aynı anda 1 istek) + Durdur bayrağı.
+  const [suzgec, setSuzgec] = useState<MfSuzgec>('tumu');
+  // TEK açık tanım alanı (satırın altında).
   const [form, setForm] = useState<{ id: string; d: MfForm } | null>(null);
-  const [oneriler, setOneriler] = useState<Record<string, any>>({});
-  const [sadeceTanimsiz, setSadeceTanimsiz] = useState(false);
-  const [toplu, setToplu] = useState<{ i: number; n: number; durduruluyor?: boolean } | null>(null);
-  const topluDurdur = useRef(false);
-  useEffect(() => () => { topluDurdur.current = true; }, []); // ekran kapanınca toplu döngü en geç süren istekten sonra durur
   const kaydetMut = useMutation({
-    mutationFn: (v: { id: string; body: Partial<MfForm> }) => api.patch(`/taxpayers/${v.id}/faaliyet`, v.body).then((r) => r.data),
+    mutationFn: (v: { id: string; body: Record<string, string | boolean> }) => api.patch(`/taxpayers/${v.id}/faaliyet`, v.body).then((r) => r.data),
     onSuccess: (r: any, v) => {
       const n = Array.isArray(r?.degisenAlanlar) ? r.degisenAlanlar.length : Object.keys(v.body).length;
-      toast.success(`Faaliyet kaydedildi · ${n} alan güncellendi`);
+      toast.success(`Tanım kaydedildi · ${n} alan güncellendi`);
       setForm((f) => (f && f.id === v.id ? null : f));
-      setOneriler((o) => { if (!(v.id in o)) return o; const k = { ...o }; delete k[v.id]; return k; });
       qc.invalidateQueries({ queryKey: ['fm2', 'taxpayers'] });
     },
     onError: (e: any) => toast.error('Kaydedilemedi: ' + mfHataMetni(e)),
   });
-  const onerMut = useMutation({
-    // Yazmaz; AI (Max) ünvan + son faturalardan tahmin eder. 90 sn üst sınır: toplu döngü asılı kalmasın.
-    mutationFn: (id: string) => api.post(`/taxpayers/${id}/faaliyet-oner`, {}, { timeout: 90_000 }).then((r) => r.data),
-  });
-  const oneriYukleniyorId = onerMut.isPending ? String(onerMut.variables || '') : '';
-  const pendingOf = (s: any) => Number(s.pendingAlis || 0) + Number(s.pendingSatis || 0);
+  const pendingOf = (s: any) => Number(s?.pendingAlis || 0) + Number(s?.pendingSatis || 0);
   const nq = q.trim().toLocaleLowerCase('tr');
-  const list = taxpayers
-    .filter((t) => {
-      const f = mfFaaliyetDurumu(t);
-      if (sadeceTanimsiz && !f.tanimsiz) return false;
-      if (!nq) return true;
-      // Arama: ünvan + VKN + NACE + faaliyet tanımı + sektör + kurum türü etiketi
-      return [taxpayerLabel(t), t.taxNumber, f.nace, f.aciklama, f.sektor, f.kurumTam].some((s) => String(s || '').toLocaleLowerCase('tr').includes(nq));
-    })
-    .map((t) => ({ t, s: byId.get(t.id) || {}, f: mfFaaliyetDurumu(t) }))
+  const hepsi = taxpayers.map((t) => ({ t, s: byId.get(t.id) || {}, f: mfTanimDurumu(t) }));
+  const sayac = {
+    tumu: hepsi.length,
+    tanimsiz: hepsi.filter((x) => !x.f.tanimli).length,
+    bekleyen: hepsi.filter((x) => pendingOf(x.s) > 0).length,
+    sorunlu: hepsi.filter((x) => Number(x.s.hasIssue || 0) > 0).length,
+    efatura: hepsi.filter((x) => x.f.efatura).length,
+    earsiv: hepsi.filter((x) => !x.f.efatura).length,
+    isletme: hepsi.filter((x) => x.f.defter === 'İşletme').length,
+    bilanco: hepsi.filter((x) => x.f.defter === 'Bilanço').length,
+  };
+  const suzgecUyar = (x: { s: any; f: ReturnType<typeof mfTanimDurumu> }): boolean => {
+    switch (suzgec) {
+      case 'tanimsiz': return !x.f.tanimli;
+      case 'bekleyen': return pendingOf(x.s) > 0;
+      case 'sorunlu': return Number(x.s.hasIssue || 0) > 0;
+      case 'efatura': return x.f.efatura;
+      case 'earsiv': return !x.f.efatura;
+      case 'isletme': return x.f.defter === 'İşletme';
+      case 'bilanco': return x.f.defter === 'Bilanço';
+      default: return true;
+    }
+  };
+  const list = hepsi
+    .filter((x) => suzgecUyar(x))
+    .filter((x) => !nq || [taxpayerLabel(x.t), x.t.taxNumber, x.f.nace, x.f.aciklama, x.f.sektor].some((s) => String(s || '').toLocaleLowerCase('tr').includes(nq)))
     .sort((a, b) => taxpayerLabel(a.t).localeCompare(taxpayerLabel(b.t), 'tr'));
-  const tot = rows.reduce((acc, r) => ({
-    pending: acc.pending + pendingOf(r),
-    posted: acc.posted + Number(r.postedToLuca || 0),
-    issue: acc.issue + Number(r.hasIssue || 0),
-    attention: acc.attention + ((pendingOf(r) > 0 || Number(r.hasIssue || 0) > 0) ? 1 : 0),
-  }), { pending: 0, posted: 0, issue: 0, attention: 0 });
-  const tanimsizSayisi = taxpayers.reduce((n, t) => n + (mfFaaliyetDurumu(t).tanimsiz ? 1 : 0), 0);
-  const topluHedefler = list.filter(({ f, t }) => f.tanimsiz && !oneriler[String(t.id)]?.ok).map(({ t }) => String(t.id));
   const formMukellef = form ? taxpayers.find((x) => String(x.id) === String(form.id)) : null;
   const formDegisiklik = form && formMukellef ? mfDegisenAlanlar(mfFormDegerleri(formMukellef), form.d) : {};
   const formDegisti = Object.keys(formDegisiklik).length > 0;
-
-  const formuAc = (t: any) => {
-    if (form && form.id !== t.id && formDegisti) { toast.info('Önce açık formu kaydet ya da vazgeç'); return; }
+  const formuAcKapat = (t: any) => {
+    if (form && form.id === t.id) { if (formDegisti && !confirm('Kaydedilmemiş değişiklik var, kapatılsın mı?')) return; setForm(null); return; }
+    if (form && formDegisti && !confirm('Açık tanımda kaydedilmemiş değişiklik var, vazgeçilsin mi?')) return;
     setForm({ id: t.id, d: mfFormDegerleri(t) });
   };
   const kaydet = () => {
@@ -3470,201 +3439,109 @@ function ScreenMukellefler({ taxpayers, period, onOpen }: { taxpayers: any[]; pe
     if (!formDegisti) { toast.info('Değişiklik yok'); return; }
     kaydetMut.mutate({ id: form.id, body: formDegisiklik });
   };
-  const oner = async (id: string) => {
-    if (onerMut.isPending || toplu) { toast.info(toplu ? 'Toplu öneri sürüyor; bitince ya da durdurunca tekrar dene' : 'Bir öneri isteği sürüyor; bitince tekrar dene'); return; }
-    try {
-      const r = await onerMut.mutateAsync(id);
-      setOneriler((o) => ({ ...o, [id]: r }));
-      if (!r?.ok) toast.error('Öneri alınamadı: ' + String(r?.neden || 'AI yanıt vermedi'));
-    } catch (e: any) {
-      const neden = mfHataMetni(e);
-      setOneriler((o) => ({ ...o, [id]: { ok: false, neden } }));
-      toast.error('Öneri alınamadı: ' + neden);
-    }
-  };
-  const oneriyiUygula = (t: any) => {
-    const sonuc = oneriler[String(t.id)];
-    if (!sonuc?.ok) return;
-    if (form && form.id !== t.id && formDegisti) { toast.info('Önce açık formu kaydet ya da vazgeç'); return; }
-    const taban = form && form.id === t.id ? form.d : mfFormDegerleri(t);
-    setForm({ id: t.id, d: mfOneriyiForma(taban, sonuc.oneri) }); // KAYDETMEZ — sahip Kaydet'e basar
-  };
-  const oneriKapat = (id: string) => setOneriler((o) => { if (!(id in o)) return o; const k = { ...o }; delete k[id]; return k; });
-  const topluOner = async () => {
-    if (toplu || onerMut.isPending) return;
-    const hedefler = topluHedefler;
-    if (!hedefler.length) { toast.info('Görünen listede öneri istenecek tanımsız mükellef yok'); return; }
-    topluDurdur.current = false;
-    setToplu({ i: 0, n: hedefler.length });
-    let hazir = 0, hatali = 0;
-    for (let i = 0; i < hedefler.length; i++) {
-      if (topluDurdur.current) break;
-      const id = hedefler[i];
-      setToplu((x) => ({ i: i + 1, n: hedefler.length, durduruluyor: !!x?.durduruluyor }));
-      try {
-        const r = await onerMut.mutateAsync(id); // SIRAYLA — aynı anda tek istek
-        setOneriler((o) => ({ ...o, [id]: r }));
-        if (r?.ok) hazir++; else hatali++;
-      } catch (e: any) {
-        hatali++;
-        const neden = mfHataMetni(e);
-        setOneriler((o) => ({ ...o, [id]: { ok: false, neden } }));
-      }
-    }
-    const durduruldu = topluDurdur.current;
-    setToplu(null);
-    const ozet = `${hazir} öneri hazır${hatali ? ` · ${hatali} alınamadı` : ''}${durduruldu ? ' · durduruldu' : ''} — her biri satırında onaylanıp ayrı kaydedilir`;
-    if (hatali && !hazir) toast.error('Toplu öneri: ' + ozet, { duration: 7000 });
-    else if (hatali || durduruldu) toast.warning('Toplu öneri: ' + ozet, { duration: 7000 });
-    else toast.success('Toplu öneri bitti: ' + ozet, { duration: 7000 });
-  };
+  const tileler: Array<{ v: MfSuzgec; l: string; c: string }> = [
+    { v: 'tumu', l: 'Tümü', c: 'var(--accent)' },
+    { v: 'tanimsiz', l: 'Tanımsız', c: '#e5484d' },
+    { v: 'bekleyen', l: 'Bekleyen belgesi olan', c: '#2563eb' },
+    { v: 'sorunlu', l: 'Sorunlu', c: '#d97706' },
+    { v: 'efatura', l: 'e-Fatura', c: '#0891b2' },
+    { v: 'earsiv', l: 'GİB e-Arşiv', c: '#b45309' },
+    { v: 'isletme', l: 'İşletme', c: '#15803d' },
+    { v: 'bilanco', l: 'Bilanço', c: '#7c3aed' },
+  ];
 
   return (
     <section className="screen">
-      <div className="mgrid mf-mgrid">
-        <div className="mcard" style={{ ['--mc' as any]: '#2563eb' }}>
-          <div className="mci" style={{ background: '#eff6ff', color: '#2563eb' }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
-          </div>
-          <div className="ml">Bekleyen belge</div><div className="mv">{tot.pending}</div>
-        </div>
-        <div className="mcard" style={{ ['--mc' as any]: '#0d9488' }}>
-          <div className="mci" style={{ background: '#f0fdfa', color: '#0d9488' }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 6 9 17l-5-5"/></svg>
-          </div>
-          <div className="ml">Luca'ya aktarılan</div><div className="mv">{tot.posted}</div>
-        </div>
-        <div className="mcard" style={{ ['--mc' as any]: '#e5484d' }}>
-          <div className="mci" style={{ background: '#fff1f1', color: '#e5484d' }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 9v4m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
-          </div>
-          <div className="ml">Sorunlu (kontrol)</div><div className="mv" style={{ color: tot.issue > 0 ? '#e5484d' : undefined }}>{tot.issue}</div>
-        </div>
-        <div className="mcard" style={{ ['--mc' as any]: '#d97706' }}>
-          <div className="mci" style={{ background: '#fffbeb', color: '#d97706' }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
-          </div>
-          <div className="ml">Dikkat gereken</div><div className="mv" style={{ color: tot.attention > 0 ? '#d97706' : undefined }}>{tot.attention}</div>
-        </div>
-        {/* PLAN16-F — "Tanımsız" sayacı: tıkla → tablo yalnız faaliyeti eksik mükellefleri gösterir (tekrar tıkla → kalkar) */}
-        <button type="button" className={`mcard mf-mcard${sadeceTanimsiz ? ' on' : ''}`} style={{ ['--mc' as any]: '#dc2626' }} onClick={() => setSadeceTanimsiz((v) => !v)}
-          title={sadeceTanimsiz ? 'Süzgeci kaldır — tüm mükellefler' : 'Yalnız faaliyeti tanımsız (NACE / tanım / sektör / kurum türü / defter türü eksik) mükellefleri göster'}>
-          <div className="mci" style={{ background: '#fef2f2', color: '#dc2626' }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v4m0 4h.01"/></svg>
-          </div>
-          <div className="ml">Faaliyeti tanımsız</div><div className="mv" style={{ color: tanimsizSayisi > 0 ? '#dc2626' : undefined }}>{tanimsizSayisi}</div>
-          <small className="mf-mcard-hint">{sadeceTanimsiz ? 'süzgeç açık · tıkla, kaldır' : tanimsizSayisi > 0 ? 'tıkla → yalnız bunlar' : 'hepsi tanımlı'}</small>
-        </button>
+      <div className="mk-tiles">
+        {tileler.map((t) => (
+          <button key={t.v} type="button" className={`ftile mk-tile${suzgec === t.v ? ' on' : ''}`} style={{ ['--tc' as any]: t.c }} onClick={() => setSuzgec(suzgec === t.v && t.v !== 'tumu' ? 'tumu' : t.v)}>
+            <span className="ftdot" />
+            <span className="fttx"><span className="ftn">{sayac[t.v]}</span><span className="ftl">{t.l}</span></span>
+          </button>
+        ))}
       </div>
-      <div className="card">
-        <div className="ch">
-          <h3>{list.length} mükellef <span style={{ fontWeight: 400, color: 'var(--faint)', fontSize: 12 }}>· {periodLabel(period)}</span>
-            {sadeceTanimsiz ? <button type="button" className="mf-filt" onClick={() => setSadeceTanimsiz(false)} title="Süzgeci kaldır">yalnız tanımsız ×</button> : null}
-          </h3>
+      <div className="card mk-card">
+        <div className="ch mk-head">
+          <h3>{list.length} mükellef <span className="mu">· {periodLabel(period)}{suzgec !== 'tumu' ? ` · süzgeç: ${tileler.find((t) => t.v === suzgec)?.l}` : ''}</span></h3>
           <div className="sp" />
-          {/* PLAN16-F — toplu öneri: görünen listedeki tanımsızlar için SIRAYLA (aynı anda 1) faaliyet-oner; ilerleme + Durdur; otomatik kaydetme YOK */}
-          {toplu ? (
-            <>
-              <span className="mf-toplu"><i className="mf-spin" /> {toplu.durduruluyor ? 'Durduruluyor — süren istek bitince durur' : `AI öneri hazırlıyor ${toplu.i}/${toplu.n}`}</span>
-              <button type="button" className="btn sm ghost" disabled={!!toplu.durduruluyor} onClick={() => { topluDurdur.current = true; setToplu((x) => (x ? { ...x, durduruluyor: true } : x)); }}>Durdur</button>
-            </>
-          ) : (
-            <button type="button" className="btn sm ai" disabled={topluHedefler.length === 0 || onerMut.isPending} onClick={topluOner}
-              title="Görünen listedeki tanımsız mükellefler için sırayla AI önerisi ister; sonuçlar satır altında birikir, her biri ayrı ayrı onaylanıp kaydedilir">
-              <Ico html={I.spark} size={12} /> Tümüne NACE öner{topluHedefler.length ? ` (${topluHedefler.length})` : ''}
-            </button>
-          )}
           <div className="mukara">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-            <input placeholder="Mükellef, NACE, faaliyet, sektör ara…" value={q} onChange={(e) => setQ(e.target.value)} />
+            <input placeholder="Mükellef, VKN, NACE, faaliyet ara…" value={q} onChange={(e) => setQ(e.target.value)} />
           </div>
         </div>
-        {/* Tablo kabı kendi içinde kayar (Faaliyet sütunu genişletti) — sayfa yatay kaymaz */}
-        <div className="mf-twrap">
-        <table className="mktbl mf-tbl">
-          <thead>
-            <tr>
-              <th style={{ width: 6 }} />
-              <th>Mükellef</th>
-              <th>Defter</th>
-              <th>Faaliyet</th>
-              <th className="num">Bekleyen</th>
-              <th className="num">Onaylı</th>
-              <th className="num">Luca</th>
-              <th className="num">Sorunlu</th>
-              <th style={{ width: 60 }} />
-            </tr>
-          </thead>
-          <tbody>
-            {list.map(({ t, s, f }) => {
-              const pending = Number(s.pendingAlis || 0) + Number(s.pendingSatis || 0);
-              const issue = Number(s.hasIssue || 0);
-              const posted = Number(s.postedToLuca || 0);
-              const approved = Number(s.approvedAlis || 0) + Number(s.approvedSatis || 0);
-              const rowState = issue > 0 ? 'issue' : pending > 0 ? 'pending' : 'ok';
-              const tid = String(t.id);
-              const acik = !!form && form.id === t.id;
-              const oneri = oneriler[tid];
-              const yukleniyor = oneriYukleniyorId === tid;
-              const altAcik = acik || !!oneri || yukleniyor;
-              return (
-                <Fragment key={t.id}>
-                <tr className={`mktr mktr-${rowState}${altAcik ? ' mf-acik' : ''}`} onClick={() => onOpen(t.id)}>
-                  <td><span className={`mkstatus mkstatus-${rowState}`}>{rowState === 'issue' ? '!' : pending > 0 ? pending : '✓'}</span></td>
-                  <td>
-                    <b className="mkfirma">{taxpayerLabel(t)}</b>
-                    {t.taxNumber ? <small className="mkvkn">VKN {t.taxNumber}</small> : null}
-                  </td>
-                  <td>{f.defter ? <span className="mkdef">{f.defter}</span> : null}</td>
-                  {/* PLAN16-F — FAALİYET: NACE (mono) + kısa tanım; altta haplar sektör · kurum türü · defter; boşsa kırmızı "tanımsız" (başlıkta hangi alanlar boş) */}
-                  <td className="mf-cell">
-                    <div className="mf-top">
-                      {f.nace ? <span className="mf-nace" title="NACE kodu">{f.nace}</span> : null}
-                      {f.aciklama ? <span className="mf-aciklama" title={f.aciklama}>{f.aciklama}</span> : (!f.nace ? <span className="mf-bos">faaliyet tanımı yok</span> : null)}
-                    </div>
-                    <div className="mf-haplar-sm">
-                      {f.sektor ? <span className="mf-hap sektor" title="Sektör etiketi">{f.sektor}</span> : null}
-                      {f.kurum ? <span className="mf-hap kurum" title={`Kurum türü: ${f.kurumTam}`}>{f.kurum}</span> : null}
-                      {f.defter ? <span className="mf-hap defter" title="Defter türü">{f.defter}</span> : null}
-                      {f.tanimsiz ? <button type="button" className="mf-hap eksik" title={`${f.eksik.join(', ')} boş — düzenlemek için tıkla`} onClick={(e) => { e.stopPropagation(); formuAc(t); }}>tanımsız</button> : null}
-                      <button type="button" className={`mf-act${acik ? ' on' : ''}`} onClick={(e) => { e.stopPropagation(); if (acik) setForm(null); else formuAc(t); }} title={acik ? 'Formu kapat' : 'Faaliyet tanımını düzenle (satırın altında açılır)'}><Ico html={I.edit} size={11} /> {acik ? 'Kapat' : 'Düzenle'}</button>
-                      {/* Kısa yol yalnız tanımsız satırda ve henüz öneri kutusu yokken (kutu kendi "Yeniden öner"ini taşır) */}
-                      {f.tanimsiz && !oneri ? <button type="button" className="mf-act ai" disabled={yukleniyor || onerMut.isPending || !!toplu} onClick={(e) => { e.stopPropagation(); oner(tid); }} title="AI ile NACE / faaliyet / sektör / kurum türü önerisi (yazmaz; öneriyi uygula → Kaydet)"><Ico html={I.spark} size={11} /> {yukleniyor ? 'Öneri alınıyor…' : 'NACE öner'}</button> : null}
-                    </div>
-                  </td>
-                  <td className="num">{pending > 0 ? <span className="mknum mknum-pending">{pending}</span> : <span className="faint">—</span>}</td>
-                  <td className="num">{approved > 0 ? <span className="mknum mknum-ok">{approved}</span> : <span className="faint">—</span>}</td>
-                  <td className="num">{posted > 0 ? <span className="mknum mknum-posted">{posted}</span> : <span className="faint">—</span>}</td>
-                  <td className="num">{issue > 0 ? <span className="mknum mknum-issue">{issue}</span> : <span className="faint">—</span>}</td>
-                  <td><button className="mkbtn" onClick={(e) => { e.stopPropagation(); onOpen(t.id); }}>Aç →</button></td>
-                </tr>
-                {/* PLAN16-F — satırın ALTINDA açılan alan (sticky/çekmece YOK): öneri kutusu (varsa) + düzenleme formu (açıksa) */}
-                {altAcik && (
-                  <tr className="mf-row">
-                    <td colSpan={9}>
-                      <div className="mf-panel">
-                        <div className="mf-panel-h">
-                          <b>{taxpayerLabel(t)}</b><span>faaliyet tanımı</span>
-                          {f.tanimsiz ? <span className="mf-hap eksik" title="Boş alanlar">{f.eksik.join(', ')} boş</span> : <span className="mf-hap defter">tanımlı</span>}
-                        </div>
-                        {oneri ? <MfOneriKutusu sonuc={oneri} yukleniyor={yukleniyor} onUygula={() => oneriyiUygula(t)} onKapat={() => oneriKapat(tid)} onYenile={() => oner(tid)} /> : null}
-                        {yukleniyor && !oneri ? <div className="mf-oneri yukleniyor"><i className="mf-spin" /> AI öneri hazırlıyor… (ünvan + son alış/satış faturaları)</div> : null}
-                        {acik && form ? (
-                          <MfFaaliyetForm deger={form.d} onChange={(d) => setForm({ id: t.id, d })} onKaydet={kaydet} onVazgec={() => setForm(null)} onOner={() => oner(tid)}
-                            kaydediliyor={kaydetMut.isPending} oneriYukleniyor={yukleniyor} degisti={formDegisti} />
-                        ) : null}
-                      </div>
-                    </td>
-                  </tr>
-                )}
-                </Fragment>
-              );
-            })}
-            {!sumQ.isLoading && list.length === 0 && (
-              <tr><td colSpan={9}><div className="empty">{sadeceTanimsiz ? (nq ? 'Aramaya uyan tanımsız mükellef yok.' : 'Faaliyeti tanımsız mükellef yok — hepsi tanımlı.') : 'Mükellef bulunamadı.'}</div></td></tr>
-            )}
-          </tbody>
-        </table>
+        <div className="mk-twrap">
+          <table className="mktbl mk-table">
+            <thead>
+              <tr>
+                <th style={{ width: 6 }} />
+                <th>Mükellef</th>
+                <th>Defter</th>
+                <th>Belge yolu</th>
+                <th>Tanım</th>
+                <th className="num">Bekleyen</th>
+                <th className="num">Onaylı</th>
+                <th className="num">Luca</th>
+                <th className="num">Sorunlu</th>
+                <th style={{ width: 150 }} />
+              </tr>
+            </thead>
+            <tbody>
+              {list.map(({ t, s, f }) => {
+                const pending = pendingOf(s);
+                const issue = Number(s.hasIssue || 0);
+                const posted = Number(s.postedToLuca || 0);
+                const approved = Number(s.approvedAlis || 0) + Number(s.approvedSatis || 0);
+                const rowState = issue > 0 ? 'issue' : pending > 0 ? 'pending' : 'ok';
+                const acik = form?.id === t.id;
+                return (
+                  <Fragment key={t.id}>
+                    <tr className={`mktr mktr-${rowState}${acik ? ' mk-acik' : ''}`} onClick={() => onOpen(t.id)}>
+                      <td><span className={`mkstatus mkstatus-${rowState}`}>{rowState === 'issue' ? '!' : pending > 0 ? pending : '✓'}</span></td>
+                      <td>
+                        <b className="mkfirma">{taxpayerLabel(t)}</b>
+                        {t.taxNumber ? <small className="mkvkn">VKN {t.taxNumber}</small> : null}
+                      </td>
+                      <td>{f.defter ? <span className={`mk-pill ${f.defter === 'İşletme' ? 'isl' : 'bil'}`}>{f.defter}</span> : <span className="mk-pill bos">belirsiz</span>}</td>
+                      <td>{f.efatura ? <span className="mk-pill efat" title="e-Fatura mükellefi — faturaları entegratörden (e-Fatura Sorgu) gelir">e-Fatura</span> : <span className="mk-pill earsiv" title="e-Fatura mükellefi değil — satışları GİB e-Arşiv Portal'dan sorgulanır">GİB e-Arşiv</span>}</td>
+                      <td>
+                        {f.tanimli
+                          ? <span className="mk-tanimli ok" title={f.ipucu}><i>✓</i> tanımlı</span>
+                          : <span className="mk-tanimli uyar" title={f.ipucu}><i>!</i> tanımsız</span>}
+                      </td>
+                      <td className="num">{pending > 0 ? <span className="mknum mknum-pending">{pending}</span> : <span className="faint">—</span>}</td>
+                      <td className="num">{approved > 0 ? <span className="mknum mknum-ok">{approved}</span> : <span className="faint">—</span>}</td>
+                      <td className="num">{posted > 0 ? <span className="mknum mknum-posted">{posted}</span> : <span className="faint">—</span>}</td>
+                      <td className="num">{issue > 0 ? <span className="mknum mknum-issue">{issue}</span> : <span className="faint">—</span>}</td>
+                      <td className="mk-eylem" onClick={(e) => e.stopPropagation()}>
+                        <button type="button" className={`mkbtn mk-duzenle${acik ? ' on' : ''}`} onClick={() => formuAcKapat(t)} title={acik ? 'Tanım alanını kapat' : 'Faaliyet / defter / e-Fatura tanımını aç'}>{acik ? 'Kapat ▴' : (f.tanimli ? 'Düzenle' : 'Tanımla')}</button>
+                        <button type="button" className="mkbtn" onClick={() => onOpen(t.id)} title="Bu mükellefin faturalarını aç">Aç →</button>
+                      </td>
+                    </tr>
+                    {acik && form && (
+                      <tr className="mk-formrow" onClick={(e) => e.stopPropagation()}>
+                        <td colSpan={10}>
+                          <MfTanimAlani
+                            deger={form.d}
+                            onChange={(d) => setForm({ id: t.id, d })}
+                            onKaydet={kaydet}
+                            onVazgec={() => setForm(null)}
+                            kaydediliyor={kaydetMut.isPending}
+                            degisti={formDegisti}
+                          />
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
+              {!sumQ.isLoading && list.length === 0 && (
+                <tr><td colSpan={10}><div className="empty">Mükellef bulunamadı{suzgec !== 'tumu' || nq ? <> — <a href="#" onClick={(e) => { e.preventDefault(); setSuzgec('tumu'); setQ(''); }}>süzgeçleri temizle</a></> : null}.</div></td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+        <div className="foot">
+          <div className="selinfo">{sayac.tumu} mükellef · {sayac.tanimsiz} tanımsız · {sayac.efatura} e-Fatura · {sayac.earsiv} GİB e-Arşiv · {sayac.isletme} işletme · {sayac.bilanco} bilanço</div>
         </div>
       </div>
     </section>
@@ -6993,6 +6870,9 @@ const CSS = `
 #fm-root .ncap{font-size:10px;color:var(--faint);font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:14px 10px 6px}
 #fm-root .nitem{display:flex;align-items:center;gap:10px;padding:8px 9px;border-radius:8px;color:#566273;font-weight:700;font-size:13px;cursor:pointer;margin-bottom:3px;transition:background .14s,color .14s,box-shadow .14s}
 #fm-root .nitem:hover{background:#f4f7fb;color:#172033}
+#fm-root .nitem.off{opacity:.42;cursor:not-allowed}
+#fm-root .nitem.off:hover{background:transparent;color:#566273}
+#fm-root .nitem .nlock{margin-left:auto;font-size:11px;opacity:.9}
 #fm-root .nitem > span:first-child{width:29px;height:29px;border-radius:8px;display:grid;place-items:center;color:var(--icc,var(--faint));background:color-mix(in srgb,var(--icc,var(--faint)) 11%,#fff);border:1px solid color-mix(in srgb,var(--icc,var(--faint)) 18%,#fff);transition:color .12s,background .12s,border-color .12s}
 #fm-root .nitem.on > span:first-child{color:#fff;background:var(--accent);border-color:var(--accent);box-shadow:0 7px 16px -11px var(--accent)}
 #fm-root .nitem.on{background:var(--accent-soft);color:var(--accent);box-shadow:inset 3px 0 0 var(--accent),0 8px 18px -18px rgba(91,91,214,.55)}
@@ -8575,97 +8455,51 @@ const CSS = `
 /* Süzgeç boş sonuç bağlantısı */
 #fm-root .gf-table .empty a{color:var(--accent);font-weight:700;text-decoration:underline}
 
-/* === PLAN16-F: MUKELLEF FAALIYETI === */
-/* Sayaç şeridi 5 kart; "Tanımsız" kartı tıklanabilir (kırmızı) — düz gri kutu yok, hover'da kalkma + gölge */
-#fm-root .mgrid.mf-mgrid{grid-template-columns:repeat(5,minmax(0,1fr))}
-#fm-root .mcard.mf-mcard{font-family:inherit;text-align:left;cursor:pointer;width:100%;background:linear-gradient(135deg,#fff5f5,#f8fafc 70%);transition:transform .12s,box-shadow .14s,background .12s}
-#fm-root .mcard.mf-mcard:hover{transform:translateY(-1px);box-shadow:0 10px 20px -14px #dc2626;background:#fff1f1}
-#fm-root .mcard.mf-mcard.on{background:#fef2f2;box-shadow:inset 0 0 0 2px #dc2626}
-#fm-root .mf-mcard-hint{font-size:10px;font-weight:700;color:#b91c1c;opacity:.8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#fm-root .mf-filt{margin-left:8px;height:22px;padding:0 9px;border-radius:999px;border:1px solid #f3c0c0;background:#fdeaea;color:#b91c1c;font-family:inherit;font-size:11px;font-weight:800;cursor:pointer;vertical-align:middle}
-#fm-root .mf-filt:hover{background:#b91c1c;color:#fff;border-color:#b91c1c}
-/* Toplu öneri ilerlemesi (mor AI dili) + dönen halka */
-#fm-root .mf-toplu{display:inline-flex;align-items:center;gap:8px;height:32px;padding:0 12px;border-radius:9px;background:linear-gradient(135deg,#faf7ff,#fff);border:1px solid #e3d4fb;color:#6d28d9;font-size:12px;font-weight:700;white-space:nowrap}
-#fm-root .mf-spin{display:inline-block;width:12px;height:12px;border-radius:50%;border:2px solid #e3d4fb;border-top-color:#7c3aed;animation:fmspin .8s linear infinite;flex-shrink:0}
-/* Tablo kabı: kendi içinde kayar; sayfa yatay kaymaz */
-#fm-root .mf-twrap{overflow:auto}
-#fm-root .mf-tbl{min-width:940px}
-/* Faaliyet hücresi: NACE mono + tanım; altta küçük haplar + görünür eylemler */
-#fm-root .mf-cell{min-width:250px;max-width:360px}
-#fm-root .mf-top{display:flex;align-items:baseline;gap:7px;min-width:0}
-#fm-root .mf-nace{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11.5px;font-weight:700;color:#0f766e;background:#ecf7f5;border:1px solid #bfe6e1;border-radius:6px;padding:1px 6px;white-space:nowrap;letter-spacing:.2px;flex-shrink:0}
-#fm-root .mf-aciklama{font-size:12px;font-weight:600;color:#1f2937;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:280px}
-#fm-root .mf-bos{font-size:11.5px;color:var(--faint);font-style:italic;font-weight:500}
-#fm-root .mf-haplar-sm{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin-top:4px}
-#fm-root .mf-hap{display:inline-flex;align-items:center;height:20px;padding:0 7px;border-radius:999px;font-size:10.5px;font-weight:700;border:1px solid transparent;white-space:nowrap;line-height:1;font-family:inherit}
-#fm-root .mf-hap.sektor{background:#eef2ff;color:#3730a3;border-color:#c7d2fe}
-#fm-root .mf-hap.kurum{background:#fff7ed;color:#9a3412;border-color:#fed7aa}
-#fm-root .mf-hap.defter{background:#e7f4ec;color:#15803d;border-color:#c6e8d0}
-#fm-root .mf-hap.eksik{background:#fdeaea;color:#b91c1c;border-color:#f3c0c0}
-#fm-root .mf-hap.eksik::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor;margin-right:5px}
-#fm-root button.mf-hap.eksik{cursor:pointer;transition:background .12s,color .12s,border-color .12s}
-#fm-root button.mf-hap.eksik:hover{background:#b91c1c;color:#fff;border-color:#b91c1c}
-#fm-root .mf-act{display:inline-flex;align-items:center;gap:4px;height:22px;padding:0 8px;border-radius:7px;border:1px solid var(--line2);background:#fff;color:#34415a;font-family:inherit;font-size:10.5px;font-weight:700;cursor:pointer;white-space:nowrap;line-height:1;transition:background .12s,border-color .12s,color .12s,transform .1s}
-#fm-root .mf-act .ico{display:inline-flex}
-#fm-root .mf-act:hover:not(:disabled){border-color:var(--accent);color:var(--accent);background:var(--accent-soft);transform:translateY(-1px)}
-#fm-root .mf-act.on{background:var(--accent);color:#fff;border-color:var(--accent)}
-#fm-root .mf-act.ai{color:#6d28d9;border-color:#e3d4fb;background:#faf7ff}
-#fm-root .mf-act.ai:hover:not(:disabled){background:#f3e8ff;border-color:#c4b5fd;color:#5b21b6}
-#fm-root .mf-act:disabled{opacity:.55;cursor:wait;transform:none}
-/* Açık satır vurgusu + satır altı panel (gradyan + sağ üst parıltı + sol accent şerit) */
-#fm-root .mktr.mf-acik td{background:color-mix(in srgb,var(--accent) 5%,#fff)}
-#fm-root .mktr.mf-acik td:first-child{border-left-color:var(--accent)}
-#fm-root .mf-row td{padding:0 12px 12px;background:#fbfcfe;border-bottom:1px solid #e7edf3;white-space:normal} /* genel "tbody td nowrap" kuralını kırar: panel metinleri sarılsın */
-#fm-root .mf-panel{position:relative;overflow:hidden;padding:12px 14px 14px 18px;border:1px solid var(--accent-line);border-radius:12px;background:radial-gradient(circle at 100% 0%,color-mix(in srgb,var(--accent) 13%,transparent),transparent 40%),linear-gradient(135deg,color-mix(in srgb,var(--accent) 7%,#fff),#fff 55%);box-shadow:0 14px 28px -24px var(--accent);display:flex;flex-direction:column;gap:2px}
-#fm-root .mf-panel::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:linear-gradient(180deg,var(--accent),#2dd4bf)}
-#fm-root .mf-panel-h{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px}
-#fm-root .mf-panel-h b{color:#0d1626;font-weight:800}
-#fm-root .mf-panel-h > span:not(.mf-hap){font-size:11.5px;color:var(--muted);font-weight:600}
-/* AI öneri kutusu (mor) + güven rozeti */
-#fm-root .mf-oneri{margin-top:10px;padding:10px 12px;border:1px solid #e3d4fb;border-radius:11px;background:radial-gradient(circle at 100% 0%,rgba(124,58,237,.10),transparent 38%),linear-gradient(135deg,#faf7ff,#fff 60%);display:flex;flex-direction:column;gap:8px}
-#fm-root .mf-oneri.hata{border-color:#f3c0c0;background:linear-gradient(135deg,#fff7f7,#fff 60%)}
-#fm-root .mf-oneri.yukleniyor{flex-direction:row;align-items:center;color:#6d28d9;font-size:12px;font-weight:700}
-#fm-root .mf-oneri-h{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12.5px;color:#4c1d95}
-#fm-root .mf-oneri-h .ico{color:#7c3aed}
-#fm-root .mf-oneri-neden{font-size:12px;color:#991b1b;font-weight:600}
-#fm-root .mf-guven{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 9px;border-radius:999px;font-size:11px;font-weight:800;white-space:nowrap;border:1px solid transparent;line-height:1}
-#fm-root .mf-guven::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor}
-#fm-root .mf-guven.yuksek{background:#e7f6ec;color:#15803d;border-color:#bfe5cc}
-#fm-root .mf-guven.orta{background:#fff4e0;color:#b45309;border-color:#f6d7a4}
-#fm-root .mf-guven.dusuk{background:#fdeaea;color:#b91c1c;border-color:#f3c0c0}
-#fm-root .mf-oneri-belge{font-size:11px;color:var(--muted);margin-left:auto;white-space:nowrap}
-#fm-root .mf-oneri-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px 14px}
-#fm-root .mf-oneri-f{display:flex;flex-direction:column;gap:2px;min-width:0}
-#fm-root .mf-oneri-f small{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;color:var(--faint)}
-#fm-root .mf-oneri-f span{font-size:12.5px;font-weight:600;color:var(--text);overflow-wrap:anywhere}
-#fm-root .mf-oneri-f em{font-style:normal;font-weight:500;color:var(--muted)}
-#fm-root .mf-oneri-gerekce{font-size:12px;color:#475569;font-style:italic;line-height:1.45}
-#fm-root .mf-oneri-acts{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-#fm-root .mf-oneri-not{font-size:11px;color:var(--faint)}
-/* Satır-içi form: 3 alan ızgarası + hap seçim grupları + eylem satırı */
-#fm-root .mf-form{margin-top:10px;display:flex;flex-direction:column;gap:10px}
-#fm-root .mf-form-grid{display:grid;grid-template-columns:170px minmax(240px,2fr) minmax(170px,1fr);gap:10px}
-#fm-root .mf-fld .mf-hint{font-size:10.5px;color:var(--faint);font-weight:500}
-#fm-root .mf-fld input:disabled{opacity:.6;background:#f8fafc}
-#fm-root .mf-nace-in{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.4px}
-#fm-root .mf-form-sec{display:flex;flex-direction:column;gap:5px}
-#fm-root .mf-sec-l{font-size:10.5px;color:var(--faint);font-weight:700;text-transform:uppercase;letter-spacing:.3px}
-#fm-root .mf-sec-l small{text-transform:none;letter-spacing:0;font-weight:600;font-size:10.5px}
-#fm-root .mf-haplar{display:flex;flex-wrap:wrap;gap:5px}
-#fm-root .mf-hap-sec{height:26px;padding:0 10px;border-radius:999px;border:1.5px solid var(--line2);background:#fff;color:#34415a;font-family:inherit;font-size:11.5px;font-weight:700;cursor:pointer;line-height:1;white-space:nowrap;transition:background .12s,border-color .12s,color .12s,box-shadow .12s}
-#fm-root .mf-hap-sec:hover:not(:disabled){border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
-#fm-root .mf-hap-sec.on{background:var(--accent);border-color:var(--accent);color:#fff;box-shadow:0 6px 14px -9px var(--accent)}
-#fm-root .mf-hap-sec.bos.on{background:#64748b;border-color:#64748b;box-shadow:none}
-#fm-root .mf-hap-sec:disabled{opacity:.55;cursor:default}
-#fm-root .mf-form-acts{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding-top:8px;border-top:1px dashed var(--accent-line)}
-#fm-root .mf-form-not{font-size:11.5px;color:var(--faint)}
-/* Dar ekran: sayaçlar 3 sütun, form alanları 2 sütun, öneri ızgarası 2 sütun */
-@media(max-width:1180px){
-  #fm-root .mgrid.mf-mgrid{grid-template-columns:repeat(3,minmax(0,1fr))}
-  #fm-root .mf-form-grid{grid-template-columns:1fr 1fr}
-  #fm-root .mf-oneri-grid{grid-template-columns:1fr 1fr}
-}
-
+/* === PLAN16-F2: MUKELLEFLER SADE LISTE + ACILIR TANIM ALANI (kullanıcı kararı 2026-09-12) === */
+#fm-root .mk-tiles{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+#fm-root .mk-tile{min-width:96px;padding:8px 12px 7px 13px;gap:1px}
+#fm-root .mk-tile .ftn{font-size:19px}
+#fm-root .mk-tile .ftl{font-size:11px}
+#fm-root .mk-head h3 .mu{font-weight:400;color:var(--faint);font-size:12px}
+#fm-root .mk-twrap{overflow:auto;max-height:calc(100vh - 300px)}
+#fm-root .mk-table th{white-space:nowrap}
+#fm-root .mk-pill{display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:999px;font-size:10.5px;font-weight:700;white-space:nowrap;border:1px solid transparent}
+#fm-root .mk-pill.isl{background:#ecfdf5;color:#15803d;border-color:#bbf7d0}
+#fm-root .mk-pill.bil{background:#f3f0ff;color:#6d28d9;border-color:#ddd6fe}
+#fm-root .mk-pill.bos{background:#f8fafc;color:#94a3b8;border-color:#e2e8f0}
+#fm-root .mk-pill.efat{background:#ecfeff;color:#0e7490;border-color:#a5f3fc}
+#fm-root .mk-pill.earsiv{background:#fff7ed;color:#b45309;border-color:#fed7aa}
+#fm-root .mk-tanimli{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;white-space:nowrap}
+#fm-root .mk-tanimli i{width:18px;height:18px;border-radius:50%;display:grid;place-items:center;font-size:11px;font-style:normal;font-weight:900;color:#fff}
+#fm-root .mk-tanimli.ok{color:#15803d}#fm-root .mk-tanimli.ok i{background:#16a34a}
+#fm-root .mk-tanimli.uyar{color:#b91c1c}#fm-root .mk-tanimli.uyar i{background:#e5484d;box-shadow:0 0 0 3px #fee2e2}
+#fm-root .mk-eylem{white-space:nowrap;text-align:right}
+#fm-root .mk-eylem .mkbtn{margin-left:6px}
+#fm-root .mkbtn.mk-duzenle.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+#fm-root tr.mk-acik td{background:color-mix(in srgb,var(--accent) 6%,#fff)}
+#fm-root tr.mk-formrow td{padding:0 10px 14px 44px;background:color-mix(in srgb,var(--accent) 6%,#fff);cursor:default}
+#fm-root .mk-tanim{border:1px solid var(--accent-line);border-radius:12px;background:#fff;padding:14px 16px 12px;box-shadow:0 10px 24px -20px var(--accent)}
+#fm-root .mk-tanim-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px 16px}
+#fm-root .mk-alan{display:flex;flex-direction:column;gap:5px;min-width:0}
+#fm-root .mk-alan-genis{grid-column:span 2}
+#fm-root .mk-alan-l{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--muted)}
+#fm-root .mk-alan-l small{text-transform:none;letter-spacing:0;font-weight:600;color:var(--faint)}
+#fm-root .mk-alan input{border:1px solid var(--line2);border-radius:8px;padding:7px 10px;font-size:12.5px;font-weight:600;color:var(--text);background:#fff;min-height:34px;width:100%}
+#fm-root .mk-alan input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+#fm-root .mk-haplar{display:flex;flex-wrap:wrap;gap:5px}
+#fm-root .mk-hap{height:28px;padding:0 10px;border-radius:999px;border:1px solid var(--line2);background:#fff;color:var(--muted);font-size:11.5px;font-weight:700;cursor:pointer}
+#fm-root .mk-hap:hover{border-color:var(--accent);color:var(--accent)}
+#fm-root .mk-hap.on{background:var(--accent);border-color:var(--accent);color:#fff}
+#fm-root .mk-switch{display:inline-flex;align-items:center;gap:9px;border:0;background:transparent;padding:2px 0;cursor:pointer;text-align:left}
+#fm-root .mk-switch-k{width:38px;height:22px;border-radius:999px;background:#cbd5e1;position:relative;flex-shrink:0;transition:background .15s}
+#fm-root .mk-switch-k::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:left .15s}
+#fm-root .mk-switch.on .mk-switch-k{background:var(--accent)}
+#fm-root .mk-switch.on .mk-switch-k::after{left:19px}
+#fm-root .mk-switch-t{font-size:12px;font-weight:600;color:var(--muted)}
+#fm-root .mk-switch.on .mk-switch-t{color:var(--accent)}
+#fm-root .mk-tanim-eylem{display:flex;align-items:center;gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}
+#fm-root .mk-tanim-not{font-size:11px;color:var(--faint);font-weight:600}
+@media (max-width:1100px){#fm-root .mk-tanim-grid{grid-template-columns:repeat(2,minmax(0,1fr))}#fm-root .mk-alan-genis{grid-column:span 2}}
 /* === PLAN16-GH: GERI AL + GECE ANAHTARI === */
 /* §G — Aktarım/Arşivim satırı: etiketli "Geri al" düğmesi (hover'a saklanmaz; amber; Luca'ya gitmişte gradyan) */
 #fm-root .gh-geri{display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 10px;border-radius:8px;border:1px solid #f0d6ad;background:#fbf4e9;color:#a85d08;font-family:inherit;font-size:11.5px;font-weight:800;cursor:pointer;white-space:nowrap;line-height:1;transition:background .12s,border-color .12s,color .12s,transform .1s,box-shadow .12s}

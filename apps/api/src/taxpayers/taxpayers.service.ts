@@ -27,6 +27,7 @@ const FAALIYET_SELECT = {
   defterTuru: true,
   mihsapDefterTuru: true,
   updatedAt: true,
+  isEFaturaMukellefi: true,
 } as const;
 
 type TaxpayerListOptions = {

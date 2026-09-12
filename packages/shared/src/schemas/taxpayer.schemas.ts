@@ -142,6 +142,8 @@ export const TaxpayerFaaliyetSchema = z.object({
     (v) => (typeof v === 'string' ? v.trim().toUpperCase() : v),
     z.enum(DEFTER_TURU_KODLARI).optional().nullable().or(z.literal('')),
   ),
+  // e-Fatura mükellefi mi? (Fatura Merkezi > Mükellefler tanım alanı; sorgu ekranı kilidi buna bakar)
+  isEFaturaMukellefi: z.boolean().optional(),
 }).strict();
 
 export type TaxpayerFaaliyetDto = z.infer<typeof TaxpayerFaaliyetSchema>;

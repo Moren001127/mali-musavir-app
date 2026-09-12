@@ -20,9 +20,10 @@ export type FaaliyetAlanlari = {
   sektorEtiketi?: string | null;
   kurumTuru?: string | null;
   defterTuru?: 'BILANCO' | 'ISLETME' | null;
+  isEFaturaMukellefi?: boolean;
 };
 
-export const FAALIYET_ALANLARI = ['naceKodu', 'faaliyetAciklama', 'sektorEtiketi', 'kurumTuru', 'defterTuru'] as const;
+export const FAALIYET_ALANLARI = ['naceKodu', 'faaliyetAciklama', 'sektorEtiketi', 'kurumTuru', 'defterTuru', 'isEFaturaMukellefi'] as const;
 
 export type FaaliyetDogrulama =
   | { ok: true; data: FaaliyetAlanlari; degisenAlanlar: string[] }
@@ -39,7 +40,7 @@ export function faaliyetPatchDogrula(body: unknown): FaaliyetDogrulama {
   for (const alan of FAALIYET_ALANLARI) {
     const v = (r.data as any)[alan];
     if (v === undefined) continue;
-    (data as any)[alan] = v === '' || v === null ? null : v;
+    (data as any)[alan] = typeof v === 'boolean' ? v : (v === '' || v === null ? null : v);
     degisenAlanlar.push(alan);
   }
   if (!degisenAlanlar.length) {
