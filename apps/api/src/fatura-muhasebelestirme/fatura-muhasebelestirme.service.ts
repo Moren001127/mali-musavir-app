@@ -15639,35 +15639,6 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // Deterministik özet — HER ZAMAN anında hazır (kullanıcı tıkladığı an bunu görür).
     const matrahAccForNeden = matrahLines.length ? { accountCode: String(matrahLines[0].accountCode).trim(), accountName: String(matrahLines[0].description || '').trim() } : null;
     const det = this.buildMuhasebeNeden(tpFaaliyet, isSale, kat, giderTuru, matrahAccForNeden, isReturn);
-    // Hesap atanmamışsa zengin yorum anlamsız → deterministik özet (AI çağırma).
-    if (!hesapStr || !matrahAccForNeden) {
-      // #3 HESAP-UYUMSUZ ama hesap BOŞ: uyum kararı artık hesabı SİLMEZ (PLAN/15 Faz 1, 2026-09-12 — "hesap korunur,
-      //   öneri sunulur"); bu dal yalnız eski (silinmiş) ya da elle boşaltılmış belgede çalışır. AI yeniden çağrılamaz
-      //   (hesap yok) ve deterministik det YANILTICI olur ("olağan satış 600"). Saklı zengin yorumdaki "…hesabına
-      //   işlenmiştir" (ve eski "OTOMATİK HESAP ATANMADI") kapanışını "hesap silinmedi / öneri" diline çevir; yoksa net mesaj üret.
-      if ((ocr as any)?.hesapUyumsuz) {
-        const onerilenBos = String((ocr as any)?.onerilenHesap || '').trim();
-        const secimMetni = onerilenBos ? `önerilen hesap ${onerilenBos} — "Öneriyi uygula" ya da editörde seçin` : 'doğru hesabı editörde seçin';
-        let z = String(ocr.muhasebeNedenZengin || '').trim();
-        if (z) {
-          z = z
-            .replace(/,?\s*[\dA-ZÇĞİÖŞÜ.\s]+hesab[ıi]na işlenmiştir\.?\s*$/i, `; ancak içerik ana faaliyetle uyuşmadığından hesap seçilmedi (uyum kararı hesap silmez) — ${secimMetni}.`)
-            .replace(/işlenmiştir\.?\s*$/i, `için hesap seçilmedi — ${secimMetni}.`)
-            .replace(/OTOMATİK HESAP ATANMADI — doğru gelir hesabını manuel seçin\.?\s*$/, `hesap seçilmedi (uyum kararı hesap silmez) — ${secimMetni}.`)
-            .replace(/için otomatik hesap atanmadı — doğru gelir hesabını seçin\.?\s*$/, `için hesap seçilmedi — ${secimMetni}.`)
-            .trim();
-        } else {
-          z = `Faaliyet: ${tpFaaliyet || 'belirtilmemiş'}\nYorum: Faturanın içeriği mükellefin ana faaliyetiyle uyuşmuyor; uyum kararı hesabı silmez — bu belgede hesap boş: ${secimMetni}.`;
-        }
-        if (z && z !== String(ocr.muhasebeNedenZengin || '')) {
-          await (this.prisma as any).invoiceAccountingDocument
-            .update({ where: { id: doc.id }, data: { ocrData: { ...ocr, muhasebeNedenZengin: z } } }).catch(() => {});
-        }
-        return { ok: true, neden: z, zengin: true, denetim: cachedDenetim };
-      }
-      return { ok: true, neden: det, zengin: false, denetim: cachedDenetim };
-    }
-
     const yonText = isReturn
       ? isSale
         ? 'mükellefin DÜZENLEDİĞİ bir ALIŞTAN İADE (ters kayıt) faturasıdır — daha önce alınan mal geri verilmiştir'
@@ -15688,6 +15659,63 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       ? [...planKodlari].filter((c) => oneriYonRe.test(c) && planYaprakMi(c)).sort().slice(0, 80).map((c) => `${c} = ${planOnbellek?.names?.get(c) || ''}`.trim())
       : [];
     const mevcutMatrahKodlari = new Set<string>(matrahLines.map((l: any) => String(l.accountCode || '').trim()).filter(Boolean));
+
+    // Hesap atanmamışsa zengin yorum anlamsız → deterministik özet (AI çağırma).
+    if (!hesapStr || !matrahAccForNeden) {
+      // #3 HESAP-UYUMSUZ ama hesap BOŞ: uyum kararı artık hesabı SİLMEZ (PLAN/15 Faz 1, 2026-09-12 — "hesap korunur,
+      //   öneri sunulur"); bu dal yalnız eski (silinmiş) ya da elle boşaltılmış belgede çalışır. AI yeniden çağrılamaz
+      //   (hesap yok) ve deterministik det YANILTICI olur ("olağan satış 600"). Saklı zengin yorumdaki "…hesabına
+      //   işlenmiştir" (ve eski "OTOMATİK HESAP ATANMADI") kapanışını "hesap silinmedi / öneri" diline çevir; yoksa net mesaj üret.
+      if ((ocr as any)?.hesapUyumsuz) {
+        let onerilenBos = String((ocr as any)?.onerilenHesap || '').trim();
+        let oneriUretildi = false;
+        // ESKİ (silinmiş) belge için öneri üret (2026-09-12): hesap boş olduğundan zengin yorum promptu çalışamaz; ama plan
+        //   adayları varsa yalnız ONERILEN_HESAP isteyen kısa bir Haiku çağrısı yapılır → 'Öneriyi uygula' düğmesi çıkar.
+        if (!onerilenBos && oneriAdaylari.length) {
+          const oneriPrompt = [
+            'Sen deneyimli bir Türk mali müşavirisin. Aşağıdaki fatura için mükellefin hesap planı ADAYLARINDAN en uygun TEK matrah hesabını seç.',
+            `Mükellefin işi: ${tpFaaliyet || 'belirtilmemiş'}.`,
+            `Bu fatura ${yonText}.`,
+            kalemStr ? `Faturadaki kalemler: ${kalemStr}.` : `Faturanın içeriği: ${giderTuru || kat || 'belirsiz'}.`,
+            'ADAYLAR (kod = ad):', ...oneriAdaylari,
+            'ÇIKTI — TAM OLARAK tek satır, başka hiçbir şey yazma: ONERILEN_HESAP: <listedeki tek kod ya da YOK>',
+          ].join('\n');
+          const oRes = await claudeTextViaMax({ prompt: oneriPrompt, timeoutMs: 30000, model: MAX_MODEL_CHEAP }).catch(() => null);
+          const oM = oRes && oRes.ok && oRes.text ? String(oRes.text).match(/ONERILEN_HESAP\s*:?\s*([0-9][0-9.]*|YOK)/i) : null;
+          const oKod = oM && !/^YOK$/i.test(oM[1]) ? String(oM[1]).trim() : '';
+          if (oKod && planYaprakMi(oKod) && oneriYonRe.test(oKod)) {
+            onerilenBos = oKod;
+            (ocr as any).onerilenHesap = oKod;
+            (ocr as any).hesapUyumNot = `Fatura içeriği ana faaliyet/hesapla uyuşmuyor — hesap boş; önerilen hesap ${oKod} ("Öneriyi uygula" ya da editörde seçin).`;
+            await (this.prisma as any).invoiceAccountingDocument
+              .update({ where: { id: doc.id }, data: { ocrData: { ...ocr } } }).catch(() => {});
+            oneriUretildi = true; // uyarı yenileme en sonda (zengin metin yazıldıktan sonra) — stale ocr ile uyarilar ezilmesin
+            this.logger.log(`[UYUM-ONERI] ${doc.belgeNo || doc.id}: boş matrah için öneri ${oKod}`);
+          }
+        }
+        const secimMetni = onerilenBos ? `önerilen hesap ${onerilenBos} — "Öneriyi uygula" ya da editörde seçin` : 'doğru hesabı editörde seçin';
+        let z = String(ocr.muhasebeNedenZengin || '').trim();
+        if (z) {
+          z = z
+            .replace(/,?\s*[\dA-ZÇĞİÖŞÜ.\s]+hesab[ıi]na işlenmiştir\.?\s*$/i, `; ancak içerik ana faaliyetle uyuşmadığından hesap seçilmedi (uyum kararı hesap silmez) — ${secimMetni}.`)
+            .replace(/işlenmiştir\.?\s*$/i, `için hesap seçilmedi — ${secimMetni}.`)
+            .replace(/OTOMATİK HESAP ATANMADI — doğru gelir hesabını manuel seçin\.?\s*$/, `hesap seçilmedi (uyum kararı hesap silmez) — ${secimMetni}.`)
+            .replace(/için otomatik hesap atanmadı — doğru gelir hesabını seçin\.?\s*$/, `için hesap seçilmedi — ${secimMetni}.`)
+            .replace(/otomatik (gelir )?hesab[ıi] atanmadı — doğru hesabı manuel seçin\.?\s*$/i, `hesap seçilmedi (uyum kararı hesap silmez) — ${secimMetni}.`)
+            .trim();
+        } else {
+          z = `Faaliyet: ${tpFaaliyet || 'belirtilmemiş'}\nYorum: Faturanın içeriği mükellefin ana faaliyetiyle uyuşmuyor; uyum kararı hesabı silmez — bu belgede hesap boş: ${secimMetni}.`;
+        }
+        if (z && z !== String(ocr.muhasebeNedenZengin || '')) {
+          await (this.prisma as any).invoiceAccountingDocument
+            .update({ where: { id: doc.id }, data: { ocrData: { ...ocr, muhasebeNedenZengin: z } } }).catch(() => {});
+        }
+        if (oneriUretildi) await this.revalidateDocument(tenantId, doc.id).catch(() => null); // ICERIK_HESAP_UYUMSUZ uyarısına "Öneriyi uygula" eklensin
+        return { ok: true, neden: z, zengin: true, denetim: cachedDenetim };
+      }
+      return { ok: true, neden: det, zengin: false, denetim: cachedDenetim };
+    }
+
 
     const prompt = [
       'Sen deneyimli bir Türk mali müşavirisin. Aşağıdaki fatura için KISA, AKICI ve DOĞAL Türkçe ile bir muhasebe değerlendirmesi yaz.',
