@@ -6334,13 +6334,13 @@ function smoothLine(pts: { x: number; y: number }[]) {
 //   WhatsApp sekmesi YOK (kullanıcı kararı). Üst çubuktaki DÖNEM ve MÜKELLEF bu ekranda GEÇMEZ (karar 2026-09-12):
 //   sisteme giren bütün belgeler geliş zamanına göre yeniden eskiye; mükellef yalnız isteğe bağlı YEREL süzgeç.
 //   Sadeleştirme 2026-09-12: sayaç kartları, kaynak süzgeci, tarih alanları, kırmızı "akış durmuş" kartı KALDIRILDI.
-type AkSekme = 'yuklenen' | 'entegrator' | 'gib' | 'silinen';
+// Kullanıcı kararı (2026-09-12): kaynak sekmeleri (Yüklenen/Entegratör/GİB) KALKTI — tüm belgeler tek listede,
+//   kaynak zaten Belge sütununda rozet. Yalnız 'tumu' ve 'silinen' (denetim izi) kaldı.
+type AkSekme = 'tumu' | 'silinen';
 const AK_LIMIT = 50;
 const AK_SEKMELER: Array<{ v: AkSekme; l: string; t: string }> = [
-  { v: 'yuklenen', l: 'Yüklenen', t: 'Elle / mobil yüklenen belgeler (entegratör ve GİB dışındaki her kaynak)' },
-  { v: 'entegrator', l: 'Entegratörden gelen', t: 'TÜRMOB · Turkcell · Paraşüt · eLogo · Mihsap vb. entegratör çekimleri' },
-  { v: 'gib', l: "GİB'den gelen", t: 'GİB e-Arşiv / e-Fatura portal sorgularından gelen belgeler' },
-  { v: 'silinen', l: 'Silinen', t: 'Silinmiş belgeler (denetim izi): kim, ne zaman, eski durumu' },
+  { v: 'tumu', l: 'Tüm belgeler', t: 'Sisteme giren bütün belgeler — yükleme, entegratör, GİB (kaynak satırda rozet)' },
+  { v: 'silinen', l: 'Silinenler', t: 'Silinmiş belgeler (denetim izi): kim, ne zaman, eski durumu' },
 ];
 /** Durum hapı renkleri — okunuyor cyan · okundu gri-mavi · karar bekliyor mor · onaylı yeşil · Luca'da koyu yeşil ·
  *  hata kırmızı · iptal gri · silindi gri-kırmızı. */
@@ -6426,7 +6426,7 @@ function akOkunabilir(r: any): boolean {
 // Üst çubuktaki taxpayerId prop'u bu ekranda BİLEREK kullanılmaz (karar 2026-09-12): ekran ofis geneli; mükellef yerel süzgeç.
 function ScreenAkis({ taxpayers, onOpenMuhasebe }: { taxpayerId: string; taxpayers: any[]; onOpenMuhasebe: (id: string, taxpayerId?: string, donem?: string) => void }) {
   const qc = useQueryClient();
-  const [sekme, setSekme] = useState<AkSekme>('yuklenen');
+  const [sekme, setSekme] = useState<AkSekme>('tumu');
   // Mükellef süzgeci YEREL ve isteğe bağlı: araç çubuğundaki seçici ya da "akış durmuş" listesinden tıklama doldurur; üst çubuğu değiştirmez.
   const [tp, setTp] = useState('');
   const [yon, setYon] = useState<'' | 'ALIS' | 'SATIS'>('');
@@ -6525,7 +6525,7 @@ function ScreenAkis({ taxpayers, onOpenMuhasebe }: { taxpayerId: string; taxpaye
   const toggleAll = () => setSel(allSelected ? new Set() : new Set(secilebilir.map((r) => r.id)));
   const suzgecTemizle = () => { setTp(''); setYon(''); setDurum(''); setZaman('30'); setQ(''); setQD(''); };
   // Sayaç çipi tıklaması: durum süzgeci (tekrar tıkla kalkar). Silinen sekmesinde durum süzgeci geçmediğinden Yüklenen'e dönülür.
-  const durumTikla = (v: string) => { if (silinen) setSekme('yuklenen'); setDurum((d) => (d === v ? '' : v)); };
+  const durumTikla = (v: string) => { if (silinen) setSekme('tumu'); setDurum((d) => (d === v ? '' : v)); };
   const sayacCipler: Array<{ v: string; l: string; n: number; cls: string; t: string }> = [
     { v: 'okunuyor', l: 'okunuyor', n: Number(sayac.okunuyor) || 0, cls: 'cyan', t: 'OCR / AI okuması süren belgeler — tıkla: durum süzgeci' },
     { v: 'karar_bekliyor', l: 'karar bekleyen', n: Number(sayac.kararBekleyen) || 0, cls: 'mor', t: 'Demirbaş / mükerrer / tevkifat eksik / alıcı tipi / engel — sahip kararı bekliyor — tıkla: durum süzgeci' },

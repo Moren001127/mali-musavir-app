@@ -18,7 +18,7 @@ import {
   sekmeKaynagi, sekmeWhere, uyariOzetListesi,
 } from './belge-akisi-kurallari';
 
-const SEKMELER: AkisSekme[] = ['yuklenen', 'entegrator', 'gib', 'silinen'];
+const SEKMELER: AkisSekme[] = ['tumu', 'yuklenen', 'entegrator', 'gib', 'silinen'];
 const DURUMLAR: AkisDurum[] = ['iptal', 'hata', 'okunuyor', 'lucada', 'onayli', 'karar_bekliyor', 'okundu'];
 const AKIS_DURMUS_GUN = 30;
 const AKIS_DURMUS_TAVAN = 100;
@@ -48,7 +48,7 @@ export class BelgeAkisiService {
   ) {}
 
   async akis(tenantId: string, q: AkisSorgu) {
-    const sekme = (SEKMELER.includes(String(q.sekme || '') as AkisSekme) ? String(q.sekme) : 'yuklenen') as AkisSekme;
+    const sekme = (SEKMELER.includes(String(q.sekme || '') as AkisSekme) ? String(q.sekme) : 'tumu') as AkisSekme; // varsayılan: tüm kaynaklar (kullanıcı kararı 2026-09-12)
     const taxpayerId = String(q.taxpayerId || '').trim() || undefined;
     const sayfa = Math.max(1, parseInt(String(q.page || '1'), 10) || 1);
     const limit = Math.min(200, Math.max(1, parseInt(String(q.limit || '50'), 10) || 50));

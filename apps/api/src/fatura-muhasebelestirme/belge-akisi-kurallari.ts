@@ -142,7 +142,8 @@ export const KARAR_SQL_KOSULU = `(
 // SEKME / KAYNAK EŞLEMESİ
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type AkisSekme = 'yuklenen' | 'entegrator' | 'gib' | 'silinen';
+// 'tumu' = kaynak ayrımı YOK (kullanıcı kararı 2026-09-12: kaynak sekmeleri kalktı; kaynak satırda rozet olarak görünür).
+export type AkisSekme = 'tumu' | 'yuklenen' | 'entegrator' | 'gib' | 'silinen';
 
 export const ENTEGRATOR_PREFIXLER = ['integration-', 'efatura-'];
 export const ENTEGRATOR_KAYNAKLAR = ['mihsap', 'efatura-inbox'];
@@ -209,7 +210,7 @@ const GIB_WHERE = {
 export function sekmeWhere(sekme: AkisSekme): any {
   if (sekme === 'entegrator') return ENTEGRATOR_WHERE;
   if (sekme === 'gib') return GIB_WHERE;
-  if (sekme === 'silinen') return {};
+  if (sekme === 'silinen' || sekme === 'tumu') return {};
   return { NOT: [ENTEGRATOR_WHERE, GIB_WHERE] };
 }
 
