@@ -84,6 +84,7 @@ export class ToolExecutorService {
         case 'get_gelir_tablosu':   return this.getGelirTablosu(input, ctx);
         case 'get_bilanco':         return this.getBilanco(input, ctx);
         case 'get_kdv_summary':     return this.getKdvSummary(input, ctx);
+        case 'get_kdv1_on_hazirlik': return this.getKdv1OnHazirlik(input, ctx);
         case 'list_tax_payable':    return this.getTaxPayableList(input, ctx);
         case 'list_kdv_payable':    return this.getTaxPayableList({ ...input, beyanTipi: input?.beyanTipi || 'KDV' }, ctx);
         case 'list_invoices':       return this.listInvoices(input, ctx);
@@ -1358,6 +1359,171 @@ export class ToolExecutorService {
       aktifSeanslar: liveSummary,
       arsivlenenlerden: outputSummary,
     };
+  }
+
+  /**
+   * KDV1 BEYANNAME ÖN HAZIRLIĞI — KdvBeyannameService.kdv1OnHazirlik'in ajan/bot için sadeleştirilmiş hali.
+   * Portaldaki KDV Beyanname sayfasıyla AYNI hesap: tek kaynak KDV Kontrol (Luca-mutabık), devreden önceki
+   * ayın GERÇEK beyannamesinden (computePrevDevreden). Beyanname ajanı devredeni list_beyan_kayitlari'ndan
+   * tahmin ediyordu (pilot koşu bulgusu) — bu araç gerçek paketi verir.
+   * KDV Kontrol oturumu yoksa ok:false — ham listeden rakam üretilmez (kurallar.md: uydurma yok).
+   * Servis dinamik çözülür (getGundem ile aynı desen): moren-ai jest koşuları xlsx/pdf-parse zincirini yüklemesin.
+   */
+  private async getKdv1OnHazirlik(input: any, ctx: { tenantId: string; taxpayerId?: string | null }) {
+    const taxpayerId = String(input?.taxpayerId || input?.mukellefId || ctx.taxpayerId || '').trim();
+    const donem = this.normalizeDonemYYYYMM(input?.donem || input?.period);
+    if (!taxpayerId) return { ok: false, error: 'taxpayerId gerekli (list_taxpayers ile bul).' };
+    if (!donem) return { ok: false, error: 'donem YYYY-MM biçiminde olmalı (örn. 2026-08).' };
+
+    let svc: any = null;
+    try {
+      const { KdvBeyannameService } = await import('../kdv-beyanname/kdv-beyanname.service');
+      svc = this.moduleRef?.get?.(KdvBeyannameService, { strict: false });
+    } catch (e: any) {
+      this.logger.warn(`KdvBeyannameService çözülemedi: ${e?.message || e}`);
+    }
+    if (!svc?.kdv1OnHazirlik) return { ok: false, error: 'KDV Beyanname servisi kullanılamıyor.' };
+
+    const oh: any = await svc.kdv1OnHazirlik({ tenantId: ctx.tenantId, mukellefId: taxpayerId, donem, computePrevDevreden: true });
+    const eksik: any[] = Array.isArray(oh?.eksikVeriler) ? oh.eksikVeriler : [];
+
+    // "KDV Kontrol verisi bulunamadı" — servis her taraf (SATIS/ALIS) için kritik kdv_kontrol kaydı üretir.
+    const kontrolYok = (taraf: 'SATIS' | 'ALIS') =>
+      eksik.some(
+        (e) => e.tur === 'kdv_kontrol' && e.seviye === 'kritik' && e.taraf === taraf && /KDV Kontrol verisi bulunamad/i.test(String(e.mesaj || '')),
+      );
+    const satisKontrolYok = kontrolYok('SATIS');
+    const alisKontrolYok = kontrolYok('ALIS');
+    const kdvKontrolVar = !(satisKontrolYok && alisKontrolYok);
+
+    const DEVREDEN_KAYNAK: Record<string, string> = {
+      manuel: 'Bu dönem için elle girilen devreden tutarı.',
+      beyanname_pdf: 'Önceki ayın GİB KDV1 beyannamesindeki "Sonraki Döneme Devreden" (resmî kaynak).',
+      beyan_durumu: 'Önceki dönem beyan durumuna aktarılan "sonraki aya devreden" tutarı.',
+      hesaplanan: 'Önceki dönemin KDV Kontrol verisinden hesaplandı (beyanname PDF bulunamadı) — sahibe teyit ettir.',
+      beyan_kaydi: 'Önceki dönem beyan kaydının notundan okundu.',
+      luca_mizan: 'Luca mizan 190 Devreden KDV bakiyesi.',
+      yok: 'Önceki dönem devreden kaydı bulunamadı; 0 kabul edildi — sahibe sor, tahmin etme.',
+    };
+    const devreden = {
+      tutar: this.toNum(oh?.devreden?.tutar),
+      kaynak: oh?.devreden?.kaynak || 'yok',
+      sonKayitDonem: oh?.devreden?.sonKayitDonem ?? null,
+      kaynakAciklama: DEVREDEN_KAYNAK[String(oh?.devreden?.kaynak || 'yok')] || '',
+    };
+
+    const uyarilar: string[] = [];
+    const uyariEkle = (s: any) => {
+      const t = String(s || '').trim();
+      if (t && !uyarilar.includes(t) && uyarilar.length < 25) uyarilar.push(t);
+    };
+    for (const e of eksik) if (e.seviye === 'kritik' || e.seviye === 'uyari') uyariEkle(`[${e.taraf || 'GENEL'}] ${e.mesaj}`);
+    for (const u of oh?.lucaKontrol?.uyarilar || []) uyariEkle(`[LUCA] ${u}`);
+    for (const u of oh?.kaliteRapor?.uyarilar || []) uyariEkle(`[KALİTE] ${u}`);
+
+    const eksikVeriler = eksik.slice(0, 40).map((e) => ({
+      tur: e.tur,
+      seviye: e.seviye,
+      taraf: e.taraf || 'GENEL',
+      belgeNo: e.belgeNo ?? null,
+      mesaj: e.mesaj,
+      aksiyon: e.aksiyon ?? null,
+    }));
+    const kritikAdet = eksik.filter((e) => e.seviye === 'kritik').length;
+
+    if (!kdvKontrolVar) {
+      return {
+        ok: false,
+        error: 'KDV Kontrol oturumu yok',
+        donem,
+        mukellefId: oh?.mukellefId || taxpayerId,
+        mukellefAd: oh?.mukellefAd || null,
+        kdvKontrolVar: false,
+        devreden,
+        eksikVeriler,
+        eksikVeriAdet: eksik.length,
+        uyarilar,
+        aciklama:
+          `Bu dönem (${donem}) KDV Kontrol'den geçmemiş; beyan rakamı ÜRETİLMEZ. ` +
+          'Önce KDV Kontrol oturumu açılmalı (fatura görselleri OCR + Luca eşleştirme). Rapor: "hazır değil — KDV Kontrol yok".',
+      };
+    }
+
+    const oranSatir = (o: any) => ({
+      oran: this.toNum(o?.oran),
+      matrah: this.toNum(o?.matrah),
+      kdv: this.toNum(o?.kdv),
+      adet: this.toNum(o?.adet),
+    });
+    const lk = oh?.lucaKontrol || {};
+    const hazirMi = kritikAdet === 0 && oh?.veriGuveni?.seviye === 'kesin';
+
+    return {
+      ok: true,
+      donem,
+      mukellefId: oh?.mukellefId || taxpayerId,
+      mukellefAd: oh?.mukellefAd || null,
+      kdvKontrolVar: true,
+      hazirMi,
+      sonuc: {
+        matrah: this.toNum(oh?.satis?.toplamMatrah),
+        hesaplananKdv: this.toNum(oh?.sonuc?.hesaplananKdv),
+        indirilecekKdv: this.toNum(oh?.sonuc?.indirilecekKdv),
+        devredenKdv: this.toNum(oh?.sonuc?.devredenKdv),
+        odenecekKdv: this.toNum(oh?.sonuc?.odenecekKdv),
+        sonrakiAyaDevreden: this.toNum(oh?.sonuc?.sonrakiAyaDevreden),
+      },
+      satis: {
+        toplamMatrah: this.toNum(oh?.satis?.toplamMatrah),
+        toplamHesaplananKdv: this.toNum(oh?.satis?.toplamHesaplananKdv),
+        faturaAdet: this.toNum(oh?.satis?.faturaAdet),
+        oranlar: (oh?.satis?.oranlar || []).map(oranSatir),
+        oranBelirsizKdv: this.toNum(oh?.satis?.oranBelirsizKdv),
+        oranBelirsizAdet: this.toNum(oh?.satis?.oranBelirsizAdet),
+        kdvKontrolVar: !satisKontrolYok,
+      },
+      alis: {
+        toplamMatrah: this.toNum(oh?.alis?.toplamMatrah),
+        toplamIndirilecekKdv: this.toNum(oh?.alis?.toplamIndirilecekKdv),
+        faturaAdet: this.toNum(oh?.alis?.faturaAdet),
+        oranlar: (oh?.alis?.oranlar || []).map(oranSatir),
+        tevkifatsiz: oh?.alis?.tevkifatsiz || null,
+        tevkifatli: oh?.alis?.tevkifatli || null,
+        oranBelirsizKdv: this.toNum(oh?.alis?.oranBelirsizKdv),
+        oranBelirsizAdet: this.toNum(oh?.alis?.oranBelirsizAdet),
+        kdvKontrolVar: !alisKontrolYok,
+      },
+      devreden,
+      lucaKontrol: {
+        mizanVar: !!lk.mizanVar,
+        luca391Bakiye: lk.luca391Bakiye ?? null,
+        luca191Bakiye: lk.luca191Bakiye ?? null,
+        luca190Bakiye: lk.luca190Bakiye ?? null,
+        fark391: lk.fark391 ?? null,
+        fark191: lk.fark191 ?? null,
+        cekildiAt: lk.cekildiAt ?? null,
+        uyarilar: lk.uyarilar || [],
+      },
+      isletmeGelirGider: oh?.isletmeGelirGider ?? null,
+      veriGuveni: oh?.veriGuveni ?? null,
+      eksikVeriler,
+      eksikVeriAdet: eksik.length,
+      uyarilar,
+      aciklama:
+        'Rakamlar KDV Kontrol (Luca-mutabık) verisidir; ham fatura listesi değildir. ' +
+        'Tahakkuk fişi: 391 borç=hesaplananKdv, 191 alacak=indirilecekKdv; odenecekKdv>0 → 360, değilse sonrakiAyaDevreden → 190. ' +
+        'sonuc.matrah 0 ise oran satırlarından matrah okunmamıştır (ofis kuralı: oran + KDV tutarı yeter). ' +
+        (hazirMi ? 'Veri güveni kesin, kritik uyarı yok.' : 'Kritik/uyarı var veya veri güveni kesin değil — "hazır" deme, uyarıları rapora yaz.'),
+    };
+  }
+
+  /** "2026-08" | "2026/08" | "2026-8" → "2026-08"; geçersizse null. */
+  private normalizeDonemYYYYMM(v: any): string | null {
+    const m = /^(\d{4})[-/.](\d{1,2})$/.exec(String(v || '').trim());
+    if (!m) return null;
+    const ay = Number(m[2]);
+    if (ay < 1 || ay > 12) return null;
+    return `${m[1]}-${String(ay).padStart(2, '0')}`;
   }
 
   // ------------------------------------------------------------

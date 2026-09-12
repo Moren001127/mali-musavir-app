@@ -77,7 +77,7 @@ export const AJAN_TANIMLARI: AjanTanimi[] = [
       ...EKIP_ONAY,
       'get_operation_briefing', 'get_tax_calendar', 'get_beyanname_readiness_summary', 'get_collection_risk_summary',
       'get_gundem', 'list_pending_decisions', 'list_tasks', 'get_agent_status', 'get_system_health', 'get_ai_cost_summary',
-      'list_beyan_kayitlari', 'get_beyan_ozet', 'get_luca_agent_jobs', 'get_mihsap_agent_jobs', 'get_portal_capability_map',
+      'list_beyan_kayitlari', 'get_beyan_ozet', 'get_kdv1_on_hazirlik', 'get_luca_agent_jobs', 'get_mihsap_agent_jobs', 'get_portal_capability_map',
       'search_ai_memory', 'save_ai_memory', ...ONAY, 'create_pending_action',
     ],
     onayNoktalari: ['Sahibe giden özet dışında dışarıya mesaj', 'Bir ajanı canlı (kuru test dışı) çalıştırma'],
@@ -137,7 +137,7 @@ export const AJAN_TANIMLARI: AjanTanimi[] = [
       'GİB gönderimi ASLA yapmaz.',
     model: 'opus',
     araclar: [
-      ...MUKELLEF_OKU, ...HAFIZA, ...MALI_OKU, 'get_kdv_summary', 'list_tax_payable', 'list_beyan_kayitlari', 'get_beyan_ozet',
+      ...MUKELLEF_OKU, ...HAFIZA, ...MALI_OKU, 'get_kdv_summary', 'get_kdv1_on_hazirlik', 'list_tax_payable', 'list_beyan_kayitlari', 'get_beyan_ozet',
       'get_beyanname_config', 'get_beyanname_readiness_summary', 'get_tax_calendar', 'fetch_kdv_from_luca', 'get_isletme_hesap_ozeti',
       ...LUCA_OKU, ...LUCA_YAZ, 'luca_kural_kaydet', 'set_monthly_status', 'create_pending_action', ...ONAY,
     ],
@@ -196,7 +196,7 @@ export const AJAN_TANIMLARI: AjanTanimi[] = [
       'Uyarı raporu üretir.',
     model: 'opus',
     araclar: [
-      ...MUKELLEF_OKU, ...HAFIZA, ...MALI_OKU, 'get_kdv_summary', 'list_edefter_sessions', 'list_beyan_kayitlari', 'get_beyan_ozet',
+      ...MUKELLEF_OKU, ...HAFIZA, ...MALI_OKU, 'get_kdv_summary', 'get_kdv1_on_hazirlik', 'list_edefter_sessions', 'list_beyan_kayitlari', 'get_beyan_ozet',
       ...LUCA_OKU, 'create_pending_action', ...ONAY,
     ],
     onayNoktalari: ['Sahibe uyarı raporu (portal içi — serbest)', 'Mükellefe iletim: onaylı'],

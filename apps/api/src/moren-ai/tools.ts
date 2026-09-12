@@ -377,6 +377,22 @@ export const MOREN_AI_TOOLS: ToolDefinition[] = [
       required: ['taxpayerId', 'donem'],
     },
   },
+  {
+    name: 'get_kdv1_on_hazirlik',
+    description:
+      'KDV1 beyanname ön hazırlığı: matrah, hesaplanan, indirilecek, devreden (önceki beyannameden), ödenecek/sonraki aya devreden — tek kaynak KDV Kontrol. ' +
+      'Beyanname taslağı, tahakkuk fişi (391/191 → 360 veya 190) ve devreden KDV için BU aracı kullan; list_beyan_kayitlari yalnız tahakkuk/durum ("verildi mi") içindir. ' +
+      'KDV Kontrol oturumu yoksa ok:false ve error="KDV Kontrol oturumu yok" döner; ham fatura listesinden rakam ÜRETİLMEZ, uydurma yok. ' +
+      'Luca çapraz kontrol farkı (391/191), eksik veriler ve veri güveni uyarilar/eksikVeriler/veriGuveni alanlarındadır; kritik uyarı varken "hazır" deme.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        taxpayerId: { type: 'string', description: 'Mükellefin sistem ID\'si (cuid). Bilinmiyorsa önce list_taxpayers.' },
+        donem: { type: 'string', description: 'Beyan dönemi YYYY-MM, örn "2026-08".' },
+      },
+      required: ['taxpayerId', 'donem'],
+    },
+  },
 
   // ============ FATURALAR ============
   {

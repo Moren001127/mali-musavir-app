@@ -4,13 +4,17 @@
 1. `get_taxpayer_work_status` → evrak/fatura/banka aşamaları tamam mı. Değilse Koordinatör'e geri ver.
 2. `get_kdv_summary` (mükellef, dönem) → eşleşen/eşleşmeyen, fark.
    - Fark ≠ 0 veya eşleşmeyen varsa: DUR. Listeyi Fatura Muhasebecisi'ne. Rapor: "hazır değil, N eşleşmeyen".
-3. Fark = 0 ise **devreden**: `list_beyan_kayitlari` (önceki ay KDV1) → "Sonraki Döneme Devreden".
-4. Hesap: Hesaplanan − (İndirilecek + Devreden) → ödenecek mi devreden mi.
+3. Fark = 0 ise **beyanname paketi**: `get_kdv1_on_hazirlik` (mükellef, dönem) → `sonuc` (hesaplanan, indirilecek, devreden, ödenecek / sonraki aya devreden) + `devreden.kaynak` + `uyarilar`.
+   - `ok:false` ("KDV Kontrol oturumu yok") → DUR, rapor "hazır değil — KDV Kontrol yok".
+   - `devreden.kaynak = yok` → sahibe sor; 0 varsayıp ilerleme.
+   - `uyarilar` içinde kritik/Luca farkı varsa → DUR, Fatura Muhasebecisi'ne.
+   - `list_beyan_kayitlari` bu adımda KULLANILMAZ (yalnız "önceki beyanname verildi mi / tahakkuk ne" sorusu için).
+4. Hesap araçtan gelir: `sonuc.odenecekKdv > 0` → ödenecek; değilse `sonuc.sonrakiAyaDevreden` → devreden. Kendi hesabınla çapraz kontrol et (Hesaplanan − İndirilecek − Devreden).
 5. **Tahakkuk fişi (kuru test)** → Luca Operatörü'ne paket:
    - 391 borç (hesaplanan), 191 alacak (indirilecek), fark → 360 (ödenecek) veya 190 (devreden).
    - Kaydet BASILMAZ; ekran özeti raporlanır.
 6. **Beyanname taslağı (kuru test)**: Luca KDV1 ekranı → oran bazlı matrah/KDV doldur → ekrandaki toplamları KDV Kontrol ile çapraz kontrol (kuruşu kuruşuna).
-7. Sahibe paket: dönem, hesaplanan, indirilecek, devreden (önceki/sonraki), ödenecek, dayanak (KDV Kontrol oturum no), "gönderime hazır".
+7. Sahibe paket: dönem, hesaplanan, indirilecek, devreden (önceki/sonraki + kaynağı), ödenecek, dayanak (KDV Kontrol; `get_kdv1_on_hazirlik` veri güveni), "gönderime hazır" (yalnız `hazirMi: true` ise).
 8. Onay sonrası beceri kaydet (yer tutucularla).
 
 ## 2. Geçici vergi zinciri (çeyrek)

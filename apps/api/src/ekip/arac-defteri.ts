@@ -48,6 +48,7 @@ export const KADEME_ACIKLAMALARI: Record<Kademe, string> = {
 };
 
 // ─── PORTAL ARAÇLARI: adı YAZAN olanlar, gerisi oku ───
+// (get_kdv1_on_hazirlik → oku: KDV Kontrol verisinden beyanname paketi okur, hiçbir şey yazmaz.)
 const PORTAL_YAZAN_ARACLAR = new Set<string>([
   'save_ai_memory',
   'create_agent_command',
@@ -106,7 +107,9 @@ const EYLEM_KADEMELERI: Record<string, Kademe> = {
   fetch_invoices_for_period: 'portal_yaz',
   backup_to_drive: 'portal_yaz',
   post_to_luca: 'luca_yaz',
-  fetch_kdv_from_luca: 'oku',
+  // Luca'da iş açar (yerel ajan tarayıcıyı sürer): kuru testte ÇALIŞMAMALI — pilot koşuda
+  // "oku" sayılıp gerçek Luca işi açmıştı. Canlıda serbest (veri değiştirmez, yalnız çeker).
+  fetch_kdv_from_luca: 'luca_yaz',
   ocr_pdf: 'oku',
   extract_invoice_fields: 'oku',
   summarize_with_claude: 'oku',

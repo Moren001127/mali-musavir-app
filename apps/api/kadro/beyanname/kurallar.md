@@ -14,7 +14,8 @@
 - Fark eşiği **kuruşu kuruşuna (0,01 TL)**. Tolerans yok.
 - Eşleşmiş faturada tutar = Luca kaydı (0 dahil); eşleşmemişte ham OCR. Görseli olmayan Luca kaydı beyan toplamına girmez ("görsel yok" uyarısı).
 - Çok satıra eşleşen tek fatura KDV'si bir kez sayılır; 0-KDV satırına faturanın tamamı yazılmaz.
-- **Önceki dönemden devreden KDV** önceki ayın GERÇEK KDV1 beyannamesindeki "Sonraki Döneme Devreden" tutarından alınır (`list_beyan_kayitlari`); tahminden veya faturadan değil.
+- **Önceki dönemden devreden KDV** önceki ayın GERÇEK KDV1 beyannamesindeki "Sonraki Döneme Devreden" tutarından alınır; tahminden veya faturadan değil. Bunu `get_kdv1_on_hazirlik` verir (`devreden.tutar` + `devreden.kaynak`: beyanname_pdf/manuel/beyan_durumu/hesaplanan/yok). `kaynak: yok` ise 0 varsayma, sahibe sor. `list_beyan_kayitlari` devreden için KULLANILMAZ; yalnız tahakkuk/durum ("verildi mi") içindir.
+- **Beyanname taslağı ve tahakkuk fişi rakamları** `get_kdv1_on_hazirlik`'ten alınır (hesaplanan, indirilecek, devreden, ödenecek / sonraki aya devreden). Araç `ok:false, error:"KDV Kontrol oturumu yok"` dönerse beyan rakamı YOKTUR; rapor "hazır değil — KDV Kontrol yok".
 - Oran belgeden okunur; okunamadıysa "oran belirsiz" kovası beyana sokulmaz, sahibe sorulur.
 
 ## KDV tahakkuk fişi (Luca) — KURAL 1

@@ -47,6 +47,9 @@ const PANO_ONBELLEK_MS = 60 * 1000;
 const IS_DURUMLARI = new Set<string>(['pending', 'running', 'done', 'failed']);
 const KAYNAKLAR = new Set<string>(['portal', 'ses', 'cron', 'koordinator']);
 
+/** Prisma cuid: 'c' + küçük harf/rakam (kdv-control/ocr/parsers/belge-no.ts ile aynı kalıp). */
+const CUID_KALIBI = /^c[a-z0-9]{20,31}$/;
+
 export type EkipKaynak = 'portal' | 'ses' | 'cron' | 'koordinator';
 
 /** /ekip/isler süzgeçleri (hepsi isteğe bağlı; verilmezse eski davranış). */
@@ -107,12 +110,28 @@ export type EkipAkisOlayi =
       kuruTestYapilacaktilar: YapilacakIs[];
       onayBekleyen: OnayBekleyen[];
       ogrenilen: string[];
+      /** İşin bağlandığı mükellef (görevle verilen ya da ilk taxpayerId'li araç çağrısından). */
+      taxpayerId?: string | null;
     }
   | { type: 'error'; error: string; isId?: string };
+
+/** calistir() içindeki tek portal aracının koşu bağlamı — portalAracIsleyici bunun üzerinden çalışır (spec'te sahte kurulur). */
+interface KosuBaglami {
+  p: EkipCalistirParametreleri;
+  ajan: AjanTanimi;
+  isId: string;
+  dryRun: boolean;
+  ctx: { tenantId: string; userId: string | null; taxpayerId: string | null };
+  emit: (e: EkipAkisOlayi) => void;
+  toolUses: Array<{ name: string; args: any }>;
+  kuruTestYapilacaktilar: YapilacakIs[];
+  onayBekleyen: OnayBekleyen[];
+}
 
 export interface EkipKosuSonucu {
   isId: string;
   ajanId: string;
+  taxpayerId?: string | null;
   rapor: string;
   toolUses: Array<{ name: string; args: any }>;
   kuruTestYapilacaktilar: YapilacakIs[];
@@ -286,6 +305,24 @@ export class EkipRunnerService {
     await (this.prisma as any).agentCommand
       .update({ where: { id: isId }, data: { status: durum, finishedAt: new Date(), result: sonuc } })
       .catch((e: any) => this.logger.warn(`iş dosyası kapatılamadı ${isId}: ${e?.message || e}`));
+  }
+
+  /**
+   * İŞ ↔ MÜKELLEF BAĞI: iş dosyası mükellefsiz açıldıysa (payload.taxpayerId boş) ilk geçerli
+   * taxpayerId'li araç çağrısı bağı kurar — iş özeti/konsol "hangi mükellef" gösterebilsin.
+   * Payload JSON bütünüyle yazıldığından önce okunur; dolu ise DOKUNULMAZ. Hata yutulur.
+   */
+  private async isDosyasiMukellefBagla(isId: string, taxpayerId: string): Promise<boolean> {
+    try {
+      const row = await (this.prisma as any).agentCommand.findUnique({ where: { id: isId }, select: { payload: true } });
+      const payload = row?.payload && typeof row.payload === 'object' && !Array.isArray(row.payload) ? row.payload : {};
+      if (payload.taxpayerId) return false;
+      await (this.prisma as any).agentCommand.update({ where: { id: isId }, data: { payload: { ...payload, taxpayerId } } });
+      return true;
+    } catch (e: any) {
+      this.logger.warn(`iş dosyası mükellef bağı kurulamadı ${isId}: ${e?.message || e}`);
+      return false;
+    }
   }
 
   private async olayYaz(p: EkipCalistirParametreleri, ajanId: string, isId: string, durum: 'basarili' | 'hata', mesaj: string, meta: any): Promise<void> {
@@ -580,6 +617,83 @@ export class EkipRunnerService {
 
   // ─── KOŞU ───
 
+  /**
+   * Tek portal aracının işleyicisi (calistir içinden sdk.tool'a verilir; spec doğrudan çağırabilir).
+   * Sıra: mükellef bağı → kademe kontrolü → dışarı gönderim onayı → çalıştır.
+   */
+  private portalAracIsleyici(k: KosuBaglami) {
+    const { p, ajan, isId, dryRun, ctx, emit, toolUses, kuruTestYapilacaktilar, onayBekleyen } = k;
+    // Mükellef bağı bir kez kurulur: görevle geldiyse zaten var; yoksa ilk geçerli cuid'li araç çağrısından.
+    let mukellefBagiDenendi = Boolean(ctx.taxpayerId);
+    const mukellefBagiKur = async (args: any) => {
+      if (mukellefBagiDenendi) return;
+      const id = String(args?.taxpayerId || '').trim();
+      if (!CUID_KALIBI.test(id)) return;
+      mukellefBagiDenendi = true;
+      ctx.taxpayerId = id;
+      p.taxpayerId = id; // olay kaydı / onay kaydı / AI kullanım günlüğü aynı mükellefi görsün
+      await this.isDosyasiMukellefBagla(isId, id);
+    };
+
+    return async (a: { name: string; args?: any }) => {
+      const name = String(a?.name || '');
+      const args = a?.args && typeof a.args === 'object' ? a.args : {};
+      const cevap = (r: any) => ({ content: [{ type: 'text', text: JSON.stringify(r) }] });
+
+      // 0) İŞ ↔ MÜKELLEF BAĞI (kademe fark etmez; kuru testte engellenen çağrı da mükellefi söyler)
+      await mukellefBagiKur(args);
+
+      // 1) KADEME KONTROLÜ
+      const erisim = aracAcikMi(ajan, name, dryRun);
+      if (!erisim.acik) {
+        if (erisim.neden === 'kuru_test') {
+          const kayit: YapilacakIs = { name, args, kademe: erisim.kademe };
+          kuruTestYapilacaktilar.push(kayit);
+          toolUses.push({ name, args: { ...args, __kuruTest: true } });
+          emit({ type: 'kuruTest', name, args, kademe: erisim.kademe });
+          return cevap({ kuruTest: true, yapilacakti: { name, args }, mesaj: erisim.mesaj });
+        }
+        emit({ type: 'red', name, neden: erisim.neden || 'kapali', mesaj: erisim.mesaj || 'kapalı' });
+        return cevap({ ok: false, error: erisim.mesaj, neden: erisim.neden });
+      }
+
+      // 2) DIŞARI GÖNDERİM canlıda bile doğrudan gitmez → sahip onay kaydı
+      if (erisim.kademe === 'disari_gonder') {
+        try {
+          const onay = await this.onayKaydiAc(p, ajan, isId, name, args);
+          onayBekleyen.push(onay);
+          toolUses.push({ name, args: { ...args, __onayBekliyor: onay.previewId } });
+          emit({ type: 'onay', name, previewId: onay.previewId, confirmationText: onay.confirmationText });
+          return cevap({
+            onayBekliyor: true,
+            previewId: onay.previewId,
+            confirmationText: onay.confirmationText,
+            expiresAt: onay.expiresAt,
+            mesaj: 'Mesaj gönderilmedi; sahip onayına düştü. Raporunda "onay bekliyor" yaz.',
+          });
+        } catch (e: any) {
+          return cevap({ ok: false, error: 'Onay kaydı açılamadı: ' + (e?.message || e) });
+        }
+      }
+
+      // 3) ÇALIŞTIR
+      toolUses.push({ name, args });
+      emit({ type: 'tool', name, args });
+      try {
+        let r: any;
+        if (name.startsWith('ekip_')) r = await this.ekipAraciCalistir(name, args, p);
+        else if (LucaOperatorService.lucaAraciMi(name)) r = await this.operator.executeOperatorTool(name, args, ctx);
+        else if (PORTAL_ARAC_ADLARI.has(name)) r = await this.tools.execute(name, args, ctx);
+        else if (ACTION_BY_NAME[name]) {
+          r = await this.dispatcher.dispatch(name, args, { tenantId: p.tenantId, userId: p.userId ?? null, automationId: `ekip:${ajan.id}:${isId}` });
+        } else r = { ok: false, error: `Çalıştırıcı bulunamadı: ${name}` };
+        return cevap(r);
+      } catch (e: any) {
+        return cevap({ ok: false, error: e?.message || String(e) });
+      }
+    };
+  }
+
   async calistir(p: EkipCalistirParametreleri): Promise<EkipKosuSonucu> {
     const emit = p.emit || (() => undefined);
     const ajan = ajanBul(p.ajanId);
@@ -626,7 +740,7 @@ export class EkipRunnerService {
     }
     childEnv.CLAUDE_CODE_OAUTH_TOKEN = token;
 
-    const ctx = { tenantId: p.tenantId, userId: p.userId ?? null, taxpayerId: p.taxpayerId ?? null };
+    const ctx: KosuBaglami['ctx'] = { tenantId: p.tenantId, userId: p.userId ?? null, taxpayerId: p.taxpayerId ?? null };
     const started = Date.now();
     let answer = '';
     const toolUses: Array<{ name: string; args: any }> = [];
@@ -649,60 +763,7 @@ export class EkipRunnerService {
         'portal',
         'Moren portal / Luca / ekip aracı. name=araç adı, args=parametre nesnesi. Yalnızca sistem mesajında listelenen adlar geçerlidir.',
         { name: z.string(), args: z.record(z.any()).optional() },
-        async (a: { name: string; args?: any }) => {
-          const name = String(a?.name || '');
-          const args = a?.args && typeof a.args === 'object' ? a.args : {};
-          const cevap = (r: any) => ({ content: [{ type: 'text', text: JSON.stringify(r) }] });
-
-          // 1) KADEME KONTROLÜ
-          const erisim = aracAcikMi(ajan, name, dryRun);
-          if (!erisim.acik) {
-            if (erisim.neden === 'kuru_test') {
-              const kayit: YapilacakIs = { name, args, kademe: erisim.kademe };
-              kuruTestYapilacaktilar.push(kayit);
-              toolUses.push({ name, args: { ...args, __kuruTest: true } });
-              emit({ type: 'kuruTest', name, args, kademe: erisim.kademe });
-              return cevap({ kuruTest: true, yapilacakti: { name, args }, mesaj: erisim.mesaj });
-            }
-            emit({ type: 'red', name, neden: erisim.neden || 'kapali', mesaj: erisim.mesaj || 'kapalı' });
-            return cevap({ ok: false, error: erisim.mesaj, neden: erisim.neden });
-          }
-
-          // 2) DIŞARI GÖNDERİM canlıda bile doğrudan gitmez → sahip onay kaydı
-          if (erisim.kademe === 'disari_gonder') {
-            try {
-              const onay = await this.onayKaydiAc(p, ajan, isId, name, args);
-              onayBekleyen.push(onay);
-              toolUses.push({ name, args: { ...args, __onayBekliyor: onay.previewId } });
-              emit({ type: 'onay', name, previewId: onay.previewId, confirmationText: onay.confirmationText });
-              return cevap({
-                onayBekliyor: true,
-                previewId: onay.previewId,
-                confirmationText: onay.confirmationText,
-                expiresAt: onay.expiresAt,
-                mesaj: 'Mesaj gönderilmedi; sahip onayına düştü. Raporunda "onay bekliyor" yaz.',
-              });
-            } catch (e: any) {
-              return cevap({ ok: false, error: 'Onay kaydı açılamadı: ' + (e?.message || e) });
-            }
-          }
-
-          // 3) ÇALIŞTIR
-          toolUses.push({ name, args });
-          emit({ type: 'tool', name, args });
-          try {
-            let r: any;
-            if (name.startsWith('ekip_')) r = await this.ekipAraciCalistir(name, args, p);
-            else if (LucaOperatorService.lucaAraciMi(name)) r = await this.operator.executeOperatorTool(name, args, ctx);
-            else if (PORTAL_ARAC_ADLARI.has(name)) r = await this.tools.execute(name, args, ctx);
-            else if (ACTION_BY_NAME[name]) {
-              r = await this.dispatcher.dispatch(name, args, { tenantId: p.tenantId, userId: p.userId ?? null, automationId: `ekip:${ajan.id}:${isId}` });
-            } else r = { ok: false, error: `Çalıştırıcı bulunamadı: ${name}` };
-            return cevap(r);
-          } catch (e: any) {
-            return cevap({ ok: false, error: e?.message || String(e) });
-          }
-        },
+        this.portalAracIsleyici({ p, ajan, isId, dryRun, ctx, emit, toolUses, kuruTestYapilacaktilar, onayBekleyen }),
       );
 
       const server = sdk.createSdkMcpServer({ name: 'portal', version: '1.0.0', tools: [portalTool] });
@@ -767,6 +828,7 @@ export class EkipRunnerService {
     const sonuc: EkipKosuSonucu = {
       isId,
       ajanId: ajan.id,
+      taxpayerId: ctx.taxpayerId,
       rapor: answer.trim(),
       toolUses,
       kuruTestYapilacaktilar,
@@ -780,6 +842,7 @@ export class EkipRunnerService {
     const basarisiz = Boolean(hata) && !answer.trim();
     await this.isDosyasiKapat(isId, basarisiz ? 'failed' : 'done', {
       rapor: sonuc.rapor,
+      taxpayerId: ctx.taxpayerId,
       toolUses,
       kuruTestYapilacaktilar,
       onayBekleyen,
@@ -800,7 +863,7 @@ export class EkipRunnerService {
     if (basarisiz) {
       emit({ type: 'error', error: hata!, isId });
     } else {
-      emit({ type: 'done', isId, model, toolUses, durationMs, kuruTestYapilacaktilar, onayBekleyen, ogrenilen });
+      emit({ type: 'done', isId, model, toolUses, durationMs, kuruTestYapilacaktilar, onayBekleyen, ogrenilen, taxpayerId: ctx.taxpayerId });
     }
     return sonuc;
   }

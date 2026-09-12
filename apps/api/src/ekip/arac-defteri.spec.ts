@@ -31,6 +31,12 @@ describe('arac-defteri', () => {
     expect(aracKademesi('luca_yaz')).toBe('luca_yaz');
     expect(aracKademesi('luca_tikla')).toBe('luca_yaz');
     expect(aracKademesi('post_to_luca')).toBe('luca_yaz');
+    // Luca'da iş açar (yerel ajan tarayıcı sürer) → pilot koşuda 'oku' sayılıp gerçek iş açmıştı
+    expect(aracKademesi('fetch_kdv_from_luca')).toBe('luca_yaz');
+    // KDV1 ön hazırlık yalnız okur (KDV Kontrol verisinden beyanname paketi)
+    expect(aracKademesi('get_kdv1_on_hazirlik')).toBe('oku');
+    expect(aracKaydi('get_kdv1_on_hazirlik')?.kaynak).toBe('portal');
+    expect(aracKaydi('get_kdv1_on_hazirlik')?.parametreler).toEqual(['taxpayerId*', 'donem*']);
     expect(aracKademesi('send_whatsapp_template')).toBe('disari_gonder');
     expect(aracKademesi('send_sms')).toBe('disari_gonder');
     expect(aracKademesi('send_email')).toBe('disari_gonder');
@@ -54,7 +60,7 @@ describe('arac-defteri', () => {
   });
 
   it('kuru test luca_yaz ve disari_gonder kapatır; canlıda açar', () => {
-    for (const ad of ['luca_yaz', 'luca_sec', 'luca_tikla', 'post_to_luca', 'send_whatsapp_template', 'send_sms', 'send_email', 'send_whatsapp_freeform']) {
+    for (const ad of ['luca_yaz', 'luca_sec', 'luca_tikla', 'post_to_luca', 'fetch_kdv_from_luca', 'send_whatsapp_template', 'send_sms', 'send_email', 'send_whatsapp_freeform']) {
       const kuru = aracAcikMi(tumAjan, ad, true);
       expect(kuru.acik).toBe(false);
       expect(kuru.neden).toBe('kuru_test');
@@ -63,9 +69,18 @@ describe('arac-defteri', () => {
   });
 
   it('oku ve portal_yaz kuru testte de açık', () => {
-    for (const ad of ['get_mizan', 'luca_ekran_oku', 'luca_menu_git', 'save_ai_memory', 'set_monthly_status', 'luca_beceri_kaydet', 'ekip_isler']) {
+    for (const ad of ['get_mizan', 'get_kdv1_on_hazirlik', 'luca_ekran_oku', 'luca_menu_git', 'save_ai_memory', 'set_monthly_status', 'luca_beceri_kaydet', 'ekip_isler']) {
       expect(aracAcikMi(tumAjan, ad, true).acik).toBe(true);
     }
+  });
+
+  it('fetch_kdv_from_luca: beyanname ajanında kuru testte kapalı (kuru_test), canlıda açık', () => {
+    const beyanname = ajanBul('beyanname')!;
+    const kuru = aracAcikMi(beyanname, 'fetch_kdv_from_luca', true);
+    expect(kuru.acik).toBe(false);
+    expect(kuru.neden).toBe('kuru_test');
+    expect(kuru.kademe).toBe('luca_yaz');
+    expect(aracAcikMi(beyanname, 'fetch_kdv_from_luca', false).acik).toBe(true);
   });
 
   it('ajanın listesinde olmayan araç kapalı; defterde olmayan araç kapalı', () => {
@@ -120,6 +135,14 @@ describe('ajan-tanimlari', () => {
     }
     const k = ajanBul('koordinator')!;
     expect(k.araclar).toEqual(expect.arrayContaining(['ekip_isler', 'ekip_pano', 'get_operation_briefing', 'get_tax_calendar']));
+  });
+
+  it('get_kdv1_on_hazirlik beyanname, koordinatör ve denetçide var; kuru testte de açık', () => {
+    for (const id of ['beyanname', 'koordinator', 'denetci']) {
+      const a = ajanBul(id)!;
+      expect(a.araclar).toContain('get_kdv1_on_hazirlik');
+      expect(aracAcikMi(a, 'get_kdv1_on_hazirlik', true).acik).toBe(true);
+    }
   });
 });
 
