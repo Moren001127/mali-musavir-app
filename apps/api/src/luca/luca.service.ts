@@ -704,9 +704,41 @@ export class LucaService {
     await this.requeueNoProgressJobs().catch(() => {});
     await this.cleanupStuckRunning().catch(() => {});
 
+    // BAYAT İŞ TEMİZLİĞİ (kullanıcı bulgusu 2026-09-12: "hiçbir işlem yapmazken sürekli bildirim geliyor"): Ağustos'tan kalan
+    //   3-4 pending iş (gece e-Arşiv 2026-07, tarayıcı eklentisi EKRAN_OKU — eklenti artık kullanılmıyor) hiçbir ajan tarafından
+    //   alınmıyordu; reaper 3 aydır her saat "Luca işi bekliyor" bildirimi üretmişti (1.583 bildirim, 874 okunmamış).
+    //   Kural: 24 saatten uzun süre hiç alınmamış pending iş OTOMATİK İPTAL edilir (ajan kapalıysa 24 saat yeter; daha eskisi
+    //   anlamsız — gece işi geçmiş dönem için yeniden üretilir), günde en çok 1 bildirim. 30 dk-24 saat aralığındaki iş için
+    //   uyarı yine üretilir ama aynı kiracıda günde 1 kez (eskiden saatte 1).
+    const bayatSinir = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const bayatlar = await (this.prisma as any).lucaFetchJob.findMany({
+      where: { status: 'pending', createdAt: { lt: bayatSinir } },
+      select: { id: true, tenantId: true, tip: true, donem: true, preferredAgent: true },
+      take: 500,
+    });
+    if (bayatlar.length) {
+      await (this.prisma as any).lucaFetchJob.updateMany({
+        where: { id: { in: bayatlar.map((j: any) => j.id) }, status: 'pending' },
+        data: { status: 'cancelled', finishedAt: new Date(), errorMsg: 'Bayat iş: 24 saat boyunca hiçbir ajan almadı → otomatik iptal (gerekirse yeniden başlatın)' },
+      }).catch(() => {});
+      this.logger.warn(`[LUCA-REAPER] ${bayatlar.length} bayat pending iş otomatik iptal edildi: ${bayatlar.slice(0, 5).map((j: any) => `${j.tip}/${j.donem || '-'}/${j.preferredAgent || '-'}`).join(', ')}${bayatlar.length > 5 ? ' …' : ''}`);
+      const bayatByTenant = new Map<string, number>();
+      for (const j of bayatlar) if (j.tenantId) bayatByTenant.set(j.tenantId, (bayatByTenant.get(j.tenantId) || 0) + 1);
+      for (const [tenantId, count] of Array.from(bayatByTenant.entries())) {
+        await this.notifications.createForTenant({
+          tenantId,
+          type: NOTIFICATION_TYPES.LUCA_SYNC_ERROR,
+          title: `${count} bayat Luca işi iptal edildi`,
+          body: '24 saattir hiçbir ajanın almadığı Luca işleri otomatik iptal edildi. Gerekliyse ilgili ekrandan yeniden başlatın.',
+          metadata: { kind: 'stale-cancelled', count, link: '/panel/luca' },
+          dedupeKey: `luca-stale-cancelled:${tenantId}`,
+          dedupeWindowMin: 24 * 60,
+        }).catch(() => {});
+      }
+    }
     const cutoff = new Date(Date.now() - 30 * 60 * 1000);
     const stalePending = await (this.prisma as any).lucaFetchJob.findMany({
-      where: { status: 'pending', createdAt: { lt: cutoff } },
+      where: { status: 'pending', createdAt: { lt: cutoff, gte: bayatSinir } },
       select: { id: true, tenantId: true },
       take: 500,
     });
@@ -725,7 +757,7 @@ export class LucaService {
           body: 'Luca veri çekme işleri 30 dakikadır sırada bekliyor. Ajanın çalıştığından ve klasik Luca ekranının açık olduğundan emin olun.',
           metadata: { kind: 'stale-pending', count, link: '/panel/luca' },
           dedupeKey: `luca-stale-pending:${tenantId}`,
-          dedupeWindowMin: 60,
+          dedupeWindowMin: 24 * 60, // günde 1 (eskiden saatte 1 → sinir bozucu)
         })
         .catch((e) => {
           this.logger.warn(`Luca stale-pending notif failed: ${(e as Error).message}`);
