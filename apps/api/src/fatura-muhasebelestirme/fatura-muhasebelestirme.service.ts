@@ -15910,8 +15910,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       })();
       // HESAP SEÇİMİ (X/10) için UBL yüzdesi (tevkifatYuzde 20 → 2/10) öncelikli: kısmi tevkifatta tutar oranı
       //   (400/2200 = 0,182) belge oranı değildir; yüzde yoksa etkin oran (0.5→5, 0.2→2).
-      const _tevkYuzde = Number((doc.ocrData as any)?.tevkifatYuzde || 0);
-      const tevkPay = (_tevkYuzde > 0 && _tevkYuzde <= 100) ? Math.round(_tevkYuzde / 10) : Math.round(_tevkOranEff * 10);
+      // Tevkifat bloğu var ama UYGULANMAMIŞ (ubl-parse: ödenecek = KDV dahil toplam) → belge tevkifatsız sayılır; yüzde yalnız bilgi.
+      //   Kullanıcı bulgusu (BRN2026000000483): matrah 'NAKLİYE GİDERLERİ TEVKİFATLI' kardeşine kayıyordu; normal hesapta kalmalı.
+      const _tevkUygulanmamis = !!(doc.ocrData as any)?.tevkifatUygulanmamis;
+      const _tevkYuzde = _tevkUygulanmamis ? 0 : Number((doc.ocrData as any)?.tevkifatYuzde || 0);
+      const tevkPay = _tevkUygulanmamis ? 0 : ((_tevkYuzde > 0 && _tevkYuzde <= 100) ? Math.round(_tevkYuzde / 10) : Math.round(_tevkOranEff * 10));
       // KDV hesabı ORANA göre seçilir: %20 satır → adında "20" geçen 191/391 ("İNDİRİLECEK KDV %20").
       // Eskiden orana bakmadan en düşük 191 (= "%1" hesabı) seçiliyordu → %20 KDV "%1" hesabına
       // gidiyordu (kullanıcı bildirdi). Tevkifatlıda oran/"tevkifat" hesabı önceliklidir.
