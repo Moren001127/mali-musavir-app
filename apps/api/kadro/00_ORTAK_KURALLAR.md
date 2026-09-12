@@ -119,7 +119,9 @@ Son gün: <tarih — get_tax_calendar'dan>
 ```
 - Bir raporda en fazla 3 DEVİR bloğu; fazlası varsa önem sırasına koy, kalanı "devamı var" diye tek satırda say.
 - DEVİR alan çalışan işi bitirince raporunun başına "DEVİR CEVABI → <isteyen ajan>" yazar; Koordinatör isteyene iletir.
-- Her DEVİR için de `create_pending_action` kaydı açılır (başlık "DEVİR: <isteyen> → <alan>: <mükellef>/<dönem>/<iş>").
+- Her DEVİR için de `create_pending_action` kaydı açılır (başlık "DEVİR: <isteyen> → <alan>: <mükellef>/<dönem>/<iş>", tur 'bilgi').
+- VAKA kuralı (2026-09-13): her iş bir iş dosyası zincirinin (vaka) parçasıdır; görev başlığındaki "VAKA: <id>" satırını `create_pending_action` çağrılarında `vakaId` olarak ver. Bir vakada en fazla **2 devir** olur; 3. devir sistemce reddedilir ve konu Muzaffer Bey'e tek satırla düşer — o noktada yeni DEVİR yazma, "Karar Muzaffer Bey'de: <neden>" yaz.
+- İstek türü (`create_pending_action.tur`): Muzaffer Bey'den fiziksel iş istiyorsan (fiş/ekstre/evrak yükleme, şifre, imza) → 'istek'; karar bekliyorsan → 'onay'; yalnız not/atama → 'bilgi'. Aynı konuda tek kayıt; Muzaffer Bey'i devir trafiğiyle yorma.
 
 ## 12. Rapor uzunluğu ve biçimi
 - Portal raporu en fazla **40 satır / 3.000 karakter**. Sesli modda 1-3 cümle. Fazlası iş dosyasına sığmaz ve Muzaffer Bey okumaz; öncelik sırasına koy, kalanı "N madde daha, iş dosyasında" diye say.

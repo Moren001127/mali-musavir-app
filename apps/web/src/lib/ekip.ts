@@ -57,6 +57,18 @@ export interface Ajan {
   sonKosu?: AjanSonKosu | null;
   bekleyenOnay?: number;
   bugunKosu?: number;
+  /** GET /ekip/kadro (2026-09-13): ajan şu an hangi vakada/mükellefte çalışıyor; boşta ise null. */
+  suAn?: AjanSuAn | null;
+}
+
+/** Kadro satırı — koşan iş (status running, ajan başına en yeni). */
+export interface AjanSuAn {
+  vakaId: string;
+  isId: string;
+  mukellefId?: string | null;
+  mukellefAd?: string | null;
+  konu: string;
+  basladi: string;
 }
 
 export type IsDurumu = 'pending' | 'running' | 'done' | 'failed';
@@ -143,6 +155,8 @@ export interface EkipDurum {
   calisan?: number;
   bugunHata?: number;
   sonSabahOzeti?: { isId: string; createdAt: string; raporIlkSatir?: string | null } | null;
+  /** İsteğe bağlı (2026-09-13): akış sayaçları (gun=7) — yoksa FE getAkis().sayaclar kullanır. */
+  akis?: AkisSayaclari;
 }
 
 export type EkipStreamEvent =
@@ -194,6 +208,7 @@ export async function getKadro(): Promise<Ajan[]> {
         onayNoktalari: Array.isArray(a.onayNoktalari) ? a.onayNoktalari : [],
         tetikler: Array.isArray(a.tetikler) ? a.tetikler : [],
         aciklama: a.aciklama || '',
+        suAn: suAnNormalle(a.suAn),
         kademeOzeti: {
           oku: Number(k.oku || 0),
           portal_yaz: Number(k.portal_yaz || 0),
@@ -333,6 +348,7 @@ export async function getEkipDurum(): Promise<EkipDurum> {
       calisan: typeof data?.calisan === 'number' ? data.calisan : undefined,
       bugunHata: typeof data?.bugunHata === 'number' ? data.bugunHata : undefined,
       sonSabahOzeti: data?.sonSabahOzeti ?? undefined,
+      akis: data?.akis && typeof data.akis === 'object' ? sayaclariNormalle(data.akis) : undefined,
     };
   } catch (e) {
     return cevir404(e);
@@ -415,7 +431,7 @@ export function mukellefAdi(t?: MukellefOzet | null): string {
  */
 export async function ajanCalistirStream(
   ajanId: string,
-  body: { gorev: string; taxpayerId?: string; dryRun?: boolean },
+  body: { gorev: string; taxpayerId?: string; dryRun?: boolean; vakaId?: string },
   onEvent: (e: EkipStreamEvent) => void,
   signal?: AbortSignal,
 ): Promise<void> {
@@ -424,7 +440,7 @@ export async function ajanCalistirStream(
     res = await authorizedFetch(`${API_BASE}/ekip/${encodeURIComponent(ajanId)}/calistir`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...body, dryRun: body.dryRun ?? true }),
+      body: JSON.stringify({ ...body, vakaId: body.vakaId || undefined, dryRun: body.dryRun ?? true }),
       signal,
     });
   } catch (err: any) {
@@ -465,7 +481,7 @@ export async function ajanCalistirStream(
 
 /**
  * Çalışan koşuyu sunucuda DURDUR: POST /ekip/isler/:isId/iptal.
- * Backend Agent SDK'ya abort verir; iş dosyası failed + hata "iptal edildi (sahip)".
+ * Backend Agent SDK'ya abort verir; iş dosyası failed + hata "iptal edildi (Muzaffer Bey)".
  * Çalışan kayıt yoksa (bitmiş / başka süreç) {ok:false, error} döner — hata fırlatmaz.
  */
 export async function iptalEt(isId: string): Promise<{ ok: boolean; isId: string; error?: string }> {
@@ -478,7 +494,7 @@ export async function iptalEt(isId: string): Promise<{ ok: boolean; isId: string
   }
 }
 
-// ─── ONAYLAR (dışarı gönderim → sahip onayı) ───
+// ─── ONAYLAR (dışarı gönderim → Muzaffer Bey onayı) ───
 
 export interface EkipOnay {
   id: string;
@@ -521,4 +537,217 @@ export async function onayla(previewId: string): Promise<{ ok: boolean; error?: 
 export async function reddet(previewId: string, not?: string): Promise<{ ok: boolean; error?: string }> {
   const { data } = await api.post(`/ekip/onaylar/${encodeURIComponent(previewId)}/reddet`, { not });
   return data;
+}
+
+// ─── CANLI AKIŞ — iş dosyası zinciri (vaka) ───
+// Sözleşme (2026-09-13): GET /ekip/akis?gun=7&filtre=tumu|suruyor|onay|istek|bitti&taxpayerId=&limit=100
+// Vaka = kök iş + devirler + onay kayıtları + Koordinatör bildirimleri; Muzaffer Bey'e üç kutu: onay · istek · bitti (+ sürüyor).
+
+export type AkisGun = 1 | 7 | 30;
+export type AkisFiltre = 'tumu' | 'suruyor' | 'onay' | 'istek' | 'bitti';
+export type VakaKutu = 'suruyor' | 'onay' | 'istek' | 'bitti';
+export type VakaDurum = 'suruyor' | 'bitti' | 'hata';
+
+export interface VakaAdimIs {
+  tip: 'is';
+  isId: string;
+  ajanId: string;
+  baslik: string;
+  durum: IsDurumu;
+  baslangic: string;
+  bitis?: string | null;
+  raporOzet?: string | null;
+  hata?: string | null;
+  /** Devir sırası (1 = ilk devir); kök iş için null. */
+  devir: number | null;
+  kuru: boolean;
+}
+
+export interface VakaAdimOnay {
+  tip: 'onay';
+  /** previewId */
+  id: string;
+  ajanId: string;
+  baslik: string;
+  durum: 'PENDING' | 'EXECUTED' | 'REJECTED' | 'EXPIRED';
+  baslangic: string;
+  hedef?: string | null;
+  confirmationText?: string | null;
+}
+
+export interface VakaAdimBildirim {
+  tip: 'bildirim';
+  id: string;
+  tur: 'onay' | 'istek' | 'bilgi';
+  baslik: string;
+  govde?: string | null;
+  durum: 'acik' | 'kapandi';
+  baslangic: string;
+}
+
+export type VakaAdim = VakaAdimIs | VakaAdimOnay | VakaAdimBildirim;
+
+export interface AcikKalem {
+  tip: 'onay' | 'istek';
+  /** onay → previewId; istek → bildirim id */
+  id: string;
+  baslik: string;
+  kaynak: 'PRV' | 'bildirim';
+  confirmationText?: string | null;
+}
+
+export interface Vaka {
+  vakaId: string;
+  mukellef: { id: string; ad: string } | null;
+  konu: string;
+  kuru: boolean;
+  /** ajanId 'siz' → Muzaffer Bey */
+  kimde: { ajanId: string; ad: string };
+  durum: VakaDurum;
+  kutu: VakaKutu;
+  guncellendi: string;
+  /** 2 devirden fazla dolaşan ya da 24 saatte çözülmeyen konu. */
+  gecikti: boolean;
+  olusturuldu: string;
+  adimlar: VakaAdim[];
+  acikKalemler: AcikKalem[];
+}
+
+export interface AkisSayaclari {
+  suruyor: number;
+  onay: number;
+  istek: number;
+  bitti: number;
+  gecikti: number;
+}
+
+export interface Akis {
+  vakalar: Vaka[];
+  /** Süzgeçten BAĞIMSIZ — tüm gün penceresi. */
+  sayaclar: AkisSayaclari;
+  pencere: { gun: AkisGun; baslangic: string };
+}
+
+function sayaclariNormalle(s: any): AkisSayaclari {
+  return {
+    suruyor: Number(s?.suruyor || 0),
+    onay: Number(s?.onay || 0),
+    istek: Number(s?.istek || 0),
+    bitti: Number(s?.bitti || 0),
+    gecikti: Number(s?.gecikti || 0),
+  };
+}
+
+function suAnNormalle(x: any): AjanSuAn | null {
+  if (!x || typeof x !== 'object' || (!x.vakaId && !x.isId)) return null;
+  return {
+    vakaId: String(x.vakaId || x.isId),
+    isId: String(x.isId || x.vakaId),
+    mukellefId: x.mukellefId ?? x.taxpayerId ?? null,
+    mukellefAd: x.mukellefAd ?? null,
+    konu: String(x.konu || x.gorev || ''),
+    basladi: String(x.basladi || x.startedAt || x.createdAt || ''),
+  };
+}
+
+function adimNormalle(a: any): VakaAdim | null {
+  if (!a || typeof a !== 'object') return null;
+  if (a.tip === 'is') {
+    return {
+      tip: 'is',
+      isId: String(a.isId || ''),
+      ajanId: String(a.ajanId || 'koordinator'),
+      baslik: String(a.baslik || ''),
+      durum: (['pending', 'running', 'done', 'failed'] as IsDurumu[]).includes(a.durum) ? a.durum : 'pending',
+      baslangic: String(a.baslangic || ''),
+      bitis: a.bitis ?? null,
+      raporOzet: a.raporOzet ?? null,
+      hata: a.hata ?? null,
+      devir: typeof a.devir === 'number' ? a.devir : null,
+      kuru: a.kuru !== false,
+    };
+  }
+  if (a.tip === 'onay') {
+    return {
+      tip: 'onay',
+      id: String(a.id || a.previewId || ''),
+      ajanId: String(a.ajanId || ''),
+      baslik: String(a.baslik || ''),
+      durum: ['PENDING', 'EXECUTED', 'REJECTED', 'EXPIRED'].includes(a.durum) ? a.durum : 'PENDING',
+      baslangic: String(a.baslangic || ''),
+      hedef: a.hedef ?? null,
+      confirmationText: a.confirmationText ?? null,
+    };
+  }
+  if (a.tip === 'bildirim') {
+    return {
+      tip: 'bildirim',
+      id: String(a.id || ''),
+      tur: a.tur === 'onay' || a.tur === 'istek' ? a.tur : 'bilgi',
+      baslik: String(a.baslik || ''),
+      govde: a.govde ?? null,
+      durum: a.durum === 'kapandi' ? 'kapandi' : 'acik',
+      baslangic: String(a.baslangic || ''),
+    };
+  }
+  return null;
+}
+
+function vakaNormalle(v: any): Vaka | null {
+  if (!v || !v.vakaId) return null;
+  const adimlar = (Array.isArray(v.adimlar) ? v.adimlar : []).map(adimNormalle).filter(Boolean) as VakaAdim[];
+  const kutu: VakaKutu = (['suruyor', 'onay', 'istek', 'bitti'] as VakaKutu[]).includes(v.kutu) ? v.kutu : v.durum === 'suruyor' ? 'suruyor' : 'bitti';
+  const ilkIs = adimlar.find((a) => a.tip === 'is') as VakaAdimIs | undefined;
+  return {
+    vakaId: String(v.vakaId),
+    mukellef: v.mukellef && v.mukellef.id ? { id: String(v.mukellef.id), ad: String(v.mukellef.ad || v.mukellef.id) } : null,
+    konu: String(v.konu || ilkIs?.baslik || ''),
+    kuru: v.kuru !== false,
+    kimde: { ajanId: String(v.kimde?.ajanId || 'koordinator'), ad: String(v.kimde?.ad || (v.kimde?.ajanId === 'siz' ? 'Siz' : 'Koordinatör')) },
+    durum: v.durum === 'bitti' || v.durum === 'hata' ? v.durum : 'suruyor',
+    kutu,
+    guncellendi: String(v.guncellendi || v.olusturuldu || ''),
+    gecikti: v.gecikti === true,
+    olusturuldu: String(v.olusturuldu || v.guncellendi || ''),
+    adimlar,
+    acikKalemler: (Array.isArray(v.acikKalemler) ? v.acikKalemler : [])
+      .filter((k: any) => k && k.id && (k.tip === 'onay' || k.tip === 'istek'))
+      .map((k: any) => ({
+        tip: k.tip,
+        id: String(k.id),
+        baslik: String(k.baslik || ''),
+        kaynak: k.kaynak === 'bildirim' ? 'bildirim' : 'PRV',
+        confirmationText: k.confirmationText ?? null,
+      })),
+  };
+}
+
+export async function getAkis(p?: { gun?: AkisGun; filtre?: AkisFiltre; taxpayerId?: string; limit?: number }): Promise<Akis> {
+  const gun: AkisGun = p?.gun === 1 || p?.gun === 30 ? p.gun : 7;
+  try {
+    const { data } = await api.get('/ekip/akis', {
+      params: { gun, filtre: p?.filtre || 'tumu', taxpayerId: p?.taxpayerId || undefined, limit: Math.min(p?.limit ?? 100, 500) },
+    });
+    return {
+      vakalar: (Array.isArray(data?.vakalar) ? data.vakalar : []).map(vakaNormalle).filter(Boolean) as Vaka[],
+      sayaclar: sayaclariNormalle(data?.sayaclar),
+      pencere: {
+        gun: (data?.pencere?.gun as AkisGun) || gun,
+        baslangic: String(data?.pencere?.baslangic || new Date(Date.now() - gun * 86_400_000).toISOString()),
+      },
+    };
+  } catch (e) {
+    return cevir404(e);
+  }
+}
+
+/** "Sizden istenen" kalemi kapat (fiş yüklendi / yapıldı): POST /ekip/istek/:bildirimId/kapat. */
+export async function istekKapat(bildirimId: string): Promise<{ ok: boolean; id?: string; vakaId?: string; zatenKapali?: boolean; error?: string }> {
+  try {
+    const { data } = await api.post(`/ekip/istek/${encodeURIComponent(bildirimId)}/kapat`, {}, { timeout: 15_000 });
+    return { ok: data?.ok === true, id: data?.id, vakaId: data?.vakaId, zatenKapali: data?.zatenKapali === true, error: data?.error || undefined };
+  } catch (e: any) {
+    if (e?.response?.status === 404) return { ok: false, error: 'Omurga henüz yayında değil (istek ucu yok)' };
+    return { ok: false, error: e?.response?.data?.message || e?.message || 'Kapatma isteği gönderilemedi' };
+  }
 }

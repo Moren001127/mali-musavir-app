@@ -4,6 +4,11 @@ import { LucaService } from '../luca/luca.service';
 import { EkipRunnerService } from './ekip-runner.service';
 import { KoordinatorService } from './koordinator.service';
 import { EkipOnayService } from './ekip-onay.service';
+import { EkipAkisService } from './ekip-akis.service';
+import { KUTULAR } from './ekip-akis';
+
+/** Prisma cuid kalıbı (body.vakaId doğrulaması). */
+const CUID_KALIBI = /^c[a-z0-9]{20,31}$/;
 
 /**
  * EKİP — portal uçları (JWT; luca-operator.controller.ts kalıbı).
@@ -21,6 +26,9 @@ import { EkipOnayService } from './ekip-onay.service';
  *  GET  /ekip/onaylar?durum=&limit=   ekip onay kayıtları (varsayılan bekleyenler)
  *  POST /ekip/onaylar/:previewId/onayla  body {onayMetni?} → yürüt (dışarı gönderim gerçekten gider)
  *  POST /ekip/onaylar/:previewId/reddet  body {not?}
+ *  GET  /ekip/akis?gun=7&filtre=tumu|suruyor|onay|istek|bitti&taxpayerId=&limit=100   (PLAN/18) vakalar + üç kutu sayaçları
+ *  POST /ekip/istek/:bildirimId/kapat      "Sizden istenen" kalemini yapıldı işaretle
+ *  POST /ekip/:ajanId/calistir body.vakaId? (yalnız koordinator; aynı vakada devam)
  */
 @Controller('ekip')
 @UseGuards(AuthGuard('jwt'))
@@ -32,7 +40,36 @@ export class EkipController {
     private readonly koordinator: KoordinatorService,
     private readonly onay: EkipOnayService,
     private readonly luca: LucaService,
+    private readonly akis: EkipAkisService,
   ) {}
+
+  /**
+   * CANLI AKIŞ (PLAN/18): vakalar (iş dosyası zincirleri) + süzgeçten bağımsız sayaçlar.
+   * gun=1|7|30 (varsayılan 7), filtre=tumu|suruyor|onay|istek|bitti, taxpayerId, limit (≤500).
+   */
+  @Get('akis')
+  akisListe(
+    @Req() req: any,
+    @Query('gun') gun?: string,
+    @Query('filtre') filtre?: string,
+    @Query('taxpayerId') taxpayerId?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const gunDeger = gun === '1' || gun === '30' ? Number(gun) : 7;
+    const filtreDeger = (KUTULAR as string[]).includes(String(filtre || '')) ? (filtre as any) : 'tumu';
+    return this.akis.akis(req.user?.tenantId || 'default', {
+      gun: gunDeger as 1 | 7 | 30,
+      filtre: filtreDeger,
+      taxpayerId: taxpayerId || null,
+      limit: Number(limit) || 100,
+    });
+  }
+
+  /** "Sizden istenen" kalemi yapıldı: bildirim isRead + metadata.kapandi/kapatan. */
+  @Post('istek/:bildirimId/kapat')
+  istekKapat(@Req() req: any, @Param('bildirimId') bildirimId: string) {
+    return this.akis.istekKapat(req.user?.tenantId || 'default', req.user?.sub || null, bildirimId);
+  }
 
   @Get('onaylar')
   onaylar(@Req() req: any, @Query('durum') durum?: string, @Query('limit') limit?: string) {
@@ -99,8 +136,8 @@ export class EkipController {
   }
 
   /**
-   * Çalışan koşuyu DURDUR (sahip düğmesi). Agent SDK'ya abort verilir; iş dosyası failed,
-   * result.hata='iptal edildi (sahip)', AgentEvent yazılır. Çalışan kayıt yoksa {ok:false, error}.
+   * Çalışan koşuyu DURDUR (Muzaffer Bey düğmesi). Agent SDK'ya abort verilir; iş dosyası failed,
+   * result.hata='iptal edildi (Muzaffer Bey)', AgentEvent yazılır. Çalışan kayıt yoksa {ok:false, error}.
    */
   @Post('isler/:id/iptal')
   iptal(@Req() req: any, @Param('id') id: string) {
@@ -116,13 +153,14 @@ export class EkipController {
   @Get('durum')
   async durum(@Req() req: any) {
     const tenantId = req.user?.tenantId || 'default';
-    const [cihaz, bekleyenOnay, bugunkuKosu, calisan, bugunHata, sonSabahOzeti] = await Promise.all([
+    const [cihaz, bekleyenOnay, bugunkuKosu, calisan, bugunHata, sonSabahOzeti, akis] = await Promise.all([
       this.luca.getOperatorDeviceStatus(tenantId).catch(() => ({ online: false, deviceId: null })),
       this.runner.bekleyenOnaySayisi(tenantId),
       this.runner.bugunkuKosuSayisi(tenantId),
       this.runner.calisanSayisi(tenantId),
       this.runner.bugunHataSayisi(tenantId),
       this.runner.sonSabahOzeti(tenantId),
+      this.akis.sayaclar(tenantId, 7),
     ]);
     return {
       operator: { cevrimici: Boolean((cihaz as any)?.online), cihaz: (cihaz as any)?.deviceId || null },
@@ -134,6 +172,8 @@ export class EkipController {
       calisan,
       bugunHata,
       sonSabahOzeti,
+      // PLAN/18: üç kutu sayaçları (7 gün) — başlık şeridi tek istekle dolsun
+      akis,
     };
   }
 
@@ -154,9 +194,18 @@ export class EkipController {
   async calistir(
     @Req() req: any,
     @Param('ajanId') ajanId: string,
-    @Body() body: { gorev: string; taxpayerId?: string | null; dryRun?: boolean },
+    @Body() body: { gorev: string; taxpayerId?: string | null; dryRun?: boolean; vakaId?: string | null },
     @Res() res: any,
   ) {
+    const tenantId = req.user?.tenantId || 'default';
+    // VAKA devamı (PLAN/18): body.vakaId (cuid, tenant'ta var olan ekip işi) → yeni koşu kök DEĞİL, vakanın çocuğu (devir sayılmaz).
+    let vakaId: string | null = null;
+    const istenenVaka = String(body?.vakaId || '').trim();
+    if (istenenVaka && CUID_KALIBI.test(istenenVaka)) {
+      const kok = await this.runner.isGetir(tenantId, istenenVaka).catch(() => null);
+      if (kok) vakaId = istenenVaka;
+      else this.logger.warn(`ekip ${ajanId} calistir: vakaId ${istenenVaka} tenant'ta bulunamadı; yeni vaka açılıyor`);
+    }
     res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
     res.setHeader('Cache-Control', 'no-cache, no-transform');
     res.setHeader('Connection', 'keep-alive');
@@ -196,11 +245,12 @@ export class EkipController {
       await this.runner.calistir({
         ajanId,
         gorev: body?.gorev || '',
-        tenantId: req.user?.tenantId || 'default',
+        tenantId,
         userId: req.user?.sub || null,
         taxpayerId: body?.taxpayerId || null,
         dryRun: body?.dryRun !== false,
         kaynak: 'portal',
+        vakaId,
         emit: (e) => {
           if (e.type === 'baslangic') isId = e.isId;
           send(e);

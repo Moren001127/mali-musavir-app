@@ -1,94 +1,87 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Activity, FolderOpen, CalendarRange, ShieldCheck } from 'lucide-react';
-import { isOmurgaYok, mukellefAdi } from '@/lib/ekip';
+import { CalendarRange, ChevronDown } from 'lucide-react';
+import { isOmurgaYok, mukellefAdi, type AkisFiltre, type AkisGun } from '@/lib/ekip';
 import { SORGU, useKosular } from './kosular';
 import { KonsolBaslik } from './KonsolBaslik';
 import { AjanSeridi } from './AjanSeridi';
 import { KomutKutusu, type KomutTaslak } from './KomutKutusu';
-import { CanliAkis } from './CanliAkis';
-import { IsDosyalari } from './IsDosyalari';
-import { OnayKuyrugu } from './OnayBekleyenler';
-import { AjanDetayKarti } from './AjanDetayKarti';
+import { IsAkisi, kosuVakayaAitMi } from './IsAkisi';
 import { DonemPanosu } from './DonemPanosu';
 import { OmurgaYokBilgi } from './OmurgaYokBilgi';
 import { Kart } from './Kart';
-import { EKIP_ACCENT, RENK, ajanYuzeyRengi, bugunMu, depoOku, depoYaz } from './ortak';
+import { DEPO, EKIP_ACCENT, RENK, depoOku, depoYaz } from './ortak';
 
-const DEPO_AJAN = 'ekip.seciliAjan';
-const DEPO_DONEM = 'ekip.donem';
-const DEPO_SEKME = 'ekip.sekme';
-
-type Sekme = 'akis' | 'isler' | 'pano' | 'onaylar';
-const SEKMELER: Sekme[] = ['akis', 'isler', 'pano', 'onaylar'];
+const SUZGECLER: AkisFiltre[] = ['tumu', 'suruyor', 'onay', 'istek', 'bitti'];
 
 /**
- * "Sakin komuta merkezi" — tek sütun, yukarıdan aşağıya:
- *  1. KonsolBaslik   — serif başlık + tek satır hap rozetler (+ Şimdi üret)
- *  2. AjanSeridi     — 13 avatar tek sıra (dar ekranda yatay kayar)
- *  3. OnayKuyrugu    — yalnız bekleyen onay > 0 ise altın şerit-kart
- *  4. KomutKutusu    — kahraman kart; "bilgi" → AjanDetayKarti altında açılır/kapanır
- *  5. Sekmeler       — Canlı akış · İş dosyaları · Dönem panosu · Onaylar (localStorage 'ekip.sekme')
- *  6. Tek içerik kartı — dört sekme de bağlı kalır (durum/süzgeç kaybolmaz), yalnız biri görünür
- * ORTAK DURUM burada: seçili ajan, dönem, komut taslağı, koşu haritası (useKosular), açık iş, sekme.
- * Yapışkan/fixed öğe YOK; sayfa yatay kaymaz. Kuru/Canlı depoya yazılmaz.
+ * "Sakin komuta merkezi" v2 — tek sütun, yukarıdan aşağıya (Muzaffer Bey, 2026-09-13):
+ *  1. KonsolBaslik  — İNCE şerit (≤56px): Moren Ekip · tarih · 13 çalışan · N çalışıyor · Onay N · Beyanname x/64 · Operatör · Max · Sabah özeti [Şimdi üret]
+ *  2. AjanSeridi    — 13 avatar tek sıra, TIKLANMAZ; yalnız durum (kim çalışıyor, ne üzerinde)
+ *  3. KomutKutusu   — TEK komut yeri: Koordinatör (işi kendisi yönlendirir)
+ *  4. IsAkisi       — CANLI AKIŞ: Tümü · Sürüyor · Onayınızı bekleyen · Sizden istenen · Bitti; satır = iş dosyası zinciri (vaka)
+ *  5. DonemPanosu   — en altta katlanır (varsayılan kapalı)
+ * Sekmeler, ajan seçimi, AjanDetayKarti, IsDosyalari, OnayKuyrugu KALKTI. Yapışkan öğe YOK; sayfa yatay kaymaz. Kuru/Canlı depoya yazılmaz.
  */
 export function EkipEkrani() {
-  const [seciliAjanId, setSeciliAjanIdState] = useState('koordinator');
   const [seciliDonem, setSeciliDonemState] = useState<string | null>(null);
-  const [sekme, setSekmeState] = useState<Sekme>('akis');
-  const [detayAcik, setDetayAcik] = useState(false);
   const [komutTaslak, setKomutTaslak] = useState<KomutTaslak | null>(null);
-  const [acikIsId, setAcikIsId] = useState<string | null>(null);
+  const [akisSuzgec, setAkisSuzgecState] = useState<AkisFiltre>('tumu');
+  const [akisGun, setAkisGunState] = useState<AkisGun>(7);
+  const [akisTaxpayerId, setAkisTaxpayerId] = useState('');
+  const [acikVakaId, setAcikVakaId] = useState<string | null>(null);
+  const [panoAcik, setPanoAcikState] = useState(false);
   const [odakNonce, setOdakNonce] = useState(0);
   const [escNonce, setEscNonce] = useState(0);
-  const [isSuzgec, setIsSuzgec] = useState<{ nonce: number; gun?: 'bugun' | '7' | 'tumu' } | null>(null);
   const [eksiklerNonce, setEksiklerNonce] = useState(0);
 
   const komutRef = useRef<HTMLElement>(null);
-  const onayRef = useRef<HTMLElement>(null);
-  const icerikRef = useRef<HTMLElement>(null);
+  const akisRef = useRef<HTMLElement>(null);
+  const panoRef = useRef<HTMLElement>(null);
 
   const kosular = useKosular();
   const kosuVar = !!kosular.aktifKosu;
 
-  // Hatırlanan seçimler (Kuru/Canlı ASLA depoya yazılmaz)
+  // Hatırlanan seçimler (Kuru/Canlı ve açık vaka ASLA depoya yazılmaz)
   useEffect(() => {
-    const a = depoOku(DEPO_AJAN);
-    if (a) setSeciliAjanIdState(a);
-    const d = depoOku(DEPO_DONEM);
+    const d = depoOku(DEPO.donem);
     if (d) setSeciliDonemState(d);
-    const s = depoOku(DEPO_SEKME) as Sekme | null;
-    if (s && SEKMELER.includes(s)) setSekmeState(s);
-  }, []);
-  const setSeciliAjanId = useCallback((id: string) => {
-    setSeciliAjanIdState(id);
-    depoYaz(DEPO_AJAN, id);
+    const s = depoOku(DEPO.akisSuzgec) as AkisFiltre | null;
+    if (s && SUZGECLER.includes(s)) setAkisSuzgecState(s);
+    const g = Number(depoOku(DEPO.akisGun));
+    if (g === 1 || g === 7 || g === 30) setAkisGunState(g);
+    if (depoOku(DEPO.panoAcik) === '1') setPanoAcikState(true);
   }, []);
   const setSeciliDonem = useCallback((d: string) => {
     setSeciliDonemState(d);
-    depoYaz(DEPO_DONEM, d);
+    depoYaz(DEPO.donem, d);
   }, []);
-  const setSekme = useCallback((s: Sekme) => {
-    setSekmeState(s);
-    depoYaz(DEPO_SEKME, s);
+  const setAkisSuzgec = useCallback((f: AkisFiltre) => {
+    setAkisSuzgecState(f);
+    depoYaz(DEPO.akisSuzgec, f);
+  }, []);
+  const setAkisGun = useCallback((g: AkisGun) => {
+    setAkisGunState(g);
+    depoYaz(DEPO.akisGun, String(g));
+  }, []);
+  const setPanoAcik = useCallback((a: boolean) => {
+    setPanoAcikState(a);
+    depoYaz(DEPO.panoAcik, a ? '1' : '0');
   }, []);
 
   // Ortak sorgular
   const kadroS = useQuery(SORGU.kadro);
   const durumS = useQuery(SORGU.durum);
-  const islerS = useQuery(SORGU.isler(kosuVar));
+  const akisS = useQuery(SORGU.akis(akisSuzgec, akisGun, akisTaxpayerId || undefined, kosuVar));
   const onaylarS = useQuery(SORGU.onaylarBekleyen);
-  const panoS = useQuery(SORGU.pano);
+  const panoS = useQuery(SORGU.pano); // başlık hapı "Beyanname x/64" için hep açık (pano kapalıyken de)
   const mukelleflerS = useQuery(SORGU.mukellefler);
 
   const ajanlar = kadroS.data || [];
-  const isler = useMemo(() => islerS.data || [], [islerS.data]);
   const onaylar = useMemo(() => onaylarS.data || [], [onaylarS.data]);
   const mukellefler = useMemo(() => mukelleflerS.data || [], [mukelleflerS.data]);
-  const bugunSayisi = useMemo(() => isler.filter((i) => bugunMu(i.createdAt)).length, [isler]);
 
   // Mükellef haritası — her yerde ad çözümü
   const mukellefHaritasi = useMemo(() => {
@@ -97,33 +90,42 @@ export function EkipEkrani() {
     return m;
   }, [mukellefler]);
   const mukellefAd = useCallback((id?: string | null) => (id ? mukellefHaritasi.get(id) : undefined), [mukellefHaritasi]);
-  const ajanAd = useCallback((id: string) => ajanlar.find((a) => a.id === id)?.ad || id, [ajanlar]);
+  const ajanAd = useCallback((id: string) => (id === 'siz' ? 'Muzaffer Bey' : ajanlar.find((a) => a.id === id)?.ad || id), [ajanlar]);
 
-  const icerigeKaydir = useCallback(() => {
-    setTimeout(() => icerikRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 50);
+  // Sayaçlar: durum.akis (tek istek) ?? akis.sayaclar; çalışan: durum.calisan ?? kadro suAn sayısı (+ yerel koşu)
+  const sayaclar = durumS.data?.akis ?? akisS.data?.sayaclar;
+  const calisan = useMemo(() => {
+    const sunucu = durumS.data?.calisan ?? ajanlar.filter((a) => !!a.suAn).length;
+    // Yerel koşu sunucuya henüz yansımadıysa en az 1 göster
+    return Math.max(sunucu, kosular.aktifKosu ? 1 : 0);
+  }, [durumS.data?.calisan, ajanlar, kosular.aktifKosu]);
+
+  const kaydir = useCallback((ref: React.RefObject<HTMLElement>) => {
+    setTimeout(() => ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
   }, []);
 
   const taslakVer = useCallback((t: Omit<KomutTaslak, 'nonce'>) => {
-    setKomutTaslak({ ...t, nonce: Date.now() });
+    // Hep Koordinatör'e gider (ajanId yok sayılır)
+    setKomutTaslak({ ...t, ajanId: 'koordinator', nonce: Date.now() });
   }, []);
 
-  const isAc = useCallback(
-    (isId: string) => {
-      setAcikIsId(isId);
-      setSekme('isler');
-      icerigeKaydir();
-    },
-    [setSekme, icerigeKaydir],
-  );
-
-  // Koşu başlayınca otomatik "Canlı akış" sekmesi + koşan ajan seçilir (sabah özeti → Koordinatör; sonra istenirse başka ajana geçilebilir, koşu kesilmez)
-  const aktifBasladi = kosular.aktifKosu?.basladi;
-  const aktifAjanId = kosular.aktifKosu?.ajanId;
+  // Koşu başlayınca (ya da sabah özeti bitince isId gelince) eşleşen vaka satırı kendiliğinden açılır; vakaId gelmeden geçici satır üstte
+  const sonKosu = kosular.kosular.get('koordinator');
+  const sonKosuVakaId = sonKosu?.vakaId || sonKosu?.isId;
   useEffect(() => {
-    if (!aktifBasladi) return;
-    setSekme('akis');
-    if (aktifAjanId) setSeciliAjanId(aktifAjanId);
-  }, [aktifBasladi]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!sonKosuVakaId) return;
+    setAcikVakaId(sonKosuVakaId);
+    if (akisSuzgec === 'bitti') setAkisSuzgec('tumu');
+  }, [sonKosuVakaId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Akış tazelenince aynı vaka açık kalsın (koşu bir devir zincirine bağlandıysa kök vakaId farklı olabilir → eşleşeni bul)
+  const akisVakalar = akisS.data?.vakalar;
+  useEffect(() => {
+    if (!sonKosu || !akisVakalar || !acikVakaId) return;
+    if (akisVakalar.some((v) => v.vakaId === acikVakaId)) return;
+    const es = akisVakalar.find((v) => kosuVakayaAitMi(sonKosu, v));
+    if (es) setAcikVakaId(es.vakaId);
+  }, [akisVakalar, sonKosu, acikVakaId]);
 
   // Klavye — tek dinleyici: '/' komut kutusuna odak (input dışındaysa); Esc teyit/listeyi kapatır (KOŞUYU DURDURMAZ)
   useEffect(() => {
@@ -142,46 +144,29 @@ export function EkipEkrani() {
     return () => window.removeEventListener('keydown', dinle);
   }, []);
 
-  const seciliAjan = ajanlar.find((a) => a.id === seciliAjanId);
   const omurgaYok = isOmurgaYok(kadroS.error);
-  const bekleyenSayisi = onaylar.length;
-
-  const sekmeTanim: Array<{ id: Sekme; ad: string; ikon: ReactNode; sayac?: number; sayacRenk?: string }> = [
-    { id: 'akis', ad: 'Canlı akış', ikon: <Activity size={13} /> },
-    { id: 'isler', ad: 'İş dosyaları', ikon: <FolderOpen size={13} />, sayac: bugunSayisi, sayacRenk: EKIP_ACCENT },
-    { id: 'pano', ad: 'Dönem panosu', ikon: <CalendarRange size={13} /> },
-    { id: 'onaylar', ad: 'Onaylar', ikon: <ShieldCheck size={13} />, sayac: bekleyenSayisi, sayacRenk: RENK.altin },
-  ];
-  const icerikRenk = sekme === 'akis' ? ajanYuzeyRengi(seciliAjanId) : sekme === 'pano' ? RENK.mor : EKIP_ACCENT;
 
   return (
     <div className="flex min-w-0 flex-col gap-5">
+      {/* 1. İnce başlık şeridi */}
       <KonsolBaslik
         durum={durumS.data}
         durumHata={durumS.error}
         durumYukleniyor={durumS.isLoading}
         kadroSayisi={ajanlar.length}
-        onaylar={onaylar}
-        isler={isler}
+        calisan={calisan}
+        sayaclar={sayaclar}
         pano={panoS.data}
         panoYukleniyor={panoS.isLoading}
         kosular={kosular}
-        onOnayaGit={() => {
-          if (bekleyenSayisi > 0 && onayRef.current) onayRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-          else {
-            setSekme('onaylar');
-            icerigeKaydir();
-          }
+        onSuzgec={(f) => {
+          setAkisSuzgec(f);
+          kaydir(akisRef);
         }}
-        onBugunKosulara={() => {
-          setIsSuzgec({ nonce: Date.now(), gun: 'bugun' });
-          setSekme('isler');
-          icerigeKaydir();
-        }}
-        onPanoyaGit={() => {
+        onPanoAc={() => {
+          setPanoAcik(true);
           setEksiklerNonce((n) => n + 1);
-          setSekme('pano');
-          icerigeKaydir();
+          kaydir(panoRef);
         }}
       />
 
@@ -192,18 +177,13 @@ export function EkipEkrani() {
         </div>
       )}
 
-      {/* 2. Avatar sırası */}
-      <AjanSeridi ajanlar={ajanlar} isler={isler} onaylar={onaylar} kosular={kosular.kosular} seciliAjanId={seciliAjanId} onSec={setSeciliAjanId} yukleniyor={kadroS.isLoading} />
+      {/* 2. Personel sırası — yalnız durum */}
+      <AjanSeridi ajanlar={ajanlar} onaylar={onaylar} kosular={kosular.kosular} mukellefAd={mukellefAd} yukleniyor={kadroS.isLoading} />
 
-      {/* 3. Onay şeridi — yalnız bekleyen > 0 */}
-      <OnayKuyrugu ref={onayRef} mod="serit" onaylar={onaylar} isLoading={onaylarS.isLoading} error={onaylarS.error} mukellefAd={mukellefAd} onIsAc={isAc} />
-
-      {/* 4. Kahraman komut kartı (+ bilgi kartı) */}
+      {/* 3. TEK komut kutusu — Koordinatör */}
       <KomutKutusu
         ref={komutRef}
         ajanlar={ajanlar}
-        seciliAjanId={seciliAjanId}
-        onAjanSec={setSeciliAjanId}
         mukellefler={mukellefler}
         mukellefAd={mukellefAd}
         seciliDonem={seciliDonem}
@@ -212,74 +192,50 @@ export function EkipEkrani() {
         odakNonce={odakNonce}
         escNonce={escNonce}
         maxBagli={durumS.data?.maxBagli}
-        detayAcik={detayAcik}
-        onDetayToggle={() => setDetayAcik((a) => !a)}
       />
-      {detayAcik && <AjanDetayKarti ajan={seciliAjan} isler={isler} onIsAc={isAc} onKapat={() => setDetayAcik(false)} />}
 
-      {/* 5. Sekmeler — hap segment; dar ekranda yatay kayar */}
-      <div className="flex min-w-0 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        <div className="inline-flex flex-shrink-0 items-center gap-1 rounded-full p-1" style={{ background: 'rgba(0,0,0,0.32)', border: '1px solid rgba(255,255,255,0.08)' }} role="tablist">
-          {sekmeTanim.map((t) => {
-            const aktif = sekme === t.id;
-            return (
-              <button
-                key={t.id}
-                type="button"
-                role="tab"
-                aria-selected={aktif}
-                onClick={() => setSekme(t.id)}
-                className="inline-flex flex-shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-1.5 text-[12px] font-semibold transition-[background-color,color,transform] duration-150 hover:-translate-y-px"
-                style={aktif ? { background: `linear-gradient(135deg, ${EKIP_ACCENT}, #5b9fd1)`, color: '#0b1218', boxShadow: `0 6px 18px ${EKIP_ACCENT}33` } : { background: 'transparent', color: RENK.ikincil }}
-              >
-                {t.ikon} {t.ad}
-                {t.sayac != null && t.sayac > 0 && (
-                  <span
-                    className="rounded-full px-1.5 text-[10px] font-bold leading-4 tabular-nums"
-                    style={aktif ? { background: 'rgba(0,0,0,0.25)', color: '#0b1218' } : { background: `${t.sayacRenk}1f`, border: `1px solid ${t.sayacRenk}55`, color: t.sayacRenk }}
-                  >
-                    {t.sayac}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      {/* 4. CANLI AKIŞ — ana alan */}
+      <Kart ref={akisRef} renk={EKIP_ACCENT} serit className="p-5">
+        <IsAkisi
+          akis={akisS.data}
+          isLoading={akisS.isLoading}
+          error={akisS.error}
+          sayaclar={sayaclar}
+          suzgec={akisSuzgec}
+          onSuzgec={setAkisSuzgec}
+          gun={akisGun}
+          onGun={setAkisGun}
+          taxpayerId={akisTaxpayerId}
+          onTaxpayerId={setAkisTaxpayerId}
+          mukellefler={mukellefler}
+          acikVakaId={acikVakaId}
+          onAcikVakaId={setAcikVakaId}
+          kosular={kosular}
+          ajanAd={ajanAd}
+          onTaslak={taslakVer}
+        />
+      </Kart>
 
-      {/* 6. Tek içerik kartı — dört sekme de bağlı kalır; yalnız biri görünür */}
-      <Kart ref={icerikRef} renk={icerikRenk} className="p-5">
-        <div hidden={sekme !== 'akis'}>
-          <CanliAkis
-            kosu={kosular.kosular.get(seciliAjanId)}
-            ajanId={seciliAjanId}
-            ajanAd={ajanAd}
-            sonIs={isler[0]}
-            onIsAc={isAc}
-            onCevapla={(metin) => taslakVer({ ajanId: seciliAjanId, gorev: `Cevap: ${metin}`, taxpayerId: kosular.kosular.get(seciliAjanId)?.taxpayerId, dryRun: true, kaynak: 'cevap' })}
-            kosular={kosular}
-          />
-        </div>
-        <div hidden={sekme !== 'isler'}>
-          <IsDosyalari
-            isler={isler}
-            isLoading={islerS.isLoading}
-            error={islerS.error}
-            ajanlar={ajanlar}
-            seciliAjanId={seciliAjanId}
-            mukellefAd={mukellefAd}
-            acikIsId={acikIsId}
-            onAcikIsId={setAcikIsId}
-            onTaslak={taslakVer}
-            disSuzgec={isSuzgec}
-          />
-        </div>
-        <div hidden={sekme !== 'pano'}>
+      {/* 5. Dönem panosu — katlanır (varsayılan kapalı) */}
+      <Kart ref={panoRef} renk={RENK.mor} className={panoAcik ? 'p-5' : ''}>
+        <button
+          type="button"
+          onClick={() => setPanoAcik(!panoAcik)}
+          aria-expanded={panoAcik}
+          className={`flex w-full items-center gap-2 text-left ${panoAcik ? 'mb-3' : 'px-5 py-3.5'}`}
+        >
+          <CalendarRange size={14} style={{ color: RENK.mor }} />
+          <span className="text-[13px] font-bold" style={{ color: RENK.metin }}>
+            Dönem panosu
+          </span>
+          <span className="text-[11px]" style={{ color: RENK.ikincil }}>
+            {panoAcik ? '' : '— mükellef × dönem aşamaları; "Görev ver" Koordinatör’e gider'}
+          </span>
+          <ChevronDown size={14} className="ml-auto transition-transform" style={{ color: RENK.sonuk, transform: panoAcik ? 'rotate(0deg)' : 'rotate(-90deg)' }} />
+        </button>
+        {panoAcik && (
           <DonemPanosu pano={panoS.data} isLoading={panoS.isLoading} error={panoS.error} seciliDonem={seciliDonem} onDonemSec={setSeciliDonem} onTaslak={taslakVer} eksiklerNonce={eksiklerNonce} />
-        </div>
-        <div hidden={sekme !== 'onaylar'}>
-          <OnayKuyrugu mod="sekme" onaylar={onaylar} isLoading={onaylarS.isLoading} error={onaylarS.error} mukellefAd={mukellefAd} onIsAc={isAc} />
-        </div>
+        )}
       </Kart>
     </div>
   );

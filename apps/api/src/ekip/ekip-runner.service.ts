@@ -13,6 +13,7 @@ import { EkipOnayService } from './ekip-onay.service';
 import { logAiUsage } from '../common/ai-usage-logger';
 import { AJAN_TANIMLARI, AjanTanimi, MODEL_KIMLIKLERI, ORTAK_KURALLAR_DOSYASI, ajanBul } from './ajan-tanimlari';
 import { aracAcikMi, aracKatalogMetni, aracKademesi, ekipMihsapKomutuYasagi } from './arac-defteri';
+import { DEVIR_SINIRI, konuBasligi } from './ekip-akis';
 
 /**
  * EKİP RUNNER — bir ajanı bir görevle koşturur (PLAN/13-AJAN-KADROSU.md §5).
@@ -97,6 +98,15 @@ export interface EkipCalistirParametreleri {
    * ölüyordu; koşu arka planda sürer, iptal yalnız POST /ekip/isler/:id/iptal (iptalEt). Alan başka çağıranlar için kaldı.
    */
   signal?: AbortSignal;
+  /**
+   * VAKA (iş dosyası zinciri, PLAN/18 §B): kök işin id'si. Verilmezse bu koşu KÖK olur (payload.vakaId = kendi id'si).
+   * ekip_ajan_baslat çocuk açarken ve portal "Cevapla/Tekrar" (POST /ekip/koordinator/calistir body.vakaId) verir.
+   */
+  vakaId?: string | null;
+  /** Çocuğu açan iş (kökte null). */
+  ustIsId?: string | null;
+  /** Vakadaki kaçıncı devir (kökte 0; Koordinatör koşuları devir sayılmaz). */
+  devirSayisi?: number;
 }
 
 /** Durdurma nedeni — iş dosyasına yazılan hata metnini belirler. */
@@ -357,25 +367,37 @@ export class EkipRunnerService {
   // ─── İŞ DOSYASI (AgentCommand) + OLAY (AgentEvent) ───
 
   private async isDosyasiAc(p: EkipCalistirParametreleri, ajan: AjanTanimi, model: string): Promise<string> {
+    const payload = {
+      gorev: p.gorev,
+      dryRun: p.dryRun !== false,
+      taxpayerId: p.taxpayerId || null,
+      kaynak: p.kaynak,
+      sesModu: p.sesModu === true,
+      model,
+      // VAKA alanları (PLAN/18 §B): kökte vakaId = kendi id'si (create sonrası status→running update'iyle aynı çağrıda yazılır)
+      vakaId: p.vakaId || null,
+      ustIsId: p.ustIsId || null,
+      devirSayisi: Number.isFinite(Number(p.devirSayisi)) ? Number(p.devirSayisi) : 0,
+    };
     const row = await (this.prisma as any).agentCommand.create({
       data: {
         tenantId: p.tenantId,
         agent: `ekip:${ajan.id}`,
         action: String(p.gorev || '').slice(0, 80),
-        payload: {
-          gorev: p.gorev,
-          dryRun: p.dryRun !== false,
-          taxpayerId: p.taxpayerId || null,
-          kaynak: p.kaynak,
-          sesModu: p.sesModu === true,
-          model,
-        },
+        payload,
         status: 'pending',
         createdBy: p.userId || null,
       },
     });
     await (this.prisma as any).agentCommand
-      .update({ where: { id: row.id }, data: { status: 'running', startedAt: new Date() } })
+      .update({
+        where: { id: row.id },
+        data: {
+          status: 'running',
+          startedAt: new Date(),
+          ...(p.vakaId ? {} : { payload: { ...payload, vakaId: row.id } }),
+        },
+      })
       .catch(() => undefined);
     return row.id;
   }
@@ -551,6 +573,10 @@ export class EkipRunnerService {
       dryRun: r.payload?.dryRun !== false,
       kaynak: r.payload?.kaynak || null,
       taxpayerId: r.payload?.taxpayerId || null,
+      // VAKA alanları (PLAN/18): eski kayıtta vakaId yok → kendisi
+      vakaId: r.payload?.vakaId || r.id,
+      ustIsId: r.payload?.ustIsId || null,
+      devirSayisi: typeof r.payload?.devirSayisi === 'number' ? r.payload.devirSayisi : 0,
       status: r.status,
       createdAt: r.createdAt,
       startedAt: r.startedAt,
@@ -641,13 +667,13 @@ export class EkipRunnerService {
     return { donemler: sonuc, uretildi: new Date() };
   }
 
-  private async ekipAraciCalistir(name: string, args: any, p: EkipCalistirParametreleri): Promise<any> {
+  private async ekipAraciCalistir(name: string, args: any, p: EkipCalistirParametreleri, isId?: string | null): Promise<any> {
     const tenantId = p.tenantId;
     if (name === 'ekip_isler') return { ok: true, isler: await this.isleriListele(tenantId, { ajanId: args?.ajanId, limit: args?.limit || 20 }) };
     if (name === 'ekip_pano') return { ok: true, ...(await this.pano(tenantId, args?.donemSayisi)) };
     if (name === 'ekip_onaylar') return { ok: true, ...(await this.onay.listele(tenantId, { durum: args?.durum || 'PENDING', limit: args?.limit || 20 })) };
     if (name === 'ekip_is_durum') return this.isDurumu(tenantId, args);
-    if (name === 'ekip_ajan_baslat') return this.ajanBaslat(p, args);
+    if (name === 'ekip_ajan_baslat') return this.ajanBaslat(p, args, isId || null);
     if (name === 'ekip_onayla' || name === 'ekip_reddet') {
       // Onay yürütme yalnız Muzaffer Bey’in/personelin KENDİ oturumundan (portal/ses); cron/koordinatör zinciri kendi kendine onaylayamaz.
       if (!(p.kaynak === 'ses' || p.kaynak === 'portal') || !p.userId) {
@@ -698,7 +724,7 @@ export class EkipRunnerService {
    *  - Canlı yalnız Muzaffer Bey bu koşuyu canlı açtıysa VE args.canli=true; yoksa kuru test.
    *  - kaynak='koordinator' → çocuk koşuda ekip_onayla kapalı; iç içe bekleme yok (sesli yol 25 sn tavanı).
    */
-  private async ajanBaslat(p: EkipCalistirParametreleri, args: any): Promise<any> {
+  private async ajanBaslat(p: EkipCalistirParametreleri, args: any, isId: string | null = null): Promise<any> {
     const hedef = ajanBul(String(args?.ajanId || ''));
     if (!hedef) return { ok: false, error: `Bilinmeyen ajan: ${args?.ajanId || '-'}. Geçerli: ${AJAN_TANIMLARI.map((a) => a.id).join(', ')}` };
     if (hedef.id === 'koordinator') return { ok: false, error: 'Koordinatör kendine iş atamaz.' };
@@ -716,6 +742,26 @@ export class EkipRunnerService {
         ok: false,
         mevcutIsId: mevcut.id,
         error: `${hedef.ad} için ${taxpayerId ? 'bu mükellefte ' : ''}çalışan/bekleyen iş var (${mevcut.id}, ${mevcut.status}); yenisi açılmadı. ekip_is_durum ile izle.`,
+      };
+    }
+
+    // VAKA (PLAN/18 §B): çocuk, bu koşunun vakasına bağlanır; devir sayısı = vakadaki Koordinatör-dışı çocuk sayısı + 1.
+    // Kural KODDA: DEVIR_SINIRI (2) aşılırsa çocuk AÇILMAZ; Muzaffer Bey’e "Karar sizde" bildirimi (tur:'bilgi') düşer.
+    const vakaId = p.vakaId || isId || null;
+    const devirSayisi = (vakaId ? await this.vakaDevirSayisi(p.tenantId, vakaId) : 0) + 1;
+    if (devirSayisi > DEVIR_SINIRI) {
+      const son = vakaId ? await this.vakaSonCocuk(p.tenantId, vakaId) : null;
+      const sonAjanId = son ? String(son.agent || '').replace(/^ekip:/, '') : null;
+      const sonAjan = sonAjanId ? ajanBul(sonAjanId)?.ad || sonAjanId : '-';
+      const sonRapor = String(son?.result?.rapor || son?.result?.hata || '').replace(/\s+/g, ' ').trim().slice(0, 200) || '-';
+      const konu = konuBasligi(gorev);
+      await this.devirSiniriBildirimi(p, isId, vakaId, taxpayerId, { konu, sonAjan, sonRapor, devirSayisi });
+      return {
+        ok: false,
+        neden: 'devir_siniri',
+        vakaId,
+        devirSayisi,
+        error: `Bu vakada ${devirSayisi}. devire gelindi (sınır ${DEVIR_SINIRI}); yeni ajan açılmadı. Karar Muzaffer Bey’e düşürüldü — raporunda "Karar sizde: ${konu}" yaz, tekrar deneme.`,
       };
     }
 
@@ -738,6 +784,9 @@ export class EkipRunnerService {
         taxpayerId,
         dryRun: !canli,
         kaynak: 'koordinator',
+        vakaId,
+        ustIsId: isId,
+        devirSayisi,
         emit: (e) => {
           if (e.type === 'baslangic') bitir({ isId: e.isId });
           else if (e.type === 'error' && !cozuldu) bitir({ hata: e.error });
@@ -753,8 +802,67 @@ export class EkipRunnerService {
       isId: baslangic.isId || null,
       ajanId: hedef.id,
       dryRun: !canli,
+      vakaId: vakaId || baslangic.isId || null,
+      devirSayisi,
       mesaj: `${hedef.ad} arka planda ${canli ? 'CANLI' : 'kuru testte'} başladı${baslangic.isId ? ` (iş ${baslangic.isId})` : ''}; bu koşuda bekleme, sonucu ekip_is_durum ile izle ya da iş dosyasından oku.`,
     };
+  }
+
+  /** Vakadaki Koordinatör-dışı çocuk sayısı (payload.vakaId = vakaId AND agent != ekip:koordinator). Sorgu düşerse 0. */
+  private async vakaDevirSayisi(tenantId: string, vakaId: string): Promise<number> {
+    try {
+      const n = await (this.prisma as any).agentCommand.count({
+        where: { tenantId, agent: { startsWith: 'ekip:', not: 'ekip:koordinator' }, payload: { path: ['vakaId'], equals: vakaId } },
+      });
+      return Number(n) || 0;
+    } catch (e: any) {
+      this.logger.warn(`vaka devir sayısı okunamadı ${vakaId}: ${e?.message || e}`);
+      return 0;
+    }
+  }
+
+  /** Vakadaki en son Koordinatör-dışı çocuk (kimde kaldı / son rapor için). Yoksa null. */
+  private async vakaSonCocuk(tenantId: string, vakaId: string): Promise<any | null> {
+    try {
+      return (
+        (await (this.prisma as any).agentCommand.findFirst({
+          where: { tenantId, agent: { startsWith: 'ekip:', not: 'ekip:koordinator' }, payload: { path: ['vakaId'], equals: vakaId } },
+          orderBy: { createdAt: 'desc' },
+        })) || null
+      );
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Devir sınırı bildirimi — create_pending_action eşdeğeri: "Karar sizde: <konu>", tur:'bilgi', dedupe `ekip:devir:<vakaId>` (60 dk).
+   * dispatcher yoksa / düşerse yalnız log (çocuk zaten açılmadı; kural yine geçerli).
+   */
+  private async devirSiniriBildirimi(
+    p: EkipCalistirParametreleri,
+    isId: string | null,
+    vakaId: string | null,
+    taxpayerId: string | null,
+    bilgi: { konu: string; sonAjan: string; sonRapor: string; devirSayisi: number },
+  ): Promise<void> {
+    try {
+      await this.dispatcher.dispatch(
+        'create_pending_action',
+        {
+          title: `Karar sizde: ${bilgi.konu}`.slice(0, 200),
+          body: `${bilgi.konu} ${bilgi.devirSayisi}. devire geldi; kimde kaldı: ${bilgi.sonAjan}; son rapor: ${bilgi.sonRapor}`,
+          taxpayerId: taxpayerId || undefined,
+          tur: 'bilgi',
+          priority: 'high',
+          dedupeKey: vakaId ? `ekip:devir:${vakaId}` : undefined,
+          gecikme: 'devir',
+        },
+        { tenantId: p.tenantId, userId: p.userId ?? null, automationId: `ekip:koordinator:${isId || 'vaka'}`, isId, vakaId, ajanId: 'koordinator' },
+      );
+    } catch (e: any) {
+      this.logger.warn(`devir sınırı bildirimi açılamadı ${vakaId || '-'}: ${e?.message || e}`);
+    }
   }
 
   // ─── ÖĞRENME: "ÖĞRENDİM:" satırları → AiMemory ───
@@ -893,11 +1001,20 @@ export class EkipRunnerService {
       emit({ type: 'tool', name, args });
       try {
         let r: any;
-        if (name.startsWith('ekip_')) r = await this.ekipAraciCalistir(name, args, p);
+        if (name.startsWith('ekip_')) r = await this.ekipAraciCalistir(name, args, p, isId);
         else if (LucaOperatorService.lucaAraciMi(name)) r = await this.operator.executeOperatorTool(name, args, ctx);
         else if (PORTAL_ARAC_ADLARI.has(name)) r = await this.tools.execute(name, args, ctx);
         else if (ACTION_BY_NAME[name]) {
-          r = await this.dispatcher.dispatch(name, args, { tenantId: p.tenantId, userId: p.userId ?? null, automationId: `ekip:${ajan.id}:${isId}` });
+          // VAKA bağlamı (PLAN/18): create_pending_action metadata'sına tur/vakaId/isId/ajanId/taxpayerId düşer.
+          r = await this.dispatcher.dispatch(name, args, {
+            tenantId: p.tenantId,
+            userId: p.userId ?? null,
+            automationId: `ekip:${ajan.id}:${isId}`,
+            isId,
+            vakaId: p.vakaId || isId,
+            ajanId: ajan.id,
+            taxpayerId: ctx.taxpayerId,
+          });
         } else r = { ok: false, error: `Çalıştırıcı bulunamadı: ${name}` };
         return cevap(r);
       } catch (e: any) {
@@ -973,8 +1090,11 @@ export class EkipRunnerService {
     let isError = false;
     let hata: string | undefined;
 
+    // VAKA satırı (PLAN/18 §B): ajan create_pending_action çağrısında vakaId olarak bunu verir; iş dosyası zinciri bozulmaz.
+    const vakaId = p.vakaId || isId;
     const promptBaslik = [
       `## GÖREV (kaynak: ${p.kaynak}${p.taxpayerId ? `, mükellef id: ${p.taxpayerId}` : ''}, mod: ${dryRun ? 'KURU TEST' : 'CANLI'})`,
+      `VAKA: ${vakaId} (create_pending_action çağrılarında vakaId olarak bunu ver; devir ${p.devirSayisi || 0}/${DEVIR_SINIRI})`,
       gorev,
     ].join('\n');
 
@@ -1199,6 +1319,25 @@ export class EkipRunnerService {
     };
   }
 
+  /** id → görünen ad (companyName | ad soyad); sorgu düşerse boş harita (kadro yine döner). */
+  private async taxpayerAdlari(tenantId: string, idler: string[]): Promise<Map<string, string>> {
+    const out = new Map<string, string>();
+    if (!idler.length) return out;
+    try {
+      const rows: any[] = await (this.prisma as any).taxpayer.findMany({
+        where: { tenantId, id: { in: idler } },
+        select: { id: true, companyName: true, firstName: true, lastName: true },
+      });
+      for (const t of rows || []) {
+        const ad = String(t?.companyName || '').trim() || `${String(t?.firstName || '').trim()} ${String(t?.lastName || '').trim()}`.trim();
+        if (ad) out.set(t.id, ad);
+      }
+    } catch {
+      /* ad çözülemedi — null kalır */
+    }
+    return out;
+  }
+
   /** Ekipten açılmış bekleyen Muzaffer Bey’in onayı sayısı. */
   async bekleyenOnaySayisi(tenantId: string): Promise<number> {
     return (this.prisma as any).ownerApprovalRequest
@@ -1216,9 +1355,10 @@ export class EkipRunnerService {
     const bekleyenOnaylar = new Map<string, number>();
     const bugunKosular = new Map<string, number>();
     const calisanlar = new Map<string, number>();
+    const suAnlar = new Map<string, any>();
     if (tenantId) {
       const ekipWhere = { tenantId, agent: { startsWith: 'ekip:' } };
-      const [sonlar, onaylar, bugunler, kosanlar] = await Promise.all([
+      const [sonlar, onaylar, bugunler, kosanlar, kosanIsler] = await Promise.all([
         // distinct + createdAt desc → her ajan için EN SON kayıt
         (this.prisma as any).agentCommand
           .findMany({ where: ekipWhere, orderBy: { createdAt: 'desc' }, distinct: ['agent'] })
@@ -1232,8 +1372,26 @@ export class EkipRunnerService {
         (this.prisma as any).agentCommand
           .groupBy({ by: ['agent'], where: { ...ekipWhere, status: 'running' }, _count: { _all: true } })
           .catch(() => [] as any[]),
+        // 5. sorgu (PLAN/18): her ajanın ŞU AN koştuğu iş → suAn {vakaId, isId, mukellefId, mukellefAd, konu, basladi}
+        (this.prisma as any).agentCommand
+          .findMany({ where: { ...ekipWhere, status: 'running' }, orderBy: { createdAt: 'desc' }, distinct: ['agent'] })
+          .catch(() => [] as any[]),
       ]);
       const ajanIdsi = (agent: any) => String(agent || '').replace(/^ekip:/, '');
+      const kosanDizi = Array.isArray(kosanIsler) ? (kosanIsler as any[]).filter((r) => r?.status === 'running') : [];
+      const mukellefIdleri = Array.from(new Set(kosanDizi.map((r) => r?.payload?.taxpayerId).filter((x) => typeof x === 'string' && x))) as string[];
+      const adlar = await this.taxpayerAdlari(tenantId, mukellefIdleri);
+      for (const r of kosanDizi) {
+        const mukellefId = r?.payload?.taxpayerId || null;
+        suAnlar.set(ajanIdsi(r.agent), {
+          vakaId: r?.payload?.vakaId || r.id,
+          isId: r.id,
+          mukellefId,
+          mukellefAd: mukellefId ? adlar.get(mukellefId) || null : null,
+          konu: konuBasligi(r?.payload?.gorev || r.action),
+          basladi: r.startedAt || r.createdAt || null,
+        });
+      }
       for (const r of sonlar as any[]) sonKosular.set(ajanIdsi(r.agent), this.isOzeti(r));
       for (const g of onaylar as any[]) bekleyenOnaylar.set(ajanIdsi(g.agent), Number(g?._count?._all || 0));
       for (const g of bugunler as any[]) bugunKosular.set(ajanIdsi(g.agent), Number(g?._count?._all || 0));
@@ -1263,6 +1421,8 @@ export class EkipRunnerService {
         bekleyenOnay: bekleyenOnaylar.get(a.id) || 0,
         bugunKosu: bugunKosular.get(a.id) || 0,
         calisiyor: (calisanlar.get(a.id) || 0) > 0,
+        // PLAN/18: personel sırası yalnız DURUM gösterir — kim çalışıyor, ne üzerinde
+        suAn: suAnlar.get(a.id) || null,
       };
     });
   }

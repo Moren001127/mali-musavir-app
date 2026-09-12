@@ -14,6 +14,24 @@ import { ACTION_BY_NAME } from './action-catalog';
 import { claudeTextViaMax } from '../common/max-inference';
 
 /**
+ * Dispatch bağlamı. isId/vakaId/ajanId/taxpayerId yalnız EKİP koşusundan (ekip-runner) gelir (PLAN/18);
+ * otomasyon yolunda yoktur ve davranış değişmez.
+ */
+export interface DispatchBaglami {
+  tenantId: string;
+  userId?: string | null;
+  automationId: string;
+  isId?: string | null;
+  vakaId?: string | null;
+  ajanId?: string | null;
+  taxpayerId?: string | null;
+}
+
+/** create_pending_action `tur` alanı: onay=karar sizde · istek=sizden fiziksel iş · bilgi=yalnız not. */
+export const BILDIRIM_TURLERI = ['onay', 'istek', 'bilgi'] as const;
+export type BildirimTuru = (typeof BILDIRIM_TURLERI)[number];
+
+/**
  * Runner'ın çağırdığı tek nokta — bir aksiyon adını gerçek servis çağrısına yönlendirir.
  *
  * FLOW aksiyonları (for_each, branch_if, parallel, wait) BURADA değil RUNNER'da
@@ -52,7 +70,7 @@ export class ActionDispatcherService {
   async dispatch(
     toolName: string,
     args: Record<string, unknown>,
-    ctx: { tenantId: string; userId?: string | null; automationId: string },
+    ctx: DispatchBaglami,
   ): Promise<unknown> {
     const action = ACTION_BY_NAME[toolName];
     if (!action) {
@@ -181,23 +199,38 @@ export class ActionDispatcherService {
     return { ...res, to: args.to };
   }
 
-  private async createPendingAction(
-    args: any,
-    ctx: { tenantId: string; userId?: string | null; automationId: string },
-  ) {
+  private async createPendingAction(args: any, ctx: DispatchBaglami) {
+    const title = String(args.title ?? '').slice(0, 200);
+    const metadata: Record<string, any> = {
+      automationId: ctx.automationId,
+      taxpayerId: args.taxpayerId,
+      priority: args.priority || 'normal',
+    };
+    // EKİP yolu (ctx.isId var, PLAN/18 §B): vaka bağı + tür. Otomasyon yolunda bu blok girmez.
+    if (ctx.isId) {
+      // tur: enum dışı → 'onay'; "İŞ ATAMASI" başlığı ZORLA 'bilgi' (Koordinatör atama kaydı kutu değiştirmez)
+      const istenen = String(args.tur || '').trim().toLowerCase();
+      let tur: BildirimTuru = (BILDIRIM_TURLERI as readonly string[]).includes(istenen) ? (istenen as BildirimTuru) : 'onay';
+      if (/^İŞ ATAMASI/i.test(title.trim())) tur = 'bilgi';
+      const argVaka = typeof args.vakaId === 'string' && /^c[a-z0-9]{20,31}$/.test(args.vakaId) ? args.vakaId : null;
+      metadata.tur = tur;
+      metadata.vakaId = ctx.vakaId || argVaka || ctx.isId;
+      metadata.isId = ctx.isId;
+      metadata.ajanId = ctx.ajanId || null;
+      metadata.taxpayerId = args.taxpayerId || ctx.taxpayerId || null;
+      if (typeof args.gecikme === 'string' && args.gecikme) metadata.gecikme = args.gecikme;
+    }
+    const dedupeKey = typeof args.dedupeKey === 'string' && args.dedupeKey.trim() ? args.dedupeKey.trim() : undefined;
     const notification = await this.notifications.create({
       tenantId: ctx.tenantId,
       userId: args.userId || ctx.userId || undefined,
-      title: String(args.title ?? '').slice(0, 200),
+      title,
       body: String(args.body ?? '').slice(0, 1000),
       type: 'AUTOMATION',
-      metadata: {
-        automationId: ctx.automationId,
-        taxpayerId: args.taxpayerId,
-        priority: args.priority || 'normal',
-      },
+      metadata,
+      ...(dedupeKey ? { dedupeKey, dedupeWindowMin: 60 } : {}),
     });
-    return { created: true, notificationId: notification.id };
+    return { created: true, notificationId: notification.id, ...(ctx.isId ? { tur: metadata.tur, vakaId: metadata.vakaId } : {}) };
   }
 
   // ---------------------------------------------------------------

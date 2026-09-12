@@ -223,7 +223,7 @@ describe('POST /ekip/:ajanId/calistir — SSE kopması koşuyu İPTAL ETMEZ (PLA
         return { ok: true, isId: 'x' };
       },
     };
-    const controller = new EkipController(runner, {} as any, {} as any, {} as any);
+    const controller = new EkipController(runner, {} as any, {} as any, {} as any, {} as any);
     const loglar: string[] = [];
     (controller as any).logger = { log: (m: string) => loglar.push(m), warn: (m: string) => loglar.push(m) };
     const res = sahteRes();
@@ -251,7 +251,7 @@ describe('POST /ekip/:ajanId/calistir — SSE kopması koşuyu İPTAL ETMEZ (PLA
   it('sahip "Durdur" → POST /ekip/isler/:id/iptal runner.iptalEt(tenant, id, "sahip")', () => {
     const cagrilar: any[] = [];
     const runner: any = { iptalEt: (...a: any[]) => (cagrilar.push(a), { ok: true, isId: a[1] }) };
-    const controller = new EkipController(runner, {} as any, {} as any, {} as any);
+    const controller = new EkipController(runner, {} as any, {} as any, {} as any, {} as any);
     expect(controller.iptal({ user: { tenantId: 't1' } }, 'is-9')).toEqual({ ok: true, isId: 'is-9' });
     expect(cagrilar).toEqual([['t1', 'is-9', 'sahip']]);
   });

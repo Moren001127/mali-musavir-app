@@ -1,6 +1,6 @@
 /** Moren Ekip — ortak renkler ve yardımcılar. Modül kimliği: gök mavisi; altın YALNIZ 3 yerde (§8). */
 import type { CSSProperties } from 'react';
-import type { AsamaAdi, AsamaDurumu, IsDosyasi } from '@/lib/ekip';
+import type { AkisFiltre, AsamaAdi, AsamaDurumu, IsDosyasi, Vaka, VakaKutu } from '@/lib/ekip';
 
 export const EKIP_ACCENT = '#7dd3fc';
 
@@ -491,6 +491,55 @@ export function isDurumu(is: Pick<IsDosyasi, 'status'>): { ad: string; renk: str
     default:
       return { ad: 'Bekliyor', renk: RENK.gri };
   }
+}
+
+// ─── CANLI AKIŞ — kutular (2026-09-13, "sakin komuta merkezi" v2) ───
+
+/** Depo anahtarları (localStorage). Kuru/Canlı ve açık vaka ASLA depoya yazılmaz. */
+export const DEPO = {
+  akisSuzgec: 'ekip.akisSuzgec',
+  akisGun: 'ekip.akisGun',
+  panoAcik: 'ekip.panoAcik',
+  donem: 'ekip.donem',
+} as const;
+
+/**
+ * Muzaffer Bey'in gördüğü kutular: Sürüyor · Onayınızı bekleyen · Sizden istenen · Bitti.
+ * Altın YALNIZ "Onayınızı bekleyen" hapında (sarının tek yeri, §8).
+ */
+export const KUTULAR: Array<{ id: AkisFiltre; ad: string; renk: string; sayacAnahtari: 'suruyor' | 'onay' | 'istek' | 'bitti' | null }> = [
+  { id: 'tumu', ad: 'Tümü', renk: EKIP_ACCENT, sayacAnahtari: null },
+  { id: 'suruyor', ad: 'Sürüyor', renk: EKIP_ACCENT, sayacAnahtari: 'suruyor' },
+  { id: 'onay', ad: 'Onayınızı bekleyen', renk: RENK.altin, sayacAnahtari: 'onay' },
+  { id: 'istek', ad: 'Sizden istenen', renk: RENK.turuncu, sayacAnahtari: 'istek' },
+  { id: 'bitti', ad: 'Bitti', renk: RENK.yesil, sayacAnahtari: 'bitti' },
+];
+
+export function kutuRengi(kutu: VakaKutu): string {
+  return KUTULAR.find((k) => k.id === kutu)?.renk || EKIP_ACCENT;
+}
+
+/** Vaka satırı durum rozeti — Sürüyor / Onay / İstek / Bitti / Hata (tek yerden). */
+export function kutuRozeti(v: Pick<Vaka, 'kutu' | 'durum'>): { ad: string; renk: string; nabiz: boolean } {
+  if (v.durum === 'hata') return { ad: 'Hata', renk: RENK.kirmizi, nabiz: false };
+  switch (v.kutu) {
+    case 'onay':
+      return { ad: 'Onay', renk: RENK.altin, nabiz: false };
+    case 'istek':
+      return { ad: 'İstek', renk: RENK.turuncu, nabiz: false };
+    case 'bitti':
+      return { ad: 'Bitti', renk: RENK.yesil, nabiz: false };
+    default:
+      return { ad: 'Sürüyor', renk: EKIP_ACCENT, nabiz: true };
+  }
+}
+
+/** Liste sırası: önce onay/istek kutuları, sonra sürüyor, sonra bitti; her grupta guncellendi desc. */
+export function vakaSirasi(a: Vaka, b: Vaka): number {
+  const grup = (v: Vaka) => (v.kutu === 'onay' || v.kutu === 'istek' ? 0 : v.kutu === 'suruyor' ? 1 : 2);
+  const g = grup(a) - grup(b);
+  if (g !== 0) return g;
+  return new Date(b.guncellendi).getTime() - new Date(a.guncellendi).getTime();
 }
 
 /** localStorage güvenli okuma/yazma (SSR + engelli tarayıcı). Kuru/Canlı ASLA buraya yazılmaz. */

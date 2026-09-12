@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import { EkipKosuSonucu, EkipRunnerService } from './ekip-runner.service';
 import { geceOzetSatiri } from '../fatura-muhasebelestirme/gece-cekim';
+import { EkipAkisService } from './ekip-akis.service';
 
 /**
  * KOORDİNATÖR (Ofis Müdürü) — PLAN/13-AJAN-KADROSU.md §3.1, §8-D.
@@ -26,6 +27,7 @@ export class KoordinatorService {
     private readonly prisma: PrismaService,
     private readonly runner: EkipRunnerService,
     private readonly whatsapp: WhatsAppService,
+    private readonly akis: EkipAkisService,
   ) {}
 
   private sahipNumaralari(): string[] {
@@ -43,7 +45,7 @@ export class KoordinatorService {
       .filter(Boolean);
   }
 
-  private sabahGorevi(geceSatiri: string): string {
+  private sabahGorevi(geceSatiri: string, akisSatiri: string): string {
     const tarih = new Date().toLocaleDateString('tr-TR', {
       timeZone: 'Europe/Istanbul', weekday: 'long', day: '2-digit', month: 'long', year: 'numeric',
     });
@@ -52,6 +54,8 @@ export class KoordinatorService {
       'Sırayla bak: get_operation_briefing → get_tax_calendar → get_beyanname_readiness_summary → get_collection_risk_summary → ekip_pano (son 3 dönem) → ekip_isler (son 20; kuru test / onay bekleyen).',
       // PLAN/16 §H: gece çekimi özeti sistemden hazır gelir (AuditLog GECE_CEKIM, son 24 saat) — araç çağrısı gerekmez.
       `Hazır veri (sistemden, araç çağırmadan aynen kullan): ${geceSatiri}. Bunu 🤖 EKİP başlığına tek madde olarak yaz.`,
+      // PLAN/18: üç kutu (sürüyor / onayınızı bekleyen / sizden istenen / dün bitti / gecikti) sistemden hazır gelir.
+      `Hazır veri (araç çağırmadan aynen kullan): ${akisSatiri}. 🤖 EKİP başlığını bu üç kutuyla yaz (sürüyor · onayınızı bekleyen · sizden istenen); geciken varsa tek satır "<mükellef · konu · kimde>". ekip_isler/ekip_onaylar'ı yalnız ayrıntı için çağır.`,
       'Sonra "Günaydın." ile başlayan, şu 5 başlığı bu sırayla taşıyan TEK mesaj yaz:',
       '📊 DURUM · ⚠️ RİSKLİ/ACİL · 📝 YAKLAŞAN SÜRELER · 🤖 EKİP (dün ne yaptı, onay bekleyen, gece çekimi) · ▶️ BUGÜN ÖNCELİK',
       'Her başlıkta en fazla üç madde, her madde TEK satır; toplam 1100 karakteri aşma. Çift yıldız ve markdown başlığı kullanma; • madde, Türk sayı biçimi.',
@@ -81,10 +85,10 @@ export class KoordinatorService {
 
   /** Koordinatörü koştur ve Muzaffer Bey’e gönder. Dönen sonuç iş dosyasıyla aynıdır. */
   async sabahOzeti(tenantId: string, opts: { gonder?: boolean } = {}): Promise<EkipKosuSonucu & { gonderildi: number }> {
-    const geceSatiri = await this.geceCekimSatiri(tenantId);
+    const [geceSatiri, akisSatiri] = await Promise.all([this.geceCekimSatiri(tenantId), this.akis.ozetSatiri(tenantId)]);
     const sonuc = await this.runner.calistir({
       ajanId: 'koordinator',
-      gorev: this.sabahGorevi(geceSatiri),
+      gorev: this.sabahGorevi(geceSatiri, akisSatiri),
       tenantId,
       userId: null,
       dryRun: true,

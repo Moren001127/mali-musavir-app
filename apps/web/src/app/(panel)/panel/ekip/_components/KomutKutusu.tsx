@@ -1,7 +1,7 @@
 'use client';
 
-import { forwardRef, useEffect, useMemo, useRef, useState } from 'react';
-import { Play, Loader2, Mic, MicOff, ShieldCheck, AlertTriangle, Square, Info, FlaskConical, Zap } from 'lucide-react';
+import { forwardRef, useEffect, useRef, useState } from 'react';
+import { Play, Loader2, Mic, MicOff, ShieldCheck, AlertTriangle, Square, FlaskConical, Zap, Link2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Ajan, MukellefOzet } from '@/lib/ekip';
 import { startListening, isSpeechSupported } from '../../luca-operator/_components/voice';
@@ -9,28 +9,32 @@ import type { KosularApi } from './kosular';
 import { MukellefSecici } from './MukellefSecici';
 import { RENK, SABLONLAR, ajanKisaltma, ajanRengi, ajanYuzeyRengi, avatarHalkaStili, kahramanKartStili, modelRengi, sablonDoldur } from './ortak';
 
-/** Şablon / pano / tekrar-çalıştır / cevapla bunu doldurur; ÇALIŞTIRMAZ. */
+const KOORDINATOR = 'koordinator';
+
+/** Şablon / pano / tekrar-çalıştır / cevapla bunu doldurur; ÇALIŞTIRMAZ. Hep Koordinatör'e gider (ajanId yok sayılır). */
 export interface KomutTaslak {
-  ajanId: string;
+  /** Geriye uyumluluk (DonemPanosu sonrakiAdim ajanId verir) — kullanılmaz; komut Koordinatör'e gider. */
+  ajanId?: string;
   gorev: string;
   taxpayerId?: string;
   dryRun: true;
   kaynak?: 'sablon' | 'pano' | 'tekrar' | 'cevap';
+  /** Aynı iş dosyası zincirinde devam (Cevapla / Tekrar). */
+  vakaId?: string;
   /** Aynı içerik ikinci kez gelince de uygulansın diye. */
   nonce: number;
 }
 
 /**
- * Kahraman komut kartı: [avatar · ad · unvan · model · bilgi] [mükellef] / büyük metin / [şablon çipleri] [Kuru test|Canlı · Sesli · Çalıştır].
- * Kuru/Canlı ASLA localStorage'a yazılmaz; her açılışta KURU. Canlı seçilince çerçeve + Çalıştır kırmızıya döner (kart içi teyit korunur).
- * Ajan seçimi avatar sırasından (AjanSeridi); "bilgi" düğmesi AjanDetayKarti'nı kartın altında açar/kapatır.
+ * TEK komut kutusu — yalnız Koordinatör (Muzaffer Bey: "komut vermek için tek yer").
+ * Kahraman kart, renk = ajanYuzeyRengi('koordinator') (gök mavi), avatar halkası altın (kural §0.3).
+ * Kaldırılan: ajan seçici, "bilgi" düğmesi. Kalan: metin ('/' odak), MukellefSecici, TÜM şablon hapları (Koordinatör yönlendirir),
+ * Kuru/Canlı anahtarı (+kart içi 5 sn teyit), Sesli, Çalıştır. Kuru/Canlı ASLA depoya yazılmaz; her açılışta KURU.
  */
 export const KomutKutusu = forwardRef<
   HTMLElement,
   {
     ajanlar: Ajan[];
-    seciliAjanId: string;
-    onAjanSec: (id: string) => void;
     mukellefler: MukellefOzet[];
     mukellefAd: (id?: string | null) => string | undefined;
     seciliDonem: string | null;
@@ -39,21 +43,15 @@ export const KomutKutusu = forwardRef<
     odakNonce: number;
     escNonce: number;
     maxBagli?: boolean;
-    detayAcik: boolean;
-    onDetayToggle: () => void;
   }
->(function KomutKutusu(
-  { ajanlar, seciliAjanId, onAjanSec, mukellefler, mukellefAd, seciliDonem, komutTaslak, kosular, odakNonce, escNonce, maxBagli, detayAcik, onDetayToggle },
-  ref,
-) {
-  const ajan = ajanlar.find((a) => a.id === seciliAjanId);
-  // Büyük yüzeyler (çerçeve, çipler, Çalıştır) → ajanYuzeyRengi (§0.3/§0.6/§8); yalnız avatar halkası ajanRengi.
-  const renk = ajanYuzeyRengi(seciliAjanId);
-  const ikonRenk = ajanRengi(seciliAjanId);
-  const sesli = seciliAjanId === 'koordinator';
+>(function KomutKutusu({ ajanlar, mukellefler, mukellefAd, seciliDonem, komutTaslak, kosular, odakNonce, escNonce, maxBagli }, ref) {
+  const ajan = ajanlar.find((a) => a.id === KOORDINATOR);
+  const renk = ajanYuzeyRengi(KOORDINATOR);
+  const ikonRenk = ajanRengi(KOORDINATOR); // altın halka
 
   const [gorev, setGorev] = useState('');
   const [taxpayerId, setTaxpayerId] = useState('');
+  const [vakaId, setVakaId] = useState<string | undefined>(undefined);
   const [dryRun, setDryRun] = useState(true); // her açılışta KURU — depoya yazılmaz
   const [canliTeyit, setCanliTeyit] = useState(false);
   const [kilitli, setKilitli] = useState(false);
@@ -65,22 +63,20 @@ export const KomutKutusu = forwardRef<
   const calistirRef = useRef<HTMLButtonElement>(null);
   const kutuRef = useRef<HTMLElement | null>(null);
 
-  const kosu = kosular.kosular.get(seciliAjanId);
+  const kosu = kosular.kosular.get(KOORDINATOR);
   const buCalisiyor = !!kosu && !kosu.bitti;
   const sabahOzetiSuruyor = buCalisiyor && kosu?.kaynak === 'sabahOzeti'; // SSE yok, kesilecek bağlantı yok
-  const baskaCalisiyor = !!kosular.aktifKosu && kosular.aktifKosu.ajanId !== seciliAjanId;
-  const baskaAjan = baskaCalisiyor ? ajanlar.find((a) => a.id === kosular.aktifKosu!.ajanId) : undefined;
+  const baskaCalisiyor = !!kosular.aktifKosu && kosular.aktifKosu.ajanId !== KOORDINATOR;
 
-  const sablonlar = useMemo(() => SABLONLAR.filter((s) => s.ajanId === seciliAjanId), [seciliAjanId]);
-  const aktifSablon = sablonlar.find((s) => s.id === aktifSablonId);
+  const aktifSablon = SABLONLAR.find((s) => s.id === aktifSablonId);
   const mukellefEksik = !!aktifSablon?.mukellefIster && !taxpayerId;
 
-  // Dış doldurma: komutTaslak değişince ajan/metin/mükellef dolar + kaydır + Çalıştır'a odak
+  // Dış doldurma: komutTaslak değişince metin/mükellef/vaka dolar + kaydır + Çalıştır'a odak
   useEffect(() => {
     if (!komutTaslak) return;
-    if (komutTaslak.ajanId !== seciliAjanId) onAjanSec(komutTaslak.ajanId);
     setGorev(komutTaslak.gorev);
     setTaxpayerId(komutTaslak.taxpayerId || '');
+    setVakaId(komutTaslak.vakaId || undefined);
     setKilitli(komutTaslak.kaynak === 'pano' || komutTaslak.kaynak === 'tekrar');
     setAktifSablonId(null);
     setDryRun(true);
@@ -108,15 +104,18 @@ export const KomutKutusu = forwardRef<
 
   const calistir = () => {
     if (!calistirabilir) return;
-    kosular.baslat(seciliAjanId, { gorev: gorev.trim(), taxpayerId: taxpayerId || undefined, dryRun });
+    void kosular.baslat(KOORDINATOR, { gorev: gorev.trim(), taxpayerId: taxpayerId || undefined, dryRun, vakaId });
+    // Koşu başladı: vaka bağı tek seferlik (bir sonraki komut yeni zincir açar)
+    setVakaId(undefined);
   };
 
   const sablonSec = (id: string) => {
-    const s = sablonlar.find((x) => x.id === id);
+    const s = SABLONLAR.find((x) => x.id === id);
     if (!s) return;
     setAktifSablonId(id);
     setGorev(sablonDoldur(s.gorev, mukellefAd(taxpayerId), s.donemIster ? seciliDonem : null));
     setKilitli(false);
+    setVakaId(undefined);
     if (s.mukellefIster && !taxpayerId) setMukellefOdak((n) => n + 1);
     else textareaRef.current?.focus();
   };
@@ -169,40 +168,40 @@ export const KomutKutusu = forwardRef<
       style={kahramanKartStili(renk, !dryRun)}
     >
       <div className="flex flex-col gap-4 p-5">
-        {/* Üst satır: kimlik (sol) · mükellef (sağ) */}
+        {/* Üst satır: Koordinatör kimliği (sol) · mükellef (sağ) */}
         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
           <div className="flex min-w-0 items-center gap-3">
             <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full p-[2px]" style={avatarHalkaStili(ikonRenk, false)}>
               <span className="flex h-full w-full items-center justify-center rounded-full text-[11px] font-black tracking-wide" style={{ background: 'linear-gradient(160deg, #1a1815, #0b0a08)', color: ikonRenk }}>
-                {ajanKisaltma(seciliAjanId, ajan?.ad)}
+                {ajanKisaltma(KOORDINATOR, ajan?.ad)}
               </span>
             </span>
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                 <span className="truncate text-[15px] font-bold leading-tight" style={{ color: RENK.metin }}>
-                  {ajan?.ad || seciliAjanId}
+                  {ajan?.ad || 'Koordinatör'}
                 </span>
                 {ajan?.model && (
                   <span className="rounded-full px-2 py-px text-[10px] font-bold leading-4" style={{ background: `${modelR}16`, border: `1px solid ${modelR}44`, color: modelR }}>
                     {ajan.model}
                   </span>
                 )}
-                <button
-                  type="button"
-                  onClick={onDetayToggle}
-                  aria-expanded={detayAcik}
-                  className="inline-flex items-center gap-1 rounded-full px-2 py-px text-[10.5px] font-semibold leading-4 transition-[transform,filter] duration-150 hover:-translate-y-px hover:brightness-125"
-                  style={detayAcik ? { background: `${renk}22`, border: `1px solid ${renk}66`, color: renk } : { background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.10)', color: RENK.ikincil }}
-                  title={detayAcik ? 'Ajan bilgisini kapat' : 'Ajan bilgisi: açıklama, kademeler, onay noktaları, son koşular, araçlar'}
-                >
-                  <Info size={11} /> {detayAcik ? 'bilgiyi kapat' : 'bilgi'}
-                </button>
+                {vakaId && (
+                  <span
+                    className="inline-flex items-center gap-1 rounded-full px-2 py-px text-[10.5px] font-semibold leading-4"
+                    style={{ background: `${renk}18`, border: `1px solid ${renk}55`, color: renk }}
+                    title={`Aynı iş dosyası zincirinde devam: ${vakaId}`}
+                  >
+                    <Link2 size={10} /> vaka #{vakaId.slice(0, 8)}
+                    <button type="button" onClick={() => setVakaId(undefined)} className="ml-0.5 rounded p-0.5 hover:bg-white/10" title="Bağı kaldır — yeni zincir aç">
+                      <X size={10} />
+                    </button>
+                  </span>
+                )}
               </div>
-              {ajan?.unvan && (
-                <div className="truncate text-[11.5px]" style={{ color: RENK.ikincil }}>
-                  {ajan.unvan}
-                </div>
-              )}
+              <div className="truncate text-[11.5px]" style={{ color: RENK.ikincil }}>
+                {ajan?.unvan || 'Ofis koordinatörü'} · işi doğru çalışana verir
+              </div>
             </div>
           </div>
 
@@ -238,7 +237,7 @@ export const KomutKutusu = forwardRef<
             }
           }}
           rows={3}
-          placeholder={listening ? 'Dinliyorum…' : `${ajan?.ad || 'Ajan'} için görev yaz… (Enter çalıştırır, Shift+Enter yeni satır)`}
+          placeholder={listening ? 'Dinliyorum…' : 'Koordinatör’e görev yaz… (Enter çalıştırır, Shift+Enter yeni satır)'}
           className="min-h-[96px] w-full resize-y rounded-xl px-4 py-3 text-[13.5px] leading-relaxed outline-none transition-[border-color] duration-150"
           style={{
             background: 'rgba(0,0,0,0.32)',
@@ -274,15 +273,15 @@ export const KomutKutusu = forwardRef<
           <div className="flex items-start gap-2 rounded-xl px-3.5 py-2.5 text-[12.5px]" style={{ background: 'rgba(248,113,113,0.12)', border: '1px solid rgba(248,113,113,0.4)', color: '#fecaca' }}>
             <AlertTriangle size={14} className="mt-0.5 flex-shrink-0" />
             <span>
-              <b>Canlı koşu.</b> Mükellefe mesaj gidebilir, Luca’ya fiş yazılabilir. Resmi gönderim (GİB/SGK/berat) yine sadece Muzaffer Bey’e aittir; dışarı gönderimler onay şeridine düşer. Sayfa yenilenince kuru teste döner.
+              <b>Canlı koşu.</b> Mükellefe mesaj gidebilir, Luca’ya fiş yazılabilir. Resmi gönderim (GİB/SGK/berat) yine sadece Muzaffer Bey’e aittir; dışarı gönderimler akışta "Onayınızı bekleyen" kutusuna düşer. Sayfa yenilenince kuru teste döner.
             </span>
           </div>
         )}
 
-        {/* Alt satır: şablon çipleri (sol) · mod anahtarı + Sesli + Çalıştır (sağ) */}
+        {/* Alt satır: TÜM şablon çipleri (sol) · mod anahtarı + Sesli + Çalıştır (sağ) */}
         <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
-            {sablonlar.map((s) => {
+            {SABLONLAR.map((s) => {
               const aktif = aktifSablonId === s.id;
               return (
                 <button
@@ -295,7 +294,7 @@ export const KomutKutusu = forwardRef<
                     border: `1px solid ${aktif ? `${renk}88` : `${renk}3a`}`,
                     color: aktif ? RENK.metin : 'rgba(250,250,249,0.85)',
                   }}
-                  title={s.mukellefIster ? 'Bu görev mükellef ister' : 'Metni doldurur, çalıştırmaz'}
+                  title={s.mukellefIster ? 'Bu görev mükellef ister · Koordinatör yönlendirir' : 'Metni doldurur, çalıştırmaz · Koordinatör yönlendirir'}
                 >
                   {s.ad}
                 </button>
@@ -341,22 +340,20 @@ export const KomutKutusu = forwardRef<
                 </button>
               </div>
 
-              {sesli && (
-                <button
-                  type="button"
-                  onClick={toggleMic}
-                  disabled={buCalisiyor}
-                  className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-[11.5px] font-semibold transition-[transform,background-color] duration-150 hover:-translate-y-px disabled:opacity-50"
-                  style={{
-                    background: listening ? 'rgba(239,68,68,0.18)' : 'transparent',
-                    border: `1px solid ${listening ? `${RENK.kirmizi}66` : 'rgba(255,255,255,0.14)'}`,
-                    color: listening ? '#fca5a5' : RENK.metin,
-                  }}
-                  title={listening ? 'Dinlemeyi durdur' : 'Sesli görev — konuş, metne dönüşsün'}
-                >
-                  {listening ? <MicOff size={13} className="animate-pulse" /> : <Mic size={13} />} {listening ? 'Dinliyor' : 'Sesli'}
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={toggleMic}
+                disabled={buCalisiyor}
+                className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-[11.5px] font-semibold transition-[transform,background-color] duration-150 hover:-translate-y-px disabled:opacity-50"
+                style={{
+                  background: listening ? 'rgba(239,68,68,0.18)' : 'transparent',
+                  border: `1px solid ${listening ? `${RENK.kirmizi}66` : 'rgba(255,255,255,0.14)'}`,
+                  color: listening ? '#fca5a5' : RENK.metin,
+                }}
+                title={listening ? 'Dinlemeyi durdur' : 'Sesli görev — konuş, metne dönüşsün'}
+              >
+                {listening ? <MicOff size={13} className="animate-pulse" /> : <Mic size={13} />} {listening ? 'Dinliyor' : 'Sesli'}
+              </button>
 
               {sabahOzetiSuruyor ? (
                 <button
@@ -371,12 +368,12 @@ export const KomutKutusu = forwardRef<
               ) : buCalisiyor ? (
                 <button
                   type="button"
-                  onClick={() => void kosular.durdur(seciliAjanId)}
+                  onClick={() => void kosular.durdur(KOORDINATOR)}
                   className="inline-flex flex-shrink-0 items-center gap-2 rounded-full px-4 py-2 text-[12.5px] font-bold transition-[transform] duration-150 hover:-translate-y-px"
                   style={{ background: 'rgba(248,113,113,0.10)', border: `1px solid ${RENK.kirmizi}`, color: '#fca5a5' }}
                   title="Koşu sunucuda durdurulur; iş dosyası 'Hata: iptal edildi (Muzaffer Bey)' olarak kapanır"
                 >
-                  <Square size={14} /> Durdur
+                  <Square size={14} /> Koordinatör çalışıyor: Durdur
                 </button>
               ) : (
                 <button
@@ -393,20 +390,25 @@ export const KomutKutusu = forwardRef<
                   title={baskaCalisiyor ? 'Tek Max hesabı + Luca tek oturum: aynı anda tek koşu' : dryRun ? 'Kuru test koşusu' : 'CANLI koşu'}
                 >
                   {baskaCalisiyor ? <Loader2 size={14} className="animate-spin" /> : dryRun ? <Play size={14} /> : <AlertTriangle size={14} />}
-                  {baskaCalisiyor ? `${ajanKisaltma(baskaAjan?.id || '', baskaAjan?.ad)} çalışıyor — bitince` : maxBagli === false ? 'Max bağlı değil' : dryRun ? 'Çalıştır' : 'Canlı çalıştır'}
+                  {baskaCalisiyor ? 'Koşu sürüyor — bitince' : maxBagli === false ? 'Max bağlı değil' : dryRun ? 'Çalıştır' : 'Canlı çalıştır'}
                 </button>
               )}
             </div>
             <div className="text-[10.5px] md:text-right" style={{ color: RENK.sonuk }}>
               {baskaCalisiyor ? (
                 <span className="inline-flex items-center gap-1" style={{ color: RENK.ikincil }}>
-                  <ShieldCheck size={10} /> Aynı anda tek koşu — {baskaAjan?.ad || 'başka ajan'} bitince açılır
+                  <ShieldCheck size={10} /> Aynı anda tek koşu — bitince açılır
                 </span>
               ) : (
                 <>Kuru test: mesaj gitmez, Luca'ya yazılmaz · Enter çalıştırır · / odaklanır</>
               )}
             </div>
           </div>
+        </div>
+
+        {/* Tek satır ipucu */}
+        <div className="text-[11.5px]" style={{ color: RENK.ikincil }}>
+          Koordinatör işi doğru çalışana verir; ilerlemeyi aşağıdaki akıştan izlersiniz.
         </div>
       </div>
     </section>

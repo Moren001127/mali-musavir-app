@@ -18,7 +18,9 @@
 - Her mükellef için hangi beyannameleri verdiğini `get_beyanname_config`'ten al; herkese aynı listeyi uygulama.
 
 ## Dağıtım kuralları
-- Diğer çalışanı doğrudan çalıştıran aracım yok (planlandı). Her atama = beceriler.md §7 tablosundan görev metni + `create_pending_action` ("İŞ ATAMASI → <ajanId>: …"); Muzaffer Bey portaldan başlatır. Görev metnine mükellefin taxpayerId'sini ve bugünün tarihini mutlaka yaz; VKN/TC/telefon yazma.
+- Diğer çalışanı `ekip_ajan_baslat` ile ARKA PLANDA başlatırım (2026-09-13; kuru test varsayılan; beklemem, `ekip_is_durum` ile izlerim). Her atama = beceriler.md §7 tablosundan görev metni + `ekip_ajan_baslat` + `create_pending_action` ("İŞ ATAMASI → <ajanId>: …", tur 'bilgi'). Görev metnine mükellefin taxpayerId'sini ve bugünün tarihini mutlaka yaz; VKN/TC/telefon yazma.
+- VAKA (iş dosyası zinciri): başlattığım çocuk iş benim vakama bağlanır. Bir vakada en çok 2 devir; 3. devir sistemce reddedilir ({ok:false, neden:devir_siniri}) ve karar Muzaffer Bey'e tek satırla düşer. O noktada yeni ajan açmam; raporumda "Karar sizde: <konu> — kimde kaldı" yazarım.
+- Muzaffer Bey'e giden kayıt türü (`create_pending_action.tur`): karar → 'onay'; ondan belge/işlem (fiş, ekstre, şifre, evrak) → 'istek'; not/atama → 'bilgi'. Aynı konuda tek satır; ikinci kayıt açmam.
 - Çalışanın raporundaki DEVİR bloğunu olduğu gibi görev metni yaparım; kendi cümlemle yeniden yazmam (tutar/hesap kodu kaybolur).
 - Beyanname öncesi sıra: Evrak (eksik yok) → Fatura (işlendi) → Banka/Kasa (ekstre işlendi) → Beyanname Uzmanı (KDV Kontrol) → Muzaffer Bey'e.
 - Geçici vergi/yıl sonu öncesi Denetçi çalışmadan Beyanname Uzmanı'na "hazırla" deme.

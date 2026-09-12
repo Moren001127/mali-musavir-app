@@ -11,7 +11,7 @@ import { aracKademesi } from './arac-defteri';
 /**
  * EKİP ONAYLARI — ajanın "dışarı gönder" kademesindeki aracı (WhatsApp/SMS/e-posta)
  * çalışma sırasında GÖNDERİLMEZ; OwnerApprovalRequest (agent=`ekip:<ajanId>`) açılır.
- * Sahip portaldan (veya sesle) "ONAYLIYORUM #PRV-XXXX" derse burada YÜRÜTÜLÜR.
+ * Muzaffer Bey portaldan (veya sesle) "ONAYLIYORUM #PRV-XXXX" derse burada YÜRÜTÜLÜR.
  *
  * Mevcut create_confirmed_agent_command yolu `ekip:*` ajanlarını tanımadığı için
  * (allowedAgents listesi) ekibin kendi onay-yürütme yolu burada.
@@ -180,7 +180,7 @@ export class EkipOnayService {
     const kademe = aracKademesi(name);
     if (kademe === 'resmi_gonderim') {
       // Onaylansa bile ajan resmi gönderim yapmaz — kural koda gömülü.
-      return { ok: false, error: 'Resmi gönderim (GİB/SGK/e-Defter) ajan tarafından yürütülmez; sahip kendisi yapar.' };
+      return { ok: false, error: 'Resmi gönderim (GİB/SGK/e-Defter) ajan tarafından yürütülmez; Muzaffer Bey kendisi yapar.' };
     }
     const payload = kayit.payload && typeof kayit.payload === 'object' ? { ...kayit.payload } : {};
     const isId = payload.isId || null;
@@ -228,7 +228,7 @@ export class EkipOnayService {
           agent: 'ekip',
           action: ajanId,
           status: basarili ? 'onaylandi' : 'hata',
-          message: basarili ? `Sahip onayladı, gönderildi: ${name}` : `Onaylandı ama gönderilemedi: ${name} — ${sonuc?.error || 'bilinmeyen hata'}`,
+          message: basarili ? `Muzaffer Bey onayladı, gönderildi: ${name}` : `Onaylandı ama gönderilemedi: ${name} — ${sonuc?.error || 'bilinmeyen hata'}`,
           meta: { previewId: kayit.previewId, isId, name, args: payload, sonuc },
         },
       })

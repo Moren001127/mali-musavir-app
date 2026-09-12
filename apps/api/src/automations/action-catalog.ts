@@ -154,6 +154,16 @@ const COMMUNICATION_ACTIONS: AutomationAction[] = [
           enum: ['low', 'normal', 'high', 'urgent'],
           description: 'Varsayılan "normal".',
         },
+        tur: {
+          type: 'string',
+          enum: ['onay', 'istek', 'bilgi'],
+          description:
+            'onay=karar sizde (Muzaffer Bey karar verecek); istek=sizden fiziksel iş (fiş/ekstre yükleme, şifre, evrak); bilgi=yalnız not (İŞ ATAMASI kayıtları). Varsayılan onay.',
+        },
+        vakaId: {
+          type: 'string',
+          description: 'İş dosyası zinciri (vaka) kimliği — görev metnindeki "VAKA: <id>" satırından aynen. Ekip koşusunda sistem zaten bilir; boş bırakılabilir.',
+        },
       },
       required: ['title', 'body'],
     },

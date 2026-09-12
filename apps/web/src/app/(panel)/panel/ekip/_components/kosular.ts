@@ -4,14 +4,16 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   ajanCalistirStream,
+  getAkis,
   getEkipDurum,
-  getIsler,
   getKadro,
   getMukellefler,
   getOnaylar,
   getPano,
   iptalEt,
   isOmurgaYok,
+  type AkisFiltre,
+  type AkisGun,
   type AracCagrisi,
 } from '@/lib/ekip';
 
@@ -27,13 +29,15 @@ export interface Adim {
   sonuc?: string;
 }
 
-/** Ajan başına tek koşu kaydı — ajan değişince KESİLMEZ (§2). */
+/** Ajan başına tek koşu kaydı — v2'de komut yalnız Koordinatör'e gider; harita anahtarı 'koordinator'. */
 export interface Kosu {
   ajanId: string;
   gorev: string;
   taxpayerId?: string;
   dryRun: boolean;
   isId?: string;
+  /** Aynı iş dosyası zincirinde (vaka) devam — Cevapla / Tekrar taslağından gelir. */
+  vakaId?: string;
   model?: string;
   cevap: string;
   adimlar: Adim[];
@@ -47,16 +51,13 @@ export interface Kosu {
 }
 
 /** 2026-09-13 (PLAN/17 Faz C): bağlantı kopunca sunucu koşuyu İPTAL ETMEZ; iş arka planda sürer, sonuç iş dosyasına yazılır. */
-export const BAGLANTI_KESILDI_METNI = "Bağlantı kesildi — koşu sunucuda arka planda sürer; sonucu İş Dosyaları'ndan takip edin";
+export const BAGLANTI_KESILDI_METNI = 'Bağlantı kesildi — koşu sunucuda arka planda sürer; sonucu aşağıdaki akıştan takip edin';
 /** Muzaffer Bey "Durdur" dedi: sunucuda koşu iptal edildi (iş dosyası failed, hata "iptal edildi (Muzaffer Bey)"). */
 export const DURDURULDU_METNI = 'Durduruldu';
 
 /** Ortak sorgu seçenekleri (tek yerde; KonsolBaslik ve EkipEkrani aynı anahtarları paylaşır → tek ağ isteği). */
 export const SORGU = {
-  /**
-   * Ajan tanımı sabit ama backend #3 ile `sonKosu`/`bekleyenOnay` alanları CANLI → 30 sn'de bir tazelenir;
-   * ayrıca koşu başlangıcı/bitişi ve onay/ret sonrası invalidate edilir (isler ile çelişmesin).
-   */
+  /** Ajan tanımı sabit ama `suAn`/`bekleyenOnay` CANLI → 30 sn; koşu başlangıcı/bitişi ve onay/ret sonrası invalidate. */
   kadro: {
     queryKey: ['ekip-kadro'] as const,
     queryFn: getKadro,
@@ -70,22 +71,17 @@ export const SORGU = {
     refetchInterval: 20_000,
     retry: (n: number, e: unknown) => !isOmurgaYok(e) && n < 2,
   },
-  /** TEK sorgu: limit=200; koşu sürerken 10 sn, yoksa 30 sn. */
-  isler: (kosuVar: boolean) => ({
-    queryKey: ['ekip-isler', 200] as const,
-    queryFn: () => getIsler({ limit: 200 }),
+  /** CANLI AKIŞ — vaka listesi + sayaçlar; koşu sürerken 10 sn, yoksa 30 sn. */
+  akis: (filtre: AkisFiltre, gun: AkisGun, taxpayerId: string | undefined, kosuVar: boolean) => ({
+    queryKey: ['ekip-akis', gun, filtre, taxpayerId || ''] as const,
+    queryFn: () => getAkis({ gun, filtre, taxpayerId: taxpayerId || undefined, limit: 100 }),
     refetchInterval: kosuVar ? 10_000 : 30_000,
+    placeholderData: (prev: any) => prev, // süzgeç değişince liste titremesin
     retry: (n: number, e: unknown) => !isOmurgaYok(e) && n < 2,
   }),
   onaylarBekleyen: {
     queryKey: ['ekip-onaylar', 'PENDING'] as const,
     queryFn: () => getOnaylar('PENDING', 50),
-    refetchInterval: 20_000,
-    retry: false as const,
-  },
-  onaylarTumu: {
-    queryKey: ['ekip-onaylar', 'tumu'] as const,
-    queryFn: () => getOnaylar('tumu', 50),
     refetchInterval: 20_000,
     retry: false as const,
   },
@@ -103,12 +99,11 @@ export const SORGU = {
 };
 
 /**
- * useKosular — ajan başına koşu haritası + SSE yönetimi.
- * - AbortController ajan başına Map'te; ajan değişince HİÇBİR ŞEY abort edilmez.
+ * useKosular — ajan başına koşu haritası + SSE yönetimi (v2'de tek anahtar: 'koordinator').
  * - aktifKosu: herhangi bir bitmemiş koşu → tek aktif koşu kilidi (tek Max hesabı + Luca tek oturum).
  * - durdur: ÖNCE sunucuda iptal (POST /ekip/isler/:id/iptal → Agent SDK abort, iş failed), SONRA SSE'yi kapatır;
- *   ekranda "Durduruldu". isId henüz gelmediyse yalnız SSE kapanır → sunucu koşuyu ARTIK durdurmaz, arka planda sürer
- *   (iş dosyasından takip edilir).
+ *   ekranda "Durduruldu". isId henüz gelmediyse yalnız SSE kapanır → sunucu koşuyu ARTIK durdurmaz, arka planda sürer.
+ * - Akış (ekip-akis) koşu başlarken ve biterken tazelenir → koşu bitince satır adım kaydına dönüşür.
  */
 export function useKosular() {
   const qc = useQueryClient();
@@ -136,22 +131,32 @@ export function useKosular() {
     });
   }, []);
 
+  /** Bitmiş koşuyu haritadan kaldır (akışta kalıcı satırı zaten var ya da hiç başlamadı). */
+  const kaldir = useCallback((ajanId: string) => {
+    setKosular((prev) => {
+      if (!prev.has(ajanId)) return prev;
+      const m = new Map(prev);
+      m.delete(ajanId);
+      return m;
+    });
+  }, []);
+
   const tazeleBaslangic = useCallback(() => {
-    qc.invalidateQueries({ queryKey: ['ekip-isler'] });
+    qc.invalidateQueries({ queryKey: ['ekip-akis'] });
     qc.invalidateQueries({ queryKey: ['ekip-durum'] });
-    qc.invalidateQueries({ queryKey: ['ekip-kadro'] }); // kadro[].sonKosu 'running' olsun
+    qc.invalidateQueries({ queryKey: ['ekip-kadro'] }); // kadro[].suAn dolsun
   }, [qc]);
 
   const tazeleBitis = useCallback(() => {
-    qc.invalidateQueries({ queryKey: ['ekip-isler'] });
+    qc.invalidateQueries({ queryKey: ['ekip-akis'] });
     qc.invalidateQueries({ queryKey: ['ekip-durum'] });
     qc.invalidateQueries({ queryKey: ['ekip-onaylar'] });
     qc.invalidateQueries({ queryKey: ['ekip-pano'] });
-    qc.invalidateQueries({ queryKey: ['ekip-kadro'] }); // kadro[].sonKosu/bekleyenOnay takılı kalmasın
+    qc.invalidateQueries({ queryKey: ['ekip-kadro'] }); // kadro[].suAn/bekleyenOnay takılı kalmasın
   }, [qc]);
 
   const baslat = useCallback(
-    async (ajanId: string, body: { gorev: string; taxpayerId?: string; dryRun: boolean }) => {
+    async (ajanId: string, body: { gorev: string; taxpayerId?: string; dryRun: boolean; vakaId?: string }) => {
       const gorev = body.gorev.trim();
       if (!gorev) return;
       // Aynı ajanda önceki bağlantı açık kaldıysa kapat (yeni koşu başlıyor).
@@ -168,6 +173,7 @@ export function useKosular() {
         gorev,
         taxpayerId: body.taxpayerId || undefined,
         dryRun: body.dryRun,
+        vakaId: body.vakaId || undefined,
         cevap: '',
         adimlar: [],
         bitti: false,
@@ -182,7 +188,7 @@ export function useKosular() {
       try {
         await ajanCalistirStream(
           ajanId,
-          { gorev, taxpayerId: body.taxpayerId || undefined, dryRun: body.dryRun },
+          { gorev, taxpayerId: body.taxpayerId || undefined, dryRun: body.dryRun, vakaId: body.vakaId || undefined },
           (e) => {
             const zaman = Date.now();
             if (e.type === 'text') {
@@ -208,7 +214,8 @@ export function useKosular() {
                 adimlar: [...calisaniBitir(k.adimlar), { tip: 'red', ad: e.name, neden: e.neden || e.mesaj, zaman }],
               }));
             } else if (e.type === 'baslangic') {
-              guncelle(ajanId, (k) => ({ ...k, isId: e.isId || k.isId, model: e.model || k.model }));
+              // Kök iş = vaka; vakaId gelmediyse (yeni zincir) isId vaka kimliğidir.
+              guncelle(ajanId, (k) => ({ ...k, isId: e.isId || k.isId, vakaId: k.vakaId || e.isId || k.vakaId, model: e.model || k.model }));
               tazeleBaslangic();
             } else if (e.type === 'done') {
               guncelle(ajanId, (k) => ({
@@ -270,7 +277,7 @@ export function useKosular() {
 
   const aktifKosu = useMemo(() => Array.from(kosular.values()).find((k) => !k.bitti) || null, [kosular]);
 
-  return { kosular, baslat, durdur, ayarla, guncelle, aktifKosu };
+  return { kosular, baslat, durdur, ayarla, guncelle, kaldir, aktifKosu };
 }
 
 export type KosularApi = ReturnType<typeof useKosular>;

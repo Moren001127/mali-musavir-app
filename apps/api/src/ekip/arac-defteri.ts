@@ -231,6 +231,8 @@ const EYLEM_KADEMELERI: Record<string, Kademe> = {
 // Katalog açıklamasına eklenen uyarılar (sistem promptu kataloğunda görünür).
 const EYLEM_ACIKLAMA_EKLERI: Record<string, string> = {
   fetch_kdv_from_luca: " — Luca job açar (ajan makinesinde tarayıcı); kuru testte çağrılmaz, beyan rakamı için get_kdv1_on_hazirlik kullan",
+  // PLAN/18: tur = onay (karar Muzaffer Bey'de) | istek (Muzaffer Bey'den fiş/ekstre/şifre/evrak) | bilgi (İŞ ATAMASI / not); vakaId görevdeki "VAKA:" satırından
+  create_pending_action: " — tur: onay=karar sizde · istek=Muzaffer Bey'den belge/işlem · bilgi=yalnız not (İŞ ATAMASI); vakaId = görev metnindeki VAKA satırı",
 };
 
 // ─── EKİBİN İÇ ARAÇLARI (runner kendisi çalıştırır) ───
@@ -276,7 +278,7 @@ const EKIP_ARACLARI: AracKaydi[] = [
     ad: 'ekip_ajan_baslat',
     kaynak: 'ekip',
     kademe: 'portal_yaz',
-    aciklama: 'Başka bir ekip ajanını görev metniyle arka planda başlatır (kuru test varsayılan; beklemez, isId döner; sonucu ekip_is_durum ile izle)',
+    aciklama: 'Başka bir ekip ajanını görev metniyle arka planda başlatır (kuru test varsayılan; beklemez, isId döner; sonucu ekip_is_durum ile izle). Çocuk bu koşunun VAKASINA bağlanır; aynı vakada 3. devir sistemce reddedilir ({ok:false, neden:devir_siniri}) ve karar Muzaffer Bey’e düşer',
     parametreler: ['ajanId*', 'gorev*', 'taxpayerId', 'canli'],
   },
   {
@@ -290,9 +292,9 @@ const EKIP_ARACLARI: AracKaydi[] = [
 
 // ─── RESMİ GÖNDERİM: adları defterde görünür, HİÇBİR ajan çağıramaz ───
 const RESMI_GONDERIM_ARACLARI: AracKaydi[] = [
-  { ad: 'gib_beyanname_gonder', kaynak: 'resmi', kademe: 'resmi_gonderim', aciklama: 'GİB beyanname gönderimi — yalnız sahip' },
-  { ad: 'sgk_bildirge_gonder', kaynak: 'resmi', kademe: 'resmi_gonderim', aciklama: 'SGK e-bildirge gönderimi — yalnız sahip' },
-  { ad: 'edefter_berat_yukle', kaynak: 'resmi', kademe: 'resmi_gonderim', aciklama: 'e-Defter berat yükleme — yalnız sahip' },
+  { ad: 'gib_beyanname_gonder', kaynak: 'resmi', kademe: 'resmi_gonderim', aciklama: 'GİB beyanname gönderimi — yalnız Muzaffer Bey' },
+  { ad: 'sgk_bildirge_gonder', kaynak: 'resmi', kademe: 'resmi_gonderim', aciklama: 'SGK e-bildirge gönderimi — yalnız Muzaffer Bey' },
+  { ad: 'edefter_berat_yukle', kaynak: 'resmi', kademe: 'resmi_gonderim', aciklama: 'e-Defter berat yükleme — yalnız Muzaffer Bey' },
 ];
 
 function parametreListesi(schema: any): string[] {
