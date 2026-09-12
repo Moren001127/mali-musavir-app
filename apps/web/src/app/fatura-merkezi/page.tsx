@@ -2008,6 +2008,10 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
                 // Satırda yalnız KARAR/ENGEL/UYARI seviyesi sayılır; bilgi çipleri (ilk kez satıcı, tevkifat var) satırda GÖSTERİLMEZ
                 //   (kullanıcı: "bir sürü bilgi yazmaya gerek yok"); tamamı İncele / uyarı kutusunda.
                 const onemliUyari = uyariListeFE(docUyarilar).filter((u) => u.seviye === 'engel' || u.seviye === 'uyari').length;
+                // Kullanıcı isteği (2026-09-12): tevkifatlı ve demirbaş belge, eşleşmiş olsa da satırda küçük etiketle görünsün.
+                const tevkUyari = uyariListeFE(docUyarilar).find((u) => u.kod === 'TEVKIFAT_VAR');
+                const tevkEtiket = (tevkUyari || docTevkifatliFE(d)) ? `Tevkifatlı${tevkUyari?.meta?.oranMetni ? ' ' + String(tevkUyari.meta.oranMetni) : ''}` : '';
+                const demirbasEtiket = uyariListeFE(docUyarilar).some((u) => u.kod === 'DEMIRBAS') || (d.ocrData as any)?.fixedAsset?.is === true ? (demEylemler.length ? 'Demirbaş — karar bekliyor' : 'Demirbaş') : '';
                 const durumIpucu = du.cat === 'okunamadi' && d.lucaErrorMessage ? `Neden: ${d.lucaErrorMessage}` : du.cat === 'celiski' ? ((Array.isArray(d.validationIssues) ? d.validationIssues : (Array.isArray(d.ocrData?.validationIssues) ? d.ocrData.validationIssues : [])).filter((i: any) => i?.code && i.code !== 'INCOMPLETE_AMOUNTS' && i?.severity !== 'WARNING').map((i: any) => i.message).filter(Boolean).join(' · ') || du.t) : du.t;
                 return (
                   <Fragment key={d.id}>
@@ -2025,6 +2029,12 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
                       <button type="button" className={`pill ${du.k} gf-durumhap`} title={`${durumIpucu}${guven.seviye === 'dusuk' ? ` · güven düşük: ${guven.neden}` : ''}${onemliUyari ? ` · ${onemliUyari} uyarı — tıkla, incele` : ''}`} onClick={() => setFisDetayId(fisAcik ? '' : d.id)}>
                         {guven.seviye === 'dusuk' ? <i className="gf-guvennok" aria-label="güven düşük" /> : null}{du.t}{onemliUyari > 0 ? <i className="gf-uyn" style={{ color: docUyariRenk }}>⚠{onemliUyari}</i> : null}
                       </button>
+                      {(tevkEtiket || demirbasEtiket) && (
+                        <div className="gf-ozel">
+                          {tevkEtiket ? <span className="gf-ozel-cip tevk" title={tevkUyari ? `${tevkUyari.baslik}: ${tevkUyari.aciklama || ''}` : 'Tevkifatlı fatura'}>{tevkEtiket}</span> : null}
+                          {demirbasEtiket ? <span className="gf-ozel-cip dem" title="Demirbaş (sabit kıymet) — 25x hesap / karar">{demirbasEtiket}</span> : null}
+                        </div>
+                      )}
                       {/* DEMİRBAŞ KARARI satır içi 3 küçük düğme (yalnız karar bekleyen belgede; aynı uç). */}
                       {demEylemler.length > 0 && (
                         <div className="gf-demirbas">
@@ -8538,6 +8548,10 @@ const CSS = `
 #fm-root .gf-table .gf-acts{display:inline-flex;gap:4px;min-width:0}
 #fm-root .gf-table .gf-act{width:29px;height:28px;padding:0;justify-content:center;font-size:0}
 #fm-root .gf-table .gf-act .ico{display:inline-flex}
+#fm-root .gf-table .gf-ozel{margin-top:4px;display:flex;flex-wrap:wrap;gap:4px}
+#fm-root .gf-table .gf-ozel-cip{display:inline-flex;align-items:center;height:18px;padding:0 7px;border-radius:999px;font-size:10px;font-weight:700;white-space:nowrap;border:1px solid transparent}
+#fm-root .gf-table .gf-ozel-cip.tevk{background:#eef2ff;color:#3730a3;border-color:#c7d2fe}
+#fm-root .gf-table .gf-ozel-cip.dem{background:#f5f3ff;color:#6d28d9;border-color:#ddd6fe}
 /* Süzgeç boş sonuç bağlantısı */
 #fm-root .gf-table .empty a{color:var(--accent);font-weight:700;text-decoration:underline}
 
