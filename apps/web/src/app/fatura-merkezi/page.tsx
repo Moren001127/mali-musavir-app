@@ -296,6 +296,11 @@ function UyariKutusu({ doc, taxpayerId, onIlkBelge, onTevkifatFisi, onYonuCevir,
   const [aliciAcik, setAliciAcik] = useState(false);
   const [notAcik, setNotAcik] = useState(false);
   const [notTxt, setNotTxt] = useState('');
+  // Kullanıcı bulgusu (2026-09-12): editörde kutu kırpılıyor/yer kaplıyordu → yalnız bilgi notu varsa KAPALI başlar,
+  //   engel/uyarı varsa açık; başlığa tıklayınca açılır/kapanır. Belge değişince yeniden hesaplanır.
+  const onemliVar = list.some((u) => u.seviye === 'engel' || u.seviye === 'uyari');
+  const [acik, setAcik] = useState<boolean>(onemliVar);
+  useEffect(() => { setAcik(onemliVar); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [doc?.id, onemliVar]);
   const demirbasMut = useMutation({
     mutationFn: (p: { karar: string; not?: string }) => api.post(`/fatura-muhasebelestirme/documents/${doc.id}/demirbas-karari`, p),
     onSuccess: (_r, p) => {
@@ -324,9 +329,9 @@ function UyariKutusu({ doc, taxpayerId, onIlkBelge, onTevkifatFisi, onYonuCevir,
   const busy = demirbasMut.isPending || aliciMut.isPending || eylemMut.isPending || mukerrerMut.isPending;
   const btn = (renk: { fg: string; bd: string }, extra?: any) => ({ padding: '4px 10px', borderRadius: 7, border: `1px solid ${renk.bd}`, background: '#fff', color: renk.fg, fontWeight: 700, fontSize: 11.5, cursor: busy ? 'wait' : 'pointer', opacity: busy ? 0.6 : 1, ...(extra || {}) });
   return (
-    <div className="uykutu">
-      <div className="uykutu-h"><span>Uyarılar</span><small>{list.length} kayıt · engel {list.filter((u) => u.seviye === 'engel').length} · uyarı {list.filter((u) => u.seviye === 'uyari').length}</small></div>
-      {list.map((u, i) => {
+    <div className={`uykutu${acik ? '' : ' kapali'}`}>
+      <button type="button" className="uykutu-h" onClick={() => setAcik((v) => !v)} title={acik ? 'Uyarıları gizle' : 'Uyarıları göster'}><span>{acik ? '▾' : '▸'} Uyarılar{!acik && list[0] ? <em className="uykutu-oz"> · {list.map((u) => u.baslik).slice(0, 2).join(' · ')}{list.length > 2 ? ` +${list.length - 2}` : ''}</em> : null}</span><small>{list.length} kayıt · engel {list.filter((u) => u.seviye === 'engel').length} · uyarı {list.filter((u) => u.seviye === 'uyari').length}</small></button>
+      {acik && list.map((u, i) => {
         const r = uyariRenkFE(u);
         const ikon = u.kod === 'DEMIRBAS' && !u.meta?.karar ? '🟣' : u.seviye === 'engel' ? '⛔' : u.seviye === 'uyari' ? '⚠️' : 'ℹ️';
         const eylemler = u.eylemler || [];
@@ -919,7 +924,7 @@ const TITLES: Record<string, string> = {
   kdv: 'Kurulum · <b>KDV Raporu</b>',
   ayarlar: 'Kurulum · <b>Hesap Planı</b>',
   mukellefler: 'Çalışma · <b>Mükellefler</b>',
-  akis: 'Çalışma · <b>Belge Akışı</b>',
+  akis: 'Belgeler · <b>Belge Akışı</b>',
   faturaKes: 'Belgeler · <b>Fatura Kes</b>',
   earsivSorgu: 'Belgeler · <b>GIB e-Arşiv Sorgu</b>',
   efaturaSorgu: 'Belgeler · <b>e-Fatura Sorgu</b>',
@@ -1145,7 +1150,6 @@ export default function FaturaMerkeziPage() {
     <nav className="nav">
       <div className="ncap">Çalışma</div>
       <div className={`nitem${screen === 'genel' ? ' on' : ''}`} style={{ ['--icc' as any]: '#7c3aed' }} onClick={() => go('genel')}><Ico html={I.chart} /> Genel Bakış</div>
-      <div className={`nitem${screen === 'akis' ? ' on' : ''}`} style={{ ['--icc' as any]: '#0891b2' }} onClick={() => go('akis')}><Ico html={I.file} /> Belge Akışı</div>
       <div className={`nitem${screen === 'mukellefler' ? ' on' : ''}`} style={{ ['--icc' as any]: '#2563eb' }} onClick={() => go('mukellefler')}><Ico html={I.users} /> Mükellefler</div>
 
       <div className="ncap">Belgeler</div>
@@ -1158,6 +1162,7 @@ export default function FaturaMerkeziPage() {
       <div className={`nitem${screen === 'muhasebe' ? ' on' : ''}`} style={{ ['--icc' as any]: '#7c3aed' }} onClick={() => go('muhasebe')}><Ico html={I.ledger} /> Muhasebeleştir {badge(sum.pending)}</div>
       <div className={`nitem${screen === 'aktarilanlar' ? ' on' : ''}`} style={{ ['--icc' as any]: '#0891b2' }} onClick={() => go('aktarilanlar')}><Ico html={I.check} /> Aktarım {badge(Math.max(0, (Number(sum.approved) || 0) - (Number(sum.posted) || 0)))}</div>
       <div className={`nitem${screen === 'arsiv' ? ' on' : ''}`} style={{ ['--icc' as any]: '#d97706' }} onClick={() => go('arsiv')}><Ico html={I.ledger} /> Arşivim {badge(sum.posted)}</div>
+      <div className={`nitem${screen === 'akis' ? ' on' : ''}`} style={{ ['--icc' as any]: '#0891b2' }} onClick={() => go('akis')}><Ico html={I.file} /> Belge Akışı</div>
 
       <div className="ncap">Kurulum</div>
       <div className={`nitem${screen === 'kurallar' ? ' on' : ''}`} style={{ ['--icc' as any]: '#475569' }} onClick={() => go('kurallar')}><Ico html={I.rules} /> Eşleştirme Kuralları</div>
@@ -4507,10 +4512,13 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                   ) : (
                     <div className="fgrps">
                       {/* İADE / yön: bölüm tarafları takaslı; kullanıcı düğmeyle çevirebilir. */}
-                      <div className={yonTers ? 'fyon ters' : 'fyon'}>
-                        <span>{yonTers ? 'Ters kayıt (iade): borç/alacak çevrildi' : (selDoc.ocrData?.isReturn === true ? 'İade belgesi — yön normal' : 'Yön: normal')}</span>
-                        <button type="button" className="fyonbtn" onClick={yonuCevir} title="Tüm satırların borç/alacağını takas eder (iade / ters kayıt)">Yönü çevir</button>
-                      </div>
+                      {/* Kullanıcı bulgusu (2026-09-12): 'Yön: normal / Yönü çevir' her belgede anlamsızdı → yalnız İADE belgesinde ya da kayıt ters kurulmuşsa görünür. */}
+                      {(yonTers || selDoc.ocrData?.isReturn === true) && (
+                        <div className={yonTers ? 'fyon ters' : 'fyon'}>
+                          <span>{yonTers ? 'İade faturası — kayıt TERS (borç/alacak çevrildi)' : 'İade faturası — kayıt normal kurulmuş'}</span>
+                          <button type="button" className="fyonbtn" onClick={yonuCevir} title={yonTers ? 'Satırların borç/alacağını normale çevirir' : 'İade için satırların borç/alacağını ters çevirir'}>{yonTers ? 'Normale çevir' : 'Ters kayıt yap (iade)'}</button>
+                        </div>
+                      )}
                       {/* Fiş grup/yön: düzenlenmekte olan meta.invoiceKind'i izle (kaydı beklemeden
                           ALIŞ↔SATIŞ dönsün); meta yoksa selDoc.invoiceKind'e düş. */}
                       {(String(meta.invoiceKind || selDoc.invoiceKind || '').includes('SATIS')
@@ -8552,6 +8560,12 @@ const CSS = `
 #fm-root .gf-table .gf-ozel-cip{display:inline-flex;align-items:center;height:18px;padding:0 7px;border-radius:999px;font-size:10px;font-weight:700;white-space:nowrap;border:1px solid transparent}
 #fm-root .gf-table .gf-ozel-cip.tevk{background:#eef2ff;color:#3730a3;border-color:#c7d2fe}
 #fm-root .gf-table .gf-ozel-cip.dem{background:#f5f3ff;color:#6d28d9;border-color:#ddd6fe}
+/* Editör uyarı kutusu: başlık satırının altında, sabit yükseklik, kaydırılabilir; kapalıyken tek satır (kullanıcı bulgusu 2026-09-12) */
+#fm-root .screen-muhasebe .muhmain .fispane > .uykutu{order:2;flex:0 0 auto;max-height:230px;overflow:auto;margin:0 0 8px}
+#fm-root .uykutu-h{width:100%;border:0;cursor:pointer;text-align:left;font-family:inherit}
+#fm-root .uykutu.kapali{max-height:none;overflow:hidden}
+#fm-root .uykutu.kapali .uykutu-h{border-bottom:0}
+#fm-root .uykutu-oz{font-style:normal;font-weight:600;color:#64748b;font-size:11.5px}
 /* Süzgeç boş sonuç bağlantısı */
 #fm-root .gf-table .empty a{color:var(--accent);font-weight:700;text-decoration:underline}
 
