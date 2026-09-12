@@ -1066,7 +1066,7 @@ export class EkipRunnerService {
       isId,
       ajanId: ajan.id,
       taxpayerId: ctx.taxpayerId,
-      rapor: answer.trim(),
+      rapor: raporTemizle(answer),
       toolUses,
       kuruTestYapilacaktilar,
       onayBekleyen,
@@ -1266,4 +1266,20 @@ export class EkipRunnerService {
       };
     });
   }
+}
+
+/** RAPOR TEMİZLİĞİ (Muzaffer Bey'in bulgusu 2026-09-13: "cümlelerin arasında değişik kelimeler var"): model rapor bloğunun
+ *  ÖNÜNE süreç cümleleri yazıyor ("İyi, aracı yükledim. Şimdi … çekiyorum…"). Rapor, ilk şablon başlığından ya da
+ *  "Yaptığım iş:" satırından başlar; öncesi atılır. Başlık bulunamazsa metin olduğu gibi kalır. Ayrıca "---" ayraç
+ *  satırları ve boş satır yığınları sadeleşir. */
+export function raporTemizle(metin: string): string {
+  const satirlar = String(metin || '').replace(/\r\n/g, '\n').split('\n');
+  const baslikMi = (l: string) => /^(Yaptığım iş|NE YAPTIM)\s*:/i.test(l.trim()) || /^[A-ZÇĞİÖŞÜ0-9][A-ZÇĞİÖŞÜ0-9 \/·()-]{4,60} — /.test(l.trim());
+  const ilk = satirlar.findIndex(baslikMi);
+  const govde = ilk > 0 ? satirlar.slice(ilk) : satirlar;
+  return govde
+    .filter((l) => !/^\s*-{3,}\s*$/.test(l))
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
