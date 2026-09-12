@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useMemo, Fragment, type KeyboardEvent, typ
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
-import { isletmeRef, ISLETME_ISLEM_TURU, ISLETME_KDV_ORAN, defaultBelgeTuruKod, normalizeDocumentType, getKayitAltList, defaultKayitAltKod, kayitAltKisaAd, isletmeAutoKayitTuru, isletmeAutoKayitAltKod } from '@mali-musavir/shared';
+import { isletmeRef, ISLETME_ISLEM_TURU, ISLETME_KDV_ORAN, defaultBelgeTuruKod, normalizeDocumentType, getKayitAltList, defaultKayitAltKod, kayitAltKisaAd, isletmeAutoKayitTuru, isletmeAutoKayitAltKod, KURUM_TURU_SECENEKLERI, DEFTER_TURU_ETIKETLERI, kurumTuruEtiketi } from '@mali-musavir/shared';
 
 // Entegratör "Sorgula/Çek" sonucunu kullanıcıya GÖSTER. Eskiden onSuccess sadece "çekiliyor" diyordu;
 // backend providers[].reason ("yetkiniz yok" gibi) ve created/fetched sayılarını dönüyor ama yutuluyordu.
@@ -1196,8 +1196,8 @@ export default function FaturaMerkeziPage() {
 
           <div className="content">
             {(screen === 'faturalar' || screen === 'satis') && <ScreenFaturalar taxpayerId={taxpayerId} period={period} kind={screen === 'satis' ? 'SATIS' : 'ALIS'} isIsletme={(() => { const t = taxpayers.find((x) => x.id === taxpayerId); return /i[şs]letme|defter.?beyan|basit/i.test(`${t?.defterTuru || ''} ${(t as any)?.mihsapDefterTuru || ''}`); })()} taxpayerNace={(taxpayers.find((t) => t.id === taxpayerId) as any)?.naceKodu || ''} taxpayerFaaliyet={(taxpayers.find((t) => t.id === taxpayerId) as any)?.faaliyetAciklama || ''} onOpenSorgu={() => setScreen(screen === 'satis' ? 'earsivSorgu' : 'efaturaSorgu')} onOpenMuhasebe={(id) => { try { localStorage.setItem('fm-open-doc', id); } catch { /* yok say */ } setScreen('muhasebe'); }} />}
-            {screen === 'earsivSorgu' && <ScreenSorgu taxpayerId={taxpayerId} period={period} source="earsiv" />}
-            {screen === 'efaturaSorgu' && <ScreenSorgu taxpayerId={taxpayerId} period={period} source="efatura" />}
+            {screen === 'earsivSorgu' && <ScreenSorgu taxpayerId={taxpayerId} period={period} source="earsiv" onOpenEntegrator={() => go('entegrator')} />}
+            {screen === 'efaturaSorgu' && <ScreenSorgu taxpayerId={taxpayerId} period={period} source="efatura" onOpenEntegrator={() => go('entegrator')} />}
             {screen === 'mukellefler' && <ScreenMukellefler taxpayers={taxpayers} period={period} onOpen={(id) => { setTaxpayerId(id); setScreen('faturalar'); }} />}
             {screen === 'kurallar' && <ScreenKurallar taxpayerId={taxpayerId} period={period} />}
             {screen === 'muhasebe' && <ScreenMuhasebe taxpayerId={taxpayerId} period={period} isIsletme={(() => { const t = taxpayers.find((x) => x.id === taxpayerId); return /i[şs]letme|defter.?beyan|basit/i.test(`${t?.defterTuru || ''} ${(t as any)?.mihsapDefterTuru || ''}`); })()} taxpayerNace={(taxpayers.find((t) => t.id === taxpayerId) as any)?.naceKodu || ''} taxpayerFaaliyet={(taxpayers.find((t) => t.id === taxpayerId) as any)?.faaliyetAciklama || ''} taxpayerAd={(() => { const t = taxpayers.find((x) => x.id === taxpayerId); return t ? taxpayerLabel(t) : ''; })()} full={editorFull} onToggleFull={() => setEditorFull((v) => !v)} />}
@@ -1766,8 +1766,15 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
             </div>
           )}
           <button className="btn sm fix" disabled={!taxpayerId || recodeMut.isPending} onClick={() => recodeMut.mutate()} title="Belgeleri TEKRAR OKUMADAN hesap kodlarını plana göre yeniden eşleştir — yanlış carileri düzeltir/temizler (saniyeler sürer)"><Ico html={I.wand} size={13} /> {recodeMut.isPending ? 'Düzeltiliyor…' : 'Kodları düzelt'}</button>
-          {/* PLAN16-B: seçime bağlı toplu işlemler (AI ile oku · Onayla · Sil) tablonun ALTINDAKİ çubukta — seçim yapınca görünür. */}
-          {sel.size === 0 && docs.length > 0 ? <span className="gf-hint">Toplu işlem için satır seç — çubuk tablonun altında açılır</span> : null}
+          {/* Kullanıcı bulgusu (2026-09-12): toplu işlemler sayfanın altında mantıksızdı → ÜST araç çubuğunda, seçim
+              yokken kilitli, seçim sayısıyla. Seçim bilgisi + temizle de burada. */}
+          <span className="gf-topsep" aria-hidden="true" />
+          {sel.size > 0
+            ? <span className="gf-selinfo"><b>{sel.size}</b> seçili <button type="button" className="gf-clear" onClick={() => setSel(new Set())} title="Seçimi temizle">✕</button></span>
+            : (docs.length > 0 ? <span className="gf-hint">Toplu işlem için satır seç</span> : null)}
+          <button type="button" className="btn sm ai" disabled={aiBusy || sel.size === 0} onClick={aiOku} title={sel.size === 0 ? 'Önce satır seç' : 'Seçili faturaları yapay zeka (Max) ile oku — sunucuda okur, sayfa değişince durmaz'}><Ico html={I.spark} size={13} /> {aiBusy ? 'Başlatılıyor…' : `AI ile oku${sel.size ? ` (${sel.size})` : ''}`}</button>
+          <button type="button" className="btn sm primary gf-onayla" disabled={approveMut.isPending || sel.size === 0} onClick={muhasebelestir} title={sel.size === 0 ? 'Önce satır seç' : 'Seçili, kodu tam olan belgeleri toplu onayla (Luca kuyruğuna alır). Tevkifatlılar ayrı grupta sorulur; demirbaş kararı bekleyen / mükerrer atlanır.'}><Ico html={I.checkSm} size={13} /> {approveMut.isPending ? 'İşleniyor…' : `Onayla${sel.size ? ` (${sel.size})` : ''}`}</button>
+          <button type="button" className="btn sm red gf-sil" disabled={bulkDelMut.isPending || sel.size === 0} onClick={topluSil} title={sel.size === 0 ? 'Önce satır seç' : "Seçili belgeleri sil — Luca'ya aktarılmış / elle işlenmiş olanlar atlanır"}><Ico html={I.trash} size={13} /> {bulkDelMut.isPending ? 'Siliniyor…' : `Sil${sel.size ? ` (${sel.size})` : ''}`}</button>
         </div>
         {skipInfo && skipInfo.length > 0 && (() => {
           // Toplu onayda atlananlar — sebep gruplarıyla (hafıza çelişki / diğer hata). (AI denetçi kaldırıldı.)
@@ -1829,34 +1836,45 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
           const remaining = Number(ocrProg.reading || 0);
           const etaSec = rate > 0 ? Math.round(remaining / rate) : 0;
           const etaText = remaining <= 0 ? '' : etaSec > 0 ? (etaSec < 60 ? `~${etaSec} sn` : `~${Math.round(etaSec / 60)} dk`) : 'hesaplanıyor…';
+          // Kullanıcı isteği (2026-09-12): eski büyük şerit yerine ince, canlı "okuma bandı" — halka ilerleme (%),
+          //   nabız atan kıvılcım, hap sayaçlar, parıltılı ince çubuk; Durdur sağda küçük.
+          const R = 19;
+          const cevre = 2 * Math.PI * R;
           return (
-            <div className={`aibar${ocrProg.active ? '' : ' err'}`}>
+            <div className={`aiband${ocrProg.active ? '' : ' err'}`}>
               {ocrProg.active ? (
                 <>
-                  <div className="aiscan"><i /><i /><i /><i /><span className="beam" /></div>
-                  <div className="aimid">
-                    <div className="ait">Belgeler yapay zeka ile okunuyor<span className="dots" /></div>
-                    <div className="aisub">
-                      <b>{ocrProg.done}</b> / {tot} belge okundu
-                      {ocrProg.reading ? <> <span className="aichip"><span className="qdot" />{ocrProg.reading} sırada</span></> : null}
-                      {etaText ? <> <span className="aichip eta">⏱ {etaText}</span></> : null}
-                      {ocrProg.failed ? <> <span className="aichip warn">{ocrProg.failed} okunamadı</span></> : null}
+                  <div className="aiband-ring" title={`${ocrProg.done} / ${tot} belge okundu`}>
+                    <svg viewBox="0 0 44 44" aria-hidden="true">
+                      <circle className="bg" cx="22" cy="22" r={R} />
+                      <circle className="fg" cx="22" cy="22" r={R} style={{ strokeDasharray: `${cevre}`, strokeDashoffset: `${cevre * (1 - pct / 100)}` }} />
+                    </svg>
+                    <span className="aiband-pct">%{pct}</span>
+                  </div>
+                  <div className="aiband-mid">
+                    <div className="aiband-title">
+                      <span className="aiband-spark"><Ico html={I.spark} size={13} /></span>
+                      Yapay zeka okuyor<span className="dots" />
+                      <span className="aiband-cnt"><b>{ocrProg.done}</b> / {tot} belge</span>
                     </div>
-                    <div className="aitrack"><div className="aifill" style={{ width: `${pct}%` }} /></div>
-                    <div className="ainote">Sunucuda işlenir — sayfayı değiştirebilir, başka işe geçebilirsin</div>
+                    <div className="aiband-chips">
+                      {ocrProg.reading ? <span className="aiband-chip live"><i />{ocrProg.reading} sırada</span> : null}
+                      {etaText ? <span className="aiband-chip">⏱ {etaText}</span> : null}
+                      {ocrProg.failed ? <span className="aiband-chip warn">{ocrProg.failed} okunamadı</span> : null}
+                      <span className="aiband-note">Sunucuda işlenir — sayfayı değiştirebilir, başka işe geçebilirsin</span>
+                    </div>
+                    <div className="aiband-track"><div className="aiband-fill" style={{ width: `${pct}%` }} /></div>
                   </div>
-                  <div className="airight">
-                    <div className="aipct">%{pct}</div><small>OKUNDU</small>
-                    <button
-                      className="aistop"
-                      onClick={aiDurdur}
-                      disabled={aiStop}
-                      title="Okumayı durdur — bekleyen belgeler sıradan çıkarılır (okunan biter)"
-                    >{aiStop ? 'Durduruluyor…' : <>✕ Durdur</>}</button>
-                  </div>
+                  <button
+                    type="button"
+                    className="aiband-stop"
+                    onClick={aiDurdur}
+                    disabled={aiStop}
+                    title="Okumayı durdur — bekleyen belgeler sıradan çıkarılır (okunan biter)"
+                  >{aiStop ? 'Durduruluyor…' : <>✕ Durdur</>}</button>
                 </>
               ) : (
-                <><span className="aidot err" /> <span><b>{ocrProg.failed}</b> belge okunamadı — seçip <b>AI ile oku</b> ile tekrar dene</span></>
+                <><span className="aiband-errdot" /> <span><b>{ocrProg.failed}</b> belge okunamadı — seçip <b>AI ile oku</b> ile tekrar dene</span></>
               )}
             </div>
           );
@@ -2096,18 +2114,7 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
             </div>
           </div>
         )}
-        {/* PLAN16-B — TOPLU ALT ÇUBUK (seçim varken; sabit DEĞİL): AI ile oku · Kodları düzelt · Onayla · Sil + "N seçili · temizle" */}
-        {sel.size > 0 && (
-          <div className="gf-bulk">
-            <span className="gf-selinfo"><b>{sel.size}</b> belge seçili</span>
-            <button type="button" className="btn sm ghost gf-clear" onClick={() => setSel(new Set())} title="Seçimi temizle">✕ temizle</button>
-            <div className="sp" />
-            <button type="button" className="btn sm ai" disabled={aiBusy} onClick={aiOku} title="Seçili faturaları yapay zeka (Max) ile oku — sunucuda okur, sayfa değişince durmaz"><Ico html={I.spark} size={13} /> {aiBusy ? 'Başlatılıyor…' : `AI ile oku (${sel.size})`}</button>
-            <button type="button" className="btn sm fix" disabled={!taxpayerId || recodeMut.isPending} onClick={() => recodeMut.mutate()} title="Belgeleri TEKRAR OKUMADAN hesap kodlarını plana göre yeniden eşleştir (mükellefin tüm gelen belgeleri; saniyeler sürer)"><Ico html={I.wand} size={13} /> {recodeMut.isPending ? 'Düzeltiliyor…' : 'Kodları düzelt'}</button>
-            <button type="button" className="btn sm primary gf-onayla" disabled={approveMut.isPending} onClick={muhasebelestir} title="Seçili, kodu tam olan belgeleri toplu onayla (Luca kuyruğuna alır). Tevkifatlılar ayrı grupta sorulur; demirbaş kararı bekleyen / mükerrer atlanır."><Ico html={I.checkSm} size={13} /> {approveMut.isPending ? 'İşleniyor…' : `Onayla (${sel.size})`}</button>
-            <button type="button" className="btn sm red gf-sil" disabled={bulkDelMut.isPending} onClick={topluSil} title="Seçili belgeleri sil — Luca'ya aktarılmış / elle işlenmiş olanlar atlanır"><Ico html={I.trash} size={13} /> {bulkDelMut.isPending ? 'Siliniyor…' : `Sil (${sel.size})`}</button>
-          </div>
-        )}
+        {/* Toplu işlemler ÜST araç çubuğunda (kullanıcı kararı 2026-09-12: alt çubuk kaldırıldı). */}
         <div className="foot">
           <div className="selinfo">{docsAll.length} belge · {sayac.ok} {isIsletme ? 'hazır' : 'eşleşti'}{isIsletme ? '' : ` · ${sayac.miss} eksik kod`} · {sayac.warn} {isIsletme ? 'tutar/çelişki' : 'çelişki'}{durumF !== 'all' || gorevF ? ` · (süzgeç: ${docs.length})` : ''}</div>
           <div className="sp" />
@@ -2224,7 +2231,7 @@ function sorguProvRenk(provider: any): string {
   return SORGU_PROV_RENK[String(provider || '').toUpperCase()] || 'var(--accent)';
 }
 
-function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; period: string; source: 'earsiv' | 'efatura' }) {
+function ScreenSorgu({ taxpayerId, period, source, onOpenEntegrator }: { taxpayerId: string; period: string; source: 'earsiv' | 'efatura'; onOpenEntegrator?: () => void }) {
   const qc = useQueryClient();
   const [sel, setSel] = useState<Set<string>>(new Set());
   // SERBEST TARİH ARALIĞI (Mihsap örneği — kullanıcı talebi): boş bırakılırsa eski davranış (üstteki
@@ -2334,7 +2341,11 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
       qc.invalidateQueries({ queryKey: ['fm-earsiv-sorgu', taxpayerId, donem] });
     }
   }, [source, taxpayerId, donem, lastJob?.id, lastJob?.status, lastJob?.updatedAt, qc]);
-  const processable = rows.filter((r) => r.isProcessable && !r.aktarildi);
+  // AKTARIM anlamı e-Fatura ile AYNI (kullanıcı bulgusu 2026-09-12): 'aktarıldı' = Fatura Merkezi'ne alındı (zatenVar);
+  //   Luca durumu (lucaDurumu) yalnız ek bilgi. Eski 'aktarildi' alanı yalnız Luca POSTED'i sayıyordu → 10 aktarılmış
+  //   fatura 'aktarılabilir' görünüyor, sayaç ilerlemiyor ve mükerrer aktarım riski doğuyordu.
+  const earsivAktarildi = (r: any) => !!(r?.zatenVar || r?.muhasebeBelgeId || r?.aktarildi);
+  const processable = rows.filter((r) => r.isProcessable && !earsivAktarildi(r));
   const selectedRefs = [...sel];
   const toggle = (ref: string) => setSel((prev) => { const n = new Set(prev); n.has(ref) ? n.delete(ref) : n.add(ref); return n; });
 
@@ -2423,7 +2434,12 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
     .sort((a, b) => (String(a.provider || '') === 'TURMOB_EFATURA' ? -1 : 0) - (String(b.provider || '') === 'TURMOB_EFATURA' ? -1 : 0));
   const providerConnected = (p: any) => Boolean(p?.connected ?? p?.configured);
   const connectedEfaturaProviders = efaturaProviders.filter(providerConnected);
-  const activeEfaturaProvider = connectedEfaturaProviders[0] || efaturaProviders[0];
+  // Mükellefe BAĞLI (ya da en azından bu mükellef için tanımlanmış/yapılandırılmış) sağlayıcı yoksa NULL:
+  //   katalogdaki ilk sağlayıcıya (TÜRMOB) DÜŞME — kullanıcı bulgusu (2026-09-12): entegratörü hiç olmayan
+  //   mükellefte "TURMOB Alış e-Fatura · kimlik eksik" kırmızı görünüyordu; doğrusu "Entegratör tanımlı değil".
+  const activeEfaturaProvider = connectedEfaturaProviders[0]
+    || efaturaProviders.find((p) => p?.taxpayerScoped || p?.configured)
+    || null;
   const efaturaInboxQ = useQuery({
     queryKey: ['fm-efatura-inbox', taxpayerId, donem, efaturaDirection, efaturaChannel],
     queryFn: async () => (await api.get('/fatura-muhasebelestirme/efatura-inbox', { params: { taxpayerId, period: donem, direction: efaturaDirection, channel: efaturaChannel, limit: 2000 } })).data,
@@ -2705,25 +2721,26 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
   const earsivGorunum = rows.map((r) => {
     const onay = sorguOnayHap(r.onayDurumu, r.iptalDurumu);
     const luca = String(r.lucaDurumu || '').toUpperCase();
-    const akt: SqAkt = luca === 'POSTED'
-      ? { k: 'ok', l: '✓ aktarıldı', t: "Luca'ya aktarıldı" }
-      : (r.aktarildi || luca === 'QUEUED' || String(r.muhasebeDurumu || '').toUpperCase() === 'APPROVED')
-        ? { k: 'kuyruk', l: '⏳ kuyrukta', t: 'Luca aktarım kuyruğunda' }
-        : r.zatenVar
-          ? { k: 'muh', l: '◐ muhasebede', t: "Muhasebeleştirildi — Luca'ya henüz gitmedi" }
-          : { k: 'yok', l: '—', t: 'Henüz aktarılmadı' };
-    return { r, onay, akt, secilebilir: !!r.isProcessable && !r.aktarildi && !!r.sourceRefId, tarih: zaman(r.issuedAt), tutar: sayi(r.toplam), unvan: String(r.buyerName || '') };
+    const muh = String(r.muhasebeDurumu || '').toUpperCase();
+    const akt: SqAkt = !earsivAktarildi(r)
+      ? { k: 'yok', l: '—', t: "Henüz Fatura Merkezi'ne aktarılmadı" }
+      : (luca === 'POSTED' || luca === 'MANUAL_DONE')
+        ? { k: 'ok', l: "✓ aktarıldı · Luca'da", t: "Fatura Merkezi'ne aktarıldı ve Luca'ya işlendi" }
+        : (luca === 'QUEUED' || luca === 'POSTING' || muh === 'APPROVED')
+          ? { k: 'ok', l: '✓ aktarıldı · onaylı', t: "Fatura Merkezi'nde onaylandı — Luca aktarım kuyruğunda" }
+          : { k: 'ok', l: '✓ aktarıldı', t: "Fatura Merkezi'ne aktarıldı (Gelen Faturalar) — henüz onaylanmadı" };
+    return { r, onay, akt, secilebilir: !!r.isProcessable && !earsivAktarildi(r) && !!r.sourceRefId, tarih: zaman(r.issuedAt), tutar: sayi(r.toplam), unvan: String(r.buyerName || '') };
   });
   const earsivSayac = {
     toplam: rows.length,
     aktarilabilir: processable.length,
-    aktarilmis: rows.filter((r) => r.aktarildi).length,
+    aktarilmis: rows.filter((r) => earsivAktarildi(r)).length,
     iptal: rows.filter((r) => !r.isProcessable).length,
     bekleyen: earsivGorunum.filter((g) => g.r.isProcessable && g.onay.k === 'bekliyor').length,
   };
   const earsivSuz = earsivGorunum.filter((g) => {
-    if (ozetF === 'aktarilabilir' && !(g.r.isProcessable && !g.r.aktarildi)) return false;
-    if (ozetF === 'aktarilmis' && !g.r.aktarildi) return false;
+    if (ozetF === 'aktarilabilir' && !(g.r.isProcessable && !earsivAktarildi(g.r))) return false;
+    if (ozetF === 'aktarilmis' && !earsivAktarildi(g.r)) return false;
     if (ozetF === 'iptal' && g.r.isProcessable) return false;
     if (ozetF === 'bekleyen' && !(g.r.isProcessable && g.onay.k === 'bekliyor')) return false;
     return araUyar(g.r.buyerName, g.r.buyerVkn, g.r.belgeNo, g.r.referenceNo, g.r.ettn);
@@ -2856,7 +2873,7 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
             </div>
           )}
           <div className="sp" />
-          <button type="button" className="btn sq-main" disabled={sorgulaDisabled} title={rangeInvalid ? 'Tarih aralığı hatalı: başlangıç bitişten sonra' : !taxpayerId ? 'Önce mükellef seç' : undefined} onClick={sorgula}>
+          <button type="button" className="btn sq-main" disabled={sorgulaDisabled} title={rangeInvalid ? 'Tarih aralığı hatalı: başlangıç bitişten sonra' : !taxpayerId ? 'Önce mükellef seç' : (source === 'efatura' && !activeEfaturaProvider) ? 'Bu mükellefe e-Fatura entegratörü tanımlanmamış — Entegratörler ekranından tanımla' : (source === 'efatura' && !providerConnected(activeEfaturaProvider)) ? 'Entegratör kimliği eksik/pasif — Entegratörler ekranından tamamla' : undefined} onClick={sorgula}>
             <Ico html={I.sync} size={14} /> {sorgulaMetin}
           </button>
         </div>
@@ -2946,6 +2963,19 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
             </label>
             <span className="mu">{gorunenAdet}{gorunenAdet !== toplamAdet ? ` / ${toplamAdet}` : ''} satır</span>
           </div>
+          {/* ÜST TOPLU İŞLEM ÇUBUĞU — tablonun ÜSTÜNDE (kullanıcı kararı 2026-09-12: alt çubuk yok); seçim varken vurgulanır */}
+          {rows.length > 0 && (
+            <div className={`sq-bulk${secimAdet ? ' secili' : ''}`}>
+              {secimAdet
+                ? <span className="sq-selinfo"><b>{secimAdet}</b> fatura seçili</span>
+                : <span className="sq-selinfo mu">Seçim yoksa aktarılabilir satırların tümü aktarılır</span>}
+              {secimAdet > 0 && <button type="button" className="btn sm ghost" onClick={() => setSel(new Set())}>Seçimi temizle</button>}
+              <button type="button" className="btn sm ghost" disabled={!taxpayerId || syncMut.isPending || rows.length === 0} onClick={() => syncMut.mutate()} title="Listedeki faturaların muhasebe / Luca durumunu yeniden eşitler"><Ico html={I.checkSm} size={13} /> {syncMut.isPending ? 'Eşitleniyor…' : 'Durumu eşitle'}</button>
+              <span className="sq-pill gray" title="İptal, itirazlı veya reddedilmiş faturalar tabloda görünür ama aktarıma alınmaz.">İptal / itiraz aktarılmaz</span>
+              <div className="sp" />
+              <button type="button" className="btn sm primary" disabled={!taxpayerId || aktarMut.isPending || waitForFirstRows || processable.length === 0} onClick={() => aktarMut.mutate()}><Ico html={I.download} size={13} /> {aktarMut.isPending ? 'Aktarılıyor…' : `${secimAdet ? secimAdet : processable.length} faturayı aktar`}</button>
+            </div>
+          )}
           {(earsivQ.isError || jobsQ.isError) && (
             <div className="yuklenemedi">
               <span><Ico html={I.info} size={14} /> Liste alınamadı (bağlantı/sunucu hatası) — "kayıt yok" demek değil.</span>
@@ -2976,12 +3006,12 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
               </thead>
               <tbody>
                 {earsivSuz.map(({ r, onay, akt, secilebilir }) => (
-                  <tr key={r.id} className={`${!r.isProcessable ? 'blocked' : r.aktarildi ? 'done' : ''}${secilebilir && sel.has(r.sourceRefId) ? ' sel' : ''}`}>
+                  <tr key={r.id} className={`${!r.isProcessable ? 'blocked' : earsivAktarildi(r) ? 'done' : ''}${secilebilir && sel.has(r.sourceRefId) ? ' sel' : ''}`}>
                     <td className="center">
                       {secilebilir ? (
                         <Check checked={sel.has(r.sourceRefId)} onToggle={() => toggle(r.sourceRefId)} />
                       ) : (
-                        <Check checked={false} disabled title={r.aktarildi ? 'Zaten aktarılmış' : 'Aktarıma alınmaz'} />
+                        <Check checked={false} disabled title={earsivAktarildi(r) ? 'Zaten aktarılmış' : 'Aktarıma alınmaz'} />
                       )}
                     </td>
                     <td><span className="sq-src" style={{ ['--sc' as any]: sorguProvRenk('GIB_PORTAL') }}><i>GİB</i>e-Arşiv</span></td>
@@ -3018,19 +3048,6 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
               </tbody>
             </table>
           </div>
-          {/* ALT TOPLU İŞLEM ÇUBUĞU — tablonun hemen altında (sabit değil); seçim varken vurgulanır */}
-          {rows.length > 0 && (
-            <div className={`sq-bulk${secimAdet ? ' secili' : ''}`}>
-              {secimAdet
-                ? <span className="sq-selinfo"><b>{secimAdet}</b> fatura seçili</span>
-                : <span className="sq-selinfo mu">Seçim yoksa aktarılabilir satırların tümü aktarılır</span>}
-              {secimAdet > 0 && <button type="button" className="btn sm ghost" onClick={() => setSel(new Set())}>Seçimi temizle</button>}
-              <button type="button" className="btn sm ghost" disabled={!taxpayerId || syncMut.isPending || rows.length === 0} onClick={() => syncMut.mutate()} title="Listedeki faturaların muhasebe / Luca durumunu yeniden eşitler"><Ico html={I.checkSm} size={13} /> {syncMut.isPending ? 'Eşitleniyor…' : 'Durumu eşitle'}</button>
-              <span className="sq-pill gray" title="İptal, itirazlı veya reddedilmiş faturalar tabloda görünür ama aktarıma alınmaz.">İptal / itiraz aktarılmaz</span>
-              <div className="sp" />
-              <button type="button" className="btn sm primary" disabled={!taxpayerId || aktarMut.isPending || waitForFirstRows || processable.length === 0} onClick={() => aktarMut.mutate()}><Ico html={I.download} size={13} /> {aktarMut.isPending ? 'Aktarılıyor…' : `${secimAdet ? secimAdet : processable.length} faturayı aktar`}</button>
-            </div>
-          )}
         </div>
       ) : (
         <div className={`card sourcepanel sq-panel${efaturaOverlayBusy ? ' isbusy' : ''}${efaturaSorguSuruyor ? ' sq-running' : ''}`}>
@@ -3042,12 +3059,17 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
             </div>
             {/* Entegratör adı + kimlik rozeti (integrations: connected = configured && isActive; hasApiKey/hasPassword/username ayrıntı) */}
             <div className="sq-prov">
-              <span className="sq-src" style={{ ['--sc' as any]: sorguProvRenk(activeEfaturaProvider?.provider) }} title={providerKimlikDetay(activeEfaturaProvider) || undefined}>
-                <i>{activeEfaturaProvider ? provKisalt(String(activeEfaturaProvider.label || ''), String(activeEfaturaProvider.provider || '')) : '?'}</i>
-                {activeEfaturaProvider ? efaturaProviderLabel(activeEfaturaProvider) : 'Entegratör tanımsız'}
-              </span>
+              {activeEfaturaProvider ? (
+                <span className="sq-src" style={{ ['--sc' as any]: sorguProvRenk(activeEfaturaProvider?.provider) }} title={providerKimlikDetay(activeEfaturaProvider) || undefined}>
+                  <i>{provKisalt(String(activeEfaturaProvider.label || ''), String(activeEfaturaProvider.provider || ''))}</i>
+                  {efaturaProviderLabel(activeEfaturaProvider)}
+                </span>
+              ) : (
+                // Bu mükellefe hiç e-Fatura entegratörü bağlanmamış: sağlayıcı adı UYDURMA, nötr (gri) söyle + kısayol ver.
+                <span className="sq-pill gray" title="Bu mükellef için e-Fatura entegratörü (TÜRMOB / eLogo / Uyumsoft / Paraşüt / Turkcell…) tanımlanmamış. Entegratörler ekranından tanımlayınca burada sorgu yapılabilir.">● Entegratör tanımlı değil</span>
+              )}
               {!activeEfaturaProvider ? (
-                <span className="sq-pill err" title="Entegratörler ekranından bu mükellefe bir e-Fatura entegratörü ekle">● entegratör yok</span>
+                onOpenEntegrator ? <button type="button" className="btn sm ghost" onClick={onOpenEntegrator} title="Entegratörler ekranını aç">Entegratörler'de tanımla →</button> : null
               ) : providerConnected(activeEfaturaProvider) ? (
                 <span className="sq-pill ok" title={providerKimlikDetay(activeEfaturaProvider) || 'Kimlik bilgisi tanımlı'}>● kimlik hazır</span>
               ) : activeEfaturaProvider.configured && activeEfaturaProvider.isActive === false ? (
@@ -3067,6 +3089,20 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
             </label>
             <span className="mu">{gorunenAdet}{gorunenAdet !== toplamAdet ? ` / ${toplamAdet}` : ''} satır</span>
           </div>
+          {/* ÜST TOPLU İŞLEM ÇUBUĞU — tablonun ÜSTÜNDE (kullanıcı kararı 2026-09-12: alt çubuk yok); seçim varken vurgulanır */}
+          {efaturaRows.length > 0 && (
+            <div className={`sq-bulk${secimAdet ? ' secili' : ''}`}>
+              {secimAdet
+                ? <span className="sq-selinfo"><b>{secimAdet}</b> fatura seçili</span>
+                : <span className="sq-selinfo mu">Seçim yoksa aktarılabilir satırların tümü aktarılır (eşleştirme yapılmaz; sonra "AI ile oku")</span>}
+              {secimAdet > 0 && <button type="button" className="btn sm ghost" onClick={() => setSel(new Set())}>Seçimi temizle</button>}
+              <span className="sq-pill gray" title="İptal, itirazlı veya reddedilmiş faturalar tabloda görünür ama aktarıma alınmaz.">İptal / itiraz aktarılmaz</span>
+              <div className="sp" />
+              <button type="button" className="btn sm primary" disabled={!taxpayerId || efaturaOverlayBusy || efaturaDownloading || efaturaTransferableRows.length === 0} onClick={() => efaturaImportMut.mutate()} title={efaturaDownloading ? 'Belgeler iniyor; bitince aktarabilirsin (görseller önceden inecek)' : undefined}>
+                <Ico html={I.download} size={13} /> {efaturaDownloading ? 'Belgeler iniyor…' : (efaturaImportMut.isPending || efaturaQueuedImport) ? 'Aktarılıyor…' : `${secimAdet ? secimAdet : efaturaTransferableRows.length} faturayı aktar`}
+              </button>
+            </div>
+          )}
           {efaturaDownloading && (
             <div className="efdownbar">
               <span className="efspin" aria-hidden="true" />
@@ -3156,27 +3192,211 @@ function ScreenSorgu({ taxpayerId, period, source }: { taxpayerId: string; perio
               </tbody>
             </table>
           </div>
-          {/* ALT TOPLU İŞLEM ÇUBUĞU — tablonun hemen altında (sabit değil); seçim varken vurgulanır */}
-          {efaturaRows.length > 0 && (
-            <div className={`sq-bulk${secimAdet ? ' secili' : ''}`}>
-              {secimAdet
-                ? <span className="sq-selinfo"><b>{secimAdet}</b> fatura seçili</span>
-                : <span className="sq-selinfo mu">Seçim yoksa aktarılabilir satırların tümü aktarılır (eşleştirme yapılmaz; sonra "AI ile oku")</span>}
-              {secimAdet > 0 && <button type="button" className="btn sm ghost" onClick={() => setSel(new Set())}>Seçimi temizle</button>}
-              <span className="sq-pill gray" title="İptal, itirazlı veya reddedilmiş faturalar tabloda görünür ama aktarıma alınmaz.">İptal / itiraz aktarılmaz</span>
-              <div className="sp" />
-              <button type="button" className="btn sm primary" disabled={!taxpayerId || efaturaOverlayBusy || efaturaDownloading || efaturaTransferableRows.length === 0} onClick={() => efaturaImportMut.mutate()} title={efaturaDownloading ? 'Belgeler iniyor; bitince aktarabilirsin (görseller önceden inecek)' : undefined}>
-                <Ico html={I.download} size={13} /> {efaturaDownloading ? 'Belgeler iniyor…' : (efaturaImportMut.isPending || efaturaQueuedImport) ? 'Aktarılıyor…' : `${secimAdet ? secimAdet : efaturaTransferableRows.length} faturayı aktar`}
-              </button>
-            </div>
-          )}
         </div>
       )}
     </section>
   );
 }
 
+/* ===================== PLAN16-F: MÜKELLEF FAALİYET TANIMI — saf yardımcılar + satır-içi form ===================== */
+// Mükellefler listesindeki "Faaliyet" sütunu: NACE + tanım + haplar (sektör · kurum türü · defter); satırın ALTINDA
+//   açılan düzenleme formu; "NACE öner" (AI — YAZMAZ; sahip "Öneriyi uygula" deyince forma dolar, Kaydet'e basınca PATCH).
+//   Uçlar: PATCH /taxpayers/:id/faaliyet (yalnız değişen alanlar, '' = temizle) · POST /taxpayers/:id/faaliyet-oner.
+//   Kurum/defter seçenekleri @mali-musavir/shared (KURUM_TURU_SECENEKLERI / DEFTER_TURU_ETIKETLERI) — uçla aynı kaynak.
+type MfForm = { naceKodu: string; faaliyetAciklama: string; sektorEtiketi: string; kurumTuru: string; defterTuru: string };
+const MF_ALANLAR: Array<keyof MfForm> = ['naceKodu', 'faaliyetAciklama', 'sektorEtiketi', 'kurumTuru', 'defterTuru'];
+const MF_ALAN_ADI: Record<keyof MfForm, string> = { naceKodu: 'NACE', faaliyetAciklama: 'faaliyet tanımı', sektorEtiketi: 'sektör', kurumTuru: 'kurum türü', defterTuru: 'defter türü' };
+/** Satır hapı için KISA kurum türü adı (tam etiket başlıkta; kaynak kodlar shared KURUM_TURU_KODLARI ile aynı). */
+const MF_KURUM_KISA: Record<string, string> = { kamu: 'kamu', banka: 'banka', belediye: 'belediye', universite: 'üniversite', kit: 'KİT', belirlenmis_diger: 'belirlenmiş diğer', diger: 'diğer', kdv_mukellefi_degil: 'KDV mükellefi değil' };
+const MF_NACE_DESENI = /^\d{2}(\.\d{2}){0,2}$/; // shared NACE_KODU_DESENI ile aynı: 56 · 56.10 · 56.10.06
+const MF_GUVEN_ETIKET: Record<string, string> = { yuksek: 'Yüksek güven', orta: 'Orta güven', dusuk: 'Düşük güven' };
+const MF_DEFTER_SECENEKLERI = (Object.keys(DEFTER_TURU_ETIKETLERI) as Array<keyof typeof DEFTER_TURU_ETIKETLERI>).map((v) => ({ v: String(v), l: DEFTER_TURU_ETIKETLERI[v] }));
+const MF_KURUM_SECENEKLERI = KURUM_TURU_SECENEKLERI.map((o) => ({ v: String(o.value), l: o.label }));
+
+/** Defter türü etiketi — Defter sütununun mevcut mantığı + Mihsap defter türünden türetme (BILANCO da sayılır, boş sayılmaz). */
+function mfDefterEtiketi(t: any): '' | 'İşletme' | 'Bilanço' {
+  const kaynak = `${t?.defterTuru || ''} ${t?.mihsapDefterTuru || ''}`;
+  if (/i[şs]letme|defter.?beyan|basit/i.test(kaynak)) return 'İşletme';
+  if (t?.defterTuru || /bilan[cç]o/i.test(kaynak)) return 'Bilanço';
+  return '';
+}
+
+/** Satırın faaliyet durumu: gösterilecek metinler + BOŞ alan listesi ("tanımsız" hapı başlığı, Tanımsız sayacı, süzgeç). */
+function mfFaaliyetDurumu(t: any) {
+  const nace = String(t?.naceKodu || '').trim();
+  const aciklama = String(t?.faaliyetAciklama || '').trim();
+  const sektor = String(t?.sektorEtiketi || '').trim();
+  const kurumKodu = String(t?.kurumTuru || '').trim().toLowerCase();
+  const kurumTam = kurumTuruEtiketi(kurumKodu) || '';
+  const kurum = kurumTam ? (MF_KURUM_KISA[kurumKodu] || kurumTam) : '';
+  const defter = mfDefterEtiketi(t);
+  const eksik: string[] = [];
+  if (!nace) eksik.push(MF_ALAN_ADI.naceKodu);
+  if (!aciklama) eksik.push(MF_ALAN_ADI.faaliyetAciklama);
+  if (!sektor) eksik.push(MF_ALAN_ADI.sektorEtiketi);
+  if (!kurum) eksik.push(MF_ALAN_ADI.kurumTuru);
+  if (!defter) eksik.push(MF_ALAN_ADI.defterTuru);
+  return { nace, aciklama, sektor, kurumKodu, kurum, kurumTam, defter, eksik, tanimsiz: eksik.length > 0 };
+}
+
+/** Mükellef kaydından form değerleri (defter türü türetilmiş kodla; kurum türü listede yoksa boş = bilinmiyor). */
+function mfFormDegerleri(t: any): MfForm {
+  const defter = mfDefterEtiketi(t);
+  const kurumKodu = String(t?.kurumTuru || '').trim().toLowerCase();
+  return {
+    naceKodu: String(t?.naceKodu || '').trim(),
+    faaliyetAciklama: String(t?.faaliyetAciklama || '').trim(),
+    sektorEtiketi: String(t?.sektorEtiketi || '').trim(),
+    kurumTuru: kurumTuruEtiketi(kurumKodu) ? kurumKodu : '',
+    defterTuru: defter === 'İşletme' ? 'ISLETME' : defter === 'Bilanço' ? 'BILANCO' : '',
+  };
+}
+
+/** Yalnız DEĞİŞEN alanlar (PATCH gövdesi; '' → arka uçta temizle, gönderilmeyen alana dokunulmaz). */
+function mfDegisenAlanlar(ilk: MfForm, son: MfForm): Partial<MfForm> {
+  const out: Partial<MfForm> = {};
+  for (const k of MF_ALANLAR) if (son[k].trim() !== ilk[k].trim()) out[k] = son[k].trim();
+  return out;
+}
+
+/** Kaydet öncesi ekran doğrulaması (arka uç zod şemasıyla aynı sınırlar). Hata yoksa null. */
+function mfFormHatasi(f: MfForm): string | null {
+  if (f.naceKodu.trim() && !MF_NACE_DESENI.test(f.naceKodu.trim())) return 'NACE kodu 56 · 56.10 · 56.10.06 biçiminde olmalı';
+  if (f.faaliyetAciklama.trim().length > 300) return 'Faaliyet tanımı en fazla 300 karakter';
+  if (f.sektorEtiketi.trim().length > 60) return 'Sektör etiketi en fazla 60 karakter';
+  return null;
+}
+
+/** NACE yazımını toparla: "561006" → "56.10.06" (noktasız 2/4/6 rakam); noktalı yazım olduğu gibi kalır. */
+function mfNaceDuzelt(s: string): string {
+  const ham = String(s || '').trim();
+  const rakam = ham.replace(/\D/g, '');
+  if (!ham.includes('.') && (rakam.length === 2 || rakam.length === 4 || rakam.length === 6)) return (rakam.match(/.{2}/g) || []).join('.');
+  return ham;
+}
+
+/** AI önerisindeki DOLU alanları formun üstüne yazar (boş öneri alanı mevcut değeri ezmez; defter türü öneriye dahil değil). */
+function mfOneriyiForma(f: MfForm, o: any): MfForm {
+  const kurum = String(o?.kurumTuru || '').trim().toLowerCase();
+  return {
+    naceKodu: o?.naceKodu ? String(o.naceKodu).trim() : f.naceKodu,
+    faaliyetAciklama: o?.faaliyetAciklama ? String(o.faaliyetAciklama).trim() : f.faaliyetAciklama,
+    sektorEtiketi: o?.sektorEtiketi ? String(o.sektorEtiketi).trim() : f.sektorEtiketi,
+    kurumTuru: kurumTuruEtiketi(kurum) ? kurum : f.kurumTuru,
+    defterTuru: f.defterTuru,
+  };
+}
+
+/** Axios/Nest hata metni (Nest 400'de message dizi olabilir). */
+function mfHataMetni(e: any): string {
+  const m = e?.response?.data?.message ?? e?.message ?? 'hata';
+  return Array.isArray(m) ? m.join(' · ') : String(m);
+}
+
+/** Hap grubu seçim — açılır liste YERİNE: tablo kabı kendi içinde kaydığından (overflow) açılır kutu kırpılırdı; işlev görünür kalır. */
+function MfHapSecim({ deger, secenekler, onChange, bosEtiket, disabled }: { deger: string; secenekler: Array<{ v: string; l: string }>; onChange: (v: string) => void; bosEtiket: string; disabled?: boolean }) {
+  const hepsi = [{ v: '', l: bosEtiket }, ...secenekler];
+  return (
+    <div className="mf-haplar">
+      {hepsi.map((o) => (
+        <button key={o.v || '__bos'} type="button" className={`mf-hap-sec${deger === o.v ? ' on' : ''}${o.v ? '' : ' bos'}`} disabled={disabled} onClick={() => onChange(o.v)}>{o.l}</button>
+      ))}
+    </div>
+  );
+}
+
+/** AI öneri kutusu — satırın altında. "Öneriyi uygula" formu doldurur (KAYDETMEZ; sahip Kaydet'e basar), "Kapat" kutuyu kaldırır. */
+function MfOneriKutusu({ sonuc, yukleniyor, onUygula, onKapat, onYenile }: { sonuc: any; yukleniyor: boolean; onUygula: () => void; onKapat: () => void; onYenile: () => void }) {
+  if (!sonuc?.ok) {
+    return (
+      <div className="mf-oneri hata">
+        <div className="mf-oneri-h"><b>Öneri alınamadı</b><span className="mf-oneri-neden">{String(sonuc?.neden || 'AI yanıt vermedi')}</span></div>
+        <div className="mf-oneri-acts">
+          <button type="button" className="btn sm ghost" disabled={yukleniyor} onClick={onYenile}><Ico html={I.sync} size={12} /> {yukleniyor ? 'Deneniyor…' : 'Yeniden dene'}</button>
+          <button type="button" className="btn sm ghost" onClick={onKapat}>Kapat</button>
+        </div>
+      </div>
+    );
+  }
+  const o = sonuc.oneri || {};
+  const guven = String(o.guven || 'dusuk');
+  const kurum = kurumTuruEtiketi(o.kurumTuru);
+  return (
+    <div className="mf-oneri">
+      <div className="mf-oneri-h">
+        <Ico html={I.spark} size={14} />
+        <b>AI önerisi</b>
+        <span className={`mf-guven ${guven}`} title="AI'nın kendi güven düzeyi: ünvan ve faturalar aynı yönü gösteriyorsa yüksek">{MF_GUVEN_ETIKET[guven] || 'Düşük güven'}</span>
+        <span className="mf-oneri-belge">{Number(sonuc.belgeSayisi || 0)} belge incelendi</span>
+      </div>
+      <div className="mf-oneri-grid">
+        <div className="mf-oneri-f"><small>NACE</small><span>{o.naceKodu ? <><b className="mf-nace">{o.naceKodu}</b>{o.naceAdi ? <em> {o.naceAdi}</em> : null}</> : <i className="mf-bos">—</i>}</span></div>
+        <div className="mf-oneri-f"><small>Faaliyet</small><span>{o.faaliyetAciklama || <i className="mf-bos">—</i>}</span></div>
+        <div className="mf-oneri-f"><small>Sektör</small><span>{o.sektorEtiketi || <i className="mf-bos">—</i>}</span></div>
+        <div className="mf-oneri-f"><small>Kurum türü</small><span>{kurum || <i className="mf-bos">belirsiz — sahip seçer</i>}</span></div>
+      </div>
+      {o.gerekce ? <div className="mf-oneri-gerekce">{o.gerekce}</div> : null}
+      <div className="mf-oneri-acts">
+        <button type="button" className="btn sm primary" onClick={onUygula}><Ico html={I.checkSm} size={12} /> Öneriyi uygula</button>
+        <button type="button" className="btn sm ghost" disabled={yukleniyor} onClick={onYenile}><Ico html={I.sync} size={12} /> {yukleniyor ? 'Öneri alınıyor…' : 'Yeniden öner'}</button>
+        <button type="button" className="btn sm ghost" onClick={onKapat}>Kapat</button>
+        <span className="mf-oneri-not">Uygula → form dolar; Kaydet'e basmadan hiçbir şey yazılmaz.</span>
+      </div>
+    </div>
+  );
+}
+
+/** Satır-içi faaliyet formu (kontrollü; değerler üst bileşende — öneri uygulanınca oradan dolar). Enter = Kaydet, Esc = Vazgeç. */
+function MfFaaliyetForm({ deger, onChange, onKaydet, onVazgec, onOner, kaydediliyor, oneriYukleniyor, degisti }: {
+  deger: MfForm; onChange: (d: MfForm) => void; onKaydet: () => void; onVazgec: () => void; onOner: () => void;
+  kaydediliyor: boolean; oneriYukleniyor: boolean; degisti: boolean;
+}) {
+  const set = (k: keyof MfForm, v: string) => onChange({ ...deger, [k]: v });
+  const kilit = kaydediliyor;
+  const tusla = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'Escape') { e.preventDefault(); if (!kilit) onVazgec(); return; }
+    if (e.key === 'Enter' && (e.target as HTMLElement)?.tagName === 'INPUT' && degisti && !kilit) { e.preventDefault(); onKaydet(); }
+  };
+  return (
+    <div className="mf-form" onKeyDown={tusla}>
+      <div className="mf-form-grid">
+        <div className="fld mf-fld">
+          <label>NACE kodu</label>
+          <input className="mf-nace-in" value={deger.naceKodu} disabled={kilit} placeholder="56.10.06" maxLength={20} autoFocus
+            onChange={(e) => set('naceKodu', e.target.value)} onBlur={(e) => set('naceKodu', mfNaceDuzelt(e.target.value))} />
+          <small className="mf-hint">2 / 4 / 6 hane: 56 · 56.10 · 56.10.06</small>
+        </div>
+        <div className="fld mf-fld mf-fld-wide">
+          <label>Faaliyet tanımı</label>
+          <input value={deger.faaliyetAciklama} disabled={kilit} maxLength={300} placeholder="ör. yemek üretimi ve satışı" onChange={(e) => set('faaliyetAciklama', e.target.value)} />
+          <small className="mf-hint">serbest metin · {deger.faaliyetAciklama.length}/300</small>
+        </div>
+        <div className="fld mf-fld">
+          <label>Sektör etiketi</label>
+          <input value={deger.sektorEtiketi} disabled={kilit} maxLength={60} placeholder="gıda, inşaat, nakliye…" onChange={(e) => set('sektorEtiketi', e.target.value)} />
+          <small className="mf-hint">tek kelime/ikili · {deger.sektorEtiketi.length}/60</small>
+        </div>
+      </div>
+      <div className="mf-form-sec">
+        <span className="mf-sec-l">Kurum türü <small>(KDV tevkifatında "belirlenmiş alıcı" ayrımı; bilinmiyor = boş)</small></span>
+        <MfHapSecim deger={deger.kurumTuru} secenekler={MF_KURUM_SECENEKLERI} onChange={(v) => set('kurumTuru', v)} bosEtiket="Bilinmiyor" disabled={kilit} />
+      </div>
+      <div className="mf-form-sec">
+        <span className="mf-sec-l">Defter türü</span>
+        <MfHapSecim deger={deger.defterTuru} secenekler={MF_DEFTER_SECENEKLERI} onChange={(v) => set('defterTuru', v)} bosEtiket="Belirsiz" disabled={kilit} />
+      </div>
+      <div className="mf-form-acts">
+        <button type="button" className="btn sm primary" disabled={kilit || !degisti} onClick={onKaydet}><Ico html={I.checkSm} size={12} /> {kaydediliyor ? 'Kaydediliyor…' : 'Kaydet'}</button>
+        <button type="button" className="btn sm ghost" disabled={kilit} onClick={onVazgec}>Vazgeç</button>
+        <button type="button" className="btn sm ai" disabled={kilit || oneriYukleniyor} onClick={onOner} title="Ünvan + son faturalardan AI tahmini; yazmaz, öneri kutusuna gelir"><Ico html={I.spark} size={12} /> {oneriYukleniyor ? 'Öneri alınıyor…' : 'NACE öner'}</button>
+        <span className="mf-form-not">{degisti ? 'Yalnız değişen alanlar kaydedilir' : 'Değişiklik yok'}</span>
+      </div>
+    </div>
+  );
+}
+
 function ScreenMukellefler({ taxpayers, period, onOpen }: { taxpayers: any[]; period: string; onOpen: (id: string) => void }) {
+  const qc = useQueryClient();
   const sumQ = useQuery({
     queryKey: ['fm2', 'per-taxpayer', period],
     queryFn: () =>
@@ -3188,10 +3408,41 @@ function ScreenMukellefler({ taxpayers, period, onOpen }: { taxpayers: any[]; pe
   const rows: any[] = sumQ.data || [];
   const byId = new Map(rows.map((r) => [r.taxpayerId, r]));
   const [q, setQ] = useState('');
+  // PLAN16-F: faaliyet tanımı — TEK açık form (satırın altında), AI önerileri (mükellef id → uç yanıtı),
+  //   "Tanımsız" kart süzgeci, toplu öneri ilerlemesi (sırayla, aynı anda 1 istek) + Durdur bayrağı.
+  const [form, setForm] = useState<{ id: string; d: MfForm } | null>(null);
+  const [oneriler, setOneriler] = useState<Record<string, any>>({});
+  const [sadeceTanimsiz, setSadeceTanimsiz] = useState(false);
+  const [toplu, setToplu] = useState<{ i: number; n: number; durduruluyor?: boolean } | null>(null);
+  const topluDurdur = useRef(false);
+  useEffect(() => () => { topluDurdur.current = true; }, []); // ekran kapanınca toplu döngü en geç süren istekten sonra durur
+  const kaydetMut = useMutation({
+    mutationFn: (v: { id: string; body: Partial<MfForm> }) => api.patch(`/taxpayers/${v.id}/faaliyet`, v.body).then((r) => r.data),
+    onSuccess: (r: any, v) => {
+      const n = Array.isArray(r?.degisenAlanlar) ? r.degisenAlanlar.length : Object.keys(v.body).length;
+      toast.success(`Faaliyet kaydedildi · ${n} alan güncellendi`);
+      setForm((f) => (f && f.id === v.id ? null : f));
+      setOneriler((o) => { if (!(v.id in o)) return o; const k = { ...o }; delete k[v.id]; return k; });
+      qc.invalidateQueries({ queryKey: ['fm2', 'taxpayers'] });
+    },
+    onError: (e: any) => toast.error('Kaydedilemedi: ' + mfHataMetni(e)),
+  });
+  const onerMut = useMutation({
+    // Yazmaz; AI (Max) ünvan + son faturalardan tahmin eder. 90 sn üst sınır: toplu döngü asılı kalmasın.
+    mutationFn: (id: string) => api.post(`/taxpayers/${id}/faaliyet-oner`, {}, { timeout: 90_000 }).then((r) => r.data),
+  });
+  const oneriYukleniyorId = onerMut.isPending ? String(onerMut.variables || '') : '';
   const pendingOf = (s: any) => Number(s.pendingAlis || 0) + Number(s.pendingSatis || 0);
+  const nq = q.trim().toLocaleLowerCase('tr');
   const list = taxpayers
-    .filter((t) => !q.trim() || taxpayerLabel(t).toLocaleLowerCase('tr').includes(q.toLocaleLowerCase('tr')))
-    .map((t) => ({ t, s: byId.get(t.id) || {} }))
+    .filter((t) => {
+      const f = mfFaaliyetDurumu(t);
+      if (sadeceTanimsiz && !f.tanimsiz) return false;
+      if (!nq) return true;
+      // Arama: ünvan + VKN + NACE + faaliyet tanımı + sektör + kurum türü etiketi
+      return [taxpayerLabel(t), t.taxNumber, f.nace, f.aciklama, f.sektor, f.kurumTam].some((s) => String(s || '').toLocaleLowerCase('tr').includes(nq));
+    })
+    .map((t) => ({ t, s: byId.get(t.id) || {}, f: mfFaaliyetDurumu(t) }))
     .sort((a, b) => taxpayerLabel(a.t).localeCompare(taxpayerLabel(b.t), 'tr'));
   const tot = rows.reduce((acc, r) => ({
     pending: acc.pending + pendingOf(r),
@@ -3199,10 +3450,75 @@ function ScreenMukellefler({ taxpayers, period, onOpen }: { taxpayers: any[]; pe
     issue: acc.issue + Number(r.hasIssue || 0),
     attention: acc.attention + ((pendingOf(r) > 0 || Number(r.hasIssue || 0) > 0) ? 1 : 0),
   }), { pending: 0, posted: 0, issue: 0, attention: 0 });
+  const tanimsizSayisi = taxpayers.reduce((n, t) => n + (mfFaaliyetDurumu(t).tanimsiz ? 1 : 0), 0);
+  const topluHedefler = list.filter(({ f, t }) => f.tanimsiz && !oneriler[String(t.id)]?.ok).map(({ t }) => String(t.id));
+  const formMukellef = form ? taxpayers.find((x) => String(x.id) === String(form.id)) : null;
+  const formDegisiklik = form && formMukellef ? mfDegisenAlanlar(mfFormDegerleri(formMukellef), form.d) : {};
+  const formDegisti = Object.keys(formDegisiklik).length > 0;
+
+  const formuAc = (t: any) => {
+    if (form && form.id !== t.id && formDegisti) { toast.info('Önce açık formu kaydet ya da vazgeç'); return; }
+    setForm({ id: t.id, d: mfFormDegerleri(t) });
+  };
+  const kaydet = () => {
+    if (!form || kaydetMut.isPending) return;
+    const hata = mfFormHatasi(form.d);
+    if (hata) { toast.error(hata); return; }
+    if (!formDegisti) { toast.info('Değişiklik yok'); return; }
+    kaydetMut.mutate({ id: form.id, body: formDegisiklik });
+  };
+  const oner = async (id: string) => {
+    if (onerMut.isPending || toplu) { toast.info(toplu ? 'Toplu öneri sürüyor; bitince ya da durdurunca tekrar dene' : 'Bir öneri isteği sürüyor; bitince tekrar dene'); return; }
+    try {
+      const r = await onerMut.mutateAsync(id);
+      setOneriler((o) => ({ ...o, [id]: r }));
+      if (!r?.ok) toast.error('Öneri alınamadı: ' + String(r?.neden || 'AI yanıt vermedi'));
+    } catch (e: any) {
+      const neden = mfHataMetni(e);
+      setOneriler((o) => ({ ...o, [id]: { ok: false, neden } }));
+      toast.error('Öneri alınamadı: ' + neden);
+    }
+  };
+  const oneriyiUygula = (t: any) => {
+    const sonuc = oneriler[String(t.id)];
+    if (!sonuc?.ok) return;
+    if (form && form.id !== t.id && formDegisti) { toast.info('Önce açık formu kaydet ya da vazgeç'); return; }
+    const taban = form && form.id === t.id ? form.d : mfFormDegerleri(t);
+    setForm({ id: t.id, d: mfOneriyiForma(taban, sonuc.oneri) }); // KAYDETMEZ — sahip Kaydet'e basar
+  };
+  const oneriKapat = (id: string) => setOneriler((o) => { if (!(id in o)) return o; const k = { ...o }; delete k[id]; return k; });
+  const topluOner = async () => {
+    if (toplu || onerMut.isPending) return;
+    const hedefler = topluHedefler;
+    if (!hedefler.length) { toast.info('Görünen listede öneri istenecek tanımsız mükellef yok'); return; }
+    topluDurdur.current = false;
+    setToplu({ i: 0, n: hedefler.length });
+    let hazir = 0, hatali = 0;
+    for (let i = 0; i < hedefler.length; i++) {
+      if (topluDurdur.current) break;
+      const id = hedefler[i];
+      setToplu((x) => ({ i: i + 1, n: hedefler.length, durduruluyor: !!x?.durduruluyor }));
+      try {
+        const r = await onerMut.mutateAsync(id); // SIRAYLA — aynı anda tek istek
+        setOneriler((o) => ({ ...o, [id]: r }));
+        if (r?.ok) hazir++; else hatali++;
+      } catch (e: any) {
+        hatali++;
+        const neden = mfHataMetni(e);
+        setOneriler((o) => ({ ...o, [id]: { ok: false, neden } }));
+      }
+    }
+    const durduruldu = topluDurdur.current;
+    setToplu(null);
+    const ozet = `${hazir} öneri hazır${hatali ? ` · ${hatali} alınamadı` : ''}${durduruldu ? ' · durduruldu' : ''} — her biri satırında onaylanıp ayrı kaydedilir`;
+    if (hatali && !hazir) toast.error('Toplu öneri: ' + ozet, { duration: 7000 });
+    else if (hatali || durduruldu) toast.warning('Toplu öneri: ' + ozet, { duration: 7000 });
+    else toast.success('Toplu öneri bitti: ' + ozet, { duration: 7000 });
+  };
 
   return (
     <section className="screen">
-      <div className="mgrid">
+      <div className="mgrid mf-mgrid">
         <div className="mcard" style={{ ['--mc' as any]: '#2563eb' }}>
           <div className="mci" style={{ background: '#eff6ff', color: '#2563eb' }}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
@@ -3227,22 +3543,48 @@ function ScreenMukellefler({ taxpayers, period, onOpen }: { taxpayers: any[]; pe
           </div>
           <div className="ml">Dikkat gereken</div><div className="mv" style={{ color: tot.attention > 0 ? '#d97706' : undefined }}>{tot.attention}</div>
         </div>
+        {/* PLAN16-F — "Tanımsız" sayacı: tıkla → tablo yalnız faaliyeti eksik mükellefleri gösterir (tekrar tıkla → kalkar) */}
+        <button type="button" className={`mcard mf-mcard${sadeceTanimsiz ? ' on' : ''}`} style={{ ['--mc' as any]: '#dc2626' }} onClick={() => setSadeceTanimsiz((v) => !v)}
+          title={sadeceTanimsiz ? 'Süzgeci kaldır — tüm mükellefler' : 'Yalnız faaliyeti tanımsız (NACE / tanım / sektör / kurum türü / defter türü eksik) mükellefleri göster'}>
+          <div className="mci" style={{ background: '#fef2f2', color: '#dc2626' }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v4m0 4h.01"/></svg>
+          </div>
+          <div className="ml">Faaliyeti tanımsız</div><div className="mv" style={{ color: tanimsizSayisi > 0 ? '#dc2626' : undefined }}>{tanimsizSayisi}</div>
+          <small className="mf-mcard-hint">{sadeceTanimsiz ? 'süzgeç açık · tıkla, kaldır' : tanimsizSayisi > 0 ? 'tıkla → yalnız bunlar' : 'hepsi tanımlı'}</small>
+        </button>
       </div>
       <div className="card">
         <div className="ch">
-          <h3>{list.length} mükellef <span style={{ fontWeight: 400, color: 'var(--faint)', fontSize: 12 }}>· {periodLabel(period)}</span></h3>
+          <h3>{list.length} mükellef <span style={{ fontWeight: 400, color: 'var(--faint)', fontSize: 12 }}>· {periodLabel(period)}</span>
+            {sadeceTanimsiz ? <button type="button" className="mf-filt" onClick={() => setSadeceTanimsiz(false)} title="Süzgeci kaldır">yalnız tanımsız ×</button> : null}
+          </h3>
           <div className="sp" />
+          {/* PLAN16-F — toplu öneri: görünen listedeki tanımsızlar için SIRAYLA (aynı anda 1) faaliyet-oner; ilerleme + Durdur; otomatik kaydetme YOK */}
+          {toplu ? (
+            <>
+              <span className="mf-toplu"><i className="mf-spin" /> {toplu.durduruluyor ? 'Durduruluyor — süren istek bitince durur' : `AI öneri hazırlıyor ${toplu.i}/${toplu.n}`}</span>
+              <button type="button" className="btn sm ghost" disabled={!!toplu.durduruluyor} onClick={() => { topluDurdur.current = true; setToplu((x) => (x ? { ...x, durduruluyor: true } : x)); }}>Durdur</button>
+            </>
+          ) : (
+            <button type="button" className="btn sm ai" disabled={topluHedefler.length === 0 || onerMut.isPending} onClick={topluOner}
+              title="Görünen listedeki tanımsız mükellefler için sırayla AI önerisi ister; sonuçlar satır altında birikir, her biri ayrı ayrı onaylanıp kaydedilir">
+              <Ico html={I.spark} size={12} /> Tümüne NACE öner{topluHedefler.length ? ` (${topluHedefler.length})` : ''}
+            </button>
+          )}
           <div className="mukara">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-            <input placeholder="Mükellef ara…" value={q} onChange={(e) => setQ(e.target.value)} />
+            <input placeholder="Mükellef, NACE, faaliyet, sektör ara…" value={q} onChange={(e) => setQ(e.target.value)} />
           </div>
         </div>
-        <table className="mktbl">
+        {/* Tablo kabı kendi içinde kayar (Faaliyet sütunu genişletti) — sayfa yatay kaymaz */}
+        <div className="mf-twrap">
+        <table className="mktbl mf-tbl">
           <thead>
             <tr>
               <th style={{ width: 6 }} />
               <th>Mükellef</th>
               <th>Defter</th>
+              <th>Faaliyet</th>
               <th className="num">Bekleyen</th>
               <th className="num">Onaylı</th>
               <th className="num">Luca</th>
@@ -3251,34 +3593,76 @@ function ScreenMukellefler({ taxpayers, period, onOpen }: { taxpayers: any[]; pe
             </tr>
           </thead>
           <tbody>
-            {list.map(({ t, s }) => {
+            {list.map(({ t, s, f }) => {
               const pending = Number(s.pendingAlis || 0) + Number(s.pendingSatis || 0);
               const issue = Number(s.hasIssue || 0);
               const posted = Number(s.postedToLuca || 0);
               const approved = Number(s.approvedAlis || 0) + Number(s.approvedSatis || 0);
               const rowState = issue > 0 ? 'issue' : pending > 0 ? 'pending' : 'ok';
-              const defterLabel = /i[şs]letme|defter.?beyan|basit/i.test(`${t.defterTuru || ''} ${(t as any)?.mihsapDefterTuru || ''}`) ? 'İşletme' : t.defterTuru ? 'Bilanço' : '';
+              const tid = String(t.id);
+              const acik = !!form && form.id === t.id;
+              const oneri = oneriler[tid];
+              const yukleniyor = oneriYukleniyorId === tid;
+              const altAcik = acik || !!oneri || yukleniyor;
               return (
-                <tr key={t.id} className={`mktr mktr-${rowState}`} onClick={() => onOpen(t.id)}>
+                <Fragment key={t.id}>
+                <tr className={`mktr mktr-${rowState}${altAcik ? ' mf-acik' : ''}`} onClick={() => onOpen(t.id)}>
                   <td><span className={`mkstatus mkstatus-${rowState}`}>{rowState === 'issue' ? '!' : pending > 0 ? pending : '✓'}</span></td>
                   <td>
                     <b className="mkfirma">{taxpayerLabel(t)}</b>
                     {t.taxNumber ? <small className="mkvkn">VKN {t.taxNumber}</small> : null}
                   </td>
-                  <td>{defterLabel ? <span className="mkdef">{defterLabel}</span> : null}</td>
+                  <td>{f.defter ? <span className="mkdef">{f.defter}</span> : null}</td>
+                  {/* PLAN16-F — FAALİYET: NACE (mono) + kısa tanım; altta haplar sektör · kurum türü · defter; boşsa kırmızı "tanımsız" (başlıkta hangi alanlar boş) */}
+                  <td className="mf-cell">
+                    <div className="mf-top">
+                      {f.nace ? <span className="mf-nace" title="NACE kodu">{f.nace}</span> : null}
+                      {f.aciklama ? <span className="mf-aciklama" title={f.aciklama}>{f.aciklama}</span> : (!f.nace ? <span className="mf-bos">faaliyet tanımı yok</span> : null)}
+                    </div>
+                    <div className="mf-haplar-sm">
+                      {f.sektor ? <span className="mf-hap sektor" title="Sektör etiketi">{f.sektor}</span> : null}
+                      {f.kurum ? <span className="mf-hap kurum" title={`Kurum türü: ${f.kurumTam}`}>{f.kurum}</span> : null}
+                      {f.defter ? <span className="mf-hap defter" title="Defter türü">{f.defter}</span> : null}
+                      {f.tanimsiz ? <button type="button" className="mf-hap eksik" title={`${f.eksik.join(', ')} boş — düzenlemek için tıkla`} onClick={(e) => { e.stopPropagation(); formuAc(t); }}>tanımsız</button> : null}
+                      <button type="button" className={`mf-act${acik ? ' on' : ''}`} onClick={(e) => { e.stopPropagation(); if (acik) setForm(null); else formuAc(t); }} title={acik ? 'Formu kapat' : 'Faaliyet tanımını düzenle (satırın altında açılır)'}><Ico html={I.edit} size={11} /> {acik ? 'Kapat' : 'Düzenle'}</button>
+                      {/* Kısa yol yalnız tanımsız satırda ve henüz öneri kutusu yokken (kutu kendi "Yeniden öner"ini taşır) */}
+                      {f.tanimsiz && !oneri ? <button type="button" className="mf-act ai" disabled={yukleniyor || onerMut.isPending || !!toplu} onClick={(e) => { e.stopPropagation(); oner(tid); }} title="AI ile NACE / faaliyet / sektör / kurum türü önerisi (yazmaz; öneriyi uygula → Kaydet)"><Ico html={I.spark} size={11} /> {yukleniyor ? 'Öneri alınıyor…' : 'NACE öner'}</button> : null}
+                    </div>
+                  </td>
                   <td className="num">{pending > 0 ? <span className="mknum mknum-pending">{pending}</span> : <span className="faint">—</span>}</td>
                   <td className="num">{approved > 0 ? <span className="mknum mknum-ok">{approved}</span> : <span className="faint">—</span>}</td>
                   <td className="num">{posted > 0 ? <span className="mknum mknum-posted">{posted}</span> : <span className="faint">—</span>}</td>
                   <td className="num">{issue > 0 ? <span className="mknum mknum-issue">{issue}</span> : <span className="faint">—</span>}</td>
                   <td><button className="mkbtn" onClick={(e) => { e.stopPropagation(); onOpen(t.id); }}>Aç →</button></td>
                 </tr>
+                {/* PLAN16-F — satırın ALTINDA açılan alan (sticky/çekmece YOK): öneri kutusu (varsa) + düzenleme formu (açıksa) */}
+                {altAcik && (
+                  <tr className="mf-row">
+                    <td colSpan={9}>
+                      <div className="mf-panel">
+                        <div className="mf-panel-h">
+                          <b>{taxpayerLabel(t)}</b><span>faaliyet tanımı</span>
+                          {f.tanimsiz ? <span className="mf-hap eksik" title="Boş alanlar">{f.eksik.join(', ')} boş</span> : <span className="mf-hap defter">tanımlı</span>}
+                        </div>
+                        {oneri ? <MfOneriKutusu sonuc={oneri} yukleniyor={yukleniyor} onUygula={() => oneriyiUygula(t)} onKapat={() => oneriKapat(tid)} onYenile={() => oner(tid)} /> : null}
+                        {yukleniyor && !oneri ? <div className="mf-oneri yukleniyor"><i className="mf-spin" /> AI öneri hazırlıyor… (ünvan + son alış/satış faturaları)</div> : null}
+                        {acik && form ? (
+                          <MfFaaliyetForm deger={form.d} onChange={(d) => setForm({ id: t.id, d })} onKaydet={kaydet} onVazgec={() => setForm(null)} onOner={() => oner(tid)}
+                            kaydediliyor={kaydetMut.isPending} oneriYukleniyor={yukleniyor} degisti={formDegisti} />
+                        ) : null}
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
               );
             })}
             {!sumQ.isLoading && list.length === 0 && (
-              <tr><td colSpan={8}><div className="empty">Mükellef bulunamadı.</div></td></tr>
+              <tr><td colSpan={9}><div className="empty">{sadeceTanimsiz ? (nq ? 'Aramaya uyan tanımsız mükellef yok.' : 'Faaliyeti tanımsız mükellef yok — hepsi tanımlı.') : 'Mükellef bulunamadı.'}</div></td></tr>
             )}
           </tbody>
         </table>
+        </div>
       </div>
     </section>
   );
@@ -7195,8 +7579,8 @@ const CSS = `
 #fm-root .sq-akt.muh{color:#0f766e}
 #fm-root .sq-akt.yok{color:#94a3b8;font-weight:600}
 /* Alt toplu işlem çubuğu — tablonun hemen altında, sabit DEĞİL */
-#fm-root .sq-bulk{display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding:10px 14px;border-top:1px solid var(--line);background:#fbfcfe;flex:0 0 auto;border-radius:0 0 14px 14px}
-#fm-root .sq-bulk.secili{background:linear-gradient(90deg,color-mix(in srgb,var(--accent) 13%,#fff),color-mix(in srgb,var(--accent) 4%,#fff));border-top-color:var(--accent-line)}
+#fm-root .sq-bulk{display:flex;align-items:center;gap:9px;flex-wrap:wrap;padding:9px 14px;border-bottom:1px solid var(--line);background:#fbfcfe;flex:0 0 auto;border-radius:0}
+#fm-root .sq-bulk.secili{background:linear-gradient(90deg,color-mix(in srgb,var(--accent) 13%,#fff),color-mix(in srgb,var(--accent) 4%,#fff));border-bottom-color:var(--accent-line)}
 #fm-root .sq-bulk .sq-selinfo{font-size:12.5px;color:var(--text)}
 #fm-root .sq-bulk .sq-selinfo.mu{font-size:11.5px;color:var(--muted)}
 #fm-root .sq-bulk .sq-selinfo b{color:var(--accent);font-weight:800}
@@ -7283,18 +7667,145 @@ const CSS = `
 /* Tevkifatlı ayrı onay grubu — tablonun altında, toplu çubuğun üstünde */
 #fm-root .gf-tevk{margin:10px 14px 0;padding:9px 12px;border:1px solid #c9d6ea;border-radius:9px;background:#eef2f8;font-size:12.5px;color:#3b5b8a;display:flex;flex-direction:column;gap:6px}
 /* Toplu alt çubuk — tablonun hemen altında, sabit DEĞİL */
-#fm-root .gf-bulk{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-top:10px;padding:10px 14px;border-top:1px solid var(--accent-line);background:linear-gradient(90deg,color-mix(in srgb,var(--accent) 13%,#fff),color-mix(in srgb,var(--accent) 4%,#fff))}
-#fm-root .gf-bulk .gf-selinfo{font-size:12.5px;color:var(--text)}
-#fm-root .gf-bulk .gf-selinfo b{color:var(--accent);font-weight:800}
-#fm-root .gf-bulk .btn{height:34px;border-radius:9px;box-shadow:none}
-#fm-root .gf-bulk .btn.gf-clear{height:28px;padding:0 9px;font-size:11.5px;color:var(--muted)}
-#fm-root .gf-bulk .btn.ai{background:linear-gradient(135deg,#123a6b 0%,#12717c 55%,#0d9488 100%);border:0;color:#fff}
-#fm-root .gf-bulk .btn.ai:hover:not(:disabled){filter:brightness(1.08);color:#fff}
-#fm-root .gf-bulk .btn.gf-onayla{background:linear-gradient(135deg,#15803d,#1aa050);border:0;color:#fff}
-#fm-root .gf-bulk .btn.gf-onayla:hover:not(:disabled){filter:brightness(1.05);color:#fff}
-#fm-root .gf-bulk .btn.gf-sil{background:#fff;color:#b91c1c;border:1px solid #f3c0c0}
-#fm-root .gf-bulk .btn.gf-sil:hover:not(:disabled){background:#fdeaea;border-color:#e59a9a;color:#991b1b;filter:none}
-#fm-root .gf-bulk .btn:disabled{opacity:.5;box-shadow:none}
+/* Toplu işlemler ÜST araç çubuğunda (alt çubuk kaldırıldı — kullanıcı kararı 2026-09-12) */
+#fm-root .invactions .gf-topsep{width:1px;height:22px;background:var(--line2);margin:0 2px}
+#fm-root .invactions .gf-selinfo{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--text);padding:0 6px}
+#fm-root .invactions .gf-selinfo b{color:var(--accent);font-weight:800}
+#fm-root .invactions .gf-clear{border:1px solid var(--line2);background:#fff;color:var(--muted);border-radius:999px;width:20px;height:20px;font-size:11px;line-height:1;cursor:pointer;display:grid;place-items:center}
+#fm-root .invactions .gf-clear:hover{border-color:var(--accent);color:var(--accent)}
+#fm-root .invactions .btn.gf-onayla{background:linear-gradient(135deg,#15803d,#1aa050);border:0;color:#fff}
+#fm-root .invactions .btn.gf-onayla:hover:not(:disabled){filter:brightness(1.05);color:#fff}
+#fm-root .invactions .btn.gf-sil{background:#fff;color:#b91c1c;border:1px solid #f3c0c0}
+#fm-root .invactions .btn.gf-sil:hover:not(:disabled){background:#fdeaea;border-color:#e59a9a;color:#991b1b;filter:none}
+#fm-root .invactions .btn:disabled{opacity:.45;box-shadow:none;filter:none}
+/* === PLAN16-B2: AI OKUMA BANDI (kullanıcı isteği 2026-09-12 — ince, canlı, halka ilerlemeli) === */
+#fm-root .aiband{position:relative;display:flex;align-items:center;gap:16px;margin:10px 12px 12px;padding:12px 16px 12px 14px;border-radius:14px;border:1px solid var(--accent-line);background:linear-gradient(100deg,color-mix(in srgb,var(--accent) 14%,#fff) 0%,#fff 46%,color-mix(in srgb,var(--accent) 6%,#fff) 100%);overflow:hidden;box-shadow:0 12px 28px -22px var(--accent)}
+#fm-root .aiband::before{content:"";position:absolute;left:-50px;top:-70px;width:240px;height:240px;border-radius:50%;background:radial-gradient(circle,color-mix(in srgb,var(--accent) 24%,transparent) 0%,transparent 64%);pointer-events:none}
+#fm-root .aiband::after{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:linear-gradient(180deg,var(--accent),#22c55e)}
+#fm-root .aiband-ring{position:relative;width:58px;height:58px;flex-shrink:0;display:grid;place-items:center}
+#fm-root .aiband-ring svg{position:absolute;inset:0;width:58px;height:58px;transform:rotate(-90deg)}
+#fm-root .aiband-ring circle{fill:none;stroke-width:4}
+#fm-root .aiband-ring circle.bg{stroke:color-mix(in srgb,var(--accent) 18%,#fff)}
+#fm-root .aiband-ring circle.fg{stroke:var(--accent);stroke-linecap:round;transition:stroke-dashoffset .6s ease}
+#fm-root .aiband-pct{position:relative;font-size:13px;font-weight:900;color:var(--accent);font-variant-numeric:tabular-nums;letter-spacing:-.3px}
+#fm-root .aiband-mid{position:relative;flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}
+#fm-root .aiband-title{display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:800;color:var(--text);flex-wrap:wrap}
+#fm-root .aiband-spark{width:22px;height:22px;border-radius:7px;display:grid;place-items:center;background:var(--accent);color:#fff;box-shadow:0 6px 14px -8px var(--accent);animation:aibandPulse 1.8s ease-in-out infinite}
+@keyframes aibandPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.14)}}
+#fm-root .aiband-title .dots::after{content:"...";display:inline-block;width:16px;text-align:left;animation:aidots 1.5s steps(4,end) infinite}
+#fm-root .aiband-cnt{margin-left:6px;font-size:12.5px;font-weight:700;color:var(--muted)}
+#fm-root .aiband-cnt b{color:var(--accent);font-size:14.5px;font-variant-numeric:tabular-nums}
+#fm-root .aiband-chips{display:flex;align-items:center;flex-wrap:wrap;gap:6px}
+#fm-root .aiband-chip{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:700;background:#fff;border:1px solid var(--accent-line);color:var(--accent)}
+#fm-root .aiband-chip.live i{width:6px;height:6px;border-radius:50%;background:var(--accent);animation:aiqpulse 1.4s infinite}
+#fm-root .aiband-chip.warn{background:#fff7ed;border-color:#f3dcab;color:#b45309}
+#fm-root .aiband-note{font-size:11px;color:var(--faint);font-weight:600;margin-left:2px}
+#fm-root .aiband-track{height:5px;border-radius:999px;background:color-mix(in srgb,var(--accent) 14%,#fff);overflow:hidden}
+#fm-root .aiband-fill{position:relative;height:100%;border-radius:999px;background:linear-gradient(90deg,var(--accent),#22c55e);transition:width .5s ease;min-width:6px;overflow:hidden}
+#fm-root .aiband-fill::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.55),transparent);animation:aishim 1.6s linear infinite}
+#fm-root .aiband-stop{position:relative;flex-shrink:0;display:inline-flex;align-items:center;gap:5px;height:32px;padding:0 14px;border-radius:9px;border:1px solid #f3c0c0;background:#fff;color:#b91c1c;font-size:12px;font-weight:800;cursor:pointer;transition:background .15s,color .15s,border-color .15s}
+#fm-root .aiband-stop:hover:not(:disabled){background:#dc2626;border-color:#dc2626;color:#fff}
+#fm-root .aiband-stop:disabled{opacity:.55;cursor:default}
+#fm-root .aiband.err{background:#fff7f7;border-color:#f3c4c4;color:#92400e;font-size:12.5px;gap:9px;box-shadow:none}
+#fm-root .aiband.err::before,#fm-root .aiband.err::after{display:none}
+#fm-root .aiband-errdot{width:9px;height:9px;border-radius:50%;background:#c0353a;flex-shrink:0}
+/* Kaynak / entegratör hapları — kullanıcı bulgusu (2026-09-12): gereksiz büyüktü → tablo satırında kompakt, başlıkta orta */
+#fm-root .sq-table .sq-src{height:20px;padding:0 7px 0 2px;gap:5px;font-size:10px;font-weight:700;letter-spacing:0;border-width:1px}
+#fm-root .sq-table .sq-src i{width:15px;height:15px;font-size:7px}
+#fm-root .sq-head .sq-src{height:22px;font-size:10.5px;font-weight:700}
+#fm-root .sq-head .sq-src i{width:16px;height:16px;font-size:7.5px}
+#fm-root .sq-table td .sq-pill{height:20px;padding:0 8px;font-size:10.5px}
 /* Süzgeç boş sonuç bağlantısı */
 #fm-root .gf-table .empty a{color:var(--accent);font-weight:700;text-decoration:underline}
+
+/* === PLAN16-F: MUKELLEF FAALIYETI === */
+/* Sayaç şeridi 5 kart; "Tanımsız" kartı tıklanabilir (kırmızı) — düz gri kutu yok, hover'da kalkma + gölge */
+#fm-root .mgrid.mf-mgrid{grid-template-columns:repeat(5,minmax(0,1fr))}
+#fm-root .mcard.mf-mcard{font-family:inherit;text-align:left;cursor:pointer;width:100%;background:linear-gradient(135deg,#fff5f5,#f8fafc 70%);transition:transform .12s,box-shadow .14s,background .12s}
+#fm-root .mcard.mf-mcard:hover{transform:translateY(-1px);box-shadow:0 10px 20px -14px #dc2626;background:#fff1f1}
+#fm-root .mcard.mf-mcard.on{background:#fef2f2;box-shadow:inset 0 0 0 2px #dc2626}
+#fm-root .mf-mcard-hint{font-size:10px;font-weight:700;color:#b91c1c;opacity:.8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#fm-root .mf-filt{margin-left:8px;height:22px;padding:0 9px;border-radius:999px;border:1px solid #f3c0c0;background:#fdeaea;color:#b91c1c;font-family:inherit;font-size:11px;font-weight:800;cursor:pointer;vertical-align:middle}
+#fm-root .mf-filt:hover{background:#b91c1c;color:#fff;border-color:#b91c1c}
+/* Toplu öneri ilerlemesi (mor AI dili) + dönen halka */
+#fm-root .mf-toplu{display:inline-flex;align-items:center;gap:8px;height:32px;padding:0 12px;border-radius:9px;background:linear-gradient(135deg,#faf7ff,#fff);border:1px solid #e3d4fb;color:#6d28d9;font-size:12px;font-weight:700;white-space:nowrap}
+#fm-root .mf-spin{display:inline-block;width:12px;height:12px;border-radius:50%;border:2px solid #e3d4fb;border-top-color:#7c3aed;animation:fmspin .8s linear infinite;flex-shrink:0}
+/* Tablo kabı: kendi içinde kayar; sayfa yatay kaymaz */
+#fm-root .mf-twrap{overflow:auto}
+#fm-root .mf-tbl{min-width:940px}
+/* Faaliyet hücresi: NACE mono + tanım; altta küçük haplar + görünür eylemler */
+#fm-root .mf-cell{min-width:250px;max-width:360px}
+#fm-root .mf-top{display:flex;align-items:baseline;gap:7px;min-width:0}
+#fm-root .mf-nace{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11.5px;font-weight:700;color:#0f766e;background:#ecf7f5;border:1px solid #bfe6e1;border-radius:6px;padding:1px 6px;white-space:nowrap;letter-spacing:.2px;flex-shrink:0}
+#fm-root .mf-aciklama{font-size:12px;font-weight:600;color:#1f2937;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:280px}
+#fm-root .mf-bos{font-size:11.5px;color:var(--faint);font-style:italic;font-weight:500}
+#fm-root .mf-haplar-sm{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin-top:4px}
+#fm-root .mf-hap{display:inline-flex;align-items:center;height:20px;padding:0 7px;border-radius:999px;font-size:10.5px;font-weight:700;border:1px solid transparent;white-space:nowrap;line-height:1;font-family:inherit}
+#fm-root .mf-hap.sektor{background:#eef2ff;color:#3730a3;border-color:#c7d2fe}
+#fm-root .mf-hap.kurum{background:#fff7ed;color:#9a3412;border-color:#fed7aa}
+#fm-root .mf-hap.defter{background:#e7f4ec;color:#15803d;border-color:#c6e8d0}
+#fm-root .mf-hap.eksik{background:#fdeaea;color:#b91c1c;border-color:#f3c0c0}
+#fm-root .mf-hap.eksik::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor;margin-right:5px}
+#fm-root button.mf-hap.eksik{cursor:pointer;transition:background .12s,color .12s,border-color .12s}
+#fm-root button.mf-hap.eksik:hover{background:#b91c1c;color:#fff;border-color:#b91c1c}
+#fm-root .mf-act{display:inline-flex;align-items:center;gap:4px;height:22px;padding:0 8px;border-radius:7px;border:1px solid var(--line2);background:#fff;color:#34415a;font-family:inherit;font-size:10.5px;font-weight:700;cursor:pointer;white-space:nowrap;line-height:1;transition:background .12s,border-color .12s,color .12s,transform .1s}
+#fm-root .mf-act .ico{display:inline-flex}
+#fm-root .mf-act:hover:not(:disabled){border-color:var(--accent);color:var(--accent);background:var(--accent-soft);transform:translateY(-1px)}
+#fm-root .mf-act.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+#fm-root .mf-act.ai{color:#6d28d9;border-color:#e3d4fb;background:#faf7ff}
+#fm-root .mf-act.ai:hover:not(:disabled){background:#f3e8ff;border-color:#c4b5fd;color:#5b21b6}
+#fm-root .mf-act:disabled{opacity:.55;cursor:wait;transform:none}
+/* Açık satır vurgusu + satır altı panel (gradyan + sağ üst parıltı + sol accent şerit) */
+#fm-root .mktr.mf-acik td{background:color-mix(in srgb,var(--accent) 5%,#fff)}
+#fm-root .mktr.mf-acik td:first-child{border-left-color:var(--accent)}
+#fm-root .mf-row td{padding:0 12px 12px;background:#fbfcfe;border-bottom:1px solid #e7edf3;white-space:normal} /* genel "tbody td nowrap" kuralını kırar: panel metinleri sarılsın */
+#fm-root .mf-panel{position:relative;overflow:hidden;padding:12px 14px 14px 18px;border:1px solid var(--accent-line);border-radius:12px;background:radial-gradient(circle at 100% 0%,color-mix(in srgb,var(--accent) 13%,transparent),transparent 40%),linear-gradient(135deg,color-mix(in srgb,var(--accent) 7%,#fff),#fff 55%);box-shadow:0 14px 28px -24px var(--accent);display:flex;flex-direction:column;gap:2px}
+#fm-root .mf-panel::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:linear-gradient(180deg,var(--accent),#2dd4bf)}
+#fm-root .mf-panel-h{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px}
+#fm-root .mf-panel-h b{color:#0d1626;font-weight:800}
+#fm-root .mf-panel-h > span:not(.mf-hap){font-size:11.5px;color:var(--muted);font-weight:600}
+/* AI öneri kutusu (mor) + güven rozeti */
+#fm-root .mf-oneri{margin-top:10px;padding:10px 12px;border:1px solid #e3d4fb;border-radius:11px;background:radial-gradient(circle at 100% 0%,rgba(124,58,237,.10),transparent 38%),linear-gradient(135deg,#faf7ff,#fff 60%);display:flex;flex-direction:column;gap:8px}
+#fm-root .mf-oneri.hata{border-color:#f3c0c0;background:linear-gradient(135deg,#fff7f7,#fff 60%)}
+#fm-root .mf-oneri.yukleniyor{flex-direction:row;align-items:center;color:#6d28d9;font-size:12px;font-weight:700}
+#fm-root .mf-oneri-h{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12.5px;color:#4c1d95}
+#fm-root .mf-oneri-h .ico{color:#7c3aed}
+#fm-root .mf-oneri-neden{font-size:12px;color:#991b1b;font-weight:600}
+#fm-root .mf-guven{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 9px;border-radius:999px;font-size:11px;font-weight:800;white-space:nowrap;border:1px solid transparent;line-height:1}
+#fm-root .mf-guven::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor}
+#fm-root .mf-guven.yuksek{background:#e7f6ec;color:#15803d;border-color:#bfe5cc}
+#fm-root .mf-guven.orta{background:#fff4e0;color:#b45309;border-color:#f6d7a4}
+#fm-root .mf-guven.dusuk{background:#fdeaea;color:#b91c1c;border-color:#f3c0c0}
+#fm-root .mf-oneri-belge{font-size:11px;color:var(--muted);margin-left:auto;white-space:nowrap}
+#fm-root .mf-oneri-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px 14px}
+#fm-root .mf-oneri-f{display:flex;flex-direction:column;gap:2px;min-width:0}
+#fm-root .mf-oneri-f small{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;color:var(--faint)}
+#fm-root .mf-oneri-f span{font-size:12.5px;font-weight:600;color:var(--text);overflow-wrap:anywhere}
+#fm-root .mf-oneri-f em{font-style:normal;font-weight:500;color:var(--muted)}
+#fm-root .mf-oneri-gerekce{font-size:12px;color:#475569;font-style:italic;line-height:1.45}
+#fm-root .mf-oneri-acts{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+#fm-root .mf-oneri-not{font-size:11px;color:var(--faint)}
+/* Satır-içi form: 3 alan ızgarası + hap seçim grupları + eylem satırı */
+#fm-root .mf-form{margin-top:10px;display:flex;flex-direction:column;gap:10px}
+#fm-root .mf-form-grid{display:grid;grid-template-columns:170px minmax(240px,2fr) minmax(170px,1fr);gap:10px}
+#fm-root .mf-fld .mf-hint{font-size:10.5px;color:var(--faint);font-weight:500}
+#fm-root .mf-fld input:disabled{opacity:.6;background:#f8fafc}
+#fm-root .mf-nace-in{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.4px}
+#fm-root .mf-form-sec{display:flex;flex-direction:column;gap:5px}
+#fm-root .mf-sec-l{font-size:10.5px;color:var(--faint);font-weight:700;text-transform:uppercase;letter-spacing:.3px}
+#fm-root .mf-sec-l small{text-transform:none;letter-spacing:0;font-weight:600;font-size:10.5px}
+#fm-root .mf-haplar{display:flex;flex-wrap:wrap;gap:5px}
+#fm-root .mf-hap-sec{height:26px;padding:0 10px;border-radius:999px;border:1.5px solid var(--line2);background:#fff;color:#34415a;font-family:inherit;font-size:11.5px;font-weight:700;cursor:pointer;line-height:1;white-space:nowrap;transition:background .12s,border-color .12s,color .12s,box-shadow .12s}
+#fm-root .mf-hap-sec:hover:not(:disabled){border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+#fm-root .mf-hap-sec.on{background:var(--accent);border-color:var(--accent);color:#fff;box-shadow:0 6px 14px -9px var(--accent)}
+#fm-root .mf-hap-sec.bos.on{background:#64748b;border-color:#64748b;box-shadow:none}
+#fm-root .mf-hap-sec:disabled{opacity:.55;cursor:default}
+#fm-root .mf-form-acts{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding-top:8px;border-top:1px dashed var(--accent-line)}
+#fm-root .mf-form-not{font-size:11.5px;color:var(--faint)}
+/* Dar ekran: sayaçlar 3 sütun, form alanları 2 sütun, öneri ızgarası 2 sütun */
+@media(max-width:1180px){
+  #fm-root .mgrid.mf-mgrid{grid-template-columns:repeat(3,minmax(0,1fr))}
+  #fm-root .mf-form-grid{grid-template-columns:1fr 1fr}
+  #fm-root .mf-oneri-grid{grid-template-columns:1fr 1fr}
+}
 `;

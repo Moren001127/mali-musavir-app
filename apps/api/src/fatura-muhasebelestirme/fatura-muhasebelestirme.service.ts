@@ -22,6 +22,8 @@ import { demirbasHaddiTL, tevkifatEksikDegerlendir, tevkifatTutarlilik, tevkifat
 import { Uyari, uyariYap, dogrulamaUyarilari, uyarilariBirlestir, uyariOzet, uyariImza, UYARI_KOD } from './uyari-katmani';
 // PLAN/16 §H — gece çekim anahtarı kuralları (saf modül: talimat girdisi, saat, 'global' reddi).
 import { geceTalimatGirdisiDogrula, geceSaatiNormalize, GECE_VARSAYILAN_SAAT } from './gece-cekim';
+// PLAN/16 §F — mükellef faaliyeti (sektör etiketi + kurum türü) motor promptlarına EK bilgi olarak verilir.
+import { mukellefEkBilgiMetni } from './mukellef-bilgi';
 // PLAN/16 §C — görsel benzerlik (dHash) + fiş (ÖKC) mükerrer anahtarı (saf modüller).
 import { computeImagePhash, hamming, MUKERRER_GORSEL_HAMMING_ESIK, phashGecerliMi, phashDejenereMi } from './gorsel-hash';
 import { fisEslesmeAnahtari, gunAraligi, tutarAraligi, belgeSaati, ettnAyikla, belgeNoYerTutucuMu, belgeNoUzunMu } from './mukerrer-fis';
@@ -3448,14 +3450,15 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     if (doc.taxpayerId) {
       const tp = await (this.prisma as any).taxpayer.findFirst({
         where: { id: doc.taxpayerId, tenantId },
-        select: { companyName: true, firstName: true, lastName: true, naceKodu: true, faaliyetAciklama: true, defterTuru: true, mihsapDefterTuru: true },
+        select: { companyName: true, firstName: true, lastName: true, naceKodu: true, faaliyetAciklama: true, defterTuru: true, mihsapDefterTuru: true, sektorEtiketi: true, kurumTuru: true },
       }).catch(() => null);
       if (tp) {
         isIsletme = isIsletmeLedger(tp.defterTuru, tp.mihsapDefterTuru);
         qcNace = String(tp.naceKodu || '').trim();
         qcFaaliyet = String(tp.faaliyetAciklama || '').trim();
         const ad = String(tp.companyName || (String(tp.firstName || '') + ' ' + String(tp.lastName || ''))).trim();
-        mukellefBilgi = [ad && ('ünvanı "' + ad + '"'), qcFaaliyet ? ('faaliyeti: ' + qcFaaliyet) : (qcNace ? ('NACE ' + qcNace) : ''), isIsletme ? 'İşletme defteri' : 'Bilanço usulü'].filter(Boolean).join(', ');
+        mukellefBilgi = [ad && ('ünvanı "' + ad + '"'), qcFaaliyet ? ('faaliyeti: ' + qcFaaliyet) : (qcNace ? ('NACE ' + qcNace) : ''), isIsletme ? 'İşletme defteri' : 'Bilanço usulü'].filter(Boolean).join(', ')
+          + mukellefEkBilgiMetni(tp); // PLAN/16 §F: sektör + kurum türü
       }
     }
     const kind = doc.invoiceKind === 'SATIS' ? 'SATIS' : 'ALIS';
@@ -6627,9 +6630,18 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           select: { id: true, belgeNo: true, totalAmount: true, createdAt: true, imagePhash: true },
           take: 3000,
         });
+        // CANLI BULGU (2026-09-12): aynı satıcının FARKLI faturaları (aynı şablon/görünüm) 9×8 dHash'te Hamming=0
+        //   çıkıyor → görsel benzerlik TEK BAŞINA yetmez (44 yanlış uyarı). Kullanıcı kararı 7: "görsel benzerlik +
+        //   tarih/saat/tutar/VKN ile yakalanmalı" → aynı fişin ikinci fotoğrafı için TUTAR aynı (±0,01) ya da belge no aynı şart.
+        const docTutar = Number(doc.totalAmount);
+        const docNo = String(doc.belgeNo || '').trim().toUpperCase();
         let enIyi: any = null;
         for (const a of adaylar) {
           if (phashDejenereMi(a.imagePhash)) continue; // düz beyaz/siyah kare — içerik taşımaz
+          const aTutar = Number(a.totalAmount);
+          const tutarAyni = Number.isFinite(docTutar) && Number.isFinite(aTutar) && Math.abs(docTutar - aTutar) <= 0.01;
+          const noAyni = !!docNo && String(a.belgeNo || '').trim().toUpperCase() === docNo;
+          if (!tutarAyni && !noAyni) continue; // içerik farklı → aynı fişin fotoğrafı olamaz
           const h = hamming(String(doc.imagePhash), String(a.imagePhash || ''));
           if (h <= MUKERRER_GORSEL_HAMMING_ESIK && (!enIyi || h < enIyi.hamming)) enIyi = { ...a, hamming: h };
         }
@@ -14356,7 +14368,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     if (d.taxpayerId) {
       const tp = await (this.prisma as any).taxpayer.findFirst({
         where: { id: d.taxpayerId, tenantId },
-        select: { companyName: true, firstName: true, lastName: true, naceKodu: true, faaliyetAciklama: true, defterTuru: true, mihsapDefterTuru: true, taxNumber: true, identityNumber: true },
+        select: { companyName: true, firstName: true, lastName: true, naceKodu: true, faaliyetAciklama: true, defterTuru: true, mihsapDefterTuru: true, taxNumber: true, identityNumber: true, sektorEtiketi: true, kurumTuru: true },
       }).catch(() => null);
       if (tp) {
         tpForAsset = tp;
@@ -14372,7 +14384,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           ad && `ünvanı "${ad}"`,
           tpFaaliyet ? `faaliyeti: ${tpFaaliyet}` : (tpNace && `NACE faaliyet kodu ${tpNace}`),
           defter,
-        ].filter(Boolean).join(', ');
+        ].filter(Boolean).join(', ') + mukellefEkBilgiMetni(tp); // PLAN/16 §F: sektör + kurum türü
       }
     }
     // ③ KARAR VERİCİ: BİLANÇO mükellefinde AI'a hesap planından MATRAH-aday hesapları ver →
@@ -15310,10 +15322,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
 
     // Mükellef faaliyeti (rematch'teki ile aynı kaynak).
     const tpRow: any = await (this.prisma as any).taxpayer
-      .findFirst({ where: { id: doc.taxpayerId, tenantId }, select: { companyName: true, firstName: true, lastName: true, naceKodu: true, faaliyetAciklama: true } })
+      .findFirst({ where: { id: doc.taxpayerId, tenantId }, select: { companyName: true, firstName: true, lastName: true, naceKodu: true, faaliyetAciklama: true, sektorEtiketi: true, kurumTuru: true } })
       .catch(() => null);
     const tpFaaliyet = tpRow
-      ? [String(tpRow.companyName || (String(tpRow.firstName || '') + ' ' + String(tpRow.lastName || ''))).trim(), String(tpRow.faaliyetAciklama || '').trim() || (tpRow.naceKodu ? 'NACE ' + tpRow.naceKodu : '')].filter(Boolean).join(' — ')
+      ? [String(tpRow.companyName || (String(tpRow.firstName || '') + ' ' + String(tpRow.lastName || ''))).trim(), String(tpRow.faaliyetAciklama || '').trim() || (tpRow.naceKodu ? 'NACE ' + tpRow.naceKodu : '')].filter(Boolean).join(' — ') + mukellefEkBilgiMetni(tpRow, ' · ') // PLAN/16 §F
       : '';
 
     // Fatura kalemleri (#20 Faz A — ocrData.kalemler). Eski belgelerde yoksa giderTuru/kategori ile yorumlanır.
@@ -15509,8 +15521,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     if (docs.length === 500 && !documentIds?.length) this.logger.warn(`[REMATCH] tavan: tp=${taxpayerId} bekleyen belge >= 500 — kalanlar bu turda eşleştirilmedi (tekrar 'Kodları düzelt' gerekir)`);
 
     // Mükellefin faaliyeti — AI gider-hesabı eşleştirmesinde "ne iş yapıyor" bağlamı.
-    const tpRow: any = await (this.prisma as any).taxpayer.findFirst({ where: { id: taxpayerId, tenantId }, select: { companyName: true, firstName: true, lastName: true, naceKodu: true, faaliyetAciklama: true } }).catch(() => null);
-    const tpFaaliyet = tpRow ? [String(tpRow.companyName || (String(tpRow.firstName || '') + ' ' + String(tpRow.lastName || ''))).trim(), String(tpRow.faaliyetAciklama || '').trim() || (tpRow.naceKodu ? ('NACE ' + tpRow.naceKodu) : '')].filter(Boolean).join(' — ') : '';
+    const tpRow: any = await (this.prisma as any).taxpayer.findFirst({ where: { id: taxpayerId, tenantId }, select: { companyName: true, firstName: true, lastName: true, naceKodu: true, faaliyetAciklama: true, sektorEtiketi: true, kurumTuru: true } }).catch(() => null);
+    const tpFaaliyet = tpRow ? [String(tpRow.companyName || (String(tpRow.firstName || '') + ' ' + String(tpRow.lastName || ''))).trim(), String(tpRow.faaliyetAciklama || '').trim() || (tpRow.naceKodu ? ('NACE ' + tpRow.naceKodu) : '')].filter(Boolean).join(' — ') + mukellefEkBilgiMetni(tpRow, ' · ') : ''; // PLAN/16 §F
     const _semMotor = this.semantikMotorFor(taxpayerId, tpFaaliyet); // KALICI MOTOR pilotu — AI-birincil (keyword vetosu AI'ı ezmez)
     let aiAccCalls = 0; // batch'te AI eskalasyonunu sınırla
     const AI_GIDER_LIMIT = 50; // "Kodları düzelt" batch'inde AI semantik eşleştirme tavanı (Max yükü). Cache aynı içeriği 1 kez sorar → 50 benzersiz gider çoğu mükellefe yeter.

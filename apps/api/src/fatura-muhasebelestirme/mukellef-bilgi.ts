@@ -52,6 +52,21 @@ export function mukellefUnvani(tp: Pick<MukellefBilgiGirdisi, 'companyName' | 'f
 }
 
 /**
+ * Mevcut prompt cümlelerine EK parçalar (sektör etiketi + kurum türü). Servisteki eski
+ * "ünvanı …, faaliyeti: …, Bilanço usulü" kalıbı korunur; bu fonksiyon yalnız dolu olan ekleri
+ * verilen ayraçla döndürür (boşsa ''). Örnek: ", sektörü: gıda, kurum türü: Kamu kurumu".
+ */
+export function mukellefEkBilgiMetni(tp: MukellefBilgiGirdisi | null | undefined, ayrac = ', '): string {
+  if (!tp) return '';
+  const ekler: string[] = [];
+  const sektor = temiz(tp.sektorEtiketi);
+  if (sektor) ekler.push(`sektörü: ${sektor}`);
+  const kurum = kurumTuruEtiketi(tp.kurumTuru);
+  if (kurum) ekler.push(`kurum türü: ${kurum}`);
+  return ekler.length ? ayrac + ekler.join(ayrac) : '';
+}
+
+/**
  * Tek satır faaliyet metni. Boş alanlar atlanır; hiç bilgi yoksa yalnız ünvan (o da yoksa '').
  */
 export function mukellefFaaliyetMetni(tp: MukellefBilgiGirdisi | null | undefined): string {

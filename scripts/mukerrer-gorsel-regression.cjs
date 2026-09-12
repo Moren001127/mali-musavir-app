@@ -260,6 +260,14 @@ const kodlar = (list) => list.map((u) => u.kod);
     assert(gor.state.updates.some((u) => u.id === 'd1' && u.data.duplicateSeverity === 'WARNING' && /ikinci fotoğrafı/.test(u.data.duplicateReason)), 'görsel şüphe kolonlara WARNING yazıldı');
     await gor.svc.revalidateDocument('t', 'd0');
     assert(!kodlar(uyOf(gor.state, 'd0')).includes('MUKERRER_GORSEL'), 'ilk (eski) görsel temiz');
+    // CANLI BULGU (2026-09-12): aynı satıcının FARKLI faturaları aynı şablonla Hamming=0 çıkıyor → tutar (±0,01) ya da
+    //   belge no aynı değilse görsel şüphe ÜRETİLMEZ (kullanıcı kararı 7: görsel + tutar/tarih/VKN birlikte).
+    const ayniGorselFarkliTutar = makeService({ docs: [fis({ id: 'd0', belgeNo: '4489', totalAmount: 9323.83, createdAt: new Date('2026-07-30T10:00:00Z'), imagePhash: '3e2f2f272f37332f' }), fis({ id: 'd1', belgeNo: '6157', totalAmount: 6232.44, imagePhash: '3e2f2f272f37332f' })], taxpayer: TP });
+    await ayniGorselFarkliTutar.svc.revalidateDocument('t', 'd1');
+    assert(!kodlar(uyOf(ayniGorselFarkliTutar.state)).includes('MUKERRER_GORSEL'), 'Hamming 0 ama tutar ve belge no FARKLI → görsel şüphe yok (aynı şablon ≠ aynı fiş)');
+    const ayniGorselAyniNo = makeService({ docs: [fis({ id: 'd0', belgeNo: '7707', totalAmount: 5557.32, createdAt: new Date('2026-07-30T10:00:00Z'), imagePhash: '3e2f2f272f37332f' }), fis({ id: 'd1', belgeNo: '7707', totalAmount: 5557.99, imagePhash: '3e2f2f272f37332f' })], taxpayer: TP });
+    await ayniGorselAyniNo.svc.revalidateDocument('t', 'd1');
+    assert(kodlar(uyOf(ayniGorselAyniNo.state)).includes('MUKERRER_GORSEL'), 'Hamming 0 + belge no aynı (tutar OCR farkı) → görsel şüphe var');
     const uzak = makeService({ docs: [fis({ id: 'd0', belgeNo: '0001', createdAt: new Date('2026-07-30T10:00:00Z'), imagePhash: '3e2f2f272f37332f' }), fis({ id: 'd1', belgeNo: '0002', imagePhash: '1a1b0f0e1d170f1d' })], taxpayer: TP });
     await uzak.svc.revalidateDocument('t', 'd1');
     assert(!kodlar(uyOf(uzak.state)).includes('MUKERRER_GORSEL'), 'Hamming 20 → şüphe yok');
