@@ -521,7 +521,9 @@ function CodeSelect({ value, accounts, onChange, onAddNew }: { value: string; ac
   return (
     <div className="csel" ref={boxRef}>
       <div className={`cselfield${open ? ' on' : ''}`} title={value ? (selName ? `${value} — ${selName}` : value) : ''}>
-        <input ref={inpRef} className="cselinp" value={open ? value : (value && selName ? `${value} — ${selName}` : value)} placeholder="kod ya da isim yaz"
+        {/* Kapalı görünüm (2026-09-12): kod kalın+tabular, hesap adı gri — tek metin olarak "kod — ad" yazan giriş kutusundan daha okunur. */}
+        {!open && value ? <span className="cselshow" aria-hidden="true"><b>{value}</b>{selName ? <span>{selName}</span> : null}</span> : null}
+        <input ref={inpRef} className={!open && value ? 'cselinp gizli' : 'cselinp'} value={open ? value : (value && selName ? `${value} — ${selName}` : value)} placeholder="kod ya da isim yaz"
           onFocus={() => { setOpen(true); measure(); setTimeout(() => inpRef.current?.select(), 0); }}
           onChange={(e) => { const r = e.target.value; onChange(r.includes(' — ') ? r.split(' — ')[0].trim() : r); setOpen(true); setActive(0); }}
           onKeyDown={(e) => {
@@ -876,13 +878,9 @@ const KAYNAK_ROZET: Record<string, { t: string; bg: string; fg: string }> = {
 function KaynakRozet({ kaynak }: { kaynak?: string | null }) {
   const r = kaynak ? KAYNAK_ROZET[String(kaynak)] : null;
   if (!r) return null;
-  // Sadeleştirme (2026-08-11): her satırdaki renkli DOLGULU rozet "muhasebe kodu alanını" görsel olarak
-  //   kalabalıklaştırıyordu. Artık dolgu YOK — küçük renk NOKTASI + sakin renkli metin; bilgi metinde+tooltip'te.
-  return (
-    <span title={`Hesap kodu kaynağı: ${r.t}`} style={{ flex: '0 0 auto', display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 9.5, fontWeight: 700, lineHeight: 1.2, color: r.fg, whiteSpace: 'nowrap', letterSpacing: '.2px' }}>
-      <span style={{ width: 5, height: 5, borderRadius: 999, background: r.fg, flex: '0 0 auto' }} />{r.t}
-    </span>
-  );
+  // Kullanıcı isteği (2026-09-12): "Varsayılan / Kural" YAZISI hesap adını kısıtlıyordu → metin kalktı, yalnız 7px renk
+  //   noktası; kaynak bilgisi ipucu balonunda (üzerine gel). Yeşil=siz/VKN, mavi=öğrenilmiş, amber=AI tahmini, gri=kural/varsayılan.
+  return <span className="kaynak-nokta" title={`Hesap kodu kaynağı: ${r.t}`} style={{ background: r.fg }} />;
 }
 
 function isletmeRowReady(kind: 'ALIS' | 'SATIS', row: any): boolean {
@@ -8856,4 +8854,63 @@ const CSS = `
 #fm-root td.ak-silcell{font-size:11.5px;color:#7f1d1d;font-variant-numeric:tabular-nums}
 #fm-root .foot.ak-foot{padding:9px 16px}
 #fm-root .ak-foot .selinfo{font-size:12px;color:var(--muted)}
+/* ═══════════ MUHASEBE FİŞ — CİLA v3 (2026-09-12): YAPI AYNI, yalnız tipografi + renk uyumu ═══════════
+   Kullanıcı: "yapıyı bozma; yazı kalitesi, tablo, renk uyumu iyileşsin; Varsayılan/Kural yazısı yer kaplamasın".
+   Tek aile: slate metin (#0f172a / #475569 / #94a3b8), açık gri çizgi (#e3e8ef), grup kimliği yalnız başlıktaki
+   renk noktası + çok hafif başlık tonu. Girdi kutuları aynı yükseklik/kenar/yarıçap. Kaynak rozeti metinsiz nokta. */
+#fm-root .screen-muhasebe .muhmain .fispane{background:#fff;border-left:1px solid #eceff3}
+#fm-root .screen-muhasebe .muhmain .fgrps{gap:8px}
+#fm-root .screen-muhasebe .muhmain .fgrp{border:1px solid #e3e8ef;border-left:1px solid #e3e8ef;border-radius:10px;background:#fff;box-shadow:0 1px 2px rgba(15,23,42,.04)}
+#fm-root .screen-muhasebe .muhmain .fgrp[data-g="matrah"]{--gk:#2f6fb0;--gt:#f3f7fb}
+#fm-root .screen-muhasebe .muhmain .fgrp[data-g="vergi"]{--gk:#b8860b;--gt:#fbf8ee}
+#fm-root .screen-muhasebe .muhmain .fgrp[data-g="tevkifat"]{--gk:#b0475b;--gt:#fbf2f4}
+#fm-root .screen-muhasebe .muhmain .fgrp[data-g="cari"]{--gk:#2f8f5b;--gt:#f1f8f4}
+#fm-root .screen-muhasebe .muhmain .fgrp .fgh{padding:6px 12px 5px;gap:8px;background:var(--gt,#f8fafc);border-bottom:1px solid #edf1f5;color:#1e293b;font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase}
+#fm-root .screen-muhasebe .muhmain .fgrp .fgh > *:first-child{display:inline-flex;align-items:center;gap:7px;font-size:11px;font-weight:700;letter-spacing:.5px;color:#1e293b}
+#fm-root .screen-muhasebe .muhmain .fgrp .fgh > *:first-child::before{content:'';width:7px;height:7px;border-radius:50%;background:var(--gk,#94a3b8);flex:0 0 auto}
+#fm-root .screen-muhasebe .muhmain .fgrp .fgh .fgs{margin-left:auto;font-size:9px;font-weight:700;letter-spacing:.6px;padding:2px 7px;border-radius:5px;background:#fff;border:1px solid #e3e8ef;color:#64748b;opacity:1;text-transform:uppercase}
+#fm-root .screen-muhasebe .muhmain .fgrp .frow{padding:5px 8px 5px 10px;gap:6px;border-top:0;border-bottom:1px solid #f1f4f8}
+#fm-root .screen-muhasebe .muhmain .fgrp .frow:hover{background:#fbfcfe}
+/* hesap alanı: kod KOYU + tabular, ad gri; rozet metni kalktığı için ada daha çok yer */
+#fm-root .screen-muhasebe .muhmain .csel .cselfield{height:28px;border-color:#dbe2ea;border-radius:7px;padding:0 5px 0 7px;background:#fff;transition:border-color .12s,box-shadow .12s}
+#fm-root .screen-muhasebe .muhmain .csel .cselfield:hover{border-color:#b9c5d3}
+#fm-root .screen-muhasebe .muhmain .csel .cselfield.on{border-color:#2f6fb0;box-shadow:0 0 0 3px rgba(47,111,176,.12)}
+#fm-root .screen-muhasebe .muhmain .csel .cselinp{font-size:12.5px;font-weight:600;color:#0f172a}
+#fm-root .csel .cselfield .cselinp.gizli,#fm-root .screen-muhasebe .muhmain .csel .cselfield .cselinp.gizli{color:transparent;-webkit-text-fill-color:transparent;caret-color:transparent}
+#fm-root .csel .cselshow{position:absolute;left:7px;right:19px;top:0;bottom:0;display:flex;align-items:center;gap:6px;pointer-events:none;overflow:hidden;white-space:nowrap}
+#fm-root .csel .cselshow b{flex:0 0 auto;font-size:12.5px;font-weight:700;color:#0f172a;font-variant-numeric:tabular-nums;letter-spacing:-.1px}
+#fm-root .csel .cselshow span{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:11.5px;font-weight:500;color:#64748b}
+#fm-root .csel .cselfield .cselcar{border-color:#94a3b8}
+/* kaynak noktası (metinsiz) */
+#fm-root .kaynak-nokta{flex:0 0 auto;width:7px;height:7px;border-radius:999px;display:inline-block;cursor:help;opacity:.9}
+/* oran · tutar · sil — aynı yükseklik/kenar */
+#fm-root .screen-muhasebe .muhmain .fgrp .frow .rsel{flex:0 0 48px}
+#fm-root .screen-muhasebe .muhmain .rsel .rselfield{height:28px;border-color:#dbe2ea;border-radius:7px;font-size:12px;font-weight:600;color:#334155;background:#fff}
+#fm-root .screen-muhasebe .muhmain .rsel .rselfield.on{border-color:#2f6fb0;box-shadow:0 0 0 3px rgba(47,111,176,.12)}
+#fm-root .screen-muhasebe .muhmain .fgrp .frow .linum{flex:0 0 92px;width:92px}
+#fm-root .screen-muhasebe .muhmain .fgrp .frow .money{height:28px;border:1px solid #dbe2ea;border-radius:7px;padding:0 7px;font-size:12.5px;font-weight:600;color:#0f172a;background:#fff;font-variant-numeric:tabular-nums;letter-spacing:-.1px;text-align:right}
+#fm-root .screen-muhasebe .muhmain .fgrp .frow .money:focus{border-color:#2f6fb0;box-shadow:0 0 0 3px rgba(47,111,176,.12);outline:0}
+#fm-root .screen-muhasebe .muhmain .fgrp .frow .frowdel{width:18px;height:22px;flex:0 0 18px;border:0;border-radius:6px;background:transparent;color:#94a3b8;opacity:.6;font-size:15px}
+#fm-root .screen-muhasebe .muhmain .fgrp .frow .frowdel:hover{opacity:1;color:#dc2626;background:#fef2f2}
+#fm-root .screen-muhasebe .muhmain .fgrp .frowadd{padding:4px 12px;font-size:11px;font-weight:600;color:#94a3b8;background:transparent;border-top:1px dashed #e6eaf0}
+#fm-root .screen-muhasebe .muhmain .fgrp .frowadd:hover{color:#2f6fb0;background:#f8fafc}
+#fm-root .screen-muhasebe .muhmain .fgrp .fgt{padding:5px 12px;background:#fbfcfd;border-top:1px solid #edf1f5;font-size:10px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:#94a3b8}
+#fm-root .screen-muhasebe .muhmain .fgrp .fgt b{font-size:12.5px;font-weight:700;color:#0f172a;font-variant-numeric:tabular-nums;letter-spacing:-.1px;text-transform:none}
+/* PlainSelect (tevkifat oranı X/10, tevkifat kodu, meta seçiciler) aynı dil */
+#fm-root .screen-muhasebe .muhmain .fgrp .psel .pselfield{height:28px;border-color:#dbe2ea;border-radius:7px;font-size:12px;font-weight:600;color:#334155}
+/* uyarılar kutusu: grup kartlarıyla aynı kenar/yarıçap; başlık sakin */
+#fm-root .screen-muhasebe .muhmain .fispane > .uykutu{border:1px solid #e3e8ef;border-radius:10px;background:#fff;box-shadow:0 1px 2px rgba(15,23,42,.04)}
+#fm-root .screen-muhasebe .muhmain .uykutu-h{padding:6px 12px;font-size:11.5px;font-weight:700;color:#1e293b;background:#f8fafc;border-bottom:1px solid #edf1f5}
+#fm-root .screen-muhasebe .muhmain .uykutu-h small{font-size:10.5px;font-weight:600;color:#94a3b8}
+#fm-root .screen-muhasebe .muhmain .uykutu-oz{font-size:11px;font-weight:500;color:#64748b}
+/* belge bilgileri (alt): etiket küçük gri, kutular aynı yükseklik/kenar */
+#fm-root .screen-muhasebe .muhmain .docmeta-bottom{border:1px solid #e3e8ef;border-radius:10px;background:#fbfcfd;padding:7px 9px;gap:4px 8px;margin-top:8px}
+#fm-root .screen-muhasebe .muhmain .docmeta-bottom .dml{font-size:9.5px;font-weight:700;letter-spacing:.5px;color:#94a3b8;text-transform:uppercase}
+#fm-root .screen-muhasebe .muhmain .docmeta-bottom .dmi,#fm-root .screen-muhasebe .muhmain .docmeta-bottom .psel .pselfield{height:26px;border:1px solid #dbe2ea;border-radius:7px;background:#fff;font-size:12px;font-weight:600;color:#0f172a;padding:0 7px}
+#fm-root .screen-muhasebe .muhmain .docmeta-bottom .dmi:focus{border-color:#2f6fb0;box-shadow:0 0 0 3px rgba(47,111,176,.12);outline:0}
+/* denge şeridi + düğmeler */
+#fm-root .screen-muhasebe .muhmain .balance{margin:8px 0 0;padding:6px 11px;border-radius:9px;background:#f0fdf4;border:1px solid #bbf7d0;color:#15803d;font-size:12.5px;font-weight:700;gap:8px}
+#fm-root .screen-muhasebe .muhmain .balance .bnote{font-size:11.5px;font-weight:500;color:#64748b}
+#fm-root .screen-muhasebe .muhmain .wactions .btn{height:32px;border-radius:8px;font-size:12.5px;font-weight:700}
+/* ═══════════ /MUHASEBE FİŞ CİLA v3 ═══════════ */
 `;
