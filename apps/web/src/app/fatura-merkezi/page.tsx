@@ -8522,7 +8522,7 @@ const CSS = `
 #fm-root .gf-table td.gf-firma small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #fm-root .gf-table td.gf-firma .gf-muk{color:#b91c1c;font-weight:700;text-decoration:underline}
 #fm-root .gf-table td.gf-sayi{white-space:nowrap;text-align:right;font-variant-numeric:tabular-nums;padding-left:6px;padding-right:8px}
-#fm-root .gf-table td.gf-tutar b{font-weight:800;color:var(--text)}
+#fm-root .gf-table td.gf-tutar b{font-weight:600;color:var(--text)}
 #fm-root .gf-table th.num{text-align:right}
 #fm-root .gf-table td.gf-hesap{max-width:none}
 #fm-root .gf-table td.gf-hesap .hk{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
