@@ -589,8 +589,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   // HIZ: tek Max çağrısı ~50-60s (alt-süreç + kısıtlı konteyner). Belge başına AYRI çağrı yerine TOPLU
   //   (aiClassifyAccountingMulti) → daha az çağrı = belirgin hız. Batch eşzamanlılıkla dolduğundan
   //   (uploadOcrConcurrency) ikisi birlikte yükseltildi. Uyumsuz/timeout'ta tek-tek fallback güvenli.
-  private readonly classifyBatchSize = Math.max(1, Number(process.env.MAX_CLASSIFY_BATCH || 6));
-  private readonly classifyBatchDebounceMs = Math.max(0, Number(process.env.MAX_CLASSIFY_BATCH_MS || 1500));
+  private readonly classifyBatchSize = Math.max(1, Number(process.env.MAX_CLASSIFY_BATCH || 10)); // 2026-09-13: 6→10 (tek çağrı ~100 sn; belge başına maliyet düşsün)
+  private readonly classifyBatchDebounceMs = Math.max(0, Number(process.env.MAX_CLASSIFY_BATCH_MS || 8000)); // 2026-09-13: 1,5→8 sn (grup=1 kalıyordu)
   private readonly classifyBatchBuffers = new Map<string, {
     // ipucu: belge-bazlı kelime kuralı ipucu (PLAN/15 Faz 1-B) — parti anahtarına GİRMEZ (partiler bölünmesin), belge bloğuna yazılır.
     items: Array<{ contentText: string; resolve: (v: ClassifyResult | null) => void; ipucu?: string }>;
@@ -706,7 +706,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       if (this.uploadOcrQueue.length < this.uploadOcrConcurrency) {
         const adaylar = await (this.prisma as any).invoiceAccountingDocument.findMany({
           where: { status: { in: ['READY', 'NEEDS_REVIEW'] }, invoiceKind: 'ALIS' },
-          orderBy: { updatedAt: 'desc' },
+          orderBy: [{ taxpayerId: 'asc' }, { updatedAt: 'desc' }], // HIZ: partiler dolsun (2026-09-13)
           select: { id: true, tenantId: true, ocrData: true },
           take: 200,
         }).catch(() => []);
@@ -745,7 +745,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const yon = String(opts.yon || 'ALIS').toUpperCase() === 'SATIS' ? 'SATIS' : 'ALIS';
     const adaylar = await (this.prisma as any).invoiceAccountingDocument.findMany({
       where: { tenantId, status: { in: ['READY', 'NEEDS_REVIEW', 'DRAFT'] }, invoiceKind: yon, ...(opts.taxpayerId ? { taxpayerId: opts.taxpayerId } : {}) },
-      orderBy: { updatedAt: 'desc' },
+      // HIZ (2026-09-13 ölçümü): tek Max sınıflandırma çağrısı 95-153 sn sürüyor ve partiler grup=1 kalıyordu (1,5 sn pencere,
+      //   belgeler mükellef karışık geliyor). Mükellefe göre BİTİŞİK sıralayınca 6 işçi aynı mükellefin belgelerini aynı pencerede
+      //   partiye düşürür → 1 çağrı = 10 belge (MAX_CLASSIFY_BATCH=10, MAX_CLASSIFY_BATCH_MS=8000).
+      orderBy: [{ taxpayerId: 'asc' }, { updatedAt: 'desc' }],
       select: { id: true, tenantId: true, ocrData: true },
       take: 3000,
     }).catch(() => []);
@@ -3768,7 +3771,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     });
     // ÖNCELİK: kullanıcının elle "AI ile oku" isteği kuyruğun ÖNÜNE (unshift) → arka plan
     // kurtarma (push, arkada) onu bekletmesin; seçtiğin mükellefin belgeleri hemen sıraya geçer.
-    const docIds = docs.map((d: any) => d.id);
+    // HIZ (2026-09-13): mükellefe göre bitişik → sınıflandırma partileri dolsun (bkz. classifyPending notu).
+    const docIds = [...docs].sort((a: any, b: any) => String(a.taxpayerId || '').localeCompare(String(b.taxpayerId || ''))).map((d: any) => d.id);
     if (docIds.length) {
       // Döngü içi tek-tek updateMany yerine TEK toplu updateMany (N tur DB gidiş-gelişi → 1).
       await (this.prisma as any).invoiceAccountingDocument.updateMany({
