@@ -86,6 +86,32 @@ ${line(1, 'Nakliye hizmeti', 1, 10000, 10000, `<cac:TaxTotal><cbc:TaxAmount curr
   approx(p.matrah + p.kdvTutari + (p.digerVergiToplam || 0) - p.tevkifatKdv, p.odenecekTutar, '1: denklem');
 }
 
+// ── 1b) TEVKİFAT BLOĞU VAR AMA UYGULANMAMIŞ (CANLI BULGU BRN2026000000483, 2026-09-12): WithholdingTaxTotal 400 (624, %20)
+//        ama PayableAmount = TaxInclusiveAmount (12.000) → satıcı düşmemiş → tevkifatKdv YOK, tevkifatUygulanmamis bayrağı; fiş normal. ──
+{
+  const xml = `<?xml version="1.0" encoding="UTF-8"?><Invoice ${NS}>
+<cbc:ProfileID>TICARIFATURA</cbc:ProfileID><cbc:ID>BRN2026000000483</cbc:ID><cbc:UUID>050611aa-7678-449b-a860-a30036bd27f8</cbc:UUID>
+<cbc:IssueDate>2026-07-06</cbc:IssueDate><cbc:InvoiceTypeCode>SATIS</cbc:InvoiceTypeCode><cbc:DocumentCurrencyCode>TRY</cbc:DocumentCurrencyCode>
+${party('AccountingSupplierParty', 'BARANLAR NAKLİYAT', '1410031279')}${party('AccountingCustomerParty', 'YORGUN NAKLİYAT', '9821096129')}
+<cac:TaxTotal><cbc:TaxAmount currencyID="TRY">2000</cbc:TaxAmount>${sub(10000, 2000, 20, '0015', 'KDV GERCEK')}</cac:TaxTotal>
+<cac:WithholdingTaxTotal><cbc:TaxAmount currencyID="TRY">400.0</cbc:TaxAmount><cac:TaxSubtotal><cbc:TaxableAmount currencyID="TRY">2000</cbc:TaxableAmount><cbc:TaxAmount currencyID="TRY">400.0</cbc:TaxAmount><cbc:Percent>20</cbc:Percent><cac:TaxCategory><cac:TaxScheme><cbc:Name /><cbc:TaxTypeCode>624</cbc:TaxTypeCode></cac:TaxScheme></cac:TaxCategory></cac:TaxSubtotal></cac:WithholdingTaxTotal>
+${totals(10000, 12000, 12000)}
+${line(1, 'GEBZE HADIMKÖY NAKLİYE HİZMET BEDELİDİR', 1, 10000, 10000, `<cac:TaxTotal><cbc:TaxAmount currencyID="TRY">2000</cbc:TaxAmount>${sub(10000, 2000, 20, '0015', 'KDV')}</cac:TaxTotal>`)}
+</Invoice>`;
+  const p = parseUblInvoice(xml);
+  assert(p, '1b: parse null');
+  assert(!p.tevkifatKdv, `1b: tevkifatKdv YOK (bulundu ${p.tevkifatKdv})`);
+  assert(!p.tevkifatOrani, `1b: tevkifatOrani YOK (bulundu ${p.tevkifatOrani})`);
+  assert(p.tevkifatUygulanmamis && p.tevkifatUygulanmamis.beyanEdilen === 400 && p.tevkifatUygulanmamis.kod === '624' && p.tevkifatUygulanmamis.yuzde === 20, `1b: tevkifatUygulanmamis {400, 624, 20} (bulundu ${JSON.stringify(p.tevkifatUygulanmamis)})`);
+  approx(p.kdvTutari, 2000, '1b: KDV tam 2000');
+  approx(p.odenecekTutar, 12000, '1b: ödenecek 12000');
+  approx(p.matrah + p.kdvTutari + (p.digerVergiToplam || 0), p.odenecekTutar, '1b: denklem (tevkifatsız)');
+  const f = ublOcrDataFields(p);
+  assert(f.tevkifatHint === false, '1b: ocrData.tevkifatHint false (fiş normal kurulur)');
+  assert(f.tevkifatKdv === 0, '1b: ocrData.tevkifatKdv 0');
+  assert(f.tevkifatUygulanmamis && f.tevkifatUygulanmamis.beyanEdilen === 400, '1b: ocrData.tevkifatUygulanmamis taşınır');
+}
+
 // ── 2) TELEKOM: 0015 (%20) + 8006 telsiz (sahte %100 satırı) ──
 {
   const xml = `<?xml version="1.0" encoding="UTF-8"?><Invoice ${NS}>

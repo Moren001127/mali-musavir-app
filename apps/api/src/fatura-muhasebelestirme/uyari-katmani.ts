@@ -42,6 +42,8 @@ export const UYARI_KOD = {
   DEMIRBAS: 'DEMIRBAS',
   TEVKIFAT_VAR: 'TEVKIFAT_VAR',
   TEVKIFAT_EKSIK: 'TEVKIFAT_EKSIK',
+  /** UBL'de tevkifat bloğu var ama ödenecek tutar tam (satıcı tevkifatı düşmemiş) — belge çelişkili, fiş normal kuruldu. */
+  TEVKIFAT_UYGULANMAMIS: 'TEVKIFAT_UYGULANMAMIS',
   ICERIK_HESAP_UYUMSUZ: 'ICERIK_HESAP_UYUMSUZ',
   MUKERRER: 'MUKERRER',
   /** PLAN/16 §C — algısal hash (dHash Hamming ≤ 6): "aynı fişin ikinci fotoğrafı gibi" (uyarı, engel değil). */

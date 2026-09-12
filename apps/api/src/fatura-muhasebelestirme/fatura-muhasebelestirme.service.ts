@@ -6742,6 +6742,26 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           kaynak: 'dogrulama',
         }));
       }
+      // — TEVKIFAT_UYGULANMAMIS (uyarı): UBL'de WithholdingTaxTotal dolu ama PayableAmount = KDV dahil toplam (satıcı düşmemiş).
+      //   CANLI BULGU (BRN2026000000483, 2026-09-12): fiş tevkifatlı kurulunca 11.600 ≠ 12.000 'Tutar tutarsız' ENGELİ çıkıyordu. Artık fiş
+      //   normal alış olarak kurulur (ubl-parse tevkifatKdv=0), sahip bilgilendirilir; isterse 'Tevkifat fişini kur' ile tevkifatlı işler.
+      const tevkUyg: any = ocrData?.tevkifatUygulanmamis;
+      if (tevkUyg && Number(tevkUyg.beyanEdilen) > 0) {
+        const kuralU = tevkifatKuralBul(String(tevkUyg.kod || ''));
+        const oranU = oranMetni(tevkUyg.yuzde != null ? Number(tevkUyg.yuzde) / 100 : null);
+        turetilen.push(uyariYap({
+          kod: UYARI_KOD.TEVKIFAT_UYGULANMAMIS,
+          seviye: 'uyari',
+          baslik: `Tevkifat kodu var ama uygulanmamış${oranU ? ` (${oranU})` : ''}${kuralU ? ` · kod ${kuralU.kod}` : tevkUyg.kod ? ` · kod ${tevkUyg.kod}` : ''}`,
+          aciklama: `Faturada tevkifat bloğu (${uyariAdet(Number(tevkUyg.beyanEdilen))} ₺${kuralU ? `, ${kuralU.ad}` : ''}) var ama ödenecek tutar KDV dahil toplama eşit — satıcı tevkifatı düşmemiş, belge kendi içinde çelişkili. Fiş NORMAL ${isSaleDoc ? 'satış' : 'alış'} olarak kuruldu (tam KDV).`,
+          oneri: isSaleDoc
+            ? 'Bu hizmet tevkifata tabiyse faturayı iptal edip tevkifatlı düzenleyin; değilse tevkifat kodunu kaldırın.'
+            : 'Satıcıdan düzeltme (tevkifatlı fatura) isteyin. Belgeyi yine de tevkifatlı işlemek istersen "Tevkifat fişini kur".',
+          eylemler: isSaleDoc ? undefined : [{ id: 'tevkifat-fisi-kur', etiket: 'Tevkifat fişini kur' }],
+          meta: { kod: tevkUyg.kod || null, kodAd: kuralU?.ad || null, yuzde: tevkUyg.yuzde ?? null, beyanEdilen: Number(tevkUyg.beyanEdilen) || 0 },
+          kaynak: 'dogrulama',
+        }));
+      }
       // — TEVKIFAT_VAR (bilgi çipi; oran ↔ kod ↔ hesap adı tutarlılığı) —
       //   A.11 — gerçek tevkifat verisi yok ama kelime ipucu + aritmetik (KDV tam değil) tevkifatlı diyorsa
       //   (runValidation TEVKIFAT_NEEDED / TEVKIFAT_NET_NEEDED) uyarı kutusuna ENGEL + "Tevkifat fişini kur" düğmesi.
