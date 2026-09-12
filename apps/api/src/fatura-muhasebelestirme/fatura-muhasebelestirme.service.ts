@@ -6627,21 +6627,28 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         const adaylar = await this.belgeAdaylari({
           where: { ...ortak, imagePhash: { not: null }, createdAt: { gte: baslangic }, ...eskiOlan },
           orderBy: { createdAt: 'desc' },
-          select: { id: true, belgeNo: true, totalAmount: true, createdAt: true, imagePhash: true },
+          select: { id: true, belgeNo: true, totalAmount: true, createdAt: true, imagePhash: true, faturaTarihi: true },
           take: 3000,
         });
         // CANLI BULGU (2026-09-12): aynı satıcının FARKLI faturaları (aynı şablon/görünüm) 9×8 dHash'te Hamming=0
         //   çıkıyor → görsel benzerlik TEK BAŞINA yetmez (44 yanlış uyarı). Kullanıcı kararı 7: "görsel benzerlik +
         //   tarih/saat/tutar/VKN ile yakalanmalı" → aynı fişin ikinci fotoğrafı için TUTAR aynı (±0,01) ya da belge no aynı şart.
+        // Kullanıcı kuralı (2026-09-12, fiş 2730 vs 7259 bulgusu): 'aynı tarih + aynı cari + aynı fiş no + aynı tutar' olmadan
+        //   mükerrer YOK. Görsel benzerlik yalnız EK sinyal: tutar aynı (±0,01) + aynı gün + (fiş no aynı ya da taraflardan
+        //   birinde fiş no okunamamış) şart. Cari zaten sorguda (aynı mükellef + yön; karşı taraf VKN'si ortak where'de).
         const docTutar = Number(doc.totalAmount);
         const docNo = String(doc.belgeNo || '').trim().toUpperCase();
+        const docGun = doc.faturaTarihi ? new Date(doc.faturaTarihi).toISOString().slice(0, 10) : '';
         let enIyi: any = null;
         for (const a of adaylar) {
           if (phashDejenereMi(a.imagePhash)) continue; // düz beyaz/siyah kare — içerik taşımaz
           const aTutar = Number(a.totalAmount);
           const tutarAyni = Number.isFinite(docTutar) && Number.isFinite(aTutar) && Math.abs(docTutar - aTutar) <= 0.01;
-          const noAyni = !!docNo && String(a.belgeNo || '').trim().toUpperCase() === docNo;
-          if (!tutarAyni && !noAyni) continue; // içerik farklı → aynı fişin fotoğrafı olamaz
+          if (!tutarAyni) continue; // tutar farklı → aynı fiş olamaz
+          const aGun = a.faturaTarihi ? new Date(a.faturaTarihi).toISOString().slice(0, 10) : '';
+          if (docGun && aGun && docGun !== aGun) continue; // tarih farklı → aynı fiş olamaz
+          const aNo = String(a.belgeNo || '').trim().toUpperCase();
+          if (docNo && aNo && docNo !== aNo) continue; // ikisinde de fiş no okunmuş ve farklı → aynı fiş olamaz
           const h = hamming(String(doc.imagePhash), String(a.imagePhash || ''));
           if (h <= MUKERRER_GORSEL_HAMMING_ESIK && (!enIyi || h < enIyi.hamming)) enIyi = { ...a, hamming: h };
         }
