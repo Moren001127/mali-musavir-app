@@ -2958,11 +2958,12 @@ function ScreenSorgu({ taxpayerId, period, source, onOpenEntegrator }: { taxpaye
         {source === 'earsiv' && !earsivJobRunning && sorgulaMut.isPending && (
           <div className="sq-prog"><span className="sq-spin" aria-hidden="true" /><span className="sq-ptx">Sorgu kuyruğa alınıyor…</span><span className="sq-track"><span className="sq-fill belirsiz" /></span></div>
         )}
-        {source === 'efatura' && efaturaSorguSuruyor && (
+        {/* Kullanıcı isteği (2026-09-12): sorgu + belge indirme TEK sayaçta (eskiden tablo üstünde ikinci bir bant daha vardı). */}
+        {source === 'efatura' && (efaturaSorguSuruyor || efaturaDownloading) && (
           <div className="sq-prog">
             <span className="sq-spin" aria-hidden="true" />
-            <span className="sq-ptx">{efaturaFetchMut.isPending ? 'Sorgu gönderiliyor…' : <>Sorgulanıyor… <b>{efaturaRows.length}</b> fatura geldi</>}</span>
-            <span className="sq-track"><span className="sq-fill belirsiz" /></span>
+            <span className="sq-ptx">{efaturaFetchMut.isPending ? 'Sorgu gönderiliyor…' : efaturaSorguSuruyor ? <>Sorgulanıyor… <b>{efaturaRows.length}</b> fatura geldi{efaturaDownloading ? <> · belgeler iniyor <b>{efaturaDownloadReady}</b>/{efaturaDownloadTotal}</> : null}</> : <>Belgeler indiriliyor… <b>{efaturaDownloadReady}</b> / {efaturaDownloadTotal} hazır{efaturaDownloadMissing ? ` · ${efaturaDownloadMissing} inemedi` : ''}</>}</span>
+            <span className="sq-track">{efaturaDownloading ? <span className="sq-fill" style={{ width: `${efaturaDownloadTotal ? Math.round((efaturaDownloadReady / efaturaDownloadTotal) * 100) : 0}%` }} /> : <span className="sq-fill belirsiz" />}</span>
             {efaturaSyncStatus?.rateLimited
               ? <span className="sq-psub">Hız sınırı uygulandı; otomatik bekleyip devam ediyor — TAMAMLANMADI.</span>
               : efaturaBgSyncRunning && Number(efaturaSyncStatus?.rounds) > 0
@@ -3152,13 +3153,6 @@ function ScreenSorgu({ taxpayerId, period, source, onOpenEntegrator }: { taxpaye
               <button type="button" className="btn sm primary" disabled={!taxpayerId || efaturaOverlayBusy || efaturaDownloading || efaturaTransferableRows.length === 0} onClick={() => efaturaImportMut.mutate()} title={efaturaDownloading ? 'Belgeler iniyor; bitince aktarabilirsin (görseller önceden inecek)' : undefined}>
                 <Ico html={I.download} size={13} /> {efaturaDownloading ? 'Belgeler iniyor…' : (efaturaImportMut.isPending || efaturaQueuedImport) ? 'Aktarılıyor…' : `${secimAdet ? secimAdet : efaturaTransferableRows.length} faturayı aktar`}
               </button>
-            </div>
-          )}
-          {efaturaDownloading && (
-            <div className="efdownbar">
-              <span className="efspin" aria-hidden="true" />
-              <span className="eftext">Belgeler indiriliyor… <b>{efaturaDownloadReady}</b> / {efaturaDownloadTotal} hazır{efaturaDownloadMissing ? ` · ${efaturaDownloadMissing} inemedi` : ''}</span>
-              <span className="eftrack"><span className="effill" style={{ width: `${efaturaDownloadTotal ? Math.round((efaturaDownloadReady / efaturaDownloadTotal) * 100) : 0}%` }} /></span>
             </div>
           )}
           {/* AKTAR ŞERİDİ: SUNUCU durumundan beslenir (efaturaImportRunning) → sayfayı değiştirip geri
