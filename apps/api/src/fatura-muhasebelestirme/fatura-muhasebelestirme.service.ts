@@ -16483,7 +16483,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             //   kelimelerini elediği için "nakliye taşıma" ↔ "NAKLİYE GİDERİ" hiç eşleşmiyor ve
             //   doğru hesap siliniyordu. Gider türü için ayrı, sektör-koruyan karşılaştırma.
             const typeOk = !!giderTuru && this.giderTuruHesapUyumlu(giderTuru, String(curAcc.accountName || ''));
-            if (current !== matchCode && !typeOk) {
+            // TEVKİFAT-LİK DE UYUŞMALI (BRN2026000000483, 2026-09-12): gider türü "nakliye" ile "NAKLİYE GİDERLERİ TEVKİFATLI"
+            //   uyumlu sayılıp mevcut kod korunuyordu; oysa belge tevkifatsız (tevkifat uygulanmamış) → matrah kardeş
+            //   "NAKLİYE GİDERİ"ne geçmeli. Kullanıcının ELLE seçtiği hesaba dokunulmaz; kardeş yoksa (matchCode boş) koru.
+            const tevkOkM = String(line.kaynak || '').toUpperCase() === 'KULLANICI'
+              || this.isTevkifatAccountName(String(curAcc.accountName || '')) === (tevkPay >= 1);
+            if (current !== matchCode && (!typeOk || (!tevkOkM && matchCode))) {
               await (this.prisma as any).invoiceAccountingLine.update({
                 where: { id: line.id },
                 data: matchCode ? { accountCode: matchCode, kaynak: (match as any)?._kaynak || 'KURAL' } : { accountCode: '', description: '', kaynak: null },

@@ -130,5 +130,16 @@ for (const v of kVakalar) {
   if (s === v.bekle) console.log(`  ✓ ${v.ad} -> ${s || 'gecis yok'}`);
   else { console.error(`  ✗ ${v.ad} -> ${s} (beklenen ${v.bekle})`); hata++; }
 }
+// KORUMA KAPISI (2026-09-12, BRN2026000000483): alis matrahinda 'gider turu uyumlu -> mevcut kodu koru' kapisi
+//   tevkifat-ligi de denetlemeli; yoksa 'nakliye' ~ 'NAKLIYE GIDERLERI TEVKIFATLI' uyumlu sayilip tevkifatsiz
+//   belgede tevkifatli hesap korunuyordu (rematch kardes hesaba gecemiyordu).
+const _kapiVar = src.includes("const tevkOkM = String(line.kaynak || '').toUpperCase() === 'KULLANICI'")
+  && src.includes("|| this.isTevkifatAccountName(String(curAcc.accountName || '')) === (tevkPay >= 1);")
+  && src.includes('if (current !== matchCode && (!typeOk || (!tevkOkM && matchCode))) {');
+if (!_kapiVar) { console.error('  ✗ alis matrah koruma kapisi tevkifat-ligi denetlemiyor (tevkOkM kaldirilmis)'); hata++; }
+else console.log('  ✓ alis matrah koruma kapisi tevkifat-ligi de denetliyor (tevkOkM)');
+// Tevkifat UYGULANMAMIS belgede (ubl-parse: odenecek = KDV dahil) tevkPay=0 olmali — kardes secimi 'tevkifatsiz' tarafa gider.
+if (!src.includes('const tevkPay = _tevkUygulanmamis ? 0 :')) { console.error('  ✗ tevkifatUygulanmamis -> tevkPay=0 kurali kaldirilmis'); hata++; }
+else console.log('  ✓ tevkifatUygulanmamis belgede tevkPay=0');
 if (hata) process.exit(1);
 console.log('[tevkifat-aritmetik-regression] OK: kelime ipucu aritmetigi ezemiyor + kardes hesap secimi dogru');
