@@ -1935,7 +1935,6 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
               <th className={`gf-sortable${sortKey === 'tarih' ? ' gf-sorted' : ''}`} onClick={() => sirala('tarih')} title="Tarihe göre sırala">Tarih<span className="gf-sort">{sortKey === 'tarih' ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}</span></th>
               <th>Fatura No</th>
               <th className={`gf-sortable${sortKey === 'firma' ? ' gf-sorted' : ''}`} onClick={() => sirala('firma')} title="Firma adına göre sırala">Firma / VKN<span className="gf-sort">{sortKey === 'firma' ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}</span></th>
-              <th>Tip</th>
               <th className="num">KDV Hariç</th>
               <th className="num">KDV</th>
               <th className={`num gf-sortable${sortKey === 'tutar' ? ' gf-sorted' : ''}`} onClick={() => sirala('tutar')} title="Tutara göre sırala">Tutar<span className="gf-sort">{sortKey === 'tutar' ? (sortDir === 'asc' ? '▲' : '▼') : '↕'}</span></th>
@@ -1998,7 +1997,6 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
                     <td>{fmtDate(d.faturaTarihi || d.createdAt)}</td>
                     <td>{d.belgeNo || '—'}</td>
                     <td className="firm"><b>{firma}</b><small>{vkn ? `VKN ${vkn}` : '—'}</small>{(d as any).duplicateOfId ? <small style={{ color: '#c0353a', fontWeight: 700 }} title={(d as any).duplicateReason || 'Bu fatura daha önce yüklenmiş'}>⚠ {(d as any).duplicateReason || 'Mükerrer — daha önce yüklenmiş'} <a href="#ilk" onClick={(ev) => { ev.preventDefault(); const ilk = String((d as any).duplicateOfId || ''); if (docs.some((x: any) => x.id === ilk)) setFisDetayId(ilk); else onOpenMuhasebe?.(ilk); }} style={{ color: '#7c3aed', textDecoration: 'underline', marginLeft: 4 }}>ilk belgeyi aç</a></small> : null}</td>
-                    <td><span className={`pill ${sat ? 'satis' : 'alis'}`}>{sat ? 'Satış' : 'Alış'}</span></td>
                     <td className="num">{matrah != null ? fmtMoney(matrah) : '—'}</td>
                     <td className="num">{kdv != null ? fmtMoney(kdv) : '—'}</td>
                     <td className="num">{fmtMoney(d.totalAmount)}</td>
@@ -3230,7 +3228,7 @@ const MF_METIN_ALANLAR: Array<'naceKodu' | 'faaliyetAciklama' | 'sektorEtiketi' 
 const MF_NACE_DESENI = /^\d{2}(\.\d{2}){0,2}$/; // shared NACE_KODU_DESENI ile aynı: 56 · 56.10 · 56.10.06
 const MF_DEFTER_SECENEKLERI = (Object.keys(DEFTER_TURU_ETIKETLERI) as Array<keyof typeof DEFTER_TURU_ETIKETLERI>).map((v) => ({ v: String(v), l: DEFTER_TURU_ETIKETLERI[v] }));
 const MF_KURUM_SECENEKLERI = KURUM_TURU_SECENEKLERI.map((o) => ({ v: String(o.value), l: o.label }));
-type MfSuzgec = 'tumu' | 'tanimsiz' | 'bekleyen' | 'sorunlu' | 'efatura' | 'earsiv' | 'isletme' | 'bilanco';
+type MfSuzgec = 'tumu' | 'tanimsiz' | 'efatura' | 'earsiv' | 'isletme' | 'bilanco';
 
 /** Defter türü etiketi — defterTuru öncelikli, boşsa Mihsap defter türünden türetilir. */
 function mfDefterEtiketi(t: any): '' | 'İşletme' | 'Bilanço' {
@@ -3369,6 +3367,14 @@ function MfTanimAlani({ deger, onChange, onKaydet, onVazgec, kaydediliyor, degis
   );
 }
 
+/** Ünvandan 2 harf (avatar). */
+function mfBasHarf(ad: string): string {
+  const p = String(ad || '').trim().split(/\s+/).filter(Boolean);
+  const a = (p[0] || '?')[0] || '?';
+  const b = p.length > 1 ? (p[1][0] || '') : ((p[0] || '')[1] || '');
+  return (a + b).toLocaleUpperCase('tr');
+}
+
 function ScreenMukellefler({ taxpayers, period, onOpen }: { taxpayers: any[]; period: string; onOpen: (id: string) => void }) {
   const qc = useQueryClient();
   const sumQ = useQuery({
@@ -3400,19 +3406,15 @@ function ScreenMukellefler({ taxpayers, period, onOpen }: { taxpayers: any[]; pe
   const hepsi = taxpayers.map((t) => ({ t, s: byId.get(t.id) || {}, f: mfTanimDurumu(t) }));
   const sayac = {
     tumu: hepsi.length,
-    tanimsiz: hepsi.filter((x) => !x.f.tanimli).length,
-    bekleyen: hepsi.filter((x) => pendingOf(x.s) > 0).length,
-    sorunlu: hepsi.filter((x) => Number(x.s.hasIssue || 0) > 0).length,
-    efatura: hepsi.filter((x) => x.f.efatura).length,
-    earsiv: hepsi.filter((x) => !x.f.efatura).length,
     isletme: hepsi.filter((x) => x.f.defter === 'İşletme').length,
     bilanco: hepsi.filter((x) => x.f.defter === 'Bilanço').length,
+    tanimsiz: hepsi.filter((x) => !x.f.tanimli).length,
+    efatura: hepsi.filter((x) => x.f.efatura).length,
+    earsiv: hepsi.filter((x) => !x.f.efatura).length,
   };
   const suzgecUyar = (x: { s: any; f: ReturnType<typeof mfTanimDurumu> }): boolean => {
     switch (suzgec) {
       case 'tanimsiz': return !x.f.tanimli;
-      case 'bekleyen': return pendingOf(x.s) > 0;
-      case 'sorunlu': return Number(x.s.hasIssue || 0) > 0;
       case 'efatura': return x.f.efatura;
       case 'earsiv': return !x.f.efatura;
       case 'isletme': return x.f.defter === 'İşletme';
@@ -3439,50 +3441,47 @@ function ScreenMukellefler({ taxpayers, period, onOpen }: { taxpayers: any[]; pe
     if (!formDegisti) { toast.info('Değişiklik yok'); return; }
     kaydetMut.mutate({ id: form.id, body: formDegisiklik });
   };
-  const tileler: Array<{ v: MfSuzgec; l: string; c: string }> = [
+  // Kullanıcı kararı (2026-09-12): solda Tümü · İşletme · Bilanço; sağda Tanımsız · e-Fatura · GİB e-Arşiv. Başka sayaç yok.
+  const solSayac: Array<{ v: MfSuzgec; l: string; c: string }> = [
     { v: 'tumu', l: 'Tümü', c: 'var(--accent)' },
-    { v: 'tanimsiz', l: 'Tanımsız', c: '#e5484d' },
-    { v: 'bekleyen', l: 'Bekleyen belgesi olan', c: '#2563eb' },
-    { v: 'sorunlu', l: 'Sorunlu', c: '#d97706' },
-    { v: 'efatura', l: 'e-Fatura', c: '#0891b2' },
-    { v: 'earsiv', l: 'GİB e-Arşiv', c: '#b45309' },
     { v: 'isletme', l: 'İşletme', c: '#15803d' },
     { v: 'bilanco', l: 'Bilanço', c: '#7c3aed' },
   ];
+  const sagSayac: Array<{ v: MfSuzgec; l: string; c: string }> = [
+    { v: 'tanimsiz', l: 'Tanımsız', c: '#e5484d' },
+    { v: 'efatura', l: 'e-Fatura', c: '#0891b2' },
+    { v: 'earsiv', l: 'GİB e-Arşiv', c: '#b45309' },
+  ];
+  const sayacDugme = (t: { v: MfSuzgec; l: string; c: string }) => (
+    <button key={t.v} type="button" className={`mk-sayac${suzgec === t.v ? ' on' : ''}`} style={{ ['--tc' as any]: t.c }} onClick={() => setSuzgec(suzgec === t.v && t.v !== 'tumu' ? 'tumu' : t.v)} title={t.v === 'tumu' ? 'Tüm mükellefler' : `Yalnız ${t.l.toLocaleLowerCase('tr')} olanları göster`}>
+      <b>{sayac[t.v]}</b><span>{t.l}</span>
+    </button>
+  );
 
   return (
     <section className="screen">
-      <div className="mk-tiles">
-        {tileler.map((t) => (
-          <button key={t.v} type="button" className={`ftile mk-tile${suzgec === t.v ? ' on' : ''}`} style={{ ['--tc' as any]: t.c }} onClick={() => setSuzgec(suzgec === t.v && t.v !== 'tumu' ? 'tumu' : t.v)}>
-            <span className="ftdot" />
-            <span className="fttx"><span className="ftn">{sayac[t.v]}</span><span className="ftl">{t.l}</span></span>
-          </button>
-        ))}
+      <div className="mk-sayaclar">
+        <div className="mk-sayac-grup">{solSayac.map(sayacDugme)}</div>
+        <div className="mk-sayac-grup sag">{sagSayac.map(sayacDugme)}</div>
       </div>
       <div className="card mk-card">
         <div className="ch mk-head">
-          <h3>{list.length} mükellef <span className="mu">· {periodLabel(period)}{suzgec !== 'tumu' ? ` · süzgeç: ${tileler.find((t) => t.v === suzgec)?.l}` : ''}</span></h3>
+          <h3>{list.length} mükellef <span className="mu">· {periodLabel(period)}{suzgec !== 'tumu' ? ` · ${[...solSayac, ...sagSayac].find((t) => t.v === suzgec)?.l}` : ''}</span></h3>
           <div className="sp" />
           <div className="mukara">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-            <input placeholder="Mükellef, VKN, NACE, faaliyet ara…" value={q} onChange={(e) => setQ(e.target.value)} />
+            <input placeholder="Mükellef, VKN, faaliyet ara…" value={q} onChange={(e) => setQ(e.target.value)} />
           </div>
         </div>
         <div className="mk-twrap">
-          <table className="mktbl mk-table">
+          <table className="mk-table">
             <thead>
               <tr>
-                <th style={{ width: 6 }} />
                 <th>Mükellef</th>
-                <th>Defter</th>
-                <th>Belge yolu</th>
+                <th>Profil</th>
                 <th>Tanım</th>
-                <th className="num">Bekleyen</th>
-                <th className="num">Onaylı</th>
-                <th className="num">Luca</th>
-                <th className="num">Sorunlu</th>
-                <th style={{ width: 150 }} />
+                <th>Bu dönem</th>
+                <th className="mk-th-eylem" />
               </tr>
             </thead>
             <tbody>
@@ -3491,35 +3490,48 @@ function ScreenMukellefler({ taxpayers, period, onOpen }: { taxpayers: any[]; pe
                 const issue = Number(s.hasIssue || 0);
                 const posted = Number(s.postedToLuca || 0);
                 const approved = Number(s.approvedAlis || 0) + Number(s.approvedSatis || 0);
-                const rowState = issue > 0 ? 'issue' : pending > 0 ? 'pending' : 'ok';
                 const acik = form?.id === t.id;
+                const ad = taxpayerLabel(t);
                 return (
                   <Fragment key={t.id}>
-                    <tr className={`mktr mktr-${rowState}${acik ? ' mk-acik' : ''}`} onClick={() => onOpen(t.id)}>
-                      <td><span className={`mkstatus mkstatus-${rowState}`}>{rowState === 'issue' ? '!' : pending > 0 ? pending : '✓'}</span></td>
+                    <tr className={`mk-tr${acik ? ' mk-acik' : ''}${issue > 0 ? ' mk-sorunlu' : ''}`} onClick={() => onOpen(t.id)}>
                       <td>
-                        <b className="mkfirma">{taxpayerLabel(t)}</b>
-                        {t.taxNumber ? <small className="mkvkn">VKN {t.taxNumber}</small> : null}
+                        <div className="mk-kim">
+                          <span className={`mk-avatar ${f.defter === 'Bilanço' ? 'bil' : f.defter === 'İşletme' ? 'isl' : 'bos'}`}>{mfBasHarf(ad)}</span>
+                          <div className="mk-kim-tx">
+                            <b>{ad}</b>
+                            {t.taxNumber ? <small>VKN {t.taxNumber}</small> : null}
+                          </div>
+                        </div>
                       </td>
-                      <td>{f.defter ? <span className={`mk-pill ${f.defter === 'İşletme' ? 'isl' : 'bil'}`}>{f.defter}</span> : <span className="mk-pill bos">belirsiz</span>}</td>
-                      <td>{f.efatura ? <span className="mk-pill efat" title="e-Fatura mükellefi — faturaları entegratörden (e-Fatura Sorgu) gelir">e-Fatura</span> : <span className="mk-pill earsiv" title="e-Fatura mükellefi değil — satışları GİB e-Arşiv Portal'dan sorgulanır">GİB e-Arşiv</span>}</td>
+                      <td>
+                        <div className="mk-profil">
+                          {f.defter ? <span className={`mk-pill ${f.defter === 'İşletme' ? 'isl' : 'bil'}`}>{f.defter}</span> : <span className="mk-pill bos">defter belirsiz</span>}
+                          {f.efatura ? <span className="mk-pill efat" title="e-Fatura mükellefi — faturalar entegratörden (e-Fatura Sorgu) gelir">e-Fatura</span> : <span className="mk-pill earsiv" title="e-Fatura mükellefi değil — satışlar GİB e-Arşiv Sorgu ile çekilir">GİB e-Arşiv</span>}
+                        </div>
+                      </td>
                       <td>
                         {f.tanimli
                           ? <span className="mk-tanimli ok" title={f.ipucu}><i>✓</i> tanımlı</span>
                           : <span className="mk-tanimli uyar" title={f.ipucu}><i>!</i> tanımsız</span>}
                       </td>
-                      <td className="num">{pending > 0 ? <span className="mknum mknum-pending">{pending}</span> : <span className="faint">—</span>}</td>
-                      <td className="num">{approved > 0 ? <span className="mknum mknum-ok">{approved}</span> : <span className="faint">—</span>}</td>
-                      <td className="num">{posted > 0 ? <span className="mknum mknum-posted">{posted}</span> : <span className="faint">—</span>}</td>
-                      <td className="num">{issue > 0 ? <span className="mknum mknum-issue">{issue}</span> : <span className="faint">—</span>}</td>
+                      <td>
+                        <div className="mk-donem">
+                          {pending > 0 ? <span className="mk-say bekleyen">{pending} bekleyen</span> : null}
+                          {approved > 0 ? <span className="mk-say onayli">{approved} onaylı</span> : null}
+                          {posted > 0 ? <span className="mk-say luca">{posted} Luca'da</span> : null}
+                          {issue > 0 ? <span className="mk-say sorunlu">{issue} sorunlu</span> : null}
+                          {pending + approved + posted + issue === 0 ? <span className="mk-say yok">belge yok</span> : null}
+                        </div>
+                      </td>
                       <td className="mk-eylem" onClick={(e) => e.stopPropagation()}>
-                        <button type="button" className={`mkbtn mk-duzenle${acik ? ' on' : ''}`} onClick={() => formuAcKapat(t)} title={acik ? 'Tanım alanını kapat' : 'Faaliyet / defter / e-Fatura tanımını aç'}>{acik ? 'Kapat ▴' : (f.tanimli ? 'Düzenle' : 'Tanımla')}</button>
-                        <button type="button" className="mkbtn" onClick={() => onOpen(t.id)} title="Bu mükellefin faturalarını aç">Aç →</button>
+                        <button type="button" className={`btn sm ghost mk-duzenle${acik ? ' on' : ''}`} onClick={() => formuAcKapat(t)} title={acik ? 'Tanım alanını kapat' : 'Faaliyet / defter / e-Fatura tanımı'}>{acik ? 'Kapat ▴' : (f.tanimli ? 'Düzenle' : 'Tanımla')}</button>
+                        <button type="button" className="btn sm mk-ac" onClick={() => onOpen(t.id)} title="Bu mükellefin faturalarını aç">Aç →</button>
                       </td>
                     </tr>
                     {acik && form && (
                       <tr className="mk-formrow" onClick={(e) => e.stopPropagation()}>
-                        <td colSpan={10}>
+                        <td colSpan={5}>
                           <MfTanimAlani
                             deger={form.d}
                             onChange={(d) => setForm({ id: t.id, d })}
@@ -3535,13 +3547,10 @@ function ScreenMukellefler({ taxpayers, period, onOpen }: { taxpayers: any[]; pe
                 );
               })}
               {!sumQ.isLoading && list.length === 0 && (
-                <tr><td colSpan={10}><div className="empty">Mükellef bulunamadı{suzgec !== 'tumu' || nq ? <> — <a href="#" onClick={(e) => { e.preventDefault(); setSuzgec('tumu'); setQ(''); }}>süzgeçleri temizle</a></> : null}.</div></td></tr>
+                <tr><td colSpan={5}><div className="empty">Mükellef bulunamadı{suzgec !== 'tumu' || nq ? <> — <a href="#" onClick={(e) => { e.preventDefault(); setSuzgec('tumu'); setQ(''); }}>süzgeçleri temizle</a></> : null}.</div></td></tr>
               )}
             </tbody>
           </table>
-        </div>
-        <div className="foot">
-          <div className="selinfo">{sayac.tumu} mükellef · {sayac.tanimsiz} tanımsız · {sayac.efatura} e-Fatura · {sayac.earsiv} GİB e-Arşiv · {sayac.isletme} işletme · {sayac.bilanco} bilanço</div>
         </div>
       </div>
     </section>
@@ -6321,8 +6330,10 @@ function smoothLine(pts: { x: number; y: number }[]) {
 
 /* ===================== PLAN16-E: BELGE AKIŞI (ofis geneli, tüm mükellefler) ===================== */
 // Arka uç: GET /fatura-muhasebelestirme/documents/akis (belge-akisi.service.ts). Sekme/durum sözlüğü ORADA tek
-//   kaynak; burada yalnız görünüm + süzgeç + eylemler. Sayaçlar süzgeçten bağımsız (mükellef seçiliyse o mükellef).
-//   WhatsApp sekmesi YOK (kullanıcı kararı). Üst çubuktaki DÖNEM bu ekranda geçmez (geliş zamanı aralığı var).
+//   kaynak; burada yalnız görünüm + süzgeç + eylemler. Sayaçlar süzgeçten bağımsız, OFİS GENELİ.
+//   WhatsApp sekmesi YOK (kullanıcı kararı). Üst çubuktaki DÖNEM ve MÜKELLEF bu ekranda GEÇMEZ (karar 2026-09-12):
+//   sisteme giren bütün belgeler geliş zamanına göre yeniden eskiye; mükellef yalnız isteğe bağlı YEREL süzgeç.
+//   Sadeleştirme 2026-09-12: sayaç kartları, kaynak süzgeci, tarih alanları, kırmızı "akış durmuş" kartı KALDIRILDI.
 type AkSekme = 'yuklenen' | 'entegrator' | 'gib' | 'silinen';
 const AK_LIMIT = 50;
 const AK_SEKMELER: Array<{ v: AkSekme; l: string; t: string }> = [
@@ -6344,10 +6355,30 @@ const AK_DURUM: Record<string, { l: string; fg: string; bg: string; bd: string }
   silindi: { l: 'Silindi', fg: '#9f3a3a', bg: '#f3eaea', bd: '#dcc4c4' },
 };
 const AK_DURUM_SECENEK: Array<{ v: string; l: string }> = [
-  { v: '', l: 'Tüm durumlar' }, { v: 'okunuyor', l: 'Okunuyor' }, { v: 'okundu', l: 'Okundu' }, { v: 'karar_bekliyor', l: 'Karar bekliyor' },
+  { v: '', l: 'Durum: Tümü' }, { v: 'okunuyor', l: 'Okunuyor' }, { v: 'okundu', l: 'Okundu' }, { v: 'karar_bekliyor', l: 'Karar bekliyor' },
   { v: 'onayli', l: 'Onaylı' }, { v: 'lucada', l: "Luca'da" }, { v: 'hata', l: 'Hata' }, { v: 'iptal', l: 'İptal' },
 ];
-const AK_YON_SECENEK: Array<{ v: string; l: string }> = [{ v: '', l: 'Alış + Satış' }, { v: 'ALIS', l: 'Alış' }, { v: 'SATIS', l: 'Satış' }];
+/** Zaman hapları — geliş zamanına göre; from/to sunucuda gün bazlı ve kapsayıcı (YYYY-MM-DD). Varsayılan 30 gün. */
+type AkZaman = 'bugun' | '7' | '30' | '';
+const AK_ZAMAN: Array<{ v: AkZaman; l: string; t: string }> = [
+  { v: 'bugun', l: 'Bugün', t: 'Bugün sisteme giren belgeler' },
+  { v: '7', l: '7 gün', t: 'Son 7 günde sisteme giren belgeler' },
+  { v: '30', l: '30 gün', t: 'Son 30 günde sisteme giren belgeler (varsayılan)' },
+  { v: '', l: 'Tümü', t: 'Zaman süzgeci yok — bütün belgeler' },
+];
+function akGunStr(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+/** Zaman hapı → from/to. Bugün: from=to=bugün (kanıtlı kalıp); 7/30 gün: yalnız from (bugün dahil geriye N gün). */
+function akZamanAralik(z: AkZaman): { from?: string; to?: string } {
+  if (!z) return {};
+  const bugun = new Date();
+  if (z === 'bugun') { const s = akGunStr(bugun); return { from: s, to: s }; }
+  const gun = z === '7' ? 7 : 30;
+  const d = new Date(bugun);
+  d.setDate(d.getDate() - (gun - 1));
+  return { from: akGunStr(d) };
+}
 /** Kaynak rozeti rengi: entegratörler SORGU_PROV_RENK paletinden, GİB amber, Mihsap/e-fatura kutusu indigo, mobil cyan, yükleme accent. */
 function akKaynakRenk(kod: any): string {
   const s = String(kod || '').toLowerCase();
@@ -6366,14 +6397,6 @@ function akKaynakKisalt(etiket: any, kod: any): string {
   if (s.startsWith('mobile')) return 'MB';
   return provKisalt(e, e) || '?';
 }
-/** Kaynak süzgeci seçenekleri: yanıttaki kaynaklar[] (etiket · adet); aynı etiketli iki kod varsa kod da yazılır. */
-function akKaynakSecenekleri(kaynaklar: any[], secili: string): Array<{ v: string; l: string }> {
-  const say = new Map<string, number>();
-  for (const k of kaynaklar) say.set(String(k.etiket), (say.get(String(k.etiket)) || 0) + 1);
-  const out = [{ v: '', l: 'Tüm kaynaklar' }, ...kaynaklar.map((k) => ({ v: String(k.kod), l: `${k.etiket}${(say.get(String(k.etiket)) || 0) > 1 ? ` (${k.kod})` : ''} · ${k.adet}` }))];
-  if (secili && !out.some((o) => o.v === secili)) out.push({ v: secili, l: `${secili} · 0` });
-  return out;
-}
 /** Geliş zamanı: GG.AA SS:DD (tam tarih araç ipucunda). */
 function akFmtZaman(v: any): string {
   if (!v) return '—';
@@ -6381,11 +6404,6 @@ function akFmtZaman(v: any): string {
   if (isNaN(d.getTime())) return '—';
   const p = (n: number) => String(n).padStart(2, '0');
   return `${p(d.getDate())}.${p(d.getMonth() + 1)} ${p(d.getHours())}:${p(d.getMinutes())}`;
-}
-/** Bugün (yerel) YYYY-MM-DD — "Bugün gelen" sayacı tıklanınca from=to=bugün. */
-function akBugun(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 /** Belgenin dönemi (YYYY-MM) — "Aç" Muhasebeleştir'e giderken üst çubuk dönemi buna çevrilir (o ekran mükellef+dönemle süzer). */
 function akDonemOf(r: any): string {
@@ -6405,57 +6423,62 @@ function akOkunabilir(r: any): boolean {
   return r.durum !== 'onayli' && r.durum !== 'lucada' && String(r.status || '').toUpperCase() !== 'APPROVED';
 }
 
-function ScreenAkis({ taxpayerId, taxpayers, onOpenMuhasebe }: { taxpayerId: string; taxpayers: any[]; onOpenMuhasebe: (id: string, taxpayerId?: string, donem?: string) => void }) {
+// Üst çubuktaki taxpayerId prop'u bu ekranda BİLEREK kullanılmaz (karar 2026-09-12): ekran ofis geneli; mükellef yerel süzgeç.
+function ScreenAkis({ taxpayers, onOpenMuhasebe }: { taxpayerId: string; taxpayers: any[]; onOpenMuhasebe: (id: string, taxpayerId?: string, donem?: string) => void }) {
   const qc = useQueryClient();
   const [sekme, setSekme] = useState<AkSekme>('yuklenen');
-  // Mükellef süzgeci YEREL: üst çubuktaki seçim başlangıç değeri; "akış durmuş" adına / satırdaki mükellefe tıkla → burası değişir.
-  const [tp, setTp] = useState<string>(taxpayerId || '');
-  const [kaynak, setKaynak] = useState('');
-  const [yon, setYon] = useState('');
+  // Mükellef süzgeci YEREL ve isteğe bağlı: araç çubuğundaki seçici ya da "akış durmuş" listesinden tıklama doldurur; üst çubuğu değiştirmez.
+  const [tp, setTp] = useState('');
+  const [yon, setYon] = useState<'' | 'ALIS' | 'SATIS'>('');
   const [durum, setDurum] = useState('');
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
+  const [zaman, setZaman] = useState<AkZaman>('30');
   const [q, setQ] = useState('');
   const [qD, setQD] = useState(''); // 400 ms gecikmeli arama
   const [page, setPage] = useState(1);
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [durmusAcik, setDurmusAcik] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
-  useEffect(() => { setTp(taxpayerId || ''); }, [taxpayerId]);
+  const { from = '', to = '' } = akZamanAralik(zaman);
   useEffect(() => { const t = setTimeout(() => setQD(q.trim()), 400); return () => clearTimeout(t); }, [q]);
-  // Sekme değişince kaynak süzgeci sıfırlanır (kod kümesi sekmeye özel).
-  useEffect(() => { setKaynak(''); }, [sekme]);
   // Süzgeç değişince 1. sayfa + seçim temizlenir (bayat id ile toplu işlem gitmesin); sayfa değişince yalnız seçim.
-  useEffect(() => { setPage(1); setSel(new Set()); }, [sekme, tp, kaynak, yon, durum, from, to, qD]);
+  useEffect(() => { setPage(1); setSel(new Set()); }, [sekme, tp, yon, durum, zaman, qD]);
   useEffect(() => { setSel(new Set()); }, [page]);
 
   const akisQ = useQuery({
-    queryKey: ['fm2', 'akis', sekme, tp, kaynak, yon, durum, from, to, qD, page],
+    queryKey: ['fm2', 'akis', sekme, tp, yon, durum, from, to, qD, page],
     queryFn: async () => {
       const r = await api.get('/fatura-muhasebelestirme/documents/akis', {
-        params: { sekme, taxpayerId: tp || undefined, kaynak: kaynak || undefined, yon: yon || undefined, durum: durum || undefined, from: from || undefined, to: to || undefined, q: qD || undefined, page, limit: AK_LIMIT },
+        params: { sekme, taxpayerId: tp || undefined, yon: yon || undefined, durum: durum || undefined, from: from || undefined, to: to || undefined, q: qD || undefined, page, limit: AK_LIMIT },
       });
       return r.data || {};
     },
-    refetchInterval: 15_000, // canlı sayaç şeridi (spec: 15 sn)
+    refetchInterval: 15_000, // canlı sayaç çipleri (15 sn)
     placeholderData: (prev: any) => prev, // sayfa/süzgeç değişirken eski liste solgun kalır, ekran zıplamaz
   });
-  // Sekme haplarındaki toplamlar: her sekmenin SÜZGEÇSİZ sayısı (mükellef seçiliyse o mükellef); 60 sn'de bir.
+  // Sekme haplarındaki toplamlar: her sekmenin SÜZGEÇSİZ, OFİS GENELİ sayısı; 120 sn'de bir.
   const sekmeSayQ = useQuery({
-    queryKey: ['fm2', 'akis-sekme-say', tp],
+    queryKey: ['fm2', 'akis-sekme-say'],
     queryFn: async () => {
       const out: Record<string, number> = {};
       await Promise.all(AK_SEKMELER.map(async (s) => {
         try {
-          const r = await api.get('/fatura-muhasebelestirme/documents/akis', { params: { sekme: s.v, taxpayerId: tp || undefined, page: 1, limit: 1 } });
+          const r = await api.get('/fatura-muhasebelestirme/documents/akis', { params: { sekme: s.v, page: 1, limit: 1 } });
           out[s.v] = Number(r?.data?.toplam) || 0;
         } catch { out[s.v] = -1; }
       }));
       return out;
     },
-    staleTime: 60_000,
-    refetchInterval: 60_000,
+    staleTime: 120_000,
+    refetchInterval: 120_000,
   });
+  // Ofis geneli sayaçlar + "akış durmuş" listesi: mükellef süzgeci açıkken sunucu yanıtı o mükellefe daralır;
+  //   son SÜZGEÇSİZ yanıt burada tutulur ki bant ve çipler ofis geneli kalsın.
+  const [ofisGeneli, setOfisGeneli] = useState<{ sayac: any; durmus: any[] }>({ sayac: {}, durmus: [] });
+  useEffect(() => {
+    if (tp || !akisQ.data || akisQ.isPlaceholderData) return;
+    const d: any = akisQ.data;
+    setOfisGeneli({ sayac: d.sayaclar || {}, durmus: Array.isArray(d.akisDurmus) ? d.akisDurmus : [] });
+  }, [tp, akisQ.data, akisQ.isPlaceholderData]);
   const delMut = useMutation({
     mutationFn: (id: string) => api.delete(`/fatura-muhasebelestirme/documents/${id}`),
     onSuccess: () => { toast.success('Belge silindi'); qc.invalidateQueries({ queryKey: ['fm2'] }); },
@@ -6483,14 +6506,12 @@ function ScreenAkis({ taxpayerId, taxpayers, onOpenMuhasebe }: { taxpayerId: str
   const veri: any = akisQ.data || {};
   const satirlar: any[] = Array.isArray(veri.satirlar) ? veri.satirlar : [];
   const toplam = Number(veri.toplam) || 0;
-  const sayac: any = veri.sayaclar || {};
-  const akisDurmus: any[] = Array.isArray(veri.akisDurmus) ? veri.akisDurmus : [];
-  const kaynaklar: any[] = Array.isArray(veri.kaynaklar) ? veri.kaynaklar : [];
+  const sayac: any = tp ? ofisGeneli.sayac : (veri.sayaclar || ofisGeneli.sayac || {});
+  const akisDurmus: any[] = tp ? ofisGeneli.durmus : (Array.isArray(veri.akisDurmus) ? veri.akisDurmus : ofisGeneli.durmus);
   const sekmeSay: Record<string, number> = sekmeSayQ.data || {};
   const silinen = sekme === 'silinen';
-  const bugun = akBugun();
-  const bugunSuzgec = !!from && from === to && from === bugun;
-  const suzgecVar = !!(tp || kaynak || yon || durum || from || to || qD);
+  // "Süzgeçleri temizle" yalnız varsayılandan sapınca (30 gün varsayılan sayılmaz).
+  const suzgecVar = !!(tp || yon || durum || qD || zaman !== '30');
   const sayfaSayisi = Math.max(1, Math.ceil(toplam / AK_LIMIT));
   const ilk = toplam === 0 ? 0 : (page - 1) * AK_LIMIT + 1;
   const son = Math.min(toplam, page * AK_LIMIT);
@@ -6502,20 +6523,16 @@ function ScreenAkis({ taxpayerId, taxpayers, onOpenMuhasebe }: { taxpayerId: str
   const allSelected = secilebilir.length > 0 && secilebilir.every((r) => sel.has(r.id));
   const toggle = (id: string) => setSel((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const toggleAll = () => setSel(allSelected ? new Set() : new Set(secilebilir.map((r) => r.id)));
-  const suzgecTemizle = () => { setTp(''); setKaynak(''); setYon(''); setDurum(''); setFrom(''); setTo(''); setQ(''); setQD(''); };
-  // Sayaç kartı tıklaması: durum süzgeci (tekrar tıkla kalkar); "bugün gelen" → tarih aralığı bugün. Silinen sekmesinde
-  //   durum süzgeci geçmediğinden önce Yüklenen sekmesine dönülür.
-  const tileTikla = (v: string) => {
-    if (silinen) setSekme('yuklenen');
-    if (v === 'bugun') { if (bugunSuzgec) { setFrom(''); setTo(''); } else { setFrom(bugun); setTo(bugun); } return; }
-    setDurum((d) => (d === v ? '' : v));
-  };
-  const tiles: Array<{ v: string; l: string; n: number; c: string; on: boolean; t: string }> = [
-    { v: 'okunuyor', l: 'Okunuyor', n: Number(sayac.okunuyor) || 0, c: '#0891b2', on: durum === 'okunuyor', t: 'OCR / AI okuması süren belgeler — tıkla: durum süzgeci' },
-    { v: 'karar_bekliyor', l: 'Karar bekleyen', n: Number(sayac.kararBekleyen) || 0, c: '#7c3aed', on: durum === 'karar_bekliyor', t: 'Demirbaş / mükerrer / tevkifat eksik / alıcı tipi / engel — sahip kararı bekliyor' },
-    { v: 'bugun', l: 'Bugün gelen', n: Number(sayac.bugunGelen) || 0, c: '#15803d', on: bugunSuzgec, t: 'Bugün (Türkiye saati) sisteme giren belgeler — tıkla: tarih aralığı bugün' },
-    { v: 'hata', l: 'Hata', n: Number(sayac.hata) || 0, c: '#dc2626', on: durum === 'hata', t: 'Okunamadı / Luca hatası / doğrulama hatası' },
-  ];
+  const suzgecTemizle = () => { setTp(''); setYon(''); setDurum(''); setZaman('30'); setQ(''); setQD(''); };
+  // Sayaç çipi tıklaması: durum süzgeci (tekrar tıkla kalkar). Silinen sekmesinde durum süzgeci geçmediğinden Yüklenen'e dönülür.
+  const durumTikla = (v: string) => { if (silinen) setSekme('yuklenen'); setDurum((d) => (d === v ? '' : v)); };
+  const sayacCipler: Array<{ v: string; l: string; n: number; cls: string; t: string }> = [
+    { v: 'okunuyor', l: 'okunuyor', n: Number(sayac.okunuyor) || 0, cls: 'cyan', t: 'OCR / AI okuması süren belgeler — tıkla: durum süzgeci' },
+    { v: 'karar_bekliyor', l: 'karar bekleyen', n: Number(sayac.kararBekleyen) || 0, cls: 'mor', t: 'Demirbaş / mükerrer / tevkifat eksik / alıcı tipi / engel — sahip kararı bekliyor — tıkla: durum süzgeci' },
+    { v: 'hata', l: 'hata', n: Number(sayac.hata) || 0, cls: 'kirmizi', t: 'Okunamadı / Luca hatası / doğrulama hatası — tıkla: durum süzgeci' },
+  ].filter((c) => c.n > 0);
+  const bugunGelen = Number(sayac.bugunGelen) || 0;
+  const zamanEtiket = AK_ZAMAN.find((z) => z.v === zaman)?.l || '';
   // AI ile oku — sunucu kuyruğu (ScreenFaturalar.aiOku ile aynı uç ve gövde: { documentIds }).
   const aiOku = async (rows: any[]) => {
     const ids = rows.filter(akOkunabilir).map((r) => r.id);
@@ -6545,89 +6562,89 @@ function ScreenAkis({ taxpayerId, taxpayers, onOpenMuhasebe }: { taxpayerId: str
     onOpenMuhasebe(r.id, r.taxpayerId || undefined, akDonemOf(r) || undefined);
   };
   const tpSecenek: Array<{ v: string; l: string }> = [{ v: '', l: 'Tüm mükellefler' }, ...taxpayers.map((t) => ({ v: String(t.id), l: taxpayerLabel(t) }))];
-  if (tp && !tpSecenek.some((o) => o.v === tp)) tpSecenek.push({ v: tp, l: akisDurmus.find((m) => m.taxpayerId === tp)?.ad || satirlar.find((r) => r.taxpayerId === tp)?.mukellefAd || 'Seçili mükellef' });
-  const kaynakSecenek = akKaynakSecenekleri(kaynaklar, kaynak);
-  const durmusGorunen = durmusAcik ? akisDurmus : akisDurmus.slice(0, 8);
-  const sutunSayisi = silinen ? 10 : 11;
+  if (tp && !tpSecenek.some((o) => o.v === tp)) tpSecenek.push({ v: tp, l: akisDurmus.find((m) => String(m.taxpayerId) === tp)?.ad || satirlar.find((r) => String(r.taxpayerId) === tp)?.mukellefAd || 'Seçili mükellef' });
+  const sutunSayisi = silinen ? 7 : 8;
 
   return (
     <section className="screen">
       <div className="h2">Belge Akışı</div>
-      <div className="sub">Ofis geneli, tüm mükellefler — nereden ne geldi, hangi aşamada. Sayaçlar 15 sn'de bir yenilenir ve süzgeçten bağımsızdır{tp ? ' (seçili mükellef)' : ''}; üstteki dönem burada geçmez, geliş zamanı aralığıyla süz.</div>
-      {/* ÜST CANLI SAYAÇ ŞERİDİ — tıkla: durum süzgeci (okunuyor / karar bekliyor / hata); "bugün gelen" → tarih aralığı bugün */}
-      <div className="filttiles ak-tiles">
-        {tiles.map((t) => (
-          <button key={t.v} type="button" className={`ftile ak-tile${t.on ? ' on' : ''}`} style={{ ['--tc' as any]: t.c }} title={t.t} onClick={() => tileTikla(t.v)}>
-            <span className="ftdot" />
-            <span className="fttx"><span className="ftn">{akisQ.data ? t.n : '…'}</span><span className="ftl">{t.l}</span></span>
-          </button>
-        ))}
-      </div>
-      {/* AKIŞ DURMUŞ — 30+ gündür belge gelmeyen aktif mükellefler (kırmızı kart, liste üstünde); ada tıkla → o mükellefe süz */}
+      <div className="sub">Sisteme giren bütün belgeler, giriş zamanına göre — nereden geldi, hangi aşamada.</div>
+      {/* AKIŞ DURMUŞ — ince amber bant; "listeyi gör" → altında kaydırılabilir liste; ada tıkla → yerel mükellef süzgeci */}
       {akisDurmus.length > 0 && (
-        <div className="ak-durmus">
-          <div className="ak-durmus-h">
-            <span className="ak-durmus-ic"><Ico html={I.info} size={15} /></span>
-            <b>{akisDurmus.length} aktif mükellefte 30+ gündür belge gelmiyor</b>
-            <span className="ak-durmus-s">— ada tıkla, liste o mükellefe süzülsün (tekrar tıkla kalkar)</span>
-            <div className="sp" />
-            {akisDurmus.length > 8 && <button type="button" className="ak-link" onClick={() => setDurmusAcik((v) => !v)}>{durmusAcik ? 'daha az göster' : `tümünü göster (${akisDurmus.length})`}</button>}
+        <div className="ak-band">
+          <div className="ak-band-h">
+            <span className="ak-band-ic" aria-hidden>⚠</span>
+            <span><b>{akisDurmus.length}</b> aktif mükellefte 30+ gündür belge gelmiyor</span>
+            <span className="ak-band-sep">—</span>
+            <button type="button" className="ak-link amber" onClick={() => setDurmusAcik((v) => !v)}>{durmusAcik ? 'gizle' : 'listeyi gör'}</button>
           </div>
-          <div className="ak-durmus-list">
-            {durmusGorunen.map((m) => (
-              <button key={m.taxpayerId} type="button" className={`ak-durmus-chip${tp === m.taxpayerId ? ' on' : ''}`} title={m.sonBelgeTarihi ? `Son belge: ${fmtDate(m.sonBelgeTarihi)}` : 'Hiç belge gelmemiş'} onClick={() => setTp((v) => (v === m.taxpayerId ? '' : m.taxpayerId))}>
-                <span className="ak-durmus-ad">{m.ad}</span><i>{m.gunSayisi} gün</i>
-              </button>
-            ))}
-          </div>
+          {durmusAcik && (
+            <div className="ak-band-list">
+              {akisDurmus.map((m) => { const id = String(m.taxpayerId); return (
+                <button key={id} type="button" className={`ak-band-row${tp === id ? ' on' : ''}`} title={m.sonBelgeTarihi ? `Son belge: ${fmtDate(m.sonBelgeTarihi)} — tıkla: yalnız bu mükellef` : 'Hiç belge gelmemiş — tıkla: yalnız bu mükellef'} onClick={() => setTp((v) => (v === id ? '' : id))}>
+                  <span>{m.ad || 'Mükellef'}</span><i>{m.gunSayisi} gün</i>
+                </button>
+              ); })}
+            </div>
+          )}
         </div>
       )}
-      {/* SEKMELER (hap) — her sekmede süzgeçsiz toplam */}
+      {/* SEKMELER (hap, ofis geneli sayılarla) + sağda küçük sayaç çipleri (yalnız >0) */}
       <div className="ak-tabs">
         {AK_SEKMELER.map((s) => { const n = sekmeSay[s.v]; return (
           <button key={s.v} type="button" className={`ak-tab${sekme === s.v ? ' on' : ''}`} title={s.t} onClick={() => setSekme(s.v)}>
             {s.l}{typeof n === 'number' && n >= 0 ? <b>{n}</b> : null}
           </button>
         ); })}
+        {sayacCipler.length > 0 && (
+          <div className="ak-sayac">
+            {sayacCipler.map((c, i) => (
+              <span key={c.v} className="ak-sayac-item">
+                {i > 0 && <span className="ak-sayac-sep">·</span>}
+                <button type="button" className={`ak-sayac-cip ${c.cls}${durum === c.v ? ' on' : ''}`} title={c.t} onClick={() => durumTikla(c.v)}>{c.l} <b>{c.n}</b></button>
+              </span>
+            ))}
+          </div>
+        )}
       </div>
       <div className="card invcard ak-card">
-        {/* ÜST ARAÇ ÇUBUĞU 1 — süzgeçler (tek satır, sarmalanır) */}
+        {/* ARAÇ ÇUBUĞU (tek satır, sarmalanır): [seçim + toplu işlemler] · arama · zaman hapları · yön hapları · mükellef · temizle ··· durum · sayfalama */}
         <div className="ch ak-bar">
-          <FmSelect value={tp} onChange={setTp} options={tpSecenek} search searchPlaceholder="Mükellef ara…" emptyLabel="Tüm mükellefler" minWidth={190}
-            icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /></svg>} />
-          {!silinen && <FmSelect value={kaynak} onChange={setKaynak} options={kaynakSecenek} search searchPlaceholder="Kaynak ara…" emptyLabel="Tüm kaynaklar" minWidth={150}
-            icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="7" width="20" height="14" rx="2" /><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" /></svg>} />}
-          <FmSelect value={yon} onChange={setYon} options={AK_YON_SECENEK} emptyLabel="Alış + Satış" minWidth={112} />
-          {!silinen && <FmSelect value={durum} onChange={setDurum} options={AK_DURUM_SECENEK} emptyLabel="Tüm durumlar" minWidth={132} />}
-          <div className="sq-dates ak-dates" title="Geliş zamanı aralığı (sisteme giriş)">
-            <input type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} aria-label="Geliş başlangıç" />
-            <span className="drsep">—</span>
-            <input type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} aria-label="Geliş bitiş" />
-            {(from || to) && <button type="button" className="sq-x" title="Aralığı temizle" onClick={() => { setFrom(''); setTo(''); }}>×</button>}
-          </div>
+          {!silinen && gorunurSecili.length > 0 && (
+            <div className="ak-sel">
+              <span className="ak-selinfo"><b>{gorunurSecili.length}</b> seçili</span>
+              <button type="button" className="ak-x" onClick={() => setSel(new Set())} title="Seçimi temizle">✕</button>
+              <span className="ak-sep">·</span>
+              <button type="button" className="btn sm ai" disabled={aiBusy} onClick={() => aiOku(gorunurSecili)} title="Seçili belgeleri yapay zeka (Max) ile oku — sunucuda okur, sayfa değişince durmaz (onaylı / Luca'da olanlar atlanır)"><Ico html={I.spark} size={12} /> {aiBusy ? 'Başlatılıyor…' : 'AI ile oku'}</button>
+              <button type="button" className="btn sm ghost ak-sil" disabled={bulkDelMut.isPending} onClick={topluSil} title="Seçili belgeleri sil — Luca'ya aktarılmış / elle işlenmiş olanlar atlanır"><Ico html={I.trash} size={12} /> {bulkDelMut.isPending ? 'Siliniyor…' : 'Sil'}</button>
+            </div>
+          )}
           <label className="sq-search ak-search">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></svg>
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Ünvan, belge no, VKN ara…" />
             {q && <button type="button" onClick={() => setQ('')} title="Aramayı temizle">×</button>}
           </label>
-          {suzgecVar && <button type="button" className="ak-link" onClick={suzgecTemizle} title="Mükellef, kaynak, yön, durum, tarih ve aramayı sıfırla">Süzgeçleri temizle</button>}
-        </div>
-        {/* ÜST ARAÇ ÇUBUĞU 2 — seçim + toplu işlemler (kural 2026-09-12: tablo altına çubuk konmaz) + sayfalama sağda */}
-        <div className="ak-bulk">
-          {silinen
-            ? <span className="gf-hint">Silinen belgeler denetim izinden gelir — geri alınamaz; kim, ne zaman ve eski durumu görünür.</span>
-            : <>
-              {gorunurSecili.length > 0
-                ? <span className="ak-selinfo"><b>{gorunurSecili.length}</b> seçili <button type="button" className="ak-clear" onClick={() => setSel(new Set())} title="Seçimi temizle">✕</button></span>
-                : <span className="gf-hint">Toplu işlem için satır seç</span>}
-              <button type="button" className="btn sm ai" disabled={aiBusy || gorunurSecili.length === 0} onClick={() => aiOku(gorunurSecili)} title={gorunurSecili.length === 0 ? 'Önce satır seç' : "Seçili belgeleri yapay zeka (Max) ile oku — sunucuda okur, sayfa değişince durmaz (onaylı / Luca'da olanlar atlanır)"}><Ico html={I.spark} size={13} /> {aiBusy ? 'Başlatılıyor…' : `AI ile oku${gorunurSecili.length ? ` (${gorunurSecili.length})` : ''}`}</button>
-              <button type="button" className="btn sm ak-sil" disabled={bulkDelMut.isPending || gorunurSecili.length === 0} onClick={topluSil} title={gorunurSecili.length === 0 ? 'Önce satır seç' : "Seçili belgeleri sil — Luca'ya aktarılmış / elle işlenmiş olanlar atlanır"}><Ico html={I.trash} size={13} /> {bulkDelMut.isPending ? 'Siliniyor…' : `Sil${gorunurSecili.length ? ` (${gorunurSecili.length})` : ''}`}</button>
-            </>}
+          <div className="ak-haplar" role="group" aria-label="Geliş zamanı">
+            {AK_ZAMAN.map((z) => (
+              <button key={z.v || 'tumu'} type="button" className={`ak-hap${zaman === z.v ? ' on' : ''}`} title={z.t} onClick={() => setZaman(z.v)}>
+                {z.l}{z.v === 'bugun' && akisQ.data ? ` (${bugunGelen})` : ''}
+              </button>
+            ))}
+          </div>
+          <div className="ak-haplar" role="group" aria-label="Yön (ikisi de kapalı = tümü)">
+            <button type="button" className={`ak-hap alis${yon === 'ALIS' ? ' on' : ''}`} title="Yalnız alış belgeleri (tekrar tıkla kalkar)" onClick={() => setYon((v) => (v === 'ALIS' ? '' : 'ALIS'))}>Alış</button>
+            <button type="button" className={`ak-hap satis${yon === 'SATIS' ? ' on' : ''}`} title="Yalnız satış belgeleri (tekrar tıkla kalkar)" onClick={() => setYon((v) => (v === 'SATIS' ? '' : 'SATIS'))}>Satış</button>
+          </div>
+          <FmSelect value={tp} onChange={setTp} options={tpSecenek} search searchPlaceholder="Mükellef ara…" emptyLabel="Tüm mükellefler" minWidth={150}
+            icon={<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /></svg>} />
+          {suzgecVar && <button type="button" className="ak-link" onClick={suzgecTemizle} title="Arama, zaman, yön, mükellef ve durumu varsayılana döndür">Süzgeçleri temizle</button>}
           <div className="sp" />
-          {akisQ.isFetching && akisQ.data ? <span className="gf-hint">yenileniyor…</span> : null}
-          <span className="ak-pg">{toplam > 0 ? `${ilk}–${son} / ${toplam}` : '0 / 0'}</span>
-          <button type="button" className="ak-pgbtn" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))} title="Önceki sayfa">‹</button>
-          <button type="button" className="ak-pgbtn" disabled={page >= sayfaSayisi} onClick={() => setPage((p) => Math.min(sayfaSayisi, p + 1))} title="Sonraki sayfa">›</button>
+          {!silinen && <FmSelect value={durum} onChange={setDurum} options={AK_DURUM_SECENEK} emptyLabel="Durum: Tümü" minWidth={118} />}
+          <div className="ak-pg">
+            <button type="button" className="ak-pgbtn" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))} title="Önceki sayfa">‹</button>
+            <span>{toplam > 0 ? `${ilk}–${son} / ${toplam}` : '0 / 0'}</span>
+            <button type="button" className="ak-pgbtn" disabled={page >= sayfaSayisi} onClick={() => setPage((p) => Math.min(sayfaSayisi, p + 1))} title="Sonraki sayfa">›</button>
+          </div>
         </div>
         {akisQ.isError && (
           <div className="yuklenemedi">
@@ -6635,55 +6652,55 @@ function ScreenAkis({ taxpayerId, taxpayers, onOpenMuhasebe }: { taxpayerId: str
             <button className="btn sm" onClick={() => akisQ.refetch()}><Ico html={I.sync} size={12} /> Tekrar dene</button>
           </div>
         )}
-        {/* TABLO — kendi kabında kayar (sayfa yatay kaymaz); sticky YOK */}
+        {/* TABLO (7 sütun, sade) — kendi kabında kayar (sayfa yatay kaymaz); sticky YOK */}
         <div className={`ak-twrap${akisQ.isPlaceholderData ? ' ak-loading' : ''}`}>
           <table className="ak-table">
             <thead><tr>
               {!silinen && <th style={{ width: 30 }}><Check checked={allSelected} onToggle={toggleAll} disabled={secilebilir.length === 0} /></th>}
+              <th>Belge</th>
               <th>Mükellef</th>
-              <th>Kaynak</th>
-              <th>Yön</th>
-              <th>Belge No</th>
-              <th>Fatura Tarihi</th>
-              <th>Geliş</th>
-              <th>Karşı Taraf / VKN</th>
+              <th>Karşı taraf</th>
+              <th>Tarih</th>
               <th className="num">Tutar</th>
               <th>Durum</th>
-              {silinen ? <th>Silinme</th> : <th className="ak-actcol">Eylemler</th>}
+              {silinen ? <th>Silinme</th> : <th>Eylemler</th>}
             </tr></thead>
             <tbody>
               {satirlar.map((r) => {
                 const d = AK_DURUM[String(r.durum)] || AK_DURUM.okundu;
                 const sat = r.yon === 'SATIS';
                 const okunabilir = akOkunabilir(r);
+                // "AI ile oku" yalnız okunmamış (OCR SUCCESS/DONE değil) ya da hatalı satırda; onaylı / Luca'da / okunuyor zaten elenir.
+                const ocr = String(r.ocrStatus || '').toUpperCase();
+                const okumaGerek = !silinen && okunabilir && (r.durum === 'hata' || (ocr !== 'SUCCESS' && ocr !== 'DONE'));
                 return (
                   <tr key={r.id} className={r.durum === 'okunuyor' ? 'scanning' : undefined}>
                     {!silinen && <td><Check checked={sel.has(r.id)} onToggle={() => toggle(r.id)} /></td>}
-                    <td className="ak-mk">{r.taxpayerId
-                      ? <button type="button" className="ak-mkbtn" title="Bu mükellefe süz" onClick={() => setTp(String(r.taxpayerId))}>{r.mukellefAd || 'Mükellef'}</button>
-                      : <span className="mu">—</span>}</td>
-                    <td>{r.kaynak
-                      ? <span className="sq-src" style={{ ['--sc' as any]: akKaynakRenk(r.kaynakKod) }} title={r.kaynakKod ? `Kaynak kodu: ${r.kaynakKod}` : undefined}><i>{akKaynakKisalt(r.kaynak, r.kaynakKod)}</i>{r.kaynak}</span>
-                      : <span className="mu">—</span>}</td>
-                    <td>{r.yon ? <span className={`pill ak-pill ${sat ? 'satis' : 'alis'}`}>{sat ? 'Satış' : 'Alış'}</span> : <span className="mu">—</span>}</td>
-                    <td className="ak-mono" title={r.belgeNo || ''}>{r.belgeNo || '—'}</td>
-                    <td>{fmtDate(r.faturaTarihi)}</td>
-                    <td className="ak-zaman" title={r.gelisZamani ? new Date(r.gelisZamani).toLocaleString('tr-TR') : ''}>{akFmtZaman(r.gelisZamani)}</td>
-                    <td className="firm ak-firm"><b title={r.karsiTaraf || ''}>{r.karsiTaraf || '—'}</b><small>{r.karsiVkn ? `VKN ${r.karsiVkn}` : '—'}</small></td>
-                    <td className="num">{r.tutar == null ? '—' : fmtMoney(r.tutar)}</td>
+                    <td className="ak-belge">
+                      <span className="ak-mono" title={r.belgeNo || ''}>{r.belgeNo || '—'}</span>
+                      <span className="ak-alt">
+                        {r.kaynak ? <span className="sq-src" style={{ ['--sc' as any]: akKaynakRenk(r.kaynakKod) }} title={r.kaynakKod ? `Kaynak: ${r.kaynak} (${r.kaynakKod})` : `Kaynak: ${r.kaynak}`}><i>{akKaynakKisalt(r.kaynak, r.kaynakKod)}</i>{r.kaynak}</span> : null}
+                        {r.yon ? <span className={`ak-yon ${sat ? 'satis' : 'alis'}`}>{sat ? 'Satış' : 'Alış'}</span> : null}
+                        {!r.kaynak && !r.yon ? <span className="mu">—</span> : null}
+                      </span>
+                    </td>
+                    <td className="ak-mk">
+                      <b title={r.mukellefAd || ''}>{r.mukellefAd || '—'}</b>
+                      <small title={r.gelisZamani ? `Sisteme giriş: ${new Date(r.gelisZamani).toLocaleString('tr-TR')}` : ''}>geliş: {akFmtZaman(r.gelisZamani)}</small>
+                    </td>
+                    <td className="ak-firm"><b title={r.karsiTaraf || ''}>{r.karsiTaraf || '—'}</b><small>{r.karsiVkn ? `VKN ${r.karsiVkn}` : '—'}</small></td>
+                    <td className="ak-tarih">{fmtDate(r.faturaTarihi)}</td>
+                    <td className="num ak-tutar">{r.tutar == null ? '—' : fmtMoney(r.tutar)}</td>
                     <td className="ak-durumcell">
-                      <span className="ak-durum" style={{ color: d.fg, background: d.bg, borderColor: d.bd }} title={[r.durumEtiketi || d.l, r.status ? `durum: ${r.status}` : '', r.ocrStatus ? `okuma: ${r.ocrStatus}` : '', r.lucaStatus ? `Luca: ${r.lucaStatus}` : ''].filter(Boolean).join(' · ')}>{r.durumEtiketi || d.l}</span>
-                      {r.lucaFisNo ? <small className="ak-altnot">Fiş no {r.lucaFisNo}</small> : null}
-                      {silinen && r.eskiDurum ? <small className="ak-altnot">eski durum: {r.eskiDurum}</small> : null}
-                      {r.mukerrerBagi ? <small className="ak-altnot" style={{ color: '#c0353a' }}>mükerrer bağı var</small> : null}
-                      <UyariCipler raw={r.uyarilar} max={3} />
+                      <span className={`ak-durum${r.durum === 'okunuyor' ? ' okunuyor' : ''}`} style={{ color: d.fg, background: d.bg, borderColor: d.bd }} title={[r.durumEtiketi || d.l, r.status ? `durum: ${r.status}` : '', r.ocrStatus ? `okuma: ${r.ocrStatus}` : '', r.lucaStatus ? `Luca: ${r.lucaStatus}` : '', r.lucaFisNo ? `fiş no: ${r.lucaFisNo}` : '', silinen && r.eskiDurum ? `eski durum: ${r.eskiDurum}` : ''].filter(Boolean).join(' · ')}>{r.durumEtiketi || d.l}</span>
+                      <UyariCipler raw={r.uyarilar} max={2} />
                     </td>
                     {silinen
-                      ? <td className="ak-silcell"><b title={r.silinmeZamani ? new Date(r.silinmeZamani).toLocaleString('tr-TR') : ''}>{akFmtZaman(r.silinmeZamani)}</b><small>{r.silen?.ad ? `silen: ${r.silen.ad}` : 'silen: bilinmiyor'}</small></td>
-                      : <td className="ak-actcol"><div className="ak-acts">
-                        <button type="button" className="gf-act duzenle" onClick={() => acBelge(r)} title={r.durum === 'onayli' || r.durum === 'lucada' ? 'Onaylı / Luca\'ya gitmiş belge: dosyayı (PDF/görsel/XML) ekranda aç' : 'Muhasebeleştir ekranında aç (mükellef + dönem belgeye çevrilir)'}><Ico html={I.edit} size={13} /> Aç</button>
-                        <button type="button" className="gf-act incele" disabled={aiBusy || !okunabilir} onClick={() => aiOku([r])} title={okunabilir ? 'Bu belgeyi yapay zeka (Max) ile oku — sunucuda okur' : r.durum === 'okunuyor' ? 'Zaten okunuyor' : "Onaylı / Luca'ya gitmiş belge yeniden okunmaz — önce Geri al"}><Ico html={I.spark} size={13} /> AI ile oku</button>
-                        {akSilinebilir(r) && <button type="button" className="gf-act sil" disabled={delMut.isPending || bulkDelMut.isPending} title="Belgeyi sil" onClick={() => { if (window.confirm(`Bu belge silinsin mi?\n${r.karsiTaraf || '—'} · ${r.tutar == null ? '—' : fmtMoney(r.tutar) + ' ₺'}${r.belgeNo ? ' · ' + r.belgeNo : ''}\nBu işlem geri alınamaz.`)) delMut.mutate(r.id); }}><Ico html={I.trash} size={13} /> Sil</button>}
+                      ? <td className="ak-silcell" title={r.silinmeZamani ? new Date(r.silinmeZamani).toLocaleString('tr-TR') : ''}>Silinme: {akFmtZaman(r.silinmeZamani)} · {r.silen?.ad || 'bilinmiyor'}</td>
+                      : <td className="ak-actcell"><div className="ak-acts">
+                        <button type="button" className="gf-act duzenle" onClick={() => acBelge(r)} title={r.durum === 'onayli' || r.durum === 'lucada' ? 'Onaylı / Luca\'ya gitmiş belge: dosyayı (PDF/görsel/XML) ekranda aç' : 'Muhasebeleştir ekranında aç (mükellef + dönem belgeye çevrilir)'}>Aç</button>
+                        {okumaGerek && <button type="button" className="gf-act incele" disabled={aiBusy} onClick={() => aiOku([r])} title="Bu belgeyi yapay zeka (Max) ile oku — sunucuda okur">AI ile oku</button>}
+                        {akSilinebilir(r) && <button type="button" className="gf-act sil" disabled={delMut.isPending || bulkDelMut.isPending} title="Belgeyi sil (Luca'ya gitmemiş)" onClick={() => { if (window.confirm(`Bu belge silinsin mi?\n${r.karsiTaraf || '—'} · ${r.tutar == null ? '—' : fmtMoney(r.tutar) + ' ₺'}${r.belgeNo ? ' · ' + r.belgeNo : ''}\nBu işlem geri alınamaz.`)) delMut.mutate(r.id); }}>Sil</button>}
                       </div></td>}
                   </tr>
                 );
@@ -6692,14 +6709,19 @@ function ScreenAkis({ taxpayerId, taxpayers, onOpenMuhasebe }: { taxpayerId: str
                 <tr><td colSpan={sutunSayisi}><div className="empty">Yükleniyor…</div></td></tr>
               )}
               {!akisQ.isLoading && !akisQ.isError && satirlar.length === 0 && (
-                <tr><td colSpan={sutunSayisi}><div className="empty">Bu sekmede kayıt yok{suzgecVar ? <> — <a href="#temizle" onClick={(ev) => { ev.preventDefault(); suzgecTemizle(); }}>süzgeçleri temizle</a></> : null}</div></td></tr>
+                <tr><td colSpan={sutunSayisi}><div className="empty">
+                  Bu sekmede {zaman === 'bugun' ? 'bugün ' : zaman ? `son ${zamanEtiket}de ` : ''}kayıt yok
+                  {suzgecVar
+                    ? <> — <a href="#temizle" onClick={(ev) => { ev.preventDefault(); suzgecTemizle(); }}>süzgeçleri temizle</a></>
+                    : zaman ? <> — <a href="#tumu" onClick={(ev) => { ev.preventDefault(); setZaman(''); }}>tümünü göster</a></> : null}
+                </div></td></tr>
               )}
             </tbody>
           </table>
         </div>
-        {/* Alt bilgi YALNIZ metin (sayfalama düğmeleri üst çubukta) */}
+        {/* Alt bilgi tek satır (sayfalama düğmeleri üst çubukta; alt çubuk YOK) */}
         <div className="foot ak-foot">
-          <div className="selinfo">{toplam > 0 ? `${ilk}–${son} / ${toplam}` : 'Kayıt yok'} · sayfa {page}/{sayfaSayisi}{suzgecVar ? ' · süzgeç açık' : ''} · geliş zamanına göre yeniden eskiye</div>
+          <div className="selinfo">{toplam > 0 ? `${ilk}–${son} / ${toplam}` : 'Kayıt yok'} · geliş zamanına göre yeniden eskiye</div>
         </div>
       </div>
     </section>
@@ -8452,17 +8474,43 @@ const CSS = `
 #fm-root .sq-head .sq-src{height:22px;font-size:10.5px;font-weight:700}
 #fm-root .sq-head .sq-src i{width:16px;height:16px;font-size:7.5px}
 #fm-root .sq-table td .sq-pill{height:20px;padding:0 8px;font-size:10.5px}
+/* Kullanıcı bulgusu (2026-09-12): Eylemler sütunu sağa yapışıkken Güven sütununun üstüne biniyordu → yapışkanlık kaldırıldı, sütunlar sıkılaştırıldı; Tip sütunu kaldırıldı (ekran zaten Alış/Satış). */
+#fm-root .gf-table td.actcol,#fm-root .gf-table th.actcol{position:static;box-shadow:none}
+#fm-root .gf-table td:nth-child(4) b{display:block;max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#fm-root .gf-table .gf-neden{max-width:120px}
+#fm-root .gf-table .gf-hesap small,#fm-root .gf-table .gf-hesap span{display:block;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#fm-root .gf-table .gf-acts{min-width:0;grid-template-columns:auto auto}
+#fm-root .gf-table .gf-act{height:24px;padding:0 7px;font-size:11px}
+#fm-root .gf-table td,#fm-root .gf-table th{padding-left:9px;padding-right:9px}
 /* Süzgeç boş sonuç bağlantısı */
 #fm-root .gf-table .empty a{color:var(--accent);font-weight:700;text-decoration:underline}
 
-/* === PLAN16-F2: MUKELLEFLER SADE LISTE + ACILIR TANIM ALANI (kullanıcı kararı 2026-09-12) === */
-#fm-root .mk-tiles{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
-#fm-root .mk-tile{min-width:96px;padding:8px 12px 7px 13px;gap:1px}
-#fm-root .mk-tile .ftn{font-size:19px}
-#fm-root .mk-tile .ftl{font-size:11px}
+/* === PLAN16-F3: MUKELLEFLER — sayaclar sol/sag, 5 sutunlu sade tablo (kullanıcı kararı 2026-09-12) === */
+#fm-root .mk-sayaclar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+#fm-root .mk-sayac-grup{display:flex;gap:8px;flex-wrap:wrap}
+#fm-root .mk-sayac{display:inline-flex;align-items:center;gap:8px;height:38px;padding:0 14px 0 12px;border-radius:999px;border:1px solid var(--line);background:#fff;cursor:pointer;font-size:12px;font-weight:700;color:var(--muted);transition:border-color .12s,background .12s,box-shadow .12s;box-shadow:0 1px 2px rgba(16,24,40,.04)}
+#fm-root .mk-sayac::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--tc,var(--accent))}
+#fm-root .mk-sayac b{font-size:15px;font-weight:800;color:var(--text);font-variant-numeric:tabular-nums}
+#fm-root .mk-sayac:hover{border-color:var(--tc,var(--accent))}
+#fm-root .mk-sayac.on{border-color:var(--tc,var(--accent));background:color-mix(in srgb,var(--tc,var(--accent)) 10%,#fff);color:var(--tc,var(--accent));box-shadow:inset 0 0 0 1px var(--tc,var(--accent))}
+#fm-root .mk-sayac.on b{color:var(--tc,var(--accent))}
 #fm-root .mk-head h3 .mu{font-weight:400;color:var(--faint);font-size:12px}
-#fm-root .mk-twrap{overflow:auto;max-height:calc(100vh - 300px)}
-#fm-root .mk-table th{white-space:nowrap}
+#fm-root .mk-twrap{overflow:auto;max-height:calc(100vh - 250px)}
+#fm-root .mk-table{width:100%;border-collapse:separate;border-spacing:0;font-size:13px}
+#fm-root .mk-table th{text-align:left;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--th-text);background:var(--th);padding:10px 14px;border-bottom:1px solid var(--line);white-space:nowrap}
+#fm-root .mk-table td{padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:middle}
+#fm-root .mk-tr{cursor:pointer;transition:background .1s}
+#fm-root .mk-tr:hover td{background:#f8fafc}
+#fm-root .mk-tr.mk-sorunlu td:first-child{box-shadow:inset 3px 0 0 #e5484d}
+#fm-root .mk-kim{display:flex;align-items:center;gap:11px;min-width:0}
+#fm-root .mk-avatar{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;font-size:12px;font-weight:900;letter-spacing:.3px;flex-shrink:0;color:#fff}
+#fm-root .mk-avatar.isl{background:linear-gradient(135deg,#15803d,#22a35a)}
+#fm-root .mk-avatar.bil{background:linear-gradient(135deg,#6d28d9,#8b5cf6)}
+#fm-root .mk-avatar.bos{background:linear-gradient(135deg,#94a3b8,#b8c2d0)}
+#fm-root .mk-kim-tx{display:flex;flex-direction:column;min-width:0}
+#fm-root .mk-kim-tx b{font-size:13px;font-weight:800;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:420px}
+#fm-root .mk-kim-tx small{font-size:11px;color:var(--faint);font-weight:600}
+#fm-root .mk-profil{display:flex;gap:6px;flex-wrap:wrap}
 #fm-root .mk-pill{display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:999px;font-size:10.5px;font-weight:700;white-space:nowrap;border:1px solid transparent}
 #fm-root .mk-pill.isl{background:#ecfdf5;color:#15803d;border-color:#bbf7d0}
 #fm-root .mk-pill.bil{background:#f3f0ff;color:#6d28d9;border-color:#ddd6fe}
@@ -8473,11 +8521,21 @@ const CSS = `
 #fm-root .mk-tanimli i{width:18px;height:18px;border-radius:50%;display:grid;place-items:center;font-size:11px;font-style:normal;font-weight:900;color:#fff}
 #fm-root .mk-tanimli.ok{color:#15803d}#fm-root .mk-tanimli.ok i{background:#16a34a}
 #fm-root .mk-tanimli.uyar{color:#b91c1c}#fm-root .mk-tanimli.uyar i{background:#e5484d;box-shadow:0 0 0 3px #fee2e2}
+#fm-root .mk-donem{display:flex;gap:6px;flex-wrap:wrap}
+#fm-root .mk-say{display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:6px;font-size:11px;font-weight:700;white-space:nowrap}
+#fm-root .mk-say.bekleyen{background:#eff6ff;color:#1d4ed8}
+#fm-root .mk-say.onayli{background:#ecfdf5;color:#15803d}
+#fm-root .mk-say.luca{background:#f0fdfa;color:#0f766e}
+#fm-root .mk-say.sorunlu{background:#fef2f2;color:#b91c1c}
+#fm-root .mk-say.yok{color:var(--faint);font-weight:600;padding:0}
+#fm-root .mk-th-eylem{width:190px}
 #fm-root .mk-eylem{white-space:nowrap;text-align:right}
-#fm-root .mk-eylem .mkbtn{margin-left:6px}
-#fm-root .mkbtn.mk-duzenle.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+#fm-root .mk-eylem .btn{height:30px;padding:0 11px;font-size:12px;border-radius:8px;margin-left:6px;box-shadow:none}
+#fm-root .mk-eylem .btn.mk-ac{background:var(--accent-soft);color:var(--accent);border:1px solid var(--accent-line)}
+#fm-root .mk-eylem .btn.mk-ac:hover{background:var(--accent);color:#fff;border-color:var(--accent)}
+#fm-root .mk-eylem .btn.mk-duzenle.on{background:var(--accent);color:#fff;border-color:var(--accent)}
 #fm-root tr.mk-acik td{background:color-mix(in srgb,var(--accent) 6%,#fff)}
-#fm-root tr.mk-formrow td{padding:0 10px 14px 44px;background:color-mix(in srgb,var(--accent) 6%,#fff);cursor:default}
+#fm-root tr.mk-formrow td{padding:0 14px 14px 59px;background:color-mix(in srgb,var(--accent) 6%,#fff);cursor:default}
 #fm-root .mk-tanim{border:1px solid var(--accent-line);border-radius:12px;background:#fff;padding:14px 16px 12px;box-shadow:0 10px 24px -20px var(--accent)}
 #fm-root .mk-tanim-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px 16px}
 #fm-root .mk-alan{display:flex;flex-direction:column;gap:5px;min-width:0}
@@ -8634,74 +8692,94 @@ const CSS = `
 #fm-root .kt-kisayol{display:inline-flex;gap:6px;align-items:center}
 #fm-root .kt-kisayol .btn.sm{padding:4px 9px;font-size:11px;gap:5px}
 /* === PLAN16-E: BELGE AKISI === */
-/* Üst canlı sayaç şeridi (.ftile kalıbı; renk --tc) */
-#fm-root .filttiles.ak-tiles{margin:4px 0 12px;gap:8px}
-#fm-root .ak-tile{min-width:150px}
-#fm-root .ak-tile .ftn{font-size:21px}
-#fm-root .ak-tile .ftl{font-size:11.5px}
-#fm-root .ak-tile.on{box-shadow:inset 0 0 0 2px var(--tc,var(--accent)),0 10px 22px -14px var(--tc,var(--accent))}
-/* Akış durmuş — kırmızı uyarı kartı (liste üstünde): gradyan şerit + radial parıltı; ada tıkla → süz */
-#fm-root .ak-durmus{position:relative;overflow:hidden;margin:0 0 12px;padding:11px 14px 12px;border:1px solid #f3c0c0;border-radius:12px;background:linear-gradient(90deg,#dc2626,#f97316 70%,#fbbf24) top/100% 3px no-repeat,radial-gradient(circle at 100% 0%,rgba(220,38,38,.14),transparent 42%),linear-gradient(135deg,#fff3f3 0%,#fff 55%,#fff7f5 100%);box-shadow:0 14px 30px -26px #dc2626}
-#fm-root .ak-durmus-h{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;font-size:12.5px;color:#7f1d1d}
-#fm-root .ak-durmus-h b{font-size:13.5px;font-weight:800;color:#991b1b}
-#fm-root .ak-durmus-ic{width:24px;height:24px;border-radius:8px;display:grid;place-items:center;background:#fdeaea;color:#b91c1c;border:1px solid #f3c0c0;flex-shrink:0}
-#fm-root .ak-durmus-s{color:#9f3a3a;font-size:11.5px}
-#fm-root .ak-durmus-list{display:flex;flex-wrap:wrap;gap:6px}
-#fm-root .ak-durmus-chip{display:inline-flex;align-items:center;gap:7px;height:26px;padding:0 6px 0 10px;border-radius:999px;border:1px solid #f3c0c0;background:#fff;color:#7f1d1d;font-family:inherit;font-size:11.5px;font-weight:700;cursor:pointer;max-width:280px;transition:background .12s,border-color .12s,box-shadow .12s}
-#fm-root .ak-durmus-chip .ak-durmus-ad{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#fm-root .ak-durmus-chip i{font-style:normal;font-size:10px;font-weight:800;color:#fff;background:#dc2626;border-radius:999px;padding:2px 7px;line-height:1.2;flex-shrink:0}
-#fm-root .ak-durmus-chip:hover{background:#fdeaea;border-color:#e59a9a}
-#fm-root .ak-durmus-chip.on{background:#dc2626;border-color:#dc2626;color:#fff;box-shadow:0 8px 16px -10px #dc2626}
-#fm-root .ak-durmus-chip.on i{background:#fff;color:#dc2626}
-/* Sekme hapları (her sekmede süzgeçsiz toplam) */
-#fm-root .ak-tabs{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 10px}
-#fm-root .ak-tab{display:inline-flex;align-items:center;gap:7px;height:32px;padding:0 13px;border-radius:999px;border:1.5px solid var(--line2);background:#fff;color:#34415a;font-family:inherit;font-size:12.5px;font-weight:700;cursor:pointer;transition:background .12s,border-color .12s,color .12s,box-shadow .12s}
+/* Sade düzen (2026-09-12): sayaç kartı YOK, alt çubuk YOK, sticky YOK; haplar küçük (20px, 10.5px); petrol accent. */
+/* Akış durmuş — ince amber bilgi bandı; "listeyi gör" → altında kaydırılabilir liste; ada tıkla → yerel mükellef süzgeci */
+#fm-root .ak-band{margin:0 0 10px;padding:7px 12px;border:1px solid #f3d9a4;border-radius:9px;background:#fff7e6;color:#7c4a03;font-size:12px}
+#fm-root .ak-band-h{display:flex;align-items:center;gap:6px;flex-wrap:wrap;line-height:1.4}
+#fm-root .ak-band-h b{font-weight:800;color:#92400e}
+#fm-root .ak-band-ic{color:#b45309;font-size:13px;line-height:1}
+#fm-root .ak-band-sep{color:#c99a4a}
+#fm-root .ak-link{border:0;background:none;color:var(--accent);font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;text-decoration:underline;text-underline-offset:2px;padding:0 2px;white-space:nowrap}
+#fm-root .ak-link:hover{color:#0f766e}
+#fm-root .ak-link.amber{color:#92400e}
+#fm-root .ak-link.amber:hover{color:#7c2d12}
+#fm-root .ak-band-list{display:flex;flex-wrap:wrap;gap:4px;max-height:132px;overflow:auto;margin-top:7px;padding-top:7px;border-top:1px dashed #f3d9a4}
+#fm-root .ak-band-row{display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 4px 0 8px;border-radius:999px;border:1px solid #f3d9a4;background:#fff;color:#7c4a03;font-family:inherit;font-size:11px;font-weight:700;cursor:pointer;max-width:260px;transition:background .12s,border-color .12s}
+#fm-root .ak-band-row span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#fm-root .ak-band-row i{font-style:normal;font-size:10px;font-weight:800;color:#92400e;background:#fdecc8;border-radius:999px;padding:1px 6px;line-height:1.3;flex-shrink:0}
+#fm-root .ak-band-row:hover{border-color:#d9a441;background:#fffbf2}
+#fm-root .ak-band-row.on{background:#b45309;border-color:#b45309;color:#fff}
+#fm-root .ak-band-row.on i{background:rgba(255,255,255,.25);color:#fff}
+/* Sekme hapları (ofis geneli sayılar) + sağda küçük sayaç çipleri (yalnız >0; tıkla: durum süzgeci) */
+#fm-root .ak-tabs{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0 0 10px}
+#fm-root .ak-tab{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border-radius:999px;border:1.5px solid var(--line2);background:#fff;color:#34415a;font-family:inherit;font-size:12.5px;font-weight:700;cursor:pointer;transition:background .12s,border-color .12s,color .12s,box-shadow .12s}
 #fm-root .ak-tab b{font-size:10.5px;font-weight:800;padding:1px 7px;border-radius:999px;background:#eef1f5;color:var(--muted);line-height:1.4;font-variant-numeric:tabular-nums}
 #fm-root .ak-tab:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
 #fm-root .ak-tab.on{background:var(--accent);border-color:var(--accent);color:#fff;box-shadow:0 8px 16px -10px var(--accent)}
 #fm-root .ak-tab.on b{background:rgba(255,255,255,.22);color:#fff}
-/* Araç çubuğu: süzgeçler (tek satır, sarmalanır) · toplu düğmeler + sayfalama (altta çubuk YOK) */
+#fm-root .ak-sayac{margin-left:auto;display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--muted);padding-left:6px}
+#fm-root .ak-sayac-item{display:inline-flex;align-items:center;gap:6px}
+#fm-root .ak-sayac-sep{color:var(--faint)}
+#fm-root .ak-sayac-cip{border:0;background:none;padding:0 2px;font-family:inherit;font-size:11.5px;font-weight:600;cursor:pointer;color:var(--muted);white-space:nowrap;border-radius:6px}
+#fm-root .ak-sayac-cip b{font-weight:800;font-variant-numeric:tabular-nums}
+#fm-root .ak-sayac-cip.cyan b{color:#0891b2}
+#fm-root .ak-sayac-cip.mor b{color:#7c3aed}
+#fm-root .ak-sayac-cip.kirmizi b{color:#dc2626}
+#fm-root .ak-sayac-cip:hover,#fm-root .ak-sayac-cip.on{text-decoration:underline;text-underline-offset:2px}
+#fm-root .ak-sayac-cip.on{color:var(--text)}
+/* Araç çubuğu (tek satır, sarmalanır): seçim+toplu · arama · zaman hapları · yön hapları · mükellef · temizle ··· durum · sayfalama */
 #fm-root .card.ak-card{overflow:hidden}
-#fm-root .card .ch.ak-bar{gap:8px;padding:10px 12px;background:#fbfcfe}
-#fm-root .ak-bar .fmdd-btn{height:34px}
-#fm-root .ak-dates{padding:1px 8px}
-#fm-root .ak-dates input{height:30px;font-size:12px}
-#fm-root .sq-search.ak-search{min-width:210px;height:34px}
-#fm-root .ak-link{border:0;background:none;color:var(--accent);font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;text-decoration:underline;text-underline-offset:2px;padding:0 4px;white-space:nowrap}
-#fm-root .ak-link:hover{color:#0f766e}
-#fm-root .ak-bulk{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 12px;border-bottom:1px solid var(--line);background:#fff}
-#fm-root .ak-selinfo{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--text);padding:0 4px}
+#fm-root .card .ch.ak-bar{gap:8px;padding:9px 12px;background:#fbfcfe}
+#fm-root .ak-bar .fmdd-btn{height:30px;font-size:12px;padding:0 9px}
+#fm-root .ak-sel{display:inline-flex;align-items:center;gap:6px;padding:3px 6px 3px 9px;border-radius:9px;background:var(--accent-soft);border:1px solid var(--accent-line)}
+#fm-root .ak-selinfo{font-size:12px;color:var(--text);white-space:nowrap}
 #fm-root .ak-selinfo b{color:var(--accent);font-weight:800}
-#fm-root .ak-clear{border:1px solid var(--line2);background:#fff;color:var(--muted);border-radius:999px;width:20px;height:20px;font-size:11px;line-height:1;cursor:pointer;display:grid;place-items:center}
-#fm-root .ak-clear:hover{border-color:var(--accent);color:var(--accent)}
-#fm-root .ak-bulk .btn.ak-sil{background:#fff;color:#b91c1c;border:1px solid #f3c0c0}
-#fm-root .ak-bulk .btn.ak-sil:hover:not(:disabled){background:#fdeaea;border-color:#e59a9a;color:#991b1b;filter:none}
-#fm-root .ak-pg{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
-#fm-root .ak-pgbtn{width:30px;height:30px;border-radius:8px;border:1px solid var(--line2);background:#fff;color:#34415a;font-size:16px;line-height:1;cursor:pointer;display:grid;place-items:center;transition:border-color .12s,color .12s,background .12s}
+#fm-root .ak-sep{color:var(--faint);font-size:12px}
+#fm-root .ak-x{border:1px solid var(--line2);background:#fff;color:var(--muted);border-radius:999px;width:18px;height:18px;font-size:10px;line-height:1;cursor:pointer;display:grid;place-items:center;padding:0}
+#fm-root .ak-x:hover{border-color:var(--red);color:var(--red)}
+#fm-root .ak-sel .btn.sm{padding:4px 9px;font-size:11.5px;gap:4px}
+#fm-root .ak-sel .btn.ak-sil{color:#b91c1c;border-color:#f3c0c0}
+#fm-root .ak-sel .btn.ak-sil:hover:not(:disabled){background:#fdeaea;border-color:#e59a9a;color:#991b1b}
+#fm-root .sq-search.ak-search{min-width:200px;height:30px;padding:0 9px;flex:1 1 200px;max-width:320px}
+#fm-root .sq-search.ak-search input{font-size:12px}
+#fm-root .ak-haplar{display:inline-flex;align-items:center;gap:2px;padding:2px;border-radius:999px;background:#eef1f5}
+#fm-root .ak-hap{height:22px;padding:0 9px;border-radius:999px;border:0;background:none;color:#4b5563;font-family:inherit;font-size:11.5px;font-weight:700;cursor:pointer;white-space:nowrap;transition:background .12s,color .12s,box-shadow .12s}
+#fm-root .ak-hap:hover{color:var(--accent)}
+#fm-root .ak-hap.on{background:#fff;color:var(--accent);box-shadow:0 1px 3px rgba(15,23,42,.14)}
+#fm-root .ak-hap.alis.on{color:#2563eb}
+#fm-root .ak-hap.satis.on{color:#15803d}
+#fm-root .ak-pg{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:700;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+#fm-root .ak-pgbtn{width:26px;height:26px;border-radius:7px;border:1px solid var(--line2);background:#fff;color:#34415a;font-size:15px;line-height:1;cursor:pointer;display:grid;place-items:center;padding:0;transition:border-color .12s,color .12s,background .12s}
 #fm-root .ak-pgbtn:hover:not(:disabled){border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
 #fm-root .ak-pgbtn:disabled{opacity:.4;cursor:default}
-/* Tablo: kendi kabında kayar; sticky YOK; haplar/rozetler küçük (20px, 10-10.5px) */
+/* Tablo (7 sütun): kendi kabında kayar; sticky YOK; çift satır hücreler (alt satır küçük gri) */
 #fm-root .ak-twrap{overflow:auto;transition:opacity .15s}
 #fm-root .ak-twrap.ak-loading{opacity:.55}
-#fm-root .ak-table tbody td{vertical-align:middle}
-#fm-root .ak-table .sq-src{height:20px;padding:0 7px 0 2px;gap:5px;font-size:10px;font-weight:700;letter-spacing:0}
-#fm-root .ak-table .sq-src i{width:15px;height:15px;font-size:7px}
-#fm-root .ak-table .pill.ak-pill{font-size:10.5px;padding:2px 8px;border-radius:999px;line-height:1.4}
-#fm-root .ak-mkbtn{border:0;background:none;font-family:inherit;font-size:12.5px;font-weight:700;color:#0e1726;cursor:pointer;padding:0;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left}
-#fm-root .ak-mkbtn:hover{color:var(--accent);text-decoration:underline;text-underline-offset:2px}
-#fm-root .ak-mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11px;color:#475569;max-width:180px;overflow:hidden;text-overflow:ellipsis}
-#fm-root .ak-zaman{font-variant-numeric:tabular-nums;color:#475569}
+#fm-root .ak-table{min-width:860px}
+#fm-root .ak-table tbody td{vertical-align:middle;padding-top:9px;padding-bottom:9px}
+#fm-root .ak-table td b{display:block;font-weight:600;color:#0e1726;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#fm-root .ak-table td small{display:block;font-size:10.5px;color:var(--faint);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-variant-numeric:tabular-nums}
+#fm-root td.ak-belge{max-width:230px}
+#fm-root .ak-mono{display:block;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11.5px;color:#334155;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#fm-root .ak-alt{display:flex;align-items:center;gap:5px;margin-top:3px}
+#fm-root .ak-table .sq-src{height:20px;padding:0 7px 0 2px;gap:5px;font-size:10px;font-weight:700;letter-spacing:0;max-width:150px;overflow:hidden;text-overflow:ellipsis}
+#fm-root .ak-table .sq-src i{width:15px;height:15px;font-size:7px;flex-shrink:0}
+#fm-root .ak-yon{display:inline-flex;align-items:center;height:20px;padding:0 7px;border-radius:999px;font-size:10.5px;font-weight:700;line-height:1}
+#fm-root .ak-yon.alis{background:#eaf1ff;color:#2563eb}
+#fm-root .ak-yon.satis{background:#e7f6ec;color:#15803d}
+#fm-root td.ak-mk{max-width:200px}
 #fm-root td.ak-firm{max-width:210px}
+#fm-root td.ak-tarih{color:#334155;font-variant-numeric:tabular-nums}
+#fm-root td.ak-tutar{font-weight:600;color:#0e1726}
 #fm-root td.ak-durumcell{max-width:220px}
 #fm-root .ak-durum{display:inline-flex;align-items:center;gap:5px;height:20px;padding:0 8px;border-radius:999px;border:1px solid;font-size:10.5px;font-weight:800;white-space:nowrap;line-height:1}
 #fm-root .ak-durum::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0}
-#fm-root .ak-altnot{display:block;font-size:10.5px;color:var(--faint);margin-top:2px;line-height:1.2}
+#fm-root .ak-durum.okunuyor::before{animation:fmrowpulse 1.2s ease-in-out infinite}
 #fm-root .ak-table .uycips{max-width:210px;margin-top:4px;cursor:default}
-#fm-root th.ak-actcol{text-align:left}
-#fm-root td.ak-actcol{padding-top:7px;padding-bottom:7px}
-#fm-root .ak-acts{display:flex;flex-wrap:wrap;gap:4px;min-width:236px}
-#fm-root .ak-silcell b{display:block;font-weight:700;font-size:12px;color:#7f1d1d;font-variant-numeric:tabular-nums}
-#fm-root .ak-silcell small{display:block;font-size:10.5px;color:var(--faint)}
-#fm-root .foot.ak-foot{padding:10px 16px}
+#fm-root td.ak-actcell{padding-top:7px;padding-bottom:7px}
+#fm-root .ak-acts{display:flex;flex-wrap:nowrap;gap:4px}
+#fm-root .ak-acts .gf-act{height:23px;padding:0 8px;font-size:11px}
+#fm-root td.ak-silcell{font-size:11.5px;color:#7f1d1d;font-variant-numeric:tabular-nums}
+#fm-root .foot.ak-foot{padding:9px 16px}
 #fm-root .ak-foot .selinfo{font-size:12px;color:var(--muted)}
 `;
