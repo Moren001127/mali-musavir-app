@@ -76,7 +76,9 @@ describe('ses-koordinator — sesli cevap', () => {
 
   it('zaman aşımında kısa "hâlâ çalışıyorum" der', () => {
     const c = sesCevabiOlustur({ rapor: '', kuruTestSayisi: 0, onayBekleyen: [], dryRun: true, zamanAsimi: true });
-    expect(c).toMatch(/Hâlâ çalışıyorum/);
+    // 2026-09-12: ilk-cevap sınırı → 'iletildi, sonucu gelince söyleyeceğim' (sessiz bekleme yerine)
+    expect(c).toMatch(/ilettim/);
+    expect(c).toMatch(/söyleyeceğim/);
     expect(c.length).toBeLessThan(200);
   });
 

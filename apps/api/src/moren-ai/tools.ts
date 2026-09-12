@@ -280,7 +280,9 @@ export const MOREN_AI_TOOLS: ToolDefinition[] = [
     name: 'get_mizan',
     description:
       'Belirli dönem mizanını getirir: tüm hesap kodları, borç/alacak toplamı ve bakiyesi, anomaliler (TDHP dışı hesap, zıt bakiye). ' +
-      'Hesap bazlı sorgular, toplam analiz, hata tespiti için kullan. donem formatı: "2026-03" (aylık) veya "2026-Q1" (geçici dönem).',
+      'Hesap bazlı sorgular, toplam analiz, hata tespiti için kullan. donem formatı: "2026-03" (aylık) veya "2026-Q1" (geçici dönem). ' +
+      // 2026-09-12: 100 hesap tavanı kalktı (144 hesaplık mizanda 44 hesap ajana görünmüyordu → Denetçi görmediği hesabı uydurdu).
+      'Varsayılan tek seferde 400 hesap; daha kalabalık mizanda truncated:true + toplamHesap döner → hesapKodu öneki ya da sayfa ile daralt.',
     input_schema: {
       type: 'object',
       properties: {
@@ -289,7 +291,16 @@ export const MOREN_AI_TOOLS: ToolDefinition[] = [
         hesapKoduFiltresi: {
           type: 'string',
           description:
-            'Opsiyonel: belirli hesap koduyla başlayan satırları getir. Örn "1" = dönen varlıklar, "600" = satışlar, "770" = gen. yön. gid.',
+            'Opsiyonel: belirli hesap koduyla başlayan satırları getir. Örn "1" = dönen varlıklar, "600" = satışlar, "770" = gen. yön. gid. ' +
+            'Birden çok önek için virgülle ayır ("100,102,131") ya da dizi ver.',
+        },
+        hesapKodu: {
+          type: 'string',
+          description: 'hesapKoduFiltresi ile aynı: hesap kodu öneki ("136" → 136 ve tüm alt hesapları). Virgülle çoklu önek olur.',
+        },
+        sayfa: {
+          type: 'number',
+          description: 'Opsiyonel sayfa numarası (1\'den başlar). Çıktıda truncated:true görürsen sayfa:2, 3… ile devam et.',
         },
       },
       required: ['taxpayerId', 'donem'],
@@ -494,17 +505,24 @@ export const MOREN_AI_TOOLS: ToolDefinition[] = [
     name: 'compare_periods',
     description:
       'İki dönemi karşılaştırır — gelir tablosu, bilanço veya mizan özelinde. Brüt satışlar, kâr, özkaynak gibi ' +
-      'kalemlerde değişim yüzdesi ve mutlak fark. "Geçen yılla kıyasla", "Q1 vs Q2" tarzı sorular için.',
+      'kalemlerde değişim yüzdesi ve mutlak fark. "Geçen yılla kıyasla", "Q1 vs Q2" tarzı sorular için. ' +
+      // 2026-09-12: bilanco/mizan boş dönüyordu; artık hesap/kalem bazında en büyük 30 fark + toplamlar döner.
+      'bilanco → grup ve hesap kırılımı, mizan → hesap kodu bazında bakiye farkı (enBuyukFarklar: en büyük 30 fark, toplamlar). ' +
+      'Kaynak değeri KÜÇÜK HARF: gelir_tablosu | bilanco | mizan. Dönem biçimi: YYYY-MM ya da YYYY-Qn.',
     input_schema: {
       type: 'object',
       properties: {
         taxpayerId: { type: 'string' },
-        donem1: { type: 'string', description: 'İlk dönem (önceki, kıyaslama tabanı)' },
-        donem2: { type: 'string', description: 'İkinci dönem (yeni, kıyaslanan)' },
+        donem1: { type: 'string', description: 'İlk dönem (önceki, kıyaslama tabanı): "2026-Q1", "2026-03"' },
+        donem2: { type: 'string', description: 'İkinci dönem (yeni, kıyaslanan): "2026-Q2", "2026-06"' },
         kaynak: {
           type: 'string',
           enum: ['gelir_tablosu', 'bilanco', 'mizan'],
-          description: 'Karşılaştırılacak tablo tipi',
+          description: 'Karşılaştırılacak tablo tipi (küçük harf): gelir_tablosu | bilanco | mizan',
+        },
+        hesapKoduFiltresi: {
+          type: 'string',
+          description: 'Opsiyonel (yalnız mizan): hesap kodu öneki, ör. "6" = gelir tablosu hesapları. Virgülle çoklu önek olur.',
         },
       },
       required: ['taxpayerId', 'donem1', 'donem2', 'kaynak'],
@@ -515,12 +533,16 @@ export const MOREN_AI_TOOLS: ToolDefinition[] = [
     description:
       'Bir mükellefin dönemindeki finansal rasyolarını hesaplar: cari oran, asit-test, nakit oran, borçluluk oranı, ' +
       'özkaynak çarpanı, brüt kâr marjı, net kâr marjı, faaliyet kâr marjı, özkaynak kârlılığı (ROE), aktif kârlılığı (ROA). ' +
-      'Formül + değer + yorum (sağlıklı/dikkat/risk).',
+      'Formül + değer + yorum (sağlıklı/dikkat/risk). ' +
+      // 2026-09-12: çeyrek (geçici vergi) dönemi kabul edilir; bilanço/gelir tablosu yoksa mevcut dönemler listelenir.
+      'Dönem: "2026-Q2" (geçici vergi/çeyrek), "2026-06" (aylık) ya da donem:"Q2" + yil:2026. ' +
+      'Bilanço ya da gelir tablosu o dönem için yoksa hangi dönemlerin mevcut olduğunu söyler — rakam uydurma.',
     input_schema: {
       type: 'object',
       properties: {
         taxpayerId: { type: 'string' },
-        donem: { type: 'string' },
+        donem: { type: 'string', description: '"2026-Q2", "2026-06" ya da "Q2" (yil ile birlikte)' },
+        yil: { type: 'number', description: 'Opsiyonel: donem yalnız "Q2" gibi verildiyse yıl (ör. 2026)' },
       },
       required: ['taxpayerId', 'donem'],
     },

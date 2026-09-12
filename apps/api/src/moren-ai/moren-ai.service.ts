@@ -13,6 +13,7 @@ import { claudeTextViaMax, isMaxAvailable, MAX_MODEL_CHEAP } from '../common/max
 import { sablonForTool, sablonZatenVar } from './whatsapp-sablon';
 import {
   canliModIstendi,
+  SES_KOORDINATOR_ILK_CEVAP_MS,
   SES_KOORDINATOR_ZAMAN_ASIMI_MS,
   sesCevabiOlustur,
   sesGoreviOlustur,
@@ -332,6 +333,9 @@ export interface ChatResponse {
   conversationId: string;
   assistantMessage: string;
   toolUses: Array<{ name: string; input: any; result: any }>;
+  /** Sesli koordinatör yolu: koşu ilk-cevap sınırında bitmedi, arka planda sürüyor → istemci iş dosyasını izler. */
+  asenkron?: boolean;
+  isId?: string;
   usage: {
     inputTokens: number;
     outputTokens: number;
@@ -1078,10 +1082,11 @@ export class MorenAiService {
       },
     });
 
-    // 90 sn yarış: koşu kazanırsa tam cevap; süre dolarsa "hâlâ çalışıyorum" + arka planda bitiş.
+    // İLK CEVAP yarışı (2026-09-12): 90 sn sessizlik sahibi rahatsız ediyordu → 25 sn içinde bitmezse "iletildi, dönüş yapacağım"
+    //   + asenkron:true/isId; istemci iş dosyasını izleyip sonucu seslendirir. Eski 90 sn sabiti yalnız üst sınır belgesi olarak kalır.
     let zamanlayici: NodeJS.Timeout | null = null;
     const zamanAsimi = new Promise<'zaman-asimi'>((resolve) => {
-      zamanlayici = setTimeout(() => resolve('zaman-asimi'), SES_KOORDINATOR_ZAMAN_ASIMI_MS);
+      zamanlayici = setTimeout(() => resolve('zaman-asimi'), Math.min(SES_KOORDINATOR_ILK_CEVAP_MS, SES_KOORDINATOR_ZAMAN_ASIMI_MS));
     });
     const sonuc = await Promise.race([kosu, zamanAsimi]).finally(() => {
       if (zamanlayici) clearTimeout(zamanlayici);
@@ -1135,10 +1140,12 @@ export class MorenAiService {
           await asistanMesajiKaydet(`Koordinatör tamamladı (iş dosyası: ${s.isId || isId}). ${tam}`, modelEtiketi(s.model), s, s.durationMs);
         })
         .catch((e: any) => this.logger.warn(`[SES→KOORDİNATÖR] arka plan koşu hatası: ${e?.message || e}`));
-      this.logger.warn(`[SES→KOORDİNATÖR] 90 sn aşıldı, iş arka planda sürüyor: ${isId || '-'}`);
+      this.logger.log(`[SES→KOORDİNATÖR] ilk cevap sınırı (${Math.round(SES_KOORDINATOR_ILK_CEVAP_MS / 1000)} sn) aşıldı, iş arka planda sürüyor: ${isId || '-'}`);
       return {
         conversationId: conversation.id,
         assistantMessage: text,
+        asenkron: true,
+        isId: isId || undefined,
         toolUses: akis.filter((e) => e.type === 'tool').map((e: any) => ({ name: e.name, input: e.args, result: null })),
         usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: 0, durationMs, model: modelEtiketi('sonnet') },
       };

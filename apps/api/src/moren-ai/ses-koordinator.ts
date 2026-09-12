@@ -15,6 +15,10 @@ export function sesKoordinatorAcik(env: NodeJS.ProcessEnv = process.env): boolea
 
 /** Koordinatör koşusu için sesli bekleme tavanı; aşınca "hâlâ çalışıyorum" denir, iş arka planda biter. */
 export const SES_KOORDINATOR_ZAMAN_ASIMI_MS = 90_000;
+/** SESLİ İLK CEVAP SINIRI (kullanıcı bulgusu 2026-09-12: "soruyorum, bekliyor bekliyor, bana hiçbir şey demiyor; ekibin cevabı çok geç").
+ *  Koşu bu sürede bitmezse sesli katman "iletildi, kontrol ettirip dönüş yapacağım" der ve iş arka planda sürer;
+ *  istemci iş dosyasını izleyip sonucu gelince seslendirir (asenkron:true + isId). env: SES_KOORDINATOR_ILK_CEVAP_MS (varsayılan 25000). */
+export const SES_KOORDINATOR_ILK_CEVAP_MS = Math.max(8_000, Number(process.env.SES_KOORDINATOR_ILK_CEVAP_MS || 25_000) || 25_000);
 
 /** Sesli cevap tavanı (karakter) — compactFinalAnswer(voiceMode) ile aynı ölçek. */
 const SES_CEVAP_TAVAN = 420;
@@ -120,7 +124,9 @@ export function sesCevabiOlustur(o: SesKosuOzeti): string {
   if (!o.dryRun) parcalar.push('CANLI modda.');
 
   if (o.zamanAsimi) {
-    parcalar.push('Hâlâ çalışıyorum; sonucu iş dosyasına yazıyorum. Bitince mesajlaşma ekranında görürsünüz.');
+    parcalar.push(o.dryRun === false
+      ? 'İsteğinizi ekibe ilettim, canlı modda üzerinde çalışıyorlar; sonucu gelir gelmez size söyleyeceğim.'
+      : 'İsteğinizi ekibe ilettim, kontrol ettiriyorum; sonucu gelir gelmez size söyleyeceğim.');
     return parcalar.join(' ');
   }
 

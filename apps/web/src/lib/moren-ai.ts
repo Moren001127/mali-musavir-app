@@ -28,6 +28,9 @@ export interface ChatResponse {
   conversationId: string;
   assistantMessage: string;
   toolUses: Array<{ name: string; input: any; result: any }>;
+  /** Sesli koordinatör: koşu ilk-cevap sınırında bitmedi; iş dosyası (isId) izlenip sonuç sonradan seslendirilir. */
+  asenkron?: boolean;
+  isId?: string;
   usage: {
     inputTokens: number;
     outputTokens: number;

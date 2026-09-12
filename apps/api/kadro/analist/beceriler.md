@@ -4,7 +4,7 @@
 1. `get_taxpayer` → sektör, defter türü, stoklu mu.
 2. Veri: bilanço → `get_gelir_tablosu` + `get_bilanco` + `calculate_financial_ratios` + `compare_periods` (önceki dönem/geçen yıl aynı dönem); işletme → `get_isletme_hesap_ozeti`.
    - 2a. `get_gelir_tablosu` / `get_bilanco` "bulunamadı" dönerse Koordinatör'e sorma; `get_mizan` (hesapKoduFiltresi "6") ile türet: ciro = 600 (+601/602) alacak bakiyesi − 610/611/612, SMM = 621+622, brüt kâr = ciro − SMM, dönem kârı = "6" kök hesabının alacak bakiyesi. Çeyrek tutarı = kümülatif(Q2) − kümülatif(Q1). Raporda "mizandan türetildi" yaz.
-   - 2b. `compare_periods` kaynak değeri KÜÇÜK HARF: gelir_tablosu | bilanco | mizan. Dönem: 2026-Q1 / 2026-Q2. Kaynak belge yoksa hata döner; o zaman iki dönemi `get_mizan` ile ayrı çek.
+   - 2b. `compare_periods` kaynak değeri KÜÇÜK HARF: gelir_tablosu | bilanco | mizan. Dönem: 2026-Q1 / 2026-Q2. `bilanco` → grup/hesap kırılımı, `mizan` → hesap kodu bazında bakiye farkı (`enBuyukFarklar` en büyük 30 fark + `toplamlar`; `hesapKoduFiltresi` "6" ile gelir hesaplarına daralt). Gelir tablosu/bilanço yoksa hata mevcut dönemleri listeler; o zaman kaynak:"mizan" ile karşılaştır (iki dönemi ayrı çekmene gerek yok).
 3. `list_tax_payable` → yıl içi ödenen geçici vergi; `get_kdv_summary` → KDV yükü eğilimi.
    - 3a. `get_kdv_summary` aylık ister (YYYY-MM): çeyrek için 3 ayı ayrı çağır. İşletme defteri DEĞİLSE `get_isletme_hesap_ozeti` çağırma.
 4. `get_gundem` → TÜFE, kur (gerçek büyüme düzeltmesi).

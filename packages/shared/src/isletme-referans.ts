@@ -99,11 +99,17 @@ const GIDER_BELGE: IsletmeRefItem[] = [
   { kod: '3', ad: 'Perakende Satış Fişi' }, { kod: '5', ad: 'Gider Pusulası' }, { kod: '4', ad: 'Serbest Meslek Makbuzu' },
   { kod: '13', ad: 'e-Serbest Meslek Makbuzu' }, { kod: '18', ad: 'e-Bilet' }, { kod: '19', ad: 'Yolcu Taşıma Bileti' }, { kod: '8', ad: 'Diğer' },
 ];
-const GIDER_AS: IsletmeRefItem[] = [{ kod: '1', ad: 'Normal Alım' }, { kod: '2', ad: 'Satıştan İade' }];
+// PLAN/15 Faz 3 (#38, 2026-09-12): "Sabit Kıymet Satış Zararı" DBS'de alış türü + kayıt türü + alt tür olarak
+//   üçü de aynı adla var (defterbeyan.gov.tr yardım: Gider ekle → belge türü Diğer → alış türü / kayıt türü / alt tür
+//   "Sabit Kıymet Satış Zararı"). Mihsap yakalamasında yoktu → liste sonuna eklendi. KODLAR portal-içi (CSV ada çevirir;
+//   luca-excel.service adOf/kayitAltAdResolved) — DBS'nin resmi sayısal kodu bilinmiyor, çakışmayan değer seçildi.
+const GIDER_AS: IsletmeRefItem[] = [{ kod: '1', ad: 'Normal Alım' }, { kod: '2', ad: 'Satıştan İade' }, { kod: '3', ad: 'Sabit Kıymet Satış Zararı' }];
 const GIDER_KAYIT: IsletmeRefItem[] = [
   { kod: '1', ad: 'Mal Alışı' }, { kod: '4', ad: 'İndirilecek Giderler (GVK Md. 40)' },
   { kod: '5', ad: 'Gider Kabul Edilmeyen Ödemeler (GVK Md. 41)' }, { kod: '13', ad: 'Sabit Kıymet Alışı' }, { kod: '10', ad: 'Sabit Kıymet Ek Maliyet' },
+  { kod: '20', ad: 'Sabit Kıymet Satış Zararı' },
 ];
+const GIDER_ALT_SABIT_SATIS_ZARARI: IsletmeRefItem[] = [{ kod: '600', ad: 'Sabit Kıymet Satış Zararı' }];
 const GIDER_ALT_MAL: IsletmeRefItem[] = [{ kod: '186', ad: 'Mal Alışı' }, { kod: '164', ad: 'Dönem Başı Emtia' }];
 const GIDER_ALT_SABIT_EK: IsletmeRefItem[] = [
   { kod: '249', ad: 'Sabit Kıymetin Ekonomik Faydasını Artıran Bakım Onarım ve Ek Harcamalar' },
@@ -219,7 +225,53 @@ export function getKayitAltList(invoiceKind: string | null | undefined, kayitTur
   if (kt === '5') return GIDER_ALT_GKEG;
   if (kt === '13') return GIDER_ALT_SABIT;
   if (kt === '10') return GIDER_ALT_SABIT_EK;
+  if (kt === '20') return GIDER_ALT_SABIT_SATIS_ZARARI;
   return [];
+}
+
+// Ad eşleştirme anahtarı: Türkçe küçük harf → ascii, "(GVK 40/1)" / "(GVK Md. 40)" gibi parantez etiketleri at,
+//   boşluk/noktalama sil. "İndirilecek Giderler (GVK Md. 40)" ↔ "indirilecek giderler" aynı anahtara iner.
+function adAnahtar(s: string): string {
+  return asciiTr(String(s || '').replace(/\([^)]*\)/g, ' ')).replace(/[^a-z0-9]+/g, '');
+}
+
+export type IsletmeKodCozum = {
+  kayitTuruKod: string; kayitTuruAd: string;
+  kayitAltKod: string; kayitAltAd: string;
+  /** Alt tür verildiyse listede bulundu mu (verilmediyse true). Okuyan katı olmak isterse buna bakar. */
+  altCozuldu: boolean;
+};
+
+/**
+ * PLAN/15 Faz 3 (#6, 2026-09-12) — Kayıt türü / alt türü AD ya da KOD olarak gelir, KODA çevirir.
+ *   • Eski öğrenme kayıtları (vendorMemoryDecision kararTipi='isletme') AD yazılmıştı ("Diğer Hasılat") → kod değildi diye
+ *     pickIsletmeMemory hepsini eliyordu (canlıda 38 kayıt ölüydü). AI cevabı da AD döner (islPromptSeg).
+ *   • Eşleşme: önce tam kod, sonra tam ad (normalize), sonra kapsama (liste adı ⊇ verilen ya da tersi; ilk eşleşen — liste sırası).
+ *   • Kayıt türü çözülemezse null. Alt tür: verilmediyse '' (altCozuldu=true); verilip bulunamazsa '' + altCozuldu=false
+ *     (çağıran katı olmak isterse kaydı yok sayar — hafıza yolu böyle; AI yolu deterministik alt'a düşer).
+ */
+export function isletmeKodCoz(invoiceKind: string | null | undefined, kayitTuruAdVeyaKod?: string | null, kayitAltAdVeyaKod?: string | null): IsletmeKodCozum | null {
+  const ref = isletmeRef(invoiceKind);
+  const ktRaw = String(kayitTuruAdVeyaKod || '').trim();
+  if (!ktRaw) return null;
+  const tamAnahtar = (s: string) => asciiTr(s).replace(/[^a-z0-9]+/g, ''); // parantez dahil (eski islNorm davranışı — "GVK 40" gibi kısaltma da tutsun)
+  const bul = (list: IsletmeRefItem[], raw: string): IsletmeRefItem | null => {
+    if (/^\d+$/.test(raw)) return list.find((x) => x.kod === raw) || null;
+    const k = adAnahtar(raw);
+    if (!k) return null;
+    const kTam = tamAnahtar(raw);
+    return list.find((x) => adAnahtar(x.ad) === k)
+      || list.find((x) => { const a = adAnahtar(x.ad); return a.includes(k) || k.includes(a); })
+      || list.find((x) => { const a = tamAnahtar(x.ad); return a.includes(kTam) || kTam.includes(a); })
+      || null;
+  };
+  const kt = bul(ref.kayitTuru, ktRaw);
+  if (!kt) return null;
+  const altList = getKayitAltList(invoiceKind, kt.kod);
+  const altRaw = String(kayitAltAdVeyaKod || '').trim();
+  if (!altRaw || !altList.length) return { kayitTuruKod: kt.kod, kayitTuruAd: kt.ad, kayitAltKod: '', kayitAltAd: '', altCozuldu: !altRaw || !altList.length };
+  const alt = bul(altList, altRaw);
+  return { kayitTuruKod: kt.kod, kayitTuruAd: kt.ad, kayitAltKod: alt?.kod || '', kayitAltAd: alt?.ad || '', altCozuldu: !!alt };
 }
 
 /** Kayıt türü seçilince Mihsap-benzeri varsayılan alt tür kodu. Hizmet/Mal Satışı gibi
@@ -290,6 +342,10 @@ const GVK40_ALT_KURAL: Array<[RegExp, string]> = [
   [/otopark|park ucret|\bvale\b|kapali otopark/, '191'],                                                                       // Otopark
   [/\bhgs\b|\bogs\b|otoyol|gecis ucret|\bkgm\b|koprusu|otoyollari|otoyol gecis/, '324'],                                       // Otoyol/Gişe (HGS/OGS)
   // ── İŞYERİ / ENERJİ / HABERLEŞME ──
+  // PLAN/15 Faz 3 (#8, 2026-09-12): "elektrik malzemesi / kablo / priz" ELEKTRİK FATURASI DEĞİLDİR (sarf); "elektrik
+  //   tesisat/montaj/arıza" onarımdır. Bare "elektrik" kuralından ÖNCE ki içerik ünvana/enerjiye kapılmasın.
+  [/elektrik malzeme|elektrik sarf|\bkablo\b|\bpriz\b|\bsigorta kutu|\bkablo kanal/, '228'],                                   // Elektrik malzemesi → Sarf
+  [/elektrik tesisat|elektrik montaj|elektrik onarim|elektrik ariza|elektrik iscilik|elektrik tamir/, '85'],                   // Elektrik tesisat/onarım
   [/elektrik|enerjisa|\bbedas\b|\bayedas\b|\btedas\b|\buedas\b|\bgdz\b|\bedas\b|enerji perakende|elektrik perakende|elektrik dagitim/, '82'], // Elektrik
   [/dogalgaz|\bigdas\b|baskentgaz|\bizgaz\b|\bagdas\b|\bgazel\b|gaz dagitim|\bgaznet\b|\bbursagaz\b|\bpalgaz\b|\bakmercan\b/, '84'],          // Doğalgaz
   [/\biski\b|\baski\b|\bizsu\b|\bbuski\b|\basat\b|\bmuski\b|\bsuski\b|\bkaski\b|su ve kanalizasyon|su idaresi|su tuketim|su faturasi|su bedeli|sebeke suyu|damacana|icme suyu/, '83'],     // Su (bare "su" KALDIRILDI — "su bazlı boya" yanlış-pozitifti; kurum/bağlam şart)
@@ -339,17 +395,60 @@ const GVK40_ALT_KURAL: Array<[RegExp, string]> = [
 export function isletmeAutoKayitAltKod(invoiceKind?: string | null, kayitTuruKod?: string | null, text?: string | null): string {
   const sale = String(invoiceKind || 'ALIS').toUpperCase() === 'SATIS';
   if (sale) return '';
-  if (String(kayitTuruKod || '') !== '4') return ''; // sadece İndirilecek Giderler
+  const kt = String(kayitTuruKod || '');
+  // PLAN/15 Faz 3 (#18, 2026-09-12): KKEG (GVK 41) alt türü de içerikten seçilir (ceza/bağış/binek/kişisel).
+  if (kt === '5') return isletmeKkegTespit(text)?.kayitAltKod || '';
+  if (kt !== '4') return ''; // sadece İndirilecek Giderler
   const t = asciiTr(text || '');
   if (!t) return '';
   for (const [re, kod] of GVK40_ALT_KURAL) if (re.test(t)) return kod;
   return '';
 }
 
+// ── KKEG (GVK 41) — PLAN/15 Faz 3 (#18, 2026-09-12) ──
+// Belge içeriği GVK 41 / 40-5 kalıplarına uyuyorsa: alt tür (GIDER_ALT_GKEG kodları) + kısa etiket + oran notu.
+//   Binek otomobil yakıt/bakım/kira/sigorta: giderin EN ÇOK %70'i indirilebilir (GVK 40/5, 7194 s.K.), %30'u KKEG.
+//   DBS alt listesinde %70/%30'a özel bir alt tür YOK (Mihsap yakalaması 2026-06-23) → en yakın: 201 "Diğer K.K.E.G.".
+//   Tek belge = tek tür (PLAN/15 #26 bu turda değil) → belge İndirilecek Gider'de kalır, KKEG_SUPHESI uyarısı %30'u hatırlatır.
+const BINEK_RE = /(\bbinek\b|otomobil|\bhususi\b|\begea\b|\bclio\b|\bmegane\b|\bcorolla\b|\bpassat\b|\bastra\b|\bsandero\b|\boctavia\b|\bfabia\b|\byaris\b|\bcivic\b|\bsedan\b|hatchback|\bsuv\b)/;
+const TICARI_ARAC_RE = /(kamyon|kamyonet|minibus|otobus|panelvan|panel van|pikap|pick ?up|\bcekici\b|\btir\b|dorse|romork|treyler|traktor|is makine|forklift|ambulans)/;
+const BINEK_GIDER_RE = /(akaryakit|motorin|\bbenzin\b|\bmazot\b|\bdizel\b|\blpg\b|yakit|bakim|onarim|\blastik\b|yedek parca|\bkira\b|kiralama|rent.?a.?car|\bkasko\b|trafik sigorta|arac sigorta|otopark|\bhgs\b|\bogs\b|oto yikama)/;
+export type IsletmeKkegTespiti = { kayitAltKod: string; kayitAltAd: string; etiket: string; indirilebilirYuzde?: number };
+export function isletmeKkegTespit(text?: string | null): IsletmeKkegTespiti | null {
+  const t = asciiTr(text || '');
+  if (!t) return null;
+  const alt = (kod: string) => GIDER_ALT_GKEG.find((x) => x.kod === kod);
+  const yap = (kod: string, etiket: string, yuzde?: number): IsletmeKkegTespiti | null => {
+    const a = alt(kod);
+    return a ? { kayitAltKod: a.kod, kayitAltAd: a.ad, etiket, ...(yuzde ? { indirilebilirYuzde: yuzde } : {}) } : null;
+  };
+  // Sıra: kesin KKEG (ceza / bağış / kişisel) → binek MTV → binek gider (%70 kuralı).
+  if (/(para cezasi|vergi cezasi|trafik cezasi|idari para cezasi|usulsuzluk cezasi|gecikme zammi|gecikme faizi|\bceza\b|cezasi)/.test(t)) return yap('159', 'Para/vergi cezası, gecikme zammı');
+  if (/(\bbagis\b|bagis makbuz|yardim makbuz|\bhibe\b|sponsorluk)/.test(t)) return yap('200', 'Bağış ve yardım');
+  if (/(kisisel|sahsi|ozel tuketim|ev esyasi|kozmetik|parfum|makyaj|sac bakim|cilt bakim|oyuncak|tatil paketi)/.test(t)) return yap('154', 'Kişisel/şahsi harcama (işletmeden çekiş)');
+  const binek = BINEK_RE.test(t) && !TICARI_ARAC_RE.test(t);
+  if (binek && /(motorlu tasitlar vergisi|\bmtv\b)/.test(t)) return yap('219', "Binek otomobil MTV'si");
+  if (binek && BINEK_GIDER_RE.test(t)) return yap('201', 'Binek otomobil gideri — en çok %70 indirilebilir (GVK 40/5), %30 KKEG', 70);
+  return null;
+}
+
+// ── SATICI ÜNVANI = KURUM TİPİ kalıbı — PLAN/15 Faz 3 (#8, 2026-09-12) ──
+// Ünvan yalnız kurum tipi BELLİYSE gider türü söyler: elektrik dağıtım/perakende (EDAŞ/EPSAŞ), doğalgaz dağıtım (İGDAŞ…),
+//   su ve kanalizasyon idaresi (İSKİ/ASKİ…), telekom operatörü, belediye. "SİMTAŞ ELEKTRİK SAN. TİC." (üretici/tüccar)
+//   TETİKLEMEZ — o ünvan 'Elektrik Gideri' yapıyordu; "SİMURG AMBALAJ" 736.943 TL streç filmi sarf malzeme yapıyordu.
+const KURUM_UNVAN_KALIBI = /(elektrik dagitim|elektrik perakende|enerji perakende|\bedas\b|\bepsas\b|\bbedas\b|\bayedas\b|\btedas\b|\buedas\b|\bgdz\b|enerjisa|\bck enerji|dogalgaz dagitim|gaz dagitim|\bigdas\b|baskentgaz|\bizgaz\b|\bagdas\b|\bbursagaz\b|\bpalgaz\b|\bgaznet\b|su ve kanalizasyon|su idaresi|\biski\b|\baski\b|\bizsu\b|\bbuski\b|\basat\b|\bmuski\b|\bsuski\b|\bkaski\b|turkcell|vodafone|turk telekom|\bttnet\b|superonline|\bturknet\b|\bbelediye)/;
+/** Satıcı ünvanı bir KURUM TİPİ (dağıtım şirketi / su idaresi / telekom / belediye) mi? Yalnız o zaman ünvan gider türü kanıtıdır. */
+export function isletmeKurumUnvaniMi(vendorName?: string | null): boolean {
+  const v = asciiTr(vendorName || '');
+  if (!v) return false;
+  return KURUM_UNVAN_KALIBI.test(v);
+}
+
 /**
  * GİDER faturası için İşletme sınıfını BELGE İÇERİĞİNDEN belirler (Kayıt Türü + Alt Türü).
  *   - matrahKategori (AI, mükellef-faaliyet-bilinçli): ticari_mal/hammadde → Mal Alışı; demirbas → Sabit Kıymet.
- *   - giderTuru (AI içerik) / satıcı → İndirilecek Giderler + özel alt (Elektrik/Akaryakıt/Kira…).
+ *   - giderTuru (AI içerik) + kalemler → İndirilecek Giderler + özel alt (Elektrik/Akaryakıt/Kira…). İÇERİK VARKEN ÜNVANA BAKILMAZ.
+ *   - İçerik yoksa satıcı ünvanı YALNIZ kurum tipi belliyse (isletmeKurumUnvaniMi) kullanılır (PLAN/15 Faz 3 #8).
  *   - Hiçbir kesin sinyal yok → null (= "Eşleşmedi", körü körüne İndirilecek Gider'e ATILMAZ).
  * Sadece gider (ALIŞ) için; satış faaliyet-tabanlı isletmeAutoKayitTuru ile ayrı işlenir.
  */
@@ -358,13 +457,25 @@ export function isletmeGiderSinifi(input: {
   giderTuru?: string | null;
   vendorName?: string | null;
   documentType?: string | null;
+  /** Belge kalem adları (içerik). Varsa giderTuru ile birlikte içerik sayılır. */
+  kalemler?: Array<string | null | undefined> | null;
 }): { kayitTuruKod: string; kayitAltKod: string } | null {
   const mk = asciiTr(input.matrahKategori || '');
   // AI kategoriyi "ticari mal" (boşluklu), "emtia", "mal" gibi varyantla dönebiliyor → tolere et.
   if (mk === 'ticari_mal' || mk === 'ticari mal' || mk === 'hammadde' || mk === 'emtia' || mk === 'mal' || mk.includes('ticari')) return { kayitTuruKod: '1', kayitAltKod: '186' }; // Mal Alışı
   if (mk === 'demirbas' || mk === 'demirbas alimi' || mk === 'sabit kiymet') return { kayitTuruKod: '13', kayitAltKod: '' }; // Sabit Kıymet Alışı
-  const alt = isletmeAutoKayitAltKod('ALIS', '4', `${input.giderTuru || ''} ${input.vendorName || ''} ${input.documentType || ''}`);
-  if (alt) return { kayitTuruKod: '4', kayitAltKod: alt };
+  const kalemMetni = (Array.isArray(input.kalemler) ? input.kalemler : []).map((k) => String(k || '').trim()).filter(Boolean).join(' ');
+  const icerik = `${input.giderTuru || ''} ${kalemMetni}`.trim();
+  if (icerik) {
+    // İçerik var → içerik kazanır; ünvan hiç okunmaz (giderTuru "streç film" + "SİMURG AMBALAJ" → 228 zaten içerikten).
+    const alt = isletmeAutoKayitAltKod('ALIS', '4', `${icerik} ${input.documentType || ''}`);
+    return alt ? { kayitTuruKod: '4', kayitAltKod: alt } : null;
+  }
+  // İçerik yok → ünvan yalnız KURUM TİPİ belliyse (dağıtım/idare/operatör) gider türü söyler.
+  if (isletmeKurumUnvaniMi(input.vendorName)) {
+    const alt = isletmeAutoKayitAltKod('ALIS', '4', `${input.vendorName || ''} ${input.documentType || ''}`);
+    if (alt) return { kayitTuruKod: '4', kayitAltKod: alt };
+  }
   return null; // kesin sinyal yok → Eşleşmedi
 }
 
@@ -414,8 +525,56 @@ export function isletmeAlisSatisTuru(
   if (!sale) return opts.isReturn ? '2' : '1';      // Satıştan İade : Normal Alım
   if (opts.tevkifat) return '2';                      // Kısmi Tevkifat Uygulanan İşlemler
   if (isletmeIkinciElTipi(opts.text)) return '6';     // Özel Matrah
-  if (opts.kdvVar === false) return '';               // KDV=0 → istisna/%0 belirsiz → İncele
+  if (opts.kdvVar === false) {
+    // PLAN/15 Faz 3 (#38, 2026-09-12): KDV=0 eskiden hep '' (İncele) idi. İçerik/belge ipucu ayırır:
+    //   "ihracat / istisna / KDVK 11-13-17 / serbest bölge / diplomatik" → İSTİSNA (kısmi ibaresi varsa 4, aksi tam 5);
+    //   ipucu yoksa KDV'siz normal satış (1) — %0 KDV oranıyla (KDV0) işlenir.
+    const t = asciiTr(opts.text || '');
+    if (/(kismi istisna|kdvk 17|madde 17|\b17\/4)/.test(t)) return '4';               // Kısmi İstisna
+    if (/(ihracat|ihrac kayit|istisna|serbest bolge|diplomatik|\b11\/1|\b13\/|kdvk 11|kdvk 13|gumruk beyan|yurt disi|yurtdisi)/.test(t)) return '5'; // Tam İstisna
+    return '1';                                        // KDV'siz normal satış (%0)
+  }
   return '1';                                          // Normal Satışlar
+}
+
+/**
+ * STOPAJ TÜRÜ türetimi — PLAN/15 Faz 3 (#38, 2026-09-12). Yalnız GİDER (alış) tarafı (mükellef ödemede stopaj keser):
+ *   e-SMM / serbest meslek makbuzu → 022 (serbest meslek ödemeleri); işyeri kira faturası / kira gideri → 041 (GVK 94/5).
+ *   Araç kiralama stopaja tabi değildir (kiralama sözcüğü elenir). Sinyal yoksa ''.
+ * ocrData.isletme.stopajKod'a yazılır (FE alanı yok — yalnız veri; luca CSV 33. sütun st.stopajOrani'nı yazar).
+ */
+export function isletmeStopajTuru(
+  invoiceKind: string | null | undefined,
+  opts: { belgeTuru?: string | null; giderTuru?: string | null; text?: string | null },
+): '022' | '041' | '' {
+  const sale = String(invoiceKind || 'ALIS').toUpperCase() === 'SATIS';
+  if (sale) return '';
+  const bt = normalizeDocumentType(opts.belgeTuru);
+  const t = asciiTr(`${opts.giderTuru || ''} ${opts.text || ''}`);
+  if (bt === 'E_SMM' || /(serbest meslek makbuz|\besmm\b|\be-smm\b|serbest meslek kazanc)/.test(t)) return '022';
+  const kiraVar = /(\bkira\b(?!lama)|kira gider|kira bedeli|isyeri kira|dukkan kira|ofis kira|magaza kira|gayrimenkul kira|depo kira)/.test(t);
+  const aracKira = /(arac kira|oto kira|rent.?a.?car|filo kira|tasit kira|otomobil kira|arac kiralama|oto kiralama)/.test(t);
+  if (kiraVar && !aracKira) return '041';
+  return '';
+}
+
+// Plaka desenindeki harf grubu BİRİM/kısaltma olamaz ("34 KG 100", "10 AD 2024" plaka değildir).
+const PLAKA_HARF_YASAK = new Set(['KG', 'GR', 'LT', 'ML', 'CL', 'CM', 'MM', 'MT', 'KM', 'AD', 'PK', 'PKT', 'KDV', 'TL', 'GB', 'MB', 'TB', 'KW', 'KWH', 'HP', 'CC', 'TON', 'MG', 'DB', 'NO', 'SN', 'TK', 'PC', 'PCS', 'KOL', 'ADT']);
+/**
+ * PLAKA bulma — PLAN/15 Faz 3 (#38, 2026-09-12): kalem/açıklama metninde Türk plakası (il 01-81 + 1-3 harf + 2-4 rakam).
+ *   Bulunursa "34 ABC 123" biçiminde normalize döner; yoksa ''. Birim kısaltmaları (KG/AD/LT…) elenir.
+ *   ocrData.isletme.plakaNo BOŞSA doldurulur (ALIŞ formunda Plaka No alanı var; satışta alan yok).
+ */
+export function isletmePlakaBul(text?: string | null): string {
+  const t = String(text || '').toLocaleUpperCase('tr-TR').replace(/İ/g, 'I');
+  if (!t) return '';
+  const re = /\b(0[1-9]|[1-7]\d|8[01])\s?([A-Z]{1,3})\s?(\d{2,4})\b/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(t))) {
+    if (PLAKA_HARF_YASAK.has(m[2])) continue;
+    return `${m[1]} ${m[2]} ${m[3]}`;
+  }
+  return '';
 }
 
 /**

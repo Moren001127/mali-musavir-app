@@ -5,7 +5,7 @@
 - Denetçi KRİTİK bulgu bırakmışsa (kasa negatif, maliyet kapanmamış) yorumu "veri güvenilir değil" notuyla ver; kâr yorumlama.
 - Kümülatif dönemi dönemsel gibi okuma: 2. dönem = 6 ay. Çeyreklik eğilim için `compare_periods`.
 - Manuel satılan mal maliyeti 621 üstüne eklenir; gelir tablosunda "SMM eksik" görüyorsan stoklu firmada manuel girilmemiş olabilir → belirt, yorumlama.
-- Oran/rasyo `calculate_financial_ratios` ile; elle hesaplama. Araç "bulunamadı" dönerse (GT/bilanço yok) beceriler §1 2a'ya göre mizandan türet ve "mizandan türetildi" yaz.
+- Oran/rasyo `calculate_financial_ratios` ile (dönem "2026-Q2" biçiminde; çeyrek/geçici vergi dönemi kabul edilir); elle hesaplama. Araç "yok" dönerse (GT/bilanço yok) mesajdaki mevcut dönem listesine bak; `eksik` alanı bilanço/gelir tablosundan hangisinin olmadığını söyler, o rasyoları "hesaplanamadı" yaz ve beceriler §1 2a'ya göre mizandan türet, "mizandan türetildi" yaz.
 - Vergi oranları `get_accounting_reference`; ezber yok.
 - Dikkat çekenler — zorunlu kontrol listesi (her raporda madde 6'ya yaz, yoksa "yok"):
   - 100 Kasa: negatif (alacak bakiyesi) veya iki dönemde birebir aynı (hareketsiz) → belirt.

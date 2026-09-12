@@ -20,6 +20,7 @@ import {
 } from '@/lib/moren-ai';
 import { getStoredMorenAiConversationId, setStoredMorenAiConversationId } from '@/lib/moren-ai-conversation-state';
 import { getCurrentRoute, PORTAL_ROUTES, resolveRoute } from '@/lib/moren-voice-routes';
+import { getIs } from '@/lib/ekip';
 
 export type VoiceStatus = 'idle' | 'connecting' | 'listening' | 'thinking' | 'speaking' | 'error';
 
@@ -161,6 +162,9 @@ class MorenVoiceStore {
    * aynı işi yeniden koşturmak yerine "sonuç hazır, söylüyorum" der (koordinatöre çift iş açılmaz).
    */
   private ciktiBekliyor = false;
+  /** Asenkron koordinatör işi izleme (isId → zamanlayıcı). Sonuç gelince sesli aktarılır; stop() temizler. */
+  private isTakipTimer: number | null = null;
+  private isTakipId: string | null = null;
   /** Ses çalarken output_audio_buffer.stopped gelmezse 'speaking'te takılmamak için emniyet. */
   private konusmaTimer: number | null = null;
   /** OpenAI tarafında üretim süren bir cevap var mı (response.created → response.done). */
@@ -230,6 +234,64 @@ class MorenVoiceStore {
         tool_choice: 'auto',
       },
     });
+  }
+
+  /** SESLİ ARA MESAJ (kullanıcı bulgusu 2026-09-12: "soruyorum, bekliyor bekliyor, bana hiçbir şey demiyor"):
+   *  araç çağrısı sürerken konuşma dışı (conversation:'none') kısa bir cevap üretilir — modelin bağlamına girmez,
+   *  yalnız seslendirilir. Aktif cevap varsa (VAD cevabı vb.) ATLANIR; ara mesaj kaybolabilir ama akış bozulmaz. */
+  private araMesajSoyle(talimat: string) {
+    if (this.aktifCevap || !this.dc || this.dc.readyState !== 'open') return;
+    this.send({
+      type: 'response.create',
+      response: {
+        conversation: 'none',
+        tool_choice: 'none',
+        instructions: `${talimat} Tek kısa cümle, doğal ve sıcak; soru sorma, açıklama ekleme.`,
+      },
+    });
+  }
+
+  /** Asenkron koordinatör işi: iş dosyası bitince sonucu konuşmaya sistem notu olarak ekle ve seslendir. */
+  private isTakibiBaslat(isId: string, nesil: number) {
+    this.isTakibiDurdur();
+    this.isTakipId = isId;
+    const baslangic = Date.now();
+    const kontrol = async () => {
+      if (nesil !== this.oturumNo || this.isTakipId !== isId) return;
+      let bitti = false;
+      try {
+        const is: any = await getIs(isId);
+        const durum = String(is?.status || '');
+        if (durum === 'done' || durum === 'failed') {
+          bitti = true;
+          if (nesil !== this.oturumNo || this.isTakipId !== isId) return;
+          const rapor = String(is?.result?.rapor || '').trim();
+          const hata = String(is?.result?.hata || is?.hata || '').trim();
+          const metin = durum === 'failed'
+            ? `Ekipteki iş tamamlanamadı: ${hata || 'bilinmeyen hata'}.`
+            : (rapor || 'Ekip işi tamamladı ama rapor boş döndü.');
+          this.set({ lastAnswer: metin, lastAction: 'Ekipten sonuç geldi' });
+          // Sistem notu: model bunu kullanıcı sözü sanmaz; ardından sesli cevap istenir (aktif cevap varsa sıraya girer).
+          this.send({
+            type: 'conversation.item.create',
+            item: { type: 'message', role: 'system', content: [{ type: 'input_text', text: `[EKİPTEN SONUÇ GELDİ — kullanıcıya şimdi söyle, 2-4 cümleyle özetle] ${metin.slice(0, 3000)}` }] },
+          });
+          this.cevapIste();
+          this.hooks.onQueryDone?.(getStoredMorenAiConversationId() || '');
+        }
+      } catch {
+        // geçici ağ hatası — bir sonraki yoklamada tekrar
+      }
+      if (bitti) { this.isTakibiDurdur(); return; }
+      if (Date.now() - baslangic > 8 * 60 * 1000) { this.isTakibiDurdur(); return; } // 8 dk tavan; iş dosyası ekranda kalır
+      if (typeof window !== 'undefined') this.isTakipTimer = window.setTimeout(kontrol, 5000);
+    };
+    if (typeof window !== 'undefined') this.isTakipTimer = window.setTimeout(kontrol, 5000);
+  }
+  private isTakibiDurdur() {
+    if (this.isTakipTimer != null && typeof window !== 'undefined') window.clearTimeout(this.isTakipTimer);
+    this.isTakipTimer = null;
+    this.isTakipId = null;
   }
 
   /** Araç çıktısından sonra modelin sesli cevabı; aktif cevap varsa sıraya alınır (çakışma hatası önlenir). */
@@ -352,6 +414,8 @@ class MorenVoiceStore {
           longWait: true,
           lastAction: this.snapshot.koordinator ? 'Hâlâ çalışıyor — koordinatör işi yürütüyor' : 'Hâlâ çalışıyor',
         });
+        // 20 sn'de bir kez daha sesli bilgi: sessizlik "kopmuş" hissi veriyordu.
+        this.araMesajSoyle(this.snapshot.koordinator ? 'Ekip hâlâ üzerinde çalışıyor; sonucu gelir gelmez söyleyeceğini belirt.' : 'Hâlâ kontrol ettiğini, biraz daha süreceğini belirt.');
       }
     }, LONG_WAIT_MS);
   }
@@ -419,6 +483,10 @@ class MorenVoiceStore {
     this.sorguAbort = abort;
     this.set({ lastQuestion: question });
     this.thinkingStart();
+    // Hemen sesli onay: "aldım, koordinatöre iletiyorum, dönüş yapacağım" — 60-100 sn sessizlik yerine.
+    this.araMesajSoyle(this.snapshot.koordinator
+      ? `Kullanıcı şunu istedi: "${question.slice(0, 160)}". İsteği aldığını, koordinatöre ilettiğini, ilgili personele kontrol ettirip dönüş yapacağını söyle.`
+      : `Kullanıcı şunu istedi: "${question.slice(0, 160)}". İsteği aldığını ve portalda kontrol edip birazdan söyleyeceğini belirt.`);
     try {
       const conversationId = await this.resolveConversationId();
       if (nesil !== this.oturumNo) return;
@@ -435,8 +503,10 @@ class MorenVoiceStore {
       this.hooks.onQueryDone?.(result.conversationId);
       // Oturum bu arada kapanıp yeniden açıldıysa eski call_id yeni oturuma gönderilmez.
       if (nesil !== this.oturumNo) return;
-      this.set({ lastAnswer: result.assistantMessage || '', lastAction: 'Yanıt hazırlandı' });
+      this.set({ lastAnswer: result.assistantMessage || '', lastAction: result.asenkron ? 'Ekibe iletildi — sonuç bekleniyor' : 'Yanıt hazırlandı' });
       this.ciktiBekliyor = true;
+      // Koşu arka planda sürüyor: iş dosyasını izle, bitince sonucu seslendir ("dönüş yapacağım" sözü tutulur).
+      if (result.asenkron && result.isId) this.isTakibiBaslat(String(result.isId), nesil);
       this.sendFunctionOutput(call, {
         ok: true,
         answer: result.assistantMessage,
@@ -764,6 +834,7 @@ class MorenVoiceStore {
       this.sorguAbort?.abort();
     } catch {}
     this.sorguAbort = null;
+    this.isTakibiDurdur();
     this.ciktiBekliyor = false;
     this.aktifCevap = false;
     this.bekleyenCevapIstegi = null;

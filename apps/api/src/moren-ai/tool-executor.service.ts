@@ -673,24 +673,102 @@ export class ToolExecutorService {
     return `${year}-${String(months[monthName]).padStart(2, '0')}`;
   }
 
-  private financialPeriodCandidates(donem: any): string[] {
+  /** Mali tablo araçlarının kabul ettiği dönem biçimleri — hata mesajlarında ajana aynen gösterilir. */
+  private static readonly MALI_DONEM_BICIMI =
+    'Dönem biçimi: "YYYY-MM" (aylık, ör. 2026-06), "YYYY-Qn" (geçici vergi/çeyrek, ör. 2026-Q2) ya da "YYYY-YILLIK".';
+
+  /**
+   * Ajanların yazdığı dönem ifadesini tek biçime indirir (2026-09-12: pilotta "Q2", "2026/Q2", "2026-6" gibi
+   * yazımlar geliyordu). Dönüş: "YYYY-MM" | "YYYY-Qn" | "YYYY-YILLIK" | null (anlaşılamadı).
+   * `yil` yalnız "Q2" gibi yılsız çeyrek yazımında kullanılır; yıl bilinmiyorsa null (varsayımla yanlış yıla gitmesin).
+   */
+  private normalizeFinancialPeriod(donem: any, yil?: any): string | null {
+    const raw = String(donem ?? '').trim().toUpperCase().replace(/\s+/g, ' ');
+    if (!raw) return null;
+    const yilNo = Number(yil);
+    const yilStr = Number.isInteger(yilNo) && yilNo >= 1990 && yilNo <= 2100 ? String(yilNo) : null;
+
+    // "2026-Q2", "2026Q2", "2026/Q2", "2026 Q2", "2026-2Q"
+    let m = raw.match(/^(\d{4})[\s/._-]?Q([1-4])$/) || raw.match(/^(\d{4})[\s/._-]?([1-4])Q$/);
+    if (m) return `${m[1]}-Q${m[2]}`;
+    // "Q2 2026", "Q2-2026", "Q2/2026"
+    m = raw.match(/^Q([1-4])[\s/._-]?(\d{4})$/);
+    if (m) return `${m[2]}-Q${m[1]}`;
+    // "Q2" (yıl ayrı parametreyle)
+    m = raw.match(/^Q([1-4])$/);
+    if (m) return yilStr ? `${yilStr}-Q${m[1]}` : null;
+    // "2026-06", "2026/6", "2026.06"
+    m = raw.match(/^(\d{4})[\s/._-](\d{1,2})$/);
+    if (m) {
+      const ay = Number(m[2]);
+      if (ay >= 1 && ay <= 12) return `${m[1]}-${String(ay).padStart(2, '0')}`;
+      return null;
+    }
+    // "2026", "2026-YILLIK", "2026 YILLIK", "2026-YIL"
+    m = raw.match(/^(\d{4})(?:[\s/._-]?Y[Iİ]L(?:L[Iİ]K)?)?$/);
+    if (m) return `${m[1]}-YILLIK`;
+    return null;
+  }
+
+  private financialPeriodCandidates(donem: any, yil?: any): string[] {
     const raw = String(donem || '').trim();
     if (!raw) return [];
     const out = new Set<string>([raw]);
+    const norm = this.normalizeFinancialPeriod(raw, yil);
+    if (norm) out.add(norm);
 
-    const quarter = raw.match(/^(\d{4})-?Q([1-4])$/i);
+    const quarter = (norm || raw).match(/^(\d{4})-?Q([1-4])$/i);
     if (quarter) {
       out.add(`${quarter[1]}-${String(Number(quarter[2]) * 3).padStart(2, '0')}`);
       out.add(`${quarter[1]}-Q${quarter[2]}`);
     }
 
-    const monthly = raw.match(/^(\d{4})-(0[1-9]|1[0-2])$/);
+    const monthly = (norm || raw).match(/^(\d{4})-(0[1-9]|1[0-2])$/);
     if (monthly) {
       const month = Number(monthly[2]);
       if ([3, 6, 9, 12].includes(month)) out.add(`${monthly[1]}-Q${month / 3}`);
     }
 
+    // Yıllık: kayıtlar "2025-YILLIK", "2025", "2025-12" ya da "2025-Q4" etiketiyle durabiliyor.
+    const yillik = (norm || raw).match(/^(\d{4})-YILLIK$/);
+    if (yillik) {
+      out.add(yillik[1]);
+      out.add(`${yillik[1]}-12`);
+      out.add(`${yillik[1]}-Q4`);
+    }
+
     return Array.from(out);
+  }
+
+  /**
+   * Mükellefin sistemde mevcut mali tablo dönemleri (mizan / bilanço / gelir tablosu; tekil, yeniden eskiye).
+   * "Bulunamadı" hatalarında ajana listelenir → boş dönemde rakam uydurmak yerine mevcut dönemi seçer.
+   */
+  private async mevcutMaliDonemler(taxpayerId: string, ctx: { tenantId: string }) {
+    const where = { tenantId: ctx.tenantId, taxpayerId };
+    const select = { donem: true } as const;
+    const [mizan, bilanco, gelirTablosu] = await Promise.all([
+      this.prisma.mizan.findMany({ where, select, distinct: ['donem'] }).catch(() => [] as { donem: string }[]),
+      this.prisma.bilanco.findMany({ where, select, distinct: ['donem'] }).catch(() => [] as { donem: string }[]),
+      this.prisma.gelirTablosu.findMany({ where, select, distinct: ['donem'] }).catch(() => [] as { donem: string }[]),
+    ]);
+    const sirala = (rows: { donem: string }[]) =>
+      Array.from(new Set(rows.map((r) => r.donem))).sort((a, b) => b.localeCompare(a));
+    return { mizan: sirala(mizan), bilanco: sirala(bilanco), gelirTablosu: sirala(gelirTablosu) };
+  }
+
+  private donemListesiMetni(liste: string[]): string {
+    return liste.length ? liste.join(', ') : 'yok';
+  }
+
+  /** "100,102" / ["100","102"] / "6" → önek listesi (boşsa []). */
+  private hesapKoduOnekleri(girdi: any): string[] {
+    const ham: any[] = Array.isArray(girdi) ? girdi : girdi == null ? [] : String(girdi).split(/[,;|\s]+/);
+    return Array.from(new Set(ham.map((x) => String(x ?? '').trim()).filter(Boolean)));
+  }
+
+  private yuvarla2(n: number): number {
+    return Math.round(n * 100) / 100;
   }
 
   private async resolveTaxpayerFromInput(input: any, ctx: { tenantId: string }) {
@@ -1094,8 +1172,11 @@ export class ToolExecutorService {
     };
   }
 
+  /** get_mizan tek seferde en çok bu kadar hesap döndürür (2026-09-12: eski sabit 100 tavanı kalktı). */
+  private static readonly MIZAN_SAYFA_BOYUTU = 400;
+
   private async getMizan(input: any, ctx: { tenantId: string }) {
-    const donemler = this.financialPeriodCandidates(input.donem);
+    const donemler = this.financialPeriodCandidates(input.donem, input?.yil);
     const mizan = await this.prisma.mizan.findFirst({
       where: { tenantId: ctx.tenantId, taxpayerId: input.taxpayerId, donem: donemler.length ? { in: donemler } : input.donem },
       include: {
@@ -1104,15 +1185,45 @@ export class ToolExecutorService {
       },
       orderBy: { createdAt: 'desc' },
     });
-    if (!mizan) return { error: `${input.donem} dönemine ait mizan bulunamadı` };
+    if (!mizan) {
+      const mevcut = await this.mevcutMaliDonemler(input.taxpayerId, ctx);
+      return {
+        error:
+          `${input.donem} dönemine ait mizan bulunamadı. Mevcut mizan dönemleri: ${this.donemListesiMetni(mevcut.mizan)}. ` +
+          ToolExecutorService.MALI_DONEM_BICIMI,
+        mevcutDonemler: mevcut.mizan,
+      };
+    }
 
     let hesaplar = mizan.hesaplar;
-    if (input?.hesapKoduFiltresi) {
-      hesaplar = hesaplar.filter((h) => h.hesapKodu.startsWith(input.hesapKoduFiltresi));
+    // Önek süzgeci: hesapKoduFiltresi ya da hesapKodu; "100,102" / ["100","102"] de kabul (pilotta dizi geliyordu → boş dönüyordu).
+    const onekler = this.hesapKoduOnekleri(input?.hesapKoduFiltresi ?? input?.hesapKodu);
+    if (onekler.length) {
+      hesaplar = hesaplar.filter((h) => onekler.some((p) => h.hesapKodu.startsWith(p)));
     }
 
     const toplamBorc = hesaplar.reduce((s, h) => s + this.toNum(h.borcToplami), 0);
     const toplamAlacak = hesaplar.reduce((s, h) => s + this.toNum(h.alacakToplami), 0);
+
+    // Sayfalama: eski sabit 100 tavanı 144 hesaplık mizanda 44 hesabı gizliyordu (Denetçi görmediği 136.2x hesabı uydurdu).
+    // Varsayılan 400; aşarsa truncated:true + toplamHesap + daraltma yolu (önek ya da sayfa) açıkça söylenir.
+    const sayfaBoyutuHam = Number(input?.sayfaBoyutu);
+    const sayfaBoyutu = Number.isFinite(sayfaBoyutuHam) && sayfaBoyutuHam >= 1
+      ? Math.min(Math.floor(sayfaBoyutuHam), 1000)
+      : ToolExecutorService.MIZAN_SAYFA_BOYUTU;
+    const toplamHesap = hesaplar.length;
+    const toplamSayfa = Math.max(1, Math.ceil(toplamHesap / sayfaBoyutu));
+    const sayfaHam = Number(input?.sayfa);
+    const sayfa = Number.isFinite(sayfaHam) && sayfaHam >= 1 ? Math.floor(sayfaHam) : 1;
+    if (sayfa > toplamSayfa) {
+      return {
+        error: `sayfa ${sayfa} yok; bu süzgeçte toplam ${toplamHesap} hesap, ${toplamSayfa} sayfa (sayfa başına ${sayfaBoyutu}).`,
+        toplamHesap,
+        toplamSayfa,
+      };
+    }
+    const gosterilen = hesaplar.slice((sayfa - 1) * sayfaBoyutu, sayfa * sayfaBoyutu);
+    const truncated = toplamHesap > gosterilen.length;
 
     const mizanDengeli = Math.abs(toplamBorc - toplamAlacak) < 1;
     const mizanWhatsappOzet = [
@@ -1132,13 +1243,17 @@ export class ToolExecutorService {
       kaynak: mizan.kaynak,
       status: mizan.status,
       kilitli: mizan.locked,
+      // Aynı dönemde birden çok çekim olabilir; en yenisi döner — raporda "hangi çekim" diyebilsin.
+      mizanId: mizan.id,
+      cekimTarihi: mizan.createdAt?.toISOString().slice(0, 10),
       // Hazır WhatsApp şablonu — bot bunu AYNEN gönderir, altına 1-2 cümle yorum ekler.
       whatsappOzet: mizanWhatsappOzet,
       toplamBorc,
       toplamAlacak,
       dengeliMi: Math.abs(toplamBorc - toplamAlacak) < 1,
-      hesapSayisi: hesaplar.length,
-      hesaplar: hesaplar.slice(0, 100).map((h) => ({
+      hesapSayisi: toplamHesap,
+      hesapKoduFiltresi: onekler.length ? onekler : undefined,
+      hesaplar: gosterilen.map((h) => ({
         hesapKodu: h.hesapKodu,
         hesapAdi: h.hesapAdi,
         borcToplami: this.toNum(h.borcToplami),
@@ -1146,8 +1261,22 @@ export class ToolExecutorService {
         borcBakiye: this.toNum(h.borcBakiye),
         alacakBakiye: this.toNum(h.alacakBakiye),
       })),
-      hesapSayisiGosterilenMaksimum: hesaplar.length > 100 ? 100 : hesaplar.length,
-      hesapSayisiToplam: hesaplar.length,
+      // Sayfalama bilgisi — truncated:true ise gösterilmeyen hesaplar VAR; ajan bunları "yok" sayamaz.
+      truncated,
+      toplamHesap,
+      sayfa,
+      toplamSayfa,
+      sayfaBoyutu,
+      ...(truncated
+        ? {
+            daraltmaNotu:
+              `Mizanda ${toplamHesap} hesap var, bu sayfada ${gosterilen.length} tanesi gösterildi (sayfa ${sayfa}/${toplamSayfa}). ` +
+              `Kalanı görmek için grup (ör. hesapKodu:'136') ya da sayfa (sayfa:${sayfa + 1}) ile daralt; görmediğin hesabı yazma.`,
+          }
+        : {}),
+      // Geriye uyum (eski alan adları)
+      hesapSayisiGosterilenMaksimum: gosterilen.length,
+      hesapSayisiToplam: toplamHesap,
       anomaliler: mizan.anomaliler.map((a) => ({
         hesapKodu: a.hesapKodu, tip: a.tip, seviye: a.seviye, mesaj: a.mesaj,
       })),
@@ -1158,12 +1287,22 @@ export class ToolExecutorService {
   // GELİR TABLOSU
   // ------------------------------------------------------------
   private async getGelirTablosu(input: any, ctx: { tenantId: string }) {
-    const donemler = this.financialPeriodCandidates(input.donem);
+    const donemler = this.financialPeriodCandidates(input.donem, input?.yil);
     const gt = await this.prisma.gelirTablosu.findFirst({
       where: { tenantId: ctx.tenantId, taxpayerId: input.taxpayerId, donem: donemler.length ? { in: donemler } : input.donem },
       orderBy: { createdAt: 'desc' },
     });
-    if (!gt) return { error: `${input.donem} dönemine ait gelir tablosu bulunamadı` };
+    if (!gt) {
+      // 2026-09-12: "bulunamadı" tek başına ajanı boşlukta bırakıyordu → mevcut dönemler + biçim eklendi.
+      const mevcut = await this.mevcutMaliDonemler(input.taxpayerId, ctx);
+      return {
+        error:
+          `${input.donem} dönemine ait gelir tablosu bulunamadı. Mevcut gelir tablosu dönemleri: ${this.donemListesiMetni(mevcut.gelirTablosu)}` +
+          (mevcut.mizan.length ? `; mizan dönemleri: ${this.donemListesiMetni(mevcut.mizan)} (get_mizan hesapKoduFiltresi "6" ile türetilebilir)` : '') +
+          `. ${ToolExecutorService.MALI_DONEM_BICIMI}`,
+        mevcutDonemler: mevcut,
+      };
+    }
 
     const gtNs = this.toNum(gt.netSatislar);
     const gtWhatsappOzet = [
@@ -1181,6 +1320,7 @@ export class ToolExecutorService {
     return {
       donem: gt.donem,
       donemTipi: gt.donemTipi,
+      kayitId: gt.id,
       donemBaslangic: gt.donemBaslangic?.toISOString().slice(0, 10),
       donemBitis: gt.donemBitis?.toISOString().slice(0, 10),
       kilitli: gt.locked,
@@ -1212,12 +1352,22 @@ export class ToolExecutorService {
   // BİLANÇO
   // ------------------------------------------------------------
   private async getBilanco(input: any, ctx: { tenantId: string }) {
-    const donemler = this.financialPeriodCandidates(input.donem);
+    const donemler = this.financialPeriodCandidates(input.donem, input?.yil);
     const b = await this.prisma.bilanco.findFirst({
       where: { tenantId: ctx.tenantId, taxpayerId: input.taxpayerId, donem: donemler.length ? { in: donemler } : input.donem },
       orderBy: { createdAt: 'desc' },
     });
-    if (!b) return { error: `${input.donem} dönemine ait bilanço bulunamadı` };
+    if (!b) {
+      // 2026-09-12: "bulunamadı" tek başına ajanı boşlukta bırakıyordu → mevcut dönemler + biçim eklendi.
+      const mevcut = await this.mevcutMaliDonemler(input.taxpayerId, ctx);
+      return {
+        error:
+          `${input.donem} dönemine ait bilanço bulunamadı. Mevcut bilanço dönemleri: ${this.donemListesiMetni(mevcut.bilanco)}` +
+          (mevcut.mizan.length ? `; mizan dönemleri: ${this.donemListesiMetni(mevcut.mizan)}` : '') +
+          `. ${ToolExecutorService.MALI_DONEM_BICIMI}`,
+        mevcutDonemler: mevcut,
+      };
+    }
 
     const bWhatsappOzet = [
       `📊 BİLANÇO — ${b.donem}`,
@@ -1236,6 +1386,7 @@ export class ToolExecutorService {
     return {
       donem: b.donem,
       donemTipi: b.donemTipi,
+      kayitId: b.id,
       tarih: b.tarih?.toISOString().slice(0, 10),
       kilitli: b.locked,
       // Hazır WhatsApp şablonu — bot bunu AYNEN gönderir, altına rasyo + 1-2 cümle yorum ekler.
@@ -2046,62 +2197,321 @@ export class ToolExecutorService {
   // ------------------------------------------------------------
   // KARŞILAŞTIRMA
   // ------------------------------------------------------------
-  private async comparePeriods(input: any, ctx: { tenantId: string }) {
-    const kaynak = input.kaynak;
-    const d1: any = await this.fetchPeriodData(kaynak, input.taxpayerId, input.donem1, ctx);
-    const d2: any = await this.fetchPeriodData(kaynak, input.taxpayerId, input.donem2, ctx);
+  private static readonly KARSILASTIRMA_KAYNAKLARI = ['gelir_tablosu', 'bilanco', 'mizan'] as const;
+  /** compare_periods tek seferde en çok bu kadar hesap/kalem farkı listeler (en büyükten küçüğe). */
+  private static readonly KARSILASTIRMA_FARK_TAVANI = 30;
 
-    if (d1?.error || d2?.error) {
-      return { error: d1?.error || d2?.error };
-    }
+  /** "GELIR_TABLOSU", "Bilanço", "gelir tablosu" gibi yazımları geçerli kaynak adına indirir; tanınmazsa null. */
+  private normalizeKarsilastirmaKaynagi(kaynak: any): 'gelir_tablosu' | 'bilanco' | 'mizan' | null {
+    const k = String(kaynak ?? '')
+      .trim()
+      .toLowerCase()
+      .replace(/ç/g, 'c').replace(/ş/g, 's').replace(/ı/g, 'i').replace(/ğ/g, 'g').replace(/ö/g, 'o').replace(/ü/g, 'u')
+      .replace(/[\s\-.]+/g, '_');
+    if (['gelir_tablosu', 'gelirtablosu', 'gelir_tablo', 'gt', 'kar_zarar', 'karzarar'].includes(k)) return 'gelir_tablosu';
+    if (['bilanco', 'bilanco_tablosu', 'balance', 'balance_sheet'].includes(k)) return 'bilanco';
+    if (['mizan', 'trial_balance', 'hesap', 'hesaplar'].includes(k)) return 'mizan';
+    return null;
+  }
 
-    const diff: any = {};
-    const keys = Object.keys(d1.kalemler || d1.aktif || d1);
-    for (const key of keys) {
-      const v1 = typeof d1.kalemler?.[key] === 'number' ? d1.kalemler[key] :
-                 typeof d1[key] === 'number' ? d1[key] : null;
-      const v2 = typeof d2.kalemler?.[key] === 'number' ? d2.kalemler[key] :
-                 typeof d2[key] === 'number' ? d2[key] : null;
-      if (v1 !== null && v2 !== null) {
-        const fark = v2 - v1;
-        const yuzde = v1 !== 0 ? (fark / Math.abs(v1)) * 100 : null;
-        diff[key] = { donem1: v1, donem2: v2, fark, degismeYuzdesi: yuzde };
-      }
-    }
-
+  private karsilastirmaHatasi(mesaj: string) {
     return {
-      kaynak,
-      donem1: input.donem1,
-      donem2: input.donem2,
-      karsilaştırma: diff,
+      error: `${mesaj} Geçerli kaynak: ${ToolExecutorService.KARSILASTIRMA_KAYNAKLARI.join(' | ')} (küçük harf). ${ToolExecutorService.MALI_DONEM_BICIMI}`,
+      gecerliKaynaklar: [...ToolExecutorService.KARSILASTIRMA_KAYNAKLARI],
+      donemBicimi: ToolExecutorService.MALI_DONEM_BICIMI,
     };
   }
 
-  private async fetchPeriodData(kaynak: string, taxpayerId: string, donem: string, ctx: { tenantId: string }) {
+  /** İki değer arası fark satırı (yüzde: taban 0 ise null — sıfıra bölme yok). */
+  private farkSatiri(v1: number, v2: number) {
+    const fark = this.yuvarla2(v2 - v1);
+    const degismeYuzdesi = Math.abs(v1) >= 0.005 ? this.yuvarla2((fark / Math.abs(v1)) * 100) : null;
+    return { donem1: this.yuvarla2(v1), donem2: this.yuvarla2(v2), fark, degismeYuzdesi };
+  }
+
+  /**
+   * compare_periods — 2026-09-12'ye kadar anahtarları `d1.aktif`'ten alıp değerleri `d1[key]`'den okuyordu:
+   * bilançoda hiçbir anahtar eşleşmiyor (BOŞ), mizanda ise yalnız toplamlar çıkıyordu (hesap kırılımı YOK).
+   * Şimdi: kaynak/dönem doğrulanır (hatada geçerli değerler listelenir), bilanço grup+hesap kırılımı,
+   * mizan hesap kodu bazında bakiye farkı; en büyük 30 fark + toplamlar döner.
+   */
+  private async comparePeriods(input: any, ctx: { tenantId: string }) {
+    const kaynak = this.normalizeKarsilastirmaKaynagi(input?.kaynak);
+    if (!kaynak) return this.karsilastirmaHatasi(`Geçersiz kaynak: "${input?.kaynak ?? ''}".`);
+    const donem1 = this.normalizeFinancialPeriod(input?.donem1, input?.yil);
+    const donem2 = this.normalizeFinancialPeriod(input?.donem2, input?.yil);
+    if (!donem1 || !donem2) {
+      const bozuk = [!donem1 ? `donem1="${input?.donem1 ?? ''}"` : '', !donem2 ? `donem2="${input?.donem2 ?? ''}"` : '']
+        .filter(Boolean)
+        .join(', ');
+      return this.karsilastirmaHatasi(`Dönem anlaşılamadı: ${bozuk}.`);
+    }
+    if (donem1 === donem2) return this.karsilastirmaHatasi(`donem1 ve donem2 aynı (${donem1}); iki FARKLI dönem ver.`);
+    if (!input?.taxpayerId) return this.karsilastirmaHatasi('taxpayerId zorunlu.');
+
+    const onekler = this.hesapKoduOnekleri(input?.hesapKoduFiltresi ?? input?.hesapKodu);
+    const d1: any = await this.fetchPeriodData(kaynak, input.taxpayerId, donem1, ctx, onekler);
+    const d2: any = await this.fetchPeriodData(kaynak, input.taxpayerId, donem2, ctx, onekler);
+    if (!d1?.error && !d2?.error && (d1.mizanId ?? d1.kayitId) && (d1.mizanId ?? d1.kayitId) === (d2.mizanId ?? d2.kayitId)) {
+      // "2026-06" ile "2026-Q2" aynı kayda çözülür → kendisiyle kıyaslayıp sıfır fark üretmesin.
+      return this.karsilastirmaHatasi(`donem1 (${donem1}) ve donem2 (${donem2}) aynı kayda (${d1.donem}) çözüldü; iki FARKLI dönem ver.`);
+    }
+    if (d1?.error || d2?.error) {
+      // Bulunamayan dönem(ler) + mevcut dönemler tek mesajda — ajan boş dönem için rakam uydurmasın, mevcut dönemi seçsin.
+      const mevcut = d1?.mevcutDonemler || d2?.mevcutDonemler || (await this.mevcutMaliDonemler(input.taxpayerId, ctx));
+      const kaynakDonemleri: string[] =
+        kaynak === 'mizan' ? mevcut?.mizan : kaynak === 'bilanco' ? mevcut?.bilanco : mevcut?.gelirTablosu;
+      const eksik = [d1?.error ? donem1 : '', d2?.error ? donem2 : ''].filter(Boolean).join(' ve ');
+      const kaynakAdi = kaynak === 'gelir_tablosu' ? 'gelir tablosu' : kaynak === 'bilanco' ? 'bilanço' : 'mizan';
+      return {
+        error:
+          `${eksik} için ${kaynakAdi} yok; karşılaştırma yapılamadı. Mevcut ${kaynakAdi} dönemleri: ${this.donemListesiMetni(
+            Array.isArray(kaynakDonemleri) ? kaynakDonemleri : [],
+          )}. ` +
+          `Geçerli kaynak: ${ToolExecutorService.KARSILASTIRMA_KAYNAKLARI.join(' | ')}. ${ToolExecutorService.MALI_DONEM_BICIMI}`,
+        kaynak,
+        donem1,
+        donem2,
+        mevcutDonemler: mevcut,
+      };
+    }
+
+    // ---- GELİR TABLOSU: kalem bazında (eski davranış korunur; ek olarak sıralı liste) ----
+    if (kaynak === 'gelir_tablosu') {
+      const diff: Record<string, ReturnType<ToolExecutorService['farkSatiri']>> = {};
+      for (const key of Object.keys(d1.kalemler || {})) {
+        const v1 = d1.kalemler[key];
+        const v2 = d2.kalemler?.[key];
+        if (typeof v1 === 'number' && typeof v2 === 'number') diff[key] = this.farkSatiri(v1, v2);
+      }
+      const enBuyukFarklar = Object.entries(diff)
+        .map(([kalem, v]) => ({ kalem, ...v }))
+        .sort((a, b) => Math.abs(b.fark) - Math.abs(a.fark))
+        .slice(0, ToolExecutorService.KARSILASTIRMA_FARK_TAVANI);
+      return {
+        kaynak,
+        donem1,
+        donem2,
+        donem1Kayit: d1.donem,
+        donem2Kayit: d2.donem,
+        karsilaştırma: diff,
+        enBuyukFarklar,
+        not: 'Geçici vergi dönemleri KÜMÜLATİFTİR (Q2 = 6 ay). Çeyreklik tutar için Q2 − Q1 farkını kullan.',
+      };
+    }
+
+    // ---- BİLANÇO: ana toplamlar + grup/hesap kırılımı ----
+    if (kaynak === 'bilanco') {
+      const toplamAnahtarlari: Array<[string, (d: any) => number]> = [
+        ['donenVarliklar', (d) => d.aktif?.donenVarliklar],
+        ['duranVarliklar', (d) => d.aktif?.duranVarliklar],
+        ['aktifToplami', (d) => d.aktif?.aktifToplami],
+        ['kvYabanciKaynak', (d) => d.pasif?.kvYabanciKaynak],
+        ['uvYabanciKaynak', (d) => d.pasif?.uvYabanciKaynak],
+        ['ozkaynaklar', (d) => d.pasif?.ozkaynaklar],
+        ['pasifToplami', (d) => d.pasif?.pasifToplami],
+      ];
+      const toplamlar: Record<string, ReturnType<ToolExecutorService['farkSatiri']>> = {};
+      for (const [key, al] of toplamAnahtarlari) {
+        toplamlar[key] = this.farkSatiri(this.toNum(al(d1)), this.toNum(al(d2)));
+      }
+
+      // detay JSON: { grupAnahtari: { grup, toplam, hesaplar: [{kod, ad, tutar}] } } → düz harita (kod → tutar)
+      type Kirilim = Map<string, { ad: string; tutar: number; tur: 'grup' | 'hesap'; taraf: 'aktif' | 'pasif' }>;
+      const kirilim = (d: any): Kirilim => {
+        const out: Kirilim = new Map();
+        for (const taraf of ['aktif', 'pasif'] as const) {
+          const detay = d?.[taraf]?.detay;
+          if (!detay || typeof detay !== 'object') continue;
+          for (const grup of Object.values<any>(detay)) {
+            if (!grup || typeof grup !== 'object') continue;
+            const grupAdi = String(grup.grup || '').trim();
+            if (grupAdi) out.set(`G:${grupAdi}`, { ad: grupAdi, tutar: this.toNum(grup.toplam), tur: 'grup', taraf });
+            for (const h of Array.isArray(grup.hesaplar) ? grup.hesaplar : []) {
+              const kod = String(h?.kod || '').trim();
+              if (!kod) continue;
+              const onceki = out.get(`H:${kod}`);
+              out.set(`H:${kod}`, { ad: String(h?.ad || onceki?.ad || ''), tutar: (onceki?.tutar || 0) + this.toNum(h?.tutar), tur: 'hesap', taraf });
+            }
+          }
+        }
+        return out;
+      };
+      const k1 = kirilim(d1);
+      const k2 = kirilim(d2);
+      const anahtarlar = new Set<string>([...k1.keys(), ...k2.keys()]);
+      const satirlar = Array.from(anahtarlar).map((key) => {
+        const a = k1.get(key);
+        const b = k2.get(key);
+        const s = this.farkSatiri(a?.tutar || 0, b?.tutar || 0);
+        return {
+          tur: (a || b)!.tur,
+          taraf: (a || b)!.taraf,
+          hesapKodu: key.startsWith('H:') ? key.slice(2) : undefined,
+          ad: (b || a)!.ad,
+          ...s,
+          durum: !a ? 'yeni' : !b ? 'kapandi' : undefined,
+        };
+      });
+      const enBuyukFarklar = satirlar
+        .filter((s) => Math.abs(s.fark) >= 0.005)
+        .sort((a, b) => Math.abs(b.fark) - Math.abs(a.fark))
+        .slice(0, ToolExecutorService.KARSILASTIRMA_FARK_TAVANI);
+      return {
+        kaynak,
+        donem1,
+        donem2,
+        donem1Kayit: d1.donem,
+        donem2Kayit: d2.donem,
+        // WhatsApp şablonu + geriye uyum: düz toplam haritası
+        karsilaştırma: toplamlar,
+        toplamlar,
+        kirilimSatirSayisi: satirlar.length,
+        enBuyukFarklar,
+        not: `Kırılımda ${satirlar.length} grup/hesap karşılaştırıldı; en büyük ${enBuyukFarklar.length} fark listelendi (grup satırları "G", hesap satırları hesapKodu ile).`,
+      };
+    }
+
+    // ---- MİZAN: hesap kodu bazında net bakiye farkı ----
+    const hesapHarita = (d: any) => {
+      const m = new Map<string, { hesapAdi: string; borcToplami: number; alacakToplami: number; netBakiye: number }>();
+      for (const h of Array.isArray(d?.hesaplar) ? d.hesaplar : []) {
+        m.set(String(h.hesapKodu), {
+          hesapAdi: String(h.hesapAdi || ''),
+          borcToplami: this.toNum(h.borcToplami),
+          alacakToplami: this.toNum(h.alacakToplami),
+          netBakiye: this.toNum(h.borcBakiye) - this.toNum(h.alacakBakiye),
+        });
+      }
+      return m;
+    };
+    const m1 = hesapHarita(d1);
+    const m2 = hesapHarita(d2);
+    const kodlar = Array.from(new Set<string>([...m1.keys(), ...m2.keys()])).sort();
+    const satirlar = kodlar.map((kod) => {
+      const a = m1.get(kod);
+      const b = m2.get(kod);
+      const s = this.farkSatiri(a?.netBakiye || 0, b?.netBakiye || 0);
+      return {
+        hesapKodu: kod,
+        hesapAdi: (b || a)!.hesapAdi,
+        ...s,
+        borcToplamiFarki: this.yuvarla2((b?.borcToplami || 0) - (a?.borcToplami || 0)),
+        alacakToplamiFarki: this.yuvarla2((b?.alacakToplami || 0) - (a?.alacakToplami || 0)),
+        durum: !a ? 'yeni' : !b ? 'kapandi' : undefined,
+      };
+    });
+    const degisti = (s: (typeof satirlar)[number]) =>
+      Math.abs(s.fark) >= 0.005 || Math.abs(s.borcToplamiFarki) >= 0.005 || Math.abs(s.alacakToplamiFarki) >= 0.005;
+    const farkaGoreSirala = (liste: typeof satirlar) => liste.filter(degisti).sort((a, b) => Math.abs(b.fark) - Math.abs(a.fark));
+    // Luca mizanı hiyerarşiktir (1 → 12 → 120 → 120.01 → 120.01.001): aynı değişim her kademede tekrar ediyor,
+    // ham sıralamada ilk 30'un çoğu tekrar oluyordu (canlı: FATİH GEDİK Q1→Q2). Yaprak (alt hesabı olmayan) ve
+    // ana hesap (3 haneli, noktasız) listeleri ayrı verilir.
+    const ustHesapMi = (kod: string) =>
+      kodlar.some((k) => k !== kod && (k.startsWith(kod + '.') || (!kod.includes('.') && !k.includes('.') && k.startsWith(kod))));
+    const yaprakSatirlar = satirlar.filter((s) => !ustHesapMi(s.hesapKodu));
+    const anaHesapSatirlar = satirlar.filter((s) => /^\d{3}$/.test(s.hesapKodu));
+    const enBuyukFarklar = farkaGoreSirala(yaprakSatirlar).slice(0, ToolExecutorService.KARSILASTIRMA_FARK_TAVANI);
+    const anaHesapFarklari = farkaGoreSirala(anaHesapSatirlar)
+      .slice(0, ToolExecutorService.KARSILASTIRMA_FARK_TAVANI)
+      .map(({ borcToplamiFarki, alacakToplamiFarki, ...kalan }) => kalan);
+    const yeniHesaplar = satirlar.filter((s) => s.durum === 'yeni').map((s) => s.hesapKodu);
+    const kapananHesaplar = satirlar.filter((s) => s.durum === 'kapandi').map((s) => s.hesapKodu);
+    const toplamlar = {
+      toplamBorc: this.farkSatiri(this.toNum(d1.toplamBorc), this.toNum(d2.toplamBorc)),
+      toplamAlacak: this.farkSatiri(this.toNum(d1.toplamAlacak), this.toNum(d2.toplamAlacak)),
+      hesapSayisi: this.farkSatiri(this.toNum(d1.toplamHesap ?? d1.hesapSayisi), this.toNum(d2.toplamHesap ?? d2.hesapSayisi)),
+    };
+    return {
+      kaynak,
+      donem1,
+      donem2,
+      donem1Kayit: d1.donem,
+      donem2Kayit: d2.donem,
+      donem1MizanId: d1.mizanId,
+      donem2MizanId: d2.mizanId,
+      hesapKoduFiltresi: onekler.length ? onekler : undefined,
+      // WhatsApp şablonu + geriye uyum: düz toplam haritası (hesap sayısı tutar değil, şablona girmesin)
+      karsilaştırma: { toplamBorc: toplamlar.toplamBorc, toplamAlacak: toplamlar.toplamAlacak },
+      toplamlar,
+      karsilastirilanHesap: satirlar.length,
+      degisenHesap: satirlar.filter((s) => Math.abs(s.fark) >= 0.005).length,
+      yaprakHesapSayisi: yaprakSatirlar.length,
+      yeniHesapSayisi: yeniHesaplar.length,
+      yeniHesaplar: yeniHesaplar.slice(0, 40),
+      kapananHesapSayisi: kapananHesaplar.length,
+      kapananHesaplar: kapananHesaplar.slice(0, 40),
+      // Yaprak hesaplar (alt kırılımı olmayan, en ayrıntılı satır) — asıl "hangi hesap değişti" listesi
+      enBuyukFarklar,
+      // Ana hesaplar (3 haneli: 120, 600, 770…) — grup düzeyi görünüm
+      anaHesapFarklari,
+      not:
+        `fark = netBakiye(donem2) − netBakiye(donem1); netBakiye = borçBakiye − alacakBakiye (alacak bakiyeli hesaplar negatif). ` +
+        `Geçici vergi mizanları KÜMÜLATİFTİR; çeyreklik tutar için fark sütunu zaten Q2 − Q1'dir. ` +
+        (d1.truncated || d2.truncated ? 'UYARI: bir dönemin mizanı sayfa tavanını aştı, kırılım eksik olabilir — hesapKoduFiltresi ile daralt. ' : '') +
+        `enBuyukFarklar = yaprak hesaplar (${yaprakSatirlar.length} yaprak, en büyük ${enBuyukFarklar.length} fark); anaHesapFarklari = 3 haneli ana hesaplar (${anaHesapFarklari.length}). ` +
+        `Toplam ${satirlar.length} hesap karşılaştırıldı.`,
+    };
+  }
+
+  private async fetchPeriodData(
+    kaynak: string,
+    taxpayerId: string,
+    donem: string,
+    ctx: { tenantId: string },
+    hesapKoduOnekleri: string[] = [],
+  ) {
     switch (kaynak) {
       case 'gelir_tablosu': return this.getGelirTablosu({ taxpayerId, donem }, ctx);
       case 'bilanco':       return this.getBilanco({ taxpayerId, donem }, ctx);
-      case 'mizan':         return this.getMizan({ taxpayerId, donem }, ctx);
-      default: return { error: `Bilinmeyen kaynak: ${kaynak}` };
+      // Karşılaştırma tüm hesapları görmeli → sayfa tavanı en yükseğe (1000); daha kalabalık mizanda truncated uyarısı döner.
+      case 'mizan':         return this.getMizan({ taxpayerId, donem, hesapKoduFiltresi: hesapKoduOnekleri, sayfaBoyutu: 1000 }, ctx);
+      default: return this.karsilastirmaHatasi(`Bilinmeyen kaynak: ${kaynak}.`);
     }
   }
 
   // ------------------------------------------------------------
   // FİNANSAL RASYOLAR
   // ------------------------------------------------------------
+  /**
+   * calculate_financial_ratios — 2026-09-12: çeyrek/geçici vergi dönemi ("2026-Q2", "Q2"+yil) kabul edilir;
+   * bilanço ya da gelir tablosu o dönem için yoksa ajan "mevcut dönemler" listesini görür, boş/undefined dönmez.
+   */
   private async calculateFinancialRatios(input: any, ctx: { tenantId: string }) {
-    const bResult: any = await this.getBilanco(input, ctx);
-    const gtResult: any = await this.getGelirTablosu(input, ctx);
+    const donem = this.normalizeFinancialPeriod(input?.donem, input?.yil ?? input?.year);
+    if (!donem) {
+      return {
+        error: `Dönem anlaşılamadı: "${input?.donem ?? ''}". ${ToolExecutorService.MALI_DONEM_BICIMI} Yalnız "Q2" yazdıysan yil:2026 de ver.`,
+        donemBicimi: ToolExecutorService.MALI_DONEM_BICIMI,
+      };
+    }
+    if (!input?.taxpayerId) return { error: 'taxpayerId zorunlu.' };
+
+    const bResult: any = await this.getBilanco({ taxpayerId: input.taxpayerId, donem }, ctx);
+    const gtResult: any = await this.getGelirTablosu({ taxpayerId: input.taxpayerId, donem }, ctx);
 
     const bOk = !bResult?.error;
     const gtOk = !gtResult?.error;
 
     if (!bOk && !gtOk) {
-      return { error: 'Bu dönem için ne bilanço ne gelir tablosu bulundu' };
+      const mevcut = bResult?.mevcutDonemler || gtResult?.mevcutDonemler || (await this.mevcutMaliDonemler(input.taxpayerId, ctx));
+      return {
+        error:
+          `${donem} için bilanço ve gelir tablosu yok; rasyo hesaplanamadı — rakam üretme. ` +
+          `Mevcut bilanço dönemleri: ${this.donemListesiMetni(mevcut.bilanco)}; gelir tablosu dönemleri: ${this.donemListesiMetni(mevcut.gelirTablosu)}; ` +
+          `mizan dönemleri: ${this.donemListesiMetni(mevcut.mizan)}. ` +
+          (mevcut.mizan.includes(donem)
+            ? `${donem} mizanı var: get_mizan (hesapKoduFiltresi "6" / "1" / "3" / "5") ile türetilebilir, raporda "mizandan türetildi" yaz. `
+            : '') +
+          ToolExecutorService.MALI_DONEM_BICIMI,
+        donem,
+        mevcutDonemler: mevcut,
+      };
     }
 
     const ratios: any = {};
     const notes: string[] = [];
+    const eksik: string[] = [];
 
     if (bOk) {
       const b: any = bResult;
@@ -2123,6 +2533,13 @@ export class ToolExecutorService {
       if (oz < 0) {
         notes.push('⚠️ **Özkaynak negatif** — TTK m.376 gereği sermaye kaybı durumu söz konusu olabilir. Genel kurul + sermaye artırımı/tamamlama kararı gerekli.');
       }
+    } else {
+      eksik.push('bilanco');
+      const mevcut: string[] = bResult?.mevcutDonemler?.bilanco || [];
+      notes.push(
+        `${donem} bilançosu yok; mevcut bilanço dönemleri: ${this.donemListesiMetni(mevcut)}. ` +
+          'Bilanço rasyoları (cari oran, borçluluk, özkaynak oranı, ROE, ROA) HESAPLANMADI — uydurma.',
+      );
     }
 
     if (gtOk) {
@@ -2131,6 +2548,8 @@ export class ToolExecutorService {
         ratios.brutKarMarji = { deger: k.brutSatisKari / k.netSatislar, formul: 'Brüt Satış Kârı / Net Satışlar' };
         ratios.faaliyetKarMarji = { deger: k.faaliyetKari / k.netSatislar, formul: 'Faaliyet Kârı / Net Satışlar' };
         ratios.netKarMarji = { deger: k.donemNetKari / k.netSatislar, formul: 'Dönem Net Kârı / Net Satışlar' };
+      } else {
+        notes.push('Net satışlar 0 → marj rasyoları hesaplanmadı.');
       }
       if (bOk && (bResult as any).pasif.ozkaynaklar > 0) {
         ratios.roe = { deger: k.donemNetKari / (bResult as any).pasif.ozkaynaklar, formul: 'Dönem Net Kârı / Özkaynak (ROE)' };
@@ -2138,10 +2557,20 @@ export class ToolExecutorService {
       if (bOk && (bResult as any).aktif.aktifToplami > 0) {
         ratios.roa = { deger: k.donemNetKari / (bResult as any).aktif.aktifToplami, formul: 'Dönem Net Kârı / Aktif Toplamı (ROA)' };
       }
+    } else {
+      eksik.push('gelir_tablosu');
+      const mevcut: string[] = gtResult?.mevcutDonemler?.gelirTablosu || [];
+      notes.push(
+        `${donem} gelir tablosu yok; mevcut gelir tablosu dönemleri: ${this.donemListesiMetni(mevcut)}. ` +
+          'Marj rasyoları (brüt/faaliyet/net kâr marjı, ROE, ROA) HESAPLANMADI — uydurma; mizan varsa get_mizan "6" kökünden türet.',
+      );
     }
 
     return {
-      donem: input.donem,
+      donem,
+      bilancoDonemi: bOk ? bResult.donem : null,
+      gelirTablosuDonemi: gtOk ? gtResult.donem : null,
+      eksik: eksik.length ? eksik : undefined,
       rasyolar: ratios,
       uyarilar: notes,
     };

@@ -7,7 +7,7 @@
 - Portalın Mizan modülüne yazma; okuduğunu işin içinde kullan.
 - Raporda geçen HER hesap kodu `get_mizan` çıktısında görülmüş olmalı; görmediğin alt hesabı (ör. 136.22) yazma. "Eski/olası" hesap hatırlatması yapacaksan "EMİN DEĞİLİM: mizanda yok" işaretiyle yaz.
 - Aynı dönemde birden fazla mizan varsa (`list_mizan_periods`) hesap sayısı/tarih/kaynak karşılaştırmadan "birebir aynı" deme; farklıysa hangisini kullandığını (id, hesap sayısı) yaz.
-- `get_mizan` en fazla 100 hesap döndürür; `hesapSayisi` > 100 ise 1,2,3,5,6,7,8,9 ana grupları için `hesapKoduFiltresi` ile AYRI AYRI çek; çekmediğin grup için "okunmadı" de.
+- `get_mizan` tek seferde 400 hesaba kadar TAMAMINI döndürür (2026-09-12: eski 100 tavanı kalktı). Çıktıda `truncated:true` görürsen gösterilmeyen hesap VAR: `toplamHesap`'a bak, `hesapKodu` öneki (ör. "136") ya da `sayfa:2` ile kalanı çek; çekmediğin grup için "okunmadı" de. `truncated:false` ise mizanın tamamını gördün, "okunmadı" deme.
 
 ## Kontrol listesi (sabit sıra, hepsi uygulanır)
 1. **Kasa (100) negatif** — herhangi bir gün eksiye düşmüş mü. KRİTİK.

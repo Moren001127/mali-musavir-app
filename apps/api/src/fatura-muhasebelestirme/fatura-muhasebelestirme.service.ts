@@ -29,7 +29,7 @@ import { mukellefEkBilgiMetni } from './mukellef-bilgi';
 // PLAN/16 §C — görsel benzerlik (dHash) + fiş (ÖKC) mükerrer anahtarı (saf modüller).
 import { computeImagePhash, hamming, MUKERRER_GORSEL_HAMMING_ESIK, phashGecerliMi, phashDejenereMi } from './gorsel-hash';
 import { fisEslesmeAnahtari, gunAraligi, tutarAraligi, belgeSaati, ettnAyikla, belgeNoYerTutucuMu, belgeNoUzunMu } from './mukerrer-fis';
-import { isletmeRef, getKayitAltList, isletmeAlisSatisTuru, isletmeIslemTuru, defaultBelgeTuruKod, normalizeDocumentType, isletmeGiderSinifi, isletmeAutoKayitAltKod, isletmeAutoKayitTuru, defaultKayitAltKod, denetimUyariOlustur, giderIcerikSinifla } from '@mali-musavir/shared';
+import { isletmeRef, getKayitAltList, isletmeAlisSatisTuru, isletmeIslemTuru, defaultBelgeTuruKod, normalizeDocumentType, isletmeGiderSinifi, isletmeAutoKayitAltKod, isletmeAutoKayitTuru, defaultKayitAltKod, denetimUyariOlustur, giderIcerikSinifla, isletmeKodCoz, isletmeKkegTespit, isletmeStopajTuru, isletmePlakaBul, isletmeKurumUnvaniMi } from '@mali-musavir/shared';
 
 // ── İşletme defteri AI sınıflandırması ──
 // Faturayı okuyan max-vision AI'ına, mükellefin FAALİYETİ + faturanın İÇERİĞİYLE muhakeme ederek
@@ -45,16 +45,18 @@ function islPromptSeg(kind?: 'ALIS' | 'SATIS'): string {
     'İŞLETME DEFTERİ SINIFLANDIRMASI — bu mükellef İşletme/Defter-Beyan usulü.',
     yon,
     kind === 'ALIS'
-      ? 'ALIŞ kuralı: alınan şey mükellefin SATTIĞI/ticaretini yaptığı emtia mı → "Mal Alışı". Kendi işinde KULLANDIĞI gider mi → "İndirilecek Giderler (GVK Md. 40)" + alt. Uzun ömürlü makine/cihaz/taşıt/demirbaş → "Sabit Kıymet Alışı".'
-      : 'SATIŞ kuralı: satılan mal mı → "Mal Satışı", hizmet mi → "Hizmet Satışı" + uygun alt.',
+      ? 'ALIŞ kuralı: alınan şey mükellefin SATTIĞI/ticaretini yaptığı emtia mı → "Mal Alışı". Kendi işinde KULLANDIĞI gider mi → "İndirilecek Giderler (GVK Md. 40)" + alt. Uzun ömürlü makine/cihaz/taşıt/demirbaş → "Sabit Kıymet Alışı". Para/vergi cezası, bağış, kişisel harcama → "Gider Kabul Edilmeyen Ödemeler (GVK Md. 41)" + alt.'
+      // PLAN/15 Faz 3 (#7, 2026-09-12): faaliyet boşken satış türü boş kalıyordu (%75 "İncele") → KALEMLERDEN karar ver.
+      : 'SATIŞ kuralı: satılan mal mı → "Mal Satışı", hizmet mi → "Hizmet Satışı" + uygun alt. Mükellef faaliyeti tanımsız/boşsa KALEMLERDEN karar ver: nakliye/taşıma/işçilik/danışmanlık/tamir/servis/montaj/komisyon/kira = "Hizmet Satışı"; ürün/emtia/malzeme teslimi = "Mal Satışı". Faiz/kur farkı/komisyon geliri gibi ana faaliyet dışı gelir → "Diğer Hasılat". Kalem yoksa ve faaliyet de yoksa boş bırak.',
     kind === 'ALIS' ? ('GİDER türleri ve alt türleri:\n' + tx('ALIS'))
       : kind === 'SATIS' ? ('GELİR türleri ve alt türleri:\n' + tx('SATIS'))
       : ('GELİR türleri ve alt türleri:\n' + tx('SATIS') + '\nGİDER türleri ve alt türleri:\n' + tx('ALIS')),
     'JSON\'A EKLE: "isletmeKayitTuru":"<yukarıdaki TAM kayıt türü adı>","isletmeAltTuru":"<o türün listesinden TAM alt adı>","isletmeNeden":"<tek cümle gerekçe>". Her zaman EN UYGUN alt türü seç — ASLA boş bırakma.',
   ].filter(Boolean).join('\n');
 }
-function islNorm(s: any): string {
-  return String(s || '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/ı/g, 'i').replace(/[^a-z0-9]/g, '');
+// (islNorm kaldırıldı — ad→kod çözümü artık tek yerde: isletmeKodCoz, PLAN/15 Faz 3 2026-09-12.)
+function islKalemAdlari(parsed: any): string[] {
+  return (Array.isArray(parsed?.kalemler) ? parsed.kalemler : []).map((k: any) => String(k?.ad || k || '').trim()).filter(Boolean);
 }
 function resolveIslAi(kind: string, parsed: any): any {
   const dir = String(kind || '').toUpperCase().includes('SATIS') ? 'SATIS' : 'ALIS';
@@ -63,32 +65,73 @@ function resolveIslAi(kind: string, parsed: any): any {
   const matrahKat = String(parsed?.kategori || parsed?.matrahKategori || '').trim();
   const vendor = String(parsed?.saticiAd || parsed?.vendorName || '').trim();
   const ktAd = String(parsed?.isletmeKayitTuru || '').trim();
+  const kalemler = islKalemAdlari(parsed);
 
-  // 1) AI'ın verdiği kayıt türü adını koda eşle.
-  let kt: any = null;
-  if (ktAd) {
-    const ktN = islNorm(ktAd);
-    kt = ref.kayitTuru.find((x: any) => islNorm(x.ad) === ktN) || ref.kayitTuru.find((x: any) => islNorm(x.ad).includes(ktN) || ktN.includes(islNorm(x.ad)));
-  }
+  // 1) AI'ın verdiği kayıt türü (AD ya da KOD) → isletmeKodCoz (PLAN/15 Faz 3 #6/#7: tek çözümleyici; hafıza ve AI aynı yol).
+  //    Yön çelişkisi: AI satış belgesine gider türü (ya da tersi) verdiyse bu yönün listesinde bulunmaz → kt boş kalır,
+  //    gerekçe islIncelemeNedeni'nde "yön çelişkili" olarak yazılır.
+  const coz = ktAd ? isletmeKodCoz(dir, ktAd, parsed?.isletmeAltTuru) : null;
+  let kt: any = coz ? ref.kayitTuru.find((x: any) => x.kod === coz.kayitTuruKod) || null : null;
   // 2) AI kayıt türü vermedi/eşleşmedi → GİDER tarafında içerik-bazlı deterministik sınıf (Mal/Sabit/GVK40).
+  //    Ünvan yalnız içerik yokken ve kurum tipi belliyse (#8) — isletmeGiderSinifi içinde.
   let detAlt = '';
   if (!kt && dir === 'ALIS') {
-    const gs = isletmeGiderSinifi({ matrahKategori: matrahKat, giderTuru, vendorName: vendor });
+    const gs = isletmeGiderSinifi({ matrahKategori: matrahKat, giderTuru, vendorName: vendor, kalemler });
     if (gs) { kt = ref.kayitTuru.find((x: any) => x.kod === gs.kayitTuruKod) || null; detAlt = gs.kayitAltKod; }
   }
-  if (!kt) return undefined; // hiçbir kesin sinyal yok → Eşleşmedi
+  if (!kt) return undefined; // hiçbir kesin sinyal yok → Eşleşmedi (gerekçe: islIncelemeNedeni)
 
-  // 3) Alt türü: AI'ın verdiğini eşle; yoksa İÇERİK-BAZLI türet (elektrik/kira/akaryakıt… ya da deterministik sınıfın alt'ı).
+  // 3) Alt türü: AI'ın verdiği çözüldüyse o; yoksa İÇERİK-BAZLI türet (elektrik/kira/akaryakıt/KKEG… ya da deterministik sınıfın alt'ı).
   const altList = getKayitAltList(dir, kt.kod);
-  const altN = islNorm(parsed?.isletmeAltTuru || '');
-  let alt = altN ? (altList.find((x: any) => islNorm(x.ad) === altN) || altList.find((x: any) => islNorm(x.ad).includes(altN) || altN.includes(islNorm(x.ad)))) : null;
+  let alt: any = coz && coz.kayitTuruKod === kt.kod && coz.kayitAltKod ? altList.find((x: any) => x.kod === coz.kayitAltKod) || null : null;
   if (!alt) {
+    // İçerik varken ünvan okunmaz; içerik yoksa ünvan yalnız kurum tipi belliyse (EDAŞ/İSKİ/Turkcell…) alt tür söyler (#8).
+    const icerik = [giderTuru, ...kalemler].filter(Boolean).join(' ') || (isletmeKurumUnvaniMi(vendor) ? vendor : '');
     const fbKod = detAlt
-      || (kt.kod === '4' ? isletmeAutoKayitAltKod(dir, '4', `${giderTuru} ${vendor}`) : '')
+      || ((kt.kod === '4' || kt.kod === '5') ? isletmeAutoKayitAltKod(dir, kt.kod, icerik) : '')
       || defaultKayitAltKod(dir, kt.kod, kt.ad);
     if (fbKod) alt = altList.find((x: any) => x.kod === fbKod) || null;
   }
-  return { kayitTuruKod: kt.kod, kayitTuruAd: kt.ad, kayitAltKod: alt?.kod || '', kayitAltAd: alt?.ad || '', autoMatched: true, neden: String(parsed?.isletmeNeden || '').slice(0, 140) };
+  return { kayitTuruKod: kt.kod, kayitTuruAd: kt.ad, kayitAltKod: alt?.kod || '', kayitAltAd: alt?.ad || '', autoMatched: true, kaynak: 'AI', neden: String(parsed?.isletmeNeden || '').slice(0, 140) };
+}
+
+/** PLAN/15 Faz 3 (#39, 2026-09-12) — Tür seçilemeyince "İncele"nin GEREKÇESİ (ocrData.isletme.neden). Sessiz boş bırakılmaz.
+ *  Sıra: içerik okunmamış → yön çelişkili (AI karşı yönün türünü verdi) → satışta faaliyet tanımsız → AI belirsiz. */
+function islIncelemeNedeni(kind: string, p: { aiKayitTuru?: string | null; kalemSayisi: number; giderTuru?: string | null; kategori?: string | null; faaliyetVar: boolean; aiCalisti: boolean }): string {
+  const dir = String(kind || '').toUpperCase().includes('SATIS') ? 'SATIS' : 'ALIS';
+  const aiKt = String(p.aiKayitTuru || '').trim();
+  if (aiKt && !isletmeKodCoz(dir, aiKt) && isletmeKodCoz(dir === 'SATIS' ? 'ALIS' : 'SATIS', aiKt)) {
+    return `Tür seçilemedi: AI "${aiKt}" (${dir === 'SATIS' ? 'gider' : 'gelir'} türü) verdi ama belge ${dir === 'SATIS' ? 'satış' : 'alış'} yönünde — yön çelişkili, belge yönünü kontrol edin`;
+  }
+  if (!p.kalemSayisi && !String(p.giderTuru || '').trim() && !String(p.kategori || '').trim() && !aiKt) {
+    return 'Tür seçilemedi: belge içeriği okunmamış (kalem yok) — "AI ile oku" ile kalemleri çıkarın ya da Muhasebeleştir ekranından seçin';
+  }
+  if (dir === 'SATIS' && !p.faaliyetVar) {
+    return 'Tür seçilemedi: mükellef faaliyeti tanımsız ve kalemler belirsiz — Mükellefler listesinden faaliyeti tanımlayın';
+  }
+  if (aiKt) return `Tür seçilemedi: AI "${aiKt}" dedi ama listede karşılığı yok — Muhasebeleştir ekranından seçin`;
+  return p.aiCalisti
+    ? 'Tür seçilemedi: AI kayıt türü veremedi, içerik belirsiz — Muhasebeleştir ekranından seçin'
+    : 'Tür seçilemedi: sınıflandırma çalışmadı (AI yanıt vermedi) — "AI ile oku" ile yeniden deneyin';
+}
+
+/** PLAN/15 Faz 3 (#38, 2026-09-12) — ALIŞ işletme sınıfına stopaj türü (022 e-SMM / 041 kira) + plaka (boşsa, metinden) ekler.
+ *  FE'de stopajKod alanı yok (yalnız veri); plakaNo formda var. Satışta dokunmaz (plaka/stopaj alanı yok). */
+function islStopajPlaka(kind: 'ALIS' | 'SATIS', isl: any, ctx: { belgeTuru?: string | null; giderTuru?: string | null; text?: string | null; mevcut?: any }): any {
+  if (kind !== 'ALIS' || !isl) return isl;
+  const stopajKod = isletmeStopajTuru(kind, { belgeTuru: ctx.belgeTuru, giderTuru: ctx.giderTuru, text: ctx.text });
+  const plakaEski = String(ctx.mevcut?.plakaNo || isl?.plakaNo || '').trim();
+  const plakaNo = plakaEski || isletmePlakaBul(ctx.text);
+  return { ...isl, ...(stopajKod ? { stopajKod } : {}), ...(plakaNo ? { plakaNo } : {}) };
+}
+
+/** İşletme mükellef bilgisi (AI istemi): faaliyet/NACE boşsa AÇIKÇA "tanımsız — kalemlerden karar ver" (PLAN/15 Faz 3 #7). */
+function islFaaliyetBilgisi(faaliyet: string, nace: string): string {
+  const f = String(faaliyet || '').trim();
+  const n = String(nace || '').trim();
+  if (f) return `faaliyeti: ${f}`;
+  if (n) return `NACE ${n}`;
+  return 'faaliyeti TANIMSIZ — kayıt türünü (mal/hizmet) fatura KALEMLERİNDEN karar ver';
 }
 
 function isIsletmeLedger(defterTuru?: any, mihsapDefterTuru?: any): boolean {
@@ -3508,7 +3551,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         qcNace = String(tp.naceKodu || '').trim();
         qcFaaliyet = String(tp.faaliyetAciklama || '').trim();
         const ad = String(tp.companyName || (String(tp.firstName || '') + ' ' + String(tp.lastName || ''))).trim();
-        mukellefBilgi = [ad && ('ünvanı "' + ad + '"'), qcFaaliyet ? ('faaliyeti: ' + qcFaaliyet) : (qcNace ? ('NACE ' + qcNace) : ''), isIsletme ? 'İşletme defteri' : 'Bilanço usulü'].filter(Boolean).join(', ')
+        // PLAN/15 Faz 3 (#7): işletme mükellefinde faaliyet/NACE boşsa AI'a açıkça "tanımsız — kalemlerden karar ver" denir.
+        const faaliyetSeg = isIsletme ? islFaaliyetBilgisi(qcFaaliyet, qcNace) : (qcFaaliyet ? ('faaliyeti: ' + qcFaaliyet) : (qcNace ? ('NACE ' + qcNace) : ''));
+        mukellefBilgi = [ad && ('ünvanı "' + ad + '"'), faaliyetSeg, isIsletme ? 'İşletme defteri' : 'Bilanço usulü'].filter(Boolean).join(', ')
           + mukellefEkBilgiMetni(tp); // PLAN/16 §F: sektör + kurum türü
       }
     }
@@ -3562,9 +3607,14 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   üstüne bindirilir, snippet alanları silinir.
     const patch: any = {};
     let islPatch: any = null;
+    let islNedenYaz = ''; // PLAN/15 Faz 3 (#39): tür seçilemedi → gerekçe (yalnız mevcut sınıf boşsa yazılır)
+    // PLAN/15 Faz 3 (#7/#39, 2026-09-12): işletme SATIŞ belgesine GİDER kategorisi/gider türü YAZILMAZ (AI "genel_gider" diyordu;
+    //   satışta matrahKategori yalnız gelir sinyali taşımalı ya da boş kalmalı). Bilanço davranışı değişmedi.
+    const islSatisGiderAtla = isIsletme && kind === 'SATIS';
+    const GIDER_KATEGORI = new Set(['genel_gider', 'pazarlama', 'hammadde', 'ticari_mal']);
     if (c) {
-      if (c.giderTuru) patch.giderTuru = String(c.giderTuru).slice(0, 40);
-      if (c.kategori) patch.matrahKategori = c.kategori;
+      if (c.giderTuru && !islSatisGiderAtla) patch.giderTuru = String(c.giderTuru).slice(0, 40);
+      if (c.kategori && !(islSatisGiderAtla && GIDER_KATEGORI.has(String(c.kategori).trim().toLowerCase()))) patch.matrahKategori = c.kategori;
       // B4: AI'ın plandan seçtiği matrah hesabı — yalnız aday listesindeki (kaydedilebilir yaprak) kod yazılır;
       //   geçersiz/boş ise DOKUNMA (eski aiMatrahKodu varsa kalır). rematch aiMatrahKodu'nu okur (aiKod).
       {
@@ -3575,64 +3625,72 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           this.logger.log(`[CLS-PLAN] AI matrah hesabı=${aiKod} guven=${c.guven || '-'} doc=${documentId}`);
         }
       }
-      // userEdited korunur: kullanıcı işletme sınıfını elle düzelttiyse sınıflandırma yeniden EZMEZ
-      //   (backfill'deki korumanın buradaki simetriği — eksikti, elle düzeltme kaybolabiliyordu).
-      if (isIsletme && od?.isletme?.userEdited !== true) {
-        let isl = (c.isletmeKayitTuru || c.giderTuru || c.kategori)
-          ? resolveIslAi(kind, { isletmeKayitTuru: c.isletmeKayitTuru, isletmeAltTuru: c.isletmeAltTuru, isletmeNeden: c.isletmeNeden, giderTuru: c.giderTuru, kategori: c.kategori })
+    }
+    // userEdited korunur: kullanıcı işletme sınıfını elle düzelttiyse sınıflandırma yeniden EZMEZ
+    //   (backfill'deki korumanın buradaki simetriği — eksikti, elle düzeltme kaybolabiliyordu).
+    // PLAN/15 Faz 3: AI yanıt vermese de (c=null) hafıza + faaliyet/içerik yedeği çalışır; hiçbiri tür veremezse gerekçe yazılır.
+    if (isIsletme && od?.isletme?.userEdited !== true) {
+      const cc: any = c || {};
+      const kalemAdlari: string[] = islKalemAdlari(od);
+      let isl = (cc.isletmeKayitTuru || cc.giderTuru || cc.kategori)
+        ? resolveIslAi(kind, { isletmeKayitTuru: cc.isletmeKayitTuru, isletmeAltTuru: cc.isletmeAltTuru, isletmeNeden: cc.isletmeNeden, giderTuru: cc.giderTuru, kategori: cc.kategori, kalemler: kalemAdlari, vendorName: kind === 'ALIS' ? (doc as any).vendorName : '' })
+        : null;
+      // ÖĞRENİLMİŞ İŞLETME SINIFI (sahip-onaylı, eşikli; ad yazılmış eski kayıtlar isletmeKodCoz ile çözülür) — AI/kural tahminini ezer.
+      {
+        const islVkn = String((kind === 'ALIS' ? (doc as any).sellerVkn : (doc as any).buyerVkn) || '').replace(/\D/g, '');
+        const islMemImza = VendorMemoryService.buildIcerikImza(kalemAdlari);
+        const islMem = (islVkn && (doc as any).taxpayerId)
+          ? await this.pickIsletmeMemory(tenantId, (doc as any).taxpayerId, islVkn, islMemImza, kind).catch(() => null)
           : null;
-        // ÖĞRENİLMİŞ İŞLETME SINIFI (kullanıcı-teyitli, eşikli) — AI/kural tahminini ezer.
-        {
-          const islVkn = String((kind === 'ALIS' ? (doc as any).sellerVkn : (doc as any).buyerVkn) || '').replace(/\D/g, '');
-          const islMemImza = VendorMemoryService.buildIcerikImza(Array.isArray(od?.kalemler) ? od.kalemler.map((k: any) => k?.ad) : []);
-          const islMem = (islVkn && (doc as any).taxpayerId)
-            ? await this.pickIsletmeMemory(tenantId, (doc as any).taxpayerId, islVkn, islMemImza).catch(() => null)
-            : null;
-          if (islMem) {
-            const memRef = isletmeRef(kind);
-            const memKt = memRef.kayitTuru.find((x: any) => x.kod === islMem.kayitTuruKod);
-            if (memKt) {
-              const memAltList = getKayitAltList(kind, islMem.kayitTuruKod);
-              const memAlt = islMem.kayitAltKod ? memAltList.find((x: any) => x.kod === islMem.kayitAltKod) : null;
-              isl = {
-                kayitTuruKod: memKt.kod, kayitTuruAd: memKt.ad,
-                kayitAltKod: memAlt?.kod || '', kayitAltAd: memAlt?.ad || '',
-                autoMatched: true, neden: 'Bu satıcı için öğrenilmiş sınıf (müşavir onaylı)',
-              };
-            }
+        if (islMem) {
+          const memRef = isletmeRef(kind);
+          const memKt = memRef.kayitTuru.find((x: any) => x.kod === islMem.kayitTuruKod);
+          if (memKt) {
+            const memAltList = getKayitAltList(kind, islMem.kayitTuruKod);
+            const memAlt = islMem.kayitAltKod ? memAltList.find((x: any) => x.kod === islMem.kayitAltKod) : null;
+            isl = {
+              kayitTuruKod: memKt.kod, kayitTuruAd: memKt.ad,
+              kayitAltKod: memAlt?.kod || '', kayitAltAd: memAlt?.ad || '',
+              autoMatched: true, kaynak: 'HAFIZA', neden: 'Bu satıcı için öğrenilmiş sınıf (müşavir onaylı)',
+            };
           }
         }
-        // Son care fallback: alista yalniz icerik sinyaliyle; satista faaliyet+NACE ile.
-        if (!isl) {
-          const firma = kind === 'ALIS' ? String((doc as any).vendorName || '') : String((doc as any).customerName || '');
-          const gs = kind === 'ALIS'
-            ? isletmeGiderSinifi({ matrahKategori: c.kategori, giderTuru: c.giderTuru, vendorName: firma, documentType: normalizeDocumentType((doc as any).documentType || od?.belgeTuru || od?.documentType) || (doc as any).documentType })
-            : null;
-          const fbKtKod = kind === 'ALIS' ? (gs?.kayitTuruKod || '') : isletmeAutoKayitTuru(kind, qcNace || null, qcFaaliyet || null);
-          if (fbKtKod) {
-            const ref = isletmeRef(kind);
-            const fbKt = ref.kayitTuru.find((x: any) => x.kod === fbKtKod);
-            if (fbKt) {
-              const islText2 = [c.giderTuru, firma].filter(Boolean).join(' ');
-              const fbAltKod = gs?.kayitAltKod || (fbKtKod === '4' ? isletmeAutoKayitAltKod(kind, '4', islText2) : (defaultKayitAltKod(kind, fbKtKod, fbKt.ad) || ''));
-              const altList = getKayitAltList(kind, fbKtKod);
-              const fbAlt = fbAltKod ? altList.find((x: any) => x.kod === fbAltKod) : null;
-              isl = { kayitTuruKod: fbKtKod, kayitTuruAd: fbKt.ad, kayitAltKod: fbAlt?.kod || '', kayitAltAd: fbAlt?.ad || '', autoMatched: true, neden: 'Faaliyet/içerik tabanlı ön seçim' };
-            }
+      }
+      // Son care fallback: alista yalniz icerik sinyaliyle (kalemler dahil; ünvan yalnız kurum tipi belliyse); satista faaliyet+NACE ile.
+      if (!isl) {
+        const firma = kind === 'ALIS' ? String((doc as any).vendorName || '') : String((doc as any).customerName || '');
+        const gs = kind === 'ALIS'
+          ? isletmeGiderSinifi({ matrahKategori: cc.kategori, giderTuru: cc.giderTuru, vendorName: firma, kalemler: kalemAdlari, documentType: normalizeDocumentType((doc as any).documentType || od?.belgeTuru || od?.documentType) || (doc as any).documentType })
+          : null;
+        const fbKtKod = kind === 'ALIS' ? (gs?.kayitTuruKod || '') : isletmeAutoKayitTuru(kind, qcNace || null, qcFaaliyet || null);
+        if (fbKtKod) {
+          const ref = isletmeRef(kind);
+          const fbKt = ref.kayitTuru.find((x: any) => x.kod === fbKtKod);
+          if (fbKt) {
+            const islText2 = [cc.giderTuru, ...kalemAdlari].filter(Boolean).join(' ') || (isletmeKurumUnvaniMi(firma) ? firma : '');
+            const fbAltKod = gs?.kayitAltKod || ((fbKtKod === '4' || fbKtKod === '5') ? isletmeAutoKayitAltKod(kind, fbKtKod, islText2) : (defaultKayitAltKod(kind, fbKtKod, fbKt.ad) || ''));
+            const altList = getKayitAltList(kind, fbKtKod);
+            const fbAlt = fbAltKod ? altList.find((x: any) => x.kod === fbAltKod) : null;
+            isl = { kayitTuruKod: fbKtKod, kayitTuruAd: fbKt.ad, kayitAltKod: fbAlt?.kod || '', kayitAltAd: fbAlt?.ad || '', autoMatched: true, kaynak: 'KURAL', neden: 'Faaliyet/içerik tabanlı ön seçim' };
           }
         }
-        if (isl) {
-          // GİB Defter-Beyan: Alış/Satış + İşlem + Belge Türü'nü belgenin sinyallerinden türet (XML yolu).
-          const islText = [c.giderTuru, isl.kayitAltAd, c.isletmeNeden].filter(Boolean).join(' ');
-          const islKdvVar = typeof od?.kdvTutari === 'number' ? od.kdvTutari > 0 : undefined;
-          isl = {
-            ...isl,
-            alisSatisKod: isletmeAlisSatisTuru(kind, { isReturn: od?.isReturn === true, tevkifat: od?.tevkifatHint === true || Number(od?.tevkifatOrani) > 0, kdvVar: islKdvVar, text: islText }),
-            islemTuruKod: isletmeIslemTuru(kind, islText),
-            belgeTuruKod: (() => { const dt = normalizeDocumentType((doc as any).documentType || od?.belgeTuru || od?.documentType); return dt ? defaultBelgeTuruKod(dt, kind) : ''; })(),
-          };
-          islPatch = isl;
-        }
+      }
+      if (isl) {
+        // GİB Defter-Beyan: Alış/Satış + İşlem + Belge Türü'nü belgenin sinyallerinden türet (XML yolu).
+        const islText = [cc.giderTuru, isl.kayitAltAd, cc.isletmeNeden, ...kalemAdlari].filter(Boolean).join(' ');
+        const islKdvVar = typeof od?.kdvTutari === 'number' ? od.kdvTutari > 0 : undefined;
+        const belgeTuruNorm = normalizeDocumentType((doc as any).documentType || od?.belgeTuru || od?.documentType);
+        isl = {
+          ...isl,
+          alisSatisKod: isletmeAlisSatisTuru(kind, { isReturn: od?.isReturn === true, tevkifat: od?.tevkifatHint === true || Number(od?.tevkifatOrani) > 0, kdvVar: islKdvVar, text: islText }),
+          islemTuruKod: isletmeIslemTuru(kind, islText),
+          belgeTuruKod: belgeTuruNorm ? defaultBelgeTuruKod(belgeTuruNorm, kind) : '',
+        };
+        // #38: stopaj türü (022/041) + plaka (alışta, boşsa)
+        islPatch = islStopajPlaka(kind, isl, { belgeTuru: belgeTuruNorm || (doc as any).documentType, giderTuru: cc.giderTuru, text: islText, mevcut: od?.isletme });
+      } else {
+        islNedenYaz = islIncelemeNedeni(kind, { aiKayitTuru: cc.isletmeKayitTuru, kalemSayisi: kalemAdlari.length, giderTuru: cc.giderTuru, kategori: cc.kategori, faaliyetVar: !!(qcFaaliyet || qcNace), aiCalisti: !!c });
+        this.logger.log(`[CLS-ISLETME] tür seçilemedi doc=${documentId}: ${islNedenYaz}`);
       }
     }
     {
@@ -3642,6 +3700,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       Object.assign(taze, patch);
       // İşletme sınıfı: bu arada kullanıcı elle düzelttiyse (userEdited) EZME.
       if (islPatch && taze?.isletme?.userEdited !== true) taze.isletme = islPatch;
+      // #39: tür seçilemedi → gerekçe; mevcut (otomatik) sınıf varsa ona dokunma, yalnız boş sınıfa gerekçe yaz.
+      else if (islNedenYaz && taze?.isletme?.userEdited !== true && !String(taze?.isletme?.kayitTuruKod || '').trim()) taze.isletme = { ...(taze.isletme || {}), kayitTuruKod: '', kayitAltKod: '', autoMatched: false, neden: islNedenYaz };
       await (this.prisma as any).invoiceAccountingDocument.update({ where: { id: doc.id }, data: { ocrData: taze } }).catch(() => {});
     }
     // giderTuru artık dolu → hesap eşleştirmesini yenile (kural + AI eskalasyon arkada çalışır).
@@ -6653,9 +6713,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           .catch(() => (this.prisma as any).taxpayer.findFirst({ where: { id: doc.taxpayerId, tenantId }, select: tpSelectBase }).catch(() => null))
       : null;
     const isSaleDoc = String(doc.invoiceKind || '').toUpperCase() === 'SATIS';
+    // PLAN/15 Faz 3 F1/F6 (2026-09-12): işletme belgesi → runValidation yevmiye kontrollerini atlar; KKEG uyarısı yalnız burada üretilir.
+    const isIsletmeDoc = isIsletmeLedger(tpForAsset?.defterTuru, tpForAsset?.mihsapDefterTuru);
     const faturaYili = doc.faturaTarihi ? new Date(doc.faturaTarihi).getUTCFullYear() : new Date().getUTCFullYear();
     // Faz 2 — sahip kararı (POST documents/:id/demirbas-karari): elle_islendi | yine_de_isle | demirbas_degil.
     const demirbasKarar: string | null = String(ocrData?.demirbasKarar?.karar || '').trim() || null;
+    // F6 — had-üstü demirbaş tespiti işletmede de bilançodaki gibi (detectFixedAsset defter türünden bağımsız; DEMIRBAS uyarısı aşağıda).
     let fixedAsset = this.detectFixedAsset(ocrData, tpForAsset, doc.invoiceKind);
     // DEMİRBAŞ HADDİ (VUK 313, yıla göre): bedel KDV hariç haddin altındaysa demirbaş uyarısı verme —
     //   doğrudan gider yazılır (matcher de 770'e yönlendirir; ikisi tutarlı).
@@ -6801,6 +6864,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       tevkifatKdv: this.numFromOcr(ocrData?.tevkifatKdv) || this.numFromOcr(ocrData?.kdvTevkifat) || 0,
       belgeDurumu: ocrData?.belgeDurumu,
       stopajTutari: this.numFromOcr(ocrData?.stopajTutari) || 0,
+      isletme: isIsletmeDoc,
     });
 
     // v2.2: validation kolonlarını raw SQL ile yaz — Prisma client tanımıyor olabilir
@@ -7099,6 +7163,35 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           }));
         }
       }
+      // — KKEG_SUPHESI (işletme ALIŞ; uyarı, engel değil) — PLAN/15 Faz 3 F6 (#18, 2026-09-12):
+      //   içerik (kalemler + giderTuru + seçili alt tür adı) GVK 41 / 40-5 kalıbına uyuyorsa (binek araç yakıt-bakım-kira %70 kuralı,
+      //   para/vergi cezası, bağış, kişisel harcama) sahibe hatırlatılır; kayıt türü zaten KKEG (5) seçilmişse 'bilgi'.
+      //   Tek belge = tek tür (#26 bu turda yok) → belge İndirilecek Gider'de kalır; öneri indirilebilir kısmı söyler.
+      if (isIsletmeDoc && !isSaleDoc) {
+        const islSec: any = ocrData?.isletme || {};
+        const kkegMetin = [
+          ...(Array.isArray(ocrData?.kalemler) ? ocrData.kalemler.map((k: any) => String(k?.ad || '')) : []),
+          String(ocrData?.giderTuru || ''), String(islSec?.kayitAltAd || ''),
+        ].filter(Boolean).join(' ');
+        const kkeg = isletmeKkegTespit(kkegMetin);
+        if (kkeg) {
+          const kkegSecili = String(islSec?.kayitTuruKod || '') === '5';
+          const yuzde = kkeg.indirilebilirYuzde;
+          turetilen.push(uyariYap({
+            kod: UYARI_KOD.KKEG_SUPHESI,
+            seviye: kkegSecili ? 'bilgi' : 'uyari',
+            baslik: kkegSecili ? `KKEG — ${kkeg.etiket}` : `KKEG şüphesi — ${kkeg.etiket}`,
+            aciklama: yuzde
+              ? `Binek otomobil gideri: en çok %${yuzde}'i indirilebilir (GVK 40/5), kalan %${100 - yuzde} kanunen kabul edilmeyen giderdir. Belge tek türde işlenir; ayrımı Luca/DBS'de yapın.`
+              : `Belge içeriği GVK 41 kapsamında görünüyor (${kkeg.etiket}) — gider olarak indirilemez.`,
+            oneri: yuzde
+              ? `Alt tür: ${kkeg.kayitAltAd} (%${100 - yuzde} kısmı) — yalnız indirilebilir %${yuzde} kısmı gider (İndirilecek Giderler / Taşıt alt türü).`
+              : `Alt tür: ${kkeg.kayitAltAd} — yalnız indirilebilir kısmı gider; Kayıt Türü "Gider Kabul Edilmeyen Ödemeler (GVK Md. 41)" seçin.`,
+            meta: { kayitAltKod: kkeg.kayitAltKod, kayitAltAd: kkeg.kayitAltAd, etiket: kkeg.etiket, ...(yuzde ? { indirilebilirYuzde: yuzde } : {}), kkegSecili },
+            kaynak: 'dogrulama',
+          }));
+        }
+      }
       // — IADE (bilgi; hata varsa dogrulamaUyarilari engel üretir) —
       if (isReturn && !validation.issues.some((i: any) => i.code === 'RETURN_NEEDS_REVERSAL' || i.code === 'RETURN_DIRECTION_REVERSED')) {
         turetilen.push(uyariYap({ kod: UYARI_KOD.IADE, seviye: 'bilgi', baslik: 'İade belgesi', aciklama: `${isSaleDoc ? 'Satıştan' : 'Alıştan'} iade — ters kayıt kuruldu (${isSaleDoc ? '610 / 391-iade / cari alacak' : 'cari borç / stok-gider alacak'}).`, kaynak: 'dogrulama' }));
@@ -7168,7 +7261,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   }
 
   async approve(tenantId: string, id: string, userId?: string, force?: boolean) {
-    const doc = await this.get(tenantId, id);
+    let doc = await this.get(tenantId, id);
 
     // (AI denetçi kapısı kaldırıldı — kullanıcı talebi 2026-07-27.)
 
@@ -7179,24 +7272,51 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const isIsletme = isIsletmeLedger(tp?.defterTuru, tp?.mihsapDefterTuru);
 
     if (isIsletme) {
+      // PLAN/15 Faz 3 F1 (#6/#18, 2026-09-12): işletme dalı da onay öncesi DOĞRULAMA çalıştırır (eskiden çağrılmıyordu →
+      //   demirbaş/mükerrer/KKEG uyarıları bayat kalıyor, had-üstü demirbaş uyarısız onaylanabiliyordu). revalidateDocument
+      //   işletme belgesinde yevmiye-satırı kontrollerini atlar (runValidation isletme=true); güncel belgeyle devam edilir.
+      await this.revalidateDocument(tenantId, id).catch((e: any) => { this.logger.warn(`işletme onay doğrulaması (${id}): ${e?.message || e}`); });
+      doc = await this.get(tenantId, id); // doğrulama sonrası GÜNCEL belge (uyarılar tazelendi)
       const ready = isletmeDocumentReady(doc);
-      // Faz 2 — MÜKERRER engel (işletme dalı revalidate çağırmıyor; uyarı listesinden kontrol).
       const islOzet = uyariOzet((doc as any).ocrData?.uyarilar);
+      // Faz 2 — MÜKERRER engel (force ile de geçilmez; kopya Luca'ya gitmez).
       if (islOzet.mukerrer) throw new BadRequestException('Bu belge onaylanamaz — mükerrer (aynı belge no/VKN/tutar/yönde daha eski belge var). İlk belgeyi kontrol edip bu kopyayı silin.');
       // A.6 — demirbaş kararı verilmemiş belge tekil onayda da geçmez (karar verilmeden onaylanan demirbaş yanlış kayıt türüne giderdi).
       if (islOzet.kararBekliyor) throw new BadRequestException('Demirbaş kararı bekliyor — bu belge onaylanamaz. Belgeyi açıp "Luca\'da elle işledim → kapat", "yine de işle" ya da "demirbaş değil" seçin.');
+      // F1 — ENGEL seviyeli uyarı (iptal belge / sahiplik ters / tutar tutarsız / tevkifat oranı okunmadı…) → force değilse onaylanmaz.
+      if (islOzet.engel && force !== true) {
+        const basliklar = (Array.isArray((doc as any).ocrData?.uyarilar) ? (doc as any).ocrData.uyarilar : [])
+          .filter((u: any) => String(u?.seviye || (u?.siddet === 'hata' ? 'engel' : '')) === 'engel')
+          .map((u: any) => String(u?.baslik || u?.kod || '')).filter(Boolean);
+        throw new BadRequestException(`Bu belge onaylanamaz — ${basliklar.join(' · ') || islOzet.engelKodlari.join(', ')} uyarısı var. Uyarıyı giderin ya da zorla onay (force) kullanın.`);
+      }
       if (!isletmeAmountReady(doc)) throw new BadRequestException('Bu belge onaylanamaz — tutar okunamamış. Önce "AI ile oku" ile tutarları çıkar.');
       if (!ready.ok) throw new BadRequestException(`Bu belge onaylanamaz — İşletme defteri için ${ready.reason}. Muhasebeleştir ekranında belge/kayıt türünü seç.`);
       // §G — Luca'dan geri alınmış belge (Luca'daki fiş elle düzeltilir) yeniden onaylanınca Luca'ya OTOMATİK GİTMEZ (çift fiş).
       const elleYoluIsl = this.lucaElleYolu((doc as any).ocrData);
+      const islOnayli = isletmeWithBelgeDefaults(doc);
       const data: any = {
         status: 'APPROVED', approvedBy: userId || null, approvedAt: new Date(),
         lucaStatus: elleYoluIsl ? 'MANUAL_DONE' : (doc as any).taxpayerId ? 'QUEUED' : 'NOT_STARTED',
         lucaErrorMessage: elleYoluIsl || (doc as any).taxpayerId ? null : 'Mukellef secilmedigi icin Luca\'ya aktarilamaz',
-        ocrData: { ...((doc as any).ocrData || {}), isletme: isletmeWithBelgeDefaults(doc) },
+        ocrData: { ...((doc as any).ocrData || {}), isletme: islOnayli },
       };
       await (this.prisma as any).invoiceAccountingDocument.update({ where: { id }, data });
-      await this.logAudit(tenantId, userId, 'APPROVE', id, { status: doc.status }, { status: 'APPROVED', isletme: true, ...(elleYoluIsl ? { lucaStatus: 'MANUAL_DONE', lucaElleYolu: true } : {}) });
+      // F1 — İŞLETME ÖĞRENMESİ: eskiden bu dal recordInvoiceAccountingMemory'yi HİÇ çağırmıyordu (öğrenme ölüydü, #6).
+      //   Sahibin onayladığı her işletme belgesi (kayıt türü dolu) satıcıya öğretilir; elle düzeltme boost 2, otomatik 1
+      //   (eşik >=2 → otomatik sınıf iki onayla hafızaya girer). Anahtarlar ocrData.ogrenmeKayitlari'na (geri alma için).
+      const ogrenmeIsl = await this.recordInvoiceAccountingMemory(tenantId, { ...(doc as any), ocrData: data.ocrData }).catch((e: any) => {
+        this.logger.warn(`İşletme hafızası kaydedilemedi (${id}): ${e?.message || e}`);
+        return [] as OgrenmeKaydi[];
+      });
+      if (ogrenmeIsl.length) {
+        const eskiIsl: OgrenmeKaydi[] = Array.isArray(data.ocrData.ogrenmeKayitlari) ? data.ocrData.ogrenmeKayitlari : [];
+        await (this.prisma as any).invoiceAccountingDocument.update({
+          where: { id },
+          data: { ocrData: { ...data.ocrData, ogrenmeKayitlari: [...eskiIsl, ...ogrenmeIsl].slice(-40) } },
+        }).catch(() => {});
+      }
+      await this.logAudit(tenantId, userId, 'APPROVE', id, { status: doc.status }, { status: 'APPROVED', isletme: true, ogrenmeKaydi: ogrenmeIsl.length, ...(elleYoluIsl ? { lucaStatus: 'MANUAL_DONE', lucaElleYolu: true } : {}) });
       return this.get(tenantId, id);
     }
 
@@ -7933,17 +8053,20 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       }
     }
 
-    // İŞLETME DEFTERİ ÖĞRENME: kullanıcı işletme sınıfını (Kayıt Türü/Alt Türü) ELLE düzelttiyse
-    //   (userEdited işareti editörden gelir) satıcıya öğret — sonraki faturalarda pickIsletmeMemory
-    //   AI/kural tahmininden ÖNCE bunu uygular. Elle düzeltme açık irade → boost ile eşik anında geçer.
+    // İŞLETME DEFTERİ ÖĞRENME — PLAN/15 Faz 3 F1 (#6, 2026-09-12): eskiden YALNIZ userEdited===true iken yazılıyordu
+    //   (ve approve işletme dalı bu fonksiyonu hiç çağırmıyordu → öğrenme ölüydü). Artık sahibin ONAYLADIĞI her işletme
+    //   belgesi (kayıt türü dolu) satıcıya öğretilir: elle düzeltme (userEdited) boost 2 → eşiği (>=2) anında geçer;
+    //   otomatik/AI sınıf boost 1 → iki onayla hafızaya girer (tek yanlış otomatik onay satıcıyı kilitlemesin).
+    //   Bu dal hesap kodu/satır GEREKTİRMEZ (işletmede yevmiye yok); yukarıdaki satır/cari dalları boş geçer.
+    //   pickIsletmeMemory kararı kod olarak okur (eski AD yazılmış kayıtlar isletmeKodCoz ile çözülür).
     const islObj: any = (doc.ocrData as any)?.isletme;
-    if (islObj && islObj.userEdited === true && String(islObj.kayitTuruKod || '').trim()) {
+    if (islObj && String(islObj.kayitTuruKod || '').trim()) {
       await kaydet({
         kararTipi: 'isletme',
         kategori: String(islObj.kayitTuruKod).trim(),
         altKategori: String(islObj.kayitAltKod || '').trim() || null,
         icerikImza,
-        onayBoost: 2,
+        onayBoost: islObj.userEdited === true ? 2 : 1,
       });
     }
     return kayitlar;
@@ -13437,6 +13560,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     /** Faz 2 — MÜKERRER (belge no + karşı VKN + tutar ±0,01 + yön aynı; ilk belge kalır) → ENGEL.
      *  PLAN/16 §C: yalnız UZUN belge no ('uzun') ya da sahibin "mükerrer" teyidi ('kisa'/'saat'/'gorsel') buraya gelir. */
     mukerrer?: { ilkBelgeId: string; belgeNo?: string | null; tutar?: any; createdAt?: any; tur?: 'uzun' | 'kisa' | 'saat' | 'gorsel' } | null;
+    /** PLAN/15 Faz 3 F1 — İŞLETME defteri belgesi: yevmiye-satırı/hesap-planı kontrolleri atlanır (bkz. ISLETME_ATLANAN). */
+    isletme?: boolean;
   }): Promise<{
     status: 'OK' | 'INCOMPLETE' | 'INVALID';
     issues: Array<{ code: string; severity: 'WARNING' | 'ERROR'; message: string; expected?: any; actual?: any }>;
@@ -13806,11 +13931,19 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       this.logger.warn(`crossCheck denetim hatasi: ${e?.message || e}`);
     }
 
+    // PLAN/15 Faz 3 F1 (2026-09-12): İŞLETME defterinde yevmiye satırı yoktur (tek taraflı DBS kaydı) → satır/hesap-planı
+    //   kontrolleri (denge, yevmiye toplamı, 360/610/25x satırı, grup/cari kod, oran çökmesi, SMM 360 satırı) anlamsız —
+    //   Aktar'la gelen satırsız işletme belgesi "yevmiye toplamı 0 ≠ tutar" ile sahte ENGEL alıyordu. Belge/okuma kontrolleri
+    //   (matrah eksik, UBL ödenecek denklemi, KDV matematiği, iptal, sahiplik, satışta tevkifat oranı okunmadı, demirbaş,
+    //   mükerrer) KALIR. Atlananlar hiç üretilmemiş sayılır (validationStatus + uyarilar temiz).
+    const ISLETME_ATLANAN = new Set(['BALANCE_MISMATCH', 'TOTAL_MISMATCH', 'RETURN_NEEDS_REVERSAL', 'RETURN_DIRECTION_REVERSED', 'SMM_STOPAJ_NEEDED', 'TEVKIFAT_NEEDED', 'FIXED_ASSET_SALE_INCOMPLETE', 'ACCOUNT_IS_GROUP', 'MULTI_RATE_COLLAPSED', 'CARI_SHALLOW_CODE']);
+    const sonIssues = opts.isletme ? issues.filter((i) => !ISLETME_ATLANAN.has(i.code)) : issues;
+
     // Sonuç durumu
-    const hasIncomplete = issues.some((i) => i.code === 'INCOMPLETE_AMOUNTS');
-    const hasInvalid = issues.some((i) => i.code !== 'INCOMPLETE_AMOUNTS' && i.severity === 'ERROR');
+    const hasIncomplete = sonIssues.some((i) => i.code === 'INCOMPLETE_AMOUNTS');
+    const hasInvalid = sonIssues.some((i) => i.code !== 'INCOMPLETE_AMOUNTS' && i.severity === 'ERROR');
     const status = hasInvalid ? 'INVALID' : hasIncomplete ? 'INCOMPLETE' : 'OK';
-    return { status, issues };
+    return { status, issues: sonIssues };
   }
 
   /** HIZLI düzeltme: belgeleri TEKRAR OKUMADAN (Max-vision yok) hesap kodlarını plana göre
@@ -14060,38 +14193,55 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       //   eskiden "kayitTuruKod varsa continue" ile auto-sınıf da atlanıyordu → okuma/faaliyet/iade
       //   düzeltmeleri işletme alanlarına GERİ-YAYILMIYORDU (kullanıcı güvensizliğinin kökü).
       if (ocr?.isletme?.kayitTuruKod && ocr?.isletme?.userEdited === true) continue;
+      // PLAN/15 Faz 3 (#6/#7, 2026-09-12): AI'ın (kalemlerden) ya da HAFIZA'nın (sahip onaylı) ya da AJAN'ın verdiği sınıf
+      //   bu retroaktif kural geçişiyle EZİLMEZ — aynı boru hattında (classify → rematch → burası) AI/hafıza sonucu
+      //   faaliyet/kelime kuralıyla siliniyordu (öğrenmenin ölü görünmesinin ikinci sebebi). Yalnız KURAL/eski (kaynaksız) sınıf tazelenir.
+      if (ocr?.isletme?.kayitTuruKod && ['AI', 'HAFIZA', 'AJAN'].includes(String(ocr?.isletme?.kaynak || '').toUpperCase())) continue;
       const hasAmt = Number(ocr?.matrah || 0) > 0 || Number(ocr?.kdvTutari || 0) > 0 || Number(doc.totalAmount || 0) > 0;
       if (!hasAmt) continue; // okunamadı, atla
       const kind: 'ALIS' | 'SATIS' = String(doc.invoiceKind || 'ALIS') === 'SATIS' ? 'SATIS' : 'ALIS';
       const giderTuru = String(ocr?.giderTuru || '').trim();
       const vendorName = kind === 'ALIS' ? String(doc.vendorName || '') : String(doc.customerName || '');
       const belgeTuru = normalizeDocumentType(doc.documentType || ocr?.belgeTuru || ocr?.documentType);
+      const kalemAdlari: string[] = islKalemAdlari(ocr);
+      // PLAN/15 Faz 3 (#8): kalemler içerik; ünvan yalnız içerik yokken ve kurum tipi belliyse (isletmeGiderSinifi içinde).
       const giderSinifi = kind === 'ALIS'
-        ? isletmeGiderSinifi({ matrahKategori: ocr?.matrahKategori || ocr?.kategori, giderTuru, vendorName, documentType: belgeTuru || doc.documentType || ocr?.belgeTuru })
+        ? isletmeGiderSinifi({ matrahKategori: ocr?.matrahKategori || ocr?.kategori, giderTuru, vendorName, kalemler: kalemAdlari, documentType: belgeTuru || doc.documentType || ocr?.belgeTuru })
         : null;
       const fbKtKod = kind === 'ALIS'
         ? (giderSinifi?.kayitTuruKod || '')
         : isletmeAutoKayitTuru(kind, nace || null, faaliyet || null);
-      if (!fbKtKod) continue;
       const ref = isletmeRef(kind);
-      const fbKt = ref.kayitTuru.find((x: any) => x.kod === fbKtKod);
-      if (!fbKt) continue;
-      const kalemler = Array.isArray(ocr?.kalemler) ? ocr.kalemler.map((k: any) => String(k?.ad || '')).join(' ') : '';
-      const islText = `${giderTuru} ${vendorName} ${kalemler}`.trim();
-      const fbAltKod = giderSinifi?.kayitAltKod || (fbKtKod === '4' ? isletmeAutoKayitAltKod(kind, '4', islText) : (defaultKayitAltKod(kind, fbKtKod, fbKt.ad) || ''));
+      const fbKt = fbKtKod ? ref.kayitTuru.find((x: any) => x.kod === fbKtKod) : null;
+      if (!fbKt) {
+        // #39: tür seçilemedi → gerekçe (yalnız sınıfı BOŞ belgede; otomatik/elle sınıf duruyorsa dokunma).
+        if (!String(ocr?.isletme?.kayitTuruKod || '').trim()) {
+          const neden = islIncelemeNedeni(kind, { aiKayitTuru: '', kalemSayisi: kalemAdlari.length, giderTuru, kategori: ocr?.matrahKategori || ocr?.kategori, faaliyetVar: !!(faaliyet || nace), aiCalisti: !!(giderTuru || ocr?.matrahKategori) });
+          if (String(ocr?.isletme?.neden || '') !== neden) {
+            await (this.prisma as any).invoiceAccountingDocument.update({
+              where: { id: doc.id },
+              data: { ocrData: { ...ocr, isletme: { ...(ocr?.isletme || {}), kayitTuruKod: '', kayitAltKod: '', autoMatched: false, neden } } },
+            }).catch(() => {});
+          }
+        }
+        continue;
+      }
+      const islText = [giderTuru, ...kalemAdlari].filter(Boolean).join(' ') || (kind === 'ALIS' && isletmeKurumUnvaniMi(vendorName) ? vendorName : '');
+      const fbAltKod = giderSinifi?.kayitAltKod || ((fbKtKod === '4' || fbKtKod === '5') ? isletmeAutoKayitAltKod(kind, fbKtKod, islText) : (defaultKayitAltKod(kind, fbKtKod, fbKt.ad) || ''));
       const altList = getKayitAltList(kind, fbKtKod);
       const fbAlt = fbAltKod ? altList.find((x: any) => x.kod === fbAltKod) : null;
       const islIade = ocr?.isReturn === true;
       const islTevk = ocr?.tevkifatHint === true || Number(ocr?.tevkifatOrani || 0) > 0;
       const islKdvVar = Number(ocr?.kdvTutari || 0) > 0;
-      const isletme = {
+      const islTextTum = `${islText} ${vendorName}`.trim();
+      const isletme = islStopajPlaka(kind, {
         kayitTuruKod: fbKtKod, kayitTuruAd: fbKt.ad,
         kayitAltKod: fbAlt?.kod || '', kayitAltAd: fbAlt?.ad || '',
-        autoMatched: true, neden: 'Faaliyet/içerik tabanlı retroaktif seçim',
-        alisSatisKod: isletmeAlisSatisTuru(kind, { isReturn: islIade, tevkifat: islTevk, kdvVar: islKdvVar, text: islText }),
-        islemTuruKod: isletmeIslemTuru(kind, islText),
+        autoMatched: true, kaynak: 'KURAL', neden: 'Faaliyet/içerik tabanlı retroaktif seçim',
+        alisSatisKod: isletmeAlisSatisTuru(kind, { isReturn: islIade, tevkifat: islTevk, kdvVar: islKdvVar, text: islTextTum }),
+        islemTuruKod: isletmeIslemTuru(kind, islTextTum),
         belgeTuruKod: belgeTuru ? defaultBelgeTuruKod(belgeTuru, kind) : '',
-      };
+      }, { belgeTuru: belgeTuru || doc.documentType, giderTuru, text: islText, mevcut: ocr?.isletme });
       await (this.prisma as any).invoiceAccountingDocument.update({
         where: { id: doc.id },
         data: { ocrData: { ...ocr, isletme } },
@@ -14574,9 +14724,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         tpNace = String(tp.naceKodu || '').trim();
         tpFaaliyet = String(tp.faaliyetAciklama || '').trim();
         // Öncelik: serbest faaliyet açıklaması (en güvenilir) > NACE kodu > ünvan.
+        // PLAN/15 Faz 3 (#7): işletme mükellefinde faaliyet/NACE boşsa AI'a açıkça "tanımsız — kalemlerden karar ver" denir.
         mukellefBilgi = [
           ad && `ünvanı "${ad}"`,
-          tpFaaliyet ? `faaliyeti: ${tpFaaliyet}` : (tpNace && `NACE faaliyet kodu ${tpNace}`),
+          isIsletmeMukellef ? islFaaliyetBilgisi(tpFaaliyet, tpNace) : (tpFaaliyet ? `faaliyeti: ${tpFaaliyet}` : (tpNace && `NACE faaliyet kodu ${tpNace}`)),
           defter,
         ].filter(Boolean).join(', ') + mukellefEkBilgiMetni(tp); // PLAN/16 §F: sektör + kurum türü
       }
@@ -15051,12 +15202,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       // İŞLETME: AI'ın faaliyet+içerik muhakemesiyle verdiği kayıt türü + alt türü.
       // resolveIslAi → undefined ise faaliyet+içerik tabanlı ön seçim (son çare).
       let islSinifAi = isIsletmeMukellef ? resolveIslAi(kind, parsed) : undefined;
+      let islNedenOku = ''; // PLAN/15 Faz 3 (#39): tür seçilemedi → gerekçe
       // ÖĞRENİLMİŞ İŞLETME SINIFI (kullanıcı-teyitli, eşikli) AI tahmininden ÖNCE gelir:
       //   müşavir bu satıcının kayıt türünü bir kez düzelttiyse sonraki faturalar hafızadan sınıflanır.
       if (isIsletmeMukellef && d.taxpayerId) {
         const islVkn = String((kind === 'ALIS' ? d.sellerVkn : d.buyerVkn) || '').replace(/\D/g, '');
         const islMemImza = VendorMemoryService.buildIcerikImza(Array.isArray(parsed.kalemler) ? parsed.kalemler.map((k: any) => k?.ad) : []);
-        const islMem = islVkn ? await this.pickIsletmeMemory(tenantId, d.taxpayerId, islVkn, islMemImza).catch(() => null) : null;
+        const islMem = islVkn ? await this.pickIsletmeMemory(tenantId, d.taxpayerId, islVkn, islMemImza, kind).catch(() => null) : null;
         if (islMem) {
           const memRef = isletmeRef(kind);
           const memKt = memRef.kayitTuru.find((x: any) => x.kod === islMem.kayitTuruKod);
@@ -15066,26 +15218,32 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             islSinifAi = {
               kayitTuruKod: memKt.kod, kayitTuruAd: memKt.ad,
               kayitAltKod: memAlt?.kod || '', kayitAltAd: memAlt?.ad || '',
-              autoMatched: true, neden: 'Bu satıcı için öğrenilmiş sınıf (müşavir onaylı)',
+              autoMatched: true, kaynak: 'HAFIZA', neden: 'Bu satıcı için öğrenilmiş sınıf (müşavir onaylı)',
             };
           }
         }
       }
       if (!islSinifAi && isIsletmeMukellef) {
+        const kalemAdlariOku = islKalemAdlari(parsed);
+        // PLAN/15 Faz 3 (#8): kalemler içerik sayılır; ünvan yalnız içerik yokken ve kurum tipi belliyse (isletmeGiderSinifi içinde).
         const gs = kind === 'ALIS'
-          ? isletmeGiderSinifi({ matrahKategori: parsed.kategori, giderTuru: parsed.giderTuru, vendorName: counterName, documentType: mappedType || parsed.belgeTuru })
+          ? isletmeGiderSinifi({ matrahKategori: parsed.kategori, giderTuru: parsed.giderTuru, vendorName: counterName, kalemler: kalemAdlariOku, documentType: mappedType || parsed.belgeTuru })
           : null;
         const fbKtKod = kind === 'ALIS' ? (gs?.kayitTuruKod || '') : isletmeAutoKayitTuru(kind, tpNace || null, tpFaaliyet || null);
         if (fbKtKod) {
           const ref = isletmeRef(kind);
           const fbKt = ref.kayitTuru.find((x: any) => x.kod === fbKtKod);
           if (fbKt) {
-            const islText2 = [parsed.giderTuru, counterName, ...(Array.isArray(parsed.kalemler) ? parsed.kalemler.map((k: any) => k?.ad) : [])].filter(Boolean).join(' ');
-            const fbAltKod = gs?.kayitAltKod || (fbKtKod === '4' ? isletmeAutoKayitAltKod(kind, '4', islText2) : (defaultKayitAltKod(kind, fbKtKod, fbKt.ad) || ''));
+            const islText2 = [parsed.giderTuru, ...kalemAdlariOku].filter(Boolean).join(' ') || (isletmeKurumUnvaniMi(counterName) ? counterName : '');
+            const fbAltKod = gs?.kayitAltKod || ((fbKtKod === '4' || fbKtKod === '5') ? isletmeAutoKayitAltKod(kind, fbKtKod, islText2) : (defaultKayitAltKod(kind, fbKtKod, fbKt.ad) || ''));
             const altList = getKayitAltList(kind, fbKtKod);
             const fbAlt = fbAltKod ? altList.find((x: any) => x.kod === fbAltKod) : null;
-            islSinifAi = { kayitTuruKod: fbKtKod, kayitTuruAd: fbKt.ad, kayitAltKod: fbAlt?.kod || '', kayitAltAd: fbAlt?.ad || '', autoMatched: true, neden: 'Faaliyet/içerik tabanlı ön seçim' };
+            islSinifAi = { kayitTuruKod: fbKtKod, kayitTuruAd: fbKt.ad, kayitAltKod: fbAlt?.kod || '', kayitAltAd: fbAlt?.ad || '', autoMatched: true, kaynak: 'KURAL', neden: 'Faaliyet/içerik tabanlı ön seçim' };
           }
+        }
+        if (!islSinifAi) {
+          islNedenOku = islIncelemeNedeni(kind, { aiKayitTuru: parsed.isletmeKayitTuru, kalemSayisi: kalemAdlariOku.length, giderTuru: parsed.giderTuru, kategori: parsed.kategori, faaliyetVar: !!(tpFaaliyet || tpNace), aiCalisti: true });
+          this.logger.log(`[AI-READ-ISLETME] tür seçilemedi doc=${d.id}: ${islNedenOku}`);
         }
       }
       if (islSinifAi) {
@@ -15098,6 +15256,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           islemTuruKod: isletmeIslemTuru(kind, islText),
           belgeTuruKod: defaultBelgeTuruKod(mappedType || parsed.belgeTuru, kind),
         };
+        // #38: stopaj türü (022/041) + plaka (alışta, boşsa; eski plaka korunur)
+        islSinifAi = islStopajPlaka(kind, islSinifAi, { belgeTuru: mappedType || parsed.belgeTuru, giderTuru: parsed.giderTuru, text: islText, mevcut: (d.ocrData as any)?.isletme });
+      } else if (islNedenOku && isIsletmeMukellef) {
+        // #39: tür seçilemedi → gerekçe (kullanıcı elle seçtiyse ya da eski otomatik sınıf duruyorsa DOKUNMA).
+        const eskiIsl: any = (d.ocrData as any)?.isletme;
+        if (eskiIsl?.userEdited !== true && !String(eskiIsl?.kayitTuruKod || '').trim()) islSinifAi = { ...(eskiIsl || {}), kayitTuruKod: '', kayitAltKod: '', autoMatched: false, neden: islNedenOku };
       }
       // DEMİRBAŞ↔TEVKİFAT ÇELİŞKİSİ (kullanıcı bulgusu): okuma anında demirbaş tespiti SATIŞ HARİÇ
       //   yapılır (detectFixedAsset rematch'teki kullanımıyla aynı kural) — demirbaşsa tevkifat
@@ -17077,12 +17241,16 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
 
   /** İŞLETME DEFTERİ hafızası: satıcı VKN + mükellef için öğrenilmiş Kayıt Türü / Alt Türü.
    *  kararTipi='isletme', kategori=kayitTuruKod, altKategori=kayitAltKod; içerik-imza öncelikli.
-   *  Matrah hafızasıyla aynı eşik (>=2; elle düzeltme onayBoost ile anında geçer). */
+   *  Matrah hafızasıyla aynı eşik (>=2; elle düzeltme onayBoost ile anında geçer).
+   *  PLAN/15 Faz 3 F2 (#6, 2026-09-12): kategori/altKategori KOD değilse (eski kayıtlar AD yazılmış: "Diğer Hasılat")
+   *  isletmeKodCoz ile yönün (kind) listesinde AD→KOD çözülür; kayıt türü çözülemeyen ya da alt türü verilip
+   *  çözülemeyen kayıt YOK SAYILIR (yanlış kod uydurulmaz). Böylece canlıdaki 38 eski kayıt canlanır. */
   private async pickIsletmeMemory(
     tenantId: string,
     taxpayerId: string,
     vendorVkn: string,
     icerikImza?: string | null,
+    kind: 'ALIS' | 'SATIS' = 'ALIS',
   ): Promise<{ kayitTuruKod: string; kayitAltKod: string } | null> {
     const vkn = String(vendorVkn || '').replace(/\D/g, '');
     if (!vkn || !taxpayerId) return null;
@@ -17097,14 +17265,19 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       },
     });
     const decisions = (memory?.decisions || [])
-      .filter((d: any) => /^\d+$/.test(String(d.kategori || '').trim()))
-      .filter((d: any) => (d.onayAdedi || 0) >= 2);
+      .filter((d: any) => (d.onayAdedi || 0) >= 2)
+      .map((d: any) => {
+        const coz = isletmeKodCoz(kind, d.kategori, d.altKategori);
+        if (!coz || !coz.altCozuldu) return null; // kayıt türü yok / alt tür verilmiş ama listede yok → yok say
+        return { icerikImza: d.icerikImza, kayitTuruKod: coz.kayitTuruKod, kayitAltKod: coz.kayitAltKod };
+      })
+      .filter(Boolean) as Array<{ icerikImza: any; kayitTuruKod: string; kayitAltKod: string }>;
     const imza = String(icerikImza || '').trim();
-    const byImza = imza ? decisions.find((d: any) => String(d.icerikImza || '').trim() === imza) : null;
-    const general = decisions.find((d: any) => !String(d.icerikImza || '').trim());
+    const byImza = imza ? decisions.find((d) => String(d.icerikImza || '').trim() === imza) : null;
+    const general = decisions.find((d) => !String(d.icerikImza || '').trim());
     const pick = byImza || general;
     if (!pick) return null;
-    return { kayitTuruKod: String(pick.kategori).trim(), kayitAltKod: String(pick.altKategori || '').trim() };
+    return { kayitTuruKod: pick.kayitTuruKod, kayitAltKod: pick.kayitAltKod };
   }
 
   /** Hesap adındaki ORAN-token'ları: yalnız 1-2 haneli sayılar (KDV oranları 1..20). "2024" gibi
