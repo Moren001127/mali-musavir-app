@@ -8,6 +8,7 @@
 - Geçici vergi: dönemi izleyen 2. ayın 17'si (17 Mayıs / 17 Ağustos / 17 Kasım / varsa 17 Şubat).
 - Yıllık gelir: Mart sonu (Mart + Temmuz iki taksit). Kurumlar: Nisan sonu.
 - Ba-Bs: izleyen ayın son günü; yükümlülüğün sürüp sürmediğini mükellef ayarından ve takvimden teyit et (kaldırıldığına dair düzenleme var).
+- Oran/had/süre emin değilse satır "TEYİT ET:" ile işaretlenir, `research_official_sources` çağrılır; teyitsiz değer taslağa ve sahibe giden pakete girmez. Mükellefi ad + taxpayerId ile an; VKN/TC yazma.
 
 ## KDV kuralları (ofis uygulaması)
 - **KDV beyanının tek kaynağı KDV Kontrol (Luca ile mutabık veri).** Ham Mihsap/entegratör listesi YASAK; Luca'ya girilmemiş fatura beyana girmez.

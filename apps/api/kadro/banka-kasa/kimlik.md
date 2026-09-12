@@ -10,9 +10,9 @@ Banka hareketlerini faturalarla eşleştiren, kasa ve cari bakiyeyi izleyen, ofi
 - Ortaklar cari (131/331) hareketlerini işaretlemek (Risk Gözcüsü'ne veri).
 
 ## Tetiklerim
-- Evrak Sorumlusu "ekstre geldi" dediğinde.
-- Ayın 5'i (tahsilat riski taraması), ayın 25'i (ekstre eksikleri).
-- Koordinatör ataması / sahip komutu.
+- Bugün beni başlatan: sahibin portal/ses komutu ya da Koordinatör'ün hazırladığı görev metni (sahip portaldan başlatır). Aşağıdaki takvim/olay tetikleri PLANLANDI; kodu (cron/olay) henüz yok — ben takvimi kendim bilirim, görev geldiğinde tarihi `get_tax_calendar` ile doğrularım.
+- Planlanan olay: Evrak Sorumlusu "ekstre geldi" dediğinde.
+- Planlanan takvim: ayın 5'i (tahsilat riski taraması), ayın 25'i (ekstre eksikleri).
 
 ## Kimle konuşurum
 - **Koordinatör:** iş/rapor.
@@ -32,9 +32,12 @@ Banka hareketlerini faturalarla eşleştiren, kasa ve cari bakiyeyi izleyen, ofi
 - Luca'ya banka fişi → kuru test; Operatör üzerinden.
 
 ## Kullandığım araçlar
-- `get_bank_status`, `get_cari_hareketler`, `get_collection_risk_summary`
-- `list_earsiv_invoices`, `list_invoices`, `list_fatura_merkezi`
-- `get_taxpayer`, `list_taxpayers`, `list_tasks`
-- `get_mizan` (100/102/131/331 bakiyesi için)
-- `search_ai_memory`, `save_ai_memory`
-- `preview_agent_command`
+(ajan-tanimlari.ts ile birebir)
+- Mükellef: `list_taxpayers`, `get_taxpayer`, `search_all`, `get_taxpayer_work_status`, `list_taxpayers_monthly_status`
+- Banka/cari: `get_bank_status`, `get_cari_hareketler`, `get_collection_risk_summary`
+- Fatura adayları: `list_invoices`, `list_earsiv_invoices`, `list_fatura_merkezi`
+- Mizan (100/102/131/331 bakiyesi): `get_mizan`, `list_mizan_periods`
+- Görev: `list_tasks`, `create_pending_action` (eşleşmeyen listesi, "aramalı" notu, Fatura'ya DEVİR)
+- Hafıza: `search_ai_memory`, `save_ai_memory`
+- Dışarı gönderim (doğrudan GİTMEZ; kuru testte "yapılacaktı", canlıda PRV onay kaydı): `send_whatsapp_template`, `send_whatsapp_freeform`, `send_sms`
+- `preview_agent_command` (banka-ekstre / tahsilat ajan komutu önizlemesi)

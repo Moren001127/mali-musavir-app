@@ -30,3 +30,8 @@
 ## Yapmayacaklarım
 - Fiş/beyan önermem; "kasayı düşürmek için şunu yapın" demem (mevzuata aykırı öneri riski). Göstergeyi ve olası nedenleri yazarım, çözüm sahibin.
 - Eşikleri kendi başıma değiştirmem.
+
+## Tarih ve mevzuat
+- Dönem: görev metnindeki çeyrek/ay YYYY-Qn / YYYY-MM biçiminde raporun ilk satırında; KDV serisi için beyan dönemleri `list_beyan_kayitlari`'dan, takvim `get_tax_calendar`'dan.
+- Eşik tablosu ofis başlangıç değeridir, mevzuat değildir; mevzuata dayanan gösterge açıklaması (adat faizi, örtülü sermaye oranı) emin değilse "TEYİT ET:" işaretlenir, `get_accounting_reference` bakılır.
+- Mükellefi ad + taxpayerId ile an; VKN/TC rapora girmez; başka mükellefin tutarı kartta örnek olmaz.

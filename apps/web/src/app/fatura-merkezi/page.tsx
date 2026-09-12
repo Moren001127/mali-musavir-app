@@ -112,6 +112,14 @@ function deriveDurum(doc: any, isIsletme = false, autoKtKod = ''): { k: string; 
   if (doc.status === 'PROCESSING') return { k: 'proc', t: 'Okunuyor…', cat: 'okunuyor' };
   if (String(doc.ocrStatus || '').toUpperCase() === 'FAILED') return { k: 'miss', t: 'Okunamadı', cat: 'okunamadi' };
   const lines: any[] = Array.isArray(doc.lines) ? doc.lines : [];
+  // OKUNMADI (HAM) — Faz 0 (PLAN/15): belge içeriği hiç okunmadı/sınıflanmadı → "Kod eksik"ten AYRI sayılır.
+  //   • Aktar yalnız belgeyi koydu (ocrData.matchDeferred) ya da
+  //   • entegratör (provider-api) belgesi: readMode/engine boş + hiç sınıflandırma (giderTuru/matrahKategori) yok.
+  //   Kodları tam olan ham belge yine "Eşleşti" sayılır (kural eşleştirmesi yapılmış); yalnız boş kodlu /
+  //   satırsız ham belge "Okunmadı (ham)" olur → doğru eylem "AI ile oku"dur, elle kod atamak değil.
+  const od: any = doc.ocrData || {};
+  const hamOkuma = od.matchDeferred === true
+    || (!od.readMode && !od.engine && od.source === 'provider-api' && !od.giderTuru && !od.matrahKategori);
   const issues = Array.isArray(doc.validationIssues) ? doc.validationIssues : (Array.isArray(doc.ocrData?.validationIssues) ? doc.ocrData.validationIssues : []);
   // ÇELİŞKİ = GÜNCEL SATIRLARDAN hesaplanır. Backend validationIssues ESKİ/ALAKASIZ olabilir: rematch
   //   satırları düzeltir ama revalidate olmadan eski kayıt kalır (ör. satırlar 202=202 dengeli ama eski
@@ -129,7 +137,7 @@ function deriveDurum(doc: any, isIsletme = false, autoKtKod = ''): { k: string; 
   let toplamUyumsuz = false;
   if (!isIsletme && lines.length > 0 && totalAmt > 0) {
     const yevmiyeToplam = Math.max(sumB, sumA);
-    const rateLineCount = lines.filter((l: any) => ['matrah', 'vergi', 'vergi-sorumlu'].includes(String(l.group || ''))).length;
+    const rateLineCount = lines.filter((l: any) => ['matrah', 'vergi', 'vergi-sorumlu', 'diger_vergi'].includes(String(l.group || ''))).length;
     const totalTol = Math.max(0.5, rateLineCount * 0.05);
     toplamUyumsuz = Math.abs(yevmiyeToplam - totalAmt) > totalTol;
   }
@@ -158,10 +166,11 @@ function deriveDurum(doc: any, isIsletme = false, autoKtKod = ''): { k: string; 
     const ready = isletmeDocReady(doc);
     if (!hasAmt) return { k: 'warn', t: 'Tutar okunamadı', cat: 'tutar' };
     if (ready.ok || autoKtKod) return { k: 'ok', t: 'Eşleşti ✓', cat: 'ready' };
+    if (hamOkuma) return { k: 'ham', t: 'Okunmadı (ham)', cat: 'ham' };
     return { k: 'warn', t: ready.reason || 'Eşleşmedi', cat: 'incele' };
   }
-  // Hiç satır yok → matrah/KDV okunamamış.
-  if (!lines.length) return { k: 'warn', t: 'Tutar okunamadı', cat: 'tutar' };
+  // Hiç satır yok → ham (Aktar sadece) ise "Okunmadı (ham)", değilse matrah/KDV okunamamış.
+  if (!lines.length) return hamOkuma ? { k: 'ham', t: 'Okunmadı (ham)', cat: 'ham' } : { k: 'warn', t: 'Tutar okunamadı', cat: 'tutar' };
   // Hangi grupların KODU boş? (cari hesap / gelir-gider / KDV) — tam söyle.
   const sale = (doc.invoiceKind || 'ALIS') === 'SATIS';
   const blank = (g: string) => { const gl = lines.filter((l: any) => String(l.group || '') === g); return gl.length > 0 && gl.some((l: any) => !l.accountCode); };
@@ -171,7 +180,10 @@ function deriveDurum(doc: any, isIsletme = false, autoKtKod = ''): { k: string; 
   if (blank('vergi')) missing.push('KDV kodu');
   if (blank('vergi-sorumlu')) missing.push('sorumlu sıf. KDV hesabı');
   if (blank('tevkifat')) missing.push('tevkifat 360 hesabı');
+  if (blank('diger_vergi')) missing.push('KDV dışı vergi hesabı');
   if (missing.length) {
+    // Ham belgede boş kod "Kod eksik" değil "Okunmadı (ham)"dır — önce okunmalı.
+    if (hamOkuma) return { k: 'ham', t: 'Okunmadı (ham)', cat: 'ham' };
     const cap = (s: string) => s.charAt(0).toLocaleUpperCase('tr-TR') + s.slice(1);
     const t = missing.length === 1 ? `${cap(missing[0])} boş` : `Eksik: ${missing.join(', ')}`;
     return { k: 'miss', t, cat: 'eksik' };
@@ -1292,7 +1304,7 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
   }, [docs]);
   // Yevmiye fişi / kayıt türü detayı — listede aç-kapa (Muhasebeleştir'e gitmeden NEYLE eşleşti görünür).
   const [fisDetayId, setFisDetayId] = useState('');
-  const grpLabel = (g: string) => g === 'matrah' ? 'Matrah' : g === 'vergi' ? 'KDV' : g === 'vergi-sorumlu' ? 'Sorumlu Sıf. KDV' : g === 'cari' ? 'Cari' : g === 'tevkifat' ? 'Tevkifat' : (g || '—');
+  const grpLabel = (g: string) => g === 'matrah' ? 'Matrah' : g === 'vergi' ? 'KDV' : g === 'vergi-sorumlu' ? 'Sorumlu Sıf. KDV' : g === 'cari' ? 'Cari' : g === 'tevkifat' ? 'Tevkifat' : g === 'diger_vergi' ? 'KDV dışı vergi' : (g || '—');
   // ZENGİN AI YORUMU — belge detayı (defter ikonu) açılınca lazy üret. Belgede ocrData.muhasebeNedenZengin
   //   yoksa tek-belge çağrısı yapılır (eşleştirme SONRASI; yön+hesap kesin → AI yalnız içeriği yorumlar).
   //   fetchedRef bir kez çağrı garantisi (docs tazelense de yeniden istemez); deterministik muhasebeNeden
@@ -1406,6 +1418,7 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
           { v: 'all', l: 'Tümü', c: 'var(--accent)' },
           { v: 'ready', l: 'Eşleşti', c: '#15803d' },
           { v: 'eksik', l: 'Kod eksik', c: '#d97706' },
+          { v: 'ham', l: 'Okunmadı (ham)', c: '#64748b' },
           { v: 'incele', l: 'Eşleşmedi', c: '#c2710c' },
           { v: 'celiski', l: 'Çelişki', c: '#e5484d' },
           { v: 'tutar', l: 'Tutar okunamadı', c: '#db6e1e' },
@@ -3008,6 +3021,25 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
     setTevkAcik(!!dolu);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selDoc?.id]);
+  // İADE YÖNÜ (denetim bulgusu): bölüm tarafları sabitti (satışta cari yalnız BORÇ) → iade belgede kullanıcı
+  //   yönü çeviremiyor, RETURN_DIRECTION_REVERSED kalıcı "Çelişki" oluyordu. Artık: belge iade ise
+  //   (ocrData.isReturn) ya da satırlar zaten ters kurulmuşsa (satışta cari ALACAK / alışta cari BORÇ) bölüm
+  //   tarafları TAKAS edilir; "Yönü çevir" düğmesi tüm satırların borç↔alacağını takas eder (PATCH lines ile kaydolur).
+  const [yonTers, setYonTers] = useState(false);
+  useEffect(() => {
+    const sale = String(selDoc?.invoiceKind || '').includes('SATIS');
+    const cari = (selDoc?.lines || []).find((l: any) => String(l.group || '') === 'cari');
+    const cariBorc = Number(cari?.debit || 0) > 0, cariAlacak = Number(cari?.credit || 0) > 0;
+    const satirlarTers = !!cari && (sale ? (cariAlacak && !cariBorc) : (cariBorc && !cariAlacak));
+    // Bölüm tarafı SATIRLARIN gerçek durumunu izler (tutarlar doğru kutuda görünsün); iade ama normal kurulmuş eski
+    //   belgede kullanıcı 'Yönü çevir' ile takas eder.
+    setYonTers(satirlarTers);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selDoc?.id]);
+  const yonuCevir = () => {
+    setYonTers((v) => !v);
+    setLineDraft((arr) => arr.map((l: any) => ({ ...l, debit: Number(l.credit) || 0, credit: Number(l.debit) || 0 })));
+  };
   const lines: any[] = lineDraft;
   const setLine = (i: number, k: string, v: any) => setLineDraft((arr) => arr.map((l, j) => (j === i ? { ...l, [k]: v } : l)));
   const addLine = (group: string) => setLineDraft((arr) => [...arr, { group, accountCode: '', description: '', rate: '', debit: 0, credit: 0 }]);
@@ -3411,12 +3443,17 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                     </div>
                   ) : (
                     <div className="fgrps">
+                      {/* İADE / yön: bölüm tarafları takaslı; kullanıcı düğmeyle çevirebilir. */}
+                      <div className={yonTers ? 'fyon ters' : 'fyon'}>
+                        <span>{yonTers ? 'Ters kayıt (iade): borç/alacak çevrildi' : (selDoc.ocrData?.isReturn === true ? 'İade belgesi — yön normal' : 'Yön: normal')}</span>
+                        <button type="button" className="fyonbtn" onClick={yonuCevir} title="Tüm satırların borç/alacağını takas eder (iade / ters kayıt)">Yönü çevir</button>
+                      </div>
                       {/* Fiş grup/yön: düzenlenmekte olan meta.invoiceKind'i izle (kaydı beklemeden
                           ALIŞ↔SATIŞ dönsün); meta yoksa selDoc.invoiceKind'e düş. */}
                       {(String(meta.invoiceKind || selDoc.invoiceKind || '').includes('SATIS')
                         ? [
                             // SATIŞ: matrah(600)+KDV(391) ALACAK, cari(120) BORÇ
-                            { key: 'matrah', keys: ['matrah'], label: 'Matrah (Gelir)', side: 'credit' as const },
+                            { key: 'matrah', keys: ['matrah', 'diger_vergi'], label: 'Matrah (Gelir)', side: 'credit' as const },
                             { key: 'vergi', keys: ['vergi'], label: 'Hesaplanan KDV', side: 'credit' as const },
                             { key: 'cari', keys: ['cari'], label: 'Cari Hesap', side: 'debit' as const },
                           ]
@@ -3426,7 +3463,8 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                             // "+ satır ekle" ile aynı yerde) — hangi satırın "sorumlu" olduğu SEÇİLEN HESAP
                             // KODUNA göre otomatik belirlenir (bkz. CodeSelect onChange). 360 (KDV2) AYRI
                             // bölüm kalır — Mihsap'taki gibi gerçekten farklı bir hesap/işlem.
-                            { key: 'matrah', keys: ['matrah'], label: 'Matrah', side: 'debit' as const },
+                            // KDV dışı vergi (ÖİV/telsiz — Faz 0) matrah kutusunda görünür: gider satırıdır, kodu 7xx.
+                            { key: 'matrah', keys: ['matrah', 'diger_vergi'], label: 'Matrah', side: 'debit' as const },
                             { key: 'vergi', keys: ['vergi', 'vergi-sorumlu'], label: 'İndirilecek KDV', side: 'debit' as const },
                             // Tevkifat (360 · KDV2) grubu ALIŞ'ta HER ZAMAN sabit görünür (kullanıcı: Mihsap
                             // gibi alan hep dursun). Tevkifatlı faturada satırlar otomatik dolar; tevkifatsızda
@@ -3434,7 +3472,7 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                             { key: 'tevkifat', keys: ['tevkifat'], label: 'Tevkifat — Ödenecek KDV (360 · KDV2)', side: 'credit' as const },
                             { key: 'cari', keys: ['cari'], label: 'Cari Hesap', side: 'credit' as const },
                           ]
-                      ).map((g) => {
+                      ).map((g0) => (yonTers ? { ...g0, side: (g0.side === 'debit' ? 'credit' : 'debit') as 'debit' | 'credit' } : g0)).map((g) => {
                         // Tevkifat bölümü KATLANIR (Mihsap tarzı): kapalıyken gövde hiç çizilmez; açıkken
                         //   boş satır dahil her şey görünür — süzgece gerek yok.
                         const rows = lineDraft.map((l: any, i: number) => ({ l, i })).filter(({ l }) => g.keys.includes(l.group || 'matrah'));
@@ -3635,7 +3673,7 @@ function ScreenAktarilanlar({ taxpayerId, period, mode = 'bekleyen', isIsletme =
     if (s === 'FAILED' || s === 'ERROR') return <span className="pill miss" title={d.lucaErrorMessage || ''}>Hata</span>;
     return <span className="pill n">Aktarıma hazır</span>;
   };
-  const grpLabel = (g: string) => g === 'matrah' ? 'Matrah' : g === 'vergi' ? 'KDV' : g === 'vergi-sorumlu' ? 'Sorumlu Sıf. KDV' : g === 'cari' ? 'Cari' : g === 'tevkifat' ? 'Tevkifat' : (g || '—');
+  const grpLabel = (g: string) => g === 'matrah' ? 'Matrah' : g === 'vergi' ? 'KDV' : g === 'vergi-sorumlu' ? 'Sorumlu Sıf. KDV' : g === 'cari' ? 'Cari' : g === 'tevkifat' ? 'Tevkifat' : g === 'diger_vergi' ? 'KDV dışı vergi' : (g || '—');
   const renderRow = (d: any) => {
     const sat = (d.invoiceKind || 'ALIS') === 'SATIS';
     const firma = (sat ? d.customerName : d.vendorName) || '—';
@@ -3675,7 +3713,8 @@ function ScreenAktarilanlar({ taxpayerId, period, mode = 'bekleyen', isIsletme =
                   const isl: any = (d.ocrData && (d.ocrData as any).isletme) || {};
                   const ktAd = isl.kayitTuruAd || '';
                   const altAd = isl.kayitAltAd || '';
-                  const matrah = lines.filter((l: any) => String(l.group) === 'matrah').reduce((s: number, l: any) => s + Number(l.debit || 0) + Number(l.credit || 0), 0);
+                  // KDV dışı vergi (ÖİV/telsiz — Faz 0) işletme defterinde gider tutarına dahil (luca-excel ile aynı).
+                  const matrah = lines.filter((l: any) => String(l.group) === 'matrah' || String(l.group) === 'diger_vergi').reduce((s: number, l: any) => s + Number(l.debit || 0) + Number(l.credit || 0), 0);
                   const kdv = lines.filter((l: any) => String(l.group) === 'vergi').reduce((s: number, l: any) => s + Number(l.debit || 0) + Number(l.credit || 0), 0);
                   const acikl = (d.ocrData && (d.ocrData as any).aciklama) || (sat ? d.customerName : d.vendorName) || '';
                   if (!ktAd && !matrah) return <div className="empty" style={{ padding: 10 }}>Kayıt türü / tutar belirlenemedi — Muhasebeleştir'de kontrol et.</div>;
@@ -5132,6 +5171,7 @@ const CSS = `
 #fm-root .pill.miss{background:#fdeaea;color:#c0353a}
 #fm-root .pill.warn{background:#fdf2e0;color:#b45309}
 #fm-root .pill.proc{background:#e6eefc;color:#2563eb}
+#fm-root .pill.ham{background:#eef1f5;color:#64748b}
 #fm-root .pill.asset{background:#f3e8ff;color:#7c3aed;border:1px solid #e3d4fb}
 #fm-root .aibar{display:flex;align-items:center;gap:15px;margin:10px 16px 12px;padding:14px 18px;border-radius:14px;background:var(--accent-soft);border:1px solid var(--accent-line);box-shadow:none}
 #fm-root .aibar.err{background:#fdeeee;border-color:#f3c9c9;color:#92400e;font-size:12.5px;gap:9px;align-items:center}
@@ -5261,6 +5301,10 @@ const CSS = `
 #fm-root .licode{width:120px}
 #fm-root .linum{width:120px;text-align:right}
 #fm-root .fgrps{display:flex;flex-direction:column;gap:7px}
+#fm-root .fyon{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 10px;border-radius:9px;background:#f4f6fa;border:1px dashed #cfd7e3;font-size:12px;color:#475569}
+#fm-root .fyon.ters{background:#fff4e5;border-color:#f3c98b;color:#9a5b00;font-weight:600}
+#fm-root .fyonbtn{border:1px solid #cfd7e3;background:#fff;border-radius:7px;padding:4px 10px;font-size:12px;font-weight:600;color:#1f2937;cursor:pointer}
+#fm-root .fyonbtn:hover{background:#eef2f7}
 #fm-root .fgrp{border:1px solid var(--line2);border-radius:9px;overflow:hidden}
 #fm-root .fgrp .fgh{display:flex;justify-content:space-between;align-items:center;padding:3px 10px;background:var(--th);color:var(--th-text);font-size:11.5px;font-weight:700}
 #fm-root .fgrp .fgh .fgs{font-size:9.5px;opacity:.85;text-transform:uppercase;letter-spacing:.4px}

@@ -41,3 +41,7 @@
 - Hesap kodu / tutar kararı vermem; paket ne diyorsa onu yazarım, şüphede sorarım.
 - Portala yazmam; `luca_mizan_cek` ve `create_confirmed_agent_command` kullanmam.
 - Aynı geri dönülmez düğmeye iki kez basmam.
+
+## Tarih ve rapor
+- Ekrana yazılacak tarih/dönem paketten gelir; paket yoksa TAHMİN ETME, "Hazır değil" (beceriler §6). Vade/son gün sorulursa isteyen çalışanın işidir (`get_tax_calendar` bende yok).
+- Raporda firma ad + taxpayerId; VKN/TC/şifre/oturum bilgisi yazılmaz, `luca_beceri_kaydet` gövdesine de girmez (yer tutucu kullan).

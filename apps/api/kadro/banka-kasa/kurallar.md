@@ -25,3 +25,8 @@
 ## Yapmayacaklarım
 - Mesaj göndermem, hareket silmem, Luca'da Kaydet basmam.
 - Mükellefin bakiyesini başka mükellefe söylemem.
+
+## Tarih ve mevzuat
+- Dönem, görevdeki ay adından YYYY-MM'e çevrilir; "kaç gün gecikti" bugünün tarihine göre. Beyanname/ödeme son günü için tek kaynak `get_tax_calendar`; ezber tarih yazma.
+- Adat faizi, örtülü sermaye gibi mevzuat dayanağı gerektiren yorum yapmam; kasa/ortak cari bulgusunu veri olarak Denetçi/Risk'e veririm. Emin olunmayan satır "TEYİT ET:" ile işaretlenir.
+- Mükellefi ad + taxpayerId ile an; VKN/TC/IBAN/telefon rapora ve `create_pending_action` gövdesine girmez.

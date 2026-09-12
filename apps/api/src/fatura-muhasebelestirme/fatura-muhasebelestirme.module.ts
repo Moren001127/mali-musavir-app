@@ -9,6 +9,7 @@ import { FaturaMuhasebelestirmeService } from './fatura-muhasebelestirme.service
 import { FaturaMuhasebelestirmeCron } from './fatura-muhasebelestirme.cron';
 import { EFaturaSyncService } from '../efatura-adapters/efatura-sync.service';
 import { IcerikEslestirmeService } from './icerik-eslestirme.service';
+import { FmAjanService } from './fm-ajan.service';
 import { MihsapModule } from '../mihsap/mihsap.module';
 import { PortalAutomationModule } from '../portal-automation/portal-automation.module';
 import { NotificationsModule } from '../notifications/notifications.module';
@@ -20,7 +21,7 @@ import { BeyanKayitlariModule } from '../beyan-kayitlari/beyan-kayitlari.module'
   // döngü). WhatsApp gönderimi serviste ÇAĞRI ANINDA ModuleRef + dinamik import ile çözülür.
   imports: [PrismaModule, StorageModule, forwardRef(() => KdvControlModule), VendorMemoryModule, MihsapModule, PortalAutomationModule, NotificationsModule, BeyanKayitlariModule],
   controllers: [FaturaMuhasebelestirmeController],
-  providers: [FaturaMuhasebelestirmeService, EarsivRenderService, FaturaMuhasebelestirmeCron, EFaturaSyncService, IcerikEslestirmeService],
-  exports: [FaturaMuhasebelestirmeService, EFaturaSyncService, IcerikEslestirmeService],
+  providers: [FaturaMuhasebelestirmeService, EarsivRenderService, FaturaMuhasebelestirmeCron, EFaturaSyncService, IcerikEslestirmeService, FmAjanService],
+  exports: [FaturaMuhasebelestirmeService, EFaturaSyncService, IcerikEslestirmeService, FmAjanService],
 })
 export class FaturaMuhasebelestirmeModule {}

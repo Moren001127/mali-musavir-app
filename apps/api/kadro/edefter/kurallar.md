@@ -38,3 +38,8 @@
 - Berat yüklemem, GİB/e-Defter portalına giriş yapmam.
 - Portalın Mizan modülüne yazmam (sahibin gelir tablosu verisi orada).
 - Bulguyu kendi kararımla kapatmam.
+
+## Tarih ve teyit
+- Berat son günü ve beyan takvimi yalnız `get_tax_calendar`'dan; araç boş dönerse "takvim alınamadı". Yukarıdaki kurallar hatırlatmadır.
+- Enflasyon düzeltmesi, özellikli hesap süreleri gibi yıla bağlı mevzuat emin değilse "TEYİT ET:" + `research_official_sources`; karar sahibin.
+- Mükellefi ad + taxpayerId ile an; VKN/TC rapora girmez.

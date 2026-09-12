@@ -283,8 +283,10 @@ export function buildLucaIsletmeHizliFisCsv(payload: BatchPayload): Buffer {
     // Fiş satırlarından toplam (geriye uyum / kdvBreakdown yoksa)
     let lineMatrah = 0, lineKdv = 0, rate = '';
     for (const l of inv.lines || []) {
-      const amt = Number(isSale ? l.credit : l.debit) || 0;
-      if (l.group === 'matrah') lineMatrah += amt;
+      // IADE belgede yon cevrilmis (satista matrah BORC) → dolu olan tarafi al; normal belgede eskisi gibi.
+      const amt = Number(isSale ? l.credit : l.debit) || Number(isSale ? l.debit : l.credit) || 0;
+      // KDV disi vergi (OIV/telsiz - Faz 0) isletme defterinde gider tutarina dahil (indirilemez, maliyet).
+      if (l.group === 'matrah' || l.group === 'diger_vergi') lineMatrah += amt;
       else if (l.group === 'vergi' || l.group === 'vergi-sorumlu') { lineKdv += amt; if (!rate && l.rate) rate = String(l.rate).replace(/[%\s]/g, ''); }
     }
     const fatTarihi = parseDate(inv.faturaTarihi);

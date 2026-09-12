@@ -15,6 +15,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
+import { OwnerOnlyGuard } from '../auth/guards/owner-only.guard';
 import { AnyFilesInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { FaturaMuhasebelestirmeService } from './fatura-muhasebelestirme.service';
@@ -349,6 +350,31 @@ export class FaturaMuhasebelestirmeController {
       taxpayerId: body?.taxpayerId,
       period: body?.period,
       dryRun: body?.dryRun !== false,
+      documentIds: Array.isArray(body?.documentIds) ? body.documentIds : undefined,
+    });
+  }
+
+  /**
+   * Faz 0 (PLAN/15) — bozuk okunmuş belgeleri toplu yeniden oku / kod-ad karışıklığını temizle.
+   * YALNIZ ofis sahibi (OwnerOnlyGuard: MOREN_OWNER_EMAIL / MOREN_BUTCE_OWNER_EMAIL; başkasına 404).
+   * Gövde: { mode?: 'oku'|'temizle', dryRun?: boolean (varsayılan TRUE), taxpayerId?, period?: 'YYYY-MM', limit?, documentIds? }
+   *   dryRun=true  → yalnız aday listesi + sayılar; DB'ye yazmaz.
+   *   dryRun=false → 'oku': UBL'i olan adaylar aiReadBatch kuyruğuna (ubl-xml; görsel/Max-vision yok);
+   *                  'temizle': satır accountCode + hafıza kategori kod-ad karışıklığı düzeltilir.
+   *   APPROVED + Luca POSTED/POSTING/QUEUED belgeler her zaman HARİÇ.
+   */
+  @Post('documents/reprocess-broken')
+  @UseGuards(OwnerOnlyGuard)
+  reprocessBroken(
+    @Req() req: any,
+    @Body() body: { mode?: 'oku' | 'temizle'; dryRun?: boolean; taxpayerId?: string; period?: string; limit?: number; documentIds?: string[] },
+  ) {
+    return this.service.reprocessBrokenDocuments(req.user.tenantId, {
+      mode: body?.mode === 'temizle' ? 'temizle' : 'oku',
+      dryRun: body?.dryRun !== false,
+      taxpayerId: body?.taxpayerId || undefined,
+      period: body?.period || undefined,
+      limit: body?.limit,
       documentIds: Array.isArray(body?.documentIds) ? body.documentIds : undefined,
     });
   }

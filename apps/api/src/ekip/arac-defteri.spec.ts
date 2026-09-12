@@ -1,5 +1,8 @@
-import { ARAC_DEFTERI, aracAcikMi, aracKademesi, aracKaydi, kademeOzeti } from './arac-defteri';
+import * as fs from 'fs';
+import * as path from 'path';
+import { ARAC_DEFTERI, aracAcikMi, aracKademesi, aracKaydi, ekipMihsapKomutuYasagi, kademeOzeti } from './arac-defteri';
 import { AJAN_TANIMLARI, MODEL_KIMLIKLERI, ajanBul } from './ajan-tanimlari';
+import { FATURA_MERKEZI_AJAN_ARACLARI, FM_AJAN_ARAC_ADLARI, MOREN_AI_TOOLS } from '../moren-ai/tools';
 
 /**
  * Araç defteri + yetki kademesi kilit testleri (PLAN/13-AJAN-KADROSU.md §4):
@@ -143,6 +146,106 @@ describe('ajan-tanimlari', () => {
       expect(a.araclar).toContain('get_kdv1_on_hazirlik');
       expect(aracAcikMi(a, 'get_kdv1_on_hazirlik', true).acik).toBe(true);
     }
+  });
+});
+
+// ─── FATURA MERKEZİ AJAN ARAÇLARI (fm_*) + Mihsap'ın ekipten çıkışı (PLAN/15 Faz 5) ───
+describe('fm_* araçları ve Mihsap kapanışı (PLAN/15 Faz 5)', () => {
+  const FM_OKU = ['fm_belge_listele', 'fm_belge_detay', 'fm_donem_ozeti', 'fm_uyumsuzluklar', 'fm_hesap_plani_ara'];
+  const FM_PORTAL_YAZ = ['fm_hesap_ata', 'fm_ai_ile_oku', 'fm_isaretle', 'fm_onayla'];
+  /** Fatura ajanından çıkarılan Mihsap dönemi araçları — hiçbirine geri dönmemeli. */
+  const MIHSAP_ARACLARI = [
+    'list_invoices', 'fetch_invoices_for_period', 'extract_invoice_fields', 'ocr_pdf', 'classify_with_claude',
+    'generate_fis_word_from_invoices', 'post_to_luca', 'get_mihsap_agent_jobs',
+    'isle_alis', 'isle_satis', 'isle_alis_isletme', 'isle_satis_isletme',
+  ];
+
+  it('10 fm aracı tanımlı; genel bot listesinde (MOREN_AI_TOOLS) YOK; defterde kaynak=portal', () => {
+    expect(FM_AJAN_ARAC_ADLARI).toEqual([...FM_OKU, ...FM_PORTAL_YAZ, 'fm_luca_gonder']);
+    expect(FATURA_MERKEZI_AJAN_ARACLARI).toHaveLength(10);
+    const genel = new Set(MOREN_AI_TOOLS.map((t) => t.name));
+    for (const ad of FM_AJAN_ARAC_ADLARI) {
+      expect(genel.has(ad)).toBe(false);
+      expect(aracKaydi(ad)?.kaynak).toBe('portal');
+      expect(aracKaydi(ad)?.parametreler?.length).toBeGreaterThan(0);
+    }
+    expect(aracKaydi('fm_belge_listele')?.parametreler).toEqual(['taxpayerId*', 'donem*', 'yon', 'durum', 'limit']);
+    expect(aracKaydi('fm_hesap_ata')?.parametreler).toEqual(['belgeId*', 'satir', 'hesapKodu', 'kayitTuruKod', 'kayitAltKod', 'gerekce*']);
+  });
+
+  it('kademeler: okuma=oku, hesap_ata/ai_ile_oku/isaretle/onayla=portal_yaz, luca_gonder=luca_yaz', () => {
+    for (const ad of FM_OKU) expect(aracKademesi(ad)).toBe('oku');
+    for (const ad of FM_PORTAL_YAZ) expect(aracKademesi(ad)).toBe('portal_yaz');
+    expect(aracKademesi('fm_luca_gonder')).toBe('luca_yaz');
+  });
+
+  it('kuru test: fm okuma + portal_yaz açık, fm_luca_gonder kapalı (kuru_test); canlıda açık', () => {
+    const fatura = ajanBul('fatura')!;
+    for (const ad of [...FM_OKU, 'fm_hesap_ata', 'fm_ai_ile_oku', 'fm_isaretle']) {
+      expect(aracAcikMi(fatura, ad, true).acik).toBe(true);
+    }
+    const kuru = aracAcikMi(fatura, 'fm_luca_gonder', true);
+    expect(kuru.acik).toBe(false);
+    expect(kuru.neden).toBe('kuru_test');
+    expect(aracAcikMi(fatura, 'fm_luca_gonder', false).acik).toBe(true);
+  });
+
+  it('fatura ajanı: fm okuma + yazma + fm_luca_gonder listede; fm_onayla YOK; Luca yazma (luca_yaz/luca_sec/luca_tikla) YOK', () => {
+    const fatura = ajanBul('fatura')!;
+    expect(fatura.araclar).toEqual(expect.arrayContaining([...FM_OKU, 'fm_hesap_ata', 'fm_ai_ile_oku', 'fm_isaretle', 'fm_luca_gonder']));
+    expect(fatura.araclar).not.toContain('fm_onayla');
+    for (const ad of ['luca_yaz', 'luca_sec', 'luca_tikla', 'luca_beceri_kaydet']) expect(fatura.araclar).not.toContain(ad);
+    // Fatura Merkezi liste + e-Arşiv kıyası kalır; entegratör çekimi önizlemesi (preview) kalır — Mihsap komutu runner'da reddedilir.
+    expect(fatura.araclar).toEqual(expect.arrayContaining(['list_fatura_merkezi', 'list_earsiv_invoices', 'preview_agent_command', 'create_pending_action']));
+  });
+
+  it('fm_onayla HİÇBİR ajanın listesinde yok — onay sahibindir', () => {
+    for (const ajan of AJAN_TANIMLARI) {
+      expect({ ajan: ajan.id, fmOnayla: ajan.araclar.includes('fm_onayla') }).toEqual({ ajan: ajan.id, fmOnayla: false });
+      expect(aracAcikMi(ajan, 'fm_onayla', false).neden).toBe('ajana_kapali');
+    }
+  });
+
+  it('fatura / koordinatör / denetçi listelerinde Mihsap aracı yok', () => {
+    for (const id of ['fatura', 'koordinator', 'denetci']) {
+      const a = ajanBul(id)!;
+      const kalan = a.araclar.filter((ad) => MIHSAP_ARACLARI.includes(ad));
+      expect({ ajan: id, mihsap: kalan }).toEqual({ ajan: id, mihsap: [] });
+    }
+  });
+
+  it('fm_* fatura ajanı dışındaki ajanlara açılmadı (koordinatör/denetçi dahil)', () => {
+    for (const ajan of AJAN_TANIMLARI) {
+      if (ajan.id === 'fatura') continue;
+      const fm = ajan.araclar.filter((ad) => ad.startsWith('fm_'));
+      expect({ ajan: ajan.id, fm }).toEqual({ ajan: ajan.id, fm: [] });
+    }
+  });
+
+  it('ekipMihsapKomutuYasagi: mihsap* ajanı ya da isle_* eylemi ekipte reddedilir; Luca/diğer komutlar ve başka araçlar serbest', () => {
+    for (const arac of ['preview_agent_command', 'create_confirmed_agent_command', 'create_agent_command']) {
+      expect(ekipMihsapKomutuYasagi(arac, { agent: 'mihsap', action: 'isle_alis', payload: {} })).toMatch(/KAPALI/);
+      expect(ekipMihsapKomutuYasagi(arac, { agent: 'Mihsap-Fatura-Isleme-Agent', action: 'x' })).toMatch(/KAPALI/);
+      expect(ekipMihsapKomutuYasagi(arac, { agent: 'luca', action: 'isle_satis_isletme' })).toMatch(/KAPALI/);
+      expect(ekipMihsapKomutuYasagi(arac, { agent: 'luca', action: 'fetch_earsiv', payload: {} })).toBeNull();
+      expect(ekipMihsapKomutuYasagi(arac, { agent: 'whatsapp', action: 'document_request' })).toBeNull();
+      expect(ekipMihsapKomutuYasagi(arac, {})).toBeNull();
+    }
+    expect(ekipMihsapKomutuYasagi('fm_belge_listele', { agent: 'mihsap', action: 'isle_alis' })).toBeNull();
+    expect(ekipMihsapKomutuYasagi('get_mizan', { agent: 'mihsap' })).toBeNull();
+  });
+
+  it('kadro/fatura/kimlik.md "Kullandığım araçlar" ↔ ajan-tanimlari fatura.araclar BİREBİR', () => {
+    const md = fs.readFileSync(path.join(__dirname, '../../kadro/fatura/kimlik.md'), 'utf8');
+    const bolum = md.split('## Kullandığım araçlar')[1] || '';
+    expect(bolum.length).toBeGreaterThan(0);
+    const mdAraclar = new Set([...bolum.matchAll(/`([a-z_0-9]+)`/g)].map((m) => m[1]));
+    const kod = new Set(ajanBul('fatura')!.araclar);
+    expect({ koddaVarMdYok: [...kod].filter((x) => !mdAraclar.has(x)), mdVarKoddaYok: [...mdAraclar].filter((x) => !kod.has(x)) })
+      .toEqual({ koddaVarMdYok: [], mdVarKoddaYok: [] });
+    // Mihsap araçları kimlik.md'de de yok
+    for (const ad of MIHSAP_ARACLARI) expect(mdAraclar.has(ad)).toBe(false);
+    expect(mdAraclar.has('fm_onayla')).toBe(false);
   });
 });
 

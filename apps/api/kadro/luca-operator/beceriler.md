@@ -1,12 +1,12 @@
 # Luca Operatörü — Beceriler
 
 ## 1. Gelen iş paketini uygulama (genel kalıp)
-1. Paketi oku: firma, dönem, ekran, alanlar/değerler, kuru test mi canlı mı.
+1. Paketi oku (00_ORTAK §11 DEVİR bloğu): firma (taxpayerId), dönem, ekran, alanlar/değerler, kuru test mi canlı mı, kim istedi. Firma/dönem/ekran eksikse §6 "Hazır değil"; tahminle doldurma.
 2. `luca_beceri_listele` → aynı iş kayıtlı mı? Varsa `luca_beceri_getir` ile adımları al.
 3. `luca_ekran_oku` → açık firma/dönem doğru mu; değilse firma/dönem değiştir (menüden), tekrar oku.
 4. `luca_menu_ara` → `luca_menu_git` ile ekranı aç.
 5. Her alan: `luca_yaz` / `luca_sec` → dönen ekranla doğrula (özellikle tarih).
-6. Kuru test: DUR. Ekran özeti + "yapacaktım" raporu.
+6. Kuru test: DUR. Ekran özeti + "yapacaktım" raporu (§7 kalıbı).
 7. Canlı + onay: `luca_tikla` (`confirmed=true`) → sonucu oku → rapor.
 8. İş onaylanıp bittiyse `luca_beceri_kaydet` (yer tutucularla) → tek cümle bildir.
 
@@ -15,7 +15,7 @@
 2. "Listele/Raporla" tıkla (bu düğme veri değiştirmez, onay gerekmez).
 3. `luca_ekran_oku` → "pencereler" alanı; boşsa bekle, tekrar oku.
 4. Excel indiyse `luca_rapor_oku`.
-5. Satırları iş veren çalışana veri olarak döndür; portala YAZMA.
+5. Satırları iş veren çalışana veri olarak döndür (rapor başı "DEVİR CEVABI → <isteyen ajan>"); portala YAZMA. Satır sayısı 40'ı aşarsa toplamları + ilk 30 satırı ver, kalanı "N satır daha" diye say.
 
 ## 3. Bilinmeyen ekranı öğrenme
 1. Beceri yok → menüde ara → ekranı aç → alan etiketlerini, zorunlu alanları, açılır listeleri oku.
@@ -31,3 +31,27 @@
 1. `luca_menu_haritasi_cikar` (yalnız okur, dakikalar sürer).
 2. Bittiğinde `luca_menu_ara` ile birkaç bilinen ekranı sına ("muhtasar", "fiş listesi", "mizan").
 3. Rapor: kaç menü, hangi kök (Muhasebe / İşletme Defteri).
+
+## 6. "Hazır değil" şablonu (00_ORTAK §10)
+```
+<firma> / <dönem> / <ekran veya iş>
+Durum: HAZIR DEĞİL
+Neden: Luca ajanı bağlı değil (get_agent_status) | açık firma hedef firma değil ve değiştirme yetkim yok | menü bulunamadı (luca_menu_ara boş, harita yok) | pakette alan/değer eksik | geri dönülmez düğme için onay yok
+Yapılan kısım: (ekran açıldı / alanlar dolduruldu / hiçbiri)
+Kime döndü: Koordinatör → isteyen çalışan (eksik bilgi) / sahip (onay, firma değişimi)
+```
+- Portala yazan aracım (`create_pending_action`) YOK: "Kime döndü" satırı raporumda kalır; Koordinatör kaydı açar. Bu yüzden satır ZORUNLUDUR, serbest cümleyle geçiştirilmez.
+- Aynı işte ikinci "hazır değil"de üçüncü denemeyi başlatmam; Koordinatör sahibe götürür.
+
+## 7. Rapor kalıbı (ekran özeti)
+```
+DEVİR CEVABI → <isteyen ajan> (varsa)
+Firma / dönem (ekran başlığından okundu: …) / ekran adı / kuru test | canlı
+Yazılan alanlar: alan → değer (ekrandan geri okunan değer; farklıysa "UYUŞMADI")
+Ekran toplamları / uyarılar: …
+Basılmayan düğme: Kaydet | Tahakkuk | … (kuru test) — ONAY BEKLEYEN: "<düğme> / <firma> / <tutar> / <isteyen çalışan>"
+Rapor satırları: (Fiş Listesi / Mizan okundu ise) — ilk 30 satır + toplam
+```
+- Tablo, emoji, süreç cümlesi yok. Mükellefi ad + taxpayerId ile an; VKN/TC yazma.
+- Onay sonrası tıklamada sonuç tek cümle ("Kaydet basıldı, fiş no 123 görüldü"); göremediğine "kaydedildi" deme.
+- ÖĞRENDİM satırı yalnız ekran/menü davranışı için ("Fiş Listesi penceresi 5 sn geç açılıyor"); onaylı iş beceri olarak `luca_beceri_kaydet`, kural `luca_kural_kaydet`.

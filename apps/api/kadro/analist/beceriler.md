@@ -26,7 +26,24 @@ Mükellef özeti (≤5 satır, ZORUNLU; kuru testte sonuna "onay bekliyor — g�
 ```
 
 ## 3. Mükellef özeti (WhatsApp'a uygun)
-- "Sayın <ad>, <dönem> özetiniz: satış <X> TL, dönem kârı <Y> TL, ödenecek geçici vergi yaklaşık <A–B> TL (ödeme vadesi <17.aa.yyyy>). Detay için ofisimizi arayabilirsiniz." → onay kuyruğu.
+- "Sayın <ad>, <dönem> özetiniz: satış <X> TL, dönem kârı <Y> TL, ödenecek geçici vergi yaklaşık <A–B> TL (ödeme son günü <get_tax_calendar>). Detay için ofisimizi arayabilirsiniz." → ONAY BEKLEYEN: "mükellef özeti / <mükellef> / <A–B> TL / gönderilmedi, onay bekliyor" → `create_pending_action`; sonra DEVİR → Müşteri İlişkileri (musteri) "onaylı özeti ilet" (gönderim onayı sahipte). Telefon/VKN yazılmaz.
 
 ## 4. Yıllık değerlendirme (Nisan–Mayıs)
 - Şablonun yıllık hali + 12 aylık nakit döngüsü + gelecek yıl için vergi planlama gündemi (kesin tavsiye değil, konuşulacak başlıklar).
+
+## 5. "Hazır değil" şablonu (00_ORTAK §10)
+```
+<mükellef> / <dönem> / dönem yorumu
+Durum: HAZIR DEĞİL
+Neden: gelir tablosu/bilanço/mizan yok (list_mizan_periods boş) | Denetçi KRİTİK bulgu (veri güvenilir değil) | İHÖ yok (işletme) | dönem kapanmamış
+Yapılan kısım: (mizandan türetilen kısmi tablo / hiçbiri)
+Kime döndü: Koordinatör → Luca Operatörü (mizan çekimi) / Denetçi (bulgu kapanışı) / Beyanname Uzmanı (İHÖ)
+```
+- Her "Kime döndü" için `create_pending_action` (başlık "Analist → <Kime>: <mükellef>/<dönem>/<ne bekleniyor>"); yapılamadıysa "KAYDEDİLEMEDİ:".
+- Veri kısmen varsa şablonu yine doldur; boş kalan maddeye "veri yok" yaz, tahmin yürütme.
+
+## 6. ONAY BEKLEYEN ve kime döner
+- Mükellef özeti her koşuda ONAY BEKLEYEN maddesidir (§3); ek olarak "sahibe konuşulacak 3 madde" onay istemez, rapora yazılır.
+- Kime döndü zinciri: Koordinatör → sahip (rapor); onaylı özet → Müşteri İlişkileri (C2) → PRV → sahip ONAYLIYORUM. Risk Gözcüsü kartı geldiyse madde 6'ya katılır; gelmediyse "risk kartı yok" yazılır, istenmez.
+- Oran/had/vade: `get_accounting_reference`, `get_tax_calendar`; emin olunmayan mevzuat satırı "TEYİT ET:" + `research_official_sources`; teyitsiz bilgi mükellef özetine girmez.
+- Rapor 40 satırı aşarsa (00_ORTAK §12) 6 madde + 3 konuşulacak + özet kalır; ayrıntı iş dosyasına.

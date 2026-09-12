@@ -12,6 +12,7 @@ import { encrypt, tryDecrypt } from '../common/crypto';
 import { claudeTextViaMax, MAX_MODEL_CHEAP } from '../common/max-inference';
 import { buildLucaImportExcel, buildLucaIsletmeHizliFisCsv } from './luca-excel.service';
 import { reconcileMatrahSplit } from './kalem-split';
+import { parseUblInvoice, ublOcrDataFields, clearUblOnlyOcrFields, resolveTevkifatOrani, ParsedProviderInvoice } from './ubl-parse';
 import { VendorMemoryService } from '../vendor-memory/vendor-memory.service';
 import { MihsapService } from '../mihsap/mihsap.service';
 import { PortalAutomationService } from '../portal-automation/portal-automation.service';
@@ -263,25 +264,7 @@ type ProviderStoredVisual = {
   html?: string | null;
 };
 
-type ParsedProviderInvoice = {
-  faturaNo: string;
-  faturaTarihi: Date | null;
-  ettn?: string | null;
-  satici?: string | null;
-  saticiVergiNo?: string | null;
-  alici?: string | null;
-  aliciVergiNo?: string | null;
-  matrah?: number | null;
-  kdvTutari?: number | null;
-  kdvOrani?: number | null;
-  /** Çok-oranlı KDV kırılımı (her oran ayrı): %10 ve %20 gibi karma faturada şart. */
-  kdvBreakdown?: Array<{ rate: number; base: number; amount: number }>;
-  /** Tevkif edilen (alıkonan) KDV tutarı — UBL WithholdingTaxTotal. Satışta 391'e NET KDV gider. */
-  tevkifatKdv?: number;
-  toplamTutar?: number | null;
-  paraBirimi?: string | null;
-  kalemler?: Array<{ ad: string; tutar: number; oran: number }>;
-};
+// ParsedProviderInvoice tipi ./ubl-parse.ts'e taşındı (Faz 0: tek okuma sonucu).
 
 const INTEGRATOR_CATALOG = [
   { provider: 'LUCA', label: 'Luca', kind: 'luca', tone: 'green' },
@@ -3356,6 +3339,222 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     return { queued: docs.length, skipped: ids.length - docs.length };
   }
 
+  /**
+   * Faz 0 (PLAN/15) — BOZUK OKUNMUŞ belgeleri toplu yeniden oku / kod-ad karışıklığını temizle.
+   *
+   * mode 'oku' (varsayılan) — SEÇİM (hepsi onaysız + Luca'ya GİTMEMİŞ):
+   *   • aktar-ham        : Aktar yolu (ocrData.source=provider-api) + readMode boş + parserVersion yok
+   *                        (tevkifat/iade/diğer vergi ocrData'ya hiç yazılmamış; Temmuz "%24" belgeleri de burada)
+   *                        ya da matchDeferred (Aktar sadece, hiç eşleştirilmemiş).
+   *   • kdv-oran-gecersiz: kdvOrani ya da kırılım oranı {0,1,8,10,18,20} dışında (%24 = KDV+tevkifat harmanı, %100 = telsiz).
+   *   • kdv-disi-vergi   : telekom/elektrik satıcısı (ünvan) ve KDV dışı vergi ayrımı hiç yapılmamış (digerVergiToplam yok).
+   *   • tevkifat-kod-yok : tevkifatlı okunmuş ama UBL tevkifat kodu okunmamış (eski ayrıştırıcı).
+   *   dryRun=true  → yalnız liste + sayı (DB'ye dokunmaz).
+   *   dryRun=false → UBL'i olanlar mevcut aiReadBatch kuyruğuna (ubl-xml yolu; görsel/Max-vision YOK);
+   *                  UBL'i bulunamayanlar 'xmlYok' olarak raporlanır, kuyruğa ALINMAZ.
+   *
+   * mode 'temizle' — KOD-AD KARIŞIKLIĞI: accountCode'a hesap adı yapışmış satırlar ("153.01.010-%10 TİCARİ MAL…")
+   *   ve vendor_memory_decisions.kategori'de ad ekli kayıtlar → yalnız KOD kalır. Satırda kod mükellef
+   *   planında yoksa ad kırpılmış hali yazılır (plan yoksa yine kırpılır). Hafızada aynı temiz kayıt zaten
+   *   varsa onay sayıları birleştirilir, kirli kayıt silinir. POSTED belge satırlarına dokunulmaz.
+   */
+  async reprocessBrokenDocuments(
+    tenantId: string,
+    opts: { mode?: 'oku' | 'temizle'; dryRun?: boolean; taxpayerId?: string; period?: string; limit?: number; documentIds?: string[] },
+  ) {
+    const dryRun = opts.dryRun !== false;
+    const mode = opts.mode === 'temizle' ? 'temizle' : 'oku';
+    const LUCA_DISI = ['POSTED', 'POSTING', 'QUEUED'];
+    if (mode === 'temizle') return this.cleanupCodeNameMixups(tenantId, { dryRun, taxpayerId: opts.taxpayerId });
+
+    const STD_RATES = new Set([0, 1, 8, 10, 18, 20]);
+    const TELEKOM_RE = /t[üu]rk\s*telekom|ttnet|turkcell|vodafone|superonline|t[üu]rksat|kablonet|netgsm|d-?smart|digit[üu]rk|millenicom|enerjisa|bedaş|ayedaş|ck\s*(?:boğaziçi|akdeniz)|elektrik\s*perakende|aydem|osmangazi\s*elektrik|başkent\s*elektrik|uludağ\s*elektrik|gediz|toroslar|igda[sş]|başkentgaz|doğalgaz/i;
+    const where: any = {
+      tenantId,
+      // APPROVED + iptal/ret edilmiş belgeler aday olmaz (denetim: CANCELLED/REJECTED yeniden okunmasın).
+      status: { notIn: ['APPROVED', 'CANCELLED', 'REJECTED'] },
+      lucaStatus: { notIn: LUCA_DISI },
+      ocrStatus: { notIn: ['PENDING', 'IN_PROGRESS'] },
+      ...(opts.taxpayerId ? { taxpayerId: opts.taxpayerId } : {}),
+      ...periodWhere(opts.period),
+      ...(Array.isArray(opts.documentIds) && opts.documentIds.length ? { id: { in: opts.documentIds } } : {}),
+    };
+    const docs = await (this.prisma as any).invoiceAccountingDocument.findMany({
+      where,
+      select: {
+        id: true, belgeNo: true, taxpayerId: true, source: true, sourceRefId: true, invoiceKind: true, vendorName: true, customerName: true,
+        mimeType: true, s3Key: true, ocrData: true, lucaStatus: true, status: true, faturaTarihi: true, createdAt: true,
+        lines: { select: { group: true, accountCode: true, kaynak: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 5000,
+    });
+    type Aday = { id: string; belgeNo: string | null; taxpayerId: string | null; source: string; invoiceKind: string; nedenler: string[]; xmlVar?: boolean };
+    const adaylar: Aday[] = [];
+    // ELLE DÜZELTİLMİŞ (en az bir satır kaynak=KULLANICI): yeniden okuma satırları siler, müşavirin seçimi
+    //   kaybolur → kuyruğa ALINMAZ, yanıtta ayrı listelenir (denetim bulgusu).
+    const elleDuzeltilmis: Aday[] = [];
+    for (const d of docs) {
+      const od: any = d.ocrData || {};
+      const nedenler: string[] = [];
+      const providerXml = od.source === 'provider-api' || /^integration-|^gib-portal-api$/.test(String(d.source || ''));
+      const readMode = String(od.readMode || '').trim();
+      const tamParser = Number(od.parserVersion) >= 2; // 1 = regex yedeği (tevkifat/diğer vergi okunmamış)
+      if (od.matchDeferred === true || (providerXml && !readMode && !tamParser)) nedenler.push('aktar-ham');
+      // KDV ORANI: kırılım ≥2 orandan oluşuyorsa (%1+%20 market) ocrData.kdvOrani HARMAN olabilir (14) → o alana
+      //   BAKMA, yalnız kırılım oranlarına bak; tek oranlı/kırılımsız belgede kdvOrani da ölçüt.
+      const kirilimOranlari = (Array.isArray(od.kdvBreakdown) ? od.kdvBreakdown.map((b: any) => Number(b?.oran ?? b?.rate)) : [])
+        .filter((r: number) => Number.isFinite(r));
+      const cokOranli = new Set(kirilimOranlari.map((r: number) => Math.round(r))).size >= 2;
+      const oranlar = [...(cokOranli ? [] : [Number(od.kdvOrani)]), ...kirilimOranlari]
+        .filter((r) => Number.isFinite(r));
+      if (oranlar.some((r) => !STD_RATES.has(Math.round(r)))) nedenler.push('kdv-oran-gecersiz');
+      const karsiTaraf = String(d.invoiceKind === 'SATIS' ? d.customerName : d.vendorName || '');
+      if (providerXml && od.digerVergiToplam == null && TELEKOM_RE.test(karsiTaraf)) nedenler.push('kdv-disi-vergi');
+      const tevkVar = Number(od.tevkifatOrani || 0) > 0 || Number(od.tevkifatKdv || 0) > 0 || od.tevkifatHint === true
+        || (d.lines || []).some((l: any) => ['tevkifat', 'vergi-sorumlu'].includes(String(l.group || '')));
+      if (providerXml && tevkVar && !od.tevkifatKodu && !tamParser) nedenler.push('tevkifat-kod-yok');
+      if (!nedenler.length) continue;
+      const aday: Aday = { id: d.id, belgeNo: d.belgeNo || null, taxpayerId: d.taxpayerId || null, source: String(d.source || ''), invoiceKind: String(d.invoiceKind || ''), nedenler };
+      if ((d.lines || []).some((l: any) => String(l.kaynak || '').toUpperCase() === 'KULLANICI')) { elleDuzeltilmis.push(aday); continue; }
+      adaylar.push(aday);
+    }
+    const limit = Math.max(1, Math.min(2000, Number(opts.limit) || 500));
+    const secilen = adaylar.slice(0, limit);
+    const nedenSayac: Record<string, number> = {};
+    for (const a of adaylar) for (const n of a.nedenler) nedenSayac[n] = (nedenSayac[n] || 0) + 1;
+    const ozet = {
+      mode, dryRun, taranan: docs.length, aday: adaylar.length, secilen: secilen.length, limit,
+      nedenler: nedenSayac,
+      elleDuzeltilmis: elleDuzeltilmis.length,
+      haricTutulan: 'APPROVED/CANCELLED/REJECTED + Luca POSTED/POSTING/QUEUED + okunmakta olanlar + elle düzeltilmiş (KULLANICI satırlı) belgeler',
+    };
+    if (dryRun) return { ...ozet, kuyruk: 0, xmlYok: 0, belgeler: secilen, elleDuzeltilmisBelgeler: elleDuzeltilmis.slice(0, 200) };
+
+    // dryRun=false: UBL'i olanları kuyruğa (ubl-xml yolu). Görsel okuma YOK — XML bulunamazsa atla.
+    const kuyrukIds: string[] = [];
+    const xmlYok: Aday[] = [];
+    const docById = new Map<string, any>(docs.map((d: any) => [d.id, d]));
+    for (const a of secilen) {
+      const d = docById.get(a.id);
+      const xml = d ? await this.loadProviderUblXml(tenantId, d).catch(() => null) : null;
+      if (xml) { a.xmlVar = true; kuyrukIds.push(a.id); } else { a.xmlVar = false; xmlYok.push(a); }
+    }
+    let queued = 0;
+    if (kuyrukIds.length) {
+      const r = await this.aiReadBatch(tenantId, kuyrukIds);
+      queued = Number(r?.queued) || 0;
+    }
+    this.logger.log(`[REPROCESS-BROKEN] tenant=${tenantId} aday=${adaylar.length} kuyruk=${queued} xmlYok=${xmlYok.length} elleDuzeltilmis=${elleDuzeltilmis.length} nedenler=${JSON.stringify(nedenSayac)}`);
+    return { ...ozet, kuyruk: queued, xmlYok: xmlYok.length, belgeler: secilen, xmlYokBelgeler: xmlYok.slice(0, 200), elleDuzeltilmisBelgeler: elleDuzeltilmis.slice(0, 200) };
+  }
+
+  /** Faz 0 — kod-ad karışıklığı temizliği (bkz. reprocessBrokenDocuments 'temizle'). */
+  private async cleanupCodeNameMixups(tenantId: string, opts: { dryRun: boolean; taxpayerId?: string }) {
+    const dryRun = opts.dryRun !== false;
+    // Yalnız KOD: baştaki "153.01.010" / "120.01.İ027" parçası; "-%10 TİCARİ MAL…" / " TİCARİ MAL" atılır.
+    const kodAyikla = (raw: any): string => {
+      const v = String(raw || '').trim();
+      const m = v.match(/^([0-9]{1,3}(?:\.[\p{L}\p{N}]+)*)/u);
+      if (m?.[1]) return m[1];
+      return this.accountCodeOnly(v);
+    };
+    // KİRLİLİK = boşluk / % gibi ad eki ya da harf DİZİSİ (≥3 harf: "TİCARİ", "MAL") içeren kod. '-' TEK BAŞINA
+    //   kirlilik değildir: mükellef planı "600-01-001" ya da "153.01.010-A" biçimini kullanabilir (denetim bulgusu).
+    const kirliMi = (raw: any): boolean => {
+      const v = String(raw || '').trim();
+      if (!v) return false;
+      return /\s/.test(v) || /[%]/.test(v) || /[^0-9.\p{L}\p{N}-]/u.test(v) || v.length > 24 || /\p{L}{3,}/u.test(v);
+    };
+    // 1) Belge satırları (POSTED/POSTING/QUEUED belgeler hariç; APPROVED dahil — kod yalnız kırpılır, tutar değişmez)
+    const lines = await (this.prisma as any).invoiceAccountingLine.findMany({
+      where: {
+        document: { tenantId, lucaStatus: { notIn: ['POSTED', 'POSTING', 'QUEUED'] }, ...(opts.taxpayerId ? { taxpayerId: opts.taxpayerId } : {}) },
+        accountCode: { not: null },
+        OR: [{ accountCode: { contains: ' ' } }, { accountCode: { contains: '-' } }, { accountCode: { contains: '%' } }],
+      },
+      select: { id: true, accountCode: true, description: true, document: { select: { id: true, belgeNo: true, taxpayerId: true } } },
+      take: 5000,
+    });
+    const satirDegisim: any[] = [];
+    const planCache = new Map<string, Set<string> | null>();
+    for (const l of lines) {
+      if (!kirliMi(l.accountCode)) continue;
+      const tpId = String(l.document?.taxpayerId || '');
+      if (!planCache.has(tpId)) planCache.set(tpId, tpId ? await this.getPlanCodeSet(tenantId, tpId).catch(() => null) : null);
+      const plan = planCache.get(tpId);
+      const ham = String(l.accountCode || '').trim();
+      let kod = kodAyikla(ham);
+      // Planda yoksa: '-' / boşlukla ayrılmış parçaları SONDAN kısaltarak planda olanı ara — parçalar
+      //   kodAyikla'dan GEÇİRİLMEZ ("600-01-001 TİCARİ" → "600-01-001" planda ise eşleşir; eskiden '600'e kırpılıyordu).
+      if (plan && plan.size && !plan.has(kod)) {
+        // Her ayraçtan (boşluk / '-') önceki ön ek aday (uzun → kısa); önce ham ön ek, sonra kırpılmış hali.
+        const adaylar: string[] = [];
+        for (let i = ham.length - 1; i > 0; i--) if (/[\s-]/.test(ham[i])) adaylar.push(ham.slice(0, i).trim());
+        const bulunan = adaylar.find((cand) => plan.has(cand)) || adaylar.map((c) => kodAyikla(c)).find((cand) => plan.has(cand));
+        if (bulunan) kod = bulunan;
+      }
+      if (!kod || kod === ham) continue;
+      satirDegisim.push({ lineId: l.id, documentId: l.document?.id, belgeNo: l.document?.belgeNo || null, eski: l.accountCode, yeni: kod, planda: plan ? plan.has(kod) : null });
+    }
+    // 2) Hafıza kayıtları (vendor_memory_decisions.kategori — fatura kararı = hesap kodu)
+    const kararlar = await (this.prisma as any).vendorMemoryDecision.findMany({
+      where: {
+        kararTipi: 'fatura',
+        vendorMemory: { tenantId },
+        ...(opts.taxpayerId ? { taxpayerId: opts.taxpayerId } : {}),
+        OR: [{ kategori: { contains: ' ' } }, { kategori: { contains: '-' } }, { kategori: { contains: '%' } }],
+      },
+      select: { id: true, vendorMemoryId: true, taxpayerId: true, kararTipi: true, kategori: true, altKategori: true, icerikImza: true, onayAdedi: true },
+      take: 5000,
+    });
+    const hafizaDegisim: any[] = [];
+    for (const k of kararlar) {
+      if (!kirliMi(k.kategori)) continue;
+      const kod = kodAyikla(k.kategori);
+      if (!kod || kod === String(k.kategori || '').trim()) continue;
+      hafizaDegisim.push({ id: k.id, vendorMemoryId: k.vendorMemoryId, taxpayerId: k.taxpayerId, altKategori: k.altKategori, icerikImza: k.icerikImza, onayAdedi: k.onayAdedi, eski: k.kategori, yeni: kod });
+    }
+    // YAZIM YALNIZ planda===true satırlara (denetim bulgusu): plan yok ya da kırpılmış kod planda yoksa satır
+    //   yalnız RAPORLANIR — kesik kod yazılırsa revalidate "plan dışı kod" üretir, Luca'ya gitmez.
+    const satirPlanda = satirDegisim.filter((c) => c.planda === true);
+    const satirPlandaDegil = satirDegisim.filter((c) => c.planda !== true);
+    const ozet = {
+      mode: 'temizle', dryRun, satirTaranan: lines.length, satirDegisen: satirDegisim.length,
+      satirYazilacak: satirPlanda.length, satirPlandaDegil: satirPlandaDegil.length,
+      hafizaTaranan: kararlar.length, hafizaDegisen: hafizaDegisim.length,
+    };
+    if (dryRun) return { ...ozet, satirlar: satirDegisim.slice(0, 300), plandaOlmayanlar: satirPlandaDegil.slice(0, 300), hafiza: hafizaDegisim.slice(0, 300) };
+
+    let satirYazildi = 0, hafizaYazildi = 0, hafizaBirlesti = 0;
+    for (const c of satirPlanda) {
+      await (this.prisma as any).invoiceAccountingLine.update({ where: { id: c.lineId }, data: { accountCode: c.yeni } }).catch(() => null);
+      satirYazildi++;
+    }
+    for (const h of hafizaDegisim) {
+      // Aynı temiz kayıt zaten varsa (unique: vendorMemoryId + taxpayerId + kararTipi + kategori + altKategori) birleştir.
+      const mevcut = await (this.prisma as any).vendorMemoryDecision.findFirst({
+        where: { vendorMemoryId: h.vendorMemoryId, kararTipi: 'fatura', kategori: h.yeni, taxpayerId: h.taxpayerId ?? null, altKategori: h.altKategori ?? null },
+        select: { id: true, onayAdedi: true },
+      }).catch(() => null);
+      if (mevcut && mevcut.id !== h.id) {
+        await (this.prisma as any).$transaction([
+          (this.prisma as any).vendorMemoryDecision.update({ where: { id: mevcut.id }, data: { onayAdedi: (mevcut.onayAdedi || 0) + (h.onayAdedi || 0), sonKullanim: new Date(), ...(h.icerikImza ? { icerikImza: h.icerikImza } : {}) } }),
+          (this.prisma as any).vendorMemoryDecision.delete({ where: { id: h.id } }),
+        ]).catch(() => null);
+        hafizaBirlesti++;
+      } else {
+        await (this.prisma as any).vendorMemoryDecision.update({ where: { id: h.id }, data: { kategori: h.yeni } }).catch(() => null);
+        hafizaYazildi++;
+      }
+    }
+    // Değişen belgelerin doğrulamasını tazele (kod artık plandaki gerçek kodla karşılaştırılır).
+    const docIds = [...new Set(satirPlanda.map((c) => String(c.documentId)).filter(Boolean))];
+    for (const id of docIds) await this.revalidateDocument(tenantId, id).catch(() => null);
+    this.logger.log(`[KOD-AD-TEMIZLE] tenant=${tenantId} satir=${satirYazildi} plandaDegil=${satirPlandaDegil.length} hafiza=${hafizaYazildi} birlesti=${hafizaBirlesti}`);
+    return { ...ozet, satirYazildi, hafizaYazildi, hafizaBirlesti, belgeYenidenDogrulandi: docIds.length, satirlar: satirPlanda.slice(0, 300), plandaOlmayanlar: satirPlandaDegil.slice(0, 300), hafiza: hafizaDegisim.slice(0, 300) };
+  }
+
   /** Okumayı DURDUR: bekleyen (PENDING/IN_PROGRESS, onaysız) belgeleri kuyruktan çıkar ve CANCELLED yap →
    *  resume tekrar almaz, tarama şeridi durur. ŞU AN okunmakta olan belge (uploadOcrActiveIds) bitince
    *  kendi sonucunu yazar (yarıda bırakılmaz). taxpayerId verilirse yalnız o mükellefin belgeleri. */
@@ -5985,6 +6184,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       kdvTutari: ocrData?.kdvTutari,
       kdvBreakdown: breakdown,
       kalemler: Array.isArray(ocrData?.kalemler) ? ocrData.kalemler : null,  // denetim: çok-oranlı çökme
+      // Faz 0: UBL ödenecek tutar denklemi + iade yön kontrolü girdileri (Aktar ve AI-oku yolu aynı adlarla yazar).
+      odenecekTutar: ocrData?.odenecekTutar,
+      digerVergiToplam: ocrData?.digerVergiToplam,
+      tevkifatKdv: this.numFromOcr(ocrData?.tevkifatKdv) || this.numFromOcr(ocrData?.kdvTevkifat) || 0,
+      belgeDurumu: ocrData?.belgeDurumu,
+      stopajTutari: this.numFromOcr(ocrData?.stopajTutari) || 0,
     });
 
     // v2.2: validation kolonlarını raw SQL ile yaz — Prisma client tanımıyor olabilir
@@ -10380,7 +10585,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         xml,
         externalId: sourceRefId,
       }, parsed, source, sourceRefId);
-      const total = parsed.toplamTutar ?? ((parsed.matrah || 0) + (parsed.kdvTutari || 0));
+      const total = this.providerDocumentTotal(parsed, direction);
       // skipMatching'de mevcut belgenin hesap satırlarına DOKUNMA (yalnız görsel/depolama tazelenir).
       const shouldRewriteAccounting = !skipMatching && String(existing.status || '').toUpperCase() !== 'APPROVED';
       const lines = shouldRewriteAccounting
@@ -10397,7 +10602,15 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           // TEVKİFAT (UBL WithholdingTaxTotal → parsed.tevkifatKdv): oran (tevkifat/KDV) geçilir →
           //   satışta 391'e NET KDV (hesaplanan − tevkifat), alışta 191 ikiye bölme. Geçilmezse TAM KDV
           //   ile işleniyordu (YORGUN nakliye 2/10: cari 33.600 yerine 32.480 olmalı — çelişki bundandı).
-          tevkifatOrani: (Number(parsed.tevkifatKdv) > 0 && Number(parsed.kdvTutari) > 0) ? Math.min(1, Number(parsed.tevkifatKdv) / Number(parsed.kdvTutari)) : undefined,
+          //   Oran yalnız 191/391 hesap seçimi için; 360/sorumlu-191 TUTARI tevkifatKdv'den kurulur (kısmi tevkifat).
+          tevkifatOrani: this.providerTevkifatOrani(parsed),
+          tevkifatKdv: Number(parsed.tevkifatKdv) || 0,
+          // KDV DIŞI VERGİ (ÖİV/telsiz/ÖTV …): matraha karıştırılmaz, ayrı 'diger_vergi' satırı (gider).
+          digerVergiToplam: Number(parsed.digerVergiToplam) || 0,
+          // İADE belgesi: borç/alacak yönü ÜRETİM anında çevrilir (satıştan iade cari ALACAK, alıştan iade cari BORÇ).
+          isReturn: parsed.iade === true,
+          // e-SMM (UBL 0003 stopajı): cari NET + 'kesinti' 360 satırı.
+          smmStopaj: (direction === 'ALIS' && parsed.documentType === 'E_SMM' && Number(parsed.stopajTutari) > 0) ? Number(parsed.stopajTutari) : null,
         }))
         : [];
 
@@ -10424,7 +10637,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           data: {
             source,
             sourceRefId,
-            documentType: this.documentTypeFromProviderXml(xml),
+            documentType: parsed.documentType === 'E_SMM' ? 'E_SMM' : this.documentTypeFromProviderXml(xml),
             invoiceKind: direction,
             originalName: stored.originalName,
             mimeType: stored.mimeType,
@@ -10455,6 +10668,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
                 // Kalemler → DEMİRBAŞ tespiti (detectFixedAsset) içeriği görsün; demirbaş alış/satışı
                 //   FIXED_ASSET_MANUAL ile INVALID → Luca'ya aktarılmaz, "manuel işle" uyarısı kalır.
                 kalemler: Array.isArray(parsed.kalemler) ? parsed.kalemler.slice(0, 30).map((k: any) => ({ ad: String(k?.ad || '').slice(0, 80), tutar: Number(k?.tutar) || 0, oran: Number(k?.oran) || 0 })).filter((k: any) => k.ad) : undefined,
+                // Faz 0 — TEK OKUMA SONUCU: tevkifat (oran/tutar/kod/yüzde), iade, belge durumu, KDV dışı
+                //   vergiler, iskonto, para birimi + kur, UBL ödenecek tutar. "AI ile oku" yoluyla AYNI adlar.
+                ...ublOcrDataFields(parsed),
               },
             } : {}),
           },
@@ -10474,7 +10690,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
 
     const stored = await this.buildProviderDocumentStorage(tenantId, taxpayer.id, cfg, xml, payload, parsed, source, sourceRefId);
 
-    const total = parsed.toplamTutar ?? ((parsed.matrah || 0) + (parsed.kdvTutari || 0));
+    const total = this.providerDocumentTotal(parsed, direction);
     const duplicate = await this.findDuplicate(tenantId, {
       taxpayerId: taxpayer.id,
       belgeNo: parsed.faturaNo,
@@ -10493,7 +10709,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       total,
       vendorName: direction === 'SATIS' ? parsed.alici : parsed.satici,
       // TEVKİFAT (bkz. yukarıdaki mevcut-belge dalı): oran geçilmezse tam KDV ile işleniyordu.
-      tevkifatOrani: (Number(parsed.tevkifatKdv) > 0 && Number(parsed.kdvTutari) > 0) ? Math.min(1, Number(parsed.tevkifatKdv) / Number(parsed.kdvTutari)) : undefined,
+      tevkifatOrani: this.providerTevkifatOrani(parsed),
+      tevkifatKdv: Number(parsed.tevkifatKdv) || 0,
+      // KDV DIŞI VERGİ → ayrı 'diger_vergi' satırı (bkz. yukarıdaki dal).
+      digerVergiToplam: Number(parsed.digerVergiToplam) || 0,
+      isReturn: parsed.iade === true,
+      smmStopaj: (direction === 'ALIS' && parsed.documentType === 'E_SMM' && Number(parsed.stopajTutari) > 0) ? Number(parsed.stopajTutari) : null,
     }));
 
     const doc = await (this.prisma as any).invoiceAccountingDocument.create({
@@ -10502,7 +10723,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         taxpayerId: taxpayer.id,
         source,
         sourceRefId,
-        documentType: this.documentTypeFromProviderXml(xml),
+        documentType: parsed.documentType === 'E_SMM' ? 'E_SMM' : this.documentTypeFromProviderXml(xml),
         invoiceKind: direction,
         status: duplicate ? 'NEEDS_REVIEW' : 'READY',
         duplicateOfId: duplicate?.duplicateOfId || null,
@@ -10539,6 +10760,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           // Kalemler → DEMİRBAŞ tespiti (detectFixedAsset) için; demirbaş alış/satışı FIXED_ASSET_MANUAL
           //   ile INVALID olur → Luca'ya aktarılmaz, "Luca sabit kıymet modülünden işle" uyarısı kalır.
           kalemler: Array.isArray(parsed.kalemler) ? parsed.kalemler.slice(0, 30).map((k: any) => ({ ad: String(k?.ad || '').slice(0, 80), tutar: Number(k?.tutar) || 0, oran: Number(k?.oran) || 0 })).filter((k: any) => k.ad) : undefined,
+          // Faz 0 — TEK OKUMA SONUCU (bkz. yukarıdaki dal): tevkifat/iade/belge durumu/diğer vergi/iskonto/kur/ödenecek.
+          ...ublOcrDataFields(parsed),
         },
         createdBy: userId || null,
         lines: { create: lines },
@@ -10556,6 +10779,39 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       await this.revalidateDocument(tenantId, doc.id).catch(() => {});
     }
     return { created: true, document: doc };
+  }
+
+  /**
+   * Faz 0 — entegratör belgesinde tevkifat oranı (0..1): önce UBL yüzdesi (Percent/100), yoksa
+   * tevkifatKdv / kdvTutari. Tevkifat yoksa undefined (linesFromAmounts düz KDV yolunu kullanır).
+   */
+  private providerTevkifatOrani(parsed: ParsedProviderInvoice): number | undefined {
+    // Denetim bulgusu (kısmi tevkifat): UBL yüzdesi YALNIZ tutarla tutarlıysa (|KDV × yüzde/100 − tevkifatKdv| ≤ 0,05),
+    //   değilse tutar oranı (tevkifatKdv / kdvTutari). Ayrıştırıcıyla aynı kural (resolveTevkifatOrani).
+    const r = resolveTevkifatOrani(parsed?.kdvTutari, parsed?.tevkifatKdv, parsed?.tevkifatYuzde);
+    if (r != null) return r;
+    const o = Number(parsed?.tevkifatOrani) || 0;
+    return (o > 0 && o <= 1) ? o : undefined;
+  }
+
+  /**
+   * Faz 0 — entegratör belgesinin totalAmount'u ("AI ile oku" yolundaki hesapla BİREBİR):
+   *   • Tevkifatlı SATIŞ: matrah + NET KDV + diğer vergi (= UBL ödenecek).
+   *   • Diğer (alış, tevkifatlı alış dahil): matrah + TAM KDV + diğer vergi (yevmiye: 191 normal+sorumlu
+   *     borç, 320 net + 360 tevkifat alacak → toplam = matrah + tam KDV; bilinçli tasarım, bulgu 44).
+   *   Matrah/KDV okunamadıysa UBL ödenecek/toplam tutarına düşer.
+   */
+  private providerDocumentTotal(parsed: ParsedProviderInvoice, direction: 'ALIS' | 'SATIS'): number {
+    const matrah = Number(parsed?.matrah) || 0;
+    const kdv = Number(parsed?.kdvTutari) || 0;
+    const diger = Number(parsed?.digerVergiToplam) || 0;
+    if (!(matrah > 0) && !(kdv > 0)) return Number(parsed?.toplamTutar) || 0;
+    // Tevkifat TUTARI (kısmi tevkifatta oran×KDV sapar); tutar yoksa oran×KDV.
+    const tkTutar = Number(parsed?.tevkifatKdv) || 0;
+    const tk = this.providerTevkifatOrani(parsed) || 0;
+    const tevk = tkTutar > 0 ? Math.min(kdv, tkTutar) : kdv * tk;
+    const kdvNet = (direction === 'SATIS' && tevk > 0) ? kdv - tevk : kdv;
+    return Math.round((matrah + kdvNet + diger) * 100) / 100;
   }
 
   /**
@@ -10577,236 +10833,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     return 'E_FATURA';
   }
 
+  /**
+   * UBL-TR ayrıştırma — gövde ./ubl-parse.ts (saf, birim testli). Tevkifat kodu/yüzdesi, iade,
+   * belge durumu, KDV dışı vergiler, iskonto, kur, ödenecek tutar oradan gelir (Faz 0).
+   */
   private parseProviderUblInvoice(xml: string): ParsedProviderInvoice | null {
-    try {
-      const parser = new XMLParser({
-        ignoreAttributes: false,
-        attributeNamePrefix: '@',
-        removeNSPrefix: true,
-      });
-      const parsed = parser.parse(xml);
-      const findRoot = (obj: any): any => {
-        if (!obj || typeof obj !== 'object') return null;
-        for (const key of Object.keys(obj)) {
-          if (/^(Invoice|CreditNote)$/i.test(key)) return obj[key];
-        }
-        for (const key of Object.keys(obj)) {
-          const inner = findRoot(obj[key]);
-          if (inner) return inner;
-        }
-        return null;
-      };
-      const root = findRoot(parsed);
-      if (!root) return null;
-      const get = (path: string[]) => {
-        let cur = root;
-        for (const part of path) {
-          if (!cur) return undefined;
-          cur = cur[part];
-        }
-        return cur;
-      };
-      const txt = (value: any): string | undefined => {
-        if (value == null) return undefined;
-        if (typeof value === 'string' || typeof value === 'number') return String(value).trim();
-        if (Array.isArray(value)) return txt(value[0]);
-        if (typeof value === 'object') return txt(value['#text'] ?? value._);
-        return undefined;
-      };
-      const asArray = (value: any): any[] => (value == null ? [] : Array.isArray(value) ? value : [value]);
-      const digits = (value: any): string | undefined => {
-        const cleaned = String(value || '').replace(/\D/g, '');
-        return cleaned.length === 10 || cleaned.length === 11 ? cleaned : undefined;
-      };
-      const idText = (node: any): string | undefined => txt(node?.ID) || txt(node?.CompanyID) || txt(node);
-      const idScheme = (node: any): string =>
-        String(node?.ID?.['@schemeID'] || node?.CompanyID?.['@schemeID'] || node?.['@schemeID'] || '').toUpperCase();
-      const taxNoFromParty = (party: any): string | undefined => {
-        const nodes = [
-          ...asArray(party?.PartyTaxScheme),
-          ...asArray(party?.PartyIdentification),
-          ...asArray(party?.PartyLegalEntity),
-        ];
-        for (const node of nodes) {
-          const no = digits(idText(node));
-          const scheme = idScheme(node);
-          if (no && (scheme === 'VKN' || scheme === 'TCKN')) return no;
-        }
-        for (const node of nodes) {
-          const no = digits(idText(node));
-          if (no) return no;
-        }
-        return undefined;
-      };
-      const taxNoFromXmlBlock = (tag: string): string | undefined => {
-        const block = xml.match(new RegExp(`<[^>]*${tag}[^>]*>([\\s\\S]*?)<\\/[^>]*${tag}>`, 'i'))?.[1] || '';
-        return (
-          block.match(/<[^>]*(?:ID|CompanyID)[^>]*schemeID=["'](?:VKN|TCKN)["'][^>]*>\s*(\d{10,11})\s*<\//i)?.[1] ||
-          block.match(/<[^>]*CompanyID[^>]*>\s*(\d{10,11})\s*<\//i)?.[1]
-        );
-      };
-      const num = (value: any): number | undefined => {
-        const raw = txt(value);
-        if (!raw) return undefined;
-        const normalized = raw.includes(',')
-          ? raw.replace(/\./g, '').replace(',', '.')
-          : raw.replace(/[^\d.-]/g, '');
-        const n = Number(normalized);
-        return Number.isFinite(n) ? n : undefined;
-      };
-      // Belge no = HAM XML'deki ILK <cbc:ID> (fatura no; ProfileID/party-ID degil). Parser sayisal/uzun
-      //   ID'yi number'a cevirip "NaN"/bilimsel-gosterime bozabiliyor (ANPA/MENGERLER "NaN" idi) → regex
-      //   ile aynen string al; parser sonucu yedek. "NaN"/bos asla yazilmaz.
-      const faturaNoRegex = xml.match(/<(?:cbc:)?ID>\s*([^<]+?)\s*<\/(?:cbc:)?ID>/i)?.[1];
-      const faturaNoRaw = (faturaNoRegex || txt(get(['ID'])) || '').trim();
-      const faturaNo = /^nan$/i.test(faturaNoRaw) ? '' : faturaNoRaw;
-      const ettn = txt(get(['UUID']));
-      const issueDateRaw = txt(get(['IssueDate']));
-      const issueDate = issueDateRaw ? new Date(issueDateRaw) : null;
-      const supplier = get(['AccountingSupplierParty', 'Party']);
-      const customer = get(['AccountingCustomerParty', 'Party']);
-      const monetaryTotal = get(['LegalMonetaryTotal']) || get(['RequestedMonetaryTotal']) || {};
-      const taxTotalRaw = get(['TaxTotal']);
-      const taxTotals = asArray(taxTotalRaw);
-      // TEVKİFAT: belge düzeyi cac:WithholdingTaxTotal/TaxAmount = tevkif edilen (alıkonan) KDV. Satışta
-      //   391'e NET KDV (hesaplanan − tevkifat) gider; bu tutar çıkarılmazsa tevkifatlı fatura "tevkifat
-      //   tutarı okunamadı, KDV TAM görünüyor" çelişkisi veriyordu (TEVKIFAT_NET_NEEDED). Birden çok varsa toplanır.
-      const tevkifatKdvUbl = asArray(get(['WithholdingTaxTotal']))
-        .map((w: any) => num(w?.TaxAmount))
-        .filter((x: any): x is number => x != null && x > 0)
-        .reduce((s: number, x: number) => s + x, 0);
-      const taxAmounts = taxTotals
-        .map((taxTotal) => num(taxTotal?.TaxAmount))
-        .filter((amount): amount is number => amount != null);
-      const lineNodes = [...asArray(get(['InvoiceLine'])), ...asArray(get(['CreditNoteLine']))];
-      const lineMatrah = lineNodes
-        .map((line) => num(line?.LineExtensionAmount))
-        .filter((amount): amount is number => amount != null)
-        .reduce((sum, amount) => sum + amount, 0);
-      const lineTax = lineNodes
-        .flatMap((line) => asArray(line?.TaxTotal))
-        .map((taxTotal) => num(taxTotal?.TaxAmount))
-        .filter((amount): amount is number => amount != null)
-        .reduce((sum, amount) => sum + amount, 0);
-      let matrah = num(monetaryTotal?.TaxExclusiveAmount)
-        ?? num(monetaryTotal?.LineExtensionAmount)
-        ?? (lineMatrah || undefined);
-      let kdvTutari = (taxAmounts.length ? taxAmounts.reduce((sum, amount) => sum + amount, 0) : undefined)
-        ?? (lineTax || undefined);
-      const toplamTutar = num(monetaryTotal?.PayableAmount)
-        ?? num(monetaryTotal?.TaxInclusiveAmount)
-        ?? ((matrah != null || kdvTutari != null) ? (matrah || 0) + (kdvTutari || 0) : undefined);
-      // UBL satır kalemleri: ad (Item/Name veya Description) + tutar + KDV oranı.
-      // preParsed.kalemler olarak aktarılır → sınıflandırma AI'ı tekrar çıkarmak zorunda kalmaz.
-      const rawKalemler = lineNodes
-        .map((line) => {
-          const ad = String(txt(line?.Item?.Name) || txt(line?.Item?.Description) || '').trim();
-          const tutar = num(line?.LineExtensionAmount);
-          const lineSubs = asArray(asArray(line?.TaxTotal)[0]?.TaxSubtotal || line?.TaxTotal);
-          const oran = num(lineSubs[0]?.TaxCategory?.Percent) ?? num(lineSubs[0]?.Percent);
-          return ad && tutar != null ? { ad, tutar, oran: oran ?? 0 } : null;
-        })
-        .filter((k): k is { ad: string; tutar: number; oran: number } => k !== null);
-      // ÇOK-ORANLI KDV KIRILIMI: belge TaxTotal/TaxSubtotal'larını orana göre topla (UBL standardı:
-      //   her TaxSubtotal = bir oran; TaxableAmount=matrah, TaxAmount=KDV, Percent=oran). Karma %10/%20
-      //   faturada bu olmazsa tek harmanlanmış orana (5245/29825≈%18 SAHTE) düşüyordu.
-      const round2 = (n: number) => Math.round(n * 100) / 100;
-      const taxSubs = taxTotals.flatMap((tt) => asArray(tt?.TaxSubtotal));
-      // VERGİ TÜRÜ SÜZGECİ: TaxSubtotal ÖİV (4080) / ÖTV (0071/9077) da içerebilir — tür bakılmadan
-      //   hepsi KDV sanılınca matrah ÇİFT sayılıyor, ÖİV/ÖTV 191'e (İndirilecek KDV) karışıyordu
-      //   (telekom: KDV %20 + ÖİV %10, aynı matrah iki oranda). Tür bilgisi varsa yalnız 0015/KDV
-      //   kırılıma girer; KDV-dışı vergiler aşağıda GİDERE (en büyük matrah kırılımına) eklenir
-      //   (indirilemeyen vergi maliyet/gider unsurudur) → toplam ve cari doğru kalır.
-      const isKdvSub = (sub: any): boolean => {
-        const scheme: any = sub?.TaxCategory?.TaxScheme || sub?.TaxScheme || null;
-        // ⚠️ XMLParser sayısal metni Number'a çevirir: "0015" → 15. Kod başındaki sıfırlar atılarak
-        //   karşılaştırılır — `code === '0015'` şartı bu yüzden TÜM KDV'leri vergi-dışı sayıp KDV=0
-        //   okutmuştu (Gökhan Akgöz satışları). Mantık tersine kuruldu: yalnız POZİTİF tanınan
-        //   KDV-DIŞI vergiler (ÖİV/ÖTV/damga/konaklama/BSMV) hariç tutulur, gerisi KDV sayılır.
-        const codeNorm = String(txt(scheme?.TaxTypeCode) ?? '').trim().replace(/^0+/, '');
-        const nameFold = String(txt(scheme?.Name) || '').toLowerCase()
-          .normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/ı/g, 'i');
-        if (codeNorm === '15') return true; // 0015 = Gerçek usulde KDV
-        if (/kdv|katma\s*deger/.test(nameFold)) return true;
-        const NON_KDV_CODES = new Set(['4080', '4081', '71', '73', '74', '75', '76', '77', '9077', '59']);
-        if (codeNorm && NON_KDV_CODES.has(codeNorm)) return false;
-        if (/ozel iletisim|ozel tuketim|damga verg|konaklama verg|banka ve sigorta|\bbsmv\b/.test(nameFold)) return false;
-        return true; // tanınmayan/eksik tür → KDV say (güvenli varsayılan)
-      };
-      let otherTaxTotal = 0;
-      const subMap = new Map<number, { base: number; amount: number }>();
-      for (const sub of taxSubs) {
-        if (!isKdvSub(sub)) { otherTaxTotal += num(sub?.TaxAmount) || 0; continue; }
-        const r = num(sub?.TaxCategory?.Percent) ?? num(sub?.Percent);
-        if (r == null) continue;
-        const key = Math.round(r);
-        const cur = subMap.get(key) || { base: 0, amount: 0 };
-        const b = num(sub?.TaxableAmount); const a = num(sub?.TaxAmount);
-        if (b != null) cur.base += b;
-        if (a != null) cur.amount += a;
-        subMap.set(key, cur);
-      }
-      let kdvBreakdown = [...subMap.entries()]
-        .filter(([, v]) => v.base > 0 || v.amount > 0)
-        .map(([rate, v]) => ({ rate, base: round2(v.base), amount: round2(v.amount) }));
-      // Belge TaxSubtotal tek-oran döndü ama KALEMLERDE birden çok oran var → kalemleri oran-bazlı topla
-      //   (çok-oranlı faturanın tek harmanlanmış orana düşmesini kesin engeller). amount = base×oran/100.
-      const kalemRates = new Set(rawKalemler.map((k) => Math.round(Number(k.oran) || 0)).filter((r) => r > 0));
-      if (kdvBreakdown.length < 2 && kalemRates.size >= 2) {
-        const km = new Map<number, number>();
-        for (const k of rawKalemler) { const r = Math.round(Number(k.oran) || 0); if (r <= 0) continue; km.set(r, (km.get(r) || 0) + (Number(k.tutar) || 0)); }
-        kdvBreakdown = [...km.entries()].map(([rate, base]) => ({ rate, base: round2(base), amount: round2(base * rate / 100) }));
-      }
-      // KDV-dışı vergi (ÖİV/ÖTV) varsa: KDV tutarı yalnız KDV kırılımından; ÖİV/ÖTV gidere eklenir
-      //   (en büyük matrah kırılımına, kırılım yoksa matraha) → toplam (matrah'+KDV) belge toplamıyla tutar.
-      if (otherTaxTotal > 0) {
-        const kdvOnly = [...subMap.values()].reduce((s, v) => s + v.amount, 0);
-        kdvTutari = kdvOnly > 0 ? round2(kdvOnly) : undefined;
-        if (kdvBreakdown.length) {
-          const mx = kdvBreakdown.reduce((a, b) => (b.base > a.base ? b : a));
-          mx.base = round2(mx.base + otherTaxTotal);
-        } else if (matrah != null) {
-          matrah = round2(matrah + otherTaxTotal);
-        }
-      }
-      // TEVKİFAT KDV'yi kdvTutari'ye KATMA: gevşek 'TaxTotal' eşleşmesi cac:WithholdingTaxTotal'ı da
-      //   kapsayıp kdvTutari'yi ŞİŞİRİYORDU (6720 = 5600 hesaplanan KDV + 1120 tevkifat → kdvOrani %24!,
-      //   tevkifatOrani 1120/6720=1/6 yanlış). kdvTutari YALNIZ hesaplanan KDV olmalı → kırılımdan
-      //   (TaxSubtotal, tevkifat içermez) al; kırılım yoksa tevkifatı çıkar. Hem fiş hem KDV raporu düzelir.
-      if (tevkifatKdvUbl > 0 && kdvTutari != null) {
-        const bdSum = kdvBreakdown.reduce((s, b) => s + b.amount, 0);
-        kdvTutari = bdSum > 0 ? round2(bdSum) : Math.max(0, round2(kdvTutari - tevkifatKdvUbl));
-      }
-      // ŞAHIS taraf: ünvan PartyName/PartyLegalEntity'de değil <cac:Person> (Ad+Soyad) altında —
-      //   TCKN'li müşterilerde alıcı adı boş kalıp listede "—" görünüyordu (Yorgun Nakliyat 10 satış;
-      //   earsiv-zip-parser'daki personAdi yedeğinin buradaki karşılığı).
-      const kisiAdi = (party: any): string | null => {
-        const p = party?.Person;
-        if (!p) return null;
-        const parcalar = [txt(p.Title), txt(p.FirstName), txt(p.MiddleName), txt(p.FamilyName)].filter((x: any) => x && String(x).trim());
-        return parcalar.length ? parcalar.join(' ').replace(/\s+/g, ' ').trim() : null;
-      };
-      return {
-        faturaNo: faturaNo || ettn || 'BILINMIYOR',
-        faturaTarihi: issueDate && !Number.isNaN(issueDate.getTime()) ? issueDate : null,
-        ettn,
-        satici: txt(supplier?.PartyName?.Name) || txt(supplier?.PartyLegalEntity?.RegistrationName) || kisiAdi(supplier) || null,
-        saticiVergiNo: taxNoFromParty(supplier) || taxNoFromXmlBlock('AccountingSupplierParty') || null,
-        alici: txt(customer?.PartyName?.Name) || txt(customer?.PartyLegalEntity?.RegistrationName) || kisiAdi(customer) || null,
-        aliciVergiNo: taxNoFromParty(customer) || taxNoFromXmlBlock('AccountingCustomerParty') || null,
-        matrah,
-        kdvTutari,
-        kdvOrani: matrah && kdvTutari ? Math.round((kdvTutari / matrah) * 100) : null,
-        kdvBreakdown: kdvBreakdown.length ? kdvBreakdown : undefined,
-        tevkifatKdv: tevkifatKdvUbl > 0 ? Math.round(tevkifatKdvUbl * 100) / 100 : undefined,
-        toplamTutar,
-        paraBirimi: (txt(get(['DocumentCurrencyCode'])) || 'TRY') === 'TRY' ? 'TL' : txt(get(['DocumentCurrencyCode'])) || 'TL',
-        kalemler: rawKalemler.length ? rawKalemler : undefined,
-      };
-    } catch (e: any) {
-      this.logger.warn(`Provider XML parse hata: ${e?.message || e}`);
-      return null;
-    }
+    return parseUblInvoice(xml, (msg) => this.logger.warn(msg));
   }
 
   private regexProviderInvoiceFallback(xml: string): ParsedProviderInvoice | null {
@@ -11038,7 +11070,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   ("Satış matrahı (KDV %20)") DEĞİL, GÜNCEL hesap kodunun plandaki ADI olsun (kullanıcı talebi).
     //   Cari/kasa/pos satırı karşı taraf adını yazar; onlara dokunma. rematch:12418-12423 ile aynı kural,
     //   fark: burada ÜRETİM anında (her create yolunda) çalışır → plan çekiliyse hemen doğru görünür.
-    const DESC_GROUPS = new Set(['matrah', 'vergi', 'vergi-sorumlu', 'tevkifat']);
+    const DESC_GROUPS = new Set(['matrah', 'vergi', 'vergi-sorumlu', 'tevkifat', 'diger_vergi']);
     const applyName = (l: any): any => {
       if (!names) return l;
       if (!DESC_GROUPS.has(String(l.group || ''))) return l;
@@ -11090,11 +11122,42 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   bazında bölünür (KDV oran-bazlı, cari TEK kalır → denge korunur). Yoksa/uyumsuzsa bugünkü
     //   tek-hesap davranışı. Yalnız KALEM_BAZLI_HESAP bayrağı açıkken dolu gelir (tevkifatlı fatura hariç).
     matrahSplit?: Array<{ hesap: string; rate: number; base: number }> | null;
+    // Faz 0: KDV DIŞI VERGİLER toplamı (ÖİV 4080/4081, telsiz 8001-8008, ÖTV, damga …). >0 ise AYRI
+    //   'diger_vergi' satırı: alışta gider (borç, yer-tutucu 770 → rematch kategori hesabına bağlar),
+    //   satışta ödenecek vergi (alacak, yer-tutucu 360). Cari satırı bu tutarı da kapsar → toplam = UBL ödenecek.
+    //   Eskiden matraha karıştırılıyordu (KDV matrahı şişiyor, KDV Kontrol/beyan yanlış).
+    digerVergiToplam?: number | null;
+    // Denetim bulgusu (kısmi tevkifat): tevkif edilen KDV TUTARI (UBL WithholdingTaxTotal). Verilirse 360 /
+    //   sorumlu-191 satırı ve cari NET bu TUTARDAN kurulur; tevkifatOrani yalnız oran-satırlarına dağıtım ve
+    //   191/391 hesap seçimi için kalır. Verilmezse eski davranış (oran × KDV).
+    tevkifatKdv?: number | null;
+    // İADE belgesi (InvoiceTypeCode IADE / CreditNote / AI iade): borç-alacak TAKAS edilir → satıştan iadede
+    //   610 BORÇ, 391-iade BORÇ, cari ALACAK; alıştan iadede cari BORÇ, stok/gider + 191-iade ALACAK.
+    //   RETURN_DIRECTION_REVERSED yalnız gerçekten ters kalan kayıtta kalır; editörde yön düğmesi de var.
+    isReturn?: boolean;
   }) {
     const isSale = opts.invoiceKind === 'SATIS';
     const cariCode = isSale ? '120.01.001' : '320.01.001';
     const matrahCode = isSale ? '600.01.001' : '770.01.010';
     const zero = () => new Prisma.Decimal(0);
+    // İade yönü: tüm satırlarda borç ↔ alacak takası (denge korunur; tutarlar değişmez).
+    const applyReturnDirection = (rows: any[]): any[] => {
+      if (opts.isReturn !== true) return rows;
+      return rows.map((r: any) => ({
+        ...r,
+        debit: r.credit || zero(),
+        credit: r.debit || zero(),
+        description: r.group === 'matrah'
+          ? (isSale ? 'Satıştan iade' : 'Alıştan iade')
+          : r.group === 'vergi' ? `${isSale ? 'Hesaplanan' : 'İndirilecek'} KDV — İADE ${r.rate || ''}`.trim()
+            : r.description,
+      }));
+    };
+    // KDV dışı vergi satırı (varsa). Sıra numarası çağıran tarafından verilir.
+    const digerVergi = money(opts.digerVergiToplam) || zero();
+    const digerVergiLine = (order: number): any[] => digerVergi.gt(0)
+      ? [{ group: 'diger_vergi', accountCode: isSale ? '360.01.001' : matrahCode, description: isSale ? 'KDV dışı vergi (ÖİV/telsiz vb.) — ödenecek' : 'KDV dışı vergi (ÖİV/telsiz vb.)', rate: null, debit: isSale ? zero() : digerVergi, credit: isSale ? digerVergi : zero(), orderNo: order, kaynak: 'KURAL' }]
+      : [];
     // Karşı taraf (cari) satır(lar)ı üreticisi. NORMAL: tek cari (satış 120 borç / alış 320 alacak).
     //   Z RAPORU satışı: müşteri carisi YOK → 100 Kasa (nakit) + 108 POS (kart); ayrım okunamadıysa
     //   tümü 100 Kasa (asla 120 → "Eksik cari" oluşmaz). Plandaki gerçek 100/108'e rematch bağlar.
@@ -11149,12 +11212,28 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const rateItems = (hasBreakdown && breakdown.length)
         ? breakdown.filter((b) => (Number(b.base || 0) > 0 || Number(b.amount || 0) > 0))
         : [{ rate: (opts.kdvOrani ? Number(opts.kdvOrani) : undefined) as any, base: Number(opts.matrah) || 0, amount: Number(opts.kdvTutari) || 0 }];
+      // TEVKİFAT TUTARI verildiyse (UBL WithholdingTaxTotal) satırlar TUTARDAN kurulur: her oran satırına
+      //   oranla dağıtılır, kuruş/kısmi-tevkifat farkı SON satıra yazılır → Σ tevkI = tevkifatKdv (kesin).
+      //   Kısmi tevkifat (nakliye 2/10 + tevkifatsız ambalaj): oran 0,2 × 2.200 = 440 yerine gerçek 400.
+      const tevkHedef = money(opts.tevkifatKdv) || zero();
+      const kdvToplam = rateItems.reduce((acc, it) => acc.plus(money((it as any).amount) || zero()), zero());
+      const tutardanKur = tevkHedef.gt(0) && kdvToplam.gt(0) && tevkHedef.lte(kdvToplam.plus(new Prisma.Decimal('0.005')));
+      const tevkPlan: Prisma.Decimal[] = rateItems.map((it) => {
+        const amt = money((it as any).amount) || zero();
+        if (!tutardanKur) return amt.mul(tk);
+        return amt.mul(tevkHedef).div(kdvToplam).toDecimalPlaces(2);
+      });
+      if (tutardanKur && tevkPlan.length) {
+        const dagitilan = tevkPlan.reduce((a, b) => a.plus(b), zero());
+        tevkPlan[tevkPlan.length - 1] = tevkPlan[tevkPlan.length - 1].plus(tevkHedef.minus(dagitilan));
+      }
       let mTotal = zero(), normalKTotal = zero(), tevkTotal = zero();
       const rateRows: any[] = [];
-      for (const it of rateItems) {
+      for (let idx = 0; idx < rateItems.length; idx++) {
+        const it = rateItems[idx];
         const base = money((it as any).base) || zero();
         const amt = money((it as any).amount) || zero();
-        const tevkI = amt.mul(tk);
+        const tevkI = tevkPlan[idx];
         const normalI = amt.minus(tevkI); // her zaman amt = normalI + tevkI (yuvarlama biriktirmez)
         const rNum = (it as any).rate ? Number((it as any).rate) : undefined;
         const rl = rNum ? `%${rNum}` : undefined;
@@ -11172,16 +11251,16 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         }
         mTotal = mTotal.plus(base); normalKTotal = normalKTotal.plus(normalI); tevkTotal = tevkTotal.plus(tevkI);
       }
-      const net = mTotal.plus(normalKTotal);
+      const net = mTotal.plus(normalKTotal).plus(digerVergi);
       let out: any[];
       if (!isSale) {
-        out = [...rateRows, { group: 'cari', accountCode: cariCode, description: opts.vendorName || 'Cari hesap', debit: zero(), credit: net }];
+        out = [...rateRows, ...digerVergiLine(0), { group: 'cari', accountCode: cariCode, description: opts.vendorName || 'Cari hesap', debit: zero(), credit: net }];
         if (tevkTotal.gt(0)) out.push({ group: 'tevkifat', accountCode: '360.01.001', description: 'Ödenecek KDV (sorumlu sıf. — KDV2 ile beyan)', debit: zero(), credit: tevkTotal });
       } else {
-        out = [{ group: 'cari', accountCode: cariCode, description: opts.vendorName || 'Cari hesap', debit: net, credit: zero() }, ...rateRows];
+        out = [{ group: 'cari', accountCode: cariCode, description: opts.vendorName || 'Cari hesap', debit: net, credit: zero() }, ...rateRows, ...digerVergiLine(0)];
       }
       out = out.map((r, i) => ({ ...r, orderNo: i }));
-      return applySmmStopaj(out);
+      return applyReturnDirection(applySmmStopaj(out));
     }
 
     const lines: any[] = [];
@@ -11251,17 +11330,20 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           });
         }
       }
-      const total = totalBase.plus(totalKdv);
+      for (const dl of digerVergiLine(orderNo)) lines.push({ ...dl, orderNo: orderNo++ });
+      const total = totalBase.plus(totalKdv).plus(digerVergi);
       for (const cl of cariLinesFor(total, orderNo)) lines.push({ ...cl, orderNo: orderNo++ });
       // İlk kurulum satırları yer-tutucudur → kaynak VARSAYILAN. Kalem-bazlı matrah satırının 'AI' kaynağı KORUNUR.
       // (SMM stopajı 'kesinti' satırı applySmmStopaj'da kaynak='KURAL' ile eklenir — map'ten SONRA.)
-      return applySmmStopaj(lines.map((l: any) => ({ ...l, kaynak: l.kaynak || 'VARSAYILAN' })));
+      return applyReturnDirection(applySmmStopaj(lines.map((l: any) => ({ ...l, kaynak: l.kaynak || 'VARSAYILAN' }))));
     }
 
     // Tek-oran fallback (eski davranış)
     const matrah = money(opts.matrah) || zero();
     const kdv = money(opts.kdvTutari) || zero();
-    const total = money(opts.total) || matrah.plus(kdv);
+    // Cari = matrah + KDV + KDV dışı vergi (opts.total zaten diğer vergiyi kapsıyorsa aynen; kapsamıyorsa ekle).
+    const totalRaw = money(opts.total) || matrah.plus(kdv);
+    const total = (digerVergi.gt(0) && totalRaw.minus(matrah.plus(kdv)).abs().lt(new Prisma.Decimal('0.05'))) ? totalRaw.plus(digerVergi) : totalRaw;
     const rateNumber = opts.kdvOrani ? Number(opts.kdvOrani) : undefined;
     const rate = rateNumber ? `%${rateNumber.toLocaleString('tr-TR')}` : undefined;
 
@@ -11284,9 +11366,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         orderNo: singleRateLines.length,
       });
     }
+    for (const dl of digerVergiLine(singleRateLines.length)) singleRateLines.push({ ...dl, orderNo: singleRateLines.length });
     for (const cl of cariLinesFor(total, singleRateLines.length)) singleRateLines.push({ ...cl, orderNo: singleRateLines.length });
     // İlk kurulum satırları yer-tutucudur → kaynak VARSAYILAN (öğrenme bu satırlardan yapılmaz).
-    return applySmmStopaj(singleRateLines.map((l: any) => ({ ...l, kaynak: 'VARSAYILAN' })));
+    return applyReturnDirection(applySmmStopaj(singleRateLines.map((l: any) => ({ ...l, kaynak: l.group === 'diger_vergi' ? 'KURAL' : 'VARSAYILAN' }))));
   }
 
   /**
@@ -11510,6 +11593,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     documentType?: string | null;
     fixedAsset?: { is: boolean; reason: string };
     kalemler?: Array<{ ad?: string; tutar?: number; oran?: number }> | null;  // denetim: çok-oranlı çökme tespiti
+    // Faz 0 (PLAN/15): UBL LegalMonetaryTotal/PayableAmount, KDV dışı vergi toplamı, tevkif edilen KDV, belge durumu.
+    odenecekTutar?: any;
+    digerVergiToplam?: any;
+    tevkifatKdv?: any;
+    belgeDurumu?: string | null;
+    /** SMM gelir vergisi stopajı (alışta ödenecek = brüt + KDV − stopaj). */
+    stopajTutari?: any;
   }): Promise<{
     status: 'OK' | 'INCOMPLETE' | 'INVALID';
     issues: Array<{ code: string; severity: 'WARNING' | 'ERROR'; message: string; expected?: any; actual?: any }>;
@@ -11591,6 +11681,67 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       }
     }
 
+    // ── 3b) TOTAL_MISMATCH_UBL — belge toplamı ≠ UBL ödenecek tutar (Faz 0, PLAN/15 KRİTİK 2).
+    //   Telekom/elektrik faturasında KDV dışı vergi (telsiz 8006, ÖİV) KDV sanılınca toplam faturadan
+    //   sapıyor ama satırlar kendi içinde dengeli olduğundan doğrulama "OK" damgalıyordu. Ölçüt:
+    //   • belge toplamı (totalAmount) − tevkif edilen KDV (yalnız ALIŞ; alış yevmiyesi TAM KDV ile kurulur,
+    //     ödenecek = toplam − tevkifat) = UBL ödenecek (±0,05)
+    //   • matrah + KDV + diğer vergi − tevkifat = UBL ödenecek (±0,05) — okuma denklemi.
+    //   Ayrı kod: arayüz TOTAL_MISMATCH'i satırlardan yeniden hesaplayıp yok sayar; bu kontrol ekranda kalmalı.
+    {
+      const odenecek = Number(opts.odenecekTutar || 0);
+      if (odenecek > 0) {
+        const sale = String(opts.invoiceKind || '').toUpperCase() === 'SATIS';
+        const tevkKdv = Number(opts.tevkifatKdv || 0);
+        const digerN = Number(opts.digerVergiToplam || 0);
+        // SMM stopajı (alış): ödenecek = brüt + KDV − stopaj; satışta stopaj kesilmez.
+        const stopajN = sale ? 0 : Number(opts.stopajTutari || 0);
+        // TOLERANS (TOTAL_MISMATCH ile hizalı — denetim bulgusu): ≤0,05 tam uyum; 0,05–0,50 kuruş yuvarlaması
+        //   (ERP yuvarlama, satır sayısı × kuruş) → WARNING; >0,50 → ERROR. Parser PayableRoundingAmount'ı zaten
+        //   düşer; kalan küçük farklar belgeyi INVALID'e düşürmez.
+        const UBL_TOL = 0.05;
+        const UBL_TOL_ERR = 0.5;
+        if (totalAmount > 0) {
+          const belgeOdenecek = sale ? totalAmount : totalAmount - tevkKdv - stopajN;
+          const fark = Math.abs(belgeOdenecek - odenecek);
+          if (fark > UBL_TOL) {
+            issues.push({
+              code: 'TOTAL_MISMATCH_UBL',
+              severity: fark > UBL_TOL_ERR ? 'ERROR' : 'WARNING',
+              message: `Belge toplamı ${belgeOdenecek.toLocaleString('tr-TR')} ₺, faturadaki ödenecek tutar ${odenecek.toLocaleString('tr-TR')} ₺ — ${fark > UBL_TOL_ERR ? 'okuma eksik (KDV dışı vergi / iskonto / tevkifat). Yeniden okuyun ya da tutarları kontrol edin.' : 'kuruş farkı (yuvarlama).'}`,
+              expected: odenecek,
+              actual: Math.round(belgeOdenecek * 100) / 100,
+            });
+          }
+        }
+        const okunanToplam = matrahN > 0 || kdvN > 0 ? matrahN + kdvN : breakdownSumBase + breakdownSumKdv;
+        if (okunanToplam > 0) {
+          const denklem = okunanToplam + digerN - tevkKdv - stopajN;
+          const fark = Math.abs(denklem - odenecek);
+          if (fark > UBL_TOL) {
+            issues.push({
+              code: 'AMOUNT_EQUATION_MISMATCH',
+              severity: fark > UBL_TOL_ERR ? 'ERROR' : 'WARNING',
+              message: `Matrah ${matrahN.toLocaleString('tr-TR')} + KDV ${kdvN.toLocaleString('tr-TR')} + diğer vergi ${digerN.toLocaleString('tr-TR')} − tevkifat ${tevkKdv.toLocaleString('tr-TR')}${stopajN > 0 ? ` − stopaj ${stopajN.toLocaleString('tr-TR')}` : ''} = ${denklem.toLocaleString('tr-TR')} ₺, faturadaki ödenecek ${odenecek.toLocaleString('tr-TR')} ₺ — okuma tutarsız.`,
+              expected: odenecek,
+              actual: Math.round(denklem * 100) / 100,
+            });
+          }
+        }
+      }
+    }
+
+    // ── 3c) DOCUMENT_CANCELLED — iptal/taslak belge muhasebeleşmez (Faz 0; entegratör durum süzgeci Faz 6'da).
+    if (opts.belgeDurumu === 'iptal' || opts.belgeDurumu === 'taslak') {
+      issues.push({
+        code: 'DOCUMENT_CANCELLED',
+        severity: 'ERROR',
+        message: opts.belgeDurumu === 'iptal'
+          ? 'Belge İPTAL edilmiş görünüyor (fatura tipi/notu) — muhasebeleştirilmez. Yanlışsa belge durumunu düzeltin.'
+          : 'Belge TASLAK görünüyor — onaylı belge değil, muhasebeleştirilmez.',
+      });
+    }
+
     // ── 4) OWNERSHIP_MISMATCH — VKN/TC sahiplik kontrolü
     if (opts.taxpayerId) {
       const taxpayer = await (this.prisma as any).taxpayer.findFirst({
@@ -11647,6 +11798,28 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         severity: 'ERROR',
         message: 'İade/iptal faturası — normal kayıt yapılamaz. Satıştan iadede 610 (ters kayıt) kullan; borç/alacak yönünü çevir. Satırları elle düzelt, sonra onayla.',
       });
+    }
+    // ── 7b) RETURN_DIRECTION_REVERSED — iade belgede yön TERS (Faz 0). İade satırı (610/İADE-KDV) konmuş
+    //   ama borç/alacak çevrilmemiş: satıştan iadede cari ALACAK (müşteri borcu azalır), alıştan iadede
+    //   cari BORÇ olmalı. Normal yön (satış cari borç / alış cari alacak) kalmışsa ciro/KDV şişer.
+    //   Canlı: SEC2026000000269 alış iade 740 borç; ILG…060/061 satış iade cari borç (ters).
+    if (opts.isReturn && opts.hasReturnLine) {
+      const sale = String(opts.invoiceKind || '').toUpperCase() === 'SATIS';
+      const cari = (opts.lines || []).find((l) => String((l as any).group || '') === 'cari');
+      if (cari) {
+        const cariBorc = Number(cari.debit || 0) > 0;
+        const cariAlacak = Number(cari.credit || 0) > 0;
+        const ters = sale ? (cariBorc && !cariAlacak) : (cariAlacak && !cariBorc);
+        if (ters) {
+          issues.push({
+            code: 'RETURN_DIRECTION_REVERSED',
+            severity: 'ERROR',
+            message: sale
+              ? 'Satıştan iade — cari satırı BORÇ yazılmış; iadede cari ALACAK, 610 BORÇ olmalı (borç/alacak yönünü çevirin).'
+              : 'Alıştan iade — cari satırı ALACAK yazılmış; iadede cari BORÇ, stok/gider ALACAK olmalı (borç/alacak yönünü çevirin).',
+          });
+        }
+      }
     }
 
     // ── 8) SMM_STOPAJ_NEEDED — alınan Serbest Meslek Makbuzu'nda gelir vergisi stopajı
@@ -12199,8 +12372,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     for (const d of docs) {
       const total = Number(typeof d.totalAmount === 'object' && d.totalAmount != null ? String(d.totalAmount) : d.totalAmount);
       if (!Number.isFinite(total) || total <= 0) { skipped++; continue; }
-      const matrah = rate > 0 ? Math.round((total / (1 + rate / 100)) * 100) / 100 : total;
-      const kdv = Math.round((total - matrah) * 100) / 100;
+      // KDV DIŞI VERGİ (ÖİV/telsiz — UBL'den ocrData'ya yazılmış): toplamın içindedir; matrah/KDV bölünmesinden
+      //   ÖNCE düşülür ve 'diger_vergi' satırı olarak yeniden kurulur (bayat alan denklemde kalıp sahte hata üretmesin).
+      const _od: any = (d.ocrData as any) || {};
+      const digerVergi = Math.max(0, Number(_od.digerVergiToplam) || 0);
+      const kdvliTutar = Math.max(0, Math.round((total - digerVergi) * 100) / 100);
+      const matrah = rate > 0 ? Math.round((kdvliTutar / (1 + rate / 100)) * 100) / 100 : kdvliTutar;
+      const kdv = Math.round((kdvliTutar - matrah) * 100) / 100;
       const isSale = String(d.invoiceKind || 'ALIS') === 'SATIS';
       // Plan yoksa kod atanmasın (tutarlılık). Elle kod verildiyse aşağıda matrah'a yine yazılır.
       const lines = await this.gateCodesByPlan(tenantId, d.taxpayerId, this.linesFromAmounts({
@@ -12209,6 +12387,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         vendorName: isSale ? d.customerName : d.vendorName,
         kdvBreakdown: (kdv > 0 || matrah > 0) ? [{ rate, base: matrah, amount: kdv }] : null,
         tevkifatOrani: tevkifatOrani || null,
+        digerVergiToplam: digerVergi > 0 ? digerVergi : null,
+        isReturn: _od.isReturn === true,
       }));
       await (this.prisma as any).$transaction(async (tx: any) => {
         await tx.invoiceAccountingLine.deleteMany({ where: { documentId: d.id } });
@@ -12363,7 +12543,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           : null;
         preParsed = {
           belgeNo: ubl.faturaNo, tarih: dt,
-          belgeTuru: this.documentTypeFromProviderXml(xml) === 'E_ARSIV' ? 'e-arsiv' : 'e-fatura',
+          belgeTuru: ubl.documentType === 'E_SMM' ? 'e-smm' : this.documentTypeFromProviderXml(xml) === 'E_ARSIV' ? 'e-arsiv' : 'e-fatura',
           saticiAd: ubl.satici, saticiVkn: ubl.saticiVergiNo,
           aliciAd: ubl.alici, aliciVkn: ubl.aliciVergiNo,
           toplam: ubl.toplamTutar,
@@ -12371,17 +12551,26 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           //   NOT: eski /\bİADE\b/ deseni JS'te HİÇ eşleşmiyordu ('İ' \w değil → \b Türkçe harfte
           //   çalışmaz); serbest metin "iade" araması da nottaki "iade edilemez" gibi ifadelerde
           //   yanlış-pozitif veriyordu → tip koduna bağlandı.
-          iade: /<\w*:?CreditNote[\s>]/i.test(xml) || /<[^>]*InvoiceTypeCode[^>]*>\s*[İI](ADE|PTAL)/i.test(xml),
+          //   Ayrıştırıcının iade kararı (CreditNote — e-SMM hariç — / IADE / TEVKIFATIADE; NOT karar vermez) + IPTAL tipi.
+          //   Regex yedeğinde (ubl.iade tanımsız) eski desen; e-SMM CreditNote kökü iade DEĞİL.
+          iade: ubl.iade === true
+            || (ubl.iade == null && ubl.documentType !== 'E_SMM' && (/<\w*:?CreditNote[\s>]/i.test(xml) || /<[^>]*InvoiceTypeCode[^>]*>\s*[İI]ADE/i.test(xml)))
+            || /<[^>]*InvoiceTypeCode[^>]*>\s*[İI]PTAL/i.test(xml),
           // TEVKİFAT: belgede tevkifat/WithholdingTax geçiyorsa (e-Arşiv "Fatura Tipi: TEVKIFAT").
           tevkifat: /TEVK[İIiı]FAT|WithholdingTax/i.test(xml),
           // TEVKİFAT TUTARI (UBL WithholdingTaxTotal): satışta 391'e NET KDV (hesaplanan − tevkifat) gider;
           //   tevkifatOrani buradan çıkar → "tevkifat tutarı okunamadı" çelişkisi (TEVKIFAT_NET_NEEDED) biter.
           tevkifatKdv: ubl.tevkifatKdv,
+          // e-SMM: UBL 0003/0011 stopajı (KDV tevkifatından ayrı) → cari NET + 'kesinti' 360.
+          ...(Number(ubl.stopajTutari) > 0 ? { stopajTutari: ubl.stopajTutari } : {}),
           // ÇOK-ORANLI: kırılım varsa her oranı AYRI ver (karma %10/%20 faturada şart). Yoksa tek satır.
           kdv: (Array.isArray(ubl.kdvBreakdown) && ubl.kdvBreakdown.length)
             ? ubl.kdvBreakdown.map((b) => ({ oran: b.rate, matrah: b.base, kdv: b.amount }))
             : [{ oran: ubl.kdvOrani || 0, matrah: ubl.matrah || 0, kdv: ubl.kdvTutari || 0 }],
           kalemler: ubl.kalemler,
+          // Faz 0 — TEK OKUMA SONUCU: tevkifat kodu/yüzdesi, belge durumu, KDV dışı vergiler, iskonto, kur,
+          //   UBL ödenecek tutar aşağıda ocrData'ya Aktar yoluyla AYNI adlarla yazılır (ublOcrDataFields).
+          _ubl: ubl,
         };
       }
     }
@@ -12809,7 +12998,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const tevkKdv = Number(parsed.tevkifatKdv) || 0;
     // NOT: tevkKdv === kdv (10/10 TAM tevkifat) de geçerli → <= (eskiden < ile tam tevkifat 0 sayılıp
     //   belge düz KDV'li gibi işleniyordu: 360/191-sorumlu satırı hiç kurulmuyordu).
-    const tevkifatOrani = (tevkKdv > 0 && kdv > 0 && tevkKdv <= kdv) ? Math.round((tevkKdv / kdv) * 1000) / 1000 : 0;
+    //   UBL yüzdesi YALNIZ tutarla tutarlıysa (|KDV × yüzde/100 − tevkifatKdv| ≤ 0,05), değilse tutar oranı
+    //   (kısmi tevkifat — denetim bulgusu). 360/sorumlu-191 TUTARI aşağıda tevkifatKdv'den kurulur.
+    const _ublTevkYuzde = Number((parsed as any)?._ubl?.tevkifatYuzde) || 0;
+    const tevkifatOrani = resolveTevkifatOrani(kdv, tevkKdv, _ublTevkYuzde || undefined)
+      ?? ((tevkKdv > 0 && kdv > 0 && tevkKdv <= kdv) ? Math.round((tevkKdv / kdv) * 1000) / 1000 : 0);
+    // KDV DIŞI VERGİ (ÖİV/telsiz/ÖTV …): matraha karışmaz; toplam ve cari bu tutarı da kapsar.
+    const digerVergiToplam = Math.round((Number((parsed as any)?._ubl?.digerVergiToplam) || 0) * 100) / 100;
     // Toplam = matrah + KDV (yevmiye DENGESİ: cari satırı = matrah + kdv toplamı). AI'nın okuduğu
     //   parsed.toplam KDV HARİÇ tutarı verebiliyordu → cari/totalAmount yanlış → BALANCE_MISMATCH /
     //   TOTAL_MISMATCH (EDELER'de 31 belge "çelişki"; örn total=matrah=641.82 ama gerçek 648.33).
@@ -12818,9 +13013,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   Tevkifatlı SATIŞTA ödenecek = matrah + NET KDV (tevkifat sorumlu sıfatıyla beyan, cariye girmez).
     //   Tevkifatlı ALIŞTA yevmiye TAM KDV ile kurulur (191 normal+sorumlu borç, 320 net + 360 tevkifat
     //   alacak → toplam = matrah + TAM KDV); total net yazılırsa TOTAL_MISMATCH sahte çelişkisi doğar.
+    //   Tevkifat TUTARI biliniyorsa (UBL) NET KDV = KDV − tutar (kısmi tevkifatta oran × KDV sapar).
+    const _tevkNet = (tevkKdv > 0 && tevkKdv <= kdv + 0.005) ? tevkKdv : kdv * tevkifatOrani;
     const total = (tevkifatOrani > 0 && isSale)
-      ? Math.round((matrah + kdv * (1 - tevkifatOrani)) * 100) / 100
-      : Math.round((matrah + kdv) * 100) / 100;
+      ? Math.round((matrah + kdv - _tevkNet + digerVergiToplam) * 100) / 100
+      : Math.round((matrah + kdv + digerVergiToplam) * 100) / 100;
     // Karşı taraf (cari) adı: satışta ALICI, alışta SATICI (yukarıdaki AD-bazlı güvenlik ağı taraf
     //   bilgisini zaten tutarlı hale getirdi — parsed.saticiAd/aliciAd artık mükellefle çakışmaz).
     const counterName = String((isSale ? parsed.aliciAd : parsed.saticiAd) || '').trim();
@@ -12831,8 +13028,18 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   vergisi stopajı → linesFromAmounts cari'yi NET yazar + 'kesinti' 360 satırı üretir.
     //   Okunamadıysa 0 → satır üretilmez, SMM_STOPAJ_NEEDED engeli mevcut davranışıyla kalır.
     const smmStopaj = (!isSale && String(mappedType || '').toUpperCase() === 'E_SMM')
-      ? (Number(parsed.stopajTutari) || Number((d.ocrData as any)?.stopajTutari) || 0)
+      ? (Number(parsed.stopajTutari) || Number((parsed as any)?._ubl?.stopajTutari) || Number((d.ocrData as any)?.stopajTutari) || 0)
       : 0;
+    // İADE tespiti — satırlar kurulmadan ÖNCE (linesFromAmounts iade belgede borç/alacak yönünü çevirir).
+    //   UBL "Fatura Tipi: IADE" yazan belge normal ALIŞ gibi işlenmişti: görüntü/PDF yolunda tespit yalnız
+    //   AI'nin "iade" alanına dayanıyordu; Azure'un okuduğu HAM METİN üzerinde bağlamlı "İADE/IPTAL" da aranır.
+    const azNormForIade = String(azureText || (parsed as any)._azureText || '').replace(/İ/g, 'I').toUpperCase();
+    const isReturnDet = parsed.iade === true
+      || /iade|iptal/i.test(String(parsed.belgeTuru || ''))
+      // BAĞLAMLI iade deseni: eski \bİADE\b JS'te hiç eşleşmiyordu ('İ' \w değil); bağlamsız "iade"
+      //   ise "iade edilemez / iade ve değişim şartları" notlarında yanlış-pozitif veriyordu.
+      || /(FATURA\s*T[IU]P[IU]?|SENARYO)\s*:?\s*\b(IADE|IPTAL)\b/.test(azNormForIade)
+      || /\bIADE\s+FATURAS?I?\b/.test(azNormForIade);
 
     // SATICI-EMSAL TUTARLILIĞI (kullanıcı kuralı: "aynı satıcı hep aynı sonuç"): aynı mükellef + aynı
     //   satıcı VKN'nin KALEM-ÖRTÜŞEN önceki belgesindeki kategoriyi yeni okumaya uygula. AMA GÜVENLİ:
@@ -12897,7 +13104,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       vendorName: counterName || (isSale ? d.customerName : d.vendorName),
       kdvBreakdown: breakdown,
       tevkifatOrani: tevkifatOrani || null,
+      tevkifatKdv: tevkKdv > 0 ? tevkKdv : null,
       smmStopaj: smmStopaj > 0 ? smmStopaj : null,
+      digerVergiToplam: digerVergiToplam > 0 ? digerVergiToplam : null,
+      isReturn: isReturnDet,
       ...(matrahSplit && matrahSplit.length ? { matrahSplit } : {}),
       ...(zRep ? { zRaporu: true, nakit: zPay?.nakit || 0, kart: zPay?.kart || 0 } : {}),
     }));
@@ -12964,18 +13174,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const faDetForUyari = (kind !== 'SATIS')
         ? this.detectFixedAsset({ kalemler: parsed.kalemler, giderTuru: parsed.giderTuru, muhasebeNeden: parsed.muhasebeNeden }, tpForAsset)
         : { is: false, reason: '' };
-      // İADE GÜVENLİK AĞI (kullanıcı bulgusu — UBL "Fatura Tipi: IADE" yazan bir belge normal ALIŞ gibi
-      //   işlenmişti): görüntü/PDF yolunda iade tespiti SADECE AI'nin "iade" JSON alanına dayanıyordu
-      //   (XML/HTML yollarındaki gibi deterministik regex YOKTU). Azure'un OKUDUĞU HAM METİN (azureText/
-      //   parsed._azureText) — vision-modelin "önemli" sandığı kısma odaklanma sorunu olmayan, OCR ile
-      //   çıkarılmış TÜM metin — üzerinde de "İADE/IPTAL" arandığında bu tür kaçırmaları yakalar.
-      const azNormForIade = String(azureText || (parsed as any)._azureText || '').replace(/İ/g, 'I').toUpperCase();
-      const isReturnDet = parsed.iade === true
-        || /iade|iptal/i.test(String(parsed.belgeTuru || ''))
-        // BAĞLAMLI iade deseni: eski \bİADE\b JS'te hiç eşleşmiyordu ('İ' \w değil); bağlamsız "iade"
-        //   ise "iade edilemez / iade ve değişim şartları" notlarında yanlış-pozitif veriyordu.
-        || /(FATURA\s*T[IU]P[IU]?|SENARYO)\s*:?\s*\b(IADE|IPTAL)\b/.test(azNormForIade)
-        || /\bIADE\s+FATURAS?I?\b/.test(azNormForIade);
+      // (isReturnDet yukarıda, satırlar kurulmadan önce hesaplandı — iade belgede yön çevrilir.)
       const _uyarilar = denetimUyariOlustur({
         invoiceKind: kind,
         matrah,
@@ -13005,7 +13204,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           ocrData: { ...((d.ocrData as any) || {}), matrah, kdvTutari: kdv, kdvOrani: breakdown[0].rate, kdvBreakdown: breakdown.map((b: any) => ({ oran: b.rate, matrah: b.base, tutar: b.amount })), matrahKategori: typeof parsed.kategori === 'string' ? parsed.kategori : undefined, giderTuru: typeof parsed.giderTuru === 'string' ? parsed.giderTuru.slice(0, 40) : undefined, muhasebeNeden: this.cleanBaseNeden(parsed.muhasebeNeden).slice(0, 300) || undefined, aiYorum: this.cleanBaseNeden(parsed.muhasebeNeden).slice(0, 400) || undefined, aiMatrahKodu: (() => {
                 const aiKod = typeof parsed.matrahHesapKodu === 'string' ? String(parsed.matrahHesapKodu).trim() : '';
                 return (aiKod && planLeafSet.has(aiKod)) ? aiKod : undefined;
-              })(), kalemler: Array.isArray(parsed.kalemler) ? parsed.kalemler.slice(0, 30).map((k: any) => { const h = typeof k?.hesap === 'string' ? String(k.hesap).trim() : ''; return { ad: String(k?.ad || '').slice(0, 80), tutar: Number(k?.tutar) || 0, oran: Number(k?.oran) || 0, ...(h && planLeafSet.has(h) ? { hesap: h } : {}) }; }).filter((k: any) => k.ad) : undefined, ...(islSinifAi ? { isletme: islSinifAi } : {}), isReturn: isReturnDet, kalemSplit: kalemSplitApplied || undefined, tevkifatHint: parsed.tevkifat === true || tevkifatOrani > 0 || /tevkifat/i.test(String(html || '')), tevkifatOrani: tevkifatOrani || 0, tevkifatKdv: tevkKdv || 0, ...(smmStopaj > 0 ? { stopajTutari: smmStopaj } : {}), engine: parsed._azure ? 'azure-read' : (parsed === preParsed ? 'ubl-xml' : 'max-vision'),
+              })(), kalemler: Array.isArray(parsed.kalemler) ? parsed.kalemler.slice(0, 30).map((k: any) => { const h = typeof k?.hesap === 'string' ? String(k.hesap).trim() : ''; return { ad: String(k?.ad || '').slice(0, 80), tutar: Number(k?.tutar) || 0, oran: Number(k?.oran) || 0, ...(h && planLeafSet.has(h) ? { hesap: h } : {}) }; }).filter((k: any) => k.ad) : undefined, ...(islSinifAi ? { isletme: islSinifAi } : {}), ...((parsed as any)?._ubl ? ublOcrDataFields((parsed as any)._ubl) : clearUblOnlyOcrFields()), isReturn: isReturnDet, kalemSplit: kalemSplitApplied || undefined, tevkifatHint: parsed.tevkifat === true || tevkifatOrani > 0 || /tevkifat/i.test(String(html || '')), tevkifatOrani: tevkifatOrani || 0, tevkifatKdv: tevkKdv || 0, ...(smmStopaj > 0 ? { stopajTutari: smmStopaj } : {}), engine: parsed._azure ? 'azure-read' : (parsed === preParsed ? 'ubl-xml' : 'max-vision'),
             readMode: parsed === preParsed ? 'ubl-xml' : (isImage ? 'image' : /pdf/i.test(imgMedia) ? 'pdf-text' : /xml/i.test(imgMedia) ? 'xml-text' : 'html'),
             ...(!preParsed && imgBuf && /xml/i.test(imgMedia) ? { xmlHead: imgBuf.toString('utf8').slice(0, 220).replace(/\s+/g, ' ') } : {}),
             // uyarilar KOŞULSUZ yazılır: yeni okuma uyarı üretmediyse ESKİ okumanın bayat uyarısı
@@ -13915,7 +14114,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         const kv = Number((doc.ocrData as any)?.kdvTutari || 0);
         return (tk > 0 && kv > 0 && tk <= kv) ? tk / kv : 0;
       })();
-      const tevkPay = Math.round(_tevkOranEff * 10); // 0.5→5 (5/10), 0.2→2 (2/10)
+      // HESAP SEÇİMİ (X/10) için UBL yüzdesi (tevkifatYuzde 20 → 2/10) öncelikli: kısmi tevkifatta tutar oranı
+      //   (400/2200 = 0,182) belge oranı değildir; yüzde yoksa etkin oran (0.5→5, 0.2→2).
+      const _tevkYuzde = Number((doc.ocrData as any)?.tevkifatYuzde || 0);
+      const tevkPay = (_tevkYuzde > 0 && _tevkYuzde <= 100) ? Math.round(_tevkYuzde / 10) : Math.round(_tevkOranEff * 10);
       // KDV hesabı ORANA göre seçilir: %20 satır → adında "20" geçen 191/391 ("İNDİRİLECEK KDV %20").
       // Eskiden orana bakmadan en düşük 191 (= "%1" hesabı) seçiliyordu → %20 KDV "%1" hesabına
       // gidiyordu (kullanıcı bildirdi). Tevkifatlıda oran/"tevkifat" hesabı önceliklidir.
@@ -14306,8 +14508,24 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       };
 
       for (const line of doc.lines || []) {
-        const group = String(line.group || '') as 'matrah' | 'vergi' | 'vergi-sorumlu' | 'cari' | 'tevkifat';
+        const group = String(line.group || '') as 'matrah' | 'vergi' | 'vergi-sorumlu' | 'cari' | 'tevkifat' | 'diger_vergi';
         const lineRate = String(line.rate || '').replace(/[^0-9]/g, '');
+        // KDV DIŞI VERGİ (Faz 0): alışta gider — matrah satırıyla AYNI kategori/gider hesabına bağlanır
+        //   (ÖİV/telsiz indirilemez, maliyet unsurudur). Satışta (ödenecek vergi) plan seçimi kullanıcıya
+        //   bırakılır; KULLANICI kaynaklı satıra dokunulmaz.
+        if (group === 'diger_vergi') {
+          if (String(line.kaynak || '').toUpperCase() === 'KULLANICI') continue;
+          if (isSale) continue;
+          const dm = await matrahForRate('');
+          const want = dm ? String((dm as any).accountCode || '') : '';
+          if (String(line.accountCode || '') !== want) {
+            await (this.prisma as any).invoiceAccountingLine.update({
+              where: { id: line.id },
+              data: want ? { accountCode: want, description: (dm as any).accountName, kaynak: 'KURAL' } : { accountCode: '', kaynak: null },
+            });
+          }
+          continue;
+        }
         // İADE/İPTAL: matrah → 610 (satıştan iade), vergi → iade-KDV (191/391 "İADE"). Plandaki gerçek
         //   iade hesabı varsa ata (RETURN_NEEDS_REVERSAL uyarısı da kalkar), yoksa boş bırak (kullanıcı
         //   ekler). Tevkifat iade'de boşalır. Cari (karşı taraf) normal akışta kalır — iade aynı cariye işlenir.
@@ -14541,7 +14759,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         const freshLines = await (this.prisma as any).invoiceAccountingLine.findMany({ where: { documentId: doc.id } });
         for (const ln of freshLines) {
           const g = String(ln.group || '');
-          if (g !== 'matrah' && g !== 'vergi' && g !== 'vergi-sorumlu' && g !== 'tevkifat') continue;
+          if (g !== 'matrah' && g !== 'vergi' && g !== 'vergi-sorumlu' && g !== 'tevkifat' && g !== 'diger_vergi') continue;
           const code = String(ln.accountCode || '');
           const acc = code ? accounts.find((a: any) => String(a.accountCode || '') === code) : null;
           const wantDesc = acc ? String(acc.accountName || '') : '';

@@ -32,3 +32,8 @@
 - Denetim yapmam, fiş önermem.
 - Mükellefe doğrudan göndermem.
 - Başka mükellefin rakamını örnek vermem.
+
+## Tarih ve mevzuat
+- Ödeme vadesi / beyan son günü `get_tax_calendar`'dan; "17.aa" gibi ezber tarih mükellef özetine girmez.
+- Oran, istisna, had `get_accounting_reference`; emin olunmayan mevzuat satırı "TEYİT ET:" + `research_official_sources`; teyitsiz bilgi mükellef özetine girmez.
+- Mükellefi ad + taxpayerId ile an; VKN/TC/telefon rapora ve `create_pending_action` gövdesine girmez.

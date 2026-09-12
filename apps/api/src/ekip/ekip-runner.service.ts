@@ -5,14 +5,14 @@ import * as path from 'path';
 import { z } from 'zod';
 import { PrismaService } from '../prisma/prisma.service';
 import { ToolExecutorService } from '../moren-ai/tool-executor.service';
-import { MOREN_AI_TOOLS } from '../moren-ai/tools';
+import { MOREN_AI_TOOLS, FATURA_MERKEZI_AJAN_ARACLARI } from '../moren-ai/tools';
 import { ACTION_BY_NAME } from '../automations/action-catalog';
 import { ActionDispatcherService } from '../automations/action-dispatcher.service';
 import { LucaOperatorService } from '../calisan/luca-operator.service';
 import { EkipOnayService } from './ekip-onay.service';
 import { logAiUsage } from '../common/ai-usage-logger';
 import { AJAN_TANIMLARI, AjanTanimi, MODEL_KIMLIKLERI, ORTAK_KURALLAR_DOSYASI, ajanBul } from './ajan-tanimlari';
-import { aracAcikMi, aracKatalogMetni, aracKademesi } from './arac-defteri';
+import { aracAcikMi, aracKatalogMetni, aracKademesi, ekipMihsapKomutuYasagi } from './arac-defteri';
 
 /**
  * EKİP RUNNER — bir ajanı bir görevle koşturur (PLAN/13-AJAN-KADROSU.md §5).
@@ -40,7 +40,8 @@ const PORTAL_TOOL = 'mcp__portal__portal';
 const MAX_TUR = 80;
 /** Onay kaydı geçerliliği: ajan koşusu arka planda biter, sahip sonra bakar → 24 saat. */
 const ONAY_GECERLILIK_MS = 24 * 60 * 60 * 1000;
-const PORTAL_ARAC_ADLARI = new Set<string>(MOREN_AI_TOOLS.map((t) => t.name));
+// fm_* (Fatura Merkezi ajan araçları) da portal çalıştırıcısından (ToolExecutorService) geçer.
+const PORTAL_ARAC_ADLARI = new Set<string>([...MOREN_AI_TOOLS, ...FATURA_MERKEZI_AJAN_ARACLARI].map((t) => t.name));
 /** Dönem panosu önbelleği: tenant başına 60 sn (SabahBandi + DonemPanosu aynı anda çekince 2×3 araç koşusu olmasın). */
 const PANO_ONBELLEK_MS = 60 * 1000;
 /** İş dosyası durumları (AgentCommand.status) — /ekip/isler süzgeci yalnız bunları kabul eder. */
@@ -712,6 +713,13 @@ export class EkipRunnerService {
         }
         emit({ type: 'red', name, neden: erisim.neden || 'kapali', mesaj: erisim.mesaj || 'kapalı' });
         return cevap({ ok: false, error: erisim.mesaj, neden: erisim.neden });
+      }
+
+      // 1b) MİHSAP AJAN KOMUTU ekibe kapalı (PLAN/15 Faz 5) — genel bot etkilenmez, kontrol yalnız burada.
+      const mihsapRet = ekipMihsapKomutuYasagi(name, args);
+      if (mihsapRet) {
+        emit({ type: 'red', name, neden: 'mihsap_kapali', mesaj: mihsapRet });
+        return cevap({ ok: false, error: mihsapRet, neden: 'mihsap_kapali' });
       }
 
       // 2) DIŞARI GÖNDERİM canlıda bile doğrudan gitmez → sahip onay kaydı

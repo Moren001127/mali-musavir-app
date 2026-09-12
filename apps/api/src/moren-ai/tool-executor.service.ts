@@ -133,6 +133,18 @@ export class ToolExecutorService {
         case 'save_ai_memory':        return this.saveAiMemory(input, ctx);
         case 'create_agent_command':  return this.createAgentCommand(input, ctx);
         case 'get_ai_cost_summary':   return this.getAiCostSummary(input, ctx);
+        // FATURA MERKEZİ AJAN ARAÇLARI (fm_*) — PLAN/15 Faz 5; FmAjanService dinamik çözülür.
+        case 'fm_belge_listele':
+        case 'fm_belge_detay':
+        case 'fm_donem_ozeti':
+        case 'fm_uyumsuzluklar':
+        case 'fm_hesap_plani_ara':
+        case 'fm_hesap_ata':
+        case 'fm_ai_ile_oku':
+        case 'fm_isaretle':
+        case 'fm_onayla':
+        case 'fm_luca_gonder':
+          return this.fmAjanAraci(name, input, ctx);
         default:
           return { error: `Bilinmeyen tool: ${name}` };
       }
@@ -2883,6 +2895,8 @@ export class ToolExecutorService {
         : Promise.resolve([]),
     ]);
     if (!taxpayer) return { error: 'Mükellef bulunamadı' };
+    // FATURA MERKEZİ sayımları (PLAN/15 Faz 5): Mihsap sayımının YANINA; mevcut alanlar bozulmaz.
+    const faturaMerkezi = await this.faturaMerkeziSayimlari(ctx.tenantId, taxpayerId, period);
     const s: any = status || {};
     const cariBakiye = (cariRows || []).reduce((sum: number, h: any) => sum + (h.tip === 'TAHAKKUK' ? this.toNum(h.tutar) : h.tip === 'TAHSILAT' ? -this.toNum(h.tutar) : 0), 0);
     const taxpayerLabel = this.displayName(taxpayer).toLocaleLowerCase('tr-TR');
@@ -2914,6 +2928,7 @@ export class ToolExecutorService {
       eksikler,
       veri: {
         mihsapFatura: invoices,
+        faturaMerkezi,
         lucaEarsivFatura: earsiv,
         kdvKontrolOturumu: kdvSessions.length,
         beyanKaydi: beyanlar.length,
@@ -2924,6 +2939,108 @@ export class ToolExecutorService {
         sonAgentOlaylari: relevantAgentEvents,
       },
     };
+  }
+
+  /**
+   * Fatura Merkezi (InvoiceAccountingDocument) dönem sayımları — get_taxpayer_work_status için.
+   * Dönem = faturaTarihi (YYYY-MM); tarihi boş belge createdAt ile sayılır (servis summary() ile aynı kural).
+   */
+  private async faturaMerkeziSayimlari(tenantId: string, taxpayerId: string, period: string) {
+    const bos = { toplam: 0, bekleyen: 0, onayli: 0, lucayaGitti: 0, lucaHatali: 0, okunmadi: 0, celiski: 0, mukerrer: 0 };
+    const m = String(period || '').match(/^(\d{4})-(\d{2})$/);
+    if (!taxpayerId || !m) return bos;
+    const start = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, 1));
+    const end = new Date(Date.UTC(Number(m[1]), Number(m[2]), 1));
+    const docs: any[] = await (this.prisma as any).invoiceAccountingDocument.findMany({
+      where: {
+        tenantId, taxpayerId,
+        OR: [{ faturaTarihi: { gte: start, lt: end } }, { faturaTarihi: null, createdAt: { gte: start, lt: end } }],
+      },
+      select: { status: true, lucaStatus: true, ocrStatus: true, validationStatus: true, validationIssues: true, duplicateOfId: true, ocrData: true },
+      take: 5000,
+    }).catch(() => []);
+    const out = { ...bos, toplam: docs.length };
+    for (const d of docs) {
+      const st = String(d.status || '').toUpperCase();
+      if (['READY', 'NEEDS_REVIEW', 'PENDING', 'PROCESSING'].includes(st)) out.bekleyen++;
+      if (st === 'APPROVED') out.onayli++;
+      const ls = String(d.lucaStatus || '').toUpperCase();
+      if (ls === 'POSTED') out.lucayaGitti++;
+      if (ls === 'FAILED') out.lucaHatali++;
+      const os = String(d.ocrStatus || '').toUpperCase();
+      if (['PENDING', 'IN_PROGRESS', 'FAILED', 'CANCELLED'].includes(os) || d?.ocrData?.matchDeferred === true) out.okunmadi++;
+      const vs = String(d.validationStatus || d?.ocrData?.validationStatus || '').toUpperCase();
+      if (vs === 'INVALID' || vs === 'INCOMPLETE' || (Array.isArray(d.validationIssues) && d.validationIssues.length > 0)) out.celiski++;
+      if (d.duplicateOfId) out.mukerrer++;
+    }
+    return out;
+  }
+
+  /**
+   * fm_* araçları → FmAjanService (fatura-muhasebelestirme/fm-ajan.service.ts). Servis dinamik çözülür
+   * (getKdv1OnHazirlik deseni): moren-ai jest koşuları Fatura Merkezi zincirini (xlsx/pdf) yüklemesin.
+   * Kademe kontrolü (kuru test, ajan listesi) EKİP runner'ındadır; burası yalnız çalıştırır.
+   */
+  private async fmAjanAraci(name: string, input: any, ctx: { tenantId: string; userId?: string | null; taxpayerId?: string | null }) {
+    let svc: any = null;
+    try {
+      const { FmAjanService } = await import('../fatura-muhasebelestirme/fm-ajan.service');
+      svc = this.moduleRef?.get?.(FmAjanService, { strict: false });
+    } catch (e: any) {
+      this.logger.warn(`FmAjanService çözülemedi: ${e?.message || e}`);
+    }
+    if (!svc) return { ok: false, error: 'Fatura Merkezi ajan servisi kullanılamıyor.' };
+    const taxpayerId = String(input?.taxpayerId || ctx.taxpayerId || '').trim();
+    const donem = this.normalizeDonemYYYYMM(input?.donem || input?.period);
+    const yon = (() => {
+      const y = String(input?.yon || '').toLowerCase();
+      return y === 'alis' || y === 'satis' ? y : null;
+    })();
+    const idListesi = (v: any): string[] => (Array.isArray(v) ? v : typeof v === 'string' && v ? [v] : []).map((s) => String(s || '').trim()).filter(Boolean);
+    const mukellefSart = () => (!taxpayerId ? { ok: false, error: 'taxpayerId gerekli (list_taxpayers ile bul).' } : null);
+    const donemSart = () => (!donem ? { ok: false, error: 'donem YYYY-MM biçiminde olmalı (örn. 2026-08).' } : null);
+    try {
+      switch (name) {
+        case 'fm_belge_listele': {
+          const e = mukellefSart() || donemSart(); if (e) return e;
+          return await svc.belgeListele(ctx.tenantId, { taxpayerId, donem, yon, durum: input?.durum || null, limit: input?.limit });
+        }
+        case 'fm_belge_detay':
+          return await svc.belgeDetay(ctx.tenantId, String(input?.belgeId || input?.id || ''));
+        case 'fm_donem_ozeti': {
+          const e = mukellefSart() || donemSart(); if (e) return e;
+          return await svc.donemOzeti(ctx.tenantId, taxpayerId, donem);
+        }
+        case 'fm_uyumsuzluklar': {
+          const e = mukellefSart() || donemSart(); if (e) return e;
+          return await svc.uyumsuzluklar(ctx.tenantId, taxpayerId, donem, input?.limit);
+        }
+        case 'fm_hesap_plani_ara': {
+          const e = mukellefSart(); if (e) return e;
+          return await svc.hesapPlaniAra(ctx.tenantId, { taxpayerId, sorgu: String(input?.sorgu || input?.q || ''), yon, limit: input?.limit });
+        }
+        case 'fm_hesap_ata':
+          return await svc.hesapAta(ctx.tenantId, {
+            belgeId: String(input?.belgeId || ''), satir: input?.satir ?? input?.satirNo ?? null,
+            hesapKodu: input?.hesapKodu ?? null, kayitTuruKod: input?.kayitTuruKod ?? null, kayitAltKod: input?.kayitAltKod ?? null,
+            gerekce: String(input?.gerekce || ''), userId: ctx.userId || null,
+          });
+        case 'fm_ai_ile_oku':
+          return await svc.aiIleOku(ctx.tenantId, idListesi(input?.belgeIdler ?? input?.belgeId));
+        case 'fm_isaretle':
+          return await svc.isaretle(ctx.tenantId, { belgeId: String(input?.belgeId || ''), etiket: input?.etiket, not: String(input?.not || input?.aciklama || ''), userId: ctx.userId || null });
+        case 'fm_onayla':
+          return await svc.onayla(ctx.tenantId, String(input?.belgeId || ''), ctx.userId || null);
+        case 'fm_luca_gonder': {
+          const e = mukellefSart(); if (e) return e;
+          return await svc.lucaGonder(ctx.tenantId, { taxpayerId, belgeIdler: idListesi(input?.belgeIdler), donem, yon, userId: ctx.userId || null });
+        }
+        default:
+          return { ok: false, error: `Bilinmeyen fm aracı: ${name}` };
+      }
+    } catch (e: any) {
+      return { ok: false, error: e?.message || String(e) };
+    }
   }
 
   private async getLucaAgentJobs(input: any, ctx: { tenantId: string }) {

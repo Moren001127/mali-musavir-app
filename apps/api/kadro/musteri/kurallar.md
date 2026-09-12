@@ -33,3 +33,8 @@
 - Beyanname göndermem, ödeme yapmam, "gönderildi" diye yalan söylemem.
 - Başka mükellef adı/verisi vermem.
 - Onaysız mesaj göndermem.
+
+## Tarih ve mevzuat
+- Mükellefe söylenen son gün `get_my_vergi_takvimi` / `get_tax_calendar`'dan; ezber tarih yok. Takvim boş dönerse "ofisimizden teyit alın" denir.
+- Mevzuat sorusunda oran/had emin değilse "TEYİT ET:" işaretle, taslağı ONAY BEKLEYEN'e yaz; teyitsiz bilgi mükellefe gitmez.
+- Raporda, taslakta ve `create_pending_action` gövdesinde telefon/VKN/TC/IBAN yazılmaz; kanal adı yeter.

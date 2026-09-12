@@ -1,12 +1,13 @@
-import { MOREN_AI_TOOLS } from '../moren-ai/tools';
+import { MOREN_AI_TOOLS, FATURA_MERKEZI_AJAN_ARACLARI } from '../moren-ai/tools';
+import { MIHSAP_FATURA_ACTIONS } from '../agent-events/agent-registry';
 import { AUTOMATION_ACTION_CATALOG } from '../automations/action-catalog';
 import { LUCA_OPERATOR_ARACLARI } from '../calisan/luca-operator.service';
 
 /**
  * EKİP — ARAÇ KAYIT DEFTERİ (PLAN/13-AJAN-KADROSU.md §5.3)
  *
- * Tüm araçlar TEK listede: 47 portal aracı (MOREN_AI_TOOLS) + Luca operatör
- * araçları + otomasyon eylem kataloğu + ekibin kendi iç araçları.
+ * Tüm araçlar TEK listede: portal araçları (MOREN_AI_TOOLS) + Fatura Merkezi ajan araçları (fm_*)
+ * + Luca operatör araçları + otomasyon eylem kataloğu + ekibin kendi iç araçları.
  * Her araç bir YETKİ KADEMESİ taşır (§4). Kademe koda gömülüdür; env/anahtarla
  * açılmaz. Ajan tanımları (ajan-tanimlari.ts) araçları buradaki adla seçer.
  *
@@ -56,6 +57,40 @@ const PORTAL_YAZAN_ARACLAR = new Set<string>([
   // Önizleme yazmaz ama OwnerApprovalRequest kaydı açar → kayıt altında yazma sayılır.
   'preview_agent_command',
 ]);
+
+// ─── FATURA MERKEZİ AJAN ARAÇLARI (fm_*): kademe eşlemesi (PLAN/15 Faz 5) ───
+// MOREN_AI_TOOLS'ta DEĞİL (genel bot görmez); defterde kaynak='portal' olarak yer alır.
+// fm_onayla: kademe portal_yaz ama fatura ajanının ve koordinatörün listesinde YOK — onay sahibindir.
+const FM_KADEMELERI: Record<string, Kademe> = {
+  fm_belge_listele: 'oku',
+  fm_belge_detay: 'oku',
+  fm_donem_ozeti: 'oku',
+  fm_uyumsuzluklar: 'oku',
+  fm_hesap_plani_ara: 'oku',
+  fm_hesap_ata: 'portal_yaz',
+  fm_ai_ile_oku: 'portal_yaz',
+  fm_isaretle: 'portal_yaz',
+  fm_onayla: 'portal_yaz',
+  fm_luca_gonder: 'luca_yaz',
+};
+
+// ─── MİHSAP AJAN KOMUTLARI: EKİP'e KAPALI (PLAN/15 Faz 5) ───
+// preview_agent_command / create_confirmed_agent_command / create_agent_command ile "mihsap*" ajanına
+// ya da isle_alis/isle_satis türevi eyleme komut açmak ekip ajanlarına yasak. Genel WhatsApp/portal botu
+// etkilenmez (kontrol yalnız ekip runner'ında çağrılır).
+const AJAN_KOMUT_ARACLARI = new Set<string>(['preview_agent_command', 'create_confirmed_agent_command', 'create_agent_command']);
+const MIHSAP_EYLEMLERI = new Set<string>(MIHSAP_FATURA_ACTIONS as readonly string[]);
+
+/** Ekip ajanı bu araç çağrısıyla Mihsap'a komut açıyor mu? Evetse ret mesajı, değilse null. */
+export function ekipMihsapKomutuYasagi(aracAdi: string, args: any): string | null {
+  if (!AJAN_KOMUT_ARACLARI.has(String(aracAdi || ''))) return null;
+  const agent = String(args?.agent || '').trim().toLowerCase();
+  const action = String(args?.action || '').trim().toLowerCase();
+  if (agent.startsWith('mihsap') || MIHSAP_EYLEMLERI.has(action)) {
+    return `${aracAdi}: Mihsap ajan komutu (${agent || '-'} / ${action || '-'}) ekibe KAPALI — fatura işi Fatura Merkezi'nden yürür (fm_* araçları).`;
+  }
+  return null;
+}
 
 // ─── LUCA OPERATÖR ARAÇLARI: kademe eşlemesi ───
 const LUCA_KADEMELERI: Record<string, Kademe> = {
@@ -186,6 +221,18 @@ function defteriKur(): AracKaydi[] {
       ad: t.name,
       kaynak: 'portal',
       kademe: PORTAL_YAZAN_ARACLAR.has(t.name) ? 'portal_yaz' : 'oku',
+      aciklama: (t.description || '').split('.')[0].slice(0, 160),
+      parametreler: parametreListesi(t.input_schema),
+    });
+  }
+
+  for (const t of FATURA_MERKEZI_AJAN_ARACLARI) {
+    if (gorulen.has(t.name)) continue;
+    gorulen.add(t.name);
+    out.push({
+      ad: t.name,
+      kaynak: 'portal',
+      kademe: FM_KADEMELERI[t.name] || 'luca_yaz', // eşlemede olmayan fm aracı = güvenli tarafa
       aciklama: (t.description || '').split('.')[0].slice(0, 160),
       parametreler: parametreListesi(t.input_schema),
     });

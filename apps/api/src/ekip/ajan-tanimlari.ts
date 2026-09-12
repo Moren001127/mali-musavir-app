@@ -5,8 +5,15 @@ import { OPERATOR_MODELLERI } from '../calisan/luca-operator.service';
  *
  * 13 ajan; id'ler SABİTTİR (iş dosyası, hafıza ve kimlik klasörü bu id'ye bağlıdır).
  * Araçlar arac-defteri.ts'teki adla seçilir; kademe defterden gelir, burada tekrar yazılmaz.
- * Kimlik klasörü: apps/api/kadro/<id>/ (kimlik.md, kurallar.md) + apps/api/kadro/00_ORTAK_KURALLAR.md
- * — başka bir ajan yazar; runner dosya yoksa boş geçer.
+ * Kimlik klasörü: apps/api/kadro/<id>/ (kimlik.md, kurallar.md, beceriler.md) + apps/api/kadro/00_ORTAK_KURALLAR.md
+ * — runner dosya yoksa boş geçer.
+ *
+ * KURAL: her ajanın `araclar` listesi ile kadro/<id>/kimlik.md "Kullandığım araçlar" bölümü BİREBİR aynıdır
+ * (bugün elle karşılaştırılır; arac-defteri.spec'e 'kimlik.md ↔ araclar' kilit testi PLANLANDI). Araç eklerken/çıkarırken iki yeri birlikte güncelle.
+ *
+ * TETİKLER: "planlandı" yazanlar için henüz kod (cron/olay) YOK; bugün gerçek tetikler: cron 08:30 sabah özeti
+ * (koordinator.service.ts, EKIP_SABAH_OZETI=on), portal (POST /ekip/:ajanId/calistir), ses (Koordinatör).
+ * Ajanlar arası zincir (Koordinatör → ajan) da planlandı: bugün görev metnini Koordinatör hazırlar, sahip portaldan başlatır.
  */
 
 export type AjanModeli = 'opus' | 'sonnet' | 'haiku';
@@ -62,6 +69,10 @@ const EKIP_OKU = ['ekip_isler', 'ekip_pano', 'ekip_onaylar'];
 /** Yalnız koordinatör: sahibin açık sözüyle onay yürütme / reddetme. */
 const EKIP_ONAY = ['ekip_onayla', 'ekip_reddet'];
 const ONAY = ['preview_agent_command'];
+/** Fatura Merkezi ajan araçları (PLAN/15 Faz 5). fm_onayla BİLEREK YOK: onay sahibindir. */
+const FM_OKU = ['fm_belge_listele', 'fm_belge_detay', 'fm_donem_ozeti', 'fm_uyumsuzluklar', 'fm_hesap_plani_ara'];
+const FM_YAZ = ['fm_hesap_ata', 'fm_ai_ile_oku', 'fm_isaretle'];
+const FM_LUCA = ['fm_luca_gonder'];
 
 export const AJAN_TANIMLARI: AjanTanimi[] = [
   {
@@ -75,13 +86,14 @@ export const AJAN_TANIMLARI: AjanTanimi[] = [
     araclar: [
       ...MUKELLEF_OKU, ...EKIP_OKU,
       ...EKIP_ONAY,
-      'get_operation_briefing', 'get_tax_calendar', 'get_beyanname_readiness_summary', 'get_collection_risk_summary',
+      'get_operation_briefing', 'get_tax_calendar', 'get_beyanname_readiness_summary', 'get_collection_risk_summary', 'get_beyanname_config',
       'get_gundem', 'list_pending_decisions', 'list_tasks', 'get_agent_status', 'get_system_health', 'get_ai_cost_summary',
-      'list_beyan_kayitlari', 'get_beyan_ozet', 'get_kdv1_on_hazirlik', 'get_luca_agent_jobs', 'get_mihsap_agent_jobs', 'get_portal_capability_map',
+      // get_mihsap_agent_jobs ÇIKARILDI (PLAN/15 Faz 5): fatura işi Fatura Merkezi'nden izlenir (get_taxpayer_work_status.veri.faturaMerkezi).
+      'list_beyan_kayitlari', 'get_beyan_ozet', 'get_kdv1_on_hazirlik', 'get_luca_agent_jobs', 'get_portal_capability_map',
       'search_ai_memory', 'save_ai_memory', ...ONAY, 'create_pending_action',
     ],
     onayNoktalari: ['Sahibe giden özet dışında dışarıya mesaj', 'Bir ajanı canlı (kuru test dışı) çalıştırma'],
-    tetikler: ['cron 08:30 (EKIP_SABAH_OZETI=on)', 'olay', 'sahip komutu (portal/ses)'],
+    tetikler: ['cron 08:30 sabah özeti (koordinator.service.ts; EKIP_SABAH_OZETI=on)', 'sahip komutu (portal/ses)', 'olay (çalışan raporu/onay/hata) — planlandı'],
     kimlikKlasoru: klasor('koordinator'),
   },
   {
@@ -91,27 +103,34 @@ export const AJAN_TANIMLARI: AjanTanimi[] = [
     aciklama: 'Belge ister, geleni kaydeder, eksiği takip eder, sahibe eksik listesi çıkarır.',
     model: 'sonnet',
     araclar: [
-      ...MUKELLEF_OKU, 'list_documents', 'list_fatura_merkezi', 'get_tax_calendar', 'list_pending_decisions', 'list_tasks',
+      ...MUKELLEF_OKU, 'list_documents', 'list_fatura_merkezi', 'get_bank_status', 'list_etebligat', 'get_beyanname_config',
+      'get_tax_calendar', 'list_tasks',
       'search_ai_memory', 'save_ai_memory', 'set_monthly_status', 'create_pending_action',
       'send_whatsapp_template', 'send_whatsapp_freeform', 'send_sms', 'send_email', ...ONAY,
     ],
     onayNoktalari: ['Mükellefe mesaj (evrak talebi/hatırlatma)'],
-    tetikler: ['ay başı evrak taraması', 'belge yüklendi olayı', 'koordinatör'],
+    tetikler: ['sahip komutu / Koordinatör görev metni (portal)', 'ayın 1/10/20 evrak taraması — planlandı', 'belge yüklendi olayı — planlandı'],
     kimlikKlasoru: klasor('evrak'),
   },
   {
     id: 'fatura',
     ad: 'Fatura Muhasebecisi',
     unvan: 'Fatura İşleme',
-    aciklama: "Entegratörden çeker, okur, hesap eşleştirir, Luca'ya fiş atar, şüpheliyi ayırır.",
+    aciklama:
+      "Fatura Merkezi'nin personeli: dönem belgelerini açar, okunmamışı okutur, uyumsuzu inceler, gerekçeli hesap önerir (AJAN kaynaklı), " +
+      "demirbaş/tevkifat/mükerreri işaretler, sahibe onay listesi sunar. Onaylamaz; Luca gönderimi ancak sahip 'canlı' derse. Mihsap'a bakmaz.",
     model: 'opus',
+    // PLAN/15 Faz 5: Mihsap araçları ÇIKARILDI — list_invoices (MihsapInvoice), fetch_invoices_for_period,
+    // extract_invoice_fields, ocr_pdf (boş kabuk), classify_with_claude (dış API), generate_fis_word_from_invoices,
+    // post_to_luca (boş kabuk), LUCA_YAZ (fiş fm_luca_gonder kuyruğuyla gider; Luca'ya elle dokunmaz).
+    // fm_onayla BİLEREK YOK: onay sahibindir (kadro/fatura/kurallar.md).
     araclar: [
-      ...MUKELLEF_OKU, ...HAFIZA, 'list_invoices', 'list_fatura_merkezi', 'list_earsiv_invoices', 'get_kdv_summary',
-      'fetch_invoices_for_period', 'extract_invoice_fields', 'ocr_pdf', 'classify_with_claude',
-      'generate_fis_word_from_invoices', 'post_to_luca', ...LUCA_OKU, ...LUCA_YAZ, 'create_pending_action', ...ONAY,
+      ...MUKELLEF_OKU, ...HAFIZA, ...FM_OKU, ...FM_YAZ, ...FM_LUCA,
+      'list_fatura_merkezi', 'list_earsiv_invoices', 'get_kdv_summary', ...LUCA_OKU,
+      'create_pending_action', ...ONAY,
     ],
-    onayNoktalari: ["Luca'ya fiş kaydı (kuru test → sahip onayı → canlı)", 'Şüpheli fatura kararı'],
-    tetikler: ['evrak yüklendi', 'entegratör çekimi bitti', 'koordinatör'],
+    onayNoktalari: ['Belge onayı: ajan ASLA — sahip portaldan onaylar (fm_onayla listede yok)', "Luca'ya gönderim (kuru test → sahip 'canlı' → fm_luca_gonder)", 'Demirbaş / tevkifat şüpheli / mükerrer kararı'],
+    tetikler: ['sahip komutu / Koordinatör görev metni (portal)', 'evrak yüklendi olayı — planlandı', 'entegratör çekimi bitti olayı — planlandı'],
     kimlikKlasoru: klasor('fatura'),
   },
   {
@@ -121,11 +140,14 @@ export const AJAN_TANIMLARI: AjanTanimi[] = [
     aciklama: 'Banka hareketi ↔ fatura eşleştirme, kasa/cari takibi, tahsilat hatırlatma.',
     model: 'sonnet',
     araclar: [
-      ...MUKELLEF_OKU, 'get_bank_status', 'get_cari_hareketler', 'list_invoices', 'get_collection_risk_summary', 'list_tax_payable',
+      ...MUKELLEF_OKU, 'get_bank_status', 'get_cari_hareketler', 'list_invoices', 'list_earsiv_invoices', 'list_fatura_merkezi',
+      'get_collection_risk_summary', 'list_tasks',
+      // Pilot (banka-kasa, 2026-09-12): get_mizan "ajana kapalı" döndü; kasa/banka/ortak cari kontrolü (100/102/131/331) mizandan yapılır.
+      'get_mizan', 'list_mizan_periods',
       'search_ai_memory', 'save_ai_memory', 'create_pending_action', 'send_whatsapp_template', 'send_whatsapp_freeform', 'send_sms', ...ONAY,
     ],
     onayNoktalari: ['Mükellefe tahsilat/mutabakat mesajı'],
-    tetikler: ['banka ekstresi geldi', 'ay sonu', 'koordinatör'],
+    tetikler: ['sahip komutu / Koordinatör görev metni (portal)', 'banka ekstresi geldi olayı — planlandı', 'ayın 5 (tahsilat) / 25 (ekstre eksik) taraması — planlandı'],
     kimlikKlasoru: klasor('banka-kasa'),
   },
   {
@@ -139,10 +161,12 @@ export const AJAN_TANIMLARI: AjanTanimi[] = [
     araclar: [
       ...MUKELLEF_OKU, ...HAFIZA, ...MALI_OKU, 'get_kdv_summary', 'get_kdv1_on_hazirlik', 'list_tax_payable', 'list_beyan_kayitlari', 'get_beyan_ozet',
       'get_beyanname_config', 'get_beyanname_readiness_summary', 'get_tax_calendar', 'fetch_kdv_from_luca', 'get_isletme_hesap_ozeti',
+      // Muhtasar zinciri (beceriler §3): ücret stopajı + APHB; mevzuat teyidi.
+      'get_payroll_summary', 'list_sgk_declarations', 'research_official_sources',
       ...LUCA_OKU, ...LUCA_YAZ, 'luca_kural_kaydet', 'set_monthly_status', 'create_pending_action', ...ONAY,
     ],
     onayNoktalari: ["Luca'da tahakkuk fişi (kuru test → onay)", 'Beyanname "hazır" işareti', 'GİB gönderimi: ajan ASLA — yalnız sahip'],
-    tetikler: ['KDV Kontrol bitti', 'beyanname takvimi (son gün −5)', 'koordinatör'],
+    tetikler: ['sahip komutu / Koordinatör görev metni (portal)', 'KDV Kontrol bitti olayı — planlandı', 'beyanname takvimi (son gün −5) — planlandı'],
     kimlikKlasoru: klasor('beyanname'),
   },
   {
@@ -152,11 +176,13 @@ export const AJAN_TANIMLARI: AjanTanimi[] = [
     aciklama: 'İşe giriş/çıkış, bordro, SGK hizmet/tahakkuk, e-bildirge kontrolü. Bildirge gönderimi yapmaz.',
     model: 'sonnet',
     araclar: [
-      ...MUKELLEF_OKU, 'get_payroll_summary', 'list_sgk_declarations', 'get_tax_calendar', 'list_documents',
+      ...MUKELLEF_OKU, 'get_payroll_summary', 'list_sgk_declarations', 'list_etebligat', 'get_tax_calendar', 'list_documents',
+      // kurallar.md: yıllık değişen rakamlar (asgari ücret, tavan, dilim) ezberden değil referanstan.
+      'get_accounting_reference', 'research_official_sources',
       'search_ai_memory', 'save_ai_memory', ...LUCA_OKU, ...LUCA_YAZ, 'create_pending_action', ...ONAY,
     ],
     onayNoktalari: ['Bordro hesabı sonucu', 'SGK bildirge gönderimi: ajan ASLA — yalnız sahip'],
-    tetikler: ['ay sonu bordro', 'işe giriş/çıkış belgesi', 'koordinatör'],
+    tetikler: ['sahip komutu / Koordinatör görev metni (portal)', 'ayın 1 bordro / 20 APHB taraması — planlandı', 'işe giriş/çıkış belgesi olayı — planlandı'],
     kimlikKlasoru: klasor('bordro-sgk'),
   },
   {
@@ -166,11 +192,13 @@ export const AJAN_TANIMLARI: AjanTanimi[] = [
     aciklama: 'e-Defter kontrol kuralları (kasa/stok/banka negatif, mizan↔fiş), berat takvimi, yıl sonu kapanış hazırlığı.',
     model: 'opus',
     araclar: [
-      ...MUKELLEF_OKU, ...HAFIZA, ...MALI_OKU, 'list_edefter_sessions', 'get_tax_calendar', ...LUCA_OKU, ...LUCA_YAZ,
-      'create_pending_action', ...ONAY,
+      ...MUKELLEF_OKU, ...HAFIZA, ...MALI_OKU, 'list_edefter_sessions', 'get_beyanname_config', 'get_tax_calendar', 'get_luca_agent_jobs',
+      // kurallar.md: enflasyon düzeltmesi / berat süresi gibi yıla bağlı yükümlülük ezberden değil resmi kaynaktan (TEYİT ET).
+      'research_official_sources',
+      ...LUCA_OKU, ...LUCA_YAZ, 'create_pending_action', ...ONAY,
     ],
     onayNoktalari: ['Düzeltme fişi önerisi', 'Berat yükleme: ajan ASLA — yalnız sahip'],
-    tetikler: ['berat takvimi', 'geçici vergi öncesi', 'yıl sonu', 'koordinatör'],
+    tetikler: ['sahip komutu / Koordinatör görev metni (portal)', 'berat takvimi (son gün −10) — planlandı', 'geçici vergi öncesi / yıl sonu — planlandı'],
     kimlikKlasoru: klasor('edefter'),
   },
   {
@@ -181,10 +209,12 @@ export const AJAN_TANIMLARI: AjanTanimi[] = [
     model: 'sonnet',
     araclar: [
       ...LUCA_OKU, ...LUCA_YAZ, 'luca_menu_haritasi_cikar', 'luca_kural_kaydet', 'luca_kural_sil', 'luca_mizan_cek',
-      'list_taxpayers', 'get_taxpayer', 'get_luca_agent_jobs', 'get_agent_status', 'search_ai_memory',
+      // Portal yalnız OKUMA (kurallar.md KURAL 2: portala yazma yok). Mizan gerekiyorsa portaldakini oku, çekim tarihini söyle.
+      'list_taxpayers', 'get_taxpayer', 'get_mizan', 'list_mizan_periods', 'get_accounting_reference',
+      'get_luca_agent_jobs', 'get_agent_status', 'search_ai_memory',
     ],
     onayNoktalari: ['Kaydet / Gönder / Tahakkuk / İmzala / Sil düğmeleri (confirmed=true yalnız sahip onayıyla)'],
-    tetikler: ['diğer ajanların isteği', 'sahip komutu'],
+    tetikler: ['sahip komutu (portal / Luca Operatörü sohbeti)', 'diğer ajanların iş paketi (Koordinatör üzerinden) — planlandı'],
     kimlikKlasoru: klasor('luca-operator'),
   },
   {
@@ -197,10 +227,12 @@ export const AJAN_TANIMLARI: AjanTanimi[] = [
     model: 'opus',
     araclar: [
       ...MUKELLEF_OKU, ...HAFIZA, ...MALI_OKU, 'get_kdv_summary', 'get_kdv1_on_hazirlik', 'list_edefter_sessions', 'list_beyan_kayitlari', 'get_beyan_ozet',
+      'get_luca_agent_jobs',
+      // Yalnız Luca OKUR (luca_yaz/luca_sec/luca_tikla YOK): fiş listesi/mizan çekimi Luca Operatörü'ne paketle istenir.
       ...LUCA_OKU, 'create_pending_action', ...ONAY,
     ],
     onayNoktalari: ['Sahibe uyarı raporu (portal içi — serbest)', 'Mükellefe iletim: onaylı'],
-    tetikler: ['geçici vergi öncesi (dönem son günü −10)', 'yıl sonu', 'koordinatör'],
+    tetikler: ['sahip komutu / Koordinatör görev metni (portal)', 'geçici vergi öncesi (dönem son günü −10) — planlandı', 'yıl sonu (Ocak) — planlandı'],
     kimlikKlasoru: klasor('denetci'),
   },
   {
@@ -216,11 +248,12 @@ export const AJAN_TANIMLARI: AjanTanimi[] = [
       'get_isletme_hesap_ozeti', 'research_official_sources', 'summarize_with_claude',
       // kimlik.md: get_gundem (TÜFE/kur → gerçek büyüme düzeltmesi) + vergi takvimi (ödeme vadesi). Pilot 3: kapalı olduğu için enflasyon düzeltmesi yapılamadı.
       'get_gundem', 'get_tax_calendar',
-      // Gönderim araçları YOK: kimlik.md "Mükellefle doğrudan konuşmam; onaylı özeti Müşteri İlişkileri iletir".
-      ...ONAY,
+      // Gönderim/komut araçları YOK: kimlik.md "Mükellefle doğrudan konuşmam; onaylı özeti Müşteri İlişkileri iletir".
+      // Mükellef özeti ONAY BEKLEYEN maddesi create_pending_action ile kaydedilir.
+      'create_pending_action',
     ],
     onayNoktalari: ['Raporun mükellefe gönderimi (Müşteri İlişkileri üzerinden, sahip onayıyla)'],
-    tetikler: ['dönem kapanışı', 'geçici vergi sonrası', 'sahip komutu'],
+    tetikler: ['sahip komutu / Koordinatör görev metni (portal)', 'dönem kapanışı / geçici vergi sonrası — planlandı'],
     kimlikKlasoru: klasor('analist'),
   },
   {
@@ -230,11 +263,13 @@ export const AJAN_TANIMLARI: AjanTanimi[] = [
     aciklama: 'Resmî Gazete / GİB duyurusu → özet → hangi mükellefi ilgilendirir. Sahibe özet.',
     model: 'sonnet',
     araclar: [
-      'list_taxpayers', 'get_taxpayer', 'search_all', 'check_official_gazette', 'research_official_sources', 'http_get',
-      'summarize_with_claude', 'search_ai_memory', 'save_ai_memory', 'create_pending_action',
+      'list_taxpayers', 'get_taxpayer', 'search_all', 'get_beyanname_config',
+      'get_gundem', 'check_official_gazette', 'research_official_sources', 'http_get', 'summarize_with_claude',
+      'get_accounting_reference', 'get_tax_calendar',
+      'search_ai_memory', 'save_ai_memory', 'create_pending_action',
     ],
     onayNoktalari: ['Mükellefe mevzuat bildirimi'],
-    tetikler: ['her sabah 07:00 (Resmî Gazete)', 'sahip komutu'],
+    tetikler: ['sahip komutu / Koordinatör görev metni (portal)', 'her sabah 07:30 Resmî Gazete taraması — planlandı'],
     kimlikKlasoru: klasor('mevzuat'),
   },
   {
@@ -245,10 +280,11 @@ export const AJAN_TANIMLARI: AjanTanimi[] = [
     model: 'sonnet',
     araclar: [
       ...MUKELLEF_OKU, ...HAFIZA, ...MALI_OKU, 'get_kdv_summary', 'list_beyan_kayitlari', 'get_beyan_ozet', 'get_cari_hareketler',
+      'list_earsiv_invoices', // nakit satış oranı: SATIS e-arşiv + cari ödeme yöntemi dağılımı
       'get_collection_risk_summary', 'create_pending_action',
     ],
     onayNoktalari: ['Risk puanının mükellefe iletimi'],
-    tetikler: ['aylık (beyanname sonrası)', 'sahip komutu'],
+    tetikler: ['sahip komutu / Koordinatör görev metni (portal)', 'aylık (KDV beyanı sonrası) / çeyreklik tam kart — planlandı'],
     kimlikKlasoru: klasor('risk'),
   },
   {
@@ -259,12 +295,13 @@ export const AJAN_TANIMLARI: AjanTanimi[] = [
     model: 'sonnet',
     araclar: [
       ...MUKELLEF_OKU, 'get_my_profile', 'get_my_work_status', 'get_my_documents', 'get_my_open_tasks', 'get_my_recent_messages',
-      'get_my_kdv', 'get_my_invoices', 'get_my_beyanname', 'get_my_balance', 'get_my_tebligat', 'get_my_sgk', 'get_my_vergi_takvimi',
-      'list_etebligat', 'get_collection_risk_summary', 'search_ai_memory', 'save_ai_memory',
+      'get_my_kdv', 'get_my_invoices', 'get_my_beyanname', 'get_my_balance', 'get_my_tebligat', 'get_my_sgk', 'get_my_isletme_hesap_ozeti', 'get_my_vergi_takvimi',
+      'list_etebligat', 'get_collection_risk_summary', 'get_cari_hareketler', 'list_documents', 'list_tasks', 'get_tax_calendar',
+      'search_ai_memory', 'save_ai_memory',
       'send_whatsapp_template', 'send_whatsapp_freeform', 'send_sms', 'send_email', 'create_pending_action', ...ONAY,
     ],
     onayNoktalari: ['Toplu mesaj', 'Mükellefe tek mesaj (kuru testte gitmez)'],
-    tetikler: ['gelen WhatsApp mesajı', 'tahsilat takvimi', 'koordinatör'],
+    tetikler: ['sahip komutu / Koordinatör görev metni (portal)', 'gelen WhatsApp mesajı (bugün mevcut WhatsApp botu cevaplar; ekibe bağlanması planlandı)', 'takvim hatırlatması — planlandı'],
     kimlikKlasoru: klasor('musteri'),
   },
 ];

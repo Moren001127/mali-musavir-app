@@ -677,7 +677,7 @@ export const MOREN_AI_TOOLS: ToolDefinition[] = [
   {
     name: 'get_taxpayer_work_status',
     description:
-      'Tek mükellef için beyanname/fatura/KDV/LUCA/Mihsap/cari/banka hazırlık durumunu ve eksikleri özetler. ' +
+      'Tek mükellef için beyanname/fatura/KDV/LUCA/cari/banka hazırlık durumunu ve eksikleri özetler. veri.faturaMerkezi = Fatura Merkezi dönem sayımları (toplam/bekleyen/onaylı/Luca/okunmadı/çelişki/mükerrer); veri.mihsapFatura yalnız eski Mihsap sayısı. ' +
       '"ABC hazır mı?", "Bu mükellefte ne eksik?", "KDV öncesi durumu ne?" sorularında kullan.',
     input_schema: {
       type: 'object',
@@ -972,3 +972,173 @@ export const MOREN_AI_TOOLS: ToolDefinition[] = [
     },
   },
 ];
+
+// =====================================================================================
+// FATURA MERKEZİ AJAN ARAÇLARI (fm_*) — PLAN/15 Faz 5
+//
+// Ekip'teki Fatura Muhasebecisi'nin Fatura İşleme Merkezi'ne (InvoiceAccountingDocument)
+// bakan araç seti. MOREN_AI_TOOLS'a KASITLI OLARAK EKLENMEDİ: genel WhatsApp/portal botu
+// bu araçları görmez (orada list_fatura_merkezi kalır). Ekip runner'ı + araç defteri bu
+// listeyi ayrıca yükler; çalıştırıcı ToolExecutorService.execute içindedir (fm_* dalları).
+// Kademeler arac-defteri.ts'te: fm_belge_listele/fm_belge_detay/fm_donem_ozeti/
+// fm_uyumsuzluklar/fm_hesap_plani_ara = oku; fm_hesap_ata/fm_ai_ile_oku/fm_isaretle/
+// fm_onayla = portal_yaz; fm_luca_gonder = luca_yaz.
+// =====================================================================================
+export const FATURA_MERKEZI_AJAN_ARACLARI: ToolDefinition[] = [
+  {
+    name: 'fm_belge_listele',
+    description:
+      'Fatura Merkezi belge listesi (mükellef + dönem). Her belge için: id, belgeNo, tarih, karşı taraf, tutar, KDV, tevkifat var mı, ' +
+      'durum, uyarılar ve hesap satırı özeti. durum süzgeci: bekleyen | eslesti (bekleyen + tüm matrah hesapları dolu) | kod_eksik ' +
+      '(bekleyen + boş hesap satırı) | celiski (doğrulama sorunu var) | demirbas | okunmadi (ham/okunmamış) | onaylandi | luca (Luca\'ya gitti). ' +
+      'yon: alis | satis. Dönem YYYY-MM. Belge açmak için dönen id ile fm_belge_detay çağır.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        taxpayerId: { type: 'string', description: 'Mükellef ID (list_taxpayers ile bul).' },
+        donem: { type: 'string', description: 'Dönem, YYYY-MM (örn. 2026-08). Fatura tarihine göre.' },
+        yon: { type: 'string', enum: ['alis', 'satis'], description: 'Alış / satış süzgeci (isteğe bağlı).' },
+        durum: {
+          type: 'string',
+          enum: ['bekleyen', 'eslesti', 'kod_eksik', 'celiski', 'demirbas', 'okunmadi', 'onaylandi', 'luca'],
+          description: 'Durum süzgeci (isteğe bağlı; boşsa hepsi).',
+        },
+        limit: { type: 'number', description: 'En fazla belge (varsayılan 50, en çok 200).' },
+      },
+      required: ['taxpayerId', 'donem'],
+    },
+  },
+  {
+    name: 'fm_belge_detay',
+    description:
+      'Tek belgenin tam kartı: taraflar, kalemler, KDV kırılımı (oran/matrah/tutar), tevkifat (kod/oran/tutar), iade işareti, ' +
+      'hesap satırları (satır no, grup, hesap kodu + adı, borç/alacak, kaynak: AI | KULLANICI | HAFIZA | AJAN | KURAL | VKN), doğrulama sonucu ve ' +
+      'uyarılar (kod + mesaj), muhasebe gerekçesi, işletme defteri sınıfı (varsa), ajan işaretleri. Hesap atamadan önce MUTLAKA bunu oku.',
+    input_schema: {
+      type: 'object',
+      properties: { belgeId: { type: 'string', description: 'Belge id (fm_belge_listele\'den).' } },
+      required: ['belgeId'],
+    },
+  },
+  {
+    name: 'fm_donem_ozeti',
+    description:
+      'Mükellef + dönem sayaçları: toplam, bekleyen, eşleşti, kod eksik, çelişki, demirbaş, okunmadı, onaylı, Luca\'ya gitti, Luca hatalı, ' +
+      'mükerrer, tevkifatlı; alış/satış kırılımı; hesap planı var mı; defter türü (bilanço/işletme). Dönem işine BUNUNLA başla.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        taxpayerId: { type: 'string' },
+        donem: { type: 'string', description: 'YYYY-MM' },
+      },
+      required: ['taxpayerId', 'donem'],
+    },
+  },
+  {
+    name: 'fm_uyumsuzluklar',
+    description:
+      'Dönemdeki sorunlu belgeler gruplu: icerikHesapUyumsuz (hesap adı içeriğe uymuyor / grup hesabı / sahiplik ters), tutarTutarsiz (denge, toplam, KDV aritmetiği, eksik tutar), ' +
+      'mukerrer, tevkifatSupheli (tevkifat eksik / net tutar / şüpheli), demirbas, iade, okunmadi. Her madde: belgeId, belgeNo, karşı taraf, tutar, uyarı kodu + mesaj. ' +
+      'Sonra her belgeyi fm_belge_detay ile aç.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        taxpayerId: { type: 'string' },
+        donem: { type: 'string', description: 'YYYY-MM' },
+        limit: { type: 'number', description: 'Grup başına en fazla madde (varsayılan 30).' },
+      },
+      required: ['taxpayerId', 'donem'],
+    },
+  },
+  {
+    name: 'fm_hesap_plani_ara',
+    description:
+      'Bilanço mükellefinde Luca hesap planından aday hesaplar (yalnız YAPRAK hesaplar; grup hesaba fiş kesilmez): kod, ad, seviye. ' +
+      'İşletme defterinde plan YOKTUR: Kayıt Türü + alt tür listesi döner (yon\'a göre gider/gelir). sorgu: hesap adı/kodu ya da içerik kelimesi (örn. "bakım", "770", "akaryakıt").',
+    input_schema: {
+      type: 'object',
+      properties: {
+        taxpayerId: { type: 'string' },
+        sorgu: { type: 'string', description: 'Aranan kelime / kod öneki.' },
+        yon: { type: 'string', enum: ['alis', 'satis'], description: 'İşletme defterinde gider (alis) / gelir (satis) listesi; bilançoda etkisiz.' },
+        limit: { type: 'number', description: 'Varsayılan 30.' },
+      },
+      required: ['taxpayerId', 'sorgu'],
+    },
+  },
+  {
+    name: 'fm_hesap_ata',
+    description:
+      'Belgenin bir hesap satırına GEREKÇELİ hesap önerisi yazar (kaynak = AJAN). KULLANICI kaynaklı satır ASLA ezilmez (hata döner). ' +
+      'Bilanço: hesapKodu (plandaki yaprak kod). İşletme defteri: kayitTuruKod (+ kayitAltKod) — hesap kodu yok. ' +
+      'satir: fm_belge_detay\'daki satır no (sayı) ya da grup adı (matrah | cari | vergi | vergi-sorumlu); grup adı birden çok satıra denk gelirse sayı zorunlu. ' +
+      'Hesap adı içerikle uyuşmuyorsa ÇAĞIRMA — boş bırak ve fm_isaretle(incele) ile onaya sun. Yazdıktan sonra belge yeniden doğrulanır; sonuç döner.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        belgeId: { type: 'string' },
+        satir: { type: 'string', description: 'Satır no (örn. "0") ya da grup adı (matrah/cari/vergi/vergi-sorumlu). İşletme defterinde gerekmez.' },
+        hesapKodu: { type: 'string', description: 'Bilanço: plandaki yaprak hesap kodu (örn. 770.01.003).' },
+        kayitTuruKod: { type: 'string', description: 'İşletme defteri: Kayıt Türü kodu (fm_hesap_plani_ara\'dan).' },
+        kayitAltKod: { type: 'string', description: 'İşletme defteri: Kayıt alt tür kodu (varsa).' },
+        gerekce: { type: 'string', description: 'Tek cümle: içerik → hesap adı neden uyuşuyor.' },
+      },
+      required: ['belgeId', 'gerekce'],
+    },
+  },
+  {
+    name: 'fm_ai_ile_oku',
+    description:
+      'Okunmamış / ham belgeleri sunucu kuyruğunda AI ile okutur (KDV kırılımı + hesap satırı üretir). Hemen döner (kuyruğa alındı sayısı); ' +
+      'sonucu birkaç dakika sonra fm_belge_listele ile kontrol et. Onaylı belge atlanır.',
+    input_schema: {
+      type: 'object',
+      properties: { belgeIdler: { type: 'array', items: { type: 'string' }, description: 'Belge id listesi (en çok 100).' } },
+      required: ['belgeIdler'],
+    },
+  },
+  {
+    name: 'fm_isaretle',
+    description:
+      'Belgeye ajan işareti + not koyar ve onay bekleyen listesine düşürür (durum NEEDS_REVIEW). etiket: demirbas | tevkifat_supheli | incele | mukerrer_supheli | iade. ' +
+      'Belgeyi DEĞİŞTİRMEZ, hesap yazmaz; sahibin bakması için işaretler.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        belgeId: { type: 'string' },
+        etiket: { type: 'string', enum: ['demirbas', 'tevkifat_supheli', 'incele', 'mukerrer_supheli', 'iade'] },
+        not: { type: 'string', description: 'Tek satır: neden şüpheli / sahipten ne bekleniyor.' },
+      },
+      required: ['belgeId', 'etiket', 'not'],
+    },
+  },
+  {
+    name: 'fm_onayla',
+    description:
+      'Belgeyi onaylar (APPROVED → Luca kuyruğu). Fatura ajanına KAPALIDIR — onay sahibindir. Yalnız sahip portaldan onaylar.',
+    input_schema: {
+      type: 'object',
+      properties: { belgeId: { type: 'string' } },
+      required: ['belgeId'],
+    },
+  },
+  {
+    name: 'fm_luca_gonder',
+    description:
+      'ONAYLI belgeleri Luca\'ya toplu fiş (Excel Fiş Aktarım) olarak gönderir — mevcut batchPostToLuca kuyruğu. Yalnız APPROVED + doğrulaması OK belgeler gider; ' +
+      'dengesiz/eksik kodlu belge atlanır. Kuru testte ÇALIŞMAZ; sahip "canlı" demeden çağırma.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        taxpayerId: { type: 'string' },
+        belgeIdler: { type: 'array', items: { type: 'string' }, description: 'Gönderilecek onaylı belge id\'leri. Boşsa dönem + yön ile seçilir.' },
+        donem: { type: 'string', description: 'YYYY-MM (belgeIdler boşsa).' },
+        yon: { type: 'string', enum: ['alis', 'satis'] },
+      },
+      required: ['taxpayerId'],
+    },
+  },
+];
+
+/** fm_* araç adları (runner + defter + çalıştırıcı için tek kaynak). */
+export const FM_AJAN_ARAC_ADLARI: string[] = FATURA_MERKEZI_AJAN_ARACLARI.map((t) => t.name);
