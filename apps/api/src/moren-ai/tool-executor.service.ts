@@ -63,7 +63,7 @@ export class ToolExecutorService {
   async execute(
     name: string,
     input: any,
-    ctx: { tenantId: string; userId?: string | null; taxpayerId?: string | null },
+    ctx: { tenantId: string; userId?: string | null; taxpayerId?: string | null; signal?: AbortSignal },
   ): Promise<any> {
     try {
       switch (name) {
@@ -145,6 +145,19 @@ export class ToolExecutorService {
         case 'fm_onayla':
         case 'fm_luca_gonder':
           return this.fmAjanAraci(name, input, ctx);
+        // MALİ TABLO YARDIMCILARI + EKİP İŞ ZİNCİRİ (PLAN/17 §3 — 2026-09-13)
+        case 'mali_donemler_listele':  return this.maliDonemlerListele(input, ctx);
+        case 'mali_yorum_oku':         return this.maliYorumOku(input, ctx);
+        case 'kdv_kontrol_oturum_bul_olustur': return this.kdvKontrolOturumBulOlustur(input, ctx);
+        case 'kdv_kontrol_luca_cek':   return this.kdvKontrolLucaCek(input, ctx);
+        case 'luca_is_bekle':          return this.lucaIsBekle(input, ctx);
+        case 'kdv_kontrol_fatura_bagla': return this.kdvKontrolFaturaBagla(input, ctx);
+        case 'kdv_kontrol_ocr_baslat': return this.kdvKontrolOcrBaslat(input, ctx);
+        case 'kdv_kontrol_ocr_bekle':  return this.kdvKontrolOcrBekle(input, ctx);
+        case 'kdv_kontrol_eslestir':   return this.kdvKontrolEslestir(input, ctx);
+        case 'kdv_kontrol_sonuc_satirlari': return this.kdvKontrolSonucSatirlari(input, ctx);
+        case 'ekip_ajan_baslat':       return this.ekipAjanBaslat(input, ctx);
+        case 'ekip_is_durum':          return this.ekipIsDurum(input, ctx);
         default:
           return { error: `Bilinmeyen tool: ${name}` };
       }
@@ -1002,6 +1015,7 @@ export class ToolExecutorService {
       select: {
         id: true, type: true, companyName: true, firstName: true, lastName: true,
         taxNumber: true, taxOffice: true, startDate: true, endDate: true, isActive: true,
+        defterTuru: true, mihsapDefterTuru: true,
       },
     });
 
@@ -1014,6 +1028,7 @@ export class ToolExecutorService {
         select: {
           id: true, type: true, companyName: true, firstName: true, lastName: true,
           taxNumber: true, taxOffice: true, startDate: true, endDate: true, isActive: true,
+          defterTuru: true, mihsapDefterTuru: true,
         },
       });
       rows = this.filterTaxpayerCandidates(fallback, search).slice(0, limit);
@@ -1038,8 +1053,24 @@ export class ToolExecutorService {
         baslangicTarihi: t.startDate?.toISOString().slice(0, 10),
         bitisTarihi: t.endDate?.toISOString().slice(0, 10),
         aktif: t.isActive,
+        // PLAN/17 §0 bulgu 6 (2026-09-13): defter türü ajana görünsün — işletme/bilanço dalı buradan seçilir.
+        defterTuru: this.defterTuruNormalize(t),
       })),
     };
+  }
+
+  /**
+   * Defter türü tek değere indirgenir: BILANCO | ISLETME | null.
+   * Öncelik taxpayer.defterTuru; boşsa Mihsap alanı (BILANCO | DEFTER_BEYAN | BASIT → DEFTER_BEYAN/BASIT = ISLETME).
+   * Canlı 2026-09-13: 87 BILANCO/BILANCO, 74 ISLETME/DEFTER_BEYAN, 1 ISLETME/BASIT, 13 boş.
+   */
+  private defterTuruNormalize(t: { defterTuru?: string | null; mihsapDefterTuru?: string | null } | null | undefined): 'BILANCO' | 'ISLETME' | null {
+    const oz = String(t?.defterTuru || '').trim().toUpperCase();
+    if (oz === 'BILANCO' || oz === 'ISLETME') return oz;
+    const mh = String(t?.mihsapDefterTuru || '').trim().toUpperCase();
+    if (mh === 'BILANCO') return 'BILANCO';
+    if (mh === 'DEFTER_BEYAN' || mh === 'BASIT' || mh === 'ISLETME') return 'ISLETME';
+    return null;
   }
 
   private async getTaxpayer(input: any, ctx: { tenantId: string }) {
@@ -1075,6 +1106,9 @@ export class ToolExecutorService {
       aktif: t.isActive,
       lucaSlug: t.lucaSlug,
       mihsapId: t.mihsapId,
+      // PLAN/17 §0 bulgu 6 (2026-09-13): defter türü — KDV Kontrol oturum türü / İHÖ-GT dalı buna göre.
+      defterTuru: this.defterTuruNormalize(t),
+      mihsapDefterTuru: t.mihsapDefterTuru ?? null,
       kontaklar: t.contacts.map((c) => ({
         ad: c.name, unvan: c.title, email: c.email, telefon: c.phone, birincil: c.isPrimary,
       })),
@@ -1288,9 +1322,12 @@ export class ToolExecutorService {
   // ------------------------------------------------------------
   private async getGelirTablosu(input: any, ctx: { tenantId: string }) {
     const donemler = this.financialPeriodCandidates(input.donem, input?.yil);
+    // PLAN/17 R2 adım 3 (2026-09-13): aynı dönemde birden çok kopya varsa KİLİTLİ olan tercih edilir
+    // (canlıda 12 mükellef×dönem çiftinde çoklu GT; eski sıralama yalnız createdAt desc → kilitsiz taslak dönüyordu).
+    const gtWhere = { tenantId: ctx.tenantId, taxpayerId: input.taxpayerId, donem: donemler.length ? { in: donemler } : input.donem };
     const gt = await this.prisma.gelirTablosu.findFirst({
-      where: { tenantId: ctx.tenantId, taxpayerId: input.taxpayerId, donem: donemler.length ? { in: donemler } : input.donem },
-      orderBy: { createdAt: 'desc' },
+      where: gtWhere,
+      orderBy: [{ locked: 'desc' }, { createdAt: 'desc' }],
     });
     if (!gt) {
       // 2026-09-12: "bulunamadı" tek başına ajanı boşlukta bırakıyordu → mevcut dönemler + biçim eklendi.
@@ -1317,6 +1354,22 @@ export class ToolExecutorService {
       `• Dönem Net Kârı: ${this.fmtTL(this.toNum(gt.donemNetKari))}${this.pct(this.toNum(gt.donemNetKari), gtNs)}`,
     ].join('\n');
 
+    // Kopya sayımı + geçici vergi hesabı (GelirTablosuService.getGelirTablosu türetir; mizan modülü kilitli → yalnız çağrılır).
+    const kopyalar: Array<{ id: string; locked: boolean }> = await this.prisma.gelirTablosu
+      .findMany({ where: gtWhere, select: { id: true, locked: true } })
+      .catch(() => [] as Array<{ id: string; locked: boolean }>);
+    let geciciVergiHesabi: any = null;
+    try {
+      const { GelirTablosuService } = await import('../mizan/gelir-tablosu.service');
+      const gtSvc: any = this.moduleRef?.get?.(GelirTablosuService, { strict: false });
+      if (gtSvc?.getGelirTablosu) {
+        const detay = await gtSvc.getGelirTablosu(gt.id, ctx.tenantId);
+        geciciVergiHesabi = detay?.geciciVergiHesabi ?? null;
+      }
+    } catch (e: any) {
+      this.logger.warn(`get_gelir_tablosu geçici vergi hesabı alınamadı: ${e?.message || e}`);
+    }
+
     return {
       donem: gt.donem,
       donemTipi: gt.donemTipi,
@@ -1324,6 +1377,13 @@ export class ToolExecutorService {
       donemBaslangic: gt.donemBaslangic?.toISOString().slice(0, 10),
       donemBitis: gt.donemBitis?.toISOString().slice(0, 10),
       kilitli: gt.locked,
+      kilitTarihi: gt.lockedAt ? gt.lockedAt.toISOString().slice(0, 10) : null,
+      kopyaSayisi: kopyalar.length || 1,
+      kilitliKopyaVar: kopyalar.some((k) => k.locked) || gt.locked === true,
+      mizanId: gt.mizanId ?? null,
+      duzeltmeler: gt.duzeltmeler ?? null,
+      geciciVergiHesabi,
+      kaynak: `portal GT ${gt.id}${gt.locked ? ` (kilitli${gt.lockedAt ? ' ' + gt.lockedAt.toISOString().slice(0, 10) : ''})` : ' (kilitsiz taslak)'}`,
       // Hazır WhatsApp şablonu — bot bunu AYNEN gönderir, altına 1-2 cümle yorum ekler.
       whatsappOzet: gtWhatsappOzet,
       kalemler: {
@@ -3314,9 +3374,15 @@ export class ToolExecutorService {
       (this.prisma as any).bankaEkstreKaydi.findMany({ where: { tenantId: ctx.tenantId, taxpayerId, donem: period } }),
       (this.prisma as any).mihsapInvoice.count({ where: { tenantId: ctx.tenantId, mukellefId: taxpayerId, donem: period } }).catch(() => 0),
       (this.prisma as any).earsivFatura.count({ where: { tenantId: ctx.tenantId, taxpayerId, donem: period } }).catch(() => 0),
-      (this.prisma as any).kdvControlSession.findMany({ where: { tenantId: ctx.tenantId, taxpayerId, period }, orderBy: { createdAt: 'desc' }, take: 3 }).catch(() => []),
+      // PLAN/17 §0 bulgu 5 (2026-09-13): oturum alanı `periodLabel` ('YYYY/MM'); eski kod var olmayan `period` ile arıyordu → hep 0.
+      (this.prisma as any).kdvControlSession.findMany({ where: { tenantId: ctx.tenantId, taxpayerId, periodLabel: this.periodLabelSlash(period) }, orderBy: { createdAt: 'desc' }, take: 6 }).catch(() => []),
       (this.prisma as any).beyanKaydi.findMany({ where: { tenantId: ctx.tenantId, taxpayerId, donem: period }, take: 10 }).catch(() => []),
-      (this.prisma as any).mizan.findFirst({ where: { tenantId: ctx.tenantId, taxpayerId, donem: period }, orderBy: { createdAt: 'desc' } }).catch(() => null),
+      // Mizan çeyrek etiketiyle durur ('2026-06' ↔ '2026-Q2'); e-Defter kaynaklı mizan sahibin gördüğü mizan değildir, süzülür; kilitli önce.
+      (this.prisma as any).mizan.findFirst({
+        where: { tenantId: ctx.tenantId, taxpayerId, donem: { in: this.mizanDonemAdaylari(period) }, kaynak: { not: 'EDEFTER' } },
+        orderBy: [{ locked: 'desc' }, { createdAt: 'desc' }],
+        select: { id: true, donem: true, locked: true, kaynak: true, donemTipi: true },
+      }).catch(() => null),
       (this.prisma as any).cariHareket.findMany({ where: { tenantId: ctx.tenantId, taxpayerId }, select: { tip: true, tutar: true } }).catch(() => []),
       (this.prisma as any).agentEvent.findMany({ where: { tenantId: ctx.tenantId }, orderBy: { ts: 'desc' }, take: 100 }).catch(() => []),
       (this.prisma as any).aiMemory?.findMany
@@ -3342,7 +3408,9 @@ export class ToolExecutorService {
     if (!s.evraklarGeldi) eksikler.push('evrak gelmedi');
     if (s.evraklarGeldi && !s.evraklarIslendi) eksikler.push('evrak işlenmedi');
     if (!s.kdvKontrolEdildi && !(s.indirilecekKdvKontrol && s.hesaplananKdvKontrol && s.eArsivKontrol)) eksikler.push('KDV kontrol eksik');
+    // "LUCA mizan yok" yalnız KİLİTLİ (e-Defter dışı) mizan yoksa; kilitsiz taslak varsa ayrı uyarı.
     if (!mizan) eksikler.push('LUCA mizan yok');
+    else if (!mizan.locked) eksikler.push('mizan var ama kilitsiz (taslak)');
     if (!bankAccounts.length) eksikler.push('banka hesabı yok');
     else if (!bankRecords.length || bankRecords.some((r: any) => !r.ekstreGeldi || !r.ekstreIslendi)) eksikler.push('banka ekstresi eksik/işlenmedi');
     if (!beyanlar.length && !s.beyannameVerildi) eksikler.push('beyan kaydı yok');
@@ -3360,8 +3428,10 @@ export class ToolExecutorService {
         faturaMerkezi,
         lucaEarsivFatura: earsiv,
         kdvKontrolOturumu: kdvSessions.length,
+        kdvKontrolOturumlari: (kdvSessions || []).map((k: any) => ({ sessionId: k.id, type: k.type, status: k.status, periodLabel: k.periodLabel, kilitli: k.status === 'COMPLETED' })),
         beyanKaydi: beyanlar.length,
         mizanVar: !!mizan,
+        mizan: mizan ? { id: mizan.id, donem: mizan.donem, kilitli: !!mizan.locked, kaynak: mizan.kaynak, donemTipi: mizan.donemTipi } : null,
         bankaHesapSayisi: bankAccounts.length,
         cariBakiye,
         hafizaNotlari: memories.map((m: any) => ({ title: m.title, content: m.content, tags: m.tags })),
@@ -4005,6 +4075,809 @@ export class ToolExecutorService {
         aiMaliyetUsd: faturaCostUsd,
         birimMaliyetUsd: successfulInvoices > 0 ? faturaCostUsd / successfulInvoices : null,
       },
+    };
+  }
+  // =====================================================================================
+  // EKİP İŞ ZİNCİRİ ARAÇLARI — PLAN/17 §3 (2026-09-13)
+  //
+  // KDV Kontrol / Mizan / Luca servisleri KİLİTLİ modüllerdir: burada yalnız ÇAĞRILIR
+  // (moduleRef.get(..., {strict:false}); KdvControlModule'ü MorenAiModule'e almak döngü yaratır).
+  // Bekleme araçları sunucu tarafında 5 sn döngü kurar (≤60 sn/çağrı): runner'da uyku aracı yok.
+  // Kademe/kuru test kesimi EKİP runner + arac-defteri'ndedir; burası yalnız çalıştırır.
+  // =====================================================================================
+
+  /** 'YYYY-MM' | 'YYYY/MM' | 'YYYY/M' → 'YYYY/MM' (KDV Kontrol oturum etiketi). Tanınmazsa null. */
+  private periodLabelSlash(v: any): string | null {
+    const m = String(v || '').trim().match(/^(\d{4})[\s/._-](\d{1,2})$/);
+    if (!m) return null;
+    const ay = Number(m[2]);
+    if (ay < 1 || ay > 12) return null;
+    return `${m[1]}/${String(ay).padStart(2, '0')}`;
+  }
+
+  /**
+   * Aylık dönem için mizan etiket adayları: financialPeriodCandidates (çeyrek sonu ayı ↔ 'YYYY-Qn') + ayın
+   * içinde bulunduğu çeyrek ('2026-08' → '2026-Q3'; çeyrek mizanı ay kapanmadan da oluşmuş olabilir).
+   */
+  private mizanDonemAdaylari(period: string): string[] {
+    const out = new Set<string>(this.financialPeriodCandidates(period));
+    const m = String(period || '').match(/^(\d{4})-(\d{2})$/);
+    if (m) out.add(`${m[1]}-Q${Math.ceil(Number(m[2]) / 3)}`);
+    return Array.from(out);
+  }
+
+  /** Test edilebilir uyku (spec jest.spyOn ile kısaltır). İptal sinyali gelirse erken döner. */
+  private bekle(ms: number, signal?: AbortSignal): Promise<void> {
+    if (signal?.aborted) return Promise.resolve();
+    return new Promise((resolve) => {
+      const t = setTimeout(() => {
+        signal?.removeEventListener?.('abort', bitir);
+        resolve();
+      }, ms);
+      const bitir = () => {
+        clearTimeout(t);
+        resolve();
+      };
+      signal?.addEventListener?.('abort', bitir, { once: true });
+    });
+  }
+
+  private bekleSaniye(v: any, varsayilan = 60, tavan = 60): number {
+    const n = Number(v);
+    if (!Number.isFinite(n) || n <= 0) return varsayilan;
+    return Math.min(Math.floor(n), tavan);
+  }
+
+  /** Kilitli modül servisini dinamik çöz (getKdv1OnHazirlik deseni); yoksa null. */
+  private async kdvKontrolServisi(): Promise<any> {
+    try {
+      const { KdvControlService } = await import('../kdv-control/kdv-control.service');
+      return this.moduleRef?.get?.(KdvControlService, { strict: false }) || null;
+    } catch (e: any) {
+      this.logger.warn(`KdvControlService çözülemedi: ${e?.message || e}`);
+      return null;
+    }
+  }
+
+  private async lucaServisi(): Promise<any> {
+    try {
+      const { LucaService } = await import('../luca/luca.service');
+      return this.moduleRef?.get?.(LucaService, { strict: false }) || null;
+    } catch (e: any) {
+      this.logger.warn(`LucaService çözülemedi: ${e?.message || e}`);
+      return null;
+    }
+  }
+
+  /**
+   * Oturum açan kullanıcı (createdBy zorunlu — schema KdvControlSession.createdBy String).
+   * ctx.userId yoksa (cron/Koordinatör yolu) tenant sahibi: MOREN_OWNER_EMAIL / MOREN_BUTCE_OWNER_EMAIL
+   * (OwnerOnlyGuard ile aynı sıra) → yoksa ADMIN rollü ilk aktif kullanıcı → yoksa en eski aktif kullanıcı.
+   */
+  private async oturumKullaniciId(ctx: { tenantId: string; userId?: string | null }): Promise<string | null> {
+    if (ctx.userId) return ctx.userId;
+    const user = (this.prisma as any).user;
+    if (!user?.findFirst) return null;
+    const ownerEmail = String(process.env.MOREN_BUTCE_OWNER_EMAIL || process.env.MOREN_OWNER_EMAIL || '').trim().toLowerCase();
+    if (ownerEmail) {
+      const sahip = await user
+        .findFirst({ where: { tenantId: ctx.tenantId, isActive: true, email: { equals: ownerEmail, mode: 'insensitive' } }, select: { id: true } })
+        .catch(() => null);
+      if (sahip?.id) return sahip.id;
+    }
+    const admin = await user
+      .findFirst({
+        where: { tenantId: ctx.tenantId, isActive: true, userRoles: { some: { role: { name: { in: ['OWNER', 'ADMIN'] } } } } },
+        orderBy: { createdAt: 'asc' },
+        select: { id: true },
+      })
+      .catch(() => null);
+    if (admin?.id) return admin.id;
+    const ilk = await user
+      .findFirst({ where: { tenantId: ctx.tenantId, isActive: true }, orderBy: { createdAt: 'asc' }, select: { id: true } })
+      .catch(() => null);
+    return ilk?.id || null;
+  }
+
+  /** Defter türünden oturum türleri (R1 dallar). */
+  private kdvOturumTurleri(defterTuru: 'BILANCO' | 'ISLETME' | null): Array<'KDV_191' | 'KDV_391' | 'ISLETME_GIDER' | 'ISLETME_GELIR'> {
+    if (defterTuru === 'BILANCO') return ['KDV_191', 'KDV_391'];
+    if (defterTuru === 'ISLETME') return ['ISLETME_GIDER', 'ISLETME_GELIR'];
+    return [];
+  }
+
+  /** NestJS HttpException → {status, mesaj}; düz hata → {status:null}. */
+  private hataBilgisi(e: any): { status: number | null; mesaj: string } {
+    const status = typeof e?.getStatus === 'function' ? e.getStatus() : typeof e?.status === 'number' ? e.status : null;
+    const r = typeof e?.getResponse === 'function' ? e.getResponse() : null;
+    const mesaj = String((r && typeof r === 'object' ? (r as any).message : r) || e?.message || e || 'bilinmeyen hata');
+    return { status, mesaj: Array.isArray(mesaj) ? mesaj.join('; ') : mesaj };
+  }
+
+  private async maliDonemlerListele(input: any, ctx: { tenantId: string; taxpayerId?: string | null }) {
+    const taxpayerId = String(input?.taxpayerId || ctx.taxpayerId || '').trim();
+    if (!taxpayerId) return { ok: false, error: 'taxpayerId gerekli (list_taxpayers ile bul).' };
+    const where = { tenantId: ctx.tenantId, taxpayerId };
+    const tarih = (d: any) => (d instanceof Date ? d.toISOString().slice(0, 10) : d ? String(d).slice(0, 10) : null);
+    const [gtler, bilancolar, mizanlar] = await Promise.all([
+      this.prisma.gelirTablosu
+        .findMany({ where, select: { id: true, donem: true, donemTipi: true, locked: true, lockedAt: true, mizanId: true, createdAt: true }, orderBy: [{ donem: 'desc' }, { locked: 'desc' }, { createdAt: 'desc' }], take: 100 })
+        .catch(() => [] as any[]),
+      this.prisma.bilanco
+        .findMany({ where, select: { id: true, donem: true, donemTipi: true, locked: true, lockedAt: true, mizanId: true, createdAt: true }, orderBy: [{ donem: 'desc' }, { locked: 'desc' }, { createdAt: 'desc' }], take: 100 })
+        .catch(() => [] as any[]),
+      // e-Defter kaynaklı mizanlar sahibin Mizan sayfasında gördüğü mizan değildir → süzülür (canlı: 125 EDEFTER / 58 kilitli EXCEL).
+      this.prisma.mizan
+        .findMany({ where: { ...where, kaynak: { not: 'EDEFTER' } }, select: { id: true, donem: true, donemTipi: true, locked: true, lockedAt: true, kaynak: true, status: true, createdAt: true }, orderBy: [{ donem: 'desc' }, { locked: 'desc' }, { createdAt: 'desc' }], take: 100 })
+        .catch(() => [] as any[]),
+    ]);
+    const satir = (tur: 'GELIR_TABLOSU' | 'BILANCO' | 'MIZAN', r: any) => ({
+      tur,
+      donem: r.donem,
+      donemTipi: r.donemTipi ?? null,
+      id: r.id,
+      kilitli: !!r.locked,
+      kilitTarihi: tarih(r.lockedAt),
+      kaynak: tur === 'MIZAN' ? r.kaynak ?? null : r.mizanId ? `mizan ${r.mizanId}` : 'manuel/bilinmiyor',
+      ...(tur === 'MIZAN' ? { status: r.status ?? null } : {}),
+      createdAt: tarih(r.createdAt),
+    });
+    const liste = [
+      ...(gtler as any[]).map((r) => satir('GELIR_TABLOSU', r)),
+      ...(bilancolar as any[]).map((r) => satir('BILANCO', r)),
+      ...(mizanlar as any[]).map((r) => satir('MIZAN', r)),
+    ].sort((a, b) => String(b.donem).localeCompare(String(a.donem)) || Number(b.kilitli) - Number(a.kilitli) || String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+    // Aynı tür+dönemde birden çok kopya → ajan kilitli olanı seçsin diye işaret.
+    const kopya: Record<string, number> = {};
+    for (const r of liste) kopya[`${r.tur}|${r.donem}`] = (kopya[`${r.tur}|${r.donem}`] || 0) + 1;
+    return {
+      ok: true,
+      taxpayerId,
+      sayim: { gelirTablosu: gtler.length, bilanco: bilancolar.length, mizan: mizanlar.length, toplam: liste.length },
+      donemler: liste.map((r) => ({ ...r, kopyaSayisi: kopya[`${r.tur}|${r.donem}`] })),
+      not:
+        liste.length === 0
+          ? 'HAZIR DEĞİL: portalda mali tablo yok — sahip Mizan/Gelir Tablosu sayfasından oluşturmalı (ajan Luca çekimi istemez).'
+          : 'Aynı dönemde birden çok kopya varsa KİLİTLİ olanı oku. Mizan listesinde e-Defter kaynaklılar süzüldü.',
+    };
+  }
+
+  private async maliYorumOku(input: any, ctx: { tenantId: string }) {
+    const kaynak = String(input?.kaynak || '').trim().toUpperCase();
+    const kaynakId = String(input?.kaynakId || '').trim();
+    if (!['MIZAN', 'BILANCO', 'GELIR_TABLOSU', 'IHO'].includes(kaynak)) return { ok: false, error: 'kaynak MIZAN | BILANCO | GELIR_TABLOSU | IHO olmalı.' };
+    if (!kaynakId) return { ok: false, error: 'kaynakId gerekli (get_gelir_tablosu → kayitId, get_mizan → mizanId).' };
+    let svc: any = null;
+    try {
+      const { MaliYorumService } = await import('../mali-yorum/mali-yorum.service');
+      svc = this.moduleRef?.get?.(MaliYorumService, { strict: false });
+    } catch (e: any) {
+      this.logger.warn(`MaliYorumService çözülemedi: ${e?.message || e}`);
+    }
+    if (!svc?.get) return { ok: false, error: 'Mali Yorum servisi kullanılamıyor.' };
+    const row = await svc.get(ctx.tenantId, kaynak, kaynakId);
+    if (!row) return { ok: true, yorum: null, not: 'kayıtlı yorum yok' };
+    return {
+      ok: true,
+      yorum: {
+        ozet: row.ozet,
+        model: row.model,
+        donem: row.donem ?? null,
+        updatedAt: row.updatedAt instanceof Date ? row.updatedAt.toISOString() : row.updatedAt ?? null,
+      },
+      not: 'Sahibin kayıtlı yorumu; ajan yorum üretmez/kaydetmez, çelişkiyi belirtir.',
+    };
+  }
+
+  /** R1 adım 2 — oturumu bul/aç; type boşsa defter türünden iki oturum. */
+  private async kdvKontrolOturumBulOlustur(input: any, ctx: { tenantId: string; userId?: string | null; taxpayerId?: string | null }) {
+    const taxpayerId = String(input?.taxpayerId || ctx.taxpayerId || '').trim();
+    const periodLabel = this.periodLabelSlash(input?.periodLabel || input?.period || input?.donem);
+    if (!taxpayerId) return { ok: false, error: 'taxpayerId gerekli (list_taxpayers ile bul).' };
+    if (!periodLabel) return { ok: false, error: 'periodLabel "YYYY/MM" biçiminde olmalı (örn. 2026/08).' };
+
+    const taxpayer = await this.prisma.taxpayer.findFirst({
+      where: { id: taxpayerId, tenantId: ctx.tenantId },
+      select: { id: true, companyName: true, firstName: true, lastName: true, defterTuru: true, mihsapDefterTuru: true },
+    });
+    if (!taxpayer) return { ok: false, error: 'Mükellef bulunamadı' };
+    const defterTuru = this.defterTuruNormalize(taxpayer);
+
+    const GECERLI = ['KDV_191', 'KDV_391', 'ISLETME_GELIR', 'ISLETME_GIDER'];
+    const istenen = String(input?.type || '').trim().toUpperCase();
+    let turler: string[];
+    if (istenen) {
+      if (!GECERLI.includes(istenen)) return { ok: false, error: `Geçersiz kontrol türü: ${istenen} (KDV_191 | KDV_391 | ISLETME_GELIR | ISLETME_GIDER)` };
+      turler = [istenen];
+    } else {
+      turler = this.kdvOturumTurleri(defterTuru);
+      if (!turler.length) {
+        return { ok: false, error: 'DUR: defter türü tanımsız — mükellef kartından BILANCO/ISLETME seçilmeli (type verilmeden oturum türetilemez).', defterTuru: null };
+      }
+    }
+
+    const svc = await this.kdvKontrolServisi();
+    if (!svc?.findOrCreateSession) return { ok: false, error: 'KDV Kontrol servisi kullanılamıyor.' };
+    const userId = await this.oturumKullaniciId(ctx);
+    if (!userId) return { ok: false, error: 'Oturum açacak kullanıcı bulunamadı (ctx.userId boş, tenant sahibi çözülemedi).' };
+
+    const oturumlar: any[] = [];
+    for (const type of turler) {
+      try {
+        const r = await svc.findOrCreateSession(ctx.tenantId, userId, { type, periodLabel, taxpayerId });
+        const s = r?.session || {};
+        // Yeni oturumda _count yok (createSession include'u yalnız taxpayer) → ayrı sayım.
+        let lucaKayitSayisi = Number(s?._count?.kdvRecords ?? NaN);
+        let faturaSayisi = Number(s?._count?.images ?? NaN);
+        if (!Number.isFinite(lucaKayitSayisi)) lucaKayitSayisi = await this.prisma.kdvRecord.count({ where: { sessionId: s.id } }).catch(() => 0);
+        if (!Number.isFinite(faturaSayisi)) faturaSayisi = await this.prisma.receiptImage.count({ where: { sessionId: s.id } }).catch(() => 0);
+        oturumlar.push({
+          sessionId: s.id,
+          type: s.type || type,
+          status: s.status,
+          yeni: r?.created === true,
+          lucaKayitSayisi,
+          faturaSayisi,
+          kilitli: s.status === 'COMPLETED',
+        });
+      } catch (e: any) {
+        const h = this.hataBilgisi(e);
+        oturumlar.push({ sessionId: null, type, status: null, yeni: false, lucaKayitSayisi: 0, faturaSayisi: 0, kilitli: false, hata: h.mesaj });
+      }
+    }
+    const kilitliler = oturumlar.filter((o) => o.kilitli);
+    return {
+      ok: oturumlar.some((o) => o.sessionId),
+      taxpayerId,
+      mukellef: this.displayName(taxpayer),
+      periodLabel,
+      defterTuru,
+      oturumlar,
+      ...(kilitliler.length
+        ? { uyari: `${kilitliler.map((o) => `${o.type} (${o.sessionId})`).join(', ')} KİLİTLİ (COMPLETED): zincire DEVAM ETME; sahibe "kilitli, açayım mı" diye sor. Kilit açma yalnız sahipte.` }
+        : {}),
+    };
+  }
+
+  /** R1 adım 3 — Luca çekim işi. Luca ajanı çevrimiçi değilse iş açılmaz. */
+  private async kdvKontrolLucaCek(input: any, ctx: { tenantId: string; userId?: string | null }) {
+    const sessionId = String(input?.sessionId || '').trim();
+    if (!sessionId) return { ok: false, error: 'sessionId gerekli.' };
+    const targetDeviceId = String(input?.targetDeviceId || '').trim() || undefined;
+
+    // Çevrimiçi Luca ajanı: son 3 dk içinde ping (luca.service findOnlineOperatorDevice ile aynı eşik).
+    // Hedef cihaz verilmediyse atamasız işi yalnız yerel Node işçisi alır (DEV-* Chrome uzantısı alamaz).
+    const since = new Date(Date.now() - 3 * 60 * 1000);
+    const cihazlar: any[] = await (this.prisma as any).agentStatus
+      .findMany({
+        where: { tenantId: ctx.tenantId, agent: 'luca', lastPing: { gte: since }, ...(targetDeviceId ? { deviceId: targetDeviceId } : {}) },
+        select: { deviceId: true, lastPing: true, running: true },
+        orderBy: { lastPing: 'desc' },
+      })
+      .catch(() => []);
+    const uygun = targetDeviceId ? cihazlar : cihazlar.filter((c) => c.deviceId && !/^DEV-/i.test(String(c.deviceId)));
+    if (!uygun.length) {
+      return {
+        ok: false,
+        neden: targetDeviceId
+          ? `Luca ajanı bağlı değil: ${targetDeviceId} son 3 dakikadır ping atmadı — DUR, sahibe bildir.`
+          : 'Luca ajanı bağlı değil (son 3 dakikada çevrimiçi yerel Luca işçisi yok) — iş açılmadı, DUR, sahibe bildir.',
+        cevrimiciCihazlar: cihazlar.map((c) => c.deviceId),
+      };
+    }
+
+    const svc = await this.kdvKontrolServisi();
+    if (!svc?.queueLucaImport) return { ok: false, error: 'KDV Kontrol servisi kullanılamıyor.' };
+    const userId = await this.oturumKullaniciId(ctx);
+    if (!userId) return { ok: false, error: 'İşi açacak kullanıcı bulunamadı.' };
+
+    // mevcutIs: createFetchJob aynı oturum+dönem+tip için pending/running iş varsa yenisini açmaz, onu döner.
+    const oncekiAcik: any = await (this.prisma as any).lucaFetchJob
+      .findFirst({ where: { tenantId: ctx.tenantId, sessionId, status: { in: ['pending', 'running'] } }, orderBy: { createdAt: 'desc' }, select: { id: true, status: true } })
+      .catch(() => null);
+    try {
+      const r = await svc.queueLucaImport(sessionId, ctx.tenantId, userId, targetDeviceId);
+      const mevcutIs = !!oncekiAcik && oncekiAcik.id === r?.jobId;
+      return {
+        ok: true,
+        jobId: r?.jobId ?? null,
+        status: mevcutIs ? oncekiAcik.status : r?.status ?? 'queued',
+        mevcutIs,
+        hedefCihaz: targetDeviceId || uygun[0]?.deviceId || null,
+        mesaj: mevcutIs ? 'Aynı Luca çekimi zaten kuyruktaydı; yeni kopya açılmadı.' : r?.message || 'Luca işi kuyruğa alındı.',
+        sonraki: 'luca_is_bekle {jobId} ile bekle (≤60 sn/çağrı, toplam 10 dk).',
+      };
+    } catch (e: any) {
+      const h = this.hataBilgisi(e);
+      if (h.status === 400 && /kilitli/i.test(h.mesaj)) return { ok: false, neden: `Oturum kilitli: ${h.mesaj} — kilit açma sahipte; adım 2'ye dön.` };
+      return { ok: false, neden: h.mesaj };
+    }
+  }
+
+  /** Luca işini sunucuda bekle (5 sn döngü, ≤60 sn). */
+  private async lucaIsBekle(input: any, ctx: { tenantId: string; signal?: AbortSignal }) {
+    const jobId = String(input?.jobId || '').trim();
+    if (!jobId) return { ok: false, error: 'jobId gerekli.' };
+    const maxSaniye = this.bekleSaniye(input?.maxSaniye);
+    const bitisDurumlari = new Set(['done', 'failed', 'cancelled']);
+    const baslangic = Date.now();
+    let job: any = null;
+    let tur = 0;
+    for (;;) {
+      job = await (this.prisma as any).lucaFetchJob.findFirst({ where: { id: jobId, tenantId: ctx.tenantId } }).catch(() => null);
+      if (!job) return { ok: false, error: 'Luca işi bulunamadı (jobId/tenant uyuşmuyor).' };
+      tur++;
+      if (bitisDurumlari.has(String(job.status))) break;
+      if (ctx.signal?.aborted) break;
+      if (Date.now() - baslangic + 5000 > maxSaniye * 1000) break;
+      await this.bekle(5000, ctx.signal);
+    }
+    let captcha: { challengeId: string | null } = { challengeId: null };
+    if (!bitisDurumlari.has(String(job.status))) {
+      try {
+        const luca = await this.lucaServisi();
+        const ch = luca?.getActiveCaptchaChallenge ? await luca.getActiveCaptchaChallenge(ctx.tenantId) : null;
+        captcha = { challengeId: ch?.id || null };
+      } catch {
+        captcha = { challengeId: null };
+      }
+    }
+    const errorMsgSonSatir = job.errorMsg ? String(job.errorMsg).trim().split(/\r?\n/).filter(Boolean).pop() || null : null;
+    const bitti = bitisDurumlari.has(String(job.status));
+    const retryCount = Number(job.retryCount || 0);
+    const tarih = (d: any) => (d instanceof Date ? d.toISOString() : d ? String(d) : null);
+    let yorum: string;
+    if (job.status === 'done') yorum = Number(job.recordCount || 0) > 0 ? `Luca çekimi bitti: ${job.recordCount} satır.` : "Luca çekimi bitti ama 0 satır: Luca'da o ay kayıt yok — sahibe bildir.";
+    else if (job.status === 'failed') yorum = `Luca işi başarısız: ${errorMsgSonSatir || 'sebep yok'} — tekrar deneme YOK, rapora yaz.`;
+    else if (job.status === 'cancelled') yorum = 'Luca işi iptal edilmiş.';
+    else if (captcha.challengeId) yorum = 'Luca güvenlik kodu bekliyor — sahip portaldaki Luca Oturum Yöneticisi\'nden girmeli.';
+    else if (job.status === 'pending' && retryCount > 0) yorum = `Luca teknik kilit, otomatik tekrar deneniyor (${retryCount}. tekrar${job.nextRetryAt ? ', sıradaki ' + tarih(job.nextRetryAt) : ''}).`;
+    else if (ctx.signal?.aborted) yorum = 'Koşu iptal sinyali aldı; bekleme kesildi.';
+    else yorum = `Luca işi sürüyor (${job.status}); tekrar luca_is_bekle çağır (toplam 10 dk tavanı).`;
+    return {
+      ok: true,
+      jobId,
+      status: job.status,
+      tip: job.tip ?? null,
+      donem: job.donem ?? null,
+      recordCount: Number(job.recordCount || 0),
+      errorMsgSonSatir,
+      retryCount,
+      nextRetryAt: tarih(job.nextRetryAt),
+      captcha,
+      startedAt: tarih(job.startedAt),
+      finishedAt: tarih(job.finishedAt),
+      bitti,
+      beklenenSaniye: Math.round((Date.now() - baslangic) / 1000),
+      kontrolSayisi: tur,
+      yorum,
+    };
+  }
+
+  /** R1 adım 4 — Mihsap faturalarını oturuma bağla. */
+  private async kdvKontrolFaturaBagla(input: any, ctx: { tenantId: string }) {
+    const sessionId = String(input?.sessionId || '').trim();
+    if (!sessionId) return { ok: false, error: 'sessionId gerekli.' };
+    const svc = await this.kdvKontrolServisi();
+    if (!svc?.linkMihsapInvoices) return { ok: false, error: 'KDV Kontrol servisi kullanılamıyor.' };
+    try {
+      const r = await svc.linkMihsapInvoices(sessionId, ctx.tenantId);
+      const linked = Number(r?.linked || 0);
+      const alreadyLinked = Number(r?.alreadyLinked || 0);
+      const toplam = Number(r?.total ?? linked + alreadyLinked);
+      return { ok: true, sessionId, linked, alreadyLinked, toplam, mesaj: `${linked} yeni bağlandı, ${alreadyLinked} zaten bağlıydı (toplam ${toplam}).` };
+    } catch (e: any) {
+      const h = this.hataBilgisi(e);
+      if (h.status === 400 && /Mihsap'tan çekilmiş faturası yok|Mihsap.tan .*fatura/i.test(h.mesaj)) {
+        return { ok: false, neden: 'HAZIR DEĞİL: faturalar portala inmemiş (Mihsap çekimi Muzaffer Bey’de)', detay: h.mesaj };
+      }
+      if (h.status === 400 && /kilitli/i.test(h.mesaj)) return { ok: false, neden: `Oturum kilitli: ${h.mesaj} — kilit açma sahipte.` };
+      return { ok: false, neden: h.mesaj };
+    }
+  }
+
+  /** R1 adım 5 — OCR başlat (forceFresh YOK). */
+  private async kdvKontrolOcrBaslat(input: any, ctx: { tenantId: string }) {
+    const sessionId = String(input?.sessionId || '').trim();
+    if (!sessionId) return { ok: false, error: 'sessionId gerekli.' };
+    const svc = await this.kdvKontrolServisi();
+    if (!svc?.startOcrForSession) return { ok: false, error: 'KDV Kontrol servisi kullanılamıyor.' };
+    try {
+      const r = await svc.startOcrForSession(sessionId, ctx.tenantId, {});
+      return {
+        ok: true,
+        sessionId,
+        queued: Number(r?.queued || 0),
+        total: Number(r?.total ?? r?.queued ?? 0),
+        cacheHits: Number(r?.cacheHits || 0),
+        mesaj: r?.message || (Number(r?.queued || 0) > 0 ? `${r.queued} fatura OCR kuyruğuna alındı; arkada çalışır.` : 'Bekleyen görsel yok.'),
+        sonraki: 'kdv_kontrol_ocr_bekle {sessionId} ile bitişi izle (Luca beklemesiyle paralel).',
+      };
+    } catch (e: any) {
+      const h = this.hataBilgisi(e);
+      if (h.status === 400 && /kilitli/i.test(h.mesaj)) return { ok: false, neden: `Oturum kilitli: ${h.mesaj} — kilit açma sahipte.` };
+      return { ok: false, neden: h.mesaj };
+    }
+  }
+
+  /** Oturum görsellerinin ocrStatus sayımı (getSessionStats pending/processing DÖNDÜRMÜYOR → getImages). */
+  private ocrSayim(images: any[]) {
+    const say = { pending: 0, processing: 0, success: 0, needsReview: 0, lowConfidence: 0, failed: 0, toplam: images.length };
+    for (const i of images) {
+      switch (String(i?.ocrStatus || '').toUpperCase()) {
+        case 'PENDING': say.pending++; break;
+        case 'PROCESSING': say.processing++; break;
+        case 'SUCCESS': say.success++; break;
+        case 'NEEDS_REVIEW': say.needsReview++; break;
+        case 'LOW_CONFIDENCE': say.lowConfidence++; break;
+        case 'FAILED': say.failed++; break;
+        default: break;
+      }
+    }
+    return say;
+  }
+
+  /** R1 adım 7 — OCR bitişini sunucuda bekle. */
+  private async kdvKontrolOcrBekle(input: any, ctx: { tenantId: string; signal?: AbortSignal }) {
+    const sessionId = String(input?.sessionId || '').trim();
+    if (!sessionId) return { ok: false, error: 'sessionId gerekli.' };
+    const svc = await this.kdvKontrolServisi();
+    if (!svc?.getImages) return { ok: false, error: 'KDV Kontrol servisi kullanılamıyor.' };
+    const maxSaniye = this.bekleSaniye(input?.maxSaniye);
+    const baslangic = Date.now();
+    let say = this.ocrSayim([]);
+    let tur = 0;
+    for (;;) {
+      let images: any[];
+      try {
+        images = await svc.getImages(sessionId, ctx.tenantId);
+      } catch (e: any) {
+        return { ok: false, neden: this.hataBilgisi(e).mesaj };
+      }
+      say = this.ocrSayim(Array.isArray(images) ? images : []);
+      tur++;
+      if (say.pending + say.processing === 0) break;
+      if (ctx.signal?.aborted) break;
+      if (Date.now() - baslangic + 5000 > maxSaniye * 1000) break;
+      await this.bekle(5000, ctx.signal);
+    }
+    const bitti = say.pending + say.processing === 0;
+    const needsOcrConfirm = say.needsReview + say.lowConfidence + say.failed;
+    return {
+      ok: true,
+      sessionId,
+      ...say,
+      needsOcrConfirm,
+      bitti,
+      beklenenSaniye: Math.round((Date.now() - baslangic) / 1000),
+      kontrolSayisi: tur,
+      yorum: bitti
+        ? say.toplam === 0
+          ? 'Oturumda görsel yok (fatura bağlanmamış).'
+          : `OCR bitti: ${say.success} ok · ${needsOcrConfirm} teyit bekler (incele ${say.needsReview}, düşük güven ${say.lowConfidence}, hata ${say.failed}). Teyit sahipte; eşleştirmeye geçilebilir.`
+        : `OCR sürüyor: ${say.pending} bekliyor, ${say.processing} işleniyor — tekrar kdv_kontrol_ocr_bekle çağır (toplam 15 dk tavanı).`,
+    };
+  }
+
+  /** R1 adım 8 — ön koşul kapısı + eşleştirme. */
+  private async kdvKontrolEslestir(input: any, ctx: { tenantId: string }) {
+    const sessionId = String(input?.sessionId || '').trim();
+    if (!sessionId) return { ok: false, error: 'sessionId gerekli.' };
+    const svc = await this.kdvKontrolServisi();
+    if (!svc?.runReconciliation || !svc?.findSession || !svc?.getImages) return { ok: false, error: 'KDV Kontrol servisi kullanılamıyor.' };
+
+    // ÖN KOŞUL KAPISI (backend yapmıyor; yalnız kilitli kdv-kontrol/page.tsx'te vardı): Luca kaydı>0, görsel>0, OCR bitmiş.
+    let session: any;
+    try {
+      session = await svc.findSession(sessionId, ctx.tenantId);
+    } catch (e: any) {
+      return { ok: false, neden: this.hataBilgisi(e).mesaj };
+    }
+    if (session?.status === 'COMPLETED') return { ok: false, neden: 'Oturum kilitli (COMPLETED) — eşleştirme çağrılmadı; kilit açma sahipte, adım 2\'ye dön.' };
+    const images: any[] = await svc.getImages(sessionId, ctx.tenantId).catch(() => []);
+    const say = this.ocrSayim(Array.isArray(images) ? images : []);
+    const kdvRecord = Number(session?._count?.kdvRecords ?? NaN);
+    const lucaKayit = Number.isFinite(kdvRecord) ? kdvRecord : await this.prisma.kdvRecord.count({ where: { sessionId } }).catch(() => 0);
+    const eksik: string[] = [];
+    if (lucaKayit <= 0) eksik.push('Luca kaydı yok (kdv_kontrol_luca_cek + luca_is_bekle)');
+    if (say.toplam <= 0) eksik.push('fatura görseli yok (kdv_kontrol_fatura_bagla)');
+    if (say.pending + say.processing > 0) eksik.push(`OCR bitmedi (${say.pending} bekliyor, ${say.processing} işleniyor — kdv_kontrol_ocr_bekle)`);
+    if (eksik.length) {
+      return { ok: false, neden: `Ön koşul sağlanmadı, eşleştirme çağrılmadı: ${eksik.join('; ')}`, kdvRecord: lucaKayit, receiptImage: say.toplam, ocr: say };
+    }
+
+    try {
+      const r = await svc.runReconciliation(sessionId, ctx.tenantId);
+      const sonra: any = await this.prisma.kdvControlSession.findFirst({ where: { id: sessionId, tenantId: ctx.tenantId }, select: { status: true } }).catch(() => null);
+      const sessionStatus = sonra?.status || null;
+      const otoKilit = sessionStatus === 'COMPLETED';
+      let mismatch = 0;
+      try {
+        const stats = svc.getSessionStats ? await svc.getSessionStats(sessionId, ctx.tenantId) : null;
+        mismatch = Number(stats?.mismatch || 0) + Number(stats?.rejected || 0);
+      } catch {
+        mismatch = 0;
+      }
+      return {
+        ok: true,
+        sessionId,
+        matched: Number(r?.matched || 0),
+        partial: Number(r?.partial || 0),
+        needsReview: Number(r?.needsReview || 0),
+        unmatched: Number(r?.unmatched || 0),
+        mismatch,
+        sessionStatus,
+        otoKilit,
+        aciklama: otoKilit
+          ? 'Sorunsuz eşleşti; oturum portaldaki gibi kendiliğinden KİLİTLENDİ (COMPLETED). Muzaffer Bey’in kararı (2026-09-13): ajanın işi kendi işi gibidir — karşı taraf da kilitliyse fiş Word raporu oluşur (yazıcıya otomatik gitmez), aylık takip işaretlenir, Luca KDV çekimi başlar; bunları raporda bildir, kilit için ayrıca sorma.'
+          : 'Eşleştirme bitti; oturum REVIEWING, kilit sahipte. Satırları kdv_kontrol_sonuc_satirlari ile oku.',
+      };
+    } catch (e: any) {
+      const h = this.hataBilgisi(e);
+      if (h.status === 400 && /kilitli/i.test(h.mesaj)) return { ok: false, neden: `Oturum kilitli: ${h.mesaj} — adım 2'ye dön.` };
+      return { ok: false, neden: `eşleştirme hatası: ${h.mesaj} — DUR, rapora yaz.` };
+    }
+  }
+
+  /** "1.234,56" | "1234.56" | 1234.56 → sayı; boş/okunamaz → 0. */
+  private kdvTutarSayi(v: any): number {
+    if (v === null || v === undefined || v === '') return 0;
+    if (typeof v === 'number') return Number.isFinite(v) ? v : 0;
+    if (typeof v?.toNumber === 'function') return v.toNumber();
+    let s = String(v).trim().replace(/[^\d,.\-]/g, '');
+    if (!s) return 0;
+    if (s.includes(',') && s.includes('.')) s = s.lastIndexOf(',') > s.lastIndexOf('.') ? s.replace(/\./g, '').replace(',', '.') : s.replace(/,/g, '');
+    else if (s.includes(',')) s = s.replace(',', '.');
+    const n = parseFloat(s);
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  /**
+   * R1 adım 9 — tek sonuç satırının sınıfı:
+   *  MATCHED/CONFIRMED = tam (KDV farkı > %1 → incele); PARTIAL_MATCH/NEEDS_REVIEW = incele;
+   *  UNMATCHED + imageId null = fatura_yok (Luca'da var); UNMATCHED + kdvRecordId null = luca_yok (fatura var);
+   *  MISMATCH/REJECTED = red. Tutar farkı: çok oranlı faturada (aynı görsel birden çok Luca satırı) kırılımın
+   *  oranı eşleşen bileşeni, yoksa görsel toplamı Luca satırıyla karşılaştırılır; tolerans motorla aynı (max(1 kr, %1)).
+   */
+  private sonucSatiriSinifla(r: any, fanOut: number): { sinif: 'tam' | 'incele' | 'fatura_yok' | 'luca_yok' | 'red'; sebep: string } {
+    const st = String(r?.status || '').toUpperCase();
+    const sebepler: string[] = Array.isArray(r?.mismatchReasons) ? r.mismatchReasons.filter(Boolean).map(String) : [];
+    if (st === 'MISMATCH' || st === 'REJECTED') return { sinif: 'red', sebep: st === 'REJECTED' ? `sahip reddetti${sebepler.length ? ': ' + sebepler.join('; ') : ''}` : sebepler.join('; ') || 'uyumsuz' };
+    if (st === 'PARTIAL_MATCH' || st === 'NEEDS_REVIEW') return { sinif: 'incele', sebep: sebepler.join('; ') || (st === 'PARTIAL_MATCH' ? 'kısmi eşleşme' : 'inceleme gerekli') };
+    if (st === 'UNMATCHED') {
+      if (r?.kdvRecordId && !r?.imageId) return { sinif: 'fatura_yok', sebep: "Luca'da var, fatura görseli yok" };
+      if (r?.imageId && !r?.kdvRecordId) return { sinif: 'luca_yok', sebep: "fatura var, Luca'da kayıt yok" };
+      return { sinif: 'incele', sebep: sebepler.join('; ') || 'eşleşme bulunamadı' };
+    }
+    if (st === 'MATCHED' || st === 'CONFIRMED') {
+      const luca = this.kdvTutarSayi(r?.kdvRecord?.kdvTutari);
+      if (luca > 0 && r?.image && fanOut <= 1) {
+        let fatura = this.kdvTutarSayi(r.image.confirmedKdvTutari || r.image.ocrKdvTutari);
+        const kirilim = r.image.confirmedKdvBreakdown ?? r.image.ocrKdvBreakdown;
+        const oran = this.kdvTutarSayi(r?.kdvRecord?.kdvOrani);
+        if (Array.isArray(kirilim) && oran > 0) {
+          const bilesen = kirilim.find((k: any) => Math.abs(this.kdvTutarSayi(k?.oran) - oran) < 0.5);
+          const bt = bilesen ? this.kdvTutarSayi(bilesen.tutar) : 0;
+          if (bt > 0 && Math.abs(bt - luca) / luca < 0.01) fatura = bt;
+        }
+        if (fatura > 0) {
+          const fark = Math.abs(Number((luca - fatura).toFixed(2)));
+          if (fark > Math.max(0.01, luca * 0.01)) {
+            return { sinif: 'incele', sebep: `KDV tutar farkı: Luca ${luca.toFixed(2)} / fatura ${fatura.toFixed(2)} (fark ${fark.toFixed(2)})` };
+          }
+        }
+      }
+      return { sinif: 'tam', sebep: st === 'CONFIRMED' ? 'sahip teyit etti' : 'tam eşleşme' };
+    }
+    return { sinif: 'incele', sebep: `bilinmeyen durum ${st}` };
+  }
+
+  /** R1 adım 9 — sonuç satırları + sayaçlar (matchSummary ile tutarlı). Karar verilmez (resolve yok). */
+  private async kdvKontrolSonucSatirlari(input: any, ctx: { tenantId: string }) {
+    const sessionId = String(input?.sessionId || '').trim();
+    if (!sessionId) return { ok: false, error: 'sessionId gerekli.' };
+    const yalnizSorunlu = input?.yalnizSorunlu !== false;
+    const limit = Math.min(Math.max(Number(input?.limit) || 100, 1), 100);
+    const svc = await this.kdvKontrolServisi();
+    if (!svc?.getResults) return { ok: false, error: 'KDV Kontrol servisi kullanılamıyor.' };
+    let results: any[];
+    try {
+      results = await svc.getResults(sessionId, ctx.tenantId);
+    } catch (e: any) {
+      return { ok: false, neden: this.hataBilgisi(e).mesaj };
+    }
+    results = Array.isArray(results) ? results : [];
+    let stats: any = null;
+    try {
+      stats = svc.getSessionStats ? await svc.getSessionStats(sessionId, ctx.tenantId) : null;
+    } catch (e: any) {
+      this.logger.warn(`kdv_kontrol_sonuc_satirlari getSessionStats: ${e?.message || e}`);
+    }
+    if (results.length === 0) {
+      return {
+        ok: true,
+        sessionId,
+        sonucYok: true,
+        not: 'results boş — eşleştirme (kdv_kontrol_eslestir) çalışmamış; bir kez tekrar dene.',
+        sayaclar: { tam: 0, incele: 0, faturaYok: 0, lucaYok: 0, red: 0, toplam: 0 },
+        satirlar: [],
+      };
+    }
+    const fanOutMap = new Map<string, number>();
+    for (const r of results) if (r?.imageId && r?.kdvRecordId) fanOutMap.set(r.imageId, (fanOutMap.get(r.imageId) || 0) + 1);
+    const tarih = (v: any) => (v instanceof Date ? v.toISOString().slice(0, 10) : v ? String(v).slice(0, 10) : null);
+    const sinifli = results.map((r: any) => {
+      const { sinif, sebep } = this.sonucSatiriSinifla(r, r?.imageId ? fanOutMap.get(r.imageId) || 0 : 0);
+      const img = r?.image || null;
+      const rec = r?.kdvRecord || null;
+      return {
+        resultId: r.id,
+        sinif,
+        sebep,
+        status: r.status,
+        belgeNo: rec?.belgeNo || img?.confirmedBelgeNo || img?.ocrBelgeNo || null,
+        tarih: rec?.belgeDate ? tarih(rec.belgeDate) : img?.confirmedDate || img?.ocrDate || null,
+        karsiTaraf: rec?.karsiTaraf || img?.ocrSatici || null,
+        kdv: rec ? this.kdvTutarSayi(rec.kdvTutari) : img ? this.kdvTutarSayi(img.confirmedKdvTutari || img.ocrKdvTutari) : null,
+        tutar: rec?.kdvMatrahi != null ? this.kdvTutarSayi(rec.kdvMatrahi) : null,
+        lucaKdv: rec ? this.kdvTutarSayi(rec.kdvTutari) : null,
+        faturaKdv: img ? this.kdvTutarSayi(img.confirmedKdvTutari || img.ocrKdvTutari) : null,
+        ocrStatus: img?.ocrStatus || null,
+        kdvRecordId: r.kdvRecordId || null,
+        imageId: r.imageId || null,
+      };
+    });
+    const yerelSayac = { tam: 0, incele: 0, faturaYok: 0, lucaYok: 0, red: 0, toplam: sinifli.length };
+    for (const s of sinifli) {
+      if (s.sinif === 'tam') yerelSayac.tam++;
+      else if (s.sinif === 'incele') yerelSayac.incele++;
+      else if (s.sinif === 'fatura_yok') yerelSayac.faturaYok++;
+      else if (s.sinif === 'luca_yok') yerelSayac.lucaYok++;
+      else yerelSayac.red++;
+    }
+    const ms = stats?.matchSummary || null;
+    // Sayaçlar portal ekranıyla birebir olsun diye matchSummary'den; yoksa yerel sayım.
+    const sayaclar = ms
+      ? {
+          tam: Number(ms.matched || 0),
+          incele: Number(ms.reviewTotal || 0),
+          faturaYok: Number(ms.lucaOnlyMissing || 0),
+          lucaYok: Number(ms.imageOnlyMissing || 0),
+          red: Number(ms.rejected || 0) + Number(ms.mismatch || 0),
+          digerEslesmeyen: Number(ms.otherUnmatched || 0),
+          toplam: Number(ms.totalResults || sinifli.length),
+          kaynak: 'matchSummary',
+        }
+      : { ...yerelSayac, kaynak: 'yerel' };
+    const sorunlu = sinifli.filter((s) => s.sinif !== 'tam');
+    const satirlar = (yalnizSorunlu ? sorunlu : sinifli).slice(0, limit);
+    return {
+      ok: true,
+      sessionId,
+      sayaclar,
+      hataliToplam: Number(sayaclar.faturaYok) + Number(sayaclar.lucaYok) + Number(sayaclar.red),
+      sorunluToplam: sorunlu.length,
+      needsOcrConfirm: Number(stats?.needsOcrConfirm || 0),
+      seriUyarilari: Array.isArray(stats?.seriUyarilari) ? stats.seriUyarilari.slice(0, 10) : [],
+      satirlar,
+      kesildi: (yalnizSorunlu ? sorunlu.length : sinifli.length) > limit,
+      not: 'Karar VERME (resolve/kilit sahipte). Sınıf: tam · incele · fatura_yok (Luca\'da var) · luca_yok (fatura var) · red.',
+    };
+  }
+
+  /** Koordinatör: başka ajanı ARKA PLANDA başlat (iç içe koşu yok). */
+  private async ekipAjanBaslat(input: any, ctx: { tenantId: string; userId?: string | null; taxpayerId?: string | null }) {
+    const ajanId = String(input?.ajanId || '').trim();
+    const gorev = String(input?.gorev || '').trim();
+    const taxpayerId = String(input?.taxpayerId || ctx.taxpayerId || '').trim() || null;
+    if (!ajanId) return { ok: false, error: 'ajanId gerekli.' };
+    if (!gorev) return { ok: false, error: 'gorev boş olamaz.' };
+    if (ajanId === 'koordinator') return { ok: false, error: 'Koordinatör kendini başlatamaz.' };
+    let dryRun = input?.dryRun !== false;
+    let not: string | undefined;
+    if (!dryRun && !ctx.userId) {
+      dryRun = true;
+      not = 'Canlı koşu yalnız oturumdaki kullanıcıyla açılır (ctx.userId boş) — kuru teste düşürüldü.';
+    }
+
+    let runner: any = null;
+    try {
+      const { EkipRunnerService } = await import('../ekip/ekip-runner.service');
+      runner = this.moduleRef?.get?.(EkipRunnerService, { strict: false });
+    } catch (e: any) {
+      this.logger.warn(`EkipRunnerService çözülemedi: ${e?.message || e}`);
+    }
+    if (!runner?.calistir) return { ok: false, error: 'Ekip runner servisi kullanılamıyor.' };
+
+    // TEKRAR KİLİDİ: aynı ajan + mükellef için pending/running iş varsa yenisi açılmaz (AgentCommand agent='ekip:<ajan>').
+    const acik: any[] = await (this.prisma as any).agentCommand
+      .findMany({
+        where: { tenantId: ctx.tenantId, agent: `ekip:${ajanId}`, status: { in: ['pending', 'running'] } },
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+        select: { id: true, status: true, payload: true, createdAt: true },
+      })
+      .catch(() => []);
+    const mevcut = acik.find((r) => String(r?.payload?.taxpayerId || '') === String(taxpayerId || ''));
+    if (mevcut) {
+      return { ok: false, mevcutIsId: mevcut.id, status: mevcut.status, neden: `${ajanId} için${taxpayerId ? ' bu mükellefte' : ''} çalışan koşu var (${mevcut.id}); yenisi açılmadı — ekip_is_durum ile izle.` };
+    }
+
+    let isId: string | null = null;
+    let baslangicCoz: (() => void) | null = null;
+    const baslangicSozu = new Promise<void>((resolve) => {
+      baslangicCoz = resolve;
+    });
+    const kosu = runner.calistir({
+      ajanId,
+      gorev,
+      tenantId: ctx.tenantId,
+      userId: ctx.userId ?? null,
+      taxpayerId,
+      dryRun,
+      kaynak: 'koordinator',
+      emit: (e: any) => {
+        if (e?.type === 'baslangic' && e.isId) {
+          isId = e.isId;
+          baslangicCoz?.();
+        }
+        if (e?.type === 'error') baslangicCoz?.();
+      },
+    });
+    // await ETME: koşu arka planda sürer; hata yalnız loglanır (Koordinatör'ün turu beklemez).
+    Promise.resolve(kosu)
+      .then((s: any) => {
+        if (s?.hata) this.logger.warn(`ekip_ajan_baslat ${ajanId} (${s?.isId || '-'}) hata: ${s.hata}`);
+        else this.logger.log(`ekip_ajan_baslat ${ajanId} bitti (${s?.isId || '-'}, ${s?.durationMs ?? '?'} ms)`);
+      })
+      .catch((e: any) => this.logger.warn(`ekip_ajan_baslat ${ajanId} koşu hatası: ${e?.message || e}`));
+    await Promise.race([baslangicSozu, this.bekle(500)]);
+    return {
+      ok: true,
+      baslatildi: true,
+      isId,
+      ajanId,
+      taxpayerId,
+      dryRun,
+      ...(not ? { not } : {}),
+      mesaj: isId
+        ? `${ajanId} ajanına atandı, ${dryRun ? 'kuru testte' : 'CANLI'} başladı (iş ${isId}). ekip_is_durum {isId} ile izle.`
+        : `${ajanId} ajanına atandı, arka planda başlatıldı; iş kimliği henüz gelmedi — ekip_isler ile bul.`,
+    };
+  }
+
+  /** ekip_ajan_baslat ile açılan işin durumu. */
+  private async ekipIsDurum(input: any, ctx: { tenantId: string }) {
+    const isId = String(input?.isId || '').trim();
+    if (!isId) return { ok: false, error: 'isId gerekli.' };
+    let runner: any = null;
+    try {
+      const { EkipRunnerService } = await import('../ekip/ekip-runner.service');
+      runner = this.moduleRef?.get?.(EkipRunnerService, { strict: false });
+    } catch (e: any) {
+      this.logger.warn(`EkipRunnerService çözülemedi: ${e?.message || e}`);
+    }
+    if (!runner?.isGetir) return { ok: false, error: 'Ekip runner servisi kullanılamıyor.' };
+    const is = await runner.isGetir(ctx.tenantId, isId);
+    if (!is) return { ok: false, error: 'İş bulunamadı.' };
+    const rapor = typeof is?.result?.rapor === 'string' ? is.result.rapor : null;
+    const bitti = is.status === 'done' || is.status === 'failed';
+    return {
+      ok: true,
+      isId,
+      ajanId: is.ajanId,
+      status: is.status,
+      dryRun: is.dryRun,
+      taxpayerId: is.taxpayerId ?? null,
+      bitti,
+      rapor: rapor ? rapor.slice(0, 1500) : null,
+      raporKesildi: !!rapor && rapor.length > 1500,
+      hata: is.hata || null,
+      durationMs: is.durationMs ?? null,
+      kuruTestSayisi: is.kuruTestSayisi ?? 0,
+      onayBekleyenSayisi: is.onayBekleyenSayisi ?? 0,
+      startedAt: is.startedAt ?? null,
+      finishedAt: is.finishedAt ?? null,
     };
   }
 }

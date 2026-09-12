@@ -5,7 +5,7 @@ import * as path from 'path';
 import { z } from 'zod';
 import { PrismaService } from '../prisma/prisma.service';
 import { ToolExecutorService } from '../moren-ai/tool-executor.service';
-import { MOREN_AI_TOOLS, FATURA_MERKEZI_AJAN_ARACLARI } from '../moren-ai/tools';
+import { MOREN_AI_TOOLS, FATURA_MERKEZI_AJAN_ARACLARI, EKIP_IS_ZINCIRI_ARACLARI } from '../moren-ai/tools';
 import { ACTION_BY_NAME } from '../automations/action-catalog';
 import { ActionDispatcherService } from '../automations/action-dispatcher.service';
 import { LucaOperatorService } from '../calisan/luca-operator.service';
@@ -22,10 +22,13 @@ import { aracAcikMi, aracKatalogMetni, aracKademesi, ekipMihsapKomutuYasagi } fr
  *
  * OMURGA:
  *  - Araç çağrısında KADEME kontrolü (arac-defteri.aracAcikMi): resmi_gonderim her zaman ret;
- *    kuru testte luca_yaz/disari_gonder çalışmaz → {kuruTest:true, yapilacakti} döner ve iş dosyasına yazılır;
+ *    kuru testte luca_yaz/disari_gonder/portal_yaz_agir çalışmaz → {kuruTest:true, yapilacakti} döner ve iş dosyasına yazılır;
  *    disari_gonder canlıda bile doğrudan gitmez → OwnerApprovalRequest (PRV-xxxx) kaydı açılır.
  *  - İŞ DOSYASI: AgentCommand (agent="ekip:<ajanId>") pending→running→done/failed + AgentEvent (agent='ekip').
  *  - ÖĞRENME: cevaptaki "ÖĞRENDİM:" satırları AiMemory (scope='ekip', source=ajanId) olarak saklanır.
+ *  - REÇETE (PLAN/17, 2026-09-13): kadro/<ajan>/receteler.md prompta "## REÇETELERİN" olarak TAM girer; beceriler.md
+ *    "## BECERİLERİN (özet)" olarak en çok BECERI_TAVAN_KR karakter girer (daha önce hiç girmiyordu — kök neden #1).
+ *  - ARKA PLAN (PLAN/17 Faz C): koşu SSE bağlantısına bağlı değildir; sekme kapanınca sürer, iptal yalnız iptalEt().
  */
 
 // ESM-only Agent SDK'yı CommonJS NestJS içine güvenli yükle (luca-operator ile aynı desen).
@@ -38,15 +41,25 @@ async function loadSdk(): Promise<any> {
 
 const PORTAL_TOOL = 'mcp__portal__portal';
 const MAX_TUR = 80;
-/** Onay kaydı geçerliliği: ajan koşusu arka planda biter, sahip sonra bakar → 24 saat. */
+/** Onay kaydı geçerliliği: ajan koşusu arka planda biter, Muzaffer Bey sonra bakar → 24 saat. */
 const ONAY_GECERLILIK_MS = 24 * 60 * 60 * 1000;
 // fm_* (Fatura Merkezi ajan araçları) da portal çalıştırıcısından (ToolExecutorService) geçer.
-const PORTAL_ARAC_ADLARI = new Set<string>([...MOREN_AI_TOOLS, ...FATURA_MERKEZI_AJAN_ARACLARI].map((t) => t.name));
+// PLAN/17 §3 (2026-09-13): kdv_kontrol_* / luca_is_bekle zinciri araçları MOREN_AI_TOOLS'ta DEĞİL (otomasyon kataloğuna
+// sızmasın diye ayrı liste) → burada da sayılmazsa "Çalıştırıcı bulunamadı" döner. ekip_* adları önce ekipAraciCalistir'a gider.
+export const PORTAL_ARAC_ADLARI = new Set<string>(
+  [...MOREN_AI_TOOLS, ...FATURA_MERKEZI_AJAN_ARACLARI, ...EKIP_IS_ZINCIRI_ARACLARI].map((t) => t.name),
+);
 /** Dönem panosu önbelleği: tenant başına 60 sn (SabahBandi + DonemPanosu aynı anda çekince 2×3 araç koşusu olmasın). */
 const PANO_ONBELLEK_MS = 60 * 1000;
 /** İş dosyası durumları (AgentCommand.status) — /ekip/isler süzgeci yalnız bunları kabul eder. */
 const IS_DURUMLARI = new Set<string>(['pending', 'running', 'done', 'failed']);
 const KAYNAKLAR = new Set<string>(['portal', 'ses', 'cron', 'koordinator']);
+/** beceriler.md prompta bu kadar girer (uzun anlatım insan içindir; reçete tam girer) — PLAN/17 §1.3. */
+const BECERI_TAVAN_KR = 6 * 1024;
+/** Sistem promptu bu boyutu aşarsa warn (PLAN/17 §1.3-3: tahmini beyanname promptu ≈ 39 KB). */
+const PROMPT_UYARI_KR = 50 * 1024; // 2026-09-13: hitap ("Muzaffer Bey") + rapor dili kuralları ile beyanname promptu ~46 KB
+/** ekip_ajan_baslat: arka plandaki koşunun iş dosyası kimliğini (baslangic olayı) bu kadar bekler. */
+const AJAN_BASLAT_ISID_BEKLEME_MS = 3000;
 
 /** Prisma cuid: 'c' + küçük harf/rakam (kdv-control/ocr/parsers/belge-no.ts ile aynı kalıp). */
 const CUID_KALIBI = /^c[a-z0-9]{20,31}$/;
@@ -80,7 +93,8 @@ export interface EkipCalistirParametreleri {
   emit?: (e: EkipAkisOlayi) => void;
   /**
    * Dış durdurma sinyali (isteğe bağlı): tetiklenince koşu Agent SDK'da durdurulur, iş dosyası failed kapanır.
-   * Controller bağlantı koptuğunda verir; sahip düğmesi ise iptalEt(isId) ile aynı yola girer.
+   * 2026-09-13 (PLAN/17 Faz C): controller SSE kopmasında ARTIK VERMEZ — uzun reçete zincirleri sekme kapanınca
+   * ölüyordu; koşu arka planda sürer, iptal yalnız POST /ekip/isler/:id/iptal (iptalEt). Alan başka çağıranlar için kaldı.
    */
   signal?: AbortSignal;
 }
@@ -89,7 +103,7 @@ export interface EkipCalistirParametreleri {
 export type IptalNedeni = 'sahip' | 'baglanti';
 
 export const IPTAL_HATA_METNI: Record<IptalNedeni, string> = {
-  sahip: 'iptal edildi (sahip)',
+  sahip: 'iptal edildi (Muzaffer Bey)',
   baglanti: 'iptal edildi (bağlantı koptu)',
 };
 
@@ -143,7 +157,7 @@ interface KosuBaglami {
   ajan: AjanTanimi;
   isId: string;
   dryRun: boolean;
-  ctx: { tenantId: string; userId: string | null; taxpayerId: string | null };
+  ctx: { tenantId: string; userId: string | null; taxpayerId: string | null; signal?: AbortSignal };
   emit: (e: EkipAkisOlayi) => void;
   toolUses: Array<{ name: string; args: any }>;
   kuruTestYapilacaktilar: YapilacakIs[];
@@ -171,8 +185,8 @@ export class EkipRunnerService {
 
   /**
    * ÇALIŞAN KOŞULAR — isId → AbortController (servis içi, süreç belleği).
-   * calistir() iş dosyasını açınca kaydeder, bitince siler. POST /ekip/isler/:id/iptal ve
-   * SSE bağlantısının gerçekten kopması (controller) buradan durdurur.
+   * calistir() iş dosyasını açınca kaydeder, bitince siler. POST /ekip/isler/:id/iptal buradan durdurur
+   * (SSE kopması ARTIK durdurmaz — 2026-09-13, PLAN/17 Faz C).
    * Not: tek API süreci varsayımı; başka süreçte koşan iş burada görünmez → {ok:false}.
    */
   private readonly calisanKosular = new Map<string, CalisanKosu>();
@@ -210,14 +224,25 @@ export class EkipRunnerService {
     return '';
   }
 
-  private async kimlikDosyalari(ajan: AjanTanimi): Promise<{ ortak: string; kimlik: string; kurallar: string; beceriler: string }> {
-    const [ortak, kimlik, kurallar, beceriler] = await Promise.all([
+  private async kimlikDosyalari(
+    ajan: AjanTanimi,
+  ): Promise<{ ortak: string; kimlik: string; kurallar: string; beceriler: string; receteler: string }> {
+    // 5. dosya receteler.md (PLAN/17 §1.3): yoksa boş — runner hata vermez.
+    const [ortak, kimlik, kurallar, beceriler, receteler] = await Promise.all([
       this.kadroDosyasiOku(ORTAK_KURALLAR_DOSYASI),
       this.kadroDosyasiOku(`${ajan.kimlikKlasoru}/kimlik.md`),
       this.kadroDosyasiOku(`${ajan.kimlikKlasoru}/kurallar.md`),
       this.kadroDosyasiOku(`${ajan.kimlikKlasoru}/beceriler.md`),
+      this.kadroDosyasiOku(`${ajan.kimlikKlasoru}/receteler.md`),
     ]);
-    return { ortak, kimlik, kurallar, beceriler };
+    return { ortak, kimlik, kurallar, beceriler, receteler };
+  }
+
+  /** beceriler.md özeti: tavanı aşarsa ilk BECERI_TAVAN_KR karakter + "…" (reçete tam girer, beceri yalnız özet). */
+  private beceriOzeti(beceriler: string): string {
+    const t = String(beceriler || '').trim();
+    if (!t) return '';
+    return t.length <= BECERI_TAVAN_KR ? t : `${t.slice(0, BECERI_TAVAN_KR).trimEnd()}\n…(beceriler.md kırpıldı; tam metin dosyada)`;
   }
 
   // ─── SİSTEM PROMPTU ───
@@ -243,20 +268,37 @@ export class EkipRunnerService {
       const k = await this.operator.getRulesForUi(tenantId).catch(() => [] as any[]);
       if (k?.length) {
         ofisKurallari = [
-          '## OFİS KURALLARI (sahibin kalıcı kararları — geçmiş örnekten ÜSTÜNDÜR)',
+          '## OFİS KURALLARI (Muzaffer Bey’in kalıcı kararları — geçmiş örnekten ÜSTÜNDÜR)',
           ...k.slice(0, 40).map((x: any) => `- ${x.baslik}: ${String(x.kural || '').slice(0, 300)}`),
           '',
         ].join('\n');
       }
     }
     const varsayilanOrtak = [
-      '- Sahip: Muzaffer Ören (Moren Mali Müşavirlik). Türkçe konuş, kısa ve net yaz, jargon kullanma.',
+      '- Muzaffer Bey: Muzaffer Ören (Moren Mali Müşavirlik). Türkçe konuş, kısa ve net yaz, jargon kullanma.',
       '- Görmediğini görmüş gibi söyleme; veri yoksa "veri yok" de. Sayı uydurma.',
       '- Mükellef PII (şifre, token, TC, IBAN) sızdırma, loglama.',
       '- Emin değilsen varsayma; TEK ve NET bir soru sor.',
     ].join('\n');
 
-    return [
+    // İŞ ÖĞRENME SIRASI (Luca ekran sırası) yalnız luca-operator'a; diğer 12 ajana "önce portal araçların" satırı (PLAN/17 §1.3-4).
+    const lucaOperatoruMu = ajan.id === 'luca-operator';
+    const ogrenmeSirasi = lucaOperatoruMu
+      ? [
+          '## İŞ ÖĞRENME SIRASI (bilmediğin işte "bana göster" DEME, kendin öğren)',
+          '1) KAYITLI BECERİ: luca_beceri_listele / search_ai_memory — bu iş daha önce kaydedilmiş mi?',
+          '2) EKRANI AÇ-OKU: luca_menu_ara → luca_menu_git → luca_ekran_oku; alan etiketleri ve uyarılar ne istendiğini söyler.',
+          '3) ÖNCEKİ DÖNEM KAYDI: aynı işin geçmiş dönemdeki kaydını aç, NASIL doldurulmuş oku; yeni dönemi ona benzet.',
+          '4) MUHASEBE BİLGİN: mevzuat/hesap mantığını ekrandan ve geçmişten çıkardığınla birleştir.',
+          '5) Bunların hiçbiri cevaplamıyorsa Muzaffer Bey’e TEK ve NET bir soru sor.',
+        ]
+      : [
+          '## İŞ SIRASI',
+          "ÖNCE PORTAL ARAÇLARIN (reçeten); Luca yalnız DEVİR ile: reçetesi olan iş portal araçlarıyla, reçetedeki sırayla yapılır; Luca'ya yalnız reçete adımı Luca dediğinde ya da DEVİR ile gidilir. \"Luca Operatörü oturum açsın\" diye portal işini devretme.",
+          'Bilmediğin işte "bana göster" DEME: search_ai_memory → araç sonucu → önceki dönem kaydı → muhasebe bilgin; yine olmuyorsa Muzaffer Bey’e TEK ve NET bir soru sor.',
+        ];
+
+    const prompt = [
       `Sen Moren Mali Müşavirlik ofisinin yapay çalışan EKİBİNDE "${ajan.ad}" (${ajan.unvan}) adlı ajansın. Ajan kimliğin: ${ajan.id}.`,
       ajan.aciklama,
       '',
@@ -267,42 +309,49 @@ export class EkipRunnerService {
       d.kimlik || `${ajan.ad} — ${ajan.unvan}. ${ajan.aciklama}`,
       '',
       d.kurallar ? `## KURALLARIN\n${d.kurallar}\n` : '',
+      // Reçeteler TAM girer; kuru testte kesilen adımdan sonrası ÇAĞRILMAZ (zincir kesme, PLAN/17 §1.4).
+      d.receteler
+        ? `## REÇETELERİN (bu sırayı izle; adım atlama; kuru testte kesilen adımdan sonrasını ÇAĞIRMA, "yapılacaktı" yaz)\n${d.receteler}\n`
+        : '',
+      d.beceriler ? `## BECERİLERİN (özet)\n${this.beceriOzeti(d.beceriler)}\n` : '',
       ofisKurallari,
-      '## ONAY NOKTALARIN (sahip onayı olmadan geçilmez)',
+      '## ONAY NOKTALARIN (Muzaffer Bey’in onayı olmadan geçilmez)',
       ...ajan.onayNoktalari.map((o) => `- ${o}`),
       '- RESMİ GÖNDERİM (GİB beyanname, SGK bildirge, e-defter berat) hiçbir koşulda senin işin değil; "gönderdim" DEME.',
       '',
       '## ARAÇ KULLANIMI',
       'Tek aracın "portal": portal({ name: "<araç adı>", args: { ... } }). Yalnız aşağıdaki katalogdaki adlar geçerli.',
-      'Parantez içindeki kademe: oku=serbest · portal_yaz=serbest (kayıt altında) · luca_yaz=Luca\'da yazar (kuru testte çalışmaz) · disari_gonder=mükellefe mesaj (doğrudan gitmez, sahip onay kaydı açılır).',
-      'Araç sonucu {kuruTest:true} dönerse o adım YAPILMADI, yalnız kaydedildi; raporunda "yapılacaktı" diye belirt. {onayBekliyor:true} dönerse mesaj sahibin onayına düştü; "gönderildi" DEME.',
+      "Parantez içindeki kademe: oku=serbest · portal_yaz=serbest (kayıt altında) · portal_yaz_agir=portala yazar ve yan etkisi var (oturum açar/OCR/eşleştirme; kuru testte çalışmaz) · luca_yaz=Luca'da yazar ya da Luca işi açar (kuru testte çalışmaz) · disari_gonder=mükellefe mesaj (doğrudan gitmez, Muzaffer Bey onay kaydı açılır).",
+      'Araç sonucu {kuruTest:true} dönerse o adım YAPILMADI, yalnız kaydedildi; raporunda "yapılacaktı" diye belirt ve o adımın çıktısına bağlı sonraki adımları ÇAĞIRMA. {onayBekliyor:true} dönerse mesaj Muzaffer Bey’in onayına düştü; "gönderildi" DEME.',
       '',
       '## KULLANABİLECEĞİN ARAÇLAR',
       aracKatalogMetni(ajan.araclar),
       '',
-      '## İŞ ÖĞRENME SIRASI (bilmediğin işte "bana göster" DEME, kendin öğren)',
-      '1) KAYITLI BECERİ: luca_beceri_listele / search_ai_memory — bu iş daha önce kaydedilmiş mi?',
-      '2) EKRANI AÇ-OKU: luca_menu_ara → luca_menu_git → luca_ekran_oku; alan etiketleri ve uyarılar ne istendiğini söyler.',
-      '3) ÖNCEKİ DÖNEM KAYDI: aynı işin geçmiş dönemdeki kaydını aç, NASIL doldurulmuş oku; yeni dönemi ona benzet.',
-      '4) MUHASEBE BİLGİN: mevzuat/hesap mantığını ekrandan ve geçmişten çıkardığınla birleştir.',
-      '5) Bunların hiçbiri cevaplamıyorsa sahibe TEK ve NET bir soru sor.',
-      'Öğrendiğin genellenebilir bir kural/alışkanlık varsa cevabının sonunda her biri ayrı satırda "ÖĞRENDİM: <kısa cümle>" yaz (tek seferlik talimatı yazma).',
+      ...ogrenmeSirasi,
+      'Öğrendiğin genellenebilir bir kural/alışkanlık varsa cevabının sonunda her biri ayrı satırda "Öğrendiklerim: <kısa cümle>" yaz (tek seferlik talimatı yazma).',
       '',
       `## ÇALIŞMA BİÇİMİ: ${dryRun ? 'KURU TEST' : 'CANLI'}`,
       dryRun
-        ? 'KURU TEST: Luca\'ya yazılmaz, mükellefe/dışarıya mesaj gitmez. Bu araçları yine de çağır — sistem çalıştırmaz, "yapılacaktı" olarak kaydeder. Sonunda ne yapacağını (mükellef, dönem, alan, tutar, dayanak) kısa özetle.'
-        : 'CANLI: Luca\'da yazabilirsin; Kaydet/Gönder/Tahakkuk gibi geri dönülmez düğmeler yine onay ister (confirmed=true yalnız sahip açıkça onayladıysa). Dışarı mesajlar sahip onayına düşer, doğrudan gitmez.',
+        ? 'KURU TEST: Luca\'ya yazılmaz, mükellefe/dışarıya mesaj gitmez, portalda ağır iş (oturum açma, OCR, eşleştirme) yapılmaz. Bu araçları yine de çağır — sistem çalıştırmaz, "yapılacaktı" olarak kaydeder; kesilen adımın sonrasını çağırma. Raporuna "Kuru testte gerçek yapılan işler: <liste | yok>" satırı yaz. Sonunda ne yapacağını (mükellef, dönem, alan, tutar, dayanak) kısa özetle.'
+        : 'CANLI: Luca\'da yazabilirsin; Kaydet/Gönder/Tahakkuk gibi geri dönülmez düğmeler yine onay ister (confirmed=true yalnız Muzaffer Bey açıkça onayladıysa). Dışarı mesajlar Muzaffer Bey’in onayına düşer, doğrudan gitmez. Kilitleme/kilit açma, resolve, fm_onayla, GİB gönderimi, Mihsap çekimi her zaman Muzaffer Bey’de.',
       '',
       '## RAPOR BİÇİMİ (cevabının sonu)',
       sesModu
         ? 'RAPOR: 2-4 kısa cümle — ne yaptın, ne buldun, ne bekliyor (kuru test/onay).'
         : 'RAPOR: 3-8 satır — ne yaptın, ne buldun, ne bekliyor (kuru test/onay), risk varsa yaz.',
       'SORU: (yalnız gerekiyorsa) tek soru.',
-      'ÖĞRENDİM: (varsa) her satır ayrı.',
+      'Öğrendiklerim: (varsa) her satır ayrı.',
       sesModu ? `\n${this.sesModuEki()}` : null,
     ]
       .filter((s) => s !== null && s !== undefined)
       .join('\n');
+
+    // Prompt boyutu (PLAN/17 §1.3-3): debug her koşuda; 45 KB üstü warn (80 tur × prompt = kota).
+    const uzunluk = prompt.length;
+    const boyutMesaji = `${ajan.id} prompt ${uzunluk} kr (ortak ${d.ortak.length}, kimlik ${d.kimlik.length}, kurallar ${d.kurallar.length}, receteler ${d.receteler.length}, beceriler ${Math.min(d.beceriler.length, BECERI_TAVAN_KR)}/${d.beceriler.length})`;
+    if (uzunluk > PROMPT_UYARI_KR) this.logger.warn(`${boyutMesaji} — ${PROMPT_UYARI_KR} kr tavanını aşıyor; reçete/kimlik kırp`);
+    else this.logger.debug(boyutMesaji);
+    return prompt;
   }
 
   // ─── İŞ DOSYASI (AgentCommand) + OLAY (AgentEvent) ───
@@ -393,7 +442,7 @@ export class EkipRunnerService {
     const previewId = await this.yeniPreviewId();
     const expiresAt = new Date(Date.now() + ONAY_GECERLILIK_MS);
     const hedef = args?.to || args?.phone || args?.email || args?.taxpayerId || '';
-    const impact = `${ajan.ad} (${ajan.id}) "${name}" ile dışarı mesaj göndermek istiyor${hedef ? ` → ${hedef}` : ''}. İş dosyası: ${isId}. Sahip onayı olmadan gitmez.`;
+    const impact = `${ajan.ad} (${ajan.id}) "${name}" ile dışarı mesaj göndermek istiyor${hedef ? ` → ${hedef}` : ''}. İş dosyası: ${isId}. Muzaffer Bey’in onayı olmadan gitmez.`;
     await (this.prisma as any).ownerApprovalRequest.create({
       data: {
         tenantId: p.tenantId,
@@ -597,10 +646,12 @@ export class EkipRunnerService {
     if (name === 'ekip_isler') return { ok: true, isler: await this.isleriListele(tenantId, { ajanId: args?.ajanId, limit: args?.limit || 20 }) };
     if (name === 'ekip_pano') return { ok: true, ...(await this.pano(tenantId, args?.donemSayisi)) };
     if (name === 'ekip_onaylar') return { ok: true, ...(await this.onay.listele(tenantId, { durum: args?.durum || 'PENDING', limit: args?.limit || 20 })) };
+    if (name === 'ekip_is_durum') return this.isDurumu(tenantId, args);
+    if (name === 'ekip_ajan_baslat') return this.ajanBaslat(p, args);
     if (name === 'ekip_onayla' || name === 'ekip_reddet') {
-      // Onay yürütme yalnız sahibin/personelin KENDİ oturumundan (portal/ses); cron/koordinatör zinciri kendi kendine onaylayamaz.
+      // Onay yürütme yalnız Muzaffer Bey’in/personelin KENDİ oturumundan (portal/ses); cron/koordinatör zinciri kendi kendine onaylayamaz.
       if (!(p.kaynak === 'ses' || p.kaynak === 'portal') || !p.userId) {
-        return { ok: false, error: 'Onay yalnız sahibin kendi komutuyla (portal/ses) yürütülür; bu koşuda kapalı.' };
+        return { ok: false, error: 'Onay yalnız Muzaffer Bey’in kendi komutuyla (portal/ses) yürütülür; bu koşuda kapalı.' };
       }
       const previewId = String(args?.previewId || '').trim();
       if (!previewId) return { ok: false, error: 'previewId zorunlu (PRV-XXXX).' };
@@ -610,11 +661,107 @@ export class EkipRunnerService {
     return { ok: false, error: `Bilinmeyen ekip aracı: ${name}` };
   }
 
+  /** ekip_is_durum {isId}: iş dosyasının kısa durumu; bitmişse rapor (en çok 3000 kr). */
+  private async isDurumu(tenantId: string, args: any): Promise<any> {
+    const isId = String(args?.isId || '').trim();
+    if (!isId) return { ok: false, error: 'isId zorunlu.' };
+    const r = await this.isGetir(tenantId, isId);
+    if (!r) return { ok: false, error: `İş dosyası bulunamadı: ${isId}` };
+    const res: any = r.result || {};
+    const bitti = r.status === 'done' || r.status === 'failed';
+    return {
+      ok: true,
+      is: {
+        id: r.id,
+        ajanId: r.ajanId,
+        status: r.status,
+        bitti,
+        gorev: r.gorev,
+        dryRun: r.dryRun,
+        kaynak: r.kaynak,
+        taxpayerId: r.taxpayerId,
+        createdAt: r.createdAt,
+        finishedAt: r.finishedAt,
+        durationMs: r.durationMs,
+        kuruTestSayisi: r.kuruTestSayisi,
+        onayBekleyenSayisi: r.onayBekleyenSayisi,
+        hata: r.hata,
+        rapor: bitti && typeof res.rapor === 'string' ? res.rapor.slice(0, 3000) : null,
+        mesaj: bitti ? undefined : 'İş henüz sürüyor; sonra tekrar sor (bekleme aracı yok).',
+      },
+    };
+  }
+
+  /**
+   * ekip_ajan_baslat (PLAN/17 §3, Koordinatör): başka ajanı ARKA PLANDA başlatır; beklemez, isId döner.
+   *  - Aynı ajan (+ aynı mükellef) için pending/running iş varsa {ok:false, mevcutIsId} (tekrar kilidi).
+   *  - Canlı yalnız Muzaffer Bey bu koşuyu canlı açtıysa VE args.canli=true; yoksa kuru test.
+   *  - kaynak='koordinator' → çocuk koşuda ekip_onayla kapalı; iç içe bekleme yok (sesli yol 25 sn tavanı).
+   */
+  private async ajanBaslat(p: EkipCalistirParametreleri, args: any): Promise<any> {
+    const hedef = ajanBul(String(args?.ajanId || ''));
+    if (!hedef) return { ok: false, error: `Bilinmeyen ajan: ${args?.ajanId || '-'}. Geçerli: ${AJAN_TANIMLARI.map((a) => a.id).join(', ')}` };
+    if (hedef.id === 'koordinator') return { ok: false, error: 'Koordinatör kendine iş atamaz.' };
+    const gorev = String(args?.gorev || '').trim();
+    if (!gorev) return { ok: false, error: 'gorev zorunlu (görev metni şablonu: iş başlığı, mükellef, dönem, istenen, kuru/canlı).' };
+    const taxpayerId = CUID_KALIBI.test(String(args?.taxpayerId || '').trim()) ? String(args.taxpayerId).trim() : p.taxpayerId || null;
+
+    const where: any = { tenantId: p.tenantId, agent: `ekip:${hedef.id}`, status: { in: ['pending', 'running'] } };
+    if (taxpayerId) where.payload = { path: ['taxpayerId'], equals: taxpayerId };
+    const mevcut = await (this.prisma as any).agentCommand
+      .findFirst({ where, orderBy: { createdAt: 'desc' }, select: { id: true, status: true } })
+      .catch(() => null);
+    if (mevcut) {
+      return {
+        ok: false,
+        mevcutIsId: mevcut.id,
+        error: `${hedef.ad} için ${taxpayerId ? 'bu mükellefte ' : ''}çalışan/bekleyen iş var (${mevcut.id}, ${mevcut.status}); yenisi açılmadı. ekip_is_durum ile izle.`,
+      };
+    }
+
+    // canli:true ya da dryRun:false (tools.ts şeması) — ikisi de kabul; yine de Muzaffer Bey bu koşuyu canlı açmış olmalı.
+    const canli = (args?.canli === true || args?.dryRun === false) && p.dryRun === false;
+    const baslangic = await new Promise<{ isId?: string; hata?: string }>((resolve) => {
+      let cozuldu = false;
+      const bitir = (v: { isId?: string; hata?: string }) => {
+        if (cozuldu) return;
+        cozuldu = true;
+        resolve(v);
+      };
+      const zamanlayici = setTimeout(() => bitir({}), AJAN_BASLAT_ISID_BEKLEME_MS);
+      (zamanlayici as any).unref?.();
+      this.calistir({
+        ajanId: hedef.id,
+        gorev,
+        tenantId: p.tenantId,
+        userId: p.userId ?? null,
+        taxpayerId,
+        dryRun: !canli,
+        kaynak: 'koordinator',
+        emit: (e) => {
+          if (e.type === 'baslangic') bitir({ isId: e.isId });
+          else if (e.type === 'error' && !cozuldu) bitir({ hata: e.error });
+        },
+      }).catch((e: any) => {
+        this.logger.warn(`ekip_ajan_baslat ${hedef.id} arka plan koşusu hata: ${e?.message || e}`);
+        bitir({ hata: e?.message || String(e) });
+      });
+    });
+    if (baslangic.hata) return { ok: false, error: `${hedef.ad} başlatılamadı: ${baslangic.hata}` };
+    return {
+      ok: true,
+      isId: baslangic.isId || null,
+      ajanId: hedef.id,
+      dryRun: !canli,
+      mesaj: `${hedef.ad} arka planda ${canli ? 'CANLI' : 'kuru testte'} başladı${baslangic.isId ? ` (iş ${baslangic.isId})` : ''}; bu koşuda bekleme, sonucu ekip_is_durum ile izle ya da iş dosyasından oku.`,
+    };
+  }
+
   // ─── ÖĞRENME: "ÖĞRENDİM:" satırları → AiMemory ───
 
   private ogrenilenleriAyikla(metin: string): string[] {
     const out: string[] = [];
-    const BASLIK = /^(?:Ö|O)(?:Ğ|G)REND(?:İ|I)M\s*[*_`]*\s*:?\s*[*_`]*\s*(.*)$/i;
+    const BASLIK = /^(?:(?:Ö|O)(?:Ğ|G)REND(?:İ|I)M|(?:Ö|O)(?:ğ|g)rendiklerim)\s*[*_`]*\s*:?\s*[*_`]*\s*(.*)$/i; // 2026-09-13: "Öğrendiklerim:" (insan dili) da tanınır
     const temizle = (s: string) => s.trim().replace(/[*_`]+$/, '').trim().slice(0, 1000);
     // "ÖĞRENDİM:" başlığının altına madde madde yazılan dersler (pilot 3'te 2 ders kaybolmuştu).
     let baslikAltinda = false;
@@ -636,7 +783,7 @@ export class EkipRunnerService {
         // Boş satır başlığı kapatmaz; ancak yeni bir başlık (##, **X:**) ya da madde olmayan düz metin kapatır.
         continue;
       }
-      const yeniBaslik = /^(#{1,6}\s|\*\*[^*]{2,40}\*\*\s*:?\s*$|[A-ZÇĞİÖŞÜ][A-ZÇĞİÖŞÜ /]{3,40}:)/.test(ham.trim()) || /^(NE YAPTIM|NEYE BAKTIM|NE BULDUM|ONAY BEKLEYEN|RAPOR|SORU)/i.test(satir);
+      const yeniBaslik = /^(#{1,6}\s|\*\*[^*]{2,40}\*\*\s*:?\s*$|[A-ZÇĞİÖŞÜ][A-ZÇĞİÖŞÜ /]{3,40}:)/.test(ham.trim()) || /^(NE YAPTIM|NEYE BAKTIM|NE BULDUM|ONAY BEKLEYEN|RAPOR|SORU|Yaptığım iş|Baktığım kaynaklar|Bulgular|Onayınızı bekleyen)/i.test(satir);
       if (yeniBaslik) {
         baslikAltinda = false;
         continue;
@@ -722,7 +869,7 @@ export class EkipRunnerService {
         return cevap({ ok: false, error: mihsapRet, neden: 'mihsap_kapali' });
       }
 
-      // 2) DIŞARI GÖNDERİM canlıda bile doğrudan gitmez → sahip onay kaydı
+      // 2) DIŞARI GÖNDERİM canlıda bile doğrudan gitmez → Muzaffer Bey onay kaydı
       if (erisim.kademe === 'disari_gonder') {
         try {
           const onay = await this.onayKaydiAc(p, ajan, isId, name, args);
@@ -734,7 +881,7 @@ export class EkipRunnerService {
             previewId: onay.previewId,
             confirmationText: onay.confirmationText,
             expiresAt: onay.expiresAt,
-            mesaj: 'Mesaj gönderilmedi; sahip onayına düştü. Raporunda "onay bekliyor" yaz.',
+            mesaj: 'Mesaj gönderilmedi; Muzaffer Bey’in onayına düştü. Raporunda "onay bekliyor" yaz.',
           });
         } catch (e: any) {
           return cevap({ ok: false, error: 'Onay kaydı açılamadı: ' + (e?.message || e) });
@@ -797,7 +944,7 @@ export class EkipRunnerService {
     const isId = await this.isDosyasiAc(p, ajan, model);
     emit({ type: 'baslangic', isId, ajanId: ajan.id, model, dryRun });
 
-    // DURDURMA: iş başına AbortController; sahip düğmesi (iptalEt) ve bağlantı kopması (p.signal) buna bağlanır.
+    // DURDURMA: iş başına AbortController; Muzaffer Bey’in düğmesi (iptalEt) ve bağlantı kopması (p.signal) buna bağlanır.
     const ac = new AbortController();
     const kosuKaydi: CalisanKosu = { ac, tenantId: p.tenantId, ajanId: ajan.id, neden: null };
     this.calisanKosular.set(isId, kosuKaydi);
@@ -815,7 +962,8 @@ export class EkipRunnerService {
     }
     childEnv.CLAUDE_CODE_OAUTH_TOKEN = token;
 
-    const ctx: KosuBaglami['ctx'] = { tenantId: p.tenantId, userId: p.userId ?? null, taxpayerId: p.taxpayerId ?? null };
+    // signal: sunucu tarafı bekleyen araçlar (luca_is_bekle, kdv_kontrol_ocr_bekle) Muzaffer Bey "Durdur" deyince döngüyü keser — 2026-09-13.
+    const ctx: KosuBaglami['ctx'] = { tenantId: p.tenantId, userId: p.userId ?? null, taxpayerId: p.taxpayerId ?? null, signal: ac.signal };
     const started = Date.now();
     let answer = '';
     const toolUses: Array<{ name: string; args: any }> = [];
@@ -960,7 +1108,7 @@ export class EkipRunnerService {
   }
 
   /**
-   * KOŞUYU DURDUR — POST /ekip/isler/:id/iptal ve SSE kopması. Aynı tenant'ın çalışan işi ise Agent SDK'ya
+   * KOŞUYU DURDUR — yalnız POST /ekip/isler/:id/iptal (Muzaffer Bey’in düğmesi). Aynı tenant'ın çalışan işi ise Agent SDK'ya
    * abort verilir; calistir() bunu görüp iş dosyasını failed + hata=IPTAL_HATA_METNI[neden] kapatır, AgentEvent yazar.
    * Kayıt yoksa (bitmiş / başka süreçte / başka tenant) {ok:false, error}. İkinci çağrı ilk nedeni korur.
    */
@@ -1015,7 +1163,7 @@ export class EkipRunnerService {
       // Baştaki madde/başlık işaretleri + satır içi kalın (**) / kod (`) işaretleri soyulur; alt çizgi korunur (araç adları)
       const satir = ham.replace(/^[\s*_`#>\-•]+/, '').replace(/\*\*|`/g, '').replace(/[*_]+$/, '').trim();
       if (!satir) continue;
-      if (/^(ÖĞRENDİM|OGRENDIM|SORU)\s*:/i.test(satir)) continue;
+      if (/^(ÖĞRENDİM|OGRENDIM|Öğrendiklerim|SORU)\s*:/i.test(satir)) continue;
       return satir.slice(0, 200);
     }
     return null;
@@ -1051,7 +1199,7 @@ export class EkipRunnerService {
     };
   }
 
-  /** Ekipten açılmış bekleyen sahip onayı sayısı. */
+  /** Ekipten açılmış bekleyen Muzaffer Bey’in onayı sayısı. */
   async bekleyenOnaySayisi(tenantId: string): Promise<number> {
     return (this.prisma as any).ownerApprovalRequest
       .count({ where: { tenantId, agent: { startsWith: 'ekip:' }, status: 'PENDING', expiresAt: { gt: new Date() } } })

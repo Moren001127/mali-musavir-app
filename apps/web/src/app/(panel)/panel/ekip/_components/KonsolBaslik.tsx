@@ -155,7 +155,7 @@ export function KonsolBaslik({
             onClick={simdiUret}
             className="inline-flex flex-shrink-0 items-center gap-1 rounded-full px-2.5 py-[3px] text-[11px] font-bold leading-4 transition-[transform,filter] duration-150 hover:-translate-y-px hover:brightness-110 disabled:opacity-50 disabled:hover:translate-y-0"
             style={{ background: `linear-gradient(135deg, ${EKIP_ACCENT}, #5b9fd1)`, color: '#0b1218' }}
-            title="Yalnız üretir; sahibe göndermez (gönderim Canlı akışta ayrı düğme)"
+            title="Yalnız üretir; Muzaffer Bey’e göndermez (gönderim Canlı akışta ayrı düğme)"
           >
             {uretiliyor ? <Loader2 size={11} className="animate-spin" /> : <Play size={11} />}
             {uretiliyor ? 'Üretiliyor…' : Date.now() < kilitliyeKadar ? 'Sürüyor…' : kosular.aktifKosu ? 'Koşu sürüyor' : 'Şimdi üret'}

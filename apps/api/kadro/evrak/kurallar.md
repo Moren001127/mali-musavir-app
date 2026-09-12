@@ -12,16 +12,16 @@
 - "Yüklendi" aşamasını yalnız belge gerçekten sisteme düştüyse işaretle; "gönderecekmiş" yüklendi değildir.
 
 ## Hatırlatma kuralları
-- Tek mükellefe aynı eksik için ayda en fazla 2 hatırlatma (10'u ve 20'si). Üçüncüsünü sahibe "aramalı" diye getir.
+- Tek mükellefe aynı eksik için ayda en fazla 2 hatırlatma (10'u ve 20'si). Üçüncüsünü Muzaffer Bey'e "aramalı" diye getir.
 - Mesaj metni kısa, nazik, tek tip: hangi dönem, hangi belge, son gün. Kademeli/tehditkâr dil yok.
-- Toplu mesaj (birden çok mükellef) her zaman sahip onayı; tek tek onaylatılır, "hepsine gönder" tek onayla yapılmaz.
+- Toplu mesaj (birden çok mükellef) her zaman Muzaffer Bey'in onayı; tek tek onaylatılır, "hepsine gönder" tek onayla yapılmaz.
 - Test/deneme gönderimi "iletildi" sayılmaz.
 
 ## Kapanmış mükellef
-- İşi bırakma tarihi girilmiş mükellef pasif değildir; kapanış ayına kadar evrak istenir, sonrası için yıllık beyan evrakı sahibe hatırlatılır.
+- İşi bırakma tarihi girilmiş mükellef pasif değildir; kapanış ayına kadar evrak istenir, sonrası için yıllık beyan evrakı Muzaffer Bey'e hatırlatılır.
 
 ## Gizlilik (pilot 2026-09-12 bulgusu)
-- Telefon numarası ve e-posta adresi rapora, ONAY BEKLEYEN maddesine ve `create_pending_action` gövdesine YAZILMAZ; "kanal: WhatsApp / SMS / e-posta" yeter. Numara sistemde kayıtlıdır; gönderim aracı onu kendisi bulur.
+- Telefon numarası ve e-posta adresi rapora, "Onayınızı bekleyen" maddesine ve `create_pending_action` gövdesine YAZILMAZ; "kanal: WhatsApp / SMS / e-posta" yeter. Numara sistemde kayıtlıdır; gönderim aracı onu kendisi bulur.
 - VKN/TC hiçbir metne girmez.
 
 ## Takvim

@@ -8,7 +8,7 @@
 5. `compare_periods` → önceki dönem/geçen yıl ile sapmalar.
 6. Denetçi/Banka-Kasa bulgusu varsa ilgili göstergeye "defter hatalı" notu.
 7. Tabloyu doldur, puanla, tek satır nedenler.
-8. Rapor (§2 kart + §5 kalıbı) + `save_ai_memory` (mükellefe özgü kalıcı gösterge, ör. "perakende, nakit yüksek normal"). Kime döndü: Koordinatör → sahip; kasa/ortak cari notu → Analist (A1) `create_pending_action` ile.
+8. Rapor (§2 kart + §5 kalıbı) + `save_ai_memory` (mükellefe özgü kalıcı gösterge, ör. "perakende, nakit yüksek normal"). Kime döndü: Koordinatör → Muzaffer Bey; kasa/ortak cari notu → Analist (A1) `create_pending_action` ile.
 
 ## 2. Puan kartı şablonu
 ```
@@ -27,10 +27,10 @@ Kayıtsız gider işareti: … → puan ..
 
 ## 3. Ofis sıralaması (çeyrek)
 1. Tüm aktif mükellefler için kart (kota izin verdikçe; önce KDV verisi olanlar).
-2. Toplam puana göre ilk 10 → her biri tek satır: ad / puan / en yüksek gösterge; liste `create_pending_action` gövdesine ("Ofis risk sıralaması <yıl> Q<n>"). Kart çıkarılamayan mükellefler "ölçülemedi (neden)" olarak ayrı sayılır. Kime döndü: Koordinatör → sahip.
+2. Toplam puana göre ilk 10 → her biri tek satır: ad / puan / en yüksek gösterge; liste `create_pending_action` gövdesine ("Ofis risk sıralaması <yıl> Q<n>"). Kart çıkarılamayan mükellefler "ölçülemedi (neden)" olarak ayrı sayılır. Kime döndü: Koordinatör → Muzaffer Bey.
 
 ## 4. Aylık hafif tarama (KDV sonrası)
-- Yalnız KDV yüklenim + devreden serisi; sıçrama varsa (yüklenim +15 puan, devreden ilk kez > 0 veya 2 katına çıktı) `create_pending_action` ("Risk sıçraması: <mükellef> / <dönem> / <gösterge> eski → yeni"). Tam kart çıkarma. Sıçrama yoksa NE BULDUM: "sıçrama yok (n mükellef tarandı)".
+- Yalnız KDV yüklenim + devreden serisi; sıçrama varsa (yüklenim +15 puan, devreden ilk kez > 0 veya 2 katına çıktı) `create_pending_action` ("Risk sıçraması: <mükellef> / <dönem> / <gösterge> eski → yeni"). Tam kart çıkarma. Sıçrama yoksa Bulgular: "sıçrama yok (n mükellef tarandı)".
 
 ## 5. "Hazır değil" şablonu ve rapor kalıbı (00_ORTAK §10, §12)
 ```
@@ -42,5 +42,5 @@ Kime döndü: Koordinatör → Beyanname Uzmanı (beyan kaydı) / Luca Operatör
 ```
 - Her "Kime döndü" için `create_pending_action` (başlık "Risk → <Kime>: <mükellef>/<dönem>/<ne bekleniyor>"); yapılamadıysa "KAYDEDİLEMEDİ:".
 - Kısmi kart yine §2 şablonuyla verilir; toplam ölçülen pay üzerinden (ör. 70 üzerinden 41), "ölçülemeyen" satırı zorunlu.
-- Rapor: tablo/emoji yok; her gösterge tek satır, kaynağı parantezde. ONAY BEKLEYEN: eşik değişikliği önerisi ("eşik / <gösterge> / <eski → yeni> / <neden>") — yalnız öneri, `create_pending_action`.
-- Kart mükellefe gitmez; mükellef özetine girecekse Analist'e DEVİR ve sahip onayı. Mevzuat dayanağı (adat faizi, örtülü sermaye oranı) emin değilse "TEYİT ET:" işaretle, `get_accounting_reference`'a bak.
+- Rapor: tablo/emoji yok; her gösterge tek satır, kaynağı parantezde. Onayınızı bekleyen: eşik değişikliği önerisi ("eşik / <gösterge> / <eski → yeni> / <neden>") — yalnız öneri, `create_pending_action`.
+- Kart mükellefe gitmez; mükellef özetine girecekse Analist'e DEVİR ve Muzaffer Bey'in onayı. Mevzuat dayanağı (adat faizi, örtülü sermaye oranı) emin değilse "TEYİT ET:" işaretle, `get_accounting_reference`'a bak.

@@ -11,10 +11,10 @@ import { geceOzetSatiri } from '../fatura-muhasebelestirme/gece-cekim';
  * sabahOzeti(tenantId): koordinatör ajanını "bugünün ofis özeti" göreviyle koşturur
  * (araçlar: get_operation_briefing, list_taxpayers_monthly_status, get_tax_calendar,
  * get_beyanname_readiness_summary, get_collection_risk_summary, ekip_isler/ekip_pano)
- * ve raporu sahibe WhatsApp ile gönderir.
+ * ve raporu Muzaffer Bey’e WhatsApp ile gönderir.
  *
  * Cron 08:30 Europe/Istanbul; EKIP_SABAH_OZETI=on değilse ÇALIŞMAZ.
- * Sahibe gönderim kalıbı owner-briefing.cron.ts ile aynı: MOREN_OWNER_WHATSAPP_PHONES +
+ * Muzaffer Bey’e gönderim kalıbı owner-briefing.cron.ts ile aynı: MOREN_OWNER_WHATSAPP_PHONES +
  * WhatsAppService.sendMessage(phone, text, tenantId, {quote:false}); tenant'ta WhatsApp
  * otomasyonu kapalıysa gönderilmez. Koşu her zaman KURU TEST (özet dışarı mesaj üretmez).
  */
@@ -48,7 +48,7 @@ export class KoordinatorService {
       timeZone: 'Europe/Istanbul', weekday: 'long', day: '2-digit', month: 'long', year: 'numeric',
     });
     return [
-      `Bugün ${tarih}. Sahibe WhatsApp'tan gidecek "BUGÜNÜN OFİS ÖZETİ"ni hazırla.`,
+      `Bugün ${tarih}. Muzaffer Bey’e WhatsApp'tan gidecek "BUGÜNÜN OFİS ÖZETİ"ni hazırla.`,
       'Sırayla bak: get_operation_briefing → get_tax_calendar → get_beyanname_readiness_summary → get_collection_risk_summary → ekip_pano (son 3 dönem) → ekip_isler (son 20; kuru test / onay bekleyen).',
       // PLAN/16 §H: gece çekimi özeti sistemden hazır gelir (AuditLog GECE_CEKIM, son 24 saat) — araç çağrısı gerekmez.
       `Hazır veri (sistemden, araç çağırmadan aynen kullan): ${geceSatiri}. Bunu 🤖 EKİP başlığına tek madde olarak yaz.`,
@@ -79,7 +79,7 @@ export class KoordinatorService {
     }
   }
 
-  /** Koordinatörü koştur ve sahibe gönder. Dönen sonuç iş dosyasıyla aynıdır. */
+  /** Koordinatörü koştur ve Muzaffer Bey’e gönder. Dönen sonuç iş dosyasıyla aynıdır. */
   async sabahOzeti(tenantId: string, opts: { gonder?: boolean } = {}): Promise<EkipKosuSonucu & { gonderildi: number }> {
     const geceSatiri = await this.geceCekimSatiri(tenantId);
     const sonuc = await this.runner.calistir({
@@ -113,7 +113,7 @@ export class KoordinatorService {
     return { ...sonuc, gonderildi };
   }
 
-  /** Ajan cevabından sahibe gidecek metni ayıkla: "RAPOR:" sonrası; ÖĞRENDİM/SORU satırları düşer. */
+  /** Ajan cevabından Muzaffer Bey’e gidecek metni ayıkla: "RAPOR:" sonrası; ÖĞRENDİM/SORU satırları düşer. */
   private raporMetni(rapor: string): string {
     const t = String(rapor || '');
     const i = t.search(/RAPOR\s*:/i);

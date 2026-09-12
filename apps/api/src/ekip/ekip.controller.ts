@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Logger, Param, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { LucaService } from '../luca/luca.service';
 import { EkipRunnerService } from './ekip-runner.service';
@@ -14,7 +14,7 @@ import { EkipOnayService } from './ekip-onay.service';
  *       + gun=bugun|7|tumu&status=running,failed&dryRun=true|false&kaynak=portal|ses|cron|koordinator&toplam=1
  *         → süzgeçli şekil {isler, toplam, suzgec}
  *  GET  /ekip/isler/:id             tek iş dosyası (tam sonuç)
- *  POST /ekip/isler/:id/iptal       çalışan koşuyu DURDUR → {ok:true,isId} | {ok:false,isId,error} (bitmiş/yok)
+ *  POST /ekip/isler/:id/iptal       çalışan koşuyu DURDUR → {ok:true,isId} | {ok:false,isId,error} (bitmiş/yok) — TEK iptal yolu
  *  GET  /ekip/pano?donemSayisi=&yenile=  mükellef × dönem × aşama (son 3 dönem); 60 sn önbellek
  *  GET  /ekip/durum                 operatör çevrimiçi mi, bekleyen onay, bugünkü koşu, calisan, bugunHata, sonSabahOzeti
  *  POST /ekip/koordinator/sabah-ozeti  body {gonder?} → koordinatörü hemen koştur (canlı test)
@@ -25,6 +25,8 @@ import { EkipOnayService } from './ekip-onay.service';
 @Controller('ekip')
 @UseGuards(AuthGuard('jwt'))
 export class EkipController {
+  private readonly logger = new Logger('EkipController');
+
   constructor(
     private readonly runner: EkipRunnerService,
     private readonly koordinator: KoordinatorService,
@@ -144,7 +146,9 @@ export class EkipController {
   /**
    * Ajanı koştur — SSE. Olaylar: baslangic | text | tool | kuruTest | onay | red | done | error
    * (ekip-runner.service.ts EkipAkisOlayi). dryRun varsayılan TRUE.
-   * İstemci bağlantıyı GERÇEKTEN keserse (sekme kapandı, "Durdur" sonrası fetch abort) koşu sunucuda da durur.
+   * 2026-09-13 (PLAN/17 Faz C): bağlantı kopunca koşu ARTIK İPTAL EDİLMEZ — 5-8 dk süren reçete zincirleri (KDV Kontrol)
+   * sekme kapanınca ölüyordu. Koşu arka planda sürer, sonucu iş dosyasına yazar; iptal yalnız POST /ekip/isler/:id/iptal
+   * (FE "Durdur" düğmesi önce onu çağırır). Kopmadan sonra emit'ler sessizce yutulur.
    */
   @Post(':ajanId/calistir')
   async calistir(
@@ -177,13 +181,15 @@ export class EkipController {
       }
     }, 15000);
 
-    // BAĞLANTI KOPMASI → koşuyu durdur. DİKKAT: Node 16+ `req.on('close')` gövde okunur okunmaz tetiklenir
-    // (yanıt sürerken, ölçüldü: ~26 ms) — onu kullanmak her koşuyu anında iptal ederdi. Gerçek kopma
-    // `res.on('close')` + `writableEnded=false` ile anlaşılır; nabız sayesinde close yalnız gerçek kopmada gelir.
-    const kopma = new AbortController();
+    // BAĞLANTI KOPMASI → yalnız log; koşu arka planda sürer (iptal sinyali VERİLMEZ). Gerçek kopma
+    // `res.on('close')` + `writableEnded=false` ile anlaşılır (Node 16+ `req.on('close')` gövde okunur okunmaz
+    // tetiklendiğinden kullanılmaz). Nabız yazımları koptuktan sonra da sessizce yutulur.
     let bitti = false;
+    let isId: string | null = null;
     res.on('close', () => {
-      if (!bitti && !res.writableEnded) kopma.abort();
+      if (!bitti && !res.writableEnded) {
+        this.logger.log(`ekip ${ajanId} SSE bağlantısı koptu; koşu arka planda sürüyor${isId ? ` (iş ${isId})` : ''} — sonuç iş dosyasında`);
+      }
     });
 
     try {
@@ -195,15 +201,21 @@ export class EkipController {
         taxpayerId: body?.taxpayerId || null,
         dryRun: body?.dryRun !== false,
         kaynak: 'portal',
-        emit: send,
-        signal: kopma.signal,
+        emit: (e) => {
+          if (e.type === 'baslangic') isId = e.isId;
+          send(e);
+        },
       });
     } catch (e: any) {
       send({ type: 'error', error: e?.message || 'Beklenmeyen hata.' });
     } finally {
       bitti = true;
       clearInterval(nabiz);
-      res.end();
+      try {
+        res.end();
+      } catch {
+        /* istemci koptu */
+      }
     }
   }
 }

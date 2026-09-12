@@ -21,7 +21,8 @@ export const MOREN_AI_TOOLS: ToolDefinition[] = [
     name: 'list_taxpayers',
     description:
       'Ofisteki mükellefleri listeler. Mükellef adı/ünvanı, VKN/TCKN veya ticari unvan üzerinden arama yapabilir. ' +
-      'Kullanıcı bir mükellef adı söylediğinde (örn. "Ali Tekstil") önce bu tool ile ID bul, sonraki çağrılarda taxpayerId kullan.',
+      'Kullanıcı bir mükellef adı söylediğinde (örn. "Ali Tekstil") önce bu tool ile ID bul, sonraki çağrılarda taxpayerId kullan. ' +
+      'Her satırda defterTuru (BILANCO | ISLETME | null) da döner; birden çok eşleşme varsa işlem yapmadan sahibe sor.',
     input_schema: {
       type: 'object',
       properties: {
@@ -45,7 +46,8 @@ export const MOREN_AI_TOOLS: ToolDefinition[] = [
     name: 'get_taxpayer',
     description:
       'Bir mükellefin tüm detaylarını getirir: ad/ünvan, VKN, vergi dairesi, iletişim, işe başlama/bırakma tarihi, ' +
-      'evrak teslim günü, son hatırlatma, aylık durum kayıtları (son 6 ay). Mükellef ID biliniyorsa bunu çağır.',
+      'evrak teslim günü, son hatırlatma, aylık durum kayıtları (son 6 ay), defterTuru (BILANCO | ISLETME | null — KDV Kontrol oturum türü ve İHÖ/GT dalı bunu belirler). ' +
+      'Mükellef ID biliniyorsa bunu çağır.',
     input_schema: {
       type: 'object',
       properties: {
@@ -313,7 +315,8 @@ export const MOREN_AI_TOOLS: ToolDefinition[] = [
     description:
       'Gelir tablosunu (kar/zarar tablosu) getirir. Brüt satışlar, indirimler, net satışlar, satış maliyeti, brüt kâr, ' +
       'faaliyet giderleri, finansman giderleri, olağan kâr, dönem kârı, vergi karşılığı, net kâr. ' +
-      'Dönem yorumu, kârlılık analizi, maliyet/gider dağılımı için kullan.',
+      'Dönem yorumu, kârlılık analizi, maliyet/gider dağılımı için kullan. Aynı dönemde birden çok kopya varsa KİLİTLİ olan döner ' +
+      '(kopyaSayisi, kilitliKopyaVar, mizanId, duzeltmeler, geciciVergiHesabi alanları da gelir); hazır tablo varken Luca çekimi İSTEME.',
     input_schema: {
       type: 'object',
       properties: {
@@ -338,6 +341,35 @@ export const MOREN_AI_TOOLS: ToolDefinition[] = [
         donem: { type: 'string' },
       },
       required: ['taxpayerId', 'donem'],
+    },
+  },
+  // ============ MALİ TABLO YARDIMCILARI (PLAN/17 R2 — 2026-09-13) ============
+  {
+    name: 'mali_donemler_listele',
+    description:
+      'Mali tablo sorusunda (gelir tablosu/bilanço/mizan analizi, yorumu) ÖNCE bunu çağır: mükellefin portalda HAZIR mali tablo dönemlerini tek listede verir ' +
+      '(gelir tablosu + bilanço + mizan; e-Defter kaynaklı mizanlar süzülür, kilitli kayıt önce gelir). Hazır tablo varsa Luca çekimi/Denetçi ÖNERME, tabloyu oku. ' +
+      'Satır: {tur, donem, id, kilitli, kaynak, createdAt}.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        taxpayerId: { type: 'string', description: 'Mükellef id (list_taxpayers ile bul).' },
+      },
+      required: ['taxpayerId'],
+    },
+  },
+  {
+    name: 'mali_yorum_oku',
+    description:
+      'Sahibin portalda kayıtlı Mali Yorum (AI değerlendirme) metnini okur — gelir tablosu/bilanço/mizan/İHÖ yorumlarken "kayıtlı yorum var mı, çelişiyor muyum" diye bak. ' +
+      'Yorum ÜRETMEZ/kaydetmez. Sonuç {ozet, model, updatedAt} ya da null (kayıtlı yorum yok).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        kaynak: { type: 'string', enum: ['MIZAN', 'BILANCO', 'GELIR_TABLOSU', 'IHO'], description: 'Tablo türü.' },
+        kaynakId: { type: 'string', description: 'İlgili kaydın id\'si (get_gelir_tablosu → kayitId; get_mizan → mizanId; IHO için "taxpayerId:yil").' },
+      },
+      required: ['kaynak', 'kaynakId'],
     },
   },
 
@@ -700,6 +732,7 @@ export const MOREN_AI_TOOLS: ToolDefinition[] = [
     name: 'get_taxpayer_work_status',
     description:
       'Tek mükellef için beyanname/fatura/KDV/LUCA/cari/banka hazırlık durumunu ve eksikleri özetler. veri.faturaMerkezi = Fatura Merkezi dönem sayımları (toplam/bekleyen/onaylı/Luca/okunmadı/çelişki/mükerrer); veri.mihsapFatura yalnız eski Mihsap sayısı. ' +
+      'KDV Kontrol oturumları periodLabel (YYYY/MM) ile, mizan çeyrek etiketiyle (2026-06 → 2026-Q2) aranır; "LUCA mizan yok" yalnız kilitli (e-Defter dışı) mizan yoksa yazılır. ' +
       '"ABC hazır mı?", "Bu mükellefte ne eksik?", "KDV öncesi durumu ne?" sorularında kullan.',
     input_schema: {
       type: 'object',
@@ -1129,7 +1162,7 @@ export const FATURA_MERKEZI_AJAN_ARACLARI: ToolDefinition[] = [
       properties: {
         belgeId: { type: 'string' },
         etiket: { type: 'string', enum: ['demirbas', 'tevkifat_supheli', 'incele', 'mukerrer_supheli', 'iade'] },
-        not: { type: 'string', description: 'Tek satır: neden şüpheli / sahipten ne bekleniyor.' },
+        not: { type: 'string', description: 'Tek satır: neden şüpheli / Muzaffer Bey’den ne bekleniyor.' },
       },
       required: ['belgeId', 'etiket', 'not'],
     },
@@ -1164,3 +1197,160 @@ export const FATURA_MERKEZI_AJAN_ARACLARI: ToolDefinition[] = [
 
 /** fm_* araç adları (runner + defter + çalıştırıcı için tek kaynak). */
 export const FM_AJAN_ARAC_ADLARI: string[] = FATURA_MERKEZI_AJAN_ARACLARI.map((t) => t.name);
+
+// =====================================================================================
+// EKİP İŞ ZİNCİRİ ARAÇLARI — PLAN/17 §3 (2026-09-13)
+//
+// KDV Kontrol zinciri (R1: oturum → Luca çekimi → fatura bağlama → OCR → eşleştirme → satırlar),
+// Luca iş bekleme ve Koordinatör'ün ajan başlatma/izleme araçları. MOREN_AI_TOOLS'a KASITLI
+// OLARAK EKLENMEDİ (fm_* ile aynı gerekçe): genel WhatsApp/portal botu ve otomasyon kataloğu
+// (action-catalog READ_ACTIONS = MOREN_AI_TOOLS) bunları görmesin — kdv_kontrol_luca_cek Luca
+// işi açar, ocr_baslat Max kotası harcar. Ekip runner'ı + araç defteri bu listeyi ayrıca yükler
+// (kademe: luca_cek = luca_yaz; oturum/fatura_bagla/ocr_baslat/eslestir = portal_yaz_agir;
+// gerisi oku — eşleme arac-defteri.ts'te). Çalıştırıcı ToolExecutorService.execute içindedir.
+// Bekleme araçları (luca_is_bekle, ocr_bekle) SUNUCU tarafında döngü kurar (≤60 sn/çağrı):
+// runner'da uyku aracı yoktur, tur sayısı sınırlıdır.
+// =====================================================================================
+export const EKIP_IS_ZINCIRI_ARACLARI: ToolDefinition[] = [
+  {
+    name: 'kdv_kontrol_oturum_bul_olustur',
+    description:
+      'KDV Kontrol zincirinin (R1) 2. adımı: mükellef + dönem için KDV Kontrol oturumunu bulur, yoksa AÇAR. type verilmezse defterTuru\'ndan iki oturum türetir ' +
+      '(BILANCO → KDV_191 alış + KDV_391 satış; ISLETME → ISLETME_GIDER + ISLETME_GELIR). Kilitli (COMPLETED) oturumda ZİNCİRE DEVAM ETME, sahibe "kilitli, açayım mı" sor. ' +
+      'Kuru testte çalışmaz (yapılacaktı). Çıktı: oturumlar[{sessionId, type, status, yeni, lucaKayitSayisi, faturaSayisi, kilitli}].',
+    input_schema: {
+      type: 'object',
+      properties: {
+        taxpayerId: { type: 'string', description: 'Mükellef id (list_taxpayers ile bul).' },
+        periodLabel: { type: 'string', description: 'Dönem "YYYY/MM" (örn. 2026/08). "2026-08" de kabul edilir, çevrilir.' },
+        type: {
+          type: 'string',
+          enum: ['KDV_191', 'KDV_391', 'ISLETME_GELIR', 'ISLETME_GIDER'],
+          description: 'İsteğe bağlı tek oturum türü. Boşsa defter türünden iki oturum.',
+        },
+      },
+      required: ['taxpayerId', 'periodLabel'],
+    },
+  },
+  {
+    name: 'kdv_kontrol_luca_cek',
+    description:
+      'KDV Kontrol oturumu için Luca çekim işini kuyruğa alır (R1 adım 3; tür oturumdan türer: 191/391 → Defteri Kebir, ISLETME_* → gelir/gider listesi). ' +
+      'Luca ajanı çevrimiçi değilse iş AÇILMAZ, {ok:false, neden} döner → DUR. Aynı iş zaten kuyruktaysa mevcutIs:true ile o iş döner. ' +
+      'Sonucu luca_is_bekle {jobId} ile bekle. Kuru testte çalışmaz.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        sessionId: { type: 'string', description: 'kdv_kontrol_oturum_bul_olustur çıktısındaki sessionId.' },
+        targetDeviceId: { type: 'string', description: 'İsteğe bağlı hedef Luca ajan cihazı; boşsa yerel Node işçisi alır.' },
+      },
+      required: ['sessionId'],
+    },
+  },
+  {
+    name: 'luca_is_bekle',
+    description:
+      'Bir Luca işini (jobId) SUNUCUDA bekler: 5 sn\'de bir durumuna bakar, en çok maxSaniye (≤60). bitti:true (done/failed/cancelled) olana kadar tekrar çağır; ' +
+      'iş başına toplam 10 dk (≤10 çağrı) aşılırsa "Luca sürüyor" notuyla DUR. captcha.challengeId doluysa "Luca güvenlik kodu bekliyor" (sahip); ' +
+      'pending + retryCount>0 ise "Luca teknik kilit, otomatik tekrar deneniyor"; failed → errorMsgSonSatir rapora, tekrar YOK.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        jobId: { type: 'string', description: 'Luca iş id (kdv_kontrol_luca_cek / fm_luca_gonder çıktısı).' },
+        maxSaniye: { type: 'number', description: 'Bu çağrıda en çok kaç saniye beklensin (varsayılan 60, tavan 60).' },
+      },
+      required: ['jobId'],
+    },
+  },
+  {
+    name: 'kdv_kontrol_fatura_bagla',
+    description:
+      'Portal DB\'deki Mihsap faturalarını (mihsap_invoices; Fatura Merkezi/e-Arşiv DEĞİL) KDV Kontrol oturumuna görsel olarak bağlar (R1 adım 4). ' +
+      'Fatura yoksa {ok:false, neden:"HAZIR DEĞİL: faturalar portala inmemiş (Mihsap çekimi Muzaffer Bey’de)"} — Mihsap çekimini ajan başlatmaz. Tekrar çağrılabilir (alreadyLinked). Kuru testte çalışmaz.',
+    input_schema: {
+      type: 'object',
+      properties: { sessionId: { type: 'string' } },
+      required: ['sessionId'],
+    },
+  },
+  {
+    name: 'kdv_kontrol_ocr_baslat',
+    description:
+      'Oturuma bağlı faturaların OCR okumasını başlatır (R1 adım 5; Luca çekimini beklemeden, paralel). Hemen döner {queued, total, cacheHits}; işçiler arkada çalışır, ' +
+      'bitişi kdv_kontrol_ocr_bekle ile izle. forceFresh YOK (Max kotası). Kuru testte çalışmaz.',
+    input_schema: {
+      type: 'object',
+      properties: { sessionId: { type: 'string' } },
+      required: ['sessionId'],
+    },
+  },
+  {
+    name: 'kdv_kontrol_ocr_bekle',
+    description:
+      'Oturumdaki OCR bitişini SUNUCUDA bekler (R1 adım 7): görsellerin ocrStatus sayımını 5 sn\'de bir alır, en çok maxSaniye (≤60); pending+processing=0 olunca bitti:true. ' +
+      'Toplam 15 dk (≤15 çağrı) aşılırsa "OCR sürüyor" notuyla DUR. Çıktı: {pending, processing, success, needsReview, lowConfidence, failed, toplam, bitti, needsOcrConfirm}.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        sessionId: { type: 'string' },
+        maxSaniye: { type: 'number', description: 'Varsayılan 60, tavan 60.' },
+      },
+      required: ['sessionId'],
+    },
+  },
+  {
+    name: 'kdv_kontrol_eslestir',
+    description:
+      'Luca kayıtları ↔ fatura görsellerini eşleştirir (R1 adım 8). Ön koşul kapısı araç içinde: Luca kaydı>0, görsel>0, OCR pending/processing=0; sağlanmıyorsa {ok:false, neden} döner, servis ÇAĞRILMAZ. ' +
+      'Sorunsuz biterse modül oturumu portaldaki gibi KİLİTLER (otoKilit:true — Muzaffer Bey’in kararı: ayrıca sorulmaz; Word raporu oluşur, yazdırma Muzaffer Bey’de). Kuru testte çalışmaz.',
+    input_schema: {
+      type: 'object',
+      properties: { sessionId: { type: 'string' } },
+      required: ['sessionId'],
+    },
+  },
+  {
+    name: 'kdv_kontrol_sonuc_satirlari',
+    description:
+      'Eşleştirme sonrası sonuç satırlarını sınıflandırıp listeler (R1 adım 9): tam · incele · fatura yok (Luca\'da var) · Luca\'da yok (fatura var) · red. ' +
+      'Karar VERME (resolve yok); sorunlu satırları belge no + tarih + KDV + sebep ile rapora yaz. results boşsa eşleştirme çalışmamıştır.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        sessionId: { type: 'string' },
+        yalnizSorunlu: { type: 'boolean', description: 'true (varsayılan): tam eşleşenler listelenmez, yalnız sayılır.' },
+        limit: { type: 'number', description: 'En çok satır (varsayılan 100, tavan 100).' },
+      },
+      required: ['sessionId'],
+    },
+  },
+  {
+    name: 'ekip_ajan_baslat',
+    description:
+      'Koordinatör için: görevi başka bir ekip ajanına verir ve koşuyu ARKA PLANDA başlatır (iç içe koşu yok, hemen döner). Aynı ajan + mükellef için çalışan koşu varsa {ok:false, mevcutIsId}. ' +
+      'dryRun varsayılan true (kuru test); canlı (dryRun:false) yalnız Muzaffer Bey açıkça "canlı" dediyse ve oturumda kullanıcı varsa. Durumu ekip_is_durum {isId} ile izle.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        ajanId: { type: 'string', description: 'Ajan kimliği (beyanname, analist, fatura, denetci, evrak, banka-kasa, musteri, luca-operator ...).' },
+        gorev: { type: 'string', description: 'Ajanın göreceği görev cümlesi: reçete + mükellef + dönem (çevrilmiş etiket) + kuru/canlı.' },
+        taxpayerId: { type: 'string', description: 'Mükellef id (biliniyorsa; tekrar kilidi buna göre çalışır).' },
+        dryRun: { type: 'boolean', description: 'Varsayılan true. false = canlı (Muzaffer Bey’in onayı şart).' },
+      },
+      required: ['ajanId', 'gorev'],
+    },
+  },
+  {
+    name: 'ekip_is_durum',
+    description:
+      'ekip_ajan_baslat ile açılan bir ekip işinin durumunu okur: {status, rapor (ilk 1500 kr), hata, durationMs}. Takılan iş 2. kontrolde de bitmediyse sahibe tek satır soru.',
+    input_schema: {
+      type: 'object',
+      properties: { isId: { type: 'string', description: 'ekip_ajan_baslat çıktısındaki isId.' } },
+      required: ['isId'],
+    },
+  },
+];
+
+/** Ekip iş zinciri araç adları (runner + defter + çalıştırıcı için tek kaynak). */
+export const EKIP_IS_ZINCIRI_ARAC_ADLARI: string[] = EKIP_IS_ZINCIRI_ARACLARI.map((t) => t.name);

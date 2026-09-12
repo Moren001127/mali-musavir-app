@@ -21,7 +21,7 @@
 2. Her borçlu (görevde tek mükellef verildiyse yalnız o) için `get_cari_hareketler` (taxpayerId, limit 50) → net bakiye, son tahsilat tarihi, kaç gün.
 3. Bu ay hatırlatma gitmiş mi: `search_ai_memory` (taxpayerId, "tahsilat hatırlatma") — gitmişse yeni taslak yok.
 4. ≤90 gün: §5 taslağı → `create_pending_action` (kuru test) / `send_whatsapp_template` (canlı → PRV).
-5. **90+ gün: mesaj taslağı HAZIRLAMA**; ONAY BEKLEYEN'e "aramalı / <mükellef> / <net bakiye> TL / <N> gün ödeme yok" + `create_pending_action` (priority: yüksek). Pilotta 18 ay geciken için hem mesaj hem arama yazılmıştı; yalnız arama.
+5. **90+ gün: mesaj taslağı HAZIRLAMA**; "Onayınızı bekleyen"'e "aramalı / <mükellef> / <net bakiye> TL / <N> gün ödeme yok" + `create_pending_action` (priority: yüksek). Pilotta 18 ay geciken için hem mesaj hem arama yazılmıştı; yalnız arama.
 6. Rapor: borçlu sayısı, toplam, 90+ listesi (≤10 satır: ad / bakiye / gün).
 
 ## 4. Ekstre eksik hatırlatma (ayın 25'i)
@@ -44,6 +44,6 @@ Kime döndü: Koordinatör → Evrak Sorumlusu (ekstre) / Fatura Muhasebecisi (f
 
 ## 7. Rapor kalıbı
 - İlk satır: mükellef / dönem / bugün. Tablo, emoji, süreç cümlesi ("paralel çekiyorum") yok.
-- NE BULDUM: eşleştirme sayıları, kasa/banka uyarıları, tahsilat durumu — her biri tek satır, kaynağı parantezde.
-- ONAY BEKLEYEN: taslak / aramalı maddeleri (`create_pending_action` kaydıyla).
-- ÖĞRENDİM: mükellefe özgü ödeme alışkanlığı, banka açıklama kalıbı ("X'in POS tahsilatı 'ISBANK POS' açıklamasıyla gelir") → `save_ai_memory`.
+- Bulgular: eşleştirme sayıları, kasa/banka uyarıları, tahsilat durumu — her biri tek satır, kaynağı parantezde.
+- Onayınızı bekleyen: taslak / aramalı maddeleri (`create_pending_action` kaydıyla).
+- Öğrendiklerim: mükellefe özgü ödeme alışkanlığı, banka açıklama kalıbı ("X'in POS tahsilatı 'ISBANK POS' açıklamasıyla gelir") → `save_ai_memory`.

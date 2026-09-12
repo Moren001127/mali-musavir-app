@@ -42,12 +42,13 @@ export interface Kosu {
   durationMs?: number;
   basladi: number;
   kaynak: 'portal' | 'sabahOzeti';
-  /** Sabah özeti sonucu sahibe gönderildi mi (gonder:true sonrası). */
+  /** Sabah özeti sonucu Muzaffer Bey’e gönderildi mi (gonder:true sonrası). */
   gonderildi?: number;
 }
 
-export const BAGLANTI_KESILDI_METNI = "Bağlantı kesildi — ajan sunucuda sürmüş olabilir; sonucu İş Dosyaları'nda gör";
-/** Sahip "Durdur" dedi: sunucuda koşu iptal edildi (iş dosyası failed, hata "iptal edildi (sahip)"). */
+/** 2026-09-13 (PLAN/17 Faz C): bağlantı kopunca sunucu koşuyu İPTAL ETMEZ; iş arka planda sürer, sonuç iş dosyasına yazılır. */
+export const BAGLANTI_KESILDI_METNI = "Bağlantı kesildi — koşu sunucuda arka planda sürer; sonucu İş Dosyaları'ndan takip edin";
+/** Muzaffer Bey "Durdur" dedi: sunucuda koşu iptal edildi (iş dosyası failed, hata "iptal edildi (Muzaffer Bey)"). */
 export const DURDURULDU_METNI = 'Durduruldu';
 
 /** Ortak sorgu seçenekleri (tek yerde; KonsolBaslik ve EkipEkrani aynı anahtarları paylaşır → tek ağ isteği). */
@@ -106,7 +107,8 @@ export const SORGU = {
  * - AbortController ajan başına Map'te; ajan değişince HİÇBİR ŞEY abort edilmez.
  * - aktifKosu: herhangi bir bitmemiş koşu → tek aktif koşu kilidi (tek Max hesabı + Luca tek oturum).
  * - durdur: ÖNCE sunucuda iptal (POST /ekip/isler/:id/iptal → Agent SDK abort, iş failed), SONRA SSE'yi kapatır;
- *   ekranda "Durduruldu". isId henüz gelmediyse yalnız SSE kapanır → sunucu bağlantı kopmasından durdurur.
+ *   ekranda "Durduruldu". isId henüz gelmediyse yalnız SSE kapanır → sunucu koşuyu ARTIK durdurmaz, arka planda sürer
+ *   (iş dosyasından takip edilir).
  */
 export function useKosular() {
   const qc = useQueryClient();
@@ -219,7 +221,7 @@ export function useKosular() {
                   : (e.toolUses || []).map((t: AracCagrisi) => ({ tip: 'arac' as const, ad: t.name, zaman, durum: 'bitti' as const })),
               }));
             } else if (e.type === 'error') {
-              // Sahip durdurduysa sunucunun "iptal edildi (sahip)" metni "Durduruldu"nun üstüne yazılmaz.
+              // Muzaffer Bey durdurduysa sunucunun "iptal edildi (Muzaffer Bey)" metni "Durduruldu"nun üstüne yazılmaz.
               guncelle(ajanId, (k) => ({ ...k, hata: k.hata === DURDURULDU_METNI ? k.hata : e.error || 'Yanıt alınamadı', isId: e.isId || k.isId }));
             }
           },

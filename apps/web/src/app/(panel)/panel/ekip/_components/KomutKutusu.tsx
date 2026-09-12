@@ -274,7 +274,7 @@ export const KomutKutusu = forwardRef<
           <div className="flex items-start gap-2 rounded-xl px-3.5 py-2.5 text-[12.5px]" style={{ background: 'rgba(248,113,113,0.12)', border: '1px solid rgba(248,113,113,0.4)', color: '#fecaca' }}>
             <AlertTriangle size={14} className="mt-0.5 flex-shrink-0" />
             <span>
-              <b>Canlı koşu.</b> Mükellefe mesaj gidebilir, Luca’ya fiş yazılabilir. Resmi gönderim (GİB/SGK/berat) yine sadece sahibe aittir; dışarı gönderimler onay şeridine düşer. Sayfa yenilenince kuru teste döner.
+              <b>Canlı koşu.</b> Mükellefe mesaj gidebilir, Luca’ya fiş yazılabilir. Resmi gönderim (GİB/SGK/berat) yine sadece Muzaffer Bey’e aittir; dışarı gönderimler onay şeridine düşer. Sayfa yenilenince kuru teste döner.
             </span>
           </div>
         )}
@@ -374,7 +374,7 @@ export const KomutKutusu = forwardRef<
                   onClick={() => void kosular.durdur(seciliAjanId)}
                   className="inline-flex flex-shrink-0 items-center gap-2 rounded-full px-4 py-2 text-[12.5px] font-bold transition-[transform] duration-150 hover:-translate-y-px"
                   style={{ background: 'rgba(248,113,113,0.10)', border: `1px solid ${RENK.kirmizi}`, color: '#fca5a5' }}
-                  title="Koşu sunucuda durdurulur; iş dosyası 'Hata: iptal edildi (sahip)' olarak kapanır"
+                  title="Koşu sunucuda durdurulur; iş dosyası 'Hata: iptal edildi (Muzaffer Bey)' olarak kapanır"
                 >
                   <Square size={14} /> Durdur
                 </button>

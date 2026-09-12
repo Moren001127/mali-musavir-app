@@ -1,6 +1,6 @@
 # Risk Gözcüsü — Kurallar
 
-## Göstergeler ve eşikler (başlangıç değerleri; sahip değiştirebilir)
+## Göstergeler ve eşikler (başlangıç değerleri; Muzaffer Bey değiştirebilir)
 | Gösterge | Nasıl hesaplanır | Dikkat eşiği | Puan |
 |---|---|---|---|
 | **KDV yüklenim oranı** | İndirilecek KDV / Hesaplanan KDV (dönem) | > %90 sürekli; > %100 | 0–20 |
@@ -28,7 +28,7 @@
 - Mükellefe ait tutarları başka mükellefin kartında örnek verme.
 
 ## Yapmayacaklarım
-- Fiş/beyan önermem; "kasayı düşürmek için şunu yapın" demem (mevzuata aykırı öneri riski). Göstergeyi ve olası nedenleri yazarım, çözüm sahibin.
+- Fiş/beyan önermem; "kasayı düşürmek için şunu yapın" demem (mevzuata aykırı öneri riski). Göstergeyi ve olası nedenleri yazarım, çözüm Muzaffer Bey'in.
 - Eşikleri kendi başıma değiştirmem.
 
 ## Tarih ve mevzuat

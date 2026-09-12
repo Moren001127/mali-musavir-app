@@ -1,5 +1,8 @@
 # Luca Operatörü — Beceriler
 
+## 0. DEVİR CEVABI — portal işi bana gelirse (2026-09-13)
+KDV Kontrol, Mizan, Gelir Tablosu, Bilanço, Fatura Merkezi işleri PORTAL modülüdür; Luca çekimi modülün içinden kuyruğa alınır. Bana "X'in KDV kontrolü için oturum aç / mizanı çek / gelir tablosunu analiz et" gelirse ekran AÇMAM: rapor başına "DEVİR CEVABI → Koordinatör: portal işi → Beyanname Uzmanı (R1) / Mali Analist (R2) / Fatura Muhasebecisi (R4-R5)" yazar, `create_pending_action` ile kaydı açarım (receteler.md).
+
 ## 1. Gelen iş paketini uygulama (genel kalıp)
 1. Paketi oku (00_ORTAK §11 DEVİR bloğu): firma (taxpayerId), dönem, ekran, alanlar/değerler, kuru test mi canlı mı, kim istedi. Firma/dönem/ekran eksikse §6 "Hazır değil"; tahminle doldurma.
 2. `luca_beceri_listele` → aynı iş kayıtlı mı? Varsa `luca_beceri_getir` ile adımları al.
@@ -24,7 +27,7 @@
 4. Hâlâ boş kalan tek alan varsa TEK soru sor.
 
 ## 4. Kural kaydetme
-- Sahip: "ödenecek çıkarsa 360, çıkmazsa 190" → `luca_kural_kaydet({baslik:"KDV tahakkuk 360/190", kural:"..."})` → "Şunu kaydettim: ..." diye geri oku.
+- Muzaffer Bey: "ödenecek çıkarsa 360, çıkmazsa 190" → `luca_kural_kaydet({baslik:"KDV tahakkuk 360/190", kural:"..."})` → "Şunu kaydettim: ..." diye geri oku.
 - Değişiklik: `luca_kural_listele` ile tam başlığı bul, aynı başlıkla kaydet. Kaldırma: `luca_kural_sil`.
 
 ## 5. Menü haritası çıkarma (ilk kurulum / yeni firma türü)
@@ -38,10 +41,10 @@
 Durum: HAZIR DEĞİL
 Neden: Luca ajanı bağlı değil (get_agent_status) | açık firma hedef firma değil ve değiştirme yetkim yok | menü bulunamadı (luca_menu_ara boş, harita yok) | pakette alan/değer eksik | geri dönülmez düğme için onay yok
 Yapılan kısım: (ekran açıldı / alanlar dolduruldu / hiçbiri)
-Kime döndü: Koordinatör → isteyen çalışan (eksik bilgi) / sahip (onay, firma değişimi)
+Kime döndü: Koordinatör → isteyen çalışan (eksik bilgi) / Muzaffer Bey (onay, firma değişimi)
 ```
-- Portala yazan aracım (`create_pending_action`) YOK: "Kime döndü" satırı raporumda kalır; Koordinatör kaydı açar. Bu yüzden satır ZORUNLUDUR, serbest cümleyle geçiştirilmez.
-- Aynı işte ikinci "hazır değil"de üçüncü denemeyi başlatmam; Koordinatör sahibe götürür.
+- "Kime döndü" satırı ZORUNLUDUR, serbest cümleyle geçiştirilmez; kaydı `create_pending_action` ile ben açarım (tek portal yazma istisnam), açılamazsa "KAYDEDİLEMEDİ:".
+- Aynı işte ikinci "hazır değil"de üçüncü denemeyi başlatmam; Koordinatör Muzaffer Bey'e götürür.
 
 ## 7. Rapor kalıbı (ekran özeti)
 ```
@@ -49,7 +52,7 @@ DEVİR CEVABI → <isteyen ajan> (varsa)
 Firma / dönem (ekran başlığından okundu: …) / ekran adı / kuru test | canlı
 Yazılan alanlar: alan → değer (ekrandan geri okunan değer; farklıysa "UYUŞMADI")
 Ekran toplamları / uyarılar: …
-Basılmayan düğme: Kaydet | Tahakkuk | … (kuru test) — ONAY BEKLEYEN: "<düğme> / <firma> / <tutar> / <isteyen çalışan>"
+Basılmayan düğme: Kaydet | Tahakkuk | … (kuru test) — Onayınızı bekleyen: "<düğme> / <firma> / <tutar> / <isteyen çalışan>"
 Rapor satırları: (Fiş Listesi / Mizan okundu ise) — ilk 30 satır + toplam
 ```
 - Tablo, emoji, süreç cümlesi yok. Mükellefi ad + taxpayerId ile an; VKN/TC yazma.

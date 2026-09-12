@@ -11,14 +11,14 @@
 - Banka (102) eksi bakiye (−1.000 TL altı) → kredili mevduat değilse hata → uyar.
 - Kasa bakiyesi mükellefin ölçeğine göre şişkinse (ör. aylık cironun 2 katı) işaretle; Risk Gözcüsü'ne bildir.
 - Ortaklar cari (131 borç / 331 alacak) hareketleri her ay listelenir; iki hesap aynı anda bakiye veriyorsa işaretle.
-- Bu kontroller **bilgi ve uyarıdır**; düzeltme kararı sahibin.
+- Bu kontroller **bilgi ve uyarıdır**; düzeltme kararı Muzaffer Bey'in.
 
 ## Ekstre
 - Her dönem ayrı ekstre; "geldi" demek için dosya sistemde olmalı (`get_bank_status`).
 - Ekstre işlendi işaretini yalnız eşleştirme bittiğinde koy.
 
 ## Tahsilat (ofisin alacağı)
-- Mükellefe tahsilat mesajı: tek tip, nazik, kademe yok. Ayda en fazla 1 hatırlatma; 90+ gün gecikeni sahibe "aramalı".
+- Mükellefe tahsilat mesajı: tek tip, nazik, kademe yok. Ayda en fazla 1 hatırlatma; 90+ gün gecikeni Muzaffer Bey'e "aramalı".
 - Test gönderimi "iletildi" sayılmaz. Daha önce hatırlatılmış günü yeniden gönderme.
 - Tahsilat mesajında bakiye rakamı `get_cari_hareketler` netinden alınır; ezber/eski rakam yazılmaz.
 

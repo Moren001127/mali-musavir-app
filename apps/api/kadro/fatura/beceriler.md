@@ -3,7 +3,8 @@
 ## 1. Dönem faturalarını işleme (ana zincir)
 1. **Mükellef bağlamı:** `list_taxpayers`/`search_all` → taxpayerId; `get_taxpayer` → defter türü (bilanço / işletme), faaliyet/NACE, e-belge durumu.
 2. **Dönem seç:** görevdeki dönem YYYY-MM; belirsizse bugünün bir önceki ayı. `get_taxpayer_work_status` → `veri.faturaMerkezi` sayaçlarıyla çapraz bak.
-3. **`fm_donem_ozeti`** → sayaçlar. Belge yoksa DUR: "Fatura Merkezi'nde belge yok — entegratör çekimi/Aktar gerekli" (Koordinatör'e döner). `hesapPlaniVar=false` (bilanço) ise DUR: "hesap planı yenilenmeli".
+3. **`fm_donem_ozeti`** → sayaçlar. Belge yoksa önce R5'i dene (receteler.md: entegratör tanımı varsa çekim önizlemesi), sonra dur: "Fatura Merkezi'nde belge yok — entegratör çekimi/Aktar gerekli" (Koordinatör'e döner). `hesapPlaniVar=false` (bilanço) ise DUR: "hesap planı yenilenmeli".
+   - KDV Kontrol (oturum, Luca çekimi, eşleştirme) bu zincirin parçası DEĞİL; Beyanname Uzmanı'nın R1 işidir.
 4. **Okunmamışlar:** `fm_belge_listele(durum=okunmadi)` → id'leri `fm_ai_ile_oku` ile kuyruğa ver. Aynı koşuda sonucu bekleme; raporda "N belge okumaya verildi, sonraki koşuda değerlendirilecek" yaz.
 5. **`fm_uyumsuzluklar`** → gruplar (icerikHesapUyumsuz / tutarTutarsiz / mukerrer / tevkifatSupheli / demirbas / iade / okunmadi).
 6. **Her uyumsuz belgeyi `fm_belge_detay` ile aç** ve değerlendir:
@@ -15,9 +16,9 @@
    - Uyuşmuyorsa / emin değilsen: hesap yazma → `fm_isaretle(incele, "… için hesap bulunamadı; adaylar: …")`.
 8. **Özel durumlar → işaretle (hesap yazma):** demirbaş → `fm_isaretle(demirbas)`; tevkifat eksik/şüpheli → `fm_isaretle(tevkifat_supheli)`; mükerrer → `fm_isaretle(mukerrer_supheli)`; iade → `fm_isaretle(iade)`.
 9. **Kod eksik ama uyarısız belgeler:** `fm_belge_listele(durum=kod_eksik)` → aynı 6-7 adımı uygula.
-10. **ONAY BEKLEYEN listesi:** işaretlediğin + boş bıraktığın her belge için `create_pending_action` (başlık: "Fatura → sahip: <mükellef> / <dönem> / <belgeNo> / <ne bekleniyor>").
-11. **Rapor** (ortak biçim): NE YAPTIM / NEYE BAKTIM / NE BULDUM (sayaçlar + öneri sayısı + işaret sayısı) / ONAY BEKLEYEN (madde madde) / ÖĞRENDİM.
-12. Luca gönderimi bu zincirde YOK. Sahip onaylayıp "canlı, Luca'ya gönder" derse Beceri 4.
+10. **"Onayınızı bekleyen" listesi:** işaretlediğin + boş bıraktığın her belge için `create_pending_action` (başlık: "Fatura → Muzaffer Bey: <mükellef> / <dönem> / <belgeNo> / <ne bekleniyor>").
+11. **Rapor** (ortak biçim): NE YAPTIM / NEYE BAKTIM / NE BULDUM (sayaçlar + öneri sayısı + işaret sayısı) / "Onayınızı bekleyen" (madde madde) / ÖĞRENDİM.
+12. Luca gönderimi bu zincirde YOK. Muzaffer Bey onaylayıp "canlı, Luca'ya gönder" derse Beceri 4.
 
 ## 2. Bilanço mükellefi — hesap seçimi
 - Yön: ALIŞ → matrah 15x (stok) / 25x (sabit kıymet) / 7xx (gider), KDV 191, cari 320/329; SATIŞ → 600/601/602, KDV 391, cari 120.
@@ -33,25 +34,25 @@
 - SATIŞ (gelir): Kayıt Türü 1 Mal Satışı / 2 Hizmet Satışı / 4 Diğer Hasılat / 14 Diğer Gelir; alt türler listeden.
 - Yazma: `fm_hesap_ata(belgeId, kayitTuruKod, kayitAltKod, gerekce)` — satir gerekmez. Kullanıcı elle seçmişse (userEdited) ezilmez.
 - Alt türü olan kayıt türünde alt tür ZORUNLU; araç zaten ister.
-- Demirbaş: had altı → 4/185 "Doğrudan Gider Yazılan Demirbaş"; had üstü → 13 sabit kıymet (amortisman) → sahip kararı, işaretle.
+- Demirbaş: had altı → 4/185 "Doğrudan Gider Yazılan Demirbaş"; had üstü → 13 sabit kıymet (amortisman) → Muzaffer Bey'in kararı, işaretle.
 - Tevkifat işletme gider satırında "Tevkifat İşlemleri" alanıdır; oran/kod belgeyle aynı olmalı.
 
-## 4. Luca'ya gönderim (yalnız sahip "canlı" dediğinde)
+## 4. Luca'ya gönderim (yalnız Muzaffer Bey "canlı" dediğinde)
 1. `fm_belge_listele(durum=onaylandi)` → onaylı ve Luca'ya gitmemiş belgeler; dengesiz/eksik kodlu var mı bak (fm_belge_detay.denge).
 2. `fm_luca_gonder(taxpayerId, belgeIdler | donem, yon)` — alış ve satış AYRI çağrı (Luca'da ayrı fiş).
-3. Kuru testte çağrı "yapılacaktı" olur → raporda "yapacaktım: N belge, alış/satış, toplam X TL".
+3. Kuru testte çağrı "yapılacaktı" olur → raporda "yapacaktım: N belge, alış/satış, toplam X TL". Canlıda dönen jobId'yi `luca_is_bekle` ile (≤60 sn/çağrı, 15 dk tavan) bekle; failed → lucaErrorMessage rapora, tekrar Muzaffer Bey'de.
 4. Canlıda sonuç: atlanan belgeler ve nedenleri rapora; `list_fatura_merkezi(lucaDurum=FAILED)` ile hata var mı kontrol et.
 5. Gerekirse Luca Operatörü'ne doğrulama görevi: "Luca > Muhasebe > Fiş Listesi'nde <dönem> son fişi oku, satır sayısı ve toplam paket ile aynı mı".
 
 ## 5. Şüpheli belge ayırma (tek satır kalıbı)
-`belgeNo / karşı taraf / tutar / neden (uyarı kodu) / ne bekleniyor (sahipten tek seçim)`
-Örnek: `NKL2026000000123 / YORGUN NAKLİYAT / 12.400 TL / TEV_NAKL_EKSIK: nakliye hizmeti, KDV dahil eşik aşıldı, belgede tevkifat yok / sahip: alıcı belirlenmiş mi? evetse 2/10 tevkifat fişi`
+`belgeNo / karşı taraf / tutar / neden (uyarı kodu) / ne bekleniyor (Muzaffer Bey'den tek seçim)`
+Örnek: `NKL2026000000123 / YORGUN NAKLİYAT / 12.400 TL / TEV_NAKL_EKSIK: nakliye hizmeti, KDV dahil eşik aşıldı, belgede tevkifat yok / Muzaffer Bey: alıcı belirlenmiş mi? evetse 2/10 tevkifat fişi`
 
 ## 6. Düzeltmeden öğrenme
-1. Sahip bir belgede hesabı düzelttiyse (KULLANICI satırı) aynı satıcı + aynı içerik için kural öner: "ELİT PETROL motor yağı → 770.01.004".
-2. Kural genellenebilirse (en az 2 farklı belge, sahip onayı) `save_ai_memory`; kaydettiğini tek cümle geri oku.
+1. Muzaffer Bey bir belgede hesabı düzelttiyse (KULLANICI satırı) aynı satıcı + aynı içerik için kural öner: "ELİT PETROL motor yağı → 770.01.004".
+2. Kural genellenebilirse (en az 2 farklı belge, Muzaffer Bey'in onayı) `save_ai_memory`; kaydettiğini tek cümle geri oku.
 3. Tek seferlik düzeltmeyi kural yapma. AJAN kaynaklı kendi önerimi "öğrenildi" sayma.
 
 ## 7. Entegratör / belge gelmemiş
-- `fm_donem_ozeti.toplam=0` ya da `list_earsiv_invoices` ile kıyasta eksik belge varsa: "Fatura Merkezi'ne çekim/Aktar gerekli" → Koordinatör'e DEVİR (sahip portaldan Entegratörler > Şimdi çek / Aktar). Mihsap komutu açma; ekibe kapalıdır.
-- GİB e-Arşiv çekimi gerekiyorsa `preview_agent_command(agent=luca, action=fetch_earsiv)` önizle; onay sahipte.
+- `fm_donem_ozeti.toplam=0` ya da `list_earsiv_invoices` ile kıyasta eksik belge varsa: "Fatura Merkezi'ne çekim/Aktar gerekli" → Koordinatör'e DEVİR (Muzaffer Bey portaldan Entegratörler > Şimdi çek / Aktar). Mihsap komutu açma; ekibe kapalıdır.
+- GİB e-Arşiv çekimi gerekiyorsa `preview_agent_command(agent=luca, action=fetch_earsiv)` önizle; onay Muzaffer Bey'de.

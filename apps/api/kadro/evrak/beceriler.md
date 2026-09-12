@@ -8,7 +8,7 @@
 5. Her eksik için `get_bank_status` (taxpayerId, donem) → ekstre ayrı satır ("ekstre yok").
 6. Kaç gündür: bugün − (dönem sonu + evrakTeslimGunu); son gün = ayın evrakTeslimGunu'sü (yoksa 20'si). Beyanname son günü için `get_tax_calendar`.
 7. Her eksik için §5 şablonuyla taslak; `create_pending_action` (başlık: "Evrak hatırlatma taslağı: <mükellef> / <dönem>", gövdede taslak metin; TELEFON/E-POSTA YAZMA, kanal adı yeter). Kuru testte `send_*` çağrısı gerekmez; canlıda `send_whatsapp_template`/`send_sms` çağrısı PRV açar.
-8. Rapor: NE BULDUM = "<dönem>: N mükellefte evrak tam, M'de eksik" + en fazla 10 satır (mükellef / belge / kaç gün / son gün / kanal); fazlası "…ve K mükellef daha (iş dosyasında)". ONAY BEKLEYEN = her taslak tek satır. Kime döndü: Koordinatör (evrak tamam olanlar → Fatura + Banka-Kasa).
+8. Rapor: NE BULDUM = "<dönem>: N mükellefte evrak tam, M'de eksik" + en fazla 10 satır (mükellef / belge / kaç gün / son gün / kanal); fazlası "…ve K mükellef daha (iş dosyasında)". "Onayınızı bekleyen" = her taslak tek satır. Kime döndü: Koordinatör (evrak tamam olanlar → Fatura + Banka-Kasa).
 
 ## 2. Gelen belgeyi kaydetme (E3)
 1. Belgenin tarihine bak → dönem.
@@ -20,7 +20,7 @@
 
 ## 3. Eksik hatırlatma (E2 — ayın 10'u ve 20'si)
 1. Eksik listesini tazele (§1 adım 2–5).
-2. Bu eksik için kaç hatırlatma gitmiş: `search_ai_memory` (taxpayerId, "hatırlatma") + `get_taxpayer.sonHatirlatma`. 2'yi geçmişse mesaj hazırlama; ONAY BEKLEYEN'e "aramalı / <mükellef> / – / 3. hatırlatma eşiği" yaz ve `create_pending_action`.
+2. Bu eksik için kaç hatırlatma gitmiş: `search_ai_memory` (taxpayerId, "hatırlatma") + `get_taxpayer.sonHatirlatma`. 2'yi geçmişse mesaj hazırlama; "Onayınızı bekleyen"'e "aramalı / <mükellef> / – / 3. hatırlatma eşiği" yaz ve `create_pending_action`.
 3. §5 şablonu → `create_pending_action` (kuru test) / `send_*` (canlı → PRV).
 4. Rapor.
 
@@ -32,7 +32,7 @@
 Sayın <mükellef adı>, <Ay Yıl> dönemine ait <belge listesi> henüz ulaşmadı. <gg.aa.yyyy> tarihine kadar iletmenizi rica ederiz. Moren Mali Müşavirlik
 ```
 - "Merhaba", "Bey/Hanım", ünlem, tehdit, kademeli dil yok. Belge listesi en fazla 3 kalem.
-- Yeni mükellefte (işe başlama bu dönem) "işe başlama tarihinizden itibaren" eklenir; dönem 15 günden kısaysa taslağı ONAY BEKLEYEN'e "sahip kararı" notuyla yaz.
+- Yeni mükellefte (işe başlama bu dönem) "işe başlama tarihinizden itibaren" eklenir; dönem 15 günden kısaysa taslağı "Onayınızı bekleyen"'e "Muzaffer Bey'in kararı" notuyla yaz.
 
 ## 6. "Hazır değil" şablonu (00_ORTAK §10)
 ```
@@ -40,10 +40,10 @@ Sayın <mükellef adı>, <Ay Yıl> dönemine ait <belge listesi> henüz ulaşmad
 Durum: HAZIR DEĞİL
 Neden: list_taxpayers_monthly_status boş/hata döndü | dönem kapanmamış (bugün < dönem sonu) | veri tutarsız (N mükellef)
 Yapılan kısım: …
-Kime döndü: Koordinatör → sahip (Aylık Takip kontrolü)
+Kime döndü: Koordinatör → Muzaffer Bey (Aylık Takip kontrolü)
 ```
 
 ## 7. Rapor kalıbı (00_ORTAK §5 + §12)
 - İlk satır: "Dönem: 2026-08 (bugün 2026-09-12)". Tablo ve emoji yok; mükellef başına tek satır.
-- ONAY BEKLEYEN maddesi: "hatırlatma taslağı / <mükellef> / – / <belge> eksik, son gün <tarih>" — her biri `create_pending_action` ile kayıtlı; kaydedilemediyse "KAYDEDİLEMEDİ:".
-- ÖĞRENDİM: mükellefe özgü kalıcı bilgi (ör. "X ekstreyi her ay 25'inde gönderir") → `save_ai_memory` (taxpayerId ile).
+- "Onayınızı bekleyen" maddesi: "hatırlatma taslağı / <mükellef> / – / <belge> eksik, son gün <tarih>" — her biri `create_pending_action` ile kayıtlı; kaydedilemediyse "KAYDEDİLEMEDİ:".
+- Öğrendiklerim: mükellefe özgü kalıcı bilgi (ör. "X ekstreyi her ay 25'inde gönderir") → `save_ai_memory` (taxpayerId ile).

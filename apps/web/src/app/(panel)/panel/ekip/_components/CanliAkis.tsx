@@ -180,7 +180,7 @@ export function CanliAkis({
   };
 
   /**
-   * Sabah özeti → sahibe GERÇEK WhatsApp: koordinatörü yeniden üretir ve gönderir.
+   * Sabah özeti → Muzaffer Bey’e GERÇEK WhatsApp: koordinatörü yeniden üretir ve gönderir.
    * Koşu BAŞLARKEN haritaya `bitti:false` yazılır → tek aktif koşu kilidi (§2/§9) sabah özetini de kapsar:
    * KomutKutusu'nda Çalıştır pasif ("KO çalışıyor — bitince"), SabahBandi "Şimdi üret" kilitli, burada sayaç işler.
    */
@@ -190,7 +190,7 @@ export function CanliAkis({
     const basladi = Date.now();
     kosular.ayarla('koordinator', {
       ajanId: 'koordinator',
-      gorev: 'Sabah özeti — yeniden üretiliyor ve sahibe gönderiliyor',
+      gorev: 'Sabah özeti — yeniden üretiliyor ve Muzaffer Bey’e gönderiliyor',
       dryRun: false,
       cevap: '',
       adimlar: [],
@@ -311,7 +311,7 @@ export function CanliAkis({
 
         {kosu.hata && (
           <div className="rounded-xl px-3.5 py-2.5 text-[12.5px]" style={{ background: 'rgba(248,113,113,0.12)', border: '1px solid rgba(248,113,113,0.35)', color: '#fecaca' }}>
-            ⚠️ {kosu.hata === DURDURULDU_METNI ? 'Durduruldu — koşu sunucuda iptal edildi; iş dosyası "iptal edildi (sahip)" olarak kapandı' : kosu.hata}
+            ⚠️ {kosu.hata === DURDURULDU_METNI ? 'Durduruldu — koşu sunucuda iptal edildi; iş dosyası "iptal edildi (Muzaffer Bey)" olarak kapandı' : kosu.hata}
           </div>
         )}
 
@@ -378,7 +378,7 @@ export function CanliAkis({
           </>
         )}
 
-        {/* Sabah özeti → sahibe gönder (yalnız burada; bantta YOK) */}
+        {/* Sabah özeti → Muzaffer Bey’e gönder (yalnız burada; bantta YOK) */}
         {sabahOzetiMi && kosu.bitti && !kosu.hata && (
           <div>
             <button
@@ -389,13 +389,13 @@ export function CanliAkis({
               className="flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-[12px] font-bold disabled:opacity-50"
               style={{ background: 'linear-gradient(135deg,#16a34a,#4ade80)', color: '#052e16' }}
             >
-              {gonderMesgul ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />} Sahibe WhatsApp gönder
+              {gonderMesgul ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />} Muzaffer Bey’e WhatsApp gönder
             </button>
             {gonderTeyit && (
               <OnayTeyit
                 metin={
                   <>
-                    Sahip numaralarına <b>GERÇEK</b> mesaj gidecek — koordinatör özeti <b>yeniden üretir ve gönderir</b> (30-90 sn).
+                    Muzaffer Bey’in numaralarına <b>GERÇEK</b> mesaj gidecek — koordinatör özeti <b>yeniden üretir ve gönderir</b> (30-90 sn).
                   </>
                 }
                 mesgul={gonderMesgul}

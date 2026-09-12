@@ -287,10 +287,10 @@ export const ARAC_ADI: Record<string, string> = {
   send_whatsapp_template: 'WhatsApp şablon mesajı',
   send_sms: 'SMS',
   send_email: 'e-posta',
-  // resmi (yalnız sahip)
-  gib_beyanname_gonder: 'GİB beyanname gönderimi (yalnız sahip)',
-  sgk_bildirge_gonder: 'SGK e-bildirge gönderimi (yalnız sahip)',
-  edefter_berat_yukle: 'e-Defter berat yükleme (yalnız sahip)',
+  // resmi (yalnız Muzaffer Bey)
+  gib_beyanname_gonder: 'GİB beyanname gönderimi (yalnız Muzaffer Bey)',
+  sgk_bildirge_gonder: 'SGK e-bildirge gönderimi (yalnız Muzaffer Bey)',
+  edefter_berat_yukle: 'e-Defter berat yükleme (yalnız Muzaffer Bey)',
   // Luca
   luca_yaz: 'Luca alan yazma',
   luca_sec: 'Luca seçim',
@@ -458,13 +458,15 @@ export const SABLONLAR: Sablon[] = [
   { id: 'supheli', ad: 'Şüpheli faturalar', ajanId: 'fatura', mukellefIster: true, donemIster: true, gorev: '{mükellef} {dönem}: içerik-hesap uyuşmayan, mükerrer ya da tutarı şüpheli faturaları ayır.' },
   { id: 'vadesi-gecmis', ad: 'Vadesi geçmiş', ajanId: 'banka-kasa', mukellefIster: false, donemIster: false, gorev: 'Vadesi geçmiş tahsilatları mükellef bazında listele; {mükellef} seçiliyse ekstre özetini çıkar.' },
   { id: 'tahsilat-taslak', ad: 'Tahsilat taslağı', ajanId: 'banka-kasa', mukellefIster: true, donemIster: false, gorev: '{mükellef} için nazik tahsilat hatırlatma taslağı hazırla (gönderme).' },
-  { id: 'kdv-kontrol', ad: 'KDV kontrol', ajanId: 'beyanname', mukellefIster: true, donemIster: true, gorev: '{mükellef} için {dönem} KDV Kontrol sonucunu oku; hata varsa satır satır listele; hata yoksa Luca tahakkuk fişini hazırla (kuru test). Beyannameyi hazır işaretleme, önce bana sun.' },
+  // PLAN/17 R1 (2026-09-13): KDV Kontrol portal işidir; ajan zinciri kendi yürütür (Luca Operatörü'ne devretmez).
+  { id: 'kdv-kontrol', ad: 'KDV kontrol', ajanId: 'beyanname', mukellefIster: true, donemIster: true, gorev: '{mükellef} için {dönem} KDV kontrolünü YAP (R1): oturumları bul/aç, Luca çekimi ve fatura bağlama + OCR, eşleştir, hatalı satırları belge no ile listele. Kuru testte oturum açılmaz, zincir "yapılacaktı" olarak yazılır. Kilitleme bende; beyannameyi hazır işaretleme, önce bana sun.' },
   { id: 'hazir-isaretle', ad: 'Hazır işaretlenebilecekler', ajanId: 'beyanname', mukellefIster: false, donemIster: true, gorev: '{dönem} KDV kontrolü biten ve hatasız olan mükellefleri listele; hazır işaretlenebilecekleri ayrı göster.' },
   { id: 'donem-denetim', ad: 'Dönem denetimi', ajanId: 'denetci', mukellefIster: true, donemIster: true, gorev: '{mükellef} {dönem} mizan + fiş listesi: kasa negatif, 191-391 tutarsızlık, tekrarlı fiş, eksik ay, ters bakiye, KDV aritmetik. Uyarı raporu çıkar, mükellefe gönderme.' },
   { id: 'resmi-gazete', ad: 'Resmî Gazete', ajanId: 'mevzuat', mukellefIster: false, donemIster: false, gorev: "Bugünkü Resmî Gazete'yi tara; ofisi ve mükellefleri ilgilendiren vergi/SGK değişikliklerini 3 maddede özetle." },
   { id: 'risk-guncelle', ad: 'Risk puanları', ajanId: 'risk', mukellefIster: false, donemIster: false, gorev: "Mükellef risk puanlarını güncelle; en riskli 5'i nedenleriyle listele." },
   { id: 'cevapsiz', ad: 'Cevapsız mesajlar', ajanId: 'musteri', mukellefIster: false, donemIster: false, gorev: 'Cevapsız kalan mükellef mesajlarını listele; her biri için cevap taslağı hazırla (gönderme).' },
-  { id: 'donem-yorum', ad: 'Mali yorum', ajanId: 'analist', mukellefIster: true, donemIster: true, gorev: '{mükellef} için {dönem} mali yorum: ciro/kâr eğilimi, vergi yükü tahmini, nakit akışı, geçici vergi öngörüsü. ÖNERİ etiketiyle, mükellefe gönderme.' },
+  // PLAN/17 R2 (2026-09-13): portaldaki hazır (kilitli) tablo okunur; Luca çekimi / mizan çekimi istenmez.
+  { id: 'donem-yorum', ad: 'Mali yorum', ajanId: 'analist', mukellefIster: true, donemIster: true, gorev: '{mükellef} için {dönem} portaldaki hazır (kilitli) gelir tablosunu oku ve yorumla: ciro/kâr eğilimi, vergi yükü tahmini, nakit akışı, geçici vergi öngörüsü; kayıtlı Mali Yorum varsa çelişkiyi söyle. Luca çekimi isteme. ÖNERİ etiketiyle, mükellefe gönderme.' },
   { id: 'bordro-kontrol', ad: 'Bordro/SGK kontrol', ajanId: 'bordro-sgk', mukellefIster: false, donemIster: true, gorev: '{dönem} bordro/SGK kontrolü: eksik bildirge, işe giriş/çıkış, prim tutarsızlığı; {mükellef} seçiliyse yalnız onun.' },
   { id: 'berat-negatif', ad: 'Berat + negatif tarama', ajanId: 'edefter', mukellefIster: true, donemIster: false, gorev: 'Berat takvimi + {mükellef} için negatif kasa/stok/banka taraması.' },
   { id: 'luca-kontrol', ad: 'Luca oturum kontrolü', ajanId: 'luca-operator', mukellefIster: false, donemIster: false, gorev: 'Luca oturumunu ve menüyü kontrol et; oturum düşmüşse bildir.' },

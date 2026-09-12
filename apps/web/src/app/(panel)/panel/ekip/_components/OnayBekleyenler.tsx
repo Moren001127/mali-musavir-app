@@ -226,7 +226,7 @@ function BekleyenSatir({
 }
 
 /**
- * Onay kuyruğu — ajanların dışarı göndermek istediği mesajlar. Sahip onaylamadan gitmez; kuru testte hiç düşmez.
+ * Onay kuyruğu — ajanların dışarı göndermek istediği mesajlar. Muzaffer Bey onaylamadan gitmez; kuru testte hiç düşmez.
  * mod='serit' → komut kartının ÜSTÜNDE ince altın şerit-kart; yalnız bekleyen > 0 ise render edilir.
  * mod='sekme' → "Onaylar" sekme içeriği (dış kart EkipEkrani'da): bekleyenler + geçmiş.
  */

@@ -15,11 +15,11 @@
 - Bordro rakamları muhtasar ücret matrahıyla kuruşu kuruşuna tutmalı.
 
 ## SGK belgeleri
-- SGK'dan gelen tahakkuk fişi / hizmet listesi ile hazırlanan bordro karşılaştırılır; gün ve prim tutarı farkı varsa sahibe.
-- SGK e-tebligat ve borç yazıları görüldüğü gün Koordinatör'e "sahibe göster" olarak bildirilir.
+- SGK'dan gelen tahakkuk fişi / hizmet listesi ile hazırlanan bordro karşılaştırılır; gün ve prim tutarı farkı varsa Muzaffer Bey'e.
+- SGK e-tebligat ve borç yazıları görüldüğü gün Koordinatör'e "Muzaffer Bey'e göster" olarak bildirilir.
 
 ## Muhasebe kaydı
-- Bordro tahakkuk fişi (770/760/720 → 335/360/361) kuru test; Luca'da Kaydet sahip onayıyla.
+- Bordro tahakkuk fişi (770/760/720 → 335/360/361) kuru test; Luca'da Kaydet Muzaffer Bey'in onayıyla.
 
 ## Yapmayacaklarım
 - SGK'ya bildirge/beyanname göndermem; e-bildirge şifresini kullanmam.
@@ -28,4 +28,4 @@
 
 ## Teyit ve gizlilik
 - Süre/oran/istisna emin değilse satır "TEYİT ET:" ile işaretlenir ve `research_official_sources` çağrılır; teyitsiz değerle bordro "hazır" denmez.
-- Raporda çalışan yalnız adıyla; kimlik no, IBAN, tekil maaş satırı rapora, ONAY BEKLEYEN maddesine ve `create_pending_action` gövdesine girmez (toplamlar yeter).
+- Raporda çalışan yalnız adıyla; kimlik no, IBAN, tekil maaş satırı rapora, "Onayınızı bekleyen" maddesine ve `create_pending_action` gövdesine girmez (toplamlar yeter).

@@ -1,14 +1,16 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { ARAC_DEFTERI, aracAcikMi, aracKademesi, aracKaydi, ekipMihsapKomutuYasagi, kademeOzeti } from './arac-defteri';
+import { ARAC_DEFTERI, KADEME_SIRASI, KURU_TESTTE_KAPALI_KADEMELER, aracAcikMi, aracKademesi, aracKatalogMetni, aracKaydi, ekipMihsapKomutuYasagi, kademeOzeti } from './arac-defteri';
 import { AJAN_TANIMLARI, MODEL_KIMLIKLERI, ajanBul } from './ajan-tanimlari';
-import { FATURA_MERKEZI_AJAN_ARACLARI, FM_AJAN_ARAC_ADLARI, MOREN_AI_TOOLS } from '../moren-ai/tools';
+import { EKIP_IS_ZINCIRI_ARACLARI, FATURA_MERKEZI_AJAN_ARACLARI, FM_AJAN_ARAC_ADLARI, MOREN_AI_TOOLS } from '../moren-ai/tools';
+import { PORTAL_ARAC_ADLARI } from './ekip-runner.service';
 
 /**
  * Araç defteri + yetki kademesi kilit testleri (PLAN/13-AJAN-KADROSU.md §4):
  *  - resmi_gonderim hiçbir ajana, hiçbir modda açılmaz
- *  - kuru test luca_yaz / disari_gonder kapatır; oku / portal_yaz açık kalır
- *  - her ajanın araç listesindeki her ad defterde var
+ *  - kuru test luca_yaz / disari_gonder / portal_yaz_agir kapatır; oku / portal_yaz açık kalır (PLAN/17 §1.2)
+ *  - her ajanın araç listesindeki her ad defterde var; kimlik.md "Kullandığım araçlar" ↔ liste 13 ajanda birebir
+ *  - kdv_kontrol_kilitle / kilit_ac hiçbir ajan listesinde yok (kilit sahipte)
  */
 describe('arac-defteri', () => {
   const tumAjan = { id: 'test-hepsi', araclar: ARAC_DEFTERI.map((a) => a.ad) };
@@ -91,6 +93,102 @@ describe('arac-defteri', () => {
     expect(aracAcikMi(dar, 'get_mizan', true).acik).toBe(true);
     expect(aracAcikMi(dar, 'list_taxpayers', true).neden).toBe('ajana_kapali');
     expect(aracAcikMi(dar, 'uydurma_arac', true).neden).toBe('defterde_yok');
+  });
+});
+
+// ─── PLAN/17 §1.2-§3: portal_yaz_agir kademesi + KDV Kontrol zinciri araçları (2026-09-13) ───
+describe('portal_yaz_agir + KDV Kontrol zinciri araçları (PLAN/17)', () => {
+  const tumAjan = { id: 'test-hepsi', araclar: ARAC_DEFTERI.map((a) => a.ad) };
+  const AGIR = ['kdv_kontrol_oturum_bul_olustur', 'kdv_kontrol_fatura_bagla', 'kdv_kontrol_ocr_baslat', 'kdv_kontrol_eslestir'];
+  const OKU = ['luca_is_bekle', 'kdv_kontrol_ocr_bekle', 'kdv_kontrol_sonuc_satirlari', 'mali_yorum_oku', 'mali_donemler_listele', 'ekip_is_durum'];
+
+  it('kademe sırasında portal_yaz_agir portal_yaz ile luca_yaz arasında; kuru testte kapalı kademeler 3 tane', () => {
+    expect(KADEME_SIRASI).toEqual(['oku', 'portal_yaz', 'portal_yaz_agir', 'luca_yaz', 'disari_gonder', 'resmi_gonderim']);
+    expect([...KURU_TESTTE_KAPALI_KADEMELER].sort()).toEqual(['disari_gonder', 'luca_yaz', 'portal_yaz_agir']);
+    expect(kademeOzeti([...AGIR, ...OKU]).portal_yaz_agir).toBe(4);
+  });
+
+  it('kademe eşlemesi ADA GÖRE sabit (tools.ts şemasından bağımsız)', () => {
+    for (const ad of AGIR) expect({ ad, kademe: aracKademesi(ad) }).toEqual({ ad, kademe: 'portal_yaz_agir' });
+    for (const ad of OKU) expect({ ad, kademe: aracKademesi(ad) }).toEqual({ ad, kademe: 'oku' });
+    expect(aracKademesi('kdv_kontrol_luca_cek')).toBe('luca_yaz');
+    expect(aracKademesi('ekip_ajan_baslat')).toBe('portal_yaz');
+    for (const ad of [...AGIR, ...OKU, 'kdv_kontrol_luca_cek']) {
+      expect({ ad, kaynak: aracKaydi(ad)?.kaynak }).toEqual({ ad, kaynak: ad.startsWith('ekip_') ? 'ekip' : 'portal' });
+      expect(aracKaydi(ad)?.parametreler?.length).toBeGreaterThan(0);
+    }
+    expect(aracKaydi('ekip_ajan_baslat')?.kaynak).toBe('ekip');
+    expect(aracKaydi('ekip_ajan_baslat')?.parametreler).toEqual(['ajanId*', 'gorev*', 'taxpayerId', 'canli']);
+  });
+
+  it('zincir araçları (tools.ts EKIP_IS_ZINCIRI_ARACLARI) runner PORTAL_ARAC_ADLARI listesinde → "Çalıştırıcı bulunamadı" çıkmaz; şema tools.ts, kademe ada göre (doğrulayıcı 2026-09-13)', () => {
+    for (const t of EKIP_IS_ZINCIRI_ARACLARI) {
+      expect({ ad: t.name, runnerda: PORTAL_ARAC_ADLARI.has(t.name) }).toEqual({ ad: t.name, runnerda: true });
+      const k = aracKaydi(t.name)!;
+      expect({ ad: t.name, var: !!k, kademe: k?.kademe }).toEqual({ ad: t.name, var: true, kademe: aracKademesi(t.name) });
+      if (t.name.startsWith('ekip_')) continue; // runner kendi işler (EKIP_ARACLARI)
+      // parametreler tools.ts şemasından: zorunlular yıldızlı
+      const zorunlu: string[] = (t.input_schema as any)?.required || [];
+      for (const z of zorunlu) expect({ ad: t.name, param: `${z}*`, listede: k.parametreler }).toEqual({ ad: t.name, param: `${z}*`, listede: expect.arrayContaining([`${z}*`]) });
+      expect(k.kaynak).toBe('portal');
+    }
+    // MOREN_AI_TOOLS'a sızmadı (otomasyon kataloğu / genel bot bu araçları görmemeli)
+    const genel = new Set(MOREN_AI_TOOLS.map((t) => t.name));
+    for (const t of EKIP_IS_ZINCIRI_ARACLARI) expect({ ad: t.name, genelde: genel.has(t.name) }).toEqual({ ad: t.name, genelde: false });
+  });
+
+  it('kuru test: portal_yaz_agir ve kdv_kontrol_luca_cek KAPALI (kuru_test); canlıda açık; okuma araçları kuru testte de açık', () => {
+    for (const ad of [...AGIR, 'kdv_kontrol_luca_cek']) {
+      const kuru = aracAcikMi(tumAjan, ad, true);
+      expect({ ad, acik: kuru.acik, neden: kuru.neden }).toEqual({ ad, acik: false, neden: 'kuru_test' });
+      expect(kuru.mesaj).toMatch(/yapılacaktı/);
+      expect(aracAcikMi(tumAjan, ad, false).acik).toBe(true);
+    }
+    for (const ad of OKU) expect({ ad, acik: aracAcikMi(tumAjan, ad, true).acik }).toEqual({ ad, acik: true });
+    expect(aracAcikMi(tumAjan, 'ekip_ajan_baslat', true).acik).toBe(true);
+  });
+
+  it('beyanname ajanı: 7 kdv_kontrol_* aracı + luca_is_bekle + get_agent_status listede; kuru testte oturum açma/OCR/eşleştirme çalışmaz', () => {
+    const b = ajanBul('beyanname')!;
+    expect(b.araclar).toEqual(expect.arrayContaining([...AGIR, 'kdv_kontrol_luca_cek', 'kdv_kontrol_ocr_bekle', 'kdv_kontrol_sonuc_satirlari', 'luca_is_bekle', 'get_agent_status']));
+    for (const ad of [...AGIR, 'kdv_kontrol_luca_cek']) expect(aracAcikMi(b, ad, true).neden).toBe('kuru_test');
+    for (const ad of ['kdv_kontrol_ocr_bekle', 'kdv_kontrol_sonuc_satirlari', 'luca_is_bekle', 'get_agent_status']) expect(aracAcikMi(b, ad, true).acik).toBe(true);
+  });
+
+  it('kdv_kontrol_kilitle / kdv_kontrol_kilit_ac HİÇBİR ajan listesinde yok; girerse bile kuru testte kapalı', () => {
+    for (const ajan of AJAN_TANIMLARI) {
+      const kilit = ajan.araclar.filter((ad) => /^kdv_kontrol_kilit/.test(ad));
+      expect({ ajan: ajan.id, kilit }).toEqual({ ajan: ajan.id, kilit: [] });
+    }
+    // Defterde kayıtlı olsalar da kademe portal_yaz_agir → kuru testte kapalı (tools.ts'e girerse 'oku' sayılmasın)
+    for (const ad of ['kdv_kontrol_kilitle', 'kdv_kontrol_kilit_ac']) {
+      const k = aracKademesi(ad);
+      if (k) expect(k).toBe('portal_yaz_agir');
+    }
+  });
+
+  it('kdv_kontrol_* araçları yalnız beyanname ajanında; luca_is_bekle fatura/denetci/beyanname; mali_* analist + koordinatör', () => {
+    for (const ajan of AJAN_TANIMLARI) {
+      const kdv = ajan.araclar.filter((ad) => ad.startsWith('kdv_kontrol_'));
+      expect({ ajan: ajan.id, kdv: kdv.length > 0 }).toEqual({ ajan: ajan.id, kdv: ajan.id === 'beyanname' });
+    }
+    for (const id of ['fatura', 'denetci', 'beyanname']) expect(ajanBul(id)!.araclar).toContain('luca_is_bekle');
+    expect(ajanBul('analist')!.araclar).toEqual(expect.arrayContaining(['mali_donemler_listele', 'mali_yorum_oku']));
+    const k = ajanBul('koordinator')!;
+    expect(k.araclar).toEqual(expect.arrayContaining(['get_gelir_tablosu', 'get_mizan', 'list_mizan_periods', 'get_kdv_summary', 'mali_donemler_listele', 'ekip_ajan_baslat', 'ekip_is_durum']));
+    expect(ajanBul('luca-operator')!.araclar).toContain('create_pending_action');
+    // ekip_ajan_baslat yalnız koordinatörde (iç içe zincir yok)
+    for (const ajan of AJAN_TANIMLARI) {
+      if (ajan.id === 'koordinator') continue;
+      expect({ ajan: ajan.id, baslat: ajan.araclar.includes('ekip_ajan_baslat') }).toEqual({ ajan: ajan.id, baslat: false });
+    }
+  });
+
+  it('katalog metni kademeyi parantez içinde gösterir (prompt satırı ile aynı adlar)', () => {
+    const metin = aracKatalogMetni(['kdv_kontrol_eslestir', 'kdv_kontrol_luca_cek', 'luca_is_bekle']);
+    expect(metin).toContain('kdv_kontrol_eslestir (portal_yaz_agir)');
+    expect(metin).toContain('kdv_kontrol_luca_cek (luca_yaz)');
+    expect(metin).toContain('luca_is_bekle (oku)');
   });
 });
 
@@ -235,17 +333,43 @@ describe('fm_* araçları ve Mihsap kapanışı (PLAN/15 Faz 5)', () => {
     expect(ekipMihsapKomutuYasagi('get_mizan', { agent: 'mihsap' })).toBeNull();
   });
 
-  it('kadro/fatura/kimlik.md "Kullandığım araçlar" ↔ ajan-tanimlari fatura.araclar BİREBİR', () => {
-    const md = fs.readFileSync(path.join(__dirname, '../../kadro/fatura/kimlik.md'), 'utf8');
+  /** kimlik.md "Kullandığım araçlar" bölümündeki `araç_adı` işaretli adlar (bölüm sonuna kadar). */
+  function kimlikAraclari(ajanId: string): Set<string> {
+    const md = fs.readFileSync(path.join(__dirname, `../../kadro/${ajanId}/kimlik.md`), 'utf8');
     const bolum = md.split('## Kullandığım araçlar')[1] || '';
-    expect(bolum.length).toBeGreaterThan(0);
-    const mdAraclar = new Set([...bolum.matchAll(/`([a-z_0-9]+)`/g)].map((m) => m[1]));
+    expect({ ajanId, bolumVar: bolum.length > 0 }).toEqual({ ajanId, bolumVar: true });
+    return new Set([...bolum.matchAll(/`([a-z_0-9]+)`/g)].map((m) => m[1]));
+  }
+
+  it('kadro/fatura/kimlik.md "Kullandığım araçlar" ↔ ajan-tanimlari fatura.araclar BİREBİR', () => {
+    const mdAraclar = kimlikAraclari('fatura');
     const kod = new Set(ajanBul('fatura')!.araclar);
     expect({ koddaVarMdYok: [...kod].filter((x) => !mdAraclar.has(x)), mdVarKoddaYok: [...mdAraclar].filter((x) => !kod.has(x)) })
       .toEqual({ koddaVarMdYok: [], mdVarKoddaYok: [] });
     // Mihsap araçları kimlik.md'de de yok
     for (const ad of MIHSAP_ARACLARI) expect(mdAraclar.has(ad)).toBe(false);
     expect(mdAraclar.has('fm_onayla')).toBe(false);
+  });
+
+  // PLAN/17 §3 (2026-09-13): kilit testi 13 ajana genişletildi — araç eklerken/çıkarırken iki yer birlikte güncellenir.
+  it('13 ajanın kimlik.md "Kullandığım araçlar" bölümü ↔ ajan-tanimlari araclar BİREBİR', () => {
+    for (const ajan of AJAN_TANIMLARI) {
+      const mdAraclar = kimlikAraclari(ajan.id);
+      const kod = new Set(ajan.araclar);
+      expect({
+        ajan: ajan.id,
+        koddaVarMdYok: [...kod].filter((x) => !mdAraclar.has(x)),
+        mdVarKoddaYok: [...mdAraclar].filter((x) => !kod.has(x)),
+      }).toEqual({ ajan: ajan.id, koddaVarMdYok: [], mdVarKoddaYok: [] });
+    }
+  });
+
+  it('13 ajanın receteler.md dosyası var ve boş değil (runner "REÇETELERİN" bloğu bunu okur)', () => {
+    for (const ajan of AJAN_TANIMLARI) {
+      const dosya = path.join(__dirname, `../../kadro/${ajan.id}/receteler.md`);
+      const icerik = fs.existsSync(dosya) ? fs.readFileSync(dosya, 'utf8') : '';
+      expect({ ajan: ajan.id, var: icerik.trim().length > 200 }).toEqual({ ajan: ajan.id, var: true });
+    }
   });
 });
 

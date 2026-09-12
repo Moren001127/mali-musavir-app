@@ -158,18 +158,111 @@ export function sesCevabiOlustur(o: SesKosuOzeti): string {
   return cevap || 'Koordinatör bir sonuç üretmedi; soruyu bir daha söyler misiniz?';
 }
 
-/** Sesli soru → koordinatör görev metni. */
+// ─── KOORDİNATÖR YÖNLENDİRME — PLAN/17 §5 tablosunun kod karşılığı (2026-09-13) ───
+
+export interface AjanSecimi {
+  /** Hedef ajan; null = ajan başlatılmaz (neden dolu: ekibe kapalı iş / modül kapalı). */
+  ajanId: string | null;
+  /** Reçete kodu (R1…R11, K1 e-defter, 'ekran' Luca Operatörü); ajan yoksa null. */
+  recete: string | null;
+  /** Koordinatör LLM'e giden tek satır gerekçe. */
+  neden: string;
+}
+
+const secim = (ajanId: string, recete: string, neden: string): AjanSecimi => ({ ajanId, recete, neden });
+
+/**
+ * Muzaffer Bey’in cümlesini PLAN/17 §5 tablosuna göre ajan + reçeteye çevirir (saf; anahtar kelime, Türkçe normalize).
+ *  - KDV kontrol / mutabakat / Luca ile karşılaştır → beyanname · R1 (PORTAL işi; luca-operator'e ASLA gitmez)
+ *  - gelir tablosu / bilanço / İHÖ analiz-yorum-kâr → analist · R2 (hazır tablo okunur)
+ *  - KDV beyannamesi / ödenecek çıkar mı / KDV1 → beyanname · R3
+ *  - muhasebeleştir / hesap ata / Luca'ya at / faturaları işle → fatura · R4
+ *  - faturaları çek / entegratör / e-arşiv indir → fatura · R5 ("mihsap" geçerse ajan yok: Muzaffer Bey’de)
+ *  - geçici vergi öncesi denetim / mizanda sorun / kasa-ortak / mizanı denetle → denetci · R6
+ *  - geçici vergi paketi/beyannamesi → beyanname · R7
+ *  - banka / ekstre / kasa-banka → banka-kasa · R8;  evrak / hatırlatma → evrak · R9;  tebligat → evrak · R10 (iletim musteri)
+ *  - e-defter / berat → edefter · K1
+ *  - bordro / SGK / muhtasar → ajan yok ("bordro modülü kapalı")
+ *  - "Luca'da … aç/doldur/oku/fiş" YALNIZ bu kalıp → luca-operator · ekran (KDV/mizan/gelir tablosu geçiyorsa değil)
+ *  - belirsiz → null (Koordinatör tek satır soru sorar)
+ */
+export function ajanSec(cumle: string): AjanSecimi | null {
+  const t = normalize(cumle);
+  if (!t) return null;
+
+  // Ekibe kapalı / kapalı modül — önce bunlar (yanlışlıkla ajan başlatılmasın)
+  if (/\bmihsap\b/.test(t)) return { ajanId: null, recete: null, neden: 'Mihsap çekimi ekibe kapalı; Muzaffer Bey portaldan çeker (Fatura Merkezi işi fatura/R4-R5).' };
+  if (/\b(bordro|sgk|muhtasar|aphb|bildirge)/.test(t)) return { ajanId: null, recete: null, neden: 'HAZIR DEĞİL: bordro modülü kapalı (bordro verisi portalda yok); ajan başlatılmaz.' };
+
+  // KDV Kontrol zinciri — PORTAL işi
+  if (/kdv[^.]*\b(kontrol|mutabakat|karsilastir)/.test(t) || /alis[- ]?satis[^.]*mutabakat/.test(t) || /luca ile karsilastir/.test(t)) {
+    return secim('beyanname', 'R1', 'KDV Kontrol portal işidir; Beyanname Uzmanı zinciri kendi yürütür (Luca Operatörü DEĞİL). Dönem: YYYY/MM.');
+  }
+  // Geçici vergi paketi (R7) — denetimden önce bakılır ("geçici vergi beyannamesi")
+  if (/gecici vergi[^.]*\b(paket|beyanname|beyani|hazirla)/.test(t)) {
+    return secim('beyanname', 'R7', 'Geçici vergi paketi; önce Denetçi R6 raporu var mı bakılır. Dönem: YYYY-Qn.');
+  }
+  // KDV1 beyanname hazırlığı (R3)
+  if (/kdv[^.]*\b(beyanname|beyan|kdv1|taslak)/.test(t) || /\bkdv1\b/.test(t) || /odenecek[^.]*\b(cikar|kdv)/.test(t)) {
+    return secim('beyanname', 'R3', 'KDV1 paketi; KDV Kontrol (R1) bitmemişse ajan önce R1 yapar. Dönem: YYYY-MM.');
+  }
+  // Dönem denetimi (R6)
+  if (/\bdenet(im|le)/.test(t) || /mizanda sorun/.test(t) || /kasa[- ]?ortak/.test(t) || /ortak cari/.test(t) || /mizan[^.]*\b(cek|cekim|cekilsin)/.test(t)) {
+    return secim('denetci', 'R6', 'Dönem denetimi (14 madde); kilitli mizan varsa Luca çekimi İSTENMEZ, çekim yalnız PRV ile. Dönem: YYYY-Qn.');
+  }
+  // Gelir tablosu / bilanço / İHÖ analizi (R2) — hazır tablo
+  if (/(gelir tablosu|bilanco|\biho\b|isletme hesap ozeti|gecici vergi[^.]*ongor|\bkar(i|im|imiz)?\b[^.]*\bnasil|kar durumu|karlilik)/.test(t)) {
+    return secim('analist', 'R2', 'Portaldaki hazır (kilitli) tablo okunur; önce mali_donemler_listele ile hazır mı bak, hazırsa Luca/Denetçi ÖNERME. Dönem: YYYY-Qn | YYYY-YILLIK.');
+  }
+  // Fatura muhasebeleştirme (R4)
+  if (/muhasebelestir/.test(t) || /hesap ata/.test(t) || /luca'?ya at/.test(t) || /fatura[^.]*\b(isle|islensin)\b/.test(t)) {
+    return secim('fatura', 'R4', 'Fatura Merkezi → hesap önerisi → onay listesi; fm_onayla Muzaffer Bey’de. Dönem: YYYY-MM.');
+  }
+  // Entegratör / e-arşiv çekimi (R5)
+  if (/fatura[^.]*\b(cek|indir|al)\b/.test(t) || /entegrator/.test(t) || /e-?arsiv[^.]*\b(cek|indir|al)/.test(t)) {
+    return secim('fatura', 'R5', 'Entegratör/e-Arşiv çekimi (GİB yolu kuru testte hariç). Dönem: YYYY-MM.');
+  }
+  // Banka / ekstre (R8)
+  if (/\b(ekstre|banka)\b/.test(t) || /kasa[- ]?banka/.test(t)) {
+    return secim('banka-kasa', 'R8', 'Ekstre takibi + 100/102/131/331 mantık; banka hareketi tablosu portalda yok. Dönem: YYYY-MM.');
+  }
+  // Tebligat (R10) — evrak kayıt + musteri iletim
+  if (/tebligat/.test(t)) {
+    return secim('evrak', 'R10', 'e-Tebligat kaydı Evrak (R10); iletim Müşteri İlişkileri (R10 iletim). Ajan çekim başlatmaz.');
+  }
+  // Evrak (R9)
+  if (/\bevrak/.test(t) || /hatirlat/.test(t)) {
+    return secim('evrak', 'R9', 'Eksik evrak listesi + hatırlatma taslağı; mesaj PRV ile. Dönem: YYYY-MM.');
+  }
+  // e-Defter / berat
+  if (/e-?defter/.test(t) || /\bberat/.test(t)) {
+    return secim('edefter', 'K1', 'e-Defter kontrolü / berat takvimi; çekim PRV ile, berat Muzaffer Bey yükler.');
+  }
+  // Luca Operatörü — YALNIZ "Luca'da … aç/doldur/oku/fiş" kalıbı
+  if (/\bluca'?(da|de)\b/.test(t) && /\b(ac|acar|acsin|doldur|oku|okusun|fis|fisi|ekran|menu|taslak|taslag)/.test(t)) {
+    return secim('luca-operator', 'ekran', "Luca ekran işi (aç/doldur/oku/fiş taslağı); Kaydet/Gönder Muzaffer Bey’in onayı. Portal işi değil.");
+  }
+  return null;
+}
+
+/** Sesli soru → koordinatör görev metni. Varsa PLAN/17 §5 ön eşlemesi "YÖNLENDİRME ÖNERİSİ" satırı olarak eklenir. */
 export function sesGoreviOlustur(p: {
   question: string;
   currentPath?: string;
   taxpayerAdi?: string | null;
   canli: boolean;
 }): string {
+  const oneri = ajanSec(p.question);
   const baglam = [
-    'Sahip canlı ses üzerinden konuşuyor; cevabın sesli okunacak.',
+    'Muzaffer Bey canlı ses üzerinden konuşuyor; cevabın sesli okunacak.',
     p.currentPath ? `Aktif portal ekranı: ${p.currentPath}.` : '',
     p.taxpayerAdi ? `Seçili mükellef: ${p.taxpayerAdi}.` : '',
-    p.canli ? 'Sahip bu görev için sözlü olarak CANLI (kuru test dışı) çalışmayı istedi.' : '',
+    p.canli ? 'Muzaffer Bey bu görev için sözlü olarak CANLI (kuru test dışı) çalışmayı istedi.' : '',
+    oneri
+      ? oneri.ajanId
+        ? `YÖNLENDİRME ÖNERİSİ: ${oneri.ajanId}/${oneri.recete} — ${oneri.neden}`
+        : `YÖNLENDİRME ÖNERİSİ: ajan yok — ${oneri.neden}`
+      : '',
   ].filter(Boolean);
   return `${baglam.join('\n')}\n\nSORU/KOMUT: ${String(p.question || '').trim()}`;
 }

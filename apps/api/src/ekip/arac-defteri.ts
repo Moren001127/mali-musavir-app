@@ -1,4 +1,4 @@
-import { MOREN_AI_TOOLS, FATURA_MERKEZI_AJAN_ARACLARI } from '../moren-ai/tools';
+import { MOREN_AI_TOOLS, FATURA_MERKEZI_AJAN_ARACLARI, EKIP_IS_ZINCIRI_ARACLARI } from '../moren-ai/tools';
 import { MIHSAP_FATURA_ACTIONS } from '../agent-events/agent-registry';
 import { AUTOMATION_ACTION_CATALOG } from '../automations/action-catalog';
 import { LUCA_OPERATOR_ARACLARI } from '../calisan/luca-operator.service';
@@ -12,14 +12,17 @@ import { LUCA_OPERATOR_ARACLARI } from '../calisan/luca-operator.service';
  * açılmaz. Ajan tanımları (ajan-tanimlari.ts) araçları buradaki adla seçer.
  *
  * Kademeler:
- *  - oku            : yalnız veri okur → serbest
- *  - portal_yaz     : portalda kayıt yazar (dönem durumu, not, hafıza) → serbest, kayıt altında
- *  - luca_yaz       : Luca'da alan doldurur/tıklar → kuru test varsayılan; canlı için sahip onayı
- *  - disari_gonder  : WhatsApp/SMS/e-posta → canlıda bile doğrudan gitmez, OwnerApprovalRequest
- *  - resmi_gonderim : GİB beyanname, SGK bildirge, e-defter berat → HİÇBİR ajan çağıramaz
+ *  - oku             : yalnız veri okur → serbest
+ *  - portal_yaz      : portalda kayıt yazar (dönem durumu, not, hafıza) → serbest, kayıt altında
+ *  - portal_yaz_agir : portala yazar VE yan etkisi var (Max kotası harcar, otomasyon olayı yayar, oturum durumu
+ *                      değiştirir: KDV Kontrol oturumu aç / fatura bağla / OCR / eşleştir) → kuru testte ÇALIŞMAZ
+ *                      (PLAN/17 §1.2, 2026-09-13: kuru test pilotunda gerçek oturum açıp oto-kilit tetikleyebiliyordu)
+ *  - luca_yaz        : Luca'da alan doldurur/tıklar ya da Luca işi açar → kuru test varsayılan; canlı için Muzaffer Bey’in onayı
+ *  - disari_gonder   : WhatsApp/SMS/e-posta → canlıda bile doğrudan gitmez, OwnerApprovalRequest
+ *  - resmi_gonderim  : GİB beyanname, SGK bildirge, e-defter berat → HİÇBİR ajan çağıramaz
  */
 
-export type Kademe = 'oku' | 'portal_yaz' | 'luca_yaz' | 'disari_gonder' | 'resmi_gonderim';
+export type Kademe = 'oku' | 'portal_yaz' | 'portal_yaz_agir' | 'luca_yaz' | 'disari_gonder' | 'resmi_gonderim';
 
 export type AracKaynagi = 'portal' | 'luca' | 'eylem' | 'ekip' | 'resmi';
 
@@ -38,14 +41,15 @@ export interface AracSahibiAjan {
   araclar: string[];
 }
 
-export const KADEME_SIRASI: Kademe[] = ['oku', 'portal_yaz', 'luca_yaz', 'disari_gonder', 'resmi_gonderim'];
+export const KADEME_SIRASI: Kademe[] = ['oku', 'portal_yaz', 'portal_yaz_agir', 'luca_yaz', 'disari_gonder', 'resmi_gonderim'];
 
 export const KADEME_ACIKLAMALARI: Record<Kademe, string> = {
   oku: 'Yalnız okur — serbest.',
   portal_yaz: 'Portalda kayıt yazar — serbest, iş dosyasına yazılır.',
+  portal_yaz_agir: 'Portala yazar ve yan etkisi var (Max kotası, otomasyon olayı, oturum durumu) — kuru testte ÇALIŞMAZ, "yapılacaktı" yazılır.',
   luca_yaz: "Luca'da yazar/tıklar — kuru testte ÇALIŞMAZ, canlıda Kaydet/Gönder kilidi sürer.",
-  disari_gonder: 'Mükellefe/dışarıya mesaj — doğrudan gitmez, sahip onayı kaydı açılır.',
-  resmi_gonderim: 'GİB/SGK/e-defter resmi gönderim — ajan ASLA çağıramaz, yalnız sahip.',
+  disari_gonder: 'Mükellefe/dışarıya mesaj — doğrudan gitmez, Muzaffer Bey’in onayı kaydı açılır.',
+  resmi_gonderim: 'GİB/SGK/e-defter resmi gönderim — ajan ASLA çağıramaz, yalnız Muzaffer Bey.',
 };
 
 // ─── PORTAL ARAÇLARI: adı YAZAN olanlar, gerisi oku ───
@@ -57,6 +61,76 @@ const PORTAL_YAZAN_ARACLAR = new Set<string>([
   // Önizleme yazmaz ama OwnerApprovalRequest kaydı açar → kayıt altında yazma sayılır.
   'preview_agent_command',
 ]);
+
+/**
+ * PLAN/17 §3 — KDV Kontrol zinciri + mali okuma araçları: kademe eşlemesi ADA GÖRE sabittir (tools.ts şemasından
+ * bağımsız). Bu araçlar MOREN_AI_TOOLS'a girdiğinde şema oradan, kademe buradan gelir; henüz girmediyse defterde
+ * aşağıdaki açıklama/parametrelerle "bekleyen" kayıt olarak yer alır (runner çağırınca "Çalıştırıcı bulunamadı" der;
+ * kademe kontrolü yine işler). PORTAL_YAZAN_ARACLAR'a yazılmayan aracın 'oku' sayılması (kuru testte gerçek iş açması)
+ * bu tablo ile önlenir — 2026-09-13.
+ */
+interface BekleyenPortalAraci {
+  kademe: Kademe;
+  aciklama: string;
+  parametreler: string[];
+}
+const PORTAL_KADEMELERI: Record<string, BekleyenPortalAraci> = {
+  kdv_kontrol_oturum_bul_olustur: {
+    kademe: 'portal_yaz_agir',
+    aciklama: 'KDV Kontrol oturumunu bulur ya da açar (defter türüne göre 2 oturum: KDV_191+KDV_391 / ISLETME_GIDER+ISLETME_GELIR); COMPLETED oturumda devam etmez',
+    parametreler: ['taxpayerId*', 'periodLabel*', 'type'],
+  },
+  kdv_kontrol_luca_cek: {
+    kademe: 'luca_yaz',
+    aciklama: 'Oturum için Luca çekim işini kuyruğa alır (Luca ajanı tarayıcı sürer); aynı iş varsa mevcutIs:true döner [jobId döner]',
+    parametreler: ['sessionId*', 'targetDeviceId'],
+  },
+  luca_is_bekle: {
+    kademe: 'oku',
+    aciklama: 'Luca işini sunucuda en çok 60 sn bekler; status/recordCount/hata/retry/captcha döner (10 dk tavan için ≤10 çağrı)',
+    parametreler: ['jobId*', 'maxSaniye'],
+  },
+  kdv_kontrol_fatura_bagla: {
+    kademe: 'portal_yaz_agir',
+    aciklama: "Portal DB'deki Mihsap faturalarını KDV Kontrol oturumuna bağlar (linked/alreadyLinked)",
+    parametreler: ['sessionId*'],
+  },
+  kdv_kontrol_ocr_baslat: {
+    kademe: 'portal_yaz_agir',
+    aciklama: 'Oturumdaki fatura görselleri için OCR kuyruğunu başlatır (Max kotası; forceFresh YOK); {queued,total,cacheHits}',
+    parametreler: ['sessionId*'],
+  },
+  kdv_kontrol_ocr_bekle: {
+    kademe: 'oku',
+    aciklama: 'OCR bitişini sunucuda en çok 60 sn bekler; pending/processing/success/needsReview/failed sayar, bitti:true dönene kadar tekrar çağır (15 dk tavan)',
+    parametreler: ['sessionId*', 'maxSaniye'],
+  },
+  kdv_kontrol_eslestir: {
+    kademe: 'portal_yaz_agir',
+    aciklama: 'Ön koşul kapısı (Luca kaydı>0, görsel>0, OCR bitti) sonra eşleştirme; oturum COMPLETED olduysa otoKilit:true bildirir (Muzaffer Bey’in kararı: ajanın işi kendi işi gibi — kilit ve bağlı otomasyonlar portaldaki düzende çalışır)',
+    parametreler: ['sessionId*'],
+  },
+  kdv_kontrol_sonuc_satirlari: {
+    kademe: 'oku',
+    aciklama: 'Eşleştirme sonuç satırlarını (belge no, tarih, KDV, sebep) ve matchSummary sayaçlarını okur; karar vermez',
+    parametreler: ['sessionId*', 'yalnizSorunlu', 'limit'],
+  },
+  mali_yorum_oku: {
+    kademe: 'oku',
+    aciklama: "Muzaffer Bey’in kayıtlı Mali Yorum'unu okur (GELIR_TABLOSU/BILANCO/MIZAN/IHO); yoksa null",
+    parametreler: ['kaynak*', 'kaynakId*'],
+  },
+  mali_donemler_listele: {
+    kademe: 'oku',
+    aciklama: 'Mükellefin hazır gelir tablosu / bilanço / mizan dönemlerini tek listede verir (kilitli mi, kaynak, id)',
+    parametreler: ['taxpayerId*'],
+  },
+  // SAHİP VEKİLİ araçları: tools.ts'e girerse bile kuru testte kapalı; hiçbir ajan listesinde YOK (spec kilidi).
+  kdv_kontrol_kilitle: { kademe: 'portal_yaz_agir', aciklama: 'KDV Kontrol oturumunu kilitler — yalnız Muzaffer Bey’in sözüyle', parametreler: ['sessionId*'] },
+  kdv_kontrol_kilit_ac: { kademe: 'portal_yaz_agir', aciklama: 'KDV Kontrol oturum kilidini açar — yalnız Muzaffer Bey’in sözüyle', parametreler: ['sessionId*'] },
+};
+/** Bekleyen kayıt olarak defterde görünecek olanlar (kilit vekilleri hariç — onlar yalnız kademe eşlemesi). */
+const BEKLEYEN_PORTAL_ARACLARI = Object.keys(PORTAL_KADEMELERI).filter((ad) => !/^kdv_kontrol_kilit/.test(ad));
 
 // ─── FATURA MERKEZİ AJAN ARAÇLARI (fm_*): kademe eşlemesi (PLAN/15 Faz 5) ───
 // MOREN_AI_TOOLS'ta DEĞİL (genel bot görmez); defterde kaynak='portal' olarak yer alır.
@@ -179,22 +253,38 @@ const EKIP_ARACLARI: AracKaydi[] = [
     ad: 'ekip_onaylar',
     kaynak: 'ekip',
     kademe: 'oku',
-    aciklama: 'Sahip onayı bekleyen dışarı-gönderim kayıtları (PRV-XXXX, hangi ajan, hangi araç, hedef, mesaj)',
+    aciklama: 'Muzaffer Bey’in onayı bekleyen dışarı-gönderim kayıtları (PRV-XXXX, hangi ajan, hangi araç, hedef, mesaj)',
     parametreler: ['durum', 'limit'],
   },
   {
     ad: 'ekip_onayla',
     kaynak: 'ekip',
     kademe: 'portal_yaz',
-    aciklama: 'Sahip "ONAYLIYORUM #PRV-XXXX" dediğinde o onayı yürütür (mesaj GERÇEKTEN gider). Yalnız sahibin açık sözüyle; kendin karar verme',
+    aciklama: 'Muzaffer Bey "ONAYLIYORUM #PRV-XXXX" dediğinde o onayı yürütür (mesaj GERÇEKTEN gider). Yalnız Muzaffer Bey’in açık sözüyle; kendin karar verme',
     parametreler: ['previewId', 'onayMetni'],
   },
   {
     ad: 'ekip_reddet',
     kaynak: 'ekip',
     kademe: 'portal_yaz',
-    aciklama: 'Sahip bir onayı reddettiğinde kaydı kapatır',
+    aciklama: 'Muzaffer Bey bir onayı reddettiğinde kaydı kapatır',
     parametreler: ['previewId', 'not'],
+  },
+  // PLAN/17 §3 (2026-09-13): Koordinatör başka ajanı ARKA PLANDA başlatır (iç içe koşu yok, beklemez);
+  // aynı ajan + mükellef için çalışan/bekleyen iş varsa {ok:false, mevcutIsId}. Canlı yalnız Muzaffer Bey bu koşuyu canlı açtıysa.
+  {
+    ad: 'ekip_ajan_baslat',
+    kaynak: 'ekip',
+    kademe: 'portal_yaz',
+    aciklama: 'Başka bir ekip ajanını görev metniyle arka planda başlatır (kuru test varsayılan; beklemez, isId döner; sonucu ekip_is_durum ile izle)',
+    parametreler: ['ajanId*', 'gorev*', 'taxpayerId', 'canli'],
+  },
+  {
+    ad: 'ekip_is_durum',
+    kaynak: 'ekip',
+    kademe: 'oku',
+    aciklama: 'Bir ekip iş dosyasının durumunu okur (pending/running/done/failed, rapor, hata, kuru test/onay sayıları)',
+    parametreler: ['isId*'],
   },
 ];
 
@@ -220,10 +310,33 @@ function defteriKur(): AracKaydi[] {
     out.push({
       ad: t.name,
       kaynak: 'portal',
-      kademe: PORTAL_YAZAN_ARACLAR.has(t.name) ? 'portal_yaz' : 'oku',
+      // Ada göre sabit kademe (PLAN/17) > yazan listesi > varsayılan oku
+      kademe: PORTAL_KADEMELERI[t.name]?.kademe || (PORTAL_YAZAN_ARACLAR.has(t.name) ? 'portal_yaz' : 'oku'),
       aciklama: (t.description || '').split('.')[0].slice(0, 160),
       parametreler: parametreListesi(t.input_schema),
     });
+  }
+
+  // PLAN/17 §3 zincir araçları (tools.ts EKIP_IS_ZINCIRI_ARACLARI): şema/parametre oradan, kademe ADA GÖRE buradan.
+  // ekip_* adları EKIP_ARACLARI'ndan gelir (runner kendi işler); eşlemede olmayan zincir aracı = güvenli tarafa (portal_yaz_agir).
+  for (const t of EKIP_IS_ZINCIRI_ARACLARI) {
+    if (t.name.startsWith('ekip_') || gorulen.has(t.name)) continue;
+    gorulen.add(t.name);
+    out.push({
+      ad: t.name,
+      kaynak: 'portal',
+      kademe: PORTAL_KADEMELERI[t.name]?.kademe || 'portal_yaz_agir',
+      aciklama: PORTAL_KADEMELERI[t.name]?.aciklama || (t.description || '').split('.')[0].slice(0, 160),
+      parametreler: parametreListesi(t.input_schema),
+    });
+  }
+
+  // tools.ts'e henüz girmemiş PLAN/17 araçları: bekleyen kayıt (kademe + açıklama + parametre buradan).
+  for (const ad of BEKLEYEN_PORTAL_ARACLARI) {
+    if (gorulen.has(ad)) continue;
+    gorulen.add(ad);
+    const b = PORTAL_KADEMELERI[ad];
+    out.push({ ad, kaynak: 'portal', kademe: b.kademe, aciklama: b.aciklama, parametreler: b.parametreler });
   }
 
   for (const t of FATURA_MERKEZI_AJAN_ARACLARI) {
@@ -299,11 +412,14 @@ export interface AracErisim {
   mesaj?: string;
 }
 
+/** Kuru testte ÇALIŞMAYAN kademeler (PLAN/17 §1.2: portal_yaz_agir eklendi, 2026-09-13). */
+export const KURU_TESTTE_KAPALI_KADEMELER: ReadonlySet<Kademe> = new Set<Kademe>(['luca_yaz', 'disari_gonder', 'portal_yaz_agir']);
+
 /**
  * Bu ajan bu aracı ŞU AN çağırabilir mi?
  *  - resmi_gonderim → her zaman kapalı (ajan listesinde olsa bile)
  *  - ajanın araç listesinde değilse → kapalı
- *  - dryRun ve kademe luca_yaz / disari_gonder → kapalı ("kuru test": yapılacaktı raporu)
+ *  - dryRun ve kademe luca_yaz / disari_gonder / portal_yaz_agir → kapalı ("kuru test": yapılacaktı raporu)
  * disari_gonder canlıda da doğrudan gitmez; onay kaydı açılır — o kural runner'dadır.
  */
 export function aracAcikMi(ajan: AracSahibiAjan, ad: string, dryRun: boolean): AracErisim {
@@ -314,13 +430,13 @@ export function aracAcikMi(ajan: AracSahibiAjan, ad: string, dryRun: boolean): A
       acik: false,
       kademe: kayit.kademe,
       neden: 'resmi_gonderim',
-      mesaj: `${ad}: resmi gönderim yalnız sahip tarafından yapılır; hiçbir ajan çağıramaz.`,
+      mesaj: `${ad}: resmi gönderim yalnız Muzaffer Bey tarafından yapılır; hiçbir ajan çağıramaz.`,
     };
   }
   if (!Array.isArray(ajan?.araclar) || !ajan.araclar.includes(ad)) {
     return { acik: false, kademe: kayit.kademe, neden: 'ajana_kapali', mesaj: `${ad} aracı "${ajan?.id}" ajanına kapalı.` };
   }
-  if (dryRun && (kayit.kademe === 'luca_yaz' || kayit.kademe === 'disari_gonder')) {
+  if (dryRun && KURU_TESTTE_KAPALI_KADEMELER.has(kayit.kademe)) {
     return {
       acik: false,
       kademe: kayit.kademe,
@@ -333,7 +449,7 @@ export function aracAcikMi(ajan: AracSahibiAjan, ad: string, dryRun: boolean): A
 
 /** Ajanın araç listesine göre kademe sayımı ({oku: n, portal_yaz: n, ...}). */
 export function kademeOzeti(araclar: string[]): Record<Kademe, number> {
-  const out: Record<Kademe, number> = { oku: 0, portal_yaz: 0, luca_yaz: 0, disari_gonder: 0, resmi_gonderim: 0 };
+  const out: Record<Kademe, number> = { oku: 0, portal_yaz: 0, portal_yaz_agir: 0, luca_yaz: 0, disari_gonder: 0, resmi_gonderim: 0 };
   for (const ad of araclar || []) {
     const k = aracKademesi(ad);
     if (k) out[k]++;
