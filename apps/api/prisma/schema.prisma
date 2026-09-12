@@ -2511,6 +2511,34 @@ model InvoiceAccountingLine {
   @@map("invoice_accounting_lines")
 }
 
+// ============================================================
+// FATURA MERKEZİ — KALICI BELGE İŞ KUYRUĞU (2026-09-13)
+// Bellek-içi uploadOcrQueue her deploy'da siliniyordu (sahip classify-pending / ai-read-batch ile elle
+// yeniden dolduruyordu). Sınıflandırma (CLASSIFY) ve AI okuma (AI_READ) işleri artık burada durur;
+// BelgeKuyrukService 5 sn'de bir işçi tikiyle alır. kind: CLASSIFY | AI_READ · status: PENDING |
+// RUNNING | DONE | FAILED · priority: 0 arka plan, 3 ithal sonrası, 5 gece, 10 sahip isteği.
+// ============================================================
+model InvoiceProcessingJob {
+  id         String    @id @default(cuid())
+  tenantId   String
+  taxpayerId String?
+  documentId String
+  kind       String // CLASSIFY | AI_READ
+  priority   Int       @default(0)
+  status     String    @default("PENDING") // PENDING | RUNNING | DONE | FAILED
+  attempts   Int       @default(0)
+  lastError  String?
+  lockedBy   String?
+  lockedAt   DateTime?
+  createdAt  DateTime  @default(now())
+  startedAt  DateTime?
+  finishedAt DateTime?
+
+  @@index([tenantId, status, priority, createdAt])
+  @@index([documentId, status])
+  @@map("invoice_processing_jobs")
+}
+
 model LucaAccountPlanSnapshot {
   id           String   @id @default(cuid())
   tenantId     String

@@ -14,6 +14,7 @@ import { buildLucaImportExcel, buildLucaIsletmeHizliFisCsv } from './luca-excel.
 import { reconcileMatrahSplit } from './kalem-split';
 // PLAN/15 Faz 1-B (2026-09-12): plan adayları TEK kaynaktan (yön sıralı + rol etiketli + grup tavanlı) + satış gelir kuralı sabiti.
 import { planAdaylariHazirla, planAdayKodSeti, SATIS_GELIR_HESABI_KURALI, PLAN_ADAY_ROL_ACIKLAMASI } from './plan-adaylari';
+import { ogrenilmisKararSec, adCozumAdaylari, kodKategori, HizliYolKarar, HizliYolSecim } from './ogrenme-hizli-yol';
 import { parseUblInvoice, ublOcrDataFields, clearUblOnlyOcrFields, resolveTevkifatOrani, ParsedProviderInvoice } from './ubl-parse';
 import { VendorMemoryService } from '../vendor-memory/vendor-memory.service';
 import { MihsapService } from '../mihsap/mihsap.service';
@@ -272,6 +273,10 @@ type OgrenmeKaydi = {
   taxpayerId: string;
   boost: number;
   tarih?: string;
+  /** GÖREV B (2026-09-13): onaylanan hesabın PLAN ADI + mükellefin defter türü — vendor_memory_decisions'ta JSON alanı
+   *  olmadığından (şema değişikliği yok) bu iz ocrData.ogrenmeKayitlari'nda tutulur; okuma tarafı adı plan snapshot'ından çözer. */
+  hesapAdi?: string | null;
+  defterTuru?: 'bilanco' | 'isletme' | null;
 };
 
 type IntegrationSaveInput = {
@@ -544,6 +549,21 @@ type ClassifyResult = {
  *  plan aday kod kümesi (dönen kodun geçerliliği), güçlü model isteği (Sonnet eskalasyonu — iç kullanım). */
 type ClassifyEk = { ipucu?: string; planKodlari?: Set<string>; strongModel?: boolean };
 
+/** Kalıcı belge kuyruğu kancası (2026-09-13) — BelgeKuyrukService bu sözleşmeyle kendini bağlar (kuyrukBagla).
+ *  Bu dosya belge-kuyruk.service'i import ETMEZ (dosya-düzeyi döngü olmasın). */
+export interface BelgeKuyrukGirdisi {
+  tenantId: string;
+  taxpayerId?: string | null;
+  documentId: string;
+  kind: 'CLASSIFY' | 'AI_READ';
+  /** 0 arka plan · 3 ithal/okuma sonrası · 5 gece · 10 sahip isteği */
+  priority: number;
+}
+export interface BelgeKuyrukKancasi {
+  kuyrugaAl(g: BelgeKuyrukGirdisi): Promise<{ eklendi: boolean; yukseltildi: boolean }>;
+  topluKuyrugaAl(g: BelgeKuyrukGirdisi[]): Promise<{ eklenen: number; yukseltilen: number; zatenKuyrukta: number; bekleyen: number }>;
+}
+
 @Injectable()
 export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(FaturaMuhasebelestirmeService.name);
@@ -682,18 +702,25 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       if (this.uploadOcrQueue.length >= this.uploadOcrConcurrency) return 0;
       const stuck = await (this.prisma as any).invoiceAccountingDocument.findMany({
         where: { ocrStatus: { in: ['PENDING', 'IN_PROGRESS'] }, status: { not: 'APPROVED' } },
-        select: { id: true, tenantId: true },
+        select: { id: true, tenantId: true, taxpayerId: true },
         orderBy: { createdAt: 'asc' },
         take: 60,
       }).catch(() => []);
       const queued = new Set(this.uploadOcrQueue.map((j) => j.documentId));
       let n = 0;
+      const dbOkuma: Array<{ tenantId: string; taxpayerId?: string | null; documentId: string; kind: 'AI_READ'; priority: number }> = [];
       for (const d of stuck) {
         if (queued.has(d.id) || this.uploadOcrActiveIds.has(d.id)) continue;
-        this.uploadOcrQueue.push({ tenantId: d.tenantId, documentId: d.id, kind: 'ai-read' });
+        // 2026-09-13: DB kuyruğu bağlıysa oraya (priority 0; PENDING/RUNNING işi olan belge idempotent atlanır).
+        if (this.belgeKuyrugu) dbOkuma.push({ tenantId: d.tenantId, taxpayerId: (d as any).taxpayerId, documentId: d.id, kind: 'AI_READ', priority: 0 });
+        else this.uploadOcrQueue.push({ tenantId: d.tenantId, documentId: d.id, kind: 'ai-read' });
         n++;
       }
-      if (n) {
+      if (this.belgeKuyrugu && dbOkuma.length) {
+        const r = await this.belgeKuyrugu.topluKuyrugaAl(dbOkuma).catch(() => ({ eklenen: 0, yukseltilen: 0, zatenKuyrukta: 0, bekleyen: 0 }));
+        n = r.eklenen;
+        if (n) this.logger.log(`OCR resume: ${n} oksuz PENDING belge DB kuyruguna alindi (restart kurtarma, priority 0)`);
+      } else if (n) {
         this.logger.log(`OCR resume: ${n} oksuz PENDING belge yeniden kuyruga alindi (restart kurtarma)`);
         this.drainUploadedOcrQueue();
       }
@@ -702,14 +729,18 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       //   hesap eşleşmiyordu (Gökhan Akgöz: 3 okuma turu da deploy restart'ına denk geldi, 26 belge
       //   kategorisiz kaldı). Okunmuş ama SINIFLANMAMIŞ ALIŞ belgeleri yeniden classify kuyruğuna
       //   alınır. Süreç başına belge başı 1 deneme (clsRescued) — boş dönen belge döngüye girmesin.
+      //   2026-09-13: DB kuyruğu bağlıysa 200 belgeye kadar priority 0 (arka plan) ile DB'ye yazılır (idempotent);
+      //   bellek-içi yolda eski 30'luk küçük parti korunur.
       let c = 0;
-      if (this.uploadOcrQueue.length < this.uploadOcrConcurrency) {
+      if (this.belgeKuyrugu || this.uploadOcrQueue.length < this.uploadOcrConcurrency) {
         const adaylar = await (this.prisma as any).invoiceAccountingDocument.findMany({
           where: { status: { in: ['READY', 'NEEDS_REVIEW'] }, invoiceKind: 'ALIS' },
           orderBy: [{ taxpayerId: 'asc' }, { updatedAt: 'desc' }], // HIZ: partiler dolsun (2026-09-13)
-          select: { id: true, tenantId: true, ocrData: true },
+          select: { id: true, tenantId: true, taxpayerId: true, ocrData: true },
           take: 200,
         }).catch(() => []);
+        const dbSinif: Array<{ tenantId: string; taxpayerId?: string | null; documentId: string; kind: 'CLASSIFY'; priority: number }> = [];
+        const tavan = this.belgeKuyrugu ? 200 : 30;
         for (const d of adaylar as any[]) {
           const o: any = d.ocrData || {};
           // Sınıflanacak içerik: icerikMetni YA DA kalem adları (entegratör-XML'de icerikMetni yok).
@@ -720,11 +751,16 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           //   kötü ihtimalle birkaç belge tekrar denenir (zararsız, boş dönenler yine elenecek).
           if (this.clsRescued.size >= 5000) this.clsRescued.clear();
           this.clsRescued.add(d.id);
-          this.uploadOcrQueue.push({ tenantId: d.tenantId, documentId: d.id, kind: 'classify' });
+          if (this.belgeKuyrugu) dbSinif.push({ tenantId: d.tenantId, taxpayerId: d.taxpayerId, documentId: d.id, kind: 'CLASSIFY', priority: 0 });
+          else this.uploadOcrQueue.push({ tenantId: d.tenantId, documentId: d.id, kind: 'classify' });
           c++;
-          if (c >= 30) break;
+          if (c >= tavan) break;
         }
-        if (c) {
+        if (this.belgeKuyrugu && dbSinif.length) {
+          const r = await this.belgeKuyrugu.topluKuyrugaAl(dbSinif).catch(() => ({ eklenen: 0, yukseltilen: 0, zatenKuyrukta: 0, bekleyen: 0 }));
+          c = r.eklenen;
+          if (c) this.logger.log(`CLASSIFY resume: ${c} okunmus-ama-siniflanmamis belge DB kuyruguna alindi (priority 0)`);
+        } else if (c) {
           this.logger.log(`CLASSIFY resume: ${c} okunmus-ama-siniflanmamis belge yeniden siniflandirma kuyruguna alindi`);
           this.drainUploadedOcrQueue();
         }
@@ -735,11 +771,58 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     }
   }
 
+  // ── KALICI BELGE KUYRUĞU KANCASI (2026-09-13) ─────────────────────────────────────────────────────
+  // Bellek-içi uploadOcrQueue her deploy'da siliniyordu (sahip classify-pending / ai-read-batch ile elle
+  //   yeniden dolduruyordu). CLASSIFY / AI_READ işleri artık DB'de (invoice_processing_jobs) durur;
+  //   BelgeKuyrukService açılışta kendini buraya BAĞLAR (kuyrukBagla) — bu dosya yeni servisi import
+  //   etmez (dosya-düzeyi döngü yok). Kanca bağlı değilse (birim testi / eski davranış) bellek-içi kuyruk.
+  private belgeKuyrugu: BelgeKuyrukKancasi | null = null;
+  kuyrukBagla(k: BelgeKuyrukKancasi) { this.belgeKuyrugu = k; }
+  /** DB kuyruğu bağlıysa true (kancalar bellek-içi push yerine DB'ye yazar). */
+  belgeKuyruguBagliMi(): boolean { return !!this.belgeKuyrugu; }
+
+  /** Kuyruk işçisinin tek giriş kapısı: bir partiyi işler, belge başına sonuç döner (kuyruk servisi DONE/FAILED yazar).
+   *  CLASSIFY: partideki belgelerin runQueuedClassify'ı AYNI ANDA başlar → aiClassifyAccountingCoalesced onları
+   *    8 sn pencerede TEK Max çağrısında birleştirir (canlı ölçüm 2026-09-13: tek çağrı 95-153 sn; partiler grup=1 kalıyordu).
+   *  AI_READ: runQueuedAiRead (ocrStatus'u kendisi yazar); belge FAILED kaldıysa iş de FAILED sayılır.
+   *  uploadOcrActiveIds burada da işaretlenir → bellek-içi kurtarma aynı belgeyi çift işlemez. */
+  /** DB kuyruğundan şu an işlenen belge sayısı (bellek-içi uploadOcrActive'e KARIŞMAZ: yükleme OCR'ı 150 sn'lik
+   *  sınıflandırma partisini beklemesin). Yorum ön-üretimi ve okuma-içi yorum bu sayacı da yoklar. */
+  private kuyrukAktif = 0;
+  async kuyrukIsle(kind: 'CLASSIFY' | 'AI_READ', tenantId: string, documentIds: string[]): Promise<Array<{ documentId: string; ok: boolean; hata?: string }>> {
+    const ids = [...new Set((documentIds || []).map((s) => String(s || '').trim()).filter(Boolean))];
+    return Promise.all(ids.map(async (documentId) => {
+      this.kuyrukAktif++;
+      this.uploadOcrActiveIds.add(documentId);
+      try {
+        if (kind === 'AI_READ') {
+          await this.runQueuedAiRead(tenantId, documentId);
+          const d = await (this.prisma as any).invoiceAccountingDocument.findFirst({ where: { id: documentId, tenantId }, select: { ocrStatus: true, lucaErrorMessage: true } }).catch(() => null);
+          if (d && d.ocrStatus === 'FAILED') return { documentId, ok: false, hata: String(d.lucaErrorMessage || 'okunamadı') };
+          return { documentId, ok: true };
+        }
+        await this.runQueuedClassify(tenantId, documentId);
+        const d = await (this.prisma as any).invoiceAccountingDocument.findFirst({ where: { id: documentId, tenantId }, select: { ocrData: true } }).catch(() => null);
+        const o: any = d?.ocrData || {};
+        const sinifli = !!(String(o.matrahKategori || o.kategori || '').trim() || String(o.giderTuru || '').trim());
+        return sinifli ? { documentId, ok: true } : { documentId, ok: false, hata: 'sınıflandırma boş döndü (AI cevap vermedi / içerik yetersiz)' };
+      } catch (e: any) {
+        return { documentId, ok: false, hata: String(e?.message || e || 'hata') };
+      } finally {
+        this.kuyrukAktif = Math.max(0, this.kuyrukAktif - 1);
+        this.uploadOcrActiveIds.delete(documentId);
+        // Her iki kuyruk da boşsa yorum ön-üretimi (drainUploadedOcrQueue ile aynı davranış; Max şeridi paylaşılmasın).
+        if (this.kuyrukAktif === 0 && this.uploadOcrActive === 0 && this.uploadOcrQueue.length === 0) void this.sweepRichYorum(tenantId).catch(() => {});
+      }
+    }));
+  }
+
   /** Faz 1 (2026-09-12): okunmuş ama SINIFLANMAMIŞ bekleyen belgeleri sınıflandırma kuyruğuna alır (sahip tetikler).
    *  Seçim, resumeStuckOcr içindeki CLASSIFY-kurtarma ile aynı (içerik var + giderTuru/matrahKategori boş), ama tavan
    *  büyük ve mükellef süzgeci var. CANLI BULGU: 419 alış belgesi hesap planı olduğu hâlde hiç sınıflanmamış → matrah boş.
    *  Kuyruk belge başına 1 Haiku (yeni karar çekirdeği: ipucu + plan adayları + gerekirse Sonnet). clsRescued yoklanmaz
-   *  (elle tetik = bilinçli yeniden deneme). Sonuç: kuyruğa alınan / atlanan sayıları. */
+   *  (elle tetik = bilinçli yeniden deneme). Sonuç: kuyruğa alınan / atlanan sayıları.
+   *  2026-09-13: kanca bağlıysa işler KALICI DB kuyruğuna (priority 10 = sahip isteği) yazılır; deploy'da kaybolmaz. */
   async classifyPending(tenantId: string, opts: { taxpayerId?: string; limit?: number; yon?: string } = {}) {
     const limit = Math.min(Math.max(Number(opts.limit) || 100, 1), 1000);
     const yon = String(opts.yon || 'ALIS').toUpperCase() === 'SATIS' ? 'SATIS' : 'ALIS';
@@ -749,19 +832,28 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       //   belgeler mükellef karışık geliyor). Mükellefe göre BİTİŞİK sıralayınca 6 işçi aynı mükellefin belgelerini aynı pencerede
       //   partiye düşürür → 1 çağrı = 10 belge (MAX_CLASSIFY_BATCH=10, MAX_CLASSIFY_BATCH_MS=8000).
       orderBy: [{ taxpayerId: 'asc' }, { updatedAt: 'desc' }],
-      select: { id: true, tenantId: true, ocrData: true },
+      select: { id: true, tenantId: true, taxpayerId: true, ocrData: true },
       take: 3000,
     }).catch(() => []);
     const kuyruktakiler = new Set(this.uploadOcrQueue.map((j: any) => String(j.documentId || '')));
     let alinan = 0; let icerikYok = 0; let zatenSinifli = 0; let zatenKuyrukta = 0;
+    const dbIsleri: Array<{ tenantId: string; taxpayerId?: string | null; documentId: string; kind: 'CLASSIFY'; priority: number }> = [];
     for (const d of adaylar as any[]) {
       if (alinan >= limit) break;
       const o: any = d.ocrData || {};
       if (!String(o.icerikMetni || '').trim() && !(Array.isArray(o.kalemler) && o.kalemler.length)) { icerikYok++; continue; }
       if (String(o.matrahKategori || o.kategori || '').trim() || String(o.giderTuru || '').trim()) { zatenSinifli++; continue; }
       if (kuyruktakiler.has(d.id) || this.uploadOcrActiveIds.has(d.id)) { zatenKuyrukta++; continue; }
-      this.uploadOcrQueue.push({ tenantId: d.tenantId, documentId: d.id, kind: 'classify' });
+      if (this.belgeKuyrugu) dbIsleri.push({ tenantId: d.tenantId, taxpayerId: d.taxpayerId, documentId: d.id, kind: 'CLASSIFY', priority: 10 });
+      else this.uploadOcrQueue.push({ tenantId: d.tenantId, documentId: d.id, kind: 'classify' });
       alinan++;
+    }
+    if (this.belgeKuyrugu && dbIsleri.length) {
+      const r = await this.belgeKuyrugu.topluKuyrugaAl(dbIsleri);
+      zatenKuyrukta += r.zatenKuyrukta;
+      alinan = r.eklenen + r.yukseltilen;
+      this.logger.log(`[CLASSIFY-PENDING] DB kuyruğu: eklenen=${r.eklenen} yükseltilen=${r.yukseltilen} zatenKuyrukta=${r.zatenKuyrukta} (tp=${opts.taxpayerId || 'tümü'}, yön=${yon})`);
+      return { ok: true, kuyrugaAlinan: alinan, icerikYok, zatenSinifli, zatenKuyrukta, kuyrukUzunlugu: r.bekleyen, aktif: this.uploadOcrActive, kalici: true };
     }
     if (alinan) { this.logger.log(`[CLASSIFY-PENDING] ${alinan} belge sınıflandırma kuyruğuna alındı (tp=${opts.taxpayerId || 'tümü'}, yön=${yon})`); this.drainUploadedOcrQueue(); }
     return { ok: true, kuyrugaAlinan: alinan, icerikYok, zatenSinifli, zatenKuyrukta, kuyrukUzunlugu: this.uploadOcrQueue.length, aktif: this.uploadOcrActive };
@@ -3525,7 +3617,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   private async runQueuedClassify(tenantId: string, documentId: string) {
     const doc = await (this.prisma as any).invoiceAccountingDocument.findFirst({
       where: { id: documentId, tenantId },
-      select: { id: true, taxpayerId: true, invoiceKind: true, documentType: true, vendorName: true, customerName: true, ocrData: true },
+      // sellerVkn/buyerVkn (2026-09-13): öğrenme hızlı yolu + işletme hafızası (islVkn) karşı taraf VKN'sini buradan okur;
+      //   eskiden seçilmiyordu → islVkn hep boş kalıyor, pickIsletmeMemory hiç çalışmıyordu.
+      select: { id: true, taxpayerId: true, invoiceKind: true, documentType: true, vendorName: true, customerName: true, sellerVkn: true, buyerVkn: true, ocrData: true },
     }).catch(() => null);
     if (!doc) return;
     const od: any = doc.ocrData || {};
@@ -3544,12 +3638,14 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     let isIsletme = false;
     let qcNace = '';
     let qcFaaliyet = '';
+    let tpRow: any = null; // öğrenme hızlı yolu: had-üstü demirbaş tespiti (faaliyet kapısı) için
     if (doc.taxpayerId) {
       const tp = await (this.prisma as any).taxpayer.findFirst({
         where: { id: doc.taxpayerId, tenantId },
         select: { companyName: true, firstName: true, lastName: true, naceKodu: true, faaliyetAciklama: true, defterTuru: true, mihsapDefterTuru: true, sektorEtiketi: true, kurumTuru: true },
       }).catch(() => null);
       if (tp) {
+        tpRow = tp;
         isIsletme = isIsletmeLedger(tp.defterTuru, tp.mihsapDefterTuru);
         qcNace = String(tp.naceKodu || '').trim();
         qcFaaliyet = String(tp.faaliyetAciklama || '').trim();
@@ -3580,6 +3676,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   yazılır (rematch onu okur). İşletme mükellefinde plan YOK (eski davranış).
     let planMetni = '';
     let planKodlari: Set<string> | undefined;
+    let planSatirlari: Array<{ code: string; name: string }> = []; // öğrenme hızlı yolu da aynı planı kullanır
     if (doc.taxpayerId && !isIsletme) {
       // Plan kaynağı: getPlanCodeSet (30 sn önbellek, READY snapshot → kod kümesi + ad haritası) — kuyrukta ardışık
       //   belgeler için plan satırları her seferinde DB'den çekilmez.
@@ -3587,17 +3684,48 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const planAdlari = this.planCodeCache.get(`${tenantId}:${doc.taxpayerId}`)?.names;
       if (planKodSeti && planKodSeti.size) {
         const lines = [...planKodSeti].map((c) => ({ accountCode: c, accountName: planAdlari?.get(c) || '' }));
+        planSatirlari = lines.map((l) => ({ code: l.accountCode, name: l.accountName }));
         const pa = planAdaylariHazirla(lines, { yon: kind, toplamTavan: 150, iade: od?.isReturn === true });
         if (pa.adaylar.length) { planMetni = pa.metin; planKodlari = planAdayKodSeti(pa.adaylar); }
       }
     }
+    // ⚡ ÖĞRENME HIZLI YOLU (GÖREV B, 2026-09-13; canlı ölçüm: Max sınıflandırma 95-153 sn/çağrı): satıcı VKN + kalem içerik
+    //   imzası daha önce sahip onayıyla öğrenilmişse (ogrenme-hizli-yol.ts: aynı mükellef HAFIZA / ad çözümü HAFIZA_AD /
+    //   mükellefler arası baskın ad) Max HİÇ ÇAĞRILMAZ; kategori koddan, hesap aiMatrahKodu'na (rematch uygular),
+    //   ocrData.ogrenmeKaynak ölçüm izi. Yalnız bilanço + plan var + imza var. Mevzuat ağı saf modülde.
+    let ogrenmeSecimi: HizliYolSecim | null = null;
+    if (doc.taxpayerId && !isIsletme && planSatirlari.length) {
+      const hyVkn = String((kind === 'SATIS' ? doc.buyerVkn : doc.sellerVkn) || od?.[kind === 'SATIS' ? 'aliciVkn' : 'saticiVkn'] || '').replace(/\D/g, '');
+      const hyImza = VendorMemoryService.buildIcerikImza((Array.isArray(od.kalemler) ? od.kalemler : []).map((k: any) => k?.ad));
+      if (hyVkn && hyImza) {
+        ogrenmeSecimi = await this.ogrenilmisHizliYol(tenantId, doc.taxpayerId, hyVkn, hyImza, {
+          yon: kind, plan: planSatirlari, imzaZorunlu: true,
+          // had-üstü demirbaş tespiti (içerik+faaliyet): öğrenilmiş kod 25x değilse saf modül reddeder
+          // rematch ile aynı: had (VUK 313) yalnız ALIŞ'ta; satışta kendi sabit kıymetinin çıkışı tutardan bağımsız demirbaş.
+          demirbas: (() => { try { const fa = this.detectFixedAsset(od, tpRow, kind); return fa.is && !(kind !== 'SATIS' && this.demirbasHaddiAltinda(od, fa.reason, undefined)); } catch { return false; } })(),
+        }).catch(() => null);
+      }
+    }
     let c: any = null;
-    if (detC && this.detAtlamaAcikMi()) {
+    if (ogrenmeSecimi) {
+      c = {
+        giderTuru: detC?.giderTuru || od?.giderTuru || String(ogrenmeSecimi.ad || '').toLocaleLowerCase('tr-TR').slice(0, 40),
+        kategori: detC?.kategori || kodKategori(ogrenmeSecimi.kod, kind) || od?.matrahKategori || '',
+        matrahHesapKodu: ogrenmeSecimi.kod,
+        guven: 'yuksek',
+        muhasebeNeden: `${ogrenmeSecimi.neden} — öğrenilmiş karar uygulandı (AI atlandı).`,
+      };
+      this.logger.log(`[CLS-SKIP-LEARNED] satici+icerik ogrenilmis (${ogrenmeSecimi.kaynak}/${ogrenmeSecimi.kural}) → Max ATLANDI kod=${ogrenmeSecimi.kod} doc=${documentId} sayac=${JSON.stringify(this.hizliYolSayac)}`);
+    } else if (detC && this.detAtlamaAcikMi()) {
       c = detC;
       this.logger.log(`[CLS-SKIP] det icerik=${detC.kategori} → Max ATLANDI (FM_DET_ATLA=1) doc=${documentId}`);
     } else {
       if (detC) this.logger.log(`[CLS-IPUCU] det kategori=${detC.kategori} → AI'a ipucu verildi doc=${documentId}`);
-      c = await this.aiClassifyAccounting(content, mukellefBilgi, isIsletme, kind, planMetni || undefined, {
+      // KOALESANS (doğrulama düzeltmesi 2026-09-13): burası TEKİL aiClassifyAccounting çağırıyordu → kalıcı kuyruk
+      //   partisi (10 belge aynı anda) yine 10 ayrı Max çağrısına dönüyordu (kapı 3, her biri 95-153 sn ≈ 8 dk/parti).
+      //   aiClassifyAccountingCoalesced aynı mükellef+yön+plan anahtarındaki istekleri 8 sn pencerede TEK Multi
+      //   çağrısında birleştirir (aiReadDocument ile aynı yol; Sonnet eskalasyonu + tek-tek fallback flush içinde).
+      c = await this.aiClassifyAccountingCoalesced(content, mukellefBilgi, isIsletme, kind, planMetni || undefined, {
         ipucu: detC ? `kategori=${detC.kategori}, gider türü=${detC.giderTuru}` : undefined,
         planKodlari,
       }).catch(() => null);
@@ -3622,13 +3750,17 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       //   geçersiz/boş ise DOKUNMA (eski aiMatrahKodu varsa kalır). rematch aiMatrahKodu'nu okur (aiKod).
       {
         const aiKod = String(c.matrahHesapKodu || '').trim();
-        if (aiKod && planKodlari && planKodlari.has(aiKod)) {
+        // GÖREV B: öğrenilmiş kod aday tavanı (150) dışında kalabilir — plan yaprağı saf modülde doğrulandı.
+        const ogrenilmisKod = !!(ogrenmeSecimi && ogrenmeSecimi.kod === aiKod);
+        if (aiKod && ((planKodlari && planKodlari.has(aiKod)) || ogrenilmisKod)) {
           patch.aiMatrahKodu = aiKod;
           if (c.guven) patch.aiMatrahGuven = c.guven;
-          this.logger.log(`[CLS-PLAN] AI matrah hesabı=${aiKod} guven=${c.guven || '-'} doc=${documentId}`);
+          if (!ogrenilmisKod) this.logger.log(`[CLS-PLAN] AI matrah hesabı=${aiKod} guven=${c.guven || '-'} doc=${documentId}`);
         }
       }
     }
+    // GÖREV B (2026-09-13) ölçüm izi: hızlı yol seçtiyse {kaynak, kural, kod, neden}; Max çalıştıysa null (bayat iz rematch'i yanıltmasın).
+    if (!isIsletme) patch.ogrenmeKaynak = ogrenmeSecimi ? { kaynak: ogrenmeSecimi.kaynak, kural: ogrenmeSecimi.kural, kod: ogrenmeSecimi.kod, guven: ogrenmeSecimi.guven, neden: ogrenmeSecimi.neden, tarih: new Date().toISOString() } : null;
     // userEdited korunur: kullanıcı işletme sınıfını elle düzelttiyse sınıflandırma yeniden EZMEZ
     //   (backfill'deki korumanın buradaki simetriği — eksikti, elle düzeltme kaybolabiliyordu).
     // PLAN/15 Faz 3: AI yanıt vermese de (c=null) hafıza + faaliyet/içerik yedeği çalışır; hiçbiri tür veremezse gerekçe yazılır.
@@ -3755,7 +3887,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   Max şeridini doyurup SINIFLANDIRMA çağrılarını zaman aşımına düşürüyordu → kategori/gider
     //   türü BOŞ dönüyordu (Gökhan Akgöz 42-belge vakası: yeniden okumada tüm kategoriler boşaldı).
     //   Toplu okumada yorum, kuyruk boşalınca tetiklenen 4-paralel sweep'e kalır (dakikalar içinde dolar).
-    if (r?.ok && this.uploadOcrQueue.length === 0) {
+    //   2026-09-13: DB kuyruğundan gelen toplu okumada da aynı kural — kuyrukAktif>1 ise yorum sweep'e kalır.
+    if (r?.ok && this.uploadOcrQueue.length === 0 && this.kuyrukAktif <= 1) {
       await this.generateRichMuhasebeNeden(tenantId, documentId, true).catch(() => {});
     }
   }
@@ -3778,6 +3911,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       await (this.prisma as any).invoiceAccountingDocument.updateMany({
         where: { id: { in: docIds }, tenantId }, data: { ocrStatus: 'PENDING' },
       }).catch(() => {});
+    }
+    // 2026-09-13: kanca bağlıysa KALICI DB kuyruğu (priority 10 = sahip isteği; deploy'da kaybolmaz).
+    //   Aynı belge zaten PENDING/RUNNING ise eklenmez, önceliği yükseltilir (idempotent).
+    if (this.belgeKuyrugu && docs.length) {
+      const r = await this.belgeKuyrugu.topluKuyrugaAl(docs.map((d: any) => ({ tenantId, taxpayerId: d.taxpayerId, documentId: d.id, kind: 'AI_READ' as const, priority: 10 })));
+      this.logger.log(`[AI-READ-BATCH] DB kuyruğu: eklenen=${r.eklenen} yükseltilen=${r.yukseltilen} zatenKuyrukta=${r.zatenKuyrukta}`);
+      return { queued: docs.length, skipped: ids.length - docs.length, kalici: true, zatenKuyrukta: r.zatenKuyrukta };
     }
     for (const d of docs) {
       this.uploadOcrQueue.unshift({ tenantId, documentId: d.id, kind: 'ai-read' });
@@ -7977,11 +8117,35 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     if (!firmaKimlikNo) return kayitlar;
     const firmaUnvan = String((isSale ? doc.customerName : doc.vendorName) || '').trim() || null;
     const simdi = new Date().toISOString();
+    // GÖREV B (2026-09-13): öğrenme kaydına hesabın PLAN ADI + defter türü de yazılır (ocrData.ogrenmeKayitlari — mevcut JSON
+    //   alanı; vendor_memory_decisions'a sütun eklenmedi). Ad: planCodeCache (30 sn) → yoksa satırın açıklaması (gateCodesByPlan
+    //   açıklamayı plan adıyla doldurur). Defter türü: mükellef kaydından (bilanco/isletme).
+    let ogrDefter: 'bilanco' | 'isletme' | null = null;
+    let ogrPlanAd: Map<string, string> | null = null;
+    try {
+      const tpD = await (this.prisma as any).taxpayer.findFirst({ where: { id: doc.taxpayerId, tenantId }, select: { defterTuru: true, mihsapDefterTuru: true } });
+      if (tpD) ogrDefter = isIsletmeLedger(tpD.defterTuru, tpD.mihsapDefterTuru) ? 'isletme' : 'bilanco';
+      if (ogrDefter === 'bilanco') {
+        await this.getPlanCodeSet(tenantId, doc.taxpayerId);
+        ogrPlanAd = this.planCodeCache.get(`${tenantId}:${doc.taxpayerId}`)?.names ?? null;
+      }
+    } catch { /* ad/defter izi opsiyonel — öğrenme yine yazılır */ }
+    const hesapAdiBul = (kod: string): string | null => {
+      const planAd = ogrPlanAd?.get(kod);
+      if (planAd) return planAd;
+      const satir = (doc.lines || []).find((l: any) => String(l.accountCode || '').trim() === kod && String(l.description || '').trim());
+      return satir ? String(satir.description).trim().slice(0, 120) : null;
+    };
     // Karar yaz + anahtarını listeye ekle (geri alma için). Hata yutulur (öğrenme akışı bozmasın).
     const kaydet = async (p: { kararTipi: 'fatura' | 'isletme'; kategori: string; altKategori: string | null; icerikImza: string | null; onayBoost?: number }, firlat = false) => {
       try {
         await this.vendorMemory.recordDecision({ tenantId, firmaKimlikNo, firmaUnvan, taxpayerId: doc.taxpayerId, ...p });
-        kayitlar.push({ kararTipi: p.kararTipi, kategori: p.kategori, altKategori: p.altKategori, icerikImza: p.icerikImza, firmaKimlikNo, taxpayerId: String(doc.taxpayerId), boost: Math.max(1, Math.min(Number(p.onayBoost || 1), 10)), tarih: simdi });
+        kayitlar.push({
+          kararTipi: p.kararTipi, kategori: p.kategori, altKategori: p.altKategori, icerikImza: p.icerikImza, firmaKimlikNo, taxpayerId: String(doc.taxpayerId),
+          boost: Math.max(1, Math.min(Number(p.onayBoost || 1), 10)), tarih: simdi,
+          hesapAdi: p.kararTipi === 'fatura' && p.altKategori !== 'CARI' ? hesapAdiBul(p.kategori) : null,
+          defterTuru: ogrDefter,
+        });
       } catch (e) {
         if (firlat) throw e;
       }
@@ -14927,6 +15091,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   AI, faturanın XML KALEMLERİNE (metin) bakıp giderTuru/kategori/hesabı seçer → eşleştirme içeriğe
     //   göre yapılır. Bu bir METİN çağrısıdır (görüntü-vision DEĞİL) → hızlı. (Kullanıcı: "OCR yapma ama
     //   AI çalışsın, eşleştirmeyi içeriğe göre yapsın.") 632/IPHONE/demirbaş yanlışları ayrı korumalarda.
+    // GÖREV B (2026-09-13): öğrenme hızlı yolu seçimi — ocrData.ogrenmeKaynak + aiMatrahKodu yazımında kullanılır.
+    let ogrenmeSecimiOkuma: HizliYolSecim | null = null;
     if (parsed === preParsed && d.taxpayerId) {
       // TEMİZ içerik: HTML-HIZLI yolunda _htmlText zaten script/style atılmış + 8000 char (sınıflandırma
       //   AI'ı 23KB ham HTML gürültüsünde boğuluyordu → NULL/boş kategori). Önce onu kullan; yoksa eski yol.
@@ -14967,19 +15133,23 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const detAtla = !!detHit && this.detAtlamaAcikMi();
       let ogrenilmisAtla = false;
       // Öğrenilmiş atlama artık detHit varken de bakılır (det atlamıyorsa AI'ı boşuna çağırmamak için).
-      if (!detAtla && !isIsletmeMukellef && d.taxpayerId) {
+      // GÖREV B (2026-09-13): TEK saf kural (ogrenme-hizli-yol.ts → ogrenilmisHizliYol) — runQueuedClassify ile AYNI yol.
+      //   Eskiden burada yalnız "aynı mükellef + imza + onay≥2" bakılıyor, kod planda yoksa/mevzuata aykırıysa da Max
+      //   atlanıyordu (rematch sonra boş bırakıyordu). Artık: kod planda yaprak + mevzuat ağı + ad çözümü (HAFIZA_AD)
+      //   + mükellefler arası baskın ad; seçim ocrData.aiMatrahKodu/ogrenmeKaynak'a yazılır, rematch uygular.
+      if (!detAtla && !isIsletmeMukellef && d.taxpayerId && planNameByCode.size) {
         try {
           const vkn = String((d.invoiceKind === 'SATIS' ? d.buyerVkn : d.sellerVkn) || parsed.saticiVergiNo || parsed.aliciVergiNo || '').replace(/\D/g, '');
           const imza = VendorMemoryService.buildIcerikImza(Array.isArray(parsed.kalemler) ? parsed.kalemler.map((k: any) => k?.ad) : []);
           if (vkn && imza) {
-            const mem = await (this.prisma as any).vendorMemory.findUnique({
-              where: { tenantId_firmaKimlikNo: { tenantId, firmaKimlikNo: vkn } },
-              include: { decisions: { where: { taxpayerId: d.taxpayerId, kararTipi: 'fatura' } } },
+            const hyYon: 'ALIS' | 'SATIS' = d.invoiceKind === 'SATIS' ? 'SATIS' : 'ALIS';
+            const hyOcr = { ...((d.ocrData as any) || {}), kalemler: parsed.kalemler, giderTuru: parsed.giderTuru };
+            const hyDemirbas = (() => { try { const fa = this.detectFixedAsset(hyOcr, tpForAsset, hyYon); return fa.is && !(hyYon !== 'SATIS' && this.demirbasHaddiAltinda(hyOcr, fa.reason, undefined)); } catch { return false; } })();
+            ogrenmeSecimiOkuma = await this.ogrenilmisHizliYol(tenantId, d.taxpayerId, vkn, imza, {
+              yon: hyYon, imzaZorunlu: true, demirbas: hyDemirbas,
+              plan: [...planNameByCode.entries()].map(([code, name]) => ({ code, name })),
             });
-            ogrenilmisAtla = (mem?.decisions || []).some((dec: any) => (dec.onayAdedi || 0) >= 2
-              && String(dec.altKategori || '').trim().toUpperCase() !== 'CARI'
-              && /^\d/.test(String(dec.kategori || '').trim())
-              && String(dec.icerikImza || '').trim() === imza);
+            ogrenilmisAtla = !!ogrenmeSecimiOkuma;
           }
         } catch { /* hafıza okunamadıysa normal AI yoluna düş */ }
       }
@@ -14995,15 +15165,20 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       //   Kelime kuralı ipucu belge bloğuna yazılır (parti anahtarını bölmez); plan aday kümesi kod doğrulaması için.
       let c: any = detAtla
         ? detSonuc
-        : ogrenilmisAtla
-        ? { giderTuru: detHit?.giderTuru || '', kategori: detHit?.kategori || '', muhasebeNeden: 'Bu satıcı + aynı içerik daha önce onaylandı — öğrenilmiş hesap uygulanacak (AI atlandı).' }
+        : ogrenilmisAtla && ogrenmeSecimiOkuma
+        ? {
+            giderTuru: detHit?.giderTuru || parsed.giderTuru || String(ogrenmeSecimiOkuma.ad || '').toLocaleLowerCase('tr-TR').slice(0, 40),
+            kategori: detHit?.kategori || kodKategori(ogrenmeSecimiOkuma.kod, d.invoiceKind === 'SATIS' ? 'SATIS' : 'ALIS') || '',
+            matrahHesapKodu: ogrenmeSecimiOkuma.kod,
+            muhasebeNeden: `${ogrenmeSecimiOkuma.neden} — öğrenilmiş karar uygulandı (AI atlandı).`,
+          }
         : await this.aiClassifyAccountingCoalesced(contentText, mukellefBilgi, isIsletmeMukellef, d.invoiceKind === 'SATIS' ? 'SATIS' : 'ALIS', planAdaylar, {
             ipucu: detHit ? `kategori=${detHit.kategori}, gider türü=${detHit.giderTuru}` : undefined,
             planKodlari: planLeafSet.size ? planLeafSet : undefined,
           }).catch(() => null);
       if (detAtla) this.logger.log(`[CLS-SKIP] det icerik=${detHit!.kategori} (${detAdlar.length} kalem) → Max ATLANDI (FM_DET_ATLA=1) belge=${d.belgeNo || d.id}`);
       else if (detHit && !ogrenilmisAtla) this.logger.log(`[CLS-IPUCU] det kategori=${detHit.kategori} (${detAdlar.length} kalem) → AI'a ipucu verildi belge=${d.belgeNo || d.id}`);
-      if (ogrenilmisAtla) this.logger.log(`[CLS-SKIP-LEARNED] satici+icerik ogrenilmis → Max ATLANDI (hesap rematch'ten) belge=${d.belgeNo || d.id}`);
+      if (ogrenilmisAtla) this.logger.log(`[CLS-SKIP-LEARNED] satici+icerik ogrenilmis (${ogrenmeSecimiOkuma?.kaynak}/${ogrenmeSecimiOkuma?.kural}) → Max ATLANDI kod=${ogrenmeSecimiOkuma?.kod} belge=${d.belgeNo || d.id} sayac=${JSON.stringify(this.hizliYolSayac)}`);
       // AI boş/hatalı döndüyse kelime kuralı sonucu YEDEK (davranış eskisinden kötü olmasın).
       if (!c && detSonuc && !ogrenilmisAtla) { c = detSonuc; this.logger.warn(`[CLS-IPUCU] AI yanıt vermedi → kelime kuralı yedek kullanıldı (${detHit!.kategori}) belge=${d.belgeNo || d.id}`); }
       if (c) {
@@ -15302,8 +15477,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           ocrEngine: 'max-vision',
           ocrData: { ...((d.ocrData as any) || {}), matrah, kdvTutari: kdv, kdvOrani: breakdown[0].rate, kdvBreakdown: breakdown.map((b: any) => ({ oran: b.rate, matrah: b.base, tutar: b.amount })), matrahKategori: typeof parsed.kategori === 'string' ? parsed.kategori : undefined, giderTuru: typeof parsed.giderTuru === 'string' ? parsed.giderTuru.slice(0, 40) : undefined, muhasebeNeden: this.cleanBaseNeden(parsed.muhasebeNeden).slice(0, 300) || undefined, aiYorum: this.cleanBaseNeden(parsed.muhasebeNeden).slice(0, 400) || undefined, aiMatrahKodu: (() => {
                 const aiKod = typeof parsed.matrahHesapKodu === 'string' ? String(parsed.matrahHesapKodu).trim() : '';
-                return (aiKod && planLeafSet.has(aiKod)) ? aiKod : undefined;
-              })(), kalemler: Array.isArray(parsed.kalemler) ? parsed.kalemler.slice(0, 30).map((k: any) => { const h = typeof k?.hesap === 'string' ? String(k.hesap).trim() : ''; return { ad: String(k?.ad || '').slice(0, 80), tutar: Number(k?.tutar) || 0, oran: Number(k?.oran) || 0, ...(h && planLeafSet.has(h) ? { hesap: h } : {}) }; }).filter((k: any) => k.ad) : undefined, ...(islSinifAi ? { isletme: islSinifAi } : {}), ...((parsed as any)?._ubl ? ublOcrDataFields((parsed as any)._ubl) : clearUblOnlyOcrFields()), isReturn: isReturnDet, kalemSplit: kalemSplitApplied || undefined, tevkifatHint: parsed.tevkifat === true || tevkifatOrani > 0 || /tevkifat/i.test(String(html || '')), tevkifatOrani: tevkifatOrani || 0, tevkifatKdv: tevkKdv || 0, ...(smmStopaj > 0 ? { stopajTutari: smmStopaj } : {}), engine: parsed._azure ? 'azure-read' : (parsed === preParsed ? 'ubl-xml' : 'max-vision'),
+                // GÖREV B: öğrenilmiş kod (hızlı yol) aday listesi tavanının dışında kalabilir — plan yaprağı saf modülde doğrulandı.
+                return (aiKod && (planLeafSet.has(aiKod) || (ogrenmeSecimiOkuma && ogrenmeSecimiOkuma.kod === aiKod))) ? aiKod : undefined;
+              })(),
+              // GÖREV B (2026-09-13) ölçüm izi: hızlı yol seçtiyse {kaynak, kural, kod, neden}; Max çalıştıysa null (bayat iz kalmasın).
+              ogrenmeKaynak: ogrenmeSecimiOkuma ? { kaynak: ogrenmeSecimiOkuma.kaynak, kural: ogrenmeSecimiOkuma.kural, kod: ogrenmeSecimiOkuma.kod, guven: ogrenmeSecimiOkuma.guven, neden: ogrenmeSecimiOkuma.neden, tarih: new Date().toISOString() } : null,
+              ...(ogrenmeSecimiOkuma ? { aiMatrahGuven: 'yuksek' } : {}),
+              kalemler: Array.isArray(parsed.kalemler) ? parsed.kalemler.slice(0, 30).map((k: any) => { const h = typeof k?.hesap === 'string' ? String(k.hesap).trim() : ''; return { ad: String(k?.ad || '').slice(0, 80), tutar: Number(k?.tutar) || 0, oran: Number(k?.oran) || 0, ...(h && planLeafSet.has(h) ? { hesap: h } : {}) }; }).filter((k: any) => k.ad) : undefined, ...(islSinifAi ? { isletme: islSinifAi } : {}), ...((parsed as any)?._ubl ? ublOcrDataFields((parsed as any)._ubl) : clearUblOnlyOcrFields()), isReturn: isReturnDet, kalemSplit: kalemSplitApplied || undefined, tevkifatHint: parsed.tevkifat === true || tevkifatOrani > 0 || /tevkifat/i.test(String(html || '')), tevkifatOrani: tevkifatOrani || 0, tevkifatKdv: tevkKdv || 0, ...(smmStopaj > 0 ? { stopajTutari: smmStopaj } : {}), engine: parsed._azure ? 'azure-read' : (parsed === preParsed ? 'ubl-xml' : 'max-vision'),
             readMode: parsed === preParsed ? 'ubl-xml' : (isImage ? 'image' : /pdf/i.test(imgMedia) ? 'pdf-text' : /xml/i.test(imgMedia) ? 'xml-text' : 'html'),
             ...(!preParsed && imgBuf && /xml/i.test(imgMedia) ? { xmlHead: imgBuf.toString('utf8').slice(0, 220).replace(/\s+/g, ' ') } : {}),
             // uyarilar KOŞULSUZ yazılır: yeni okuma uyarı üretmediyse ESKİ okumanın bayat uyarısı
@@ -16626,6 +16806,26 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         // KAYNAK İZİ: satıra yazılan kodun nereden geldiği (HAFIZA/AI/KURAL/VARSAYILAN) satırın
         //   kaynak alanına işlenir — öğrenme kapısı ve arayüz rozeti bunu kullanır.
         let mKaynak: string | null = m ? 'HAFIZA' : null;
+        // GÖREV B (2026-09-13) — HAFIZA_AD: sınıflandırma anında öğrenme hızlı yolu AD ÇÖZÜMÜYLE (plan yenilenmiş / başka
+        //   mükellefte baskın ad) kod seçtiyse (ocrData.ogrenmeKaynak.kaynak='HAFIZA_AD', kod=aiMatrahKodu) bu kod
+        //   HAFIZA gibi ÖNCELİKLİDİR (KULLANICI'dan sonra, AI'dan önce). Satıra kaynak='HAFIZA' yazılır → onayda
+        //   recordInvoiceAccountingMemory bu mükellef için GERÇEK kod olarak öğrenir (sonraki belge kural (a) ile gelir).
+        //   Mevzuat ağı (aşağıdaki learnedMatrahCompatibleWithContent) HAFIZA_AD için de aynen geçerli.
+        if (!m) {
+          const okz: any = (doc.ocrData as any)?.ogrenmeKaynak;
+          const okKod = String(okz?.kod || '').trim();
+          if (okz && (okz.kaynak === 'HAFIZA_AD' || okz.kaynak === 'HAFIZA') && okKod && okKod === String((doc.ocrData as any)?.aiMatrahKodu || '').trim()) {
+            let cand = accounts.find((a: any) => String(a.accountCode || '') === okKod) || null;
+            // Çok-oranlı fatura: aynı grubun bu orana ait varyantı varsa onu (AI yolundaki kural).
+            if (cand && rate) {
+              const grp = okKod.split('.').slice(0, 2).join('.') + '.';
+              const v = accounts.find((a: any) => String(a.accountCode || '').startsWith(grp) && isPostableLeaf(String(a.accountCode || '')) && this.rateTokenInName(String(a.accountName || ''), rate));
+              if (v) cand = v;
+            }
+            m = leafOnly(cand);
+            if (m) mKaynak = 'HAFIZA';
+          }
+        }
         // ÖĞRENİLMİŞ KOD — YALNIZ MEVZUAT AĞI (PLAN/15 Faz 1, 2026-09-12; sahip kararı: "öğrenilmiş kod kategori
         //   vetosuyla silinmez"): alışta 6xx / (normal) satışta 7xx-15x-25x / had-üstü demirbaşta 25x-dışı → red.
         //   Kelime-kuralı kategorisi (ticari_mal/hammadde/pazarlama/genel_gider) ile uyuşmazlık artık VETO DEĞİL
@@ -17330,6 +17530,88 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       if (lines.length >= 8) break;
     }
     return lines.join('\n');
+  }
+
+  /** ÖĞRENME HIZLI YOLU sayacı (GÖREV B, 2026-09-13) — log + ölçüm: kaç belge Max'siz sınıflandı. */
+  private hizliYolSayac = { hafiza: 0, hafizaAd: 0, capraz: 0, bos: 0 };
+
+  /**
+   * ÖĞRENME HIZLI YOLU (GÖREV B, 2026-09-13): satıcı VKN + içerik imzası → öğrenilmiş hesap; saf kural ogrenme-hizli-yol.ts.
+   *   TEK sorgu: VKN'nin tenant genelindeki 'fatura' kararları (limit 200, onay/sonKullanim sıralı). Aynı mükellefte
+   *   kod planda yaprak ise (a) hemen döner; ad çözümü gerekiyorsa (b/c) ilgili mükelleflerin plan snapshot'larından
+   *   hesap adı + defter türü çözülür ve seçim yeniden çalışır. Plan satırları verilmezse planCodeCache'ten alınır.
+   *   imzaZorunlu=true (varsayılan): AI atlama yolu — yalnız imza eşleşmesi; false: rematch (oran/genel yedekler).
+   */
+  private async ogrenilmisHizliYol(
+    tenantId: string,
+    taxpayerId: string,
+    firmaKimlikNo: string,
+    icerikImza: string | null,
+    opts: { yon: 'ALIS' | 'SATIS'; oran?: string | null; demirbas?: boolean; imzaZorunlu?: boolean; plan?: Array<{ code: string; name: string }> | null; isIsletme?: boolean },
+  ): Promise<HizliYolSecim | null> {
+    const vkn = String(firmaKimlikNo || '').replace(/\D/g, '');
+    if (!taxpayerId || (vkn.length !== 10 && vkn.length !== 11) || opts.isIsletme) return null;
+    const imza = String(icerikImza || '').trim();
+    if (opts.imzaZorunlu !== false && !imza) return null;
+    // Plan: verilmişse o; yoksa önbellekli plan (30 sn) — kod→ad haritası.
+    let plan = opts.plan || null;
+    if (!plan) {
+      await this.getPlanCodeSet(tenantId, taxpayerId).catch(() => null);
+      const names = this.planCodeCache.get(`${tenantId}:${taxpayerId}`)?.names;
+      const codes = this.planCodeCache.get(`${tenantId}:${taxpayerId}`)?.codes;
+      if (!codes || !codes.size) return null;
+      plan = [...codes].map((c) => ({ code: c, name: names?.get(c) || '' }));
+    }
+    if (!plan.length) return null;
+    // TEK sorgu: VKN'nin tenant genelindeki fatura kararları (VendorMemoryService.faturaKararlariByVkn, limit 200).
+    const kararlar: HizliYolKarar[] = (await this.vendorMemory.faturaKararlariByVkn(tenantId, vkn, 200).catch(() => []))
+      .map((d) => ({ ...d, hesapAdi: null, defterTuru: null }));
+    if (!kararlar.length) return null;
+    const girdi = { kararlar, taxpayerId, vkn, icerikImza: imza || null, defterTuru: 'bilanco' as const, yon: opts.yon, oran: opts.oran || null, plan, imzaZorunlu: opts.imzaZorunlu !== false, demirbas: !!opts.demirbas };
+    let secim = ogrenilmisKararSec(girdi);
+    if (!secim) {
+      // Ad çözümü (b/c): kararların mükellef planlarından hesap adı + defter türü. Yalnız gerekiyorsa (ek sorgu).
+      const gerekli = adCozumAdaylari(girdi);
+      if (gerekli.length) {
+        try {
+          const tps = [...new Set(gerekli.map((x) => x.taxpayerId))].slice(0, 10);
+          const kodlar = [...new Set(gerekli.map((x) => x.kod))];
+          const tpRows: any[] = await (this.prisma as any).taxpayer.findMany({
+            where: { id: { in: tps }, tenantId }, select: { id: true, defterTuru: true, mihsapDefterTuru: true },
+          }).catch(() => []);
+          const defter = new Map<string, 'bilanco' | 'isletme'>();
+          for (const t of tpRows) defter.set(String(t.id), isIsletmeLedger(t.defterTuru, t.mihsapDefterTuru) ? 'isletme' : 'bilanco');
+          const satirlar: any[] = await (this.prisma as any).lucaAccountPlanLine.findMany({
+            where: { accountCode: { in: kodlar }, snapshot: { tenantId, taxpayerId: { in: tps }, status: 'READY' } },
+            select: { accountCode: true, accountName: true, snapshot: { select: { taxpayerId: true, createdAt: true } } },
+            orderBy: { createdAt: 'desc' },
+            take: 500,
+          }).catch(() => []);
+          // (mükellef, kod) → EN YENİ snapshot'taki ad
+          const adlar = new Map<string, { ad: string; t: number }>();
+          for (const s of satirlar) {
+            const key = `${s?.snapshot?.taxpayerId}|${String(s.accountCode || '').trim()}`;
+            const t = new Date(s?.snapshot?.createdAt || 0).getTime();
+            const cur = adlar.get(key);
+            if (!cur || t > cur.t) adlar.set(key, { ad: String(s.accountName || '').trim(), t });
+          }
+          for (const k of kararlar) {
+            if (!k.taxpayerId) continue;
+            const a = adlar.get(`${k.taxpayerId}|${k.kategori}`);
+            if (a?.ad) k.hesapAdi = a.ad;
+            const dt = defter.get(k.taxpayerId);
+            if (dt) k.defterTuru = dt;
+          }
+          secim = ogrenilmisKararSec(girdi);
+        } catch { /* ad çözümü başarısızsa hızlı yol yok → AI */ }
+      }
+    }
+    if (secim) {
+      if (secim.kural === 'a') this.hizliYolSayac.hafiza++;
+      else if (secim.kural === 'b') this.hizliYolSayac.hafizaAd++;
+      else this.hizliYolSayac.capraz++;
+    } else this.hizliYolSayac.bos++;
+    return secim;
   }
 
   private async pickVendorMemoryAccount(

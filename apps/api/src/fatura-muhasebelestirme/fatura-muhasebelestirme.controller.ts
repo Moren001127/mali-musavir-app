@@ -24,6 +24,7 @@ import { EFaturaSyncService } from '../efatura-adapters/efatura-sync.service';
 import { PortalAutomationRailwayRunnerService } from '../portal-automation/portal-automation-railway-runner.service';
 import { BelgeAkisiService } from './belge-akisi.service';
 import { KdvTeyitService } from './kdv-teyit.service';
+import { BelgeKuyrukService } from './belge-kuyruk.service';
 
 const documentUploadInterceptor = () =>
   AnyFilesInterceptor({
@@ -45,7 +46,22 @@ export class FaturaMuhasebelestirmeController {
     // PLAN/16 §E Belge Akışı + §D KDV teyit (ayrı servisler; service.ts şişmesin).
     private readonly belgeAkisi: BelgeAkisiService,
     private readonly kdvTeyit: KdvTeyitService,
+    // Kalıcı belge kuyruğu (2026-09-13): durum + tekrar-dene uçları.
+    private readonly belgeKuyruk: BelgeKuyrukService,
   ) {}
+
+  /** Kalıcı belge kuyruğu durumu: {pending:{CLASSIFY,AI_READ}, running, done24h, failed24h, sonHata[]}. */
+  @Get('kuyruk/durum')
+  kuyrukDurum(@Req() req: any) {
+    return this.belgeKuyruk.durum(req.user.tenantId);
+  }
+
+  /** FAILED işleri PENDING'e al: body {ids?: string[]} ya da {hepsi: true}. */
+  @Post('kuyruk/tekrar-dene')
+  @UseGuards(OwnerOnlyGuard)
+  kuyrukTekrarDene(@Req() req: any, @Body() body: { ids?: string[]; hepsi?: boolean }) {
+    return this.belgeKuyruk.tekrarDene(req.user.tenantId, { ids: Array.isArray(body?.ids) ? body.ids : undefined, hepsi: body?.hepsi === true });
+  }
 
   @Get('documents')
   list(

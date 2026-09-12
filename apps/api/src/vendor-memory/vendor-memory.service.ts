@@ -293,6 +293,33 @@ Yanlış ipucuna uyup yanlış karar vermek, ipucu olmamasından DAHA KÖTÜDÜR
     return { geriAlindi, silindi };
   }
 
+  /**
+   * GÖREV B — ÖĞRENME HIZLI YOLU (2026-09-13): bir satıcının (VKN) TENANT GENELİNDEKİ 'fatura' kararları —
+   * mükellef ayrımı YAPMADAN, TEK sorgu (onayAdedi ↓, sonKullanim ↓, limit 200). Saf seçim kuralı
+   * (fatura-muhasebelestirme/ogrenme-hizli-yol.ts) aynı mükellef / ad çözümü / mükellefler arası ayrımını kendisi yapar.
+   * Geçersiz VKN (10/11 hane değil) → boş dizi.
+   */
+  async faturaKararlariByVkn(
+    tenantId: string,
+    firmaKimlikNo: string | null | undefined,
+    limit = 200,
+  ): Promise<Array<{ taxpayerId: string | null; kategori: string; altKategori: string | null; icerikImza: string | null; onayAdedi: number }>> {
+    const vkn = String(firmaKimlikNo || '').replace(/\D/g, '');
+    if (vkn.length !== 10 && vkn.length !== 11) return [];
+    const take = Math.max(1, Math.min(Number(limit) || 200, 500));
+    const memory = await (this.prisma as any).vendorMemory.findUnique({
+      where: { tenantId_firmaKimlikNo: { tenantId, firmaKimlikNo: vkn } },
+      include: { decisions: { where: { kararTipi: 'fatura' }, orderBy: [{ onayAdedi: 'desc' }, { sonKullanim: 'desc' }], take } },
+    }).catch(() => null);
+    return (memory?.decisions || []).map((d: any) => ({
+      taxpayerId: d.taxpayerId ? String(d.taxpayerId) : null,
+      kategori: String(d.kategori || '').trim(),
+      altKategori: d.altKategori == null ? null : String(d.altKategori),
+      icerikImza: d.icerikImza == null ? null : String(d.icerikImza),
+      onayAdedi: Number(d.onayAdedi) || 0,
+    }));
+  }
+
   /** Kalem adlarından KARARLI içerik imzası: ascii-katlı, ≥4 harfli, jenerik/sayı elenmiş token'lar,
    *  sıralı-tekil, en fazla 6 tanesi '|' ile. Yazma (approve) ve okuma (rematch) AYNI fonksiyonu
    *  kullanmalı ki aynı fatura aynı imzayı üretsin. Kalem yoksa null (satıcı-geneli davranış). */

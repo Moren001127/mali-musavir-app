@@ -16,6 +16,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { BeyanKayitlariModule } from '../beyan-kayitlari/beyan-kayitlari.module';
 import { BelgeAkisiService } from './belge-akisi.service';
 import { KdvTeyitService } from './kdv-teyit.service';
+import { BelgeKuyrukService } from './belge-kuyruk.service';
 
 @Module({
   // ⚠️ WhatsAppModule BURAYA IMPORT EDİLMEZ: Fatura → WhatsApp → Calisan → Luca → Fatura modül
@@ -25,7 +26,8 @@ import { KdvTeyitService } from './kdv-teyit.service';
   controllers: [FaturaMuhasebelestirmeController],
   // BelgeAkisiService / KdvTeyitService (PLAN/16 §E/§D): KdvBeyannameService ÇAĞRI ANINDA ModuleRef ile çözülür
   //   (KdvBeyannameModule buraya import edilmez → modül zinciri/döngü riski yok).
-  providers: [FaturaMuhasebelestirmeService, EarsivRenderService, FaturaMuhasebelestirmeCron, EFaturaSyncService, IcerikEslestirmeService, FmAjanService, BelgeAkisiService, KdvTeyitService],
-  exports: [FaturaMuhasebelestirmeService, EFaturaSyncService, IcerikEslestirmeService, FmAjanService],
+  // BelgeKuyrukService (2026-09-13): kalıcı CLASSIFY/AI_READ kuyruğu (invoice_processing_jobs); açılışta fatura servisine bağlanır.
+  providers: [FaturaMuhasebelestirmeService, EarsivRenderService, FaturaMuhasebelestirmeCron, EFaturaSyncService, IcerikEslestirmeService, FmAjanService, BelgeAkisiService, KdvTeyitService, BelgeKuyrukService],
+  exports: [FaturaMuhasebelestirmeService, EFaturaSyncService, IcerikEslestirmeService, FmAjanService, BelgeKuyrukService],
 })
 export class FaturaMuhasebelestirmeModule {}
