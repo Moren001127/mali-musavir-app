@@ -13,39 +13,25 @@ import { api } from '@/lib/api';
 import { EDefterDonemTipi, edefterControlApi } from '@/lib/edefter-control';
 import { lucaLogFriendly } from '@/lib/lucaLogFriendly';
 import { useLucaAgent } from '@/hooks/useLucaAgent';
+// ── e-Defter modül kimliği: kurumsal lacivert/mavi — sabitler TEK KAYNAK: _components/tema.ts ──
+import {
+  ARROW, BORDER, BORDER_STRONG, ERR, HERO_BG, ICON_GRAD, INFO, LEAD_GRAD, LIGHTBAR, MUTED, MUTED2, NAVY, NAVY_SOFT, OK,
+  PANEL, PANEL_HOVER, TEXT, WARN, fmtDate, fmtDateTime, fmtTRY, sevColor, sevLabel,
+} from './_components/tema';
+import { type KontrolOzeti, type KuralTanimi, alanSira } from './_components/katalog';
+import { BulgularSekmesi } from './_components/BulgularSekmesi';
+import { HesaplarSekmesi } from './_components/HesaplarSekmesi';
 
-// ── e-Defter modül kimliği: kurumsal lacivert/mavi (her modüle ayrı renk imzası) ──
-// Palet "Sakin Uyumlu Lacivert": soğuk mavi vurgu + yumuşatılmış uyumlu semantik renkler.
-const NAVY = '#5b8def';
-const NAVY_SOFT = 'rgba(91,141,239,.14)';
-const ERR = '#e2706f';   // hata (yumuşatılmış kırmızı)
-const WARN = '#d4a85f';  // uyarı (mat altın)
-const INFO = '#7fa6dd';  // bilgi (gök-mavisi)
-const OK = '#5cbf8a';    // temiz/çözüldü (mat zümrüt)
-const PANEL = 'rgba(255,255,255,0.025)';
-const PANEL_HOVER = 'rgba(255,255,255,0.045)';
-const BORDER = 'rgba(255,255,255,0.07)';
-const BORDER_STRONG = 'rgba(255,255,255,0.12)';
-const TEXT = '#fafaf9';
-const MUTED = 'rgba(250,250,249,.55)';
-const MUTED2 = 'rgba(250,250,249,.42)';
 const EMPTY_LIST: any[] = [];
-const HERO_BG = 'radial-gradient(120% 150% at 0% 0%, rgba(59,130,246,.18), transparent 46%), radial-gradient(120% 150% at 100% 0%, rgba(99,102,241,.14), transparent 46%), #0f0d0b';
-const LIGHTBAR = 'linear-gradient(90deg,#3b82f6,#5b8def,#6366f1,#38bdf8)';
-const ICON_GRAD = 'linear-gradient(135deg, #3b82f6, #1d4ed8)';
-const LEAD_GRAD = 'linear-gradient(135deg, rgba(91,141,239,0.20), rgba(37,99,235,0.07))';
-const ARROW = (c: string) => `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23${c}' stroke-width='2'><polyline points='6 9 12 15 18 9'/></svg>")`;
 
 type Taxpayer = { id: string; firstName?: string | null; lastName?: string | null; companyName?: string | null; taxNumber?: string | null; defterTuru?: string | null; mihsapDefterTuru?: string | null };
 type PeriodMode = 'GECICI' | 'AYLIK' | 'YILLIK';
 type SeverityFilter = 'ALL' | 'ERROR' | 'WARN' | 'INFO';
 type StatusFilter = 'OPEN' | 'ALL' | 'RESOLVED' | 'IGNORED';
-type Tab = 'BULGULAR' | 'SATIRLAR' | 'MIZAN' | 'KURALLAR' | 'GECMIS';
+type Tab = 'BULGULAR' | 'HESAPLAR' | 'SATIRLAR' | 'MIZAN' | 'KURALLAR' | 'GECMIS';
 
 const MONTH_LABELS = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
 
-function sevColor(s: string) { return s === 'ERROR' ? ERR : s === 'WARN' ? WARN : INFO; }
-function sevLabel(s: string) { return s === 'ERROR' ? 'HATA' : s === 'WARN' ? 'UYARI' : 'BİLGİ'; }
 
 function taxpayerName(t?: Taxpayer | null) {
   if (!t) return '-';
@@ -201,9 +187,6 @@ function cleanLucaStatus(value?: string | null) {
   }
   return msg.length > 320 ? `${msg.slice(0, 320)}...` : msg;
 }
-function fmtDate(value?: string | Date | null) { if (!value) return '-'; return new Date(value).toLocaleDateString('tr-TR', { timeZone: 'Europe/Istanbul' }); }
-function fmtDateTime(value?: string | Date | null) { if (!value) return '-'; return new Date(value).toLocaleString('tr-TR', { timeZone: 'Europe/Istanbul', dateStyle: 'short', timeStyle: 'short' }); }
-function fmtTRY(value: any) { const n = Number(value || 0); return n.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 function normalizePeriodKey(donem?: string | null, donemTipi?: string | null) {
   const source = `${donem || ''} ${donemTipi || ''}`.trim();
   const yearMatch = source.match(/\b(20\d{2})\b/);
@@ -215,7 +198,9 @@ function sessionMatchesPeriod(session: any, key: string) {
   return normalizePeriodKey(session?.donem, session?.donemTipi) === key.toUpperCase();
 }
 
-function categoryLabel(code: string) {
+function categoryLabel(code: string, katalog?: Map<string, KuralTanimi>) {
+  const k = katalog?.get(code);
+  if (k) return k.ad;
   const dict: Record<string, string> = {
     HESAP_KODU_EKSIK: 'Hesap kodu eksik', FIS_TARIHI_EKSIK: 'Fiş tarihi eksik',
     DONEM_DISI_TARIH: 'Dönem dışı tarih', FIS_DENGESIZ: 'Fiş dengesiz',
@@ -284,7 +269,9 @@ function categoryLabel(code: string) {
   return dict[code] || code.replace(/_/g, ' ').toLocaleLowerCase('tr-TR');
 }
 
-function categoryGroup(code: string): { id: string; label: string; order: number; icon: string } {
+function categoryGroup(code: string, katalog?: Map<string, KuralTanimi>): { id: string; label: string; order: number; icon: string } {
+  const k = katalog?.get(code);
+  if (k) return { id: k.alan, label: k.alan, order: alanSira(k.alan), icon: '' };
   if (code === 'DEFTER_GENELI_DENGESIZ') return { id: 'temel', label: 'Temel Bütünlük', order: 0, icon: '🔍' };
   if (code.startsWith('VKN_')) return { id: 'vkn', label: 'VKN / TCKN Doğrulama', order: 1, icon: '🆔' };
   if (code === 'GERCEK_MUKERRER_FATURA' || code === 'AYNI_GUN_AYNI_TUTAR_AYNI_TARAF') return { id: 'mukerrer', label: 'Mükerrer Kayıt Kontrolü', order: 2, icon: '⚠️' };
@@ -437,6 +424,19 @@ export default function EDefterAgentPage() {
     enabled: !!activeSessionId,
   });
 
+  // Tek kural katalogu (sunucu): ad, açıklama, öneri, alan, mevzuat — bulgu gruplama ve etiketler buradan
+  const { data: ruleSettingsData } = useQuery({
+    queryKey: ['edefter-rule-settings'],
+    queryFn: () => edefterControlApi.getRuleSettings(),
+    staleTime: 5 * 60 * 1000,
+  });
+  const katalog = useMemo(() => {
+    const m = new Map<string, KuralTanimi>();
+    for (const k of (ruleSettingsData?.catalog || []) as KuralTanimi[]) m.set(k.kod, k);
+    return m;
+  }, [ruleSettingsData]);
+  const kontrolOzeti = (session?.kontrolOzeti || null) as KontrolOzeti | null;
+
   const fetchMut = useMutation({
     mutationFn: () => edefterControlApi.fetchFromLucaAgent({ mukellefId: taxpayerId, donem, donemTipi, targetDeviceId: preferredDeviceId ?? undefined }),
     onSuccess: (data) => {
@@ -574,20 +574,20 @@ export default function EDefterAgentPage() {
       if (statusFilter !== 'ALL' && fStatus !== statusFilter) return false;
       if (severityFilter !== 'ALL' && f.severity !== severityFilter) return false;
       if (!query) return true;
-      const haystack = [f.severity, f.category, f.message, f.voucherKey, f.rowIndex, f.hesapKodu, categoryLabel(f.category)].filter(Boolean).join(' ').toLocaleLowerCase('tr-TR');
+      const haystack = [f.severity, f.category, f.message, f.voucherKey, f.rowIndex, f.hesapKodu, categoryLabel(f.category, katalog)].filter(Boolean).join(' ').toLocaleLowerCase('tr-TR');
       return haystack.includes(query);
     });
-  }, [allFindings, findingSearch, severityFilter, statusFilter]);
+  }, [allFindings, findingSearch, severityFilter, statusFilter, katalog]);
 
   const groupedFindings = useMemo(() => {
     const groups = new Map<string, { id: string; label: string; order: number; icon: string; items: any[] }>();
     for (const f of visibleFindings) {
-      const g = categoryGroup(f.category);
+      const g = categoryGroup(f.category, katalog);
       if (!groups.has(g.id)) groups.set(g.id, { ...g, items: [] });
       groups.get(g.id)!.items.push(f);
     }
     return [...groups.values()].sort((a, b) => a.order - b.order);
-  }, [visibleFindings]);
+  }, [visibleFindings, katalog]);
 
   useEffect(() => {
     if (groupedFindings.length === 0) return;
@@ -693,7 +693,7 @@ export default function EDefterAgentPage() {
     const scoreC = scoreColor === OK ? '#2e7d52' : scoreColor === WARN ? '#b8860b' : '#c0392b';
     const gmap = new Map<string, { label: string; order: number; items: any[] }>();
     for (const f of allFindings) {
-      const g = categoryGroup(f.category);
+      const g = categoryGroup(f.category, katalog);
       if (!gmap.has(g.id)) gmap.set(g.id, { label: g.label, order: g.order, items: [] });
       gmap.get(g.id)!.items.push(f);
     }
@@ -930,114 +930,41 @@ export default function EDefterAgentPage() {
       {/* ════════ SEKMELER ════════ */}
       <div className="flex items-center gap-1 border-b" style={{ borderColor: BORDER_STRONG }}>
         <TabButton active={activeTab === 'BULGULAR'} onClick={() => setActiveTab('BULGULAR')} icon={LayoutGrid} label="Bulgular" badge={stats.open} />
+        <TabButton active={activeTab === 'HESAPLAR'} onClick={() => setActiveTab('HESAPLAR')} icon={Building2} label="Hesaplar" badge={kontrolOzeti?.ozet?.hesap || 0} />
         <TabButton active={activeTab === 'SATIRLAR'} onClick={() => setActiveTab('SATIRLAR')} icon={ListChecks} label="Fiş Satırları" badge={lines.length} />
         <TabButton active={activeTab === 'MIZAN'} onClick={() => setActiveTab('MIZAN')} icon={FileSpreadsheet} label="Mizan Denetimi" badge={mizanLeafAnomalies.length} />
         <TabButton active={activeTab === 'KURALLAR'} onClick={() => setActiveTab('KURALLAR')} icon={Sparkles} label="Kontrol Kuralları" />
         <TabButton active={activeTab === 'GECMIS'} onClick={() => setActiveTab('GECMIS')} icon={History} label="Geçmiş Kontroller" badge={periodSessions.length} />
       </div>
 
-      {/* ════════ TAB: BULGULAR ════════ */}
+      {/* ════════ TAB: BULGULAR (alan → kural → satır; derli toplu) ════════ */}
       {activeTab === 'BULGULAR' && (
-        <div className="space-y-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="h-10 rounded-lg px-3 flex items-center gap-2 flex-1 min-w-[300px]" style={{ background: PANEL, border: `1px solid ${BORDER}`, color: 'rgba(250,250,249,.75)' }}>
-              <Search size={14} />
-              <input value={findingSearch} onChange={(e) => setFindingSearch(e.target.value)} placeholder="Bulgu, satır, fiş veya hesap ara..." className="bg-transparent outline-none text-sm w-full" style={{ color: TEXT }} />
-            </div>
-            <span className="text-xs tabular-nums" style={{ color: MUTED }}>{visibleFindings.length}/{stats.total} bulgu</span>
-            {(severityFilter !== 'ALL' || statusFilter !== 'OPEN' || findingSearch) && (
-              <button onClick={() => { setSeverityFilter('ALL'); setStatusFilter('OPEN'); setFindingSearch(''); }} className="h-10 px-3 rounded-lg text-xs font-semibold inline-flex items-center gap-1" style={{ background: PANEL, color: 'rgba(250,250,249,.75)', border: `1px solid ${BORDER}` }}>
-                <RotateCcw size={12} /> Sıfırla
-              </button>
-            )}
-          </div>
+        <BulgularSekmesi
+          session={session}
+          allFindings={allFindings}
+          visibleFindings={visibleFindings}
+          stats={stats}
+          katalog={katalog}
+          kontrolOzeti={kontrolOzeti}
+          findingSearch={findingSearch}
+          setFindingSearch={setFindingSearch}
+          severityFilter={severityFilter}
+          setSeverityFilter={setSeverityFilter}
+          statusFilter={statusFilter}
+          setStatusFilter={setStatusFilter}
+          focusFinding={focusFinding}
+          handleStatusChange={handleStatusChange}
+        />
+      )}
 
-          {groupedFindings.length === 0 && (
-            <div className="rounded-2xl p-12 text-center" style={{ background: PANEL, border: `1px dashed ${BORDER_STRONG}` }}>
-              <div className="inline-flex h-14 w-14 rounded-full items-center justify-center mb-3" style={{ background: stats.total === 0 ? 'rgba(92,191,138,.15)' : NAVY_SOFT, color: stats.total === 0 ? OK : NAVY }}>
-                {stats.total === 0 ? <CheckCircle2 size={26} /> : <Sparkles size={26} />}
-              </div>
-              <div className="text-base font-semibold mb-1" style={{ color: TEXT }}>
-                {stats.total === 0 ? 'Bu dönem temiz görünüyor' : 'Filtrelerle eşleşen bulgu yok'}
-              </div>
-              <div className="text-xs" style={{ color: MUTED }}>
-                {stats.total === 0 ? 'e-Defter ön kontrol bulgu üretmedi.' : 'Filtreleri sıfırlayarak tüm bulguları görebilirsiniz.'}
-              </div>
-            </div>
-          )}
-
-          <div className="space-y-3">
-            {groupedFindings.map((group) => {
-              const expanded = expandedGroups[group.id] !== false;
-              const errs = group.items.filter((f) => f.severity === 'ERROR').length;
-              const warns = group.items.filter((f) => f.severity === 'WARN').length;
-              const infos = group.items.filter((f) => f.severity === 'INFO').length;
-              return (
-                <div key={group.id} className="rounded-xl overflow-hidden" style={{ background: PANEL, border: `1px solid ${BORDER}` }}>
-                  <button onClick={() => setExpandedGroups((p) => ({ ...p, [group.id]: !expanded }))} className="w-full flex items-center justify-between px-4 py-3 text-left" style={{ background: PANEL_HOVER }}>
-                    <span className="inline-flex items-center gap-3">
-                      <span className="text-lg">{group.icon}</span>
-                      {expanded ? <ChevronDown size={15} style={{ color: NAVY }} /> : <ChevronRight size={15} style={{ color: NAVY }} />}
-                      <span className="text-sm font-bold uppercase tracking-wide" style={{ color: TEXT }}>{group.label}</span>
-                      <span className="text-xs tabular-nums px-2 py-0.5 rounded-full" style={{ background: 'rgba(255,255,255,.05)', color: 'rgba(250,250,249,.7)' }}>{group.items.length}</span>
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                      {errs > 0 && <SeverityPill count={errs} color={ERR} label="hata" />}
-                      {warns > 0 && <SeverityPill count={warns} color={WARN} label="uyarı" />}
-                      {infos > 0 && <SeverityPill count={infos} color={INFO} label="bilgi" />}
-                    </span>
-                  </button>
-
-                  {expanded && (
-                    <div className="p-2.5 space-y-2">
-                      {group.items.slice(0, 300).map((f: any) => {
-                        const fStatus = f.status || 'OPEN';
-                        const c = sevColor(f.severity);
-                        return (
-                          <div key={f.id} className="flex items-start gap-3.5 rounded-[13px] border px-4 py-3.5 transition-colors hover:bg-white/5" style={{ background: 'rgba(255,255,255,.012)', borderColor: BORDER, opacity: fStatus !== 'OPEN' ? 0.5 : 1 }}>
-                            <span className="inline-flex items-center gap-1.5 text-[10px] font-extrabold tracking-wide px-2.5 py-1.5 rounded-lg shrink-0 mt-0.5" style={{ background: `${c}1f`, color: c }}>
-                              <span className="w-[7px] h-[7px] rounded-full" style={{ background: c }} />{sevLabel(f.severity)}
-                            </span>
-                            <div className="flex-1 min-w-0">
-                              <div className="text-[13.5px] leading-relaxed" style={{ color: TEXT }}>{f.message}</div>
-                              <div className="flex items-center gap-2 flex-wrap mt-2.5">
-                                {f.rowIndex && (<span className="text-[10.5px] tabular-nums px-2 py-1 rounded-md" style={{ background: 'rgba(255,255,255,.05)', color: 'rgba(250,250,249,.72)' }}>Satır {f.rowIndex}</span>)}
-                                {f.hesapKodu && (<span className="text-[10.5px] tabular-nums px-2 py-1 rounded-md" style={{ background: 'rgba(255,255,255,.05)', color: 'rgba(250,250,249,.8)' }}>{f.hesapKodu}</span>)}
-                                {MEVZUAT_REF[f.category] && (<span className="text-[10.5px] px-2 py-1 rounded-md" style={{ background: 'rgba(91,141,239,.10)', color: '#9bc0ff' }}>{MEVZUAT_REF[f.category]}</span>)}
-                                <span className="inline-flex items-center gap-1.5 text-[11px] font-bold" style={{ color: statusColor(fStatus) }}>
-                                  <span className="w-1.5 h-1.5 rounded-full" style={{ background: statusColor(fStatus) }} />
-                                  {fStatus === 'OPEN' ? 'Açık' : fStatus === 'RESOLVED' ? 'Çözüldü' : 'Görmezden'}
-                                </span>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2 shrink-0 self-center">
-                              {(f.rowIndex || f.voucherKey) && (<button onClick={() => focusFinding(f)} className="text-[11px] whitespace-nowrap pb-px" style={{ color: MUTED, borderBottom: '1px dashed rgba(250,250,249,.28)' }}>Satırı incele</button>)}
-                              {fStatus !== 'RESOLVED' && (
-                                <button onClick={() => handleStatusChange(f, 'RESOLVED')} title="Çözüldü" className="h-8 px-3 rounded-lg text-[12px] font-bold inline-flex items-center gap-1.5" style={{ background: 'rgba(92,191,138,.12)', color: OK, border: '1px solid rgba(92,191,138,.22)' }}>
-                                  <CheckCircle2 size={13} /> Çöz
-                                </button>
-                              )}
-                              {fStatus !== 'IGNORED' && (
-                                <button onClick={() => handleStatusChange(f, 'IGNORED')} title="Görmezden gel" className="h-8 px-3 rounded-lg text-[12px] font-bold inline-flex items-center gap-1.5" style={{ background: 'rgba(148,163,184,.10)', color: '#94a3b8', border: '1px solid rgba(148,163,184,.2)' }}>
-                                  <EyeOff size={13} /> Geç
-                                </button>
-                              )}
-                              {fStatus !== 'OPEN' && (
-                                <button onClick={() => handleStatusChange(f, 'OPEN')} title="Yeniden aç" className="h-8 px-3 rounded-lg text-[12px] font-bold inline-flex items-center gap-1.5" style={{ background: NAVY_SOFT, color: NAVY, border: `1px solid ${BORDER_STRONG}` }}>
-                                  <RotateCcw size={13} /> Aç
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
+      {/* ════════ TAB: HESAPLAR (her yaprak hesabın dönem kartı) ════════ */}
+      {activeTab === 'HESAPLAR' && (
+        <HesaplarSekmesi
+          session={session}
+          kontrolOzeti={kontrolOzeti}
+          allFindings={allFindings}
+          onHesapSec={(kod) => { setFindingSearch(kod); setSeverityFilter('ALL'); setStatusFilter('OPEN'); setActiveTab('BULGULAR'); }}
+        />
       )}
 
       {/* ════════ TAB: MIZAN DENETİMİ ════════ */}
@@ -1472,8 +1399,15 @@ function KurallarTab() {
 
   const sil = (id: string) => saveManuel(manuel.filter((k) => k.id !== id));
 
+  // Sunucu katalogu (150 kural: eski motor + hesap davranış motoru) varsa onu kullan; yoksa yerel yedek liste.
+  const sunucuKatalog = (ruleSettings?.catalog || []) as KuralTanimi[];
+  const kuralListesi: KuralDef[] = sunucuKatalog.length
+    ? [...sunucuKatalog]
+        .sort((a, b) => alanSira(a.alan) - alanSira(b.alan))
+        .map((k) => ({ kod: k.kod, ad: k.ad, aciklama: k.oneri ? `${k.aciklama} → ${k.oneri}` : k.aciklama, severity: k.siddet, grup: k.alan, aktif: k.varsayilanAktif }))
+    : TUM_KURALLAR;
   const q = search.trim().toLocaleLowerCase('tr-TR');
-  const filtered = TUM_KURALLAR.filter((k) => !q || `${k.kod} ${k.ad} ${k.aciklama} ${k.grup}`.toLocaleLowerCase('tr-TR').includes(q));
+  const filtered = kuralListesi.filter((k) => !q || `${k.kod} ${k.ad} ${k.aciklama} ${k.grup}`.toLocaleLowerCase('tr-TR').includes(q));
   const byGroup = new Map<string, KuralDef[]>();
   for (const k of filtered) { if (!byGroup.has(k.grup)) byGroup.set(k.grup, []); byGroup.get(k.grup)!.push(k); }
 
@@ -1486,7 +1420,7 @@ function KurallarTab() {
           <Search size={14} />
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Kural ara..." className="bg-transparent outline-none text-sm w-full" style={{ color: TEXT }} />
         </div>
-        <span className="text-xs tabular-nums" style={{ color: MUTED }}>{TUM_KURALLAR.length} standart · {manuel.length} manuel</span>
+        <span className="text-xs tabular-nums" style={{ color: MUTED }}>{kuralListesi.length} standart · {manuel.length} manuel</span>
         <button onClick={() => setShowForm(!showForm)} className="h-10 px-4 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5" style={{ background: NAVY_SOFT, color: NAVY, border: '1px solid rgba(91,141,239,.3)' }}>
           {showForm ? <XCircle size={13} /> : <Sparkles size={13} />} {showForm ? 'Vazgeç' : 'Manuel Kural Ekle'}
         </button>

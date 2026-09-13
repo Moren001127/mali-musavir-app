@@ -1803,6 +1803,8 @@ model EDefterControlSession {
   rawExcelBytes  Bytes?
   rawExcelSize   Int       @default(0)
   notes          String?
+  // Kapsam raporu (2026-09-13): her kural calisti mi/temiz mi/neden calismadi + her yaprak hesabin donem karti
+  kontrolOzeti   Json?
   createdBy      String?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt

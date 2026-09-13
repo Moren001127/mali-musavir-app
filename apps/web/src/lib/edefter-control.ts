@@ -19,6 +19,11 @@ export const edefterControlApi = {
     api.get('/edefter-control/rule-settings').then((r) => r.data as {
       settings: Array<{ code: string; active: boolean; updatedAt?: string; updatedBy?: string | null }>;
       defaultDisabledCodes: string[];
+      // Tek kural kataloğu (sunucu): kod, ad, açıklama, öneri, şiddet, alan, mevzuat, varsayılan açık/kapalı
+      catalog?: Array<{
+        kod: string; ad: string; aciklama: string; oneri?: string; siddet: 'ERROR' | 'WARN' | 'INFO'; alan: string;
+        mevzuat?: string; varsayilanAktif: boolean; donemKisiti?: string; mizanGerekli?: boolean; motor?: 'ESKI' | 'HDD';
+      }>;
     }),
   setRuleActive: (code: string, active: boolean) =>
     api.patch(`/edefter-control/rule-settings/${encodeURIComponent(code)}`, { active }).then((r) => r.data),
