@@ -10,6 +10,7 @@ import { EkipRunnerService } from './ekip-runner.service';
 import { KoordinatorService } from './koordinator.service';
 import { EkipOnayService } from './ekip-onay.service';
 import { EkipAkisService } from './ekip-akis.service';
+import { EkipBekciService } from './ekip-bekci.service';
 
 /**
  * EKİP — ajan kadrosu omurgası (PLAN/13-AJAN-KADROSU.md Faz A+D).
@@ -19,7 +20,7 @@ import { EkipAkisService } from './ekip-akis.service';
 @Module({
   imports: [PrismaModule, MorenAiModule, LucaModule, CalisanModule, WhatsAppModule, AutomationsModule],
   controllers: [EkipController],
-  providers: [EkipRunnerService, KoordinatorService, EkipOnayService, EkipAkisService],
+  providers: [EkipRunnerService, KoordinatorService, EkipOnayService, EkipAkisService, EkipBekciService],
   exports: [EkipRunnerService, KoordinatorService, EkipOnayService, EkipAkisService],
 })
 export class EkipModule {}

@@ -201,6 +201,11 @@ export class EkipRunnerService {
    */
   private readonly calisanKosular = new Map<string, CalisanKosu>();
 
+  /** Bekçi (ekip-bekci.service) için: iş bu süreçte hâlâ koşuyor mu? Koşuyorsa bayat sayılmaz. */
+  kosuAktifMi(isId: string): boolean {
+    return this.calisanKosular.has(isId);
+  }
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly tools: ToolExecutorService,
