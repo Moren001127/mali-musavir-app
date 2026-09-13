@@ -32,6 +32,8 @@ const CARI_EK_KELIMELER = new Set([
   'sanayi', 'ins', 'insaat', 'paz', 'pazarlama', 'ith', 'ihr', 'ithalat', 'ihracat', 'hizmetleri', 'hiz',
   'dis', 'ic', 'turizm', 'gida', 'tekstil', 'lojistik', 'nakliyat', 'nak', 'otomotiv', 'medikal', 'muh',
   'sti.', 'san.', 'tic.', 'ltd.', 'a.s.', 'koll', 'kollektif', 'komandit', 'kooperatifi', 'koop',
+  // Kooperatif on ekleri: "SINIRLI SORUMLU X KOOPERATIFI" → anahtar "x" olmali (canli YORGUN Q2: yanlis mukerrer kart)
+  'sinirli', 'sorumlu', 'ss', 's.s', 'kooperatif', 'tarim', 'kredi', 'yapi',
 ]);
 export function normalizeCariAdi(value?: string | null): string {
   const tokens = normalizeMetin(value)
