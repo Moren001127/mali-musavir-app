@@ -1,212 +1,167 @@
 import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { router } from 'expo-router';
-import {
-  Bot,
-  Camera,
-  CheckCircle2,
-  ClipboardList,
-  MessageCircle,
-  ReceiptText,
-  ShieldCheck,
-  Users,
-} from 'lucide-react-native';
-import { useQuery } from '@tanstack/react-query';
+import { Bell, TrendingUp, ShieldCheck, Mail, FileText, GitBranch, Bot, Send, ChevronRight, Check } from 'lucide-react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Screen } from '../../components/Screen';
-import { TopBar } from '../../components/TopBar';
-import { StatCard } from '../../components/StatCard';
-import { ModuleTile } from '../../components/ModuleTile';
-import { ActivityRow, PremiumCard, QuickAction, SectionLabel } from '../../components/Premium';
-import { api } from '../../lib/api';
-import { useAuth } from '../../lib/auth';
-import { advisorStats } from '../../lib/sample-data';
-import { advisorModules, getModuleNav } from '../../lib/mobile-modules';
-import { colors, fonts, spacing } from '../../lib/theme';
+import { ClientBar } from '../../components/ClientBar';
+import { Card, Section, Hero, Pill, Counters } from '../../components/ui';
+import { colors, fonts, radius, spacing, withAlpha } from '../../lib/theme';
 
-export default function AdvisorHomeScreen() {
-  const auth = useAuth();
-  const enabled = auth.status === 'authenticated' && !auth.user?.isDemo;
+const BEYAN = [
+  { t: 'KDV', s: 'Son gün · 26 Tem', ok: '37', bek: '0', kalan: '11', dot: colors.amber, kalanTone: 'warn' },
+  { t: 'Muhtasar', s: 'Son gün · 26 Tem', ok: '12', bek: '30', kalan: '6', dot: colors.amber, kalanTone: 'warn' },
+  { t: 'SGK Prim', s: 'Tamamlandı', ok: '48', bek: '0', kalan: '0', dot: colors.green, kalanTone: 'ok' },
+  { t: 'Damga', s: 'Tamamlandı', ok: '48', bek: '0', kalan: '0', dot: colors.green, kalanTone: 'ok' },
+  { t: 'E-Defter Berat', s: '2 hatalı', ok: '44', bek: '2', kalan: '2', dot: colors.rose, kalanTone: 'late' },
+] as const;
 
-  const pendingCount = useQuery({
-    queryKey: ['pending-actions-count'],
-    enabled,
-    queryFn: () => api.get('/pending-actions/count').then((res) => res.data.count as number),
-  });
+const STAGES = [
+  { t: 'Evrak', n: '8', now: true },
+  { t: 'İşleme', n: '23' },
+  { t: 'Kontrol', n: '11' },
+  { t: 'Beyan', n: '6' },
+  { t: 'Tamam', n: '94', done: true },
+];
 
-  const taskCounts = useQuery({
-    queryKey: ['task-counts'],
-    enabled,
-    queryFn: () => api.get('/tasks/counts').then((res) => res.data as { today: number; overdue: number }),
-  });
-
-  const stats = [
-    { ...advisorStats[0], value: String(pendingCount.data ?? advisorStats[0].value), hint: 'AI karar bekliyor' },
-    { ...advisorStats[1], value: String(taskCounts.data?.today ?? advisorStats[1].value), hint: 'Bugünkü iş yükü' },
-    { ...advisorStats[2], hint: 'Mükellef evrakı' },
-    { ...advisorStats[3], hint: 'Gönderime yakın' },
-  ];
-
-  const statRoutes = ['/(advisor)/onay', '/(advisor)/gorevler', '/(advisor)/mukellefler', '/(advisor)/beyannameler'];
-
+export default function AdvisorHome() {
   return (
     <Screen>
-      <TopBar title="Ofis kontrol" subtitle="Moren mobil operasyon" audience="advisor" onLogout={auth.logout} />
+      <ClientBar />
 
-      <View style={styles.statsGrid}>
-        {stats.map((stat, i) => (
-          <Pressable key={stat.label} style={styles.statPress} onPress={() => router.push(statRoutes[i] as any)}>
-            <StatCard {...stat} />
-          </Pressable>
+      <View style={styles.appbar}>
+        <View>
+          <Text style={styles.hello}>İyi çalışmalar</Text>
+          <Text style={styles.name}>Muzaffer Ören</Text>
+        </View>
+        <Pressable style={styles.iconBtn} onPress={() => router.push('/(advisor)/bildirimler')}>
+          <Bell size={19} color={colors.textMuted} />
+          <View style={styles.dot} />
+        </Pressable>
+      </View>
+
+      <Hero label="BUGÜNÜN NABZI · 27 Temmuz" big="142" suffix="aktif mükellef">
+        <Pill tone="green">↗ 94 işi tamamlandı</Pill>
+        <Text style={styles.heroMuted}>· 3 onay bekliyor</Text>
+      </Hero>
+
+      <Section title="Beyanname Durumu" action="Detay" onAction={() => router.push('/(advisor)/beyannameler')} />
+      <Card style={{ backgroundColor: withAlpha(colors.gold, 0.06), borderColor: withAlpha(colors.gold, 0.28) }}>
+        <View style={styles.thead}>
+          <Text style={[styles.th, { flex: 1.7 }]}>BEYANNAME</Text>
+          <Text style={styles.th}>ONAYLI</Text>
+          <Text style={styles.th}>BEKLEYEN</Text>
+          <Text style={styles.th}>KALAN</Text>
+        </View>
+        {BEYAN.map((b, i) => (
+          <View key={i} style={styles.brow}>
+            <View style={[styles.bcell, { flex: 1.7, flexDirection: 'row', alignItems: 'center', gap: 9 }]}>
+              <View style={[styles.sd, { backgroundColor: b.dot }]} />
+              <View>
+                <Text style={styles.bname}>{b.t}</Text>
+                <Text style={styles.bsub}>{b.s}</Text>
+              </View>
+            </View>
+            <Text style={[styles.bval, { color: colors.green }]}>{b.ok}</Text>
+            <Text style={[styles.bval, { color: b.bek === '0' ? colors.textSoft : colors.amber }]}>{b.bek}</Text>
+            <View style={styles.bcellC}>
+              <Text
+                style={[
+                  styles.kpill,
+                  b.kalanTone === 'ok' && { color: colors.green, backgroundColor: withAlpha(colors.green, 0.14) },
+                  b.kalanTone === 'warn' && { color: colors.amber, backgroundColor: withAlpha(colors.amber, 0.15) },
+                  b.kalanTone === 'late' && { color: colors.rose, backgroundColor: withAlpha(colors.rose, 0.14) },
+                ]}
+              >
+                {b.kalan}
+              </Text>
+            </View>
+          </View>
         ))}
-      </View>
+      </Card>
 
-      <SectionLabel label="Hızlı işlem" right="Portal bağlı" />
-      <View style={styles.quickGrid}>
-        <QuickAction label="OCR tara" Icon={Camera} active onPress={() => router.push('/(advisor)/ocr')} />
-        <QuickAction label="Mükellefler" Icon={Users} tone="blue" onPress={() => router.push('/(advisor)/mukellefler')} />
-        <QuickAction label="Onay kuyruğu" Icon={CheckCircle2} tone="green" onPress={() => router.push('/(advisor)/onay')} />
-        <QuickAction label="Ofis AI" Icon={MessageCircle} tone="purple" onPress={() => router.push('/(advisor)/ofis')} />
-      </View>
+      <Counters
+        items={[
+          { icon: ShieldCheck, color: colors.green, n: '37/48', t: 'KDV mutabık' },
+          { icon: Mail, color: colors.rose, n: '5', t: 'Yeni e-Tebligat' },
+          { icon: FileText, color: colors.gold, n: '1.284', t: 'Bu ay fatura' },
+          { icon: GitBranch, color: colors.copper, n: '8', t: 'Evrak bekleyen' },
+        ]}
+      />
 
-      <PremiumCard tone="gold" style={styles.aiCard}>
-        <View style={styles.aiHead}>
-          <View style={styles.aiIcon}>
-            <Bot size={22} color={colors.gold} strokeWidth={2.1} />
-          </View>
-          <View style={styles.aiBody}>
-            <Text style={styles.aiKicker}>Claude destekli ekip</Text>
-            <Text style={styles.aiTitle}>DENİZ bugün 3 kritik işi öne aldı</Text>
-          </View>
-        </View>
-        <View style={styles.aiMetrics}>
-          <View style={styles.aiMetric}>
-            <Text style={styles.aiValue}>124</Text>
-            <Text style={styles.aiLabel}>24s onay</Text>
-          </View>
-          <View style={styles.aiMetric}>
-            <Text style={styles.aiValue}>7</Text>
-            <Text style={styles.aiLabel}>KDV eksiği</Text>
-          </View>
-          <View style={styles.aiMetric}>
-            <Text style={styles.aiValue}>2</Text>
-            <Text style={styles.aiLabel}>Riskli kayıt</Text>
-          </View>
-        </View>
-      </PremiumCard>
-
-      <SectionLabel label="Bugün" right="Canlı akış" />
-      <View style={styles.activityList}>
-        <ActivityRow
-          title="Petravet KDV evrakı"
-          meta="Mükellefe eksik belge talebi hazırlanıyor"
-          amount="3 eksik"
-          Icon={ShieldCheck}
-          tone="amber"
-        />
-        <ActivityRow
-          title="Mihsap OCR kuyruğu"
-          meta="Nisan dönemi alış belgeleri portala düştü"
-          amount="18 fiş"
-          Icon={ReceiptText}
-          tone="gold"
-        />
-        <ActivityRow
-          title="Görev planı"
-          meta="Geciken işler ve randevular mobilde senkron"
-          amount="14"
-          Icon={ClipboardList}
-          tone="blue"
-        />
-      </View>
-
-      <SectionLabel label="Mobil öncelik" right="Müşavir modülleri" />
-      <View style={styles.moduleList}>
-        {advisorModules
-          .filter((module) => module.priority === 'high')
-          .slice(0, 4)
-          .map((module) => (
-            <ModuleTile
-              key={module.id}
-              module={module}
-              onPress={() => router.push(getModuleNav(module.id).route as any)}
-            />
+      <Section title="Bu Ay İş Akışı" action="Aç" onAction={() => router.push('/(advisor)/mukellefler')} />
+      <Card>
+        <View style={styles.steps}>
+          {STAGES.map((s, i) => (
+            <View key={i} style={styles.step}>
+              {i > 0 ? <View style={[styles.connector, s.done && { backgroundColor: colors.gold }]} /> : null}
+              <View style={[styles.stepD, s.done && styles.stepDone, s.now && styles.stepNow]}>
+                {s.done ? <Check size={15} color="#141109" /> : <Text style={[styles.stepN, s.now && { color: colors.gold }]}>{i + 1}</Text>}
+              </View>
+              <Text style={styles.stepT}>{s.t}</Text>
+              <Text style={styles.stepC}>{s.n}</Text>
+            </View>
           ))}
-      </View>
+        </View>
+      </Card>
+
+      <LinearGradient
+        colors={['rgba(195,166,230,0.16)', 'rgba(140,189,232,0.05)', 'rgba(0,0,0,0)']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.aiCard}
+      >
+        <View style={styles.aiHead}>
+          <LinearGradient colors={['#c3a6e6', '#8cbde8']} start={{ x: 0.1, y: 0 }} end={{ x: 0.9, y: 1 }} style={styles.aiOrb}>
+            <Bot size={19} color="#fff" />
+          </LinearGradient>
+          <Text style={styles.aiTitle}>MOREN AI</Text>
+        </View>
+        <Text style={styles.aiText}>“Bu ay 4 mükellefte KDV devreden tutarsızlığı buldum.”</Text>
+        <Pressable style={styles.aiAsk} onPress={() => router.push('/(advisor)/ofis')}>
+          <Text style={styles.aiAskText}>MOREN AI'ya sor…</Text>
+          <View style={styles.aiSend}>
+            <Send size={16} color="#141109" />
+          </View>
+        </Pressable>
+      </LinearGradient>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  statsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.md,
-  },
-  statPress: {
-    flexBasis: '47%',
-    flexGrow: 1,
-  },
-  quickGrid: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  aiCard: {
-    gap: spacing.md,
-  },
-  aiHead: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-  },
-  aiIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(212,184,118,0.15)',
-    borderWidth: 1,
-    borderColor: 'rgba(212,184,118,0.25)',
-  },
-  aiBody: {
-    flex: 1,
-  },
-  aiKicker: {
-    color: colors.goldMuted,
-    fontSize: 11,
-    fontWeight: '800',
-  },
-  aiTitle: {
-    color: colors.text,
-    fontSize: 15,
-    fontWeight: '800',
-    marginTop: 2,
-  },
-  aiMetrics: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  aiMetric: {
-    flex: 1,
-    padding: spacing.sm,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.04)',
-  },
-  aiValue: {
-    color: colors.gold,
-    fontFamily: fonts.heading,
-    fontSize: 22,
-    fontWeight: '800',
-  },
-  aiLabel: {
-    color: colors.textSoft,
-    fontSize: 10.5,
-    fontWeight: '700',
-  },
-  activityList: {
-    gap: spacing.sm,
-  },
-  moduleList: {
-    gap: spacing.sm,
-  },
+  appbar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  hello: { fontSize: 12, color: colors.textSoft },
+  name: { fontSize: 19, fontWeight: '600', color: colors.text, marginTop: 2 },
+  iconBtn: { width: 40, height: 40, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: withAlpha(colors.white, 0.04), borderWidth: 1, borderColor: withAlpha(colors.gold, 0.14) },
+  dot: { position: 'absolute', top: 8, right: 9, width: 8, height: 8, borderRadius: 4, backgroundColor: colors.rose },
+  heroMuted: { fontSize: 12.5, color: colors.textMuted },
+  thead: { flexDirection: 'row', alignItems: 'center', paddingBottom: 9, borderBottomWidth: 1, borderBottomColor: withAlpha(colors.gold, 0.14) },
+  th: { flex: 1, fontSize: 9.5, letterSpacing: 0.6, color: colors.textSoft, fontWeight: '600', textAlign: 'center' },
+  brow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 11, borderBottomWidth: 1, borderBottomColor: withAlpha(colors.white, 0.05) },
+  bcell: {},
+  bcellC: { flex: 1, alignItems: 'center' },
+  bname: { fontSize: 13.5, fontWeight: '600', color: colors.text },
+  bsub: { fontSize: 10, color: colors.textSoft, marginTop: 1 },
+  bval: { flex: 1, fontFamily: fonts.mono, fontSize: 13, fontWeight: '600', textAlign: 'center' },
+  sd: { width: 9, height: 9, borderRadius: 5 },
+  kpill: { fontFamily: fonts.mono, fontSize: 12, fontWeight: '600', paddingHorizontal: 9, paddingVertical: 3, borderRadius: 8, overflow: 'hidden', minWidth: 30, textAlign: 'center' },
+  steps: { flexDirection: 'row', justifyContent: 'space-between' },
+  step: { alignItems: 'center', flex: 1 },
+  connector: { position: 'absolute', top: 16, left: '-50%', width: '100%', height: 2, backgroundColor: withAlpha(colors.gold, 0.16), zIndex: 0 },
+  stepD: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: '#12100b', borderWidth: 1, borderColor: withAlpha(colors.gold, 0.14), zIndex: 1 },
+  stepDone: { backgroundColor: colors.gold, borderColor: 'transparent' },
+  stepNow: { backgroundColor: withAlpha(colors.gold, 0.16), borderColor: colors.gold },
+  stepN: { fontSize: 12, fontWeight: '700', color: colors.textMuted },
+  stepT: { fontSize: 11, color: colors.text, marginTop: 6, fontWeight: '600' },
+  stepC: { fontSize: 10, color: colors.textSoft, marginTop: 2 },
+  aiCard: { borderRadius: radius.xxl, padding: 18, borderWidth: 1, borderColor: withAlpha(colors.purple, 0.25), overflow: 'hidden' },
+  aiGlow: { position: 'absolute', width: 160, height: 160, left: -40, bottom: -70, borderRadius: 80, backgroundColor: withAlpha(colors.purple, 0.22) },
+  aiHead: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  aiOrb: { width: 36, height: 36, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  aiTitle: { fontFamily: fonts.heading, fontSize: 16, fontWeight: '600', color: colors.text },
+  aiText: { fontSize: 12.5, color: colors.textMuted, marginTop: 10, lineHeight: 19 },
+  aiAsk: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 14, backgroundColor: 'rgba(0,0,0,0.28)', borderWidth: 1, borderColor: withAlpha(colors.white, 0.08), borderRadius: 14, padding: 11 },
+  aiAskText: { flex: 1, fontSize: 13, color: colors.textSoft },
+  aiSend: { width: 30, height: 30, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.gold },
 });

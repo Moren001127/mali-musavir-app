@@ -3,19 +3,23 @@ import { Tabs, router } from 'expo-router';
 import { Camera, CheckCircle2, Grid3X3, Home, MessageCircle } from 'lucide-react-native';
 import { useAuth } from '../../lib/auth';
 import { DrawerProvider } from '../../components/ModuleDrawer';
+import { ClientProvider } from '../../lib/clients';
+import { FloatingTabBar } from '../../components/FloatingTabBar';
 import { colors } from '../../lib/theme';
 
 export default function AdvisorLayout() {
   const { status, audience } = useAuth();
 
   useEffect(() => {
-    if (status === 'unauthenticated') router.replace('/login');
+    if (status === 'unauthenticated') router.replace('/select');
     if (status === 'authenticated' && audience !== 'advisor') router.replace('/(taxpayer)');
   }, [audience, status]);
 
   return (
+    <ClientProvider>
     <DrawerProvider audience="advisor">
       <Tabs
+        tabBar={(props) => <FloatingTabBar {...props} />}
         screenOptions={{
           headerShown: false,
           tabBarActiveTintColor: colors.gold,
@@ -53,7 +57,9 @@ export default function AdvisorLayout() {
         <Tabs.Screen name="sgk" options={{ href: null }} />
         <Tabs.Screen name="ajanlar" options={{ href: null }} />
         <Tabs.Screen name="bildirimler" options={{ href: null }} />
+        <Tabs.Screen name="m/[id]" options={{ href: null }} />
       </Tabs>
     </DrawerProvider>
+    </ClientProvider>
   );
 }

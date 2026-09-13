@@ -1,114 +1,50 @@
-import React, { useMemo, useState } from 'react';
-import { FlatList, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Send, Volume2 } from 'lucide-react-native';
-import * as Speech from 'expo-speech';
-import { useMutation } from '@tanstack/react-query';
+import React from 'react';
+import { View, Text, TextInput, Pressable, StyleSheet, ScrollView } from 'react-native';
+import { router } from 'expo-router';
+import { Mic, Send } from 'lucide-react-native';
 import { Screen } from '../../components/Screen';
-import { TopBar } from '../../components/TopBar';
-import { PrimaryButton } from '../../components/PrimaryButton';
-import { api } from '../../lib/api';
-import { useAuth } from '../../lib/auth';
-import { colors, radius, spacing } from '../../lib/theme';
+import { colors, fonts, radius, withAlpha } from '../../lib/theme';
 
-type ChatMessage = {
-  id: string;
-  role: 'user' | 'assistant';
-  text: string;
-};
-
-export default function AdvisorOfficeScreen() {
-  const auth = useAuth();
-  const [text, setText] = useState('');
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: 'welcome',
-      role: 'assistant',
-      text: 'ARDA hazır. Mükellef, KDV, beyanname veya iş yükü sorusunu yazabilirsin.',
-    },
-  ]);
-
-  const lastAssistant = useMemo(
-    () => [...messages].reverse().find((message) => message.role === 'assistant')?.text,
-    [messages],
-  );
-
-  const mutation = useMutation({
-    mutationFn: async (message: string) => {
-      if (auth.user?.isDemo) {
-        return {
-          content:
-            'Demo yanıtta önce eksik evrak ve bekleyen onaylara bakarım. Gerçek bağlantıda /moren-ofis/chat endpointi kullanılacak.',
-        };
-      }
-      const { data } = await api.post('/moren-ofis/chat', { text: message });
-      return data;
-    },
-    onSuccess: (data) => {
-      const content = data?.content || data?.message || data?.reply || 'Yanıt alındı.';
-      setMessages((prev) => [...prev, { id: `a-${Date.now()}`, role: 'assistant', text: content }]);
-    },
-    onError: () => {
-      setMessages((prev) => [
-        ...prev,
-        { id: `e-${Date.now()}`, role: 'assistant', text: 'Ofis AI bağlantısı şu an cevap vermedi.' },
-      ]);
-    },
-  });
-
-  function send() {
-    const clean = text.trim();
-    if (!clean) return;
-    setMessages((prev) => [...prev, { id: `u-${Date.now()}`, role: 'user', text: clean }]);
-    setText('');
-    mutation.mutate(clean);
-  }
-
-  function speak() {
-    if (lastAssistant) {
-      Speech.speak(lastAssistant, { language: 'tr-TR', pitch: 1, rate: 0.96 });
-    }
-  }
-
+export default function OfisAI() {
   return (
     <Screen scroll={false}>
-      <TopBar title="Moren Ofis AI" subtitle="Mobil sohbet hazırlığı" audience="advisor" onLogout={auth.logout} />
+      <View style={styles.head}>
+        <Text style={styles.title}>MOREN AI</Text>
+        <Text style={styles.sub}>Ofis asistanı · çevrimiçi</Text>
+      </View>
 
-      <FlatList
-        data={messages}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.messages}
-        renderItem={({ item }) => (
-          <View style={[styles.bubble, item.role === 'user' ? styles.userBubble : styles.assistantBubble]}>
-            <Text style={[styles.bubbleText, item.role === 'user' && styles.userText]}>{item.text}</Text>
+      <ScrollView style={styles.chat} contentContainerStyle={{ gap: 12, paddingVertical: 8 }} showsVerticalScrollIndicator={false}>
+        <View style={[styles.msg, styles.ai]}>
+          <Text style={styles.k}>MOREN AI</Text>
+          <Text style={styles.msgText}>Merhaba Muzaffer. Bugün 3 mükellefte dikkat çeken durum var. Nereden başlayalım?</Text>
+        </View>
+        <View style={[styles.msg, styles.me]}>
+          <Text style={styles.meText}>Temmuz KDV'de riskli olanları listele</Text>
+        </View>
+        <View style={[styles.msg, styles.ai]}>
+          <Text style={styles.k}>MOREN AI</Text>
+          <Text style={styles.msgText}>
+            Devreden KDV'si sapan 4 mükellef:{'\n'}• Leyla Bozkurt — %41 sapma{'\n'}• Doğan Tic. — eksik alış{'\n'}• Ayşegül A.Ş. — tevkifat oranı{'\n'}• Ercan — devreden farkı
+          </Text>
+        </View>
+        <View style={styles.chips}>
+          <Pressable style={styles.chip} onPress={() => router.push('/(advisor)/m/kdv-panosu')}>
+            <Text style={styles.chipText}>KDV Panosu'nu aç</Text>
+          </Pressable>
+          <View style={styles.chip}>
+            <Text style={styles.chipText}>Rapor hazırla</Text>
           </View>
-        )}
-      />
+          <View style={styles.chip}>
+            <Text style={styles.chipText}>Sesli anlat</Text>
+          </View>
+        </View>
+      </ScrollView>
 
-      <View style={styles.composer}>
-        <TextInput
-          value={text}
-          onChangeText={setText}
-          placeholder="ARDA'ya yaz..."
-          placeholderTextColor={colors.textSoft}
-          style={styles.input}
-          multiline
-        />
-        <View style={styles.composerActions}>
-          <PrimaryButton
-            label="Ses"
-            variant="secondary"
-            onPress={speak}
-            icon={<Volume2 size={17} color={colors.gold} strokeWidth={2.2} />}
-            style={styles.compactButton}
-          />
-          <PrimaryButton
-            label="Gönder"
-            onPress={send}
-            loading={mutation.isPending}
-            disabled={!text.trim()}
-            icon={<Send size={17} color={colors.black} strokeWidth={2.2} />}
-            style={styles.compactButton}
-          />
+      <View style={styles.ask}>
+        <Mic size={18} color={colors.gold} />
+        <TextInput placeholder="Yaz ya da söyle…" placeholderTextColor={colors.textSoft} style={styles.input} />
+        <View style={styles.send}>
+          <Send size={16} color="#141109" />
         </View>
       </View>
     </Screen>
@@ -116,59 +52,20 @@ export default function AdvisorOfficeScreen() {
 }
 
 const styles = StyleSheet.create({
-  messages: {
-    gap: spacing.sm,
-    paddingVertical: spacing.lg,
-  },
-  bubble: {
-    maxWidth: '86%',
-    padding: spacing.md,
-    borderRadius: radius.md,
-    borderWidth: 1,
-  },
-  assistantBubble: {
-    alignSelf: 'flex-start',
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-  },
-  userBubble: {
-    alignSelf: 'flex-end',
-    backgroundColor: colors.gold,
-    borderColor: colors.gold,
-  },
-  bubbleText: {
-    color: colors.text,
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  userText: {
-    color: colors.black,
-    fontWeight: '700',
-  },
-  composer: {
-    gap: spacing.sm,
-    paddingTop: spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  input: {
-    minHeight: 58,
-    maxHeight: 120,
-    padding: spacing.md,
-    borderRadius: radius.md,
-    backgroundColor: colors.surface,
-    color: colors.text,
-    borderWidth: 1,
-    borderColor: colors.border,
-    fontSize: 15,
-  },
-  composerActions: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  compactButton: {
-    flex: 1,
-    minHeight: 44,
-  },
+  head: { marginBottom: 4 },
+  title: { fontFamily: fonts.heading, fontSize: 20, fontWeight: '600', color: colors.text },
+  sub: { fontSize: 11.5, color: colors.textSoft, marginTop: 2 },
+  chat: { flex: 1 },
+  msg: { maxWidth: '86%', padding: 12, borderRadius: 18 },
+  ai: { alignSelf: 'flex-start', backgroundColor: withAlpha(colors.white, 0.05), borderWidth: 1, borderColor: withAlpha(colors.gold, 0.14), borderBottomLeftRadius: 6 },
+  me: { alignSelf: 'flex-end', backgroundColor: colors.gold, borderBottomRightRadius: 6 },
+  k: { fontSize: 10.5, letterSpacing: 1, color: colors.goldMuted, fontWeight: '600', marginBottom: 6 },
+  msgText: { fontSize: 13.5, color: colors.text, lineHeight: 20 },
+  meText: { fontSize: 13.5, color: '#141109', fontWeight: '500', lineHeight: 20 },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chip: { backgroundColor: withAlpha(colors.white, 0.05), borderWidth: 1, borderColor: withAlpha(colors.gold, 0.14), borderRadius: 999, paddingHorizontal: 13, paddingVertical: 8 },
+  chipText: { fontSize: 12, color: colors.textMuted },
+  ask: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'rgba(0,0,0,0.28)', borderWidth: 1, borderColor: withAlpha(colors.white, 0.08), borderRadius: 14, padding: 11, marginTop: 8 },
+  input: { flex: 1, color: colors.text, fontSize: 13 },
+  send: { width: 30, height: 30, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.gold },
 });
-

@@ -1,3 +1,6 @@
 packages:
   - 'apps/*'
+  # Mobil uygulama (Expo/EAS) kendi npm kilidiyle (apps/mobile/package-lock.json) ayakta durur; pnpm çalışma alanına
+  # GİRMEZ (2026-09-13): Railway web (Nixpacks kök pnpm install) ve API derlemeleri Expo bağımlılıklarını kurmaz.
+  - '!apps/mobile'
   - 'packages/*'

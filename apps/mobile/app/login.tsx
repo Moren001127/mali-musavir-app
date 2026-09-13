@@ -1,42 +1,39 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Image, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, TextInput, Pressable, Image, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { router } from 'expo-router';
-import { Fingerprint, LogIn, Sparkles } from 'lucide-react-native';
-import { Screen } from '../components/Screen';
-import { SegmentedControl } from '../components/SegmentedControl';
-import { PrimaryButton } from '../components/PrimaryButton';
-import { ModuleTile } from '../components/ModuleTile';
+import { router, useLocalSearchParams } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { ChevronLeft, ChevronRight, Mail, KeyRound, Eye, ShieldCheck } from 'lucide-react-native';
 import { useAuth } from '../lib/auth';
-import { AppAudience, getModulesForAudience } from '../lib/mobile-modules';
-import { colors, fonts, radius, spacing } from '../lib/theme';
+import { AppAudience } from '../lib/mobile-modules';
+import { colors, fonts, radius, spacing, withAlpha } from '../lib/theme';
 
 export default function LoginScreen() {
   const auth = useAuth();
-  const [audience, setAudience] = useState<AppAudience>(auth.audience);
-  const [email, setEmail] = useState('');
+  const params = useLocalSearchParams<{ audience?: string }>();
+  const audience: AppAudience = params.audience === 'taxpayer' ? 'taxpayer' : 'advisor';
+  const advisor = audience === 'advisor';
+
+  const [email, setEmail] = useState(advisor ? 'admin@morenmusavirlik.com' : '');
   const [password, setPassword] = useState('');
+  const [show, setShow] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const previewModules = useMemo(
-    () => getModulesForAudience(audience).filter((module) => module.priority === 'high').slice(0, 3),
-    [audience],
-  );
+  useEffect(() => {
+    auth.setAudience(audience);
+  }, [audience]);
 
   useEffect(() => {
-    if (auth.status === 'authenticated') {
-      router.replace(auth.audience === 'advisor' ? '/(advisor)' : '/(taxpayer)');
-    }
-  }, [auth.audience, auth.status]);
+    if (auth.status === 'authenticated') router.replace(auth.audience === 'advisor' ? '/(advisor)' : '/(taxpayer)');
+  }, [auth.status, auth.audience]);
 
   async function handleLogin() {
     setError(null);
     setLoading(true);
-
     try {
       await auth.login({ email: email.trim(), password, audience });
-      router.replace(audience === 'advisor' ? '/(advisor)' : '/(taxpayer)');
+      router.replace(advisor ? '/(advisor)' : '/(taxpayer)');
     } catch (err: any) {
       setError(err?.response?.data?.message || 'Giriş bilgileri kontrol edilemedi.');
     } finally {
@@ -46,218 +43,158 @@ export default function LoginScreen() {
 
   async function handleDemo() {
     await auth.continueDemo(audience);
-    router.replace(audience === 'advisor' ? '/(advisor)' : '/(taxpayer)');
+    router.replace(advisor ? '/(advisor)' : '/(taxpayer)');
   }
 
   return (
-    <KeyboardAvoidingView style={styles.flex} behavior={Platform.select({ ios: 'padding', android: undefined })}>
-      <Screen>
-        <View style={styles.hero}>
-          <Image source={require('../assets/logo-mark.png')} style={styles.logoImg} resizeMode="contain" />
-          <Text style={styles.brandName}>Moren</Text>
-          <Text style={styles.brandSub}>Mali Müşavirlik</Text>
-          <View style={[styles.roleBadge, audience === 'taxpayer' && styles.roleBadgeTaxpayer]}>
-            <Text style={styles.roleBadgeText}>{audience === 'advisor' ? 'Müşavir girişi' : 'Mükellef girişi'}</Text>
-          </View>
-        </View>
+    <LinearGradient colors={['#0b0906', '#080706']} style={styles.flex}>
+      <SafeAreaView style={styles.flex}>
+        <KeyboardAvoidingView style={styles.flex} behavior={Platform.select({ ios: 'padding', android: undefined })}>
+          <ScrollView contentContainerStyle={styles.wrap} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+            <Pressable style={styles.back} onPress={() => router.replace('/select')} hitSlop={10}>
+              <ChevronLeft size={20} color={colors.text} />
+            </Pressable>
 
-        <LinearGradient colors={['rgba(255,255,255,0.055)', 'rgba(255,255,255,0.02)']} style={styles.panel}>
-          <SegmentedControl
-            value={audience}
-            onChange={(next) => {
-              setAudience(next);
-              auth.setAudience(next);
-            }}
-            options={[
-              { value: 'advisor', label: 'Müşavir' },
-              { value: 'taxpayer', label: 'Mükellef' },
-            ]}
-          />
+            <Image source={require('../assets/moren-logo-gold.png')} style={styles.logo} resizeMode="contain" />
+            <Text style={styles.tagline}>Bugünü düzenler,</Text>
+            <Text style={styles.taglineEm}>yarına güç katar.</Text>
+            <Text style={styles.lead}>
+              {advisor
+                ? 'Mükellef takibinden beyanname yönetimine, KDV kontrolünden evrak arşivine kadar tüm süreçler tek platformda.'
+                : 'Beyanname, cari ve evraklarınıza güvenle, her yerden erişin.'}
+            </Text>
 
-          <View style={styles.form}>
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>E-posta</Text>
-              <TextInput
-                autoCapitalize="none"
-                keyboardType="email-address"
-                placeholder="ornek@moren.com"
-                placeholderTextColor={colors.textSoft}
-                value={email}
-                onChangeText={setEmail}
-                style={styles.input}
-              />
+            <View style={styles.field}>
+              <Text style={styles.label}>E-Posta Adresi</Text>
+              <View style={styles.inp}>
+                <Mail size={17} color={colors.textSoft} />
+                <TextInput
+                  value={email}
+                  onChangeText={setEmail}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  placeholder="ornek@moren.com"
+                  placeholderTextColor={colors.textSoft}
+                  style={styles.inpText}
+                />
+              </View>
             </View>
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Şifre</Text>
-              <TextInput
-                placeholder="••••••••"
-                placeholderTextColor={colors.textSoft}
-                secureTextEntry
-                value={password}
-                onChangeText={setPassword}
-                style={[styles.input, password ? styles.inputFocused : null]}
-              />
+
+            <View style={styles.field}>
+              <Text style={styles.label}>Şifre</Text>
+              <View style={styles.inp}>
+                <KeyRound size={17} color={colors.textSoft} />
+                <TextInput
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry={!show}
+                  placeholder="••••••••"
+                  placeholderTextColor={colors.textSoft}
+                  style={styles.inpText}
+                />
+                <Pressable onPress={() => setShow((s) => !s)} hitSlop={8}>
+                  <Eye size={17} color={colors.textSoft} />
+                </Pressable>
+              </View>
             </View>
-          </View>
 
-          {error ? <Text style={styles.error}>{error}</Text> : null}
+            <Text style={styles.forgot}>Şifremi unuttum</Text>
 
-          <PrimaryButton
-            label={audience === 'advisor' ? 'Müşavir olarak gir' : 'Mükellef olarak gir'}
-            loading={loading}
-            disabled={!email.trim() || !password}
-            onPress={handleLogin}
-            icon={<LogIn size={18} color={colors.black} strokeWidth={2.2} />}
-          />
-          <PrimaryButton
-            label="Demo önizleme"
-            variant="secondary"
-            onPress={handleDemo}
-            icon={<Sparkles size={18} color={colors.gold} strokeWidth={2.2} />}
-          />
+            {error ? <Text style={styles.error}>{error}</Text> : null}
 
-          <View style={styles.biometric}>
-            <View style={styles.biometricIcon}>
-              <Fingerprint size={22} color={colors.gold} strokeWidth={2} />
+            <Pressable style={styles.loginBtn} onPress={handleLogin} disabled={loading}>
+              {loading ? (
+                <ActivityIndicator color="#141109" />
+              ) : (
+                <>
+                  <Text style={styles.loginText}>Giriş Yap</Text>
+                  <ChevronRight size={17} color="#141109" />
+                </>
+              )}
+            </Pressable>
+
+            <Pressable onPress={handleDemo} hitSlop={8}>
+              <Text style={styles.demo}>Demo önizleme ile gir</Text>
+            </Pressable>
+
+            <View style={styles.chips}>
+              <Text style={styles.chip}>⚡ Akıllı Otomasyon</Text>
+              <Text style={styles.chip}>🛡️ KVKK Uyumlu</Text>
+              <Text style={styles.chip}>🕐 7/24 Erişim</Text>
             </View>
-            <Text style={styles.biometricText}>FaceID / biyometrik giriş hazır</Text>
-          </View>
-        </LinearGradient>
-
-        <View style={styles.preview}>
-          <Text style={styles.sectionTitle}>
-            {audience === 'advisor' ? 'Müşavir mobil öncelikleri' : 'Mükellef mobil öncelikleri'}
-          </Text>
-          {previewModules.map((module) => (
-            <ModuleTile key={module.id} module={module} />
-          ))}
-        </View>
-      </Screen>
-    </KeyboardAvoidingView>
+            <View style={styles.ssl}>
+              <ShieldCheck size={12} color={colors.textSoft} />
+              <Text style={styles.sslText}>256-bit SSL ile korunmaktadır</Text>
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
-  flex: {
-    flex: 1,
-    backgroundColor: colors.bg,
-  },
-  hero: {
-    alignItems: 'center',
-    gap: 5,
-    paddingTop: spacing.xl,
-    paddingBottom: spacing.lg,
-  },
-  logo: {
-    width: 82,
-    height: 82,
-    borderRadius: 22,
+  flex: { flex: 1 },
+  wrap: { padding: 26, paddingTop: 30, alignItems: 'center' },
+  back: {
+    position: 'absolute',
+    top: 8,
+    left: 20,
+    width: 40,
+    height: 40,
+    borderRadius: 13,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: spacing.md,
+    backgroundColor: withAlpha(colors.white, 0.04),
+    borderWidth: 1,
+    borderColor: withAlpha(colors.gold, 0.14),
+    zIndex: 5,
   },
-  logoImg: {
-    width: 104,
-    height: 84,
-    marginBottom: spacing.sm,
+  logo: { width: 172, height: 124, marginTop: 20 },
+  tagline: { fontFamily: fonts.heading, fontSize: 23, fontWeight: '600', color: colors.text, marginTop: 16, textAlign: 'center' },
+  taglineEm: { fontFamily: fonts.heading, fontSize: 23, fontWeight: '600', color: colors.gold, fontStyle: 'italic', textAlign: 'center' },
+  lead: { color: colors.textMuted, fontSize: 12.5, lineHeight: 19, marginTop: 12, textAlign: 'center' },
+  field: { width: '100%', marginTop: 16 },
+  label: { fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', color: colors.goldMuted, fontWeight: '600', marginBottom: 8 },
+  inp: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: 'rgba(0,0,0,0.3)',
+    borderWidth: 1,
+    borderColor: withAlpha(colors.gold, 0.14),
+    borderRadius: 14,
+    paddingHorizontal: 15,
+    height: 50,
   },
-  logoText: {
-    color: colors.surface,
-    fontFamily: fonts.heading,
-    fontSize: 48,
-    fontWeight: '800',
+  inpText: { flex: 1, color: colors.text, fontSize: 14 },
+  forgot: { alignSelf: 'flex-end', color: colors.gold, fontSize: 12, marginTop: 12 },
+  error: { color: colors.rose, fontSize: 13, marginTop: 12, alignSelf: 'flex-start' },
+  loginBtn: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 20,
+    height: 52,
+    borderRadius: 14,
+    backgroundColor: colors.gold,
   },
-  brandName: {
-    color: colors.text,
-    fontFamily: fonts.heading,
-    fontSize: 34,
-    fontWeight: '700',
-  },
-  brandSub: {
-    color: colors.goldMuted,
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 0,
-  },
-  roleBadge: {
-    marginTop: spacing.sm,
-    paddingHorizontal: 12,
+  loginText: { color: '#141109', fontSize: 15, fontWeight: '600' },
+  demo: { color: colors.textSoft, fontSize: 12.5, marginTop: 14, textDecorationLine: 'underline' },
+  chips: { flexDirection: 'row', gap: 8, flexWrap: 'wrap', justifyContent: 'center', marginTop: 24 },
+  chip: {
+    fontSize: 10.5,
+    color: colors.textMuted,
+    backgroundColor: withAlpha(colors.white, 0.04),
+    borderWidth: 1,
+    borderColor: withAlpha(colors.gold, 0.14),
+    paddingHorizontal: 11,
     paddingVertical: 6,
     borderRadius: 999,
-    backgroundColor: 'rgba(212,184,118,0.13)',
-    borderWidth: 1,
-    borderColor: 'rgba(212,184,118,0.32)',
+    overflow: 'hidden',
   },
-  roleBadgeTaxpayer: {
-    backgroundColor: 'rgba(96,165,250,0.13)',
-    borderColor: 'rgba(96,165,250,0.32)',
-  },
-  roleBadgeText: {
-    color: colors.gold,
-    fontSize: 10.5,
-    fontWeight: '800',
-  },
-  panel: {
-    gap: spacing.md,
-    padding: spacing.md,
-    borderRadius: radius.xl,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-  },
-  form: {
-    gap: spacing.sm,
-  },
-  inputGroup: {
-    gap: 6,
-  },
-  inputLabel: {
-    color: colors.textSoft,
-    fontSize: 10.5,
-    fontWeight: '800',
-  },
-  input: {
-    height: 50,
-    borderRadius: radius.lg,
-    paddingHorizontal: spacing.md,
-    color: colors.text,
-    backgroundColor: 'rgba(255,255,255,0.045)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    fontSize: 15,
-  },
-  inputFocused: {
-    borderColor: 'rgba(212,184,118,0.55)',
-    backgroundColor: 'rgba(212,184,118,0.08)',
-  },
-  error: {
-    color: colors.rose,
-    fontSize: 13,
-  },
-  biometric: {
-    alignItems: 'center',
-    gap: spacing.xs,
-    paddingTop: spacing.xs,
-  },
-  biometricIcon: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(212,184,118,0.11)',
-    borderWidth: 1,
-    borderColor: 'rgba(212,184,118,0.28)',
-  },
-  biometricText: {
-    color: colors.textSoft,
-    fontSize: 11.5,
-  },
-  preview: {
-    gap: spacing.sm,
-  },
-  sectionTitle: {
-    color: colors.textSoft,
-    fontSize: 11,
-    fontWeight: '800',
-  },
+  ssl: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 16 },
+  sslText: { color: colors.textSoft, fontSize: 10.5 },
 });

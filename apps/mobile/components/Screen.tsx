@@ -23,7 +23,7 @@ export function Screen({ children, scroll = true, flush = false }: ScreenProps) 
   );
 
   return (
-    <LinearGradient colors={[colors.bgTop, colors.bg]} style={styles.gradient}>
+    <LinearGradient colors={['#0b0906', '#080706']} style={styles.gradient}>
       <SafeAreaView style={styles.safe}>{body}</SafeAreaView>
     </LinearGradient>
   );

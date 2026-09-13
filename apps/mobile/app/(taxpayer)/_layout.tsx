@@ -9,7 +9,7 @@ export default function TaxpayerLayout() {
   const { status, audience } = useAuth();
 
   useEffect(() => {
-    if (status === 'unauthenticated') router.replace('/login');
+    if (status === 'unauthenticated') router.replace('/select');
     if (status === 'authenticated' && audience !== 'taxpayer') router.replace('/(advisor)');
   }, [audience, status]);
 

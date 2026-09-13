@@ -79,7 +79,7 @@ export const radius = {
 export const fonts = {
   body: Platform.select({ web: 'Inter, system-ui, sans-serif', default: undefined }),
   heading: Platform.select({ web: 'Fraunces, Georgia, serif', default: undefined }),
-  mono: Platform.select({ web: 'Menlo, Consolas, monospace', default: 'monospace' }),
+  mono: Platform.select({ web: "'JetBrains Mono', Menlo, Consolas, monospace", default: 'monospace' }),
 };
 
 export const shadow = Platform.select({
