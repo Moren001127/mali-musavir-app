@@ -16,6 +16,8 @@ import { reconcileMatrahSplit } from './kalem-split';
 import { planAdaylariHazirla, planAdayKodSeti, SATIS_GELIR_HESABI_KURALI, PLAN_ADAY_ROL_ACIKLAMASI } from './plan-adaylari';
 import { ogrenilmisKararSec, adCozumAdaylari, kodKategori, HizliYolKarar, HizliYolSecim } from './ogrenme-hizli-yol';
 import { parseUblInvoice, ublOcrDataFields, clearUblOnlyOcrFields, resolveTevkifatOrani, ParsedProviderInvoice } from './ubl-parse';
+// PLAN/15 Faz 6 (2026-09-13): kalemsiz sağlayıcı XML'inde (Paraşüt özeti gibi) kalemler belgenin PDF/görselinden tamamlanır (saf modül).
+import { kalemPdfGerekliMi, kalemPdfTamamla, aiMatrahGuvenTavani, KalemPdfDosya, KalemKaynak } from './kalem-pdf';
 import { VendorMemoryService } from '../vendor-memory/vendor-memory.service';
 import { MihsapService } from '../mihsap/mihsap.service';
 import { PortalAutomationService } from '../portal-automation/portal-automation.service';
@@ -3762,6 +3764,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         if (aiKod && ((planKodlari && planKodlari.has(aiKod)) || ogrenilmisKod)) {
           patch.aiMatrahKodu = aiKod;
           if (c.guven) patch.aiMatrahGuven = c.guven;
+          // PLAN/15 Faz 6 (2026-09-13): kalemler PDF/görselden tamamlanmış belgede (ocrData.kalemKaynak pdf/pdf-tahmin) güven en fazla 'orta'.
+          if (patch.aiMatrahGuven) patch.aiMatrahGuven = aiMatrahGuvenTavani(patch.aiMatrahGuven, od?.kalemKaynak);
           if (!ogrenilmisKod) this.logger.log(`[CLS-PLAN] AI matrah hesabı=${aiKod} guven=${c.guven || '-'} doc=${documentId}`);
         }
       }
@@ -7346,6 +7350,22 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       // — IADE (bilgi; hata varsa dogrulamaUyarilari engel üretir) —
       if (isReturn && !validation.issues.some((i: any) => i.code === 'RETURN_NEEDS_REVERSAL' || i.code === 'RETURN_DIRECTION_REVERSED')) {
         turetilen.push(uyariYap({ kod: UYARI_KOD.IADE, seviye: 'bilgi', baslik: 'İade belgesi', aciklama: `${isSaleDoc ? 'Satıştan' : 'Alıştan'} iade — ters kayıt kuruldu (${isSaleDoc ? '610 / 391-iade / cari alacak' : 'cari borç / stok-gider alacak'}).`, kaynak: 'dogrulama' }));
+      }
+      // — KALEM_PDF_TAHMIN (bilgi; PLAN/15 Faz 6, 2026-09-13): sağlayıcı XML'i kalemsizdi, kalemler belgenin PDF/görselinden
+      //   okundu ama kalem toplamı XML matrahından ±%5'ten fazla sapıyor (ocrData.kalemKaynak='pdf-tahmin'). Tutarlar
+      //   XML'den; kalem dökümü bilgi amaçlı. Türetilen (dogrulama) kanal: rematch'te silinmez, kaynak değişince kendiliğinden kalkar.
+      if (String(ocrData?.kalemKaynak || '') === 'pdf-tahmin') {
+        const kb: any = ocrData?.kalemPdfBilgi || {};
+        const sapma = kb?.sapmaYuzde != null ? ` (kalem toplamı ${uyariAdet(Number(kb.kalemToplam) || 0)} ₺, XML matrahı ${uyariAdet(Number(kb.xmlMatrah) || 0)} ₺, sapma %${Number(kb.sapmaYuzde)})` : '';
+        turetilen.push(uyariYap({
+          kod: 'KALEM_PDF_TAHMIN',
+          seviye: 'bilgi',
+          baslik: 'Kalemler PDF\'ten okundu (tahmini)',
+          aciklama: `Sağlayıcı XML'inde kalem yoktu; kalem dökümü belgenin ${kb?.dosya === 'gorsel' ? 'görselinden' : 'PDF\'inden'} okundu ve toplamı XML matrahıyla tam örtüşmüyor${sapma}. Matrah/KDV/toplam ve taraflar XML'den alındı; kalemler bilgi amaçlıdır.`,
+          oneri: 'Hesap seçimini kalem adlarına göre bir kez gözden geçirin.',
+          meta: { kalemKaynak: 'pdf-tahmin', ...(kb?.sapmaYuzde != null ? { sapmaYuzde: Number(kb.sapmaYuzde) } : {}) },
+          kaynak: 'dogrulama',
+        }));
       }
       // — Doğrulama issue'larının geri kalanı (TUTAR_TUTARSIZ / IPTAL / SAHIPLIK_TERS / OKUNMADI / STOPAJ_EKSIK / HESAP_KODU) —
       turetilen.push(...dogrulamaUyarilari(validation.issues));
@@ -14724,15 +14744,78 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   }
 
   /**
+   * PLAN/15 Faz 6 (2026-09-13) — KALEM TAMAMLAMA için belgenin PDF/görselini getirir (kalem-pdf.ts girdisi):
+   *   1) s3Key: ZIP içindeki original.pdf / görsel (Paraşüt: invoice.xml + original.pdf) ya da düz PDF/görsel,
+   *   2) s3Key yoksa fileUrl (Mihsap CDN / e-Arşiv presigned PDF / data-URL) — genel kural, yalnız Paraşüt değil.
+   * PDF → pdf-parse METNİ (Max-vision PDF okuyamaz; mevcut okuma yoluyla aynı); görsel → sharp ile temiz JPEG (mevcut
+   * yeniden-kodlama ile aynı). Dosya yok / taranmış PDF (metin yok) → null (kalemler XML'den boş kalır, okuma düşmez).
+   */
+  private async kalemDosyasiniGetir(tenantId: string, d: any): Promise<KalemPdfDosya | null> {
+    const dosyadan = async (buf: Buffer | null, media: string): Promise<KalemPdfDosya | null> => {
+      if (!buf || buf.length < 200) return null;
+      const isPdf = /pdf/i.test(media) || (buf[0] === 0x25 && buf[1] === 0x50 && buf[2] === 0x44 && buf[3] === 0x46);
+      if (isPdf) {
+        try {
+          const pdfParse = require('pdf-parse');
+          const r = await pdfParse(buf, { max: 4 });
+          const metin = String(r?.text || '').trim();
+          if (metin.length > 80) return { tur: 'pdf-metin', metin };
+          // taranmış/şifreli PDF → metin yok (mevcut okuma yolu da PDF'i görsele çevirmez; kalemler XML'den boş kalır)
+          this.logger.log(`[KALEM-PDF] belge=${d?.belgeNo || d?.id} PDF metni çıkmadı (taranmış/şifreli, ${buf.length}b) → kalem tamamlanamadı`);
+          return null;
+        } catch (e: any) {
+          this.logger.warn(`[KALEM-PDF] belge=${d?.belgeNo || d?.id} PDF ayrıştırılamadı: ${e?.message || e}`);
+          return null;
+        }
+      }
+      if (/^image\//i.test(media)) {
+        let img = buf;
+        let mt = media;
+        try {
+          const sharp = require('sharp');
+          img = await sharp(buf).rotate().flatten({ background: '#ffffff' }).resize({ width: 1500, withoutEnlargement: true }).jpeg({ quality: 75 }).toBuffer();
+          mt = 'image/jpeg';
+        } catch { /* sharp başarısızsa orijinali gönder */ }
+        return { tur: 'gorsel', base64: img.toString('base64'), mediaType: mt };
+      }
+      return null;
+    };
+    const s3Key = String(d?.s3Key || '');
+    if (s3Key && !s3Key.startsWith('earsiv-inline://')) {
+      const buffer = await this.storage.getBuffer(s3Key).catch(() => null);
+      if (!buffer?.length) return null;
+      const payload = await this.extractStoredInvoiceViewPayload(buffer, String(d?.mimeType || '')).catch(() => null);
+      if (payload?.kind === 'pdf') return dosyadan(payload.buffer, 'application/pdf');
+      if (payload?.kind === 'image') return dosyadan(payload.buffer, payload.mimeType);
+      return null; // yalnız XML/HTML var → kalem için dosya yok
+    }
+    // s3Key yok (Mihsap / e-Arşiv inline) → önizlemenin kullandığı kaynak (fileUrl) PDF/görsel veriyorsa onu kullan.
+    const fu: any = await this.fileUrl(tenantId, String(d?.id || '')).catch(() => null);
+    if (!fu || typeof fu.url !== 'string' || !fu.url) return null;
+    const dm = fu.url.match(/^data:([^;]+);base64,(.+)$/);
+    if (dm) return dosyadan(Buffer.from(dm[2], 'base64'), dm[1]);
+    if (/^https?:/i.test(fu.url)) {
+      const r = await fetch(fu.url).catch(() => null);
+      if (!r || !r.ok) return null;
+      return dosyadan(Buffer.from(await r.arrayBuffer()), String(fu.mimeType || r.headers.get('content-type') || ''));
+    }
+    return null;
+  }
+
+  /**
    * Bir belgeyi Max-vision (claudeTextViaMax görsel) ile OKUR — Azure/ücretli API GEREKMEZ,
    * Max aboneliğinden çalışır (Max-only kuralına uygun). KDV kırılımını çıkarıp fiş satırlarını üretir.
    * Kilitli KDV/OCR modülüne DOKUNMAZ. Tek belge (frontend sırayla çağırır → HTTP timeout yok).
    * ENTEGRATÖR (UBL XML) belge → görsel OKUNMAZ, içerik+yön+satıcı XML'den; yön ters dönmez.
+   * TEK İSTİSNA (PLAN/15 Faz 6): XML KALEMSİZSE (Paraşüt özeti) yalnız KALEMLER belgenin PDF/görselinden tamamlanır
+   *   (kalem-pdf.ts) — taraf/yön/tutar yine XML'den. FM_KALEM_PDF=off kapatır.
    */
   async aiReadDocument(tenantId: string, documentId: string) {
     const d = await (this.prisma as any).invoiceAccountingDocument.findFirst({
       where: { tenantId, id: documentId },
-      select: { id: true, status: true, taxpayerId: true, invoiceKind: true, documentType: true, totalAmount: true, vendorName: true, customerName: true, belgeNo: true, source: true, sourceRefId: true, mimeType: true, s3Key: true, ocrData: true },
+      // sellerVkn/buyerVkn (2026-09-13 doğrulayıcı bulgusu): öğrenme hızlı yolu + işletme hafızası bu okuma yolunda d.sellerVkn/buyerVkn
+      //   okuyordu ama alanlar SEÇİLMİYORDU (parsed.saticiVergiNo da yok, doğrusu saticiVkn) → VKN hep boş, hızlı yol hiç çalışmıyordu.
+      select: { id: true, status: true, taxpayerId: true, invoiceKind: true, documentType: true, totalAmount: true, vendorName: true, customerName: true, belgeNo: true, source: true, sourceRefId: true, mimeType: true, s3Key: true, ocrData: true, sellerVkn: true, buyerVkn: true },
     });
     if (!d) throw new NotFoundException('Belge bulunamadı');
     if (d.status === 'APPROVED') return { ok: false, reason: 'onaylı' };
@@ -14747,6 +14830,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   özel XSLT görselinde satıcı başlığı render OLMUYOR + "Fatura Tipi: SATIS" yazıyor → Max görseli
     //   okuyunca mükellefi satıcı sanıp YÖNÜ TERS çeviriyordu (alış→satış, cari boş). Kullanıcı yönergesi:
     //   "aktarılan faturalar zaten XML; AI ile oku YOK — sadece elle yüklenen JPEG/PDF OCR ile okunur."
+    //   İSTİSNA (PLAN/15 Faz 6, 2026-09-13): XML KALEMSİZSE yalnız kalemler PDF/görselden tamamlanır (aşağıda KALEM TAMAMLAMA).
     const provXml = await this.loadProviderUblXml(tenantId, d).catch(() => null);
     if (provXml) {
       imgBuf = Buffer.from(provXml, 'utf8');
@@ -14807,6 +14891,39 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           //   UBL ödenecek tutar aşağıda ocrData'ya Aktar yoluyla AYNI adlarla yazılır (ublOcrDataFields).
           _ubl: ubl,
         };
+      }
+    }
+    // ── KALEM TAMAMLAMA (PLAN/15 Faz 6, 2026-09-13): sağlayıcı XML'i var ama KALEM YOK (Paraşüt /e_invoices özeti gibi
+    //   sentetik/özet UBL) + belgenin PDF/görseli var → kalemler YALNIZ o dosyadan okunur (kalem-pdf.ts). CANLI BULGU:
+    //   65 Paraşüt alış faturasının 55'i kalemsizdi (readMode ubl-xml, ocrData.kalemler boş) → sınıflandırma içeriksiz.
+    //   "XML varsa görsel okunmaz" yönergesi KALEMLİ XML için geçerli kalır: taraflar/yön/no/tarih/matrah/KDV/toplam/
+    //   tevkifat/iade XML'den (preParsed) — dosya YALNIZ kalemler[] + kalem adları (sınıflandırma içeriği) verir; yön ters
+    //   dönemez. Kalem toplamı XML matrahından ±%5 saparsa kalemKaynak='pdf-tahmin' (revalidate bilgi notu). Genel kural
+    //   (yalnız Paraşüt değil). Kapatma (deploy gerektirmez): FM_KALEM_PDF=off → eski davranış.
+    let kalemKaynak: KalemKaynak | null = null;
+    let kalemPdfBilgi: { kalemToplam: number; xmlMatrah: number; sapmaYuzde: number | null; dosya: string } | null = null;
+    if (provXml && preParsed && kalemPdfGerekliMi(preParsed, true)) {
+      try {
+        const dosya = await this.kalemDosyasiniGetir(tenantId, d);
+        if (!dosya) {
+          this.logger.log(`[KALEM-PDF] belge=${d.belgeNo || documentId} XML kalemsiz ama PDF/görsel yok → kalem tamamlanamadı`);
+        } else {
+          const r = await kalemPdfTamamla(preParsed, dosya, (p) => claudeTextViaMax(p), {
+            yon: d.invoiceKind === 'SATIS' ? 'SATIS' : 'ALIS',
+            belgeNo: d.belgeNo || null,
+            modeller: [MAX_MODEL_CHEAP, undefined], // 1) hızlı model 2) kalem gelmezse güçlü model (varsayılan Sonnet)
+          });
+          if (r) {
+            kalemKaynak = r.kalemKaynak;
+            kalemPdfBilgi = { kalemToplam: r.kalemToplam, xmlMatrah: r.xmlMatrah, sapmaYuzde: r.sapmaYuzde, dosya: r.dosyaTuru };
+            this.logger.log(`[KALEM-PDF] belge=${d.belgeNo || documentId} ${r.kalemSayisi} kalem (${r.dosyaTuru}, model=${r.model || 'varsayılan'}) kaynak=${r.kalemKaynak} · kalem toplamı=${r.kalemToplam} XML matrahı=${r.xmlMatrah} sapma=${r.sapmaYuzde == null ? '-' : `%${r.sapmaYuzde}`}`);
+          } else {
+            this.logger.warn(`[KALEM-PDF] belge=${d.belgeNo || documentId} ${dosya.tur} okundu ama kalem çıkmadı → XML kalemsiz kaldı`);
+          }
+        }
+      } catch (e: any) {
+        // Kalem tamamlama HİÇBİR zaman okumayı düşürmez: hata → XML'den eski davranışla devam.
+        this.logger.warn(`[KALEM-PDF] belge=${d.belgeNo || documentId} kalem tamamlama hatası: ${e?.message || e}`);
       }
     }
     // PDF → metne çevir (pdf-parse); metni Max-vision text yoluna ver (vision PDF okuyamaz).
@@ -15103,7 +15220,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     if (parsed === preParsed && d.taxpayerId) {
       // TEMİZ içerik: HTML-HIZLI yolunda _htmlText zaten script/style atılmış + 8000 char (sınıflandırma
       //   AI'ı 23KB ham HTML gürültüsünde boğuluyordu → NULL/boş kategori). Önce onu kullan; yoksa eski yol.
-      const contentText = (parsed._htmlText || parsed._azureText || (imgBuf ? imgBuf.toString('utf8') : (html || ''))).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 9000);
+      // PLAN/15 Faz 6: kalemler PDF/görselden tamamlandıysa (kalem-pdf.ts) kalem adları içeriğin BAŞINA konur — kalemsiz
+      //   özet XML'in metninde içerik yoktur; sınıflandırma AI'ı kalemleri görsün (9000 karakter kesintisinden önce).
+      const contentText = [
+        parsed._kalemMetni ? `Fatura kalemleri (belgenin ${kalemPdfBilgi?.dosya === 'gorsel' ? 'görselinden' : 'PDF\'inden'} okundu): ${parsed._kalemMetni}` : '',
+        (parsed._htmlText || parsed._azureText || (imgBuf ? imgBuf.toString('utf8') : (html || ''))),
+      ].filter(Boolean).join('\n').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 9000);
       // KELİME KURALI (giderIcerikSinifla): e-Fatura/e-Arşiv'de kalemler AI'sız (XML/HTML) okunuyor; İÇERİK
       //   net bir gider türüne (nakliye/akaryakıt/elektrik/kira/kargo/müşavirlik…) uyuyorsa detHit dolar
       //   (yalnız HER kalem tanınan ve AYNI hint'i veren gider ise — HOMOJEN). İşletme defteri ve SATIŞ hariç.
@@ -15146,7 +15268,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       //   + mükellefler arası baskın ad; seçim ocrData.aiMatrahKodu/ogrenmeKaynak'a yazılır, rematch uygular.
       if (!detAtla && !isIsletmeMukellef && d.taxpayerId && planNameByCode.size) {
         try {
-          const vkn = String((d.invoiceKind === 'SATIS' ? d.buyerVkn : d.sellerVkn) || parsed.saticiVergiNo || parsed.aliciVergiNo || '').replace(/\D/g, '');
+          const vkn = String((d.invoiceKind === 'SATIS' ? (d.buyerVkn || parsed.aliciVkn) : (d.sellerVkn || parsed.saticiVkn)) || '').replace(/\D/g, '');
           const imza = VendorMemoryService.buildIcerikImza(Array.isArray(parsed.kalemler) ? parsed.kalemler.map((k: any) => k?.ad) : []);
           if (vkn && imza) {
             const hyYon: 'ALIS' | 'SATIS' = d.invoiceKind === 'SATIS' ? 'SATIS' : 'ALIS';
@@ -15200,6 +15322,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         //   boş". Sınıflandırma AI'ı hesap planından kod seçer; mevcut akış (aiMatrahKodu) onu plana göre doğrular.
         if (!parsed.matrahHesapKodu && (c as any).matrahHesapKodu) parsed.matrahHesapKodu = (c as any).matrahHesapKodu;
       }
+      // PLAN/15 Faz 6: sınıflandırma gider türü vermediyse PDF/görsel kalem okumasının gider türü ipucu YEDEK olarak
+      //   kullanılır (yalnız ALIŞ; karar verici sınıflandırma AI'ı olmaya devam eder — ipucu onu EZMEZ).
+      if (!parsed.giderTuru && parsed._pdfGiderTuru && d.invoiceKind !== 'SATIS') parsed.giderTuru = String(parsed._pdfGiderTuru).slice(0, 40);
     }
 
     let breakdown = (Array.isArray(parsed.kdv) ? parsed.kdv : [])
@@ -15392,7 +15517,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       // ÖĞRENİLMİŞ İŞLETME SINIFI (kullanıcı-teyitli, eşikli) AI tahmininden ÖNCE gelir:
       //   müşavir bu satıcının kayıt türünü bir kez düzelttiyse sonraki faturalar hafızadan sınıflanır.
       if (isIsletmeMukellef && d.taxpayerId) {
-        const islVkn = String((kind === 'ALIS' ? d.sellerVkn : d.buyerVkn) || '').replace(/\D/g, '');
+        const islVkn = String((kind === 'ALIS' ? (d.sellerVkn || parsed.saticiVkn) : (d.buyerVkn || parsed.aliciVkn)) || '').replace(/\D/g, '');
         const islMemImza = VendorMemoryService.buildIcerikImza(Array.isArray(parsed.kalemler) ? parsed.kalemler.map((k: any) => k?.ad) : []);
         const islMem = islVkn ? await this.pickIsletmeMemory(tenantId, d.taxpayerId, islVkn, islMemImza, kind).catch(() => null) : null;
         if (islMem) {
@@ -15490,6 +15615,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
               // GÖREV B (2026-09-13) ölçüm izi: hızlı yol seçtiyse {kaynak, kural, kod, neden}; Max çalıştıysa null (bayat iz kalmasın).
               ogrenmeKaynak: ogrenmeSecimiOkuma ? { kaynak: ogrenmeSecimiOkuma.kaynak, kural: ogrenmeSecimiOkuma.kural, kod: ogrenmeSecimiOkuma.kod, guven: ogrenmeSecimiOkuma.guven, neden: ogrenmeSecimiOkuma.neden, tarih: new Date().toISOString() } : null,
               ...(ogrenmeSecimiOkuma ? { aiMatrahGuven: 'yuksek' } : {}),
+              // PLAN/15 Faz 6: kalemler PDF/görselden tamamlandıysa kaynağı yaz ('pdf' | 'pdf-tahmin'); tamamlanmadıysa
+              //   bayat iz kalmasın (undefined → alan silinir). Güven bu belgede en fazla 'orta' (öğrenilmiş 'yuksek' dahil).
+              kalemKaynak: kalemKaynak || undefined,
+              kalemPdfBilgi: kalemKaynak && kalemPdfBilgi ? kalemPdfBilgi : undefined,
+              ...(kalemKaynak ? { aiMatrahGuven: aiMatrahGuvenTavani(ogrenmeSecimiOkuma ? 'yuksek' : (d.ocrData as any)?.aiMatrahGuven, kalemKaynak) } : {}),
               kalemler: Array.isArray(parsed.kalemler) ? parsed.kalemler.slice(0, 30).map((k: any) => { const h = typeof k?.hesap === 'string' ? String(k.hesap).trim() : ''; return { ad: String(k?.ad || '').slice(0, 80), tutar: Number(k?.tutar) || 0, oran: Number(k?.oran) || 0, ...(h && planLeafSet.has(h) ? { hesap: h } : {}) }; }).filter((k: any) => k.ad) : undefined, ...(islSinifAi ? { isletme: islSinifAi } : {}), ...((parsed as any)?._ubl ? ublOcrDataFields((parsed as any)._ubl) : clearUblOnlyOcrFields()), isReturn: isReturnDet, kalemSplit: kalemSplitApplied || undefined, tevkifatHint: parsed.tevkifat === true || tevkifatOrani > 0 || /tevkifat/i.test(String(html || '')), tevkifatOrani: tevkifatOrani || 0, tevkifatKdv: tevkKdv || 0, ...(smmStopaj > 0 ? { stopajTutari: smmStopaj } : {}), engine: parsed._azure ? 'azure-read' : (parsed === preParsed ? 'ubl-xml' : 'max-vision'),
             readMode: parsed === preParsed ? 'ubl-xml' : (isImage ? 'image' : /pdf/i.test(imgMedia) ? 'pdf-text' : /xml/i.test(imgMedia) ? 'xml-text' : 'html'),
             ...(!preParsed && imgBuf && /xml/i.test(imgMedia) ? { xmlHead: imgBuf.toString('utf8').slice(0, 220).replace(/\s+/g, ' ') } : {}),
