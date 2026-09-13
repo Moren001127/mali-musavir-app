@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { pdfMetniCikar } from '../common/pdf-metin';
 import * as JSZip from 'jszip';
 import { XMLParser } from 'fast-xml-parser';
 
@@ -261,9 +262,8 @@ export class EarsivZipParserService {
     if (!cache.has(cacheKey)) {
       cache.set(cacheKey, (async () => {
         try {
-          const pdfParse = require('pdf-parse');
-          const result = await pdfParse(buffer, { max: 2 });
-          return String(result?.text || '');
+          // pdf-parse v2 sınıf API'si (2026-09-13: eski require(...)(buf) 'not a function' → metin hep boştu)
+          return await pdfMetniCikar(buffer, { maxSayfa: 2 });
         } catch {
           return '';
         }

@@ -52,6 +52,7 @@ import { MaliYorumModule } from './mali-yorum/mali-yorum.module';
 import { AkilliBildirimModule } from './akilli-bildirim/akilli-bildirim.module';
 import { ButceModule } from './butce/butce.module';
 import { EkipModule } from './ekip/ekip.module';
+import { PushModule } from './push/push.module';
 import { ReminderCron } from './schedule/reminder.cron';
 import { EvrakMesajService } from './schedule/evrak-mesaj.service';
 import { EvrakOtomasyonController } from './schedule/evrak-otomasyon.controller';
@@ -114,6 +115,7 @@ import { InvoiceOverdueCron } from './schedule/invoice-overdue.cron';
     AkilliBildirimModule,
     ButceModule,
     EkipModule,
+    PushModule,
   ],
   controllers: [EvrakOtomasyonController],
   providers: [

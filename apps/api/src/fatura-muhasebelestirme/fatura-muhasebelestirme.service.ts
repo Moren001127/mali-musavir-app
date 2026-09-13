@@ -3,6 +3,7 @@ import { createHash, randomUUID } from 'crypto';
 import { Prisma } from '@prisma/client';
 import * as JSZip from 'jszip';
 import { XMLParser } from 'fast-xml-parser';
+import { pdfMetniCikar } from '../common/pdf-metin'; // pdf-parse v2 sınıf API'si (2026-09-13: eski require(...)(buf) kırıktı)
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { OcrService, OcrResult } from '../kdv-control/ocr';
@@ -3639,7 +3640,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       // SATICI ADINDAN TAHMİN (2026-09-13): GİB e-Arşiv alış belgelerinin bir kısmında içerik hiç yok (17 belge "KDV kırılımı
       //   okunamadı", 596 belge içeriksiz) → eskiden hiç sınıflanmazdı. Kalem yoksa yalnız satıcı ünvanından sınıflandırılır;
       //   sonuç DÜŞÜK GÜVEN + ocrData.icerikYok=true (ekranda kırmızı nokta; Muzaffer Bey belgeyi açıp doğrular).
-      if (!kalemAd && taraf.length >= 6) saticiAdindanTahmin = true;
+      if (!kalemAd && taraf.length >= 6) {
+        saticiAdindanTahmin = true;
+        // 2026-09-13 canlı bulgu: yalnız "Satıcı: A101 …" içerikli 26 belgede model boş döndü (kalem yok → sınıflandırmadı).
+        //   Modele açıkça söyle: kalem yok, satıcının faaliyet alanından EN OLASI gider türü/hesabı düşük güvenle öner, boş bırakma.
+        content += '\n(Not: fatura kalemleri okunamadı; yalnız satıcı ünvanı biliniyor. Satıcının faaliyet alanından en olası gider türünü ve hesabı DÜŞÜK güvenle öner; boş bırakma. Market/gıda perakendecisi → gıda/mutfak sarf; akaryakıt → akaryakıt; telekom → haberleşme.)';
+      }
     }
     if (!content || content.length < 20) return;
     let mukellefBilgi = '';
@@ -14756,9 +14762,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const isPdf = /pdf/i.test(media) || (buf[0] === 0x25 && buf[1] === 0x50 && buf[2] === 0x44 && buf[3] === 0x46);
       if (isPdf) {
         try {
-          const pdfParse = require('pdf-parse');
-          const r = await pdfParse(buf, { max: 4 });
-          const metin = String(r?.text || '').trim();
+          const metin = (await pdfMetniCikar(buf, { maxSayfa: 4 })).trim();
           if (metin.length > 80) return { tur: 'pdf-metin', metin };
           // taranmış/şifreli PDF → metin yok (mevcut okuma yolu da PDF'i görsele çevirmez; kalemler XML'den boş kalır)
           this.logger.log(`[KALEM-PDF] belge=${d?.belgeNo || d?.id} PDF metni çıkmadı (taranmış/şifreli, ${buf.length}b) → kalem tamamlanamadı`);
@@ -14929,9 +14933,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // PDF → metne çevir (pdf-parse); metni Max-vision text yoluna ver (vision PDF okuyamaz).
     if (!preParsed && !isImage && !(html && html.length > 80) && imgBuf && /pdf/i.test(imgMedia)) {
       try {
-        const pdfParse = require('pdf-parse');
-        const r = await pdfParse(imgBuf, { max: 4 });
-        if (r?.text && String(r.text).trim().length > 80) html = String(r.text);
+        const pdfMetin = await pdfMetniCikar(imgBuf, { maxSayfa: 4 });
+        if (pdfMetin.trim().length > 80) html = pdfMetin;
       } catch { /* taranmış/şifreli PDF — aşağıda elenir */ }
     }
     // XML ama UBL PARSE BAŞARISIZ → XML'i düz METNE çevirip Max-vision'a ver (yine de okunsun).

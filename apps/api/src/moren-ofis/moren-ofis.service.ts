@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { pdfMetniCikar } from '../common/pdf-metin';
 import { OpenRouterAdapter, ChatMessage } from './providers/openrouter.adapter';
 import { PERSONAS, AgentId, suggestAgents } from './agents/personas';
 import { PrismaService } from '../prisma/prisma.service';
@@ -191,14 +192,12 @@ export class MorenOfisService {
         extracted = file.buffer.toString('utf8').slice(0, 50_000);
         method = 'text';
       } else if (file.mimeType === 'application/pdf' || /\.pdf$/i.test(file.originalName)) {
-        const pdfParse = require('pdf-parse');
-        const result = await pdfParse(file.buffer, { max: 30 });
-        extracted = (result?.text || '').trim();
+        extracted = (await pdfMetniCikar(file.buffer, { maxSayfa: 30 })).trim(); // pdf-parse v2 (2026-09-13 düzeltme)
         if (!extracted) {
           extracted = '[PDF metni boş — taranmış görsel PDF olabilir, PNG olarak yükle]';
           method = 'pdf-empty';
         } else {
-          method = `pdf (${result?.numpages || '?'} sayfa)`;
+          method = 'pdf';
         }
       } else {
         extracted = `[Bilinmeyen tip: ${file.mimeType}]`;
@@ -253,14 +252,12 @@ export class MorenOfisService {
       } else if (file.mimeType === 'application/pdf' || /\.pdf$/i.test(file.originalName)) {
         // PDF metnini çıkar — pdf-parse text-only layer'ı okuyabilir.
         // Taranmış (resim) PDF'ler boş metin döner — bu durumda kullanıcıya not.
-        const pdfParse = require('pdf-parse');
-        const result = await pdfParse(file.buffer, { max: 30 }); // max 30 sayfa
-        extracted = (result?.text || '').trim();
+        extracted = (await pdfMetniCikar(file.buffer, { maxSayfa: 30 })).trim(); // pdf-parse v2 (2026-09-13 düzeltme), en çok 30 sayfa
         if (!extracted) {
           extracted = '[PDF metni boş — muhtemelen taranmış görsel PDF. Sayfayı PNG olarak yükle OCR yapayım.]';
           extractMethod = 'pdf-empty';
         } else {
-          extractMethod = `pdf (${result?.numpages || '?'} sayfa)`;
+          extractMethod = 'pdf';
         }
       } else {
         extracted = `[Bilinmeyen dosya tipi: ${file.mimeType}]`;

@@ -3962,3 +3962,30 @@ model TahsilatSusturma {
   @@index([tenantId, taxpayerId])
   @@index([tenantId, bitis])
 }
+
+/// ANLIK BİLDİRİM (push) — mobil uygulamanın Expo push belirteçleri (2026-09-13).
+///
+/// Bir satır = bir cihaz. userId (müşavir/personel) YA DA taxpayerId (mükellef portalı) dolu olur.
+/// İlişki (FK) bilerek yok: mevcut modellere dokunulmaz; kullanıcı/mükellef silinirse satır
+/// gönderimde hedefsiz kalır, zararsız. Expo "DeviceNotRegistered" derse disabledAt dolar.
+/// Gönderim: apps/api/src/push/push.service.ts (exp.host, ücretsiz Expo push servisi).
+model PushToken {
+  id         String    @id @default(cuid())
+  tenantId   String
+  userId     String?
+  taxpayerId String?
+  /// Expo push belirteci: ExponentPushToken[xxxx] — cihaz başına tek, sahibi değişirse satır el değiştirir
+  token      String    @unique
+  /// ios | android
+  platform   String
+  /// adv (müşavir) | tax (mükellef)
+  persona    String
+  deviceName String?
+  createdAt  DateTime  @default(now())
+  lastSeenAt DateTime  @default(now())
+  disabledAt DateTime?
+
+  @@index([tenantId, userId])
+  @@index([tenantId, taxpayerId])
+  @@map("push_tokens")
+}
