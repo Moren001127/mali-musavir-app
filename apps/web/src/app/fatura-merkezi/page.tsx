@@ -883,6 +883,12 @@ function KaynakRozet({ kaynak }: { kaynak?: string | null }) {
   return <span className="kaynak-nokta" title={`Hesap kodu kaynağı: ${r.t}`} style={{ background: r.fg }} />;
 }
 
+// PLAN/15 Faz 3 FE (2026-09-13) — İşletme ALIŞ stopaj türü seçenekleri. Arka uç ocrData.isletme.stopajKod'a
+//   022 (e-SMM / serbest meslek) ya da 041 (işyeri kirası) yazar; boş olabilir. Listede olmayan kod gelirse ekranda ayrıca gösterilir.
+const ISL_STOPAJ_SECENEK: Array<{ value: string; label: string }> = [
+  { value: '', label: '—' }, { value: '022', label: '022 Serbest Meslek' }, { value: '041', label: '041 Kira' },
+];
+
 function isletmeRowReady(kind: 'ALIS' | 'SATIS', row: any): boolean {
   const kt = String(row?.kayitTuruKod || '').trim();
   if (!kt) return false;
@@ -1221,7 +1227,7 @@ export default function FaturaMerkeziPage() {
             {screen === 'efaturaSorgu' && <ScreenSorgu taxpayerId={taxpayerId} period={period} source="efatura" onOpenEntegrator={() => go('entegrator')} />}
             {screen === 'mukellefler' && <ScreenMukellefler taxpayers={taxpayers} period={period} onOpen={(id) => { setTaxpayerId(id); setScreen('faturalar'); }} />}
             {screen === 'kurallar' && <ScreenKurallar taxpayerId={taxpayerId} period={period} />}
-            {screen === 'muhasebe' && <ScreenMuhasebe taxpayerId={taxpayerId} period={period} isIsletme={(() => { const t = taxpayers.find((x) => x.id === taxpayerId); return /i[şs]letme|defter.?beyan|basit/i.test(`${t?.defterTuru || ''} ${(t as any)?.mihsapDefterTuru || ''}`); })()} taxpayerNace={(taxpayers.find((t) => t.id === taxpayerId) as any)?.naceKodu || ''} taxpayerFaaliyet={(taxpayers.find((t) => t.id === taxpayerId) as any)?.faaliyetAciklama || ''} taxpayerAd={(() => { const t = taxpayers.find((x) => x.id === taxpayerId); return t ? taxpayerLabel(t) : ''; })()} full={editorFull} onToggleFull={() => setEditorFull((v) => !v)} />}
+            {screen === 'muhasebe' && <ScreenMuhasebe taxpayerId={taxpayerId} period={period} isIsletme={(() => { const t = taxpayers.find((x) => x.id === taxpayerId); return /i[şs]letme|defter.?beyan|basit/i.test(`${t?.defterTuru || ''} ${(t as any)?.mihsapDefterTuru || ''}`); })()} taxpayerNace={(taxpayers.find((t) => t.id === taxpayerId) as any)?.naceKodu || ''} taxpayerFaaliyet={(taxpayers.find((t) => t.id === taxpayerId) as any)?.faaliyetAciklama || ''} taxpayerAd={(() => { const t = taxpayers.find((x) => x.id === taxpayerId); return t ? taxpayerLabel(t) : ''; })()} full={editorFull} onToggleFull={() => setEditorFull((v) => !v)} onOpenMukellefler={() => setScreen('mukellefler')} />}
             {screen === 'aktarilanlar' && <ScreenAktarilanlar taxpayerId={taxpayerId} period={period} mode="bekleyen" isIsletme={(() => { const t = taxpayers.find((x) => x.id === taxpayerId); return /i[şs]letme|defter.?beyan|basit/i.test(`${t?.defterTuru || ''} ${(t as any)?.mihsapDefterTuru || ''}`); })()} />}
             {screen === 'arsiv' && <ScreenAktarilanlar taxpayerId={taxpayerId} period={period} mode="arsiv" isIsletme={(() => { const t = taxpayers.find((x) => x.id === taxpayerId); return /i[şs]letme|defter.?beyan|basit/i.test(`${t?.defterTuru || ''} ${(t as any)?.mihsapDefterTuru || ''}`); })()} />}
             {screen === 'entegrator' && <ScreenEntegrator taxpayerId={taxpayerId} period={period} />}
@@ -1365,6 +1371,26 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
     gfBilgi.forEach((v) => { s[v.kume]++; });
     return s;
   }, [gfBilgi]);
+  // PLAN/15 Faz 3 FE — "AI önerisi uygulanan: %X" ölçütü: matrah satırı DOLU belgeler içinde kaynağı KULLANICI olmayan
+  //   (öğrenilmiş/AI/kural/varsayılan — yani öneri olduğu gibi kalan) belgelerin payı. lines[] yoksa (işletme defteri) dolu=0 → çip gizli.
+  const gfOran = useMemo(() => {
+    const s = { dolu: 0, elle: 0, ogren: 0, ai: 0, vars: 0, kural: 0, diger: 0 };
+    for (const d of docsAll) {
+      const lines: any[] = Array.isArray(d?.lines) ? d.lines : [];
+      const l = lines.find((x) => String(x?.group || '') === 'matrah' && x?.accountCode);
+      if (!l) continue;
+      s.dolu++;
+      const k = String(l.kaynak || '').toUpperCase();
+      if (k === 'KULLANICI') s.elle++;
+      else if (k === 'HAFIZA' || k === 'HAFIZA_AD') s.ogren++;
+      else if (k === 'AI') s.ai++;
+      else if (k === 'VARSAYILAN') s.vars++;
+      else if (k === 'KURAL' || k === 'ISIM' || k === 'VKN') s.kural++;
+      else s.diger++;
+    }
+    const oto = s.dolu - s.elle;
+    return { ...s, oto, yuzde: s.dolu ? Math.round((oto / s.dolu) * 100) : 0 };
+  }, [docsAll]);
   // Sütun sıralama (başlığa tıkla): güven · tarih · tutar · firma. Varsayılan = tarih (eskiden yeniye, mevcut davranış).
   const [sortKey, setSortKey] = useState<'guven' | 'tarih' | 'tutar' | 'firma'>('tarih');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
@@ -1711,6 +1737,12 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
           <div className="gf-strip-h">
             <span className="gf-strip-t">Ne yapmam gerekiyor?</span>
             <span className="gf-strip-s">{docsAll.length} belge · {gorevF ? 'küme süzgeci açık — tekrar tıkla kaldır' : 'kümeye tıkla, liste süzülsün'}</span>
+            {/* PLAN/15 Faz 3 FE — ölçüt çipi (sağ uç): matrah satırı dolu belgelerde öneri olduğu gibi kalanların payı. */}
+            {gfOran.dolu > 0 && (
+              <span className="gf-oran-cip" title={`Matrahı dolu ${gfOran.dolu} belge — Muzaffer Bey elle düzeltti: ${gfOran.elle} · Öğrenilmişten: ${gfOran.ogren} · AI: ${gfOran.ai} · Varsayılan: ${gfOran.vars}${gfOran.kural ? ` · Kural/isim: ${gfOran.kural}` : ''}${gfOran.diger ? ` · Kaynağı belirsiz: ${gfOran.diger}` : ''}`}>
+                AI önerisi uygulanan: <b>%{gfOran.yuzde}</b>
+              </span>
+            )}
           </div>
           <div className="gf-strip-row">
             <div className="filttiles gf-tiles">
@@ -3958,7 +3990,7 @@ function InlineBelge({ id }: { id: string }) {
 }
 
 /* ===================== EKRAN: MUHASEBELEŞTİR ===================== */
-function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = '', taxpayerFaaliyet = '', taxpayerAd = '', full = false, onToggleFull }: { taxpayerId: string; period: string; isIsletme?: boolean; taxpayerNace?: string; taxpayerFaaliyet?: string; taxpayerAd?: string; full?: boolean; onToggleFull?: () => void }) {
+function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = '', taxpayerFaaliyet = '', taxpayerAd = '', full = false, onToggleFull, onOpenMukellefler }: { taxpayerId: string; period: string; isIsletme?: boolean; taxpayerNace?: string; taxpayerFaaliyet?: string; taxpayerAd?: string; full?: boolean; onToggleFull?: () => void; onOpenMukellefler?: () => void }) {
   const qc = useQueryClient();
   const docsQ = useDocuments(taxpayerId, period);
   // İSABET PANOSU — dokunmasız işleme oranı (dönem bazlı; sayılar backend'te hazırlanır).
@@ -4095,6 +4127,9 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
           alisSatisKod: isl.alisSatisKod, alisSatisAd: ref.alisSatisTuru.find((x) => x.kod === isl.alisSatisKod)?.ad,
           islemTuruKod: isl.islemTuruKod, islemTuruAd: ISLETME_ISLEM_TURU.find((x) => x.kod === isl.islemTuruKod)?.ad,
           plakaNo: isl.plakaNo || '', kayitTarihi: isl.kayitTarihi || '', satirlar,
+          // PLAN/15 Faz 3 FE — stopaj türü (022 e-SMM / 041 kira; boş olabilir). PATCH isletme'yi bütünüyle yazar,
+          //   buraya girmezse arka ucun bulduğu kod kaydetmede silinirdi.
+          stopajKod: isl.stopajKod || '',
           // geriye uyum (tek-satır okuyan eski yollar için ilk satır + toplamlar)
           kayitTuruKod: s0.kayitTuruKod, kayitTuruAd: s0.kayitTuruAd, kayitAltKod: s0.kayitAltKod, kayitAltAd: s0.kayitAltAd,
           kdvOranKod: s0.kdvOranKod, matrah: islTotMatrah, kdvTutar: islTotKdv, krediliTutar: s0.krediliTutar, donem: s0.donem,
@@ -4262,6 +4297,8 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
       alisSatisKod: saved.alisSatisKod || '1',
       islemTuruKod: saved.islemTuruKod || '1100',
       plakaNo: saved.plakaNo || '',
+      // PLAN/15 Faz 3 FE — stopaj türü (022/041) arka uçtan gelir; kullanıcı seçiciden değiştirebilir.
+      stopajKod: saved.stopajKod || '',
       kayitTarihi: saved.kayitTarihi || (selDoc.faturaTarihi ? String(selDoc.faturaTarihi).slice(0, 10) : ''),
       satirlar,
     });
@@ -4304,11 +4341,31 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
     if (!isIsletme) return;
     const ktKod = kind === 'SATIS' ? '2' : '4';
     const ktAd = isletmeRef(kind).kayitTuru.find((x) => x.kod === ktKod)?.ad;
-    setIsl((s: any) => ({ ...s, belgeTuruKod: (() => { const dt = normalizeDocumentType(selDoc?.documentType || selDoc?.ocrData?.belgeTuru || selDoc?.ocrData?.documentType); return dt ? defaultBelgeTuruKod(dt, kind) : ''; })(), alisSatisKod: '1', plakaNo: kind === 'SATIS' ? '' : s.plakaNo, satirlar: (s.satirlar || []).map((x: any) => ({ ...x, kayitTuruKod: ktKod, kayitAltKod: defaultKayitAltKod(kind, ktKod, ktAd) })) }));
+    setIsl((s: any) => ({ ...s, belgeTuruKod: (() => { const dt = normalizeDocumentType(selDoc?.documentType || selDoc?.ocrData?.belgeTuru || selDoc?.ocrData?.documentType); return dt ? defaultBelgeTuruKod(dt, kind) : ''; })(), alisSatisKod: '1', plakaNo: kind === 'SATIS' ? '' : s.plakaNo, stopajKod: kind === 'SATIS' ? '' : (s.stopajKod || ''), satirlar: (s.satirlar || []).map((x: any) => ({ ...x, kayitTuruKod: ktKod, kayitAltKod: defaultKayitAltKod(kind, ktKod, ktAd) })) }));
   };
   // İşletme: aktarıma çıkan değerlerin özeti (alt çubuk).
   const islBelgeAd = islRef.belgeTuru.find((x) => x.kod === isl.belgeTuruKod)?.ad || '—';
   const islKayitAd = (islSatirlar.length > 1 ? `${islSatirlar.length} satır` : (islRef.kayitTuru.find((x) => x.kod === islSatirlar[0]?.kayitTuruKod)?.ad || '—'));
+  // ── PLAN/15 Faz 3 FE (2026-09-13) — arka ucun yeni işletme alanları ──
+  // "İncele" gerekçesi: tür seçilemeyince arka uç ocrData.isletme.neden yazar ve kayitTuruKod BOŞ kalır (form '4'/'2' ile başlar
+  //   ama bu kullanıcı seçimi değildir). Kayıt türü kaydedilmişse gerekçe gösterilmez.
+  const islSaved: any = (isIsletme && selDoc?.ocrData?.isletme) || {};
+  const islNeden = String(islSaved.neden || '').trim();
+  const islKayitTuruBos = !String(islSaved.kayitTuruKod || islSaved.satirlar?.[0]?.kayitTuruKod || '').trim();
+  const islNedenGoster = isIsletme && !!islNeden && islKayitTuruBos;
+  const islFaaliyetTanimsiz = /faaliyet\S*\s+tan[ıi]ms[ıi]z/i.test(islNeden) || (!String(taxpayerFaaliyet || '').trim() && !String(taxpayerNace || '').trim());
+  // Stopaj seçenekleri: listede olmayan kod geldiyse (ileride başka tür) seçicide ayrıca göster.
+  const islStopajSecenek = isl.stopajKod && !ISL_STOPAJ_SECENEK.some((x) => x.value === isl.stopajKod)
+    ? [...ISL_STOPAJ_SECENEK, { value: String(isl.stopajKod), label: `${isl.stopajKod} (diğer)` }] : ISL_STOPAJ_SECENEK;
+  // KKEG şüphesi (uyarı katmanı KKEG_SUPHESI) → satırda "KKEG?" çipi; tıklanınca üstteki Uyarılar kutusuna kaydırır (kapalıysa açar).
+  const kkegUyari = isIsletme ? uyariListeFE((selDoc?.ocrData as any)?.uyarilar).find((u) => u.kod === 'KKEG_SUPHESI') : undefined;
+  const fispaneRef = useRef<HTMLDivElement>(null);
+  const kkegOdakla = () => {
+    const kutu = fispaneRef.current?.querySelector<HTMLElement>('.uykutu');
+    if (!kutu) return;
+    if (kutu.classList.contains('kapali')) kutu.querySelector<HTMLButtonElement>('.uykutu-h')?.click();
+    setTimeout(() => kutu.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
+  };
 
   // Gerçek hesap kodunu elle ver — o satıcının tüm faturalarına uygulanır + öğrenilir (770 tahmini yerine)
   // Talimat (gece otomatik) — entegratör kayıtlarından türetilir
@@ -4416,7 +4473,7 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
               <>
                 <div className="fiseditor">
                 <div className="belgepane"><InlineBelge id={selDoc.id} /></div>
-                <div className="fispane">
+                <div className="fispane" ref={fispaneRef}>
                 <div className="ph">
                   <span className="navbtns">
                     <button type="button" className="navb" disabled={navIdx <= 0} onClick={() => goNav(-1)} title="Önceki belge (←)">‹</button>
@@ -4448,6 +4505,15 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                 <div className="twrap">
                   {isIsletme ? (
                     <div className="islforms">
+                      {/* PLAN/15 Faz 3 FE — kayıt türü boşken "İncele" gerekçesi (ince amber satır). Faaliyet tanımsızsa Mükellefler kısayolu. */}
+                      {islNedenGoster && (
+                        <div className="isl-neden" title={islNeden}>
+                          <span><b>Neden boş:</b> {islNeden}</span>
+                          {islFaaliyetTanimsiz ? (onOpenMukellefler
+                            ? <button type="button" className="isl-neden-link" onClick={onOpenMukellefler}>Mükellefler ekranından faaliyeti tanımlayın</button>
+                            : <em>Mükellefler ekranından faaliyeti tanımlayın</em>) : null}
+                        </div>
+                      )}
                       {/* ÜST BİLGİ — kompakt (.islgrid: kartsız, sıkı; ekrana sığar) */}
                       <div className="islgrid" style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>
                         <div className="dm"><span className="dml">Fatura Türü</span>
@@ -4464,9 +4530,13 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                         <div className="dm"><span className="dml">Evrak Tarihi</span><input className="dmi" type="date" value={meta.faturaTarihi || ''} onChange={(e) => setMeta({ ...meta, faturaTarihi: e.target.value })} /></div>
                         <div className="dm"><span className="dml">Kayıt Tarihi</span><input className="dmi" type="date" value={isl.kayitTarihi || meta.faturaTarihi || ''} onChange={(e) => setIslF('kayitTarihi', e.target.value)} /></div>
                       </div>
-                      <div className="islgrid" style={{ gridTemplateColumns: islRef.plaka ? 'repeat(2, minmax(0, 1fr))' : '1fr' }}>
+                      {/* PLAN/15 Faz 3 FE — Plaka arka uçta otomatik dolabilir (metinden); Stopaj (022/041) seçicisi plakanın yanında (yalnız gider). */}
+                      <div className="islgrid" style={{ gridTemplateColumns: islRef.plaka ? 'repeat(3, minmax(0, 1fr))' : '1fr' }}>
                         <div className="dm"><span className="dml">Evrak No</span><input className="dmi" value={meta.belgeNo || ''} onChange={(e) => setMeta({ ...meta, belgeNo: e.target.value })} /></div>
-                        {islRef.plaka && (<div className="dm"><span className="dml">Plaka No</span><input className="dmi" value={isl.plakaNo || ''} placeholder="34 ABC 123" onChange={(e) => setIslF('plakaNo', e.target.value)} /></div>)}
+                        {islRef.plaka && (<div className="dm"><span className="dml">Plaka No</span><input className="dmi" value={isl.plakaNo || ''} placeholder="34 ABC 123 (otomatik bulunabilir)" onChange={(e) => setIslF('plakaNo', e.target.value)} /></div>)}
+                        {islRef.plaka && (<div className="dm"><span className="dml">Stopaj</span>
+                          <PlainSelect value={isl.stopajKod || ''} onChange={(v) => setIslF('stopajKod', v)} options={islStopajSecenek} />
+                        </div>)}
                       </div>
                       <div className="islgrid" style={{ gridTemplateColumns: '1fr' }}>
                         <div className="dm"><span className="dml">{String(meta.invoiceKind).includes('SATIS') ? 'Alıcı TCKN/VKN' : 'Satıcı TCKN/VKN'}</span><input className="dmi" value={meta.vkn || ''} onChange={(e) => setMeta({ ...meta, vkn: e.target.value })} /></div>
@@ -4491,7 +4561,10 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                               <div className="dm"><span className="dml">Kayıt Türü</span>
                                 <PlainSelect value={st.kayitTuruKod || ''} onChange={(v) => setSatir(i, { kayitTuruKod: v, kayitAltKod: '' })} options={islRef.kayitTuru.map((x) => ({ value: x.kod, label: x.ad }))} />
                               </div>
-                              <div className="dm"><span className="dml">K. Alt Türü</span>
+                              <div className="dm"><span className="dml">K. Alt Türü
+                                {/* PLAN/15 Faz 3 FE — KKEG şüphesi çipi: tıkla → üstteki Uyarılar kutusuna kaydır */}
+                                {kkegUyari ? <button type="button" className="isl-kkeg" title={kkegUyari.aciklama} onClick={kkegOdakla}>KKEG?</button> : null}
+                              </span>
                                 <PlainSelect value={st.kayitAltKod || ''} onChange={(v) => setSatir(i, { kayitAltKod: v })} options={[{ value: '', label: '—' }, ...altList.map((x) => ({ value: x.kod, label: x.ad }))]} />
                               </div>
                             </div>
@@ -8980,4 +9053,18 @@ const CSS = `
 #fm-root .screen-muhasebe .muhmain .balance .bnote{font-size:11.5px;font-weight:500;color:#64748b}
 #fm-root .screen-muhasebe .muhmain .wactions .btn{height:32px;border-radius:8px;font-size:12.5px;font-weight:700}
 /* ═══════════ /MUHASEBE FİŞ CİLA v3 ═══════════ */
+/* === PLAN15-F3-FE === */
+/* İşletme editörü: kayıt türü boşken "İncele" gerekçesi — ince amber satır (12px), formun üstünde */
+#fm-root .isl-neden{display:flex;align-items:center;flex-wrap:wrap;gap:3px 10px;margin:0 0 8px;padding:5px 9px;border:1px solid #f4d19b;border-left:3px solid #b45309;border-radius:7px;background:#fdf2e0;color:#b45309;font-size:12px;font-weight:600;line-height:1.35}
+#fm-root .isl-neden b{font-weight:800}
+#fm-root .isl-neden em{font-style:normal;color:#92400e}
+#fm-root .isl-neden-link{border:0;background:transparent;padding:0;color:#b45309;font:inherit;font-weight:800;text-decoration:underline;text-underline-offset:2px;cursor:pointer;white-space:nowrap}
+#fm-root .isl-neden-link:hover{color:#92400e}
+/* İşletme satırı: "KKEG?" çipi (alt tür etiketinin yanında; tıkla → Uyarılar kutusuna kaydır) */
+#fm-root .islgrid .dml .isl-kkeg{display:inline-flex;align-items:center;height:15px;margin-left:6px;padding:0 6px;border-radius:999px;border:1px solid #f4d19b;background:#fff5e6;color:#b45309;font-family:inherit;font-size:10px;font-weight:800;line-height:1;cursor:pointer;vertical-align:middle}
+#fm-root .islgrid .dml .isl-kkeg:hover{background:#fdf2e0;border-color:#b45309}
+/* Gelen Faturalar şeridi: "AI önerisi uygulanan: %X" ölçüt çipi — başlık satırının sağ ucu, küçük, sakin */
+#fm-root .gf-strip-h .gf-oran-cip{display:inline-flex;align-items:center;gap:4px;margin-left:auto;height:22px;padding:0 9px;border-radius:999px;border:1px solid var(--accent-line);background:color-mix(in srgb,var(--accent) 7%,#fff);color:var(--muted);font-size:11px;font-weight:600;white-space:nowrap;cursor:help;align-self:center}
+#fm-root .gf-strip-h .gf-oran-cip b{color:var(--accent);font-weight:800;font-variant-numeric:tabular-nums}
+/* === /PLAN15-F3-FE === */
 `;
