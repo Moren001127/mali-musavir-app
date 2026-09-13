@@ -12,6 +12,7 @@ import { getStoredItem, setStoredItem, deleteStoredItem } from '../lib/secure-st
 // EK MODÜL ALTYAPISI (2026-09-13): yeni modül/aksiyon lib/ek/<paket>.ts + design/ek/<paket>.html — bu dosyaya dokunmadan.
 import { EK_MODUL_YUKLEYICI, EK_AKSIYON, type EkBaglam } from '../lib/ek';
 import * as pushKanca from '../lib/ek/push-kanca';
+import { androidPdfAc, androidPdfNotu } from '../lib/pdf-ac'; // Android WebView PDF çizemez → sistem görüntüleyici
 
 // "Beni Hatırla" — e-posta+şifre telefonun güvenli kasasında (SecureStore) şifreli saklanır.
 const CREDS_KEY = 'moren.mobile.creds';
@@ -289,11 +290,15 @@ export default function IndexScreen() {
       if (kind === 'tebligat') {
         const { data } = await api.get('/portal-automation/documents/' + encodeURIComponent(id) + '/view', { timeout: 20000 });
         const url = typeof data === 'string' ? data : (data?.url || '');
+        const dis = url ? await androidPdfAc(url, { api }) : null; // Android: PDF ise dışarıda aç
+        if (dis !== null) { inject('window.MOREN && window.MOREN.applyDocView(' + JSON.stringify(androidPdfNotu(dis)) + ')'); return; }
         inject('window.MOREN && window.MOREN.applyDocView(' + JSON.stringify(url ? { url } : null) + ')');
       } else if (kind === 'earsiv') {
         const resp = await api.get('/earsiv/' + encodeURIComponent(id) + '/original-pdf', { responseType: 'arraybuffer', timeout: 20000 });
         const ct = String(resp.headers?.['content-type'] || 'application/pdf').split(';')[0].trim();
         const b64 = arrayBufferToBase64(resp.data as ArrayBuffer);
+        const dis = await androidPdfAc(`data:${ct};base64,${b64}`, { mimeType: ct }); // Android: PDF dışarıda
+        if (dis !== null) { inject('window.MOREN && window.MOREN.applyDocView(' + JSON.stringify(androidPdfNotu(dis)) + ')'); return; }
         inject('window.MOREN && window.MOREN.applyDocView(' + JSON.stringify({ url: `data:${ct};base64,${b64}`, ct }) + ')');
       } else {
         inject('window.MOREN && window.MOREN.applyDocView(null)');
@@ -1075,6 +1080,8 @@ export default function IndexScreen() {
         inject('window.MOREN && window.MOREN.applyInvoiceXml(' + JSON.stringify(b64) + ')');
       } else {
         const dataUri = `data:${ct};base64,${b64}`;
+        const dis = await androidPdfAc(dataUri, { mimeType: ct }); // Android: PDF dışarıda
+        if (dis !== null) { inject('window.MOREN && window.MOREN.applyDocView(' + JSON.stringify(androidPdfNotu(dis)) + ')'); return; }
         inject('window.MOREN && window.MOREN.applyInvoiceDoc(' + JSON.stringify(dataUri) + ',' + JSON.stringify(ct) + ')');
       }
     } catch {

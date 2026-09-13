@@ -12,6 +12,7 @@
  * Onay / muhasebeleştirme telefondan YAPILMAZ (Muzaffer Bey kararı: Muhasebeleştir paneli masaüstünde) → aksiyon yok.
  */
 import type { EkBaglam, EkPaket } from './tur';
+import { androidPdfAc, androidPdfNotu } from '../pdf-ac';
 
 const FM = '/fatura-muhasebelestirme';
 
@@ -301,6 +302,11 @@ export const paket: EkPaket = {
         const html = typeof data?.inlineHtml === 'string' ? data.inlineHtml : '';
         const ct = String(data?.mimeType || '');
         const payload = html ? { html, ct: 'text/html', source: String(data?.source || '') } : url ? { url, ct, source: String(data?.source || '') } : null;
+        // Android WebView PDF çizemez → sistem PDF görüntüleyicisinde aç (iOS: null → iframe yolu)
+        if (url && !html) {
+          const dis = await androidPdfAc(url, { api: ctx.api, mimeType: ct });
+          if (dis !== null) { ver(androidPdfNotu(dis)); return dis ? { ok: true, msg: 'Belge PDF görüntüleyicide açıldı' } : { ok: false, msg: 'PDF açılamadı' }; }
+        }
         ver(payload);
         return payload ? { ok: true, msg: 'Belge açıldı' } : { ok: false, msg: 'Belge dosyası bulunamadı' };
       } catch (e: any) {
