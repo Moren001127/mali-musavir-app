@@ -7,6 +7,17 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style id="fontlar">
+/* YEREL YAZI TİPLERİ (2026-09-13): design/fonts/*.woff2 — Google Fonts <link> yukarıda kalır; bu blok ONDAN SONRA geldiği için
+   aynı aile/ağırlık/aralıkta yerel dosya kazanır (ağ varken de, yokken de). Üretici (scripts/build-app-html.cjs, 4. adım)
+   app.html için url(fonts/…) yerine base64 gömer; WebView ağ olmadan da tasarımı birebir gösterir. Türkçe: latin + latin-ext. */
+@font-face{font-family:'Fraunces';font-style:normal;font-weight:400 700;font-display:swap;src:url(fonts/Fraunces-latin-ext.woff2) format('woff2');unicode-range:U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF}
+@font-face{font-family:'Fraunces';font-style:normal;font-weight:400 700;font-display:swap;src:url(fonts/Fraunces-latin.woff2) format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD}
+@font-face{font-family:'Inter';font-style:normal;font-weight:400 700;font-display:swap;src:url(fonts/Inter-latin-ext.woff2) format('woff2');unicode-range:U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF}
+@font-face{font-family:'Inter';font-style:normal;font-weight:400 700;font-display:swap;src:url(fonts/Inter-latin.woff2) format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD}
+@font-face{font-family:'JetBrains Mono';font-style:normal;font-weight:500 600;font-display:swap;src:url(fonts/JetBrainsMono-latin-ext.woff2) format('woff2');unicode-range:U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF}
+@font-face{font-family:'JetBrains Mono';font-style:normal;font-weight:500 600;font-display:swap;src:url(fonts/JetBrainsMono-latin.woff2) format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD}
+</style>
 <style>
 :root{
   --bg:#050505;--surface:#0d0d0d;--border:rgba(212,184,118,.14);--border2:rgba(212,184,118,.28);
@@ -1671,6 +1682,44 @@ function refresh(){
 }
 function setPersona(p){persona=p;phase='app';current='ozet';history=[];detailHTML='';detailId='';document.getElementById('pAdv').classList.toggle('on',p==='adv');document.getElementById('pTax').classList.toggle('on',p==='tax');document.getElementById('screen').className='screen '+p;render();}
 render();
+/* ===== DAYANIKLILIK (2026-09-13) — RN köprüsü (app/index.tsx). Yukarıdaki kod değişmedi; bu blok yalnız EKLER. =====
+   1) window.MOREN.baglantiDurumu(ok,msg): ağ yokken üstte 22px ince kırmızı şerit (durum çubuğu bandının altına oturur), ok=true → gizlenir.
+   2) window.MOREN.applyModule(mid,cid,{hata:'…'}): modül verisi ALINAMADI → örnek/eski görünüm yerine "Veri alınamadı" kartı + Tekrar dene.
+      Bu veri moduleData'ya YAZILMAZ (eski çiziciler {hata} şeklini bilmez); daha önce gerçek veri geldiyse o kalır, yalnız uyarı verilir. */
+(function(){
+  window.MOREN=window.MOREN||{};
+  var serit=null;
+  function seritEl(){
+    if(serit)return serit;
+    serit=document.createElement('div');serit.id='bagSerit';
+    serit.setAttribute('style','position:fixed;left:0;right:0;height:22px;top:calc(max(env(safe-area-inset-top,0px),44px) - 22px);z-index:70;display:flex;align-items:center;justify-content:center;gap:6px;font-family:var(--sans);font-size:11px;font-weight:600;letter-spacing:.3px;color:#fff;background:linear-gradient(90deg,rgba(214,92,108,.96),rgba(240,160,168,.96) 50%,rgba(214,92,108,.96));box-shadow:0 4px 14px rgba(0,0,0,.35);opacity:0;transform:translateY(-100%);transition:opacity .22s,transform .22s;pointer-events:none');
+    document.body.appendChild(serit);return serit;
+  }
+  window.MOREN.baglantiDurumu=function(ok,msg){
+    try{
+      var el=seritEl();
+      if(ok){el.style.opacity='0';el.style.transform='translateY(-100%)';}
+      else{el.innerHTML='<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M1 1l22 22M16.7 11.6a10.9 10.9 0 0 1 2.3 1.4M5 12.6a10.9 10.9 0 0 1 5.2-2.3M8.5 16.4a6 6 0 0 1 7 0M12 20h.01"/></svg><span>'+String(msg||'Bağlantı yok').replace(/[<>&]/g,'')+'</span>';el.style.opacity='1';el.style.transform='none';}
+    }catch(e){}
+  };
+  var _applyModule=window.MOREN.applyModule;
+  window.MOREN.applyModule=function(mid,cid,data){
+    if(data&&typeof data==='object'&&!Array.isArray(data)&&data.hata){
+      try{
+        var eski=window.MOREN.moduleData[mid+'|'+cid];
+        if(eski){if(typeof modToast==='function')modToast('Veri güncellenemedi · '+data.hata);return;}
+        if(current==='detail'&&detailId===mid&&String(activeClient)===String(cid)){
+          var m=M[mid]||{t:mid};if(m.pc&&persona==='adv')m=Object.assign({},m,{sub:clientName()+(m.sub?' · '+m.sub:'')});
+          var kim=String(mid).replace(/[^a-zA-Z0-9_-]/g,'');
+          detailHTML=dh(m)+'<div class="card"><div style="padding:26px 16px;text-align:center;color:var(--muted);font-size:13px"><div style="width:44px;height:44px;border-radius:14px;margin:0 auto 10px;display:grid;place-items:center;color:var(--rose);background:color-mix(in srgb,var(--rose) 14%,transparent);border:1px solid color-mix(in srgb,var(--rose) 30%,transparent)">'+ic('shield')+'</div><b style="color:var(--text2);font-size:14px">Veri alınamadı</b><div style="margin-top:5px;line-height:1.5">'+String(data.hata).replace(/[<>&]/g,'')+'</div><div class="toolbar" style="justify-content:center;margin-top:14px"><span class="tbtn" onclick="morenNotifyModule(\''+kim+'\')">'+ic('refresh')+' Tekrar dene</span></div></div></div>';
+          var el=document.getElementById('v-detail');if(el)el.innerHTML=detailHTML;
+        }
+      }catch(e){}
+      return;
+    }
+    return _applyModule(mid,cid,data);
+  };
+})();
 </script>
 </body>
 </html>

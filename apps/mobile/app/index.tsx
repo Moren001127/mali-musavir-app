@@ -6,7 +6,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as Haptics from 'expo-haptics';
 import { useAuth } from '../lib/auth';
-import { api } from '../lib/api';
+import { api, setBaglantiDinleyici, setOturumDustuDinleyici } from '../lib/api';
 import { colors } from '../lib/theme';
 import { getStoredItem, setStoredItem, deleteStoredItem } from '../lib/secure-storage';
 // EK MODÜL ALTYAPISI (2026-09-13): yeni modül/aksiyon lib/ek/<paket>.ts + design/ek/<paket>.html — bu dosyaya dokunmadan.
@@ -44,7 +44,7 @@ const BRIDGE = `
     document.addEventListener('touchstart', function(e){ sc=scroller(); pulling=!!(sc && sc.scrollTop<=0); if(pulling) startY=e.touches[0].clientY; }, {passive:true});
     document.addEventListener('touchmove', function(e){ if(!pulling||!sc) return; if(sc.scrollTop>0){ pulling=false; return; } dist=e.touches[0].clientY-startY; if(dist>0){ var el=indicator(); var pr=Math.min(dist/90,1); el.style.opacity=pr; el.style.transform='translateY('+((pr*12)-12)+'px)'; var sp=el.firstChild; if(sp) sp.style.transform='rotate('+(dist*2.2)+'deg)'; } }, {passive:true});
     document.addEventListener('touchend', function(){ if(!pulling){ return; } pulling=false; if(dist>=TH && ind){ ind.style.opacity='1'; ind.style.transform='translateY(0)'; var sp=ind.firstChild; if(sp){ sp.style.transition='none'; sp.style.animation='ptrspin .7s linear infinite'; }
-        var ctx={}; try{ ctx.persona=(typeof persona!=='undefined')?persona:'adv'; ctx.current=(typeof current!=='undefined')?current:''; ctx.client=(typeof activeClient!=='undefined')?activeClient:''; }catch(_){ }
+        var ctx={}; try{ ctx.persona=(typeof persona!=='undefined')?persona:'adv'; ctx.current=(typeof current!=='undefined')?current:''; ctx.client=(typeof activeClient!=='undefined')?activeClient:''; ctx.module=(ctx.current==='detail'&&typeof detailId!=='undefined')?detailId:''; ctx.donem=(window.MOREN&&window.MOREN.donem)||null; }catch(_){ }
         post('haptic','medium'); post('refresh', ctx); setTimeout(function(){ window.morenRefreshDone && window.morenRefreshDone(); }, 2600);
       } else hide(); dist=0; }, {passive:true});
     function hide(){ if(!ind) return; ind.style.opacity='0'; ind.style.transform='translateY(-12px)'; var sp=ind.firstChild; if(sp) sp.style.animation='none'; }
@@ -118,6 +118,64 @@ export default function IndexScreen() {
   const webRef = useRef<WebView>(null);
   const autoTried = useRef(false);
   const lastDoc = useRef<string[]>([]);
+  // Dayanıklılık (2026-09-13): bağlantı şeridi yalnız durum DEĞİŞİNCE enjekte edilir; sessiz yeniden giriş tek seferde koşar
+  const baglantiOk = useRef<boolean | null>(null);
+  const yenidenGiris = useRef(false);
+  const yenidenGirisBekliyor = useRef(false); // sessiz yeniden giriş ağ yüzünden yapılamadı → bağlantı gelince tekrar
+  const mukellefListesiBekliyor = useRef(false); // /taxpayers alınamadı → bağlantı dönünce / aşağı çekince tekrar
+
+  useEffect(() => {
+    setBaglantiDinleyici((ok, mesaj) => {
+      const onceki = baglantiOk.current;
+      if (onceki === ok) return;
+      baglantiOk.current = ok;
+      inject('window.MOREN && typeof window.MOREN.baglantiDurumu === \'function\' && window.MOREN.baglantiDurumu(' + (ok ? 'true' : 'false') + ',' + JSON.stringify(mesaj || '') + ')');
+      if (ok && onceki === false) {
+        // Bağlantı GERİ geldi: bekleyen sessiz giriş varsa onu, yoksa ekrandaki veriyi sessizce tazele
+        if (yenidenGirisBekliyor.current) { yenidenGirisBekliyor.current = false; oturumDustu(); }
+        else yenidenBaglandi();
+      }
+    });
+    setOturumDustuDinleyici(() => { oturumDustu(); });
+    return () => {
+      setBaglantiDinleyici(null);
+      setOturumDustuDinleyici(null);
+    };
+  }, []);
+
+  // 401 + belirteç yenilenemedi (ya da mükellef belirteci bitti): "Beni Hatırla" varsa sessizce yeniden gir,
+  // yoksa giriş ekranına dön (e-posta dolu, açıklama görünür). Ekran akışı bozulmaz; örnek veriye düşülmez.
+  async function oturumDustu() {
+    if (yenidenGiris.current) return;
+    yenidenGiris.current = true;
+    let creds: any = null;
+    try {
+      const raw = await getStoredItem(CREDS_KEY);
+      creds = raw ? JSON.parse(raw) : null;
+    } catch {
+      creds = null;
+    }
+    const audience: 'advisor' | 'taxpayer' = creds?.audience === 'taxpayer' ? 'taxpayer' : 'advisor';
+    try {
+      if (creds?.email && creds?.password) {
+        await auth.login({ email: creds.email, password: creds.password, audience });
+        // Yeni belirteç alındı → açık modülü tazele (kullanıcı hiçbir şey fark etmez)
+        inject('(function(){try{if(current===\'detail\'&&detailId)morenNotifyModule(detailId);}catch(e){}})()');
+        return;
+      }
+    } catch (e: any) {
+      // Sunucuya ulaşılamadıysa çıkış YAPMA: bağlantı gelince yeniden denenir (şerit zaten görünür)
+      if (!e?.response) { yenidenGirisBekliyor.current = true; return; }
+      /* şifre değişmiş olabilir → giriş ekranına */
+    } finally {
+      yenidenGiris.current = false;
+    }
+    try { await auth.logout(); } catch { /* yine de giriş ekranına */ }
+    autoTried.current = true;
+    inject('window.__morenLogout && window.__morenLogout()');
+    inject('window.__morenPrefill && window.__morenPrefill(' + JSON.stringify({ email: creds?.email || '', audience }) + ')');
+    inject('setTimeout(function(){ window.__morenLoginErr && window.__morenLoginErr(\'Oturum süresi doldu, lütfen yeniden giriş yapın\'); }, 60)');
+  }
 
   useEffect(() => {
     let m = true;
@@ -135,13 +193,14 @@ export default function IndexScreen() {
     webRef.current?.injectJavaScript(js + ';true;');
   }
 
-  // Aşağı-çek-yenile: HTML üstten çekince veriyi tazeler, bitince spinner'ı kapatır
+  // Aşağı-çek-yenile: HTML üstten çekince veriyi tazeler, bitince spinner'ı kapatır (sessiz=true: bağlantı dönünce, titreşimsiz)
   async function doRefresh(payload: any) {
     const p = payload || {};
     try {
       if (p.persona === 'tax') {
         await loadTaxpayer();
       } else {
+        if (mukellefListesiBekliyor.current) await loadClients();
         await loadOverview();
         if (p.module) await loadModule(String(p.module), String(p.client ?? ''), p.donem || null);
       }
@@ -149,8 +208,50 @@ export default function IndexScreen() {
     } catch {
       /* yenileme başarısızsa mevcut veri kalır */
     } finally {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      if (!p.sessiz) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       inject('window.morenRefreshDone && window.morenRefreshDone()');
+    }
+  }
+
+  // Bağlantı geri geldi: kullanıcı uygulamadaysa (phase==='app') ekrandaki veriyi HTML'in kendi bağlamıyla sessizce tazele
+  function yenidenBaglandi() {
+    inject(
+      '(function(){try{if(typeof phase===\'undefined\'||phase!==\'app\')return;' +
+        'var ctx={sessiz:true,persona:(typeof persona!==\'undefined\')?persona:\'adv\',current:current,client:(typeof activeClient!==\'undefined\')?activeClient:\'\',' +
+        'module:(current===\'detail\'&&typeof detailId!==\'undefined\')?detailId:\'\',donem:(window.MOREN&&window.MOREN.donem)||null};' +
+        'window.ReactNativeWebView.postMessage(JSON.stringify({type:\'refresh\',payload:ctx}));}catch(e){}})()',
+    );
+  }
+
+  // Müşavir: gerçek mükellef listesini çek ve HTML'e enjekte et. Alınamazsa "bekliyor" işaretlenir;
+  // bağlantı dönünce / aşağı çekince yeniden denenir (HTML'deki örnek liste kalıcı olmasın).
+  async function loadClients() {
+    try {
+      const { data } = await api.get('/taxpayers');
+      const arr: any[] = Array.isArray(data) ? data : data?.items || data?.data || data?.taxpayers || [];
+      // Etiket: "Şahıs · Bilanço" / "Kurumlar · İşletme" — gerçek enum'lardan (type + defterTuru)
+      const turLabel = (t: any) => {
+        const kisi = t.type === 'TUZEL_KISI' ? 'Kurumlar' : 'Şahıs';
+        const dt = t.defterTuru || (t.mihsapDefterTuru === 'DEFTER_BEYAN' ? 'ISLETME' : t.mihsapDefterTuru);
+        const defter = dt === 'BILANCO' ? 'Bilanço' : dt === 'ISLETME' ? 'İşletme' : '';
+        return defter ? kisi + ' · ' + defter : kisi;
+      };
+      // HTML tarafındaki CLIENTS şekli: { id, n, tur, vkn, ini, c }
+      const clients = arr.map((t: any, i: number) => {
+        const name = (t.companyName || `${t.firstName || ''} ${t.lastName || ''}`.trim() || t.taxNumber || '—').trim();
+        return {
+          id: String(t.id ?? i),
+          n: name,
+          tur: turLabel(t),
+          vkn: String(t.taxNumber || ''),
+          ini: inits(name),
+          c: PALETTE[i % PALETTE.length],
+        };
+      });
+      if (clients.length) inject('window.MOREN && window.MOREN.applyClients(' + JSON.stringify(clients) + ')');
+      mukellefListesiBekliyor.current = false;
+    } catch {
+      mukellefListesiBekliyor.current = true;
     }
   }
 
@@ -262,34 +363,9 @@ export default function IndexScreen() {
       personaRef.current = persona;
       inject('window.__morenEnter && window.__morenEnter(' + JSON.stringify(persona) + ')');
       pushKanca.girisSonrasi(api, persona).catch(() => {}); // anlık bildirim belirteci (push paketi)
-      // Müşavir: gerçek mükellef listesini çek ve HTML'e enjekte et
+      // Müşavir: gerçek mükellef listesini çek ve HTML'e enjekte et (alınamazsa bağlantı dönünce yeniden denenir)
       if (audience === 'advisor') {
-        try {
-          const { data } = await api.get('/taxpayers');
-          const arr: any[] = Array.isArray(data) ? data : data?.items || data?.data || data?.taxpayers || [];
-          // Etiket: "Şahıs · Bilanço" / "Kurumlar · İşletme" — gerçek enum'lardan (type + defterTuru)
-          const turLabel = (t: any) => {
-            const kisi = t.type === 'TUZEL_KISI' ? 'Kurumlar' : 'Şahıs';
-            const dt = t.defterTuru || (t.mihsapDefterTuru === 'DEFTER_BEYAN' ? 'ISLETME' : t.mihsapDefterTuru);
-            const defter = dt === 'BILANCO' ? 'Bilanço' : dt === 'ISLETME' ? 'İşletme' : '';
-            return defter ? kisi + ' · ' + defter : kisi;
-          };
-          // HTML tarafındaki CLIENTS şekli: { id, n, tur, vkn, ini, c }
-          const clients = arr.map((t: any, i: number) => {
-            const name = (t.companyName || `${t.firstName || ''} ${t.lastName || ''}`.trim() || t.taxNumber || '—').trim();
-            return {
-              id: String(t.id ?? i),
-              n: name,
-              tur: turLabel(t),
-              vkn: String(t.taxNumber || ''),
-              ini: inits(name),
-              c: PALETTE[i % PALETTE.length],
-            };
-          });
-          if (clients.length) inject('window.MOREN && window.MOREN.applyClients(' + JSON.stringify(clients) + ')');
-        } catch {
-          /* liste çekilemezse örnek veriyle devam eder */
-        }
+        await loadClients();
         loadOverview();
       } else if (audience === 'taxpayer') {
         loadTaxpayer();
@@ -427,11 +503,29 @@ export default function IndexScreen() {
     };
   }
 
+  // Hata → kısa Türkçe metin (HTML'deki "Veri alınamadı" kartı için)
+  function hataMetni(e: any): string {
+    const sunucuMsg = e?.response?.data?.message;
+    if (typeof sunucuMsg === 'string' && sunucuMsg.trim()) return sunucuMsg.trim().slice(0, 140);
+    const st = e?.response?.status;
+    if (st === 401 || st === 403) return 'Yetki yok ya da oturum bitti';
+    if (st) return 'Sunucu hatası (' + st + ')';
+    if (e?.code === 'ECONNABORTED' || /timeout/i.test(String(e?.message || ''))) return 'Sunucu yanıt vermiyor';
+    if (e?.code === 'ERR_NETWORK' || /network/i.test(String(e?.message || ''))) return 'Bağlantı yok';
+    // Sunucu/ağ değil, veri işlenirken uygulama hatası: ayrıntı günlüğe, kullanıcıya sade metin
+    console.warn('[modul-hata]', e?.message || e);
+    return 'Veri işlenemedi';
+  }
+
   async function loadModule(module: string, client: string, donemArg?: string | null) {
     // EK PAKET modülü mü? (lib/ek) — evetse eski zincire hiç girme
     const ekYukleyici = EK_MODUL_YUKLEYICI[module];
     if (ekYukleyici) {
-      try { await ekYukleyici(ekBaglam(client, donemArg)); } catch (e: any) { console.warn('[ek-modul]', module, e?.message || e); }
+      try { await ekYukleyici(ekBaglam(client, donemArg)); } catch (e: any) {
+        console.warn('[ek-modul]', module, e?.message || e);
+        // Örnek/boş görünüm yerine "Veri alınamadı" kartı (HTML'deki applyModule sarmalayıcısı {hata} anlar)
+        pushModule(module, client, { hata: hataMetni(e) });
+      }
       return;
     }
     try {
@@ -443,8 +537,9 @@ export default function IndexScreen() {
         pushModule('kdv-panosu', client, data);
       } else if (module === 'cari' && hasClient) {
         // Seçili mükellefin cari kasası: bakiye + hareket + hizmet
+        // Bakiye ZORUNLU: alınamazsa hata fırlat → "Veri alınamadı" kartı (bakiyesiz veri HTML'de örnek görünüme düşüyordu)
         const [bakiyeR, hareketR, hizmetR] = await Promise.all([
-          api.get(`/cari-kasa/bakiye/${client}`).catch(() => null),
+          api.get(`/cari-kasa/bakiye/${client}`),
           api.get('/cari-kasa/hareket', { params: { taxpayerId: client, limit: 100 } }).catch(() => null),
           api.get('/cari-kasa/hizmet', { params: { taxpayerId: client } }).catch(() => null),
         ]);
@@ -883,8 +978,9 @@ export default function IndexScreen() {
           pushModule('whatsapp', client, { convos: [], err: e?.response?.status ? ('Sunucu ' + e.response.status) : 'Bağlantı hatası' });
         }
       }
-    } catch {
-      /* modül verisi çekilemezse örnek görünüm kalır */
+    } catch (e: any) {
+      // Modül verisi çekilemedi → örnek görünüme DÜŞME: "Veri alınamadı" kartı + Tekrar dene (HTML sarmalayıcı)
+      pushModule(module, client, { hata: hataMetni(e) });
     }
   }
 

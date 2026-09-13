@@ -8,12 +8,13 @@ tam ekran gösterilir; yerel özellikler (kamera/belge tarayıcı, Face ID, doku
 | Yer | Ne |
 |---|---|
 | `design/mobil-app-onizleme.html` | **TEK tasarım kaynağı** (telefon çerçeveli önizleme). Modül kayıt defteri `M`, görünümler, köprü uçları (`window.MOREN.*`). |
+| `design/fonts/*.woff2` | Yerel yazı tipleri (Fraunces, Inter, JetBrains Mono · latin + latin-ext). `<style id="fontlar">` bunları kullanır; üretici app.html'e base64 gömer → ağ yokken de tasarım aynı. |
 | `design/ek/<paket>.html` | Ek paket blokları (`<script>`/`<style>`): `MOREN_EK.modulEkle(id, tanım, çizici)` + `MOREN_EK.navEkle(grup, öğe)`. Üretici bunları `</body>` öncesine gömer. |
 | `assets/app.html` | WebView'in gösterdiği ÜRETİLMİŞ dosya — elle düzenlenmez: `node scripts/build-app-html.cjs`. |
-| `app/index.tsx` | RN köprüsü: giriş, canlı veri (`loadModule`), aksiyonlar (`handleAction`), kamera/OCR yükleme, bildirimler, WhatsApp, AI sohbet. |
+| `app/index.tsx` | RN köprüsü: giriş, canlı veri (`loadModule`), aksiyonlar (`handleAction`), kamera/OCR yükleme, bildirimler, WhatsApp, AI sohbet. Dayanıklılık: bağlantı şeridi (`MOREN.baglantiDurumu`), modül hatası → "Veri alınamadı" kartı, oturum düşünce sessiz yeniden giriş. |
 | `lib/ek/<paket>.ts` | Ek paketlerin RN tarafı: modül yükleyicileri + aksiyonlar (`lib/ek/tur.ts` sözleşmesi; `lib/ek/index.ts` kayıt defteri). |
-| `lib/api.ts`, `lib/auth.tsx` | Canlı API (Railway) + belirteç yenileme; müşavir `/auth/login`, mükellef `/portal/auth/login`. |
-| `store/` | Mağaza metinleri, gizlilik politikası, yayın rehberi. |
+| `lib/api.ts`, `lib/auth.tsx` | Canlı API (Railway) + belirteç yenileme; müşavir `/auth/login`, mükellef `/portal/auth/login`. `api.ts` bağlantı/oturum-düştü dinleyicileri (`setBaglantiDinleyici`, `setOturumDustuDinleyici`). |
+| `store/` | Mağaza metinleri, gizlilik politikası, yayın rehberi, veri güvenliği cevapları (`veri-guvenligi-cevaplari.md`), inceleme notu (`inceleme-notu.md`), ekran görüntüleri (`screenshots-2026-09/` + `uret.cjs`). |
 
 ## Geliştirme
 ```bash

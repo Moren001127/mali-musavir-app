@@ -2,5 +2,6 @@ node_modules/
 .expo/
 *.log
 screenshots/
-designs/
+design/
+store/
 qr.png

@@ -1,9 +1,11 @@
 import React, { createContext, PropsWithChildren, useContext, useEffect, useMemo, useState } from 'react';
 import { api, clearTokenPair, hasStoredSession, saveTokenPair, setApiAudience } from './api';
-import { AppAudience } from './mobile-modules';
 import { deleteStoredItem, getStoredItem, setStoredItem } from './secure-storage';
 
 type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated';
+
+// Kim giriş yapıyor: müşavir (/auth/login) mi, mükellef (/portal/auth/login) mi?
+export type AppAudience = 'advisor' | 'taxpayer';
 
 export type MobileUser = {
   id: string;

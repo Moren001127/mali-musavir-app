@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ekran görüntüsü üretici</title>
+<style>html,body{margin:0;padding:0;height:100%;background:#080706;overflow:hidden}iframe{display:block;width:100vw;height:100vh;border:0}</style>
+</head><body>
+<iframe id="f" src="/assets/app.html"></iframe>
+<script>
+/* Mağaza ekran görüntüsü üretici (2026-09-13): ?ekran=giris|ozet|moduller|belge-tara|ai|kdv&persona=adv|tax
+   Önizleme sunucusu (http://localhost:4620) aynı kökten sunar → iframe içi JS'e erişilir. Canlı veri yok (RN köprüsü yok): örnek görünüm. */
+var q=new URLSearchParams(location.search);var ekran=q.get('ekran')||'ozet';var persona=(q.get('persona')==='tax')?'tax':'adv';
+document.getElementById('f').addEventListener('load',function(){
+  var w=this.contentWindow;
+  try{
+    if(ekran==='giris'){w.__morenPrefill({email:'',audience:(persona==='tax'?'taxpayer':'advisor')});setTimeout(function(){var d=w.document;['loginEmail','loginPass'].forEach(function(id){var e=d.getElementById(id);if(e)e.value='';});},80);return;} /* phase/loginPersona let → yalnız bu kanca değiştirir */
+    if(ekran==='secim'){return;}
+    w.doLogin(persona);
+    if(ekran==='moduller')w.go('moduller');
+    else if(ekran==='belge-tara')w.go('ocr');
+    else if(ekran==='ai')w.go('ai');
+    else if(ekran==='kdv')w.go('m:kdv-panosu');
+    else if(ekran==='onay')w.go('onay');
+    else if(ekran.indexOf('m:')===0)w.go(ekran);
+  }catch(e){document.title='HATA: '+e.message;}
+});
+</script>
+</body></html>

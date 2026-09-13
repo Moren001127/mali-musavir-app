@@ -1,0 +1,144 @@
+<!-- EK PAKET: Fatura İşleme Merkezi — CANLI portal verisi (RN tarafı: lib/ek/fm.ts). Örnek veri YOK; veri yoksa "belge yok" der.
+     Onay / muhasebeleştirme telefondan verilmez (Muzaffer Bey kararı: Muhasebeleştir paneli masaüstünde). -->
+<script>
+(function(){
+if(!window.MOREN_EK||typeof MOREN_EK.modulEkle!=='function')return;
+var FM='fatura-merkezi';
+window.MOREN=window.MOREN||{};
+// Ekran durumu (segment / sayaç süzgeci / sayfa) — modül yeniden çizilince korunur
+var S=window.__fmState=window.__fmState||{seg:'tumu',filtre:null,sayfa:1,sonIstek:0};
+var SAYFA=60;
+var RENK={ok:C.green,proc:C.sky,miss:C.rose,warn:C.amber,ham:C.steel,asset:C.violet};
+var BADGE={ok:'b-green',proc:'b-sky',miss:'b-rose',warn:'b-amber',ham:'b-steel',asset:'b-violet'};
+var SORUN={eksik:1,celiski:1,tutar:1,mukerrer:1,demirbas:1,okunamadi:1,incele:1};
+var KAYNAK={'fatura-merkezi':'Yükleme / OCR','mobil-app':'Telefon','earsiv':'e-Arşiv (Luca)','gib-earsiv-api':'GİB e-Arşiv','mihsap':'Mihsap','integration-turmob_efatura':'TÜRMOB','integration-elogo':'eLogo','integration-turkcell':'Turkcell','integration-parasut':'Paraşüt','integration-uyumsoft':'Uyumsoft'};
+var GRUP={cari:'Cari',matrah:'Matrah',vergi:'KDV','vergi-sorumlu':'Sorumlu sıf. KDV',tevkifat:'Tevkifat',diger_vergi:'Diğer vergi'};
+var LUCA={NOT_STARTED:'Gönderilmedi',QUEUED:'Kuyrukta',POSTED:'Luca’ya işlendi',FAILED:'Hata',SKIPPED:'Atlandı',MANUAL:'Elle işlendi'};
+function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+function tarihK(v){if(!v)return '—';var d=new Date(v);if(isNaN(d.getTime()))return '—';return d.toLocaleDateString('tr-TR');}
+var AYK=['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara'];
+function tarihKisa(v){if(!v)return '—';var d=new Date(v);if(isNaN(d.getTime()))return '—';return d.getDate()+' '+AYK[d.getMonth()];}
+function num(n){return (Number(n)||0).toLocaleString('tr-TR');}
+function bekleyenMi(b){var s=String(b.status||'').toUpperCase();return s==='READY'||s==='NEEDS_REVIEW'||s==='PENDING'||s==='PROCESSING';}
+function donemKod(){var p=donemParts();return p.y+'-'+String(p.m).padStart(2,'0');}
+// Canlı veri: modLive(FM) — dönem değiştiyse eski veri gösterilmez (yeni yükleme beklenir)
+function canli(){var L=modLive(FM);if(!L)return null;if(L.donem&&L.donem!==donemKod())return null;return L;}
+function yenidenCiz(){try{if(current==='detail'&&detailId===FM){detailHTML=buildModule(FM);var el=document.getElementById('v-detail');if(el)el.innerHTML=detailHTML;}}catch(e){}}
+// morenNotifyModule sarmalı: son istek zamanını not eder (mükellef değişince tembel yeniden-istek için)
+var _bildirOrj=window.morenNotifyModule;
+if(typeof _bildirOrj==='function'){window.morenNotifyModule=function(mid){if(mid===FM)S.sonIstek=Date.now();return _bildirOrj.apply(this,arguments);};}
+function iste(){S.sonIstek=Date.now();if(typeof morenNotifyModule==='function')morenNotifyModule(FM);}
+// Mükellef seçiciden dönünce RN veri yüklemez (client mesajı işlenmiyor) → veri yoksa kısa gecikmeyle bir kez iste
+function gerekirseIste(){if(!window.ReactNativeWebView)return;setTimeout(function(){try{if(current!=='detail'||detailId!==FM)return;if(canli())return;if(Date.now()-S.sonIstek<1500)return;iste();}catch(e){}},700);}
+function bosKart(msg,alt){return '<div class="card"><div style="padding:34px 22px;text-align:center;color:var(--text2);font-size:13.5px;line-height:1.6">'+msg+(alt?'<br><span style="font-size:11.5px;color:var(--muted)">'+alt+'</span>':'')+'</div></div>';}
+function hataSatir(h){return '<div class="card" style="border-color:color-mix(in srgb,var(--rose) 35%,transparent)"><div class="row" style="cursor:default;padding:8px 0">'+iconBox('shield',C.rose)+'<div class="m"><b>Veri alınamadı</b><span>'+esc(h)+'</span></div></div></div>';}
+function lucaEtiket(b){var s=String(b.lucaStatus||'').toUpperCase();var t=LUCA[s]||(s?esc(s):'—');if(b.lucaFisNo)t+=' · Fiş '+esc(b.lucaFisNo);if(s==='FAILED'&&b.lucaHata)t+=' · '+esc(b.lucaHata);return t;}
+
+/* ── Etkileşim ── */
+window.fmSegSet=function(k){S.seg=k;S.sayfa=1;yenidenCiz();};
+window.fmFiltreSet=function(k){S.filtre=(S.filtre===k)?null:k;S.sayfa=1;yenidenCiz();};
+window.fmDaha=function(){S.sayfa++;yenidenCiz();};
+window.fmYenile=function(){if(typeof haptic==='function')haptic('light');if(typeof modToast==='function')modToast(window.ReactNativeWebView?'Yenileniyor…':'Canlı veri telefonda gelir');iste();};
+// Ofis listesinden mükellefe geç: yerinde çiz + RN'den o mükellefin verisini iste (geçmişe ekleme yok)
+window.fmMukellefSec=function(id){try{activeClient=String(id);var cb=document.getElementById('clientbar');if(cb&&typeof clientBarHTML==='function')cb.innerHTML=clientBarHTML();if(typeof morenNotifyClient==='function')morenNotifyClient();S.seg='tumu';S.filtre=null;S.sayfa=1;yenidenCiz();iste();var v=document.getElementById('v-detail');if(v)v.scrollTo(0,0);}catch(e){}};
+// "Belgeyi gör": mevcut belge modalı (docViewBox) + RN aksiyonu fm-belge-gor → MOREN.fmDocView / applyDocView
+window.fmBelgeGor=function(id){id=String(id||'').replace(/[^A-Za-z0-9_-]/g,'');openModal('<h3>Belge</h3><div id="docViewBox" style="min-height:200px;background:#fff;border-radius:12px;overflow:hidden;margin-top:8px"><div style="padding:40px;text-align:center;color:#888;font-size:12px">Yükleniyor…</div></div><div class="mbtns"><button class="cancel" onclick="closeModal()">Kapat</button></div>');
+  if(window.ReactNativeWebView&&id){morenAction(null,'fm-belge-gor','',{id:id});}
+  else{var b=document.getElementById('docViewBox');if(b)b.innerHTML='<div style="padding:30px;text-align:center;color:#888;font-size:12px">Belge telefonda görünür</div>';}};
+// Belge kutusu: inlineHtml (e-Fatura/e-Arşiv XSLT görünümü) srcdoc ÖZELLİĞİ ile verilir (nitelik kaçışı bozmasın; sandbox YOK —
+//   e-Arşiv görünümü betik ister, bkz. hafıza "e-Arşiv önizleme JS render"); url → mevcut applyDocView köprüsü
+window.MOREN.fmDocView=function(p){var el=document.getElementById('docViewBox');if(!el)return;
+  if(p&&p.html){el.innerHTML='';var f=document.createElement('iframe');f.style.cssText='width:100%;height:460px;border:0;background:#fff';f.srcdoc=String(p.html);el.appendChild(f);return;}
+  if(typeof window.MOREN.applyDocView==='function')window.MOREN.applyDocView(p);};
+// Satıra dokununca: belge özeti (salt okunur) + "Belgeyi gör"
+window.fmBelgeAc=function(id){var L=canli();var b=(L&&L.belgeler)?L.belgeler.filter(function(x){return x.id===id;})[0]:null;if(!b){if(typeof modToast==='function')modToast('Belge bulunamadı');return;}
+  var d=b.durum||{k:'ham',t:'—'};var GUV={yuksek:'Yüksek',orta:'Orta',dusuk:'Düşük'};
+  var kv=function(l,v,cls){return '<div class="kv"><span>'+l+'</span><b'+(cls?' class="'+cls+'"':'')+' style="text-align:right;margin-left:12px;font-family:var(--sans)">'+v+'</b></div>';};
+  var h='<h3 style="font-size:17px;line-height:1.3">'+esc(b.firma||'—')+'</h3>'
+   +'<div style="font-size:12px;color:var(--muted);margin:3px 0 8px">'+(b.yon==='SATIS'?'Satış':'Alış')+' · '+esc(b.belgeNo||'—')+' · '+tarihK(b.tarih)+(b.vkn?' · VKN '+esc(b.vkn):'')+'</div>'
+   +'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px"><span class="badge '+(BADGE[d.k]||'b-steel')+'">'+esc(d.t)+'</span>'+(b.tevkifatli?'<span class="badge b-violet">Tevkifatlı</span>':'')+(b.demirbas?'<span class="badge b-violet">Demirbaş</span>':'')+(b.mukerrerIlk?'<span class="badge b-rose">Mükerrer?</span>':'')+'</div>'
+   +'<div class="kvlist">'+kv('Tutar',tl(b.tutar),'pay')+(b.matrah!=null?kv('Matrah',tl(b.matrah)):'')+(b.kdv!=null?kv('KDV',tl(b.kdv)):'')
+   +(b.giderTuru?kv('Gider türü',esc(b.giderTuru)):'')+(b.kategori?kv('Kategori',esc(b.kategori)):'')
+   +(L.isletme?kv('Kayıt türü',b.kayitTuru?esc(b.kayitTuru):'— yok —',b.kayitTuru?'':'warn'):kv('Hesap',b.hesapKodu?esc(b.hesapKodu)+(b.hesapAd?' · '+esc(b.hesapAd):''):'— yok —',b.hesapKodu?'':'warn'))
+   +(b.guven?kv('Güven',(GUV[b.guven.seviye]||esc(b.guven.seviye))+(b.guven.neden?' · '+esc(b.guven.neden):''),b.guven.seviye==='dusuk'?'warn':(b.guven.seviye==='yuksek'?'pos':'')):'')
+   +(b.aiMatrahGuven?kv('AI hesap güveni',GUV[b.aiMatrahGuven]||esc(b.aiMatrahGuven)):'')
+   +kv('Luca',lucaEtiket(b))+kv('Kaynak',esc(KAYNAK[b.kaynak]||b.kaynak||'—'))+'</div>';
+  if(b.uyarilar&&b.uyarilar.length){h+='<div style="margin-top:8px">'+b.uyarilar.map(function(u){var col=u.s==='engel'?'var(--rose)':'var(--amber)';return '<div style="border-left:3px solid '+col+';padding:6px 10px;margin:6px 0;background:rgba(255,255,255,.03);border-radius:0 10px 10px 0"><b style="font-size:12.5px;color:'+col+'">'+esc(u.b)+'</b>'+(u.a?'<div style="font-size:11.5px;color:var(--text2);margin-top:2px;line-height:1.45">'+esc(u.a)+'</div>':'')+'</div>';}).join('')+'</div>';}
+  if(b.fis&&b.fis.length){h+='<span class="eyebrow" style="display:block;margin:12px 0 6px">MUHASEBE FİŞİ</span><div class="card" style="padding:4px 12px">'+b.fis.map(function(l){return '<div style="display:flex;justify-content:space-between;gap:8px;font-size:11.5px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.05)"><div style="min-width:0"><b style="display:block;font-size:12.5px;color:'+(l.k?'var(--text)':'var(--amber)')+'">'+(l.k?esc(l.k):'— kod yok —')+'</b><span style="color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block">'+esc(GRUP[l.g]||l.g)+(l.a?' · '+esc(l.a):'')+'</span></div><div style="text-align:right;flex-shrink:0;color:var(--text2)">'+(l.b?'<div>B '+tl(l.b)+'</div>':'')+(l.c?'<div>A '+tl(l.c)+'</div>':'')+'</div></div>';}).join('')+'</div>';}
+  h+='<div style="font-size:11px;color:var(--muted);margin-top:10px;text-align:center">Onay ve muhasebeleştirme masaüstünde (Muhasebeleştir paneli)</div>'
+   +'<div class="mbtns"><button class="cancel" onclick="closeModal()">Kapat</button><button class="save" onclick="fmBelgeGor(\''+esc(b.id)+'\')">Belgeyi gör</button></div>';
+  openModal(h);};
+
+/* ── Parçalar ── */
+function ustSatir(){return '<div class="selrow">'+selchip('MÜKELLEF',clientName(),'users','openPicker()')+selchip('YIL',donemYilLabel(),'calCheck','openDonemPicker()')+selchip('AY',donemAyLabel(),'calCheck','openDonemPicker()')+'</div>';}
+function eylemler(){return '<div class="actgrid">'+actbtn('scan',C.gold,'Belge tara ve yükle','Kamera → OCR → merkez',true,"go('ocr')")+actbtn('refresh',C.sky,'Yenile','Canlı veriyi tazele',false,'fmYenile()')+'</div>';}
+function kuyrukSatir(L){var k=L.kuyruk;if(!k){return L.hatalar&&L.hatalar.kuyruk?hataSatir('Kuyruk · '+L.hatalar.kuyruk):'';}
+  var bek=k.okuma+k.sinif;var dot=k.hata24>0?'r':(bek>0||k.calisan>0?'a':'g');
+  var sub=(bek?num(k.okuma)+' okuma · '+num(k.sinif)+' sınıflandırma bekliyor':'Bekleyen iş yok')+(k.calisan?' · '+num(k.calisan)+' çalışıyor':'');
+  var son=(k.hata24>0&&k.sonHata&&k.sonHata[0])?'<div style="font-size:10.5px;color:var(--rose);margin-top:3px;line-height:1.4">Son hata: '+esc(k.sonHata[0].hata)+'</div>':'';
+  return '<div class="card" style="padding:12px 16px"><div style="display:flex;align-items:center;gap:9px"><span class="sd '+dot+'"></span><b style="font-size:14.5px;font-weight:600;flex:1">Belge kuyruğu</b><span class="badge '+(k.hata24>0?'b-rose':'b-green')+'">24s · '+num(k.tamam24)+' tamam'+(k.hata24?' / '+num(k.hata24)+' hata':'')+'</span></div><div style="font-size:12px;color:var(--muted);margin-top:5px;line-height:1.45">'+sub+'</div>'+son+'</div>';}
+
+// Mükellef seçiliyken sayaçlar: bekleyen / eşleşti (hazır) / onaylı / kod eksik-çelişki — özet + belge listesinden
+function sayaclarMukellef(L){var o=L.ozet||{};var B=L.belgeler||[];var say=function(f){return B.filter(f).length;};
+  var hazir=say(function(b){return b.durum&&b.durum.cat==='ready';});
+  var eksik=say(function(b){return b.durum&&b.durum.cat==='eksik';});var celiski=say(function(b){return b.durum&&b.durum.cat==='celiski';});
+  var sorun=say(function(b){return b.durum&&SORUN[b.durum.cat];});
+  var pend=o.pending!=null?o.pending:say(bekleyenMi);
+  var s1=[];if(o.alisPending!=null)s1.push(num(o.alisPending)+' alış · '+num(o.satisPending||0)+' satış');if(o.ocrInProgress)s1.push(num(o.ocrInProgress)+' okunuyor');
+  var s4=[];if(eksik)s4.push(num(eksik)+' kod eksik');if(celiski)s4.push(num(celiski)+' çelişki');if(!s4.length&&o.invalidCount)s4.push(num(o.invalidCount)+' doğrulama');
+  return ctrs([
+   {i:'file',c:C.gold,n:num(pend),t:'Bekleyen',s:s1.join(' · '),onc:"fmFiltreSet('bekleyen')",on:S.filtre==='bekleyen'},
+   {i:'check',c:C.green,n:L.belgeler?num(hazir):'—',t:'Eşleşti · hazır',s:L.belgeler?'kod tam, onaya hazır':'',onc:"fmFiltreSet('hazir')",on:S.filtre==='hazir'},
+   {i:'shield',c:C.sky,n:o.approved!=null?num(o.approved):'—',t:'Onaylı',s:o.posted?'Luca’ya işlenen '+num(o.posted):'',onc:"fmFiltreSet('onayli')",on:S.filtre==='onayli'},
+   {i:'search',c:C.rose,n:L.belgeler?num(sorun):(o.invalidCount!=null?num(o.invalidCount):'—'),t:'Kod eksik / çelişki',s:s4.join(' · '),onc:"fmFiltreSet('sorun')",on:S.filtre==='sorun'}]);}
+// Ofis geneli sayaçlar: yalnız özetin verdiği gerçek sayılar
+function sayaclarOfis(L){var o=L.ozet||{};var M=L.mukellefler||[];var mk=M.filter(function(m){return m.bekleyen>0;}).length;
+  return ctrs([
+   {i:'file',c:C.gold,n:o.pending!=null?num(o.pending):'—',t:'Bekleyen',s:o.alisPending!=null?num(o.alisPending)+' alış · '+num(o.satisPending||0)+' satış':''},
+   {i:'users',c:C.sky,n:num(mk),t:'Bekleyeni olan mükellef',s:o.orphanCount?num(o.orphanCount)+' belge mükellefsiz':''},
+   {i:'shield',c:C.green,n:o.approved!=null?num(o.approved):'—',t:'Onaylı',s:o.posted?'Luca’ya işlenen '+num(o.posted):''},
+   {i:'search',c:C.rose,n:o.invalidCount!=null?num(o.invalidCount):'—',t:'Doğrulama sorunu',s:o.ocrInProgress?num(o.ocrInProgress)+' okunuyor':''}]);}
+
+function segCubuk(){var T=[['tumu','Tümü'],['ALIS','Alış'],['SATIS','Satış'],['bekleyen','Bekleyen'],['hazir','Hazır']];return '<div class="seg">'+T.map(function(t){return '<button class="'+(S.seg===t[0]?'on':'')+'" onclick="fmSegSet(\''+t[0]+'\')">'+t[1]+'</button>';}).join('')+'</div>';}
+function suz(B){var f=S.filtre,s=S.seg;return B.filter(function(b){var c=b.durum?b.durum.cat:'';
+  if(s==='ALIS'&&b.yon!=='ALIS')return false;if(s==='SATIS'&&b.yon!=='SATIS')return false;if(s==='bekleyen'&&!bekleyenMi(b))return false;if(s==='hazir'&&c!=='ready')return false;
+  if(f==='bekleyen'&&!bekleyenMi(b))return false;if(f==='hazir'&&c!=='ready')return false;if(f==='onayli'&&c!=='onayli')return false;if(f==='sorun'&&!SORUN[c])return false;return true;});}
+function belgeSatir(b){var d=b.durum||{k:'ham',t:'—'};var col=RENK[d.k]||C.steel;
+  var alt=[b.belgeNo||'—',tarihKisa(b.tarih)];if(b.giderTuru)alt.push(b.giderTuru);else if(b.hesapKodu)alt.push(b.hesapKodu);else if(b.kayitTuru)alt.push(b.kayitTuru);
+  return '<div class="row" onclick="fmBelgeAc(\''+esc(b.id)+'\')"><div class="ic" style="width:38px;height:38px;color:'+col+';background:color-mix(in srgb,'+col+' 15%,transparent);border:1px solid color-mix(in srgb,'+col+' 28%,transparent)">'+ic(b.yon==='SATIS'?'trend':'file')+'</div><div class="m"><b style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(b.firma||'—')+'</b><span>'+esc(alt.join(' · '))+'</span></div><div class="r"><b>'+tl(b.tutar)+'</b><span class="badge '+(BADGE[d.k]||'b-steel')+'">'+esc(d.t)+'</span></div></div>';}
+function belgeListesi(L){if(!L.belgeler)return L.hatalar&&L.hatalar.belgeler?hataSatir('Belgeler · '+L.hatalar.belgeler):bosKart('Belge listesi alınamadı');
+  if(!L.belgeler.length)return bosKart('Bu mükellef/dönem için belge yok','Belge tara ve yükle ile ekleyebilirsiniz');
+  var B=suz(L.belgeler);if(!B.length)return bosKart('Bu süzgeçte belge yok');
+  var n=Math.min(B.length,S.sayfa*SAYFA);var h='<div class="card" style="padding:6px 16px">'+B.slice(0,n).map(belgeSatir).join('')+'</div>';
+  if(B.length>n)h+='<div class="lucabtn" style="background:rgba(255,255,255,.05);color:var(--gold);border:1px solid var(--border2)" onclick="fmDaha()">Daha fazla göster · kalan '+num(B.length-n)+'</div>';
+  return h;}
+function mukellefListesi(L){if(!L.mukellefler)return (L.hatalar&&(L.hatalar.pano||L.hatalar.mukellefler))?hataSatir('Mükellefler · '+(L.hatalar.pano||L.hatalar.mukellefler)):bosKart('Mükellef özeti alınamadı');
+  if(!L.mukellefler.length)return bosKart('Bu dönem için belge yok','Hiçbir mükellefte bekleyen ya da onaylı belge bulunmuyor');
+  var COLS=[C.sky,C.gold,C.amber,C.green,C.rose,C.copper,C.violet,C.steel];
+  return '<div class="card" style="padding:6px 16px">'+L.mukellefler.map(function(m,i){var c=null;try{c=CLIENTS.filter(function(x){return String(x.id)===m.id;})[0]||null;}catch(e){}
+    var ad=m.ad||(c&&c.n)||'Mükellef';var ini=(c&&c.ini)||(ad.split(' ').filter(Boolean).slice(0,2).map(function(w){return w[0];}).join('').toUpperCase())||'?';
+    var defter=m.defter==='BILANCO'?'Bilanço':(m.defter==='ISLETME'?'İşletme':(m.defter&&m.defter!=='-'?m.defter:''));
+    var parca=[];if(defter)parca.push(defter);if(m.alis)parca.push(num(m.alis)+' alış');if(m.satis)parca.push(num(m.satis)+' satış');if(m.banka)parca.push(num(m.banka)+' banka');if(m.luca)parca.push('Luca '+num(m.luca));
+    var badge=m.sorun>0?'<span class="badge b-rose">'+num(m.sorun)+' sorun</span>':(m.bekleyen>0?'<span class="badge b-amber">Bekliyor</span>':'<span class="badge b-green">Onaylı '+num(m.onayli)+'</span>');
+    return '<div class="row" onclick="fmMukellefSec(\''+esc(m.id)+'\')"><div class="avatar" style="width:40px;height:40px;font-size:14px;background:linear-gradient(160deg,'+((c&&c.c)||COLS[i%COLS.length])+',#0000)">'+esc(ini)+'</div><div class="m"><b style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+esc(ad)+'</b><span>'+esc(parca.join(' · ')||'—')+'</span></div><div class="r"><b>'+num(m.bekleyen)+'</b><span>bekleyen</span>'+badge+'</div></div>';}).join('')+'</div>';}
+
+/* ── Modül ── */
+MOREN_EK.modulEkle(FM,{t:'Fatura İşleme Merkezi',pc:true,sub:'OCR → muhasebeleştir',kind:'fm'},function(m,id){
+  var L=canli();var ofis=(typeof activeClient==='undefined')||activeClient==='all'||!activeClient;
+  var h=dh(m)+ustSatir()+eylemler();
+  if(!L){gerekirseIste();
+    return h+bosKart(window.ReactNativeWebView?'Yükleniyor…':'Canlı veri yok',window.ReactNativeWebView?donemAyLabel()+' '+donemYilLabel()+' · portaldan alınıyor':'Telefonda giriş yapınca portaldan gelir');}
+  if(L.hatalar&&L.hatalar.ozet)h+=hataSatir('Özet · '+L.hatalar.ozet);
+  if(L.ofis||ofis){
+    h+=sayaclarOfis(L)+kuyrukSatir(L)
+     +'<div class="sec"><h3>Mükellefler</h3><a>'+(L.mukellefler?num(L.mukellefler.length)+' mükellef':'')+'</a></div>'+mukellefListesi(L);
+  }else{
+    var B=L.belgeler||[];var g=suz(B).length;
+    h+=sayaclarMukellef(L)+kuyrukSatir(L)
+     +'<div class="sec"><h3>Belgeler</h3>'+(S.filtre?'<a onclick="fmFiltreSet(\''+S.filtre+'\')">'+num(g)+' belge ✕</a>':'<a>'+(L.belgeler?num(g)+' / '+num(B.length):'')+'</a>')+'</div>'
+     +segCubuk()+belgeListesi(L);
+  }
+  return h;
+});
+})();
+</script>

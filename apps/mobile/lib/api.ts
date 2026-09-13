@@ -17,6 +17,30 @@ export function setApiAudience(audience: Audience) {
   currentAudience = audience;
 }
 
+// ---- Dayanıklılık kancaları (2026-09-13) ----
+// Bağlantı durumu: her yanıt (true) / ağ hatası (false, mesaj). index.tsx bunu HTML'deki ince şeride bağlar.
+type BaglantiDinleyici = (ok: boolean, mesaj?: string) => void;
+let baglantiDinleyici: BaglantiDinleyici | null = null;
+export function setBaglantiDinleyici(fn: BaglantiDinleyici | null) {
+  baglantiDinleyici = fn;
+}
+
+// Oturum düştü: 401 sonrası belirteç yenilenemedi (ya da mükellef belirteci bitti) → belirteçler silindi.
+// Paralel isteklerin hepsi 401 alsa da BİR kez bildirilir; yeni belirteç kaydedilince tekrar bildirilebilir.
+let oturumDustuDinleyici: (() => void) | null = null;
+let oturumDustuBildirildi = false;
+export function setOturumDustuDinleyici(fn: (() => void) | null) {
+  oturumDustuDinleyici = fn;
+}
+
+function baglantiBildir(ok: boolean, mesaj?: string) {
+  try {
+    baglantiDinleyici?.(ok, mesaj);
+  } catch {
+    /* dinleyici hatası isteği etkilemesin */
+  }
+}
+
 export const api = axios.create({
   baseURL: API_BASE,
   timeout: 20000,
@@ -29,6 +53,7 @@ export async function saveTokenPair(accessToken: string, refreshToken?: string) 
   } else {
     await deleteStoredItem(REFRESH_TOKEN_KEY);
   }
+  oturumDustuBildirildi = false; // yeni oturum → düşerse yine haber ver
 }
 
 export async function clearTokenPair() {
@@ -68,8 +93,19 @@ api.interceptors.request.use(async (config) => {
 });
 
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    baglantiBildir(true);
+    return response;
+  },
   async (error) => {
+    // Sunucudan yanıt yoksa (ağ kopuk / DNS / zaman aşımı) → şerit; kullanıcı iptali sayılmaz
+    if (!error?.response && !axios.isCancel(error)) {
+      const zamanAsimi = error?.code === 'ECONNABORTED' || /timeout/i.test(String(error?.message || ''));
+      baglantiBildir(false, zamanAsimi ? 'Sunucu yanıt vermiyor' : 'Bağlantı yok');
+      return Promise.reject(error);
+    }
+    if (error?.response) baglantiBildir(true); // sunucu cevap verdi (hata da olsa bağlantı var)
+
     const original = error.config;
     const url = String(original?.url || '');
     const isAuthRequest =
@@ -90,7 +126,17 @@ api.interceptors.response.use(
         return api(original);
       }
 
+      // Yenileme başarısız: oturum düştü → belirteçleri sil, uygulamaya (bir kez) haber ver
+      const oturumVardi = await hasStoredSession();
       await clearTokenPair();
+      if (oturumVardi && !oturumDustuBildirildi) {
+        oturumDustuBildirildi = true;
+        try {
+          oturumDustuDinleyici?.();
+        } catch {
+          /* dinleyici hatası isteği etkilemesin */
+        }
+      }
     }
 
     return Promise.reject(error);

@@ -1,41 +1,32 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Platform, View, StyleSheet } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider } from '../lib/auth';
 import { colors } from '../lib/theme';
 
+// TEK EKRAN: app/index.tsx (tam ekran WebView köprüsü). Elle port edilmiş eski ekranlar
+// (app/(advisor), app/(taxpayer), login, select) 2026-09-13'te kaldırıldı — tasarımın tek kaynağı assets/app.html.
 export default function RootLayout() {
-  const [queryClient] = useState(
-    () =>
-      new QueryClient({
-        defaultOptions: {
-          queries: {
-            retry: 1,
-            staleTime: 30_000,
-          },
-        },
-      }),
+  const stack = (
+    <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }}>
+      <Stack.Screen name="index" />
+    </Stack>
   );
-
-  const stack = <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.bg } }} />;
 
   return (
     <SafeAreaProvider>
-      <QueryClientProvider client={queryClient}>
-        <AuthProvider>
-          <StatusBar style="light" backgroundColor={colors.bg} />
-          {Platform.OS === 'web' ? (
-            <View style={styles.webOuter}>
-              <View style={styles.webPhone}>{stack}</View>
-            </View>
-          ) : (
-            stack
-          )}
-        </AuthProvider>
-      </QueryClientProvider>
+      <AuthProvider>
+        <StatusBar style="light" backgroundColor={colors.bg} />
+        {Platform.OS === 'web' ? (
+          <View style={styles.webOuter}>
+            <View style={styles.webPhone}>{stack}</View>
+          </View>
+        ) : (
+          stack
+        )}
+      </AuthProvider>
     </SafeAreaProvider>
   );
 }

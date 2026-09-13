@@ -1,0 +1,514 @@
+<!-- EK PAKET: ekip — Moren Ekip Konsolu (2026-09-13). Web Konsol'un (apps/web .../panel/ekip) telefon uyarlaması.
+     Sıra: ince başlık şeridi + sabah özeti · personel şeridi (12 ajan, tıklanmaz) · TEK komut kutusu (Koordinatör) ·
+     süzgeç hapları (Sürüyor / Onayınızı bekleyen / Sizden istenen / Bitti) · vaka kartları (satır içi Onayla/Reddet/Yapıldı/Raporu aç/Durdur).
+     Renkler apps/web/.../ekip/_components/ortak.ts'ten (EKIP_ACCENT gök mavisi, altın yalnız "Onayınızı bekleyen"+Koordinatör halkası+sabah bandı).
+     Veri: modLive('ekip') = {akis:{vakalar,sayaclar,pencere}, durum, kadro[], hata, yuklendi} (lib/ek/ekip.ts yükler). Örnek veri YOK: veri yoksa "veri yok". -->
+<style>
+/* ── Moren Ekip (ek-) ── */
+.ek-strip{position:relative;overflow:hidden;border-radius:18px;background:linear-gradient(160deg,rgba(20,18,16,.97),rgba(9,8,7,.97));border:1px solid rgba(255,255,255,.08);box-shadow:inset 0 1px 0 rgba(255,255,255,.04),0 8px 24px rgba(0,0,0,.22)}
+.ek-strip:before{content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(40% 200% at 0% 0%,rgba(125,211,252,.12),transparent 60%)}
+.ek-serit{height:4px;width:100%;background:linear-gradient(90deg,#7dd3fc,#7dd3fc55 55%,transparent)}
+.ek-strip .ek-haps{position:relative;display:flex;align-items:center;gap:6px;padding:10px 12px 8px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.ek-strip .ek-haps::-webkit-scrollbar{display:none}
+.ek-hap{display:inline-flex;flex:0 0 auto;align-items:center;gap:5px;white-space:nowrap;border-radius:999px;padding:4px 10px;font-size:11px;font-weight:600;line-height:16px;font-family:var(--sans)}
+.ek-hap svg{width:11px;height:11px}
+.ek-nokta{width:6px;height:6px;border-radius:50%;flex:0 0 auto}
+.ek-nokta.nabiz{animation:ekNabiz 1.2s ease-in-out infinite}
+@keyframes ekNabiz{0%,100%{opacity:1}50%{opacity:.35}}
+.ek-sabah{position:relative;display:flex;align-items:center;gap:8px;padding:9px 12px 11px;border-top:1px solid rgba(255,255,255,.06);cursor:pointer;font-size:12px;color:var(--text2);min-width:0}
+.ek-sabah svg{width:14px;height:14px;flex:0 0 auto;color:#fbbf24}
+.ek-sabah b{color:#fbbf24;font-weight:700;flex:0 0 auto}
+.ek-sabah span{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ek-sabah i{font-style:normal;color:var(--muted);font-size:10.5px;flex:0 0 auto}
+.ek-uyari{display:flex;gap:8px;align-items:flex-start;border-radius:14px;padding:10px 13px;font-size:12.5px;line-height:1.5;background:rgba(248,113,113,.10);border:1px solid rgba(248,113,113,.4);color:#fecaca}
+.ek-uyari svg{width:15px;height:15px;flex:0 0 auto;margin-top:1px;color:#f87171}
+/* personel şeridi */
+.ek-personel{display:flex;gap:4px;overflow-x:auto;padding:4px 2px 2px;scrollbar-width:none;-webkit-overflow-scrolling:touch;cursor:default}
+.ek-personel::-webkit-scrollbar{display:none}
+.ek-ajan{flex:0 0 auto;width:66px;display:flex;flex-direction:column;align-items:center;gap:4px;padding:4px 2px;border-radius:12px;opacity:.72}
+.ek-ajan.calisiyor{opacity:1}
+.ek-halka{position:relative;width:44px;height:44px;border-radius:50%;padding:2px;display:grid;place-items:center;flex:0 0 auto}
+.ek-halka>b{width:100%;height:100%;border-radius:50%;display:grid;place-items:center;font-size:11px;font-weight:900;letter-spacing:.4px;background:linear-gradient(160deg,#1a1815,#0b0a08);font-family:var(--sans)}
+.ek-halka .ek-durum{position:absolute;right:-1px;bottom:-1px;width:11px;height:11px;border-radius:50%;box-shadow:0 0 0 2px #0b0a08}
+.ek-halka .ek-onay{position:absolute;right:-4px;top:-4px;min-width:17px;height:17px;padding:0 4px;border-radius:999px;background:#fdba74;color:#0f0d0b;font-size:10px;font-weight:900;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 2px #0b0a08}
+.ek-ajan .ek-ad{width:100%;text-align:center;font-size:10px;font-weight:600;color:rgba(250,250,249,.8);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ek-ajan .ek-suan{width:100%;text-align:center;font-size:9.5px;color:rgba(250,250,249,.35);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ek-ajan.calisiyor .ek-ad{color:var(--text)}.ek-ajan.calisiyor .ek-suan{color:#7dd3fc}
+/* komut kutusu (kahraman kart) */
+.ek-komut{position:relative;overflow:hidden;border-radius:20px;padding:14px;border:1px solid transparent;
+  background:radial-gradient(90% 70% at 0% 0%,rgba(125,211,252,.18),transparent 55%) padding-box,linear-gradient(160deg,rgba(255,255,255,.045),rgba(255,255,255,.01)) padding-box,linear-gradient(160deg,rgba(20,18,16,.98),rgba(9,8,7,.98)) padding-box,linear-gradient(135deg,#7dd3fcbb,#7dd3fc33 55%,rgba(255,255,255,.10)) border-box;
+  box-shadow:0 0 0 1px rgba(125,211,252,.13),0 20px 60px rgba(125,211,252,.08),inset 0 1px 0 rgba(255,255,255,.05)}
+.ek-komut.canli{background:radial-gradient(90% 70% at 0% 0%,rgba(248,113,113,.18),transparent 55%) padding-box,linear-gradient(160deg,rgba(255,255,255,.045),rgba(255,255,255,.01)) padding-box,linear-gradient(160deg,rgba(20,18,16,.98),rgba(9,8,7,.98)) padding-box,linear-gradient(135deg,#f87171bb,#f8717133 55%,rgba(255,255,255,.10)) border-box;box-shadow:0 0 0 1px rgba(248,113,113,.13),0 20px 60px rgba(248,113,113,.08),inset 0 1px 0 rgba(255,255,255,.05)}
+.ek-komut .ek-ust{display:flex;align-items:center;gap:10px;min-width:0}
+.ek-komut .ek-ust .ek-halka{width:40px;height:40px}
+.ek-komut .ek-kim{flex:1;min-width:0}
+.ek-komut .ek-kim b{display:block;font-size:14.5px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ek-komut .ek-kim span{display:block;font-size:11px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+.ek-model{display:inline-block;border-radius:999px;padding:0 7px;font-size:9.5px;font-weight:700;line-height:15px;vertical-align:middle;margin-left:5px}
+.ek-vaka-cip{display:inline-flex;align-items:center;gap:4px;margin-top:6px;border-radius:999px;padding:2px 8px;font-size:10.5px;font-weight:600;white-space:nowrap;background:rgba(125,211,252,.10);border:1px solid rgba(125,211,252,.35);color:#7dd3fc}
+.ek-vaka-cip svg{width:11px;height:11px;flex:0 0 auto}
+.ek-vaka-cip u{text-decoration:none;cursor:pointer;padding:0 2px;font-weight:900}
+.ek-metin{margin-top:11px;width:100%;min-height:84px;resize:none;border-radius:13px;padding:11px 13px;font-family:var(--sans);font-size:13.5px;line-height:1.5;color:var(--text);outline:none;background:rgba(0,0,0,.32);border:1px solid rgba(125,211,252,.23);box-shadow:inset 0 1px 0 rgba(255,255,255,.03)}
+.ek-metin::placeholder{color:var(--muted)}
+.ek-komut.canli .ek-metin{border-color:rgba(248,113,113,.35)}
+.ek-sablonlar{display:flex;gap:6px;overflow-x:auto;margin-top:10px;padding-bottom:2px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.ek-sablonlar::-webkit-scrollbar{display:none}
+.ek-sablon{flex:0 0 auto;border-radius:999px;padding:5px 11px;font-size:11px;font-weight:600;color:rgba(250,250,249,.85);background:rgba(125,211,252,.055);border:1px solid rgba(125,211,252,.23);cursor:pointer;white-space:nowrap}
+.ek-sablon.on{background:rgba(125,211,252,.15);border-color:rgba(125,211,252,.55);color:var(--text)}
+.ek-mod{display:inline-flex;align-items:center;border-radius:999px;padding:3px;background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.10)}
+.ek-mod.canli{border-color:rgba(248,113,113,.4)}
+.ek-mod button{border:0;border-radius:999px;padding:5px 11px;font-family:var(--sans);font-size:11px;font-weight:700;background:transparent;color:var(--text2);display:inline-flex;align-items:center;gap:4px;cursor:pointer}
+.ek-mod button svg{width:11px;height:11px}
+.ek-mod button.kuru.on{background:linear-gradient(135deg,#4ade80,#4ade80bb);color:#052e16}
+.ek-mod button.canli.on{background:linear-gradient(135deg,#dc2626,#f87171);color:#fff}
+.ek-altsatir{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:11px;flex-wrap:wrap}
+.ek-gonder{display:inline-flex;align-items:center;gap:7px;border:0;border-radius:999px;padding:9px 16px;font-family:var(--sans);font-size:12.5px;font-weight:700;cursor:pointer;color:#0b1218;background:linear-gradient(135deg,#7dd3fc,#7dd3fc99 70%,#7dd3fc66);box-shadow:0 8px 24px rgba(125,211,252,.2);white-space:nowrap}
+.ek-gonder svg{width:14px;height:14px}
+.ek-gonder.canli{color:#fff;background:linear-gradient(135deg,#f87171,#dc2626 70%,#991b1b);box-shadow:0 8px 24px rgba(220,38,38,.35)}
+.ek-gonder.pasif{opacity:.5}
+.ek-gonder.busy,.ek-gonder.done,.ek-gonder.err{opacity:.9}
+.ek-gonder.err{background:rgba(248,113,113,.18);color:#fca5a5;border:1px solid rgba(248,113,113,.5)}
+.ek-durdur{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:6px 12px;font-family:var(--sans);font-size:11.5px;font-weight:700;cursor:pointer;background:rgba(248,113,113,.10);border:1px solid #f87171;color:#fca5a5;white-space:nowrap}
+.ek-durdur svg{width:11px;height:11px}
+.ek-ipucu{font-size:10.5px;color:rgba(250,250,249,.35);margin-top:8px;line-height:1.45}
+.ek-teyit{margin-top:10px;border-radius:13px;padding:10px 12px;font-size:12px;line-height:1.5;background:rgba(248,113,113,.10);border:1px solid #f87171;color:#fecaca}
+.ek-teyit .ek-btns{display:flex;gap:8px;margin-top:8px}
+.ek-teyit .ek-btns button{flex:1;border:0;border-radius:10px;padding:8px;font-family:var(--sans);font-size:12px;font-weight:700;cursor:pointer}
+.ek-teyit .ek-evet{background:linear-gradient(135deg,#dc2626,#f87171);color:#fff}
+.ek-teyit .ek-vazgec{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12)!important;color:var(--text)}
+/* akış */
+.ek-akis{position:relative;overflow:hidden;border-radius:20px;padding:0 0 12px;background:radial-gradient(120% 100% at 0% 0%,rgba(125,211,252,.09),transparent 50%),linear-gradient(160deg,rgba(255,255,255,.04),rgba(255,255,255,.01)),linear-gradient(160deg,rgba(20,18,16,.96),rgba(9,8,7,.96));border:1px solid rgba(255,255,255,.08);box-shadow:inset 0 1px 0 rgba(255,255,255,.04),0 12px 30px rgba(0,0,0,.25)}
+.ek-akis .ek-ic{padding:12px 12px 0}
+.ek-kutular{display:flex;gap:6px;overflow-x:auto;padding-bottom:9px;margin-bottom:10px;border-bottom:1px solid rgba(255,255,255,.06);scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.ek-kutular::-webkit-scrollbar{display:none}
+.ek-kutu{flex:0 0 auto;display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:5px 11px;font-size:11.5px;font-weight:600;white-space:nowrap;cursor:pointer;font-family:var(--sans)}
+.ek-kutu i{font-style:normal;border-radius:999px;padding:0 6px;font-size:10px;font-weight:800;line-height:16px}
+.ek-akisbilgi{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:11px;color:rgba(250,250,249,.35);margin-bottom:8px;min-width:0}
+.ek-akisbilgi span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ek-akisbilgi .ek-gecikti{color:#f87171;font-weight:700;flex:0 0 auto}
+.ek-vakalar{display:flex;flex-direction:column;gap:7px}
+.ek-vaka{border-radius:14px;overflow:hidden;background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.06)}
+.ek-vaka.acik{background:rgba(255,255,255,.035)}
+.ek-vaka .ek-bas{display:flex;align-items:center;gap:8px;padding:10px 11px;cursor:pointer;min-width:0}
+.ek-vaka .ek-bas .ek-sol{flex:1;min-width:0}
+.ek-vaka .ek-bas .ek-satir1{display:flex;align-items:baseline;gap:5px;min-width:0}
+.ek-vaka .ek-bas .ek-satir1 b{font-size:12.5px;font-weight:700;color:var(--text);max-width:46%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:0 1 auto}
+.ek-vaka .ek-bas .ek-satir1 span{flex:1;min-width:0;font-size:12.5px;color:rgba(250,250,249,.85);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ek-vaka .ek-bas .ek-satir2{display:flex;align-items:center;gap:6px;margin-top:3px;font-size:10.5px;color:rgba(250,250,249,.55);min-width:0;flex-wrap:wrap}
+.ek-vaka .ek-bas .ek-sag{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex:0 0 auto}
+.ek-rozet{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:2px 8px;font-size:10px;font-weight:700;white-space:nowrap}
+.ek-kc{border-radius:999px;padding:1px 6px;font-size:9.5px;font-weight:700;line-height:15px;white-space:nowrap}
+.ek-kc.kuru{background:rgba(74,222,128,.12);color:#86efac}.ek-kc.canli{background:rgba(248,113,113,.16);color:#fca5a5}
+.ek-mini{position:relative;display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;padding:1.5px;flex:0 0 auto;vertical-align:middle}
+.ek-mini b{width:100%;height:100%;border-radius:50%;display:grid;place-items:center;font-size:7.5px;font-weight:900;background:linear-gradient(160deg,#1a1815,#0b0a08)}
+.ek-govde{padding:0 11px 11px;display:flex;flex-direction:column;gap:9px}
+.ek-kalem{border-radius:12px;padding:9px 10px;font-size:12px}
+.ek-kalem .ek-kalem-bas{display:flex;align-items:center;gap:6px;min-width:0}
+.ek-kalem .ek-kalem-bas b{flex:0 0 auto;font-weight:700}
+.ek-kalem .ek-kalem-bas .ek-ki{display:inline-flex;flex:0 0 auto}
+.ek-kalem .ek-kalem-bas .ek-kt{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text)}
+.ek-kalem .ek-kalem-bas svg{width:13px;height:13px;flex:0 0 auto}
+.ek-kalem .ek-metinkutu{margin-top:6px;border-radius:9px;padding:6px 9px;font-size:11.5px;line-height:1.45;background:rgba(0,0,0,.25);color:rgba(250,250,249,.85);white-space:pre-wrap;word-break:break-word;max-height:66px;overflow:hidden}
+.ek-kalem .ek-btns{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.ek-btn{display:inline-flex;align-items:center;gap:5px;border:0;border-radius:999px;padding:6px 11px;font-family:var(--sans);font-size:11.5px;font-weight:700;cursor:pointer;white-space:nowrap;line-height:1.2}
+.ek-btn svg{width:11px;height:11px}
+.ek-btn.onay{background:linear-gradient(135deg,#16a34a,#4ade80);color:#052e16}
+.ek-btn.red{background:rgba(248,113,113,.15);color:#fca5a5;border:1px solid rgba(248,113,113,.35)}
+.ek-btn.istek{background:linear-gradient(135deg,#fdba74,#fdba74aa);color:#0f0d0b}
+.ek-btn.rapor{background:rgba(125,211,252,.10);border:1px solid rgba(125,211,252,.35);color:var(--text)}
+.ek-btn.rapor svg{color:#7dd3fc}
+.ek-btn.cevap{background:rgba(125,211,252,.07);border:1px solid rgba(125,211,252,.27);color:var(--text)}
+.ek-btn.durdur{background:rgba(248,113,113,.10);border:1px solid #f87171;color:#fca5a5}
+.ek-btn.busy{opacity:.75}.ek-btn.done{background:rgba(74,222,128,.15)!important;color:#86efac!important;border-color:rgba(74,222,128,.4)!important}.ek-btn.err{background:rgba(248,113,113,.15)!important;color:#fca5a5!important;border-color:rgba(248,113,113,.5)!important}
+.ek-cizelge{display:flex;flex-direction:column;gap:2px;max-height:230px;overflow-y:auto;scrollbar-width:none}
+.ek-cizelge::-webkit-scrollbar{display:none}
+.ek-adim{display:flex;align-items:flex-start;gap:6px;padding:4px 0 4px 8px;font-size:11.5px;min-width:0}
+.ek-adim .ek-saat{flex:0 0 auto;color:rgba(250,250,249,.35);font-variant-numeric:tabular-nums;margin-top:2px;font-size:10.5px}
+.ek-adim .ek-adim-ic{flex:1;min-width:0}
+.ek-adim .ek-adim-ic .ek-l1{display:flex;align-items:center;gap:5px;min-width:0;flex-wrap:wrap}
+.ek-adim .ek-adim-ic .ek-l1>b{font-weight:700;color:var(--text);flex:0 0 auto}
+.ek-adim .ek-adim-ic .ek-l1>span.ek-baslik{color:rgba(250,250,249,.85);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;flex:1 1 60px;min-width:0}
+.ek-adim .ek-adim-ic .ek-l1>span.ek-baslik.kosuyor{animation:ekNabiz 1.2s ease-in-out infinite}
+.ek-adim .ek-adim-ic .ek-l1 svg{width:11px;height:11px;flex:0 0 auto}
+.ek-adim .ek-hata{display:block;margin-top:2px;color:#f87171;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ek-adim .ek-not{display:block;margin-top:2px;color:rgba(250,250,249,.55);font-size:11px;white-space:pre-wrap;word-break:break-word;max-height:58px;overflow:hidden}
+.ek-devir{border-radius:999px;padding:0 6px;font-size:9.5px;font-weight:700;line-height:15px;background:rgba(167,139,250,.1);border:1px solid rgba(167,139,250,.35);color:#c4b5fd}
+.ek-altbar{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.ek-altbar .ek-kimlik{margin-left:auto;font-family:var(--mono);font-size:9.5px;color:rgba(250,250,249,.35);white-space:nowrap}
+.ek-gecici{border-radius:14px;overflow:hidden;background:rgba(125,211,252,.05);border:1px solid rgba(125,211,252,.27);padding:10px 11px;display:flex;flex-direction:column;gap:6px}
+.ek-gecici .ek-l{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--text);min-width:0}
+.ek-gecici .ek-l span.ek-g{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text2);font-size:11px}
+.ek-bos{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:34px 12px;text-align:center}
+.ek-bos .ek-bos-ic{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;background:rgba(125,211,252,.08);color:#7dd3fc}
+.ek-bos .ek-bos-ic svg{width:18px;height:18px}
+.ek-bos span{font-size:13px;color:rgba(250,250,249,.55);line-height:1.5}
+.ek-sec{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:2px}
+.ek-sec h3{font-family:var(--serif);font-size:17px;font-weight:700;position:relative;padding-left:12px}
+.ek-sec h3::before{content:"";position:absolute;left:0;top:52%;transform:translateY(-50%);width:4px;height:16px;border-radius:3px;background:linear-gradient(180deg,#7dd3fc,#7dd3fc88)}
+.ek-sec small{font-size:11px;color:var(--muted);white-space:nowrap}
+/* rapor alt paneli (modal) */
+.ek-rapor-bas{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:10.5px;color:rgba(250,250,249,.55);margin:4px 0 10px}
+.ek-rapor-bas b{text-transform:uppercase;letter-spacing:1px;font-weight:800;color:var(--text)}
+.ek-rapor-metin{max-height:46vh;overflow-y:auto;white-space:pre-wrap;word-break:break-word;border-radius:13px;padding:11px 13px;font-size:13px;line-height:1.6;background:rgba(0,0,0,.25);border:1px solid rgba(125,211,252,.2);color:rgba(250,250,249,.92);-webkit-overflow-scrolling:touch}
+.ek-rapor-hata{border-radius:10px;padding:8px 11px;font-size:12px;background:rgba(248,113,113,.12);border:1px solid rgba(248,113,113,.35);color:#fecaca;margin-bottom:8px;word-break:break-word}
+.ek-soru{margin-top:10px;border-radius:13px;padding:10px 12px;font-size:12.5px;background:rgba(253,186,116,.07);border:1px solid rgba(253,186,116,.35)}
+.ek-soru b{display:block;color:#fdba74;margin-bottom:4px}
+.ek-soru p{white-space:pre-wrap;color:var(--text);margin:3px 0}
+.ek-soru .ek-cevapsatir{display:flex;gap:6px;margin-top:8px}
+.ek-soru input{flex:1;min-width:0;border-radius:10px;padding:8px 10px;font-family:var(--sans);font-size:12.5px;color:var(--text);outline:none;background:rgba(0,0,0,.3);border:1px solid rgba(253,186,116,.27)}
+.ek-ogrenilen{display:flex;flex-wrap:wrap;gap:5px;margin-top:10px;align-items:center}
+.ek-ogrenilen span{border-radius:7px;padding:2px 8px;font-size:11px;background:rgba(167,139,250,.1);border:1px solid rgba(167,139,250,.35);color:#c4b5fd}
+.ek-liste{margin-top:10px;border-radius:12px;padding:9px 11px}
+.ek-liste .ek-lb{display:flex;align-items:center;gap:5px;font-size:10.5px;font-weight:800;letter-spacing:1px;text-transform:uppercase;margin-bottom:5px}
+.ek-liste ul{list-style:none;margin:0;padding:0;font-size:11.5px;color:rgba(250,250,249,.8);display:flex;flex-direction:column;gap:3px}
+.ek-liste li{word-break:break-word}
+.ek-liste li b{color:var(--text)}
+.ek-liste li i{font-style:normal;opacity:.6}
+.ek-liste svg,.ek-ogrenilen svg,.ek-adim>span>svg,.ek-akisbilgi svg{width:12px;height:12px;flex:0 0 auto}
+</style>
+<script>
+(function(){
+'use strict';
+/* ═══ Renkler / sabitler — apps/web/.../ekip/_components/ortak.ts ═══ */
+var EKIP_ACCENT='#7dd3fc';
+var R={metin:'#fafaf9',ikincil:'rgba(250,250,249,0.55)',sonuk:'rgba(250,250,249,0.35)',altin:'#fbbf24',turuncu:'#fdba74',kirmizi:'#f87171',yesil:'#4ade80',mor:'#a78bfa',gri:'#a3a3a3'};
+var AJAN_RENK={koordinator:'#d4b876',evrak:'#60a5fa',fatura:'#34d399','banka-kasa':'#22d3ee',beyanname:'#fbbf24','bordro-sgk':'#a78bfa',edefter:'#818cf8','luca-operator':'#e879f9',denetci:'#f87171',analist:'#2dd4bf',mevzuat:'#fb923c',risk:'#fb7185',musteri:'#4ade80'};
+var KISALTMA={koordinator:'KO',evrak:'EV',fatura:'FA','banka-kasa':'BK',beyanname:'BY','bordro-sgk':'SG',edefter:'ED','luca-operator':'LU',denetci:'DN',analist:'AN',mevzuat:'MV',risk:'RS',musteri:'MÜ'};
+var KISA_AD={koordinator:'Koordinatör',evrak:'Evrak',fatura:'Fatura','banka-kasa':'Banka',beyanname:'Beyanname','bordro-sgk':'Bordro',edefter:'e-Defter','luca-operator':'Luca',denetci:'Denetçi',analist:'Analist',mevzuat:'Mevzuat',risk:'Risk',musteri:'Müşteri'};
+/* Kadro (12 ajan; Evrak Sorumlusu 2026-09-13'te kaldırıldı) — yalnız kadro verisi gelmediğinde ad/sıra için; durum "veri yok" kalır. apps/api/src/ekip/ajan-tanimlari.ts */
+var KADRO_SIRA=[['koordinator','Koordinatör'],['fatura','Fatura Muhasebecisi'],['banka-kasa','Banka/Kasa Sorumlusu'],['beyanname','KDV/Beyanname Uzmanı'],['bordro-sgk','Bordro/SGK Sorumlusu'],['edefter','e-Defter/Yıl Sonu Sorumlusu'],['luca-operator','Luca Operatörü'],['denetci','Dönem Denetçisi'],['analist','Mali Analist'],['mevzuat','Mevzuat Takipçisi'],['risk','Risk Gözcüsü'],['musteri','Müşteri İlişkileri']];
+/* Kutular — altın YALNIZ "Onayınızı bekleyen" */
+var KUTULAR=[{id:'tumu',ad:'Tümü',renk:EKIP_ACCENT,sayac:null},{id:'suruyor',ad:'Sürüyor',renk:EKIP_ACCENT,sayac:'suruyor'},{id:'onay',ad:'Onayınızı bekleyen',renk:R.altin,sayac:'onay'},{id:'istek',ad:'Sizden istenen',renk:R.turuncu,sayac:'istek'},{id:'bitti',ad:'Bitti',renk:R.yesil,sayac:'bitti'}];
+/* Hazır görev şablonları (ortak.ts SABLONLAR) — metni doldurur, ÇALIŞTIRMAZ; Koordinatör yönlendirir */
+var SABLONLAR=[
+ {id:'sabah-ozeti',ad:'Sabah özeti',m:false,d:false,g:'Bugünün ofis özetini çıkar: durum, riskli/acil, yaklaşan süreler, ekip dün ne yaptı, bugün öncelik. Mesaj gönderme.'},
+ {id:'haftalik-sureler',ad:'Haftalık süreler',m:false,d:false,g:'Bu hafta ve gelecek hafta vadesi gelen beyanname/bildirge/ödemeleri mükellef bazında listele.'},
+ {id:'kayit-yok',ad:'Kayıt yok — araştır',m:true,d:true,g:'{mükellef} için {dönem} aylık takip kaydı yok; neden yok araştır, açılması gerekiyorsa bana sun.'},
+ {id:'eksik-evrak',ad:'Eksik evrak',m:false,d:true,g:'{dönem} evrakı gelmeyen mükellefleri listele; {mükellef} seçiliyse yalnız onun eksik belgelerini çıkar ve hatırlatma taslağı hazırla (gönderme).'},
+ {id:'hatirlatma-metni',ad:'Hatırlatma metni',m:true,d:false,g:'{mükellef} için eksik evrak hatırlatma metni hazırla; gönderme, bana sun.'},
+ {id:'fatura-isle',ad:'Faturaları işle',m:true,d:true,g:'{mükellef} için {dönem} faturalarını oku, hesap eşleştir, Luca fiş taslağı hazırla (kuru test). Şüpheli/uyuşmayan faturaları ayrı listele.'},
+ {id:'supheli',ad:'Şüpheli faturalar',m:true,d:true,g:'{mükellef} {dönem}: içerik-hesap uyuşmayan, mükerrer ya da tutarı şüpheli faturaları ayır.'},
+ {id:'vadesi-gecmis',ad:'Vadesi geçmiş',m:false,d:false,g:'Vadesi geçmiş tahsilatları mükellef bazında listele; {mükellef} seçiliyse ekstre özetini çıkar.'},
+ {id:'tahsilat-taslak',ad:'Tahsilat taslağı',m:true,d:false,g:'{mükellef} için nazik tahsilat hatırlatma taslağı hazırla (gönderme).'},
+ {id:'kdv-kontrol',ad:'KDV kontrol',m:true,d:true,g:'{mükellef} için {dönem} KDV kontrolünü YAP (R1): oturumları bul/aç, Luca çekimi ve fatura bağlama + OCR, eşleştir, hatalı satırları belge no ile listele. Kuru testte oturum açılmaz, zincir "yapılacaktı" olarak yazılır. Kilitleme bende; beyannameyi hazır işaretleme, önce bana sun.'},
+ {id:'hazir-isaretle',ad:'Hazır işaretlenebilecekler',m:false,d:true,g:'{dönem} KDV kontrolü biten ve hatasız olan mükellefleri listele; hazır işaretlenebilecekleri ayrı göster.'},
+ {id:'donem-denetim',ad:'Dönem denetimi',m:true,d:true,g:'{mükellef} {dönem} mizan + fiş listesi: kasa negatif, 191-391 tutarsızlık, tekrarlı fiş, eksik ay, ters bakiye, KDV aritmetik. Uyarı raporu çıkar, mükellefe gönderme.'},
+ {id:'resmi-gazete',ad:'Resmî Gazete',m:false,d:false,g:"Bugünkü Resmî Gazete'yi tara; ofisi ve mükellefleri ilgilendiren vergi/SGK değişikliklerini 3 maddede özetle."},
+ {id:'risk-guncelle',ad:'Risk puanları',m:false,d:false,g:"Mükellef risk puanlarını güncelle; en riskli 5'i nedenleriyle listele."},
+ {id:'cevapsiz',ad:'Cevapsız mesajlar',m:false,d:false,g:'Cevapsız kalan mükellef mesajlarını listele; her biri için cevap taslağı hazırla (gönderme).'},
+ {id:'donem-yorum',ad:'Mali yorum',m:true,d:true,g:'{mükellef} için {dönem} portaldaki hazır (kilitli) gelir tablosunu oku ve yorumla: ciro/kâr eğilimi, vergi yükü tahmini, nakit akışı, geçici vergi öngörüsü; kayıtlı Mali Yorum varsa çelişkiyi söyle. Luca çekimi isteme. ÖNERİ etiketiyle, mükellefe gönderme.'},
+ {id:'bordro-kontrol',ad:'Bordro/SGK kontrol',m:false,d:true,g:'{dönem} bordro/SGK kontrolü: eksik bildirge, işe giriş/çıkış, prim tutarsızlığı; {mükellef} seçiliyse yalnız onun.'},
+ {id:'berat-negatif',ad:'Berat + negatif tarama',m:true,d:false,g:'Berat takvimi + {mükellef} için negatif kasa/stok/banka taraması.'},
+ {id:'luca-kontrol',ad:'Luca oturum kontrolü',m:false,d:false,g:'Luca oturumunu ve menüyü kontrol et; oturum düşmüşse bildir.'}
+];
+/* Araç adı → insan dili (ortak.ts ARAC_ADI) */
+var ARAC_ADI={send_whatsapp_freeform:'WhatsApp mesajı',send_whatsapp_template:'WhatsApp şablon mesajı',send_sms:'SMS',send_email:'e-posta',gib_beyanname_gonder:'GİB beyanname gönderimi (yalnız Muzaffer Bey)',sgk_bildirge_gonder:'SGK e-bildirge gönderimi (yalnız Muzaffer Bey)',edefter_berat_yukle:'e-Defter berat yükleme (yalnız Muzaffer Bey)',luca_yaz:'Luca alan yazma',luca_sec:'Luca seçim',luca_tikla:'Luca tıklama',luca_ekran_oku:'Luca ekran okuma',luca_rapor_oku:'Luca rapor okuma',luca_menu_ara:'Luca menü arama',luca_menu_git:'Luca menüye gitme',luca_menu_haritasi_cikar:'Luca menü haritası',luca_mizan_cek:'Luca mizan çekme',luca_beceri_listele:'Luca beceri listesi',luca_beceri_getir:'Luca beceri getirme',luca_beceri_kaydet:'Luca beceri kaydı',luca_kural_listele:'Luca kural listesi',luca_kural_kaydet:'Luca kural kaydı',luca_kural_sil:'Luca kural silme',post_to_luca:'Luca fiş kaydı',fetch_kdv_from_luca:"Luca'dan KDV çekme",list_taxpayers:'Mükellef listesi',get_taxpayer:'Mükellef kartı',search_all:'Portal arama',get_taxpayer_work_status:'Mükellef iş durumu',list_taxpayers_monthly_status:'Aylık takip',set_monthly_status:'Aylık takip işaretleme',list_documents:'Belge listesi',list_invoices:'Fatura listesi',list_fatura_merkezi:'Fatura Merkezi',list_earsiv_invoices:'e-Arşiv faturaları',fetch_invoices_for_period:'Dönem faturalarını çekme',extract_invoice_fields:'Fatura alanlarını çıkarma',generate_fis_word_from_invoices:'Faturadan fiş taslağı',ocr_pdf:'PDF okuma (OCR)',classify_with_claude:'Belge sınıflandırma',summarize_with_claude:'Özetleme',get_kdv_summary:'KDV özeti',get_beyan_ozet:'Beyan özeti',get_beyanname_config:'Beyanname ayarları',get_beyanname_readiness_summary:'Beyanname hazırlık',list_beyan_kayitlari:'Beyan kayıtları',list_tax_payable:'Ödenecek vergiler',get_tax_calendar:'Vergi takvimi',get_operation_briefing:'Operasyon özeti',get_collection_risk_summary:'Tahsilat riski',get_cari_hareketler:'Cari hareketler',get_bank_status:'Banka durumu',get_isletme_hesap_ozeti:'İşletme hesap özeti',list_mizan_periods:'Mizan dönemleri',get_mizan:'Mizan',get_gelir_tablosu:'Gelir tablosu',get_bilanco:'Bilanço',compare_periods:'Dönem karşılaştırma',calculate_financial_ratios:'Mali oranlar',get_payroll_summary:'Bordro özeti',list_sgk_declarations:'SGK bildirgeleri',list_edefter_sessions:'e-Defter oturumları',list_etebligat:'e-Tebligat listesi',list_tasks:'Görev listesi',list_pending_decisions:'Bekleyen kararlar',get_gundem:'Gündem',get_agent_status:'Ajan durumu',get_luca_agent_jobs:'Luca ajan işleri',get_mihsap_agent_jobs:'Mihsap ajan işleri',get_system_health:'Sistem sağlığı',get_ai_cost_summary:'AI maliyet özeti',get_portal_capability_map:'Portal yetenek haritası',check_official_gazette:'Resmî Gazete taraması',research_official_sources:'Resmî kaynak araştırması',http_get:'Web isteği',search_ai_memory:'Hafızada arama',save_ai_memory:'Hafızaya kayıt',get_firma_hafizasi:'Firma hafızası',get_accounting_reference:'Muhasebe referansı',get_my_profile:'Mükellef profili',get_my_balance:'Mükellef bakiyesi',get_my_beyanname:'Mükellef beyannameleri',get_my_documents:'Mükellef belgeleri',get_my_invoices:'Mükellef faturaları',get_my_kdv:'Mükellef KDV',get_my_open_tasks:'Mükellef açık işleri',get_my_recent_messages:'Mükellef son mesajları',get_my_sgk:'Mükellef SGK',get_my_tebligat:'Mükellef tebligatları',get_my_vergi_takvimi:'Mükellef vergi takvimi',get_my_work_status:'Mükellef iş durumu',preview_agent_command:'Komut önizleme',create_pending_action:'Bekleyen işlem oluşturma',ekip_pano:'Dönem panosu',ekip_isler:'İş dosyaları',ekip_onaylar:'Onay kayıtları',ekip_onayla:'Onay yürütme',ekip_reddet:'Onay reddi'};
+
+/* ═══ Ekran durumu (yeniden çizimde korunur; Kuru/Canlı depoya YAZILMAZ, her açılışta KURU) ═══ */
+var EKIP={suzgec:'tumu',acik:null,gorev:'',dryRun:true,canliTeyit:false,teyitZaman:null,vakaId:null,sablon:null,kosu:null,rapor:{},sayacT:null,onayTeyit:null,sonIstek:0};
+
+/* ═══ Küçük yardımcılar ═══ */
+function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+function attr(s){return esc(s);}
+function ajanRengi(id){return AJAN_RENK[id]||EKIP_ACCENT;}
+function kisaltma(id,ad){if(KISALTMA[id])return KISALTMA[id];return String(ad||id||'??').slice(0,2).toLocaleUpperCase('tr-TR');}
+function kisaAd(id,ad){if(KISA_AD[id])return KISA_AD[id];return String(ad||id||'').split(' ')[0];}
+function aracAdi(n){if(!n)return '';return ARAC_ADI[n]||n;}
+function halkaStil(renk,secili){return 'background:conic-gradient(from 210deg,'+renk+','+renk+'55 40%,'+renk+'cc 70%,'+renk+');box-shadow:'+(secili?('0 0 0 3px '+renk+'2e,0 0 16px '+renk+'66'):'0 0 0 1px rgba(0,0,0,.5)');}
+function hapStil(renk,dolu){return dolu?('background:linear-gradient(135deg,'+renk+','+renk+'bb);border:1px solid transparent;color:#0b1218'):('background:'+renk+'12;border:1px solid '+renk+'3d;color:'+renk);}
+function ms(x){if(!x)return 0;var t=(x instanceof Date)?x.getTime():new Date(x).getTime();return isFinite(t)?t:0;}
+function istGun(d){try{return d.toLocaleDateString('en-CA',{timeZone:'Europe/Istanbul'});}catch(e){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}}
+function saatKisa(x){var t=ms(x);if(!t)return '-';var d=new Date(t);try{return d.toLocaleTimeString('tr-TR',{hour:'2-digit',minute:'2-digit',timeZone:'Europe/Istanbul'});}catch(e){return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');}}
+function goreliSaat(x){var t=ms(x);if(!t)return '-';var d=new Date(t),simdi=new Date(),fark=simdi.getTime()-t;
+  if(fark<60000)return 'az önce';if(fark<3600000)return Math.floor(fark/60000)+' dk önce';
+  var bugun=istGun(simdi),gun=istGun(d),saat=saatKisa(d);if(gun===bugun)return Math.floor(fark/3600000)+' sa önce';
+  var dun=istGun(new Date(simdi.getTime()-86400000));if(gun===dun)return 'dün '+saat;
+  var gt='';try{gt=d.toLocaleDateString('tr-TR',{day:'2-digit',month:'2-digit',timeZone:'Europe/Istanbul'});}catch(e){gt=String(d.getDate()).padStart(2,'0')+'.'+String(d.getMonth()+1).padStart(2,'0');}return gt+' '+saat;}
+function bugunMu(x){var t=ms(x);if(!t)return false;return istGun(new Date(t))===istGun(new Date());}
+function sureKisa(m){if(m==null||isNaN(m))return '';if(m<1000)return m+' ms';var s=Math.round(m/1000);if(s<60)return s+' sn';return Math.floor(s/60)+' dk '+(s%60)+' sn';}
+function sayacMetni(m){var s=Math.max(0,Math.floor(m/1000));return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');}
+function donemEtiketi(d){if(!d)return '';var p=String(d).split('-');var AY=['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara'];var ay=AY[Number(p[1])-1];return ay?(ay+' '+p[0]):String(d);}
+function seciliDonem(){try{if(window.MOREN&&window.MOREN.donem)return window.MOREN.donem;}catch(e){}var n=new Date();return n.getFullYear()+'-'+String(n.getMonth()+1).padStart(2,'0');}
+function seciliMukellef(){try{if(typeof activeClient!=='undefined'&&activeClient&&activeClient!=='all'){var c=(typeof clientObj==='function')?clientObj():null;return {id:String(activeClient),ad:(c&&c.n)||''};}}catch(e){}return null;}
+function telefonda(){return !!window.ReactNativeWebView;}
+function toast(m){try{if(typeof modToast==='function')modToast(m);}catch(e){}}
+function ic_(n){var P2={sun:'<path d="M12 3v2m0 14v2M4.2 4.2l1.4 1.4m12.8 12.8 1.4 1.4M3 12h2m14 0h2M4.2 19.8l1.4-1.4m12.8-12.8 1.4-1.4"/><circle cx="12" cy="12" r="4"/>',
+  stop:'<rect x="6" y="6" width="12" height="12" rx="2"/>',x:'<path d="M18 6 6 18M6 6l12 12"/>',xc:'<circle cx="12" cy="12" r="9"/><path d="m15 9-6 6m0-6 6 6"/>',
+  flask:'<path d="M9 3h6M10 3v6L4.5 19a1.5 1.5 0 0 0 1.3 2.2h12.4a1.5 1.5 0 0 0 1.3-2.2L14 9V3"/>',zap:'<path d="M13 2 3 14h8l-1 8 10-12h-8z"/>',
+  sh:'<path d="M12 3 5 6v5c0 4.5 3 8 7 10 4-2 7-5.5 7-10V6Z"/><path d="M12 8v4m0 3h.01"/>',clip:'<rect x="6" y="4" width="12" height="17" rx="2"/><path d="M9 4V3h6v1M9 12l2 2 4-4"/>',
+  wrench:'<path d="M14.7 6.3a4 4 0 0 0 5 5l-9.5 9.5a2 2 0 0 1-2.8-2.8l9.5-9.5Z"/><path d="m19 3-3 3"/>',cap:'<path d="M2 10 12 5l10 5-10 5Z"/><path d="M6 12v5c3 2 9 2 12 0v-5"/>',
+  reply:'<path d="M9 17 4 12l5-5"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/>',link:'<path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/>',
+  chev:'<path d="m6 9 6 6 6-6"/>',users2:'<path d="M16 20v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 10a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm13 10v-2a4 4 0 0 0-3-3.9M16 2.1a4 4 0 0 1 0 7.8"/>',
+  monitor:'<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8m-4-4v4"/>',plug:'<path d="M12 22v-5M9 8V2m6 6V2M5 8h14v3a7 7 0 0 1-14 0Z"/>'};
+  if(P2[n])return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'+P2[n]+'</svg>';
+  return (typeof ic==='function')?ic(n):'';}
+function mini(id,title){var siz=id==='siz';var renk=siz?R.altin:ajanRengi(id);return '<span class="ek-mini" style="'+halkaStil(renk,false)+'" title="'+attr(title||'')+'"><b style="color:'+renk+'">'+(siz?'MB':kisaltma(id))+'</b></span>';}
+
+/* Cevap ayrıştırma: RAPOR / SORU / ÖĞRENDİM (ortak.ts cevapAyristir) */
+function cevapAyristir(metin){var ham=metin||'';var re=/^[ \t]*(RAPOR|SORU|ÖĞRENDİM|OGRENDIM)[ \t]*:[ \t]*/gim;var es=[],m;
+  while((m=re.exec(ham))){es.push({tip:m[1].toLocaleUpperCase('tr-TR'),bas:m.index,son:m.index+m[0].length});}
+  if(!es.length)return {rapor:'',sorular:[],ogrenilen:[],ham:ham};
+  var rp=[],sorular=[],ogr=[];var bastaki=ham.slice(0,es[0].bas).trim();if(bastaki)rp.push(bastaki);
+  es.forEach(function(e,i){var g=ham.slice(e.son,i+1<es.length?es[i+1].bas:undefined).trim();if(!g)return;
+    if(e.tip==='RAPOR')rp.push(g);else if(e.tip==='SORU')sorular.push(g);else{g.split('\n').forEach(function(s){var t=s.replace(/^\s*[-•*\d.)]+\s*/,'').trim();if(t)ogr.push(t);});}});
+  return {rapor:rp.join('\n\n'),sorular:sorular,ogrenilen:ogr,ham:ham};}
+
+/* Vaka rozeti / sırası (ortak.ts kutuRozeti, vakaSirasi) */
+function rozet(v){if(v.durum==='hata')return {ad:'Hata',renk:R.kirmizi,nabiz:false};
+  if(v.kutu==='onay')return {ad:'Onay',renk:R.altin,nabiz:false};if(v.kutu==='istek')return {ad:'İstek',renk:R.turuncu,nabiz:false};
+  if(v.kutu==='bitti')return {ad:'Bitti',renk:R.yesil,nabiz:false};return {ad:'Sürüyor',renk:EKIP_ACCENT,nabiz:true};}
+function vakaSirasi(a,b){var g=function(v){return (v.kutu==='onay'||v.kutu==='istek')?0:(v.kutu==='suruyor'?1:2);};var d=g(a)-g(b);if(d)return d;return ms(b.guncellendi)-ms(a.guncellendi);}
+function veri(){try{return (typeof modLive==='function')?modLive('ekip'):null;}catch(e){return null;}}
+function vakalar(L){return (L&&L.akis&&Array.isArray(L.akis.vakalar))?L.akis.vakalar:[];}
+function sayaclar(L){if(!L)return null;if(L.akis&&L.akis.sayaclar)return L.akis.sayaclar;if(L.durum&&L.durum.akis)return L.durum.akis;return null;}
+function kosuVakayaAitMi(k,v){if(!k)return false;if(k.vakaId&&k.vakaId===v.vakaId)return true;if(k.isId&&k.isId===v.vakaId)return true;
+  return !!k.isId&&(v.adimlar||[]).some(function(a){return a.tip==='is'&&a.isId===k.isId;});}
+function vakaBul(id){var vs=vakalar(veri());for(var i=0;i<vs.length;i++)if(vs[i].vakaId===id)return vs[i];return null;}
+
+/* ═══ 1) İnce başlık şeridi + sabah özeti (KonsolBaslik) ═══ */
+function cizBaslik(L){var d=L&&L.durum?L.durum:null;var kadro=L&&Array.isArray(L.kadro)?L.kadro:null;var s=sayaclar(L);
+  var kadroN=kadro?kadro.length:12;var calisan=d&&typeof d.calisan==='number'?d.calisan:(kadro?kadro.filter(function(a){return !!a.suAn;}).length:0);
+  if(EKIP.kosu&&!EKIP.kosu.bitti&&calisan===0)calisan=1;
+  var onay=s?(s.onay||0):(d?(d.bekleyenOnay||0):0);
+  var gun='';try{var n=new Date();gun=n.toLocaleDateString('tr-TR',{weekday:'long',timeZone:'Europe/Istanbul'})+' '+n.toLocaleDateString('tr-TR',{day:'numeric',month:'long',timeZone:'Europe/Istanbul'});}catch(e){}
+  var h='<div class="ek-strip"><div class="ek-serit"></div><div class="ek-haps">';
+  h+='<span class="ek-hap" style="padding-left:2px;color:'+R.metin+'">'+'<span style="color:'+EKIP_ACCENT+';display:inline-flex">'+ic_('users2')+'</span><b style="font-size:12.5px">Moren Ekip</b>'+(gun?'<span style="color:'+R.ikincil+';font-weight:500">· '+esc(gun)+'</span>':'')+'</span>';
+  h+='<span style="width:1px;height:12px;background:rgba(255,255,255,.12);flex:0 0 auto"></span>';
+  h+='<span class="ek-hap" style="'+hapStil('rgba(250,250,249,0.6)',false)+'">'+kadroN+' çalışan</span>';
+  h+='<span class="ek-hap" style="'+hapStil(calisan>0?EKIP_ACCENT:'rgba(250,250,249,0.6)',false)+'">'+(calisan>0?'<span class="ek-nokta nabiz" style="background:'+EKIP_ACCENT+';box-shadow:0 0 8px '+EKIP_ACCENT+'"></span>':'')+ic_('activity')+' '+calisan+' çalışıyor</span>';
+  h+='<span class="ek-hap" style="'+hapStil(onay?R.altin:'rgba(250,250,249,0.6)',false)+';cursor:pointer" onclick="ekipSuzgec(\'onay\')">'+ic_('sh')+' Onay '+onay+'</span>';
+  h+='<span style="width:1px;height:12px;background:rgba(255,255,255,.12);flex:0 0 auto"></span>';
+  if(!L){h+='<span class="ek-hap" style="'+hapStil(R.gri,false)+'">'+ic_('monitor')+' Durum verisi yok</span>';}
+  else if(!d){h+='<span class="ek-hap" style="'+hapStil(R.gri,false)+'">'+ic_('monitor')+' Durum alınamadı</span>';}
+  else{var op=d.operator&&(d.operator.cevrimici||d.operator.acik);
+    h+='<span class="ek-hap" style="'+hapStil(op?R.yesil:R.kirmizi,false)+'">'+ic_('monitor')+' Operatör <span class="ek-nokta" style="background:'+(op?R.yesil:R.kirmizi)+'"></span></span>';
+    h+='<span class="ek-hap" style="'+hapStil(d.maxBagli===false?R.kirmizi:R.yesil,false)+'">'+ic_('plug')+' Max <span class="ek-nokta" style="background:'+(d.maxBagli===false?R.kirmizi:R.yesil)+'"></span></span>';}
+  h+='</div>';
+  // Sabah özeti satırı — durum.sonSabahOzeti varsa ilk satırı; dokununca tam metin (GET /ekip/isler/:isId)
+  var so=d&&d.sonSabahOzeti?d.sonSabahOzeti:null;
+  if(so&&so.isId){var ilk=so.raporIlkSatir||(so.hata?('Hata: '+so.hata):(so.status==='running'||so.status==='pending'?'üretiliyor…':'rapor metni yok'));
+    h+='<div class="ek-sabah" data-id="'+attr(so.isId)+'" onclick="ekipRaporAc(this)">'+ic_('sun')+'<b>Sabah özeti</b><span>'+esc(ilk)+'</span><i>'+(bugunMu(so.createdAt)?'bugün ':'')+esc(saatKisa(so.createdAt))+'</i></div>';}
+  else if(d){h+='<div class="ek-sabah" style="cursor:default">'+ic_('sun')+'<b>Sabah özeti</b><span style="color:var(--muted)">'+(d.sabahOzeti?'henüz üretilmedi (08:30 otomatik)':'kapalı — henüz kayıt yok')+'</span></div>';}
+  else{h+='<div class="ek-sabah" style="cursor:default">'+ic_('sun')+'<b>Sabah özeti</b><span style="color:var(--muted)">veri yok</span></div>';}
+  h+='</div>';
+  if(d&&d.maxBagli===false)h+='<div class="ek-uyari" style="margin-top:10px">'+ic_('sh')+'<span><b>Max bağlı değil</b> — hiçbir ajan koşamaz. Sunucuda CLAUDE_CODE_OAUTH_TOKEN yok.</span></div>';
+  if(L&&L.hata)h+='<div class="ek-uyari" style="margin-top:10px">'+ic_('sh')+'<span>'+esc(L.hata)+'</span></div>';
+  return h;}
+
+/* ═══ 2) Personel şeridi (AjanSeridi) — TIKLANMAZ, yalnız durum ═══ */
+function suAnMetni(a,simdi){
+  if(a.id==='koordinator'&&EKIP.kosu&&!EKIP.kosu.bitti){var m=EKIP.kosu.mukellefAd;return {metin:(m?m+' · ':'')+EKIP.kosu.gorev,nokta:'calisiyor',sayac:simdi-EKIP.kosu.basladi};}
+  if(a.suAn){var mm=a.suAn.mukellefAd;var b=ms(a.suAn.basladi);return {metin:(mm?mm+' · ':'')+(a.suAn.konu||'çalışıyor'),nokta:'calisiyor',sayac:b?(simdi-b):null};}
+  var hata=a.sonKosu&&a.sonKosu.status==='failed';return {metin:'boşta',nokta:hata?'hata':null,sayac:null};}
+function cizSerit(L){var kadro=L&&Array.isArray(L.kadro)&&L.kadro.length?L.kadro:null;var simdi=Date.now();
+  var h='<div class="ek-sec"><h3>Personel</h3><small>'+(kadro?(kadro.length+' ajan · yalnız durum'):'kadro verisi yok')+'</small></div>';
+  h+='<div class="ek-personel" aria-label="Personel durumu">';
+  var liste=kadro||KADRO_SIRA.map(function(x){return {id:x[0],ad:x[1],veriYok:true};});
+  liste.forEach(function(a){var renk=ajanRengi(a.id);var d=a.veriYok?{metin:'—',nokta:null,sayac:null}:suAnMetni(a,simdi);var cal=d.nokta==='calisiyor';var onay=Number(a.bekleyenOnay||0);
+    h+='<div class="ek-ajan'+(cal?' calisiyor':'')+'" data-ajan="'+attr(a.id)+'" title="'+attr((a.ad||a.id)+(a.unvan?' — '+a.unvan:''))+'">';
+    h+='<span class="ek-halka" style="'+halkaStil(renk,cal)+'"><b style="color:'+renk+'">'+esc(kisaltma(a.id,a.ad))+'</b>';
+    if(cal)h+='<span class="ek-durum nabiz" style="background:'+EKIP_ACCENT+';box-shadow:0 0 0 2px #0b0a08,0 0 10px '+EKIP_ACCENT+'"></span>';
+    else if(d.nokta==='hata')h+='<span class="ek-durum" style="background:'+R.kirmizi+'"></span>';
+    if(onay>0)h+='<span class="ek-onay">'+onay+'</span>';
+    h+='</span><span class="ek-ad">'+esc(kisaAd(a.id,a.ad))+'</span>';
+    var bas=(a.id==='koordinator'&&EKIP.kosu&&!EKIP.kosu.bitti)?EKIP.kosu.basladi:(a.suAn?ms(a.suAn.basladi):0);
+    h+='<span class="ek-suan"'+(cal&&d.sayac!=null&&bas?' data-ekip-sayac="'+bas+'"':'')+'>'+(cal&&d.sayac!=null?esc(sayacMetni(d.sayac))+' · ':'')+esc(d.metin)+'</span></div>';});
+  h+='</div>';return h;}
+
+/* ═══ 3) TEK komut kutusu — Koordinatör (KomutKutusu) ═══ */
+function koordinator(L){var k=L&&Array.isArray(L.kadro)?L.kadro.filter(function(a){return a.id==='koordinator';})[0]:null;return k||null;}
+function modelRengi(m){m=String(m||'').toLowerCase();if(m.indexOf('opus')>=0)return '#e879f9';if(m.indexOf('sonnet')>=0)return EKIP_ACCENT;if(m.indexOf('haiku')>=0)return R.yesil;return R.gri;}
+function cizKomut(L){var ko=koordinator(L);var canli=!EKIP.dryRun;var mk=seciliMukellef();
+  var h='<div class="ek-komut'+(canli?' canli':'')+'" id="ekip-komut-kart"><div class="ek-ust">';
+  h+='<span class="ek-halka" style="'+halkaStil(AJAN_RENK.koordinator,false)+'"><b style="color:'+AJAN_RENK.koordinator+'">KO</b></span>';
+  h+='<div class="ek-kim"><b>'+esc(ko?ko.ad:'Koordinatör')+(ko&&ko.model?'<span class="ek-model" style="background:'+modelRengi(ko.model)+'16;border:1px solid '+modelRengi(ko.model)+'44;color:'+modelRengi(ko.model)+'">'+esc(ko.model)+'</span>':'')+'</b>';
+  h+='<span>'+esc(ko&&ko.unvan?ko.unvan:'Ofis koordinatörü')+' · işi doğru çalışana verir</span>';
+  h+='<span style="margin-top:2px;color:'+(mk?EKIP_ACCENT:'var(--muted)')+'">'+(mk?('Mükellef: '+esc(mk.ad||mk.id)):'Mükellef: ofis geneli (üstten seçilebilir)')+'</span></div></div>';
+  h+='<div id="ekip-vaka-cip">'+cizVakaCip()+'</div>';
+  h+='<textarea class="ek-metin" id="ekipKomutMetin" rows="3" placeholder="Koordinatör’e görev yaz…" oninput="ekipMetinDegisti(this)">'+esc(EKIP.gorev)+'</textarea>';
+  h+='<div class="ek-sablonlar">'+SABLONLAR.map(function(s){return '<span class="ek-sablon'+(EKIP.sablon===s.id?' on':'')+'" data-id="'+attr(s.id)+'" onclick="ekipSablon(this)">'+esc(s.ad)+'</span>';}).join('')+'</div>';
+  h+='<div id="ekip-komutAlt">'+cizKomutAlt(L)+'</div></div>';return h;}
+function cizVakaCip(){if(!EKIP.vakaId)return '';return '<span class="ek-vaka-cip" title="Aynı iş dosyası zincirinde devam">'+ic_('link')+'<span>vaka #'+esc(String(EKIP.vakaId).slice(0,8))+'</span><u onclick="ekipVakaBagKaldir()" title="Bağı kaldır — yeni zincir aç">×</u></span>';}
+function cizKomutAlt(L){var d=L&&L.durum?L.durum:null;var canli=!EKIP.dryRun;var kosuyor=!!(EKIP.kosu&&!EKIP.kosu.bitti);var maxYok=!!(d&&d.maxBagli===false);
+  var h='';
+  if(EKIP.canliTeyit&&EKIP.dryRun)h+='<div class="ek-teyit"><b>Canlı moda geçiliyor</b> — mükellefe mesaj gidebilir, Luca’ya fiş yazılabilir.<div class="ek-btns"><button class="ek-evet" onclick="ekipCanliEvet()">Evet, canlı</button><button class="ek-vazgec" onclick="ekipCanliVazgec()">Vazgeç</button></div></div>';
+  if(canli)h+='<div class="ek-uyari" style="margin-top:10px">'+ic_('sh')+'<span><b>Canlı koşu.</b> Mükellefe mesaj gidebilir, Luca’ya fiş yazılabilir. Resmi gönderim (GİB/SGK/berat) yine sadece Muzaffer Bey’e aittir; dışarı gönderimler akışta "Onayınızı bekleyen" kutusuna düşer. Ekran yenilenince kuru teste döner.</span></div>';
+  h+='<div class="ek-altsatir"><div class="ek-mod'+(canli?' canli':'')+'" title="Kuru test: mükellefe mesaj gitmez, Luca\'ya yazılmaz; yalnız \'yapacaktım\' raporu">';
+  h+='<button class="kuru'+(EKIP.dryRun?' on':'')+'" onclick="ekipKuru()">'+ic_('flask')+' Kuru test</button><button class="canli'+(canli?' on':'')+'" onclick="ekipCanliIste()">'+ic_('zap')+' Canlı</button></div>';
+  if(kosuyor){h+='<button class="ek-durdur" '+(EKIP.kosu.isId?'data-id="'+attr(EKIP.kosu.isId)+'" onclick="ekipDurdur(this)"':'style="opacity:.6" onclick="ekipToast(\'Koşu daha yeni başlıyor; birkaç saniye sonra durdurulabilir\')"')+'>'+ic_('stop')+' Koordinatör çalışıyor: Durdur</button>';}
+  else{h+='<button class="ek-gonder'+(canli?' canli':'')+(maxYok?' pasif':'')+'" id="ekipGonderBtn" onclick="ekipGonder(this)">'+(canli?ic_('sh'):ic_('play'))+' '+(maxYok?'Max bağlı değil':(canli?'Canlı çalıştır':'Çalıştır'))+'</button>';}
+  h+='</div>';
+  h+='<div class="ek-ipucu">'+(kosuyor?'Aynı anda tek koşu — bitince açılır. İlerleme aşağıdaki akışta.':(canli?'CANLI: mesaj gidebilir, Luca\'ya yazılabilir · dışarı gönderimler yine onayınıza düşer.':'Kuru test: mesaj gitmez, Luca\'ya yazılmaz · Koordinatör işi doğru çalışana verir; ilerlemeyi aşağıdaki akıştan izlersiniz.'))+'</div>';
+  return h;}
+
+/* ═══ 4) Canlı akış — süzgeç hapları + vaka kartları (IsAkisi + VakaSatiri) ═══ */
+function cizAkis(L){var s=sayaclar(L);var vs=vakalar(L).slice().sort(vakaSirasi);var f=EKIP.suzgec;var mk=seciliMukellef();
+  var h='<div class="ek-akis"><div class="ek-serit"></div><div class="ek-ic">';
+  h+='<div class="ek-kutular">'+KUTULAR.map(function(k){var aktif=f===k.id;var n=k.sayac&&s?Number(s[k.sayac]||0):null;
+    var st=aktif?('background:linear-gradient(135deg,'+k.renk+','+k.renk+'bb);border:1px solid transparent;color:#0b1218'):('background:'+(n?k.renk+'10':'transparent')+';border:1px solid '+(n?k.renk+'55':'rgba(255,255,255,.10)')+';color:'+(n?k.renk:R.ikincil));
+    return '<span class="ek-kutu" style="'+st+'" onclick="ekipSuzgec(\''+k.id+'\')">'+esc(k.ad)+(n!=null?'<i style="background:'+(aktif?'rgba(0,0,0,.22)':k.renk+'22')+'">'+n+'</i>':'')+'</span>';}).join('')+'</div>';
+  var suz=vs.filter(function(v){return f==='tumu'||v.kutu===f;});
+  h+='<div class="ek-akisbilgi"><span>'+(L&&L.akis?(suz.length+' vaka · '+((L.akis.pencere&&L.akis.pencere.gun)||7)+' gün'+(mk?' · '+esc(mk.ad||''):'')):'akış verisi yok')+(L&&L.yuklendi?' · '+esc(saatKisa(L.yuklendi)):'')+'</span>'+(s&&s.gecikti?'<span class="ek-gecikti">'+s.gecikti+' gecikti</span>':'')+'<span class="ek-hap" style="'+hapStil('rgba(250,250,249,0.55)',false)+';cursor:pointer;flex:0 0 auto" onclick="ekipYenileIste()">'+ic_('refresh')+' Yenile</span></div>';
+  h+='<div class="ek-vakalar">';
+  // Geçici satır: eşleşmemiş yerel koşu (isId henüz gelmedi / akış henüz tazelenmedi)
+  var k=EKIP.kosu;var eslesti=k&&vs.some(function(v){return kosuVakayaAitMi(k,v);});
+  if(k&&!eslesti){h+='<div class="ek-gecici"><div class="ek-l">'+mini('koordinator','Koordinatör')+(k.bitti?'<span>Koordinatör koşusu bitti'+(k.hata?' (hata)':'')+' — akışa işleniyor</span>':'<span style="display:inline-flex;align-items:center;gap:6px"><svg class="spin" viewBox="0 0 24 24" fill="none" stroke="'+EKIP_ACCENT+'" stroke-width="2" style="width:12px;height:12px"><path d="M21 12a9 9 0 1 1-6.2-8.5" stroke-linecap="round"/></svg>Koordinatör başlıyor…</span>')+'<span class="ek-g" title="'+attr(k.gorev)+'">'+esc(k.gorev)+'</span></div>';
+    if(k.hata)h+='<div style="font-size:11px;color:'+R.kirmizi+'">'+esc(k.hata)+'</div>';
+    if(!k.bitti&&k.isId)h+='<div><button class="ek-btn durdur" data-id="'+attr(k.isId)+'" onclick="ekipDurdur(this)">'+ic_('stop')+' Durdur</button></div>';
+    h+='</div>';}
+  if(!L){h+='<div class="ek-bos"><span class="ek-bos-ic">'+ic_('activity')+'</span><span>'+(telefonda()?'Akış yükleniyor…':'Akış verisi yok — canlı veri telefonda yüklenir')+'</span></div>';}
+  else if(!L.akis){h+='<div class="ek-bos"><span class="ek-bos-ic">'+ic_('activity')+'</span><span>Akış alınamadı'+(L.hata?': '+esc(L.hata):'')+'</span></div>';}
+  else if(!suz.length&&!(k&&!eslesti)){h+='<div class="ek-bos"><span class="ek-bos-ic">'+ic_('activity')+'</span><span>'+(f==='tumu'?'Bu pencerede iş yok — Koordinatör’e yukarıdan görev verin.':'Bu kutuda iş yok.')+'</span></div>';}
+  else{suz.forEach(function(v){h+=cizVaka(v,k);});}
+  h+='</div></div></div>';return h;}
+function cizVaka(v,k){var rz=rozet(v);var acik=EKIP.acik===v.vakaId;var siz=v.kimde&&v.kimde.ajanId==='siz';var adimlar=v.adimlar||[];
+  var yerel=k&&!k.bitti&&kosuVakayaAitMi(k,v);var kosuyor=yerel||adimlar.some(function(a){return a.tip==='is'&&a.durum==='running';});var nabiz=rz.nabiz&&kosuyor;
+  var h='<div class="ek-vaka'+(acik?' acik':'')+'" style="border-color:'+(acik?rz.renk+'55':(v.gecikti?R.kirmizi+'66':'rgba(255,255,255,.06)'))+'"><div class="ek-bas" data-id="'+attr(v.vakaId)+'" onclick="ekipVakaAc(this)">';
+  h+='<div class="ek-sol"><div class="ek-satir1"><b title="'+attr(v.mukellef?v.mukellef.ad:'Ofis geneli')+'">'+esc(v.mukellef&&v.mukellef.ad?v.mukellef.ad:'—')+'</b><span style="color:'+R.sonuk+';flex:0 0 auto">·</span><span title="'+attr(v.konu)+'">'+esc(v.konu||'Konu yok')+'</span></div>';
+  h+='<div class="ek-satir2"><span style="display:inline-flex;align-items:center;gap:4px">kimde: '+mini(v.kimde?v.kimde.ajanId:'koordinator',siz?'Muzaffer Bey':(v.kimde?v.kimde.ad:''))+'<span style="color:'+(siz?R.altin:R.metin)+'">'+(siz?'Siz':esc(kisaAd(v.kimde?v.kimde.ajanId:'',v.kimde?v.kimde.ad:'')))+'</span></span><span>'+esc(goreliSaat(v.guncellendi))+'</span>'+(adimlar.length>1?'<span>'+adimlar.length+' adım</span>':'')+'</div></div>';
+  h+='<div class="ek-sag">'+(v.gecikti?'<span class="ek-rozet" style="border:1px solid '+R.kirmizi+';color:'+R.kirmizi+'">gecikti</span>':'')+'<span class="ek-rozet" style="background:'+rz.renk+'1a;border:1px solid '+rz.renk+'55;color:'+rz.renk+'">'+(nabiz?'<span class="ek-nokta nabiz" style="background:'+rz.renk+';box-shadow:0 0 6px '+rz.renk+'"></span>':'')+rz.ad+'</span><span class="ek-kc '+(v.kuru?'kuru':'canli')+'">'+(v.kuru?'KURU':'CANLI')+'</span></div>';
+  h+='<span style="color:'+R.sonuk+';display:inline-flex;transform:rotate('+(acik?'0':'-90')+'deg);transition:.15s;flex:0 0 auto;width:13px;height:13px">'+ic_('chev')+'</span></div>';
+  if(acik){h+='<div class="ek-govde">';
+    // (c) açık kalemler — satır içi Onayla/Reddet · Yapıldı (her zaman görünür)
+    (v.acikKalemler||[]).forEach(function(kl){h+=cizKalem(kl,v);});
+    // (a) zaman çizelgesi
+    if(adimlar.length){h+='<div class="ek-cizelge">'+adimlar.map(function(a){return cizAdim(a);}).join('')+'</div>';}
+    // (b) rapor + (d) durdur — alt eylem çubuğu
+    var isler=adimlar.filter(function(a){return a.tip==='is';});var kosan=isler.filter(function(a){return a.durum==='running';})[0];
+    var sonBiten=null;for(var i=isler.length-1;i>=0;i--){if(isler[i].durum==='done'||isler[i].durum==='failed'){sonBiten=isler[i];break;}}
+    var raporIs=sonBiten||kosan||isler[isler.length-1]||null;
+    h+='<div class="ek-altbar">';
+    if(raporIs)h+='<button class="ek-btn rapor" data-id="'+attr(raporIs.isId)+'" onclick="ekipRaporAc(this)">'+ic_('doc')+' Raporu aç</button>';
+    if(kosan||(yerel&&k.isId))h+='<button class="ek-btn durdur" data-id="'+attr(kosan?kosan.isId:k.isId)+'" onclick="ekipDurdur(this)">'+ic_('stop')+' Durdur</button>';
+    h+='<button class="ek-btn cevap" data-id="'+attr(v.vakaId)+'" data-mk="'+attr(v.mukellef?v.mukellef.id:'')+'" onclick="ekipCevapla(this)">'+ic_('reply')+' Cevapla</button>';
+    h+='<span class="ek-kimlik">#'+esc(String(v.vakaId).slice(0,8))+' · açıldı '+esc(goreliSaat(v.olusturuldu))+'</span></div>';
+    if(sonBiten&&sonBiten.raporOzet)h+='<div class="ek-kalem" style="background:rgba(0,0,0,.22);border:1px solid rgba(255,255,255,.06);color:rgba(250,250,249,.85);font-size:11.5px;line-height:1.45;white-space:pre-wrap;word-break:break-word;max-height:96px;overflow:hidden">'+esc(String(sonBiten.raporOzet).slice(0,300))+(String(sonBiten.raporOzet).length>=300?'…':'')+'</div>';
+    h+='</div>';}
+  h+='</div>';return h;}
+function cizKalem(kl,v){var onayMi=kl.tip==='onay';var renk=onayMi?R.altin:R.turuncu;
+  // Bildirim kaynaklı onay kalemi: aynı vakada PENDING onay kaydı (PRV) varsa onun kimliğiyle onaylanır
+  var prv=null;if(onayMi&&kl.kaynak==='bildirim'){var pend=(v.adimlar||[]).filter(function(a){return a.tip==='onay'&&a.durum==='PENDING';});if(pend.length)prv=pend[pend.length-1].id;}
+  var hedefId=prv||kl.id;
+  var h='<div class="ek-kalem" style="background:'+renk+'0f;border:1px solid '+renk+'55"><div class="ek-kalem-bas"><span class="ek-ki" style="color:'+renk+'">'+ic_(onayMi?'sh':'clip')+'</span><b style="color:'+renk+'">'+(onayMi?'Onayınızı bekliyor':'Sizden istenen')+'</b><span class="ek-kt" title="'+attr(kl.confirmationText||kl.baslik)+'">'+esc(kl.baslik)+'</span></div>';
+  if(kl.confirmationText)h+='<div class="ek-metinkutu">'+esc(kl.confirmationText)+'</div>';
+  h+='<div class="ek-btns">';
+  if(onayMi){h+='<button class="ek-btn onay" data-id="'+attr(hedefId)+'" onclick="ekipOnayIste(this)">'+ic_('send')+' Onayla ve gönder</button><button class="ek-btn red" data-id="'+attr(hedefId)+'" onclick="ekipReddet(this)">'+ic_('xc')+' Reddet</button>';}
+  else{h+='<button class="ek-btn istek" data-id="'+attr(kl.id)+'" onclick="ekipIstekKapat(this)">'+ic_('check')+' Yüklendi / Yapıldı</button>';}
+  h+='</div>';
+  // Satır içi teyit (web OnayTeyit): "Bu mesaj GERÇEKTEN gidecek"
+  if(onayMi&&EKIP.onayTeyit===hedefId)h+='<div class="ek-teyit">Bu mesaj <b>GERÇEKTEN</b> gidecek → #'+esc(hedefId)+'<div class="ek-btns"><button class="ek-evet" data-id="'+attr(hedefId)+'" onclick="ekipOnayla(this)">Evet, gönder</button><button class="ek-vazgec" onclick="ekipOnayVazgec()">Vazgeç</button></div></div>';
+  h+='</div>';return h;}
+function durumIkonu(d){if(d==='running')return '<svg class="spin" viewBox="0 0 24 24" fill="none" stroke="'+EKIP_ACCENT+'" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.2-8.5" stroke-linecap="round"/></svg>';
+  if(d==='done')return '<span style="color:'+R.yesil+';display:inline-flex">'+ic_('check')+'</span>';if(d==='failed')return '<span style="color:'+R.kirmizi+';display:inline-flex">'+ic_('x')+'</span>';return '<span style="color:'+R.gri+';display:inline-flex">'+ic_('clock')+'</span>';}
+function cizAdim(a){var saat=esc(saatKisa(a.baslangic));
+  if(a.tip==='is'){var renk=ajanRengi(a.ajanId);var sure='';if(a.baslangic&&a.bitis){var d=ms(a.bitis)-ms(a.baslangic);if(d>=0)sure=sureKisa(d);}
+    return '<div class="ek-adim" style="border-left:2px solid '+renk+'"><span class="ek-saat">'+saat+'</span>'+mini(a.ajanId,a.ajanId)+'<div class="ek-adim-ic"><div class="ek-l1"><b>'+esc(kisaAd(a.ajanId))+'</b><span class="ek-baslik'+(a.durum==='running'?' kosuyor':'')+'" title="'+attr(a.baslik)+'">'+esc(a.baslik)+'</span>'+durumIkonu(a.durum)+(sure?'<span style="color:'+R.sonuk+';font-size:10.5px">'+esc(sure)+'</span>':'')+(a.devir!=null?'<span class="ek-devir">→ devir #'+esc(a.devir)+'</span>':'')+'<span class="ek-kc '+(a.kuru?'kuru':'canli')+'">'+(a.kuru?'KURU':'CANLI')+'</span></div>'+(a.durum==='failed'&&a.hata?'<span class="ek-hata" title="'+attr(a.hata)+'">'+esc(a.hata)+'</span>':'')+'</div></div>';}
+  if(a.tip==='onay'){var rk=a.durum==='EXECUTED'?R.yesil:(a.durum==='PENDING'?R.turuncu:R.gri);
+    return '<div class="ek-adim" style="border-left:2px solid '+R.altin+'"><span class="ek-saat">'+saat+'</span><span style="color:'+R.altin+';display:inline-flex;width:14px;height:14px;flex:0 0 auto;margin-top:1px">'+ic_('sh')+'</span><div class="ek-adim-ic"><div class="ek-l1"><span class="ek-baslik" title="'+attr(a.confirmationText||a.baslik)+'">Onay kaydı <span style="font-family:var(--mono);font-size:10.5px">'+esc(String(a.id).slice(0,12))+'</span> · <span style="color:'+rk+'">'+esc(a.durum)+'</span>'+(a.baslik?' · '+esc(a.baslik):'')+(a.hedef?' → '+esc(a.hedef):'')+'</span></div></div></div>';}
+  var rn=a.tur==='istek'?R.turuncu:(a.tur==='onay'?R.altin:R.ikincil);
+  return '<div class="ek-adim" style="border-left:2px solid '+AJAN_RENK.koordinator+'"><span class="ek-saat">'+saat+'</span><span style="color:'+rn+';display:inline-flex;width:14px;height:14px;flex:0 0 auto;margin-top:1px">'+ic_('doc')+'</span><div class="ek-adim-ic"><div class="ek-l1"><span class="ek-baslik" style="white-space:normal"><b>Koordinatör notu:</b> '+esc(a.baslik)+(a.durum==='kapandi'?'<span style="color:'+R.yesil+'"> · kapandı</span>':'')+'</span></div>'+(a.govde?'<span class="ek-not">'+esc(a.govde)+'</span>':'')+'</div></div>';}
+
+/* ═══ Tam çizim (buildModule) ve parçalı yenileme ═══ */
+var PARCA={baslik:cizBaslik,serit:cizSerit,komut:cizKomut,akis:cizAkis};
+function tamCiz(m){var L=veri();EKIP.dryRun=true;EKIP.canliTeyit=false;EKIP.onayTeyit=null; // her açılışta KURU (depoya yazılmaz)
+  // Veri yoksa (ör. üstten mükellef değişti, modül go() ile açılmadı) RN yükleyicisini iste — go() zaten istediyse (1,5 sn içinde) tekrar isteme
+  if(telefonda()&&!L){setTimeout(function(){if(!veri()&&Date.now()-EKIP.sonIstek>1500&&typeof morenNotifyModule==='function')morenNotifyModule('ekip');},600);}
+  return (typeof dh==='function'?dh(m):'')+'<div id="ekip-baslik">'+cizBaslik(L)+'</div><div id="ekip-serit">'+cizSerit(L)+'</div><div id="ekip-komut">'+cizKomut(L)+'</div><div id="ekip-akis">'+cizAkis(L)+'</div>';}
+function yenile(parcalar){var L=veri();(parcalar||['baslik','serit','komutAlt','akis']).forEach(function(p){var el=document.getElementById('ekip-'+p);if(!el)return;
+    if(p==='komutAlt')el.innerHTML=cizKomutAlt(L);else if(p==='vaka-cip')el.innerHTML=cizVakaCip();else if(PARCA[p])el.innerHTML=PARCA[p](L);});
+  try{if(typeof current!=='undefined'&&current==='detail'&&typeof detailId!=='undefined'&&detailId==='ekip'){var v=document.getElementById('v-detail');if(v)detailHTML=v.innerHTML;}}catch(e){}
+  sayacBaslat();}
+function acikMi(){try{return typeof current!=='undefined'&&current==='detail'&&typeof detailId!=='undefined'&&detailId==='ekip'&&!!document.getElementById('ekip-akis');}catch(e){return false;}}
+/* Koşu süre sayacı — yalnız [data-ekip-sayac] metinlerini günceller (DOM yeniden çizilmez) */
+function sayacBaslat(){var var_=document.querySelectorAll('[data-ekip-sayac]');if(!var_.length){if(EKIP.sayacT){clearInterval(EKIP.sayacT);EKIP.sayacT=null;}return;}
+  if(EKIP.sayacT)return;EKIP.sayacT=setInterval(function(){var els=document.querySelectorAll('[data-ekip-sayac]');if(!els.length){clearInterval(EKIP.sayacT);EKIP.sayacT=null;return;}
+    for(var i=0;i<els.length;i++){var b=Number(els[i].getAttribute('data-ekip-sayac'))||0;if(!b)continue;var t=els[i].textContent||'';var idx=t.indexOf(' · ');els[i].textContent=sayacMetni(Date.now()-b)+(idx>=0?t.slice(idx):'');}},1000);}
+
+/* ═══ Etkileşimler (küresel — onclick'ten çağrılır) ═══ */
+window.ekipToast=toast;
+/* Yeniden yükleme isteği: telefonda RN yükleyicisini tetikler (morenNotifyModule); önizlemede canlı veri yok */
+window.ekipYenileIste=function(){if(telefonda()&&typeof morenNotifyModule==='function'){morenNotifyModule('ekip');toast('Akış yenileniyor…');}else toast('Canlı veri yalnız telefonda yüklenir');};
+(function(){var orj=window.morenNotifyModule;if(typeof orj!=='function')return;window.morenNotifyModule=function(mid){if(mid==='ekip')EKIP.sonIstek=Date.now();return orj.apply(this,arguments);};})();
+window.ekipSuzgec=function(f){EKIP.suzgec=f;try{if(typeof haptic==='function')haptic('light');}catch(e){}yenile(['akis']);var el=document.getElementById('ekip-akis');if(el&&el.scrollIntoView)try{el.scrollIntoView({behavior:'smooth',block:'start'});}catch(e){}};
+window.ekipVakaAc=function(el){var id=el.getAttribute('data-id');EKIP.acik=(EKIP.acik===id)?null:id;yenile(['akis']);};
+window.ekipMetinDegisti=function(el){EKIP.gorev=el.value;if(EKIP.sablon){EKIP.sablon=null;var s=document.querySelectorAll('#ekip-komut .ek-sablon.on');for(var i=0;i<s.length;i++)s[i].classList.remove('on');}};
+window.ekipSablon=function(el){var id=el.getAttribute('data-id');var s=null;for(var i=0;i<SABLONLAR.length;i++)if(SABLONLAR[i].id===id)s=SABLONLAR[i];if(!s)return;
+  var mk=seciliMukellef();if(s.m&&!mk){toast('Bu görev mükellef ister — üstteki çubuktan mükellef seç');}
+  EKIP.sablon=id;EKIP.vakaId=null;EKIP.gorev=s.g.replace(/\{mükellef\}/g,mk?(mk.ad||'seçili mükellef'):'seçili mükellef').replace(/\{dönem\}/g,s.d?donemEtiketi(seciliDonem()):'bu dönem');
+  var ta=document.getElementById('ekipKomutMetin');if(ta){ta.value=EKIP.gorev;}var ss=document.querySelectorAll('#ekip-komut .ek-sablon');for(var j=0;j<ss.length;j++)ss[j].classList.toggle('on',ss[j].getAttribute('data-id')===id);yenile(['vaka-cip']);};
+window.ekipKuru=function(){EKIP.dryRun=true;EKIP.canliTeyit=false;yenile(['komutAlt']);var k=document.getElementById('ekip-komut-kart');if(k)k.classList.remove('canli');};
+window.ekipCanliIste=function(){if(!EKIP.dryRun)return;EKIP.canliTeyit=true;yenile(['komutAlt']);var z=EKIP.teyitZaman=Date.now();setTimeout(function(){if(EKIP.canliTeyit&&EKIP.teyitZaman===z){EKIP.canliTeyit=false;yenile(['komutAlt']);}},5000);};
+window.ekipCanliEvet=function(){EKIP.dryRun=false;EKIP.canliTeyit=false;yenile(['komutAlt']);var k=document.getElementById('ekip-komut-kart');if(k)k.classList.add('canli');try{if(typeof haptic==='function')haptic('medium');}catch(e){}};
+window.ekipCanliVazgec=function(){EKIP.canliTeyit=false;yenile(['komutAlt']);};
+window.ekipVakaBagKaldir=function(){EKIP.vakaId=null;yenile(['vaka-cip']);};
+window.ekipCevapla=function(el){var vid=el.getAttribute('data-id');EKIP.vakaId=vid||null;EKIP.sablon=null;if(!/^Cevap:/.test(EKIP.gorev||'')){EKIP.gorev='Cevap: ';}
+  var ta=document.getElementById('ekipKomutMetin');if(ta){ta.value=EKIP.gorev;}yenile(['vaka-cip']);var k=document.getElementById('ekip-komut');if(k&&k.scrollIntoView)try{k.scrollIntoView({behavior:'smooth',block:'start'});}catch(e){}setTimeout(function(){var t=document.getElementById('ekipKomutMetin');if(t)t.focus();},350);};
+/* Gönder → RN 'ekip-komut' (POST /ekip/koordinator/calistir, SSE beklenmez; RN akışı 5 sn'de bir tazeler) */
+window.ekipGonder=function(btn){var g=(EKIP.gorev||'').trim();if(!g){toast('Önce Koordinatör’e görev yaz');var ta=document.getElementById('ekipKomutMetin');if(ta)ta.focus();return;}
+  if(EKIP.kosu&&!EKIP.kosu.bitti){toast('Koşu sürüyor — bitince yeni görev verilebilir');return;}
+  var L=veri();if(L&&L.durum&&L.durum.maxBagli===false){toast('Max bağlı değil — ajan koşamaz');return;}
+  var mk=seciliMukellef();var params={gorev:g,dryRun:!!EKIP.dryRun};if(mk)params.taxpayerId=mk.id;if(EKIP.vakaId)params.vakaId=EKIP.vakaId;
+  EKIP.kosu={gorev:g,basladi:Date.now(),bitti:false,dryRun:!!EKIP.dryRun,mukellefAd:mk?mk.ad:null,isId:null,vakaId:EKIP.vakaId||null};
+  EKIP.vakaId=null;EKIP.gorev='';EKIP.sablon=null;var ta2=document.getElementById('ekipKomutMetin');if(ta2)ta2.value='';
+  try{if(typeof haptic==='function')haptic('medium');}catch(e){}
+  if(typeof morenAction==='function')morenAction(btn,'ekip-komut','Koordinatör başladı',params);
+  yenile(['baslik','serit','komutAlt','akis','vaka-cip']);
+  if(!telefonda()){setTimeout(function(){if(EKIP.kosu&&!EKIP.kosu.bitti){EKIP.kosu.bitti=true;EKIP.kosu.hata='Önizleme: canlı koşu yalnız telefonda';yenile(['baslik','serit','komutAlt','akis']);}},2500);}};
+window.ekipOnayIste=function(btn){EKIP.onayTeyit=btn.getAttribute('data-id')||null;yenile(['akis']);};
+window.ekipOnayVazgec=function(){EKIP.onayTeyit=null;yenile(['akis']);};
+window.ekipOnayla=function(btn){var id=btn.getAttribute('data-id');if(!id)return;EKIP.onayTeyit=null;
+  if(typeof morenAction==='function')morenAction(btn,'ekip-onayla','Gönderildi ✓',{id:id});};
+window.ekipReddet=function(btn){var id=btn.getAttribute('data-id');if(!id)return;if(typeof morenAction==='function')morenAction(btn,'ekip-reddet','Reddedildi',{id:id,not:'Mobil uygulamadan reddedildi'});};
+window.ekipIstekKapat=function(btn){var id=btn.getAttribute('data-id');if(!id)return;if(typeof morenAction==='function')morenAction(btn,'ekip-istek-kapat','Yapıldı ✓',{id:id});};
+window.ekipDurdur=function(btn){var id=btn.getAttribute('data-id');if(!id)return;
+  if(typeof morenAction==='function')morenAction(btn,'ekip-durdur','Durduruldu',{id:id});};
+/* Rapor: alt panel (modal) açılır; RN GET /ekip/isler/:id → window.MOREN.applyEkipRapor(id, metin, meta) doldurur */
+window.ekipRaporAc=function(el){var id=el.getAttribute('data-id');if(!id)return;var onb=EKIP.rapor[id];
+  raporModal(id,onb?onb:null);
+  if(onb&&onb.meta&&(onb.meta.status==='done'||onb.meta.status==='failed'))return; // bitmiş iş: önbellekten
+  if(telefonda()){if(typeof morenAction==='function')morenAction(null,'ekip-rapor','Rapor açıldı',{id:id});}
+  else{var b=document.getElementById('ekipRaporBox');if(b&&!onb)b.innerHTML='<div class="ek-bos"><span class="ek-bos-ic">'+ic_('doc')+'</span><span>Rapor metni telefonda yüklenir (önizlemede canlı veri yok)</span></div>';}};
+function raporModal(id,r){if(typeof openModal!=='function')return;
+  var h='<h3>İş raporu</h3><div class="ek-rapor-bas"><b>Rapor</b><span style="font-family:var(--mono)">#'+esc(String(id).slice(0,8))+'</span><span id="ekipRaporMeta"></span></div><div id="ekipRaporBox" data-id="'+attr(id)+'">'+(r?raporGovde(id,r):'<div class="ek-bos"><span class="ek-bos-ic"><svg class="spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px"><path d="M21 12a9 9 0 1 1-6.2-8.5" stroke-linecap="round"/></svg></span><span>Rapor yükleniyor…</span></div>')+'</div>';
+  h+='<div class="mbtns"><button class="cancel" onclick="closeModal()">Kapat</button></div>';
+  openModal(h);if(r)raporMeta(r.meta);}
+function raporMeta(meta){var el=document.getElementById('ekipRaporMeta');if(!el||!meta)return;var p=[];if(meta.ajanId)p.push(kisaAd(meta.ajanId));if(meta.model)p.push(meta.model);if(meta.durationMs!=null)p.push(sureKisa(meta.durationMs));if(meta.status)p.push(meta.status==='running'?'sürüyor':meta.status==='failed'?'hata':meta.status==='done'?'bitti':meta.status);if(meta.dryRun===false)p.push('CANLI');else if(meta.dryRun===true)p.push('KURU');el.textContent=p.length?('· '+p.join(' · ')):'';}
+function raporGovde(id,r){var meta=r.meta||{};var metin=String(r.metin||'');var ay=cevapAyristir(metin);var h='';
+  if(meta.hata)h+='<div class="ek-rapor-hata">⚠️ '+esc(meta.hata)+'</div>';
+  if(ay.rapor||(!ay.sorular.length&&!ay.ogrenilen.length&&ay.ham))h+='<div class="ek-rapor-metin">'+esc(ay.rapor||ay.ham)+'</div>';
+  if(!metin&&!meta.hata)h+='<div class="ek-bos"><span class="ek-bos-ic">'+ic_('doc')+'</span><span>Henüz rapor yok'+(meta.status==='running'?' — iş sürüyor':'')+'.</span></div>';
+  if(ay.sorular.length){h+='<div class="ek-soru"><b>'+esc(kisaAd(meta.ajanId||'koordinator'))+' soruyor</b>'+ay.sorular.map(function(s){return '<p>'+esc(s)+'</p>';}).join('')+'<div class="ek-cevapsatir"><input id="ekipSoruCevap" placeholder="Cevabını yaz…"><button class="ek-btn istek" data-vaka="'+attr(meta.vakaId||id)+'" onclick="ekipSoruCevapla(this)">'+ic_('reply')+' Cevapla</button></div></div>';}
+  if(ay.ogrenilen.length)h+='<div class="ek-ogrenilen"><span style="background:none;border:0;color:'+R.mor+';display:inline-flex;padding:0">'+ic_('cap')+'</span>'+ay.ogrenilen.map(function(o){return '<span>'+esc(o)+'</span>';}).join('')+'</div>';
+  var liste=function(bas,ikon,renk,ogeler){if(!ogeler||!ogeler.length)return '';return '<div class="ek-liste" style="background:'+renk+'0d;border:1px solid '+renk+'2a"><div class="ek-lb" style="color:'+renk+'">'+ic_(ikon)+' '+bas+' <span style="opacity:.7">('+ogeler.length+')</span></div><ul>'+ogeler.map(function(o){return '<li>'+o+'</li>';}).join('')+'</ul></div>';};
+  var argsKisa=function(a){if(a==null)return '';try{var s=typeof a==='string'?a:JSON.stringify(a);return s.length>120?s.slice(0,120)+'…':s;}catch(e){return '';}};
+  h+=liste('Araçlar','wrench',ajanRengi(meta.ajanId||'koordinator'),(meta.toolUses||[]).map(function(t){return '<b>'+esc(aracAdi(t.name))+'</b> <i>'+esc(argsKisa(t.args))+'</i>';}));
+  h+=liste('Kuru test — yapacaktı','flask','#86efac',(meta.kuruTestYapilacaktilar||[]).map(function(t){return '<b>'+esc(aracAdi(t.name))+'</b> <i>'+esc(argsKisa(t.args))+'</i>';}));
+  h+=liste('Onay bekleyen','sh',R.turuncu,(meta.onayBekleyen||[]).map(function(o){return esc(typeof o==='string'?o:(o&&o.previewId?('#'+o.previewId+' · '+aracAdi(o.name)):(o&&(o.aciklama||o.name))||argsKisa(o)));}));
+  h+=liste('Öğrenilen','cap','#c4b5fd',(meta.ogrenilen||[]).map(function(o){return esc(o);}));
+  return h;}
+window.ekipSoruCevapla=function(btn){var inp=document.getElementById('ekipSoruCevap');var t=inp?inp.value.trim():'';if(!t){toast('Cevabını yaz');return;}
+  EKIP.vakaId=btn.getAttribute('data-vaka')||null;EKIP.gorev='Cevap: '+t;EKIP.sablon=null;try{closeModal();}catch(e){}var ta=document.getElementById('ekipKomutMetin');if(ta)ta.value=EKIP.gorev;yenile(['vaka-cip']);
+  var k=document.getElementById('ekip-komut');if(k&&k.scrollIntoView)try{k.scrollIntoView({behavior:'smooth',block:'start'});}catch(e){}};
+
+/* ═══ RN → HTML köprü uçları ═══ */
+window.MOREN=window.MOREN||{};
+/* Rapor metni geldi: (id, metin, meta?) — meta {ajanId, model, durationMs, status, dryRun, hata, vakaId, toolUses, kuruTestYapilacaktilar, onayBekleyen, ogrenilen} */
+window.MOREN.applyEkipRapor=function(id,metin,meta){try{var r={metin:metin==null?'':String(metin),meta:meta||{}};EKIP.rapor[id]=r;
+  var box=document.getElementById('ekipRaporBox');if(box&&box.getAttribute('data-id')===String(id)){box.innerHTML=raporGovde(id,r);raporMeta(r.meta);}}catch(e){}};
+/* Yerel koşu durumu: {isId?, vakaId?, gorev, basladi, bitti, hata?, dryRun} ya da null (temizle) */
+window.MOREN.applyEkipKosu=function(k){try{if(!k){EKIP.kosu=null;}else{var e=EKIP.kosu||{};EKIP.kosu={gorev:k.gorev||e.gorev||'',basladi:k.basladi||e.basladi||Date.now(),bitti:!!k.bitti,hata:k.hata||null,dryRun:k.dryRun!=null?k.dryRun:e.dryRun,mukellefAd:k.mukellefAd||e.mukellefAd||null,isId:k.isId||e.isId||null,vakaId:k.vakaId||e.vakaId||null};}
+  if(acikMi())yenile(['baslik','serit','komutAlt','akis']);}catch(e){}};
+/* applyModule sarmalı: ekip modülü AÇIKKEN gelen veri (5 sn'lik tazeleme) komut kutusuna DOKUNMADAN parçalı çizilir (yazılan metin/odak kaybolmasın) */
+(function(){var orj=window.MOREN.applyModule;window.MOREN.applyModule=function(mid,cid,data){
+  if(mid==='ekip'){try{window.MOREN.moduleData=window.MOREN.moduleData||{};window.MOREN.moduleData[mid+'|'+cid]=data;}catch(e){}
+    if(acikMi()&&typeof activeClient!=='undefined'&&String(activeClient)===String(cid)){yenile(['baslik','serit','komutAlt','akis']);return;}}
+  if(typeof orj==='function')return orj.apply(this,arguments);};})();
+
+/* ═══ Kayıt: modül + menü ═══ */
+if(window.MOREN_EK){
+  MOREN_EK.modulEkle('ekip',{t:'Moren Ekip',sub:'Koordinatöre komut · canlı akış',kind:'ekip'},function(m,id){return tamCiz(m);});
+  MOREN_EK.navEkle('Moren AI',['robot','Ekip Konsolu',(typeof C!=='undefined'&&C.gold)||'var(--gold)','m:ekip']);
+  try{if(typeof modPatch==='function')modPatch();}catch(e){}
+}
+})();
+</script>
