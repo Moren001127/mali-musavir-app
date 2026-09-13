@@ -302,7 +302,11 @@ export function baglamKur(girdi: DenetimGirdisi): DenetimBaglami {
   const mizan = girdi.mizan;
   if (mizan?.found && mizan.bakiyeByCode.size) {
     const kodlar = [...mizan.bakiyeByCode.keys()];
-    const yaprakMi = (c: string) => !kodlar.some((o) => o !== c && o.startsWith(`${c}.`));
+    // Yaprak = altinda baska kod olmayan. Luca Mizan'i ust seviyeleri noktasiz verir (1 → 10 → 100 → 100.01 →
+    //   100.01.001): "10", "100"un; "1" de "10"un ebeveynidir. Noktali seviyede ise "100.01" → "100.01.001".
+    const ebeveynMi = (c: string) =>
+      kodlar.some((o) => o !== c && o.startsWith(c) && (o[c.length] === '.' || /^\d+$/.test(c)));
+    const yaprakMi = (c: string) => !ebeveynMi(c);
     for (const c of kodlar) {
       if (!yaprakMi(c)) continue;
       const kapanis = mizan.bakiyeByCode.get(c) || 0;

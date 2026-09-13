@@ -162,11 +162,13 @@ export function kuralCariHareketsizBakiye(b: DenetimBaglami): KuralSonucu {
     // 120 icin borc bakiye, 320 icin alacak bakiye anlamli (ters bakiye ayri kuralin isi)
     const bakiye = m.ana === '120' ? m.kapanis : -m.kapanis;
     if (bakiye < ESIK.HAREKETSIZ_MIN_BAKIYE) continue;
+    // 120: Mizan BORC bakiyesi = musteriden alacagimiz; 320: Mizan ALACAK bakiyesi = saticiya borcumuz
     const tur = m.ana === '120' ? 'alacak' : 'borç';
+    const yazi = m.ana === '120' ? `müşteriden alacak ${fmtTL(bakiye)} TL (Mizan borç bakiyesi)` : `satıcıya borç ${fmtTL(bakiye)} TL (Mizan alacak bakiyesi)`;
     bulgular.push({
       severity: 'INFO',
       category: kod,
-      message: `${hesapEtiketi(m)}: dönemde hiç hareket yok, Mizan ${tur} bakiyesi ${fmtTL(bakiye)} TL (en az ${b.ozet.aySayisi} aydır dokunulmamış).`,
+      message: `${hesapEtiketi(m)}: dönemde hiç hareket yok; ${yazi}, en az ${b.ozet.aySayisi} aydır dokunulmamış.`,
       hesapKodu: m.kod,
       detail: { tutar: bakiye, tur, hesapAdi: m.ad, aySayisi: b.ozet.aySayisi },
     });
