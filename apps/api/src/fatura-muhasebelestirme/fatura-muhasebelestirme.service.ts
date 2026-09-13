@@ -832,7 +832,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       //   belgeler mükellef karışık geliyor). Mükellefe göre BİTİŞİK sıralayınca 6 işçi aynı mükellefin belgelerini aynı pencerede
       //   partiye düşürür → 1 çağrı = 10 belge (MAX_CLASSIFY_BATCH=10, MAX_CLASSIFY_BATCH_MS=8000).
       orderBy: [{ taxpayerId: 'asc' }, { updatedAt: 'desc' }],
-      select: { id: true, tenantId: true, taxpayerId: true, ocrData: true },
+      select: { id: true, tenantId: true, taxpayerId: true, ocrData: true, vendorName: true },
       take: 3000,
     }).catch(() => []);
     const kuyruktakiler = new Set(this.uploadOcrQueue.map((j: any) => String(j.documentId || '')));
@@ -841,7 +841,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     for (const d of adaylar as any[]) {
       if (alinan >= limit) break;
       const o: any = d.ocrData || {};
-      if (!String(o.icerikMetni || '').trim() && !(Array.isArray(o.kalemler) && o.kalemler.length)) { icerikYok++; continue; }
+      // 2026-09-13: içerik yoksa satıcı adı (≥6 kr) yeter — satıcı adından düşük güvenli tahmin (runQueuedClassify yedeği).
+      if (!String(o.icerikMetni || '').trim() && !(Array.isArray(o.kalemler) && o.kalemler.length) && String((d as any).vendorName || '').trim().length < 6) { icerikYok++; continue; }
       if (String(o.matrahKategori || o.kategori || '').trim() || String(o.giderTuru || '').trim()) { zatenSinifli++; continue; }
       if (kuyruktakiler.has(d.id) || this.uploadOcrActiveIds.has(d.id)) { zatenKuyrukta++; continue; }
       if (this.belgeKuyrugu) dbIsleri.push({ tenantId: d.tenantId, taxpayerId: d.taxpayerId, documentId: d.id, kind: 'CLASSIFY', priority: 10 });
@@ -3624,6 +3625,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     if (!doc) return;
     const od: any = doc.ocrData || {};
     let content = String(od.icerikMetni || '');
+    let saticiAdindanTahmin = false;
     if (!content || content.length < 20) {
       // İÇERİK YEDEĞİ: entegratör-XML belgelerinde icerikMetni yazılmıyor (okuma Max'i atlıyor) —
       //   sınıflandırma hiç çalışmadan çıkıyordu (Gökhan Akgöz: kategori/giderTuru kalıcı boş).
@@ -3632,6 +3634,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         .map((k: any) => String(k?.ad || '').trim()).filter(Boolean).slice(0, 30).join('; ');
       const taraf = String(doc.vendorName || doc.customerName || '').trim();
       content = [taraf ? `Satıcı: ${taraf}` : '', kalemAd ? `Fatura kalemleri: ${kalemAd}` : ''].filter(Boolean).join('\n');
+      // SATICI ADINDAN TAHMİN (2026-09-13): GİB e-Arşiv alış belgelerinin bir kısmında içerik hiç yok (17 belge "KDV kırılımı
+      //   okunamadı", 596 belge içeriksiz) → eskiden hiç sınıflanmazdı. Kalem yoksa yalnız satıcı ünvanından sınıflandırılır;
+      //   sonuç DÜŞÜK GÜVEN + ocrData.icerikYok=true (ekranda kırmızı nokta; Muzaffer Bey belgeyi açıp doğrular).
+      if (!kalemAd && taraf.length >= 6) saticiAdindanTahmin = true;
     }
     if (!content || content.length < 20) return;
     let mukellefBilgi = '';
@@ -3744,6 +3750,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const islSatisGiderAtla = isIsletme && kind === 'SATIS';
     const GIDER_KATEGORI = new Set(['genel_gider', 'pazarlama', 'hammadde', 'ticari_mal']);
     if (c) {
+      if (saticiAdindanTahmin) { patch.icerikYok = true; patch.aiMatrahGuven = 'dusuk'; if (c.guven !== undefined) c.guven = 'dusuk'; } // satıcı adından tahmin → düşük güven
       if (c.giderTuru && !islSatisGiderAtla) patch.giderTuru = String(c.giderTuru).slice(0, 40);
       if (c.kategori && !(islSatisGiderAtla && GIDER_KATEGORI.has(String(c.kategori).trim().toLowerCase()))) patch.matrahKategori = c.kategori;
       // B4: AI'ın plandan seçtiği matrah hesabı — yalnız aday listesindeki (kaydedilebilir yaprak) kod yazılır;

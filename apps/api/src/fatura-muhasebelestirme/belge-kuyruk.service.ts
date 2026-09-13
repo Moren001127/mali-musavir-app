@@ -56,9 +56,10 @@ export function kuyrukAyarlari(env: NodeJS.ProcessEnv = process.env) {
 }
 
 /** Belgenin ocrData'sına göre sınıflanacak içerik var mı / zaten sınıflı mı (classifyPending ile aynı ölçüt). */
-export function belgeIcerikVarMi(o: any): boolean {
+export function belgeIcerikVarMi(o: any, vendorName?: string | null): boolean {
   o = o || {};
-  return !!(String(o.icerikMetni || '').trim() || (Array.isArray(o.kalemler) && o.kalemler.length));
+  // 2026-09-13: kalem/metin yoksa satıcı ünvanı (≥6 kr) da "sınıflanabilir içerik" sayılır (satıcı adından düşük güvenli tahmin).
+  return !!(String(o.icerikMetni || '').trim() || (Array.isArray(o.kalemler) && o.kalemler.length) || String(vendorName || '').trim().length >= 6);
 }
 export function belgeSinifliMi(o: any): boolean {
   o = o || {};
@@ -103,7 +104,7 @@ export class BelgeKuyrukService implements OnModuleInit, BelgeKuyrukKancasi {
 
   async topluKuyrugaAl(girdiler: BelgeKuyrukGirdisi[]): Promise<{ eklenen: number; yukseltilen: number; zatenKuyrukta: number; bekleyen: number }> {
     const temiz = (girdiler || []).filter((g) => g && g.tenantId && g.documentId && (g.kind === 'CLASSIFY' || g.kind === 'AI_READ'));
-    let eklenen = 0; let yukseltilen = 0; let zatenKuyrukta = 0;
+    let eklenen = 0; let yukseltilen = 0; let zatenKuyrukta = 0; let failedAtlanan = 0;
     if (temiz.length) {
       // Aynı istekte tekrar eden (belge, kind) çiftlerini tekilleştir (en yüksek öncelik kalsın).
       const tekil = new Map<string, BelgeKuyrukGirdisi>();
@@ -119,12 +120,21 @@ export class BelgeKuyrukService implements OnModuleInit, BelgeKuyrukKancasi {
       }).catch(() => []);
       const mevcutMap = new Map<string, Is>();
       for (const m of mevcut) mevcutMap.set(`${m.documentId}|${m.kind}`, m);
+      // 72 SAAT FAILED SÜZGECİ (2026-09-13 doğrulayıcı bulgusu): başlangıç kurtarma / okuma-sonrası / gece yolları son 72 saatte
+      //   aynı belge+kind için FAILED olmuş işi yeniden kuyruklayıp her deploy'da Max israfı yapıyordu. Sahip isteği (priority ≥ 10)
+      //   bu süzgeçten MUAF (bilinçli tekrar deneme; kuyruk/tekrar-dene de FAILED→PENDING yapar).
+      const failedSon: Array<{ documentId: string; kind: string }> = await this.db.invoiceProcessingJob.findMany({
+        where: { documentId: { in: liste.map((g) => g.documentId) }, status: 'FAILED', finishedAt: { gte: new Date(Date.now() - 72 * 3600 * 1000) } },
+        select: { documentId: true, kind: true },
+      }).catch(() => []);
+      const failedSet = new Set(failedSon.map((f) => `${f.documentId}|${f.kind}`));
       const yeniler: any[] = [];
       const yukselt: Array<{ id: string; priority: number }> = [];
       for (const g of liste) {
         const m = mevcutMap.get(`${g.documentId}|${g.kind}`);
         const oncelik = Math.max(0, Math.round(Number(g.priority) || 0));
         if (!m) {
+          if (oncelik < 10 && failedSet.has(`${g.documentId}|${g.kind}`)) { failedAtlanan++; continue; }
           yeniler.push({ tenantId: g.tenantId, taxpayerId: g.taxpayerId || null, documentId: g.documentId, kind: g.kind, priority: oncelik, status: 'PENDING' });
           continue;
         }
@@ -142,6 +152,7 @@ export class BelgeKuyrukService implements OnModuleInit, BelgeKuyrukKancasi {
       }
     }
     const bekleyen = await this.db.invoiceProcessingJob.count({ where: { status: 'PENDING' } }).catch(() => 0);
+    if (failedAtlanan > 0) this.logger.log(`[KUYRUK] ${failedAtlanan} belge son 72 saatte FAILED olduğu için yeniden kuyruklanmadı (sahip isteği muaf)`);
     return { eklenen, yukseltilen, zatenKuyrukta, bekleyen };
   }
 
@@ -372,10 +383,10 @@ export class BelgeKuyrukService implements OnModuleInit, BelgeKuyrukKancasi {
     if (!docIds.length) return;
     const docs: any[] = await this.db.invoiceAccountingDocument.findMany({
       where: { tenantId, id: { in: docIds }, invoiceKind: 'ALIS', status: { in: ['READY', 'NEEDS_REVIEW', 'DRAFT'] } },
-      select: { id: true, taxpayerId: true, ocrData: true },
+      select: { id: true, taxpayerId: true, ocrData: true, vendorName: true },
     }).catch(() => []);
     const girdiler: BelgeKuyrukGirdisi[] = docs
-      .filter((d) => belgeIcerikVarMi(d.ocrData) && !belgeSinifliMi(d.ocrData))
+      .filter((d) => belgeIcerikVarMi(d.ocrData, d.vendorName) && !belgeSinifliMi(d.ocrData))
       .map((d) => ({ tenantId, taxpayerId: d.taxpayerId ?? taxpayerId, documentId: d.id, kind: 'CLASSIFY' as const, priority: KUYRUK_ONCELIK.ITHAL }));
     if (!girdiler.length) return;
     const r = await this.topluKuyrugaAl(girdiler).catch(() => null);
@@ -432,7 +443,7 @@ export class BelgeKuyrukService implements OnModuleInit, BelgeKuyrukKancasi {
         lucaStatus: { in: ['NOT_STARTED', 'FAILED'] }, // Luca'ya gitmemiş
         ocrStatus: { notIn: ['PENDING', 'IN_PROGRESS', 'FAILED', 'CANCELLED'] },
       },
-      select: { id: true, taxpayerId: true, invoiceKind: true, ocrData: true },
+      select: { id: true, taxpayerId: true, invoiceKind: true, ocrData: true, vendorName: true },
       orderBy: [{ taxpayerId: 'asc' }, { createdAt: 'desc' }],
       take: 4000,
     }).catch(() => []);
@@ -442,15 +453,23 @@ export class BelgeKuyrukService implements OnModuleInit, BelgeKuyrukKancasi {
       if (girdiler.length >= GECE_TAVAN) { atlanan++; continue; }
       const o: any = d.ocrData || {};
       const okunmus = !!String(o.readMode || '').trim();
-      const icerik = belgeIcerikVarMi(o);
+      const icerik = belgeIcerikVarMi(o); // gerçek içerik (metin/kalem)
+      const icerikVeyaSatici = belgeIcerikVarMi(o, d.vendorName); // satıcı adından tahmin de sayılır (2026-09-13)
       if (!okunmus && !icerik) {
         if (!d.taxpayerId || !planli.has(String(d.taxpayerId))) { atlanan++; continue; }
-        if (failedSet.has(`${d.id}|AI_READ`)) { atlanan++; continue; }
-        girdiler.push({ tenantId, taxpayerId: d.taxpayerId, documentId: d.id, kind: 'AI_READ', priority: KUYRUK_ONCELIK.GECE });
-        okuma++;
+        if (!failedSet.has(`${d.id}|AI_READ`)) {
+          girdiler.push({ tenantId, taxpayerId: d.taxpayerId, documentId: d.id, kind: 'AI_READ', priority: KUYRUK_ONCELIK.GECE });
+          okuma++;
+          continue;
+        }
+        // Okuma son 72 saatte başarısız (içerik yok) → satıcı adından düşük güvenli sınıflandırma (yalnız alış, satıcı adı ≥6 kr).
+        if (icerikVeyaSatici && !belgeSinifliMi(o) && d.invoiceKind === 'ALIS' && !failedSet.has(`${d.id}|CLASSIFY`)) {
+          girdiler.push({ tenantId, taxpayerId: d.taxpayerId, documentId: d.id, kind: 'CLASSIFY', priority: KUYRUK_ONCELIK.GECE });
+          sinif++;
+        } else atlanan++;
         continue;
       }
-      if (icerik && !belgeSinifliMi(o) && d.invoiceKind === 'ALIS') {
+      if (icerikVeyaSatici && !belgeSinifliMi(o) && d.invoiceKind === 'ALIS') {
         if (failedSet.has(`${d.id}|CLASSIFY`)) { atlanan++; continue; }
         girdiler.push({ tenantId, taxpayerId: d.taxpayerId, documentId: d.id, kind: 'CLASSIFY', priority: KUYRUK_ONCELIK.GECE });
         sinif++;
