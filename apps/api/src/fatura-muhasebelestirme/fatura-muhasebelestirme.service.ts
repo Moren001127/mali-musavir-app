@@ -15886,7 +15886,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       // N belgelik yanıt tek belgeden uzun → timeout'u belge sayısına göre büyüt (tavan 140s).
       // TEK DENEME: toplu çağrı timeout'a düşerse 2. deneme de düşer (aynı büyük prompt) → çift israf
       //   (6 belge × 126s × 2 = 256s gözlemlendi). Başarısızsa hemen tek-tek fallback'e geç (o zaten retry).
-      const tmo = Math.min(this.classifyTimeoutMs + n * 10000, 140000);
+      // 2026-09-13 canlı ölçüm (20 okuma işçisi): eşzamanlı çağrılarda parti 190-260 sn sürdü; 140 sn tavanı timeout →
+      //   "uyumsuz dönen=0" → tek-tek fallback (10 ayrı çağrı) sarmalına giriyordu. Tavan 300 sn (MAX_CLASSIFY_BATCH_TIMEOUT_MS).
+      const tmo = Math.min(this.classifyTimeoutMs + n * 15000, Math.max(140000, Number(process.env.MAX_CLASSIFY_BATCH_TIMEOUT_MS || 300000)));
       res = await claudeTextViaMax({ prompt, timeoutMs: strong ? Math.min(tmo + 40000, 200000) : tmo, model: strong ? MAX_MODEL_DEFAULT : MAX_MODEL_CHEAP }).catch(() => null);
     } finally {
       releaseSlot();
@@ -15984,6 +15986,32 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           else resolveAt(i, results[i] || null);
         });
         if (adayN) this.logger.log(`[CLS-ESKALASYON] toplu: ${adayN}/${items.length} zayıf sonuç → Sonnet ikinci turu kuyruğa (CLASSIFY_GUCLU)`);
+        return;
+      }
+      // 2026-09-13: uyumsuz partide önce YARIYA BÖL (2 paralel parti; ≥4 belge) — tek tek 10 ayrı Max çağrısı (3'lük kapıda
+      //   ~6 dk) yerine 2 çağrı. Yarım parti de uyumsuzsa o yarı tek tek düşer.
+      if (items.length >= 4) {
+        const orta = Math.ceil(items.length / 2);
+        const yarilar = [items.slice(0, orta).map((_, i) => i), items.slice(orta).map((_, i) => i + orta)];
+        this.logger.warn(`[CLS-BATCH] uyumsuz (istenen=${items.length} donen=${Array.isArray(results) ? results.length : 0}) → yarıya bölünüyor (${yarilar[0].length}+${yarilar[1].length})`);
+        await Promise.all(yarilar.map(async (idx) => {
+          let yr: Array<ClassifyResult | null> = [];
+          try {
+            yr = await this.aiClassifyAccountingMulti(idx.map((i) => items[i].contentText), buf.shared.mukellefBilgi, buf.shared.isIsletme, buf.shared.invoiceKind, buf.shared.planAdaylar, { ipucular: idx.map((i) => items[i].ipucu), strongModel: !!buf.shared.strong });
+          } catch { yr = []; }
+          if (Array.isArray(yr) && yr.length === idx.length) {
+            idx.forEach((i, k) => {
+              const zayif = !buf.shared.strong && !!buf.shared.planAdaylar && this.classifyEskalasyonGerekli(yr[k], buf.shared.planAdaylar, buf.shared.planKodlari);
+              resolveAt(i, zayif ? { ...((yr[k] || {}) as ClassifyResult), eskalasyonAdayi: true } : (yr[k] || null));
+            });
+            return;
+          }
+          this.logger.warn(`[CLS-BATCH] yarım parti de uyumsuz (${idx.length}) → tek-tek`);
+          await Promise.all(idx.map(async (i) => {
+            const r = await this.aiClassifyAccounting(items[i].contentText, buf.shared.mukellefBilgi, buf.shared.isIsletme, buf.shared.invoiceKind, buf.shared.planAdaylar, { ipucu: items[i].ipucu, planKodlari: buf.shared.planKodlari, strongModel: !!buf.shared.strong }).catch(() => null);
+            resolveAt(i, r);
+          }));
+        }));
         return;
       }
       this.logger.warn(`[CLS-BATCH] uyumsuz (istenen=${items.length} donen=${Array.isArray(results) ? results.length : 0}) → tek-tek fallback`);
