@@ -1,10 +1,16 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState, type CSSProperties } from 'react';
 import { CheckCircle2, ChevronDown, ChevronRight, EyeOff, ExternalLink, HelpCircle, RotateCcw, Search, Sparkles } from 'lucide-react';
 import { ALAN_IKON, ESKI_ETIKET, alanSira, type KontrolOzeti, type KuralTanimi } from './katalog';
 import { KapsamPaneli } from './KapsamPaneli';
 import { BORDER, BORDER_STRONG, ERR, GRAY, INFO, MUTED, MUTED2, NAVY, NAVY_SOFT, OK, PANEL, PANEL_HOVER, TEXT, WARN, sevColor, sevLabel, sevRank } from './tema';
+
+
+// Tablo kenarlığı ve hücre stilleri — kenarlıklar GÖRÜNÜR (rgba .16), başlık satırı lacivert tonlu, zebra satırlar.
+const KENAR = 'rgba(255,255,255,.16)';
+const HUCRE: CSSProperties = { border: `1px solid ${KENAR}`, padding: '8px 12px', verticalAlign: 'middle' };
+const HUCRE_BASLIK: CSSProperties = { ...HUCRE, padding: '8px 12px', fontSize: 10.5, fontWeight: 800, letterSpacing: '.14em', textTransform: 'uppercase', color: '#bfd4ff', textAlign: 'left' };
 
 type SeverityFilter = 'ALL' | 'ERROR' | 'WARN' | 'INFO';
 type StatusFilter = 'OPEN' | 'ALL' | 'RESOLVED' | 'IGNORED';
@@ -195,95 +201,121 @@ export function BulgularSekmesi(p: BulgularProps) {
         </div>
       )}
 
-      {/* Alan → kural → bulgu satırları */}
-      <div className="space-y-2.5">
+      {/* Alan kartı → GERÇEK TABLO: bir başlık satırı, kural başlığı satırları (şiddet renkli), bulgu satırları (kenarlıklı, zebra) */}
+      <div className="space-y-3">
         {alanlar.map((a) => {
           const acik = !kapaliAlanlar[a.alan];
           const vurgu = a.sayim.error ? ERR : a.sayim.warn ? WARN : INFO;
+          const hesapli = a.kurallar.some((k) => k.items.some((f: any) => f.hesapKodu && !f.detail?.ozet));
           return (
-            <div key={a.alan} className="rounded-xl overflow-hidden relative" style={{ background: PANEL, border: `1px solid ${BORDER}` }}>
-              <div className="absolute inset-x-0 top-0 h-px" style={{ background: `linear-gradient(90deg, transparent, ${vurgu}66, transparent)` }} />
-              <button onClick={() => setKapaliAlanlar((s) => ({ ...s, [a.alan]: acik }))} className="w-full flex items-center gap-2.5 px-3.5 py-3 text-left" style={{ background: `linear-gradient(90deg, ${vurgu}1a, ${PANEL_HOVER} 45%)`, borderLeft: `4px solid ${vurgu}` }}>
-                <span className="text-[15px] w-5 text-center">{ALAN_IKON[a.alan] || '•'}</span>
-                <span className="text-[13.5px] font-bold" style={{ color: TEXT }}>{a.alan}</span>
-                <span className="text-[10.5px] tabular-nums px-1.5 py-0.5 rounded-md" style={{ background: 'rgba(255,255,255,.06)', color: MUTED }}>{a.kurallar.length} kural · {a.toplam} bulgu</span>
+            <div key={a.alan} className="rounded-xl overflow-hidden" style={{ border: `1px solid ${KENAR}`, background: 'rgba(255,255,255,.02)' }}>
+              {/* Alan başlığı */}
+              <button onClick={() => setKapaliAlanlar((st) => ({ ...st, [a.alan]: acik }))} className="w-full flex items-center gap-2.5 px-3.5 py-3 text-left" style={{ background: `linear-gradient(90deg, ${vurgu}2e, rgba(255,255,255,.04) 55%)`, borderLeft: `5px solid ${vurgu}`, borderBottom: `1px solid ${KENAR}` }}>
+                <span className="text-[16px] w-5 text-center">{ALAN_IKON[a.alan] || '•'}</span>
+                <span className="text-[14px] font-bold" style={{ color: TEXT }}>{a.alan}</span>
+                <span className="text-[11px] tabular-nums px-2 py-0.5 rounded-md" style={{ background: 'rgba(255,255,255,.08)', color: 'rgba(250,250,249,.8)' }}>{a.kurallar.length} kural · {a.toplam} bulgu</span>
                 <span className="ml-auto flex items-center gap-1.5">
                   {a.sayim.error > 0 && <Rozet n={a.sayim.error} renk={ERR} ad="hata" />}
                   {a.sayim.warn > 0 && <Rozet n={a.sayim.warn} renk={WARN} ad="uyarı" />}
                   {a.sayim.info > 0 && <Rozet n={a.sayim.info} renk={INFO} ad="bilgi" />}
-                  {acik ? <ChevronDown size={14} style={{ color: MUTED }} /> : <ChevronRight size={14} style={{ color: MUTED }} />}
+                  {acik ? <ChevronDown size={15} style={{ color: 'rgba(250,250,249,.7)' }} /> : <ChevronRight size={15} style={{ color: 'rgba(250,250,249,.7)' }} />}
                 </span>
               </button>
 
               {acik && (
-                <div className="divide-y" style={{ borderColor: BORDER }}>
-                  {a.kurallar.map((k) => {
-                    const renk = sevColor(k.enYuksek);
-                    const bilgiAcik = Boolean(acikKurallar[k.kod]);
-                    const daraltildi = Boolean(kapaliKurallar[k.kod]);
-                    const ozet = k.items.find((f: any) => f.detail?.ozet);
-                    const satirlar = k.items.filter((f: any) => !f.detail?.ozet).slice(0, 300);
-                    const hesapli = satirlar.some((f: any) => f.hesapKodu);
-                    return (
-                      <div key={k.kod} style={{ borderColor: BORDER }}>
-                        {/* Kural başlığı: ad · şiddet/sayı · (sağda) dayanak · ⓘ · daralt */}
-                        <div className="flex items-center gap-2 px-3.5 py-2.5" style={{ background: `linear-gradient(90deg, ${renk}14, rgba(255,255,255,.02) 60%)`, borderLeft: `3px solid ${renk}`, borderTop: `1px solid ${BORDER}` }}>
-                          <button onClick={() => setKapaliKurallar((st) => ({ ...st, [k.kod]: !daraltildi }))} className="flex items-center gap-2 min-w-0 flex-1 text-left" title={daraltildi ? 'Satırları göster' : 'Satırları gizle'}>
-                            <span className="w-2 h-2 rounded-full shrink-0" style={{ background: renk, boxShadow: `0 0 0 3px ${renk}22` }} />
-                            <span className="text-[12.5px] font-semibold truncate" style={{ color: 'rgba(250,250,249,.92)' }}>{kuralAdi(k.kod, katalog)}</span>
-                            <span className="text-[10px] font-bold tabular-nums px-1.5 py-0.5 rounded shrink-0" style={{ background: `${renk}1c`, color: renk }}>{sevLabel(k.enYuksek)} · {satirlar.length}</span>
-                          </button>
-                          {k.tanim?.mevzuat && <span className="text-[10px] whitespace-nowrap hidden md:inline" style={{ color: MUTED2 }}>{k.tanim.mevzuat}</span>}
-                          {k.tanim && (
-                            <button onClick={() => setAcikKurallar((st) => ({ ...st, [k.kod]: !bilgiAcik }))} className="h-6 w-6 rounded-md inline-flex items-center justify-center shrink-0" style={{ color: bilgiAcik ? NAVY : MUTED2, background: bilgiAcik ? NAVY_SOFT : 'transparent' }} title="Bu kural ne demek, ne yapılmalı?">
-                              <HelpCircle size={13} />
-                            </button>
+                <table className="w-full" style={{ borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+                  <colgroup>
+                    {hesapli && <col style={{ width: 250 }} />}
+                    <col />
+                    <col style={{ width: 150 }} />
+                    <col style={{ width: 118 }} />
+                  </colgroup>
+                  <thead>
+                    <tr style={{ background: 'rgba(91,141,239,.18)' }}>
+                      {hesapli && <th style={HUCRE_BASLIK}>Hesap</th>}
+                      <th style={HUCRE_BASLIK}>Bulgu</th>
+                      <th style={{ ...HUCRE_BASLIK, textAlign: 'right' }}>Tutar</th>
+                      <th style={{ ...HUCRE_BASLIK, textAlign: 'center' }}>İşlem</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {a.kurallar.map((k) => {
+                      const renk = sevColor(k.enYuksek);
+                      const bilgiAcik = Boolean(acikKurallar[k.kod]);
+                      const daraltildi = Boolean(kapaliKurallar[k.kod]);
+                      const ozet = k.items.find((f: any) => f.detail?.ozet);
+                      const satirlar = k.items.filter((f: any) => !f.detail?.ozet).slice(0, 300);
+                      const sutun = hesapli ? 4 : 3;
+                      return (
+                        <Fragment key={k.kod}>
+                          {/* Kural başlığı satırı — şiddet renginde */}
+                          <tr style={{ background: `${renk}24`, borderLeft: `5px solid ${renk}` }}>
+                            <td colSpan={sutun} style={{ ...HUCRE, padding: '9px 12px', borderLeft: `5px solid ${renk}` }}>
+                              <div className="flex items-center gap-2">
+                                <button onClick={() => setKapaliKurallar((st) => ({ ...st, [k.kod]: !daraltildi }))} className="flex items-center gap-2 min-w-0 flex-1 text-left" title={daraltildi ? 'Satırları göster' : 'Satırları gizle'}>
+                                  <span className="text-[13px] font-bold truncate" style={{ color: TEXT }}>{kuralAdi(k.kod, katalog)}</span>
+                                  <span className="text-[10.5px] font-extrabold tabular-nums px-2 py-0.5 rounded-md shrink-0" style={{ background: renk, color: '#0b1218' }}>{sevLabel(k.enYuksek)} · {satirlar.length}</span>
+                                </button>
+                                {k.tanim?.mevzuat && <span className="text-[10.5px] whitespace-nowrap hidden md:inline" style={{ color: 'rgba(250,250,249,.6)' }}>{k.tanim.mevzuat}</span>}
+                                {k.tanim && (
+                                  <button onClick={() => setAcikKurallar((st) => ({ ...st, [k.kod]: !bilgiAcik }))} className="h-6 w-6 rounded-md inline-flex items-center justify-center shrink-0" style={{ color: bilgiAcik ? '#0b1218' : 'rgba(250,250,249,.75)', background: bilgiAcik ? renk : 'rgba(255,255,255,.08)' }} title="Bu kural ne demek, ne yapılmalı?">
+                                    <HelpCircle size={13} />
+                                  </button>
+                                )}
+                                <button onClick={() => setKapaliKurallar((st) => ({ ...st, [k.kod]: !daraltildi }))} className="h-6 w-6 rounded-md inline-flex items-center justify-center shrink-0" style={{ color: 'rgba(250,250,249,.75)', background: 'rgba(255,255,255,.08)' }} title={daraltildi ? 'Satırları göster' : 'Satırları gizle'}>
+                                  {daraltildi ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                          {bilgiAcik && k.tanim && (
+                            <tr>
+                              <td colSpan={sutun} style={{ ...HUCRE, background: 'rgba(91,141,239,.08)', color: 'rgba(250,250,249,.82)', fontSize: 12, lineHeight: 1.55 }}>
+                                <div><span className="font-semibold" style={{ color: '#bfd4ff' }}>Ne demek: </span>{k.tanim.aciklama}</div>
+                                {k.tanim.oneri && <div className="mt-1"><span className="font-semibold" style={{ color: '#bfd4ff' }}>Ne yapmalı: </span>{k.tanim.oneri}</div>}
+                              </td>
+                            </tr>
                           )}
-                          <button onClick={() => setKapaliKurallar((st) => ({ ...st, [k.kod]: !daraltildi }))} className="h-6 w-6 rounded-md inline-flex items-center justify-center shrink-0" style={{ color: MUTED2 }} title={daraltildi ? 'Satırları göster' : 'Satırları gizle'}>
-                            {daraltildi ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
-                          </button>
-                        </div>
-                        {bilgiAcik && k.tanim && (
-                          <div className="mx-3.5 my-2 rounded-lg px-3 py-2 text-[11.5px] leading-relaxed" style={{ background: 'rgba(91,141,239,.06)', border: '1px solid rgba(91,141,239,.16)', color: 'rgba(250,250,249,.78)' }}>
-                            <div><span className="font-semibold" style={{ color: '#bfd4ff' }}>Ne demek: </span>{k.tanim.aciklama}</div>
-                            {k.tanim.oneri && <div className="mt-1"><span className="font-semibold" style={{ color: '#bfd4ff' }}>Ne yapmalı: </span>{k.tanim.oneri}</div>}
-                          </div>
-                        )}
-                        {/* Bulgu satırları: hesap · olgu (tek satır) · tutar · işlem — ayrıntı tıklayınca */}
-                        {!daraltildi && (
-                          <div>
-                            <div className="grid items-center gap-x-3 px-3.5 py-1 text-[9.5px] uppercase tracking-[.14em] font-bold" style={{ gridTemplateColumns: hesapli ? '8px minmax(150px,220px) minmax(0,1fr) 110px 106px' : '8px minmax(0,1fr) 110px 106px', color: MUTED2, background: 'rgba(0,0,0,.18)', borderTop: `1px solid ${BORDER}`, borderBottom: `1px solid ${BORDER}` }}>
-                              <span />
-                              {hesapli && <span>Hesap</span>}
-                              <span>Bulgu</span>
-                              <span className="text-right">Tutar</span>
-                              <span className="text-right">İşlem</span>
-                            </div>
-                            {satirlar.map((f: any, idx: number) => {
-                              const fStatus = f.status || 'OPEN';
-                              const c = sevColor(f.severity);
-                              const kapali = fStatus !== 'OPEN';
-                              const parca = mesajParcala(f);
-                              const tutar = tutarYazi(f);
-                              const acik = Boolean(acikMesajlar[f.id]);
-                              const ayrintiVar = Boolean(parca.ayrinti);
-                              return (
-                                <div key={f.id} style={{ background: idx % 2 ? 'rgba(255,255,255,.025)' : 'transparent', opacity: kapali ? 0.5 : 1, borderBottom: `1px solid ${BORDER}` }}>
-                                  <div className="grid items-center gap-x-3 px-3.5 py-2 hover:bg-white/[.04]" style={{ gridTemplateColumns: hesapli ? '8px minmax(150px,220px) minmax(0,1fr) 110px 106px' : '8px minmax(0,1fr) 110px 106px' }}>
-                                    <span className="w-[7px] h-[7px] rounded-full" style={{ background: c }} />
-                                    {hesapli && (
-                                      <div className="min-w-0 flex items-baseline gap-1.5">
-                                        {f.hesapKodu
-                                          ? <><span className="text-[12px] font-semibold tabular-nums shrink-0" style={{ color: TEXT }}>{f.hesapKodu}</span><span className="text-[11px] truncate" style={{ color: MUTED }} title={parca.ad}>{parca.ad}</span></>
-                                          : <span className="text-[11px]" style={{ color: MUTED2 }}>{f.rowIndex ? `Satır ${f.rowIndex}` : '—'}</span>}
+                          {!daraltildi && satirlar.map((f: any, idx: number) => {
+                            const fStatus = f.status || 'OPEN';
+                            const c = sevColor(f.severity);
+                            const kapali = fStatus !== 'OPEN';
+                            const parca = mesajParcala(f);
+                            const tutar = tutarYazi(f);
+                            const acikSatir = Boolean(acikMesajlar[f.id]);
+                            const ayrintiVar = Boolean(parca.ayrinti);
+                            const zemin = idx % 2 ? 'rgba(255,255,255,.045)' : 'transparent';
+                            return (
+                              <Fragment key={f.id}>
+                                <tr style={{ background: zemin, opacity: kapali ? 0.5 : 1 }} className="hover:bg-white/[.07]">
+                                  {hesapli && (
+                                    <td style={{ ...HUCRE, borderLeft: `5px solid ${c}` }}>
+                                      {f.hesapKodu ? (
+                                        <div className="min-w-0">
+                                          <div className="text-[12.5px] font-bold tabular-nums" style={{ color: TEXT }}>{f.hesapKodu}</div>
+                                          {parca.ad && <div className="text-[11px] truncate" style={{ color: 'rgba(250,250,249,.62)' }} title={parca.ad}>{parca.ad}</div>}
+                                        </div>
+                                      ) : (
+                                        <span className="text-[11.5px]" style={{ color: 'rgba(250,250,249,.55)' }}>{f.rowIndex ? `Satır ${f.rowIndex}` : '—'}</span>
+                                      )}
+                                    </td>
+                                  )}
+                                  <td style={{ ...HUCRE, ...(hesapli ? {} : { borderLeft: `5px solid ${c}` }) }}>
+                                    <div className="flex items-baseline gap-1.5 min-w-0">
+                                      {!hesapli && f.rowIndex && <span className="text-[10.5px] tabular-nums px-1.5 py-px rounded shrink-0" style={{ background: 'rgba(255,255,255,.08)', color: 'rgba(250,250,249,.75)' }}>Satır {f.rowIndex}</span>}
+                                      <span className={`text-[12.5px] leading-snug ${ayrintiVar ? 'cursor-pointer' : ''}`} style={{ color: 'rgba(250,250,249,.9)', textDecoration: fStatus === 'RESOLVED' ? 'line-through' : 'none', display: '-webkit-box', WebkitLineClamp: acikSatir ? 'unset' as any : 2, WebkitBoxOrient: 'vertical' as any, overflow: 'hidden' }} onClick={() => ayrintiVar && setAcikMesajlar((st) => ({ ...st, [f.id]: !acikSatir }))} title={ayrintiVar ? (acikSatir ? 'Ayrıntıyı gizle' : 'Ayrıntı için tıklayın') : undefined}>
+                                        {parca.olgu}
+                                      </span>
+                                    </div>
+                                    {kapali && (
+                                      <div className="mt-1 text-[10.5px] font-semibold inline-flex items-center gap-1" style={{ color: statusColor(fStatus) }}>
+                                        <span className="w-1.5 h-1.5 rounded-full" style={{ background: statusColor(fStatus) }} />{fStatus === 'RESOLVED' ? 'Çözüldü' : 'Görmezden gelindi'}{f.detail?.note ? ` · ${f.detail.note}` : ''}
                                       </div>
                                     )}
-                                    <div className="min-w-0 text-[12.5px] leading-snug flex items-baseline gap-1.5" style={{ color: 'rgba(250,250,249,.86)', textDecoration: fStatus === 'RESOLVED' ? 'line-through' : 'none' }}>
-                                      {!hesapli && f.rowIndex && <span className="text-[10.5px] tabular-nums px-1.5 py-px rounded shrink-0" style={{ background: 'rgba(255,255,255,.05)', color: 'rgba(250,250,249,.7)' }}>Satır {f.rowIndex}</span>}
-                                      <span className={`truncate ${ayrintiVar ? 'cursor-pointer' : ''}`} onClick={() => ayrintiVar && setAcikMesajlar((st) => ({ ...st, [f.id]: !acik }))} title={ayrintiVar ? (acik ? 'Ayrıntıyı gizle' : 'Ayrıntı için tıklayın') : parca.olgu}>{parca.olgu}</span>
-                                    </div>
-                                    <span className="text-[12px] tabular-nums whitespace-nowrap text-right" style={{ color: tutar ? 'rgba(250,250,249,.9)' : MUTED2 }}>{tutar || '—'}</span>
-                                    <div className="flex items-center justify-end gap-1">
+                                  </td>
+                                  <td style={{ ...HUCRE, textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', color: tutar ? TEXT : 'rgba(250,250,249,.35)', fontSize: 12.5, fontWeight: 600 }}>{tutar || '—'}</td>
+                                  <td style={{ ...HUCRE, padding: '4px 8px' }}>
+                                    <div className="flex items-center justify-center gap-1">
                                       {(f.rowIndex || f.voucherKey) && (
                                         <IkonDugme title="Fiş satırını incele" renk={NAVY} onClick={() => p.focusFinding(f)}><ExternalLink size={13} /></IkonDugme>
                                       )}
@@ -291,33 +323,30 @@ export function BulgularSekmesi(p: BulgularProps) {
                                       {fStatus !== 'IGNORED' && <IkonDugme title="Görmezden gel" renk={GRAY} onClick={() => p.handleStatusChange(f, 'IGNORED')}><EyeOff size={13} /></IkonDugme>}
                                       {fStatus !== 'OPEN' && <IkonDugme title="Yeniden aç" renk={NAVY} onClick={() => p.handleStatusChange(f, 'OPEN')}><RotateCcw size={13} /></IkonDugme>}
                                     </div>
-                                  </div>
-                                  {(acik || kapali) && (
-                                    <div className="px-3.5 pb-2 -mt-0.5 text-[11.5px] leading-relaxed" style={{ color: 'rgba(250,250,249,.62)', paddingLeft: hesapli ? 'calc(8px + 12px + 1rem)' : '1.6rem' }}>
-                                      {acik && ayrintiVar && <div>{parca.ayrinti}</div>}
-                                      {kapali && (
-                                        <div className="mt-0.5 text-[10.5px] font-semibold inline-flex items-center gap-1" style={{ color: statusColor(fStatus) }}>
-                                          <span className="w-1.5 h-1.5 rounded-full" style={{ background: statusColor(fStatus) }} />{fStatus === 'RESOLVED' ? 'Çözüldü' : 'Görmezden gelindi'}{f.detail?.note ? ` · ${f.detail.note}` : ''}
-                                        </div>
-                                      )}
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })}
-                            {ozet && (
-                              <div className="px-3.5 py-1.5 text-[10.5px]" style={{ color: MUTED2, background: 'rgba(0,0,0,.12)' }}>
+                                  </td>
+                                </tr>
+                                {acikSatir && ayrintiVar && (
+                                  <tr style={{ background: zemin }}>
+                                    <td colSpan={sutun} style={{ ...HUCRE, borderLeft: `5px solid ${c}`, color: 'rgba(250,250,249,.72)', fontSize: 12, lineHeight: 1.55, paddingTop: 4 }}>{parca.ayrinti}</td>
+                                  </tr>
+                                )}
+                              </Fragment>
+                            );
+                          })}
+                          {!daraltildi && ozet && (
+                            <tr>
+                              <td colSpan={sutun} style={{ ...HUCRE, background: 'rgba(0,0,0,.25)', color: 'rgba(250,250,249,.6)', fontSize: 11.5 }}>
                                 {ozet.detail?.toplam != null && ozet.detail?.kalan != null
                                   ? `Toplam ${ozet.detail.toplam} · en büyük ${Number(ozet.detail.toplam) - Number(ozet.detail.kalan)} tanesi gösterildi, ${ozet.detail.kalan} tanesi daha var`
                                   : ozet.message}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
+                      );
+                    })}
+                  </tbody>
+                </table>
               )}
             </div>
           );
