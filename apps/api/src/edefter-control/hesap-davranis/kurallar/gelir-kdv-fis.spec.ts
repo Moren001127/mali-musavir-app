@@ -152,6 +152,20 @@ describe('mukerrer fatura (cari + belge no + tutar)', () => {
     expect(s.durum).toBe('TEMIZ');
   });
 
+  it('orijinal + ters kayit (iptal) + yeniden kayit mukerrer degildir; ucuncu kayit mukerrerdir', () => {
+    const duzeltilmis = [
+      cariSatiri('f1', '2026-04-05', 'ABC2026000000123', 12_000),
+      cariSatiri('x1', '2026-04-06', 'ABC2026000000123', 12_000, 'ALACAK', '120.01.A001', 'tarih hatasi iptal ters kayit'),
+      cariSatiri('f2', '2026-04-07', 'ABC2026000000123', 12_000),
+    ];
+    expect(kuralMukerrerFaturaCariBazli(baglamKur({ rows: duzeltilmis, range: Q2, donemTipi: 'GECICI_Q2' })).durum).toBe('TEMIZ');
+    const fazla = [...duzeltilmis, cariSatiri('f3', '2026-04-08', 'ABC2026000000123', 12_000)];
+    const s = kuralMukerrerFaturaCariBazli(baglamKur({ rows: fazla, range: Q2, donemTipi: 'GECICI_Q2' }));
+    expect(s.durum).toBe('BULGU');
+    expect(s.bulgular[0].message).toContain('3 ayrı fişte');
+    expect(s.bulgular[0].message).toContain('1 iptal/ters kayıt düşüldü');
+  });
+
   it('anlamsiz/kisa belge no atlanir; hic belge no yoksa VERI_YOK; 320 tarafinda da calisir', () => {
     expect(normalizeBelgeNo('MUHTELİF')).toBeNull();
     expect(normalizeBelgeNo('12345')).toBeNull();

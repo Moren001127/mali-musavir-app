@@ -173,6 +173,8 @@ type MukerrerGrup = { fisler: Map<string, ParsedEDefterFisLine>; ilk: ParsedEDef
 export function kuralMukerrerFaturaCariBazli(b: DenetimBaglami): KuralSonucu {
   const kod = 'MUKERRER_FATURA_CARI_BAZLI';
   const gruplar = new Map<string, MukerrerGrup>();
+  // Ters kayit/iptal fisleri: ayni belge+tutarin KARSI yonundeki grubu netlestirir (orijinal + iptal + yeniden kayit = 1)
+  const iptalFisleri = new Map<string, Set<string>>();
   let cariSatiri = 0;
   let belgeli = 0;
   const iadeFisleri = new Map<string, boolean>();
@@ -192,10 +194,16 @@ export function kuralMukerrerFaturaCariBazli(b: DenetimBaglami): KuralSonucu {
     const belgeNo = normalizeBelgeNo(r.evrakNo);
     if (!belgeNo) continue;
     belgeli += 1;
-    if (iadeMi(r.voucherKey)) continue;
     const tutar = taraf === 'BORC' ? borc : alacak;
+    const temel = `${String(r.hesapKodu).trim()}|${belgeNo}|${tutar.toFixed(2)}`;
+    if (iadeMi(r.voucherKey)) {
+      const karsi = `${temel}|${taraf === 'BORC' ? 'ALACAK' : 'BORC'}`;
+      if (!iptalFisleri.has(karsi)) iptalFisleri.set(karsi, new Set());
+      iptalFisleri.get(karsi)!.add(r.voucherKey);
+      continue;
+    }
     // Yon anahtara dahil: fatura (120 borc) ile ayni belge no'lu tahsilat (120 alacak) mukerrer degildir
-    const anahtar = `${String(r.hesapKodu).trim()}|${belgeNo}|${taraf}|${tutar.toFixed(2)}`;
+    const anahtar = `${temel}|${taraf}`;
     let g = gruplar.get(anahtar);
     if (!g) { g = { fisler: new Map(), ilk: r, tutar, belgeNo, taraf }; gruplar.set(anahtar, g); }
     if (!g.fisler.has(r.voucherKey)) g.fisler.set(r.voucherKey, r);
@@ -203,20 +211,22 @@ export function kuralMukerrerFaturaCariBazli(b: DenetimBaglami): KuralSonucu {
   if (!cariSatiri) return { kod, durum: 'VERI_YOK', bulgular: [], not: 'Dönemde 120/320 hareketi yok' };
   if (!belgeli) return { kod, durum: 'VERI_YOK', bulgular: [], not: 'Cari satırlarında kullanılabilir belge numarası yok' };
   const bulgular: Bulgu[] = [];
-  for (const g of gruplar.values()) {
-    if (g.fisler.size < 2) continue;
+  for (const [anahtar, g] of gruplar.entries()) {
+    const iptalAdet = iptalFisleri.get(anahtar)?.size ?? 0;
+    if (g.fisler.size - iptalAdet < 2) continue;
     const fisListesi = [...g.fisler.values()].map((r) => {
       const t = gecerliTarih(r.fisTarihi) ? fmtTarih(r.fisTarihi) : 'tarihsiz';
       return r.fisNo ? `${t} fiş ${r.fisNo}` : t;
     });
     const alici = anaKod(g.ilk.hesapKodu) === '120';
     const yon = (alici && g.taraf === 'BORC') || (!alici && g.taraf === 'ALACAK') ? 'fatura' : 'tahsilat/ödeme';
+    const iptalNotu = iptalAdet ? ` (${iptalAdet} iptal/ters kayıt düşüldü)` : '';
     bulgular.push({
       severity: 'ERROR',
       category: kod,
-      message: `${satirEtiketi(g.ilk)}: ${g.ilk.evrakNo} no.lu belge ${fmtTL(g.tutar)} TL ile ${g.fisler.size} ayrı fişte işlenmiş (${fisListesi.join('; ')}). Mükerrer ${yon} kaydı olabilir; KDV mükerrer indirilmiş/hesaplanmış olabilir, fişlerden birini iptal edin.`,
+      message: `${satirEtiketi(g.ilk)}: ${g.ilk.evrakNo} no.lu belge ${fmtTL(g.tutar)} TL ile ${g.fisler.size} ayrı fişte işlenmiş (${fisListesi.join('; ')})${iptalNotu}. Mükerrer ${yon} kaydı olabilir; KDV mükerrer indirilmiş/hesaplanmış olabilir, fişlerden birini iptal edin.`,
       ...fisCapasi(g.ilk),
-      detail: { tutar: g.tutar, belgeNo: g.belgeNo, evrakNo: g.ilk.evrakNo, fisSayisi: g.fisler.size, fisler: [...g.fisler.keys()], taraf: g.taraf, hesapAdi: g.ilk.hesapAdi },
+      detail: { tutar: g.tutar, belgeNo: g.belgeNo, evrakNo: g.ilk.evrakNo, fisSayisi: g.fisler.size, iptalAdet, fisler: [...g.fisler.keys()], taraf: g.taraf, hesapAdi: g.ilk.hesapAdi },
     });
   }
   if (!bulgular.length) return { kod, durum: 'TEMIZ', bulgular: [], not: `${belgeli} belgeli cari satırı incelendi` };
