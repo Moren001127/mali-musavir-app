@@ -203,9 +203,9 @@ export function BulgularSekmesi(p: BulgularProps) {
           return (
             <div key={a.alan} className="rounded-xl overflow-hidden relative" style={{ background: PANEL, border: `1px solid ${BORDER}` }}>
               <div className="absolute inset-x-0 top-0 h-px" style={{ background: `linear-gradient(90deg, transparent, ${vurgu}66, transparent)` }} />
-              <button onClick={() => setKapaliAlanlar((s) => ({ ...s, [a.alan]: acik }))} className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-left" style={{ background: PANEL_HOVER }}>
+              <button onClick={() => setKapaliAlanlar((s) => ({ ...s, [a.alan]: acik }))} className="w-full flex items-center gap-2.5 px-3.5 py-3 text-left" style={{ background: `linear-gradient(90deg, ${vurgu}1a, ${PANEL_HOVER} 45%)`, borderLeft: `4px solid ${vurgu}` }}>
                 <span className="text-[15px] w-5 text-center">{ALAN_IKON[a.alan] || '•'}</span>
-                <span className="text-[12.5px] font-bold" style={{ color: TEXT }}>{a.alan}</span>
+                <span className="text-[13.5px] font-bold" style={{ color: TEXT }}>{a.alan}</span>
                 <span className="text-[10.5px] tabular-nums px-1.5 py-0.5 rounded-md" style={{ background: 'rgba(255,255,255,.06)', color: MUTED }}>{a.kurallar.length} kural · {a.toplam} bulgu</span>
                 <span className="ml-auto flex items-center gap-1.5">
                   {a.sayim.error > 0 && <Rozet n={a.sayim.error} renk={ERR} ad="hata" />}
@@ -227,7 +227,7 @@ export function BulgularSekmesi(p: BulgularProps) {
                     return (
                       <div key={k.kod} style={{ borderColor: BORDER }}>
                         {/* Kural başlığı: ad · şiddet/sayı · (sağda) dayanak · ⓘ · daralt */}
-                        <div className="flex items-center gap-2 px-3.5 py-2" style={{ background: 'rgba(255,255,255,.015)' }}>
+                        <div className="flex items-center gap-2 px-3.5 py-2.5" style={{ background: `linear-gradient(90deg, ${renk}14, rgba(255,255,255,.02) 60%)`, borderLeft: `3px solid ${renk}`, borderTop: `1px solid ${BORDER}` }}>
                           <button onClick={() => setKapaliKurallar((st) => ({ ...st, [k.kod]: !daraltildi }))} className="flex items-center gap-2 min-w-0 flex-1 text-left" title={daraltildi ? 'Satırları göster' : 'Satırları gizle'}>
                             <span className="w-2 h-2 rounded-full shrink-0" style={{ background: renk, boxShadow: `0 0 0 3px ${renk}22` }} />
                             <span className="text-[12.5px] font-semibold truncate" style={{ color: 'rgba(250,250,249,.92)' }}>{kuralAdi(k.kod, katalog)}</span>
@@ -252,6 +252,13 @@ export function BulgularSekmesi(p: BulgularProps) {
                         {/* Bulgu satırları: hesap · olgu (tek satır) · tutar · işlem — ayrıntı tıklayınca */}
                         {!daraltildi && (
                           <div>
+                            <div className="grid items-center gap-x-3 px-3.5 py-1 text-[9.5px] uppercase tracking-[.14em] font-bold" style={{ gridTemplateColumns: hesapli ? '8px minmax(150px,220px) minmax(0,1fr) 110px 106px' : '8px minmax(0,1fr) 110px 106px', color: MUTED2, background: 'rgba(0,0,0,.18)', borderTop: `1px solid ${BORDER}`, borderBottom: `1px solid ${BORDER}` }}>
+                              <span />
+                              {hesapli && <span>Hesap</span>}
+                              <span>Bulgu</span>
+                              <span className="text-right">Tutar</span>
+                              <span className="text-right">İşlem</span>
+                            </div>
                             {satirlar.map((f: any, idx: number) => {
                               const fStatus = f.status || 'OPEN';
                               const c = sevColor(f.severity);
@@ -261,8 +268,8 @@ export function BulgularSekmesi(p: BulgularProps) {
                               const acik = Boolean(acikMesajlar[f.id]);
                               const ayrintiVar = Boolean(parca.ayrinti);
                               return (
-                                <div key={f.id} style={{ background: idx % 2 ? 'rgba(255,255,255,.012)' : 'transparent', opacity: kapali ? 0.5 : 1 }}>
-                                  <div className="grid items-center gap-x-3 px-3.5 py-[6px] hover:bg-white/[.03]" style={{ gridTemplateColumns: hesapli ? '8px minmax(150px,220px) minmax(0,1fr) auto auto' : '8px minmax(0,1fr) auto auto' }}>
+                                <div key={f.id} style={{ background: idx % 2 ? 'rgba(255,255,255,.025)' : 'transparent', opacity: kapali ? 0.5 : 1, borderBottom: `1px solid ${BORDER}` }}>
+                                  <div className="grid items-center gap-x-3 px-3.5 py-2 hover:bg-white/[.04]" style={{ gridTemplateColumns: hesapli ? '8px minmax(150px,220px) minmax(0,1fr) 110px 106px' : '8px minmax(0,1fr) 110px 106px' }}>
                                     <span className="w-[7px] h-[7px] rounded-full" style={{ background: c }} />
                                     {hesapli && (
                                       <div className="min-w-0 flex items-baseline gap-1.5">
@@ -275,8 +282,8 @@ export function BulgularSekmesi(p: BulgularProps) {
                                       {!hesapli && f.rowIndex && <span className="text-[10.5px] tabular-nums px-1.5 py-px rounded shrink-0" style={{ background: 'rgba(255,255,255,.05)', color: 'rgba(250,250,249,.7)' }}>Satır {f.rowIndex}</span>}
                                       <span className={`truncate ${ayrintiVar ? 'cursor-pointer' : ''}`} onClick={() => ayrintiVar && setAcikMesajlar((st) => ({ ...st, [f.id]: !acik }))} title={ayrintiVar ? (acik ? 'Ayrıntıyı gizle' : 'Ayrıntı için tıklayın') : parca.olgu}>{parca.olgu}</span>
                                     </div>
-                                    <span className="text-[12px] tabular-nums whitespace-nowrap text-right" style={{ color: tutar ? 'rgba(250,250,249,.9)' : 'transparent', minWidth: 96 }}>{tutar || '·'}</span>
-                                    <div className="flex items-center gap-1">
+                                    <span className="text-[12px] tabular-nums whitespace-nowrap text-right" style={{ color: tutar ? 'rgba(250,250,249,.9)' : MUTED2 }}>{tutar || '—'}</span>
+                                    <div className="flex items-center justify-end gap-1">
                                       {(f.rowIndex || f.voucherKey) && (
                                         <IkonDugme title="Fiş satırını incele" renk={NAVY} onClick={() => p.focusFinding(f)}><ExternalLink size={13} /></IkonDugme>
                                       )}
@@ -299,7 +306,7 @@ export function BulgularSekmesi(p: BulgularProps) {
                               );
                             })}
                             {ozet && (
-                              <div className="px-3.5 py-1.5 text-[10.5px]" style={{ color: MUTED2, borderTop: `1px dashed ${BORDER}` }}>
+                              <div className="px-3.5 py-1.5 text-[10.5px]" style={{ color: MUTED2, background: 'rgba(0,0,0,.12)' }}>
                                 {ozet.detail?.toplam != null && ozet.detail?.kalan != null
                                   ? `Toplam ${ozet.detail.toplam} · en büyük ${Number(ozet.detail.toplam) - Number(ozet.detail.kalan)} tanesi gösterildi, ${ozet.detail.kalan} tanesi daha var`
                                   : ozet.message}
