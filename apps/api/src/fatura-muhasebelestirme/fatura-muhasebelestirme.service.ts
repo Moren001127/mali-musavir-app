@@ -3910,6 +3910,42 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     }
   }
 
+  /**
+   * AKTAR → OKU (Muzaffer Bey 2026-09-13: "Aktar deyince AI ile okumayı da eş zamanlı başlatsın; daha hızlı olur").
+   * e-Fatura Sorgu ve GİB e-Arşiv Sorgu aktarımlarında yeni oluşan (ya da hâlâ okunmamış) belgeler kalıcı kuyruğa
+   * AI_READ olarak düşer (öncelik 3 = ithal/okuma sonrası; sahip isteği 10 hep önde). Okuma bitince kuyruk
+   * kendiliğinden CLASSIFY açar. Aktarım yanıtını BEKLETMEZ; ilerleme ocr-progress şeridinde (ocrStatus=PENDING).
+   * Yalnız okunmamış (readMode boş) + onaysız belgeler; FM_AKTAR_OKU=off kapatır. Hata yutulur.
+   */
+  async aktarSonrasiOkumaKuyruga(tenantId: string, documentIds: string[], kaynak: string): Promise<number> {
+    if (String(process.env.FM_AKTAR_OKU || '').toLowerCase() === 'off') return 0;
+    const ids = [...new Set((documentIds || []).map((x) => String(x || '').trim()).filter(Boolean))];
+    if (!ids.length) return 0;
+    try {
+      const docs: Array<{ id: string; taxpayerId: string | null; ocrData: any }> = await (this.prisma as any).invoiceAccountingDocument.findMany({
+        where: { tenantId, id: { in: ids }, status: { in: ['READY', 'NEEDS_REVIEW', 'DRAFT'] } },
+        select: { id: true, taxpayerId: true, ocrData: true },
+      });
+      const okunmamis = docs.filter((d) => !String((d.ocrData as any)?.readMode || '').trim());
+      if (!okunmamis.length) return 0;
+      await (this.prisma as any).invoiceAccountingDocument.updateMany({
+        where: { id: { in: okunmamis.map((d) => d.id) }, tenantId }, data: { ocrStatus: 'PENDING' },
+      }).catch(() => {});
+      if (this.belgeKuyrugu) {
+        const r = await this.belgeKuyrugu.topluKuyrugaAl(okunmamis.map((d) => ({ tenantId, taxpayerId: d.taxpayerId, documentId: d.id, kind: 'AI_READ' as const, priority: 3 })));
+        this.logger.log(`[AKTAR-OKU] ${kaynak}: ${okunmamis.length} belge okuma kuyruğuna (eklenen=${r.eklenen} yükseltilen=${r.yukseltilen} zatenKuyrukta=${r.zatenKuyrukta})`);
+      } else {
+        for (const d of okunmamis) this.uploadOcrQueue.push({ tenantId, documentId: d.id, kind: 'ai-read' });
+        this.drainUploadedOcrQueue();
+        this.logger.log(`[AKTAR-OKU] ${kaynak}: ${okunmamis.length} belge bellek kuyruğuna`);
+      }
+      return okunmamis.length;
+    } catch (e: any) {
+      this.logger.warn(`[AKTAR-OKU] ${kaynak}: kuyruğa alınamadı: ${e?.message || e}`);
+      return 0;
+    }
+  }
+
   /** Seçili belgeleri SUNUCU kuyruğunda AI ile oku (frontend döngüsü değil → sayfa
    *  değişince durmaz). Hemen döner; ilerleme ocrProgress ile izlenir. */
   async aiReadBatch(tenantId: string, documentIds: string[]) {
@@ -4915,6 +4951,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     await this.rematchDocumentsWithLatestAccountPlan(tenantId, f.taxpayerId, [doc.id]).catch((e: any) => {
       this.logger.warn(`Hesap plani yeni belgeye uygulanamadi (${doc.id}): ${e?.message || e}`);
     });
+    // AKTAR → OKU (2026-09-13): GİB e-Arşiv'den gelen belge kalıcı kuyrukta AI ile okunur (içerik/gider türü), sonra sınıflanır.
+    void this.aktarSonrasiOkumaKuyruga(tenantId, [doc.id], 'e-arşiv aktar');
     const current = await (this.prisma as any).invoiceAccountingDocument.findFirst({
       where: { id: doc.id, tenantId },
       include: { lines: { orderBy: { orderNo: 'asc' } } },
@@ -5789,6 +5827,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     };
 
     let processed = 0, imported = 0, alreadyQueued = 0, skipped = 0, failed = 0, staleReset = 0;
+    const okunacakBelgeler: string[] = []; // AKTAR→OKU: bu aktarımda dokunulan belgeler (yeni + mevcut; okunmamışlar kuyruğa)
     // Faz 2 — iptal/red/GİB hata/taslak süzgeci: belge OLUŞTURULMAZ, inbox satırında durum tutulur, sayaç döner.
     let iptalAtlanan = 0;
     const errors: any[] = [];
@@ -5850,6 +5889,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       }
       if (row.documentId || row.processedAt || row.isTransferred) {
         if (row.documentId) {
+          okunacakBelgeler.push(String(row.documentId));
           const visualPayload = this.providerPayloadFromStoredVisual(String(row.ublXmlRaw || ''), row.uuid, row.faturaNo, raw?.originalVisual);
           if (visualPayload.pdfBuffer || visualPayload.htmlContent) {
             await this.createDocumentFromProviderXml(
@@ -5998,6 +6038,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             processedAt: new Date(),
           },
         });
+        if (result.document?.id) okunacakBelgeler.push(String(result.document.id));
         if (result.created) imported++;
         else alreadyQueued++;
       } catch (e: any) {
@@ -6006,6 +6047,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       }
     }
     setImportStatus('done', { finishedAt: new Date().toISOString() });
+    // AKTAR → OKU (2026-09-13): aktarılan/okunmamış belgeler kalıcı kuyrukta AI ile okunur, sonra sınıflanır (yanıtı bekletmez).
+    void this.aktarSonrasiOkumaKuyruga(tenantId, okunacakBelgeler, 'e-fatura aktar');
     // OTOMATİK EŞLEŞTİRME: aktarılan e-faturalara hesap kodlarını ("Kodları düzelt" ile AYNI:
     //   cari VKN→320, KDV 191/391, plan/öğrenilmiş gider) kendiliğinden ata → kullanıcı elle basmasın.
     //   Fire-and-forget (HTTP yanıtını bekletmez); frontend poll ile kodlar dolar.
