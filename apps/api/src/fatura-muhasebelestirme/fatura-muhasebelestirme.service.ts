@@ -546,6 +546,9 @@ type ClassifyResult = {
   // PLAN/15 Faz 1-B (2026-09-12): plan verildiğinde AI'ın hesap seçimine güveni (yuksek|orta|dusuk);
   //   'dusuk' ya da boş/geçersiz kod → Sonnet eskalasyonu (aiClassifyAccounting). Plan yoksa undefined.
   guven?: 'yuksek' | 'orta' | 'dusuk';
+  /** 2026-09-13: toplu Haiku sonucu zayıf (düşük güven / kod boş-geçersiz) → Sonnet ikinci turu KUYRUKTA (CLASSIFY_GUCLU);
+   *  eskiden parti içinde tek tek beklenip okuma işçilerini 100-300 sn kilitliyordu (İLGİ OTO 269 belge: 1 belge/dk). */
+  eskalasyonAdayi?: boolean;
 };
 
 /** Classify yolu ek girdileri (PLAN/15 Faz 1-B): kelime kuralı İPUCU (AI körü körüne kopyalamasın),
@@ -558,8 +561,8 @@ export interface BelgeKuyrukGirdisi {
   tenantId: string;
   taxpayerId?: string | null;
   documentId: string;
-  kind: 'CLASSIFY' | 'AI_READ';
-  /** 0 arka plan · 3 ithal/okuma sonrası · 5 gece · 10 sahip isteği */
+  kind: 'CLASSIFY' | 'AI_READ' | 'CLASSIFY_GUCLU';
+  /** 0 arka plan · 1 Sonnet ikinci tur · 3 ithal/okuma sonrası · 5 gece · 10 sahip isteği */
   priority: number;
 }
 export interface BelgeKuyrukKancasi {
@@ -618,7 +621,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // ipucu: belge-bazlı kelime kuralı ipucu (PLAN/15 Faz 1-B) — parti anahtarına GİRMEZ (partiler bölünmesin), belge bloğuna yazılır.
     items: Array<{ contentText: string; resolve: (v: ClassifyResult | null) => void; ipucu?: string }>;
     timer: NodeJS.Timeout | null;
-    shared: { mukellefBilgi: string; isIsletme: boolean; invoiceKind?: 'ALIS' | 'SATIS'; planAdaylar?: string; planKodlari?: Set<string> };
+    shared: { mukellefBilgi: string; isIsletme: boolean; invoiceKind?: 'ALIS' | 'SATIS'; planAdaylar?: string; planKodlari?: Set<string>; strong?: boolean };
   }>();
   private readonly uploadOcrActiveIds = new Set<string>(); // işlenmekte olan belge id'leri (resume çift-işlemesin)
   private ocrResumeTimer: NodeJS.Timeout | null = null;
@@ -792,7 +795,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   /** DB kuyruğundan şu an işlenen belge sayısı (bellek-içi uploadOcrActive'e KARIŞMAZ: yükleme OCR'ı 150 sn'lik
    *  sınıflandırma partisini beklemesin). Yorum ön-üretimi ve okuma-içi yorum bu sayacı da yoklar. */
   private kuyrukAktif = 0;
-  async kuyrukIsle(kind: 'CLASSIFY' | 'AI_READ', tenantId: string, documentIds: string[]): Promise<Array<{ documentId: string; ok: boolean; hata?: string }>> {
+  async kuyrukIsle(kind: 'CLASSIFY' | 'AI_READ' | 'CLASSIFY_GUCLU', tenantId: string, documentIds: string[]): Promise<Array<{ documentId: string; ok: boolean; hata?: string }>> {
     const ids = [...new Set((documentIds || []).map((s) => String(s || '').trim()).filter(Boolean))];
     return Promise.all(ids.map(async (documentId) => {
       this.kuyrukAktif++;
@@ -802,6 +805,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           await this.runQueuedAiRead(tenantId, documentId);
           const d = await (this.prisma as any).invoiceAccountingDocument.findFirst({ where: { id: documentId, tenantId }, select: { ocrStatus: true, lucaErrorMessage: true } }).catch(() => null);
           if (d && d.ocrStatus === 'FAILED') return { documentId, ok: false, hata: String(d.lucaErrorMessage || 'okunamadı') };
+          return { documentId, ok: true };
+        }
+        if (kind === 'CLASSIFY_GUCLU') {
+          // Sonnet ikinci tur: kod dolduysa kendisi atlar; sonuç ne olursa olsun iş 'başarılı' (en iyi çaba, tekrar denenmez).
+          await this.runQueuedClassify(tenantId, documentId, { guclu: true });
           return { documentId, ok: true };
         }
         await this.runQueuedClassify(tenantId, documentId);
@@ -3618,7 +3626,15 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   // ARKA PLAN SINIFLANDIRMA: okuma anında saklanan içerik snippet'iyle (ocrData.icerikMetni) faaliyet+içerik
   // muhakemesi yapıp kayıt türü/giderTuru'yu doldurur + hesap eşleştirmesini yeniler. Okuma şeridini bekletmez
   // (e-Fatura/e-Arşiv anında okunur; kayıt türü/hesap arkadan dolar). Max aboneliği.
-  private async runQueuedClassify(tenantId: string, documentId: string) {
+  private async runQueuedClassify(tenantId: string, documentId: string, secenek: { guclu?: boolean } = {}) {
+    // GÜÇLÜ TUR (CLASSIFY_GUCLU): ilk turdan sonra matrah kodu dolduysa (kural/plan/kullanıcı) Sonnet'e hiç gitme.
+    if (secenek.guclu) {
+      const dolu = await (this.prisma as any).invoiceAccountingLine.findFirst({
+        where: { documentId, group: 'matrah', OR: [{ accountCode: { not: null } }, { kaynak: 'KULLANICI' }] },
+        select: { id: true, accountCode: true },
+      }).catch(() => null);
+      if (dolu && String(dolu.accountCode || '').trim()) { this.logger.log(`[CLS-GUCLU] atlandı: matrah kodu dolu doc=${documentId}`); return; }
+    }
     const doc = await (this.prisma as any).invoiceAccountingDocument.findFirst({
       where: { id: documentId, tenantId },
       // sellerVkn/buyerVkn (2026-09-13): öğrenme hızlı yolu + işletme hafızası (islVkn) karşı taraf VKN'sini buradan okur;
@@ -3742,7 +3758,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       c = await this.aiClassifyAccountingCoalesced(content, mukellefBilgi, isIsletme, kind, planMetni || undefined, {
         ipucu: detC ? `kategori=${detC.kategori}, gider türü=${detC.giderTuru}` : undefined,
         planKodlari,
+        strongModel: secenek.guclu === true,
       }).catch(() => null);
+      // Zayıf Haiku sonucu → Sonnet ikinci turu KUYRUĞA (öncelik 1, en sonda; okuma işçisini bekletmez).
+      if (c?.eskalasyonAdayi && !secenek.guclu) this.gucluTuruKuyrugaAl(tenantId, doc.taxpayerId, documentId);
       // AI boş/hatalı → eski ipucu sonucu yedek (davranış eskisinden kötü olmasın).
       if (!c && detC) { c = detC; this.logger.warn(`[CLS-IPUCU] AI yanıt vermedi → kelime kuralı yedek kullanıldı (${detC.kategori}) doc=${documentId}`); }
     }
@@ -3917,6 +3936,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
    * kendiliğinden CLASSIFY açar. Aktarım yanıtını BEKLETMEZ; ilerleme ocr-progress şeridinde (ocrStatus=PENDING).
    * Yalnız okunmamış (readMode boş) + onaysız belgeler; FM_AKTAR_OKU=off kapatır. Hata yutulur.
    */
+  /** Sonnet ikinci turu (CLASSIFY_GUCLU, öncelik 1) — kalıcı kuyruk yoksa sessizce atlanır (Haiku sonucu kalır). */
+  private gucluTuruKuyrugaAl(tenantId: string, taxpayerId: string | null | undefined, documentId: string): void {
+    if (!this.belgeKuyrugu) return;
+    void this.belgeKuyrugu.topluKuyrugaAl([{ tenantId, taxpayerId: taxpayerId ?? null, documentId, kind: 'CLASSIFY_GUCLU', priority: 1 }]).catch(() => undefined);
+  }
+
   async aktarSonrasiOkumaKuyruga(tenantId: string, documentIds: string[], kaynak: string): Promise<number> {
     if (String(process.env.FM_AKTAR_OKU || '').toLowerCase() === 'off') return 0;
     const ids = [...new Set((documentIds || []).map((x) => String(x || '').trim()).filter(Boolean))];
@@ -15351,6 +15376,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             ipucu: detHit ? `kategori=${detHit.kategori}, gider türü=${detHit.giderTuru}` : undefined,
             planKodlari: planLeafSet.size ? planLeafSet : undefined,
           }).catch(() => null);
+      // 2026-09-13: toplu Haiku sonucu zayıfsa Sonnet ikinci turu kuyruğa (okuma işçisi beklemez).
+      if ((c as any)?.eskalasyonAdayi) this.gucluTuruKuyrugaAl(tenantId, d.taxpayerId, d.id);
       if (detAtla) this.logger.log(`[CLS-SKIP] det icerik=${detHit!.kategori} (${detAdlar.length} kalem) → Max ATLANDI (FM_DET_ATLA=1) belge=${d.belgeNo || d.id}`);
       else if (detHit && !ogrenilmisAtla) this.logger.log(`[CLS-IPUCU] det kategori=${detHit.kategori} (${detAdlar.length} kalem) → AI'a ipucu verildi belge=${d.belgeNo || d.id}`);
       if (ogrenilmisAtla) this.logger.log(`[CLS-SKIP-LEARNED] satici+icerik ogrenilmis (${ogrenmeSecimiOkuma?.kaynak}/${ogrenmeSecimiOkuma?.kural}) → Max ATLANDI kod=${ogrenmeSecimiOkuma?.kod} belge=${d.belgeNo || d.id} sayac=${JSON.stringify(this.hizliYolSayac)}`);
@@ -15835,9 +15862,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     invoiceKind?: 'ALIS' | 'SATIS',
     planAdaylar?: string,
     // PLAN/15 Faz 1-B: belge-bazlı kelime kuralı ipuçları (belge bloğuna yazılır; parti anahtarını bölmez).
-    ek?: { ipucular?: Array<string | undefined> },
+    // strongModel (2026-09-13): Sonnet ikinci turu — CLASSIFY_GUCLU partisi (aynı prompt + "önceki deneme düşük güvenli" notu).
+    ek?: { ipucular?: Array<string | undefined>; strongModel?: boolean },
   ): Promise<Array<ClassifyResult | null>> {
     const n = contents.length;
+    const strong = ek?.strongModel === true;
     if (!n) return [];
     const ipucular = ek?.ipucular || [];
     const docBlocks = contents
@@ -15848,6 +15877,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       ...this.classifyHeadSegments(mukellefBilgi, invoiceKind),
       `YALNIZCA tam ${n} nesnelik bir JSON DİZİSİ döndür, başka metin YOK. ⚠️ HER nesneye "no" alanı EKLE = o nesnenin değerlendirdiği BELGE NUMARASI (1..${n}) — "=== BELGE X ===" başlığındaki X. Böylece hangi sonucun hangi belgeye ait olduğu KESİN belli olur; sırayı karıştırma riski için "no" MUTLAKA doğru. Nesne biçimi: {"no":<belge numarası>, ...şu alanlar: ${this.classifyJsonShape(planAdaylar)}}`,
       ...this.classifyBodySegments(isIsletme, invoiceKind, planAdaylar),
+      strong ? 'ÖNCEKİ DENEME DÜŞÜK GÜVENLİ / kod boştu; daha dikkatli karar ver — her belgede niteliği ve hesap planındaki rolü ([köşeli parantez]) yeniden değerlendir, mükellefin faaliyetine göre ticari mal (153) mı gider (7xx) mi ayır.' : '',
       '\nBELGELER:\n' + docBlocks,
     ].filter(Boolean).join('\n');
     const releaseSlot = await this.acquireClassifySlot();
@@ -15857,7 +15887,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       // TEK DENEME: toplu çağrı timeout'a düşerse 2. deneme de düşer (aynı büyük prompt) → çift israf
       //   (6 belge × 126s × 2 = 256s gözlemlendi). Başarısızsa hemen tek-tek fallback'e geç (o zaten retry).
       const tmo = Math.min(this.classifyTimeoutMs + n * 10000, 140000);
-      res = await claudeTextViaMax({ prompt, timeoutMs: tmo, model: MAX_MODEL_CHEAP }).catch(() => null);
+      res = await claudeTextViaMax({ prompt, timeoutMs: strong ? Math.min(tmo + 40000, 200000) : tmo, model: strong ? MAX_MODEL_DEFAULT : MAX_MODEL_CHEAP }).catch(() => null);
     } finally {
       releaseSlot();
     }
@@ -15901,11 +15931,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     if (this.classifyBatchSize <= 1) {
       return this.aiClassifyAccounting(contentText, mukellefBilgi, isIsletme, invoiceKind, planAdaylar, ek).catch(() => null);
     }
-    const key = `${isIsletme ? '1' : '0'}|${invoiceKind || 'ALIS'}|${planAdaylar || ''}|${mukellefBilgi}`;
+    const strong = ek?.strongModel === true; // Sonnet ikinci turu ayrı partide (Haiku ile karışmaz)
+    const key = `${strong ? 'S' : 'H'}|${isIsletme ? '1' : '0'}|${invoiceKind || 'ALIS'}|${planAdaylar || ''}|${mukellefBilgi}`;
     return new Promise<ClassifyResult | null>((resolve) => {
       let buf = this.classifyBatchBuffers.get(key);
       if (!buf) {
-        buf = { items: [], timer: null, shared: { mukellefBilgi, isIsletme, invoiceKind, planAdaylar, planKodlari: ek?.planKodlari } };
+        buf = { items: [], timer: null, shared: { mukellefBilgi, isIsletme, invoiceKind, planAdaylar, planKodlari: ek?.planKodlari, strong } };
         this.classifyBatchBuffers.set(key, buf);
       }
       if (!buf.shared.planKodlari && ek?.planKodlari) buf.shared.planKodlari = ek.planKodlari;
@@ -15934,7 +15965,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       try {
         results = await this.aiClassifyAccountingMulti(
           items.map((i) => i.contentText), buf.shared.mukellefBilgi, buf.shared.isIsletme, buf.shared.invoiceKind, buf.shared.planAdaylar,
-          { ipucular: items.map((i) => i.ipucu) },
+          { ipucular: items.map((i) => i.ipucu), strongModel: !!buf.shared.strong },
         );
       } catch { results = []; }
       if (Array.isArray(results) && results.length === items.length) {
@@ -15942,25 +15973,22 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         // SONNET ESKALASYONU (PLAN/15 Faz 1-B): toplu Haiku sonucunda güveni düşük / hesabı boş-geçersiz belgeler
         //   TEK TEK güçlü modele gider (saatlik tavan aiClassifyAccounting içinde); diğerleri partiyi BEKLEMEDEN
         //   hemen çözülür. Sonnet çözemez / tavan doluysa Haiku sonucu KALIR.
-        const eskale: number[] = [];
+        // ESKALASYON ARTIK BEKLETMEZ (2026-09-13 canlı ölçüm, İLGİ OTO 269 belge): Sonnet'i parti içinde tek tek
+        //   beklemek okuma işçilerini 100-300 sn kilitliyor, partiler 1-4'e düşüyordu (1 belge/dk). Zayıf sonuç HEMEN
+        //   döner + eskalasyonAdayi işareti; çağıran CLASSIFY_GUCLU işini kuyruğa alır (Sonnet, partili, en son).
+        //   Güçlü turun kendi partisinde (shared.strong) yeniden eskalasyon YOK.
+        let adayN = 0;
         items.forEach((_, i) => {
-          if (buf.shared.planAdaylar && this.classifyEskalasyonGerekli(results[i], buf.shared.planAdaylar, buf.shared.planKodlari)) eskale.push(i);
+          const zayif = !buf.shared.strong && !!buf.shared.planAdaylar && this.classifyEskalasyonGerekli(results[i], buf.shared.planAdaylar, buf.shared.planKodlari);
+          if (zayif) { adayN++; resolveAt(i, { ...((results[i] || {}) as ClassifyResult), eskalasyonAdayi: true }); }
           else resolveAt(i, results[i] || null);
         });
-        if (eskale.length) {
-          await Promise.all(eskale.map(async (i) => {
-            const r2 = await this.aiClassifyAccounting(items[i].contentText, buf.shared.mukellefBilgi, buf.shared.isIsletme, buf.shared.invoiceKind, buf.shared.planAdaylar, {
-              ipucu: items[i].ipucu, planKodlari: buf.shared.planKodlari, strongModel: true,
-            }).catch(() => null);
-            if (r2) this.logger.log(`[CLS-ESKALASYON] toplu: Haiku guven=${results[i]?.guven || '-'} kod=${results[i]?.matrahHesapKodu || '-'} → Sonnet kod=${r2.matrahHesapKodu || '-'} guven=${r2.guven || '-'}`);
-            resolveAt(i, r2 || results[i] || null);
-          }));
-        }
+        if (adayN) this.logger.log(`[CLS-ESKALASYON] toplu: ${adayN}/${items.length} zayıf sonuç → Sonnet ikinci turu kuyruğa (CLASSIFY_GUCLU)`);
         return;
       }
       this.logger.warn(`[CLS-BATCH] uyumsuz (istenen=${items.length} donen=${Array.isArray(results) ? results.length : 0}) → tek-tek fallback`);
       await Promise.all(items.map(async (it, i) => {
-        const r = await this.aiClassifyAccounting(it.contentText, buf.shared.mukellefBilgi, buf.shared.isIsletme, buf.shared.invoiceKind, buf.shared.planAdaylar, { ipucu: it.ipucu, planKodlari: buf.shared.planKodlari }).catch(() => null);
+        const r = await this.aiClassifyAccounting(it.contentText, buf.shared.mukellefBilgi, buf.shared.isIsletme, buf.shared.invoiceKind, buf.shared.planAdaylar, { ipucu: it.ipucu, planKodlari: buf.shared.planKodlari, strongModel: !!buf.shared.strong }).catch(() => null);
         resolveAt(i, r);
       }));
     } catch {

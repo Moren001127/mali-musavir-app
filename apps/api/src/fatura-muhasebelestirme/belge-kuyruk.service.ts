@@ -30,7 +30,8 @@ import { BelgeKuyrukGirdisi, BelgeKuyrukKancasi, FaturaMuhasebelestirmeService }
  * Tek instance varsayımı (Railway tek replika) ama lockedBy=instanceId ile güvenli: iki instance aynı işi claim edemez
  *   (updateMany where status=PENDING → yalnız kazanan görür).
  */
-export type KuyrukTuru = 'CLASSIFY' | 'AI_READ';
+/** CLASSIFY_GUCLU (2026-09-13): zayıf Haiku sonucu için Sonnet ikinci turu — öncelik 1 (en son), CLASSIFY ile aynı partileme. */
+export type KuyrukTuru = 'CLASSIFY' | 'AI_READ' | 'CLASSIFY_GUCLU';
 export type KuyrukDurumu = 'PENDING' | 'RUNNING' | 'DONE' | 'FAILED';
 
 export const KUYRUK_ONCELIK = { ARKA_PLAN: 0, ITHAL: 3, GECE: 5, SAHIP: 10 } as const;
@@ -122,7 +123,7 @@ export class BelgeKuyrukService implements OnModuleInit, BelgeKuyrukKancasi {
   }
 
   async topluKuyrugaAl(girdiler: BelgeKuyrukGirdisi[]): Promise<{ eklenen: number; yukseltilen: number; zatenKuyrukta: number; bekleyen: number }> {
-    const temiz = (girdiler || []).filter((g) => g && g.tenantId && g.documentId && (g.kind === 'CLASSIFY' || g.kind === 'AI_READ'));
+    const temiz = (girdiler || []).filter((g) => g && g.tenantId && g.documentId && (g.kind === 'CLASSIFY' || g.kind === 'AI_READ' || g.kind === 'CLASSIFY_GUCLU'));
     let eklenen = 0; let yukseltilen = 0; let zatenKuyrukta = 0; let failedAtlanan = 0;
     if (temiz.length) {
       // Aynı istekte tekrar eden (belge, kind) çiftlerini tekilleştir (en yüksek öncelik kalsın).
@@ -180,7 +181,7 @@ export class BelgeKuyrukService implements OnModuleInit, BelgeKuyrukKancasi {
   async durum(tenantId: string) {
     const since = new Date(Date.now() - 24 * 3600 * 1000);
     const j = this.db.invoiceProcessingJob;
-    const [pCls, pRead, running, done24h, failed24h, sonHata] = await Promise.all([
+    const [pCls, pRead, running, done24h, failed24h, sonHata, pGuclu] = await Promise.all([
       j.count({ where: { tenantId, status: 'PENDING', kind: 'CLASSIFY' } }),
       j.count({ where: { tenantId, status: 'PENDING', kind: 'AI_READ' } }),
       j.count({ where: { tenantId, status: 'RUNNING' } }),
@@ -192,9 +193,10 @@ export class BelgeKuyrukService implements OnModuleInit, BelgeKuyrukKancasi {
         take: 10,
         select: { id: true, documentId: true, kind: true, attempts: true, lastError: true, finishedAt: true },
       }),
+      j.count({ where: { tenantId, status: 'PENDING', kind: 'CLASSIFY_GUCLU' } })
     ]);
     return {
-      pending: { CLASSIFY: pCls, AI_READ: pRead },
+      pending: { CLASSIFY: pCls, AI_READ: pRead, CLASSIFY_GUCLU: pGuclu },
       running,
       done24h,
       failed24h,
@@ -261,7 +263,7 @@ export class BelgeKuyrukService implements OnModuleInit, BelgeKuyrukKancasi {
         if (!parti.length) break;
         baslatilanParti++;
         this.aktifParti++;
-        void this.isle('CLASSIFY', parti[0].tenantId, parti[0].taxpayerId, parti).finally(() => { this.aktifParti = Math.max(0, this.aktifParti - 1); });
+        void this.isle(parti[0].kind as KuyrukTuru, parti[0].tenantId, parti[0].taxpayerId, parti).finally(() => { this.aktifParti = Math.max(0, this.aktifParti - 1); });
       }
       return { baslatilanOkuma, baslatilanParti, kurtarilan };
     } finally {
@@ -311,12 +313,13 @@ export class BelgeKuyrukService implements OnModuleInit, BelgeKuyrukKancasi {
   private async sinifPartisiSec(partiBoyu: number): Promise<Is[]> {
     for (let deneme = 0; deneme < 3; deneme++) {
       const bas: Is | null = await this.db.invoiceProcessingJob.findFirst({
-        where: { status: 'PENDING', kind: 'CLASSIFY' },
+        where: { status: 'PENDING', kind: { in: ['CLASSIFY', 'CLASSIFY_GUCLU'] } },
         orderBy: [{ priority: 'desc' }, { createdAt: 'asc' }],
       });
       if (!bas) return [];
+      // Parti tek türden: baş işin türü (CLASSIFY_GUCLU öncelik 1 → normal sınıflandırmalar bitmeden sıra gelmez).
       const ayni: Is[] = await this.db.invoiceProcessingJob.findMany({
-        where: { status: 'PENDING', kind: 'CLASSIFY', tenantId: bas.tenantId, taxpayerId: bas.taxpayerId ?? null },
+        where: { status: 'PENDING', kind: bas.kind, tenantId: bas.tenantId, taxpayerId: bas.taxpayerId ?? null },
         orderBy: [{ priority: 'desc' }, { createdAt: 'asc' }],
         take: partiBoyu,
       });

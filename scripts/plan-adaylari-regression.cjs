@@ -216,7 +216,12 @@ console.log('5) Kaynak kilitleri (service)');
   const mu = between('private async aiClassifyAccountingMulti(', 'private aiClassifyAccountingCoalesced(');
   assert(mu.includes('KELİME KURALI İPUCU (bu belge)'), 'Multi: belge-bazlı ipucu belge bloğunda');
   const fl = between('private async flushClassifyBatch(', 'private async aiClassifyAccounting(');
-  assert(fl.includes('this.classifyEskalasyonGerekli(results[i], buf.shared.planAdaylar, buf.shared.planKodlari)') && fl.includes('strongModel: true') && fl.includes('resolveAt(i, r2 || results[i] || null)'), 'flushClassifyBatch: toplu sonuçta tek tek Sonnet eskalasyonu, diğerleri hemen çözülür, Haiku sonucu yedek');
+  // 2026-09-13: eskalasyon parti içinde BEKLENMEZ (okuma işçilerini kilitliyordu) → zayıf sonuç eskalasyonAdayi ile döner,
+  //   Sonnet ikinci turu kalıcı kuyrukta CLASSIFY_GUCLU (öncelik 1); güçlü partide (shared.strong) yeniden eskalasyon yok.
+  assert(fl.includes('this.classifyEskalasyonGerekli(results[i], buf.shared.planAdaylar, buf.shared.planKodlari)') && fl.includes('eskalasyonAdayi: true') && fl.includes('!buf.shared.strong') && !fl.includes('strongModel: true,'), 'flushClassifyBatch: zayıf sonuç hemen döner (eskalasyonAdayi), Sonnet partide beklenmez');
+  assert(svc.includes("kind: 'CLASSIFY_GUCLU', priority: 1") && svc.includes('secenek.guclu') && svc.includes("if (kind === 'CLASSIFY_GUCLU')"), 'CLASSIFY_GUCLU: Sonnet ikinci turu kuyruk işi (gucluTuruKuyrugaAl + runQueuedClassify guclu + kuyrukIsle)');
+  const kq = fs.readFileSync(path.join(root, 'apps/api/src/fatura-muhasebelestirme/belge-kuyruk.service.ts'), 'utf8');
+  assert(kq.includes("kind: { in: ['CLASSIFY', 'CLASSIFY_GUCLU'] }") && kq.includes('kind: bas.kind') && kq.includes('parti[0].kind as KuyrukTuru'), 'kuyruk: CLASSIFY_GUCLU partileri tek türden, baş işin türüyle işlenir');
   assert(svc.includes("String(process.env.FM_DET_ATLA || '').trim() === '1'"), 'detAtlamaAcikMi: FM_DET_ATLA=1 anahtarı');
   assert(say(svc, 'this.detAtlamaAcikMi()') === 2, 'detAtlamaAcikMi iki yerde (runQueuedClassify + aiReadDocument)');
 
