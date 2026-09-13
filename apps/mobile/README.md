@@ -35,6 +35,6 @@ npx expo start -c                  # telefonda Expo Go (belge tarayıcı Expo Go
 Kural: içerik UYDURMA — portaldaki gerçek uç ve alanlar (apps/api controller'ları) neyse o; veri yoksa "veri yok" yaz, örnek gösterme.
 
 ## Derleme / yayın
-- Expo hesabı `moren123` (proje `@moren123/moren-mobil`). Android: `EAS_NO_VCS=1 npx eas-cli build -p android --profile preview --non-interactive` (APK) · `--profile production` (AAB).
+- Expo hesabı `moren123` (proje `@moren123/moren-mobil`). **Derleme: `node scripts/eas-derle.cjs android preview`** (APK) · `android production` (AAB) · `ios production` (Apple hesabı). Betik geçici kopya + node_modules kavşağı + küçük git deposu kurar (~3 MB yükleme); doğrudan `EAS_NO_VCS=1 eas build` 140 MB yükleyip ağda kopuyor (2026-09-13).
 - iOS derlemesi Apple Developer hesabı ister (Muzaffer Bey'de). Ayrıntı: `store/YAYIN-REHBERI.md`.
 - API adresi: `eas.json` → `EXPO_PUBLIC_API_URL=https://mali-musavir-app-production.up.railway.app/api/v1`.
