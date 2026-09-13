@@ -36,6 +36,8 @@ export type KuyrukDurumu = 'PENDING' | 'RUNNING' | 'DONE' | 'FAILED';
 export const KUYRUK_ONCELIK = { ARKA_PLAN: 0, ITHAL: 3, GECE: 5, SAHIP: 10 } as const;
 export const GECE_KUYRUK_CRON = '0 45 3 * * *';
 export const BAYAT_KILIT_MS = 15 * 60 * 1000;
+/** Açılış kurtarması gecikmesi: rolling deploy örtüşmesi bitsin diye (eski süreç bu arada işini bitirirse DONE yazar, dokunulmaz). */
+export const ACILIS_KURTARMA_GECIKME_MS = 2 * 60 * 1000;
 export const MAX_DENEME = 3;
 export const GECE_TAVAN = 400;
 export const ISCI_TIK_MS = 5000;
@@ -72,6 +74,7 @@ type Is = { id: string; tenantId: string; taxpayerId: string | null; documentId:
 export class BelgeKuyrukService implements OnModuleInit, BelgeKuyrukKancasi {
   private readonly logger = new Logger(BelgeKuyrukService.name);
   readonly instanceId = `${hostname()}:${process.pid}:${Math.random().toString(36).slice(2, 8)}`;
+  private readonly surecBaslangici = new Date();
   private tikCalisiyor = false;
   private geceCalisiyor = false;
   /** Şu an bu süreçte koşan AI_READ işi sayısı / CLASSIFY partisi sayısı (kapasite). */
@@ -90,6 +93,22 @@ export class BelgeKuyrukService implements OnModuleInit, BelgeKuyrukKancasi {
     this.fm.kuyrukBagla(this);
     this.isciAcik = true;
     this.logger.log(`[KUYRUK] kalıcı belge kuyruğu bağlandı (instance=${this.instanceId}, ayar=${JSON.stringify(kuyrukAyarlari())})`);
+    // AÇILIŞ KURTARMASI (2026-09-13): deploy'da önceki süreçte RUNNING kalan işler 15 dk bayat-kilit beklemesin —
+    //   açılıştan 2 dk sonra (eski süreç kesin kapanmış) başka instance'ın kilitlediği RUNNING işler PENDING'e döner
+    //   (deneme sayısı ARTMAZ: iş başarısız değil, süreç kesildi). Testte (isciAcik kapalıyken) çalışmaz.
+    const t = setTimeout(() => { void this.acilisKurtar().catch((e: any) => this.logger.warn(`[KUYRUK] açılış kurtarma hatası: ${e?.message || e}`)); }, ACILIS_KURTARMA_GECIKME_MS);
+    (t as any).unref?.();
+  }
+
+  /** Başka süreçte kilitli kalmış RUNNING işleri PENDING'e al (deploy/çökme). @returns kurtarılan sayısı */
+  async acilisKurtar(surecBaslangici: Date = this.surecBaslangici): Promise<number> {
+    const r = await this.db.invoiceProcessingJob.updateMany({
+      where: { status: 'RUNNING', lockedBy: { not: this.instanceId }, lockedAt: { lt: surecBaslangici } },
+      data: { status: 'PENDING', lockedBy: null, lockedAt: null, startedAt: null, lastError: 'deploy: önceki süreç yarım bıraktı — açılışta yeniden kuyruğa alındı' },
+    }).catch(() => ({ count: 0 }));
+    const n = Number(r?.count || 0);
+    if (n) this.logger.warn(`[KUYRUK] açılış kurtarma: ${n} RUNNING iş (önceki süreç) PENDING'e alındı`);
+    return n;
   }
 
   private get db(): any { return this.prisma as any; }

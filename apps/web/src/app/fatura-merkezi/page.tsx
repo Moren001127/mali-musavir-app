@@ -4699,7 +4699,10 @@ function ScreenMuhasebe({ taxpayerId, period, isIsletme = false, taxpayerNace = 
                                   //   vergi-sorumlu): seçilen hesabın ADI "sorumlu" içeriyorsa satırı OTOMATİK
                                   //   vergi-sorumlu grubuna taşı — rematch'in 191-normal/191-sorumlu hesabını
                                   //   doğru ayırt etmesi (ve yevmiyenin doğru kurulması) buna bağlı.
-                                  if (g.keys.length > 1) {
+                                  // YALNIZ 'İndirilecek KDV' kutusu (2026-09-13 canlı hata): matrah kutusu da iki backend-grup
+                                  //   (matrah + diger_vergi) kapsadığından bu dal matrah satırını 'vergi' grubuna TAŞIYORDU →
+                                  //   "+ satır ekle"yle açılan matrah satırı kod yazılınca İndirilecek KDV kutusuna kayıyordu.
+                                  if (g.key === 'vergi' && g.keys.length > 1) {
                                     // Hesap planı {code, name} döner (accountCode/accountName DEĞİL). Kod planda
                                     //   yoksa mevcut grubu KORU — vergi-sorumlu satırını körlemesine vergi'ye düşürme.
                                     const acc = (accountPlan || []).find((a: any) => String(a.code) === String(code));

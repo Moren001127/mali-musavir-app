@@ -97,6 +97,27 @@ describe('BelgeKuyrukService', () => {
     expect(fm.bagli).toBe(svc);
   });
 
+  it('açılış kurtarması: önceki süreçte RUNNING kalan işler PENDING olur; kendi kilidi ve açılış sonrası kilitler dokunulmaz', async () => {
+    const { svc, jobs } = kur();
+    const boot = new Date();
+    const eski = new Date(boot.getTime() - 60_000);
+    const yeniKilit = new Date(boot.getTime() + 1_000);
+    jobs.rows.push(
+      { id: 'r1', status: 'RUNNING', lockedBy: 'olu-surec:1', lockedAt: eski, attempts: 1, kind: 'CLASSIFY' },
+      { id: 'r2', status: 'RUNNING', lockedBy: svc.instanceId, lockedAt: eski, attempts: 0, kind: 'CLASSIFY' },
+      { id: 'r3', status: 'RUNNING', lockedBy: 'baska:2', lockedAt: yeniKilit, attempts: 0, kind: 'AI_READ' },
+      { id: 'r4', status: 'DONE', lockedBy: 'olu-surec:1', lockedAt: eski, attempts: 0, kind: 'CLASSIFY' },
+    );
+    expect(await svc.acilisKurtar(boot)).toBe(1);
+    const r1 = jobs.rows.find((r: any) => r.id === 'r1');
+    expect(r1.status).toBe('PENDING');
+    expect(r1.lockedBy).toBeNull();
+    expect(r1.attempts).toBe(1); // deneme sayısı artmaz
+    expect(String(r1.lastError)).toContain('deploy');
+    expect(jobs.rows.find((r: any) => r.id === 'r2').status).toBe('RUNNING');
+    expect(jobs.rows.find((r: any) => r.id === 'r3').status).toBe('RUNNING');
+    expect(jobs.rows.find((r: any) => r.id === 'r4').status).toBe('DONE');
+  });
   it('idempotent ekleme + öncelik yükseltme', async () => {
     const { svc, jobs } = kur();
     expect(await svc.kuyrugaAl(g('d1', 'CLASSIFY', 0))).toEqual({ eklendi: true, yukseltildi: false });
