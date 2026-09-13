@@ -16,11 +16,13 @@ import { useLucaAgent } from '@/hooks/useLucaAgent';
 // ── e-Defter modül kimliği: kurumsal lacivert/mavi — sabitler TEK KAYNAK: _components/tema.ts ──
 import {
   ARROW, BORDER, BORDER_STRONG, ERR, HERO_BG, ICON_GRAD, INFO, LEAD_GRAD, LIGHTBAR, MUTED, MUTED2, NAVY, NAVY_SOFT, OK,
-  PANEL, PANEL_HOVER, TEXT, WARN, fmtDate, fmtDateTime, fmtTRY, sevColor, sevLabel,
+  GRAY, PANEL, PANEL_HOVER, TEXT, WARN, fmtDate, fmtDateTime, fmtTRY, sevColor, sevLabel,
 } from './_components/tema';
 import { type KontrolOzeti, type KuralTanimi, alanSira } from './_components/katalog';
 import { BulgularSekmesi } from './_components/BulgularSekmesi';
 import { HesaplarSekmesi } from './_components/HesaplarSekmesi';
+import { Hap, Kart } from '../../ekip/_components/Kart';
+import { ikonStili, kahramanKartStili } from '../../ekip/_components/ortak';
 
 const EMPTY_LIST: any[] = [];
 
@@ -746,84 +748,50 @@ export default function EDefterAgentPage() {
 
   return (
     <div className="space-y-4">
-      {/* ════════ BAŞLIK + DENETİM SKORU ════════ */}
-      <div className="relative rounded-2xl overflow-hidden border" style={{ borderColor: BORDER_STRONG, background: HERO_BG }}>
-        <div className="absolute inset-x-0 top-0 h-1" style={{ background: LIGHTBAR }} />
-        <div className="px-5 pt-5 pb-4 flex flex-wrap items-center gap-5">
-          {/* Sol: kimlik */}
-          <div className="flex items-center gap-3.5 flex-1 min-w-[300px]">
-            <span className="grid h-12 w-12 place-items-center rounded-2xl shrink-0" style={{ background: ICON_GRAD, boxShadow: '0 8px 22px rgba(59,130,246,0.40)' }}>
-              <BookOpen size={23} style={{ color: '#0b1220' }} />
+      {/* ════════ BAŞLIK KARTI — kimlik + eylemler + tek satır hap rozetler + seçiciler ════════ */}
+      <Kart renk={NAVY} serit>
+        <div className="px-5 pt-4 pb-4 flex flex-wrap items-start gap-4">
+          <div className="flex items-center gap-3.5 flex-1 min-w-[320px]">
+            <span className="grid h-12 w-12 place-items-center rounded-2xl shrink-0" style={ikonStili(NAVY)}>
+              <BookOpen size={22} />
             </span>
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <div className="text-[10px] uppercase font-bold tracking-[.22em] mb-0.5" style={{ color: NAVY }}>e-Defter Ön Kontrol</div>
-              <h1 className="truncate" style={{ fontFamily: 'Fraunces, serif', fontSize: 23, fontWeight: 600, color: TEXT, lineHeight: 1.18 }}>
+              <h1 className="truncate" style={{ fontFamily: 'Fraunces, serif', fontSize: 22, fontWeight: 600, color: TEXT, lineHeight: 1.2 }}>
                 {taxpayerName(selectedTp)}
               </h1>
-              <div className="text-xs mt-1 flex items-center gap-2 flex-wrap" style={{ color: MUTED }}>
-                <span>{periodDescriptor(periodMode, year, quarter, month)}</span>
-                <span style={{ color: MUTED2 }}>·</span><span className="tabular-nums">{session?.totalVouchers ?? 0} fiş</span>
-                <span style={{ color: MUTED2 }}>·</span><span className="tabular-nums">{session?.totalLines ?? 0} satır</span>
-                {session?.createdAt && (<><span style={{ color: MUTED2 }}>·</span><span>Son kontrol {fmtDateTime(session.createdAt)}</span></>)}
-                {/* MİZAN GÖSTERGESİ — eskiden mizanın gelip gelmediğini anlamanın tek
-                    yolu Mizan sekmesine tıklamaktı; kullanıcı mizan çekilmiş olsa bile
-                    "çekmiyor" sanıyordu. Artık başlıkta her zaman görünüyor. */}
-                {session && (
-                  <>
-                    <span style={{ color: MUTED2 }}>·</span>
-                    {mizan ? (
-                      <span
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold"
-                        style={{ background: 'rgba(52,211,153,0.14)', color: '#34d399', border: '1px solid rgba(52,211,153,0.32)' }}
-                        title={`Mizan ${fmtDateTime(mizan.createdAt)} tarihinde çekildi ve denetimde kullanıldı`}
-                      >
-                        <FileSpreadsheet size={11} /> Mizan {mizan.hesapCount} hesap
-                      </span>
-                    ) : (
-                      <span
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold"
-                        style={{ background: 'rgba(248,113,113,0.12)', color: '#f87171', border: '1px solid rgba(248,113,113,0.30)' }}
-                        title="Mizan bu denetime bağlanmadı — açılış bakiyeleri hesaba katılamıyor"
-                      >
-                        <FileSpreadsheet size={11} /> Mizan yok
-                      </span>
-                    )}
-                  </>
-                )}
+              <div className="flex items-center gap-1.5 flex-wrap mt-2">
+                <Hap renk={NAVY}>{periodDescriptor(periodMode, year, quarter, month)}</Hap>
+                {session && <Hap renk={GRAY}>{session.totalVouchers ?? 0} fiş · {session.totalLines ?? 0} satır</Hap>}
+                {session && (mizan
+                  ? <Hap renk={OK} title={`Mizan ${fmtDateTime(mizan.createdAt)} tarihinde çekildi ve denetimde kullanıldı`}><FileSpreadsheet size={11} /> Mizan {mizan.hesapCount} hesap</Hap>
+                  : <Hap renk={ERR} title="Mizan bu denetime bağlanmadı — açılış bakiyeleri hesaba katılamıyor"><FileSpreadsheet size={11} /> Mizan yok</Hap>)}
+                {session?.createdAt && <Hap renk={GRAY}>Son kontrol {fmtDateTime(session.createdAt)}</Hap>}
+                {kontrolOzeti?.ozet && <Hap renk={OK}><CheckCircle2 size={11} /> {kontrolOzeti.ozet.calisti}/{kontrolOzeti.ozet.kural} kontrol · {kontrolOzeti.ozet.hesap} hesap</Hap>}
               </div>
             </div>
           </div>
-          {/* Sağ: denetim skoru göstergesi */}
-          <div className="flex items-center gap-4">
-            <Gauge score={score} color={scoreColor} hasData={hasData} />
-            <div className="flex flex-col gap-1.5 max-w-[180px]">
-              <span className="text-[11px] font-extrabold uppercase tracking-[.08em] px-2.5 py-1 rounded-lg w-fit"
-                style={{ background: `${hasData ? scoreColor : '#94a3b8'}22`, color: hasData ? scoreColor : '#94a3b8', border: `1px solid ${hasData ? scoreColor : '#94a3b8'}44` }}>
-                {scoreLabel}
-              </span>
-              <span className="text-[11.5px] leading-snug" style={{ color: MUTED }}>{scoreHint}</span>
+          {/* Eylemler: ana düğme + ikincil grup (her zaman görünür) */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <button disabled={!taxpayerId || fetchMut.isPending || !!lucaJobId} onClick={() => fetchMut.mutate()} className="h-10 pl-2 pr-4 rounded-xl text-[13px] font-semibold inline-flex items-center gap-2.5 disabled:opacity-50" style={{ background: 'linear-gradient(135deg,#3b82f6,#2563eb)', color: '#fff', boxShadow: '0 6px 18px rgba(59,130,246,.38)' }}>
+              <span className="grid place-items-center w-[26px] h-[26px] rounded-lg" style={{ background: 'rgba(255,255,255,.18)' }}>{fetchMut.isPending || lucaJobId ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}</span> Luca'dan Çek
+            </button>
+            <div className="inline-flex h-10 rounded-xl overflow-hidden" style={{ border: `1px solid ${BORDER_STRONG}`, background: 'rgba(255,255,255,.04)' }}>
+              <button disabled={!activeSessionId || exportMut.isPending} onClick={() => exportMut.mutate()} className="px-3 text-[12.5px] font-semibold inline-flex items-center gap-1.5 disabled:opacity-40" style={{ color: 'rgba(250,250,249,.85)' }} title="Bulguları Excel olarak indir">
+                {exportMut.isPending ? <Loader2 size={13} className="animate-spin" style={{ color: NAVY }} /> : <Download size={13} style={{ color: NAVY }} />} Excel
+              </button>
+              <button disabled={!activeSessionId} onClick={printReport} className="px-3 text-[12.5px] font-semibold inline-flex items-center gap-1.5 disabled:opacity-40" style={{ color: 'rgba(250,250,249,.85)', borderLeft: `1px solid ${BORDER}` }} title="Müşteri raporu (yazdır / PDF)">
+                <FileText size={13} style={{ color: NAVY }} /> PDF Rapor
+              </button>
+              <button disabled={!activeSessionId || reanalyzeMut.isPending} onClick={() => reanalyzeMut.mutate()} className="px-3 text-[12.5px] font-semibold inline-flex items-center gap-1.5 disabled:opacity-40" style={{ color: 'rgba(250,250,249,.85)', borderLeft: `1px solid ${BORDER}` }} title="Kayıtlı Excel'i tüm kurallarla yeniden analiz et">
+                {reanalyzeMut.isPending ? <Loader2 size={13} className="animate-spin" style={{ color: NAVY }} /> : <RotateCcw size={13} style={{ color: NAVY }} />} Yeniden Analiz
+              </button>
+              <label className="px-3 text-[12.5px] font-semibold inline-flex items-center gap-1.5 cursor-pointer" style={{ color: 'rgba(250,250,249,.85)', borderLeft: `1px solid ${BORDER}` }} title="Detay Fiş Listesi Excel'i elle yükle">
+                <UploadCloud size={13} style={{ color: NAVY }} /> Yükle
+                <input type="file" accept=".xlsx,.xls" className="hidden" onChange={(e) => { const file = e.target.files?.[0]; if (file) uploadMut.mutate(file); e.currentTarget.value = ''; }} />
+              </label>
             </div>
           </div>
-        </div>
-
-        {/* Aksiyonlar — dolu/ikon kutulu butonlar */}
-        <div className="px-5 pb-4 flex flex-wrap items-center gap-2.5">
-          <button disabled={!taxpayerId || fetchMut.isPending || !!lucaJobId} onClick={() => fetchMut.mutate()} className="h-10 pl-2 pr-4 rounded-xl text-[13px] font-semibold inline-flex items-center gap-2.5 disabled:opacity-50" style={{ background: 'linear-gradient(135deg,#3b82f6,#2563eb)', color: '#fff', boxShadow: '0 6px 18px rgba(59,130,246,.38)' }}>
-            <span className="grid place-items-center w-[26px] h-[26px] rounded-lg" style={{ background: 'rgba(255,255,255,.18)' }}>{fetchMut.isPending || lucaJobId ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}</span> Luca'dan Çek
-          </button>
-          <button disabled={!activeSessionId || exportMut.isPending} onClick={() => exportMut.mutate()} className="h-10 pl-2 pr-4 rounded-xl text-[13px] font-semibold inline-flex items-center gap-2.5 disabled:opacity-40" style={{ background: 'rgba(255,255,255,.05)', color: 'rgba(250,250,249,.9)', border: `1px solid ${BORDER_STRONG}` }}>
-            <span className="grid place-items-center w-[26px] h-[26px] rounded-lg" style={{ background: 'rgba(255,255,255,.06)', color: NAVY }}>{exportMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}</span> Excel
-          </button>
-          <button disabled={!activeSessionId} onClick={printReport} className="h-10 pl-2 pr-4 rounded-xl text-[13px] font-semibold inline-flex items-center gap-2.5 disabled:opacity-40" style={{ background: 'rgba(255,255,255,.05)', color: 'rgba(250,250,249,.9)', border: `1px solid ${BORDER_STRONG}` }}>
-            <span className="grid place-items-center w-[26px] h-[26px] rounded-lg" style={{ background: 'rgba(255,255,255,.06)', color: NAVY }}><FileText size={14} /></span> PDF Rapor
-          </button>
-          <button disabled={!activeSessionId || reanalyzeMut.isPending} onClick={() => reanalyzeMut.mutate()} className="h-10 pl-2 pr-4 rounded-xl text-[13px] font-semibold inline-flex items-center gap-2.5 disabled:opacity-40" style={{ background: 'rgba(255,255,255,.05)', color: 'rgba(250,250,249,.9)', border: `1px solid ${BORDER_STRONG}` }}>
-            <span className="grid place-items-center w-[26px] h-[26px] rounded-lg" style={{ background: 'rgba(255,255,255,.06)', color: NAVY }}>{reanalyzeMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <RotateCcw size={14} />}</span> Yeniden Analiz
-          </button>
-          <label className="h-10 pl-2 pr-4 rounded-xl text-[13px] font-semibold inline-flex items-center gap-2.5 cursor-pointer" style={{ background: 'rgba(255,255,255,.05)', color: 'rgba(250,250,249,.9)', border: `1px solid ${BORDER_STRONG}` }}>
-            <span className="grid place-items-center w-[26px] h-[26px] rounded-lg" style={{ background: 'rgba(255,255,255,.06)', color: NAVY }}><UploadCloud size={14} /></span> Yükle
-            <input type="file" accept=".xlsx,.xls" className="hidden" onChange={(e) => { const file = e.target.files?.[0]; if (file) uploadMut.mutate(file); e.currentTarget.value = ''; }} />
-          </label>
         </div>
 
         {/* Seçici bandı — etiketli, hizalı kontroller */}
@@ -885,58 +853,67 @@ export default function EDefterAgentPage() {
             </label>
           )}
         </div>
-      </div>
-
-      {lucaStatus && (
-        <div className="rounded-xl px-4 py-2.5 text-xs flex items-center gap-2" style={{ background: 'rgba(91,141,239,.08)', border: '1px solid rgba(91,141,239,.20)', color: '#bfd4ff' }}>
-          <Loader2 size={13} className="animate-spin shrink-0" /> {lucaStatus}
-        </div>
-      )}
-
-      {/* ════════ DENETİM ÖZETİ ════════ */}
-      <div className="grid grid-cols-1 lg:grid-cols-[1.45fr_1fr] gap-3.5">
-        {/* Şiddet dağılımı */}
-        <div className="rounded-2xl border p-4" style={{ background: PANEL, borderColor: BORDER }}>
-          <div className="text-[10px] uppercase tracking-[.18em] font-bold mb-3.5" style={{ color: MUTED2 }}>
-            Şiddet Dağılımı {sevTotal > 0 && <span style={{ color: MUTED }}>· {sevTotal} açık bulgu</span>}
+        {lucaStatus && (
+          <div className="px-5 py-2.5 text-xs flex items-center gap-2" style={{ background: 'rgba(91,141,239,.08)', borderTop: '1px solid rgba(91,141,239,.20)', color: '#bfd4ff' }}>
+            <Loader2 size={13} className="animate-spin shrink-0" /> {lucaStatus}
           </div>
-          <div className="h-3.5 rounded-lg overflow-hidden flex" style={{ background: 'rgba(255,255,255,.05)' }}>
-            <div style={{ width: `${pct(stats.error)}%`, background: ERR, transition: 'width .3s' }} />
-            <div style={{ width: `${pct(stats.warn)}%`, background: WARN, transition: 'width .3s' }} />
-            <div style={{ width: `${pct(stats.info)}%`, background: INFO, transition: 'width .3s' }} />
-          </div>
-          <div className="flex items-center gap-5 mt-3.5 flex-wrap">
-            <LegendItem color={ERR} label="Hata" value={stats.error} active={severityFilter === 'ERROR'} onClick={() => toggleSeverity('ERROR')} />
-            <LegendItem color={WARN} label="Uyarı" value={stats.warn} active={severityFilter === 'WARN'} onClick={() => toggleSeverity('WARN')} />
-            <LegendItem color={INFO} label="Bilgi" value={stats.info} active={severityFilter === 'INFO'} onClick={() => toggleSeverity('INFO')} />
-            <div className="ml-auto flex flex-col items-end">
-              <span className="text-[19px] font-bold tabular-nums leading-none" style={{ color: OK }}>{groupedFindings.length}</span>
-              <span className="text-[11px]" style={{ color: MUTED }}>Kategori</span>
+        )}
+      </Kart>
+
+      {/* ════════ KAHRAMAN KART — denetim özeti (tek kart: skor · şiddet · durum) ════════ */}
+      <section className="rounded-2xl" style={kahramanKartStili(hasData ? scoreColor : NAVY)}>
+        <div className="px-5 py-4 flex flex-wrap items-center gap-x-8 gap-y-4">
+          <div className="flex items-center gap-4 min-w-[250px]">
+            <Gauge score={score} color={scoreColor} hasData={hasData} />
+            <div className="flex flex-col gap-1.5">
+              <span className="text-[11px] font-extrabold uppercase tracking-[.08em] px-2.5 py-1 rounded-lg w-fit" style={{ background: `${hasData ? scoreColor : GRAY}22`, color: hasData ? scoreColor : GRAY, border: `1px solid ${hasData ? scoreColor : GRAY}44` }}>
+                {scoreLabel}
+              </span>
+              <span className="text-[11.5px] leading-snug max-w-[220px]" style={{ color: MUTED }}>{scoreHint}</span>
             </div>
           </div>
-        </div>
-        {/* Bulgu durumu */}
-        <div className="rounded-2xl border p-4" style={{ background: PANEL, borderColor: BORDER }}>
-          <div className="text-[10px] uppercase tracking-[.18em] font-bold mb-3.5" style={{ color: MUTED2 }}>Bulgu Durumu</div>
-          <div className="grid grid-cols-2 gap-2.5">
-            <Metric label="Toplam" value={stats.total} color={TEXT} active={statusFilter === 'ALL'} onClick={() => pickStatus('ALL')} />
-            <Metric label="Açık" value={stats.open} color={NAVY} lead active={statusFilter === 'OPEN'} onClick={() => pickStatus('OPEN')} />
-            <Metric label="Çözüldü" value={stats.resolved} color={OK} active={statusFilter === 'RESOLVED'} onClick={() => pickStatus('RESOLVED')} />
-            <Metric label="Görmezden" value={stats.ignored} color="#94a3b8" active={statusFilter === 'IGNORED'} onClick={() => pickStatus('IGNORED')} />
+          <div className="flex-1 min-w-[280px]">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[10px] uppercase tracking-[.18em] font-bold" style={{ color: MUTED2 }}>Şiddet dağılımı</span>
+              <span className="text-[11px] tabular-nums" style={{ color: MUTED }}>{sevTotal} açık bulgu · {groupedFindings.length} alan</span>
+            </div>
+            <div className="h-2.5 rounded-full overflow-hidden flex" style={{ background: 'rgba(255,255,255,.06)' }}>
+              <div style={{ width: `${pct(stats.error)}%`, background: ERR, transition: 'width .3s' }} />
+              <div style={{ width: `${pct(stats.warn)}%`, background: WARN, transition: 'width .3s' }} />
+              <div style={{ width: `${pct(stats.info)}%`, background: INFO, transition: 'width .3s' }} />
+            </div>
+            <div className="flex items-center gap-5 mt-2.5 flex-wrap">
+              <LegendItem color={ERR} label="Hata" value={stats.error} active={severityFilter === 'ERROR'} onClick={() => toggleSeverity('ERROR')} />
+              <LegendItem color={WARN} label="Uyarı" value={stats.warn} active={severityFilter === 'WARN'} onClick={() => toggleSeverity('WARN')} />
+              <LegendItem color={INFO} label="Bilgi" value={stats.info} active={severityFilter === 'INFO'} onClick={() => toggleSeverity('INFO')} />
+            </div>
+          </div>
+          <div className="flex flex-col gap-2 min-w-[230px]">
+            <span className="text-[10px] uppercase tracking-[.18em] font-bold" style={{ color: MUTED2 }}>Bulgu durumu</span>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <Hap renk={NAVY} dolu={statusFilter === 'OPEN'} onClick={() => pickStatus('OPEN')}>Açık {stats.open}</Hap>
+              <Hap renk={OK} dolu={statusFilter === 'RESOLVED'} onClick={() => pickStatus('RESOLVED')}>Çözüldü {stats.resolved}</Hap>
+              <Hap renk={GRAY} dolu={statusFilter === 'IGNORED'} onClick={() => pickStatus('IGNORED')}>Görmezden {stats.ignored}</Hap>
+              <Hap renk={GRAY} dolu={statusFilter === 'ALL'} onClick={() => pickStatus('ALL')}>Tümü {stats.total}</Hap>
+            </div>
+            <span className="text-[11px]" style={{ color: MUTED2 }}>
+              {!hasData ? 'Dönem seçip Luca’dan çekince özet burada.' : stats.open === 0 ? 'Açık bulgu kalmadı.' : 'Hap rozete tıkla → liste süzülür.'}
+            </span>
           </div>
         </div>
+      </section>
+
+      {/* ════════ HAP SEKMELER → aynı anda TEK içerik kartı ════════ */}
+      <div className="flex items-center gap-2 flex-wrap px-0.5">
+        <HapSekme active={activeTab === 'BULGULAR'} onClick={() => setActiveTab('BULGULAR')} icon={LayoutGrid} label="Bulgular" badge={stats.open} />
+        <HapSekme active={activeTab === 'HESAPLAR'} onClick={() => setActiveTab('HESAPLAR')} icon={Building2} label="Hesaplar" badge={kontrolOzeti?.ozet?.hesap || 0} />
+        <HapSekme active={activeTab === 'SATIRLAR'} onClick={() => setActiveTab('SATIRLAR')} icon={ListChecks} label="Fiş Satırları" badge={lines.length} />
+        <HapSekme active={activeTab === 'MIZAN'} onClick={() => setActiveTab('MIZAN')} icon={FileSpreadsheet} label="Mizan Denetimi" badge={mizanLeafAnomalies.length} />
+        <HapSekme active={activeTab === 'KURALLAR'} onClick={() => setActiveTab('KURALLAR')} icon={Sparkles} label="Kontrol Kuralları" />
+        <HapSekme active={activeTab === 'GECMIS'} onClick={() => setActiveTab('GECMIS')} icon={History} label="Geçmiş Kontroller" badge={periodSessions.length} />
       </div>
 
-      {/* ════════ SEKMELER ════════ */}
-      <div className="flex items-center gap-1 border-b" style={{ borderColor: BORDER_STRONG }}>
-        <TabButton active={activeTab === 'BULGULAR'} onClick={() => setActiveTab('BULGULAR')} icon={LayoutGrid} label="Bulgular" badge={stats.open} />
-        <TabButton active={activeTab === 'HESAPLAR'} onClick={() => setActiveTab('HESAPLAR')} icon={Building2} label="Hesaplar" badge={kontrolOzeti?.ozet?.hesap || 0} />
-        <TabButton active={activeTab === 'SATIRLAR'} onClick={() => setActiveTab('SATIRLAR')} icon={ListChecks} label="Fiş Satırları" badge={lines.length} />
-        <TabButton active={activeTab === 'MIZAN'} onClick={() => setActiveTab('MIZAN')} icon={FileSpreadsheet} label="Mizan Denetimi" badge={mizanLeafAnomalies.length} />
-        <TabButton active={activeTab === 'KURALLAR'} onClick={() => setActiveTab('KURALLAR')} icon={Sparkles} label="Kontrol Kuralları" />
-        <TabButton active={activeTab === 'GECMIS'} onClick={() => setActiveTab('GECMIS')} icon={History} label="Geçmiş Kontroller" badge={periodSessions.length} />
-      </div>
-
+      <Kart renk={NAVY} className="p-4">
       {/* ════════ TAB: BULGULAR (alan → kural → satır; derli toplu) ════════ */}
       {activeTab === 'BULGULAR' && (
         <BulgularSekmesi
@@ -1167,6 +1144,7 @@ export default function EDefterAgentPage() {
           )}
         </div>
       )}
+      </Kart>
     </div>
   );
 }
@@ -1212,6 +1190,25 @@ function BigStat({ label, value, color }: { label: string; value: number; color:
       <div className="text-[9px] uppercase tracking-[.18em] mb-1" style={{ color: MUTED2 }}>{label}</div>
       <div className="text-2xl font-bold tabular-nums leading-none" style={{ color }}>{value}</div>
     </div>
+  );
+}
+
+// Hap sekme: seçili = dolu lacivert hap, diğerleri ince kenarlı nötr hap; aynı anda tek içerik kartı görünür.
+function HapSekme({ active, onClick, icon: Icon, label, badge }: { active: boolean; onClick: () => void; icon: any; label: string; badge?: number }) {
+  return (
+    <button
+      onClick={onClick}
+      className="h-9 px-3.5 rounded-full inline-flex items-center gap-2 text-[12.5px] font-semibold transition-[transform,filter] duration-150 hover:-translate-y-px"
+      style={active
+        ? { background: `linear-gradient(135deg, ${NAVY}, ${NAVY}bb)`, color: '#0b1218', border: '1px solid transparent', boxShadow: '0 6px 16px rgba(91,141,239,.30)' }
+        : { background: 'rgba(255,255,255,.035)', color: 'rgba(250,250,249,.72)', border: `1px solid ${BORDER}` }}
+    >
+      <Icon size={14} />
+      {label}
+      {badge != null && badge > 0 && (
+        <span className="text-[10.5px] tabular-nums px-1.5 py-px rounded-full" style={{ background: active ? 'rgba(11,18,24,.18)' : 'rgba(255,255,255,.06)', color: active ? '#0b1218' : 'rgba(250,250,249,.6)' }}>{badge}</span>
+      )}
+    </button>
   );
 }
 
