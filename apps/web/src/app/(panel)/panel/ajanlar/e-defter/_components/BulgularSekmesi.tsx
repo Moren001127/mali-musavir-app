@@ -31,9 +31,29 @@ function kuralAdi(kod: string, katalog: Map<string, KuralTanimi>) {
   return katalog.get(kod)?.ad || ESKI_ETIKET[kod] || kod.replace(/_/g, ' ').toLocaleLowerCase('tr-TR');
 }
 
-// Mesaj zaten "kod ad:" ile başlıyorsa hesap çipi tekrar basılmaz (yeni motor bulguları).
-function mesajKoduIceriyor(f: any) {
-  return Boolean(f.hesapKodu && String(f.message || '').startsWith(String(f.hesapKodu)));
+// Bulgu mesajını satır düzenine ayır: "KOD AD: olgu. ayrıntı/öneri" → hesap adı + kısa olgu + ayrıntı.
+//   Satırda yalnız OLGU görünür (tek satır); ayrıntı tıklayınca açılır. Kural düzeyindeki "ne demek / ne yapmalı" başlıkta.
+function mesajParcala(f: any): { ad: string; olgu: string; ayrinti: string } {
+  let msg = String(f.message || '').trim();
+  let ad = String(f.detail?.hesapAdi || '').trim();
+  const kod = f.hesapKodu ? String(f.hesapKodu) : '';
+  if (kod && msg.startsWith(kod)) {
+    const i = msg.indexOf(': ');
+    if (i > 0 && i < 90) {
+      const bas = msg.slice(kod.length, i).trim();
+      if (!ad && bas) ad = bas;
+      msg = msg.slice(i + 2);
+    }
+  }
+  // İlk cümle sonu: "." + boşluk + büyük harf/parantez (ondalık nokta ve "md. 88" gibi kısaltmalar sayılmaz)
+  const m = /(?<!\d)\.\s+(?=[A-ZÇĞİÖŞÜ(])/.exec(msg);
+  if (!m || m.index == null) return { ad, olgu: msg.replace(/\.$/, ''), ayrinti: '' };
+  return { ad, olgu: msg.slice(0, m.index), ayrinti: msg.slice(m.index + 1).trim() };
+}
+function tutarYazi(f: any): string {
+  const t = Number(f.detail?.tutar);
+  if (!Number.isFinite(t) || t <= 0) return '';
+  return `${t.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} TL`;
 }
 
 export function BulgularSekmesi(p: BulgularProps) {
@@ -41,6 +61,7 @@ export function BulgularSekmesi(p: BulgularProps) {
   const [kapaliAlanlar, setKapaliAlanlar] = useState<Record<string, boolean>>({});
   const [acikKurallar, setAcikKurallar] = useState<Record<string, boolean>>({}); // açıklama/öneri açık mı
   const [acikMesajlar, setAcikMesajlar] = useState<Record<string, boolean>>({}); // uzun mesaj tam açık mı
+  const [kapaliKurallar, setKapaliKurallar] = useState<Record<string, boolean>>({}); // kural bloğu daraltıldı mı
 
   // Açık bulgulardan kod → en yüksek şiddet (kapsam paneli renkleri)
   const bulguSiddeti = useMemo(() => {
@@ -143,6 +164,12 @@ export function BulgularSekmesi(p: BulgularProps) {
           })}
         </div>
         <span className="text-[11.5px] tabular-nums" style={{ color: MUTED }}>{visibleFindings.length} / {stats.total}</span>
+        {alanlar.length > 0 && (
+          <div className="inline-flex h-9 p-0.5 rounded-lg gap-0.5" style={{ background: 'rgba(255,255,255,.035)', border: `1px solid ${BORDER}` }}>
+            <button onClick={() => setKapaliKurallar({})} className="px-2.5 rounded-md text-[11px] font-semibold" style={{ color: 'rgba(250,250,249,.7)' }} title="Tüm kural bloklarını aç">Genişlet</button>
+            <button onClick={() => setKapaliKurallar(Object.fromEntries(alanlar.flatMap((x) => x.kurallar.map((k) => [k.kod, true]))))} className="px-2.5 rounded-md text-[11px] font-semibold" style={{ color: 'rgba(250,250,249,.7)' }} title="Yalnız kural başlıkları kalsın">Daralt</button>
+          </div>
+        )}
         {filtreAktif && (
           <button onClick={() => { p.setSeverityFilter('ALL'); p.setStatusFilter('OPEN'); p.setFindingSearch(''); }} className="h-9 px-3 rounded-lg text-[11.5px] font-semibold inline-flex items-center gap-1" style={{ background: PANEL, color: 'rgba(250,250,249,.75)', border: `1px solid ${BORDER}` }}>
             <RotateCcw size={12} /> Sıfırla
@@ -193,75 +220,93 @@ export function BulgularSekmesi(p: BulgularProps) {
                   {a.kurallar.map((k) => {
                     const renk = sevColor(k.enYuksek);
                     const bilgiAcik = Boolean(acikKurallar[k.kod]);
+                    const daraltildi = Boolean(kapaliKurallar[k.kod]);
                     const ozet = k.items.find((f: any) => f.detail?.ozet);
                     const satirlar = k.items.filter((f: any) => !f.detail?.ozet).slice(0, 300);
+                    const hesapli = satirlar.some((f: any) => f.hesapKodu);
                     return (
                       <div key={k.kod} style={{ borderColor: BORDER }}>
-                        {/* Kural başlığı: ne bulundu, kaç tane, dayanak, "ne demek?" */}
-                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-3.5 pt-2.5 pb-1.5">
-                          <span className="w-2 h-2 rounded-full shrink-0" style={{ background: renk, boxShadow: `0 0 0 3px ${renk}22` }} />
-                          <span className="text-[12.5px] font-semibold" style={{ color: 'rgba(250,250,249,.92)' }}>{kuralAdi(k.kod, katalog)}</span>
-                          <span className="text-[10px] font-bold tabular-nums px-1.5 py-0.5 rounded" style={{ background: `${renk}1c`, color: renk }}>{sevLabel(k.enYuksek)} · {k.items.filter((f: any) => !f.detail?.ozet).length}</span>
-                          {k.tanim?.mevzuat && <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: 'rgba(91,141,239,.10)', color: '#9bc0ff' }}>{k.tanim.mevzuat}</span>}
+                        {/* Kural başlığı: ad · şiddet/sayı · (sağda) dayanak · ⓘ · daralt */}
+                        <div className="flex items-center gap-2 px-3.5 py-2" style={{ background: 'rgba(255,255,255,.015)' }}>
+                          <button onClick={() => setKapaliKurallar((st) => ({ ...st, [k.kod]: !daraltildi }))} className="flex items-center gap-2 min-w-0 flex-1 text-left" title={daraltildi ? 'Satırları göster' : 'Satırları gizle'}>
+                            <span className="w-2 h-2 rounded-full shrink-0" style={{ background: renk, boxShadow: `0 0 0 3px ${renk}22` }} />
+                            <span className="text-[12.5px] font-semibold truncate" style={{ color: 'rgba(250,250,249,.92)' }}>{kuralAdi(k.kod, katalog)}</span>
+                            <span className="text-[10px] font-bold tabular-nums px-1.5 py-0.5 rounded shrink-0" style={{ background: `${renk}1c`, color: renk }}>{sevLabel(k.enYuksek)} · {satirlar.length}</span>
+                          </button>
+                          {k.tanim?.mevzuat && <span className="text-[10px] whitespace-nowrap hidden md:inline" style={{ color: MUTED2 }}>{k.tanim.mevzuat}</span>}
                           {k.tanim && (
-                            <button onClick={() => setAcikKurallar((s) => ({ ...s, [k.kod]: !bilgiAcik }))} className="inline-flex items-center gap-1 text-[10.5px]" style={{ color: bilgiAcik ? NAVY : MUTED2 }} title="Bu kural ne demek, ne yapılmalı?">
-                              <HelpCircle size={12} /> {bilgiAcik ? 'gizle' : 'ne demek?'}
+                            <button onClick={() => setAcikKurallar((st) => ({ ...st, [k.kod]: !bilgiAcik }))} className="h-6 w-6 rounded-md inline-flex items-center justify-center shrink-0" style={{ color: bilgiAcik ? NAVY : MUTED2, background: bilgiAcik ? NAVY_SOFT : 'transparent' }} title="Bu kural ne demek, ne yapılmalı?">
+                              <HelpCircle size={13} />
                             </button>
                           )}
-                          {ozet && <span className="ml-auto text-[10.5px]" style={{ color: MUTED2 }}>{ozet.message}</span>}
+                          <button onClick={() => setKapaliKurallar((st) => ({ ...st, [k.kod]: !daraltildi }))} className="h-6 w-6 rounded-md inline-flex items-center justify-center shrink-0" style={{ color: MUTED2 }} title={daraltildi ? 'Satırları göster' : 'Satırları gizle'}>
+                            {daraltildi ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                          </button>
                         </div>
                         {bilgiAcik && k.tanim && (
-                          <div className="mx-3.5 mb-2 rounded-lg px-3 py-2 text-[11.5px] leading-relaxed" style={{ background: 'rgba(91,141,239,.06)', border: '1px solid rgba(91,141,239,.16)', color: 'rgba(250,250,249,.78)' }}>
+                          <div className="mx-3.5 my-2 rounded-lg px-3 py-2 text-[11.5px] leading-relaxed" style={{ background: 'rgba(91,141,239,.06)', border: '1px solid rgba(91,141,239,.16)', color: 'rgba(250,250,249,.78)' }}>
                             <div><span className="font-semibold" style={{ color: '#bfd4ff' }}>Ne demek: </span>{k.tanim.aciklama}</div>
                             {k.tanim.oneri && <div className="mt-1"><span className="font-semibold" style={{ color: '#bfd4ff' }}>Ne yapmalı: </span>{k.tanim.oneri}</div>}
                           </div>
                         )}
-                        {/* Bulgu satırları */}
-                        <div className="pb-1.5">
-                          {satirlar.map((f: any) => {
-                            const fStatus = f.status || 'OPEN';
-                            const c = sevColor(f.severity);
-                            const uzun = String(f.message || '').length > 190;
-                            const tamAcik = Boolean(acikMesajlar[f.id]);
-                            const kapali = fStatus !== 'OPEN';
-                            return (
-                              <div key={f.id} className="grid items-start gap-x-2.5 px-3.5 py-[7px] transition-colors hover:bg-white/[.03]" style={{ gridTemplateColumns: '10px minmax(0,1fr) auto', opacity: kapali ? 0.5 : 1 }}>
-                                <span className="w-[7px] h-[7px] rounded-full mt-[7px]" style={{ background: c }} />
-                                <div className="min-w-0">
-                                  <div className="text-[12.5px] leading-[1.5]" style={{ color: 'rgba(250,250,249,.86)', textDecoration: fStatus === 'RESOLVED' ? 'line-through' : 'none' }}>
-                                    {f.hesapKodu && !mesajKoduIceriyor(f) && (
-                                      <span className="inline-block mr-1.5 text-[10.5px] tabular-nums px-1.5 py-px rounded align-[1px]" style={{ background: 'rgba(255,255,255,.06)', color: 'rgba(250,250,249,.85)' }}>{f.hesapKodu}</span>
+                        {/* Bulgu satırları: hesap · olgu (tek satır) · tutar · işlem — ayrıntı tıklayınca */}
+                        {!daraltildi && (
+                          <div>
+                            {satirlar.map((f: any, idx: number) => {
+                              const fStatus = f.status || 'OPEN';
+                              const c = sevColor(f.severity);
+                              const kapali = fStatus !== 'OPEN';
+                              const parca = mesajParcala(f);
+                              const tutar = tutarYazi(f);
+                              const acik = Boolean(acikMesajlar[f.id]);
+                              const ayrintiVar = Boolean(parca.ayrinti);
+                              return (
+                                <div key={f.id} style={{ background: idx % 2 ? 'rgba(255,255,255,.012)' : 'transparent', opacity: kapali ? 0.5 : 1 }}>
+                                  <div className="grid items-center gap-x-3 px-3.5 py-[6px] hover:bg-white/[.03]" style={{ gridTemplateColumns: hesapli ? '8px minmax(150px,220px) minmax(0,1fr) auto auto' : '8px minmax(0,1fr) auto auto' }}>
+                                    <span className="w-[7px] h-[7px] rounded-full" style={{ background: c }} />
+                                    {hesapli && (
+                                      <div className="min-w-0 flex items-baseline gap-1.5">
+                                        {f.hesapKodu
+                                          ? <><span className="text-[12px] font-semibold tabular-nums shrink-0" style={{ color: TEXT }}>{f.hesapKodu}</span><span className="text-[11px] truncate" style={{ color: MUTED }} title={parca.ad}>{parca.ad}</span></>
+                                          : <span className="text-[11px]" style={{ color: MUTED2 }}>{f.rowIndex ? `Satır ${f.rowIndex}` : '—'}</span>}
+                                      </div>
                                     )}
-                                    {f.rowIndex && !f.hesapKodu && (
-                                      <span className="inline-block mr-1.5 text-[10.5px] tabular-nums px-1.5 py-px rounded align-[1px]" style={{ background: 'rgba(255,255,255,.05)', color: 'rgba(250,250,249,.7)' }}>Satır {f.rowIndex}</span>
-                                    )}
-                                    <span
-                                      onClick={() => uzun && setAcikMesajlar((s) => ({ ...s, [f.id]: !tamAcik }))}
-                                      className={uzun ? 'cursor-pointer' : ''}
-                                      style={uzun && !tamAcik ? { display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as any, overflow: 'hidden' } : undefined}
-                                      title={uzun && !tamAcik ? 'Tamamını görmek için tıklayın' : undefined}
-                                    >
-                                      {f.message}
-                                    </span>
+                                    <div className="min-w-0 text-[12.5px] leading-snug flex items-baseline gap-1.5" style={{ color: 'rgba(250,250,249,.86)', textDecoration: fStatus === 'RESOLVED' ? 'line-through' : 'none' }}>
+                                      {!hesapli && f.rowIndex && <span className="text-[10.5px] tabular-nums px-1.5 py-px rounded shrink-0" style={{ background: 'rgba(255,255,255,.05)', color: 'rgba(250,250,249,.7)' }}>Satır {f.rowIndex}</span>}
+                                      <span className={`truncate ${ayrintiVar ? 'cursor-pointer' : ''}`} onClick={() => ayrintiVar && setAcikMesajlar((st) => ({ ...st, [f.id]: !acik }))} title={ayrintiVar ? (acik ? 'Ayrıntıyı gizle' : 'Ayrıntı için tıklayın') : parca.olgu}>{parca.olgu}</span>
+                                    </div>
+                                    <span className="text-[12px] tabular-nums whitespace-nowrap text-right" style={{ color: tutar ? 'rgba(250,250,249,.9)' : 'transparent', minWidth: 96 }}>{tutar || '·'}</span>
+                                    <div className="flex items-center gap-1">
+                                      {(f.rowIndex || f.voucherKey) && (
+                                        <IkonDugme title="Fiş satırını incele" renk={NAVY} onClick={() => p.focusFinding(f)}><ExternalLink size={13} /></IkonDugme>
+                                      )}
+                                      {fStatus !== 'RESOLVED' && <IkonDugme title="Çözüldü olarak işaretle" renk={OK} onClick={() => p.handleStatusChange(f, 'RESOLVED')}><CheckCircle2 size={13} /></IkonDugme>}
+                                      {fStatus !== 'IGNORED' && <IkonDugme title="Görmezden gel" renk={GRAY} onClick={() => p.handleStatusChange(f, 'IGNORED')}><EyeOff size={13} /></IkonDugme>}
+                                      {fStatus !== 'OPEN' && <IkonDugme title="Yeniden aç" renk={NAVY} onClick={() => p.handleStatusChange(f, 'OPEN')}><RotateCcw size={13} /></IkonDugme>}
+                                    </div>
                                   </div>
-                                  {kapali && (
-                                    <div className="mt-0.5 text-[10.5px] font-semibold inline-flex items-center gap-1" style={{ color: statusColor(fStatus) }}>
-                                      <span className="w-1.5 h-1.5 rounded-full" style={{ background: statusColor(fStatus) }} />{fStatus === 'RESOLVED' ? 'Çözüldü' : 'Görmezden gelindi'}{f.detail?.note ? ` · ${f.detail.note}` : ''}
+                                  {(acik || kapali) && (
+                                    <div className="px-3.5 pb-2 -mt-0.5 text-[11.5px] leading-relaxed" style={{ color: 'rgba(250,250,249,.62)', paddingLeft: hesapli ? 'calc(8px + 12px + 1rem)' : '1.6rem' }}>
+                                      {acik && ayrintiVar && <div>{parca.ayrinti}</div>}
+                                      {kapali && (
+                                        <div className="mt-0.5 text-[10.5px] font-semibold inline-flex items-center gap-1" style={{ color: statusColor(fStatus) }}>
+                                          <span className="w-1.5 h-1.5 rounded-full" style={{ background: statusColor(fStatus) }} />{fStatus === 'RESOLVED' ? 'Çözüldü' : 'Görmezden gelindi'}{f.detail?.note ? ` · ${f.detail.note}` : ''}
+                                        </div>
+                                      )}
                                     </div>
                                   )}
                                 </div>
-                                <div className="flex items-center gap-1 self-start">
-                                  {(f.rowIndex || f.voucherKey) && (
-                                    <IkonDugme title="Fiş satırını incele" renk={NAVY} onClick={() => p.focusFinding(f)}><ExternalLink size={13} /></IkonDugme>
-                                  )}
-                                  {fStatus !== 'RESOLVED' && <IkonDugme title="Çözüldü olarak işaretle" renk={OK} onClick={() => p.handleStatusChange(f, 'RESOLVED')}><CheckCircle2 size={13} /></IkonDugme>}
-                                  {fStatus !== 'IGNORED' && <IkonDugme title="Görmezden gel" renk={GRAY} onClick={() => p.handleStatusChange(f, 'IGNORED')}><EyeOff size={13} /></IkonDugme>}
-                                  {fStatus !== 'OPEN' && <IkonDugme title="Yeniden aç" renk={NAVY} onClick={() => p.handleStatusChange(f, 'OPEN')}><RotateCcw size={13} /></IkonDugme>}
-                                </div>
+                              );
+                            })}
+                            {ozet && (
+                              <div className="px-3.5 py-1.5 text-[10.5px]" style={{ color: MUTED2, borderTop: `1px dashed ${BORDER}` }}>
+                                {ozet.detail?.toplam != null && ozet.detail?.kalan != null
+                                  ? `Toplam ${ozet.detail.toplam} · en büyük ${Number(ozet.detail.toplam) - Number(ozet.detail.kalan)} tanesi gösterildi, ${ozet.detail.kalan} tanesi daha var`
+                                  : ozet.message}
                               </div>
-                            );
-                          })}
-                        </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     );
                   })}
