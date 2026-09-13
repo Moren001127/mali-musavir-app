@@ -9,6 +9,9 @@ import { useAuth } from '../lib/auth';
 import { api } from '../lib/api';
 import { colors } from '../lib/theme';
 import { getStoredItem, setStoredItem, deleteStoredItem } from '../lib/secure-storage';
+// EK MODÜL ALTYAPISI (2026-09-13): yeni modül/aksiyon lib/ek/<paket>.ts + design/ek/<paket>.html — bu dosyaya dokunmadan.
+import { EK_MODUL_YUKLEYICI, EK_AKSIYON, type EkBaglam } from '../lib/ek';
+import * as pushKanca from '../lib/ek/push-kanca';
 
 // "Beni Hatırla" — e-posta+şifre telefonun güvenli kasasında (SecureStore) şifreli saklanır.
 const CREDS_KEY = 'moren.mobile.creds';
@@ -108,6 +111,9 @@ function inits(name: string) {
 
 export default function IndexScreen() {
   const auth = useAuth();
+  const personaRef = useRef<'adv' | 'tax'>('adv');
+  // Bildirime dokununca ilgili ekrana git (push paketi): HTML go(route)
+  useEffect(() => pushKanca.dinle((route) => inject('typeof go === \'function\' && go(' + JSON.stringify(route) + ')')), []);
   const [uri, setUri] = useState<string | null>(APP_HTML.uri ?? null);
   const webRef = useRef<WebView>(null);
   const autoTried = useRef(false);
@@ -150,6 +156,7 @@ export default function IndexScreen() {
 
   // Çıkış: token + kayıtlı bilgileri temizle, otomatik girişi durdur, HTML'i giriş ekranına al
   async function doLogout() {
+    try { await pushKanca.cikisOncesi(api); } catch { /* belirteç silinemezse geç */ }
     try { await auth.logout(); } catch { /* yine de temizle */ }
     try { await deleteStoredItem(CREDS_KEY); } catch { /* yoksa geç */ }
     autoTried.current = true;
@@ -252,7 +259,9 @@ export default function IndexScreen() {
         /* kasa yazılamazsa giriş yine de devam eder */
       }
       const persona = audience === 'taxpayer' ? 'tax' : 'adv';
+      personaRef.current = persona;
       inject('window.__morenEnter && window.__morenEnter(' + JSON.stringify(persona) + ')');
+      pushKanca.girisSonrasi(api, persona).catch(() => {}); // anlık bildirim belirteci (push paketi)
       // Müşavir: gerçek mükellef listesini çek ve HTML'e enjekte et
       if (audience === 'advisor') {
         try {
@@ -405,7 +414,26 @@ export default function IndexScreen() {
     inject('window.MOREN && window.MOREN.applyModule(' + JSON.stringify(module) + ',' + JSON.stringify(client) + ',' + JSON.stringify(data) + ')');
   }
 
+  /** Ek paketlere verilen bağlam (lib/ek/tur.ts) */
+  function ekBaglam(client: string, donemArg?: string | null): EkBaglam {
+    return {
+      api,
+      client,
+      donem: donemArg || ym().donem,
+      hasClient: !!client && client !== 'all',
+      inject,
+      pushModule,
+      persona: personaRef.current,
+    };
+  }
+
   async function loadModule(module: string, client: string, donemArg?: string | null) {
+    // EK PAKET modülü mü? (lib/ek) — evetse eski zincire hiç girme
+    const ekYukleyici = EK_MODUL_YUKLEYICI[module];
+    if (ekYukleyici) {
+      try { await ekYukleyici(ekBaglam(client, donemArg)); } catch (e: any) { console.warn('[ek-modul]', module, e?.message || e); }
+      return;
+    }
     try {
       const donem = donemArg || ym().donem;
       const hasClient = !!client && client !== 'all';
@@ -865,6 +893,13 @@ export default function IndexScreen() {
     const done = (ok: boolean, msg?: string) =>
       inject('window.MOREN && window.MOREN.actionDone(' + reqId + ',' + (ok ? 'true' : 'false') + ',' + JSON.stringify(msg || '') + ')');
     try {
+      // EK PAKET aksiyonu mu? (lib/ek)
+      const ekAksiyon = EK_AKSIYON[action];
+      if (ekAksiyon) {
+        const r = await ekAksiyon(ekBaglam(client, donem), params);
+        done(!!r?.ok, r?.msg);
+        return;
+      }
       if (action === 'upload') {
         // OCR belge(ler)ini Fatura İşleme Merkezi'ne yükle (dönem OCR tarihinden okunur → period gönderilmez)
         if (!lastDoc.current.length) { done(false, 'Önce belge tara'); return; }

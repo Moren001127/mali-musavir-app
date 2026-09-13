@@ -1,82 +1,39 @@
-# Moren Mobil
+# MOREN Müşavir — Mobil Uygulama (iOS + Android)
 
-MOREN Mali Müşavirlik portalının iOS/Android hazırlık uygulaması.
+Portalın telefon uygulaması. **WebView hibrit** (Muzaffer Bey kararı 2026-07-27): onaylanan tasarım HTML'i olduğu gibi
+tam ekran gösterilir; yerel özellikler (kamera/belge tarayıcı, Face ID, dokunsal geri bildirim, anlık bildirim)
+`app/index.tsx` köprüsüyle eklenir. Tasarımı elle React Native'e çevirme denemesi piksel-piksel tutmadığı için bırakıldı.
 
-Bu klasörde artık iki ayrı giriş akışı olan Expo Router kabuğu var:
+## Dosya düzeni
+| Yer | Ne |
+|---|---|
+| `design/mobil-app-onizleme.html` | **TEK tasarım kaynağı** (telefon çerçeveli önizleme). Modül kayıt defteri `M`, görünümler, köprü uçları (`window.MOREN.*`). |
+| `design/ek/<paket>.html` | Ek paket blokları (`<script>`/`<style>`): `MOREN_EK.modulEkle(id, tanım, çizici)` + `MOREN_EK.navEkle(grup, öğe)`. Üretici bunları `</body>` öncesine gömer. |
+| `assets/app.html` | WebView'in gösterdiği ÜRETİLMİŞ dosya — elle düzenlenmez: `node scripts/build-app-html.cjs`. |
+| `app/index.tsx` | RN köprüsü: giriş, canlı veri (`loadModule`), aksiyonlar (`handleAction`), kamera/OCR yükleme, bildirimler, WhatsApp, AI sohbet. |
+| `lib/ek/<paket>.ts` | Ek paketlerin RN tarafı: modül yükleyicileri + aksiyonlar (`lib/ek/tur.ts` sözleşmesi; `lib/ek/index.ts` kayıt defteri). |
+| `lib/api.ts`, `lib/auth.tsx` | Canlı API (Railway) + belirteç yenileme; müşavir `/auth/login`, mükellef `/portal/auth/login`. |
+| `store/` | Mağaza metinleri, gizlilik politikası, yayın rehberi. |
 
-- Müşavir girişi: ofis özeti, portal modülleri, Moren Ofis AI, AI onay kuyruğu, mükellef hızlı bakış.
-- Mükellef girişi: mükellef özeti, evrak gönderme, belge arşivi, ofise mesaj.
-- Mobil OCR: müşavir mükellefi seçer, kamera/galeri ile görüntüleri tarar, dosyalar seçilen mükellef adına portaldaki fatura işleme OCR kuyruğuna düşer.
-
-## Çalıştırma
-
+## Geliştirme
 ```bash
-cd C:\Users\moren\.verdent\verdent-projects\mali-mavirlik-ofisim-iin\mali-musavir-app
-pnpm install
-pnpm --filter @moren/mobile start
+cd apps/mobile
+npm ci --legacy-peer-deps          # pnpm çalışma alanı DIŞINDA (kendi package-lock.json'ı)
+node scripts/build-app-html.cjs    # design → assets/app.html (her tasarım değişikliğinde)
+node scripts/onizleme-sunucu.cjs   # http://localhost:4620 → tarayıcıda 390×844 (canlı veri yok, tasarım/etkileşim denetimi)
+npx tsc --noEmit                   # tip denetimi
+npx expo start -c                  # telefonda Expo Go (belge tarayıcı Expo Go'da çalışmaz; EAS derlemesi gerekir)
 ```
 
-Expo Go ile QR kodu okutulabilir. Web önizleme için:
+## Yeni modül eklemek (ek paket düzeni, 2026-09-13)
+1. `design/ek/<paket>.html`: `MOREN_EK.modulEkle('<id>', {t:'Başlık', sub:'…', kind:'<paket>'}, function(m,id){ var d=modLive(id); return dh(m)+…; });`
+   ve `MOREN_EK.navEkle('Grup', ['ikon','Ad',C.gold,'m:<id>']);` — mevcut yardımcılar (`dh`, `rows`, `seg`, `pill*`, `tl`, `ic`, `morenAction`) kullanılır.
+2. `lib/ek/<paket>.ts`: `yukleyiciler['<id>'] = async (ctx) => { const {data} = await ctx.api.get('/…'); ctx.pushModule('<id>', ctx.client, data); }`
+   ve gerekiyorsa `aksiyonlar['<ad>'] = async (ctx, params) => ({ ok, msg })`.
+3. `node scripts/build-app-html.cjs` → önizlemede bak → `npx tsc --noEmit`.
+Kural: içerik UYDURMA — portaldaki gerçek uç ve alanlar (apps/api controller'ları) neyse o; veri yoksa "veri yok" yaz, örnek gösterme.
 
-```bash
-pnpm --filter @moren/mobile web
-```
-
-API adresi varsayılan olarak `http://localhost:3001/api/v1`.
-Değiştirmek için:
-
-```bash
-$env:EXPO_PUBLIC_API_URL="https://api.morenmusavirlik.com/api/v1"
-pnpm --filter @moren/mobile start
-```
-
-## Mobil Kapsam
-
-Portal modülleri `lib/mobile-modules.ts` içinde müşavir ve mükellef olarak iki kataloğa ayrıldı.
-
-Müşavir öncelikleri:
-
-- Ofis özeti
-- Moren Ofis AI
-- Mobil OCR tarama
-- AI onay kuyruğu
-- Mükellefler
-- Görevler
-- Evraklar
-- KDV kontrol
-- Beyannameler
-- Faturalar ve fatura muhasebeleştirme
-- Cari kasa, banka takip, mizan/gelir/bilanço
-- Bordro/SGK, ajanlar, bildirimler
-
-Mükellef öncelikleri:
-
-- Mükellef özeti
-- Evrak gönder
-- Belgelerim
-- KDV durumu
-- Beyannamelerim
-- Cari durum
-- Ofise mesaj
-- Takvim
-
-## Teknik Durum
-
-- Expo SDK 52, Expo Router, React Native 0.76.
-- JWT login ve refresh token için mobil API client hazır.
-- Tokenlar `expo-secure-store` ile saklanıyor.
-- Demo önizleme gerçek API gerektirmeden müşavir/mükellef ekranlarını açıyor.
-- Moren Ofis AI, AI onay kuyruğu, görev sayıları ve mükellef listesi gerçek API varsa onu kullanıyor.
-- Mobil OCR tarama gerçek API varsa `/fatura-muhasebelestirme/documents/upload` endpointine `taxpayerId`, `source=mobile-ocr`, `invoiceKind` ve görüntüleri multipart olarak gönderiyor.
-- Mükellef tarafındaki evrak yükleme şimdilik dosya seçme/kamera hazırlığıdır; gerçek mükellef upload yetkisi backend modelinde ayrıca açılmalı.
-
-## Backend Sonraki Adım
-
-Mükellef girişini üretime almak için backend tarafında ayrı bir erişim modeli önerilir:
-
-- `TaxpayerAccess` veya `TaxpayerUser` modeli
-- Davet kodu + parola/OTP
-- `TAXPAYER` rolü veya ayrı guard
-- Mükellef kullanıcısının sadece kendi `taxpayerId` kapsamına erişmesi
-- Mobil push token kayıt endpointi
-- `GET /mobile/bootstrap` ile tek istekte ilk ekran verisi
+## Derleme / yayın
+- Expo hesabı `moren123` (proje `@moren123/moren-mobil`). Android: `EAS_NO_VCS=1 npx eas-cli build -p android --profile preview --non-interactive` (APK) · `--profile production` (AAB).
+- iOS derlemesi Apple Developer hesabı ister (Muzaffer Bey'de). Ayrıntı: `store/YAYIN-REHBERI.md`.
+- API adresi: `eas.json` → `EXPO_PUBLIC_API_URL=https://mali-musavir-app-production.up.railway.app/api/v1`.

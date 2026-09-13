@@ -1060,6 +1060,8 @@ function vMasaustu(m){var L=modLive('masaustu');if(L)return dh(m)+'<div class="h
  +`<div class="sec"><h3>Özellikler</h3></div>`+rows([{ic:'monitor',c:C.gold,t:'Tek tıkla otomatik giriş',s:'Vergi Dairesi, e-Beyanname, SGK'},{ic:'shield',c:C.green,t:'Güvenlik kodu otomatik',s:'Captcha çözümü'},{ic:'key',c:C.sky,t:'Şifreler güvende',s:'Şifreli saklanır'}]);}
 function buildModule(id){let m=M[id];if(!m)return dh({t:'—'});
   if(m.pc&&persona==='adv'){m=Object.assign({},m,{sub:clientName()+(m.sub?' · '+m.sub:'')});}
+  /* EK PAKET (2026-09-13): design/ek/<paket>.html içindeki MOREN_EK.render['<id>'] varsa modülü o çizer (bkz. lib/ek/tur.ts). */
+  if(window.MOREN_EK&&MOREN_EK.render&&typeof MOREN_EK.render[id]==='function'){try{return MOREN_EK.render[id](m,id);}catch(e){return dh(m)+'<div class="card" style="padding:14px;color:var(--rose)">Modül çizilemedi: '+String(e&&e.message||e)+'</div>';}}
   if(id==='mihsap')return vMihsap(m);if(id==='banka')return vBanka(m);if(id==='profiller')return vProfiller(m);if(id==='fatura-merkezi')return vFaturaMerkezi(m);if(id==='fis-yazdirma')return vFis(m);if(id==='cari')return vCari(m);if(id==='evrak')return vEvrak(m);if(id==='portal-erisim')return vPortalErisim(m);if(id==='duyurular')return vDuyurular(m);if(id==='hgs')return vHgs(m);if(id==='otomasyon')return vOtomasyon(m);if(id==='hatirlatmalar')return vHatirlatma(m);if(id==='sablonlar')return vSablonlar(m);if(id==='bot-kalite')return vBotKalite(m);if(id==='saglik')return vSaglik(m);if(id==='ajanlar')return vAjanlar(m);if(id==='luca')return vLuca(m);if(id==='masaustu')return vMasaustu(m);
   if(id==='aylik-takip')return vAylikTakip(m);if(id==='kdv-kontrol')return vKdvKontrol(m);if(id==='e-arsiv')return vEarsiv(m);if(id==='faturalar')return vFaturalar(m);if(id==='kdv-panosu')return vKdvPano2(m);if(id==='beyanname')return vBeyanname(m);if(id==='tebligat')return vTebligat(m);if(id==='sgk')return vSgk(m);
   if(id==='gelir')return vGelir(m);if(id==='bilanco')return vBilanco(m);if(id==='mizan')return vMizan(m);if(id==='hesap-ozeti')return vIho(m);if(id==='edefter')return vEdefter2(m);if(id==='mukellef-listesi')return vMukellefListesi(m);if(id==='is-akisi')return vIsAkisi();if(id==='gorevler')return vGorevler(m);
@@ -1325,6 +1327,13 @@ const NAV_TAX=[
  {g:'Genel',items:[['home','Panel',C.gold,'ozet'],['layers','Beyannamelerim',C.sky,'m:t-beyanname'],['files','Faturalarım',C.amber,'m:t-faturalar'],['wallet','Cari Hesabım',C.green,'m:t-cari'],['mail','e-Tebligat',C.rose,'m:t-tebligat'],['brief','SGK Belgeleri',C.copper,'m:t-sgk'],['archive','Evraklarım',C.steel,'m:t-evrak']]},
  {g:'Hesap',items:[['user','Profilim',C.gold,'m:t-profil']]},
 ];
+/* EK PAKET KAYIT DEFTERİ (2026-09-13): design/ek/*.html blokları buraya kayıt olur; scripts/build-app-html.cjs gömer.
+   MOREN_EK.render['<modul-id>']=function(m,id){return html}; MOREN_EK.navEkle('Grup adı',[ikon,'Ad',renk,'m:<modul-id>'],persona?) */
+window.MOREN_EK={render:{},paketler:[],
+  navEkle:function(grup,item,kim){var nav=(kim==='tax')?NAV_TAX:NAV_ADV;var g=null;for(var i=0;i<nav.length;i++){if(nav[i].g===grup){g=nav[i];break;}}
+    if(!g){g={g:grup,items:[]};nav.push(g);}for(var j=0;j<g.items.length;j++){if(g.items[j][3]===item[3])return;}g.items.push(item);},
+  modulEkle:function(id,tanim,cizici){M[id]=tanim;if(typeof cizici==='function')this.render[id]=cizici;}
+};
 function grid(nav){return nav.map(gr=>`<div class="mgroup"><span class="eyebrow">${gr.g}</span><div class="grid">${gr.items.map(([i,t,c,r])=>`<div class="tile" onclick="go('${r}')"><div class="ic" style="color:${c};background:color-mix(in srgb,${c} 15%,transparent);border-color:color-mix(in srgb,${c} 30%,transparent)">${ic(i)}</div><span>${t}</span></div>`).join('')}</div></div>`).join('')}
 // ——— Modüller: arama + favori (basılı tut) + son kullanılan + rozet ———
 function haptic(s){try{if(window.ReactNativeWebView)window.ReactNativeWebView.postMessage(JSON.stringify({type:'haptic',payload:s||'light'}));}catch(e){}}
