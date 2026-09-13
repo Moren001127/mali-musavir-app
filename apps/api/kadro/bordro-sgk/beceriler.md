@@ -43,7 +43,7 @@ Son günler (get_tax_calendar): APHB <tarih>, prim ödeme <tarih>
 Durum: HAZIR DEĞİL
 Neden: get_payroll_summary boş (bordro girdisi yok) | eksik alan (meslek kodu / ücret) | maaş değişim nedeni bilinmiyor | referans değeri yok
 Yapılan kısım: …
-Kime döndü: Koordinatör → Evrak Sorumlusu (bordro girdisi) / Müşteri İlişkileri (mükelleften eksik bilgi, onaylı mesajla) / Muzaffer Bey
+Kime döndü: Koordinatör → Muzaffer Bey (bordro girdisi) / Müşteri İlişkileri (mükelleften eksik bilgi, onaylı mesajla)
 ```
 - Her "Kime döndü" için `create_pending_action` (başlık "Bordro-SGK → <Kime>: <mükellef>/<dönem>/<ne bekleniyor>"); yapılamadıysa "KAYDEDİLEMEDİ:".
 - Eksik bilgi mesajı taslağı (mükellefe): "Sayın <mükellef adı>, <çalışan adı> için <alan> bilgisine ihtiyaç var; <tarih>e kadar iletmenizi rica ederiz. Moren Mali Müşavirlik" → "Onayınızı bekleyen", `create_pending_action`; kuru testte `send_*` çağrılmaz.

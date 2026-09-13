@@ -22,7 +22,8 @@
 - VAKA (iş dosyası zinciri): başlattığım çocuk iş benim vakama bağlanır. Bir vakada en çok 2 devir; 3. devir sistemce reddedilir ({ok:false, neden:devir_siniri}) ve karar Muzaffer Bey'e tek satırla düşer. O noktada yeni ajan açmam; raporumda "Karar sizde: <konu> — kimde kaldı" yazarım.
 - Muzaffer Bey'e giden kayıt türü (`create_pending_action.tur`): karar → 'onay'; ondan belge/işlem (fiş, ekstre, şifre, evrak) → 'istek'; not/atama → 'bilgi'. Aynı konuda tek satır; ikinci kayıt açmam.
 - Çalışanın raporundaki DEVİR bloğunu olduğu gibi görev metni yaparım; kendi cümlemle yeniden yazmam (tutar/hesap kodu kaybolur).
-- Beyanname öncesi sıra: Evrak (eksik yok) → Fatura (işlendi) → Banka/Kasa (ekstre işlendi) → Beyanname Uzmanı (KDV Kontrol) → Muzaffer Bey'e.
+- Beyanname öncesi sıra: Evrak (Aylık Takip'te "geldi" işaretli — hatırlatma otomasyonun işi, ajan yok) → Fatura (işlendi) → Banka/Kasa (ekstre işlendi) → Beyanname Uzmanı (KDV Kontrol) → Muzaffer Bey'e.
+- Zamanı/düzeni olan işi (mizan denetimi, analiz, çekim, hatırlatma) kendiliğinden BAŞLATMAM; 00_ORTAK §14. Bir iş "yapılsa iyi olur" diye düşünüyorsam sabah özetine tek satır öneri yazarım, Muzaffer Bey karar verir.
 - Geçici vergi/yıl sonu öncesi Denetçi çalışmadan Beyanname Uzmanı'na "hazırla" deme.
 - Analist ve Risk raporları beyanname sonrasına planlanır; beyanname günü kotayı onlara harcama.
 - Bir çalışan üst üste 2 kez aynı yerde takılırsa işi durdur, Muzaffer Bey'e getir; üçüncü deneme yaptırma.

@@ -91,7 +91,7 @@ describe('vakaGrupla — gruplama + kutular', () => {
 
   it('eski kayıt (vakaId yok) kendi vakası; pencere dışı kök listeye eklenince çocuk ona bağlanır', () => {
     const eski = is({ id: 'eski', agent: 'ekip:fatura', payload: {} });
-    const cocuk = is({ id: 'c', agent: 'ekip:evrak', payload: { vakaId: 'disKok' } });
+    const cocuk = is({ id: 'c', agent: 'ekip:denetci', payload: { vakaId: 'disKok' } });
     const disKok = is({ id: 'disKok', agent: 'ekip:koordinator', gorev: 'Kök görev', createdAt: T(600) });
     const v = vakaGrupla([eski, cocuk, disKok], [], [], { now: SIMDI });
     expect(v.map((x) => x.vakaId).sort()).toEqual(['disKok', 'eski']);
@@ -117,8 +117,8 @@ describe('vakaGrupla — gruplama + kutular', () => {
   });
 
   it('bildirim: istek → kutu istek; bilgi kutu değiştirmez; kapandi olan açık değil; isId automationId’den çözülür', () => {
-    const isler = [is({ id: 'k', agent: 'ekip:evrak', payload: { vakaId: 'k' } })];
-    const istek = { id: 'n1', title: 'Fiş yükleyin', body: 'Ağustos fişleri', isRead: false, metadata: { automationId: 'ekip:evrak:k', tur: 'istek' }, createdAt: T(30) };
+    const isler = [is({ id: 'k', agent: 'ekip:denetci', payload: { vakaId: 'k' } })];
+    const istek = { id: 'n1', title: 'Fiş yükleyin', body: 'Ağustos fişleri', isRead: false, metadata: { automationId: 'ekip:denetci:k', tur: 'istek' }, createdAt: T(30) };
     const bilgi = { id: 'n2', title: 'İŞ ATAMASI → evrak: R9', body: '', isRead: false, metadata: { automationId: 'ekip:koordinator:k', vakaId: 'k', tur: 'onay' }, createdAt: T(55) };
     let v = vakaGrupla(isler, [], [istek, bilgi], { now: SIMDI });
     expect(v[0].kutu).toBe('istek');
@@ -146,8 +146,8 @@ describe('vakaGrupla — gruplama + kutular', () => {
     const isler = [
       is({ id: 'a', agent: 'ekip:fatura', gorev: 'Eski sürüyor', payload: { vakaId: 'a', taxpayerId: 'tx1' }, status: 'running', createdAt: T(60 * 30), startedAt: T(60 * 30), finishedAt: null }),
       is({ id: 'b', agent: 'ekip:fatura', gorev: 'Yeni sürüyor', payload: { vakaId: 'b' }, status: 'running', createdAt: T(5), startedAt: T(5), finishedAt: null }),
-      is({ id: 'c', agent: 'ekip:evrak', gorev: 'Eski bitti', payload: { vakaId: 'c' }, createdAt: T(60 * 30), finishedAt: T(60 * 29) }),
-      is({ id: 'd', agent: 'ekip:evrak', gorev: 'Dün bitti', payload: { vakaId: 'd' }, createdAt: T(120), finishedAt: T(110) }),
+      is({ id: 'c', agent: 'ekip:denetci', gorev: 'Eski bitti', payload: { vakaId: 'c' }, createdAt: T(60 * 30), finishedAt: T(60 * 29) }),
+      is({ id: 'd', agent: 'ekip:denetci', gorev: 'Dün bitti', payload: { vakaId: 'd' }, createdAt: T(120), finishedAt: T(110) }),
     ];
     const v = vakaGrupla(isler, [], [], { now: SIMDI });
     const vaka = (id: string) => v.find((x) => x.vakaId === id)!;
@@ -182,10 +182,10 @@ describe('EkipAkisService', () => {
     const isler = [
       is({ id: 'k', agent: 'ekip:koordinator', gorev: 'FAMCOFFEE KDV', payload: { vakaId: 'k', taxpayerId: 'tx1' } }),
       is({ id: 'c', agent: 'ekip:beyanname', payload: { vakaId: 'disKok' }, status: 'running', finishedAt: null }),
-      is({ id: 'eski', agent: 'ekip:evrak', payload: {} }),
+      is({ id: 'eski', agent: 'ekip:denetci', payload: {} }),
     ];
     const bildirimler = [
-      { id: 'n1', title: 'Fiş yükleyin', body: '', isRead: false, metadata: { automationId: 'ekip:evrak:eski', tur: 'istek' }, createdAt: T(3) },
+      { id: 'n1', title: 'Fiş yükleyin', body: '', isRead: false, metadata: { automationId: 'ekip:denetci:eski', tur: 'istek' }, createdAt: T(3) },
       { id: 'n2', title: 'Otomasyon', body: '', isRead: false, metadata: { automationId: 'auto-1' }, createdAt: T(3) },
     ];
     return {
@@ -249,7 +249,7 @@ describe('EkipAkisService', () => {
     expect(r).toEqual({ ok: true, id: 'n1', vakaId: null });
     const upd = prisma.cagrilar.find(([m]) => m === 'update')![1];
     expect(upd.data.isRead).toBe(true);
-    expect(upd.data.metadata).toMatchObject({ automationId: 'ekip:evrak:eski', tur: 'istek', kapatan: 'u1' });
+    expect(upd.data.metadata).toMatchObject({ automationId: 'ekip:denetci:eski', tur: 'istek', kapatan: 'u1' });
     expect(typeof upd.data.metadata.kapandi).toBe('string');
     expect(await s.istekKapat('t1', 'u1', 'n2')).toEqual({ ok: false, error: 'Bildirim bulunamadı' });
     expect(await s.istekKapat('t1', 'u1', 'yok')).toEqual({ ok: false, error: 'Bildirim bulunamadı' });
@@ -333,7 +333,7 @@ describe('runner — vaka alanları + devir sınırı', () => {
   it('kök koşu: payload.vakaId = kendi id (running update ile), ustIsId null, devirSayisi 0; verilen vakaId ile çocuk olur', async () => {
     const prisma = sahtePrisma();
     const r = runnerKur(prisma);
-    await r.calistir({ ajanId: 'evrak', gorev: 'x', tenantId: 't1', userId: 'u1', kaynak: 'portal', dryRun: true });
+    await r.calistir({ ajanId: 'denetci', gorev: 'x', tenantId: 't1', userId: 'u1', kaynak: 'portal', dryRun: true });
     const kok = prisma.kayitlar.get('is-1');
     expect(kok.payload).toMatchObject({ vakaId: 'is-1', ustIsId: null, devirSayisi: 0, gorev: 'x' });
     expect(kok.status).toBe('done');
@@ -391,9 +391,9 @@ describe('runner — vaka alanları + devir sınırı', () => {
         return uret();
       },
     });
-    await r.calistir({ ajanId: 'evrak', gorev: 'x', tenantId: 't1', userId: 'u1', kaynak: 'portal', dryRun: true, taxpayerId: 'cmnydmgbx000heazyp9i4fq23' });
+    await r.calistir({ ajanId: 'denetci', gorev: 'x', tenantId: 't1', userId: 'u1', kaynak: 'portal', dryRun: true, taxpayerId: 'cmnydmgbx000heazyp9i4fq23' });
     expect(prompt).toContain('VAKA: is-1 (create_pending_action çağrılarında vakaId olarak bunu ver; devir 0/2)');
-    expect(dispatchler[0][2]).toEqual({ tenantId: 't1', userId: 'u1', automationId: 'ekip:evrak:is-1', isId: 'is-1', vakaId: 'is-1', ajanId: 'evrak', taxpayerId: 'cmnydmgbx000heazyp9i4fq23' });
+    expect(dispatchler[0][2]).toEqual({ tenantId: 't1', userId: 'u1', automationId: 'ekip:denetci:is-1', isId: 'is-1', vakaId: 'is-1', ajanId: 'denetci', taxpayerId: 'cmnydmgbx000heazyp9i4fq23' });
   });
 
   it('kadroOzeti suAn: koşan ajanın vaka/iş/mükellef/konu; koşmayan null', async () => {
@@ -408,7 +408,7 @@ describe('runner — vaka alanları + devir sınırı', () => {
     const r = new EkipRunnerService(prisma, {} as any, {} as any, {} as any, {} as any);
     const kadro = await r.kadroOzeti('t1');
     expect(kadro.find((a) => a.id === 'fatura')!.suAn).toEqual({ vakaId: 'v1', isId: 'is5', mukellefId: 'tx1', mukellefAd: 'FAMCOFFEE', konu: 'fatura: R4 FAMCOFFEE', basladi: T(9) });
-    expect(kadro.find((a) => a.id === 'evrak')!.suAn).toBeNull();
+    expect(kadro.find((a) => a.id === 'denetci')!.suAn).toBeNull();
   });
 });
 
@@ -422,10 +422,10 @@ describe('ActionDispatcherService.createPendingAction — tur + vaka metadata', 
 
   it('ekip yolu: tur enum, İŞ ATAMASI zorla bilgi, vakaId/isId/ajanId/taxpayerId metadata; dedupeKey geçer', async () => {
     const { d, olusturulan } = dispatcherKur();
-    const ctx = { tenantId: 't1', userId: 'u1', automationId: 'ekip:evrak:is1', isId: 'is1', vakaId: 'v1', ajanId: 'evrak', taxpayerId: 'txCtx' };
+    const ctx = { tenantId: 't1', userId: 'u1', automationId: 'ekip:denetci:is1', isId: 'is1', vakaId: 'v1', ajanId: 'denetci', taxpayerId: 'txCtx' };
     let r: any = await d.dispatch('create_pending_action', { title: 'Fiş yükleyin', body: 'b', tur: 'istek' }, ctx);
     expect(r).toEqual({ created: true, notificationId: 'n1', tur: 'istek', vakaId: 'v1' });
-    expect(olusturulan[0].metadata).toEqual({ automationId: 'ekip:evrak:is1', taxpayerId: 'txCtx', priority: 'normal', tur: 'istek', vakaId: 'v1', isId: 'is1', ajanId: 'evrak' });
+    expect(olusturulan[0].metadata).toEqual({ automationId: 'ekip:denetci:is1', taxpayerId: 'txCtx', priority: 'normal', tur: 'istek', vakaId: 'v1', isId: 'is1', ajanId: 'denetci' });
     await d.dispatch('create_pending_action', { title: 'İŞ ATAMASI → beyanname: R1', body: 'b', tur: 'onay', taxpayerId: 'txArg' }, ctx);
     expect(olusturulan[1].metadata).toMatchObject({ tur: 'bilgi', taxpayerId: 'txArg' });
     r = await d.dispatch('create_pending_action', { title: 'x', body: 'b', tur: 'uydurma', dedupeKey: 'ekip:devir:v1', gecikme: 'devir' }, { ...ctx, vakaId: null });

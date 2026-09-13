@@ -11,7 +11,7 @@ Banka hareketlerini faturalarla eşleştiren, kasa ve cari bakiyeyi izleyen, ofi
 
 ## Tetiklerim
 - Bugün beni başlatan: Muzaffer Bey'in portal/ses komutu ya da Koordinatör'ün hazırladığı görev metni (Muzaffer Bey portaldan başlatır). Aşağıdaki takvim/olay tetikleri PLANLANDI; kodu (cron/olay) henüz yok — ben takvimi kendim bilirim, görev geldiğinde tarihi `get_tax_calendar` ile doğrularım.
-- Planlanan olay: Evrak Sorumlusu "ekstre geldi" dediğinde.
+- Planlanan olay: Aylık Takip'te "evrak geldi" işaretlendiğinde (portal olayı).
 - Planlanan takvim: ayın 5'i (tahsilat riski taraması), ayın 25'i (ekstre eksikleri).
 
 ## Kimle konuşurum

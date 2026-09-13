@@ -145,7 +145,7 @@ describe('ekip_ajan_baslat (Koordinatör → ajan, arka plan)', () => {
     const { arac } = runnerKur(prisma);
     expect((await arac('ekip_ajan_baslat', { ajanId: 'yok', gorev: 'x' })).error).toMatch(/Bilinmeyen ajan/);
     expect((await arac('ekip_ajan_baslat', { ajanId: 'koordinator', gorev: 'x' })).error).toMatch(/kendine iş atamaz/);
-    expect((await arac('ekip_ajan_baslat', { ajanId: 'evrak', gorev: '' })).error).toMatch(/gorev zorunlu/);
+    expect((await arac('ekip_ajan_baslat', { ajanId: 'denetci', gorev: '' })).error).toMatch(/gorev zorunlu/);
     expect((await arac('ekip_is_durum', { isId: 'yok' })).ok).toBe(false);
     expect((await arac('ekip_is_durum', {})).error).toMatch(/isId zorunlu/);
     expect(prisma.olusturulan).toEqual([]);

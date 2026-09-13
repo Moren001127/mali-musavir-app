@@ -39,7 +39,7 @@ Sayın <mükellef adı>, <dönem/dönemler> hizmet bedeline ait <tutar> TL bakiy
 Durum: HAZIR DEĞİL
 Neden: ekstre sistemde yok | fatura kaydı yok | mizan yok (kasa kontrolü yapılamadı)
 Yapılan kısım: tahsilat taraması yapıldı / yapılmadı
-Kime döndü: Koordinatör → Evrak Sorumlusu (ekstre) / Fatura Muhasebecisi (fatura)
+Kime döndü: Koordinatör → Muzaffer Bey (eksik ekstre; hatırlatma otomasyonda) / Fatura Muhasebecisi (fatura)
 ```
 
 ## 7. Rapor kalıbı

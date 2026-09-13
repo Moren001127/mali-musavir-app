@@ -120,25 +120,25 @@ describe('kadroOzeti tenant alanları (§7-3)', () => {
         findMany: async (q: any) => (expect(q.distinct).toEqual(['agent']), [son]),
         groupBy: async (q: any) => {
           if (q.where.status === 'running') return [{ agent: 'ekip:fatura', _count: { _all: 1 } }];
-          return [{ agent: 'ekip:fatura', _count: { _all: 3 } }, { agent: 'ekip:evrak', _count: { _all: 1 } }];
+          return [{ agent: 'ekip:fatura', _count: { _all: 3 } }, { agent: 'ekip:denetci', _count: { _all: 1 } }];
         },
       },
       ownerApprovalRequest: {
-        groupBy: async () => [{ agent: 'ekip:evrak', _count: { _all: 2 } }],
+        groupBy: async () => [{ agent: 'ekip:denetci', _count: { _all: 2 } }],
       },
     };
     const r = runnerKur(prisma);
     const kadro = await r.kadroOzeti('t');
     const fatura = kadro.find((a) => a.id === 'fatura')!;
-    const evrak = kadro.find((a) => a.id === 'evrak')!;
+    const denetci = kadro.find((a) => a.id === 'denetci')!;
     const koord = kadro.find((a) => a.id === 'koordinator')!;
     expect(fatura.sonKosu).toEqual(expect.objectContaining({ id: 'is9', ajanId: 'fatura', status: 'running', dryRun: true, kaynak: 'portal', taxpayerId: 'tx1' }));
     expect(fatura.bugunKosu).toBe(3);
     expect(fatura.calisiyor).toBe(true);
     expect(fatura.bekleyenOnay).toBe(0);
-    expect(evrak.bekleyenOnay).toBe(2);
-    expect(evrak.bugunKosu).toBe(1);
-    expect(evrak.sonKosu).toBeNull();
+    expect(denetci.bekleyenOnay).toBe(2);
+    expect(denetci.bugunKosu).toBe(1);
+    expect(denetci.sonKosu).toBeNull();
     expect(koord.sonKosu).toBeNull();
     expect(koord.calisiyor).toBe(false);
     // Eski alanlar duruyor
@@ -146,7 +146,7 @@ describe('kadroOzeti tenant alanları (§7-3)', () => {
     expect(fatura.kademeler).toBeDefined();
 
     const tenantsiz = await runnerKur({}).kadroOzeti();
-    expect(tenantsiz).toHaveLength(13);
+    expect(tenantsiz).toHaveLength(12);
     expect(tenantsiz[0].sonKosu).toBeNull();
     expect(tenantsiz[0].bekleyenOnay).toBe(0);
   });
@@ -157,7 +157,7 @@ describe('kadroOzeti tenant alanları (§7-3)', () => {
       ownerApprovalRequest: { groupBy: async () => { throw new Error('db yok'); } },
     };
     const kadro = await runnerKur(prisma).kadroOzeti('t');
-    expect(kadro).toHaveLength(13);
+    expect(kadro).toHaveLength(12);
     expect(kadro.every((a) => a.sonKosu === null && a.bekleyenOnay === 0 && a.bugunKosu === 0 && a.calisiyor === false)).toBe(true);
   });
 });
@@ -187,7 +187,7 @@ describe('/ekip/isler süzgeçleri (§7-4)', () => {
   });
 
   it('isleriSuz {isler, toplam, suzgec} döner; toplam limit’ten bağımsız', async () => {
-    const satir = { id: 'a', agent: 'ekip:evrak', action: 'x', payload: { gorev: 'x', dryRun: true, kaynak: 'ses' }, status: 'done', createdAt: new Date(), result: { toolUses: [1, 2] } };
+    const satir = { id: 'a', agent: 'ekip:denetci', action: 'x', payload: { gorev: 'x', dryRun: true, kaynak: 'ses' }, status: 'done', createdAt: new Date(), result: { toolUses: [1, 2] } };
     const prisma = {
       agentCommand: {
         findMany: async (q: any) => (expect(q.take).toBe(5), [satir]),
@@ -197,7 +197,7 @@ describe('/ekip/isler süzgeçleri (§7-4)', () => {
     const s = await runnerKur(prisma).isleriSuz('t', { gun: 'bugun', limit: 5, kaynak: 'ses' });
     expect(s.toplam).toBe(42);
     expect(s.isler).toHaveLength(1);
-    expect(s.isler[0]).toEqual(expect.objectContaining({ id: 'a', ajanId: 'evrak', kaynak: 'ses', toolSayisi: 2 }));
+    expect(s.isler[0]).toEqual(expect.objectContaining({ id: 'a', ajanId: 'denetci', kaynak: 'ses', toolSayisi: 2 }));
     expect(s.suzgec).toEqual({ ajanId: null, gun: 'bugun', status: null, dryRun: null, kaynak: 'ses', limit: 5 });
   });
 });
@@ -208,9 +208,9 @@ describe('onay özeti mukellefAd (§7-7)', () => {
       {
         ownerApprovalRequest: {
           findMany: async () => [
-            { id: '1', previewId: 'PRV-1', agent: 'ekip:evrak', action: 'send_whatsapp_template', payload: { to: '0532 111 22 33', message: 'm', isId: 'is1', taxpayerId: null }, status: 'PENDING', createdAt: new Date(), expiresAt: new Date(Date.now() + 1000) },
+            { id: '1', previewId: 'PRV-1', agent: 'ekip:denetci', action: 'send_whatsapp_template', payload: { to: '0532 111 22 33', message: 'm', isId: 'is1', taxpayerId: null }, status: 'PENDING', createdAt: new Date(), expiresAt: new Date(Date.now() + 1000) },
             { id: '2', previewId: 'PRV-2', agent: 'ekip:banka-kasa', action: 'send_sms', payload: { taxpayerId: 'tx2', message: 'm', isId: 'is2' }, status: 'PENDING', createdAt: new Date(), expiresAt: new Date(Date.now() + 1000) },
-            { id: '3', previewId: 'PRV-3', agent: 'ekip:evrak', action: 'send_email', payload: { email: 'a@b.c', message: 'm', isId: 'is3', taxpayerId: null }, status: 'PENDING', createdAt: new Date(), expiresAt: new Date(Date.now() + 1000) },
+            { id: '3', previewId: 'PRV-3', agent: 'ekip:denetci', action: 'send_email', payload: { email: 'a@b.c', message: 'm', isId: 'is3', taxpayerId: null }, status: 'PENDING', createdAt: new Date(), expiresAt: new Date(Date.now() + 1000) },
           ],
         },
         taxpayer: { findMany: taxpayerFindMany },

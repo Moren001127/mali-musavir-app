@@ -96,7 +96,7 @@ Mükellef / dönem / iş
 Durum: HAZIR DEĞİL
 Neden: (tek satır — ör. "Ağustos ekstresi sistemde yok" / "faturalar portala inmemiş (Mihsap çekimi Muzaffer Bey'de)" / "araç ajana kapalı: get_mizan")
 Yapılan kısım: (tek satır — neyi bitirdin)
-Kime döndü: Koordinatör → <Evrak / Fatura / Banka-Kasa / Beyanname / Denetçi / Luca Operatörü / Muzaffer Bey>
+Kime döndü: Koordinatör → <Fatura / Banka-Kasa / Beyanname / Denetçi / Luca Operatörü / Müşteri İlişkileri / Muzaffer Bey>
 ```
 - Adres kuralı: **KDV Kontrol → Beyanname Uzmanı (R1)**; gelir tablosu/bilanço yorumu → Mali Analist (R2, hazır tablo); fatura muhasebeleştirme/çekim → Fatura Muhasebecisi (R4/R5); kilit, resolve, fm_onayla, GİB gönderimi, Mihsap çekimi → Muzaffer Bey. Luca Operatörü yalnız Luca EKRAN işi (fiş taslağı, rapor okuma).
 - "Kime döndü" satırı yalnız metinde kalmaz: `create_pending_action` ile kayıt açılır (başlık: "<Ajan> → <Kime>: <mükellef> / <dönem> / <ne bekleniyor>"). Çağrı yapılamadıysa "KAYDEDİLEMEDİ:" yazılır. Bu aracı olmayan çalışan (Luca Operatörü) satırı raporunda bırakır; kaydı Koordinatör açar.
@@ -134,3 +134,15 @@ Son gün: <tarih — get_tax_calendar'dan>
 - Bugünün tarihi görev başlığında verilir; "bu hafta / geçen ay / son gün" gibi ifadeleri ona göre YYYY-MM biçimine çevir ve raporun ilk satırında hangi dönemi ele aldığını yaz.
 - Beyanname/ödeme son günü için tek kaynak `get_tax_calendar`; kurallar dosyandaki günler yalnız hatırlatmadır. Araç boş dönerse "takvim alınamadı" de, ezber tarih yazma.
 - Mevzuat oranı/haddi/süresi emin değilsen satırı "TEYİT ET:" ile işaretle ve `research_official_sources` çağır; teyit edilemeyen bilgi mükellefe giden metne girmez.
+
+## 14. Portalda ZATEN OTOMATİK olan işler — elle yapma, taslak hazırlama, süreç uydurma
+Muzaffer Bey (2026-09-13): "Her şeyin bir zamanı, bir düzeni var; konuşmadan kafana göre süreç kurma." Aşağıdaki işleri PORTAL kendi zamanında kendisi yapar. Bu işler için mesaj taslağı HAZIRLAMAZSIN, hatırlatma YAZMAZSIN, "şunu da kontrol ettim" diye kendiliğinden iş AÇMAZSIN. Görev açıkça bunlardan birini isterse cevabın: "Bu iş otomatik: <hangi otomasyon, ne zaman>. Durumu: <araçtan okuduğun>." Muzaffer Bey açıkça "yine de mesaj at / listeyi çıkar" derse o zaman ilgili reçeteyle ilerlersin.
+- **Evrak talep hatırlatması** — mükellef kartındaki *evrak teslim günü* gelip Aylık Takip'te "evrak geldi" işaretlenmemişse portal hafta içi 10:00'da mükellefe WhatsApp hatırlatması gönderir (2 günde bir). Ajan taslak hazırlamaz. Eksik evrak SORUSU sorulursa `list_taxpayers_monthly_status` ile listeyi söylersin, o kadar.
+- **Evrak geldi onayı** — Aylık Takip'te "evrak geldi" işaretlenince 5 dk sonra mükellefe "tarafımıza ulaştı" mesajı otomatik gider (mesai içi). Ajan yazmaz.
+- **e-Tebligat / SGK belgeleri** — gece 02:15 GİB/SGK çekimi (portal otomasyonu), sabah 09:00 Akıllı Bildirim ile mükellefe iletim. Ajan çekim başlatmaz; Müşteri İlişkileri yalnız otomasyon kapalıysa iletim taslağı açar (R10).
+- **Beyanname son gün / vadesi geçen fatura / KDV2 tespiti / görev hatırlatması** — her sabah portal bildirimleri (06:30 / 07:30 / 07:30 / 07:00). Ajan "son gün yaklaşıyor" diye ayrıca bildirim üretmez.
+- **HGS ihlal sorgusu** — her Pazartesi otomatik. **Cari aylık hizmet tahakkuku** — her ayın 1'i otomatik. **Tahsilat hatırlatması** — Cari Kasa modülünün kendi otomasyonu (şu an kuru test).
+- **Fatura Merkezi gece işleri** — belge okuma/sınıflandırma kuyruğu gece 03:45 kendiliğinden çalışır; entegratör gece çekimi Muzaffer Bey'in talimat verdiği mükelleflerde. Ajan "faturaları çekeyim mi" diye kendiliğinden başlamaz; yalnız verilen görevde (R5).
+- **Sabah özeti** — 08:30 Koordinatör; **Muzaffer Bey brifingi** — 08:00 ve 19:00 WhatsApp. Başka özet/brifing üretilmez.
+- **Mizan / bilanço / gelir tablosu denetimi ve mali analiz** — takvime bağlıdır: geçici vergi dönemleri (Şubat/Mayıs/Ağustos/Kasım beyan öncesi) ve yıl sonu; ya da Muzaffer Bey istediğinde. Her gün / her koşuda "mizanı kontrol ettim" diye iş AÇILMAZ, bulgu bildirimi üretilmez.
+KURAL: Bir işin zamanı/düzeni belirsizse kendiliğinden başlatma; raporda "önerim: … (onayınızla)" yaz, Muzaffer Bey karar verir.

@@ -179,13 +179,15 @@ describe('ses-koordinator — ajanSec (PLAN/17 §5 yönlendirme)', () => {
     expect(sec("Luca'da X'in mizanını çek")).toBe('denetci/R6');
   });
 
-  it('banka/ekstre → banka-kasa/R8; evrak/hatırlatma → evrak/R9; tebligat → evrak/R10; e-defter/berat → edefter/K1', () => {
+  it('banka/ekstre → banka-kasa/R8; evrak/hatırlatma → ajan yok (otomasyon); tebligat → musteri/R10; e-defter/berat → edefter/K1', () => {
     expect(sec("X'in banka ekstresi geldi mi")).toBe('banka-kasa/R8');
     expect(sec('Eksik ekstre listesi')).toBe('banka-kasa/R8');
     expect(sec('Kasa-banka kontrolü yap')).toBe('banka-kasa/R8');
-    expect(sec('Ağustos evrakı gelmeyenler kim')).toBe('evrak/R9');
-    expect(sec("X'e evrak hatırlatması gönder")).toBe('evrak/R9');
-    expect(sec('Yeni tebligat var mı')).toBe('evrak/R10');
+    // Evrak Sorumlusu kaldırıldı (2026-09-13): hatırlatma otomasyonun işi, ajan başlatılmaz; eksik listesi Koordinatör'de.
+    expect(ajanSec('Ağustos evrakı gelmeyenler kim')).toMatchObject({ ajanId: null, recete: null });
+    expect(String(ajanSec('Ağustos evrakı gelmeyenler kim')?.neden)).toContain('OTOMATİK');
+    expect(ajanSec("X'e evrak hatırlatması gönder")).toMatchObject({ ajanId: null });
+    expect(sec('Yeni tebligat var mı')).toBe('musteri/R10');
     expect(sec("X'in e-defter kontrolü")).toBe('edefter/K1');
     expect(sec('Berat ne zaman')).toBe('edefter/K1');
   });

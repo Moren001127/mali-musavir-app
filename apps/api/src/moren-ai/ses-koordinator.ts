@@ -180,7 +180,7 @@ const secim = (ajanId: string, recete: string, neden: string): AjanSecimi => ({ 
  *  - faturaları çek / entegratör / e-arşiv indir → fatura · R5 ("mihsap" geçerse ajan yok: Muzaffer Bey’de)
  *  - geçici vergi öncesi denetim / mizanda sorun / kasa-ortak / mizanı denetle → denetci · R6
  *  - geçici vergi paketi/beyannamesi → beyanname · R7
- *  - banka / ekstre / kasa-banka → banka-kasa · R8;  evrak / hatırlatma → evrak · R9;  tebligat → evrak · R10 (iletim musteri)
+ *  - banka / ekstre / kasa-banka → banka-kasa · R8;  evrak / hatırlatma → AJAN YOK (evrak otomasyonu; Koordinatör kendisi okur);  tebligat → musteri · R10
  *  - e-defter / berat → edefter · K1
  *  - bordro / SGK / muhtasar → ajan yok ("bordro modülü kapalı")
  *  - "Luca'da … aç/doldur/oku/fiş" YALNIZ bu kalıp → luca-operator · ekran (KDV/mizan/gelir tablosu geçiyorsa değil)
@@ -226,13 +226,18 @@ export function ajanSec(cumle: string): AjanSecimi | null {
   if (/\b(ekstre|banka)\b/.test(t) || /kasa[- ]?banka/.test(t)) {
     return secim('banka-kasa', 'R8', 'Ekstre takibi + 100/102/131/331 mantık; banka hareketi tablosu portalda yok. Dönem: YYYY-MM.');
   }
-  // Tebligat (R10) — evrak kayıt + musteri iletim
+  // Tebligat (R10) — çekim gece otomasyonu, iletim Müşteri İlişkileri (Evrak Sorumlusu 2026-09-13'te kaldırıldı)
   if (/tebligat/.test(t)) {
-    return secim('evrak', 'R10', 'e-Tebligat kaydı Evrak (R10); iletim Müşteri İlişkileri (R10 iletim). Ajan çekim başlatmaz.');
+    return secim('musteri', 'R10', 'e-Tebligat iletimi Müşteri İlişkileri (R10); çekim gece otomasyonu, 09:00 Akıllı Bildirim. Ajan çekim başlatmaz.');
   }
-  // Evrak (R9)
+  // Evrak / hatırlatma — AJAN YOK: evrak talep/geldi mesajları EVRAK OTOMASYONU'nun işi (mükellef kartındaki teslim günü;
+  //   10:00 cron hatırlatma; 'geldi' işaretlenince onay mesajı). Eksik listesi Koordinatör'ün kendi aracıyla cevaplanır.
   if (/\bevrak/.test(t) || /hatirlat/.test(t)) {
-    return secim('evrak', 'R9', 'Eksik evrak listesi + hatırlatma taslağı; mesaj PRV ile. Dönem: YYYY-MM.');
+    return {
+      ajanId: null,
+      recete: null,
+      neden: 'Evrak hatırlatma/onay mesajları OTOMATİK (evrak otomasyonu: mükellef kartındaki teslim günü). Taslak HAZIRLAMA, ajan BAŞLATMA; eksik evrak listesini list_taxpayers_monthly_status ile kendin söyle (dönem YYYY-MM).',
+    };
   }
   // e-Defter / berat
   if (/e-?defter/.test(t) || /\bberat/.test(t)) {

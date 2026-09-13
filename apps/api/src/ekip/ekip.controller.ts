@@ -194,7 +194,7 @@ export class EkipController {
   async calistir(
     @Req() req: any,
     @Param('ajanId') ajanId: string,
-    @Body() body: { gorev: string; taxpayerId?: string | null; dryRun?: boolean; vakaId?: string | null },
+    @Body() body: { gorev: string; taxpayerId?: string | null; dryRun?: boolean; vakaId?: string | null; test?: boolean },
     @Res() res: any,
   ) {
     const tenantId = req.user?.tenantId || 'default';
@@ -248,8 +248,9 @@ export class EkipController {
         tenantId,
         userId: req.user?.sub || null,
         taxpayerId: body?.taxpayerId || null,
-        dryRun: body?.dryRun !== false,
-        kaynak: 'portal',
+        dryRun: body?.test === true ? true : body?.dryRun !== false,
+        // test:true (2026-09-13) → geliştirici pilotu: 'ekiptest:' iş dosyası, portala/dışarı yazmaz, akışta görünmez.
+        kaynak: body?.test === true ? 'test' : 'portal',
         vakaId,
         emit: (e) => {
           if (e.type === 'baslangic') isId = e.isId;

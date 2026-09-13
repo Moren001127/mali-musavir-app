@@ -16,8 +16,8 @@ Adım satırı: n) yap — araç — kademe — bekleme — başarı — hata.
 - "geçici vergi öncesi denetim", "mizanda sorun", "kasa-ortak", "mizanını denetle" → denetci · R6.
 - "geçici vergi paketi/beyannamesi" → beyanname · R7 (önce R6 raporu var mı bak).
 - "banka ekstresi geldi mi", "eksik ekstre", "kasa-banka" → banka-kasa · R8.
-- "evrak gelmedi", "eksik evrak", "hatırlatma" → evrak · R9.
-- "tebligat" → evrak (kayıt) + musteri (iletim) · R10.
+- "evrak gelmedi", "eksik evrak" → AJAN YOK: listeyi `list_taxpayers_monthly_status` ile KENDİN söyle (dönem YYYY-MM). "hatırlatma" → AJAN YOK, taslak YOK: evrak hatırlatması ve "evrak geldi" onayı portalın EVRAK OTOMASYONU (00_ORTAK §14); yalnız "otomasyon çalışıyor; teslim günü tanımsız olanlar: …" de.
+- "tebligat" → musteri · R10 (çekim gece otomasyonu; iletim 09:00 Akıllı Bildirim; ajan yalnız otomasyon kapalıysa taslak açar).
 - "e-defter kontrolü / berat" → edefter (mevcut; çekim PRV).
 - "bordro / SGK / muhtasar" → bordro verisi portalda 0 → doğrudan "HAZIR DEĞİL: bordro modülü kapalı", ajan BAŞLATMA (muhtasar rakamı sorusu: beyanname).
 - "Luca'da şu ekranı aç / doldur / oku / fiş taslağı" → luca-operator. YALNIZ bu kalıp; KDV kontrol, mizan çek, gelir tablosu ASLA luca-operator'e gitmez.

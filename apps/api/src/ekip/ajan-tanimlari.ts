@@ -21,7 +21,6 @@ export type AjanModeli = 'opus' | 'sonnet' | 'haiku';
 
 export type AjanId =
   | 'koordinator'
-  | 'evrak'
   | 'fatura'
   | 'banka-kasa'
   | 'beyanname'
@@ -110,22 +109,9 @@ export const AJAN_TANIMLARI: AjanTanimi[] = [
     tetikler: ['cron 08:30 sabah özeti (koordinator.service.ts; EKIP_SABAH_OZETI=on)', 'Muzaffer Bey komutu (portal/ses)', 'olay (çalışan raporu/onay/hata) — planlandı'],
     kimlikKlasoru: klasor('koordinator'),
   },
-  {
-    id: 'evrak',
-    ad: 'Evrak Sorumlusu',
-    unvan: 'Evrak Takip',
-    aciklama: 'Belge ister, geleni kaydeder, eksiği takip eder, Muzaffer Bey’e eksik listesi çıkarır.',
-    model: 'sonnet',
-    araclar: [
-      ...MUKELLEF_OKU, 'list_documents', 'list_fatura_merkezi', 'get_bank_status', 'list_etebligat', 'get_beyanname_config',
-      'get_tax_calendar', 'list_tasks',
-      'search_ai_memory', 'save_ai_memory', 'set_monthly_status', 'create_pending_action',
-      'send_whatsapp_template', 'send_whatsapp_freeform', 'send_sms', 'send_email', ...ONAY,
-    ],
-    onayNoktalari: ['Mükellefe mesaj (evrak talebi/hatırlatma)'],
-    tetikler: ['Muzaffer Bey komutu / Koordinatör görev metni (portal)', 'ayın 1/10/20 evrak taraması — planlandı', 'belge yüklendi olayı — planlandı'],
-    kimlikKlasoru: klasor('evrak'),
-  },
+  // EVRAK SORUMLUSU KALDIRILDI (2026-09-13, Muzaffer Bey): evrak talep/geldi mesajları portaldaki EVRAK OTOMASYONU'nun işi
+  //   (mükellef kartı → teslim günü; 10:00 cron hatırlatma; 'geldi' işaretlenince onay mesajı). Ajan taslak hazırlamaz;
+  //   eksik evrak sorusunu Koordinatör list_taxpayers_monthly_status ile kendisi cevaplar. e-Tebligat iletimi → Müşteri İlişkileri (R10).
   {
     id: 'fatura',
     ad: 'Fatura Muhasebecisi',

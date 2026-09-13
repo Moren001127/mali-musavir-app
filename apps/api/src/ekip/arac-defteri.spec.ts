@@ -194,12 +194,12 @@ describe('portal_yaz_agir + KDV Kontrol zinciri araçları (PLAN/17)', () => {
 
 describe('ajan-tanimlari', () => {
   const SABIT_IDLER = [
-    'koordinator', 'evrak', 'fatura', 'banka-kasa', 'beyanname', 'bordro-sgk', 'edefter',
+    'koordinator', 'fatura', 'banka-kasa', 'beyanname', 'bordro-sgk', 'edefter',
     'luca-operator', 'denetci', 'analist', 'mevzuat', 'risk', 'musteri',
   ];
 
-  it('13 ajan, id\'ler sabit ve tekil', () => {
-    expect(AJAN_TANIMLARI).toHaveLength(13);
+  it('12 ajan (Evrak Sorumlusu 2026-09-13 kaldırıldı), id\'ler sabit ve tekil', () => {
+    expect(AJAN_TANIMLARI).toHaveLength(12);
     expect(AJAN_TANIMLARI.map((a) => a.id).sort()).toEqual([...SABIT_IDLER].sort());
     for (const id of SABIT_IDLER) expect(ajanBul(id)?.id).toBe(id);
     expect(ajanBul('yok')).toBeNull();

@@ -54,7 +54,9 @@ export const PORTAL_ARAC_ADLARI = new Set<string>(
 const PANO_ONBELLEK_MS = 60 * 1000;
 /** İş dosyası durumları (AgentCommand.status) — /ekip/isler süzgeci yalnız bunları kabul eder. */
 const IS_DURUMLARI = new Set<string>(['pending', 'running', 'done', 'failed']);
-const KAYNAKLAR = new Set<string>(['portal', 'ses', 'cron', 'koordinator']);
+const KAYNAKLAR = new Set<string>(['portal', 'ses', 'cron', 'koordinator', 'test']);
+/** İş dosyası agent öneki: gerçek koşular 'ekip:', test koşuları 'ekiptest:' (tüm 'ekip:' süzgeçleri testi kendiliğinden dışlar). */
+export const ekipAgentAdi = (ajanId: string, kaynak?: string | null) => `${kaynak === 'test' ? 'ekiptest' : 'ekip'}:${ajanId}`;
 /** beceriler.md prompta bu kadar girer (uzun anlatım insan içindir; reçete tam girer) — PLAN/17 §1.3. */
 const BECERI_TAVAN_KR = 6 * 1024;
 /** Sistem promptu bu boyutu aşarsa warn (PLAN/17 §1.3-3: tahmini beyanname promptu ≈ 39 KB). */
@@ -65,7 +67,8 @@ const AJAN_BASLAT_ISID_BEKLEME_MS = 3000;
 /** Prisma cuid: 'c' + küçük harf/rakam (kdv-control/ocr/parsers/belge-no.ts ile aynı kalıp). */
 const CUID_KALIBI = /^c[a-z0-9]{20,31}$/;
 
-export type EkipKaynak = 'portal' | 'ses' | 'cron' | 'koordinator';
+/** 'test' (2026-09-13): geliştirici pilot koşusu — iş dosyası 'ekiptest:' önekiyle açılır (akış/pano/özet görmez), portala/dışarı YAZMAZ. */
+export type EkipKaynak = 'portal' | 'ses' | 'cron' | 'koordinator' | 'test';
 
 /** /ekip/isler süzgeçleri (hepsi isteğe bağlı; verilmezse eski davranış). */
 export interface IsSuzgeci {
@@ -387,7 +390,7 @@ export class EkipRunnerService {
     const row = await (this.prisma as any).agentCommand.create({
       data: {
         tenantId: p.tenantId,
-        agent: `ekip:${ajan.id}`,
+        agent: ekipAgentAdi(ajan.id, p.kaynak),
         action: String(p.gorev || '').slice(0, 80),
         payload,
         status: 'pending',
@@ -565,7 +568,8 @@ export class EkipRunnerService {
   }
 
   async isGetir(tenantId: string, id: string) {
-    const r = await (this.prisma as any).agentCommand.findFirst({ where: { id, tenantId, agent: { startsWith: 'ekip:' } } });
+    // 'ekip:' gerçek koşu, 'ekiptest:' geliştirici test koşusu — kimlikle okumada ikisi de bulunur (listeler yalnız 'ekip:' görür).
+    const r = await (this.prisma as any).agentCommand.findFirst({ where: { id, tenantId, OR: [{ agent: { startsWith: 'ekip:' } }, { agent: { startsWith: 'ekiptest:' } }] } });
     return r ? { ...this.isOzeti(r), result: r.result || null } : null;
   }
 
@@ -787,8 +791,8 @@ export class EkipRunnerService {
         tenantId: p.tenantId,
         userId: p.userId ?? null,
         taxpayerId,
-        dryRun: !canli,
-        kaynak: 'koordinator',
+        dryRun: p.kaynak === 'test' ? true : !canli,
+        kaynak: p.kaynak === 'test' ? 'test' : 'koordinator', // test koşusunun çocuğu da test (görünmez, yazmaz)
         vakaId,
         ustIsId: isId,
         devirSayisi,
@@ -963,6 +967,15 @@ export class EkipRunnerService {
 
       // 1) KADEME KONTROLÜ
       const erisim = aracAcikMi(ajan, name, dryRun);
+      // 1a) TEST MODU (2026-09-13): geliştirici pilotunda portala yazan / dışarı gönderen HİÇBİR araç çalışmaz — bildirim,
+      //   onay kaydı, görev, aylık işaret düşmez (Muzaffer Bey: "kafana göre iş uydurma"). Okuma araçları serbest.
+      if (p.kaynak === 'test' && erisim.acik && erisim.kademe && erisim.kademe !== 'oku') {
+        const kayit: YapilacakIs = { name, args, kademe: erisim.kademe };
+        kuruTestYapilacaktilar.push(kayit);
+        toolUses.push({ name, args: { ...args, __kuruTest: true, __test: true } });
+        emit({ type: 'kuruTest', name, args, kademe: erisim.kademe });
+        return cevap({ kuruTest: true, yapilacakti: { name, args }, mesaj: 'TEST koşusu: portala yazılmaz, mesaj/onay/bildirim düşmez; raporunda "yapılacaktı" yaz.' });
+      }
       if (!erisim.acik) {
         if (erisim.neden === 'kuru_test') {
           const kayit: YapilacakIs = { name, args, kademe: erisim.kademe };
