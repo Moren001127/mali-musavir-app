@@ -375,8 +375,10 @@ export default function GorevlerPage() {
       {/* Akıllı giriş satırı */}
       <AkilliGiris mukellefler={mukellefler} varsayilanMukellefId={suzgec.mukellefId || undefined} onEkle={hizliEkle} />
 
-      {/* Görünüm sekmeleri + süzgeçler */}
-      <AracCubugu gorunum={gorunum} onGorunum={setGorunum} suzgec={suzgec} onSuzgec={setSuzgec} mukellefler={mukellefler} />
+      {/* Görünüm sekmeleri + süzgeçler — ayrı ton (Muzaffer Bey: "Ajanda/Kanban başlıklarının arka planı farklı olsun, ayırt edici") */}
+      <div className="rounded-xl px-3 py-2" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.11)' }}>
+        <AracCubugu gorunum={gorunum} onGorunum={setGorunum} suzgec={suzgec} onSuzgec={setSuzgec} mukellefler={mukellefler} />
+      </div>
 
       {/* İçerik */}
       {icerik()}

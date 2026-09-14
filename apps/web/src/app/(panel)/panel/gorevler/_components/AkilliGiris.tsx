@@ -3,7 +3,6 @@
 import { useMemo, useRef, useState, type ReactNode } from 'react';
 import { Building2, CalendarDays, ChevronDown, Clock, Flag, Loader2, Plus, Search, Sparkles, StickyNote, Tag, X } from 'lucide-react';
 import { CATEGORY_OPTIONS, PRIORITY_LABEL, PRIORITY_ORDER, gunEkle, kategoriEtiketi, type CreateTaskInput, type TaskPriority } from '@/lib/tasks';
-import { kahramanKartStili, seritStili } from '../../ekip/_components/ortak';
 import { AcilirMenu, MenuAyrac, MenuBaslik, MenuSatiri } from './AcilirMenu';
 import { ayristir, mukellefAdi, sadelestir, type MukellefSecenek } from './akilli-giris';
 import { GIRDI, GOLD, GOLD_SOFT, IKINCIL, METIN, NOT_RENK, SONUK, kisaTarih, vadeIso } from './ortak';
@@ -17,15 +16,6 @@ const CIP_SINIF = 'border border-white/[0.12] bg-white/[0.03] text-[#fafaf9]/70 
 const CIP_ACIK_SINIF = 'border border-[#d4b876]/70 bg-[#d4b876]/[0.08] text-[#fafaf9]/90';
 const CIP_BOS_SINIF = 'border border-dashed border-white/[0.22] bg-transparent text-[#fafaf9]/55 hover:border-[#d4b876]/60';
 const CIP_ADAY_SINIF = 'border border-dashed border-[#d4b876]/60 bg-[#d4b876]/[0.06] text-[#d4b876] hover:bg-[#d4b876]/[0.14]';
-
-/** Hızlı şablonlar: başlık + kategori + öncelik. Vade BOŞ bırakılır (kullanıcı çipten seçer). */
-const SABLONLAR: Array<{ ad: string; kategori: string; oncelik: TaskPriority }> = [
-  { ad: 'KDV kontrolü', kategori: 'KDV_KONTROL', oncelik: 'HIGH' },
-  { ad: 'Banka ekstresi iste', kategori: 'BANKA', oncelik: 'MEDIUM' },
-  { ad: 'Tahsilat araması', kategori: 'TAHSILAT', oncelik: 'HIGH' },
-  { ad: 'Evrak takibi', kategori: 'EVRAK', oncelik: 'MEDIUM' },
-  { ad: 'Beyanname hazırla', kategori: 'BEYANNAME', oncelik: 'HIGH' },
-];
 
 interface Elle {
   tarih?: string | null;
@@ -106,16 +96,12 @@ export function AkilliGiris({
     }
   };
 
-  const sablonUygula = (s: (typeof SABLONLAR)[number]) => {
-    setMetin(s.ad);
-    setElle((e) => ({ mukellefId: e.mukellefId, kategori: s.kategori, oncelik: s.oncelik, tarih: undefined, saat: undefined }));
-    setNotOlarak(false);
-    girdiRef.current?.focus();
-  };
-
   return (
-    <section className="relative overflow-hidden rounded-2xl" style={kahramanKartStili(GOLD)}>
-      <div className="h-1 w-full" style={seritStili(GOLD)} />
+    <section
+      className="relative overflow-hidden rounded-2xl"
+      // Giriş kutusu AYRI ton (Muzaffer Bey: "o kutunun renk tonunu farklı yap"): sıcak altın-kahve zemin + altın kenar
+      style={{ background: 'linear-gradient(180deg, rgba(212,184,118,0.14), rgba(212,184,118,0.06))', border: '1px solid rgba(212,184,118,0.34)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.05)' }}
+    >
       <div className="p-3.5 sm:p-4">
         {/* Giriş satırı */}
         <div className="flex items-center gap-2 rounded-xl px-3" style={{ background: 'rgba(0,0,0,0.28)', border: `1px solid ${dolu ? `${GOLD}55` : 'rgba(255,255,255,0.10)'}` }}>
@@ -254,23 +240,6 @@ export function AkilliGiris({
           </label>
         </div>
 
-        {/* Hızlı şablonlar */}
-        <div className="mt-3 flex min-w-0 flex-wrap items-center gap-1.5 border-t pt-2.5" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
-          <span className="mr-1 text-[10.5px] font-semibold uppercase tracking-[.08em]" style={{ color: IKINCIL }}>
-            Hızlı şablon
-          </span>
-          {SABLONLAR.map((s) => (
-            <button
-              key={s.ad}
-              type="button"
-              onClick={() => sablonUygula(s)}
-              title={`${s.ad} — ${kategoriEtiketi(s.kategori)} · ${PRIORITY_LABEL[s.oncelik]}; vadeyi çipten seçin`}
-              className={`inline-flex flex-shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2.5 py-[3px] text-[11px] font-medium transition ${CIP_SINIF}`}
-            >
-              <Plus size={10} /> {s.ad}
-            </button>
-          ))}
-        </div>
       </div>
     </section>
   );
