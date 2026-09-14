@@ -92,6 +92,7 @@ export class MorenOfisPendingActionsWorker {
         title: payload.proposedTitle || action.title,
         description: payload.proposedContent || action.summary,
         category: 'AI_REMINDER',
+        kaynak: 'AI',
         priority: 'MEDIUM',
         tags: ['ai-moren-ofis', payload.agent || 'unknown'],
         createdById: userId,

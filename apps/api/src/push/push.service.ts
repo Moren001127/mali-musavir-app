@@ -176,6 +176,8 @@ export class PushService implements OnModuleInit {
       if (!this.acikMi()) return;
       const tip = String(n.type ?? '');
       if (ATLANAN_TIPLER.has(tip) || this.envAtlananTipler().includes(tip)) return;
+      // Görev hatırlatması (2026-09-14): görevin kanal anahtarı telefon push'unu kapattıysa gönderme (metadata.kanallar.push=false).
+      if (n.metadata && typeof n.metadata === 'object' && n.metadata.kanallar && n.metadata.kanallar.push === false) return;
       if (this.tekrarMi(n)) return;
 
       const hedef: PushHedef = n.userId ? { userId: n.userId } : { tenantId: n.tenantId };

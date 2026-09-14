@@ -362,6 +362,7 @@ export class BankaTakipService {
           title: `${ad} - ${data.donem} banka ekstresi`,
           description: eksikler,
           category: 'BANKA',
+          kaynak: 'BANKA',
           priority: item.ozet.hesapSayisi === 0 ? 'HIGH' : 'MEDIUM',
           taxpayerId: item.taxpayer.id,
           createdById: userId,

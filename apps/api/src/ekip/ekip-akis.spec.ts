@@ -177,6 +177,9 @@ describe('vakaGrupla — gruplama + kutular', () => {
 });
 
 describe('EkipAkisService', () => {
+  // Servis gerçek saati okur (Date.now); fikstürler SIMDI'ye göre → saat sabitlenmezse ertesi gün 'gecikti' 2 çıkıyordu (2026-09-14).
+  beforeAll(() => jest.useFakeTimers({ now: SIMDI, doNotFake: ['nextTick', 'setImmediate', 'queueMicrotask'] }));
+  afterAll(() => jest.useRealTimers());
   function sahtePrisma(opts: { jsonSuzgecDusur?: boolean } = {}) {
     const cagrilar: any[] = [];
     const isler = [

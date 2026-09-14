@@ -76,6 +76,8 @@ export class OwnerNotifierService implements OnModuleInit {
     // WHATSAPP tipi: bot controller zaten kendi ozel formatiyla owner'a iletiyor
     // (mukellef/kayitsiz/owner bildirim akislari). Duplicate olmasin diye atlanir.
     if (n.type === 'WHATSAPP') return;
+    // Görev hatırlatması (2026-09-14): görevin kanal anahtarı WhatsApp'ı kapattıysa sahibe WhatsApp gitmez (metadata.kanallar).
+    if (n.metadata && typeof n.metadata === 'object' && (n.metadata as any).kanallar && (n.metadata as any).kanallar.whatsapp === false) return;
 
     // GALERI_HGS_OZET: borc ozeti metadata.message'taki hazir metinle, metadata.phones'taki
     // SABIT numaralara gonderilir (owner listesi DEGIL). Tip filtresinden once islenir.

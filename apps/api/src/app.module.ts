@@ -57,8 +57,8 @@ import { ReminderCron } from './schedule/reminder.cron';
 import { EvrakMesajService } from './schedule/evrak-mesaj.service';
 import { EvrakOtomasyonController } from './schedule/evrak-otomasyon.controller';
 import { HgsCron } from './schedule/hgs.cron';
-import { TaskReminderCron } from './schedule/task-reminder.cron';
 import { BeyannameDeadlineCron } from './schedule/beyanname-deadline.cron';
+import { VergiTakvimiTohumService } from './schedule/vergi-takvimi-tohum.service';
 import { InvoiceOverdueCron } from './schedule/invoice-overdue.cron';
 
 @Module({
@@ -123,8 +123,8 @@ import { InvoiceOverdueCron } from './schedule/invoice-overdue.cron';
     ReminderCron,
     EvrakMesajService,
     HgsCron,
-    TaskReminderCron,
     BeyannameDeadlineCron,
+    VergiTakvimiTohumService,
     InvoiceOverdueCron,
   ],
 })

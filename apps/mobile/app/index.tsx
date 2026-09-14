@@ -821,8 +821,9 @@ export default function IndexScreen() {
         }
       } else if (module === 'gorevler') {
         // Görevler & Notlar
-        const { data } = await api.get('/tasks', { params: { isTemplate: 'false', limit: 100 } });
-        const items: any[] = Array.isArray(data) ? data : data?.items || [];
+        // 2026-09-14: notlar (tur=NOT) ve iptal edilenler listeye girmez; şablonlar zaten dışarıda
+        const { data } = await api.get('/tasks', { params: { isTemplate: 'false', tur: 'GOREV', limit: 100 } });
+        const items: any[] = (Array.isArray(data) ? data : data?.items || []).filter((t: any) => t?.status !== 'CANCELLED');
         const bugun = new Date().toDateString();
         const list = items.map((t: any) => {
           const done = t.status === 'DONE' || t.done || t.completed;

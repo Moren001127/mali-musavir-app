@@ -3135,6 +3135,15 @@ model Task {
   notifyBrowser Boolean @default(true)
   notifySound   Boolean @default(false)
 
+  // Gorevler & Notlar yeniden tasarimi (2026-09-14, migration 20260914_gorevler_yeni_alanlar)
+  kaynak         String  @default("MANUEL") // MANUEL | WHATSAPP | BANKA | EKIP | AI | TAKVIM — kaydi kim acti
+  tur            String  @default("GOREV") // GOREV | NOT — not: vadesiz, sabitlenebilir
+  pinned         Boolean @default(false) // sabitlenmis not/gorev (liste basinda)
+  ekipIsId       String? // "Ekibe ver" ile acilan Koordinator kosusu (agent_commands.id)
+  notifyWhatsapp Boolean @default(true) // hatirlatma varsayilani: WhatsApp (motor Faz 2)
+  notifyPush     Boolean @default(true) // hatirlatma varsayilani: telefon push (motor Faz 2)
+  taxCalendarId  String? // vergi takviminden (tax_calendar.id) uretilen gorev
+
   // Durum
   status        TaskStatus @default(OPEN)
   completedAt   DateTime?
@@ -3202,11 +3211,13 @@ model TaskReminderLog {
   status       String // PENDING | SENT | FAILED | SKIPPED
   recipientId  String?
   errorMsg     String?
+  olayAnahtari String? // 2026-09-14 görev motoru: ONCEDEN|VADE|GECIKME:YYYY-MM-DD — aynı olay iki kez gitmez
   createdAt    DateTime  @default(now())
 
   task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
 
   @@index([taskId, status])
+  @@index([taskId, olayAnahtari])
   @@index([scheduledFor, status])
   @@map("task_reminder_logs")
 }

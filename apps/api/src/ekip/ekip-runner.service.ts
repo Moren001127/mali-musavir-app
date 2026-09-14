@@ -63,6 +63,8 @@ const BECERI_TAVAN_KR = 6 * 1024;
 const PROMPT_UYARI_KR = 50 * 1024; // 2026-09-13: hitap ("Muzaffer Bey") + rapor dili kuralları ile beyanname promptu ~46 KB
 /** ekip_ajan_baslat: arka plandaki koşunun iş dosyası kimliğini (baslangic olayı) bu kadar bekler. */
 const AJAN_BASLAT_ISID_BEKLEME_MS = 3000;
+/** Görevler "Ekibe ver" (2026-09-14): koşu bitince göreve düşen notta raporun en çok bu kadar karakteri. */
+const GOREV_NOTU_TAVAN = 600;
 
 /** Prisma cuid: 'c' + küçük harf/rakam (kdv-control/ocr/parsers/belge-no.ts ile aynı kalıp). */
 const CUID_KALIBI = /^c[a-z0-9]{20,31}$/;
@@ -110,6 +112,11 @@ export interface EkipCalistirParametreleri {
   ustIsId?: string | null;
   /** Vakadaki kaçıncı devir (kökte 0; Koordinatör koşuları devir sayılmaz). */
   devirSayisi?: number;
+  /**
+   * GÖREV BAĞI (2026-09-14, Görevler "Ekibe ver"): tasks.id. Payload'a yazılır; koşu bitince göreve TaskNote düşer
+   * (raporun ilk 600 karakteri + iş kimliği). Görev DURUMU değişmez — Muzaffer Bey kapatır.
+   */
+  gorevId?: string | null;
 }
 
 /** Durdurma nedeni — iş dosyasına yazılan hata metnini belirler. */
@@ -386,6 +393,8 @@ export class EkipRunnerService {
       vakaId: p.vakaId || null,
       ustIsId: p.ustIsId || null,
       devirSayisi: Number.isFinite(Number(p.devirSayisi)) ? Number(p.devirSayisi) : 0,
+      // Görevler "Ekibe ver" bağı (2026-09-14): koşu bitince bu göreve not düşer (gorevNotuDus)
+      gorevId: p.gorevId || null,
     };
     const row = await (this.prisma as any).agentCommand.create({
       data: {
@@ -414,6 +423,29 @@ export class EkipRunnerService {
     await (this.prisma as any).agentCommand
       .update({ where: { id: isId }, data: { status: durum, finishedAt: new Date(), result: sonuc } })
       .catch((e: any) => this.logger.warn(`iş dosyası kapatılamadı ${isId}: ${e?.message || e}`));
+  }
+
+  /**
+   * GÖREV NOTU (2026-09-14, Görevler "Ekibe ver"): koşu bitince tasks.id = p.gorevId görevine TaskNote düşer —
+   * raporun ilk 600 karakteri ("RAPOR:" sonrası; rapor zaten raporTemizle'den geçmiş) + iş kimliği; hata bitişinde hata metni.
+   * Not yazarı: koşuyu açan kullanıcı, yoksa görevi açan (task_notes.userId zorunlu). Görev bu tenant'ta yoksa yazılmaz.
+   * Görev DURUMUNA dokunulmaz; TasksService import edilmez (modül döngüsü yok) — Prisma ile doğrudan yazılır. Hata yutulur.
+   */
+  private async gorevNotuDus(p: EkipCalistirParametreleri, ajan: AjanTanimi, isId: string, rapor: string, hata: string | null, dryRun: boolean): Promise<void> {
+    try {
+      const gorev = await (this.prisma as any).task.findFirst({
+        where: { id: p.gorevId, tenantId: p.tenantId },
+        select: { id: true, createdById: true },
+      });
+      if (!gorev) return;
+      const userId = p.userId || gorev.createdById;
+      if (!userId) return;
+      const govde = hata ? `Koşu hata ile bitti: ${String(hata).slice(0, GOREV_NOTU_TAVAN)}` : raporOzeti(rapor, GOREV_NOTU_TAVAN);
+      const content = `Ekip raporu — ${ajan.ad} (${dryRun ? 'kuru test' : 'canlı'}, iş ${isId})\n${govde || '(rapor boş)'}`;
+      await (this.prisma as any).taskNote.create({ data: { taskId: gorev.id, userId, content } });
+    } catch (e: any) {
+      this.logger.warn(`görev notu düşülemedi ${p.gorevId} (iş ${isId}): ${e?.message || e}`);
+    }
   }
 
   /**
@@ -1228,6 +1260,8 @@ export class EkipRunnerService {
       costUsd,
       hata: hata || null,
     });
+    // Görevler "Ekibe ver" (2026-09-14): sonuç göreve NOT olarak düşer; görev durumu DEĞİŞMEZ (Muzaffer Bey kapatır).
+    if (p.gorevId) await this.gorevNotuDus(p, ajan, isId, sonuc.rapor, basarisiz ? hata || 'hata' : null, dryRun);
     await this.olayYaz(p, ajan.id, isId, basarisiz ? 'hata' : 'basarili', basarisiz ? hata! : gorev, {
       toolSayisi: toolUses.length,
       kuruTestSayisi: kuruTestYapilacaktilar.length,
@@ -1460,4 +1494,17 @@ export function raporTemizle(metin: string): string {
     .join('\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+}
+
+/**
+ * RAPOR ÖZETİ (Görevler "Ekibe ver" notu, 2026-09-14): "RAPOR:" başlığı varsa sonrası, yoksa metnin kendisi;
+ * temizlenmiş (raporTemizle) ve `tavan` karakterle kırpılmış (kırpılınca sonuna "…"). Boş → ''.
+ */
+export function raporOzeti(metin: string, tavan = GOREV_NOTU_TAVAN): string {
+  const t = raporTemizle(String(metin || ''));
+  if (!t) return '';
+  const i = t.search(/RAPOR\s*[*_`]*:/i);
+  const govde = (i >= 0 ? t.slice(i).replace(/^RAPOR\s*[*_`]*:\s*[*_`]*/i, '') : t).trim();
+  if (!govde) return '';
+  return govde.length > tavan ? `${govde.slice(0, tavan).trimEnd()}…` : govde;
 }

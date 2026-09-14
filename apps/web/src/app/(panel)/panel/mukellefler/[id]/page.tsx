@@ -47,6 +47,7 @@ import { beyanKayitlariApi, BEYAN_TIPI_LABEL, type BeyanKaydi } from '@/lib/beya
 import { documentsApi } from '@/lib/documents';
 import { portalAutomationApi, type PortalProvider, type PortalDocument } from '@/lib/portal-automation';
 import { DocumentCategory } from '@mali-musavir/shared';
+import { MukellefGorevleri } from './MukellefGorevleri';
 
 // Mükellef kartı tipografisi — Inter (onaylanan tasarım). Font globals/layout'taki
 // Google Fonts link'i ile yüklenir; burada yalnız bu sayfaya uygulanır.
@@ -731,7 +732,7 @@ export default function MukellefDetayPage() {
           {activeTab === 'iseGiris' && (
             <PlaceholderTab icon={UserCog} title="İşe Giriş Bildirgesi" description="İşe giriş ve işten çıkış bildirimleri için ayrılmış alan." comingSoon />
           )}
-          {activeTab === 'notlar' && <NotlarTab form={form} setForm={setForm} onSave={saveForm} saving={isPending} hasRecord={!isNew} />}
+          {activeTab === 'notlar' && <NotlarTab form={form} setForm={setForm} onSave={saveForm} saving={isPending} hasRecord={!isNew} taxpayerId={isNew ? null : id} />}
         </div>
       </section>
     </form>
@@ -1547,12 +1548,14 @@ function NotlarTab({
   onSave,
   saving,
   hasRecord,
+  taxpayerId,
 }: {
   form: FormState;
   setForm: React.Dispatch<React.SetStateAction<FormState>>;
   onSave: () => void;
   saving: boolean;
   hasRecord: boolean;
+  taxpayerId?: string | null;
 }) {
   return (
     <div className="space-y-3">
@@ -1567,6 +1570,8 @@ function NotlarTab({
         className={TEXTAREA_CLS}
       />
       <SectionSaveButton onSave={onSave} saving={saving} hasRecord={hasRecord} />
+      {/* 2026-09-14: Görevler & Notlar modülündeki bu mükellefe bağlı görev/notlar */}
+      {hasRecord && taxpayerId && <MukellefGorevleri taxpayerId={taxpayerId} />}
     </div>
   );
 }
