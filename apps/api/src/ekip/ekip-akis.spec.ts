@@ -9,7 +9,8 @@
  *  - gecikti: kutu ≠ bitti ve 24 saattir güncellenmemiş; sayaçlar; özet satırı
  *  - EkipAkisService: akis süzgeç/sayaç ayrımı, bildirim JSON süzgeci düşünce bellekte süzme, istekKapat
  *  - runner: kök vakaId = kendi id; ekip_ajan_baslat çocuk vakaId/ustIsId/devirSayisi; 3. devir reddi + bildirim
- *  - dispatcher.createPendingAction: ekip yolunda metadata tur/vakaId/isId/ajanId/taxpayerId; otomasyon yolunda değişmez
+ *  - dispatcher.createPendingAction: ekip yolunda metadata tur/vakaId/isId/ajanId/taxpayerId; tur yok/enum dışı → 'bilgi' (PLAN/19 H2-b);
+ *    otomasyon yolunda değişmez
  * DB / Agent SDK yok (sahte).
  */
 import {
@@ -64,6 +65,10 @@ describe('bildirimTuru / konuBasligi / automationIdIsId', () => {
     expect(konuBasligi('İŞ ATAMASI → beyanname: R1 FAMCOFFEE 2026/08 kuru\nikinci satır')).toBe('beyanname: R1 FAMCOFFEE 2026/08 kuru');
     expect(konuBasligi('**Erdoğan Balçık KDV kontrolü**')).toBe('Erdoğan Balçık KDV kontrolü');
     expect(konuBasligi('a'.repeat(100))).toHaveLength(80);
+    // Sesli görev: bağlam satırları değil, SORU/KOMUT satırı konu olur (PLAN/19)
+    expect(konuBasligi('Muzaffer Bey canlı ses üzerinden konuşuyor; cevabın sesli okunacak.\nAktif portal ekranı: /panel.\n\nSORU/KOMUT: Öz Ela Turizm son 2 tebligat nedir?')).toBe(
+      'Öz Ela Turizm son 2 tebligat nedir?',
+    );
     expect(konuBasligi('')).toBe('');
   });
   it('automationId ekip:<ajan>:<isId> → isId', () => {
@@ -433,7 +438,13 @@ describe('ActionDispatcherService.createPendingAction — tur + vaka metadata', 
     expect(olusturulan[1].metadata).toMatchObject({ tur: 'bilgi', taxpayerId: 'txArg' });
     r = await d.dispatch('create_pending_action', { title: 'x', body: 'b', tur: 'uydurma', dedupeKey: 'ekip:devir:v1', gecikme: 'devir' }, { ...ctx, vakaId: null });
     expect(olusturulan[2]).toMatchObject({ dedupeKey: 'ekip:devir:v1', dedupeWindowMin: 60 });
-    expect(olusturulan[2].metadata).toMatchObject({ tur: 'onay', vakaId: 'is1', gecikme: 'devir' });
+    // PLAN/19 H2-b (2026-09-14): enum dışı / verilmemiş tür → 'bilgi' (eskiden 'onay': tür yazılmayan her not sahte onay maddesi oluyordu)
+    expect(olusturulan[2].metadata).toMatchObject({ tur: 'bilgi', vakaId: 'is1', gecikme: 'devir' });
+    await d.dispatch('create_pending_action', { title: 'Sabah özeti hazırlandı', body: 'b' }, ctx);
+    expect(olusturulan[3].metadata).toMatchObject({ tur: 'bilgi' });
+    // 'onay' yalnız ajan açıkça yazınca
+    await d.dispatch('create_pending_action', { title: 'Hesap kararı', body: 'b', tur: 'onay' }, ctx);
+    expect(olusturulan[4].metadata).toMatchObject({ tur: 'onay' });
   });
 
   it('otomasyon yolu (ctx.isId yok): metadata eskisi gibi, tur yok', async () => {

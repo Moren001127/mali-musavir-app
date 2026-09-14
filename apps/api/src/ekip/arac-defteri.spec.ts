@@ -250,7 +250,12 @@ describe('ajan-tanimlari', () => {
 // ─── FATURA MERKEZİ AJAN ARAÇLARI (fm_*) + Mihsap'ın ekipten çıkışı (PLAN/15 Faz 5) ───
 describe('fm_* araçları ve Mihsap kapanışı (PLAN/15 Faz 5)', () => {
   const FM_OKU = ['fm_belge_listele', 'fm_belge_detay', 'fm_donem_ozeti', 'fm_uyumsuzluklar', 'fm_hesap_plani_ara'];
-  const FM_PORTAL_YAZ = ['fm_hesap_ata', 'fm_ai_ile_oku', 'fm_isaretle', 'fm_onayla'];
+  // PLAN/19 H7 (2026-09-14): hesap_ata / ai_ile_oku / isaretle portal_yaz → portal_yaz_agir — kuru test pilotunda
+  // fm_ai_ile_oku Max kotası harcıyor, fm_hesap_ata / fm_isaretle belgeye gerçek yazıyordu. fm_onayla portal_yaz kaldı (zaten ekibe kapalı).
+  const FM_PORTAL_YAZ_AGIR = ['fm_hesap_ata', 'fm_ai_ile_oku', 'fm_isaretle'];
+  const FM_PORTAL_YAZ = [...FM_PORTAL_YAZ_AGIR, 'fm_onayla'];
+  /** Koordinatöre açılan fm OKUMA araçları (PLAN/19 H3, 2026-09-14) — yazan fm araçları yine yalnız fatura ajanında. */
+  const KOORDINATOR_FM_OKU = ['fm_donem_ozeti', 'fm_uyumsuzluklar'];
   /** Fatura ajanından çıkarılan Mihsap dönemi araçları — hiçbirine geri dönmemeli. */
   const MIHSAP_ARACLARI = [
     'list_invoices', 'fetch_invoices_for_period', 'extract_invoice_fields', 'ocr_pdf', 'classify_with_claude',
@@ -271,21 +276,23 @@ describe('fm_* araçları ve Mihsap kapanışı (PLAN/15 Faz 5)', () => {
     expect(aracKaydi('fm_hesap_ata')?.parametreler).toEqual(['belgeId*', 'satir', 'hesapKodu', 'kayitTuruKod', 'kayitAltKod', 'gerekce*']);
   });
 
-  it('kademeler: okuma=oku, hesap_ata/ai_ile_oku/isaretle/onayla=portal_yaz, luca_gonder=luca_yaz', () => {
-    for (const ad of FM_OKU) expect(aracKademesi(ad)).toBe('oku');
-    for (const ad of FM_PORTAL_YAZ) expect(aracKademesi(ad)).toBe('portal_yaz');
+  it('kademeler: okuma=oku, hesap_ata/ai_ile_oku/isaretle=portal_yaz_agir (PLAN/19 H7), onayla=portal_yaz, luca_gonder=luca_yaz', () => {
+    for (const ad of FM_OKU) expect({ ad, kademe: aracKademesi(ad) }).toEqual({ ad, kademe: 'oku' });
+    for (const ad of FM_PORTAL_YAZ_AGIR) expect({ ad, kademe: aracKademesi(ad) }).toEqual({ ad, kademe: 'portal_yaz_agir' });
+    expect(aracKademesi('fm_onayla')).toBe('portal_yaz');
     expect(aracKademesi('fm_luca_gonder')).toBe('luca_yaz');
   });
 
-  it('kuru test: fm okuma + portal_yaz açık, fm_luca_gonder kapalı (kuru_test); canlıda açık', () => {
+  it('kuru test: fm okuma açık; hesap_ata/ai_ile_oku/isaretle KAPALI (kuru_test, "yapılacaktı"); fm_luca_gonder kapalı; canlıda hepsi açık', () => {
     const fatura = ajanBul('fatura')!;
-    for (const ad of [...FM_OKU, 'fm_hesap_ata', 'fm_ai_ile_oku', 'fm_isaretle']) {
-      expect(aracAcikMi(fatura, ad, true).acik).toBe(true);
+    for (const ad of FM_OKU) expect({ ad, acik: aracAcikMi(fatura, ad, true).acik }).toEqual({ ad, acik: true });
+    // PLAN/19 H7 (2026-09-14): eskiden kuru testte de çalışıyordu (Max kotası / gerçek yazma) — artık kesilir.
+    for (const ad of [...FM_PORTAL_YAZ_AGIR, 'fm_luca_gonder']) {
+      const kuru = aracAcikMi(fatura, ad, true);
+      expect({ ad, acik: kuru.acik, neden: kuru.neden }).toEqual({ ad, acik: false, neden: 'kuru_test' });
+      expect(kuru.mesaj).toMatch(/yapılacaktı/);
+      expect({ ad, canli: aracAcikMi(fatura, ad, false).acik }).toEqual({ ad, canli: true });
     }
-    const kuru = aracAcikMi(fatura, 'fm_luca_gonder', true);
-    expect(kuru.acik).toBe(false);
-    expect(kuru.neden).toBe('kuru_test');
-    expect(aracAcikMi(fatura, 'fm_luca_gonder', false).acik).toBe(true);
   });
 
   it('fatura ajanı: fm okuma + yazma + fm_luca_gonder listede; fm_onayla YOK; Luca yazma (luca_yaz/luca_sec/luca_tikla) YOK', () => {
@@ -312,12 +319,33 @@ describe('fm_* araçları ve Mihsap kapanışı (PLAN/15 Faz 5)', () => {
     }
   });
 
-  it('fm_* fatura ajanı dışındaki ajanlara açılmadı (koordinatör/denetçi dahil)', () => {
+  it('fm_* fatura ajanı dışında yalnız koordinatörde ve yalnız OKUMA (fm_donem_ozeti, fm_uyumsuzluklar — PLAN/19 H3); yazan fm araçları başka ajana açılmadı', () => {
     for (const ajan of AJAN_TANIMLARI) {
       if (ajan.id === 'fatura') continue;
-      const fm = ajan.araclar.filter((ad) => ad.startsWith('fm_'));
-      expect({ ajan: ajan.id, fm }).toEqual({ ajan: ajan.id, fm: [] });
+      const fm = ajan.araclar.filter((ad) => ad.startsWith('fm_')).sort();
+      // PLAN/19 H3 (2026-09-14): Koordinatör sabah özeti / soru için Fatura Merkezi ÖZETİNİ kendi okur; yazma yine yalnız fatura.
+      expect({ ajan: ajan.id, fm }).toEqual({ ajan: ajan.id, fm: ajan.id === 'koordinator' ? [...KOORDINATOR_FM_OKU].sort() : [] });
     }
+    for (const ad of KOORDINATOR_FM_OKU) expect({ ad, kademe: aracKademesi(ad) }).toEqual({ ad, kademe: 'oku' });
+  });
+
+  // PLAN/19 H3 (2026-09-14): Koordinatörün kendi okuyabildiği araçlar — hepsi 'oku', kuru testte de açık.
+  it('koordinatör PLAN/19 okuma araçlarına sahip; hepsi oku kademesi ve kuru testte açık; 5 ajana get_tax_calendar eklendi', () => {
+    const k = ajanBul('koordinator')!;
+    const yeni = [
+      'list_etebligat', 'list_tax_payable', 'get_cari_hareketler', 'get_bank_status', 'list_fatura_merkezi', 'fm_donem_ozeti',
+      'fm_uyumsuzluklar', 'list_earsiv_invoices', 'list_documents', 'list_sgk_declarations', 'get_isletme_hesap_ozeti',
+      'mali_yorum_oku', 'list_edefter_sessions', 'get_accounting_reference',
+    ];
+    expect(k.araclar).toEqual(expect.arrayContaining(yeni));
+    for (const ad of yeni) {
+      expect({ ad, kademe: aracKademesi(ad) }).toEqual({ ad, kademe: 'oku' });
+      expect({ ad, acik: aracAcikMi(k, ad, true).acik }).toEqual({ ad, acik: true });
+    }
+    for (const id of ['fatura', 'banka-kasa', 'luca-operator', 'denetci', 'risk']) {
+      expect({ id, takvim: ajanBul(id)!.araclar.includes('get_tax_calendar') }).toEqual({ id, takvim: true });
+    }
+    expect(aracKademesi('get_tax_calendar')).toBe('oku');
   });
 
   it('ekipMihsapKomutuYasagi: mihsap* ajanı ya da isle_* eylemi ekipte reddedilir; Luca/diğer komutlar ve başka araçlar serbest', () => {

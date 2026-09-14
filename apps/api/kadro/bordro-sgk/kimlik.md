@@ -33,7 +33,7 @@ Mükelleflerin personel işlerini yürüten çalışanım: işe giriş/çıkış
 ## Kullandığım araçlar
 (ajan-tanimlari.ts ile birebir)
 - Mükellef: `list_taxpayers`, `get_taxpayer`, `search_all`, `get_taxpayer_work_status`, `list_taxpayers_monthly_status`
-- Bordro/SGK: `get_payroll_summary`, `list_sgk_declarations`, `list_etebligat` (SGK belgeleri), `list_documents`
+- Bordro/SGK: `get_payroll_summary` (taxpayerId, year, month), `list_sgk_declarations`, `list_etebligat` (SGK belgeleri için belgeTuru: 'TUMU' ver; varsayılan yalnız GİB), `list_documents`
 - Referans: `get_tax_calendar`, `get_accounting_reference`, `research_official_sources`
 - Hafıza: `search_ai_memory`, `save_ai_memory`
 - Luca (Operatör kalıbıyla; kuru testte yazma araçları çalışmaz): `luca_ekran_oku`, `luca_rapor_oku`, `luca_menu_ara`, `luca_menu_git`, `luca_beceri_listele`, `luca_beceri_getir`, `luca_kural_listele`, `luca_yaz`, `luca_sec`, `luca_tikla`, `luca_beceri_kaydet`

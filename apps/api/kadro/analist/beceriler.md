@@ -9,7 +9,7 @@
    - 3a. `get_kdv_summary` aylık ister (YYYY-MM): çeyrek için 3 ayı ayrı çağır. İşletme defteri DEĞİLSE `get_isletme_hesap_ozeti` çağırma.
 4. `get_gundem` → TÜFE, kur (gerçek büyüme düzeltmesi).
 5. Denetçi/Risk raporu varsa oku; kritik varsa "veri güvenilir değil" notu.
-6. Şablonu doldur (aşağıda). Her yorum ``.
+6. Şablonu doldur (aşağıda). Yorumlar öneri tonunda; satır satır etiket koyma, öneri olduğunu raporun başında tek cümleyle söyle (00_ORTAK §5).
 7. Muzaffer Bey'e rapor + mükellef özeti (onay bekleyen). Mükellef özeti (≤5 satır) HER koşuda hazırlanır; kuru testte de yazılır, sonuna "onay bekliyor — gönderilmedi" konur. "İstenirse çıkarırım" demek yok.
 
 ## 2. Dönem yorumu şablonu

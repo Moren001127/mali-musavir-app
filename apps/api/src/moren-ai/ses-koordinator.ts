@@ -83,13 +83,52 @@ export function sesIcinSadelestir(text: string): string {
 }
 
 /**
+ * "ÖĞRENDİM:" / "Öğrendiklerim:" başlığı — büyük/küçük harf, baştaki madde imi (-, •, 1.), kalın (**) ve başlık (#)
+ * işaretleri fark etmez. İki nokta sonrası gövde m[1]'e düşer (boşsa dersler alt maddelerde demektir).
+ * İki nokta yoksa yalnız ÇIPLAK başlık ("### ÖĞRENDİM", "**Öğrendiklerim**") yakalanır; "Öğrendim ki …" cümlesi ders değildir.
+ * Runner'ın ogrenilenleriAyikla kalıbıyla aynı iki biçim (PLAN/19 H2-c, 2026-09-14).
+ */
+const OGRENME_BASLIGI = /^[ÖO][ĞG]REND[İI](?:M|KLER[İI]M)\s*[*_`]*\s*(?::\s*[*_`]*\s*(.*)|)$/i;
+const MADDE_IMI = /^\s*(?:[-*•]|\d+[.)])\s+/;
+
+/**
+ * Öğrenme satırlarını süzer (Muzaffer Bey'e giden / sesli okunan metne ders satırı karışmasın — PLAN/19 H2-c):
+ *  - "ÖĞRENDİM: …", "**Öğrendiklerim:** …", "- ÖĞRENDİM: …", "### ÖĞRENDİM: …" satırları düşer;
+ *  - başlık tek başına yazıldıysa ("Öğrendiklerim:" / "### ÖĞRENDİM" + alt maddeler) altındaki madde satırları da düşer;
+ *    madde olmayan ilk dolu satır başlığı kapatır ve korunur.
+ */
+export function ogrenmeSatirlariniSuz(satirlar: string[]): string[] {
+  const out: string[] = [];
+  let baslikAltinda = false;
+  for (const ham of satirlar) {
+    const satir = String(ham ?? '');
+    const soyulmus = satir.replace(/^[\s*_`#>\-•]+/, '').replace(/^\d+[.)]\s+/, '');
+    const m = soyulmus.match(OGRENME_BASLIGI);
+    if (m) {
+      baslikAltinda = !String(m[1] || '').replace(/[*_`\s]+/g, '').length;
+      continue;
+    }
+    if (baslikAltinda) {
+      if (!satir.trim()) {
+        out.push(satir); // boş satır başlığı kapatmaz (runner ile aynı)
+        continue;
+      }
+      if (MADDE_IMI.test(satir)) continue; // başlığın altındaki madde = ders satırı
+      baslikAltinda = false;
+    }
+    out.push(satir);
+  }
+  return out;
+}
+
+/**
  * Ajan cevabından sesli okunacak kısmı çıkarır:
- * - "RAPOR:" varsa ondan sonrası (SORU: dahil), "ÖĞRENDİM:" satırları atılır.
- * - "RAPOR:" yoksa tüm metin (ÖĞRENDİM satırları yine atılır).
+ * - "RAPOR:" varsa ondan sonrası (SORU: dahil), "ÖĞRENDİM:" / "Öğrendiklerim:" satırları atılır (ogrenmeSatirlariniSuz).
+ * - "RAPOR:" yoksa tüm metin (öğrenme satırları yine atılır).
  */
 export function raporMetniAyikla(rapor: string): { rapor: string; soru: string } {
   const ham = String(rapor || '').replace(/\r/g, '');
-  const satirlar = ham.split('\n').filter((s) => !/^\s*[-*•]?\s*ÖĞRENDİM\s*:/i.test(s));
+  const satirlar = ogrenmeSatirlariniSuz(ham.split('\n'));
   const metin = satirlar.join('\n');
   // "RAPOR:", "**RAPOR:**", "**RAPOR**:" biçimlerinin hepsi.
   const raporIdx = metin.search(/(^|\n)\s*(\*\*)?RAPOR\s*(\*\*)?\s*:/i);

@@ -5,7 +5,7 @@ Not (PLAN/17 §5): bordro verisi portalda henüz 0 → get_payroll_summary boş 
 Adım satırı: n) yap — araç — kademe — bekleme — başarı — hata.
 
 ## S1 — Aylık bordro özeti + APHB kontrolü (mevcut iş)
-1) Bordro özeti — get_payroll_summary {taxpayerId, donem} — oku — senkron — çalışan sayısı, brüt/net, SGK — boş → "HAZIR DEĞİL: bordro modülü kapalı" DUR.
+1) Bordro özeti — get_payroll_summary {taxpayerId, year, month} (ay 1-12; 'donem' alanı YOK) — oku — senkron — çalışan sayısı, brüt/net, SGK — boş → "HAZIR DEĞİL: bordro modülü kapalı" DUR.
 2) Geçen ayla kıyas; yıl değerleri — get_accounting_reference — oku — senkron — fark nedeni (giriş/çıkış/zam/eksik gün) — bulunamıyorsa tek soru.
 3) APHB taslağı ↔ bordro — list_sgk_declarations — oku — senkron — gün/prim/teşvik farkları satır satır — fark yoksa "APHB hazır, gönderim Muzaffer Bey'de".
 4) Muhtasar özeti → Beyanname Uzmanı'na DEVİR (çalışan sayısı, brüt, ücret matrahı, stopaj, damga, SGK işçi/işveren) + kayıt — create_pending_action — portal_yaz — — — DEVİR kaydı — "KAYDEDİLEMEDİ:".
@@ -17,4 +17,4 @@ Rapor: BORDRO — <Mükellef> <YYYY-MM> / çalışan · brüt · net · SGK / AP
 3) Bildirge taslağı (Luca/SGK ekranı kuru test) + "Onayınızı bekleyen" "işe giriş/çıkış bildirgesi / <mükellef> — <çalışan> / – / son gün, Muzaffer Bey gönderecek" — create_pending_action — portal_yaz — — — pending id — "KAYDEDİLEMEDİ:".
 
 ## S3 — SGK tebligat/borç uyarısı (mevcut iş)
-1) list_etebligat (SGK belgeleri) — oku — yeni gelen var mı. 2) Başlık, dönem, tutar, son gün → "Onayınızı bekleyen" yüksek öncelik — create_pending_action — portal_yaz. Kime döndü: Koordinatör → Muzaffer Bey.
+1) list_etebligat {taxpayerId, belgeTuru: 'TUMU'} (varsayılan yalnız GİB e-tebligat; SGK belgeleri için TUMU şart) — oku — yeni gelen var mı. 2) Başlık, dönem, tutar, son gün → "Onayınızı bekleyen" yüksek öncelik — create_pending_action — portal_yaz. Kime döndü: Koordinatör → Muzaffer Bey.

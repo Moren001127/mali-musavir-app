@@ -37,7 +37,7 @@ Tetik: "KDV beyannamesini hazırla", "ödenecek çıkar mı", "KDV1 rakamları".
 3) Devreden KDV kaynağı önceki KDV1 PDF mi — list_beyan_kayitlari — oku — — — kaynak belli — "hesaplanan" ise "Onayınızı bekleyen"'e "devreden teyit" maddesi.
 4) Luca mizan çaprazı gerekiyorsa iş aç (KDV Kontrol oturumuna satır YAZMAZ) — fetch_kdv_from_luca → luca_is_bekle — luca_yaz — asenkron — done — failed → paket Luca çaprazı olmadan; kuru test → "yapılacaktı".
 5) Tahakkuk fişi taslağı: 391 B / 191 A; fark 360 (ödeme çıkarsa) ya da 190 (çıkmazsa); Kaydet BASMA — luca_menu_git → luca_yaz → luca_ekran_oku — luca_yaz — senkron — ekran özeti — Luca kapalı → "fiş elle".
-6) "Beyanname hazır" kutusu (yalnız paket temizse), son gün, onay kaydı — set_monthly_status → get_tax_calendar → create_pending_action — portal_yaz — — — pending id — "KAYDEDİLEMEDİ:".
+6) Son gün + onay kaydı — get_tax_calendar → create_pending_action — portal_yaz — — — pending id — "KAYDEDİLEMEDİ:". "Beyanname hazır" kutusu (set_monthly_status): kuru testte ve Muzaffer Bey açıkça istemeden İŞARETLEME; paket temizse raporda "işaretlenmeye hazır" diye öner.
 Muzaffer Bey: fiş Kaydet (luca_tikla confirmed=true), GİB gönderimi, devreden teyidi.
 Rapor: KDV1 PAKETİ — <Mükellef> <YYYY-MM> / hesaplanan · indirilecek · devreden (kaynak) · ödenecek|sonraki aya devreden / veri güveni / Luca çaprazı (var|yok|yapılacaktı) / Tahakkuk fişi taslağı (kuru test) / Gönderime hazır: EVET|HAYIR (neden) / "Onayınızı bekleyen" / Kime döndü: Muzaffer Bey.
 

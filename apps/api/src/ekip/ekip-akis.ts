@@ -176,12 +176,20 @@ function bildirimAjani(b: AkisBildirim): string | null {
   return m ? m[1] : null;
 }
 
-/** Kök görev metninin ilk satırı (≤80 kr); "İŞ ATAMASI → …" ise ok işaretinden sonrası. */
+/**
+ * Kök görev metninin ilk satırı (≤80 kr); "İŞ ATAMASI → …" ise ok işaretinden sonrası.
+ * Sesli/WhatsApp görevlerinde (sesGoreviOlustur) asıl istek "SORU/KOMUT:" satırındadır; bağlam satırları ("Muzaffer Bey canlı ses
+ * üzerinden konuşuyor…") konu olarak gösterilmez (PLAN/19 A, 2026-09-14).
+ */
 export function konuBasligi(gorev: any, tavan = 80): string {
-  let s = String(gorev || '')
-    .split(/\r?\n/)
-    .map((x) => x.trim())
-    .find((x) => x.length > 0) || '';
+  const metin = String(gorev || '');
+  const soru = metin.match(/^\s*SORU\/KOMUT\s*:\s*(.+)$/im);
+  let s = soru
+    ? soru[1].trim()
+    : metin
+        .split(/\r?\n/)
+        .map((x) => x.trim())
+        .find((x) => x.length > 0) || '';
   const m = s.match(/^İŞ ATAMASI\s*(?:→|->)\s*(.*)$/i);
   if (m) s = m[1].trim();
   s = s.replace(/^[\s*_`#>\-•]+/, '').replace(/\*\*|`/g, '').trim();

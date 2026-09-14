@@ -104,6 +104,12 @@ export const AJAN_TANIMLARI: AjanTanimi[] = [
       // get_mihsap_agent_jobs ÇIKARILDI (PLAN/15 Faz 5): fatura işi Fatura Merkezi'nden izlenir (get_taxpayer_work_status.veri.faturaMerkezi).
       'list_beyan_kayitlari', 'get_beyan_ozet', 'get_kdv1_on_hazirlik', 'get_luca_agent_jobs', 'get_portal_capability_map',
       'search_ai_memory', 'save_ai_memory', ...ONAY, 'create_pending_action',
+      // PLAN/19 H3 (2026-09-14): Koordinatör sorulan şeyi ajan başlatmadan KENDİ okuyabilsin — hepsi 'oku' kademesi
+      // (tebligat, vergi borcu, cari/banka, Fatura Merkezi özeti, e-Arşiv, evrak, SGK, işletme özeti, mali yorum,
+      // e-defter oturumları, hesap referansı). fm_donem_ozeti / fm_uyumsuzluklar yalnız OKUR; fm yazma araçları hâlâ yalnız fatura ajanında.
+      'list_etebligat', 'list_tax_payable', 'get_cari_hareketler', 'get_bank_status', 'list_fatura_merkezi', 'fm_donem_ozeti',
+      'fm_uyumsuzluklar', 'list_earsiv_invoices', 'list_documents', 'list_sgk_declarations', 'get_isletme_hesap_ozeti',
+      'mali_yorum_oku', 'list_edefter_sessions', 'get_accounting_reference',
     ],
     onayNoktalari: ['Muzaffer Bey’e giden özet dışında dışarıya mesaj', 'Bir ajanı canlı (kuru test dışı) çalıştırma'],
     tetikler: ['cron 08:30 sabah özeti (koordinator.service.ts; EKIP_SABAH_OZETI=on)', 'Muzaffer Bey komutu (portal/ses)', 'olay (çalışan raporu/onay/hata) — planlandı'],
@@ -130,6 +136,8 @@ export const AJAN_TANIMLARI: AjanTanimi[] = [
       'luca_is_bekle',
       'list_fatura_merkezi', 'list_earsiv_invoices', 'get_kdv_summary', ...LUCA_OKU,
       'create_pending_action', ...ONAY,
+      // PLAN/19 H3 (2026-09-14): dönem son günü / beyanname takvimi sorusunda kendi baksın (oku).
+      'get_tax_calendar',
     ],
     onayNoktalari: ['Belge onayı: ajan ASLA — Muzaffer Bey portaldan onaylar (fm_onayla listede yok)', "Luca'ya gönderim (kuru test → Muzaffer Bey 'canlı' → fm_luca_gonder)", 'Demirbaş / tevkifat şüpheli / mükerrer kararı'],
     tetikler: ['Muzaffer Bey komutu / Koordinatör görev metni (portal)', 'evrak yüklendi olayı — planlandı', 'entegratör çekimi bitti olayı — planlandı'],
@@ -147,6 +155,8 @@ export const AJAN_TANIMLARI: AjanTanimi[] = [
       // Pilot (banka-kasa, 2026-09-12): get_mizan "ajana kapalı" döndü; kasa/banka/ortak cari kontrolü (100/102/131/331) mizandan yapılır.
       'get_mizan', 'list_mizan_periods',
       'search_ai_memory', 'save_ai_memory', 'create_pending_action', 'send_whatsapp_template', 'send_whatsapp_freeform', 'send_sms', ...ONAY,
+      // PLAN/19 H3 (2026-09-14): ödeme vadesi / dönem takvimi (oku).
+      'get_tax_calendar',
     ],
     onayNoktalari: ['Mükellefe tahsilat/mutabakat mesajı'],
     tetikler: ['Muzaffer Bey komutu / Koordinatör görev metni (portal)', 'banka ekstresi geldi olayı — planlandı', 'ayın 5 (tahsilat) / 25 (ekstre eksik) taraması — planlandı'],
@@ -217,6 +227,8 @@ export const AJAN_TANIMLARI: AjanTanimi[] = [
       // Portal yalnız OKUMA (kurallar.md KURAL 2: portala yazma yok). Mizan gerekiyorsa portaldakini oku, çekim tarihini söyle.
       'list_taxpayers', 'get_taxpayer', 'get_mizan', 'list_mizan_periods', 'get_accounting_reference',
       'get_luca_agent_jobs', 'get_agent_status', 'search_ai_memory',
+      // PLAN/19 H3 (2026-09-14): beyanname/dönem takvimi (yalnız okuma; portal yazma kuralı değişmedi).
+      'get_tax_calendar',
       // PLAN/17 §4 (2026-09-13): tek portal yazma istisnası — DEVİR CEVABI / "Kime döndü" kaydı (portal işi gelirse
       // Beyanname/Analist/Fatura'ya geri verir). Başka portal yazma yine YOK.
       'create_pending_action',
@@ -240,6 +252,8 @@ export const AJAN_TANIMLARI: AjanTanimi[] = [
       'luca_is_bekle',
       // Yalnız Luca OKUR (luca_yaz/luca_sec/luca_tikla YOK): fiş listesi/mizan çekimi Luca Operatörü'ne paketle istenir.
       ...LUCA_OKU, 'create_pending_action', ...ONAY,
+      // PLAN/19 H3 (2026-09-14): geçici vergi / dönem son günü takvimi (oku).
+      'get_tax_calendar',
     ],
     onayNoktalari: ['Muzaffer Bey’e uyarı raporu (portal içi — serbest)', 'Mükellefe iletim: onaylı'],
     tetikler: ['Muzaffer Bey komutu / Koordinatör görev metni (portal)', 'geçici vergi öncesi (dönem son günü −10) — planlandı', 'yıl sonu (Ocak) — planlandı'],
@@ -294,6 +308,8 @@ export const AJAN_TANIMLARI: AjanTanimi[] = [
       ...MUKELLEF_OKU, ...HAFIZA, ...MALI_OKU, 'get_kdv_summary', 'list_beyan_kayitlari', 'get_beyan_ozet', 'get_cari_hareketler',
       'list_earsiv_invoices', // nakit satış oranı: SATIS e-arşiv + cari ödeme yöntemi dağılımı
       'get_collection_risk_summary', 'create_pending_action',
+      // PLAN/19 H3 (2026-09-14): beyan/ödeme takvimi (oku).
+      'get_tax_calendar',
     ],
     onayNoktalari: ['Risk puanının mükellefe iletimi'],
     tetikler: ['Muzaffer Bey komutu / Koordinatör görev metni (portal)', 'aylık (KDV beyanı sonrası) / çeyreklik tam kart — planlandı'],

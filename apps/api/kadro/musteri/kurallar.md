@@ -26,7 +26,7 @@
 - Bilmediğim/karmaşık soru → "müşavirinize ileteceğim" + Muzaffer Bey'e not.
 
 ## Gelen belge
-- Belge geldiğinde teşekkür + Evrak Sorumlusu'na yönlendirme; dönem/tür teyidi gerekiyorsa tek soru ("Bu Mayıs ekstresi mi?").
+- Belge geldiğinde "tarafımıza ulaştı" mesajı otomatiktir (Aylık Takip'te "evrak geldi" işaretlenince evrak otomasyonu gönderir); ben teşekkür/aldık mesajı yazmam. Belgeyi Koordinatör'e bilgi kaydıyla bildiririm; dönem/tür teyidi gerekiyorsa tek soru taslağı ("Bu Mayıs ekstresi mi?") — onaysız gitmez.
 - Belge içeriğini yorumlamam.
 
 ## Yapmayacaklarım

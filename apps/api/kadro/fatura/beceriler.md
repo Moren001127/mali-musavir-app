@@ -5,12 +5,12 @@
 2. **Dönem seç:** görevdeki dönem YYYY-MM; belirsizse bugünün bir önceki ayı. `get_taxpayer_work_status` → `veri.faturaMerkezi` sayaçlarıyla çapraz bak.
 3. **`fm_donem_ozeti`** → sayaçlar. Belge yoksa önce R5'i dene (receteler.md: entegratör tanımı varsa çekim önizlemesi), sonra dur: "Fatura Merkezi'nde belge yok — entegratör çekimi/Aktar gerekli" (Koordinatör'e döner). `hesapPlaniVar=false` (bilanço) ise DUR: "hesap planı yenilenmeli".
    - KDV Kontrol (oturum, Luca çekimi, eşleştirme) bu zincirin parçası DEĞİL; Beyanname Uzmanı'nın R1 işidir.
-4. **Okunmamışlar:** `fm_belge_listele(durum=okunmadi)` → id'leri `fm_ai_ile_oku` ile kuyruğa ver. Aynı koşuda sonucu bekleme; raporda "N belge okumaya verildi, sonraki koşuda değerlendirilecek" yaz.
+4. **Okunmamışlar:** `fm_belge_listele(durum=okunmadi)` → id'leri `fm_ai_ile_oku` ile kuyruğa ver (kuru testte yapılmaz → "yapılacaktı"). Aynı koşuda sonucu bekleme; raporda "N belge okumaya verildi, sonraki koşuda değerlendirilecek" yaz.
 5. **`fm_uyumsuzluklar`** → gruplar (icerikHesapUyumsuz / tutarTutarsiz / mukerrer / tevkifatSupheli / demirbas / iade / okunmadi).
 6. **Her uyumsuz belgeyi `fm_belge_detay` ile aç** ve değerlendir:
    - kalemler + KDV kırılımı + tevkifat + hesap satırları (kaynak) + uyarılar + muhasebe gerekçesi.
    - Aritmetik: KDV = Toplam − Matrah tutuyor mu; kırılım oranları belgeyle aynı mı; borç = alacak mı.
-7. **Hesap kararı:**
+7. **Hesap kararı** (`fm_hesap_ata` / `fm_isaretle` kuru testte yapılmaz → "yapılacaktı"; öneri ve işaret listesi raporda yazılır):
    - KULLANICI satırına dokunma.
    - İçerik → hesap adı uyuşuyorsa: `fm_hesap_plani_ara(sorgu)` ile yaprak kodu doğrula → `fm_hesap_ata(belgeId, satir, hesapKodu, gerekce)`.
    - Uyuşmuyorsa / emin değilsen: hesap yazma → `fm_isaretle(incele, "… için hesap bulunamadı; adaylar: …")`.

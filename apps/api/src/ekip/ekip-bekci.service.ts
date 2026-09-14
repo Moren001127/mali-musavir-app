@@ -6,6 +6,7 @@ import {
   BEKCI_ACILIS_GECIKME_MS,
   BEKCI_TARAMA_ARALIGI_MS,
   BekciAdayIs,
+  SUREC_KIMLIGI,
   bayatKosulariSec,
   bayatSonucBirlestir,
   kosuTavanDk,
@@ -13,8 +14,9 @@ import {
 
 /**
  * EKİP BAYAT KOŞU BEKÇİSİ (2026-09-13) — karar mantığı `ekip-bekci.ts` (saf, testli); burada yalnız DB + zamanlayıcı.
- * Açılıştan 3 dk sonra bir kez (süreç öncesi 'running' işler), sonra her 5 dk (tavan aşımı).
- * Süreç belleğinde koşan işlere (runner.kosuAktifMi) dokunmaz. Hata yutulur; log düşer.
+ * Açılıştan 3 dk sonra bir kez (süreç öncesi 'running' işler + 10 dk'dan eski takılı 'pending' işler — PLAN/19 H9-a),
+ * sonra her 5 dk (tavan aşımı). Süreç belleğinde koşan işlere (runner.kosuAktifMi) ve payload.surec bu sürecin kimliği
+ * olan kayıtlara (PLAN/19 H9-b) dokunmaz. Hata yutulur; log düşer.
  */
 @Injectable()
 export class EkipBekciService implements OnApplicationBootstrap {
@@ -44,7 +46,8 @@ export class EkipBekciService implements OnApplicationBootstrap {
   async tara(acilis: boolean): Promise<number> {
     const isler: BekciAdayIs[] = await (this.prisma as any).agentCommand
       .findMany({
-        where: { agent: { startsWith: 'ekip:' }, status: 'running' },
+        // Açılışta 'pending' de taranır (takılı kalmış iş); düzenli taramada yalnız 'running'.
+        where: { agent: { startsWith: 'ekip:' }, status: acilis ? { in: ['running', 'pending'] } : 'running' },
         select: { id: true, tenantId: true, agent: true, status: true, startedAt: true, createdAt: true, result: true, payload: true },
         take: 200,
       })
@@ -55,13 +58,14 @@ export class EkipBekciService implements OnApplicationBootstrap {
       aktifMi: (id) => this.runner.kosuAktifMi(id),
       surecBaslangici: acilis ? this.surecBaslangici : null,
       tavanDk: kosuTavanDk(),
+      surecKimligi: SUREC_KIMLIGI,
     });
     let kapatilan = 0;
     for (const k of kararlar) {
       const is: any = isler.find((i) => i.id === k.id);
       const r = await (this.prisma as any).agentCommand
         .updateMany({
-          where: { id: k.id, status: 'running' }, // yarışta eski süreç 'done' yazdıysa dokunma
+          where: { id: k.id, status: k.eskiDurum }, // yarışta eski süreç 'done'/'running' yazdıysa dokunma
           data: { status: 'failed', finishedAt: new Date(), result: bayatSonucBirlestir(is?.result, k) },
         })
         .catch(() => ({ count: 0 }));

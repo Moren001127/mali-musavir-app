@@ -1,7 +1,7 @@
 # Bordro / SGK Sorumlusu — Beceriler
 
 ## 1. Aylık bordro zinciri
-1. `get_payroll_summary` (mükellef, dönem) → aktif çalışan, brüt/net, SGK.
+1. `get_payroll_summary` (taxpayerId, year, month) → aktif çalışan, brüt/net, SGK.
 2. Geçen ayla karşılaştır: çalışan sayısı ve brüt değişmiş mi? Değiştiyse nedenini bul (giriş/çıkış/zam/eksik gün); bulunamıyorsa tek soru.
 3. Yıl değerleri: asgari ücret, tavan, dilimler → `get_accounting_reference`.
 4. Bordro hesabı (çalışan bazında) → toplamlar.
@@ -21,7 +21,7 @@
 3. Fark varsa satır satır listele (çalışan adı / alan / bordro / SGK taslağı); yoksa "APHB hazır, gönderim Muzaffer Bey'de" → Onayınızı bekleyen: "APHB / <mükellef> / <prim tutarı> / Muzaffer Bey gönderecek, son gün <get_tax_calendar>" → `create_pending_action`.
 
 ## 4. SGK tebligat/borç uyarısı
-1. `list_etebligat` (SGK belgeleri) → yeni gelen var mı.
+1. `list_etebligat` (belgeTuru: 'TUMU' — varsayılan yalnız GİB e-tebligat getirir, SGK belgeleri için TUMU şart) → yeni gelen var mı.
 2. Başlık, dönem, tutar, son gün → Onayınızı bekleyen: "SGK tebligat / <mükellef> / <tutar> / Muzaffer Bey'e göster, son gün <tarih>" → `create_pending_action` (priority yüksek). Kime döndü: Koordinatör → Muzaffer Bey.
 
 ## 5. Bordro özeti rapor şablonu (Muzaffer Bey'e ve Beyanname Uzmanı'na)

@@ -1,6 +1,7 @@
 import {
   ajanSec,
   canliModIstendi,
+  ogrenmeSatirlariniSuz,
   raporMetniAyikla,
   sesCevabiOlustur,
   sesGoreviOlustur,
@@ -57,6 +58,51 @@ describe('ses-koordinator — rapor ayıklama', () => {
   it('RAPOR yoksa tüm metni kullanır', () => {
     expect(raporMetniAyikla('Veri yok.').rapor).toBe('Veri yok.');
     expect(sesIcinSadelestir('# Başlık\n* madde bir\n`kod`')).toBe('Başlık\nmadde bir\nkod');
+  });
+
+  // PLAN/19 H2-c (2026-09-14): "Öğrendiklerim:" (küçük harf, kalın, madde imli, başlık) satırları da sesli metne / WhatsApp'a karışmasın
+  it('Öğrendiklerim / ÖĞRENDİM her biçimde düşer: küçük harf, **kalın**, "- madde", "### başlık", numaralı', () => {
+    const rapor = [
+      'RAPOR: Bugün 2 beyanname hazır.',
+      'Öğrendiklerim: get_tax_calendar boş dönebiliyor.',
+      '**Öğrendiklerim:** ikinci ders kalın.',
+      '- ÖĞRENDİM: madde imli ders.',
+      '### ÖĞRENDİM: başlık biçimli ders',
+      '1. öğrendiklerim: numaralı küçük harf',
+      '**ÖĞRENDİM**: kalın ama iki nokta dışarıda',
+      'Son satır kalır.',
+    ].join('\n');
+    const r = raporMetniAyikla(rapor);
+    expect(r.rapor).toBe('Bugün 2 beyanname hazır. Son satır kalır.');
+    expect(r.rapor).not.toMatch(/ğrendi/i);
+  });
+
+  it('tek başına "Öğrendiklerim:" başlığının altındaki maddeler de düşer; madde olmayan ilk dolu satır başlığı kapatır', () => {
+    const satirlar = [
+      'Günaydın. 3 mükellef bekliyor.',
+      '**Öğrendiklerim:**',
+      '- compare_periods kaynak adı küçük harf olmalı.',
+      '2) ikinci ders numaralı.',
+      '',
+      '• üçüncü ders boş satırdan sonra.',
+      'SORU: devam edeyim mi?',
+      '- bu madde SORU satırından sonra, kalır.',
+    ];
+    expect(ogrenmeSatirlariniSuz(satirlar)).toEqual(['Günaydın. 3 mükellef bekliyor.', '', 'SORU: devam edeyim mi?', '- bu madde SORU satırından sonra, kalır.']);
+    // Sesli cevap: dersler yok, soru var
+    const r = raporMetniAyikla(`RAPOR:\n${satirlar.join('\n')}`);
+    expect(r.rapor).toBe('Günaydın. 3 mükellef bekliyor.');
+    expect(r.soru).toBe('devam edeyim mi? bu madde SORU satırından sonra, kalır.');
+  });
+
+  it('çıplak "### ÖĞRENDİM" / "**Öğrendiklerim**" başlığı (iki noktasız) ve altındaki maddeler düşer', () => {
+    const satirlar = ['Özet satırı.', '### ÖĞRENDİM', '1. get_gelir_tablosu Q2 boş döndü.', '**Öğrendiklerim**', '- ikinci ders', 'Kapanış.'];
+    expect(ogrenmeSatirlariniSuz(satirlar)).toEqual(['Özet satırı.', 'Kapanış.']);
+  });
+
+  it('benzer ama farklı kelimeler düşmez ("Öğrendiklerimiz:", "Öğrendim ki …", metin ortasındaki öğrendim)', () => {
+    const satirlar = ['Öğrendiklerimiz: ekip notu kalır.', 'Bugün öğrendim ki veri yok.', 'Öğrendim ki mizan kilitli.', '- Öğrendiklerim listesi uzun değil.'];
+    expect(ogrenmeSatirlariniSuz(satirlar)).toEqual(satirlar);
   });
 });
 

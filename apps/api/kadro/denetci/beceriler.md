@@ -47,6 +47,6 @@ Kime döndü: Koordinatör → Luca Operatörü (fiş listesi) / Beyanname Uzman
 
 ## 6. "Onayınızı bekleyen" ve kime döner
 - "Onayınızı bekleyen" maddeleri: "düzeltme fişi Kaydet / <mükellef> / <tutar> / <bulgu>", "düzeltme beyannamesi gerekir mi / <mükellef> / <fark> / beyan sonrası denetim", "bulgu yok sayılsın mı / <mükellef> / – / <kural>" — her biri `create_pending_action`.
-- Kime döndü zinciri: EVET → Koordinatör → Beyanname Uzmanı (Y2); HAYIR → Koordinatör → bulgunun Muzaffer Bey'i çalışan; Ocak yıl sonu → e-Defter Sorumlusu ile bulgu paylaşımı (çift iş yok) → Beyanname Uzmanı (yıllık).
+- Kime döndü zinciri: EVET → Koordinatör → Beyanname Uzmanı (Y2); HAYIR → Koordinatör → bulgunun sahibi olan çalışan; Ocak yıl sonu → e-Defter Sorumlusu ile bulgu paylaşımı (çift iş yok) → Beyanname Uzmanı (yıllık).
 - Son gün için `get_tax_calendar`; "beyanname öncesi" ifadesini beyan kayıtlarıyla doğrula (adım 0). Mevzuat hatırlatması (549/580 süreleri vb.) emin değilse "TEYİT ET:" işaretle; kararı Muzaffer Bey verir.
 - Rapor 40 satırı aşarsa (00_ORTAK §12): 14 madde + KRİTİK tam, UYARI/BİLGİ ilk 5'i, kalanı "N madde daha (iş dosyasında)".

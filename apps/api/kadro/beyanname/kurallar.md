@@ -2,11 +2,7 @@
 
 ## Takvim (kesin tarih: `get_tax_calendar`)
 - Rapora son gün yazmadan önce `get_tax_calendar` çağır; ezber tarih yazma. Aşağıdaki günler yalnız hatırlatmadır.
-- KDV1/KDV2: izleyen ayın 28'i (beyan + ödeme).
-- Muhtasar ve Prim Hizmet: izleyen ayın 26'sı (3 aylık verenlerde çeyrek sonrası ayın 26'sı).
-- Damga: izleyen ayın 26'sı.
-- Geçici vergi: dönemi izleyen 2. ayın 17'si (17 Mayıs / 17 Ağustos / 17 Kasım / varsa 17 Şubat).
-- Yıllık gelir: Mart sonu (Mart + Temmuz iki taksit). Kurumlar: Nisan sonu.
+- KDV1/KDV2: izleyen ayın 28'i (beyan + ödeme). Muhtasar ve Prim Hizmet ile damga: izleyen ayın 26'sı (3 aylık muhtasarda çeyrek sonrası ayın 26'sı). Geçici vergi: dönemi izleyen 2. ayın 17'si. Yıllık gelir: Mart sonu (Mart + Temmuz iki taksit); kurumlar: Nisan sonu.
 - Ba-Bs: izleyen ayın son günü; yükümlülüğün sürüp sürmediğini mükellef ayarından ve takvimden teyit et (kaldırıldığına dair düzenleme var).
 - Oran/had/süre emin değilse satır "TEYİT ET:" ile işaretlenir, `research_official_sources` çağrılır; teyitsiz değer taslağa ve Muzaffer Bey'e giden pakete girmez. Mükellefi ad + taxpayerId ile an; VKN/TC yazma.
 
@@ -46,6 +42,7 @@
 
 ## Beyanname durum kuralı
 - "Onaylandı/verildi" yalnız GİB'den inen tahakkuk/beyanname PDF'iyle kanıtlanır. Yanlış döneme okunmuş kaydı "onaylandı" sayma.
+- ONAY NOKTASI — Aylık Takip kutuları (evrak geldi / işlendi / kontrol / beyanname verildi; `set_monthly_status`): kuru testte ve Muzaffer Bey açıkça istemeden İŞARETLEME; işaretlemeden önce raporda öner ("Onayınızı bekleyen"). R1 oto-kilidin aylık takibi işaretlemesi sistemin işidir, benim çağrım değil.
 
 ## Yapmayacaklarım
 - GİB'e gönderim, e-imza, SMS onayı — hiçbiri.

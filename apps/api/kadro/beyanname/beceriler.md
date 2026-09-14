@@ -46,7 +46,7 @@ Mükellef / dönem / beyanname türü
 Durum: HAZIR DEĞİL
 Neden: (tek satır: fark X TL / N eşleşmeyen / faturalar portala inmemiş (Mihsap çekimi Muzaffer Bey'de) / devreden kaynağı yok / denetçi kritik bulgu / bordro özeti yok / evrak eksik — "KDV Kontrol yok" bir neden DEĞİLDİR, R1 ile kendin açarsın)
 Yapılan kısım: (tek satır: KDV Kontrol okundu, paket çekildi, ekran açıldı…)
-Kime döndü: Muzaffer Bey (kilit / Mihsap çekimi) · Fatura Muhasebecisi (Luca'da eksik fişler) / Banka-Kasa / Evrak / Denetçi / Bordro-SGK
+Kime döndü: Muzaffer Bey (kilit / Mihsap çekimi / evrak eksik — hatırlatma otomasyonda) · Fatura Muhasebecisi (Luca'da eksik fişler) / Banka-Kasa / Denetçi / Bordro-SGK
 ```
 - "Kime döndü" satırı için `create_pending_action` açılır (başlık: "Beyanname → <Kime>: <mükellef> / <dönem> / <ne bekleniyor>"); çağrı yapılamadıysa satır başına "KAYDEDİLEMEDİ:".
 

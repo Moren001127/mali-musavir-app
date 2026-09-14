@@ -5,10 +5,12 @@
  *  3) kadro → sonKosu / bekleyenOnay / bugunKosu / calisiyor
  *  4) /ekip/isler süzgeçleri — where koşulu ve {isler, toplam, suzgec} şekli
  *  7) onay özeti mukellefAd — taxpayerId ve telefon (rehber) çözümü
+ *  8) KoordinatorService sabah özeti (PLAN/19 H1/H2, 2026-09-14): gönderim kapısı, kiracı seçimi, görev metni, rapor süzgeci
  * Prisma/araçlar sahte; ağ/DB yok.
  */
 import { EkipRunnerService } from './ekip-runner.service';
 import { EkipOnayService } from './ekip-onay.service';
+import { KoordinatorService } from './koordinator.service';
 
 const bekle = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -248,5 +250,129 @@ describe('onay özeti mukellefAd (§7-7)', () => {
     const { onaylar } = await svc.listele('t');
     expect(onaylar).toHaveLength(3);
     expect(onaylar.every((o: any) => o.mukellefAd === null)).toBe(true);
+  });
+});
+
+// ─── PLAN/19 H1/H2 (2026-09-14): sabah özeti gönderim kapısı, kiracı seçimi, görev metni, rapor süzgeci ───
+describe('KoordinatorService sabah özeti (§8)', () => {
+  const eskiEnv = { ...process.env };
+  afterEach(() => {
+    process.env = { ...eskiEnv };
+  });
+
+  function koordinatorKur(o: { aktif: boolean; tenants?: any[]; tenantBulunur?: boolean; rapor?: string }) {
+    const calistirilan: any[] = [];
+    const gonderilen: any[] = [];
+    const loglar: string[] = [];
+    const prisma = {
+      auditLog: { findMany: async () => [] },
+      tenant: {
+        findMany: async () => o.tenants || [],
+        findUnique: async (q: any) => (o.tenantBulunur === false ? null : { id: q.where.id }),
+      },
+    };
+    const runner = {
+      calistir: async (p: any) => {
+        calistirilan.push(p);
+        return { isId: 'is1', ajanId: 'koordinator', rapor: o.rapor ?? 'RAPOR: Günaydın. gece çekimi: 3 belge geldi.', toolUses: [], kuruTestYapilacaktilar: [], onayBekleyen: [], ogrenilen: [], model: 'm', durationMs: 1, costUsd: 0 };
+      },
+    };
+    const whatsapp = {
+      isAutomationActive: async () => o.aktif,
+      sendMessage: async (tel: string, metin: string) => (gonderilen.push({ tel, metin }), true),
+    };
+    const akis = { ozetSatiri: async () => 'sürüyor 0 · onay 0 · istek 0' };
+    const k = new KoordinatorService(prisma as any, runner as any, whatsapp as any, akis as any);
+    (k as any).logger = { warn: (m: string) => loglar.push(`warn ${m}`), log: (m: string) => loglar.push(`log ${m}`), debug: () => undefined, error: () => undefined };
+    return { k, calistirilan, gonderilen, loglar };
+  }
+
+  it('gönderim istenen çağrıda WhatsApp kapalıysa koşu HİÇ başlamaz: calistir çağrılmaz, atlandi + hata dolu, log "<tenant> atlandı: …"', async () => {
+    process.env.MOREN_OWNER_WHATSAPP_PHONES = '05350587475';
+    const t = koordinatorKur({ aktif: false });
+    const r = await t.k.sabahOzeti('t1');
+    expect(t.calistirilan).toEqual([]);
+    expect(r.gonderildi).toBe(0);
+    expect(r.isId).toBe('');
+    expect(r.atlandi).toMatch(/WhatsApp otomasyonu kapalı/);
+    expect(r.hata).toBe(r.atlandi);
+    expect(t.loglar).toEqual([expect.stringMatching(/^warn \[Koordinator\] t1 atlandı: WhatsApp otomasyonu kapalı/)]);
+  });
+
+  it('WhatsApp açık ama sahip numarası yoksa da koşu başlamaz', async () => {
+    delete process.env.MOREN_OWNER_WHATSAPP_PHONES;
+    delete process.env.MOREN_OWNER_WHATSAPP_PHONE;
+    const t = koordinatorKur({ aktif: true });
+    const r = await t.k.sabahOzeti('t1');
+    expect(t.calistirilan).toEqual([]);
+    expect(r.atlandi).toMatch(/MOREN_OWNER_WHATSAPP_PHONES/);
+  });
+
+  it('portaldan "Şimdi üret" (gonder:false) kapıdan etkilenmez: WhatsApp kapalıyken de koşar, göndermez', async () => {
+    const t = koordinatorKur({ aktif: false });
+    const r = await t.k.sabahOzeti('t1', { gonder: false });
+    expect(t.calistirilan).toHaveLength(1);
+    expect(t.calistirilan[0]).toMatchObject({ ajanId: 'koordinator', tenantId: 't1', dryRun: true, kaynak: 'cron' });
+    expect(t.gonderilen).toEqual([]);
+    expect(r.atlandi).toBeUndefined();
+    expect(r.gonderildi).toBe(0);
+    expect(r.isId).toBe('is1');
+  });
+
+  it('WhatsApp açık + numaralar varsa koşar ve her numaraya gönderir; ders/SORU satırları mesaja girmez', async () => {
+    process.env.MOREN_OWNER_WHATSAPP_PHONES = '05350587475, 0532 111 22 33';
+    const rapor = ['Araçları çağırdım.', '**RAPOR:** Günaydın. gece çekimi: 3 belge geldi.', '• 2 beyanname hazır', 'SORU: devam?', '**Öğrendiklerim:**', '- get_tax_calendar boş dönebiliyor'].join('\n');
+    const t = koordinatorKur({ aktif: true, rapor });
+    const r = await t.k.sabahOzeti('t1');
+    expect(t.calistirilan).toHaveLength(1);
+    expect(r.gonderildi).toBe(2);
+    expect(t.gonderilen.map((g) => g.tel)).toEqual(['905350587475', '905321112233']);
+    expect(t.gonderilen[0].metin).toBe('Günaydın. gece çekimi: 3 belge geldi.\n• 2 beyanname hazır');
+  });
+
+  it('görev metni: özeti sistem gönderir, ajan onay kaydı AÇMAZ (PLAN/19 H2-a)', () => {
+    const t = koordinatorKur({ aktif: true });
+    const g = (t.k as any).sabahGorevi('gece çekimi: çalışmadı', 'sürüyor 0') as string;
+    expect(g).toContain("Bu özeti Muzaffer Bey'e WhatsApp'tan SİSTEM gönderir; sen göndermezsin ve onay kaydı AÇMAZSIN");
+    expect(g).toContain('create_pending_action çağırma');
+    expect(g).toContain("gerçekten onay isteyen başka bir iş yoksa 'yok' yaz");
+  });
+
+  it('sabahKiracilari: MOREN_OWNER_TENANT_ID varsa yalnız o (DB\'de yoksa boş + uyarı); yoksa mükellefi olmayan kiracı atlanır', async () => {
+    process.env.MOREN_OWNER_TENANT_ID = 'sahip';
+    const a = koordinatorKur({ aktif: true, tenants: [{ id: 'x', _count: { taxpayers: 5 } }] });
+    expect(await (a.k as any).sabahKiracilari()).toEqual([{ id: 'sahip' }]);
+
+    const b = koordinatorKur({ aktif: true, tenantBulunur: false });
+    expect(await (b.k as any).sabahKiracilari()).toEqual([]);
+    expect(b.loglar).toEqual([expect.stringMatching(/^warn \[Koordinator\] sahip atlandı: MOREN_OWNER_TENANT_ID/)]);
+
+    delete process.env.MOREN_OWNER_TENANT_ID;
+    const c = koordinatorKur({ aktif: true, tenants: [{ id: 'dolu', _count: { taxpayers: 12 } }, { id: 'bos', _count: { taxpayers: 0 } }, { id: 'sayimsiz' }] });
+    expect(await (c.k as any).sabahKiracilari()).toEqual([{ id: 'dolu' }]);
+    expect(c.loglar).toEqual([
+      'log [Koordinator] bos atlandı: mükellef yok',
+      'log [Koordinator] sayimsiz atlandı: mükellef yok',
+    ]);
+  });
+
+  it('sabahCron: EKIP_SABAH_OZETI=on ise seçilen kiracıları koşturur; atlanan kiracı için ikinci log yazmaz', async () => {
+    process.env.EKIP_SABAH_OZETI = 'on';
+    process.env.MOREN_OWNER_WHATSAPP_PHONES = '05350587475';
+    delete process.env.MOREN_OWNER_TENANT_ID;
+    const kapali = koordinatorKur({ aktif: false, tenants: [{ id: 'dolu', _count: { taxpayers: 3 } }] });
+    await kapali.k.sabahCron();
+    expect(kapali.calistirilan).toEqual([]);
+    expect(kapali.loglar).toEqual([expect.stringMatching(/^warn \[Koordinator\] dolu atlandı: WhatsApp otomasyonu kapalı/)]);
+
+    const acik = koordinatorKur({ aktif: true, tenants: [{ id: 'dolu', _count: { taxpayers: 3 } }] });
+    await acik.k.sabahCron();
+    expect(acik.calistirilan.map((p) => p.tenantId)).toEqual(['dolu']);
+    expect(acik.loglar).toEqual([expect.stringMatching(/^log \[Koordinator\] dolu sabah özeti: iş is1, 1 numaraya gitti$/)]);
+
+    process.env.EKIP_SABAH_OZETI = 'off';
+    const kapi = koordinatorKur({ aktif: true, tenants: [{ id: 'dolu', _count: { taxpayers: 3 } }] });
+    await kapi.k.sabahCron();
+    expect(kapi.calistirilan).toEqual([]);
   });
 });

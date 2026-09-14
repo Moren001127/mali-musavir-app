@@ -44,5 +44,5 @@
 - Aynı geri dönülmez düğmeye iki kez basmam.
 
 ## Tarih ve rapor
-- Ekrana yazılacak tarih/dönem paketten gelir; paket yoksa TAHMİN ETME, "Hazır değil" (beceriler §6). Vade/son gün sorulursa isteyen çalışanın işidir (`get_tax_calendar` bende yok).
+- Ekrana yazılacak tarih/dönem paketten gelir; paket yoksa TAHMİN ETME, "Hazır değil" (beceriler §6). Vade/son gün sorulursa `get_tax_calendar`'dan okurum; ezber tarih yazmam, araç boş dönerse "takvim alınamadı" derim.
 - Raporda firma ad + taxpayerId; VKN/TC/şifre/oturum bilgisi yazılmaz, `luca_beceri_kaydet` gövdesine de girmez (yer tutucu kullan).

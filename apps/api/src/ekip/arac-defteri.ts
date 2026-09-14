@@ -135,15 +135,18 @@ const BEKLEYEN_PORTAL_ARACLARI = Object.keys(PORTAL_KADEMELERI).filter((ad) => !
 // ─── FATURA MERKEZİ AJAN ARAÇLARI (fm_*): kademe eşlemesi (PLAN/15 Faz 5) ───
 // MOREN_AI_TOOLS'ta DEĞİL (genel bot görmez); defterde kaynak='portal' olarak yer alır.
 // fm_onayla: kademe portal_yaz ama fatura ajanının ve koordinatörün listesinde YOK — onay sahibindir.
+// PLAN/19 H7 (2026-09-14): fm_ai_ile_oku / fm_hesap_ata / fm_isaretle portal_yaz → portal_yaz_agir. Kuru test pilotunda
+// fm_ai_ile_oku Max kotası harcıyor, fm_hesap_ata / fm_isaretle belgeye GERÇEK yazıyordu; artık kuru testte kesilir,
+// "yapılacaktı" kaydı düşer. Canlıda değişiklik yok.
 const FM_KADEMELERI: Record<string, Kademe> = {
   fm_belge_listele: 'oku',
   fm_belge_detay: 'oku',
   fm_donem_ozeti: 'oku',
   fm_uyumsuzluklar: 'oku',
   fm_hesap_plani_ara: 'oku',
-  fm_hesap_ata: 'portal_yaz',
-  fm_ai_ile_oku: 'portal_yaz',
-  fm_isaretle: 'portal_yaz',
+  fm_hesap_ata: 'portal_yaz_agir',
+  fm_ai_ile_oku: 'portal_yaz_agir',
+  fm_isaretle: 'portal_yaz_agir',
   fm_onayla: 'portal_yaz',
   fm_luca_gonder: 'luca_yaz',
 };

@@ -14,6 +14,7 @@ import { logAiUsage } from '../common/ai-usage-logger';
 import { AJAN_TANIMLARI, AjanTanimi, MODEL_KIMLIKLERI, ORTAK_KURALLAR_DOSYASI, ajanBul } from './ajan-tanimlari';
 import { aracAcikMi, aracKatalogMetni, aracKademesi, ekipMihsapKomutuYasagi } from './arac-defteri';
 import { DEVIR_SINIRI, konuBasligi } from './ekip-akis';
+import { SUREC_KIMLIGI } from './ekip-bekci';
 
 /**
  * EKİP RUNNER — bir ajanı bir görevle koşturur (PLAN/13-AJAN-KADROSU.md §5).
@@ -26,7 +27,9 @@ import { DEVIR_SINIRI, konuBasligi } from './ekip-akis';
  *    kuru testte luca_yaz/disari_gonder/portal_yaz_agir çalışmaz → {kuruTest:true, yapilacakti} döner ve iş dosyasına yazılır;
  *    disari_gonder canlıda bile doğrudan gitmez → OwnerApprovalRequest (PRV-xxxx) kaydı açılır.
  *  - İŞ DOSYASI: AgentCommand (agent="ekip:<ajanId>") pending→running→done/failed + AgentEvent (agent='ekip').
- *  - ÖĞRENME: cevaptaki "ÖĞRENDİM:" satırları AiMemory (scope='ekip', source=ajanId) olarak saklanır.
+ *  - ÖĞRENME: cevaptaki "ÖĞRENDİM:" satırları AiMemory (scope='ekip', source=ajanId) olarak saklanır
+ *    (kaynak='test' koşusunda hafızaya YAZILMAZ; "yok"/8 karakterden kısa satırlar elenir — PLAN/19 H4).
+ *  - SÜREÇ KİMLİĞİ (PLAN/19 H9-b): iş dosyası 'running' olurken payload.surec = SUREC_KIMLIGI; bekçi başka sürecin kayıtlarını kapatır.
  *  - REÇETE (PLAN/17, 2026-09-13): kadro/<ajan>/receteler.md prompta "## REÇETELERİN" olarak TAM girer; beceriler.md
  *    "## BECERİLERİN (özet)" olarak en çok BECERI_TAVAN_KR karakter girer (daha önce hiç girmiyordu — kök neden #1).
  *  - ARKA PLAN (PLAN/17 Faz C): koşu SSE bağlantısına bağlı değildir; sekme kapanınca sürer, iptal yalnız iptalEt().
@@ -412,7 +415,9 @@ export class EkipRunnerService {
         data: {
           status: 'running',
           startedAt: new Date(),
-          ...(p.vakaId ? {} : { payload: { ...payload, vakaId: row.id } }),
+          // payload.surec (PLAN/19 H9-b): bu koşuyu yürüten sürecin kimliği — bekçi kendi sürecinin canlı koşusuna dokunmaz,
+          // yalnız başka (ölmüş) sürecin 'running' kayıtlarını kapatır. Kökte vakaId = kendi id'si.
+          payload: { ...payload, surec: SUREC_KIMLIGI, ...(p.vakaId ? {} : { vakaId: row.id }) },
         },
       })
       .catch(() => undefined);
@@ -922,7 +927,7 @@ export class EkipRunnerService {
       const m = satir.match(BASLIK);
       if (m) {
         const govde = temizle(m[1] || '');
-        if (govde.length >= 8) out.push(govde);
+        if (ogrenmeSatiriGecerliMi(govde)) out.push(govde);
         // Aynı satırda ders yoksa (ya da varsa da) sonraki maddeler bu başlığa ait sayılır.
         baslikAltinda = true;
         continue;
@@ -937,14 +942,23 @@ export class EkipRunnerService {
         baslikAltinda = false;
         continue;
       }
-      if (maddeMi && satir.length >= 8 && !/^(yok|—|-)\.?$/i.test(satir)) out.push(temizle(satir));
-      else if (!maddeMi) baslikAltinda = false;
+      if (maddeMi) {
+        const ders = temizle(satir);
+        if (ogrenmeSatiriGecerliMi(ders)) out.push(ders);
+      } else baslikAltinda = false;
     }
     return Array.from(new Set(out)).slice(0, 10);
   }
 
   private async ogrenilenleriKaydet(p: EkipCalistirParametreleri, ajanId: string, isId: string, satirlar: string[]): Promise<void> {
+    // TEST koşusu (PLAN/19 H4, 2026-09-14): geliştirici pilotunun dersleri kalıcı hafızaya (AiMemory) GİRMEZ — iş dosyasında
+    // (result.ogrenilen) durur, canlı ajanlar search_ai_memory ile görmez.
+    if (p.kaynak === 'test') {
+      this.logger.debug(`test koşusu ${isId}: ${satirlar.length} ders hafızaya yazılmadı`);
+      return;
+    }
     for (const s of satirlar) {
+      if (!ogrenmeSatiriGecerliMi(s)) continue; // boş/"yok" satırı (ayıklama dışından gelse bile)
       if (/(şifre|sifre|parola|password|token|api\s*key)/i.test(s)) continue; // gizli bilgi hafızaya girmesin
       await (this.prisma as any).aiMemory
         .create({
@@ -1494,6 +1508,19 @@ export function raporTemizle(metin: string): string {
     .join('\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+}
+
+/**
+ * DERS SATIRI KAYDA DEĞER Mİ? (PLAN/19 H4, 2026-09-14) 8 karakterden kısa, "yok", "Yok.", "yok (tek mükellefe özel…)",
+ * "yok — …" gibi boş/anlamsız satırlar hafızaya girmez (pilotlarda "yok (…)" biçimi ders diye kaydediliyordu).
+ * Saf fonksiyon: ogrenilenleriAyikla ve ogrenilenleriKaydet ikisi de kullanır.
+ */
+export function ogrenmeSatiriGecerliMi(s: string): boolean {
+  const t = String(s || '').trim();
+  if (t.length < 8) return false;
+  if (/^yok\b/i.test(t)) return false;
+  if (/^[—\-–.\s]+$/.test(t)) return false; // yalnız çizgi/nokta
+  return true;
 }
 
 /**

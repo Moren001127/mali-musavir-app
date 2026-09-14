@@ -35,7 +35,7 @@ Geçici vergi ve yıl sonu öncesi mükellefin defterini (mizan + fiş listesi) 
 - Mükellef: `list_taxpayers`, `get_taxpayer`, `search_all`, `get_taxpayer_work_status`, `list_taxpayers_monthly_status`
 - Mizan/mali tablo: `list_mizan_periods`, `get_mizan`, `get_gelir_tablosu`, `get_bilanco`, `compare_periods`, `calculate_financial_ratios`
 - KDV/beyan: `get_kdv_summary`, `get_kdv1_on_hazirlik`, `list_beyan_kayitlari`, `get_beyan_ozet`, `list_edefter_sessions`
-- Referans: `get_accounting_reference`, `get_firma_hafizasi`
+- Referans: `get_accounting_reference`, `get_firma_hafizasi`; takvim: `get_tax_calendar` (beyan/ödeme son günü; ezber tarih yok)
 - Ajan: `get_luca_agent_jobs`; PRV ile açılan mizan çekim işini sunucuda bekleme: `luca_is_bekle` (R6 adım 2)
 - Hafıza: `search_ai_memory`, `save_ai_memory`
 - Luca YALNIZ OKUMA: `luca_ekran_oku`, `luca_rapor_oku`, `luca_menu_ara`, `luca_menu_git`, `luca_beceri_listele`, `luca_beceri_getir`, `luca_kural_listele`. luca_yaz / luca_sec / luca_tikla bende YOK: fiş listesi/mizan çekimini Luca Operatörü'ne DEVİR paketiyle isterim.

@@ -208,9 +208,11 @@ export class ActionDispatcherService {
     };
     // EKİP yolu (ctx.isId var, PLAN/18 §B): vaka bağı + tür. Otomasyon yolunda bu blok girmez.
     if (ctx.isId) {
-      // tur: enum dışı → 'onay'; "İŞ ATAMASI" başlığı ZORLA 'bilgi' (Koordinatör atama kaydı kutu değiştirmez)
+      // tur: verilmemiş / enum dışı → 'bilgi' (PLAN/19 H2-b, 2026-09-14: eskiden 'onay' idi — ajanın tür yazmadığı her not
+      // Muzaffer Bey'in "Onayınızı bekleyen" kutusuna sahte onay maddesi olarak düşüyordu; onay/istek yalnız ajan açıkça yazınca).
+      // "İŞ ATAMASI" başlığı ZORLA 'bilgi' (Koordinatör atama kaydı kutu değiştirmez).
       const istenen = String(args.tur || '').trim().toLowerCase();
-      let tur: BildirimTuru = (BILDIRIM_TURLERI as readonly string[]).includes(istenen) ? (istenen as BildirimTuru) : 'onay';
+      let tur: BildirimTuru = (BILDIRIM_TURLERI as readonly string[]).includes(istenen) ? (istenen as BildirimTuru) : 'bilgi';
       if (/^İŞ ATAMASI/i.test(title.trim())) tur = 'bilgi';
       const argVaka = typeof args.vakaId === 'string' && /^c[a-z0-9]{20,31}$/.test(args.vakaId) ? args.vakaId : null;
       metadata.tur = tur;

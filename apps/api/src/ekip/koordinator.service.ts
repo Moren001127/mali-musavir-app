@@ -5,6 +5,8 @@ import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import { EkipKosuSonucu, EkipRunnerService } from './ekip-runner.service';
 import { geceOzetSatiri } from '../fatura-muhasebelestirme/gece-cekim';
 import { EkipAkisService } from './ekip-akis.service';
+import { MODEL_KIMLIKLERI, ajanBul } from './ajan-tanimlari';
+import { ogrenmeSatirlariniSuz } from '../moren-ai/ses-koordinator';
 
 /**
  * KOORDİNATÖR (Ofis Müdürü) — PLAN/13-AJAN-KADROSU.md §3.1, §8-D.
@@ -18,6 +20,10 @@ import { EkipAkisService } from './ekip-akis.service';
  * Muzaffer Bey’e gönderim kalıbı owner-briefing.cron.ts ile aynı: MOREN_OWNER_WHATSAPP_PHONES +
  * WhatsAppService.sendMessage(phone, text, tenantId, {quote:false}); tenant'ta WhatsApp
  * otomasyonu kapalıysa gönderilmez. Koşu her zaman KURU TEST (özet dışarı mesaj üretmez).
+ *
+ * PLAN/19 H1 (2026-09-14): cron TÜM kiracıları dolaşmaz — MOREN_OWNER_TENANT_ID varsa yalnız o; yoksa mükellefi olmayan
+ * kiracılar atlanır. Gönderim istenen koşuda WhatsApp kapalıysa / sahip numarası yoksa koşu HİÇ başlamaz (Max kotası
+ * boşa gitmesin); portaldan "Şimdi üret" (gonder:false) bu kapıdan geçmez.
  */
 @Injectable()
 export class KoordinatorService {
@@ -60,6 +66,8 @@ export class KoordinatorService {
       '📊 DURUM · ⚠️ RİSKLİ/ACİL · 📝 YAKLAŞAN SÜRELER · 🤖 EKİP (dün ne yaptı, onay bekleyen, gece çekimi) · ▶️ BUGÜN ÖNCELİK',
       'Her başlıkta en fazla üç madde, her madde TEK satır; toplam 1100 karakteri aşma. Çift yıldız ve markdown başlığı kullanma; • madde, Türk sayı biçimi.',
       'SADECE araç çıktısındaki ve hazır verideki rakamları kullan; toplama/yüzde HESAPLAMA, tarih UYDURMA. Veri yoksa "veri alınamadı" yaz (sıfır ile karıştırma).',
+      // PLAN/19 H2-a (2026-09-14): özetin kendisi "onay bekleyen" kaydı olarak açılıyordu (sahte onay maddesi).
+      "Bu özeti Muzaffer Bey'e WhatsApp'tan SİSTEM gönderir; sen göndermezsin ve onay kaydı AÇMAZSIN (create_pending_action çağırma, 'Onayınızı bekleyen' satırına bu özeti yazma; gerçekten onay isteyen başka bir iş yoksa 'yok' yaz).",
       'Araç adı ya da "çağırıyorum" gibi iç adım yazma. Mesaj metnini "RAPOR:" satırından SONRA ver.',
     ].join('\n');
   }
@@ -83,8 +91,50 @@ export class KoordinatorService {
     }
   }
 
-  /** Koordinatörü koştur ve Muzaffer Bey’e gönder. Dönen sonuç iş dosyasıyla aynıdır. */
-  async sabahOzeti(tenantId: string, opts: { gonder?: boolean } = {}): Promise<EkipKosuSonucu & { gonderildi: number }> {
+  /**
+   * Gönderim istenen koşu için ön kontrol (PLAN/19 H1-c): WhatsApp otomasyonu kapalıysa ya da sahip numarası yoksa
+   * koşu boşuna başlamasın. Engel varsa insan dilinde neden, yoksa null.
+   */
+  private async gonderimEngeli(tenantId: string): Promise<string | null> {
+    const aktif = await this.whatsapp.isAutomationActive(tenantId).catch(() => false);
+    if (!aktif) return 'WhatsApp otomasyonu kapalı; sabah özeti üretilmedi, gönderilmedi';
+    if (!this.sahipNumaralari().length) return 'MOREN_OWNER_WHATSAPP_PHONES tanımlı değil; sabah özeti üretilmedi, gönderilmedi';
+    return null;
+  }
+
+  /** Koşu başlamadan dönülen boş sonuç (atlandı) — portal kartı `hata` alanını gösterir, cron `atlandi` ile ayırt eder. */
+  private atlanmisSonuc(neden: string): EkipKosuSonucu & { gonderildi: number; atlandi: string } {
+    return {
+      isId: '',
+      ajanId: 'koordinator',
+      rapor: '',
+      toolUses: [],
+      kuruTestYapilacaktilar: [],
+      onayBekleyen: [],
+      ogrenilen: [],
+      model: MODEL_KIMLIKLERI[ajanBul('koordinator')?.model || 'sonnet'],
+      durationMs: 0,
+      costUsd: 0,
+      hata: neden,
+      gonderildi: 0,
+      atlandi: neden,
+    };
+  }
+
+  /**
+   * Koordinatörü koştur ve Muzaffer Bey’e gönder. Dönen sonuç iş dosyasıyla aynıdır.
+   * gonder istenen çağrıda (varsayılan) WhatsApp kapalı / numara yoksa koşu HİÇ başlamaz, `atlandi` dolu döner (PLAN/19 H1-c);
+   * gonder:false (portal "Şimdi üret") bu kontrolden geçmez, yalnız üretir.
+   */
+  async sabahOzeti(tenantId: string, opts: { gonder?: boolean } = {}): Promise<EkipKosuSonucu & { gonderildi: number; atlandi?: string }> {
+    const gonder = opts.gonder !== false;
+    if (gonder) {
+      const engel = await this.gonderimEngeli(tenantId);
+      if (engel) {
+        this.logger.warn(`[Koordinator] ${tenantId} atlandı: ${engel}`);
+        return this.atlanmisSonuc(engel);
+      }
+    }
     const [geceSatiri, akisSatiri] = await Promise.all([this.geceCekimSatiri(tenantId), this.akis.ozetSatiri(tenantId)]);
     const sonuc = await this.runner.calistir({
       ajanId: 'koordinator',
@@ -98,35 +148,62 @@ export class KoordinatorService {
     let metin = this.raporMetni(sonuc.rapor);
     // Ajan satırı atladıysa özetin sonuna sistem satırı olarak ekle (gece çekimi bilgisi hep gitsin).
     if (metin && !/gece çekimi/i.test(metin)) metin = `${metin}\n🌙 ${geceSatiri}`.slice(0, 3500);
-    const gonder = opts.gonder !== false;
     if (gonder && metin && !sonuc.hata) {
-      const aktif = await this.whatsapp.isAutomationActive(tenantId).catch(() => false);
-      const numaralar = this.sahipNumaralari();
-      if (!aktif) this.logger.warn(`[Koordinator] ${tenantId}: WhatsApp otomasyonu kapalı, sabah özeti gönderilmedi`);
-      else if (!numaralar.length) this.logger.warn('[Koordinator] MOREN_OWNER_WHATSAPP_PHONES tanımlı değil, sabah özeti gönderilmedi');
-      else {
-        for (const tel of numaralar) {
-          const ok = await this.whatsapp.sendMessage(tel, metin, tenantId, { quote: false }).catch((e: any) => {
-            this.logger.warn(`[Koordinator] gönderim hatası ${tel}: ${e?.message || e}`);
-            return false;
-          });
-          if (ok) gonderildi++;
-        }
+      // Ön kontrol geçti; koşu sırasında kapanmışsa sendMessage kendi içinde yine göndermez (false döner).
+      for (const tel of this.sahipNumaralari()) {
+        const ok = await this.whatsapp.sendMessage(tel, metin, tenantId, { quote: false }).catch((e: any) => {
+          this.logger.warn(`[Koordinator] gönderim hatası ${tel}: ${e?.message || e}`);
+          return false;
+        });
+        if (ok) gonderildi++;
       }
+      if (!gonderildi) this.logger.warn(`[Koordinator] ${tenantId}: sabah özeti hiçbir numaraya gitmedi`);
     }
     return { ...sonuc, gonderildi };
   }
 
-  /** Ajan cevabından Muzaffer Bey’e gidecek metni ayıkla: "RAPOR:" sonrası; ÖĞRENDİM/SORU satırları düşer. */
+  /**
+   * Ajan cevabından Muzaffer Bey’e gidecek metni ayıkla: "RAPOR:" sonrası; ÖĞRENDİM / Öğrendiklerim (kalın, madde imli,
+   * başlık+alt madde biçimleri dahil — ogrenmeSatirlariniSuz, PLAN/19 H2-c) ve SORU satırları düşer.
+   */
   private raporMetni(rapor: string): string {
     const t = String(rapor || '');
-    const i = t.search(/RAPOR\s*:/i);
-    const govde = (i >= 0 ? t.slice(i).replace(/^RAPOR\s*:\s*/i, '') : t)
-      .split(/\r?\n/)
-      .filter((s) => !/^\s*[-*•]?\s*(ÖĞRENDİM|SORU)\s*:/i.test(s))
+    const i = t.search(/RAPOR\s*[*_`]*:/i);
+    const satirlar = (i >= 0 ? t.slice(i).replace(/^RAPOR\s*[*_`]*:\s*[*_`]*\s*/i, '') : t).split(/\r?\n/);
+    const govde = ogrenmeSatirlariniSuz(satirlar)
+      .filter((s) => !/^\s*[-*•]?\s*[*_`]*SORU\s*[*_`]*\s*:/i.test(s))
       .join('\n')
       .trim();
     return govde.slice(0, 3500);
+  }
+
+  /**
+   * Sabah özeti hangi kiracılar için koşar (PLAN/19 H1-a/b):
+   *  - MOREN_OWNER_TENANT_ID tanımlıysa yalnız o (DB'de yoksa uyarı, boş liste);
+   *  - değilse mükellef sayısı 0 olan kiracılar atlanır (log: "<tenant> atlandı: mükellef yok").
+   */
+  private async sabahKiracilari(): Promise<Array<{ id: string }>> {
+    const sahipKiracisi = String(process.env.MOREN_OWNER_TENANT_ID || '').trim();
+    if (sahipKiracisi) {
+      const t = await (this.prisma as any).tenant.findUnique({ where: { id: sahipKiracisi }, select: { id: true } }).catch(() => null);
+      if (!t) {
+        this.logger.warn(`[Koordinator] ${sahipKiracisi} atlandı: MOREN_OWNER_TENANT_ID DB'de bulunamadı`);
+        return [];
+      }
+      return [{ id: t.id }];
+    }
+    const rows: Array<{ id: string; _count?: { taxpayers?: number } }> = await (this.prisma as any).tenant.findMany({
+      select: { id: true, _count: { select: { taxpayers: true } } },
+    });
+    const out: Array<{ id: string }> = [];
+    for (const r of rows || []) {
+      if (!(Number(r?._count?.taxpayers) > 0)) {
+        this.logger.log(`[Koordinator] ${r.id} atlandı: mükellef yok`);
+        continue;
+      }
+      out.push({ id: r.id });
+    }
+    return out;
   }
 
   @Cron('0 30 8 * * *', { timeZone: 'Europe/Istanbul' })
@@ -134,7 +211,7 @@ export class KoordinatorService {
     if (String(process.env.EKIP_SABAH_OZETI || '').toLowerCase() !== 'on') return;
     let tenants: Array<{ id: string }> = [];
     try {
-      tenants = await (this.prisma as any).tenant.findMany({ select: { id: true } });
+      tenants = await this.sabahKiracilari();
     } catch (e: any) {
       this.logger.warn(`[Koordinator] tenant listesi alınamadı: ${e?.message || e}`);
       return;
@@ -142,6 +219,7 @@ export class KoordinatorService {
     for (const t of tenants) {
       try {
         const r = await this.sabahOzeti(t.id);
+        if (r.atlandi) continue; // neden sabahOzeti içinde loglandı ("<tenant> atlandı: …")
         this.logger.log(`[Koordinator] ${t.id} sabah özeti: iş ${r.isId}, ${r.gonderildi} numaraya gitti${r.hata ? `, hata: ${r.hata}` : ''}`);
       } catch (e: any) {
         this.logger.warn(`[Koordinator] ${t.id} sabah özeti hatası: ${e?.message || e}`);

@@ -38,7 +38,7 @@ Kayıtsız gider işareti: … → puan ..
 Durum: HAZIR DEĞİL
 Neden: KDV beyan kaydı yok (list_beyan_kayitlari boş) | mizan yok | Denetçi "kasa negatif" (defter hatalı — kasa göstergesi hesaplanmaz) | gelir tablosu ve mizan 6xx yok
 Yapılan kısım: (ölçülebilen göstergeler: … / hiçbiri)
-Kime döndü: Koordinatör → Beyanname Uzmanı (beyan kaydı) / Luca Operatörü (mizan) / Denetçi (bulgu)
+Kime döndü: Koordinatör → Beyanname Uzmanı (beyan kaydı) / Muzaffer Bey (kilitli mizan yoksa; çekim İSTENMEZ, gösterge "ölçülemedi") / Denetçi (bulgu)
 ```
 - Her "Kime döndü" için `create_pending_action` (başlık "Risk → <Kime>: <mükellef>/<dönem>/<ne bekleniyor>"); yapılamadıysa "KAYDEDİLEMEDİ:".
 - Kısmi kart yine §2 şablonuyla verilir; toplam ölçülen pay üzerinden (ör. 70 üzerinden 41), "ölçülemeyen" satırı zorunlu.

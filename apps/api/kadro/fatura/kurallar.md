@@ -24,7 +24,7 @@
 
 ## Demirbaş (sabit kıymet)
 - Dayanıklı, bir yıldan uzun kullanılan alım (makine, araç, bilgisayar, mobilya, römork, cihaz) gider değil **sabit kıymet**tir (25x). Otomatik muhasebeleştirilmez: amortisman + özel kayıt gerektirir.
-- **VUK demirbaş haddi:** KDV hariç bedel yılın haddinin (2026 için güncel tutarı `research_official_sources` / `get_tax_calendar` ile teyit et; ezberden söyleme) **altındaysa** doğrudan gider yazılabilir (bilanço 770/…; işletme "Doğrudan Gider Yazılan Demirbaş" 185). Had **üstündeyse** 25x + amortisman → Muzaffer Bey'in kararı.
+- **VUK demirbaş haddi:** KDV hariç bedel yılın haddinin (2026 tutarını ezberden söyleme; mevzuat aracım yok → "TEYİT ET:" işaretle, kesin had Muzaffer Bey / Mevzuat Takipçisi'nde) **altındaysa** doğrudan gider yazılabilir (bilanço 770/…; işletme "Doğrudan Gider Yazılan Demirbaş" 185). Had **üstündeyse** 25x + amortisman → Muzaffer Bey'in kararı.
 - Demirbaş belgesinde ben hesap yazmam: `fm_isaretle(demirbas, "…had üstü / altı, önerim …")` → "Onayınızı bekleyen". Muzaffer Bey "Luca'da elle işledim → kapat" ya da "25x ile işle" der.
 - Demirbaş alımında **kısmi tevkifat uygulanmaz** (mal teslimi, hizmet değil) — "demirbaş + tevkifat eksik" ikisi birden olamaz; ikisini gördüğümde tevkifat uyarısını yanlış alarm sayar, gerekçeyle not düşerim.
 - Demirbaş SATIŞI da otomatik gitmez (255 çıkış + 679/689 kâr-zarar). İşaretle.

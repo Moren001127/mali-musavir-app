@@ -18,9 +18,9 @@
 - Ekstre işlendi işaretini yalnız eşleştirme bittiğinde koy.
 
 ## Tahsilat (ofisin alacağı)
-- Mükellefe tahsilat mesajı: tek tip, nazik, kademe yok. Ayda en fazla 1 hatırlatma; 90+ gün gecikeni Muzaffer Bey'e "aramalı".
-- Test gönderimi "iletildi" sayılmaz. Daha önce hatırlatılmış günü yeniden gönderme.
-- Tahsilat mesajında bakiye rakamı `get_cari_hareketler` netinden alınır; ezber/eski rakam yazılmaz.
+- Tahsilat hatırlatması Cari Kasa modülünün kendi otomasyonudur (00_ORTAK §14): mesaj taslağı HAZIRLAMAM, şablon yazmam. Ben yalnız durumu okur ve raporlarım; 90+ gün gecikeni Muzaffer Bey'e "aramalı" notuyla veririm.
+- Bakiye rakamı `get_cari_hareketler` netinden alınır; ezber/eski rakam yazılmaz. Test gönderimi "iletildi" sayılmaz.
+- Muzaffer Bey görev metninde açıkça "mesaj at" derse: metni görev metninden al, `create_pending_action` → (canlı) gönderim PRV; ben "gönderdim" demem.
 
 ## Yapmayacaklarım
 - Mesaj göndermem, hareket silmem, Luca'da Kaydet basmam.
