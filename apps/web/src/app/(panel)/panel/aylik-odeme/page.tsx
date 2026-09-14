@@ -5,399 +5,397 @@
 // Mükellefin o ay ödeyeceği vergi tahakkukları + SGK primleri tek cetvelde.
 // WhatsApp/e-posta ile gönderim Akıllı Bildirim motorundan geçer,
 // sonuç İletim Raporu'na işlenir.
+//
+// Düzen (2026-09-14, Muzaffer Bey'in onayladığı iyileştirmeler):
+//   başlık (ay gezinme · İletim Raporu · gönder · menü) → özet hap şeridi → TEST MODU bandı →
+//   eksikler paneli → [sol: mükellef listesi] [sağ: cetvel + otomatik gönderim kartı]
+// Tasarım dili: Görevler ile aynı sakin palet — altın TEK vurgu, dolu renkli rozet yok, grup bantları altın tonlu.
 // =====================================================================
 
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from '@/lib/api';
 import { toast } from 'sonner';
-import { Loader2, Printer, Send, Wallet, ChevronDown } from 'lucide-react';
-import { BEYAN_ETIKETLER } from '@/lib/beyanname-takip';
+import {
+  ArrowRight, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, FileDown, FileSpreadsheet, FlaskConical, Inbox, ListChecks, MoreHorizontal, RefreshCw, Send, SendHorizontal, Settings2, Wallet,
+} from 'lucide-react';
+import {
+  aylikOdemeApi, ayAdi, ayKaydir, buAy, dosyaIndir, gonderimOzeti, listeyiSuz, sekmeyeBlobYaz, yeniSekmeAc,
+  type EksikSatiri, type GonderimModu, type ListeSiralama, type ListeSuzgeci,
+} from '@/lib/aylik-odeme';
+import { AcilirMenu, MenuAyrac, MenuBaslik, MenuSatiri } from '../gorevler/_components/AcilirMenu';
+import { AltinDugme, GriDugme, AMBER, AMBER_KENAR, AMBER_ZEMIN, GOLD, GOLD_SOFT, IKINCIL, KART, KENAR_NOTR, METIN } from './_components/ortak';
+import { OzetSeridi } from './_components/OzetSeridi';
+import { MukellefListesi } from './_components/MukellefListesi';
+import { Cetvel } from './_components/Cetvel';
+import { EksiklerPaneli } from './_components/EksiklerPaneli';
+import { OtomatikKart } from './_components/OtomatikKart';
 
-const GOLD = '#d4b876';
-const MUTED = 'rgba(250,250,249,0.45)';
-const TEXT2 = 'rgba(250,250,249,0.75)';
-const CARD_BG = 'rgba(255,255,255,0.028)';
-const CARD_BORDER = 'rgba(212,184,118,0.16)';
-
-interface OdemeSatiri {
-  tur: string;
-  donem: string;
-  sonGun: string | null;
-  tutar: number;
-  /** 'VERGI' | 'SGK' — sunucu zaten gönderiyordu, arayüz almıyordu */
-  kaynak?: string;
-}
-interface OdemeListesi { taxpayerId: string; unvan: string; phone: string | null; email: string | null; satirlar: OdemeSatiri[]; toplam: number; }
-
-function trMoney(n: number): string {
-  return new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n) + ' ₺';
-}
-const AYLAR = [
-  'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
-  'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık',
-];
-
-/**
- * ÖDEME ADI — yalnız EKRANDA okunur hâle getirilir.
- *
- * Sunucudaki `tur` alanı WhatsApp mesajında da kullanılıyor
- * (aylik-odeme.service.ts:159); orada değiştirmek mesajı bozar. Bu yüzden
- * çeviri burada, ekranda yapılıyor.
- *   VERGİ → "KDV1" gibi ham kod, BEYAN_ETIKETLER ile okunur ada çevrilir
- *   SGK   → sunucu başlıktan "SGK " kelimesini kırpıp "Tahakkuk Fişi"
- *           bırakıyor; ekranda tam adıyla gösterilir
- */
-function odemeAdi(s: OdemeSatiri): string {
-  const ham = (s.tur || '').trim();
-  if (s.kaynak === 'SGK') {
-    return /tahakkuk/i.test(ham) ? 'SGK Prim Tahakkuku' : `SGK ${ham}`.trim();
+/** Blob yanıtlı isteklerde hata gövdesi de Blob gelir; içindeki mesajı çıkarır. */
+async function hataMesaji(e: any, varsayilan: string): Promise<string> {
+  const d = e?.response?.data;
+  if (d instanceof Blob) {
+    try {
+      const j = JSON.parse(await d.text());
+      return j?.message || varsayilan;
+    } catch {
+      return varsayilan;
+    }
   }
-  return (BEYAN_ETIKETLER as Record<string, string>)[ham] || ham || '—';
+  return d?.message || e?.message || varsayilan;
 }
 
-/** "2026-07" ve "2026/07" → "Temmuz 2026". Vergi ile SGK farklı yazıyordu. */
-function donemAdi(donem: string): string {
-  const m = String(donem || '').match(/^(\d{4})[-/](\d{1,2})$/);
-  if (!m) return donem || '—';
-  const ay = Number(m[2]);
-  if (ay < 1 || ay > 12) return donem;
-  return `${AYLAR[ay - 1]} ${m[1]}`;
-}
-
-/** "28.8.2026" → "28.08.2026" (sunucu sıfırsız gönderiyor) */
-function tarihAdi(t: string | null): string {
-  if (!t) return '—';
-  const m = String(t).match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
-  if (!m) return t;
-  return `${m[1].padStart(2, '0')}.${m[2].padStart(2, '0')}.${m[3]}`;
-}
-
-/** Son ödeme gününe kalan gün — vadesi yaklaşan satır öne çıksın */
-function vadeDurumu(t: string | null): { renk: string; etiket: string | null } {
-  const m = t && String(t).match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
-  if (!m) return { renk: TEXT2, etiket: null };
-  const son = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
-  const bugun = new Date();
-  bugun.setHours(0, 0, 0, 0);
-  const gun = Math.round((son.getTime() - bugun.getTime()) / 86400000);
-  if (gun < 0) return { renk: '#f87171', etiket: 'geçti' };
-  if (gun === 0) return { renk: '#f87171', etiket: 'bugün' };
-  if (gun <= 3) return { renk: '#fbbf24', etiket: `${gun} gün` };
-  return { renk: TEXT2, etiket: null };
-}
-
-function currentMonth(): string {
-  const n = new Date();
-  return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}`;
+/** Dosya adı için güvenli kısaltma: "Öz Ela Gıda San." → "oz-ela-gida-san" */
+function dosyaSlug(s: string): string {
+  return s
+    .toLocaleLowerCase('tr-TR')
+    .replace(/ı/g, 'i').replace(/ğ/g, 'g').replace(/ü/g, 'u').replace(/ş/g, 's').replace(/ö/g, 'o').replace(/ç/g, 'c')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40) || 'mukellef';
 }
 
 export default function AylikOdemePage() {
   const qc = useQueryClient();
-  const [month, setMonth] = useState(currentMonth());
+  const [month, setMonth] = useState(buAy());
   const [selected, setSelected] = useState<string | null>(null);
+  const [arama, setArama] = useState('');
+  const [suzgec, setSuzgec] = useState<ListeSuzgeci>('tumu');
+  const [siralama, setSiralama] = useState<ListeSiralama>('ad');
   const [sending, setSending] = useState<string | null>(null);
+  const [ornekGiden, setOrnekGiden] = useState<string | null>(null);
+  const [indirme, setIndirme] = useState<string | null>(null);
+  const [sgkYokIsleniyor, setSgkYokIsleniyor] = useState<string | null>(null);
 
-  const [eksikAcik, setEksikAcik] = useState(false);
+  const listeQ = useQuery({ queryKey: ['aylik-odeme', month], queryFn: () => aylikOdemeApi.liste(month) });
+  const ozetQ = useQuery({ queryKey: ['aylik-odeme-ozet', month], queryFn: () => aylikOdemeApi.ozet(month) });
+  // LİSTEDE NEDEN YOK — mükellef listede görünmüyorsa hata mı, eksik belge mi olduğu; yalnız okur, gönderim yapmaz.
+  const eksikQ = useQuery({ queryKey: ['aylik-odeme-eksik', month], queryFn: () => aylikOdemeApi.eksikler(month) });
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['aylik-odeme', month],
-    queryFn: () => api.get('/aylik-odeme', { params: { month } }).then((r) => r.data as OdemeListesi[]),
-  });
+  const rows = useMemo(() => listeQ.data || [], [listeQ.data]);
+  const ozet = ozetQ.data;
+  const eksikler: EksikSatiri[] = useMemo(() => eksikQ.data?.eksik || [], [eksikQ.data]);
+  const eksikIdler = useMemo(() => new Set(eksikler.map((e) => e.taxpayerId)), [eksikler]);
+  const gorunen = useMemo(() => listeyiSuz(rows, { arama, suzgec, siralama, eksikIdler }), [rows, arama, suzgec, siralama, eksikIdler]);
+  // Seçili mükellef süzgeç dışında kaldıysa görünen ilk mükellef açılır.
+  const active = useMemo(() => gorunen.find((r) => r.taxpayerId === selected) || gorunen[0] || null, [gorunen, selected]);
+  const gonderilmemisSayisi = useMemo(
+    () => (rows.length > 0 ? rows.filter((r) => gonderimOzeti(r).durum !== 'gonderildi').length : (ozet?.bekleyen || 0) + (ozet?.hatali || 0)),
+    [rows, ozet],
+  );
+  const testMode = !!ozet?.testMode;
+  const buAyMi = month === buAy();
 
-  // LİSTEDE NEDEN YOK — mükellef listede görünmüyorsa hata mı, eksik belge mi
-  // olduğu hiçbir yerde yazmıyordu. Bu uç yalnız okur, gönderim yapmaz.
-  const { data: eksikData } = useQuery({
-    queryKey: ['aylik-odeme-eksik', month],
-    queryFn: () => api.get('/aylik-odeme/eksikler', { params: { month } }).then((r) => r.data),
-  });
-  interface EksikSatiri {
-    taxpayerId: string;
-    unvan: string;
-    kaynak: string;
-    sebep: string;
-    beyanTipi?: string;
-    donem?: string;
-    listedeVar: boolean;
-  }
-  const eksikler: EksikSatiri[] = eksikData?.eksik || [];
-
-  // "Listede görünmeyen" başlığı altında listede OLAN mükellefi göstermek
-  // yanlıştı; iki grup ayrıldı ve sayılar dürüst hâle geldi.
-  const listeDisi = useMemo(() => eksikler.filter((e) => !e.listedeVar), [eksikler]);
-  const listedeAmaEksik = useMemo(() => eksikler.filter((e) => e.listedeVar), [eksikler]);
-
-  /** Sebep metnini beyanname adı + dönemle birlikte okunur hâle getirir */
-  const eksikMetni = (e: EksikSatiri): string => {
-    const ad = e.beyanTipi
-      ? (BEYAN_ETIKETLER as Record<string, string>)[e.beyanTipi] || e.beyanTipi
-      : null;
-    const donem = e.donem ? donemAdi(e.donem) : null;
-    if (ad && donem) return `${ad} (${donem}) — ${e.sebep}`;
-    if (ad) return `${ad} — ${e.sebep}`;
-    if (donem) return `${donem} — ${e.sebep}`;
-    return e.sebep;
+  const ayDegistir = (m: string) => {
+    setMonth(m);
+    setSelected(null);
   };
 
-  const rows = data || [];
-  const active = useMemo(
-    () => rows.find((r) => r.taxpayerId === selected) || rows[0] || null,
-    [rows, selected],
-  );
-  const genelToplam = rows.reduce((a, r) => a + r.toplam, 0);
+  const yenile = () => {
+    qc.invalidateQueries({ queryKey: ['aylik-odeme', month] });
+    qc.invalidateQueries({ queryKey: ['aylik-odeme-ozet', month] });
+    qc.invalidateQueries({ queryKey: ['aylik-odeme-eksik', month] });
+    qc.invalidateQueries({ queryKey: ['iletim-raporu'] });
+  };
 
-  const gonder = async (taxpayerId?: string) => {
-    const key = taxpayerId || '__ALL__';
+  /** Gönderim — tek mükellef ya da toplu (mod: gonderilmemis | hepsi | yeniden) */
+  const gonder = async (o: { taxpayerId?: string; mod?: GonderimModu }) => {
+    const key = o.taxpayerId || '__TOPLU__';
     setSending(key);
     try {
-      const r = await api.post('/aylik-odeme/send', { month, taxpayerId });
-      const ok = (r.data?.results || []).filter((x: any) => x.status === 'SENT').length;
-      const fail = (r.data?.results || []).filter((x: any) => x.status === 'FAILED').length;
-      toast.success(`${ok} gönderim başarılı${fail ? `, ${fail} hata` : ''}${r.data?.testMode ? ' (TEST MODU)' : ''}`);
-      qc.invalidateQueries({ queryKey: ['iletim-raporu'] });
+      const r = await aylikOdemeApi.gonder({ month, ...o });
+      const sonuc = r?.results || [];
+      const ok = sonuc.filter((x) => x.status === 'SENT').length;
+      const fail = sonuc.filter((x) => x.status === 'FAILED').length;
+      const parca = [`${ok} gönderim başarılı`];
+      if (fail) parca.push(`${fail} hata`);
+      if (r?.atlanan) parca.push(`${r.atlanan} atlandı`);
+      const mesaj = parca.join(', ') + (r?.testMode ? ' — TEST MODU, test alıcısına gitti' : '');
+      if (fail && !ok) toast.error(mesaj);
+      else toast.success(mesaj);
+      yenile();
     } catch (e: any) {
-      toast.error(e?.response?.data?.message || 'Gönderilemedi');
+      toast.error(await hataMesaji(e, 'Gönderilemedi'));
     } finally {
       setSending(null);
     }
   };
 
+  const topluGonder = () => {
+    if (gonderilmemisSayisi === 0) {
+      toast.info('Gönderilmemiş mükellef yok');
+      return;
+    }
+    if (!testMode && !confirm(`${gonderilmemisSayisi} mükellefe cetvel gönderilecek (WhatsApp/e-posta). Devam edilsin mi?`)) return;
+    gonder({ mod: 'gonderilmemis' });
+  };
+
+  const hepsineYenidenGonder = () => {
+    if (rows.length === 0) return;
+    if (!confirm(`${rows.length} mükellefin TAMAMINA cetvel yeniden gönderilecek — daha önce gönderilenler dâhil.${testMode ? ' (TEST MODU: test alıcısına gider)' : ''}\nDevam edilsin mi?`)) return;
+    gonder({ mod: 'hepsi' });
+  };
+
+  const mukellefeGonder = () => {
+    if (!active) return;
+    const g = gonderimOzeti(active);
+    const yeniden = g.durum === 'gonderildi' || g.kismi || g.durum === 'hata';
+    if (yeniden && !testMode && !confirm(`${active.unvan} için cetvel yeniden gönderilsin mi?`)) return;
+    gonder({ taxpayerId: active.taxpayerId, mod: yeniden ? 'yeniden' : 'gonderilmemis' });
+  };
+
+  /** Örnek: sahibin WhatsApp'ına — mükellefe gitmez */
+  const ornekGonder = async (taxpayerId?: string) => {
+    const key = taxpayerId || '__GENEL__';
+    setOrnekGiden(key);
+    try {
+      const r = await aylikOdemeApi.ornekGonder(taxpayerId ? { month, taxpayerId } : { month });
+      const tel = (r?.telefonlar || []).join(', ');
+      const adet = r?.mesajlar?.length;
+      toast.success(`Örnek mesaj size gönderildi${tel ? ` (${tel})` : ''}${adet ? ` · ${adet} mesaj` : ''} — mükellefe gitmedi`);
+    } catch (e: any) {
+      toast.error(await hataMesaji(e, 'Örnek gönderilemedi'));
+    } finally {
+      setOrnekGiden(null);
+    }
+  };
+
+  const excelIndir = async () => {
+    setIndirme('excel');
+    try {
+      const blob = await aylikOdemeApi.excel(month);
+      dosyaIndir(blob, `aylik-odeme-${month}.xlsx`);
+    } catch (e: any) {
+      toast.error(await hataMesaji(e, 'Excel indirilemedi'));
+    } finally {
+      setIndirme(null);
+    }
+  };
+
+  const pdfIndir = async (taxpayerId?: string) => {
+    setIndirme(taxpayerId ? 'pdf' : 'pdf-tum');
+    try {
+      const blob = await aylikOdemeApi.pdf(month, taxpayerId);
+      const ad = taxpayerId ? `aylik-odeme-${month}-${dosyaSlug(active?.unvan || taxpayerId)}.pdf` : `aylik-odeme-${month}-tum-mukellefler.pdf`;
+      dosyaIndir(blob, ad);
+    } catch (e: any) {
+      toast.error(await hataMesaji(e, 'PDF indirilemedi'));
+    } finally {
+      setIndirme(null);
+    }
+  };
+
+  /** Yazdır = PDF yeni sekmede (window.print kalktı; sekme tıklama anında açılır, blob gelince adres yazılır) */
+  const yazdir = async () => {
+    if (!active) return;
+    const w = yeniSekmeAc();
+    try {
+      const blob = await aylikOdemeApi.pdf(month, active.taxpayerId);
+      sekmeyeBlobYaz(w, blob);
+    } catch (e: any) {
+      if (w && !w.closed) w.close();
+      toast.error(await hataMesaji(e, 'PDF açılamadı'));
+    }
+  };
+
+  const sgkYok = async (e: EksikSatiri) => {
+    if (!confirm(`${e.unvan} için SGK beklentisi kaldırılsın mı?\nBu mükellef bundan sonra "SGK eksik" olarak listelenmez.`)) return;
+    setSgkYokIsleniyor(e.taxpayerId);
+    try {
+      await aylikOdemeApi.sgkYok(e.taxpayerId);
+      toast.success(`${e.unvan}: SGK beklentisi kaldırıldı`);
+      qc.invalidateQueries({ queryKey: ['aylik-odeme-eksik', month] });
+      qc.invalidateQueries({ queryKey: ['aylik-odeme-ozet', month] });
+    } catch (err: any) {
+      toast.error(await hataMesaji(err, 'Kaydedilemedi'));
+    } finally {
+      setSgkYokIsleniyor(null);
+    }
+  };
+
+  const gonderMetni = `${testMode ? 'Test alıcısına gönder' : 'Gönderilmemişlere gönder'} (${gonderilmemisSayisi})`;
+
   return (
-    <div className="mx-auto max-w-6xl space-y-5 pb-12">
-      <header className="relative overflow-hidden rounded-2xl border p-6" style={{ borderColor: CARD_BORDER, background: `radial-gradient(ellipse at top left, rgba(212,184,118,0.08), transparent 60%), ${CARD_BG}` }}>
-        <h1 className="flex items-center gap-3 text-[22px] font-semibold text-white">
-          <span className="flex h-10 w-10 items-center justify-center rounded-xl" style={{ background: `linear-gradient(135deg, ${GOLD}, #8b7649)` }}>
-            <Wallet size={20} style={{ color: '#1a1410' }} />
-          </span>
-          Aylık Ödeme Listesi
-        </h1>
-        <p className="mt-2 text-[13px]" style={{ color: MUTED }}>
-          Mükellefin bu ay ödeyeceği vergi tahakkukları ve SGK primleri tek cetvelde.
-        </p>
-        <div className="absolute right-6 top-6 flex items-center gap-2">
-          <input
-            type="month"
-            value={month}
-            onChange={(e) => { setMonth(e.target.value); setSelected(null); }}
-            onClick={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch { /* tarayıcı desteklemiyorsa elle yazılır */ } }}
-            className="cursor-pointer rounded-lg border bg-transparent px-3 py-1.5 text-[13px] text-white outline-none [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:invert"
-            style={{ borderColor: 'rgba(255,255,255,0.12)', colorScheme: 'dark' }}
-          />
-          <button
-            onClick={() => gonder(undefined)}
-            disabled={sending !== null || rows.length === 0}
-            className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-[13px] font-bold"
-            style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#141210', opacity: sending !== null || rows.length === 0 ? 0.5 : 1 }}
-          >
-            {sending === '__ALL__' ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-            Tümüne Gönder ({rows.length})
-          </button>
+    <div className="mx-auto max-w-6xl space-y-3 pb-12">
+      {/* Başlık */}
+      <header
+        className="relative overflow-hidden rounded-[18px] border px-5 py-4"
+        style={{
+          background: 'radial-gradient(120% 140% at 0% 0%, rgba(212,184,118,0.16), transparent 46%), radial-gradient(120% 140% at 100% 0%, rgba(139,118,73,0.12), transparent 48%), #0f0d0b',
+          borderColor: 'rgba(255,255,255,0.06)',
+          boxShadow: '0 16px 42px rgba(0,0,0,0.28)',
+        }}
+      >
+        <div className="absolute inset-x-0 top-0 h-1" style={{ background: 'linear-gradient(90deg, #8b7649, #b8a06f, #d4b876, #e7cf95, #d4b876, #b8a06f)' }} />
+        <div className="mb-3 flex items-center gap-2.5">
+          <span className="h-px w-[26px]" style={{ background: GOLD }} />
+          <span className="text-[10px] font-bold uppercase tracking-[.18em]" style={{ color: GOLD_SOFT }}>Vergi & Beyanname</span>
         </div>
-      </header>
-
-      {/* LİSTEDE NEDEN YOK — iki ayrı grup, kapalı başlar */}
-      {(listeDisi.length > 0 || listedeAmaEksik.length > 0) && (
-        <div className="rounded-2xl border" style={{ borderColor: 'rgba(251,191,36,0.24)', background: 'rgba(251,191,36,0.045)' }}>
-          <button
-            onClick={() => setEksikAcik((v) => !v)}
-            className="flex w-full items-center justify-between gap-3 px-5 py-3.5 text-left"
-          >
-            <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] font-semibold" style={{ color: '#fbbf24' }}>
-              <span>Listede görünmeyen {new Set(listeDisi.map((e) => e.taxpayerId)).size} mükellef</span>
-              {listedeAmaEksik.length > 0 && (
-                <span className="text-[12px] font-medium" style={{ color: MUTED }}>
-                  · listede olup eksiği olan {new Set(listedeAmaEksik.map((e) => e.taxpayerId)).size}
-                </span>
-              )}
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex min-w-0 items-center gap-3.5">
+            <span className="grid shrink-0 place-items-center rounded-xl" style={{ width: 46, height: 46, background: `linear-gradient(135deg, ${GOLD}, ${GOLD_SOFT})`, boxShadow: '0 8px 22px rgba(212,184,118,0.30)' }}>
+              <Wallet size={24} style={{ color: '#1a1410' }} />
             </span>
-            <ChevronDown
-              size={16}
-              style={{ color: '#fbbf24', transform: eksikAcik ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }}
-            />
-          </button>
-          {eksikAcik && (
-            <div className="max-h-[420px] overflow-y-auto border-t px-5 py-3" style={{ borderColor: 'rgba(251,191,36,0.18)' }}>
-              {([
-                ['Listede hiç yok', listeDisi],
-                ['Listede var, ama eksiği var', listedeAmaEksik],
-              ] as Array<[string, EksikSatiri[]]>).map(([baslik, grup]) =>
-                grup.length === 0 ? null : (
-                  <div key={baslik} className="mb-3 last:mb-0">
-                    <div className="mb-1.5 text-[10.5px] font-bold uppercase tracking-wider" style={{ color: MUTED }}>
-                      {baslik} ({grup.length} kalem)
-                    </div>
-                    {grup.map((e, i) => (
-                      <div key={`${e.taxpayerId}-${i}`} className="flex items-start gap-3 py-1.5 text-[12.5px]">
-                        <span className="min-w-0 flex-1 truncate text-white" title={e.unvan}>{e.unvan}</span>
-                        <span
-                          className="flex-shrink-0 rounded px-1.5 py-0.5 text-[9.5px] font-bold uppercase"
-                          style={
-                            e.kaynak === 'SGK'
-                              ? { background: 'rgba(140,189,232,0.12)', color: '#8cbde8' }
-                              : { background: 'rgba(212,184,118,0.12)', color: GOLD }
-                          }
-                        >
-                          {e.kaynak === 'SGK' ? 'SGK' : 'Vergi'}
-                        </span>
-                        <span className="w-[300px] flex-shrink-0 text-right" style={{ color: MUTED }}>
-                          {eksikMetni(e)}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                ),
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
-      {isLoading ? (
-        <div className="flex items-center gap-2 p-8 text-[13px]" style={{ color: MUTED }}>
-          <Loader2 size={16} className="animate-spin" /> Yükleniyor…
-        </div>
-      ) : rows.length === 0 ? (
-        <div className="rounded-2xl border p-8 text-[13px]" style={{ borderColor: CARD_BORDER, background: CARD_BG, color: MUTED }}>
-          {month} dönemi için tahakkuk verisi bulunamadı. Tahakkuklar gece otomasyonuyla çekildikçe burada listelenir.
-        </div>
-      ) : (
-        <div className="grid gap-4 lg:grid-cols-[300px_1fr]">
-          {/* Sol: mükellef listesi */}
-          <div className="max-h-[600px] overflow-y-auto rounded-2xl border p-2" style={{ borderColor: CARD_BORDER, background: CARD_BG }}>
-            {rows.map((r) => (
-              <button
-                key={r.taxpayerId}
-                onClick={() => setSelected(r.taxpayerId)}
-                className="mb-1 w-full rounded-xl px-3 py-2.5 text-left"
-                style={
-                  active?.taxpayerId === r.taxpayerId
-                    ? { background: 'rgba(212,184,118,0.14)', border: '1px solid rgba(212,184,118,0.4)' }
-                    : { border: '1px solid transparent' }
-                }
-              >
-                <div className="truncate text-[13px] font-semibold text-white">{r.unvan}</div>
-                <div className="text-[12px]" style={{ color: GOLD }}>{trMoney(r.toplam)}</div>
-              </button>
-            ))}
-            <div className="mt-2 border-t px-3 py-2 text-[12px]" style={{ borderColor: 'rgba(255,255,255,0.08)', color: MUTED }}>
-              Genel toplam: <b style={{ color: GOLD }}>{trMoney(genelToplam)}</b>
+            <div className="min-w-0">
+              <h1 style={{ fontFamily: 'Fraunces, Georgia, serif', fontSize: 30, fontWeight: 600, color: METIN, letterSpacing: '-.03em', lineHeight: 1.05 }}>
+                Aylık Ödeme Listesi
+              </h1>
+              <p className="mt-2 text-[13px] font-semibold" style={{ color: 'rgba(250,250,249,0.48)' }}>
+                Mükellefin bu ay ödeyeceği vergi tahakkukları ve SGK primleri tek cetvelde — WhatsApp/e-posta ile gönderilir, sonuç İletim Raporu&apos;na işlenir.
+              </p>
             </div>
           </div>
 
-          {/* Sağ: seçili mükellefin cetveli */}
-          {active && (
-            <div className="rounded-2xl border p-5" style={{ borderColor: CARD_BORDER, background: CARD_BG }}>
-              <div className="mb-4 flex flex-wrap items-center gap-2">
-                <span className="rounded-full px-3 py-1 text-[11.5px] font-bold" style={{ background: 'rgba(140,189,232,0.12)', color: '#8cbde8', border: '1px solid rgba(140,189,232,0.3)' }}>{active.unvan}</span>
-                <span className="ml-auto flex gap-2 print:hidden">
-                  <button
-                    onClick={() => window.print()}
-                    className="inline-flex items-center gap-1.5 rounded-lg border px-3.5 py-2 text-[12.5px]"
-                    style={{ borderColor: 'rgba(255,255,255,0.12)', color: TEXT2 }}
-                  >
-                    <Printer size={14} /> Yazdır
-                  </button>
-                  <button
-                    onClick={() => gonder(active.taxpayerId)}
-                    disabled={sending !== null}
-                    className="inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-[12.5px] font-bold"
-                    style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#141210', opacity: sending !== null ? 0.6 : 1 }}
-                  >
-                    {sending === active.taxpayerId ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-                    WhatsApp ile Gönder
-                  </button>
-                </span>
-              </div>
-{/* Uzun ödeme adı sütunları itip tutarı ekran dışına taşımasın:
-                  table-fixed + colgroup. Cari listede bir kez bu hataya düşüldü. */}
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[520px] table-fixed border-collapse text-[13px]">
-                  <colgroup>
-                    <col />
-                    <col style={{ width: 150 }} />
-                    <col style={{ width: 130 }} />
-                    <col style={{ width: 150 }} />
-                  </colgroup>
-                  <thead>
-                    <tr style={{ background: 'rgba(212,184,118,0.06)' }}>
-                      {['Ödeme', 'Dönem', 'Son Ödeme', 'Tutar'].map((h, i) => (
-                        <th
-                          key={h}
-                          className={`border-b px-3 py-2.5 text-[10.5px] font-semibold uppercase tracking-wider ${i === 3 ? 'text-right' : 'text-left'}`}
-                          style={{ color: GOLD, borderColor: 'rgba(212,184,118,0.22)' }}
-                        >
-                          {h}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {active.satirlar.map((s, i) => {
-                      const sgk = s.kaynak === 'SGK';
-                      const vade = vadeDurumu(s.sonGun);
-                      return (
-                        <tr key={i} className="transition hover:bg-white/[0.02]">
-                          <td className="border-b px-3 py-3" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-                            <span className="flex min-w-0 items-center gap-2">
-                              {/* VERGİ / SGK ayrımı: iki farklı kurum, iki farklı renk */}
-                              <i
-                                className="h-1.5 w-1.5 flex-shrink-0 rounded-full"
-                                style={{ background: sgk ? '#8cbde8' : GOLD }}
-                              />
-                              <span className="truncate font-medium text-white">{odemeAdi(s)}</span>
-                              <span
-                                className="flex-shrink-0 rounded px-1.5 py-0.5 text-[9.5px] font-bold uppercase tracking-wide"
-                                style={
-                                  sgk
-                                    ? { background: 'rgba(140,189,232,0.12)', color: '#8cbde8' }
-                                    : { background: 'rgba(212,184,118,0.12)', color: GOLD }
-                                }
-                              >
-                                {sgk ? 'SGK' : 'Vergi'}
-                              </span>
-                            </span>
-                          </td>
-                          <td className="border-b px-3 py-3 whitespace-nowrap" style={{ borderColor: 'rgba(255,255,255,0.06)', color: TEXT2 }}>
-                            {donemAdi(s.donem)}
-                          </td>
-                          <td className="border-b px-3 py-3 whitespace-nowrap tabular-nums" style={{ borderColor: 'rgba(255,255,255,0.06)', color: vade.renk }}>
-                            {tarihAdi(s.sonGun)}
-                            {vade.etiket && (
-                              <span className="ml-1.5 text-[10.5px] font-semibold">({vade.etiket})</span>
-                            )}
-                          </td>
-                          <td
-                            className="border-b px-3 py-3 text-right font-semibold tabular-nums text-white"
-                            style={{ borderColor: 'rgba(255,255,255,0.06)' }}
-                          >
-                            {trMoney(s.tutar)}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                    <tr style={{ background: 'rgba(212,184,118,0.05)' }}>
-                      <td className="border-t px-3 py-3.5 text-[11.5px] font-bold uppercase tracking-wider" style={{ borderColor: 'rgba(212,184,118,0.28)', color: TEXT2 }}>
-                        Toplam · {active.satirlar.length} kalem
-                      </td>
-                      <td className="border-t" style={{ borderColor: 'rgba(212,184,118,0.28)' }} />
-                      <td className="border-t" style={{ borderColor: 'rgba(212,184,118,0.28)' }} />
-                      <td
-                        className="border-t px-3 py-3.5 text-right text-[15px] font-bold tabular-nums"
-                        style={{ borderColor: 'rgba(212,184,118,0.28)', color: GOLD }}
-                      >
-                        {trMoney(active.toplam)}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-              <div className="mt-4 rounded-r-xl border-l-[3px] py-2.5 pl-4 text-[12.5px]" style={{ borderColor: GOLD, background: 'rgba(212,184,118,0.08)', color: TEXT2 }}>
-                <b className="text-white">Toplu mod:</b> &quot;Tümüne Gönder&quot; ile her mükellefe kendi cetveli gider; sonuç İletim Raporu&apos;na işlenir.
-              </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Ay gezinme: ‹ › + Bu ay + ay seçici */}
+            <div className="inline-flex items-center rounded-[10px]" style={{ border: `1px solid ${KENAR_NOTR}`, background: 'rgba(255,255,255,0.03)' }} role="group" aria-label="Ay seçimi">
+              <button type="button" onClick={() => ayDegistir(ayKaydir(month, -1))} title="Önceki ay" aria-label="Önceki ay" className="flex h-9 w-8 items-center justify-center rounded-l-[10px] transition hover:bg-white/[0.06]" style={{ color: IKINCIL }}>
+                <ChevronLeft size={15} />
+              </button>
+              <input
+                type="month"
+                value={month}
+                aria-label="Ay"
+                onChange={(e) => e.target.value && ayDegistir(e.target.value)}
+                onClick={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch { /* tarayıcı desteklemiyorsa elle yazılır */ } }}
+                className="h-9 cursor-pointer bg-transparent px-1 text-center text-[12.5px] font-semibold outline-none [&::-webkit-calendar-picker-indicator]:hidden"
+                style={{ color: METIN, colorScheme: 'dark', width: 112 }}
+                title={ayAdi(month)}
+              />
+              <button type="button" onClick={() => ayDegistir(ayKaydir(month, 1))} title="Sonraki ay" aria-label="Sonraki ay" className="flex h-9 w-8 items-center justify-center transition hover:bg-white/[0.06]" style={{ color: IKINCIL }}>
+                <ChevronRight size={15} />
+              </button>
+              <button
+                type="button"
+                onClick={() => ayDegistir(buAy())}
+                disabled={buAyMi}
+                title={buAyMi ? 'Bu ay görüntüleniyor' : 'Bu aya dön'}
+                className="inline-flex h-9 items-center gap-1 rounded-r-[10px] px-2.5 text-[11.5px] font-semibold transition hover:bg-white/[0.06] disabled:opacity-45"
+                style={{ color: buAyMi ? IKINCIL : GOLD, borderLeft: `1px solid ${KENAR_NOTR}` }}
+              >
+                <CalendarDays size={12} /> Bu ay
+              </button>
             </div>
-          )}
+
+            <Link
+              href="/panel/iletim-raporu"
+              title="Gönderim sonuçları — İletim Raporu"
+              className="inline-flex h-9 flex-shrink-0 items-center gap-1.5 whitespace-nowrap rounded-[10px] px-3 text-[12.5px] font-semibold transition hover:-translate-y-px"
+              style={{ background: 'rgba(255,255,255,0.03)', border: `1px solid ${KENAR_NOTR}`, color: 'rgba(250,250,249,0.78)' }}
+            >
+              <ListChecks size={13} /> İletim Raporu
+            </Link>
+
+            <AltinDugme onClick={topluGonder} yukleniyor={sending === '__TOPLU__'} disabled={sending !== null || listeQ.isLoading} title={testMode ? 'TEST MODU: mesajlar test alıcısına gider' : 'Cetveli henüz gönderilmemiş mükelleflere gönder'}>
+              <Send size={14} /> {gonderMetni}
+            </AltinDugme>
+
+            {/* Diğer işlemler menüsü */}
+            <AcilirMenu
+              genislik={250}
+              tetik={({ ref, ac, acik }) => (
+                <GriDugme refDis={ref} onClick={ac} aktif={acik} ariaExpanded={acik} title="Diğer işlemler" className="px-2.5">
+                  <MoreHorizontal size={15} />
+                  <ChevronDown size={11} style={{ opacity: 0.7 }} />
+                </GriDugme>
+              )}
+            >
+              {(kapat) => (
+                <div className="py-1">
+                  <MenuBaslik>Gönderim</MenuBaslik>
+                  <MenuSatiri ikon={<RefreshCw size={13} />} disabled={rows.length === 0 || sending !== null} onClick={() => { kapat(); hepsineYenidenGonder(); }}>
+                    Hepsine yeniden gönder
+                  </MenuSatiri>
+                  <MenuSatiri ikon={<SendHorizontal size={13} />} disabled={ornekGiden !== null} title="Mükellefe gitmez — örnek mesaj sizin WhatsApp'ınıza gelir" onClick={() => { kapat(); ornekGonder(active?.taxpayerId); }}>
+                    Şablonu bana gönder
+                  </MenuSatiri>
+                  <MenuAyrac />
+                  <MenuBaslik>Dışa aktar</MenuBaslik>
+                  <MenuSatiri ikon={<FileSpreadsheet size={13} />} disabled={indirme !== null} onClick={() => { kapat(); excelIndir(); }}>
+                    Excel ({ayAdi(month)})
+                  </MenuSatiri>
+                  <MenuSatiri ikon={<FileDown size={13} />} disabled={indirme !== null || rows.length === 0} onClick={() => { kapat(); pdfIndir(); }}>
+                    Tüm mükellefler PDF
+                  </MenuSatiri>
+                  <MenuAyrac />
+                  <Link href="/panel/ayarlar/akilli-bildirim" onClick={kapat} className="flex w-full items-center gap-2.5 px-3 py-2 text-[12.5px] font-medium transition hover:bg-white/[0.05]" style={{ color: 'rgba(250,250,249,0.85)' }}>
+                    <span className="flex w-4 justify-center" style={{ color: IKINCIL }}><Settings2 size={13} /></span>
+                    Akıllı Bildirim ayarları
+                  </Link>
+                </div>
+              )}
+            </AcilirMenu>
+          </div>
+        </div>
+      </header>
+
+      {/* Özet hap şeridi — tıklanınca sol listeyi süzer */}
+      <OzetSeridi ozet={ozet} aktif={suzgec} onSec={setSuzgec} />
+
+      {/* TEST MODU bandı */}
+      {testMode && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl px-4 py-2.5 text-[12.5px]" style={{ background: AMBER_ZEMIN, border: `1px solid ${AMBER_KENAR}`, color: METIN }} role="status" data-testid="test-bandi">
+          <FlaskConical size={14} style={{ color: AMBER }} />
+          <span>
+            <b style={{ color: AMBER }}>TEST MODU açık</b> — gönderimler mükellefe değil test alıcısına gider
+            {ozet?.testPhone || ozet?.testEmail ? ` (${[ozet?.testPhone, ozet?.testEmail].filter(Boolean).join(', ')})` : ''}.
+          </span>
+          <Link href="/panel/ayarlar/akilli-bildirim" className="ml-auto inline-flex items-center gap-1 whitespace-nowrap text-[12px] font-semibold hover:underline" style={{ color: AMBER }}>
+            Ayarlar → Akıllı Bildirim <ArrowRight size={12} />
+          </Link>
         </div>
       )}
+
+      {/* Listede neden yok */}
+      <EksiklerPaneli eksikler={eksikler} onSgkYok={sgkYok} sgkYokIsleniyor={sgkYokIsleniyor} />
+
+      {/* İçerik: sol liste + sağ cetvel */}
+      <div className="grid gap-4 lg:grid-cols-[300px_minmax(0,1fr)]">
+        <MukellefListesi
+          rows={rows}
+          seciliId={active?.taxpayerId || null}
+          onSec={setSelected}
+          arama={arama}
+          onArama={setArama}
+          suzgec={suzgec}
+          onSuzgec={setSuzgec}
+          siralama={siralama}
+          onSiralama={setSiralama}
+          eksikIdler={eksikIdler}
+          kanallar={ozet?.kanallar || null}
+          yukleniyor={listeQ.isLoading}
+        />
+        <div className="min-w-0 space-y-4">
+          {listeQ.isLoading ? (
+            <div className="p-8 text-[13px]" style={{ ...KART, color: IKINCIL }}>Yükleniyor…</div>
+          ) : listeQ.isError ? (
+            <div className="p-8 text-[13px]" style={{ ...KART, color: IKINCIL }}>
+              Liste alınamadı.{' '}
+              <button type="button" onClick={yenile} className="font-semibold hover:underline" style={{ color: GOLD }}>Yeniden dene</button>
+            </div>
+          ) : active ? (
+            <Cetvel
+              r={active}
+              ozet={ozet}
+              gonderiliyor={sending === active.taxpayerId}
+              ornekGonderiliyor={ornekGiden === active.taxpayerId}
+              pdfIniyor={indirme === 'pdf'}
+              onGonder={mukellefeGonder}
+              onOrnekGonder={() => ornekGonder(active.taxpayerId)}
+              onPdf={() => pdfIndir(active.taxpayerId)}
+              onYazdir={yazdir}
+            />
+          ) : (
+            <div className="flex flex-col items-center gap-2 p-10 text-center text-[13px]" style={{ ...KART, color: IKINCIL }}>
+              <Inbox size={22} style={{ color: 'rgba(250,250,249,0.3)' }} />
+              {rows.length === 0
+                ? `${ayAdi(month)} için tahakkuk verisi bulunamadı. Tahakkuklar gece otomasyonuyla çekildikçe burada listelenir.`
+                : 'Süzgece uyan mükellef yok.'}
+            </div>
+          )}
+          <OtomatikKart baslangic={ozet?.otomatik || null} />
+        </div>
+      </div>
     </div>
   );
 }

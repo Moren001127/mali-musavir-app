@@ -57,6 +57,11 @@ export async function openBelge(tur: string, id: string, kind?: string, title?: 
   }
 }
 
+/** Hazır bir bağlantıyı (tam URL — ör. tahakkuk fişi PDF'i) sayfa içi önizlemede açar. */
+export function openBelgeUrl(url: string, title?: string) {
+  window.dispatchEvent(new CustomEvent(BELGE_EVENT, { detail: { url, title: title || 'Belge' } as BelgeEvt }));
+}
+
 /** Sayfa içi belge önizleme modalı — layout'ta bir kez mount edilir. */
 export function BelgePreviewHost() {
   const [st, setSt] = useState<BelgeEvt | null>(null);

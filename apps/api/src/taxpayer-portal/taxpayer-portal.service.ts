@@ -5,6 +5,7 @@ import {
   BadRequestException,
   Logger,
   Optional,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
@@ -15,6 +16,8 @@ import { StorageService } from '../storage/storage.service';
 import { claudeTextViaMax } from '../common/max-inference';
 import { KdvBeyannameService } from '../kdv-beyanname/kdv-beyanname.service';
 import { DriveService } from '../drive/drive.service';
+import { AylikOdemeService } from '../akilli-bildirim/aylik-odeme.service';
+import { ayAdi } from '../akilli-bildirim/aylik-odeme-donem';
 import { PDFParse } from 'pdf-parse';
 
 /** Brifing "Odak Notu" — sürekli değişen ticari/motivasyon cümleleri (her açılışta rastgele). */
@@ -66,7 +69,26 @@ export class TaxpayerPortalService {
     private kdvBeyanname: KdvBeyannameService,
     private drive: DriveService,
     @Optional() private email?: EmailService,
+    // Aylık ödeme cetveli — AkilliBildirimModule export eder; test/kısmi kurulumda yoksa uç 503 verir.
+    @Optional() private aylikOdeme?: AylikOdemeService,
   ) {}
+
+  // === AYLIK ÖDEME CETVELİ — mükellef yalnız KENDİ satırlarını görür (taxpayerId JWT'den) ===
+  async getOdemeCetveli(taxpayerId: string, tenantId: string, month?: string) {
+    if (!this.aylikOdeme) throw new ServiceUnavailableException('Ödeme cetveli servisi kullanılamıyor');
+    const now = new Date();
+    const ay = month && /^\d{4}-\d{2}$/.test(month) ? month : `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const rows = await this.aylikOdeme.list(tenantId, ay, taxpayerId);
+    const row = rows[0];
+    return {
+      month: ay,
+      ayAdi: ayAdi(ay),
+      unvan: row?.unvan || null,
+      satirlar: row?.satirlar || [],
+      toplam: row?.toplam || 0,
+      gonderim: row?.gonderim || { VERGI: null, SGK: null },
+    };
+  }
 
   // === MÜKELLEF ŞİFREMİ UNUTTUM — DB migration YOK: reset tokenı JWT (ayrı secret). Şifre değişince
   //   token 'pv' (portalPasswordHash özeti) tutmaz → TEK KULLANIMLIK/otomatik geçersiz. ===

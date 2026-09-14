@@ -6,6 +6,7 @@ import { FileText, Wallet, FolderArchive, Sparkles, ArrowRight, ReceiptText, Mai
 import { fmtTRY, Card, Spinner, PageTitle } from './_lib/shared';
 import { MukellefBrifing } from './_lib/MukellefBrifing';
 import { MukellefTakvim } from './_lib/MukellefTakvim';
+import { MukellefOdemeler } from './_lib/MukellefOdemeler';
 
 const ALIS = '#d4b876';
 const SATIS = '#4ade80';
@@ -63,6 +64,9 @@ export default function MukellefOverview() {
           </Link>
         ))}
       </div>
+
+      {/* Bu ayki ödemeler — ofisin Aylık Ödeme Listesi'nde bu mükellef için hazırlanan cetvel */}
+      <MukellefOdemeler />
 
       {/* Mali takvim — ofis BuHaftaTakvim ile birebir */}
       <MukellefTakvim />

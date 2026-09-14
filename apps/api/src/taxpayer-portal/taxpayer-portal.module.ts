@@ -3,11 +3,13 @@ import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TaxpayerPortalController } from './taxpayer-portal.controller';
+import { TaxpayerPortalOdemeController } from './taxpayer-portal-odeme.controller';
 import { TaxpayerPortalService } from './taxpayer-portal.service';
 import { TaxpayerJwtStrategy } from './strategies/taxpayer-jwt.strategy';
 import { KdvBeyannameModule } from '../kdv-beyanname/kdv-beyanname.module';
 import { DriveModule } from '../drive/drive.module';
 import { EmailModule } from '../email/email.module';
+import { AkilliBildirimModule } from '../akilli-bildirim/akilli-bildirim.module';
 
 @Module({
   imports: [
@@ -17,6 +19,8 @@ import { EmailModule } from '../email/email.module';
     KdvBeyannameModule,
     // Fatura görüntüsü (Drive-öncelikli → MIHSAP) — storageKey olmasa da gösterebilmek için.
     DriveModule,
+    // Aylık ödeme cetveli (mükellef kendi satırlarını görür) — AylikOdemeService buradan gelir.
+    AkilliBildirimModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: (config: ConfigService) => {
@@ -29,7 +33,7 @@ import { EmailModule } from '../email/email.module';
       inject: [ConfigService],
     }),
   ],
-  controllers: [TaxpayerPortalController],
+  controllers: [TaxpayerPortalController, TaxpayerPortalOdemeController],
   providers: [TaxpayerPortalService, TaxpayerJwtStrategy],
 })
 export class TaxpayerPortalModule {}

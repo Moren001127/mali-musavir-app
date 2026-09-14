@@ -194,6 +194,21 @@ export const MOREN_AI_TOOLS: ToolDefinition[] = [
     input_schema: { type: 'object', properties: {} },
   },
   {
+    name: 'get_my_odeme_listesi',
+    description:
+      'Taxpayer WhatsApp mode only. Aktif mukellefin KENDI aylik ODEME CETVELI: bu ay odenecek vergi tahakkuklari ' +
+      '(KDV, muhtasar, gecici vergi, yillik gelir/kurumlar taksiti) + SGK primi; her kalemde son odeme gunu (hafta sonu/tatil ' +
+      'kaydirilmis) ve tutar, toplam, cetvelin musavirlikce gonderilip gonderilmedigi. ' +
+      '"bu ay ne odeyecegim", "odeme listem", "odeme cetvelim", "bu ay ne kadar vergi cikti", "SGK primim ne kadar" sorularinda kullan. ' +
+      'Bu aractan gelen tutarlar OFISIN mukellefe gonderdigi cetvel tutarlaridir; soylenebilir. Backend aktif mukellefi kendisi baglar.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        month: { type: 'string', description: 'Opsiyonel ODEME AYI YYYY-MM (bos ise icinde bulunulan ay).' },
+      },
+    },
+  },
+  {
     name: 'list_fatura_merkezi',
     description:
       'FATURA ISLEME MERKEZI kayitlari (islenen/onaylanan faturalar, Luca aktarim durumu, kopya uyarilari). ' +

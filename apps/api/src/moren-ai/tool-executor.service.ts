@@ -125,6 +125,7 @@ export class ToolExecutorService {
         case 'get_my_sgk': return this.getMySgk(input, ctx);
         case 'get_my_isletme_hesap_ozeti': return this.getMyIsletmeHesapOzeti(input, ctx);
         case 'get_my_vergi_takvimi': return this.getMyVergiTakvimi(input, ctx);
+        case 'get_my_odeme_listesi': return this.getMyOdemeListesi(input, ctx);
         case 'get_isletme_hesap_ozeti': return this.getIsletmeHesapOzeti(input, ctx);
         case 'get_beyanname_readiness_summary': return this.getBeyannameReadinessSummary(input, ctx);
         case 'get_portal_capability_map': return this.getPortalCapabilityMap();
@@ -294,6 +295,54 @@ export class ToolExecutorService {
     const taxpayer = await this.scopedTaxpayer(ctx);
     if (!taxpayer) return { error: 'Aktif mukellef baglami yok.' };
     return this.getTaxCalendar({ ...input, taxpayerId: taxpayer.id }, ctx as any);
+  }
+
+  /**
+   * Mukellefin KENDI aylik odeme cetveli (AylikOdemeService.list, taxpayerId JWT/sohbet baglamindan).
+   * Servis dinamik cozulur (AkilliBildirimModule → WhatsAppModule → MorenAiModule dongusu olmasin).
+   */
+  private async getMyOdemeListesi(input: any, ctx: { tenantId: string; taxpayerId?: string | null }) {
+    const taxpayer = await this.scopedTaxpayer(ctx);
+    if (!taxpayer) return { error: 'Aktif mukellef baglami yok.' };
+    const now = new Date();
+    const istenen = String(input?.month || input?.donem || '').trim();
+    const month = /^\d{4}-\d{2}$/.test(istenen) ? istenen : `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    try {
+      const { AylikOdemeService } = await import('../akilli-bildirim/aylik-odeme.service');
+      const { ayAdi, donemEtiketi } = await import('../akilli-bildirim/aylik-odeme-donem');
+      const svc: any = this.moduleRef?.get?.(AylikOdemeService, { strict: false });
+      if (!svc?.list) return { error: 'Odeme cetveli servisi kullanilamiyor.' };
+      const rows: any[] = await svc.list(ctx.tenantId, month, taxpayer.id);
+      const row = rows[0];
+      if (!row || !row.satirlar?.length) {
+        return { ay: ayAdi(month), month, adet: 0, kalemler: [], toplam: 0, not: `${ayAdi(month)} icin sistemde odeme kalemi (tahakkuk/SGK primi) gorunmuyor.` };
+      }
+      const gonderildi = (g: any) => (g && g.status === 'SENT' && !g.test ? 'gonderildi' : g && g.status === 'SENT' && g.test ? 'test gonderimi' : g ? 'gonderim hatali' : 'henuz gonderilmedi');
+      const vergi = row.satirlar.filter((s: any) => s.kaynak === 'VERGI');
+      const sgk = row.satirlar.filter((s: any) => s.kaynak === 'SGK');
+      const yuvarla = (n: number) => Math.round(n * 100) / 100;
+      return {
+        ay: ayAdi(month),
+        month,
+        adet: row.satirlar.length,
+        kalemler: row.satirlar.map((s: any) => ({
+          odeme: s.kaynak === 'SGK' ? 'SGK Prim Tahakkuku' : s.turAd || s.tur,
+          grup: s.grup,
+          donem: donemEtiketi(s.donem),
+          sonOdemeGunu: s.sonGunIso || s.sonGun || null,
+          ...(s.sonGunHam && s.sonGun && s.sonGunHam !== s.sonGun ? { not: 'hafta sonu/tatil nedeniyle ilk is gunune kaydirildi' } : {}),
+          ...(s.taksit ? { taksit: s.taksit } : {}),
+          tutar: this.toNum(s.tutar),
+        })),
+        vergiToplam: yuvarla(vergi.reduce((a: number, s: any) => a + this.toNum(s.tutar), 0)),
+        sgkToplam: yuvarla(sgk.reduce((a: number, s: any) => a + this.toNum(s.tutar), 0)),
+        toplam: this.toNum(row.toplam),
+        cetvelDurumu: { vergi: vergi.length ? gonderildi(row.gonderim?.VERGI) : null, sgk: sgk.length ? gonderildi(row.gonderim?.SGK) : null },
+        not: 'Tutarlar musavirligin ayni ay mukellefe gonderdigi odeme cetveliyle aynidir; tahakkuk fisleri cetvel mesajindaki linkte.',
+      };
+    } catch (e: any) {
+      return { error: `Odeme cetveli alinamadi: ${e?.message || e}` };
+    }
   }
 
   private async getMyDocuments(input: any, ctx: { tenantId: string; taxpayerId?: string | null }) {

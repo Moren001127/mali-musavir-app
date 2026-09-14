@@ -10,7 +10,9 @@
  *
  * Kapsam: panel kabuğunun çağırdığı uçlar (auth, bildirim, sağlık, luca, onay kuyruğu, bütçe) + /taxpayers +
  *         /tasks* sözleşmesi (bellek içi durum: ekle / düzenle / tamamla / ertele / toplu / not / ekibe ver / takvimden)
- *         + /tasks/kisiler (ofis personeline de hatırlat) + /ekip/istek/:id/kapat + /users (liste, PATCH telefon).
+ *         + /tasks/kisiler (ofis personeline de hatırlat) + /ekip/istek/:id/kapat + /users (liste, PATCH telefon)
+ *         + /aylik-odeme* (Aylık Ödeme Listesi: liste/özet/eksikler/send/örnek/excel/pdf/otomatik/sgk-yok)
+ *         + mükellef portalı (/portal/auth/login, /portal/me, /portal/dashboard, /portal/brifing, /taxpayer-portal/odeme-cetveli).
  *         Veri süreç belleğindedir; sunucu yeniden başlayınca sıfırlanır.
  */
 const http = require('http');
@@ -209,6 +211,178 @@ const TAKVIM = [
   { id: 'c7', ad: 'Muhtasar ve Prim Hizmet Beyannamesi', tur: 'MUHTASAR', tarih: gun(31), donem: '2026-09' },
   { id: 'c8', ad: 'Geçici Vergi Beyannamesi', tur: 'GECICI', tarih: gun(64), donem: '2026-Q3' },
 ];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AYLIK ÖDEME LİSTESİ — sahte veri (12 mükellef; ikisi geçici/yıllık kalemli, biri gönderilmiş, biri hatalı, biri telefonsuz)
+// Sözleşme: GET /aylik-odeme, /aylik-odeme/ozet, /aylik-odeme/eksikler, /aylik-odeme/excel, /aylik-odeme/pdf, /aylik-odeme/otomatik;
+//           POST /aylik-odeme/send, /aylik-odeme/ornek-gonder, /aylik-odeme/eksik/sgk-yok; PUT /aylik-odeme/otomatik;
+//           mükellef portalı: /portal/auth/login, /portal/me, /portal/dashboard, /portal/brifing, GET /taxpayer-portal/odeme-cetveli
+// ─────────────────────────────────────────────────────────────────────────────
+const ODEME_MUKELLEFLER = [
+  { id: 'm1', unvan: 'Öz Ela Gıda San. ve Tic. Ltd. Şti.', phone: '0532 111 22 33', email: 'muhasebe@ozela.com.tr', kurum: true, sgk: true, gecici: true },
+  { id: 'm2', unvan: 'Erdoğan Balçık', phone: '0533 222 33 44', email: null, kurum: false, sgk: false, gecici: false },
+  { id: 'm3', unvan: 'Ayşegül Kaya', phone: '0534 333 44 55', email: 'aysegul.kaya@gmail.com', kurum: false, sgk: true, gecici: false },
+  { id: 'm4', unvan: 'Mert Reklam Ajansı Ltd. Şti.', phone: null, email: 'info@mertreklam.com', kurum: true, sgk: true, gecici: false }, // TELEFONSUZ
+  { id: 'm5', unvan: 'Famcoffee Kahve A.Ş.', phone: '0535 444 55 66', email: 'finans@famcoffee.com', kurum: true, sgk: true, gecici: true, yillik: true },
+  { id: 'm6', unvan: 'Ela Tekstil Ltd. Şti.', phone: '0536 555 66 77', email: null, kurum: true, sgk: true, gecici: false },
+  { id: 'm7', unvan: 'Balçık İnşaat A.Ş.', phone: '0537 666 77 88', email: 'muhasebe@balcikinsaat.com', kurum: true, sgk: true, gecici: false },
+  { id: 'm8', unvan: 'Dilek Bayageldi', phone: '0538 777 88 99', email: null, kurum: false, sgk: false, gecici: false },
+  { id: 'm9', unvan: 'Yıldız Otomotiv San. Tic. Ltd. Şti.', phone: '0539 888 99 00', email: 'yildiz@yildizoto.com', kurum: true, sgk: true, gecici: false },
+  { id: 'm10', unvan: 'Hasan Demirci', phone: '0541 999 00 11', email: null, kurum: false, sgk: true, gecici: false },
+  { id: 'm11', unvan: 'Nova Yazılım ve Danışmanlık A.Ş.', phone: '0542 000 11 22', email: 'ops@novayazilim.com', kurum: true, sgk: true, gecici: false },
+  { id: 'm12', unvan: 'Kardeşler Nakliyat Ltd. Şti.', phone: '0543 111 22 33', email: null, kurum: true, sgk: false, gecici: false },
+];
+const BU_AY = `${simdi.getFullYear()}-${String(simdi.getMonth() + 1).padStart(2, '0')}`;
+const TEST_TELEFON = '0535 058 74 75';
+
+/** "YYYY-MM" → { y, m } */
+function ayParcala(month) {
+  const mm = /^(\d{4})-(\d{2})$/.exec(month || '') || [null, simdi.getFullYear(), String(simdi.getMonth() + 1).padStart(2, '0')];
+  return { y: Number(mm[1]), m: Number(mm[2]) };
+}
+/** Son ödeme günü: hafta sonuna denk gelirse ilk iş gününe kaydır. gunNo = ayın günü ('son' = ayın son günü) */
+function sonGun(y, m, gunNo) {
+  const sonGunSayisi = new Date(y, m, 0).getDate();
+  const g = gunNo === 'son' ? sonGunSayisi : Math.min(gunNo, sonGunSayisi);
+  const ham = new Date(y, m - 1, g);
+  const kaydirilmis = new Date(ham);
+  while (kaydirilmis.getDay() === 0 || kaydirilmis.getDay() === 6) kaydirilmis.setDate(kaydirilmis.getDate() + 1);
+  const gay = (d) => `${d.getDate()}.${d.getMonth() + 1}.${d.getFullYear()}`;
+  const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return { sonGun: gay(kaydirilmis), sonGunHam: gay(ham), sonGunIso: iso(kaydirilmis) };
+}
+/** Sabit ama mükellefe göre değişen tutar */
+function tutar(taban, idx, tohum) {
+  return Math.round((taban + ((idx * 7919 + tohum * 104729) % 9000) + ((idx * 37 + tohum * 11) % 100) / 100) * 100) / 100;
+}
+function odemeSatirlari(mk, idx, month) {
+  const { y, m } = ayParcala(month);
+  const oncekiAy = `${m === 1 ? y - 1 : y}-${String(m === 1 ? 12 : m - 1).padStart(2, '0')}`;
+  const s = [];
+  s.push({ tur: 'KDV1', turAd: 'KDV (KDV1)', kaynak: 'VERGI', grup: 'AYLIK', donem: oncekiAy, ...sonGun(y, m, 28), tutar: tutar(4200, idx, 1) });
+  s.push({ tur: 'MUHSGK', turAd: 'Muhtasar (MUHSGK)', kaynak: 'VERGI', grup: 'AYLIK', donem: oncekiAy, ...sonGun(y, m, 26), tutar: tutar(2600, idx, 2) });
+  if (idx % 3 === 0) s.push({ tur: 'DAMGA', turAd: 'Damga Vergisi', kaynak: 'VERGI', grup: 'AYLIK', donem: oncekiAy, ...sonGun(y, m, 10), tutar: tutar(180, idx, 3), storageKey: 'https://example.com/fis/damga-' + mk.id + '.pdf' });
+  if (mk.gecici) s.push({ tur: mk.kurum ? 'KGECICI' : 'GGECICI', turAd: mk.kurum ? 'Kurum Geçici' : 'Gelir Geçici', kaynak: 'VERGI', grup: 'GECICI', donem: `${y}-Q${Math.max(1, Math.ceil((m - 1) / 3))}`, ...sonGun(y, m, 17), tutar: tutar(15800, idx, 4) });
+  if (mk.yillik) s.push({ tur: 'KURUMLAR', turAd: 'Kurumlar Vergisi', kaynak: 'VERGI', grup: 'YILLIK', donem: String(y - 1), ...sonGun(y, m, 'son'), taksit: m % 2 === 0 ? '2/2' : '1/2', tutar: tutar(42500, idx, 5) });
+  if (mk.sgk) s.push({ tur: 'Tahakkuk Fişi', turAd: 'SGK Prim Tahakkuku', kaynak: 'SGK', grup: 'SGK', donem: oncekiAy.replace('-', '/'), ...sonGun(y, m, 'son'), tutar: tutar(9800, idx, 6), storageKey: idx % 2 === 0 ? 'sgk/' + mk.id + '/' + oncekiAy + '.pdf' : null });
+  return s;
+}
+/** Gönderim durumu ay bazında bellekte tutulur: { "2026-09": { m1: { VERGI, SGK } } } */
+const GONDERIM = {};
+function gonderimDurumu(month) {
+  if (!GONDERIM[month]) {
+    const g = {};
+    if (month === BU_AY) {
+      g.m3 = { VERGI: { status: 'SENT', sentAt: saatOnce(50), kanallar: ['whatsapp', 'email'], test: false }, SGK: { status: 'SENT', sentAt: saatOnce(50), kanallar: ['whatsapp'], test: false } }; // GÖNDERİLMİŞ
+      g.m6 = { VERGI: { status: 'FAILED', sentAt: saatOnce(3), kanallar: ['whatsapp'], test: false }, SGK: null }; // HATALI
+      g.m9 = { VERGI: { status: 'SENT', sentAt: saatOnce(26), kanallar: ['whatsapp'], test: true }, SGK: null }; // KISMİ (yalnız vergi, test)
+    }
+    GONDERIM[month] = g;
+  }
+  return GONDERIM[month];
+}
+const SGK_YOK = new Set();
+let OTOMATIK = { aktif: false, gun: 20, saat: 9, onayGerekli: true, sonKosu: null };
+
+function odemeListesi(month, taxpayerId) {
+  const g = gonderimDurumu(month);
+  const { m } = ayParcala(month);
+  return ODEME_MUKELLEFLER
+    // Başka aylarda liste biraz farklı olsun (gezinme çalışıyor mu görünsün)
+    .filter((mk, i) => (month === BU_AY ? true : (i + m) % 4 !== 0))
+    .filter((mk) => !taxpayerId || mk.id === taxpayerId)
+    .map((mk, i) => {
+      const satirlar = odemeSatirlari(mk, i + 1, month);
+      return {
+        taxpayerId: mk.id,
+        unvan: mk.unvan,
+        phone: mk.phone,
+        email: mk.email,
+        toplam: Math.round(satirlar.reduce((a, s) => a + s.tutar, 0) * 100) / 100,
+        satirlar,
+        gonderim: g[mk.id] || { VERGI: null, SGK: null },
+      };
+    });
+}
+/** Mükellef bazında tek durum: hepsi SENT → gönderildi; FAILED var → hata; yoksa bekliyor */
+function mukellefDurumu(r) {
+  const parcalar = [];
+  if (r.satirlar.some((s) => s.kaynak !== 'SGK')) parcalar.push(r.gonderim.VERGI);
+  if (r.satirlar.some((s) => s.kaynak === 'SGK')) parcalar.push(r.gonderim.SGK);
+  if (parcalar.some((p) => p && p.status === 'FAILED')) return 'hata';
+  if (parcalar.length && parcalar.every((p) => p && p.status === 'SENT')) return 'gonderildi';
+  return 'bekliyor';
+}
+function odemeOzeti(month) {
+  const liste = odemeListesi(month);
+  const tum = liste.flatMap((r) => r.satirlar);
+  const top = (f) => Math.round(tum.filter(f).reduce((a, s) => a + s.tutar, 0) * 100) / 100;
+  const b = gunBasi();
+  const bugunIso = `${b.getFullYear()}-${String(b.getMonth() + 1).padStart(2, '0')}-${String(b.getDate()).padStart(2, '0')}`;
+  const yakin = tum.filter((s) => s.sonGunIso >= bugunIso).sort((a, c) => (a.sonGunIso < c.sonGunIso ? -1 : 1))[0];
+  return {
+    month,
+    mukellef: liste.length,
+    kalem: tum.length,
+    vergiToplam: top((s) => s.grup === 'AYLIK'),
+    sgkToplam: top((s) => s.grup === 'SGK'),
+    geciciToplam: top((s) => s.grup === 'GECICI'),
+    yillikToplam: top((s) => s.grup === 'YILLIK'),
+    toplam: top(() => true),
+    gonderilen: liste.filter((r) => mukellefDurumu(r) === 'gonderildi').length,
+    bekleyen: liste.filter((r) => mukellefDurumu(r) === 'bekliyor').length,
+    hatali: liste.filter((r) => mukellefDurumu(r) === 'hata').length,
+    enYakinSonGun: yakin ? { tarih: yakin.sonGunIso, turAd: yakin.turAd } : null,
+    testMode: true,
+    testPhone: TEST_TELEFON,
+    testEmail: null,
+    kanallar: { whatsapp: true, email: false },
+    otomatik: OTOMATIK,
+  };
+}
+function odemeEksikleri(month) {
+  const { y, m } = ayParcala(month);
+  const oncekiAy = `${m === 1 ? y - 1 : y}-${String(m === 1 ? 12 : m - 1).padStart(2, '0')}`;
+  const listede = new Set(odemeListesi(month).map((r) => r.taxpayerId));
+  const eksik = [
+    { taxpayerId: 'x1', unvan: 'Güneş Turizm Ltd. Şti.', kaynak: 'VERGI', sebep: 'Tahakkuk fişi henüz çekilmedi', beyanTipi: 'KDV1', donem: oncekiAy },
+    { taxpayerId: 'x1', unvan: 'Güneş Turizm Ltd. Şti.', kaynak: 'SGK', sebep: 'SGK bildirgesi bulunamadı', donem: oncekiAy },
+    { taxpayerId: 'x2', unvan: 'Selin Aydın', kaynak: 'VERGI', sebep: 'GİB girişi başarısız (şifre)', beyanTipi: 'MUHSGK', donem: oncekiAy },
+    { taxpayerId: 'm2', unvan: 'Erdoğan Balçık', kaynak: 'SGK', sebep: 'SGK tahakkuk fişi çekilmedi', donem: oncekiAy },
+    { taxpayerId: 'm12', unvan: 'Kardeşler Nakliyat Ltd. Şti.', kaynak: 'SGK', sebep: 'SGK bildirgesi bulunamadı', donem: oncekiAy },
+    { taxpayerId: 'm8', unvan: 'Dilek Bayageldi', kaynak: 'VERGI', sebep: 'Damga tahakkuku bulunamadı', beyanTipi: 'DAMGA', donem: oncekiAy },
+  ]
+    .filter((e) => !(e.kaynak === 'SGK' && SGK_YOK.has(e.taxpayerId)))
+    .map((e) => ({ ...e, listedeVar: listede.has(e.taxpayerId) }));
+  return { eksik, takipUyeSayisi: 14 };
+}
+/** Küçük ama geçerli tek sayfalık PDF (xref doğru hesaplanır; Chrome açar) */
+function ornekPdf(baslik) {
+  const metin = String(baslik || 'Aylik Odeme Listesi').replace(/[^\x20-\x7E]/g, '?');
+  const icerik = `BT /F1 20 Tf 60 780 Td (${metin}) Tj ET\nBT /F1 12 Tf 60 750 Td (Sahte API - ornek PDF) Tj ET`;
+  const nesneler = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>',
+    `<< /Length ${Buffer.byteLength(icerik)} >>\nstream\n${icerik}\nendstream`,
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+  ];
+  let out = '%PDF-1.4\n';
+  const ofsetler = [];
+  nesneler.forEach((n, i) => {
+    ofsetler.push(Buffer.byteLength(out));
+    out += `${i + 1} 0 obj\n${n}\nendobj\n`;
+  });
+  const xref = Buffer.byteLength(out);
+  out += `xref\n0 ${nesneler.length + 1}\n0000000000 65535 f \n` + ofsetler.map((o) => `${String(o).padStart(10, '0')} 00000 n \n`).join('');
+  out += `trailer\n<< /Size ${nesneler.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  return Buffer.from(out, 'binary');
+}
+function dosyaGonder(res, buf, tip, ad) {
+  res.writeHead(200, { 'Content-Type': tip, 'Content-Disposition': `attachment; filename="${ad}"`, 'Access-Control-Expose-Headers': 'Content-Disposition' });
+  res.end(buf);
+}
+const PORTAL_MUKELLEF = { id: 'm1', companyName: 'Öz Ela Gıda San. ve Tic. Ltd. Şti.', firstName: null, lastName: null, taxNumber: '6420011234', email: 'muhasebe@ozela.com.tr' };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Yardımcılar
@@ -509,6 +683,81 @@ async function isle(req, res) {
         return jsonGonder(res, 200, { ok: true, isId });
       }
     }
+  }
+
+  // ── Aylık Ödeme Listesi ──
+  // Yalnız sahte API: bellek durumunu sıfırla (önizleme betiği her koşuda aynı tabloyu görsün)
+  if (yol === '/aylik-odeme/__sifirla' && yontem === 'POST') {
+    for (const k of Object.keys(GONDERIM)) delete GONDERIM[k];
+    SGK_YOK.clear();
+    OTOMATIK = { aktif: false, gun: 20, saat: 9, onayGerekli: true, sonKosu: null };
+    return jsonGonder(res, 200, { ok: true });
+  }
+  if (yol === '/aylik-odeme' && yontem === 'GET') return jsonGonder(res, 200, odemeListesi(q.month || BU_AY, q.taxpayerId));
+  if (yol === '/aylik-odeme/ozet' && yontem === 'GET') return jsonGonder(res, 200, odemeOzeti(q.month || BU_AY));
+  if (yol === '/aylik-odeme/eksikler' && yontem === 'GET') return jsonGonder(res, 200, odemeEksikleri(q.month || BU_AY));
+  if (yol === '/aylik-odeme/otomatik' && yontem === 'GET') return jsonGonder(res, 200, OTOMATIK);
+  if (yol === '/aylik-odeme/otomatik' && yontem === 'PUT') {
+    const gun = Math.min(28, Math.max(1, Number(govde.gun) || 1));
+    const saat = Math.min(23, Math.max(0, Number(govde.saat) || 0));
+    OTOMATIK = { ...OTOMATIK, aktif: !!govde.aktif, gun, saat, onayGerekli: !!govde.onayGerekli };
+    console.log('[mock] otomatik ayar', OTOMATIK);
+    return jsonGonder(res, 200, OTOMATIK);
+  }
+  if (yol === '/aylik-odeme/excel' && yontem === 'GET') {
+    const ay = q.month || BU_AY;
+    // Gerçek xlsx değil; indirme akışını denemek için küçük ikili gövde
+    return dosyaGonder(res, Buffer.from(`PK sahte xlsx ${ay}`, 'binary'), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', `aylik-odeme-${ay}.xlsx`);
+  }
+  if (yol === '/aylik-odeme/pdf' && yontem === 'GET') {
+    const ay = q.month || BU_AY;
+    const mk = q.taxpayerId ? ODEME_MUKELLEFLER.find((x) => x.id === q.taxpayerId) : null;
+    if (q.taxpayerId && !mk) return jsonGonder(res, 404, { message: 'Mükellef bulunamadı' });
+    return dosyaGonder(res, ornekPdf(`${mk ? mk.unvan : 'Tum mukellefler'} - ${ay}`), 'application/pdf', `aylik-odeme-${ay}${mk ? '-' + mk.id : ''}.pdf`);
+  }
+  if (yol === '/aylik-odeme/send' && yontem === 'POST') {
+    const ay = govde.month || BU_AY;
+    const mod = govde.mod || 'gonderilmemis';
+    const g = gonderimDurumu(ay);
+    const hedef = odemeListesi(ay, govde.taxpayerId || undefined);
+    const results = [];
+    let atlanan = 0;
+    for (const r of hedef) {
+      const durum = mukellefDurumu(r);
+      if (mod === 'gonderilmemis' && durum === 'gonderildi') { atlanan++; continue; }
+      const iletisimYok = !r.phone && !r.email;
+      const vergiVar = r.satirlar.some((s) => s.kaynak !== 'SGK');
+      const sgkVar = r.satirlar.some((s) => s.kaynak === 'SGK');
+      const kayit = { status: iletisimYok ? 'FAILED' : 'SENT', sentAt: new Date().toISOString(), kanallar: ['whatsapp'], test: true };
+      g[r.taxpayerId] = { VERGI: vergiVar ? { ...kayit } : null, SGK: sgkVar ? { ...kayit } : null };
+      results.push({ taxpayerId: r.taxpayerId, unvan: r.unvan, grup: 'VERGI', channel: 'whatsapp', status: kayit.status, error: iletisimYok ? 'Telefon ve e-posta yok' : null });
+      if (sgkVar) results.push({ taxpayerId: r.taxpayerId, unvan: r.unvan, grup: 'SGK', channel: 'whatsapp', status: kayit.status, error: iletisimYok ? 'Telefon ve e-posta yok' : null });
+    }
+    console.log(`[mock] send mod=${mod} taxpayerId=${govde.taxpayerId || '-'} → ${results.length} sonuç, ${atlanan} atlandı`);
+    return jsonGonder(res, 200, { ok: true, testMode: true, count: results.length, atlanan, results });
+  }
+  if (yol === '/aylik-odeme/ornek-gonder' && yontem === 'POST') {
+    const hedef = odemeListesi(govde.month || BU_AY, govde.taxpayerId || undefined)[0];
+    const mesaj = hedef
+      ? `Sayın ${hedef.unvan},\n${govde.month || BU_AY} ayı ödemeleriniz:\n${hedef.satirlar.map((s) => `• ${s.turAd} (${s.donem}) — son gün ${s.sonGun} — ${s.tutar.toFixed(2)} ₺`).join('\n')}\nToplam: ${hedef.toplam.toFixed(2)} ₺`
+      : 'Örnek cetvel';
+    return jsonGonder(res, 200, { ok: true, telefonlar: [TEST_TELEFON], mesajlar: [mesaj] });
+  }
+  if (yol === '/aylik-odeme/eksik/sgk-yok' && yontem === 'POST') {
+    if (!govde.taxpayerId) return jsonGonder(res, 400, { message: 'taxpayerId gerekli' });
+    SGK_YOK.add(govde.taxpayerId);
+    console.log('[mock] sgk-yok', govde.taxpayerId);
+    return jsonGonder(res, 200, { ok: true });
+  }
+
+  // ── Mükellef portalı (sahte: her giriş m1 = Öz Ela) ──
+  if (yol === '/portal/auth/login' && yontem === 'POST') return jsonGonder(res, 200, { accessToken: 'sahte-mukellef-token', taxpayer: PORTAL_MUKELLEF });
+  if (yol === '/portal/me') return jsonGonder(res, 200, PORTAL_MUKELLEF);
+  if (yol === '/portal/dashboard') return jsonGonder(res, 200, { profile: PORTAL_MUKELLEF, ozet: { okunmamisTebligat: 0 }, faturaOzet: { alisToplam: 0, satisToplam: 0 }, faturaAylik: [] });
+  if (yol === '/portal/brifing') return jsonGonder(res, 200, { summary: 'Bu ay 4 ödeme kaleminiz var; en yakını 17 Eylül geçici vergi. Belge eksiği görünmüyor.', alerts: [], suggestions: [], focus: 'calm', generatedAt: new Date().toISOString(), fromCache: false, ad: PORTAL_MUKELLEF.companyName });
+  if (yol === '/taxpayer-portal/odeme-cetveli' && yontem === 'GET') {
+    const r = odemeListesi(q.month || BU_AY, PORTAL_MUKELLEF.id)[0];
+    return jsonGonder(res, 200, r ? { month: q.month || BU_AY, satirlar: r.satirlar, toplam: r.toplam, gonderim: r.gonderim } : { month: q.month || BU_AY, satirlar: [], toplam: 0, gonderim: null });
   }
 
   console.log(`[mock] 404 ${yontem} ${yol}`);

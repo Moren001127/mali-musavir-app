@@ -182,7 +182,7 @@ const CORE_TOOL_NAMES = [
   'get_accounting_reference', // TDHP kod + vergi oranı — uydurmayı keser, her zaman erişilebilir
 ];
 
-const TAXPAYER_READONLY_TOOL_NAMES = [
+export const TAXPAYER_READONLY_TOOL_NAMES = [
   'get_my_profile',
   'get_my_work_status',
   'get_my_documents',
@@ -204,6 +204,7 @@ const TAXPAYER_READONLY_TOOL_NAMES = [
   'get_my_sgk',                 // SGK tahakkuk/hizmet listesi (/mukellef/sgk var)
   'get_my_isletme_hesap_ozeti', // kendi işletme hesap özeti (kâr/zarar, geçici vergi)
   'get_my_vergi_takvimi',       // "ne zaman ödemem gerek" — kendi son günleri
+  'get_my_odeme_listesi',       // "bu ay ne ödeyeceğim / ödeme listem" — kendi aylık ödeme cetveli (2026-09-14)
   'get_gundem',                 // kur/enflasyon/kira artış tavanı — KAMUYA AÇIK veri
 ];
 
@@ -1871,6 +1872,11 @@ export class MorenAiService {
         return /beyan|tahakkuk|muhtasar|muhsgk|stopaj|ge[çc]ici|damga|kurumlar|verildi mi|verdiniz mi|haz[ıi]r m[ıi]/i.test(gate) ? { donem: this.explicitPeriodOrNull(gate, ctx.period) } : null;
       case 'get_my_balance':
         return /bor[cç]|bakiye|[öo]deme|[öo]deyece|[öo]demem|[öo]decek|cari|hesab[ıi]m|hesap durum|ne kadar [öo]de|kalan/i.test(gate) ? {} : null;
+      case 'get_my_odeme_listesi':
+        // "bu ay ne ödeyeceğim / ödeme listem / ödeme cetvelim / ne kadar vergi çıktı / SGK primim"
+        return /[öo]deme (listem|cetvel|plan|takvim)|ne (kadar )?[öo]deyece|[öo]deyece[gğ]im|[öo]denecek|bu ay .*(vergi|prim|[öo]de)|(vergi|prim)(im)? ne kadar|ne kadar (vergi|prim)|tahakkuk/i.test(gate)
+          ? { month: this.explicitPeriodOrNull(gate, ctx.period) }
+          : null;
       case 'get_my_profile':
       case 'get_my_work_status':
       case 'get_my_documents':
