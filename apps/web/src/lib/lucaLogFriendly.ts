@@ -48,6 +48,17 @@ const STAGE_MAP: [RegExp, string][] = [
   [/hata|error|basarisiz|başarısız|fail/i, 'Bir sorun oluştu, tekrar deneniyor'],
 ];
 
+// Ajanın "Firma bulunamadı: VKN=… slug="?" ad="…". … Toplam 84 option (83 geçerli). İlk geçerli 8: … İPUCU: …"
+// satırı kullanıcıya teknik ayrıntısız, tek cümle: mükellef Luca'da yok, veri ÇEKİLMEDİ (2026-09-14 SİLBER vakası).
+function firmaBulunamadiSade(body: string): string | null {
+  if (!/Firma bulunamad[ıi]/i.test(body)) return null;
+  const vkn = body.match(/VKN=(\d{10,11})/)?.[1];
+  const ad = body.match(/\sad="([^"]+)"/)?.[1]?.trim();
+  const kim = ad ? `«${ad}»${vkn ? ` (VKN ${vkn})` : ''}` : vkn ? `VKN ${vkn}` : 'seçilen mükellef';
+  return `Firma Luca'da BULUNAMADI: ${kim}. Luca firma listesinde yok ya da yetkiniz yok — hiçbir veri çekilmedi. `
+    + `Firma Luca'da farklı bir adla açıldıysa mükellef kartındaki "Luca Slug" alanına Luca'daki kısa adını yazın.`;
+}
+
 function stripPrefix(line: string): { time: string; body: string } {
   const timeM = line.match(/^\[(\d{2}:\d{2}:\d{2})\]/);
   const time = timeM ? timeM[1] : '';
@@ -85,7 +96,7 @@ export function lucaLogFriendly(rawLines: string[], opts: { withTime?: boolean }
     // 1b) KRİTİK UYARI: sebebi olduğu gibi göster (teknik önekleri kırp).
     if (KEEP.some((re) => re.test(body))) {
       const temiz = body.replace(/^.*?import hatas[ıi]:\s*/i, '').replace(/^Upload HTTP \d+:\s*/i, '').replace(/^e-Defter Detay Fis Listesi import hatasi:\s*/i, '').slice(0, 320);
-      push(time, temiz);
+      push(time, firmaBulunamadiSade(temiz) ?? temiz);
       continue;
     }
 
