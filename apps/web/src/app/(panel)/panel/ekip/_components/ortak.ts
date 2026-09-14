@@ -734,7 +734,13 @@ export function adimAciklamasi(name: string, args: any, mukellefAd?: (id?: strin
   const parcalar: string[] = [];
   if (name === 'ekip_ajan_baslat') {
     const hedef = ajanAd ? ajanAd(String(a.ajanId || '')) : String(a.ajanId || '');
-    const gorev = String(a.gorev || '').split('\n')[0].trim();
+    // v5 (2026-09-15): görev cümlesindeki kimlik/reçete kodu ekranda yazılmaz — "(taxpayerId: …)", "(R1)"
+    const gorev = String(a.gorev || '')
+      .split('\n')[0]
+      .replace(/\s*\((?:taxpayerId|mükellef id|id)\s*:[^)]*\)/gi, '')
+      .replace(/\s*\(R\d{1,2}[a-z]?\)/g, '')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
     return { baslik: `${hedef || 'Personel'}’e verildi`, ayrinti: gorev.length > 90 ? `${gorev.slice(0, 89)}…` : gorev };
   }
   if (name === 'create_pending_action') {

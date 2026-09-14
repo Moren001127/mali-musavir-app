@@ -1,15 +1,12 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
-import { Loader2, Play, AlertOctagon, Users, Activity, ShieldCheck, ClipboardCheck } from 'lucide-react';
-import { toast } from 'sonner';
-import { sabahOzetiUret, isZamanAsimi, isOmurgaYok, type AkisSayaclari, type EkipDurum } from '@/lib/ekip';
-import type { KosularApi } from './kosular';
-import { Dugme, KPI } from './Kart';
-import { TEMA, bugunMu, saatKisa } from './ortak';
+import { CalendarDays, Loader2, AlertOctagon, Sun } from 'lucide-react';
+import { isOmurgaYok, type EkipDurum } from '@/lib/ekip';
+import { V5 } from './Cam';
+import { bugunMu, saatKisa } from './ortak';
 
-/** "Pazartesi, 14 Eylül 2026" — İstanbul takvimi; hidrasyon uyuşmazlığı olmasın diye istemcide hesaplanır. */
+/** "Salı, 15 Eylül 2026" — İstanbul takvimi; hidrasyon uyuşmazlığı olmasın diye istemcide hesaplanır. */
 function bugunEtiketi(): string {
   const d = new Date();
   const gun = d.toLocaleDateString('tr-TR', { weekday: 'long', timeZone: 'Europe/Istanbul' });
@@ -17,139 +14,75 @@ function bugunEtiketi(): string {
   return `${gun}, ${tarih}`;
 }
 
-function Durum({ renk, children, title }: { renk: string; children: React.ReactNode; title?: string }) {
+/** Cam kapsül (üst şerit): simge/nokta + metin. */
+function Hap({ children, nokta, altin = false, title }: { children: React.ReactNode; nokta?: string; altin?: boolean; title?: string }) {
   return (
-    <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-[12px]" style={{ color: TEMA.ikincil }} title={title}>
-      <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: renk, boxShadow: `0 0 6px ${renk}66` }} />
+    <span
+      className="inline-flex h-9 flex-shrink-0 items-center gap-2 whitespace-nowrap rounded-full px-3.5 text-[12.5px] font-medium"
+      style={
+        altin
+          ? { color: '#1b1607', background: 'linear-gradient(180deg, #eed48f, #cfa94d)', border: '1px solid #b8933f', fontWeight: 700, boxShadow: '0 8px 24px rgba(227,194,111,0.22)' }
+          : { color: V5.ikincil, background: V5.cam, border: `1px solid ${V5.cizgi}`, backdropFilter: 'blur(10px)' }
+      }
+      title={title}
+    >
+      {nokta && <span className="inline-block h-[7px] w-[7px] rounded-full" style={{ background: nokta, boxShadow: `0 0 10px ${nokta}` }} />}
       {children}
     </span>
   );
 }
 
 /**
- * Üst şerit v3: sol büyük başlık "Ekip" + tarih + sistem durumu satırı; sağda 4 sayaç kutusu
- * (Personel · Şu an çalışan · Onayınızı bekleyen · Sizden istenen). Sayaçlar tıklanınca geçmiş süzgeci.
+ * Üst şerit v5: altın gradyanlı serif başlık + alt cümle; sağda cam kapsüller (tarih · Luca operatörü · Max · sabah özeti).
+ * Sayaç kutusu YOK (Muzaffer Bey'in reddettiği kalıp); sayılar Koordinatör kartında ve sağ sütunda.
  */
-export function UstSerit({
-  durum,
-  durumHata,
-  durumYukleniyor,
-  kadroSayisi,
-  calisan,
-  sayaclar,
-  kosular,
-  onSuzgec,
-}: {
-  durum: EkipDurum | undefined;
-  durumHata: unknown;
-  durumYukleniyor: boolean;
-  kadroSayisi: number;
-  calisan: number;
-  sayaclar: AkisSayaclari | undefined;
-  kosular: KosularApi;
-  onSuzgec: (f: 'onay' | 'istek' | 'suruyor') => void;
-}) {
-  const qc = useQueryClient();
+export function UstSerit({ durum, durumHata, durumYukleniyor }: { durum: EkipDurum | undefined; durumHata: unknown; durumYukleniyor: boolean }) {
   const [gunMetni, setGunMetni] = useState('');
   useEffect(() => setGunMetni(bugunEtiketi()), []);
-  const [uretiliyor, setUretiliyor] = useState(false);
-  const [kilitliyeKadar, setKilitliyeKadar] = useState(0);
-
-  const onay = sayaclar?.onay ?? durum?.bekleyenOnay ?? 0;
-  const istek = sayaclar?.istek ?? 0;
   const sonSabah = durum?.sonSabahOzeti?.createdAt || null;
   const sabahBugun = !!sonSabah && bugunMu(sonSabah);
-  const kilitli = uretiliyor || Date.now() < kilitliyeKadar || !!kosular.aktifKosu;
-
-  /** Şimdi üret — gonder:false; sonuç iş panelinde Koordinatör koşusu olarak akar. */
-  const simdiUret = async () => {
-    if (kilitli) return;
-    setUretiliyor(true);
-    const basladi = Date.now();
-    kosular.ayarla('koordinator', { ajanId: 'koordinator', gorev: 'Sabah özeti — üretiliyor (gönderme yok)', dryRun: true, cevap: '', adimlar: [], bitti: false, basladi, kaynak: 'sabahOzeti' });
-    try {
-      const r = await sabahOzetiUret({ gonder: false });
-      kosular.ayarla('koordinator', {
-        ajanId: 'koordinator',
-        gorev: 'Sabah özeti (şimdi üretildi)',
-        dryRun: true,
-        isId: r.isId,
-        vakaId: r.isId,
-        model: r.model,
-        cevap: r.rapor || '',
-        adimlar: (r.toolUses || []).map((t) => ({ tip: 'arac' as const, ad: t.name, args: t.args, zaman: Date.now(), durum: 'bitti' as const })),
-        bitti: true,
-        hata: r.hata,
-        durationMs: r.durationMs ?? Date.now() - basladi,
-        basladi,
-        kaynak: 'sabahOzeti',
-        gonderildi: 0,
-      });
-      toast.success('Sabah özeti üretildi', { description: 'Aşağıdaki iş panelinde.' });
-    } catch (e: any) {
-      const zamanAsimi = isZamanAsimi(e);
-      const hata = zamanAsimi ? 'Sürüyor — iş geçmişinde görünecek' : e?.message || 'Sabah özeti üretilemedi';
-      kosular.guncelle('koordinator', (k) => ({ ...k, bitti: true, hata, durationMs: Date.now() - basladi }));
-      if (zamanAsimi) {
-        toast.info(hata);
-        setKilitliyeKadar(Date.now() + 3 * 60_000);
-      } else toast.error(hata);
-    } finally {
-      setUretiliyor(false);
-      qc.invalidateQueries({ queryKey: ['ekip-akis'] });
-      qc.invalidateQueries({ queryKey: ['ekip-durum'] });
-      qc.invalidateQueries({ queryKey: ['ekip-kadro'] });
-    }
-  };
-
-  const sistemDurumu = () => {
-    if (durumYukleniyor)
-      return (
-        <span className="inline-flex items-center gap-1 text-[12px]" style={{ color: TEMA.ikincil }}>
-          <Loader2 size={11} className="animate-spin" /> Durum alınıyor
-        </span>
-      );
-    if (durumHata) return <Durum renk={TEMA.soluk}>{isOmurgaYok(durumHata) ? 'Omurga yayında değil' : 'Durum alınamadı'}</Durum>;
-    if (!durum) return null;
-    return (
-      <>
-        <Durum renk={durum.operator?.acik ? TEMA.yesil : TEMA.kirmizi} title={durum.operator?.cihaz ? `Cihaz: ${durum.operator.cihaz}` : undefined}>
-          Luca operatörü {durum.operator?.acik ? 'açık' : 'kapalı'}
-        </Durum>
-        <Durum renk={durum.maxBagli === false ? TEMA.kirmizi : TEMA.yesil}>Max {durum.maxBagli === false ? 'bağlı değil' : 'bağlı'}</Durum>
-        <Durum renk={sabahBugun ? TEMA.yesil : durum.sabahOzeti ? TEMA.mavi : TEMA.soluk} title={sonSabah ? `Son üretim ${saatKisa(sonSabah).slice(0, 5)}` : undefined}>
-          Sabah özeti 08:30{sabahBugun ? ' · bugün gitti' : durum.sabahOzeti ? '' : ' · kapalı'}
-        </Durum>
-        <Dugme tur="sessiz" disabled={kilitli} onClick={simdiUret} title="Yalnız üretir; Muzaffer Bey’e göndermez (gönderim iş panelinde ayrı teyit)">
-          {uretiliyor ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
-          {uretiliyor ? 'Üretiliyor…' : Date.now() < kilitliyeKadar ? 'Sürüyor…' : kosular.aktifKosu ? 'Koşu sürüyor' : 'Sabah özetini şimdi üret'}
-        </Dugme>
-      </>
-    );
-  };
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         <div className="min-w-0">
-          <h1 className="text-[24px] font-semibold leading-tight tracking-tight" style={{ color: TEMA.metin }}>
+          <h1
+            className="text-[34px] font-bold leading-none tracking-tight"
+            style={{ fontFamily: "var(--font-heading, 'Fraunces'), Georgia, serif", background: 'linear-gradient(90deg, #ffffff 0%, #f3e6c2 60%, #e3c26f 100%)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}
+          >
             Ekip
           </h1>
-          <div className="mt-0.5 text-[12.5px]" style={{ color: TEMA.ikincil }}>
-            {gunMetni || ' '} · Yapay çalışan kadrosu — görev verin, ilerlemeyi izleyin, onaylayın.
+          <div className="mt-1.5 text-[13.5px]" style={{ color: V5.ikincil }}>
+            Yapay çalışan kadronuz — görev verin, ilerlemeyi izleyin, kararı siz verin.
           </div>
-          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5">{sistemDurumu()}</div>
         </div>
-        <div className="grid min-w-0 grid-cols-2 gap-2.5 sm:grid-cols-4 xl:w-[560px]">
-          <KPI etiket="Personel" deger={kadroSayisi || 12} ikon={<Users size={12} />} altBilgi="yapay çalışan" />
-          <KPI etiket="Şu an çalışan" deger={calisan} ikon={<Activity size={12} />} renk={TEMA.mavi} vurgu={calisan > 0} altBilgi={calisan > 0 ? 'iş sürüyor' : 'boşta'} onClick={() => onSuzgec('suruyor')} />
-          <KPI etiket="Onayınızı bekleyen" deger={onay} ikon={<ShieldCheck size={12} />} renk={TEMA.altin} vurgu={onay > 0} altBilgi={onay > 0 ? 'karar sizde' : 'bekleyen yok'} onClick={() => onSuzgec('onay')} />
-          <KPI etiket="Sizden istenen" deger={istek} ikon={<ClipboardCheck size={12} />} renk={TEMA.turuncu} vurgu={istek > 0} altBilgi={istek > 0 ? 'belge / işlem' : 'istek yok'} onClick={() => onSuzgec('istek')} />
+        <div className="flex min-w-0 flex-wrap items-center gap-2.5">
+          <Hap>
+            <CalendarDays size={14} style={{ color: V5.ikincil }} />
+            <span style={{ color: V5.metin, fontWeight: 600 }}>{gunMetni || ' '}</span>
+          </Hap>
+          {durumYukleniyor ? (
+            <Hap>
+              <Loader2 size={13} className="animate-spin" /> Durum alınıyor
+            </Hap>
+          ) : durumHata ? (
+            <Hap nokta={V5.soluk}>{isOmurgaYok(durumHata) ? 'Omurga yayında değil' : 'Durum alınamadı'}</Hap>
+          ) : durum ? (
+            <>
+              <Hap nokta={durum.operator?.acik ? V5.mint : V5.coral} title={durum.operator?.cihaz ? `Cihaz: ${durum.operator.cihaz}` : undefined}>
+                Luca operatörü{durum.operator?.acik ? '' : ' kapalı'}
+              </Hap>
+              <Hap nokta={durum.maxBagli === false ? V5.coral : V5.mint}>Max{durum.maxBagli === false ? ' bağlı değil' : ''}</Hap>
+              <Hap altin title={sonSabah ? `Son üretim ${saatKisa(sonSabah).slice(0, 5)}` : durum.sabahOzeti ? 'Her sabah 08:30' : 'Sabah özeti kapalı'}>
+                <Sun size={14} /> Sabah özeti{sabahBugun ? ' · bugün gitti' : durum.sabahOzeti ? ' · 08:30' : ' · kapalı'}
+              </Hap>
+            </>
+          ) : null}
         </div>
       </div>
       {durum?.maxBagli === false && (
-        <div className="flex items-start gap-2 rounded-xl px-4 py-2.5 text-[13px]" style={{ background: `${TEMA.kirmizi}14`, border: `1px solid ${TEMA.kirmizi}55`, color: TEMA.metin }}>
-          <AlertOctagon size={15} className="mt-0.5 flex-shrink-0" style={{ color: TEMA.kirmizi }} />
+        <div className="flex items-start gap-2 rounded-2xl px-4 py-3 text-[13px]" style={{ background: 'rgba(255,107,122,0.10)', border: '1px solid rgba(255,107,122,0.45)', color: V5.metin }}>
+          <AlertOctagon size={15} className="mt-0.5 flex-shrink-0" style={{ color: V5.coral }} />
           <span>
             <b>Max bağlı değil</b> — hiçbir personel çalışamaz. Sunucuda CLAUDE_CODE_OAUTH_TOKEN yok.
           </span>

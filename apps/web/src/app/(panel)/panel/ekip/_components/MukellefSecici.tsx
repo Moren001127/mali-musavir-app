@@ -17,6 +17,8 @@ export function MukellefSecici({
   kilitli,
   odakNonce,
   escNonce,
+  sade = false,
+  yerTutucu,
 }: {
   mukellefler: MukellefOzet[];
   value: string;
@@ -28,6 +30,10 @@ export function MukellefSecici({
   odakNonce?: number;
   /** Artınca liste kapanır (Esc — EkipEkrani'daki tek dinleyici). */
   escNonce?: number;
+  /** v5 (2026-09-15): çip/arama kutusunun İÇİNE gömülü kullanım — kendi zemini/kenarı yok, liste altta yüzer (absolute). */
+  sade?: boolean;
+  /** Sade modda yer tutucu metni. */
+  yerTutucu?: string;
 }) {
   const [metin, setMetin] = useState('');
   const [acik, setAcik] = useState(false);
@@ -67,11 +73,11 @@ export function MukellefSecici({
     return (
       <div className="flex min-w-0 flex-wrap items-center gap-1">
         <span
-          className="inline-flex max-w-full items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold"
-          style={{ background: `${renk}1a`, border: `1px solid ${renk}66`, color: SAKIN.metin }}
+          className={`inline-flex max-w-full items-center gap-1 rounded-md text-xs font-semibold ${sade ? 'py-0.5 text-[12.5px]' : 'px-2 py-1'}`}
+          style={sade ? { color: SAKIN.metin } : { background: `${renk}1a`, border: `1px solid ${renk}66`, color: SAKIN.metin }}
           title={secili.taxNumber ? `VKN ${secili.taxNumber}` : undefined}
         >
-          <Building2 size={12} style={{ color: SAKIN.vurguAcik }} />
+          {!sade && <Building2 size={12} style={{ color: SAKIN.vurguAcik }} />}
           <span className="truncate">{mukellefAdi(secili)}</span>
           <button type="button" onClick={() => onChange('')} className="ml-0.5 rounded p-0.5 hover:bg-white/10" title="Mükellefi kaldır (ofis geneli)">
             <X size={12} />
@@ -87,9 +93,9 @@ export function MukellefSecici({
   }
 
   return (
-    <div className="flex min-w-0 flex-col gap-1">
+    <div className={`min-w-0 ${sade ? 'relative' : 'flex flex-col gap-1'}`}>
       <div className="relative flex items-center">
-        <Building2 size={12} className="pointer-events-none absolute left-2" style={{ color: SAKIN.ikincil }} />
+        {!sade && <Building2 size={12} className="pointer-events-none absolute left-2" style={{ color: SAKIN.ikincil }} />}
         <input
           ref={inputRef}
           value={metin}
@@ -116,9 +122,9 @@ export function MukellefSecici({
               setAcik(false);
             }
           }}
-          placeholder="Mükellef ara… (boş = ofis geneli)"
-          className="w-full rounded-md py-1.5 pl-7 pr-7 text-xs outline-none transition-[border-color] duration-150 focus:[border-color:#4f86c9]"
-          style={{ background: SAKIN.alan, border: `1px solid ${SAKIN.cizgi}`, color: SAKIN.metin }}
+          placeholder={sade ? yerTutucu || 'Seçin (boş = ofis geneli)' : 'Mükellef ara… (boş = ofis geneli)'}
+          className={sade ? 'w-full bg-transparent py-0.5 pr-6 text-[12.5px] outline-none' : 'w-full rounded-md py-1.5 pl-7 pr-7 text-xs outline-none transition-[border-color] duration-150 focus:[border-color:#4f86c9]'}
+          style={sade ? { color: SAKIN.metin } : { background: SAKIN.alan, border: `1px solid ${SAKIN.cizgi}`, color: SAKIN.metin }}
         />
         {metin && (
           <button
@@ -136,7 +142,7 @@ export function MukellefSecici({
         )}
       </div>
       {acik && (
-        <ul className="max-h-56 overflow-y-auto rounded-md p-1" style={{ background: '#121317', border: `1px solid ${SAKIN.cizgiKoyu}` }}>
+        <ul className={`max-h-56 overflow-y-auto rounded-[10px] p-1 ${sade ? 'absolute left-0 top-full z-50 mt-2 w-[300px] shadow-2xl' : ''}`} style={{ background: '#121317', border: `1px solid ${SAKIN.cizgiKoyu}` }}>
           {!sonuclar.length ? (
             <li className="px-2 py-1.5 text-[11px]" style={{ color: SAKIN.ikincil }}>
               {mukellefler.length ? 'Eşleşen mükellef yok' : 'Mükellef listesi yükleniyor…'}

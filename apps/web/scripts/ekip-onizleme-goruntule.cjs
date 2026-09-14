@@ -34,7 +34,7 @@ const URL = process.env.EKIP_URL || 'http://localhost:3007/panel/ekip';
   };
 
   await page.goto(URL, { waitUntil: 'networkidle' });
-  await page.waitForSelector('text=Koordinatör’e görev ver', { timeout: 30000 });
+  await page.waitForSelector('text=Koordinatör’e ne yaptıralım', { timeout: 90000 });
   await page.waitForTimeout(800);
   await cek('01-bos-ekran');
 
@@ -45,7 +45,7 @@ const URL = process.env.EKIP_URL || 'http://localhost:3007/panel/ekip';
   await page.waitForTimeout(3500);
   await cek('02-kosu-suruyor', false);
   // Koşu sürerken cevap/talimat yaz → "Bitince gönder" kuyruğu
-  const cevapAlani = page.locator('textarea').nth(1);
+  const cevapAlani = page.locator('input[placeholder*="talimat"]').first();
   await cevapAlani.fill('beyannameyi henüz hazırlama, sadece kontrol');
   await page.getByRole('button', { name: /Bitince gönder/ }).first().click();
   await page.waitForTimeout(500);
@@ -58,7 +58,7 @@ const URL = process.env.EKIP_URL || 'http://localhost:3007/panel/ekip';
   await cek('05-personel-bitti-istek', true);
 
   // Geçmişten iş seç (Hüseyin Salı canlı)
-  await page.getByRole('button', { name: /HÜSEYİN SALI/ }).first().click();
+  await page.getByRole('row', { name: /HÜSEYİN SALI/ }).first().click();
   await page.waitForTimeout(1500);
   await cek('06-gecmis-is-paneli', true);
 
