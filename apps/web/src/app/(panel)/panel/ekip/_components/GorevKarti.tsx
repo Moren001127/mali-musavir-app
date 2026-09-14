@@ -1,6 +1,6 @@
 'use client';
 
-import { forwardRef, useEffect, useMemo, useRef, useState } from 'react';
+import { forwardRef, useEffect, useRef, useState } from 'react';
 import { Play, Loader2, Mic, MicOff, AlertTriangle, Square, Link2, X, FlaskConical, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Ajan, MukellefOzet } from '@/lib/ekip';
@@ -8,10 +8,9 @@ import { startListening, isSpeechSupported } from '../../luca-operator/_componen
 import type { KosularApi } from './kosular';
 import { MukellefSecici } from './MukellefSecici';
 import { Avatar, Dugme, Kart } from './Kart';
-import { SABLONLAR, TEMA, ajanKisaltma, sablonDoldur, type SablonGrubu } from './ortak';
+import { TEMA, ajanKisaltma } from './ortak';
 
 const KOORDINATOR = 'koordinator';
-const GRUP_SIRASI: SablonGrubu[] = ['Günlük', 'Beyanname ve KDV', 'Fatura', 'Denetim ve analiz', 'Diğer'];
 
 /** Şablon / pano / tekrar-çalıştır / cevapla bunu doldurur; ÇALIŞTIRMAZ. Hep Koordinatör'e gider (ajanId yok sayılır). */
 export interface KomutTaslak {
@@ -25,8 +24,9 @@ export interface KomutTaslak {
 }
 
 /**
- * Görev kartı v3 — tek görev yeri (Koordinatör). Sol: büyük metin alanı + mükellef seçici + hazır görevler (gruplu çipler).
- * Sağ: mod anahtarı (Kuru test / Canlı) + Sesli + Çalıştır. Kuru/Canlı depoya yazılmaz; her açılışta KURU.
+ * Görev kartı v3 — tek görev yeri (Koordinatör): büyük metin alanı; altta mükellef seçici · Kuru test/Canlı · Sesli · Çalıştır.
+ * Hazır görev çipleri KALDIRILDI (Muzaffer Bey 2026-09-15: "hazır görevler yazılarını kaldır" — düz cümle yeter).
+ * Kuru/Canlı depoya yazılmaz; her açılışta KURU.
  */
 export const GorevKarti = forwardRef<
   HTMLElement,
@@ -49,8 +49,7 @@ export const GorevKarti = forwardRef<
   const [dryRun, setDryRun] = useState(true);
   const [canliTeyit, setCanliTeyit] = useState(false);
   const [kilitli, setKilitli] = useState(false);
-  const [aktifSablonId, setAktifSablonId] = useState<string | null>(null);
-  const [mukellefOdak, setMukellefOdak] = useState(0);
+  const [mukellefOdak] = useState(0);
   const [listening, setListening] = useState(false);
   const [odakta, setOdakta] = useState(false);
   const listenerRef = useRef<{ stop: () => void } | null>(null);
@@ -62,10 +61,7 @@ export const GorevKarti = forwardRef<
   const buCalisiyor = !!kosu && !kosu.bitti;
   const sabahOzetiSuruyor = buCalisiyor && kosu?.kaynak === 'sabahOzeti';
   const baskaCalisiyor = !!kosular.aktifKosu && kosular.aktifKosu.ajanId !== KOORDINATOR;
-  const aktifSablon = SABLONLAR.find((s) => s.id === aktifSablonId);
-  const mukellefEksik = !!aktifSablon?.mukellefIster && !taxpayerId;
-
-  const gruplar = useMemo(() => GRUP_SIRASI.map((grup) => ({ grup, sablonlar: SABLONLAR.filter((s) => s.grup === grup) })).filter((g) => g.sablonlar.length), []);
+  const mukellefEksik = false;
 
   useEffect(() => {
     if (!komutTaslak) return;
@@ -73,7 +69,6 @@ export const GorevKarti = forwardRef<
     setTaxpayerId(komutTaslak.taxpayerId || '');
     setVakaId(komutTaslak.vakaId || undefined);
     setKilitli(komutTaslak.kaynak === 'pano' || komutTaslak.kaynak === 'tekrar');
-    setAktifSablonId(null);
     setDryRun(true);
     setCanliTeyit(false);
     kutuRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -97,16 +92,6 @@ export const GorevKarti = forwardRef<
     if (!calistirabilir) return;
     void kosular.baslat(KOORDINATOR, { gorev: gorev.trim(), taxpayerId: taxpayerId || undefined, dryRun, vakaId });
     setVakaId(undefined);
-  };
-  const sablonSec = (id: string) => {
-    const s = SABLONLAR.find((x) => x.id === id);
-    if (!s) return;
-    setAktifSablonId(id);
-    setGorev(sablonDoldur(s.gorev, mukellefAd(taxpayerId), s.donemIster ? seciliDonem : null));
-    setKilitli(false);
-    setVakaId(undefined);
-    if (s.mukellefIster && !taxpayerId) setMukellefOdak((n) => n + 1);
-    else textareaRef.current?.focus();
   };
   const toggleMic = () => {
     if (listening) {
@@ -158,7 +143,7 @@ export const GorevKarti = forwardRef<
           Koordinatör’e görev ver
         </span>
       }
-      aciklama="Ofis müdürü işi doğru personele verir; ilerlemeyi aşağıdaki iş panelinden izlersiniz."
+      aciklama="Ne istediğinizi yazın; ilerleme aşağıdaki iş panelinde görünür."
       sag={
         vakaId ? (
           <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10.5px] font-semibold" style={{ border: `1px solid ${TEMA.mavi}66`, color: TEMA.mavi }} title={`Aynı iş zincirinde devam: ${vakaId}`}>
@@ -174,10 +159,7 @@ export const GorevKarti = forwardRef<
         <textarea
           ref={textareaRef}
           value={gorev}
-          onChange={(e) => {
-            setGorev(e.target.value);
-            if (aktifSablonId) setAktifSablonId(null);
-          }}
+          onChange={(e) => setGorev(e.target.value)}
           onFocus={() => setOdakta(true)}
           onBlur={() => setOdakta(false)}
           onKeyDown={(e) => {
@@ -191,37 +173,6 @@ export const GorevKarti = forwardRef<
           className="min-h-[92px] w-full resize-y rounded-xl px-4 py-3 text-[14px] leading-relaxed outline-none transition-[border-color,box-shadow] duration-150"
           style={{ background: TEMA.alanZemin, border: `1px solid ${alanKenar}`, color: TEMA.metin, boxShadow: odakta ? `0 0 0 3px ${TEMA.altin}22` : 'none' }}
         />
-
-        {/* Hazır görevler — gruplu çipler */}
-        <div className="flex flex-col gap-1.5">
-          <div className="text-[10.5px] uppercase tracking-wider" style={{ color: TEMA.soluk }}>
-            Hazır görevler <span className="normal-case tracking-normal">· metni doldurur, çalıştırmaz</span>
-          </div>
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
-            {gruplar.map((g) => (
-              <span key={g.grup} className="inline-flex flex-wrap items-center gap-1.5">
-                <span className="text-[10.5px]" style={{ color: TEMA.soluk }}>
-                  {g.grup}
-                </span>
-                {g.sablonlar.map((s) => {
-                  const aktif = aktifSablonId === s.id;
-                  return (
-                    <button
-                      key={s.id}
-                      type="button"
-                      onClick={() => sablonSec(s.id)}
-                      className="rounded-full px-2.5 py-0.5 text-[11.5px] font-medium transition-[border-color,background-color] duration-150"
-                      style={{ background: aktif ? `${TEMA.altin}22` : 'rgba(255,255,255,0.04)', border: `1px solid ${aktif ? `${TEMA.altin}88` : TEMA.alanKenar}`, color: aktif ? TEMA.altin : TEMA.metin }}
-                      title={s.mukellefIster ? 'Mükellef ister' : undefined}
-                    >
-                      {s.ad}
-                    </button>
-                  );
-                })}
-              </span>
-            ))}
-          </div>
-        </div>
 
         {canliTeyit && dryRun && (
           <div className="flex flex-wrap items-center gap-2 rounded-xl px-3.5 py-2.5 text-[12.5px]" style={{ background: `${TEMA.kirmizi}14`, border: `1px solid ${TEMA.kirmizi}77`, color: TEMA.metin }}>
@@ -256,19 +207,13 @@ export const GorevKarti = forwardRef<
                 onChange={(id) => {
                   setTaxpayerId(id);
                   setKilitli(false);
-                  if (aktifSablon && id) setGorev(sablonDoldur(aktifSablon.gorev, mukellefAd(id), aktifSablon.donemIster ? seciliDonem : null));
                 }}
                 renk={TEMA.altin}
-                kilitli={kilitli}
+                kilitli={false}
                 odakNonce={mukellefOdak}
                 escNonce={escNonce}
               />
             </div>
-            {mukellefEksik && (
-              <span className="text-[11px]" style={{ color: TEMA.turuncu }}>
-                Bu görev mükellef ister — seçin.
-              </span>
-            )}
           </div>
           <div className="flex flex-wrap items-center gap-2 pt-3">
             <div className="inline-flex flex-shrink-0 items-center rounded-lg p-[3px]" style={{ background: TEMA.alanZemin, border: `1px solid ${dryRun ? TEMA.alanKenar : `${TEMA.kirmizi}66`}` }} title="Kuru test: mükellefe mesaj gitmez, Luca'ya yazılmaz; yalnız 'yapacaktım' raporu">
@@ -311,7 +256,7 @@ export const GorevKarti = forwardRef<
           </div>
         </div>
         <div className="text-[11px]" style={{ color: TEMA.soluk }}>
-          Enter çalıştırır · Shift+Enter yeni satır · / metne odaklanır · Kuru test: mesaj gitmez, Luca’ya yazılmaz.
+          Enter çalıştırır · Kuru test: mesaj gitmez, Luca’ya yazılmaz.
         </div>
       </div>
     </Kart>
