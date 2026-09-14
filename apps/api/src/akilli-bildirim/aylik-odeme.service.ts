@@ -857,7 +857,10 @@ export class AylikOdemeService {
     if (taxpayerId && !rows.length) throw new NotFoundException('Bu mükellefin bu ay ödeme kalemi yok');
     const ayar = await this.vergiAyari(tenantId);
     const senderName = (ayar?.senderName || DEFAULT_SENDER).toString();
-    return { html: cetvelHtml({ month, senderName, logoDataUri: morenLogoDataUri(), mukellefler: rows }), adet: rows.length };
+    // Üst şeritte ofis iletişimi (tenant telefon · e-posta · adres) — boşsa satır çıkmaz
+    const tenant = await (this.prisma as any).tenant.findUnique({ where: { id: tenantId }, select: { phone: true, email: true, address: true } }).catch(() => null);
+    const ofisIletisim = [tenant?.phone, tenant?.email, tenant?.address].map((x: any) => String(x || '').trim()).filter(Boolean).join(' · ') || null;
+    return { html: cetvelHtml({ month, senderName, logoDataUri: morenLogoDataUri(), ofisIletisim, mukellefler: rows }), adet: rows.length };
   }
 
   /** A4 cetvel PDF'i (Playwright Chromium). Chromium yoksa 503 + anlaşılır mesaj. */

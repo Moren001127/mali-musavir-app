@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import { ChevronDown, Loader2, UserMinus } from 'lucide-react';
 import { BEYAN_ETIKETLER } from '@/lib/beyanname-takip';
 import { donemAdi, type EksikSatiri } from '@/lib/aylik-odeme';
-import { AMBER, AMBER_KENAR, AMBER_ZEMIN, Cip, IKINCIL, METIN } from './ortak';
+import { AMBER, AMBER_KENAR, Cip, IKINCIL, METIN } from './ortak';
 
 /** Sebep metnini beyanname adı + dönemle birlikte okunur hâle getirir */
 function eksikMetni(e: EksikSatiri): string {
@@ -27,9 +27,9 @@ export function EksiklerPaneli({ eksikler, onSgkYok, sgkYokIsleniyor }: { eksikl
   if (listeDisi.length === 0 && listedeAmaEksik.length === 0) return null;
 
   return (
-    <div className="rounded-2xl" style={{ border: `1px solid ${AMBER_KENAR}`, background: AMBER_ZEMIN }} data-testid="eksikler-paneli">
+    <div className="rounded-2xl" style={{ border: '1px solid rgba(255,255,255,0.10)', background: 'rgba(255,255,255,0.02)' }} data-testid="eksikler-paneli">
       <button type="button" onClick={() => setAcik((v) => !v)} aria-expanded={acik} className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left">
-        <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12.5px] font-semibold" style={{ color: AMBER }}>
+        <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12.5px] font-semibold" style={{ color: METIN }}>
           <span>Listede görünmeyen {new Set(listeDisi.map((e) => e.taxpayerId)).size} mükellef</span>
           {listedeAmaEksik.length > 0 && (
             <span className="text-[12px] font-medium" style={{ color: IKINCIL }}>
@@ -37,10 +37,10 @@ export function EksiklerPaneli({ eksikler, onSgkYok, sgkYokIsleniyor }: { eksikl
             </span>
           )}
         </span>
-        <ChevronDown size={16} style={{ color: AMBER, transform: acik ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }} />
+        <ChevronDown size={16} style={{ color: IKINCIL, transform: acik ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }} />
       </button>
       {acik && (
-        <div className="max-h-[420px] overflow-x-auto overflow-y-auto px-4 py-3" style={{ borderTop: `1px solid ${AMBER_KENAR}` }}>
+        <div className="max-h-[420px] overflow-x-auto overflow-y-auto px-4 py-3" style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
           {([
             ['Listede hiç yok', listeDisi],
             ['Listede var, ama eksiği var', listedeAmaEksik],

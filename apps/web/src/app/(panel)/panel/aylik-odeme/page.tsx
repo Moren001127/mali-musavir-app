@@ -271,7 +271,7 @@ export default function AylikOdemePage() {
                 disabled={buAyMi}
                 title={buAyMi ? 'Bu ay görüntüleniyor' : 'Bu aya dön'}
                 className="inline-flex h-9 items-center gap-1 rounded-r-[10px] px-2.5 text-[11.5px] font-semibold transition hover:bg-white/[0.06] disabled:opacity-45"
-                style={{ color: buAyMi ? IKINCIL : GOLD, borderLeft: `1px solid ${KENAR_NOTR}` }}
+                style={{ color: buAyMi ? IKINCIL : METIN, borderLeft: `1px solid ${KENAR_NOTR}` }}
               >
                 <CalendarDays size={12} /> Bu ay
               </button>
@@ -371,7 +371,7 @@ export default function AylikOdemePage() {
           ) : listeQ.isError ? (
             <div className="p-8 text-[13px]" style={{ ...KART, color: IKINCIL }}>
               Liste alınamadı.{' '}
-              <button type="button" onClick={yenile} className="font-semibold hover:underline" style={{ color: GOLD }}>Yeniden dene</button>
+              <button type="button" onClick={yenile} className="font-semibold hover:underline" style={{ color: METIN }}>Yeniden dene</button>
             </div>
           ) : active ? (
             <Cetvel

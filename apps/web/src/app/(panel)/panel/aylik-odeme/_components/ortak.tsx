@@ -2,8 +2,9 @@
 
 /**
  * Aylık Ödeme Listesi — ortak palet ve küçük parçalar.
- * SAKİN PALET (Görevler ile aynı dil): koyu zemin, altın (#d4b876) TEK vurgu, nötr griler,
- * dolu renkli rozet YOK, tek ton satır zeminleri, grup başlıkları altın tonlu bant, vade için tek yumuşak kırmızı.
+ * SAKİN PALET (Görevler ile aynı dil): koyu zemin, nötr griler; altın (#d4b876) YALNIZ ana düğme ve genel toplamda
+ * (Muzaffer Bey 2026-09-14: "her şey inanılmaz sarı, göz yoruyor" → başlıklar, grup bantları, tutarlar, sayaçlar NÖTR).
+ * Dolu renkli rozet YOK, tek ton satır zeminleri, vade için tek yumuşak kırmızı.
  */
 import type { CSSProperties, ReactNode } from 'react';
 import { Loader2 } from 'lucide-react';
@@ -13,14 +14,15 @@ export const GOLD_SOFT = '#b8a06f';
 export const METIN = '#fafaf9';
 export const IKINCIL = 'rgba(250,250,249,0.55)';
 export const SONUK = 'rgba(250,250,249,0.35)';
-export const ALTIN_SOLUK = 'rgba(212,184,118,0.85)';
+/** Eski adıyla "altın soluk" — artık NÖTR gri (başlık/etiket rengi); altın yalnız ana düğme + genel toplam */
+export const ALTIN_SOLUK = 'rgba(250,250,249,0.62)';
 export const KENAR_NOTR = 'rgba(255,255,255,0.10)';
 export const KENAR_YUMUSAK = 'rgba(255,255,255,0.08)';
 export const KIRMIZI_YUMUSAK = '#e0868f';
 /** Yumuşak amber — yalnız TEST MODU bandı ve eksikler paneli */
 export const AMBER = '#e2b563';
-export const AMBER_ZEMIN = 'rgba(226,181,99,0.07)';
-export const AMBER_KENAR = 'rgba(226,181,99,0.28)';
+export const AMBER_ZEMIN = 'rgba(226,181,99,0.04)';
+export const AMBER_KENAR = 'rgba(226,181,99,0.18)';
 
 export const KART: CSSProperties = { background: 'rgba(255,255,255,0.02)', border: `1px solid ${KENAR_NOTR}`, borderRadius: 16 };
 export const GIRDI: CSSProperties = { background: 'rgba(255,255,255,0.035)', border: `1px solid ${KENAR_YUMUSAK}`, color: METIN, borderRadius: 10, outline: 'none' };
@@ -29,9 +31,9 @@ export const CIP_NOTR: CSSProperties = { background: 'rgba(255,255,255,0.03)', b
 /** Tablo hücresi / başlığı — Görevler tablosuyla aynı ölçüler */
 export const HUCRE: CSSProperties = { border: `1px solid ${KENAR_NOTR}`, padding: '8px 10px', verticalAlign: 'middle' };
 export const HUCRE_BASLIK: CSSProperties = { ...HUCRE, padding: '7px 10px', fontSize: 10.5, fontWeight: 600, letterSpacing: '.08em', textTransform: 'uppercase', color: ALTIN_SOLUK, textAlign: 'left', whiteSpace: 'nowrap' };
-/** Grup başlığı bandı — altın tonlu dolu zemin + altın üst/alt çizgi */
-export const GRUP_ZEMIN = 'rgba(212,184,118,0.13)';
-export const GRUP_CIZGI = '1px solid rgba(212,184,118,0.45)';
+/** Grup başlığı bandı — NÖTR dolu zemin + gri üst/alt çizgi (sarı yok) */
+export const GRUP_ZEMIN = 'rgba(255,255,255,0.06)';
+export const GRUP_CIZGI = '1px solid rgba(255,255,255,0.16)';
 export const GRUP_BOSLUK = 18;
 
 /** Nötr ince çip (taksit, kanal, sayı) */

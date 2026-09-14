@@ -73,7 +73,7 @@ export function MukellefListesi(p: MukellefListesiProps) {
                 aria-expanded={acik}
                 title="Listeyi süz"
                 className="inline-flex h-7 min-w-0 flex-1 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 text-[11.5px] font-semibold transition hover:brightness-125"
-                style={suzgecAktif ? { background: `${GOLD}18`, border: `1px solid ${GOLD}66`, color: GOLD } : { background: 'transparent', border: `1px solid rgba(255,255,255,${acik ? '0.24' : '0.12'})`, color: acik ? METIN : IKINCIL }}
+                style={suzgecAktif ? { background: 'transparent', border: `1px solid ${GOLD}66`, color: METIN } : { background: 'transparent', border: `1px solid rgba(255,255,255,${acik ? '0.24' : '0.12'})`, color: acik ? METIN : IKINCIL }}
               >
                 <Filter size={11} />
                 <span className="truncate">{SUZGEC_ADLARI[suzgec]}</span>
@@ -141,7 +141,7 @@ export function MukellefListesi(p: MukellefListesiProps) {
           {gorunen.length}{gorunen.length !== rows.length ? ` / ${rows.length}` : ''} mükellef
         </span>
         <span className="tabular-nums" title={gorunen.length !== rows.length ? 'Süzülen listenin toplamı' : 'Genel toplam'}>
-          <b style={{ color: GOLD }}>{trMoney(gorunenToplam)}</b>
+          <b style={{ color: METIN }}>{trMoney(gorunenToplam)}</b>
         </span>
       </div>
     </div>
@@ -177,7 +177,7 @@ function Satir({ r, secili, onSec, kanallar }: { r: OdemeListesi; secili: boolea
         )}
       </div>
       <div className="mt-0.5 flex min-w-0 items-center gap-2 text-[11.5px]">
-        <span className="tabular-nums font-semibold" style={{ color: GOLD }}>{trMoney(r.toplam)}</span>
+        <span className="tabular-nums font-semibold" style={{ color: METIN }}>{trMoney(r.toplam)}</span>
         <span style={{ color: SONUK }}>· {r.satirlar.length} kalem</span>
         <span className="ml-auto inline-flex flex-shrink-0 items-center gap-1 whitespace-nowrap text-[10.5px]" style={{ color: durum.renk }} title={durum.title}>
           {durum.ikon}

@@ -3,7 +3,7 @@
 import type { ReactNode } from 'react';
 import { AlertTriangle, CalendarClock, CheckCircle2, Clock, Users } from 'lucide-react';
 import { kisaGun, kisaPara, trMoney, type ListeSuzgeci, type OdemeOzet } from '@/lib/aylik-odeme';
-import { GOLD, GOLD_SOFT, IKINCIL, KENAR_NOTR, KIRMIZI_YUMUSAK, METIN } from './ortak';
+import { GOLD, IKINCIL, KENAR_NOTR, KIRMIZI_YUMUSAK, METIN } from './ortak';
 
 /**
  * Başlık altı TEK SATIR özet şeridi (Görevler SayacSeridi ile aynı dil):
@@ -65,7 +65,7 @@ function Nokta() {
   return <span aria-hidden="true" style={{ color: 'rgba(250,250,249,0.3)' }}>·</span>;
 }
 
-/** Tıklanabilir sayaç hapı — seçili: altın dolu; sayı > 0: ince altın/kırmızı kenar; 0: soluk. */
+/** Tıklanabilir sayaç hapı — seçili: ince altın kenar (dolgu YOK); sayı > 0: nötr; hata: yumuşak kırmızı yazı; 0: soluk. */
 function Hap({ ikon, children, sayi, secili, onClick, title, yukleniyor, renk = GOLD }: { ikon: ReactNode; children: ReactNode; sayi?: number; secili: boolean; onClick: () => void; title: string; yukleniyor: boolean; renk?: string }) {
   const var_ = (sayi ?? 0) > 0;
   return (
@@ -77,8 +77,8 @@ function Hap({ ikon, children, sayi, secili, onClick, title, yukleniyor, renk = 
       className="inline-flex flex-shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2.5 py-1.5 text-[11.5px] font-semibold transition-[background-color,border-color,color,transform] duration-150 hover:-translate-y-px"
       style={
         secili
-          ? { background: `linear-gradient(135deg, ${renk}, ${renk === GOLD ? GOLD_SOFT : renk + 'bb'})`, border: '1px solid transparent', color: '#0f0d0b' }
-          : { background: var_ ? `${renk}12` : 'transparent', border: `1px solid ${var_ ? `${renk}55` : KENAR_NOTR}`, color: var_ ? renk : IKINCIL }
+          ? { background: 'rgba(255,255,255,0.05)', border: `1px solid ${GOLD}88`, color: METIN }
+          : { background: 'transparent', border: `1px solid ${KENAR_NOTR}`, color: var_ ? (renk === KIRMIZI_YUMUSAK ? renk : METIN) : IKINCIL }
       }
     >
       {ikon}

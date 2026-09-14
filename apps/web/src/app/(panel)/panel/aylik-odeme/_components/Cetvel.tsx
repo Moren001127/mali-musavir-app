@@ -113,17 +113,17 @@ export function Cetvel({ r, ozet, gonderiliyor, ornekGonderiliyor, pdfIniyor, on
                 <tr style={{ background: GRUP_ZEMIN }} data-grup={grup.key}>
                   <td colSpan={SUTUN - 1} style={{ ...HUCRE, borderTop: GRUP_CIZGI, borderBottom: GRUP_CIZGI, borderLeft: 'none', borderRight: 'none', padding: '9px 12px' }}>
                     <div className="flex items-center gap-2.5">
-                      <span className="text-[12px] font-extrabold uppercase" style={{ color: GOLD, letterSpacing: '.16em' }}>
+                      <span className="text-[11.5px] font-bold uppercase" style={{ color: METIN, letterSpacing: '.14em' }}>
                         {grup.ad}
                       </span>
-                      <span className="rounded-md px-1.5 text-[10.5px] font-bold tabular-nums leading-[18px]" style={{ background: 'rgba(212,184,118,0.22)', color: GOLD }}>
+                      <span className="rounded-md px-1.5 text-[10.5px] font-bold tabular-nums leading-[18px]" style={{ background: 'rgba(255,255,255,0.08)', color: IKINCIL }}>
                         {grup.satirlar.length}
                       </span>
                       <span className="ml-auto text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: IKINCIL }}>ara toplam</span>
                     </div>
                   </td>
                   <td style={{ ...HUCRE, borderTop: GRUP_CIZGI, borderBottom: GRUP_CIZGI, borderLeft: 'none', borderRight: 'none', padding: '9px 10px', textAlign: 'right', whiteSpace: 'nowrap' }} title={`${grup.ad} ara toplamı`}>
-                    <span className="text-[12.5px] font-semibold tabular-nums" style={{ color: GOLD }}>{trMoney(grup.araToplam)}</span>
+                    <span className="text-[12.5px] font-semibold tabular-nums" style={{ color: METIN }}>{trMoney(grup.araToplam)}</span>
                   </td>
                 </tr>
                 {grup.satirlar.map((s, i) => {
