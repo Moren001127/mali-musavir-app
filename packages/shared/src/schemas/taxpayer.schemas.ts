@@ -9,6 +9,20 @@ import { KURUM_TURU_KODLARI, DEFTER_TURU_KODLARI } from '../constants/kurum-turu
 const KurumTuruAlani = z.enum(KURUM_TURU_KODLARI).optional().nullable().or(z.literal(''));
 const SektorEtiketiAlani = z.string().max(60, 'Sektör etiketi en fazla 60 karakter').optional().nullable().or(z.literal(''));
 
+// 2026-09-14 Otomatik Sorgulama Ayarı — gece cron'unun bu mükellef için açacağı sorgular.
+//   6 anahtar da opsiyonel; gönderilmeyen anahtar mevcut/varsayılan değerinde kalır. Şemalar .strict()
+//   olduğundan alan burada tanımlı olmazsa mükellef formu kaydedilemez — o yüzden 3 şemaya da eklendi.
+export const OtomatikSorguSchema = z.object({
+  eTebligat: z.boolean().optional(),
+  vergiBorcu: z.boolean().optional(),
+  gelenEArsiv: z.boolean().optional(),
+  pos: z.boolean().optional(),
+  eHaciz: z.boolean().optional(),
+  yoklama: z.boolean().optional(),
+}).strict();
+export type OtomatikSorguDto = z.infer<typeof OtomatikSorguSchema>;
+const OtomatikSorguAlani = OtomatikSorguSchema.optional().nullable();
+
 export const CreateTaxpayerSchema = z.object({
   type: z.nativeEnum(TaxpayerType),
   firstName: z.string().min(2, 'En az 2 karakter').max(100).optional().or(z.literal('')),
@@ -40,6 +54,8 @@ export const CreateTaxpayerSchema = z.object({
   whatsappEvrakGeldi: z.boolean().optional().default(false),
   // E-Fatura mükellefi mi? (E-Arşiv/E-Fatura modüllerinde filtre olarak kullanılacak)
   isEFaturaMukellefi: z.boolean().optional().default(false),
+  // Otomatik Sorgulama Ayarı (null = varsayılan: yalnız e-Tebligat)
+  otomatikSorgu: OtomatikSorguAlani,
   // Otomasyon ajanları için
   lucaSlug: z.string().optional().nullable(),
   mihsapId: z.string().optional().nullable(),
@@ -98,6 +114,7 @@ export const UpdateTaxpayerSchema = z.object({
   whatsappEvrakTalep: z.boolean().optional(),
   whatsappEvrakGeldi: z.boolean().optional(),
   isEFaturaMukellefi: z.boolean().optional(),
+  otomatikSorgu: OtomatikSorguAlani,
   isActive: z.boolean().optional(),
   lucaSlug: z.string().optional().nullable(),
   mihsapId: z.string().optional().nullable(),
@@ -144,6 +161,8 @@ export const TaxpayerFaaliyetSchema = z.object({
   ),
   // e-Fatura mükellefi mi? (Fatura Merkezi > Mükellefler tanım alanı; sorgu ekranı kilidi buna bakar)
   isEFaturaMukellefi: z.boolean().optional(),
+  // Otomatik Sorgulama Ayarı (Mükellefler listesi tanım kartından da düzenlenebilsin)
+  otomatikSorgu: OtomatikSorguAlani,
 }).strict();
 
 export type TaxpayerFaaliyetDto = z.infer<typeof TaxpayerFaaliyetSchema>;

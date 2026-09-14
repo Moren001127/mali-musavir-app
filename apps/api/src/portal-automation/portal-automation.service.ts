@@ -30,6 +30,7 @@ import { resolveTenantFromAgentToken as resolveAgentTenant } from '../common/age
 import { BeyanKayitlariService } from '../beyan-kayitlari/beyan-kayitlari.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NOTIFICATION_TYPES } from '../notifications/notification-types';
+import { otomatikSorguCoz, type OtomatikSorguTuru } from '@mali-musavir/shared';
 
 export const PORTAL_PROVIDERS = ['GIB_EBEYANNAME', 'GIB_IVD', 'SGK_EBILDIRGE'] as const;
 export type PortalProvider = (typeof PORTAL_PROVIDERS)[number];
@@ -52,6 +53,16 @@ export const PORTAL_JOB_TYPES = [
   'GALERI_HGS',
 ] as const;
 export type PortalJobType = (typeof PORTAL_JOB_TYPES)[number];
+
+/**
+ * Otomatik Sorgulama Ayarı (mükellef kartı) → iş tipi eşlemesi. GECE cron'unda bu haritada
+ * anahtarı olan iş tipi, mükellefin otomatikSorgu[anahtar] === false ise AÇILMAZ.
+ * Haritada olmayan iş tipleri (SGK, e-Beyanname…) ayardan etkilenmez. İleride vergi borcu /
+ * e-haciz / yoklama / POS / gelen e-arşiv işleri eklendiğinde buraya bir satır eklemek yeter.
+ */
+const OTOMATIK_SORGU_ANAHTARI: Partial<Record<PortalJobType, OtomatikSorguTuru>> = {
+  E_TEBLIGAT_CHECK: 'eTebligat',
+};
 
 const SGK_JOB_TYPES: PortalJobType[] = [
   'SGK_HIZMET_LISTESI',
@@ -1829,6 +1840,17 @@ export class PortalAutomationService {
     const created: any[] = [];
     const skipped: Array<{ jobType: string; taxpayerId?: string | null; reason: string }> = [];
 
+    // Otomatik Sorgulama Ayarı: yalnız GECE işlerinde bakılır (elle sorgu MUAF). Ayarları döngü
+    //   öncesi TEK sorguyla çekip haritada tutuyoruz; mükellef başına ayrı sorgu atılmaz.
+    const otomatikSorguHaritasi = new Map<string, ReturnType<typeof otomatikSorguCoz>>();
+    if (opts.source === 'nightly' && opts.jobTypes.some((t) => OTOMATIK_SORGU_ANAHTARI[t])) {
+      const ayarlar = await (this.prisma as any).taxpayer.findMany({
+        where: { tenantId, ...(opts.taxpayerIds?.length ? { id: { in: opts.taxpayerIds } } : {}) },
+        select: { id: true, otomatikSorgu: true },
+      });
+      for (const a of ayarlar) otomatikSorguHaritasi.set(a.id, otomatikSorguCoz(a.otomatikSorgu));
+    }
+
     for (const jobType of opts.jobTypes) {
       const meta = JOB_META[jobType];
       if (meta.ownerType === 'TENANT') {
@@ -1865,6 +1887,16 @@ export class PortalAutomationService {
         if (opts.source === 'nightly' && (await this.ucGeceSifreHatasiMi(tenantId, taxpayerId, jobType, credential))) {
           skipped.push({ jobType, taxpayerId, reason: '3 gece üst üste şifre hatası — şifre güncellenene kadar sorgu dışı' });
           continue;
+        }
+        // OTOMATİK SORGU AYARI: mükellef kartında bu sorgu kapalıysa gece işi AÇILMAZ (kayıt NULL = varsayılan,
+        //   e-Tebligat açık). Şifre kontrolünden SONRA bakılır ki "şifre yok" gerekçesi kaybolmasın.
+        const ayarAnahtari = OTOMATIK_SORGU_ANAHTARI[jobType];
+        if (opts.source === 'nightly' && ayarAnahtari) {
+          const ayar = otomatikSorguHaritasi.get(taxpayerId) ?? otomatikSorguCoz(null);
+          if (ayar[ayarAnahtari] === false) {
+            skipped.push({ jobType, taxpayerId, reason: 'Otomatik sorgu kapalı (mükellef kartı)' });
+            continue;
+          }
         }
         const duplicate = opts.force ? null : await this.findDuplicateJob(tenantId, jobType, taxpayerId, opts.source, opts.dedupeAfter);
         if (duplicate) {

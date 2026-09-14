@@ -12,11 +12,14 @@
  *         /tasks* sözleşmesi (bellek içi durum: ekle / düzenle / tamamla / ertele / toplu / not / ekibe ver / takvimden)
  *         + /tasks/kisiler (ofis personeline de hatırlat) + /ekip/istek/:id/kapat + /users (liste, PATCH telefon)
  *         + /aylik-odeme* (Aylık Ödeme Listesi: liste/özet/eksikler/send/örnek/excel/pdf/otomatik/sgk-yok)
- *         + mükellef portalı (/portal/auth/login, /portal/me, /portal/dashboard, /portal/brifing, /taxpayer-portal/odeme-cetveli).
+ *         + mükellef portalı (/portal/auth/login, /portal/me, /portal/dashboard, /portal/brifing, /taxpayer-portal/odeme-cetveli)
+ *         + /akilli-bildirim/report | resend-failed | run (İletim Raporu — ayrı dosya: mock-iletim-raporu.cjs).
  *         Veri süreç belleğindedir; sunucu yeniden başlayınca sıfırlanır.
  */
 const http = require('http');
 const { URL } = require('url');
+// İletim Raporu uçları ayrı modülde (17 mükellef örnek verisi): /akilli-bildirim/report, /resend-failed, /run
+const { iletimRaporuUclari } = require('./mock-iletim-raporu.cjs');
 
 const PORT = Number(process.env.PORT || 3001);
 const ON_EK = '/api/v1';
@@ -77,6 +80,8 @@ const MUKELLEFLER = [
   { id: 'm7', type: 'COMPANY', companyName: 'Balçık İnşaat A.Ş.', firstName: null, lastName: null, taxNumber: '1400032109', status: 'active' },
   { id: 'm8', type: 'INDIVIDUAL', companyName: null, firstName: 'Dilek', lastName: 'Bayageldi', taxNumber: '36985214778', status: 'active' },
 ];
+/** Mükellef kartı — Otomatik Sorgulama Ayarı (bellekte; sahte). */
+const KART_OTOMATIK_SORGU = {};
 const mukellefBul = (id) => MUKELLEFLER.find((m) => m.id === id) || null;
 const mukellefOzet = (id) => {
   const m = mukellefBul(id);
@@ -472,6 +477,9 @@ async function isle(req, res) {
   const yontem = req.method;
   const govde = ['POST', 'PATCH', 'PUT'].includes(yontem) ? await govdeOku(req) : {};
 
+  // ── İletim Raporu (mock-iletim-raporu.cjs) — eşleşmezse false döner, akış devam eder ──
+  if (yol.startsWith('/akilli-bildirim/') && iletimRaporuUclari(yol, yontem, q, govde, jsonGonder, res) !== false) return;
+
   // ── Kimlik ──
   if (yontem === 'POST' && yol === '/auth/login') return jsonGonder(res, 200, { accessToken: 'sahte-token', user: KULLANICI });
   if (yontem === 'POST' && yol === '/auth/refresh') return jsonGonder(res, 200, { accessToken: 'sahte-token' });
@@ -758,6 +766,115 @@ async function isle(req, res) {
   if (yol === '/taxpayer-portal/odeme-cetveli' && yontem === 'GET') {
     const r = odemeListesi(q.month || BU_AY, PORTAL_MUKELLEF.id)[0];
     return jsonGonder(res, 200, r ? { month: q.month || BU_AY, satirlar: r.satirlar, toplam: r.toplam, gonderim: r.gonderim } : { month: q.month || BU_AY, satirlar: [], toplam: 0, gonderim: null });
+  }
+
+
+  // ── Mükellef kartı (2026-09-14: kart yeniden tasarımı + Otomatik Sorgulama Ayarı görsel doğrulaması) ──
+  {
+    const mk = /^\/taxpayers\/([^/]+)(\/.*)?$/.exec(yol);
+    if (mk && mukellefBul(mk[1])) {
+      const id = mk[1];
+      const alt = mk[2] || '';
+      const m = mukellefBul(id);
+      const detay = () => ({
+        ...m,
+        type: m.type === 'COMPANY' ? 'TUZEL_KISI' : 'GERCEK_KISI',
+        isActive: true,
+        taxOffice: 'BÜYÜKÇEKMECE',
+        phones: ['0533 923 36 74', '0212 555 00 11'],
+        telefonAdlari: { '905339233674': 'Muzaffer Bey' },
+        emails: ['info@ornek.com'],
+        address: '',
+        notes: 'Deneme notu — sahte API',
+        startDate: '2021-03-01T00:00:00.000Z',
+        endDate: null,
+        evrakTeslimGunu: null,
+        whatsappEvrakTalep: true,
+        whatsappEvrakGeldi: false,
+        isEFaturaMukellefi: true,
+        lucaSlug: 'balcik-insaat',
+        mihsapId: '',
+        mihsapDefterTuru: 'BILANCO',
+        defterTuru: 'BILANCO',
+        logoUrl: '',
+        naceKodu: '41.20.01',
+        faaliyetAciklama: 'İkamet amaçlı binaların inşaatı',
+        ticaretSicilNo: '123456-5',
+        mersisNo: '0140003210900015',
+        odaSicilNo: '',
+        bagkurSicilNo: '',
+        kepAdresi: '',
+        webSitesi: '',
+        eFaturaEntegrator: 'TURMOB',
+        otomatikSorgu: KART_OTOMATIK_SORGU[id] || null,
+        updatedAt: new Date().toISOString(),
+      });
+      if (alt === '' && yontem === 'GET') return jsonGonder(res, 200, detay());
+      if (alt === '' && yontem === 'PUT') return jsonGonder(res, 200, detay());
+      if (alt === '/otomatik-sorgu' && yontem === 'PATCH') {
+        KART_OTOMATIK_SORGU[id] = { eTebligat: true, vergiBorcu: false, gelenEArsiv: false, pos: false, eHaciz: false, yoklama: false, ...(KART_OTOMATIK_SORGU[id] || {}), ...govde };
+        console.log('[mock] otomatik-sorgu', id, KART_OTOMATIK_SORGU[id]);
+        return jsonGonder(res, 200, detay());
+      }
+      if (alt === '/completeness') return jsonGonder(res, 200, { score: 82, durum: 'IYI', eksikler: [{ key: 'address', label: 'Adres' }, { key: 'evrakTeslimGunu', label: 'Evrak Teslim Günü' }] });
+      if (alt === '/yetkililer' && yontem === 'GET') return jsonGonder(res, 200, [{ id: 'y1', adSoyad: 'Erdoğan Balçık', unvan: 'Müdür', telefon: '0533 923 36 74', email: 'erdogan@ornek.com', tckn: '14523698745' }]);
+      if (alt === '/yetkililer' && yontem === 'POST') return jsonGonder(res, 201, { id: 'y' + Date.now(), ...govde });
+    }
+  }
+  if (yol === '/portal-automation/credentials' && yontem === 'GET') {
+    return jsonGonder(res, 200, {
+      summary: { total: 2, active: 2 },
+      rows: [
+        { id: 'c1', provider: 'GIB_IVD', ownerType: 'TAXPAYER', ownerId: 'm7', taxpayerId: 'm7', userCode: '1400032109', hasPassword: true, hasSecondaryPassword: false, isActive: true, lastError: null, lastCheckedAt: saatOnce(9) },
+        { id: 'c2', provider: 'SGK_EBILDIRGE', ownerType: 'TAXPAYER', ownerId: 'm7', taxpayerId: 'm7', username: 'balcik', userCode: '', workplaceCode: '2 1234 01 01 1234567 034 12 34', hasPassword: true, hasSecondaryPassword: true, isActive: true, lastError: null, lastCheckedAt: saatOnce(9) },
+      ],
+    });
+  }
+  if (yol === '/portal-automation/documents' && yontem === 'GET') {
+    const tur = q.belgeTuru || '';
+    const tebligat = [
+      { id: 'pd1', taxpayerId: q.taxpayerId || 'm7', belgeTuru: 'E_TEBLIGAT', sourceProvider: 'GIB_IVD', title: 'Vergi/Ceza İhbarnamesi', referenceNo: '2026-TB-000412', period: null, issuedAt: gun(-3), receivedAt: gun(-3), storageKey: 'x', documentId: null, viewedAt: null, createdAt: gun(-3), metadata: { kurumAciklama: 'Büyükçekmece Vergi Dairesi', belgeTuruAciklama: 'İhbarname', tebligZamani: gun(-3), mukellefOkumaZamani: null } },
+      { id: 'pd2', taxpayerId: q.taxpayerId || 'm7', belgeTuru: 'E_TEBLIGAT', sourceProvider: 'GIB_IVD', title: 'Ödeme Emri', referenceNo: '2026-TB-000377', period: null, issuedAt: gun(-20), receivedAt: gun(-20), storageKey: 'x', documentId: null, viewedAt: gun(-18), createdAt: gun(-20), metadata: { kurumAciklama: 'Büyükçekmece Vergi Dairesi', belgeTuruAciklama: 'Ödeme Emri', tebligZamani: gun(-20), mukellefOkumaZamani: gun(-18) } },
+    ];
+    const sgk = [
+      { id: 'pd3', taxpayerId: q.taxpayerId || 'm7', belgeTuru: 'SGK_TAHAKKUK', sourceProvider: 'SGK_EBILDIRGE', title: 'Tahakkuk Fişi 2026/08', referenceNo: 'THK-2026-08', period: '2026-08', issuedAt: gun(-10), receivedAt: gun(-10), storageKey: 'x', documentId: null, viewedAt: null, createdAt: gun(-10), metadata: { donem: '2026/08', belgeMahiyeti: 'ASIL', kanunNo: '05510', calisan: '12', tutar: '48.320,15' } },
+      { id: 'pd4', taxpayerId: q.taxpayerId || 'm7', belgeTuru: 'SGK_HIZMET_LISTESI', sourceProvider: 'SGK_EBILDIRGE', title: 'Hizmet Listesi 2026/08', referenceNo: 'HL-2026-08', period: '2026-08', issuedAt: gun(-10), receivedAt: gun(-10), storageKey: 'x', documentId: null, viewedAt: null, createdAt: gun(-10), metadata: { donem: '2026/08', belgeMahiyeti: 'ASIL', kanunNo: '05510', calisan: '12', tutar: '' } },
+    ];
+    const hepsi = [...tebligat, ...sgk].filter((d) => !tur || tur.split(',').includes(d.belgeTuru));
+    return jsonGonder(res, 200, hepsi);
+  }
+  if (yol.startsWith('/portal-automation/documents/') && yol.endsWith('/view')) return jsonGonder(res, 200, { url: 'about:blank', viewedAt: new Date().toISOString() });
+  if (yol === '/beyan-kayitlari' && yontem === 'GET') {
+    const tp = q.taxpayerId || 'm7';
+    const satir = (i, tip, donem, tutar) => ({ id: 'bk' + i, taxpayerId: tp, beyanTipi: tip, donem, beyanTarihi: gun(-i * 9), tahakkukTutari: tutar, odemeTutari: tutar, onayNo: 'ON' + (100000 + i), pdfUrl: 'x', beyannameUrl: 'x', xmlUrl: null, kaynak: 'gib', importBatchId: null, notlar: null, createdAt: gun(-i * 9), updatedAt: gun(-i * 9), taxpayer: mukellefBul(tp), iletimler: [] });
+    const satirlar = [satir(1, 'KDV1', '2026-08', 12450.5), satir(2, 'MUHSGK', '2026-08', 31200), satir(3, 'KDV1', '2026-07', 9870.25), satir(4, 'DAMGA', '2026-07', 420), satir(5, 'GECICI_VERGI', '2026-Q2', 15600), satir(6, 'KDV1', '2025-12', 8100)];
+    return jsonGonder(res, 200, q.page ? { rows: satirlar, total: satirlar.length, page: 1, pageSize: 50 } : satirlar);
+  }
+  if (yol.startsWith('/documents/taxpayer/')) return jsonGonder(res, 200, [
+    { id: 'd1', title: 'İmza Sirküleri', category: 'SOZLESME', fileName: 'imza-sirkuleri.pdf', mimeType: 'application/pdf', size: 245000, createdAt: gun(-40), updatedAt: gun(-40), taxpayerId: 'm7', description: 'Noter onaylı, 2026', source: 'manual' },
+    { id: 'd2', title: 'Vergi Levhası 2026', category: 'RESMI_EVRAK', fileName: 'vergi-levhasi-2026.pdf', mimeType: 'application/pdf', size: 90000, createdAt: gun(-120), updatedAt: gun(-120), taxpayerId: 'm7', description: '', source: 'manual' },
+  ]);
+  if (yol.startsWith('/cari-kasa/bakiye/')) return jsonGonder(res, 200, { tahakkuk: 96000, tahsilat: 84000, iade: 0, duzeltme: 0, borc: 96000, alacak: 84000, bakiye: 12000 });
+  if (yol === '/cari-kasa/hareket') return jsonGonder(res, 200, [
+    { id: 'h1', tarih: gun(-2), tip: 'TAHAKKUK', tutar: 8000, aciklama: 'Eylül 2026 muhasebe ücreti', donem: '2026-09', runningBakiye: 12000, hizmet: { hizmetAdi: 'Aylık muhasebe' } },
+    { id: 'h2', tarih: gun(-12), tip: 'TAHSILAT', tutar: 8000, aciklama: 'Havale', odemeYontemi: 'HAVALE', donem: '2026-08', runningBakiye: 4000 },
+    { id: 'h3', tarih: gun(-33), tip: 'TAHAKKUK', tutar: 8000, aciklama: 'Ağustos 2026 muhasebe ücreti', donem: '2026-08', runningBakiye: 12000, hizmet: { hizmetAdi: 'Aylık muhasebe' } },
+  ]);
+  if (yol.startsWith('/beyanname-takip/configs/')) return jsonGonder(res, 200, { taxpayerId: 'm7', beyanTurleri: ['KDV1', 'MUHSGK', 'GECICI_VERGI', 'KURUMLAR'], donemler: {} });
+  if (yol.startsWith('/portal/admin/taxpayers/') && yol.endsWith('/ai-chat')) return jsonGonder(res, 200, { messages: [] });
+  if (yol === '/genel-sorgular/ozet') return jsonGonder(res, 200, { VERGI_BORCU: { adet: 2, sonSorgu: gun(-1) }, E_HACIZ: { adet: 1, sonSorgu: gun(-1) }, YOKLAMA_DENETIM: { adet: 1, sonSorgu: gun(-6) }, POS: { adet: 1, sonSorgu: gun(-1) }, GELEN_EARSIV: { adet: 1, sonSorgu: gun(-1) } });
+  if (yol === '/genel-sorgular' && yontem === 'GET') {
+    const tp = mukellefBul('m7');
+    const satir = (id, tur, donem, ozet, veri, gunSayisi) => ({ id, taxpayerId: 'm7', taxpayer: tp, tur, donem, sorguTarihi: gun(-gunSayisi), ozet, veri, kaynak: 'nightly', whatsappGonderildiMi: tur !== 'POS' });
+    const hepsi = [
+      satir('g1', 'VERGI_BORCU', '2026-09', '2 kalem borç, vadesi geçen 1', { toplamBorc: 18450.75, kalemler: [{ vergi: 'KDV', donem: '2026/07', tutar: 12450.5, vade: '2026-08-28' }, { vergi: 'Damga', donem: '2026/07', tutar: 6000.25, vade: '2026-09-26' }] }, 1),
+      satir('g2', 'VERGI_BORCU', '2026-08', 'Borç yok', { toplamBorc: 0, kalemler: [] }, 31),
+      satir('g3', 'E_HACIZ', null, 'Aktif e-haciz yok', { durum: 'YOK', kayitlar: [] }, 1),
+      satir('g4', 'YOKLAMA_DENETIM', null, '1 yoklama tutanağı (işyeri adres tespiti)', { tarih: gun(-6), tutanaklar: [{ no: 'YK-2026-118', konu: 'İşyeri adres tespiti', sonuc: 'Faal' }] }, 6),
+      satir('g5', 'POS', '2026-08', 'Ağustos POS cirosu', { toplamTutar: 264180.4, cihazSayisi: 2, bankalar: [{ banka: 'Ziraat', tutar: 150200.1 }, { banka: 'Garanti', tutar: 113980.3 }] }, 1),
+      satir('g6', 'GELEN_EARSIV', '2026-08', '3 gelen e-Arşiv faturası', { faturalar: [{ no: 'EAR2026000001', tarih: '2026-08-04', unvan: 'ABC Yapı Malz.', tutar: 12000 }, { no: 'EAR2026000002', tarih: '2026-08-15', unvan: 'Delta Nakliyat', tutar: 4800 }, { no: 'EAR2026000003', tarih: '2026-08-29', unvan: 'Omega Hırdavat', tutar: 2350.6 }] }, 1),
+    ].filter((r) => (!q.tur || r.tur === q.tur) && (!q.taxpayerId || r.taxpayerId === q.taxpayerId) && (!q.donem || !r.donem || r.donem === q.donem));
+    return jsonGonder(res, 200, { rows: hepsi, total: hepsi.length, page: 1, pageSize: 50 });
   }
 
   console.log(`[mock] 404 ${yontem} ${yol}`);

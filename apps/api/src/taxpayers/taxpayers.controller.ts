@@ -98,6 +98,17 @@ export class TaxpayersController {
   }
 
   /**
+   * Otomatik Sorgulama Ayarı — gece cron'unun bu mükellef için açacağı sorgular (elle sorgu MUAF).
+   * Body: { eTebligat?, vergiBorcu?, gelenEArsiv?, pos?, eHaciz?, yoklama? } → mevcutla birleştirilip kaydedilir.
+   * Yanıt: güncel mükellef { id, companyName, …, otomatikSorgu }
+   */
+  @Patch(':id/otomatik-sorgu')
+  @Roles('ADMIN', 'STAFF')
+  updateOtomatikSorgu(@Req() req: any, @Param('id') id: string, @Body() body: any) {
+    return this.taxpayersService.updateOtomatikSorgu(id, req.user.tenantId, body || {});
+  }
+
+  /**
    * PLAN/16 §F: "NACE öner" — AI tahmini (ünvan + son faturalar). YAZMAZ; sahip onaylayınca PATCH ile kaydedilir.
    * Yanıt: { ok:true, oneri: { naceKodu, naceAdi, faaliyetAciklama, sektorEtiketi, kurumTuru, guven, gerekce }, mevcut, belgeSayisi }
    *        | { ok:false, neden }

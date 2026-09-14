@@ -220,6 +220,12 @@ model Taxpayer {
   portalFailedLoginCount Int       @default(0) // brute-force koruması
   portalLockedUntil      DateTime? // bu ana kadar giriş kilitli
 
+  // === Otomatik Sorgulama Ayarı (2026-09-14) ===
+  // Gece cron'unun bu mükellef için hangi sorguları AÇACAĞI. Şekil:
+  //   { eTebligat, vergiBorcu, gelenEArsiv, pos, eHaciz, yoklama } (hepsi boolean)
+  // NULL = varsayılan (eTebligat true, diğerleri false). Elle sorgu bu ayardan MUAF.
+  otomatikSorgu Json?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -252,10 +258,40 @@ model Taxpayer {
   tasks                Task[]
   // v1.37.0: Firma yetkilileri (Hattat tarzı mükellef kartı)
   yetkililer           TaxpayerYetkili[]
+  // 2026-09-14: Genel Sorgulamalar (vergi borcu / e-haciz / yoklama / POS / gelen e-arşiv) sonuçları
+  genelSorguSonuclari  GenelSorguSonucu[]
 
   @@index([tenantId])
   @@index([taxNumber])
   @@map("taxpayers")
+}
+
+// ============================================================
+// GENEL SORGULAMALAR (2026-09-14)
+// Mükellef bazında portal sorgu sonuçları: vergi borcu, e-haciz, yoklama/denetim,
+// POS bilgisi, gelen e-arşiv. Her sorgu koşusu AYRI satır (geçmiş korunur).
+// veri = ham sonuç (JSON), ozet = ekranda tek satırlık özet.
+// ============================================================
+model GenelSorguSonucu {
+  id                  String   @id @default(cuid())
+  tenantId            String
+  taxpayerId          String
+  tur                 String // VERGI_BORCU | E_HACIZ | YOKLAMA_DENETIM | POS | GELEN_EARSIV
+  donem               String? // "YYYY-MM" (dönemli sorgularda)
+  sorguTarihi         DateTime @default(now())
+  ozet                String?
+  veri                Json // ham sorgu sonucu
+  kaynak              String   @default("manual") // manual | nightly
+  jobId               String? // PortalAutomationJob.id (varsa)
+  whatsappGonderildiMi Boolean @default(false)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  taxpayer Taxpayer @relation(fields: [taxpayerId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, tur, sorguTarihi])
+  @@index([taxpayerId, tur, donem])
+  @@map("genel_sorgu_sonuclari")
 }
 
 // ============================================================

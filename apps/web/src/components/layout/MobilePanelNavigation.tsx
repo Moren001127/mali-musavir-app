@@ -31,6 +31,7 @@ import {
   Printer,
   ReceiptText,
   Scale,
+  ScanSearch,
   Settings2,
   Shield,
   ShieldAlert,
@@ -100,6 +101,7 @@ const moduleGroups: ModuleGroup[] = [
     items: [
       { href: '/fatura-merkezi', label: 'Fatura Merkezi', icon: FileStack },
       { href: '/panel/e-arsiv', label: 'E-Fatura / E-Arşiv', icon: FileScan },
+      { href: '/panel/genel-sorgular', label: 'Genel Sorgulamalar', icon: ScanSearch },
       // { href: '/panel/ajanlar/mihsap', label: 'Mihsap Fatura İşleme', icon: BotMessageSquare }, // gizlendi 2026-08-06
       { href: '/panel/faturalar', label: 'İşlenen Faturalar', icon: ReceiptText },
       { href: '/panel/fis-yazdirma', label: 'Fiş Yazdırma', icon: Printer },

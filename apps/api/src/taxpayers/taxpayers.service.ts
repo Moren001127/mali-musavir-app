@@ -1,6 +1,14 @@
 import { BadRequestException, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { CreateTaxpayerDto, KURUM_TURU_SECENEKLERI, DEFTER_TURU_KODLARI, DEFTER_TURU_ETIKETLERI } from '@mali-musavir/shared';
+import {
+  CreateTaxpayerDto,
+  KURUM_TURU_SECENEKLERI,
+  DEFTER_TURU_KODLARI,
+  DEFTER_TURU_ETIKETLERI,
+  OtomatikSorguSchema,
+  otomatikSorguCoz,
+} from '@mali-musavir/shared';
 import { AutomationEventBus } from '../automations/automation-event-bus.service';
 import { claudeTextViaMax, MAX_MODEL_CHEAP } from '../common/max-inference';
 import { kurumTuruTahmin } from '../fatura-muhasebelestirme/tevkifat-kurallari';
@@ -28,6 +36,7 @@ const FAALIYET_SELECT = {
   mihsapDefterTuru: true,
   updatedAt: true,
   isEFaturaMukellefi: true,
+  otomatikSorgu: true,
 } as const;
 
 type TaxpayerListOptions = {
@@ -50,6 +59,16 @@ export class TaxpayersService {
     private prisma: PrismaService,
     @Optional() private readonly eventBus?: AutomationEventBus,
   ) {}
+
+  /**
+   * Json? alanlarına düz `null` yazılamaz (Prisma "Expected JsonNullValueInput" hatası verir);
+   * formdan '' → null gelen otomatikSorgu için Prisma.DbNull'a çevir.
+   */
+  private jsonNullDuzelt<T extends Record<string, any>>(dto: T): T {
+    const data: any = { ...dto };
+    if (data.otomatikSorgu === null) data.otomatikSorgu = Prisma.DbNull;
+    return data;
+  }
 
   private normalizeDefterFields<T extends Record<string, any>>(dto: T): T {
     const data: any = { ...dto };
@@ -186,6 +205,7 @@ export class TaxpayersService {
         whatsappEvrakGeldi: true,
         isActive: true,
         isEFaturaMukellefi: true,
+        otomatikSorgu: true, // Otomatik Sorgulama Ayarı (null = varsayılan)
         notes: true,
         logoUrl: true,
         hattatId: true,
@@ -425,7 +445,7 @@ export class TaxpayersService {
   async create(tenantId: string, dto: any) {
     try {
       const created = await this.prisma.taxpayer.create({
-        data: { tenantId, ...this.normalizeDefterFields(dto) },
+        data: { tenantId, ...this.jsonNullDuzelt(this.normalizeDefterFields(dto)) },
       });
 
       // Otomasyon event'i: yeni müvekkel kaydı
@@ -456,7 +476,30 @@ export class TaxpayersService {
   async update(id: string, tenantId: string, dto: Partial<CreateTaxpayerDto>) {
     const taxpayer = await this.prisma.taxpayer.findFirst({ where: { id, tenantId } });
     if (!taxpayer) throw new NotFoundException();
-    return this.prisma.taxpayer.update({ where: { id }, data: this.normalizeDefterFields(dto as any) });
+    const data: any = this.jsonNullDuzelt(this.normalizeDefterFields(dto as any));
+    // Otomatik Sorgulama Ayarı: form kısmi nesne gönderebilir → mevcut değerle BİRLEŞTİR (eksik anahtar silinmesin).
+    //   null gönderilirse alan sıfırlanır (varsayılana döner).
+    if (data.otomatikSorgu && typeof data.otomatikSorgu === 'object' && data.otomatikSorgu !== Prisma.DbNull) {
+      data.otomatikSorgu = { ...otomatikSorguCoz((taxpayer as any).otomatikSorgu), ...data.otomatikSorgu };
+    }
+    return this.prisma.taxpayer.update({ where: { id }, data });
+  }
+
+  /**
+   * PATCH taxpayers/:id/otomatik-sorgu — gece cron'unun bu mükellef için açacağı sorgular.
+   * Body: { eTebligat?, vergiBorcu?, gelenEArsiv?, pos?, eHaciz?, yoklama? } (hepsi boolean, opsiyonel)
+   * Gönderilen anahtarlar mevcut ayarla birleştirilir; gönderilmeyenler dokunulmaz. Kayıt NULL ise
+   * varsayılan (yalnız e-Tebligat açık) üzerine yazılır. Yanıt: güncel mükellef (FAALIYET_SELECT alanları).
+   */
+  async updateOtomatikSorgu(id: string, tenantId: string, body: unknown) {
+    const dogrulama = OtomatikSorguSchema.safeParse(body ?? {});
+    if (!dogrulama.success) {
+      throw new BadRequestException(dogrulama.error.errors.map((e) => `${e.path.join('.')}: ${e.message}`));
+    }
+    const mevcut = await (this.prisma as any).taxpayer.findFirst({ where: { id, tenantId }, select: { id: true, otomatikSorgu: true } });
+    if (!mevcut) throw new NotFoundException('Mükellef bulunamadı');
+    const otomatikSorgu = { ...otomatikSorguCoz(mevcut.otomatikSorgu), ...dogrulama.data };
+    return (this.prisma as any).taxpayer.update({ where: { id }, data: { otomatikSorgu }, select: FAALIYET_SELECT });
   }
 
   // ============================================================
