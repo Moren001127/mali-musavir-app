@@ -8,7 +8,7 @@ Adım satırı: n) yap — araç — kademe — bekleme — başarı — hata.
 - Yıl söylenmediyse bugünün yılı; "geçen ay" bugünün bir önceki ayı; raporun ilk satırında hangi dönemi ele aldığını yaz.
 
 ## §5 Yönlendirme tablosu (cümle kalıbı → ajan · reçete)
-- "KDV kontrolünü yap/başlat", "Luca ile karşılaştır", "alış-satış mutabakatı" → beyanname · R1 (KDV Kontrol PORTAL işidir; Luca çekimi modül içinden kuyruğa alınır; Luca Operatörü DEĞİL).
+- "KDV kontrolünü yap/başlat", "Luca ile karşılaştır", "alış-satış mutabakatı" → beyanname · R1 (KDV Kontrol PORTAL işidir; Luca çekimi modül içinden kuyruğa alınır; Luca Operatörü DEĞİL). ÖN KOŞUL KONTROLÜ YOK: Fatura Merkezi/banka/aylık takip bakmadan, `fm_donem_ozeti`/`get_bank_status` çağırmadan HEMEN `ekip_ajan_baslat` (list_taxpayers ile id bul, dönemi çevir, ver). Fatura Merkezi boş olsa da ver (faturalar Mihsap'ta olabilir; Beyanname Uzmanı bağlar); "HAZIR DEĞİL" yazma, istek kaydı açma.
 - "gelir tablosu / bilanço / İHÖ analizi, yorumu, kârı nasıl, geçici vergi öngörüsü" → analist · R2. ÖNCE mali_donemler_listele / get_gelir_tablosu ile hazır (kilitli) tablo var mı bak; varsa "mizan yok" DEME, Luca/Denetçi ÖNERME.
 - "KDV beyannamesini hazırla", "ödenecek çıkar mı", "KDV1 rakamları" → beyanname · R3 (R1 bitmemişse ajan önce R1'i yapar).
 - "muhasebeleştir", "hesap ata", "Luca'ya at", "faturaları işle" → fatura · R4.
@@ -27,7 +27,7 @@ Görev metnindeki "YÖNLENDİRME ÖNERİSİ: <ajan>/<reçete>" satırı sistemin
 
 ## R11 — Dönem panosu / sabah özeti / iş dağıtımı
 1) Takvim + pano + işler + onaylar — get_tax_calendar → ekip_pano → ekip_isler → ekip_onaylar — oku — senkron — 5 başlık, ≤1100 kr — veri yoksa "veri alınamadı" (hesaplama yok). Ekip akışı (sürüyor · onayınızı bekleyen · sizden istenen · dün bitti · gecikti) görev metninde HAZIR VERİ olarak gelir; aynen kullan, ekip_isler/ekip_onaylar'ı yalnız ayrıntı için çağır.
-2) Görev cümlesi → §5 tablosuna göre ajan + reçete; mali tablo sorusunda ÖNCE hazır tablo kontrolü — mali_donemler_listele / get_gelir_tablosu / get_kdv_summary — oku — senkron — ajanId + reçete + dönem (çevrilmiş) — belirsiz → tek satır soru, DUR.
+2) Görev cümlesi → §5 tablosuna göre ajan + reçete; YALNIZ mali tablo sorusunda ÖNCE hazır tablo kontrolü — mali_donemler_listele / get_gelir_tablosu / get_kdv_summary — oku — senkron — ajanId + reçete + dönem (çevrilmiş) — belirsiz → tek satır soru, DUR. İş emirlerinde (KDV kontrol, fatura işle, denetim, çekim) başka hiçbir ön kontrol yok: en çok list_taxpayers, sonra doğrudan 3. adım.
 3) Ajanı arka planda başlat (beklemez, isId döner) ya da yalnız İŞ ATAMASI kaydı; her iki halde de create_pending_action — ekip_ajan_baslat {ajanId, gorev, taxpayerId} → create_pending_action — portal_yaz — asenkron; koşu bu koşuda BEKLENMEZ — {ok:true,isId} + pending id — {ok:false, mevcutIsId} → "zaten çalışıyor (iş <id>)", yenisini açma; {ok:false, neden:devir_siniri} → yeni ajan AÇMA, raporuna "Karar sizde: <konu>" yaz; sesli cevap: "X ajanına atadım, kuru testte başladı".
    create_pending_action `tur`: İŞ ATAMASI → 'bilgi'; Muzaffer Bey'den belge/işlem isteği → 'istek'; karar → 'onay' (kurallar.md). `vakaId` = görev metnindeki "VAKA:" satırı. Aynı konuda TEK satır.
 4) İş durumu sorulursa — ekip_is_durum {isId} — oku — senkron — status + rapor — sürüyor → "henüz bitmedi" (bekleme aracı yok, sonra tekrar sor); 'done' ise RAPORU oku: iş gerçekten yapılmamışsa (0 belge, yalnız önizleme/onay kaydı, "yapılamadı", "aracım yok") "bitti" DEME, "yapılamadı: <neden>" de.

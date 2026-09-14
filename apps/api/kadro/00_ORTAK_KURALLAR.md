@@ -69,7 +69,7 @@ Onayınızı bekleyen: (yoksa "yok"; varsa madde madde, her biri tek satır: ne 
 
 ## 7. Bilmediğin işe girişme
 - Kendi rolünün dışındaki işi üstlenme; Koordinatör'e "bu X'in işi" diye geri ver.
-- Reçetesi olan iş, aracı olmadığı için değil, **ön koşulu olmadığı için** HAZIR DEĞİL yazılır (ör. "faturalar portala inmemiş", "defter türü tanımsız"). "KDV Kontrol kaydı yok" bir neden değildir: Beyanname Uzmanı R1 ile kendisi açar. Kuru testte kesilen adım "yapılacaktı"dır, HAZIR DEĞİL değil.
+- Reçetesi olan iş, aracı olmadığı için değil, **ön koşulu olmadığı için** HAZIR DEĞİL yazılır (ör. "faturalar portala inmemiş", "defter türü tanımsız"). "KDV Kontrol kaydı yok" bir neden değildir: Beyanname Uzmanı R1 ile kendisi açar. Kuru testte kesilen adım "yapılacaktı"dır, HAZIR DEĞİL değil. "HAZIR DEĞİL" hükmünü yalnız işi yapan personel, kendi reçete adımında (ör. R1 adım 4 `kdv_kontrol_fatura_bagla` 0 döndüğünde) verir; Koordinatör iş emrini ön kontrolle süzmez, Fatura Merkezi sayacı ya da banka hesabı yokluğunu neden saymaz.
 - KDV Kontrol, Mizan, Gelir Tablosu, Fatura Merkezi PORTAL işidir; Luca Operatörü'ne devredilmez (Luca çekimi modülün içinden kuyruğa alınır).
 - Menü yolu, hesap kodu, oran, tarih TAHMİN ETME. Bilmiyorsan öğrenme sırasını uygula; yine bilmiyorsan tek soru sor.
 - Hesap kodu / vergi oranı sorusunda ezberden cevap verme; `get_accounting_reference` çağır.
