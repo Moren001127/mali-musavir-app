@@ -7,14 +7,13 @@ import { toast } from 'sonner';
 import { DurumCipi, FormAltBilgi, Salter, Secici } from '@/components/kayit-formu/KayitFormu';
 
 // v3 (2026-09-14, Muzaffer Bey: "beyanname | dönem — bu kadar; tablo düzeni belli olsun, profesyonel"):
-// İKİ sütunlu, TAM ÇİZGİLİ tablo. Açıklama/kod/durum sütunu YOK. Grup satırları ayrı zemin. Altın yok.
+// İKİ sütunlu, TAM ÇİZGİLİ tablo. Açıklama/kod/durum sütunu YOK, GRUP SATIRI YOK — başlığın altında düz liste. Altın yok.
 const GOOD = '#5fcf8e';
 const TEXT = '#fafaf9';
 const MUTED = 'rgba(250,250,249,0.60)';
 const CIZGI = 'rgba(255,255,255,0.13)';
 const HUCRE: React.CSSProperties = { border: `1px solid ${CIZGI}`, padding: '0 14px', height: 48, verticalAlign: 'middle', fontSize: 14 };
 const BASLIK_HUCRE: React.CSSProperties = { ...HUCRE, height: 40, fontSize: 12, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: 'rgba(250,250,249,0.62)', background: 'rgba(255,255,255,0.055)', textAlign: 'left' };
-const GRUP_HUCRE: React.CSSProperties = { ...HUCRE, height: 38, fontSize: 12.5, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: 'rgba(250,250,249,0.80)', background: 'rgba(255,255,255,0.035)' };
 
 type Period = 'AYLIK' | 'UCAYLIK' | 'ON_BES_GUNLUK' | null;
 type IncomeTaxType = 'KURUMLAR' | 'GELIR' | 'BASIT_USUL' | null;
@@ -212,9 +211,6 @@ export function MukellefiyetlerCard({
           </thead>
           <tbody>
             <tr>
-              <td colSpan={2} style={GRUP_HUCRE}>Yıllık vergi</td>
-            </tr>
-            <tr>
               <td style={{ ...HUCRE, color: form.incomeTaxType ? TEXT : MUTED, fontWeight: form.incomeTaxType ? 600 : 500 }}>Yıllık vergi türü</td>
               <td style={HUCRE}>
                 <Secici
@@ -233,9 +229,6 @@ export function MukellefiyetlerCard({
 
             {gruplar.map((g) => (
               <React.Fragment key={g.baslik}>
-                <tr>
-                  <td colSpan={2} style={GRUP_HUCRE}>{g.baslik}</td>
-                </tr>
                 {g.defs.map((item) => {
                   const value = (form as any)[item.key];
                   const isActive = aktifMi(item);
