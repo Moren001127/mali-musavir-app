@@ -59,7 +59,11 @@
   // çerçevelerdeki veri tabloları da frameMetin[].tablolar'a düşer. (2) Menü keşfi
   // derinliği 4→6 (tavan 8), alt menünün yüklenmesi yoklamayla beklenir, boş dönen
   // dal bir kez daha denenir; her düğümde `derinlik` alanı var.
-  const AGENT_VERSION = '1.47.39';
+  // v1.47.40 (2026-09-14): FİRMA SEÇİMİ — SİLBER vakası. Mükellef Luca'da yokken ad-token
+  // eşleşmesi "İNŞAAT"+"GIDA" gibi GENEL kelimelerle BAŞKA firmayı (GİTO) seçip onun raporunu
+  // indiriyordu. Artık genel şirket-türü/sektör kelimeleri token sayılmaz, ilk AYIRT EDİCİ kelime
+  // option'da geçmek zorunda; bulunamazsa "Firma bulunamadı" hatası (rapor indirilmez).
+  const AGENT_VERSION = '1.47.40';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -9314,15 +9318,25 @@
       }
     }
 
-    // 3) Mükellef adı — token bazlı (en az 2 anlamlı token slugify edilmiş halde option slug'ında geçmeli)
+    // 3) Mükellef adı — token bazlı. v1.47.40: GENEL kelimeler (şirket türü / sektör) token SAYILMAZ ve
+    //    ilk ayırt edici kelime option'da geçmek ZORUNDA. Eski hali "insaat"+"gida" ile GİTO'yu SİLBER sanıyordu.
+    const GENEL_TOKENLAR = new Set([
+      'ltd', 'sti', 'limited', 'sirketi', 'sirket', 'anonim', 'ticaret', 'tic', 'sanayi', 'san', 'insaat', 'ins',
+      'gida', 'hizmetleri', 'hizmet', 'hiz', 'turizm', 'tekstil', 'lojistik', 'nakliyat', 'nak', 'otomotiv', 'medikal',
+      'pazarlama', 'paz', 'ithalat', 'ihracat', 'ith', 'ihr', 'dis', 'uretim', 'imalat', 'muhendislik', 'danismanlik',
+      'bilisim', 'yazilim', 'teknoloji', 'enerji', 'mobilya', 'ambalaj', 'petrol', 'akaryakit', 'oto', 'yedek', 'parca',
+      'depolama', 'tasimacilik', 'kollektif', 'komandit', 'kooperatifi', 'sinirli', 'sorumlu', 'mimarlik', 'yapi',
+      'emlak', 'gayrimenkul', 'saglik', 'egitim', 'reklam', 'matbaa',
+    ]);
+    const ayirtEdiciTokenlar = (ad) => slugify(ad).split('_').filter((w) => w.length >= 3 && !GENEL_TOKENLAR.has(w));
     if (!targetOpt && job.mukellefAdi) {
-      const wantedSlug = slugify(job.mukellefAdi);
-      const tokens = wantedSlug.split('_').filter((w) => w.length >= 3).slice(0, 4);
-      if (tokens.length >= 2) {
+      const tokens = ayirtEdiciTokenlar(job.mukellefAdi).slice(0, 4);
+      if (tokens.length >= 1) {
         for (const opt of combo.options) {
           if (!isRealOption(opt)) continue;
           const optSlug = slugify(opt.text);
           if (optSlug.length < 4) continue;
+          if (!optSlug.includes(tokens[0])) continue; // ilk ayırt edici kelime şart
           const matches = tokens.filter((tok) => optSlug.includes(tok)).length;
           if (matches >= Math.min(tokens.length, 2)) {
             targetOpt = opt; matchedBy = `ad tokens "${tokens.join('+')}"`; break;
@@ -9354,8 +9368,7 @@
     // 5) v1.36.74: Tek token tam eşleşmesi — kısa ad sadece 1 anlamlı token taşıyabilir.
     //    Token uzunluğu ≥4 ve EŞSİZ ise (başka mükellef adında geçmiyorsa) eşleştir.
     if (!targetOpt && job.mukellefAdi) {
-      const wantedSlug = slugify(job.mukellefAdi);
-      const tokens = wantedSlug.split('_').filter((w) => w.length >= 4);
+      const tokens = ayirtEdiciTokenlar(job.mukellefAdi).filter((w) => w.length >= 4); // v1.47.40: genel kelime olamaz
       if (tokens.length >= 1) {
         for (const tok of tokens) {
           const matchingOpts = [...combo.options].filter((opt) => isRealOption(opt) && slugify(opt.text).includes(tok));
