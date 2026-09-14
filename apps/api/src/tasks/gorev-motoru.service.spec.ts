@@ -4,7 +4,13 @@
 jest.mock('../prisma/prisma.service', () => ({ PrismaService: class PrismaService {} }));
 jest.mock('../notifications/notifications.service', () => ({ NotificationsService: class NotificationsService {} }));
 jest.mock('../email/email.service', () => ({ EmailService: class EmailService {} }));
+jest.mock('../whatsapp/whatsapp.service', () => ({ WhatsAppService: class WhatsAppService {} }));
 import { GorevMotoruService } from './gorev-motoru.service';
+
+const KISILER: Record<string, any> = {
+  busra: { id: 'busra', firstName: 'BÜŞRA NUR', lastName: 'ÖREN', phone: '905001112233', isActive: true, email: 'info@x' },
+  dilek: { id: 'dilek', firstName: 'DİLEK', lastName: 'BAYAGELDİ', phone: null, isActive: true, email: 'd@x' },
+};
 
 function sahteDb(gorevler: any[]) {
   let sayac = 0;
@@ -33,7 +39,10 @@ function sahteDb(gorevler: any[]) {
       findMany: async (q: any) => loglar.filter((l) => l.taskId === q.where.taskId),
       create: async (q: any) => { loglar.push({ ...q.data }); return q.data; },
     },
-    user: { findUnique: async () => ({ email: 'muzaffer@morenmusavirlik.com' }) },
+    user: {
+      findUnique: async (q: any) => KISILER[q.where.id] || { email: 'muzaffer@morenmusavirlik.com' },
+      findFirst: async (q: any) => KISILER[q.where.id] || null,
+    },
     tenant: { findUnique: async () => ({ email: null }) },
   };
   return { db, gorevler, loglar };
@@ -43,9 +52,15 @@ function kur(gorevler: any[]) {
   const { db, loglar } = sahteDb(gorevler);
   const bildirimler: any[] = [];
   const mailler: any[] = [];
-  const svc = new GorevMotoruService(db, { create: async (d: any) => { bildirimler.push(d); return { id: 'n' }; } } as any, { send: async (m: any) => { mailler.push(m); return { sent: true }; } } as any);
+  const wp: Array<{ tel: string; metin: string }> = [];
+  const svc = new GorevMotoruService(
+    db,
+    { create: async (d: any) => { bildirimler.push(d); return { id: 'n' }; } } as any,
+    { send: async (m: any) => { mailler.push(m); return { sent: true }; } } as any,
+    { sendMessage: async (tel: string, metin: string) => { wp.push({ tel, metin }); return true; } } as any,
+  );
   (svc as any).logger = { log: jest.fn(), warn: jest.fn() };
-  return { svc, gorevler, loglar, bildirimler, mailler };
+  return { svc, gorevler, loglar, bildirimler, mailler, wp };
 }
 
 const T = (iso: string) => new Date(iso);
@@ -84,14 +99,16 @@ describe('GorevMotoruService — hatırlatma', () => {
     const simdi = T('2026-09-16T06:05:00Z'); // 09:05 İstanbul
     expect(await svc.hatirlatmalariGonder(simdi)).toBe(1);
     expect(bildirimler[0]).toMatchObject({ tenantId: 't', userId: 'u', type: 'TASK_DUE', title: 'Bugün vadesi: Beyanname hazırla', body: 'Bugün · Öz Ela' });
-    expect(bildirimler[0].metadata.kanallar).toEqual({ portal: true, push: true, whatsapp: true, email: false });
+    expect(bildirimler[0].metadata.kanallar).toEqual({ portal: true, push: true, whatsapp: false, email: false }); // WhatsApp'ı motor kendisi gönderir, owner-notifier kancası kapalı
+    expect(bildirimler[0].metadata.link).toBe('/panel/gorevler?gorev=g1');
     expect(loglar[0]).toMatchObject({ taskId: 'g1', channel: 'BILDIRIM', status: 'SENT', olayAnahtari: 'VADE:2026-09-16' });
     expect(await svc.hatirlatmalariGonder(simdi)).toBe(0);
   });
 
-  it('gece 23:00 tarama yapmaz; kanalların hepsi kapalıysa atlar; e-posta seçiliyse mail de gider', async () => {
+  it('gece 23:00 ve sabah 08:30 tarama yapmaz; kanalların hepsi kapalıysa atlar; e-posta seçiliyse mail de gider', async () => {
     const { svc, bildirimler, mailler } = kur([gorev({ notifyEmail: true }), gorev({ id: 'g2', notifyInApp: false, notifyPush: false, notifyWhatsapp: false })]);
     expect(await svc.hatirlatmalariGonder(T('2026-09-16T20:00:00Z'))).toBe(0); // 23:00 İstanbul
+    expect(await svc.hatirlatmalariGonder(T('2026-09-16T05:30:00Z'))).toBe(0); // 08:30 İstanbul — sessiz saat
     expect(await svc.hatirlatmalariGonder(T('2026-09-16T06:30:00Z'))).toBe(1);
     expect(bildirimler).toHaveLength(1);
     expect(mailler).toHaveLength(1);
@@ -112,5 +129,61 @@ describe('GorevMotoruService — hatırlatma', () => {
     // ikinci tik: bayat olay SKIPPED sayıldığı için yeniden ele alınmaz
     expect(await svc.hatirlatmalariGonder(T('2026-09-16T06:40:00Z'))).toBe(0);
     expect(loglar.filter((l) => l.taskId === 'g4')).toHaveLength(1);
+  });
+});
+
+describe('GorevMotoruService — WhatsApp şablonu ve personel', () => {
+  const gorev = (ek: any = {}) => ({ id: 'g1', tenantId: 't', createdById: 'u', title: 'Beyanname hazırla', status: 'OPEN', isTemplate: false, dueDate: T('2026-09-16T00:00:00Z'), dueTime: null, allDay: true, priority: 'HIGH', category: 'BEYANNAME', notifyInApp: true, notifyEmail: false, escalationLevel: 0, taxpayer: { companyName: 'Öz Ela' }, hatirlatUserIds: [], ...ek });
+
+  beforeEach(() => { process.env.MOREN_OWNER_WHATSAPP_PHONES = '05350587475'; delete process.env.MOREN_OWNER_HITAP; });
+  afterEach(() => { delete process.env.MOREN_OWNER_WHATSAPP_PHONES; });
+
+  it('aynı tikte 2 görev → sahibe TEK WhatsApp mesajı (şablon: BUGÜN bölümü, hitap Muzaffer Bey, bağlantı); günlükte WHATSAPP satırı', async () => {
+    const { svc, wp, loglar } = kur([gorev(), gorev({ id: 'g2', title: 'Tahsilat araması', category: 'TAHSILAT', priority: 'MEDIUM', dueTime: '14:00', allDay: false, taxpayer: { companyName: 'Famcoffee' } })]);
+    // g2 saat 14:00 → VADE olayı 13:30'da; 09:05'te yalnız 'yaklaşıyor' (1 gün önce 14:00) gider
+    expect(await svc.hatirlatmalariGonder(T('2026-09-16T06:05:00Z'))).toBe(2);
+    expect(wp).toHaveLength(1);
+    expect(wp[0].tel).toBe('905350587475');
+    expect(wp[0].metin).toContain('⏰ GÖREV HATIRLATMA · 16.09.2026 09:05');
+    expect(wp[0].metin).toContain('Muzaffer Bey, bugün 1 görev, 1 yaklaşan var.');
+    expect(wp[0].metin).toContain('📌 BUGÜN');
+    expect(wp[0].metin).toContain('• Öz Ela — Beyanname hazırla');
+    expect(wp[0].metin).toContain('   Bugün · Yüksek · Beyanname');
+    expect(wp[0].metin).toContain('🔜 YAKLAŞIYOR');
+    expect(wp[0].metin).toContain('• Famcoffee — Tahsilat araması');
+    expect(wp[0].metin).toContain('   16.09.2026 Çarşamba 14:00 · Tahsilat');
+    expect(wp[0].metin).toContain('🔗 Görevler: https://portal.morenmusavirlik.com/panel/gorevler');
+    expect(loglar.filter((l) => l.channel === 'WHATSAPP' && l.status === 'SENT')).toHaveLength(2);
+  });
+
+  it('ofis personeline de hatırlat: Büşra (telefonlu) → portal bildirimi + ayrı WhatsApp "Sayın …"; Dilek (telefonsuz) → yalnız portal bildirimi; WhatsApp kapalı görevde mesaj yok', async () => {
+    const { svc, wp, bildirimler } = kur([gorev({ hatirlatUserIds: ['busra', 'dilek'] })]);
+    expect(await svc.hatirlatmalariGonder(T('2026-09-16T06:05:00Z'))).toBe(1);
+    expect(bildirimler.map((b) => b.userId).sort()).toEqual(['busra', 'dilek', 'u']);
+    expect(wp.map((w) => w.tel).sort()).toEqual(['905001112233', '905350587475']);
+    const busra = wp.find((w) => w.tel === '905001112233')!;
+    expect(busra.metin).toContain('Sayın BÜŞRA NUR ÖREN, bugün 1 görev var.');
+
+    const { svc: s2, wp: wp2, bildirimler: b2 } = kur([gorev({ notifyWhatsapp: false, hatirlatUserIds: ['busra'] })]);
+    expect(await s2.hatirlatmalariGonder(T('2026-09-16T06:05:00Z'))).toBe(1);
+    expect(wp2).toHaveLength(0);
+    expect(b2).toHaveLength(2);
+  });
+
+  it('ornekGonder: sahibin numarasına ÖRNEK işaretli şablon; phone verilirse ona; numara yoksa hata', async () => {
+    const { svc, wp } = kur([]);
+    const r = await svc.ornekGonder('t', 'u');
+    expect(r.ok).toBe(true);
+    expect(r.telefonlar).toEqual(['905350587475']);
+    expect(wp[0].metin).toContain('⏰ GÖREV HATIRLATMA (ÖRNEK)');
+    expect(wp[0].metin).toContain('📌 BUGÜN');
+    expect(wp[0].metin).toContain('🔜 YAKLAŞIYOR');
+    expect(wp[0].metin).toContain('⚠️ GECİKEN');
+    expect(wp[0].metin).toContain('Bu bir şablon denemesidir');
+    const r2 = await svc.ornekGonder('t', 'u', { phone: '0500 111 22 33' });
+    expect(r2.telefonlar).toEqual(['905001112233']);
+    delete process.env.MOREN_OWNER_WHATSAPP_PHONES;
+    const r3 = await svc.ornekGonder('t', 'u');
+    expect(r3.ok).toBe(false);
   });
 });

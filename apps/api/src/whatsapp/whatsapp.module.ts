@@ -18,6 +18,7 @@ import { BotQACron } from '../schedule/bot-qa.cron';
 import { OwnerNotifierService } from './owner-notifier.service';
 import { OwnerBriefingCron } from './owner-briefing.cron';
 import { OwnerDigestService } from './owner-digest.service';
+import { GorevWhatsappService } from './gorev-whatsapp.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { MorenAiModule } from '../moren-ai/moren-ai.module';
 import { StorageModule } from '../storage/storage.module';
@@ -48,6 +49,8 @@ import { FaturaKesModule } from '../fatura-kes/fatura-kes.module';
     OwnerNotifierService,
     OwnerBriefingCron,
     OwnerDigestService,
+    // WhatsApp'tan görev/hatırlatma/not ekleme (owner hattı, 2026-09-14) — ayrıştırıcı ortak pakette
+    GorevWhatsappService,
   ],
   controllers: [WhatsAppController, WhatsAppBotController, WhatsAppIntegrationController, WhatsAppQualityController],
   exports: [WhatsAppService, QualityLogService, BotTestRunnerService],

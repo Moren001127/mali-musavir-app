@@ -8,7 +8,8 @@ import type { GorevEylemleri } from './eylemler';
 import { GorevTablosu } from './GorevTablosu';
 import { EKIP_RENK, etkinTarih, type Satir, type SatirGrubu } from './ortak';
 
-const RENKLER = ['#34d399', '#60a5fa', '#f472b6', '#fbbf24', '#22d3ee', '#a78bfa', '#fb923c', '#2dd4bf'];
+/** SAKİN PALET (2026-09-14): mükellef grupları için gökkuşağı şerit YOK — hepsi aynı soluk gri (GorevTablosu 3px şerit). */
+const GRUP_SERIT = '#9ca3af';
 
 /** Mükellefe göre — mükellef başlıklı gruplar (açık görev sayısı), grup içi aynı tablo; mükellefsizler en sonda. */
 export function MukellefeGoreGorunumu({
@@ -59,10 +60,10 @@ export function MukellefeGoreGorunumu({
         if (kb === '__yok') return -1;
         return b.acik - a.acik || a.ad.localeCompare(b.ad, 'tr');
       })
-      .map(([key, v], i) => ({
+      .map(([key, v]) => ({
         key,
         ad: v.ad,
-        renk: key === '__yok' ? '#9ca3af' : RENKLER[i % RENKLER.length],
+        renk: GRUP_SERIT,
         satirlar: v.satirlar,
         ek: `${v.acik} açık`,
       }));

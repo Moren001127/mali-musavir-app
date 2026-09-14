@@ -10,7 +10,8 @@
  *
  * Kapsam: panel kabuğunun çağırdığı uçlar (auth, bildirim, sağlık, luca, onay kuyruğu, bütçe) + /taxpayers +
  *         /tasks* sözleşmesi (bellek içi durum: ekle / düzenle / tamamla / ertele / toplu / not / ekibe ver / takvimden)
- *         + /ekip/istek/:id/kapat. Veri süreç belleğindedir; sunucu yeniden başlayınca sıfırlanır.
+ *         + /tasks/kisiler (ofis personeline de hatırlat) + /ekip/istek/:id/kapat + /users (liste, PATCH telefon).
+ *         Veri süreç belleğindedir; sunucu yeniden başlayınca sıfırlanır.
  */
 const http = require('http');
 const { URL } = require('url');
@@ -49,6 +50,20 @@ const KULLANICI = {
   role: 'ADMIN',
   isActive: true,
 };
+
+/** Ofisin portal kullanıcıları (Ayarlar → Kullanıcılar + "Ofis personeline de hatırlat" seçenekleri). */
+const KULLANICILAR = [
+  { id: 'u1', email: 'muzaffer@morenmusavirlik.com', firstName: 'Muzaffer', lastName: 'Ören', isActive: true, lastLoginAt: saatOnce(1), createdAt: gun(-400), phone: '0535 000 00 01', userRoles: [{ role: { name: 'ADMIN' } }] },
+  { id: 'u2', email: 'busra@morenmusavirlik.com', firstName: 'Büşra', lastName: 'Yılmaz', isActive: true, lastLoginAt: saatOnce(5), createdAt: gun(-200), phone: '0532 000 00 02', userRoles: [{ role: { name: 'STAFF' } }] },
+  { id: 'u3', email: 'elif@morenmusavirlik.com', firstName: 'Elif', lastName: 'Demir', isActive: true, lastLoginAt: saatOnce(30), createdAt: gun(-120), phone: null, userRoles: [{ role: { name: 'STAFF' } }] },
+  { id: 'u4', email: 'seda@morenmusavirlik.com', firstName: 'Seda', lastName: 'Kara', isActive: true, lastLoginAt: null, createdAt: gun(-10), phone: null, userRoles: [{ role: { name: 'READONLY' } }] },
+  { id: 'u5', email: 'ahmet@morenmusavirlik.com', firstName: 'Ahmet', lastName: 'Taş', isActive: false, lastLoginAt: saatOnce(24 * 90), createdAt: gun(-300), phone: '0533 000 00 05', userRoles: [{ role: { name: 'STAFF' } }] },
+];
+const kullaniciAd = (u) => [u.firstName, u.lastName].filter(Boolean).join(' ').trim() || u.email;
+/** GET /tasks/kisiler — yalnız aktif kullanıcılar; ben = istek yapan (sahte: u1). */
+const kisiler = () => KULLANICILAR.filter((u) => u.isActive).map((u) => ({ id: u.id, ad: kullaniciAd(u), rol: (u.userRoles[0] && u.userRoles[0].role.name) || 'STAFF', telefon: !!u.phone, ben: u.id === KULLANICI.id }));
+/** hatirlatUserIds temizliği: yalnız dizi + metin id + tekil. */
+const hatirlatTemizle = (v) => (Array.isArray(v) ? [...new Set(v.filter((x) => typeof x === 'string' && x.trim()))] : []);
 
 const MUKELLEFLER = [
   { id: 'm1', type: 'COMPANY', companyName: 'Öz Ela Gıda San. ve Tic. Ltd. Şti.', firstName: null, lastName: null, taxNumber: '6420011234', status: 'active' },
@@ -125,6 +140,7 @@ function gorev(o) {
     pinned: !!o.pinned,
     ekipIsId: o.ekipIsId || null,
     taxCalendarId: o.taxCalendarId || null,
+    hatirlatUserIds: hatirlatTemizle(o.hatirlatUserIds),
     notes: notlar,
     attachments: o.attachments || [],
   };
@@ -142,7 +158,7 @@ let GOREVLER = [
   // Bugün
   gorev({ id: 't4', title: 'Famcoffee Ağustos muhtasar beyannamesi', category: 'BEYANNAME', priority: 'HIGH', taxpayerId: 'm5', dueDate: gun(0), dueTime: '14:00', kaynak: 'TAKVIM', taxCalendarId: 'c2' }),
   gorev({ id: 't5', title: 'Ayşegül Kaya işe giriş bildirgesi', category: 'BORDRO', priority: 'URGENT', taxpayerId: 'm3', dueDate: gun(0), kaynak: 'WHATSAPP',
-    description: 'Yeni personel 15 Eylül başlıyor; SGK işe giriş bildirgesi bugün verilmeli.' }),
+    description: 'Yeni personel 15 Eylül başlıyor; SGK işe giriş bildirgesi bugün verilmeli.', hatirlatUserIds: ['u2'] }),
   gorev({ id: 't6', title: 'Balçık İnşaat hakediş faturası evrakı', category: 'EVRAK', priority: 'MEDIUM', taxpayerId: 'm7', dueDate: gun(0), kaynak: 'MANUEL', status: 'IN_PROGRESS',
     ekipIsId: 'is-8841', notlar: [{ content: 'Ekibe verildi (kuru test) — iş is-8841' }] }),
   gorev({ id: 't7', title: 'Ofis kira ödemesi', category: 'OFIS', priority: 'LOW', dueDate: gun(0), kaynak: 'MANUEL', recurrence: { type: 'MONTHLY', monthDay: 14 } }),
@@ -341,6 +357,29 @@ async function isle(req, res) {
     return jsonGonder(res, 200, { today: s.bugun, overdue: s.gecikmis, thisWeek: s.buHafta, totalOpen: s.acik });
   }
 
+  // "Ofis personeline de hatırlat" seçenekleri — /tasks/:id kalıbından ÖNCE olmalı
+  if (yol === '/tasks/kisiler' && yontem === 'GET') return jsonGonder(res, 200, kisiler());
+
+  // ── Kullanıcılar (Ayarlar → Kullanıcılar) ──
+  if (yol === '/users' && yontem === 'GET') return jsonGonder(res, 200, KULLANICILAR);
+  {
+    const m = /^\/users\/([^/]+)$/.exec(yol);
+    if (m && (yontem === 'PATCH' || yontem === 'DELETE')) {
+      const k = KULLANICILAR.find((x) => x.id === m[1]);
+      if (!k) return jsonGonder(res, 404, { message: 'Kullanıcı bulunamadı' });
+      if (yontem === 'DELETE') {
+        k.isActive = false;
+        return jsonGonder(res, 200, { ok: true });
+      }
+      if (govde.phone !== undefined) {
+        const temiz = govde.phone === null ? null : String(govde.phone).trim();
+        if (temiz && temiz.replace(/\D/g, '').length < 10) return jsonGonder(res, 400, { message: 'Telefon geçersiz (en az 10 rakam)' });
+        k.phone = temiz || null;
+      }
+      return jsonGonder(res, 200, k);
+    }
+  }
+
   if (yol === '/tasks/toplu' && yontem === 'POST') {
     const ids = new Set(govde.ids || []);
     let etkilenen = 0;
@@ -432,6 +471,7 @@ async function isle(req, res) {
       if (!alt && yontem === 'PATCH') {
         const alanlar = ['title', 'description', 'category', 'priority', 'taxpayerId', 'dueTime', 'allDay', 'recurrence', 'notifyInApp', 'notifyEmail', 'notifyBrowser', 'notifySound', 'notifyPush', 'notifyWhatsapp', 'tur', 'pinned', 'kaynak', 'status', 'tags'];
         for (const a of alanlar) if (govde[a] !== undefined) t[a] = govde[a];
+        if (govde.hatirlatUserIds !== undefined) t.hatirlatUserIds = hatirlatTemizle(govde.hatirlatUserIds);
         if (govde.dueDate !== undefined) t.dueDate = govde.dueDate ? new Date(govde.dueDate).toISOString() : null;
         if (govde.taxpayerId !== undefined) { t.taxpayerId = govde.taxpayerId || null; t.taxpayer = mukellefOzet(t.taxpayerId); }
         if (govde.status === 'DONE') t.completedAt = new Date().toISOString();
@@ -493,5 +533,5 @@ const sunucu = http.createServer((req, res) => {
 });
 
 sunucu.listen(PORT, () => {
-  console.log(`[mock] Sahte API hazır: http://localhost:${PORT}${ON_EK}  (görev ${GOREVLER.length}, mükellef ${MUKELLEFLER.length})`);
+  console.log(`[mock] Sahte API hazır: http://localhost:${PORT}${ON_EK}  (görev ${GOREVLER.length}, mükellef ${MUKELLEFLER.length}, kullanıcı ${KULLANICILAR.length})`);
 });

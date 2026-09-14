@@ -2,11 +2,21 @@
 
 import { useMemo, useRef, useState, type ReactNode } from 'react';
 import { Building2, CalendarDays, ChevronDown, Clock, Flag, Loader2, Plus, Search, Sparkles, StickyNote, Tag, X } from 'lucide-react';
-import { CATEGORY_OPTIONS, PRIORITY_COLOR, PRIORITY_LABEL, PRIORITY_ORDER, gunEkle, kategoriEtiketi, kategoriRengi, type CreateTaskInput, type TaskPriority } from '@/lib/tasks';
+import { CATEGORY_OPTIONS, PRIORITY_LABEL, PRIORITY_ORDER, gunEkle, kategoriEtiketi, type CreateTaskInput, type TaskPriority } from '@/lib/tasks';
 import { kahramanKartStili, seritStili } from '../../ekip/_components/ortak';
 import { AcilirMenu, MenuAyrac, MenuBaslik, MenuSatiri } from './AcilirMenu';
 import { ayristir, mukellefAdi, sadelestir, type MukellefSecenek } from './akilli-giris';
-import { GIRDI, GOLD, GOLD_SOFT, IKINCIL, METIN, NOT_RENK, SONUK, kisaTarih, oncelikRengi, vadeIso } from './ortak';
+import { GIRDI, GOLD, GOLD_SOFT, IKINCIL, METIN, NOT_RENK, SONUK, kisaTarih, vadeIso } from './ortak';
+
+/*
+ * SAKİN PALET (2026-09-14): hızlı şablon çipleri ve ayrıştırma çipleri TEK stil (ince gri kenar, gri yazı; hover/açıkken altın kenar).
+ * Yalnız "şüpheli mükellef adayı" çipi altın kesikli kenarlı. Menü ikonları nötr (MenuSatiri).
+ */
+/** Tek çip stili — Tailwind sınıfı (satır içi stil hover'ı ezerdi). */
+const CIP_SINIF = 'border border-white/[0.12] bg-white/[0.03] text-[#fafaf9]/70 hover:border-[#d4b876]/60 hover:text-[#fafaf9]/90';
+const CIP_ACIK_SINIF = 'border border-[#d4b876]/70 bg-[#d4b876]/[0.08] text-[#fafaf9]/90';
+const CIP_BOS_SINIF = 'border border-dashed border-white/[0.22] bg-transparent text-[#fafaf9]/55 hover:border-[#d4b876]/60';
+const CIP_ADAY_SINIF = 'border border-dashed border-[#d4b876]/60 bg-[#d4b876]/[0.06] text-[#d4b876] hover:bg-[#d4b876]/[0.14]';
 
 /** Hızlı şablonlar: başlık + kategori + öncelik. Vade BOŞ bırakılır (kullanıcı çipten seçer). */
 const SABLONLAR: Array<{ ad: string; kategori: string; oncelik: TaskPriority }> = [
@@ -149,7 +159,7 @@ export function AkilliGiris({
         <div className="mt-2.5 flex min-w-0 flex-wrap items-center gap-1.5">
           {dolu ? (
             <>
-              <Cip ikon={<CalendarDays size={11} />} renk={GOLD} bos={!tarih} etiket={tarih ? tarihEtiketi(tarih) : 'Tarih yok'} title="Vade tarihi">
+              <Cip ikon={<CalendarDays size={11} />} bos={!tarih} etiket={tarih ? tarihEtiketi(tarih) : 'Tarih yok'} title="Vade tarihi">
                 {(kapat) => (
                   <TarihMenusu
                     deger={tarih}
@@ -160,7 +170,7 @@ export function AkilliGiris({
                   />
                 )}
               </Cip>
-              <Cip ikon={<Clock size={11} />} renk="#7dd3fc" bos={!saat} etiket={saat || 'Saat yok'} title="Saat">
+              <Cip ikon={<Clock size={11} />} bos={!saat} etiket={saat || 'Saat yok'} title="Saat">
                 {(kapat) => (
                   <SaatMenusu
                     deger={saat}
@@ -171,7 +181,7 @@ export function AkilliGiris({
                   />
                 )}
               </Cip>
-              <Cip ikon={<Building2 size={11} />} renk="#34d399" bos={!mukellef} etiket={mukellef ? mukellefAdi(mukellef) : adaylar.length ? 'Mükellef?' : 'Mükellef yok'} title="Mükellef">
+              <Cip ikon={<Building2 size={11} />} bos={!mukellef} etiket={mukellef ? mukellefAdi(mukellef) : adaylar.length ? 'Mükellef?' : 'Mükellef yok'} title="Mükellef">
                 {(kapat) => (
                   <MukellefMenusu
                     mukellefler={mukellefler}
@@ -189,13 +199,12 @@ export function AkilliGiris({
                   type="button"
                   onClick={() => setElle((e) => ({ ...e, mukellefId: a.id }))}
                   title="Bu mükellef mi? Tıklayınca bağlanır"
-                  className="inline-flex flex-shrink-0 items-center gap-1 rounded-full border border-dashed px-2 py-[3px] text-[11px] font-semibold transition hover:brightness-125"
-                  style={{ borderColor: '#34d39966', color: '#34d399', background: 'rgba(52,211,153,0.06)' }}
+                  className={`inline-flex flex-shrink-0 items-center gap-1 rounded-full px-2 py-[3px] text-[11px] font-medium transition ${CIP_ADAY_SINIF}`}
                 >
                   {a.ad}?
                 </button>
               ))}
-              <Cip ikon={<Tag size={11} />} renk={kategori ? kategoriRengi(kategori) : IKINCIL} bos={!kategori} etiket={kategori ? kategoriEtiketi(kategori) : 'Kategori yok'} title="Kategori">
+              <Cip ikon={<Tag size={11} />} bos={!kategori} etiket={kategori ? kategoriEtiketi(kategori) : 'Kategori yok'} title="Kategori">
                 {(kapat) => (
                   <div className="py-1">
                     <MenuBaslik>Kategori</MenuBaslik>
@@ -211,12 +220,12 @@ export function AkilliGiris({
                   </div>
                 )}
               </Cip>
-              <Cip ikon={<Flag size={11} />} renk={oncelikRengi(oncelik)} etiket={PRIORITY_LABEL[oncelik]} title="Öncelik">
+              <Cip ikon={<Flag size={11} />} etiket={PRIORITY_LABEL[oncelik]} title="Öncelik">
                 {(kapat) => (
                   <div className="py-1">
                     <MenuBaslik>Öncelik</MenuBaslik>
                     {PRIORITY_ORDER.map((p) => (
-                      <MenuSatiri key={p} aktif={oncelik === p} ikon={<Flag size={12} />} renk={PRIORITY_COLOR[p]} onClick={() => { setElle((e) => ({ ...e, oncelik: p })); kapat(); }}>
+                      <MenuSatiri key={p} aktif={oncelik === p} ikon={<Flag size={12} />} onClick={() => { setElle((e) => ({ ...e, oncelik: p })); kapat(); }}>
                         {PRIORITY_LABEL[p]}
                       </MenuSatiri>
                     ))}
@@ -247,7 +256,7 @@ export function AkilliGiris({
 
         {/* Hızlı şablonlar */}
         <div className="mt-3 flex min-w-0 flex-wrap items-center gap-1.5 border-t pt-2.5" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
-          <span className="mr-1 text-[10.5px] font-bold uppercase tracking-[.12em]" style={{ color: IKINCIL }}>
+          <span className="mr-1 text-[10.5px] font-semibold uppercase tracking-[.08em]" style={{ color: IKINCIL }}>
             Hızlı şablon
           </span>
           {SABLONLAR.map((s) => (
@@ -256,8 +265,7 @@ export function AkilliGiris({
               type="button"
               onClick={() => sablonUygula(s)}
               title={`${s.ad} — ${kategoriEtiketi(s.kategori)} · ${PRIORITY_LABEL[s.oncelik]}; vadeyi çipten seçin`}
-              className="inline-flex flex-shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2.5 py-[3px] text-[11px] font-semibold transition-[transform,filter] hover:-translate-y-px hover:brightness-125"
-              style={{ background: `${kategoriRengi(s.kategori)}12`, border: `1px solid ${kategoriRengi(s.kategori)}3d`, color: kategoriRengi(s.kategori) }}
+              className={`inline-flex flex-shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2.5 py-[3px] text-[11px] font-medium transition ${CIP_SINIF}`}
             >
               <Plus size={10} /> {s.ad}
             </button>
@@ -268,8 +276,8 @@ export function AkilliGiris({
   );
 }
 
-/** Çip — menü açan hap. */
-function Cip({ ikon, etiket, renk, bos, title, children }: { ikon: ReactNode; etiket: string; renk: string; bos?: boolean; title: string; children: (kapat: () => void) => ReactNode }) {
+/** Çip — menü açan hap; tek stil (gri), açıkken altın kenar, boşken kesikli gri. */
+function Cip({ ikon, etiket, bos, title, children }: { ikon: ReactNode; etiket: string; bos?: boolean; title: string; children: (kapat: () => void) => ReactNode }) {
   return (
     <AcilirMenu
       genislik={260}
@@ -280,12 +288,7 @@ function Cip({ ikon, etiket, renk, bos, title, children }: { ikon: ReactNode; et
           type="button"
           onClick={ac}
           title={`${title} — değiştirmek için tıkla`}
-          className="inline-flex max-w-[260px] flex-shrink-0 items-center gap-1 rounded-full px-2.5 py-[3px] text-[11px] font-semibold transition-[transform,filter] hover:-translate-y-px hover:brightness-125"
-          style={
-            bos
-              ? { background: 'transparent', border: '1px dashed rgba(255,255,255,0.22)', color: IKINCIL }
-              : { background: `${renk}14`, border: `1px solid ${renk}${acik ? '99' : '55'}`, color: renk }
-          }
+          className={`inline-flex max-w-[260px] flex-shrink-0 items-center gap-1 rounded-full px-2.5 py-[3px] text-[11px] font-medium transition ${acik ? CIP_ACIK_SINIF : bos ? CIP_BOS_SINIF : CIP_SINIF}`}
         >
           {ikon}
           <span className="truncate">{etiket}</span>
@@ -310,14 +313,14 @@ function TarihMenusu({ deger, onSec }: { deger: string | null; onSec: (g: string
     <div className="py-1">
       <MenuBaslik>Vade</MenuBaslik>
       {hizli.map((h) => (
-        <MenuSatiri key={h.ad} aktif={deger === h.gun} ikon={<CalendarDays size={12} />} renk={GOLD} onClick={() => onSec(h.gun)}>
+        <MenuSatiri key={h.ad} aktif={deger === h.gun} ikon={<CalendarDays size={12} />} onClick={() => onSec(h.gun)}>
           {h.ad} <span style={{ color: IKINCIL }}>· {kisaTarih(`${h.gun}T00:00:00`)}</span>
         </MenuSatiri>
       ))}
       <MenuAyrac />
       <div className="flex items-center gap-2 px-3 py-2">
         <input type="date" value={tarih} onChange={(e) => setTarih(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && tarih && onSec(tarih)} className="h-8 min-w-0 flex-1 px-2 text-[12px]" style={GIRDI} title="Tarih seç" />
-        <button type="button" disabled={!tarih} onClick={() => tarih && onSec(tarih)} className="h-8 rounded-lg px-3 text-[12px] font-bold disabled:opacity-40" style={{ background: `${GOLD}22`, color: GOLD, border: `1px solid ${GOLD}55` }}>
+        <button type="button" disabled={!tarih} onClick={() => tarih && onSec(tarih)} className="h-8 rounded-lg px-3 text-[12px] font-semibold disabled:opacity-40" style={{ background: 'rgba(212,184,118,0.10)', color: GOLD, border: `1px solid ${GOLD}66` }}>
           Seç
         </button>
       </div>
@@ -340,14 +343,14 @@ function SaatMenusu({ deger, onSec }: { deger: string | null; onSec: (s: string 
       <MenuBaslik>Saat</MenuBaslik>
       <div className="flex flex-wrap gap-1 px-3 py-1">
         {['09:00', '10:00', '11:00', '14:00', '16:00', '17:30'].map((s) => (
-          <button key={s} type="button" onClick={() => onSec(s)} className="rounded-md px-2 py-1 text-[11.5px] font-semibold tabular-nums transition hover:brightness-125" style={{ background: deger === s ? '#7dd3fc33' : 'rgba(255,255,255,0.05)', color: deger === s ? '#7dd3fc' : METIN, border: '1px solid rgba(255,255,255,0.08)' }}>
+          <button key={s} type="button" onClick={() => onSec(s)} className="rounded-md px-2 py-1 text-[11.5px] font-semibold tabular-nums transition hover:brightness-125" style={{ background: deger === s ? 'rgba(212,184,118,0.14)' : 'rgba(255,255,255,0.05)', color: deger === s ? GOLD : METIN, border: `1px solid ${deger === s ? `${GOLD}66` : 'rgba(255,255,255,0.08)'}` }}>
             {s}
           </button>
         ))}
       </div>
       <div className="flex items-center gap-2 px-3 py-2">
         <input type="time" value={saat} onChange={(e) => setSaat(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && saat && onSec(saat)} className="h-8 min-w-0 flex-1 px-2 text-[12px]" style={GIRDI} title="Saat seç" />
-        <button type="button" disabled={!saat} onClick={() => saat && onSec(saat)} className="h-8 rounded-lg px-3 text-[12px] font-bold disabled:opacity-40" style={{ background: '#7dd3fc22', color: '#7dd3fc', border: '1px solid #7dd3fc55' }}>
+        <button type="button" disabled={!saat} onClick={() => saat && onSec(saat)} className="h-8 rounded-lg px-3 text-[12px] font-semibold disabled:opacity-40" style={{ background: 'rgba(212,184,118,0.10)', color: GOLD, border: `1px solid ${GOLD}66` }}>
           Seç
         </button>
       </div>
@@ -387,7 +390,7 @@ export function MukellefMenusu({ mukellefler, deger, onSec }: { mukellefler: Muk
           </div>
         )}
         {liste.map((m) => (
-          <MenuSatiri key={m.id} aktif={deger === m.id} ikon={<Building2 size={12} />} renk="#34d399" onClick={() => onSec(m.id)}>
+          <MenuSatiri key={m.id} aktif={deger === m.id} ikon={<Building2 size={12} />} onClick={() => onSec(m.id)}>
             {mukellefAdi(m)}
           </MenuSatiri>
         ))}

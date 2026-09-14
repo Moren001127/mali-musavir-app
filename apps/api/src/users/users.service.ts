@@ -1,6 +1,16 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import * as argon2 from 'argon2';
+
+/** Türkiye cep numarası → 90XXXXXXXXXX; tanınmazsa null. */
+export function normalizeTelefon(raw: unknown): string | null {
+  let d = String(raw ?? '').replace(/[^\d]/g, '');
+  if (!d) return null;
+  if (d.startsWith('00')) d = d.slice(2);
+  if (d.startsWith('0') && d.length === 11) d = '90' + d.slice(1);
+  if (d.length === 10 && d.startsWith('5')) d = '90' + d;
+  return /^905\d{9}$/.test(d) ? d : null;
+}
 
 @Injectable()
 export class UsersService {
@@ -15,11 +25,21 @@ export class UsersService {
         firstName: true,
         lastName: true,
         isActive: true,
+        phone: true,
         lastLoginAt: true,
         createdAt: true,
         userRoles: { include: { role: true } },
       },
     });
+  }
+
+  /** WhatsApp telefonu (2026-09-14 görev hatırlatması) — boş/geçersiz → null. 90XXXXXXXXXX biçiminde saklanır. */
+  async updatePhone(id: string, tenantId: string, phoneRaw: unknown) {
+    const user = await this.prisma.user.findFirst({ where: { id, tenantId }, select: { id: true } });
+    if (!user) throw new NotFoundException('Kullanıcı bulunamadı');
+    const phone = normalizeTelefon(phoneRaw);
+    if (phoneRaw && String(phoneRaw).trim() && !phone) throw new BadRequestException('Telefon geçersiz — 05XX XXX XX XX biçiminde yazın');
+    return this.prisma.user.update({ where: { id }, data: { phone }, select: { id: true, email: true, firstName: true, lastName: true, phone: true } });
   }
 
   async findOne(id: string, tenantId: string) {

@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { usersApi, PortalUser } from '@/lib/users';
-import { ArrowLeft, UsersRound, Plus, Trash2, Copy, Check, X as IconX, KeyRound, Mail } from 'lucide-react';
+import { ArrowLeft, UsersRound, Plus, Trash2, Copy, Check, X as IconX, KeyRound, Mail, MessageSquare, Pencil, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
 
@@ -53,7 +53,7 @@ export default function KullanicilarPage() {
             </h1>
             <p className="text-sm text-stone-400 mt-1">
               Portala giriş yapabilen personel hesapları. Rol: <strong>ADMIN</strong> tam yetki, <strong>STAFF</strong> işlem yapar,
-              {' '}<strong>READONLY</strong> sadece görüntüler.
+              {' '}<strong>READONLY</strong> sadece görüntüler. WhatsApp telefonu kayıtlı olanlara görev hatırlatmaları WhatsApp&apos;tan da gider.
             </p>
           </div>
         </div>
@@ -83,6 +83,7 @@ export default function KullanicilarPage() {
                 <th className="px-4 py-3">Kullanıcı</th>
                 <th className="px-4 py-3">E-posta</th>
                 <th className="px-4 py-3">Rol</th>
+                <th className="px-4 py-3">WhatsApp telefonu</th>
                 <th className="px-4 py-3">Son Giriş</th>
                 <th className="px-4 py-3">Durum</th>
                 <th className="px-4 py-3 text-right"></th>
@@ -109,6 +110,9 @@ export default function KullanicilarPage() {
                           ))}
                         </div>
                       )}
+                    </td>
+                    <td className="px-4 py-2.5" style={{ minWidth: 236 }}>
+                      <TelefonHucresi user={u} />
                     </td>
                     <td className="px-4 py-2.5 text-[12px]" style={{ color: 'rgba(250,250,249,0.6)' }}>{fmtDate(u.lastLoginAt)}</td>
                     <td className="px-4 py-2.5">
@@ -141,6 +145,87 @@ export default function KullanicilarPage() {
       )}
 
       {addOpen && <AddUserModal onClose={() => setAddOpen(false)} onDone={() => qc.invalidateQueries({ queryKey: ['portal-users'] })} />}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════
+// WHATSAPP TELEFONU — satır içi düzenleme (input + kaydet; boş bırakılınca null)
+// ════════════════════════════════════════════════════════════
+function TelefonHucresi({ user }: { user: PortalUser }) {
+  const qc = useQueryClient();
+  const [duzenle, setDuzenle] = useState(false);
+  const [deger, setDeger] = useState(user.phone || '');
+
+  const mut = useMutation({
+    mutationFn: (phone: string | null) => usersApi.updatePhone(user.id, phone),
+    onSuccess: (guncel, phone) => {
+      const yeni = guncel?.phone ?? phone ?? null;
+      qc.setQueryData<PortalUser[]>(['portal-users'], (eski) => eski?.map((x) => (x.id === user.id ? { ...x, phone: yeni } : x)));
+      qc.invalidateQueries({ queryKey: ['portal-users'] });
+      qc.invalidateQueries({ queryKey: ['gorevler-kisiler'] });
+      toast.success(yeni ? `Telefon kaydedildi · ${fullName(user)}` : `Telefon silindi · ${fullName(user)}`);
+      setDuzenle(false);
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Telefon kaydedilemedi'),
+  });
+
+  const ac = () => {
+    setDeger(user.phone || '');
+    setDuzenle(true);
+  };
+  const kaydet = () => {
+    const temiz = deger.trim();
+    if (temiz && temiz.replace(/\D/g, '').length < 10) return toast.error('Telefon en az 10 rakam olmalı (örn. 05xx xxx xx xx)');
+    mut.mutate(temiz || null);
+  };
+
+  if (!duzenle) {
+    return (
+      <button
+        type="button"
+        onClick={ac}
+        disabled={!user.isActive}
+        title={user.isActive ? 'WhatsApp telefonunu düzenle' : 'Pasif kullanıcı'}
+        className="group/tel inline-flex items-center gap-1.5 rounded-md px-1.5 py-1 -mx-1.5 text-[12px] transition hover:bg-white/5 disabled:opacity-50 disabled:hover:bg-transparent"
+        style={{ color: user.phone ? 'rgba(250,250,249,0.85)' : 'rgba(250,250,249,0.4)' }}
+      >
+        <MessageSquare size={12} style={{ color: user.phone ? '#22c55e' : 'rgba(250,250,249,0.3)' }} />
+        <span className={user.phone ? 'font-mono tabular-nums' : 'italic'}>{user.phone || 'telefon yok'}</span>
+        <Pencil size={11} className="opacity-0 group-hover/tel:opacity-70 transition" />
+      </button>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <input
+        value={deger}
+        onChange={(e) => setDeger(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') kaydet();
+          if (e.key === 'Escape') setDuzenle(false);
+        }}
+        placeholder="05xx xxx xx xx"
+        aria-label={`${fullName(user)} WhatsApp telefonu`}
+        autoFocus
+        inputMode="tel"
+        className="w-[150px] px-2 py-1 rounded-md text-[12px] font-mono outline-none"
+        style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(212,184,118,0.4)', color: '#fafaf9' }}
+      />
+      <button
+        type="button"
+        onClick={kaydet}
+        disabled={mut.isPending}
+        title="Kaydet (Enter) — boş bırakılırsa telefon silinir"
+        className="p-1.5 rounded-md transition disabled:opacity-50"
+        style={{ background: 'rgba(212,184,118,0.15)', color: '#d4b876', border: '1px solid rgba(212,184,118,0.4)' }}
+      >
+        {mut.isPending ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+      </button>
+      <button type="button" onClick={() => setDuzenle(false)} disabled={mut.isPending} title="Vazgeç (Esc)" className="p-1.5 rounded-md hover:bg-white/5 transition text-stone-400 hover:text-stone-200">
+        <IconX size={12} />
+      </button>
     </div>
   );
 }

@@ -4,7 +4,8 @@ import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type 
 import { createPortal } from 'react-dom';
 import { CalendarDays } from 'lucide-react';
 import { gunEkle } from '@/lib/tasks';
-import { GIRDI, MENU_ZEMIN, METIN, MOR, IKINCIL } from './ortak';
+import { GIRDI, GOLD, MENU_ZEMIN, METIN, IKINCIL } from './ortak';
+import { DUGME_NOTR, GECIKME_RENK } from './Rozetler';
 
 /**
  * Açılır menü — tetikleyici düğmenin altında (sığmazsa üstünde) gövdeye portal edilir; dışarı tıklama / Esc kapatır.
@@ -91,24 +92,32 @@ export function AcilirMenu({
   );
 }
 
-/** Menü satırı. */
+/**
+ * Menü satırı. Sakin palet: ikonlar nötr gri; yalnız `tehlike` (Sil) yumuşak kırmızı; aktif satır altın nokta.
+ * `renk` geriye dönük uyumluluk için kabul edilir ama satır içi renk olarak UYGULANMAZ (tek palet).
+ */
 export function MenuSatiri({
   ikon,
   children,
-  renk = 'rgba(250,250,249,0.85)',
   onClick,
   title,
   disabled,
   aktif,
+  tehlike,
 }: {
   ikon?: ReactNode;
   children: ReactNode;
+  /** Kullanılmıyor — eski çağrılar bozulmasın diye tutuluyor. */
   renk?: string;
   onClick: () => void;
   title?: string;
   disabled?: boolean;
   aktif?: boolean;
+  /** Sil gibi geri alınamaz eylem — ikon ve yazı yumuşak kırmızı. */
+  tehlike?: boolean;
 }) {
+  const yazi = tehlike ? GECIKME_RENK : aktif ? METIN : 'rgba(250,250,249,0.85)';
+  const ikonRenk = tehlike ? GECIKME_RENK : aktif ? METIN : IKINCIL;
   return (
     <button
       type="button"
@@ -117,11 +126,11 @@ export function MenuSatiri({
       title={title}
       disabled={disabled}
       className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[12.5px] font-medium transition hover:bg-white/[0.05] disabled:opacity-40"
-      style={{ color: aktif ? METIN : 'rgba(250,250,249,0.85)', background: aktif ? 'rgba(212,184,118,0.10)' : undefined }}
+      style={{ color: yazi, background: aktif ? 'rgba(212,184,118,0.10)' : undefined }}
     >
-      {ikon && <span className="flex w-4 justify-center" style={{ color: renk }}>{ikon}</span>}
+      {ikon && <span className="flex w-4 justify-center" style={{ color: ikonRenk }}>{ikon}</span>}
       <span className="min-w-0 flex-1 truncate">{children}</span>
-      {aktif && <span className="h-1.5 w-1.5 rounded-full" style={{ background: '#d4b876' }} />}
+      {aktif && <span className="h-1.5 w-1.5 rounded-full" style={{ background: GOLD }} />}
     </button>
   );
 }
@@ -150,7 +159,7 @@ export function ErtelemeSecenekleri({ onSec, baslik = 'Ne zamana ertelensin?' }:
     <div className="py-1">
       <MenuBaslik>{baslik}</MenuBaslik>
       {secenekler.map((s) => (
-        <MenuSatiri key={s.ad} ikon={<CalendarDays size={13} />} renk={MOR} onClick={() => onSec(s.gun)}>
+        <MenuSatiri key={s.ad} ikon={<CalendarDays size={13} />} onClick={() => onSec(s.gun)}>
           {s.ad} <span style={{ color: IKINCIL }}>· {new Date(s.gun).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' })}</span>
         </MenuSatiri>
       ))}
@@ -172,8 +181,8 @@ export function ErtelemeSecenekleri({ onSec, baslik = 'Ne zamana ertelensin?' }:
           type="button"
           disabled={!tarih}
           onClick={() => tarih && onSec(tarih)}
-          className="h-8 rounded-lg px-3 text-[12px] font-bold disabled:opacity-40"
-          style={{ background: `${MOR}22`, color: '#c084fc', border: `1px solid ${MOR}55` }}
+          className="h-8 rounded-lg px-3 text-[12px] font-semibold disabled:opacity-40"
+          style={{ background: 'rgba(212,184,118,0.10)', color: GOLD, border: `1px solid ${GOLD}66` }}
         >
           Ertele
         </button>
@@ -182,7 +191,10 @@ export function ErtelemeSecenekleri({ onSec, baslik = 'Ne zamana ertelensin?' }:
   );
 }
 
-/** Küçük ikon düğme — eylem sütunu; HER ZAMAN görünür (hover'a saklanmaz). */
+/**
+ * Küçük ikon düğme — eylem sütunu; HER ZAMAN görünür (hover'a saklanmaz).
+ * Sakin palet: varsayılan TEK RENK (gri ikon, .04 zemin, .10 kenar); `renk` yalnız üzerine gelince / odaklanınca / aktifken (menü açık) belirir.
+ */
 export function IkonDugme({
   ikon,
   title,
@@ -196,6 +208,7 @@ export function IkonDugme({
 }: {
   ikon: ReactNode;
   title: string;
+  /** İşlev rengi — yalnız hover / odak / aktif durumda uygulanır. */
   renk: string;
   onClick?: () => void;
   disabled?: boolean;
@@ -204,6 +217,11 @@ export function IkonDugme({
   className?: string;
   style?: CSSProperties;
 }) {
+  const [ustunde, setUstunde] = useState(false);
+  const vurgulu = !disabled && (ustunde || !!aktif);
+  const gorunum: CSSProperties = vurgulu
+    ? { background: `${renk}${aktif ? '2e' : '1f'}`, color: renk, border: `1px solid ${renk}${aktif ? '80' : '55'}` }
+    : DUGME_NOTR;
   return (
     <button
       ref={refDis}
@@ -214,9 +232,13 @@ export function IkonDugme({
         e.stopPropagation();
         onClick?.();
       }}
+      onMouseEnter={() => setUstunde(true)}
+      onMouseLeave={() => setUstunde(false)}
+      onFocus={() => setUstunde(true)}
+      onBlur={() => setUstunde(false)}
       disabled={disabled}
-      className={`inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md transition-[transform,filter] duration-150 hover:-translate-y-px hover:brightness-125 disabled:opacity-35 disabled:hover:translate-y-0 ${className}`}
-      style={{ background: aktif ? `${renk}30` : `${renk}14`, color: renk, border: `1px solid ${renk}${aktif ? '66' : '2e'}`, ...style }}
+      className={`inline-flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md transition-[transform,background-color,color,border-color] duration-150 hover:-translate-y-px disabled:opacity-35 disabled:hover:translate-y-0 ${className}`}
+      style={{ ...gorunum, ...style }}
     >
       {ikon}
     </button>

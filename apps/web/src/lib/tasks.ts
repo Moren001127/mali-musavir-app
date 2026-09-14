@@ -100,6 +100,8 @@ export interface Task {
   ekipIsId?: string | null;
   /** Mali Takvim kaleminden üretildiyse */
   taxCalendarId?: string | null;
+  /** Görev sahibine ek olarak hatırlatma gidecek ofis personeli (portal kullanıcı id'leri). */
+  hatirlatUserIds?: string[];
   notes?: TaskNote[];
   attachments?: TaskAttachment[];
   _count?: { notes: number; attachments?: number };
@@ -127,6 +129,8 @@ export interface CreateTaskInput {
   kaynak?: TaskKaynak;
   tur?: TaskTur;
   pinned?: boolean;
+  /** Ofis personeline de hatırlat — portal kullanıcı id'leri. */
+  hatirlatUserIds?: string[];
 }
 
 export interface UpdateTaskInput extends Partial<CreateTaskInput> {
@@ -218,6 +222,17 @@ export interface TopluInput {
   priority?: TaskPriority;
 }
 
+/** Ofisin aktif portal kullanıcısı — "Ofis personeline de hatırlat" seçeneği (GET /tasks/kisiler). */
+export interface KisiSecenek {
+  id: string;
+  ad: string;
+  rol: 'ADMIN' | 'STAFF' | string;
+  /** WhatsApp telefonu kayıtlı mı (yoksa WhatsApp gidemez) */
+  telefon: boolean;
+  /** İstek yapan kullanıcı (görev sahibi — ayrıca seçilmez) */
+  ben: boolean;
+}
+
 export const tasksApi = {
   list: (params: Record<string, any> = {}) =>
     api.get('/tasks', { params }).then((r) => r.data as TaskListResponse),
@@ -249,6 +264,8 @@ export const tasksApi = {
   /** "Sizden istenen" ekip kalemini kapat (yapıldı). */
   ekipIstekKapat: (id: string) =>
     api.post(`/ekip/istek/${encodeURIComponent(id)}/kapat`, {}).then((r) => r.data as { ok: boolean }),
+  /** Ofisin aktif portal kullanıcıları ("Ofis personeline de hatırlat" seçenekleri). */
+  kisiler: () => api.get('/tasks/kisiler').then((r) => r.data as KisiSecenek[]),
 };
 
 export const PRIORITY_LABEL: Record<TaskPriority, string> = {

@@ -40,6 +40,8 @@ export interface CreateTaskDto {
   notifyWhatsapp?: boolean;
   notifyPush?: boolean;
   taxCalendarId?: string | null;
+  /** Ofis personeline de hatırlat — portal kullanıcı id'leri (portal bildirimi + push + WhatsApp) */
+  hatirlatUserIds?: string[];
 }
 
 export interface UpdateTaskDto extends Partial<CreateTaskDto> {
@@ -209,6 +211,7 @@ export class TasksService {
         notifyWhatsapp: dto.notifyWhatsapp ?? true,
         notifyPush: dto.notifyPush ?? true,
         taxCalendarId: dto.taxCalendarId || null,
+        hatirlatUserIds: await this.kisileriDogrula(tenantId, dto.hatirlatUserIds),
         // Eğer recurrence varsa template olarak işaretle, sonraki occurrence'i hesapla (notlarda tekrar yok)
         isTemplate: tur === 'GOREV' && !!dto.recurrence && dto.recurrence?.type !== 'NONE',
       },
@@ -255,6 +258,7 @@ export class TasksService {
     if (dto.notifyWhatsapp !== undefined) updateData.notifyWhatsapp = dto.notifyWhatsapp === true;
     if (dto.notifyPush !== undefined) updateData.notifyPush = dto.notifyPush === true;
     if (dto.taxCalendarId !== undefined) updateData.taxCalendarId = dto.taxCalendarId || null;
+    if (dto.hatirlatUserIds !== undefined) updateData.hatirlatUserIds = await this.kisileriDogrula(tenantId, dto.hatirlatUserIds);
     if (dto.status !== undefined) {
       updateData.status = dto.status;
       if (dto.status === 'DONE') {
@@ -341,6 +345,33 @@ export class TasksService {
     ]);
 
     return { items, total, limit, offset };
+  }
+
+  /** hatirlatUserIds: yalnız bu ofisin aktif kullanıcıları, tekil, en çok 20 (2026-09-14 ofis personeline de hatırlat). */
+  private async kisileriDogrula(tenantId: string, ids: unknown): Promise<string[]> {
+    if (ids === undefined || ids === null) return [];
+    if (!Array.isArray(ids)) throw new BadRequestException('hatirlatUserIds dizi olmalı');
+    const temiz = Array.from(new Set(ids.map((x) => String(x || '').trim()).filter(Boolean))).slice(0, 20);
+    if (!temiz.length) return [];
+    const rows: Array<{ id: string }> = await this.db.user.findMany({ where: { tenantId, id: { in: temiz }, isActive: true }, select: { id: true } });
+    const gecerli = new Set(rows.map((r) => r.id));
+    return temiz.filter((id) => gecerli.has(id));
+  }
+
+  /** GET /tasks/kisiler — ofisin aktif portal kullanıcıları (hatırlatma alıcısı seçimi için): id, ad, rol, telefon var mı, ben. */
+  async kisiler(tenantId: string, userId: string): Promise<Array<{ id: string; ad: string; rol: string; telefon: boolean; ben: boolean }>> {
+    const rows: any[] = await this.db.user.findMany({
+      where: { tenantId, isActive: true },
+      select: { id: true, firstName: true, lastName: true, email: true, phone: true, userRoles: { select: { role: { select: { name: true } } } } },
+      orderBy: { createdAt: 'asc' },
+    });
+    return rows.map((u) => ({
+      id: u.id,
+      ad: `${String(u.firstName || '').trim()} ${String(u.lastName || '').trim()}`.trim() || String(u.email || ''),
+      rol: String(u.userRoles?.[0]?.role?.name || 'STAFF'),
+      telefon: !!u.phone,
+      ben: u.id === userId,
+    }));
   }
 
   /** Görev sil (hard delete — notlar, ekler, hatırlatma kayıtları cascade) */

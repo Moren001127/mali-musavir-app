@@ -5,18 +5,18 @@ import Link from 'next/link';
 import { createPortal } from 'react-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
-  AlarmClock, Ban, Bell, Check, ExternalLink, FileText, History, Loader2, Mail, MessageSquare, Paperclip, Pin, RotateCcw, Save, Smartphone, StickyNote, Trash2, Users, X,
+  AlarmClock, Ban, Bell, Check, ExternalLink, FileText, History, Loader2, Mail, MessageSquare, Paperclip, Pin, RotateCcw, Save, Smartphone, StickyNote, Trash2, UserRound, Users, X,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
-  CATEGORY_OPTIONS, ESKI_KATEGORI, KAYNAK_LABEL, PRIORITY_COLOR, PRIORITY_LABEL, PRIORITY_ORDER, STATUS_LABEL, tasksApi, taxpayerName,
+  CATEGORY_OPTIONS, ESKI_KATEGORI, KAYNAK_LABEL, PRIORITY_LABEL, PRIORITY_ORDER, STATUS_LABEL, tasksApi, taxpayerName,
   type CreateTaskInput, type RecurrenceConfig, type Task, type TaskPriority, type UpdateTaskInput,
 } from '@/lib/tasks';
 import TaxpayerSelect from '@/components/ui/TaxpayerSelect';
 import { AcilirMenu, ErtelemeSecenekleri } from './AcilirMenu';
 import type { MukellefSecenek } from './akilli-giris';
 import type { GorevEylemleri } from './eylemler';
-import { DurumRozeti, KaynakRozeti } from './Rozetler';
+import { DurumRozeti, GECIKME_RENK, KaynakRozeti } from './Rozetler';
 import { TekrarAlani } from './TekrarAlani';
 import { EKIP_RENK, GIRDI, GOLD, GOLD_SOFT, IKINCIL, KENAR, KIRMIZI, METIN, MOR, NOT_RENK, SONUK, YESIL, gunDegeri, tarihSaat, vadeIso } from './ortak';
 
@@ -36,6 +36,8 @@ interface Form {
   notifyEmail: boolean;
   tur: 'GOREV' | 'NOT';
   pinned: boolean;
+  /** Ofis personeline de hatırlat — portal kullanıcı id'leri */
+  hatirlatUserIds: string[];
 }
 
 function formOlustur(t?: Task | null, taslak?: Partial<CreateTaskInput> | null): Form {
@@ -55,6 +57,7 @@ function formOlustur(t?: Task | null, taslak?: Partial<CreateTaskInput> | null):
     notifyEmail: t?.notifyEmail ?? taslak?.notifyEmail ?? false,
     tur: (t?.tur as 'GOREV' | 'NOT') ?? taslak?.tur ?? 'GOREV',
     pinned: t?.pinned ?? taslak?.pinned ?? false,
+    hatirlatUserIds: [...(t?.hatirlatUserIds ?? taslak?.hatirlatUserIds ?? [])],
   };
 }
 
@@ -75,6 +78,7 @@ function formdanDto(f: Form): CreateTaskInput {
     notifyEmail: f.notifyEmail,
     tur: f.tur,
     pinned: f.pinned,
+    hatirlatUserIds: f.hatirlatUserIds,
   };
 }
 
@@ -299,8 +303,13 @@ export function DetayPaneli({
                         onClick={() => guncelle({ priority: p })}
                         aria-pressed={form.priority === p}
                         title={PRIORITY_LABEL[p]}
-                        className="h-9 rounded-md text-[10.5px] font-bold uppercase"
-                        style={form.priority === p ? { background: PRIORITY_COLOR[p], color: '#0f0d0b', border: '1px solid transparent' } : { background: 'rgba(255,255,255,0.04)', color: PRIORITY_COLOR[p], border: '1px solid rgba(255,255,255,0.08)' }}
+                        className="h-9 rounded-md text-[11px] font-semibold"
+                        style={
+                          // sakin palet: seçili = altın ince kenar (ACİL seçiliyse yumuşak kırmızı); seçili değil = nötr gri
+                          form.priority === p
+                            ? { background: p === 'URGENT' ? 'rgba(224,134,143,0.14)' : 'rgba(212,184,118,0.14)', color: p === 'URGENT' ? GECIKME_RENK : GOLD, border: `1px solid ${p === 'URGENT' ? 'rgba(224,134,143,0.55)' : 'rgba(212,184,118,0.55)'}` }
+                            : { background: 'rgba(255,255,255,0.03)', color: 'rgba(250,250,249,0.6)', border: '1px solid rgba(255,255,255,0.10)' }
+                        }
                       >
                         {PRIORITY_LABEL[p]}
                       </button>
@@ -336,6 +345,9 @@ export function DetayPaneli({
                   </div>
                 </Alan>
               )}
+
+              {/* Ofis personeline de hatırlat (görev sahibine zaten gidiyor; seçilenlere portal + telefon + WhatsApp) */}
+              {!not && <PersonelAlani secili={form.hatirlatUserIds} onChange={(ids) => guncelle({ hatirlatUserIds: ids })} />}
 
               {/* Tür + sabit */}
               <div className="flex flex-wrap items-center gap-2">
@@ -578,6 +590,87 @@ function Anahtar({ ikon, ad, acik, onChange }: { ikon: ReactNode; ad: string; ac
         <span className="absolute top-[2px] h-[12px] w-[12px] rounded-full transition-all" style={{ left: acik ? 14 : 2, background: acik ? '#0f0d0b' : '#fff' }} />
       </span>
     </button>
+  );
+}
+
+/**
+ * "Ofis personeline de hatırlat" — ofisin aktif portal kullanıcıları çip olarak; seçilenlere hatırlatma motoru
+ * portal bildirimi + telefon push + (telefonu kayıtlıysa) WhatsApp gönderir. İstek yapan kullanıcı (görev sahibi) listelenmez.
+ */
+function PersonelAlani({ secili, onChange }: { secili: string[]; onChange: (ids: string[]) => void }) {
+  const kisilerQ = useQuery({
+    queryKey: ['gorevler-kisiler'],
+    queryFn: () => tasksApi.kisiler(),
+    staleTime: 5 * 60_000,
+  });
+  const kisiler = useMemo(() => (kisilerQ.data || []).filter((k) => !k.ben), [kisilerQ.data]);
+  const telefonsuzVar = kisiler.some((k) => !k.telefon);
+  const seciliSayi = kisiler.filter((k) => secili.includes(k.id)).length;
+
+  const degistir = (id: string) => onChange(secili.includes(id) ? secili.filter((x) => x !== id) : [...secili, id]);
+
+  return (
+    <Alan
+      etiket="Ofis personeline de hatırlat"
+      sag={
+        seciliSayi > 0 ? (
+          <span className="text-[11px] font-semibold tabular-nums" style={{ color: GOLD }}>
+            {seciliSayi} kişi
+          </span>
+        ) : null
+      }
+    >
+      {kisilerQ.isLoading ? (
+        <div className="flex items-center gap-2 py-1 text-[11.5px]" style={{ color: IKINCIL }}>
+          <Loader2 size={12} className="animate-spin" /> Kişiler alınıyor…
+        </div>
+      ) : kisilerQ.isError ? (
+        <p className="text-[11.5px]" style={{ color: '#fca5a5' }}>
+          Kişiler alınamadı.{' '}
+          <button type="button" onClick={() => kisilerQ.refetch()} className="font-bold underline">
+            Tekrar dene
+          </button>
+        </p>
+      ) : kisiler.length === 0 ? (
+        <p className="text-[11.5px]" style={{ color: SONUK }}>
+          Ofiste başka portal kullanıcısı yok.
+        </p>
+      ) : (
+        <div className="flex flex-wrap gap-1.5">
+          {kisiler.map((k) => {
+            const acik = secili.includes(k.id);
+            return (
+              <button
+                key={k.id}
+                type="button"
+                onClick={() => degistir(k.id)}
+                aria-pressed={acik}
+                title={`${k.ad} · ${k.rol}${k.telefon ? '' : ' · WhatsApp telefonu kayıtlı değil'} — ${acik ? 'hatırlatma gidecek' : 'hatırlatma gitmeyecek'}`}
+                className="inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[11.5px] font-semibold transition"
+                style={{ background: acik ? `${GOLD}14` : 'rgba(255,255,255,0.03)', border: `1px solid ${acik ? `${GOLD}55` : 'rgba(255,255,255,0.08)'}`, color: acik ? METIN : IKINCIL }}
+              >
+                <span style={{ color: acik ? GOLD : IKINCIL }}>{acik ? <Check size={12} /> : <UserRound size={12} />}</span>
+                {k.ad}
+                {!k.telefon && (
+                  <span className="text-[10px] font-normal" style={{ color: SONUK }}>
+                    telefon yok
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {telefonsuzVar && (
+        <p className="mt-1.5 text-[11px]" style={{ color: SONUK }}>
+          WhatsApp için telefonu{' '}
+          <Link href="/panel/ayarlar/kullanicilar" className="font-semibold hover:underline" style={{ color: IKINCIL }}>
+            Ayarlar → Kullanıcılar
+          </Link>
+          &apos;da ekleyin.
+        </p>
+      )}
+    </Alan>
   );
 }
 

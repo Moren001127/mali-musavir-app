@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
- * Akıllı giriş ayrıştırıcısı testi — Node 22.6+ (tip soyma) ile doğrudan çalışır:
+ * Akıllı giriş ayrıştırıcısı testi (kaynak: packages/shared/src/gorev-akilli-giris.ts) — Node 22.6+ (tip soyma) ile doğrudan çalışır:
  *   node apps/web/scripts/akilli-giris-test.mjs
  * "Bugün" sabit: 14 Eylül 2026 Pazartesi (sonuçlar takvimden bağımsız olsun diye).
  */
-import { ayristir, kategoriTahmin, mukellefEslestir } from '../src/app/(panel)/panel/gorevler/_components/akilli-giris.ts';
+import { ayristir, kategoriTahmin, mukellefEslestir } from '../../../packages/shared/src/gorev-akilli-giris.ts';
 
 const BUGUN = new Date(2026, 8, 14, 11, 30); // 14 Eylül 2026 Pazartesi
 const MUKELLEFLER = [

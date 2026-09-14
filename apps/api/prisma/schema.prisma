@@ -58,6 +58,7 @@ model User {
   firstName    String
   lastName     String
   isActive     Boolean   @default(true)
+  phone        String? // 2026-09-14 WhatsApp telefonu — görev hatırlatması (ofis personeline de hatırlat)
   lastLoginAt  DateTime?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
@@ -3142,6 +3143,7 @@ model Task {
   ekipIsId       String? // "Ekibe ver" ile acilan Koordinator kosusu (agent_commands.id)
   notifyWhatsapp Boolean @default(true) // hatirlatma varsayilani: WhatsApp (motor Faz 2)
   notifyPush     Boolean @default(true) // hatirlatma varsayilani: telefon push (motor Faz 2)
+  hatirlatUserIds String[] @default([]) // 2026-09-14 ofis personeline de hatırlat — portal kullanıcı id'leri (portal + push + WhatsApp)
   taxCalendarId  String? // vergi takviminden (tax_calendar.id) uretilen gorev
 
   // Durum

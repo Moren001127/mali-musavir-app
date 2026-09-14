@@ -9,15 +9,21 @@ import { type EkipIstek, type TakvimKalemi, type Task } from '@/lib/tasks';
 import { AcilirMenu, ErtelemeSecenekleri, IkonDugme, MenuAyrac, MenuSatiri } from './AcilirMenu';
 import { ajanKisaAd } from '../../ekip/_components/ortak';
 import type { GorevEylemleri } from './eylemler';
-import { DurumRozeti, KategoriEtiketi, KaynakRozeti, MukellefCipi, NotSayisi, OncelikEtiketi, TekrarIkonu } from './Rozetler';
 import {
-  EKIP_RENK, GIRDI, GOLD, IKINCIL, KENAR, KIRMIZI, MAVI, METIN, MOR, SONUK, TAKVIM_RENK, YESIL,
+  ALTIN_SOLUK, DurumRozeti, EkipIstekCipi, GECIKME_RENK, KENAR_NOTR, KategoriEtiketi, KaynakRozeti, MukellefCipi, NotSayisi, OncelikEtiketi, SABIT_RENK, TekrarIkonu,
+} from './Rozetler';
+import {
+  EKIP_RENK, GIRDI, GOLD, IKINCIL, METIN, MOR, SONUK, YESIL,
   donemEtiketi, etkinTarih, gecikmeMetni, goreliZaman, kisaTarih, type SatirGrubu,
 } from './ortak';
 
-// Kenarlıklar GÖRÜNÜR (rgba .14), başlık satırı lacivert tonlu, grup başlığı satırı grup renginde + sol 5px şerit.
-const HUCRE: CSSProperties = { border: `1px solid ${KENAR}`, padding: '8px 10px', verticalAlign: 'middle' };
-const HUCRE_BASLIK: CSSProperties = { ...HUCRE, padding: '7px 10px', fontSize: 10.5, fontWeight: 800, letterSpacing: '.14em', textTransform: 'uppercase', color: '#bfd4ff', textAlign: 'left', whiteSpace: 'nowrap' };
+/*
+ * SAKİN PALET (2026-09-14): kenarlık .10; başlık satırı altın tonlu çok hafif zemin; grup başlıkları AYNI nötr zemin
+ * + soldaki 3px soluk grup şeridi; satır başlığı 13px font-medium; gecikme tek yumuşak kırmızı, normal ağırlık.
+ */
+const HUCRE: CSSProperties = { border: `1px solid ${KENAR_NOTR}`, padding: '8px 10px', verticalAlign: 'middle' };
+const HUCRE_BASLIK: CSSProperties = { ...HUCRE, padding: '7px 10px', fontSize: 10.5, fontWeight: 600, letterSpacing: '.08em', textTransform: 'uppercase', color: ALTIN_SOLUK, textAlign: 'left', whiteSpace: 'nowrap' };
+const GRUP_ZEMIN = 'rgba(255,255,255,0.045)';
 const SUTUN = 6;
 
 export interface GorevTablosuProps {
@@ -35,13 +41,13 @@ export interface GorevTablosuProps {
 
 /**
  * Ajanda tablosu — GERÇEK <table>: ☐ · Görev · Kategori · Öncelik · Vade · Eylemler.
- * Gruplar renkli başlık satırı + sayı; satırda kısa olgu (başlık + çipler), açıklama detay panelinde.
- * Eylem düğmeleri HER ZAMAN görünür.
+ * Gruplar nötr başlık satırı + soluk şerit + soluk sayı; satırda kısa olgu (başlık + çipler), açıklama detay panelinde.
+ * Eylem düğmeleri HER ZAMAN görünür (nötr; işlev rengi yalnız hover/aktif).
  */
 export function GorevTablosu({ gruplar, secili, onSec, onGrupSec, eylemler, acikId, basliksiz, bos }: GorevTablosuProps) {
   const dolu = gruplar.filter((g) => g.satirlar.length > 0);
   return (
-    <div className="overflow-x-auto rounded-xl" style={{ border: `1px solid ${KENAR}`, background: 'rgba(255,255,255,0.02)' }}>
+    <div className="overflow-x-auto rounded-xl" style={{ border: `1px solid ${KENAR_NOTR}`, background: 'rgba(255,255,255,0.02)' }}>
       <table className="w-full" style={{ borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: 760 }}>
         <colgroup>
           <col style={{ width: 36 }} />
@@ -52,7 +58,7 @@ export function GorevTablosu({ gruplar, secili, onSec, onGrupSec, eylemler, acik
           <col style={{ width: 156 }} />
         </colgroup>
         <thead>
-          <tr style={{ background: 'rgba(91,141,239,.14)' }}>
+          <tr style={{ background: 'rgba(212,184,118,0.07)' }}>
             <th style={{ ...HUCRE_BASLIK, textAlign: 'center', padding: '7px 4px' }} title="Seç">
               <span className="sr-only">Seç</span>☐
             </th>
@@ -77,8 +83,8 @@ export function GorevTablosu({ gruplar, secili, onSec, onGrupSec, eylemler, acik
             return (
               <Fragment key={g.key}>
                 {!basliksiz && (
-                  <tr style={{ background: `${g.renk}1f` }}>
-                    <td style={{ ...HUCRE, borderLeft: `5px solid ${g.renk}`, padding: '6px 4px', textAlign: 'center' }}>
+                  <tr style={{ background: GRUP_ZEMIN }}>
+                    <td style={{ ...HUCRE, borderLeft: `3px solid ${g.renk}99`, padding: '6px 4px', textAlign: 'center' }}>
                       {gorevIdleri.length > 0 && (
                         <input
                           type="checkbox"
@@ -86,21 +92,21 @@ export function GorevTablosu({ gruplar, secili, onSec, onGrupSec, eylemler, acik
                           onChange={(e) => onGrupSec(gorevIdleri, e.target.checked)}
                           title={hepsiSecili ? 'Grubun seçimini kaldır' : 'Gruptaki görevleri seç'}
                           className="h-3.5 w-3.5 cursor-pointer"
-                          style={{ accentColor: g.renk }}
+                          style={{ accentColor: GOLD }}
                         />
                       )}
                     </td>
                     <td colSpan={SUTUN - 1} style={{ ...HUCRE, padding: '6px 10px' }}>
                       <div className="flex items-center gap-2">
-                        <span className="text-[12.5px] font-bold" style={{ color: METIN }}>
+                        <span className="text-[12.5px] font-semibold" style={{ color: METIN }}>
                           {g.ad}
                         </span>
-                        <span className="rounded-md px-1.5 text-[10.5px] font-extrabold tabular-nums leading-4" style={{ background: g.renk, color: '#0b1218' }}>
+                        <span className="text-[11.5px] tabular-nums" style={{ color: IKINCIL }}>
                           {g.satirlar.length}
                         </span>
                         {g.ek && (
                           <span className="text-[11px]" style={{ color: IKINCIL }}>
-                            {g.ek}
+                            · {g.ek}
                           </span>
                         )}
                       </div>
@@ -154,10 +160,11 @@ export function GorevSatiri({
   const tarih = etkinTarih(t);
   const gecikme = !kapali ? gecikmeMetni(tarih) : '';
   const gecikti = gecikme.endsWith('gecikti');
-  const arka = secili ? 'rgba(212,184,118,0.09)' : acik ? 'rgba(125,211,252,0.07)' : zemin;
+  // Seçili / detayda açık satır: tek vurgu altın.
+  const arka = secili ? 'rgba(212,184,118,0.09)' : acik ? 'rgba(212,184,118,0.05)' : zemin;
 
   return (
-    <tr style={{ background: arka, boxShadow: acik ? `inset 3px 0 0 ${EKIP_RENK}` : undefined }} className="transition-colors hover:bg-white/[0.03]">
+    <tr style={{ background: arka, boxShadow: acik ? `inset 3px 0 0 ${GOLD}` : undefined }} className="transition-colors hover:bg-white/[0.03]">
       <td style={{ ...HUCRE, padding: '8px 4px', textAlign: 'center' }}>
         <input type="checkbox" checked={secili} onChange={(e) => onSec(e.target.checked)} title="Seç" className="h-3.5 w-3.5 cursor-pointer" style={{ accentColor: GOLD }} />
       </td>
@@ -166,10 +173,10 @@ export function GorevSatiri({
           type="button"
           onClick={() => eylemler.ac(t.id)}
           title="Detayı aç"
-          className={`block w-full min-w-0 truncate text-left text-[13.5px] font-semibold leading-5 transition hover:underline decoration-dotted underline-offset-4 ${kapali ? 'line-through opacity-50' : ''}`}
+          className={`block w-full min-w-0 truncate text-left text-[13px] font-medium leading-5 transition hover:underline decoration-dotted underline-offset-4 ${kapali ? 'line-through opacity-50' : ''}`}
           style={{ color: METIN }}
         >
-          {t.pinned && <Pin size={11} className="mr-1 inline -translate-y-px" style={{ color: '#fbbf24' }} />}
+          {t.pinned && <Pin size={11} className="mr-1 inline -translate-y-px" style={{ color: SABIT_RENK }} />}
           {t.title}
         </button>
         <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
@@ -177,7 +184,7 @@ export function GorevSatiri({
           <KaynakRozeti value={t.kaynak} />
           <DurumRozeti task={t} />
           {t.ekipIsId && (
-            <Link href="/panel/ekip" onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1 text-[10.5px] font-semibold hover:underline" style={{ color: EKIP_RENK }} title="Ekip konsolunda aç">
+            <Link href="/panel/ekip" onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1 text-[10.5px] font-medium hover:underline" style={{ color: IKINCIL }} title="Ekip konsolunda aç">
               <Users size={10} /> Ekipte
             </Link>
           )}
@@ -194,12 +201,12 @@ export function GorevSatiri({
       <td style={{ ...HUCRE, whiteSpace: 'nowrap' }}>
         {tarih ? (
           <div className="leading-tight">
-            <div className="text-[12.5px] font-semibold tabular-nums" style={{ color: gecikti ? '#fca5a5' : METIN }}>
+            <div className="text-[12.5px] tabular-nums" style={{ color: 'rgba(250,250,249,0.88)' }}>
               {kisaTarih(tarih)}
               {!t.allDay && t.dueTime ? <span style={{ color: IKINCIL }}> {t.dueTime}</span> : null}
             </div>
             {gecikme && (
-              <div className="text-[10.5px] font-semibold" style={{ color: gecikti ? KIRMIZI : IKINCIL }}>
+              <div className="text-[10.5px]" style={{ color: gecikti ? GECIKME_RENK : IKINCIL }}>
                 {gecikme}
               </div>
             )}
@@ -217,7 +224,7 @@ export function GorevSatiri({
   );
 }
 
-/** Eylem sütunu: Tamamla ✓ · Ertele ⏰ · Not 💬 · ⋯ menü (Başlat / Düzenle / Ekibe ver / İptal / Sil). */
+/** Eylem sütunu: Tamamla ✓ · Ertele ⏰ · Not 💬 · ⋯ menü (Başlat / Düzenle / Ekibe ver / İptal / Sil). Düğmeler nötr; işlev rengi hover/aktifte. */
 export function SatirEylemleri({ gorev: t, eylemler, kompakt, durumDugmesiz }: { gorev: Task; eylemler: GorevEylemleri; kompakt?: boolean; /** Tamamla / Yeniden aç düğmesi dışarıda gösteriliyorsa gizle (Kanban) */ durumDugmesiz?: boolean }) {
   const bitti = t.status === 'DONE';
   const iptal = t.status === 'CANCELLED';
@@ -225,7 +232,7 @@ export function SatirEylemleri({ gorev: t, eylemler, kompakt, durumDugmesiz }: {
   return (
     <div className={`flex items-center ${kompakt ? 'gap-1' : 'justify-center gap-1'}`}>
       {durumDugmesiz ? null : bitti ? (
-        <IkonDugme ikon={<RotateCcw size={13} />} title="Yeniden aç" renk={MAVI} onClick={() => eylemler.yenidenAc(t.id)} />
+        <IkonDugme ikon={<RotateCcw size={13} />} title="Yeniden aç" renk={GOLD} onClick={() => eylemler.yenidenAc(t.id)} />
       ) : (
         <IkonDugme ikon={<Check size={14} />} title="Tamamla" renk={YESIL} onClick={() => eylemler.tamamla(t.id)} disabled={iptal} />
       )}
@@ -244,12 +251,12 @@ export function SatirEylemleri({ gorev: t, eylemler, kompakt, durumDugmesiz }: {
         {(kapat) => (
           <div className="py-1">
             {!kapali && t.status !== 'IN_PROGRESS' && (
-              <MenuSatiri ikon={<Play size={13} />} renk={MAVI} onClick={() => { eylemler.baslat(t.id); kapat(); }}>
+              <MenuSatiri ikon={<Play size={13} />} onClick={() => { eylemler.baslat(t.id); kapat(); }}>
                 Başlat (Sürüyor)
               </MenuSatiri>
             )}
             {t.status === 'IN_PROGRESS' && (
-              <MenuSatiri ikon={<RotateCcw size={13} />} renk={GOLD} onClick={() => { eylemler.durumDegistir(t.id, 'OPEN'); kapat(); }}>
+              <MenuSatiri ikon={<RotateCcw size={13} />} onClick={() => { eylemler.durumDegistir(t.id, 'OPEN'); kapat(); }}>
                 Açık'a geri al
               </MenuSatiri>
             )}
@@ -257,20 +264,20 @@ export function SatirEylemleri({ gorev: t, eylemler, kompakt, durumDugmesiz }: {
               Düzenle
             </MenuSatiri>
             {!kapali && (
-              <MenuSatiri ikon={<Users size={13} />} renk={EKIP_RENK} onClick={() => { eylemler.ac(t.id); kapat(); }} title="Detay panelinde kuru test / canlı seçerek ekibe verin">
+              <MenuSatiri ikon={<Users size={13} />} onClick={() => { eylemler.ac(t.id); kapat(); }} title="Detay panelinde kuru test / canlı seçerek ekibe verin">
                 Ekibe ver…
               </MenuSatiri>
             )}
-            <MenuSatiri ikon={<Pin size={13} />} renk="#fbbf24" onClick={() => { eylemler.sabitle(t.id, !t.pinned); kapat(); }}>
+            <MenuSatiri ikon={<Pin size={13} />} onClick={() => { eylemler.sabitle(t.id, !t.pinned); kapat(); }}>
               {t.pinned ? 'Sabitlemeyi kaldır' : 'Üste sabitle'}
             </MenuSatiri>
             {!kapali && (
-              <MenuSatiri ikon={<Ban size={13} />} renk="#94a3b8" onClick={() => { if (confirm('Bu görev iptal edilsin mi?')) eylemler.iptal(t.id); kapat(); }}>
+              <MenuSatiri ikon={<Ban size={13} />} onClick={() => { if (confirm('Bu görev iptal edilsin mi?')) eylemler.iptal(t.id); kapat(); }}>
                 İptal et
               </MenuSatiri>
             )}
             <MenuAyrac />
-            <MenuSatiri ikon={<Trash2 size={13} />} renk={KIRMIZI} onClick={() => { if (confirm('Bu kayıt silinsin mi? Geri alınamaz.')) eylemler.sil(t.id); kapat(); }}>
+            <MenuSatiri ikon={<Trash2 size={13} />} tehlike onClick={() => { if (confirm('Bu kayıt silinsin mi? Geri alınamaz.')) eylemler.sil(t.id); kapat(); }}>
               Sil
             </MenuSatiri>
           </div>
@@ -300,7 +307,7 @@ function HizliNot({ gorev: t, eylemler }: { gorev: Task; eylemler: GorevEylemler
         };
         return (
           <div className="p-3">
-            <div className="mb-1.5 truncate text-[11px] font-semibold" style={{ color: IKINCIL }} title={t.title}>
+            <div className="mb-1.5 truncate text-[11px] font-medium" style={{ color: IKINCIL }} title={t.title}>
               {t.title}
             </div>
             <textarea
@@ -316,14 +323,14 @@ function HizliNot({ gorev: t, eylemler }: { gorev: Task; eylemler: GorevEylemler
               style={GIRDI}
             />
             <div className="mt-2 flex justify-end gap-2">
-              <button type="button" onClick={kapat} className="h-8 rounded-lg px-3 text-[12px] font-semibold" style={{ color: IKINCIL }}>
+              <button type="button" onClick={kapat} className="h-8 rounded-lg px-3 text-[12px] font-medium" style={{ color: IKINCIL }}>
                 Vazgeç
               </button>
               <button
                 type="button"
                 onClick={kaydet}
                 disabled={!metin.trim() || kaydediyor}
-                className="inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-[12px] font-bold disabled:opacity-40"
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-[12px] font-semibold disabled:opacity-40"
                 style={{ background: `linear-gradient(135deg, ${GOLD}, #b8a06f)`, color: '#0f0d0b' }}
               >
                 {kaydediyor ? <Loader2 size={12} className="animate-spin" /> : <MessageSquare size={12} />} Kaydet
@@ -336,23 +343,32 @@ function HizliNot({ gorev: t, eylemler }: { gorev: Task; eylemler: GorevEylemler
   );
 }
 
-/** "Sizden istenen" — Ekip ajanının Muzaffer Bey'den istediği iş. Eylem: Yapıldı · Konsolda aç. */
+/*
+ * Düğme görünümleri Tailwind sınıfıyla (satır içi stil hover sınıflarını ezerdi):
+ * ALTIN_DUGME = altın ince kenarlı düz düğme (Yapıldı), gradyan yok; GRI_DUGME = ince gri kenar + altın yazı (Görev yap);
+ * NOTR_IKON_BAGLANTI = nötr ikon kutusu, hover'da altın kenar.
+ */
+const ALTIN_DUGME = 'bg-[#d4b876]/[0.08] border border-[#d4b876]/40 text-[#d4b876] hover:bg-[#d4b876]/20 hover:border-[#d4b876]/70';
+const GRI_DUGME = 'bg-white/[0.03] border border-white/[0.14] text-[#d4b876] hover:border-[#d4b876]/60 hover:bg-[#d4b876]/[0.06]';
+const NOTR_IKON_BAGLANTI = 'bg-white/[0.04] border border-white/10 text-[#fafaf9]/60 hover:border-[#d4b876]/60 hover:text-[#d4b876]';
+
+/** "Sizden istenen" — Ekip ajanının Muzaffer Bey'den istediği iş. Eylem: Yapıldı · Konsolda aç. Sky yalnız satır başı nokta + çipteki nokta. */
 function EkipIstekSatiri({ istek: i, eylemler, zemin }: { istek: EkipIstek; eylemler: GorevEylemleri; zemin?: string }) {
   const [kapaniyor, setKapaniyor] = useState(false);
   return (
     <tr style={{ background: zemin }} className="transition-colors hover:bg-white/[0.03]">
       <td style={{ ...HUCRE, padding: '8px 4px', textAlign: 'center' }}>
-        <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: EKIP_RENK, boxShadow: `0 0 8px ${EKIP_RENK}` }} title="Ekip isteği" />
+        <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: EKIP_RENK, opacity: 0.85 }} title="Ekip isteği" />
       </td>
       <td style={{ ...HUCRE, minWidth: 0 }}>
-        <div className="truncate text-[13.5px] font-semibold leading-5" style={{ color: METIN }} title={i.aciklama || i.baslik}>
+        <div className="truncate text-[13px] font-medium leading-5" style={{ color: METIN }} title={i.aciklama || i.baslik}>
           {i.baslik}
         </div>
         <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
           {i.mukellefAd && <MukellefCipi id={i.taxpayerId} ad={i.mukellefAd} />}
           <KaynakRozeti value="EKIP" />
           {i.ajanId && (
-            <span className="text-[10.5px] font-semibold" style={{ color: IKINCIL }} title={`İsteyen ajan: ${i.ajanId}`}>
+            <span className="text-[10.5px]" style={{ color: IKINCIL }} title={`İsteyen ajan: ${i.ajanId}`}>
               {ajanKisaAd(i.ajanId)} ajanı
             </span>
           )}
@@ -364,9 +380,7 @@ function EkipIstekSatiri({ istek: i, eylemler, zemin }: { istek: EkipIstek; eyle
         </div>
       </td>
       <td style={HUCRE}>
-        <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-[2px] text-[10.5px] font-bold" style={{ background: `${EKIP_RENK}18`, color: EKIP_RENK, border: `1px solid ${EKIP_RENK}44` }}>
-          Sizden istenen
-        </span>
+        <EkipIstekCipi />
       </td>
       <td style={HUCRE}>
         <span className="text-[11px]" style={{ color: SONUK }}>
@@ -374,7 +388,7 @@ function EkipIstekSatiri({ istek: i, eylemler, zemin }: { istek: EkipIstek; eyle
         </span>
       </td>
       <td style={{ ...HUCRE, whiteSpace: 'nowrap' }}>
-        <div className="text-[12px] font-semibold" style={{ color: METIN }}>
+        <div className="text-[12px]" style={{ color: 'rgba(250,250,249,0.88)' }}>
           {goreliZaman(i.createdAt)}
         </div>
         <div className="text-[10.5px]" style={{ color: IKINCIL }}>
@@ -395,12 +409,11 @@ function EkipIstekSatiri({ istek: i, eylemler, zemin }: { istek: EkipIstek; eyle
               }
             }}
             title="Yapıldı — isteği kapat"
-            className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-[11.5px] font-bold transition hover:brightness-110 disabled:opacity-50"
-            style={{ background: `linear-gradient(135deg, ${EKIP_RENK}, #5b9fd1)`, color: '#0b1218' }}
+            className={`inline-flex h-7 items-center gap-1 rounded-md px-2 text-[11.5px] font-semibold transition disabled:opacity-50 ${ALTIN_DUGME}`}
           >
             {kapaniyor ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle2 size={12} />} Yapıldı
           </button>
-          <Link href="/panel/ekip" title="Ekip konsolunda aç" className="inline-flex h-7 w-7 items-center justify-center rounded-md transition hover:brightness-125" style={{ background: `${EKIP_RENK}14`, color: EKIP_RENK, border: `1px solid ${EKIP_RENK}2e` }}>
+          <Link href="/panel/ekip" title="Ekip konsolunda aç" className={`inline-flex h-7 w-7 items-center justify-center rounded-md transition ${NOTR_IKON_BAGLANTI}`}>
             <ExternalLink size={13} />
           </Link>
         </div>
@@ -409,14 +422,15 @@ function EkipIstekSatiri({ istek: i, eylemler, zemin }: { istek: EkipIstek; eyle
   );
 }
 
-/** Mali Takvim kalemi — soluk bilgi satırı + "Görev yap"; görev açıldıysa "görev var". */
+/** Mali Takvim kalemi — soluk bilgi satırı + "Görev yap" (ince gri kenar, altın yazı); görev açıldıysa gri "görev var". */
 function TakvimSatiri({ kalem: c, eylemler, zemin }: { kalem: TakvimKalemi; eylemler: GorevEylemleri; zemin?: string }) {
   const [olusuyor, setOlusuyor] = useState(false);
   const gecikme = gecikmeMetni(c.tarih);
+  const gecikti = gecikme.endsWith('gecikti');
   return (
     <tr style={{ background: zemin, opacity: 0.82 }} className="transition-colors hover:bg-white/[0.03]">
       <td style={{ ...HUCRE, padding: '8px 4px', textAlign: 'center' }}>
-        <CalendarDays size={12} style={{ color: TAKVIM_RENK }} />
+        <CalendarDays size={12} style={{ color: IKINCIL }} />
       </td>
       <td style={{ ...HUCRE, minWidth: 0 }}>
         <div className="truncate text-[13px] font-medium leading-5" style={{ color: 'rgba(250,250,249,0.85)' }}>
@@ -439,17 +453,17 @@ function TakvimSatiri({ kalem: c, eylemler, zemin }: { kalem: TakvimKalemi; eyle
         </span>
       </td>
       <td style={{ ...HUCRE, whiteSpace: 'nowrap' }}>
-        <div className="text-[12.5px] font-semibold tabular-nums" style={{ color: METIN }}>
+        <div className="text-[12.5px] tabular-nums" style={{ color: 'rgba(250,250,249,0.88)' }}>
           {kisaTarih(c.tarih)}
         </div>
-        <div className="text-[10.5px] font-semibold" style={{ color: IKINCIL }}>
+        <div className="text-[10.5px]" style={{ color: gecikti ? GECIKME_RENK : IKINCIL }}>
           {gecikme}
         </div>
       </td>
       <td style={{ ...HUCRE, padding: '6px 8px' }}>
         <div className="flex items-center justify-center">
           {c.gorevVar ? (
-            <span className="inline-flex items-center gap-1 text-[11.5px] font-semibold" style={{ color: YESIL }} title="Bu takvim kaleminden görev açılmış">
+            <span className="inline-flex items-center gap-1 text-[11.5px]" style={{ color: IKINCIL }} title="Bu takvim kaleminden görev açılmış">
               <CheckCircle2 size={13} /> görev var
             </span>
           ) : (
@@ -465,8 +479,7 @@ function TakvimSatiri({ kalem: c, eylemler, zemin }: { kalem: TakvimKalemi; eyle
                 }
               }}
               title="Bu takvim kaleminden görev aç"
-              className="inline-flex h-7 items-center gap-1 rounded-md px-2.5 text-[11.5px] font-bold transition hover:brightness-125 disabled:opacity-50"
-              style={{ background: `${TAKVIM_RENK}1a`, color: TAKVIM_RENK, border: `1px solid ${TAKVIM_RENK}55` }}
+              className={`inline-flex h-7 items-center gap-1 rounded-md px-2.5 text-[11.5px] font-semibold transition disabled:opacity-50 ${GRI_DUGME}`}
             >
               {olusuyor ? <Loader2 size={12} className="animate-spin" /> : <CalendarDays size={12} />} Görev yap
             </button>

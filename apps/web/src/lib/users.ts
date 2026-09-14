@@ -9,6 +9,8 @@ export interface PortalUser {
   lastLoginAt: string | null;
   createdAt: string;
   userRoles?: Array<{ role: { name: string } }>;
+  /** WhatsApp telefonu (görev hatırlatmaları için); yoksa null */
+  phone?: string | null;
 }
 
 export const usersApi = {
@@ -23,4 +25,8 @@ export const usersApi = {
 
   deactivate: (id: string) =>
     api.delete(`/users/${id}`).then((r) => r.data),
+
+  /** WhatsApp telefonunu güncelle (ADMIN). Boş → null (telefon silinir). */
+  updatePhone: (id: string, phone: string | null) =>
+    api.patch<PortalUser>(`/users/${id}`, { phone }).then((r) => r.data),
 };

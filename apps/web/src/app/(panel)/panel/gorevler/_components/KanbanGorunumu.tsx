@@ -6,8 +6,15 @@ import { BosDurum } from '../../ekip/_components/Kart';
 import { kartArkaPlan } from '../../ekip/_components/ortak';
 import type { GorevEylemleri } from './eylemler';
 import { SatirEylemleri } from './GorevTablosu';
-import { DurumRozeti, KategoriEtiketi, KaynakRozeti, MukellefCipi, NotSayisi, OncelikEtiketi, TekrarIkonu } from './Rozetler';
-import { GOLD, IKINCIL, KENAR, KIRMIZI, MAVI, METIN, MOR, YESIL, etkinTarih, gecikmeMetni, kisaTarih } from './ortak';
+import { DurumRozeti, GECIKME_RENK, KENAR_NOTR, KategoriEtiketi, KaynakRozeti, MukellefCipi, NotSayisi, OncelikEtiketi, SABIT_RENK, TekrarIkonu } from './Rozetler';
+import { GOLD, IKINCIL, MAVI, METIN, MOR, YESIL, etkinTarih, gecikmeMetni, kisaTarih } from './ortak';
+
+/*
+ * SAKİN PALET (2026-09-14): sütun başlığı nötr zemin + küçük soluk renk noktası + gri sayı (dolu renkli başlık yok);
+ * taşıma düğmeleri ince gri kenarlı, hover'da altın; gecikme tek yumuşak kırmızı; açık kart kenarı altın.
+ */
+/** Taşıma düğmesi — Tailwind sınıfı (satır içi stil hover'ı ezerdi). */
+const TASI_SINIF = 'border border-white/[0.12] bg-white/[0.03] text-[#fafaf9]/75 hover:border-[#d4b876]/60 hover:text-[#d4b876]';
 
 const SUTUNLAR: Array<{ key: TaskStatus; ad: string; renk: string }> = [
   { key: 'OPEN', ad: 'Açık', renk: GOLD },
@@ -34,12 +41,12 @@ export function KanbanGorunumu({ gorevler, bitenler, bitenlerYukleniyor, eylemle
         const liste = gruplar[s.key];
         return (
           <section key={s.key} className="min-w-0 overflow-hidden rounded-2xl" style={{ ...kartArkaPlan(s.renk), minHeight: 240 }}>
-            <div className="flex items-center gap-2 px-3.5 py-2.5" style={{ background: `${s.renk}14`, borderBottom: `1px solid ${KENAR}` }}>
-              <span className="h-2 w-2 rounded-full" style={{ background: s.renk, boxShadow: `0 0 8px ${s.renk}` }} />
-              <h3 className="text-[12px] font-bold uppercase tracking-[.14em]" style={{ color: s.renk }}>
+            <div className="flex items-center gap-2 px-3.5 py-2.5" style={{ background: 'rgba(255,255,255,0.045)', borderBottom: `1px solid ${KENAR_NOTR}` }}>
+              <span className="h-1.5 w-1.5 rounded-full" style={{ background: s.renk, opacity: 0.8 }} />
+              <h3 className="text-[11.5px] font-semibold uppercase tracking-[.08em]" style={{ color: 'rgba(250,250,249,0.85)' }}>
                 {s.ad}
               </h3>
-              <span className="ml-auto rounded-md px-1.5 text-[10.5px] font-extrabold tabular-nums leading-4" style={{ background: s.renk, color: '#0b1218' }}>
+              <span className="ml-auto text-[11.5px] tabular-nums" style={{ color: IKINCIL }}>
                 {liste.length}
               </span>
             </div>
@@ -65,12 +72,12 @@ function KanbanKarti({ gorev: t, sutun, eylemler, acik }: { gorev: Task; sutun: 
   const tarih = etkinTarih(t);
   const gecikme = t.status !== 'DONE' ? gecikmeMetni(tarih) : '';
   const gecikti = gecikme.endsWith('gecikti');
-  const tasi = 'inline-flex h-7 items-center gap-1 whitespace-nowrap rounded-md px-2 text-[11px] font-bold transition-[transform,filter] hover:-translate-y-px hover:brightness-125';
+  const tasi = `inline-flex h-7 items-center gap-1 whitespace-nowrap rounded-md px-2 text-[11px] font-medium transition ${TASI_SINIF}`;
 
   return (
-    <article className="rounded-xl p-3" style={{ background: 'rgba(0,0,0,0.30)', border: `1px solid ${acik ? '#7dd3fc88' : KENAR}` }}>
-      <button type="button" onClick={() => eylemler.ac(t.id)} title="Detayı aç" className={`block w-full text-left text-[13px] font-semibold leading-5 hover:underline decoration-dotted underline-offset-4 ${t.status === 'DONE' ? 'line-through opacity-60' : ''}`} style={{ color: METIN }}>
-        {t.pinned && <Pin size={11} className="mr-1 inline -translate-y-px" style={{ color: '#fbbf24' }} />}
+    <article className="rounded-xl p-3" style={{ background: 'rgba(0,0,0,0.30)', border: `1px solid ${acik ? `${GOLD}99` : KENAR_NOTR}` }}>
+      <button type="button" onClick={() => eylemler.ac(t.id)} title="Detayı aç" className={`block w-full text-left text-[13px] font-medium leading-5 hover:underline decoration-dotted underline-offset-4 ${t.status === 'DONE' ? 'line-through opacity-60' : ''}`} style={{ color: METIN }}>
+        {t.pinned && <Pin size={11} className="mr-1 inline -translate-y-px" style={{ color: SABIT_RENK }} />}
         {t.title}
       </button>
       <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
@@ -83,36 +90,36 @@ function KanbanKarti({ gorev: t, sutun, eylemler, acik }: { gorev: Task; sutun: 
         <TekrarIkonu task={t} />
       </div>
       {tarih && (
-        <div className="mt-1.5 text-[11.5px] font-semibold tabular-nums" style={{ color: gecikti ? '#fca5a5' : IKINCIL }}>
+        <div className="mt-1.5 text-[11.5px] tabular-nums" style={{ color: 'rgba(250,250,249,0.8)' }}>
           {kisaTarih(tarih)}
           {!t.allDay && t.dueTime ? ` ${t.dueTime}` : ''}
-          {gecikme ? <span style={{ color: gecikti ? KIRMIZI : IKINCIL }}> · {gecikme}</span> : null}
+          {gecikme ? <span style={{ color: gecikti ? GECIKME_RENK : IKINCIL }}> · {gecikme}</span> : null}
         </div>
       )}
       <div className="mt-2.5 flex flex-wrap items-center justify-between gap-1.5 border-t pt-2" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
         <div className="flex flex-wrap items-center gap-1">
           {sutun === 'OPEN' && (
-            <button type="button" onClick={() => eylemler.baslat(t.id)} className={tasi} style={{ background: `${MAVI}1f`, color: '#93c5fd', border: `1px solid ${MAVI}55` }} title="Sürüyor sütununa taşı">
+            <button type="button" onClick={() => eylemler.baslat(t.id)} className={tasi} title="Sürüyor sütununa taşı">
               Sürüyor <ArrowRight size={11} />
             </button>
           )}
           {sutun === 'IN_PROGRESS' && (
-            <button type="button" onClick={() => eylemler.durumDegistir(t.id, 'OPEN')} className={tasi} style={{ background: `${GOLD}1f`, color: GOLD, border: `1px solid ${GOLD}55` }} title="Açık sütununa geri taşı">
+            <button type="button" onClick={() => eylemler.durumDegistir(t.id, 'OPEN')} className={tasi} title="Açık sütununa geri taşı">
               <ArrowLeft size={11} /> Açık
             </button>
           )}
           {sutun === 'SNOOZED' && (
-            <button type="button" onClick={() => eylemler.yenidenAc(t.id)} className={tasi} style={{ background: `${GOLD}1f`, color: GOLD, border: `1px solid ${GOLD}55` }} title="Ertelemeyi kaldır, Açık'a taşı">
+            <button type="button" onClick={() => eylemler.yenidenAc(t.id)} className={tasi} title="Ertelemeyi kaldır, Açık'a taşı">
               <ArrowLeft size={11} /> Açık
             </button>
           )}
           {sutun === 'DONE' && (
-            <button type="button" onClick={() => eylemler.yenidenAc(t.id)} className={tasi} style={{ background: `${MAVI}1f`, color: '#93c5fd', border: `1px solid ${MAVI}55` }} title="Yeniden aç">
+            <button type="button" onClick={() => eylemler.yenidenAc(t.id)} className={tasi} title="Yeniden aç">
               <RotateCcw size={11} /> Yeniden aç
             </button>
           )}
           {sutun !== 'DONE' && (
-            <button type="button" onClick={() => eylemler.tamamla(t.id)} className={tasi} style={{ background: `${YESIL}1f`, color: '#86efac', border: `1px solid ${YESIL}55` }} title="Bitti sütununa taşı (tamamla)">
+            <button type="button" onClick={() => eylemler.tamamla(t.id)} className={tasi} title="Bitti sütununa taşı (tamamla)">
               <Check size={11} /> Bitti
             </button>
           )}

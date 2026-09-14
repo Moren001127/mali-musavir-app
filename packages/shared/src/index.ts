@@ -9,6 +9,8 @@ export * from './schemas/document.schemas';
 export * from './isletme-referans';
 export * from './denetim-rules';
 export * from './gider-icerik';
+// Görevler & Notlar akıllı giriş ayrıştırıcısı (portal + WhatsApp botu ortak)
+export * from './gorev-akilli-giris';
 
 // Modüller arası kontrat katmanı (Zod schemas at module boundaries)
 export * from './contracts';

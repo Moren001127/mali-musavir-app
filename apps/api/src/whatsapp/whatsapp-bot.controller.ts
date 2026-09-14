@@ -25,6 +25,7 @@ import { forwardRef, Inject } from '@nestjs/common';
 import { ButceWhatsappService } from '../butce/butce-whatsapp.service';
 import { ButceCron } from '../butce/butce.cron';
 import { OwnerOnlyGuard } from '../auth/guards/owner-only.guard';
+import { GorevWhatsappService } from './gorev-whatsapp.service';
 
 type IncomingWhatsAppMessage = {
   from: string;
@@ -83,6 +84,8 @@ export class WhatsAppBotController implements OnModuleInit {
     @Inject(forwardRef(() => ButceWhatsappService))
     private readonly butceWhatsapp: ButceWhatsappService,
     private readonly butceCron: ButceCron,
+    // Görev / hatırlatma / not ekleme (owner hattı) — portaldaki akıllı girişle aynı ayrıştırıcı.
+    private readonly gorevWhatsapp: GorevWhatsappService,
     @Optional() private readonly eventBus?: AutomationEventBus,
     @Optional() private readonly storage?: StorageService,
   ) {}
@@ -1557,6 +1560,44 @@ export class WhatsAppBotController implements OnModuleInit {
     }
   }
 
+  /**
+   * GÖREV / HATIRLATMA / NOT ekleme (owner) — maybeHandleButce ile aynı kalıp. Sahip kullanıcı
+   * OwnerOnlyGuard.ownerEmail() ile bulunur; görev o kullanıcının tenant'ına, createdBy=sahip olarak yazılır.
+   * KURU TEST (msg.__dryRun): kayıt YAZILMAZ, cevap "KURU TEST (kaydedilmedi)" ile __dryReply'a düşer.
+   */
+  private async maybeHandleGorev(ownerTenant: any, msg: any, ownerContactId: string): Promise<boolean> {
+    try {
+      if (!GorevWhatsappService.gorevIstegiMi(msg.text)) return false;
+      const email = OwnerOnlyGuard.ownerEmail();
+      if (!email) return false;
+      const sahip = await this.prisma.user.findFirst({
+        where: { email: { equals: email, mode: 'insensitive' }, isActive: true },
+        select: { id: true, tenantId: true },
+      });
+      if (!sahip) return false;
+
+      const cevap = await this.gorevWhatsapp.islemYap(
+        { tenantId: sahip.tenantId, userId: sahip.id },
+        msg.text,
+        { kuru: !!msg.__dryRun },
+      );
+      if (!cevap) return false;
+
+      await this.ownerCevapGonder(
+        msg,
+        ownerTenant.id,
+        ownerContactId,
+        cevap,
+        'owner:gorev',
+        'WhatsApp owner gorev ekleme',
+      );
+      return true;
+    } catch (e: any) {
+      this.logger.warn(`[Gorev WhatsApp] islem hatasi: ${e?.message || e}`);
+      return false;
+    }
+  }
+
   private isOwnerIdentityQuestion(text: string): boolean {
     const normalized = this.normalizeForIntent(text);
     return /\bben\s+kim(im|in)?\b/.test(normalized)
@@ -2609,6 +2650,14 @@ ${not}` : not;
         const reply = this.ownerIdentityReply(ownerTenant);
         await this.ownerCevapGonder(msg, ownerTenant.id, ownerContact.id, reply, 'owner:kimlik', 'WhatsApp owner kimlik cevabi');
         if (!msg.__dryRun) this.refreshTaxpayerMemory(ownerTenant.id, ownerContact.id);
+        return;
+      }
+
+      // GÖREV / HATIRLATMA / NOT (owner): "görev ekle: …", "… yarın 10:00 hatırlat", "not: …" →
+      // Görevler'e portaldaki akıllı girişle AYNI ayrıştırıcıyla kaydeder. Bütçe'den ÖNCE: bütçe
+      // kapısı "tahsilat/ekstre/işle" sözcüklerini de yakalıyor, hatırlatma cümlesi bütçeye kaçmasın.
+      // Kapı KATI (açık önek ya da "hatırlat" + iletme fiili yok) → bütçe/fatura/iletme cümleleri girmez.
+      if (await this.maybeHandleGorev(ownerTenant, msg, ownerContact?.id)) {
         return;
       }
 

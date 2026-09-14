@@ -59,7 +59,7 @@ const ATLANAN_TIPLER = new Set<string>([
 /** Sessiz saatte de anında gider (güvenlik: yeni cihaz girişi) — owner-notifier NIGHT_INSTANT_TYPES ile aynı. */
 const ACIL_TIPLER = new Set<string>(['AUTH_NEW_DEVICE']);
 /** Tekrar süzgecinden muaf: her kayıt farklı mükellefin tebligatı. */
-const TEKRAR_MUAF_TIPLER = new Set<string>(['E_TEBLIGAT']);
+const TEKRAR_MUAF_TIPLER = new Set<string>(['E_TEBLIGAT', 'TASK_DUE']); // TASK_DUE: her görev ayrı hatırlatma (2026-09-14)
 const MAKBUZ_GECIKME_MS = 15 * 60 * 1000;
 /** Bu kadar süredir makbuzu gelmeyen bilet listeden düşer (sonsuza dek beklemesin) */
 const MAKBUZ_ESKIME_MS = 2 * 60 * 60 * 1000;

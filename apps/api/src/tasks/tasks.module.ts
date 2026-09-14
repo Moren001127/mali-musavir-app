@@ -5,6 +5,7 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { EkipModule } from '../ekip/ekip.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { EmailModule } from '../email/email.module';
+import { WhatsAppModule } from '../whatsapp/whatsapp.module';
 import { GorevMotoruService } from './gorev-motoru.service';
 
 /**
@@ -24,9 +25,9 @@ import { GorevMotoruService } from './gorev-motoru.service';
  * Eski 07:00 e-posta cron'u (schedule/task-reminder.cron.ts) kaldırıldı; e-posta artık motorun içinde (notifyEmail).
  */
 @Module({
-  imports: [PrismaModule, EkipModule, NotificationsModule, EmailModule],
+  imports: [PrismaModule, EkipModule, NotificationsModule, EmailModule, WhatsAppModule],
   controllers: [TasksController],
   providers: [TasksService, GorevMotoruService],
-  exports: [TasksService],
+  exports: [TasksService, GorevMotoruService],
 })
 export class TasksModule {}

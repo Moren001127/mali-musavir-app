@@ -14,6 +14,7 @@ import {
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { TasksService, CreateTaskDto, UpdateTaskDto, TopluDto, TakvimdenDto } from './tasks.service';
+import { GorevMotoruService } from './gorev-motoru.service';
 
 /**
  * Görevler API — JWT auth gerekli, tenant izolasyonu otomatik.
@@ -28,7 +29,10 @@ import { TasksService, CreateTaskDto, UpdateTaskDto, TopluDto, TakvimdenDto } fr
 @Controller('tasks')
 @UseGuards(AuthGuard('jwt'))
 export class TasksController {
-  constructor(private readonly tasks: TasksService) {}
+  constructor(
+    private readonly tasks: TasksService,
+    private readonly motor: GorevMotoruService,
+  ) {}
 
   private userId(req: any): string {
     return req.user.userId || req.user.sub;
@@ -70,6 +74,18 @@ export class TasksController {
       limit,
       offset,
     });
+  }
+
+  /** Hatırlatma alıcısı seçimi — ofisin aktif kullanıcıları (2026-09-14 ofis personeline de hatırlat). */
+  @Get('kisiler')
+  kisiler(@Req() req: any) {
+    return this.tasks.kisiler(req.user.tenantId, this.userId(req));
+  }
+
+  /** Hatırlatma şablonunu ÖRNEK içerikle WhatsApp'a gönderir (sahibin numaraları; { phone } verilirse o numara). */
+  @Post('hatirlatma-ornek')
+  hatirlatmaOrnek(@Req() req: any, @Body() dto: { phone?: string; userId?: string }) {
+    return this.motor.ornekGonder(req.user.tenantId, this.userId(req), dto || {});
   }
 
   @Get('counts')
