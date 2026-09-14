@@ -1,4 +1,4 @@
-import { Controller, Get, Patch, Put, Param, UseGuards, Req, Body, HttpCode, HttpStatus, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Patch, Put, Param, Query, UseGuards, Req, Body, HttpCode, HttpStatus, BadRequestException } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { NotificationsService } from './notifications.service';
 
@@ -7,9 +7,11 @@ import { NotificationsService } from './notifications.service';
 export class NotificationsController {
   constructor(private notificationsService: NotificationsService) {}
 
+  /** GET /notifications?limit=100 — limit sayı değilse 50; servis 1..200'e kırpar */
   @Get()
-  findAll(@Req() req: any) {
-    return this.notificationsService.findAll(req.user.tenantId, req.user.sub);
+  findAll(@Req() req: any, @Query('limit') limit?: string) {
+    const n = Number(limit);
+    return this.notificationsService.findAll(req.user.tenantId, req.user.sub, Number.isFinite(n) && n > 0 ? n : 50);
   }
 
   @Get('unread-count')

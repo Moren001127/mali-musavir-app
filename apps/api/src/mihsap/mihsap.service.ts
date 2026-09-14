@@ -802,6 +802,9 @@ export class MihsapService implements OnModuleInit {
             total,
             fetched,
             errorMsg: errorMsg || null,
+            // Başarılı aktarım bildirimi merkezi politika (notification-policy.ts) ile atlanır;
+            //   hata / "oturum bekleniyor" bildirimleri üretilmeye devam eder.
+            basari: !errorMsg,
             link: hedefLink,
           },
           dedupeKey: `mihsap-result:${job.id}`,

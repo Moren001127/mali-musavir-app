@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import { PDFParse } from 'pdf-parse';
 import JSZip from 'jszip';
 import { PrismaService } from '../prisma/prisma.service';
@@ -624,6 +624,13 @@ export class PortalAutomationService {
       update: data,
       include: { taxpayer: { select: { id: true, companyName: true, firstName: true, lastName: true, taxNumber: true } } },
     });
+    if (credentialPasswordChanged) {
+      // Şifre yenilendi → bu portal/mükellef için açık "Portal şifre hatası" bildirimlerini kendiliğinden kapat.
+      //   (dedupe anahtarı: portal-cred-fail:<provider>:<ownerId>; hata sürerse bir sonraki işte yeniden üretilir.)
+      await this.notifications
+        .resolveByDedupePrefix(tenantId, `portal-cred-fail:${provider}:${ownerId}`)
+        .catch(() => 0);
+    }
     if (provider === 'SGK_EBILDIRGE' && taxpayerId && this.isReadySgkCredential(row)) {
       await this.ensureSgkBildirgeConfig(taxpayerId);
     }
@@ -3097,6 +3104,18 @@ export class PortalAutomationService {
     const looksLikeCredentialIssue = this.classifyCredentialError(errorMessage);
     if (!looksLikeCredentialIssue) return;
 
+    // Şifre "sürümü": kayıtlı şifre her kaydedişte yeni şifreli metin üretir (rastgele IV) → kısa özeti
+    //   dedupe anahtarına eklenir. Böylece 7 günlük pencerede aynı şifre için 1 bildirim; şifre
+    //   güncellenip YİNE hata verirse anahtar değişir, kullanıcı hemen yeniden uyarılır.
+    const cred = await (this.prisma as any).portalCredential.findUnique({
+      where: { tenantId_provider_ownerType_ownerId: { tenantId: job.tenantId, provider: meta.provider, ownerType: meta.ownerType, ownerId } },
+      select: { encryptedPassword: true, encryptedSecondaryPassword: true },
+    }).catch(() => null);
+    const sifreSurumu = createHash('sha1')
+      .update(`${cred?.encryptedPassword || ''}|${cred?.encryptedSecondaryPassword || ''}`)
+      .digest('hex')
+      .slice(0, 8);
+
     // Taxpayer-owned credential icin mukellef adini cek
     let scopeLabel = meta.provider.replace(/_/g, ' ');
     if (meta.ownerType === 'TAXPAYER' && job.taxpayerId) {
@@ -3123,8 +3142,11 @@ export class PortalAutomationService {
         jobType: job.jobType,
         link: '/panel/ayarlar/entegrasyonlar',
       },
-      dedupeKey: `portal-cred-fail:${meta.provider}:${ownerId}`,
-      dedupeWindowMin: 60 * 12, // 12 saat — ayni gun icinde tekrar etmesin
+      // Önek `portal-cred-fail:<provider>:<ownerId>` sabit — saveCredential bu önekle açık bildirimleri kapatır.
+      dedupeKey: `portal-cred-fail:${meta.provider}:${ownerId}:${sifreSurumu}`,
+      // 7 gün: şifre güncellenene kadar 1 kez (eskiden 12 saat → aynı hata ayda ~90 bildirim).
+      //   Şifre kaydedilince saveCredential açık bildirimleri kapatır; hata sürerse 7 gün sonra yeniden hatırlatır.
+      dedupeWindowMin: 60 * 24 * 7,
     }).catch((e) => {
       this.logger.warn(`PORTAL_CREDENTIAL_FAIL notif failed: ${(e as Error).message}`);
     });

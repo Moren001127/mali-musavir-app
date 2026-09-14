@@ -113,7 +113,9 @@ export class ButceCron {
 
       const gonder = async (m: MESAJ.Mesaj) => {
         if (gonderilen.includes(m.anahtar)) return;
-        await this.bildir(k, ayar, m);
+        // Ekstre id'si anahtara girer: iki kartın aynı durumu (örn. "son-odeme-3") aynı pencerede
+        //   çakışıp ikincisinin portal bildirimi yutulmasın. Tekrar-önleme zaten `hatirlatmalar`ta.
+        await this.bildir(k, ayar, m, e.id);
         yeni.push(m.anahtar);
       };
 
@@ -576,7 +578,10 @@ export class ButceCron {
           type: m.kritik ? 'BUTCE_KRITIK' : 'BUTCE',
           metadata: { modul: 'butce' },
           dedupeKey: anahtar,
-          dedupeWindowMin: 720,
+          // 3 gün: anahtar durumu zaten taşıyor (kalan gün / gecikme günü / tarih / kart-hesap id) →
+          //   durum değişince anahtar değişir, yeni bildirim çıkar; aynı durum 3 gün tekrar etmez
+          //   (eskiden 12 saat → limit/KMH gibi kalıcı durumlar her gün düşüyordu).
+          dedupeWindowMin: 60 * 24 * 3,
         })
         .catch((e: any) => this.logger.warn(`bildirim yazılamadı: ${e?.message || e}`));
     }

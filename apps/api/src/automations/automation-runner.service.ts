@@ -1074,7 +1074,9 @@ export class AutomationRunnerService implements OnModuleInit {
         type: 'AUTOMATION',
         metadata: { automationId: automation.id, kind: paused ? 'auto-paused' : 'failure' },
         dedupeKey: paused ? `auto-paused:${automation.id}` : `auto-fail:${automation.id}`,
-        dedupeWindowMin: paused ? 60 : 180,
+        // Aynı otomasyon için günde 1 bildirim (eskiden 3 saat / 1 saat → aynı hata gün içinde
+        //   defalarca düşüyordu). Ayrıntı zaten çalışma geçmişinde.
+        dedupeWindowMin: 60 * 24,
       });
     } catch (err: any) {
       this.logger.error(`Hata bildirimi oluşturulamadı id=${automation.id}: ${err.message}`);

@@ -7,6 +7,20 @@ import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 
+/** Bildirim başlığında ham kontrol kodu (AGENT_PING_LUCA gibi) yerine Türkçe açıklama. */
+const SISTEM_UYARI_ETIKET: Record<string, string> = {
+  AGENT_PING_MIHSAP: 'Mihsap ajanı yanıt vermiyor',
+  AGENT_PING_LUCA: 'Luca ajanı yanıt vermiyor',
+  LUCA_TOKEN_AGE: 'Luca oturumu eskidi',
+  MIHSAP_TOKEN_AGE: 'Mihsap oturumu eskidi',
+  PENDING_QUEUE: 'Bekleyen iş kuyruğu büyüdü',
+  FAILED_RATIO: 'Başarısız iş oranı yüksek',
+  LUCA_JOB_FAILURE: 'Luca işi hata verdi',
+  MODULE_HASH: 'Kilitli modül dosyası değişti',
+  AGENT_VERSION: 'Eski sürüm ajan var',
+  DB_HEALTH: 'Veritabanı bağlantısı sorunlu',
+};
+
 /**
  * System Health Watchdog Service
  *
@@ -534,12 +548,15 @@ export class SystemHealthService {
       // === IN-APP BILDIRIM: Yeni CRITICAL system health uyarisi ===
       // Sadece CRITICAL ve sadece YENI (existing yoksa) durumda. WARNING'leri spam etmemek icin.
       if (args.severity === 'CRITICAL' && this.notifications) {
+        // Başlık Türkçe (ham kod yerine); metadata.healthCheckType ham kodu taşır —
+        //   merkezi politika LUCA_JOB_FAILURE'ı atlar (LUCA_SYNC_ERROR bildirimi zaten var).
+        const baslik = `🚨 ${SISTEM_UYARI_ETIKET[args.type] || args.type}`;
         // tenantId yoksa tum tenantlara at — ama bu spam olabilir, sadece tenantId varsa tenant'a at.
         if (args.tenantId) {
           await this.notifications.createForTenant({
             tenantId: args.tenantId,
             type: NOTIFICATION_TYPES.SYSTEM,
-            title: `🚨 Sistem uyarısı: ${args.type}`,
+            title: baslik,
             body: `${args.message}${args.acilTavsiye ? `\n\nÖneri: ${args.acilTavsiye}` : ''}`,
             metadata: {
               healthCheckType: args.type,
@@ -559,8 +576,9 @@ export class SystemHealthService {
             await this.notifications.createForTenant({
               tenantId: t.id,
               type: NOTIFICATION_TYPES.SYSTEM,
-              title: `🚨 Sistem uyarısı: ${args.type}`,
+              title: baslik,
               body: `${args.message}${args.acilTavsiye ? `\n\nÖneri: ${args.acilTavsiye}` : ''}`,
+              // healthCheckType burada da var → politika katmanı ham koda bakabilir
               metadata: { healthCheckType: args.type, status: args.status, link: '/panel/ayarlar' },
               dedupeKey: `sys-health:${args.type}`,
               dedupeWindowMin: 60 * 6,

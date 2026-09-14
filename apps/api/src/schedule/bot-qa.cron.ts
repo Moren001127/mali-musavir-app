@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
+import { createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { BotTestRunnerService } from '../whatsapp/bot-test-runner.service';
 import { QualityLogService } from '../whatsapp/quality-log.service';
@@ -25,9 +26,18 @@ export class BotQACron {
       try {
         const result = await this.runner.runNow(tenant.id);
         if (result.failed > 0) {
+          // Aynı hata seti için günde 1 bildirim: başarısız test adlarının sıralı birleşiminin kısa özeti
+          //   anahtara girer → set değişmedikçe tekrar düşmez, yeni bir test bozulunca yeni bildirim çıkar.
+          const basarisizAdlar = (result.results || [])
+            .filter((r: any) => !r.pass)
+            .map((r: any) => String(r.scenarioKey || r.title || ''))
+            .sort();
+          const basarisizTestAdlariSha = createHash('sha1').update(basarisizAdlar.join('|')).digest('hex').slice(0, 12);
           await this.notifyTenant(tenant.id, {
             title: 'Bot QA testlerinde hata var',
             body: `${result.failed}/${result.total} sentetik WhatsApp bot testi basarisiz. Bot Kalite panelinden detaylari inceleyin.`,
+            dedupeKey: `bot-qa-fail:${tenant.id}:${basarisizTestAdlariSha}`,
+            dedupeWindowMin: 60 * 24,
           });
         }
       } catch (err: any) {
@@ -90,13 +100,17 @@ export class BotQACron {
     }
   }
 
-  private async notifyTenant(tenantId: string, input: { title: string; body: string }) {
+  private async notifyTenant(
+    tenantId: string,
+    input: { title: string; body: string; dedupeKey?: string; dedupeWindowMin?: number },
+  ) {
     await this.notifications.create({
       tenantId,
       type: 'AI',
       title: input.title,
       body: input.body,
       metadata: { module: 'bot-quality' },
+      ...(input.dedupeKey ? { dedupeKey: input.dedupeKey, dedupeWindowMin: input.dedupeWindowMin } : {}),
     }).catch(() => null);
   }
 

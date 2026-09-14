@@ -83,15 +83,28 @@ export class OwnerBriefingCron {
       await this.whatsapp.sendMessage(phone, metin, tenantId, { quote: false })
         .catch((e: any) => this.logger.warn(`[OwnerBriefing] uyari gonderilemedi ${phone}: ${e?.message || e}`));
     }
+    // Portal bildirimi: günde 1 (sabah + akşam aynı gün tek bildirim); tip SYSTEM (WhatsApp mesajı değil, sistem arızası).
+    const gunAnahtari = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Europe/Istanbul', year: 'numeric', month: '2-digit', day: '2-digit',
+    }).format(new Date());
+    const bildirim = {
+      tenantId,
+      type: 'SYSTEM',
+      title: 'Günlük brifing üretilemedi',
+      body: 'MOREN AI brifing metnini standart formatta üretemedi; brifing gönderilmedi.',
+      metadata: { link: '/panel/moren-ai', tur },
+    };
     try {
-      await (this.prisma as any).notification.create({
-        data: {
-          tenantId, type: 'WHATSAPP',
-          title: `${tur === 'sabah' ? 'Sabah' : 'Akşam'} brifingi üretilemedi`,
-          body: 'MOREN AI brifing metnini standart formatta üretemedi; brifing gönderilmedi.',
-          metadata: { tur },
-        },
-      });
+      if (this.notifications) {
+        await this.notifications.create({
+          ...bildirim,
+          dedupeKey: `briefing-fail:${tenantId}:${gunAnahtari}`,
+          dedupeWindowMin: 60 * 24,
+        });
+      } else {
+        // Servis yoksa (test kurulumu vb.) doğrudan yaz — dedupe uygulanamaz.
+        await (this.prisma as any).notification.create({ data: bildirim });
+      }
     } catch { /* bildirim yazilamazsa sessiz gec */ }
   }
 

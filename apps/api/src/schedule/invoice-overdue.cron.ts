@@ -12,7 +12,7 @@ import { NOTIFICATION_TYPES } from '../notifications/notification-types';
  * SATIS faturalari olarak yorumluyoruz.
  *
  * Her sabah 07:30 Europe/Istanbul calisir, tenant geneline 1 ozet bildirim atar.
- * Dedupe: tenant + day -> ayni gun ikinci kez atilmaz.
+ * Dedupe: tenant + sayi -> sayi degismedikce haftada 1; sayi degisince yeni bildirim.
  *
  * Kapatmak icin: INVOICE_OVERDUE_CRON_ENABLED=false
  */
@@ -60,10 +60,8 @@ export class InvoiceOverdueCron {
     }).catch(() => 0);
     if (!count) return 0;
 
-    const todayKey = new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'Europe/Istanbul', year: 'numeric', month: '2-digit', day: '2-digit',
-    }).format(new Date());
-
+    // Dedupe anahtarı SAYIYI taşır (eskiden günü taşıyordu → her sabah aynı bildirim):
+    //   sayı değişmediği sürece haftada 1; sayı artıp/azalınca anahtar değişir, yeni bildirim çıkar.
     await this.notifications.createForTenant({
       tenantId,
       type: NOTIFICATION_TYPES.INVOICE_OVERDUE,
@@ -74,8 +72,8 @@ export class InvoiceOverdueCron {
         threshold: threshold.toISOString(),
         link: '/panel/faturalar?filter=overdue',
       },
-      dedupeKey: `invoice-overdue:${tenantId}:${todayKey}`,
-      dedupeWindowMin: 60 * 20,
+      dedupeKey: `invoice-overdue:${tenantId}:${count}`,
+      dedupeWindowMin: 60 * 24 * 7,
     }).catch((e) => {
       this.logger.warn(`INVOICE_OVERDUE notif failed: ${(e as Error).message}`);
     });

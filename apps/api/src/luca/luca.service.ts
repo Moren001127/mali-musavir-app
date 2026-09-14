@@ -599,6 +599,15 @@ export class LucaService {
     return m ? Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]) : -1;
   }
 
+  /** İstanbul saatine göre gece mi (22:00 dahil – 09:00 hariç)? Ajan bu saatlerde kapalı. Saat okunamazsa gündüz sayılır. */
+  private geceSaatiMi(now: Date = new Date()): boolean {
+    const saat = Number(
+      new Intl.DateTimeFormat('tr-TR', { hour: '2-digit', hour12: false, timeZone: 'Europe/Istanbul' }).format(now),
+    );
+    if (!Number.isFinite(saat)) return false;
+    return saat >= 22 || saat < 9;
+  }
+
   private lastLogSecondsOfDay(errorMsg?: string | null): number | null {
     // Son ANLAMLI satirin damgasi (heartbeat gurultusu sayilmaz). appendJobLog
     // artik heartbeat'i yazmiyor; bu filtre eski kirli isler icin de savunma.
@@ -742,12 +751,28 @@ export class LucaService {
       select: { id: true, tenantId: true },
       take: 500,
     });
-    if (!stalePending.length) return;
     const countByTenant = new Map<string, number>();
     for (const j of stalePending) {
       if (!j.tenantId) continue;
       countByTenant.set(j.tenantId, (countByTenant.get(j.tenantId) || 0) + 1);
     }
+
+    // KUYRUK BOŞALINCA KENDİLİĞİNDEN KAPANSIN (2026-09-14): 30+ dk bekleyen işi kalmayan kiracıda açık
+    //   "Luca işi bekliyor" bildirimleri okundu işaretlenir; kullanıcı eski uyarıyı elle kapatmak zorunda kalmaz.
+    //   Kiracı sayısı küçük → her turda tüm kiracılar taranır (eşleşen satır yoksa sorgu boş döner, ucuz).
+    const tenants: Array<{ id: string }> = await (this.prisma as any).tenant
+      .findMany({ select: { id: true } })
+      .catch(() => []);
+    for (const t of tenants) {
+      if (countByTenant.has(t.id)) continue;
+      await this.notifications.resolveByMetadata(t.id, NOTIFICATION_TYPES.LUCA_SYNC_ERROR, ['kind'], 'stale-pending');
+    }
+    if (!countByTenant.size) return;
+
+    // GECE ÜRETME (2026-09-14): ajan gece kapalı; 22:00–09:00 arasında "bekliyor" uyarısı anlamsız
+    //   (gece 02–03 arası 1.191 bildirim üretilmişti). Sabah ajan açılınca iş hâlâ bekliyorsa üretilir.
+    if (this.geceSaatiMi()) return;
+
     for (const [tenantId, count] of Array.from(countByTenant.entries())) {
       await this.notifications
         .createForTenant({

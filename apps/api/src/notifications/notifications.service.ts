@@ -6,6 +6,7 @@ import {
   NOTIFICATION_TYPES,
   NotificationType,
 } from './notification-types';
+import { bildirimPolitikasi } from './notification-policy';
 
 export type CreateNotificationInput = {
   tenantId: string;
@@ -26,14 +27,16 @@ export class NotificationsService {
 
   constructor(private prisma: PrismaService) {}
 
-  async findAll(tenantId: string, userId: string) {
+  /** Son bildirimler; limit 1..200 aralığına kırpılır (varsayılan 50). */
+  async findAll(tenantId: string, userId: string, limit = 50) {
+    const take = Math.min(Math.max(Math.floor(Number(limit) || 50), 1), 200);
     return this.prisma.notification.findMany({
       where: {
         tenantId,
         OR: [{ userId }, { userId: null }],
       },
       orderBy: { createdAt: 'desc' },
-      take: 50,
+      take,
     });
   }
 
@@ -92,12 +95,68 @@ export class NotificationsService {
   }
 
   /**
+   * Durum düzelince (şifre güncellendi vb.) o konunun AÇIK bildirimlerini
+   * kendiliğinden kapatır: kiracıdaki okunmamış + metadata.dedupeKey değeri
+   * `prefix` ile BAŞLAYAN bildirimleri okundu işaretler. Kapatılan sayıyı döner;
+   * hata olursa 0 (bildirim kapatma hiçbir ana akışı durdurmamalı).
+   */
+  async resolveByDedupePrefix(tenantId: string, prefix: string): Promise<number> {
+    if (!tenantId || !prefix) return 0;
+    try {
+      const res = await this.prisma.notification.updateMany({
+        where: {
+          tenantId,
+          isRead: false,
+          metadata: { path: ['dedupeKey'], string_starts_with: prefix },
+        },
+        data: { isRead: true, readAt: new Date() },
+      });
+      return res.count;
+    } catch (e) {
+      this.logger.warn(`resolveByDedupePrefix hata (prefix=${prefix}): ${(e as Error).message}`);
+      return 0;
+    }
+  }
+
+  /**
+   * resolveByDedupePrefix'in metadata alanına göre çalışan hali: belirtilen tipte,
+   * okunmamış ve `metadata[path] === equals` olan bildirimleri okundu işaretler.
+   * dedupeKey taşımayan eski kayıtlar için (örn. kind === 'stale-pending').
+   */
+  async resolveByMetadata(tenantId: string, type: string, path: string[], equals: string): Promise<number> {
+    if (!tenantId || !type || !path?.length) return 0;
+    try {
+      const res = await this.prisma.notification.updateMany({
+        where: {
+          tenantId,
+          type,
+          isRead: false,
+          metadata: { path, equals },
+        },
+        data: { isRead: true, readAt: new Date() },
+      });
+      return res.count;
+    } catch (e) {
+      this.logger.warn(`resolveByMetadata hata (type=${type}, ${path.join('.')}=${equals}): ${(e as Error).message}`);
+      return 0;
+    }
+  }
+
+  /**
    * Tek bir bildirim olusturur. dedupeKey verilirse ayni tenant'ta son
    * dedupeWindowMin (varsayilan 60) dakika icinde ayni anahtarla acilan
-   * okunmamis bildirim varsa tekrar olusturmaz (no-op).
+   * bildirim (okunmus ya da okunmamis) varsa tekrar olusturmaz (no-op).
    * Eger userId verilirse + o user bu type'i mute etmisse -> no-op.
+   * Once merkezi politika (notification-policy.ts) calisir; "atla" derse hic yazilmaz.
    */
   async create(data: CreateNotificationInput) {
+    // Merkezi politika: kopya / bilgi-kirliligi bildirimleri tek yerden elenir.
+    const karar = bildirimPolitikasi(data);
+    if (karar.atla) {
+      this.logger.debug(`Bildirim politika ile atlandi (${data.type}): ${karar.neden || ''}`);
+      return { id: 'policy-skipped', skipped: true, neden: karar.neden } as any;
+    }
+
     const metadata = this.enrichMetadata(data);
 
     // Preference check (sadece userId verildiyse - tenant geneli atlanir)
@@ -111,10 +170,13 @@ export class NotificationsService {
     if (data.dedupeKey) {
       const windowMin = data.dedupeWindowMin ?? 60;
       const since = new Date(Date.now() - windowMin * 60 * 1000);
+      // 2026-09-14: Burada `isRead: false` sarti vardi → kullanici bildirimi okur okumaz
+      //   ayni olay pencere icinde YENIDEN bildirim uretiyordu. "Portal sifre hatasi" x90/ay
+      //   ve "Luca isi bekliyor" x1.577 gurultusunun koku buydu. Artik pencere icinde
+      //   ayni dedupeKey ile acilmis bildirim (okunmus ya da okunmamis) varsa uretilmez.
       const existing = await this.prisma.notification.findFirst({
         where: {
           tenantId: data.tenantId,
-          isRead: false,
           createdAt: { gte: since },
           metadata: { path: ['dedupeKey'], equals: data.dedupeKey },
         },
