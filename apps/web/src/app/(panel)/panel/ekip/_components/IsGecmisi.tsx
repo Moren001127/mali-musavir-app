@@ -43,12 +43,13 @@ export function IsGecmisi({ akis, isLoading, error, sayaclar, suzgec, onSuzgec, 
   return (
     <Kart
       renk={TEMA.mavi}
+      ton="notr"
       baslik="İş geçmişi"
       aciklama="Verilen her görev bir iş zinciridir; satıra tıklayınca yukarıdaki panelde açılır."
       dolguYok
       sag={
         <>
-          <div className="inline-flex flex-shrink-0 items-center rounded-lg p-[3px]" style={{ background: TEMA.alanZemin, border: `1px solid ${TEMA.alanKenar}` }}>
+          <div className="inline-flex flex-shrink-0 items-center rounded-lg p-[3px]" style={{ background: 'rgba(0,0,0,0.35)', border: '1px solid rgba(255,255,255,0.14)' }}>
             {GUNLER.map((g) => (
               <button key={g.id} type="button" onClick={() => onGun(g.id)} aria-pressed={gun === g.id} className="rounded-md px-2.5 py-1 text-[11.5px] font-semibold transition-colors duration-150" style={gun === g.id ? { background: 'rgba(255,255,255,0.08)', color: TEMA.metin } : { background: 'transparent', color: TEMA.ikincil }}>
                 {g.ad}
@@ -65,7 +66,7 @@ export function IsGecmisi({ akis, isLoading, error, sayaclar, suzgec, onSuzgec, 
       }
     >
       {/* Sekmeler */}
-      <div className="flex min-w-0 items-center gap-1 overflow-x-auto px-5 [scrollbar-width:none]" style={{ borderBottom: `1px solid ${TEMA.satirCizgi}` }} role="tablist">
+      <div className="flex min-w-0 items-center gap-1 overflow-x-auto px-5 [scrollbar-width:none]" style={{ borderBottom: '1px solid rgba(255,255,255,0.10)', background: 'rgba(0,0,0,0.18)' }} role="tablist">
         {KUTULAR.map((k) => {
           const aktif = suzgec === k.id;
           const sayi = k.sayacAnahtari ? sayaclar?.[k.sayacAnahtari] ?? 0 : null;
@@ -119,8 +120,8 @@ export function IsGecmisi({ akis, isLoading, error, sayaclar, suzgec, onSuzgec, 
               const kosuyor = v.adimlar.some((a) => a.tip === 'is' && a.durum === 'running');
               const adimSayisi = v.adimlar.filter((a) => a.tip === 'is').length;
               return (
-                <li key={v.vakaId} style={{ borderTop: `1px solid ${TEMA.satirCizgi}` }}>
-                  <button type="button" onClick={() => onSec(v)} className="flex w-full min-w-0 items-center gap-3 px-5 py-2.5 text-left transition-colors duration-150 hover:bg-white/[0.03]" style={{ background: secili ? `${TEMA.mavi}12` : 'transparent', boxShadow: secili ? `inset 3px 0 0 ${TEMA.mavi}` : 'none' }} aria-current={secili}>
+                <li key={v.vakaId} style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                  <button type="button" onClick={() => onSec(v)} className="flex w-full min-w-0 items-center gap-3 px-5 py-2.5 text-left transition-colors duration-150 hover:bg-white/[0.06]" style={{ background: secili ? `${TEMA.mavi}22` : v.kutu === 'suruyor' ? `${TEMA.mavi}0e` : v.kutu === 'onay' || v.kutu === 'istek' ? `${TEMA.altin}0c` : 'transparent', boxShadow: secili ? `inset 3px 0 0 ${TEMA.mavi}` : 'none' }} aria-current={secili}>
                     <Avatar kisaltma={siz ? 'MB' : ajanKisaltma(v.kimde.ajanId)} boyut={28} durum={siz ? 'siz' : kosuyor ? 'calisiyor' : v.durum === 'hata' ? 'hata' : 'bos'} title={siz ? 'Muzaffer Bey' : ajanAd(v.kimde.ajanId)} />
                     <span className="min-w-0 flex-1">
                       <span className="flex min-w-0 items-baseline gap-x-2">

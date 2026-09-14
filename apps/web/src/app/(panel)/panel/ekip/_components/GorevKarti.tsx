@@ -137,6 +137,7 @@ export const GorevKarti = forwardRef<
         else if (ref) ref.current = el;
       }}
       renk={dryRun ? TEMA.altin : TEMA.kirmizi}
+      ton={dryRun ? 'altin' : 'kirmizi'}
       baslik={
         <span className="inline-flex items-center gap-2.5">
           <Avatar kisaltma={ajanKisaltma(KOORDINATOR, ajan?.ad)} boyut={28} durum={buCalisiyor ? 'calisiyor' : 'bos'} />
@@ -171,7 +172,7 @@ export const GorevKarti = forwardRef<
           rows={3}
           placeholder={listening ? 'Dinliyorum…' : 'Örnek: Ömer Özen’in Ağustos 2026 KDV kontrolünü yap · Zeyrek Lojistik Ağustos faturalarını işle · Öz Ela son tebligatlar ne?'}
           className="min-h-[92px] w-full resize-y rounded-xl px-4 py-3 text-[14px] leading-relaxed outline-none transition-[border-color,box-shadow] duration-150"
-          style={{ background: TEMA.alanZemin, border: `1px solid ${alanKenar}`, color: TEMA.metin, boxShadow: odakta ? `0 0 0 3px ${TEMA.altin}22` : 'none' }}
+          style={{ background: 'rgba(0,0,0,0.38)', border: `1px solid ${alanKenar}`, color: TEMA.metin, boxShadow: odakta ? `0 0 0 3px ${TEMA.altin}22` : 'inset 0 1px 0 rgba(0,0,0,0.4)' }}
         />
 
         {canliTeyit && dryRun && (
@@ -195,7 +196,7 @@ export const GorevKarti = forwardRef<
         )}
 
         {/* Alt satır: mükellef (sol) · mod + Sesli + Çalıştır (sağ) */}
-        <div className="flex flex-col gap-3 pt-1 lg:flex-row lg:items-center lg:justify-between" style={{ borderTop: `1px solid ${TEMA.satirCizgi}` }}>
+        <div className="flex flex-col gap-3 pt-1 lg:flex-row lg:items-center lg:justify-between" style={{ borderTop: '1px solid rgba(255,255,255,0.10)' }}>
           <div className="flex min-w-0 flex-wrap items-center gap-2 pt-3">
             <span className="text-[11px]" style={{ color: TEMA.soluk }}>
               Mükellef
@@ -216,7 +217,7 @@ export const GorevKarti = forwardRef<
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2 pt-3">
-            <div className="inline-flex flex-shrink-0 items-center rounded-lg p-[3px]" style={{ background: TEMA.alanZemin, border: `1px solid ${dryRun ? TEMA.alanKenar : `${TEMA.kirmizi}66`}` }} title="Kuru test: mükellefe mesaj gitmez, Luca'ya yazılmaz; yalnız 'yapacaktım' raporu">
+            <div className="inline-flex flex-shrink-0 items-center rounded-lg p-[3px]" style={{ background: 'rgba(0,0,0,0.35)', border: `1px solid ${dryRun ? 'rgba(255,255,255,0.14)' : `${TEMA.kirmizi}66`}` }} title="Kuru test: mükellefe mesaj gitmez, Luca'ya yazılmaz; yalnız 'yapacaktım' raporu">
               <button
                 type="button"
                 onClick={() => { setDryRun(true); setCanliTeyit(false); }}

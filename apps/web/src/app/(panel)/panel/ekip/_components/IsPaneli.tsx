@@ -8,7 +8,7 @@ import { getIs, iptalEt, istekKapat, onayla, reddet, sabahOzetiUret, isZamanAsim
 import type { KomutTaslak } from './GorevKarti';
 import { DURDURULDU_METNI, type Adim, type Kosu, type KosularApi } from './kosular';
 import { OnayTeyit } from './OnayBekleyenler';
-import { Avatar, Dugme, DurumKelimesi, Kart, Rozet } from './Kart';
+import { Avatar, Dugme, DurumKelimesi, Kart, Rozet, YUZEY, icBlok } from './Kart';
 import { TEMA, adimAciklamasi, ajanKisaAd, ajanKisaltma, ajanTamAd, aracAdi, cevapAyristir, goreliSaat, kaynakEtiketi, konuKisalt, raporBolumleri, saatKisa, sayacMetni, sureKisa, yokMu, type RaporBolumu } from './ortak';
 
 /* ─────────────────────────── yardımcılar ─────────────────────────── */
@@ -134,7 +134,7 @@ function PersonelAdimi({ adim, ajanAd, mukellefAd, acikVarsayilan, onRapor }: { 
         </div>
       )}
       {acik && (
-        <div className="mt-2 flex flex-col gap-2 rounded-xl p-3" style={{ background: 'rgba(0,0,0,0.22)', border: `1px solid ${TEMA.kartKenar}` }}>
+        <div className="mt-2 flex flex-col gap-2 rounded-xl p-3" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.10)' }}>
           {!data && (
             <span className="inline-flex items-center gap-1.5 text-[11.5px]" style={{ color: TEMA.ikincil }}>
               <Loader2 size={11} className="animate-spin" /> ayrıntı yükleniyor
@@ -188,7 +188,7 @@ export function RaporGorunumu({ rapor, kompakt = false }: { rapor: string; kompa
         const renk = BOLUM_RENGI[b.anahtar];
         const yok = b.satirlar.length === 1 && yokMu(b.satirlar[0]);
         return (
-          <div key={b.anahtar} className={`rounded-xl px-3.5 py-2.5 ${genis && !kompakt ? 'md:col-span-2' : ''}`} style={{ background: 'rgba(255,255,255,0.025)', border: `1px solid ${b.anahtar === 'onay' || b.anahtar === 'istek' ? `${renk}55` : TEMA.kartKenar}` }}>
+          <div key={b.anahtar} className={`rounded-xl px-3.5 py-2.5 ${genis && !kompakt ? 'md:col-span-2' : ''}`} style={{ background: b.anahtar === 'onay' || b.anahtar === 'istek' ? `${renk}14` : 'rgba(255,255,255,0.06)', border: `1px solid ${b.anahtar === 'onay' || b.anahtar === 'istek' ? `${renk}66` : 'rgba(255,255,255,0.10)'}` }}>
             <div className="mb-1 text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: renk === TEMA.metin ? TEMA.soluk : renk }}>
               {b.baslik}
             </div>
@@ -326,8 +326,8 @@ function CevapAlani({ calisiyor, kuru, bekleyen, onGonder, onIptal }: { calisiyo
     setMetin('');
   };
   return (
-    <div className="flex flex-col gap-2 rounded-xl px-3.5 py-3" style={{ background: 'rgba(255,255,255,0.025)', border: `1px solid ${TEMA.mavi}44` }}>
-      <div className="flex flex-wrap items-center gap-2 text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: TEMA.mavi }}>
+    <div className="flex flex-col gap-2 rounded-xl px-3.5 py-3" style={{ background: `linear-gradient(135deg, ${TEMA.altin}26, ${TEMA.altin}0a 60%)`, border: `1px solid ${TEMA.altin}66` }}>
+      <div className="flex flex-wrap items-center gap-2 text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: TEMA.altin }}>
         <MessageSquareReply size={12} /> Bu işe cevap / talimat
         <span className="normal-case tracking-normal" style={{ color: TEMA.soluk }}>
           · Koordinatör aynı iş zincirinde devam eder · {kuru ? 'kuru test' : 'canlı'}
@@ -357,7 +357,7 @@ function CevapAlani({ calisiyor, kuru, bekleyen, onGonder, onIptal }: { calisiyo
           rows={2}
           placeholder={calisiyor ? 'Yazın; koşu bitince Koordinatör’e gider (ör. "kilitle", "beyannameyi henüz hazırlama", "Gider 0023 görselini düzelt")…' : 'Ör. "belge 0023’ü kilitle", "şimdi beyannameyi hazırla", "neden 1 satır eşleşmedi?"…'}
           className="min-h-[56px] min-w-0 flex-1 resize-y rounded-lg px-3 py-2 text-[13px] leading-relaxed outline-none"
-          style={{ background: TEMA.alanZemin, border: `1px solid ${TEMA.alanKenar}`, color: TEMA.metin }}
+          style={{ background: 'rgba(0,0,0,0.38)', border: '1px solid rgba(255,255,255,0.16)', color: TEMA.metin }}
         />
         <Dugme tur="birincil" buyuk disabled={!metin.trim()} onClick={gonder} title={calisiyor ? 'Koşu sürüyor; bitince gönderilir' : 'Gönder (Enter)'}>
           <Send size={13} /> {calisiyor ? 'Bitince gönder' : 'Gönder'}
@@ -521,6 +521,7 @@ export function IsPaneli({ kosu, vaka, kosular, ajanAd, mukellefAd, onTaslak, on
   return (
     <Kart
       renk={durumRenk}
+      ton={hata ? 'kirmizi' : calisiyor ? 'mavi' : bitti ? 'yesil' : 'notr'}
       baslik={
         <span className="inline-flex min-w-0 items-center gap-2.5">
           {sabahOzetiMi ? <Sunrise size={16} style={{ color: TEMA.altin }} /> : <Avatar kisaltma={kimde === 'siz' ? 'MB' : ajanKisaltma(kimde)} boyut={28} durum={kimde === 'siz' ? 'siz' : calisiyor ? 'calisiyor' : hata ? 'hata' : 'bos'} />}
@@ -565,7 +566,7 @@ export function IsPaneli({ kosu, vaka, kosular, ajanAd, mukellefAd, onTaslak, on
     >
       <div className="flex flex-col gap-4">
         {/* Aşama çubuğu + şu an */}
-        <div className="flex flex-col gap-2 rounded-xl px-3.5 py-3" style={{ background: 'rgba(0,0,0,0.22)', border: `1px solid ${TEMA.kartKenar}` }}>
+        <div className="flex flex-col gap-2 rounded-xl px-3.5 py-3" style={icBlok({ background: calisiyor ? `${TEMA.mavi}1c` : YUZEY.ic })}>
           <AsamaCubugu liste={asamaListesi} />
           {calisiyor && (
             <div className="flex items-center gap-2 text-[12.5px]" style={{ color: TEMA.mavi }}>
@@ -582,8 +583,8 @@ export function IsPaneli({ kosu, vaka, kosular, ajanAd, mukellefAd, onTaslak, on
 
         <div className="grid gap-4 xl:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
           {/* Sol: adımlar */}
-          <div className="min-w-0">
-            <div className="mb-2 flex items-center gap-2 text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: TEMA.soluk }}>
+          <div className="min-w-0 rounded-xl px-4 py-3" style={icBlok()}>
+            <div className="mb-2 flex items-center gap-2 text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: TEMA.ikincil }}>
               <Wrench size={11} /> Adımlar {yerelAdimlar.length + personelAdimlari.length > 0 && <span className="normal-case tracking-normal">· {yerelAdimlar.filter((a) => a.tip === 'arac').length + personelAdimlari.length} adım</span>}
             </div>
             <ol className="flex max-h-[520px] flex-col overflow-y-auto pr-1 [scrollbar-width:thin]">
@@ -615,8 +616,8 @@ export function IsPaneli({ kosu, vaka, kosular, ajanAd, mukellefAd, onTaslak, on
           </div>
 
           {/* Sağ: sonuç */}
-          <div className="flex min-w-0 flex-col gap-3">
-            <div className="flex items-center gap-2 text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: TEMA.soluk }}>
+          <div className="flex min-w-0 flex-col gap-3 rounded-xl px-4 py-3" style={icBlok({ background: 'rgba(255,255,255,0.045)' })}>
+            <div className="flex items-center gap-2 text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: TEMA.ikincil }}>
               Sonuç
               {kokS.isLoading && !kokIs && (
                 <span className="inline-flex items-center gap-1 normal-case tracking-normal">
@@ -640,17 +641,17 @@ export function IsPaneli({ kosu, vaka, kosular, ajanAd, mukellefAd, onTaslak, on
             ))}
 
             {calisiyor && !raporMetni && kosu?.cevap && (
-              <div className="max-h-[260px] overflow-y-auto whitespace-pre-wrap rounded-xl px-3.5 py-3 text-[13px] leading-relaxed" style={{ background: 'rgba(0,0,0,0.22)', border: `1px solid ${TEMA.kartKenar}`, color: TEMA.ikincil }}>
+              <div className="max-h-[260px] overflow-y-auto whitespace-pre-wrap rounded-xl px-3.5 py-3 text-[13px] leading-relaxed" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.10)', color: TEMA.ikincil }}>
                 {kosu.cevap}
               </div>
             )}
             {calisiyor && !raporMetni && !kosu?.cevap && (
-              <div className="rounded-xl px-3.5 py-6 text-center text-[12.5px]" style={{ background: 'rgba(0,0,0,0.16)', border: `1px dashed ${TEMA.kartKenar}`, color: TEMA.soluk }}>
+              <div className="rounded-xl px-3.5 py-6 text-center text-[12.5px]" style={{ background: `${TEMA.mavi}10`, border: `1px dashed ${TEMA.mavi}55`, color: TEMA.ikincil }}>
                 Sonuç, iş bitince burada bölümler halinde görünecek.
               </div>
             )}
             {!calisiyor && !raporMetni && !hata && (
-              <div className="rounded-xl px-3.5 py-6 text-center text-[12.5px]" style={{ background: 'rgba(0,0,0,0.16)', border: `1px dashed ${TEMA.kartKenar}`, color: TEMA.soluk }}>
+              <div className="rounded-xl px-3.5 py-6 text-center text-[12.5px]" style={{ background: 'rgba(255,255,255,0.04)', border: '1px dashed rgba(255,255,255,0.16)', color: TEMA.ikincil }}>
                 Rapor yok.
               </div>
             )}
@@ -663,7 +664,7 @@ export function IsPaneli({ kosu, vaka, kosular, ajanAd, mukellefAd, onTaslak, on
                 )}
                 <RaporGorunumu rapor={ayrisik?.rapor || raporMetni} />
                 {sonBitenPersonel && koordinatorRaporu && (
-                  <details className="rounded-xl px-3.5 py-2" style={{ background: 'rgba(255,255,255,0.02)', border: `1px solid ${TEMA.kartKenar}` }}>
+                  <details className="rounded-xl px-3.5 py-2" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.10)' }}>
                     <summary className="cursor-pointer text-[11.5px]" style={{ color: TEMA.ikincil }}>
                       Koordinatör’ün notu
                     </summary>
@@ -708,7 +709,7 @@ export function IsPaneli({ kosu, vaka, kosular, ajanAd, mukellefAd, onTaslak, on
             )}
 
             {kuruListesi.length > 0 && (
-              <div className="rounded-xl px-3.5 py-2.5" style={{ background: 'rgba(255,255,255,0.025)', border: `1px solid ${TEMA.kartKenar}` }}>
+              <div className="rounded-xl px-3.5 py-2.5" style={{ background: `${TEMA.turuncu}12`, border: `1px solid ${TEMA.turuncu}55` }}>
                 <div className="mb-1 inline-flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: TEMA.turuncu }}>
                   <FlaskConical size={11} /> Kuru test — yapılacaktı ({kuruListesi.length})
                 </div>

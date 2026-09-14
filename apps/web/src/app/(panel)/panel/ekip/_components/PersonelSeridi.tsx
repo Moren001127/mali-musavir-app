@@ -35,7 +35,7 @@ export function PersonelSeridi({ ajanlar, onaylar, kosular, mukellefAd, yukleniy
   const calisanSayisi = ajanlar.filter((a) => suAn(a, kosular.get(a.id), mukellefAd, simdi).durum === 'calisiyor').length;
 
   return (
-    <Kart renk={TEMA.mavi} baslik="Personel" aciklama={calisanSayisi > 0 ? `${calisanSayisi} personel çalışıyor` : 'Herkes boşta — görev kutusundan iş verin'} dolguYok>
+    <Kart renk={TEMA.mavi} ton="mavi" baslik="Personel" aciklama={calisanSayisi > 0 ? `${calisanSayisi} personel çalışıyor` : 'Herkes boşta — görev kutusundan iş verin'} dolguYok>
       {yukleniyor && !ajanlar.length ? (
         <div className="flex items-center gap-2 px-5 pb-5 text-[12px]" style={{ color: TEMA.ikincil }}>
           <Loader2 size={12} className="animate-spin" /> Kadro yükleniyor…
@@ -52,8 +52,8 @@ export function PersonelSeridi({ ajanlar, onaylar, kosular, mukellefAd, yukleniy
                 data-ajan={a.id}
                 className="flex min-w-0 items-center gap-2.5 rounded-xl px-3 py-2.5"
                 style={{
-                  background: calisiyor ? `${TEMA.mavi}14` : 'rgba(255,255,255,0.025)',
-                  border: `1px solid ${calisiyor ? `${TEMA.mavi}55` : TEMA.kartKenar}`,
+                  background: calisiyor ? `${TEMA.mavi}26` : 'rgba(255,255,255,0.06)',
+                  border: `1px solid ${calisiyor ? `${TEMA.mavi}77` : 'rgba(255,255,255,0.10)'}`,
                 }}
                 title={`${a.ad} — ${a.unvan}${d.metin ? `\nşu an: ${d.metin}` : '\nboşta'}`}
               >

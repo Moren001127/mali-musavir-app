@@ -234,7 +234,7 @@ export function EkipEkrani() {
         />
       </div>
 
-      <Kart ref={panoRef} renk={TEMA.mor} dolguYok>
+      <Kart ref={panoRef} renk={TEMA.mor} ton="mor" dolguYok>
         <button type="button" onClick={() => setPanoAcik(!panoAcik)} aria-expanded={panoAcik} className="flex w-full min-w-0 flex-wrap items-center gap-x-3 gap-y-1 px-5 py-4 text-left">
           <span className="inline-flex items-center gap-2">
             <CalendarRange size={14} style={{ color: TEMA.mor }} />
