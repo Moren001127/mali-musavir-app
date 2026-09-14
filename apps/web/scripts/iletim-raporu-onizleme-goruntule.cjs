@@ -1,9 +1,10 @@
-// İletim Raporu — Playwright ile ekran görüntüleri + davranış/istek doğrulaması (sahte API 3001 + web 3000 açık olmalı)
+// İletim Raporu (Hattat mantığı: düz günlük) — Playwright ile ekran görüntüleri + davranış/istek doğrulaması
 // Kullanım: node apps/web/scripts/mock-api.cjs (arka plan) + pnpm --filter @mali-musavir/web dev, sonra
 //          node apps/web/scripts/iletim-raporu-onizleme-goruntule.cjs [çıkış klasörü]   (varsayılan: _previews/iletim-raporu)
 // Tarayıcı: apps/luca-local-agent/node_modules/playwright (Chromium)
-// Kontroller: sarı/altın DOLGU yok, tabloda ikon yok, her hücre düz yazı, konsol hatası 0, yatay taşma yok,
-//             özet sayıları ve hücre metinleri sahte veriyle birebir, hap/süzgeç/arama, satır ve toplu yeniden deneme istekleri.
+// Kontroller: süzgeç çubuğu (mükellef/tür/belge türü/gönderim/dönem → Filtrele), Ara, kayıt sayısı, sıralama, sayfalama,
+//             Excel isteği+indirme, yeniden dene isteği, rozet renkleri (WhatsApp yeşil / Mail mavi / Hata kırmızı),
+//             sarı/altın DOLGU yok (başlık hariç), konsol hatası 0, yatay taşma yok. Görüntüler 20-*.png (1400 ve 1000 px).
 const path = require('path');
 const fs = require('fs');
 const { chromium } = require(path.join(__dirname, '../../luca-local-agent/node_modules/playwright'));
@@ -20,7 +21,7 @@ const KOK = process.env.WEB_URL || 'http://localhost:3000';
     kontroller.push(`${ok ? '✓' : '✗'} ${ad}${ek ? ' — ' + ek : ''}`);
     if (!ok) hatalar.push(`KONTROL: ${ad}${ek ? ' — ' + ek : ''}`);
   };
-  const ctx = await browser.newContext({ viewport: { width: 1400, height: 900 }, deviceScaleFactor: 1, locale: 'tr-TR' });
+  const ctx = await browser.newContext({ viewport: { width: 1400, height: 900 }, deviceScaleFactor: 1, locale: 'tr-TR', acceptDownloads: true });
   const page = await ctx.newPage();
   page.on('console', (m) => {
     if (m.type() === 'error' && !/404|Failed to load resource/.test(m.text())) hatalar.push(`console: ${m.text()}`);
@@ -28,7 +29,6 @@ const KOK = process.env.WEB_URL || 'http://localhost:3000';
   page.on('pageerror', (e) => hatalar.push(`pageerror: ${e.message}`));
   page.on('dialog', (d) => d.accept());
 
-  // Web'in gerçekten çağırdığı API adresi (NEXT_PUBLIC_API_URL farklı bir sahte API'ye — ör. 3002 — bakabilir)
   let API = 'http://localhost:3001/api/v1';
   let apiBulundu = false;
   const istekler = [];
@@ -39,6 +39,10 @@ const KOK = process.env.WEB_URL || 'http://localhost:3000';
     if (u.includes('/api/v1/akilli-bildirim')) istekler.push({ yontem: r.method(), url: u.replace(API, ''), govde: r.postData() });
   });
   const sonIstek = (yontem, parca) => [...istekler].reverse().find((i) => i.yontem === yontem && i.url.includes(parca));
+  const sonParam = (parca) => {
+    const i = sonIstek('GET', parca);
+    return i ? Object.fromEntries(new URL('http://x' + i.url).searchParams.entries()) : null;
+  };
 
   const yatay = async (ad) => {
     const r = await page.evaluate(() => {
@@ -55,11 +59,9 @@ const KOK = process.env.WEB_URL || 'http://localhost:3000';
   };
 
   // ── Giriş (sahte API her e-posta/şifreyi kabul eder) ──
-  // Geliştirme sunucusu yeniden derlerken (HMR) form tarayıcıca gönderilebiliyor; 3 deneme.
   let girisOldu = false;
   for (let deneme = 1; deneme <= 3 && !girisOldu; deneme++) {
     await page.goto(`${KOK}/giris/musavir`, { waitUntil: 'networkidle' });
-    // React henüz takılmamışken (hydration) formu tarayıcı kendi gönderir (?email=…) — takılmasını bekle
     await page.waitForFunction(() => Object.keys(document.querySelector('form') || {}).some((k) => k.startsWith('__reactProps')), null, { timeout: 30000 }).catch(() => {});
     await page.waitForTimeout(400);
     await page.locator('input[type=email]').fill('muzaffer@morenmusavirlik.com');
@@ -71,8 +73,6 @@ const KOK = process.env.WEB_URL || 'http://localhost:3000';
   if (!girisOldu) throw new Error('Giriş yapılamadı');
   await page.waitForTimeout(500);
   console.log('  API:', API);
-
-  // Sahte API bellek durumunu sıfırla — betik tekrar koşulabilsin
   const sifirla = await fetch(`${API}/akilli-bildirim/__sifirla`, { method: 'POST' }).then((r) => r.status).catch((e) => `hata ${e.message}`);
   console.log('  sahte veri sıfırlandı:', sifirla);
 
@@ -82,52 +82,54 @@ const KOK = process.env.WEB_URL || 'http://localhost:3000';
   await tablo.waitFor({ timeout: 30000 });
   await page.waitForSelector('[data-testid="iletim-tablosu"] tbody tr[data-durum]', { timeout: 30000 });
   await page.waitForTimeout(600);
-  await cek('01-genel-1400');
-  // Ana alan kendi içinde kaydığı için tam sayfa görüntüsü ekranla sınırlı; tablonun tamamı uzun pencereyle ayrıca
-  await page.setViewportSize({ width: 1400, height: 2000 });
+  await cek('20-genel-1400');
+  await page.setViewportSize({ width: 1400, height: 2400 });
   await page.waitForTimeout(400);
-  await page.locator('section', { has: tablo }).screenshot({ path: path.join(CIKIS, '01b-tablo-tam-1400.png') });
-  console.log('  ✓ 01b-tablo-tam-1400');
+  await page.locator('section', { has: tablo }).screenshot({ path: path.join(CIKIS, '20b-tablo-tam-1400.png') });
+  console.log('  ✓ 20b-tablo-tam-1400');
   await page.setViewportSize({ width: 1400, height: 900 });
   await page.waitForTimeout(300);
 
-  const satirSayisi = async () => tablo.locator('tbody tr[data-durum]').count();
-  const hapSayi = async (ad) => {
-    const b = page.getByRole('button', { name: new RegExp(`^\\d+ ${ad}$`) });
-    return Number((await b.innerText()).trim().split(/\s+/)[0]);
-  };
+  const satirlar = () => tablo.locator('tbody tr[data-durum]');
+  const satirSayisi = async () => satirlar().count();
+  const hucre = async (i, j) => (await satirlar().nth(i).locator('td').nth(j).innerText()).replace(/\s+/g, ' ').trim();
+  const ozet = async () => (await page.getByTestId('ozet-satiri').innerText()).replace(/\s+/g, ' ').trim();
+  const sayfaBilgisi = async () => (await page.getByTestId('sayfa-bilgisi').innerText()).trim();
+  const bekle = async () => { await page.waitForTimeout(700); };
+  const filtrele = async () => { await page.getByRole('button', { name: 'Filtrele' }).click(); await bekle(); };
 
-  // Özet satırı (sahte veri: 17 mükellef; 8 iletildi, 4 iletilemedi, 2 hiç gönderilmedi, 1 yalnız test, 1 belge yok, 13 kalem kapalı)
-  kontrol('Özet: 17 mükellef', (await hapSayi('mükellef')) === 17, String(await hapSayi('mükellef')));
-  kontrol('Özet: 8 iletildi', (await hapSayi('iletildi')) === 8, String(await hapSayi('iletildi')));
-  kontrol('Özet: 4 iletilemedi (3 tam + 1 kısmen)', (await hapSayi('iletilemedi')) === 4, String(await hapSayi('iletilemedi')));
-  kontrol('Özet: 2 hiç gönderilmedi', (await hapSayi('hiç gönderilmedi')) === 2, String(await hapSayi('hiç gönderilmedi')));
-  kontrol('Özet: 1 yalnız test', (await hapSayi('yalnız test')) === 1);
-  kontrol('Özet: 1 belge yok', (await hapSayi('belge yok')) === 1);
-  kontrol('Özet: 13 kalem kategori kapalı', (await hapSayi('kalem kategori kapalı')) === 13, String(await hapSayi('kalem kategori kapalı')));
-  kontrol('Sayaç kutusu YOK (tek satır özet)', (await page.locator('[data-testid="ozet-satiri"] button').count()) >= 6);
-
-  // Uyarı satırları
-  const kapaliUyari = page.getByTestId('kapali-uyari');
-  kontrol('Kapalı kategori uyarısı: "e-Tebligat kategorisi … KAPALI; bu ay 13 gönderim"', /e-Tebligat kategorisi/.test(await kapaliUyari.innerText()) && /KAPALI/.test(await kapaliUyari.innerText()) && /13 gönderim/.test(await kapaliUyari.innerText()), (await kapaliUyari.innerText()).slice(0, 120));
-  kontrol('Kapalı uyarısında Ayarlar bağlantısı', (await kapaliUyari.locator('a[href="/panel/ayarlar/akilli-bildirim"]').count()) === 1);
-  const testUyari = page.getByTestId('test-uyari');
-  kontrol('Test gönderimi uyarısı: "1 gönderim test alıcısına gitti"', /1 gönderim/.test(await testUyari.innerText()) && /iletildi sayılmaz/.test(await testUyari.innerText()));
-
-  // Tablo: başlıklar + 17 satır + sorunlular üstte
+  // Başlıklar, sıra, sayfa
   const basliklar = await tablo.locator('thead th').allInnerTexts();
-  // CSS büyük harfe çevirir (innerText büyük gelir) — karşılaştırma harf duyarsız
-  kontrol('Sütunlar: Mükellef | Vergi | SGK | e-Tebligat | Ödeme Listesi | Son durum', basliklar.join('|').toLocaleLowerCase('tr-TR') === 'mükellef|vergi|sgk|e-tebligat|ödeme listesi|son durum', basliklar.join('|'));
-  kontrol('17 satır', (await satirSayisi()) === 17, String(await satirSayisi()));
-  const durumlar = await tablo.locator('tbody tr[data-durum]').evaluateAll((trs) => trs.map((t) => t.getAttribute('data-durum')));
-  const sira = { hata: 0, bekliyor: 1, test: 2, kapali: 3, iletildi: 4, yok: 5 };
-  kontrol('Sıralama: sorunlular üstte (hata → bekliyor → test → kapalı → iletildi → belge yok)', durumlar.every((d, i) => i === 0 || sira[durumlar[i - 1]] <= sira[d]), durumlar.join(','));
+  kontrol('Sütunlar: Tarih | Mükellef | Belge Türü | Belge Adı | Durum', basliklar.map((b) => b.replace(/\s+/g, ' ').trim()).join('|').toLocaleLowerCase('tr-TR') === 'tarih|mükellef|belge türü|belge adı|durum', basliklar.join('|'));
+  kontrol('Varsayılan 50 kayıt / sayfa → 50 satır', (await satirSayisi()) === 50, String(await satirSayisi()));
+  kontrol('Sayfa bilgisi "1–50 / 60 kayıt"', (await sayfaBilgisi()) === '1–50 / 60 kayıt', await sayfaBilgisi());
+  kontrol('Özet satırı: "… · 60 gönderim · 50 iletildi · 8 iletilemedi · 2 test"', /· 60 gönderim · 50 iletildi · 8 iletilemedi · 2 test$/.test(await ozet()), await ozet());
+  kontrol('Tarih biçimi "14.09.2026 08:04:00" ve en yeni üstte', /^\d{2}\.\d{2}\.\d{4} \d{2}:\d{2}:\d{2}$/.test(await hucre(0, 0)) && /^14\./.test(await hucre(0, 0)), await hucre(0, 0));
+  {
+    const tarihler = await satirlar().evaluateAll((trs) => trs.map((t) => t.querySelector('td').innerText.trim()));
+    const anahtar = (s) => { const m = /^(\d{2})\.(\d{2})\.(\d{4}) (\d{2}):(\d{2}):(\d{2})$/.exec(s); return m ? `${m[3]}${m[2]}${m[1]}${m[4]}${m[5]}${m[6]}` : ''; };
+    kontrol('Tarih azalan sıralı', tarihler.every((t, i) => i === 0 || anahtar(tarihler[i - 1]) >= anahtar(t)));
+  }
+  kontrol('Matris/son durum/hap YOK (5 sütun, sayfada hap düğmesi yok)', basliklar.length === 5 && (await page.locator('[data-panel-main] button[aria-pressed]').count()) === 0, String(await page.locator('[data-panel-main] button[aria-pressed]').count()));
 
-  // İkon / sembol / sarı dolgu denetimi
-  const svgSayisi = await tablo.locator('svg').count();
-  kontrol('Tabloda ikon (svg) YOK', svgSayisi === 0, String(svgSayisi));
-  const semboller = await tablo.evaluate((t) => (t.innerText.match(/[✓✔✗✘⊘⏳⚠—]/g) || []).length);
-  kontrol('Tabloda sembol karakteri YOK (✓ ✗ ⊘ ⏳ —)', semboller === 0, String(semboller));
+  // Rozet renkleri
+  const rozetRenk = async (metin) => {
+    const el = tablo.locator('tbody td span', { hasText: new RegExp(`^${metin}$`) }).first();
+    return el.evaluate((e) => getComputedStyle(e).backgroundColor);
+  };
+  kontrol('WhatsApp rozeti yeşil dolu (#25a55a)', (await rozetRenk('WhatsApp')) === 'rgb(37, 165, 90)', await rozetRenk('WhatsApp'));
+  kontrol('Mail rozeti mavi dolu (#2f7ed8)', (await rozetRenk('Mail')) === 'rgb(47, 126, 216)', await rozetRenk('Mail'));
+  kontrol('Hata rozeti kırmızı dolu (#d64545)', (await rozetRenk('Hata')) === 'rgb(214, 69, 69)', await rozetRenk('Hata'));
+  {
+    const hataSatir = satirlar().filter({ has: page.locator('span', { hasText: /^Hata$/ }) }).first();
+    const title = await hataSatir.locator('td').nth(4).locator('[title]').first().getAttribute('title');
+    kontrol('Hata rozeti üzerine gelince sebep (title)', /İletilemedi: .+/.test(title || ''), title || '');
+    kontrol('İletilemeyen satır data-durum="İletilemedi"', (await hataSatir.getAttribute('data-durum')) === 'İletilemedi');
+  }
+  kontrol('Test satırında gri "Test" rozeti', (await tablo.locator('tbody tr[data-durum="Test"] span', { hasText: /^Test$/ }).count()) >= 1);
+  kontrol('Tabloda ikon (svg) YOK', (await tablo.locator('tbody svg').count()) === 0);
+
+  // Sarı/altın dolgu (başlık ikon karesi ve süs çizgisi hariç)
   const sariDolgu = await page.evaluate(() => {
     const kok = document.querySelector('[data-panel-main]') || document.body;
     const sorunlu = [];
@@ -137,121 +139,141 @@ const KOK = process.env.WEB_URL || 'http://localhost:3000';
       if (!m) continue;
       const [r, g, b] = [Number(m[1]), Number(m[2]), Number(m[3])];
       const a = m[4] === undefined ? 1 : Number(m[4]);
-      // altın (212,184,118) / amber (251,191,36) tonlarında DOLGU
       const sari = (r > 190 && g > 150 && b < 150 && r > b + 50);
       if (sari && a >= 0.12) sorunlu.push(`${el.tagName.toLowerCase()}.${String(el.className).slice(0, 30)} bg=${bg}`);
     }
     return sorunlu;
   });
-  // Yalnız başlık kartındaki ikon karesi ve "OFİS" üst etiketinin 26px süs çizgisi (tasarım imzası) kabul edilir
-  const sariDisi = sariDolgu.filter((s) => !/^span\.grid shrink-0 place-items-center/.test(s) && !/^span\.h-px w-\[26px\]/.test(s));
+  const sariDisi = sariDolgu.filter((s) => !/^span\.grid shrink-0 place-items-center/.test(s) && !/^span\.h-px w-\[18px\]/.test(s));
   kontrol('Sarı/altın DOLGU yok (başlık ikon karesi hariç)', sariDisi.length === 0, sariDisi.slice(0, 4).join(' ; '));
-  const doluRozet = await tablo.evaluate((t) => {
-    let n = 0;
-    for (const el of t.querySelectorAll('td span, td div, td button')) {
-      const bg = getComputedStyle(el).backgroundColor;
-      const m = /rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/.exec(bg);
-      if (!m) continue;
-      const a = m[4] === undefined ? 1 : Number(m[4]);
-      if (a >= 0.12) n++;
-    }
-    return n;
-  });
-  kontrol('Hücrelerde dolu renkli rozet YOK', doluRozet === 0, String(doluRozet));
 
-  // Hücre metinleri (düz Türkçe)
-  const satir = (ad) => tablo.locator('tbody tr', { hasText: ad }).first();
-  const hucre = async (ad, i) => (await satir(ad).locator('td').nth(i).innerText()).replace(/\s+/g, ' ').trim();
-  kontrol('Öz Ela · Vergi: "İletildi · 12.09 14:21 WhatsApp ve e-posta ile"', (await hucre('Öz Ela', 1)) === 'İletildi · 12.09 14:21 WhatsApp ve e-posta ile', await hucre('Öz Ela', 1));
-  kontrol('Öz Ela · e-Tebligat: "Kategori kapalı belge var, gönderilmedi"', (await hucre('Öz Ela', 3)) === 'Kategori kapalı belge var, gönderilmedi', await hucre('Öz Ela', 3));
-  kontrol('Öz Ela · Son durum: "Vergi, SGK, Ödeme Listesi iletildi · e-Tebligat kapalı"', (await hucre('Öz Ela', 5)) === 'Vergi, SGK, Ödeme Listesi iletildi · e-Tebligat kapalı', await hucre('Öz Ela', 5));
-  kontrol('Balçık İnşaat · Son durum: "Hepsi iletildi"', (await hucre('Balçık İnşaat', 5)) === 'Hepsi iletildi', await hucre('Balçık İnşaat', 5));
-  kontrol('Mert Reklam · Vergi: "İletilemedi telefon numarası yok" ("mükellefin" düştü)', (await hucre('Mert Reklam', 1)) === 'İletilemedi telefon numarası yok', await hucre('Mert Reklam', 1));
-  kontrol('Mert Reklam · Son durum: "Vergi, SGK, Ödeme Listesi iletilemedi: telefon numarası yok" + Yeniden dene + Ödeme listesi bağlantısı', (await hucre('Mert Reklam', 5)) === 'Vergi, SGK, Ödeme Listesi iletilemedi: telefon numarası yok Yeniden dene Ödeme listesini oradan gönder', await hucre('Mert Reklam', 5));
-  kontrol('Erdoğan Balçık · Vergi: "Kısmen iletildi e-posta gitti · WhatsApp: telefon numarası yok"', (await hucre('Erdoğan Balçık', 1)) === 'Kısmen iletildi e-posta gitti · WhatsApp: telefon numarası yok', await hucre('Erdoğan Balçık', 1));
-  kontrol('Erdoğan Balçık · Son durum: "Vergi kısmen iletildi (WhatsApp: telefon numarası yok)"', /^Vergi kısmen iletildi \(WhatsApp: telefon numarası yok\) Yeniden dene$/.test(await hucre('Erdoğan Balçık', 5)), await hucre('Erdoğan Balçık', 5));
-  kontrol('Gito · Vergi: iki kanal iki farklı sebep', (await hucre('Gito', 1)) === 'İletilemedi WhatsApp: numara WhatsApp kullanmıyor · e-posta: SMTP bağlantısı kurulamadı', await hucre('Gito', 1));
-  kontrol('Dilek Bayageldi · Vergi: "Gönderilmedi belge var, gönderim yapılmadı"', (await hucre('Dilek Bayageldi', 1)) === 'Gönderilmedi belge var, gönderim yapılmadı', await hucre('Dilek Bayageldi', 1));
-  kontrol('Dilek Bayageldi · Son durum', (await hucre('Dilek Bayageldi', 5)) === 'Vergi, SGK gönderilmedi: belge var, gönderim yapılmadı', await hucre('Dilek Bayageldi', 5));
-  kontrol('Başbuğ · Vergi: "Gönderilmedi telefon numarası yok"', (await hucre('Başbuğ', 1)) === 'Gönderilmedi telefon numarası yok', await hucre('Başbuğ', 1));
-  kontrol('Tuvtürk · SGK: "Test gönderimi [test] 03.09 09:16 · test alıcısına gitti, mükellef almadı"', (await hucre('Tuvtürk', 2)) === 'Test gönderimi test 03.09 09:16 · test alıcısına gitti, mükellef almadı', await hucre('Tuvtürk', 2));
-  kontrol('Tuvtürk · Son durum: "Yalnız test gönderimi, mükellef almadı"', (await hucre('Tuvtürk', 5)) === 'Yalnız test gönderimi, mükellef almadı', await hucre('Tuvtürk', 5));
-  kontrol('Ercan Aydın · Son durum: "Kategori kapalı, gönderilmedi"', (await hucre('Ercan Aydın', 5)) === 'Kategori kapalı, gönderilmedi', await hucre('Ercan Aydın', 5));
-  kontrol('Demir Çelik · hücreler "Belge yok" / "Gönderim yok", Son durum "Bu ay belge yok"', (await hucre('Demir Çelik', 1)) === 'Belge yok' && (await hucre('Demir Çelik', 4)) === 'Gönderim yok' && (await hucre('Demir Çelik', 5)) === 'Bu ay belge yok');
-  kontrol('Hücre ipucu (title) kanal kanal sonuç', /WhatsApp/.test(await satir('Erdoğan Balçık').locator('td').nth(1).locator('[title]').first().getAttribute('title')));
+  // Sayfalama
+  await page.getByRole('button', { name: 'Sonraki', exact: true }).click();
+  await bekle();
+  kontrol('Sonraki → 10 satır, "51–60 / 60 kayıt", istek page=2', (await satirSayisi()) === 10 && (await sayfaBilgisi()) === '51–60 / 60 kayıt' && sonParam('/iletim-gunlugu?')?.page === '2', `${await satirSayisi()} · ${await sayfaBilgisi()}`);
+  await cek('21-sayfa-2', false);
+  await page.getByRole('button', { name: 'Önceki', exact: true }).click();
+  await bekle();
+  kontrol('Önceki → 1. sayfa', (await sayfaBilgisi()) === '1–50 / 60 kayıt');
+  await page.getByLabel('Sayfa başına kayıt').selectOption('20');
+  await bekle();
+  kontrol('Kayıt 20 → 20 satır, Sayfa 1 / 3, istek pageSize=20', (await satirSayisi()) === 20 && /Sayfa 1 \/ 3/.test(await page.locator('section', { has: tablo }).innerText()) && sonParam('/iletim-gunlugu?')?.pageSize === '20');
+  await page.getByLabel('Sayfa başına kayıt').selectOption('100');
+  await bekle();
+  kontrol('Kayıt 100 → 60 satır tek sayfa', (await satirSayisi()) === 60);
 
-  // Hap süzgeçleri
-  await page.getByRole('button', { name: /^\d+ iletilemedi$/ }).click();
-  await page.waitForTimeout(300);
-  kontrol('Hap "iletilemedi" → 4 satır', (await satirSayisi()) === 4, String(await satirSayisi()));
-  await cek('02-hap-iletilemedi', false);
-  await page.getByRole('button', { name: /^\d+ kalem kategori kapalı$/ }).click();
-  await page.waitForTimeout(300);
-  kontrol('Hap "kalem kategori kapalı" → 13 satır', (await satirSayisi()) === 13, String(await satirSayisi()));
-  await page.getByRole('button', { name: /^\d+ mükellef$/ }).click();
-  await page.waitForTimeout(300);
-  kontrol('Hap "mükellef" süzgeci sıfırladı', (await satirSayisi()) === 17);
+  // Sıralama
+  await page.getByRole('button', { name: /^Tarih/ }).click();
+  await bekle();
+  kontrol('Tarih başlığı → artan (istek sira=asc, ilk satır ayın 1\'i)', sonParam('/iletim-gunlugu?')?.sira === 'asc' && /^01\./.test(await hucre(0, 0)), await hucre(0, 0));
+  await page.getByRole('button', { name: /^Tarih/ }).click();
+  await bekle();
+  // (aynı sorgu önbellekte — istek atılmayabilir; tablo durumu ve aria-sort yeter)
+  kontrol('Tarih başlığı → yine azalan (aria-sort=descending)', (await page.getByRole('button', { name: /^Tarih/ }).getAttribute('aria-sort')) === 'descending' && /^14\./.test(await hucre(0, 0)), await hucre(0, 0));
 
-  // Tümü / Yalnız sorunlu / Yalnız iletilen
-  await page.getByRole('button', { name: 'Yalnız sorunlu' }).click();
-  await page.waitForTimeout(300);
-  kontrol('"Yalnız sorunlu" → 8 (4 hata + 2 gönderilmedi + 1 test + 1 kapalı)', (await satirSayisi()) === 8, String(await satirSayisi()));
-  await cek('03-yalniz-sorunlu', false);
-  await page.getByRole('button', { name: 'Yalnız iletilen' }).click();
-  await page.waitForTimeout(300);
-  kontrol('"Yalnız iletilen" → 8', (await satirSayisi()) === 8, String(await satirSayisi()));
-  await page.getByRole('button', { name: 'Tümü' }).click();
-  await page.waitForTimeout(300);
-
-  // Arama
-  await page.getByLabel('Mükellef ara').fill('fam');
-  await page.waitForTimeout(300);
-  kontrol('Arama "fam" → 1 (Famcoffee)', (await satirSayisi()) === 1 && /Famcoffee/.test(await tablo.locator('tbody tr[data-durum]').first().innerText()));
-  await cek('04-arama', false);
-  await page.getByLabel('Mükellef ara').fill('');
-  await page.waitForTimeout(300);
-
-  // Satır bazlı yeniden deneme (Gito: geçici hatalar → sahte API SENT yapar)
-  const topluDugme = page.getByRole('button', { name: /Başarısızları yeniden dene \(\d+\)/ });
-  kontrol('Toplu düğme "(5)" — Vergi/SGK/e-Tebligat hatalı hücre sayısı (Ödeme Listesi hariç)', /\(5\)/.test(await topluDugme.innerText()), await topluDugme.innerText());
-  await satir('Gito').getByRole('button', { name: 'Yeniden dene' }).click();
-  await page.waitForTimeout(1200);
+  // Ara
+  await page.getByLabel('Ara', { exact: true }).fill('kdv1');
+  await page.waitForTimeout(900);
   {
-    const i = sonIstek('POST', '/akilli-bildirim/run');
-    const g = i ? JSON.parse(i.govde || '{}') : null;
-    kontrol('POST /akilli-bildirim/run {kategori:VERGI, taxpayerId:r10, sinceHours} — force YOK', !!g && g.kategori === 'VERGI' && g.taxpayerId === 'r10' && typeof g.sinceHours === 'number' && g.sinceHours > 0 && !('force' in g), i && i.govde);
+    const adlar = await satirlar().evaluateAll((trs) => trs.map((t) => t.querySelectorAll('td')[3].innerText));
+    kontrol('Ara "kdv1" → yalnız KDV1 satırları (12), istek q=kdv1', adlar.length === 12 && adlar.every((a) => /KDV1/.test(a)) && sonParam('/iletim-gunlugu?')?.q === 'kdv1', `${adlar.length}`);
   }
-  kontrol('Gito satırı yenilendi → "Hepsi iletildi"', (await hucre('Gito', 5)) === 'Hepsi iletildi', await hucre('Gito', 5));
-  kontrol('Toplu düğme "(4)" oldu', /\(4\)/.test(await topluDugme.innerText()), await topluDugme.innerText());
-  await cek('05-satir-yeniden-dene', false);
+  await cek('22-arama', false);
+  await page.getByLabel('Aramayı temizle').click();
+  await page.waitForTimeout(900);
+  kontrol('Arama temizlenince 60', (await satirSayisi()) === 60);
 
-  // Toplu yeniden deneme → POST /resend-failed {month}
-  await topluDugme.click();
+  // Süzgeç: Tür = İletilmeyen Raporlar → Filtrele
+  await page.getByLabel('Tür', { exact: true }).selectOption('iletilmeyen');
+  kontrol('Filtrele\'ye basılmadan tablo değişmez (60)', (await satirSayisi()) === 60);
+  await filtrele();
+  kontrol('İletilmeyen Raporlar → 8 satır, hepsinde Hata rozeti, istek durum=iletilmeyen', (await satirSayisi()) === 8 && (await tablo.locator('tbody tr span', { hasText: /^Hata$/ }).count()) === 8 && sonParam('/iletim-gunlugu?')?.durum === 'iletilmeyen', String(await satirSayisi()));
+  kontrol('Özet süzgeçle: "8 gönderim · 0 iletildi · 8 iletilemedi"', /8 gönderim · 0 iletildi · 8 iletilemedi/.test(await ozet()), await ozet());
+  await cek('23-iletilmeyen', false);
+
+  // Süzgeç: Tür Tümü + Belge Türü = Cari Kasa
+  await page.getByLabel('Tür', { exact: true }).selectOption('tumu');
+  await page.getByLabel('Belge Türü').selectOption('Cari Kasa');
+  await filtrele();
+  kontrol('Belge Türü Cari Kasa → 4 satır, istek belgeTuru=Cari Kasa', (await satirSayisi()) === 4 && sonParam('/iletim-gunlugu?')?.belgeTuru === 'Cari Kasa', String(await satirSayisi()));
+  kontrol('Cari Kasa belge adı "… Hesap Dökümü" / "Tahsilat hatırlatma"', /Hesap Dökümü|Tahsilat hatırlatma/.test(await hucre(0, 3)), await hucre(0, 3));
+
+  // Süzgeç: Belge Türü Tümü + Gönderim Şekli = Mail
+  await page.getByLabel('Belge Türü').selectOption('');
+  await page.getByLabel('Gönderim Şekli').selectOption('EMAIL');
+  await filtrele();
+  {
+    const kanallar = await satirlar().evaluateAll((trs) => trs.map((t) => t.getAttribute('data-kanal')));
+    kontrol('Gönderim Şekli Mail → yalnız Mail satırları (23), istek kanal=EMAIL', kanallar.length === 23 && kanallar.every((k) => k === 'Mail') && sonParam('/iletim-gunlugu?')?.kanal === 'EMAIL', String(kanallar.length));
+  }
+  await cek('24-mail', false);
+
+  // Süzgeç: Mükellef seçici (arama kutulu) → Mert Reklam
+  await page.getByLabel('Gönderim Şekli').selectOption('');
+  await page.getByRole('button', { name: /Tüm mükellefler/ }).click();
+  await page.getByPlaceholder('Ara — ad veya VKN…').fill('mert');
+  await page.waitForTimeout(200);
+  await page.locator('div[style*="z-index: 9999"]').getByText('Mert Reklam Ajansı Ltd. Şti.', { exact: true }).click();
+  await filtrele();
+  {
+    const adlar = await satirlar().evaluateAll((trs) => trs.map((t) => t.querySelectorAll('td')[1].innerText));
+    kontrol('Mükellef Mert Reklam → yalnız onun satırları (7), istek taxpayerId=m4', adlar.length === 7 && adlar.every((a) => /Mert Reklam/.test(a)) && sonParam('/iletim-gunlugu?')?.taxpayerId === 'm4', `${adlar.length} · ${JSON.stringify(sonParam('/iletim-gunlugu?'))}`);
+  }
+  await cek('25-mukellef', false);
+
+  // Excel İndir → GET /iletim-gunlugu/excel aynı süzgeçlerle + indirme
+  const indirme = page.waitForEvent('download', { timeout: 15000 }).catch(() => null);
+  await page.getByRole('button', { name: 'Excel İndir' }).click();
+  const d = await indirme;
+  {
+    const p = sonParam('/iletim-gunlugu/excel');
+    kontrol('Excel isteği aynı süzgeçlerle (taxpayerId=m4, month, durum) ve sayfa=1', !!p && p.taxpayerId === 'm4' && /^\d{4}-\d{2}$/.test(p.month) && p.durum === 'tumu' && p.page === '1', JSON.stringify(p));
+    kontrol('Excel dosyası indi (iletim-gunlugu-YYYY-MM.xlsx)', !!d && /^iletim-gunlugu-\d{4}-\d{2}\.xlsx$/.test(d.suggestedFilename()), d && d.suggestedFilename());
+    if (d) {
+      const yol = path.join(CIKIS, d.suggestedFilename());
+      await d.saveAs(yol);
+      const bas = fs.readFileSync(yol).subarray(0, 2).toString();
+      kontrol('İndirilen dosya gerçek xlsx (PK)', bas === 'PK', bas);
+    }
+  }
+
+  // Temizle → tüm mükellefler, bu ay
+  await page.getByRole('button', { name: 'Temizle' }).click();
+  await bekle();
+  kontrol('Temizle → 60 satır', (await satirSayisi()) === 60, String(await satirSayisi()));
+
+  // Başarısızları yeniden dene (3) → POST /resend-failed {month}
+  const yenidenDugme = page.getByRole('button', { name: /Başarısızları yeniden dene \(\d+\)/ });
+  kontrol('"Başarısızları yeniden dene (3)" — Beyanname/SGK/Tebligat hatalı (mükellef,tür) çiftleri', /\(3\)/.test(await yenidenDugme.innerText()), await yenidenDugme.innerText());
+  await yenidenDugme.click();
   await page.waitForTimeout(1200);
   {
     const i = sonIstek('POST', '/akilli-bildirim/resend-failed');
     const g = i ? JSON.parse(i.govde || '{}') : null;
     kontrol('POST /akilli-bildirim/resend-failed {month} — yalnız ay', !!g && /^\d{4}-\d{2}$/.test(g.month) && Object.keys(g).length === 1, i && i.govde);
   }
-  kontrol('Toplu deneme sonrası kalıcı hatalar (telefon/e-posta yok) yerinde: (4)', /\(4\)/.test(await topluDugme.innerText()), await topluDugme.innerText());
 
-  // Ay gezinme
+  // Dönem: önceki ay → Filtrele
   const ayGirdi = page.getByLabel('Ay', { exact: true });
   const ayOnce = await ayGirdi.inputValue();
   await page.getByTitle('Önceki ay').click();
-  await page.waitForTimeout(900);
   const aySonra = await ayGirdi.inputValue();
-  kontrol('Önceki ay → GET /report?month=', ayOnce !== aySonra && !!sonIstek('GET', `/akilli-bildirim/report?month=${aySonra}`), `${ayOnce} → ${aySonra}`);
-  kontrol('Önceki ay: 5 mükellef, hepsi iletildi, uyarı satırı yok', (await satirSayisi()) === 5 && (await hapSayi('iletildi')) === 5 && (await page.getByTestId('kapali-uyari').count()) === 0);
-  await cek('06-onceki-ay', false);
-  await page.getByRole('button', { name: /Bu ay/ }).click();
-  await page.waitForTimeout(600);
-  kontrol('"Bu ay" düğmesi', (await ayGirdi.inputValue()) === ayOnce);
+  kontrol('Önceki ay düğmesi Filtrele\'ye kadar tabloyu değiştirmez', ayOnce !== aySonra && (await satirSayisi()) === 60, `${ayOnce} → ${aySonra}`);
+  await filtrele();
+  kontrol('Önceki ay → istek month=önceki, hepsi iletildi, Hata rozeti yok', sonParam('/iletim-gunlugu?')?.month === aySonra && (await satirSayisi()) > 0 && (await tablo.locator('tbody tr span', { hasText: /^Hata$/ }).count()) === 0 && /0 iletilemedi/.test(await ozet()), await ozet());
+  await cek('26-onceki-ay', false);
+  await page.getByTitle('Sonraki ay').click();
+  await page.getByTitle('Sonraki ay').click();
+  await filtrele();
+  kontrol('Boş ay → "Bu süzgeçlere uyan gönderim yok." ve "0 kayıt"', /gönderim yok/.test(await tablo.innerText()) && (await sayfaBilgisi()) === '0 kayıt', await sayfaBilgisi());
+  await page.getByTitle('Önceki ay').click();
+  await filtrele();
+  kontrol('Bu aya dönüş → 60', (await satirSayisi()) === 60);
 
   // Dar ekran 1000px
   await page.setViewportSize({ width: 1000, height: 800 });
   await page.waitForTimeout(600);
-  await cek('07-genel-1000');
+  await cek('27-genel-1000');
 
   await browser.close();
   console.log('\n' + kontroller.join('\n'));

@@ -1,10 +1,15 @@
 /**
  * SAHTE API — İletim Raporu uçları (mock-api.cjs bunu tek satırla bağlar).
  *
- *   GET  /akilli-bildirim/report?month=YYYY-MM
+ *   GET  /akilli-bildirim/iletim-gunlugu?month&taxpayerId&belgeTuru&kanal&durum&q&page&pageSize&sira   (İLETİM GÜNLÜĞÜ — ekran bunu kullanır)
+ *   GET  /akilli-bildirim/iletim-gunlugu/excel?…aynı süzgeçler                                          (xlsx; exceljs api/node_modules'ten)
+ *   GET  /akilli-bildirim/report?month=YYYY-MM                                                          (eski matris yanıtı — başka ekranlar için duruyor)
  *   POST /akilli-bildirim/resend-failed   { month }
  *   POST /akilli-bildirim/run             { kategori, taxpayerId, sinceHours }   (satır bazlı yeniden deneme)
  *   POST /akilli-bildirim/__sifirla                                             (önizleme betiği için)
+ *
+ * İletim günlüğü verisi: bu ay 60 satır (documentDispatch belge açılımı + communicationLog Cari Kasa/Mesaj karışık;
+ * mükellef id'leri mock-api.cjs /taxpayers listesiyle AYNI: m1..m8), önceki ay hepsi iletildi, diğer aylar boş.
  *
  * Yanıt biçimi apps/api/src/akilli-bildirim/akilli-bildirim.service.ts report() ile birebir:
  *   hücre = null | { status:'BEKLIYOR', error } | { status, error, channel, testMode, sentAt, createdAt, kanallar:[…] }
@@ -218,9 +223,172 @@ function yenidenDene(month, kategori, taxpayerId) {
   return { ok: true, kategori, count: results.length, results };
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// İLETİM GÜNLÜĞÜ (Hattat mantığı) — belge bazında düz günlük
+// Satır sözleşmesi apps/api/src/akilli-bildirim/iletim-gunlugu.ts ile birebir:
+//   { id, tarih(ISO), taxpayerId, unvan, belgeTuru, belgeAdi, kanal('WhatsApp'|'Mail'), durum('İletildi'|'İletilemedi'|'Test'|'Bekliyor'), hata, test }
+// ─────────────────────────────────────────────────────────────────────────────
+const GUNLUK_MUKELLEFLER = [
+  ['m1', 'Öz Ela Gıda San. ve Tic. Ltd. Şti.'],
+  ['m2', 'Erdoğan Balçık'],
+  ['m3', 'Ayşegül Kaya'],
+  ['m4', 'Mert Reklam Ajansı Ltd. Şti.'],
+  ['m5', 'Famcoffee Kahve A.Ş.'],
+  ['m6', 'Ela Tekstil Ltd. Şti.'],
+  ['m7', 'Balçık İnşaat A.Ş.'],
+  ['m8', 'Dilek Bayageldi'],
+];
+const AY_ADLARI = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
+function ayAdi(month) {
+  const [y, m] = month.split('-').map(Number);
+  return `${AY_ADLARI[m - 1]} ${y}`;
+}
+/** Aya göre "belge dönemi" (bir önceki ay): 2026-09 → { egik: '2026/08', ad: 'Ağustos 2026' } */
+function belgeDonemi(month) {
+  const [y, m] = month.split('-').map(Number);
+  const d = new Date(y, m - 2, 1);
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  return { egik: `${d.getFullYear()}/${mm}`, ad: `${AY_ADLARI[d.getMonth()]} ${d.getFullYear()}` };
+}
+
+let GUNLUK = null;
+let gunlukSira = 0;
+function gunlukSifirla() {
+  gunlukSira = 0;
+  GUNLUK = { [BU_AY]: gunlukUret(BU_AY, true), [ONCEKI_AY]: gunlukUret(ONCEKI_AY, false) };
+}
+/**
+ * Bir ayın günlüğü. sorunlu=true: hata / test karışık (bu ay, 60 satır); false: hepsi iletildi (önceki ay).
+ */
+function gunlukUret(month, sorunlu) {
+  const rows = [];
+  const dn = belgeDonemi(month);
+  const ekle = (mid, g, ss, dd, belgeTuru, belgeAdi, kanal, durum, hata) => {
+    const [, unvan] = GUNLUK_MUKELLEFLER.find((m) => m[0] === mid);
+    rows.push({ id: `g${++gunlukSira}`, tarih: t(month, g, ss, dd), taxpayerId: mid, unvan, belgeTuru, belgeAdi, kanal, durum, hata: hata || null, test: durum === 'Test' });
+  };
+  GUNLUK_MUKELLEFLER.forEach(([mid], i) => {
+    const dk = 20 + i; // dakika: aynı gün sıra belli olsun
+    // Beyanname — gece 03:xx otomatik gönderim (WhatsApp; m1/m5/m7 e-posta da)
+    const telYok = sorunlu && mid === 'm4';
+    const beyanDurum = telYok ? 'İletilemedi' : 'İletildi';
+    const beyanHata = telYok ? 'mükellefin telefon numarası yok' : null;
+    ekle(mid, 12, 3, dk, 'Beyanname', `KDV1 ${dn.egik}`, 'WhatsApp', beyanDurum, beyanHata);
+    ekle(mid, 12, 3, dk, 'Beyanname', `MUHSGK ${dn.egik}`, 'WhatsApp', beyanDurum, beyanHata);
+    if (mid === 'm1' || mid === 'm5' || mid === 'm7') {
+      ekle(mid, 12, 3, dk, 'Beyanname', `KDV1 ${dn.egik}`, 'Mail', 'İletildi');
+      ekle(mid, 12, 3, dk, 'Beyanname', `MUHSGK ${dn.egik}`, 'Mail', 'İletildi');
+    }
+    // SGK — ayın 3'ü 09:xx (m6: e-postası yok → Mail hata)
+    if (mid !== 'm8') ekle(mid, 3, 9, dk, 'SGK', `Tahakkuk Fişi ${dn.egik}`, 'WhatsApp', telYok ? 'İletilemedi' : 'İletildi', beyanHata);
+    if (sorunlu && mid === 'm6') ekle(mid, 3, 9, dk, 'SGK', `Tahakkuk Fişi ${dn.egik}`, 'Mail', 'İletilemedi', 'mükellefin e-postası yok');
+    // Ödeme Listesi — ayın 10'u 09:xx, e-posta; m4 WhatsApp hata
+    ekle(mid, 10, 9, dk, 'Ödeme Listesi', `KDV Beyannamesi ${dn.ad}`, 'Mail', 'İletildi');
+    if (mid !== 'm8') ekle(mid, 10, 9, dk, 'Ödeme Listesi', `SGK Prim Tahakkuku ${dn.ad}`, 'Mail', 'İletildi');
+    if (sorunlu && mid === 'm4') ekle(mid, 10, 9, dk, 'Ödeme Listesi', `KDV Beyannamesi ${dn.ad}`, 'WhatsApp', 'İletilemedi', 'mükellefin telefon numarası yok');
+  });
+  if (sorunlu) {
+    const yil = month.slice(0, 4);
+    const ay = month.slice(5, 7);
+    // e-Tebligat — test modu (mükellef almadı) + biri gerçek
+    ekle('m3', 5, 10, 0, 'Tebligat', 'Vergi/Ceza İhbarnamesi — GİB', 'WhatsApp', 'Test');
+    ekle('m2', 8, 10, 15, 'Tebligat', 'Bilgi İsteme Yazısı — GİB', 'WhatsApp', 'İletildi');
+    ekle('m5', 8, 10, 16, 'Tebligat', 'Vergi/Ceza İhbarnamesi — GİB', 'WhatsApp', 'İletildi');
+    ekle('m7', 8, 10, 17, 'Tebligat', 'Ödeme Emri — GİB', 'WhatsApp', 'İletildi');
+    // m4: e-postası da yok → beyanname iki kanaldan da iletilemedi
+    ekle('m4', 12, 3, 23, 'Beyanname', `KDV1 ${dn.egik}`, 'Mail', 'İletilemedi', 'mükellefin e-postası yok');
+    // Cari Kasa — ekstre PDF ve tahsilat hatırlatması (communicationLog)
+    ekle('m1', 14, 8, 4, 'Cari Kasa', `01.01.${yil} / 14.${ay}.${yil} Hesap Dökümü`, 'WhatsApp', 'İletildi');
+    ekle('m5', 13, 16, 40, 'Cari Kasa', `01.01.${yil} / 13.${ay}.${yil} Hesap Dökümü`, 'WhatsApp', 'İletildi');
+    ekle('m2', 2, 11, 0, 'Cari Kasa', `Tahsilat hatırlatma - ${month}`, 'WhatsApp', 'İletilemedi', 'gönderilemedi');
+    ekle('m8', 2, 11, 1, 'Cari Kasa', `Tahsilat hatırlatma - ${month}`, 'WhatsApp', 'İletildi');
+    // Mesaj — evrak hatırlatma, KDV bilgilendirmesi, portal dosyası
+    ekle('m6', 1, 9, 0, 'Mesaj', `Evrak hatırlatma — ${dn.egik}`, 'WhatsApp', 'İletildi');
+    ekle('m7', 1, 9, 1, 'Mesaj', `Evrak hatırlatma — ${dn.egik}`, 'WhatsApp', 'Test');
+    ekle('m3', 6, 12, 0, 'Mesaj', 'Portal WhatsApp dosyası', 'WhatsApp', 'İletilemedi', 'master switch veya hata');
+    ekle('m1', 11, 15, 30, 'Mesaj', 'KDV bilgilendirmesi', 'WhatsApp', 'İletildi');
+    ekle('m8', 11, 15, 31, 'Mesaj', 'İşletme Hesap Özeti bilgilendirmesi', 'WhatsApp', 'İletildi');
+  }
+  return rows;
+}
+gunlukSifirla();
+
+const kucuk = (s) => String(s || '').toLocaleLowerCase('tr-TR');
+function gunlukSuzSirala(q) {
+  const month = q.month || BU_AY;
+  let rows = GUNLUK[month] || [];
+  const kanal = q.kanal === 'WHATSAPP' ? 'WhatsApp' : q.kanal === 'EMAIL' ? 'Mail' : '';
+  const ara = kucuk(q.q).trim();
+  rows = rows.filter((x) => {
+    if (q.taxpayerId && x.taxpayerId !== q.taxpayerId) return false;
+    if (q.belgeTuru && x.belgeTuru !== q.belgeTuru) return false;
+    if (kanal && x.kanal !== kanal) return false;
+    if (q.durum === 'iletilen' && x.durum !== 'İletildi') return false;
+    if (q.durum === 'iletilmeyen' && x.durum !== 'İletilemedi' && x.durum !== 'Bekliyor') return false;
+    if (ara && !kucuk(x.unvan).includes(ara) && !kucuk(x.belgeAdi).includes(ara)) return false;
+    return true;
+  });
+  const yon = q.sira === 'asc' ? 1 : -1;
+  rows.sort((a, b) => (new Date(a.tarih) - new Date(b.tarih)) * yon || a.unvan.localeCompare(b.unvan, 'tr') || a.belgeAdi.localeCompare(b.belgeAdi, 'tr'));
+  return { month, rows };
+}
+function gunlukYaniti(q) {
+  const { month, rows } = gunlukSuzSirala(q);
+  const pageSize = Math.min(500, Math.max(1, Number(q.pageSize) || 50));
+  const sonSayfa = Math.max(1, Math.ceil(rows.length / pageSize));
+  const sayfa = Math.min(Math.max(1, Number(q.page) || 1), sonSayfa);
+  const ozet = { iletilen: 0, iletilemeyen: 0, test: 0, yenidenDenenecek: 0 };
+  for (const r of rows) {
+    if (r.durum === 'İletildi') ozet.iletilen++;
+    else if (r.durum === 'İletilemedi') ozet.iletilemeyen++;
+    else if (r.durum === 'Test') ozet.test++;
+  }
+  // Yeniden denenecek: ayın Beyanname/SGK/Tebligat hatalı (mükellef, tür) çiftleri — süzgeçten bağımsız
+  const ciftler = new Set((GUNLUK[month] || []).filter((r) => r.durum === 'İletilemedi' && ['Beyanname', 'SGK', 'Tebligat'].includes(r.belgeTuru)).map((r) => `${r.belgeTuru}:${r.taxpayerId}`));
+  ozet.yenidenDenenecek = ciftler.size;
+  return { month, toplam: rows.length, sayfa, sayfaBoyutu: pageSize, satirlar: rows.slice((sayfa - 1) * pageSize, sayfa * pageSize), ozet };
+}
+function tarihSaatTR(iso) {
+  const d = new Date(iso);
+  const p = (n) => String(n).padStart(2, '0');
+  return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+/** xlsx — exceljs apps/api'de kurulu; bulunamazsa küçük sahte blob (indirme akışı yine denenir) */
+async function gunlukExcel(q) {
+  const { month, rows } = gunlukSuzSirala(q);
+  let ExcelJS = null;
+  try { ExcelJS = require('../../api/node_modules/exceljs'); } catch { /* yok */ }
+  if (!ExcelJS) return Buffer.from(`SAHTE XLSX — ${month} — ${rows.length} satır`, 'utf8');
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('İletim Günlüğü');
+  ws.addRow([`İletim Günlüğü — ${ayAdi(month)} (${rows.length} kayıt)`]).font = { bold: true, size: 13 };
+  const th = ws.addRow(['Tarih', 'Mükellef', 'Belge Türü', 'Belge Adı', 'Gönderim', 'Durum', 'Hata']);
+  th.font = { bold: true };
+  for (const r of rows) ws.addRow([tarihSaatTR(r.tarih), r.unvan, r.belgeTuru, r.belgeAdi, r.kanal, r.durum, r.hata || '']);
+  ws.columns.forEach((c, i) => (c.width = [20, 38, 15, 44, 11, 12, 44][i]));
+  return Buffer.from(await wb.xlsx.writeBuffer());
+}
+
 /** mock-api.cjs isle() içinden çağrılır; uç eşleşmezse false döner. */
 function iletimRaporuUclari(yol, yontem, q, govde, jsonGonder, res) {
-  if (yol === '/akilli-bildirim/__sifirla' && yontem === 'POST') { sifirla(); return jsonGonder(res, 200, { ok: true }); }
+  if (yol === '/akilli-bildirim/__sifirla' && yontem === 'POST') { sifirla(); gunlukSifirla(); return jsonGonder(res, 200, { ok: true }); }
+  if (yol === '/akilli-bildirim/iletim-gunlugu' && yontem === 'GET') {
+    const y = gunlukYaniti(q);
+    console.log(`[mock] iletim-gunlugu ${y.month} süzgeç=${JSON.stringify({ taxpayerId: q.taxpayerId, belgeTuru: q.belgeTuru, kanal: q.kanal, durum: q.durum, q: q.q })} → ${y.toplam} satır, sayfa ${y.sayfa}/${Math.max(1, Math.ceil(y.toplam / y.sayfaBoyutu))}`);
+    return jsonGonder(res, 200, y);
+  }
+  if (yol === '/akilli-bildirim/iletim-gunlugu/excel' && yontem === 'GET') {
+    gunlukExcel(q).then((buf) => {
+      console.log(`[mock] iletim-gunlugu/excel ${q.month || BU_AY} → ${buf.length} bayt`);
+      res.writeHead(200, {
+        'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'Content-Disposition': `attachment; filename="Iletim-Gunlugu-${q.month || BU_AY}.xlsx"`,
+        'Access-Control-Expose-Headers': 'Content-Disposition',
+      });
+      res.end(buf);
+    }).catch((e) => jsonGonder(res, 500, { message: `Excel üretilemedi: ${e.message}` }));
+    return true;
+  }
   if (yol === '/akilli-bildirim/report' && yontem === 'GET') return jsonGonder(res, 200, rapor(q.month || BU_AY));
   if (yol === '/akilli-bildirim/resend-failed' && yontem === 'POST') {
     const month = govde.month || BU_AY;

@@ -6,6 +6,7 @@ import { AylikOdemeService } from './aylik-odeme.service';
 import { AylikOdemeController } from './aylik-odeme.controller';
 import { AylikOdemeCron } from './aylik-odeme.cron';
 import { ShortLinkController, ShortLinkService } from './short-link.controller';
+import { IletimGunluguService } from './iletim-gunlugu.service';
 import { StorageModule } from '../storage/storage.module';
 import { WhatsAppModule } from '../whatsapp/whatsapp.module';
 import { EmailModule } from '../email/email.module';
@@ -17,7 +18,7 @@ import { SgkTeshisController } from './sgk-teshis.controller';
 @Module({
   imports: [StorageModule, WhatsAppModule, EmailModule, BeyannameTakipModule, NotificationsModule],
   controllers: [AkilliBildirimController, AylikOdemeController, ShortLinkController, SgkTeshisController],
-  providers: [AkilliBildirimService, AkilliBildirimCron, AylikOdemeService, AylikOdemeCron, ShortLinkService],
+  providers: [AkilliBildirimService, AkilliBildirimCron, AylikOdemeService, AylikOdemeCron, ShortLinkService, IletimGunluguService],
   exports: [AkilliBildirimService, AylikOdemeService, ShortLinkService],
 })
 export class AkilliBildirimModule {}
