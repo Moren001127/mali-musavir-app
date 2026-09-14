@@ -26,9 +26,11 @@ const HUCRE_BASLIK: CSSProperties = { ...HUCRE, padding: '7px 10px', fontSize: 1
 // Satır zeminleri TEK TON (zebra YOK — Muzaffer Bey 2026-09-14: "her satırda farklı renk tonu göz yoruyor").
 // Grup başlığı ise AYRI bir bant: dolu zemin + üstte boşluk + kalın üst çizgi + büyük harf etiket ("Yarın/Sonra devamı gibi
 // duruyordu, ayırt edici değil — doğru düzgün tablo yapısı").
-const GRUP_ZEMIN = 'rgba(255,255,255,0.065)';
-const GRUP_UST_CIZGI = '1px solid rgba(255,255,255,0.18)';
-const GRUP_BOSLUK = 14; // px — gruplar arası nefes payı
+// Grup başlığı = BAŞLIK olduğu belli olsun (Muzaffer Bey: "gecikmiş/yarın yazıları notlar gibi görünüyor"):
+// altın tonlu dolu zemin (tablo başlığıyla aynı aile), altın büyük harf yazı, altın üst/alt çizgi, iç sütun çizgisi yok.
+const GRUP_ZEMIN = 'rgba(212,184,118,0.13)';
+const GRUP_CIZGI = '1px solid rgba(212,184,118,0.45)';
+const GRUP_BOSLUK = 18; // px — gruplar arası nefes payı
 const SUTUN = 6;
 
 export interface GorevTablosuProps {
@@ -94,7 +96,7 @@ export function GorevTablosu({ gruplar, secili, onSec, onGrupSec, eylemler, acik
                 )}
                 {!basliksiz && (
                   <tr style={{ background: GRUP_ZEMIN }}>
-                    <td style={{ ...HUCRE, borderTop: GRUP_UST_CIZGI, borderLeft: `3px solid ${g.renk}99`, padding: '9px 4px', textAlign: 'center' }}>
+                    <td style={{ ...HUCRE, borderTop: GRUP_CIZGI, borderBottom: GRUP_CIZGI, borderRight: 'none', borderLeft: `4px solid ${g.renk}`, padding: '10px 4px', textAlign: 'center' }}>
                       {gorevIdleri.length > 0 && (
                         <input
                           type="checkbox"
@@ -106,12 +108,12 @@ export function GorevTablosu({ gruplar, secili, onSec, onGrupSec, eylemler, acik
                         />
                       )}
                     </td>
-                    <td colSpan={SUTUN - 1} style={{ ...HUCRE, borderTop: GRUP_UST_CIZGI, padding: '9px 12px' }}>
+                    <td colSpan={SUTUN - 1} style={{ ...HUCRE, borderTop: GRUP_CIZGI, borderBottom: GRUP_CIZGI, borderLeft: 'none', padding: '10px 12px' }}>
                       <div className="flex items-center gap-2.5">
-                        <span className="text-[11px] font-bold uppercase" style={{ color: METIN, letterSpacing: '.12em' }}>
+                        <span className="text-[12px] font-extrabold uppercase" style={{ color: GOLD, letterSpacing: '.16em' }}>
                           {g.ad}
                         </span>
-                        <span className="rounded-md px-1.5 text-[10.5px] font-semibold tabular-nums leading-[18px]" style={{ background: 'rgba(255,255,255,0.08)', color: IKINCIL }}>
+                        <span className="rounded-md px-1.5 text-[10.5px] font-bold tabular-nums leading-[18px]" style={{ background: 'rgba(212,184,118,0.22)', color: GOLD }}>
                           {g.satirlar.length}
                         </span>
                         {g.ek && (
