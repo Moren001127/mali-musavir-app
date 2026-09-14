@@ -3408,28 +3408,8 @@ ${not}` : not;
       `Soru: "${soru}"\n` +
       `Cevap veremedim; mükellefe "${owner} Bey en kısa sürede iletişime geçecek" dedim. Lütfen siz dönüş yapın.`;
     await this.sendOwnerNotification(taxpayer.tenantId, bildirim).catch(() => {});
-    // Portalda iz bırak (ofis görevi)
-    const user = await this.prisma.user.findFirst({
-      where: { tenantId: taxpayer.tenantId, isActive: true },
-      orderBy: { createdAt: 'asc' },
-      select: { id: true },
-    }).catch(() => null);
-    if (user) {
-      await (this.prisma as any).task.create({
-        data: {
-          tenantId: taxpayer.tenantId,
-          taxpayerId: taxpayer.id,
-          createdById: user.id,
-          title: `WhatsApp: müşavir yanıtı bekleniyor — ${ad}`,
-          description: soru,
-          category: 'MUKELLEF',
-          priority: 'HIGH',
-          tags: ['whatsapp', 'eskalasyon', 'musavir-yaniti'],
-          notifyInApp: true,
-          notifyBrowser: true,
-        },
-      }).catch(() => null);
-    }
+    // 2026-09-14 (Muzaffer Bey): portalda GÖREV AÇILMAZ — "WhatsApp: müşavir yanıtı bekleniyor" görevleri Görevler ekranını
+    //   dolduruyordu (35 kayıt, kopyalar, hiç kapanmıyor). WhatsApp bildirimi yeter; iş takibi WhatsApp Mesajlar ekranında.
   }
 
   /**
@@ -3875,28 +3855,10 @@ ${not}` : not;
   }
 
   private async maybeCreateDocumentRequestTask(taxpayer: any, text: string) {
-    if (!/(evrak|belge|beyanname|tahakkuk|fis|fiş|dekont|makbuz|rapor)/i.test(text)) return;
-    const user = await this.prisma.user.findFirst({
-      where: { tenantId: taxpayer.tenantId, isActive: true },
-      orderBy: { createdAt: 'asc' },
-      select: { id: true },
-    });
-    if (!user) return;
-    const ad = taxpayer.companyName || `${taxpayer.firstName || ''} ${taxpayer.lastName || ''}`.trim() || 'Mukellef';
-    await (this.prisma as any).task.create({
-      data: {
-        tenantId: taxpayer.tenantId,
-        taxpayerId: taxpayer.id,
-        createdById: user.id,
-        title: `WhatsApp evrak talebi: ${ad}`,
-        description: text,
-        category: 'MUKELLEF',
-        priority: 'HIGH',
-        tags: ['whatsapp', 'evrak-talebi'],
-        notifyInApp: true,
-        notifyBrowser: true,
-      },
-    }).catch(() => null);
+    // 2026-09-14 (Muzaffer Bey): KAPALI — "evrak/belge/beyanname…" kelimesi geçen her mesaj ("beyannamem verildi mi" gibi sorular dahil)
+    //   "WhatsApp evrak talebi" görevi açıyordu (Adem Can ×8 kopya). Evrak takibi Aylık Takip + evrak otomasyonunda; görev üretilmez.
+    void taxpayer; void text;
+    return;
   }
 
   private async sendOwnerNotification(tenantId: string, message: string) {
