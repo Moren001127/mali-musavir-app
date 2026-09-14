@@ -10,7 +10,6 @@ import {
   gunFarki,
   type DueStatus,
   type EkipIstek,
-  type TakvimKalemi,
   type Task,
 } from '@/lib/tasks';
 
@@ -41,11 +40,10 @@ export const GRUPLAR: Array<{ key: DueStatus; ad: string; renk: string }> = [
   { key: 'none', ad: 'Tarihsiz', renk: '#6b7280' },
 ];
 
-/** Tablo satırı: görev · ekip isteği · mali takvim kalemi. */
+/** Tablo satırı: görev · ekip isteği (Mali Takvim kalemleri ekranda gösterilmez — 2026-09-14). */
 export type Satir =
   | { tip: 'gorev'; gorev: Task }
-  | { tip: 'istek'; istek: EkipIstek }
-  | { tip: 'takvim'; kalem: TakvimKalemi };
+  | { tip: 'istek'; istek: EkipIstek };
 
 export interface SatirGrubu {
   key: string;

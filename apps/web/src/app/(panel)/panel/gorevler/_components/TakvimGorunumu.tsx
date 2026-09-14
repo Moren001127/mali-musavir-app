@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react';
 import { CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react';
-import { isoGun, type TakvimKalemi, type Task } from '@/lib/tasks';
+import { isoGun, type Task } from '@/lib/tasks';
 import { Kart, BosDurum } from '../../ekip/_components/Kart';
 import type { GorevEylemleri } from './eylemler';
 import { GorevTablosu } from './GorevTablosu';
@@ -50,7 +50,6 @@ export function takvimAraligi(ay: Date, mod: TakvimModu, seciliGun: string): { b
  */
 export function TakvimGorunumu({
   gorevler,
-  takvim,
   ay,
   onAy,
   mod,
@@ -64,7 +63,6 @@ export function TakvimGorunumu({
   acikId,
 }: {
   gorevler: Task[];
-  takvim: TakvimKalemi[];
   ay: Date;
   onAy: (d: Date) => void;
   mod: TakvimModu;
@@ -81,11 +79,11 @@ export function TakvimGorunumu({
   const { gunler } = useMemo(() => takvimAraligi(ay, mod, seciliGun), [ay, mod, seciliGun]);
 
   const gunMap = useMemo(() => {
-    const m = new Map<string, { gorevler: Task[]; takvim: TakvimKalemi[] }>();
+    const m = new Map<string, { gorevler: Task[] }>();
     const al = (k: string) => {
       let v = m.get(k);
       if (!v) {
-        v = { gorevler: [], takvim: [] };
+        v = { gorevler: [] };
         m.set(k, v);
       }
       return v;
@@ -94,17 +92,12 @@ export function TakvimGorunumu({
       const k = gunDegeri(etkinTarih(t));
       if (k) al(k).gorevler.push(t);
     }
-    for (const c of takvim) {
-      const k = gunDegeri(c.tarih);
-      if (k) al(k).takvim.push(c);
-    }
     return m;
-  }, [gorevler, takvim]);
+  }, [gorevler]);
 
   const seciliVeri = gunMap.get(seciliGun);
   const seciliSatirlar: Satir[] = [
     ...(seciliVeri?.gorevler || []).map((g) => ({ tip: 'gorev' as const, gorev: g })),
-    ...(seciliVeri?.takvim || []).map((c) => ({ tip: 'takvim' as const, kalem: c })),
   ];
 
   const ileriGeri = (yon: -1 | 1) => {
@@ -183,7 +176,7 @@ export function TakvimGorunumu({
                   type="button"
                   onClick={() => onSeciliGun(k)}
                   aria-pressed={secildi}
-                  title={`${uzunTarih(`${k}T00:00:00`)} — ${v?.gorevler.length || 0} görev, ${v?.takvim.length || 0} takvim kalemi`}
+                  title={`${uzunTarih(`${k}T00:00:00`)} — ${v?.gorevler.length || 0} görev`}
                   className="flex flex-col items-stretch gap-1 rounded-lg p-1.5 text-left transition-[background-color,border-color]"
                   style={{
                     minHeight: mod === 'hafta' ? 150 : 76,
@@ -209,16 +202,6 @@ export function TakvimGorunumu({
                           <span key={t.id} className="h-[6px] w-[6px] rounded-full" style={{ background: oncelikRengi(t.priority), opacity: t.status === 'DONE' ? 0.4 : 1 }} />
                         ))}
                       </span>
-                      {(v?.takvim || []).slice(0, 2).map((c) => (
-                        <span key={c.id} className="truncate rounded px-1 text-[9.5px] font-semibold leading-4" style={{ background: `${TAKVIM_RENK}22`, color: TAKVIM_RENK }} title={c.ad}>
-                          {c.ad}
-                        </span>
-                      ))}
-                      {(v?.takvim.length || 0) > 2 && (
-                        <span className="text-[9.5px]" style={{ color: TAKVIM_RENK }}>
-                          +{v!.takvim.length - 2} takvim
-                        </span>
-                      )}
                     </>
                   ) : (
                     <>
@@ -233,11 +216,6 @@ export function TakvimGorunumu({
                           +{v!.gorevler.length - 6} görev
                         </span>
                       )}
-                      {(v?.takvim || []).map((c) => (
-                        <span key={c.id} className="truncate rounded px-1 text-[9.5px] font-semibold leading-4" style={{ background: `${TAKVIM_RENK}22`, color: TAKVIM_RENK }} title={c.ad}>
-                          {c.ad}
-                        </span>
-                      ))}
                     </>
                   )}
                 </button>
@@ -249,7 +227,6 @@ export function TakvimGorunumu({
             <span className="inline-flex items-center gap-1"><span className="h-[6px] w-[6px] rounded-full" style={{ background: oncelikRengi('HIGH') }} /> Yüksek</span>
             <span className="inline-flex items-center gap-1"><span className="h-[6px] w-[6px] rounded-full" style={{ background: oncelikRengi('MEDIUM') }} /> Orta</span>
             <span className="inline-flex items-center gap-1"><span className="h-[6px] w-[6px] rounded-full" style={{ background: oncelikRengi('LOW') }} /> Düşük</span>
-            <span className="inline-flex items-center gap-1"><span className="h-2 w-3 rounded-sm" style={{ background: `${TAKVIM_RENK}55` }} /> Mali Takvim son günü</span>
           </div>
         </div>
       </Kart>

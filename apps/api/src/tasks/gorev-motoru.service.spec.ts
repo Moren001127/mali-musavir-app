@@ -144,15 +144,12 @@ describe('GorevMotoruService — WhatsApp şablonu ve personel', () => {
     expect(await svc.hatirlatmalariGonder(T('2026-09-16T06:05:00Z'))).toBe(2);
     expect(wp).toHaveLength(1);
     expect(wp[0].tel).toBe('905350587475');
-    expect(wp[0].metin).toContain('⏰ GÖREV HATIRLATMA · 16.09.2026 09:05');
-    expect(wp[0].metin).toContain('Muzaffer Bey, bugün 1 görev, 1 yaklaşan var.');
-    expect(wp[0].metin).toContain('📌 BUGÜN');
-    expect(wp[0].metin).toContain('• Öz Ela — Beyanname hazırla');
-    expect(wp[0].metin).toContain('   Bugün · Yüksek · Beyanname');
-    expect(wp[0].metin).toContain('🔜 YAKLAŞIYOR');
-    expect(wp[0].metin).toContain('• Famcoffee — Tahsilat araması');
-    expect(wp[0].metin).toContain('   16.09.2026 Çarşamba 14:00 · Tahsilat');
-    expect(wp[0].metin).toContain('🔗 Görevler: https://portal.morenmusavirlik.com/panel/gorevler');
+    expect(wp[0].metin).toContain('🗓️ *GÖREV HATIRLATMA*\nÇarşamba, 16 Eylül 2026 · 09:05');
+    expect(wp[0].metin).toContain('Muzaffer Bey, günaydın.\nBugün *1 görev*, 1 yaklaşan var.');
+    expect(wp[0].metin).toContain('*BUGÜN*\n① *Öz Ela* — Beyanname hazırla\n    Tüm gün · Yüksek · Beyanname');
+    expect(wp[0].metin).toContain('*YAKLAŞAN*\n▸ *Famcoffee* — Tahsilat araması\n    Çarşamba 16.09 14:00 · Tahsilat');
+    expect(wp[0].metin).toContain('Görevler → portal.morenmusavirlik.com/panel/gorevler\n_Elif · Moren Ofis Asistanı_');
+    expect(wp[0].metin).not.toContain('OTOMATİK BİLDİRİM');
     expect(loglar.filter((l) => l.channel === 'WHATSAPP' && l.status === 'SENT')).toHaveLength(2);
   });
 
@@ -162,7 +159,7 @@ describe('GorevMotoruService — WhatsApp şablonu ve personel', () => {
     expect(bildirimler.map((b) => b.userId).sort()).toEqual(['busra', 'dilek', 'u']);
     expect(wp.map((w) => w.tel).sort()).toEqual(['905001112233', '905350587475']);
     const busra = wp.find((w) => w.tel === '905001112233')!;
-    expect(busra.metin).toContain('Sayın BÜŞRA NUR ÖREN, bugün 1 görev var.');
+    expect(busra.metin).toContain('Sayın BÜŞRA NUR ÖREN, günaydın.\nBugün *1 görev* var.');
 
     const { svc: s2, wp: wp2, bildirimler: b2 } = kur([gorev({ notifyWhatsapp: false, hatirlatUserIds: ['busra'] })]);
     expect(await s2.hatirlatmalariGonder(T('2026-09-16T06:05:00Z'))).toBe(1);
@@ -175,11 +172,11 @@ describe('GorevMotoruService — WhatsApp şablonu ve personel', () => {
     const r = await svc.ornekGonder('t', 'u');
     expect(r.ok).toBe(true);
     expect(r.telefonlar).toEqual(['905350587475']);
-    expect(wp[0].metin).toContain('⏰ GÖREV HATIRLATMA (ÖRNEK)');
-    expect(wp[0].metin).toContain('📌 BUGÜN');
-    expect(wp[0].metin).toContain('🔜 YAKLAŞIYOR');
-    expect(wp[0].metin).toContain('⚠️ GECİKEN');
-    expect(wp[0].metin).toContain('Bu bir şablon denemesidir');
+    expect(wp[0].metin).toContain('🗓️ *GÖREV HATIRLATMA (ÖRNEK)*');
+    expect(wp[0].metin).toContain('*BUGÜN*');
+    expect(wp[0].metin).toContain('*YAKLAŞAN*');
+    expect(wp[0].metin).toContain('*GECİKEN*');
+    expect(wp[0].metin).toContain('_Bu bir şablon denemesidir; içerik gerçek değildir._');
     const r2 = await svc.ornekGonder('t', 'u', { phone: '0500 111 22 33' });
     expect(r2.telefonlar).toEqual(['905001112233']);
     delete process.env.MOREN_OWNER_WHATSAPP_PHONES;

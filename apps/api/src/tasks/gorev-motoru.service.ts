@@ -157,6 +157,11 @@ export class GorevMotoruService implements OnApplicationBootstrap {
     return `${ad} Bey`;
   }
 
+  /** Mesaj imzası: bot adı (MOREN_BOT_NAME, varsayılan Elif) + "Moren Ofis Asistanı". */
+  private imza(): string {
+    return `${String(process.env.MOREN_BOT_NAME || 'Elif').trim() || 'Elif'} · Moren Ofis Asistanı`;
+  }
+
   private portalUrl(): string {
     return String(process.env.PORTAL_PUBLIC_URL || process.env.PUBLIC_WEB_URL || 'https://portal.morenmusavirlik.com').replace(/\/+$/, '');
   }
@@ -284,7 +289,7 @@ export class GorevMotoruService implements OnApplicationBootstrap {
             const t = await db.tenant.findUnique({ where: { id: g.tenantId }, select: { email: true } }).catch(() => null);
             if (t?.email) alicilar.add(String(t.email).toLowerCase());
             if (alicilar.size) {
-              const metin = hatirlatmaMesaji({ hitap: this.sahipHitabi() }, [kalem], simdi, this.portalUrl());
+              const metin = hatirlatmaMesaji({ hitap: this.sahipHitabi(), imza: this.imza() }, [kalem], simdi, this.portalUrl());
               await this.email.send({ to: Array.from(alicilar), subject: `Görev — ${olay.baslik.slice(0, 90)}`, text: metin, html: `<pre style="font-family:sans-serif">${metin.replace(/</g, '&lt;')}</pre>` }, g.tenantId);
             }
           } catch (e: any) {
@@ -299,7 +304,7 @@ export class GorevMotoruService implements OnApplicationBootstrap {
       }
       // 4) WhatsApp — alıcı başına TEK mesaj
       for (const [telefon, kova] of kovalar) {
-        const metin = hatirlatmaMesaji({ hitap: kova.hitap }, kova.kalemler, simdi, this.portalUrl());
+        const metin = hatirlatmaMesaji({ hitap: kova.hitap, imza: this.imza() }, kova.kalemler, simdi, this.portalUrl());
         let ok = false;
         try {
           ok = await this.whatsapp.sendMessage(telefon, metin, kova.tenantId, { quote: false });
@@ -342,7 +347,8 @@ export class GorevMotoruService implements OnApplicationBootstrap {
       telefonlar = this.sahipTelefonlari();
       if (!telefonlar.length) return { ok: false, telefonlar: [], metin: '', hata: 'Sahip WhatsApp numarası tanımlı değil (MOREN_OWNER_WHATSAPP_PHONES)' };
     }
-    const metin = hatirlatmaMesaji({ hitap }, ornekKalemler(), new Date(), this.portalUrl(), true);
+    const simdi = new Date();
+    const metin = hatirlatmaMesaji({ hitap, imza: this.imza() }, ornekKalemler(simdi), simdi, this.portalUrl(), true);
     let ok = true;
     for (const tel of telefonlar) {
       try {

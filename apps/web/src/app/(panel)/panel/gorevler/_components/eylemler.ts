@@ -1,4 +1,4 @@
-import type { TakvimKalemi, TaskStatus } from '@/lib/tasks';
+import type { TaskStatus } from '@/lib/tasks';
 
 /** Sayfa kabuğunun (page.tsx) satır/kart/panel bileşenlerine verdiği eylemler — tek sözleşme. */
 export interface GorevEylemleri {
@@ -17,6 +17,4 @@ export interface GorevEylemleri {
   ekibeVer: (id: string, canli: boolean) => Promise<{ ok: boolean; isId?: string; error?: string }>;
   /** "Sizden istenen" ekip kalemini kapat */
   istekKapat: (id: string) => void;
-  /** Mali Takvim kaleminden görev aç */
-  takvimdenGorev: (kalem: TakvimKalemi) => void;
 }

@@ -3,7 +3,8 @@
 /**
  * Görevler & Notlar — "sakin komuta merkezi" düzeni (2026-09-14 yeniden tasarım).
  * Tek sütun: başlık (korundu) → hap sayaç şeridi → akıllı giriş satırı → görünüm sekmeleri + süzgeçler → içerik.
- * Veri: GET /tasks/ajanda (görevler + notlar + ekip istekleri + mali takvim + sayaçlar) — tek çağrı.
+ * Veri: GET /tasks/ajanda (görevler + notlar + ekip istekleri + sayaçlar) — tek çağrı. Mali Takvim kalemleri bu ekranda
+ * GÖSTERİLMEZ (Muzaffer Bey 2026-09-14: "mali takvimi görevler alanından kaldır, göz yoruyor"); arka uç yine döndürür, yok sayılır.
  * Bu dosya yalnız veri kabuğu + düzen; parçalar _components/ altında.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -11,7 +12,7 @@ import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-quer
 import { CheckSquare, Inbox, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
-import { gunFarki, isoGun, tasksApi, type AjandaResponse, type CreateTaskInput, type TakvimKalemi, type Task, type TaskStatus, type TopluInput, type UpdateTaskInput } from '@/lib/tasks';
+import { isoGun, tasksApi, type AjandaResponse, type CreateTaskInput, type Task, type TaskStatus, type TopluInput, type UpdateTaskInput } from '@/lib/tasks';
 import { BosDurum } from '../ekip/_components/Kart';
 import { AkilliGiris } from './_components/AkilliGiris';
 import { AracCubugu, type Gorunum, type Suzgecler } from './_components/AracCubugu';
@@ -23,7 +24,7 @@ import { KanbanGorunumu } from './_components/KanbanGorunumu';
 import { MukellefeGoreGorunumu } from './_components/MukellefeGoreGorunumu';
 import { NotlarBolumu } from './_components/NotlarBolumu';
 import { SayacSeridi, type SayacAnahtari } from './_components/SayacSeridi';
-import { TakvimGorunumu, takvimAraligi, type TakvimModu } from './_components/TakvimGorunumu';
+import { TakvimGorunumu, type TakvimModu } from './_components/TakvimGorunumu';
 import { TopluSerit } from './_components/TopluSerit';
 import type { MukellefSecenek } from './_components/akilli-giris';
 import { EKIP_RENK, GOLD, GOLD_SOFT, GRUPLAR, gorevGrubu, vadeIso, type Satir, type SatirGrubu } from './_components/ortak';
@@ -85,12 +86,7 @@ export default function GorevlerPage() {
     return () => clearTimeout(t);
   }, [suzgec.arama]);
 
-  // Takvim görünümünde Mali Takvim penceresi görünen aralığı kapsasın
-  const gun = useMemo(() => {
-    if (gorunum !== 'takvim') return 45;
-    const { son } = takvimAraligi(takvimAy, takvimMod, seciliGun);
-    return Math.min(365, Math.max(45, gunFarki(new Date(), son) + 2));
-  }, [gorunum, takvimAy, takvimMod, seciliGun]);
+  const gun = 45; // ajanda penceresi (Mali Takvim ekranda gösterilmediği için sabit)
 
   // ── Veri ──
   const ajandaParams = useMemo(
@@ -135,7 +131,6 @@ export default function GorevlerPage() {
   const gorevler = useMemo(() => veri?.gorevler || [], [veri]);
   const notlar = useMemo(() => veri?.notlar || [], [veri]);
   const istekler = useMemo(() => veri?.ekipIstekler || [], [veri]);
-  const takvim = useMemo(() => veri?.takvim || [], [veri]);
 
   const yenile = useCallback(() => {
     qc.invalidateQueries({ queryKey: ['gorevler-ajanda'] });
@@ -185,14 +180,8 @@ export default function GorevlerPage() {
         return r;
       },
       istekKapat: (id) => void calistir(() => tasksApi.ekipIstekKapat(id), 'İstek kapatıldı (yapıldı)', 'Kapatılamadı').catch(() => undefined),
-      takvimdenGorev: (kalem: TakvimKalemi) =>
-        void calistir(
-          () => tasksApi.takvimden({ taxCalendarId: kalem.id, taxpayerId: suzgec.mukellefId || undefined }),
-          `Görev açıldı: ${kalem.ad}`,
-          'Takvimden görev açılamadı',
-        ).catch(() => undefined),
     };
-  }, [yenile, suzgec.mukellefId]);
+  }, [yenile]);
 
   const hizliEkle = useCallback(
     async (girdi: CreateTaskInput) => {
@@ -268,23 +257,14 @@ export default function GorevlerPage() {
     });
   }, [gorevler, sayac]);
 
-  // ── Ajanda grupları: Gecikmiş · Bugün · Yarın · Bu hafta · Sonra · Tarihsiz (+ ekip istekleri Bugün'de, takvim kalemleri tarihinde) ──
+  // ── Ajanda grupları: Gecikmiş · Bugün · Yarın · Bu hafta · Sonra · Tarihsiz (+ ekip istekleri Bugün'de) ──
   const ajandaGruplari = useMemo<SatirGrubu[]>(() => {
     if (sayac === 'istek') return [{ key: 'istek', ad: 'Sizden istenen', renk: EKIP_RENK, satirlar: istekler.map((i) => ({ tip: 'istek' as const, istek: i })) }];
     const kutular = new Map<string, Satir[]>(GRUPLAR.map((g) => [g.key, [] as Satir[]]));
     if (sayac === 'acik') for (const i of istekler) kutular.get('today')!.push({ tip: 'istek', istek: i });
     for (const t of suzulmusGorevler) kutular.get(gorevGrubu(t))!.push({ tip: 'gorev', gorev: t });
-    if (sayac === 'acik' || sayac === 'buHafta' || sayac === 'bugun') {
-      for (const c of takvim) {
-        const g = gorevGrubu({ dueDate: c.tarih, status: 'OPEN' } as Task);
-        if (g === 'overdue' || g === 'none') continue;
-        if (sayac === 'bugun' && g !== 'today') continue;
-        if (sayac === 'buHafta' && !(g === 'today' || g === 'tomorrow' || g === 'thisWeek')) continue;
-        kutular.get(g)!.push({ tip: 'takvim', kalem: c });
-      }
-    }
     return GRUPLAR.map((g) => ({ key: g.key, ad: g.ad, renk: g.renk, satirlar: kutular.get(g.key) || [] }));
-  }, [suzulmusGorevler, istekler, takvim, sayac]);
+  }, [suzulmusGorevler, istekler, sayac]);
 
   const bosMetin: Record<SayacAnahtari, string> = {
     acik: 'Açık görev yok — üstteki satırdan ekleyin',
@@ -306,7 +286,6 @@ export default function GorevlerPage() {
       return (
         <TakvimGorunumu
           gorevler={gorevler}
-          takvim={takvim}
           ay={takvimAy}
           onAy={setTakvimAy}
           mod={takvimMod}
