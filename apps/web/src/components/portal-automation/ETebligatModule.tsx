@@ -256,14 +256,14 @@ function ETebligatModuleIc() {
       {/* ── Tablo ── */}
       <div className="rounded-2xl border overflow-hidden" style={{ background: 'rgba(0,0,0,0.18)', borderColor: 'rgba(255,255,255,0.06)' }}>
         <div className="overflow-x-auto">
-          <table className="w-full text-[12px]" style={{ borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: 1180 }}>
+          <table className="w-full text-[12px]" style={{ borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: 1120 }}>
             <colgroup>
               <col />
-              <col style={{ width: 170 }} />
+              <col style={{ width: 160 }} />
               <col style={{ width: 140 }} />
-              <col style={{ width: 150 }} />
-              <col style={{ width: 112 }} />
-              <col style={{ width: 126 }} />
+              <col style={{ width: 140 }} />
+              <col style={{ width: 104 }} />
+              <col style={{ width: 120 }} />
               <col style={{ width: 104 }} />
               <col style={{ width: 124 }} />
               <col style={{ width: 52 }} />

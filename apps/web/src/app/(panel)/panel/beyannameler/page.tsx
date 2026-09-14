@@ -693,7 +693,7 @@ function BeyannamelerIcerik() {
           <div>
             <h2 className="text-[15px] font-semibold" style={{ color: '#fafaf9' }}>Beyanname Listesi</h2>
             <p className="mt-0.5 text-[12px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
-              {toplam > 0 ? <><b style={{ color: 'rgba(250,250,249,0.75)' }}>{toplam.toLocaleString('tr-TR')}</b> kayıt · </> : null}</p>
+              {toplam > 0 ? <><b style={{ color: 'rgba(250,250,249,0.75)' }}>{toplam.toLocaleString('tr-TR')}</b> kayıt </> : null}</p>
           </div>
           <button
             type="button"
@@ -774,7 +774,7 @@ function BeyannamelerIcerik() {
                   </th>
                   <th className="px-3 py-3">Mükellef</th>
                   <th className="px-3 py-3 whitespace-nowrap">Dönem</th>
-                  <th className="px-3 py-3 whitespace-nowrap">Beyanname Türü</th>
+                  <th className="px-3 py-3 whitespace-nowrap">Tür</th>
                   <th className="px-3 py-3">Mahiyet</th>
                   <th className="px-3 py-3">Tarih</th>
                   <th className="px-3 py-3 text-right">Tutar</th>

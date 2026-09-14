@@ -322,7 +322,7 @@ function SgkBildirgeModuleIc() {
             )}
           </div>
 
-          <div className="relative flex-1 min-w-[140px]">
+          <div className="relative min-w-[160px] flex-[1_1_200px] max-w-[340px]">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'rgba(250,250,249,0.4)' }} />
             <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Mükellef, VKN, dönem, kanun no…"
               className="w-full pl-9 pr-3 text-[12.5px] outline-none border" style={{ ...kutuStili, padding: '0 12px 0 34px', fontSize: 12.5 }} />
