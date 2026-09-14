@@ -27,6 +27,30 @@ interface TaxpayerBundle {
   items: DispatchItem[];
 }
 
+/** Demet kurarken mükelleften okunan alanlar (taxpayer include'undan gelir). */
+type TaxpayerLite = {
+  id: string;
+  companyName?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  phone?: string | null;
+  phones?: string[];
+  email?: string | null;
+  emails?: string[];
+};
+
+export type DispatchKanal = 'WHATSAPP' | 'EMAIL';
+
+/** Sözleşme §5 — POST /beyan-kayitlari/gonder yanıtındaki results[] öğesi. */
+export type SeciliGonderimSonucu = {
+  taxpayerId: string;
+  unvan: string;
+  channel: string;
+  status: 'SENT' | 'FAILED';
+  error: string | null;
+  kayitSayisi: number;
+};
+
 const KATEGORI_BASLIK: Record<DispatchKategori, string> = {
   VERGI: 'Beyanname',
   SGK: 'SGK',
@@ -110,6 +134,37 @@ export class AkilliBildirimService {
 
   // ---------- ADAY TOPLAMA ----------
 
+  /** Mükellef satırından boş demet (ünvan + ilk telefon/e-posta). collectBundles ve gonderSecili ortak kullanır. */
+  private mukellefDemeti(tp: TaxpayerLite): TaxpayerBundle {
+    return {
+      taxpayerId: tp.id,
+      unvan: (tp.companyName || `${tp.firstName || ''} ${tp.lastName || ''}`.trim() || 'Mükellef').toString(),
+      phone: tp.phone || (tp.phones && tp.phones[0]) || null,
+      email: tp.email || (tp.emails && tp.emails[0]) || null,
+      items: [],
+    };
+  }
+
+  /**
+   * Beyan kaydı → demet öğesi (mesaj satırı + dosya adları). Gece akışı (collectBundles)
+   * ve elle seçili gönderim (gonderSecili) AYNI dönüşümü kullanır; metin/dosya adı tek yerde.
+   */
+  private beyanKaydiDemetOgesi(
+    k: { id: string; beyanTipi: string; donem: string; tahakkukTutari?: unknown; pdfUrl?: string | null; beyannameUrl?: string | null },
+    unvan: string,
+  ): DispatchItem {
+    const vade = calculateBeyannameDeadline(k.beyanTipi, k.donem);
+    const tutar = k.tahakkukTutari != null ? Number(k.tahakkukTutari) : null;
+    const parts = [`${k.beyanTipi} - Tahakkuk`];
+    if (vade) parts.push(`Son Ödeme: ${trDate(vade)}`);
+    if (tutar != null) parts.push(trMoney(tutar));
+    const files: DispatchItem['files'] = [];
+    const adSlug = unvan.replace(/[^a-zA-Z0-9ĞÜŞİÖÇğüşıöç ]/g, '').slice(0, 40).trim().replace(/\s+/g, '_');
+    if (k.beyannameUrl) files.push({ storageKey: k.beyannameUrl, filename: `${adSlug}-${k.beyanTipi}-${k.donem}-beyanname.pdf` });
+    if (k.pdfUrl) files.push({ storageKey: k.pdfUrl, filename: `${adSlug}-${k.beyanTipi}-${k.donem}-tahakkuk.pdf` });
+    return { line: parts.join(' - '), amount: tutar, files, refId: k.id, donem: k.donem };
+  }
+
   /** Son `sinceHours` saatte gelen/güncellenen belgeleri mükellef bazında kategoriye göre toplar. */
   private async collectBundles(
     tenantId: string,
@@ -120,16 +175,10 @@ export class AkilliBildirimService {
     const since = new Date(Date.now() - sinceHours * 3600 * 1000);
     const map = new Map<string, TaxpayerBundle>();
 
-    const ensure = async (tp: { id: string; companyName?: string | null; firstName?: string | null; lastName?: string | null; phone?: string | null; phones?: string[]; email?: string | null; emails?: string[] }) => {
+    const ensure = async (tp: TaxpayerLite) => {
       let b = map.get(tp.id);
       if (!b) {
-        b = {
-          taxpayerId: tp.id,
-          unvan: (tp.companyName || `${tp.firstName || ''} ${tp.lastName || ''}`.trim() || 'Mükellef').toString(),
-          phone: tp.phone || (tp.phones && tp.phones[0]) || null,
-          email: tp.email || (tp.emails && tp.emails[0]) || null,
-          items: [],
-        };
+        b = this.mukellefDemeti(tp);
         map.set(tp.id, b);
       }
       return b;
@@ -150,16 +199,7 @@ export class AkilliBildirimService {
       for (const k of kayitlar) {
         if (!k.taxpayer) continue;
         const b = await ensure(k.taxpayer);
-        const vade = calculateBeyannameDeadline(k.beyanTipi, k.donem);
-        const tutar = k.tahakkukTutari != null ? Number(k.tahakkukTutari) : null;
-        const parts = [`${k.beyanTipi} - Tahakkuk`];
-        if (vade) parts.push(`Son Ödeme: ${trDate(vade)}`);
-        if (tutar != null) parts.push(trMoney(tutar));
-        const files: DispatchItem['files'] = [];
-        const adSlug = b.unvan.replace(/[^a-zA-Z0-9ĞÜŞİÖÇğüşıöç ]/g, '').slice(0, 40).trim().replace(/\s+/g, '_');
-        if (k.beyannameUrl) files.push({ storageKey: k.beyannameUrl, filename: `${adSlug}-${k.beyanTipi}-${k.donem}-beyanname.pdf` });
-        if (k.pdfUrl) files.push({ storageKey: k.pdfUrl, filename: `${adSlug}-${k.beyanTipi}-${k.donem}-tahakkuk.pdf` });
-        b.items.push({ line: parts.join(' - '), amount: tutar, files, refId: k.id, donem: k.donem });
+        b.items.push(this.beyanKaydiDemetOgesi(k, b.unvan));
       }
     } else {
       const belgeTurleri =
@@ -396,115 +436,188 @@ export class AkilliBildirimService {
         continue;
       }
 
-      // Hattat birebir: belgeler TEK PDF'te birleşir, mesajın sonunda TEK kısa link olur
-      const fileBufs: Array<{ filename: string; buf: Buffer }> = [];
-      for (const it of bundle.items) {
-        for (const f of it.files) {
-          try {
-            fileBufs.push({ filename: f.filename, buf: await this.storage.getBuffer(f.storageKey) });
-          } catch (e: any) {
-            this.logger.warn(`belge okunamadı ${f.filename}: ${e?.message}`);
-          }
-        }
-      }
-      const merged = await mergePdfBuffers(fileBufs.map((x) => x.buf), this.logger);
-      const mergedName = `${KATEGORI_BASLIK[kategori]}-Dokumanlari.pdf`.replace(/İ/g, 'I').replace(/[ğüşıöçĞÜŞÖÇ]/g, (c) => ({ 'ğ': 'g', 'ü': 'u', 'ş': 's', 'ı': 'i', 'ö': 'o', 'ç': 'c', 'Ğ': 'G', 'Ü': 'U', 'Ş': 'S', 'Ö': 'O', 'Ç': 'C' }[c] || c));
-      let links: string[] = [];
-      let emailAttachments: Array<{ filename: string; content: Buffer; contentType?: string }> = [];
-      if (merged) {
-        const key = `${tenantId}/${bundle.taxpayerId}/bildirim/${kategori}_${randomUUID()}.pdf`;
-        await this.storage.putBuffer(key, merged, 'application/pdf');
-        links = [await this.shortLink.create(tenantId, key, mergedName)];
-        emailAttachments = [{ filename: mergedName, content: merged, contentType: 'application/pdf' }];
-      } else {
-        // birleştirme mümkün olmazsa tek tek linkle (yedek yol)
-        for (const f of fileBufs) {
-          emailAttachments.push({ filename: f.filename, content: f.buf, contentType: 'application/pdf' });
-        }
-        for (const it of bundle.items) {
-          for (const f of it.files) {
-            try {
-              links.push(await this.shortLink.create(tenantId, f.storageKey, f.filename));
-            } catch (e: any) {
-              this.logger.warn(`link üretilemedi ${f.filename}: ${e?.message}`);
-            }
-          }
-        }
-      }
-      const message = this.composeMessage(senderName, bundle, kategori, links);
-      const amounts = bundle.items.map((i) => i.amount).filter((a): a is number => a != null);
-      const total = amounts.length ? amounts.reduce((a, b) => a + b, 0) : null;
-
-      const channels: Array<'WHATSAPP' | 'EMAIL'> = [];
+      const channels: DispatchKanal[] = [];
       if (settings.whatsapp) channels.push('WHATSAPP');
       if (settings.email) channels.push('EMAIL');
 
-      for (const channel of channels) {
-        // dedupe: aynı belgeler bu kanaldan zaten gönderildiyse atla
-        const existing = await (this.prisma as any).documentDispatch.findUnique({
-          where: { tenantId_dedupeKey_channel: { tenantId, dedupeKey, channel } },
-        });
-        if (existing && existing.status === 'SENT' && !opts.force) {
-          results.push({ taxpayerId: bundle.taxpayerId, channel, status: 'SKIPPED', reason: 'daha önce gönderildi' });
-          continue;
-        }
-
-        const targetPhone = settings.testMode ? settings.testPhone : bundle.phone;
-        const targetEmail = settings.testMode ? settings.testEmail : bundle.email;
-
-        let status = 'FAILED';
-        let error: string | null = null;
-        try {
-          if (channel === 'WHATSAPP') {
-            // ILETISIM- on-eki: rapor bu kodu ariyor. Once serbest metinde
-            // 'telefon' kelimesi araniyordu; metin degisince sayac sessizce
-            // sifirlanirdi.
-            if (!targetPhone) throw new Error(settings.testMode ? 'ILETISIM-test telefonu girilmemiş' : 'ILETISIM-mükellefin telefon numarası yok');
-            // Hattat birebir: tek mesaj, belge LİNK ile (ek balonu yok)
-            const sent = await this.whatsapp.sendMessageDetailed(targetPhone, message, tenantId, { quote: false } as any);
-            if (!(sent as any)?.ok) throw new Error((sent as any)?.error || 'whatsapp gönderilemedi');
-            status = 'SENT';
-          } else {
-            if (!targetEmail) throw new Error(settings.testMode ? 'ILETISIM-test e-postası girilmemiş' : 'ILETISIM-mükellefin e-postası yok');
-            const res = await this.email.send(
-              {
-                to: targetEmail,
-                subject: `${KATEGORI_BASLIK[kategori]} Dökümanları — ${bundle.unvan}`,
-                text: message.replace(/\*/g, ''),
-                attachments: emailAttachments,
-              },
-              tenantId,
-            );
-            if (!res.sent) throw new Error('e-posta gönderilemedi');
-            status = 'SENT';
-          }
-        } catch (e: any) {
-          error = e?.message || String(e);
-        }
-
-        await (this.prisma as any).documentDispatch.upsert({
-          where: { tenantId_dedupeKey_channel: { tenantId, dedupeKey, channel } },
-          create: {
-            tenantId,
-            taxpayerId: bundle.taxpayerId,
-            kategori,
-            donem: bundle.items[0]?.donem || null,
-            channel,
-            status,
-            error,
-            itemCount: bundle.items.length,
-            totalAmount: total,
-            docRefs: bundle.items.map((i) => i.refId),
-            dedupeKey,
-            testMode: !!settings.testMode,
-            sentAt: status === 'SENT' ? new Date() : null,
-          },
-          update: { status, error, sentAt: status === 'SENT' ? new Date() : null, testMode: !!settings.testMode },
-        });
-        results.push({ taxpayerId: bundle.taxpayerId, unvan: bundle.unvan, channel, status, error });
-      }
+      results.push(...(await this.demetGonder(tenantId, kategori, bundle, settings, channels, { force: !!opts.force })));
     }
     return { ok: true, kategori, count: results.length, results };
+  }
+
+  /**
+   * TEK DEMETİN gönderimi: PDF'leri birleştir → depoya koy → kısa link → mesaj → kanal(lar)a gönder
+   * → DocumentDispatch upsert. runKategori (gece akışı) ve gonderSecili (elle seçili) ortak kullanır.
+   * Birleştirme/link üretimi demet başına BİR kez yapılır; kanallar aynı PDF'i paylaşır.
+   * Dönüş: kanal başına sonuç satırı (SKIPPED: daha önce gönderildi; SENT/FAILED).
+   */
+  private async demetGonder(
+    tenantId: string,
+    kategori: DispatchKategori,
+    bundle: TaxpayerBundle,
+    settings: any,
+    channels: DispatchKanal[],
+    opts: { force?: boolean } = {},
+  ): Promise<Array<{ taxpayerId: string; unvan?: string; channel: DispatchKanal; status: string; error?: string | null; reason?: string }>> {
+    const senderName = (settings.senderName || DEFAULT_SENDER).toString();
+    const dedupeKey = this.dedupeKeyFor(kategori, bundle);
+    const results: Array<{ taxpayerId: string; unvan?: string; channel: DispatchKanal; status: string; error?: string | null; reason?: string }> = [];
+
+    // Hattat birebir: belgeler TEK PDF'te birleşir, mesajın sonunda TEK kısa link olur
+    const fileBufs: Array<{ filename: string; buf: Buffer }> = [];
+    for (const it of bundle.items) {
+      for (const f of it.files) {
+        try {
+          fileBufs.push({ filename: f.filename, buf: await this.storage.getBuffer(f.storageKey) });
+        } catch (e: any) {
+          this.logger.warn(`belge okunamadı ${f.filename}: ${e?.message}`);
+        }
+      }
+    }
+    const merged = await mergePdfBuffers(fileBufs.map((x) => x.buf), this.logger);
+    const mergedName = `${KATEGORI_BASLIK[kategori]}-Dokumanlari.pdf`.replace(/İ/g, 'I').replace(/[ğüşıöçĞÜŞÖÇ]/g, (c) => ({ 'ğ': 'g', 'ü': 'u', 'ş': 's', 'ı': 'i', 'ö': 'o', 'ç': 'c', 'Ğ': 'G', 'Ü': 'U', 'Ş': 'S', 'Ö': 'O', 'Ç': 'C' }[c] || c));
+    let links: string[] = [];
+    let emailAttachments: Array<{ filename: string; content: Buffer; contentType?: string }> = [];
+    if (merged) {
+      const key = `${tenantId}/${bundle.taxpayerId}/bildirim/${kategori}_${randomUUID()}.pdf`;
+      await this.storage.putBuffer(key, merged, 'application/pdf');
+      links = [await this.shortLink.create(tenantId, key, mergedName)];
+      emailAttachments = [{ filename: mergedName, content: merged, contentType: 'application/pdf' }];
+    } else {
+      // birleştirme mümkün olmazsa tek tek linkle (yedek yol)
+      for (const f of fileBufs) {
+        emailAttachments.push({ filename: f.filename, content: f.buf, contentType: 'application/pdf' });
+      }
+      for (const it of bundle.items) {
+        for (const f of it.files) {
+          try {
+            links.push(await this.shortLink.create(tenantId, f.storageKey, f.filename));
+          } catch (e: any) {
+            this.logger.warn(`link üretilemedi ${f.filename}: ${e?.message}`);
+          }
+        }
+      }
+    }
+    const message = this.composeMessage(senderName, bundle, kategori, links);
+    const amounts = bundle.items.map((i) => i.amount).filter((a): a is number => a != null);
+    const total = amounts.length ? amounts.reduce((a, b) => a + b, 0) : null;
+
+    for (const channel of channels) {
+      // dedupe: aynı belgeler bu kanaldan zaten gönderildiyse atla
+      const existing = await (this.prisma as any).documentDispatch.findUnique({
+        where: { tenantId_dedupeKey_channel: { tenantId, dedupeKey, channel } },
+      });
+      if (existing && existing.status === 'SENT' && !opts.force) {
+        results.push({ taxpayerId: bundle.taxpayerId, channel, status: 'SKIPPED', reason: 'daha önce gönderildi' });
+        continue;
+      }
+
+      const targetPhone = settings.testMode ? settings.testPhone : bundle.phone;
+      const targetEmail = settings.testMode ? settings.testEmail : bundle.email;
+
+      let status = 'FAILED';
+      let error: string | null = null;
+      try {
+        if (channel === 'WHATSAPP') {
+          // ILETISIM- on-eki: rapor bu kodu ariyor. Once serbest metinde
+          // 'telefon' kelimesi araniyordu; metin degisince sayac sessizce
+          // sifirlanirdi.
+          if (!targetPhone) throw new Error(settings.testMode ? 'ILETISIM-test telefonu girilmemiş' : 'ILETISIM-mükellefin telefon numarası yok');
+          // Hattat birebir: tek mesaj, belge LİNK ile (ek balonu yok)
+          const sent = await this.whatsapp.sendMessageDetailed(targetPhone, message, tenantId, { quote: false } as any);
+          if (!(sent as any)?.ok) throw new Error((sent as any)?.error || 'whatsapp gönderilemedi');
+          status = 'SENT';
+        } else {
+          if (!targetEmail) throw new Error(settings.testMode ? 'ILETISIM-test e-postası girilmemiş' : 'ILETISIM-mükellefin e-postası yok');
+          const res = await this.email.send(
+            {
+              to: targetEmail,
+              subject: `${KATEGORI_BASLIK[kategori]} Dökümanları — ${bundle.unvan}`,
+              text: message.replace(/\*/g, ''),
+              attachments: emailAttachments,
+            },
+            tenantId,
+          );
+          if (!res.sent) throw new Error('e-posta gönderilemedi');
+          status = 'SENT';
+        }
+      } catch (e: any) {
+        error = e?.message || String(e);
+      }
+
+      await (this.prisma as any).documentDispatch.upsert({
+        where: { tenantId_dedupeKey_channel: { tenantId, dedupeKey, channel } },
+        create: {
+          tenantId,
+          taxpayerId: bundle.taxpayerId,
+          kategori,
+          donem: bundle.items[0]?.donem || null,
+          channel,
+          status,
+          error,
+          itemCount: bundle.items.length,
+          totalAmount: total,
+          docRefs: bundle.items.map((i) => i.refId),
+          dedupeKey,
+          testMode: !!settings.testMode,
+          sentAt: status === 'SENT' ? new Date() : null,
+        },
+        update: { status, error, sentAt: status === 'SENT' ? new Date() : null, testMode: !!settings.testMode },
+      });
+      results.push({ taxpayerId: bundle.taxpayerId, unvan: bundle.unvan, channel, status, error });
+    }
+    return results;
+  }
+
+  /**
+   * ELLE SEÇİLİ GÖNDERİM — Beyanname İndirme ekranındaki "Gönder" (POST /beyan-kayitlari/gonder).
+   * Sözleşme §5:
+   *  - Kategori ayarı `enabled=false` olsa da ÇALIŞIR (force); kanal seçimi ayardan değil çağrandan gelir.
+   *  - `testMode=true` ise alıcı ayarlardaki test telefonu/e-postası (gerçek mükellefe gitmez).
+   *  - Aynı mükellefin kayıtları TEK demette (tek birleşik PDF + kısa link) gider.
+   *  - `force` → daha önce SENT olsa da yeniden gönderir (DocumentDispatch upsert/update).
+   * `excludedTaxpayerIds` burada uygulanmaz: kullanıcı kaydı bilerek seçmiştir.
+   * Kayıtlar `taxpayer` include'uyla gelmeli; taxpayer'ı olmayan kayıt atlanır.
+   */
+  async gonderSecili(
+    tenantId: string,
+    kategori: DispatchKategori,
+    kayitlar: Array<{ id: string; beyanTipi: string; donem: string; tahakkukTutari?: unknown; pdfUrl?: string | null; beyannameUrl?: string | null; taxpayer?: TaxpayerLite | null }>,
+    channel: DispatchKanal,
+    opts: { force?: boolean } = {},
+  ): Promise<{ ok: true; testMode: boolean; results: SeciliGonderimSonucu[] }> {
+    if (kategori !== 'VERGI') throw new Error(`gonderSecili yalnız VERGI kategorisini destekler (${kategori})`);
+    const settings = (await this.getSettings(tenantId)).find((s: any) => s.kategori === kategori);
+    if (!settings) throw new Error('Akıllı Bildirim VERGI ayarı bulunamadı');
+    const testMode = !!settings.testMode;
+
+    // Mükellef başına TEK demet
+    const map = new Map<string, TaxpayerBundle>();
+    for (const k of kayitlar) {
+      if (!k.taxpayer) continue;
+      let b = map.get(k.taxpayer.id);
+      if (!b) {
+        b = this.mukellefDemeti(k.taxpayer);
+        map.set(k.taxpayer.id, b);
+      }
+      b.items.push(this.beyanKaydiDemetOgesi(k, b.unvan));
+    }
+
+    const results: SeciliGonderimSonucu[] = [];
+    for (const bundle of map.values()) {
+      if (bundle.items.length === 0) continue;
+      const kanalSonuclari = await this.demetGonder(tenantId, kategori, bundle, settings, [channel], { force: !!opts.force });
+      const r = kanalSonuclari[0];
+      results.push({
+        taxpayerId: bundle.taxpayerId,
+        unvan: bundle.unvan,
+        channel,
+        status: r?.status === 'SENT' ? 'SENT' : 'FAILED',
+        error: r?.status === 'SENT' ? null : (r?.error || r?.reason || 'gönderilemedi'),
+        kayitSayisi: bundle.items.length,
+      });
+    }
+    return { ok: true, testMode, results };
   }
 
   async runAll(tenantId: string, opts: { sinceHours?: number; dryRun?: boolean } = {}) {

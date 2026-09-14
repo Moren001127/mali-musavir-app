@@ -3044,6 +3044,14 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         const retryableCaptchaError = /captcha|dogrulama|doğrulama|login formu|cozulemedi|çözülemedi/i.test(lastError);
         const missingSolver = /TWOCAPTCHA_API_KEY|2captcha in\.php/i.test(lastError);
         if (missingSolver || !retryableCaptchaError || attempt === maxAttempts) {
+          // Son denemede de portal, gönderilen formu reddettiyse (her denemede YENİ güvenlik kodu çözülüp gönderildi)
+          //   şifre büyük olasılıkla yanlıştır → mesaj bunu söyler; hataSiniflandir 'sifre' sayar, 3 GECE KURALI buna bakar.
+          //   Yalnız form-sonrası red metinleri (assertLoggedIn / assertGenericPortalLoginResult) bu sarmalı alır;
+          //   güvenlik kodu servisi / alan bulunamadı gibi hatalar şifre hatası DEĞİLDİR, eski metinle gider.
+          const girisReddedildi = /CAPTCHA cozulemedi veya portal sifreyi reddetti|login formu hala gorunuyor/i.test(lastError);
+          if (attempt === maxAttempts && girisReddedildi) {
+            throw new Error(`Vergi dairesi girisi ${maxAttempts} denemede dogrulanamadi — sifre buyuk olasilikla yanlis (her denemede yeni guvenlik kodu cozuldu): ${lastError}`);
+          }
           throw new Error(`Vergi dairesi girisi dogrulanamadi: ${lastError}`);
         }
       }
@@ -3106,6 +3114,12 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
         const retryableCaptchaError = /captcha|guvenlik|güvenlik|dogrulama|doğrulama|login formu|cozulemedi|çözülemedi/i.test(lastError);
         const missingSolver = /TWOCAPTCHA_API_KEY|2captcha in\.php/i.test(lastError);
         if (missingSolver || !retryableCaptchaError || attempt === maxAttempts) {
+          // Son denemede de portal formu reddettiyse (her denemede yeni güvenlik kodu çözüldü) şifre büyük olasılıkla
+          //   yanlış — GİB döngüsüyle aynı kural (yalnız form-sonrası red metinleri; servis/alan hataları sarmalanmaz).
+          const girisReddedildi = /CAPTCHA cozulemedi veya portal sifreyi reddetti|login formu hala gorunuyor/i.test(lastError);
+          if (attempt === maxAttempts && girisReddedildi) {
+            throw new Error(`SGK girisi ${maxAttempts} denemede dogrulanamadi — sifre buyuk olasilikla yanlis (her denemede yeni guvenlik kodu cozuldu): ${lastError}`);
+          }
           throw new Error(`SGK girisi dogrulanamadi: ${lastError}`);
         }
       }

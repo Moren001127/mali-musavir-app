@@ -1,9 +1,29 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
+import { Prisma } from '@prisma/client';
 import { createHash, randomUUID } from 'crypto';
 import { PDFParse } from 'pdf-parse';
 import JSZip from 'jszip';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  aramaParcalari,
+  belgeSatiriKur,
+  belgeTuruListesi,
+  donemVaryantlari,
+  hataSiniflandir,
+  iletimEsle,
+  iletimKategorisi,
+  likeKacis,
+  satirBelgeIdleri,
+  sayfaBoyutuCoz,
+  sayfaCoz,
+  sgkBelgeTuruMu,
+  sgkBirlesikAnahtar,
+  sgkBirlesikSatirKur,
+  type BelgeSatiri,
+  type HataBilgisi,
+  type SayfaBelgeKaydi,
+} from './belge-sayfa';
 import { StorageService } from '../storage/storage.service';
 import { encrypt, tryDecrypt } from '../common/crypto';
 import { resolveTenantFromAgentToken as resolveAgentTenant } from '../common/agent-token';
@@ -142,6 +162,36 @@ type AgentDocumentInput = {
   base64?: string | null;
   raw?: any;
 };
+
+/** GET /portal-automation/documents/sayfa sorgu parametreleri (sözleşme §1). */
+type SayfaSorgusu = {
+  belgeTuru?: string;
+  taxpayerId?: string;
+  search?: string;
+  period?: string;
+  durum?: string;
+  birlesik?: string;
+  page?: string | number;
+  pageSize?: string | number;
+  sirala?: string;
+};
+
+/** Sayfa uçlarının portalDocument.select'i — raw yalnız özet çıkarmak için okunur, yanıta girmez. */
+const SAYFA_BELGE_SELECT = {
+  id: true,
+  taxpayerId: true,
+  belgeTuru: true,
+  title: true,
+  referenceNo: true,
+  period: true,
+  issuedAt: true,
+  receivedAt: true,
+  createdAt: true,
+  storageKey: true,
+  viewedAt: true,
+  raw: true,
+  taxpayer: { select: { id: true, companyName: true, firstName: true, lastName: true, taxNumber: true } },
+} as const;
 
 function isPortalProvider(v: string): v is PortalProvider {
   return (PORTAL_PROVIDERS as readonly string[]).includes(v);
@@ -371,10 +421,12 @@ export class PortalAutomationService {
       sgkErrorRows,
       latestJobs,
       latestDocuments,
+      tebligatBuHaftaTeblig,
+      failedNightly7d,
     ] = await Promise.all([
       (this.prisma as any).portalCredential.findMany({
         where: { tenantId },
-        include: { taxpayer: { select: { id: true, companyName: true, firstName: true, lastName: true, taxNumber: true } } },
+        include: { taxpayer: { select: { id: true, companyName: true, firstName: true, lastName: true, taxNumber: true, isActive: true } } },
       }),
       (this.prisma as any).portalAutomationJob.count({ where: { tenantId, status: { in: ['pending', 'running'] } } }),
       (this.prisma as any).portalAutomationJob.count({ where: { tenantId, status: 'failed', createdAt: { gte: dayAgo } } }),
@@ -413,6 +465,16 @@ export class PortalAutomationService {
       }),
       this.listJobs(tenantId, { limit: 8 }),
       this.listDocuments(tenantId, { limit: 8 }),
+      // Bu hafta tebliğ edilecekler: tebliğ zamanı (receivedAt) ∈ (şimdi, şimdi+7g] (sözleşme §3).
+      (this.prisma as any).portalDocument.count({
+        where: { tenantId, belgeTuru: 'E_TEBLIGAT', receivedAt: { gt: now, lte: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000) } },
+      }),
+      // Son 7 gecenin başarısız gece işleri (şifre bloğu kartındaki "gece sayısı" için; mükellef bazında gruplanır).
+      (this.prisma as any).portalAutomationJob.findMany({
+        where: { tenantId, source: 'nightly', status: 'failed', createdAt: { gte: sevenDaysAgo }, taxpayerId: { not: null } },
+        select: { taxpayerId: true, jobType: true, errorMessage: true, createdAt: true },
+        take: 5000,
+      }),
     ]);
 
     const tebligatErrors = (Array.isArray(tebligatErrorRows) ? tebligatErrorRows : [])
@@ -425,6 +487,8 @@ export class PortalAutomationService {
           || 'Mükellef',
         taxNumber: r.taxpayer?.taxNumber || null,
         reason: r.errorMessage || null,
+        // Sınıflandırılmış hata (şifre / güvenlik kodu / bağlantı / diğer) — kullanıcı metniyle (sözleşme §3).
+        hata: hataSiniflandir(r.errorMessage),
       }));
     const tebligatErrorCount = tebligatErrors.length;
     const sgkErrors = (Array.isArray(sgkErrorRows) ? sgkErrorRows : [])
@@ -437,9 +501,11 @@ export class PortalAutomationService {
           || 'Mükellef',
         taxNumber: r.taxpayer?.taxNumber || null,
         reason: r.errorMessage || null,
+        hata: hataSiniflandir(r.errorMessage),
       }));
     const sgkErrorCount = sgkErrors.length;
     const credentials = this.summarizeCredentials(credentialRows);
+    const credentialsBlocked = this.blockedCredentials(credentialRows, Array.isArray(failedNightly7d) ? failedNightly7d : []);
     return {
       nightly: {
         active: true,
@@ -453,12 +519,57 @@ export class PortalAutomationService {
         deviceId: process.env.PORTAL_AUTOMATION_RAILWAY_DEVICE_ID || 'railway-portal-runner',
         jobTypes: this.runnerJobTypes(),
       },
-      stats: { activeJobs, failed24h, done24h, docs7d, tebligat7d, tebligatTotal, tebligatErrorCount, tebligatErrors, sgkTotal, sgkErrorCount, sgkErrors },
+      stats: { activeJobs, failed24h, done24h, docs7d, tebligat7d, tebligatTotal, tebligatErrorCount, tebligatErrors, sgkTotal, sgkErrorCount, sgkErrors, tebligatBuHaftaTeblig },
       credentials,
+      credentialsBlocked,
       latestJobs,
       latestDocuments,
       jobTypes: PORTAL_JOB_TYPES.map((type) => ({ type, ...JOB_META[type] })),
     };
+  }
+
+  /**
+   * Şifre hatasıyla bloklu portal girişleri (sözleşme §3 credentialsBlocked): lastError sınıfı 'sifre' olan
+   * aktif şifreler. geceSayisi = son 7 gecede o mükellef/portal için başarısız GECE işi olan farklı gün sayısı
+   * (aynı gece birden çok SGK işi tek gece sayılır); since = bu penceredeki ilk şifre-hatalı gece işi, yoksa lastCheckedAt.
+   */
+  private blockedCredentials(
+    credentialRows: any[],
+    failedNightly7d: Array<{ taxpayerId: string | null; jobType: string; errorMessage: string | null; createdAt: Date }>,
+  ): Array<{ provider: string; taxpayerId: string | null; ad: string; taxNumber: string | null; since: string | null; hata: HataBilgisi; geceSayisi: number }> {
+    const geceler = new Map<string, Set<string>>(); // `${taxpayerId}|${provider}` → gün anahtarları
+    const ilkHata = new Map<string, Date>();
+    for (const j of failedNightly7d) {
+      const provider = JOB_META[j.jobType as PortalJobType]?.provider;
+      if (!provider || !j.taxpayerId) continue;
+      if (hataSiniflandir(j.errorMessage).tur !== 'sifre') continue;
+      const key = `${j.taxpayerId}|${provider}`;
+      const gun = startOfIstanbulDay(new Date(j.createdAt)).toISOString();
+      const set = geceler.get(key) || new Set<string>();
+      set.add(gun);
+      geceler.set(key, set);
+      const onceki = ilkHata.get(key);
+      if (!onceki || new Date(j.createdAt) < onceki) ilkHata.set(key, new Date(j.createdAt));
+    }
+    const collator = new Intl.Collator('tr', { sensitivity: 'base' });
+    return (Array.isArray(credentialRows) ? credentialRows : [])
+      .filter((c: any) => c?.lastError && c.isActive !== false && c.taxpayer?.isActive !== false)
+      .map((c: any) => ({ c, hata: hataSiniflandir(c.lastError) }))
+      .filter(({ hata }) => hata.tur === 'sifre')
+      .map(({ c, hata }) => {
+        const key = `${c.taxpayerId || ''}|${c.provider}`;
+        const since = ilkHata.get(key) || (c.lastCheckedAt ? new Date(c.lastCheckedAt) : null);
+        return {
+          provider: String(c.provider),
+          taxpayerId: c.taxpayerId || null,
+          ad: c.ownerType === 'TENANT' ? 'Mali müşavir (e-Beyanname)' : adFormat(c.taxpayer) || 'Mükellef',
+          taxNumber: c.taxpayer?.taxNumber || null,
+          since: since && !Number.isNaN(since.getTime()) ? since.toISOString() : null,
+          hata,
+          geceSayisi: geceler.get(key)?.size || 0,
+        };
+      })
+      .sort((a, b) => collator.compare(a.ad, b.ad));
   }
 
   async credentialStatus(tenantId: string) {
@@ -682,6 +793,258 @@ export class PortalAutomationService {
       orderBy: [{ issuedAt: { sort: 'desc', nulls: 'last' } }, { receivedAt: { sort: 'desc', nulls: 'last' } }, { createdAt: 'desc' }],
       ...(take !== undefined ? { take } : {}),
     });
+  }
+
+  // ══════════════════════════════════════════════════════════════════════
+  // SAYFALI belge listesi — GET /portal-automation/documents/sayfa (sözleşme §1)
+  // listDocuments() mobil/masaüstü tarafından kullanıldığı için DOKUNULMADI; bu ayrı uç.
+  // Yol: süzgeç + sıralama + sayfa TEK ham SQL'de (parametreli $queryRaw şablonu, metin birleştirme YOK) →
+  //   sayfanın belge id'leri/anahtarları; veri Prisma findMany + select ile çekilir. Neden ham SQL:
+  //   (1) 'mukellef' sıralaması unvan '' / NULL karışık (canlı veri) — COALESCE(NULLIF(...)) gerekiyor,
+  //   (2) raw JSON'da kurum/kanun araması ILIKE ile harfe DUYARSIZ olsun, (3) SGK birleşik mod GROUP BY ister;
+  //   böylece iki mod aynı süzgeç kodunu paylaşır. raw JSON yanıta girmez; yalnız özet (ozet) çıkarılır.
+  // ══════════════════════════════════════════════════════════════════════
+  async listDocumentsSayfa(tenantId: string, q: SayfaSorgusu = {}) {
+    const belgeTurleri = belgeTuruListesi(q.belgeTuru);
+    if (!belgeTurleri.length) throw new BadRequestException('belgeTuru zorunlu');
+    const page = sayfaCoz(q.page);
+    const pageSize = sayfaBoyutuCoz(q.pageSize);
+    const now = new Date();
+    const sirala = ['yeni', 'eski', 'mukellef'].includes(String(q.sirala || '')) ? String(q.sirala) : 'yeni';
+    const durum = String(q.durum || '').trim();
+    const taxpayerId = String(q.taxpayerId || '').trim();
+    const donemler = donemVaryantlari(q.period);
+    const parcalar = aramaParcalari(q.search);
+    const tebligatVar = belgeTurleri.includes('E_TEBLIGAT');
+    const sgkVar = belgeTurleri.some(sgkBelgeTuruMu);
+    // Birleşik mod yalnız SGK belgeleri için anlamlı (tahakkuk + hizmet listesi tek satır).
+    const birlesik = ['1', 'true', 'evet'].includes(String(q.birlesik || '').trim().toLowerCase()) && sgkVar && !tebligatVar;
+
+    // ── WHERE (her iki mod ortak) ──
+    const kosullar: Prisma.Sql[] = [
+      Prisma.sql`d."tenantId" = ${tenantId}`,
+      Prisma.sql`d."belgeTuru" IN (${Prisma.join(belgeTurleri)})`,
+    ];
+    if (taxpayerId) kosullar.push(Prisma.sql`d."taxpayerId" = ${taxpayerId}`);
+    // Dönem: SGK → period alanı ('2024/05' ya da '2024-05'); tebligat → issuedAt ayı (YYYY-MM).
+    if (donemler.length) {
+      const aylik = monthRange(donemler.find((d) => d.includes('-')) || null);
+      const donemKosullari: Prisma.Sql[] = [];
+      if (sgkVar || !tebligatVar || !aylik) donemKosullari.push(Prisma.sql`d."period" IN (${Prisma.join(donemler)})`);
+      if (tebligatVar && aylik) donemKosullari.push(Prisma.sql`(d."issuedAt" >= ${aylik.start} AND d."issuedAt" < ${aylik.end})`);
+      kosullar.push(Prisma.sql`(${Prisma.join(donemKosullari, ' OR ')})`);
+    }
+    // Durum süzgeci (SGK tahakkuk/hizmet birleşik modda HAVING ile).
+    switch (durum) {
+      case 'teblig_yaklasan':
+        kosullar.push(Prisma.sql`(d."receivedAt" >= ${now} AND d."receivedAt" <= ${new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000)})`);
+        break;
+      case 'teblig_edildi':
+        kosullar.push(Prisma.sql`d."receivedAt" < ${now}`);
+        break;
+      case 'goruntulenmemis':
+        kosullar.push(Prisma.sql`d."viewedAt" IS NULL`);
+        break;
+      case 'tahakkuk':
+        if (!birlesik) kosullar.push(Prisma.sql`d."belgeTuru" = 'SGK_TAHAKKUK'`);
+        break;
+      case 'hizmet':
+        if (!birlesik) kosullar.push(Prisma.sql`d."belgeTuru" = 'SGK_HIZMET_LISTESI'`);
+        break;
+      default:
+        break;
+    }
+    // Arama: her parça (boşlukla ayrılmış) ayrı ayrı eşleşmeli; ILIKE → büyük/küçük harf duyarsız
+    //   (mükellef adı/VKN, belge no, kurum/alt kurum; SGK'da dönem ve kanun no).
+    for (const parca of parcalar) {
+      const p = `%${likeKacis(parca)}%`;
+      const alanlar: Prisma.Sql[] = [
+        Prisma.sql`t."companyName" ILIKE ${p}`,
+        Prisma.sql`t."firstName" ILIKE ${p}`,
+        Prisma.sql`t."lastName" ILIKE ${p}`,
+        Prisma.sql`t."taxNumber" ILIKE ${p}`,
+        Prisma.sql`d."referenceNo" ILIKE ${p}`,
+        Prisma.sql`d."raw"->>'kurumAciklama' ILIKE ${p}`,
+        Prisma.sql`d."raw"->>'altKurum' ILIKE ${p}`,
+      ];
+      if (sgkVar) alanlar.push(Prisma.sql`d."period" ILIKE ${p}`, Prisma.sql`d."raw"->>'kanunNo' ILIKE ${p}`);
+      kosullar.push(Prisma.sql`(${Prisma.join(alanlar, ' OR ')})`);
+    }
+    const kaynak = Prisma.sql`FROM "portal_documents" d LEFT JOIN "taxpayers" t ON t."id" = d."taxpayerId" WHERE ${Prisma.join(kosullar, ' AND ')}`;
+    // LIMIT/OFFSET doğrulanmış tam sayılar (sayfaCoz/sayfaBoyutuCoz) → metne gömülür.
+    const limit = Prisma.raw(String(pageSize));
+    const offset = Prisma.raw(String((page - 1) * pageSize));
+    // Mükellef adı: unvan; unvan boş/NULL ise ad soyad (canlı veride her iki biçim de var).
+    const mukellefAdi = Prisma.sql`COALESCE(NULLIF(t."companyName", ''), NULLIF(TRIM(CONCAT(t."firstName", ' ', t."lastName")), ''))`;
+
+    if (birlesik) {
+      return this.listSgkBirlesikSayfa(tenantId, { belgeTurleri, kaynak, durum, sirala, page, pageSize, limit, offset, mukellefAdi, now });
+    }
+
+    // ── Düz mod: id sayfası + toplam (SQL) → belgeler (Prisma) ──
+    const tarihAlani = tebligatVar || !sgkVar ? Prisma.sql`d."issuedAt"` : Prisma.sql`d."period"`;
+    const siralama = sirala === 'mukellef'
+      ? Prisma.sql`ORDER BY ${mukellefAdi} ASC NULLS LAST, ${tarihAlani} DESC NULLS LAST, d."createdAt" DESC`
+      : sirala === 'eski'
+        ? Prisma.sql`ORDER BY ${tarihAlani} ASC NULLS LAST, d."createdAt" ASC`
+        : Prisma.sql`ORDER BY ${tarihAlani} DESC NULLS LAST, d."createdAt" DESC`;
+    const [idSatirlari, sayim] = await Promise.all([
+      this.prisma.$queryRaw<Array<{ id: string }>>`SELECT d."id" ${kaynak} ${siralama} LIMIT ${limit} OFFSET ${offset}`,
+      this.prisma.$queryRaw<Array<{ n: number }>>`SELECT COUNT(*)::int AS "n" ${kaynak}`,
+    ]);
+    const total = Number(sayim?.[0]?.n ?? 0);
+    const idler = idSatirlari.map((r) => r.id);
+    if (!idler.length) return { rows: [] as BelgeSatiri[], total, page, pageSize };
+    const docs: SayfaBelgeKaydi[] = await (this.prisma as any).portalDocument.findMany({
+      where: { tenantId, id: { in: idler } },
+      select: SAYFA_BELGE_SELECT,
+    });
+    const sira = new Map(idler.map((id, i) => [id, i]));
+    docs.sort((a, b) => (sira.get(a.id) ?? 0) - (sira.get(b.id) ?? 0));
+    const rows = docs.map((d) => belgeSatiriKur(d, now));
+    await this.sayfaIletimEkle(tenantId, belgeTurleri, rows, pageSize);
+    return { rows, total, page, pageSize };
+  }
+
+  /**
+   * SGK birleşik sayfa: aynı bildirgenin tahakkuk + hizmet listesi belgeleri mükellef + (referenceNo || period)
+   * anahtarıyla TEK satır. Sayfalama birleşik satır üzerinden: ham SQL GROUP BY ile anahtar sayfası + toplam,
+   * sonra o anahtarların belgeleri Prisma ile çekilip satırlar kurulur (tahakkuk id'si satır id'si).
+   */
+  private async listSgkBirlesikSayfa(
+    tenantId: string,
+    o: { belgeTurleri: string[]; kaynak: Prisma.Sql; durum: string; sirala: string; page: number; pageSize: number; limit: Prisma.Sql; offset: Prisma.Sql; mukellefAdi: Prisma.Sql; now: Date },
+  ) {
+    // durum=tahakkuk|hizmet → birleşik satırda ilgili alt belgesi olanlar.
+    const having = o.durum === 'tahakkuk'
+      ? Prisma.sql`HAVING bool_or(d."belgeTuru" = 'SGK_TAHAKKUK')`
+      : o.durum === 'hizmet'
+        ? Prisma.sql`HAVING bool_or(d."belgeTuru" = 'SGK_HIZMET_LISTESI')`
+        : Prisma.empty;
+    const govde = Prisma.sql`${o.kaynak} GROUP BY d."taxpayerId", COALESCE(d."referenceNo", d."period") ${having}`;
+    const siralama = o.sirala === 'mukellef'
+      ? Prisma.sql`ORDER BY MAX(${o.mukellefAdi}) ASC NULLS LAST, MAX(d."period") DESC NULLS LAST, MAX(d."createdAt") DESC`
+      : o.sirala === 'eski'
+        ? Prisma.sql`ORDER BY MAX(d."period") ASC NULLS LAST, MAX(d."createdAt") ASC`
+        : Prisma.sql`ORDER BY MAX(d."period") DESC NULLS LAST, MAX(d."createdAt") DESC`;
+
+    const [anahtarlar, sayim] = await Promise.all([
+      this.prisma.$queryRaw<Array<{ taxpayerId: string | null; anahtar: string | null }>>`
+        SELECT d."taxpayerId" AS "taxpayerId", COALESCE(d."referenceNo", d."period") AS "anahtar"
+        ${govde}
+        ${siralama}
+        LIMIT ${o.limit} OFFSET ${o.offset}`,
+      this.prisma.$queryRaw<Array<{ n: number }>>`SELECT COUNT(*)::int AS "n" FROM (SELECT 1 ${govde}) g`,
+    ]);
+    const total = Number(sayim?.[0]?.n ?? 0);
+    if (!anahtarlar.length) return { rows: [] as BelgeSatiri[], total, page: o.page, pageSize: o.pageSize };
+
+    // Sayfadaki anahtarların belgeleri (tahakkuk + hizmet) — IN ile çek, bellekte anahtara göre grupla.
+    const tpIdler = Array.from(new Set(anahtarlar.map((a) => a.taxpayerId).filter((v): v is string => Boolean(v))));
+    const anahtarMetinleri = Array.from(new Set(anahtarlar.map((a) => a.anahtar).filter((v): v is string => Boolean(v))));
+    const docs: SayfaBelgeKaydi[] = await (this.prisma as any).portalDocument.findMany({
+      where: {
+        tenantId,
+        belgeTuru: { in: o.belgeTurleri },
+        ...(tpIdler.length ? { taxpayerId: { in: tpIdler } } : {}),
+        OR: [
+          { referenceNo: { in: anahtarMetinleri } },
+          { referenceNo: null, period: { in: anahtarMetinleri } },
+        ],
+      },
+      select: SAYFA_BELGE_SELECT,
+    });
+    const gruplar = new Map<string, SayfaBelgeKaydi[]>();
+    for (const d of docs) {
+      const k = sgkBirlesikAnahtar(d);
+      const g = gruplar.get(k) || [];
+      g.push(d);
+      gruplar.set(k, g);
+    }
+    const rows: BelgeSatiri[] = [];
+    for (const a of anahtarlar) {
+      const grup = gruplar.get(`${a.taxpayerId || ''}|${a.anahtar || ''}`) || [];
+      const satir = sgkBirlesikSatirKur(grup, o.now);
+      if (satir) rows.push(satir);
+    }
+    await this.sayfaIletimEkle(tenantId, o.belgeTurleri, rows, o.pageSize);
+    return { rows, total, page: o.page, pageSize: o.pageSize };
+  }
+
+  /**
+   * Sayfadaki satırlara iletim bilgisini yazar: document_dispatches (kategori ETEBLIGAT/SGK, sayfadaki
+   * mükellefler) çekilir, docRefs dizisi belge id'sini içerenler bellekte eşlenir (kanal başına en yenisi).
+   */
+  private async sayfaIletimEkle(tenantId: string, belgeTurleri: string[], rows: BelgeSatiri[], pageSize: number) {
+    if (!rows.length) return;
+    const kategoriler = Array.from(new Set(belgeTurleri.map(iletimKategorisi).filter((v): v is 'SGK' | 'ETEBLIGAT' => Boolean(v))));
+    const tpIdler = Array.from(new Set(rows.map((r) => r.taxpayerId).filter((v): v is string => Boolean(v))));
+    if (!kategoriler.length || !tpIdler.length) return;
+    const gonderimler: any[] = await (this.prisma as any).documentDispatch.findMany({
+      where: { tenantId, kategori: kategoriler.length > 1 ? { in: kategoriler } : kategoriler[0], taxpayerId: { in: tpIdler } },
+      orderBy: { createdAt: 'desc' },
+      select: { channel: true, status: true, sentAt: true, error: true, testMode: true, docRefs: true, createdAt: true },
+      // Dışa aktarım sayfalarında (pageSize > 100) daha geniş pencere.
+      take: pageSize > 100 ? 3000 : 500,
+    }).catch(() => []);
+    if (!gonderimler.length) return;
+    for (const satir of rows) satir.iletim = iletimEsle(satirBelgeIdleri(satir), gonderimler);
+  }
+
+  /**
+   * GET /portal-automation/documents/mukellefler?belgeTuru=… (sözleşme §2)
+   * Süzgeç listesi: belgesi olan mükellefler ∪ ilgili portal şifresi olanlar (tebligat GIB_IVD, SGK SGK_EBILDIRGE).
+   */
+  async listDocumentTaxpayers(tenantId: string, belgeTuru?: string) {
+    const belgeTurleri = belgeTuruListesi(belgeTuru);
+    if (!belgeTurleri.length) throw new BadRequestException('belgeTuru zorunlu');
+    const providers: PortalProvider[] = [];
+    if (belgeTurleri.includes('E_TEBLIGAT')) providers.push('GIB_IVD');
+    if (belgeTurleri.some(sgkBelgeTuruMu)) providers.push('SGK_EBILDIRGE');
+
+    const [sayimlar, sifreler] = await Promise.all([
+      (this.prisma as any).portalDocument.groupBy({
+        by: ['taxpayerId'],
+        where: { tenantId, belgeTuru: { in: belgeTurleri }, taxpayerId: { not: null } },
+        _count: { _all: true },
+      }) as Promise<Array<{ taxpayerId: string | null; _count: { _all: number } }>>,
+      providers.length
+        ? ((this.prisma as any).portalCredential.findMany({
+            where: { tenantId, provider: { in: providers }, ownerType: 'TAXPAYER', taxpayerId: { not: null } },
+            select: { taxpayerId: true, provider: true, isActive: true, lastError: true, encryptedPassword: true, encryptedSecondaryPassword: true, updatedAt: true },
+            orderBy: { updatedAt: 'desc' },
+          }) as Promise<any[]>)
+        : Promise.resolve([] as any[]),
+    ]);
+
+    const belgeSayisi = new Map<string, number>();
+    for (const s of sayimlar) if (s.taxpayerId) belgeSayisi.set(s.taxpayerId, Number(s._count?._all ?? 0));
+    const sifreVar = new Map<string, boolean>();
+    const sifreHatasi = new Map<string, string | null>();
+    for (const c of sifreler) {
+      const id = String(c.taxpayerId);
+      const var_ = c.isActive !== false && Boolean(c.encryptedPassword || c.encryptedSecondaryPassword);
+      sifreVar.set(id, Boolean(sifreVar.get(id)) || var_);
+      if (!sifreHatasi.has(id) || (!sifreHatasi.get(id) && c.lastError)) sifreHatasi.set(id, c.lastError || null);
+    }
+    const idler = Array.from(new Set([...belgeSayisi.keys(), ...sifreVar.keys()]));
+    if (!idler.length) return { rows: [] };
+    const mukellefler: any[] = await (this.prisma as any).taxpayer.findMany({
+      where: { tenantId, id: { in: idler } },
+      select: { id: true, companyName: true, firstName: true, lastName: true, taxNumber: true },
+    });
+    const collator = new Intl.Collator('tr', { sensitivity: 'base' });
+    const rows = mukellefler
+      .map((tp) => ({
+        id: tp.id,
+        ad: adFormat(tp),
+        taxNumber: tp.taxNumber || null,
+        belgeSayisi: belgeSayisi.get(tp.id) || 0,
+        sifreVar: sifreVar.get(tp.id) || false,
+        sifreHatasi: sifreHatasi.get(tp.id) || null,
+      }))
+      .sort((a, b) => collator.compare(a.ad, b.ad));
+    return { rows };
   }
 
   async getDocumentViewUrl(tenantId: string, docId: string) {
@@ -1495,6 +1858,14 @@ export class PortalAutomationService {
           skipped.push({ jobType, taxpayerId, reason: 'Mukellef portal sifresi yok' });
           continue;
         }
+        // 3 GECE KURALI (sözleşme §3): yalnız GECE işlerinde. Şifre kaydı 'sifre' türü hatadaysa VE bu
+        //   mükellefin aynı iş tipindeki son 3 işi de şifre hatasıyla bittiyse iş AÇILMAZ — her gece aynı
+        //   yanlış şifreyle portalı yormanın (ve hesabı kilitletmenin) anlamı yok. saveCredential şifre
+        //   değişince lastError=null yapar → ertesi gece yeniden denenir. Elle "Şimdi sorgula" (manual) MUAF.
+        if (opts.source === 'nightly' && (await this.ucGeceSifreHatasiMi(tenantId, taxpayerId, jobType, credential))) {
+          skipped.push({ jobType, taxpayerId, reason: '3 gece üst üste şifre hatası — şifre güncellenene kadar sorgu dışı' });
+          continue;
+        }
         const duplicate = opts.force ? null : await this.findDuplicateJob(tenantId, jobType, taxpayerId, opts.source, opts.dedupeAfter);
         if (duplicate) {
           skipped.push({ jobType, taxpayerId, reason: 'Bu gece icin zaten kuyrukta' });
@@ -1674,6 +2045,23 @@ export class PortalAutomationService {
     return (this.prisma as any).portalCredential.findUnique({
       where: { tenantId_provider_ownerType_ownerId: { tenantId, provider, ownerType, ownerId } },
     });
+  }
+
+  /**
+   * 3 GECE KURALI denetimi: şifre kaydının son hatası 'sifre' türü mü VE aynı tenant/mükellef/iş tipinde
+   * son 3 iş (kaynağa bakılmaksızın; elle deneme başarılı olduysa seri kırılır) hepsi failed + 'sifre' türü mü?
+   * Sorgu yalnız lastError şifre hatası olduğunda atılır (gece döngüsünde ek yük yok).
+   */
+  private async ucGeceSifreHatasiMi(tenantId: string, taxpayerId: string, jobType: PortalJobType, credential: any): Promise<boolean> {
+    if (!credential?.lastError || hataSiniflandir(credential.lastError).tur !== 'sifre') return false;
+    const sonIsler: Array<{ status: string; errorMessage: string | null }> = await (this.prisma as any).portalAutomationJob.findMany({
+      where: { tenantId, taxpayerId, jobType },
+      orderBy: { createdAt: 'desc' },
+      take: 3,
+      select: { status: true, errorMessage: true },
+    });
+    if (sonIsler.length < 3) return false;
+    return sonIsler.every((j) => j.status === 'failed' && hataSiniflandir(j.errorMessage).tur === 'sifre');
   }
 
   private resolveRequestedJobTypes(input: ManualRunInput): PortalJobType[] {

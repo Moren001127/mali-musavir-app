@@ -14,6 +14,8 @@ export class BeyanKayitlariController {
   constructor(private svc: BeyanKayitlariService) {}
 
   // ── LİSTE ───────────────────────────────────────────
+  // `page` verilirse SAYFALI mod ({ rows, total, page, pageSize } — sözleşme §4),
+  // verilmezse eski dizi yanıtı aynen (mobil / mükellef kartı).
   @Get()
   list(
     @Req() req: any,
@@ -22,19 +24,43 @@ export class BeyanKayitlariController {
     @Query('donem') donem?: string,
     @Query('search') search?: string,
     @Query('limit') limit?: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+    @Query('donemBas') donemBas?: string,
+    @Query('donemBit') donemBit?: string,
+    @Query('belge') belge?: string,
+    @Query('iletim') iletim?: string,
+    @Query('sirala') sirala?: string,
   ) {
+    const sayfali = page != null && String(page).trim() !== '';
     return this.svc.list(req.user.tenantId, {
       taxpayerId,
       beyanTipi,
       donem,
       search,
       limit: limit ? parseInt(limit, 10) : undefined,
+      // Sayfalı mod: geçersiz sayfa/boyut serviste 1 / 50'ye çekilir
+      page: sayfali ? parseInt(String(page), 10) : undefined,
+      pageSize: pageSize ? parseInt(pageSize, 10) : undefined,
+      donemBas,
+      donemBit,
+      belge,
+      iletim,
+      sirala,
     });
   }
 
   @Get('ozet')
   ozet(@Req() req: any) {
     return this.svc.ozet(req.user.tenantId);
+  }
+
+  // ── ELLE GÖNDER (sözleşme §5) ───────────────────────
+  // body: { ids: string[] (1..50), channel: 'WHATSAPP' | 'EMAIL' }
+  // yanıt: { ok: true, testMode, results: [{ taxpayerId, unvan, channel, status, error, kayitSayisi }] }
+  @Post('gonder')
+  gonder(@Req() req: any, @Body() body: { ids?: unknown; channel?: unknown }) {
+    return this.svc.gonder(req.user.tenantId, body || {});
   }
 
   @Delete('bulk')

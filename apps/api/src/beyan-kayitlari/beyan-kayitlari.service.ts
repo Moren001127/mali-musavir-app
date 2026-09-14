@@ -1,4 +1,5 @@
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { randomUUID } from 'crypto';
 import * as AdmZip from 'adm-zip';
 import * as iconv from 'iconv-lite';
@@ -11,6 +12,14 @@ import {
   parseMukellefKlasoru, parseBeyanTipiKlasoru, mapBeyanTipi,
   parsePdfAd, formatDonem, adBenzerlik, normalizeAd,
 } from './hattat-zip-parser';
+import {
+  donemAraligiWhere, iletimHaritasiKur, iletimSuzgecIdleri, sayfaBoyutuNormalize, sayfaNoNormalize,
+  type GonderimSatiri, type IletimBilgisi, type IletimSecimi,
+} from './beyan-sayfa';
+// YALNIZ TİP: derlemede silinir. Sınıfın kendisi çağrı anında dinamik import + ModuleRef ile çözülür
+// (statik import BeyanKayitlari→AkilliBildirim→WhatsApp→MorenAi→KdvBeyanname→BeyanKayitlari modül
+// döngüsü yaratıp açılışı çökertir; bkz. fatura-muhasebelestirme'deki aynı kalıp).
+import type { AkilliBildirimService, SeciliGonderimSonucu } from '../akilli-bildirim/akilli-bildirim.service';
 
 /**
  * ZIP entry'sinin adını Türkçe encoding'e göre decode et.
@@ -108,6 +117,7 @@ export class BeyanKayitlariService {
   constructor(
     private prisma: PrismaService,
     private storage: StorageService,
+    private readonly moduleRef: ModuleRef,
   ) {}
 
   private isTemporaryTaxType(type?: string | null) {
@@ -965,10 +975,31 @@ export class BeyanKayitlariService {
     return { batchId, results };
   }
 
-  /** Listele — filtre + mükellef join */
+  /** Liste satırındaki mükellef alanları (sözleşme §4) — sayfasız ve sayfalı mod aynı seçimi kullanır. */
+  private static readonly LISTE_TAXPAYER_SELECT = {
+    id: true,
+    companyName: true,
+    firstName: true,
+    lastName: true,
+    taxNumber: true,
+    email: true,
+    emails: true,
+    phone: true,
+    phones: true,
+  } as const;
+
+  /**
+   * Listele — filtre + mükellef join.
+   * `page` verilirse SAYFALI mod (sözleşme §4: `{ rows, total, page, pageSize }`), verilmezse
+   * ESKİ dizi yanıtı aynen (mobil / mükellef kartı bunu kullanıyor; dokunulmadı).
+   */
   async list(
     tenantId: string,
-    opts: { taxpayerId?: string; beyanTipi?: string; donem?: string; search?: string; limit?: number } = {},
+    opts: {
+      taxpayerId?: string; beyanTipi?: string; donem?: string; search?: string; limit?: number;
+      page?: number; pageSize?: number; donemBas?: string; donemBit?: string;
+      belge?: string; iletim?: string; sirala?: string;
+    } = {},
   ) {
     // Onarım ARTIK liste yanıtını BLOKLAMIYOR ve her çağrıda çalışmıyor: tenant başına en fazla
     // 5 dk'da bir, arka planda (await'siz). Liste anında döner; donmayı besleyen poll-başı yük gider.
@@ -980,6 +1011,8 @@ export class BeyanKayitlariService {
         this.logger.warn(`Gecici vergi liste onarimi calismadi: ${err?.message || err}`);
       });
     }
+
+    if (opts.page != null) return this.listSayfali(tenantId, opts);
 
     const where: any = { tenantId };
     if (opts.taxpayerId) where.taxpayerId = opts.taxpayerId;
@@ -996,24 +1029,175 @@ export class BeyanKayitlariService {
 
     return (this.prisma as any).beyanKaydi.findMany({
       where,
-      include: {
-        taxpayer: {
-          select: {
-            id: true,
-            companyName: true,
-            firstName: true,
-            lastName: true,
-            taxNumber: true,
-            email: true,
-            emails: true,
-            phone: true,
-            phones: true,
-          },
-        },
-      },
+      include: { taxpayer: { select: BeyanKayitlariService.LISTE_TAXPAYER_SELECT } },
       orderBy: [{ donem: 'desc' }, { beyanTipi: 'asc' }],
       take: opts.limit || 500,
     });
+  }
+
+  /**
+   * SAYFALI liste (sözleşme §4). Süzgeçler:
+   *  - beyanTipi: virgülle çoklu (`KDV1,KDV2` → in)
+   *  - donem: tam eşleşme (eski parametre, korunur); donemBas/donemBit: aralık (yıllık kayıtlar yıl olarak)
+   *  - belge: beyanname → beyannameUrl dolu; tahakkuk → pdfUrl dolu; all/boş → süzgeç yok
+   *  - iletim: iletildi | iletilmedi | hata — VERGI gönderim kayıtları (docRefs) üzerinden, bellekte
+   *  - search: onayNo / ünvan / VKN / ad / soyad (büyük-küçük harf duyarsız)
+   *  - sirala: yeni (varsayılan) | donem | mukellef | tutar
+   * Satır = BeyanKaydi + taxpayer + iletim[] (kanal başına en yeni, en yeni önce).
+   */
+  private async listSayfali(
+    tenantId: string,
+    opts: {
+      taxpayerId?: string; beyanTipi?: string; donem?: string; search?: string;
+      page?: number; pageSize?: number; donemBas?: string; donemBit?: string;
+      belge?: string; iletim?: string; sirala?: string;
+    },
+  ): Promise<{ rows: any[]; total: number; page: number; pageSize: number }> {
+    const page = sayfaNoNormalize(opts.page);
+    const pageSize = sayfaBoyutuNormalize(opts.pageSize);
+
+    const where: any = { tenantId };
+    const and: any[] = [];
+    if (opts.taxpayerId) where.taxpayerId = opts.taxpayerId;
+
+    const tipler = String(opts.beyanTipi || '').split(',').map((s) => s.trim()).filter(Boolean);
+    if (tipler.length === 1) where.beyanTipi = tipler[0];
+    else if (tipler.length > 1) where.beyanTipi = { in: tipler };
+
+    if (opts.donem) where.donem = opts.donem;
+    const aralik = donemAraligiWhere(opts.donemBas, opts.donemBit);
+    if (aralik) and.push(aralik);
+
+    const belge = String(opts.belge || 'all').trim().toLowerCase();
+    if (belge === 'beyanname') where.beyannameUrl = { not: null };
+    else if (belge === 'tahakkuk') where.pdfUrl = { not: null };
+
+    if (opts.search && opts.search.trim()) {
+      const q = opts.search.trim();
+      and.push({
+        OR: [
+          { onayNo: { contains: q, mode: 'insensitive' } },
+          { taxpayer: { companyName: { contains: q, mode: 'insensitive' } } },
+          { taxpayer: { taxNumber: { contains: q } } },
+          { taxpayer: { firstName: { contains: q, mode: 'insensitive' } } },
+          { taxpayer: { lastName: { contains: q, mode: 'insensitive' } } },
+        ],
+      });
+    }
+
+    // İletim haritası: bu tenant'ın VERGI gönderimleri (en yeni 5000) → kayıt-id → iletim[]
+    // Hem süzgeç (iletim=...) hem satırlara `iletim` alanı için kullanılır.
+    const gonderimler: GonderimSatiri[] = await (this.prisma as any).documentDispatch.findMany({
+      where: { tenantId, kategori: 'VERGI' },
+      select: { docRefs: true, status: true, channel: true, sentAt: true, error: true, testMode: true, createdAt: true },
+      orderBy: { createdAt: 'desc' },
+      take: 5000,
+    });
+    const iletimHaritasi = iletimHaritasiKur(gonderimler);
+
+    const iletim = String(opts.iletim || 'all').trim().toLowerCase();
+    if (iletim === 'iletildi' || iletim === 'iletilmedi' || iletim === 'hata') {
+      const secim = iletimSuzgecIdleri(iletimHaritasi, iletim as IletimSecimi);
+      if ('in' in secim) where.id = { in: secim.in };
+      else if (secim.notIn.length > 0) where.id = { notIn: secim.notIn };
+    }
+
+    if (and.length) where.AND = and;
+
+    const sirala = String(opts.sirala || 'yeni').trim().toLowerCase();
+    let orderBy: any[];
+    switch (sirala) {
+      case 'donem':
+        orderBy = [{ donem: 'desc' }, { beyanTipi: 'asc' }];
+        break;
+      case 'mukellef':
+        orderBy = [
+          { taxpayer: { companyName: { sort: 'asc', nulls: 'last' } } },
+          { taxpayer: { firstName: { sort: 'asc', nulls: 'last' } } },
+          { taxpayer: { lastName: { sort: 'asc', nulls: 'last' } } },
+          { donem: 'desc' },
+          { beyanTipi: 'asc' },
+        ];
+        break;
+      case 'tutar':
+        orderBy = [{ tahakkukTutari: { sort: 'desc', nulls: 'last' } }, { donem: 'desc' }, { beyanTipi: 'asc' }];
+        break;
+      default: // yeni
+        orderBy = [{ beyanTarihi: { sort: 'desc', nulls: 'last' } }, { createdAt: 'desc' }];
+    }
+
+    const [rows, total] = await Promise.all([
+      (this.prisma as any).beyanKaydi.findMany({
+        where,
+        include: { taxpayer: { select: BeyanKayitlariService.LISTE_TAXPAYER_SELECT } },
+        orderBy,
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }) as Promise<any[]>,
+      (this.prisma as any).beyanKaydi.count({ where }) as Promise<number>,
+    ]);
+
+    const bos: IletimBilgisi[] = [];
+    return {
+      rows: rows.map((r) => ({ ...r, iletim: iletimHaritasi.get(r.id) || bos })),
+      total,
+      page,
+      pageSize,
+    };
+  }
+
+  /**
+   * ELLE GÖNDER (sözleşme §5) — seçili kayıtları mükellef başına tek demette WhatsApp/e-posta ile yollar.
+   * Gönderimi Akıllı Bildirim servisi yapar (force: kategori kapalı olsa da çalışır; testMode'da test alıcısı).
+   * PDF'siz kayıtlar gönderilmez, sonuçta `error:'PDF yok'` ile FAILED görünür.
+   */
+  async gonder(
+    tenantId: string,
+    body: { ids?: unknown; channel?: unknown },
+  ): Promise<{ ok: true; testMode: boolean; results: SeciliGonderimSonucu[] }> {
+    const hamIds = Array.isArray(body?.ids) ? body.ids : null;
+    if (!hamIds) throw new BadRequestException('ids: kayıt listesi (dizi) gerekli');
+    const ids = [...new Set(hamIds.filter((x: unknown): x is string => typeof x === 'string' && x.trim().length > 0).map((s) => s.trim()))];
+    if (ids.length < 1) throw new BadRequestException('ids: en az 1 kayıt seçilmeli');
+    if (ids.length > 50) throw new BadRequestException('ids: bir seferde en çok 50 kayıt gönderilebilir');
+    const channel = body?.channel;
+    if (channel !== 'WHATSAPP' && channel !== 'EMAIL') throw new BadRequestException("channel: 'WHATSAPP' ya da 'EMAIL' olmalı");
+
+    const kayitlar: any[] = await (this.prisma as any).beyanKaydi.findMany({
+      where: { tenantId, id: { in: ids } },
+      include: { taxpayer: true },
+    });
+
+    const unvanOf = (t: any) => (t?.companyName || `${t?.firstName || ''} ${t?.lastName || ''}`.trim() || 'Mükellef').toString();
+    const results: SeciliGonderimSonucu[] = [];
+
+    // PDF'siz kayıtlar: mükellef başına tek FAILED satırı
+    const pdfsiz = kayitlar.filter((k) => !k.pdfUrl && !k.beyannameUrl);
+    const pdfsizByTp = new Map<string, { unvan: string; adet: number }>();
+    for (const k of pdfsiz) {
+      const g = pdfsizByTp.get(k.taxpayerId) || { unvan: unvanOf(k.taxpayer), adet: 0 };
+      g.adet += 1;
+      pdfsizByTp.set(k.taxpayerId, g);
+    }
+    for (const [taxpayerId, g] of pdfsizByTp) {
+      results.push({ taxpayerId, unvan: g.unvan, channel, status: 'FAILED', error: 'PDF yok', kayitSayisi: g.adet });
+    }
+
+    // Bulunamayan id'ler (başka tenant / silinmiş): gizlenmesin, tek satırda raporlansın
+    const bulunan = new Set(kayitlar.map((k) => k.id));
+    const bulunamayan = ids.filter((id) => !bulunan.has(id));
+    if (bulunamayan.length) {
+      results.push({ taxpayerId: '', unvan: 'Bulunamayan kayıt', channel, status: 'FAILED', error: `kayıt bulunamadı (${bulunamayan.length})`, kayitSayisi: bulunamayan.length });
+    }
+
+    const gidecek = kayitlar.filter((k) => k.pdfUrl || k.beyannameUrl);
+
+    // Akıllı Bildirim servisi ÇAĞRI ANINDA çözülür (modül döngüsü yok; dosya başındaki nota bak)
+    const { AkilliBildirimService: Svc } = await import('../akilli-bildirim/akilli-bildirim.service');
+    const bildirim: AkilliBildirimService = this.moduleRef.get(Svc, { strict: false });
+    const r = await bildirim.gonderSecili(tenantId, 'VERGI', gidecek, channel, { force: true });
+
+    return { ok: true, testMode: r.testMode, results: [...r.results, ...results] };
   }
 
   async delete(tenantId: string, id: string) {

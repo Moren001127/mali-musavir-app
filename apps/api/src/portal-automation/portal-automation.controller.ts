@@ -123,6 +123,40 @@ export class PortalAutomationController {
     });
   }
 
+  // Sayfalı belge listesi (e-Tebligat / SGK) — sözleşme docs/sayfalama-sozlesme-2026-09-14.md §1.
+  // Eski GET /documents (sayfasız, raw dahil) mobil/masaüstü için AYNEN kalır.
+  @Get('documents/sayfa')
+  documentsSayfa(
+    @Req() req: any,
+    @Query('belgeTuru') belgeTuru?: string,
+    @Query('taxpayerId') taxpayerId?: string,
+    @Query('search') search?: string,
+    @Query('period') period?: string,
+    @Query('durum') durum?: string,
+    @Query('birlesik') birlesik?: string,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+    @Query('sirala') sirala?: string,
+  ) {
+    return this.service.listDocumentsSayfa(req.user.tenantId, {
+      belgeTuru,
+      taxpayerId,
+      search,
+      period,
+      durum,
+      birlesik,
+      page,
+      pageSize,
+      sirala,
+    });
+  }
+
+  // Süzgeç için mükellef listesi: belgesi olanlar ∪ ilgili portal şifresi olanlar — sözleşme §2.
+  @Get('documents/mukellefler')
+  documentTaxpayers(@Req() req: any, @Query('belgeTuru') belgeTuru?: string) {
+    return this.service.listDocumentTaxpayers(req.user.tenantId, belgeTuru);
+  }
+
   @Get('earsiv/invoices')
   earsivInvoices(
     @Req() req: any,
