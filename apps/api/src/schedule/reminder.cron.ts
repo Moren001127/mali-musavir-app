@@ -95,6 +95,15 @@ export class ReminderCron {
    * tatil, şalter, köprü kopukluğu, `atlandi` hiç set edilmeden başarısızlık)
    * kayıt beklemeye alınır ve ilk mesai saatinde tekrar denenir.
    */
+  /** Başarısız deneme üst sınırı — aşılınca kuyruktan çıkarılır, sahibe bildirim düşer. */
+  static readonly AZAMI_DENEME = 20;
+
+  /** n. başarısız denemeden sonra beklenecek süre: 15 dk · 2^(n-1), tavan 4 saat. */
+  static geriCekilmeMs(deneme: number): number {
+    const dk = Math.min(240, 15 * Math.pow(2, Math.max(0, deneme - 1)));
+    return dk * 60_000;
+  }
+
   private kaliciRet(atlandi?: string): boolean {
     return atlandi === 'telefon yok' || atlandi === 'test numarası tanımsız';
   }
@@ -219,14 +228,24 @@ export class ReminderCron {
 
     let gonderilen = 0;
     let atlanan = 0;
+    let ertelenen = 0;
+    const simdiMs = Date.now();
     for (const b of bekleyenler) {
+      // GERİ ÇEKİLME (2026-09-14): başarısız deneme sonrası 15 dk → 30 dk → 1 sa → 2 sa → 4 sa (tavan) beklenir;
+      // aksi hâlde 2 dk'lık tarama aynı mesajı günde 240 kez deniyordu (UMUT BALÇIK: 5 günde 972 başarısız kayıt).
+      const deneme = Number((b as any).evrakGeldiMesajDenemeSayisi || 0);
+      const sonDeneme = (b as any).evrakGeldiMesajSonDenemeAt ? new Date((b as any).evrakGeldiMesajSonDenemeAt).getTime() : 0;
+      if (deneme > 0 && sonDeneme && simdiMs - sonDeneme < ReminderCron.geriCekilmeMs(deneme)) {
+        ertelenen++;
+        continue;
+      }
       const r = await this.evrakGeldiBildir(b.tenantId, b.taxpayerId, b.year, b.month);
       if ((r as any)?.gonderildi) gonderilen++;
       else atlanan++;
     }
-    const ozet = { bekleyen: bekleyenler.length, gonderilen, atlanan };
-    // İki dakikada bir çalışıyor; boş turlarda log basmak gürültü yapar.
-    if (bekleyenler.length) this.logger.log(`[EvrakGeldi] Bekleyen taraması: ${JSON.stringify(ozet)}`);
+    const ozet = { bekleyen: bekleyenler.length, gonderilen, atlanan, ertelenen };
+    // İki dakikada bir çalışıyor; boş turlarda ve yalnız ertelenen olan turlarda log basmak gürültü yapar.
+    if (gonderilen || atlanan) this.logger.log(`[EvrakGeldi] Bekleyen taraması: ${JSON.stringify(ozet)}`);
     return ozet;
   }
 
@@ -250,6 +269,8 @@ export class ReminderCron {
         evrakGeldiMesajBekliyor: false,
         evrakGeldiMesajKuyrukAt: null,
         evrakGeldiMesajGonderimAt: null,
+        evrakGeldiMesajDenemeSayisi: 0,
+        evrakGeldiMesajSonDenemeAt: null,
       },
     });
     if (r.count) {
@@ -368,12 +389,41 @@ export class ReminderCron {
           evrakGeldiMesajBekliyor: false,
           evrakGeldiMesajKuyrukAt: null,
           evrakGeldiMesajGonderimAt: new Date(),
+          evrakGeldiMesajDenemeSayisi: 0,
+          evrakGeldiMesajSonDenemeAt: null,
         });
       } else if (!sonuc.gonderildi && !this.kaliciRet(sonuc.atlandi)) {
         // GEÇİCİ engel (mesai dışı, tatil, şalter kapalı, köprü kopuk): kayıt
         // beklemeye alınır, mesai başındaki tarama gönderir. Kalıcı retlerde
         // (anahtar kapalı, pasif mükellef) beklemeye almanın anlamı yok.
-        await this.durumDamgala(tenantId, taxpayerId, yil, ay, { evrakGeldiMesajBekliyor: true });
+        // Gerçek gönderim DENEMESİ başarısızsa (mesai içinde, köprü cevap vermedi) sayaç artar → geri çekilme;
+        // mesai dışı/tatil/şalter gibi "hiç denenmedi" hâlleri sayılmaz.
+        const gercekDeneme = !/mesai|tatil|şalter|kapalı/i.test(String(sonuc.atlandi || ''));
+        const onceki = await this.prisma.taxpayerMonthlyStatus
+          .findUnique({ where: { taxpayerId_year_month: { taxpayerId, year: yil, month: ay } }, select: { evrakGeldiMesajDenemeSayisi: true } })
+          .catch(() => null);
+        const deneme = gercekDeneme ? Number((onceki as any)?.evrakGeldiMesajDenemeSayisi || 0) + 1 : Number((onceki as any)?.evrakGeldiMesajDenemeSayisi || 0);
+        if (deneme >= ReminderCron.AZAMI_DENEME) {
+          // VAZGEÇ: kuyruktan çıkar, sahibe tek bildirim; elle "evrak geldi" işareti yenilenince yeniden kuyruğa girer
+          await this.durumDamgala(tenantId, taxpayerId, yil, ay, { evrakGeldiMesajBekliyor: false, evrakGeldiMesajDenemeSayisi: deneme, evrakGeldiMesajSonDenemeAt: new Date() });
+          await this.prisma.notification
+            .create({
+              data: {
+                tenantId,
+                type: 'EVRAK',
+                title: `Evrak geldi mesajı gönderilemedi: ${ad}`,
+                body: `${donem} dönemi "evraklarınız ulaştı" mesajı ${deneme} denemede gönderilemedi (${sonuc.atlandi || 'sebep bilinmiyor'}). Kuyruktan çıkarıldı; telefon/WhatsApp bağlantısını kontrol edip Aylık Takip'te işareti yenileyin.`,
+                metadata: { taxpayerId, donem, deneme, sebep: sonuc.atlandi || null, kaynak: 'evrak-geldi' },
+              } as any,
+            })
+            .catch((e: any) => this.logger.warn(`[EvrakGeldi] vazgeçme bildirimi yazılamadı: ${e?.message || e}`));
+          this.logger.warn(`[EvrakGeldi] ${ad} · ${donem} · ${deneme} denemede gönderilemedi — kuyruktan çıkarıldı`);
+        } else {
+          await this.durumDamgala(tenantId, taxpayerId, yil, ay, {
+            evrakGeldiMesajBekliyor: true,
+            ...(gercekDeneme ? { evrakGeldiMesajDenemeSayisi: deneme, evrakGeldiMesajSonDenemeAt: new Date() } : {}),
+          });
+        }
       }
     }
 

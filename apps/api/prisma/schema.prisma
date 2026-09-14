@@ -1318,6 +1318,10 @@ model TaxpayerMonthlyStatus {
   evrakGeldiMesajKuyrukAt   DateTime?
   /// "Evrak geldi" onayı gönderildi — dolu ise TEKRAR gönderilmez
   evrakGeldiMesajGonderimAt DateTime?
+  /// 2026-09-14: başarısız deneme sayısı + son deneme anı — 2 dk'lık tarama her turda tekrar deniyordu
+  /// (UMUT BALÇIK: 5 günde 972 başarısız deneme). Artık geri çekilme: 15 dk, 30 dk, 1 sa, 2 sa, 4 sa…; 20 denemede vazgeçilir.
+  evrakGeldiMesajDenemeSayisi Int       @default(0)
+  evrakGeldiMesajSonDenemeAt  DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
