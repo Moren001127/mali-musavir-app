@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -39,6 +39,8 @@ import {
 } from './_components/beyan-yardimcilar';
 
 const GOLD = '#d4b876';
+// Süzgeç bandı kutu stili — e-Defter seçici bandıyla aynı dil (tek zemin, ince kenar, altın ok).
+const SUZGEC_KUTU: CSSProperties = { height: 40, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)' };
 const VARSAYILAN_BOYUT: SayfaBoyutu = 50;
 /** CSV dışa aktarımda sunucudan tek seferde istenen en çok kayıt (sözleşme §4: ≤1000). */
 const CSV_TAVAN = 1000;
@@ -650,62 +652,71 @@ function BeyannamelerIcerik() {
           </button>
         </div>
 
-      {/* Süzgeç satırı (hepsi sunucuda) — tek tip 38px kutular */}
-      <div className="flex flex-wrap items-center gap-2 px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-        <label className="flex min-w-[220px] flex-[1.6] items-center gap-2 rounded-[10px] px-3" style={{ height: 38, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.09)' }}>
-          <Search size={15} style={{ color: 'rgba(243,245,247,0.4)' }} className="shrink-0" />
-          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Mükellef, VKN, onay no ara…" className="w-full bg-transparent text-[12.5px] outline-none" style={{ color: '#f3f5f7' }} />
-          {search && (
-            <button type="button" onClick={() => setSearch('')} title="Aramayı temizle" className="shrink-0" style={{ color: 'rgba(243,245,247,0.4)' }}><IconX size={13} /></button>
-          )}
-        </label>
-        <div className="min-w-[210px] flex-[1.3]">
-          <SelectBox icon={UserRound} etiket="Mükellef" value={selectedTaxpayer} onChange={suzgec(setSelectedTaxpayer)}>
-            <option value="all">Tümü</option>
-            {taxpayerOptions.map((t) => (
-              <option key={t.id} value={t.id}>{t.name}</option>
-            ))}
-          </SelectBox>
+        {/* Süzgeç bandı — e-Defter seçici bandı dili: küçük büyük-harf etiket üstte + hizalı kutu (hepsi sunucuda) */}
+        <div className="flex flex-wrap items-end gap-x-3 gap-y-3 px-4 py-3.5" style={{ background: 'rgba(0,0,0,0.22)', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+          <label className="flex min-w-[220px] flex-[1.7] flex-col gap-1.5">
+            <span className="text-[9px] font-bold uppercase tracking-[.16em]" style={{ color: 'rgba(250,250,249,0.42)' }}>Ara</span>
+            <span className="flex items-center gap-2 rounded-xl px-3" style={SUZGEC_KUTU}>
+              <Search size={14} className="shrink-0" style={{ color: 'rgba(250,250,249,0.4)' }} />
+              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Mükellef, VKN, onay no" className="w-full bg-transparent text-[13px] outline-none" style={{ color: '#fafaf9' }} />
+              {search && (
+                <button type="button" onClick={() => setSearch('')} title="Aramayı temizle" className="shrink-0" style={{ color: 'rgba(250,250,249,0.4)' }}><IconX size={13} /></button>
+              )}
+            </span>
+          </label>
+          <div className="flex min-w-[200px] flex-[1.3] flex-col gap-1.5">
+            <span className="text-[9px] font-bold uppercase tracking-[.16em]" style={{ color: 'rgba(250,250,249,0.42)' }}>Mükellef</span>
+            <SelectBox value={selectedTaxpayer} onChange={suzgec(setSelectedTaxpayer)}>
+              <option value="all">Tümü</option>
+              {taxpayerOptions.map((t) => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </SelectBox>
+          </div>
+          <div className="flex min-w-[130px] flex-1 flex-col gap-1.5">
+            <span className="text-[9px] font-bold uppercase tracking-[.16em]" style={{ color: 'rgba(250,250,249,0.42)' }}>Tür</span>
+            <SelectBox value={typeFilter} onChange={(v) => suzgec(setTypeFilter)(v as FilterKey)}>
+              {FILTER_KEYS.map((f) => (
+                <option key={f.key} value={f.key}>{f.label}</option>
+              ))}
+            </SelectBox>
+          </div>
+          <div className="flex min-w-[130px] flex-1 flex-col gap-1.5">
+            <span className="text-[9px] font-bold uppercase tracking-[.16em]" style={{ color: 'rgba(250,250,249,0.42)' }}>Belge</span>
+            <SelectBox value={docFilter} onChange={(v) => suzgec(setDocFilter)(v as BeyanBelgeSuzgec)}>
+              <option value="all">Tümü</option>
+              <option value="beyanname">Beyanname</option>
+              <option value="tahakkuk">Tahakkuk</option>
+            </SelectBox>
+          </div>
+          <div className="flex min-w-[130px] flex-1 flex-col gap-1.5">
+            <span className="text-[9px] font-bold uppercase tracking-[.16em]" style={{ color: 'rgba(250,250,249,0.42)' }}>İletim</span>
+            <SelectBox value={iletimFilter} onChange={(v) => suzgec(setIletimFilter)(v as BeyanIletimSuzgec)}>
+              <option value="all">Tümü</option>
+              <option value="iletildi">İletildi</option>
+              <option value="iletilmedi">İletilmedi</option>
+              <option value="hata">Hata</option>
+            </SelectBox>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <span className="text-[9px] font-bold uppercase tracking-[.16em]" style={{ color: 'rgba(250,250,249,0.42)' }}>Dönem</span>
+            <div className="flex items-center gap-1 rounded-xl px-2.5" style={SUZGEC_KUTU} title="Beyanname dönem aralığı (ay olarak)">
+              <input type="date" value={periodStart ? `${periodStart}-01` : ''} onChange={(e) => suzgec(setPeriodStart)(e.target.value ? e.target.value.slice(0, 7) : '')} onClick={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }} aria-label="Dönem başlangıç" className="bg-transparent text-[12.5px] font-semibold outline-none cursor-pointer" style={{ color: periodStart ? '#fafaf9' : 'rgba(250,250,249,0.45)', colorScheme: 'dark', width: 104 }} />
+              <span className="shrink-0" style={{ color: 'rgba(250,250,249,0.3)' }}>–</span>
+              <input type="date" value={periodEnd ? `${periodEnd}-01` : ''} onChange={(e) => suzgec(setPeriodEnd)(e.target.value ? e.target.value.slice(0, 7) : '')} onClick={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }} aria-label="Dönem bitiş" className="bg-transparent text-[12.5px] font-semibold outline-none cursor-pointer" style={{ color: periodEnd ? '#fafaf9' : 'rgba(250,250,249,0.45)', colorScheme: 'dark', width: 104 }} />
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={clearFilters}
+            disabled={!suzgecAktif}
+            className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-xl px-3 text-[12px] font-semibold transition disabled:opacity-35"
+            style={{ background: suzgecAktif ? 'rgba(212,184,118,0.10)' : 'transparent', border: `1px solid ${suzgecAktif ? 'rgba(212,184,118,0.35)' : 'rgba(255,255,255,0.10)'}`, color: suzgecAktif ? GOLD : 'rgba(250,250,249,0.5)' }}
+            title="Süzgeçleri temizle"
+          >
+            <RotateCcw size={13} /> Temizle
+          </button>
         </div>
-        <div className="min-w-[150px] flex-1">
-          <SelectBox icon={Filter} etiket="Tür" value={typeFilter} onChange={(v) => suzgec(setTypeFilter)(v as FilterKey)}>
-            {FILTER_KEYS.map((f) => (
-              <option key={f.key} value={f.key}>{f.label}</option>
-            ))}
-          </SelectBox>
-        </div>
-        <div className="min-w-[150px] flex-1">
-          <SelectBox icon={FileText} etiket="Belge" value={docFilter} onChange={(v) => suzgec(setDocFilter)(v as BeyanBelgeSuzgec)}>
-            <option value="all">Tümü</option>
-            <option value="beyanname">Beyanname</option>
-            <option value="tahakkuk">Tahakkuk</option>
-          </SelectBox>
-        </div>
-        <div className="min-w-[150px] flex-1">
-          <SelectBox icon={Send} etiket="İletim" value={iletimFilter} onChange={(v) => suzgec(setIletimFilter)(v as BeyanIletimSuzgec)}>
-            <option value="all">Tümü</option>
-            <option value="iletildi">İletildi</option>
-            <option value="iletilmedi">İletilmedi</option>
-            <option value="hata">Hata</option>
-          </SelectBox>
-        </div>
-        <div className="flex shrink-0 items-center gap-1 rounded-[10px] px-2.5" style={{ height: 38, border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255,255,255,0.03)' }} title="Beyanname dönem aralığı (gün seçilir, dönem=ay alınır)">
-          <CalendarDays size={15} style={{ color: 'rgba(243,245,247,0.4)' }} className="shrink-0" />
-          <span className="text-[12px] font-semibold" style={{ color: 'rgba(243,245,247,0.45)' }}>Dönem</span>
-          <input type="date" value={periodStart ? `${periodStart}-01` : ''} onChange={(e) => suzgec(setPeriodStart)(e.target.value ? e.target.value.slice(0, 7) : '')} onClick={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }} aria-label="Dönem başlangıç" className="bg-transparent text-[12px] font-semibold outline-none cursor-pointer" style={{ color: '#f3f5f7', colorScheme: 'dark', width: 106 }} />
-          <span className="shrink-0" style={{ color: 'rgba(243,245,247,0.3)' }}>–</span>
-          <input type="date" value={periodEnd ? `${periodEnd}-01` : ''} onChange={(e) => suzgec(setPeriodEnd)(e.target.value ? e.target.value.slice(0, 7) : '')} onClick={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }} aria-label="Dönem bitiş" className="bg-transparent text-[12px] font-semibold outline-none cursor-pointer" style={{ color: '#f3f5f7', colorScheme: 'dark', width: 106 }} />
-        </div>
-        <button
-          type="button"
-          onClick={clearFilters}
-          className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-[10px] px-3 text-[12px] font-semibold"
-          style={{ height: 38, background: suzgecAktif ? 'rgba(212,184,118,0.10)' : 'rgba(255,255,255,0.035)', border: `1px solid ${suzgecAktif ? 'rgba(212,184,118,0.35)' : 'rgba(255,255,255,0.08)'}`, color: suzgecAktif ? GOLD : 'rgba(243,245,247,0.68)' }}
-          title="Süzgeçleri temizle"
-        >
-          <RotateCcw size={15} /> Temizle
-        </button>
-      </div>
 
         {/* Toplu işlemler — ÜSTTE, tek sayaç */}
         <div className="flex flex-wrap items-center gap-2 px-4 py-2.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', background: seciliSayi ? 'rgba(212,184,118,0.05)' : 'transparent' }}>
@@ -748,17 +759,16 @@ function BeyannamelerIcerik() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-[13px]" style={{ tableLayout: 'fixed', minWidth: 1040 }}>
+            <table className="w-full text-[13px]" style={{ tableLayout: 'fixed', minWidth: 920 }}>
               <colgroup>
                 <col style={{ width: 40 }} />
                 <col />
                 <col style={{ width: 78 }} />
                 <col style={{ width: 108 }} />
                 <col style={{ width: 82 }} />
-                <col style={{ width: 88 }} />
                 <col style={{ width: 112 }} />
                 <col style={{ width: 84 }} />
-                <col style={{ width: 130 }} />
+                <col style={{ width: 84 }} />
                 <col style={{ width: 104 }} />
               </colgroup>
               <thead style={{ background: 'rgba(255,255,255,0.025)' }}>
@@ -776,7 +786,6 @@ function BeyannamelerIcerik() {
                   <th className="px-3 py-3 whitespace-nowrap">Dönem</th>
                   <th className="px-3 py-3 whitespace-nowrap">Tür</th>
                   <th className="px-3 py-3">Mahiyet</th>
-                  <th className="px-3 py-3">Tarih</th>
                   <th className="px-3 py-3 text-right">Tutar</th>
                   <th className="px-3 py-3">Belgeler</th>
                   <th className="px-3 py-3">İletim</th>
@@ -946,7 +955,7 @@ function ConsoleJob({ job, onCancel, cancelPending }: { job?: PortalJob; onCance
   );
 }
 
-function SelectBox({ icon: Icon, etiket, value, onChange, children }: { icon: any; /** Kutuda değerin önünde görünen sabit etiket: "Belge: Tümü" */ etiket?: string; value: string; onChange: (value: string) => void; children: ReactNode }) {
+function SelectBox({ icon: Icon, etiket, value, onChange, children }: { icon?: any; /** Kutuda değerin önünde görünen sabit etiket: "Belge: Tümü" */ etiket?: string; value: string; onChange: (value: string) => void; children: ReactNode }) {
   // React children'i flat string'e çevir (array, sayı, undefined hepsini düzgün)
   const childrenToText = (node: any): string => {
     if (node == null || node === false) return '';
@@ -995,19 +1004,19 @@ function SelectBox({ icon: Icon, etiket, value, onChange, children }: { icon: an
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="w-full h-[38px] pl-9 pr-8 rounded-[10px] text-[12.5px] font-semibold outline-none text-left flex items-center transition"
-        style={{ background: aktifSecim ? 'rgba(212,184,118,0.08)' : 'rgba(255,255,255,0.03)', border: `1px solid ${aktifSecim ? 'rgba(212,184,118,0.35)' : 'rgba(255,255,255,0.09)'}`, color: '#fafaf9' }}
+        className={`w-full h-10 ${Icon ? 'pl-9' : 'pl-3'} pr-8 rounded-xl text-[13px] font-semibold outline-none text-left flex items-center transition`}
+        style={{ background: 'rgba(255,255,255,0.05)', border: `1px solid ${aktifSecim ? 'rgba(212,184,118,0.45)' : 'rgba(255,255,255,0.12)'}`, color: aktifSecim ? '#d4b876' : '#fafaf9' }}
       >
-        <Icon size={14} className="absolute left-3 pointer-events-none" style={{ color: aktifSecim ? '#d4b876' : 'rgba(250,250,249,0.4)' }} />
+        {Icon && <Icon size={14} className="absolute left-3 pointer-events-none" style={{ color: aktifSecim ? '#d4b876' : 'rgba(250,250,249,0.4)' }} />}
         {etiket && <span className="mr-1.5 shrink-0 font-semibold" style={{ color: 'rgba(250,250,249,0.45)' }}>{etiket}:</span>}
         <span className="truncate">{currentLabel}</span>
         <svg className="absolute right-2.5 pointer-events-none" width="12" height="12" viewBox="0 0 12 12" fill="none">
-          <path d="M3 4.5L6 7.5L9 4.5" stroke="rgba(250,250,249,0.55)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M3 4.5L6 7.5L9 4.5" stroke="#d4b876" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </button>
       {open && (
         <div
-          className="absolute mt-1 max-h-[320px] overflow-y-auto rounded-[10px] py-1"
+          className="absolute mt-1.5 max-h-[320px] overflow-y-auto rounded-xl py-1"
           style={{
             top: '100%',
             left: 0,

@@ -344,7 +344,7 @@ function SgkBildirgeModuleIc() {
               <col style={{ width: 76 }} />
               <col style={{ width: 132 }} />
               <col style={{ width: 84 }} />
-              <col style={{ width: 128 }} />
+              <col style={{ width: 88 }} />
             </colgroup>
             <thead>
               <tr style={{ color: 'rgba(250,250,249,0.42)' }}>
@@ -397,7 +397,7 @@ function SgkBildirgeModuleIc() {
                           </div>
                         </td>
                         <td className="px-3 py-2.5 align-middle" style={{ borderBottom: KENAR }}>
-                          {d.iletim && d.iletim.length ? <IletimRozeti iletim={d.iletim} /> : <span className="text-[11.5px]" style={{ color: 'rgba(250,250,249,0.28)' }}>iletilmedi</span>}
+                          <IletimRozeti iletim={d.iletim} />
                         </td>
                       </tr>
                     );

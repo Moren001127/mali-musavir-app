@@ -6,7 +6,7 @@ import { BeyanKaydi, IletimKanal, beyanKaydiMukellefAdi } from '@/lib/beyan-kayi
 import { IletimRozeti } from './IletimRozeti';
 import {
   BeyanDocKind, beyanMahiyeti, declarationTypeCode, declarationTypeLabel,
-  fmtCurrency, fmtDate, fmtDonemKisa, gonderimEngeli,
+  fmtCurrency, fmtDonemKisa, gonderimEngeli,
 } from './beyan-yardimcilar';
 
 const METIN = '#fafaf9';
@@ -63,7 +63,6 @@ export function BeyanSatiri({
           {mahiyet === 'DUZELTME' ? 'DÜZELTME' : 'ASIL'}
         </span>
       </td>
-      <td className="px-3 py-2.5 whitespace-nowrap tabular-nums" style={{ color: 'rgba(250,250,249,0.7)' }}>{fmtDate(row.beyanTarihi || row.createdAt)}</td>
       <td className="px-3 py-2.5 whitespace-nowrap text-right font-semibold tabular-nums" style={{ color: row.tahakkukTutari != null ? METIN : tahakkukVar ? '#fcd34d' : IKINCIL }}>
         {row.tahakkukTutari != null ? fmtCurrency(row.tahakkukTutari) : tahakkukVar ? <span title="Tahakkuk fişinden tutar okunamadı">okunamadı</span> : '—'}
       </td>
@@ -75,7 +74,6 @@ export function BeyanSatiri({
       </td>
       <td className="px-3 py-2.5">
         <IletimRozeti iletim={row.iletim} />
-        {!(row.iletim && row.iletim.length) && <span className="text-[11.5px]" style={{ color: 'rgba(250,250,249,0.28)' }}>—</span>}
       </td>
       <td className="px-3 py-2.5">
         <div className="flex items-center justify-end gap-1">

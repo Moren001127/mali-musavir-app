@@ -9,6 +9,7 @@ import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
   AlertTriangle, ChevronDown, Download, FileText, KeyRound, Mail, MessageCircle, Users, X,
+  Clock3,
 } from 'lucide-react';
 import { boyutParamOku, sayfaParamOku, type SayfaBoyutu } from '@/components/ui/Sayfalama';
 import type {
@@ -94,28 +95,38 @@ export function Hap({ ton, title, children, className = '', sar = false }: { ton
   );
 }
 
-// İletim rozeti (sözleşme §6): iletim[0] → SENT yeşil "WhatsApp · 12 Eyl"; FAILED kırmızı "İletilemedi" (title=error);
-// testMode → ucunda "test"; PENDING gri "sırada"; yoksa/SKIPPED rozet yok.
+// İletim göstergesi — YALNIZ İKON (Muzaffer Bey 2026-09-14): kanal başına küçük yuvarlak simge.
+//   WhatsApp yeşil · e-posta mavi · iletilemedi kırmızı · sırada sarı saat · test modu altın nokta; ayrıntı ipucunda.
+//   Hiç kayıt yoksa soluk "—" (hücre boş kalmasın, dar sütun).
 export function IletimRozeti({ iletim }: { iletim?: IletimBilgisi[] | null }) {
-  const son = iletim?.[0];
-  if (!son) return null;
-  const kanal = son.channel === 'WHATSAPP' ? 'WhatsApp' : 'E-posta';
-  const ikon = son.channel === 'WHATSAPP' ? <MessageCircle size={11} /> : <Mail size={11} />;
-  const test = son.testMode ? <span style={{ opacity: 0.7 }}>· test</span> : null;
-  if (son.status === 'SENT') {
-    return (
-      <Hap ton="yesil" title={`${kanal} ile iletildi${son.sentAt ? ` · ${fmtTrTarih(son.sentAt)}` : ''}`}>
-        {ikon} {kanal}{son.sentAt ? ` · ${kisaTarih(son.sentAt)}` : ''} {test}
-      </Hap>
-    );
-  }
-  if (son.status === 'FAILED') {
-    return <Hap ton="kirmizi" title={son.error || `${kanal} ile iletilemedi`}>{ikon} İletilemedi {test}</Hap>;
-  }
-  if (son.status === 'PENDING') {
-    return <Hap ton="gri" title={`${kanal} gönderimi sırada`}>{ikon} Sırada {test}</Hap>;
-  }
-  return null;
+  const map = new Map<IletimBilgisi['channel'], IletimBilgisi>();
+  for (const i of iletim || []) if (!map.has(i.channel)) map.set(i.channel, i);
+  const kayitlar = (['WHATSAPP', 'EMAIL'] as const).map((k) => map.get(k)).filter((x): x is IletimBilgisi => !!x);
+  if (!kayitlar.length) return <span className="text-[11.5px]" style={{ color: 'rgba(250,250,249,0.25)' }}>—</span>;
+  return (
+    <span className="inline-flex items-center gap-1">
+      {kayitlar.map((k) => {
+        const kanal = k.channel === 'WHATSAPP' ? 'WhatsApp' : 'E-posta';
+        const Ikon = k.status === 'PENDING' ? Clock3 : k.channel === 'EMAIL' ? Mail : MessageCircle;
+        const ipucu = k.status === 'SENT'
+          ? `${kanal} ile iletildi${k.sentAt ? ` · ${fmtTrTarih(k.sentAt)}` : ''}${k.testMode ? ' (test modu)' : ''}`
+          : k.status === 'FAILED' ? `${kanal}: iletilemedi${k.error ? ` — ${k.error}` : ''}`
+            : k.status === 'PENDING' ? `${kanal} gönderimi sırada` : `${kanal} gönderimi atlandı`;
+        const renk = k.status === 'SENT'
+          ? (k.channel === 'EMAIL' ? { bg: 'rgba(127,166,221,0.16)', bd: 'rgba(127,166,221,0.5)', fg: '#9cc0ee' } : { bg: 'rgba(92,191,138,0.16)', bd: 'rgba(92,191,138,0.5)', fg: '#5cbf8a' })
+          : k.status === 'FAILED' ? { bg: 'rgba(226,112,111,0.16)', bd: 'rgba(226,112,111,0.5)', fg: '#e2706f' }
+            : k.status === 'PENDING' ? { bg: 'rgba(212,168,95,0.16)', bd: 'rgba(212,168,95,0.5)', fg: '#d4a85f' }
+              : { bg: 'rgba(255,255,255,0.05)', bd: 'rgba(255,255,255,0.14)', fg: 'rgba(250,250,249,0.45)' };
+        return (
+          <span key={k.channel} className="relative inline-flex h-7 w-7 items-center justify-center rounded-full" title={ipucu} aria-label={ipucu}
+            style={{ background: renk.bg, border: `1px solid ${renk.bd}`, color: renk.fg }}>
+            <Ikon size={13} strokeWidth={2.3} />
+            {k.testMode && <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full" title="test modu" style={{ background: '#d4b876', boxShadow: '0 0 0 2px #0f0d0b' }} />}
+          </span>
+        );
+      })}
+    </span>
+  );
 }
 
 // Tebliğ rozeti: yaklasiyor → sarı "yarın / 2 gün içinde tebliğ sayılacak"; edildi → gri "tebliğ edildi"; bekliyor → yok.
