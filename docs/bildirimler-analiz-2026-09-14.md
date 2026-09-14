@@ -58,3 +58,15 @@ kopyalar (LUCA_JOB_FAILURE, MOREN AI KDV uyarısı) · gece ajan kapalıyken ür
 - Aynı bildirimin tekrarları tek satırda "×12" rozetiyle katlanır.
 - Kritikler ince kırmızı şerit; geri kalanı sakin. Koyu tema + hafif parıltı (portal dili), sarı serpme yok.
 - Tercihler: tür adı + "Sustur" anahtarı, sade liste.
+
+## 6. UYGULANDI (2026-09-14, Muzaffer Bey onayı "Hepsini uygula")
+- API (a2f244f): tekrar-önleme okunmuşu da sayar; `notification-policy.ts` merkezi kural (NotificationsService.create + Prisma ara katmanı → kilitli
+  kdv-control'ün doğrudan yazdığı kopyalar dahil); kendiliğinden kapanma (`resolveByDedupePrefix` / `resolveByMetadata`): Luca kuyruğu boşalınca,
+  portal şifresi kaydedilince; Luca "bekliyor" gece üretilmez; şifre hatası 7 gün (+şifre sürümü); otomasyon/Bot QA/brifing günde 1; vadesi geçen
+  fatura sayı değişmedikçe haftada 1; bütçe kritik 3 gün; sistem uyarı başlıkları Türkçe. 15 birim testi.
+- Web (a52e146, 8a776f6): yeni sade ekran (`bildirimler/page.tsx` + `_components/katalog.ts`).
+- Tek seferlik temizlik (canlı DB): 1.046 okunmamış gürültü kaydı okundu işaretlendi (873 "Luca işi bekliyor", 112 Bot QA, 31 LUCA_JOB_FAILURE
+  kopyası, 30 brifing arızası) → okunmamış 1.146 → 100.
+- AÇIK: (1) Günlük brifing 30+ gündür her gün "standart formatta üretilemedi" — MOREN AI çıktısı `brifingFormatindaMi` süzgecinden geçmiyor; ayrı iş.
+  (2) "Portal şifre hatası" metinlerinin bir kısmı aslında "CAPTCHA çözülemedi veya şifre reddedildi" — sınıflandırma belirsiz; güvenlik kodu
+  arızası ayrı tipe düşmeli. (3) Beyanname son gün bildirimi son 30 günde hiç üretilmedi; tümü zamanında onaylandıysa normal, ilk son-gün penceresinde izlenecek.
