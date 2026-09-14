@@ -63,7 +63,10 @@
   // eşleşmesi "İNŞAAT"+"GIDA" gibi GENEL kelimelerle BAŞKA firmayı (GİTO) seçip onun raporunu
   // indiriyordu. Artık genel şirket-türü/sektör kelimeleri token sayılmaz, ilk AYIRT EDİCİ kelime
   // option'da geçmek zorunda; bulunamazsa "Firma bulunamadı" hatası (rapor indirilmez).
-  const AGENT_VERSION = '1.47.40';
+  // v1.47.41 (2026-09-14): FİRMA LİSTESİ TAZELEME — ajan arka plan Luca oturumunu saatlerce açık tuttuğundan
+  // Luca'da YENİ açılan firma (SİLBER) SirketCombo'da yoktu (liste frm4 yüklenirken alınır) → "Firma bulunamadı".
+  // Artık hedef bulunamazsa frm4 (TopFrameAction.do) bir kez tazelenir ve arama tekrarlanır.
+  const AGENT_VERSION = '1.47.41';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -9215,6 +9218,40 @@
    *   - alreadyCorrect = true → firma zaten doğru, hiçbir şey yapılmadı
    *   - skipped = true        → kontrol edilemedi (slug/tax/ad yok ya da DOM eksik)
    */
+  /**
+   * v1.47.41: Firma listesini (frm4 = TopFrameAction.do) TAZELE. Ajan arka plan Luca oturumunu saatlerce açık
+   * tuttuğundan, Luca'da YENİ açılan firma (2026-09-14 SİLBER) SirketCombo'da görünmüyordu → "Firma bulunamadı".
+   * Aynı GET adresine yeni time= ile gidilir (form yeniden gönderimi YOK); YENİ combo (eski DOM'dan farklı) gelince döner.
+   * Dönüş: yeni SirketCombo elemanı ya da null (tazelenemedi — çağıran eski sonuçla devam eder).
+   */
+  async function refreshLucaFirmaListesi(frm4, log) {
+    try {
+      const win = frm4?.contentWindow;
+      const href = String(win?.location?.href || frm4?.src || '');
+      if (!win || !/TopFrameAction\.do/i.test(href)) {
+        await log(`ℹ️ Firma listesi tazelenemedi: frm4 adresi beklenmedik (${href.split('/').pop().slice(0, 40) || 'boş'})`);
+        return null;
+      }
+      const eskiCombo = getLucaFirmaCombo();
+      const onceki = eskiCombo?.options?.length || 0;
+      await log(`↻ Firma listede yok — Luca firma listesi tazeleniyor (${onceki} firma; yeni açılmış firma olabilir)`);
+      const yeniHref = /[?&]time=\d+/.test(href)
+        ? href.replace(/([?&])time=\d+/, `$1time=${Date.now()}`)
+        : `${href}${href.includes('?') ? '&' : '?'}time=${Date.now()}`;
+      win.location.replace(yeniHref);
+      const combo = await waitUntil(() => {
+        const c = getLucaFirmaCombo();
+        return (c && c !== eskiCombo && c.options && c.options.length > 0) ? c : null;
+      }, 20000, 200);
+      if (!combo) { await log('⚠ Firma listesi tazelendi ama SirketCombo geri gelmedi (20 sn)'); return null; }
+      await log(`✓ Firma listesi tazelendi: ${onceki} → ${combo.options.length} firma`);
+      return combo;
+    } catch (e) {
+      await log(`⚠ Firma listesi tazelenemedi: ${e?.message || e}`);
+      return null;
+    }
+  }
+
   async function ensureLucaFirma(job, log) {
     const candidates = [job.taxNumber, job.lucaSlug, job.mukellefAdi].filter(Boolean);
     if (candidates.length === 0) {
@@ -9228,7 +9265,7 @@
       if (!combo) throw new Error('frm4 (firma seçici) bulunamadı');
       frm4 = getLucaFrame('frm4');
     }
-    const combo = getLucaFirmaCombo();
+    let combo = getLucaFirmaCombo();
     if (!combo) {
       await log('⚠ SirketCombo bulunamadı, firma kontrolü atlanıyor');
       return { changed: false, alreadyCorrect: false, skipped: true };
@@ -9280,102 +9317,116 @@
     let targetOpt = null;
     let matchedBy = '';
 
-    // 1) VKN/TCKN tam match
-    if (job.taxNumber) {
-      const tn = String(job.taxNumber).replace(/\D/g, '');
-      if (tn) {
-        for (const opt of combo.options) {
-          if (!isRealOption(opt)) continue;
-          if (opt.text.includes(tn)) {
-            targetOpt = opt; matchedBy = `VKN/TCKN ${tn}`; break;
-          }
-        }
-      }
-    }
-
-    // 2) lucaSlug — ASCII-fold + slugify her iki tarafa
-    if (!targetOpt && job.lucaSlug) {
-      const wanted = slugify(job.lucaSlug);
-      if (wanted.length >= 4) {
-        // Önce tam eşitlik
-        for (const opt of combo.options) {
-          if (!isRealOption(opt)) continue;
-          if (slugify(opt.text) === wanted) {
-            targetOpt = opt; matchedBy = `lucaSlug eşitlik "${job.lucaSlug}"`; break;
-          }
-        }
-        // Tam eşitlik yoksa "wanted, optSlug'ı kapsıyor" (ör. slug uzun versiyon, option kısaltılmış)
-        if (!targetOpt) {
+    // v1.47.41: adımlar 1-5 kapanışta — firma listesi tazelendikten sonra AYNI arama tekrarlanabilsin.
+    const hedefAra = (combo) => {
+      // 1) VKN/TCKN tam match
+      if (job.taxNumber) {
+        const tn = String(job.taxNumber).replace(/\D/g, '');
+        if (tn) {
           for (const opt of combo.options) {
             if (!isRealOption(opt)) continue;
-            const optSlug = slugify(opt.text);
-            if (optSlug.length < 4) continue;
-            if (wanted.includes(optSlug) || optSlug.includes(wanted)) {
-              targetOpt = opt; matchedBy = `lucaSlug substring "${job.lucaSlug}"`; break;
+            if (opt.text.includes(tn)) {
+              targetOpt = opt; matchedBy = `VKN/TCKN ${tn}`; break;
             }
           }
         }
       }
-    }
 
-    // 3) Mükellef adı — token bazlı. v1.47.40: GENEL kelimeler (şirket türü / sektör) token SAYILMAZ ve
-    //    ilk ayırt edici kelime option'da geçmek ZORUNDA. Eski hali "insaat"+"gida" ile GİTO'yu SİLBER sanıyordu.
-    const GENEL_TOKENLAR = new Set([
-      'ltd', 'sti', 'limited', 'sirketi', 'sirket', 'anonim', 'ticaret', 'tic', 'sanayi', 'san', 'insaat', 'ins',
-      'gida', 'hizmetleri', 'hizmet', 'hiz', 'turizm', 'tekstil', 'lojistik', 'nakliyat', 'nak', 'otomotiv', 'medikal',
-      'pazarlama', 'paz', 'ithalat', 'ihracat', 'ith', 'ihr', 'dis', 'uretim', 'imalat', 'muhendislik', 'danismanlik',
-      'bilisim', 'yazilim', 'teknoloji', 'enerji', 'mobilya', 'ambalaj', 'petrol', 'akaryakit', 'oto', 'yedek', 'parca',
-      'depolama', 'tasimacilik', 'kollektif', 'komandit', 'kooperatifi', 'sinirli', 'sorumlu', 'mimarlik', 'yapi',
-      'emlak', 'gayrimenkul', 'saglik', 'egitim', 'reklam', 'matbaa',
-    ]);
-    const ayirtEdiciTokenlar = (ad) => slugify(ad).split('_').filter((w) => w.length >= 3 && !GENEL_TOKENLAR.has(w));
-    if (!targetOpt && job.mukellefAdi) {
-      const tokens = ayirtEdiciTokenlar(job.mukellefAdi).slice(0, 4);
-      if (tokens.length >= 1) {
-        for (const opt of combo.options) {
-          if (!isRealOption(opt)) continue;
-          const optSlug = slugify(opt.text);
-          if (optSlug.length < 4) continue;
-          if (!optSlug.includes(tokens[0])) continue; // ilk ayırt edici kelime şart
-          const matches = tokens.filter((tok) => optSlug.includes(tok)).length;
-          if (matches >= Math.min(tokens.length, 2)) {
-            targetOpt = opt; matchedBy = `ad tokens "${tokens.join('+')}"`; break;
+      // 2) lucaSlug — ASCII-fold + slugify her iki tarafa
+      if (!targetOpt && job.lucaSlug) {
+        const wanted = slugify(job.lucaSlug);
+        if (wanted.length >= 4) {
+          // Önce tam eşitlik
+          for (const opt of combo.options) {
+            if (!isRealOption(opt)) continue;
+            if (slugify(opt.text) === wanted) {
+              targetOpt = opt; matchedBy = `lucaSlug eşitlik "${job.lucaSlug}"`; break;
+            }
+          }
+          // Tam eşitlik yoksa "wanted, optSlug'ı kapsıyor" (ör. slug uzun versiyon, option kısaltılmış)
+          if (!targetOpt) {
+            for (const opt of combo.options) {
+              if (!isRealOption(opt)) continue;
+              const optSlug = slugify(opt.text);
+              if (optSlug.length < 4) continue;
+              if (wanted.includes(optSlug) || optSlug.includes(wanted)) {
+                targetOpt = opt; matchedBy = `lucaSlug substring "${job.lucaSlug}"`; break;
+              }
+            }
           }
         }
       }
-    }
 
-    // 4) v1.36.74: PREFIX BENZERLİĞİ — Luca kısa ad kullandığında uzun ad slug'ı ile
-    //    substring uyumu kurulamıyor. Örn. portal "TALHA BOZOĞLU" → slug "talha_bozoglu",
-    //    Luca dropdown'da "TALHA BOZG" → slug "talha_bozg". Ne tam eşit ne substring.
-    //    Bu adım: ilk 6+ karakter aynıysa "kısaltılmış uzun ad" kabul et.
+      // 3) Mükellef adı — token bazlı. v1.47.40: GENEL kelimeler (şirket türü / sektör) token SAYILMAZ ve
+      //    ilk ayırt edici kelime option'da geçmek ZORUNDA. Eski hali "insaat"+"gida" ile GİTO'yu SİLBER sanıyordu.
+      const GENEL_TOKENLAR = new Set([
+        'ltd', 'sti', 'limited', 'sirketi', 'sirket', 'anonim', 'ticaret', 'tic', 'sanayi', 'san', 'insaat', 'ins',
+        'gida', 'hizmetleri', 'hizmet', 'hiz', 'turizm', 'tekstil', 'lojistik', 'nakliyat', 'nak', 'otomotiv', 'medikal',
+        'pazarlama', 'paz', 'ithalat', 'ihracat', 'ith', 'ihr', 'dis', 'uretim', 'imalat', 'muhendislik', 'danismanlik',
+        'bilisim', 'yazilim', 'teknoloji', 'enerji', 'mobilya', 'ambalaj', 'petrol', 'akaryakit', 'oto', 'yedek', 'parca',
+        'depolama', 'tasimacilik', 'kollektif', 'komandit', 'kooperatifi', 'sinirli', 'sorumlu', 'mimarlik', 'yapi',
+        'emlak', 'gayrimenkul', 'saglik', 'egitim', 'reklam', 'matbaa',
+      ]);
+      const ayirtEdiciTokenlar = (ad) => slugify(ad).split('_').filter((w) => w.length >= 3 && !GENEL_TOKENLAR.has(w));
+      if (!targetOpt && job.mukellefAdi) {
+        const tokens = ayirtEdiciTokenlar(job.mukellefAdi).slice(0, 4);
+        if (tokens.length >= 1) {
+          for (const opt of combo.options) {
+            if (!isRealOption(opt)) continue;
+            const optSlug = slugify(opt.text);
+            if (optSlug.length < 4) continue;
+            if (!optSlug.includes(tokens[0])) continue; // ilk ayırt edici kelime şart
+            const matches = tokens.filter((tok) => optSlug.includes(tok)).length;
+            if (matches >= Math.min(tokens.length, 2)) {
+              targetOpt = opt; matchedBy = `ad tokens "${tokens.join('+')}"`; break;
+            }
+          }
+        }
+      }
+
+      // 4) v1.36.74: PREFIX BENZERLİĞİ — Luca kısa ad kullandığında uzun ad slug'ı ile
+      //    substring uyumu kurulamıyor. Örn. portal "TALHA BOZOĞLU" → slug "talha_bozoglu",
+      //    Luca dropdown'da "TALHA BOZG" → slug "talha_bozg". Ne tam eşit ne substring.
+      //    Bu adım: ilk 6+ karakter aynıysa "kısaltılmış uzun ad" kabul et.
+      if (!targetOpt) {
+        const wanted = job.lucaSlug ? slugify(job.lucaSlug) : (job.mukellefAdi ? slugify(job.mukellefAdi) : '');
+        if (wanted.length >= 6) {
+          for (const opt of combo.options) {
+            if (!isRealOption(opt)) continue;
+            const optSlug = slugify(opt.text);
+            if (optSlug.length < 6) continue;
+            const minLen = Math.min(wanted.length, optSlug.length);
+            const prefixLen = Math.min(8, Math.max(6, minLen - 2));
+            if (wanted.slice(0, prefixLen) === optSlug.slice(0, prefixLen)) {
+              targetOpt = opt; matchedBy = `prefix benzerliği "${wanted.slice(0, prefixLen)}…"`; break;
+            }
+          }
+        }
+      }
+
+      // 5) v1.36.74: Tek token tam eşleşmesi — kısa ad sadece 1 anlamlı token taşıyabilir.
+      //    Token uzunluğu ≥4 ve EŞSİZ ise (başka mükellef adında geçmiyorsa) eşleştir.
+      if (!targetOpt && job.mukellefAdi) {
+        const tokens = ayirtEdiciTokenlar(job.mukellefAdi).filter((w) => w.length >= 4); // v1.47.40: genel kelime olamaz
+        if (tokens.length >= 1) {
+          for (const tok of tokens) {
+            const matchingOpts = [...combo.options].filter((opt) => isRealOption(opt) && slugify(opt.text).includes(tok));
+            if (matchingOpts.length === 1) {
+              targetOpt = matchingOpts[0]; matchedBy = `eşsiz token "${tok}"`; break;
+            }
+          }
+        }
+      }
+    };
+    hedefAra(combo);
+
+    // v1.47.41: Bulunamadıysa liste BAYAT olabilir (Luca'da yeni açılan firma) → frm4'ü bir kez tazele, tekrar ara.
     if (!targetOpt) {
-      const wanted = job.lucaSlug ? slugify(job.lucaSlug) : (job.mukellefAdi ? slugify(job.mukellefAdi) : '');
-      if (wanted.length >= 6) {
-        for (const opt of combo.options) {
-          if (!isRealOption(opt)) continue;
-          const optSlug = slugify(opt.text);
-          if (optSlug.length < 6) continue;
-          const minLen = Math.min(wanted.length, optSlug.length);
-          const prefixLen = Math.min(8, Math.max(6, minLen - 2));
-          if (wanted.slice(0, prefixLen) === optSlug.slice(0, prefixLen)) {
-            targetOpt = opt; matchedBy = `prefix benzerliği "${wanted.slice(0, prefixLen)}…"`; break;
-          }
-        }
-      }
-    }
-
-    // 5) v1.36.74: Tek token tam eşleşmesi — kısa ad sadece 1 anlamlı token taşıyabilir.
-    //    Token uzunluğu ≥4 ve EŞSİZ ise (başka mükellef adında geçmiyorsa) eşleştir.
-    if (!targetOpt && job.mukellefAdi) {
-      const tokens = ayirtEdiciTokenlar(job.mukellefAdi).filter((w) => w.length >= 4); // v1.47.40: genel kelime olamaz
-      if (tokens.length >= 1) {
-        for (const tok of tokens) {
-          const matchingOpts = [...combo.options].filter((opt) => isRealOption(opt) && slugify(opt.text).includes(tok));
-          if (matchingOpts.length === 1) {
-            targetOpt = matchingOpts[0]; matchedBy = `eşsiz token "${tok}"`; break;
-          }
-        }
+      const tazeCombo = await refreshLucaFirmaListesi(frm4, log);
+      if (tazeCombo) {
+        frm4 = getLucaFrame('frm4') || frm4;
+        combo = tazeCombo;
+        hedefAra(combo);
       }
     }
 
