@@ -228,7 +228,9 @@ export class GorevMotoruService implements OnApplicationBootstrap {
         if (!kanallar.portal && !kanallar.push && !kanallar.whatsapp && !kanallar.email) continue;
         const ad = g.taxpayer ? (g.taxpayer.companyName || `${g.taxpayer.firstName || ''} ${g.taxpayer.lastName || ''}`.trim()) : null;
         const hg: HatirlatmaGorevi = { id: g.id, title: g.title, status: g.status, dueDate: g.dueDate, dueTime: g.dueTime, priority: g.priority, reminderConfig: g.reminderConfig, taxpayerAd: ad };
-        const olaylar = hatirlatmaOlaylari(hg, simdi);
+        // Görev açılmadan ÖNCE planlanmış olaylar gönderilmez (16:07'de 'yarın' diye açılan göreve 16:10'da 'yaklaşıyor' düşmesin).
+        const acilis = g.createdAt ? new Date(g.createdAt).getTime() : 0;
+        const olaylar = hatirlatmaOlaylari(hg, simdi).filter((o) => o.planlanan.getTime() >= acilis);
         if (!olaylar.length) continue;
         const loglar: any[] = await db.taskReminderLog.findMany({ where: { taskId: g.id, status: { in: ['SENT', 'SKIPPED'] } }, select: { olayAnahtari: true, channel: true, scheduledFor: true } }).catch(() => []);
         const gonderilmis = new Set<string>(loglar.map((l: any) => String(l.olayAnahtari || `${l.channel}:${l.scheduledFor ? gunAnahtari(istanbulGunu(new Date(l.scheduledFor))) : ''}`)));

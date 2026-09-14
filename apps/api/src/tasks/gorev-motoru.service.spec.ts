@@ -132,6 +132,18 @@ describe('GorevMotoruService — hatırlatma', () => {
   });
 });
 
+describe('GorevMotoruService — görev açılışından önceki olaylar', () => {
+  it("16:07'de 'yarın' vadeli açılan görev: bugün 09:00 planlı ÖNCEDEN olayı gönderilmez; ertesi gün 09:00 VADE gider", async () => {
+    const g = { id: 'y1', tenantId: 't', createdById: 'u', title: 'Sermaye tutarlarını kontrol et', status: 'OPEN', isTemplate: false, dueDate: T('2026-09-15T00:00:00Z'), dueTime: null, allDay: true, priority: 'MEDIUM', notifyInApp: true, escalationLevel: 0, createdAt: T('2026-09-14T13:07:00Z'), taxpayer: null };
+    const { svc, bildirimler, loglar } = kur([g]);
+    expect(await svc.hatirlatmalariGonder(T('2026-09-14T13:10:00Z'))).toBe(0); // 16:10 İstanbul — ÖNCEDEN 09:00 açılıştan önce → yok
+    expect(bildirimler).toHaveLength(0);
+    expect(loglar).toHaveLength(0);
+    expect(await svc.hatirlatmalariGonder(T('2026-09-15T06:05:00Z'))).toBe(1); // ertesi gün 09:05 → VADE
+    expect(bildirimler[0].title).toBe('Bugün vadesi: Sermaye tutarlarını kontrol et');
+  });
+});
+
 describe('GorevMotoruService — WhatsApp şablonu ve personel', () => {
   const gorev = (ek: any = {}) => ({ id: 'g1', tenantId: 't', createdById: 'u', title: 'Beyanname hazırla', status: 'OPEN', isTemplate: false, dueDate: T('2026-09-16T00:00:00Z'), dueTime: null, allDay: true, priority: 'HIGH', category: 'BEYANNAME', notifyInApp: true, notifyEmail: false, escalationLevel: 0, taxpayer: { companyName: 'Öz Ela' }, hatirlatUserIds: [], ...ek });
 

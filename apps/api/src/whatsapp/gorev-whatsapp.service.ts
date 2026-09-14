@@ -1,6 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { ayristir, kucult, sadelestir, type AyristirmaSonucu, type MukellefSecenek } from '@mali-musavir/shared';
+import { ayristir, kucult, sadelestir, type MukellefSecenek } from '@mali-musavir/shared';
+import { claudeTextViaMax, isMaxAvailable, MAX_MODEL_DEFAULT } from '../common/max-inference';
+import { hatirlatmaOlaylari, istanbulSaat } from '../tasks/gorev-hatirlatma-kurali';
+import { istanbulGunu } from '../tasks/gorev-tekrar';
 
 /**
  * WhatsApp'tan GÖREV / HATIRLATMA / NOT ekleme (owner hattı) — 2026-09-14, Muzaffer Bey isteği:
@@ -11,7 +14,7 @@ import { ayristir, kucult, sadelestir, type AyristirmaSonucu, type MukellefSecen
  *   1) KATI kapı (gorevIstegiMi) — açık işaret yoksa mesaj bu modüle GİRMEZ (bütçe / iletme / fatura kes karışmasın),
  *   2) önek temizliği + ayrıştırma + tasks tablosuna kayıt (portal create() ile aynı alanlar),
  *   3) kısa Türkçe WhatsApp cevabı
- * yapar. AI çağrısı YOK (Max'a gitmez, saniyeler içinde cevap).
+ * yapar. Başlık/açıklama/kategori/tür için Max düzeltmesi (yapilandir): serbest cümle düzgün göreve dönüşür; Max yoksa kural sonucu.
  *
  * Kuru test (POST /whatsapp/webhook/deneme, __dryRun): `kuru: true` ile çağrılır → kayıt YAZILMAZ, cevap "KURU TEST" ile başlar.
  */
@@ -30,7 +33,6 @@ export interface GorevIslemSecenek {
 
 const MUKELLEF_TAVANI = 2000;
 const ADAY_GOSTER = 3;
-const VARSAYILAN_HATIRLATMA_SAATI = '09:00';
 const GUN_ADLARI = ['Pazar', 'Pazartesi', 'Salı', 'Çarşamba', 'Perşembe', 'Cuma', 'Cumartesi'];
 
 /** apps/web/src/lib/tasks.ts CATEGORY_OPTIONS ile birebir */
@@ -136,11 +138,44 @@ export function tarihEtiketi(gunIso: string, bugunIstanbul: Date): string {
   return `${on} ${bicim}`;
 }
 
-/** "HH:mm" − dakika → "HH:mm" (gün altına inmez, 00:00'da kalır) */
-function saatGeri(saat: string, dakika: number): string {
-  const [h, m] = saat.split(':').map(Number);
-  const toplam = Math.max(0, h * 60 + m - dakika);
-  return `${String(Math.floor(toplam / 60)).padStart(2, '0')}:${String(toplam % 60).padStart(2, '0')}`;
+
+/** Ayrıştırma sonucu — kural + (varsa) Max düzeltmesi birleşmiş hâli. */
+export interface GorevYapisi {
+  baslik: string;
+  aciklama: string | null;
+  tarih: string | null; // YYYY-MM-DD (İstanbul günü)
+  saat: string | null; // HH:mm
+  kategori: string;
+  oncelik: string;
+  mukellefId: string | null;
+  mukellefAd: string | null;
+  tur: 'GOREV' | 'NOT';
+  /** Max düzeltmesi uygulandı mı (raporda/logda görünür) */
+  ai: boolean;
+}
+
+const CIZGI = '━━━━━━━━━━━━━━━━━━━━';
+const IMZA = () => `${String(process.env.MOREN_BOT_NAME || 'Elif').trim() || 'Elif'} · Moren Ofis Asistanı`;
+const KATEGORI_KODLARI = Object.keys(KATEGORI_ETIKET);
+const ONCELIK_KODLARI = Object.keys(ONCELIK_ETIKET);
+
+/** İlk harf büyük (tr-TR), gerisi olduğu gibi. */
+function ilkHarfBuyuk(s: string): string {
+  const t = String(s || '').trim();
+  return t ? t.charAt(0).toLocaleUpperCase('tr-TR') + t.slice(1) : t;
+}
+
+/** Model çıktısından JSON gövdesini ayıkla (kod çiti / açıklama olsa da). */
+function jsonAyikla(metin: string): any | null {
+  const t = String(metin || '').replace(/```(?:json)?/gi, '').trim();
+  const i = t.indexOf('{');
+  const j = t.lastIndexOf('}');
+  if (i < 0 || j <= i) return null;
+  try {
+    return JSON.parse(t.slice(i, j + 1));
+  } catch {
+    return null;
+  }
 }
 
 @Injectable()
@@ -206,7 +241,7 @@ export class GorevWhatsappService {
   }
 
   /**
-   * Mesajı ayrıştırıp görevi kaydeder; WhatsApp cevap metnini döndürür.
+   * Mesajı ayrıştırır (kural + Max düzeltmesi), görevi kaydeder; WhatsApp cevap metnini döndürür.
    * Hata → null (bot normal akışına devam eder) + logger.warn.
    */
   async islemYap(k: GorevKimlik, metin: string, secenek: GorevIslemSecenek = {}): Promise<string | null> {
@@ -218,31 +253,24 @@ export class GorevWhatsappService {
       const simdi = secenek.simdi ?? new Date();
       const bugunIst = istanbulDuvarSaati(simdi);
       const mukellefler = await this.mukellefler(k.tenantId);
-      const sonuc = ayristir(govde, mukellefler, bugunIst);
-      const baslik = (sonuc.baslik || govde).trim();
-      if (!baslik) return null;
+      const yapi = await this.yapilandir(govde, onekNot, mukellefler, bugunIst);
+      if (!yapi.baslik) return null;
 
-      const tur: 'GOREV' | 'NOT' = onekNot || sonuc.tur === 'NOT' ? 'NOT' : 'GOREV';
-      const kategori = sonuc.kategori || 'DIGER';
-      const oncelik = sonuc.oncelik || 'MEDIUM';
-      const saat = sonuc.saat;
-      const dueDate = sonuc.tarih ? vadeTarihi(sonuc.tarih, saat) : null;
-      const mukellef = sonuc.mukellef;
-
+      const dueDate = yapi.tarih ? vadeTarihi(yapi.tarih, yapi.saat) : null;
       const data = {
         tenantId: k.tenantId,
         createdById: k.userId,
-        title: baslik,
-        description: null,
-        category: kategori,
-        priority: oncelik,
+        title: yapi.baslik,
+        description: yapi.aciklama,
+        category: yapi.kategori,
+        priority: yapi.oncelik,
         tags: [] as string[],
-        taxpayerId: mukellef ? mukellef.id : null,
+        taxpayerId: yapi.mukellefId,
         dueDate,
-        dueTime: saat || null, // portal AkilliGiris ile aynı: saat varsa yazılır
-        allDay: !saat,
+        dueTime: yapi.saat || null, // portal AkilliGiris ile aynı: saat varsa yazılır
+        allDay: !yapi.saat,
         kaynak: 'WHATSAPP',
-        tur,
+        tur: yapi.tur,
         notifyInApp: true,
         notifyBrowser: true,
         notifyWhatsapp: true,
@@ -252,14 +280,100 @@ export class GorevWhatsappService {
 
       if (!secenek.kuru) {
         await this.db.task.create({ data });
-        this.logger.log(`[GorevWhatsapp] ${tur} eklendi: "${baslik.slice(0, 60)}" vade=${sonuc.tarih || '-'} ${saat || ''} mukellef=${mukellef?.id || '-'}`);
+        this.logger.log(`[GorevWhatsapp] ${yapi.tur} eklendi${yapi.ai ? ' (Max düzeltmeli)' : ''}: "${yapi.baslik.slice(0, 60)}" vade=${yapi.tarih || '-'} ${yapi.saat || ''} mukellef=${yapi.mukellefId || '-'}`);
       }
 
-      const cevap = this.cevapMetni(sonuc, { tur, baslik, kategori, oncelik, mukellefAd: mukellef ? mukellef.ad : null }, bugunIst);
+      const adaylar = yapi.mukellefId ? [] : ayristir(govde, mukellefler, bugunIst).mukellefAdaylar.slice(0, ADAY_GOSTER).map((a) => a.ad);
+      const cevap = this.cevapMetni(yapi, adaylar, bugunIst, simdi);
       return secenek.kuru ? `KURU TEST (kaydedilmedi)\n${cevap}` : cevap;
     } catch (e: any) {
       this.logger.warn(`[GorevWhatsapp] islem hatasi: ${e?.message || e}`);
       return null;
+    }
+  }
+
+  /**
+   * Kural ayrıştırıcısı (tarih/saat/mükellef adayı/kategori/öncelik) + Max düzeltmesi (başlık/açıklama/kategori/tür):
+   * serbest konuşma ("… kontrol etmemi hatırlat portala da ekle") düzgün bir görev başlığına dönüşsün, hitap kalıntıları
+   * ("bana", "bunu", "portala da ekle") başlığa girmesin, mükellef adı başlıkta tekrar etmesin. Max yoksa/başarısızsa kural
+   * sonucu (ilk harfi büyütülmüş) kullanılır. Mükellef YALNIZ kuralın bulduğu adaylar arasından seçilir (uydurma yok).
+   */
+  async yapilandir(govde: string, onekNot: boolean, mukellefler: MukellefSecenek[], bugunIst: Date): Promise<GorevYapisi> {
+    const sonuc = ayristir(govde, mukellefler, bugunIst);
+    const kural: GorevYapisi = {
+      baslik: ilkHarfBuyuk((sonuc.baslik || govde).trim()),
+      aciklama: null,
+      tarih: sonuc.tarih,
+      saat: sonuc.saat,
+      kategori: sonuc.kategori || 'DIGER',
+      oncelik: sonuc.oncelik || 'MEDIUM',
+      mukellefId: sonuc.mukellef ? sonuc.mukellef.id : null,
+      mukellefAd: sonuc.mukellef ? sonuc.mukellef.ad : null,
+      tur: onekNot || sonuc.tur === 'NOT' ? 'NOT' : 'GOREV',
+      ai: false,
+    };
+    if (!isMaxAvailable()) return kural;
+
+    // Adaylar: net eşleşme + kuralın bulduğu adaylar (en çok 6) — model yalnız bunlardan seçebilir
+    const adaylar: Array<{ id: string; ad: string }> = [];
+    if (sonuc.mukellef) adaylar.push({ id: sonuc.mukellef.id, ad: sonuc.mukellef.ad });
+    for (const a of sonuc.mukellefAdaylar.slice(0, 6)) if (!adaylar.some((x) => x.id === a.id)) adaylar.push({ id: a.id, ad: a.ad });
+
+    const bugun = isoGun(bugunIst);
+    const gunAdi = GUN_ADLARI[bugunIst.getDay()];
+    try {
+      const r = await claudeTextViaMax({
+        model: MAX_MODEL_DEFAULT,
+        timeoutMs: 45000,
+        system:
+          'Bir mali müşavirlik ofisinin asistanısın. Ofis sahibinin WhatsApp\'tan serbest cümleyle yazdığı görev/hatırlatma/not isteğini ' +
+          'yapılandırılmış göreve çeviriyorsun. SADECE geçerli JSON döndür; açıklama yazma. Emin olmadığın alanı null bırak, UYDURMA.',
+        prompt: [
+          `Bugün: ${bugun} (${gunAdi}), saat ${String(bugunIst.getHours()).padStart(2, '0')}:${String(bugunIst.getMinutes()).padStart(2, '0')} (İstanbul).`,
+          '',
+          'SAHİBİN MESAJI (önek/hitap temizlenmiş):',
+          govde,
+          '',
+          'KURAL AYRIŞTIRICISININ TAHMİNİ (ipucu; yanlışsa düzelt):',
+          `tarih=${sonuc.tarih || 'null'} saat=${sonuc.saat || 'null'} kategori=${sonuc.kategori || 'null'} oncelik=${sonuc.oncelik || 'null'} tur=${kural.tur}`,
+          '',
+          'MÜKELLEF ADAYLARI (id · ad) — mükellef YALNIZ bunlardan seçilebilir; hiçbiri değilse null:',
+          ...(adaylar.length ? adaylar.map((a) => `${a.id} · ${a.ad}`) : ['(aday yok)']),
+          '',
+          `KATEGORİ KODLARI: ${KATEGORI_KODLARI.join(' | ')} (${KATEGORI_KODLARI.map((c) => `${c}=${KATEGORI_ETIKET[c]}`).join(', ')})`,
+          `ÖNCELİK KODLARI: ${ONCELIK_KODLARI.join(' | ')} (acil/ivedi→URGENT, önemli→HIGH, belirtilmemiş→MEDIUM)`,
+          '',
+          'KURALLAR:',
+          '- baslik: kısa (en çok 80 karakter), düzgün Türkçe, ilk harf büyük, emir ya da isim kipi ("Mükelleflerin sermaye tutarlarını kontrol et", "Ceza ihbarnamelerine uzlaşma/indirim talebi").',
+          '  Bota hitap kalıntıları ("bana", "bunu", "hatırlat", "portala da ekle", "lütfen") başlığa GİRMEZ. Mükellef seçildiyse adı başlıkta TEKRAR ETMEZ.',
+          '- aciklama: isteğin tam anlamını koruyan tek düzgün cümle (bağlam kaybolmasın); gerekmiyorsa null.',
+          '- tarih: mesajdaki göreli ifadeye göre YYYY-MM-DD ("yarın", "cuma", "ayın 20\'si", "3 gün sonra" — bugüne göre hesapla); yoksa null. saat: HH:mm ya da null.',
+          '- tur: "not:" ile başladıysa ya da yapılacak iş değil bilgi kaydıysa NOT, yoksa GOREV.',
+          '',
+          'ŞEMA: {"baslik":string,"aciklama":string|null,"tarih":"YYYY-MM-DD"|null,"saat":"HH:mm"|null,"kategori":string,"oncelik":string,"mukellefId":string|null,"tur":"GOREV"|"NOT"}',
+        ].join('\n'),
+      });
+      if (!r.ok) {
+        this.logger.warn(`[GorevWhatsapp] Max düzeltmesi başarısız, kural sonucu kullanılıyor: ${r.error || '-'}`);
+        return kural;
+      }
+      const j = jsonAyikla(r.text);
+      if (!j || typeof j !== 'object') return kural;
+
+      const baslik = ilkHarfBuyuk(String(j.baslik || '').replace(/\s+/g, ' ').trim()).slice(0, 120);
+      const tarih = typeof j.tarih === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(j.tarih) ? j.tarih : kural.tarih;
+      const saat = typeof j.saat === 'string' && /^\d{2}:\d{2}$/.test(j.saat) ? j.saat : kural.saat;
+      const kategori = KATEGORI_KODLARI.includes(String(j.kategori)) ? String(j.kategori) : kural.kategori;
+      const oncelik = ONCELIK_KODLARI.includes(String(j.oncelik)) ? String(j.oncelik) : kural.oncelik;
+      const aday = adaylar.find((a) => a.id === String(j.mukellefId || ''));
+      const mukellefId = aday ? aday.id : j.mukellefId === null ? null : kural.mukellefId;
+      const mukellefAd = aday ? aday.ad : j.mukellefId === null ? null : kural.mukellefAd;
+      const aciklama = typeof j.aciklama === 'string' && j.aciklama.trim() ? j.aciklama.trim().slice(0, 600) : null;
+      const tur: 'GOREV' | 'NOT' = onekNot ? 'NOT' : j.tur === 'NOT' ? 'NOT' : 'GOREV';
+      return { baslik: baslik || kural.baslik, aciklama, tarih, saat, kategori, oncelik, mukellefId, mukellefAd, tur, ai: true };
+    } catch (e: any) {
+      this.logger.warn(`[GorevWhatsapp] Max düzeltmesi hata: ${e?.message || e}`);
+      return kural;
     }
   }
 
@@ -273,43 +387,60 @@ export class GorevWhatsappService {
     return (rows || []).map((r) => ({ id: r.id, companyName: r.companyName, firstName: r.firstName, lastName: r.lastName, taxNumber: r.taxNumber }));
   }
 
+  /** Gelecekteki hatırlatma anları (gorev-hatirlatma-kurali ile aynı kural), en çok 2; "yarın 09:00", "17.09 13:30" */
+  private hatirlatmaPlani(yapi: GorevYapisi, bugunIst: Date, simdi: Date): string {
+    if (!yapi.tarih) return '';
+    const vade = vadeTarihi(yapi.tarih, null);
+    if (!vade) return '';
+    const olaylar = hatirlatmaOlaylari(
+      { id: 'x', title: yapi.baslik, status: 'OPEN', dueDate: vade, dueTime: yapi.saat, priority: yapi.oncelik },
+      istanbulSaat(istanbulGunu(vade), 23, 59), // vade günü gece: TÜM önceden + vade olayları üretilir (gecikme yok)
+    ).filter((o) => o.tip !== 'GECIKME' && o.planlanan.getTime() > simdi.getTime());
+    if (!olaylar.length) return 'vade geçince gecikme uyarısı';
+    const yarin = isoGun(gunEkle(bugunIst, 1));
+    const bugun = isoGun(bugunIst);
+    const anlar = olaylar.slice(0, 2).map((o) => {
+      const p = new Intl.DateTimeFormat('tr-TR', { timeZone: 'Europe/Istanbul', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(o.planlanan);
+      const al = (t: string) => p.find((x) => x.type === t)?.value || '';
+      const gun = `${al('year')}-${al('month')}-${al('day')}`;
+      const on = gun === bugun ? 'bugün' : gun === yarin ? 'yarın' : `${al('day')}.${al('month')}`;
+      return `${on} ${al('hour')}:${al('minute')}`;
+    });
+    return anlar.join(' ve ');
+  }
+
   /**
-   *   ✅ Görev eklendi
-   *   Öz Ela Gıda — Ağustos KDV kontrolü
-   *   📅 Yarın 15.09.2026 · 10:00 · KDV Kontrol · Öncelik: ACİL
-   *   🔔 Hatırlatma: 1 gün önce 10:00 + vade günü 09:30 (portal + telefon + WhatsApp)
-   *   [👤 Mükellef netleşmedi (adaylar: A, B) — portaldan seçebilirsiniz]
+   *   ✅ *Görev eklendi*
+   *   ━━━━━━━━━━━━━━━━━━━━
+   *   *Öz Ela Turizm* — Ceza ihbarnamelerine uzlaşma / indirim talebi
+   *   Yarın, Salı 15.09.2026 · Diğer
+   *   _Öz Ela Turizm'in gelen ceza ihbarnamelerine uzlaşma ya da indirim talep edilecek._
+   *
+   *   🔔 Hatırlatma: yarın 09:00 → portal · telefon · WhatsApp
+   *   ━━━━━━━━━━━━━━━━━━━━
+   *   _Elif · Moren Ofis Asistanı_
    */
-  private cevapMetni(
-    sonuc: AyristirmaSonucu,
-    g: { tur: 'GOREV' | 'NOT'; baslik: string; kategori: string; oncelik: string; mukellefAd: string | null },
-    bugunIst: Date,
-  ): string {
-    const satirlar: string[] = [];
-    satirlar.push(g.tur === 'NOT' ? '📝 Not eklendi' : '✅ Görev eklendi');
-    satirlar.push(g.mukellefAd ? `${g.mukellefAd} — ${g.baslik}` : g.baslik);
-
-    const etiketler = `${KATEGORI_ETIKET[g.kategori] || g.kategori} · Öncelik: ${ONCELIK_ETIKET[g.oncelik] || g.oncelik}`;
-    if (sonuc.tarih) {
-      const saat = sonuc.saat;
-      satirlar.push(`📅 ${tarihEtiketi(sonuc.tarih, bugunIst)}${saat ? ` · ${saat}` : ''} · ${etiketler}`);
-      // gorev-hatirlatma-kurali: ÖNCEDEN = vadeden 1 gün önce (saat varsa aynı saat, yoksa 09:00); VADE = saat varsa 30 dk önce, yoksa 09:00
-      const oncedenSaat = saat || VARSAYILAN_HATIRLATMA_SAATI;
-      const vadeSaat = saat ? saatGeri(saat, 30) : VARSAYILAN_HATIRLATMA_SAATI;
-      const bugunMu = sonuc.tarih === isoGun(bugunIst);
-      satirlar.push(
-        bugunMu
-          ? `🔔 Hatırlatma: vade günü ${vadeSaat} (portal + telefon + WhatsApp)`
-          : `🔔 Hatırlatma: 1 gün önce ${oncedenSaat} + vade günü ${vadeSaat} (portal + telefon + WhatsApp)`,
-      );
-    } else {
-      satirlar.push(`📅 Vadesiz (portaldan tarih verebilirsiniz) · ${etiketler}`);
+  private cevapMetni(yapi: GorevYapisi, adaylar: string[], bugunIst: Date, simdi: Date): string {
+    const s: string[] = [];
+    s.push(yapi.tur === 'NOT' ? '📝 *Not eklendi*' : '✅ *Görev eklendi*');
+    s.push(CIZGI);
+    s.push(yapi.mukellefAd ? `*${yapi.mukellefAd}* — ${yapi.baslik}` : `*${yapi.baslik}*`);
+    const parcalar: string[] = [];
+    if (yapi.tarih) parcalar.push(`${tarihEtiketi(yapi.tarih, bugunIst)}${yapi.saat ? ' ' + yapi.saat : ''}`);
+    else if (yapi.tur === 'GOREV') parcalar.push('Vadesiz');
+    if (yapi.oncelik === 'URGENT') parcalar.push('🔴 Acil');
+    else if (yapi.oncelik === 'HIGH') parcalar.push('Yüksek');
+    parcalar.push(KATEGORI_ETIKET[yapi.kategori] || yapi.kategori);
+    s.push(parcalar.join(' · '));
+    if (yapi.aciklama) s.push(`_${yapi.aciklama}_`);
+    if (yapi.tur === 'GOREV') {
+      s.push('');
+      const plan = yapi.tarih ? this.hatirlatmaPlani(yapi, bugunIst, simdi) : '';
+      s.push(yapi.tarih ? `🔔 Hatırlatma: ${plan || '—'} → portal · telefon · WhatsApp` : '🔔 Vade verilmedi — portaldan tarih ekleyince hatırlatma kurulur');
     }
-
-    if (!g.mukellefAd && sonuc.mukellefAdaylar.length > 0) {
-      const adlar = sonuc.mukellefAdaylar.slice(0, ADAY_GOSTER).map((a) => a.ad).join(', ');
-      satirlar.push(`👤 Mükellef netleşmedi (adaylar: ${adlar}) — portaldan seçebilirsiniz`);
-    }
-    return satirlar.join('\n');
+    if (!yapi.mukellefId && adaylar.length) s.push(`👤 Mükellef netleşmedi — adaylar: ${adaylar.join(', ')} (portaldan seçin)`);
+    s.push(CIZGI);
+    s.push(`_${IMZA()}_`);
+    return s.join('\n');
   }
 }

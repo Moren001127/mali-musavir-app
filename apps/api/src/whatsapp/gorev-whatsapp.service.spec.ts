@@ -3,7 +3,15 @@
  *   cd apps/api && npx jest src/whatsapp/gorev-whatsapp
  * "Şimdi" sabit: 14 Eylül 2026 Pazartesi 11:30 İstanbul (= 08:30Z) — ortak ayrıştırıcı testiyle aynı gün.
  */
+jest.mock('../common/max-inference', () => ({
+  MAX_MODEL_DEFAULT: 'sahte-model',
+  isMaxAvailable: jest.fn(() => false),
+  claudeTextViaMax: jest.fn(async () => ({ ok: false, text: '', error: 'kapalı' })),
+}));
+import { claudeTextViaMax, isMaxAvailable } from '../common/max-inference';
 import { GorevWhatsappService, istanbulDuvarSaati, tarihEtiketi, vadeTarihi } from './gorev-whatsapp.service';
+const IMZA = '_Elif · Moren Ofis Asistanı_';
+const CIZGI = '━━━━━━━━━━━━━━━━━━━━';
 
 const SIMDI = new Date('2026-09-14T08:30:00.000Z'); // 14.09.2026 11:30 İstanbul, Pazartesi
 const MUKELLEFLER = [
@@ -137,10 +145,15 @@ describe('GorevWhatsappService.islemYap (sahte prisma)', () => {
 
     expect(cevap).toBe(
       [
-        '✅ Görev eklendi',
-        'Öz Ela Gıda San. ve Tic. Ltd. Şti. — Öz Ela KDV kontrolü',
-        '📅 Yarın 15.09.2026 · 10:00 · KDV Kontrol · Öncelik: Orta',
-        '🔔 Hatırlatma: 1 gün önce 10:00 + vade günü 09:30 (portal + telefon + WhatsApp)',
+        '✅ *Görev eklendi*',
+        CIZGI,
+        '*Öz Ela Gıda San. ve Tic. Ltd. Şti.* — Öz Ela KDV kontrolü',
+        'Yarın 15.09.2026 10:00 · KDV Kontrol',
+        '',
+        // 1 gün önce 10:00 = bugün 10:00 (11:30'da GEÇMİŞ → gösterilmez); vade günü 30 dk önce 09:30
+        '🔔 Hatırlatma: yarın 09:30 → portal · telefon · WhatsApp',
+        CIZGI,
+        IMZA,
       ].join('\n'),
     );
   });
@@ -151,10 +164,10 @@ describe('GorevWhatsappService.islemYap (sahte prisma)', () => {
     const data = prisma.task.create.mock.calls[0][0].data;
     expect(data).toMatchObject({ title: 'Mert Reklam tahsilat araması', category: 'TAHSILAT', priority: 'URGENT', taxpayerId: 'm4', dueTime: null, allDay: true, tur: 'GOREV', kaynak: 'WHATSAPP' });
     expect(data.dueDate.toISOString()).toBe('2026-09-17T21:00:00.000Z'); // 18.09.2026 00:00 İstanbul
-    expect(cevap).toContain('✅ Görev eklendi');
-    expect(cevap).toContain('Mert Reklam Ajansı Ltd. Şti. — Mert Reklam tahsilat araması');
-    expect(cevap).toContain('📅 Cuma 18.09.2026 · Tahsilat · Öncelik: ACİL');
-    expect(cevap).toContain('🔔 Hatırlatma: 1 gün önce 09:00 + vade günü 09:00 (portal + telefon + WhatsApp)');
+    expect(cevap).toContain('✅ *Görev eklendi*');
+    expect(cevap).toContain('*Mert Reklam Ajansı Ltd. Şti.* — Mert Reklam tahsilat araması');
+    expect(cevap).toContain('Cuma 18.09.2026 · 🔴 Acil · Tahsilat');
+    expect(cevap).toContain('🔔 Hatırlatma: 17.09 09:00 ve 18.09 09:00 → portal · telefon · WhatsApp');
   });
 
   it('not: tür NOT, vadesiz, kategori DIGER', async () => {
@@ -162,16 +175,16 @@ describe('GorevWhatsappService.islemYap (sahte prisma)', () => {
     const cevap = await servis.islemYap(KIMLIK, 'not: SİLBER Luca\'da açılmadı', { simdi: SIMDI });
     const data = prisma.task.create.mock.calls[0][0].data;
     expect(data).toMatchObject({ title: 'SİLBER Luca\'da açılmadı', tur: 'NOT', kaynak: 'WHATSAPP', dueDate: null, dueTime: null, allDay: true, category: 'DIGER', priority: 'MEDIUM', taxpayerId: null });
-    expect(cevap).toBe(['📝 Not eklendi', 'SİLBER Luca\'da açılmadı', '📅 Vadesiz (portaldan tarih verebilirsiniz) · Diğer · Öncelik: Orta'].join('\n'));
+    expect(cevap).toBe(['📝 *Not eklendi*', CIZGI, '*SİLBER Luca\'da açılmadı*', 'Diğer', CIZGI, IMZA].join('\n'));
   });
 
   it('hatırlat: öneki + "3 gün sonra" + banka kategorisi', async () => {
     const { prisma, servis } = kur();
     const cevap = await servis.islemYap(KIMLIK, 'hatırlat: banka ekstrelerini iste 3 gün sonra', { simdi: SIMDI });
     const data = prisma.task.create.mock.calls[0][0].data;
-    expect(data).toMatchObject({ title: 'banka ekstrelerini iste', category: 'BANKA', tur: 'GOREV', taxpayerId: null });
+    expect(data).toMatchObject({ title: 'Banka ekstrelerini iste', category: 'BANKA', tur: 'GOREV', taxpayerId: null }); // ilk harf büyük
     expect(data.dueDate.toISOString()).toBe('2026-09-16T21:00:00.000Z'); // 17.09.2026 00:00 İstanbul
-    expect(cevap).toContain('📅 Perşembe 17.09.2026 · Banka · Öncelik: Orta');
+    expect(cevap).toContain('*Banka ekstrelerini iste*\nPerşembe 17.09.2026 · Banka');
   });
 
   it('belirsiz mükellef: görev mükellefsiz kaydedilir, adaylar cevapta', async () => {
@@ -180,26 +193,62 @@ describe('GorevWhatsappService.islemYap (sahte prisma)', () => {
     const data = prisma.task.create.mock.calls[0][0].data;
     expect(data.taxpayerId).toBeNull();
     expect(data.title).toBe('Ela ekstre iste');
-    expect(cevap).toContain('👤 Mükellef netleşmedi (adaylar: ');
+    expect(cevap).toContain('👤 Mükellef netleşmedi — adaylar: ');
     expect(cevap).toContain('Ela Tekstil Ltd. Şti.');
     expect(cevap).toContain('Öz Ela Gıda San. ve Tic. Ltd. Şti.');
-    expect(cevap).toContain('— portaldan seçebilirsiniz');
-    expect(String(cevap).split('\n')[1]).toBe('Ela ekstre iste'); // başlık satırında mükellef yok
+    expect(cevap).toContain('(portaldan seçin)');
+    expect(String(cevap).split('\n')[2]).toBe('*Ela ekstre iste*'); // başlık satırında mükellef yok
   });
 
   it('bugün vadeli: hatırlatma satırı yalnız vade günü', async () => {
     const { servis } = kur();
     const cevap = await servis.islemYap(KIMLIK, 'görev ekle: Ayşegül Kaya bordro bugün 15:00', { simdi: SIMDI });
-    expect(cevap).toContain('📅 Bugün 14.09.2026 · 15:00 · Bordro/SGK · Öncelik: Orta');
-    expect(cevap).toContain('🔔 Hatırlatma: vade günü 14:30 (portal + telefon + WhatsApp)');
+    expect(cevap).toContain('Bugün 14.09.2026 15:00 · Bordro/SGK');
+    expect(cevap).toContain('🔔 Hatırlatma: bugün 14:30 → portal · telefon · WhatsApp');
   });
 
   it('kuru test: kayıt YAZILMAZ, cevap KURU TEST ile başlar', async () => {
     const { prisma, servis } = kur();
     const cevap = await servis.islemYap(KIMLIK, 'görev ekle: Famcoffee fatura kontrolü yarın', { simdi: SIMDI, kuru: true });
     expect(prisma.task.create).not.toHaveBeenCalled();
-    expect(cevap?.startsWith('KURU TEST (kaydedilmedi)\n✅ Görev eklendi')).toBe(true);
-    expect(cevap).toContain('Famcoffee Kahve A.Ş. — Famcoffee fatura kontrolü');
+    expect(cevap?.startsWith('KURU TEST (kaydedilmedi)\n✅ *Görev eklendi*')).toBe(true);
+    expect(cevap).toContain('*Famcoffee Kahve A.Ş.* — Famcoffee fatura kontrolü');
+  });
+
+  it('Max düzeltmesi: serbest cümle → düzgün başlık + açıklama; mükellef yalnız adaylardan; tarih/saat kuraldan', async () => {
+    (isMaxAvailable as jest.Mock).mockReturnValueOnce(true);
+    (claudeTextViaMax as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      text: '```json\n{"baslik":"Ceza ihbarnamelerine uzlaşma / indirim talebi","aciklama":"Öz Ela Turizm\'e gelen ceza ihbarnameleri için uzlaşma ya da indirim talep edilecek.","tarih":"2026-09-15","saat":null,"kategori":"DIGER","oncelik":"MEDIUM","mukellefId":"m1","tur":"GOREV"}\n```',
+    });
+    const { prisma, servis } = kur();
+    const cevap = await servis.islemYap(KIMLIK, 'öz ela gıda ya gelen ceza ihbarnamelerine uzlaşma ya da indirim talep edilecek bana bunu yarın hatırlat', { simdi: SIMDI });
+    const data = prisma.task.create.mock.calls[0][0].data;
+    expect(data).toMatchObject({ title: 'Ceza ihbarnamelerine uzlaşma / indirim talebi', description: 'Öz Ela Turizm\'e gelen ceza ihbarnameleri için uzlaşma ya da indirim talep edilecek.', taxpayerId: 'm1', category: 'DIGER', tur: 'GOREV' });
+    expect(data.dueDate.toISOString()).toBe('2026-09-14T21:00:00.000Z'); // 15.09 00:00 İstanbul
+    const prompt = String((claudeTextViaMax as jest.Mock).mock.calls[0][0].prompt);
+    expect(prompt).toContain('Bugün: 2026-09-14 (Pazartesi)');
+    expect(prompt).toContain('m1 · Öz Ela Gıda San. ve Tic. Ltd. Şti.');
+    expect(cevap).toContain('*Öz Ela Gıda San. ve Tic. Ltd. Şti.* — Ceza ihbarnamelerine uzlaşma / indirim talebi');
+    expect(cevap).toContain('_Öz Ela Turizm\'e gelen ceza ihbarnameleri için uzlaşma ya da indirim talep edilecek._');
+    expect(cevap).toContain('🔔 Hatırlatma: yarın 09:00 → portal · telefon · WhatsApp');
+  });
+
+  it('Max düzeltmesi: geçersiz mükellefId / kategori / tarih → kural değerleri korunur; Max hata → kural', async () => {
+    (isMaxAvailable as jest.Mock).mockReturnValueOnce(true);
+    (claudeTextViaMax as jest.Mock).mockResolvedValueOnce({ ok: true, text: '{"baslik":"KDV kontrolü","aciklama":null,"tarih":"yarın","saat":"10","kategori":"UYDURMA","oncelik":"COK","mukellefId":"yok-boyle-id","tur":"GOREV"}' });
+    const { prisma, servis } = kur();
+    await servis.islemYap(KIMLIK, 'Öz Ela KDV kontrolü yarın 10:00 hatırlat', { simdi: SIMDI });
+    let data = prisma.task.create.mock.calls[0][0].data;
+    expect(data).toMatchObject({ title: 'KDV kontrolü', category: 'KDV_KONTROL', priority: 'MEDIUM', taxpayerId: 'm1', dueTime: '10:00' });
+    expect(data.dueDate.toISOString()).toBe('2026-09-15T07:00:00.000Z');
+
+    (isMaxAvailable as jest.Mock).mockReturnValueOnce(true);
+    (claudeTextViaMax as jest.Mock).mockRejectedValueOnce(new Error('zaman aşımı'));
+    const { prisma: p2, servis: s2 } = kur();
+    await s2.islemYap(KIMLIK, 'Öz Ela KDV kontrolü yarın 10:00 hatırlat', { simdi: SIMDI });
+    data = p2.task.create.mock.calls[0][0].data;
+    expect(data).toMatchObject({ title: 'Öz Ela KDV kontrolü', taxpayerId: 'm1' });
   });
 
   it('boş gövde ("görev ekle" tek başına): kayıt yok, kullanım ipucu', async () => {
@@ -274,7 +323,7 @@ describe('WhatsAppBotController.maybeHandleGorev (kanca)', () => {
     expect(prisma.task.create).not.toHaveBeenCalled();
     expect(c.whatsapp.sendMessage).not.toHaveBeenCalled();
     expect(msg.__dryKind).toBe('owner:gorev');
-    expect(msg.__dryReply.startsWith('KURU TEST (kaydedilmedi)\n✅ Görev eklendi')).toBe(true);
+    expect(msg.__dryReply.startsWith('KURU TEST (kaydedilmedi)\n✅ *Görev eklendi*')).toBe(true);
   });
 
   it('gerçek akış: görev yazılır, cevap owner\'a gönderilir, iletişim günlüğü tutulur', async () => {
@@ -284,7 +333,7 @@ describe('WhatsAppBotController.maybeHandleGorev (kanca)', () => {
     expect(prisma.task.create).toHaveBeenCalledTimes(1);
     expect(prisma.task.create.mock.calls[0][0].data).toMatchObject({ tenantId: 'tenant-1', createdById: 'user-sahip', kaynak: 'WHATSAPP', taxpayerId: 'm1' });
     expect(c.whatsapp.sendMessage).toHaveBeenCalledTimes(1);
-    expect(String(c.whatsapp.sendMessage.mock.calls[0][1])).toContain('✅ Görev eklendi');
+    expect(String(c.whatsapp.sendMessage.mock.calls[0][1])).toContain('✅ *Görev eklendi*');
     expect(c.prisma.communicationLog.create).toHaveBeenCalledTimes(1);
     expect(c.prisma.communicationLog.create.mock.calls[0][0].data.subject).toBe('WhatsApp owner gorev ekleme');
   });
