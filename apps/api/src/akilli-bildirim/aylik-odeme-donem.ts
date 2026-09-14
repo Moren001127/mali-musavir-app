@@ -59,17 +59,18 @@ export function ayAdi(month: string): string {
 
 /** "2026-07" / "2026/07" → "Temmuz 2026"; "2026-Q2" → "Nisan–Haziran 2026"; "2025-YIL" → "2025 Yılı". */
 export function donemEtiketi(donem: string | null | undefined): string {
+  // Muzaffer Bey'in istediği biçim (2026-09-14): "07/2026", çeyrek "04-06/2026", yıllık "2025"
   const s = String(donem || '').trim();
   if (!s) return '';
   const q = /^(\d{4})-Q([1-4])$/i.exec(s);
   if (q) {
-    const ilk = (Number(q[2]) - 1) * 3;
-    return `${AY_ADLARI[ilk]}–${AY_ADLARI[ilk + 2]} ${q[1]}`;
+    const ilk = (Number(q[2]) - 1) * 3 + 1;
+    return `${String(ilk).padStart(2, '0')}-${String(ilk + 2).padStart(2, '0')}/${q[1]}`;
   }
   const y = /^(\d{4})-YIL$/i.exec(s);
-  if (y) return `${y[1]} Yılı`;
+  if (y) return y[1];
   const m = /^(\d{4})[-/](\d{1,2})$/.exec(s);
-  if (m && Number(m[2]) >= 1 && Number(m[2]) <= 12) return `${AY_ADLARI[Number(m[2]) - 1]} ${m[1]}`;
+  if (m && Number(m[2]) >= 1 && Number(m[2]) <= 12) return `${String(Number(m[2])).padStart(2, '0')}/${m[1]}`;
   return s;
 }
 

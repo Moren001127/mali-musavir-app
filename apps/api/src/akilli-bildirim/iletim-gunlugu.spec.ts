@@ -80,8 +80,8 @@ describe('İletim Günlüğü — kaynak birleşimi', () => {
       'SGK|Tahakkuk Fişi 2026/07|WhatsApp|İletildi',
       'SGK|Hizmet Listesi 2026/07|WhatsApp|İletildi',
       'Tebligat|Vergi/Ceza İhbarnamesi — GİB|WhatsApp|Test',
-      'Ödeme Listesi|KDV Beyannamesi Temmuz 2026|Mail|İletildi',
-      'Ödeme Listesi|SGK Prim Tahakkuku Temmuz 2026|Mail|İletildi',
+      'Ödeme Listesi|KDV Beyannamesi 07/2026|Mail|İletildi',
+      'Ödeme Listesi|SGK Prim Tahakkuku 07/2026|Mail|İletildi',
       'Ödeme Listesi|Ödeme Listesi Eylül 2026|WhatsApp|İletilemedi',
     ]));
     // 2+2+2+1+2+1 dispatch + 4 log = 14; sanal kişi (d7) yok
@@ -118,7 +118,7 @@ describe('İletim Günlüğü — kaynak birleşimi', () => {
     const belgeler = new Map([['s1', { id: 's1', title: 'SGK Tahakkuk Fişi', period: '2026/07', belgeTuru: 'SGK_TAHAKKUK' }], ['s2', { id: 's2', title: 'SGK Tahakkuk Fişi', period: '2026/07', belgeTuru: 'SGK_TAHAKKUK' }]]);
     const sgk = dispatchSatirlari({ id: 'd', taxpayerId: 't1', kategori: 'SGK', channel: 'WHATSAPP', status: 'SENT', sentAt: t(1, 1), docRefs: ['s1', 's2'] }, { ...ctx, belgeler });
     expect(sgk.map((x) => x.belgeAdi)).toEqual(['Tahakkuk Fişi 2026/07 (2 belge)']);
-    expect(belgeAdi('ODEME_LISTESI', { key: 'VERGI|GELIR|2025-YIL|1/2', tur: 'GELIR', donem: '2025-YIL', taksit: '1/2', tutar: 1 }, ctx)).toBe('Yıllık Gelir Vergisi 1. Taksit 2025 Yılı');
+    expect(belgeAdi('ODEME_LISTESI', { key: 'VERGI|GELIR|2025-YIL|1/2', tur: 'GELIR', donem: '2025-YIL', taksit: '1/2', tutar: 1 }, ctx)).toBe('Yıllık Gelir Vergisi 1. Taksit 2025');
   });
 });
 

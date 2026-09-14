@@ -20,23 +20,7 @@ export function OzetSeridi({ ozet, aktif, onSec, yeniKalem }: { ozet?: OdemeOzet
       <Hap ikon={<Users size={12} />} secili={aktif === 'tumu'} onClick={() => onSec('tumu')} title="Tüm mükellefleri göster" sayi={ozet?.mukellef} yukleniyor={yukleniyor}>
         mükellef
       </Hap>
-      <span className="inline-flex min-w-0 flex-wrap items-center gap-x-1 px-1.5 text-[11.5px]" style={{ color: IKINCIL }}>
-        <Bilgi etiket="Vergi" deger={ozet ? kisaPara(ozet.vergiToplam) : undefined} title={ozet ? `Aylık vergi tahakkukları toplamı: ${trMoney(ozet.vergiToplam)}` : undefined} />
-        <Nokta />
-        <Bilgi etiket="SGK" deger={ozet ? kisaPara(ozet.sgkToplam) : undefined} title={ozet ? `SGK prim tahakkukları toplamı: ${trMoney(ozet.sgkToplam)}` : undefined} />
-        {(!ozet || ozet.geciciToplam > 0) && (
-          <>
-            <Nokta />
-            <Bilgi etiket="Geçici" deger={ozet ? kisaPara(ozet.geciciToplam) : undefined} title={ozet ? `Geçici vergi toplamı: ${trMoney(ozet.geciciToplam)}` : undefined} />
-          </>
-        )}
-        {ozet && ozet.yillikToplam > 0 && (
-          <>
-            <Nokta />
-            <Bilgi etiket="Yıllık" deger={kisaPara(ozet.yillikToplam)} title={`Yıllık gelir/kurumlar vergisi toplamı: ${trMoney(ozet.yillikToplam)}`} />
-          </>
-        )}
-      </span>
+      {/* Vergi/SGK/Geçici/Yıllık tutarları kaldırıldı (Muzaffer Bey 2026-09-14: "bunlara ne gerek var") */}
       <Ayrac />
       <Hap ikon={<CheckCircle2 size={12} />} secili={aktif === 'gonderildi'} onClick={() => onSec(aktif === 'gonderildi' ? 'tumu' : 'gonderildi')} title="Cetveli gönderilmiş mükellefler" sayi={ozet?.gonderilen} yukleniyor={yukleniyor}>
         gönderildi

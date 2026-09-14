@@ -206,19 +206,25 @@ export function ayAdi(month: string): string {
   return `${AYLAR[Number(m[2]) - 1] || m[2]} ${m[1]}`;
 }
 
-/** "2026-07" / "2026/07" → "Temmuz 2026"; "2026-Q3" → "3. Çeyrek 2026"; "2025" → "2025 yılı" */
+/**
+ * Dönem yazımı — Muzaffer Bey'in istediği biçim (2026-09-14: "2. çeyrek yazma, 4-6/2026 gibi yaz"):
+ *   "2026-07" / "2026/07" → "07/2026"; "2026-Q2" → "04-06/2026"; "2025" / "2025-YIL" → "2025".
+ */
 export function donemAdi(donem: string | null | undefined): string {
   const s = String(donem || '').trim();
   if (!s) return '—';
   const q = /^(\d{4})[-/]?Q([1-4])$/i.exec(s);
-  if (q) return `${q[2]}. Çeyrek ${q[1]}`;
-  const y = /^(\d{4})$/.exec(s);
-  if (y) return `${y[1]} yılı`;
+  if (q) {
+    const ilk = (Number(q[2]) - 1) * 3 + 1;
+    return `${String(ilk).padStart(2, '0')}-${String(ilk + 2).padStart(2, '0')}/${q[1]}`;
+  }
+  const y = /^(\d{4})(?:-YIL)?$/i.exec(s);
+  if (y) return y[1];
   const m = /^(\d{4})[-/](\d{1,2})$/.exec(s);
   if (!m) return s;
   const ay = Number(m[2]);
   if (ay < 1 || ay > 12) return s;
-  return `${AYLAR[ay - 1]} ${m[1]}`;
+  return `${String(ay).padStart(2, '0')}/${m[1]}`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

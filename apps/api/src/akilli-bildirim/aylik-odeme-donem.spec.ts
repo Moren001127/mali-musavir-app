@@ -73,10 +73,10 @@ describe('aylik-odeme-donem — adlar ve taksit', () => {
     expect(turAdi('GELIR', '2025-YIL', '1/2')).toBe('Yıllık Gelir Vergisi 1. Taksit');
     expect(turAdi('KURUMLAR', '2025-YIL')).toBe('Kurumlar Vergisi');
     expect(turAdi('MUHSGK', '2026-Q2')).toBe('Muhtasar ve Prim Hizmet Beyannamesi (3 aylık)');
-    expect(donemEtiketi('2026-07')).toBe('Temmuz 2026');
-    expect(donemEtiketi('2026/07')).toBe('Temmuz 2026');
-    expect(donemEtiketi('2026-Q2')).toBe('Nisan–Haziran 2026');
-    expect(donemEtiketi('2025-YIL')).toBe('2025 Yılı');
+    expect(donemEtiketi('2026-07')).toBe('07/2026'); // Muzaffer Bey biçimi: ay/yıl
+    expect(donemEtiketi('2026/07')).toBe('07/2026');
+    expect(donemEtiketi('2026-Q2')).toBe('04-06/2026'); // çeyrek: ilk-son ay/yıl
+    expect(donemEtiketi('2025-YIL')).toBe('2025');
   });
 
   it('GELIR taksit: damga 1. taksitle tam ödenir; yalnız-damga kayıtta 2. taksit sıfır', () => {
