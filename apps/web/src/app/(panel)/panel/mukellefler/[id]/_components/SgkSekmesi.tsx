@@ -52,7 +52,7 @@ export function SgkTab({ taxpayerId }: { taxpayerId: string }) {
 
   return (
     <div>
-      <SekmeBasligi title="SGK — Tahakkuk Fişleri & Hizmet Listeleri" text="Veri SGK otomasyonundan gelir; satıra tıklayınca belge (PDF) açılır." />
+      <SekmeBasligi title="SGK — Tahakkuk Fişleri & Hizmet Listeleri" text={`${rows.length} belge · satıra tıklayınca belge (PDF) açılır.`} />
       <TabloSarmal maxHeight={560} minWidth={720}>
         <colgroup>
           <col style={{ width: 110 }} />
@@ -69,7 +69,6 @@ export function SgkTab({ taxpayerId }: { taxpayerId: string }) {
           </tr>
         </thead>
         <tbody>
-          <GrupSatiri ad="Belgeler" sayi={rows.length} colSpan={SUTUN} />
           {rows.map((d: any) => {
             const m = sgkDocMeta(d);
             const tahakkuk = d.belgeTuru === 'SGK_TAHAKKUK';
@@ -77,7 +76,7 @@ export function SgkTab({ taxpayerId }: { taxpayerId: string }) {
             return (
               <tr key={d.id} onClick={() => openDoc(d.id, baslik)} className="cursor-pointer transition-colors hover:bg-white/[0.03]">
                 <Td tabular style={{ fontWeight: 700 }}>{m.donem || '—'}</Td>
-                <Td><Cip renk={tahakkuk ? GOLD : STEEL_BR}>{tahakkuk ? 'Tahakkuk' : 'Hizmet L.'}</Cip></Td>
+                <Td><Cip>{tahakkuk ? 'Tahakkuk' : 'Hizmet L.'}</Cip></Td>
                 <Td muted>{m.mahiyet || '—'}</Td>
                 <Td right tabular>{m.calisan || '—'}</Td>
                 <Td right tabular style={{ color: m.tutar ? undefined : FAINT, fontWeight: 700 }}>{m.tutar ? `${m.tutar} ₺` : '—'}</Td>

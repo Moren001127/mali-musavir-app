@@ -145,7 +145,7 @@ export function DosyalarTab({ taxpayerId }: { taxpayerId: string }) {
 
   return (
     <div className="space-y-5">
-      <SekmeBasligi title="Dosyalar" text="Kira kontratı, imza sirküleri, vekaletname ve diğer firma belgeleri." />
+      <SekmeBasligi title="Dosyalar" text={`${manualDocuments.length} yüklü evrak · kira kontratı, imza sirküleri, vekaletname ve diğer firma belgeleri.`} />
 
       <FormGrup
         baslik="Evrak yükle"
@@ -156,7 +156,7 @@ export function DosyalarTab({ taxpayerId }: { taxpayerId: string }) {
           {/* Tarayıcının kendi "Dosya Seç" yazısı yerine kontrollü düğme (dil/biçim tutarlı) */}
           <label className={`${GIRDI_CLS} flex cursor-pointer items-center gap-3`}>
             <input type="file" className="sr-only" onChange={(e) => setFile(e.target.files?.[0] || null)} />
-            <span className="shrink-0 rounded-[4px] px-2 py-0.5 text-[12px] font-bold" style={{ background: 'rgba(212,184,118,0.14)', color: '#d4b876' }}>Dosya seç</span>
+            <span className="shrink-0 rounded-[4px] px-2 py-0.5 text-[12px] font-bold" style={{ background: 'rgba(79,134,201,0.16)', color: '#74a6e6' }}>Dosya seç</span>
             <span className="truncate" style={{ color: file ? TEXT : FAINT }}>{file ? file.name : 'PDF, görsel veya ofis belgesi'}</span>
           </label>
         </Satir>
@@ -180,7 +180,7 @@ export function DosyalarTab({ taxpayerId }: { taxpayerId: string }) {
             onClick={() => uploadMut.mutate()}
             disabled={!file || uploadMut.isPending}
             className="inline-flex h-9 items-center gap-2 px-4 text-[13px] font-bold transition hover:brightness-105 disabled:opacity-50"
-            style={ALTIN_DUGME}
+            style={{ background: '#4f86c9', color: '#fff', borderRadius: 8 }}
           >
             {uploadMut.isPending ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
             Evrakı Yükle
@@ -213,7 +213,6 @@ export function DosyalarTab({ taxpayerId }: { taxpayerId: string }) {
             </tr>
           </thead>
           <tbody>
-            <GrupSatiri ad="Yüklü evraklar" sayi={manualDocuments.length} colSpan={SUTUN} />
             {manualDocuments.map((doc) => {
               const acik = acikId === doc.id;
               return (

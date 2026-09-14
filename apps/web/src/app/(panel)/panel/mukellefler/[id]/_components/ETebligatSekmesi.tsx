@@ -41,7 +41,7 @@ export function ETebligatTab({ taxpayerId }: { taxpayerId: string }) {
 
   return (
     <div>
-      <SekmeBasligi title="E-Tebligat" text="Veri e-Tebligat otomasyonundan gelir; satıra tıklayınca tebligat (PDF) açılır." />
+      <SekmeBasligi title="E-Tebligat" text={`${rows.length} tebligat${okunmamis ? ` · ${okunmamis} okunmadı` : ''} · satıra tıklayınca tebligat (PDF) açılır.`} />
       <TabloSarmal maxHeight={560} minWidth={720}>
         <colgroup>
           <col />
@@ -57,7 +57,6 @@ export function ETebligatTab({ taxpayerId }: { taxpayerId: string }) {
           </tr>
         </thead>
         <tbody>
-          <GrupSatiri ad="Tebligatlar" sayi={rows.length} colSpan={SUTUN} ek={okunmamis ? <span className="text-[11.5px]" style={{ color: RED }}>· {okunmamis} okunmadı</span> : undefined} />
           {rows.map((d: any) => {
             const raw = d.raw || {};
             const okundu = !!(d.viewedAt || raw.mukellefOkumaZamani);

@@ -4,14 +4,17 @@ import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
-import { DurumCipi, DurumNoktasi, FormAltBilgi, Salter, Secici, TABLO_BASLIK, TABLO_GRUP, TABLO_HUCRE, TABLO_SARMAL } from '@/components/kayit-formu/KayitFormu';
+import { DurumCipi, FormAltBilgi, Salter, Secici } from '@/components/kayit-formu/KayitFormu';
 
-// Kayıt formu dili v2 (2026-09-14): sakin, nötr gerçek tablo — Beyanname | Açıklama | Dönem | Durum.
-// Altın yok; aktif satır yeşil nokta, seçili dönem açık nötr dolgu, bölüm kaydı çelik mavi.
+// v3 (2026-09-14, Muzaffer Bey: "beyanname | dönem — bu kadar; tablo düzeni belli olsun, profesyonel"):
+// İKİ sütunlu, TAM ÇİZGİLİ tablo. Açıklama/kod/durum sütunu YOK. Grup satırları ayrı zemin. Altın yok.
 const GOOD = '#5fcf8e';
 const TEXT = '#fafaf9';
 const MUTED = 'rgba(250,250,249,0.60)';
-const FAINT = 'rgba(250,250,249,0.38)';
+const CIZGI = 'rgba(255,255,255,0.13)';
+const HUCRE: React.CSSProperties = { border: `1px solid ${CIZGI}`, padding: '0 14px', height: 48, verticalAlign: 'middle', fontSize: 14 };
+const BASLIK_HUCRE: React.CSSProperties = { ...HUCRE, height: 40, fontSize: 12, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: 'rgba(250,250,249,0.62)', background: 'rgba(255,255,255,0.055)', textAlign: 'left' };
+const GRUP_HUCRE: React.CSSProperties = { ...HUCRE, height: 38, fontSize: 12.5, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: 'rgba(250,250,249,0.80)', background: 'rgba(255,255,255,0.035)' };
 
 type Period = 'AYLIK' | 'UCAYLIK' | 'ON_BES_GUNLUK' | null;
 type IncomeTaxType = 'KURUMLAR' | 'GELIR' | 'BASIT_USUL' | null;
@@ -190,36 +193,30 @@ export function MukellefiyetlerCard({
     { baslik: 'Diğer beyan ve bildirimler', defs: DIGER_GRUBU },
   ];
   const aktifMi = (d: BeyannameDef) => (d.tip === 'toggle' ? !!(form as any)[d.key] : (form as any)[d.key] !== null);
+  // Ekranda ad: kod parantezi zaten adın içinde; KDV1 için okunur biçim.
+  const gosterAd = (d: BeyannameDef) => (d.kod === 'KDV1' ? 'KDV (KDV1)' : d.ad);
 
   return (
     <div className="space-y-4">
-      <div style={TABLO_SARMAL}>
-        <table className="w-full border-collapse" style={{ minWidth: 720 }}>
+      <div className="overflow-x-auto" style={{ border: `1px solid ${CIZGI}`, borderRadius: 8 }}>
+        <table className="w-full border-collapse" style={{ minWidth: 640 }}>
           <colgroup>
-            <col style={{ width: '30%' }} />
             <col />
-            <col style={{ width: 300 }} />
-            <col style={{ width: 130 }} />
+            <col style={{ width: 360 }} />
           </colgroup>
           <thead>
             <tr>
-              <th style={TABLO_BASLIK}>Beyanname</th>
-              <th style={TABLO_BASLIK}>Açıklama</th>
-              <th style={TABLO_BASLIK}>Dönem</th>
-              <th style={TABLO_BASLIK}>Durum</th>
+              <th style={BASLIK_HUCRE}>Beyanname</th>
+              <th style={BASLIK_HUCRE}>Dönem</th>
             </tr>
           </thead>
           <tbody>
-            {/* Yıllık vergi türü — tablonun ilk satırı (ayrı kutu yok) */}
             <tr>
-              <td colSpan={4} style={TABLO_GRUP}>Yıllık vergi</td>
+              <td colSpan={2} style={GRUP_HUCRE}>Yıllık vergi</td>
             </tr>
-            <tr className="transition-colors hover:bg-white/[0.02]">
-              <td style={TABLO_HUCRE}>
-                <span className="font-medium" style={{ color: form.incomeTaxType ? TEXT : MUTED }}>Yıllık vergi türü</span>
-              </td>
-              <td style={{ ...TABLO_HUCRE, color: FAINT, fontSize: 12.5 }}>Kurumlar, gelir veya basit usul</td>
-              <td style={TABLO_HUCRE}>
+            <tr>
+              <td style={{ ...HUCRE, color: form.incomeTaxType ? TEXT : MUTED, fontWeight: form.incomeTaxType ? 600 : 500 }}>Yıllık vergi türü</td>
+              <td style={HUCRE}>
                 <Secici
                   boy="kucuk"
                   value={form.incomeTaxType ?? 'YOK'}
@@ -232,44 +229,29 @@ export function MukellefiyetlerCard({
                   ]}
                 />
               </td>
-              <td style={TABLO_HUCRE}>
-                <DurumNoktasi acik={!!form.incomeTaxType} />
-              </td>
             </tr>
 
             {gruplar.map((g) => (
               <React.Fragment key={g.baslik}>
                 <tr>
-                  <td colSpan={4} style={TABLO_GRUP}>
-                    {g.baslik}
-                    <span className="ml-2 normal-case tracking-normal" style={{ color: FAINT, fontWeight: 500 }}>
-                      {g.defs.filter(aktifMi).length} / {g.defs.length}
-                    </span>
-                  </td>
+                  <td colSpan={2} style={GRUP_HUCRE}>{g.baslik}</td>
                 </tr>
                 {g.defs.map((item) => {
                   const value = (form as any)[item.key];
                   const isActive = aktifMi(item);
                   return (
-                    <tr key={item.key as string} className="transition-colors hover:bg-white/[0.02]">
-                      <td style={TABLO_HUCRE}>
-                        <div className="font-medium" style={{ color: isActive ? TEXT : MUTED }}>{item.ad}</div>
-                        <div className="text-[11.5px]" style={{ color: FAINT }}>{item.kod}</div>
-                      </td>
-                      <td style={{ ...TABLO_HUCRE, color: FAINT, fontSize: 12.5 }}>{item.desc}</td>
-                      <td style={TABLO_HUCRE}>
+                    <tr key={item.key as string}>
+                      <td style={{ ...HUCRE, color: isActive ? TEXT : MUTED, fontWeight: isActive ? 600 : 500 }}>{gosterAd(item)}</td>
+                      <td style={HUCRE}>
                         {item.tip === 'toggle' ? (
                           <label className="flex cursor-pointer items-center gap-2.5">
                             <input type="checkbox" className="sr-only" checked={isActive} onChange={() => setForm({ ...form, [item.key]: !value } as BeyanConfig)} />
                             <Salter checked={isActive} />
-                            <span className="text-[13px] font-medium" style={{ color: isActive ? GOOD : MUTED }}>{isActive ? 'Açık' : 'Kapalı'}</span>
+                            <span className="text-[13.5px] font-medium" style={{ color: isActive ? GOOD : MUTED }}>{isActive ? 'Açık' : 'Kapalı'}</span>
                           </label>
                         ) : (
                           <PeriodSegment value={value} full15={item.tip === 'period_15gun'} onChange={(v) => setForm({ ...form, [item.key]: v } as BeyanConfig)} />
                         )}
-                      </td>
-                      <td style={TABLO_HUCRE}>
-                        <DurumNoktasi acik={isActive} />
                       </td>
                     </tr>
                   );

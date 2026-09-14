@@ -92,10 +92,12 @@ export const ALTIN_DUGME: CSSProperties = {
 export const NOTR_DUGME: CSSProperties = { background: 'rgba(255,255,255,0.04)', border: `1px solid ${LINE}`, color: MUTED, borderRadius: R_ALAN };
 
 // ── Tablo (gerçek <table>) ──
-export const HUCRE: CSSProperties = { border: `1px solid ${LINE}`, padding: '8px 10px', verticalAlign: 'middle', fontSize: 13 };
-export const HUCRE_BASLIK: CSSProperties = { ...HUCRE, padding: '7px 10px', fontSize: 11.5, fontWeight: 500, letterSpacing: '.06em', textTransform: 'uppercase', color: ALTIN_SOLUK, textAlign: 'left', whiteSpace: 'nowrap', background: 'rgba(212,184,118,0.07)' };
-export const GRUP_ZEMIN = 'rgba(212,184,118,0.12)';
-export const GRUP_CIZGI = '1px solid rgba(212,184,118,0.40)';
+// v2 (2026-09-14): SAKİN tablo — altın yok; tam çizgili, nötr başlık bandı, nötr grup satırı.
+export const TABLO_CIZGI = 'rgba(255,255,255,0.12)';
+export const HUCRE: CSSProperties = { border: `1px solid ${TABLO_CIZGI}`, padding: '0 12px', height: 44, verticalAlign: 'middle', fontSize: 13.5 };
+export const HUCRE_BASLIK: CSSProperties = { ...HUCRE, height: 40, fontSize: 12, fontWeight: 700, letterSpacing: '.08em', textTransform: 'uppercase', color: 'rgba(250,250,249,0.62)', textAlign: 'left', whiteSpace: 'nowrap', background: 'rgba(255,255,255,0.055)' };
+export const GRUP_ZEMIN = 'rgba(255,255,255,0.035)';
+export const GRUP_CIZGI = `1px solid ${TABLO_CIZGI}`;
 
 // ── Form alanları (40px, 8px köşe) ──
 export const FIELD_CLS = 'h-10 w-full rounded-[8px] border border-white/[0.10] bg-black/30 px-3 text-[13px] font-medium text-[#fafaf9] outline-none transition-colors duration-150 placeholder:text-white/25 hover:border-white/[0.18] focus:border-[#d4b876]/60 focus:shadow-[0_0_0_3px_rgba(212,184,118,0.14)]';

@@ -126,7 +126,6 @@ export function CariHesapTab({ taxpayerId }: { taxpayerId: string }) {
             </tr>
           </thead>
           <tbody>
-            <GrupSatiri ad="Son hareketler" sayi={hareketler.length} colSpan={SUTUN} />
             {hareketler.map((h) => {
               const tutar = toMoneyNumber(h.tutar);
               const borc = h.tip === 'TAHAKKUK' ? tutar : h.tip === 'IADE' ? -tutar : 0;
@@ -143,11 +142,11 @@ export function CariHesapTab({ taxpayerId }: { taxpayerId: string }) {
                     title={acik ? 'Açıklamayı kapat' : 'Açıklamayı aç'}
                   >
                     <Td muted tabular>{fmtDateTR(h.tarih?.substring(0, 10))}</Td>
-                    <Td><Cip renk={isTahsilat ? GREEN : GOLD}>{tipLabel}</Cip></Td>
+                    <Td><Cip>{tipLabel}</Cip></Td>
                     <Td><span className="block max-w-full truncate">{aciklama}</span></Td>
-                    <Td right tabular style={{ color: borc ? RED : FAINT, fontWeight: borc ? 700 : 500 }}>{borc ? `${fmtTutar(borc)} ₺` : '—'}</Td>
-                    <Td right tabular style={{ color: alacak ? GREEN : FAINT, fontWeight: alacak ? 700 : 500 }}>{alacak ? `${fmtTutar(alacak)} ₺` : '—'}</Td>
-                    <Td right tabular style={{ fontWeight: 700 }}>{h.runningBakiye != null ? `${fmtTutar(h.runningBakiye)} ₺` : '—'}</Td>
+                    <Td right tabular style={{ color: borc ? TEXT : FAINT, fontWeight: 500 }}>{borc ? `${fmtTutar(borc)} ₺` : '—'}</Td>
+                    <Td right tabular style={{ color: alacak ? GREEN : FAINT, fontWeight: 500 }}>{alacak ? `${fmtTutar(alacak)} ₺` : '—'}</Td>
+                    <Td right tabular style={{ fontWeight: 600 }}>{h.runningBakiye != null ? `${fmtTutar(h.runningBakiye)} ₺` : '—'}</Td>
                   </tr>
                   {acik && (
                     <tr style={{ background: 'rgba(255,255,255,0.02)' }}>

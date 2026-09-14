@@ -265,7 +265,7 @@ export function BeyannamelerTab({ taxpayerId }: { taxpayerId: string }) {
 
       {/* Toplu işlemler — ÜSTTE, her zaman görünür (seçim yoksa soluk) */}
       <div className="flex flex-wrap items-center gap-1.5 border-y py-2" style={{ borderColor: HAIR }}>
-        <span className="mr-1 text-[11.5px] font-medium tabular-nums" style={{ color: selectedTableRows.length ? GOLD : MUTED }}>
+        <span className="mr-1 text-[11.5px] font-medium tabular-nums" style={{ color: selectedTableRows.length ? TEXT : MUTED }}>
           {selectedTableRows.length} seçili
         </span>
         <BeyanBulkActionButton
@@ -333,7 +333,7 @@ export function BeyannamelerTab({ taxpayerId }: { taxpayerId: string }) {
                 checked={hepsiSecili}
                 onChange={(e) => setSelectedDocKeys(e.target.checked ? new Set(tableRows.map((item) => item.key)) : new Set())}
                 className="h-3.5 w-3.5 cursor-pointer"
-                style={{ accentColor: GOLD }}
+                style={{ accentColor: '#4f86c9' }}
                 aria-label="Tüm beyannameleri seç"
               />
             </Th>
@@ -354,19 +354,19 @@ export function BeyannamelerTab({ taxpayerId }: { taxpayerId: string }) {
                 const isBeyan = kind === 'beyanname';
                 const secili = selectedDocKeys.has(key);
                 return (
-                  <tr key={key} className="transition-colors hover:bg-white/[0.03]" style={secili ? { background: `${GOLD}0d` } : undefined}>
+                  <tr key={key} className="transition-colors hover:bg-white/[0.03]" style={secili ? { background: 'rgba(79,134,201,0.08)' } : undefined}>
                     <Td center style={{ padding: '6px 4px' }}>
                       <input
                         type="checkbox"
                         checked={secili}
                         onChange={(e) => toggleDocSelection(key, e.target.checked)}
                         className="h-3.5 w-3.5 cursor-pointer"
-                        style={{ accentColor: GOLD }}
+                        style={{ accentColor: '#4f86c9' }}
                         aria-label={`${BEYAN_TIPI_LABEL[row.beyanTipi] || row.beyanTipi} ${tur} seç`}
                       />
                     </Td>
                     <Td>
-                      <div className="truncate font-bold">{fmtBeyanDonem(row.donem)}</div>
+                      <div className="truncate font-semibold">{fmtBeyanDonem(row.donem)}</div>
                       <div className="truncate text-[11.5px]" style={{ color: FAINT }}>
                         {row.beyanTarihi ? `Beyan: ${fmtDateTR(row.beyanTarihi.substring(0, 10))}` : 'Beyan tarihi yok'}
                         {row.onayNo ? ` · Onay: ${row.onayNo}` : ''}
@@ -374,8 +374,8 @@ export function BeyannamelerTab({ taxpayerId }: { taxpayerId: string }) {
                     </Td>
                     <Td><span className="truncate">{BEYAN_TIPI_LABEL[row.beyanTipi] || row.beyanTipi}</span></Td>
                     <Td muted>ASIL</Td>
-                    <Td><Cip renk={isBeyan ? STEEL_BR : GOLD}>{tur}</Cip></Td>
-                    <Td right tabular style={{ color: isBeyan ? FAINT : TEXT, fontWeight: isBeyan ? 500 : 700 }}>
+                    <Td><Cip>{tur}</Cip></Td>
+                    <Td right tabular style={{ color: isBeyan ? FAINT : TEXT, fontWeight: isBeyan ? 500 : 600 }}>
                       {isBeyan ? '—' : (row.tahakkukTutari != null ? `${fmtTutar(row.tahakkukTutari)} ₺` : '—')}
                     </Td>
                     <Td center style={{ padding: '4px 6px' }}>
@@ -460,8 +460,8 @@ function BeyanBulkActionButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="inline-flex h-8 shrink-0 items-center gap-1.5 px-2.5 text-[11.5px] font-medium transition hover:brightness-125 disabled:cursor-not-allowed disabled:opacity-40"
-      style={NOTR_DUGME}
+      className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[6px] px-2.5 text-[12.5px] font-medium transition-colors hover:bg-white/[0.06] hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+      style={{ color: MUTED }}
     >
       <Icon size={13} />
       {label}

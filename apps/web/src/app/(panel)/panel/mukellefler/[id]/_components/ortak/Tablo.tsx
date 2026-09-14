@@ -2,7 +2,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { ChevronRight, Eye, Loader2 } from 'lucide-react';
-import { ALTIN_SOLUK, FAINT, GRUP_CIZGI, GRUP_ZEMIN, HUCRE, HUCRE_BASLIK, IC_ZEMIN, LINE, MUTED, NOTR_DUGME, TEXT, hapStili, ikonRozeti } from '../../_lib/tema';
+import { FAINT, GRUP_CIZGI, GRUP_ZEMIN, HUCRE, HUCRE_BASLIK, LINE, MUTED, NOTR_DUGME, TABLO_CIZGI, TEXT, ikonRozeti } from '../../_lib/tema';
 
 /** Sekme içi bekleme/boş durum sarmalı. */
 export function PortalTabState({ children }: { children: React.ReactNode }) {
@@ -39,7 +39,7 @@ export function SekmeBasligi({ title, text, children }: { title: string; text?: 
 /** Gerçek tablo sarmalı: kenarlıklı, yatay kaydırma kendi içinde, isteğe bağlı azami yükseklik. */
 export function TabloSarmal({ children, maxHeight, minWidth = 760 }: { children: React.ReactNode; maxHeight?: number; minWidth?: number }) {
   return (
-    <div className="overflow-auto" style={{ ...IC_ZEMIN, maxHeight }}>
+    <div className="overflow-auto" style={{ border: `1px solid ${TABLO_CIZGI}`, borderRadius: 8, background: 'rgba(0,0,0,0.12)', maxHeight }}>
       <table className="w-full" style={{ borderCollapse: 'collapse', minWidth }}>
         {children}
       </table>
@@ -59,14 +59,14 @@ export function Td({ children, right, center, muted, tabular, className = '', st
   );
 }
 
-/** Grup başlığı satırı: altın tonlu zemin + soldaki 3px renk şeridi + büyük harf etiket + sayı. */
-export function GrupSatiri({ ad, sayi, renk = ALTIN_SOLUK, colSpan, ek }: { ad: string; sayi?: number; renk?: string; colSpan: number; ek?: React.ReactNode }) {
+/** Grup başlığı satırı (nötr): hafif zemin + büyük harf etiket + soluk sayı. Renk şeridi YOK. */
+export function GrupSatiri({ ad, sayi, colSpan, ek }: { ad: string; sayi?: number; renk?: string; colSpan: number; ek?: React.ReactNode }) {
   return (
     <tr style={{ background: GRUP_ZEMIN }}>
-      <td colSpan={colSpan} style={{ ...HUCRE, borderTop: GRUP_CIZGI, borderBottom: GRUP_CIZGI, borderLeft: `3px solid ${renk}`, padding: '8px 12px' }}>
+      <td colSpan={colSpan} style={{ ...HUCRE, height: 38, borderTop: GRUP_CIZGI, borderBottom: GRUP_CIZGI }}>
         <div className="flex items-center gap-2.5">
-          <span className="text-[11.5px] font-bold uppercase" style={{ color: ALTIN_SOLUK, letterSpacing: '.12em' }}>{ad}</span>
-          {sayi != null && <span className="rounded-md px-1.5 text-[11.5px] font-bold tabular-nums leading-[18px]" style={{ background: 'rgba(212,184,118,0.20)', color: ALTIN_SOLUK }}>{sayi}</span>}
+          <span className="text-[12.5px] font-bold uppercase" style={{ color: 'rgba(250,250,249,0.80)', letterSpacing: '.06em' }}>{ad}</span>
+          {sayi != null && <span className="text-[12px] font-medium tabular-nums" style={{ color: FAINT }}>{sayi}</span>}
           {ek}
         </div>
       </td>
@@ -74,7 +74,7 @@ export function GrupSatiri({ ad, sayi, renk = ALTIN_SOLUK, colSpan, ek }: { ad: 
   );
 }
 
-/** Tablo içi "belge aç" düğmesi — nötr; hover'da parlar. */
+/** Tablo içi "belge aç" düğmesi — kutusuz (hayalet): soluk ikon, üzerine gelince parlar. */
 export function DocBtn({ label, disabled, busy, onClick, muted }: { label: string; disabled?: boolean; busy?: boolean; onClick: () => void; muted?: boolean }) {
   return (
     <button
@@ -83,18 +83,18 @@ export function DocBtn({ label, disabled, busy, onClick, muted }: { label: strin
       disabled={disabled || busy}
       title={label}
       aria-label={label}
-      className="inline-flex h-8 w-8 items-center justify-center transition hover:brightness-125 disabled:cursor-not-allowed disabled:opacity-30"
-      style={muted ? NOTR_DUGME : { ...NOTR_DUGME, color: TEXT }}
+      className="inline-flex h-8 w-8 items-center justify-center rounded-[6px] transition-colors hover:bg-white/[0.07] hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
+      style={{ color: muted ? FAINT : MUTED }}
     >
-      {busy ? <Loader2 size={14} className="animate-spin" /> : <Eye size={15} />}
+      {busy ? <Loader2 size={14} className="animate-spin" /> : <Eye size={16} />}
     </button>
   );
 }
 
-/** Renkli ince çip (durum/tür). */
-export function Cip({ renk, children, className = '' }: { renk: string; children: React.ReactNode; className?: string }) {
+/** Tür/durum etiketi — nötr düz yazı (renkli çip YOK; `renk` geriye uyumluluk için kabul edilir, kullanılmaz). */
+export function Cip({ renk: _renk, children, className = '' }: { renk?: string; children: React.ReactNode; className?: string }) {
   return (
-    <span className={`inline-flex items-center gap-1 whitespace-nowrap rounded-md px-1.5 py-[2px] text-[11.5px] font-medium leading-4 ${className}`} style={hapStili(renk)}>
+    <span className={`whitespace-nowrap text-[13px] font-medium ${className}`} style={{ color: 'rgba(250,250,249,0.80)' }}>
       {children}
     </span>
   );
