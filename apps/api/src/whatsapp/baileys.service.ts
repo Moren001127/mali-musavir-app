@@ -29,6 +29,8 @@ export type BaileysInbound = {
     mimeType?: string;
     filename?: string;
     caption?: string;
+    /** Ses mesajinin WhatsApp'in bildirdigi suresi (sn) — sesli not ceviri tavani (5 dk) bununla uygulanir. */
+    seconds?: number;
     /**
      * QR (Baileys) hattinda medya icin Meta'daki gibi bir mediaId YOKTUR; dosya
      * sifreli olarak WhatsApp CDN'inde durur ve yalniz mesajin kendi anahtariyla
@@ -522,7 +524,7 @@ export class BaileysService implements OnModuleDestroy {
     let media: BaileysInbound['media'];
     if (msg.imageMessage) media = { kind: 'image', mimeType: msg.imageMessage.mimetype, caption: msg.imageMessage.caption };
     else if (msg.documentMessage) media = { kind: 'document', mimeType: msg.documentMessage.mimetype, filename: msg.documentMessage.fileName, caption: msg.documentMessage.caption };
-    else if (msg.audioMessage) media = { kind: 'audio', mimeType: msg.audioMessage.mimetype };
+    else if (msg.audioMessage) media = { kind: 'audio', mimeType: msg.audioMessage.mimetype, seconds: Number(msg.audioMessage.seconds || 0) || undefined };
     else if (msg.videoMessage) media = { kind: 'video', mimeType: msg.videoMessage.mimetype, caption: msg.videoMessage.caption };
     else if (msg.stickerMessage) media = { kind: 'sticker', mimeType: msg.stickerMessage.mimetype };
     if (media) {
@@ -1403,6 +1405,62 @@ export class BaileysService implements OnModuleDestroy {
       return { ok: true, providerMessageId: sent?.key?.id };
     } catch (e: any) {
       this.logger.error(`[Baileys] medya gonderim hatasi ${phone}: ${e?.message || e}`);
+      return { ok: false, error: e?.message || String(e) };
+    }
+  }
+
+  /**
+   * SES TAMPONUNU dogrudan gonderir (URL cekimi yok) — PLAN/19 §D sesli cevap.
+   * ptt=true → WhatsApp SESLI NOT balonu (mikrofon); mimetype 'audio/ogg; codecs=opus' olmali.
+   * seconds verilmeli: Baileys sureyi music-metadata ile hesaplamaya kalkar, o paket kurulu DEGIL
+   * (dalga formu icin audio-decode de yok) → verilmezse uyari dusup suresiz gonderir.
+   * Gondermeden once 'recording' (kayit yapiyor…) gostergesi ~1 sn; MOREN_BOT_TYPING=0 ile kapanir.
+   */
+  async sendAudioBuffer(
+    tenantId: string,
+    phone: string,
+    audio: Buffer,
+    opts?: { mimetype?: string; ptt?: boolean; seconds?: number; quote?: boolean },
+  ): Promise<BaileysSendResult> {
+    const s = this.sessions.get(tenantId);
+    if (!s?.connected || !s.sock) return { ok: false, error: 'QR WhatsApp oturumu bagli degil.' };
+    if (!audio?.length) return { ok: false, error: 'Ses tamponu bos.' };
+    try {
+      const jid = await this.ensureSendJid(s, phone);
+      if (!jid) {
+        this.logger.warn(`[Baileys] tenant=${tenantId} ses LID hedef cozumlenemedi target=${this.maskTarget(phone)}`);
+        return { ok: false, error: 'WhatsApp LID adresi gercek telefon numarasina cozumlenemedi; sesli not gonderilmedi.' };
+      }
+      const ptt = opts?.ptt !== false;
+      const payload: any = { audio, mimetype: opts?.mimetype || 'audio/ogg; codecs=opus', ptt };
+      if (opts?.seconds && opts.seconds > 0) payload.seconds = Math.round(opts.seconds);
+      await Promise.race([
+        (async () => { await this.warmUpIfCold(s, jid, phone); await this.refreshSignalSession(s.sock, jid); })(),
+        new Promise((r) => setTimeout(r, 10_000)),
+      ]);
+      if (ptt && process.env.MOREN_BOT_TYPING !== '0') {
+        try {
+          await s.sock.sendPresenceUpdate('recording', jid);
+          await new Promise((r) => setTimeout(r, 1_200));
+        } catch { /* gosterge basarisizsa sorun degil */ }
+      }
+      let confirmTimer: any;
+      const sent: any = await Promise.race([
+        this.sendQuoted(s, jid, phone, payload, opts?.quote),
+        new Promise((r) => { confirmTimer = setTimeout(() => r('__TIMEOUT__'), 45_000); }),
+      ]);
+      clearTimeout(confirmTimer);
+      if (ptt) { try { await s.sock.sendPresenceUpdate('paused', jid); } catch { /* onemsiz */ } }
+      if (sent === '__TIMEOUT__') {
+        this.logger.warn(`[Baileys] tenant=${tenantId} sesli not gonderim onayi 45sn gelmedi jid=${this.maskTarget(jid)}`);
+        return { ok: false, error: 'Sesli not gonderim onayi 45 sn icinde gelmedi.' };
+      }
+      this.rememberSend(tenantId, jid, payload, sent?.key?.id, sent?.message);
+      this.storeDelivery(tenantId, sent?.key?.id, 'sent');
+      this.logger.log(`[Baileys] tenant=${tenantId} sesli not gonderildi target=${this.maskTarget(phone)} bayt=${audio.length} sn=${payload.seconds ?? '-'} id=${sent?.key?.id || 'unknown'}`);
+      return { ok: true, providerMessageId: sent?.key?.id };
+    } catch (e: any) {
+      this.logger.error(`[Baileys] sesli not gonderim hatasi ${this.maskTarget(phone)}: ${e?.message || e}`);
       return { ok: false, error: e?.message || String(e) };
     }
   }

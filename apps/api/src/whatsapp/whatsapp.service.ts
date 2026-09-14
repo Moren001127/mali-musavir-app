@@ -474,6 +474,37 @@ export class WhatsAppService {
     }, to);
   }
 
+  /**
+   * SESLI NOT (PLAN/19 §D, 2026-09-14): tampondan Ogg/Opus sesli not gonderir — YALNIZ QR (Baileys) hatti.
+   * Meta yolu yok (medya yukleme gerektirir; QR-only karari zaten gecerli). Ana salter (isAutomationActive)
+   * burada da gecerli. Bot controller'da kuru-test (__dryRun) kapisi altinda cagrilir.
+   */
+  async sendVoiceNote(
+    phone: string,
+    audio: Buffer,
+    tenantId?: string,
+    opts?: { seconds?: number; mimetype?: string; quote?: boolean },
+  ): Promise<WhatsAppSendResult> {
+    if (tenantId && !(await this.isAutomationActive(tenantId))) {
+      this.logger.warn(`[WhatsApp] Master switch PASIF - sesli not atlandi: ${phone}`);
+      return { ok: false, error: 'WhatsApp master switch pasif. Ayarlar > Entegrasyonlar > WhatsApp icinden aktif edin.' };
+    }
+    if (!tenantId || !(await this.shouldUseQr(tenantId))) {
+      return { ok: false, errorCode: 'VOICE_QR_ONLY', error: 'Sesli not yalniz QR (Baileys) hattindan gonderilir; kayitli QR oturumu yok.' };
+    }
+    const connected = await this.baileys.ensureConnected(tenantId, this.qrReconnectWaitMs());
+    if (!connected) return this.qrDisconnectedResult();
+    const bopts = { mimetype: opts?.mimetype || 'audio/ogg; codecs=opus', ptt: true, seconds: opts?.seconds, quote: opts?.quote };
+    let result = await this.baileys.sendAudioBuffer(tenantId, phone, audio, bopts);
+    if (!result.ok) {
+      await this.baileys.ensureConnected(tenantId, 8_000);
+      result = await this.baileys.sendAudioBuffer(tenantId, phone, audio, bopts);
+    }
+    return result.ok
+      ? { ok: true, providerMessageId: result.providerMessageId }
+      : { ok: false, errorCode: 'QR_SEND_FAILED', error: result.error || 'QR WhatsApp sesli not gonderimi basarisiz oldu.' };
+  }
+
   async sendMessage(phone: string, message: string, tenantId?: string, opts?: { quote?: boolean }): Promise<boolean> {
     const detailed = await this.sendMessageDetailed(phone, message, tenantId, opts);
     return detailed.ok;

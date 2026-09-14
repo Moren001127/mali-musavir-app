@@ -15,6 +15,7 @@ import { KdvBeyannameModule } from '../kdv-beyanname/kdv-beyanname.module';
   providers: [MorenAiService, ToolExecutorService, VoiceService],
   // ToolExecutorService tek MOREN AI beynidir; portal verisi ve operasyon
   // aksiyonlari buradan yurutulur.
-  exports: [MorenAiService, ToolExecutorService],
+  // VoiceService: WhatsApp botu sahibin sesli notunu çevirip sesli cevap üretir (PLAN/19 §D, 2026-09-14).
+  exports: [MorenAiService, ToolExecutorService, VoiceService],
 })
 export class MorenAiModule {}

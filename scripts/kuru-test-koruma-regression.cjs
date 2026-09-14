@@ -17,7 +17,8 @@ const satirlar = fs.readFileSync(dosya, 'utf8').split('\n');
 
 // sendMediaDetailed EKLENDI (2026-08-20 bulgusu): PDF/gorsel gonderimi taranmiyordu,
 //   yani kuru testte MEDYA GERCEKTEN GIDEBILIRDI. Metin kadar tehlikeli.
-const GONDERIM = /this\.whatsapp\.sendMessage\(|this\.whatsapp\.sendMediaDetailed\(|this\.baileys\.sendMedia\(/;
+// sendVoiceNote EKLENDI (2026-09-14, PLAN/19 §D): sahibe giden SESLI NOT da ayni kapidan gecmeli.
+const GONDERIM = /this\.whatsapp\.sendMessage\(|this\.whatsapp\.sendMediaDetailed\(|this\.baileys\.sendMedia\(|this\.whatsapp\.sendVoiceNote\(/;
 const KAPI = /if\s*\(\s*msg\.__dryRun/;
 // FONKSIYON BASI KESKINLESTIRILDI (2026-08-20): eski kalip araya giren HERHANGI bir
 //   `const x = ...` satirini fonksiyon basi saniyordu; geriye arama orada durup

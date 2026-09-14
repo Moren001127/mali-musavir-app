@@ -31,6 +31,12 @@ import { ModuleRef } from '@nestjs/core';
 import { ekipWhatsappAcik, ekipYoluMu, sahipKomutu } from '../ekip/ekip-whatsapp';
 import { canliModIstendi } from '../moren-ai/ses-koordinator';
 import type { EkipWhatsappService } from '../ekip/ekip-whatsapp.service';
+// SESLİ MESAJ (PLAN/19 §D): sahip sesli notu → Whisper → aynı akış; cevap yazılı + Ogg/Opus sesli not.
+import { VoiceService } from '../moren-ai/voice.service';
+import {
+  KURU_SESLI_GONDERIM_NOTU, KURU_SESLI_NOT_METNI, SESLI_NOT_MAX_BAYT, SESLI_NOT_MAX_SANIYE, SESLI_NOT_SES_TALIMATI,
+  dediginizSatiri, oggOpusSuresiSn, sesliCevapIstendi, sesliMetniKirp, sesliNotSuresiTahmini,
+} from './sesli-mesaj';
 
 type IncomingWhatsAppMessage = {
   from: string;
@@ -44,9 +50,16 @@ type IncomingWhatsAppMessage = {
     mimeType?: string;
     filename?: string;
     caption?: string;
+    /** Ses mesajının WhatsApp'ın bildirdiği süresi (sn) — sahip sesli notu çeviri tavanı (5 dk) buna bakar. */
+    seconds?: number;
     /** QR (Baileys) hatti: mediaId yok, indirmeyi Baileys servisi kapanis olarak verir. */
     download?: () => Promise<{ buffer: Buffer; mimeType: string; sizeBytes: number } | null>;
   };
+  /** SESLİ MESAJ (PLAN/19 §D): sahip sesli not gönderdi → cevap yazılı + sesli gider. */
+  sesliGeldi?: boolean;
+  /** Sesli notun yazıya çevrilmiş hali; yazılı cevabın başına "🎙️ Dediğiniz: …" satırı olarak konur (bir kez). */
+  sesliTranskript?: string;
+  __dedigimEklendi?: boolean;
   // KURU-TEST (dry-run): gerçek handleMessage akışını GÖNDERMEDEN çalıştırır; üretilen
   // cevabı __dryReply'a yakalar. GO_LIVE/automation kapıları dry-run'da atlanır. Müşteriye
   // mesaj GİTMEZ — gerçek yolu (hızlı-yol + agentic + yargıç) güvenle test etmek için.
@@ -93,6 +106,8 @@ export class WhatsAppBotController implements OnModuleInit {
     private readonly gorevWhatsapp: GorevWhatsappService,
     // EKİP köprüsü servisini çözmek için (moren-ai.service koordinatorSesYaniti kalıbı; modül döngüsü yok).
     private readonly moduleRef: ModuleRef,
+    // SESLİ MESAJ (PLAN/19 §D): Whisper çeviri + Opus sentez. MorenAiModule export eder; WhatsAppModule onu zaten import ediyor (döngü yok).
+    private readonly voice: VoiceService,
     @Optional() private readonly eventBus?: AutomationEventBus,
     @Optional() private readonly storage?: StorageService,
   ) {}
@@ -1982,20 +1997,117 @@ ${t}` : t;
     kind: string,
     subjectOk: string,
   ): Promise<boolean> {
+    // SESLİ (PLAN/19 §D): sesli notla gelen mesaja ya da "sesli cevap ver / sesli söyle" isteğine yazılı + sesli cevap.
+    // Yazılı cevabın başına (bir kez) "🎙️ Dediğiniz: …" satırı: sahip yanlış anlamayı görsün.
+    const sesliIstek = msg.sesliGeldi === true || sesliCevapIstendi(msg.text);
+    let yazili = reply;
+    if (msg.sesliTranskript && !msg.__dedigimEklendi) {
+      yazili = `${dediginizSatiri(msg.sesliTranskript)}\n${reply}`;
+      msg.__dedigimEklendi = true;
+    }
     if (msg.__dryRun) {
-      msg.__dryReply = reply;
+      msg.__dryReply = sesliIstek ? `${yazili}\n${KURU_SESLI_GONDERIM_NOTU}` : yazili;
       msg.__dryKind = kind;
       return true;
     }
-    const sent = await this.whatsapp.sendMessage(this.replyTarget(msg), reply, tenantId);
+    const sent = await this.whatsapp.sendMessage(this.replyTarget(msg), yazili, tenantId);
     if (!msg.__dryRun) await this.prisma.communicationLog.create({
       data: {
         taxpayerId: ownerContactId, channel: 'WHATSAPP',
         subject: sent ? subjectOk : `${subjectOk} (gonderilemedi)`,
-        content: this.withWhatsAppPhone(reply, msg.from), occurredAt: new Date(),
+        content: this.withWhatsAppPhone(yazili, msg.from), occurredAt: new Date(),
       },
     }).catch(() => null);
+    // Sesli not yazılıdan SONRA; hata olursa yalnız log (yazılı zaten gitti).
+    if (sent && sesliIstek) await this.sesliCevapGonder(msg, tenantId, reply);
     return sent;
+  }
+
+  // ─── SESLİ MESAJ (PLAN/19 §D, 2026-09-14) — yalnız SAHİP numaraları ───
+
+  /**
+   * Sahibin SESLİ NOTUNU yazıya çevirip aynı sahip akışına sokar (mükellef sesli notu "[Ses kaydı mesajı]"
+   * yer tutucusuyla eski davranışında kalır; Baileys'e dokunulmadı).
+   * Dönüş: null → akış devam eder (metin çevrildi ya da mesaj sesli değil); { hata } → sahibe bu cevap gider, akış biter.
+   * Kuru denemede OpenAI çağrısı YOK: metin KURU_SESLI_NOT_METNI olur. Ses hattı kapalıysa (MOREN_AI_ALLOW_OPENAI_API≠1)
+   * "yazar mısınız" cevabı. Tavan: 5 dk ya da 8 MB. Sahip botu kapalıysa çeviri masrafı yapılmaz (kayıt yer tutucuyla kalır).
+   * Mesaj kaydından ÖNCE çalışır ki communicationLog'a transkript yazılsın (sonraki "canlı yap" birleştirmesi ve AI bağlamı bunu okur).
+   */
+  private async sahipSesliNotuCevir(ownerTenant: any, msg: IncomingWhatsAppMessage): Promise<{ hata: string } | null> {
+    const media = msg.media;
+    if (!media || media.kind !== 'audio') return null;
+    msg.sesliGeldi = true;
+    if (msg.__dryRun) {
+      msg.text = KURU_SESLI_NOT_METNI;
+      return null;
+    }
+    if (!this.ownerAutoReplyEnabled()) return null;
+    if (!this.voice?.sesHattiAcik()) return { hata: 'Sesli mesajınızı çeviremiyorum (ses hattı kapalı); yazar mısınız?' };
+    if ((media.seconds || 0) > SESLI_NOT_MAX_SANIYE) {
+      return { hata: `Sesli mesaj çok uzun (${Math.round(media.seconds! / 60)} dk; en çok 5 dakika). Kısaltıp tekrar gönderir misiniz ya da yazar mısınız?` };
+    }
+    this.sesliNotIndirmeyiTekle(msg);
+    let indirilen: { buffer: Buffer; mimeType: string; sizeBytes: number } | null = null;
+    try {
+      indirilen = media.download
+        ? await media.download()
+        : (media.id ? await this.whatsapp.downloadMedia(media.id, ownerTenant.id) : null);
+    } catch (e: any) {
+      this.logger.warn(`[Ses] sahip sesli notu indirilemedi: ${e?.message || e}`);
+    }
+    if (!indirilen?.buffer?.length) return { hata: 'Sesli mesajınızı indiremedim; yazar mısınız?' };
+    if (indirilen.sizeBytes > SESLI_NOT_MAX_BAYT) {
+      return { hata: 'Sesli mesaj çok uzun (en çok 5 dakika). Kısaltıp tekrar gönderir misiniz ya da yazar mısınız?' };
+    }
+    try {
+      const sonuc = await this.voice.transcribe(indirilen.buffer, indirilen.mimeType || media.mimeType || 'audio/ogg', 'tr');
+      const metin = String(sonuc?.text || '').trim();
+      if (!metin) return { hata: 'Sesli mesajınızı anlayamadım; yazar mısınız?' };
+      msg.text = metin;
+      msg.sesliTranskript = metin;
+      this.logger.log(`[Ses] sahip sesli notu çevrildi (${metin.length} kr, ${sonuc.durationMs} ms)`);
+      return null;
+    } catch (e: any) {
+      this.logger.warn(`[Ses] sahip sesli notu çevrilemedi: ${e?.message || e}`);
+      return { hata: 'Sesli mesajınızı anlayamadım; yazar mısınız?' };
+    }
+  }
+
+  /**
+   * Sesli notun tamponu BİR kez indirilir: aynı kapanış hem çeviri hem belge kaydı (contentWithSavedMedia) için
+   * kullanılır; WhatsApp CDN'inden iki kez çekilmez.
+   */
+  private sesliNotIndirmeyiTekle(msg: IncomingWhatsAppMessage): void {
+    const media: any = msg.media;
+    if (!media?.download || media.__tekli) return;
+    const asil = media.download;
+    let bekleyen: Promise<{ buffer: Buffer; mimeType: string; sizeBytes: number } | null> | null = null;
+    media.download = () => {
+      if (!bekleyen) bekleyen = asil();
+      return bekleyen;
+    };
+    media.__tekli = true;
+  }
+
+  /**
+   * Yazılı cevabın SESLİ NOTU (Ogg/Opus, ptt). Yazılı zaten gitti; burada hata olursa yalnız log.
+   * Kuru denemede ASLA çağrılmaz (kilit betiği: her gönderim __dryRun kapısı altında).
+   * Metin 900 karakterle kırpılır (uzun rapor: ilk 900 kr sesli, tamamı yazılı). Ses hattı kapalıysa sessizce atlanır.
+   */
+  private async sesliCevapGonder(msg: IncomingWhatsAppMessage, tenantId: string, reply: string): Promise<void> {
+    if (msg.__dryRun) return;
+    if (!this.voice?.sesHattiAcik()) return;
+    const metin = sesliMetniKirp(reply);
+    if (!metin) return;
+    try {
+      const tts = await this.voice.synthesizeOpus(metin, { voice: 'nova', instructions: SESLI_NOT_SES_TALIMATI });
+      const saniye = oggOpusSuresiSn(tts.audio) ?? sesliNotSuresiTahmini(metin);
+      const sonuc = await this.whatsapp.sendVoiceNote(this.replyTarget(msg), tts.audio, tenantId, { seconds: saniye });
+      if (sonuc.ok) this.logger.log(`[Ses] sahibe sesli cevap gitti (${metin.length} kr, ~${saniye} sn, sentez ${tts.durationMs} ms)`);
+      else this.logger.warn(`[Ses] sesli cevap gönderilemedi: ${sonuc.error || 'bilinmiyor'}`);
+    } catch (e: any) {
+      this.logger.warn(`[Ses] sesli cevap üretilemedi/gönderilemedi: ${e?.message || e}`);
+    }
   }
 
   // ─── EKİP ↔ WHATSAPP KÖPRÜSÜ (PLAN/19 §C, 2026-09-14) ───
@@ -2762,13 +2874,16 @@ ${not}` : not;
         'owner',
         OWNER_PORTAL_NAME,
       );
+      // SESLİ NOT (PLAN/19 §D): kayıttan ÖNCE çevir ki log'a transkript yazılsın (AI bağlamı + "canlı yap" birleştirmesi
+      // bunu okur); ses dosyası yine belge olarak kaydedilir (indirme tek sefer). Hata cevabı kayıttan SONRA gider.
+      const sesliSonuc = await this.sahipSesliNotuCevir(ownerTenant, msg);
       if (!msg.__dryRun) {
         const incomingContent = await this.contentWithSavedMedia(ownerTenant.id, ownerContact.id, msg);
         await this.prisma.communicationLog.create({
           data: {
             taxpayerId: ownerContact.id,
             channel: 'WHATSAPP',
-            subject: 'WhatsApp owner gelen mesaj',
+            subject: msg.sesliTranskript ? 'WhatsApp owner gelen sesli mesaj' : 'WhatsApp owner gelen mesaj',
             content: this.withWhatsAppMeta(incomingContent, msg),
             occurredAt: new Date(),
           },
@@ -2778,6 +2893,11 @@ ${not}` : not;
 
       if (!this.ownerAutoReplyEnabled()) {
         this.logger.log(`[Owner botu kapali] owner mesaji kaydedildi, otomatik cevap atlanadi: ${this.normalize(msg.from)}`);
+        return;
+      }
+
+      if (sesliSonuc?.hata) {
+        await this.ownerCevapGonder(msg, ownerTenant.id, ownerContact.id, sesliSonuc.hata, 'owner:sesli-hata', 'WhatsApp owner sesli not cevabi');
         return;
       }
 

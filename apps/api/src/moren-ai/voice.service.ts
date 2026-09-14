@@ -2,6 +2,20 @@ import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { sesKoordinatorAcik } from './ses-koordinator';
 
 /**
+ * Whisper'a giden dosyanın uzantısını MIME türünden türetir (Whisper uzantıya bakar; kabul: flac, mp3,
+ * mp4, mpeg, mpga, m4a, ogg, wav, webm). WhatsApp sesli notu "audio/ogg; codecs=opus" → ogg
+ * (eskiden bu dal yoktu, her bilinmeyen tür mp3 sayılıyordu). Saf fonksiyon; testte doğrulanır.
+ */
+export function sesDosyaUzantisi(mimetype: string): 'webm' | 'm4a' | 'wav' | 'ogg' | 'mp3' {
+  const m = String(mimetype || '').toLowerCase();
+  if (m.includes('webm')) return 'webm';
+  if (m.includes('mp4') || m.includes('m4a')) return 'm4a';
+  if (m.includes('wav')) return 'wav';
+  if (m.includes('ogg') || m.includes('opus') || m.includes('oga')) return 'ogg';
+  return 'mp3';
+}
+
+/**
  * Sesli konuşma için STT (Speech-to-Text) + TTS (Text-to-Speech) + Realtime oturum anahtarı.
  *
  * Yaklaşım: OpenAI Whisper (STT) + OpenAI TTS + OpenAI Realtime (kulak+ağız). Varsayılan kapalıdır.
@@ -17,6 +31,11 @@ export class VoiceService {
   private getOpenAiKey(): string | null {
     if (process.env.MOREN_AI_ALLOW_OPENAI_API !== '1') return null;
     return process.env.OPENAI_API_KEY || null;
+  }
+
+  /** Ses hattı açık mı? (MOREN_AI_ALLOW_OPENAI_API=1 + OPENAI_API_KEY). Kapalıysa çağıran sessizce yazılı akışta kalır. */
+  sesHattiAcik(): boolean {
+    return !!this.getOpenAiKey();
   }
 
   async createRealtimeClientSecret(identity?: { userName?: string; officeName?: string }) {
@@ -123,15 +142,13 @@ export class VoiceService {
 
     const started = Date.now();
 
-    // Dosya uzantısını mimetype'tan türet
-    const ext = mimetype.includes('webm') ? 'webm'
-              : mimetype.includes('mp4') || mimetype.includes('m4a') ? 'm4a'
-              : mimetype.includes('wav') ? 'wav' : 'mp3';
+    // Dosya uzantısını mimetype'tan türet (ogg dalı: WhatsApp sesli notu)
+    const ext = sesDosyaUzantisi(mimetype);
 
     const fd = new FormData();
     // Node 18+ global Blob — Buffer BufferSource olarak kabul edilir
     const blob = new Blob([audio as unknown as ArrayBuffer], { type: mimetype });
-    fd.append('file', blob, `audio.${ext}`);
+    fd.append('file', blob, `ses.${ext}`);
     fd.append('model', 'whisper-1');
     fd.append('language', language);
     fd.append('response_format', 'json');
@@ -167,6 +184,33 @@ export class VoiceService {
     voice = 'nova',
     instructions?: string,
   ): Promise<{ audio: Buffer; contentType: string; durationMs: number }> {
+    // Uzun metinleri kes — TTS maliyeti token bazlı
+    return this.seslendir(text, { voice, instructions, format: 'mp3', contentType: 'audio/mpeg', maxChars: 4000 });
+  }
+
+  /**
+   * WhatsApp SESLİ NOTU için metni Ogg/Opus'a çevirir (OpenAI TTS response_format:'opus'; ffmpeg gerekmez,
+   * Baileys'e ptt:true ile doğrudan verilir). Ses/ton MOREN AI ses ekranıyla aynı (nova).
+   * Tavan 900 karakter: uzun raporun yalnız başı seslendirilir; tamamı yazılı mesaj olarak zaten gider.
+   */
+  async synthesizeOpus(
+    text: string,
+    opts?: { voice?: string; instructions?: string; maxChars?: number },
+  ): Promise<{ audio: Buffer; contentType: string; durationMs: number }> {
+    return this.seslendir(text, {
+      voice: opts?.voice || 'nova',
+      instructions: opts?.instructions,
+      format: 'opus',
+      contentType: 'audio/ogg; codecs=opus',
+      maxChars: opts?.maxChars ?? 900,
+    });
+  }
+
+  /** Ortak TTS çağrısı (mp3 = portal ses ekranı, opus = WhatsApp sesli notu). */
+  private async seslendir(
+    text: string,
+    o: { voice: string; instructions?: string; format: 'mp3' | 'opus'; contentType: string; maxChars: number },
+  ): Promise<{ audio: Buffer; contentType: string; durationMs: number }> {
     const key = this.getOpenAiKey();
     if (!key) {
       throw new BadRequestException(
@@ -174,19 +218,18 @@ export class VoiceService {
       );
     }
 
-    // Uzun metinleri kes — TTS maliyeti token bazlı
-    const trimmed = text.length > 4000 ? text.slice(0, 4000) + '…' : text;
+    const trimmed = text.length > o.maxChars ? text.slice(0, o.maxChars) + '…' : text;
     const started = Date.now();
 
     const model = process.env.OPENAI_TTS_MODEL || 'gpt-4o-mini-tts';
     const payload: Record<string, any> = {
       model,
       input: trimmed,
-      voice,
-      response_format: 'mp3',
+      voice: o.voice,
+      response_format: o.format,
     };
-    if (instructions?.trim() && model.includes('gpt-4o')) {
-      payload.instructions = instructions.trim().slice(0, 1200);
+    if (o.instructions?.trim() && model.includes('gpt-4o')) {
+      payload.instructions = o.instructions.trim().slice(0, 1200);
     }
 
     const res = await fetch('https://api.openai.com/v1/audio/speech', {
@@ -200,14 +243,14 @@ export class VoiceService {
 
     if (!res.ok) {
       const err = await res.text();
-      this.logger.error(`TTS hata: ${res.status} — ${err.slice(0, 500)}`);
+      this.logger.error(`TTS hata (${o.format}): ${res.status} — ${err.slice(0, 500)}`);
       throw new BadRequestException(`TTS hatası: ${err.slice(0, 200)}`);
     }
 
     const arrayBuf = await res.arrayBuffer();
     return {
       audio: Buffer.from(arrayBuf),
-      contentType: 'audio/mpeg',
+      contentType: o.contentType,
       durationMs: Date.now() - started,
     };
   }
