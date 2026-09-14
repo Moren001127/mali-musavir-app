@@ -259,12 +259,12 @@ function ETebligatModuleIc() {
           <table className="w-full text-[12px]" style={{ borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: 1020 }}>
             <colgroup>
               <col />
-              <col style={{ width: 160 }} />
+              <col style={{ width: 150 }} />
+              <col style={{ width: 130 }} />
               <col style={{ width: 140 }} />
-              <col style={{ width: 140 }} />
-              <col style={{ width: 104 }} />
+              <col style={{ width: 122 }} />
+              <col style={{ width: 130 }} />
               <col style={{ width: 120 }} />
-              <col style={{ width: 124 }} />
               <col style={{ width: 52 }} />
             </colgroup>
             <thead style={{ background: 'rgba(255,255,255,0.03)' }}>
