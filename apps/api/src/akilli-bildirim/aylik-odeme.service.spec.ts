@@ -183,10 +183,10 @@ describe('AylikOdemeService.send — gönderim modları', () => {
     for (const c of email.send.mock.calls) expect(c[0].to).toBe('test@x.y');
     expect(prisma._state.yazilan.every((y: any) => y.create.testMode === true && y.create.kategori === 'ODEME_LISTESI')).toBe(true);
     // yeni mesaj kalıbı
-    expect(whatsapp.sendMessageDetailed.mock.calls[0][1]).toContain('Ödeme Cetveli — SGK');
-    expect(whatsapp.sendMessageDetailed.mock.calls[0][1]).not.toContain('Bilginize Sunulmuştur');
-    expect(email.send.mock.calls[0][0].subject).toMatch(/^Ağustos 2026 Ödeme Cetveli — Vergi · ADEM CAN$/);
-    expect(email.send.mock.calls[0][0].html).toContain('<table');
+    expect(whatsapp.sendMessageDetailed.mock.calls[0][1]).toContain('Aşağıdaki SGK Dökümanları Bilginize Sunulmuştur,'); // Muzaffer Bey'in orijinal kalıbı
+    expect(whatsapp.sendMessageDetailed.mock.calls[0][1]).toContain('*Gönderen* ');
+    expect(email.send.mock.calls[0][0].subject).toBe('Beyanname Dökümanları — ADEM CAN');
+    expect(email.send.mock.calls[0][0].html).toContain('<pre');
   });
 
   it("'hepsi' hiçbir kanalı atlamaz; 'yeniden' taxpayerId ister", async () => {

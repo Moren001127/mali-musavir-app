@@ -1,4 +1,4 @@
-import { odemeCetveliEposta, odemeCetveliMesaji, paraTR, tarihTR, duzMetin } from './aylik-odeme-metin';
+import { odemeCetveliEposta, odemeCetveliMesaji, paraTR, tarihTR, duzMetin, trMoney } from './aylik-odeme-metin';
 import { OdemeSatiri } from './aylik-odeme-donem';
 
 const kdv: OdemeSatiri = {
@@ -15,10 +15,10 @@ const sgk: OdemeSatiri = {
 };
 
 describe('aylik-odeme-metin — biçim yardımcıları', () => {
-  it('paraTR tr-TR kuruş biçimi', () => {
+  it('paraTR tr-TR kuruş biçimi; trMoney Hattat çift boşluklu TL', () => {
     expect(paraTR(7046.77)).toBe('7.046,77 ₺');
-    expect(paraTR(1320456.7)).toBe('1.320.456,70 ₺');
     expect(paraTR(0)).toBe('0,00 ₺');
+    expect(trMoney(4182.86)).toBe('4.182,86  TL');
   });
   it('tarihTR ISO ve sıfırsız g.a.yyyy → gg.aa.yyyy', () => {
     expect(tarihTR('2026-08-28')).toBe('28.08.2026');
@@ -27,70 +27,67 @@ describe('aylik-odeme-metin — biçim yardımcıları', () => {
   });
 });
 
-describe('aylik-odeme-metin — WhatsApp cetvel mesajı', () => {
-  it('vergi mesajı sözleşmedeki kalıpla birebir', () => {
+describe('aylik-odeme-metin — WhatsApp cetvel mesajı (Muzaffer Bey\'in ORİJİNAL Hattat kalıbı, değiştirilmez)', () => {
+  it('vergi mesajı: Gönderen / Merhaba / Bilginize Sunulmuştur / "KOD - Tahakkuk - Son Ödeme: g.a.yyyy - 1.234,56  TL" / Toplam / link', () => {
     const m = odemeCetveliMesaji({
       month: '2026-08', unvan: 'ADEM CAN', grup: 'VERGI', satirlar: [kdv, gecici],
-      linkler: ['https://portal.morenmusavirlik.com/b/abc12345'], senderName: 'Moren Mali Müşavirlik',
+      linkler: ['https://portal.morenmusavirlik.com/b/abc12345'], senderName: 'MOREN MALİ MÜŞAVİRLİK',
     });
     expect(m).toBe(
       [
-        '🧾 *Ağustos 2026 Ödeme Cetveli — Vergi*',
-        '━━━━━━━━━━━━━━━━━━━━',
-        'Sayın ADEM CAN,',
-        'bu ay ödenecek vergi tahakkuklarınız:',
+        '*Gönderen* ',
+        'MOREN MALİ MÜŞAVİRLİK',
         '',
-        '▸ KDV Beyannamesi · Temmuz 2026',
-        '    Son ödeme 28.08.2026 · 7.046,77 ₺',
-        '▸ Gelir Geçici Vergi 2. Dönem · Nisan–Haziran 2026',
-        '    Son ödeme 17.08.2026 · 12.300,00 ₺',
+        '*Merhaba* ',
+        ' ADEM CAN,',
         '',
-        '*Toplam: 19.346,77 ₺*',
-        '📎 Tahakkuk fişleri: https://portal.morenmusavirlik.com/b/abc12345',
-        '━━━━━━━━━━━━━━━━━━━━',
-        '_Moren Mali Müşavirlik_',
+        'Aşağıdaki Beyanname Dökümanları Bilginize Sunulmuştur,',
+        '',
+        'KDV1 - Tahakkuk - Son Ödeme: 28.8.2026 - 7.046,77  TL',
+        'GGECICI - Tahakkuk - Son Ödeme: 17.8.2026 - 12.300,00  TL',
+        '',
+        'Toplam: 19.346,77  TL',
+        '',
+        'https://portal.morenmusavirlik.com/b/abc12345',
       ].join('\n'),
     );
   });
 
-  it('SGK mesajı: başlık "— SGK", satır "SGK Prim Tahakkuku · Temmuz 2026", tek link "Tahakkuk fişi"', () => {
-    const m = odemeCetveliMesaji({ month: '2026-08', unvan: 'ADEM CAN', grup: 'SGK', satirlar: [sgk], linkler: ['L'], senderName: 'MOREN MALİ MÜŞAVİRLİK' });
-    expect(m).toContain('🧾 *Ağustos 2026 Ödeme Cetveli — SGK*');
-    expect(m).toContain('bu ay ödenecek SGK primleriniz:');
-    expect(m).toContain('▸ SGK Prim Tahakkuku · Temmuz 2026\n    Son ödeme 31.08.2026 · 24.277,05 ₺');
-    expect(m).toContain('📎 Tahakkuk fişi: L');
-    expect(m).toContain('_MOREN MALİ MÜŞAVİRLİK_');
-    expect(m).not.toMatch(/Gönderen|Merhaba|Bilginize Sunulmuştur/);
+  it('SGK mesajı: "SGK Dökümanları", satır "Tahakkuk Fişi - 2026/07 - Son Ödeme: 31.8.2026 - 24.277,05  TL"', () => {
+    const m = odemeCetveliMesaji({ month: '2026-08', unvan: 'ADEM CAN', grup: 'SGK', satirlar: [sgk], linkler: ['https://p/b/x'], senderName: 'MOREN' });
+    expect(m).toContain('Aşağıdaki SGK Dökümanları Bilginize Sunulmuştur,');
+    expect(m).toContain('Tahakkuk Fişi - 2026/07 - Son Ödeme: 31.8.2026 - 24.277,05  TL');
+    expect(m).toContain('Toplam: 24.277,05  TL\n\nhttps://p/b/x');
   });
 
-  it('link yoksa 📎 satırı yok; birden çok link alt alta; örnek ön eki başa gelir', () => {
-    const yok = odemeCetveliMesaji({ month: '2026-08', unvan: 'X', grup: 'VERGI', satirlar: [kdv], senderName: 'S' });
-    expect(yok).not.toContain('📎');
-    const cok = odemeCetveliMesaji({ month: '2026-08', unvan: 'X', grup: 'VERGI', satirlar: [kdv], linkler: ['L1', 'L2'], senderName: 'S', onEk: '(ÖRNEK · X)' });
-    expect(cok.startsWith('(ÖRNEK · X)\n🧾')).toBe(true);
-    expect(cok).toContain('📎 Tahakkuk fişleri:\nL1\nL2');
+  it('link yoksa link bölümü yok; birden çok link alt alta; örnek ön eki başa gelir; son gün yoksa parça atlanır', () => {
+    const m = odemeCetveliMesaji({ month: '2026-08', unvan: 'X', grup: 'VERGI', satirlar: [{ ...kdv, sonGun: null }], senderName: 'M' });
+    expect(m.endsWith('Toplam: 7.046,77  TL')).toBe(true);
+    expect(m).toContain('KDV1 - Tahakkuk - 7.046,77  TL');
+    const c = odemeCetveliMesaji({ month: '2026-08', unvan: 'X', grup: 'VERGI', satirlar: [kdv], linkler: ['a', 'b'], senderName: 'M', onEk: '(ÖRNEK · X)' });
+    expect(c.startsWith('(ÖRNEK · X)\n*Gönderen* ')).toBe(true);
+    expect(c.endsWith('\n\na\nb')).toBe(true);
   });
 
-  it('kaydırılmış son gün mesajda (sonGunIso) kullanılır', () => {
-    const kaydirilmis: OdemeSatiri = { ...sgk, sonGun: '2.11.2026', sonGunHam: '31.10.2026', sonGunIso: '2026-11-02' };
-    const m = odemeCetveliMesaji({ month: '2026-10', unvan: 'X', grup: 'SGK', satirlar: [kaydirilmis], senderName: 'S' });
-    expect(m).toContain('Son ödeme 02.11.2026');
+  it('kaydırılmış son gün (sonGun alanı) mesajda kullanılır', () => {
+    const m = odemeCetveliMesaji({ month: '2026-09', unvan: 'X', grup: 'VERGI', satirlar: [{ ...kdv, sonGun: '28.9.2026', sonGunHam: '26.9.2026' }], senderName: 'M' });
+    expect(m).toContain('Son Ödeme: 28.9.2026');
   });
 });
 
-describe('aylik-odeme-metin — e-posta', () => {
-  it('konu, düz metin ve HTML tablo', () => {
-    const e = odemeCetveliEposta({ month: '2026-08', unvan: 'ADEM CAN', grup: 'VERGI', satirlar: [kdv, gecici], linkler: ['L'], senderName: 'Moren Mali Müşavirlik' });
-    expect(e.subject).toBe('Ağustos 2026 Ödeme Cetveli — Vergi · ADEM CAN');
-    expect(e.text).toContain('Ağustos 2026 Ödeme Cetveli — Vergi');
+describe('aylik-odeme-metin — e-posta (orijinal kalıp)', () => {
+  it('konu "Beyanname Dökümanları — unvan", metin yıldızsız WhatsApp metni, HTML düz metin', () => {
+    const e = odemeCetveliEposta({ month: '2026-08', unvan: 'ADEM CAN', grup: 'VERGI', satirlar: [kdv], linkler: ['https://p/b/x'], senderName: 'MOREN' });
+    expect(e.subject).toBe('Beyanname Dökümanları — ADEM CAN');
+    expect(e.text.startsWith('Gönderen \nMOREN\n\nMerhaba \n ADEM CAN,')).toBe(true);
     expect(e.text).not.toContain('*');
-    expect(e.html).toContain('<table');
-    expect(e.html).toContain('KDV Beyannamesi');
-    expect(e.html).toContain('28.08.2026');
-    expect(e.html).toContain('19.346,77 ₺');
-    expect(e.html).toContain('href="L"');
+    expect(e.html).toContain('<pre');
+    expect(e.html).toContain('KDV1 - Tahakkuk - Son Ödeme: 28.8.2026 - 7.046,77  TL');
+    const s = odemeCetveliEposta({ month: '2026-08', unvan: 'ADEM CAN', grup: 'SGK', satirlar: [sgk], senderName: 'MOREN' });
+    expect(s.subject).toBe('SGK Dökümanları — ADEM CAN');
   });
+
   it('duzMetin yıldız/alt çizgi işaretlerini temizler', () => {
-    expect(duzMetin('*Toplam: 1 ₺*\n_Ofis_')).toBe('Toplam: 1 ₺\nOfis');
+    expect(duzMetin('*a* _b_ c')).toBe('a b c');
   });
 });

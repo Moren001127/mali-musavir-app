@@ -75,30 +75,57 @@ export function satirSonGun(s: OdemeSatiri): string {
   return tarihTR(s.sonGunIso || s.sonGun);
 }
 
-/** WhatsApp cetvel mesajı. */
+/** Hattat ile birebir: "4.182,86  TL" (çift boşluk). */
+export function trMoney(n: number): string {
+  return new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(n) || 0) + '  TL';
+}
+
+/**
+ * WhatsApp cetvel mesajı — Muzaffer Bey'in ORİJİNAL kalıbı (Hattat ile birebir). 2026-09-14'te yeni bir şablon denenmişti;
+ * Muzaffer Bey "benim önceden oluşturduğum şablona vakıf kal" dedi → kalıp AYNEN korunur. Yalnız satır çeşitleri arttı
+ * (geçici/yıllık tahakkuklar da aynı "KOD - Tahakkuk - Son Ödeme: g.a.yyyy - 1.234,56  TL" biçiminde yazılır).
+ *
+ *   *Gönderen*
+ *   MOREN MALİ MÜŞAVİRLİK
+ *
+ *   *Merhaba*
+ *    ADEM CAN,
+ *
+ *   Aşağıdaki Beyanname Dökümanları Bilginize Sunulmuştur,
+ *
+ *   KDV1 - Tahakkuk - Son Ödeme: 28.8.2026 - 7.046,77  TL
+ *   Tahakkuk Fişi - 2026/07 - Son Ödeme: 31.8.2026 - 24.277,05  TL   (SGK)
+ *
+ *   Toplam: 31.323,82  TL
+ *
+ *   <kısa link>
+ */
 export function odemeCetveliMesaji(g: CetvelMesajGirdisi): string {
   const lines: string[] = [];
   if (g.onEk) lines.push(g.onEk);
-  lines.push(`🧾 *${cetvelBaslik(g.month, g.grup)}*`);
-  lines.push(CIZGI);
-  lines.push(`Sayın ${g.unvan},`);
-  lines.push(g.grup === 'SGK' ? 'bu ay ödenecek SGK primleriniz:' : 'bu ay ödenecek vergi tahakkuklarınız:');
+  lines.push('*Gönderen* ');
+  lines.push(g.senderName);
+  lines.push('');
+  lines.push('*Merhaba* ');
+  lines.push(` ${g.unvan},`);
+  lines.push('');
+  lines.push(`Aşağıdaki ${g.grup === 'SGK' ? 'SGK' : 'Beyanname'} Dökümanları Bilginize Sunulmuştur,`);
   lines.push('');
   for (const s of g.satirlar) {
-    lines.push(`▸ ${satirAdi(s)} · ${donemEtiketi(s.donem)}`);
-    lines.push(`    Son ödeme ${satirSonGun(s)} · ${paraTR(s.tutar)}`);
+    // Vergi: "KDV1 - Tahakkuk - Son Ödeme: 28.7.2026 - 9.018,30  TL"
+    // SGK  : "Tahakkuk Fişi - 2026/06 - Son Ödeme: 31.7.2026 - 24.277,05  TL"
+    const parts = s.kaynak === 'VERGI' ? [s.tur, 'Tahakkuk'] : [s.tur, s.donem];
+    if (s.sonGun) parts.push(`Son Ödeme: ${s.sonGun}`);
+    parts.push(trMoney(s.tutar));
+    lines.push(parts.join(' - '));
   }
   lines.push('');
-  lines.push(`*Toplam: ${paraTR(grupToplam(g.satirlar))}*`);
+  lines.push(`Toplam: ${trMoney(grupToplam(g.satirlar))}`);
   const linkler = (g.linkler || []).filter(Boolean);
-  if (linkler.length === 1) {
-    lines.push(`📎 ${g.grup === 'SGK' ? 'Tahakkuk fişi' : 'Tahakkuk fişleri'}: ${linkler[0]}`);
-  } else if (linkler.length > 1) {
-    lines.push('📎 Tahakkuk fişleri:');
+  if (linkler.length > 0) {
+    lines.push('');
     for (const l of linkler) lines.push(l);
   }
-  lines.push(CIZGI);
-  lines.push(`_${g.senderName}_`);
   return lines.join('\n');
 }
 
@@ -107,48 +134,13 @@ export function duzMetin(whatsappMetni: string): string {
   return whatsappMetni.replace(/\*([^*]+)\*/g, '$1').replace(/_([^_]+)_/g, '$1');
 }
 
-const html = (s: unknown) =>
+const htmlKacis = (s: unknown) =>
   String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-/** E-posta: konu + düz metin + HTML tablo. Ekler (PDF) çağıran tarafından eklenir. */
+/** E-posta — orijinal kalıp: konu "Beyanname Dökümanları — ADEM CAN", metin WhatsApp metninin yıldızsız hâli; ekler (PDF) çağıran ekler. */
 export function odemeCetveliEposta(g: CetvelMesajGirdisi): { subject: string; text: string; html: string } {
-  const baslik = cetvelBaslik(g.month, g.grup);
-  const subject = `${baslik} · ${g.unvan}`;
-  const text = duzMetin(odemeCetveliMesaji(g));
-  const satirlar = g.satirlar
-    .map(
-      (s) => `<tr>
-  <td style="padding:8px 10px;border-bottom:1px solid #e6e6e6">${html(satirAdi(s))}</td>
-  <td style="padding:8px 10px;border-bottom:1px solid #e6e6e6">${html(donemEtiketi(s.donem))}</td>
-  <td style="padding:8px 10px;border-bottom:1px solid #e6e6e6;white-space:nowrap">${html(satirSonGun(s))}</td>
-  <td style="padding:8px 10px;border-bottom:1px solid #e6e6e6;text-align:right;white-space:nowrap">${html(paraTR(s.tutar))}</td>
-</tr>`,
-    )
-    .join('\n');
-  const linkler = (g.linkler || []).filter(Boolean);
-  const linkHtml = linkler.length
-    ? `<p style="margin:14px 0 0">📎 ${g.grup === 'SGK' ? 'Tahakkuk fişi' : 'Tahakkuk fişleri'}: ${linkler
-        .map((l) => `<a href="${html(l)}">${html(l)}</a>`)
-        .join('<br>')}</p>`
-    : '';
-  const body = `<div style="font-family:Segoe UI,Arial,sans-serif;font-size:14px;color:#222;max-width:640px">
-${g.onEk ? `<p style="color:#a66;margin:0 0 8px">${html(g.onEk)}</p>` : ''}
-<h2 style="margin:0 0 12px;font-size:18px">🧾 ${html(baslik)}</h2>
-<p style="margin:0 0 4px">Sayın ${html(g.unvan)},</p>
-<p style="margin:0 0 12px">${g.grup === 'SGK' ? 'bu ay ödenecek SGK primleriniz:' : 'bu ay ödenecek vergi tahakkuklarınız:'}</p>
-<table style="border-collapse:collapse;width:100%">
-<thead><tr style="background:#f3f3f3">
-  <th style="text-align:left;padding:8px 10px">Ödeme</th>
-  <th style="text-align:left;padding:8px 10px">Dönem</th>
-  <th style="text-align:left;padding:8px 10px">Son ödeme</th>
-  <th style="text-align:right;padding:8px 10px">Tutar</th>
-</tr></thead>
-<tbody>
-${satirlar}
-<tr><td colspan="3" style="padding:10px;text-align:right"><b>Toplam</b></td><td style="padding:10px;text-align:right;white-space:nowrap"><b>${html(paraTR(grupToplam(g.satirlar)))}</b></td></tr>
-</tbody></table>
-${linkHtml}
-<p style="margin:18px 0 0;color:#666">${html(g.senderName)}</p>
-</div>`;
-  return { subject, text, html: body };
+  const subject = `${g.grup === 'SGK' ? 'SGK' : 'Beyanname'} Dökümanları — ${g.unvan}`;
+  const text = odemeCetveliMesaji(g).replace(/\*/g, '');
+  const html = `<pre style="font-family:Segoe UI,Arial,sans-serif;font-size:14px;white-space:pre-wrap">${htmlKacis(text)}</pre>`;
+  return { subject, text, html };
 }
