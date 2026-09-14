@@ -58,7 +58,7 @@ const URL = process.env.EKIP_URL || 'http://localhost:3007/panel/ekip';
   await cek('05-personel-bitti-istek', true);
 
   // Geçmişten iş seç (Hüseyin Salı canlı)
-  await page.getByRole('row', { name: /HÜSEYİN SALI/ }).first().click();
+  await page.getByRole('button', { name: /HÜSEYİN SALI/ }).first().click();
   await page.waitForTimeout(1500);
   await cek('06-gecmis-is-paneli', true);
 

@@ -1,12 +1,15 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Building2, X } from 'lucide-react';
 import { mukellefAdi, type MukellefOzet } from '@/lib/ekip';
 import { SAKIN } from './ortak';
 
 /**
- * Yazınca süzülen mükellef arama kutusu. Liste akış içinde açılır (absolute/sticky YOK).
+ * Yazınca süzülen mükellef arama kutusu. Normal modda liste akış içinde açılır; `sade` modda (v5 çip içi) liste
+ * document.body'ye portal ile, kutunun altında sabit konumda yüzer — kartın overflow/katman sınırına takılmaz
+ * (2026-09-15 canlı bulgu: liste kartın altında kesiliyor, seçim yapılamıyordu).
  * Ok tuşları + Enter seçer; Esc kapatır; [×] temizler. Boş = ofis geneli.
  */
 export function MukellefSecici({
@@ -39,6 +42,37 @@ export function MukellefSecici({
   const [acik, setAcik] = useState(false);
   const [imlec, setImlec] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const kutuRef = useRef<HTMLDivElement>(null);
+  const listeRef = useRef<HTMLUListElement>(null);
+  const [yer, setYer] = useState<{ top: number; left: number } | null>(null);
+
+  // sade: liste konumu (sabit) — açılınca ve kaydırma/boyut değişince yeniden ölçülür
+  useLayoutEffect(() => {
+    if (!sade || !acik) return;
+    const olc = () => {
+      const r = kutuRef.current?.getBoundingClientRect();
+      if (r) setYer({ top: r.bottom + 6, left: Math.max(8, Math.min(r.left, window.innerWidth - 316)) });
+    };
+    olc();
+    window.addEventListener('scroll', olc, true);
+    window.addEventListener('resize', olc);
+    return () => {
+      window.removeEventListener('scroll', olc, true);
+      window.removeEventListener('resize', olc);
+    };
+  }, [sade, acik]);
+
+  // sade: dışarı tıklayınca kapan
+  useEffect(() => {
+    if (!sade || !acik) return;
+    const dinle = (e: MouseEvent) => {
+      const h = e.target as Node | null;
+      if (h && (kutuRef.current?.contains(h) || listeRef.current?.contains(h))) return;
+      setAcik(false);
+    };
+    document.addEventListener('mousedown', dinle);
+    return () => document.removeEventListener('mousedown', dinle);
+  }, [sade, acik]);
 
   const secili = useMemo(() => mukellefler.find((m) => m.id === value), [mukellefler, value]);
 
@@ -93,7 +127,7 @@ export function MukellefSecici({
   }
 
   return (
-    <div className={`min-w-0 ${sade ? 'relative' : 'flex flex-col gap-1'}`}>
+    <div ref={kutuRef} className={`min-w-0 ${sade ? 'relative' : 'flex flex-col gap-1'}`}>
       <div className="relative flex items-center">
         {!sade && <Building2 size={12} className="pointer-events-none absolute left-2" style={{ color: SAKIN.ikincil }} />}
         <input
@@ -141,8 +175,13 @@ export function MukellefSecici({
           </button>
         )}
       </div>
-      {acik && (
-        <ul className={`max-h-56 overflow-y-auto rounded-[10px] p-1 ${sade ? 'absolute left-0 top-full z-50 mt-2 w-[300px] shadow-2xl' : ''}`} style={{ background: '#121317', border: `1px solid ${SAKIN.cizgiKoyu}` }}>
+      {acik && liste()}
+    </div>
+  );
+
+  function liste() {
+    const ul = (
+        <ul ref={listeRef} className={`max-h-56 overflow-y-auto rounded-[10px] p-1 ${sade ? 'fixed z-[1000] w-[308px] shadow-2xl' : ''}`} style={sade ? { top: yer?.top ?? -9999, left: yer?.left ?? -9999, background: '#121317', border: `1px solid ${SAKIN.cizgiKoyu}` } : { background: '#121317', border: `1px solid ${SAKIN.cizgiKoyu}` }}>
           {!sonuclar.length ? (
             <li className="px-2 py-1.5 text-[11px]" style={{ color: SAKIN.ikincil }}>
               {mukellefler.length ? 'Eşleşen mükellef yok' : 'Mükellef listesi yükleniyor…'}
@@ -153,6 +192,7 @@ export function MukellefSecici({
                 <button
                   type="button"
                   onMouseEnter={() => setImlec(i)}
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={() => sec(m)}
                   className="flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-xs"
                   style={{ background: i === imlec ? `${renk}22` : 'transparent', color: SAKIN.metin }}
@@ -164,7 +204,8 @@ export function MukellefSecici({
             ))
           )}
         </ul>
-      )}
-    </div>
-  );
+    );
+    if (sade && typeof document !== 'undefined') return createPortal(ul, document.body);
+    return ul;
+  }
 }

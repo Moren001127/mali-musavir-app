@@ -30,7 +30,7 @@ export const V5 = {
   mono: "'JetBrains Mono', 'Roboto Mono', monospace",
 } as const;
 
-export type Ton = 'altin' | 'mavi' | 'mor' | 'mint' | 'coral' | 'notr';
+export type Ton = 'altin' | 'mavi' | 'mor' | 'mint' | 'coral' | 'cyan' | 'notr';
 
 export const TON_RENGI: Record<Ton, string> = {
   altin: V5.altin,
@@ -38,6 +38,7 @@ export const TON_RENGI: Record<Ton, string> = {
   mor: V5.mor,
   mint: V5.mint,
   coral: V5.coral,
+  cyan: V5.cyan,
   notr: V5.ikincil,
 };
 
@@ -47,6 +48,7 @@ const TON_ISIGI: Record<Ton, string> = {
   mor: 'rgba(167,139,250,0.20)',
   mint: 'rgba(63,211,154,0.16)',
   coral: 'rgba(255,107,122,0.18)',
+  cyan: 'rgba(77,214,230,0.16)',
   notr: 'rgba(169,180,199,0.10)',
 };
 

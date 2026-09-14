@@ -2,8 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { CalendarRange, ChevronDown } from 'lucide-react';
-import { isOmurgaYok, mukellefAdi, type AkisFiltre, type AkisGun, type PanoDonemOzeti, type Vaka } from '@/lib/ekip';
+import { isOmurgaYok, mukellefAdi, type AkisFiltre, type AkisGun, type Vaka } from '@/lib/ekip';
 import { SORGU, useKosular, type Kosu } from './kosular';
 import { UstSerit } from './UstSerit';
 import { KadroKarti } from './KadroKarti';
@@ -14,8 +13,8 @@ import { IsPaneli } from './IsPaneli';
 import { IsGecmisi } from './IsGecmisi';
 import { DonemPanosu } from './DonemPanosu';
 import { OmurgaYokBilgi } from './OmurgaYokBilgi';
-import { CamKart, Etiket, V5 } from './Cam';
-import { DEPO, depoOku, depoYaz, donemEtiketi } from './ortak';
+import { CamKart, V5 } from './Cam';
+import { DEPO, depoOku, depoYaz } from './ortak';
 
 const SUZGECLER: AkisFiltre[] = ['tumu', 'suruyor', 'onay', 'istek', 'bitti'];
 
@@ -29,8 +28,9 @@ export function kosuVakayaAitMi(kosu: Kosu, vaka: Vaka): boolean {
 /**
  * EKİP EKRANI v5 — "premium komuta merkezi" (2026-09-15; Muzaffer Bey'in onayladığı görsel: _previews/ekip-v5).
  * Üst şerit (başlık + cam kapsüller) · iki sütun:
- *  SOL  : Görev merkezi (Koordinatör kartıyla) → Aktif iş (komut verilen ya da geçmişten seçilen iş) → İş kayıtları
- *  SAĞ  : Kadro (12 personel) → Sizden beklenen (kararlar) → Sabah özeti → Dönem panosu (katlanır)
+ *  SOL  : Görev merkezi (Koordinatör kartıyla) → Aktif iş (komut verilen ya da geçmişten seçilen iş) → Dönem panosu (İşle / Kontrol et düğmeleri)
+ *  SAĞ  : Kadro (12 personel) → Sizden beklenen (kararlar) → Sabah özeti → İş kayıtları (kompakt, 8'er 8'er)
+ *  (Muzaffer Bey 2026-09-15: "iş kayıtlarının olduğu yere dönem tablosunu al, dönem tablosunun yerine iş kayıtlarını")
  * Dar ekranda tek sütun. Yapışkan öğe YOK; sayfa yatay kaymaz. Kuru/Canlı depoya yazılmaz.
  */
 export function EkipEkrani() {
@@ -41,13 +41,13 @@ export function EkipEkrani() {
   const [akisTaxpayerId, setAkisTaxpayerId] = useState('');
   const [seciliVakaId, setSeciliVakaId] = useState<string | null>(null);
   const [panelKapali, setPanelKapali] = useState(false);
-  const [panoAcik, setPanoAcikState] = useState(false);
   const [odakNonce, setOdakNonce] = useState(0);
   const [escNonce, setEscNonce] = useState(0);
 
   const komutRef = useRef<HTMLElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const gecmisRef = useRef<HTMLDivElement>(null);
+  const panoRef = useRef<HTMLDivElement>(null);
 
   const kosular = useKosular();
   const [panelCalisiyor, setPanelCalisiyor] = useState(false);
@@ -60,7 +60,6 @@ export function EkipEkrani() {
     if (s && SUZGECLER.includes(s)) setAkisSuzgecState(s);
     const g = Number(depoOku(DEPO.akisGun));
     if (g === 1 || g === 7 || g === 30) setAkisGunState(g);
-    if (depoOku(DEPO.panoAcik) === '1') setPanoAcikState(true);
   }, []);
   const setSeciliDonem = useCallback((d: string) => {
     setSeciliDonemState(d);
@@ -74,10 +73,6 @@ export function EkipEkrani() {
     setAkisGunState(g);
     depoYaz(DEPO.akisGun, String(g));
   }, []);
-  const setPanoAcik = useCallback((a: boolean) => {
-    setPanoAcikState(a);
-    depoYaz(DEPO.panoAcik, a ? '1' : '0');
-  }, []);
 
   const kadroS = useQuery(SORGU.kadro);
   const durumS = useQuery(SORGU.durum);
@@ -89,7 +84,6 @@ export function EkipEkrani() {
   const ajanlar = kadroS.data || [];
   const onaylar = useMemo(() => onaylarS.data || [], [onaylarS.data]);
   const mukellefler = useMemo(() => mukelleflerS.data || [], [mukelleflerS.data]);
-  const panoOzet = useMemo(() => (panoS.data?.donemOzetleri || []).reduce<PanoDonemOzeti | undefined>((en, o) => (!en || o.donem > en.donem ? o : en), undefined), [panoS.data]);
 
   const mukellefHaritasi = useMemo(() => {
     const m = new Map<string, string>();
@@ -238,6 +232,16 @@ export function EkipEkrani() {
             )}
           </div>
 
+          <div ref={panoRef}>
+            <DonemPanosu pano={panoS.data} isLoading={panoS.isLoading} error={panoS.error} seciliDonem={seciliDonem} onDonemSec={setSeciliDonem} onTaslak={taslakVer} eksiklerNonce={0} />
+          </div>
+        </div>
+
+        {/* SAĞ SÜTUN */}
+        <div className="flex min-w-0 flex-col gap-[22px]">
+          <KadroKarti ajanlar={ajanlar} onaylar={onaylar} kosular={kosular.kosular} mukellefAd={mukellefAd} yukleniyor={kadroS.isLoading} haftalikIs={haftalikIs} bugunKosu={durumS.data?.bugunKosu ?? 0} />
+          <KararlarKarti sayaclar={sayaclar} onSuzgec={suzgecVeKaydir} />
+          <SabahOzetiKarti durum={durumS.data} kosular={kosular} />
           <div ref={gecmisRef}>
             <IsGecmisi
               akis={akisS.data}
@@ -260,33 +264,6 @@ export function EkipEkrani() {
               }}
             />
           </div>
-        </div>
-
-        {/* SAĞ SÜTUN */}
-        <div className="flex min-w-0 flex-col gap-[22px]">
-          <KadroKarti ajanlar={ajanlar} onaylar={onaylar} kosular={kosular.kosular} mukellefAd={mukellefAd} yukleniyor={kadroS.isLoading} haftalikIs={haftalikIs} bugunKosu={durumS.data?.bugunKosu ?? 0} />
-          <KararlarKarti sayaclar={sayaclar} onSuzgec={suzgecVeKaydir} />
-          <SabahOzetiKarti durum={durumS.data} kosular={kosular} />
-          <CamKart ton="notr" dolguYok>
-            <button type="button" onClick={() => setPanoAcik(!panoAcik)} aria-expanded={panoAcik} className="flex w-full min-w-0 flex-wrap items-center gap-x-3 gap-y-1 px-5 py-4 text-left">
-              <Etiket ton="notr">Dönem panosu</Etiket>
-              <span className="inline-flex min-w-0 items-center gap-2 text-[13px] font-bold" style={{ color: V5.metin }}>
-                <CalendarRange size={14} style={{ color: V5.ikincil }} />
-                {panoOzet ? `${donemEtiketi(panoOzet.beyannameDonem || panoOzet.donem)} beyannameleri` : 'Mükellef × dönem aşamaları'}
-              </span>
-              {panoOzet && (
-                <span className="min-w-0 truncate text-[11.5px]" style={{ color: V5.soluk }}>
-                  KDV kontrol {panoOzet.ozet.kontrol}/{panoOzet.toplam} · hazır {panoOzet.ozet.beyannameHazir} · verildi {panoOzet.ozet.beyanname}
-                </span>
-              )}
-              <ChevronDown size={14} className="ml-auto transition-transform" style={{ color: V5.soluk, transform: panoAcik ? 'rotate(0deg)' : 'rotate(-90deg)' }} />
-            </button>
-            {panoAcik && (
-              <div className="px-5 pb-5">
-                <DonemPanosu pano={panoS.data} isLoading={panoS.isLoading} error={panoS.error} seciliDonem={seciliDonem} onDonemSec={setSeciliDonem} onTaslak={taslakVer} eksiklerNonce={0} />
-              </div>
-            )}
-          </CamKart>
         </div>
       </div>
     </div>
