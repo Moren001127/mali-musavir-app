@@ -69,8 +69,8 @@ export function BeyanSatiri({
       </td>
       <td className="px-3 py-2.5 whitespace-nowrap overflow-hidden">
         <div className="flex items-center gap-1">
-          <BelgeCipi etiket="Beyanname" var={beyannameVar} goruntulendi={goruntulenen.beyanname} onClick={() => onOnizle('beyanname')} />
-          <BelgeCipi etiket="Tahakkuk" var={tahakkukVar} goruntulendi={goruntulenen.tahakkuk} onClick={() => onOnizle('tahakkuk')} />
+          <BelgeCipi harf="B" etiket="Beyanname" var={beyannameVar} goruntulendi={goruntulenen.beyanname} onClick={() => onOnizle('beyanname')} />
+          <BelgeCipi harf="T" etiket="Tahakkuk" var={tahakkukVar} goruntulendi={goruntulenen.tahakkuk} onClick={() => onOnizle('tahakkuk')} />
         </div>
       </td>
       <td className="px-3 py-2.5">
@@ -107,25 +107,26 @@ export function BeyanSatiri({
   );
 }
 
-/** Belge çipi: PDF varsa tıklanır (önizleme), görüntülenmişse yeşil, yoksa soluk "yok". */
-function BelgeCipi({ etiket, var: mevcut, goruntulendi, onClick }: { etiket: string; var: boolean; goruntulendi: boolean; onClick: () => void }) {
+/** Belge kutusu (kare): B = Beyanname, T = Tahakkuk. PDF varsa tıklanır (önizleme); görüntülenmişse yeşil, yeni ise mavi; yoksa kesikli soluk. */
+function BelgeCipi({ harf, etiket, var: mevcut, goruntulendi, onClick }: { harf: string; etiket: string; var: boolean; goruntulendi: boolean; onClick: () => void }) {
+  const taban = 'inline-flex h-7 w-7 items-center justify-center rounded-[7px] text-[12px] font-extrabold leading-none';
   if (!mevcut) {
     return (
-      <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-[7px] px-2 py-[3px] text-[11px] font-semibold"
-        title={`${etiket} PDF yok`}
-        style={{ background: 'rgba(255,255,255,0.02)', border: '1px dashed rgba(255,255,255,0.10)', color: 'rgba(250,250,249,0.3)' }}>
-        <FileText size={11} /> {etiket}
+      <span className={taban} title={`${etiket} PDF yok`} aria-label={`${etiket} yok`}
+        style={{ border: '1px dashed rgba(255,255,255,0.14)', color: 'rgba(250,250,249,0.28)' }}>
+        {harf}
       </span>
     );
   }
   return (
     <button type="button" onClick={onClick}
       title={goruntulendi ? `${etiket} — görüntülendi (yeniden aç)` : `${etiket} PDF önizle`}
-      className="inline-flex items-center gap-1 whitespace-nowrap rounded-[7px] px-2 py-[3px] text-[11px] font-semibold transition"
+      aria-label={`${etiket} PDF önizle`}
+      className={`${taban} transition hover:brightness-125`}
       style={goruntulendi
-        ? { background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.3)', color: '#86efac' }
-        : { background: 'rgba(56,189,248,0.08)', border: '1px solid rgba(56,189,248,0.26)', color: '#bae6fd' }}>
-      {goruntulendi ? <CheckCircle2 size={11} strokeWidth={2.4} /> : <FileText size={11} strokeWidth={2.2} />} {etiket}
+        ? { background: 'rgba(92,191,138,0.14)', border: '1px solid rgba(92,191,138,0.45)', color: '#5cbf8a' }
+        : { background: 'rgba(127,166,221,0.14)', border: '1px solid rgba(127,166,221,0.45)', color: '#9cc0ee' }}>
+      {harf}
     </button>
   );
 }

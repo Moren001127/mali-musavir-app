@@ -630,63 +630,6 @@ function BeyannamelerIcerik() {
         )}
       </section>
 
-      {/* ===================== SÜZGEÇ ŞERİDİ (hepsi sunucuda) ===================== */}
-      <section className="flex flex-wrap items-center gap-2 rounded-2xl px-3 py-2.5" style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.035), rgba(255,255,255,0.015))', border: '1px solid rgba(255,255,255,0.07)', overflow: 'visible' }}>
-        <label className="flex min-w-[240px] flex-[2] items-center gap-2 rounded-[10px] px-3" style={{ height: 44, background: 'rgba(0,0,0,0.18)', border: '1px solid rgba(255,255,255,0.08)' }}>
-          <Search size={15} style={{ color: 'rgba(243,245,247,0.4)' }} className="shrink-0" />
-          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Mükellef, VKN, onay no ara…" className="w-full bg-transparent text-[13px] outline-none" style={{ color: '#f3f5f7' }} />
-          {search && (
-            <button type="button" onClick={() => setSearch('')} title="Aramayı temizle" className="shrink-0" style={{ color: 'rgba(243,245,247,0.4)' }}><IconX size={13} /></button>
-          )}
-        </label>
-        <div className="min-w-[230px] flex-[1.4]">
-          <SelectBox icon={UserRound} etiket="Mükellef" value={selectedTaxpayer} onChange={suzgec(setSelectedTaxpayer)}>
-            <option value="all">Tümü</option>
-            {taxpayerOptions.map((t) => (
-              <option key={t.id} value={t.id}>{t.name}</option>
-            ))}
-          </SelectBox>
-        </div>
-        <div className="min-w-[180px] flex-1">
-          <SelectBox icon={Filter} etiket="Tür" value={typeFilter} onChange={(v) => suzgec(setTypeFilter)(v as FilterKey)}>
-            {FILTER_KEYS.map((f) => (
-              <option key={f.key} value={f.key}>{f.label}</option>
-            ))}
-          </SelectBox>
-        </div>
-        <div className="min-w-[180px] flex-1">
-          <SelectBox icon={FileText} etiket="Belge" value={docFilter} onChange={(v) => suzgec(setDocFilter)(v as BeyanBelgeSuzgec)}>
-            <option value="all">Tümü</option>
-            <option value="beyanname">Beyanname</option>
-            <option value="tahakkuk">Tahakkuk</option>
-          </SelectBox>
-        </div>
-        <div className="min-w-[180px] flex-1">
-          <SelectBox icon={Send} etiket="İletim" value={iletimFilter} onChange={(v) => suzgec(setIletimFilter)(v as BeyanIletimSuzgec)}>
-            <option value="all">Tümü</option>
-            <option value="iletildi">İletildi</option>
-            <option value="iletilmedi">İletilmedi</option>
-            <option value="hata">Hata</option>
-          </SelectBox>
-        </div>
-        <div className="flex shrink-0 items-center gap-1 rounded-[10px] px-2.5" style={{ height: 44, border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(0,0,0,0.18)' }} title="Beyanname dönem aralığı (gün seçilir, dönem=ay alınır)">
-          <CalendarDays size={15} style={{ color: 'rgba(243,245,247,0.4)' }} className="shrink-0" />
-          <span className="text-[12px] font-semibold" style={{ color: 'rgba(243,245,247,0.45)' }}>Dönem</span>
-          <input type="date" value={periodStart ? `${periodStart}-01` : ''} onChange={(e) => suzgec(setPeriodStart)(e.target.value ? e.target.value.slice(0, 7) : '')} onClick={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }} aria-label="Dönem başlangıç" className="bg-transparent text-[12px] font-semibold outline-none cursor-pointer" style={{ color: '#f3f5f7', colorScheme: 'dark', width: 106 }} />
-          <span className="shrink-0" style={{ color: 'rgba(243,245,247,0.3)' }}>–</span>
-          <input type="date" value={periodEnd ? `${periodEnd}-01` : ''} onChange={(e) => suzgec(setPeriodEnd)(e.target.value ? e.target.value.slice(0, 7) : '')} onClick={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }} aria-label="Dönem bitiş" className="bg-transparent text-[12px] font-semibold outline-none cursor-pointer" style={{ color: '#f3f5f7', colorScheme: 'dark', width: 106 }} />
-        </div>
-        <button
-          type="button"
-          onClick={clearFilters}
-          className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-[10px] px-3 text-[12px] font-semibold"
-          style={{ height: 44, background: suzgecAktif ? 'rgba(212,184,118,0.10)' : 'rgba(255,255,255,0.035)', border: `1px solid ${suzgecAktif ? 'rgba(212,184,118,0.35)' : 'rgba(255,255,255,0.08)'}`, color: suzgecAktif ? GOLD : 'rgba(243,245,247,0.68)' }}
-          title="Süzgeçleri temizle"
-        >
-          <RotateCcw size={15} /> Temizle
-        </button>
-      </section>
-
       {/* ===================== LİSTE ===================== */}
       <section className="rounded-2xl overflow-hidden" style={{ background: 'linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.015))', border: '1px solid rgba(255,255,255,0.07)' }}>
         <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
@@ -706,6 +649,63 @@ function BeyannamelerIcerik() {
             {csvYaziliyor ? <Loader2 size={14} className="animate-spin" /> : <FileSpreadsheet size={14} />} CSV
           </button>
         </div>
+
+      {/* Süzgeç satırı (hepsi sunucuda) — tek tip 38px kutular */}
+      <div className="flex flex-wrap items-center gap-2 px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+        <label className="flex min-w-[220px] flex-[1.6] items-center gap-2 rounded-[10px] px-3" style={{ height: 38, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.09)' }}>
+          <Search size={15} style={{ color: 'rgba(243,245,247,0.4)' }} className="shrink-0" />
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Mükellef, VKN, onay no ara…" className="w-full bg-transparent text-[12.5px] outline-none" style={{ color: '#f3f5f7' }} />
+          {search && (
+            <button type="button" onClick={() => setSearch('')} title="Aramayı temizle" className="shrink-0" style={{ color: 'rgba(243,245,247,0.4)' }}><IconX size={13} /></button>
+          )}
+        </label>
+        <div className="min-w-[210px] flex-[1.3]">
+          <SelectBox icon={UserRound} etiket="Mükellef" value={selectedTaxpayer} onChange={suzgec(setSelectedTaxpayer)}>
+            <option value="all">Tümü</option>
+            {taxpayerOptions.map((t) => (
+              <option key={t.id} value={t.id}>{t.name}</option>
+            ))}
+          </SelectBox>
+        </div>
+        <div className="min-w-[150px] flex-1">
+          <SelectBox icon={Filter} etiket="Tür" value={typeFilter} onChange={(v) => suzgec(setTypeFilter)(v as FilterKey)}>
+            {FILTER_KEYS.map((f) => (
+              <option key={f.key} value={f.key}>{f.label}</option>
+            ))}
+          </SelectBox>
+        </div>
+        <div className="min-w-[150px] flex-1">
+          <SelectBox icon={FileText} etiket="Belge" value={docFilter} onChange={(v) => suzgec(setDocFilter)(v as BeyanBelgeSuzgec)}>
+            <option value="all">Tümü</option>
+            <option value="beyanname">Beyanname</option>
+            <option value="tahakkuk">Tahakkuk</option>
+          </SelectBox>
+        </div>
+        <div className="min-w-[150px] flex-1">
+          <SelectBox icon={Send} etiket="İletim" value={iletimFilter} onChange={(v) => suzgec(setIletimFilter)(v as BeyanIletimSuzgec)}>
+            <option value="all">Tümü</option>
+            <option value="iletildi">İletildi</option>
+            <option value="iletilmedi">İletilmedi</option>
+            <option value="hata">Hata</option>
+          </SelectBox>
+        </div>
+        <div className="flex shrink-0 items-center gap-1 rounded-[10px] px-2.5" style={{ height: 38, border: '1px solid rgba(255,255,255,0.09)', background: 'rgba(255,255,255,0.03)' }} title="Beyanname dönem aralığı (gün seçilir, dönem=ay alınır)">
+          <CalendarDays size={15} style={{ color: 'rgba(243,245,247,0.4)' }} className="shrink-0" />
+          <span className="text-[12px] font-semibold" style={{ color: 'rgba(243,245,247,0.45)' }}>Dönem</span>
+          <input type="date" value={periodStart ? `${periodStart}-01` : ''} onChange={(e) => suzgec(setPeriodStart)(e.target.value ? e.target.value.slice(0, 7) : '')} onClick={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }} aria-label="Dönem başlangıç" className="bg-transparent text-[12px] font-semibold outline-none cursor-pointer" style={{ color: '#f3f5f7', colorScheme: 'dark', width: 106 }} />
+          <span className="shrink-0" style={{ color: 'rgba(243,245,247,0.3)' }}>–</span>
+          <input type="date" value={periodEnd ? `${periodEnd}-01` : ''} onChange={(e) => suzgec(setPeriodEnd)(e.target.value ? e.target.value.slice(0, 7) : '')} onClick={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }} aria-label="Dönem bitiş" className="bg-transparent text-[12px] font-semibold outline-none cursor-pointer" style={{ color: '#f3f5f7', colorScheme: 'dark', width: 106 }} />
+        </div>
+        <button
+          type="button"
+          onClick={clearFilters}
+          className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-[10px] px-3 text-[12px] font-semibold"
+          style={{ height: 38, background: suzgecAktif ? 'rgba(212,184,118,0.10)' : 'rgba(255,255,255,0.035)', border: `1px solid ${suzgecAktif ? 'rgba(212,184,118,0.35)' : 'rgba(255,255,255,0.08)'}`, color: suzgecAktif ? GOLD : 'rgba(243,245,247,0.68)' }}
+          title="Süzgeçleri temizle"
+        >
+          <RotateCcw size={15} /> Temizle
+        </button>
+      </div>
 
         {/* Toplu işlemler — ÜSTTE, tek sayaç */}
         <div className="flex flex-wrap items-center gap-2 px-4 py-2.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', background: seciliSayi ? 'rgba(212,184,118,0.05)' : 'transparent' }}>
@@ -748,7 +748,7 @@ function BeyannamelerIcerik() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-[13px]" style={{ tableLayout: 'fixed', minWidth: 1120 }}>
+            <table className="w-full text-[13px]" style={{ tableLayout: 'fixed', minWidth: 1040 }}>
               <colgroup>
                 <col style={{ width: 40 }} />
                 <col />
@@ -757,8 +757,8 @@ function BeyannamelerIcerik() {
                 <col style={{ width: 82 }} />
                 <col style={{ width: 88 }} />
                 <col style={{ width: 112 }} />
-                <col style={{ width: 190 }} />
-                <col style={{ width: 118 }} />
+                <col style={{ width: 84 }} />
+                <col style={{ width: 130 }} />
                 <col style={{ width: 104 }} />
               </colgroup>
               <thead style={{ background: 'rgba(255,255,255,0.025)' }}>
@@ -978,6 +978,8 @@ function SelectBox({ icon: Icon, etiket, value, onChange, children }: { icon: an
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const currentLabel = items.find((it) => it.value === value)?.label || items[0]?.label || '—';
+  // Varsayılan dışı bir seçim varsa kutu altın tonuna döner (süzgeç aktif).
+  const aktifSecim = items.length > 0 && value !== items[0]?.value;
 
   useEffect(() => {
     if (!open) return;
@@ -993,10 +995,10 @@ function SelectBox({ icon: Icon, etiket, value, onChange, children }: { icon: an
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="w-full h-11 pl-9 pr-8 rounded-[10px] text-[13px] font-semibold outline-none text-left flex items-center"
-        style={{ background: 'rgba(0,0,0,0.18)', border: '1px solid rgba(255,255,255,0.08)', color: '#fafaf9' }}
+        className="w-full h-[38px] pl-9 pr-8 rounded-[10px] text-[12.5px] font-semibold outline-none text-left flex items-center transition"
+        style={{ background: aktifSecim ? 'rgba(212,184,118,0.08)' : 'rgba(255,255,255,0.03)', border: `1px solid ${aktifSecim ? 'rgba(212,184,118,0.35)' : 'rgba(255,255,255,0.09)'}`, color: '#fafaf9' }}
       >
-        <Icon size={15} className="absolute left-3 pointer-events-none" style={{ color: 'rgba(250,250,249,0.38)' }} />
+        <Icon size={14} className="absolute left-3 pointer-events-none" style={{ color: aktifSecim ? '#d4b876' : 'rgba(250,250,249,0.4)' }} />
         {etiket && <span className="mr-1.5 shrink-0 font-semibold" style={{ color: 'rgba(250,250,249,0.45)' }}>{etiket}:</span>}
         <span className="truncate">{currentLabel}</span>
         <svg className="absolute right-2.5 pointer-events-none" width="12" height="12" viewBox="0 0 12 12" fill="none">
@@ -1011,9 +1013,9 @@ function SelectBox({ icon: Icon, etiket, value, onChange, children }: { icon: an
             left: 0,
             right: 0,
             zIndex: 9999,
-            background: '#1c1813',
-            border: '1px solid rgba(212,184,118,0.32)',
-            boxShadow: '0 12px 36px rgba(0,0,0,0.7), 0 0 0 1px rgba(0,0,0,0.4)',
+            background: '#121110',
+            border: '1px solid rgba(255,255,255,0.10)',
+            boxShadow: '0 18px 44px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.04)',
           }}
         >
           {items.length === 0 ? (
@@ -1026,10 +1028,11 @@ function SelectBox({ icon: Icon, etiket, value, onChange, children }: { icon: an
                   key={it.value}
                   type="button"
                   onClick={() => { onChange(it.value); setOpen(false); }}
-                  className="w-full text-left px-3 py-2 text-[12.5px] flex items-center justify-between transition"
+                  className="w-full text-left px-3 py-[7px] text-[12.5px] flex items-center justify-between transition"
                   style={{
-                    background: active ? 'rgba(212,184,118,0.12)' : 'transparent',
-                    color: active ? '#d4b876' : '#fafaf9',
+                    background: active ? 'rgba(212,184,118,0.10)' : 'transparent',
+                    color: active ? '#d4b876' : 'rgba(250,250,249,0.85)',
+                    fontWeight: active ? 600 : 500,
                   }}
                   onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }}
                   onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = 'transparent'; }}

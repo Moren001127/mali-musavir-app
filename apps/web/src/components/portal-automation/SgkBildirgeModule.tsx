@@ -28,26 +28,26 @@ const TURLER: Array<{ value: string; label: string }> = [
 
 type BelgeParcasi = { id: string; pdfVar: boolean; viewedAt: string | null } | null | undefined;
 
-// Belge çipi (tek satır, kompakt): yeşil tik = görüntülendi · kırmızı nokta = yeni · soluk = PDF bekliyor / belge yok.
-function BelgeCipi({ label, ikon, belge, goruldu, onClick }: { label: string; ikon: React.ReactNode; belge: BelgeParcasi; goruldu: boolean; onClick: () => void }) {
-  const taban = 'inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full text-[11.5px] font-semibold whitespace-nowrap';
+// Belge kutusu (kare): H = Hizmet Listesi, T = Tahakkuk Fişi. Yeşil tik rengi = görüntülendi · kırmızı = yeni · kesikli soluk = PDF bekliyor / yok.
+function BelgeCipi({ harf, label, belge, goruldu, onClick }: { harf: string; label: string; belge: BelgeParcasi; goruldu: boolean; onClick: () => void }) {
+  const taban = 'inline-flex h-7 w-7 items-center justify-center rounded-[7px] text-[12px] font-extrabold leading-none';
   if (!belge || !belge.pdfVar) {
     return (
-      <span className={taban} title={!belge ? `${label} bu dönemde yok` : `${label} PDF'i henüz inmedi`}
-        style={{ border: '1px dashed rgba(255,255,255,0.12)', color: 'rgba(250,250,249,0.32)' }}>
-        {ikon} {label}
+      <span className={taban} title={!belge ? `${label} bu dönemde yok` : `${label} PDF'i henüz inmedi`} aria-label={`${label} yok`}
+        style={{ border: '1px dashed rgba(255,255,255,0.14)', color: 'rgba(250,250,249,0.28)' }}>
+        {harf}
       </span>
     );
   }
   return (
     <button type="button" onClick={onClick}
       title={goruldu ? `${label} — görüntülendi (tekrar aç)` : `${label} — yeni, henüz görüntülenmedi`}
+      aria-label={`${label} aç`}
       className={`${taban} transition hover:brightness-125`}
       style={goruldu
-        ? { background: 'rgba(92,191,138,0.10)', border: '1px solid rgba(92,191,138,0.35)', color: '#5cbf8a' }
-        : { background: 'rgba(226,112,111,0.10)', border: '1px solid rgba(226,112,111,0.45)', color: '#e2706f' }}>
-      {goruldu ? <Check size={11} /> : <span className="h-1.5 w-1.5 rounded-full" style={{ background: '#e2706f', boxShadow: '0 0 6px #e2706f' }} />}
-      {label}
+        ? { background: 'rgba(92,191,138,0.14)', border: '1px solid rgba(92,191,138,0.45)', color: '#5cbf8a' }
+        : { background: 'rgba(226,112,111,0.14)', border: '1px solid rgba(226,112,111,0.5)', color: '#e2706f' }}>
+      {harf}
     </button>
   );
 }
@@ -241,21 +241,6 @@ function SgkBildirgeModuleIc() {
     [summary?.credentialsBlocked],
   );
 
-  // Sayfadaki satırlar döneme göre gruplu (liste zaten dönem desc): başlık satırında mükellef sayısı + tutar toplamı.
-  const gruplar = useMemo(() => {
-    const sira: Array<{ donem: string; satirlar: BelgeSatiri[]; toplam: number; tutarVar: boolean }> = [];
-    const idx = new Map<string, number>();
-    for (const d of rows) {
-      const donem = d.period || '—';
-      const tutar = d.tahakkuk?.tutar ?? d.ozet?.tutar ?? null;
-      let i = idx.get(donem);
-      if (i == null) { i = sira.length; idx.set(donem, i); sira.push({ donem, satirlar: [], toplam: 0, tutarVar: false }); }
-      sira[i].satirlar.push(d);
-      if (tutar != null && Number.isFinite(tutar)) { sira[i].toplam += tutar; sira[i].tutarVar = true; }
-    }
-    return sira;
-  }, [rows]);
-
   const sayfadaYeniBelge = rows.some((d) => [d.hizmet, d.tahakkuk].some((b) => b && b.pdfVar && !b.viewedAt && !viewedIds.has(b.id)));
   const KENAR = '1px solid rgba(255,255,255,0.06)';
   const kutuStili: React.CSSProperties = { ...ALAN_STILI, height: 36, borderRadius: 10 };
@@ -353,44 +338,34 @@ function SgkBildirgeModuleIc() {
           <table className="w-full text-[12.5px]" style={{ borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: 1000 }}>
             <colgroup>
               <col />
+              <col style={{ width: 84 }} />
               <col style={{ width: 92 }} />
               <col style={{ width: 88 }} />
               <col style={{ width: 76 }} />
               <col style={{ width: 132 }} />
-              <col style={{ width: 268 }} />
+              <col style={{ width: 84 }} />
               <col style={{ width: 128 }} />
             </colgroup>
             <thead>
               <tr style={{ color: 'rgba(250,250,249,0.42)' }}>
-                {[['Mükellef', 'text-left'], ['Mahiyet', 'text-left'], ['Kanun', 'text-left'], ['Çalışan', 'text-right'], ['Tutar', 'text-right'], ['Belgeler', 'text-left'], ['İletim', 'text-left']].map(([h, hiza]) => (
+                {[['Mükellef', 'text-left'], ['Dönem', 'text-left'], ['Mahiyet', 'text-left'], ['Kanun', 'text-left'], ['Çalışan', 'text-right'], ['Tutar', 'text-right'], ['Belgeler', 'text-left'], ['İletim', 'text-left']].map(([h, hiza]) => (
                   <th key={h} className={`px-3 py-2.5 text-[10.5px] font-bold uppercase tracking-[.12em] whitespace-nowrap ${hiza}`} style={{ borderBottom: KENAR }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody style={{ color: 'rgba(250,250,249,0.88)', opacity: docsQuery.isPlaceholderData ? 0.55 : 1, transition: 'opacity .15s' }}>
-              {docsQuery.isLoading && (<tr><td colSpan={7} className="px-3 py-10 text-center" style={{ color: 'rgba(250,250,249,0.45)' }}><Loader2 size={18} className="animate-spin inline" /> Yükleniyor…</td></tr>)}
+              {docsQuery.isLoading && (<tr><td colSpan={8} className="px-3 py-10 text-center" style={{ color: 'rgba(250,250,249,0.45)' }}><Loader2 size={18} className="animate-spin inline" /> Yükleniyor…</td></tr>)}
               {docsQuery.isError && !docsQuery.isLoading && (
-                <tr><td colSpan={7} className="px-3 py-10 text-center" style={{ color: '#e2706f' }}>Liste alınamadı. Yenile düğmesiyle tekrar deneyin.</td></tr>
+                <tr><td colSpan={8} className="px-3 py-10 text-center" style={{ color: '#e2706f' }}>Liste alınamadı. Yenile düğmesiyle tekrar deneyin.</td></tr>
               )}
               {!docsQuery.isLoading && !docsQuery.isError && rows.length === 0 && (
-                <tr><td colSpan={7} className="px-3 py-14 text-center" style={{ color: 'rgba(250,250,249,0.4)' }}>
+                <tr><td colSpan={8} className="px-3 py-14 text-center" style={{ color: 'rgba(250,250,249,0.4)' }}>
                   <span className="mx-auto mb-2 flex h-11 w-11 items-center justify-center rounded-full" style={{ background: 'rgba(212,184,118,0.12)', color: GOLD }}><ShieldCheck size={18} /></span>
                   {!suzgecVar ? 'Henüz SGK belgesi yok. "Şimdi sorgula" ile çekin ya da gece otomatik gelsin.' : 'Süzgece uyan belge yok.'}
                 </td></tr>
               )}
-              {gruplar.map((g) => (
+              {[{ donem: 'tum', satirlar: rows }].map((g) => (
                 <React.Fragment key={g.donem}>
-                  <tr>
-                    <td colSpan={7} className="px-3 py-1.5" style={{ background: 'rgba(212,184,118,0.06)', borderTop: KENAR, borderBottom: KENAR }}>
-                      <div className="flex items-center gap-3">
-                        <span className="h-4 w-[3px] rounded-full" style={{ background: GOLD }} />
-                        <span className="text-[12.5px] font-bold tabular-nums" style={{ color: METIN }}>{g.donem}</span>
-                        <span className="text-[11.5px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
-                          {g.satirlar.length} mükellef{g.tutarVar ? ` · toplam ${tutarBicimle(g.toplam)}` : ''}
-                        </span>
-                      </div>
-                    </td>
-                  </tr>
                   {g.satirlar.map((d, i) => {
                     const o = d.ozet || {};
                     const ad = mukellefAdi(d.taxpayer);
@@ -404,6 +379,7 @@ function SgkBildirgeModuleIc() {
                           <div className="truncate text-[13px] font-semibold" style={{ color: METIN }} title={ad}>{ad}</div>
                           {d.taxpayer?.taxNumber && <div className="text-[11px] tabular-nums" style={{ color: 'rgba(250,250,249,0.38)' }}>{d.taxpayer.taxNumber}</div>}
                         </td>
+                        <td className="px-3 py-2.5 align-middle tabular-nums text-[13px] font-semibold whitespace-nowrap" style={{ borderBottom: KENAR, color: METIN }}>{d.period || '—'}</td>
                         <td className="px-3 py-2.5 align-middle" style={{ borderBottom: KENAR }}><MahiyetRozeti mahiyet={o.mahiyet} /></td>
                         <td className="px-3 py-2.5 align-middle tabular-nums text-[12px]" style={{ borderBottom: KENAR, color: kanun ? 'rgba(250,250,249,0.7)' : 'rgba(250,250,249,0.3)' }}>{kanun || '—'}</td>
                         <td className="px-3 py-2.5 align-middle text-right tabular-nums text-[13px]" style={{ borderBottom: KENAR, color: 'rgba(250,250,249,0.85)' }}>{o.calisan ?? '—'}</td>
@@ -413,10 +389,10 @@ function SgkBildirgeModuleIc() {
                             : <span style={{ color: 'rgba(250,250,249,0.3)' }}>—</span>}
                         </td>
                         <td className="px-3 py-2.5 align-middle" style={{ borderBottom: KENAR }}>
-                          <div className="flex items-center gap-1.5">
-                            <BelgeCipi label="Hizmet Listesi" ikon={<ListChecks size={11} />} belge={d.hizmet} goruldu={hizmetGoruldu}
+                          <div className="flex items-center gap-1">
+                            <BelgeCipi harf="H" label="Hizmet Listesi" belge={d.hizmet} goruldu={hizmetGoruldu}
                               onClick={() => d.hizmet && openPdf(d.hizmet.id, [ad, 'Hizmet Listesi', d.period].filter(Boolean).join(' · '))} />
-                            <BelgeCipi label="Tahakkuk Fişi" ikon={<Receipt size={11} />} belge={d.tahakkuk} goruldu={tahakkukGoruldu}
+                            <BelgeCipi harf="T" label="Tahakkuk Fişi" belge={d.tahakkuk} goruldu={tahakkukGoruldu}
                               onClick={() => d.tahakkuk && openPdf(d.tahakkuk.id, [ad, 'Tahakkuk Fişi', d.period].filter(Boolean).join(' · '))} />
                           </div>
                         </td>

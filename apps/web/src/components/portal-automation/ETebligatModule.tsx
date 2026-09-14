@@ -256,7 +256,7 @@ function ETebligatModuleIc() {
       {/* ── Tablo ── */}
       <div className="rounded-2xl border overflow-hidden" style={{ background: 'rgba(0,0,0,0.18)', borderColor: 'rgba(255,255,255,0.06)' }}>
         <div className="overflow-x-auto">
-          <table className="w-full text-[12px]" style={{ borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: 1120 }}>
+          <table className="w-full text-[12px]" style={{ borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: 1020 }}>
             <colgroup>
               <col />
               <col style={{ width: 160 }} />
@@ -264,13 +264,12 @@ function ETebligatModuleIc() {
               <col style={{ width: 140 }} />
               <col style={{ width: 104 }} />
               <col style={{ width: 120 }} />
-              <col style={{ width: 104 }} />
               <col style={{ width: 124 }} />
               <col style={{ width: 52 }} />
             </colgroup>
             <thead style={{ background: 'rgba(255,255,255,0.03)' }}>
               <tr style={{ color: 'rgba(250,250,249,0.55)' }}>
-                {['Mükellef', 'Gönderen Kurum', 'Belge Türü', 'Belge No', 'Gönderim', 'Tebliğ', 'Okuma', 'İletim', 'Belge'].map((h, i) => (
+                {['Mükellef', 'Gönderen Kurum', 'Belge Türü', 'Belge No', 'Gönderim', 'Tebliğ', 'İletim', 'Belge'].map((h, i) => (
                   <th key={h} className={`px-2.5 py-2.5 font-semibold whitespace-nowrap ${i >= 4 ? 'text-center' : 'text-left'}`} style={{ borderBottom: cellBorder }}>{h}</th>
                 ))}
               </tr>
@@ -278,13 +277,13 @@ function ETebligatModuleIc() {
             {/* Sayfa geçişinde eski satırlar hafif soluk kalır (titreme yok); yeni yanıt gelince yerini alır. */}
             <tbody style={{ color: 'rgba(250,250,249,0.88)', opacity: docsQuery.isPlaceholderData ? 0.55 : 1, transition: 'opacity .15s' }}>
               {docsQuery.isLoading && (
-                <tr><td colSpan={9} className="px-3 py-10 text-center" style={{ color: 'rgba(250,250,249,0.45)' }}><Loader2 size={18} className="animate-spin inline" /> Yükleniyor…</td></tr>
+                <tr><td colSpan={8} className="px-3 py-10 text-center" style={{ color: 'rgba(250,250,249,0.45)' }}><Loader2 size={18} className="animate-spin inline" /> Yükleniyor…</td></tr>
               )}
               {docsQuery.isError && !docsQuery.isLoading && (
-                <tr><td colSpan={9} className="px-3 py-10 text-center" style={{ color: '#ef9a9a' }}>Liste alınamadı. "Yenile" ile tekrar deneyin.</td></tr>
+                <tr><td colSpan={8} className="px-3 py-10 text-center" style={{ color: '#ef9a9a' }}>Liste alınamadı. "Yenile" ile tekrar deneyin.</td></tr>
               )}
               {!docsQuery.isLoading && !docsQuery.isError && rows.length === 0 && (
-                <tr><td colSpan={9} className="px-3 py-12 text-center" style={{ color: 'rgba(250,250,249,0.4)' }}>
+                <tr><td colSpan={8} className="px-3 py-12 text-center" style={{ color: 'rgba(250,250,249,0.4)' }}>
                   <Inbox size={26} className="inline mb-2 opacity-50" /><br />
                   {!suzgecVar ? 'Henüz e-Tebligat kaydı yok. "Şimdi sorgula" ile çekin ya da gece otomatik gelsin.' : 'Süzgece uyan tebligat yok.'}
                 </td></tr>
@@ -321,7 +320,6 @@ function ETebligatModuleIc() {
                       <div>{fmtTrTarih(o.tebligZamani || o.tebligTarihi || d.receivedAt)}</div>
                       <div className="mt-1 flex justify-center"><TebligRozeti durum={o.tebligDurumu} tebligTarihi={o.tebligTarihi} sar /></div>
                     </td>
-                    <td className="px-2.5 py-2.5 align-top text-center whitespace-nowrap tabular-nums" style={{ borderBottom: cellBorder, color: 'rgba(250,250,249,0.7)' }}>{o.okumaZamani ? fmtTrTarih(o.okumaZamani) : '—'}</td>
                     <td className="px-2.5 py-2.5 align-top text-center" style={{ borderBottom: cellBorder }}>
                       <IletimRozeti iletim={d.iletim} />
                     </td>
