@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { CalendarRange, ChevronDown } from 'lucide-react';
-import { isOmurgaYok, mukellefAdi, type AkisFiltre, type AkisGun } from '@/lib/ekip';
+import { isOmurgaYok, mukellefAdi, type AkisFiltre, type AkisGun, type PanoDonemOzeti } from '@/lib/ekip';
 import { SORGU, useKosular } from './kosular';
 import { KonsolBaslik } from './KonsolBaslik';
 import { AjanSeridi } from './AjanSeridi';
@@ -12,18 +12,18 @@ import { IsAkisi, kosuVakayaAitMi } from './IsAkisi';
 import { DonemPanosu } from './DonemPanosu';
 import { OmurgaYokBilgi } from './OmurgaYokBilgi';
 import { Kart } from './Kart';
-import { DEPO, EKIP_ACCENT, RENK, depoOku, depoYaz } from './ortak';
+import { DEPO, SAKIN, depoOku, depoYaz, donemEtiketi } from './ortak';
 
 const SUZGECLER: AkisFiltre[] = ['tumu', 'suruyor', 'onay', 'istek', 'bitti'];
 
 /**
- * "Sakin komuta merkezi" v2 — tek sütun, yukarıdan aşağıya (Muzaffer Bey, 2026-09-13):
- *  1. KonsolBaslik  — İNCE şerit (≤56px): Moren Ekip · tarih · 13 çalışan · N çalışıyor · Onay N · Beyanname x/64 · Operatör · Max · Sabah özeti [Şimdi üret]
- *  2. AjanSeridi    — 13 avatar tek sıra, TIKLANMAZ; yalnız durum (kim çalışıyor, ne üzerinde)
- *  3. KomutKutusu   — TEK komut yeri: Koordinatör (işi kendisi yönlendirir)
- *  4. IsAkisi       — CANLI AKIŞ: Tümü · Sürüyor · Onayınızı bekleyen · Sizden istenen · Bitti; satır = iş dosyası zinciri (vaka)
- *  5. DonemPanosu   — en altta katlanır (varsayılan kapalı)
- * Sekmeler, ajan seçimi, AjanDetayKarti, IsDosyalari, OnayKuyrugu KALKTI. Yapışkan öğe YOK; sayfa yatay kaymaz. Kuru/Canlı depoya yazılmaz.
+ * "Sakin Ekip" — tek sütun, yukarıdan aşağıya (PLAN/19 §A, Muzaffer Bey 2026-09-14: "göz yormayan ama kullanışlı"):
+ *  1. KonsolBaslik  — kartsız tek satır: Ekip · tarih · 12 personel · N çalışıyor · onay bekleyen N · Operatör · Max · Sabah özeti [Şimdi üret]
+ *  2. AjanSeridi    — 12 küçük nötr avatar, TIKLANMAZ; yalnız çalışanda ikinci satır
+ *  3. KomutKutusu   — TEK görev yeri: Koordinatör (5 sık şablon bağlantı + "Diğer ▾")
+ *  4. IsAkisi       — akış: alt çizgili sekmeler Tümü · Sürüyor · Onayınızı bekleyen · Sizden istenen · Bitti; satır = vaka
+ *  5. DonemPanosu   — en altta katlanır (varsayılan kapalı); başlığında beyanname dönemi özeti
+ * Tek vurgu rengi (çelik mavi), durum kelime+nokta; gradyan/parıltı/altın yok. Yapışkan öğe YOK; sayfa yatay kaymaz. Kuru/Canlı depoya yazılmaz.
  */
 export function EkipEkrani() {
   const [seciliDonem, setSeciliDonemState] = useState<string | null>(null);
@@ -81,6 +81,11 @@ export function EkipEkrani() {
 
   const ajanlar = kadroS.data || [];
   const onaylar = useMemo(() => onaylarS.data || [], [onaylarS.data]);
+  // Pano başlığı için en yeni dönem özeti (etiket = beyanname dönemi; işlem ayı değil)
+  const panoOzet = useMemo(
+    () => (panoS.data?.donemOzetleri || []).reduce<PanoDonemOzeti | undefined>((en, o) => (!en || o.donem > en.donem ? o : en), undefined),
+    [panoS.data],
+  );
   const mukellefler = useMemo(() => mukelleflerS.data || [], [mukelleflerS.data]);
 
   // Mükellef haritası — her yerde ad çözümü
@@ -156,23 +161,16 @@ export function EkipEkrani() {
         kadroSayisi={ajanlar.length}
         calisan={calisan}
         sayaclar={sayaclar}
-        pano={panoS.data}
-        panoYukleniyor={panoS.isLoading}
         kosular={kosular}
         onSuzgec={(f) => {
           setAkisSuzgec(f);
           kaydir(akisRef);
         }}
-        onPanoAc={() => {
-          setPanoAcik(true);
-          setEksiklerNonce((n) => n + 1);
-          kaydir(panoRef);
-        }}
       />
 
       {omurgaYok && <OmurgaYokBilgi />}
       {!!kadroS.error && !omurgaYok && (
-        <div className="rounded-xl px-4 py-3 text-[12.5px]" style={{ background: 'rgba(248,113,113,0.10)', border: '1px solid rgba(248,113,113,0.35)', color: '#fecaca' }}>
+        <div className="rounded-xl px-4 py-3 text-[12.5px]" style={{ background: 'rgba(214,69,69,0.08)', border: `1px solid ${SAKIN.kirmizi}66`, color: SAKIN.metin }}>
           Kadro alınamadı: {(kadroS.error as any)?.message || 'hata'}
         </div>
       )}
@@ -195,7 +193,7 @@ export function EkipEkrani() {
       />
 
       {/* 4. CANLI AKIŞ — ana alan */}
-      <Kart ref={akisRef} renk={EKIP_ACCENT} serit className="p-5">
+      <Kart ref={akisRef} className="p-4 md:p-5">
         <IsAkisi
           akis={akisS.data}
           isLoading={akisS.isLoading}
@@ -216,22 +214,31 @@ export function EkipEkrani() {
         />
       </Kart>
 
-      {/* 5. Dönem panosu — katlanır (varsayılan kapalı) */}
-      <Kart ref={panoRef} renk={RENK.mor} className={panoAcik ? 'p-5' : ''}>
+      {/* 5. Dönem panosu — katlanır (varsayılan kapalı); başlıkta aktif beyanname dönemi özeti (PLAN/19 B.2-17) */}
+      <Kart ref={panoRef} className={panoAcik ? 'p-4 md:p-5' : ''}>
         <button
           type="button"
           onClick={() => setPanoAcik(!panoAcik)}
           aria-expanded={panoAcik}
-          className={`flex w-full items-center gap-2 text-left ${panoAcik ? 'mb-3' : 'px-5 py-3.5'}`}
+          className={`flex w-full min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-left ${panoAcik ? 'mb-3' : 'px-4 py-3 md:px-5'}`}
         >
-          <CalendarRange size={14} style={{ color: RENK.mor }} />
-          <span className="text-[13px] font-bold" style={{ color: RENK.metin }}>
-            Dönem panosu
+          <span className="inline-flex items-center gap-2">
+            <CalendarRange size={14} style={{ color: SAKIN.ikincil }} />
+            <span className="text-[13px] font-semibold" style={{ color: SAKIN.metin }}>
+              Dönem panosu
+            </span>
           </span>
-          <span className="text-[11px]" style={{ color: RENK.ikincil }}>
-            {panoAcik ? '' : '— mükellef × dönem aşamaları; "Görev ver" Koordinatör’e gider'}
-          </span>
-          <ChevronDown size={14} className="ml-auto transition-transform" style={{ color: RENK.sonuk, transform: panoAcik ? 'rotate(0deg)' : 'rotate(-90deg)' }} />
+          {!panoAcik && panoOzet && (
+            <span className="min-w-0 truncate text-[11.5px]" style={{ color: SAKIN.ikincil }}>
+              {donemEtiketi(panoOzet.beyannameDonem || panoOzet.donem)} beyannameleri · KDV kontrol {panoOzet.ozet.kontrol}/{panoOzet.toplam} · hazır {panoOzet.ozet.beyannameHazir} · verildi işaretli {panoOzet.ozet.beyanname}
+            </span>
+          )}
+          {!panoAcik && !panoOzet && (
+            <span className="text-[11.5px]" style={{ color: SAKIN.ikincil }}>
+              mükellef × dönem aşamaları
+            </span>
+          )}
+          <ChevronDown size={14} className="ml-auto transition-transform" style={{ color: SAKIN.soluk, transform: panoAcik ? 'rotate(0deg)' : 'rotate(-90deg)' }} />
         </button>
         {panoAcik && (
           <DonemPanosu pano={panoS.data} isLoading={panoS.isLoading} error={panoS.error} seciliDonem={seciliDonem} onDonemSec={setSeciliDonem} onTaslak={taslakVer} eksiklerNonce={eksiklerNonce} />

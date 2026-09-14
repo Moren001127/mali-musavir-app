@@ -11,7 +11,7 @@ import { CanliAkis } from './CanliAkis';
 import { MukellefSecici } from './MukellefSecici';
 import { OmurgaYokBilgi } from './OmurgaYokBilgi';
 import { VakaSatiri, MiniAvatar } from './VakaSatiri';
-import { EKIP_ACCENT, KUTULAR, RENK, vakaSirasi } from './ortak';
+import { KUTULAR, SAKIN, vakaSirasi } from './ortak';
 
 const GUNLER: Array<{ id: AkisGun; ad: string }> = [
   { id: 1, ad: 'Bugün' },
@@ -27,7 +27,7 @@ export function kosuVakayaAitMi(kosu: Kosu, vaka: Vaka): boolean {
 }
 
 /**
- * CANLI AKIŞ — ana alan. Üstte beş sayaç-süzgeç hapı (tek seçim) + gün seçici + mükellef süzgeci; altta vaka satırları.
+ * CANLI AKIŞ — ana alan. SAKİN (PLAN/19 §A.3-4): alt çizgili sade sekmeler (sayı gri; onay/istek >0 ise kehribar) + sağda gün ve mükellef süzgeci.
  * Sıralama: onay/istek → sürüyor → bitti; her grupta guncellendi desc. Liste kendi içinde kayar (max-h 70vh).
  * Eşleşmemiş yerel koşu (isId henüz gelmedi / akış henüz tazelenmedi) listenin en üstünde geçici satır olarak akar.
  */
@@ -88,28 +88,30 @@ export function IsAkisi({
 
   return (
     <div className="flex min-w-0 flex-col gap-3">
-      {/* Beş sayaç-süzgeç hapı · gün seçici · mükellef süzgeci */}
-      <div className="flex flex-col gap-2 pb-2.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-        <div className="flex min-w-0 items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      {/* Sekmeler (alt çizgi) · gün · mükellef · yenile */}
+      <div className="flex min-w-0 flex-col gap-2 md:flex-row md:items-end md:justify-between" style={{ borderBottom: `1px solid ${SAKIN.kilcal}` }}>
+        <div className="flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="tablist">
           {KUTULAR.map((k) => {
             const aktif = suzgec === k.id;
             const sayi = k.sayacAnahtari ? sayaclar?.[k.sayacAnahtari] ?? 0 : null;
+            const dikkat = (k.id === 'onay' || k.id === 'istek') && !!sayi;
             return (
               <button
                 key={k.id}
                 type="button"
+                role="tab"
                 onClick={() => onSuzgec(k.id)}
-                aria-pressed={aktif}
-                className="inline-flex flex-shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1 text-[11.5px] font-semibold transition-[background-color,border-color,color,transform] duration-150 hover:-translate-y-px"
-                style={
-                  aktif
-                    ? { background: `linear-gradient(135deg, ${k.renk}, ${k.renk}bb)`, border: '1px solid transparent', color: '#0b1218' }
-                    : { background: sayi ? `${k.renk}10` : 'transparent', border: `1px solid ${sayi ? `${k.renk}55` : 'rgba(255,255,255,0.10)'}`, color: sayi ? k.renk : RENK.ikincil }
-                }
+                aria-selected={aktif}
+                className="-mb-px inline-flex flex-shrink-0 items-center gap-1.5 whitespace-nowrap px-2.5 pb-2 pt-1 text-[12.5px] transition-colors duration-150"
+                style={{
+                  color: aktif ? SAKIN.metin : dikkat ? SAKIN.kehribar : SAKIN.ikincil,
+                  fontWeight: aktif ? 600 : 500,
+                  borderBottom: `2px solid ${aktif ? SAKIN.vurgu : 'transparent'}`,
+                }}
               >
                 {k.ad}
                 {sayi != null && (
-                  <span className="rounded-full px-1.5 text-[10px] font-bold leading-4 tabular-nums" style={aktif ? { background: 'rgba(0,0,0,0.22)' } : { background: `${k.renk}22` }}>
+                  <span className="tabular-nums text-[11px]" style={{ color: dikkat ? SAKIN.kehribar : aktif ? SAKIN.ikincil : SAKIN.soluk }}>
                     {sayi}
                   </span>
                 )}
@@ -117,64 +119,62 @@ export function IsAkisi({
             );
           })}
           {!!sayaclar?.gecikti && (
-            <span className="ml-1 flex-shrink-0 whitespace-nowrap text-[10.5px] font-semibold" style={{ color: RENK.kirmizi }} title="2 devirden fazla dolaşan ya da 24 saatte çözülmeyen">
+            <span className="ml-2 flex-shrink-0 whitespace-nowrap pb-2 text-[11px]" style={{ color: SAKIN.kirmiziAcik }} title="2 devirden fazla dolaşan ya da 24 saatte çözülmeyen">
               {sayaclar.gecikti} gecikti
             </span>
           )}
         </div>
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <div className="inline-flex flex-shrink-0 items-center rounded-full p-[2px]" style={{ background: 'rgba(0,0,0,0.32)', border: '1px solid rgba(255,255,255,0.08)' }}>
+        <div className="flex min-w-0 flex-wrap items-center gap-2 pb-2">
+          <div className="inline-flex flex-shrink-0 items-center rounded-md p-[2px]" style={{ background: SAKIN.alan, border: `1px solid ${SAKIN.cizgi}` }}>
             {GUNLER.map((g) => (
               <button
                 key={g.id}
                 type="button"
                 onClick={() => onGun(g.id)}
                 aria-pressed={gun === g.id}
-                className="rounded-full px-2.5 py-0.5 text-[11px] font-semibold transition-[background-color,color] duration-150"
-                style={gun === g.id ? { background: `${EKIP_ACCENT}22`, color: EKIP_ACCENT } : { background: 'transparent', color: RENK.ikincil }}
+                className="rounded px-2 py-0.5 text-[11px] font-semibold transition-colors duration-150"
+                style={gun === g.id ? { background: SAKIN.zeminAcik, color: SAKIN.metin } : { background: 'transparent', color: SAKIN.ikincil }}
               >
                 {g.ad}
               </button>
             ))}
           </div>
-          <div className="min-w-[180px] max-w-[300px] flex-1">
-            <MukellefSecici mukellefler={mukellefler} value={taxpayerId} onChange={onTaxpayerId} renk={EKIP_ACCENT} />
+          <div className="w-[220px] min-w-0">
+            <MukellefSecici mukellefler={mukellefler} value={taxpayerId} onChange={onTaxpayerId} renk={SAKIN.vurgu} />
           </div>
-          <span className="ml-auto flex items-center gap-2">
-            {akis && (
-              <span className="text-[11px] tabular-nums" style={{ color: RENK.sonuk }}>
-                {vakalar.length} vaka
-              </span>
-            )}
-            <button
-              type="button"
-              onClick={() => qc.invalidateQueries({ queryKey: ['ekip-akis'] })}
-              className="flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px]"
-              style={{ color: RENK.ikincil, border: '1px solid rgba(255,255,255,0.10)' }}
-              title="Akışı yenile"
-            >
-              <RefreshCw size={11} className={yenileniyor ? 'animate-spin' : ''} /> Yenile
-            </button>
-          </span>
+          {akis && (
+            <span className="text-[11px] tabular-nums" style={{ color: SAKIN.soluk }}>
+              {vakalar.length} vaka
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={() => qc.invalidateQueries({ queryKey: ['ekip-akis'] })}
+            className="flex items-center gap-1 rounded-md px-2 py-1 text-[11px]"
+            style={{ color: SAKIN.ikincil, border: `1px solid ${SAKIN.cizgi}` }}
+            title="Akışı yenile"
+          >
+            <RefreshCw size={11} className={yenileniyor ? 'animate-spin' : ''} /> Yenile
+          </button>
         </div>
       </div>
 
       {/* Liste — kendi içinde kayar */}
       <div className="max-h-[70vh] min-w-0 overflow-y-auto">
-        <ul className="flex flex-col gap-1.5">
+        <ul className="flex flex-col gap-1">
           {/* Geçici satırlar: eşleşmemiş yerel koşular */}
           {gecici.map((k) => (
-            <li key={`gecici-${k.ajanId}-${k.basladi}`} className="overflow-hidden rounded-xl" style={{ background: `${EKIP_ACCENT}0c`, border: `1px solid ${EKIP_ACCENT}44` }}>
-              <div className="flex items-center gap-2 px-3 py-2 text-[12px]" style={{ color: RENK.metin }}>
-                <MiniAvatar ajanId={k.ajanId} boyut={20} title={ajanAd(k.ajanId)} />
+            <li key={`gecici-${k.ajanId}-${k.basladi}`} className="overflow-hidden rounded-lg" style={{ background: SAKIN.zemin, border: `1px solid ${SAKIN.vurgu}55` }}>
+              <div className="flex items-center gap-2 px-3 py-2 text-[12px]" style={{ color: SAKIN.metin }}>
+                <MiniAvatar ajanId={k.ajanId} boyut={20} title={ajanAd(k.ajanId)} durum={!k.bitti ? 'calisiyor' : 'bos'} />
                 {!k.bitti ? (
                   <span className="inline-flex items-center gap-1.5">
-                    <Loader2 size={12} className="animate-spin" style={{ color: EKIP_ACCENT }} /> Koordinatör başlıyor…
+                    <Loader2 size={12} className="animate-spin" style={{ color: SAKIN.vurguAcik }} /> Koordinatör başlıyor…
                   </span>
                 ) : (
                   <span>Koordinatör {k.hata ? 'koşusu bitti (hata)' : 'koşusu bitti'} — akışa işleniyor</span>
                 )}
-                <span className="ml-auto truncate text-[11px]" style={{ color: RENK.ikincil }} title={k.gorev}>
+                <span className="ml-auto truncate text-[11px]" style={{ color: SAKIN.ikincil }} title={k.gorev}>
                   {k.gorev}
                 </span>
               </div>
@@ -194,16 +194,16 @@ export function IsAkisi({
               <OmurgaYokBilgi kucuk />
             </li>
           ) : error ? (
-            <li className="py-4 text-[12.5px]" style={{ color: '#fca5a5' }}>
+            <li className="py-4 text-[12.5px]" style={{ color: SAKIN.kirmiziAcik }}>
               Akış alınamadı: {(error as any)?.message || 'hata'}
             </li>
           ) : isLoading && !akis ? (
-            <li className="flex items-center justify-center gap-2 py-10 text-[12.5px]" style={{ color: RENK.ikincil }}>
+            <li className="flex items-center justify-center gap-2 py-10 text-[12.5px]" style={{ color: SAKIN.ikincil }}>
               <Loader2 size={12} className="animate-spin" /> Akış yükleniyor…
             </li>
           ) : !vakalar.length && !gecici.length ? (
             <li>
-              <BosDurum ikon={<Activity size={18} />} renk={EKIP_ACCENT} metin={suzgec === 'tumu' ? 'Bu pencerede iş yok — Koordinatör’e yukarıdan görev verin.' : 'Bu kutuda iş yok.'} />
+              <BosDurum ikon={<Activity size={18} />} metin={suzgec === 'tumu' ? 'Bu pencerede iş yok — Koordinatör’e yukarıdan görev verin.' : 'Bu kutuda iş yok.'} />
             </li>
           ) : (
             vakalar.map((v) => (

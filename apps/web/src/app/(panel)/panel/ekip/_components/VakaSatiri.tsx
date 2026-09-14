@@ -2,25 +2,23 @@
 
 import { useMemo, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, ChevronDown, Loader2, X, XCircle, Send, Square, MessageSquareReply, RotateCcw, ShieldAlert, ClipboardCheck, StickyNote, Wrench, FlaskConical, GraduationCap, AlertTriangle, Clock } from 'lucide-react';
+import { Check, ChevronDown, Loader2, X, XCircle, Send, Square, MessageSquareReply, RotateCcw, ShieldAlert, ClipboardCheck, StickyNote, Wrench, FlaskConical, GraduationCap, Clock } from 'lucide-react';
 import { toast } from 'sonner';
 import { getIs, iptalEt, istekKapat, onayla, reddet, type AcikKalem, type Vaka, type VakaAdim, type VakaAdimIs } from '@/lib/ekip';
 import type { KomutTaslak } from './KomutKutusu';
 import type { Kosu, KosularApi } from './kosular';
 import { CanliAkis } from './CanliAkis';
 import { OnayTeyit } from './OnayBekleyenler';
-import { EKIP_ACCENT, RENK, ajanKisaAd, ajanKisaltma, ajanRengi, aracAdi, avatarHalkaStili, cevapAyristir, goreliSaat, kutuRozeti, saatKisa, sureKisa } from './ortak';
+import { DurumKelimesi } from './Kart';
+import { SAKIN, ajanKisaAd, ajanKisaltma, aracAdi, cevapAyristir, goreliSaat, kutuRozeti, saatKisa, sakinAvatar, sakinDugme, sureKisa } from './ortak';
 
-/** Küçük ajan avatarı (20/28px) — 'siz' → altın halka, "MB". */
-export function MiniAvatar({ ajanId, boyut = 28, title }: { ajanId: string; boyut?: 20 | 28; title?: string }) {
+/** Küçük ajan avatarı (20/28px) — SAKİN: nötr daire, 2 harf; 'siz' → kehribar kenar "MB". */
+export function MiniAvatar({ ajanId, boyut = 28, title, durum = 'bos' }: { ajanId: string; boyut?: 20 | 28; title?: string; durum?: 'bos' | 'calisiyor' | 'hata' }) {
   const siz = ajanId === 'siz';
-  const renk = siz ? RENK.altin : ajanRengi(ajanId);
   const px = boyut === 20 ? 'h-5 w-5 text-[8px]' : 'h-7 w-7 text-[9.5px]';
   return (
-    <span className={`relative flex ${px} flex-shrink-0 items-center justify-center rounded-full p-[1.5px]`} style={avatarHalkaStili(renk, false)} title={title}>
-      <span className="flex h-full w-full items-center justify-center rounded-full font-black tracking-wide" style={{ background: 'linear-gradient(160deg, #1a1815, #0b0a08)', color: renk }}>
-        {siz ? 'MB' : ajanKisaltma(ajanId)}
-      </span>
+    <span className={`flex ${px} flex-shrink-0 items-center justify-center rounded-full font-bold tracking-wide`} style={sakinAvatar(siz ? 'siz' : durum)} title={title}>
+      {siz ? 'MB' : ajanKisaltma(ajanId)}
     </span>
   );
 }
@@ -32,40 +30,42 @@ function adimSuresi(a: VakaAdimIs): string {
 }
 
 function DurumIkonu({ durum }: { durum: VakaAdimIs['durum'] }) {
-  if (durum === 'running') return <Loader2 size={11} className="animate-spin" style={{ color: EKIP_ACCENT }} />;
-  if (durum === 'done') return <Check size={11} style={{ color: RENK.yesil }} />;
-  if (durum === 'failed') return <X size={11} style={{ color: RENK.kirmizi }} />;
-  return <Clock size={11} style={{ color: RENK.gri }} />;
+  if (durum === 'running') return <Loader2 size={11} className="animate-spin" style={{ color: SAKIN.vurguAcik }} />;
+  if (durum === 'done') return <Check size={11} style={{ color: SAKIN.yesil }} />;
+  if (durum === 'failed') return <X size={11} style={{ color: SAKIN.kirmiziAcik }} />;
+  return <Clock size={11} style={{ color: SAKIN.gri }} />;
 }
 
-/** Zaman çizelgesi satırı — is / onay / bildirim. */
+/** Zaman çizelgesi satırı — is / onay / bildirim. Sol kenar tek renk kılcal çizgi (ajan rengi yok). */
 function CizelgeSatiri({ adim, ajanAd }: { adim: VakaAdim; ajanAd: (id: string) => string }) {
   const saat = saatKisa(adim.baslangic).slice(0, 5);
+  const kenar = `2px solid ${SAKIN.cizgi}`;
   if (adim.tip === 'is') {
-    const renk = ajanRengi(adim.ajanId);
     return (
-      <li className="flex min-w-0 items-start gap-2 py-1 pl-3 text-xs" style={{ borderLeft: `2px solid ${renk}` }}>
-        <span className="mt-0.5 flex-shrink-0 tabular-nums" style={{ color: RENK.sonuk }}>{saat}</span>
-        <MiniAvatar ajanId={adim.ajanId} boyut={20} title={ajanAd(adim.ajanId)} />
+      <li className="flex min-w-0 items-start gap-2 py-1 pl-3 text-xs" style={{ borderLeft: adim.durum === 'running' ? `2px solid ${SAKIN.vurgu}` : kenar }}>
+        <span className="mt-0.5 flex-shrink-0 tabular-nums" style={{ color: SAKIN.soluk }}>{saat}</span>
+        <MiniAvatar ajanId={adim.ajanId} boyut={20} title={ajanAd(adim.ajanId)} durum={adim.durum === 'running' ? 'calisiyor' : adim.durum === 'failed' ? 'hata' : 'bos'} />
         <span className="min-w-0 flex-1">
           <span className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
-            <span className="font-semibold" style={{ color: RENK.metin }}>{ajanKisaAd(adim.ajanId)}</span>
-            <span className={`truncate ${adim.durum === 'running' ? 'animate-pulse' : ''}`} style={{ color: 'rgba(250,250,249,0.85)' }} title={adim.baslik}>
+            <span className="font-semibold" style={{ color: SAKIN.metin }}>{ajanKisaAd(adim.ajanId)}</span>
+            <span className={`truncate ${adim.durum === 'running' ? 'animate-pulse' : ''}`} style={{ color: SAKIN.ikincil }} title={adim.baslik}>
               {adim.baslik}
             </span>
             <DurumIkonu durum={adim.durum} />
-            {adimSuresi(adim) && <span className="tabular-nums" style={{ color: RENK.sonuk }}>{adimSuresi(adim)}</span>}
+            {adimSuresi(adim) && <span className="tabular-nums" style={{ color: SAKIN.soluk }}>{adimSuresi(adim)}</span>}
             {adim.devir != null && (
-              <span className="rounded-full px-1.5 text-[9.5px] font-bold leading-4" style={{ background: `${RENK.mor}1a`, border: `1px solid ${RENK.mor}55`, color: '#c4b5fd' }} title="Ajanlar arası devir">
+              <span className="text-[10.5px]" style={{ color: SAKIN.soluk }} title="Ajanlar arası devir">
                 → devir #{adim.devir}
               </span>
             )}
-            <span className="rounded-full px-1.5 text-[9.5px] font-bold leading-4" style={adim.kuru ? { background: 'rgba(74,222,128,0.12)', color: '#86efac' } : { background: 'rgba(248,113,113,0.16)', color: '#fca5a5' }}>
-              {adim.kuru ? 'KURU' : 'CANLI'}
-            </span>
+            {!adim.kuru && (
+              <span className="text-[10.5px] font-semibold" style={{ color: SAKIN.kirmiziAcik }}>
+                canlı
+              </span>
+            )}
           </span>
           {adim.durum === 'failed' && adim.hata && (
-            <span className="mt-0.5 block truncate text-[11px]" style={{ color: RENK.kirmizi }} title={adim.hata}>
+            <span className="mt-0.5 block truncate text-[11px]" style={{ color: SAKIN.kirmiziAcik }} title={adim.hata}>
               {adim.hata}
             </span>
           )}
@@ -74,13 +74,14 @@ function CizelgeSatiri({ adim, ajanAd }: { adim: VakaAdim; ajanAd: (id: string) 
     );
   }
   if (adim.tip === 'onay') {
-    const renk = adim.durum === 'EXECUTED' ? RENK.yesil : adim.durum === 'PENDING' ? RENK.turuncu : RENK.gri;
+    const renk = adim.durum === 'EXECUTED' ? SAKIN.yesil : adim.durum === 'PENDING' ? SAKIN.kehribar : SAKIN.gri;
+    const durumAd = adim.durum === 'EXECUTED' ? 'gönderildi' : adim.durum === 'PENDING' ? 'onay bekliyor' : adim.durum === 'REJECTED' ? 'reddedildi' : adim.durum === 'EXPIRED' ? 'süresi doldu' : adim.durum;
     return (
-      <li className="flex min-w-0 items-start gap-2 py-1 pl-3 text-xs" style={{ borderLeft: `2px solid ${RENK.altin}` }}>
-        <span className="mt-0.5 flex-shrink-0 tabular-nums" style={{ color: RENK.sonuk }}>{saat}</span>
-        <ShieldAlert size={14} className="mt-0.5 flex-shrink-0" style={{ color: RENK.altin }} />
-        <span className="min-w-0 flex-1 truncate" style={{ color: 'rgba(250,250,249,0.85)' }} title={adim.confirmationText || adim.baslik}>
-          Onay kaydı <span className="font-mono text-[10.5px]">PRV-{adim.id.slice(0, 8)}</span> · <span style={{ color: renk }}>{adim.durum}</span>
+      <li className="flex min-w-0 items-start gap-2 py-1 pl-3 text-xs" style={{ borderLeft: kenar }}>
+        <span className="mt-0.5 flex-shrink-0 tabular-nums" style={{ color: SAKIN.soluk }}>{saat}</span>
+        <ShieldAlert size={14} className="mt-0.5 flex-shrink-0" style={{ color: SAKIN.kehribar }} />
+        <span className="min-w-0 flex-1 truncate" style={{ color: SAKIN.ikincil }} title={adim.confirmationText || adim.baslik}>
+          Onay kaydı <span className="font-mono text-[10.5px]">PRV-{adim.id.slice(0, 8)}</span> · <span style={{ color: renk }}>{durumAd}</span>
           {adim.baslik ? ` · ${adim.baslik}` : ''}
           {adim.hedef ? ` → ${adim.hedef}` : ''}
         </span>
@@ -88,14 +89,14 @@ function CizelgeSatiri({ adim, ajanAd }: { adim: VakaAdim; ajanAd: (id: string) 
     );
   }
   return (
-    <li className="flex min-w-0 items-start gap-2 py-1 pl-3 text-xs" style={{ borderLeft: `2px solid ${ajanRengi('koordinator')}` }}>
-      <span className="mt-0.5 flex-shrink-0 tabular-nums" style={{ color: RENK.sonuk }}>{saat}</span>
-      <StickyNote size={14} className="mt-0.5 flex-shrink-0" style={{ color: adim.tur === 'istek' ? RENK.turuncu : adim.tur === 'onay' ? RENK.altin : RENK.ikincil }} />
-      <span className="min-w-0 flex-1" style={{ color: 'rgba(250,250,249,0.85)' }}>
-        <span className="font-semibold" style={{ color: RENK.metin }}>Koordinatör notu:</span> {adim.baslik}
-        {adim.durum === 'kapandi' && <span style={{ color: RENK.yesil }}> · kapandı</span>}
+    <li className="flex min-w-0 items-start gap-2 py-1 pl-3 text-xs" style={{ borderLeft: kenar }}>
+      <span className="mt-0.5 flex-shrink-0 tabular-nums" style={{ color: SAKIN.soluk }}>{saat}</span>
+      <StickyNote size={14} className="mt-0.5 flex-shrink-0" style={{ color: adim.tur === 'istek' || adim.tur === 'onay' ? SAKIN.kehribar : SAKIN.ikincil }} />
+      <span className="min-w-0 flex-1" style={{ color: SAKIN.ikincil }}>
+        <span className="font-semibold" style={{ color: SAKIN.metin }}>Koordinatör notu:</span> {adim.baslik}
+        {adim.durum === 'kapandi' && <span style={{ color: SAKIN.yesil }}> · kapandı</span>}
         {adim.govde && (
-          <span className="mt-0.5 block whitespace-pre-wrap text-[11.5px]" style={{ color: RENK.ikincil }}>
+          <span className="mt-0.5 block whitespace-pre-wrap text-[11.5px]" style={{ color: SAKIN.ikincil }}>
             {adim.govde}
           </span>
         )}
@@ -107,11 +108,11 @@ function CizelgeSatiri({ adim, ajanAd }: { adim: VakaAdim; ajanAd: (id: string) 
 function Liste({ baslik, ikon, renk, ogeler }: { baslik: string; ikon: ReactNode; renk: string; ogeler: ReactNode[] }) {
   if (!ogeler.length) return null;
   return (
-    <div className="rounded-xl p-3" style={{ background: `${renk}0d`, border: `1px solid ${renk}2a` }}>
-      <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider" style={{ color: renk }}>
+    <div className="rounded-lg p-3" style={{ background: SAKIN.zemin, border: `1px solid ${SAKIN.kilcal}` }}>
+      <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider" style={{ color: renk }}>
         {ikon} {baslik} <span className="opacity-70">({ogeler.length})</span>
       </div>
-      <ul className="space-y-1 text-xs" style={{ color: 'rgba(250,250,249,0.8)' }}>
+      <ul className="space-y-1 text-xs" style={{ color: SAKIN.ikincil }}>
         {ogeler.map((o, i) => (
           <li key={i} className="break-words">{o}</li>
         ))}
@@ -134,7 +135,6 @@ function argsKisa(args: any): string {
 function RaporAlani({ adim, vaka, onTaslak, onCevapla }: { adim: VakaAdimIs; vaka: Vaka; onTaslak: (t: Omit<KomutTaslak, 'nonce'>) => void; onCevapla: (metin: string) => void }) {
   const { data, isLoading, error } = useQuery({ queryKey: ['ekip-is', adim.isId], queryFn: () => getIs(adim.isId), staleTime: 15_000, retry: 1 });
   const [cevapMetni, setCevapMetni] = useState('');
-  const renk = ajanRengi(adim.ajanId);
   const r = data?.result;
   const rapor = r?.rapor || adim.raporOzet || '';
   const ayrisik = useMemo(() => cevapAyristir(rapor), [rapor]);
@@ -143,49 +143,48 @@ function RaporAlani({ adim, vaka, onTaslak, onCevapla }: { adim: VakaAdimIs; vak
     <button
       type="button"
       onClick={() => onTaslak({ gorev: data?.gorev || adim.baslik || vaka.konu, taxpayerId: vaka.mukellef?.id, dryRun: true, kaynak: 'tekrar', vakaId: vaka.vakaId })}
-      className="inline-flex w-fit items-center gap-1.5 rounded-full px-3 py-1 text-[11.5px] font-semibold transition-[transform] duration-150 hover:-translate-y-px"
-      style={{ background: `${renk}14`, border: `1px solid ${renk}55`, color: RENK.metin }}
+      className="inline-flex w-fit items-center gap-1.5 rounded-md px-2.5 py-1 text-[11.5px] font-semibold"
+      style={sakinDugme('ikincil')}
       title="Komut kutusunu aynı görevle doldurur (kuru, aynı vakada); çalıştırmaz"
     >
-      <RotateCcw size={11} style={{ color: renk }} /> Tekrar çalıştır (kuru)
+      <RotateCcw size={11} /> Tekrar çalıştır (kuru)
     </button>
   );
 
   return (
     <div className="flex min-w-0 flex-col gap-2">
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[10.5px]" style={{ color: RENK.ikincil }}>
-        <span className="font-bold uppercase tracking-wider">Rapor</span>
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[10.5px]" style={{ color: SAKIN.ikincil }}>
+        <span className="font-semibold uppercase tracking-wider">Rapor</span>
         <span>· {ajanKisaAd(adim.ajanId)}</span>
-        {(r?.model || data?.model) && <span>· {r?.model || data?.model}</span>}
         {(r?.durationMs ?? data?.durationMs) != null && <span>· {sureKisa(r?.durationMs ?? data?.durationMs)}</span>}
         {isLoading && !data && (
           <span className="inline-flex items-center gap-1">
             <Loader2 size={10} className="animate-spin" /> tam metin yükleniyor
           </span>
         )}
-        {!!error && <span style={{ color: RENK.turuncu }}>· tam metin alınamadı (özet gösteriliyor)</span>}
+        {!!error && <span style={{ color: SAKIN.kehribar }}>· tam metin alınamadı (özet gösteriliyor)</span>}
         <span className="ml-auto">{tekrar}</span>
       </div>
       {(data?.hata || adim.hata) && (
-        <div className="rounded-lg px-3 py-2 text-xs" style={{ background: 'rgba(248,113,113,0.12)', border: '1px solid rgba(248,113,113,0.35)', color: '#fecaca' }}>
-          ⚠️ {data?.hata || adim.hata}
+        <div className="rounded-lg px-3 py-2 text-xs" style={{ background: 'rgba(214,69,69,0.08)', border: `1px solid ${SAKIN.kirmizi}66`, color: SAKIN.metin }}>
+          {data?.hata || adim.hata}
         </div>
       )}
       {(ayrisik.rapor || (!ayrisik.sorular.length && !ayrisik.ogrenilen.length && ayrisik.ham)) && (
-        <div className="max-h-[320px] overflow-y-auto whitespace-pre-wrap rounded-xl px-3.5 py-2.5 text-[13px] leading-relaxed" style={{ background: 'rgba(0,0,0,0.25)', border: `1px solid ${renk}33`, color: 'rgba(250,250,249,0.92)' }}>
+        <div className="max-h-[320px] overflow-y-auto whitespace-pre-wrap rounded-lg px-3.5 py-2.5 text-[13px] leading-relaxed" style={{ background: SAKIN.alan, border: `1px solid ${SAKIN.kilcal}`, color: SAKIN.metin }}>
           {ayrisik.rapor || ayrisik.ham}
         </div>
       )}
       {!rapor && !isLoading && (
-        <div className="text-xs" style={{ color: RENK.ikincil }}>
+        <div className="text-xs" style={{ color: SAKIN.ikincil }}>
           Henüz rapor yok{adim.durum === 'running' ? ' — iş sürüyor' : ''}.
         </div>
       )}
       {ayrisik.sorular.length > 0 && (
-        <div className="flex flex-col gap-2 rounded-xl px-3.5 py-2.5 text-[12.5px]" style={{ background: `${RENK.turuncu}12`, border: `1px solid ${RENK.turuncu}55` }}>
-          <div className="font-bold" style={{ color: RENK.turuncu }}>{ajanKisaAd(adim.ajanId)} soruyor</div>
+        <div className="flex flex-col gap-2 rounded-lg px-3.5 py-2.5 text-[12.5px]" style={{ background: `${SAKIN.kehribar}0f`, border: `1px solid ${SAKIN.kehribar}55` }}>
+          <div className="font-semibold" style={{ color: SAKIN.kehribar }}>{ajanKisaAd(adim.ajanId)} soruyor</div>
           {ayrisik.sorular.map((s, i) => (
-            <div key={i} className="whitespace-pre-wrap" style={{ color: RENK.metin }}>{s}</div>
+            <div key={i} className="whitespace-pre-wrap" style={{ color: SAKIN.metin }}>{s}</div>
           ))}
           <div className="flex gap-2">
             <input
@@ -199,8 +198,8 @@ function RaporAlani({ adim, vaka, onTaslak, onCevapla }: { adim: VakaAdimIs; vak
                 }
               }}
               placeholder="Cevabını yaz…"
-              className="min-w-0 flex-1 rounded-lg px-2.5 py-1.5 text-xs outline-none"
-              style={{ background: 'rgba(0,0,0,0.3)', border: `1px solid ${RENK.turuncu}44`, color: RENK.metin }}
+              className="min-w-0 flex-1 rounded-md px-2.5 py-1.5 text-xs outline-none focus:[border-color:#4f86c9]"
+              style={{ background: SAKIN.alan, border: `1px solid ${SAKIN.cizgi}`, color: SAKIN.metin }}
             />
             <button
               type="button"
@@ -209,8 +208,8 @@ function RaporAlani({ adim, vaka, onTaslak, onCevapla }: { adim: VakaAdimIs; vak
                 onCevapla(cevapMetni.trim());
                 setCevapMetni('');
               }}
-              className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-bold disabled:opacity-50"
-              style={{ background: `linear-gradient(135deg, ${RENK.turuncu}, ${RENK.turuncu}aa)`, color: '#0f0d0b' }}
+              className="flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-semibold disabled:opacity-50"
+              style={sakinDugme('birincil')}
               title="Komut kutusunu 'Cevap: …' ile doldurur (aynı vakada); çalıştırmaz"
             >
               <MessageSquareReply size={12} /> Cevapla
@@ -220,9 +219,9 @@ function RaporAlani({ adim, vaka, onTaslak, onCevapla }: { adim: VakaAdimIs; vak
       )}
       {ayrisik.ogrenilen.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5">
-          <GraduationCap size={12} style={{ color: RENK.mor }} />
+          <GraduationCap size={12} style={{ color: SAKIN.ikincil }} />
           {ayrisik.ogrenilen.map((o, i) => (
-            <span key={i} className="rounded-md px-2 py-0.5 text-[11px]" style={{ background: `${RENK.mor}1a`, border: `1px solid ${RENK.mor}55`, color: '#c4b5fd' }}>
+            <span key={i} className="rounded-md px-2 py-0.5 text-[11px]" style={{ background: SAKIN.zeminAcik, border: `1px solid ${SAKIN.kilcal}`, color: SAKIN.ikincil }}>
               {o}
             </span>
           ))}
@@ -233,32 +232,32 @@ function RaporAlani({ adim, vaka, onTaslak, onCevapla }: { adim: VakaAdimIs; vak
           <Liste
             baslik="Araçlar"
             ikon={<Wrench size={11} />}
-            renk={renk}
+            renk={SAKIN.ikincil}
             ogeler={(r.toolUses || []).map((t, i) => (
               <span key={i}>
-                <b>{aracAdi(t.name)}</b> <span className="opacity-60">{argsKisa(t.args)}</span>
+                <b style={{ color: SAKIN.metin }}>{aracAdi(t.name)}</b> <span className="opacity-60">{argsKisa(t.args)}</span>
               </span>
             ))}
           />
           <Liste
             baslik="Kuru test — yapacaktı"
             ikon={<FlaskConical size={11} />}
-            renk="#86efac"
+            renk={SAKIN.yesil}
             ogeler={(r.kuruTestYapilacaktilar || []).map((t, i) => (
               <span key={i}>
-                <b>{aracAdi(t.name)}</b> <span className="opacity-60">{argsKisa(t.args)}</span>
+                <b style={{ color: SAKIN.metin }}>{aracAdi(t.name)}</b> <span className="opacity-60">{argsKisa(t.args)}</span>
               </span>
             ))}
           />
           <Liste
             baslik="Onay bekleyen"
             ikon={<ShieldAlert size={11} />}
-            renk={RENK.turuncu}
+            renk={SAKIN.kehribar}
             ogeler={(r.onayBekleyen || []).map((o, i) => (
               <span key={i}>{typeof o === 'string' ? o : o?.previewId ? `#${o.previewId} · ${aracAdi(o.name)}` : o?.aciklama || o?.name || argsKisa(o)}</span>
             ))}
           />
-          <Liste baslik="Öğrenilen" ikon={<GraduationCap size={11} />} renk="#c4b5fd" ogeler={(r.ogrenilen || []).map((o, i) => <span key={i}>{o}</span>)} />
+          <Liste baslik="Öğrenilen" ikon={<GraduationCap size={11} />} renk={SAKIN.ikincil} ogeler={(r.ogrenilen || []).map((o, i) => <span key={i}>{o}</span>)} />
         </div>
       )}
     </div>
@@ -316,35 +315,22 @@ function AcikKalemSatiri({ kalem, onBitti }: { kalem: AcikKalem; onBitti: () => 
   };
 
   const onayMi = kalem.tip === 'onay';
-  const renk = onayMi ? RENK.altin : RENK.turuncu;
   return (
-    <div className="rounded-xl px-3 py-2.5" style={{ background: `${renk}0f`, border: `1px solid ${renk}55` }}>
+    <div className="rounded-lg px-3 py-2.5" style={{ background: `${SAKIN.kehribar}0d`, border: `1px solid ${SAKIN.kehribar}55` }}>
       <div className="flex flex-wrap items-center gap-2 text-[12px]">
-        {onayMi ? <ShieldAlert size={13} style={{ color: renk }} /> : <ClipboardCheck size={13} style={{ color: renk }} />}
-        <span className="font-bold" style={{ color: renk }}>{onayMi ? 'Onayınızı bekliyor' : 'Sizden istenen'}</span>
-        <span className="min-w-0 flex-1 truncate" style={{ color: RENK.metin }} title={kalem.confirmationText || kalem.baslik}>
+        {onayMi ? <ShieldAlert size={13} style={{ color: SAKIN.kehribar }} /> : <ClipboardCheck size={13} style={{ color: SAKIN.kehribar }} />}
+        <span className="font-semibold" style={{ color: SAKIN.kehribar }}>{onayMi ? 'Onayınızı bekliyor' : 'Sizden istenen'}</span>
+        <span className="min-w-0 flex-1 truncate" style={{ color: SAKIN.metin }} title={kalem.confirmationText || kalem.baslik}>
           {kalem.baslik}
         </span>
         {sonuc ? (
-          <span className="text-[11px] font-semibold" style={{ color: sonuc.startsWith('Hata') ? RENK.kirmizi : RENK.yesil }}>{sonuc}</span>
+          <span className="text-[11px] font-semibold" style={{ color: sonuc.startsWith('Hata') ? SAKIN.kirmiziAcik : SAKIN.yesil }}>{sonuc}</span>
         ) : onayMi ? (
           <>
-            <button
-              type="button"
-              disabled={mesgul || teyit}
-              onClick={() => setTeyit(true)}
-              className="flex items-center gap-1 rounded-full px-3 py-1 text-[11.5px] font-bold transition-[transform] duration-150 hover:-translate-y-px disabled:opacity-50"
-              style={{ background: 'linear-gradient(135deg,#16a34a,#4ade80)', color: '#052e16' }}
-            >
+            <button type="button" disabled={mesgul || teyit} onClick={() => setTeyit(true)} className="flex items-center gap-1 rounded-md px-2.5 py-1 text-[11.5px] font-semibold disabled:opacity-50" style={sakinDugme('birincil')}>
               {mesgul ? <Loader2 size={11} className="animate-spin" /> : <Send size={11} />} Onayla ve gönder
             </button>
-            <button
-              type="button"
-              disabled={mesgul}
-              onClick={redGercek}
-              className="flex items-center gap-1 rounded-full px-3 py-1 text-[11.5px] font-semibold disabled:opacity-50"
-              style={{ background: 'rgba(248,113,113,0.15)', color: '#fca5a5', border: '1px solid rgba(248,113,113,0.35)' }}
-            >
+            <button type="button" disabled={mesgul} onClick={redGercek} className="flex items-center gap-1 rounded-md px-2.5 py-1 text-[11.5px] font-semibold disabled:opacity-50" style={sakinDugme('tehlike')}>
               <XCircle size={11} /> Reddet
             </button>
           </>
@@ -353,8 +339,8 @@ function AcikKalemSatiri({ kalem, onBitti }: { kalem: AcikKalem; onBitti: () => 
             type="button"
             disabled={mesgul}
             onClick={istekBitir}
-            className="flex items-center gap-1 rounded-full px-3 py-1 text-[11.5px] font-bold transition-[transform] duration-150 hover:-translate-y-px disabled:opacity-50"
-            style={{ background: `linear-gradient(135deg, ${RENK.turuncu}, ${RENK.turuncu}aa)`, color: '#0f0d0b' }}
+            className="flex items-center gap-1 rounded-md px-2.5 py-1 text-[11.5px] font-semibold disabled:opacity-50"
+            style={sakinDugme('birincil')}
             title="Fiş yüklendi / istenen yapıldı → kalem kapanır, Koordinatör devam eder"
           >
             {mesgul ? <Loader2 size={11} className="animate-spin" /> : <Check size={11} />} Yüklendi / Yapıldı
@@ -362,7 +348,7 @@ function AcikKalemSatiri({ kalem, onBitti }: { kalem: AcikKalem; onBitti: () => 
         )}
       </div>
       {kalem.confirmationText && !sonuc && (
-        <div className="mt-1.5 line-clamp-3 whitespace-pre-wrap rounded-lg px-2.5 py-1.5 text-[12px] leading-relaxed" style={{ background: 'rgba(0,0,0,0.25)', color: 'rgba(250,250,249,0.85)' }}>
+        <div className="mt-1.5 line-clamp-3 whitespace-pre-wrap rounded-md px-2.5 py-1.5 text-[12px] leading-relaxed" style={{ background: SAKIN.alan, color: SAKIN.ikincil }}>
           {kalem.confirmationText}
         </div>
       )}
@@ -383,7 +369,7 @@ function AcikKalemSatiri({ kalem, onBitti }: { kalem: AcikKalem; onBitti: () => 
 }
 
 /**
- * Vaka satırı — iş dosyası zinciri. Kapalı: mükellef · konu · kimde · durum rozeti · gecikti · göreli saat · kuru/canlı.
+ * Vaka satırı — iş dosyası zinciri. SAKİN: kapalı satır = mükellef · konu | kimde | durum (kelime+nokta) | saat; "KURU" yazılmaz, yalnız canlı işaretlenir.
  * Açık: (a) zaman çizelgesi (b) son biten adımın raporu (c) satır içi eylemler (her zaman görünür) (d) çalışan koşunun SSE'si.
  */
 export function VakaSatiri({
@@ -441,58 +427,60 @@ export function VakaSatiri({
 
   const cevapla = (metin: string) => onTaslak({ gorev: `Cevap: ${metin}`, taxpayerId: vaka.mukellef?.id, dryRun: true, kaynak: 'cevap', vakaId: vaka.vakaId });
 
+  const dikkat = vaka.kutu === 'onay' || vaka.kutu === 'istek';
+
   return (
     <li
-      className="overflow-hidden rounded-xl transition-[border-color,background-color] duration-150"
+      className="overflow-hidden rounded-lg transition-[border-color,background-color] duration-150"
       style={{
-        background: acik ? `${rozet.renk}0c` : 'rgba(255,255,255,0.025)',
-        border: `1px solid ${acik ? `${rozet.renk}55` : vaka.gecikti ? `${RENK.kirmizi}66` : 'rgba(255,255,255,0.06)'}`,
+        background: acik ? SAKIN.zeminAcik : SAKIN.zemin,
+        border: `1px solid ${acik ? `${SAKIN.vurgu}55` : dikkat ? `${SAKIN.kehribar}44` : vaka.gecikti ? `${SAKIN.kirmizi}55` : SAKIN.kilcal}`,
       }}
     >
       {/* Kapalı satır (tık → açılır) */}
-      <button type="button" onClick={onToggle} className="flex w-full min-w-0 items-center gap-2.5 px-3 py-2 text-left" aria-expanded={acik}>
+      <button type="button" onClick={onToggle} className="flex w-full min-w-0 items-center gap-3 px-3 py-2 text-left" aria-expanded={acik}>
+        <MiniAvatar ajanId={vaka.kimde.ajanId} boyut={28} title={siz ? 'Muzaffer Bey' : ajanAd(vaka.kimde.ajanId)} durum={kosuyor ? 'calisiyor' : vaka.durum === 'hata' ? 'hata' : 'bos'} />
         <span className="min-w-0 flex-1">
-          <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
-            <span className="max-w-[46%] truncate text-[12.5px] font-bold" style={{ color: RENK.metin }} title={vaka.mukellef?.ad || 'Ofis geneli'}>
-              {vaka.mukellef?.ad || '—'}
+          <span className="flex min-w-0 items-baseline gap-x-2">
+            <span className="max-w-[46%] truncate text-[12.5px] font-semibold" style={{ color: SAKIN.metin }} title={vaka.mukellef?.ad || 'Ofis geneli'}>
+              {vaka.mukellef?.ad || 'Ofis geneli'}
             </span>
-            <span className="text-[11px]" style={{ color: RENK.sonuk }}>·</span>
-            <span className="min-w-0 flex-1 truncate text-[12.5px]" style={{ color: 'rgba(250,250,249,0.85)' }} title={vaka.konu}>
+            <span className="min-w-0 flex-1 truncate text-[12.5px]" style={{ color: SAKIN.ikincil }} title={vaka.konu}>
               {vaka.konu || 'Konu yok'}
             </span>
           </span>
-          <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10.5px]" style={{ color: RENK.ikincil }}>
-            <span className="inline-flex items-center gap-1">
-              kimde: <MiniAvatar ajanId={vaka.kimde.ajanId} boyut={20} title={siz ? 'Muzaffer Bey' : ajanAd(vaka.kimde.ajanId)} />
-              <span style={{ color: siz ? RENK.altin : RENK.metin }}>{siz ? 'Siz' : ajanKisaAd(vaka.kimde.ajanId, vaka.kimde.ad)}</span>
+          <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10.5px]" style={{ color: SAKIN.soluk }}>
+            <span>
+              kimde: <span style={{ color: siz ? SAKIN.kehribar : SAKIN.ikincil }}>{siz ? 'Siz' : ajanKisaAd(vaka.kimde.ajanId, vaka.kimde.ad)}</span>
             </span>
             <span className="tabular-nums">{goreliSaat(vaka.guncellendi)}</span>
             {vaka.adimlar.length > 1 && <span>{vaka.adimlar.length} adım</span>}
+            {!vaka.kuru && (
+              <span className="font-semibold" style={{ color: SAKIN.kirmiziAcik }}>
+                canlı
+              </span>
+            )}
+            {vaka.gecikti && (
+              <span className="font-semibold" style={{ color: SAKIN.kirmiziAcik }} title="2 devirden fazla dolaştı ya da 24 saatte çözülmedi">
+                gecikti
+              </span>
+            )}
           </span>
         </span>
 
-        <span className="flex flex-shrink-0 flex-wrap items-center justify-end gap-1.5">
-          {vaka.gecikti && (
-            <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ border: `1px solid ${RENK.kirmizi}`, color: RENK.kirmizi }} title="2 devirden fazla dolaştı ya da 24 saatte çözülmedi">
-              <AlertTriangle size={10} /> gecikti
-            </span>
-          )}
-          <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ background: `${rozet.renk}1a`, border: `1px solid ${rozet.renk}55`, color: rozet.renk }}>
-            {nabiz && <span className="h-1.5 w-1.5 animate-pulse rounded-full" style={{ background: rozet.renk, boxShadow: `0 0 6px ${rozet.renk}` }} />}
+        <span className="flex flex-shrink-0 items-center gap-3">
+          <DurumKelimesi renk={rozet.renk} nabiz={nabiz}>
             {rozet.ad}
-          </span>
-          <span className="rounded-full px-1.5 py-0.5 text-[10px] font-bold" style={vaka.kuru ? { background: 'rgba(74,222,128,0.12)', color: '#86efac' } : { background: 'rgba(248,113,113,0.16)', color: '#fca5a5' }}>
-            {vaka.kuru ? 'KURU' : 'CANLI'}
-          </span>
-          <ChevronDown size={13} className="transition-transform" style={{ color: RENK.sonuk, transform: acik ? 'rotate(0deg)' : 'rotate(-90deg)' }} />
+          </DurumKelimesi>
+          <ChevronDown size={13} className="transition-transform" style={{ color: SAKIN.soluk, transform: acik ? 'rotate(0deg)' : 'rotate(-90deg)' }} />
         </span>
       </button>
 
       {acik && (
-        <div className="flex min-w-0 flex-col gap-3 px-3 pb-3 pt-1">
+        <div className="flex min-w-0 flex-col gap-3 px-3 pb-3 pt-1" style={{ borderTop: `1px solid ${SAKIN.kilcal}` }}>
           {/* (c) Satır içi eylemler — açık kalemler her zaman görünür */}
           {vaka.acikKalemler.length > 0 && (
-            <div className="flex flex-col gap-1.5">
+            <div className="flex flex-col gap-1.5 pt-2">
               {vaka.acikKalemler.map((k) => (
                 <AcikKalemSatiri key={`${k.tip}-${k.id}`} kalem={k} onBitti={tazele} />
               ))}
@@ -501,7 +489,7 @@ export function VakaSatiri({
 
           {/* (a) Zaman çizelgesi */}
           {vaka.adimlar.length > 0 && (
-            <ul className="flex max-h-64 flex-col gap-0.5 overflow-y-auto">
+            <ul className="flex max-h-64 flex-col gap-0.5 overflow-y-auto pt-1">
               {vaka.adimlar.map((a, i) => (
                 <CizelgeSatiri key={`${a.tip}-${(a as any).isId || (a as any).id || i}`} adim={a} ajanAd={ajanAd} />
               ))}
@@ -517,27 +505,20 @@ export function VakaSatiri({
           {/* Alt eylem çubuğu */}
           <div className="flex flex-wrap items-center gap-2">
             {(yerelKosuyor || kosanAdim) && (
-              <button
-                type="button"
-                onClick={durdur}
-                disabled={durduruluyor}
-                className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11.5px] font-bold disabled:opacity-50"
-                style={{ background: 'rgba(248,113,113,0.10)', border: `1px solid ${RENK.kirmizi}`, color: '#fca5a5' }}
-                title="Koşu sunucuda durdurulur; iş dosyası 'iptal edildi (Muzaffer Bey)' olarak kapanır"
-              >
+              <button type="button" onClick={durdur} disabled={durduruluyor} className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11.5px] font-semibold disabled:opacity-50" style={sakinDugme('tehlike')} title="Koşu sunucuda durdurulur; iş dosyası 'iptal edildi (Muzaffer Bey)' olarak kapanır">
                 {durduruluyor ? <Loader2 size={11} className="animate-spin" /> : <Square size={11} />} Durdur
               </button>
             )}
             <button
               type="button"
               onClick={() => onTaslak({ gorev: '', taxpayerId: vaka.mukellef?.id, dryRun: true, kaynak: 'cevap', vakaId: vaka.vakaId })}
-              className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11.5px] font-semibold transition-[transform] duration-150 hover:-translate-y-px"
-              style={{ background: `${EKIP_ACCENT}12`, border: `1px solid ${EKIP_ACCENT}44`, color: RENK.metin }}
+              className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11.5px] font-semibold"
+              style={sakinDugme('ikincil')}
               title="Komut kutusunu bu vakaya bağlar; Koordinatör aynı zincirde devam eder"
             >
-              <MessageSquareReply size={11} style={{ color: EKIP_ACCENT }} /> Cevapla
+              <MessageSquareReply size={11} /> Cevapla
             </button>
-            <span className="ml-auto font-mono text-[10px]" style={{ color: RENK.sonuk }} title="Vaka kimliği">
+            <span className="ml-auto font-mono text-[10px]" style={{ color: SAKIN.soluk }} title="Vaka kimliği">
               #{vaka.vakaId.slice(0, 8)} · açıldı {goreliSaat(vaka.olusturuldu)}
             </span>
           </div>

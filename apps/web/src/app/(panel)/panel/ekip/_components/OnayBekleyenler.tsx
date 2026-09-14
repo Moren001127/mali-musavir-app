@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Loader2, Send } from 'lucide-react';
 import type { EkipOnay } from '@/lib/ekip';
-import { RENK, telefonMaskele, telefonMu } from './ortak';
+import { SAKIN, sakinDugme, telefonMaskele, telefonMu } from './ortak';
 
 /**
  * Kart içi iki adımlı teyit — tarayıcı onay penceresi kullanılmaz.
@@ -37,15 +37,15 @@ export function OnayTeyit({
   }, [kalan, mesgul]);
 
   return (
-    <div className="mt-2 flex flex-col gap-2 rounded-xl px-3 py-2 text-[12.5px]" style={{ background: 'rgba(248,113,113,0.10)', border: `1px solid ${RENK.kirmizi}`, color: '#fecaca' }}>
+    <div className="mt-2 flex flex-col gap-2 rounded-lg px-3 py-2 text-[12.5px]" style={{ background: 'rgba(214,69,69,0.08)', border: `1px solid ${SAKIN.kirmizi}88`, color: SAKIN.metin }}>
       <span className="min-w-0 leading-snug">{metin}</span>
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
           disabled={mesgul}
           onClick={onEvet}
-          className="flex items-center gap-1 rounded-lg px-3 py-1.5 text-[12px] font-bold disabled:opacity-50"
-          style={{ background: 'linear-gradient(135deg,#dc2626,#f87171)', color: '#fff' }}
+          className="flex items-center gap-1 rounded-md px-3 py-1.5 text-[12px] font-semibold disabled:opacity-50"
+          style={{ background: SAKIN.kirmizi, border: `1px solid ${SAKIN.kirmizi}`, color: '#fff' }}
         >
           {mesgul ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />} {evetEtiketi}
         </button>
@@ -53,8 +53,8 @@ export function OnayTeyit({
           type="button"
           disabled={mesgul}
           onClick={onVazgec}
-          className="rounded-lg px-3 py-1.5 text-[12px] font-semibold disabled:opacity-50"
-          style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', color: RENK.metin }}
+          className="rounded-md px-3 py-1.5 text-[12px] font-semibold disabled:opacity-50"
+          style={sakinDugme('ikincil')}
         >
           Vazgeç {!mesgul && <span className="opacity-60">({kalan})</span>}
         </button>

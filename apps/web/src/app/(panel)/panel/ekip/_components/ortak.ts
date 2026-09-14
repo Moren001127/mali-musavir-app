@@ -1,10 +1,77 @@
-/** Moren Ekip — ortak renkler ve yardımcılar. Modül kimliği: gök mavisi; altın YALNIZ 3 yerde (§8). */
+/**
+ * Moren Ekip — ortak renkler ve yardımcılar.
+ * 2026-09-14 (PLAN/19 §A): Ekip ekranı SAKİN dile geçti (tek vurgu rengi, kelime+nokta durum, gradyan/parıltı yok).
+ * Aşağıdaki eski gradyan yardımcıları (kartArkaPlan, kahramanKartStili, avatarHalkaStili, ikonStili, seritStili, hapStili)
+ * e-Defter ekranı (`ajanlar/e-defter/page.tsx`) ve MukellefSecici tarafından kullanıldığı için DURUYOR; ekip bileşenleri artık SAKIN kullanır.
+ */
 import type { CSSProperties } from 'react';
 import type { AkisFiltre, AsamaAdi, AsamaDurumu, IsDosyasi, Vaka, VakaKutu } from '@/lib/ekip';
 
-export const EKIP_ACCENT = '#7dd3fc';
+/** Modül vurgu rengi — çelik mavi (KayitFormu ile aynı; PLAN/19 §A.2). */
+export const EKIP_ACCENT = '#4f86c9';
 
-/** Renk envanteri (§8) — başka yerde yeni renk uydurma. */
+/**
+ * SAKİN palet (PLAN/19 §A.2, 2026-09-14) — Ekip ekranının TEK paleti.
+ * Durum yalnız kelime + küçük nokta: yeşil bitti · kehribar onayınızı bekleyen / sizden istenen · kırmızı hata/canlı · çelik mavi sürüyor.
+ * Altın, gradyan çerçeve, parıltı, conic halka, ajan başına renk YOK.
+ */
+export const SAKIN = {
+  metin: '#fafaf9',
+  ikincil: 'rgba(250,250,249,0.60)',
+  soluk: 'rgba(250,250,249,0.38)',
+  kilcal: 'rgba(255,255,255,0.07)',
+  cizgi: 'rgba(255,255,255,0.10)',
+  cizgiKoyu: 'rgba(255,255,255,0.16)',
+  zemin: 'rgba(255,255,255,0.03)',
+  zeminAcik: 'rgba(255,255,255,0.055)',
+  alan: '#0f1013',
+  vurgu: '#4f86c9',
+  vurguAcik: '#74a6e6',
+  yesil: '#5fcf8e',
+  kehribar: '#f0b755',
+  kirmizi: '#d64545',
+  kirmiziAcik: '#e57373',
+  gri: '#8a8f98',
+} as const;
+
+/** Sakin kart: düz koyu zemin + 1px kılcal kenar; `secili` → çelik mavi kenar. Gradyan/parıltı yok. */
+export function sakinKart(secili = false): CSSProperties {
+  return {
+    background: SAKIN.zemin,
+    border: `1px solid ${secili ? `${SAKIN.vurgu}66` : SAKIN.kilcal}`,
+    borderRadius: 12,
+  };
+}
+
+/** Sakin giriş alanı (metin kutusu, arama): koyu zemin, kılcal kenar; odak rengi bileşende (çelik mavi). */
+export function sakinAlan(): CSSProperties {
+  return { background: SAKIN.alan, border: `1px solid ${SAKIN.cizgi}`, color: SAKIN.metin };
+}
+
+/** Sakin düğme: birincil (çelik mavi dolu) · ikincil (kılcal kenar) · tehlike (kırmızı kenar, kırmızı yazı). */
+export function sakinDugme(tur: 'birincil' | 'ikincil' | 'tehlike' = 'ikincil'): CSSProperties {
+  if (tur === 'birincil') return { background: SAKIN.vurgu, border: `1px solid ${SAKIN.vurgu}`, color: '#ffffff' };
+  if (tur === 'tehlike') return { background: 'rgba(214,69,69,0.10)', border: `1px solid ${SAKIN.kirmizi}88`, color: SAKIN.kirmiziAcik };
+  return { background: 'transparent', border: `1px solid ${SAKIN.cizgi}`, color: SAKIN.metin };
+}
+
+/** Sakin avatar (2 harf): nötr koyu daire; çalışıyorsa çelik mavi halka, hata ise kırmızı halka. */
+export function sakinAvatar(durum: 'bos' | 'calisiyor' | 'hata' | 'siz' = 'bos'): CSSProperties {
+  const kenar = durum === 'calisiyor' ? SAKIN.vurgu : durum === 'hata' ? SAKIN.kirmizi : durum === 'siz' ? SAKIN.kehribar : SAKIN.cizgiKoyu;
+  return {
+    background: SAKIN.alan,
+    border: `1px solid ${kenar}`,
+    color: durum === 'calisiyor' ? SAKIN.vurguAcik : durum === 'siz' ? SAKIN.kehribar : SAKIN.ikincil,
+    boxShadow: durum === 'calisiyor' ? `0 0 0 2px ${SAKIN.vurgu}33` : 'none',
+  };
+}
+
+/** Küçük durum noktası (6px) — kelimenin yanında. */
+export function durumNoktasi(renk: string, nabiz = false): CSSProperties {
+  return { background: renk, boxShadow: nabiz ? `0 0 0 3px ${renk}33` : 'none' };
+}
+
+/** Renk envanteri (§8) — eski dil; e-Defter ekranı ve eski yardımcılar için duruyor. Ekip bileşenleri SAKIN kullanır. */
 export const RENK = {
   metin: '#fafaf9',
   ikincil: 'rgba(250,250,249,0.55)',
@@ -172,8 +239,8 @@ export const ASAMALAR: Array<{ key: AsamaAdi; ad: string; harf: string; kisa: st
 ];
 
 export function asamaRengi(d?: string): string {
-  if (d === 'tamam') return '#4ade80';
-  if (d === 'eksik') return '#fb923c';
+  if (d === 'tamam') return SAKIN.yesil;
+  if (d === 'eksik') return SAKIN.kehribar;
   return 'rgba(255,255,255,0.18)';
 }
 
@@ -430,13 +497,16 @@ export function sonrakiAdim(
 ): { metin: string; ajanId?: string; sablonId?: string; sira: number } {
   const t = (k: AsamaAdi) => asamalar?.[k] === 'tamam';
   if (!kayitVar) return { metin: 'Kayıt yok', ajanId: 'koordinator', sablonId: 'kayit-yok', sira: 0 };
-  if (!t('evrak')) return { metin: 'Evrak bekleniyor', ajanId: 'evrak', sablonId: 'eksik-evrak', sira: 1 };
+  // Evrak hatırlatma/geldi mesajları EVRAK OTOMASYONU'nun işi (Evrak ajanı 2026-09-13'te kaldırıldı) → görev düğmesi yok.
+  if (!t('evrak')) return { metin: 'Evrak bekleniyor (otomatik hatırlatma)', sira: 1 };
   if (!t('isleme')) return { metin: 'Faturalar işlenecek', ajanId: 'fatura', sablonId: 'fatura-isle', sira: 2 };
   if (!t('kontrol')) return { metin: 'KDV kontrolü', ajanId: 'beyanname', sablonId: 'kdv-kontrol', sira: 3 };
   if (!t('beyanname')) return { metin: 'Beyanname hazırlanacak', ajanId: 'beyanname', sablonId: 'kdv-kontrol', sira: 4 };
   if (!t('gonderim')) return { metin: 'Hazır — GİB gönderimi sende', sira: 5 };
   return { metin: 'Tamam ✓', sira: 6 };
 }
+
+export type SablonGrubu = 'Günlük' | 'Fatura' | 'Beyanname ve KDV' | 'Denetim ve analiz' | 'Diğer';
 
 export interface Sablon {
   id: string;
@@ -445,31 +515,36 @@ export interface Sablon {
   mukellefIster: boolean;
   donemIster: boolean;
   gorev: string;
+  /** "Diğer ▾" listesinde gruplama (PLAN/19 §A.3). */
+  grup: SablonGrubu;
 }
 
-/** Hazır görev şablonları — doğal dil, araç adı geçmez; {mükellef}/{dönem} yer tutucu. */
+/** Görev kutusunda düz bağlantı olarak görünen 5 sık şablon; kalanı "Diğer ▾" listesinde. */
+export const SIK_SABLON_IDLERI = ['sabah-ozeti', 'kdv-kontrol', 'fatura-isle', 'donem-yorum', 'donem-denetim'] as const;
+
+/**
+ * Hazır görev şablonları — doğal dil, araç adı geçmez; {mükellef}/{dönem} yer tutucu.
+ * 2026-09-14 (PLAN/19 H6): "Eksik evrak", "Hatırlatma metni", "Tahsilat taslağı" (evrak/tahsilat mesajları otomasyon işi, Evrak ajanı
+ * kaldırıldı) ve "Bordro/SGK kontrol" (yönlendirme ajanı başlatmıyor) şablonları çıkmaz sokaktı → KALDIRILDI.
+ */
 export const SABLONLAR: Sablon[] = [
-  { id: 'sabah-ozeti', ad: 'Sabah özeti', ajanId: 'koordinator', mukellefIster: false, donemIster: false, gorev: 'Bugünün ofis özetini çıkar: durum, riskli/acil, yaklaşan süreler, ekip dün ne yaptı, bugün öncelik. Mesaj gönderme.' },
-  { id: 'haftalik-sureler', ad: 'Haftalık süreler', ajanId: 'koordinator', mukellefIster: false, donemIster: false, gorev: 'Bu hafta ve gelecek hafta vadesi gelen beyanname/bildirge/ödemeleri mükellef bazında listele.' },
-  { id: 'kayit-yok', ad: 'Kayıt yok — araştır', ajanId: 'koordinator', mukellefIster: true, donemIster: true, gorev: '{mükellef} için {dönem} aylık takip kaydı yok; neden yok araştır, açılması gerekiyorsa bana sun.' },
-  { id: 'eksik-evrak', ad: 'Eksik evrak', ajanId: 'evrak', mukellefIster: false, donemIster: true, gorev: '{dönem} evrakı gelmeyen mükellefleri listele; {mükellef} seçiliyse yalnız onun eksik belgelerini çıkar ve hatırlatma taslağı hazırla (gönderme).' },
-  { id: 'hatirlatma-metni', ad: 'Hatırlatma metni', ajanId: 'evrak', mukellefIster: true, donemIster: false, gorev: '{mükellef} için eksik evrak hatırlatma metni hazırla; gönderme, bana sun.' },
-  { id: 'fatura-isle', ad: 'Faturaları işle', ajanId: 'fatura', mukellefIster: true, donemIster: true, gorev: '{mükellef} için {dönem} faturalarını oku, hesap eşleştir, Luca fiş taslağı hazırla (kuru test). Şüpheli/uyuşmayan faturaları ayrı listele.' },
-  { id: 'supheli', ad: 'Şüpheli faturalar', ajanId: 'fatura', mukellefIster: true, donemIster: true, gorev: '{mükellef} {dönem}: içerik-hesap uyuşmayan, mükerrer ya da tutarı şüpheli faturaları ayır.' },
-  { id: 'vadesi-gecmis', ad: 'Vadesi geçmiş', ajanId: 'banka-kasa', mukellefIster: false, donemIster: false, gorev: 'Vadesi geçmiş tahsilatları mükellef bazında listele; {mükellef} seçiliyse ekstre özetini çıkar.' },
-  { id: 'tahsilat-taslak', ad: 'Tahsilat taslağı', ajanId: 'banka-kasa', mukellefIster: true, donemIster: false, gorev: '{mükellef} için nazik tahsilat hatırlatma taslağı hazırla (gönderme).' },
+  { id: 'sabah-ozeti', ad: 'Sabah özeti', ajanId: 'koordinator', mukellefIster: false, donemIster: false, gorev: 'Bugünün ofis özetini çıkar: durum, riskli/acil, yaklaşan süreler, ekip dün ne yaptı, bugün öncelik. Mesaj gönderme.' , grup: 'Günlük' },
+  { id: 'haftalik-sureler', ad: 'Haftalık süreler', ajanId: 'koordinator', mukellefIster: false, donemIster: false, gorev: 'Bu hafta ve gelecek hafta vadesi gelen beyanname/bildirge/ödemeleri mükellef bazında listele.' , grup: 'Günlük' },
+  { id: 'kayit-yok', ad: 'Kayıt yok — araştır', ajanId: 'koordinator', mukellefIster: true, donemIster: true, gorev: '{mükellef} için {dönem} aylık takip kaydı yok; neden yok araştır, açılması gerekiyorsa bana sun.' , grup: 'Günlük' },
+  { id: 'fatura-isle', ad: 'Faturaları işle', ajanId: 'fatura', mukellefIster: true, donemIster: true, gorev: '{mükellef} için {dönem} faturalarını oku, hesap eşleştir, Luca fiş taslağı hazırla (kuru test). Şüpheli/uyuşmayan faturaları ayrı listele.' , grup: 'Fatura' },
+  { id: 'supheli', ad: 'Şüpheli faturalar', ajanId: 'fatura', mukellefIster: true, donemIster: true, gorev: '{mükellef} {dönem}: içerik-hesap uyuşmayan, mükerrer ya da tutarı şüpheli faturaları ayır.' , grup: 'Fatura' },
+  { id: 'vadesi-gecmis', ad: 'Vadesi geçmiş', ajanId: 'banka-kasa', mukellefIster: false, donemIster: false, gorev: 'Vadesi geçmiş tahsilatları mükellef bazında listele; {mükellef} seçiliyse ekstre özetini çıkar.' , grup: 'Diğer' },
   // PLAN/17 R1 (2026-09-13): KDV Kontrol portal işidir; ajan zinciri kendi yürütür (Luca Operatörü'ne devretmez).
-  { id: 'kdv-kontrol', ad: 'KDV kontrol', ajanId: 'beyanname', mukellefIster: true, donemIster: true, gorev: '{mükellef} için {dönem} KDV kontrolünü YAP (R1): oturumları bul/aç, Luca çekimi ve fatura bağlama + OCR, eşleştir, hatalı satırları belge no ile listele. Kuru testte oturum açılmaz, zincir "yapılacaktı" olarak yazılır. Kilitleme bende; beyannameyi hazır işaretleme, önce bana sun.' },
-  { id: 'hazir-isaretle', ad: 'Hazır işaretlenebilecekler', ajanId: 'beyanname', mukellefIster: false, donemIster: true, gorev: '{dönem} KDV kontrolü biten ve hatasız olan mükellefleri listele; hazır işaretlenebilecekleri ayrı göster.' },
-  { id: 'donem-denetim', ad: 'Dönem denetimi', ajanId: 'denetci', mukellefIster: true, donemIster: true, gorev: '{mükellef} {dönem} mizan + fiş listesi: kasa negatif, 191-391 tutarsızlık, tekrarlı fiş, eksik ay, ters bakiye, KDV aritmetik. Uyarı raporu çıkar, mükellefe gönderme.' },
-  { id: 'resmi-gazete', ad: 'Resmî Gazete', ajanId: 'mevzuat', mukellefIster: false, donemIster: false, gorev: "Bugünkü Resmî Gazete'yi tara; ofisi ve mükellefleri ilgilendiren vergi/SGK değişikliklerini 3 maddede özetle." },
-  { id: 'risk-guncelle', ad: 'Risk puanları', ajanId: 'risk', mukellefIster: false, donemIster: false, gorev: "Mükellef risk puanlarını güncelle; en riskli 5'i nedenleriyle listele." },
-  { id: 'cevapsiz', ad: 'Cevapsız mesajlar', ajanId: 'musteri', mukellefIster: false, donemIster: false, gorev: 'Cevapsız kalan mükellef mesajlarını listele; her biri için cevap taslağı hazırla (gönderme).' },
+  { id: 'kdv-kontrol', ad: 'KDV kontrol', ajanId: 'beyanname', mukellefIster: true, donemIster: true, gorev: '{mükellef} için {dönem} KDV kontrolünü YAP (R1): oturumları bul/aç, Luca çekimi ve fatura bağlama + OCR, eşleştir, hatalı satırları belge no ile listele. Kuru testte oturum açılmaz, zincir "yapılacaktı" olarak yazılır. Kilitleme bende; beyannameyi hazır işaretleme, önce bana sun.' , grup: 'Beyanname ve KDV' },
+  { id: 'hazir-isaretle', ad: 'Hazır işaretlenebilecekler', ajanId: 'beyanname', mukellefIster: false, donemIster: true, gorev: '{dönem} KDV kontrolü biten ve hatasız olan mükellefleri listele; hazır işaretlenebilecekleri ayrı göster.' , grup: 'Beyanname ve KDV' },
+  { id: 'donem-denetim', ad: 'Dönem denetimi', ajanId: 'denetci', mukellefIster: true, donemIster: true, gorev: '{mükellef} {dönem} mizan + fiş listesi: kasa negatif, 191-391 tutarsızlık, tekrarlı fiş, eksik ay, ters bakiye, KDV aritmetik. Uyarı raporu çıkar, mükellefe gönderme.' , grup: 'Denetim ve analiz' },
+  { id: 'resmi-gazete', ad: 'Resmî Gazete', ajanId: 'mevzuat', mukellefIster: false, donemIster: false, gorev: "Bugünkü Resmî Gazete'yi tara; ofisi ve mükellefleri ilgilendiren vergi/SGK değişikliklerini 3 maddede özetle." , grup: 'Diğer' },
+  { id: 'risk-guncelle', ad: 'Risk puanları', ajanId: 'risk', mukellefIster: false, donemIster: false, gorev: "Mükellef risk puanlarını güncelle; en riskli 5'i nedenleriyle listele." , grup: 'Diğer' },
+  { id: 'cevapsiz', ad: 'Cevapsız mesajlar', ajanId: 'musteri', mukellefIster: false, donemIster: false, gorev: 'Cevapsız kalan mükellef mesajlarını listele; her biri için cevap taslağı hazırla (gönderme).' , grup: 'Diğer' },
   // PLAN/17 R2 (2026-09-13): portaldaki hazır (kilitli) tablo okunur; Luca çekimi / mizan çekimi istenmez.
-  { id: 'donem-yorum', ad: 'Mali yorum', ajanId: 'analist', mukellefIster: true, donemIster: true, gorev: '{mükellef} için {dönem} portaldaki hazır (kilitli) gelir tablosunu oku ve yorumla: ciro/kâr eğilimi, vergi yükü tahmini, nakit akışı, geçici vergi öngörüsü; kayıtlı Mali Yorum varsa çelişkiyi söyle. Luca çekimi isteme. ÖNERİ etiketiyle, mükellefe gönderme.' },
-  { id: 'bordro-kontrol', ad: 'Bordro/SGK kontrol', ajanId: 'bordro-sgk', mukellefIster: false, donemIster: true, gorev: '{dönem} bordro/SGK kontrolü: eksik bildirge, işe giriş/çıkış, prim tutarsızlığı; {mükellef} seçiliyse yalnız onun.' },
-  { id: 'berat-negatif', ad: 'Berat + negatif tarama', ajanId: 'edefter', mukellefIster: true, donemIster: false, gorev: 'Berat takvimi + {mükellef} için negatif kasa/stok/banka taraması.' },
-  { id: 'luca-kontrol', ad: 'Luca oturum kontrolü', ajanId: 'luca-operator', mukellefIster: false, donemIster: false, gorev: 'Luca oturumunu ve menüyü kontrol et; oturum düşmüşse bildir.' },
+  { id: 'donem-yorum', ad: 'Mali yorum', ajanId: 'analist', mukellefIster: true, donemIster: true, gorev: '{mükellef} için {dönem} portaldaki hazır (kilitli) gelir tablosunu oku ve yorumla: ciro/kâr eğilimi, vergi yükü tahmini, nakit akışı, geçici vergi öngörüsü; kayıtlı Mali Yorum varsa çelişkiyi söyle. Luca çekimi isteme. ÖNERİ etiketiyle, mükellefe gönderme.' , grup: 'Denetim ve analiz' },
+  { id: 'berat-negatif', ad: 'Berat + negatif tarama', ajanId: 'edefter', mukellefIster: true, donemIster: false, gorev: 'Berat takvimi + {mükellef} için negatif kasa/stok/banka taraması.' , grup: 'Denetim ve analiz' },
+  { id: 'luca-kontrol', ad: 'Luca oturum kontrolü', ajanId: 'luca-operator', mukellefIster: false, donemIster: false, gorev: 'Luca oturumunu ve menüyü kontrol et; oturum düşmüşse bildir.' , grup: 'Diğer' },
 ];
 
 /** Şablon metnini doldur: {mükellef} → seçili ad ya da "seçili mükellef"; {dönem} → dönem etiketi ya da "bu dönem". */
@@ -483,13 +558,13 @@ export function sablonDoldur(gorev: string, mukellefAd?: string | null, donem?: 
 export function isDurumu(is: Pick<IsDosyasi, 'status'>): { ad: string; renk: string } {
   switch (is.status) {
     case 'running':
-      return { ad: 'Çalışıyor', renk: EKIP_ACCENT };
+      return { ad: 'Çalışıyor', renk: SAKIN.vurgu };
     case 'done':
-      return { ad: 'Bitti', renk: RENK.yesil };
+      return { ad: 'Bitti', renk: SAKIN.yesil };
     case 'failed':
-      return { ad: 'Hata', renk: RENK.kirmizi };
+      return { ad: 'Hata', renk: SAKIN.kirmizi };
     default:
-      return { ad: 'Bekliyor', renk: RENK.gri };
+      return { ad: 'Bekliyor', renk: SAKIN.gri };
   }
 }
 
@@ -505,32 +580,32 @@ export const DEPO = {
 
 /**
  * Muzaffer Bey'in gördüğü kutular: Sürüyor · Onayınızı bekleyen · Sizden istenen · Bitti.
- * Altın YALNIZ "Onayınızı bekleyen" hapında (sarının tek yeri, §8).
+ * Sakin dil: onay ve istek ikisi de kehribar (ayrımı kelime yapar); sürüyor çelik mavi; bitti yeşil.
  */
 export const KUTULAR: Array<{ id: AkisFiltre; ad: string; renk: string; sayacAnahtari: 'suruyor' | 'onay' | 'istek' | 'bitti' | null }> = [
-  { id: 'tumu', ad: 'Tümü', renk: EKIP_ACCENT, sayacAnahtari: null },
-  { id: 'suruyor', ad: 'Sürüyor', renk: EKIP_ACCENT, sayacAnahtari: 'suruyor' },
-  { id: 'onay', ad: 'Onayınızı bekleyen', renk: RENK.altin, sayacAnahtari: 'onay' },
-  { id: 'istek', ad: 'Sizden istenen', renk: RENK.turuncu, sayacAnahtari: 'istek' },
-  { id: 'bitti', ad: 'Bitti', renk: RENK.yesil, sayacAnahtari: 'bitti' },
+  { id: 'tumu', ad: 'Tümü', renk: SAKIN.vurgu, sayacAnahtari: null },
+  { id: 'suruyor', ad: 'Sürüyor', renk: SAKIN.vurgu, sayacAnahtari: 'suruyor' },
+  { id: 'onay', ad: 'Onayınızı bekleyen', renk: SAKIN.kehribar, sayacAnahtari: 'onay' },
+  { id: 'istek', ad: 'Sizden istenen', renk: SAKIN.kehribar, sayacAnahtari: 'istek' },
+  { id: 'bitti', ad: 'Bitti', renk: SAKIN.yesil, sayacAnahtari: 'bitti' },
 ];
 
 export function kutuRengi(kutu: VakaKutu): string {
-  return KUTULAR.find((k) => k.id === kutu)?.renk || EKIP_ACCENT;
+  return KUTULAR.find((k) => k.id === kutu)?.renk || SAKIN.vurgu;
 }
 
 /** Vaka satırı durum rozeti — Sürüyor / Onay / İstek / Bitti / Hata (tek yerden). */
 export function kutuRozeti(v: Pick<Vaka, 'kutu' | 'durum'>): { ad: string; renk: string; nabiz: boolean } {
-  if (v.durum === 'hata') return { ad: 'Hata', renk: RENK.kirmizi, nabiz: false };
+  if (v.durum === 'hata') return { ad: 'Hata', renk: SAKIN.kirmizi, nabiz: false };
   switch (v.kutu) {
     case 'onay':
-      return { ad: 'Onay', renk: RENK.altin, nabiz: false };
+      return { ad: 'Onayınızı bekliyor', renk: SAKIN.kehribar, nabiz: false };
     case 'istek':
-      return { ad: 'İstek', renk: RENK.turuncu, nabiz: false };
+      return { ad: 'Sizden istenen', renk: SAKIN.kehribar, nabiz: false };
     case 'bitti':
-      return { ad: 'Bitti', renk: RENK.yesil, nabiz: false };
+      return { ad: 'Bitti', renk: SAKIN.yesil, nabiz: false };
     default:
-      return { ad: 'Sürüyor', renk: EKIP_ACCENT, nabiz: true };
+      return { ad: 'Sürüyor', renk: SAKIN.vurgu, nabiz: true };
   }
 }
 
