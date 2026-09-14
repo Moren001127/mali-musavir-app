@@ -1921,6 +1921,31 @@ model EDefterControlRuleSetting {
   @@map("edefter_control_rule_settings")
 }
 
+// e-Defter MANUEL (kullanici tanimli) kontrol kurallari — ofis geneli (tenant); analizde calisir (2026-09-14).
+//   kaynak: MIZAN (mizan bakiyesi) | HAREKET (donem hareketi) · kosul: BAKIYE_YOK/VAR, BORC/ALACAK_BAKIYE,
+//   BAKIYE_USTUNDE/ALTINDA, HAREKET_YOK/VAR, BORC/ALACAK_USTUNDE/ALTINDA, ADET_ALTINDA · esik gerekirse.
+//   herHesapAyri: onek toplami yerine her alt hesap ayri degerlendirilir. Bulgu kodu "MANUEL:<id>".
+model EDefterManuelKural {
+  id           String   @id @default(cuid())
+  tenantId     String
+  ad           String
+  aciklama     String?
+  seviye       String   @default("WARN") // ERROR | WARN | INFO
+  hesap        String // "500" | "320.01" | "120, 320"
+  kaynak       String   @default("MIZAN") // MIZAN | HAREKET
+  kosul        String
+  esik         Decimal? @db.Decimal(18, 2)
+  herHesapAyri Boolean  @default(false)
+  donemKisiti  String   @default("HEPSI") // HEPSI | YILLIK | GECICI
+  aktif        Boolean  @default(true)
+  createdBy    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([tenantId, aktif])
+  @@map("edefter_manuel_kurallar")
+}
+
 model GelirTablosu {
   id             String    @id @default(cuid())
   tenantId       String

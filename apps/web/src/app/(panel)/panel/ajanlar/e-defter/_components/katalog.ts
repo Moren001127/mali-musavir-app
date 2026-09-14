@@ -10,7 +10,7 @@ export type KuralTanimi = {
   varsayilanAktif: boolean;
   donemKisiti?: string;
   mizanGerekli?: boolean;
-  motor?: 'ESKI' | 'HDD';
+  motor?: 'ESKI' | 'HDD' | 'MANUEL'; // MANUEL: ofis (kullanıcı) kuralı
 };
 
 export type KuralDurumu = 'TEMIZ' | 'BULGU' | 'UYGULANMAZ' | 'VERI_YOK' | 'PASIF';
@@ -31,13 +31,13 @@ export type KontrolOzeti = {
 
 // Alan sırası ve ikonları (sunucu ALAN adlarıyla birebir)
 export const ALAN_SIRASI: string[] = [
-  'Temel Bütünlük', 'Cari Hesaplar (120/320)', 'Vergi & SGK Ödemeleri (335/360/361)', 'Kasa & Banka', 'KDV', 'Bordro & Stopaj',
+  'Temel Bütünlük', 'Manuel Kurallar', 'Cari Hesaplar (120/320)', 'Vergi & SGK Ödemeleri (335/360/361)', 'Kasa & Banka', 'KDV', 'Bordro & Stopaj',
   'Stok & Maliyet', 'Gelir & Gider', 'Duran Varlık & Amortisman', 'Krediler & Finansman', 'Ortaklar (131/331)', 'Avans, Çek & Senet',
   'Dönem Sonu / Açılış-Kapanış', 'Özkaynak & Özellikli Hesaplar', 'Mizan Mutabakatı', 'Hesap Planı & Tabiat', 'Belge / Evrak',
   'Yevmiye / Fiş', 'Forensic / Anomali', 'Diğer',
 ];
 export const ALAN_IKON: Record<string, string> = {
-  'Temel Bütünlük': '🔍', 'Cari Hesaplar (120/320)': '👥', 'Vergi & SGK Ödemeleri (335/360/361)': '🏛️', 'Kasa & Banka': '🏦', 'KDV': '🧾',
+  'Temel Bütünlük': '🔍', 'Manuel Kurallar': '✍️', 'Cari Hesaplar (120/320)': '👥', 'Vergi & SGK Ödemeleri (335/360/361)': '🏛️', 'Kasa & Banka': '🏦', 'KDV': '🧾',
   'Bordro & Stopaj': '👷', 'Stok & Maliyet': '📦', 'Gelir & Gider': '📈', 'Duran Varlık & Amortisman': '🏗️', 'Krediler & Finansman': '💳',
   'Ortaklar (131/331)': '⚖️', 'Avans, Çek & Senet': '📜', 'Dönem Sonu / Açılış-Kapanış': '📅', 'Özkaynak & Özellikli Hesaplar': '🏢',
   'Mizan Mutabakatı': '🔗', 'Hesap Planı & Tabiat': '🗂️', 'Belge / Evrak': '📄', 'Yevmiye / Fiş': '📋', 'Forensic / Anomali': '🔬', 'Diğer': '•',

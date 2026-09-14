@@ -22,6 +22,7 @@ import { MIZAN_MODUL_ONEK, type KontrolOzeti, type KuralTanimi, alanSira, mizanA
 import { BulgularSekmesi } from './_components/BulgularSekmesi';
 import { BulguTablosu, alanlaraGrupla, tumKurallariDaralt } from './_components/BulguTablosu';
 import { HesaplarSekmesi } from './_components/HesaplarSekmesi';
+import { ManuelKurallar } from './_components/ManuelKurallar';
 import { Hap, Kart } from '../../ekip/_components/Kart';
 import { ikonStili, kahramanKartStili } from '../../ekip/_components/ortak';
 
@@ -204,6 +205,7 @@ function sessionMatchesPeriod(session: any, key: string) {
 function categoryLabel(code: string, katalog?: Map<string, KuralTanimi>) {
   const k = katalog?.get(code);
   if (k) return k.ad;
+  if (code.startsWith('MANUEL:')) return 'Silinmiş ofis kuralı';
   const dict: Record<string, string> = {
     HESAP_KODU_EKSIK: 'Hesap kodu eksik', FIS_TARIHI_EKSIK: 'Fiş tarihi eksik',
     DONEM_DISI_TARIH: 'Dönem dışı tarih', FIS_DENGESIZ: 'Fiş dengesiz',
@@ -1236,7 +1238,6 @@ function Severity({ value }: { value: string }) {
 }
 
 type KuralDef = { kod: string; ad: string; aciklama: string; severity: 'ERROR' | 'WARN' | 'INFO'; grup: string; aktif: boolean };
-type ManuelKural = { id: string; ad: string; aciklama: string; severity: 'ERROR' | 'WARN' | 'INFO'; hesapKoduPrefix?: string; tutarEsigi?: number; createdAt: string };
 
 const STANDART_KURALLAR: KuralDef[] = [
   { kod: 'DEFTER_GENELI_DENGESIZ', ad: 'Defter geneli borç=alacak', aciklama: 'Tüm dönem toplam borç ile alacak eşit değilse uyarır. Berat oluşturmadan önce mutlaka düzeltilmelidir.', severity: 'ERROR', grup: 'Temel Bütünlük', aktif: true },
@@ -1336,9 +1337,6 @@ const TUM_KURALLAR: KuralDef[] = [...STANDART_KURALLAR, ...EK_KAPALI_KURALLAR];
 function KurallarTab() {
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
-  const [showForm, setShowForm] = useState(false);
-  const [manuel, setManuel] = useState<ManuelKural[]>([]);
-  const [form, setForm] = useState<{ ad: string; aciklama: string; severity: 'ERROR' | 'WARN' | 'INFO'; hesapKoduPrefix: string; tutarEsigi: string }>({ ad: '', aciklama: '', severity: 'WARN', hesapKoduPrefix: '', tutarEsigi: '' });
 
   const { data: ruleSettings } = useQuery({
     queryKey: ['edefter-rule-settings'],
@@ -1366,36 +1364,10 @@ function KurallarTab() {
     onError: (e: any) => toast.error(e?.response?.data?.message || e?.message || 'Kural ayarı kaydedilemedi'),
   });
 
-  useEffect(() => {
-    try { const raw = localStorage.getItem('edefter-manuel-kurallar'); if (raw) setManuel(JSON.parse(raw)); } catch {}
-  }, []);
-
-  const saveManuel = (next: ManuelKural[]) => {
-    setManuel(next);
-    try { localStorage.setItem('edefter-manuel-kurallar', JSON.stringify(next)); } catch {}
-  };
-
-  const ekle = () => {
-    if (!form.ad.trim()) { toast.error('Kural adı boş olamaz'); return; }
-    const yeni: ManuelKural = {
-      id: `manuel-${Date.now()}`,
-      ad: form.ad.trim(),
-      aciklama: form.aciklama.trim(),
-      severity: form.severity,
-      hesapKoduPrefix: form.hesapKoduPrefix.trim() || undefined,
-      tutarEsigi: form.tutarEsigi ? Number(form.tutarEsigi) : undefined,
-      createdAt: new Date().toISOString(),
-    };
-    saveManuel([yeni, ...manuel]);
-    setForm({ ad: '', aciklama: '', severity: 'WARN', hesapKoduPrefix: '', tutarEsigi: '' });
-    setShowForm(false);
-    toast.success('Manuel kural eklendi (yerel kayıt)');
-  };
-
-  const sil = (id: string) => saveManuel(manuel.filter((k) => k.id !== id));
-
   // Sunucu katalogu (150 kural: eski motor + hesap davranış motoru) varsa onu kullan; yoksa yerel yedek liste.
-  const sunucuKatalog = (ruleSettings?.catalog || []) as KuralTanimi[];
+  //   Manuel (ofis) kuralları katalogda da gelir ama burada ayrı bileşende yönetilir (ManuelKurallar).
+  const sunucuKatalog = ((ruleSettings?.catalog || []) as KuralTanimi[]).filter((k) => k.motor !== 'MANUEL');
+  const manuelSayisi = ((ruleSettings?.catalog || []) as KuralTanimi[]).filter((k) => k.motor === 'MANUEL').length;
   const kuralListesi: KuralDef[] = sunucuKatalog.length
     ? [...sunucuKatalog]
         .sort((a, b) => alanSira(a.alan) - alanSira(b.alan))
@@ -1406,8 +1378,6 @@ function KurallarTab() {
   const byGroup = new Map<string, KuralDef[]>();
   for (const k of filtered) { if (!byGroup.has(k.grup)) byGroup.set(k.grup, []); byGroup.get(k.grup)!.push(k); }
 
-  const formSelectStyle: CSSProperties = { background: PANEL, border: `1px solid ${BORDER}`, color: TEXT, backgroundImage: ARROW('5b8def'), backgroundRepeat: 'no-repeat', backgroundPosition: 'right 10px center', paddingRight: '30px' };
-
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
@@ -1415,57 +1385,11 @@ function KurallarTab() {
           <Search size={14} />
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Kural ara..." className="bg-transparent outline-none text-sm w-full" style={{ color: TEXT }} />
         </div>
-        <span className="text-xs tabular-nums" style={{ color: MUTED }}>{kuralListesi.length} standart · {manuel.length} manuel</span>
-        <button onClick={() => setShowForm(!showForm)} className="h-10 px-4 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5" style={{ background: NAVY_SOFT, color: NAVY, border: '1px solid rgba(91,141,239,.3)' }}>
-          {showForm ? <XCircle size={13} /> : <Sparkles size={13} />} {showForm ? 'Vazgeç' : 'Manuel Kural Ekle'}
-        </button>
+        <span className="text-xs tabular-nums" style={{ color: MUTED }}>{kuralListesi.length} standart · {manuelSayisi} ofis kuralı</span>
       </div>
 
-      {showForm && (
-        <div className="rounded-xl p-4 space-y-3" style={{ background: NAVY_SOFT, border: '1px solid rgba(91,141,239,.3)' }}>
-          <div className="text-xs font-bold uppercase tracking-wider" style={{ color: NAVY }}>Yeni Manuel Kural</div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <Field label="Kural Adı *"><input value={form.ad} onChange={(e) => setForm({ ...form, ad: e.target.value })} placeholder="Örn: Kira ödemesi 5.000 TL üstü kontrol" className="w-full h-9 rounded-md px-3 text-sm" style={{ background: PANEL, border: `1px solid ${BORDER}`, color: TEXT }} /></Field>
-            <Field label="Seviye"><select value={form.severity} onChange={(e) => setForm({ ...form, severity: e.target.value as any })} className="w-full h-9 rounded-md px-3 text-sm appearance-none cursor-pointer" style={formSelectStyle}><option value="ERROR" style={{ background: '#1a1a17', color: TEXT }}>Hata</option><option value="WARN" style={{ background: '#1a1a17', color: TEXT }}>Uyarı</option><option value="INFO" style={{ background: '#1a1a17', color: TEXT }}>Bilgi</option></select></Field>
-            <Field label="Hesap Kodu Başlangıcı (opsiyonel)"><input value={form.hesapKoduPrefix} onChange={(e) => setForm({ ...form, hesapKoduPrefix: e.target.value })} placeholder="Örn: 770 veya 360.01" className="w-full h-9 rounded-md px-3 text-sm tabular-nums" style={{ background: PANEL, border: `1px solid ${BORDER}`, color: TEXT }} /></Field>
-            <Field label="Tutar Eşiği TL (opsiyonel)"><input type="number" value={form.tutarEsigi} onChange={(e) => setForm({ ...form, tutarEsigi: e.target.value })} placeholder="Örn: 5000" className="w-full h-9 rounded-md px-3 text-sm tabular-nums" style={{ background: PANEL, border: `1px solid ${BORDER}`, color: TEXT }} /></Field>
-          </div>
-          <Field label="Açıklama"><textarea value={form.aciklama} onChange={(e) => setForm({ ...form, aciklama: e.target.value })} placeholder="Bu kural ne yakalar, neden eklendi?" rows={2} className="w-full rounded-md px-3 py-2 text-sm" style={{ background: PANEL, border: `1px solid ${BORDER}`, color: TEXT }} /></Field>
-          <div className="flex justify-end">
-            <button onClick={ekle} className="h-9 px-4 rounded-md text-xs font-bold inline-flex items-center gap-1.5" style={{ background: NAVY, color: '#0b1220' }}>
-              <CheckCircle2 size={13} /> Kaydet
-            </button>
-          </div>
-          <div className="text-[10px]" style={{ color: MUTED }}>Not: Manuel kurallar şimdilik yerel olarak (bu tarayıcıda) saklanır. Çalıştırma mantığı sonraki sürümde gelecek.</div>
-        </div>
-      )}
-
-      {manuel.length > 0 && (
-        <div className="rounded-xl overflow-hidden" style={{ background: PANEL, border: `1px solid ${BORDER}` }}>
-          <div className="px-4 py-2.5 flex items-center gap-2" style={{ background: PANEL_HOVER, borderBottom: `1px solid ${BORDER}` }}>
-            <Sparkles size={14} style={{ color: NAVY }} />
-            <span className="text-xs font-bold uppercase tracking-wider" style={{ color: NAVY }}>Senin Manuel Kuralların</span>
-            <span className="text-xs tabular-nums ml-auto" style={{ color: MUTED }}>{manuel.length}</span>
-          </div>
-          <div className="divide-y" style={{ borderColor: BORDER }}>
-            {manuel.map((k) => (
-              <div key={k.id} className="px-4 py-3 flex items-start gap-3" style={{ borderColor: BORDER }}>
-                <Severity value={k.severity} />
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-semibold mb-0.5" style={{ color: TEXT }}>{k.ad}</div>
-                  {k.aciklama && (<div className="text-xs mb-1" style={{ color: 'rgba(250,250,249,.65)' }}>{k.aciklama}</div>)}
-                  <div className="flex flex-wrap gap-2 text-[10px]">
-                    {k.hesapKoduPrefix && (<span className="px-1.5 py-0.5 rounded tabular-nums" style={{ background: 'rgba(255,255,255,.06)', color: 'rgba(250,250,249,.82)' }}>Hesap: {k.hesapKoduPrefix}*</span>)}
-                    {k.tutarEsigi != null && (<span className="px-1.5 py-0.5 rounded tabular-nums" style={{ background: 'rgba(255,255,255,.05)', color: 'rgba(250,250,249,.6)' }}>Eşik: {fmtTRY(k.tutarEsigi)} TL</span>)}
-                    <span className="px-1.5 py-0.5 rounded" style={{ background: 'rgba(255,255,255,.04)', color: MUTED2 }}>{fmtDate(k.createdAt)}</span>
-                  </div>
-                </div>
-                <button onClick={() => sil(k.id)} className="h-7 w-7 rounded-md inline-flex items-center justify-center" style={{ background: 'rgba(226,112,111,.10)', color: ERR, border: '1px solid rgba(226,112,111,.18)' }} title="Sil"><XCircle size={13} /></button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      {/* Ofis (manuel) kuralları — sunucuda saklanır, analizde çalışır */}
+      <ManuelKurallar />
 
       <div className="space-y-3">
         {[...byGroup.entries()].map(([grupAd, kurallar]) => (
@@ -1511,11 +1435,3 @@ function KurallarTab() {
   );
 }
 
-function Field({ label, children }: { label: string; children: any }) {
-  return (
-    <div>
-      <div className="text-[10px] uppercase tracking-wider mb-1" style={{ color: MUTED }}>{label}</div>
-      {children}
-    </div>
-  );
-}

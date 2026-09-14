@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Headers,
   HttpCode,
@@ -115,6 +116,34 @@ export class EDefterControlController {
       active: body.active,
       userId: req.user.sub,
     });
+  }
+
+  // ── MANUEL (ofis) KURALLARI — ':id' yolundan ONCE tanimli olmali (Nest sirayla eslestirir) ──
+  @Get('edefter-control/manuel-kurallar')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  listManuelKurallar(@Req() req: any) {
+    return this.service.getManuelKurallar(req.user.tenantId);
+  }
+
+  @Post('edefter-control/manuel-kurallar')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('ADMIN', 'STAFF')
+  createManuelKural(@Req() req: any, @Body() body: any) {
+    return this.service.createManuelKural(req.user.tenantId, body, req.user.sub);
+  }
+
+  @Patch('edefter-control/manuel-kurallar/:id')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('ADMIN', 'STAFF')
+  updateManuelKural(@Req() req: any, @Param('id') id: string, @Body() body: any) {
+    return this.service.updateManuelKural(req.user.tenantId, id, body || {});
+  }
+
+  @Delete('edefter-control/manuel-kurallar/:id')
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles('ADMIN', 'STAFF')
+  deleteManuelKural(@Req() req: any, @Param('id') id: string) {
+    return this.service.deleteManuelKural(req.user.tenantId, id);
   }
 
   @Get('edefter-control/:id')

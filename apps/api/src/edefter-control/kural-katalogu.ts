@@ -4,7 +4,7 @@
 //   NOT: ESKI kurallarin ad/aciklama metinleri ekrandaki katalogdan aynen tasindi (2026-09-13).
 import { ALAN, HDD_KATALOG, KuralTanimi as HddKuralTanimi } from './hesap-davranis/katalog';
 
-export type KuralTanimi = HddKuralTanimi & { motor: 'ESKI' | 'HDD' };
+export type KuralTanimi = HddKuralTanimi & { motor: 'ESKI' | 'HDD' | 'MANUEL' }; // MANUEL: kullanici tanimli kural (manuel-kurallar.ts)
 
 export const ALAN_SIRASI: string[] = [
   ALAN.TEMEL, ALAN.CARI, ALAN.VERGI_SGK, ALAN.KASA_BANKA, ALAN.KDV, ALAN.BORDRO, ALAN.STOK, ALAN.GELIR_GIDER,

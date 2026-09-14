@@ -29,6 +29,7 @@ export type AlanGrubu = { alan: string; kurallar: KuralGrubu[]; sayim: { error: 
 
 // Kural kodu → ekran adı (katalog > eski etiket > kodun kendisi)
 export function kuralAdi(kod: string, katalog: Map<string, KuralTanimi>) {
+  if (kod.startsWith('MANUEL:') && !katalog.has(kod)) return 'Silinmiş ofis kuralı'; // kural silindi, eski oturumun bulgusu duruyor
   return katalog.get(kod)?.ad || ESKI_ETIKET[kod] || kod.replace(/_/g, ' ').toLocaleLowerCase('tr-TR');
 }
 

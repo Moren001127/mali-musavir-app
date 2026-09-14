@@ -8,6 +8,25 @@ export type EDefterDonemTipi =
   | 'GECICI_Q4'
   | 'YILLIK';
 
+export type ManuelKaynak = 'MIZAN' | 'HAREKET';
+export type ManuelKosul =
+  | 'BAKIYE_YOK' | 'BAKIYE_VAR' | 'BORC_BAKIYE' | 'ALACAK_BAKIYE' | 'BAKIYE_USTUNDE' | 'BAKIYE_ALTINDA'
+  | 'HAREKET_YOK' | 'HAREKET_VAR' | 'BORC_USTUNDE' | 'BORC_ALTINDA' | 'ALACAK_USTUNDE' | 'ALACAK_ALTINDA' | 'ADET_ALTINDA';
+export type ManuelDonemKisiti = 'HEPSI' | 'YILLIK' | 'GECICI';
+export type ManuelKuralGovde = {
+  ad: string;
+  aciklama?: string | null;
+  seviye: 'ERROR' | 'WARN' | 'INFO';
+  hesap: string;
+  kaynak: ManuelKaynak;
+  kosul: ManuelKosul;
+  esik?: number | null;
+  herHesapAyri: boolean;
+  donemKisiti: ManuelDonemKisiti;
+  aktif?: boolean;
+};
+export type ManuelKural = ManuelKuralGovde & { id: string; aktif: boolean; createdAt?: string; updatedAt?: string; createdBy?: string | null };
+
 export const edefterControlApi = {
   list: (taxpayerId?: string) =>
     api
@@ -27,6 +46,14 @@ export const edefterControlApi = {
     }),
   setRuleActive: (code: string, active: boolean) =>
     api.patch(`/edefter-control/rule-settings/${encodeURIComponent(code)}`, { active }).then((r) => r.data),
+  // Manuel (ofis) kuralları — sunucuda saklanır, analizde çalışır (bulgu kodu MANUEL:<id>)
+  manuelKurallar: {
+    list: () => api.get('/edefter-control/manuel-kurallar').then((r) => r.data as ManuelKural[]),
+    create: (body: ManuelKuralGovde) => api.post('/edefter-control/manuel-kurallar', body).then((r) => r.data as ManuelKural),
+    update: (id: string, body: Partial<ManuelKuralGovde>) =>
+      api.patch(`/edefter-control/manuel-kurallar/${encodeURIComponent(id)}`, body).then((r) => r.data as ManuelKural),
+    remove: (id: string) => api.delete(`/edefter-control/manuel-kurallar/${encodeURIComponent(id)}`).then((r) => r.data),
+  },
   fetchFromLucaAgent: (data: {
     mukellefId: string;
     donem: string;

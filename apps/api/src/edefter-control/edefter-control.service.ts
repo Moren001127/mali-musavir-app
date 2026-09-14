@@ -9,6 +9,10 @@ import { hesapDavranisDenetimi, HDD_VARSAYILAN_KAPALI } from './hesap-davranis';
 import type { HesapKarti, KuralKapsami } from './hesap-davranis/tipler';
 import { ESKI_VARSAYILAN_KAPALI, KURAL_KATALOGU } from './kural-katalogu';
 import { firmaEslesiyorMu } from './firma-eslesme';
+import {
+  MANUEL_ONEK, manuelKuralDogrula, manuelKuralTanimi, manuelKurallariCalistir,
+  type ManuelKural,
+} from './manuel-kurallar';
 
 export type EDefterDonemTipi =
   | 'AYLIK'
@@ -127,10 +131,13 @@ export class EDefterControlService {
   }
 
   async getRuleSettings(tenantId: string) {
-    const rows = await (this.prisma as any).eDefterControlRuleSetting.findMany({
-      where: { tenantId },
-      orderBy: { code: 'asc' },
-    });
+    const [rows, manuelKurallar] = await Promise.all([
+      (this.prisma as any).eDefterControlRuleSetting.findMany({
+        where: { tenantId },
+        orderBy: { code: 'asc' },
+      }),
+      this.getManuelKurallar(tenantId),
+    ]);
     return {
       settings: rows.map((r: any) => ({
         code: r.code,
@@ -139,9 +146,74 @@ export class EDefterControlService {
         updatedBy: r.updatedBy || null,
       })),
       defaultDisabledCodes: [...DEFAULT_DISABLED_CATEGORIES].sort(),
-      // Tek kural katalogu (ad, aciklama, oneri, alan, mevzuat, varsayilan) — ekran buradan okur
-      catalog: KURAL_KATALOGU,
+      // Tek kural katalogu (ad, aciklama, oneri, alan, mevzuat, varsayilan) — ekran buradan okur.
+      //   Manuel (ofis) kurallari da ayni bicimde eklenir: bulgu gruplama, Mizan Denetimi (mizanGerekli), kapsam etiketleri.
+      catalog: [...KURAL_KATALOGU, ...manuelKurallar.map(manuelKuralTanimi)],
+      manuelKurallar,
     };
+  }
+
+  // ── MANUEL KURALLAR (kullanici tanimli; analizde calisir; manuel-kurallar.ts) ──────────────
+  private manuelKuralNormalize(r: any): ManuelKural {
+    return {
+      id: String(r.id),
+      ad: String(r.ad || ''),
+      aciklama: r.aciklama ?? null,
+      seviye: String(r.seviye || 'WARN').toUpperCase() as ManuelKural['seviye'],
+      hesap: String(r.hesap || ''),
+      kaynak: String(r.kaynak || 'MIZAN').toUpperCase() as ManuelKural['kaynak'],
+      kosul: String(r.kosul || '').toUpperCase() as ManuelKural['kosul'],
+      esik: r.esik == null ? null : Number(r.esik),
+      herHesapAyri: Boolean(r.herHesapAyri),
+      donemKisiti: String(r.donemKisiti || 'HEPSI').toUpperCase() as ManuelKural['donemKisiti'],
+      aktif: r.aktif !== false,
+    };
+  }
+
+  async getManuelKurallar(tenantId: string): Promise<Array<ManuelKural & { createdAt: Date; updatedAt: Date; createdBy: string | null }>> {
+    const rows = await (this.prisma as any).eDefterManuelKural.findMany({ where: { tenantId }, orderBy: { createdAt: 'asc' } });
+    return rows.map((r: any) => ({ ...this.manuelKuralNormalize(r), createdAt: r.createdAt, updatedAt: r.updatedAt, createdBy: r.createdBy || null }));
+  }
+
+  private manuelKuralGovde(body: any): Omit<ManuelKural, 'id'> {
+    const taslak: Partial<ManuelKural> = {
+      ad: String(body?.ad || '').trim(),
+      aciklama: body?.aciklama == null ? null : String(body.aciklama).trim() || null,
+      seviye: String(body?.seviye || 'WARN').toUpperCase() as ManuelKural['seviye'],
+      hesap: String(body?.hesap || '').trim(),
+      kaynak: String(body?.kaynak || 'MIZAN').toUpperCase() as ManuelKural['kaynak'],
+      kosul: String(body?.kosul || '').toUpperCase() as ManuelKural['kosul'],
+      esik: body?.esik == null || body?.esik === '' ? null : Number(body.esik),
+      herHesapAyri: Boolean(body?.herHesapAyri),
+      donemKisiti: String(body?.donemKisiti || 'HEPSI').toUpperCase() as ManuelKural['donemKisiti'],
+      aktif: body?.aktif == null ? true : Boolean(body.aktif),
+    };
+    const hatalar = manuelKuralDogrula(taslak);
+    if (hatalar.length) throw new BadRequestException(hatalar.join(' · '));
+    return taslak as Omit<ManuelKural, 'id'>;
+  }
+
+  async createManuelKural(tenantId: string, body: any, userId?: string | null) {
+    const k = this.manuelKuralGovde(body);
+    const row = await (this.prisma as any).eDefterManuelKural.create({ data: { tenantId, ...k, createdBy: userId || null } });
+    return this.manuelKuralNormalize(row);
+  }
+
+  async updateManuelKural(tenantId: string, id: string, body: any) {
+    const mevcut = await (this.prisma as any).eDefterManuelKural.findFirst({ where: { id, tenantId } });
+    if (!mevcut) throw new NotFoundException('Manuel kural bulunamadi');
+    // Yalniz aktif/pasif degisiyorsa dogrulama yok (eski kayit eksik alanla da kapatilabilsin)
+    const yalnizAktif = body && Object.keys(body).length === 1 && typeof body.aktif === 'boolean';
+    const data = yalnizAktif ? { aktif: body.aktif } : this.manuelKuralGovde({ ...this.manuelKuralNormalize(mevcut), ...body });
+    const row = await (this.prisma as any).eDefterManuelKural.update({ where: { id }, data });
+    return this.manuelKuralNormalize(row);
+  }
+
+  async deleteManuelKural(tenantId: string, id: string) {
+    const mevcut = await (this.prisma as any).eDefterManuelKural.findFirst({ where: { id, tenantId } });
+    if (!mevcut) throw new NotFoundException('Manuel kural bulunamadi');
+    await (this.prisma as any).eDefterManuelKural.delete({ where: { id } });
+    return { ok: true, id, kod: MANUEL_ONEK + id };
   }
 
   async setRuleSetting(params: {
@@ -399,7 +471,8 @@ export class EDefterControlService {
 
     const ruleSettings = await this.getRuleSettingMap(params.tenantId);
     const mizanCtx = await this.getMizanContext(params.tenantId, params.taxpayerId, params.donem, donemTipi, params.createdBy);
-    const { findings, kontrolOzeti } = this.analyzeFull(rows, range, donemTipi, ruleSettings, mizanCtx);
+    const manuelKurallar = await this.getManuelKurallar(params.tenantId);
+    const { findings, kontrolOzeti } = this.analyzeFull(rows, range, donemTipi, ruleSettings, mizanCtx, manuelKurallar);
     if (findings.length) {
       for (const chunk of this.chunks(findings, 700)) {
         await (this.prisma as any).eDefterFinding.createMany({
@@ -490,7 +563,8 @@ export class EDefterControlService {
     const voucherCount = new Set(rows.map((r) => r.voucherKey)).size;
     const ruleSettings = await this.getRuleSettingMap(tenantId);
     const mizanCtx = await this.getMizanContext(tenantId, session.taxpayerId, session.donem, donemTipi, session.createdBy);
-    const { findings, kontrolOzeti } = this.analyzeFull(rows, range, donemTipi, ruleSettings, mizanCtx);
+    const manuelKurallar = await this.getManuelKurallar(tenantId);
+    const { findings, kontrolOzeti } = this.analyzeFull(rows, range, donemTipi, ruleSettings, mizanCtx, manuelKurallar);
     const lineRows = rows.map((r) => ({
       sessionId: session.id,
       rowIndex: r.rowIndex,
@@ -678,6 +752,7 @@ export class EDefterControlService {
     donemTipi?: EDefterDonemTipi,
     ruleSettings: Map<string, boolean> = new Map(),
     mizanCtx: MizanCtx | null = null,
+    manuelKurallar: ManuelKural[] = [],
   ): { findings: FindingDraft[]; kontrolOzeti: KontrolOzeti } {
     const findings: FindingDraft[] = [];
     const aktifMi = (kod: string) => {
@@ -856,6 +931,11 @@ export class EDefterControlService {
     const hdd = hesapDavranisDenetimi({ rows, range, donemTipi, mizan: mizanCtx }, aktifMi);
     findings.push(...hdd.bulgular);
 
+    // MANUEL (ofis) KURALLARI (2026-09-14): kullanicinin tanimladigi kosullar, hesap kartlari + Mizan bakiyeleri uzerinde.
+    //   Kendi aktif bayragi var (rule-settings degil); kapsam raporunda MANUEL:<id> koduyla gorunur.
+    const manuel = manuelKurallariCalistir(manuelKurallar, { hesapKartlari: hdd.hesapKartlari, mizan: mizanCtx, donemTipi });
+    findings.push(...manuel.bulgular);
+
     const filtered = findings.filter((f) => aktifMi(f.category));
     const sonuc = filtered.slice(0, 10000);
 
@@ -873,6 +953,7 @@ export class EDefterControlService {
       kapsam.push({ kod: k.kod, durum: n > 0 ? 'BULGU' : 'TEMIZ', bulgu: n });
     }
     kapsam.push(...hdd.kapsam);
+    kapsam.push(...manuel.kapsam);
     const say = (d: string) => kapsam.filter((k) => k.durum === d).length;
     const kontrolOzeti: KontrolOzeti = {
       surum: 1,

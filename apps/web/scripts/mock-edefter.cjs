@@ -40,6 +40,12 @@ function yerlesikOrnek() {
 const fixture = jsonOku(process.env.SAHTE_EDEFTER_FIXTURE) || yerlesikOrnek();
 const katalog = jsonOku(process.env.SAHTE_EDEFTER_KATALOG) || [];
 const ayarlar = new Map(); // kod → active
+// Manuel (ofis) kuralları — bellek içi; katalogda MANUEL:<id> olarak da görünür (ekran gruplama/etiket)
+const manuelKurallar = [];
+let manuelSayac = 0;
+function manuelTanim(k) {
+  return { kod: `MANUEL:${k.id}`, ad: k.ad, aciklama: `${k.hesap} hesabında ${k.kosul}`, oneri: '', siddet: k.seviye, alan: 'Manuel Kurallar', mevzuat: 'Ofis kuralı', varsayilanAktif: k.aktif, mizanGerekli: k.kaynak === 'MIZAN', motor: 'MANUEL' };
+}
 
 function ozet(s) {
   const { findings, lines, kontrolOzeti, ...rest } = s;
@@ -61,8 +67,29 @@ function edefterUclari(yol, yontem, q, govde, jsonGonder, res) {
     return jsonGonder(res, 200, {
       settings: [...ayarlar.entries()].map(([code, active]) => ({ code, active })),
       defaultDisabledCodes: katalog.filter((k) => k && k.varsayilanAktif === false).map((k) => k.kod),
-      catalog: katalog,
+      catalog: [...katalog, ...manuelKurallar.map(manuelTanim)],
+      manuelKurallar,
     });
+  }
+  // ── Manuel kurallar (bellek içi CRUD) ──
+  if (yol === '/edefter-control/manuel-kurallar') {
+    if (yontem === 'GET') return jsonGonder(res, 200, manuelKurallar);
+    if (yontem === 'POST') {
+      if (!String(govde.ad || '').trim()) return jsonGonder(res, 400, { message: 'Kural adı boş olamaz' });
+      if (!String(govde.hesap || '').trim()) return jsonGonder(res, 400, { message: 'Hesap kodu boş olamaz (örn. 500 veya 320.01)' });
+      const k = { id: `mk${++manuelSayac}`, aktif: true, ...govde, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+      manuelKurallar.push(k);
+      return jsonGonder(res, 200, k);
+    }
+  }
+  {
+    const m = /^\/edefter-control\/manuel-kurallar\/([^/]+)$/.exec(yol);
+    if (m) {
+      const i = manuelKurallar.findIndex((k) => k.id === m[1]);
+      if (i < 0) return jsonGonder(res, 404, { message: 'Manuel kural bulunamadi' });
+      if (yontem === 'PATCH') { Object.assign(manuelKurallar[i], govde, { updatedAt: new Date().toISOString() }); return jsonGonder(res, 200, manuelKurallar[i]); }
+      if (yontem === 'DELETE') { const [k] = manuelKurallar.splice(i, 1); return jsonGonder(res, 200, { ok: true, id: k.id }); }
+    }
   }
   {
     const m = /^\/edefter-control\/rule-settings\/([^/]+)$/.exec(yol);
