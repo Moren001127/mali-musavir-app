@@ -2,6 +2,7 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { chromium as pwChromium } from 'playwright-core';
 import { PDFParse } from 'pdf-parse';
+import { sgkOdenecekTutar } from './sgk-fis-tutar';
 import { mkdir, readFile, rm, writeFile } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -6003,44 +6004,26 @@ export class PortalAutomationRailwayRunnerService implements OnModuleInit {
       // Çalışan (normalized)
       const cm = normTah.match(/KISI\s*SAYISI\s*:?\s*(\d{1,4})/);
       if (cm) meta.calisan = cm[1];
-      // Tutar = ÖDENECEK NET TUTAR.
-      // GERÇEK YAPI (Railway log kanıtı): pdf-parse etiket-bloğu ile değer-bloğunu AYRI veriyor
-      // ve sıraları TERS — etikette "...ÖDENECEK NET TUTAR İŞSİZLİK TUTARI", değerde "...990,90 12.799,13"
-      // → pozisyonel/etiket-bitişik eşleştirme İMKANSIZ.
-      // ÇÖZÜM: değer bloğu görsel-sıralı (yukarı→aşağı), ÖDENECEK NET TUTAR fişin EN ALT satırı
-      // = tahakkuk metnindeki SON para değeri. Doğrulama: son = (sondan-2) + (sondan-3)
-      // [NET PRİM TUTARI + İŞSİZLİK TUTARI = ÖDENECEK NET TUTAR — SGK fişi matematiği].
-      const toNum = (v: string) => Number(v.replace(/\./g, '').replace(',', '.'));
-      const allMoney: string[] = tahText.match(/\d{1,3}(?:\.\d{3})*,\d{2}/g) || [];
+      // Tutar = ÖDENECEK NET TUTAR — sgk-fis-tutar.ts (2026-09-14 Muzaffer Bey vakası: ERCAN ÖZTAMUR / ZEYREK).
+      //   Eski "a+b=c olan en büyük c" yöntemi işsizlik 0,00 olan SGDP fişlerinde PRİME ESAS KAZANÇ'ı, %5 indirimli
+      //   fişlerde TOPLAM PRİM'i seçiyordu (716 fişin 345'i yanlış). Yeni yöntem fişin "PRİM TUTARI" sütun bloğunu
+      //   (pdf-parse getTable) görsel sırayla okur; NET PRİM + İŞSİZLİK (= ÖDENECEK NET) eşitliğiyle doğrular.
       let dogrulandi = false;
-      if (allMoney.length) {
-        // ÖDENECEK NET TUTAR = NET PRİM TUTARI + İŞSİZLİK TUTARI (SGK fişi matematiği).
-        // "SON para değeri" varsayımı GÜVENİLMEZ: pdf-parse değer sırası KANUN KODUNA göre
-        // değişiyor — 6111 kanunlu fişte son değer "05510 SAYILI KANUNDAN DOĞAN PRİM İNDİRİMİ
-        // %2" (or. 660,60) olup ödenecek net (5.615,10) yerine yazılıyordu. ÇÖZÜM: iki değerin
-        // toplamına EŞİT olan EN BÜYÜK değeri (a+b≈c) ödenecek net tutar kabul et. Kanun kodu
-        // ne olursa olsun ÖDENECEK NET TUTAR = en alttaki net + işsizlik toplamıdır.
-        const nums = allMoney.map(toNum);
-        let bestIdx = -1;
-        let bestVal = -1;
-        for (let k = 0; k < nums.length; k++) {
-          for (let i = 0; i < nums.length; i++) {
-            if (i === k) continue;
-            for (let j = i + 1; j < nums.length; j++) {
-              if (j === k) continue;
-              if (Math.abs(nums[i] + nums[j] - nums[k]) <= 0.02 && nums[k] > bestVal) {
-                bestVal = nums[k];
-                bestIdx = k;
-              }
-            }
+      let allMoney: string[] = [];
+      if (tahB64) {
+        let tablo: unknown = null;
+        try {
+          const parser = new PDFParse({ data: Buffer.from(tahB64, 'base64') });
+          try { tablo = await parser.getTable(); } finally {
+            const destroy = (parser as any).destroy;
+            if (typeof destroy === 'function') await destroy.call(parser).catch(() => {});
           }
-        }
-        if (bestIdx >= 0) {
-          meta.tutar = allMoney[bestIdx];
-          dogrulandi = true;
-        } else {
-          // a+b=c bulunamadı (bozuk/eksik metin) → eski davranış: son para değeri.
-          meta.tutar = allMoney[allMoney.length - 1];
+        } catch { tablo = null; }
+        const sonuc = sgkOdenecekTutar(tablo, tahText);
+        allMoney = sonuc.sutun || [];
+        if (sonuc.tutar) { meta.tutar = sonuc.tutar; dogrulandi = sonuc.dogrulandi; }
+        if (!sonuc.dogrulandi) {
+          this.logger.warn(`[SGKTUT] tutar DOĞRULANAMADI (${sonuc.yontem}) → ${sonuc.tutar || '-'}; sütun=[${(sonuc.sutun || []).join(', ')}]`);
         }
       }
 

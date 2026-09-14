@@ -754,7 +754,7 @@ function BeyannamelerIcerik() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1260px] text-[13px]">
+            <table className="w-full min-w-[1120px] text-[13px]">
               <thead style={{ background: 'rgba(255,255,255,0.025)' }}>
                 <tr className="text-left uppercase tracking-[.12em] text-[10.5px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
                   <th className="w-[42px] px-3 py-3">

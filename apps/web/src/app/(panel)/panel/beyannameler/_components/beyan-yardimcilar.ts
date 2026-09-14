@@ -36,6 +36,17 @@ export function fmtCurrency(n: number | null): string {
   return new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n) + ' TL';
 }
 
+/** Tabloda kısa dönem: aylık "2023/11", çeyrek "2026/1–3", yıllık "2025" (Hattat biçimi dosya adı/başlıkta kalır). */
+export function fmtDonemKisa(donem: string): string {
+  const quarter = donem.match(/^(\d{4})-Q([1-4])$/i);
+  if (quarter) { const start = (Number(quarter[2]) - 1) * 3 + 1; return `${quarter[1]}/${start}–${start + 2}`; }
+  const monthly = donem.match(/^(\d{4})-(\d{2})$/);
+  if (monthly) return `${monthly[1]}/${monthly[2]}`;
+  const yearly = donem.match(/^(\d{4})-YIL$/);
+  if (yearly) return yearly[1];
+  return donem;
+}
+
 export function fmtDonemHattat(donem: string): string {
   const quarter = donem.match(/^(\d{4})-Q([1-4])$/i);
   if (quarter) {

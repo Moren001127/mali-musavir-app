@@ -6,7 +6,7 @@ import { BeyanKaydi, IletimKanal, beyanKaydiMukellefAdi } from '@/lib/beyan-kayi
 import { IletimRozeti } from './IletimRozeti';
 import {
   BeyanDocKind, beyanMahiyeti, declarationTypeCode, declarationTypeLabel,
-  fmtCurrency, fmtDate, fmtDonemHattat, gonderimEngeli,
+  fmtCurrency, fmtDate, fmtDonemKisa, gonderimEngeli,
 } from './beyan-yardimcilar';
 
 const METIN = '#fafaf9';
@@ -53,7 +53,7 @@ export function BeyanSatiri({
           <div className="mt-0.5 font-mono text-[11.5px]" style={{ color: 'rgba(250,250,249,0.38)' }}>{row.taxpayer?.taxNumber || '—'}</div>
         </button>
       </td>
-      <td className="px-3 py-2.5 whitespace-nowrap font-semibold tabular-nums" style={{ color: METIN }}>{fmtDonemHattat(row.donem)}</td>
+      <td className="px-3 py-2.5 whitespace-nowrap font-semibold tabular-nums" style={{ color: METIN }}>{fmtDonemKisa(row.donem)}</td>
       <td className="px-3 py-2.5">
         <div className="font-semibold" style={{ color: METIN }}>{declarationTypeCode(row)}</div>
         <div className="mt-0.5 text-[11px]" style={{ color: IKINCIL }}>{declarationTypeLabel(row)}</div>
