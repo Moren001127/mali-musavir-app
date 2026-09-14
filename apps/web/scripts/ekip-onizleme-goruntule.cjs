@@ -44,6 +44,12 @@ const URL = process.env.EKIP_URL || 'http://localhost:3007/panel/ekip';
   await page.getByRole('button', { name: /^Çalıştır$/ }).click();
   await page.waitForTimeout(3500);
   await cek('02-kosu-suruyor', false);
+  // Koşu sürerken cevap/talimat yaz → "Bitince gönder" kuyruğu
+  const cevapAlani = page.locator('textarea').nth(1);
+  await cevapAlani.fill('beyannameyi henüz hazırlama, sadece kontrol');
+  await page.getByRole('button', { name: /Bitince gönder/ }).first().click();
+  await page.waitForTimeout(500);
+  await cek('02b-cevap-kuyrukta', false);
   await page.waitForTimeout(5500);
   await cek('03-kosu-personele-verildi', false);
   await page.waitForTimeout(4500);

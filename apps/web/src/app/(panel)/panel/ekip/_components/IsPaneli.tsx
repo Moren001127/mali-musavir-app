@@ -217,13 +217,26 @@ export function RaporGorunumu({ rapor, kompakt = false }: { rapor: string; kompa
   );
 }
 
-/** Açık kalem — onay (Onayla/Reddet + kart içi teyit) ya da istek (Yapıldı). */
-function AcikKalemKarti({ kalem, onBitti }: { kalem: AcikKalem; onBitti: () => void }) {
+/**
+ * Açık kalem — üç tür:
+ *  - PRV onayı (dışarı mesaj): Onayla ve gönder / Reddet (kart içi teyit).
+ *  - KARAR (bildirim, tur 'onay'): personel "karar sizde" dedi → kararınızı yazıp gönderirsiniz (aynı iş zincirinde devam eder) ya da kapatırsınız.
+ *  - İSTEK (bildirim, tur 'istek'): sizden belge/işlem → Yapıldı; isterseniz not da yazarsınız.
+ */
+function AcikKalemKarti({ kalem, onBitti, onCevapla, calisiyor }: { kalem: AcikKalem; onBitti: () => void; onCevapla: (metin: string) => void; calisiyor: boolean }) {
   const [teyit, setTeyit] = useState(false);
   const [mesgul, setMesgul] = useState(false);
   const [sonuc, setSonuc] = useState<string | null>(null);
+  const [cevap, setCevap] = useState('');
   const onayMi = kalem.tip === 'onay';
+  const kararMi = onayMi && kalem.kaynak === 'bildirim';
   const renk = onayMi ? TEMA.altin : TEMA.turuncu;
+  const cevapGonder = () => {
+    if (!cevap.trim()) return;
+    onCevapla(cevap.trim());
+    setCevap('');
+    setSonuc('Cevabınız Koordinatör’e gitti');
+  };
   const yap = async (fn: () => Promise<{ ok: boolean; error?: string; zatenKapali?: boolean }>, okMetin: string) => {
     if (mesgul) return;
     setMesgul(true);
@@ -243,7 +256,7 @@ function AcikKalemKarti({ kalem, onBitti }: { kalem: AcikKalem; onBitti: () => v
       <div className="flex flex-wrap items-center gap-2">
         {onayMi ? <ShieldAlert size={14} style={{ color: renk }} /> : <ClipboardCheck size={14} style={{ color: renk }} />}
         <span className="text-[12px] font-semibold" style={{ color: renk }}>
-          {onayMi ? 'Onayınızı bekliyor' : 'Sizden istenen'}
+          {kararMi ? 'Kararınız bekleniyor' : onayMi ? 'Onayınızı bekliyor' : 'Sizden istenen'}
         </span>
         <span className="min-w-0 flex-1 text-[13px]" style={{ color: TEMA.metin }}>
           {kalem.baslik}
@@ -252,6 +265,10 @@ function AcikKalemKarti({ kalem, onBitti }: { kalem: AcikKalem; onBitti: () => v
           <span className="text-[11.5px] font-semibold" style={{ color: sonuc.startsWith('Hata') ? TEMA.kirmizi : TEMA.yesil }}>
             {sonuc}
           </span>
+        ) : kararMi ? (
+          <Dugme disabled={mesgul} onClick={() => yap(() => istekKapat(kalem.id), 'Kapatıldı')} title="Kararı verdiniz / gerek kalmadı → kalem kapanır">
+            <Check size={11} /> Kapat
+          </Dugme>
         ) : onayMi ? (
           <>
             <Dugme tur="yesil" disabled={mesgul || teyit} onClick={() => setTeyit(true)}>
@@ -273,6 +290,79 @@ function AcikKalemKarti({ kalem, onBitti }: { kalem: AcikKalem; onBitti: () => v
         </div>
       )}
       {teyit && !sonuc && <OnayTeyit metin={<>Bu mesaj <b>GERÇEKTEN</b> gidecek → #{kalem.id}</>} mesgul={mesgul} onEvet={() => yap(() => onayla(kalem.id), 'Gönderildi ✓')} onVazgec={() => setTeyit(false)} />}
+      {!sonuc && kalem.kaynak === 'bildirim' && (
+        <div className="mt-2 flex gap-2">
+          <input
+            value={cevap}
+            onChange={(e) => setCevap(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && cevap.trim()) {
+                e.preventDefault();
+                cevapGonder();
+              }
+            }}
+            placeholder={kararMi ? 'Kararınızı yazın (ör. "kilitle", "görseli düzelt", "beklet")…' : 'İsterseniz not yazın (ör. "fişi yükledim, devam et")…'}
+            className="min-w-0 flex-1 rounded-lg px-3 py-1.5 text-[12.5px] outline-none"
+            style={{ background: TEMA.alanZemin, border: `1px solid ${TEMA.alanKenar}`, color: TEMA.metin }}
+          />
+          <Dugme tur="birincil" disabled={!cevap.trim()} onClick={cevapGonder} title={calisiyor ? 'Koşu sürüyor; cevabınız bitince gönderilir' : 'Koordinatör aynı iş zincirinde devam eder'}>
+            <MessageSquareReply size={12} /> {calisiyor ? 'Bitince gönder' : 'Gönder'}
+          </Dugme>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * CEVAP / TALİMAT ALANI — panelde HER ZAMAN görünür (Muzaffer Bey 2026-09-15: "işlem sürerken cevap verme alanım yok").
+ * Yazılan metin "Cevap: …" olarak Koordinatör'e aynı iş zincirinde gider; koşu sürüyorsa kuyruğa alınır, bitince kendiliğinden gönderilir.
+ */
+function CevapAlani({ calisiyor, kuru, bekleyen, onGonder, onIptal }: { calisiyor: boolean; kuru: boolean; bekleyen: string | null; onGonder: (metin: string) => void; onIptal: () => void }) {
+  const [metin, setMetin] = useState('');
+  const gonder = () => {
+    if (!metin.trim()) return;
+    onGonder(metin.trim());
+    setMetin('');
+  };
+  return (
+    <div className="flex flex-col gap-2 rounded-xl px-3.5 py-3" style={{ background: 'rgba(255,255,255,0.025)', border: `1px solid ${TEMA.mavi}44` }}>
+      <div className="flex flex-wrap items-center gap-2 text-[10.5px] font-semibold uppercase tracking-wider" style={{ color: TEMA.mavi }}>
+        <MessageSquareReply size={12} /> Bu işe cevap / talimat
+        <span className="normal-case tracking-normal" style={{ color: TEMA.soluk }}>
+          · Koordinatör aynı iş zincirinde devam eder · {kuru ? 'kuru test' : 'canlı'}
+        </span>
+      </div>
+      {bekleyen && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg px-3 py-2 text-[12px]" style={{ background: `${TEMA.mavi}12`, border: `1px solid ${TEMA.mavi}44`, color: TEMA.metin }}>
+          <Loader2 size={12} className="animate-spin" style={{ color: TEMA.mavi }} />
+          <span className="min-w-0 flex-1">
+            Koşu bitince gönderilecek: <i>{bekleyen}</i>
+          </span>
+          <Dugme tur="sessiz" onClick={onIptal}>
+            <X size={11} /> vazgeç
+          </Dugme>
+        </div>
+      )}
+      <div className="flex gap-2">
+        <textarea
+          value={metin}
+          onChange={(e) => setMetin(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              gonder();
+            }
+          }}
+          rows={2}
+          placeholder={calisiyor ? 'Yazın; koşu bitince Koordinatör’e gider (ör. "kilitle", "beyannameyi henüz hazırlama", "Gider 0023 görselini düzelt")…' : 'Ör. "belge 0023’ü kilitle", "şimdi beyannameyi hazırla", "neden 1 satır eşleşmedi?"…'}
+          className="min-h-[56px] min-w-0 flex-1 resize-y rounded-lg px-3 py-2 text-[13px] leading-relaxed outline-none"
+          style={{ background: TEMA.alanZemin, border: `1px solid ${TEMA.alanKenar}`, color: TEMA.metin }}
+        />
+        <Dugme tur="birincil" buyuk disabled={!metin.trim()} onClick={gonder} title={calisiyor ? 'Koşu sürüyor; bitince gönderilir' : 'Gönder (Enter)'}>
+          <Send size={13} /> {calisiyor ? 'Bitince gönder' : 'Gönder'}
+        </Dugme>
+      </div>
     </div>
   );
 }
@@ -370,7 +460,27 @@ export function IsPaneli({ kosu, vaka, kosular, ajanAd, mukellefAd, onTaslak, on
     }
   };
 
-  const cevapla = (metin: string) => onTaslak({ gorev: `Cevap: ${metin}`, taxpayerId: vaka?.mukellef?.id || kosu?.taxpayerId, dryRun: true, kaynak: 'cevap', vakaId: vaka?.vakaId || kosu?.vakaId || kosu?.isId });
+  // Cevap/talimat: aynı iş zincirinde Koordinatör koşusu (vakanın modunda). Koşu sürüyorsa kuyruğa alınır, bitince gönderilir.
+  const [bekleyenCevap, setBekleyenCevap] = useState<string | null>(null);
+  const cevapGonderSimdi = useCallback(
+    (metin: string) => {
+      const kuruMod = kosu ? kosu.dryRun : vaka ? vaka.kuru : true;
+      void kosular.baslat('koordinator', { gorev: `Cevap: ${metin}`, taxpayerId: vaka?.mukellef?.id || kosu?.taxpayerId || undefined, dryRun: kuruMod, vakaId: vaka?.vakaId || kosu?.vakaId || kosu?.isId });
+    },
+    [kosu, vaka, kosular],
+  );
+  const cevapla = (metin: string) => {
+    if (kosular.aktifKosu) setBekleyenCevap(metin);
+    else cevapGonderSimdi(metin);
+  };
+  const aktifKosuVar = !!kosular.aktifKosu;
+  useEffect(() => {
+    if (!aktifKosuVar && bekleyenCevap) {
+      const m = bekleyenCevap;
+      setBekleyenCevap(null);
+      cevapGonderSimdi(m);
+    }
+  }, [aktifKosuVar, bekleyenCevap, cevapGonderSimdi]);
   const tekrar = () => onTaslak({ gorev: kokIs?.gorev || kosu?.gorev || vaka?.konu || '', taxpayerId: vaka?.mukellef?.id || kosu?.taxpayerId, dryRun: true, kaynak: 'tekrar', vakaId: vaka?.vakaId || kosu?.vakaId });
 
   /** Sabah özeti → Muzaffer Bey'e GERÇEK WhatsApp (yeniden üretir ve gönderir). */
@@ -519,7 +629,7 @@ export function IsPaneli({ kosu, vaka, kosular, ajanAd, mukellefAd, onTaslak, on
             {vaka && vaka.acikKalemler.length > 0 && (
               <div className="flex flex-col gap-2">
                 {vaka.acikKalemler.map((k) => (
-                  <AcikKalemKarti key={`${k.tip}-${k.id}`} kalem={k} onBitti={tazele} />
+                  <AcikKalemKarti key={`${k.tip}-${k.id}`} kalem={k} onBitti={tazele} onCevapla={cevapla} calisiyor={calisiyor || aktifKosuVar} />
                 ))}
               </div>
             )}
@@ -626,6 +736,8 @@ export function IsPaneli({ kosu, vaka, kosular, ajanAd, mukellefAd, onTaslak, on
                 ))}
               </div>
             )}
+
+            {!sabahOzetiMi && <CevapAlani calisiyor={calisiyor || aktifKosuVar} kuru={kuru} bekleyen={bekleyenCevap} onGonder={cevapla} onIptal={() => setBekleyenCevap(null)} />}
 
             {sabahOzetiMi && kosu?.bitti && !kosu.hata && (
               <div className="flex flex-col gap-2">
