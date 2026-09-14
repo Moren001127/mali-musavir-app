@@ -18,8 +18,9 @@ import {
   ARROW, BORDER, BORDER_STRONG, ERR, HERO_BG, ICON_GRAD, INFO, LEAD_GRAD, LIGHTBAR, MUTED, MUTED2, NAVY, NAVY_SOFT, OK,
   GRAY, PANEL, PANEL_HOVER, TEXT, WARN, fmtDate, fmtDateTime, fmtTRY, sevColor, sevLabel,
 } from './_components/tema';
-import { type KontrolOzeti, type KuralTanimi, alanSira } from './_components/katalog';
+import { MIZAN_MODUL_ONEK, type KontrolOzeti, type KuralTanimi, alanSira, mizanAnomaliToBulgu, mizanModulTanimi } from './_components/katalog';
 import { BulgularSekmesi } from './_components/BulgularSekmesi';
+import { BulguTablosu, alanlaraGrupla, tumKurallariDaralt } from './_components/BulguTablosu';
 import { HesaplarSekmesi } from './_components/HesaplarSekmesi';
 import { Hap, Kart } from '../../ekip/_components/Kart';
 import { ikonStili, kahramanKartStili } from '../../ekip/_components/ortak';
@@ -328,26 +329,7 @@ const MEVZUAT_REF: Record<string, string> = {
   '191_TERS_CALISMA': 'KDVK 29', '391_TERS_CALISMA': 'KDVK 41',
 };
 
-// Mizan denetimi tip kodu → okunur Türkçe etiket (ham kod göstermemek için)
-const MIZAN_TIP_LABEL: Record<string, string> = {
-  KASA_NEGATIF: 'Kasa negatif', BANKA_NEGATIF: 'Banka negatif', STOK_NEGATIF: 'Stok negatif',
-  ZIT_BAKIYE: 'Ters bakiye', KDV_INDIRIM_YAPILMAMIS: 'KDV indirimi yapılmamış',
-  KURUMLAR_VERGISI_TAHAKKUKU: 'Kurumlar vergisi tahakkuku', DONEM_KARI_DEVREDILMEMIS: 'Dönem kârı devredilmemiş',
-  DONEM_ZARARI_DEVREDILMEMIS: 'Dönem zararı devredilmemiş (591→580)',
-  ORTULU_SERMAYE_RISKI: 'Örtülü sermaye riski (KVK 12)',
-  TTK376_TEKNIK_IFLAS: 'TTK 376 teknik iflas (özsermaye negatif)',
-  TTK376_SERMAYE_KAYBI: 'TTK 376 sermaye kaybı',
-  ORTAK_CARI_CIFT_YONLU: 'Ortakla çift yönlü cari (131+331)',
-  KAPANIS_YAPILMAMIS: 'Yıl sonu kapanış yapılmamış (6xx/690)',
-  MALIYET_KAPANMAMIS: 'Maliyet (7xx) kapatılmamış — yansıtma eksik',
-};
-function mizanTipLabel(tip?: string | null) {
-  const t = String(tip || '').trim();
-  if (!t) return 'Bulgu';
-  if (MIZAN_TIP_LABEL[t]) return MIZAN_TIP_LABEL[t];
-  const s = t.replace(/_/g, ' ').toLocaleLowerCase('tr-TR');
-  return s.charAt(0).toLocaleUpperCase('tr-TR') + s.slice(1);
-}
+// Mizan modülü tip etiketleri artık _components/katalog.ts → mizanModulTanimi (Mizan Denetimi tek listede yazılır)
 function mizanDurumLabel(status?: string | null) {
   const s = String(status || '').toUpperCase();
   if (s === 'READY' || s === 'DONE' || s === 'OK') return 'Hazır';
@@ -378,6 +360,7 @@ export default function EDefterAgentPage() {
   const [lucaStatus, setLucaStatus] = useState('');
   const [activeTab, setActiveTab] = useState<Tab>('BULGULAR');
   const [lineSearch, setLineSearch] = useState('');
+  const [mizanKapaliKurallar, setMizanKapaliKurallar] = useState<Record<string, boolean>>({}); // Mizan Denetimi: kural blokları daraltıldı mı
   const [findingSearch, setFindingSearch] = useState('');
   const [severityFilter, setSeverityFilter] = useState<SeverityFilter>('ALL');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('OPEN');
@@ -568,6 +551,22 @@ export default function EDefterAgentPage() {
       return !codes.some((c) => mizanIsAncestorCode(code, c));
     });
   }, [mizanAnomalies]);
+  // Mizan Denetimi = TEK liste (Muzaffer Bey 2026-09-14 "onları birlikte yaz"):
+  //   e-Defter'in mizan bakiyesine dayanan kuralları (katalogda mizanGerekli: 549/570/331/502, hareketsiz cari, kasa bakiyesi...)
+  //   + Mizan modülünün kendi bulguları (ters bakiye, TDHP dışı, kapanış...). İkincisi salt görünüm (çözüldü/görmezden yok).
+  const mizanKatalog = useMemo(() => {
+    const m = new Map(katalog);
+    for (const a of mizanLeafAnomalies) {
+      const tip = String(a.tip || '').trim();
+      if (!m.has(MIZAN_MODUL_ONEK + tip)) m.set(MIZAN_MODUL_ONEK + tip, mizanModulTanimi(tip));
+    }
+    return m;
+  }, [katalog, mizanLeafAnomalies]);
+  const mizanBulgulari = useMemo(() => {
+    const edefter = allFindings.filter((f: any) => (f.status || 'OPEN') === 'OPEN' && katalog.get(f.category)?.mizanGerekli);
+    return [...edefter, ...mizanLeafAnomalies.map(mizanAnomaliToBulgu)];
+  }, [allFindings, katalog, mizanLeafAnomalies]);
+  const mizanAlanlar = useMemo(() => alanlaraGrupla(mizanBulgulari, mizanKatalog), [mizanBulgulari, mizanKatalog]);
 
   const visibleFindings = useMemo(() => {
     const query = findingSearch.trim().toLocaleLowerCase('tr-TR');
@@ -908,7 +907,7 @@ export default function EDefterAgentPage() {
         <HapSekme active={activeTab === 'BULGULAR'} onClick={() => setActiveTab('BULGULAR')} icon={LayoutGrid} label="Bulgular" badge={stats.open} />
         <HapSekme active={activeTab === 'HESAPLAR'} onClick={() => setActiveTab('HESAPLAR')} icon={Building2} label="Hesaplar" badge={kontrolOzeti?.ozet?.hesap || 0} />
         <HapSekme active={activeTab === 'SATIRLAR'} onClick={() => setActiveTab('SATIRLAR')} icon={ListChecks} label="Fiş Satırları" badge={lines.length} />
-        <HapSekme active={activeTab === 'MIZAN'} onClick={() => setActiveTab('MIZAN')} icon={FileSpreadsheet} label="Mizan Denetimi" badge={mizanLeafAnomalies.length} />
+        <HapSekme active={activeTab === 'MIZAN'} onClick={() => setActiveTab('MIZAN')} icon={FileSpreadsheet} label="Mizan Denetimi" badge={mizanBulgulari.length} />
         <HapSekme active={activeTab === 'KURALLAR'} onClick={() => setActiveTab('KURALLAR')} icon={Sparkles} label="Kontrol Kuralları" />
         <HapSekme active={activeTab === 'GECMIS'} onClick={() => setActiveTab('GECMIS')} icon={History} label="Geçmiş Kontroller" badge={periodSessions.length} />
       </div>
@@ -944,7 +943,7 @@ export default function EDefterAgentPage() {
         />
       )}
 
-      {/* ════════ TAB: MIZAN DENETİMİ ════════ */}
+      {/* ════════ TAB: MIZAN DENETİMİ — TEK LİSTE: mizana dayanan e-Defter kuralları + Mizan modülünün kendi bulguları ════════ */}
       {activeTab === 'MIZAN' && (
         <div className="space-y-3">
           {!mizan ? (
@@ -959,7 +958,7 @@ export default function EDefterAgentPage() {
             <>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
                 <BigStat label="Toplam Hesap" value={mizan.hesapCount || 0} color={TEXT} />
-                <BigStat label="Mizan Bulgusu" value={mizanLeafAnomalies.length} color={mizanLeafAnomalies.length ? WARN : OK} />
+                <BigStat label="Mizan Bulgusu" value={mizanBulgulari.length} color={TEXT} />
                 <div className="rounded-xl p-3" style={{ background: PANEL, border: `1px solid ${BORDER}` }}>
                   <div className="text-[9px] uppercase tracking-[.18em] mb-1" style={{ color: MUTED2 }}>Durum</div>
                   <div className="text-sm font-semibold" style={{ color: String(mizan.status || '').toUpperCase() === 'READY' ? OK : NAVY }}>{mizanDurumLabel(mizan.status)}</div>
@@ -970,36 +969,35 @@ export default function EDefterAgentPage() {
                 </div>
               </div>
 
-              <div className="text-[11px]" style={{ color: MUTED2 }}>Yalnızca en alt (muavin) hesaplar gösterilir; ana hesap toplamları (örn. 10, 100) gizlenir.</div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[11.5px]" style={{ color: MUTED2 }}>
+                  Mizan bakiyesine dayanan kontroller — e-Defter kuralları ({mizanBulgulari.filter((f: any) => !f.saltGorunum).length}) ve Mizan modülünün kendi kontrolü ({mizanLeafAnomalies.length}); ana hesap toplamları (örn. 10, 100) gizlenir.
+                </span>
+                {mizanAlanlar.length > 0 && (
+                  <div className="ml-auto inline-flex h-9 p-0.5 rounded-lg gap-0.5" style={{ background: 'rgba(255,255,255,.035)', border: `1px solid ${BORDER}` }}>
+                    <button onClick={() => setMizanKapaliKurallar({})} className="px-2.5 rounded-md text-[11px] font-semibold" style={{ color: 'rgba(250,250,249,.7)' }} title="Tüm kural bloklarını aç">Genişlet</button>
+                    <button onClick={() => setMizanKapaliKurallar(tumKurallariDaralt(mizanAlanlar))} className="px-2.5 rounded-md text-[11px] font-semibold" style={{ color: 'rgba(250,250,249,.7)' }} title="Yalnız kural başlıkları kalsın">Daralt</button>
+                  </div>
+                )}
+              </div>
 
-              {mizanLeafAnomalies.length === 0 ? (
+              {mizanAlanlar.length === 0 ? (
                 <div className="rounded-2xl p-10 text-center" style={{ background: 'rgba(92,191,138,.05)', border: '1px dashed rgba(92,191,138,.2)' }}>
                   <div className="inline-flex h-12 w-12 rounded-full items-center justify-center mb-3" style={{ background: 'rgba(92,191,138,.15)', color: OK }}>
                     <CheckCircle2 size={24} />
                   </div>
                   <div className="text-base font-semibold mb-1" style={{ color: '#aeddc4' }}>Mizan kontrolünde bulgu yok</div>
-                  <div className="text-xs" style={{ color: MUTED }}>{mizan.hesapCount || 0} hesap kontrol edildi, mizan disiplini açısından temiz.</div>
+                  <div className="text-xs" style={{ color: MUTED }}>{mizan.hesapCount || 0} hesap kontrol edildi, mizana dayanan kurallar ve mizan disiplini açısından temiz.</div>
                 </div>
               ) : (
-                <div className="space-y-2">
-                  {mizanLeafAnomalies.map((a: any) => {
-                    const c = sevColor(a.seviye || 'WARN');
-                    return (
-                      <div key={a.id} className="flex items-start gap-3.5 rounded-[13px] border px-4 py-3.5 transition-colors hover:bg-white/5" style={{ background: 'rgba(255,255,255,.012)', borderColor: BORDER }}>
-                        <span className="inline-flex items-center gap-1.5 text-[10px] font-extrabold tracking-wide px-2.5 py-1.5 rounded-lg shrink-0 mt-0.5" style={{ background: `${c}1f`, color: c }}>
-                          <span className="w-[7px] h-[7px] rounded-full" style={{ background: c }} />{sevLabel(a.seviye || 'WARN')}
-                        </span>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap mb-1.5">
-                            <span className="text-[13px] font-bold" style={{ color: NAVY }}>{mizanTipLabel(a.tip)}</span>
-                            {a.hesapKodu && (<span className="text-[10.5px] tabular-nums px-2 py-1 rounded-md" style={{ background: 'rgba(255,255,255,.05)', color: 'rgba(250,250,249,.8)' }}>{a.hesapKodu}</span>)}
-                          </div>
-                          <div className="text-[13px] leading-relaxed" style={{ color: TEXT }}>{a.mesaj || '-'}</div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                <BulguTablosu
+                  alanlar={mizanAlanlar}
+                  katalog={mizanKatalog}
+                  kapaliKurallar={mizanKapaliKurallar}
+                  setKapaliKurallar={setMizanKapaliKurallar}
+                  focusFinding={focusFinding}
+                  handleStatusChange={handleStatusChange}
+                />
               )}
             </>
           )}

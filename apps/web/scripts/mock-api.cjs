@@ -20,6 +20,8 @@ const http = require('http');
 const { URL } = require('url');
 // İletim Raporu uçları ayrı modülde (17 mükellef örnek verisi): /akilli-bildirim/report, /resend-failed, /run
 const { iletimRaporuUclari } = require('./mock-iletim-raporu.cjs');
+// e-Defter Kontrol uçları ayrı modülde (SAHTE_EDEFTER_FIXTURE ile gerçek dökümü servis eder)
+const { edefterUclari, edefterMukellefler } = require('./mock-edefter.cjs');
 
 const PORT = Number(process.env.PORT || 3001);
 const ON_EK = '/api/v1';
@@ -544,6 +546,8 @@ async function isle(req, res) {
 
   // ── İletim Raporu (mock-iletim-raporu.cjs) — eşleşmezse false döner, akış devam eder ──
   if (yol.startsWith('/akilli-bildirim/') && iletimRaporuUclari(yol, yontem, q, govde, jsonGonder, res) !== false) return;
+  // ── e-Defter Kontrol (mock-edefter.cjs) ──
+  if (yol.startsWith('/edefter-control') && edefterUclari(yol, yontem, q, govde, jsonGonder, res) !== false) return;
 
   // ── Kimlik ──
   if (yontem === 'POST' && yol === '/auth/login') return jsonGonder(res, 200, { accessToken: 'sahte-token', user: KULLANICI });
@@ -568,7 +572,7 @@ async function isle(req, res) {
   // Gösterge paneli (/panel) — girişten sonra oraya düşer; boş ama geçerli yanıtlar
   if (yol === '/agent/events' || yol === '/taxpayers/workflow/queue' || yol === '/gundem') return jsonGonder(res, 200, []);
   if (yol === '/agent/stats' || yol === '/agent/status' || yol === '/moren-ai/brifing' || yol.startsWith('/beyanname-takip/ozet')) return jsonGonder(res, 200, {});
-  if (yol === '/taxpayers') return jsonGonder(res, 200, MUKELLEFLER);
+  if (yol === '/taxpayers') return jsonGonder(res, 200, [...MUKELLEFLER, ...edefterMukellefler()]);
 
   // ── Ekip istekleri ──
   {
