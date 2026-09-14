@@ -1,36 +1,31 @@
 'use client';
 
-import React, { useMemo, useState, useEffect } from 'react';
-import { createPortal } from 'react-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import React, { Suspense, useEffect, useMemo, useState } from 'react';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
-  Inbox, RefreshCw, Loader2, Search, Users, ShieldCheck,
-  Building2, FileText, CalendarClock, Download, ChevronDown, Activity, Eye, X, CheckCheck, AlertTriangle,
+  Inbox, RefreshCw, Loader2, Search, ShieldCheck, Building2, FileText, Download, ChevronDown,
+  Activity, Eye, CheckCheck, AlertTriangle, Filter,
 } from 'lucide-react';
-import { portalAutomationApi, type PortalDocument } from '@/lib/portal-automation';
+import { portalAutomationApi, type BelgeSatiri } from '@/lib/portal-automation';
+import { Sayfalama, sayfaSayisi } from '@/components/ui/Sayfalama';
+import {
+  ALAN_STILI, GOLD, METIN, TON, GeceHataModali, IletimRozeti, MukellefSecici, PdfOnizlemeModali, TebligRozeti,
+  fmtTrTarih, mukellefAdi, useGecikmeliDeger, useSayfaAdresi, useSuzgecSayfaSifirla, type PdfModalDurumu,
+} from './belge-ortak';
 
-const GOLD = '#d4b876';
+const BELGE_TURU = 'E_TEBLIGAT';
+const SAYFA_ANAHTARI = 'etebligat-sayfa';
 
-function taxpayerName(tp?: PortalDocument['taxpayer']): string {
-  if (!tp) return '—';
-  if (tp.companyName) return tp.companyName;
-  const ad = [tp.firstName, tp.lastName].filter(Boolean).join(' ').trim();
-  return ad || tp.taxNumber || '—';
-}
+// Durum süzgeci (sunucuda): sözleşme §1 `durum`.
+const DURUMLAR: Array<{ value: string; label: string }> = [
+  { value: '', label: 'Tümü' },
+  { value: 'teblig_yaklasan', label: 'Tebliğ yaklaşan' },
+  { value: 'teblig_edildi', label: 'Tebliğ edildi' },
+  { value: 'goruntulenmemis', label: 'Görüntülenmemiş' },
+];
 
-// "20/05/2026 09:25:51" -> "20/05/2026 09:25"; ISO ise gun/ay/yil cevir.
-function fmtTrDate(v: any): string {
-  if (!v) return '—';
-  const s = String(v).trim();
-  const tr = s.match(/^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})/);
-  if (tr) return `${tr[1]}/${tr[2]}/${tr[3]} ${tr[4]}:${tr[5]}`;
-  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
-  if (iso) return `${iso[3]}/${iso[2]}/${iso[1]} ${iso[4]}:${iso[5]}`;
-  return s.slice(0, 16);
-}
-
-function Kpi({ icon, label, value, sub, onClick }: { icon: React.ReactNode; label: string; value: string; sub?: string; onClick?: () => void }) {
+function Kpi({ icon, label, value, sub, onClick }: { icon: React.ReactNode; label: string; value: React.ReactNode; sub?: string; onClick?: () => void }) {
   return (
     <div
       onClick={onClick}
@@ -41,42 +36,47 @@ function Kpi({ icon, label, value, sub, onClick }: { icon: React.ReactNode; labe
         <span className="grid place-items-center rounded-lg flex-shrink-0" style={{ width: 30, height: 30, background: 'rgba(212,184,118,0.12)', color: GOLD }}>{icon}</span>
         <span className="text-[10px] uppercase font-bold tracking-[.12em]" style={{ color: 'rgba(250,250,249,0.5)' }}>{label}</span>
       </div>
-      <div style={{ fontFamily: 'Fraunces, serif', fontSize: 24, fontWeight: 700, color: '#fafaf9', lineHeight: 1.1 }}>{value}</div>
+      <div style={{ fontFamily: 'Fraunces, serif', fontSize: 24, fontWeight: 700, color: METIN, lineHeight: 1.1 }}>{value}</div>
       {sub && <div className="text-[11px] mt-0.5" style={{ color: 'rgba(250,250,249,0.4)' }}>{sub}</div>}
     </div>
   );
 }
 
-function PgBtn({ children, onClick, disabled }: { children: React.ReactNode; onClick: () => void; disabled?: boolean }) {
+// useSearchParams (adres çubuğu sayfa/boyut) için Suspense sınırı.
+export default function ETebligatModule() {
   return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className="h-7 min-w-[28px] px-2 rounded-md text-[12px] font-semibold border disabled:opacity-30 hover:enabled:brightness-125 transition"
-      style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.1)', color: '#fafaf9' }}
-    >
-      {children}
-    </button>
+    <Suspense fallback={<div className="px-3 py-10 text-center text-[12px]" style={{ color: 'rgba(250,250,249,0.45)' }}><Loader2 size={18} className="animate-spin inline" /> Yükleniyor…</div>}>
+      <ETebligatModuleIc />
+    </Suspense>
   );
 }
 
-export default function ETebligatModule() {
+function ETebligatModuleIc() {
   const qc = useQueryClient();
   const [taxpayerId, setTaxpayerId] = useState<string>('');
   const [search, setSearch] = useState('');
-  // Aynı sayfada büyüyerek açılan PDF önizleme modalı
-  const [pdfModal, setPdfModal] = useState<{ url: string; title: string } | null>(null);
-  // Gece sorgu hatası listesi modalı
+  const [durum, setDurum] = useState<string>('');
+  const [pdfModal, setPdfModal] = useState<PdfModalDurumu>(null);
   const [showErrors, setShowErrors] = useState(false);
-  // Sayfalama — sayfa başına 200 tebligat
-  const PAGE_SIZE = 200;
-  const [page, setPage] = useState(1);
   // Bu oturumda görüntülenenler (buton anında yeşile dönsün; kalıcısı backend viewedAt)
   const [viewedIds, setViewedIds] = useState<Set<string>>(() => new Set());
 
+  // Sayfa/boyut adres çubuğunda (?sayfa=&boyut=); arama 300 ms gecikmeli; süzgeç değişince sayfa 1.
+  const { sayfa, boyut, setSayfa, setBoyut } = useSayfaAdresi(50);
+  const aramaGecikmeli = useGecikmeliDeger(search.trim(), 300);
+  const etkinSayfa = useSuzgecSayfaSifirla(JSON.stringify([aramaGecikmeli, taxpayerId, durum]), sayfa, setSayfa);
+
   const docsQuery = useQuery({
-    queryKey: ['etebligat-docs'],
-    queryFn: () => portalAutomationApi.documents({ belgeTuru: 'E_TEBLIGAT', limit: 0 }),
+    queryKey: [SAYFA_ANAHTARI, { taxpayerId, search: aramaGecikmeli, durum, page: etkinSayfa, pageSize: boyut }],
+    queryFn: () => portalAutomationApi.documentsSayfa({
+      belgeTuru: BELGE_TURU,
+      taxpayerId: taxpayerId || undefined,
+      search: aramaGecikmeli || undefined,
+      durum: durum || undefined,
+      page: etkinSayfa,
+      pageSize: boyut,
+    }),
+    placeholderData: keepPreviousData,
     refetchInterval: 30_000,
   });
   const summaryQuery = useQuery({
@@ -84,62 +84,33 @@ export default function ETebligatModule() {
     queryFn: () => portalAutomationApi.summary(),
     refetchInterval: 30_000,
   });
-  // Vergi dairesi sifresi olan mukellefler (henuz tebligati olmasa da sorgulanabilsin).
-  const credsQuery = useQuery({
-    queryKey: ['etebligat-creds'],
-    queryFn: () => portalAutomationApi.credentials(),
+  // Mükellef seçici listesi sunucudan (belgesi olanlar ∪ vergi dairesi şifresi olanlar).
+  const mukellefQuery = useQuery({
+    queryKey: ['etebligat-mukellefler'],
+    queryFn: () => portalAutomationApi.documentsMukellefler({ belgeTuru: BELGE_TURU }),
     staleTime: 5 * 60_000,
   });
 
-  const docs = (docsQuery.data || []) as Array<PortalDocument & { raw?: any }>;
+  const rows: BelgeSatiri[] = docsQuery.data?.rows || [];
+  const toplam = docsQuery.data?.total ?? 0;
   const summary = summaryQuery.data;
+  const mukellefler = mukellefQuery.data?.rows || [];
+  const suzgecVar = !!(aramaGecikmeli || taxpayerId || durum);
 
-  // Mukellef listesi: GIB_IVD sifresi olanlar + tebligati olanlar (birlesim).
-  const mukellefler = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const c of credsQuery.data?.rows || []) {
-      if (c.provider === 'GIB_IVD' && c.taxpayer?.id) {
-        const t = c.taxpayer;
-        const name = t.companyName || [t.firstName, t.lastName].filter(Boolean).join(' ').trim() || t.taxNumber || '—';
-        map.set(t.id, name);
-      }
-    }
-    for (const d of docs) {
-      if (d.taxpayerId && !map.has(d.taxpayerId)) map.set(d.taxpayerId, taxpayerName(d.taxpayer));
-    }
-    return Array.from(map.entries()).map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name, 'tr'));
-  }, [docs, credsQuery.data]);
+  // Adres çubuğundan gelen sayfa toplamı aşıyorsa son sayfaya çek (placeholder verisiyle değil, gerçek yanıtla).
+  useEffect(() => {
+    if (docsQuery.isPlaceholderData || docsQuery.data === undefined) return;
+    const son = sayfaSayisi(docsQuery.data.total, boyut);
+    if (sayfa > son) setSayfa(son);
+  }, [docsQuery.data, docsQuery.isPlaceholderData, sayfa, boyut, setSayfa]);
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLocaleLowerCase('tr-TR');
-    const arr = docs.filter((d) => {
-      if (taxpayerId && d.taxpayerId !== taxpayerId) return false;
-      if (!q) return true;
-      const hay = [
-        d.title,
-        d.referenceNo,
-        taxpayerName(d.taxpayer),
-        d.raw?.kurumAciklama,
-        d.raw?.altKurum,
-      ].filter(Boolean).join(' ').toLocaleLowerCase('tr-TR');
-      return hay.includes(q);
-    });
-    // Tarih sırası (yeni → eski) — firma firma toplu değil, gönderim tarihine göre karışık.
-    const ts = (d: any) => Date.parse(d.issuedAt || d.receivedAt || d.createdAt || '') || 0;
-    return arr.sort((a, b) => ts(b) - ts(a));
-  }, [docs, taxpayerId, search]);
+  const yenile = () => {
+    qc.invalidateQueries({ queryKey: [SAYFA_ANAHTARI] });
+    qc.invalidateQueries({ queryKey: ['etebligat-summary'] });
+    qc.invalidateQueries({ queryKey: ['etebligat-mukellefler'] });
+  };
 
-  // Sayfalama: filtre/arama değişince ilk sayfaya dön; geçerli sayfayı dilimle.
-  useEffect(() => { setPage(1); }, [search, taxpayerId]);
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const pageClamped = Math.min(Math.max(1, page), totalPages);
-  const pageItems = useMemo(
-    () => filtered.slice((pageClamped - 1) * PAGE_SIZE, pageClamped * PAGE_SIZE),
-    [filtered, pageClamped],
-  );
-
-  // "Tümünü Görüntüle": ekrandaki PDF'li + henüz görüntülenmemiş (kırmızı) tebligatları
-  // topluca görüntülendi işaretle → hepsi kalıcı yeşile döner.
+  // "Tümünü Görüntüle": sayfadaki PDF'li + henüz görüntülenmemiş (kırmızı) tebligatları topluca işaretle.
   const markAllMut = useMutation({
     mutationFn: (ids: string[]) => portalAutomationApi.markDocumentsViewed({ ids }),
     onMutate: (ids: string[]) => {
@@ -147,13 +118,13 @@ export default function ETebligatModule() {
     },
     onSuccess: (d) => {
       toast.success(`${d.updated} tebligat görüntülendi olarak işaretlendi.`);
-      qc.invalidateQueries({ queryKey: ['etebligat-docs'] });
+      qc.invalidateQueries({ queryKey: [SAYFA_ANAHTARI] });
     },
     onError: () => toast.error('İşaretlenemedi'),
   });
   const markAll = () => {
-    const ids = filtered.filter((d) => d.storageKey && !d.viewedAt && !viewedIds.has(d.id)).map((d) => d.id);
-    if (!ids.length) { toast.info('Görüntülenecek (kırmızı) tebligat yok.'); return; }
+    const ids = rows.filter((d) => d.pdfVar && !d.viewedAt && !viewedIds.has(d.id)).map((d) => d.id);
+    if (!ids.length) { toast.info('Bu sayfada görüntülenecek (kırmızı) tebligat yok.'); return; }
     markAllMut.mutate(ids);
   };
 
@@ -167,22 +138,19 @@ export default function ETebligatModule() {
       const n = d.created?.length || 0;
       toast.success(n > 0 ? `${n} mükellef için e-Tebligat sorgusu kuyruğa alındı.` : (d.message || 'Sorgu kuyruğa alındı.'));
       if (d.skipped?.length) toast.info(`${d.skipped.length} mükellef atlandı (şifre yok / zaten kuyrukta).`);
-      setTimeout(() => {
-        qc.invalidateQueries({ queryKey: ['etebligat-docs'] });
-        qc.invalidateQueries({ queryKey: ['etebligat-summary'] });
-      }, 1500);
+      setTimeout(yenile, 1500);
     },
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Sorgu başlatılamadı'),
   });
 
-  const openPdf = async (d: PortalDocument) => {
+  const openPdf = async (d: BelgeSatiri) => {
     try {
       const { url } = await portalAutomationApi.documentViewUrl(d.id);
-      const baslik = [taxpayerName(d.taxpayer), d.title, d.referenceNo].filter(Boolean).join(' · ');
+      const baslik = [mukellefAdi(d.taxpayer), d.title, d.referenceNo].filter(Boolean).join(' · ');
       setPdfModal({ url, title: baslik || 'e-Tebligat' });
       // anında yeşile dön + kalıcı işaret backend'de damgalandı
       setViewedIds((prev) => { const n = new Set(prev); n.add(d.id); return n; });
-      qc.invalidateQueries({ queryKey: ['etebligat-docs'] });
+      qc.invalidateQueries({ queryKey: [SAYFA_ANAHTARI] });
     } catch (e: any) {
       toast.error(e?.response?.data?.message || 'Belge açılamadı');
     }
@@ -190,141 +158,173 @@ export default function ETebligatModule() {
 
   const cellBorder = '1px solid rgba(255,255,255,0.06)';
   const aktifIs = summary?.stats?.activeJobs ?? 0;
+  const hataSayisi = summary?.stats?.tebligatErrorCount ?? 0;
+  const buHaftaYeni = summary?.stats?.tebligat7d ?? 0;
+  const buHaftaTeblig = summary?.stats?.tebligatBuHaftaTeblig ?? 0;
+  // 3 gece kuralıyla sorgu dışı kalan vergi dairesi şifreleri.
+  const sifreBekleyen = useMemo(
+    () => (summary?.credentialsBlocked || []).filter((s) => s.provider === 'GIB_IVD'),
+    [summary?.credentialsBlocked],
+  );
+  const hataKartiTiklanir = hataSayisi > 0 || sifreBekleyen.length > 0;
 
   return (
     <div className="space-y-4">
       {/* ── KPI ── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Kpi icon={<Inbox size={16} />} label="Toplam e-Tebligat" value={String(summary?.stats?.tebligatTotal ?? docs.length)} sub="kayıtlı tebligat" />
-        <Kpi icon={<Activity size={16} />} label="Bu hafta yeni" value={String(summary?.stats?.tebligat7d ?? 0)} sub="son 7 gün gönderilen" />
+        <Kpi icon={<Inbox size={16} />} label="Toplam e-Tebligat" value={String(summary?.stats?.tebligatTotal ?? toplam)} sub="kayıtlı tebligat" />
+        {/* "Bu hafta yeni" + "Bu hafta tebliğ sayılacak" tek kartta: "8 yeni · 3 tebliğ sayılacak" */}
+        <Kpi
+          icon={<Activity size={16} />}
+          label="Bu hafta"
+          value={(
+            <span className="flex flex-wrap items-baseline gap-x-2 gap-y-0">
+              <span>{buHaftaYeni} <span className="text-[12px] font-normal" style={{ color: 'rgba(250,250,249,0.5)', fontFamily: 'var(--font-body, Inter), system-ui, sans-serif' }}>yeni</span></span>
+              <span className="text-[12px] font-normal" style={{ color: 'rgba(250,250,249,0.3)' }}>·</span>
+              <span style={{ color: buHaftaTeblig > 0 ? TON.sari.fg : METIN }}>
+                {buHaftaTeblig} <span className="text-[12px] font-normal" style={{ color: 'rgba(250,250,249,0.5)', fontFamily: 'var(--font-body, Inter), system-ui, sans-serif' }}>tebliğ sayılacak</span>
+              </span>
+            </span>
+          )}
+          sub="son 7 gün gönderilen · 7 gün içinde tebliğ sayılacak"
+        />
         <Kpi icon={<ShieldCheck size={16} />} label="Şifreli mükellef" value={String(summary?.credentials?.eTebligatTaxpayerCount ?? 0)} sub="vergi dairesi şifresi" />
         <Kpi
           icon={<AlertTriangle size={16} />}
           label="Gece sorgu hatası"
-          value={String(summary?.stats?.tebligatErrorCount ?? 0)}
-          sub={(summary?.stats?.tebligatErrorCount ?? 0) > 0 ? 'görmek için tıkla' : 'son sorguda hata yok'}
-          onClick={(summary?.stats?.tebligatErrorCount ?? 0) > 0 ? () => setShowErrors(true) : undefined}
+          value={String(hataSayisi)}
+          sub={sifreBekleyen.length > 0 ? `${sifreBekleyen.length} şifre bekliyor · görmek için tıkla` : hataSayisi > 0 ? 'görmek için tıkla' : 'son sorguda hata yok'}
+          onClick={hataKartiTiklanir ? () => setShowErrors(true) : undefined}
         />
       </div>
 
-      {/* ── Aksiyon barı ── */}
-      <div className="rounded-2xl border p-3.5 flex flex-wrap items-center gap-2.5" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)' }}>
-        <div className="relative flex-1 min-w-[200px]">
+      {/* ── Tek şerit araç çubuğu: arama · mükellef · durum · sağda düğmeler ── */}
+      <div className="rounded-2xl border p-3.5 flex flex-wrap items-center gap-2" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)' }}>
+        <div className="relative flex-1 min-w-[180px]">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'rgba(250,250,249,0.4)' }} />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Belge no, kurum veya mükellef ara…"
             className="w-full h-[38px] pl-9 pr-3 rounded-[10px] text-[13px] outline-none border"
-            style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' }}
+            style={ALAN_STILI}
           />
         </div>
+        <MukellefSecici value={taxpayerId} onChange={setTaxpayerId} rows={mukellefler} yukleniyor={mukellefQuery.isLoading} className="min-w-[190px] max-w-[240px]" />
         <div className="relative">
           <select
-            value={taxpayerId}
-            onChange={(e) => setTaxpayerId(e.target.value)}
-            className="h-[38px] pl-9 pr-8 rounded-[10px] text-[13px] outline-none border appearance-none min-w-[200px]"
-            style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' }}
+            value={durum}
+            onChange={(e) => setDurum(e.target.value)}
+            aria-label="Durum"
+            className="h-[38px] pl-9 pr-8 rounded-[10px] text-[13px] outline-none border appearance-none min-w-[150px]"
+            style={ALAN_STILI}
           >
-            <option value="">Tüm mükellefler ({mukellefler.length})</option>
-            {mukellefler.map((m) => (
-              <option key={m.id} value={m.id}>{m.name}</option>
-            ))}
+            {DURUMLAR.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
-          <Users size={13} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'rgba(250,250,249,0.45)' }} />
+          <Filter size={13} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'rgba(250,250,249,0.45)' }} />
           <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'rgba(250,250,249,0.45)' }} />
         </div>
-        <button
-          onClick={markAll}
-          disabled={markAllMut.isPending}
-          title="Ekrandaki tüm tebligatları görüntülendi (yeşil) işaretle"
-          className="h-[38px] px-3 rounded-[10px] text-[13px] font-semibold flex items-center gap-1.5 border disabled:opacity-50"
-          style={{ background: 'rgba(95,207,142,0.12)', borderColor: 'rgba(95,207,142,0.35)', color: '#5fcf8e' }}
-        >
-          {markAllMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <CheckCheck size={14} />} Tümünü Görüntüle
-        </button>
-        <button
-          onClick={() => qc.invalidateQueries({ queryKey: ['etebligat-docs'] })}
-          className="h-[38px] px-3 rounded-[10px] text-[13px] font-semibold flex items-center gap-1.5 border"
-          style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.08)', color: '#fafaf9' }}
-        >
-          <RefreshCw size={14} className={docsQuery.isFetching ? 'animate-spin' : ''} /> Yenile
-        </button>
-        <button
-          onClick={() => sorgulaMut.mutate()}
-          disabled={sorgulaMut.isPending}
-          className="h-[38px] px-4 rounded-[10px] text-[13px] font-bold flex items-center gap-2 disabled:opacity-50"
-          style={{ background: 'linear-gradient(135deg, #d4b876, #b8a06f)', color: '#1a1410' }}
-        >
-          {sorgulaMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
-          {taxpayerId ? 'Bu mükellefi sorgula' : 'Şimdi sorgula'}
-        </button>
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <button
+            onClick={markAll}
+            disabled={markAllMut.isPending}
+            title="Sayfadaki tüm tebligatları görüntülendi (yeşil) işaretle"
+            className="h-[38px] px-3 rounded-[10px] text-[13px] font-semibold flex items-center gap-1.5 border disabled:opacity-50"
+            style={{ background: 'rgba(95,207,142,0.12)', borderColor: 'rgba(95,207,142,0.35)', color: '#5fcf8e' }}
+          >
+            {markAllMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <CheckCheck size={14} />} Tümünü Görüntüle
+          </button>
+          <button
+            onClick={yenile}
+            className="h-[38px] px-3 rounded-[10px] text-[13px] font-semibold flex items-center gap-1.5 border"
+            style={ALAN_STILI}
+          >
+            <RefreshCw size={14} className={docsQuery.isFetching ? 'animate-spin' : ''} /> Yenile
+          </button>
+          <button
+            onClick={() => sorgulaMut.mutate()}
+            disabled={sorgulaMut.isPending}
+            className="h-[38px] px-4 rounded-[10px] text-[13px] font-bold flex items-center gap-2 disabled:opacity-50"
+            style={{ background: 'linear-gradient(135deg, #d4b876, #b8a06f)', color: '#1a1410' }}
+          >
+            {sorgulaMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+            {taxpayerId ? 'Bu mükellefi sorgula' : 'Şimdi sorgula'}
+          </button>
+        </div>
       </div>
 
       {/* ── Tablo ── */}
       <div className="rounded-2xl border overflow-hidden" style={{ background: 'rgba(0,0,0,0.18)', borderColor: 'rgba(255,255,255,0.06)' }}>
         <div className="overflow-x-auto">
-          <table className="w-full text-[12px]" style={{ borderCollapse: 'collapse', minWidth: 980 }}>
+          <table className="w-full text-[12px]" style={{ borderCollapse: 'collapse', minWidth: 1080 }}>
             <thead style={{ background: 'rgba(255,255,255,0.03)' }}>
               <tr style={{ color: 'rgba(250,250,249,0.55)' }}>
-                {['Mükellef', 'Gönderen Kurum', 'Belge Türü', 'Belge No', 'Gönderim', 'Tebliğ', 'Okuma', 'Belge'].map((h, i) => (
-                  <th key={h} className={`px-3 py-2.5 font-semibold whitespace-nowrap ${i >= 4 ? 'text-center' : 'text-left'}`} style={{ borderBottom: cellBorder }}>{h}</th>
+                {['Mükellef', 'Gönderen Kurum', 'Belge Türü', 'Belge No', 'Gönderim', 'Tebliğ', 'Okuma', 'İletim', 'Belge'].map((h, i) => (
+                  <th key={h} className={`px-2.5 py-2.5 font-semibold whitespace-nowrap ${i >= 4 ? 'text-center' : 'text-left'}`} style={{ borderBottom: cellBorder }}>{h}</th>
                 ))}
               </tr>
             </thead>
-            <tbody style={{ color: 'rgba(250,250,249,0.88)' }}>
+            {/* Sayfa geçişinde eski satırlar hafif soluk kalır (titreme yok); yeni yanıt gelince yerini alır. */}
+            <tbody style={{ color: 'rgba(250,250,249,0.88)', opacity: docsQuery.isPlaceholderData ? 0.55 : 1, transition: 'opacity .15s' }}>
               {docsQuery.isLoading && (
-                <tr><td colSpan={8} className="px-3 py-10 text-center" style={{ color: 'rgba(250,250,249,0.45)' }}><Loader2 size={18} className="animate-spin inline" /> Yükleniyor…</td></tr>
+                <tr><td colSpan={9} className="px-3 py-10 text-center" style={{ color: 'rgba(250,250,249,0.45)' }}><Loader2 size={18} className="animate-spin inline" /> Yükleniyor…</td></tr>
               )}
-              {!docsQuery.isLoading && filtered.length === 0 && (
-                <tr><td colSpan={8} className="px-3 py-12 text-center" style={{ color: 'rgba(250,250,249,0.4)' }}>
+              {docsQuery.isError && !docsQuery.isLoading && (
+                <tr><td colSpan={9} className="px-3 py-10 text-center" style={{ color: '#ef9a9a' }}>Liste alınamadı. "Yenile" ile tekrar deneyin.</td></tr>
+              )}
+              {!docsQuery.isLoading && !docsQuery.isError && rows.length === 0 && (
+                <tr><td colSpan={9} className="px-3 py-12 text-center" style={{ color: 'rgba(250,250,249,0.4)' }}>
                   <Inbox size={26} className="inline mb-2 opacity-50" /><br />
-                  {docs.length === 0 ? 'Henüz e-Tebligat kaydı yok. "Şimdi sorgula" ile çekin ya da gece otomatik gelsin.' : 'Filtreye uyan tebligat yok.'}
+                  {!suzgecVar ? 'Henüz e-Tebligat kaydı yok. "Şimdi sorgula" ile çekin ya da gece otomatik gelsin.' : 'Süzgece uyan tebligat yok.'}
                 </td></tr>
               )}
-              {pageItems.map((d) => {
-                const r = d.raw || {};
+              {rows.map((d) => {
+                const o = d.ozet || {};
+                const goruldu = !!d.viewedAt || viewedIds.has(d.id);
+                const renk = goruldu
+                  ? { bg: 'rgba(95,207,142,0.1)', bd: 'rgba(95,207,142,0.32)', fg: '#5fcf8e' }   // yeşil (görüntülendi)
+                  : { bg: 'rgba(239,107,107,0.12)', bd: 'rgba(239,107,107,0.45)', fg: '#ef6b6b' }; // kırmızı (yeni)
                 return (
                   <tr key={d.id} className="hover:bg-white/[0.02]">
-                    <td className="px-3 py-2.5 align-top" style={{ borderBottom: cellBorder }}>
-                      <div className="font-semibold" style={{ color: '#fafaf9' }}>{taxpayerName(d.taxpayer)}</div>
+                    <td className="px-2.5 py-2.5 align-top" style={{ borderBottom: cellBorder }}>
+                      <div className="font-semibold" style={{ color: METIN }}>{mukellefAdi(d.taxpayer)}</div>
                       {d.taxpayer?.taxNumber && <div className="text-[10.5px]" style={{ color: 'rgba(250,250,249,0.4)' }}>{d.taxpayer.taxNumber}</div>}
                     </td>
-                    <td className="px-3 py-2.5 align-top" style={{ borderBottom: cellBorder }}>
+                    <td className="px-2.5 py-2.5 align-top" style={{ borderBottom: cellBorder }}>
                       <div className="flex items-start gap-1.5">
                         <Building2 size={12} className="mt-0.5 flex-shrink-0" style={{ color: 'rgba(250,250,249,0.4)' }} />
                         <div>
-                          <div>{r.kurumAciklama || '—'}</div>
-                          {r.altKurum && <div className="text-[10.5px]" style={{ color: 'rgba(250,250,249,0.45)' }}>{r.altKurum}</div>}
+                          <div>{o.kurumAciklama || '—'}</div>
+                          {o.altKurum && <div className="text-[10.5px]" style={{ color: 'rgba(250,250,249,0.45)' }}>{o.altKurum}</div>}
                         </div>
                       </div>
                     </td>
-                    <td className="px-3 py-2.5 align-top" style={{ borderBottom: cellBorder }}>
+                    <td className="px-2.5 py-2.5 align-top" style={{ borderBottom: cellBorder }}>
                       <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-semibold" style={{ background: 'rgba(212,184,118,0.1)', border: '1px solid rgba(212,184,118,0.25)', color: GOLD }}>
                         <FileText size={11} /> {d.title}
                       </span>
                     </td>
-                    <td className="px-3 py-2.5 align-top font-mono text-[11.5px]" style={{ borderBottom: cellBorder, color: '#fafaf9' }}>{d.referenceNo || '—'}</td>
-                    <td className="px-3 py-2.5 align-top text-center whitespace-nowrap tabular-nums" style={{ borderBottom: cellBorder, color: 'rgba(250,250,249,0.7)' }}>{fmtTrDate(r.gonderimZamani)}</td>
-                    <td className="px-3 py-2.5 align-top text-center whitespace-nowrap tabular-nums" style={{ borderBottom: cellBorder, color: 'rgba(250,250,249,0.7)' }}>{fmtTrDate(r.tebligZamani)}</td>
-                    <td className="px-3 py-2.5 align-top text-center whitespace-nowrap tabular-nums" style={{ borderBottom: cellBorder, color: 'rgba(250,250,249,0.7)' }}>{fmtTrDate(r.mukellefOkumaZamani)}</td>
-                    <td className="px-3 py-2.5 align-top text-center" style={{ borderBottom: cellBorder }}>
-                      {d.storageKey ? (() => {
-                        const goruldu = !!d.viewedAt || viewedIds.has(d.id);
-                        const renk = goruldu
-                          ? { bg: 'rgba(95,207,142,0.1)', bd: 'rgba(95,207,142,0.32)', fg: '#5fcf8e' }   // yeşil (görüntülendi)
-                          : { bg: 'rgba(239,107,107,0.12)', bd: 'rgba(239,107,107,0.45)', fg: '#ef6b6b' }; // kırmızı (yeni)
-                        return (
-                          <button
-                            onClick={() => openPdf(d)}
-                            title={goruldu ? 'Görüntülendi' : 'Yeni — henüz görüntülenmedi'}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold hover:brightness-110 transition"
-                            style={{ background: renk.bg, border: `1px solid ${renk.bd}`, color: renk.fg }}
-                          >
-                            <Eye size={12} /> Görüntüle
-                          </button>
-                        );
-                      })() : (
+                    <td className="px-2.5 py-2.5 align-top font-mono text-[11.5px]" style={{ borderBottom: cellBorder, color: METIN }}>{d.referenceNo || '—'}</td>
+                    <td className="px-2.5 py-2.5 align-top text-center whitespace-nowrap tabular-nums" style={{ borderBottom: cellBorder, color: 'rgba(250,250,249,0.7)' }}>{fmtTrTarih(o.gonderimZamani || d.issuedAt)}</td>
+                    <td className="px-2.5 py-2.5 align-top text-center whitespace-nowrap tabular-nums" style={{ borderBottom: cellBorder, color: 'rgba(250,250,249,0.7)' }}>
+                      <div>{fmtTrTarih(o.tebligZamani || o.tebligTarihi || d.receivedAt)}</div>
+                      <div className="mt-1 flex justify-center"><TebligRozeti durum={o.tebligDurumu} tebligTarihi={o.tebligTarihi} sar /></div>
+                    </td>
+                    <td className="px-2.5 py-2.5 align-top text-center whitespace-nowrap tabular-nums" style={{ borderBottom: cellBorder, color: 'rgba(250,250,249,0.7)' }}>{o.okumaZamani ? fmtTrTarih(o.okumaZamani) : '—'}</td>
+                    <td className="px-2.5 py-2.5 align-top text-center" style={{ borderBottom: cellBorder }}>
+                      <IletimRozeti iletim={d.iletim} />
+                    </td>
+                    <td className="px-2.5 py-2.5 align-top text-center" style={{ borderBottom: cellBorder }}>
+                      {d.pdfVar ? (
+                        <button
+                          onClick={() => openPdf(d)}
+                          title={goruldu ? 'Görüntülendi' : 'Yeni — henüz görüntülenmedi'}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold hover:brightness-110 transition"
+                          style={{ background: renk.bg, border: `1px solid ${renk.bd}`, color: renk.fg }}
+                        >
+                          <Eye size={12} /> Görüntüle
+                        </button>
+                      ) : (
                         <span className="text-[10.5px]" style={{ color: 'rgba(250,250,249,0.35)' }}>bekliyor</span>
                       )}
                     </td>
@@ -334,115 +334,32 @@ export default function ETebligatModule() {
             </tbody>
           </table>
         </div>
-        {filtered.length > 0 && (
-          <div className="px-3 py-2.5 flex items-center gap-x-3 gap-y-2 flex-wrap text-[11px]" style={{ borderTop: cellBorder, color: 'rgba(250,250,249,0.5)' }}>
-            <span className="inline-flex items-center gap-1">
-              <CalendarClock size={12} /> {(pageClamped - 1) * PAGE_SIZE + 1}–{Math.min(pageClamped * PAGE_SIZE, filtered.length)} / {filtered.length} tebligat{taxpayerId ? ' (süzüldü)' : ''}
-            </span>
+        {(aktifIs > 0 || summary?.runner) && (
+          <div className="px-4 py-2 flex items-center gap-x-3 flex-wrap text-[11px]" style={{ borderTop: cellBorder, color: 'rgba(250,250,249,0.5)' }}>
             {aktifIs > 0 && <span className="inline-flex items-center gap-1" style={{ color: GOLD }}><Loader2 size={11} className="animate-spin" /> {aktifIs} sorgu çalışıyor</span>}
-            {totalPages > 1 && (
-              <div className="inline-flex items-center gap-1">
-                <PgBtn disabled={pageClamped <= 1} onClick={() => setPage(1)}>«</PgBtn>
-                <PgBtn disabled={pageClamped <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>‹ Önceki</PgBtn>
-                <span className="px-2 text-[12px] font-semibold" style={{ color: '#fafaf9' }}>Sayfa {pageClamped} / {totalPages}</span>
-                <PgBtn disabled={pageClamped >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))}>Sonraki ›</PgBtn>
-                <PgBtn disabled={pageClamped >= totalPages} onClick={() => setPage(totalPages)}>»</PgBtn>
-              </div>
-            )}
             {summary?.runner && <span className="ml-auto inline-flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full" style={{ background: summary.runner.enabled ? '#5fcf8e' : '#ef6b6b' }} /> Sunucu runner {summary.runner.enabled ? 'aktif' : 'kapalı'}</span>}
           </div>
         )}
+        <Sayfalama
+          sayfa={etkinSayfa}
+          sayfaBoyutu={boyut}
+          toplam={toplam}
+          onSayfa={setSayfa}
+          onSayfaBoyutu={setBoyut}
+          birim="tebligat"
+          yukleniyor={docsQuery.isFetching && docsQuery.isPlaceholderData}
+        />
       </div>
 
-      {/* ── PDF önizleme modalı — createPortal ile body'ye; transform'lu üst öğeye takılmaz,
-          her zaman EKRAN ORTASINDA açılır (alttaki satırda da üstte açılma sorunu çözüldü). ── */}
-      {pdfModal && typeof document !== 'undefined' && createPortal(
-        <div
-          onClick={() => setPdfModal(null)}
-          className="fixed inset-0 z-[1000] flex items-center justify-center p-3 md:p-8"
-          style={{ background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(4px)' }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="relative w-full max-w-5xl h-[90vh] rounded-2xl overflow-hidden border shadow-2xl"
-            style={{ background: '#1a1410', borderColor: 'rgba(212,184,118,0.25)', animation: 'etbZoom .22s ease-out' }}
-          >
-            <div className="flex items-center justify-between px-4 py-2.5 border-b" style={{ borderColor: 'rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.03)' }}>
-              <div className="flex items-center gap-2 min-w-0">
-                <FileText size={15} style={{ color: GOLD, flexShrink: 0 }} />
-                <span className="text-[13px] font-semibold truncate" style={{ color: '#fafaf9' }}>{pdfModal.title}</span>
-              </div>
-              <div className="flex items-center gap-1.5 flex-shrink-0">
-                <a
-                  href={pdfModal.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="h-8 px-2.5 rounded-lg text-[12px] font-semibold flex items-center gap-1.5 border hover:brightness-110"
-                  style={{ borderColor: 'rgba(255,255,255,0.12)', color: 'rgba(250,250,249,0.85)' }}
-                >
-                  <Download size={13} /> İndir
-                </a>
-                <button
-                  onClick={() => setPdfModal(null)}
-                  className="h-8 w-8 grid place-items-center rounded-lg border hover:brightness-110"
-                  style={{ borderColor: 'rgba(255,255,255,0.12)', color: '#fafaf9' }}
-                  aria-label="Kapat"
-                >
-                  <X size={16} />
-                </button>
-              </div>
-            </div>
-            <iframe
-              src={pdfModal.url}
-              title={pdfModal.title}
-              className="w-full"
-              style={{ height: 'calc(90vh - 45px)', border: 'none', background: '#fff' }}
-            />
-          </div>
-          <style>{`@keyframes etbZoom { from { transform: scale(.9); opacity: 0 } to { transform: scale(1); opacity: 1 } }`}</style>
-        </div>,
-        document.body,
-      )}
+      <PdfOnizlemeModali modal={pdfModal} onClose={() => setPdfModal(null)} />
 
-      {/* ── Gece sorgu hatası: hata alan mükellef listesi ── */}
-      {showErrors && typeof document !== 'undefined' && createPortal(
-        <div
-          onClick={() => setShowErrors(false)}
-          className="fixed inset-0 z-[1000] flex items-center justify-center p-4"
-          style={{ background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(4px)' }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="relative w-full max-w-lg max-h-[80vh] rounded-2xl overflow-hidden border shadow-2xl flex flex-col"
-            style={{ background: '#1a1410', borderColor: 'rgba(239,107,107,0.3)', animation: 'etbZoom .22s ease-out' }}
-          >
-            <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: 'rgba(255,255,255,0.08)', background: 'rgba(239,107,107,0.06)' }}>
-              <div className="flex items-center gap-2">
-                <AlertTriangle size={15} style={{ color: '#ef6b6b' }} />
-                <span className="text-[13px] font-semibold" style={{ color: '#fafaf9' }}>Gece sorgusunda hata alan mükellefler</span>
-              </div>
-              <button onClick={() => setShowErrors(false)} className="h-8 w-8 grid place-items-center rounded-lg border hover:brightness-110" style={{ borderColor: 'rgba(255,255,255,0.12)', color: '#fafaf9' }} aria-label="Kapat"><X size={16} /></button>
-            </div>
-            <div className="overflow-y-auto p-2">
-              {(summary?.stats?.tebligatErrors || []).length === 0 ? (
-                <div className="px-3 py-8 text-center text-[12px]" style={{ color: 'rgba(250,250,249,0.45)' }}>Hata kaydı yok.</div>
-              ) : (
-                (summary?.stats?.tebligatErrors || []).map((e, i) => (
-                  <div key={e.taxpayerId || i} className="px-3 py-2.5" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                    <div className="font-semibold text-[13px]" style={{ color: '#fafaf9' }}>{e.name}</div>
-                    {e.taxNumber && <div className="text-[10.5px]" style={{ color: 'rgba(250,250,249,0.4)' }}>{e.taxNumber}</div>}
-                    <div className="text-[11.5px] mt-1" style={{ color: '#ef9a9a' }}>{e.reason || 'Sorgu başarısız (sebep belirtilmedi).'}</div>
-                  </div>
-                ))
-              )}
-            </div>
-            <div className="px-4 py-2 text-[11px] border-t flex-shrink-0" style={{ borderColor: 'rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.4)' }}>
-              Son 24 saatte e-Tebligat sorgusu başarısız olan mükellefler. Mükellefi seçip "Bu mükellefi sorgula" ile tekrar deneyebilirsiniz.
-            </div>
-          </div>
-        </div>,
-        document.body,
-      )}
+      <GeceHataModali
+        acik={showErrors}
+        onClose={() => setShowErrors(false)}
+        hatalar={summary?.stats?.tebligatErrors || []}
+        sifreBekleyen={sifreBekleyen}
+        altNot='Son 24 saatte e-Tebligat sorgusu başarısız olan mükellefler. Mükellefi seçip "Bu mükellefi sorgula" ile tekrar deneyebilirsiniz.'
+      />
     </div>
   );
 }

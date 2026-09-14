@@ -21,6 +21,19 @@ export const BEYAN_TIPI_LABEL: Record<BeyanTipi, string> = {
   DIGER: 'Diğer',
 };
 
+// ---- Sayfalı liste / iletim (sözleşme: docs/sayfalama-sozlesme-2026-09-14.md §4-§6) ----
+export type IletimKanal = 'WHATSAPP' | 'EMAIL';
+export type IletimDurumu = 'SENT' | 'FAILED' | 'PENDING' | 'SKIPPED';
+
+/** Bir kaydı içeren gönderim (Akıllı Bildirim DocumentDispatch) — en yeni önce gelir. */
+export interface IletimBilgisi {
+  channel: IletimKanal;
+  status: IletimDurumu;
+  sentAt: string | null;
+  error: string | null;
+  testMode: boolean;
+}
+
 export interface BeyanKaydi {
   id: string;
   taxpayerId: string;
@@ -49,7 +62,56 @@ export interface BeyanKaydi {
     phone?: string | null;
     phones?: string[];
   };
+  /** Sayfalı modda gelir: bu kaydı içeren VERGI gönderimleri (kanal başına en yenisi). */
+  iletim?: IletimBilgisi[];
 }
+
+export type BeyanBelgeSuzgec = 'all' | 'beyanname' | 'tahakkuk';
+export type BeyanIletimSuzgec = 'all' | 'iletildi' | 'iletilmedi' | 'hata';
+export type BeyanSiralama = 'yeni' | 'donem' | 'mukellef' | 'tutar';
+
+/** `GET /beyan-kayitlari?page=…` sorgu parametreleri (adlar sözleşmeyle birebir). */
+export interface BeyanSayfaParams {
+  page: number;
+  /** 25 | 50 | 100 — dışa aktarım için en çok 1000. */
+  pageSize: number;
+  taxpayerId?: string;
+  /** Virgülle çoklu: `KDV1,KDV2`. */
+  beyanTipi?: string;
+  /** `YYYY-MM` */
+  donemBas?: string;
+  /** `YYYY-MM` */
+  donemBit?: string;
+  belge?: BeyanBelgeSuzgec;
+  iletim?: BeyanIletimSuzgec;
+  search?: string;
+  sirala?: BeyanSiralama;
+}
+
+export interface BeyanSayfaYaniti {
+  rows: BeyanKaydi[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface BeyanGonderSonucu {
+  taxpayerId: string;
+  unvan: string;
+  channel: string;
+  status: 'SENT' | 'FAILED';
+  error: string | null;
+  kayitSayisi: number;
+}
+
+export interface BeyanGonderYaniti {
+  ok: true;
+  testMode: boolean;
+  results: BeyanGonderSonucu[];
+}
+
+/** `POST /beyan-kayitlari/gonder` tek istekte en çok bu kadar id alır. */
+export const BEYAN_GONDER_MAX_ID = 50;
 
 export interface ImportResult {
   dosyaAdi: string;
@@ -79,6 +141,14 @@ export interface BeyanOzet {
 export const beyanKayitlariApi = {
   list: (params?: { taxpayerId?: string; beyanTipi?: string; donem?: string; search?: string; limit?: number }) =>
     api.get<BeyanKaydi[]>('/beyan-kayitlari', { params }).then((r) => r.data),
+
+  /** Sayfalı liste — `page` verildiği için sunucu `{ rows, total, page, pageSize }` döner. */
+  listSayfa: (params: BeyanSayfaParams) =>
+    api.get<BeyanSayfaYaniti>('/beyan-kayitlari', { params }).then((r) => r.data),
+
+  /** Seçili kayıtları mükellefe WhatsApp / e-posta ile gönderir (PDF'ler tek dosyada, kısa link). */
+  gonder: (body: { ids: string[]; channel: IletimKanal }) =>
+    api.post<BeyanGonderYaniti>('/beyan-kayitlari/gonder', body).then((r) => r.data),
 
   ozet: () =>
     api.get<BeyanOzet>('/beyan-kayitlari/ozet').then((r) => r.data),
@@ -147,3 +217,19 @@ export function beyanKaydiMukellefAdi(k: BeyanKaydi): string {
   if (!t) return '—';
   return t.companyName || `${t.firstName || ''} ${t.lastName || ''}`.trim() || t.taxNumber || '—';
 }
+
+// ---- Akıllı Bildirim ayarı (yalnız okuma; gönderim onay kutusunda TEST MODU uyarısı için) ----
+export interface AkilliBildirimAyar {
+  kategori: 'VERGI' | 'SGK' | 'ETEBLIGAT' | string;
+  enabled: boolean;
+  testMode: boolean;
+  testPhone?: string | null;
+  testEmail?: string | null;
+  whatsapp: boolean;
+  email: boolean;
+}
+
+export const akilliBildirimApi = {
+  settings: () =>
+    api.get<AkilliBildirimAyar[]>('/akilli-bildirim/settings').then((r) => r.data),
+};

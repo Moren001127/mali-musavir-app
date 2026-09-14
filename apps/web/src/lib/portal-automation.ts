@@ -113,6 +113,113 @@ export interface PortalDocument {
   } | null;
 }
 
+// ── Sayfalı belge listesi sözleşmesi (docs/sayfalama-sozlesme-2026-09-14.md §1-§3) ──
+// Akıllı Bildirim gönderim bilgisi (bu belgeyi içeren gönderimler; en yeni önce).
+export type IletimBilgisi = {
+  channel: 'WHATSAPP' | 'EMAIL';
+  status: 'SENT' | 'FAILED' | 'PENDING' | 'SKIPPED';
+  sentAt: string | null;
+  error: string | null;
+  testMode: boolean;
+};
+
+// Gece sorgu hatasının sade hâli: tür + okunur metin + ham hata.
+export type HataBilgisi = {
+  tur: 'sifre' | 'guvenlik_kodu' | 'baglanti' | 'diger';
+  metin: string;
+  ham: string;
+};
+
+export type BelgeSatiriMukellef = {
+  id: string;
+  companyName: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  taxNumber: string | null;
+};
+
+// GET /portal-automation/documents/sayfa satırı (raw alanı YOK; gereken özet ozet.* içinde).
+export type BelgeSatiri = {
+  id: string;                       // birleşikte tahakkuk id'si (yoksa hizmet id'si)
+  taxpayerId: string | null;
+  taxpayer: BelgeSatiriMukellef | null;
+  belgeTuru: string;
+  title: string;
+  referenceNo: string | null;
+  period: string | null;
+  issuedAt: string | null;
+  receivedAt: string | null;
+  createdAt: string;
+  pdfVar: boolean;                  // storageKey dolu mu
+  viewedAt: string | null;
+  ozet: {
+    kurumAciklama?: string | null;
+    altKurum?: string | null;
+    gonderimZamani?: string | null;   // ham metin (dd/MM/yyyy HH:mm:ss)
+    tebligZamani?: string | null;
+    okumaZamani?: string | null;
+    tebligTarihi?: string | null;     // ISO
+    tebligDurumu?: 'bekliyor' | 'yaklasiyor' | 'edildi' | null;
+    kanunNo?: string | null;
+    calisan?: number | null;
+    tutar?: number | null;
+    mahiyet?: string | null;
+  };
+  iletim: IletimBilgisi[];
+  // yalnız birlesik=1 (SGK):
+  hizmet?: { id: string; pdfVar: boolean; viewedAt: string | null } | null;
+  tahakkuk?: { id: string; pdfVar: boolean; viewedAt: string | null; tutar: number | null } | null;
+};
+
+export type BelgeSayfaYaniti = {
+  rows: BelgeSatiri[];
+  total: number;
+  page: number;
+  pageSize: number;
+};
+
+// GET /portal-automation/documents/mukellefler satırı (belgesi olanlar ∪ ilgili şifresi olanlar).
+export type BelgeMukellefi = {
+  id: string;
+  ad: string;
+  taxNumber: string | null;
+  belgeSayisi: number;
+  sifreVar: boolean;
+  sifreHatasi: string | null;
+};
+
+export type BelgeSayfaParametreleri = {
+  belgeTuru: string;                // virgülle çoklu: 'E_TEBLIGAT' | 'SGK_TAHAKKUK,SGK_HIZMET_LISTESI'
+  taxpayerId?: string;
+  search?: string;
+  period?: string;                  // SGK 'YYYY/MM', tebligat 'YYYY-MM'
+  durum?: string;                   // tebligat: teblig_yaklasan|teblig_edildi|goruntulenmemis ; SGK: tahakkuk|hizmet
+  birlesik?: '1';
+  page?: number;
+  pageSize?: number;                // 25|50|100
+  sirala?: 'yeni' | 'eski' | 'mukellef';
+};
+
+// Gece sorgusunda hata alan mükellef (summary.stats.tebligatErrors / sgkErrors).
+export type PortalGeceHatasi = {
+  taxpayerId: string;
+  name: string;
+  taxNumber: string | null;
+  reason: string | null;
+  hata?: HataBilgisi;
+};
+
+// 3 gece üst üste şifre hatası → gece sorgusundan düşen şifreler (summary.credentialsBlocked).
+export type PortalSifreBekleyen = {
+  provider: string;
+  taxpayerId: string | null;
+  ad: string;
+  taxNumber: string | null;
+  since: string | null;
+  hata: HataBilgisi;
+  geceSayisi: number;
+};
+
 export interface PortalSummary {
   nightly: {
     active: boolean;
@@ -134,10 +241,11 @@ export interface PortalSummary {
     tebligat7d: number;
     tebligatTotal?: number;
     tebligatErrorCount?: number;
-    tebligatErrors?: Array<{ taxpayerId: string; name: string; taxNumber: string | null; reason: string | null }>;
+    tebligatErrors?: PortalGeceHatasi[];
+    tebligatBuHaftaTeblig?: number;   // receivedAt ∈ (şimdi, şimdi+7g]
     sgkTotal?: number;
     sgkErrorCount?: number;
-    sgkErrors?: Array<{ taxpayerId: string; name: string; taxNumber: string | null; reason: string | null }>;
+    sgkErrors?: PortalGeceHatasi[];
   };
   credentials: {
     eBeyannameReady: boolean;
@@ -147,6 +255,7 @@ export interface PortalSummary {
   };
   latestJobs: PortalJob[];
   latestDocuments: PortalDocument[];
+  credentialsBlocked?: PortalSifreBekleyen[];
 }
 
 export const PORTAL_JOB_LABEL: Record<PortalJobType, string> = {
@@ -193,6 +302,12 @@ export const portalAutomationApi = {
     api.post<PortalJob>(`/portal-automation/jobs/${id}/cancel`, { reason }).then((r) => r.data),
   documents: (params?: { limit?: number; taxpayerId?: string; belgeTuru?: string }) =>
     api.get<PortalDocument[]>('/portal-automation/documents', { params }).then((r) => r.data),
+  // Sayfalı belge listesi (e-Tebligat / SGK). Eski `documents` mobil/masaüstü için aynen kalır.
+  documentsSayfa: (params: BelgeSayfaParametreleri) =>
+    api.get<BelgeSayfaYaniti>('/portal-automation/documents/sayfa', { params }).then((r) => r.data),
+  // Süzgeç için mükellef listesi (belgesi olanlar ∪ ilgili şifresi olanlar), ada göre Türkçe sıralı.
+  documentsMukellefler: (params: { belgeTuru: string }) =>
+    api.get<{ rows: BelgeMukellefi[] }>('/portal-automation/documents/mukellefler', { params }).then((r) => r.data),
   documentViewUrl: (id: string) =>
     api.get<{ url: string; viewedAt?: string | null }>(`/portal-automation/documents/${id}/view`).then((r) => r.data),
   markDocumentsViewed: (data: { ids?: string[]; belgeTuru?: string; taxpayerId?: string }) =>
