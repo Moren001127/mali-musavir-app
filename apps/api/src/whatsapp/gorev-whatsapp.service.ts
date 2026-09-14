@@ -327,7 +327,9 @@ export class GorevWhatsappService {
         timeoutMs: 45000,
         system:
           'Bir mali müşavirlik ofisinin asistanısın. Ofis sahibinin WhatsApp\'tan serbest cümleyle yazdığı görev/hatırlatma/not isteğini ' +
-          'yapılandırılmış göreve çeviriyorsun. SADECE geçerli JSON döndür; açıklama yazma. Emin olmadığın alanı null bırak, UYDURMA.',
+          'yapılandırılmış göreve çeviriyorsun. SADECE geçerli JSON döndür; açıklama yazma. Emin olmadığın alanı null bırak, UYDURMA. ' +
+          'Ofis terimleri: Luca (muhasebe programı), Mihsap (fatura/e-belge sistemi), GİB, e-Defter, e-Beyanname, KDV Kontrol, mizan, tahakkuk, ' +
+          'ihbarname, uzlaşma, tevkifat. Bilmediğin özel adları ve terimleri AYNEN koru; anlam eklemeye/yorumlamaya kalkma.',
         prompt: [
           `Bugün: ${bugun} (${gunAdi}), saat ${String(bugunIst.getHours()).padStart(2, '0')}:${String(bugunIst.getMinutes()).padStart(2, '0')} (İstanbul).`,
           '',
@@ -349,6 +351,7 @@ export class GorevWhatsappService {
           '- aciklama: isteğin tam anlamını koruyan tek düzgün cümle (bağlam kaybolmasın); gerekmiyorsa null.',
           '- tarih: mesajdaki göreli ifadeye göre YYYY-MM-DD ("yarın", "cuma", "ayın 20\'si", "3 gün sonra" — bugüne göre hesapla); yoksa null. saat: HH:mm ya da null.',
           '- tur: "not:" ile başladıysa ya da yapılacak iş değil bilgi kaydıysa NOT, yoksa GOREV.',
+          '- NOT türünde aciklama = mesajın kendisi (yalnız yazım düzeltilmiş), yorum/ek bilgi EKLEME; baslik = notun kısa özeti.',
           '',
           'ŞEMA: {"baslik":string,"aciklama":string|null,"tarih":"YYYY-MM-DD"|null,"saat":"HH:mm"|null,"kategori":string,"oncelik":string,"mukellefId":string|null,"tur":"GOREV"|"NOT"}',
         ].join('\n'),
