@@ -114,7 +114,7 @@ export function BilgilerTab({
 
     if (section === 'musteri') {
       return (
-        <div className="space-y-4">
+        <div className="space-y-6">
           <FormGrup baslik="Kimlik" aciklama="Tip, unvan ve vergi numarası">
             <Satir etiket="Mükellef tipi" genis>
               <Secici
@@ -139,7 +139,6 @@ export function BilgilerTab({
             )}
             <Satir etiket={tuzel ? 'VKN' : 'TCKN'} zorunlu ipucu={tuzel ? '10 hane' : '11 hane'}>
               <AlanGirdi
-                mono
                 inputMode="numeric"
                 value={form.taxNumber}
                 onChange={(e) => setForm((p) => ({ ...p, taxNumber: e.target.value.replace(/\D/g, '').slice(0, tuzel ? 10 : 11) }))}
@@ -163,13 +162,13 @@ export function BilgilerTab({
               <AlanGirdi value={form.ticaretSicilNo} onChange={alan('ticaretSicilNo')} />
             </Satir>
             <Satir etiket="MERSİS no">
-              <AlanGirdi mono inputMode="numeric" value={form.mersisNo} onChange={alan('mersisNo')} />
+              <AlanGirdi inputMode="numeric" value={form.mersisNo} onChange={alan('mersisNo')} />
             </Satir>
             <Satir etiket="Oda sicil no">
               <AlanGirdi value={form.odaSicilNo} onChange={alan('odaSicilNo')} />
             </Satir>
             <Satir etiket="NACE kodu">
-              <AlanGirdi mono value={form.naceKodu} onChange={alan('naceKodu')} placeholder="00.00.00" />
+              <AlanGirdi value={form.naceKodu} onChange={alan('naceKodu')} placeholder="00.00.00" />
             </Satir>
             <Satir etiket="Faaliyet / sektör" genis ipucu="Fatura eşleştirmede kullanılır — ör. yemek üretimi, inşaat malzemeleri toptan ticareti, lokanta.">
               <AlanGirdi value={form.faaliyetAciklama} onChange={alan('faaliyetAciklama')} />
@@ -200,7 +199,7 @@ export function BilgilerTab({
 
     if (section === 'iletisim') {
       return (
-        <div className="space-y-4">
+        <div className="space-y-6">
           <div className="grid gap-4 lg:grid-cols-2">
             {/* REHBER: her numaranın yanında kime ait olduğu. WhatsApp Mesajlar ekranında firma adı yerine
                 bu ad görünür; numara → mükellef eşleştirmesi değişmez. */}
@@ -211,7 +210,6 @@ export function BilgilerTab({
                     <AlanGirdi
                       type="tel"
                       inputMode="numeric"
-                      mono
                       value={formatTrPhone(phone)}
                       onChange={(e) =>
                         setForm((prev) => {
@@ -283,10 +281,10 @@ export function BilgilerTab({
 
     if (section === 'bagkur') {
       return (
-        <div className="space-y-4">
+        <div className="space-y-6">
           <FormGrup baslik="Bağ-Kur">
             <Satir etiket="Bağ-Kur sicil no" ipucu="Bağ-Kur ve e-Devlet şifreleri giriş bilgileri bölümünden yönetilir.">
-              <AlanGirdi mono value={form.bagkurSicilNo} onChange={alan('bagkurSicilNo')} />
+              <AlanGirdi value={form.bagkurSicilNo} onChange={alan('bagkurSicilNo')} />
             </Satir>
           </FormGrup>
           <FormAltBilgi onSave={onSave} saving={saving} hasRecord={!!taxpayerId} />
@@ -296,7 +294,7 @@ export function BilgilerTab({
 
     if (section === 'entegrator') {
       return (
-        <div className="space-y-4">
+        <div className="space-y-6">
           <FormGrup baslik="E-Fatura" aciklama="Sağlayıcı ve mükellefiyet durumu">
             <Satir etiket="Entegratör">
               <AlanSecim value={form.eFaturaEntegrator} onChange={alan('eFaturaEntegrator')}>
@@ -323,7 +321,7 @@ export function BilgilerTab({
 
     if (section === 'otomasyon') {
       return (
-        <div className="space-y-4">
+        <div className="space-y-6">
           <FormGrup baslik="Evrak akışı" aciklama="Aylık evrak teslimi ve WhatsApp mesajları">
             <Satir etiket="Teslim son günü" ipucu="Her ayın bu gününe kadar evrak beklenir (1–30).">
               <span className="relative block max-w-[180px]">
@@ -355,7 +353,7 @@ export function BilgilerTab({
     }
 
     return (
-      <div className="space-y-4">
+      <div className="space-y-6">
         <FormGrup baslik="Defter" aciklama="Defter türü ve Mihsap eşleşmesi">
           <Satir etiket="Defter türü">
             <Secici
@@ -382,10 +380,10 @@ export function BilgilerTab({
         </FormGrup>
         <FormGrup baslik="Sistem eşleşmesi" aciklama="Luca ve Mihsap kimlikleri">
           <Satir etiket="Luca slug" ipucu="Luca'daki firma kısa adı.">
-            <AlanGirdi mono value={form.lucaSlug} onChange={alan('lucaSlug')} />
+            <AlanGirdi value={form.lucaSlug} onChange={alan('lucaSlug')} />
           </Satir>
           <Satir etiket="Mihsap ID">
-            <AlanGirdi mono value={form.mihsapId} onChange={alan('mihsapId')} />
+            <AlanGirdi value={form.mihsapId} onChange={alan('mihsapId')} />
           </Satir>
         </FormGrup>
         <FormAltBilgi onSave={onSave} saving={saving} hasRecord={!!taxpayerId} />

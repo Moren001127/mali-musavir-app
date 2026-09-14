@@ -124,9 +124,9 @@ export function OtomatikSorguAyari({ taxpayerId, deger }: { taxpayerId: string; 
               disabled={mesgul}
               onClick={() => { if (kilitli || mesgul) return; mutate({ [s.key]: !acik } as Partial<OtomatikSorgu>); }}
               title={kilitli ? KILIT_IPUCU : `${s.ad} gece sorgusunu ${acik ? 'kapat' : 'aç'}`}
-              className={`grid min-h-9 grid-cols-[190px_minmax(0,1fr)] items-center gap-x-3 text-left ${kilitli ? 'cursor-not-allowed' : ''}`}
+              className={`grid min-h-9 grid-cols-[200px_minmax(0,1fr)] items-center gap-x-3 text-left ${kilitli ? 'cursor-not-allowed' : ''}`}
             >
-              <span className="flex items-center gap-2 text-[12.5px] font-medium" style={{ color: kilitli ? FAINT : 'rgba(250,250,249,0.72)' }}>
+              <span className="flex items-center gap-2 text-[13px] font-medium" style={{ color: kilitli ? FAINT : 'rgba(250,250,249,0.72)' }}>
                 <span className="flex h-6 w-6 shrink-0 items-center justify-center" style={{ ...ikonRozeti(kilitli ? 'rgba(250,250,249,0.35)' : STEEL), borderRadius: 6 }}>
                   <Ikon size={13} />
                 </span>

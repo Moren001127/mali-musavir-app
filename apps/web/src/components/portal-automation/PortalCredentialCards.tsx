@@ -245,7 +245,7 @@ function CredentialEditor({
                   <AlanGirdi value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="off" />
                 </Satir>
                 <Satir etiket="E-Kod" zorunlu ipucu="İşyeri e-Bildirge kodu (ör. 2).">
-                  <AlanGirdi mono value={workplaceCode} onChange={(e) => setWorkplaceCode(e.target.value)} placeholder="Örn. 2" autoComplete="off" />
+                  <AlanGirdi value={workplaceCode} onChange={(e) => setWorkplaceCode(e.target.value)} placeholder="Örn. 2" autoComplete="off" />
                 </Satir>
                 {passwordSpec.passwordLabel && (
                   <Satir etiket={passwordSpec.passwordLabel} zorunlu={!credential}>
@@ -259,7 +259,7 @@ function CredentialEditor({
             ) : (
               <>
                 <Satir etiket="Kullanıcı kodu" zorunlu ipucu="Genellikle VKN / TCKN ile aynıdır.">
-                  <AlanGirdi mono inputMode="numeric" value={userCode} onChange={(e) => setUserCode(e.target.value)} autoComplete="off" />
+                  <AlanGirdi inputMode="numeric" value={userCode} onChange={(e) => setUserCode(e.target.value)} autoComplete="off" />
                 </Satir>
                 <Satir etiket={passwordSpec.secondaryPasswordLabel} zorunlu={!credential}>
                   <SifreAlani value={secondaryPassword} onChange={setSecondaryPassword} hasSaved={!!credential?.hasSecondaryPassword} />

@@ -126,7 +126,7 @@ export function KartBasligi({
             </span>
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11.5px]" style={{ color: MUTED }}>
-            <span className="font-mono tabular-nums">{taxNumber || 'VKN/TC yok'}</span>
+            <span className="tabular-nums">{taxNumber || 'VKN/TC yok'}</span>
             <span style={{ color: FAINT }}>·</span>
             <span className="truncate">{taxOffice || 'Vergi dairesi yok'}</span>
             {!isNew && cardNav.total > 0 && (
