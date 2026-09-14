@@ -256,7 +256,18 @@ function ETebligatModuleIc() {
       {/* ── Tablo ── */}
       <div className="rounded-2xl border overflow-hidden" style={{ background: 'rgba(0,0,0,0.18)', borderColor: 'rgba(255,255,255,0.06)' }}>
         <div className="overflow-x-auto">
-          <table className="w-full text-[12px]" style={{ borderCollapse: 'collapse', minWidth: 1080 }}>
+          <table className="w-full text-[12px]" style={{ borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: 1180 }}>
+            <colgroup>
+              <col />
+              <col style={{ width: 170 }} />
+              <col style={{ width: 140 }} />
+              <col style={{ width: 150 }} />
+              <col style={{ width: 112 }} />
+              <col style={{ width: 126 }} />
+              <col style={{ width: 104 }} />
+              <col style={{ width: 124 }} />
+              <col style={{ width: 52 }} />
+            </colgroup>
             <thead style={{ background: 'rgba(255,255,255,0.03)' }}>
               <tr style={{ color: 'rgba(250,250,249,0.55)' }}>
                 {['Mükellef', 'Gönderen Kurum', 'Belge Türü', 'Belge No', 'Gönderim', 'Tebliğ', 'Okuma', 'İletim', 'Belge'].map((h, i) => (
@@ -318,11 +329,12 @@ function ETebligatModuleIc() {
                       {d.pdfVar ? (
                         <button
                           onClick={() => openPdf(d)}
-                          title={goruldu ? 'Görüntülendi' : 'Yeni — henüz görüntülenmedi'}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold hover:brightness-110 transition"
+                          title={goruldu ? 'Görüntülendi — tekrar aç' : 'Yeni — henüz görüntülenmedi (aç)'}
+                          aria-label="Belgeyi görüntüle"
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-full hover:brightness-125 transition"
                           style={{ background: renk.bg, border: `1px solid ${renk.bd}`, color: renk.fg }}
                         >
-                          <Eye size={12} /> Görüntüle
+                          <Eye size={14} />
                         </button>
                       ) : (
                         <span className="text-[10.5px]" style={{ color: 'rgba(250,250,249,0.35)' }}>bekliyor</span>

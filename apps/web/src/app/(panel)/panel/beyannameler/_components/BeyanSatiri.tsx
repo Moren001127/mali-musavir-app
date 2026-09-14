@@ -47,8 +47,8 @@ export function BeyanSatiri({
       <td className="px-3 py-2.5">
         <input type="checkbox" checked={secili} onChange={(e) => onSecim(e.target.checked)} aria-label="Kaydı seç" />
       </td>
-      <td className="px-3 py-2.5">
-        <button type="button" onClick={onMukellefSec} className="max-w-[260px] text-left" title="Bu mükellefe süz">
+      <td className="px-3 py-2.5 overflow-hidden">
+        <button type="button" onClick={onMukellefSec} className="block w-full min-w-0 text-left" title="Bu mükellefe süz">
           <div className="truncate font-semibold" style={{ color: METIN }}>{beyanKaydiMukellefAdi(row)}</div>
           <div className="mt-0.5 font-mono text-[11.5px]" style={{ color: 'rgba(250,250,249,0.38)' }}>{row.taxpayer?.taxNumber || '—'}</div>
         </button>
@@ -65,10 +65,10 @@ export function BeyanSatiri({
       </td>
       <td className="px-3 py-2.5 whitespace-nowrap tabular-nums" style={{ color: 'rgba(250,250,249,0.7)' }}>{fmtDate(row.beyanTarihi || row.createdAt)}</td>
       <td className="px-3 py-2.5 whitespace-nowrap text-right font-semibold tabular-nums" style={{ color: row.tahakkukTutari != null ? METIN : tahakkukVar ? '#fcd34d' : IKINCIL }}>
-        {row.tahakkukTutari != null ? fmtCurrency(row.tahakkukTutari) : tahakkukVar ? 'Tutar okunamadı' : '—'}
+        {row.tahakkukTutari != null ? fmtCurrency(row.tahakkukTutari) : tahakkukVar ? <span title="Tahakkuk fişinden tutar okunamadı">okunamadı</span> : '—'}
       </td>
-      <td className="px-3 py-2.5 whitespace-nowrap">
-        <div className="flex items-center gap-1.5">
+      <td className="px-3 py-2.5 whitespace-nowrap overflow-hidden">
+        <div className="flex items-center gap-1">
           <BelgeCipi etiket="Beyanname" var={beyannameVar} goruntulendi={goruntulenen.beyanname} onClick={() => onOnizle('beyanname')} />
           <BelgeCipi etiket="Tahakkuk" var={tahakkukVar} goruntulendi={goruntulenen.tahakkuk} onClick={() => onOnizle('tahakkuk')} />
         </div>
@@ -114,7 +114,7 @@ function BelgeCipi({ etiket, var: mevcut, goruntulendi, onClick }: { etiket: str
       <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-[7px] px-2 py-[3px] text-[11px] font-semibold"
         title={`${etiket} PDF yok`}
         style={{ background: 'rgba(255,255,255,0.02)', border: '1px dashed rgba(255,255,255,0.10)', color: 'rgba(250,250,249,0.3)' }}>
-        <FileText size={11} /> {etiket} · yok
+        <FileText size={11} /> {etiket}
       </span>
     );
   }

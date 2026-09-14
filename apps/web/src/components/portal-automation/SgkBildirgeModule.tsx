@@ -5,7 +5,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { toast } from 'sonner';
 import {
   ShieldCheck, RefreshCw, Loader2, Search, Download, ChevronDown, Eye, CheckCheck, CalendarClock,
-  Receipt, ListChecks, ChevronLeft, ChevronRight,
+  Receipt, ListChecks, ChevronLeft, ChevronRight, AlertTriangle, Users, Layers, Check,
 } from 'lucide-react';
 import { portalAutomationApi, type BelgeSatiri } from '@/lib/portal-automation';
 import { Sayfalama, sayfaSayisi } from '@/components/ui/Sayfalama';
@@ -28,35 +28,82 @@ const TURLER: Array<{ value: string; label: string }> = [
 
 type BelgeParcasi = { id: string; pdfVar: boolean; viewedAt: string | null } | null | undefined;
 
-// Birleşik satırdaki tek belge çipi: yeşil (görüntülendi) / kırmızı (yeni) / soluk "bekliyor" (PDF yok) / soluk "yok".
+// Belge çipi (tek satır, kompakt): yeşil tik = görüntülendi · kırmızı nokta = yeni · soluk = PDF bekliyor / belge yok.
 function BelgeCipi({ label, ikon, belge, goruldu, onClick }: { label: string; ikon: React.ReactNode; belge: BelgeParcasi; goruldu: boolean; onClick: () => void }) {
-  if (!belge) {
+  const taban = 'inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full text-[11.5px] font-semibold whitespace-nowrap';
+  if (!belge || !belge.pdfVar) {
     return (
-      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] whitespace-nowrap" style={{ border: '1px dashed rgba(255,255,255,0.1)', color: 'rgba(250,250,249,0.3)' }}>
-        {ikon} {label} · yok
+      <span className={taban} title={!belge ? `${label} bu dönemde yok` : `${label} PDF'i henüz inmedi`}
+        style={{ border: '1px dashed rgba(255,255,255,0.12)', color: 'rgba(250,250,249,0.32)' }}>
+        {ikon} {label}
       </span>
     );
   }
-  if (!belge.pdfVar) {
-    return (
-      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] whitespace-nowrap" style={{ border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(250,250,249,0.35)' }}>
-        {ikon} {label} · bekliyor
-      </span>
-    );
-  }
-  const renk = goruldu
-    ? { bg: 'rgba(95,207,142,0.1)', bd: 'rgba(95,207,142,0.32)', fg: '#5fcf8e' }   // yeşil (görüntülendi)
-    : { bg: 'rgba(239,107,107,0.12)', bd: 'rgba(239,107,107,0.45)', fg: '#ef6b6b' }; // kırmızı (yeni)
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={goruldu ? `${label} — görüntülendi` : `${label} — yeni, henüz görüntülenmedi`}
-      className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold whitespace-nowrap hover:brightness-110 transition"
-      style={{ background: renk.bg, border: `1px solid ${renk.bd}`, color: renk.fg }}
-    >
-      <Eye size={11} /> {label}
+    <button type="button" onClick={onClick}
+      title={goruldu ? `${label} — görüntülendi (tekrar aç)` : `${label} — yeni, henüz görüntülenmedi`}
+      className={`${taban} transition hover:brightness-125`}
+      style={goruldu
+        ? { background: 'rgba(92,191,138,0.10)', border: '1px solid rgba(92,191,138,0.35)', color: '#5cbf8a' }
+        : { background: 'rgba(226,112,111,0.10)', border: '1px solid rgba(226,112,111,0.45)', color: '#e2706f' }}>
+      {goruldu ? <Check size={11} /> : <span className="h-1.5 w-1.5 rounded-full" style={{ background: '#e2706f', boxShadow: '0 0 6px #e2706f' }} />}
+      {label}
     </button>
+  );
+}
+
+// Mahiyet: ASIL sessiz; EK / DÜZELTME sarı; İPTAL kırmızı.
+function MahiyetRozeti({ mahiyet }: { mahiyet?: string | null }) {
+  const m = String(mahiyet || '').toLocaleUpperCase('tr-TR');
+  if (!m) return <span style={{ color: 'rgba(250,250,249,0.3)' }}>—</span>;
+  if (m === 'ASIL') return <span className="text-[12px]" style={{ color: 'rgba(250,250,249,0.55)' }}>ASIL</span>;
+  const kirmizi = /IPTAL|İPTAL/.test(m);
+  return (
+    <span className="inline-flex items-center rounded-full px-2 py-[2px] text-[10.5px] font-bold tracking-wide"
+      style={kirmizi
+        ? { background: 'rgba(226,112,111,0.14)', color: '#e2706f', border: '1px solid rgba(226,112,111,0.4)' }
+        : { background: 'rgba(212,168,95,0.14)', color: '#d4a85f', border: '1px solid rgba(212,168,95,0.4)' }}>
+      {m}
+    </span>
+  );
+}
+
+// Üst durum şeridi: sayılar sessiz, sorun varsa sağda tıklanabilir kırmızı rozet.
+function DurumSeridi({ donemKaydi, sifreliMukellef, aktifIs, hataSayisi, sifreBekleyen, runnerAcik, onHata }: {
+  donemKaydi: number; sifreliMukellef: number; aktifIs: number; hataSayisi: number; sifreBekleyen: number; runnerAcik: boolean | null; onHata: () => void;
+}) {
+  const madde = (ikon: React.ReactNode, deger: React.ReactNode, etiket: string) => (
+    <span className="inline-flex items-center gap-2 text-[12.5px]" style={{ color: 'rgba(250,250,249,0.6)' }}>
+      <span className="flex h-6 w-6 items-center justify-center rounded-full" style={{ background: 'rgba(212,184,118,0.12)', color: GOLD }}>{ikon}</span>
+      <b className="tabular-nums" style={{ color: METIN }}>{deger}</b> {etiket}
+    </span>
+  );
+  const sorun = hataSayisi > 0 || sifreBekleyen > 0;
+  return (
+    <div className="flex flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+      {madde(<Layers size={12} />, donemKaydi.toLocaleString('tr-TR'), 'dönem kaydı')}
+      {madde(<Users size={12} />, sifreliMukellef, 'şifreli mükellef')}
+      {aktifIs > 0 && <span className="inline-flex items-center gap-1.5 text-[12.5px]" style={{ color: GOLD }}><Loader2 size={12} className="animate-spin" /> {aktifIs} sorgu çalışıyor</span>}
+      <span className="ml-auto flex items-center gap-3">
+        {runnerAcik !== null && (
+          <span className="inline-flex items-center gap-1.5 text-[11.5px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
+            <span className="h-1.5 w-1.5 rounded-full" style={{ background: runnerAcik ? '#5cbf8a' : '#e2706f' }} /> gece sorgusu {runnerAcik ? 'açık' : 'kapalı'}
+          </span>
+        )}
+        {sorun ? (
+          <button type="button" onClick={onHata} title="Ayrıntı için tıkla"
+            className="inline-flex h-7 items-center gap-1.5 rounded-full px-3 text-[11.5px] font-semibold transition hover:brightness-125"
+            style={{ background: 'rgba(226,112,111,0.12)', border: '1px solid rgba(226,112,111,0.4)', color: '#e2706f' }}>
+            <AlertTriangle size={12} />
+            {hataSayisi > 0 ? `${hataSayisi} gece hatası` : ''}{hataSayisi > 0 && sifreBekleyen > 0 ? ' · ' : ''}{sifreBekleyen > 0 ? `${sifreBekleyen} şifre bekliyor` : ''}
+          </button>
+        ) : (
+          <span className="inline-flex h-7 items-center gap-1.5 rounded-full px-3 text-[11.5px] font-semibold" style={{ background: 'rgba(92,191,138,0.10)', border: '1px solid rgba(92,191,138,0.3)', color: '#5cbf8a' }}>
+            <Check size={12} /> gece sorgusu sorunsuz
+          </span>
+        )}
+      </span>
+    </div>
   );
 }
 
@@ -186,7 +233,6 @@ function SgkBildirgeModuleIc() {
     }
   };
 
-  const cellBorder = '1px solid rgba(255,255,255,0.06)';
   const aktifIs = summary?.stats?.activeJobs ?? 0;
   const sgkErr = summary?.stats?.sgkErrorCount ?? 0;
   // 3 gece kuralıyla sorgu dışı kalan SGK şifreleri.
@@ -195,157 +241,196 @@ function SgkBildirgeModuleIc() {
     [summary?.credentialsBlocked],
   );
 
+  // Sayfadaki satırlar döneme göre gruplu (liste zaten dönem desc): başlık satırında mükellef sayısı + tutar toplamı.
+  const gruplar = useMemo(() => {
+    const sira: Array<{ donem: string; satirlar: BelgeSatiri[]; toplam: number; tutarVar: boolean }> = [];
+    const idx = new Map<string, number>();
+    for (const d of rows) {
+      const donem = d.period || '—';
+      const tutar = d.tahakkuk?.tutar ?? d.ozet?.tutar ?? null;
+      let i = idx.get(donem);
+      if (i == null) { i = sira.length; idx.set(donem, i); sira.push({ donem, satirlar: [], toplam: 0, tutarVar: false }); }
+      sira[i].satirlar.push(d);
+      if (tutar != null && Number.isFinite(tutar)) { sira[i].toplam += tutar; sira[i].tutarVar = true; }
+    }
+    return sira;
+  }, [rows]);
+
+  const sayfadaYeniBelge = rows.some((d) => [d.hizmet, d.tahakkuk].some((b) => b && b.pdfVar && !b.viewedAt && !viewedIds.has(b.id)));
+  const KENAR = '1px solid rgba(255,255,255,0.06)';
+  const kutuStili: React.CSSProperties = { ...ALAN_STILI, height: 36, borderRadius: 10 };
+
   return (
     <div className="space-y-4">
-      {/* Gece sorgu hatası şeridi (sayaç kartı yok) */}
-      <HataSeridi hataSayisi={sgkErr} sifreBekleyenSayisi={sifreBekleyen.length} onClick={() => setShowErrors(true)} />
+      <div className="overflow-hidden rounded-2xl border" style={{ borderColor: 'rgba(255,255,255,0.07)', background: 'linear-gradient(160deg, rgba(255,255,255,0.035), rgba(255,255,255,0.012))', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04), 0 12px 30px rgba(0,0,0,0.25)' }}>
+        <DurumSeridi
+          donemKaydi={toplam}
+          sifreliMukellef={summary?.credentials?.sgkTaxpayerCount ?? 0}
+          aktifIs={aktifIs}
+          hataSayisi={sgkErr}
+          sifreBekleyen={sifreBekleyen.length}
+          runnerAcik={summary?.runner ? !!summary.runner.enabled : null}
+          onHata={() => setShowErrors(true)}
+        />
 
-      {/* ── Tek şerit araç çubuğu: mükellef · tür · dönem · arama · sağda düğmeler ── */}
-      <div className="rounded-2xl border p-3.5 flex flex-wrap items-center gap-2" style={{ background: 'rgba(255,255,255,0.02)', borderColor: 'rgba(255,255,255,0.06)' }}>
-        <MukellefSecici value={taxpayerId} onChange={setTaxpayerId} rows={mukellefler} yukleniyor={mukellefQuery.isLoading} className="min-w-[180px] max-w-[220px]" />
+        {/* ── Süzgeç satırı: mükellef · tür · dönem · arama · sağda düğmeler ── */}
+        <div className="flex flex-wrap items-center gap-2 px-4 py-3" style={{ borderBottom: KENAR }}>
+          <MukellefSecici value={taxpayerId} onChange={setTaxpayerId} rows={mukellefler} yukleniyor={mukellefQuery.isLoading} className="min-w-[190px] max-w-[240px]" />
 
-        <div className="relative">
-          <select value={turFilter} onChange={(e) => setTurFilter(e.target.value)} aria-label="SGK türü" className="h-[38px] pl-9 pr-8 rounded-[10px] text-[13px] outline-none border appearance-none min-w-[140px]" style={ALAN_STILI}>
-            {TURLER.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
-          <ListChecks size={13} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'rgba(250,250,249,0.45)' }} />
-          <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'rgba(250,250,249,0.45)' }} />
-        </div>
+          <div className="relative">
+            <select value={turFilter} onChange={(e) => setTurFilter(e.target.value)} aria-label="SGK türü" className="pl-9 pr-8 text-[12.5px] outline-none border appearance-none min-w-[136px]" style={{ ...kutuStili, width: 'auto' }}>
+              {TURLER.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+            <ListChecks size={13} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'rgba(250,250,249,0.45)' }} />
+            <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'rgba(250,250,249,0.45)' }} />
+          </div>
 
-        <div className="relative" ref={donemRef}>
-          <button type="button" onClick={() => setDonemOpen((o) => !o)} aria-label="Dönem"
-            className="h-[38px] min-w-[140px] pl-9 pr-8 rounded-[10px] text-[13px] border flex items-center text-left outline-none" style={ALAN_STILI}>
-            <CalendarClock size={13} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'rgba(250,250,249,0.45)' }} />
-            <span className="truncate" style={{ color: queryMonth ? METIN : 'rgba(250,250,249,0.55)' }}>
-              {queryMonth ? `${AY_ADLARI[Number(queryMonth) - 1]} ${queryYear}` : 'Tüm dönemler'}
-            </span>
-            <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none transition-transform" style={{ color: 'rgba(250,250,249,0.45)', transform: donemOpen ? 'rotate(180deg)' : 'none' }} />
-          </button>
-          {donemOpen && (
-            <div className="absolute z-50 mt-1.5 left-0 w-[270px] rounded-xl border p-3" style={{ background: '#1a1410', borderColor: 'rgba(212,184,118,0.25)', boxShadow: '0 16px 40px rgba(0,0,0,0.5)' }}>
-              <div className="flex items-center justify-between mb-2.5">
-                <button type="button" onClick={() => setQueryYear(String(Number(queryYear) - 1))} className="h-7 w-7 grid place-items-center rounded-lg border hover:brightness-125" style={{ borderColor: 'rgba(255,255,255,0.1)', color: METIN }} aria-label="Önceki yıl"><ChevronLeft size={15} /></button>
-                <span className="text-[14px] font-bold tabular-nums" style={{ color: METIN }}>{queryYear}</span>
-                <button type="button" onClick={() => setQueryYear(String(Number(queryYear) + 1))} className="h-7 w-7 grid place-items-center rounded-lg border hover:brightness-125" style={{ borderColor: 'rgba(255,255,255,0.1)', color: METIN }} aria-label="Sonraki yıl"><ChevronRight size={15} /></button>
+          <div className="relative" ref={donemRef}>
+            <button type="button" onClick={() => setDonemOpen((o) => !o)} aria-label="Dönem"
+              className="min-w-[140px] pl-9 pr-8 text-[12.5px] border flex items-center text-left outline-none" style={kutuStili}>
+              <CalendarClock size={13} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'rgba(250,250,249,0.45)' }} />
+              <span className="truncate" style={{ color: queryMonth ? METIN : 'rgba(250,250,249,0.55)' }}>
+                {queryMonth ? `${AY_ADLARI[Number(queryMonth) - 1]} ${queryYear}` : 'Tüm dönemler'}
+              </span>
+              <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none transition-transform" style={{ color: 'rgba(250,250,249,0.45)', transform: donemOpen ? 'rotate(180deg)' : 'none' }} />
+            </button>
+            {donemOpen && (
+              <div className="absolute z-50 mt-1.5 left-0 w-[270px] rounded-xl border p-3" style={{ background: '#1a1410', borderColor: 'rgba(212,184,118,0.25)', boxShadow: '0 16px 40px rgba(0,0,0,0.5)' }}>
+                <div className="flex items-center justify-between mb-2.5">
+                  <button type="button" onClick={() => setQueryYear(String(Number(queryYear) - 1))} className="h-7 w-7 grid place-items-center rounded-lg border hover:brightness-125" style={{ borderColor: 'rgba(255,255,255,0.1)', color: METIN }} aria-label="Önceki yıl"><ChevronLeft size={15} /></button>
+                  <span className="text-[14px] font-bold tabular-nums" style={{ color: METIN }}>{queryYear}</span>
+                  <button type="button" onClick={() => setQueryYear(String(Number(queryYear) + 1))} className="h-7 w-7 grid place-items-center rounded-lg border hover:brightness-125" style={{ borderColor: 'rgba(255,255,255,0.1)', color: METIN }} aria-label="Sonraki yıl"><ChevronRight size={15} /></button>
+                </div>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {AY_KISA.map((ad, i) => {
+                    const mv = String(i + 1).padStart(2, '0');
+                    const sel = queryMonth === mv;
+                    return (
+                      <button key={i} type="button" onClick={() => { setQueryMonth(mv); setDonemOpen(false); }}
+                        className="h-9 rounded-lg text-[12.5px] font-semibold transition hover:brightness-125"
+                        style={sel ? { background: GOLD, color: '#1a1410' } : { background: 'rgba(255,255,255,0.04)', color: 'rgba(250,250,249,0.8)' }}>
+                        {ad}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="flex items-center justify-between mt-2.5 pt-2.5" style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                  <button type="button" onClick={() => { setQueryMonth(''); setDonemOpen(false); }} className="text-[12px] font-semibold hover:brightness-125" style={{ color: 'rgba(250,250,249,0.6)' }}>Tüm dönemler</button>
+                  <button type="button" onClick={() => { setQueryMonth(String(now.getMonth() + 1).padStart(2, '0')); setQueryYear(String(now.getFullYear())); setDonemOpen(false); }} className="text-[12px] font-semibold hover:brightness-125" style={{ color: GOLD }}>Bu ay</button>
+                </div>
               </div>
-              <div className="grid grid-cols-4 gap-1.5">
-                {AY_KISA.map((ad, i) => {
-                  const mv = String(i + 1).padStart(2, '0');
-                  const sel = queryMonth === mv;
-                  return (
-                    <button key={i} type="button" onClick={() => { setQueryMonth(mv); setDonemOpen(false); }}
-                      className="h-9 rounded-lg text-[12.5px] font-semibold transition hover:brightness-125"
-                      style={sel ? { background: GOLD, color: '#1a1410' } : { background: 'rgba(255,255,255,0.04)', color: 'rgba(250,250,249,0.8)' }}>
-                      {ad}
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="flex items-center justify-between mt-2.5 pt-2.5" style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}>
-                <button type="button" onClick={() => { setQueryMonth(''); setDonemOpen(false); }} className="text-[12px] font-semibold hover:brightness-125" style={{ color: 'rgba(250,250,249,0.6)' }}>Tüm dönemler</button>
-                <button type="button" onClick={() => { setQueryMonth(String(now.getMonth() + 1).padStart(2, '0')); setQueryYear(String(now.getFullYear())); setDonemOpen(false); }} className="text-[12px] font-semibold hover:brightness-125" style={{ color: GOLD }}>Bu ay</button>
-              </div>
-            </div>
-          )}
+            )}
+          </div>
+
+          <div className="relative flex-1 min-w-[140px]">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'rgba(250,250,249,0.4)' }} />
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Mükellef, VKN, dönem, kanun no…"
+              className="w-full pl-9 pr-3 text-[12.5px] outline-none border" style={{ ...kutuStili, padding: '0 12px 0 34px', fontSize: 12.5 }} />
+          </div>
+
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            {sayfadaYeniBelge && (
+              <button onClick={markAll} disabled={markAllMut.isPending} title="Sayfadaki tüm yeni (kırmızı) belgeleri görüntülendi işaretle"
+                className="h-9 px-3 rounded-[10px] text-[12.5px] font-semibold flex items-center gap-1.5 border disabled:opacity-50 transition hover:brightness-125"
+                style={{ background: 'rgba(92,191,138,0.10)', borderColor: 'rgba(92,191,138,0.35)', color: '#5cbf8a' }}>
+                {markAllMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <CheckCheck size={14} />} Tümünü görüntülendi say
+              </button>
+            )}
+            <button onClick={yenile} title="Listeyi yenile"
+              className="h-9 w-9 rounded-[10px] flex items-center justify-center border transition hover:brightness-125" style={ALAN_STILI}>
+              <RefreshCw size={14} className={docsQuery.isFetching ? 'animate-spin' : ''} />
+            </button>
+            <button onClick={() => sorgulaMut.mutate()} disabled={sorgulaMut.isPending} title={queryMonth ? `${AY_ADLARI[Number(queryMonth) - 1]} ${queryYear} dönemini SGK'dan çek` : 'Son dönemleri SGK\'dan çek (eksik/yeni bildirgeler)'}
+              className="h-9 px-3.5 rounded-[10px] text-[12.5px] font-bold flex items-center gap-2 disabled:opacity-50 transition hover:brightness-110" style={{ background: 'linear-gradient(135deg, #d4b876, #b8a06f)', color: '#1a1410' }}>
+              {sorgulaMut.isPending ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
+              {queryMonth ? `${AY_ADLARI[Number(queryMonth) - 1]} ${queryYear} sorgula` : (taxpayerId ? 'Bu mükellefi sorgula' : 'Şimdi sorgula')}
+            </button>
+          </div>
         </div>
 
-        <div className="relative flex-1 min-w-[120px]">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'rgba(250,250,249,0.4)' }} />
-          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Dönem, mükellef, kanun no…"
-            className="w-full h-[38px] pl-9 pr-3 rounded-[10px] text-[13px] outline-none border" style={ALAN_STILI} />
-        </div>
-
-        <div className="ml-auto flex flex-wrap items-center gap-2">
-          <button onClick={() => sorgulaMut.mutate()} disabled={sorgulaMut.isPending} title={queryMonth ? `${AY_ADLARI[Number(queryMonth) - 1]} ${queryYear} dönemini çek` : 'Son dönemleri çek (eksik/yeni bildirgeler)'}
-            className="h-[38px] px-3.5 rounded-[10px] text-[13px] font-bold flex items-center gap-2 disabled:opacity-50" style={{ background: 'linear-gradient(135deg, #d4b876, #b8a06f)', color: '#1a1410' }}>
-            {sorgulaMut.isPending ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
-            {queryMonth ? `${AY_ADLARI[Number(queryMonth) - 1]} ${queryYear} sorgula` : (taxpayerId ? 'Bu mükellefi sorgula' : 'Şimdi sorgula')}
-          </button>
-          <button onClick={yenile}
-            className="h-[38px] px-2.5 rounded-[10px] text-[13px] font-semibold flex items-center gap-1.5 border" style={ALAN_STILI}>
-            <RefreshCw size={14} className={docsQuery.isFetching ? 'animate-spin' : ''} /> Yenile
-          </button>
-          <button onClick={markAll} disabled={markAllMut.isPending} title="Sayfadaki tüm belgeleri görüntülendi (yeşil) işaretle"
-            className="h-[38px] px-2.5 rounded-[10px] text-[13px] font-semibold flex items-center gap-1.5 border disabled:opacity-50" style={{ background: 'rgba(95,207,142,0.12)', borderColor: 'rgba(95,207,142,0.35)', color: '#5fcf8e' }}>
-            {markAllMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <CheckCheck size={14} />} Tümünü Görüntüle
-          </button>
-        </div>
-      </div>
-
-      {/* ── Tablo: mükellef + dönem tek satır, iki belge çipi ── */}
-      <div className="rounded-2xl border overflow-hidden" style={{ background: 'rgba(0,0,0,0.18)', borderColor: 'rgba(255,255,255,0.06)' }}>
+        {/* ── Liste: döneme göre gruplu, sabit sütun genişlikleri ── */}
         <div className="overflow-x-auto">
-          <table className="w-full text-[12px]" style={{ borderCollapse: 'collapse', minWidth: 1040 }}>
-            <thead style={{ background: 'rgba(255,255,255,0.03)' }}>
-              <tr style={{ color: 'rgba(250,250,249,0.55)' }}>
-                {['Mükellef', 'Dönem', 'Mahiyet', 'Kanun No', 'Çalışan', 'Tutar', 'Belgeler', 'İletim'].map((h, i) => (
-                  <th key={h} className={`px-3 py-2.5 font-semibold whitespace-nowrap ${i >= 3 ? 'text-center' : 'text-left'}`} style={{ borderBottom: cellBorder }}>{h}</th>
+          <table className="w-full text-[12.5px]" style={{ borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: 1000 }}>
+            <colgroup>
+              <col />
+              <col style={{ width: 92 }} />
+              <col style={{ width: 88 }} />
+              <col style={{ width: 76 }} />
+              <col style={{ width: 132 }} />
+              <col style={{ width: 268 }} />
+              <col style={{ width: 128 }} />
+            </colgroup>
+            <thead>
+              <tr style={{ color: 'rgba(250,250,249,0.42)' }}>
+                {[['Mükellef', 'text-left'], ['Mahiyet', 'text-left'], ['Kanun', 'text-left'], ['Çalışan', 'text-right'], ['Tutar', 'text-right'], ['Belgeler', 'text-left'], ['İletim', 'text-left']].map(([h, hiza]) => (
+                  <th key={h} className={`px-3 py-2.5 text-[10.5px] font-bold uppercase tracking-[.12em] whitespace-nowrap ${hiza}`} style={{ borderBottom: KENAR }}>{h}</th>
                 ))}
               </tr>
             </thead>
-            {/* Sayfa geçişinde eski satırlar hafif soluk kalır (titreme yok). */}
             <tbody style={{ color: 'rgba(250,250,249,0.88)', opacity: docsQuery.isPlaceholderData ? 0.55 : 1, transition: 'opacity .15s' }}>
-              {docsQuery.isLoading && (<tr><td colSpan={8} className="px-3 py-10 text-center" style={{ color: 'rgba(250,250,249,0.45)' }}><Loader2 size={18} className="animate-spin inline" /> Yükleniyor…</td></tr>)}
+              {docsQuery.isLoading && (<tr><td colSpan={7} className="px-3 py-10 text-center" style={{ color: 'rgba(250,250,249,0.45)' }}><Loader2 size={18} className="animate-spin inline" /> Yükleniyor…</td></tr>)}
               {docsQuery.isError && !docsQuery.isLoading && (
-                <tr><td colSpan={8} className="px-3 py-10 text-center" style={{ color: '#ef9a9a' }}>Liste alınamadı. "Yenile" ile tekrar deneyin.</td></tr>
+                <tr><td colSpan={7} className="px-3 py-10 text-center" style={{ color: '#e2706f' }}>Liste alınamadı. Yenile düğmesiyle tekrar deneyin.</td></tr>
               )}
               {!docsQuery.isLoading && !docsQuery.isError && rows.length === 0 && (
-                <tr><td colSpan={8} className="px-3 py-12 text-center" style={{ color: 'rgba(250,250,249,0.4)' }}>
-                  <ShieldCheck size={26} className="inline mb-2 opacity-50" /><br />
+                <tr><td colSpan={7} className="px-3 py-14 text-center" style={{ color: 'rgba(250,250,249,0.4)' }}>
+                  <span className="mx-auto mb-2 flex h-11 w-11 items-center justify-center rounded-full" style={{ background: 'rgba(212,184,118,0.12)', color: GOLD }}><ShieldCheck size={18} /></span>
                   {!suzgecVar ? 'Henüz SGK belgesi yok. "Şimdi sorgula" ile çekin ya da gece otomatik gelsin.' : 'Süzgece uyan belge yok.'}
                 </td></tr>
               )}
-              {rows.map((d) => {
-                const o = d.ozet || {};
-                const ad = mukellefAdi(d.taxpayer);
-                const donem = d.period || '—';
-                const tutar = d.tahakkuk?.tutar ?? o.tutar ?? null;
-                const hizmetGoruldu = !!(d.hizmet && (d.hizmet.viewedAt || viewedIds.has(d.hizmet.id)));
-                const tahakkukGoruldu = !!(d.tahakkuk && (d.tahakkuk.viewedAt || viewedIds.has(d.tahakkuk.id)));
-                return (
-                  <tr key={d.id} className="hover:bg-white/[0.02]">
-                    <td className="px-3 py-2.5 align-middle" style={{ borderBottom: cellBorder }}>
-                      <div className="font-semibold text-[13px]" style={{ color: METIN }}>{ad}</div>
-                      {d.taxpayer?.taxNumber && <div className="text-[11px] mt-0.5 tabular-nums" style={{ color: 'rgba(250,250,249,0.4)' }}>{d.taxpayer.taxNumber}</div>}
-                    </td>
-                    <td className="px-3 py-2.5 align-middle tabular-nums text-[13px] whitespace-nowrap" style={{ borderBottom: cellBorder, color: 'rgba(250,250,249,0.9)' }}>{donem}</td>
-                    <td className="px-3 py-2.5 align-middle text-[13px]" style={{ borderBottom: cellBorder, color: 'rgba(250,250,249,0.9)' }}>{o.mahiyet || '—'}</td>
-                    <td className="px-3 py-2.5 align-middle text-center tabular-nums text-[13px]" style={{ borderBottom: cellBorder, color: 'rgba(250,250,249,0.9)' }}>{o.kanunNo || '0000'}</td>
-                    <td className="px-3 py-2.5 align-middle text-center tabular-nums text-[13px]" style={{ borderBottom: cellBorder, color: 'rgba(250,250,249,0.9)' }}>{o.calisan ?? '—'}</td>
-                    <td className="px-3 py-2.5 align-middle text-center tabular-nums whitespace-nowrap text-[13px]" style={{ borderBottom: cellBorder, color: tutar !== null ? METIN : 'rgba(250,250,249,0.35)', fontWeight: tutar !== null ? 600 : 400 }}>{tutarBicimle(tutar)}</td>
-                    <td className="px-3 py-2.5 align-middle text-center" style={{ borderBottom: cellBorder }}>
-                      <div className="inline-flex flex-wrap items-center justify-center gap-1.5">
-                        <BelgeCipi
-                          label="Hizmet Listesi"
-                          ikon={<ListChecks size={11} />}
-                          belge={d.hizmet}
-                          goruldu={hizmetGoruldu}
-                          onClick={() => d.hizmet && openPdf(d.hizmet.id, [ad, 'Hizmet Listesi', d.period].filter(Boolean).join(' · '))}
-                        />
-                        <BelgeCipi
-                          label="Tahakkuk Fişi"
-                          ikon={<Receipt size={11} />}
-                          belge={d.tahakkuk}
-                          goruldu={tahakkukGoruldu}
-                          onClick={() => d.tahakkuk && openPdf(d.tahakkuk.id, [ad, 'Tahakkuk Fişi', d.period].filter(Boolean).join(' · '))}
-                        />
+              {gruplar.map((g) => (
+                <React.Fragment key={g.donem}>
+                  <tr>
+                    <td colSpan={7} className="px-3 py-1.5" style={{ background: 'rgba(212,184,118,0.06)', borderTop: KENAR, borderBottom: KENAR }}>
+                      <div className="flex items-center gap-3">
+                        <span className="h-4 w-[3px] rounded-full" style={{ background: GOLD }} />
+                        <span className="text-[12.5px] font-bold tabular-nums" style={{ color: METIN }}>{g.donem}</span>
+                        <span className="text-[11.5px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
+                          {g.satirlar.length} mükellef{g.tutarVar ? ` · toplam ${tutarBicimle(g.toplam)}` : ''}
+                        </span>
                       </div>
                     </td>
-                    <td className="px-3 py-2.5 align-middle text-center" style={{ borderBottom: cellBorder }}>
-                      <IletimRozeti iletim={d.iletim} />
-                    </td>
                   </tr>
-                );
-              })}
+                  {g.satirlar.map((d, i) => {
+                    const o = d.ozet || {};
+                    const ad = mukellefAdi(d.taxpayer);
+                    const tutar = d.tahakkuk?.tutar ?? o.tutar ?? null;
+                    const kanun = o.kanunNo && !/^0+$/.test(String(o.kanunNo)) ? String(o.kanunNo) : '';
+                    const hizmetGoruldu = !!(d.hizmet && (d.hizmet.viewedAt || viewedIds.has(d.hizmet.id)));
+                    const tahakkukGoruldu = !!(d.tahakkuk && (d.tahakkuk.viewedAt || viewedIds.has(d.tahakkuk.id)));
+                    return (
+                      <tr key={d.id} className="transition-colors hover:bg-white/[0.03]" style={{ background: i % 2 ? 'rgba(255,255,255,0.012)' : 'transparent' }}>
+                        <td className="px-3 py-2.5 align-middle" style={{ borderBottom: KENAR }}>
+                          <div className="truncate text-[13px] font-semibold" style={{ color: METIN }} title={ad}>{ad}</div>
+                          {d.taxpayer?.taxNumber && <div className="text-[11px] tabular-nums" style={{ color: 'rgba(250,250,249,0.38)' }}>{d.taxpayer.taxNumber}</div>}
+                        </td>
+                        <td className="px-3 py-2.5 align-middle" style={{ borderBottom: KENAR }}><MahiyetRozeti mahiyet={o.mahiyet} /></td>
+                        <td className="px-3 py-2.5 align-middle tabular-nums text-[12px]" style={{ borderBottom: KENAR, color: kanun ? 'rgba(250,250,249,0.7)' : 'rgba(250,250,249,0.3)' }}>{kanun || '—'}</td>
+                        <td className="px-3 py-2.5 align-middle text-right tabular-nums text-[13px]" style={{ borderBottom: KENAR, color: 'rgba(250,250,249,0.85)' }}>{o.calisan ?? '—'}</td>
+                        <td className="px-3 py-2.5 align-middle text-right tabular-nums whitespace-nowrap" style={{ borderBottom: KENAR }}>
+                          {tutar !== null && Number.isFinite(tutar)
+                            ? <><b className="text-[13.5px]" style={{ color: METIN }}>{tutar.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b> <span className="text-[11px]" style={{ color: 'rgba(250,250,249,0.45)' }}>₺</span></>
+                            : <span style={{ color: 'rgba(250,250,249,0.3)' }}>—</span>}
+                        </td>
+                        <td className="px-3 py-2.5 align-middle" style={{ borderBottom: KENAR }}>
+                          <div className="flex items-center gap-1.5">
+                            <BelgeCipi label="Hizmet Listesi" ikon={<ListChecks size={11} />} belge={d.hizmet} goruldu={hizmetGoruldu}
+                              onClick={() => d.hizmet && openPdf(d.hizmet.id, [ad, 'Hizmet Listesi', d.period].filter(Boolean).join(' · '))} />
+                            <BelgeCipi label="Tahakkuk Fişi" ikon={<Receipt size={11} />} belge={d.tahakkuk} goruldu={tahakkukGoruldu}
+                              onClick={() => d.tahakkuk && openPdf(d.tahakkuk.id, [ad, 'Tahakkuk Fişi', d.period].filter(Boolean).join(' · '))} />
+                          </div>
+                        </td>
+                        <td className="px-3 py-2.5 align-middle" style={{ borderBottom: KENAR }}>
+                          {d.iletim && d.iletim.length ? <IletimRozeti iletim={d.iletim} /> : <span className="text-[11.5px]" style={{ color: 'rgba(250,250,249,0.28)' }}>iletilmedi</span>}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </React.Fragment>
+              ))}
             </tbody>
           </table>
         </div>
-        {(aktifIs > 0 || summary?.runner) && (
-          <div className="px-4 py-2 flex items-center gap-x-3 flex-wrap text-[11px]" style={{ borderTop: cellBorder, color: 'rgba(250,250,249,0.5)' }}>
-            {aktifIs > 0 && <span className="inline-flex items-center gap-1" style={{ color: GOLD }}><Loader2 size={11} className="animate-spin" /> {aktifIs} sorgu çalışıyor</span>}
-            {summary?.runner && <span className="ml-auto inline-flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full" style={{ background: summary.runner.enabled ? '#5fcf8e' : '#ef6b6b' }} /> Sunucu runner {summary.runner.enabled ? 'aktif' : 'kapalı'}</span>}
-          </div>
-        )}
         <Sayfalama
           sayfa={etkinSayfa}
           sayfaBoyutu={boyut}

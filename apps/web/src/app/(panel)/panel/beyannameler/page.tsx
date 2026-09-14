@@ -534,16 +534,15 @@ function BeyannamelerIcerik() {
         <div className="pointer-events-none absolute" style={{ width: 420, height: 420, left: -60, top: -220, borderRadius: '50%', background: 'radial-gradient(circle, rgba(76,198,245,0.16), transparent 62%)' }} />
         <div className="pointer-events-none absolute" style={{ width: 420, height: 420, right: -80, top: -260, borderRadius: '50%', background: 'radial-gradient(circle, rgba(244,196,81,0.10), transparent 62%)' }} />
 
-        <div className="relative px-4 pt-4 sm:px-5">
-          <div className="flex flex-wrap items-start gap-4">
+        <div className="relative px-4 pt-3 sm:px-5">
+          <div className="flex flex-wrap items-center gap-4">
             <div className="flex min-w-0 items-center gap-3">
-              <div className="grid flex-none place-items-center" style={{ width: 46, height: 46, borderRadius: 13, background: 'linear-gradient(150deg, rgba(76,198,245,0.22), rgba(76,198,245,0.05))', border: '1px solid rgba(76,198,245,0.3)' }}>
-                <FileText size={22} style={{ color: '#bfe9ff' }} />
+              <div className="grid flex-none place-items-center" style={{ width: 38, height: 38, borderRadius: 11, background: 'linear-gradient(150deg, rgba(76,198,245,0.22), rgba(76,198,245,0.05))', border: '1px solid rgba(76,198,245,0.3)' }}>
+                <FileText size={19} style={{ color: '#bfe9ff' }} />
               </div>
               <div className="min-w-0">
                 <div className="text-[10px] font-extrabold uppercase tracking-[0.2em]" style={{ color: '#7fcdee' }}>e-Beyanname · GİB</div>
-                <h1 className="text-[20px] font-bold tracking-[-0.02em]" style={{ color: '#f3f5f7' }}>Beyanname İndirme</h1>
-                <p className="text-[11.5px]" style={{ color: 'rgba(243,245,247,0.4)' }}>Ajan, mali müşavir şifresiyle GİB&apos;den beyanname + tahakkukları indirir.</p>
+                <h1 className="text-[18px] font-bold tracking-[-0.02em]" style={{ color: '#f3f5f7' }}>Beyanname İndirme</h1>
               </div>
             </div>
 
@@ -552,12 +551,12 @@ function BeyannamelerIcerik() {
             <div className="flex flex-col items-end gap-1.5">
               <div className="flex flex-wrap items-stretch justify-end gap-2">
                 <div className="flex items-center overflow-hidden rounded-[11px]" style={{ border: '1px solid rgba(255,255,255,0.07)', background: 'rgba(255,255,255,0.03)' }}>
-                  <label className="flex flex-col gap-px px-3 py-1.5">
+                  <label className="flex flex-col gap-px px-2.5 py-1">
                     <span className="text-[9px] font-bold uppercase tracking-[0.14em]" style={{ color: 'rgba(243,245,247,0.4)' }}>Başlangıç</span>
                     <input type="date" value={pullFrom} onChange={(e) => setPullFrom(e.target.value)} onClick={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }} className="bg-transparent text-[13px] font-semibold outline-none cursor-pointer" style={{ color: '#f3f5f7', colorScheme: 'dark' }} />
                   </label>
                   <div className="self-stretch" style={{ width: 1, background: 'rgba(255,255,255,0.07)' }} />
-                  <label className="flex flex-col gap-px px-3 py-1.5">
+                  <label className="flex flex-col gap-px px-2.5 py-1">
                     <span className="text-[9px] font-bold uppercase tracking-[0.14em]" style={{ color: 'rgba(243,245,247,0.4)' }}>Bitiş</span>
                     <input type="date" value={pullTo} onChange={(e) => setPullTo(e.target.value)} onClick={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch {} }} className="bg-transparent text-[13px] font-semibold outline-none cursor-pointer" style={{ color: '#f3f5f7', colorScheme: 'dark' }} />
                   </label>
@@ -567,7 +566,7 @@ function BeyannamelerIcerik() {
                   onClick={() => pullMut.mutate(false)}
                   disabled={pullMut.isPending}
                   title="Eski e-Beyanname sisteminden beyanname + tahakkuk indirir"
-                  className="inline-flex h-[46px] items-center justify-center gap-2 rounded-[11px] px-[18px] text-[13.5px] font-bold"
+                  className="inline-flex h-[38px] items-center justify-center gap-2 rounded-[10px] px-4 text-[13px] font-bold"
                   style={{ background: 'linear-gradient(135deg, #f4c451, #e0a93c)', color: '#1a1407', boxShadow: '0 12px 26px -12px rgba(244,196,81,0.6)', opacity: pullMut.isPending ? 0.65 : 1 }}
                 >
                   {pullMut.isPending ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
@@ -578,7 +577,7 @@ function BeyannamelerIcerik() {
                   onClick={() => pullNewMut.mutate(false)}
                   disabled={pullNewMut.isPending}
                   title="Yeni GİB e-Beyan sisteminden (ebeyan.gib.gov.tr) çeker — eski sistemden ayrı"
-                  className="inline-flex h-[46px] items-center justify-center gap-2 rounded-[11px] px-[16px] text-[13.5px] font-bold"
+                  className="inline-flex h-[38px] items-center justify-center gap-2 rounded-[10px] px-3.5 text-[13px] font-bold"
                   style={{ background: 'rgba(52,211,153,0.08)', border: '1px solid rgba(52,211,153,0.38)', color: '#6ee7b7', opacity: pullNewMut.isPending ? 0.65 : 1 }}
                 >
                   {pullNewMut.isPending ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
@@ -593,21 +592,18 @@ function BeyannamelerIcerik() {
                   }}
                   disabled={pullMut.isPending}
                   title="Yenile (force) — var olanları da yeniden indir, Tutar okunamadı / eksik PDF kayıtlarını düzeltir"
-                  className="inline-flex h-[46px] w-[46px] items-center justify-center rounded-[11px]"
+                  className="inline-flex h-[38px] w-[38px] items-center justify-center rounded-[10px]"
                   style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)', color: 'rgba(243,245,247,0.62)' }}
                 >
                   {pullMut.isPending ? <Loader2 size={17} className="animate-spin" /> : <RotateCcw size={17} />}
                 </button>
               </div>
-              <p className="max-w-[720px] text-right text-[11.5px] leading-snug" style={{ color: 'rgba(243,245,247,0.42)' }}>
-                <b style={{ color: 'rgba(244,196,81,0.85)' }}>Beyannameleri Çek:</b> eski e-Beyanname sistemi (beyanname + tahakkuk).{' '}
-                <b style={{ color: 'rgba(110,231,183,0.85)' }}>Yeni Beyanname Sitesinden Çek:</b> ebeyan.gib.gov.tr&apos;ye taşınan beyanname türleri.
-              </p>
+              
             </div>
           </div>
 
           {/* canlı durum: son iş + runner/şifre */}
-          <div className="mt-3.5 flex flex-wrap items-center gap-3 py-2.5" style={{ borderTop: '1px solid rgba(255,255,255,0.07)' }}>
+          <div className="mt-2.5 flex flex-wrap items-center gap-3 py-2" style={{ borderTop: '1px solid rgba(255,255,255,0.07)' }}>
             <ConsoleJob
               job={latestBeyanJob}
               onCancel={isBeyanJobActive && latestBeyanJob ? () => cancelJobMut.mutate(latestBeyanJob.id) : undefined}
@@ -697,9 +693,7 @@ function BeyannamelerIcerik() {
           <div>
             <h2 className="text-[15px] font-semibold" style={{ color: '#fafaf9' }}>Beyanname Listesi</h2>
             <p className="mt-0.5 text-[12px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
-              {toplam > 0 ? <><b style={{ color: 'rgba(250,250,249,0.75)' }}>{toplam.toLocaleString('tr-TR')}</b> kayıt · </> : null}
-              Tarihe göre yeni kayıtlar üstte. Her satır bir kayıt; beyanname ve tahakkuk PDF&apos;leri satırdaki çiplerden açılır.
-            </p>
+              {toplam > 0 ? <><b style={{ color: 'rgba(250,250,249,0.75)' }}>{toplam.toLocaleString('tr-TR')}</b> kayıt · </> : null}</p>
           </div>
           <button
             type="button"
@@ -754,7 +748,19 @@ function BeyannamelerIcerik() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1120px] text-[13px]">
+            <table className="w-full text-[13px]" style={{ tableLayout: 'fixed', minWidth: 1120 }}>
+              <colgroup>
+                <col style={{ width: 40 }} />
+                <col />
+                <col style={{ width: 78 }} />
+                <col style={{ width: 108 }} />
+                <col style={{ width: 82 }} />
+                <col style={{ width: 88 }} />
+                <col style={{ width: 112 }} />
+                <col style={{ width: 190 }} />
+                <col style={{ width: 118 }} />
+                <col style={{ width: 104 }} />
+              </colgroup>
               <thead style={{ background: 'rgba(255,255,255,0.025)' }}>
                 <tr className="text-left uppercase tracking-[.12em] text-[10.5px]" style={{ color: 'rgba(250,250,249,0.45)' }}>
                   <th className="w-[42px] px-3 py-3">
