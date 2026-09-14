@@ -174,8 +174,9 @@ function Satir({ r, secili, onSec, kanallar }: { r: OdemeListesi; secili: boolea
           {r.unvan}
         </span>
         {eksik && (
-          <span title={eksik.metin} aria-label={eksik.metin} className="flex-shrink-0" style={{ color: eksik.kritik ? KIRMIZI_YUMUSAK : IKINCIL }}>
-            <AlertTriangle size={12} />
+          // İkon değil YAZI (Muzaffer Bey 2026-09-14: "ünlem işareti var, o niye?"): "e-posta yok" / "telefon yok"
+          <span title={eksik.metin} className="flex-shrink-0 whitespace-nowrap text-[10.5px]" style={{ color: eksik.kritik ? KIRMIZI_YUMUSAK : IKINCIL }}>
+            {eksik.kisa}
           </span>
         )}
       </div>

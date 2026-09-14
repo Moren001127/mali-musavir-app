@@ -603,7 +603,7 @@ export function kanalDugmesi(
  * İletişim eksiği ipucu — telefon ya da e-posta yoksa. Kapalı kanal (ör. e-posta kanalı kapalıysa e-posta) aranmaz;
  * kanallar verilmezse ikisi de aranır. Dönüş: { metin, kritik } — kritik = açık kanalların HİÇBİRİ için bilgi yok.
  */
-export function iletisimEksigi(r: Pick<OdemeListesi, 'phone' | 'email'>, kanallar?: { whatsapp: boolean; email: boolean } | null): { metin: string; kritik: boolean } | null {
+export function iletisimEksigi(r: Pick<OdemeListesi, 'phone' | 'email'>, kanallar?: { whatsapp: boolean; email: boolean } | null): { metin: string; kisa: string; kritik: boolean } | null {
   const telGerek = kanallar ? kanallar.whatsapp : true;
   const epGerek = kanallar ? kanallar.email : true;
   const tel = !!(r.phone || '').trim();
@@ -614,7 +614,7 @@ export function iletisimEksigi(r: Pick<OdemeListesi, 'phone' | 'email'>, kanalla
   if (eksik.length === 0) return null;
   const gerekli = Number(telGerek) + Number(epGerek);
   const kritik = eksik.length >= Math.max(1, gerekli);
-  return { metin: `${eksik.join(' ve ')} yok${kritik ? ' — gönderim yapılamaz' : ''}`, kritik };
+  return { metin: `${eksik.join(' ve ')} yok${kritik ? ' — gönderim yapılamaz' : ''}`, kisa: `${eksik.join(' ve ').toLocaleLowerCase('tr-TR')} yok`, kritik };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
