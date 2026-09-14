@@ -267,7 +267,7 @@ export class AkilliBildirimService {
    *
    * Yalnız OKUR, hiçbir şey göndermez.
    */
-  private async beklenenler(tenantId: string, start: Date, end: Date) {
+  private async beklenenler(tenantId: string, start: Date, end: Date, ayarlarOnceden?: any[]) {
     // Ay sonunda gelen belge ertesi ayın ilk günlerinde gönderilir. Gönderim
     // kaydını YALNIZ ay içinde ararsak bu belgeler haksız yere "gönderilmedi"
     // görünür; bu yüzden gönderim tarafına 10 günlük tolerans veriliyor.
@@ -297,7 +297,8 @@ export class AkilliBildirimService {
         where: { tenantId, createdAt: { gte: start, lt: gonderimSonu } },
         select: { taxpayerId: true, kategori: true },
       }),
-      this.getSettings(tenantId),
+      // report() ayarları zaten okuduysa ikinci kez sorulmaz
+      ayarlarOnceden ? Promise.resolve(ayarlarOnceden) : this.getSettings(tenantId),
     ]);
 
     // kategori -> mükellef kümesi
@@ -641,7 +642,10 @@ export class AkilliBildirimService {
       where: { tenantId, createdAt: { gte: start, lt: end } },
       orderBy: { createdAt: 'desc' },
     });
-    const bekleyenler = await this.beklenenler(tenantId, start, end);
+    // Ayarlar bir kez okunur: hem bekleyenlerin sebebi hem yanıttaki `ayarlar`
+    // özeti (ekrandaki test modu uyarısı) buradan beslenir.
+    const ayarlar = await this.getSettings(tenantId);
+    const bekleyenler = await this.beklenenler(tenantId, start, end, ayarlar);
     const taxpayers = await (this.prisma as any).taxpayer.findMany({
       where: { tenantId, id: { in: [...new Set(rows.map((r: any) => r.taxpayerId))] } },
       select: { id: true, companyName: true, firstName: true, lastName: true },
@@ -670,7 +674,15 @@ export class AkilliBildirimService {
       const oncelik = (st: string | null) =>
         st === 'FAILED' ? 4 : st === 'PENDING' ? 3 : st === 'SKIPPED' ? 2 : st === 'SENT' ? 1 : 0;
       const prev = row[r.kategori];
-      const kanalDurum = { status: r.status, error: r.error, channel: r.channel, testMode: !!r.testMode };
+      // sentAt/createdAt: ekran "İletildi · 12.09 14:20" yazabilsin (2026-09-14).
+      const kanalDurum = {
+        status: r.status,
+        error: r.error,
+        channel: r.channel,
+        testMode: !!r.testMode,
+        sentAt: r.sentAt ?? null,
+        createdAt: r.createdAt ?? null,
+      };
       if (!prev || oncelik(r.status) > oncelik(prev.status)) {
         row[r.kategori] = { ...kanalDurum, kanallar: [...(prev?.kanallar || []), kanalDurum] };
       } else {
@@ -714,6 +726,16 @@ export class AkilliBildirimService {
         mukellefSayisi: perTaxpayer.size,
       },
       taxpayers: [...perTaxpayer.values()].sort((a, b) => a.unvan.localeCompare(b.unvan, 'tr')),
+      // Kategori ayar özeti (2026-09-14) — ekran "test modu AÇIK: gönderimler test
+      // alıcısına gidiyor" uyarısını buradan yazar (kapalı kategori satırlardaki
+      // BEKLIYOR sebebinden sayılır; ayar burada yalnız bilgi).
+      ayarlar: (ayarlar || []).map((a: any) => ({
+        kategori: a.kategori,
+        enabled: !!a.enabled,
+        testMode: !!a.testMode,
+        whatsapp: !!a.whatsapp,
+        email: !!a.email,
+      })),
       today: await this.todaySummary(tenantId),
     };
   }
