@@ -88,6 +88,15 @@ export function kritikMi(n: Bildirim): boolean {
   return true;
 }
 
+/** Gövdedeki WhatsApp biçimlendirmesini (*kalın*, _italik_) ve fazla boşluğu temizle — ekranda düz metin. */
+export function temizGovde(s: string): string {
+  return String(s || '')
+    .replace(/\*([^*\n]{1,200})\*/g, '$1')
+    .replace(/(^|\s)_([^_\n]{1,200})_(?=\s|$)/g, '$1$2')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 /** Başlıktaki emoji/sembol önekini at (ikon zaten türü söylüyor): "🔑 Portal şifre hatası: X" → "Portal şifre hatası: X". */
 export function temizBaslik(s: string): string {
   return String(s || '').replace(/^[^\p{L}\p{N}"«(]+/u, '').trim();

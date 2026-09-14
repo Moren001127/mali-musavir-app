@@ -12,7 +12,7 @@ import { toast } from 'sonner';
 import { Bell, BellOff, Check, CheckCheck, ChevronDown, Loader2, Search, SlidersHorizontal, X } from 'lucide-react';
 import {
   ALTIN, GRI, GUN_SIRASI, IKINCIL, KENAR, KENAR_KOYU, KIRMIZI, METIN, SONUK, TUR, ZEMIN, ZEMIN_HOVER,
-  bildirimBaglantisi, gunGrubu, kisaZaman, kritikMi, satirlariKur, tamZaman, temizBaslik, tur, turKodu,
+  bildirimBaglantisi, gunGrubu, kisaZaman, kritikMi, satirlariKur, tamZaman, temizBaslik, temizGovde, tur, turKodu,
   type Bildirim, type GunGrubu, type Satir,
 } from './_components/katalog';
 
@@ -177,7 +177,7 @@ export default function BildirimlerPage() {
             <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2" style={{ color: SONUK }} />
             <input value={arama} onChange={(e) => setArama(e.target.value)} placeholder="Bildirimlerde ara"
               className="h-9 w-full rounded-full border pl-9 pr-8 text-[13px] outline-none"
-              style={{ background: ZEMIN, borderColor: KENAR, color: METIN }} />
+              style={{ background: ZEMIN, borderColor: KENAR, color: METIN, padding: '0 32px 0 36px', borderRadius: 9999, fontSize: 13 }} />
             {arama && (
               <button type="button" onClick={() => setArama('')} aria-label="Aramayı temizle"
                 className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full" style={{ color: SONUK }}>
@@ -189,6 +189,8 @@ export default function BildirimlerPage() {
           <select value={turSuzgec} onChange={(e) => setTurSuzgec(e.target.value)} aria-label="Tür süzgeci"
             className="h-9 appearance-none rounded-full border pl-3 pr-8 text-[12px] font-semibold outline-none"
             style={{
+              // globals.css select'e width:100% + padding veriyor → burada dar ve satır içinde kalsın
+              width: 'auto', minWidth: 150, maxWidth: 260, padding: '0 32px 0 12px', fontSize: 12, borderRadius: 9999,
               background: `${OK_SVG(turSuzgec ? 'd4b876' : '8a8a86')} no-repeat right 10px center, ${ZEMIN}`,
               borderColor: turSuzgec ? `${ALTIN}55` : KENAR, color: turSuzgec ? ALTIN : IKINCIL,
             }}>
@@ -258,7 +260,7 @@ function BildirimSatiri({ satir, onAc, onOkundu }: { satir: Satir; onAc: () => v
   const [acik, setAcik] = useState(false);
   const [tekrarAcik, setTekrarAcik] = useState(false);
   const baslik = temizBaslik(n.title);
-  const govde = String(n.body || '').replace(/\s+/g, ' ').trim();
+  const govde = temizGovde(n.body);
   const uzun = govde.length > 150;
   const seritRenk = kritik ? KIRMIZI : t.renk;
 
