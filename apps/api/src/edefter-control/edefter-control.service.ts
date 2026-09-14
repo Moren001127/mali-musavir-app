@@ -8,6 +8,7 @@ import {
 import { hesapDavranisDenetimi, HDD_VARSAYILAN_KAPALI } from './hesap-davranis';
 import type { HesapKarti, KuralKapsami } from './hesap-davranis/tipler';
 import { ESKI_VARSAYILAN_KAPALI, KURAL_KATALOGU } from './kural-katalogu';
+import { firmaEslesiyorMu } from './firma-eslesme';
 
 export type EDefterDonemTipi =
   | 'AYLIK'
@@ -312,6 +313,21 @@ export class EDefterControlService {
       where: { id: params.taxpayerId, tenantId: params.tenantId },
     });
     if (!taxpayer) throw new NotFoundException('Mukellef bulunamadi');
+
+    // FIRMA UYUSMAZLIGI KORUMASI (2026-09-14, SILBER vakasi): Luca'da mukellef bulunamayinca ajan ACIK firmanin
+    //   raporunu indiriyor ve portal baska firmanin verisini bu mukellef altinda gosteriyordu. Rapor basligindaki
+    //   "Sirket" adi secilen mukellefle bagdasmiyorsa veri KAYDEDILMEZ, is acik mesajla basarisiz olur.
+    const raporFirmaAdi = this.parser.parseFirmaAdi(params.buffer);
+    const eslesme = firmaEslesiyorMu(raporFirmaAdi, taxpayer);
+    if (!eslesme.uyumlu) {
+      const mukellefAdi = taxpayer.companyName || `${taxpayer.firstName || ''} ${taxpayer.lastName || ''}`.trim();
+      this.logger.warn(`e-Defter FIRMA UYUSMAZLIGI: rapor="${raporFirmaAdi}" mukellef="${mukellefAdi}" (${params.taxpayerId}) → import REDDEDILDI`);
+      throw new BadRequestException(
+        `FİRMA UYUŞMAZLIĞI: Luca'dan gelen rapor "${raporFirmaAdi}" firmasına ait; seçilen mükellef "${mukellefAdi}". ` +
+        `Bu mükellef Luca'da bulunamamış ya da seçilememiş olabilir (Luca'da açık olan firma çekildi). Veri KAYDEDİLMEDİ. ` +
+        `Luca'da firmanın açık/yetkili olduğunu kontrol edin; gerekirse mükellef kartına Luca kısa adını yazın.`,
+      );
+    }
 
     const donemTipi = this.normalizeDonemTipi(params.donem, params.donemTipi);
     const range = this.donemToRange(params.donem, donemTipi);

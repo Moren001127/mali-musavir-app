@@ -19,6 +19,10 @@ const NOISE = [
   /abort edildi|tek session|fetch Excel|Excel\/tarih zorlandi/i,
 ];
 
+// Kullanıcıya AYNEN gösterilmesi gereken kritik uyarılar — aşamaya çevrilmez, gizlenmez
+//   (2026-09-14: firma uyuşmazlığı "Bir sorun oluştu"ya dönüşüp sebebi saklıyordu).
+const KEEP: RegExp[] = [/F[İI]RMA UYU[ŞS]MAZLI[ĞG]I|firmas[ıi]na ait|başka firmaya|Firma bulunamad[ıi]|Luca'da bulunamad/i];
+
 // Teknik satırı bile anlamlı bir aşamaya çevirebiliyorsak (gizlemeden önce) bunlara bak.
 const NOISE_TO_STAGE: [RegExp, string][] = [
   [/Daha önceden hazırlanmış raporunuz|zaten hazir|already prepared/i, 'Hazır rapor bulundu, alınıyor'],
@@ -75,6 +79,13 @@ export function lucaLogFriendly(rawLines: string[], opts: { withTime?: boolean }
     if (NOISE.some((re) => re.test(line))) {
       const stage = NOISE_TO_STAGE.find(([re]) => re.test(line));
       if (stage) push(time, stage[1]);
+      continue;
+    }
+
+    // 1b) KRİTİK UYARI: sebebi olduğu gibi göster (teknik önekleri kırp).
+    if (KEEP.some((re) => re.test(body))) {
+      const temiz = body.replace(/^.*?import hatas[ıi]:\s*/i, '').replace(/^Upload HTTP \d+:\s*/i, '').replace(/^e-Defter Detay Fis Listesi import hatasi:\s*/i, '').slice(0, 320);
+      push(time, temiz);
       continue;
     }
 

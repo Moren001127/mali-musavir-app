@@ -187,6 +187,28 @@ export class EDefterFisListesiParserService {
     return rows;
   }
 
+  // Rapor basligindaki "Sirket : <AD>" satirini okur (Luca Detay Fis Listesi ilk 15 satir).
+  //   Yanlis firmadan cekilen raporu (Luca'da firma bulunamayip acik firma cekilince) reddetmek icin
+  //   servis bu adi mukellefle karsilastirir. Bulunamazsa null (kontrol atlanir, engellenmez).
+  parseFirmaAdi(buffer: Buffer): string | null {
+    try {
+      const wb = XLSX.read(buffer, { type: 'buffer', cellDates: true, sheetRows: 20 });
+      const { grid } = this.pickBestSheet(wb);
+      for (const row of grid.slice(0, 15)) {
+        const cells = (row || []).map((c) => this.cellText(c)).filter(Boolean);
+        for (let i = 0; i < cells.length; i += 1) {
+          const key = this.normalizeHeader(cells[i]);
+          if (key !== 'sirket' && key !== 'firma' && key !== 'unvan' && key !== 'mukellef') continue;
+          const deger = cells.slice(i + 1).find((c) => c !== ':' && c.length >= 3);
+          if (deger) return deger.slice(0, 200);
+        }
+      }
+    } catch {
+      /* baslik okunamadi → kontrol atlanir */
+    }
+    return null;
+  }
+
   private pickBestSheet(wb: XLSX.WorkBook): { sheetName: string; grid: any[][] } {
     let best = { sheetName: wb.SheetNames[0] || 'Sheet1', grid: [] as any[][], filled: -1 };
     for (const sheetName of wb.SheetNames) {
