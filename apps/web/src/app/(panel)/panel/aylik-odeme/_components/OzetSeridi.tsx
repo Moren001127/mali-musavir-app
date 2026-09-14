@@ -3,16 +3,18 @@
 import type { ReactNode } from 'react';
 import { AlertTriangle, CalendarClock, CheckCircle2, Clock, Users } from 'lucide-react';
 import { kisaGun, kisaPara, trMoney, type ListeSuzgeci, type OdemeOzet } from '@/lib/aylik-odeme';
-import { GOLD, IKINCIL, KENAR_NOTR, KIRMIZI_YUMUSAK, METIN } from './ortak';
+import { GOLD, IKINCIL, KENAR_NOTR, KIRMIZI_YUMUSAK, METIN, SONUK } from './ortak';
 
 /**
  * Başlık altı TEK SATIR özet şeridi (Görevler SayacSeridi ile aynı dil):
- * "12 mükellef · Vergi ₺… · SGK ₺… · Geçici ₺… · 1 gönderildi · 10 bekliyor · 1 hata · En yakın son gün 17 Eyl (Kurum Geçici)".
+ * "12 mükellef · Vergi ₺… · SGK ₺… · Geçici ₺… · 1 gönderildi · 10 bekliyor · 1 hata · 14 yeni kalem · En yakın son gün 17 Eyl (Kurum Geçici)".
  * Tıklanabilir olanlar hap (mükellef → süzgeci sıfırlar; gönderildi / bekliyor / hata → sol listeyi süzer),
  * bilgi kalemleri "·" ile ayrılmış düz yazı (dar ekranda satır kayar, kesilmez).
+ * `yeniKalem`: sunucu `yeniKalemToplam` vermezse sayfa listeden hesaplayıp geçirir.
  */
-export function OzetSeridi({ ozet, aktif, onSec }: { ozet?: OdemeOzet; aktif: ListeSuzgeci; onSec: (k: ListeSuzgeci) => void }) {
+export function OzetSeridi({ ozet, aktif, onSec, yeniKalem }: { ozet?: OdemeOzet; aktif: ListeSuzgeci; onSec: (k: ListeSuzgeci) => void; yeniKalem?: number }) {
   const yukleniyor = !ozet;
+  const yeni = ozet ? (typeof ozet.yeniKalemToplam === 'number' ? ozet.yeniKalemToplam : yeniKalem) : undefined;
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-x-1 gap-y-1.5" role="group" aria-label="Ay özeti">
       <Hap ikon={<Users size={12} />} secili={aktif === 'tumu'} onClick={() => onSec('tumu')} title="Tüm mükellefleri göster" sayi={ozet?.mukellef} yukleniyor={yukleniyor}>
@@ -45,6 +47,16 @@ export function OzetSeridi({ ozet, aktif, onSec }: { ozet?: OdemeOzet; aktif: Li
       <Hap ikon={<AlertTriangle size={12} />} secili={aktif === 'hata'} onClick={() => onSec(aktif === 'hata' ? 'tumu' : 'hata')} title="Gönderimi hata veren mükellefler" sayi={ozet?.hatali} yukleniyor={yukleniyor} renk={KIRMIZI_YUMUSAK}>
         hata
       </Hap>
+      {(yukleniyor || typeof yeni === 'number') && (
+        <span className="inline-flex flex-shrink-0 items-center gap-1 whitespace-nowrap px-1.5 text-[11.5px]" style={{ color: yeni ? IKINCIL : SONUK }} title="Henüz hiçbir kanaldan gönderilmemiş ödeme kalemi sayısı (tüm mükellefler)" data-testid="yeni-kalem">
+          {yukleniyor ? (
+            <span className="inline-block h-3 w-5 animate-pulse rounded" style={{ background: 'rgba(255,255,255,0.12)' }} />
+          ) : (
+            <span className="font-semibold tabular-nums" style={{ color: yeni ? METIN : SONUK }}>{yeni}</span>
+          )}
+          yeni kalem
+        </span>
+      )}
       {(!ozet || ozet.enYakinSonGun) && (
         <>
           <Ayrac />

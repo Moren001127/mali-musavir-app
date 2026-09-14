@@ -3,7 +3,7 @@
 import { useMemo } from 'react';
 import { AlertTriangle, ArrowDownAZ, ArrowDownWideNarrow, Check, ChevronDown, Filter, Minus, Search, X } from 'lucide-react';
 import {
-  gonderimOzeti, iletisimEksigi, listeyiSuz, tarihSaat, trMoney,
+  gonderimOzeti, iletisimEksigi, listeyiSuz, mukellefGonderimYazisi, tarihSaat, trMoney,
   SUZGEC_ADLARI, type ListeSiralama, type ListeSuzgeci, type OdemeListesi,
 } from '@/lib/aylik-odeme';
 import { AcilirMenu, MenuAyrac, MenuBaslik, MenuSatiri } from '../../gorevler/_components/AcilirMenu';
@@ -31,7 +31,7 @@ export interface MukellefListesiProps {
 
 /**
  * Sol liste — arama (ad) · sıralama (ada / tutara) · süzgeç menüsü (Tümü / Yalnız SGK / Yalnız vergi / Eksiği olan / Gönderilmeyen).
- * Satır: ad · toplam · kalem sayısı · ✓ gönderildi (tarih) / ⚠ hata / — bekliyor · telefon/e-posta yoksa küçük ⚠ ipucu.
+ * Satır: ad · toplam · kalem sayısı · "✓ hepsi gönderildi" / "2/3 gönderildi · 1 yeni" / "— gönderilmedi" / "⚠ hata" · telefon/e-posta yoksa küçük ⚠ ipucu.
  * 65 kayıt için süzme useMemo ile tek geçişte; satırlar hafif (tek düğme).
  */
 export function MukellefListesi(p: MukellefListesiProps) {
@@ -151,12 +151,15 @@ export function MukellefListesi(p: MukellefListesiProps) {
 function Satir({ r, secili, onSec, kanallar }: { r: OdemeListesi; secili: boolean; onSec: () => void; kanallar?: { whatsapp: boolean; email: boolean } | null }) {
   const g = gonderimOzeti(r);
   const eksik = iletisimEksigi(r, kanallar);
+  const yazi = mukellefGonderimYazisi(g);
   const durum =
     g.durum === 'gonderildi'
-      ? { ikon: <Check size={12} />, renk: ALTIN_SOLUK, yazi: g.sentAt ? tarihSaat(g.sentAt).slice(0, 5) : 'gönderildi', title: `Gönderildi${g.sentAt ? ' · ' + tarihSaat(g.sentAt) : ''}${g.test ? ' (test alıcısına)' : ''}` }
+      ? { ikon: <Check size={12} />, renk: ALTIN_SOLUK, yazi, title: `Tüm kalemler gönderildi${g.sentAt ? ' · son ' + tarihSaat(g.sentAt) : ''}${g.test ? ' (test alıcısına)' : ''}` }
       : g.durum === 'hata'
-        ? { ikon: <AlertTriangle size={12} />, renk: KIRMIZI_YUMUSAK, yazi: 'hata', title: `Gönderim hatası${g.sentAt ? ' · ' + tarihSaat(g.sentAt) : ''}` }
-        : { ikon: <Minus size={12} />, renk: SONUK, yazi: g.kismi ? 'kısmen' : 'bekliyor', title: g.kismi ? 'Yalnız bir bölümü gönderildi (vergi ya da SGK); diğeri bekliyor' : 'Henüz gönderilmedi' };
+        ? { ikon: <AlertTriangle size={12} />, renk: KIRMIZI_YUMUSAK, yazi, title: `Gönderim hatası${g.sentAt ? ' · ' + tarihSaat(g.sentAt) : ''}` }
+        : g.kismi
+          ? { ikon: null, renk: IKINCIL, yazi, title: `${g.gonderilen} kalem gönderildi, ${g.yeni} yeni kalem henüz gitmedi${g.sentAt ? ' · son ' + tarihSaat(g.sentAt) : ''}` }
+          : { ikon: <Minus size={12} />, renk: SONUK, yazi, title: 'Henüz hiçbir kalem gönderilmedi' };
   return (
     <button
       type="button"
@@ -179,7 +182,7 @@ function Satir({ r, secili, onSec, kanallar }: { r: OdemeListesi; secili: boolea
       <div className="mt-0.5 flex min-w-0 items-center gap-2 text-[11.5px]">
         <span className="tabular-nums font-semibold" style={{ color: METIN }}>{trMoney(r.toplam)}</span>
         <span style={{ color: SONUK }}>· {r.satirlar.length} kalem</span>
-        <span className="ml-auto inline-flex flex-shrink-0 items-center gap-1 whitespace-nowrap text-[10.5px]" style={{ color: durum.renk }} title={durum.title}>
+        <span className="ml-auto inline-flex flex-shrink-0 items-center gap-1 whitespace-nowrap text-[10.5px] tabular-nums" style={{ color: durum.renk }} title={durum.title} data-testid="mukellef-gonderim">
           {durum.ikon}
           {durum.yazi}
         </span>

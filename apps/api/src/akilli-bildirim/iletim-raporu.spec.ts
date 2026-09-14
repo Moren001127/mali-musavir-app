@@ -81,9 +81,12 @@ describe('İletim Raporu — yeniden deneme güvenliği', () => {
       return { ok: true };
     });
 
-    await s.resendFailed('tenant', '2026-08');
+    // Pencere 'ay başından BUGÜNE' hesaplanır; sabit bir geçmiş ay verilince test tarihe bağlı kırılıyordu (2 Eylül'den beri).
+    const simdi = new Date();
+    const buAy = `${simdi.getFullYear()}-${String(simdi.getMonth() + 1).padStart(2, '0')}`;
+    await s.resendFailed('tenant', buAy);
 
-    // 40 gün = 960 saat. Ağustos'un en uzun hâli bile 744 saattir.
+    // 40 gün = 960 saat. Bir ayın en uzun hâli bile 744 saattir.
     expect(gecenOpts.sinceHours).toBeLessThan(24 * 32);
     expect(gecenOpts.sinceHours).toBeGreaterThan(0);
   });

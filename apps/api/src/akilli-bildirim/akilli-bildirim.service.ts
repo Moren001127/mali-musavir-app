@@ -631,6 +631,21 @@ export class AkilliBildirimService {
 
   // ---------- İLETİM RAPORU ----------
 
+  /** ODEME_LISTESI satırlarını (mükellef, grup, kanal, test) başına en son işlem satırına indirger; diğer kategoriler olduğu gibi. */
+  static odemeListesiTekille(rows: any[]): any[] {
+    const enSon = new Map<string, any>();
+    const digerleri: any[] = [];
+    for (const r of rows) {
+      if (r.kategori !== 'ODEME_LISTESI') { digerleri.push(r); continue; }
+      const grup = String(r.dedupeKey || '').split(':')[3] || '';
+      const anahtar = `${r.taxpayerId}|${grup}|${r.channel}|${r.testMode ? 'T' : 'G'}`;
+      const zaman = (x: any) => new Date(x.sentAt ?? x.createdAt ?? 0).getTime();
+      const mevcut = enSon.get(anahtar);
+      if (!mevcut || zaman(r) > zaman(mevcut)) enSon.set(anahtar, r);
+    }
+    return [...digerleri, ...enSon.values()];
+  }
+
   async report(tenantId: string, month?: string) {
     const now = new Date();
     const ay = month || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -638,10 +653,14 @@ export class AkilliBildirimService {
     const start = new Date(y, m - 1, 1);
     const end = new Date(y, m, 1);
 
-    const rows = await (this.prisma as any).documentDispatch.findMany({
+    const hamRows = await (this.prisma as any).documentDispatch.findMany({
       where: { tenantId, createdAt: { gte: start, lt: end } },
       orderBy: { createdAt: 'desc' },
     });
+    // ÖDEME LİSTESİ kalem bazlı gönderim (2026-09-14): mükellef başına birden çok satır olur (her kalem kümesi ayrı
+    // dedupeKey ODEME:<tid>:<ay>:<grup>:<hash>). Rapor hücresinde eski FAILED satır, sonraki SENT'i gölgelemesin diye
+    // (taxpayerId, grup, kanal, test) başına yalnız EN SON işlem satırı (sentAt ?? createdAt) tutulur; diğer kategoriler aynen.
+    const rows = AkilliBildirimService.odemeListesiTekille(hamRows);
     // Ayarlar bir kez okunur: hem bekleyenlerin sebebi hem yanıttaki `ayarlar`
     // özeti (ekrandaki test modu uyarısı) buradan beslenir.
     const ayarlar = await this.getSettings(tenantId);

@@ -18,23 +18,59 @@ import { mergePdfBuffers } from './pdf-merge.util';
 import {
   ayAdi,
   beyanYili,
+  dedupeKeyGrubu,
+  docRefOlustur,
   donemEtiketi,
   gelirTaksitTutari,
+  GONDERIM_KANALLARI,
   GonderimBilgisi,
+  GonderimKanali,
   hamSonGun,
+  kalemAnahtari,
+  kalemGercekGitti,
+  kalemHash,
+  KalemGonderimHaritasi,
+  KalemGonderimi,
   kaydinSecimi,
+  OdemeKaynak,
   OdemeListesi,
   OdemeSatiri,
   odemeAyiDonemleri,
+  odemeDedupeKey,
   SGK_TUR_AD,
   turAdi,
 } from './aylik-odeme-donem';
 import { CetvelGrup, odemeCetveliEposta, odemeCetveliMesaji, paraTR } from './aylik-odeme-metin';
 import { cetvelHtml } from './aylik-odeme-cetvel-html';
 
-export type { OdemeSatiri, OdemeListesi, GonderimBilgisi } from './aylik-odeme-donem';
+export type { OdemeSatiri, OdemeListesi, GonderimBilgisi, GonderimKanali, KalemGonderimi, KalemGonderimHaritasi, OdemeDocRef } from './aylik-odeme-donem';
 
 export type GonderimModu = 'gonderilmemis' | 'hepsi' | 'yeniden';
+
+/** POST /aylik-odeme/send cevabındaki satır — mükellef × grup × kanal. */
+export interface GonderimSonucSatiri {
+  taxpayerId: string;
+  unvan: string;
+  grup: CetvelGrup;
+  channel: GonderimKanali;
+  status: 'SENT' | 'FAILED';
+  error: string | null;
+  /** Gruptaki toplam kalem sayısı. */
+  kalem: number;
+  /** Bu gönderimde giden (yeni) kalem sayısı. */
+  yeni: number;
+}
+
+export interface GonderimSonucu {
+  ok: boolean;
+  month: string;
+  testMode: boolean;
+  mod: GonderimModu;
+  kanal: GonderimKanali | null;
+  count: number;
+  atlanan: number;
+  results: GonderimSonucSatiri[];
+}
 
 export interface OtomatikAyar {
   aktif: boolean;
@@ -124,6 +160,12 @@ interface HazirGrupMesaji {
   toplam: number;
 }
 
+/** Bir mükellefin bir aydaki gönderim izleri (documentDispatch'ten). */
+interface GonderimIzi {
+  gruplar: Map<OdemeKaynak, any[]>;
+  kalemler: Map<string, KalemGonderimHaritasi>;
+}
+
 @Injectable()
 export class AylikOdemeService {
   private readonly logger = new Logger(AylikOdemeService.name);
@@ -188,6 +230,8 @@ export class AylikOdemeService {
    * Temmuz/Ekim; yıllık GELIR Mart 1. taksit + Temmuz 2. taksit, KURUMLAR Nisan).
    * Son günler hafta sonu/resmî tatilden ilk iş gününe kaydırılır (`sonGunHam` ham günü tutar).
    * taxpayerId verilirse tek mükellef.
+   * Her satırda `gonderim: { WHATSAPP, EMAIL }` (kalem bazlı son gönderim, kanal null = hiç gitmedi); mükellefte
+   * `gonderim.VERGI / SGK` grup özeti (status/sentAt/kanallar/test + toplamKalem/gonderilenKalem/yeniKalem).
    */
   async list(tenantId: string, month: string, taxpayerId?: string): Promise<OdemeListesi[]> {
     const { my, mm } = ayDogrula(month);
@@ -280,6 +324,8 @@ export class AylikOdemeService {
         taksit: null,
         tutar,
         storageKey: d.storageKey || null,
+        // bildirge ref no — aynı dönemde birden çok fiş olan mükellefte kalemler ayrışsın; hiçbiri yoksa belge id
+        ref: d.referenceNo || raw.bildirgeRefNo || d.id || null,
       });
       row.toplam += tutar;
     }
@@ -287,58 +333,86 @@ export class AylikOdemeService {
     const rows = [...map.values()].filter((r) => r.satirlar.length > 0);
     for (const r of rows) r.toplam = Math.round(r.toplam * 100) / 100;
 
-    // Gönderim durumu (documentDispatch, ODEME_LISTESI, donem = ödeme ayı)
-    if (rows.length) {
-      const durum = await this.gonderimHaritasi(tenantId, month, taxpayerId);
-      for (const r of rows) {
-        const g = durum.get(r.taxpayerId);
-        if (g) r.gonderim = g;
+    // Gönderim izleri (documentDispatch, ODEME_LISTESI, donem = ödeme ayı) — her satıra kanal bazlı, her gruba özet
+    const izler = rows.length ? await this.gonderimIzleri(tenantId, month, taxpayerId) : new Map<string, GonderimIzi>();
+    for (const r of rows) {
+      const iz = izler.get(r.taxpayerId);
+      for (const s of r.satirlar) s.gonderim = iz?.kalemler.get(kalemAnahtari(s)) || { WHATSAPP: null, EMAIL: null };
+      for (const grup of ['VERGI', 'SGK'] as const) {
+        const kayitlar = iz?.gruplar.get(grup);
+        if (kayitlar?.length) r.gonderim[grup] = this.grupOzeti(kayitlar, r.satirlar.filter((s) => s.kaynak === grup));
       }
     }
     return rows.sort((a, b) => a.unvan.localeCompare(b.unvan, 'tr'));
   }
 
-  /** Mükellef → { VERGI, SGK } gönderim özeti. Test gönderimleri de görünür, `test:true` işaretli. */
-  private async gonderimHaritasi(tenantId: string, month: string, taxpayerId?: string) {
+  /**
+   * Gönderim izleri: mükellef → { grup → dispatch satırları, kalem anahtarı → kanal bazlı son gönderim }.
+   * Kalem izi YALNIZ docRefs'li SENT satırlardan çıkar; aynı kalem/kanalda gerçek gönderim test gönderimine,
+   * aynı türde en yeni tarih eskisine üstündür. Eski biçim satırlar (dedupeKey hash'siz, docRefs null) "o an listedeki
+   * tüm kalemler gitti" SAYILMAZ — yalnız grup özetinde "şu tarihte gönderildi" bilgisi verir (canlıda böyle
+   * yalnız 8 test satırı var, 2026-09-14). En eski biçim (grup eki de yok) tamamen dışarıda.
+   */
+  private async gonderimIzleri(tenantId: string, month: string, taxpayerId?: string): Promise<Map<string, GonderimIzi>> {
     const kayitlar: any[] = await (this.prisma as any).documentDispatch
       .findMany({
         where: { tenantId, kategori: 'ODEME_LISTESI', donem: month, ...(taxpayerId ? { taxpayerId } : {}) },
-        select: { taxpayerId: true, channel: true, status: true, testMode: true, sentAt: true, dedupeKey: true },
+        select: { taxpayerId: true, channel: true, status: true, testMode: true, sentAt: true, createdAt: true, dedupeKey: true, docRefs: true },
         take: 10000,
       })
       .catch(() => []);
-    const grupla = new Map<string, Map<CetvelGrup, any[]>>();
+    const sonuc = new Map<string, GonderimIzi>();
+    const dahaIyi = (yeni: KalemGonderimi, eski: KalemGonderimi | null) =>
+      !eski || (eski.test && !yeni.test) || (eski.test === yeni.test && yeni.sentAt > eski.sentAt);
     for (const k of kayitlar) {
-      const grup = String(k.dedupeKey || '').split(':')[3] as CetvelGrup | undefined;
-      if (grup !== 'VERGI' && grup !== 'SGK') continue; // eski biçim (grup eki yok) sayılmaz
-      if (!grupla.has(k.taxpayerId)) grupla.set(k.taxpayerId, new Map());
-      const g = grupla.get(k.taxpayerId)!;
-      if (!g.has(grup)) g.set(grup, []);
-      g.get(grup)!.push(k);
-    }
-    const ozetle = (rows: any[]): GonderimBilgisi => {
-      const gercek = rows.filter((r) => r.status === 'SENT' && !r.testMode);
-      const test = rows.filter((r) => r.status === 'SENT' && r.testMode);
-      const secili = gercek.length ? gercek : test;
-      if (secili.length) {
-        const sonTarih = secili.reduce((a: Date | null, r) => (r.sentAt && (!a || r.sentAt > a) ? r.sentAt : a), null);
-        return {
-          status: 'SENT',
-          sentAt: sonTarih ? new Date(sonTarih).toISOString() : null,
-          kanallar: Array.from(new Set(secili.map((r) => String(r.channel)))),
-          test: !gercek.length,
-        };
+      const grup = dedupeKeyGrubu(k.dedupeKey);
+      if (!grup) continue;
+      let iz = sonuc.get(k.taxpayerId);
+      if (!iz) {
+        iz = { gruplar: new Map(), kalemler: new Map() };
+        sonuc.set(k.taxpayerId, iz);
       }
-      return { status: 'FAILED', sentAt: null, kanallar: [], test: rows.every((r) => !!r.testMode) };
-    };
-    const sonuc = new Map<string, { VERGI: GonderimBilgisi | null; SGK: GonderimBilgisi | null }>();
-    for (const [tid, g] of grupla) {
-      sonuc.set(tid, {
-        VERGI: g.has('VERGI') ? ozetle(g.get('VERGI')!) : null,
-        SGK: g.has('SGK') ? ozetle(g.get('SGK')!) : null,
-      });
+      if (!iz.gruplar.has(grup)) iz.gruplar.set(grup, []);
+      iz.gruplar.get(grup)!.push(k);
+
+      const kanal = String(k.channel) as GonderimKanali;
+      if (k.status !== 'SENT' || !Array.isArray(k.docRefs) || !GONDERIM_KANALLARI.includes(kanal)) continue;
+      const tarih = k.sentAt || k.createdAt;
+      const sentAt = tarih ? new Date(tarih).toISOString() : new Date(0).toISOString();
+      for (const ref of k.docRefs as any[]) {
+        const key = ref && typeof ref === 'object' ? String(ref.key || '') : '';
+        if (!key) continue;
+        let h = iz.kalemler.get(key);
+        if (!h) {
+          h = { WHATSAPP: null, EMAIL: null };
+          iz.kalemler.set(key, h);
+        }
+        const yeni: KalemGonderimi = { sentAt, test: !!k.testMode, tutar: Number.isFinite(Number(ref.tutar)) ? Number(ref.tutar) : null };
+        if (dahaIyi(yeni, h[kanal])) h[kanal] = yeni;
+      }
     }
     return sonuc;
+  }
+
+  /** Grup özeti: status/sentAt/kanallar/test (eski sözleşme) + kalem sayaçları. Test gönderimleri `test:true` ile görünür. */
+  private grupOzeti(kayitlar: any[], satirlar: OdemeSatiri[]): GonderimBilgisi {
+    const gercek = kayitlar.filter((r) => r.status === 'SENT' && !r.testMode);
+    const test = kayitlar.filter((r) => r.status === 'SENT' && r.testMode);
+    const secili = gercek.length ? gercek : test;
+    const toplamKalem = satirlar.length;
+    const gonderilenKalem = satirlar.filter(kalemGercekGitti).length;
+    const sayac = { toplamKalem, gonderilenKalem, yeniKalem: toplamKalem - gonderilenKalem };
+    if (secili.length) {
+      const sonTarih = secili.reduce((a: Date | null, r) => (r.sentAt && (!a || r.sentAt > a) ? r.sentAt : a), null);
+      return {
+        status: 'SENT',
+        sentAt: sonTarih ? new Date(sonTarih).toISOString() : null,
+        kanallar: Array.from(new Set(secili.map((r) => String(r.channel)))),
+        test: !gercek.length,
+        ...sayac,
+      };
+    }
+    return { status: 'FAILED', sentAt: null, kanallar: [], test: kayitlar.every((r) => !!r.testMode), ...sayac };
   }
 
   // ───────────────────────────────────────────────────────────────────────
@@ -576,48 +650,68 @@ export class AylikOdemeService {
   }
 
   /**
-   * Cetvel gönderimi. mod:
-   *   'gonderilmemis' (varsayılan) — daha önce GERÇEK (test olmayan) SENT olan kanal atlanır;
-   *   'hepsi'   — hepsine yeniden gider;
-   *   'yeniden' — tek mükellef için zorla (taxpayerId şart).
-   * Test modu (VERGI ayarı) açıkken alıcı test telefonu/e-postasıdır; kayıt testMode=true yazılır.
+   * Cetvel gönderimi — KALEM BAZLI (Muzaffer Bey, 2026-09-14: "liste gitti, sonra bir beyanname daha verildi;
+   * tekrar gönder dediğimde gönderilmişi tekrar gönderecek mi?"). Karar birimi mükellef × grup × kanal × kalem.
+   *
+   *   'gonderilmemis' (varsayılan) — o kanaldan GERÇEK (test olmayan) gitmiş kalemler düşülür; kalan yoksa kanal
+   *                    atlanır (`atlanan`++), varsa YALNIZ yeni kalemlerle mesaj/e-posta gider (PDF de yalnız onların fişi);
+   *   'hepsi'   — tüm mükellefler, tüm kalemler yeniden;
+   *   'yeniden' — tek mükellef (taxpayerId şart), tüm kalemler yeniden.
+   *   kanal     — verilirse yalnız o kanal; verilmezse VERGI ayarındaki açık kanallar.
+   *
+   * Her gönderim documentDispatch'e kalem kümesine göre ayrı satır yazar (dedupeKey = ODEME:tid:ay:grup:kalemHash[:T]);
+   * docRefs = gönderilen kalemler, itemCount/totalAmount yalnız onların. Test modunda (VERGI ayarı) alıcı test
+   * telefonu/e-postasıdır, kayıt testMode=true ve ":T" anahtarıyla yazılır; test gönderimi "gönderilmiş" SAYILMAZ.
    */
-  async send(tenantId: string, month: string, taxpayerId?: string, mod: GonderimModu = 'gonderilmemis') {
+  async send(tenantId: string, month: string, taxpayerId?: string, mod: GonderimModu = 'gonderilmemis', kanal?: GonderimKanali): Promise<GonderimSonucu> {
     ayDogrula(month);
     if (!['gonderilmemis', 'hepsi', 'yeniden'].includes(mod)) throw new BadRequestException('mod: gonderilmemis | hepsi | yeniden');
     if (mod === 'yeniden' && !taxpayerId) throw new BadRequestException("'yeniden' modu tek mükellef ister (taxpayerId)");
+    if (kanal != null && !GONDERIM_KANALLARI.includes(kanal)) throw new BadRequestException('kanal: WHATSAPP | EMAIL');
     const settings = await this.vergiAyari(tenantId);
-    const testMode = settings?.testMode ?? true;
+    const testMode = !!(settings?.testMode ?? true);
     const senderName = (settings?.senderName || DEFAULT_SENDER).toString();
+    const kanalAcik = (channel: GonderimKanali) => {
+      if (kanal && channel !== kanal) return false;
+      if (channel === 'WHATSAPP' && settings && !settings.whatsapp) return false;
+      if (channel === 'EMAIL' && settings && !settings.email) return false;
+      return true;
+    };
 
     const rows = await this.list(tenantId, month, taxpayerId);
-    const results: any[] = [];
+    const results: GonderimSonucSatiri[] = [];
     let atlanan = 0;
     for (const row of rows) {
       const targetPhone = testMode ? settings?.testPhone : row.phone;
       const targetEmail = testMode ? settings?.testEmail : row.email;
 
       for (const g of this.gruplar(row)) {
-        const onceki = row.gonderim?.[g.grup] || null;
-        const kanallar = (['WHATSAPP', 'EMAIL'] as const).filter((channel) => {
-          if (channel === 'WHATSAPP' && settings && !settings.whatsapp) return false;
-          if (channel === 'EMAIL' && settings && !settings.email) return false;
-          return true;
-        });
-        // Daha önce gerçekten iletilmiş kanal, 'gonderilmemis' modunda bir daha gitmez
-        const gidecek = kanallar.filter((channel) => {
-          if (mod !== 'gonderilmemis') return true;
-          const zatenGitti = !!onceki && onceki.status === 'SENT' && !onceki.test && onceki.kanallar.includes(channel);
-          if (zatenGitti) atlanan++;
-          return !zatenGitti;
-        });
-        if (!gidecek.length) continue;
+        // Kanal → gidecek kalemler. 'gonderilmemis': o kanaldan gerçek gitmiş kalem düşer.
+        const plan: Array<{ channel: GonderimKanali; satirlar: OdemeSatiri[] }> = [];
+        for (const channel of GONDERIM_KANALLARI) {
+          if (!kanalAcik(channel)) continue;
+          const secilen = mod === 'gonderilmemis' ? g.satirlar.filter((s) => !(s.gonderim?.[channel] && !s.gonderim[channel]!.test)) : g.satirlar;
+          if (!secilen.length) {
+            atlanan++;
+            continue;
+          }
+          plan.push({ channel, satirlar: secilen });
+        }
+        if (!plan.length) continue;
 
-        const hazir = await this.hazirlaGrupMesaji(tenantId, month, row, g.grup, g.satirlar, senderName);
-        const dedupeKey = `ODEME:${row.taxpayerId}:${month}:${g.grup}`;
+        // Aynı kalem kümesi iki kanaldan gidiyorsa PDF birleşimi + kısa link bir kez üretilir
+        const hazirlar = new Map<string, HazirGrupMesaji>();
+        for (const { channel, satirlar } of plan) {
+          const anahtarlar = satirlar.map(kalemAnahtari);
+          const hash = kalemHash(anahtarlar);
+          let hazir = hazirlar.get(hash);
+          if (!hazir) {
+            hazir = await this.hazirlaGrupMesaji(tenantId, month, row, g.grup, satirlar, senderName);
+            hazirlar.set(hash, hazir);
+          }
+          const dedupeKey = odemeDedupeKey(row.taxpayerId, month, g.grup, anahtarlar, testMode);
 
-        for (const channel of gidecek) {
-          let status = 'FAILED';
+          let status: 'SENT' | 'FAILED' = 'FAILED';
           let error: string | null = null;
           try {
             if (channel === 'WHATSAPP') {
@@ -637,6 +731,9 @@ export class AylikOdemeService {
           } catch (e: any) {
             error = e?.message || String(e);
           }
+          const docRefs = satirlar.map(docRefOlustur);
+          const totalAmount = Math.round(hazir.toplam * 100) / 100;
+          const sentAt = status === 'SENT' ? new Date() : null;
           await (this.prisma as any).documentDispatch.upsert({
             where: { tenantId_dedupeKey_channel: { tenantId, dedupeKey, channel } },
             create: {
@@ -647,20 +744,21 @@ export class AylikOdemeService {
               channel,
               status,
               error,
-              itemCount: g.satirlar.length,
-              totalAmount: hazir.toplam,
-              docRefs: null,
+              itemCount: satirlar.length,
+              totalAmount,
+              docRefs,
               dedupeKey,
-              testMode: !!testMode,
-              sentAt: status === 'SENT' ? new Date() : null,
+              testMode,
+              sentAt,
             },
-            update: { status, error, sentAt: status === 'SENT' ? new Date() : null, testMode: !!testMode },
+            // aynı kalem kümesi aynı kanaldan yeniden: satır tazelenir (docRefs/tutar da — tahakkuk düzeltilmiş olabilir)
+            update: { status, error, sentAt, testMode, docRefs, itemCount: satirlar.length, totalAmount },
           });
-          results.push({ taxpayerId: row.taxpayerId, unvan: row.unvan, grup: g.grup, channel, status, error });
+          results.push({ taxpayerId: row.taxpayerId, unvan: row.unvan, grup: g.grup, channel, status, error, kalem: g.satirlar.length, yeni: satirlar.length });
         }
       }
     }
-    return { ok: true, month, testMode, mod, count: results.length, atlanan, results };
+    return { ok: true, month, testMode, mod, kanal: kanal || null, count: results.length, atlanan, results };
   }
 
   /**
@@ -706,8 +804,10 @@ export class AylikOdemeService {
   /**
    * Toplamlar bir BÖLÜMLEMEDİR: vergiToplam (AYLIK grup: KDV/Muhtasar/Damga… dönemsel beyannameler)
    * + sgkToplam + geciciToplam + yillikToplam = toplam.
-   * gonderilen/bekleyen/hatali MÜKELLEF sayısıdır (gonderilen + bekleyen + hatali = mukellef);
-   * test gönderimi "gönderildi" SAYILMAZ.
+   * gonderilen/bekleyen/hatali MÜKELLEF sayısıdır (gonderilen + bekleyen + hatali = mukellef), KALEM BAZLI:
+   *   gonderilen = tüm kalemleri en az bir kanaldan gerçekten gitmiş; hatali = yeni kalemi var ve bir grubu hiç
+   *   iletilememiş (FAILED); bekleyen = yeni kalemi olan diğerleri. yeniKalemToplam = gitmemiş kalem sayısı.
+   * Test gönderimi "gönderildi" SAYILMAZ.
    */
   async ozet(tenantId: string, month: string) {
     ayDogrula(month);
@@ -716,18 +816,22 @@ export class AylikOdemeService {
     let kalem = 0;
     let gonderilen = 0;
     let hatali = 0;
+    let yeniKalemToplam = 0;
     const bugun = isoGun(new Date());
     let enYakin: { tarih: string; turAd: string } | null = null;
     for (const r of rows) {
+      let yeni = 0;
       for (const s of r.satirlar) {
         kalem++;
         t[s.grup] = (t[s.grup] || 0) + s.tutar;
+        if (!kalemGercekGitti(s)) yeni++;
         if (s.sonGunIso && s.sonGunIso >= bugun && (!enYakin || s.sonGunIso < enYakin.tarih)) {
           enYakin = { tarih: s.sonGunIso, turAd: s.turAd || s.tur };
         }
       }
+      yeniKalemToplam += yeni;
       const gruplar = this.gruplar(r).map((g) => r.gonderim?.[g.grup] || null);
-      if (gruplar.length && gruplar.every((g) => g && g.status === 'SENT' && !g.test)) gonderilen++;
+      if (yeni === 0) gonderilen++;
       else if (gruplar.some((g) => g && g.status === 'FAILED')) hatali++;
     }
     const yuvarla = (n: number) => Math.round(n * 100) / 100;
@@ -744,6 +848,7 @@ export class AylikOdemeService {
       gonderilen,
       bekleyen: rows.length - gonderilen - hatali,
       hatali,
+      yeniKalemToplam,
       enYakinSonGun: enYakin,
       testMode: ayar?.testMode ?? true,
       testPhone: ayar?.testPhone || null,
@@ -757,12 +862,32 @@ export class AylikOdemeService {
   // EXCEL / PDF
   // ───────────────────────────────────────────────────────────────────────
 
+  private kanalAdi(k: string): string {
+    return k === 'WHATSAPP' ? 'WhatsApp' : k === 'EMAIL' ? 'E-posta' : k;
+  }
+
+  /** Grup düzeyi (Özet sayfası): "Gönderildi 20.08.2026 (WhatsApp) · 1 yeni kalem". */
   private gonderimMetni(g: GonderimBilgisi | null): string {
     if (!g) return 'Gönderilmedi';
-    const kanal = g.kanallar.map((k) => (k === 'WHATSAPP' ? 'WhatsApp' : k === 'EMAIL' ? 'E-posta' : k)).join(', ');
+    const kanal = g.kanallar.map((k) => this.kanalAdi(k)).join(', ');
+    const yeni = g.yeniKalem > 0 ? ` · ${g.yeniKalem} yeni kalem` : '';
     if (g.status === 'SENT' && g.test) return `Test gönderimi${kanal ? ` (${kanal})` : ''}`;
-    if (g.status === 'SENT') return `Gönderildi${g.sentAt ? ' ' + new Date(g.sentAt).toLocaleDateString('tr-TR') : ''}${kanal ? ` (${kanal})` : ''}`;
+    if (g.status === 'SENT') return `Gönderildi${g.sentAt ? ' ' + new Date(g.sentAt).toLocaleDateString('tr-TR') : ''}${kanal ? ` (${kanal})` : ''}${yeni}`;
     return 'Hatalı';
+  }
+
+  /** Kalem düzeyi (Ödeme Listesi sayfası): o beyanname/fiş hangi kanaldan ne zaman gitti. */
+  private kalemGonderimMetni(s: OdemeSatiri): string {
+    const g = s.gonderim;
+    if (!g) return 'Gönderilmedi';
+    const gercek = GONDERIM_KANALLARI.filter((k) => g[k] && !g[k]!.test);
+    const test = GONDERIM_KANALLARI.filter((k) => g[k] && g[k]!.test);
+    const secili = gercek.length ? gercek : test;
+    if (!secili.length) return 'Gönderilmedi';
+    const son = secili.map((k) => g[k]!.sentAt).sort().reverse()[0];
+    const kanal = secili.map((k) => this.kanalAdi(k)).join(', ');
+    if (!gercek.length) return `Test gönderimi (${kanal})`;
+    return `Gönderildi${son ? ' ' + new Date(son).toLocaleDateString('tr-TR') : ''} (${kanal})`;
   }
 
   async excel(tenantId: string, month: string): Promise<Buffer> {
@@ -802,7 +927,7 @@ export class AylikOdemeService {
           // ExcelJS tarihi UTC'ye göre yazar → yerel gece yarısı bir gün geri kayardı; UTC gece yarısı ver
           sonOdeme: iso ? new Date(Date.UTC(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)))) : null,
           tutar: s.tutar,
-          gonderim: this.gonderimMetni(r.gonderim?.[s.kaynak] || null),
+          gonderim: this.kalemGonderimMetni(s),
         });
         genel += s.tutar;
       }

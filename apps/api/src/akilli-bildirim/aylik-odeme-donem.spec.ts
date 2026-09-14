@@ -1,4 +1,17 @@
-import { donemEtiketi, gelirTaksitTutari, hamSonGun, kaydinSecimi, odemeAyiDonemleri, turAdi } from './aylik-odeme-donem';
+import {
+  dedupeKeyGrubu,
+  docRefOlustur,
+  donemEtiketi,
+  gelirTaksitTutari,
+  hamSonGun,
+  kalemAnahtari,
+  kalemGercekGitti,
+  kalemHash,
+  kaydinSecimi,
+  odemeAyiDonemleri,
+  odemeDedupeKey,
+  turAdi,
+} from './aylik-odeme-donem';
 import { isoGun } from '../schedule/is-gunu';
 
 describe('aylik-odeme-donem — ödeme ayı → dönem anahtarları', () => {
@@ -74,5 +87,53 @@ describe('aylik-odeme-donem — adlar ve taksit', () => {
     expect(gelirTaksitTutari(148683.1, 2026, '1/2') + gelirTaksitTutari(148683.1, 2026, '2/2')).toBeCloseTo(148683.1, 2);
     // yılı tabloda olmayan beyanname: kör /2
     expect(gelirTaksitTutari(1000, 2031, '1/2')).toBe(500);
+  });
+});
+
+describe('aylik-odeme-donem — kalem anahtarı / hash / dedupeKey (kalem bazlı gönderim takibi)', () => {
+  const satir = (ek: Partial<any> = {}): any => ({
+    tur: 'KDV1', turAd: 'KDV Beyannamesi', kaynak: 'VERGI', grup: 'AYLIK', donem: '2026-07',
+    sonGun: '28.8.2026', sonGunHam: '28.8.2026', sonGunIso: '2026-08-28', taksit: null, tutar: 7046.77, storageKey: null, ...ek,
+  });
+
+  it('kalemAnahtari: VERGI "kaynak|tur|donem|taksit"; SGK ref no ile ayrışır (aynı dönemde çoklu fiş)', () => {
+    expect(kalemAnahtari(satir())).toBe('VERGI|KDV1|2026-07|');
+    expect(kalemAnahtari(satir({ tur: 'GELIR', donem: '2025-YIL', taksit: '1/2' }))).toBe('VERGI|GELIR|2025-YIL|1/2');
+    expect(kalemAnahtari(satir({ tur: 'GELIR', donem: '2025-YIL', taksit: '2/2' }))).not.toBe(kalemAnahtari(satir({ tur: 'GELIR', donem: '2025-YIL', taksit: '1/2' })));
+    const sgk1 = satir({ tur: 'Tahakkuk Fişi', kaynak: 'SGK', grup: 'SGK', donem: '2026/07', ref: '80646-2026-7' });
+    const sgk2 = satir({ tur: 'Tahakkuk Fişi', kaynak: 'SGK', grup: 'SGK', donem: '2026/07', ref: '39191-2026-7' });
+    expect(kalemAnahtari(sgk1)).toBe('SGK|Tahakkuk Fişi|2026/07||80646-2026-7');
+    expect(kalemAnahtari(sgk1)).not.toBe(kalemAnahtari(sgk2));
+    // tutar anahtara girmez: tahakkuk düzeltilse de aynı kalem
+    expect(kalemAnahtari(satir({ tutar: 1 }))).toBe(kalemAnahtari(satir({ tutar: 2 })));
+  });
+
+  it('kalemHash: 10 hex, sıra ve tekrar bağımsız, küme değişince değişir', () => {
+    const h = kalemHash(['VERGI|KDV1|2026-07|', 'VERGI|GGECICI|2026-Q2|']);
+    expect(h).toMatch(/^[0-9a-f]{10}$/);
+    expect(kalemHash(['VERGI|GGECICI|2026-Q2|', 'VERGI|KDV1|2026-07|', 'VERGI|KDV1|2026-07|'])).toBe(h);
+    expect(kalemHash(['VERGI|KDV1|2026-07|'])).not.toBe(h);
+    expect(kalemHash([])).toMatch(/^[0-9a-f]{10}$/);
+  });
+
+  it('odemeDedupeKey: ODEME:tid:ay:grup:hash, test gönderimi ":T"; dedupeKeyGrubu eski/yeni biçimi okur', () => {
+    const keys = ['VERGI|KDV1|2026-07|'];
+    expect(odemeDedupeKey('A', '2026-08', 'VERGI', keys)).toBe(`ODEME:A:2026-08:VERGI:${kalemHash(keys)}`);
+    expect(odemeDedupeKey('A', '2026-08', 'SGK', keys, true)).toBe(`ODEME:A:2026-08:SGK:${kalemHash(keys)}:T`);
+    expect(dedupeKeyGrubu(odemeDedupeKey('A', '2026-08', 'VERGI', keys, true))).toBe('VERGI');
+    expect(dedupeKeyGrubu('ODEME:A:2026-08:SGK')).toBe('SGK'); // eski biçim (hash'siz)
+    expect(dedupeKeyGrubu('ODEME:A:2026-08')).toBeNull(); // en eski biçim (grup yok)
+    expect(dedupeKeyGrubu('VERGI:A:abc')).toBeNull();
+    expect(dedupeKeyGrubu(null)).toBeNull();
+  });
+
+  it('docRefOlustur ve kalemGercekGitti', () => {
+    expect(docRefOlustur(satir({ tur: 'GELIR', donem: '2025-YIL', taksit: '1/2', tutar: 75083.4 }))).toEqual({
+      key: 'VERGI|GELIR|2025-YIL|1/2', tur: 'GELIR', donem: '2025-YIL', taksit: '1/2', tutar: 75083.4,
+    });
+    expect(kalemGercekGitti(satir())).toBe(false);
+    expect(kalemGercekGitti(satir({ gonderim: { WHATSAPP: null, EMAIL: null } }))).toBe(false);
+    expect(kalemGercekGitti(satir({ gonderim: { WHATSAPP: { sentAt: 'x', test: true, tutar: 1 }, EMAIL: null } }))).toBe(false);
+    expect(kalemGercekGitti(satir({ gonderim: { WHATSAPP: { sentAt: 'x', test: true, tutar: 1 }, EMAIL: { sentAt: 'y', test: false, tutar: 1 } } }))).toBe(true);
   });
 });

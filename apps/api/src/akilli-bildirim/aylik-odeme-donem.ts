@@ -15,9 +15,13 @@
  * yıllık '2025-YIL' (GELIR 51, KURUMLAR 12). `odemeTutari` HİÇBİR kayıtta dolu değil → taksit hesabı
  * `tahakkukTutari`'ndan yapılır.
  */
+import { createHash } from 'crypto';
 import { calculateBeyannameDeadline } from '../schedule/beyanname-deadline.util';
 
 export type OdemeGrup = 'AYLIK' | 'GECICI' | 'YILLIK' | 'SGK';
+export type OdemeKaynak = 'VERGI' | 'SGK';
+export type GonderimKanali = 'WHATSAPP' | 'EMAIL';
+export const GONDERIM_KANALLARI: readonly GonderimKanali[] = ['WHATSAPP', 'EMAIL'];
 export type Taksit = '1/2' | '2/2';
 
 export const AY_ADLARI = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
@@ -192,10 +196,20 @@ export function beyanYili(donem: string): number | null {
 // ─────────────────────────────────────────────────────────────────────────────
 // Satır tipleri — ekran (apps/web/src/lib/aylik-odeme.ts) ile birebir sözleşme
 // ─────────────────────────────────────────────────────────────────────────────
+/** Bir kalemin bir kanaldan gönderim izi (yalnız SENT). Gerçek gönderim varsa o, yoksa test gönderimi (`test:true`). */
+export interface KalemGonderimi {
+  sentAt: string; // ISO
+  test: boolean;
+  /** Gönderim anındaki tutar (docRefs'ten) — sonradan düzeltilen tahakkuk ekranda ayırt edilebilsin. */
+  tutar: number | null;
+}
+
+export type KalemGonderimHaritasi = { WHATSAPP: KalemGonderimi | null; EMAIL: KalemGonderimi | null };
+
 export interface OdemeSatiri {
   tur: string; // ham kod: KDV1, MUHSGK, Tahakkuk Fişi… (eski WhatsApp metni ve ekran bunu kullanır)
   turAd: string; // okunur ad: "KDV Beyannamesi", "Gelir Geçici Vergi 2. Dönem"…
-  kaynak: 'VERGI' | 'SGK';
+  kaynak: OdemeKaynak;
   grup: OdemeGrup;
   donem: string;
   sonGun: string | null; // KAYDIRILMIŞ son ödeme günü — "g.a.yyyy" (Hattat biçimi, sıfırsız)
@@ -204,6 +218,60 @@ export interface OdemeSatiri {
   taksit?: Taksit | null;
   tutar: number;
   storageKey?: string | null; // belge PDF anahtarı (link için)
+  /**
+   * Belge referansı — SGK'da bildirge ref no (ör. "80646-2026-7"). Aynı mükellef+dönemde birden çok
+   * SGK fişi olabilir (canlıda 579 çiftin 110'u); kalem anahtarı bununla ayrışır. VERGI'de boş
+   * (beyanTipi+dönem mükellef başına zaten tekil).
+   */
+  ref?: string | null;
+  /** Kalem bazlı gönderim izi (kanal → son gönderim). Kanal null = bu kalem o kanaldan hiç gitmedi. */
+  gonderim?: KalemGonderimHaritasi;
+}
+
+/**
+ * KALEM ANAHTARI — "hangi beyanname/fiş gönderildi" takibinin birimi; documentDispatch.docRefs[].key.
+ *   VERGI: "VERGI|KDV1|2026-07|"            (taksit varsa: "VERGI|GELIR|2025-YIL|1/2")
+ *   SGK  : "SGK|Tahakkuk Fişi|2026/07||80646-2026-7"  (ref eklenir — aynı dönemde çoklu fiş)
+ */
+export function kalemAnahtari(s: Pick<OdemeSatiri, 'kaynak' | 'tur' | 'donem'> & { taksit?: Taksit | null; ref?: string | null }): string {
+  const temel = `${s.kaynak}|${s.tur}|${s.donem}|${s.taksit || ''}`;
+  return s.ref ? `${temel}|${s.ref}` : temel;
+}
+
+/** Gönderilen kalem kümesinin kısa sha1'i (10 hex) — sıra ve tekrar bağımsız. */
+export function kalemHash(anahtarlar: Iterable<string>): string {
+  const sirali = Array.from(new Set(anahtarlar)).sort();
+  return createHash('sha1').update(sirali.join('\n')).digest('hex').slice(0, 10);
+}
+
+/**
+ * documentDispatch.dedupeKey — "ODEME:<taxpayerId>:<month>:<grup>:<kalemHash>[:T]".
+ * Aynı kalem kümesi aynı kanaldan yeniden giderse aynı anahtar (upsert); farklı küme = YENİ satır (geçmiş korunur).
+ * Test gönderimi ":T" ekiyle ayrılır: gerçek gönderim satırı test satırıyla EZİLMEZ (ezilseydi mükellefe
+ * gerçekten gitmiş kalem "gitmedi" sayılıp ikinci kez giderdi).
+ * Eski biçimler: "ODEME:<tid>:<month>" ve "ODEME:<tid>:<month>:<grup>" (hash'siz, docRefs null).
+ */
+export function odemeDedupeKey(taxpayerId: string, month: string, grup: OdemeKaynak, anahtarlar: Iterable<string>, test = false): string {
+  return `ODEME:${taxpayerId}:${month}:${grup}:${kalemHash(anahtarlar)}${test ? ':T' : ''}`;
+}
+
+/** dedupeKey'den grup ("VERGI"|"SGK"); eski/yabancı biçimde null. */
+export function dedupeKeyGrubu(dedupeKey: string | null | undefined): OdemeKaynak | null {
+  const grup = String(dedupeKey || '').split(':')[3];
+  return grup === 'VERGI' || grup === 'SGK' ? grup : null;
+}
+
+/** documentDispatch.docRefs öğesi — gönderilen kalemin o anki hâli. */
+export interface OdemeDocRef {
+  key: string;
+  tur: string;
+  donem: string;
+  taksit: Taksit | null;
+  tutar: number;
+}
+
+export function docRefOlustur(s: OdemeSatiri): OdemeDocRef {
+  return { key: kalemAnahtari(s), tur: s.tur, donem: s.donem, taksit: s.taksit || null, tutar: s.tutar };
 }
 
 export interface GonderimBilgisi {
@@ -211,6 +279,12 @@ export interface GonderimBilgisi {
   sentAt: string | null;
   kanallar: string[];
   test: boolean;
+  /** Bu gruptaki kalem sayısı. */
+  toplamKalem: number;
+  /** En az bir kanaldan GERÇEK (test olmayan) gitmiş kalem sayısı. */
+  gonderilenKalem: number;
+  /** Hiçbir kanaldan gerçek gitmemiş kalem sayısı (= toplamKalem − gonderilenKalem). */
+  yeniKalem: number;
 }
 
 export interface OdemeListesi {
@@ -221,4 +295,10 @@ export interface OdemeListesi {
   satirlar: OdemeSatiri[];
   toplam: number;
   gonderim: { VERGI: GonderimBilgisi | null; SGK: GonderimBilgisi | null };
+}
+
+/** Kalem gerçekten (test olmayan) en az bir kanaldan gitti mi. */
+export function kalemGercekGitti(s: Pick<OdemeSatiri, 'gonderim'>): boolean {
+  const g = s.gonderim;
+  return !!g && GONDERIM_KANALLARI.some((k) => !!g[k] && !g[k]!.test);
 }

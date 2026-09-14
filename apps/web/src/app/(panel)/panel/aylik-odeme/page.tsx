@@ -7,9 +7,11 @@
 // sonuç İletim Raporu'na işlenir.
 //
 // Düzen (2026-09-14, Muzaffer Bey'in onayladığı iyileştirmeler):
-//   başlık (ay gezinme · İletim Raporu · gönder · menü) → özet hap şeridi → TEST MODU bandı →
+//   başlık (ay gezinme · İletim Raporu · gönder [+ kanal menüsü] · menü) → özet hap şeridi → TEST MODU bandı →
 //   eksikler paneli → [sol: mükellef listesi] [sağ: cetvel + otomatik gönderim kartı]
-// Tasarım dili: Görevler ile aynı sakin palet — altın TEK vurgu, dolu renkli rozet yok, grup bantları altın tonlu.
+// Tasarım dili: Görevler ile aynı sakin palet — altın YALNIZ ana düğme + genel toplam; grup bantları nötr.
+// Kalem bazlı gönderim (2026-09-14): cetvelde GÖNDERİM sütunu, WhatsApp / E-posta AYRI düğmeler,
+//   'gonderilmemis' modunda yalnız daha önce gitmemiş kalemler gider; `kanal` ile tek kanala sınırlanır.
 // =====================================================================
 
 import { useMemo, useState } from 'react';
@@ -17,11 +19,11 @@ import Link from 'next/link';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
-  ArrowRight, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, FileDown, FileSpreadsheet, FlaskConical, Inbox, ListChecks, MoreHorizontal, RefreshCw, Send, SendHorizontal, Settings2, Wallet,
+  ArrowRight, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, FileDown, FileSpreadsheet, FlaskConical, Inbox, ListChecks, Mail, MessageCircle, MoreHorizontal, RefreshCw, Send, SendHorizontal, Settings2, Wallet,
 } from 'lucide-react';
 import {
-  aylikOdemeApi, ayAdi, ayKaydir, buAy, dosyaIndir, gonderimOzeti, listeyiSuz, sekmeyeBlobYaz, yeniSekmeAc,
-  type EksikSatiri, type GonderimModu, type ListeSiralama, type ListeSuzgeci,
+  aylikOdemeApi, ayAdi, ayKaydir, buAy, dosyaIndir, gonderimOzeti, kanalAcik, kanalAdi, listeyiSuz, sekmeyeBlobYaz, yeniSekmeAc,
+  type EksikSatiri, type GonderimIstegi, type GonderimKanal, type GonderimModu, type ListeSiralama, type ListeSuzgeci,
 } from '@/lib/aylik-odeme';
 import { AcilirMenu, MenuAyrac, MenuBaslik, MenuSatiri } from '../gorevler/_components/AcilirMenu';
 import { AltinDugme, GriDugme, AMBER, AMBER_KENAR, AMBER_ZEMIN, GOLD, GOLD_SOFT, IKINCIL, KART, KENAR_NOTR, METIN } from './_components/ortak';
@@ -62,6 +64,7 @@ export default function AylikOdemePage() {
   const [arama, setArama] = useState('');
   const [suzgec, setSuzgec] = useState<ListeSuzgeci>('tumu');
   const [siralama, setSiralama] = useState<ListeSiralama>('ad');
+  /** Süren gönderim: "__TOPLU__" ya da "<taxpayerId>:<kanal>" */
   const [sending, setSending] = useState<string | null>(null);
   const [ornekGiden, setOrnekGiden] = useState<string | null>(null);
   const [indirme, setIndirme] = useState<string | null>(null);
@@ -79,11 +82,17 @@ export default function AylikOdemePage() {
   const gorunen = useMemo(() => listeyiSuz(rows, { arama, suzgec, siralama, eksikIdler }), [rows, arama, suzgec, siralama, eksikIdler]);
   // Seçili mükellef süzgeç dışında kaldıysa görünen ilk mükellef açılır.
   const active = useMemo(() => gorunen.find((r) => r.taxpayerId === selected) || gorunen[0] || null, [gorunen, selected]);
+  const ozetler = useMemo(() => rows.map((r) => gonderimOzeti(r)), [rows]);
+  /** Yeni (gönderilmemiş) kalemi olan ya da hata veren mükellef sayısı — toplu düğmenin N'i */
   const gonderilmemisSayisi = useMemo(
-    () => (rows.length > 0 ? rows.filter((r) => gonderimOzeti(r).durum !== 'gonderildi').length : (ozet?.bekleyen || 0) + (ozet?.hatali || 0)),
-    [rows, ozet],
+    () => (rows.length > 0 ? ozetler.filter((g) => g.durum !== 'gonderildi').length : (ozet?.bekleyen || 0) + (ozet?.hatali || 0)),
+    [rows, ozetler, ozet],
   );
+  /** Özet şeridi "N yeni kalem" — sunucu vermezse listeden */
+  const yeniKalemToplam = useMemo(() => ozetler.reduce((a, g) => a + g.yeni, 0), [ozetler]);
   const testMode = !!ozet?.testMode;
+  const whatsappAcik = kanalAcik('WHATSAPP', ozet?.kanallar || null);
+  const emailAcik = kanalAcik('EMAIL', ozet?.kanallar || null);
   const buAyMi = month === buAy();
 
   const ayDegistir = (m: string) => {
@@ -98,20 +107,26 @@ export default function AylikOdemePage() {
     qc.invalidateQueries({ queryKey: ['iletim-raporu'] });
   };
 
-  /** Gönderim — tek mükellef ya da toplu (mod: gonderilmemis | hepsi | yeniden) */
-  const gonder = async (o: { taxpayerId?: string; mod?: GonderimModu }) => {
-    const key = o.taxpayerId || '__TOPLU__';
+  /**
+   * Gönderim — tek mükellef ya da toplu. mod: gonderilmemis (yalnız daha önce gitmemiş kalemler) | hepsi | yeniden;
+   * kanal verilirse yalnız o kanaldan gider. Sonuç: gönderim + kalem sayısı; liste/özet/İletim Raporu yenilenir.
+   */
+  const gonder = async (o: Omit<GonderimIstegi, 'month'>) => {
+    const key = o.taxpayerId ? `${o.taxpayerId}:${o.kanal || 'HEPSI'}` : '__TOPLU__';
     setSending(key);
     try {
       const r = await aylikOdemeApi.gonder({ month, ...o });
       const sonuc = r?.results || [];
-      const ok = sonuc.filter((x) => x.status === 'SENT').length;
+      const basarili = sonuc.filter((x) => x.status === 'SENT');
+      const ok = basarili.length;
+      const kalem = basarili.reduce((a, x) => a + (Number(x.kalem) || 0), 0);
       const fail = sonuc.filter((x) => x.status === 'FAILED').length;
-      const parca = [`${ok} gönderim başarılı`];
+      const parca = [`${ok} gönderim başarılı${kalem ? ` (${kalem} kalem)` : ''}`];
       if (fail) parca.push(`${fail} hata`);
       if (r?.atlanan) parca.push(`${r.atlanan} atlandı`);
       const mesaj = parca.join(', ') + (r?.testMode ? ' — TEST MODU, test alıcısına gitti' : '');
       if (fail && !ok) toast.error(mesaj);
+      else if (!ok && !fail) toast.info(`Gönderilecek yeni kalem yok${r?.atlanan ? ` (${r.atlanan} atlandı)` : ''}`);
       else toast.success(mesaj);
       yenile();
     } catch (e: any) {
@@ -121,13 +136,15 @@ export default function AylikOdemePage() {
     }
   };
 
-  const topluGonder = () => {
+  /** Toplu: gönderilmemiş kalemi olan mükelleflere; kanal verilirse yalnız o kanaldan */
+  const topluGonder = (kanal?: GonderimKanal) => {
     if (gonderilmemisSayisi === 0) {
-      toast.info('Gönderilmemiş mükellef yok');
+      toast.info('Gönderilmemiş kalemi olan mükellef yok');
       return;
     }
-    if (!testMode && !confirm(`${gonderilmemisSayisi} mükellefe cetvel gönderilecek (WhatsApp/e-posta). Devam edilsin mi?`)) return;
-    gonder({ mod: 'gonderilmemis' });
+    const kanalYazi = kanal ? kanalAdi(kanal) : [whatsappAcik && 'WhatsApp', emailAcik && 'e-posta'].filter(Boolean).join(' / ') || 'WhatsApp / e-posta';
+    if (!testMode && !confirm(`${gonderilmemisSayisi} mükellefe gönderilmemiş kalemleri ${kanalYazi} ile gönderilecek. Devam edilsin mi?`)) return;
+    gonder(kanal ? { mod: 'gonderilmemis', kanal } : { mod: 'gonderilmemis' });
   };
 
   const hepsineYenidenGonder = () => {
@@ -136,12 +153,11 @@ export default function AylikOdemePage() {
     gonder({ mod: 'hepsi' });
   };
 
-  const mukellefeGonder = () => {
+  /** Cetveldeki kanal düğmesi — mod düğme durumundan gelir; tüm kalemler gittiyse onay penceresi + 'yeniden' */
+  const mukellefeGonder = (kanal: GonderimKanal, mod: GonderimModu, yeniden: boolean) => {
     if (!active) return;
-    const g = gonderimOzeti(active);
-    const yeniden = g.durum === 'gonderildi' || g.kismi || g.durum === 'hata';
-    if (yeniden && !testMode && !confirm(`${active.unvan} için cetvel yeniden gönderilsin mi?`)) return;
-    gonder({ taxpayerId: active.taxpayerId, mod: yeniden ? 'yeniden' : 'gonderilmemis' });
+    if (yeniden && !testMode && !confirm(`${active.unvan}: tüm kalemler ${kanalAdi(kanal)} ile daha önce gönderildi. Cetvel ${kanalAdi(kanal)} ile YENİDEN gönderilsin mi?`)) return;
+    gonder({ taxpayerId: active.taxpayerId, mod, kanal });
   };
 
   /** Örnek: sahibin WhatsApp'ına — mükellefe gitmez */
@@ -213,7 +229,8 @@ export default function AylikOdemePage() {
     }
   };
 
-  const gonderMetni = `${testMode ? 'Test alıcısına gönder' : 'Gönderilmemişlere gönder'} (${gonderilmemisSayisi})`;
+  const gonderMetni = `${testMode ? 'Test alıcısına gönder' : 'Gönderilmemişleri gönder'} (${gonderilmemisSayisi})`;
+  const topluMesgul = sending !== null || listeQ.isLoading;
 
   return (
     <div className="mx-auto max-w-6xl space-y-3 pb-12">
@@ -286,9 +303,48 @@ export default function AylikOdemePage() {
               <ListChecks size={13} /> İletim Raporu
             </Link>
 
-            <AltinDugme onClick={topluGonder} yukleniyor={sending === '__TOPLU__'} disabled={sending !== null || listeQ.isLoading} title={testMode ? 'TEST MODU: mesajlar test alıcısına gider' : 'Cetveli henüz gönderilmemiş mükelleflere gönder'}>
-              <Send size={14} /> {gonderMetni}
-            </AltinDugme>
+            {/* Toplu gönder — bölünmüş düğme: sol = açık kanalların hepsi, sağ ok = yalnız WhatsApp / yalnız e-posta */}
+            <div className="inline-flex items-stretch" role="group" aria-label="Gönderilmemişleri gönder" data-testid="toplu-gonder">
+              <AltinDugme
+                onClick={() => topluGonder()}
+                yukleniyor={sending === '__TOPLU__'}
+                disabled={topluMesgul}
+                className="!rounded-r-none hover:!translate-y-0"
+                title={testMode ? 'TEST MODU: mesajlar test alıcısına gider' : 'Henüz gönderilmemiş kalemleri açık kanalların hepsinden gönder'}
+              >
+                <Send size={14} /> {gonderMetni}
+              </AltinDugme>
+              <AcilirMenu
+                genislik={244}
+                tetik={({ ref, ac, acik }) => (
+                  <button
+                    ref={ref}
+                    type="button"
+                    onClick={ac}
+                    disabled={topluMesgul}
+                    aria-expanded={acik}
+                    aria-label="Gönderim kanalı seç"
+                    title="Yalnız bir kanalla gönder"
+                    className="inline-flex h-9 w-7 flex-shrink-0 items-center justify-center rounded-r-[10px] transition-[filter] hover:brightness-110 disabled:opacity-45"
+                    style={{ background: `linear-gradient(135deg, ${GOLD_SOFT}, ${GOLD_SOFT})`, color: '#0f0d0b', borderLeft: '1px solid rgba(15,13,11,0.30)', filter: acik ? 'brightness(1.12)' : undefined }}
+                  >
+                    <ChevronDown size={13} />
+                  </button>
+                )}
+              >
+                {(kapat) => (
+                  <div className="py-1">
+                    <MenuBaslik>Gönderilmemişleri gönder</MenuBaslik>
+                    <MenuSatiri ikon={<MessageCircle size={13} />} disabled={!whatsappAcik || topluMesgul} title={whatsappAcik ? 'Yalnız WhatsApp kanalından gönder' : 'WhatsApp kanalı kapalı — Ayarlar → Akıllı Bildirim'} onClick={() => { kapat(); topluGonder('WHATSAPP'); }}>
+                      Yalnız WhatsApp
+                    </MenuSatiri>
+                    <MenuSatiri ikon={<Mail size={13} />} disabled={!emailAcik || topluMesgul} title={emailAcik ? 'Yalnız e-posta kanalından gönder' : 'E-posta kanalı kapalı — Ayarlar → Akıllı Bildirim'} onClick={() => { kapat(); topluGonder('EMAIL'); }}>
+                      Yalnız e-posta
+                    </MenuSatiri>
+                  </div>
+                )}
+              </AcilirMenu>
+            </div>
 
             {/* Diğer işlemler menüsü */}
             <AcilirMenu
@@ -330,7 +386,7 @@ export default function AylikOdemePage() {
       </header>
 
       {/* Özet hap şeridi — tıklanınca sol listeyi süzer */}
-      <OzetSeridi ozet={ozet} aktif={suzgec} onSec={setSuzgec} />
+      <OzetSeridi ozet={ozet} aktif={suzgec} onSec={setSuzgec} yeniKalem={yeniKalemToplam} />
 
       {/* TEST MODU bandı */}
       {testMode && (
@@ -377,7 +433,7 @@ export default function AylikOdemePage() {
             <Cetvel
               r={active}
               ozet={ozet}
-              gonderiliyor={sending === active.taxpayerId}
+              gonderilenKanal={sending === `${active.taxpayerId}:WHATSAPP` ? 'WHATSAPP' : sending === `${active.taxpayerId}:EMAIL` ? 'EMAIL' : null}
               ornekGonderiliyor={ornekGiden === active.taxpayerId}
               pdfIniyor={indirme === 'pdf'}
               onGonder={mukellefeGonder}

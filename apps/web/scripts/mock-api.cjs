@@ -218,9 +218,11 @@ const TAKVIM = [
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
-// AYLIK ÖDEME LİSTESİ — sahte veri (12 mükellef; ikisi geçici/yıllık kalemli, biri gönderilmiş, biri hatalı, biri telefonsuz)
-// Sözleşme: GET /aylik-odeme, /aylik-odeme/ozet, /aylik-odeme/eksikler, /aylik-odeme/excel, /aylik-odeme/pdf, /aylik-odeme/otomatik;
-//           POST /aylik-odeme/send, /aylik-odeme/ornek-gonder, /aylik-odeme/eksik/sgk-yok; PUT /aylik-odeme/otomatik;
+// AYLIK ÖDEME LİSTESİ — sahte veri (12 mükellef; ikisi geçici/yıllık kalemli, biri kısmen + 1 yeni kalem, biri tamamen gönderilmiş,
+//   biri hatalı, biri telefonsuz). Gönderim KALEM BAZLI: satırda gonderim.WHATSAPP/EMAIL, kaynak düzeyinde toplamKalem/gonderilenKalem/yeniKalem.
+// Sözleşme: GET /aylik-odeme, /aylik-odeme/ozet (+ yeniKalemToplam), /aylik-odeme/eksikler, /aylik-odeme/excel, /aylik-odeme/pdf, /aylik-odeme/otomatik;
+//           POST /aylik-odeme/send { month, taxpayerId?, mod?, kanal? }, /aylik-odeme/ornek-gonder, /aylik-odeme/eksik/sgk-yok; PUT /aylik-odeme/otomatik;
+//           yalnız sahte: POST /aylik-odeme/__sifirla, /aylik-odeme/__ayar { testMode?, kanallar? };
 //           mükellef portalı: /portal/auth/login, /portal/me, /portal/dashboard, /portal/brifing, GET /taxpayer-portal/odeme-cetveli
 // ─────────────────────────────────────────────────────────────────────────────
 const ODEME_MUKELLEFLER = [
@@ -272,19 +274,76 @@ function odemeSatirlari(mk, idx, month) {
   if (mk.sgk) s.push({ tur: 'Tahakkuk Fişi', turAd: 'SGK Prim Tahakkuku', kaynak: 'SGK', grup: 'SGK', donem: oncekiAy.replace('-', '/'), ...sonGun(y, m, 'son'), tutar: tutar(9800, idx, 6), storageKey: idx % 2 === 0 ? 'sgk/' + mk.id + '/' + oncekiAy + '.pdf' : null });
   return s;
 }
-/** Gönderim durumu ay bazında bellekte tutulur: { "2026-09": { m1: { VERGI, SGK } } } */
+/** Sahte ayar (test modu + açık kanallar) — önizleme betiği POST /aylik-odeme/__ayar ile değiştirir, __sifirla geri alır */
+const MOCK_AYAR_VARSAYILAN = { testMode: true, kanallar: { whatsapp: true, email: true } };
+let MOCK_AYAR = { ...MOCK_AYAR_VARSAYILAN, kanallar: { ...MOCK_AYAR_VARSAYILAN.kanallar } };
+const KANAL_ADLARI = ['WHATSAPP', 'EMAIL'];
+/** Kalem anahtarı: tür + dönem + taksit (aynı mükellefte tekil) */
+function kalemAnahtari(s) {
+  return `${s.tur}|${s.donem}|${s.taksit || ''}`;
+}
+function kalemKaydi(sentAt, test, kanallar) {
+  return { WHATSAPP: kanallar.includes('WHATSAPP') ? { sentAt, test } : null, EMAIL: kanallar.includes('EMAIL') ? { sentAt, test } : null };
+}
+function kalemGitti(k) {
+  return !!k && KANAL_ADLARI.some((kanal) => k[kanal] && k[kanal].sentAt);
+}
+/**
+ * Gönderim durumu ay bazında bellekte, KALEM BAZLI:
+ *   { "2026-09": { m1: { kalemler: { "KDV1|2026-08|": { WHATSAPP: {sentAt,test}|null, EMAIL: … } }, hata: { VERGI: 'sebep' } } } }
+ * Tohum (bu ay): m1 Öz Ela KISMEN (2/3 vergi kalemi WhatsApp ile gitti, Kurum Geçici YENİ; SGK gitti) · m3 Ayşegül TAMAMEN
+ * (vergi WhatsApp + e-posta, SGK WhatsApp) · m6 Ela Tekstil HATALI · m9 Yıldız yalnız vergi TEST alıcısına, SGK yeni · diğerleri HİÇ.
+ */
 const GONDERIM = {};
 function gonderimDurumu(month) {
   if (!GONDERIM[month]) {
     const g = {};
     if (month === BU_AY) {
-      g.m3 = { VERGI: { status: 'SENT', sentAt: saatOnce(50), kanallar: ['whatsapp', 'email'], test: false }, SGK: { status: 'SENT', sentAt: saatOnce(50), kanallar: ['whatsapp'], test: false } }; // GÖNDERİLMİŞ
-      g.m6 = { VERGI: { status: 'FAILED', sentAt: saatOnce(3), kanallar: ['whatsapp'], test: false }, SGK: null }; // HATALI
-      g.m9 = { VERGI: { status: 'SENT', sentAt: saatOnce(26), kanallar: ['whatsapp'], test: true }, SGK: null }; // KISMİ (yalnız vergi, test)
+      const satirlariAl = (id) => {
+        const i = ODEME_MUKELLEFLER.findIndex((mk) => mk.id === id);
+        return odemeSatirlari(ODEME_MUKELLEFLER[i], i + 1, month);
+      };
+      const tohum = (id, sec) => {
+        const kayit = { kalemler: {}, hata: {} };
+        for (const s of satirlariAl(id)) {
+          const k = sec(s);
+          if (k) kayit.kalemler[kalemAnahtari(s)] = k;
+        }
+        g[id] = kayit;
+      };
+      tohum('m1', (s) => (s.tur === 'KDV1' || s.tur === 'MUHSGK' || s.kaynak === 'SGK' ? kalemKaydi(saatOnce(49), false, ['WHATSAPP']) : null)); // KISMEN + 1 yeni (Kurum Geçici)
+      tohum('m3', (s) => kalemKaydi(saatOnce(50), false, s.kaynak === 'SGK' ? ['WHATSAPP'] : ['WHATSAPP', 'EMAIL'])); // TAMAMEN gönderilmiş
+      g.m6 = { kalemler: {}, hata: { VERGI: 'whatsapp gönderilemedi (oturum kapalı)' } }; // HATALI
+      tohum('m9', (s) => (s.kaynak !== 'SGK' ? kalemKaydi(saatOnce(26), true, ['WHATSAPP']) : null)); // yalnız vergi, TEST alıcısına; SGK yeni
     }
     GONDERIM[month] = g;
   }
   return GONDERIM[month];
+}
+/** Kaynak (VERGI / SGK) düzeyi bilgi — kalem kayıtlarından türetilir; hiç gitmediyse ve hata yoksa null */
+function kaynakBilgisi(satirlar, kayit, kaynak) {
+  const rows = satirlar.filter((s) => (kaynak === 'SGK') === (s.kaynak === 'SGK'));
+  if (!rows.length) return null;
+  const kalemler = (kayit && kayit.kalemler) || {};
+  let gonderilen = 0;
+  let sentAt = null;
+  let test = false;
+  const kanallar = new Set();
+  for (const s of rows) {
+    const k = kalemler[kalemAnahtari(s)];
+    if (!kalemGitti(k)) continue;
+    gonderilen++;
+    for (const kanal of KANAL_ADLARI) {
+      const p = k[kanal];
+      if (!p || !p.sentAt) continue;
+      kanallar.add(kanal);
+      if (!sentAt || p.sentAt > sentAt) sentAt = p.sentAt;
+      test = test || !!p.test;
+    }
+  }
+  const hata = kayit && kayit.hata && kayit.hata[kaynak];
+  if (!gonderilen && !hata) return null;
+  return { status: hata ? 'FAILED' : 'SENT', sentAt, kanallar: [...kanallar], test, toplamKalem: rows.length, gonderilenKalem: gonderilen, yeniKalem: rows.length - gonderilen };
 }
 const SGK_YOK = new Set();
 let OTOMATIK = { aktif: false, gun: 20, saat: 9, onayGerekli: true, sonKosu: null };
@@ -297,7 +356,11 @@ function odemeListesi(month, taxpayerId) {
     .filter((mk, i) => (month === BU_AY ? true : (i + m) % 4 !== 0))
     .filter((mk) => !taxpayerId || mk.id === taxpayerId)
     .map((mk, i) => {
-      const satirlar = odemeSatirlari(mk, i + 1, month);
+      const ham = odemeSatirlari(mk, i + 1, month);
+      const kayit = g[mk.id] || null;
+      const kalemler = (kayit && kayit.kalemler) || {};
+      // Satır düzeyi: gonderim.WHATSAPP / EMAIL = { sentAt, test } | null
+      const satirlar = ham.map((s) => ({ ...s, gonderim: kalemler[kalemAnahtari(s)] || { WHATSAPP: null, EMAIL: null } }));
       return {
         taxpayerId: mk.id,
         unvan: mk.unvan,
@@ -305,17 +368,18 @@ function odemeListesi(month, taxpayerId) {
         email: mk.email,
         toplam: Math.round(satirlar.reduce((a, s) => a + s.tutar, 0) * 100) / 100,
         satirlar,
-        gonderim: g[mk.id] || { VERGI: null, SGK: null },
+        gonderim: { VERGI: kaynakBilgisi(ham, kayit, 'VERGI'), SGK: kaynakBilgisi(ham, kayit, 'SGK') },
       };
     });
 }
-/** Mükellef bazında tek durum: hepsi SENT → gönderildi; FAILED var → hata; yoksa bekliyor */
+/** Hiç gitmemiş kalem sayısı */
+function yeniKalemSayisi(r) {
+  return r.satirlar.filter((s) => !kalemGitti(s.gonderim)).length;
+}
+/** Mükellef bazında tek durum: FAILED var → hata; hiç yeni kalem yok → gönderildi; yoksa bekliyor (yeni kalemi var) */
 function mukellefDurumu(r) {
-  const parcalar = [];
-  if (r.satirlar.some((s) => s.kaynak !== 'SGK')) parcalar.push(r.gonderim.VERGI);
-  if (r.satirlar.some((s) => s.kaynak === 'SGK')) parcalar.push(r.gonderim.SGK);
-  if (parcalar.some((p) => p && p.status === 'FAILED')) return 'hata';
-  if (parcalar.length && parcalar.every((p) => p && p.status === 'SENT')) return 'gonderildi';
+  if ([r.gonderim.VERGI, r.gonderim.SGK].some((p) => p && p.status === 'FAILED')) return 'hata';
+  if (r.satirlar.length && yeniKalemSayisi(r) === 0) return 'gonderildi';
   return 'bekliyor';
 }
 function odemeOzeti(month) {
@@ -335,13 +399,14 @@ function odemeOzeti(month) {
     yillikToplam: top((s) => s.grup === 'YILLIK'),
     toplam: top(() => true),
     gonderilen: liste.filter((r) => mukellefDurumu(r) === 'gonderildi').length,
-    bekleyen: liste.filter((r) => mukellefDurumu(r) === 'bekliyor').length,
+    bekleyen: liste.filter((r) => mukellefDurumu(r) === 'bekliyor').length, // yeni kalemi olan mükellef
     hatali: liste.filter((r) => mukellefDurumu(r) === 'hata').length,
+    yeniKalemToplam: liste.reduce((a, r) => a + yeniKalemSayisi(r), 0),
     enYakinSonGun: yakin ? { tarih: yakin.sonGunIso, turAd: yakin.turAd } : null,
-    testMode: true,
+    testMode: MOCK_AYAR.testMode,
     testPhone: TEST_TELEFON,
-    testEmail: null,
-    kanallar: { whatsapp: true, email: false },
+    testEmail: MOCK_AYAR.testMode ? 'test@morenmusavirlik.com' : null,
+    kanallar: { ...MOCK_AYAR.kanallar },
     otomatik: OTOMATIK,
   };
 }
@@ -699,7 +764,18 @@ async function isle(req, res) {
     for (const k of Object.keys(GONDERIM)) delete GONDERIM[k];
     SGK_YOK.clear();
     OTOMATIK = { aktif: false, gun: 20, saat: 9, onayGerekli: true, sonKosu: null };
+    MOCK_AYAR = { ...MOCK_AYAR_VARSAYILAN, kanallar: { ...MOCK_AYAR_VARSAYILAN.kanallar } };
     return jsonGonder(res, 200, { ok: true });
+  }
+  // Yalnız sahte API: test modu / açık kanalları değiştir (pasif düğme görüntüsü için) — { testMode?, kanallar?: { whatsapp?, email? } }
+  if (yol === '/aylik-odeme/__ayar' && yontem === 'POST') {
+    if (typeof govde.testMode === 'boolean') MOCK_AYAR.testMode = govde.testMode;
+    if (govde.kanallar && typeof govde.kanallar === 'object') {
+      if (typeof govde.kanallar.whatsapp === 'boolean') MOCK_AYAR.kanallar.whatsapp = govde.kanallar.whatsapp;
+      if (typeof govde.kanallar.email === 'boolean') MOCK_AYAR.kanallar.email = govde.kanallar.email;
+    }
+    console.log('[mock] aylik-odeme ayar', MOCK_AYAR);
+    return jsonGonder(res, 200, { ok: true, ...MOCK_AYAR });
   }
   if (yol === '/aylik-odeme' && yontem === 'GET') return jsonGonder(res, 200, odemeListesi(q.month || BU_AY, q.taxpayerId));
   if (yol === '/aylik-odeme/ozet' && yontem === 'GET') return jsonGonder(res, 200, odemeOzeti(q.month || BU_AY));
@@ -723,26 +799,55 @@ async function isle(req, res) {
     if (q.taxpayerId && !mk) return jsonGonder(res, 404, { message: 'Mükellef bulunamadı' });
     return dosyaGonder(res, ornekPdf(`${mk ? mk.unvan : 'Tum mukellefler'} - ${ay}`), 'application/pdf', `aylik-odeme-${ay}${mk ? '-' + mk.id : ''}.pdf`);
   }
+  // POST /aylik-odeme/send { month, taxpayerId?, mod?: 'gonderilmemis'|'hepsi'|'yeniden', kanal?: 'WHATSAPP'|'EMAIL' }
+  //   → { ok, testMode, count, atlanan, results: [{ taxpayerId, unvan, grup, channel, status, error, kalem, yeni }] }
+  //   'gonderilmemis': yalnız o kanaldan daha önce gitmemiş kalemler gider; 'hepsi' / 'yeniden': tüm kalemler.
   if (yol === '/aylik-odeme/send' && yontem === 'POST') {
     const ay = govde.month || BU_AY;
     const mod = govde.mod || 'gonderilmemis';
+    if (!['gonderilmemis', 'hepsi', 'yeniden'].includes(mod)) return jsonGonder(res, 400, { message: 'mod: gonderilmemis | hepsi | yeniden' });
+    if (mod === 'yeniden' && !govde.taxpayerId) return jsonGonder(res, 400, { message: "'yeniden' modu tek mükellef ister (taxpayerId)" });
+    const kanalParam = govde.kanal ? String(govde.kanal).toUpperCase() : null;
+    if (kanalParam && !KANAL_ADLARI.includes(kanalParam)) return jsonGonder(res, 400, { message: 'kanal: WHATSAPP | EMAIL' });
+    const acik = KANAL_ADLARI.filter((k) => (k === 'WHATSAPP' ? MOCK_AYAR.kanallar.whatsapp : MOCK_AYAR.kanallar.email));
+    const kanallar = kanalParam ? acik.filter((k) => k === kanalParam) : acik;
+    if (!kanallar.length) return jsonGonder(res, 400, { message: kanalParam ? `${kanalParam} kanalı kapalı` : 'Açık gönderim kanalı yok' });
+    const testMode = MOCK_AYAR.testMode;
     const g = gonderimDurumu(ay);
     const hedef = odemeListesi(ay, govde.taxpayerId || undefined);
     const results = [];
     let atlanan = 0;
+    const simdiIso = new Date().toISOString();
     for (const r of hedef) {
-      const durum = mukellefDurumu(r);
-      if (mod === 'gonderilmemis' && durum === 'gonderildi') { atlanan++; continue; }
-      const iletisimYok = !r.phone && !r.email;
-      const vergiVar = r.satirlar.some((s) => s.kaynak !== 'SGK');
-      const sgkVar = r.satirlar.some((s) => s.kaynak === 'SGK');
-      const kayit = { status: iletisimYok ? 'FAILED' : 'SENT', sentAt: new Date().toISOString(), kanallar: ['whatsapp'], test: true };
-      g[r.taxpayerId] = { VERGI: vergiVar ? { ...kayit } : null, SGK: sgkVar ? { ...kayit } : null };
-      results.push({ taxpayerId: r.taxpayerId, unvan: r.unvan, grup: 'VERGI', channel: 'whatsapp', status: kayit.status, error: iletisimYok ? 'Telefon ve e-posta yok' : null });
-      if (sgkVar) results.push({ taxpayerId: r.taxpayerId, unvan: r.unvan, grup: 'SGK', channel: 'whatsapp', status: kayit.status, error: iletisimYok ? 'Telefon ve e-posta yok' : null });
+      const kayit = g[r.taxpayerId] || (g[r.taxpayerId] = { kalemler: {}, hata: {} });
+      let birSeyGitti = false;
+      for (const kaynak of ['VERGI', 'SGK']) {
+        const rows = r.satirlar.filter((s) => (kaynak === 'SGK') === (s.kaynak === 'SGK'));
+        if (!rows.length) continue;
+        for (const kanal of kanallar) {
+          const kayitAl = (s) => kayit.kalemler[kalemAnahtari(s)];
+          const gidecek = mod === 'gonderilmemis' ? rows.filter((s) => !(kayitAl(s) && kayitAl(s)[kanal] && kayitAl(s)[kanal].sentAt)) : rows;
+          if (!gidecek.length) continue;
+          const yeni = gidecek.filter((s) => !kalemGitti(kayitAl(s))).length;
+          const iletisim = kanal === 'WHATSAPP' ? r.phone : r.email;
+          const ok = testMode || !!iletisim;
+          if (ok) {
+            for (const s of gidecek) {
+              const k = kayitAl(s) || (kayit.kalemler[kalemAnahtari(s)] = { WHATSAPP: null, EMAIL: null });
+              k[kanal] = { sentAt: simdiIso, test: testMode };
+            }
+            delete kayit.hata[kaynak];
+          } else {
+            kayit.hata[kaynak] = kanal === 'WHATSAPP' ? 'mükellefin telefon numarası yok' : 'mükellefin e-postası yok';
+          }
+          results.push({ taxpayerId: r.taxpayerId, unvan: r.unvan, grup: kaynak, channel: kanal, status: ok ? 'SENT' : 'FAILED', error: ok ? null : kayit.hata[kaynak], kalem: gidecek.length, yeni });
+          birSeyGitti = true;
+        }
+      }
+      if (!birSeyGitti) atlanan++;
     }
-    console.log(`[mock] send mod=${mod} taxpayerId=${govde.taxpayerId || '-'} → ${results.length} sonuç, ${atlanan} atlandı`);
-    return jsonGonder(res, 200, { ok: true, testMode: true, count: results.length, atlanan, results });
+    console.log(`[mock] send mod=${mod} kanal=${kanalParam || 'hepsi'} taxpayerId=${govde.taxpayerId || '-'} → ${results.length} sonuç, ${atlanan} atlandı`);
+    return jsonGonder(res, 200, { ok: true, month: ay, testMode, mod, kanal: kanalParam, count: results.length, atlanan, results });
   }
   if (yol === '/aylik-odeme/ornek-gonder' && yontem === 'POST') {
     const hedef = odemeListesi(govde.month || BU_AY, govde.taxpayerId || undefined)[0];

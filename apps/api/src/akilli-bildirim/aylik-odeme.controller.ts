@@ -1,7 +1,7 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Post, Put, Query, Req, Res, UseGuards } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import type { Response } from 'express';
-import { AylikOdemeService, GonderimModu } from './aylik-odeme.service';
+import { AylikOdemeService, GonderimKanali, GonderimModu } from './aylik-odeme.service';
 import { ayAdi } from './aylik-odeme-donem';
 
 function buAy(): string {
@@ -62,10 +62,15 @@ export class AylikOdemeController {
     res.send(buf);
   }
 
+  /**
+   * Kalem bazlı gönderim. mod: gonderilmemis (yalnız o kanaldan gerçek gitmemiş kalemler) | hepsi | yeniden (taxpayerId şart).
+   * kanal: WHATSAPP | EMAIL — verilirse yalnız o kanal. Cevap: { ok, month, testMode, mod, kanal, count, atlanan,
+   * results:[{ taxpayerId, unvan, grup, channel, status, error, kalem, yeni }] }.
+   */
   @Post('send')
   @HttpCode(HttpStatus.OK)
-  send(@Req() req: any, @Body() body: { month?: string; taxpayerId?: string; mod?: GonderimModu }) {
-    return this.svc.send(req.user.tenantId, body?.month || buAy(), body?.taxpayerId || undefined, body?.mod || 'gonderilmemis');
+  send(@Req() req: any, @Body() body: { month?: string; taxpayerId?: string; mod?: GonderimModu; kanal?: GonderimKanali }) {
+    return this.svc.send(req.user.tenantId, body?.month || buAy(), body?.taxpayerId || undefined, body?.mod || 'gonderilmemis', body?.kanal || undefined);
   }
 
   /** Gerçek cetvel mesajlarını YALNIZ sahibin numaralarına örnek olarak gönderir (kayıt yazmaz). */
