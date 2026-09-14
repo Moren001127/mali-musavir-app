@@ -7,6 +7,7 @@ import {
   sesGoreviOlustur,
   sesIcinSadelestir,
   sesKoordinatorAcik,
+  whatsappGoreviOlustur,
 } from './ses-koordinator';
 
 describe('ses-koordinator — env kapısı', () => {
@@ -157,6 +158,20 @@ describe('ses-koordinator — görev metni', () => {
     const g3 = sesGoreviOlustur({ question: 'Mihsap faturalarını çek', canli: false });
     expect(g3).toContain('YÖNLENDİRME ÖNERİSİ: ajan yok — Mihsap');
     expect(g3.endsWith('SORU/KOMUT: Mihsap faturalarını çek')).toBe(true);
+  });
+
+  it('whatsappGoreviOlustur (PLAN/19 §C): WhatsApp satırı, canlı satırı, yönlendirme, sonda SORU/KOMUT', () => {
+    const g = whatsappGoreviOlustur({ question: "Erdoğan Balçık'ın Ağustos KDV kontrolünü yapın", canli: true });
+    const satirlar = g.split('\n');
+    expect(satirlar[0]).toBe("Muzaffer Bey WhatsApp'tan yazıyor; cevabın WhatsApp mesajı olarak gidecek: kısa, düz metin, markdown/çift yıldız yok, en çok 1200 karakter.");
+    expect(satirlar[1]).toBe('Muzaffer Bey bu görev için CANLI (kuru test dışı) çalışmayı istedi.');
+    expect(satirlar[2]).toContain('YÖNLENDİRME ÖNERİSİ: beyanname/R1');
+    expect(g.endsWith("SORU/KOMUT: Erdoğan Balçık'ın Ağustos KDV kontrolünü yapın")).toBe(true);
+    expect(g).not.toContain('sesli');
+    const kuru = whatsappGoreviOlustur({ question: 'işler ne durumda', canli: false });
+    expect(kuru).not.toContain('CANLI');
+    expect(kuru).not.toContain('YÖNLENDİRME ÖNERİSİ');
+    expect(kuru.endsWith('SORU/KOMUT: işler ne durumda')).toBe(true);
   });
 });
 

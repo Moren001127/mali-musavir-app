@@ -310,3 +310,23 @@ export function sesGoreviOlustur(p: {
   ].filter(Boolean);
   return `${baglam.join('\n')}\n\nSORU/KOMUT: ${String(p.question || '').trim()}`;
 }
+
+/**
+ * WhatsApp'tan yazılan sahip mesajı → koordinatör görev metni (PLAN/19 §C, 2026-09-14) — sesGoreviOlustur'un WhatsApp
+ * karşılığı: cevap WhatsApp mesajı olarak gider (kısa, düz metin, markdown yok, en çok 1200 karakter); canlı istendiyse
+ * satırı, PLAN/17 §5 ön eşlemesi varsa "YÖNLENDİRME ÖNERİSİ" satırı eklenir. Son satır her zaman "SORU/KOMUT: …"
+ * (ekip-akis konuBasligi bu satırdan konu üretir).
+ */
+export function whatsappGoreviOlustur(p: { question: string; canli: boolean }): string {
+  const oneri = ajanSec(p.question);
+  const baglam = [
+    "Muzaffer Bey WhatsApp'tan yazıyor; cevabın WhatsApp mesajı olarak gidecek: kısa, düz metin, markdown/çift yıldız yok, en çok 1200 karakter.",
+    p.canli ? 'Muzaffer Bey bu görev için CANLI (kuru test dışı) çalışmayı istedi.' : '',
+    oneri
+      ? oneri.ajanId
+        ? `YÖNLENDİRME ÖNERİSİ: ${oneri.ajanId}/${oneri.recete} — ${oneri.neden}`
+        : `YÖNLENDİRME ÖNERİSİ: ajan yok — ${oneri.neden}`
+      : '',
+  ].filter(Boolean);
+  return `${baglam.join('\n')}\n\nSORU/KOMUT: ${String(p.question || '').trim()}`;
+}

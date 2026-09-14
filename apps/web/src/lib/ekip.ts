@@ -28,7 +28,7 @@ export interface KademeOzeti {
   disari_gonder: number;
 }
 
-export type EkipKaynak = 'portal' | 'ses' | 'cron' | 'koordinator';
+export type EkipKaynak = 'portal' | 'ses' | 'cron' | 'koordinator' | 'whatsapp';
 
 /** Backend #3 (isteğe bağlı) — kadro satırına son koşu/bekleyen onay eklerse doğrudan kullanılır; yoksa FE isler(200)'den hesaplar. */
 export interface AjanSonKosu {

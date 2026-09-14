@@ -26,6 +26,11 @@ import { ButceWhatsappService } from '../butce/butce-whatsapp.service';
 import { ButceCron } from '../butce/butce.cron';
 import { OwnerOnlyGuard } from '../auth/guards/owner-only.guard';
 import { GorevWhatsappService } from './gorev-whatsapp.service';
+import { ModuleRef } from '@nestjs/core';
+// EKİP köprüsü (PLAN/19 §C): yalnız SAF fonksiyonlar statik import; servis ModuleRef + dinamik import ile (EkipModule → WhatsAppModule yönü korunur).
+import { ekipWhatsappAcik, ekipYoluMu, sahipKomutu } from '../ekip/ekip-whatsapp';
+import { canliModIstendi } from '../moren-ai/ses-koordinator';
+import type { EkipWhatsappService } from '../ekip/ekip-whatsapp.service';
 
 type IncomingWhatsAppMessage = {
   from: string;
@@ -86,9 +91,26 @@ export class WhatsAppBotController implements OnModuleInit {
     private readonly butceCron: ButceCron,
     // Görev / hatırlatma / not ekleme (owner hattı) — portaldaki akıllı girişle aynı ayrıştırıcı.
     private readonly gorevWhatsapp: GorevWhatsappService,
+    // EKİP köprüsü servisini çözmek için (moren-ai.service koordinatorSesYaniti kalıbı; modül döngüsü yok).
+    private readonly moduleRef: ModuleRef,
     @Optional() private readonly eventBus?: AutomationEventBus,
     @Optional() private readonly storage?: StorageService,
   ) {}
+
+  /**
+   * EKİP ↔ WHATSAPP köprüsü servisi (PLAN/19 §C). EkipModule bu modülü import ediyor; ters yön döngü yaratır → statik import yok,
+   * ModuleRef strict:false + dinamik import. Bulunamazsa null (eski akış sürer). EKIP_WHATSAPP_KOORDINATOR=off ile kapatılır.
+   */
+  private async ekipWhatsappServisi(): Promise<EkipWhatsappService | null> {
+    if (!ekipWhatsappAcik()) return null;
+    try {
+      const mod = await import('../ekip/ekip-whatsapp.service');
+      return this.moduleRef.get(mod.EkipWhatsappService, { strict: false }) || null;
+    } catch (e: any) {
+      this.logger.warn(`[Ekip] EkipWhatsappService bulunamadı: ${e?.message || e}`);
+      return null;
+    }
+  }
 
   /**
    * Baileys (QR) gelen mesajlarını webhook ile BİREBİR aynı bot hattına bağlar
@@ -1002,7 +1024,7 @@ export class WhatsAppBotController implements OnModuleInit {
       '8) BELGE GÖNDERME aktiftir (beyanname/tahakkuk PDF + mükellef kartına yüklü tüm evrak/fatura/sözleşme/dosyalar) ve sistem otomatik yapar. Bu mesaja kadar geldiysen mükellef NET DEĞİL demektir — kısaca "hangi mükellefin hangi belgesini göndereyim?" diye SOR. DİKKAT: belge gönderimini SADECE sistem yapar, sen DEĞİL. Bu yüzden "gönderiyorum / gönderiliyor / gönderecektim / yolluyorum / şimdi atıyorum / tekrar deniyorum / birazdan düşer / sistem aksaklığı oldu" gibi YAPMADIĞIN/YAPAMAYACAĞIN eylem cümlelerini ASLA kurma (geçmiş, şimdiki, gelecek hiçbir zaman). Eğer belge gerçekten gönderildiyse zaten ayrı bir [BELGE] mesajı düşer; senin görevin sadece NETLEŞTİRİCİ soru sormak ya da bilgi vermek.',
       '9) "Gönder" = belgeyi BİRİNE ilet demektir; "GİB\'e gönder/beyan ver" SANMA. Owner GİB\'e beyan vermeni istemez. Beyanname zaten verildiyse onu "GİB\'e gönderiyorum" diye KARIŞTIRMA.',
       '10) Mesajda hangi beyan tipi sorulduysa SADECE onu konuş. "KDV" sorulduysa MUHSGK/Damga ekleme; "MUHSGK" sorulduysa KDV ekleme.',
-      '11) NE YAPABİLİRSİN: (a) Portal verisini sorgulayıp anlatmak (mizan, KDV, beyanname durumu, borç, fatura, mükellef bilgisi, sistem sağlığı). (b) Belge/PDF göndermek (sistem otomatik yapar). (c) Vergi/SGK/iş hukuku/mevzuat sorularını (süre, ceza, oran, had, nasıl yapılır) kıdemli mali müşavir bilgisiyle NET cevaplamak — "mali müşavire danışın" DEME; güncel tutar/oran/ceza gerekiyorsa resmi kaynaktan teyit et, kaynak yoksa kuralı + teyit noktasını söyle, sayı uydurma. BUNLARI rahatça yap. NE YAPAMAZSIN (WhatsApp\'tan): Luca/ajan çalıştırma-başlatma-durdurma, hatırlatma/SMS/mesaj gönderme, beyanname verme, ayar değiştirme gibi İŞLEM BAŞLATMA. Böyle bir komutta ASLA "başlattım/başlatıyorum/gönderdim/yaptım/kuyruğa aldım" deme — bunun yerine DÜRÜSTÇE: "Bu işlemi WhatsApp üzerinden başlatamıyorum; portaldan (ilgili modülden) yapabilirsiniz. İstersen durumu buradan kontrol edip anlatabilirim." de.',
+      '11) NE YAPABİLİRSİN: (a) Portal verisini sorgulayıp anlatmak (mizan, KDV, beyanname durumu, borç, fatura, mükellef bilgisi, sistem sağlığı). (b) Belge/PDF göndermek (sistem otomatik yapar). (c) Vergi/SGK/iş hukuku/mevzuat sorularını (süre, ceza, oran, had, nasıl yapılır) kıdemli mali müşavir bilgisiyle NET cevaplamak — "mali müşavire danışın" DEME; güncel tutar/oran/ceza gerekiyorsa resmi kaynaktan teyit et, kaynak yoksa kuralı + teyit noktasını söyle, sayı uydurma. BUNLARI rahatça yap. İŞ İSTEKLERİ (KDV kontrolü, beyanname hazırlığı, fatura işleme, denetim, ekstre, tebligat, e-defter gibi EKİP işleri) SİSTEM tarafından Koordinatör\'e iletilir; süreç mesajları (başladı / bitti / onay bekliyor / sizden istenen) buradan gelir; onay "ONAYLIYORUM #PRV-XXXX", ret "REDDET #PRV-XXXX", sizden istenen iş bitince "YAPILDI #kimlik" yazılarak verilir. Bu mesaja kadar geldiysen istek Koordinatör\'e GİTMEMİŞ demektir — ASLA "başlattım/ilettim/gönderdim/yaptım/kuyruğa aldım" deme; iş isteğiyse "İşi Koordinatör\'e iletmek için isteği net yazın (mükellef, dönem, iş)" de. Beyanname verme, ayar değiştirme, resmi gönderim, hatırlatma/SMS gönderme WhatsApp\'tan YAPILMAZ; böyle bir komutta DÜRÜSTÇE portalı göster.',
       '12) DÖNEM: Evrak/işlem/aylık-takip durumundan bahsederken DÖNEM = BEYANNAME dönemidir (tool sonucundaki "beyannameDonem"), İŞLEM ayı DEĞİL. Mayıs ayının faturaları Haziran\'da işlenir; "Haziran\'da evrak geldi/işlendi" DEME, "Mayıs dönemi evrakı" de. Tool "donemNotu" verirse ona uy.',
       '13) DÖNEM VARSAYILANI: Kullanıcı dönem belirtmezse, içinde bulunulan AYI (cari ay) varsayma — onun verisi henüz işlenmemiş olur. Varsayılan = AKTİF BEYAN DÖNEMİ = bir önceki ay (ör. bugün Haziran ise Mayıs). Tool en güncel veri dönemini verirse onu kullan; boşsa "cari ay" deyip "veri yok" deme, bir önceki dönemi kontrol et.',
       '14) KİMLİK & DİL: Kendine "ofisimiz" DEME ("ben ofisimiz" YANLIŞ). Gerek olursa "Ben MOREN AI, ofisinin asistanı/mali müşavir beyni" de. ASLA geliştirici/teknik terim kullanma: "harness, hooks, ortam/env değişkeni, Claude Code, kısayol, konfigürasyon" gibi şeyler mükellef/ofis işiyle ALAKASIZ — bunları söyleme. Sen bir mali müşavir asistanısın, yazılım aracı gibi konuşma.',
@@ -1976,6 +1998,119 @@ ${t}` : t;
     return sent;
   }
 
+  // ─── EKİP ↔ WHATSAPP KÖPRÜSÜ (PLAN/19 §C, 2026-09-14) ───
+
+  /**
+   * Ekip komutu: "ONAYLIYORUM #PRV-XXXX" / "REDDET #PRV-XXXX [not]" / "YAPILDI #kimlik". true → cevaplandı.
+   * PRV bir ekip kaydı değilse servis null döner → false (belge-gönder onayı ve eski akış bozulmaz).
+   */
+  private async maybeHandleEkipKomutu(ownerTenant: any, ownerContactId: string, msg: IncomingWhatsAppMessage): Promise<boolean> {
+    const komut = sahipKomutu(msg.text || '');
+    if (!komut) return false;
+    const svc = await this.ekipWhatsappServisi();
+    if (!svc) return false;
+    let cevap: string | null;
+    try {
+      cevap = await svc.komutIsle({
+        tenantId: ownerTenant.id,
+        tur: komut.tur,
+        kimlik: komut.kimlik,
+        not: komut.not,
+        kuruMesaj: msg.__dryRun === true,
+        // KİMLİKSİZ HTTP webhook'undan onay/ret/kapatma YÜRÜTÜLMEZ (fatura kesimiyle aynı kural)
+        kimliksizKaynak: (msg as any).__kaynak === 'http',
+      });
+    } catch (e: any) {
+      this.logger.warn(`[Ekip] komut işlenemedi (${komut.tur} ${komut.kimlik}): ${e?.message || e}`);
+      cevap = `Komut işlenemedi: ${String(e?.message || e).slice(0, 200)}`;
+    }
+    if (cevap === null) return false;
+    await this.ownerCevapGonder(msg, ownerTenant.id, ownerContactId, cevap, `owner:ekip:${komut.tur.toLowerCase()}`, 'WhatsApp owner ekip komutu');
+    if (!msg.__dryRun) {
+      await this.ekipHafizaKaydet(ownerTenant, ownerContactId, msg.text || '', cevap);
+      this.refreshTaxpayerMemory(ownerTenant.id, ownerContactId);
+    }
+    return true;
+  }
+
+  /**
+   * İş isteği / ekip sorusu (ekipYoluMu) → Koordinatör. true → cevaplandı.
+   * Kuru denemede (__dryRun) koşu başlatılmaz; kimliksiz HTTP kaynağı Koordinatör'e iletilmez.
+   */
+  private async maybeHandleEkipMesaji(ownerTenant: any, ownerContactId: string, msg: IncomingWhatsAppMessage): Promise<boolean> {
+    let text = String(msg.text || '');
+    let ekipYolu = ekipYoluMu(text);
+    // "canlı yap" TEK BAŞINA (kuru test satırının cevabı): önceki sahip mesajı ekip işiyse onunla birleştirilir ve canlı gider.
+    // Koordinatör koşusunun konuşma hafızası yok; birleştirmeden "neyi canlı yapayım" diye sorardı.
+    if (!ekipYolu && canliModIstendi(text) && text.trim().length <= 60) {
+      const onceki = await this.sonGelenOwnerMesaji(ownerContactId, msg.id || null, msg);
+      if (onceki && ekipYoluMu(onceki)) {
+        text = `${onceki} — ${text.trim()}`;
+        ekipYolu = true;
+      }
+    }
+    if (!ekipYolu) return false;
+    const svc = await this.ekipWhatsappServisi();
+    if (!svc) return false;
+    if ((msg as any).__kaynak === 'http') {
+      await this.ownerCevapGonder(msg, ownerTenant.id, ownerContactId,
+        "Bu istek gerçek WhatsApp bağlantısından gelmediği için Koordinatör'e İLETİLMEDİ. Lütfen WhatsApp üzerinden yazın.",
+        'owner:ekip:kaynak-red', 'WhatsApp owner ekip kaynak red');
+      return true;
+    }
+    // Konuşma hafızası: owner WhatsApp sohbeti tek aiConversation'da (kuru denemede yazılmaz). Arka plan mesajları da bu konuşmaya düşer.
+    const konusmaId = msg.__dryRun
+      ? null
+      : await this.getOrCreateOwnerWhatsAppConversation(ownerTenant.id, ownerContactId, ownerTenant.name).catch(() => null);
+    const stopTyping = this.startTypingIndicator(ownerTenant.id, this.replyTarget(msg));
+    let sonuc: { metin: string; isId: string | null; arkaPlanda: boolean };
+    try {
+      sonuc = await svc.sahipMesaji({
+        tenantId: ownerTenant.id,
+        telefon: this.replyTarget(msg),
+        metin: text,
+        kuruMesaj: msg.__dryRun === true,
+        konusmaId,
+        sahipKisiId: ownerContactId,
+      });
+    } catch (e: any) {
+      this.logger.warn(`[Ekip] Koordinatör'e iletilemedi: ${e?.message || e}`);
+      sonuc = { metin: `Koordinatör'e iletemedim: ${String(e?.message || e).slice(0, 200)}`, isId: null, arkaPlanda: false };
+    } finally {
+      stopTyping(); // koşu arka plandaysa da gösterge kapanır; devamı ayrı mesaj olarak gelir
+    }
+    await this.ownerCevapGonder(msg, ownerTenant.id, ownerContactId, sonuc.metin, sonuc.arkaPlanda ? 'owner:ekip:iletildi' : 'owner:ekip', 'WhatsApp owner ekip cevabi');
+    if (!msg.__dryRun) {
+      await this.ekipHafizaKaydet(ownerTenant, ownerContactId, text, sonuc.metin, konusmaId);
+      this.refreshTaxpayerMemory(ownerTenant.id, ownerContactId);
+    }
+    return true;
+  }
+
+  /** Ekip köprüsü konuşma kaydı: kullanıcı + asistan mesajı, model etiketi ekip-koordinator:whatsapp (koordinatorSesYaniti kalıbı). */
+  private async ekipHafizaKaydet(ownerTenant: any, ownerContactId: string, soru: string, cevap: string, konusmaId?: string | null): Promise<void> {
+    try {
+      const id = konusmaId || (await this.getOrCreateOwnerWhatsAppConversation(ownerTenant.id, ownerContactId, ownerTenant.name));
+      await this.prisma.aiMessage.create({ data: { conversationId: id, role: 'user', content: soru || '(boş)' } });
+      await this.prisma.aiMessage.create({
+        data: {
+          conversationId: id,
+          role: 'assistant',
+          content: cevap || '(Cevap boş)',
+          inputTokens: 0,
+          outputTokens: 0,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          costUsd: 0,
+          model: 'ekip-koordinator:whatsapp',
+          durationMs: 0,
+        },
+      });
+    } catch (e: any) {
+      this.logger.warn(`[Ekip] konuşma kaydı yazılamadı: ${e?.message || e}`);
+    }
+  }
+
   private async maybeHandleOwnerDataSummary(
     ownerTenant: any,
     ownerContactId: string,
@@ -2653,6 +2788,13 @@ ${not}` : not;
         return;
       }
 
+      // EKİP KOMUTU (PLAN/19 §C, 2026-09-14): "ONAYLIYORUM #PRV-XXXX" / "REDDET #PRV-XXXX" / "YAPILDI #kimlik" → ekip onayı / ret /
+      // "sizden istenen" kapatma. Belge-gönder onay kapısından (isOwnerConfirm) ÖNCE; PRV ekip kaydı değilse null → eski akış sürer.
+      // Kimliksiz HTTP webhook'undan gelen komut YÜRÜTÜLMEZ (fatura kesimiyle aynı kural); kuru denemede kayda dokunulmaz.
+      if (await this.maybeHandleEkipKomutu(ownerTenant, ownerContact.id, msg)) {
+        return;
+      }
+
       // GÖREV / HATIRLATMA / NOT (owner): "görev ekle: …", "… yarın 10:00 hatırlat", "not: …" →
       // Görevler'e portaldaki akıllı girişle AYNI ayrıştırıcıyla kaydeder. Bütçe'den ÖNCE: bütçe
       // kapısı "tahsilat/ekstre/işle" sözcüklerini de yakalıyor, hatırlatma cümlesi bütçeye kaçmasın.
@@ -2725,6 +2867,12 @@ ${not}` : not;
       // sadece belge gönderip return ediyordu → özet/analiz isteği sessizce düşüyordu).
       const ownerDocSent = await this.maybeHandleOwnerDocumentSend(ownerTenant, ownerContact.id, msg);
       if (ownerDocSent && !this.ownerMessageAlsoWantsAnswer(msg.text)) {
+        return;
+      }
+
+      // EKİP YOLU (PLAN/19 §C): iş isteği / ekip sorusu → Koordinatör (deterministik kapılardan SONRA, AI'dan ÖNCE).
+      // Varsayılan kuru test; "canlı yap" geçerse canlı. 20 sn'de bitmezse "iletildi" der, sonuç arka planda bu numaraya yazılır.
+      if (!ownerDocSent && await this.maybeHandleEkipMesaji(ownerTenant, ownerContact.id, msg)) {
         return;
       }
 

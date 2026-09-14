@@ -57,7 +57,7 @@ export const PORTAL_ARAC_ADLARI = new Set<string>(
 const PANO_ONBELLEK_MS = 60 * 1000;
 /** İş dosyası durumları (AgentCommand.status) — /ekip/isler süzgeci yalnız bunları kabul eder. */
 const IS_DURUMLARI = new Set<string>(['pending', 'running', 'done', 'failed']);
-const KAYNAKLAR = new Set<string>(['portal', 'ses', 'cron', 'koordinator', 'test']);
+const KAYNAKLAR = new Set<string>(['portal', 'ses', 'cron', 'koordinator', 'test', 'whatsapp']);
 /** İş dosyası agent öneki: gerçek koşular 'ekip:', test koşuları 'ekiptest:' (tüm 'ekip:' süzgeçleri testi kendiliğinden dışlar). */
 export const ekipAgentAdi = (ajanId: string, kaynak?: string | null) => `${kaynak === 'test' ? 'ekiptest' : 'ekip'}:${ajanId}`;
 /** beceriler.md prompta bu kadar girer (uzun anlatım insan içindir; reçete tam girer) — PLAN/17 §1.3. */
@@ -72,8 +72,9 @@ const GOREV_NOTU_TAVAN = 600;
 /** Prisma cuid: 'c' + küçük harf/rakam (kdv-control/ocr/parsers/belge-no.ts ile aynı kalıp). */
 const CUID_KALIBI = /^c[a-z0-9]{20,31}$/;
 
-/** 'test' (2026-09-13): geliştirici pilot koşusu — iş dosyası 'ekiptest:' önekiyle açılır (akış/pano/özet görmez), portala/dışarı YAZMAZ. */
-export type EkipKaynak = 'portal' | 'ses' | 'cron' | 'koordinator' | 'test';
+/** 'test' (2026-09-13): geliştirici pilot koşusu — iş dosyası 'ekiptest:' önekiyle açılır (akış/pano/özet görmez), portala/dışarı YAZMAZ.
+ *  'whatsapp' (2026-09-14, PLAN/19 §C): Muzaffer Bey WhatsApp botuna yazdı; Koordinatör koşusu, süreç mesajları WhatsApp'a (ekip-whatsapp.service). */
+export type EkipKaynak = 'portal' | 'ses' | 'cron' | 'koordinator' | 'test' | 'whatsapp';
 
 /** /ekip/isler süzgeçleri (hepsi isteğe bağlı; verilmezse eski davranış). */
 export interface IsSuzgeci {
@@ -120,7 +121,43 @@ export interface EkipCalistirParametreleri {
    * (raporun ilk 600 karakteri + iş kimliği). Görev DURUMU değişmez — Muzaffer Bey kapatır.
    */
   gorevId?: string | null;
+  /**
+   * WHATSAPP HEDEFİ (2026-09-14, PLAN/19 §C): Muzaffer Bey'in WhatsApp numarası (bot controller replyTarget). Payload'a yazılır,
+   * ekip_ajan_baslat çocuklara KOPYALAR; ekip-whatsapp.service koşu olaylarını (başladı/onay/istek/bitti) bu numaraya yazar.
+   * Boşsa hiçbir WhatsApp mesajı üretilmez.
+   */
+  whatsappHedef?: string | null;
 }
+
+/** Koşu olaylarında dinleyiciye giden koşu kimliği (payload alanlarının o anki hâli; taxpayerId koşu içinde bağlanmış olabilir). */
+export interface EkipKosuBilgisi {
+  isId: string;
+  ajanId: string;
+  ajanAd: string;
+  tenantId: string;
+  userId: string | null;
+  taxpayerId: string | null;
+  gorev: string;
+  dryRun: boolean;
+  kaynak: EkipKaynak;
+  vakaId: string;
+  ustIsId: string | null;
+  whatsappHedef: string | null;
+}
+
+/**
+ * KOŞU YAŞAM DÖNGÜSÜ OLAYLARI (2026-09-14, PLAN/19 §C) — bitisDinleyiciEkle ile kaydolan dinleyicilere gider:
+ *  basladi → iş dosyası açıldı (kök ya da çocuk) · onay → dışarı gönderim onay kaydı (PRV) açıldı ·
+ *  istek → create_pending_action tur:'istek' bildirimi açıldı ("sizden istenen") · bitti → iş dosyası kapandı (done/failed).
+ * Dinleyici hatası yutulur; koşu etkilenmez.
+ */
+export type EkipKosuOlayi =
+  | { tur: 'basladi'; kosu: EkipKosuBilgisi }
+  | { tur: 'onay'; kosu: EkipKosuBilgisi; onay: OnayBekleyen }
+  | { tur: 'istek'; kosu: EkipKosuBilgisi; bildirimId: string; baslik: string }
+  | { tur: 'bitti'; kosu: EkipKosuBilgisi; sonuc: EkipKosuSonucu; basarisiz: boolean; durum: 'done' | 'failed' };
+
+export type EkipKosuDinleyicisi = (olay: EkipKosuOlayi) => void;
 
 /** Durdurma nedeni — iş dosyasına yazılan hata metnini belirler. */
 export type IptalNedeni = 'sahip' | 'baglanti';
@@ -217,6 +254,43 @@ export class EkipRunnerService {
   /** Bekçi (ekip-bekci.service) için: iş bu süreçte hâlâ koşuyor mu? Koşuyorsa bayat sayılmaz. */
   kosuAktifMi(isId: string): boolean {
     return this.calisanKosular.has(isId);
+  }
+
+  /**
+   * KOŞU OLAYI DİNLEYİCİLERİ (2026-09-14, PLAN/19 §C): ekip-whatsapp.service onModuleInit'te kaydolur; basladi/onay/istek/bitti
+   * olaylarını alır. Runner WhatsAppModule'e bağımlı DEĞİL (ekip.module → whatsapp.module yönü korunur); dinleyici hatası koşuyu bozmaz.
+   */
+  private readonly dinleyiciler: EkipKosuDinleyicisi[] = [];
+
+  bitisDinleyiciEkle(dinleyici: EkipKosuDinleyicisi): void {
+    if (typeof dinleyici === 'function') this.dinleyiciler.push(dinleyici);
+  }
+
+  private dinleyicilereBildir(olay: EkipKosuOlayi): void {
+    for (const d of this.dinleyiciler) {
+      try {
+        d(olay);
+      } catch (e: any) {
+        this.logger.warn(`koşu olayı dinleyicisi hata (${olay.tur}, iş ${olay.kosu.isId}): ${e?.message || e}`);
+      }
+    }
+  }
+
+  private kosuBilgisi(p: EkipCalistirParametreleri, ajan: AjanTanimi, isId: string): EkipKosuBilgisi {
+    return {
+      isId,
+      ajanId: ajan.id,
+      ajanAd: ajan.ad,
+      tenantId: p.tenantId,
+      userId: p.userId ?? null,
+      taxpayerId: p.taxpayerId ?? null,
+      gorev: String(p.gorev || ''),
+      dryRun: p.dryRun !== false,
+      kaynak: p.kaynak,
+      vakaId: p.vakaId || isId,
+      ustIsId: p.ustIsId || null,
+      whatsappHedef: p.whatsappHedef || null,
+    };
   }
 
   constructor(
@@ -398,6 +472,8 @@ export class EkipRunnerService {
       devirSayisi: Number.isFinite(Number(p.devirSayisi)) ? Number(p.devirSayisi) : 0,
       // Görevler "Ekibe ver" bağı (2026-09-14): koşu bitince bu göreve not düşer (gorevNotuDus)
       gorevId: p.gorevId || null,
+      // WhatsApp köprüsü (2026-09-14, PLAN/19 §C): dolu ise koşu olayları bu numaraya yazılır; çocuklara kopyalanır
+      whatsappHedef: p.whatsappHedef || null,
     };
     const row = await (this.prisma as any).agentCommand.create({
       data: {
@@ -721,9 +797,9 @@ export class EkipRunnerService {
     if (name === 'ekip_is_durum') return this.isDurumu(tenantId, args);
     if (name === 'ekip_ajan_baslat') return this.ajanBaslat(p, args, isId || null);
     if (name === 'ekip_onayla' || name === 'ekip_reddet') {
-      // Onay yürütme yalnız Muzaffer Bey’in/personelin KENDİ oturumundan (portal/ses); cron/koordinatör zinciri kendi kendine onaylayamaz.
-      if (!(p.kaynak === 'ses' || p.kaynak === 'portal') || !p.userId) {
-        return { ok: false, error: 'Onay yalnız Muzaffer Bey’in kendi komutuyla (portal/ses) yürütülür; bu koşuda kapalı.' };
+      // Onay yürütme yalnız Muzaffer Bey’in/personelin KENDİ oturumundan (portal/ses/WhatsApp); cron/koordinatör zinciri kendi kendine onaylayamaz.
+      if (!(p.kaynak === 'ses' || p.kaynak === 'portal' || p.kaynak === 'whatsapp') || !p.userId) {
+        return { ok: false, error: 'Onay yalnız Muzaffer Bey’in kendi komutuyla (portal/ses/WhatsApp) yürütülür; bu koşuda kapalı.' };
       }
       const previewId = String(args?.previewId || '').trim();
       if (!previewId) return { ok: false, error: 'previewId zorunlu (PRV-XXXX).' };
@@ -833,6 +909,8 @@ export class EkipRunnerService {
         vakaId,
         ustIsId: isId,
         devirSayisi,
+        // WhatsApp köprüsü (PLAN/19 §C): kök WhatsApp'tan açıldıysa çocuğun başladı/bitti mesajları da aynı numaraya gider
+        whatsappHedef: p.whatsappHedef ?? null,
         emit: (e) => {
           if (e.type === 'baslangic') bitir({ isId: e.isId });
           else if (e.type === 'error' && !cozuldu) bitir({ hata: e.error });
@@ -1048,6 +1126,7 @@ export class EkipRunnerService {
           onayBekleyen.push(onay);
           toolUses.push({ name, args: { ...args, __onayBekliyor: onay.previewId } });
           emit({ type: 'onay', name, previewId: onay.previewId, confirmationText: onay.confirmationText });
+          this.dinleyicilereBildir({ tur: 'onay', kosu: this.kosuBilgisi(p, ajan, isId), onay });
           return cevap({
             onayBekliyor: true,
             previewId: onay.previewId,
@@ -1079,6 +1158,15 @@ export class EkipRunnerService {
             ajanId: ajan.id,
             taxpayerId: ctx.taxpayerId,
           });
+          // "Sizden istenen" (tur:'istek') açıldı → dinleyiciler (WhatsApp köprüsü 📌 mesajı). Bilgi/onay türü bildirim olay üretmez.
+          if (name === 'create_pending_action' && r?.created && r?.tur === 'istek' && r?.notificationId) {
+            this.dinleyicilereBildir({
+              tur: 'istek',
+              kosu: this.kosuBilgisi(p, ajan, isId),
+              bildirimId: String(r.notificationId),
+              baslik: String(args?.title || '').slice(0, 200),
+            });
+          }
         } else r = { ok: false, error: `Çalıştırıcı bulunamadı: ${name}` };
         return cevap(r);
       } catch (e: any) {
@@ -1124,6 +1212,7 @@ export class EkipRunnerService {
 
     const isId = await this.isDosyasiAc(p, ajan, model);
     emit({ type: 'baslangic', isId, ajanId: ajan.id, model, dryRun });
+    this.dinleyicilereBildir({ tur: 'basladi', kosu: this.kosuBilgisi(p, ajan, isId) });
 
     // DURDURMA: iş başına AbortController; Muzaffer Bey’in düğmesi (iptalEt) ve bağlantı kopması (p.signal) buna bağlanır.
     const ac = new AbortController();
@@ -1276,6 +1365,8 @@ export class EkipRunnerService {
     });
     // Görevler "Ekibe ver" (2026-09-14): sonuç göreve NOT olarak düşer; görev durumu DEĞİŞMEZ (Muzaffer Bey kapatır).
     if (p.gorevId) await this.gorevNotuDus(p, ajan, isId, sonuc.rapor, basarisiz ? hata || 'hata' : null, dryRun);
+    // İş dosyası kapandı → dinleyiciler (WhatsApp köprüsü ✅/❌ mesajı; PLAN/19 §C). calistir dönmeden ÖNCE çağrılır.
+    this.dinleyicilereBildir({ tur: 'bitti', kosu: this.kosuBilgisi(p, ajan, isId), sonuc, basarisiz, durum: basarisiz ? 'failed' : 'done' });
     await this.olayYaz(p, ajan.id, isId, basarisiz ? 'hata' : 'basarili', basarisiz ? hata! : gorev, {
       toolSayisi: toolUses.length,
       kuruTestSayisi: kuruTestYapilacaktilar.length,

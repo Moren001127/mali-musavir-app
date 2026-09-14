@@ -333,7 +333,7 @@ export function telefonMu(h?: string | null): boolean {
   return !!h && /^\+?\d{7,15}$/.test(String(h).replace(/\s+/g, ''));
 }
 
-/** Kaynak → etiket (portal / 🎤 ses / ⏰ cron / KO koordinatör). */
+/** Kaynak → etiket (portal / 🎤 ses / ⏰ cron / KO koordinatör / 💬 WhatsApp). */
 export function kaynakEtiketi(k?: string | null): { ad: string; ikon: string } {
   switch (k) {
     case 'ses':
@@ -342,6 +342,8 @@ export function kaynakEtiketi(k?: string | null): { ad: string; ikon: string } {
       return { ad: 'cron', ikon: '⏰' };
     case 'koordinator':
       return { ad: 'koordinatör', ikon: 'KO' };
+    case 'whatsapp':
+      return { ad: 'WhatsApp', ikon: '💬' };
     default:
       return { ad: 'portal', ikon: '' };
   }

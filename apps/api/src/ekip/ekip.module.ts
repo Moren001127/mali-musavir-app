@@ -11,16 +11,19 @@ import { KoordinatorService } from './koordinator.service';
 import { EkipOnayService } from './ekip-onay.service';
 import { EkipAkisService } from './ekip-akis.service';
 import { EkipBekciService } from './ekip-bekci.service';
+import { EkipWhatsappService } from './ekip-whatsapp.service';
 
 /**
  * EKİP — ajan kadrosu omurgası (PLAN/13-AJAN-KADROSU.md Faz A+D).
  * Araç defteri + yetki kademesi + iş dosyası + dönem panosu + koordinatör.
  * Mevcut modüllere yalnız bağımlılıkla bağlanır; migration yok.
+ * EkipWhatsappService (PLAN/19 §C): WhatsApp botu ↔ Koordinatör köprüsü; bot controller bunu ModuleRef (strict:false) ile
+ * çözer — WhatsAppModule bu modülü import ETMEZ (ters yön döngü yaratır).
  */
 @Module({
   imports: [PrismaModule, MorenAiModule, LucaModule, CalisanModule, WhatsAppModule, AutomationsModule],
   controllers: [EkipController],
-  providers: [EkipRunnerService, KoordinatorService, EkipOnayService, EkipAkisService, EkipBekciService],
-  exports: [EkipRunnerService, KoordinatorService, EkipOnayService, EkipAkisService],
+  providers: [EkipRunnerService, KoordinatorService, EkipOnayService, EkipAkisService, EkipBekciService, EkipWhatsappService],
+  exports: [EkipRunnerService, KoordinatorService, EkipOnayService, EkipAkisService, EkipWhatsappService],
 })
 export class EkipModule {}
