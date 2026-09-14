@@ -34,6 +34,25 @@ export const SAKIN = {
   gri: '#8a8f98',
 } as const;
 
+/** Tema (Bütçe ui.tsx ile aynı değerler — tek kaynak olsun diye burada da sabit). */
+export const TEMA = {
+  altin: '#e6c878',
+  altinSoft: '#d4b876',
+  mavi: '#8cbde8',
+  yesil: '#5ad18a',
+  kirmizi: '#e0697a',
+  turuncu: '#d9a06c',
+  mor: '#b0a0e0',
+  metin: '#e7e7ea',
+  ikincil: 'rgba(231,231,234,0.62)',
+  soluk: '#71717a',
+  kartZemin: 'rgba(255,255,255,0.018)',
+  kartKenar: 'rgba(255,255,255,0.06)',
+  satirCizgi: 'rgba(255,255,255,0.05)',
+  alanZemin: 'rgba(0,0,0,0.28)',
+  alanKenar: 'rgba(255,255,255,0.10)',
+} as const;
+
 /** Sakin kart: düz koyu zemin + 1px kılcal kenar; `secili` → çelik mavi kenar. Gradyan/parıltı yok. */
 export function sakinKart(secili = false): CSSProperties {
   return {
@@ -239,8 +258,8 @@ export const ASAMALAR: Array<{ key: AsamaAdi; ad: string; harf: string; kisa: st
 ];
 
 export function asamaRengi(d?: string): string {
-  if (d === 'tamam') return SAKIN.yesil;
-  if (d === 'eksik') return SAKIN.kehribar;
+  if (d === 'tamam') return TEMA.yesil;
+  if (d === 'eksik') return TEMA.turuncu;
   return 'rgba(255,255,255,0.18)';
 }
 
@@ -337,9 +356,9 @@ export function telefonMu(h?: string | null): boolean {
 export function kaynakEtiketi(k?: string | null): { ad: string; ikon: string } {
   switch (k) {
     case 'ses':
-      return { ad: 'ses', ikon: '🎤' };
+      return { ad: 'sesli komut', ikon: '🎤' };
     case 'cron':
-      return { ad: 'cron', ikon: '⏰' };
+      return { ad: 'zamanlanmış', ikon: '⏰' };
     case 'koordinator':
       return { ad: 'koordinatör', ikon: 'KO' };
     case 'whatsapp':
@@ -455,6 +474,37 @@ export const ARAC_ADI: Record<string, string> = {
   ekip_onaylar: 'Onay kayıtları',
   ekip_onayla: 'Onay yürütme',
   ekip_reddet: 'Onay reddi',
+  ekip_ajan_baslat: 'Personel başlatıldı',
+  ekip_is_durum: 'İş durumu okundu',
+  create_agent_command: 'Ajan komutu',
+  create_confirmed_agent_command: 'Onaylı ajan komutu',
+  // KDV Kontrol zinciri (R1)
+  kdv_kontrol_oturum_bul_olustur: 'KDV kontrol oturumu bulundu/açıldı',
+  kdv_kontrol_luca_cek: 'Luca çekimi başlatıldı',
+  kdv_kontrol_fatura_bagla: 'Mihsap faturaları bağlandı',
+  kdv_kontrol_ocr_baslat: 'Fatura okuma (OCR) başlatıldı',
+  kdv_kontrol_ocr_bekle: 'Fatura okuma bekleniyor',
+  kdv_kontrol_eslestir: 'Luca ↔ fatura eşleştirmesi',
+  kdv_kontrol_sonuc_satirlari: 'Sonuç satırları okundu',
+  kdv_kontrol_kilitle: 'KDV kontrol oturumu kilitlendi',
+  kdv_kontrol_kilit_ac: 'KDV kontrol kilidi açıldı',
+  luca_is_bekle: 'Luca işi bekleniyor',
+  // Fatura Merkezi
+  fm_donem_ozeti: 'Fatura Merkezi dönem özeti',
+  fm_uyumsuzluklar: 'Fatura Merkezi uyumsuzlukları',
+  fm_belge_listele: 'Fatura Merkezi belge listesi',
+  fm_belge_detay: 'Belge ayrıntısı',
+  fm_hesap_plani_ara: 'Hesap planında arama',
+  fm_ai_ile_oku: 'Belgeleri yapay zekâ ile okuma',
+  fm_hesap_ata: 'Hesap kodu atama',
+  fm_isaretle: 'Belge işaretleme',
+  fm_luca_gonder: 'Luca’ya fiş gönderme',
+  fm_onayla: 'Fatura Merkezi onayı (yalnız Muzaffer Bey)',
+  // mali tablo / KDV
+  mali_donemler_listele: 'Hazır mali tablo dönemleri',
+  mali_yorum_oku: 'Kayıtlı mali yorum',
+  get_kdv1_on_hazirlik: 'KDV1 ön hazırlık',
+  get_my_isletme_hesap_ozeti: 'Mükellef işletme hesap özeti',
 };
 
 export function aracAdi(ad?: string | null): string {
@@ -560,13 +610,13 @@ export function sablonDoldur(gorev: string, mukellefAd?: string | null, donem?: 
 export function isDurumu(is: Pick<IsDosyasi, 'status'>): { ad: string; renk: string } {
   switch (is.status) {
     case 'running':
-      return { ad: 'Çalışıyor', renk: SAKIN.vurgu };
+      return { ad: 'Çalışıyor', renk: TEMA.mavi };
     case 'done':
-      return { ad: 'Bitti', renk: SAKIN.yesil };
+      return { ad: 'Bitti', renk: TEMA.yesil };
     case 'failed':
-      return { ad: 'Hata', renk: SAKIN.kirmizi };
+      return { ad: 'Hata', renk: TEMA.kirmizi };
     default:
-      return { ad: 'Bekliyor', renk: SAKIN.gri };
+      return { ad: 'Bekliyor', renk: TEMA.soluk };
   }
 }
 
@@ -585,29 +635,29 @@ export const DEPO = {
  * Sakin dil: onay ve istek ikisi de kehribar (ayrımı kelime yapar); sürüyor çelik mavi; bitti yeşil.
  */
 export const KUTULAR: Array<{ id: AkisFiltre; ad: string; renk: string; sayacAnahtari: 'suruyor' | 'onay' | 'istek' | 'bitti' | null }> = [
-  { id: 'tumu', ad: 'Tümü', renk: SAKIN.vurgu, sayacAnahtari: null },
-  { id: 'suruyor', ad: 'Sürüyor', renk: SAKIN.vurgu, sayacAnahtari: 'suruyor' },
-  { id: 'onay', ad: 'Onayınızı bekleyen', renk: SAKIN.kehribar, sayacAnahtari: 'onay' },
-  { id: 'istek', ad: 'Sizden istenen', renk: SAKIN.kehribar, sayacAnahtari: 'istek' },
-  { id: 'bitti', ad: 'Bitti', renk: SAKIN.yesil, sayacAnahtari: 'bitti' },
+  { id: 'tumu', ad: 'Tümü', renk: TEMA.mavi, sayacAnahtari: null },
+  { id: 'suruyor', ad: 'Sürüyor', renk: TEMA.mavi, sayacAnahtari: 'suruyor' },
+  { id: 'onay', ad: 'Onayınızı bekleyen', renk: TEMA.altin, sayacAnahtari: 'onay' },
+  { id: 'istek', ad: 'Sizden istenen', renk: TEMA.turuncu, sayacAnahtari: 'istek' },
+  { id: 'bitti', ad: 'Bitti', renk: TEMA.yesil, sayacAnahtari: 'bitti' },
 ];
 
 export function kutuRengi(kutu: VakaKutu): string {
-  return KUTULAR.find((k) => k.id === kutu)?.renk || SAKIN.vurgu;
+  return KUTULAR.find((k) => k.id === kutu)?.renk || TEMA.mavi;
 }
 
 /** Vaka satırı durum rozeti — Sürüyor / Onay / İstek / Bitti / Hata (tek yerden). */
 export function kutuRozeti(v: Pick<Vaka, 'kutu' | 'durum'>): { ad: string; renk: string; nabiz: boolean } {
-  if (v.durum === 'hata') return { ad: 'Hata', renk: SAKIN.kirmizi, nabiz: false };
+  if (v.durum === 'hata') return { ad: 'Hata', renk: TEMA.kirmizi, nabiz: false };
   switch (v.kutu) {
     case 'onay':
-      return { ad: 'Onayınızı bekliyor', renk: SAKIN.kehribar, nabiz: false };
+      return { ad: 'Onayınızı bekliyor', renk: TEMA.altin, nabiz: false };
     case 'istek':
-      return { ad: 'Sizden istenen', renk: SAKIN.kehribar, nabiz: false };
+      return { ad: 'Sizden istenen', renk: TEMA.turuncu, nabiz: false };
     case 'bitti':
-      return { ad: 'Bitti', renk: SAKIN.yesil, nabiz: false };
+      return { ad: 'Bitti', renk: TEMA.yesil, nabiz: false };
     default:
-      return { ad: 'Sürüyor', renk: SAKIN.vurgu, nabiz: true };
+      return { ad: 'Sürüyor', renk: TEMA.mavi, nabiz: true };
   }
 }
 
@@ -635,4 +685,138 @@ export function depoYaz(anahtar: string, deger: string | null) {
   } catch {
     /* yoksay */
   }
+}
+
+// ─── v3 "Ekip Konsolu" (2026-09-14 gece, baştan tasarım) ───
+// Kart dili = Bütçe/Cari Kasa (beğenilen): koyu kart + üstte ince renk çizgisi + köşede hafif parıltı + gölge. Altın yalnız birincil düğme ve ana başlık.
+
+/** Ajan unvanı — kısa (personel kartı ikinci satırı). */
+export const AJAN_UNVAN: Record<string, string> = {
+  koordinator: 'Ofis müdürü',
+  fatura: 'Fatura işleme',
+  'banka-kasa': 'Banka ve kasa',
+  beyanname: 'Beyanname ve KDV',
+  'bordro-sgk': 'Bordro ve SGK',
+  edefter: 'e-Defter',
+  'luca-operator': 'Luca ekranı',
+  denetci: 'Dönem denetimi',
+  analist: 'Mali analiz',
+  mevzuat: 'Mevzuat takibi',
+  risk: 'Risk puanı',
+  musteri: 'Müşteri ilişkileri',
+};
+
+/** Ajan tam adı (kadro adı yoksa kısa ad). */
+export function ajanTamAd(id: string, ad?: string): string {
+  if (id === 'siz') return 'Muzaffer Bey';
+  return ad || ajanKisaAd(id);
+}
+
+function argMetni(v: unknown): string {
+  if (v == null) return '';
+  if (typeof v === 'string') return v;
+  if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+  if (Array.isArray(v)) return v.map(argMetni).filter(Boolean).join(', ');
+  return '';
+}
+
+/**
+ * Araç çağrısı → insan dili adım açıklaması. Ham JSON gösterilmez; yalnız anlamlı alanlar (mükellef, dönem, arama, sayı).
+ * Ör: list_taxpayers {search:'Öz Ela'} → "Mükellef listesi · 'Öz Ela' arandı"; ekip_ajan_baslat {ajanId:'beyanname', gorev} → "Beyanname Uzmanı'na verildi · <görev ilk 70>".
+ */
+export function adimAciklamasi(name: string, args: any, mukellefAd?: (id?: string | null) => string | undefined, ajanAd?: (id: string) => string): { baslik: string; ayrinti: string } {
+  const a = args && typeof args === 'object' ? args : {};
+  const parcalar: string[] = [];
+  if (name === 'ekip_ajan_baslat') {
+    const hedef = ajanAd ? ajanAd(String(a.ajanId || '')) : String(a.ajanId || '');
+    const gorev = String(a.gorev || '').split('\n')[0].trim();
+    return { baslik: `${hedef || 'Personel'}’e verildi`, ayrinti: gorev.length > 90 ? `${gorev.slice(0, 89)}…` : gorev };
+  }
+  if (name === 'create_pending_action') {
+    const baslik = String(a.title || a.baslik || '').trim();
+    const tur = String(a.tur || '').toLowerCase();
+    const atama = /^İŞ ATAMASI/i.test(baslik);
+    const turAd = atama ? 'Atama kaydı düşüldü' : tur === 'istek' ? 'Sizden istenen' : tur === 'onay' ? 'Onayınıza sunuldu' : 'Not düşüldü';
+    const govde = atama ? baslik.replace(/^İŞ ATAMASI\s*(?:→|->)\s*/i, '') : baslik;
+    return { baslik: turAd, ayrinti: govde.length > 90 ? `${govde.slice(0, 89)}…` : govde };
+  }
+  const mukellef = a.taxpayerId && mukellefAd ? mukellefAd(String(a.taxpayerId)) : undefined;
+  if (mukellef) parcalar.push(mukellef);
+  const arama = argMetni(a.search ?? a.query ?? a.q);
+  if (arama) parcalar.push(`'${arama.length > 40 ? `${arama.slice(0, 39)}…` : arama}' arandı`);
+  const donem = argMetni(a.donem ?? a.period ?? a.ay ?? a.donemler);
+  if (donem) parcalar.push(/^\d{4}-\d{2}$/.test(donem) ? donemEtiketi(donem) : donem);
+  if (a.year && a.month) parcalar.push(donemEtiketi(`${a.year}-${String(a.month).padStart(2, '0')}`));
+  if (a.limit && !a.taxpayerId && !a.sessionId) parcalar.push(`en çok ${a.limit}`);
+  if (a.previewId) parcalar.push(`#${a.previewId}`);
+  return { baslik: aracAdi(name), ayrinti: parcalar.join(' · ') };
+}
+
+/** Rapor bölümleri — kadro şablonu (Yaptığım iş / Baktığım kaynaklar / Bulgular / Onayınızı bekleyen / Sizden istenen / Kime döndü / Öğrendiklerim / Emin değilim). */
+export interface RaporBolumu {
+  anahtar: 'yaptigim' | 'kaynaklar' | 'bulgular' | 'onay' | 'istek' | 'kimde' | 'ogrendim' | 'emin' | 'devir' | 'diger';
+  baslik: string;
+  satirlar: string[];
+}
+
+const BOLUM_KALIPLARI: Array<{ re: RegExp; anahtar: RaporBolumu['anahtar']; baslik: string }> = [
+  { re: /^\s*[*_#\-•\d.)\s]*yapt[ıi]ğ[ıi]m i[şs]\s*[*_]*\s*:/i, anahtar: 'yaptigim', baslik: 'Yaptığı iş' },
+  { re: /^\s*[*_#\-•\d.)\s]*bakt[ıi]ğ[ıi]m kaynaklar\s*[*_]*\s*:/i, anahtar: 'kaynaklar', baslik: 'Baktığı kaynaklar' },
+  { re: /^\s*[*_#\-•\d.)\s]*bulgular\s*[*_]*\s*:/i, anahtar: 'bulgular', baslik: 'Bulgular' },
+  { re: /^\s*[*_#\-•\d.)\s]*onay[ıi]n[ıi]z[ıi] bekleyen\s*[*_]*\s*:/i, anahtar: 'onay', baslik: 'Onayınızı bekleyen' },
+  { re: /^\s*[*_#\-•\d.)\s]*sizden istenen\s*[*_]*\s*:/i, anahtar: 'istek', baslik: 'Sizden istenen' },
+  { re: /^\s*[*_#\-•\d.)\s]*kime d[öo]nd[üu]\s*[*_]*\s*:/i, anahtar: 'kimde', baslik: 'Kime döndü' },
+  { re: /^\s*[*_#\-•\d.)\s]*(öğrendiklerim|ogrendiklerim|öğrendim|ogrendim)\s*[*_]*\s*:/i, anahtar: 'ogrendim', baslik: 'Öğrendikleri' },
+  { re: /^\s*[*_#\-•\d.)\s]*emin de[ğg]ilim\s*[*_]*\s*:/i, anahtar: 'emin', baslik: 'Emin olmadığı' },
+  { re: /^\s*[*_#\-•\d.)\s]*dev[İi]r\s*[*_]*\s*:/i, anahtar: 'devir', baslik: 'Devir' },
+];
+
+function temizSatir(s: string): string {
+  return s.replace(/\*\*|__|`/g, '').replace(/^\s*[-•*]\s+/, '').trim();
+}
+
+/**
+ * Raporu bölümlere ayırır. Bölüm başlığından ÖNCE gelen süreç cümleleri ("Şimdi çekiyorum…") atılır (ilk başlık varsa).
+ * Hiç başlık yoksa tek "Rapor" bölümü döner. "yok" satırları bölümde tutulur (arayüz "yok" gösterir).
+ */
+export function raporBolumleri(rapor: string): RaporBolumu[] {
+  const satirlar = String(rapor || '').replace(/\r/g, '').split('\n');
+  const bolumler: RaporBolumu[] = [];
+  let aktif: RaporBolumu | null = null;
+  let baslikGoruldu = false;
+  const onceki: string[] = [];
+  for (const ham of satirlar) {
+    const eslesen = BOLUM_KALIPLARI.find((k) => k.re.test(ham));
+    if (eslesen) {
+      baslikGoruldu = true;
+      const govde = temizSatir(ham.replace(eslesen.re, ''));
+      aktif = bolumler.find((b) => b.anahtar === eslesen.anahtar) || null;
+      if (!aktif) {
+        aktif = { anahtar: eslesen.anahtar, baslik: eslesen.baslik, satirlar: [] };
+        bolumler.push(aktif);
+      }
+      if (govde) aktif.satirlar.push(govde);
+      continue;
+    }
+    const t = temizSatir(ham);
+    if (!t) continue;
+    if (aktif) aktif.satirlar.push(t);
+    else onceki.push(t);
+  }
+  if (!baslikGoruldu) return onceki.length ? [{ anahtar: 'diger', baslik: 'Rapor', satirlar: onceki }] : [];
+  return bolumler;
+}
+
+/** Bölüm satırı "yok" mu (yok / yok. / — / -). */
+export function yokMu(s: string): boolean {
+  return /^(yok|yok\.|—|-|–)$/i.test(s.trim()) || /^yok\s*[(:—-]/i.test(s.trim());
+}
+
+/** Görev metninden kısa konu: "SORU/KOMUT:" satırı varsa o; yoksa ilk dolu satır; `tavan` karakterde kırpılır. */
+export function konuKisalt(gorev: string, tavan = 90): string {
+  const metin = String(gorev || '');
+  const soru = metin.match(/^\s*SORU\/KOMUT\s*:\s*(.+)$/im);
+  let s = soru ? soru[1].trim() : metin.split(/\r?\n/).map((x) => x.trim()).find((x) => x.length > 0) || '';
+  s = s.replace(/^\s*[*_`#>\-•]+/, '').replace(/\*\*|`/g, '').trim();
+  return s.length > tavan ? `${s.slice(0, tavan - 1).trimEnd()}…` : s;
 }

@@ -4,8 +4,20 @@
     {
       "name": "web",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "@mali-musavir/web", "dev"],
+      "runtimeArgs": [
+        "--filter",
+        "@mali-musavir/web",
+        "dev"
+      ],
       "port": 3000
+    },
+    {
+      "name": "ekip-sahte",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "apps/web/scripts/dev-sahte-ekip.cjs"
+      ],
+      "port": 3007
     }
   ]
 }

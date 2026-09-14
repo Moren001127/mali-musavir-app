@@ -21,6 +21,8 @@ import {
 export interface Adim {
   tip: 'arac' | 'kuruTest' | 'onay' | 'red';
   ad: string;
+  /** Araç girdisi (insan dili adım açıklaması için; ham JSON ekranda gösterilmez). */
+  args?: any;
   previewId?: string;
   neden?: string;
   zaman: number;
@@ -75,7 +77,7 @@ export const SORGU = {
   akis: (filtre: AkisFiltre, gun: AkisGun, taxpayerId: string | undefined, kosuVar: boolean) => ({
     queryKey: ['ekip-akis', gun, filtre, taxpayerId || ''] as const,
     queryFn: () => getAkis({ gun, filtre, taxpayerId: taxpayerId || undefined, limit: 100 }),
-    refetchInterval: kosuVar ? 10_000 : 30_000,
+    refetchInterval: kosuVar ? 5_000 : 30_000,
     placeholderData: (prev: any) => prev, // süzgeç değişince liste titremesin
     retry: (n: number, e: unknown) => !isOmurgaYok(e) && n < 2,
   }),
@@ -198,11 +200,11 @@ export function useKosular() {
               if (e.name) {
                 guncelle(ajanId, (k) => ({
                   ...k,
-                  adimlar: [...calisaniBitir(k.adimlar), { tip: 'arac', ad: e.name, zaman, durum: 'calisiyor' }],
+                  adimlar: [...calisaniBitir(k.adimlar), { tip: 'arac', ad: e.name, args: e.args, zaman, durum: 'calisiyor' }],
                 }));
               }
             } else if (e.type === 'kuruTest') {
-              guncelle(ajanId, (k) => ({ ...k, adimlar: [...calisaniBitir(k.adimlar), { tip: 'kuruTest', ad: e.name, zaman }] }));
+              guncelle(ajanId, (k) => ({ ...k, adimlar: [...calisaniBitir(k.adimlar), { tip: 'kuruTest', ad: e.name, args: e.args, zaman }] }));
             } else if (e.type === 'onay') {
               guncelle(ajanId, (k) => ({
                 ...k,
@@ -225,7 +227,7 @@ export function useKosular() {
                 isId: e.isId || k.isId,
                 adimlar: k.adimlar.length
                   ? calisaniBitir(k.adimlar)
-                  : (e.toolUses || []).map((t: AracCagrisi) => ({ tip: 'arac' as const, ad: t.name, zaman, durum: 'bitti' as const })),
+                  : (e.toolUses || []).map((t: AracCagrisi) => ({ tip: 'arac' as const, ad: t.name, args: t.args, zaman, durum: 'bitti' as const })),
               }));
             } else if (e.type === 'error') {
               // Muzaffer Bey durdurduysa sunucunun "iptal edildi (Muzaffer Bey)" metni "Durduruldu"nun üstüne yazılmaz.

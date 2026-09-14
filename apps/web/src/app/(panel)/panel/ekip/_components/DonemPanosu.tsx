@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { CalendarRange, Loader2, Search, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { isOmurgaYok, type Pano, type PanoSatiri } from '@/lib/ekip';
-import type { KomutTaslak } from './KomutKutusu';
+import type { KomutTaslak } from './GorevKarti';
 import { BosDurum } from './Kart';
 import { ASAMALAR, SABLONLAR, SAKIN, asamaRengi, donemEtiketi, sablonDoldur, sakinDugme, sonrakiAdim } from './ortak';
 import { OmurgaYokBilgi } from './OmurgaYokBilgi';
