@@ -98,9 +98,19 @@ describe('GorevMotoruService — hatırlatma', () => {
     expect(mailler[0].to).toEqual(['muzaffer@morenmusavirlik.com']);
   });
 
-  it('gecikmede eskalasyon seviyesi artar; ertelenmiş (snoozedUntil ileride) görev atlanır', async () => {
-    const { svc, gorevler } = kur([gorev({ status: 'SNOOZED', snoozedUntil: T('2026-09-20T00:00:00Z') }), gorev({ id: 'g3', dueDate: T('2026-09-10T00:00:00Z') })]);
+  it('gecikmede eskalasyon seviyesi artar; ertelenmiş (snoozedUntil ileride) görev atlanır; 36 saatten eski (bayat) olay gönderilmez, SKIPPED yazılır', async () => {
+    const { svc, gorevler, loglar, bildirimler } = kur([
+      gorev({ status: 'SNOOZED', snoozedUntil: T('2026-09-20T00:00:00Z') }),
+      gorev({ id: 'g3', dueDate: T('2026-09-15T00:00:00Z') }), // 1 gün gecikti → 16.09 09:00 planlı, 30 dk önce → gider
+      gorev({ id: 'g4', dueDate: T('2026-06-19T00:00:00Z') }), // 89 gün gecikti → son olay 24.07 → bayat, gitmez
+    ]);
     expect(await svc.hatirlatmalariGonder(T('2026-09-16T06:30:00Z'))).toBe(1);
     expect(gorevler.find((g) => g.id === 'g3').escalationLevel).toBe(1);
+    expect(bildirimler.map((b) => b.title)).toEqual(['1 gün gecikti: Beyanname hazırla']);
+    expect(loglar.find((l) => l.taskId === 'g4')).toMatchObject({ status: 'SKIPPED', olayAnahtari: 'GECIKME:2026-07-24' });
+    expect(gorevler.find((g) => g.id === 'g4').escalationLevel).toBe(0);
+    // ikinci tik: bayat olay SKIPPED sayıldığı için yeniden ele alınmaz
+    expect(await svc.hatirlatmalariGonder(T('2026-09-16T06:40:00Z'))).toBe(0);
+    expect(loglar.filter((l) => l.taskId === 'g4')).toHaveLength(1);
   });
 });

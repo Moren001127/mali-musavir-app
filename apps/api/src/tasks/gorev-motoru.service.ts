@@ -22,6 +22,9 @@ import { hatirlatmaOlaylari, gonderilecekOlay, HatirlatmaGorevi } from './gorev-
  *
  * Kapatma: GOREV_MOTORU=off. Test modunda (isciAcik=false) zamanlayıcılar çalışmaz; metotlar doğrudan çağrılır.
  */
+/** Planlanan zamanı bundan eski olay gönderilmez (ilk kurulum / uzun kesinti sonrası toplu patlama önlemi). */
+const BAYAT_OLAY_MS = 36 * 60 * 60 * 1000;
+
 @Injectable()
 export class GorevMotoruService implements OnApplicationBootstrap {
   private readonly logger = new Logger(GorevMotoruService.name);
@@ -143,6 +146,7 @@ export class GorevMotoruService implements OnApplicationBootstrap {
     if (saat < 7 || saat >= 21) return 0; // gece: bildirim katmanı zaten erteler; boşuna tarama yok
     this.calisiyor.hatirlatma = true;
     let gonderilen = 0;
+    let atlanan = 0;
     try {
       const db: any = this.prisma;
       const gorevler: any[] = await db.task.findMany({
@@ -162,10 +166,16 @@ export class GorevMotoruService implements OnApplicationBootstrap {
         const hg: HatirlatmaGorevi = { id: g.id, title: g.title, status: g.status, dueDate: g.dueDate, dueTime: g.dueTime, priority: g.priority, reminderConfig: g.reminderConfig, taxpayerAd: ad };
         const olaylar = hatirlatmaOlaylari(hg, simdi);
         if (!olaylar.length) continue;
-        const loglar: any[] = await db.taskReminderLog.findMany({ where: { taskId: g.id, status: 'SENT' }, select: { olayAnahtari: true, channel: true, scheduledFor: true } }).catch(() => []);
+        const loglar: any[] = await db.taskReminderLog.findMany({ where: { taskId: g.id, status: { in: ['SENT', 'SKIPPED'] } }, select: { olayAnahtari: true, channel: true, scheduledFor: true } }).catch(() => []);
         const gonderilmis = new Set<string>(loglar.map((l: any) => String(l.olayAnahtari || `${l.channel}:${l.scheduledFor ? gunAnahtari(istanbulGunu(new Date(l.scheduledFor))) : ''}`)));
         const olay = gonderilecekOlay(olaylar, gonderilmis);
         if (!olay) continue;
+        // BAYAT olay (planlanan 36 saatten eski — ilk kurulum / uzun kesinti): toplu bildirim patlaması olmasın; SKIPPED yazılır, bir daha ele alınmaz.
+        if (simdi.getTime() - olay.planlanan.getTime() > BAYAT_OLAY_MS) {
+          await db.taskReminderLog.create({ data: { taskId: g.id, scheduledFor: olay.planlanan, sentAt: null, channel: 'BILDIRIM', status: 'SKIPPED', recipientId: g.createdById || null, errorMsg: 'bayat olay: planlanan zaman 36 saatten eski, gönderilmedi', ...(this.logAlanVar() ? { olayAnahtari: olay.anahtar } : {}) } }).catch(() => null);
+          atlanan++;
+          continue;
+        }
         // 1) Portal bildirimi (→ push + WhatsApp kancaları)
         if (kanallar.portal || kanallar.push || kanallar.whatsapp) {
           try {
@@ -209,7 +219,7 @@ export class GorevMotoruService implements OnApplicationBootstrap {
         }).catch((e: any) => this.logger.warn(`[GOREV-HATIRLATMA] günlük yazılamadı ${g.id}: ${e?.message || e}`));
         await db.task.update({ where: { id: g.id }, data: { lastReminderAt: simdi, ...(olay.tip === 'GECIKME' ? { escalationLevel: Math.min(5, Number(g.escalationLevel || 0) + 1) } : {}) } }).catch(() => {});
       }
-      if (gonderilen) this.logger.log(`[GOREV-HATIRLATMA] ${gonderilen} hatırlatma gönderildi (${gorevler.length} aday)`);
+      if (gonderilen || atlanan) this.logger.log(`[GOREV-HATIRLATMA] ${gonderilen} hatırlatma gönderildi, ${atlanan} bayat olay atlandı (${gorevler.length} aday)`);
       return gonderilen;
     } finally {
       this.calisiyor.hatirlatma = false;
