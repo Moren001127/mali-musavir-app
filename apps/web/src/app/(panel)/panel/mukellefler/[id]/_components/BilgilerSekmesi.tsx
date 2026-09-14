@@ -5,15 +5,10 @@ import { Building2, FileCheck, Lock, Phone, Settings2, Shield, Sparkles, UserCog
 import { MukellefiyetlerCard } from '@/components/mukellef/MukellefiyetlerCard';
 import { TaxpayerPortalCredentialsCard } from '@/components/portal-automation/PortalCredentialCards';
 import { portalAutomationApi, type PortalProvider } from '@/lib/portal-automation';
-import { LINE, MUTED, R_ALAN, SELECT_CLS, TEXT, cleanTrPhone, formatTrPhone } from '../_lib/tema';
+import { cleanTrPhone, formatTrPhone } from '../_lib/tema';
 import { TAXPAYER_KIND_OPTIONS, applyTaxpayerKind, taxpayerKindFromForm, type DefterTuru, type FormState, type TaxpayerKind } from '../_lib/form';
 import { AccordionRow } from './ortak/AccordionRow';
-import { Field } from './ortak/Field';
-import { FormCluster } from './ortak/FormCluster';
-import { InputBase } from './ortak/InputBase';
-import { SectionSaveButton } from './ortak/SectionSaveButton';
-import { Segmented } from './ortak/Segmented';
-import { ToggleRow } from './ortak/ToggleRow';
+import { AlanCifti, AlanEk, AlanGirdi, AlanMetin, AlanSecim, Anahtar, FormAltBilgi, FormGrup, Satir, Secici } from './ortak/Form';
 import { YetkililerSection } from './YetkililerBolumu';
 import { OTOMATIK_SORGU_IKON, OTOMATIK_SORGU_RENK, OtomatikSorguAyari, otomatikSorguTanimli } from './OtomatikSorguAyari';
 
@@ -33,11 +28,6 @@ type BilgiSectionId =
   | 'otomasyon'
   | 'otomatikSorgu'
   | 'sistem';
-
-/** Etiket satırı (Segmented/Toggle gibi <label> ile sarılamayan alanlar için) — Field ile aynı görünüm. */
-function Etiket({ children }: { children: React.ReactNode }) {
-  return <span className="mb-1.5 block text-[11.5px] font-medium" style={{ color: MUTED }}>{children}</span>;
-}
 
 export function BilgilerTab({
   form,
@@ -118,82 +108,84 @@ export function BilgilerTab({
   const [open, setOpen] = useState<BilgiSectionId | null>(null);
 
   const renderSection = (section: BilgiSectionId) => {
+    const tuzel = form.type === 'TUZEL_KISI';
+    const alan = (k: keyof FormState) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
+      setForm((p) => ({ ...p, [k]: e.target.value }));
+
     if (section === 'musteri') {
       return (
-        <div className="space-y-5">
-          <FormCluster title="Temel bilgiler">
-            <div className="grid grid-cols-1 gap-x-4 gap-y-3.5 md:grid-cols-2">
-              <div className="md:col-span-2">
-                <Etiket>Mükellef Tipi</Etiket>
-                <Segmented
-                  value={taxpayerKindFromForm(form)}
-                  onChange={(v) => applyTaxpayerKind(v as TaxpayerKind, setForm)}
-                  options={TAXPAYER_KIND_OPTIONS}
-                />
-              </div>
+        <div className="space-y-4">
+          <FormGrup baslik="Kimlik" aciklama="Tip, unvan ve vergi numarası">
+            <Satir etiket="Mükellef tipi" genis>
+              <Secici
+                value={taxpayerKindFromForm(form)}
+                onChange={(v) => applyTaxpayerKind(v as TaxpayerKind, setForm)}
+                options={TAXPAYER_KIND_OPTIONS}
+              />
+            </Satir>
+            {tuzel ? (
+              <Satir etiket="Şirket adı" zorunlu genis>
+                <AlanGirdi value={form.companyName} onChange={alan('companyName')} required autoComplete="organization" />
+              </Satir>
+            ) : (
+              <>
+                <Satir etiket="Ad" zorunlu>
+                  <AlanGirdi value={form.firstName} onChange={alan('firstName')} required />
+                </Satir>
+                <Satir etiket="Soyad" zorunlu>
+                  <AlanGirdi value={form.lastName} onChange={alan('lastName')} required />
+                </Satir>
+              </>
+            )}
+            <Satir etiket={tuzel ? 'VKN' : 'TCKN'} zorunlu ipucu={tuzel ? '10 hane' : '11 hane'}>
+              <AlanGirdi
+                mono
+                inputMode="numeric"
+                value={form.taxNumber}
+                onChange={(e) => setForm((p) => ({ ...p, taxNumber: e.target.value.replace(/\D/g, '').slice(0, tuzel ? 10 : 11) }))}
+                maxLength={tuzel ? 10 : 11}
+                required
+              />
+            </Satir>
+            <Satir etiket="Vergi dairesi" zorunlu>
+              <AlanGirdi value={form.taxOffice} onChange={alan('taxOffice')} required />
+            </Satir>
+            <Satir etiket="İşe başlama">
+              <AlanGirdi type="date" value={form.startDate} onChange={alan('startDate')} />
+            </Satir>
+            <Satir etiket="İşi bırakma" ipucu="Boş bırakılırsa mükellef faal sayılır.">
+              <AlanGirdi type="date" value={form.endDate} onChange={alan('endDate')} />
+            </Satir>
+          </FormGrup>
 
-              {form.type === 'TUZEL_KISI' ? (
-                <Field label="Şirket adı" required className="md:col-span-2">
-                  <InputBase value={form.companyName} onChange={(e) => setForm((p) => ({ ...p, companyName: e.target.value }))} required />
-                </Field>
-              ) : (
-                <>
-                  <Field label="Ad" required>
-                    <InputBase value={form.firstName} onChange={(e) => setForm((p) => ({ ...p, firstName: e.target.value }))} required />
-                  </Field>
-                  <Field label="Soyad" required>
-                    <InputBase value={form.lastName} onChange={(e) => setForm((p) => ({ ...p, lastName: e.target.value }))} required />
-                  </Field>
-                </>
-              )}
+          <FormGrup baslik="Sicil ve faaliyet" aciklama="Ticaret sicili, MERSİS, oda ve NACE">
+            <Satir etiket="Ticaret sicil no">
+              <AlanGirdi value={form.ticaretSicilNo} onChange={alan('ticaretSicilNo')} />
+            </Satir>
+            <Satir etiket="MERSİS no">
+              <AlanGirdi mono inputMode="numeric" value={form.mersisNo} onChange={alan('mersisNo')} />
+            </Satir>
+            <Satir etiket="Oda sicil no">
+              <AlanGirdi value={form.odaSicilNo} onChange={alan('odaSicilNo')} />
+            </Satir>
+            <Satir etiket="NACE kodu">
+              <AlanGirdi mono value={form.naceKodu} onChange={alan('naceKodu')} placeholder="00.00.00" />
+            </Satir>
+            <Satir etiket="Faaliyet / sektör" genis ipucu="Fatura eşleştirmede kullanılır — ör. yemek üretimi, inşaat malzemeleri toptan ticareti, lokanta.">
+              <AlanGirdi value={form.faaliyetAciklama} onChange={alan('faaliyetAciklama')} />
+            </Satir>
+          </FormGrup>
 
-              <Field label={form.type === 'TUZEL_KISI' ? 'VKN' : 'TCKN'} required>
-                <InputBase
-                  value={form.taxNumber}
-                  onChange={(e) => setForm((p) => ({ ...p, taxNumber: e.target.value.replace(/\D/g, '').slice(0, form.type === 'TUZEL_KISI' ? 10 : 11) }))}
-                  maxLength={form.type === 'TUZEL_KISI' ? 10 : 11}
-                  required
-                  className="font-mono"
-                />
-              </Field>
-              <Field label="Logo URL">
-                <InputBase value={form.logoUrl} onChange={(e) => setForm((p) => ({ ...p, logoUrl: e.target.value }))} />
-              </Field>
-            </div>
-          </FormCluster>
+          <FormGrup baslik="Adres ve görsel">
+            <Satir etiket="Adres" genis hizala="ust">
+              <AlanMetin rows={2} value={form.address} onChange={alan('address')} />
+            </Satir>
+            <Satir etiket="Logo adresi" genis ipucu="Kartta ve mükellef portalında gösterilir.">
+              <AlanGirdi value={form.logoUrl} onChange={alan('logoUrl')} placeholder="https://…" />
+            </Satir>
+          </FormGrup>
 
-          <FormCluster title="Vergi dairesi ve sicil">
-            <div className="grid grid-cols-1 gap-x-4 gap-y-3.5 md:grid-cols-2 lg:grid-cols-3">
-              <Field label="Vergi dairesi" required>
-                <InputBase value={form.taxOffice} onChange={(e) => setForm((p) => ({ ...p, taxOffice: e.target.value }))} required />
-              </Field>
-              <Field label="İşe başlama tarihi">
-                <InputBase type="date" value={form.startDate} onChange={(e) => setForm((p) => ({ ...p, startDate: e.target.value }))} />
-              </Field>
-              <Field label="İşi bırakma tarihi">
-                <InputBase type="date" value={form.endDate} onChange={(e) => setForm((p) => ({ ...p, endDate: e.target.value }))} />
-              </Field>
-              <Field label="NACE Kodu">
-                <InputBase value={form.naceKodu} onChange={(e) => setForm((p) => ({ ...p, naceKodu: e.target.value }))} />
-              </Field>
-              <Field label="Faaliyet / Sektör (fatura eşleştirmede kullanılır)">
-                <InputBase value={form.faaliyetAciklama} placeholder="ör. yemek üretimi, inşaat malzemeleri toptan ticareti, lokanta" onChange={(e) => setForm((p) => ({ ...p, faaliyetAciklama: e.target.value }))} />
-              </Field>
-              <Field label="Ticaret Sicil No">
-                <InputBase value={form.ticaretSicilNo} onChange={(e) => setForm((p) => ({ ...p, ticaretSicilNo: e.target.value }))} />
-              </Field>
-              <Field label="MERSİS No">
-                <InputBase value={form.mersisNo} onChange={(e) => setForm((p) => ({ ...p, mersisNo: e.target.value }))} className="font-mono" />
-              </Field>
-              <Field label="Oda Sicil No">
-                <InputBase value={form.odaSicilNo} onChange={(e) => setForm((p) => ({ ...p, odaSicilNo: e.target.value }))} />
-              </Field>
-              <Field label="Adres" className="md:col-span-2">
-                <InputBase value={form.address} onChange={(e) => setForm((p) => ({ ...p, address: e.target.value }))} />
-              </Field>
-            </div>
-          </FormCluster>
-          <SectionSaveButton onSave={onSave} saving={saving} hasRecord={!!taxpayerId} />
+          <FormAltBilgi onSave={onSave} saving={saving} hasRecord={!!taxpayerId} />
         </div>
       );
     }
@@ -209,51 +201,46 @@ export function BilgilerTab({
     if (section === 'iletisim') {
       return (
         <div className="space-y-4">
-          <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-            <FormCluster title="Telefonlar">
-              {/* REHBER: her numaranın yanında kime ait olduğu. WhatsApp
-                  Mesajlar ekranında firma adı yerine bu ad görünür; numara →
-                  mükellef eşleştirmesi değişmez. */}
-              <div className="space-y-2.5">
-                {form.phones.map((phone, index) => (
-                  <div key={index} className="flex gap-2">
-                    <div className="flex-1">
-                      <InputBase
-                        type="tel"
-                        inputMode="numeric"
-                        value={formatTrPhone(phone)}
-                        onChange={(e) =>
-                          setForm((prev) => {
-                            const phones = [...prev.phones];
-                            phones[index] = cleanTrPhone(e.target.value);
-                            return { ...prev, phones };
-                          })
-                        }
-                        placeholder={index === 0 ? '0(5__) ___ __ __' : `Telefon ${index + 1}`}
-                      />
-                    </div>
-                    <div className="w-[42%]">
-                      <InputBase
-                        value={form.telefonAdlari[index] || ''}
-                        onChange={(e) =>
-                          setForm((prev) => {
-                            const telefonAdlari = [...prev.telefonAdlari];
-                            telefonAdlari[index] = e.target.value;
-                            return { ...prev, telefonAdlari };
-                          })
-                        }
-                        placeholder="Ad Soyad"
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </FormCluster>
-            <FormCluster title="E-postalar">
-              <div className="space-y-2.5">
-                {form.emails.map((email, index) => (
-                  <InputBase
-                    key={index}
+          <div className="grid gap-4 lg:grid-cols-2">
+            {/* REHBER: her numaranın yanında kime ait olduğu. WhatsApp Mesajlar ekranında firma adı yerine
+                bu ad görünür; numara → mükellef eşleştirmesi değişmez. */}
+            <FormGrup baslik="Telefonlar" aciklama="numara · kime ait" sutun={1}>
+              {form.phones.map((phone, index) => (
+                <Satir key={index} etiket={index === 0 ? 'Ana telefon' : `Telefon ${index + 1}`}>
+                  <AlanCifti>
+                    <AlanGirdi
+                      type="tel"
+                      inputMode="numeric"
+                      mono
+                      value={formatTrPhone(phone)}
+                      onChange={(e) =>
+                        setForm((prev) => {
+                          const phones = [...prev.phones];
+                          phones[index] = cleanTrPhone(e.target.value);
+                          return { ...prev, phones };
+                        })
+                      }
+                      placeholder="0(5__) ___ __ __"
+                    />
+                    <AlanGirdi
+                      value={form.telefonAdlari[index] || ''}
+                      onChange={(e) =>
+                        setForm((prev) => {
+                          const telefonAdlari = [...prev.telefonAdlari];
+                          telefonAdlari[index] = e.target.value;
+                          return { ...prev, telefonAdlari };
+                        })
+                      }
+                      placeholder="Kime ait"
+                    />
+                  </AlanCifti>
+                </Satir>
+              ))}
+            </FormGrup>
+            <FormGrup baslik="E-posta" sutun={1}>
+              {form.emails.map((email, index) => (
+                <Satir key={index} etiket={index === 0 ? 'Ana e-posta' : `E-posta ${index + 1}`}>
+                  <AlanGirdi
                     type="email"
                     value={email}
                     onChange={(e) =>
@@ -263,21 +250,21 @@ export function BilgilerTab({
                         return { ...prev, emails };
                       })
                     }
-                    placeholder={index === 0 ? 'Ana e-posta' : `E-posta ${index + 1}`}
+                    placeholder="ad@firma.com"
                   />
-                ))}
-              </div>
-            </FormCluster>
+                </Satir>
+              ))}
+            </FormGrup>
           </div>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <Field label="KEP Adresi">
-              <InputBase type="email" value={form.kepAdresi} onChange={(e) => setForm((p) => ({ ...p, kepAdresi: e.target.value }))} />
-            </Field>
-            <Field label="Web Sitesi">
-              <InputBase value={form.webSitesi} onChange={(e) => setForm((p) => ({ ...p, webSitesi: e.target.value }))} />
-            </Field>
-          </div>
-          <SectionSaveButton onSave={onSave} saving={saving} hasRecord={!!taxpayerId} />
+          <FormGrup baslik="Resmî ve web">
+            <Satir etiket="KEP adresi">
+              <AlanGirdi type="email" value={form.kepAdresi} onChange={alan('kepAdresi')} placeholder="firma@hs01.kep.tr" />
+            </Satir>
+            <Satir etiket="Web sitesi">
+              <AlanGirdi value={form.webSitesi} onChange={alan('webSitesi')} placeholder="www.firma.com" />
+            </Satir>
+          </FormGrup>
+          <FormAltBilgi onSave={onSave} saving={saving} hasRecord={!!taxpayerId} />
         </div>
       );
     }
@@ -296,32 +283,23 @@ export function BilgilerTab({
 
     if (section === 'bagkur') {
       return (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <Field label="Bağ-Kur Sicil No">
-            <InputBase value={form.bagkurSicilNo} onChange={(e) => setForm((p) => ({ ...p, bagkurSicilNo: e.target.value }))} className="font-mono" />
-          </Field>
-          <div className="p-3 text-[13px]" style={{ border: `1px solid ${LINE}`, borderRadius: R_ALAN, color: MUTED }}>
-            <div className="flex items-center gap-2 font-medium" style={{ color: TEXT }}>
-              <Lock size={13} /> Giriş bilgileri
-            </div>
-            <p className="mt-1.5">Bağ-Kur ve e-Devlet şifreleri giriş bilgileri bölümünden yönetilir.</p>
-          </div>
-          <SectionSaveButton onSave={onSave} saving={saving} hasRecord={!!taxpayerId} />
+        <div className="space-y-4">
+          <FormGrup baslik="Bağ-Kur">
+            <Satir etiket="Bağ-Kur sicil no" ipucu="Bağ-Kur ve e-Devlet şifreleri giriş bilgileri bölümünden yönetilir.">
+              <AlanGirdi mono value={form.bagkurSicilNo} onChange={alan('bagkurSicilNo')} />
+            </Satir>
+          </FormGrup>
+          <FormAltBilgi onSave={onSave} saving={saving} hasRecord={!!taxpayerId} />
         </div>
       );
     }
 
     if (section === 'entegrator') {
       return (
-        <div className="space-y-3">
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <Field label="Entegratör">
-              <select
-                value={form.eFaturaEntegrator}
-                onChange={(e) => setForm((p) => ({ ...p, eFaturaEntegrator: e.target.value }))}
-                className={SELECT_CLS}
-                style={{ colorScheme: 'dark' }}
-              >
+        <div className="space-y-4">
+          <FormGrup baslik="E-Fatura" aciklama="Sağlayıcı ve mükellefiyet durumu">
+            <Satir etiket="Entegratör">
+              <AlanSecim value={form.eFaturaEntegrator} onChange={alan('eFaturaEntegrator')}>
                 <option value="">Seçiniz</option>
                 <option value="GIB_PORTAL">GİB Portal</option>
                 <option value="UYUMSOFT">Uyumsoft</option>
@@ -329,19 +307,16 @@ export function BilgilerTab({
                 <option value="FORIBA">Foriba</option>
                 <option value="IZIBIZ">İzibiz</option>
                 <option value="DIGER">Diğer</option>
-              </select>
-            </Field>
-            <div>
-              <Etiket>E-Fatura Mükellefiyeti</Etiket>
-              <ToggleRow
+              </AlanSecim>
+            </Satir>
+            <Satir etiket="E-Fatura mükellefi" ipucu="Fatura sorgulama modüllerinde varsayılan kanal.">
+              <Anahtar
                 checked={form.isEFaturaMukellefi}
                 onChange={(checked) => setForm((p) => ({ ...p, isEFaturaMukellefi: checked }))}
-                title="E-Fatura mükellefi"
-                detail="Fatura sorgulama modüllerindeki varsayılan kanal."
               />
-            </div>
-          </div>
-          <SectionSaveButton onSave={onSave} saving={saving} hasRecord={!!taxpayerId} />
+            </Satir>
+          </FormGrup>
+          <FormAltBilgi onSave={onSave} saving={saving} hasRecord={!!taxpayerId} />
         </div>
       );
     }
@@ -349,32 +324,28 @@ export function BilgilerTab({
     if (section === 'otomasyon') {
       return (
         <div className="space-y-4">
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,260px)_1fr]">
-            <Field label="Evrak teslim son günü">
-              <InputBase
-                type="number"
-                min={1}
-                max={30}
-                value={form.evrakTeslimGunu}
-                onChange={(e) => setForm((p) => ({ ...p, evrakTeslimGunu: e.target.value }))}
-              />
-            </Field>
-            <div className="grid gap-2.5">
-              <ToggleRow
+          <FormGrup baslik="Evrak akışı" aciklama="Aylık evrak teslimi ve WhatsApp mesajları">
+            <Satir etiket="Teslim son günü" ipucu="Her ayın bu gününe kadar evrak beklenir (1–30).">
+              <span className="relative block max-w-[180px]">
+                <AlanGirdi type="number" min={1} max={30} inputMode="numeric" mono value={form.evrakTeslimGunu} onChange={alan('evrakTeslimGunu')} className="pr-12" />
+                <AlanEk>gün</AlanEk>
+              </span>
+            </Satir>
+            <div className="hidden md:block" />
+            <Satir etiket="Evrak talep mesajı" ipucu="Aylık evrak akışı için WhatsApp hatırlatması gönderilir.">
+              <Anahtar
                 checked={form.whatsappEvrakTalep}
                 onChange={(checked) => setForm((p) => ({ ...p, whatsappEvrakTalep: checked }))}
-                title="Evrak talep mesajı"
-                detail="Aylık evrak akışı için WhatsApp hatırlatması."
               />
-              <ToggleRow
+            </Satir>
+            <Satir etiket="Evrak geldi onayı" ipucu="Evrak geldi işaretlenince mükellefe bilgilendirme mesajı gider.">
+              <Anahtar
                 checked={form.whatsappEvrakGeldi}
                 onChange={(checked) => setForm((p) => ({ ...p, whatsappEvrakGeldi: checked }))}
-                title="Evrak geldi onayı"
-                detail="Evrak geldi işaretlendiğinde bilgilendirme mesajı."
               />
-            </div>
-          </div>
-          <SectionSaveButton onSave={onSave} saving={saving} hasRecord={!!taxpayerId} />
+            </Satir>
+          </FormGrup>
+          <FormAltBilgi onSave={onSave} saving={saving} hasRecord={!!taxpayerId} />
         </div>
       );
     }
@@ -384,24 +355,17 @@ export function BilgilerTab({
     }
 
     return (
-      <div className="space-y-5">
-        <div>
-          <Etiket>Defter türü</Etiket>
-          <Segmented
-            value={form.defterTuru}
-            onChange={(v) => setForm((p) => ({ ...p, defterTuru: v as DefterTuru, mihsapDefterTuru: v === 'ISLETME' ? 'DEFTER_BEYAN' : 'BILANCO' }))}
-            options={[{ value: 'BILANCO', label: 'Bilanço' }, { value: 'ISLETME', label: 'İşletme defteri' }]}
-          />
-        </div>
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          <Field label="Luca slug">
-            <InputBase value={form.lucaSlug} onChange={(e) => setForm((p) => ({ ...p, lucaSlug: e.target.value }))} />
-          </Field>
-          <Field label="Mihsap ID">
-            <InputBase value={form.mihsapId} onChange={(e) => setForm((p) => ({ ...p, mihsapId: e.target.value }))} />
-          </Field>
-          <Field label="Mihsap defter türü">
-            <select
+      <div className="space-y-4">
+        <FormGrup baslik="Defter" aciklama="Defter türü ve Mihsap eşleşmesi">
+          <Satir etiket="Defter türü">
+            <Secici
+              value={form.defterTuru}
+              onChange={(v) => setForm((p) => ({ ...p, defterTuru: v as DefterTuru, mihsapDefterTuru: v === 'ISLETME' ? 'DEFTER_BEYAN' : 'BILANCO' }))}
+              options={[{ value: 'BILANCO', label: 'Bilanço' }, { value: 'ISLETME', label: 'İşletme defteri' }]}
+            />
+          </Satir>
+          <Satir etiket="Mihsap defter türü">
+            <AlanSecim
               value={form.mihsapDefterTuru}
               onChange={(e) =>
                 setForm((p) => ({
@@ -410,15 +374,21 @@ export function BilgilerTab({
                   defterTuru: e.target.value === 'DEFTER_BEYAN' ? 'ISLETME' : 'BILANCO',
                 }))
               }
-              className={SELECT_CLS}
-              style={{ colorScheme: 'dark' }}
             >
               <option value="BILANCO">Bilanço</option>
               <option value="DEFTER_BEYAN">Defter Beyan</option>
-            </select>
-          </Field>
-        </div>
-        <SectionSaveButton onSave={onSave} saving={saving} hasRecord={!!taxpayerId} />
+            </AlanSecim>
+          </Satir>
+        </FormGrup>
+        <FormGrup baslik="Sistem eşleşmesi" aciklama="Luca ve Mihsap kimlikleri">
+          <Satir etiket="Luca slug" ipucu="Luca'daki firma kısa adı.">
+            <AlanGirdi mono value={form.lucaSlug} onChange={alan('lucaSlug')} />
+          </Satir>
+          <Satir etiket="Mihsap ID">
+            <AlanGirdi mono value={form.mihsapId} onChange={alan('mihsapId')} />
+          </Satir>
+        </FormGrup>
+        <FormAltBilgi onSave={onSave} saving={saving} hasRecord={!!taxpayerId} />
       </div>
     );
   };

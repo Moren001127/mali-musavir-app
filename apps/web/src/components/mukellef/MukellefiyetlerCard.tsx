@@ -4,19 +4,17 @@ import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
-import { FileCheck, Save, Loader2 } from 'lucide-react';
+import { DurumCipi, FormAltBilgi, FormGrup, Salter, Satir, Secici } from '@/components/kayit-formu/KayitFormu';
 
-// Kurumsal palet: aktif = yeşil, dönem seçimi = altın, kapalı = nötr.
-const GOLD = '#d4b876';
-const GOLD_DEEP = '#8b7649';
+// Kayıt formu dili (2026-09-14): grup bantlı gerçek tablo; aktif = yeşil, dönem seçimi = altın, kapalı = nötr.
 const GOOD = '#5fcf8e';
-const GOOD_BR = '#89e7b1';
-const GOOD_SF = 'rgba(95,207,142,0.10)';
-const GOOD_LN = 'rgba(95,207,142,0.30)';
-const FIELD = '#0c0d11';
-const TEXT = '#f5f5f4';
-const MUTED = 'rgba(245,245,244,0.60)';
-const LINE = 'rgba(255,255,255,0.08)';
+const TEXT = '#fafaf9';
+const MUTED = 'rgba(250,250,249,0.58)';
+const FAINT = 'rgba(250,250,249,0.36)';
+const LINE = 'rgba(255,255,255,0.10)';
+const ALTIN_SOLUK = 'rgba(212,184,118,0.85)';
+const GRUP_ZEMIN = 'rgba(212,184,118,0.12)';
+const GRUP_CIZGI = '1px solid rgba(212,184,118,0.40)';
 
 type Period = 'AYLIK' | 'UCAYLIK' | 'ON_BES_GUNLUK' | null;
 type IncomeTaxType = 'KURUMLAR' | 'GELIR' | 'BASIT_USUL' | null;
@@ -188,144 +186,106 @@ export function MukellefiyetlerCard({
 
   if (isLoading) return null;
 
-  return (
-    <div className="space-y-5">
-      <div className="mb-5 flex items-start justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl border" style={{ borderColor: GOOD_LN, background: GOOD_SF, color: GOOD_BR }}>
-            <FileCheck size={18} />
-          </div>
-          <div>
-            <h2 className="text-[15px] font-semibold" style={{ color: TEXT }}>Mükellefiyetler & Dönemler</h2>
-            <p className="mt-0.5 text-[11.5px]" style={{ color: MUTED }}>Hangi beyannameler, hangi dönemde?</p>
-          </div>
-        </div>
-        <span className="rounded-md border px-2 py-1 text-[11px] font-bold tabular-nums" style={{ background: GOOD_SF, color: GOOD_BR, borderColor: GOOD_LN }}>
-          {aktifSayisi} aktif
-        </span>
-      </div>
-
-      <div className="grid gap-2.5 md:grid-cols-2 xl:grid-cols-3">
-        <IncomeCard form={form} setForm={setForm} />
-        {visibleDefs.map((item) => (
-          <BeyanCard key={item.key as string} item={item} form={form} setForm={setForm} />
-        ))}
-      </div>
-
-      {/* Kaydet */}
-      <div className="flex justify-end">
-        <button
-          type="button"
-          onClick={() => saveMut.mutate()}
-          disabled={saveMut.isPending}
-          className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-[13px] font-bold disabled:opacity-50"
-          style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_DEEP})`, color: '#0f0d0b' }}
-        >
-          {saveMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-          Mükellefiyetleri Kaydet
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// Yıllık vergi türü tek satır + tek segment (Yok/Kurumlar/Gelir/Basit).
-function IncomeSegment({ value, onChange }: { value: IncomeTaxType; onChange: (v: IncomeTaxType) => void }) {
-  const opts: Array<{ v: IncomeTaxType; l: string }> = [
-    { v: null, l: 'Yok' },
-    { v: 'KURUMLAR', l: 'Kurumlar' },
-    { v: 'GELIR', l: 'Gelir' },
-    { v: 'BASIT_USUL', l: 'Basit' },
+  const gruplar: Array<{ baslik: string; aciklama: string; defs: BeyannameDef[] }> = [
+    { baslik: 'KDV', aciklama: 'Katma değer vergisi', defs: KDV_GRUBU },
+    { baslik: 'Geçici vergi', aciklama: '3 aylık dönemler', defs: GECICI_GRUBU },
+    { baslik: 'Muhtasar', aciklama: 'Muhtasar ve prim hizmet', defs: MUHTASAR_GRUBU },
+    { baslik: 'Diğer beyan ve bildirimler', aciklama: 'Sürekli / yıllık mükellefiyetler', defs: DIGER_GRUBU },
   ];
-  return (
-    <div className="inline-flex rounded-[9px] border p-0.5" style={{ borderColor: LINE, background: FIELD }}>
-      {opts.map((o) => {
-        const sel = value === o.v;
-        const off = o.v === null;
-        return (
-          <button key={String(o.v)} type="button" onClick={() => onChange(o.v)}
-            className="rounded-[7px] px-3 py-1.5 text-[11.5px] font-medium transition"
-            style={sel
-              ? (off ? { background: 'rgba(255,255,255,0.08)', color: MUTED } : { background: 'rgba(95,207,142,0.16)', color: GOOD_BR })
-              : { background: 'transparent', color: 'rgba(245,245,244,0.42)' }}>
-            {o.l}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
+  const hucre: React.CSSProperties = { border: `1px solid ${LINE}`, padding: '7px 10px', verticalAlign: 'middle', fontSize: 13 };
+  const baslikHucre: React.CSSProperties = { ...hucre, fontSize: 11.5, fontWeight: 500, letterSpacing: '.06em', textTransform: 'uppercase', color: ALTIN_SOLUK, whiteSpace: 'nowrap', background: 'rgba(212,184,118,0.07)', textAlign: 'left' };
 
-// Sol kod rozeti — aktifse yeşil, değilse sönük.
-function KodBadge({ kod, active }: { kod: string; active: boolean }) {
   return (
-    <span className="shrink-0 rounded px-1.5 py-0.5 text-[9.5px] font-semibold tabular-nums"
-      style={{ background: active ? GOOD : 'rgba(255,255,255,0.07)', color: active ? '#08100c' : MUTED }}>{kod}</span>
-  );
-}
+    <div className="space-y-4">
+      <FormGrup
+        baslik="Yıllık vergi"
+        aciklama="Kurumlar, gelir veya basit usul"
+        sutun={1}
+        sag={<DurumCipi ton={aktifSayisi ? 'yesil' : 'notr'}>{aktifSayisi} aktif mükellefiyet</DurumCipi>}
+      >
+        <Satir etiket="Yıllık vergi türü">
+          <Secici
+            vurgu="yesil"
+            value={form.incomeTaxType ?? 'YOK'}
+            onChange={(v) => setForm((prev) => ({ ...prev, incomeTaxType: v === 'YOK' ? null : (v as IncomeTaxType) }))}
+            options={[
+              { value: 'YOK', label: 'Yok', pasif: true },
+              { value: 'KURUMLAR', label: 'Kurumlar' },
+              { value: 'GELIR', label: 'Gelir' },
+              { value: 'BASIT_USUL', label: 'Basit usul' },
+            ]}
+          />
+        </Satir>
+      </FormGrup>
 
-// Açık/Kapalı için temiz anahtar (switch).
-function Switch({ on, onClick }: { on: boolean; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={on}
-      className="relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition"
-      style={{ background: on ? GOOD : 'rgba(255,255,255,0.14)' }}
-    >
-      <span className="inline-block h-[18px] w-[18px] rounded-full bg-white transition-transform" style={{ transform: on ? 'translateX(23px)' : 'translateX(3px)' }} />
-    </button>
-  );
-}
-
-function IncomeCard({ form, setForm }: { form: BeyanConfig; setForm: React.Dispatch<React.SetStateAction<BeyanConfig>> }) {
-  const active = !!form.incomeTaxType;
-  return (
-    <div className="rounded-[10px] border p-3.5" style={{ borderColor: active ? 'rgba(95,207,142,0.26)' : 'rgba(255,255,255,0.08)', background: '#101116' }}>
-      <div className="mb-1 flex items-center gap-2">
-        <KodBadge kod="YILLIK" active={active} />
-        <span className="text-[12.5px] font-medium" style={{ color: TEXT }}>Yıllık Vergi Türü</span>
+      <div className="overflow-x-auto" style={{ border: `1px solid ${LINE}`, borderRadius: 8 }}>
+        <table className="w-full border-collapse" style={{ minWidth: 640 }}>
+          <thead>
+            <tr>
+              <th style={{ ...baslikHucre, width: 96 }}>Kod</th>
+              <th style={baslikHucre}>Beyanname</th>
+              <th style={{ ...baslikHucre, width: 300 }}>Dönem / durum</th>
+              <th style={{ ...baslikHucre, width: 110 }}>Takip</th>
+            </tr>
+          </thead>
+          {gruplar.map((g) => {
+            const aktif = g.defs.filter((d) => (d.tip === 'toggle' ? !!(form as any)[d.key] : (form as any)[d.key] !== null)).length;
+            return (
+              <tbody key={g.baslik}>
+                <tr>
+                  <td colSpan={4} style={{ ...hucre, padding: '6px 10px', background: GRUP_ZEMIN, borderTop: GRUP_CIZGI, borderBottom: GRUP_CIZGI, boxShadow: 'inset 3px 0 0 #d4b876' }}>
+                    <span className="text-[11.5px] font-bold uppercase tracking-[0.08em]" style={{ color: ALTIN_SOLUK }}>{g.baslik}</span>
+                    <span className="ml-2 text-[11.5px]" style={{ color: FAINT }}>· {g.aciklama}</span>
+                    <span className="ml-2 rounded-full px-1.5 text-[11px] tabular-nums" style={{ background: 'rgba(255,255,255,0.06)', color: MUTED }}>{aktif}/{g.defs.length}</span>
+                  </td>
+                </tr>
+                {g.defs.map((item) => {
+                  const value = (form as any)[item.key];
+                  const isActive = item.tip === 'toggle' ? !!value : value !== null;
+                  return (
+                    <tr key={item.key as string} className="transition-colors hover:bg-white/[0.02]">
+                      <td style={hucre}>
+                        <span className="rounded px-1.5 py-0.5 font-mono text-[10.5px] font-semibold tabular-nums" style={{ background: isActive ? GOOD : 'rgba(255,255,255,0.07)', color: isActive ? '#08100c' : MUTED }}>{item.kod}</span>
+                      </td>
+                      <td style={hucre}>
+                        <div className="text-[13px] font-medium" style={{ color: isActive ? TEXT : MUTED }}>{item.ad}</div>
+                        <div className="text-[11.5px]" style={{ color: FAINT }}>{item.desc}</div>
+                      </td>
+                      <td style={hucre}>
+                        {item.tip === 'toggle' ? (
+                          <label className="flex cursor-pointer items-center gap-2.5">
+                            <input type="checkbox" className="sr-only" checked={isActive} onChange={() => setForm({ ...form, [item.key]: !value } as BeyanConfig)} />
+                            <Salter checked={isActive} />
+                            <span className="text-[13px] font-medium" style={{ color: isActive ? GOOD : MUTED }}>{isActive ? 'Açık' : 'Kapalı'}</span>
+                          </label>
+                        ) : (
+                          <PeriodSegment value={value} full15={item.tip === 'period_15gun'} onChange={(v) => setForm({ ...form, [item.key]: v } as BeyanConfig)} />
+                        )}
+                      </td>
+                      <td style={hucre}>
+                        <DurumCipi ton={isActive ? 'yesil' : 'notr'}>{isActive ? 'Takipte' : 'Takip dışı'}</DurumCipi>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            );
+          })}
+        </table>
       </div>
-      <div className="mb-2.5 text-[11px]" style={{ color: MUTED }}>Kurumlar, gelir veya basit usul</div>
-      <IncomeSegment value={form.incomeTaxType} onChange={(v) => setForm((prev) => ({ ...prev, incomeTaxType: v }))} />
+
+      <FormAltBilgi
+        onSave={() => saveMut.mutate()}
+        saving={saveMut.isPending}
+        vurgulu
+        dugmeYazi="Mükellefiyetleri Kaydet"
+        not="Bu bölümün kendi kaydı vardır; üstteki Kaydet'ten bağımsızdır."
+      />
     </div>
   );
 }
 
-function BeyanCard({
-  item, form, setForm,
-}: {
-  item: BeyannameDef;
-  form: BeyanConfig;
-  setForm: React.Dispatch<React.SetStateAction<BeyanConfig>>;
-}) {
-  const value = (form as any)[item.key];
-  const isActive = item.tip === 'toggle' ? !!value : value !== null;
-  return (
-    <div className="rounded-[10px] border p-3.5" style={{ borderColor: isActive ? 'rgba(95,207,142,0.26)' : 'rgba(255,255,255,0.08)', background: '#101116' }}>
-      <div className="mb-1 flex items-center gap-2">
-        <KodBadge kod={item.kod} active={isActive} />
-        <span className="text-[12.5px] font-medium" style={{ color: TEXT }}>{item.ad}</span>
-      </div>
-      <div className="mb-2.5 text-[11px]" style={{ color: MUTED }}>{item.desc}</div>
-      {item.tip === 'toggle' ? (
-        <div className="flex items-center gap-2.5">
-          <Switch on={isActive} onClick={() => setForm({ ...form, [item.key]: !value } as BeyanConfig)} />
-          <span className="text-[11.5px] font-medium" style={{ color: isActive ? GOOD_BR : MUTED }}>{isActive ? 'Açık' : 'Kapalı'}</span>
-        </div>
-      ) : (
-        <PeriodSegment
-          value={value}
-          full15={item.tip === 'period_15gun'}
-          onChange={(v) => setForm({ ...form, [item.key]: v } as BeyanConfig)}
-        />
-      )}
-    </div>
-  );
-}
-
-// Tek parça segment kontrolü — eski 3 ayrı buton dağınık görünüyordu.
+// Dönem seçici — tek parça, altın vurgu (Yok / Aylık / 3 Aylık / 15 Gün).
 function PeriodSegment({ value, full15, onChange }: { value: Period; full15?: boolean; onChange: (v: Period) => void }) {
   const opts: Array<{ v: Period; l: string }> = [
     { v: null, l: 'Yok' },
@@ -334,24 +294,10 @@ function PeriodSegment({ value, full15, onChange }: { value: Period; full15?: bo
     ...(full15 ? [{ v: 'ON_BES_GUNLUK' as Period, l: '15 Gün' }] : []),
   ];
   return (
-    <div className="inline-flex rounded-[9px] border p-0.5" style={{ borderColor: LINE, background: FIELD }}>
-      {opts.map((o) => {
-        const sel = value === o.v;
-        const off = o.v === null;
-        return (
-          <button
-            key={String(o.v)}
-            type="button"
-            onClick={() => onChange(o.v)}
-            className="rounded-[7px] px-3 py-1.5 text-[11.5px] font-medium transition"
-            style={sel
-              ? (off ? { background: 'rgba(255,255,255,0.08)', color: MUTED } : { background: 'rgba(212,184,118,0.18)', color: GOLD })
-              : { background: 'transparent', color: 'rgba(245,245,244,0.42)' }}
-          >
-            {o.l}
-          </button>
-        );
-      })}
-    </div>
+    <Secici
+      value={value ?? 'YOK'}
+      onChange={(v) => onChange(v === 'YOK' ? null : (v as Period))}
+      options={opts.map((o) => ({ value: o.v ?? 'YOK', label: o.l, pasif: o.v === null }))}
+    />
   );
 }

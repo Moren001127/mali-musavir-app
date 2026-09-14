@@ -6,10 +6,8 @@ import { BookOpen, Download, Eye, Loader2, Trash2, Upload, X } from 'lucide-reac
 import { toast } from 'sonner';
 import { documentsApi } from '@/lib/documents';
 import { DocumentCategory } from '@mali-musavir/shared';
-import { ALTIN_DUGME, CARD, FAINT, FIELD_CLS, HAIR, LINE, MUTED, NOTR_DUGME, R_KART, RED, SELECT_CLS, STEEL_BR, TEXT, fmtDateTR } from '../_lib/tema';
-import { Field } from './ortak/Field';
-import { FormCluster } from './ortak/FormCluster';
-import { InputBase } from './ortak/InputBase';
+import { ALTIN_DUGME, CARD, FAINT, HAIR, LINE, MUTED, NOTR_DUGME, R_KART, RED, STEEL_BR, TEXT, fmtDateTR } from '../_lib/tema';
+import { AlanGirdi, AlanSecim, FormGrup, GIRDI_CLS, Satir } from './ortak/Form';
 import { BosDurum, GrupSatiri, SekmeBasligi, TabloSarmal, Td, Th } from './ortak/Tablo';
 
 type MukellefDocument = {
@@ -149,36 +147,34 @@ export function DosyalarTab({ taxpayerId }: { taxpayerId: string }) {
     <div className="space-y-5">
       <SekmeBasligi title="Dosyalar" text="Kira kontratı, imza sirküleri, vekaletname ve diğer firma belgeleri." />
 
-      <FormCluster title="Manuel evrak yükleme">
-        <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_220px]">
-          <Field label="Dosya">
-            <input
-              type="file"
-              onChange={(e) => setFile(e.target.files?.[0] || null)}
-              className={`${FIELD_CLS} file:mr-3 file:h-full file:border-0 file:bg-transparent file:text-[13px] file:font-medium file:text-[#d4b876]`}
-              style={{ colorScheme: 'dark', paddingTop: 0, paddingBottom: 0 }}
-            />
-          </Field>
-          <Field label="Kategori">
-            <select value={category} onChange={(e) => setCategory(e.target.value as DocumentCategory)} className={SELECT_CLS} style={{ colorScheme: 'dark' }}>
-              <option value={DocumentCategory.EVRAK}>Evrak</option>
-              <option value={DocumentCategory.SOZLESME}>Sözleşme</option>
-              <option value={DocumentCategory.FATURA}>Fatura</option>
-              <option value={DocumentCategory.DIGER}>Diğer</option>
-            </select>
-          </Field>
-          <Field label="Dosya başlığı">
-            <InputBase value={title} onChange={(e) => setTitle(e.target.value)} placeholder={file?.name || 'Belge adı'} />
-          </Field>
-          <Field label="Dosya açıklaması">
-            <InputBase value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Örn. 2026 kira kontratı, imza sirküleri, vekaletname" />
-          </Field>
-        </div>
-
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-          <span className="text-[11.5px]" style={{ color: progress ? STEEL_BR : FAINT }}>
-            {progress ? `Yükleme: %${progress}` : file ? `${file.name} seçildi` : 'Dosya seçilmedi'}
-          </span>
+      <FormGrup
+        baslik="Evrak yükle"
+        aciklama="Kira kontratı, imza sirküleri, vekaletname…"
+        sag={<span className="text-[11.5px]" style={{ color: progress ? STEEL_BR : FAINT }}>{progress ? `Yükleme: %${progress}` : file ? `${file.name} seçildi` : 'Dosya seçilmedi'}</span>}
+      >
+        <Satir etiket="Dosya" zorunlu>
+          {/* Tarayıcının kendi "Dosya Seç" yazısı yerine kontrollü düğme (dil/biçim tutarlı) */}
+          <label className={`${GIRDI_CLS} flex cursor-pointer items-center gap-3`}>
+            <input type="file" className="sr-only" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+            <span className="shrink-0 rounded-[4px] px-2 py-0.5 text-[12px] font-bold" style={{ background: 'rgba(212,184,118,0.14)', color: '#d4b876' }}>Dosya seç</span>
+            <span className="truncate" style={{ color: file ? TEXT : FAINT }}>{file ? file.name : 'PDF, görsel veya ofis belgesi'}</span>
+          </label>
+        </Satir>
+        <Satir etiket="Kategori">
+          <AlanSecim value={category} onChange={(e) => setCategory(e.target.value as DocumentCategory)}>
+            <option value={DocumentCategory.EVRAK}>Evrak</option>
+            <option value={DocumentCategory.SOZLESME}>Sözleşme</option>
+            <option value={DocumentCategory.FATURA}>Fatura</option>
+            <option value={DocumentCategory.DIGER}>Diğer</option>
+          </AlanSecim>
+        </Satir>
+        <Satir etiket="Başlık">
+          <AlanGirdi value={title} onChange={(e) => setTitle(e.target.value)} placeholder={file?.name || 'Belge adı'} />
+        </Satir>
+        <Satir etiket="Açıklama">
+          <AlanGirdi value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Örn. 2026 kira kontratı, imza sirküleri, vekaletname" />
+        </Satir>
+        <div className="flex justify-end md:col-span-full">
           <button
             type="button"
             onClick={() => uploadMut.mutate()}
@@ -190,7 +186,7 @@ export function DosyalarTab({ taxpayerId }: { taxpayerId: string }) {
             Evrakı Yükle
           </button>
         </div>
-      </FormCluster>
+      </FormGrup>
 
       {isLoading ? (
         <div className="flex items-center gap-2 py-8 text-[13px]" style={{ color: MUTED }}>

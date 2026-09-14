@@ -9,6 +9,7 @@ import {
   PortalProvider,
   portalAutomationApi,
 } from '@/lib/portal-automation';
+import { AlanGirdi, DurumCipi, FormAltBilgi, FormGrup, Satir } from '@/components/kayit-formu/KayitFormu';
 
 const GOLD = '#d4b876';
 const GOLD_DEEP = '#8b7649';
@@ -218,6 +219,73 @@ function CredentialEditor({
         ? (!password || !secondaryPassword)
         : !secondaryPassword
     ));
+
+  // ── KOMPAKT (mükellef kartı) — kayıt formu dili: grup bandı + etiket-solda satırlar ──
+  if (compact) {
+    const sgk = provider === 'SGK_EBILDIRGE';
+    const durum = credential?.lastError
+      ? <DurumCipi ton="amber">Son giriş hatalı</DurumCipi>
+      : credential?.lastSuccessAt
+        ? <DurumCipi ton="yesil">Kayıtlı · giriş doğrulandı</DurumCipi>
+        : credential
+          ? <DurumCipi ton="yesil">Kayıtlı</DurumCipi>
+          : <DurumCipi ton="notr">Kayıt yok</DurumCipi>;
+    return (
+      <>
+        <div className="space-y-4">
+          <FormGrup
+            baslik={sgk ? 'SGK e-Bildirge girişi' : 'Vergi dairesi girişi'}
+            aciklama={sgk ? 'Kullanıcı adı, e-kod ve iki şifre' : 'İnteraktif vergi dairesi kullanıcı kodu ve şifresi'}
+            sag={durum}
+            sutun={sgk ? 2 : 1}
+          >
+            {sgk ? (
+              <>
+                <Satir etiket="Kullanıcı adı" zorunlu>
+                  <AlanGirdi value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="off" />
+                </Satir>
+                <Satir etiket="E-Kod" zorunlu ipucu="İşyeri e-Bildirge kodu (ör. 2).">
+                  <AlanGirdi mono value={workplaceCode} onChange={(e) => setWorkplaceCode(e.target.value)} placeholder="Örn. 2" autoComplete="off" />
+                </Satir>
+                {passwordSpec.passwordLabel && (
+                  <Satir etiket={passwordSpec.passwordLabel} zorunlu={!credential}>
+                    <SifreAlani value={password} onChange={setPassword} hasSaved={!!credential?.hasPassword} />
+                  </Satir>
+                )}
+                <Satir etiket={passwordSpec.secondaryPasswordLabel} zorunlu={!credential}>
+                  <SifreAlani value={secondaryPassword} onChange={setSecondaryPassword} hasSaved={!!credential?.hasSecondaryPassword} />
+                </Satir>
+              </>
+            ) : (
+              <>
+                <Satir etiket="Kullanıcı kodu" zorunlu ipucu="Genellikle VKN / TCKN ile aynıdır.">
+                  <AlanGirdi mono inputMode="numeric" value={userCode} onChange={(e) => setUserCode(e.target.value)} autoComplete="off" />
+                </Satir>
+                <Satir etiket={passwordSpec.secondaryPasswordLabel} zorunlu={!credential}>
+                  <SifreAlani value={secondaryPassword} onChange={setSecondaryPassword} hasSaved={!!credential?.hasSecondaryPassword} />
+                </Satir>
+              </>
+            )}
+          </FormGrup>
+          {credential?.lastError && (
+            <div className="rounded-[8px] px-3 py-2 text-[12.5px]" style={{ background: 'rgba(240,183,85,0.08)', border: '1px solid rgba(240,183,85,0.28)', color: '#f0b755' }}>
+              Son giriş denemesi: {credential.lastError}
+            </div>
+          )}
+          <FormAltBilgi
+            onSave={() => { if (!disabled) saveMut.mutate(); }}
+            saving={saveMut.isPending}
+            vurgulu
+            dugmeYazi="Şifreyi Kaydet"
+            not={disabled && !saveMut.isPending ? 'Kaydetmek için kullanıcı bilgisi ve şifre gerekli.' : 'Kaydedince portal girişi otomatik doğrulanır; şifre kartta gösterilmez.'}
+          />
+        </div>
+        {validationNotice ? (
+          <CredentialValidationNoticeDialog notice={validationNotice} onClose={() => setValidationNotice(null)} />
+        ) : null}
+      </>
+    );
+  }
 
   return (
     <>
@@ -483,6 +551,33 @@ function PasswordInput({
         </button>
       </div>
     </label>
+  );
+}
+
+/** Kayıt formu dili — etiketsiz şifre alanı (etiket Satir'dan gelir). Kayıtlıysa nokta maskesi, sağda göster/gizle. */
+function SifreAlani({ value, onChange, hasSaved }: { value: string; onChange: (value: string) => void; hasSaved: boolean }) {
+  const [visible, setVisible] = useState(false);
+  return (
+    <span className="relative block">
+      <AlanGirdi
+        type={visible ? 'text' : 'password'}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={hasSaved ? '••••••••  (değiştirmek için yazın)' : ''}
+        className="pr-10"
+        autoComplete="new-password"
+      />
+      <button
+        type="button"
+        onClick={() => setVisible((current) => !current)}
+        className="absolute right-1.5 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md transition hover:bg-white/[0.06]"
+        style={{ color: MUTED }}
+        title={visible ? 'Şifreyi gizle' : 'Şifreyi göster'}
+        aria-label={visible ? 'Şifreyi gizle' : 'Şifreyi göster'}
+      >
+        {visible ? <EyeOff size={15} /> : <Eye size={15} />}
+      </button>
+    </span>
   );
 }
 

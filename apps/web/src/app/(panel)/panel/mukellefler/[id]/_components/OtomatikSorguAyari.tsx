@@ -4,8 +4,8 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { BadgeAlert, Landmark, Mail, Receipt, ScanSearch, Search, ShieldAlert, type LucideIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
-import { FAINT, LINE, MUTED, R_ALAN, TEXT, ikonRozeti } from '../_lib/tema';
-import { Salter } from './ortak/ToggleRow';
+import { FAINT, GREEN, MUTED, ikonRozeti } from '../_lib/tema';
+import { DurumCipi, FormGrup, Salter } from './ortak/Form';
 
 /** GET /taxpayers/:id → `otomatikSorgu` (null = varsayılan: yalnız e-Tebligat açık). */
 export type OtomatikSorgu = {
@@ -56,7 +56,7 @@ export const OTOMATIK_SORGU_IKON = ScanSearch;
 export const OTOMATIK_SORGU_RENK = STEEL;
 
 /**
- * Otomatik Sorgulama Ayarı — 3 sütunlu şalter ızgarası.
+ * Otomatik Sorgulama Ayarı — grup bantlı, etiket-solda satır listesi (kayıt formu dili).
  * Kaydet düğmesinden BAĞIMSIZ: şalter değişince anında PATCH /taxpayers/:id/otomatik-sorgu { anahtar: bool }
  * (yalnız değişen anahtar). İyimser güncelleme; hata olursa geri al + toast. Başarıda ['taxpayer', id] yenilenir.
  */
@@ -99,12 +99,16 @@ export function OtomatikSorguAyari({ taxpayerId, deger }: { taxpayerId: string; 
     },
   });
 
+  const acikSayisi = SORGULAR.filter((s) => s.etkin && cozulmus[s.key]).length;
+  const etkinSayisi = SORGULAR.filter((s) => s.etkin).length;
+
   return (
     <div className="space-y-3">
-      <p className="text-[13px]" style={{ color: MUTED }}>
-        Bu mükellef için gece sorgularını tek tek açıp kapatabilirsiniz. Kapalı olan sorgu gece çalışmaz.
-      </p>
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+      <FormGrup
+        baslik="Gece sorguları"
+        aciklama="Kapalı olan sorgu gece çalışmaz; elle sorgu bu ayardan etkilenmez"
+        sag={<DurumCipi ton={acikSayisi ? 'yesil' : 'notr'}>{acikSayisi} / {etkinSayisi} açık</DurumCipi>}
+      >
         {SORGULAR.map((s) => {
           const Ikon = s.ikon;
           const acik = cozulmus[s.key];
@@ -120,30 +124,29 @@ export function OtomatikSorguAyari({ taxpayerId, deger }: { taxpayerId: string; 
               disabled={mesgul}
               onClick={() => { if (kilitli || mesgul) return; mutate({ [s.key]: !acik } as Partial<OtomatikSorgu>); }}
               title={kilitli ? KILIT_IPUCU : `${s.ad} gece sorgusunu ${acik ? 'kapat' : 'aç'}`}
-              className={`flex items-center gap-2.5 px-3 py-2.5 text-left transition-colors ${kilitli ? 'cursor-not-allowed' : 'hover:bg-white/[0.03]'}`}
-              style={{
-                border: `1px solid ${acik && !kilitli ? 'rgba(95,207,142,0.32)' : LINE}`,
-                background: acik && !kilitli ? 'rgba(95,207,142,0.06)' : 'rgba(0,0,0,0.18)',
-                borderRadius: R_ALAN,
-                opacity: kilitli ? 0.6 : 1,
-              }}
+              className={`grid min-h-9 grid-cols-[190px_minmax(0,1fr)] items-center gap-x-3 text-left ${kilitli ? 'cursor-not-allowed' : ''}`}
             >
-              <span className="flex h-[30px] w-[30px] shrink-0 items-center justify-center" style={ikonRozeti(kilitli ? 'rgba(250,250,249,0.45)' : STEEL)}>
-                <Ikon size={15} />
+              <span className="flex items-center gap-2 text-[12.5px] font-medium" style={{ color: kilitli ? FAINT : 'rgba(250,250,249,0.72)' }}>
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center" style={{ ...ikonRozeti(kilitli ? 'rgba(250,250,249,0.35)' : STEEL), borderRadius: 6 }}>
+                  <Ikon size={13} />
+                </span>
+                <span className="truncate">{s.ad}</span>
               </span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-[13px] font-medium" style={{ color: kilitli ? MUTED : TEXT }}>{s.ad}</span>
-                {kilitli && (
-                  <span className="mt-0.5 inline-flex items-center rounded-md px-1.5 text-[11.5px] font-medium leading-4" style={{ border: `1px solid ${LINE}`, color: FAINT }}>
-                    Yakında
-                  </span>
+              <span className="flex min-w-0 items-center gap-2.5">
+                <Salter checked={acik && !kilitli} disabled={kilitli || mesgul} />
+                {kilitli ? (
+                  <span className="text-[13px] font-medium" style={{ color: FAINT }}>Yakında</span>
+                ) : (
+                  <span className="text-[13px] font-medium" style={{ color: acik ? GREEN : MUTED }}>{mesgul ? 'Kaydediliyor…' : acik ? 'Açık' : 'Kapalı'}</span>
                 )}
               </span>
-              <Salter checked={acik} disabled={kilitli || mesgul} />
             </button>
           );
         })}
-      </div>
+      </FormGrup>
+      <p className="text-[11.5px]" style={{ color: FAINT }}>
+        Şalter değişince anında kaydedilir; üstteki Kaydet düğmesine gerek yoktur. "Yakında" olanlar: {KILIT_IPUCU}
+      </p>
     </div>
   );
 }
