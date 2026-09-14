@@ -44,9 +44,23 @@ export interface BekciAdayIs {
   payload?: any;
 }
 
+/** Nabız tazelik tavanı (dk): payload.nabiz bundan yeniyse koşu başka (drenajdaki) süreçte hâlâ canlıdır. */
+export const BEKCI_NABIZ_TAVAN_DK = 2;
+/** Nabız bundan eskiyse (dk) koşuyu yürüten süreç ölmüştür (drenaj tavanını aşıp SIGKILL yedi) → yarım sayılır. */
+export const BEKCI_NABIZ_OLU_DK = 4;
+
+/** payload.nabiz (ISO) → Date; yoksa null. */
+export function isinNabzi(is: BekciAdayIs): Date | null {
+  const p = is?.payload;
+  const n = p && typeof p === 'object' && !Array.isArray(p) ? p.nabiz : null;
+  if (typeof n !== 'string' || !n) return null;
+  const d = new Date(n);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
 export interface BekciKarar {
   id: string;
-  neden: 'sunucu_yeniden_basladi' | 'sure_asimi' | 'takili_pending';
+  neden: 'sunucu_yeniden_basladi' | 'sure_asimi' | 'takili_pending' | 'nabiz_kesildi';
   /** Kaydın bekçi bakarkenki durumu — güncelleme yarış korumasında (where.status) kullanılır. */
   eskiDurum: 'running' | 'pending';
   metin: string;
@@ -99,8 +113,22 @@ export function bayatKosulariSec(
       continue;
     }
     if (is.status !== 'running') continue;
+    // NABIZ (2026-09-15): dağıtım drenajındaki eski süreç koşuyu hâlâ yürütüyorsa (nabız ≤ 2 dk) dokunma — "sunucu yeniden başlatıldı" diye yarım sayma.
+    const nabiz = isinNabzi(is);
+    if (nabiz && simdiMs - nabiz.getTime() <= BEKCI_NABIZ_TAVAN_DK * 60000) continue;
     const basla = (is.startedAt || is.createdAt || opts.simdi).getTime();
     const dk = Math.max(0, Math.round((simdiMs - basla) / 60000));
+    // Nabzı olan ama kesilen koşu (başka süreçteydi, o süreç öldü) — açılış/düzenli fark etmez.
+    if (nabiz && simdiMs - nabiz.getTime() > BEKCI_NABIZ_OLU_DK * 60000) {
+      const nabizDk = Math.max(0, Math.round((simdiMs - nabiz.getTime()) / 60000));
+      out.push({
+        id: is.id,
+        neden: 'nabiz_kesildi',
+        eskiDurum: 'running',
+        metin: `Koşuyu yürüten sunucu kopyası durdu (son nabız ${nabizDk} dk önce; ${dk} dk önce başlamıştı), iş yarım kaldı. Gerekirse aynı işi Konsoldan yeniden verin.`,
+      });
+      continue;
+    }
     if (opts.surecBaslangici && basla < opts.surecBaslangici.getTime()) {
       out.push({
         id: is.id,

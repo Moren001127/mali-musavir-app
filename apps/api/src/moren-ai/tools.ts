@@ -1339,6 +1339,77 @@ export const EKIP_IS_ZINCIRI_ARACLARI: ToolDefinition[] = [
       required: ['sessionId'],
     },
   },
+  // ─── FATURA ÇEKİMİ ZİNCİRİ (R5, 2026-09-15) — Fatura İşleme Merkezi'ndeki "Sorgula / Aktar" düğmelerinin ekip karşılığı.
+  //   Muzaffer Bey: "faturaları çek ve işle → Fatura İşleme Merkezi; e-Fatura mükellefi ise e-Fatura sorgulama, değilse GİB e-Arşiv
+  //   sorgulama". Yol seçimi araç içinde (Taxpayer.isEFaturaMukellefi / eFaturaEntegrator); ajan yol seçmez, onay kodu (PRV) yok.
+  //   Kademe (arac-defteri.ts): baslat/aktar = luca_yaz (kuru testte "yapılacaktı"); durum/bekle = oku.
+  {
+    name: 'fm_cekim_baslat',
+    description:
+      'Fatura çekimi zincirinin (R5) 2. adımı: mükellef + dönem için sorguyu portaldaki düğmeyle AYNI yoldan başlatır. Yolu araç seçer: mükellef e-Fatura mükellefiyse ' +
+      'e-Fatura Sorgu (mükellefin entegratörü; alış = IN_EFATURA, satış = OUT_EFATURA + OUT_EARSIV), değilse GİB e-Arşiv Sorgu (yalnız SATIŞ; Luca ajanına EARSIV_PORTAL_FETCH işi kuyruklanır). ' +
+      'Entegratör tanımsızsa {ok:false, neden:"HAZIR DEĞİL: …"} döner → DUR, Muzaffer Bey’e söyle. Aynı sorgu zaten sürüyorsa mevcutIs:true ile onu döner. ' +
+      'Çıktı: {ok, yol:"efatura"|"earsiv", mukellef, donem, saglayicilar, arkaPlan, isler[], kanallar[], mesaj}. Sonucu fm_cekim_bekle ile izle. Kuru testte çalışmaz (yapılacaktı).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        taxpayerId: { type: 'string', description: 'Mükellef id (list_taxpayers ile bul).' },
+        donem: { type: 'string', description: 'Dönem "YYYY-MM" (örn. 2026-08). "2026/08" de kabul edilir.' },
+        yon: { type: 'string', enum: ['alis', 'satis', 'ikisi'], description: 'Varsayılan ikisi. GİB e-Arşiv yolunda yalnız satış sorgulanır (alış GİB portalında yoktur).' },
+      },
+      required: ['taxpayerId', 'donem'],
+    },
+  },
+  {
+    name: 'fm_cekim_durum',
+    description:
+      'Fatura çekiminin (R5) anlık durumu — hemen döner, beklemez. e-Fatura yolu: kanal başına sorgu durumu (sürüyor/bitti/hata), gelen satır, aktarılan, indirme bekleyen; ' +
+      'GİB e-Arşiv yolu: EARSIV_PORTAL_FETCH işleri (pending/running/done/failed, satır sayısı, hata) + sorgulanan e-Arşiv satırları (aktarılabilir/aktarılmış/iptal). ' +
+      'Çıktı: {bitti, yol, ozet, ayrinti}. Döngü kurmak için fm_cekim_bekle kullan.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        taxpayerId: { type: 'string' },
+        donem: { type: 'string', description: 'YYYY-MM' },
+        yol: { type: 'string', enum: ['efatura', 'earsiv'], description: 'Boşsa mükellef kartından seçilir (fm_cekim_baslat ile aynı kural).' },
+        yon: { type: 'string', enum: ['alis', 'satis', 'ikisi'], description: 'e-Fatura yolunda hangi kanallara bakılsın (varsayılan ikisi).' },
+      },
+      required: ['taxpayerId', 'donem'],
+    },
+  },
+  {
+    name: 'fm_cekim_bekle',
+    description:
+      'Fatura çekiminin bitişini SUNUCUDA bekler (R5 adım 3): 10 sn’de bir fm_cekim_durum bakar, en çok maxSaniye (≤60). bitti:true olana kadar tekrar çağır; ' +
+      'toplam 12 dk (≤12 çağrı) aşılırsa "sorgu sürüyor, bitince aktarılacak" notuyla DUR. Çıktı: fm_cekim_durum alanları + {beklenenSaniye, kontrolSayisi, yorum}.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        taxpayerId: { type: 'string' },
+        donem: { type: 'string', description: 'YYYY-MM' },
+        yol: { type: 'string', enum: ['efatura', 'earsiv'] },
+        yon: { type: 'string', enum: ['alis', 'satis', 'ikisi'] },
+        maxSaniye: { type: 'number', description: 'Bu çağrıda en çok kaç saniye beklensin (varsayılan 60, tavan 60).' },
+      },
+      required: ['taxpayerId', 'donem'],
+    },
+  },
+  {
+    name: 'fm_cekim_aktar',
+    description:
+      'Sorgulanan faturaları Fatura Merkezi’ne aktarır (R5 adım 4) — portaldaki "Aktar" düğmesiyle AYNI: e-Fatura yolu kanal başına efatura-inbox aktarımı (eşleştirme YOK, skipMatching; ' +
+      'aktarım bitince okunmamış belgeler kendiliğinden AI okuma kuyruğuna girer); GİB e-Arşiv yolu sorgulanan satırları Fatura Merkezi’ne alır, belge inmemişse indirme işi kuyruklar (indirmeKuyrukta:true → fm_cekim_bekle sonra tekrar aktar). ' +
+      'Belgeler hâlâ iniyorsa {ok:false, neden} döner → fm_cekim_bekle. Çok uzun sürerse arkaPlan:true "aktarım sürüyor" döner (fm_cekim_durum ile izle). Çıktı: {ok, aktarilan, kontrolEdilen, zatenVar, atlanan, hatali, mesaj}. Kuru testte çalışmaz.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        taxpayerId: { type: 'string' },
+        donem: { type: 'string', description: 'YYYY-MM' },
+        yon: { type: 'string', enum: ['alis', 'satis', 'ikisi'], description: 'Varsayılan ikisi.' },
+      },
+      required: ['taxpayerId', 'donem'],
+    },
+  },
   {
     name: 'ekip_ajan_baslat',
     description:

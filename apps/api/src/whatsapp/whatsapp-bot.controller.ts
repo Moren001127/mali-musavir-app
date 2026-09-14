@@ -35,8 +35,7 @@ import type { EkipWhatsappService } from '../ekip/ekip-whatsapp.service';
 import { VoiceService } from '../moren-ai/voice.service';
 import {
   KURU_SESLI_GONDERIM_NOTU, KURU_SESLI_NOT_METNI, SESLI_NOT_MAX_BAYT, SESLI_NOT_MAX_SANIYE, SESLI_NOT_SES_TALIMATI,
-  dediginizSatiri, oggOpusSuresiSn, sesliCevapIstendi, sesliMetniKirp, sesliNotSuresiTahmini,
-} from './sesli-mesaj';
+  dediginizSatiri, oggOpusSuresiSn, sesliCevapIstendi, sesliMetniKirp, sesliNotSuresiTahmini, sesIcinMetin } from './sesli-mesaj';
 
 type IncomingWhatsAppMessage = {
   from: string;
@@ -2097,10 +2096,11 @@ ${t}` : t;
   private async sesliCevapGonder(msg: IncomingWhatsAppMessage, tenantId: string, reply: string): Promise<void> {
     if (msg.__dryRun) return;
     if (!this.voice?.sesHattiAcik()) return;
-    const metin = sesliMetniKirp(reply);
+    const metin = sesliMetniKirp(sesIcinMetin(reply));
     if (!metin) return;
     try {
-      const tts = await this.voice.synthesizeOpus(metin, { voice: 'nova', instructions: SESLI_NOT_SES_TALIMATI });
+      // Ses OPENAI_TTS_VOICE ile seçilir (voice.service varsayılanı: marin — en doğal Türkçe; 2026-09-15 örnek karşılaştırması)
+      const tts = await this.voice.synthesizeOpus(metin, { instructions: SESLI_NOT_SES_TALIMATI });
       const saniye = oggOpusSuresiSn(tts.audio) ?? sesliNotSuresiTahmini(metin);
       const sonuc = await this.whatsapp.sendVoiceNote(this.replyTarget(msg), tts.audio, tenantId, { seconds: saniye });
       if (sonuc.ok) this.logger.log(`[Ses] sahibe sesli cevap gitti (${metin.length} kr, ~${saniye} sn, sentez ${tts.durationMs} ms)`);

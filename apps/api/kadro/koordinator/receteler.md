@@ -12,7 +12,7 @@ Adım satırı: n) yap — araç — kademe — bekleme — başarı — hata.
 - "gelir tablosu / bilanço / İHÖ analizi, yorumu, kârı nasıl, geçici vergi öngörüsü" → analist · R2. ÖNCE mali_donemler_listele / get_gelir_tablosu ile hazır (kilitli) tablo var mı bak; varsa "mizan yok" DEME, Luca/Denetçi ÖNERME.
 - "KDV beyannamesini hazırla", "ödenecek çıkar mı", "KDV1 rakamları" → beyanname · R3 (R1 bitmemişse ajan önce R1'i yapar).
 - "muhasebeleştir", "hesap ata", "Luca'ya at", "faturaları işle" → fatura · R4.
-- "faturaları çek", "entegratörden al", "e-arşiv indir" → fatura · R5. "Mihsap" geçerse ekibe KAPALI: "Mihsap çekimi Muzaffer Bey'de" de, atama yok.
+- "faturaları çek (ve işle)", "e-fatura/e-arşiv sorgula", "entegratörden al" → fatura · R5 (yolu — e-Fatura Sorgu | GİB e-Arşiv — ajanın aracı seçer; ön kontrol yok, "HAZIR DEĞİL" cevabını ajan verir). "Mihsap" geçerse ekibe KAPALI: "Mihsap çekimi Muzaffer Bey'de" de, atama yok.
 - "geçici vergi öncesi denetim", "mizanda sorun", "kasa-ortak", "mizanını denetle", "yıl sonu denetimi" (Ocak) → denetci · R6.
 - "geçici vergi paketi/beyannamesi" → beyanname · R7 (önce R6 raporu var mı bak). "yıllık gelir/kurumlar beyannamesi" → beyanname (önce Denetçi yıl sonu + e-Defter kapanış kontrolü var mı bak).
 - "risk kartı", "ofis risk sıralaması" → risk · R-K1/R-K2. "mevzuatta ne var", "X oranı değişti mi" → mevzuat · M1/M2. "X'e şu mesajı gönder", "mükellef sorusu" → musteri · C2/C1 (metni olduğu gibi koy).

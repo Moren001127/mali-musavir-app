@@ -63,6 +63,11 @@ describe('araç şemaları', () => {
       'kdv_kontrol_ocr_bekle',
       'kdv_kontrol_eslestir',
       'kdv_kontrol_sonuc_satirlari',
+      // Fatura çekimi zinciri (R5, 2026-09-15)
+      'fm_cekim_baslat',
+      'fm_cekim_durum',
+      'fm_cekim_bekle',
+      'fm_cekim_aktar',
       'ekip_ajan_baslat',
       'ekip_is_durum',
     ]);

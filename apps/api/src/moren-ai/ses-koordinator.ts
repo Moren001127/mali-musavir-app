@@ -215,8 +215,9 @@ const secim = (ajanId: string, recete: string, neden: string): AjanSecimi => ({ 
  *  - KDV kontrol / mutabakat / Luca ile karşılaştır → beyanname · R1 (PORTAL işi; luca-operator'e ASLA gitmez)
  *  - gelir tablosu / bilanço / İHÖ analiz-yorum-kâr → analist · R2 (hazır tablo okunur)
  *  - KDV beyannamesi / ödenecek çıkar mı / KDV1 → beyanname · R3
+ *  - faturaları çek (ve işle) / e-fatura sorgula / e-arşiv sorgula / entegratörden çek → fatura · R5 — R4'ten ÖNCE bakılır;
+ *    yol (e-Fatura Sorgu | GİB e-Arşiv Sorgu) ajanın aracında seçilir ("mihsap" geçerse ajan yok: Muzaffer Bey’de)
  *  - muhasebeleştir / hesap ata / Luca'ya at / faturaları işle → fatura · R4
- *  - faturaları çek / entegratör / e-arşiv indir → fatura · R5 ("mihsap" geçerse ajan yok: Muzaffer Bey’de)
  *  - geçici vergi öncesi denetim / mizanda sorun / kasa-ortak / mizanı denetle → denetci · R6
  *  - geçici vergi paketi/beyannamesi → beyanname · R7
  *  - banka / ekstre / kasa-banka → banka-kasa · R8;  evrak / hatırlatma → AJAN YOK (evrak otomasyonu; Koordinatör kendisi okur);  tebligat → musteri · R10
@@ -253,13 +254,25 @@ export function ajanSec(cumle: string): AjanSecimi | null {
   if (/(gelir tablosu|bilanco|\biho\b|isletme hesap ozeti|gecici vergi[^.]*ongor|\bkar(i|im|imiz)?\b[^.]*\bnasil|kar durumu|karlilik)/.test(t)) {
     return secim('analist', 'R2', 'Portaldaki hazır (kilitli) tablo okunur; önce mali_donemler_listele ile hazır mı bak, hazırsa Luca/Denetçi ÖNERME. Dönem: YYYY-Qn | YYYY-YILLIK.');
   }
+  // Fatura çekimi (R5) — R4'TEN ÖNCE bakılır (2026-09-15, Muzaffer Bey: "faturaları çek ve işle → Fatura İşleme Merkezi;
+  //   e-Fatura mükellefi ise e-Fatura sorgulama, değilse GİB e-Arşiv sorgulama"): "çek ve işle" R5'te başlar, "işle" dendiyse
+  //   ajan çekim bitince aynı koşuda R4'e geçer. Kalıplar: faturaları çek/indir/al/sorgula · e-fatura/e-arşiv sorgula/çek · entegratör.
+  const cekimKalibi =
+    /fatura[^.]*\b(cek|cekilsin|indir|indirilsin|al|alinsin|sorgu[a-z]*)\b/.test(t) ||
+    /entegrator/.test(t) ||
+    /e-?(arsiv|fatura)[^.]*\b(cek|cekilsin|indir|al|sorgu[a-z]*)\b/.test(t) ||
+    /\b(cek|sorgu[a-z]*)[^.]*\be-?(arsiv|fatura)\b/.test(t);
+  if (cekimKalibi) {
+    const isleDeVar = /\b(isle|islensin|islesin|muhasebelestir)/.test(t);
+    return secim(
+      'fatura',
+      'R5',
+      `Fatura çekimi = Fatura İşleme Merkezi Sorgula → Aktar → AI ile oku (e-Fatura mükellefi → e-Fatura Sorgu, değilse GİB e-Arşiv Sorgu; yolu ajanın aracı seçer, ön kontrol yok, onay kodu yok).${isleDeVar ? ' "işle" de dendi: çekim bitince ajan aynı koşuda R4’e geçer.' : ''} Dönem: YYYY-MM.`,
+    );
+  }
   // Fatura muhasebeleştirme (R4)
   if (/muhasebelestir/.test(t) || /hesap ata/.test(t) || /luca'?ya at/.test(t) || /fatura[^.]*\b(isle|islensin)\b/.test(t)) {
     return secim('fatura', 'R4', 'Fatura Merkezi → hesap önerisi → onay listesi; fm_onayla Muzaffer Bey’de. Dönem: YYYY-MM.');
-  }
-  // Entegratör / e-arşiv çekimi (R5)
-  if (/fatura[^.]*\b(cek|indir|al)\b/.test(t) || /entegrator/.test(t) || /e-?arsiv[^.]*\b(cek|indir|al)/.test(t)) {
-    return secim('fatura', 'R5', 'Entegratör/e-Arşiv çekimi (GİB yolu kuru testte hariç). Dönem: YYYY-MM.');
   }
   // Banka / ekstre (R8)
   if (/\b(ekstre|banka)\b/.test(t) || /kasa[- ]?banka/.test(t)) {

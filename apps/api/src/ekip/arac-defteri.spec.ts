@@ -300,8 +300,43 @@ describe('fm_* araçları ve Mihsap kapanışı (PLAN/15 Faz 5)', () => {
     expect(fatura.araclar).toEqual(expect.arrayContaining([...FM_OKU, 'fm_hesap_ata', 'fm_ai_ile_oku', 'fm_isaretle', 'fm_luca_gonder']));
     expect(fatura.araclar).not.toContain('fm_onayla');
     for (const ad of ['luca_yaz', 'luca_sec', 'luca_tikla', 'luca_beceri_kaydet']) expect(fatura.araclar).not.toContain(ad);
-    // Fatura Merkezi liste + e-Arşiv kıyası kalır; entegratör çekimi önizlemesi (preview) kalır — Mihsap komutu runner'da reddedilir.
-    expect(fatura.araclar).toEqual(expect.arrayContaining(['list_fatura_merkezi', 'list_earsiv_invoices', 'preview_agent_command', 'create_pending_action']));
+    // Fatura Merkezi liste + e-Arşiv kıyası kalır. preview_agent_command ÇIKARILDI (2026-09-15, Muzaffer Bey: onay kodu istemiyor):
+    //   e-Arşiv/e-Fatura çekimi PRV önizlemesi yerine fm_cekim_* zinciriyle (R5) yürür.
+    expect(fatura.araclar).toEqual(expect.arrayContaining(['list_fatura_merkezi', 'list_earsiv_invoices', 'create_pending_action']));
+    expect(fatura.araclar).not.toContain('preview_agent_command');
+  });
+
+  // ─── FATURA ÇEKİMİ ZİNCİRİ fm_cekim_* (R5, 2026-09-15) ───
+  it('fm_cekim_*: 4 araç defterde (kaynak portal, şema tools.ts); kademe baslat/aktar=luca_yaz, durum/bekle=oku; yalnız fatura ajanında', () => {
+    const CEKIM_YAZ = ['fm_cekim_baslat', 'fm_cekim_aktar'];
+    const CEKIM_OKU = ['fm_cekim_durum', 'fm_cekim_bekle'];
+    for (const ad of CEKIM_YAZ) expect({ ad, kademe: aracKademesi(ad) }).toEqual({ ad, kademe: 'luca_yaz' });
+    for (const ad of CEKIM_OKU) expect({ ad, kademe: aracKademesi(ad) }).toEqual({ ad, kademe: 'oku' });
+    for (const ad of [...CEKIM_YAZ, ...CEKIM_OKU]) {
+      expect(aracKaydi(ad)?.kaynak).toBe('portal');
+      expect(aracKaydi(ad)?.parametreler).toEqual(expect.arrayContaining(['taxpayerId*', 'donem*']));
+      expect(PORTAL_ARAC_ADLARI.has(ad)).toBe(true); // runner "Çalıştırıcı bulunamadı" demez
+    }
+    expect(aracKaydi('fm_cekim_bekle')?.parametreler).toContain('maxSaniye');
+    const fatura = ajanBul('fatura')!;
+    expect(fatura.araclar).toEqual(expect.arrayContaining([...CEKIM_YAZ, ...CEKIM_OKU]));
+    // Kuru test: baslat/aktar KESİLİR ("yapılacaktı"); durum/bekle kuru testte de okur; canlıda hepsi açık.
+    for (const ad of CEKIM_YAZ) {
+      const kuru = aracAcikMi(fatura, ad, true);
+      expect({ ad, acik: kuru.acik, neden: kuru.neden }).toEqual({ ad, acik: false, neden: 'kuru_test' });
+      expect(kuru.mesaj).toMatch(/yapılacaktı/);
+      expect({ ad, canli: aracAcikMi(fatura, ad, false).acik }).toEqual({ ad, canli: true });
+    }
+    for (const ad of CEKIM_OKU) expect({ ad, acik: aracAcikMi(fatura, ad, true).acik }).toEqual({ ad, acik: true });
+    // Başka hiçbir ajanda yok (koordinatör dahil: çekim işini ekip_ajan_baslat ile fatura ajanına verir).
+    for (const ajan of AJAN_TANIMLARI) {
+      if (ajan.id === 'fatura') continue;
+      const cekim = ajan.araclar.filter((ad) => ad.startsWith('fm_cekim_'));
+      expect({ ajan: ajan.id, cekim }).toEqual({ ajan: ajan.id, cekim: [] });
+    }
+    // Genel bot listesine sızmadı.
+    const genel = new Set(MOREN_AI_TOOLS.map((t) => t.name));
+    for (const ad of [...CEKIM_YAZ, ...CEKIM_OKU]) expect({ ad, genelde: genel.has(ad) }).toEqual({ ad, genelde: false });
   });
 
   it('fm_onayla HİÇBİR ajanın listesinde yok — onay sahibindir', () => {

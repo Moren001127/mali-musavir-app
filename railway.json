@@ -1,7 +1,15 @@
 {
   "$schema": "https://schema.railway.app/railway-schema.json",
   "build": {
-    "dockerfilePath": "apps/api/Dockerfile"
+    "dockerfilePath": "apps/api/Dockerfile",
+    "watchPatterns": [
+      "apps/api/**",
+      "package.json",
+      "pnpm-lock.yaml",
+      "pnpm-workspace.yaml",
+      "railway.json",
+      "scripts/**"
+    ]
   },
   "deploy": {
     "restartPolicyType": "ON_FAILURE"

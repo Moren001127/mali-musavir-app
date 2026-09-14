@@ -10,9 +10,11 @@ import { EkipKosuOlayi, EkipRunnerService } from './ekip-runner.service';
 import {
   baslangicMesaji,
   bitisMesaji,
+  donemEtiketi,
   ekipWhatsappAcik,
   ekipYoluMu,
   iletildiMetni,
+  insanKonusu,
   istekMesaji,
   kuruDenemeMetni,
   onayMesaji,
@@ -20,6 +22,7 @@ import {
   sahipCevabiOlustur,
   sahipKomutu,
   whatsappRaporMetni,
+  whatsappRaporOzeti,
 } from './ekip-whatsapp';
 import { ajanSec } from '../moren-ai/ses-koordinator';
 
@@ -88,12 +91,12 @@ describe('ekip-whatsapp — mesaj biçimleri', () => {
     expect(whatsappRaporMetni('')).toBe('');
   });
 
-  it('✅ bitirdi: ajan · mükellef · konu, rapor ilk 600, onay satırı, kuru test satırı', () => {
+  it('✅ bitirdi: ajan · mükellef · konu, rapor özeti (900, satır sınırı), onay satırı yalnız varsa, kuru test satırı', () => {
     const m = bitisMesaji({
       ajanAd: 'Beyanname Uzmanı',
       mukellefAd: 'İlgi Oto',
       konu: 'Ağustos KDV kontrolü',
-      rapor: `RAPOR: ${'a'.repeat(700)}`,
+      rapor: `RAPOR: ${'a'.repeat(1000)}`,
       basarisiz: false,
       dryRun: true,
       kuruTestSayisi: 2,
@@ -101,41 +104,83 @@ describe('ekip-whatsapp — mesaj biçimleri', () => {
     });
     const satirlar = m.split('\n');
     expect(satirlar[0]).toBe('✅ Beyanname Uzmanı bitirdi — İlgi Oto · Ağustos KDV kontrolü');
-    expect(satirlar[1].length).toBe(601); // 600 + "…"
-    expect(m).toContain('Onayınızı bekleyen: #PRV-1A2B → ONAYLIYORUM #PRV-1A2B yazın');
+    expect(satirlar[1].length).toBe(901); // 900 + "…"
+    expect(m).toContain('Göndermek için ONAYLIYORUM #PRV-1A2B yazın.');
     expect(m).toContain("'canlı yap' yazın");
-    // mükellef yok + onay yok
+    // mükellef yok + onay yok → "Onayınızı bekleyen: yok" satırı YOK
     const m2 = bitisMesaji({ ajanAd: 'Analist', konu: 'gelir tablosu', rapor: 'RAPOR: tamam', basarisiz: false, dryRun: false, kuruTestSayisi: 0, onayBekleyen: [] });
-    expect(m2).toBe('✅ Analist bitirdi — gelir tablosu (canlı)\ntamam\nOnayınızı bekleyen: yok');
+    expect(m2).toBe('✅ Analist bitirdi — gelir tablosu (canlı)\ntamam');
+    // konu mükellef adıyla başlıyorsa mükellef tekrar yazılmaz
+    expect(bitisMesaji({ ajanAd: 'Analist', mukellefAd: 'YAŞAR ÖZKAN', konu: 'yaşar özkan ın ağustos kdv kontrolü', rapor: 'RAPOR: ok', basarisiz: false, dryRun: true, kuruTestSayisi: 0, onayBekleyen: [] }))
+      .toBe('✅ Analist bitirdi — yaşar özkan ın ağustos kdv kontrolü\nok');
+  });
+
+  it('bölümlü personel raporu: yalnız Bulgular (+ dolu Sizden istenen / Emin değilim); başlık, Yaptığım iş, Baktığım kaynaklar, Öğrendiklerim, DEVİR düşer', () => {
+    const rapor = [
+      'KDV KONTROL — YAŞAR ÖZKAN 2026/08 (İşletme defteri) — KURU TEST',
+      '',
+      'Yaptığım iş: Ağustos 2026 KDV Kontrol zincirini (R1) kuru testte kurdum.',
+      'Baktığım kaynaklar: Mükellef kartı, KDV Kontrol modülü.',
+      'Bulgular:',
+      '- Luca 20 satır, Mihsap 20 fatura; fark yok.',
+      '- 1 fatura OCR okumadı (BASBUG).',
+      'Onayınızı bekleyen: yok',
+      'Sizden istenen: yok',
+      'Kime döndü: Koordinatör',
+      'Emin değilim: OCR eşiği düşük olabilir.',
+      'Öğrendiklerim: Sahip haziranı önce sorar.',
+      'DEVİR: yok',
+    ].join('\n');
+    expect(whatsappRaporOzeti(rapor)).toBe(['• Luca 20 satır, Mihsap 20 fatura; fark yok.', '• 1 fatura OCR okumadı (BASBUG).', 'Emin olmadığım: OCR eşiği düşük olabilir.'].join('\n'));
+    // bölümsüz rapor → sadeleşmiş tam metin; tavan satır sınırında
+    expect(whatsappRaporOzeti('RAPOR: **Kısa** sonuç (R1).')).toBe('Kısa sonuç.');
+    const uzun = whatsappRaporOzeti(Array.from({ length: 40 }, (_, i) => `satır ${i} ${'x'.repeat(30)}`).join('\n'), 300);
+    expect(uzun.length).toBeLessThanOrEqual(301);
+    expect(uzun.endsWith('…')).toBe(true);
+    expect(uzun.slice(0, -1).endsWith('x')).toBe(true); // yarım satır yok
+  });
+
+  it('insanKonusu: reçete kodu, taxpayerId, Mükellef/Dönem kuyruğu düşer; dönem Türkçe ay; kelime sınırında kısalır', () => {
+    expect(insanKonusu('KDV Kontrol (R1). Mükellef: YAŞAR ÖZKAN (taxpayerId: cmnydmggn002beazyy1hmo434). Dönem: 2026/08. Kuru test.')).toBe('KDV Kontrol · Ağustos 2026');
+    expect(insanKonusu('KDV Kontrol devam (R1). Mükellef: ERCAN SANLAV (taxpayerId: abc). Dönem: 2026-08 (Ağustos 2026); Luca çekimi bitti')).toBe('KDV Kontrol devam · Ağustos 2026');
+    expect(insanKonusu('İlgi Oto 2026/08 KDV kontrolü (R1)')).toBe('İlgi Oto Ağustos 2026 KDV kontrolü');
+    expect(insanKonusu("Muzaffer Bey WhatsApp'tan yazıyor; cevabın kısa olsun.\nSORU/KOMUT: yaşar özkan ın ağustos 2026 kdv kontrolünü portaldan yap — kuru test olarak değil canlı yap"))
+      .toBe('yaşar özkan ın ağustos 2026 kdv kontrolünü portaldan yap');
+    expect(insanKonusu('İlgi Oto Yedek Parçanın Ağustos 2026 Dönemi KDV Kontrol İşlemini Canlı Olarak Başlat')).toBe('İlgi Oto Yedek Parçanın Ağustos 2026 Dönemi KDV Kontrol…');
+    expect(insanKonusu('')).toBe('iş');
+    expect(donemEtiketi('Dönem: 2026/12')).toBe('Aralık 2026');
+    expect(donemEtiketi('yok')).toBe('');
   });
 
   it('❌ yapamadı / ▶️ başladı / 📌 sizden istenen / 🔔 onay', () => {
     expect(bitisMesaji({ ajanAd: 'Denetçi', konu: '3. dönem denetimi', rapor: '', hata: 'iptal edildi (Muzaffer Bey)', basarisiz: true, dryRun: true, kuruTestSayisi: 0, onayBekleyen: [] }))
-      .toBe('❌ Denetçi yapamadı — 3. dönem denetimi: iptal edildi (Muzaffer Bey)');
+      .toBe('❌ Denetçi yapamadı — 3. dönem denetimi\niptal edildi (Muzaffer Bey)');
     expect(baslangicMesaji({ ajanAd: 'Fatura Uzmanı', mukellefAd: 'Tahir Sucu', konu: 'Ağustos faturaları', dryRun: true })).toBe('▶️ Fatura Uzmanı başladı — Tahir Sucu · Ağustos faturaları');
     expect(istekMesaji({ ajanAd: 'Banka-Kasa', mukellefAd: 'Tahir Sucu', baslik: 'Ziraat ekstresi gerekli', bildirimId: 'cmnyd1a2b3c4d5' }))
-      .toBe('📌 Sizden istenen (Tahir Sucu): Ziraat ekstresi gerekli — yapınca YAPILDI #cmnyd1a2 yazın (Banka-Kasa)');
+      .toBe('📌 Banka-Kasa sizden istiyor — Tahir Sucu: Ziraat ekstresi gerekli\nYapınca YAPILDI #cmnyd1a2 yazın.');
     const o = onayMesaji({ ajanAd: 'Müşteri İlişkileri', mukellefAd: 'İlgi Oto', konu: 'tebligat iletimi', previewId: 'PRV-1A2B', arac: 'send_whatsapp_message', hedef: '905551112233' });
     expect(o.split('\n')).toEqual([
       '🔔 Müşteri İlişkileri onayınızı bekliyor — İlgi Oto · tebligat iletimi',
-      'send_whatsapp_message → 905551112233',
-      'ONAYLIYORUM #PRV-1A2B yazın (vazgeçmek için REDDET #PRV-1A2B)',
+      'WhatsApp mesajı → 905551112233',
+      'Göndermek için ONAYLIYORUM #PRV-1A2B, vazgeçmek için REDDET #PRV-1A2B yazın.',
     ]);
-    expect(onaySatiri([{ previewId: 'PRV-1' }, { previewId: 'PRV-2' }])).toBe('Onayınızı bekleyen: #PRV-1, #PRV-2 → her biri için ONAYLIYORUM #PRV-XXXX yazın');
+    expect(onaySatiri([{ previewId: 'PRV-1' }, { previewId: 'PRV-2' }])).toBe('Onayınızı bekleyen: #PRV-1, #PRV-2 — her biri için ONAYLIYORUM #PRV-XXXX yazın.');
+    expect(onaySatiri([])).toBe('');
   });
 
   it('sync cevap: rapor + onay + istek + kuru test satırı; canlıda başa CANLI modda; hata + boş rapor → ❌', () => {
     const c = sahipCevabiOlustur({ rapor: 'RAPOR: Beyanname Uzmanı başlatıldı.', dryRun: true, kuruTestSayisi: 1, onayBekleyen: [{ previewId: 'PRV-9' }], istekler: [{ id: 'cmnyd1a2xyz', baslik: 'Şifre lazım' }] });
     expect(c.split('\n\n')).toEqual([
       'Beyanname Uzmanı başlatıldı.',
-      'Onayınızı bekleyen: #PRV-9 → ONAYLIYORUM #PRV-9 yazın',
-      'Sizden istenen: Şifre lazım — yapınca YAPILDI #cmnyd1a2 yazın',
+      'Göndermek için ONAYLIYORUM #PRV-9 yazın.',
+      'Sizden istenen: Şifre lazım — yapınca YAPILDI #cmnyd1a2 yazın.',
       "Kuru testte hazırladım; gerçekten yapmamı isterseniz 'canlı yap' yazın.",
     ]);
-    expect(sahipCevabiOlustur({ rapor: 'RAPOR: ok', dryRun: false, kuruTestSayisi: 0, onayBekleyen: [] })).toBe('CANLI modda.\n\nok');
+    expect(sahipCevabiOlustur({ rapor: 'RAPOR: ok', dryRun: false, kuruTestSayisi: 0, onayBekleyen: [] })).toBe('Canlı modda.\n\nok');
     expect(sahipCevabiOlustur({ rapor: '', hata: 'Max yok', dryRun: true, kuruTestSayisi: 0, onayBekleyen: [] })).toBe('❌ Koordinatör yapamadı: Max yok');
-    expect(iletildiMetni('cmnyd1a2b3c4', true)).toBe("İsteğinizi aldım, Koordinatör'e ilettim (iş #cmnyd1a2). Sonucu buradan yazacağım.");
-    expect(iletildiMetni(null, false)).toBe("İsteğinizi aldım, Koordinatör'e ilettim. Sonucu buradan yazacağım. CANLI modda.");
+    // iş numarası YAZILMAZ (Muzaffer Bey 2026-09-15: gereksiz kodlar)
+    expect(iletildiMetni('cmnyd1a2b3c4', true)).toBe("İsteğinizi aldım, Koordinatör'e ilettim. Sonucu buradan yazacağım.");
+    expect(iletildiMetni(null, false)).toBe("İsteğinizi aldım, Koordinatör'e canlı modda ilettim. Sonucu buradan yazacağım.");
     expect(kuruDenemeMetni({ canli: false, oneri: ajanSec("Erdoğan Balçık'ın KDV kontrolünü yap") })).toBe("Kuru deneme: mesaj Koordinatör'e iletilecekti (kuru test; yönlendirme: beyanname/R1). Koşu başlatılmadı, mesaj gönderilmedi.");
   });
 });
@@ -214,9 +259,14 @@ function sahteWhatsapp(sonuclar: boolean[] = []) {
 function sahtePrisma(ek: any = {}) {
   const aiMesajlar: any[] = [];
   const iletisim: any[] = [];
+  const isaretler: string[] = [];
   return {
     aiMesajlar,
     iletisim,
+    isaretler,
+    // bitiş işareti: jsonb_set(... '{whatsappBitis}' ...) WHERE id = $2 → strings[…] + values[deger, isId]
+    $executeRaw: async (_strings: TemplateStringsArray, ...values: any[]) => (isaretler.push(`${values[1]}:${String(values[0]).split('@')[0]}`), 1),
+    agentCommand: { findMany: async () => [] },
     user: { findFirst: async () => ({ id: 'u1' }) },
     taxpayer: { findFirst: async (arg: any) => (arg?.where?.id === 'tp1' ? { companyName: 'İlgi Oto' } : null) },
     aiMessage: { create: async (arg: any) => (aiMesajlar.push(arg.data), { id: 'm' }) },
@@ -265,24 +315,25 @@ describe('EkipWhatsappService — sahip mesajı', () => {
   });
 
   it('sync bitiş: kaynak whatsapp + whatsappHedef + dryRun; tek cevap, ayrı WhatsApp mesajı YOK', async () => {
-    const { s, runner, whatsapp } = servisKur({ runner: sahteRunner({ sureMs: 1, onayBekleyen: [{ previewId: 'PRV-1A2B', name: 'send_whatsapp_message', args: {} }] }) });
+    const { s, runner, whatsapp, prisma } = servisKur({ runner: sahteRunner({ sureMs: 1, onayBekleyen: [{ previewId: 'PRV-1A2B', name: 'send_whatsapp_message', args: {} }] }) });
     const r = await s.sahipMesaji({ ...SAHIP, metin: 'Ekibe söyle KDV kontrolünü yapsın' });
     expect(runner.cagrilar[0]).toMatchObject({ ajanId: 'koordinator', tenantId: 't1', userId: 'u1', dryRun: true, kaynak: 'whatsapp', whatsappHedef: '905350587475' });
     expect(runner.cagrilar[0].gorev).toContain("Muzaffer Bey WhatsApp'tan yazıyor");
     expect(runner.cagrilar[0].gorev.endsWith('SORU/KOMUT: Ekibe söyle KDV kontrolünü yapsın')).toBe(true);
     expect(r.arkaPlanda).toBe(false);
     expect(r.isId).toBe('is-kok-1');
-    expect(r.metin).toBe('Beyanname Uzmanı başlatıldı.\n\nOnayınızı bekleyen: #PRV-1A2B → ONAYLIYORUM #PRV-1A2B yazın');
+    expect(r.metin).toBe('Beyanname Uzmanı başlatıldı.\n\nGöndermek için ONAYLIYORUM #PRV-1A2B yazın.');
     await bekle(15);
     expect(whatsapp.gonderilen).toEqual([]);
     expect(s.vakaIzi('is-kok-1')).toMatchObject({ kokArkaPlanda: false, kokBitti: true });
+    expect((prisma as any).isaretler).toEqual(['is-kok-1:sync']); // sync cevap verildi → bitiş işareti (drenaj taraması tekrar üretmesin)
   });
 
   it('"canlı yap" → dryRun:false; sahip kullanıcısı yoksa canlı koşu başlamaz', async () => {
     const a = servisKur();
     const r1 = await a.s.sahipMesaji({ ...SAHIP, metin: 'KDV kontrolünü canlı yap' });
     expect(a.runner.cagrilar[0].dryRun).toBe(false);
-    expect(r1.metin.startsWith('CANLI modda.')).toBe(true);
+    expect(r1.metin.startsWith('Canlı modda.')).toBe(true);
     const b = servisKur({ prisma: sahtePrisma({ user: { findFirst: async () => null } }) });
     const r2 = await b.s.sahipMesaji({ ...SAHIP, metin: 'KDV kontrolünü canlı yap' });
     expect(r2.metin).toMatch(/Portal kullanıcınızı bulamadım/);
@@ -306,18 +357,20 @@ describe('EkipWhatsappService — sahip mesajı', () => {
     const t0 = Date.now();
     const r = await s.sahipMesaji({ ...SAHIP, metin: "Erdoğan Balçık'ın Ağustos KDV kontrolünü yapın" });
     expect(Date.now() - t0).toBeLessThan(110);
-    expect(r).toEqual({ metin: "İsteğinizi aldım, Koordinatör'e ilettim (iş #is-kok-1). Sonucu buradan yazacağım.", isId: 'is-kok-1', arkaPlanda: true });
+    expect(r).toEqual({ metin: "İsteğinizi aldım, Koordinatör'e ilettim. Sonucu buradan yazacağım.", isId: 'is-kok-1', arkaPlanda: true });
     expect(s.vakaIzi('is-kok-1')).toMatchObject({ kokArkaPlanda: true, kokBitti: false, birikenSayisi: 0 });
     await bekle(30);
     // sync penceresinde biriken onay olayı zaman aşımında akıtıldı
     expect(whatsapp.gonderilen.length).toBe(1);
     expect(whatsapp.gonderilen[0]).toMatchObject({ tel: '905350587475', tenantId: 't1', opts: { quote: false } });
     expect(whatsapp.gonderilen[0].metin).toContain('🔔 Koordinatör onayınızı bekliyor');
-    expect(whatsapp.gonderilen[0].metin).toContain('ONAYLIYORUM #PRV-7F00 yazın');
+    expect(whatsapp.gonderilen[0].metin).toContain('Göndermek için ONAYLIYORUM #PRV-7F00, vazgeçmek için REDDET #PRV-7F00 yazın.');
     await bekle(120);
     expect(whatsapp.gonderilen.length).toBe(2);
-    expect(whatsapp.gonderilen[1].metin).toBe('✅ Koordinatör bitirdi — Erdoğan Balçık\'ın Ağustos KDV kontrolünü yapın\nBeyanname Uzmanı KDV kontrolünü bitirdi.\nOnayınızı bekleyen: yok');
+    expect(whatsapp.gonderilen[1].metin).toBe('✅ Koordinatör bitirdi — Erdoğan Balçık\'ın Ağustos KDV kontrolünü yapın\nBeyanname Uzmanı KDV kontrolünü bitirdi.');
     expect(s.vakaIzi('is-kok-1')).toMatchObject({ kokBitti: true });
+    await bekle(10);
+    expect(prisma.isaretler).toEqual(['is-kok-1:gonderildi']);
     // hafıza: communicationLog + aiMessage (model etiketi)
     expect(prisma.iletisim.map((x: any) => x.subject)).toEqual(['WhatsApp owner ekip bildirimi', 'WhatsApp owner ekip bildirimi']);
     expect(prisma.aiMesajlar.map((x: any) => x.model)).toEqual(['ekip-koordinator:whatsapp', 'ekip-koordinator:whatsapp']);
@@ -352,15 +405,65 @@ describe('EkipWhatsappService — koşu olayları (çocuk koşu, tampon, yeniden
   });
 
   it('çocuk koşu ▶️ başladı + ✅ bitti aynı vakada tamponda birleşir; mükellef adı çözülür', async () => {
-    const { s, whatsapp } = servisKur();
+    const { s, whatsapp, prisma } = servisKur();
     const kosu = cocukKosu();
     s.kosuOlayi({ tur: 'basladi', kosu });
     s.kosuOlayi({ tur: 'bitti', kosu, sonuc: { isId: 'is-cocuk-1', ajanId: 'beyanname', rapor: 'RAPOR: fark yok.', toolUses: [], kuruTestYapilacaktilar: [{ name: 'x', args: {}, kademe: 'luca_yaz' }], onayBekleyen: [], ogrenilen: [], model: 'm', durationMs: 1, costUsd: 0 }, basarisiz: false, durum: 'done' });
     await bekle(25);
     expect(whatsapp.gonderilen.length).toBe(1);
     expect(whatsapp.gonderilen[0].metin).toBe(
-      ['▶️ Beyanname Uzmanı başladı — İlgi Oto · İlgi Oto 2026/08 KDV kontrolü (R1)', '', '✅ Beyanname Uzmanı bitirdi — İlgi Oto · İlgi Oto 2026/08 KDV kontrolü (R1)', 'fark yok.', 'Onayınızı bekleyen: yok', "Kuru testte hazırladım; gerçekten yapmamı isterseniz 'canlı yap' yazın."].join('\n'),
+      ['▶️ Beyanname Uzmanı başladı — İlgi Oto Ağustos 2026 KDV kontrolü', '', '✅ Beyanname Uzmanı bitirdi — İlgi Oto Ağustos 2026 KDV kontrolü', 'fark yok.', "Kuru testte hazırladım; gerçekten yapmamı isterseniz 'canlı yap' yazın."].join('\n'),
     );
+    await bekle(10);
+    expect((prisma as any).isaretler).toEqual(['is-cocuk-1:gonderildi']);
+  });
+
+  // Muzaffer Bey 2026-09-15: "işi bitirdi ama hâlâ sürüyor görünüyor" — Koordinatör'ün "bitirdi"si personel daha çalışırken geliyordu.
+  it('kök Koordinatör arka plandayken personele iş verdiyse kendi ✅ mesajı ATLANIR (işaret: atlandi); onay/soru/hata varsa yazılır', async () => {
+    const runner = sahteRunner({
+      sureMs: 100,
+      rapor: "RAPOR: Beyanname Uzmanı'nı başlattım, biterken bildiririm.",
+      araOlay: async (tetikle, kosu) => {
+        await bekle(50);
+        tetikle({ tur: 'basladi', kosu: { ...kosu, isId: 'is-cocuk-9', ajanId: 'beyanname', ajanAd: 'KDV/Beyanname Uzmanı', ustIsId: kosu.isId, gorev: 'KDV Kontrol (R1). Mükellef: İlgi Oto (taxpayerId: tp1). Dönem: 2026/08.', taxpayerId: 'tp1' } });
+      },
+    });
+    const { s, whatsapp, prisma } = servisKur({ runner, ilkCevapMs: 20 });
+    const r = await s.sahipMesaji({ ...SAHIP, metin: "İlgi Oto'nun Ağustos KDV kontrolünü yapın" });
+    expect(r.arkaPlanda).toBe(true);
+    await bekle(140);
+    expect(s.vakaIzi('is-kok-1')).toMatchObject({ kokArkaPlanda: true, kokBitti: true, cocukBasladi: true });
+    expect(whatsapp.gonderilen.map((g: any) => g.metin)).toEqual(['▶️ KDV/Beyanname Uzmanı başladı — İlgi Oto · KDV Kontrol · Ağustos 2026']);
+    expect(prisma.isaretler).toContain('is-kok-1:atlandi');
+    // aynı durumda rapor SORU içeriyorsa kökün mesajı yine gider
+    const runner2 = sahteRunner({ sureMs: 100, rapor: 'RAPOR: Başlattım.\nSORU: Beyannameyi de hazırlayayım mı?', araOlay: async (tetikle, kosu) => { await bekle(30); tetikle({ tur: 'basladi', kosu: { ...kosu, isId: 'c2', ustIsId: kosu.isId, ajanAd: 'Analist', gorev: 'x' } }); } });
+    const b = servisKur({ runner: runner2, ilkCevapMs: 20 });
+    await b.s.sahipMesaji({ ...SAHIP, metin: "İlgi Oto'nun Ağustos KDV kontrolünü yapın" });
+    await bekle(140);
+    expect(b.whatsapp.gonderilen.map((g: any) => g.metin.split('\n')[0])).toEqual(['▶️ Analist başladı — x', "✅ Koordinatör bitirdi — İlgi Oto'nun Ağustos KDV kontrolünü yapın"]);
+  });
+
+  it('drenaj taraması: başka süreçte bitmiş, whatsappHedef dolu, işaretsiz işlerin ✅/❌ mesajı bu süreçten gider; devretmiş kök ve işaretli/kendi süreci atlanır', async () => {
+    const bitti = new Date(Date.now() - 60_000);
+    const isler = [
+      { id: 'd1', tenantId: 't1', agent: 'ekip:beyanname', status: 'done', payload: { whatsappHedef: '905350587475', surec: 'eski@1', gorev: 'KDV Kontrol (R1). Mükellef: İlgi Oto (taxpayerId: tp1). Dönem: 2026/08.', taxpayerId: 'tp1', dryRun: false, vakaId: 'k1', ustIsId: 'k1' }, result: { rapor: 'Bulgular:\n- fark yok.', toolUses: [], kuruTestYapilacaktilar: [], onayBekleyen: [] }, finishedAt: bitti },
+      { id: 'd2', tenantId: 't1', agent: 'ekip:fatura', status: 'failed', payload: { whatsappHedef: '905350587475', surec: 'eski@1', gorev: 'Fatura çekimi', dryRun: true, vakaId: 'k2', ustIsId: 'k2' }, result: { rapor: '', hata: 'Koşuyu yürüten sunucu kopyası durdu (son nabız 5 dk önce)' }, finishedAt: bitti },
+      { id: 'kok', tenantId: 't1', agent: 'ekip:koordinator', status: 'done', payload: { whatsappHedef: '905350587475', surec: 'eski@1', gorev: 'SORU/KOMUT: x', dryRun: true, vakaId: 'kok' }, result: { rapor: 'RAPOR: verdim', toolUses: [{ name: 'ekip_ajan_baslat', args: {} }] }, finishedAt: bitti },
+      { id: 'isaretli', tenantId: 't1', agent: 'ekip:analist', status: 'done', payload: { whatsappHedef: '905350587475', surec: 'eski@1', gorev: 'y', whatsappBitis: 'gonderildi@2026' }, result: { rapor: 'x' }, finishedAt: bitti },
+      { id: 'portal', tenantId: 't1', agent: 'ekip:analist', status: 'done', payload: { surec: 'eski@1', gorev: 'y' }, result: { rapor: 'x' }, finishedAt: bitti },
+    ];
+    const sorgular: any[] = [];
+    const prisma = sahtePrisma({ agentCommand: { findMany: async (q: any) => (sorgular.push(q), isler) } });
+    const { s, whatsapp } = servisKur({ prisma });
+    expect(await s.drenajBitisleriniTara()).toBe(2);
+    expect(sorgular[0].where).toMatchObject({ agent: { startsWith: 'ekip:' }, status: { in: ['done', 'failed'] } });
+    await bekle(15);
+    expect(whatsapp.gonderilen.map((g: any) => g.metin)).toEqual([
+      '✅ KDV/Beyanname Uzmanı bitirdi — İlgi Oto · KDV Kontrol · Ağustos 2026 (canlı)\n• fark yok.',
+      '❌ Fatura Muhasebecisi yapamadı — Fatura çekimi\nKoşuyu yürüten sunucu kopyası durdu (son nabız 5 dk önce)',
+    ]);
+    await bekle(10);
+    expect(prisma.isaretler.sort()).toEqual(['d1:gonderildi', 'd2:gonderildi', 'kok:atlandi']);
   });
 
   it('❌ yapamadı ve 📌 sizden istenen; whatsappHedef yoksa hiçbir şey gitmez', async () => {
@@ -370,8 +473,8 @@ describe('EkipWhatsappService — koşu olayları (çocuk koşu, tampon, yeniden
     s.kosuOlayi({ tur: 'basladi', kosu: cocukKosu({ whatsappHedef: null }) });
     await bekle(25);
     expect(whatsapp.gonderilen.map((g: any) => g.metin)).toEqual([
-      '❌ Beyanname Uzmanı yapamadı — İlgi Oto 2026/08 KDV kontrolü (R1): iptal edildi (Muzaffer Bey)',
-      '📌 Sizden istenen: Ziraat ekstresi gerekli — yapınca YAPILDI #cmnyd1a2 yazın (Beyanname Uzmanı)',
+      '❌ Beyanname Uzmanı yapamadı — İlgi Oto Ağustos 2026 KDV kontrolü\niptal edildi (Muzaffer Bey)',
+      '📌 Beyanname Uzmanı sizden istiyor — Ziraat ekstresi gerekli\nYapınca YAPILDI #cmnyd1a2 yazın.',
     ]);
   });
 

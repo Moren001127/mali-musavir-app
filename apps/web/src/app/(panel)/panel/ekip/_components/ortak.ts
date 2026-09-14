@@ -500,6 +500,11 @@ export const ARAC_ADI: Record<string, string> = {
   fm_isaretle: 'Belge işaretleme',
   fm_luca_gonder: 'Luca’ya fiş gönderme',
   fm_onayla: 'Fatura Merkezi onayı (yalnız Muzaffer Bey)',
+  // Fatura çekimi zinciri (R5, 2026-09-15): Fatura İşleme Merkezi Sorgula / Aktar düğmelerinin ekip karşılığı
+  fm_cekim_baslat: 'Fatura çekimi başlatıldı (e-Fatura / GİB e-Arşiv)',
+  fm_cekim_durum: 'Çekim durumu',
+  fm_cekim_bekle: 'Çekim bekleniyor',
+  fm_cekim_aktar: 'Faturalar Fatura Merkezi’ne aktarıldı',
   // mali tablo / KDV
   mali_donemler_listele: 'Hazır mali tablo dönemleri',
   mali_yorum_oku: 'Kayıtlı mali yorum',

@@ -157,6 +157,11 @@ export class ToolExecutorService {
         case 'kdv_kontrol_ocr_bekle':  return this.kdvKontrolOcrBekle(input, ctx);
         case 'kdv_kontrol_eslestir':   return this.kdvKontrolEslestir(input, ctx);
         case 'kdv_kontrol_sonuc_satirlari': return this.kdvKontrolSonucSatirlari(input, ctx);
+        // FATURA ÇEKİMİ ZİNCİRİ (R5 — 2026-09-15): Fatura İşleme Merkezi "Sorgula / Aktar" düğmelerinin ekip karşılığı.
+        case 'fm_cekim_baslat':        return this.fmCekimBaslat(input, ctx);
+        case 'fm_cekim_durum':         return this.fmCekimDurum(input, ctx);
+        case 'fm_cekim_bekle':         return this.fmCekimBekle(input, ctx);
+        case 'fm_cekim_aktar':         return this.fmCekimAktar(input, ctx);
         case 'ekip_ajan_baslat':       return this.ekipAjanBaslat(input, ctx);
         case 'ekip_is_durum':          return this.ekipIsDurum(input, ctx);
         default:
@@ -1158,6 +1163,10 @@ export class ToolExecutorService {
       // PLAN/17 §0 bulgu 6 (2026-09-13): defter türü — KDV Kontrol oturum türü / İHÖ-GT dalı buna göre.
       defterTuru: this.defterTuruNormalize(t),
       mihsapDefterTuru: t.mihsapDefterTuru ?? null,
+      // R5 (2026-09-15): fatura çekim yolu — e-Fatura mükellefi → entegratör e-Fatura sorgusu; değilse GİB e-Arşiv (fm_cekim_baslat aynı kuralı uygular).
+      eFaturaMukellefi: (t as any).isEFaturaMukellefi === true,
+      eFaturaEntegrator: (t as any).eFaturaEntegrator ?? null,
+      faturaCekimYolu: this.fmCekimYolu(t as any).yol,
       kontaklar: t.contacts.map((c) => ({
         ad: c.name, unvan: c.title, email: c.email, telefon: c.phone, birincil: c.isPrimary,
       })),
@@ -4811,6 +4820,666 @@ export class ToolExecutorService {
       satirlar,
       kesildi: (yalnizSorunlu ? sorunlu.length : sinifli.length) > limit,
       not: 'Karar VERME (resolve/kilit sahipte). Sınıf: tam · incele · fatura_yok (Luca\'da var) · luca_yok (fatura var) · red.',
+    };
+  }
+
+  // ------------------------------------------------------------
+  // FATURA ÇEKİMİ ZİNCİRİ (R5, 2026-09-15) — fm_cekim_baslat / fm_cekim_durum / fm_cekim_bekle / fm_cekim_aktar
+  // Muzaffer Bey: "faturaları çek ve işle diyorsam Fatura İşleme Merkezi'ne girecek; e-Fatura mükellefi ise e-Fatura
+  // sorgulama yapacak, değilse GİB e-Arşiv sorgulama yapacak". Ekranın (apps/web/src/app/fatura-merkezi/page.tsx)
+  // "Sorgula / Aktar" düğmelerinin çağırdığı servis metotları BİREBİR çağrılır; fatura-muhasebelestirme ve
+  // portal-automation servisleri DEĞİŞTİRİLMEZ (dinamik çözülür, jest koşusu zinciri yüklemesin).
+  // Kademe kontrolü (kuru test: baslat/aktar "yapılacaktı") ekip runner'ındadır; burası yalnız çalıştırır.
+  // ------------------------------------------------------------
+
+  /** Controller ile aynı: bu sağlayıcıların sorgusu KOPUK arka planda sürer (HTTP zaman aşımına takılmasın). */
+  private static readonly FM_CEKIM_ARKA_PLAN_SAGLAYICILARI = new Set(['TURKCELL', 'TURMOB_EFATURA']);
+  /** Arka plana alınmayan sağlayıcı sorgusu / aktarım bu kadar saniye beklenir; aşarsa çağrı sunucuda sürer, durumu haritadan okunur (spec kısaltır). */
+  private fmCekimSenkronTavanSn = 90;
+  /** Senkron sorgu/aktarım kayıtları: "sorgu:<kiracı>:<mükellef>:<kanal>" / "aktar:…" — servisin durum haritası yalnız arka plan yolunu tutar. */
+  private readonly fmCekimSenkronDurum = new Map<string, { state: 'running' | 'done' | 'error'; startedAt: string; finishedAt?: string; sonuc?: any; error?: string }>();
+
+  private async fmServisi(): Promise<any> {
+    try {
+      const { FaturaMuhasebelestirmeService } = await import('../fatura-muhasebelestirme/fatura-muhasebelestirme.service');
+      return this.moduleRef?.get?.(FaturaMuhasebelestirmeService, { strict: false }) || null;
+    } catch (e: any) {
+      this.logger.warn(`FaturaMuhasebelestirmeService çözülemedi: ${e?.message || e}`);
+      return null;
+    }
+  }
+
+  private async efaturaSyncServisi(): Promise<any> {
+    try {
+      const { EFaturaSyncService } = await import('../efatura-adapters/efatura-sync.service');
+      return this.moduleRef?.get?.(EFaturaSyncService, { strict: false }) || null;
+    } catch (e: any) {
+      this.logger.warn(`EFaturaSyncService çözülemedi: ${e?.message || e}`);
+      return null;
+    }
+  }
+
+  private async portalOtomasyonServisi(): Promise<any> {
+    try {
+      const { PortalAutomationService } = await import('../portal-automation/portal-automation.service');
+      return this.moduleRef?.get?.(PortalAutomationService, { strict: false }) || null;
+    } catch (e: any) {
+      this.logger.warn(`PortalAutomationService çözülemedi: ${e?.message || e}`);
+      return null;
+    }
+  }
+
+  private async portalRunnerServisi(): Promise<any> {
+    try {
+      const { PortalAutomationRailwayRunnerService } = await import('../portal-automation/portal-automation-railway-runner.service');
+      return this.moduleRef?.get?.(PortalAutomationRailwayRunnerService, { strict: false }) || null;
+    } catch (e: any) {
+      this.logger.warn(`PortalAutomationRailwayRunnerService çözülemedi: ${e?.message || e}`);
+      return null;
+    }
+  }
+
+  /**
+   * Çekim yolu — ekranla aynı kaynak: Taxpayer.isEFaturaMukellefi (Mükellefler listesindeki "e-Fatura mükellefi mi?" anahtarı).
+   * Anahtar kapalı ama mükellef kartında e-Fatura entegratörü yazılıysa (GIB_PORTAL hariç) yine e-Fatura yolu; gerisi GİB e-Arşiv.
+   */
+  private fmCekimYolu(t: { isEFaturaMukellefi?: boolean | null; eFaturaEntegrator?: string | null } | null | undefined): { yol: 'efatura' | 'earsiv'; karar: string } {
+    const entegrator = String(t?.eFaturaEntegrator || '').trim().toUpperCase();
+    if (t?.isEFaturaMukellefi === true) return { yol: 'efatura', karar: 'mükellef kartında "e-Fatura mükellefi" işaretli → e-Fatura Sorgu (entegratör)' };
+    if (entegrator && entegrator !== 'GIB_PORTAL') {
+      return { yol: 'efatura', karar: `mükellef kartında e-Fatura entegratörü yazılı (${entegrator}); "e-Fatura mükellefi" anahtarı kapalı — Mükellefler listesinden işaretlenmeli` };
+    }
+    return { yol: 'earsiv', karar: 'e-Fatura mükellefi değil → GİB e-Arşiv Sorgu (yalnız satış faturaları)' };
+  }
+
+  private fmCekimYon(v: any): 'alis' | 'satis' | 'ikisi' {
+    const y = String(v || '').trim().toLowerCase();
+    return y === 'alis' || y === 'satis' ? y : 'ikisi';
+  }
+
+  /** e-Fatura Sorgu ekranındaki üç kanal: Alış e-Fatura / Satış e-Fatura / Satış e-Arşiv (entegratör üzerinden). */
+  private fmCekimKanallari(yon: 'alis' | 'satis' | 'ikisi'): Array<{ kanal: 'IN_EFATURA' | 'OUT_EFATURA' | 'OUT_EARSIV'; direction: 'IN' | 'OUT'; yon: 'alis' | 'satis'; ad: string }> {
+    const hepsi: Array<{ kanal: 'IN_EFATURA' | 'OUT_EFATURA' | 'OUT_EARSIV'; direction: 'IN' | 'OUT'; yon: 'alis' | 'satis'; ad: string }> = [
+      { kanal: 'IN_EFATURA', direction: 'IN', yon: 'alis', ad: 'Alış e-Fatura' },
+      { kanal: 'OUT_EFATURA', direction: 'OUT', yon: 'satis', ad: 'Satış e-Fatura' },
+      { kanal: 'OUT_EARSIV', direction: 'OUT', yon: 'satis', ad: 'Satış e-Arşiv' },
+    ];
+    return yon === 'ikisi' ? hepsi : hepsi.filter((k) => k.yon === yon);
+  }
+
+  private fmCekimAnahtar(tenantId: string, taxpayerId: string, kanal: string): string {
+    return `${tenantId}:${taxpayerId}:${String(kanal).toUpperCase()}`;
+  }
+
+  /** Ortak giriş: mükellef + dönem + yön; hata → {ok:false, neden}. */
+  private async fmCekimGiris(
+    input: any,
+    ctx: { tenantId: string; taxpayerId?: string | null },
+  ): Promise<
+    | { ok: false; neden: string }
+    | { ok: true; taxpayerId: string; donem: string; yon: 'alis' | 'satis' | 'ikisi'; mukellef: string; taxpayer: any }
+  > {
+    const taxpayerId = String(input?.taxpayerId || ctx.taxpayerId || '').trim();
+    const donem = this.normalizeDonemYYYYMM(input?.donem || input?.period);
+    if (!taxpayerId) return { ok: false, neden: 'taxpayerId gerekli (list_taxpayers ile bul).' };
+    if (!donem) return { ok: false, neden: 'donem YYYY-MM biçiminde olmalı (örn. 2026-08).' };
+    const taxpayer: any = await this.prisma.taxpayer
+      .findFirst({
+        where: { id: taxpayerId, tenantId: ctx.tenantId },
+        select: { id: true, companyName: true, firstName: true, lastName: true, isEFaturaMukellefi: true, eFaturaEntegrator: true } as any,
+      })
+      .catch(() => null);
+    if (!taxpayer) return { ok: false, neden: 'Mükellef bulunamadı.' };
+    return { ok: true, taxpayerId, donem, yon: this.fmCekimYon(input?.yon), mukellef: this.displayName(taxpayer), taxpayer };
+  }
+
+  /** Ekranın activeEfaturaProvider mantığı: bağlı (kimliği tam + aktif) e-Fatura sağlayıcısı; TÜRMOB öne; yoksa tanımlı ilk; yoksa null. */
+  private async fmAktifEfaturaSaglayici(fm: any, tenantId: string, taxpayerId: string) {
+    const liste: any[] = await Promise.resolve(fm.listIntegrations(tenantId, { taxpayerId })).catch(() => []);
+    const efatura = (Array.isArray(liste) ? liste : [])
+      .filter((p) => String(p?.kind || '').toLowerCase() === 'efatura' || /EFATURA|ELOGO|UYUMSOFT|MIKRO|IZIBIZ|KOLAYSOFT|FORIBA|PARASUT|TURMOB/i.test(String(p?.provider || '')))
+      .sort((a, b) => (String(a?.provider || '') === 'TURMOB_EFATURA' ? -1 : 0) - (String(b?.provider || '') === 'TURMOB_EFATURA' ? -1 : 0));
+    const bagli = (p: any) => Boolean(p?.connected ?? p?.configured);
+    const aktif = efatura.filter(bagli)[0] || efatura.find((p) => p?.taxpayerScoped || p?.configured) || null;
+    return {
+      aktif,
+      bagli: aktif ? bagli(aktif) : false,
+      tanimli: efatura.filter((p) => p?.taxpayerScoped || p?.configured).map((p) => ({ provider: p.provider, label: p.label, bagli: bagli(p) })),
+    };
+  }
+
+  /**
+   * Arka plana alınmayan servis çağrısını en çok tavan saniye bekler. Aşarsa çağrı sunucuda SÜRER (iptal edilmez), kaydı
+   * fmCekimSenkronDurum'da 'running' kalır; fm_cekim_durum oradan okur. Aynı anahtar zaten koşuyorsa yenisi açılmaz.
+   */
+  private async fmSenkronKosu(anahtar: string, fn: () => Promise<any>): Promise<{ suruyor: boolean; zatenSuruyor?: boolean; sonuc?: any; hata?: string }> {
+    const onceki = this.fmCekimSenkronDurum.get(anahtar);
+    if (onceki?.state === 'running') return { suruyor: true, zatenSuruyor: true };
+    const kayit = { state: 'running' as const, startedAt: new Date().toISOString() };
+    this.fmCekimSenkronDurum.set(anahtar, kayit);
+    const is = Promise.resolve()
+      .then(fn)
+      .then((sonuc) => {
+        this.fmCekimSenkronDurum.set(anahtar, { ...kayit, state: 'done', finishedAt: new Date().toISOString(), sonuc });
+        return { sonuc };
+      })
+      .catch((e: any) => {
+        const hata = this.hataBilgisi(e).mesaj;
+        this.fmCekimSenkronDurum.set(anahtar, { ...kayit, state: 'error', finishedAt: new Date().toISOString(), error: hata });
+        this.logger.warn(`fm_cekim ${anahtar}: ${hata}`);
+        return { hata };
+      });
+    let zamanlayici: any = null;
+    const zaman = new Promise<{ suruyor: true }>((resolve) => {
+      zamanlayici = setTimeout(() => resolve({ suruyor: true }), Math.max(10, this.fmCekimSenkronTavanSn * 1000));
+      zamanlayici?.unref?.();
+    });
+    const r: any = await Promise.race([is, zaman]);
+    if (zamanlayici) clearTimeout(zamanlayici);
+    if (r?.suruyor) return { suruyor: true };
+    return { suruyor: false, sonuc: r?.sonuc, hata: r?.hata };
+  }
+
+  /** Aralıklı sorgu işi "YYYY-MM-DD_YYYY-MM-DD" etiketi taşır → ay ile örtüşme; düz etiket birebir. */
+  private fmEarsivIsDonemUyar(job: any, donem: string): boolean {
+    const etiket = String(job?.payload?.donem || job?.donem || '').trim();
+    if (!etiket) return false;
+    if (etiket === donem) return true;
+    const m = etiket.match(/^(\d{4}-\d{2}-\d{2})_(\d{4}-\d{2}-\d{2})$/);
+    if (!m) return etiket.startsWith(donem);
+    // Aralık ayı kapsıyor mu: başlangıç ayı ≤ dönem ≤ bitiş ayı.
+    return m[1].slice(0, 7) <= donem && m[2].slice(0, 7) >= donem;
+  }
+
+  /** Aynı dönem için pending/running EARSIV_PORTAL_FETCH işi (son 10 dk içinde güncellenmiş). */
+  private async fmEarsivAcikIs(tenantId: string, taxpayerId: string, donem: string): Promise<any | null> {
+    const isler: any[] = await (this.prisma as any).portalAutomationJob
+      .findMany({
+        where: { tenantId, taxpayerId, jobType: 'EARSIV_PORTAL_FETCH', status: { in: ['pending', 'running'] } },
+        orderBy: { createdAt: 'desc' },
+        take: 10,
+        select: { id: true, status: true, donem: true, payload: true, createdAt: true, updatedAt: true },
+      })
+      .catch(() => []);
+    return (
+      (Array.isArray(isler) ? isler : []).find((j) => {
+        if (!this.fmEarsivIsDonemUyar(j, donem)) return false;
+        const t = new Date(j.updatedAt || j.createdAt || 0).getTime();
+        return !t || Date.now() - t < 10 * 60 * 1000;
+      }) || null
+    );
+  }
+
+  private sonSatir(v: any): string | null {
+    const s = String(v || '').trim();
+    if (!s) return null;
+    return s.split(/\r?\n/).filter(Boolean).pop() || null;
+  }
+
+  /** fm_cekim_baslat — yolu araç seçer; hata asla fırlatılmaz ({ok:false, neden}). */
+  private async fmCekimBaslat(input: any, ctx: { tenantId: string; userId?: string | null; taxpayerId?: string | null }) {
+    const g = await this.fmCekimGiris(input, ctx);
+    if (!g.ok) return g;
+    const { yol, karar } = this.fmCekimYolu(g.taxpayer);
+    try {
+      return yol === 'efatura' ? await this.fmCekimEfaturaBaslat(g, karar, ctx) : await this.fmCekimEarsivBaslat(g, karar, ctx);
+    } catch (e: any) {
+      return { ok: false, yol, mukellef: g.mukellef, donem: g.donem, neden: this.hataBilgisi(e).mesaj };
+    }
+  }
+
+  /** e-Fatura yolu: POST /fatura-muhasebelestirme/efatura-sync ile aynı (kanal başına; TURKCELL/TÜRMOB kopuk arka plan). */
+  private async fmCekimEfaturaBaslat(
+    g: { taxpayerId: string; donem: string; yon: 'alis' | 'satis' | 'ikisi'; mukellef: string },
+    karar: string,
+    ctx: { tenantId: string; userId?: string | null },
+  ) {
+    const fm = await this.fmServisi();
+    if (!fm?.listIntegrations || !fm?.syncEfaturaInboxFromIntegrations || !fm?.startEfaturaSyncBackground) {
+      return { ok: false, yol: 'efatura', mukellef: g.mukellef, donem: g.donem, neden: 'Fatura Merkezi servisi kullanılamıyor.' };
+    }
+    const s = await this.fmAktifEfaturaSaglayici(fm, ctx.tenantId, g.taxpayerId);
+    if (!s.aktif) {
+      return {
+        ok: false, yol: 'efatura', mukellef: g.mukellef, donem: g.donem, karar,
+        neden: 'HAZIR DEĞİL: mükellefin e-Fatura entegratörü tanımlı değil (Mükellef kartı › Entegrasyon / Entegratörler ekranı) — Muzaffer Bey tanımlamalı.',
+      };
+    }
+    const provider = String(s.aktif.provider || '').toUpperCase();
+    const label = String(s.aktif.label || provider);
+    if (!s.bagli) {
+      return {
+        ok: false, yol: 'efatura', mukellef: g.mukellef, donem: g.donem, karar, saglayicilar: [{ provider, label }],
+        neden: `HAZIR DEĞİL: ${label} entegratör kimliği eksik ya da pasif — Entegratörler ekranından tamamlanmalı (Muzaffer Bey).`,
+      };
+    }
+    const arkaPlan = ToolExecutorService.FM_CEKIM_ARKA_PLAN_SAGLAYICILARI.has(provider);
+    const kanallar = this.fmCekimKanallari(g.yon);
+    const sonuclar: any[] = [];
+    for (const k of kanallar) {
+      const opts = { taxpayerId: g.taxpayerId, period: g.donem, direction: k.direction, channel: k.kanal, limit: 2000, providers: [provider] };
+      if (arkaPlan) {
+        let r: any = null;
+        try {
+          r = fm.startEfaturaSyncBackground(ctx.tenantId, ctx.userId || undefined, opts);
+        } catch (e: any) {
+          sonuclar.push({ kanal: k.kanal, ad: k.ad, arkaPlan: true, basladi: false, hata: this.hataBilgisi(e).mesaj });
+          continue;
+        }
+        sonuclar.push({ kanal: k.kanal, ad: k.ad, arkaPlan: true, basladi: r?.started === true, zatenSuruyor: r?.alreadyRunning === true });
+      } else {
+        const r = await this.fmSenkronKosu(`sorgu:${this.fmCekimAnahtar(ctx.tenantId, g.taxpayerId, k.kanal)}`, () =>
+          fm.syncEfaturaInboxFromIntegrations(ctx.tenantId, ctx.userId || undefined, opts),
+        );
+        const sonuc = r.sonuc
+          ? {
+              fetched: Number(r.sonuc.fetched || 0), added: Number(r.sonuc.added || 0), updated: Number(r.sonuc.updated || 0),
+              skipped: Number(r.sonuc.skipped || 0), failed: Number(r.sonuc.failed || 0),
+              saglayicilar: (Array.isArray(r.sonuc.providers) ? r.sonuc.providers : []).map((p: any) => ({ provider: p?.provider, status: p?.status, reason: p?.reason || null })),
+            }
+          : undefined;
+        sonuclar.push({ kanal: k.kanal, ad: k.ad, arkaPlan: false, suruyor: r.suruyor, zatenSuruyor: r.zatenSuruyor === true, ...(sonuc ? { sonuc } : {}), ...(r.hata ? { hata: r.hata } : {}) });
+      }
+    }
+    const basarili = sonuclar.filter((x) => x.basladi || x.zatenSuruyor || x.suruyor || x.sonuc);
+    const kanalAdlari = kanallar.map((k) => k.ad).join(', ');
+    let mesaj: string;
+    if (!basarili.length) mesaj = `Sorgu başlatılamadı: ${sonuclar.map((x) => `${x.ad}: ${x.hata || 'bilinmeyen hata'}`).join('; ')}`;
+    else if (arkaPlan) {
+      const yeni = sonuclar.filter((x) => x.basladi).length;
+      const suren = sonuclar.filter((x) => x.zatenSuruyor).length;
+      mesaj = `${label} sorgusu arka planda ${yeni ? 'başladı' : 'zaten sürüyordu'} (${kanalAdlari}${suren && yeni ? `; ${suren} kanal zaten sürüyordu` : ''}); bitişi fm_cekim_bekle ile izle.`;
+    } else {
+      const toplamGelen = sonuclar.reduce((a, x) => a + Number(x.sonuc?.fetched || 0), 0);
+      const toplamYeni = sonuclar.reduce((a, x) => a + Number(x.sonuc?.added || 0), 0);
+      const suren = sonuclar.filter((x) => x.suruyor).length;
+      mesaj = suren
+        ? `${label} sorgusu sunucuda sürüyor (${suren} kanal ${this.fmCekimSenkronTavanSn} sn içinde bitmedi); fm_cekim_bekle ile izle.`
+        : `${label} sorgusu tamamlandı (${kanalAdlari}): ${toplamGelen} satır geldi, ${toplamYeni} yeni.`;
+    }
+    return {
+      ok: basarili.length > 0,
+      yol: 'efatura',
+      mukellef: g.mukellef,
+      donem: g.donem,
+      yon: g.yon,
+      karar,
+      saglayicilar: [{ provider, label }],
+      arkaPlan,
+      isler: [] as string[],
+      kanallar: sonuclar,
+      mesaj,
+      ...(basarili.length ? { sonraki: 'fm_cekim_bekle {taxpayerId, donem} ile bitişi bekle (bitti:true) → fm_cekim_aktar.' } : { neden: mesaj }),
+    };
+  }
+
+  /** GİB e-Arşiv yolu: POST /fatura-muhasebelestirme/integrations/fetch {providers:[GIB_PORTAL], mode:query} + runner wake ile aynı. */
+  private async fmCekimEarsivBaslat(
+    g: { taxpayerId: string; donem: string; yon: 'alis' | 'satis' | 'ikisi'; mukellef: string },
+    karar: string,
+    ctx: { tenantId: string; userId?: string | null },
+  ) {
+    const GIB = { provider: 'GIB_PORTAL', label: 'GİB e-Arşiv Portal' };
+    if (g.yon === 'alis') {
+      return {
+        ok: false, yol: 'earsiv', mukellef: g.mukellef, donem: g.donem, karar,
+        neden: 'GİB e-Arşiv yolu yalnız SATIŞ faturalarını sorgular (alış belgeleri GİB portalında listelenmez; evrak/yükleme ile gelir). yon: satis ya da ikisi ile çağır.',
+      };
+    }
+    const fm = await this.fmServisi();
+    if (!fm?.fetchConfiguredIntegrations) return { ok: false, yol: 'earsiv', mukellef: g.mukellef, donem: g.donem, neden: 'Fatura Merkezi servisi kullanılamıyor.' };
+    const sonraki = 'fm_cekim_bekle {taxpayerId, donem} ile işi bekle (bitti:true) → fm_cekim_aktar.';
+    const mevcut = await this.fmEarsivAcikIs(ctx.tenantId, g.taxpayerId, g.donem);
+    if (mevcut) {
+      return {
+        ok: true, yol: 'earsiv', mukellef: g.mukellef, donem: g.donem, yon: 'satis', karar, saglayicilar: [GIB], arkaPlan: true,
+        mevcutIs: true, isler: [mevcut.id],
+        mesaj: `Aynı dönem için GİB e-Arşiv sorgusu zaten kuyrukta/çalışıyor (${mevcut.id}, ${mevcut.status}); yeni kopya açılmadı.`,
+        sonraki,
+      };
+    }
+    let r: any;
+    try {
+      r = await fm.fetchConfiguredIntegrations(
+        ctx.tenantId,
+        { taxpayerId: g.taxpayerId, direction: 'SATIS', donem: g.donem, providers: ['GIB_PORTAL'], mode: 'query' },
+        ctx.userId || undefined,
+      );
+    } catch (e: any) {
+      return { ok: false, yol: 'earsiv', mukellef: g.mukellef, donem: g.donem, karar, neden: this.hataBilgisi(e).mesaj };
+    }
+    const gib = (Array.isArray(r?.providers) ? r.providers : []).find((p: any) => String(p?.provider || '').toUpperCase() === 'GIB_PORTAL') || null;
+    const kuyrukta = gib?.status === 'QUEUED_GIB_PORTAL' || Number(gib?.queued || 0) > 0;
+    if (!kuyrukta) {
+      const reason = String(gib?.reason || 'GİB portal işi oluşturulamadı');
+      const neden = /kullanici kodu|sifresi yok|sifre/i.test(reason)
+        ? 'HAZIR DEĞİL: mükellef kartında GİB (İnteraktif Vergi Dairesi) kullanıcı kodu/şifresi yok — Muzaffer Bey mükellef kartından girmeli.'
+        : /zaten kuyrukta/i.test(reason)
+          ? 'Aynı GİB e-Arşiv sorgusu zaten kuyrukta; fm_cekim_bekle ile izle.'
+          : reason;
+      return { ok: false, yol: 'earsiv', mukellef: g.mukellef, donem: g.donem, karar, saglayicilar: [GIB], neden, detay: reason };
+    }
+    const isler: string[] = (Array.isArray(gib?.jobs) ? gib.jobs : []).map((j: any) => String(j?.id || '')).filter(Boolean);
+    let runnerUyandi = false;
+    try {
+      const runner = await this.portalRunnerServisi();
+      runnerUyandi = runner?.wake ? runner.wake('fatura-integrations-fetch') === true : false;
+    } catch (e: any) {
+      this.logger.warn(`fm_cekim_baslat runner wake: ${e?.message || e}`);
+    }
+    return {
+      ok: true,
+      yol: 'earsiv',
+      mukellef: g.mukellef,
+      donem: g.donem,
+      yon: 'satis',
+      karar,
+      saglayicilar: [GIB],
+      arkaPlan: true,
+      isler,
+      runnerUyandi,
+      ...(g.yon === 'ikisi' ? { not: 'Alış belgeleri GİB e-Arşiv\'de yoktur; yalnız satış sorgulandı.' } : {}),
+      mesaj: `GİB e-Arşiv satış sorgusu kuyruğa alındı (${isler.length} iş; ${runnerUyandi ? 'sunucu runner uyandırıldı' : 'yerel Luca ajanı alacak'}). Mükellefin GİB şifresiyle portal girişi yapılır.`,
+      sonraki,
+    };
+  }
+
+  /** fm_cekim_durum — hemen döner; yol verilmezse mükellef kartından seçilir. */
+  private async fmCekimDurum(input: any, ctx: { tenantId: string; userId?: string | null; taxpayerId?: string | null }) {
+    const g = await this.fmCekimGiris(input, ctx);
+    if (!g.ok) return g;
+    const istenen = String(input?.yol || '').trim().toLowerCase();
+    const yol = istenen === 'efatura' || istenen === 'earsiv' ? istenen : this.fmCekimYolu(g.taxpayer).yol;
+    try {
+      return yol === 'efatura' ? await this.fmCekimEfaturaDurum(g, ctx) : await this.fmCekimEarsivDurum(g, ctx);
+    } catch (e: any) {
+      return { ok: false, yol, mukellef: g.mukellef, donem: g.donem, neden: this.hataBilgisi(e).mesaj };
+    }
+  }
+
+  /** e-Fatura yolu durumu: GET efatura-sync/status (kanal başına) + efatura-inbox satır sayımı (ekranın sayaçları). */
+  private async fmCekimEfaturaDurum(
+    g: { taxpayerId: string; donem: string; yon: 'alis' | 'satis' | 'ikisi'; mukellef: string },
+    ctx: { tenantId: string },
+  ) {
+    const fm = await this.fmServisi();
+    if (!fm?.getEfaturaSyncStatus) return { ok: false, yol: 'efatura', mukellef: g.mukellef, donem: g.donem, neden: 'Fatura Merkezi servisi kullanılamıyor.' };
+    const es = await this.efaturaSyncServisi();
+    const indirmeDurumu = (r: any) => {
+      const raw = r?.rawJson && typeof r.rawJson === 'object' ? r.rawJson : {};
+      return String(raw?.documentDownloadStatus || (r?.ublXmlRaw ? 'READY' : '')).toUpperCase();
+    };
+    const aktarilmis = (r: any) => (r?.hasAccountingDocument === true ? true : r?.hasAccountingDocument === false ? false : Boolean(r?.documentId));
+    const kanallar: any[] = [];
+    for (const k of this.fmCekimKanallari(g.yon)) {
+      const anahtar = this.fmCekimAnahtar(ctx.tenantId, g.taxpayerId, k.kanal);
+      let srv: any = null;
+      try {
+        srv = fm.getEfaturaSyncStatus(ctx.tenantId, g.taxpayerId, k.kanal) || { state: 'idle' };
+      } catch {
+        srv = { state: 'idle' };
+      }
+      const senkron = this.fmCekimSenkronDurum.get(`sorgu:${anahtar}`) || null;
+      const aktarSenkron = this.fmCekimSenkronDurum.get(`aktar:${anahtar}`) || null;
+      const sorgu =
+        srv.state === 'running' || senkron?.state === 'running' ? 'suruyor'
+        : srv.state === 'error' || senkron?.state === 'error' ? 'hata'
+        : srv.state === 'done' || senkron?.state === 'done' ? 'bitti'
+        : 'yok';
+      // AKTAR (import) durumu — ekranla aynı bayat koruması: son güncelleme 90 sn'den eskiyse iş ölmüş say.
+      const imp: any = srv.import || {};
+      const impTaze = !imp.updatedAt || Date.now() - new Date(imp.updatedAt).getTime() < 90_000;
+      const aktarim =
+        (imp.state === 'running' && impTaze) || aktarSenkron?.state === 'running' ? 'suruyor'
+        : imp.state === 'done' || aktarSenkron?.state === 'done' ? 'bitti'
+        : aktarSenkron?.state === 'error' ? 'hata'
+        : 'yok';
+      let rows: any[] = [];
+      if (es?.listInbox) {
+        rows = await Promise.resolve(es.listInbox(ctx.tenantId, { taxpayerId: g.taxpayerId, period: g.donem, direction: k.direction, channel: k.kanal, limit: '2000' })).catch(() => []);
+        if (!Array.isArray(rows)) rows = [];
+      }
+      kanallar.push({
+        kanal: k.kanal,
+        ad: k.ad,
+        sorgu,
+        tur: srv.rounds ?? null,
+        eklenen: srv.added ?? senkron?.sonuc?.added ?? null,
+        hata: srv.error || senkron?.error || aktarSenkron?.error || null,
+        gelen: rows.length,
+        aktarilan: rows.filter(aktarilmis).length,
+        indirmeBekleyen: rows.filter((r) => indirmeDurumu(r) === 'PENDING_DOWNLOAD').length,
+        inemedi: rows.filter((r) => indirmeDurumu(r) === 'MISSING').length,
+        aktarim,
+        aktarimIlerleme: imp.state ? { islenen: Number(imp.processed || 0), toplam: Number(imp.total || 0), aktarilan: Number(imp.imported || 0) } : null,
+      });
+    }
+    const bitti = kanallar.every((k) => k.sorgu !== 'suruyor' && k.indirmeBekleyen === 0 && k.aktarim !== 'suruyor');
+    const ozet = kanallar
+      .map((k) => `${k.ad}: sorgu ${k.sorgu}${k.tur ? ` (${k.tur}. tur)` : ''} · gelen ${k.gelen} · aktarılan ${k.aktarilan}${k.indirmeBekleyen ? ` · indirme bekleyen ${k.indirmeBekleyen}` : ''}${k.inemedi ? ` · inemedi ${k.inemedi}` : ''}${k.aktarim !== 'yok' ? ` · aktarım ${k.aktarim}` : ''}${k.hata ? ` · hata: ${k.hata}` : ''}`)
+      .join(' | ');
+    return { ok: true, yol: 'efatura', mukellef: g.mukellef, donem: g.donem, bitti, ozet, ayrinti: { kanallar } };
+  }
+
+  /** GİB e-Arşiv yolu durumu: EARSIV_PORTAL_FETCH işleri (GET /portal-automation/jobs) + sorgulanan satırlar (GET earsiv/invoices). */
+  private async fmCekimEarsivDurum(g: { taxpayerId: string; donem: string; mukellef: string }, ctx: { tenantId: string }) {
+    const tarih = (d: any) => (d instanceof Date ? d.toISOString() : d ? String(d) : null);
+    const isler: any[] = await (this.prisma as any).portalAutomationJob
+      .findMany({
+        where: { tenantId: ctx.tenantId, taxpayerId: g.taxpayerId, jobType: 'EARSIV_PORTAL_FETCH' },
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+        select: { id: true, status: true, donem: true, payload: true, recordCount: true, errorMessage: true, startedAt: true, finishedAt: true, createdAt: true, updatedAt: true },
+      })
+      .catch(() => []);
+    const donemIsleri = (Array.isArray(isler) ? isler : [])
+      .filter((j) => this.fmEarsivIsDonemUyar(j, g.donem))
+      .slice(0, 5)
+      .map((j) => ({
+        id: j.id,
+        status: String(j.status || ''),
+        mod: String(j?.payload?.earsivMode || 'query'),
+        satir: Number(j.recordCount || 0),
+        hata: this.sonSatir(j.errorMessage),
+        baslangic: tarih(j.startedAt),
+        bitis: tarih(j.finishedAt),
+      }));
+    const aktif = donemIsleri.filter((j) => j.status === 'pending' || j.status === 'running');
+    const pa = await this.portalOtomasyonServisi();
+    let rows: any[] = [];
+    if (pa?.listEarsivPortalInvoices) {
+      rows = await Promise.resolve(pa.listEarsivPortalInvoices(ctx.tenantId, { taxpayerId: g.taxpayerId, period: g.donem, limit: 1000 })).catch(() => []);
+      if (!Array.isArray(rows)) rows = [];
+    }
+    const aktarildi = (r: any) => !!(r?.zatenVar || r?.muhasebeBelgeId || r?.aktarildi);
+    const satirlar = {
+      sorgulanan: rows.length,
+      aktarilabilir: rows.filter((r) => r?.isProcessable && !aktarildi(r)).length,
+      aktarilan: rows.filter(aktarildi).length,
+      iptal: rows.filter((r) => !r?.isProcessable).length,
+      indirilen: rows.filter((r) => r?.aktarimDurumu === 'indirildi').length,
+    };
+    const son = donemIsleri[0] || null;
+    const bitti = aktif.length === 0;
+    const isOzet = !son
+      ? 'bu dönem için sorgu işi yok'
+      : `iş ${son.status}${son.mod !== 'query' ? ` (${son.mod})` : ''}${son.satir ? ` · ${son.satir} satır` : ''}${son.hata ? ` · hata: ${son.hata}` : ''}`;
+    const ozet = `GİB e-Arşiv: ${isOzet}; sorgulanan ${satirlar.sorgulanan} · aktarılabilir ${satirlar.aktarilabilir} · aktarılmış ${satirlar.aktarilan} · iptal ${satirlar.iptal}`;
+    return { ok: true, yol: 'earsiv', mukellef: g.mukellef, donem: g.donem, bitti, isYok: donemIsleri.length === 0, ozet, ayrinti: { isler: donemIsleri, satirlar } };
+  }
+
+  /** fm_cekim_bekle — sunucuda bekler (10 sn döngü, ≤60 sn); kdv_kontrol_ocr_bekle kalıbı. */
+  private async fmCekimBekle(input: any, ctx: { tenantId: string; userId?: string | null; taxpayerId?: string | null; signal?: AbortSignal }) {
+    const maxSaniye = this.bekleSaniye(input?.maxSaniye);
+    const baslangic = Date.now();
+    let tur = 0;
+    let durum: any = null;
+    for (;;) {
+      durum = await this.fmCekimDurum(input, ctx);
+      tur++;
+      if (!durum?.ok || durum.bitti) break;
+      if (ctx.signal?.aborted) break;
+      if (Date.now() - baslangic + 10_000 > maxSaniye * 1000) break;
+      await this.bekle(10_000, ctx.signal);
+    }
+    if (!durum?.ok) return durum;
+    const yorum = durum.bitti
+      ? `Çekim bitti: ${durum.ozet}`
+      : ctx.signal?.aborted
+        ? 'Koşu iptal sinyali aldı; bekleme kesildi.'
+        : `Çekim sürüyor: ${durum.ozet} — tekrar fm_cekim_bekle çağır (toplam 12 dk tavanı; aşılırsa "sorgu sürüyor, bitince aktarılacak" de ve DUR).`;
+    return { ...durum, beklenenSaniye: Math.round((Date.now() - baslangic) / 1000), kontrolSayisi: tur, yorum };
+  }
+
+  /** fm_cekim_aktar — portaldaki "Aktar" düğmesi; yolu araç seçer. */
+  private async fmCekimAktar(input: any, ctx: { tenantId: string; userId?: string | null; taxpayerId?: string | null }) {
+    const g = await this.fmCekimGiris(input, ctx);
+    if (!g.ok) return g;
+    const { yol } = this.fmCekimYolu(g.taxpayer);
+    try {
+      return yol === 'efatura' ? await this.fmCekimEfaturaAktar(g, ctx) : await this.fmCekimEarsivAktar(g, ctx);
+    } catch (e: any) {
+      return { ok: false, yol, mukellef: g.mukellef, donem: g.donem, neden: this.hataBilgisi(e).mesaj };
+    }
+  }
+
+  /** e-Fatura yolu aktarımı: POST efatura-inbox/import {skipMatching:true} kanal başına; tavanı aşarsa sunucuda sürer. */
+  private async fmCekimEfaturaAktar(
+    g: { taxpayerId: string; donem: string; yon: 'alis' | 'satis' | 'ikisi'; mukellef: string },
+    ctx: { tenantId: string; userId?: string | null },
+  ) {
+    const fm = await this.fmServisi();
+    if (!fm?.importEfaturaInboxToAccounting) return { ok: false, yol: 'efatura', mukellef: g.mukellef, donem: g.donem, neden: 'Fatura Merkezi servisi kullanılamıyor.' };
+    // Ekranla aynı kapı: sorgu sürüyorsa ya da belgeler hâlâ iniyorsa (TÜRMOB tek oturum) Aktar pasif.
+    const durum: any = await this.fmCekimEfaturaDurum(g, ctx);
+    if (durum?.ok) {
+      const kanallar: any[] = durum.ayrinti?.kanallar || [];
+      const suren = kanallar.filter((k) => k.sorgu === 'suruyor').map((k) => k.ad);
+      if (suren.length) return { ok: false, yol: 'efatura', mukellef: g.mukellef, donem: g.donem, neden: `Sorgu hâlâ sürüyor (${suren.join(', ')}); fm_cekim_bekle ile bitmesini bekle, sonra aktar.` };
+      const inen = kanallar.filter((k) => k.indirmeBekleyen > 0).map((k) => `${k.ad}: ${k.indirmeBekleyen}`);
+      if (inen.length) return { ok: false, yol: 'efatura', mukellef: g.mukellef, donem: g.donem, neden: `Belgeler hâlâ iniyor (${inen.join(', ')}); fm_cekim_bekle ile bitmesini bekle, sonra aktar.` };
+      const aktarimSuren = kanallar.filter((k) => k.aktarim === 'suruyor').map((k) => k.ad);
+      if (aktarimSuren.length) return { ok: false, yol: 'efatura', mukellef: g.mukellef, donem: g.donem, neden: `Aktarım zaten sürüyor (${aktarimSuren.join(', ')}); fm_cekim_bekle ile izle.` };
+    }
+    const toplam = { aktarilan: 0, kontrolEdilen: 0, zatenVar: 0, atlanan: 0, hatali: 0, iptalAtlanan: 0 };
+    const kanalSonuc: any[] = [];
+    const kanallar = this.fmCekimKanallari(g.yon);
+    const kosu = (async () => {
+      for (const k of kanallar) {
+        const anahtar = `aktar:${this.fmCekimAnahtar(ctx.tenantId, g.taxpayerId, k.kanal)}`;
+        const kayit = { state: 'running' as const, startedAt: new Date().toISOString() };
+        this.fmCekimSenkronDurum.set(anahtar, kayit);
+        try {
+          const r: any = await fm.importEfaturaInboxToAccounting(ctx.tenantId, ctx.userId || undefined, {
+            taxpayerId: g.taxpayerId, period: g.donem, direction: k.direction, channel: k.kanal, limit: 2000, skipMatching: true,
+          });
+          toplam.aktarilan += Number(r?.imported || 0);
+          toplam.kontrolEdilen += Number(r?.processed || 0);
+          toplam.zatenVar += Number(r?.alreadyQueued || 0);
+          toplam.atlanan += Number(r?.skipped || 0);
+          toplam.hatali += Number(r?.failed || 0);
+          toplam.iptalAtlanan += Number(r?.iptalAtlanan || 0);
+          kanalSonuc.push({ kanal: k.kanal, ad: k.ad, aktarilan: Number(r?.imported || 0), kontrolEdilen: Number(r?.processed || 0), zatenVar: Number(r?.alreadyQueued || 0), hatali: Number(r?.failed || 0), hatalar: Array.isArray(r?.errors) ? r.errors.slice(0, 5) : [] });
+          this.fmCekimSenkronDurum.set(anahtar, { ...kayit, state: 'done', finishedAt: new Date().toISOString(), sonuc: r });
+        } catch (e: any) {
+          const hata = this.hataBilgisi(e).mesaj;
+          kanalSonuc.push({ kanal: k.kanal, ad: k.ad, hata });
+          this.fmCekimSenkronDurum.set(anahtar, { ...kayit, state: 'error', finishedAt: new Date().toISOString(), error: hata });
+          this.logger.warn(`fm_cekim_aktar ${k.kanal}: ${hata}`);
+        }
+      }
+    })();
+    let zamanlayici: any = null;
+    const zaman = new Promise<'suruyor'>((resolve) => {
+      zamanlayici = setTimeout(() => resolve('suruyor'), Math.max(10, this.fmCekimSenkronTavanSn * 1000));
+      zamanlayici?.unref?.();
+    });
+    const r = await Promise.race([kosu.then(() => 'bitti' as const), zaman]);
+    if (zamanlayici) clearTimeout(zamanlayici);
+    if (r === 'suruyor') {
+      // Controller'daki background kalıbı: çağrı sunucuda sürer, hata yalnız loglanır; ilerleme fm_cekim_durum (aktarım) ile izlenir.
+      kosu.catch((e: any) => this.logger.warn(`fm_cekim_aktar arka plan: ${e?.message || e}`));
+      return {
+        ok: true, yol: 'efatura', mukellef: g.mukellef, donem: g.donem, arkaPlan: true, suruyor: true, ...toplam, kanallar: kanalSonuc,
+        mesaj: `Aktarım sürüyor (sunucuda devam ediyor; ${kanalSonuc.length}/${kanallar.length} kanal bitti, şimdiye kadar ${toplam.aktarilan} aktarıldı). fm_cekim_bekle ile izle; bitti:true olunca fm_donem_ozeti oku.`,
+      };
+    }
+    const hatalar = kanalSonuc.filter((k) => k.hata);
+    const mesaj = hatalar.length === kanalSonuc.length && kanalSonuc.length
+      ? `Aktarım başarısız: ${hatalar.map((k) => `${k.ad}: ${k.hata}`).join('; ')}`
+      : `${toplam.aktarilan} fatura Fatura Merkezi'ne aktarıldı (eşleştirme yok; okunmamışlar okuma kuyruğuna girdi), ${toplam.kontrolEdilen} kontrol edildi, ${toplam.zatenVar} zaten vardı${toplam.hatali ? `, ${toplam.hatali} belge inmediği için atlandı` : ''}${toplam.iptalAtlanan ? `, ${toplam.iptalAtlanan} iptal/red atlandı` : ''}${hatalar.length ? `; hata: ${hatalar.map((k) => `${k.ad}: ${k.hata}`).join('; ')}` : ''}.`;
+    return { ok: !(hatalar.length === kanalSonuc.length && kanalSonuc.length), yol: 'efatura', mukellef: g.mukellef, donem: g.donem, arkaPlan: false, ...toplam, kanallar: kanalSonuc, mesaj, ...(hatalar.length === kanalSonuc.length && kanalSonuc.length ? { neden: mesaj } : {}) };
+  }
+
+  /** GİB e-Arşiv yolu aktarımı: POST portal-automation/earsiv/accounting-sync; belge inmemişse ekranla aynı yedek (download işi kuyruğa). */
+  private async fmCekimEarsivAktar(g: { taxpayerId: string; donem: string; mukellef: string }, ctx: { tenantId: string; userId?: string | null }) {
+    const pa = await this.portalOtomasyonServisi();
+    if (!pa?.listEarsivPortalInvoices || !pa?.syncEarsivPortalDocumentsToAccounting) {
+      return { ok: false, yol: 'earsiv', mukellef: g.mukellef, donem: g.donem, neden: 'Portal otomasyon servisi kullanılamıyor.' };
+    }
+    const acik = await this.fmEarsivAcikIs(ctx.tenantId, g.taxpayerId, g.donem);
+    if (acik) return { ok: false, yol: 'earsiv', mukellef: g.mukellef, donem: g.donem, neden: `GİB e-Arşiv sorgusu hâlâ sürüyor (${acik.id}, ${acik.status}); fm_cekim_bekle ile bitmesini bekle, sonra aktar.` };
+    let rows: any[] = await Promise.resolve(pa.listEarsivPortalInvoices(ctx.tenantId, { taxpayerId: g.taxpayerId, period: g.donem, limit: 1000 })).catch(() => []);
+    if (!Array.isArray(rows)) rows = [];
+    const aktarildi = (r: any) => !!(r?.zatenVar || r?.muhasebeBelgeId || r?.aktarildi);
+    const uygun = rows.filter((r) => r?.isProcessable && !aktarildi(r));
+    const zatenVar = rows.filter(aktarildi).length;
+    const iptal = rows.filter((r) => !r?.isProcessable).length;
+    if (!uygun.length) {
+      return {
+        ok: true, yol: 'earsiv', mukellef: g.mukellef, donem: g.donem, aktarilan: 0, kontrolEdilen: rows.length, zatenVar, iptal,
+        mesaj: rows.length
+          ? `Aktarılacak yeni belge yok: sorgulanan ${rows.length} satırın ${zatenVar} tanesi zaten Fatura Merkezi'nde, ${iptal} tanesi iptal/itirazlı.`
+          : 'Bu dönem için sorgulanmış e-Arşiv satırı yok; önce fm_cekim_baslat.',
+      };
+    }
+    const refs = uygun.map((r) => String(r?.sourceRefId || '').trim()).filter(Boolean);
+    const sync: any = await pa.syncEarsivPortalDocumentsToAccounting(ctx.tenantId, { taxpayerId: g.taxpayerId, period: g.donem, selectedRefs: refs });
+    const imported = Number(sync?.imported || 0);
+    const processed = Number(sync?.processed || 0);
+    const skipped = Number(sync?.skipped || 0);
+    if (imported === 0 && processed === 0 && refs.length > 0) {
+      // Belgeler inmemiş (storageKey yok) → ekranın yedek yolu: seçili satırlar için GİB indirme işi (mode:download) kuyruğa.
+      const fm = await this.fmServisi();
+      if (!fm?.fetchConfiguredIntegrations) return { ok: false, yol: 'earsiv', mukellef: g.mukellef, donem: g.donem, neden: 'Belgeler inmemiş; indirme işi için Fatura Merkezi servisi kullanılamıyor.' };
+      let fb: any;
+      try {
+        fb = await fm.fetchConfiguredIntegrations(
+          ctx.tenantId,
+          { taxpayerId: g.taxpayerId, direction: 'SATIS', donem: g.donem, providers: ['GIB_PORTAL'], mode: 'download', selectedRefs: refs },
+          ctx.userId || undefined,
+        );
+      } catch (e: any) {
+        return { ok: false, yol: 'earsiv', mukellef: g.mukellef, donem: g.donem, neden: `Belgeler inmemiş ve indirme işi açılamadı: ${this.hataBilgisi(e).mesaj}` };
+      }
+      const gib = (Array.isArray(fb?.providers) ? fb.providers : []).find((p: any) => String(p?.provider || '').toUpperCase() === 'GIB_PORTAL') || null;
+      const isler: string[] = (Array.isArray(gib?.jobs) ? gib.jobs : []).map((j: any) => String(j?.id || '')).filter(Boolean);
+      let runnerUyandi = false;
+      if (isler.length) {
+        try {
+          const runner = await this.portalRunnerServisi();
+          runnerUyandi = runner?.wake ? runner.wake('fatura-integrations-fetch') === true : false;
+        } catch {
+          runnerUyandi = false;
+        }
+      }
+      return {
+        ok: isler.length > 0,
+        yol: 'earsiv', mukellef: g.mukellef, donem: g.donem, aktarilan: 0, kontrolEdilen: rows.length, zatenVar, iptal,
+        indirmeKuyrukta: isler.length > 0, isler, runnerUyandi,
+        mesaj: isler.length
+          ? `Belgeler henüz inmemiş; ${refs.length} fatura için GİB indirme işi kuyruğa alındı (${isler.join(', ')}). fm_cekim_bekle → bitti:true → fm_cekim_aktar tekrar.`
+          : `Belgeler inmemiş, indirme işi açılamadı: ${gib?.reason || 'GİB portal işi oluşturulamadı'}`,
+        ...(isler.length ? {} : { neden: `Belgeler inmemiş, indirme işi açılamadı: ${gib?.reason || 'GİB portal işi oluşturulamadı'}` }),
+      };
+    }
+    return {
+      ok: true,
+      yol: 'earsiv', mukellef: g.mukellef, donem: g.donem,
+      aktarilan: imported, kontrolEdilen: processed, atlanan: skipped, zatenVar, iptal, toplamSatir: rows.length,
+      mesaj: imported > 0
+        ? `${imported} fatura bekleyen satışa aktarıldı (${processed} kontrol edildi; okunmamışlar okuma kuyruğuna girer).`
+        : `${processed} fatura kontrol edildi; yeni aktarım yok.`,
     };
   }
 

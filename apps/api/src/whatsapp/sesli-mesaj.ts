@@ -20,8 +20,61 @@ export const KURU_SESLI_NOT_METNI = '[kuru deneme: sesli not çevrilecekti]';
 export const KURU_SESLI_GONDERIM_NOTU = '[kuru deneme: sesli not gönderilecekti]';
 /** WhatsApp sesli notunun MIME türü (Baileys varsayılanıyla aynı). */
 export const SESLI_NOT_MIME = 'audio/ogg; codecs=opus';
-/** Sahibe giden sesli cevabın ses talimatı (MOREN AI ses ekranıyla aynı ton). */
-export const SESLI_NOT_SES_TALIMATI = 'Doğal, sıcak, profesyonel bir Türkçe kadın sesiyle konuş. Kısa duraklamalar kullan; hızlı okuma.';
+/**
+ * Sahibe giden sesli cevabın ses talimatı (gpt-4o-mini-tts `instructions`; İngilizce yazılır — model talimatı böyle daha iyi uygular).
+ * 2026-09-15 (Muzaffer Bey: "yapay konuşuyor, akıcı değil, Türkçe karakterleri yanlış okuyor"): eski talimattaki "hızlı okuma" kalktı;
+ * anadil İstanbul Türkçesi, doğal tonlama, acelesiz tempo, ç/ğ/ı/ö/ş/ü, sayı-tarih-tutarın Türkçe okunuşu, kısaltmaların harf harf okunuşu.
+ */
+export const SESLI_NOT_SES_TALIMATI = [
+  'Voice affect: a warm, calm, confident Turkish office assistant leaving a short voice note for her boss; sounds like a real person, not a narrator.',
+  'Language: Turkish only, as a native speaker from İstanbul; natural Turkish intonation, rhythm and vowel harmony.',
+  'Pronunciation: pronounce ç, ğ, ı, ö, ş, ü correctly; read numbers, dates and money the Turkish way (e.g. "Ağustos 2026", "üç bin dört lira bir kuruş").',
+  'Acronyms such as KDV, GİB, SGK, VKN are read letter by letter in Turkish (ka-de-ve, ge-i-be).',
+  'Pacing: conversational and unhurried; short natural pauses at commas and sentence ends; never rushed, never monotone, no robotic emphasis.',
+].join(' ');
+
+const SES_AYLARI = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
+const ayAdi = (ay: string) => SES_AYLARI[Number(ay) - 1] || ay;
+
+/**
+ * Sesli okuma için metin (TTS'e gitmeden ÖNCE; sesliMetniKirp'ten önce çağrılır):
+ *  - komut satırları (ONAYLIYORUM #PRV-…, YAPILDI #…) sese "kodu yazılı mesajda" cümlesi olur (kod harf harf okunmaz);
+ *  - "X bitirdi — Y" → "X bitirdi: Y", "A · B" → "A, B", madde imi düşer, "(canlı)" → ", canlı modda";
+ *  - tarih/dönem: 2026-08-15 → 15 Ağustos 2026, 2026/08 ve 08/2026 → Ağustos 2026;
+ *  - para: "1.500 ₺" / "₺1.500" / "1.500 TL" → "1.500 lira", "3.004,01 lira" → "3.004 lira 1 kuruş"; "%18" → "yüzde 18";
+ *  - "…" → "."; "#" işareti düşer. Emoji/markdown temizliği sesliMetniKirp'te.
+ */
+export function sesIcinMetin(metin: string): string {
+  const satirlar = String(metin || '')
+    .replace(/\r/g, '')
+    .split('\n')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((s) => {
+      if (/ONAYLIYORUM\s*#?\s*PRV/i.test(s)) return 'Göndermemi istiyorsanız yazılı mesajdaki onay kodunu yazmanız yeterli.';
+      if (/YAPILDI\s*#/i.test(s)) return 'Yapınca yazılı mesajdaki kodu yazmanız yeterli.';
+      return s;
+    });
+  return satirlar
+    .join('\n')
+    .replace(/\s*\((?:canlı|canli)\)/gi, ', canlı modda')
+    .replace(/\s+—\s+/g, ': ')
+    .replace(/\s+·\s+/g, ', ')
+    .replace(/^[•\-]\s+/gm, '')
+    .replace(/\b(20\d{2})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])\b/g, (_m, y, a, g) => `${Number(g)} ${ayAdi(a)} ${y}`)
+    .replace(/\b(0[1-9]|[12]\d|3[01])\.(0[1-9]|1[0-2])\.(20\d{2})\b/g, (_m, g, a, y) => `${Number(g)} ${ayAdi(a)} ${y}`)
+    .replace(/\b(20\d{2})[/-](0[1-9]|1[0-2])\b/g, (_m, y, a) => `${ayAdi(a)} ${y}`)
+    .replace(/\b(0[1-9]|1[0-2])\/(20\d{2})\b/g, (_m, a, y) => `${ayAdi(a)} ${y}`)
+    .replace(/₺\s*(\d[\d.,]*)/g, '$1 lira')
+    .replace(/(\d[\d.,]*)\s*(?:₺|\bTL\b)/g, '$1 lira')
+    .replace(/(\d(?:[\d.]*\d)?),(\d{2})\s+lira\b/g, (_m, tam, kurus) => (Number(kurus) ? `${tam} lira ${Number(kurus)} kuruş` : `${tam} lira`))
+    .replace(/%\s*(\d+(?:[.,]\d+)?)/g, 'yüzde $1')
+    .replace(/(\d+(?:[.,]\d+)?)\s*%/g, 'yüzde $1')
+    .replace(/…/g, '.')
+    .replace(/#/g, '')
+    .replace(/[ \t]+/g, ' ')
+    .trim();
+}
 
 /** Sahibin YAZILI mesajında sesli cevap istemi: "sesli cevap ver", "sesli söyle", "sesli oku", "sesle söyle", "sesli yanıt/anlat". */
 const SESLI_CEVAP_KALIBI = /(?:^|[^a-zçğıöşü])sesl[iı] (?:cevap|yanıt|söyle|oku|anlat)|sesle söyle/;
@@ -41,7 +94,7 @@ export function sesliMetniKirp(metin: string, max = SESLI_NOT_MAX_KARAKTER): str
     .replace(/https?:\/\/\S+/g, ' (bağlantı) ')
     .replace(/[*_`~]+/g, '')
     .replace(/[#>|]+/g, ' ')
-    .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}\u{200D}]/gu, ' ')
+    .replace(/[\u{1F000}-\u{1FAFF}\u{2300}-\u{23FF}\u{25A0}-\u{25FF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}\u{200D}]/gu, ' ') // emoji + ▶ ⏳ gibi simgeler
     .replace(/[ \t]+/g, ' ')
     .replace(/ *\n */g, '\n')
     .replace(/\n{2,}/g, '\n')

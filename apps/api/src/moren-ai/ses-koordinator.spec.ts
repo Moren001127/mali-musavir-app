@@ -232,6 +232,32 @@ describe('ses-koordinator — ajanSec (PLAN/17 §5 yönlendirme)', () => {
     expect(m).toEqual({ ajanId: null, recete: null, neden: expect.stringMatching(/Mihsap çekimi ekibe kapalı/) });
   });
 
+  // 2026-09-15 (Muzaffer Bey): "faturaları çek ve işle → Fatura İşleme Merkezi; e-Fatura mükellefi ise e-Fatura sorgulama, değilse GİB e-Arşiv".
+  it('fatura çekimi kalıpları → fatura/R5, R4\'ten ÖNCE: "çek ve işle" R5 (neden R4\'e geçişi söyler); e-fatura/e-arşiv sorgula; entegratörden çek', () => {
+    for (const c of [
+      "Erdoğan Balçık'ın Ağustos faturalarını çek ve işle",
+      "X'in faturalarını çek, sonra işle",
+      'E-Fatura sorgula',
+      "Öz Ela'nın Ağustos e-fatura sorgusunu yap",
+      'e-Arşiv sorgula',
+      "X'in e-arşiv faturalarını sorgula",
+      'Entegratörden çek',
+      "Tahir Sucu'nun Ağustos faturalarını entegratörden çek",
+      "X'in Ağustos faturalarını sorgula",
+    ]) expect({ c, r: sec(c) }).toEqual({ c, r: 'fatura/R5' });
+    const cekIsle = ajanSec("Erdoğan Balçık'ın Ağustos faturalarını çek ve işle")!;
+    expect(cekIsle.neden).toMatch(/Fatura İşleme Merkezi/);
+    expect(cekIsle.neden).toMatch(/e-Fatura Sorgu, değilse GİB e-Arşiv/);
+    expect(cekIsle.neden).toMatch(/R4’e geçer/);
+    expect(cekIsle.neden).not.toMatch(/PRV|önizleme/);
+    // yalnız "çek" → R4 notu yok; yalnız "işle" → yine R4
+    expect(ajanSec("X'in faturalarını çek")!.neden).not.toMatch(/R4’e geçer/);
+    expect(sec("X'in Ağustos faturalarını işle")).toBe('fatura/R4');
+    expect(sec("X'in Ağustos faturalarını muhasebeleştir")).toBe('fatura/R4');
+    // Mihsap yine kapalı
+    expect(ajanSec("Mihsap'tan faturaları çek ve işle")).toMatchObject({ ajanId: null, recete: null });
+  });
+
   it('denetim / mizanda sorun / kasa-ortak / mizan çek → denetci/R6 (mizan çekimi luca-operator\'e gitmez)', () => {
     expect(sec("X'in geçici vergi öncesi denetimini yap")).toBe('denetci/R6');
     expect(sec("Tahir Sucu'nun mizanını denetle")).toBe('denetci/R6');

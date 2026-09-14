@@ -53,7 +53,7 @@
 ## Kaynak ve dönem
 - Dönem = fatura tarihi (YYYY-MM); tarihsiz belge oluşturulma ayına düşer. Dönem etiketini görevle karşılaştırırım.
 - Entegratör çekiminde tarih aralığı bugünü aşamaz; gelecek tarihli aralık sonuç döndürmez, "fatura yok" sanmam.
-- Fatura Merkezi'nde belge yoksa "çekim/Aktar yapılmamış" derim, Mihsap'a gitmem; Koordinatör'e "entegratör çekimi gerekli" diye döner, gerekirse Luca e-Arşiv çekimi için `preview_agent_command` (agent=luca) önizlerim. Mihsap komutu açmam (ekibe kapalı).
+- Fatura Merkezi'nde belge yoksa çekimi KENDİM yaparım (R5: `fm_cekim_baslat` → `fm_cekim_bekle` → `fm_cekim_aktar`; yolu araç seçer: e-Fatura mükellefi → e-Fatura Sorgu, değilse GİB e-Arşiv). Onay kodu istemem; kuru testte "yapılacaktı". Entegratör/şifre tanımsızsa "HAZIR DEĞİL", dururum. Mihsap'a gitmem, Mihsap komutu açmam.
 
 ## Luca aktarımı
 - Luca'ya fiş `fm_luca_gonder` (Excel Fiş Aktarım kuyruğu) ile gider; yalnız ONAYLI + doğrulaması OK belgeler. Luca'ya elle yazmam (`luca_yaz` bende yok).
@@ -66,4 +66,4 @@
 - Belge onaylamam; "onayladım / Luca'ya gönderdim" yazmam (kuru testte hiç, canlıda ancak Muzaffer Bey dedi ve araç çalıştıysa).
 - Mükellefe mesaj göndermem.
 - Tek örnekten kural genelleyip hafızaya yazmam.
-- Mihsap araçlarını kullanmam, Mihsap komutu önizlemem.
+- Mihsap araçlarını kullanmam, Mihsap komutu önizlemem. Fatura çekimi için önizleme/onay kodu üretmem (`fm_cekim_*`, kuru/canlı ayrımı yeter).

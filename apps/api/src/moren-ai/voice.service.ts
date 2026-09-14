@@ -181,16 +181,24 @@ export class VoiceService {
    */
   async synthesize(
     text: string,
-    voice = 'nova',
+    voice?: string,
     instructions?: string,
   ): Promise<{ audio: Buffer; contentType: string; durationMs: number }> {
     // Uzun metinleri kes — TTS maliyeti token bazlı
-    return this.seslendir(text, { voice, instructions, format: 'mp3', contentType: 'audio/mpeg', maxChars: 4000 });
+    return this.seslendir(text, { voice: voice || VoiceService.varsayilanSes(), instructions, format: 'mp3', contentType: 'audio/mpeg', maxChars: 4000 });
+  }
+
+  /**
+   * Varsayılan TTS sesi: OPENAI_TTS_VOICE, yoksa "marin" (OpenAI'nin 2025 sonu eklediği en doğal sesi; canlı ses hattıyla da aynı).
+   * 2026-09-15: "nova" yapay/aceleci bulundu (Muzaffer Bey) — 8 ses örneklendi, seçim env ile değişir, dağıtım gerekmez.
+   */
+  static varsayilanSes(): string {
+    return String(process.env.OPENAI_TTS_VOICE || '').trim() || 'marin';
   }
 
   /**
    * WhatsApp SESLİ NOTU için metni Ogg/Opus'a çevirir (OpenAI TTS response_format:'opus'; ffmpeg gerekmez,
-   * Baileys'e ptt:true ile doğrudan verilir). Ses/ton MOREN AI ses ekranıyla aynı (nova).
+   * Baileys'e ptt:true ile doğrudan verilir). Ses: OPENAI_TTS_VOICE (varsayılan marin).
    * Tavan 900 karakter: uzun raporun yalnız başı seslendirilir; tamamı yazılı mesaj olarak zaten gider.
    */
   async synthesizeOpus(
@@ -198,7 +206,7 @@ export class VoiceService {
     opts?: { voice?: string; instructions?: string; maxChars?: number },
   ): Promise<{ audio: Buffer; contentType: string; durationMs: number }> {
     return this.seslendir(text, {
-      voice: opts?.voice || 'nova',
+      voice: opts?.voice || VoiceService.varsayilanSes(),
       instructions: opts?.instructions,
       format: 'opus',
       contentType: 'audio/ogg; codecs=opus',

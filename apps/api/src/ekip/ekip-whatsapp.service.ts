@@ -1,12 +1,15 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Interval } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { WhatsAppService } from '../whatsapp/whatsapp.service';
 import { OwnerOnlyGuard } from '../auth/guards/owner-only.guard';
 import { ajanSec, canliModIstendi, whatsappGoreviOlustur } from '../moren-ai/ses-koordinator';
 import { EkipKosuOlayi, EkipKosuSonucu, EkipRunnerService } from './ekip-runner.service';
+import { SUREC_KIMLIGI } from './ekip-bekci';
+import { ajanBul } from './ajan-tanimlari';
 import { EkipOnayService } from './ekip-onay.service';
 import { EkipAkisService } from './ekip-akis.service';
-import { bildirimAcikMi, bildirimTuru, konuBasligi } from './ekip-akis';
+import { bildirimAcikMi, bildirimTuru } from './ekip-akis';
 import {
   ISTEK_KIMLIK_UZUNLUGU,
   SahipKomutTuru,
@@ -14,6 +17,7 @@ import {
   baslangicMesaji,
   bitisMesaji,
   iletildiMetni,
+  insanKonusu,
   istekMesaji,
   kuruDenemeMetni,
   onayMesaji,
@@ -35,6 +39,13 @@ import {
  * OwnerNotifier KULLANILMAZ (AUTOMATION tipini WhatsApp'a vermiyor + 10 sn tekil düşürüyor) → doğrudan whatsapp.sendMessage
  * (koordinator.service sabahOzeti kalıbı, quote:false) · gönderim başarısızsa 3 deneme (30 sn ara) · aynı vakada 5 sn tampon.
  * Runner'a bağımlılık tek yönlü: runner bu servisi bilmez, olayları bitisDinleyiciEkle dinleyicisine verir.
+ *
+ * 2026-09-15 (Muzaffer Bey: "gereksiz kodlar" + "işi bitirdi ama hâlâ sürüyor görünüyor"):
+ *  - Başlıklar insan dilinde (insanKonusu); Koordinatör işi personele devrettiyse kendi "✅ bitirdi" mesajı ATILMAZ
+ *    (▶️ personel başladı / ✅ personel bitirdi zaten anlatıyor; Koordinatör'ün "bitirdi"si iş bitmeden bitti sanılıyordu).
+ *  - BİTİŞ İŞARETİ: her bitiş olayı işlendiğinde (gönderildi / bilinçli atlandı / sync cevapla verildi) payload.whatsappBitis yazılır.
+ *  - DRENAJ TARAMASI (@Interval 60 sn): dağıtımda eski kopya koşuyu bitirir ama WhatsApp soketi kapandığı için ✅/❌ mesajını
+ *    atamaz → yeni kopya, bu süreç başladıktan sonra BAŞKA süreçte bitmiş ve işaretsiz ekip işlerini bulup mesajı kendisi atar.
  */
 
 /** Kök koşu izi (vakaId = kök iş id'si): sync/arka plan durumu, biriken olaylar, kayıt bağlamı. */
@@ -52,6 +63,8 @@ interface VakaIzi {
   birikenler: EkipKosuOlayi[];
   /** Kök koşu sırasında açılan "sizden istenen" kalemleri — sync cevaba girer. */
   istekler: Array<{ id: string; baslik: string }>;
+  /** Koordinatör bu vakada personele iş verdi (çocuk koşu başladı) → kökün kendi ✅ mesajı atlanır. */
+  cocukBasladi: boolean;
 }
 
 interface GonderimHedefi {
@@ -64,6 +77,10 @@ interface GonderimHedefi {
 
 /** Servis içi iz sayısı tavanı (süreç belleği; en eski düşer). */
 const VAKA_IZI_TAVAN = 200;
+/** Drenaj taraması: bu süreç başladıktan sonra bitmiş işler; bitişten en az bu kadar sonra (kendi dinleyicimize fırsat). */
+const DRENAJ_BITIS_GECIKME_MS = 20_000;
+const DRENAJ_TARAMA_MS = 60_000;
+const SUREC_BASLANGICI = new Date(Number(SUREC_KIMLIGI.split('@')[1]) || Date.now());
 const MUKELLEF_AD_ONBELLEK_TAVAN = 500;
 export const EKIP_WHATSAPP_MODEL_ETIKETI = 'ekip-koordinator:whatsapp';
 
@@ -82,7 +99,7 @@ export class EkipWhatsappService implements OnModuleInit {
   protected tamponMs = 5_000;
 
   private readonly vakalar = new Map<string, VakaIzi>();
-  private readonly tampon = new Map<string, { hedef: GonderimHedefi; metinler: string[]; zamanlayici: NodeJS.Timeout }>();
+  private readonly tampon = new Map<string, { hedef: GonderimHedefi; metinler: string[]; bitisIsIdler: string[]; zamanlayici: NodeJS.Timeout }>();
   private readonly mukellefAdlari = new Map<string, string | null>();
   /** Olay mesajları sırayla işlensin (mükellef adı sorgusu asenkron; ▶️ başladı ✅ bitti sırası bozulmasın). */
   private zincir: Promise<void> = Promise.resolve();
@@ -162,6 +179,7 @@ export class EkipWhatsappService implements OnModuleInit {
           kokBitti: false,
           birikenler: [],
           istekler: [],
+          cocukBasladi: false,
         });
       },
     });
@@ -197,6 +215,7 @@ export class EkipWhatsappService implements OnModuleInit {
       iz.kokBitti = true;
       iz.birikenler = []; // sync cevap onay/istek satırlarını zaten taşır
     }
+    if (s.isId) void this.bitisIsaretle([s.isId], 'sync');
     const metin = sahipCevabiOlustur({
       rapor: s.rapor,
       hata: s.hata,
@@ -282,10 +301,16 @@ export class EkipWhatsappService implements OnModuleInit {
     const iz = this.vakalar.get(vakaId);
     const cocuk = Boolean(k.ustIsId);
     if (o.tur === 'istek' && iz && !cocuk) iz.istekler.push({ id: o.bildirimId, baslik: o.baslik });
+    if (o.tur === 'basladi' && cocuk && iz) iz.cocukBasladi = true;
     if (o.tur === 'basladi' && !cocuk) return; // kök başlangıcı: iz sahipMesaji'nda açıldı, mesaj yok
     if (o.tur === 'bitti' && !cocuk) {
       if (iz) iz.kokBitti = true;
-      if (!iz?.kokArkaPlanda) return; // sync bitiş: cevabı sahipMesaji verir
+      if (!iz?.kokArkaPlanda) return; // sync bitiş: cevabı sahipMesaji verir (işareti de o yazar)
+      // Koordinatör işi personele verdiyse kendi "bitirdi"si yazılmaz — personelin ▶️/✅ mesajları işi anlatır; soru/onay varsa yazılır.
+      if (iz.cocukBasladi && !o.basarisiz && !o.sonuc.onayBekleyen?.length && !/(^|\n)\s*SORU\s*:/i.test(o.sonuc.rapor || '')) {
+        void this.bitisIsaretle([k.isId], 'atlandi');
+        return;
+      }
     }
     const hemen = cocuk || iz?.kokArkaPlanda === true;
     if (!hemen) {
@@ -304,7 +329,7 @@ export class EkipWhatsappService implements OnModuleInit {
   private async olayMetniniYolla(o: EkipKosuOlayi, iz: VakaIzi | null): Promise<void> {
     const k = o.kosu;
     const mukellefAd = await this.mukellefAdi(k.tenantId, k.taxpayerId);
-    const konu = konuBasligi(k.gorev);
+    const konu = insanKonusu(k.gorev);
     let metin: string;
     switch (o.tur) {
       case 'basladi':
@@ -344,7 +369,83 @@ export class EkipWhatsappService implements OnModuleInit {
         sahipKisiId: iz?.sahipKisiId ?? null,
       },
       metin,
+      o.tur === 'bitti' ? k.isId : null,
     );
+  }
+
+  // ─── BİTİŞ İŞARETİ + DRENAJ TARAMASI ───
+
+  /** payload.whatsappBitis = "<nasıl>@<ISO>" — bu işin bitiş mesajı işlendi; drenaj taraması bir daha üretmesin. Hata yutulur. */
+  async bitisIsaretle(isIdler: string[], nasil: 'gonderildi' | 'atlandi' | 'sync'): Promise<void> {
+    const db: any = this.prisma;
+    if (typeof db.$executeRaw !== 'function') return;
+    const deger = `${nasil}@${new Date().toISOString()}`;
+    for (const isId of isIdler.filter(Boolean)) {
+      try {
+        await db.$executeRaw`UPDATE agent_commands SET payload = jsonb_set(COALESCE(payload, '{}'::jsonb), '{whatsappBitis}', to_jsonb(${deger}::text)) WHERE id = ${isId}`;
+      } catch (e: any) {
+        this.logger.warn(`[Ekip→WhatsApp] bitiş işareti yazılamadı ${isId}: ${e?.message || e}`);
+      }
+    }
+  }
+
+  /**
+   * Dağıtım drenajı: eski kopyada bitmiş (payload.surec ≠ bu süreç) ama WhatsApp mesajı atılamamış ekip işleri (whatsappHedef dolu,
+   * whatsappBitis yok, bu süreç başladıktan sonra bitmiş) → ✅/❌ mesajı buradan. Bekçinin "sunucu yeniden başladı / nabız kesildi"
+   * diye kapattığı işler de böyle duyurulur. Kök Koordinatör işi personele devretmişse (ekip_ajan_baslat) atlanır.
+   */
+  @Interval(DRENAJ_TARAMA_MS)
+  async drenajBitisleriniTara(): Promise<number> {
+    const db: any = this.prisma;
+    if (typeof db?.agentCommand?.findMany !== 'function') return 0;
+    const isler: any[] = await db.agentCommand
+      .findMany({
+        where: {
+          agent: { startsWith: 'ekip:' },
+          status: { in: ['done', 'failed'] },
+          finishedAt: { gte: SUREC_BASLANGICI, lte: new Date(Date.now() - DRENAJ_BITIS_GECIKME_MS) },
+        },
+        select: { id: true, tenantId: true, agent: true, status: true, payload: true, result: true },
+        orderBy: { finishedAt: 'asc' },
+        take: 50,
+      })
+      .catch(() => []);
+    let sayi = 0;
+    for (const is of isler) {
+      const p = is?.payload && typeof is.payload === 'object' ? is.payload : {};
+      if (!p.whatsappHedef || p.whatsappBitis || p.surec === SUREC_KIMLIGI) continue;
+      const r = is?.result && typeof is.result === 'object' ? is.result : {};
+      const ajanId = String(is.agent || '').replace(/^ekip:/, '');
+      const ajan = ajanBul(ajanId);
+      const kok = !p.ustIsId;
+      const devretti = kok && Array.isArray(r.toolUses) && r.toolUses.some((t: any) => t?.name === 'ekip_ajan_baslat');
+      const basarisiz = is.status === 'failed';
+      if (devretti && !basarisiz) {
+        await this.bitisIsaretle([is.id], 'atlandi');
+        continue;
+      }
+      const mukellefAd = await this.mukellefAdi(is.tenantId, p.taxpayerId || r.taxpayerId || null);
+      const metin = bitisMesaji({
+        ajanAd: ajan?.ad || ajanId,
+        mukellefAd,
+        konu: insanKonusu(String(p.gorev || '')),
+        rapor: String(r.rapor || ''),
+        hata: r.hata || null,
+        basarisiz,
+        dryRun: p.dryRun !== false,
+        kuruTestSayisi: Array.isArray(r.kuruTestYapilacaktilar) ? r.kuruTestYapilacaktilar.length : 0,
+        onayBekleyen: Array.isArray(r.onayBekleyen) ? r.onayBekleyen : [],
+      });
+      const iz = this.vakalar.get(p.vakaId || is.id);
+      this.kuyrukla(
+        { tenantId: is.tenantId, telefon: String(p.whatsappHedef), vakaId: p.vakaId || is.id, konusmaId: iz?.konusmaId ?? null, sahipKisiId: iz?.sahipKisiId ?? null },
+        metin,
+        is.id,
+      );
+      sayi++;
+    }
+    if (sayi) this.logger.log(`[Ekip→WhatsApp] drenaj taraması: başka süreçte bitmiş ${sayi} işin bitiş mesajı kuyruğa alındı`);
+    return sayi;
   }
 
   /** id → görünen ad (companyName | ad soyad); sorgu düşerse null. Küçük önbellek. */
@@ -374,21 +475,25 @@ export class EkipWhatsappService implements OnModuleInit {
   // ─── GÖNDERİM: 5 sn vaka tamponu + 3 deneme ───
 
   /** Aynı vakada (tenant|telefon|vaka) tampon süresi içinde gelen mesajlar tek WhatsApp mesajında birleşir. */
-  private kuyrukla(hedef: GonderimHedefi, metin: string): void {
+  private kuyrukla(hedef: GonderimHedefi, metin: string, bitisIsId: string | null = null): void {
     const anahtar = `${hedef.tenantId}|${hedef.telefon}|${hedef.vakaId}`;
     const eldeki = this.tampon.get(anahtar);
     if (eldeki) {
       eldeki.metinler.push(metin);
+      if (bitisIsId) eldeki.bitisIsIdler.push(bitisIsId);
       return;
     }
     const zamanlayici = setTimeout(() => {
       const t = this.tampon.get(anahtar);
       this.tampon.delete(anahtar);
       if (!t) return;
-      void this.gonderDenemeli(t.hedef, t.metinler.join('\n\n'));
+      void this.gonderDenemeli(t.hedef, t.metinler.join('\n\n')).then((ok) => {
+        if (ok && t.bitisIsIdler.length) return this.bitisIsaretle(t.bitisIsIdler, 'gonderildi');
+        return undefined;
+      });
     }, this.tamponMs);
     (zamanlayici as any).unref?.();
-    this.tampon.set(anahtar, { hedef, metinler: [metin], zamanlayici });
+    this.tampon.set(anahtar, { hedef, metinler: [metin], bitisIsIdler: bitisIsId ? [bitisIsId] : [], zamanlayici });
   }
 
   /** whatsapp.sendMessage false dönerse (bağlı değil / kapalı) yenidenDenemeSayisi kadar dener; sonra vazgeçer, log. */
@@ -437,8 +542,8 @@ export class EkipWhatsappService implements OnModuleInit {
   }
 
   /** Teşhis/test: kök izi. */
-  vakaIzi(vakaId: string): { kokArkaPlanda: boolean; kokBitti: boolean; birikenSayisi: number; istekSayisi: number } | null {
+  vakaIzi(vakaId: string): { kokArkaPlanda: boolean; kokBitti: boolean; birikenSayisi: number; istekSayisi: number; cocukBasladi: boolean } | null {
     const iz = this.vakalar.get(vakaId);
-    return iz ? { kokArkaPlanda: iz.kokArkaPlanda, kokBitti: iz.kokBitti, birikenSayisi: iz.birikenler.length, istekSayisi: iz.istekler.length } : null;
+    return iz ? { kokArkaPlanda: iz.kokArkaPlanda, kokBitti: iz.kokBitti, birikenSayisi: iz.birikenler.length, istekSayisi: iz.istekler.length, cocukBasladi: iz.cocukBasladi } : null;
   }
 }

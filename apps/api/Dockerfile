@@ -85,4 +85,6 @@ WORKDIR /app/apps/api
 
 EXPOSE ${PORT:-3001}
 
-CMD ["sh", "-c", "node /app/apps/api/scripts/cleanup-failed-migrations.js && npx prisma migrate deploy && node /app/apps/api/dist/main"]
+# `exec node` ŞART (2026-09-15): sh -c zincirinde SIGTERM sh'e gider, node'a ULAŞMAZ → kapanış kancaları (Baileys soketi bırakma,
+# ekip koşusu drenajı) hiç çalışmıyordu; konteyner kapanınca node SIGKILL ile ölüyordu. exec ile node PID 1 olur, SIGTERM'i kendisi alır.
+CMD ["sh", "-c", "node /app/apps/api/scripts/cleanup-failed-migrations.js && npx prisma migrate deploy && exec node /app/apps/api/dist/main"]

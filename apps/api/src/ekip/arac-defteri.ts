@@ -125,6 +125,30 @@ const PORTAL_KADEMELERI: Record<string, BekleyenPortalAraci> = {
     aciklama: 'Mükellefin hazır gelir tablosu / bilanço / mizan dönemlerini tek listede verir (kilitli mi, kaynak, id)',
     parametreler: ['taxpayerId*'],
   },
+  // FATURA ÇEKİMİ ZİNCİRİ (R5, 2026-09-15): Fatura İşleme Merkezi "Sorgula / Aktar" düğmelerinin ekip karşılığı.
+  //   baslat: e-Fatura yolunda entegratör API sorgusu, GİB e-Arşiv yolunda Luca ajanına EARSIV_PORTAL_FETCH işi (mükellefin GİB
+  //   şifresiyle portal girişi) → luca_yaz: kuru testte "yapılacaktı". aktar: Fatura Merkezi'ne belge yazar, gerekirse indirme işi
+  //   kuyruklar → luca_yaz. durum/bekle yalnız okur.
+  fm_cekim_baslat: {
+    kademe: 'luca_yaz',
+    aciklama: 'Fatura çekimini portaldaki düğmeyle aynı yoldan başlatır: e-Fatura mükellefi → entegratör e-Fatura sorgusu; değilse GİB e-Arşiv (Luca ajanı işi). Entegratör yoksa HAZIR DEĞİL',
+    parametreler: ['taxpayerId*', 'donem*', 'yon'],
+  },
+  fm_cekim_durum: {
+    kademe: 'oku',
+    aciklama: 'Fatura çekiminin anlık durumu (sorgu sürüyor/bitti, gelen satır, aktarılan, e-Arşiv iş durumu); beklemez',
+    parametreler: ['taxpayerId*', 'donem*', 'yol', 'yon'],
+  },
+  fm_cekim_bekle: {
+    kademe: 'oku',
+    aciklama: 'Fatura çekiminin bitişini sunucuda en çok 60 sn bekler; bitti:true dönene kadar tekrar çağır (12 dk tavan için ≤12 çağrı)',
+    parametreler: ['taxpayerId*', 'donem*', 'yol', 'yon', 'maxSaniye'],
+  },
+  fm_cekim_aktar: {
+    kademe: 'luca_yaz',
+    aciklama: 'Sorgulanan faturaları Fatura Merkezi’ne aktarır (portaldaki Aktar düğmesi; eşleştirme yok, okuma kuyruğu kendiliğinden başlar)',
+    parametreler: ['taxpayerId*', 'donem*', 'yon'],
+  },
   // SAHİP VEKİLİ araçları: tools.ts'e girerse bile kuru testte kapalı; hiçbir ajan listesinde YOK (spec kilidi).
   kdv_kontrol_kilitle: { kademe: 'portal_yaz_agir', aciklama: 'KDV Kontrol oturumunu kilitler — yalnız Muzaffer Bey’in sözüyle', parametreler: ['sessionId*'] },
   kdv_kontrol_kilit_ac: { kademe: 'portal_yaz_agir', aciklama: 'KDV Kontrol oturum kilidini açar — yalnız Muzaffer Bey’in sözüyle', parametreler: ['sessionId*'] },

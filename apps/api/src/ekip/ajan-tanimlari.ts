@@ -74,6 +74,11 @@ const FM_OKU = ['fm_belge_listele', 'fm_belge_detay', 'fm_donem_ozeti', 'fm_uyum
 const FM_YAZ = ['fm_hesap_ata', 'fm_ai_ile_oku', 'fm_isaretle'];
 const FM_LUCA = ['fm_luca_gonder'];
 /**
+ * Fatura çekimi zinciri (R5, 2026-09-15) — Fatura İşleme Merkezi "Sorgula / Aktar" düğmelerinin ekip karşılığı; yolu araç seçer
+ * (e-Fatura mükellefi → entegratör e-Fatura sorgusu, değilse GİB e-Arşiv). Kademe: baslat/aktar luca_yaz, durum/bekle oku.
+ */
+const FM_CEKIM = ['fm_cekim_baslat', 'fm_cekim_durum', 'fm_cekim_bekle', 'fm_cekim_aktar'];
+/**
  * KDV Kontrol zinciri (PLAN/17 R1, 2026-09-13) — yalnız beyanname. kdv_kontrol_kilitle / kdv_kontrol_kilit_ac
  * BİLEREK YOK: kilit sahibindir (spec kilidi: hiçbir ajan listesinde olamaz).
  */
@@ -130,17 +135,21 @@ export const AJAN_TANIMLARI: AjanTanimi[] = [
     // extract_invoice_fields, ocr_pdf (boş kabuk), classify_with_claude (dış API), generate_fis_word_from_invoices,
     // post_to_luca (boş kabuk), LUCA_YAZ (fiş fm_luca_gonder kuyruğuyla gider; Luca'ya elle dokunmaz).
     // fm_onayla BİLEREK YOK: onay sahibindir (kadro/fatura/kurallar.md).
+    // preview_agent_command ÇIKARILDI (2026-09-15, Muzaffer Bey: "onay kodu istemiyorum; kuru/canlı ayrımı yeter"): e-Arşiv/e-Fatura
+    //   çekimi artık PRV önizlemesiyle değil fm_cekim_* zinciriyle (R5) yürür; fatura ajanının başka önizleme işi yoktu.
     araclar: [
       ...MUKELLEF_OKU, ...HAFIZA, ...FM_OKU, ...FM_YAZ, ...FM_LUCA,
+      // R5 (2026-09-15): fatura çekimi zinciri — e-Fatura / GİB e-Arşiv sorgusu, bekleme, aktarım.
+      ...FM_CEKIM,
       // PLAN/17 R4 adım 5: fm_luca_gonder sonrası INVOICE_POST işini sunucuda bekler (2026-09-13).
       'luca_is_bekle',
       'list_fatura_merkezi', 'list_earsiv_invoices', 'get_kdv_summary', ...LUCA_OKU,
-      'create_pending_action', ...ONAY,
+      'create_pending_action',
       // PLAN/19 H3 (2026-09-14): dönem son günü / beyanname takvimi sorusunda kendi baksın (oku).
       'get_tax_calendar',
     ],
-    onayNoktalari: ['Belge onayı: ajan ASLA — Muzaffer Bey portaldan onaylar (fm_onayla listede yok)', "Luca'ya gönderim (kuru test → Muzaffer Bey 'canlı' → fm_luca_gonder)", 'Demirbaş / tevkifat şüpheli / mükerrer kararı'],
-    tetikler: ['Muzaffer Bey komutu / Koordinatör görev metni (portal)', 'evrak yüklendi olayı — planlandı', 'entegratör çekimi bitti olayı — planlandı'],
+    onayNoktalari: ['Belge onayı: ajan ASLA — Muzaffer Bey portaldan onaylar (fm_onayla listede yok)', "Luca'ya gönderim (kuru test → Muzaffer Bey 'canlı' → fm_luca_gonder)", 'Demirbaş / tevkifat şüpheli / mükerrer kararı', 'Fatura çekimi / aktarımı: kuru testte yapılmaz; canlı koşuda Muzaffer Bey’in sözüyle (fm_cekim_baslat / fm_cekim_aktar)'],
+    tetikler: ['Muzaffer Bey komutu / Koordinatör görev metni (portal): "faturaları çek ve işle", "e-Fatura / e-Arşiv sorgula", "entegratörden al"', 'evrak yüklendi olayı — planlandı', 'entegratör çekimi bitti olayı — planlandı'],
     kimlikKlasoru: klasor('fatura'),
   },
   {

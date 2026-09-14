@@ -1,4 +1,4 @@
-import { bayatKosulariSec, bayatSonucBirlestir, kosuTavanDk, EKIP_KOSU_TAVAN_DK_VARSAYILAN, BEKCI_PENDING_TAVAN_DK, SUREC_KIMLIGI } from './ekip-bekci';
+import { bayatKosulariSec, bayatSonucBirlestir, kosuTavanDk, isinNabzi, EKIP_KOSU_TAVAN_DK_VARSAYILAN, BEKCI_PENDING_TAVAN_DK, BEKCI_NABIZ_TAVAN_DK, BEKCI_NABIZ_OLU_DK, SUREC_KIMLIGI } from './ekip-bekci';
 import { EkipBekciService } from './ekip-bekci.service';
 
 const T = (dkOnce: number, simdi: Date) => new Date(simdi.getTime() - dkOnce * 60000);
@@ -76,6 +76,40 @@ describe('ekip bekçi — bayat koşu seçimi', () => {
       { simdi, aktifMi: () => false, surecBaslangici: T(1, simdi), surecKimligi: 'p1@100' },
     );
     expect(k3).toEqual([]);
+  });
+
+  // NABIZ (2026-09-15): dağıtım drenajı — eski süreç koşuyu bitirirken yeni sürecin bekçisi "sunucu yeniden başladı" diye kapatmasın.
+  it('nabız taze (≤2 dk) → açılış taramasında bile dokunulmaz (drenajdaki eski süreç koşuyu yürütüyor)', () => {
+    const isler = [
+      is('drenajda', 20, { payload: { surec: 'eski@1', nabiz: T(1, simdi).toISOString() } }),
+      is('sinirda', 20, { payload: { surec: 'eski@1', nabiz: T(BEKCI_NABIZ_TAVAN_DK, simdi).toISOString() } }),
+      is('nabizsiz', 20, { payload: { surec: 'eski@1' } }),
+    ];
+    const k = bayatKosulariSec(isler, { simdi, aktifMi: () => false, surecBaslangici: T(5, simdi), surecKimligi: 'yeni@2' });
+    expect(k.map((x) => [x.id, x.neden])).toEqual([['nabizsiz', 'sunucu_yeniden_basladi']]);
+  });
+
+  it('nabız kesildi (>4 dk) → açılışta da düzenli taramada da nabiz_kesildi; tavanı beklemez', () => {
+    const olu = is('olu', 30, { payload: { surec: 'eski@1', nabiz: T(BEKCI_NABIZ_OLU_DK + 1, simdi).toISOString() } });
+    const k1 = bayatKosulariSec([olu], { simdi, aktifMi: () => false, tavanDk: 120 });
+    expect(k1.map((x) => [x.id, x.neden, x.eskiDurum])).toEqual([['olu', 'nabiz_kesildi', 'running']]);
+    expect(k1[0].metin).toContain('sunucu kopyası durdu');
+    expect(k1[0].metin).toContain('5 dk önce');
+    const k2 = bayatKosulariSec([olu], { simdi, aktifMi: () => false, surecBaslangici: T(5, simdi), tavanDk: 120 });
+    expect(k2.map((x) => x.neden)).toEqual(['nabiz_kesildi']);
+    // 2-4 dk arası gri bölge: açılışta süreç öncesi kuralı, düzenli taramada tavan kuralı işler
+    const gri = is('gri', 30, { payload: { surec: 'eski@1', nabiz: T(3, simdi).toISOString() } });
+    expect(bayatKosulariSec([gri], { simdi, aktifMi: () => false, tavanDk: 120 })).toEqual([]);
+    expect(bayatKosulariSec([gri], { simdi, aktifMi: () => false, surecBaslangici: T(5, simdi) }).map((x) => x.neden)).toEqual(['sunucu_yeniden_basladi']);
+  });
+
+  it('süreç belleğindeki koşu nabzı eski görünse de dokunulmaz; isinNabzi bozuk değeri null sayar', () => {
+    const k = bayatKosulariSec([is('a', 30, { payload: { nabiz: T(30, simdi).toISOString() } })], { simdi, aktifMi: () => true, tavanDk: 5 });
+    expect(k).toEqual([]);
+    expect(isinNabzi({ payload: { nabiz: 'saçma' } } as any)).toBeNull();
+    expect(isinNabzi({ payload: { nabiz: 12345 } } as any)).toBeNull();
+    expect(isinNabzi({ payload: null } as any)).toBeNull();
+    expect(isinNabzi({ payload: { nabiz: '2026-09-15T00:00:00.000Z' } } as any)?.toISOString()).toBe('2026-09-15T00:00:00.000Z');
   });
 
   it('SUREC_KIMLIGI pid@zaman biçiminde ve süreç ömrünce sabit', () => {

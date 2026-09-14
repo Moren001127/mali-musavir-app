@@ -1,11 +1,11 @@
-import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
+import { Injectable, OnModuleInit, OnApplicationShutdown, Logger } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 import { bildirimPolitikasi } from '../notifications/notification-policy';
 
 type NotificationCreatedCallback = (notification: any) => void;
 
 @Injectable()
-export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
+export class PrismaService extends PrismaClient implements OnModuleInit, OnApplicationShutdown {
   private readonly logger = new Logger(PrismaService.name);
   private notificationCreatedCallbacks: NotificationCreatedCallback[] = [];
 
@@ -47,7 +47,11 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     });
   }
 
-  async onModuleDestroy() {
+  /**
+   * Bağlantı EN SON kapanır (onApplicationShutdown; onModuleDestroy DEĞİL): dağıtımda SIGTERM gelince
+   * süren ekip koşuları (EkipRunnerService.onApplicationShutdown drenajı) sonucunu iş dosyasına yazabilsin — 2026-09-15.
+   */
+  async onApplicationShutdown() {
     await this.$disconnect();
   }
 

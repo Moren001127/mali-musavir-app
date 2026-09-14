@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnApplicationShutdown } from '@nestjs/common';
 import { randomBytes } from 'crypto';
 import { promises as fs } from 'fs';
 import * as path from 'path';
@@ -240,7 +240,7 @@ export interface EkipKosuSonucu {
 }
 
 @Injectable()
-export class EkipRunnerService {
+export class EkipRunnerService implements OnApplicationShutdown {
   private readonly logger = new Logger('EkipRunnerService');
 
   /**
@@ -250,6 +250,55 @@ export class EkipRunnerService {
    * Not: tek API süreci varsayımı; başka süreçte koşan iş burada görünmez → {ok:false}.
    */
   private readonly calisanKosular = new Map<string, CalisanKosu>();
+
+  /**
+   * NABIZ + DRENAJ (2026-09-15; Muzaffer Bey'in canlı KDV koşuları her dağıtımda "Sunucu yeniden başlatıldı" diye yarım kalıyordu):
+   *  - Koşu sürerken 30 sn'de bir payload.nabiz güncellenir; yeni sürecin bekçisi nabzı taze (≤2 dk) koşuya dokunmaz.
+   *  - SIGTERM gelince (Railway dağıtımı) süren koşular bitene kadar (en çok EKIP_KAPANIS_BEKLEME_SN, varsayılan 270 sn) kapanış bekletilir;
+   *    Railway tarafında RAILWAY_DEPLOYMENT_DRAINING_SECONDS=300 ile eski kopya bu süre boyunca yaşar.
+   */
+  private readonly nabizlar = new Map<string, NodeJS.Timeout>();
+  private kapaniyor = false;
+
+  private nabizBaslat(isId: string): void {
+    if (typeof (this.prisma as any)?.$executeRaw !== 'function') return; // sahte prisma (test)
+    const yaz = async () => {
+      try {
+        await (this.prisma as any).$executeRaw`UPDATE agent_commands SET payload = jsonb_set(COALESCE(payload, '{}'::jsonb), '{nabiz}', to_jsonb(${new Date().toISOString()}::text)) WHERE id = ${isId} AND status = 'running'`;
+      } catch (e: any) {
+        this.logger.warn(`[ekip] nabız yazılamadı ${isId}: ${e?.message || e}`);
+      }
+    };
+    void yaz();
+    const t = setInterval(() => void yaz(), 30_000);
+    (t as any).unref?.();
+    this.nabizlar.set(isId, t);
+  }
+
+  private nabizDurdur(isId: string): void {
+    const t = this.nabizlar.get(isId);
+    if (t) clearInterval(t);
+    this.nabizlar.delete(isId);
+  }
+
+  /** Kapanış drenajı: süren koşular bitene kadar bekle (tavan EKIP_KAPANIS_BEKLEME_SN). */
+  async onApplicationShutdown(signal?: string): Promise<void> {
+    this.kapaniyor = true;
+    const tavanSn = Math.max(0, Number(process.env.EKIP_KAPANIS_BEKLEME_SN || 270) || 270);
+    const bas = Date.now();
+    let sayi = this.calisanKosular.size;
+    if (!sayi) return;
+    this.logger.warn(`[ekip] kapanış (${signal || 'sinyal'}): ${sayi} koşu sürüyor, en çok ${tavanSn} sn bekleniyor`);
+    while (this.calisanKosular.size && Date.now() - bas < tavanSn * 1000) {
+      await new Promise((r) => setTimeout(r, 2000));
+      if (this.calisanKosular.size !== sayi) {
+        sayi = this.calisanKosular.size;
+        this.logger.warn(`[ekip] kapanış: ${sayi} koşu kaldı`);
+      }
+    }
+    if (this.calisanKosular.size) this.logger.error(`[ekip] kapanış: ${this.calisanKosular.size} koşu ${tavanSn} sn içinde bitmedi, yarım kalacak`);
+    else this.logger.log(`[ekip] kapanış: süren koşular bitti (${Math.round((Date.now() - bas) / 1000)} sn)`);
+  }
 
   /** Bekçi (ekip-bekci.service) için: iş bu süreçte hâlâ koşuyor mu? Koşuyorsa bayat sayılmaz. */
   kosuAktifMi(isId: string): boolean {
@@ -1209,6 +1258,12 @@ export class EkipRunnerService {
       emit({ type: 'error', error: hata });
       return { ...bos, hata };
     }
+    if (this.kapaniyor) {
+      // Dağıtım drenajı: eski kopya süren koşuları bitiriyor, YENİ koşu açmaz (yeni kopya alır; kullanıcı bir daha versin).
+      const hata = 'Sunucu yeniden başlıyor; bu iş açılmadı. Bir dakika sonra aynı görevi yeniden verin.';
+      emit({ type: 'error', error: hata });
+      return { ...bos, hata };
+    }
 
     const isId = await this.isDosyasiAc(p, ajan, model);
     emit({ type: 'baslangic', isId, ajanId: ajan.id, model, dryRun });
@@ -1218,6 +1273,7 @@ export class EkipRunnerService {
     const ac = new AbortController();
     const kosuKaydi: CalisanKosu = { ac, tenantId: p.tenantId, ajanId: ajan.id, neden: null };
     this.calisanKosular.set(isId, kosuKaydi);
+    this.nabizBaslat(isId);
     const disSinyalIptali = () => this.iptalEt(p.tenantId, isId, 'baglanti');
     if (p.signal) {
       if (p.signal.aborted) disSinyalIptali();
@@ -1303,6 +1359,7 @@ export class EkipRunnerService {
       if (!ac.signal.aborted) this.logger.error(`ekip ${ajan.id} koşu hatası: ${hata}`);
     } finally {
       if (p.signal) p.signal.removeEventListener('abort', disSinyalIptali);
+      this.nabizDurdur(isId);
       this.calisanKosular.delete(isId);
     }
 
