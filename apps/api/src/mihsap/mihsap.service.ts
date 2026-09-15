@@ -12,7 +12,7 @@ const FIELD = {
   FATURA_TURU: 8,    // "ALIS" | "SATIS"
   MUKELLEF_ID: 9,    // userFirmaBilgisiId
   FATURA_TARIHI: 37, // Between [YYYY-MM-DD, YYYY-MM-DD]
-  ONAY_DURUMU: 44,   // 1 = ONAYLANMIS (sanırız)
+  ONAY_DURUMU: 44,   // 1 = ONAYLANMIS, 0 = BEKLIYOR (Gelen Belgeler) — 2026-09-15 sondayla doğrulandı (ÖZ ELA 56/56)
 };
 
 export interface MihsapInvoiceSummary {
@@ -402,13 +402,17 @@ export class MihsapService implements OnModuleInit {
   ): Promise<{ total: number; items: MihsapInvoiceSummary[] }> {
     // GELEN BELGELER (bekleyen) DÖNEMSİZDİR (2026-09-15): Mihsap ekranı bütün ayları tek listede gösterir
     //   (ÖZ ELA: Mihsap 56, Ağustos süzgeçli çekim 53 — Temmuz fişleri dışarıda kalıyordu). Bekleyen çekiminde
-    //   tarih süzgeci gönderilmez; her belge kendi tarihinden dönemine yerleşir (downloadAndStore).
-    //   Arşiv (onaylanmış) çekimi dönemli kalır.
+    //   tarih süzgeci YERİNE onay durumu süzgeci (ONAY_DURUMU=0 → yalnız BEKLIYOR) gönderilir; her belge kendi
+    //   tarihinden dönemine yerleşir (downloadAndStore). ⚠️ Süzgeçsiz sorgu mükellefin BÜTÜN faturalarını (onaylı
+    //   dahil, ÖZ ELA'da 1.786) döndürür — canlıda 1.544 onaylı belge yanlışlıkla köprülendi ve geri alındı;
+    //   aşağıda ikinci kat koruma (onaylı/iptal satır elenir + tavan). Arşiv (onaylanmış) çekimi dönemli kalır.
     const bekleyenCekim = (params.kaynak || 'arsiv') === 'bekleyen';
     const baseValueList = [
       { alanId: FIELD.FATURA_TURU, operator: 'Equals', values: [params.faturaTuru] },
       { alanId: FIELD.MUKELLEF_ID, operator: 'Equals', values: [String(params.mukellefMihsapId)] },
-      ...(bekleyenCekim ? [] : [{ alanId: FIELD.FATURA_TARIHI, operator: 'Between', values: [startDate, endDate] }]),
+      ...(bekleyenCekim
+        ? [{ alanId: FIELD.ONAY_DURUMU, operator: 'Equals', values: [0] }]
+        : [{ alanId: FIELD.FATURA_TARIHI, operator: 'Between', values: [startDate, endDate] }]),
     ];
     const buildBody = (includeOnayDurumu: boolean) => ({
       sortAlanlari: [
@@ -483,6 +487,14 @@ export class MihsapService implements OnModuleInit {
           faturaTuru: params.faturaTuru,
         });
         this.logger.log(`MIHSAP all-faturas ${attempt.name}: total=${normalized.total}, items=${normalized.items.length}`);
+        if (bekleyenCekim) {
+          // İKİNCİ KAT KORUMA: onaylı/iptal satır bekleyen listesine giremez; süzgeç çalışmıyorsa (onaylı satır
+          //   döndüyse) çekim DURUR — mükellefin tüm arşivi Fatura Merkezi'ne akmasın.
+          const onayli = normalized.items.filter((it) => /ONAYLAN|IPTAL/i.test(String(it.onayDurumu || '')));
+          if (onayli.length) {
+            throw new BadRequestException(`Mihsap bekleyen listesinde onaylı/iptal satır döndü (${onayli.length}/${normalized.items.length}) — süzgeç çalışmıyor, çekim durduruldu`);
+          }
+        }
         return normalized;
       } catch (e: any) {
         this.logger.warn(`MIHSAP all-faturas ${attempt.name} JSON parse/normalize hatasi: ${preview}`);
@@ -558,6 +570,10 @@ export class MihsapService implements OnModuleInit {
         pageSize: PAGE_SIZE,
         pageIndex,
       });
+      // TAVAN (2026-09-15): bekleyen (Gelen Belgeler) listesi 1.000'i aşıyorsa süzgeç şüpheli → dur (sessiz taşma yok).
+      if ((params.kaynak || 'arsiv') === 'bekleyen' && total > 1000) {
+        throw new BadRequestException(`Mihsap bekleyen listesi beklenmedik büyüklükte (${total}) — çekim durduruldu`);
+      }
       all.push(...items);
       if (all.length >= total || items.length < PAGE_SIZE) break;
       pageIndex++;
