@@ -21,7 +21,7 @@ import { planAdaylariHazirla, planAdayKodSeti, SATIS_GELIR_HESABI_KURALI, PLAN_A
 import { ogrenilmisKararSec, adCozumAdaylari, kodKategori, mevzuatUygunMu, planYaprakHaritasi, HizliYolKarar, HizliYolSecim } from './ogrenme-hizli-yol';
 import { parseUblInvoice, ublOcrDataFields, clearUblOnlyOcrFields, resolveTevkifatOrani, kdvDisiVergiOivMi, ParsedProviderInvoice } from './ubl-parse';
 // PLAN/15 Faz 6 (2026-09-13): kalemsiz sağlayıcı XML'inde (Paraşüt özeti gibi) kalemler belgenin PDF/görselinden tamamlanır (saf modül).
-import { kalemPdfGerekliMi, kalemPdfTamamla, aiMatrahGuvenTavani, odenecekDenklemiTutmuyorMu, KalemPdfDosya, KalemKaynak } from './kalem-pdf';
+import { kalemPdfGerekliMi, kalemPdfTamamla, aiMatrahGuvenTavani, odenecekDenklemiTutmuyorMu, pdfDigerVergiKodu, KalemPdfDosya, KalemKaynak } from './kalem-pdf';
 import { VendorMemoryService } from '../vendor-memory/vendor-memory.service';
 import { MihsapService } from '../mihsap/mihsap.service';
 import { PortalAutomationService } from '../portal-automation/portal-automation.service';
@@ -15639,6 +15639,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       'JSON\'a "iade": true/false ekle — belge bir İADE FATURASI / İPTAL / CreditNote ise true (üstte "İADE", "İADE FATURASI" yazar ya da senaryo İADE/IPTAL\'dir), normal satış/alış faturasıysa false.',
       'JSON\'a "tevkifat": true/false ekle — belgede KDV TEVKİFATI varsa true (Fatura Tipi: TEVKIFAT, ya da "KDV TEVKİFAT (%..)=... TL" satırı/Diğer Vergiler\'de tevkifat), yoksa false.',
       'JSON\'a "tevkifatKdv": <tevkifata düşen KDV tutarı (TL) sayı, yoksa 0> ekle — belgede "Hesaplanan KDV Tevkifat", "KDV TEVKİFAT(%..)=... TL" ya da "Tevkifata Tabi İşlem Üzerinden Hes. KDV"den ALIKONAN/tevkif edilen KDV kısmı. Örn "KDV TEVKİFAT(%20,00)=520,00 TL" → 520. ⚠️ Belgede bu kalıp YOKSA ama "Hesaplanan KDV" (TAM) ile "Ödenecek KDV" (ya da "Ödenecek Tutar"daki net KDV) AYRI AYRI yazıyorsa, tevkifatKdv = Hesaplanan KDV − Ödenecek KDV (her iki tutarı da belgede GERÇEKTEN gördüysen; tahmin etme). Tevkifat yoksa 0.',
+      'JSON\'a "digerVergiler": [{"ad":"<KDV DIŞI vergi/ücret adı>","tutar":<sayı>}] ekle — faturada KDV DIŞINDA ayrıca gösterilen vergi/ücret satırları: Özel İletişim Vergisi (ÖİV), Telsiz Kullanım Ücreti, ÖTV, Damga Vergisi, Konaklama Vergisi, Elektrik Tüketim Vergisi gibi — her biri ad + tutar (TL). KDV\'yi, ara/genel toplamları, devir/bakiye/geçmiş dönem borcu satırlarını BURAYA YAZMA. Yoksa [].',
       'JSON\'a "stopajTutari": <sayı, yoksa 0> ekle — belge bir SERBEST MESLEK MAKBUZU (SMM) ise üzerindeki "Gelir Vergisi Stopajı" / "GV Stopajı" / "Stopaj (%20)" KESİNTİ tutarı (TL). Belgede bu tutarı GERÇEKTEN görmediysen ya da belge SMM değilse 0 — tahmin etme, brütten hesaplama.',
       'saticiAd/aliciAd: SATICI (faturayı kesen) ve ALICI (SAYIN/müşteri) ünvanları. saticiVkn/aliciVkn: bu tarafların VKN (10 hane) ya da TC (11 hane) — SADECE rakam. Yazarkasa fişinde satıcı = mağaza. toplam: genel/ödenecek toplam (KDV dahil). Bulamazsan null, UYDURMA.',
       'KURALLAR: Türk sayı biçimi "1.234,56" = 1234.56 (tümünü ondalıklı sayıya çevir). Birden çok KDV oranı varsa her oran ayrı nesne. matrah=KDV hariç tutar, kdv=o orana ait KDV. ÖTV/ÖİV/tevkifat varsa matrahı şişirme — gerçek mal/hizmet matrahını ver. Okunamayan alanı null bırak, UYDURMA.',
@@ -15684,11 +15685,16 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       //   toplamı onunla tutmalı (1 TL / %1 pay) — tutmuyorsa hızlı-yol yine reddedilir (2026-09-15).
       const azMetin = String(az?.rawText || '');
       const azTevkifat = /TEVK[İIiı]FAT|WithholdingTax/i.test(azMetin) || mihsapTevkifatli;
-      const azMihsapUyumsuz = mihsapToplam > 0 && azTotal > 0 && Math.abs(azTotal - mihsapToplam) > Math.max(1, mihsapToplam * 0.01);
-      if (az && (azTevkifat || azMihsapUyumsuz)) {
-        this.logger.log(`[AZURE-HIZLI-YOL] atlandı (${d.belgeNo || documentId}): ${azTevkifat ? 'tevkifat' : ''}${azMihsapUyumsuz ? ` Mihsap toplam ${mihsapToplam} ≠ Azure ${azTotal}` : ''} → AI metin okuması`);
+      // KDV DIŞI VERGİ (2026-09-15, ÖZ ELA Turkcell): Azure kırılımı ÖİV/telsiz ücretini bilmez → toplam 84,80 yerine 78,24, ÖİV satırı
+      //   yok. Görselde ÖİV/telsiz/konaklama vergisi geçiyorsa hızlı-yol reddedilir → AI metin okuması digerVergiler'i çıkarır (689 ÖİV).
+      const azKdvDisiVergi = /[ÖO]ZEL\s*[İIiı]LET[İIiı][ŞSşs][İIiı]M|(?:^|[^A-Za-zÇĞÖŞÜçğöşü])Ö\.?I\.?V(?![A-Za-z])|TELS[İIiı]Z\s*KULLANIM|KONAKLAMA\s*VERG/i.test(azMetin.replace(/İ/g, 'I').replace(/ı/g, 'i'));
+      // Mihsap toplamıyla teyit: Azure toplam okumadıysa kırılım toplamı (matrah+KDV) esas alınır — aksi halde teyit hiç çalışmıyordu.
+      const azToplamTahmin = azTotal > 0 ? azTotal : Math.round(azBd.reduce((s: number, b: any) => { const rate = Number(b.oran) || 0; const amount = Number(b.tutar) || 0; const base = (b.matrah != null && Number(b.matrah) > 0) ? Number(b.matrah) : (rate > 0 ? amount / (rate / 100) : 0); return s + base + amount; }, 0) * 100) / 100;
+      const azMihsapUyumsuz = mihsapToplam > 0 && azToplamTahmin > 0 && Math.abs(azToplamTahmin - mihsapToplam) > Math.max(1, mihsapToplam * 0.01);
+      if (az && (azTevkifat || azKdvDisiVergi || azMihsapUyumsuz)) {
+        this.logger.log(`[AZURE-HIZLI-YOL] atlandı (${d.belgeNo || documentId}): ${azTevkifat ? 'tevkifat ' : ''}${azKdvDisiVergi ? 'KDV-dışı-vergi ' : ''}${azMihsapUyumsuz ? `Mihsap toplam ${mihsapToplam} ≠ Azure ${azToplamTahmin}` : ''} → AI metin okuması`);
       }
-      if (az && /azure/i.test(String(az.engine || '')) && (Number(az.confidence) || 0) >= 0.3 && azHasAmt && !azTevkifat && !azMihsapUyumsuz) {
+      if (az && /azure/i.test(String(az.engine || '')) && (Number(az.confidence) || 0) >= 0.3 && azHasAmt && !azTevkifat && !azKdvDisiVergi && !azMihsapUyumsuz) {
         preParsed = {
           belgeNo: az.belgeNo || null,
           // Tarih: metinden tek satırlık GG AA YYYY doğrulaması (motorun yedek deseni satır sonunu aşıyordu → 07.08.2004).
@@ -16016,6 +16022,26 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const _ublTevkYuzde = Number((parsed as any)?._ubl?.tevkifatYuzde) || 0;
     const tevkifatOrani = resolveTevkifatOrani(kdv, tevkKdv, _ublTevkYuzde || undefined)
       ?? ((tevkKdv > 0 && kdv > 0 && tevkKdv <= kdv) ? Math.round((tevkKdv / kdv) * 1000) / 1000 : 0);
+    // KDV DIŞI VERGİ GÖRSEL/METİN OKUMASINDAN (2026-09-15): AI "digerVergiler" verdiyse (ÖİV/telsiz…) ve DENKLEM tutuyorsa
+    //   (matrah + KDV + diğer ≈ okunan toplam ya da Mihsap toplamı, %1 / 1 TL pay) UBL yolundaki alanlara yazılır → toplam/cari
+    //   bu tutarı kapsar, ÖİV ayrı satır (rematch 689). Denklem tutmuyorsa (KDV'yi/toplamı vergi sanmış) uygulanmaz, loglanır.
+    if (!(Array.isArray((parsed as any)?._ubl?.digerVergiler) && (parsed as any)._ubl.digerVergiler.length) && Array.isArray((parsed as any)?.digerVergiler)) {
+      const liste = ((parsed as any).digerVergiler as any[])
+        .map((v) => ({ ad: String(v?.ad || '').replace(/\s+/g, ' ').trim().slice(0, 60), tutar: Math.round((this.numFromOcr(v?.tutar) || 0) * 100) / 100 }))
+        .filter((v) => v.ad && v.tutar > 0 && !/\bKDV\b|KATMA DE[ĞG]ER|TOPLAM|BAK[İI]YE|DEV[İI]R|GE[ÇC]M[İI][ŞS]/i.test(v.ad.replace(/İ/g, 'I')));
+      const digerOkunan = Math.round(liste.reduce((t, v) => t + v.tutar, 0) * 100) / 100;
+      if (digerOkunan > 0) {
+        const hedefler = [this.numFromOcr(parsed.toplam) || 0, mihsapToplam].filter((t) => t > 0);
+        const beklenen = Math.round((matrah + kdv + digerOkunan) * 100) / 100;
+        const denklemTutar = hedefler.some((t) => Math.abs(t - beklenen) <= Math.max(1, t * 0.01));
+        if (denklemTutar) {
+          (parsed as any)._ubl = { ...((parsed as any)._ubl || {}), digerVergiler: liste.map((v) => ({ kod: pdfDigerVergiKodu(v.ad), ad: v.ad, tutar: v.tutar })), digerVergiToplam: digerOkunan };
+          this.logger.log(`[KDV-DIŞI-VERGİ] belge=${d.belgeNo || documentId} okumadan ${liste.length} vergi (${digerOkunan} ₺) uygulandı: ${liste.map((v) => `${v.ad}=${v.tutar}`).join(', ')}`);
+        } else {
+          this.logger.warn(`[KDV-DIŞI-VERGİ] belge=${d.belgeNo || documentId} denklem tutmadı (matrah ${matrah} + KDV ${kdv} + diğer ${digerOkunan} = ${beklenen}; hedef ${hedefler.join('/') || '-'}) → uygulanmadı`);
+        }
+      }
+    }
     // KDV DIŞI VERGİ (ÖİV/telsiz/ÖTV …): matraha karışmaz; toplam ve cari bu tutarı da kapsar.
     const digerVergiToplam = Math.round((Number((parsed as any)?._ubl?.digerVergiToplam) || 0) * 100) / 100;
     // Toplam = matrah + KDV (yevmiye DENGESİ: cari satırı = matrah + kdv toplamı). AI'nın okuduğu
