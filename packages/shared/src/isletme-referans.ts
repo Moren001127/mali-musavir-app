@@ -35,7 +35,8 @@ export const ISLETME_KDV_ORAN: IsletmeRefItem[] = [
 
 // ===== SATIŞ (Gelir) =====
 const SATIS_BELGE: IsletmeRefItem[] = [
-  { kod: '8', ad: 'e-Arşiv' }, { kod: '7', ad: 'e-Fatura' }, { kod: '1', ad: 'Fatura' },
+  // 2026-09-15: Luca gelir belge türü listesi "e-Arşiv Fatura" (yalnız "e-Arşiv" CSV'de reddediliyordu: AYTEKİN ÖZDEMİR satış)
+  { kod: '8', ad: 'e-Arşiv Fatura' }, { kod: '7', ad: 'e-Fatura' }, { kod: '1', ad: 'Fatura' },
   { kod: '3', ad: 'Perakende Satış Fişi' }, { kod: '2', ad: 'Z Raporu' }, { kod: '15', ad: 'e-Bilet' },
   { kod: '11', ad: 'Tevsiki Zaruri Olmayan Gelir' }, { kod: '13', ad: 'Yolcu Taşıma Bileti' }, { kod: '6', ad: 'Diğer' },
 ];

@@ -86,7 +86,7 @@
   //   Luca'nın beklediği adlarla TEK SEFERDE hizalanır (her denemede tek sütun hatası okumak yerine).
   // v1.47.48 (2026-09-15): firma onay düğmesi regex'indeki `\b` sınırları kaynakta gerçek backspace (0x08) baytına
   //   dönüşmüştü (sec/aç/ac seçenekleri ölüydü) → düzeltildi.
-  const AGENT_VERSION = '1.47.49';
+  const AGENT_VERSION = '1.47.50';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -3103,7 +3103,9 @@
                               const v = String(h[ci] || '').trim(); if (!v) continue;
                               const liste = sutunListe[basliklar[ci]];
                               if (liste.includes(v)) continue;
-                              const k = anahtar(v); const aday = liste.find((e) => anahtar(e) === k);
+                              const k = anahtar(v); let aday = liste.find((e) => anahtar(e) === k);
+                              // v1.47.50: tam eşleşme yoksa TEK adaylı önek eşleşmesi ("e-Arşiv" → "e-Arşiv Fatura")
+                              if (!aday) { const adaylar = liste.filter((e) => { const ek = anahtar(e); return ek.startsWith(k) || k.startsWith(ek); }); if (adaylar.length === 1) aday = adaylar[0]; }
                               if (aday) { degisenler.push(`${basliklar[ci]}: "${v}" → "${aday}"`); h[ci] = aday; degisti = true; }
                               else eslesmeyen.push(`${basliklar[ci]}: "${v}"`);
                             }
