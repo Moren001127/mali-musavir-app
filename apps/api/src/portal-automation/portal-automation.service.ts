@@ -1116,7 +1116,10 @@ export class PortalAutomationService {
       ));
       // "Silinmiş/Silindi" (2026-09-15 canlı bulgu, EDELER Ağustos): GİB portalında silinen belge onay durumu "Silinmiş" gelir;
       //   eski süzgeç yalnız iptal/itiraz/red bakıyordu → aktarılabilir sayılıyordu. Silinmiş belge de işlenmez.
-      const blocked = /iptal|itiraz|red|reddedil|cancel|silin/i.test(`${onayDurumu} ${iptalDurumu}`);
+      // "Onay bekliyor" (2026-09-15 canlı bulgu, ÖMER ÖZEN GIB2026000000473 İMZASIZ): GİB'de onaylanmamış/imzasız belge henüz
+      //   fatura değildir → aktarılmaz (ekranda "Onay bekleyen" sayacında kalır, aktarılabilir sayılmaz).
+      const onayBekliyor = /onaylanmad|bekl|taslak|draft|imzas[ıi]z|pending|wait/i.test(onayDurumu);
+      const blocked = onayBekliyor || /iptal|itiraz|red|reddedil|cancel|silin/i.test(`${onayDurumu} ${iptalDurumu}`);
       return {
         id: doc.id,
         portalDocumentId: doc.id,
@@ -1134,7 +1137,7 @@ export class PortalAutomationService {
         aktarimDurumu: doc.storageKey ? 'indirildi' : 'sorgulandi',
         sorguMode: String(raw.mode || portalRow.mode || 'query'),
         isProcessable: !blocked,
-        blockedReason: blocked ? (/silin/i.test(onayDurumu) ? 'Silinmis fatura islenmez' : 'Iptal/itiraz/reddedilen fatura islenmez') : null,
+        blockedReason: blocked ? (onayBekliyor ? 'Onay bekleyen (imzasiz) fatura islenmez' : /silin/i.test(onayDurumu) ? 'Silinmis fatura islenmez' : 'Iptal/itiraz/reddedilen fatura islenmez') : null,
         sourceRefId,
       };
     });

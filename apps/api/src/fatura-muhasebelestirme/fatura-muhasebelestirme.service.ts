@@ -12907,6 +12907,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       }
     }
     if (/\b(taslak|draft)\b/.test(`${approval} ${itiraz}`)) return { engelli: true, neden: 'taslak' };
+    // İmzasız belge (2026-09-15): henüz fatura değil → işlenmez. NOT: TÜRMOB e-Fatura "Onay Bekliyor" ALICI onayıdır (imzalı,
+    //   geçerli fatura) → burada ENGEL DEĞİL; GİB e-Arşiv "Onay bekliyor" (imzasız) süzgeci portal-automation tarafında.
+    if (/imzasiz/.test(approval)) return { engelli: true, neden: 'imzasiz' };
     if (/\bsilin(mis|di)\b/.test(approval)) return { engelli: true, neden: 'silinmis' }; // GİB e-Arşiv "Silinmiş" (2026-09-15)
     if (/\bgib\b.*\bhata\b|\bhata\b.*\bgib\b|gib error|\berror\b/.test(approval)) return { engelli: true, neden: 'gib-hata' };
     return { engelli: false, neden: '' };

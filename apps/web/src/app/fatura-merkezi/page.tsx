@@ -2882,14 +2882,15 @@ function ScreenSorgu({ taxpayerId, period, source, onOpenEntegrator }: { taxpaye
     toplam: rows.length,
     aktarilabilir: processable.length,
     aktarilmis: rows.filter((r) => earsivAktarildi(r)).length,
-    iptal: rows.filter((r) => !r.isProcessable).length,
-    bekleyen: earsivGorunum.filter((g) => g.r.isProcessable && g.onay.k === 'bekliyor').length,
+    // Onay bekleyen (imzasız) belge sunucuda artık işlenmez (isProcessable=false, 2026-09-15) → iptal sayacına DEĞİL, kendi sayacına.
+    iptal: earsivGorunum.filter((g) => !g.r.isProcessable && g.onay.k !== 'bekliyor').length,
+    bekleyen: earsivGorunum.filter((g) => g.onay.k === 'bekliyor').length,
   };
   const earsivSuz = earsivGorunum.filter((g) => {
     if (ozetF === 'aktarilabilir' && !(g.r.isProcessable && !earsivAktarildi(g.r))) return false;
     if (ozetF === 'aktarilmis' && !earsivAktarildi(g.r)) return false;
-    if (ozetF === 'iptal' && g.r.isProcessable) return false;
-    if (ozetF === 'bekleyen' && !(g.r.isProcessable && g.onay.k === 'bekliyor')) return false;
+    if (ozetF === 'iptal' && (g.r.isProcessable || g.onay.k === 'bekliyor')) return false;
+    if (ozetF === 'bekleyen' && g.onay.k !== 'bekliyor') return false;
     return araUyar(g.r.buyerName, g.r.buyerVkn, g.r.belgeNo, g.r.referenceNo, g.r.ettn);
   }).sort(karsilastir);
   const earsivGorunenSecilebilir = earsivSuz.filter((g) => g.secilebilir).map((g) => String(g.r.sourceRefId));
