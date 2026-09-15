@@ -1472,8 +1472,19 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
     else sayac.ok++;
   });
 
-  // Geçici köprü: Mihsap "bekleyen evraklar"daki faturaları portala aktarır
-  // (entegratör çekme tamamlanana kadar Mihsap'ı fatura kaynağı olarak kullanırız).
+  // Geçici köprü (Muzaffer Bey 2026-09-15): entegratörler ve mobil fiş yükleme hazır olana kadar Mihsap "Gelen Belgeler"deki
+  //   (yalnız ONAY BEKLEYEN) faturalar bu listeye çekilir — Belge Yükle'nin yanındaki "Mihsap'tan çek".
+  const mihsapCekMut = useMutation({
+    mutationFn: () => api.post('/fatura-muhasebelestirme/import-from-mihsap', { taxpayerId, donem: period, faturaTuru: kind }).then((r) => r.data),
+    onSuccess: (r: any) => {
+      const yeni = Number(r?.created || 0); const tekrar = Number(r?.reprocessed || 0); const zaten = Number(r?.skipped || 0); const hata = Number(r?.failed || 0);
+      if (yeni || tekrar) toast.success(`Mihsap'tan ${yeni} yeni belge çekildi${tekrar ? `, ${tekrar} yeniden okunuyor` : ''}${zaten ? ` (${zaten} zaten vardı)` : ''}. Okuma arka planda.`, { duration: 8000 });
+      else toast(`Mihsap'ta onay bekleyen yeni ${kind === 'SATIS' ? 'satış' : 'alış'} belgesi yok${zaten ? ` (${zaten} zaten aktarılmış)` : ''}.`, { duration: 6000 });
+      if (hata) toast.error(`${hata} belge aktarılamadı: ${(r?.errors || []).slice(0, 2).join(' · ')}`);
+      qc.invalidateQueries({ queryKey: ['fm2'] });
+    },
+    onError: (e: any) => toast.error("Mihsap'tan çekilemedi: " + (e?.response?.data?.message || e?.message || 'hata'), { duration: 9000 }),
+  });
   // Manuel belge yükleme (JPEG/PDF/XML/ZIP) — OCR arka planda işler
   const fileRef = useRef<HTMLInputElement>(null);
   // Yükleme yönü: "Belge Yükle"ye basınca Gelir(Satış)/Gider(Alış) seçilir, dosya seçici ona göre açılır.
@@ -1837,6 +1848,7 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
           <h3>{docsQ.isLoading ? 'Yükleniyor…' : <>{docs.length} belge{sel.size > 0 ? <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--accent)' }}> · {sel.size} seçili</span> : null}{(gorevF || durumF !== 'all') && docs.length !== docsAll.length ? <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)' }}> · süzgeç: {docsAll.length} içinden</span> : null}</>}</h3><div className="sp" />
           <input ref={fileRef} type="file" multiple accept=".pdf,.jpg,.jpeg,.jpe,.jfif,.png,.webp,.gif,.tif,.tiff,.bmp,.heic,.heif,.avif,.xml,.ubl,.zip" style={{ display: 'none' }} onChange={(e) => { const files = Array.from(e.currentTarget.files || []); e.currentTarget.value = ''; if (files.length) uploadMut.mutate(files); }} />
           <button className="btn sm upload" disabled={!taxpayerId || uploadMut.isPending} onClick={() => setUploadPick(true)} title={!taxpayerId ? 'Önce mükellef seç' : 'Gelir/Gider seç, sonra JPEG / PDF / XML belge yükle'}><Ico html={I.upload} size={13} /> {uploadMut.isPending ? 'Yükleniyor…' : 'Belge Yükle'}</button>
+          <button className="btn sm upload" disabled={!taxpayerId || mihsapCekMut.isPending} onClick={() => mihsapCekMut.mutate()} title={!taxpayerId ? 'Önce mükellef seç' : `Mihsap'ta onay bekleyen (Gelen Belgeler) ${kind === 'SATIS' ? 'satış' : 'alış'} faturalarını bu listeye çeker · dönem ${period}`}><Ico html={I.upload} size={13} /> {mihsapCekMut.isPending ? "Mihsap'tan çekiliyor…" : "Mihsap'tan çek"}</button>
           {uploadPick && (
             <div onMouseDown={() => setUploadPick(false)} style={{ position: 'fixed', inset: 0, zIndex: 10000, background: 'rgba(15,23,42,0.55)', display: 'grid', placeItems: 'center', padding: 16 }}>
               <div onMouseDown={(e) => e.stopPropagation()} style={{ width: 'min(440px, 96vw)', background: '#fff', color: '#1a1a1a', borderRadius: 16, padding: '24px 26px', boxShadow: '0 24px 70px rgba(0,0,0,0.45)' }}>

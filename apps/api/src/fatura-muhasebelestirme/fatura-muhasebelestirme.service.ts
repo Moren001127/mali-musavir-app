@@ -6249,7 +6249,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // ÖNEMLİ: faturaTuru DB'de "SATIS" yaninda "TEVKIFATLI_SATIS" (ya da farkli case)
     // olabiliyor. Tam esitlikle sorgularsak tevkifatli olanlar köprüye girmez ve
     // belge dusmez (8 cekilir, 4 gorunur). Yon bazli (includes) filtre uyguluyoruz.
-    const where: any = { tenantId, mukellefId: opts.taxpayerId, donem: opts.donem };
+    // YALNIZ MİHSAP "GELEN BELGELER" (onay bekleyen, kaynak='bekleyen') köprülenir (2026-09-15, Muzaffer Bey: "sadece Mihsap'ta
+    //   onay bekleyen faturaları aktaracak"). 'arsiv' (İşlenen Faturalar) ve 'fm-arsiv' satırları zaten işlenmiş belgelerdir →
+    //   bekleyen listesine düşmemeli (eskiden kaynak süzgeci yoktu).
+    const where: any = { tenantId, mukellefId: opts.taxpayerId, donem: opts.donem, kaynak: 'bekleyen' };
     const allRows = await (this.prisma as any).mihsapInvoice.findMany({
       where,
       take: 3000,
