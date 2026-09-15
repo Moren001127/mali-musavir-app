@@ -11355,10 +11355,30 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           if (d && start && d < start) { stop = true; break; } // sıralı yeni→eski: aralığın gerisine düştük
           if (d && end && d > end) continue;                    // aralıktan yeni: atla
         }
+        // E-BELGE TÜRÜ GÜVENCESİ (2026-09-15, ZEKİ ÖZKAYNAK KE42026000000001 — ADEM AYAS'a kesilen e-ARŞİV):
+        //   liste satırında active_e_document ilişkisi gelmeyince belge e-FATURA sanılıp Satış e-Arşiv kanalından
+        //   düşüyor, PDF'i de inmiyordu ("orijinal görüntü yok"). İlişki listede yoksa faturayı TEKİL çekip
+        //   (include=active_e_document) ilişkiyi tamamla; karar her belge için loglanır.
+        let ed = item?.relationships?.active_e_document?.data || null;
+        if (!ed || !ed.type) {
+          try {
+            const r1 = await pfetch(`${baseUrl.replace(/\/+$/, '')}/${firmaNo}/${path}/${item?.id}?include=active_e_document`);
+            const tek: any = r1 && r1.ok ? await r1.json().catch(() => null) : null;
+            const ed1 = tek?.data?.relationships?.active_e_document?.data || null;
+            if (ed1 && ed1.type) {
+              ed = ed1;
+              item.relationships = { ...(item.relationships || {}), active_e_document: { data: ed1 } };
+            }
+          } catch (e: any) {
+            this.logger.warn(`[PARASUT] ${item?.attributes?.invoice_no || item?.id}: tekil e-belge sorgusu başarısız: ${e?.message || e}`);
+          }
+        }
+        this.logger.log(`[PARASUT] ${item?.attributes?.invoice_no || item?.id}: e-belge=${ed?.type || 'YOK'}${ed?.id ? '#' + ed.id : ''} → ${ed?.type === 'e_archives' ? 'e-ARŞİV' : 'e-FATURA'} (alıcı ${String(this.parasutCounterparty(item, included)?.attributes?.tax_number || '').replace(/\D/g, '').length === 11 ? 'TCKN' : 'VKN/-'})`);
         const payload = this.parasutInvoicePayload(item, included, opts.direction, opts.taxpayer, path);
         // GERÇEK e-belge PDF'ini indir → "görüntüle" gerçek faturayı göstersin (sentetik liste değil).
         const pdf = await this.parasutDownloadPdf(baseUrl, firmaNo, accessToken, item);
         if (pdf) payload.pdfBuffer = pdf;
+        else this.logger.warn(`[PARASUT] ${item?.attributes?.invoice_no || item?.id}: e-belge PDF'i inmedi (e-belge=${ed?.type || 'YOK'})`);
         payloads.push(payload);
       }
       if (items.length < pageSize) break;
@@ -11491,13 +11511,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const metaRes = await fetch(`${base}/${firmaNo}/${edType}/${edId}/pdf`, {
         headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' },
       });
-      if (!metaRes.ok) return null;
+      if (!metaRes.ok) { this.logger.warn(`Parasut PDF meta ${edType}/${edId}: HTTP ${metaRes.status} ${(await metaRes.text().catch(() => '')).slice(0, 160)}`); return null; }
       const meta: any = await metaRes.json().catch(() => ({}));
       const url = meta?.data?.attributes?.url;
-      if (!url) return null;
+      if (!url) { this.logger.warn(`Parasut PDF meta ${edType}/${edId}: url yok (${JSON.stringify(meta).slice(0, 160)})`); return null; }
       // 2) PDF'i indir
       const pdfRes = await fetch(String(url));
-      if (!pdfRes.ok) return null;
+      if (!pdfRes.ok) { this.logger.warn(`Parasut PDF indirme ${edType}/${edId}: HTTP ${pdfRes.status}`); return null; }
       const buf = Buffer.from(await pdfRes.arrayBuffer());
       return buf.length > 1000 ? buf : null;
     } catch (e: any) {

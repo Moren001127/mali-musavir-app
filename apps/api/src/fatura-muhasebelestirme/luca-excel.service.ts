@@ -314,6 +314,21 @@ export function buildLucaIsletmeHizliFisCsv(payload: BatchPayload): Buffer {
     const alisSatisAdResolved = isl.alisSatisAd || adOf(ref.alisSatisTuru, isl.alisSatisKod) || (isSale ? 'Normal Satış' : 'Normal Alım');
     const belgeTuruAdResolved = isl.belgeTuruAd || adOf(ref.belgeTuru, isl.belgeTuruKod) || inferIsletmeBelgeTuru(inv);
 
+    // LUCA HIZLI FİŞ SÜTUN ANLAMLARI (2026-09-15, Luca'nın CSV doğrulama mesajları + hizliFisPopup.js sözlükleri):
+    //   2 KATEGORİ  = fiş kategorisi: "Defter Fişleri" | "Personel Fişleri" | "Serbest Meslek Fişleri" | "Sabit Kıymet Fişleri"
+    //                 (eskiden DBS kayıt türü adı "Mal Satışı" yazılıyordu → "KATEGORI sütunu … değerlerinden biri olabilir" reddi)
+    //   3 BELGE TURU = Luca fiş türü: Gelir → Satış | Diğer Satışlar | Alıştan İade | Diğer Alıştan İade | Z Raporu | Envanter;
+    //                 Gider → Alış | Diğer Alışlar | Satıştan İade | Diğer Satıştan İadeler | Devir (eskiden DBS belge adı yazılıyordu)
+    //   15 KOD      = KDV istisna/tevkifat TABLO kodu (14 KDV İSTİSNASI ile birlikte) — DBS işlem türü (1100) DEĞİL → boş
+    //   16 BELGE TÜRÜ(DB) = Defter-Beyan belge türü ADI (Z Raporu, e-Arşiv, e-Fatura, Fatura, ÖKC Fişi …)
+    //   24 TEVKİFAT = Luca sözlüğü: 2/10, 3/10, 4/10, 5/10, 7/10, 9/10, Tam (10/10 → Tam)
+    const isZ = normalizeDocumentType(inv.documentType) === 'Z_RAPORU';
+    const iadeMi = /iade/i.test(String(alisSatisAdResolved || ''));
+    const lucaFisTuru = isSale
+      ? (isZ ? 'Z Raporu' : (iadeMi ? 'Alıştan İade' : 'Satış'))
+      : (iadeMi ? 'Satıştan İade' : 'Alış');
+    const lucaTevkifat = (v: any) => { const t = String(v || '').trim(); return t === '10/10' ? 'Tam' : t; };
+
     for (const st of satirlar) {
       const kdvOranNum = ({ KDV20: '20', KDV10: '10', KDV1: '1', KDV0: '0' } as Record<string, string>)[String(st.kdvOranKod || '')] || rate || '';
       // Satır KATEGORİ/ALT ad'ı da koddan çözülür (auto-sınıfta boş kalmasın).
@@ -330,8 +345,8 @@ export function buildLucaIsletmeHizliFisCsv(payload: BatchPayload): Buffer {
       //   PLAKA NO şablonda yok (ekranda var, CSV'de yok) — isl.plakaNo CSV'ye yazılamaz.
       const row = [
         isSale ? 'Gelir' : 'Gider',                  // 1 İŞLEM
-        kayitTuruAdResolved,                          // 2 KATEGORİ
-        belgeTuruAdResolved,                          // 3 BELGE TÜRÜ
+        'Defter Fişleri',                             // 2 KATEGORİ (fiş kategorisi; FM demirbaş/bordro/SMM fişi üretmez)
+        lucaFisTuru,                                  // 3 BELGE TURU (Luca fiş türü: Satış / Alış / Z Raporu / iade)
         tarihStr,                                     // 4 EVRAK TARİHİ
         islKayitTarih,                                // 5 KAYIT TARİHİ
         inv.seriNo || '',                             // 6 SERİ NO
@@ -343,8 +358,8 @@ export function buildLucaIsletmeHizliFisCsv(payload: BatchPayload): Buffer {
         '',                                           // 12 ADRES
         st.hesapKodu || '',                           // 13 CARİ HESAP
         '',                                           // 14 KDV İSTİSNASI
-        isl.islemTuruKod || '',                       // 15 KOD (İşlem Türü)
-        isl.belgeTuruKod || '',                       // 16 BELGE TÜRÜ(DB)
+        '',                                           // 15 KOD (KDV istisna/tevkifat tablo kodu — FM üretmez)
+        belgeTuruAdResolved,                          // 16 BELGE TÜRÜ(DB) — Defter-Beyan belge türü ADI
         alisSatisAdResolved,                          // 17 ALIŞ/SATIŞ TÜRÜ
         kayitAltAdResolved,                           // 18 KAYIT ALT TÜRÜ
         '',                                           // 19 MAL VE HİZMET KODU
@@ -352,7 +367,7 @@ export function buildLucaIsletmeHizliFisCsv(payload: BatchPayload): Buffer {
         '',                                           // 21 MİKTAR
         '',                                           // 22 B.FİYAT
         trAmount(stMatrah),                           // 23 TUTAR
-        st.tevkifatOrani || '',                       // 24 TEVKİFAT
+        lucaTevkifat(st.tevkifatOrani),               // 24 TEVKİFAT (2/10 … 9/10, Tam)
         kdvOranNum,                                   // 25 KDV ORANI
         '',                                           // 26 ÖZEL MATRAH İŞLEM BEDELİ
         '',                                           // 27 MATRAHTAN DÜŞÜLECEK TUTAR
