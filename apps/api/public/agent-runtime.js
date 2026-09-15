@@ -66,7 +66,11 @@
   // v1.47.41 (2026-09-14): FİRMA LİSTESİ TAZELEME — ajan arka plan Luca oturumunu saatlerce açık tuttuğundan
   // Luca'da YENİ açılan firma (SİLBER) SirketCombo'da yoktu (liste frm4 yüklenirken alınır) → "Firma bulunamadı".
   // Artık hedef bulunamazsa frm4 (TopFrameAction.do) bir kez tazelenir ve arama tekrarlanır.
-  const AGENT_VERSION = '1.47.41';
+  // v1.47.42 (2026-09-15): İŞLETME HIZLI FİŞ CSV YÜKLEME — fetch-POST dalı dosya girdisi bir IFRAME içindeyken ya da input bir
+  //   FORM'a bağlı değilken SESSİZCE atlanıyor, yedek tıklama dosyayı göndermiyor → "CSV grid'e yüklenmedi (yanıtTr=0)"
+  //   (KADİR CEYLAN KORKMAZ 29 Z raporu). Artık girdinin KENDİ penceresi (ownerDocument.defaultView) kullanılır, form yoksa
+  //   FormData elle kurulur (formFile + gizli alanlar), yanıt girdinin belgesine yazılır; atlanırsa nedeni loglanır.
+  const AGENT_VERSION = '1.47.42';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -2981,27 +2985,39 @@
                     const pw = popupWin();
                     const fi = findFileInput();
                     const form = fi && (fi.form || (fi.closest && fi.closest('form')));
-                    if (pw && form && pw.fetch && pw.FormData) {
-                      // FormData'yı ELLE kur — name doğru olsun, dosya el.files[0]'dan alansın
-                      const fd = new pw.FormData();
-                      for (const el of form.querySelectorAll('input,select,textarea')) {
+                    // v1.47.42: dosya girdisinin KENDİ penceresi (iframe içindeyse iframe'in window'u) — fetch/FormData/URL oradan.
+                    const fw = (fi && fi.ownerDocument && fi.ownerDocument.defaultView) || pw;
+                    const fdoc = fi && fi.ownerDocument;
+                    if (!fi || !fw || !fw.fetch || !fw.FormData || !(fi.files && fi.files[0])) {
+                      await log(`⚠ fetch-POST atlandı: popup=${!!pw} girdi=${!!fi} dosya=${!!(fi && fi.files && fi.files[0])} form=${!!form} pencere=${!!fw} fetch=${!!(fw && fw.fetch)}`);
+                    } else {
+                      // FormData'yı ELLE kur — name doğru olsun, dosya el.files[0]'dan alansın; form yoksa yalnız dosya + gizli alanlar
+                      const fd = new fw.FormData();
+                      const alanlar = form ? form.querySelectorAll('input,select,textarea') : fdoc.querySelectorAll('input[type="hidden"],input[type="file"]');
+                      let dosyaEklendi = false;
+                      for (const el of alanlar) {
                         const nm = el.name; if (!nm) continue;
                         const tp = (el.type || '').toLowerCase();
-                        if (tp === 'file') { if (el.files && el.files[0]) { try { fd.append(nm, el.files[0], el.files[0].name); } catch { fd.append(nm, el.files[0]); } } }
+                        if (tp === 'file') { if (el.files && el.files[0]) { try { fd.append(nm, el.files[0], el.files[0].name); } catch { fd.append(nm, el.files[0]); } dosyaEklendi = true; } }
                         else if (tp === 'checkbox' || tp === 'radio') { if (el.checked) fd.append(nm, el.value); }
                         else if (tp !== 'submit' && tp !== 'button' && tp !== 'file') fd.append(nm, el.value == null ? '' : el.value);
                       }
-                      // csvSablonYukle action'ı uploadHizliFisAktarimCsvAction.do'ya set ediyor
-                      let action = form.action || (form.getAttribute && form.getAttribute('action')) || (pw.location && pw.location.href);
-                      try { action = new pw.URL('uploadHizliFisAktarimCsvAction.do', pw.location.href).href; } catch {}
-                      const resp = await pw.fetch(action, { method: 'POST', body: fd, credentials: 'include' });
+                      if (!dosyaEklendi) { try { fd.append(fi.name || 'formFile', fi.files[0], fi.files[0].name); } catch { fd.append(fi.name || 'formFile', fi.files[0]); } }
+                      // csvSablonYukle action'ı uploadHizliFisAktarimCsvAction.do'ya set ediyor (girdinin belgesine göre çöz)
+                      const taban = (fdoc && fdoc.location && fdoc.location.href) || (pw && pw.location && pw.location.href) || '';
+                      let action = (form && (form.action || (form.getAttribute && form.getAttribute('action')))) || taban;
+                      try { action = new fw.URL('uploadHizliFisAktarimCsvAction.do', taban).href; } catch {}
+                      const resp = await fw.fetch(action, { method: 'POST', body: fd, credentials: 'include' });
                       const html = await resp.text();
                       const rowInd = (html.match(/Sat[ıi]r\s*Say[ıi]s[ıi]\s*:?\s*(\d+)/i) || [])[1];
                       const trc = (html.match(/<tr/gi) || []).length; postTr = trc;
                       const err = /ge[çc]ersiz|ba[şs]ar[ıi]s[ıi]z|okunama|hatal[ıi]|format\s*hatas/i.test(html);
-                      await log(`ℹ fetch-POST → HTTP ${resp.status} ${Math.round(html.length / 1024)}KB · yanıtSatır=${rowInd || '?'} tr=${trc} hata=${err} fname=${fi.name || fi.id || '-'}`);
+                      const ozet = html.replace(/<script[\s\S]*?<\/script>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+                      await log(`ℹ fetch-POST → HTTP ${resp.status} ${Math.round(html.length / 1024)}KB · yanıtSatır=${rowInd || '?'} tr=${trc} hata=${err} fname=${fi.name || fi.id || '-'} form=${!!form} iframe=${fw !== pw}`);
+                      if (trc <= 8 || err) await log(`ℹ[yanıt] ${ozet.slice(0, 400)}`);
                       if (resp.status >= 200 && resp.status < 400 && html.length > 500) {
-                        try { pw.document.open(); pw.document.write(html); pw.document.close(); yOk = true; } catch (e2) { await log(`doc.write: ${(e2 && e2.message) || e2}`); }
+                        const tdoc = fdoc || pw.document;
+                        try { tdoc.open(); tdoc.write(html); tdoc.close(); yOk = true; } catch (e2) { await log(`doc.write: ${(e2 && e2.message) || e2}`); }
                       }
                     }
                   } catch (e) { await log(`fetch-POST hata: ${(e && e.message) || e}`); }
