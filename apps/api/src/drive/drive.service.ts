@@ -720,7 +720,8 @@ export class DriveService implements OnModuleInit, OnModuleDestroy {
 
     // 3) Dosya adi: "30.04.2026 - EFA2026000000087 - TATSAN UNLU MAMULLERI.jpg"
     // 4) Icerigi MIHSAP'tan indir (mevcut proxy mantigini yeniden kullan)
-    const file = await this.mihsap.getInvoiceFile(tenantId, inv.id);
+    // HTML e-Arşiv belgesi Drive'a PDF olarak (görüntüleyici PNG alır; Drive için basılabilir PDF) — 2026-09-15.
+    const file = await this.mihsap.getInvoiceFile(tenantId, inv.id, { htmlBicim: 'pdf' });
     const ext = (file.filename.split('.').pop() || 'bin').toLowerCase();
     const fileName = this.buildFileName(inv, ext);
 

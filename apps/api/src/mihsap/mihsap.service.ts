@@ -5,6 +5,7 @@ import { StorageService } from '../storage/storage.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NOTIFICATION_TYPES } from '../notifications/notification-types';
 import { AutomationEventBus } from '../automations/automation-event-bus.service';
+import { chromium as pwChromium } from 'playwright-core';
 
 const MIHSAP_BASE = 'https://app.mihsap.com';
 // MIHSAP all-faturas body'sinde kullanılan alan id'leri (keşif yoluyla bulundu)
@@ -988,7 +989,11 @@ export class MihsapService implements OnModuleInit {
       const faturaNo = String(d.belgeNo || '').trim() || String(d.originalName || '').replace(/\.[^.]+$/, '') || d.id;
       const noKey = `${MihsapService.faturaNoAnahtar(faturaNo)}|${faturaTuru}`;
       if (MihsapService.faturaNoAnahtar(faturaNo) && mihsapNo.has(noKey)) { mukerrer++; continue; }
-      const ext = (String(d.originalName || '').split('.').pop() || '').toUpperCase();
+      // Uzantı: dosya adında gerçek bir uzantı yoksa ("GIB e-Arsiv Fatura GIB2026…") mime'dan; HTML e-Arşiv belgesi
+      //   görüntüleyicilere PNG olarak sunulduğu için (aşağıda getFmArsivFile) türü PNG yazılır (2026-09-15).
+      const adUzanti = (String(d.originalName || '').match(/\.([A-Za-z0-9]{2,5})$/) || [])[1] || '';
+      const mimeUzanti = /html/i.test(String(d.mimeType || '')) ? 'PNG' : /pdf/i.test(String(d.mimeType || '')) ? 'PDF' : /png/i.test(String(d.mimeType || '')) ? 'PNG' : /jpe?g/i.test(String(d.mimeType || '')) ? 'JPG' : /xml/i.test(String(d.mimeType || '')) ? 'XML' : '';
+      const ext = (/^html?$/i.test(adUzanti) ? 'PNG' : adUzanti.toUpperCase()) || mimeUzanti;
       try {
         await (this.prisma as any).mihsapInvoice.create({
           data: {
@@ -1006,7 +1011,7 @@ export class MihsapService implements OnModuleInit {
             onayDurumu: d.lucaStatus === 'MANUAL_DONE' ? 'ELLE_ISLENDI' : 'LUCAYA_AKTARILDI',
             mihsapId,
             storageKey: d.s3Key,
-            orjDosyaTuru: ext || (String(d.mimeType || '').split('/').pop() || '').toUpperCase() || null,
+            orjDosyaTuru: ext || null,
             mihsapFileLink: `fm://${d.id}`,
             kaynak: 'fm-arsiv',
             downloadedAt: new Date(),
@@ -1030,7 +1035,33 @@ export class MihsapService implements OnModuleInit {
   }
 
   /** FM belgesinin dosyası (zip ise içindeki PDF/HTML/görsel; yoksa dosyanın kendisi). */
-  private async getFmArsivFile(tenantId: string, inv: any): Promise<{ buffer: Buffer; contentType: string; filename: string }> {
+  /** HTML e-Arşiv/e-Fatura belgesini Chromium ile PNG (görüntüleyici/OCR) ya da PDF'e (Drive) çevirir; sonuç depoda saklanır.
+   *  KDV Kontrol ve İşlenen Faturalar görüntüleyicisi <img> tabanlıdır → HTML gösteremiyordu (NÜLÜFER GIB…008 kırık görsel, 2026-09-15). */
+  private async htmlBelgeyiGorselYap(html: string, s3Key: string, bicim: 'png' | 'pdf'): Promise<Buffer> {
+    const onbellekKey = `${s3Key}.${bicim === 'pdf' ? 'render.pdf' : 'render.png'}`;
+    try { const hazir = await this.storage.getBuffer(onbellekKey); if (hazir && hazir.length > 500) return hazir; } catch { /* yok → üret */ }
+    let browser: any = null;
+    try {
+      browser = await pwChromium.launch({
+        headless: true,
+        executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || process.env.CHROMIUM_PATH || undefined,
+        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+      });
+      const ctx = await browser.newContext({ viewport: { width: 1000, height: 1400 }, deviceScaleFactor: bicim === 'png' ? 2 : 1 });
+      const page = await ctx.newPage();
+      await page.setContent(html, { waitUntil: 'load', timeout: 20000 });
+      await page.waitForTimeout(500); // gömülü XSLT/JS tamamlansın
+      const out: Buffer = bicim === 'pdf'
+        ? Buffer.from(await page.pdf({ format: 'A4', printBackground: true, margin: { top: '8mm', right: '8mm', bottom: '8mm', left: '8mm' } }))
+        : Buffer.from(await page.screenshot({ fullPage: true, type: 'png' }));
+      try { await this.storage.putBuffer(onbellekKey, out, bicim === 'pdf' ? 'application/pdf' : 'image/png'); } catch (e: any) { this.logger.warn(`HTML render önbelleğe yazılamadı (${onbellekKey}): ${e?.message || e}`); }
+      return out;
+    } finally {
+      try { if (browser) await browser.close(); } catch { /* geç */ }
+    }
+  }
+
+  private async getFmArsivFile(tenantId: string, inv: any, secenek: { htmlBicim?: 'png' | 'pdf' } = {}): Promise<{ buffer: Buffer; contentType: string; filename: string }> {
     const docId = String(inv?.raw?.documentId || String(inv.mihsapFileLink || '').replace(/^fm:\/\//, '') || String(inv.mihsapId || '').replace(/^fm:/, ''));
     const doc = await (this.prisma as any).invoiceAccountingDocument.findFirst({
       where: { id: docId, tenantId },
@@ -1065,8 +1096,19 @@ export class MihsapService implements OnModuleInit {
         this.logger.warn(`FM zip açılamadı (${docId}): ${e?.message || e}`);
       }
     }
-    const extFromName = (String(doc.originalName || '').split('.').pop() || '').toLowerCase();
-    const ext = extFromName && extFromName.length <= 5 ? extFromName : (mime.split('/').pop() || 'bin');
+    // HTML belge (GİB e-Arşiv portal çıktısı, e-Fatura HTML): görüntüleyici <img> → PNG; Drive yedeği → PDF (2026-09-15).
+    const bas = buffer.slice(0, 400).toString('utf8').trimStart().toLowerCase();
+    if (/html/i.test(mime) || bas.startsWith('<!doctype html') || bas.startsWith('<html')) {
+      const bicim = secenek.htmlBicim || 'png';
+      try {
+        const gorsel = await this.htmlBelgeyiGorselYap(buffer.toString('utf8'), doc.s3Key, bicim);
+        return { buffer: gorsel, contentType: bicim === 'pdf' ? 'application/pdf' : 'image/png', filename: `${base}.${bicim}` };
+      } catch (e: any) {
+        this.logger.warn(`HTML belge görsele çevrilemedi (${docId}): ${e?.message || e} — HTML olarak dönülüyor`);
+      }
+    }
+    const extFromName = (String(doc.originalName || '').match(/\.([A-Za-z0-9]{2,5})$/) || [])[1]?.toLowerCase() || '';
+    const ext = extFromName || (mime.split('/').pop() || 'bin');
     return { buffer, contentType: mime || 'application/octet-stream', filename: `${base}.${ext}` };
   }
 
@@ -1140,13 +1182,14 @@ export class MihsapService implements OnModuleInit {
   async getInvoiceFile(
     tenantId: string,
     invoiceId: string,
+    secenek: { htmlBicim?: 'png' | 'pdf' } = {},
   ): Promise<{ buffer: Buffer; contentType: string; filename: string }> {
     const inv = await (this.prisma as any).mihsapInvoice.findUnique({ where: { id: invoiceId } });
     if (!inv || inv.tenantId !== tenantId) {
       throw new BadRequestException(`Fatura kaydı bulunamadı (${invoiceId})`);
     }
     // FM ARŞİVİM kaynaklı kayıt (2026-09-15): dosya bizim depoda (Fatura İşleme Merkezi belgesi) — Mihsap'a gidilmez.
-    if (this.isFmArsivKaydi(inv)) return this.getFmArsivFile(tenantId, inv);
+    if (this.isFmArsivKaydi(inv)) return this.getFmArsivFile(tenantId, inv, secenek);
 
     // URL'yi hazırla — S3 artık kullanılmıyor, doğrudan MIHSAP CDN link'ini kullan.
     // (Eski kayıtlarda `storageKey` dolu olabilir ama S3 bucket erişilemez; o yüzden atla.)
