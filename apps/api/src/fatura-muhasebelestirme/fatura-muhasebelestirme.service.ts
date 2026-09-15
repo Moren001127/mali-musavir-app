@@ -4620,6 +4620,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           data: { status: 'NEEDS_REVIEW' },
         });
       }
+      // YÜKLE → OKU (Muzaffer Bey 2026-09-15, Yorgun Nakliyat 42 fiş: "Belge Yükle sonrası otomatik AI okuması başlamıyor"):
+      //   yükleme OCR'ı tutar/taraf çıkarır ama hesap kodları AI okuma (sınıflandırma) ile dolar; eskiden kullanıcı
+      //   "AI ile oku"ya elle basıyordu. e-Fatura/e-Arşiv aktarımıyla aynı: kalıcı kuyruğa AI_READ (FM_YUKLE_OKU=off kapatır).
+      if (String(process.env.FM_YUKLE_OKU || '').toLowerCase() !== 'off') {
+        void this.aktarSonrasiOkumaKuyruga(tenantId, [documentId], 'belge yükle').catch(() => {});
+      }
     } catch (e: any) {
       await (this.prisma as any).invoiceAccountingDocument.updateMany({
         where: { id: documentId, tenantId },
