@@ -1451,6 +1451,8 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
   //   Yön artık aktif sekmeye değil kullanıcı seçimine bağlı (ref → mutate sırasında okunur).
   const uploadDirRef = useRef<'ALIS' | 'SATIS'>(kind);
   const [uploadPick, setUploadPick] = useState(false);
+  // MÜKERRER YÜKLEME PENCERESİ (Muzaffer Bey 2026-09-15): toast yetersizdi (dosya adı listesi) → tarih / belge no / tutar / satıcı ile pencere.
+  const [mukerrerYukleme, setMukerrerYukleme] = useState<null | { atlananlar: any[]; yuklenen: number; digerAtlanan: any[] }>(null);
   const uploadMut = useMutation({
     mutationFn: async (files: File[]) => {
       const fd = new FormData();
@@ -1465,8 +1467,10 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
     onSuccess: (r: any) => {
       const n = Array.isArray(r?.data) ? r.data.length : (r?.data?.uploaded ?? r?.data?.count ?? r?.data?.created ?? null);
       const skipped = Array.isArray(r?.data?.skipped) ? r.data.skipped : [];
-      toast.success(`Belge yüklendi${n != null ? ` · ${n}` : ''}. OCR arka planda işleniyor.`);
-      if (skipped.length) toast.warning(`${skipped.length} dosya atlandı: ${skipped.slice(0, 3).map((s: any) => s.name || 'isimsiz').join(', ')}${skipped.length > 3 ? '…' : ''}`);
+      const atlananlar = Array.isArray(r?.data?.atlananlar) ? r.data.atlananlar : [];
+      const digerAtlanan = skipped.filter((s: any) => !s?.zatenYuklu);
+      if (n) toast.success(`Belge yüklendi · ${n}. Okuma arka planda başladı.`);
+      if (atlananlar.length || digerAtlanan.length) setMukerrerYukleme({ atlananlar, yuklenen: Number(n) || 0, digerAtlanan });
       qc.invalidateQueries({ queryKey: ['fm2'] });
     },
     onError: (e: any) => toast.error('Yüklenemedi: ' + (e?.response?.data?.message || e?.message || 'hata')),
@@ -1819,6 +1823,59 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
                   >Gider<div style={{ fontSize: 11.5, fontWeight: 600, opacity: 0.8, marginTop: 3 }}>Alış faturası / ÖKC fişi</div></button>
                 </div>
                 <button onClick={() => setUploadPick(false)} style={{ marginTop: 16, width: '100%', padding: '9px', borderRadius: 10, border: '1px solid #e2e8f0', background: '#fff', color: '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>Vazgeç</button>
+              </div>
+            </div>
+          )}
+          {mukerrerYukleme && (
+            <div className="gh-ov" onMouseDown={() => setMukerrerYukleme(null)}>
+              <div className="gh-box" role="dialog" aria-modal="true" style={{ width: 'min(760px, 96vw)' }} onMouseDown={(e) => e.stopPropagation()}>
+                <div className="gh-box-h luca">
+                  <small>BELGE YÜKLEME</small>
+                  <b>{mukerrerYukleme.atlananlar.length ? `Mükerrer yükleme tespit edildi — ${mukerrerYukleme.atlananlar.length} dosya yüklenmedi` : `${mukerrerYukleme.digerAtlanan.length} dosya yüklenemedi`}</b>
+                </div>
+                <div className="gh-box-b">
+                  {mukerrerYukleme.yuklenen > 0 && <p><b>{mukerrerYukleme.yuklenen}</b> yeni belge yüklendi ve okumaya alındı.</p>}
+                  {mukerrerYukleme.atlananlar.length > 0 && (
+                    <>
+                      <p className="gh-box-uyari">Aşağıdaki dosyalar bu mükellefte <b>zaten yüklü</b> olan belgelerle birebir aynı (aynı dosya ya da aynı ETTN). Yeniden yüklenmedi; mükerrer kayıt oluşmadı.</p>
+                      <div style={{ overflowX: 'auto' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+                          <thead><tr style={{ textAlign: 'left', color: 'var(--faint)', fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '.4px' }}>
+                            <th style={{ padding: '6px 8px', borderBottom: '1px solid var(--line)' }}>Yüklenen dosya</th>
+                            <th style={{ padding: '6px 8px', borderBottom: '1px solid var(--line)' }}>Mevcut belge</th>
+                            <th style={{ padding: '6px 8px', borderBottom: '1px solid var(--line)' }}>Tarih</th>
+                            <th style={{ padding: '6px 8px', borderBottom: '1px solid var(--line)', textAlign: 'right' }}>Tutar</th>
+                            <th style={{ padding: '6px 8px', borderBottom: '1px solid var(--line)' }}>Satıcı / Cari</th>
+                            <th style={{ padding: '6px 8px', borderBottom: '1px solid var(--line)' }}>Neden</th>
+                          </tr></thead>
+                          <tbody>
+                            {mukerrerYukleme.atlananlar.map((a: any, i: number) => (
+                              <tr key={i} style={{ borderBottom: '1px solid var(--line)' }}>
+                                <td style={{ padding: '7px 8px', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={a.name}>{a.name}</td>
+                                <td style={{ padding: '7px 8px' }}>
+                                  {a.mevcutId
+                                    ? <button type="button" className="gf-clear" style={{ fontFamily: 'Consolas, ui-monospace, monospace', color: '#0f766e', fontWeight: 700 }} onClick={() => { setMukerrerYukleme(null); setFisDetayId(a.mevcutId); }} title="Mevcut belgeyi listede aç">{a.mevcutBelgeNo || '(no yok)'} ↗</button>
+                                    : (a.mevcutBelgeNo || '—')}
+                                  {a.mevcutDurum ? <div style={{ fontSize: 10.5, color: 'var(--faint)' }}>{String(a.mevcutDurum).replace('NEEDS_REVIEW', 'inceleniyor').replace('APPROVED', 'onaylı').replace('READY', 'hazır')}</div> : null}
+                                </td>
+                                <td style={{ padding: '7px 8px', whiteSpace: 'nowrap' }}>{a.mevcutTarih ? new Date(a.mevcutTarih).toLocaleDateString('tr-TR') : '—'}</td>
+                                <td style={{ padding: '7px 8px', textAlign: 'right', whiteSpace: 'nowrap' }}>{a.mevcutTutar != null ? `${fmtMoney(a.mevcutTutar)} ₺` : '—'}</td>
+                                <td style={{ padding: '7px 8px', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={a.mevcutSatici || ''}>{a.mevcutSatici || '—'}</td>
+                                <td style={{ padding: '7px 8px', whiteSpace: 'nowrap' }}>{a.tur === 'ettn' ? 'Aynı ETTN (e-belge)' : 'Birebir aynı dosya'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </>
+                  )}
+                  {mukerrerYukleme.digerAtlanan.length > 0 && (
+                    <p>Ayrıca okunamayan/desteklenmeyen dosyalar: {mukerrerYukleme.digerAtlanan.map((s: any) => `${s.name || 'isimsiz'} (${s.reason || 'atlandı'})`).join(', ')}</p>
+                  )}
+                </div>
+                <div className="gh-box-f">
+                  <button type="button" className="btn primary" onClick={() => setMukerrerYukleme(null)}>Tamam</button>
+                </div>
               </div>
             </div>
           )}

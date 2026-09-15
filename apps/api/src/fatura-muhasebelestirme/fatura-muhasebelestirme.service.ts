@@ -3448,10 +3448,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const uploadPeriodDate = periodAnchorDate(opts.period);
     // PLAN/16 §C.1 — birebir aynı dosya (SHA-256) ya da aynı ETTN'li XML bu mükellefte zaten varsa belge OLUŞTURULMAZ;
     //   diğer dosyalar devam eder, atlananlar yanıtta listelenir (UI toast + "ilk belgeyi aç" bağlantısı).
-    const atlananlar: Array<{ name: string; reason: string; zatenYuklu: true; tur: 'sha256' | 'ettn'; mevcutId: string; mevcutBelgeNo: string | null; mevcutTarih: string | null; mesaj: string }> = [];
+    const atlananlar: Array<{ name: string; reason: string; zatenYuklu: true; tur: 'sha256' | 'ettn'; mevcutId: string; mevcutBelgeNo: string | null; mevcutTarih: string | null; mesaj: string; mevcutSatici?: string | null; mevcutTutar?: number | null; mevcutYon?: string | null; mevcutTur?: string | null; mevcutDurum?: string | null; mevcutYuklenme?: string | null }> = [];
     const skipped: Array<{ name: string; reason: string; zatenYuklu?: true; mevcutId?: string }> = [...expandedUpload.skipped];
+    // DOSYA ADI (2026-09-15): tarayıcı UTF-8 gönderir, multer Latin-1 çözer → "OTOMOBÄ°L" mojibake; yeniden çöz.
+    const dosyaAdi = (ad: string) => { const s = String(ad || ''); return /[ÃÄÅÂ]/.test(s) ? Buffer.from(s, 'latin1').toString('utf8') : s; };
 
     for (const file of uploadFiles) {
+      file.originalname = dosyaAdi(file.originalname);
       const imageHash = this.ocr.computeImageHash(file.buffer);
       const zaten = await this.zatenYukluMu(tenantId, {
         taxpayerId: opts.taxpayerId || null, imageHash, buffer: file.buffer, mimeType: file.mimetype, invoiceKind: opts.invoiceKind || null,
@@ -3459,7 +3462,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       if (zaten) {
         const mesaj = this.zatenYukluMesaji(zaten);
         const mevcutTarih = zaten.faturaTarihi ? new Date(zaten.faturaTarihi).toISOString() : null;
-        atlananlar.push({ name: file.originalname, reason: mesaj, zatenYuklu: true, tur: zaten.tur, mevcutId: zaten.id, mevcutBelgeNo: zaten.belgeNo, mevcutTarih, mesaj });
+        atlananlar.push({
+          name: file.originalname, reason: mesaj, zatenYuklu: true, tur: zaten.tur, mevcutId: zaten.id, mevcutBelgeNo: zaten.belgeNo, mevcutTarih, mesaj,
+          mevcutSatici: (zaten.invoiceKind === 'SATIS' ? zaten.customerName : zaten.vendorName) || zaten.vendorName || zaten.customerName || null,
+          mevcutTutar: zaten.totalAmount != null ? Number(zaten.totalAmount) : null,
+          mevcutYon: zaten.invoiceKind || null, mevcutTur: zaten.documentType || null, mevcutDurum: zaten.status || null,
+          mevcutYuklenme: zaten.createdAt ? new Date(zaten.createdAt).toISOString() : null,
+        });
         skipped.push({ name: file.originalname, reason: mesaj, zatenYuklu: true, mevcutId: zaten.id });
         this.logger.log(`[ZATEN-YUKLU] tenant=${tenantId} dosya=${file.originalname} tur=${zaten.tur} mevcut=${zaten.id} (${zaten.belgeNo || '-'}) → belge oluşturulmadı`);
         continue;
@@ -13207,15 +13216,16 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   private async zatenYukluMu(
     tenantId: string,
     p: { taxpayerId?: string | null; imageHash?: string | null; buffer?: Buffer | null; mimeType?: string | null; invoiceKind?: string | null },
-  ): Promise<{ id: string; belgeNo: string | null; faturaTarihi: Date | null; tur: 'sha256' | 'ettn'; ettn?: string } | null> {
-    const secim = { id: true, belgeNo: true, faturaTarihi: true };
+  ): Promise<{ id: string; belgeNo: string | null; faturaTarihi: Date | null; tur: 'sha256' | 'ettn'; ettn?: string; vendorName?: string | null; customerName?: string | null; totalAmount?: any; invoiceKind?: string | null; documentType?: string | null; status?: string | null; createdAt?: Date | null } | null> {
+    // Mükerrer yükleme penceresi (2026-09-15): mevcut belgenin tarih/no/tutar/satıcı bilgisi de döner.
+    const secim = { id: true, belgeNo: true, faturaTarihi: true, vendorName: true, customerName: true, totalAmount: true, invoiceKind: true, documentType: true, status: true, createdAt: true };
     if (p.imageHash) {
       const ayni = await (this.prisma as any).invoiceAccountingDocument.findFirst({
         where: { tenantId, imageHash: p.imageHash, status: { notIn: ['REJECTED', 'CANCELLED'] }, ...(p.taxpayerId ? { taxpayerId: p.taxpayerId } : {}) },
         select: secim,
         orderBy: { createdAt: 'asc' },
       }).catch(() => null);
-      if (ayni) return { id: ayni.id, belgeNo: ayni.belgeNo || null, faturaTarihi: ayni.faturaTarihi || null, tur: 'sha256' };
+      if (ayni) return { ...ayni, belgeNo: ayni.belgeNo || null, faturaTarihi: ayni.faturaTarihi || null, tur: 'sha256' };
     }
     const xmlMi = /xml/i.test(String(p.mimeType || '')) || !p.mimeType;
     const ettn = xmlMi && p.buffer ? ettnAyikla(p.buffer) : null;
