@@ -1255,6 +1255,7 @@ function InvoicePreviewModal({
         setError(null);
         const resp = await api.get(`/agent/drive/invoices/${invoice.id}/file`, {
           responseType: 'blob',
+          params: { v: 2 }, // önbellek anahtarı (HTML→PNG geçişi; sunucu no-cache) — 2026-09-15
         });
         objUrl = URL.createObjectURL(resp.data);
         const ct = (resp.data as Blob).type || '';

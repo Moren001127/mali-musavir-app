@@ -130,7 +130,10 @@ export class DriveController {
       'Content-Disposition':
         `inline; filename="${asciiName}"; filename*=UTF-8''${encodeURIComponent(String(data.filename || 'belge'))}`,
       'Content-Length': String(data.buffer.length),
-      'Cache-Control': 'private, max-age=3600',
+      // 2026-09-15 (NÜLÜFER GIB…008): eskiden "max-age=3600" → tarayıcı, HTML→PNG düzeltmesinden ÖNCE aldığı
+      //   text/html yanıtı 1 saat "taze" sayıp sunucuya hiç sormadı (KDV Kontrol'de kırık görsel sürdü, API
+      //   logunda istek yok). Artık her açılışta doğrulanır: ETag aynıysa Express 304 döner (aktarım yok).
+      'Cache-Control': 'private, no-cache',
     });
     return res.send(data.buffer);
   }

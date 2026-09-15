@@ -227,6 +227,8 @@ export function OcrReviewPanel({
     // Drive-öncelik + MIHSAP fallback). proxyPath varsa blob olarak çekilir
     // (img src'ye Authorization eklenemez); yoksa eski davranış (presigned/CDN url).
     // Hata yakalama + retry; takılırsa sonsuz spinner kalmasın.
+    // "v: 2" (2026-09-15): tarayıcı, HTML→PNG düzeltmesinden önceki text/html yanıtı aynı adreste 1 saat
+    //   önbellekte tutuyordu (kırık görsel); sorgu eki önbellek anahtarını değiştirir, sunucu artık no-cache.
     let cancelled = false;
     let objectUrl: string | null = null;
     const id = activeImg.id;
@@ -243,7 +245,7 @@ export function OcrReviewPanel({
           // Faturalar'daki gibi yine gelir, "yüklenemedi" ekranı çıkmaz.
           if (r?.proxyPath) {
             try {
-              const resp = await api.get(r.proxyPath, { responseType: 'blob' });
+              const resp = await api.get(r.proxyPath, { responseType: 'blob', params: { v: 2 } });
               if (cancelled) return;
               objectUrl = URL.createObjectURL(resp.data);
               setPreviewUrl(objectUrl);

@@ -153,7 +153,7 @@ function MatchRow({
         // Authorization eklenemediği için. Başarısızsa CDN url'ine düşülür.
         if (resp?.proxyPath) {
           try {
-            const blobResp = await api.get(resp.proxyPath, { responseType: 'blob' });
+            const blobResp = await api.get(resp.proxyPath, { responseType: 'blob', params: { v: 2 } });
             if (cancelled) return;
             objectUrl = URL.createObjectURL(blobResp.data);
             setImageUrl(objectUrl);
