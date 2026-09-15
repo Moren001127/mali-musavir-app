@@ -1,22 +1,25 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { isOmurgaYok, mukellefAdi, type AkisFiltre, type AkisGun, type Vaka } from '@/lib/ekip';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import { iptalEt, isOmurgaYok, isZamanAsimi, mukellefAdi, sabahOzetiUret, type AkisFiltre, type AkisGun, type Vaka } from '@/lib/ekip';
 import { SORGU, useKosular, type Kosu } from './kosular';
-import { UstSerit } from './UstSerit';
-import { KadroKarti } from './KadroKarti';
-import { KararlarKarti } from './KararlarKarti';
-import { SabahOzetiKarti } from './SabahOzetiKarti';
+import { Baslik, type EkipSekme } from './Baslik';
 import { GorevKarti, type KomutTaslak } from './GorevKarti';
+import { SizdenBeklenenKutu, bekleyenKalemler } from './Kararlar';
+import { BugunKutu, SuAnKutu, onerileriCikar } from './GenelBakis';
 import { IsPaneli } from './IsPaneli';
 import { IsGecmisi } from './IsGecmisi';
 import { DonemPanosu } from './DonemPanosu';
+import { KadroKarti } from './KadroKarti';
 import { OmurgaYokBilgi } from './OmurgaYokBilgi';
-import { CamKart, V5 } from './Cam';
-import { DEPO, depoOku, depoYaz } from './ortak';
+import { Bos, KIRMIZI, Kutu, MUTED, TEXT } from './Tema';
+import { DEPO, bugunMu, depoOku, depoYaz } from './ortak';
 
 const SUZGECLER: AkisFiltre[] = ['tumu', 'suruyor', 'onay', 'istek', 'bitti'];
+const SEKMELER: EkipSekme[] = ['genel', 'isler', 'pano', 'kadro'];
+const DEPO_SEKME = 'ekip.sekme';
 
 /** Yerel koşu bu vakaya mı ait: vakaId eşleşir ya da isId vaka kökü / adımlarından biri. */
 export function kosuVakayaAitMi(kosu: Kosu, vaka: Vaka): boolean {
@@ -26,14 +29,17 @@ export function kosuVakayaAitMi(kosu: Kosu, vaka: Vaka): boolean {
 }
 
 /**
- * EKİP EKRANI v5 — "premium komuta merkezi" (2026-09-15; Muzaffer Bey'in onayladığı görsel: _previews/ekip-v5).
- * Üst şerit (başlık + cam kapsüller) · iki sütun:
- *  SOL  : Görev merkezi (Koordinatör kartıyla) → Aktif iş (komut verilen ya da geçmişten seçilen iş) → Dönem panosu (İşle / Kontrol et düğmeleri)
- *  SAĞ  : Kadro (12 personel) → Sizden beklenen (kararlar) → Sabah özeti → İş kayıtları (kompakt, 8'er 8'er)
- *  (Muzaffer Bey 2026-09-15: "iş kayıtlarının olduğu yere dönem tablosunu al, dönem tablosunun yerine iş kayıtlarını")
- * Dar ekranda tek sütun. Yapışkan öğe YOK; sayfa yatay kaymaz. Kuru/Canlı depoya yazılmaz.
+ * EKİP EKRANI — Bütçe / Cari Kasa dili (Muzaffer Bey'in onayladığı taslak: _previews/ekip-v9, 2026-09-15).
+ * Başlık kartı + 4 sayaç + altın sekmeler:
+ *  Genel bakış : sol → Koordinatör'e görev ver · Sizden beklenen (onay/istek)   sağ → Şu an (çalışanlar) · Bugün (bitenler + öneriler)
+ *  İşler       : sol → süzgeçli iş listesi   sağ → seçili işin paneli (aşamalar, karar, sonuç, adımlar, not)
+ *  Dönem panosu: mükellef × aşama tablosu (İşle / Kontrol et / Hazırla görev kutusunu doldurur)
+ *  Kadro       : 12 personel kartı
+ * Koşu başlayınca ekran İşler sekmesine geçip paneli açar. Yapışkan öğe YOK; sayfa yatay kaymaz. Kuru/Canlı depoya yazılmaz.
  */
 export function EkipEkrani() {
+  const qc = useQueryClient();
+  const [sekme, setSekmeState] = useState<EkipSekme>('genel');
   const [seciliDonem, setSeciliDonemState] = useState<string | null>(null);
   const [komutTaslak, setKomutTaslak] = useState<KomutTaslak | null>(null);
   const [akisSuzgec, setAkisSuzgecState] = useState<AkisFiltre>('tumu');
@@ -43,11 +49,10 @@ export function EkipEkrani() {
   const [panelKapali, setPanelKapali] = useState(false);
   const [odakNonce, setOdakNonce] = useState(0);
   const [escNonce, setEscNonce] = useState(0);
+  const [sabahUretiliyor, setSabahUretiliyor] = useState(false);
 
   const komutRef = useRef<HTMLElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
-  const gecmisRef = useRef<HTMLDivElement>(null);
-  const panoRef = useRef<HTMLDivElement>(null);
 
   const kosular = useKosular();
   const [panelCalisiyor, setPanelCalisiyor] = useState(false);
@@ -60,6 +65,12 @@ export function EkipEkrani() {
     if (s && SUZGECLER.includes(s)) setAkisSuzgecState(s);
     const g = Number(depoOku(DEPO.akisGun));
     if (g === 1 || g === 7 || g === 30) setAkisGunState(g);
+    const t = depoOku(DEPO_SEKME) as EkipSekme | null;
+    if (t && SEKMELER.includes(t)) setSekmeState(t);
+  }, []);
+  const setSekme = useCallback((s: EkipSekme) => {
+    setSekmeState(s);
+    depoYaz(DEPO_SEKME, s);
   }, []);
   const setSeciliDonem = useCallback((d: string) => {
     setSeciliDonemState(d);
@@ -77,6 +88,8 @@ export function EkipEkrani() {
   const kadroS = useQuery(SORGU.kadro);
   const durumS = useQuery(SORGU.durum);
   const akisS = useQuery(SORGU.akis(akisSuzgec, akisGun, akisTaxpayerId || undefined, kosuVar));
+  /** Genel bakış: süzgeçten bağımsız 7 günlük tam liste (kararlar, şu an, bugün). Varsayılan süzgeçte aynı sorgu → tek istek. */
+  const genelS = useQuery(SORGU.akis('tumu', 7, undefined, kosuVar));
   const onaylarS = useQuery(SORGU.onaylarBekleyen);
   const panoS = useQuery(SORGU.pano);
   const mukelleflerS = useQuery(SORGU.mukellefler);
@@ -93,17 +106,35 @@ export function EkipEkrani() {
   const mukellefAd = useCallback((id?: string | null) => (id ? mukellefHaritasi.get(id) : undefined), [mukellefHaritasi]);
   const ajanAd = useCallback((id: string) => (id === 'siz' ? 'Muzaffer Bey' : ajanlar.find((a) => a.id === id)?.ad || id), [ajanlar]);
 
-  const sayaclar = durumS.data?.akis ?? akisS.data?.sayaclar;
+  const genelVakalar = genelS.data?.vakalar;
+  const sayaclar = durumS.data?.akis ?? genelS.data?.sayaclar ?? akisS.data?.sayaclar;
   const calisan = useMemo(() => Math.max(durumS.data?.calisan ?? ajanlar.filter((a) => !!a.suAn).length, kosular.aktifKosu ? 1 : 0), [durumS.data?.calisan, ajanlar, kosular.aktifKosu]);
-  const kararSayisi = (sayaclar?.onay ?? 0) + (sayaclar?.istek ?? 0);
+  const bekleyenler = useMemo(() => bekleyenKalemler(genelVakalar), [genelVakalar]);
+  const kararSayisi = bekleyenler.length || (sayaclar?.onay ?? 0) + (sayaclar?.istek ?? 0);
+  const bugunBiten = useMemo(() => (genelVakalar || []).filter((v) => v.kutu === 'bitti' && v.durum !== 'hata' && bugunMu(v.guncellendi)).length, [genelVakalar]);
+  const bugunYarim = useMemo(() => (genelVakalar || []).filter((v) => v.durum === 'hata' && bugunMu(v.guncellendi)).length, [genelVakalar]);
+  const isSayisi = sayaclar ? sayaclar.suruyor + sayaclar.onay + sayaclar.istek + sayaclar.bitti : genelVakalar?.length || 0;
 
-  // Personel başına 7 günlük iş sayısı (kadro yük çubukları) — akıştaki 'is' adımlarından
-  const akisVakalar = akisS.data?.vakalar;
+  // Personel başına 7 günlük iş sayısı (kadro kartları) — akıştaki 'is' adımlarından
   const haftalikIs = useMemo(() => {
     const m = new Map<string, number>();
-    for (const v of akisVakalar || []) for (const a of v.adimlar) if (a.tip === 'is') m.set(a.ajanId, (m.get(a.ajanId) || 0) + 1);
+    for (const v of genelVakalar || []) for (const a of v.adimlar) if (a.tip === 'is') m.set(a.ajanId, (m.get(a.ajanId) || 0) + 1);
     return m;
-  }, [akisVakalar]);
+  }, [genelVakalar]);
+
+  // Dönem panosu: seçili dönem + özet + Koordinatör önerileri (bugün işi olan mükellefler atlanır)
+  const panoDonem = useMemo(() => {
+    const s = new Set<string>();
+    for (const o of panoS.data?.donemOzetleri || []) if (o.donem) s.add(o.donem);
+    const liste = [...s].sort().reverse();
+    return seciliDonem && liste.includes(seciliDonem) ? seciliDonem : liste[0] || null;
+  }, [panoS.data, seciliDonem]);
+  const panoOzet = useMemo(() => panoS.data?.donemOzetleri.find((o) => o.donem === panoDonem), [panoS.data, panoDonem]);
+  const oneriler = useMemo(() => {
+    const mesgul = new Set<string>();
+    for (const v of genelVakalar || []) if (v.mukellef?.id && (v.kutu !== 'bitti' || bugunMu(v.guncellendi))) mesgul.add(v.mukellef.id);
+    return onerileriCikar(panoS.data, panoDonem, mesgul, 4);
+  }, [panoS.data, panoDonem, genelVakalar]);
 
   const kaydir = useCallback((ref: React.RefObject<HTMLElement | HTMLDivElement>) => {
     setTimeout(() => ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
@@ -111,13 +142,24 @@ export function EkipEkrani() {
 
   const taslakVer = useCallback(
     (t: Omit<KomutTaslak, 'nonce'>) => {
+      setSekme('genel');
       setKomutTaslak({ ...t, ajanId: 'koordinator', nonce: Date.now() });
       kaydir(komutRef);
     },
-    [kaydir],
+    [kaydir, setSekme],
   );
 
-  // Koşu başlayınca panel o işi gösterir ve açılır.
+  const isiAc = useCallback(
+    (vakaId: string | null) => {
+      setSekme('isler');
+      setSeciliVakaId(vakaId);
+      setPanelKapali(false);
+      kaydir(panelRef);
+    },
+    [kaydir, setSekme],
+  );
+
+  // Koşu başlayınca İşler sekmesine geç, paneli o işle aç.
   const sonKosu = kosular.kosular.get('koordinator');
   const sonKosuVakaId = sonKosu?.vakaId || sonKosu?.isId;
   useEffect(() => {
@@ -125,9 +167,13 @@ export function EkipEkrani() {
     setPanelKapali(false);
     setSeciliVakaId(sonKosuVakaId || null);
     if (akisSuzgec === 'bitti') setAkisSuzgec('tumu');
-    if (!sonKosu.bitti) kaydir(panelRef);
+    if (!sonKosu.bitti) {
+      setSekme('isler');
+      kaydir(panelRef);
+    }
   }, [sonKosu?.basladi, sonKosuVakaId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const akisVakalar = akisS.data?.vakalar;
   useEffect(() => {
     if (!sonKosu || !akisVakalar || !seciliVakaId) return;
     if (akisVakalar.some((v) => v.vakaId === seciliVakaId)) return;
@@ -142,15 +188,19 @@ export function EkipEkrani() {
       const girisIcinde = !!hedef && (hedef.tagName === 'INPUT' || hedef.tagName === 'TEXTAREA' || hedef.tagName === 'SELECT' || hedef.isContentEditable);
       if (e.key === '/' && !girisIcinde) {
         e.preventDefault();
+        setSekme('genel');
         setOdakNonce((n) => n + 1);
         komutRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       } else if (e.key === 'Escape') setEscNonce((n) => n + 1);
     };
     window.addEventListener('keydown', dinle);
     return () => window.removeEventListener('keydown', dinle);
-  }, []);
+  }, [setSekme]);
 
-  const seciliVaka = useMemo(() => (seciliVakaId ? akisVakalar?.find((v) => v.vakaId === seciliVakaId) : undefined), [akisVakalar, seciliVakaId]);
+  const seciliVaka = useMemo(() => {
+    if (!seciliVakaId) return undefined;
+    return akisVakalar?.find((v) => v.vakaId === seciliVakaId) || genelVakalar?.find((v) => v.vakaId === seciliVakaId);
+  }, [akisVakalar, genelVakalar, seciliVakaId]);
   const panelKosu = useMemo(() => {
     if (sonKosu && seciliVaka && kosuVakayaAitMi(sonKosu, seciliVaka)) return sonKosu;
     if (sonKosu && !seciliVaka && (!seciliVakaId || seciliVakaId === sonKosuVakaId)) return sonKosu;
@@ -163,41 +213,156 @@ export function EkipEkrani() {
   // Koordinatör kartındaki tek cümle durum notu
   const koordinatorNotu = useMemo(() => {
     if (durumS.data?.maxBagli === false) return 'Max bağlı değil — kadro çalışamıyor.';
-    if (kosular.aktifKosu) return kosular.aktifKosu.kaynak === 'sabahOzeti' ? 'Sabah özetini topluyorum; bitince iş panelinde açılır.' : 'Görevinizi aldım; ilerlemeyi aşağıdaki iş panelinden izleyebilirsiniz.';
+    if (kosular.aktifKosu) return kosular.aktifKosu.kaynak === 'sabahOzeti' ? 'Sabah özetini topluyorum; bitince İşler sekmesinde açılır.' : 'Görevinizi aldım; ilerlemeyi İşler sekmesindeki panelden izleyebilirsiniz.';
     if (seciliVakaCalisiyor && seciliVaka) {
       const kosan = seciliVaka.adimlar.find((a) => a.tip === 'is' && a.durum === 'running');
       return `${seciliVaka.mukellef?.ad ? `${seciliVaka.mukellef.ad} işi` : 'İş'} ${kosan && kosan.tip === 'is' ? ajanAd(kosan.ajanId) : 'personel'}’de; bitince buraya ve WhatsApp’a yazacağım.`;
     }
-    if (kararSayisi > 0) return `${kararSayisi} konuda kararınızı bekliyorum — sağdaki "Sizden beklenen" kutusunda.`;
+    if (kararSayisi > 0) return `${kararSayisi} konuda kararınızı bekliyorum — aşağıdaki "Sizden beklenen" kutusunda.`;
     const bugun = durumS.data?.bugunKosu ?? 0;
     const hata = durumS.data?.bugunHata ?? 0;
     if (bugun > 0) return `Bugün ${bugun} iş koştu${hata ? `, ${hata} tanesi yarım kaldı` : ', hepsi tamamlandı'}. Yeni görev için kutuya yazın ya da söyleyin.`;
     return 'Bugün henüz iş verilmedi. Kutuya yazın ya da söyleyin; işi doğru uzmana veririm.';
   }, [durumS.data, kosular.aktifKosu, seciliVakaCalisiyor, seciliVaka, kararSayisi, ajanAd]);
 
+  const tazele = useCallback(() => {
+    qc.invalidateQueries({ queryKey: ['ekip-akis'] });
+    qc.invalidateQueries({ queryKey: ['ekip-kadro'] });
+    qc.invalidateQueries({ queryKey: ['ekip-durum'] });
+    qc.invalidateQueries({ queryKey: ['ekip-onaylar'] });
+  }, [qc]);
+
+  /** Genel bakıştaki karar kartından cevap → aynı iş zincirinde Koordinatör koşusu (kuru/canlı vakadan). */
+  const vakayaCevapla = useCallback(
+    (vaka: Vaka, metin: string) => {
+      if (kosular.aktifKosu) {
+        toast.info('Koşu sürüyor', { description: 'Cevabınızı İşler sekmesindeki panelden "Bitince gönder" ile kuyruğa alabilirsiniz.' });
+        return;
+      }
+      void kosular.baslat('koordinator', { gorev: `Cevap: ${metin}`, taxpayerId: vaka.mukellef?.id || undefined, dryRun: vaka.kuru, vakaId: vaka.vakaId });
+    },
+    [kosular],
+  );
+
+  /** Şu an kutusundan Durdur: yerel koşu → SSE + sunucu iptal; sunucu vakası → koşan işi iptal. */
+  const durdur = useCallback(
+    async (hedef: { kosu?: Kosu; vaka?: Vaka }) => {
+      if (hedef.kosu) {
+        await kosular.durdur(hedef.kosu.ajanId);
+        return;
+      }
+      const kosan = hedef.vaka?.adimlar.find((a) => a.tip === 'is' && a.durum === 'running');
+      if (!kosan || kosan.tip !== 'is') return;
+      const r = await iptalEt(kosan.isId).catch((e) => ({ ok: false as const, isId: kosan.isId, error: e?.message }));
+      if (r.ok) toast.success('Durduruldu', { description: 'İş "iptal edildi (Muzaffer Bey)" olarak kapandı.' });
+      else toast.error('Durdurulamadı', { description: (r as any).error });
+      tazele();
+    },
+    [kosular, tazele],
+  );
+
+  /** Sabah özetini şimdi üret (yalnız üretir, GÖNDERMEZ; gönderim iş panelinde ayrı teyit). */
+  const sabahOzetiUretSimdi = useCallback(async () => {
+    if (sabahUretiliyor || kosular.aktifKosu) {
+      if (kosular.aktifKosu) toast.info('Koşu sürüyor; bitince deneyin.');
+      return;
+    }
+    setSabahUretiliyor(true);
+    const basladi = Date.now();
+    kosular.ayarla('koordinator', { ajanId: 'koordinator', gorev: 'Sabah özeti — üretiliyor (gönderme yok)', dryRun: true, cevap: '', adimlar: [], bitti: false, basladi, kaynak: 'sabahOzeti' });
+    try {
+      const r = await sabahOzetiUret({ gonder: false });
+      kosular.ayarla('koordinator', {
+        ajanId: 'koordinator',
+        gorev: 'Sabah özeti (şimdi üretildi)',
+        dryRun: true,
+        isId: r.isId,
+        vakaId: r.isId,
+        model: r.model,
+        cevap: r.rapor || '',
+        adimlar: (r.toolUses || []).map((t) => ({ tip: 'arac' as const, ad: t.name, args: t.args, zaman: Date.now(), durum: 'bitti' as const })),
+        bitti: true,
+        hata: r.hata,
+        durationMs: r.durationMs ?? Date.now() - basladi,
+        basladi,
+        kaynak: 'sabahOzeti',
+        gonderildi: 0,
+      });
+      toast.success('Sabah özeti üretildi', { description: 'İşler sekmesinde açıldı.' });
+    } catch (e: any) {
+      const zamanAsimi = isZamanAsimi(e);
+      const hata = zamanAsimi ? 'Sürüyor — iş kayıtlarında görünecek' : e?.message || 'Sabah özeti üretilemedi';
+      kosular.guncelle('koordinator', (k) => ({ ...k, bitti: true, hata, durationMs: Date.now() - basladi }));
+      if (zamanAsimi) toast.info(hata);
+      else toast.error(hata);
+    } finally {
+      setSabahUretiliyor(false);
+      tazele();
+      qc.invalidateQueries({ queryKey: ['ekip-akis'] });
+    }
+  }, [sabahUretiliyor, kosular, tazele, qc]);
+
   const omurgaYok = isOmurgaYok(kadroS.error);
-  const suzgecVeKaydir = (f: AkisFiltre) => {
-    setAkisSuzgec(f);
-    kaydir(gecmisRef);
-  };
 
   return (
-    <div className="flex min-w-0 flex-col gap-[22px]">
-      <UstSerit durum={durumS.data} durumHata={durumS.error} durumYukleniyor={durumS.isLoading} />
+    <div className="flex min-w-0 flex-col gap-4 pb-10">
+      <Baslik
+        durum={durumS.data}
+        ozet={panoOzet}
+        ajanSayisi={ajanlar.length}
+        kararSayisi={kararSayisi}
+        calisan={calisan}
+        bugunBiten={bugunBiten}
+        bugunYarim={bugunYarim}
+        isSayisi={isSayisi}
+        sekme={sekme}
+        onSekme={setSekme}
+        onSabahOzeti={() => void sabahOzetiUretSimdi()}
+        sabahOzetiMesgul={sabahUretiliyor || (!!kosular.aktifKosu && kosular.aktifKosu.kaynak === 'sabahOzeti')}
+      />
 
       {omurgaYok && <OmurgaYokBilgi />}
       {!!kadroS.error && !omurgaYok && (
-        <div className="rounded-2xl px-4 py-3 text-[12.5px]" style={{ background: 'rgba(255,107,122,0.10)', border: '1px solid rgba(255,107,122,0.45)', color: V5.metin }}>
+        <div className="rounded-2xl px-4 py-3 text-[12.5px]" style={{ background: `${KIRMIZI}12`, border: `1px solid ${KIRMIZI}59`, color: TEXT }}>
           Kadro alınamadı: {(kadroS.error as any)?.message || 'hata'}
         </div>
       )}
 
-      <div className="grid min-w-0 items-start gap-[22px] xl:grid-cols-[minmax(0,1fr)_392px]">
-        {/* SOL SÜTUN */}
-        <div className="flex min-w-0 flex-col gap-[22px]">
-          <GorevKarti ref={komutRef} ajanlar={ajanlar} mukellefler={mukellefler} mukellefAd={mukellefAd} komutTaslak={komutTaslak} kosular={kosular} odakNonce={odakNonce} escNonce={escNonce} maxBagli={durumS.data?.maxBagli} calisan={calisan} kararSayisi={kararSayisi} koordinatorNotu={koordinatorNotu} />
+      {sekme === 'genel' && (
+        <div className="grid min-w-0 items-start gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
+          <div className="flex min-w-0 flex-col gap-4">
+            <GorevKarti ref={komutRef} ajanlar={ajanlar} mukellefler={mukellefler} komutTaslak={komutTaslak} kosular={kosular} odakNonce={odakNonce} escNonce={escNonce} maxBagli={durumS.data?.maxBagli} koordinatorNotu={koordinatorNotu} />
+            <SizdenBeklenenKutu kalemler={bekleyenler} onaylar={onaylar} ajanAd={ajanAd} mukellefAd={mukellefAd} onBitti={tazele} onCevapla={vakayaCevapla} calisiyor={!!kosular.aktifKosu} yukleniyor={genelS.isLoading && !genelS.data} />
+          </div>
+          <div className="flex min-w-0 flex-col gap-4">
+            <SuAnKutu kosu={sonKosu} vakalar={genelVakalar} ajanAd={ajanAd} mukellefAd={mukellefAd} onIzle={isiAc} onDurdur={(h) => void durdur(h)} />
+            <BugunKutu vakalar={genelVakalar} oneriler={oneriler} ajanAd={ajanAd} onSec={isiAc} onTumu={() => setSekme('isler')} onTaslak={taslakVer} onPano={() => setSekme('pano')} />
+          </div>
+        </div>
+      )}
 
-          <div ref={panelRef}>
+      {sekme === 'isler' && (
+        <div className="grid min-w-0 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)]">
+          <IsGecmisi
+            akis={akisS.data}
+            isLoading={akisS.isLoading}
+            error={akisS.error}
+            sayaclar={sayaclar}
+            suzgec={akisSuzgec}
+            onSuzgec={setAkisSuzgec}
+            gun={akisGun}
+            onGun={setAkisGun}
+            taxpayerId={akisTaxpayerId}
+            onTaxpayerId={setAkisTaxpayerId}
+            mukellefler={mukellefler}
+            seciliVakaId={panelGoster ? seciliVakaId : null}
+            ajanAd={ajanAd}
+            onSec={(v) => {
+              setSeciliVakaId(v.vakaId);
+              setPanelKapali(false);
+            }}
+          />
+          <div ref={panelRef} className="min-w-0" style={{ scrollMarginTop: 16 }}>
             {panelGoster ? (
               <IsPaneli
                 kosu={panelKosu}
@@ -212,60 +377,17 @@ export function EkipEkrani() {
                 }}
               />
             ) : (
-              <CamKart ton="mavi" etiket="Aktif iş" baslik="Şu an çalışan iş yok">
-                <div className="flex items-center gap-4">
-                  <span className="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-[18px]" style={{ background: 'linear-gradient(160deg, rgba(110,163,255,0.25), rgba(110,163,255,0.06))', border: '1px solid rgba(110,163,255,0.35)', color: '#cfe0ff' }}>
-                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                      <path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M18.4 5.6l-2.8 2.8M8.4 15.6l-2.8 2.8" />
-                    </svg>
-                  </span>
-                  <div className="min-w-0">
-                    <b className="block text-[15px]" style={{ color: V5.metin }}>
-                      Görev verdiğinizde canlı ilerleme burada açılır
-                    </b>
-                    <span className="text-[12.8px]" style={{ color: V5.ikincil }}>
-                      Aşamalar, personelin her adımı, şu an ne yaptığı, sonuç tablosu ve sizden beklenen karar — tek panelde. Geçmiş bir işi görmek için aşağıdaki kayıtlardan satıra tıklayın.
-                    </span>
-                  </div>
-                </div>
-              </CamKart>
+              <Kutu baslik="İş paneli" aciklama="Soldan bir iş seçin; görev verdiğinizde ilerleme burada açılır" renk={MUTED}>
+                <Bos metin="Seçili iş yok. Aşamalar, personelin her adımı, sonuç ve sizden beklenen karar tek panelde görünür." />
+              </Kutu>
             )}
           </div>
-
-          <div ref={panoRef}>
-            <DonemPanosu pano={panoS.data} isLoading={panoS.isLoading} error={panoS.error} seciliDonem={seciliDonem} onDonemSec={setSeciliDonem} onTaslak={taslakVer} eksiklerNonce={0} />
-          </div>
         </div>
+      )}
 
-        {/* SAĞ SÜTUN */}
-        <div className="flex min-w-0 flex-col gap-[22px]">
-          <KadroKarti ajanlar={ajanlar} onaylar={onaylar} kosular={kosular.kosular} mukellefAd={mukellefAd} yukleniyor={kadroS.isLoading} haftalikIs={haftalikIs} bugunKosu={durumS.data?.bugunKosu ?? 0} />
-          <KararlarKarti sayaclar={sayaclar} onSuzgec={suzgecVeKaydir} />
-          <SabahOzetiKarti durum={durumS.data} kosular={kosular} />
-          <div ref={gecmisRef}>
-            <IsGecmisi
-              akis={akisS.data}
-              isLoading={akisS.isLoading}
-              error={akisS.error}
-              sayaclar={sayaclar}
-              suzgec={akisSuzgec}
-              onSuzgec={setAkisSuzgec}
-              gun={akisGun}
-              onGun={setAkisGun}
-              taxpayerId={akisTaxpayerId}
-              onTaxpayerId={setAkisTaxpayerId}
-              mukellefler={mukellefler}
-              seciliVakaId={panelGoster ? seciliVakaId : null}
-              ajanAd={ajanAd}
-              onSec={(v) => {
-                setSeciliVakaId(v.vakaId);
-                setPanelKapali(false);
-                kaydir(panelRef);
-              }}
-            />
-          </div>
-        </div>
-      </div>
+      {sekme === 'pano' && <DonemPanosu pano={panoS.data} isLoading={panoS.isLoading} error={panoS.error} seciliDonem={seciliDonem} onDonemSec={setSeciliDonem} onTaslak={taslakVer} eksiklerNonce={0} />}
+
+      {sekme === 'kadro' && <KadroKarti ajanlar={ajanlar} onaylar={onaylar} kosular={kosular.kosular} mukellefAd={mukellefAd} yukleniyor={kadroS.isLoading} haftalikIs={haftalikIs} bugunKosu={durumS.data?.bugunKosu ?? 0} />}
     </div>
   );
 }

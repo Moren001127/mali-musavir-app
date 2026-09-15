@@ -28,7 +28,8 @@ export function Kutu({
   style,
 }: {
   baslik?: React.ReactNode;
-  aciklama?: string;
+  /** Kısa açıklama; Ekip iş panelinde durum satırı (ReactNode) da geçer. */
+  aciklama?: React.ReactNode;
   renk?: string;
   sag?: React.ReactNode;
   children: React.ReactNode;

@@ -2,16 +2,17 @@
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, Loader2, X, Square, Send, XCircle, MessageSquareReply, RotateCcw, ShieldAlert, ClipboardCheck, StickyNote, FlaskConical, GraduationCap, HelpCircle, ChevronDown, Sunrise, Clock, AlertTriangle, BarChart3, Bell, FileText } from 'lucide-react';
+import { Check, Loader2, X, Square, Send, MessageSquareReply, RotateCcw, ChevronDown, AlertTriangle, GraduationCap, HelpCircle, FlaskConical } from 'lucide-react';
 import { toast } from 'sonner';
-import { getIs, iptalEt, istekKapat, onayla, reddet, sabahOzetiUret, isZamanAsimi, type AcikKalem, type IsDosyasi, type Vaka, type VakaAdim, type VakaAdimIs } from '@/lib/ekip';
+import { getIs, iptalEt, sabahOzetiUret, isZamanAsimi, type IsDosyasi, type Vaka, type VakaAdim, type VakaAdimIs } from '@/lib/ekip';
 import type { KomutTaslak } from './GorevKarti';
 import { DURDURULDU_METNI, type Adim, type Kosu, type KosularApi } from './kosular';
 import { OnayTeyit } from './OnayBekleyenler';
-import { AvatarV5, CamKart, Dug, Halka, Kapsul, V5, camBlok, type AvatarTonu } from './Cam';
-import { adimAciklamasi, ajanKisaAd, ajanKisaltma, ajanTamAd, aracAdi, cevapAyristir, goreliSaat, kaynakEtiketi, konuKisalt, raporBolumleri, saatKisa, sayacMetni, sureKisa, yokMu, type RaporBolumu } from './ortak';
+import { AcikKalemKarti, YerelOnay } from './Kararlar';
+import { Avatar, Bos, CARD_BORDER, Dugme, GOLD, IcKutu, Ilerleme, KIRMIZI, Kutu, MAVI, MOR, MUTED, OK, ROW_SEP, Rozet, TEXT, TURUNCU } from './Tema';
+import { adimAciklamasi, ajanKisaAd, ajanKisaltma, ajanTamAd, aracAdi, cevapAyristir, kaynakEtiketi, konuKisalt, raporBolumleri, saatKisa, sayacMetni, sureKisa, yokMu, type RaporBolumu } from './ortak';
 
-/* ─────────────────────────── yardımcılar ─────────────────────────── */
+/* ─────────────────────────── aşamalar ─────────────────────────── */
 
 type Asama = { ad: string; durum: 'bitti' | 'aktif' | 'bekliyor' | 'hata' };
 
@@ -25,69 +26,52 @@ function asamalar(p: { basladi: boolean; aracVar: boolean; personelVar: boolean;
   return liste;
 }
 
-/** Aşama kartı (v5): numara/onay halkası + ad + saat; biten mavi, süren nabızlı mavi, sonuç yeşil, hata bordo. */
-function AsamaKarti({ no, asama, zaman, son }: { no: number; asama: Asama; zaman?: string; son: boolean }) {
-  const d = asama.durum;
-  const stil: React.CSSProperties =
-    d === 'bitti' && son
-      ? { border: '1px solid rgba(63,211,154,0.4)', background: 'linear-gradient(180deg, rgba(63,211,154,0.16), rgba(63,211,154,0.05))' }
-      : d === 'bitti'
-        ? { border: '1px solid rgba(110,163,255,0.35)', background: 'linear-gradient(180deg, rgba(110,163,255,0.14), rgba(110,163,255,0.05))' }
-        : d === 'aktif'
-          ? { border: '1px solid rgba(110,163,255,0.6)', background: 'linear-gradient(180deg, rgba(110,163,255,0.2), rgba(110,163,255,0.06))', boxShadow: '0 0 0 1px rgba(110,163,255,0.25), 0 10px 30px rgba(110,163,255,0.15)' }
-          : d === 'hata'
-            ? { border: '1px solid rgba(255,107,122,0.5)', background: 'linear-gradient(180deg, rgba(255,107,122,0.16), rgba(255,107,122,0.05))' }
-            : { border: `1px solid ${V5.cizgi}`, background: 'rgba(0,0,0,0.28)' };
-  const halka: React.CSSProperties =
-    d === 'bitti'
-      ? { background: son ? 'linear-gradient(145deg, #1f8a5f, #3fd39a)' : 'linear-gradient(145deg, #2f5cb8, #6ea3ff)', border: '1.5px solid transparent', color: '#fff', boxShadow: `0 0 14px ${son ? 'rgba(63,211,154,0.45)' : 'rgba(110,163,255,0.45)'}` }
-      : d === 'aktif'
-        ? { border: `1.5px solid ${V5.mavi}`, color: V5.mavi }
-        : d === 'hata'
-          ? { background: 'linear-gradient(145deg, #b03c4a, #ff6b7a)', border: '1.5px solid transparent', color: '#fff' }
-          : { border: `1.5px solid ${V5.cizgi2}`, color: V5.soluk };
+/** Aşama çizgisi: ✓ biten (yeşil) · ● süren (mavi) · ○ bekleyen · ✕ hata. */
+function AsamaCizgisi({ liste, zamanlar }: { liste: Asama[]; zamanlar: Array<string | undefined> }) {
   return (
-    <div className="flex min-w-0 items-center gap-3 rounded-xl px-3.5 py-3" style={stil}>
-      <span className="flex h-[30px] w-[30px] flex-shrink-0 items-center justify-center rounded-full text-[12px]" style={{ fontFamily: V5.mono, ...halka }}>
-        {d === 'bitti' ? <Check size={14} /> : d === 'hata' ? <X size={14} /> : d === 'aktif' ? <span className="h-[9px] w-[9px] animate-pulse rounded-full" style={{ background: V5.mavi, boxShadow: `0 0 10px ${V5.mavi}` }} /> : no}
-      </span>
-      <span className="min-w-0">
-        <b className="block truncate text-[13px]" style={{ color: d === 'bekliyor' ? V5.ikincil : V5.metin }}>
-          {asama.ad}
-        </b>
-        <span className="block text-[11.5px]" style={{ fontFamily: V5.mono, color: V5.soluk }}>
-          {zaman || '—'}
-        </span>
-      </span>
+    <div className="flex flex-wrap items-center gap-y-1 text-[11.5px]">
+      {liste.map((a, i) => {
+        const renk = a.durum === 'bitti' ? OK : a.durum === 'aktif' ? MAVI : a.durum === 'hata' ? KIRMIZI : MUTED;
+        return (
+          <span key={a.ad} className="inline-flex items-center">
+            {i > 0 && <span className="mx-2 h-px w-5" style={{ background: ROW_SEP }} />}
+            <span className="inline-flex items-center gap-1.5" style={{ color: a.durum === 'bekliyor' ? MUTED : renk, fontWeight: a.durum === 'aktif' ? 600 : 500 }} title={zamanlar[i] ? `${a.ad} · ${zamanlar[i]}` : a.ad}>
+              {a.durum === 'bitti' ? <Check size={11} /> : a.durum === 'hata' ? <X size={11} /> : <span className={`inline-block h-[7px] w-[7px] rounded-full ${a.durum === 'aktif' ? 'animate-pulse' : ''}`} style={{ background: a.durum === 'aktif' ? MAVI : 'transparent', border: `1px solid ${a.durum === 'aktif' ? MAVI : MUTED}` }} />}
+              {a.ad}
+            </span>
+          </span>
+        );
+      })}
     </div>
   );
 }
 
-/** Zaman çizgisi satırı (v5): saat · kare avatar · başlık + alt yazı · sağda sonuç. */
-function ZamanSatiri({ saat, kisaltma, ton, baslik, alt, sonuc, devir, nabiz, children }: { saat?: string; kisaltma: string; ton: AvatarTonu; baslik: ReactNode; alt?: ReactNode; sonuc?: ReactNode; devir?: boolean; nabiz?: boolean; children?: ReactNode }) {
+/* ─────────────────────────── zaman çizgisi ─────────────────────────── */
+
+/** Zaman çizgisi satırı: saat · avatar · başlık + alt yazı · sağda sonuç. */
+function ZamanSatiri({ saat, kisaltma, ton, baslik, alt, sonuc, devir, nabiz, children }: { saat?: string; kisaltma: string; ton: 'gold' | 'mavi' | 'gri' | 'kirmizi'; baslik: ReactNode; alt?: ReactNode; sonuc?: ReactNode; devir?: boolean; nabiz?: boolean; children?: ReactNode }) {
   return (
-    <li className="relative grid min-w-0 grid-cols-[46px_34px_minmax(0,1fr)] items-start gap-x-3 py-2 md:grid-cols-[46px_34px_minmax(0,1fr)_minmax(0,190px)]">
-      <span className="absolute bottom-0 left-[74px] top-0 w-[2px]" style={{ background: V5.cizgi }} />
-      <span className="pt-2 text-right text-[11.5px]" style={{ fontFamily: V5.mono, color: V5.soluk }}>
+    <li className="grid min-w-0 grid-cols-[42px_32px_minmax(0,1fr)] items-start gap-x-2 py-1.5 md:grid-cols-[42px_32px_minmax(0,1fr)_minmax(0,180px)]">
+      <span className="pt-1.5 text-[11px] tabular-nums" style={{ color: MUTED }}>
         {saat || ''}
       </span>
-      <span className="relative z-[1]">
-        <AvatarV5 kisaltma={kisaltma} ton={ton} boyut={34} kare nabiz={nabiz} />
+      <span className="pt-0.5">
+        <Avatar kisaltma={kisaltma} ton={ton} boyut={26} nabiz={nabiz} />
       </span>
-      <span className="min-w-0 pt-1">
-        <b className="block text-[13px] font-semibold" style={{ color: devir ? '#cfe0ff' : V5.metin }}>
-          {devir && <span style={{ color: V5.mavi }}>→ </span>}
+      <span className="min-w-0 pt-0.5">
+        <b className="block text-[12.5px] font-semibold" style={{ color: TEXT }}>
+          {devir && <span style={{ color: MAVI }}>→ </span>}
           {baslik}
         </b>
         {alt && (
-          <span className="block text-[12px]" style={{ color: V5.ikincil }}>
+          <span className="block text-[11.5px]" style={{ color: MUTED }}>
             {alt}
           </span>
         )}
         {children}
       </span>
       {sonuc !== undefined && (
-        <span className="hidden min-w-0 pt-1.5 text-right text-[12px] md:block" style={{ color: V5.soluk }}>
+        <span className="hidden min-w-0 pt-1 text-right text-[11.5px] md:block" style={{ color: MUTED }}>
           {sonuc}
         </span>
       )}
@@ -99,22 +83,22 @@ function ZamanSatiri({ saat, kisaltma, ton, baslik, alt, sonuc, devir, nabiz, ch
 function YerelAdim({ adim, mukellefAd, ajanAd, ajanId }: { adim: Adim; mukellefAd: (id?: string | null) => string | undefined; ajanAd: (id: string) => string; ajanId: string }) {
   const saat = saatKisa(adim.zaman).slice(0, 5);
   const kisaltma = ajanKisaltma(ajanId);
-  const ton: AvatarTonu = ajanId === 'koordinator' ? 'altin' : 'mavi';
+  const ton = ajanId === 'koordinator' ? 'gold' : 'mavi';
   const ajanAdi = ajanTamAd(ajanId, ajanAd(ajanId));
   if (adim.tip === 'arac') {
     const calisiyor = adim.durum === 'calisiyor';
     const { baslik, ayrinti } = adimAciklamasi(adim.ad, adim.args, mukellefAd, ajanAd);
     const devir = adim.ad === 'ekip_ajan_baslat';
-    return <ZamanSatiri saat={saat} kisaltma={kisaltma} ton={ton} baslik={baslik} alt={ajanAdi} sonuc={calisiyor ? <span style={{ color: V5.mavi }}>sürüyor…</span> : ayrinti} devir={devir} nabiz={calisiyor} />;
+    return <ZamanSatiri saat={saat} kisaltma={kisaltma} ton={calisiyor ? 'mavi' : ton} baslik={baslik} alt={ajanAdi} sonuc={calisiyor ? <span style={{ color: MAVI }}>sürüyor…</span> : ayrinti} devir={devir} nabiz={calisiyor} />;
   }
   if (adim.tip === 'kuruTest') {
     const { baslik, ayrinti } = adimAciklamasi(adim.ad, adim.args, mukellefAd, ajanAd);
     return <ZamanSatiri saat={saat} kisaltma={kisaltma} ton={ton} baslik={`Kuru test — yapılmadı: ${baslik}`} alt={ajanAdi} sonuc={ayrinti} />;
   }
   if (adim.tip === 'red') {
-    return <ZamanSatiri saat={saat} kisaltma={kisaltma} ton="coral" baslik={`Reddedildi: ${aracAdi(adim.ad)}`} alt={adim.neden} />;
+    return <ZamanSatiri saat={saat} kisaltma={kisaltma} ton="kirmizi" baslik={`Reddedildi: ${aracAdi(adim.ad)}`} alt={adim.neden} />;
   }
-  return <ZamanSatiri saat={saat} kisaltma={kisaltma} ton={ton} baslik={`Onayınıza sunuldu${adim.previewId ? ` · #${adim.previewId}` : ''}`} alt={aracAdi(adim.ad)} sonuc={adim.sonuc ? <span style={{ color: adim.sonuc.startsWith('Hata') ? V5.coral : V5.mint }}>{adim.sonuc}</span> : undefined} />;
+  return <ZamanSatiri saat={saat} kisaltma={kisaltma} ton={ton} baslik={`Onayınıza sunuldu${adim.previewId ? ` · #${adim.previewId}` : ''}`} alt={aracAdi(adim.ad)} sonuc={adim.sonuc ? <span style={{ color: adim.sonuc.startsWith('Hata') ? KIRMIZI : OK }}>{adim.sonuc}</span> : undefined} />;
 }
 
 /** Sunucu vakasındaki personel (çocuk) adımı — açılınca araçları getirir; raporu üst bileşene verir. */
@@ -133,40 +117,40 @@ function PersonelAdimi({ adim, ajanAd, mukellefAd, acikVarsayilan, onRapor }: { 
     <ZamanSatiri
       saat={saatKisa(adim.baslangic).slice(0, 5)}
       kisaltma={ajanKisaltma(adim.ajanId)}
-      ton={adim.durum === 'failed' ? 'coral' : 'mavi'}
+      ton={adim.durum === 'failed' ? 'kirmizi' : adim.durum === 'running' ? 'mavi' : 'gri'}
       nabiz={adim.durum === 'running'}
       baslik={`${ad} ${durumAd}`}
       alt={adim.baslik}
       sonuc={
         <span className="inline-flex flex-wrap items-center justify-end gap-1.5">
-          {sure && <span style={{ fontFamily: V5.mono }}>{sure}</span>}
-          {!adim.kuru && <Kapsul tur="canli">canlı</Kapsul>}
-          <button type="button" onClick={() => setAcik((a) => !a)} className="inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[11px] hover:bg-white/5" style={{ color: V5.ikincil }}>
+          {sure && <span className="tabular-nums">{sure}</span>}
+          {!adim.kuru && <Rozet metin="canlı" renk={KIRMIZI} />}
+          <button type="button" onClick={() => setAcik((a) => !a)} className="inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[11px] hover:bg-white/5" style={{ color: MUTED }}>
             {acik ? 'gizle' : 'adımları'} <ChevronDown size={11} className="transition-transform" style={{ transform: acik ? 'rotate(180deg)' : 'none' }} />
           </button>
         </span>
       }
     >
       {adim.durum === 'failed' && adim.hata && (
-        <div className="mt-1 text-[12px]" style={{ color: V5.coral }}>
+        <div className="mt-1 text-[11.5px]" style={{ color: KIRMIZI }}>
           {adim.hata}
         </div>
       )}
       {acik && (
-        <div className="mt-2 flex flex-col gap-1.5 rounded-xl px-3 py-2.5" style={camBlok()}>
+        <div className="mt-2 flex flex-col gap-1 rounded-xl px-3 py-2" style={{ background: 'rgba(255,255,255,0.02)', border: `1px solid ${CARD_BORDER}` }}>
           {!data && (
-            <span className="inline-flex items-center gap-1.5 text-[11.5px]" style={{ color: V5.ikincil }}>
+            <span className="inline-flex items-center gap-1.5 text-[11.5px]" style={{ color: MUTED }}>
               <Loader2 size={11} className="animate-spin" /> adımlar yükleniyor
             </span>
           )}
           {araclar.map((t, i) => {
             const { baslik, ayrinti } = adimAciklamasi(t.name, t.args, mukellefAd, ajanAd);
             return (
-              <div key={i} className="flex min-w-0 items-baseline gap-2 text-[12.3px]">
-                <Check size={11} className="flex-shrink-0 self-center" style={{ color: V5.mint }} />
-                <span style={{ color: V5.metin }}>{baslik}</span>
+              <div key={i} className="flex min-w-0 items-baseline gap-2 text-[12px]">
+                <Check size={11} className="flex-shrink-0 self-center" style={{ color: OK }} />
+                <span style={{ color: TEXT }}>{baslik}</span>
                 {ayrinti && (
-                  <span className="min-w-0 truncate" style={{ color: V5.soluk }}>
+                  <span className="min-w-0 truncate" style={{ color: MUTED }}>
                     {ayrinti}
                   </span>
                 )}
@@ -174,7 +158,7 @@ function PersonelAdimi({ adim, ajanAd, mukellefAd, acikVarsayilan, onRapor }: { 
             );
           })}
           {data && !araclar.length && adim.durum === 'running' && (
-            <span className="text-[11.5px]" style={{ color: V5.ikincil }}>
+            <span className="text-[11.5px]" style={{ color: MUTED }}>
               Adımlar bitince görünür (personel çalışırken canlı akış yalnız Koordinatör için).
             </span>
           )}
@@ -205,26 +189,26 @@ function bulguAyristir(s: string): { metin: string; siddet: BulguSiddet; tutar: 
 }
 
 const SIDDET: Record<BulguSiddet, { ad: string; renk: string }> = {
-  temiz: { ad: 'temiz', renk: V5.mint },
-  uyari: { ad: 'dikkat', renk: V5.amber },
-  karar: { ad: 'kararınız', renk: V5.coral },
-  bilgi: { ad: 'bilgi', renk: V5.ikincil },
+  temiz: { ad: 'temiz', renk: OK },
+  uyari: { ad: 'dikkat', renk: TURUNCU },
+  karar: { ad: 'kararınız', renk: GOLD },
+  bilgi: { ad: 'bilgi', renk: MUTED },
 };
 
-/** Bulgular tablosu (v5): # · Bulgu · Durum · Tutar; grup başlıkları mavi şerit. */
+/** Bulgular tablosu: # · Bulgu · Durum · Tutar; grup başlıkları soluk. */
 function BulguTablosu({ satirlar }: { satirlar: string[] }) {
   const ayrisik = satirlar.map(bulguAyristir);
   let no = 0;
+  const th = 'px-3 py-2 text-left text-[10.5px] font-semibold uppercase tracking-[0.08em]';
   return (
-    <div className="overflow-hidden rounded-xl" style={{ border: `1px solid ${V5.cizgi}`, background: 'rgba(0,0,0,0.25)' }}>
-      <table className="w-full">
+    <div className="overflow-auto rounded-xl" style={{ border: `1px solid ${CARD_BORDER}` }}>
+      <table className="w-full min-w-[420px]" style={{ borderCollapse: 'collapse' }}>
         <thead>
-          <tr style={{ background: 'rgba(255,255,255,0.04)' }}>
-            {['#', 'Bulgu', 'Durum', 'Tutar'].map((b, i) => (
-              <th key={b} className={`px-3.5 py-2.5 text-[11px] font-bold uppercase tracking-[0.12em] ${i === 3 ? 'text-right' : 'text-left'}`} style={{ color: V5.soluk, borderBottom: `1px solid ${V5.cizgi}`, width: i === 0 ? 36 : i === 2 ? 110 : i === 3 ? 130 : undefined }}>
-                {b}
-              </th>
-            ))}
+          <tr>
+            <th className={th} style={{ color: MUTED, borderBottom: `1px solid ${CARD_BORDER}`, width: 34 }}>#</th>
+            <th className={th} style={{ color: MUTED, borderBottom: `1px solid ${CARD_BORDER}` }}>Bulgu</th>
+            <th className={th} style={{ color: MUTED, borderBottom: `1px solid ${CARD_BORDER}`, width: 96 }}>Durum</th>
+            <th className={`${th} text-right`} style={{ color: MUTED, borderBottom: `1px solid ${CARD_BORDER}`, width: 120 }}>Tutar</th>
           </tr>
         </thead>
         <tbody>
@@ -232,7 +216,7 @@ function BulguTablosu({ satirlar }: { satirlar: string[] }) {
             if (b.grup)
               return (
                 <tr key={i}>
-                  <td colSpan={4} className="px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.12em]" style={{ background: 'rgba(110,163,255,0.08)', color: '#cfe0ff', borderBottom: `1px solid ${V5.cizgi}` }}>
+                  <td colSpan={4} className="px-3 py-1.5 text-[10.5px] font-semibold uppercase tracking-[0.08em]" style={{ color: GOLD, borderBottom: `1px solid ${ROW_SEP}`, background: `${GOLD}08` }}>
                     {b.metin}
                   </td>
                 </tr>
@@ -241,19 +225,16 @@ function BulguTablosu({ satirlar }: { satirlar: string[] }) {
             const s = SIDDET[b.siddet];
             return (
               <tr key={i}>
-                <td className="px-3.5 py-2.5 align-top text-[11.5px]" style={{ fontFamily: V5.mono, color: V5.soluk, borderBottom: `1px solid ${V5.cizgi}` }}>
+                <td className="px-3 py-2 align-top text-[11px] tabular-nums" style={{ color: MUTED, borderBottom: `1px solid ${ROW_SEP}` }}>
                   {no}
                 </td>
-                <td className="whitespace-pre-wrap px-3.5 py-2.5 align-top text-[12.8px] leading-relaxed" style={{ color: V5.metin, borderBottom: `1px solid ${V5.cizgi}` }}>
+                <td className="whitespace-pre-wrap px-3 py-2 align-top text-[12.5px] leading-relaxed" style={{ color: TEXT, borderBottom: `1px solid ${ROW_SEP}` }}>
                   {b.metin}
                 </td>
-                <td className="px-3.5 py-2.5 align-top" style={{ borderBottom: `1px solid ${V5.cizgi}` }}>
-                  <span className="inline-flex items-center gap-[7px] whitespace-nowrap text-[12px] font-bold" style={{ color: s.renk }}>
-                    <span className="inline-block h-[7px] w-[7px] rounded-full" style={{ background: 'currentColor', boxShadow: '0 0 8px currentColor' }} />
-                    {s.ad}
-                  </span>
+                <td className="px-3 py-2 align-top" style={{ borderBottom: `1px solid ${ROW_SEP}` }}>
+                  <Rozet metin={s.ad} renk={s.renk} />
                 </td>
-                <td className="whitespace-nowrap px-3.5 py-2.5 text-right align-top text-[12.5px] font-semibold" style={{ fontFamily: V5.mono, color: V5.metin, borderBottom: `1px solid ${V5.cizgi}` }}>
+                <td className="whitespace-nowrap px-3 py-2 text-right align-top text-[12.5px] font-medium tabular-nums" style={{ color: GOLD, borderBottom: `1px solid ${ROW_SEP}` }}>
                   {b.tutar || ''}
                 </td>
               </tr>
@@ -265,22 +246,11 @@ function BulguTablosu({ satirlar }: { satirlar: string[] }) {
   );
 }
 
-const BOLUM_RENGI: Record<RaporBolumu['anahtar'], string> = {
-  yaptigim: V5.mavi,
-  kaynaklar: V5.soluk,
-  bulgular: V5.metin,
-  onay: V5.altin,
-  istek: V5.amber,
-  kimde: V5.mor,
-  ogrendim: V5.mor,
-  emin: V5.amber,
-  devir: V5.mor,
-  diger: V5.metin,
-};
+const BOLUM_BASLIK: Partial<Record<RaporBolumu['anahtar'], string>> = { yaptigim: 'Yaptığı iş', kaynaklar: 'Baktığı kaynaklar', kimde: 'Kime döndü', devir: 'Devir' };
 
 /**
- * Rapor görünümü v5: Bulgular → kenarlıklı tablo; Emin olmadığı / Sizden istenen / Onayınızı bekleyen → vurgulu satır;
- * Yaptığı iş / Baktığı kaynaklar / Kime döndü / Devir → katlanır ayrıntı. Bölümsüz rapor → düz metin bloğu.
+ * Rapor görünümü: Bulgular → tablo; Emin olmadığı / Sizden istenen / Onayınızı bekleyen → altın vurgulu satır;
+ * Yaptığı iş / Baktığı kaynaklar / Kime döndü / Devir → iki sütun iç kutu. Bölümsüz rapor → düz metin.
  */
 export function RaporGorunumu({ rapor, kompakt = false }: { rapor: string; kompakt?: boolean }) {
   const bolumler = useMemo(() => raporBolumleri(rapor), [rapor]);
@@ -291,207 +261,61 @@ export function RaporGorunumu({ rapor, kompakt = false }: { rapor: string; kompa
   const diger = bul('diger');
   const vurgulu = (['emin', 'istek', 'onay'] as const).map(bul).filter(dolu) as RaporBolumu[];
   const ayrinti = (['yaptigim', 'kaynaklar', 'kimde', 'devir'] as const).map(bul).filter(dolu) as RaporBolumu[];
+  if (kompakt) {
+    return (
+      <div className="text-[12px] leading-relaxed" style={{ color: MUTED }}>
+        {[...ayrinti, ...(dolu(bulgular) ? [bulgular!] : []), ...(diger ? [diger] : [])].map((b) => `${b.baslik}: ${b.satirlar.join(' ')}`).join(' — ')}
+      </div>
+    );
+  }
   return (
     <div className="flex flex-col gap-3">
-      {dolu(bulgular) && <BulguTablosu satirlar={bulgular!.satirlar} />}
-      {bulgular && !dolu(bulgular) && (
-        <div className="rounded-xl px-3.5 py-3 text-[12.5px]" style={camBlok({ color: V5.ikincil })}>
-          Bulgu yok.
+      {ayrinti.length > 0 && (
+        <div className="grid gap-3 md:grid-cols-2">
+          {ayrinti.map((b) => (
+            <IcKutu key={b.anahtar} baslik={BOLUM_BASLIK[b.anahtar] || b.baslik}>
+              <ul className="flex flex-col gap-1 text-[12.5px] leading-relaxed" style={{ color: TEXT }}>
+                {b.satirlar.map((s, i) => (
+                  <li key={i} className="whitespace-pre-wrap">
+                    {s}
+                  </li>
+                ))}
+              </ul>
+            </IcKutu>
+          ))}
         </div>
+      )}
+      {dolu(bulgular) && (
+        <IcKutu baslik="Bulgular" style={{ padding: 0, background: 'transparent', border: 'none' }}>
+          <BulguTablosu satirlar={bulgular!.satirlar} />
+        </IcKutu>
+      )}
+      {bulgular && !dolu(bulgular) && (
+        <IcKutu baslik="Bulgular">
+          <span className="text-[12.5px]" style={{ color: MUTED }}>
+            Bulgu yok.
+          </span>
+        </IcKutu>
       )}
       {diger && (
-        <div className="whitespace-pre-wrap rounded-xl px-3.5 py-3 text-[13px] leading-relaxed" style={camBlok({ color: V5.metin })}>
-          {diger.satirlar.join('\n')}
-        </div>
+        <IcKutu>
+          <div className="whitespace-pre-wrap text-[12.8px] leading-relaxed" style={{ color: TEXT }}>
+            {diger.satirlar.join('\n')}
+          </div>
+        </IcKutu>
       )}
       {vurgulu.map((b) => (
-        <div key={b.anahtar} className="rounded-xl px-3.5 py-2.5 text-[12.5px] leading-relaxed" style={{ background: `${BOLUM_RENGI[b.anahtar]}12`, border: `1px solid ${BOLUM_RENGI[b.anahtar]}55`, color: V5.ikincil }}>
-          <b style={{ color: V5.metin }}>{b.baslik}:</b> {b.satirlar.join(' · ')}
+        <div key={b.anahtar} className="rounded-xl px-3 py-2.5 text-[12.5px] leading-relaxed" style={{ background: `${GOLD}0d`, border: `1px solid ${GOLD}40`, color: TEXT }}>
+          <b style={{ color: GOLD }}>{b.baslik}:</b> {b.satirlar.join(' · ')}
         </div>
       ))}
-      {ayrinti.length > 0 && !kompakt && (
-        <details className="rounded-xl px-3.5 py-2" style={camBlok()}>
-          <summary className="cursor-pointer text-[11.5px] font-semibold uppercase tracking-[0.12em]" style={{ color: V5.soluk }}>
-            Nasıl yaptı — {ayrinti.map((b) => b.baslik.toLocaleLowerCase('tr-TR')).join(' · ')}
-          </summary>
-          <div className="mt-2 grid gap-2 md:grid-cols-2">
-            {ayrinti.map((b) => (
-              <div key={b.anahtar} className="rounded-lg px-3 py-2" style={{ background: 'rgba(0,0,0,0.25)', border: `1px solid ${V5.cizgi}` }}>
-                <div className="mb-1 text-[10.5px] font-bold uppercase tracking-[0.12em]" style={{ color: BOLUM_RENGI[b.anahtar] === V5.metin ? V5.soluk : BOLUM_RENGI[b.anahtar] }}>
-                  {b.baslik}
-                </div>
-                <ul className="flex flex-col gap-1 text-[12.5px] leading-relaxed" style={{ color: V5.ikincil }}>
-                  {b.satirlar.map((s, i) => (
-                    <li key={i} className="whitespace-pre-wrap">
-                      {s}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-          </div>
-        </details>
-      )}
-      {ayrinti.length > 0 && kompakt && (
-        <div className="text-[12px] leading-relaxed" style={{ color: V5.ikincil }}>
-          {ayrinti.map((b) => `${b.baslik}: ${b.satirlar.join(' ')}`).join(' — ')}
-        </div>
-      )}
     </div>
   );
 }
 
-/* ─────────────────────────── kararlar ─────────────────────────── */
+/* ─────────────────────────── cevap kutusu ─────────────────────────── */
 
-/**
- * Açık kalem (v5, bordo karar kartı) — üç tür:
- *  - PRV onayı (dışarı mesaj): Onayla ve gönder / Reddet (kart içi teyit).
- *  - KARAR (bildirim, tur 'onay'): personel "karar sizde" dedi → kararınızı yazıp gönderirsiniz ya da kapatırsınız.
- *  - İSTEK (bildirim, tur 'istek'): sizden belge/işlem → Yapıldı; isterseniz not da yazarsınız.
- */
-function AcikKalemKarti({ kalem, onBitti, onCevapla, calisiyor }: { kalem: AcikKalem; onBitti: () => void; onCevapla: (metin: string) => void; calisiyor: boolean }) {
-  const [teyit, setTeyit] = useState(false);
-  const [mesgul, setMesgul] = useState(false);
-  const [sonuc, setSonuc] = useState<string | null>(null);
-  const [cevap, setCevap] = useState('');
-  const onayMi = kalem.tip === 'onay';
-  const kararMi = onayMi && kalem.kaynak === 'bildirim';
-  const cevapGonder = () => {
-    if (!cevap.trim()) return;
-    onCevapla(cevap.trim());
-    setCevap('');
-    setSonuc('Cevabınız Koordinatör’e gitti');
-  };
-  const yap = async (fn: () => Promise<{ ok: boolean; error?: string; zatenKapali?: boolean }>, okMetin: string) => {
-    if (mesgul) return;
-    setMesgul(true);
-    try {
-      const r = await fn();
-      setSonuc(r.ok ? (r.zatenKapali ? 'Zaten kapalıydı' : okMetin) : `Hata: ${r.error || 'olmadı'}`);
-    } catch (e: any) {
-      setSonuc(`Hata: ${e?.message || e}`);
-    } finally {
-      setMesgul(false);
-      setTeyit(false);
-      onBitti();
-    }
-  };
-  const renk = onayMi && !kararMi ? V5.altin : V5.coral;
-  return (
-    <div className="rounded-[14px] p-4" style={{ background: `linear-gradient(160deg, ${renk}2e, ${renk}0d)`, border: `1px solid ${renk}73`, boxShadow: `0 12px 30px ${renk}1f` }}>
-      <div className="flex items-center gap-2 text-[14px] font-extrabold" style={{ color: V5.metin }}>
-        {onayMi && !kararMi ? <ShieldAlert size={15} style={{ color: renk }} /> : kararMi ? <Bell size={15} style={{ color: renk }} /> : <ClipboardCheck size={15} style={{ color: renk }} />}
-        {kararMi ? 'Kararınız bekleniyor' : onayMi ? 'Onayınızı bekliyor' : 'Sizden istenen'}
-      </div>
-      <div className="mt-1.5 text-[12.8px] leading-relaxed" style={{ color: V5.ikincil }}>
-        {kalem.baslik}
-      </div>
-      {kalem.confirmationText && !sonuc && (
-        <div className="mt-2 line-clamp-5 whitespace-pre-wrap rounded-lg px-3 py-2 text-[12.3px] leading-relaxed" style={{ background: 'rgba(0,0,0,0.3)', color: V5.ikincil }}>
-          {kalem.confirmationText}
-        </div>
-      )}
-      {sonuc ? (
-        <div className="mt-3 text-[12.5px] font-bold" style={{ color: sonuc.startsWith('Hata') ? V5.coral : V5.mint }}>
-          {sonuc}
-        </div>
-      ) : (
-        <div className="mt-3 flex flex-col gap-2">
-          {kalem.kaynak === 'bildirim' && (
-            <input
-              value={cevap}
-              onChange={(e) => setCevap(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && cevap.trim()) {
-                  e.preventDefault();
-                  cevapGonder();
-                }
-              }}
-              placeholder={kararMi ? 'Kararınızı yazın (ör. "kilitle", "beklet")…' : 'İsterseniz not yazın (ör. "fişi yükledim, devam et")…'}
-              className="h-9 min-w-0 rounded-[10px] px-3 text-[12.5px] outline-none"
-              style={{ background: 'rgba(255,255,255,0.05)', border: `1px solid ${V5.cizgi2}`, color: V5.metin }}
-            />
-          )}
-          {kararMi ? (
-            <>
-              <Dug tur="mavi" disabled={!cevap.trim()} onClick={cevapGonder} title={calisiyor ? 'Koşu sürüyor; cevabınız bitince gönderilir' : 'Koordinatör aynı iş zincirinde devam eder'}>
-                <MessageSquareReply size={13} /> {calisiyor ? 'Kararı bitince gönder' : 'Kararı gönder'}
-              </Dug>
-              <Dug disabled={mesgul} onClick={() => yap(() => istekKapat(kalem.id), 'Kapatıldı')} title="Kararı verdiniz / gerek kalmadı → kalem kapanır">
-                <Check size={12} /> Kapat
-              </Dug>
-            </>
-          ) : onayMi ? (
-            <>
-              <Dug tur="mavi" disabled={mesgul || teyit} onClick={() => setTeyit(true)}>
-                {mesgul ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />} Onayla ve gönder
-              </Dug>
-              <Dug tur="tehlike" disabled={mesgul} onClick={() => yap(() => reddet(kalem.id, 'Ekip ekranından reddedildi'), 'Reddedildi')}>
-                <XCircle size={12} /> Reddet
-              </Dug>
-            </>
-          ) : (
-            <>
-              <Dug tur="mavi" disabled={mesgul} onClick={() => yap(() => istekKapat(kalem.id), 'Yapıldı ✓')} title="İstenen yapıldı → kalem kapanır, Koordinatör devam eder">
-                {mesgul ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />} Yapıldı
-              </Dug>
-              {cevap.trim() && (
-                <Dug onClick={cevapGonder}>
-                  <MessageSquareReply size={13} /> Notu gönder
-                </Dug>
-              )}
-            </>
-          )}
-          {teyit && <OnayTeyit metin={<>Bu mesaj <b>GERÇEKTEN</b> gidecek → #{kalem.id}</>} mesgul={mesgul} onEvet={() => yap(() => onayla(kalem.id), 'Gönderildi ✓')} onVazgec={() => setTeyit(false)} />}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** Yerel koşu içinde açılan onay (SSE 'onay' olayı) — kart içi teyitle onayla/reddet. */
-function YerelOnay({ adim, kosu, kosular, onBitti }: { adim: Adim; kosu: Kosu; kosular: KosularApi; onBitti: () => void }) {
-  const [teyit, setTeyit] = useState(false);
-  const [mesgul, setMesgul] = useState(false);
-  const sonucYaz = (sonuc: string) => {
-    kosular.guncelle(kosu.ajanId, (k) => ({ ...k, adimlar: k.adimlar.map((a) => (a.previewId === adim.previewId ? { ...a, sonuc } : a)) }));
-    onBitti();
-  };
-  const yap = async (fn: () => Promise<{ ok: boolean; error?: string }>, okMetin: string) => {
-    if (mesgul) return;
-    setMesgul(true);
-    try {
-      const r = await fn();
-      sonucYaz(r.ok ? okMetin : `Hata: ${r.error || 'olmadı'}`);
-    } catch (e: any) {
-      sonucYaz(`Hata: ${e?.message || e}`);
-    } finally {
-      setMesgul(false);
-      setTeyit(false);
-    }
-  };
-  return (
-    <div className="rounded-[14px] p-4" style={{ background: 'linear-gradient(160deg, rgba(227,194,111,0.18), rgba(227,194,111,0.05))', border: '1px solid rgba(227,194,111,0.45)' }}>
-      <div className="flex items-center gap-2 text-[14px] font-extrabold" style={{ color: V5.metin }}>
-        <ShieldAlert size={15} style={{ color: V5.altin }} /> Onayınızı bekliyor · #{adim.previewId}
-      </div>
-      <div className="mt-1.5 text-[12.8px]" style={{ color: V5.ikincil }}>
-        {aracAdi(adim.ad)}
-      </div>
-      <div className="mt-3 flex flex-col gap-2">
-        <Dug tur="mavi" disabled={mesgul || teyit} onClick={() => setTeyit(true)}>
-          <Send size={12} /> Onayla ve gönder
-        </Dug>
-        <Dug tur="tehlike" disabled={mesgul} onClick={() => yap(() => reddet(adim.previewId!, 'Ekip ekranından reddedildi'), 'Reddedildi')}>
-          Reddet
-        </Dug>
-      </div>
-      {teyit && <OnayTeyit metin={<>Bu mesaj <b>GERÇEKTEN</b> gidecek → #{adim.previewId}</>} mesgul={mesgul} onEvet={() => yap(() => onayla(adim.previewId!), 'Gönderildi ✓')} onVazgec={() => setTeyit(false)} />}
-    </div>
-  );
-}
-
-/** Cevap / talimat kutusu (v5, sağ panel altı): koşu sürüyorsa kuyruğa alınır, bitince Koordinatör'e gider. */
+/** Cevap / talimat kutusu: koşu sürüyorsa kuyruğa alınır, bitince Koordinatör'e gider. */
 function CevapKutusu({ calisiyor, bekleyen, onGonder, onIptal }: { calisiyor: boolean; bekleyen: string | null; onGonder: (metin: string) => void; onIptal: () => void }) {
   const [metin, setMetin] = useState('');
   const gonder = () => {
@@ -502,8 +326,8 @@ function CevapKutusu({ calisiyor, bekleyen, onGonder, onIptal }: { calisiyor: bo
   return (
     <div className="flex flex-col gap-2">
       {bekleyen && (
-        <div className="flex items-center gap-2 rounded-[10px] px-3 py-2 text-[12px]" style={{ background: 'rgba(110,163,255,0.1)', border: '1px solid rgba(110,163,255,0.35)', color: V5.metin }}>
-          <Loader2 size={12} className="animate-spin flex-shrink-0" style={{ color: V5.mavi }} />
+        <div className="flex items-center gap-2 rounded-[10px] px-3 py-2 text-[12px]" style={{ background: `${MAVI}12`, border: `1px solid ${MAVI}40`, color: TEXT }}>
+          <Loader2 size={12} className="flex-shrink-0 animate-spin" style={{ color: MAVI }} />
           <span className="min-w-0 flex-1 truncate">
             Bitince gidecek: <i>{bekleyen}</i>
           </span>
@@ -512,41 +336,24 @@ function CevapKutusu({ calisiyor, bekleyen, onGonder, onIptal }: { calisiyor: bo
           </button>
         </div>
       )}
-      <input
-        value={metin}
-        onChange={(e) => setMetin(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') {
-            e.preventDefault();
-            gonder();
-          }
-        }}
-        placeholder={calisiyor ? 'Cevap ya da talimat yazın…' : 'Uzmana cevap ya da yeni talimat…'}
-        className="h-[38px] min-w-0 rounded-[10px] px-3 text-[13px] outline-none"
-        style={{ background: 'rgba(255,255,255,0.05)', border: `1px solid ${V5.cizgi2}`, color: V5.metin }}
-      />
-      <div className="flex items-center justify-between gap-2 text-[11.5px]" style={{ color: V5.soluk }}>
-        <span>{calisiyor ? 'Koşu sürerken kuyruğa alınır' : 'Aynı iş zincirinde devam eder'}</span>
-        <Dug kucuk disabled={!metin.trim()} onClick={gonder} title={calisiyor ? 'Koşu sürüyor; bitince gönderilir' : 'Gönder (Enter)'}>
+      <div className="flex items-center gap-2">
+        <input
+          value={metin}
+          onChange={(e) => setMetin(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              gonder();
+            }
+          }}
+          placeholder={calisiyor ? 'Bu işe not / talimat — koşu bitince Koordinatör’e gider' : 'Bu işe not / talimat — Koordinatör aynı işte devam eder'}
+          className="h-9 min-w-0 flex-1 rounded-[10px] px-3 text-[12.5px] outline-none"
+          style={{ background: 'rgba(255,255,255,0.03)', border: `1px solid ${CARD_BORDER}`, color: TEXT }}
+        />
+        <Dugme disabled={!metin.trim()} onClick={gonder}>
           <Send size={12} /> {calisiyor ? 'Bitince gönder' : 'Gönder'}
-        </Dug>
+        </Dugme>
       </div>
-    </div>
-  );
-}
-
-/** Anahtar-değer satırları (Şu an / Özet paneli). */
-function KV({ satirlar }: { satirlar: Array<[string, ReactNode]> }) {
-  return (
-    <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1.5 text-[12.3px]">
-      {satirlar.map(([k, v]) => (
-        <div key={k} className="contents">
-          <span style={{ color: V5.soluk }}>{k}</span>
-          <span className="text-right" style={{ fontFamily: V5.mono, color: V5.metin }}>
-            {v}
-          </span>
-        </div>
-      ))}
     </div>
   );
 }
@@ -554,9 +361,9 @@ function KV({ satirlar }: { satirlar: Array<[string, ReactNode]> }) {
 /* ─────────────────────────── ana panel ─────────────────────────── */
 
 /**
- * Aktif iş paneli v5 — komut verilen (ya da geçmişten seçilen) işin tek ekranda görünümü:
- *  başlık (mükellef büyük · konu · kapsüller · ilerleme halkası) → aşama kartları → sol: zaman çizgisi · sağ: "Şu an" / Özet + cevap kutusu
- *  → Sonuç: bulgular tablosu (sol) + karar kartları / sorular / kuru test / öğrendikleri (sağ).
+ * İş paneli — komut verilen (ya da listeden seçilen) işin tek kartta görünümü (Bütçe Kutu dili):
+ *  başlık (mükellef — konu · durum satırı · Durdur/Tekrar/Kapat) → aşama çizgisi (+ilerleme, "Şu an") → Kararınız →
+ *  Sonuç (yaptığı iş / bulgular / kaynaklar / kuru test) → Adımlar (zaman çizgisi; bitince katlı) → not/talimat kutusu.
  * Kaynak: yerel koşu (SSE, Koordinatör) ve/veya sunucu vakası (personel adımları, açık kalemler, geçmiş işler).
  */
 export function IsPaneli({ kosu, vaka, kosular, ajanAd, mukellefAd, onTaslak, onKapat }: { kosu?: Kosu; vaka?: Vaka; kosular: KosularApi; ajanAd: (id: string) => string; mukellefAd: (id?: string | null) => string | undefined; onTaslak: (t: Omit<KomutTaslak, 'nonce'>) => void; onKapat?: () => void }) {
@@ -566,6 +373,7 @@ export function IsPaneli({ kosu, vaka, kosular, ajanAd, mukellefAd, onTaslak, on
   const [durduruluyor, setDurduruluyor] = useState(false);
   const [gonderTeyit, setGonderTeyit] = useState(false);
   const [gonderMesgul, setGonderMesgul] = useState(false);
+  const [adimlarAcik, setAdimlarAcik] = useState<boolean | null>(null);
 
   const yerelCalisiyor = !!kosu && !kosu.bitti;
   const isAdimlari = (vaka?.adimlar || []).filter((a): a is VakaAdimIs => a.tip === 'is');
@@ -617,7 +425,6 @@ export function IsPaneli({ kosu, vaka, kosular, ajanAd, mukellefAd, onTaslak, on
   const sabahOzetiMi = kosu?.kaynak === 'sabahOzeti';
   const durduruldu = hata === DURDURULDU_METNI;
   const durumAd = hata ? (durduruldu ? 'Durduruldu' : 'Yarım kaldı') : calisiyor ? 'Sürüyor' : bitti ? 'Tamamlandı' : 'Bekliyor';
-  const ton = hata ? 'coral' : calisiyor ? 'mavi' : bitti ? 'mint' : 'notr';
 
   const tazele = () => {
     qc.invalidateQueries({ queryKey: ['ekip-akis'] });
@@ -692,7 +499,6 @@ export function IsPaneli({ kosu, vaka, kosular, ajanAd, mukellefAd, onTaslak, on
   const asamaListesi = asamalar({ basladi: !!kosu?.isId || !!kokAdim || (!!kosu && kosu.adimlar.length > 0), aracVar: yerelAdimlar.length > 0, personelVar, personelBitti, bitti, hata: !!hata });
   const tamamlanan = asamaListesi.filter((a) => a.durum === 'bitti').length;
   const yuzde = hata ? Math.round((tamamlanan / asamaListesi.length) * 100) : bitti && (!personelVar || personelBitti) ? 100 : Math.round(((tamamlanan + (calisiyor ? 0.5 : 0)) / asamaListesi.length) * 100);
-  const halkaRenk = hata ? V5.coral : calisiyor ? V5.mavi : V5.mint;
   const calisanAdim = yerelAdimlar.find((a) => a.tip === 'arac' && a.durum === 'calisiyor');
   const calisanPersonel = personelAdimlari.find((a) => a.durum === 'running');
   const suAnMetni = calisiyor
@@ -718,239 +524,103 @@ export function IsPaneli({ kosu, vaka, kosular, ajanAd, mukellefAd, onTaslak, on
   const bildirimAdimlari = (vaka?.adimlar || []).filter((a): a is Exclude<VakaAdim, VakaAdimIs> => a.tip !== 'is' && !(a.tip === 'bildirim' && a.tur === 'bilgi' && /^İŞ ATAMASI/i.test(a.baslik)));
   const acikKalemler = vaka?.acikKalemler || [];
   const yerelOnaylar = kosu?.adimlar.filter((a) => a.tip === 'onay' && a.previewId && !a.sonuc) || [];
-  const sonucVar = !!raporMetni || acikKalemler.length > 0 || yerelOnaylar.length > 0 || sorular.length > 0 || kuruListesi.length > 0 || ogrenilen.length > 0 || (sabahOzetiMi && !!kosu?.bitti);
+  // Kararlar kendi bölümünde; Sonuç bölümü yalnız rapor/kuru liste/öğrenilen ya da biten sabah özeti varsa
+  const sonucVar = !!raporMetni || kuruListesi.length > 0 || ogrenilen.length > 0 || (sabahOzetiMi && !!kosu?.bitti) || (bitti && !hata && !sabahOzetiMi);
   const kararBekliyor = acikKalemler.length > 0 || yerelOnaylar.length > 0;
-  const baslikMetni = sabahOzetiMi ? (calisiyor ? 'Sabah özeti üretiliyor' : 'Sabah özeti') : mukellef || konu || 'İş';
+  const baslikMetni = sabahOzetiMi ? (calisiyor ? 'Sabah özeti üretiliyor' : 'Sabah özeti') : mukellef ? `${mukellef} — ${konu}` : konu || 'İş';
+  const adimToplam = yerelAdimlar.length + personelAdimlari.length + bildirimAdimlari.length;
+  const adimlarGoster = adimlarAcik ?? calisiyor;
+  const kutuRengi = hata ? KIRMIZI : kararBekliyor ? GOLD : calisiyor ? MAVI : bitti ? OK : MUTED;
+  const durumRenk = hata ? KIRMIZI : kararBekliyor ? GOLD : calisiyor ? MAVI : bitti ? OK : MUTED;
+
+  const durumSatiri = (
+    <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+      <b className="font-semibold" style={{ color: durumRenk }}>
+        {kararBekliyor && !calisiyor ? 'Kararınız bekleniyor' : durumAd}
+      </b>
+      {calisiyor ? <span>· {calisanPersonel ? `${ajanKisaAd(calisanPersonel.ajanId, ajanAd(calisanPersonel.ajanId))} çalışıyor` : 'Koordinatör çalışıyor'}</span> : personelAdlari.length ? <span>· {personelAdlari.join(', ')}</span> : null}
+      {sureMetni && <span className="tabular-nums">· {sureMetni}</span>}
+      <span>· {kuru ? 'kuru test' : <span style={{ color: KIRMIZI }}>canlı</span>}</span>
+      {kaynak.ad !== 'portal' && !sabahOzetiMi && <span>· {kaynak.ad}</span>}
+      <span className="tabular-nums">· {saatKisa(basladi).slice(0, 5)}</span>
+      {kosu?.model || kokIs?.model ? <span>· {String(kosu?.model || kokIs?.model).replace(/^claude-/, '')}</span> : null}
+    </span>
+  );
 
   return (
-    <CamKart
-      ton={ton}
-      etiket="Aktif iş"
-      ikon={sabahOzetiMi ? <Sunrise size={17} /> : <Clock size={17} />}
-      baslik={durumAd}
-      dolguYok
+    <Kutu
+      baslik={<span className="text-[14px]" title={baslikMetni}>{baslikMetni}</span>}
+      aciklama={durumSatiri}
+      renk={kutuRengi}
       sag={
-        <>
+        <span className="flex flex-shrink-0 flex-wrap items-center justify-end gap-1.5">
           {calisiyor && !sabahOzetiMi && (
-            <Dug kucuk tur="tehlike" onClick={durdur} disabled={durduruluyor} title="Koşu sunucuda durdurulur">
-              {durduruluyor ? <Loader2 size={12} className="animate-spin" /> : <Square size={12} />} Durdur
-            </Dug>
+            <Dugme tur="tehlike" onClick={durdur} disabled={durduruluyor}>
+              {durduruluyor ? <Loader2 size={12} className="animate-spin" /> : <Square size={11} />} Durdur
+            </Dugme>
           )}
           {!calisiyor && !sabahOzetiMi && (
-            <Dug kucuk onClick={tekrar} title="Görev kutusunu aynı görevle doldurur (kuru); çalıştırmaz">
+            <Dugme onClick={tekrar}>
               <RotateCcw size={12} /> Tekrar
-            </Dug>
+            </Dugme>
           )}
           {!calisiyor && onKapat && (
-            <Dug kucuk tur="hayalet" onClick={onKapat} title="Paneli kapat">
-              <X size={13} />
-            </Dug>
+            <Dugme tur="sade" onClick={onKapat}>
+              Kapat
+            </Dugme>
           )}
-        </>
+        </span>
       }
     >
-      {/* Başlık satırı: mükellef büyük · konu · kapsüller · halka */}
-      <div className="flex flex-wrap items-center justify-between gap-4 px-5 pb-4">
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-[22px] font-extrabold leading-tight tracking-tight" style={{ color: V5.metin, fontFamily: "var(--font-body, 'Inter'), system-ui, sans-serif" }} title={baslikMetni}>
-            {baslikMetni}
-          </div>
-          <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-2 text-[13.5px]" style={{ color: V5.ikincil }}>
-            {mukellef && !sabahOzetiMi && <span className="min-w-0 truncate" title={konu}>{konu}</span>}
-            {kuru ? <Kapsul tur="kuru">kuru test</Kapsul> : <Kapsul tur="canli" nokta>canlı</Kapsul>}
-            {calisiyor ? (
-              <Kapsul tur="calisiyor" nokta nabiz>
-                {calisanPersonel ? `${ajanKisaAd(calisanPersonel.ajanId, ajanAd(calisanPersonel.ajanId))} çalışıyor` : 'Koordinatör çalışıyor'}
-              </Kapsul>
-            ) : hata ? (
-              <Kapsul tur="hata" nokta>
-                {durduruldu ? 'durduruldu' : 'yarım kaldı'}
-              </Kapsul>
-            ) : bitti ? (
-              <Kapsul tur="bitti" nokta>
-                bitti{sureMetni ? ` · ${sureMetni}` : ''}
-              </Kapsul>
-            ) : null}
-            {kararBekliyor && (
-              <Kapsul tur="karar" nokta>
-                kararınız bekleniyor
-              </Kapsul>
-            )}
-            {kaynak.ad !== 'portal' && !sabahOzetiMi && <span className="text-[12px]" style={{ color: V5.soluk }}>{kaynak.ikon} {kaynak.ad}</span>}
-          </div>
-        </div>
-        <div className="flex items-center gap-3.5">
-          <Halka yuzde={yuzde} renk={halkaRenk} etiket={hata ? 'YARIM' : yuzde >= 100 ? 'BİTTİ' : 'İLERLEME'} />
-          <div className="flex flex-col gap-0.5">
-            <b className="text-[13.5px]" style={{ color: V5.metin }}>
-              {calisiyor ? `${asamaListesi.find((a) => a.durum === 'aktif')?.ad || 'Sürüyor'} · ${sureMetni}` : `${asamaListesi.length} aşama${sureMetni ? ` · ${sureMetni}` : ''}`}
-            </b>
-            <span className="text-[12px]" style={{ color: V5.ikincil }}>
-              {calisiyor ? `Başladı ${saatKisa(basladi).slice(0, 5)} · kimde: ${kimde === 'siz' ? 'siz' : ajanKisaAd(kimde, vaka?.kimde.ad)}` : `${saatKisa(basladi).slice(0, 5)}${sonBitis ? ` → ${saatKisa(sonBitis).slice(0, 5)}` : ''} · ${adimSayisi} adım${personelAdlari.length ? ` · ${personelAdlari.length} personel` : ''}`}
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Aşama kartları */}
-      <div className="grid gap-2.5 px-5 pb-4" style={{ gridTemplateColumns: `repeat(${asamaListesi.length}, minmax(0, 1fr))` }}>
-        {asamaListesi.map((a, i) => (
-          <AsamaKarti key={a.ad} no={i + 1} asama={a} zaman={asamaZamani(i)} son={i === asamaListesi.length - 1} />
-        ))}
-      </div>
-
-      {hata && (
-        <div className="mx-5 mb-4 flex items-start gap-2 rounded-xl px-3.5 py-2.5 text-[12.5px]" style={{ background: 'rgba(255,107,122,0.10)', border: '1px solid rgba(255,107,122,0.45)', color: V5.metin }}>
-          <AlertTriangle size={14} className="mt-0.5 flex-shrink-0" style={{ color: V5.coral }} />
-          <span>{durduruldu ? 'Durduruldu — koşu sunucuda iptal edildi.' : hata}</span>
-        </div>
-      )}
-
-      {/* Gövde: zaman çizgisi + sağ panel */}
-      <div className="grid gap-4 px-5 pb-5 2xl:grid-cols-[minmax(0,1fr)_330px]">
-        <ol className="flex max-h-[560px] min-w-0 flex-col overflow-y-auto pl-2 pr-2 [scrollbar-width:thin]">
-          {!yerelAdimlar.length && !personelAdimlari.length && !bildirimAdimlari.length && (
-            <li className="py-3 text-[12.5px]" style={{ color: V5.ikincil }}>
-              {calisiyor ? 'İlk adım bekleniyor…' : 'Adım kaydı yok.'}
-            </li>
-          )}
-          {yerelAdimlar.map((a, i) => (
-            <YerelAdim key={`${a.zaman}-${i}`} adim={a} mukellefAd={mukellefAd} ajanAd={ajanAd} ajanId={kosu?.ajanId || kokAdim?.ajanId || 'koordinator'} />
-          ))}
-          {personelAdimlari.map((a) => (
-            <PersonelAdimi key={a.isId} adim={a} ajanAd={ajanAd} mukellefAd={mukellefAd} acikVarsayilan={a.durum === 'running'} onRapor={personelRaporAl} />
-          ))}
-          {bildirimAdimlari.map((a, i) =>
-            a.tip === 'onay' ? (
-              <ZamanSatiri key={`onay-${a.id}`} saat={saatKisa(a.baslangic).slice(0, 5)} kisaltma={ajanKisaltma(a.ajanId)} ton={a.durum === 'PENDING' ? 'altin' : a.durum === 'EXECUTED' ? 'mavi' : 'gri'} baslik={`Onay kaydı #PRV-${a.id.slice(0, 8)}`} alt={`${a.durum === 'EXECUTED' ? 'gönderildi' : a.durum === 'PENDING' ? 'onay bekliyor' : a.durum === 'REJECTED' ? 'reddedildi' : a.durum === 'EXPIRED' ? 'süresi doldu' : a.durum}${a.baslik ? ` · ${a.baslik}` : ''}`} />
-            ) : (
-              <ZamanSatiri key={`not-${a.id || i}`} saat={saatKisa(a.baslangic).slice(0, 5)} kisaltma="MB" ton="mor" baslik={a.tur === 'istek' ? 'Sizden istendi' : a.tur === 'onay' ? 'Onayınıza sunuldu' : 'Koordinatör notu'} alt={`${a.baslik}${a.durum === 'kapandi' ? ' · kapandı' : ''}`}>
-                {a.govde && (
-                  <div className="mt-0.5 whitespace-pre-wrap text-[11.5px]" style={{ color: V5.soluk }}>
-                    {a.govde}
-                  </div>
-                )}
-              </ZamanSatiri>
-            ),
-          )}
-        </ol>
-
-        <aside className="flex flex-col gap-3.5 self-start rounded-[14px] p-4" style={{ background: 'rgba(0,0,0,0.3)', border: `1px solid ${V5.cizgi2}` }}>
-          {calisiyor ? (
+      <div className="flex flex-col gap-4">
+        {/* Aşama çizgisi + ilerleme */}
+        <div className="flex flex-col gap-2.5">
+          <AsamaCizgisi liste={asamaListesi} zamanlar={asamaListesi.map((_, i) => asamaZamani(i))} />
+          {calisiyor && (
             <>
-              <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: V5.soluk }}>
-                <span className="inline-block h-2 w-2 animate-pulse rounded-full" style={{ background: V5.mavi, boxShadow: `0 0 10px ${V5.mavi}` }} /> Şu an
+              <div className="flex items-center gap-2 text-[11px]" style={{ color: MUTED }}>
+                <span className="w-24 flex-shrink-0">{asamaListesi.find((a) => a.durum === 'aktif')?.ad || 'Sürüyor'}</span>
+                <Ilerleme yuzde={yuzde} />
+                <span className="tabular-nums">{tamamlanan}/{asamaListesi.length}</span>
               </div>
-              <div className="text-[14px] font-semibold leading-snug" style={{ color: V5.metin }}>
+              <div className="rounded-lg px-3 py-2 text-[12px]" style={{ background: `${MAVI}0f`, border: `1px solid ${MAVI}2e`, color: TEXT }}>
+                <b className="font-semibold" style={{ color: MAVI }}>
+                  Şu an:
+                </b>{' '}
                 {suAnMetni}
               </div>
-              <div className="h-1.5 overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.08)' }}>
-                <i className="block h-full rounded-full" style={{ width: `${Math.max(6, yuzde)}%`, background: 'linear-gradient(90deg, #3b6fd6, #6ea3ff, #4dd6e6)', boxShadow: '0 0 12px rgba(110,163,255,0.5)', transition: 'width .6s ease' }} />
-              </div>
-              <KV
-                satirlar={[
-                  ['Süre', sureMetni],
-                  ['Adım', String(adimSayisi)],
-                  ['Kimde', kimde === 'siz' ? 'siz' : ajanKisaAd(kimde, vaka?.kimde.ad)],
-                  ['Mod', kuru ? 'kuru test' : 'canlı'],
-                ]}
-              />
-            </>
-          ) : (
-            <>
-              <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: V5.soluk }}>
-                <BarChart3 size={13} /> Özet
-              </div>
-              <KV
-                satirlar={[
-                  ['Süre', sureMetni || '—'],
-                  ['Adım', String(adimSayisi)],
-                  ['Personel', personelAdlari.length ? personelAdlari.join(', ') : 'Koordinatör'],
-                  ['Mod', kuru ? 'kuru test' : 'canlı'],
-                  ['Kimde', kimde === 'siz' ? 'siz' : ajanKisaAd(kimde, vaka?.kimde.ad)],
-                  ...(vaka?.olusturuldu ? [['Açıldı', goreliSaat(vaka.olusturuldu)] as [string, ReactNode]] : []),
-                  ...(kosu?.model || kokIs?.model ? [['Model', String(kosu?.model || kokIs?.model).replace(/^claude-/, '')] as [string, ReactNode]] : []),
-                ]}
-              />
             </>
           )}
-          {!sabahOzetiMi && <CevapKutusu calisiyor={calisiyor || aktifKosuVar} bekleyen={bekleyenCevap} onGonder={cevapla} onIptal={() => setBekleyenCevap(null)} />}
-          {sabahOzetiMi && kosu?.bitti && !kosu.hata && (
-            <div className="flex flex-col gap-2">
-              <Dug tur="mint" disabled={gonderMesgul || gonderTeyit || !!kosular.aktifKosu} onClick={() => setGonderTeyit(true)} title="Koordinatör özeti yeniden üretir ve WhatsApp'a gönderir">
-                {gonderMesgul ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />} Muzaffer Bey’e WhatsApp gönder
-              </Dug>
-              {gonderTeyit && <OnayTeyit metin={<>Numaralarınıza <b>GERÇEK</b> mesaj gidecek — koordinatör özeti <b>yeniden üretir ve gönderir</b> (30-90 sn).</>} mesgul={gonderMesgul} onEvet={sahibeGonder} onVazgec={() => setGonderTeyit(false)} />}
-            </div>
-          )}
-        </aside>
-      </div>
+        </div>
 
-      {/* Sonuç */}
-      {(sonucVar || (calisiyor && !!kosu?.cevap)) && (
-        <div className="grid gap-4 px-5 pb-5 2xl:grid-cols-[minmax(0,1fr)_330px]" style={{ borderTop: `1px solid ${V5.cizgi}`, paddingTop: 18 }}>
-          <div className="min-w-0">
-            <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2 text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: V5.soluk }}>
-              <span className="inline-flex items-center gap-2">
-                <FileText size={13} /> {sonBitenPersonel ? `Bulgular · ${ajanTamAd(sonBitenPersonel.ajanId, ajanAd(sonBitenPersonel.ajanId))}` : sabahOzetiMi ? 'Sabah özeti' : 'Sonuç · Koordinatör'}
-              </span>
-              <span className="normal-case tracking-normal" style={{ fontFamily: V5.mono }}>
-                {kokS.isLoading && !kokIs ? 'yükleniyor…' : `${sonBitis ? saatKisa(sonBitis).slice(0, 5) : saatKisa(basladi).slice(0, 5)} · ${kuru ? 'kuru test' : 'canlı'}`}
-              </span>
-            </div>
-            {calisiyor && !raporMetni && kosu?.cevap && (
-              <div className="max-h-[260px] overflow-y-auto whitespace-pre-wrap rounded-xl px-3.5 py-3 text-[13px] leading-relaxed" style={camBlok({ color: V5.ikincil })}>
-                {kosu.cevap}
-              </div>
-            )}
-            {raporMetni && (
-              <>
-                <RaporGorunumu rapor={ayrisik?.rapor || raporMetni} />
-                {sonBitenPersonel && koordinatorRaporu && (
-                  <details className="mt-3 rounded-xl px-3.5 py-2" style={camBlok()}>
-                    <summary className="cursor-pointer text-[11.5px] font-semibold uppercase tracking-[0.12em]" style={{ color: V5.soluk }}>
-                      Koordinatör’ün notu
-                    </summary>
-                    <div className="pt-2">
-                      <RaporGorunumu rapor={koordinatorRaporu} kompakt />
-                    </div>
-                  </details>
-                )}
-              </>
-            )}
-            {!raporMetni && !calisiyor && !hata && (
-              <div className="rounded-xl px-3.5 py-6 text-center text-[12.5px]" style={{ background: 'rgba(255,255,255,0.03)', border: `1px dashed ${V5.cizgi2}`, color: V5.ikincil }}>
-                Rapor yok.
-              </div>
-            )}
-            {ogrenilen.length > 0 && (
-              <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                <GraduationCap size={13} style={{ color: V5.mor }} />
-                {ogrenilen.map((o, i) => (
-                  <span key={i} className="rounded-md px-2 py-0.5 text-[11.5px]" style={{ background: 'rgba(167,139,250,0.12)', border: '1px solid rgba(167,139,250,0.4)', color: V5.metin }}>
-                    {o}
-                  </span>
-                ))}
-              </div>
-            )}
+        {hata && (
+          <div className="flex items-start gap-2 rounded-xl px-3.5 py-2.5 text-[12.5px]" style={{ background: `${KIRMIZI}12`, border: `1px solid ${KIRMIZI}59`, color: TEXT }}>
+            <AlertTriangle size={14} className="mt-0.5 flex-shrink-0" style={{ color: KIRMIZI }} />
+            <span>{durduruldu ? 'Durduruldu — koşu sunucuda iptal edildi.' : hata}</span>
           </div>
+        )}
 
-          <div className="flex flex-col gap-3">
+        {/* Kararınız */}
+        {(acikKalemler.length > 0 || yerelOnaylar.length > 0 || sorular.length > 0) && (
+          <section>
+            <h4 className="mb-1 text-[10.5px] font-semibold uppercase tracking-[0.08em]" style={{ color: GOLD }}>
+              Kararınız · {acikKalemler.length + yerelOnaylar.length + (sorular.length ? 1 : 0)}
+            </h4>
             {acikKalemler.map((k) => (
               <AcikKalemKarti key={`${k.tip}-${k.id}`} kalem={k} onBitti={tazele} onCevapla={cevapla} calisiyor={calisiyor || aktifKosuVar} />
             ))}
             {kosu && yerelOnaylar.map((a) => <YerelOnay key={a.previewId} adim={a} kosu={kosu} kosular={kosular} onBitti={tazele} />)}
             {sorular.length > 0 && (
-              <div className="rounded-[14px] p-4" style={{ background: 'linear-gradient(160deg, rgba(242,182,77,0.16), rgba(242,182,77,0.04))', border: '1px solid rgba(242,182,77,0.45)' }}>
-                <div className="flex items-center gap-2 text-[14px] font-extrabold" style={{ color: V5.metin }}>
-                  <HelpCircle size={15} style={{ color: V5.amber }} /> {ajanKisaAd(kimde)} soruyor
+              <div className="py-3" style={{ borderTop: `1px solid ${ROW_SEP}` }}>
+                <div className="flex items-center gap-2 text-[12.8px] font-semibold" style={{ color: TEXT }}>
+                  <HelpCircle size={14} style={{ color: GOLD }} /> {ajanKisaAd(kimde)} soruyor
                 </div>
                 {sorular.map((s, i) => (
-                  <div key={i} className="mt-1.5 whitespace-pre-wrap text-[12.8px] leading-relaxed" style={{ color: V5.ikincil }}>
+                  <div key={i} className="mt-1 whitespace-pre-wrap text-[12.5px] leading-relaxed" style={{ color: MUTED }}>
                     {s}
                   </div>
                 ))}
-                <div className="mt-3 flex flex-col gap-2">
+                <div className="mt-2.5 flex items-center gap-2">
                   <input
                     value={cevapMetni}
                     onChange={(e) => setCevapMetni(e.target.value)}
@@ -962,47 +632,143 @@ export function IsPaneli({ kosu, vaka, kosular, ajanAd, mukellefAd, onTaslak, on
                       }
                     }}
                     placeholder="Cevabınızı yazın…"
-                    className="h-9 min-w-0 rounded-[10px] px-3 text-[12.5px] outline-none"
-                    style={{ background: 'rgba(255,255,255,0.05)', border: `1px solid ${V5.cizgi2}`, color: V5.metin }}
+                    className="h-9 min-w-0 flex-1 rounded-[10px] px-3 text-[12.5px] outline-none"
+                    style={{ background: 'rgba(255,255,255,0.03)', border: `1px solid ${CARD_BORDER}`, color: TEXT }}
                   />
-                  <Dug tur="mavi" disabled={!cevapMetni.trim()} onClick={() => { cevapla(cevapMetni.trim()); setCevapMetni(''); }} title="Aynı iş zincirinde Koordinatör'e gider">
+                  <Dugme tur="birincil" disabled={!cevapMetni.trim()} onClick={() => { cevapla(cevapMetni.trim()); setCevapMetni(''); }}>
                     <MessageSquareReply size={13} /> Cevapla
-                  </Dug>
+                  </Dugme>
                 </div>
               </div>
             )}
-            {kuruListesi.length > 0 && (
-              <div className="rounded-[14px] p-4" style={camBlok()}>
-                <div className="mb-1.5 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: V5.amber }}>
-                  <FlaskConical size={13} /> Kuru test — yapılacaktı ({kuruListesi.length})
+          </section>
+        )}
+
+        {/* Sonuç */}
+        {(sonucVar || (calisiyor && !!kosu?.cevap)) && (
+          <section>
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <h4 className="text-[10.5px] font-semibold uppercase tracking-[0.08em]" style={{ color: MUTED }}>
+                {sonBitenPersonel ? `Sonuç · ${ajanTamAd(sonBitenPersonel.ajanId, ajanAd(sonBitenPersonel.ajanId))}` : sabahOzetiMi ? 'Sabah özeti' : 'Sonuç · Koordinatör'}
+              </h4>
+              <span className="text-[11px] tabular-nums" style={{ color: MUTED }}>
+                {kokS.isLoading && !kokIs ? 'yükleniyor…' : `${sonBitis ? saatKisa(sonBitis).slice(0, 5) : saatKisa(basladi).slice(0, 5)} · ${kuru ? 'kuru test' : 'canlı'}`}
+              </span>
+            </div>
+            {calisiyor && !raporMetni && kosu?.cevap && (
+              <IcKutu>
+                <div className="max-h-[260px] overflow-y-auto whitespace-pre-wrap text-[12.8px] leading-relaxed" style={{ color: MUTED }}>
+                  {kosu.cevap}
                 </div>
-                <ul className="flex flex-col gap-1 text-[12.3px]" style={{ color: V5.metin }}>
+              </IcKutu>
+            )}
+            {raporMetni && (
+              <>
+                <RaporGorunumu rapor={ayrisik?.rapor || raporMetni} />
+                {sonBitenPersonel && koordinatorRaporu && (
+                  <details className="mt-2 rounded-xl px-3 py-2" style={{ background: 'rgba(255,255,255,0.02)', border: `1px solid ${CARD_BORDER}` }}>
+                    <summary className="cursor-pointer text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: MUTED }}>
+                      Koordinatör’ün notu
+                    </summary>
+                    <div className="pt-2">
+                      <RaporGorunumu rapor={koordinatorRaporu} kompakt />
+                    </div>
+                  </details>
+                )}
+              </>
+            )}
+            {!raporMetni && !calisiyor && !hata && <Bos metin="Rapor yok." />}
+            {kuruListesi.length > 0 && (
+              <IcKutu baslik={<span className="inline-flex items-center gap-1.5"><FlaskConical size={11} /> Kuru test — yapılacaktı ({kuruListesi.length})</span>} renk={TURUNCU} className="mt-3">
+                <ul className="flex flex-col gap-1 text-[12.5px]" style={{ color: TEXT }}>
                   {kuruListesi.map((t, i) => {
                     const { baslik, ayrinti } = adimAciklamasi(t.name, t.args, mukellefAd, ajanAd);
                     return (
                       <li key={i} className="flex gap-2">
-                        <span className="mt-[7px] h-1.5 w-1.5 flex-shrink-0 rounded-full" style={{ background: V5.amber }} />
+                        <span className="mt-[7px] h-1.5 w-1.5 flex-shrink-0 rounded-full" style={{ background: TURUNCU }} />
                         <span>
                           {baslik}
-                          {ayrinti && <span style={{ color: V5.soluk }}> · {ayrinti}</span>}
+                          {ayrinti && <span style={{ color: MUTED }}> · {ayrinti}</span>}
                         </span>
                       </li>
                     );
                   })}
                 </ul>
+              </IcKutu>
+            )}
+            {ogrenilen.length > 0 && (
+              <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                <GraduationCap size={13} style={{ color: MOR }} />
+                {ogrenilen.map((o, i) => (
+                  <Rozet key={i} metin={o} renk={MOR} />
+                ))}
               </div>
             )}
-            {!acikKalemler.length && !yerelOnaylar.length && !sorular.length && !kuruListesi.length && bitti && !hata && (
-              <div className="rounded-[14px] p-4 text-[12.5px] leading-relaxed" style={camBlok({ color: V5.ikincil })}>
-                <div className="mb-1 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: V5.mint }}>
-                  <Check size={13} /> Sizden bir şey beklemiyor
+            {sabahOzetiMi && kosu?.bitti && !kosu.hata && (
+              <div className="mt-3 flex flex-col gap-2">
+                <div>
+                  <Dugme tur="birincil" renk={OK} disabled={gonderMesgul || gonderTeyit || !!kosular.aktifKosu} onClick={() => setGonderTeyit(true)}>
+                    {gonderMesgul ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />} Muzaffer Bey’e WhatsApp gönder
+                  </Dugme>
                 </div>
-                İş kapandı. İsterseniz sağ üstteki <b style={{ color: V5.metin }}>Tekrar</b> ile aynı görevi yeniden verirsiniz ya da yukarıdaki kutudan talimat yazarsınız.
+                {gonderTeyit && <OnayTeyit metin={<>Numaralarınıza <b>GERÇEK</b> mesaj gidecek — koordinatör özeti <b>yeniden üretir ve gönderir</b> (30-90 sn).</>} mesgul={gonderMesgul} onEvet={sahibeGonder} onVazgec={() => setGonderTeyit(false)} />}
               </div>
             )}
-          </div>
-        </div>
-      )}
-    </CamKart>
+            {!acikKalemler.length && !yerelOnaylar.length && !sorular.length && bitti && !calisiyor && !hata && !sabahOzetiMi && (
+              <div className="mt-3 flex items-center gap-2 text-[12px]" style={{ color: MUTED }}>
+                <Check size={12} style={{ color: OK }} /> Sizden bir şey beklemiyor. İsterseniz <b style={{ color: TEXT }}>Tekrar</b> ile aynı görevi yeniden verirsiniz ya da aşağıdan talimat yazarsınız.
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* Adımlar */}
+        <section>
+          <button type="button" onClick={() => setAdimlarAcik(!adimlarGoster)} className="mb-1 flex w-full items-center justify-between text-left">
+            <h4 className="text-[10.5px] font-semibold uppercase tracking-[0.08em]" style={{ color: MUTED }}>
+              Adımlar · {adimToplam}
+            </h4>
+            <span className="inline-flex items-center gap-1 text-[11px]" style={{ color: MUTED }}>
+              {adimlarGoster ? 'gizle' : 'göster'} <ChevronDown size={11} className="transition-transform" style={{ transform: adimlarGoster ? 'rotate(180deg)' : 'none' }} />
+            </span>
+          </button>
+          {adimlarGoster && (
+            <ol className="flex max-h-[520px] min-w-0 flex-col overflow-y-auto [scrollbar-width:thin]" style={{ borderTop: `1px solid ${ROW_SEP}` }}>
+              {!yerelAdimlar.length && !personelAdimlari.length && !bildirimAdimlari.length && (
+                <li className="py-3 text-[12px]" style={{ color: MUTED }}>
+                  {calisiyor ? 'İlk adım bekleniyor…' : 'Adım kaydı yok.'}
+                </li>
+              )}
+              {yerelAdimlar.map((a, i) => (
+                <YerelAdim key={`${a.zaman}-${i}`} adim={a} mukellefAd={mukellefAd} ajanAd={ajanAd} ajanId={kosu?.ajanId || kokAdim?.ajanId || 'koordinator'} />
+              ))}
+              {personelAdimlari.map((a) => (
+                <PersonelAdimi key={a.isId} adim={a} ajanAd={ajanAd} mukellefAd={mukellefAd} acikVarsayilan={a.durum === 'running'} onRapor={personelRaporAl} />
+              ))}
+              {bildirimAdimlari.map((a, i) =>
+                a.tip === 'onay' ? (
+                  <ZamanSatiri key={`onay-${a.id}`} saat={saatKisa(a.baslangic).slice(0, 5)} kisaltma={ajanKisaltma(a.ajanId)} ton={a.durum === 'PENDING' ? 'gold' : 'gri'} baslik={`Onay kaydı #PRV-${a.id.slice(0, 8)}`} alt={`${a.durum === 'EXECUTED' ? 'gönderildi' : a.durum === 'PENDING' ? 'onay bekliyor' : a.durum === 'REJECTED' ? 'reddedildi' : a.durum === 'EXPIRED' ? 'süresi doldu' : a.durum}${a.baslik ? ` · ${a.baslik}` : ''}`} />
+                ) : (
+                  <ZamanSatiri key={`not-${a.id || i}`} saat={saatKisa(a.baslangic).slice(0, 5)} kisaltma="MB" ton="gold" baslik={a.tur === 'istek' ? 'Sizden istendi' : a.tur === 'onay' ? 'Onayınıza sunuldu' : 'Koordinatör notu'} alt={`${a.baslik}${a.durum === 'kapandi' ? ' · kapandı' : ''}`}>
+                    {a.govde && (
+                      <div className="mt-0.5 whitespace-pre-wrap text-[11.5px]" style={{ color: MUTED }}>
+                        {a.govde}
+                      </div>
+                    )}
+                  </ZamanSatiri>
+                ),
+              )}
+            </ol>
+          )}
+        </section>
+
+        {/* Not / talimat */}
+        {!sabahOzetiMi && (
+          <section style={{ borderTop: `1px solid ${ROW_SEP}`, paddingTop: 12 }}>
+            <CevapKutusu calisiyor={calisiyor || aktifKosuVar} bekleyen={bekleyenCevap} onGonder={cevapla} onIptal={() => setBekleyenCevap(null)} />
+          </section>
+        )}
+      </div>
+    </Kutu>
   );
 }

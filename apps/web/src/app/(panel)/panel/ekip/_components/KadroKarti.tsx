@@ -1,10 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Loader2, Users } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import type { Ajan, EkipOnay } from '@/lib/ekip';
 import type { Kosu } from './kosular';
-import { AvatarV5, CamKart, Kapsul, MetrikKutu, V5, Yuk } from './Cam';
+import { Avatar, CARD_BG, CARD_BORDER, GOLD, KIRMIZI, MAVI, MUTED, Rozet, TEXT } from './Tema';
 import { AJAN_UNVAN, ajanKisaAd, ajanKisaltma, saatKisa, sayacMetni, tarihKisa } from './ortak';
 
 function suAn(ajan: Ajan, kosu: Kosu | undefined, mukellefAd: (id?: string | null) => string | undefined, simdi: number): { metin: string; durum: 'calisiyor' | 'hata' | 'bos' } {
@@ -22,17 +22,17 @@ function suAn(ajan: Ajan, kosu: Kosu | undefined, mukellefAd: (id?: string | nul
 
 /** Son iş zamanı: bugünse saat, değilse kısa tarih. */
 function sonIsEtiketi(iso?: string | null): string {
-  if (!iso) return '—';
+  if (!iso) return 'henüz iş almadı';
   const d = new Date(iso);
   if (isNaN(d.getTime())) return '—';
   const bugun = new Date();
   const ayni = d.toDateString() === bugun.toDateString();
-  return ayni ? saatKisa(iso).slice(0, 5) : tarihKisa(iso).slice(0, 5);
+  return `son iş ${ayni ? saatKisa(iso).slice(0, 5) : tarihKisa(iso)}`;
 }
 
 /**
- * Kadro kartı v5 (sağ sütun): 3 metrik (çalışan · bugün · 7 gün) + 12 personel satırı
- * (gradyan avatar, ad, unvan, durum kelimesi, son iş saati, 7 günlük yük çubuğu). Çalışan satır mavi parlar.
+ * Kadro sekmesi — 12 personel kartı (4 sütun): avatar · ad · unvan · ne yapar · şu an / son iş · bugün · 7 gün.
+ * Çalışan kart mavi gradyanlı (Bütçe KPI vurgu kalıbı); Koordinatör altın halkalı.
  */
 export function KadroKarti({ ajanlar, onaylar, kosular, mukellefAd, yukleniyor, haftalikIs, bugunKosu }: { ajanlar: Ajan[]; onaylar: EkipOnay[]; kosular: Map<string, Kosu>; mukellefAd: (id?: string | null) => string | undefined; yukleniyor?: boolean; haftalikIs: Map<string, number>; bugunKosu: number }) {
   const [simdi, setSimdi] = useState(() => Date.now());
@@ -44,80 +44,78 @@ export function KadroKarti({ ajanlar, onaylar, kosular, mukellefAd, yukleniyor, 
   const bekleyenOnay = (a: Ajan) => a.bekleyenOnay ?? onaylar.filter((o) => o.ajanId === a.id).length;
   const durumlar = ajanlar.map((a) => suAn(a, kosular.get(a.id), mukellefAd, simdi));
   const calisanSayisi = durumlar.filter((d) => d.durum === 'calisiyor').length;
-  const enCok = Math.max(1, ...Array.from(haftalikIs.values()));
   const haftaToplam = Array.from(haftalikIs.values()).reduce((t, n) => t + n, 0);
 
-  return (
-    <CamKart
-      ton="mor"
-      etiket="Kadro"
-      ikon={<Users size={17} />}
-      baslik={`${ajanlar.length || 12} yapay çalışan`}
-      sag={
-        <Kapsul tur={calisanSayisi ? 'calisiyor' : 'notr'} nokta nabiz={calisanSayisi > 0}>
-          {calisanSayisi ? `${calisanSayisi} çalışıyor` : 'hepsi boşta'}
-        </Kapsul>
-      }
-      dolguYok
-    >
-      <div className="grid grid-cols-3 gap-2 px-4 pb-4">
-        <MetrikKutu deger={calisanSayisi} etiket="çalışan" renk={calisanSayisi ? V5.mavi : undefined} ortala />
-        <MetrikKutu deger={bugunKosu} etiket="bugün koşu" renk={V5.mint} ortala />
-        <MetrikKutu deger={haftaToplam} etiket="7 günde iş" ortala />
+  if (yukleniyor && !ajanlar.length)
+    return (
+      <div className="flex items-center gap-2 py-8 text-[12px]" style={{ color: MUTED }}>
+        <Loader2 size={13} className="animate-spin" /> Kadro yükleniyor…
       </div>
-      {yukleniyor && !ajanlar.length ? (
-        <div className="flex items-center gap-2 px-4 pb-4 text-[12px]" style={{ color: V5.ikincil }}>
-          <Loader2 size={12} className="animate-spin" /> Kadro yükleniyor…
-        </div>
-      ) : (
-        <div className="flex flex-col gap-2 px-4 pb-4" aria-label="Personel durumu">
-          {ajanlar.map((a, i) => {
-            const d = durumlar[i];
-            const onay = bekleyenOnay(a);
-            const calisiyor = d.durum === 'calisiyor';
-            const yuk = haftalikIs.get(a.id) || 0;
-            return (
-              <div
-                key={a.id}
-                data-ajan={a.id}
-                className="grid min-w-0 grid-cols-[40px_minmax(0,1fr)_auto] items-center gap-x-3 rounded-xl px-3 py-2.5"
-                style={
-                  calisiyor
-                    ? { background: 'linear-gradient(90deg, rgba(110,163,255,0.2), rgba(110,163,255,0.06))', border: '1px solid rgba(110,163,255,0.5)', boxShadow: '0 10px 26px rgba(110,163,255,0.14)' }
-                    : { background: 'rgba(255,255,255,0.035)', border: `1px solid ${V5.cizgi}` }
-                }
-                title={`${a.ad} — ${a.unvan}${d.metin ? `\nşu an: ${d.metin}` : '\nboşta'}`}
-              >
-                <span className="relative">
-                  <AvatarV5 kisaltma={ajanKisaltma(a.id, a.ad)} ton={a.id === 'koordinator' ? 'altin' : calisiyor ? 'mavi' : 'gri'} boyut={40} nokta={calisiyor} />
-                  {onay > 0 && (
-                    <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full px-1 text-[9.5px] font-bold" style={{ background: V5.altin, color: '#1a1410', boxShadow: `0 0 10px ${V5.altin}` }} title={`${onay} bekleyen onay`}>
-                      {onay}
-                    </span>
-                  )}
-                </span>
-                <span className="min-w-0">
-                  <span className="block truncate text-[13px] font-bold leading-tight" style={{ color: V5.metin }}>
+    );
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-[12px]" style={{ color: MUTED }}>
+        <span>
+          <b style={{ color: TEXT }}>{ajanlar.length}</b> personel
+        </span>
+        <span>
+          · <b style={{ color: calisanSayisi ? MAVI : TEXT }}>{calisanSayisi}</b> çalışıyor
+        </span>
+        <span>
+          · bugün <b style={{ color: TEXT }}>{bugunKosu}</b> koşu
+        </span>
+        <span>
+          · 7 günde <b style={{ color: TEXT }}>{haftaToplam}</b> iş
+        </span>
+        <span className="ml-auto">Personel işi kendi başlatmaz; görevi Koordinatör verir. Mükellefe giden her mesaj ve Luca’ya her yazım onayınıza düşer.</span>
+      </div>
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4" aria-label="Personel durumu">
+        {ajanlar.map((a, i) => {
+          const d = durumlar[i];
+          const onay = bekleyenOnay(a);
+          const calisiyor = d.durum === 'calisiyor';
+          const koordinator = a.id === 'koordinator';
+          return (
+            <div
+              key={a.id}
+              data-ajan={a.id}
+              className="relative overflow-hidden rounded-2xl px-4 py-3.5"
+              style={{
+                background: calisiyor ? `linear-gradient(140deg, ${MAVI}24, rgba(255,255,255,0.01) 60%)` : CARD_BG,
+                border: `1px solid ${calisiyor ? `${MAVI}4d` : CARD_BORDER}`,
+                boxShadow: '0 14px 32px rgba(0,0,0,0.20)',
+              }}
+              title={`${a.ad} — ${a.unvan}${d.metin ? `\nşu an: ${d.metin}` : '\nboşta'}`}
+            >
+              {calisiyor && <div className="pointer-events-none absolute -right-6 -top-8 h-24 w-24 rounded-full opacity-[0.18]" style={{ background: `radial-gradient(circle, ${MAVI}, transparent 68%)` }} />}
+              <div className="relative flex items-center gap-2.5">
+                <Avatar kisaltma={ajanKisaltma(a.id, a.ad)} ton={calisiyor ? 'mavi' : koordinator ? 'gold' : 'gri'} boyut={34} nabiz={calisiyor} />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-[13px] font-semibold" style={{ color: TEXT }}>
                     {ajanKisaAd(a.id, a.ad)}
-                  </span>
-                  <span className="block truncate text-[11.5px] leading-tight" style={{ color: calisiyor ? '#9cc0ff' : V5.soluk }}>
-                    {calisiyor ? d.metin : AJAN_UNVAN[a.id] || a.unvan}
-                  </span>
-                </span>
-                <span className="text-right">
-                  <span className="block whitespace-nowrap text-[11.5px] font-bold leading-tight" style={{ color: calisiyor ? '#9cc0ff' : d.durum === 'hata' ? V5.coral : V5.soluk }}>
-                    {calisiyor ? 'çalışıyor' : d.durum === 'hata' ? 'son iş hatalı' : 'boşta'}
-                  </span>
-                  <span className="block text-[11px] leading-tight" style={{ fontFamily: V5.mono, color: V5.soluk }}>
-                    {calisiyor ? '' : sonIsEtiketi(a.sonKosu?.createdAt)}
-                  </span>
-                </span>
-                {yuk > 0 && <Yuk yuzde={(yuk / enCok) * 100} className="col-span-2 col-start-2 mt-2" />}
+                  </div>
+                  <div className="truncate text-[11px]" style={{ color: MUTED }}>
+                    {AJAN_UNVAN[a.id] || a.unvan}
+                  </div>
+                </div>
+                {onay > 0 && <Rozet metin={`${onay} onay`} renk={GOLD} />}
               </div>
-            );
-          })}
-        </div>
-      )}
-    </CamKart>
+              <div className="relative mt-2.5 min-h-[34px] text-[11.5px] leading-relaxed" style={{ color: MUTED }}>
+                {a.aciklama || AJAN_UNVAN[a.id] || a.unvan}
+              </div>
+              <div className="relative mt-2.5 flex items-center justify-between gap-2 text-[11px]" style={{ color: MUTED }}>
+                <span className="min-w-0 truncate" style={{ color: calisiyor ? MAVI : d.durum === 'hata' ? KIRMIZI : MUTED }}>
+                  {calisiyor ? `çalışıyor · ${d.metin}` : d.durum === 'hata' ? 'son iş yarım kaldı' : sonIsEtiketi(a.sonKosu?.createdAt)}
+                </span>
+                <span className="flex-shrink-0 tabular-nums">
+                  bugün <b style={{ color: TEXT }}>{a.bugunKosu ?? 0}</b> · 7 gün <b style={{ color: TEXT }}>{haftalikIs.get(a.id) || 0}</b>
+                </span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }

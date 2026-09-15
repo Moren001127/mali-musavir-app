@@ -1,13 +1,13 @@
 'use client';
 
 import { forwardRef, useEffect, useRef, useState } from 'react';
-import { Play, Loader2, Mic, MicOff, AlertTriangle, Square, Link2, X, Zap, ShieldCheck, Users } from 'lucide-react';
+import { Play, Loader2, Mic, MicOff, AlertTriangle, Square, Link2, X, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Ajan, MukellefOzet } from '@/lib/ekip';
 import { startListening, isSpeechSupported } from '../../luca-operator/_components/voice';
 import type { KosularApi } from './kosular';
 import { MukellefSecici } from './MukellefSecici';
-import { Anahtar, AvatarV5, CamKart, Dug, Kapsul, Kbd, MetrikKutu, V5, cukur } from './Cam';
+import { Avatar, CARD_BORDER, Dugme, GOLD, KIRMIZI, Kbd, Kutu, MUTED, OK, Rozet, TEXT, ipucuStil, koyuAlan } from './Tema';
 import { ajanKisaltma } from './ortak';
 
 const KOORDINATOR = 'koordinator';
@@ -18,14 +18,14 @@ export interface KomutTaslak {
   gorev: string;
   taxpayerId?: string;
   dryRun: true;
-  kaynak?: 'sablon' | 'pano' | 'tekrar' | 'cevap';
+  kaynak?: 'sablon' | 'pano' | 'tekrar' | 'cevap' | 'oneri';
   vakaId?: string;
   nonce: number;
 }
 
 /**
- * Görev merkezi v5 — sol: büyük yazı kutusu (içinde mikrofon), altında mükellef · Kuru/Canlı anahtarı · Çalıştır;
- * sağ: Koordinatör kartı (avatar, 3 metrik: çalışan / uzman / karar, tek cümle durum notu).
+ * "Koordinatör'e görev ver" kutusu (Bütçe dili: altın şeritli Kutu).
+ * Yazı alanı (içinde mikrofon) · mükellef seçici · Kuru test / Canlı · Çalıştır (altın; canlıda kırmızı).
  * Kuru/Canlı depoya yazılmaz; her açılışta KURU. Canlıya geçiş kart içi teyitle.
  */
 export const GorevKarti = forwardRef<
@@ -33,17 +33,14 @@ export const GorevKarti = forwardRef<
   {
     ajanlar: Ajan[];
     mukellefler: MukellefOzet[];
-    mukellefAd: (id?: string | null) => string | undefined;
     komutTaslak: KomutTaslak | null;
     kosular: KosularApi;
     odakNonce: number;
     escNonce: number;
     maxBagli?: boolean;
-    calisan: number;
-    kararSayisi: number;
     koordinatorNotu: string;
   }
->(function GorevKarti({ ajanlar, mukellefler, komutTaslak, kosular, odakNonce, escNonce, maxBagli, calisan, kararSayisi, koordinatorNotu }, ref) {
+>(function GorevKarti({ ajanlar, mukellefler, komutTaslak, kosular, odakNonce, escNonce, maxBagli, koordinatorNotu }, ref) {
   const ajan = ajanlar.find((a) => a.id === KOORDINATOR);
   const [gorev, setGorev] = useState('');
   const [taxpayerId, setTaxpayerId] = useState('');
@@ -125,159 +122,158 @@ export const GorevKarti = forwardRef<
     if (!l) setListening(false);
   };
 
-  const kenar = listening ? 'rgba(255,107,122,0.6)' : odakta ? 'rgba(227,194,111,0.6)' : !dryRun ? 'rgba(255,107,122,0.45)' : V5.cizgi2;
+  const kenar = listening ? `${KIRMIZI}99` : !dryRun ? `${KIRMIZI}73` : odakta ? `${GOLD}66` : CARD_BORDER;
 
   return (
-    <CamKart
-      ref={(el) => {
-        kutuRef.current = el;
-        if (typeof ref === 'function') ref(el);
-        else if (ref) ref.current = el;
-      }}
-      ton="altin"
-      etiket="Görev merkezi"
-      ikon={<Zap size={17} />}
-      baslik="Koordinatör’e ne yaptıralım?"
+    <Kutu
+      baslik="Koordinatör’e görev ver"
+      aciklama="Yazın ya da söyleyin; işi doğru uzmana o verir"
+      renk={dryRun ? GOLD : KIRMIZI}
       sag={
-        <>
+        <span className="flex flex-wrap items-center justify-end gap-1.5">
           {vakaId && (
-            <Kapsul tur="calisiyor" title={`Aynı iş zincirinde devam: ${vakaId}`}>
-              <Link2 size={11} /> iş zinciri
-              <button type="button" onClick={() => setVakaId(undefined)} className="ml-0.5 rounded p-0.5 hover:bg-white/10" title="Bağı kaldır — yeni zincir aç">
+            <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium" style={{ background: `${MUTED}1f`, border: `1px solid ${MUTED}44`, color: TEXT }} title={`Aynı iş zincirinde devam: ${vakaId}`}>
+              <Link2 size={10} /> iş zinciri
+              <button type="button" onClick={() => setVakaId(undefined)} className="rounded p-px hover:bg-white/10" title="Bağı kaldır — yeni zincir aç">
                 <X size={10} />
               </button>
-            </Kapsul>
+            </span>
           )}
-          {dryRun ? (
-            <Kapsul tur="kuru">
-              <ShieldCheck size={12} /> Kuru test: mesaj gitmez, Luca’ya yazılmaz
-            </Kapsul>
-          ) : (
-            <Kapsul tur="canli" nokta>
-              Canlı mod: gerçek işlem
-            </Kapsul>
-          )}
-        </>
+          {dryRun ? <Rozet metin="Kuru test" renk={OK} /> : <Rozet metin="Canlı — gerçek işlem" renk={KIRMIZI} />}
+        </span>
       }
+      style={{ scrollMarginTop: 16 }}
+      className=""
     >
-      <div className="grid gap-5 2xl:grid-cols-[minmax(0,1fr)_300px]">
-        {/* Sol: yazı kutusu */}
-        <div className="min-w-0">
-          <div className="relative" style={cukur({ borderColor: kenar, boxShadow: odakta ? '0 0 0 3px rgba(227,194,111,0.12), inset 0 2px 12px rgba(0,0,0,0.35)' : 'inset 0 2px 12px rgba(0,0,0,0.35)' })}>
-            <textarea
-              ref={textareaRef}
-              value={gorev}
-              onChange={(e) => setGorev(e.target.value)}
-              onFocus={() => setOdakta(true)}
-              onBlur={() => setOdakta(false)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  calistir();
-                }
-              }}
-              rows={3}
-              placeholder={listening ? 'Dinliyorum…' : 'Örnek: Ömer Özen’in Ağustos 2026 KDV kontrolünü yap · Zeyrek Lojistik Ağustos faturalarını çek ve işle · Öz Ela son tebligatlar ne?'}
-              className="min-h-[96px] w-full resize-none bg-transparent px-[18px] py-4 pr-16 text-[15px] leading-relaxed outline-none"
-              style={{ color: V5.metin }}
-            />
-            <button
-              type="button"
-              onClick={toggleMic}
-              disabled={buCalisiyor}
-              title={listening ? 'Dinlemeyi durdur' : 'Sesli söyle — konuş, metne dönüşsün'}
-              className={`absolute right-3 top-3 flex h-10 w-10 items-center justify-center rounded-xl transition-[filter] hover:brightness-125 disabled:opacity-40 ${listening ? 'animate-pulse' : ''}`}
-              style={
-                listening
-                  ? { background: 'linear-gradient(180deg, rgba(255,107,122,0.35), rgba(255,107,122,0.15))', border: '1px solid rgba(255,107,122,0.6)', color: '#ffd0d5', boxShadow: '0 6px 18px rgba(255,107,122,0.25)' }
-                  : { background: 'linear-gradient(180deg, rgba(110,163,255,0.25), rgba(110,163,255,0.10))', border: '1px solid rgba(110,163,255,0.4)', color: '#cfe0ff', boxShadow: '0 6px 18px rgba(110,163,255,0.2)' }
+      <div
+        ref={(el) => {
+          kutuRef.current = el;
+          if (typeof ref === 'function') ref(el);
+          else if (ref) ref.current = el;
+        }}
+      >
+        {/* Yazı alanı */}
+        <div className="relative rounded-xl transition-[border-color,box-shadow]" style={{ background: 'rgba(255,255,255,0.03)', border: `1px solid ${kenar}`, boxShadow: odakta ? `0 0 0 3px ${GOLD}14` : 'none' }}>
+          <textarea
+            ref={textareaRef}
+            value={gorev}
+            onChange={(e) => setGorev(e.target.value)}
+            onFocus={() => setOdakta(true)}
+            onBlur={() => setOdakta(false)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                calistir();
               }
-            >
-              {listening ? <MicOff size={17} /> : <Mic size={17} />}
-            </button>
-
-            <div className="flex flex-wrap items-center gap-2.5 px-3 py-2.5" style={{ borderTop: `1px solid ${V5.cizgi}` }}>
-              <span className="inline-flex min-w-0 items-center gap-2 rounded-[10px] px-3 py-1.5 text-[12.5px]" style={{ background: 'rgba(255,255,255,0.05)', border: `1px solid ${V5.cizgi2}` }}>
-                <Users size={13} style={{ color: V5.soluk }} />
-                <span style={{ color: V5.soluk }}>Mükellef</span>
-                <span className="w-[230px] min-w-0">
-                  <MukellefSecici sade yerTutucu="Seçin (boş = ofis geneli)" mukellefler={mukellefler} value={taxpayerId} onChange={setTaxpayerId} renk={V5.altin} escNonce={escNonce} />
-                </span>
-              </span>
-              <Anahtar
-                secenekler={[
-                  { id: 'kuru', etiket: 'Kuru test', title: 'Mükellefe mesaj gitmez, Luca’ya yazılmaz; yalnız "yapacaktım" raporu' },
-                  { id: 'canli', etiket: <><Zap size={11} /> Canlı</>, tehlike: true, title: 'Gerçek işlem — dışarı gönderimler yine onayınıza düşer' },
-                ]}
-                deger={dryRun ? 'kuru' : 'canli'}
-                onChange={(id) => {
-                  if (id === 'kuru') {
-                    setDryRun(true);
-                    setCanliTeyit(false);
-                  } else if (dryRun) setCanliTeyit(true);
-                }}
-              />
-              <span className="flex-1" />
-              {sabahOzetiSuruyor ? (
-                <Dug disabled title="Sabah özeti sunucuda üretiliyor; bitince kilit açılır">
-                  <Loader2 size={14} className="animate-spin" /> Sabah özeti üretiliyor
-                </Dug>
-              ) : buCalisiyor ? (
-                <Dug tur="tehlike" onClick={() => void kosular.durdur(KOORDINATOR)} title="Koşu sunucuda durdurulur; iş 'iptal edildi (Muzaffer Bey)' olarak kapanır">
-                  <Square size={13} /> Durdur
-                </Dug>
-              ) : (
-                <Dug ref={calistirRef} tur={dryRun ? 'altin' : 'tehlike'} onClick={calistir} disabled={!calistirabilir} title={baskaCalisiyor ? 'Aynı anda tek koşu' : dryRun ? 'Kuru test koşusu (Enter)' : 'CANLI koşu'}>
-                  {baskaCalisiyor ? <Loader2 size={14} className="animate-spin" /> : dryRun ? <Play size={14} /> : <AlertTriangle size={14} />}
-                  {baskaCalisiyor ? 'Koşu sürüyor' : maxBagli === false ? 'Max bağlı değil' : dryRun ? 'Çalıştır' : 'Canlı çalıştır'}
-                </Dug>
-              )}
-            </div>
-          </div>
-
-          {canliTeyit && dryRun && (
-            <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl px-3.5 py-2.5 text-[12.5px]" style={{ background: 'rgba(255,107,122,0.10)', border: '1px solid rgba(255,107,122,0.5)', color: V5.metin }}>
-              <AlertTriangle size={14} style={{ color: V5.coral }} />
-              <span className="min-w-0 flex-1">
-                <b>Canlı moda geçiliyor</b> — mükellefe mesaj gidebilir, Luca’ya fiş yazılabilir. Resmi gönderim (GİB/SGK/berat) yine sizde kalır.
-              </span>
-              <Dug tur="tehlike" kucuk onClick={() => { setDryRun(false); setCanliTeyit(false); }}>
-                Evet, canlı
-              </Dug>
-              <Dug kucuk onClick={() => setCanliTeyit(false)}>Vazgeç</Dug>
-            </div>
-          )}
-
-          <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px]" style={{ color: V5.soluk }}>
-            <span className="inline-flex items-center gap-1.5"><Kbd>Enter</Kbd> çalıştırır</span>
-            <span className="inline-flex items-center gap-1.5"><Kbd>⇧ Enter</Kbd> yeni satır</span>
-            <span>{dryRun ? 'Kuru test: gerçek işlem yapılmaz, yapılacaklar raporlanır' : 'Canlı modda dışarı giden her mesaj yine onayınıza düşer · sayfa yenilenince kuru teste döner'}</span>
-          </div>
+            }}
+            rows={3}
+            placeholder={listening ? 'Dinliyorum…' : 'Örn: Ömer Özen’in Ağustos 2026 KDV kontrolünü yap · Zeyrek Lojistik’in Ağustos faturalarını işle · Öz Ela’nın son tebligatları ne?'}
+            className="min-h-[88px] w-full resize-none bg-transparent px-3.5 py-3 pr-24 text-[13.5px] leading-relaxed outline-none"
+            style={{ color: TEXT }}
+          />
+          <button
+            type="button"
+            onClick={toggleMic}
+            disabled={buCalisiyor}
+            title={listening ? 'Dinlemeyi durdur' : 'Sesli söyle — konuş, metne dönüşsün'}
+            className={`absolute right-2.5 top-2.5 inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[11.5px] font-medium transition hover:brightness-125 disabled:opacity-40 ${listening ? 'animate-pulse' : ''}`}
+            style={listening ? { background: `${KIRMIZI}1f`, border: `1px solid ${KIRMIZI}66`, color: KIRMIZI } : { background: 'rgba(255,255,255,0.04)', border: `1px solid ${CARD_BORDER}`, color: MUTED }}
+          >
+            {listening ? <MicOff size={13} /> : <Mic size={13} />} {listening ? 'Dinliyor' : 'Sesli'}
+          </button>
         </div>
 
-        {/* Sağ: Koordinatör kartı */}
-        <div className="flex flex-col gap-3 rounded-[14px] p-4" style={{ background: 'linear-gradient(160deg, rgba(227,194,111,0.14), rgba(227,194,111,0.04))', border: '1px solid rgba(227,194,111,0.35)' }}>
-          <div className="flex items-center gap-3">
-            <AvatarV5 kisaltma={ajanKisaltma(KOORDINATOR, ajan?.ad)} ton="altin" boyut={44} nokta={maxBagli !== false} nabiz={buCalisiyor} />
-            <div className="min-w-0">
-              <div className="text-[14px] font-bold" style={{ color: V5.metin }}>
-                {ajan?.ad || 'Koordinatör'}
-              </div>
-              <div className="text-[12px]" style={{ color: V5.ikincil }}>
-                Ofis müdürü · işi doğru uzmana verir
-              </div>
-            </div>
+        {/* Alt satır: mükellef · mod · çalıştır */}
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <span className="inline-flex h-9 min-w-[240px] flex-1 items-center gap-2 rounded-xl px-3 text-[12.5px]" style={koyuAlan}>
+            <Users size={13} style={{ color: MUTED }} />
+            <span className="min-w-0 flex-1">
+              <MukellefSecici sade yerTutucu="Mükellef seçin (boş = ofis geneli)" mukellefler={mukellefler} value={taxpayerId} onChange={setTaxpayerId} renk={GOLD} escNonce={escNonce} />
+            </span>
+          </span>
+          <span className="inline-flex h-9 overflow-hidden rounded-xl" style={koyuAlan} role="radiogroup" aria-label="Çalışma modu">
+            {(
+              [
+                ['kuru', 'Kuru test', 'Mükellefe mesaj gitmez, Luca’ya yazılmaz; yalnız "yapacaktım" raporu'],
+                ['canli', 'Canlı', 'Gerçek işlem — dışarı gönderimler yine onayınıza düşer'],
+              ] as const
+            ).map(([id, ad, title]) => {
+              const aktif = dryRun ? id === 'kuru' : id === 'canli';
+              const renk = id === 'canli' ? KIRMIZI : GOLD;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  role="radio"
+                  aria-checked={aktif}
+                  title={title}
+                  onClick={() => {
+                    if (id === 'kuru') {
+                      setDryRun(true);
+                      setCanliTeyit(false);
+                    } else if (dryRun) setCanliTeyit(true);
+                  }}
+                  className="px-3 text-[12px] font-medium transition"
+                  style={aktif ? { background: `${renk}1f`, color: renk, boxShadow: `inset 0 0 0 1px ${renk}4d` } : { color: MUTED }}
+                >
+                  {ad}
+                </button>
+              );
+            })}
+          </span>
+          {sabahOzetiSuruyor ? (
+            <Dugme disabled>
+              <Loader2 size={13} className="animate-spin" /> Sabah özeti üretiliyor
+            </Dugme>
+          ) : buCalisiyor ? (
+            <Dugme tur="tehlike" onClick={() => void kosular.durdur(KOORDINATOR)}>
+              <Square size={12} /> Durdur
+            </Dugme>
+          ) : (
+            <button
+              ref={calistirRef}
+              type="button"
+              onClick={calistir}
+              disabled={!calistirabilir}
+              title={baskaCalisiyor ? 'Aynı anda tek koşu' : dryRun ? 'Kuru test koşusu (Enter)' : 'CANLI koşu'}
+              className="inline-flex h-9 items-center gap-1.5 rounded-xl px-4 text-[12.5px] font-semibold transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+              style={{ background: `linear-gradient(140deg, ${dryRun ? GOLD : KIRMIZI}dd, ${dryRun ? GOLD : KIRMIZI}99)`, border: `1px solid ${dryRun ? GOLD : KIRMIZI}`, color: '#0b0b0d' }}
+            >
+              {baskaCalisiyor ? <Loader2 size={13} className="animate-spin" /> : dryRun ? <Play size={13} /> : <AlertTriangle size={13} />}
+              {baskaCalisiyor ? 'Koşu sürüyor' : maxBagli === false ? 'Max bağlı değil' : dryRun ? 'Çalıştır' : 'Canlı çalıştır'}
+            </button>
+          )}
+        </div>
+
+        {canliTeyit && dryRun && (
+          <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl px-3.5 py-2.5 text-[12.5px]" style={{ background: `${KIRMIZI}12`, border: `1px solid ${KIRMIZI}66`, color: TEXT }}>
+            <AlertTriangle size={14} style={{ color: KIRMIZI }} />
+            <span className="min-w-0 flex-1">
+              <b>Canlı moda geçiliyor</b> — mükellefe mesaj gidebilir, Luca’ya fiş yazılabilir. Resmi gönderim (GİB/SGK/berat) yine sizde kalır.
+            </span>
+            <Dugme tur="tehlike" onClick={() => { setDryRun(false); setCanliTeyit(false); }}>
+              Evet, canlı
+            </Dugme>
+            <Dugme onClick={() => setCanliTeyit(false)}>Vazgeç</Dugme>
           </div>
-          <div className="grid grid-cols-3 gap-2">
-            <MetrikKutu deger={calisan} etiket="çalışan" renk={calisan > 0 ? V5.mavi : undefined} />
-            <MetrikKutu deger={Math.max(0, ajanlar.length - 1) || 11} etiket="uzman" />
-            <MetrikKutu deger={kararSayisi} etiket="karar" renk={kararSayisi > 0 ? V5.amber : undefined} />
-          </div>
-          <div className="text-[12.3px] leading-relaxed" style={{ color: V5.ikincil }}>
+        )}
+
+        <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1" style={ipucuStil}>
+          <span>{dryRun ? 'Kuru test: mükellefe mesaj gitmez, Luca’ya yazılmaz; yapılacaklar raporlanır' : 'Canlı: dışarı giden her mesaj yine onayınıza düşer · sayfa yenilenince kuru teste döner'}</span>
+          <span className="inline-flex items-center gap-1.5"><Kbd>Enter</Kbd> çalıştırır · <Kbd>⇧ Enter</Kbd> yeni satır · <Kbd>/</Kbd> kutuya odak</span>
+        </div>
+
+        {/* Koordinatör'ün tek cümlelik notu */}
+        <div className="mt-3 flex items-center gap-2.5 text-[12px]" style={{ color: MUTED }}>
+          <Avatar kisaltma={ajanKisaltma(KOORDINATOR, ajan?.ad)} ton="gold" boyut={24} nabiz={buCalisiyor} />
+          <span className="min-w-0">
+            <b className="font-medium" style={{ color: TEXT }}>
+              {ajan?.ad || 'Koordinatör'}:
+            </b>{' '}
             {koordinatorNotu}
-          </div>
+          </span>
         </div>
       </div>
-    </CamKart>
+    </Kutu>
   );
 });

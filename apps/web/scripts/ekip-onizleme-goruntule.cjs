@@ -1,76 +1,42 @@
-// Ekip ekranı — Playwright ile ekran görüntüleri (sahte çift: node apps/web/scripts/dev-sahte-ekip.cjs → API 3006 + web 3007)
-// Kullanım: node apps/web/scripts/ekip-onizleme-goruntule.cjs [çıkış klasörü]   (varsayılan: _previews/ekip)
-// Akış: boş ekran → görev yaz → Çalıştır → koşu sürerken (adımlar akarken) → koşu bitti → personel bitti (istek kartı) → geçmişten iş seç.
+// Ekip ekranı (Bütçe dili, 2026-09-15) — Playwright görüntüleri. Sahte çift: node apps/web/scripts/dev-sahte-ekip.cjs (API 3006 + web 3007)
+//   node apps/web/scripts/ekip-onizleme-goruntule.cjs [cikisKlasoru]   (SAHTE_WEB_PORT ile port değişir)
+// Akış: Genel bakış → İşler (boş panel) → ilk iş seçili → Dönem panosu → Kadro → görev çalıştır (SSE ~14 sn) → sürüyor → bitti → telefon.
+// Sonunda konsol hataları ve yatay taşma yazdırılır (ikisi de boş/false olmalı).
 const path = require('path');
 const fs = require('fs');
-const { chromium } = require(path.join(__dirname, '../../luca-local-agent/node_modules/playwright'));
-
-const CIKIS = process.argv[2] || path.join(__dirname, '../../../_previews/ekip');
+const { chromium } = require(path.join(__dirname, '..', '..', '..', 'node_modules', '.pnpm', 'playwright@1.60.0', 'node_modules', 'playwright'));
+const CIKIS = process.argv[2] || path.join(__dirname, '..', '..', '..', '_previews', 'ekip');
+const PORT = process.env.SAHTE_WEB_PORT || '3007';
+const URL = `http://localhost:${PORT}/panel/ekip`;
 fs.mkdirSync(CIKIS, { recursive: true });
-const URL = process.env.EKIP_URL || 'http://localhost:3007/panel/ekip';
-
 (async () => {
-  const browser = await chromium.launch({ headless: true });
+  const b = await chromium.launch();
+  const pg = await b.newPage({ viewport: { width: 1500, height: 1000 }, deviceScaleFactor: 1 });
   const hatalar = [];
-  const ctx = await browser.newContext({ viewport: { width: 1500, height: 950 }, deviceScaleFactor: 1, locale: 'tr-TR' });
-  const page = await ctx.newPage();
-  page.on('console', (m) => {
-    if (m.type() === 'error' && !/404|Failed to load resource/.test(m.text())) hatalar.push(m.text());
-  });
-  page.on('pageerror', (e) => hatalar.push(`pageerror: ${e.message}`));
-
-  const yatay = async (ad) => {
-    const r = await page.evaluate(() => {
-      const m = document.querySelector('[data-panel-main]');
-      return { doc: document.documentElement.scrollWidth - document.documentElement.clientWidth, main: m ? m.scrollWidth - m.clientWidth : 0 };
-    });
-    if (r.doc > 0 || r.main > 0) hatalar.push(`YATAY TAŞMA (${ad}): belge ${r.doc}px, ana alan ${r.main}px`);
-  };
-  const cek = async (ad, tam = true) => {
-    await page.waitForTimeout(400);
-    await page.screenshot({ path: path.join(CIKIS, `${ad}.png`), fullPage: tam });
-    await yatay(ad);
-    console.log('  ✓', ad);
-  };
-
-  await page.goto(URL, { waitUntil: 'networkidle' });
-  await page.waitForSelector('text=Koordinatör’e ne yaptıralım', { timeout: 90000 });
-  await page.waitForTimeout(800);
-  await cek('01-bos-ekran');
-
-  // Görev yaz + çalıştır
-  const alan = page.locator('textarea').first();
-  await alan.fill("Ömer Özen'in Ağustos 2026 dönemi KDV kontrolünü yapın");
-  await page.getByRole('button', { name: /^Çalıştır$/ }).click();
-  await page.waitForTimeout(3500);
-  await cek('02-kosu-suruyor', false);
-  // Koşu sürerken cevap/talimat yaz → "Bitince gönder" kuyruğu
-  const cevapAlani = page.locator('input[placeholder*="talimat"]').first();
-  await cevapAlani.fill('beyannameyi henüz hazırlama, sadece kontrol');
-  await page.getByRole('button', { name: /Bitince gönder/ }).first().click();
-  await page.waitForTimeout(500);
-  await cek('02b-cevap-kuyrukta', false);
-  await page.waitForTimeout(5500);
-  await cek('03-kosu-personele-verildi', false);
-  await page.waitForTimeout(4500);
-  await cek('04-koordinator-bitti', true);
-  await page.waitForTimeout(9000);
-  await cek('05-personel-bitti-istek', true);
-
-  // Geçmişten iş seç (Hüseyin Salı canlı)
-  await page.getByRole('button', { name: /HÜSEYİN SALI/ }).first().click();
-  await page.waitForTimeout(1500);
-  await cek('06-gecmis-is-paneli', true);
-
-  // Sizden istenen sekmesi
-  await page.getByRole('tab', { name: /Sizden istenen/ }).click();
-  await page.waitForTimeout(600);
-  await cek('07-sizden-istenen', false);
-
-  await browser.close();
-  if (hatalar.length) {
-    console.log('HATALAR:');
-    for (const h of hatalar) console.log(' -', h);
-    process.exitCode = 1;
-  } else console.log('Konsol hatası yok, yatay taşma yok.');
-})();
+  pg.on('console', (m) => { if (m.type() === 'error') hatalar.push(m.text().slice(0, 240)); });
+  pg.on('pageerror', (e) => hatalar.push('PAGEERROR ' + String(e).slice(0, 240)));
+  await pg.goto(URL, { waitUntil: 'networkidle', timeout: 120000 });
+  const daralt = pg.getByRole('button', { name: 'Sol menuyu daralt' });
+  if (await daralt.count()) await daralt.first().click();
+  await pg.waitForTimeout(1500);
+  const cek = async (ad) => pg.screenshot({ path: path.join(CIKIS, `${ad}.png`), fullPage: true });
+  await pg.getByRole('tab', { name: /Genel bakış/ }).click(); await pg.waitForTimeout(500); await cek('01-genel-bakis');
+  await pg.getByRole('tab', { name: /İşler/ }).click(); await pg.waitForTimeout(600); await cek('02-isler-bos');
+  const ilk = pg.locator('button[title="İşi sağdaki panelde aç"]').first();
+  if (await ilk.count()) { await ilk.click(); await pg.waitForTimeout(1200); }
+  await cek('03-isler-panel');
+  await pg.getByRole('tab', { name: /Dönem panosu/ }).click(); await pg.waitForTimeout(600); await cek('04-donem-panosu');
+  await pg.getByRole('tab', { name: /Kadro/ }).click(); await pg.waitForTimeout(500); await cek('05-kadro');
+  await pg.getByRole('tab', { name: /Genel bakış/ }).click(); await pg.waitForTimeout(400);
+  await pg.locator('textarea').first().fill('Ömer Özen’in Ağustos 2026 KDV kontrolünü yap');
+  await pg.getByRole('button', { name: /^Çalıştır$/ }).click();
+  await pg.waitForTimeout(3500); await cek('06-kosu-suruyor');
+  await pg.waitForTimeout(13000); await cek('07-kosu-bitti');
+  const tasma = await pg.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 2);
+  const m = await b.newPage({ viewport: { width: 400, height: 900 }, deviceScaleFactor: 1 });
+  await m.goto(URL, { waitUntil: 'networkidle', timeout: 120000 }); await m.waitForTimeout(1500);
+  await m.screenshot({ path: path.join(CIKIS, '08-telefon.png'), fullPage: true });
+  const mobilTasma = await m.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 2);
+  console.log(JSON.stringify({ hatalar, yatayTasma: tasma, mobilTasma, cikis: CIKIS }, null, 1));
+  await b.close();
+})().catch((e) => { console.error(e); process.exit(1); });
