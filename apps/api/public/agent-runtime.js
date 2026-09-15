@@ -73,7 +73,9 @@
   // v1.47.43 (2026-09-15): İŞLETME CSV TANI — fetch-POST yanıtı 8 belgede de 29 belgede de aynı (27KB/17 tr) → satırlar
   //   grid'e GİRMİYOR. Artık: Yükle fonksiyonunun kaynağı IFRAME penceresinde de aranır; form action/target/gizli
   //   alanlar, yanıt metni (her zaman), doc.write sonrası grid ölçümü ve Fiş Kes sonrası ekran metni loglanır.
-  const AGENT_VERSION = '1.47.43';
+  // v1.47.44 (2026-09-15): İŞLETME CSV TANI-2 — yükleme ÖNCESİ sayfa + yanıt HTML'i + CSV ilk satırları iş
+  //   snapshot'ına (payload.screen) yazılır; yanıtta grid satırı (detaylar[1..]) yoksa "Fiş Kes" BASILMAZ (boş fiş riski).
+  const AGENT_VERSION = '1.47.44';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -2988,6 +2990,7 @@
                   const yEl = findBtn(/^Y[üu]kle$/i);
                   let yOk = false;
                   let postTr = 0; // fetch-POST yanıtındaki tablo satırı sayısı = grid doldu göstergesi
+                  let gridSatir = -1; // v1.47.44: yanıt HTML'indeki detaylar[N] satır sayısı (1 = boş şablon satırı)
                   try {
                     const pw = popupWin();
                     const fi = findFileInput();
@@ -3019,8 +3022,22 @@
                         const gizli = []; for (const el of alanlar) { try { if (el.name && (el.type || '').toLowerCase() !== 'file') gizli.push(`${el.name}=${String(el.value == null ? '' : el.value).slice(0, 30)}`); } catch {} }
                         await log(`ℹ[form] action=${form ? String(form.getAttribute('action') || '').slice(0, 80) : '-'} target=${form ? form.target || '-' : '-'} method=${form ? form.method || '-' : '-'} enctype=${form ? form.enctype || '-' : '-'} · iframeUrl=${String(taban).replace(/^https?:\/\/[^/]+/, '').slice(0, 90)} · alanlar=${gizli.slice(0, 14).join(' ')}`);
                       } catch {}
+                      // v1.47.44 TANI-2: yükleme öncesi sayfa + CSV ilk satırları
+                      let oncesiHtml = ''; let csvBas = '';
+                      try { oncesiHtml = String(fdoc.documentElement.outerHTML || ''); } catch {}
+                      try { csvBas = String(await fi.files[0].text()).slice(0, 1200); } catch (e3) { csvBas = 'okunamadı: ' + ((e3 && e3.message) || e3); }
                       const resp = await fw.fetch(action, { method: 'POST', body: fd, credentials: 'include' });
                       const html = await resp.text();
+                      const detaySayisi = (h) => { try { const set = new Set(); for (const m of String(h).matchAll(/detaylar\[(\d+)\]/g)) set.add(m[1]); return set.size; } catch { return -1; } };
+                      gridSatir = detaySayisi(html);
+                      try {
+                        const alanTum = []; for (const el of alanlar) { try { if (el.name && (el.type || '').toLowerCase() !== 'file') alanTum.push(`${el.name}=${String(el.value == null ? '' : el.value).slice(0, 60)}`); } catch {} }
+                        let pencere = {};
+                        try { pencere = { url: String(fw.location.href).slice(0, 160), topUrl: String(fw.top.location.href).slice(0, 160), ustPencereAcan: !!(fw.top && fw.top.opener), popupListe: (() => { try { return ((window.top || window).__morenLucaPopups || []).length; } catch { return -1; } })(), iframeMi: fw !== fw.top }; } catch {}
+                        await fetch(API + `/agent/luca/jobs/${job.id}/screen`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Agent-Token': TOKEN },
+                          body: JSON.stringify({ snapshot: { tur: 'isletme-csv-tani', zaman: new Date().toISOString(), http: resp.status, action: String(action).slice(0, 200), pencere, alanlar: alanTum, csvBas, oncesiDetay: detaySayisi(oncesiHtml), yanitDetay: gridSatir, oncesiHtml: oncesiHtml.slice(0, 300000), yanitHtml: html.slice(0, 300000) } }) }).catch(() => {});
+                        await log(`ℹ[tanı-2] snapshot yazıldı · öncesi detaylar=${detaySayisi(oncesiHtml)} yanıt detaylar=${gridSatir} · csv=${csvBas.split(/\r?\n/).length - 1} satır`);
+                      } catch (e4) { await log(`tanı-2: ${(e4 && e4.message) || e4}`); }
                       const rowInd = (html.match(/Sat[ıi]r\s*Say[ıi]s[ıi]\s*:?\s*(\d+)/i) || [])[1];
                       const trc = (html.match(/<tr/gi) || []).length; postTr = trc;
                       const err = /ge[çc]ersiz|ba[şs]ar[ıi]s[ıi]z|okunama|hatal[ıi]|format\s*hatas/i.test(html);
@@ -3060,6 +3077,9 @@
                   if (gc <= 1) { for (let i = 0; i < 20 && (gc = gridCount()) <= 1; i++) { await sleep(600); } }
                   await log(`ℹ HIZLI FİŞ dolu göstergesi=${gc} (yanıt tr=${postTr})`);
                   if (gc <= 8) throw new Error(`CSV grid'e yüklenmedi (gösterge=${gc}, yanıtTr=${postTr}).`);
+                  // v1.47.44: yanıtta GERÇEK grid satırı yoksa (yalnız boş şablon satırı detaylar[0]) Fiş Kes BASILMAZ —
+                  //   boş/tek satırlık fiş kesme riski. Satırlar gelmediyse hata ver, tanı snapshot'ı incelenir.
+                  if (gridSatir >= 0 && gridSatir <= 1) throw new Error(`CSV satırları HIZLI FİŞ grid'ine girmedi (yanıtta detaylar satırı=${gridSatir}); "Fiş Kes" basılmadı.`);
                   // 3) "Fiş Kes" — sayfa fonksiyonu (fn:gonder) → popup-trusted → ana native → fireEl
                   const fkEl = findBtn(/^Fi[şs]\s*Kes$/i);
                   let fk = false;
