@@ -488,12 +488,17 @@ export class DriveService implements OnModuleInit, OnModuleDestroy {
       try {
         const file = await this.driveGetFile(token, backup.driveFileId);
         if (file) {
-          return {
-            ...file,
-            filename: backup.fileName || `${inv.faturaNo || invoiceId}`,
-          };
-        }
-        steps.push('drive-get: dosya okunamadi');
+          // Drive yedeği HTML ise (eski e-Arşiv yedekleri) görüntüleyici <img> gösteremez → FM/Mihsap yolu (HTML→PNG) — 2026-09-15.
+          const bas = (file.buffer || Buffer.alloc(0)).slice(0, 300).toString('utf8').trimStart().toLowerCase();
+          const htmlMi = /html/i.test(String(file.contentType || '')) || bas.startsWith('<!doctype html') || bas.startsWith('<html');
+          if (!htmlMi) {
+            return {
+              ...file,
+              filename: backup.fileName || `${inv.faturaNo || invoiceId}`,
+            };
+          }
+          steps.push('drive-get: html yedek, görsele çevrilmek üzere mihsap yoluna düşüldü');
+        } else steps.push('drive-get: dosya okunamadi');
       } catch (e: any) {
         steps.push(`drive-get: ${e?.message || e}`);
       }
