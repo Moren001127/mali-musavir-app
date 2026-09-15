@@ -42,7 +42,10 @@ describe('sinifIcerikMetni', () => {
   it('çok uzun ham metin 9000 karakterde kesilir, özet bloğu korunur', () => {
     const uzun = 'kelime '.repeat(5000);
     const m: string = svc.sinifIcerikMetni(parsed, { kalemMetniKaynak: null, hamMetin: uzun, yon: 'SATIS' });
-    expect(m.length).toBeLessThanOrEqual(9000);
+    expect(m.length).toBeLessThanOrEqual(2000 + 700); // kalemler özette → ham metin 2000 karakter (maliyet)
+    const m0: string = svc.sinifIcerikMetni({}, { kalemMetniKaynak: null, hamMetin: uzun, yon: 'ALIS' });
+    expect(m0.length).toBeLessThanOrEqual(9000); // kalem yoksa ham metin tek içerik: 9000
+    expect(m0.length).toBeGreaterThan(8000);
     expect(m).toContain('Yön: SATIŞ (mükellef kesti)');
     expect(m).toContain('SERVİS TAŞIMACILIĞI HİZMET BEDELİ');
   });

@@ -16307,7 +16307,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       .replace(/\s+/g, ' ')
       .trim();
     const bas = ozet.length ? `BELGE ÖZETİ (XML'den ayrıştırıldı — içerik/hesap kararında ESAS bu kalemlerdir):\n${ozet.join('\n')}` : '';
-    const kalanBoyut = Math.max(1500, 9000 - bas.length);
+    // MALİYET (2026-09-15): kalemler özetteyse ham metin yalnız yardımcı (not/açıklama) → 2000 karakter yeter; 10 belgelik parti
+    //   45k → ~26k token'a inmişti, bu kesinti ile ~10k. Kalem yoksa (görsel/HTML) ham metin tek içerik: 9000 kalır.
+    const kalanBoyut = ozet.some((o) => o.startsWith('Fatura kalemleri')) ? 2000 : Math.max(1500, 9000 - bas.length);
     return [bas, ham ? `Ham belge metni (yardımcı; imza/entegratör bilgileri içerik DEĞİLDİR): ${ham.slice(0, kalanBoyut)}` : '']
       .filter(Boolean).join('\n').trim().slice(0, 9000);
   }
