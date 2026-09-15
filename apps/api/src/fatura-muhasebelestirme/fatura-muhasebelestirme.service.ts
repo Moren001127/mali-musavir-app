@@ -7172,6 +7172,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       tevkifatKdv: this.numFromOcr(ocrData?.tevkifatKdv) || this.numFromOcr(ocrData?.kdvTevkifat) || 0,
       belgeDurumu: ocrData?.belgeDurumu,
       saglayiciIsareti: ocrData?.saglayiciIsareti?.not ? String(ocrData.saglayiciIsareti.not) : null,
+      faaliyetUyumsuz: ocrData?.faaliyetUyumsuz?.not ? String(ocrData.faaliyetUyumsuz.not) : null,
       stopajTutari: this.numFromOcr(ocrData?.stopajTutari) || 0,
       isletme: isIsletmeDoc,
     });
@@ -13990,6 +13991,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     iadeTuru?: 'alistan' | 'satistan' | null;
     /** Aktarımda sağlayıcının metinsiz iptal/itiraz bayrağı (ocrData.saglayiciIsareti.not) → UYARI, engel değil (2026-09-15). */
     saglayiciIsareti?: string | null;
+    /** İçerik mükellefin faaliyetine yabancı (ocrData.faaliyetUyumsuz.not) → ENGEL; kullanıcı elle hesap seçince kalkar (2026-09-15). */
+    faaliyetUyumsuz?: string | null;
     /** SMM gelir vergisi stopajı (alışta ödenecek = brüt + KDV − stopaj). */
     stopajTutari?: any;
     /** Faz 2 — demirbaş sahip kararı (ocrData.demirbasKarar.karar): elle_islendi | yine_de_isle | demirbas_degil | null. */
@@ -14147,6 +14150,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           ? 'Belge İPTAL edilmiş görünüyor (fatura tipi/notu) — muhasebeleştirilmez. Yanlışsa belge durumunu düzeltin.'
           : 'Belge TASLAK görünüyor — onaylı belge değil, muhasebeleştirilmez.',
       });
+    }
+
+    // ── 3e) FAALIYET_UYUMSUZ — içerik mükellefin faaliyetine yabancı, planda hesap yok (ENGEL; sahip karar verir).
+    //   Kullanıcı matrah hesabını ELLE seçtiyse (kaynak=KULLANICI, kod dolu) engel kalkar → belge onaylanabilir.
+    if (opts.faaliyetUyumsuz) {
+      const elleSecildi = (opts.lines || []).some((l: any) => String(l.group || '') === 'matrah' && String(l.kaynak || '').toUpperCase() === 'KULLANICI' && String(l.accountCode || '').trim());
+      if (!elleSecildi) issues.push({ code: 'FAALIYET_UYUMSUZ', severity: 'ERROR', message: opts.faaliyetUyumsuz });
     }
 
     // ── 3d) ENTEGRATOR_ISARETI — sağlayıcı listesinde metinsiz iptal/itiraz bayrağı (uyarı; sahip karar verir).
@@ -16680,13 +16690,36 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       //   içerik denetimi UYUMSUZ + geçerli öneri varsa ve hesap AI/kural kaynaklıysa (kullanıcı seçimi / öğrenilmiş DEĞİL),
       //   belge onaylı/Luca'ya gitmiş değilse ve tüm matrah satırları aynı hesaptaysa → hesap öneriye ÇEVRİLİR, uyarı yerine
       //   yorumda "X yerine Y'ye alındı" yazılır. Eski davranış (koru + "Öneriyi uygula") FM_UYUM_OTO=off ile geri gelir.
-      const matrahKodSeti = new Set(matrahLines.map((l: any) => String(l.accountCode || '').trim()).filter(Boolean));
+      const matrahKodSeti = new Set<string>(matrahLines.map((l: any) => String(l.accountCode || '').trim()).filter(Boolean));
+      const matrahKodSetiOn: Set<string> = matrahKodSeti;
       const kaynaklar = matrahLines.map((l: any) => String(l.kaynak || '').toUpperCase());
-      const kullaniciVeyaOgrenilmis = kaynaklar.some((k: string) => k === 'KULLANICI' || k === 'OGRENILMIS' || k === 'HAFIZA');
+      const kullaniciSecimi = kaynaklar.some((k: string) => k === 'KULLANICI');
+      const hafizaKaynakli = kaynaklar.some((k: string) => k === 'OGRENILMIS' || k === 'HAFIZA');
+      // Hafıza/öğrenilmiş hesapta öneri AYNI GRUBUN varyantıysa (153.01.001 %20 → 153.01.002 %10) uygulanır; farklı gruba geçiş yalnız AI kaynaklı hesapta.
+      const ayniGrup = (a: string, b: string) => a.split('.').slice(0, 2).join('.') === b.split('.').slice(0, 2).join('.');
+      const kullaniciVeyaOgrenilmis = kullaniciSecimi || (hafizaKaynakli && !(onerilen && [...matrahKodSetiOn].every((k) => ayniGrup(k, onerilen))));
       const otoUygulanabilir = uyumsuz && !!onerilen
         && String(process.env.FM_UYUM_OTO || 'on').toLowerCase() !== 'off'
         && String(doc.status || '') !== 'APPROVED' && !/POSTED|SENT/i.test(String(doc.lucaStatus || ''))
         && matrahKodSeti.size === 1 && !kullaniciVeyaOgrenilmis;
+      // FAALİYET DIŞI ALIM (Muzaffer Bey 2026-09-15 — Gökhan Akgöz kırtasiye/reklamcı, kuyumcudan altın: "içerik faaliyetle
+      //   uyumsuzsa bu firmaya bu gideri işleyemeyiz, kontrolü yapması lazım"): AI UYUMSUZ diyor ve mükellefin planında
+      //   uyan hiçbir hesap bulamıyorsa (ONERILEN_HESAP: YOK) alım işe yabancıdır → matrah hesabı BOŞALTILIR, belge
+      //   FAALIYET_UYUMSUZ engeliyle durur; sahip karar verir (KKEG / şahsi / yanlış mükellef / elle hesap seçip onay).
+      //   Kullanıcı/öğrenilmiş hesap, satış belgesi, onaylı/Luca'ya gitmiş belge kapsam dışı. FM_FAALIYET_ENGEL=off eski davranış.
+      const faaliyetDisi = uyumsuz && !onerilen && !isSale && !isReturn
+        && String(process.env.FM_FAALIYET_ENGEL || 'on').toLowerCase() !== 'off'
+        && String(doc.status || '') !== 'APPROVED' && !/POSTED|SENT/i.test(String(doc.lucaStatus || ''))
+        && !kullaniciVeyaOgrenilmis;
+      let faaliyetEngeli = false;
+      if (faaliyetDisi) {
+        const r = await (this.prisma as any).invoiceAccountingLine.updateMany({
+          where: { documentId: doc.id, group: 'matrah' },
+          data: { accountCode: '', description: 'Faaliyetle uyumsuz — hesap seçilmedi', kaynak: null },
+        }).catch(() => null);
+        faaliyetEngeli = !!r;
+        if (faaliyetEngeli) this.logger.warn(`[FAALIYET-UYUMSUZ] ${doc.belgeNo || doc.id}: içerik faaliyete yabancı, planda uygun hesap yok → matrah ${hesapStr} boşaltıldı, engel`);
+      }
       let otoUygulandi = false;
       if (otoUygulanabilir) {
         const yeniAd = String(planOnbellek?.names?.get(onerilen!) || '').trim();
@@ -16698,7 +16731,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         if (otoUygulandi) this.logger.log(`[UYUM-OTO] ${doc.belgeNo || doc.id}: içerik denetimi ${hesapStr} → ${onerilen} ${yeniAd} (AI ilk seçimi düzeltildi)`);
       }
       let finalText = text;
-      if (uyumsuz && finalText) {
+      if (faaliyetEngeli && finalText) {
+        const kapanis = `; bu içerik mükellefin faaliyetiyle bağdaşmadığından gider olarak İŞLENMEDİ (hesap ${hesapStr} kaldırıldı) — KKEG / şahsi harcama / yanlış mükellef kararını verin; işlenecekse hesabı editörde elle seçin.`;
+        const yeni = finalText.replace(/,?\s*[\dA-ZÇĞİÖŞÜ.\s]+hesab[ıi]na işlenmiştir\.?\s*$/i, kapanis);
+        finalText = (yeni !== finalText ? yeni : finalText.replace(/işlenmiştir\.?\s*$/i, `için hesap seçilmedi — faaliyetle uyumsuz alım, sahip kararı gerekir.`)).trim();
+      } else if (uyumsuz && finalText) {
         const onerilenAd = onerilen ? String(planOnbellek?.names?.get(onerilen) || '').trim() : '';
         const kapanis = otoUygulandi
           ? `; içerik ana faaliyetle uyuşmadığından hesap ${hesapStr} yerine ${onerilen}${onerilenAd ? ' ' + onerilenAd : ''} hesabına alındı (içerik denetimi düzeltti).`
@@ -16708,7 +16745,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         const yeni = finalText.replace(/,?\s*[\dA-ZÇĞİÖŞÜ.\s]+hesab[ıi]na işlenmiştir\.?\s*$/i, kapanis);
         finalText = (yeni !== finalText ? yeni : finalText.replace(/işlenmiştir\.?\s*$/i, otoUygulandi ? `için hesap ${onerilen} olarak düzeltildi (içerik denetimi).` : `için hesap korundu — ${onerilen ? `önerilen hesap: ${onerilen}` : 'doğru hesabı editörde seçin'}.`)).trim();
       }
-      const patch: any = otoUygulandi
+      const patch: any = faaliyetEngeli
+        ? {
+            hesapUyumsuz: false, hesapUyumNot: null, hesapUyumKod: null, onerilenHesap: null, hesapSuphe: null, aiMatrahKodu: null,
+            faaliyetUyumsuz: { not: 'Fatura içeriği mükellefin faaliyetiyle bağdaşmıyor; planda uygun gider/stok hesabı bulunamadı — gider olarak işlenmedi.', eskiHesap: hesapStr, tarih: new Date().toISOString() },
+          }
+        : otoUygulandi
         ? {
             hesapUyumsuz: false, hesapUyumNot: null, hesapUyumKod: null, onerilenHesap: null, hesapSuphe: null,
             aiMatrahKodu: onerilen,
@@ -16727,7 +16769,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         .catch(() => {});
       // (matrah satırı BOŞALTILMAZ — eski updateMany accountCode:null kaldırıldı.) Uyarı katmanı tazelensin:
       //   UYUMSUZ ise ICERIK_HESAP_UYUMSUZ üretilir; UYUMLU'ya döndüyse / öneri otomatik uygulandıysa eski uyarı kalkar.
-      if (uyumsuz || otoUygulandi || (ocr as any)?.hesapUyumsuz === true) {
+      if (uyumsuz || otoUygulandi || faaliyetEngeli || (ocr as any)?.hesapUyumsuz === true) {
         await this.revalidateDocument(tenantId, doc.id).catch(() => null);
       }
       return { text: finalText, denetim };
@@ -17461,6 +17503,25 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             _hesapSuphe = { neden: 'arac-baglam-yok', kod: String((m as any).accountCode || ''), not: `Araç-adlı hesap (${(m as any).accountName}) AI tarafından seçildi; mükellef faaliyetinde/faturada araç bağlamı yok` };
           }
         }
+        // ─── ORAN VARYANTI (2026-09-15, Gökhan Akgöz ESR2026000003847): satıcı hafızası/öğrenilmiş kod "TİCARİ MAL %20" ama satır
+        //   %10 → aynı gruptaki "%10" kardeşine (153.01.002) geç; tevkifat-liği aynı olsun. Kullanıcı seçimi rematch'e zaten girmez.
+        if (m && rate) {
+          const _mAd = String((m as any).accountName || '');
+          const _mOranlar = this.rateTokensOf(_mAd);
+          if (_mOranlar.length && !_mOranlar.includes(rate)) {
+            const _grp = String((m as any).accountCode || '').split('.').slice(0, 2).join('.') + '.';
+            const _kardes = accounts.find((a: any) => {
+              const c = String(a.accountCode || '');
+              return c.startsWith(_grp) && c !== String((m as any).accountCode) && isPostableLeaf(c)
+                && this.rateTokenInName(String(a.accountName || ''), rate)
+                && this.isTevkifatAccountName(String(a.accountName || '')) === this.isTevkifatAccountName(_mAd);
+            });
+            if (_kardes) {
+              this.logger.log(`[ORAN-VARYANT] ${doc.belgeNo || doc.id}: ${(m as any).accountCode} (${_mAd}) satır %${rate} ile çelişti → ${_kardes.accountCode} ${_kardes.accountName}`);
+              m = leafOnly(_kardes) || m;
+            }
+          }
+        }
         // ─── TEVKİFAT UYUM DENETİMİ (kullanıcı bulgusu 2026-08-20, GÜLŞEN DEMİRCİ) ───
         // SATIŞTA matrah hesabının "tevkifatlı" olup olmaması, faturanın GERÇEK tevkifat durumuyla
         // UYUŞMAK ZORUNDA. KDV tarafı bunu zaten doğru yapıyor (tevkifatsız → "391.01.003 HESAPLANAN
@@ -17657,6 +17718,13 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             continue;
           }
           // (alıştan iade matrahı → aşağıdaki normal categoryMatrah akışına düşer)
+        }
+        // FAALİYET DIŞI ALIM (2026-09-15): işaretli belgede matrah boş kalır — varsayılan/kategori dolgusu YAPILMAZ (kullanıcı seçimi hariç).
+        if (group === 'matrah' && (doc.ocrData as any)?.faaliyetUyumsuz?.not && String(line.kaynak || '').toUpperCase() !== 'KULLANICI') {
+          if (String(line.accountCode || '').trim()) {
+            await (this.prisma as any).invoiceAccountingLine.update({ where: { id: line.id }, data: { accountCode: '', description: 'Faaliyetle uyumsuz — hesap seçilmedi', kaynak: null } });
+          }
+          continue;
         }
         // KALEM-BAZLI KORUMA (Faz 1): bölme uygulanmış belgede (ocrData.kalemSplit) matrah satırları
         //   HESAP bazında AYRI atanmıştır (kaynak='AI', gerçek plan kodu). matrahForRate oran bazlı TEK
