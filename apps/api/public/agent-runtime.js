@@ -86,7 +86,7 @@
   //   Luca'nın beklediği adlarla TEK SEFERDE hizalanır (her denemede tek sütun hatası okumak yerine).
   // v1.47.48 (2026-09-15): firma onay düğmesi regex'indeki `\b` sınırları kaynakta gerçek backspace (0x08) baytına
   //   dönüşmüştü (sec/aç/ac seçenekleri ölüydü) → düzeltildi.
-  const AGENT_VERSION = '1.47.51';
+  const AGENT_VERSION = '1.47.52';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -3085,7 +3085,11 @@
                         // v1.47.51: gelir+gider listeleri aynı etiketi taşıyabilir ("e-Arşiv Fatura" iki listede) → tekilleştir, yoksa "tek aday" önek eşleşmesi çalışmaz
                         const etiketler = (json, prop) => { const j = dbListeler[json]; return Array.isArray(j) ? [...new Set(j.map((x) => String((x && (x[prop] || x.label || x.ad || x.aciklama || x.tanim || x.kayitTuru)) || '')).filter(Boolean))] : []; };
                         const tekil = (arr) => [...new Set(arr)];
+                        // v1.47.52: KDV İSTİSNASI (KDV tablo türü) seçenekleri popup'taki TABLO_TURU0 select'inden (etiket metni)
+                        let tabloTurleri = [];
+                        try { const sel = fdoc && fdoc.getElementById('TABLO_TURU0'); if (sel && sel.options) tabloTurleri = [...sel.options].map((o) => String(o.text || '').trim()).filter(Boolean); } catch {}
                         const sutunListe = {
+                          ...(tabloTurleri.length ? { 'KDV İSTİSNASI': tekil(tabloTurleri) } : {}),
                           'KAYIT ALT TÜRÜ': tekil([...etiketler('gider_kayit_alt_turleri', 'kayitTuru'), ...etiketler('gelir_kayit_alt_turleri', 'kayitTuru')]),
                           'BELGE TÜRÜ(DB)': tekil([...etiketler('gider_belge_turleri', 'giderBelgeTuru'), ...etiketler('gelir_belge_turleri', 'gelirBelgeTuru')]),
                           'ALIŞ/SATIŞ TÜRÜ': tekil([...etiketler('alis_turleri', 'ad'), ...etiketler('satis_turleri', 'aciklama')]),
@@ -3124,6 +3128,7 @@
                           await log(`ℹ[liste-hizala] ${degisenler.length} değer Luca etiketiyle değiştirildi: ${[...new Set(degisenler)].slice(0, 6).join(' · ')}`);
                         }
                         if (eslesmeyen.length) await log(`⚠[liste-hizala] Luca listesinde karşılığı YOK: ${[...new Set(eslesmeyen)].slice(0, 6).join(' · ')}`);
+                        if (tabloTurleri.length) await log(`ℹ[liste-hizala] KDV tablo türleri (${tabloTurleri.length}): ${tabloTurleri.slice(0, 10).join(' | ').slice(0, 400)}`);
                       } catch (e7) { await log(`liste-hizala atlandı: ${(e7 && e7.message) || e7}`); }
                       const resp = await fw.fetch(action, { method: 'POST', body: fd, credentials: 'include' });
                       const html = await resp.text();

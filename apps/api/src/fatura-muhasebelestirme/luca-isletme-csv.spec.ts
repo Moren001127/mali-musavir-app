@@ -18,6 +18,36 @@ const payload = (): any => ({
   }],
 });
 
+describe('İşletme HIZLI FİŞ CSV — Luca fiş türü ve tevkifatlı satış sütunları (2026-09-15)', () => {
+  const hucreler = (buf: Buffer) => require('iconv-lite').decode(buf, 'win1254').split('\r\n')[1].split(';');
+  const gider = (kayitTuruKod: string, kayitTuruAd: string): any => ({
+    ...payload(),
+    invoices: [{ ...payload().invoices[0], isletme: { belgeTuruKod: '10', belgeTuruAd: 'e-Arşiv Fatura', kayitTuruKod, kayitTuruAd, kayitAltKod: '113', kayitAltAd: 'Taşıt Akaryakıt Giderleri (GVK 40/1-40/5)', kdvOranKod: 'KDV20' } }],
+  });
+
+  it('gider: İndirilecek Giderler → BELGE TURU "Diğer Alışlar"; Mal Alışı → "Alış"', () => {
+    process.env.LUCA_ISLETME_UNVAN_ASCII = '2';
+    expect(hucreler(buildLucaIsletmeHizliFisCsv(gider('4', 'İndirilecek Giderler (GVK Md. 40)')))[2]).toBe('Diğer Alışlar');
+    expect(hucreler(buildLucaIsletmeHizliFisCsv(gider('1', 'Mal Alışı')))[2]).toBe('Alış');
+  });
+
+  it('tevkifatlı satış (5/10, kod 614): KDV İSTİSNASI Tablo 2, KOD 614, ALIŞ/SATIŞ TÜRÜ Kısmi Tevkifat, TEVKİFAT 5/10; normal satışta boş', () => {
+    process.env.LUCA_ISLETME_UNVAN_ASCII = '2';
+    const satis: any = { ...payload(), direction: 'SATIS', invoices: [{ ...payload().invoices[0], invoiceKind: 'SATIS', buyerVkn: '9980839672', customerName: 'ZİRVE ULUSAL İSTİHDAM', vendorName: null,
+      isletme: { belgeTuruKod: '8', belgeTuruAd: 'e-Arşiv Fatura', kayitTuruKod: '2', kayitTuruAd: 'Hizmet Satışı', kayitAltKod: '2', kayitAltAd: 'Hizmet Satışı', kdvOranKod: 'KDV20', tevkifatOrani: '5/10', tevkifatKodu: '614' },
+      lines: [{ group: 'matrah', description: 'x', rate: '20', debit: '0', credit: '50416.67', orderNo: 0 }, { group: 'vergi', description: 'kdv', rate: '20', debit: '0', credit: '5041.67', orderNo: 1 }] }] };
+    const h = hucreler(buildLucaIsletmeHizliFisCsv(satis));
+    expect(h[2]).toBe('Satış');
+    expect(h[13]).toBe('Tablo 2(KISMİ TEVKİFAT UYGULANAN İŞLEMLER)');
+    expect(h[14]).toBe('614');
+    expect(h[16]).toBe('Kısmi Tevkifat Uygulanan İşlemler');
+    expect(h[23]).toBe('5/10');
+    const normal: any = { ...satis, invoices: [{ ...satis.invoices[0], isletme: { ...satis.invoices[0].isletme, tevkifatOrani: '', tevkifatKodu: '' } }] };
+    const n = hucreler(buildLucaIsletmeHizliFisCsv(normal));
+    expect([n[13], n[14], n[16], n[23]]).toEqual(['', '', 'Normal Satışlar', '']);
+  });
+});
+
 describe('İşletme HIZLI FİŞ CSV — kodlama', () => {
   const eski = { k: process.env.LUCA_ISLETME_CSV_KODLAMA, a: process.env.LUCA_ISLETME_UNVAN_ASCII };
   afterEach(() => {

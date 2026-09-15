@@ -27,7 +27,7 @@ import { MihsapService } from '../mihsap/mihsap.service';
 import { PortalAutomationService } from '../portal-automation/portal-automation.service';
 import { BeyanKayitlariService } from '../beyan-kayitlari/beyan-kayitlari.service';
 import { ModuleRef } from '@nestjs/core';
-import { demirbasHaddiTL, tevkifatEksikDegerlendir, tevkifatTutarlilik, tevkifatKuralBul, oranMetni, KURUM_TURLERI } from './tevkifat-kurallari';
+import { demirbasHaddiTL, tevkifatEksikDegerlendir, tevkifatTutarlilik, tevkifatKuralBul, tevkifatKuralTahmin, oranMetni, oranPay, KURUM_TURLERI } from './tevkifat-kurallari';
 import { Uyari, uyariYap, dogrulamaUyarilari, uyarilariBirlestir, uyariOzet, uyariImza, UYARI_KOD } from './uyari-katmani';
 // PLAN/16 §H — gece çekim anahtarı kuralları (saf modül: talimat girdisi, saat, 'global' reddi).
 import { geceTalimatGirdisiDogrula, geceSaatiNormalize, GECE_VARSAYILAN_SAAT } from './gece-cekim';
@@ -163,10 +163,33 @@ function isletmeAmountReady(doc: any): boolean {
   return rowTotal > 0 || Number(isl.matrah || 0) > 0 || Number(isl.kdvTutar || 0) > 0 || Number(ocr.matrah || 0) > 0 || Number(ocr.kdvTutari || 0) > 0 || Number(doc?.totalAmount || 0) > 0 || lineTotal > 0;
 }
 
+/** İşletme (Defter-Beyan) alanlarına belgeden okunan TEVKİFAT bilgisini ekle (2026-09-15, NÜLÜFER BEYHAN satışları: Luca'ya
+ *  "Tevkifat: Yok / Tablo 1 / kod boş" gidiyordu, Muzaffer Bey elle düzeltiyordu). Elle girilmiş isletme.tevkifatOrani önde.
+ *  Kod: UBL'den okunan varsa o; yoksa kalem/açıklama metninden kural tahmini (oran payı tutuyorsa) → satıcı kodu 6xx. */
+function isletmeTevkifatVarsayilanlari(doc: any, isl: any): any {
+  const ocr: any = doc?.ocrData || {};
+  const oran = Number(ocr?.tevkifatOrani) || 0;
+  if (!(oran > 0) || String(isl?.tevkifatOrani || '').trim()) return isl;
+  const oranTxt = oranMetni(oran);
+  if (!oranTxt) return isl;
+  const pay = oranPay(oranTxt);
+  let kod = String(ocr?.tevkifatKodu || '').replace(/\D/g, '');
+  if (!kod) {
+    const kalemler = [
+      ...(Array.isArray(ocr?.kalemler) ? ocr.kalemler.map((k: any) => String(k?.ad || '')) : []),
+      String(ocr?.muhasebeNeden || ''),
+    ];
+    const kural = tevkifatKuralTahmin({ giderTuru: ocr?.giderTuru, kalemler, oranPay: pay });
+    if (kural) kod = String(Number(kural.kod) + 400); // 214 → 614 (satıcı / UBL kodu)
+  } else if (/^2\d\d$/.test(kod)) kod = String(Number(kod) + 400);
+  const tevkifatTutar = Number(ocr?.tevkifatKdv) || Number(ocr?.kdvTevkifat) || undefined;
+  return { ...isl, tevkifatOrani: oranTxt, ...(tevkifatTutar ? { tevkifatTutar } : {}), ...(kod ? { tevkifatKodu: kod } : {}) };
+}
+
 function isletmeWithBelgeDefaults(doc: any): any {
   const kind = isletmeKind(doc);
   const ocr: any = doc?.ocrData || {};
-  const isl: any = ocr?.isletme || {};
+  const isl: any = isletmeTevkifatVarsayilanlari(doc, ocr?.isletme || {});
   const normalized = normalizeDocumentType(doc?.documentType || ocr?.belgeTuru || ocr?.documentType);
   const belgeTuruKod = String(isl.belgeTuruKod || (normalized ? defaultBelgeTuruKod(normalized, kind) : '')).trim();
   if (!belgeTuruKod) return isl;

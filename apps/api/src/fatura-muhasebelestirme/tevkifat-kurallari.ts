@@ -277,6 +277,25 @@ export function oranMetni(oran: number | null | undefined): string {
   return `${pay}/10`;
 }
 
+/** Belgede TEVKİFAT VARKEN kodunu tahmin et (2026-09-15, Luca İşletme CSV "KOD" sütunu — NÜLÜFER BEYHAN satışları):
+ *  kalem adı / gider türü / açıklama metninde kural anahtar kelimesi geçen İLK kural; belgedeki oran payı verilmişse
+ *  kuralın payıyla TUTMALI (5/10 ≠ 7/10 ise kod uydurulmaz → null). Satıcı (KDV1/UBL) kodu = kod + 400 (614). */
+export function tevkifatKuralTahmin(g: { giderTuru?: string | null; kalemler?: Array<string | null | undefined> | null; oranPay?: number | null }): TevkifatKural | null {
+  const giderTuru = String(g.giderTuru || '').trim();
+  const kalemMetni = (Array.isArray(g.kalemler) ? g.kalemler : []).filter(Boolean).map((x) => String(x)).join(' ');
+  if (!giderTuru && !kalemMetni) return null;
+  const pay = Number(g.oranPay) || 0;
+  for (const kural of TEVKIFAT_KURALLARI) {
+    if (!kural.anahtar.length) continue;
+    if (kural.haric?.length && (iceriyor(giderTuru, kural.haric) || iceriyor(kalemMetni, kural.haric))) continue;
+    const hit = (giderTuru && iceriyor(giderTuru, kural.anahtar)) || (kalemMetni && iceriyor(kalemMetni, kural.anahtar));
+    if (!hit) continue;
+    if (pay > 0 && kural.pay !== pay) continue; // oran tutmuyor → bu kural değil (sonrakine bak)
+    return kural;
+  }
+  return null;
+}
+
 /** "2/10" / "%20" / 0.2 → pay (2). Bilinmiyorsa 0. */
 export function oranPay(v: any): number {
   const s = String(v ?? '').trim();

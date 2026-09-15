@@ -56,7 +56,7 @@ export interface InvoicePayload {
     kayitAltKod?: string; kayitAltAd?: string;
     kdvOranKod?: string; plakaNo?: string; kayitTarihi?: string;
     matrah?: number; kdvTutar?: number; krediliTutar?: number; donem?: boolean;
-    hesapKodu?: string; tevkifatOrani?: string; tevkifatTutar?: number; stopajOrani?: string; stopajTutar?: number;
+    hesapKodu?: string; tevkifatOrani?: string; tevkifatTutar?: number; tevkifatKodu?: string; stopajOrani?: string; stopajTutar?: number;
     satirlar?: Array<{ kayitTuruAd?: string; kayitAltAd?: string; kdvOranKod?: string; matrah?: number; kdvTutar?: number; krediliTutar?: number; donem?: boolean; hesapKodu?: string; tevkifatOrani?: string; stopajOrani?: string; stopajTutar?: number }>;
   } | null;
 }
@@ -352,10 +352,20 @@ export function buildLucaIsletmeHizliFisCsv(payload: BatchPayload): Buffer {
     //   24 TEVKİFAT = Luca sözlüğü: 2/10, 3/10, 4/10, 5/10, 7/10, 9/10, Tam (10/10 → Tam)
     const isZ = normalizeDocumentType(inv.documentType) === 'Z_RAPORU';
     const iadeMi = /iade/i.test(String(alisSatisAdResolved || ''));
-    const lucaFisTuru = isSale
-      ? (isZ ? 'Z Raporu' : (iadeMi ? 'Alıştan İade' : 'Satış'))
-      : (iadeMi ? 'Satıştan İade' : 'Alış');
+    // 3 BELGE TURU (2026-09-15, Muzaffer Bey): giderde "Alış" YALNIZ mal alışıdır (kayıt türü "Mal Alışı"); masraf
+    //   (İndirilecek Giderler, KKEG, bordro, sabit kıymet…) "Diğer Alışlar" — aksi halde Luca giderleri mal alışı sayıyordu.
+    //   Satışta "Satış" olduğu gibi (Muzaffer Bey satış kaydında bu alanı sorun etmedi).
+    const lucaFisTuruFor = (kayitTuruAd: string, kayitTuruKod: string) => {
+      if (isSale) return isZ ? 'Z Raporu' : (iadeMi ? 'Alıştan İade' : 'Satış');
+      if (iadeMi) return 'Satıştan İade';
+      const malAlisi = String(kayitTuruKod || '') === '1' || /^mal\s+al/i.test(String(kayitTuruAd || '').trim());
+      return malAlisi ? 'Alış' : 'Diğer Alışlar';
+    };
     const lucaTevkifat = (v: any) => { const t = String(v || '').trim(); return t === '10/10' ? 'Tam' : t; };
+    // TEVKİFATLI SATIŞ (2026-09-15, NÜLÜFER BEYHAN): Luca'da Satış Türü "Kısmi Tevkifat Uygulanan İşlemler" (10/10 → "İsteğe
+    //   Bağlı Tam Tevkifat Uygulanan İşlemler"), KDV Tablo Türü "Tablo 2(KISMİ TEVKİFAT UYGULANAN İŞLEMLER)", Kodu 614 (servis
+    //   taşımacılığı) ve tevkifat oranı — eskiden hepsi boş/Tablo 1 gidiyor, elle düzeltiliyordu.
+    const tevkPayOf = (v: any) => { const m = String(v || '').trim().match(/^(\d{1,2})\s*\/\s*10$/); return m ? Number(m[1]) : 0; };
     // 17 ALIŞ/SATIŞ TÜRÜ — Luca'nın satış türü adları (CSV doğrulama mesajı 2026-09-15): "Normal Satışlar", "Kısmi İstisna
     //   Kapsamına Giren İşlemler", "Tam İstisna Kapsamına Giren İşlemler", "Özel Matraha Tabi İşlemler", "Diğer" (Mihsap adları
     //   "Normal Satış" / "Özel Matrah" reddediliyordu).
@@ -371,6 +381,15 @@ export function buildLucaIsletmeHizliFisCsv(payload: BatchPayload): Buffer {
 
     for (const st of satirlar) {
       const kdvOranNum = ({ KDV20: '20', KDV10: '10', KDV1: '1', KDV0: '0' } as Record<string, string>)[String(st.kdvOranKod || '')] || rate || '';
+      const tevkOranTxt = String(st.tevkifatOrani || isl.tevkifatOrani || '').trim();
+      const tevkPay = tevkPayOf(tevkOranTxt);
+      const satisTevkifatli = isSale && tevkPay > 0;
+      const tamTevkifat = tevkPay >= 10;
+      const kdvIstisnasi = satisTevkifatli ? (tamTevkifat ? 'Tablo (İSTEĞE BAĞLI TAM TEVKİFAT UYGULANAN İŞLEMLER)' : 'Tablo 2(KISMİ TEVKİFAT UYGULANAN İŞLEMLER)') : '';
+      const tevkifatKod = satisTevkifatli ? String(isl.tevkifatKodu || '').replace(/\D/g, '') : '';
+      const alisSatisTuruCsv = satisTevkifatli
+        ? (tamTevkifat ? 'İsteğe Bağlı Tam Tevkifat Uygulanan İşlemler' : 'Kısmi Tevkifat Uygulanan İşlemler')
+        : lucaAlisSatisTuru(alisSatisAdResolved);
       // Satır KATEGORİ/ALT ad'ı da koddan çözülür (auto-sınıfta boş kalmasın).
       const kayitTuruAdResolved = st.kayitTuruAd || adOf(ref.kayitTuru, st.kayitTuruKod);
       const kayitAltList = getKayitAltList(inv.invoiceKind, String(st.kayitTuruKod || '')) as any[];
@@ -383,10 +402,10 @@ export function buildLucaIsletmeHizliFisCsv(payload: BatchPayload): Buffer {
       const stKdv = Number(st.kdvTutar) || 0;
       // 36 sutun — Luca şablonu sırasıyla. Üst bilgi (isl) tüm satırlarda aynı; satıra özgü alanlar (st).
       //   PLAKA NO şablonda yok (ekranda var, CSV'de yok) — isl.plakaNo CSV'ye yazılamaz.
-      const row = [
+      const rowCells: string[] = [
         isSale ? 'Gelir' : 'Gider',                  // 1 İŞLEM
         'Defter Fişleri',                             // 2 KATEGORİ (fiş kategorisi; FM demirbaş/bordro/SMM fişi üretmez)
-        lucaFisTuru,                                  // 3 BELGE TURU (Luca fiş türü: Satış / Alış / Z Raporu / iade)
+        lucaFisTuruFor(kayitTuruAdResolved, String(st.kayitTuruKod || '')), // 3 BELGE TURU (Satış | Z Raporu | Alış (mal) | Diğer Alışlar (masraf) | iade)
         tarihStr,                                     // 4 EVRAK TARİHİ
         islKayitTarih,                                // 5 KAYIT TARİHİ
         inv.seriNo || '',                             // 6 SERİ NO
@@ -397,17 +416,17 @@ export function buildLucaIsletmeHizliFisCsv(payload: BatchPayload): Buffer {
         '',                                           // 11 ADI DEVAMI
         '',                                           // 12 ADRES
         st.hesapKodu || '',                           // 13 CARİ HESAP
-        '',                                           // 14 KDV İSTİSNASI
-        '',                                           // 15 KOD (KDV istisna/tevkifat tablo kodu — FM üretmez)
+        kdvIstisnasi,                                 // 14 KDV İSTİSNASI (KDV tablo türü: tevkifatlı satışta Tablo 2 / isteğe bağlı tam)
+        tevkifatKod,                                  // 15 KOD (tevkifat tablo kodu: 614 servis taşımacılığı … — satıcı kodu 6xx)
         belgeTuruAdResolved,                          // 16 BELGE TÜRÜ(DB) — Defter-Beyan belge türü ADI
-        lucaAlisSatisTuru(alisSatisAdResolved),       // 17 ALIŞ/SATIŞ TÜRÜ (Luca adları)
+        alisSatisTuruCsv,                             // 17 ALIŞ/SATIŞ TÜRÜ (Luca adları; tevkifatlı satışta Kısmi Tevkifat …)
         kayitAltAdResolved,                           // 18 KAYIT ALT TÜRÜ
         '',                                           // 19 MAL VE HİZMET KODU
         counterpartyName || '',                       // 20 AÇIKLAMA
         '',                                           // 21 MİKTAR
         '',                                           // 22 B.FİYAT
         trAmount(stMatrah),                           // 23 TUTAR
-        lucaTevkifat(st.tevkifatOrani),               // 24 TEVKİFAT (2/10 … 9/10, Tam)
+        lucaTevkifat(tevkOranTxt),                    // 24 TEVKİFAT (2/10 … 9/10, Tam) — satır yoksa belge okuması (isletme.tevkifatOrani)
         kdvOranNum,                                   // 25 KDV ORANI
         '',                                           // 26 ÖZEL MATRAH İŞLEM BEDELİ
         '',                                           // 27 MATRAHTAN DÜŞÜLECEK TUTAR
@@ -420,7 +439,11 @@ export function buildLucaIsletmeHizliFisCsv(payload: BatchPayload): Buffer {
         donemFlag ? 'Evet' : '',                      // 34 DÖNEMSELLİK İLKESİ
         '',                                           // 35 FAALIYET KODU
         '',                                           // 36 ÖDEME TÜRÜ
-      ].map(csvCell).join(';');
+      ];
+      // SONDA (yalnız teşhis, 2026-09-15): LUCA_ISLETME_CSV_SONDA=kayitAlt → 18. sütun bilerek geçersiz → Luca satırı yazmaz,
+      //   hata mesajı hangi sütunda durduğunu söyler (önceki sütunların — KDV İSTİSNASI/KOD/ALIŞ-SATIŞ TÜRÜ — kabul edildiği anlaşılır).
+      if (process.env.LUCA_ISLETME_CSV_SONDA === 'kayitAlt') rowCells[17] = 'XXPROBE-SONDA';
+      const row = rowCells.map(csvCell).join(';');
       if (row.split(';').length !== ISLETME_CSV_SUTUN_SAYISI && !/"/.test(row)) throw new Error(`İşletme CSV satırı ${row.split(';').length} sütun — Luca şablonu ${ISLETME_CSV_SUTUN_SAYISI} ister`);
       lines.push(isletmeCsvKodla(row));
     }
