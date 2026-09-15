@@ -86,7 +86,7 @@
   //   Luca'nın beklediği adlarla TEK SEFERDE hizalanır (her denemede tek sütun hatası okumak yerine).
   // v1.47.48 (2026-09-15): firma onay düğmesi regex'indeki `\b` sınırları kaynakta gerçek backspace (0x08) baytına
   //   dönüşmüştü (sec/aç/ac seçenekleri ölüydü) → düzeltildi.
-  const AGENT_VERSION = '1.47.48';
+  const AGENT_VERSION = '1.47.49';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -3073,6 +3073,54 @@
                         const ilk = sablonCsv.split(/\r?\n/)[0] || '';
                         await log(`ℹ[şablon] HTTP ${sr.status} ${Math.round(buf.byteLength / 1024)}KB ct=${sr.headers.get('content-type') || '-'} · sütun=${ilk ? ilk.split(';').length : '?'} · başlık=${ilk.slice(0, 700)}`);
                       } catch (e5) { await log(`şablon çekilemedi: ${(e5 && e5.message) || e5}`); }
+                      // v1.47.49 (2026-09-15): CSV'nin LİSTE sütunlarını Luca'nın KENDİ değerleriyle hizala — AYTEKİN ÖZDEMİR:
+                      //   bizim "Taşıt Bakım Onarım Giderleri (GVK 40/5)" Luca'da "( GVK 40/5)" (boşluk farkı) → "3. SATIRDA HATA".
+                      //   Harf/boşluk/noktalama farkı olan değer Luca etiketiyle değiştirilir; eşleşmeyen olduğu gibi kalır (loga düşer).
+                      //   Dosya cp1254 çözülüp yeniden cp1254 kodlanır (tarayıcıda TextEncoder yalnız UTF-8 → küçük el kodlayıcı).
+                      try {
+                        const dosya0 = fi.files[0];
+                        const ham = new Uint8Array(await dosya0.arrayBuffer());
+                        let csvMetin = ''; try { csvMetin = new TextDecoder('windows-1254').decode(ham); } catch { csvMetin = new TextDecoder().decode(ham); }
+                        const anahtar = (v) => String(v || '').replace(/İ/g, 'i').replace(/I/g, 'ı').toLowerCase().replace(/[^a-z0-9çğıöşü]+/g, '');
+                        const etiketler = (json, prop) => { const j = dbListeler[json]; return Array.isArray(j) ? j.map((x) => String((x && (x[prop] || x.label || x.ad || x.aciklama || x.tanim || x.kayitTuru)) || '')).filter(Boolean) : []; };
+                        const sutunListe = {
+                          'KAYIT ALT TÜRÜ': [...etiketler('gider_kayit_alt_turleri', 'kayitTuru'), ...etiketler('gelir_kayit_alt_turleri', 'kayitTuru')],
+                          'BELGE TÜRÜ(DB)': [...etiketler('gider_belge_turleri', 'giderBelgeTuru'), ...etiketler('gelir_belge_turleri', 'gelirBelgeTuru')],
+                          'ALIŞ/SATIŞ TÜRÜ': [...etiketler('alis_turleri', 'ad'), ...etiketler('satis_turleri', 'aciklama')],
+                          'STOPAJ KODU': etiketler('stopaj_oranlari', 'aciklama'),
+                        };
+                        const bol = (satir) => { const out = []; let cur = ''; let q = false; for (let i = 0; i < satir.length; i++) { const ch = satir[i]; if (q) { if (ch === '"') { if (satir[i + 1] === '"') { cur += '"'; i++; } else q = false; } else cur += ch; } else if (ch === '"') q = true; else if (ch === ';') { out.push(cur); cur = ''; } else cur += ch; } out.push(cur); return out; };
+                        const hucre = (v) => (/[;"\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v);
+                        const satirlar = csvMetin.split(/\r?\n/);
+                        const basliklar = bol(satirlar[0] || '').map((h) => h.trim());
+                        const hedefler = basliklar.map((h, i) => (sutunListe[h] && sutunListe[h].length ? i : -1)).filter((i) => i >= 0);
+                        const degisenler = []; const eslesmeyen = [];
+                        if (hedefler.length && satirlar.length > 1) {
+                          for (let r = 1; r < satirlar.length; r++) {
+                            if (!satirlar[r] || !satirlar[r].trim()) continue;
+                            const h = bol(satirlar[r]); let degisti = false;
+                            for (const ci of hedefler) {
+                              const v = String(h[ci] || '').trim(); if (!v) continue;
+                              const liste = sutunListe[basliklar[ci]];
+                              if (liste.includes(v)) continue;
+                              const k = anahtar(v); const aday = liste.find((e) => anahtar(e) === k);
+                              if (aday) { degisenler.push(`${basliklar[ci]}: "${v}" → "${aday}"`); h[ci] = aday; degisti = true; }
+                              else eslesmeyen.push(`${basliklar[ci]}: "${v}"`);
+                            }
+                            if (degisti) satirlar[r] = h.map(hucre).join(';');
+                          }
+                        }
+                        if (degisenler.length) {
+                          const yeniMetin = satirlar.join('\r\n');
+                          const ozel = { 0x011e: 0xd0, 0x0130: 0xdd, 0x015e: 0xde, 0x011f: 0xf0, 0x0131: 0xfd, 0x015f: 0xfe, 0x20ac: 0x80, 0x2018: 0x91, 0x2019: 0x92, 0x201c: 0x93, 0x201d: 0x94, 0x2013: 0x96, 0x2014: 0x97, 0x2026: 0x85 };
+                          const bayt = new Uint8Array(yeniMetin.length);
+                          for (let i = 0; i < yeniMetin.length; i++) { const c = yeniMetin.charCodeAt(i); bayt[i] = c < 0x80 ? c : (ozel[c] != null ? ozel[c] : (c >= 0xa0 && c <= 0xff && c !== 0xd0 && c !== 0xdd && c !== 0xde && c !== 0xf0 && c !== 0xfd && c !== 0xfe ? c : 0x3f)); }
+                          const yeniDosya = new fw.File([bayt], dosya0.name, { type: dosya0.type || 'text/csv' });
+                          fd.set(fi.name || 'formFile', yeniDosya, dosya0.name);
+                          await log(`ℹ[liste-hizala] ${degisenler.length} değer Luca etiketiyle değiştirildi: ${[...new Set(degisenler)].slice(0, 6).join(' · ')}`);
+                        }
+                        if (eslesmeyen.length) await log(`⚠[liste-hizala] Luca listesinde karşılığı YOK: ${[...new Set(eslesmeyen)].slice(0, 6).join(' · ')}`);
+                      } catch (e7) { await log(`liste-hizala atlandı: ${(e7 && e7.message) || e7}`); }
                       const resp = await fw.fetch(action, { method: 'POST', body: fd, credentials: 'include' });
                       const html = await resp.text();
                       // v1.47.45: Luca'nın kendi hata/uyarı metni (lucaNotYaz("...")) → loga
