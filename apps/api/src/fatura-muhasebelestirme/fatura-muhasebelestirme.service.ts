@@ -7184,6 +7184,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       // Faz 0: UBL ödenecek tutar denklemi + iade yön kontrolü girdileri (Aktar ve AI-oku yolu aynı adlarla yazar).
       odenecekTutar: ocrData?.odenecekTutar,
       digerVergiToplam: ocrData?.digerVergiToplam,
+      digerVergiMatrahaDahil: ocrData?.digerVergiMatrahaDahil === true,
       tevkifatKdv: this.numFromOcr(ocrData?.tevkifatKdv) || this.numFromOcr(ocrData?.kdvTevkifat) || 0,
       belgeDurumu: ocrData?.belgeDurumu,
       saglayiciIsareti: ocrData?.saglayiciIsareti?.not ? String(ocrData.saglayiciIsareti.not) : null,
@@ -13890,6 +13891,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       hitWord = ASSET.find((w) => blob.includes(w)) || '';
       if (hitWord && hizmetFiil.test(blob)) hitWord = '';
     }
+    // AI KATEGORİSİ + ARAÇ ADI (2026-09-15, HAS OTOMOTİV 10N2026000000416: kalem "Araç", giderTuru "araç", marka notta;
+    //   ASSET listesinde çıplak 'arac' yok → 3,6 M ₺ kamyon demirbaş kutusuna düşmüyordu). Sınıflandırma AI'ı 'demirbas'
+    //   dediyse ve içerik araç/taşıt adı taşıyorsa (hizmet fiili yok — giderIcerikSinifla zaten eledi) taşıt sayılır.
+    if (!hitWord && String(ocr.matrahKategori || '').toLowerCase() === 'demirbas' && /\b(arac|tasit)\b/.test(blob) && !hizmetFiil.test(blob)) hitWord = 'arac';
     if (!hitWord) return { is: false, reason: '' };
     // Mükellef bu ürünü TİCARETEN satıyor / üretiyor / ONARIYORSA (faaliyet/ünvan/NACE'de ürün KÖKÜ
     //   geçiyorsa) → o ürün ticari mal / hizmet konusudur, DEMİRBAŞ DEĞİL (klima ticareti/onarımı yapanın
@@ -14001,6 +14006,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // Faz 0 (PLAN/15): UBL LegalMonetaryTotal/PayableAmount, KDV dışı vergi toplamı, tevkif edilen KDV, belge durumu.
     odenecekTutar?: any;
     digerVergiToplam?: any;
+    /** ÖTV KDV matrahına dahildi, kırılım tabanı arındırıldı (ocrData.digerVergiMatrahaDahil) → KDV_MATH yasal tabanla (taban + ÖTV) hesaplar (2026-09-15). */
+    digerVergiMatrahaDahil?: boolean;
     tevkifatKdv?: any;
     belgeDurumu?: string | null;
     /** İade türü (2026-09-15): 'alistan' → cari BORÇ beklenir; 'satistan' → cari ALACAK beklenir. */
@@ -14211,12 +14218,17 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //     faturada yanlış alarm vermez. Bu, "yanlış ama dengeli" sessiz KDV hatasını yakalar
     //     (ör. matrah 900 %20 iken KDV 280 okunmuşsa: beklenen 180, fazla → hata).
     const stdRates = new Set([1, 8, 10, 18, 20]);
+    // ÖTV KDV MATRAHINA DAHİL (2026-09-15, HAS OTOMOTİV kamyon alışı): kırılım tabanı ÖTV'den arındırıldıysa yasal KDV tabanı
+    //   = taban + ÖTV payı (KDVK 24/b) — aksi halde 3.604.496 × %20 = 720.899 beklenip 749.868 "fazla" sanılıyordu.
+    const _tabanToplam = (kdvBreakdownNorm || []).reduce((s: number, b: any) => s + (Number(b?.base) || 0), 0);
+    const _dahilDiger = opts.digerVergiMatrahaDahil ? Number(opts.digerVergiToplam || 0) : 0;
     for (const b of (kdvBreakdownNorm || [])) {
       const rate = Number(b?.rate || 0);
       const base = Number(b?.base || 0);
       const amount = Number(b?.amount || 0);
       if (base <= 0 || amount <= 0 || !stdRates.has(Math.round(rate))) continue;
-      const expectedFull = base * rate / 100;
+      const yasalTaban = base + (_dahilDiger > 0 && _tabanToplam > 0 ? _dahilDiger * (base / _tabanToplam) : 0);
+      const expectedFull = yasalTaban * rate / 100;
       if (amount > expectedFull * 1.02 + 0.5) {
         issues.push({
           code: 'KDV_MATH_MISMATCH',
