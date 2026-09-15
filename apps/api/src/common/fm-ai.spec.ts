@@ -137,7 +137,8 @@ describe('fm-ai — fmTextAi (fetch sahte)', () => {
 
   it('openai: başarılı çağrı → gövde (temperature 0, system + user, görsel image_url), model/maliyet yanıttan', async () => {
     process.env.FM_AI_SAGLAYICI = 'openai'; process.env.MOREN_AI_ALLOW_OPENAI_API = '1'; process.env.OPENAI_API_KEY = 'sk-test';
-    const f = jest.fn(async () => jsonYanit(200, openAiGovde('{"kategori":"genel_gider"}')));
+    // gpt-4o-mini canlıda ```json çiti ekledi (2026-09-15) → soyulur.
+    const f = jest.fn(async () => jsonYanit(200, openAiGovde('```json\n{"kategori":"genel_gider"}\n```')));
     (globalThis as any).fetch = f;
     const r = await fmTextAi({ prompt: 'sınıfla', system: 'SYS', model: 'claude-haiku-4-5-20251001', timeoutMs: 5000, amac: 'sinif', images: [{ base64: 'data:image/png;base64,' + 'A'.repeat(200), mediaType: 'image/png' }] });
     expect(r).toEqual({ ok: true, text: '{"kategori":"genel_gider"}', model: 'gpt-4o-mini-2024-07-18', costUsd: openAiMaliyetUsd('gpt-4o-mini-2024-07-18', 1000, 200) });

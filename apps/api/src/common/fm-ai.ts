@@ -265,7 +265,8 @@ export async function openAiMetinCagrisi(p: CagriGirdisi): Promise<SaglayiciYani
     return { ...bos, error: `OpenAI HTTP ${status}: ${String(errText || '').replace(/\s+/g, ' ').slice(0, 300)}`, tekrarlanabilir: status === 429 || status >= 500, httpStatus: status };
   }
   const data: any = await res.json().catch(() => null);
-  const text = openAiIcerikMetni(data?.choices?.[0]?.message?.content).trim();
+  // CANLI DOĞRULAMA (2026-09-15): gpt-4o-mini de ```json çiti ekleyebiliyor → Gemini ile aynı soyma.
+  const text = kodCitiSoy(openAiIcerikMetni(data?.choices?.[0]?.message?.content));
   const gercekModel = String(data?.model || model);
   const girisToken = Number(data?.usage?.prompt_tokens) || 0;
   const cikisToken = Number(data?.usage?.completion_tokens) || 0;
