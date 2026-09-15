@@ -5638,6 +5638,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             }
             // Sağlayıcı tür-özel listeden getirdiyse (eLogo EARCHIVE/EINVOICE) o tür esastır; yoksa UBL profilinden tahmin.
             const docType = payload.providerDocType || this.documentTypeFromProviderXml(payload.xml);
+            // TANI (2026-09-15): tür kararı — Paraşüt KE42026000000001 e_archives olduğu halde E_FATURA sayılıyordu.
+            if (cfg.provider === 'PARASUT') {
+              const profil = (String(payload.xml || '').match(/<(?:[\w.-]+:)?ProfileID[^>]*>\s*([^<]+)</i) || [])[1] || '-';
+              this.logger.log(`[PARASUT] ${parsed.faturaNo || payload.externalId}: tür=${docType} profil=${profil} providerDocType=${payload.providerDocType || '-'} xml=${String(payload.xml || '').length}B`);
+            }
             // ALIS kanali: entegratorun GELEN kutusundan ne geldiyse mukellefin alis belgesidir.
             //   Tur tespiti bir gun yine yanilirsa fatura KAYBOLMASIN diye burada ELEME YAPILMAZ.
             if (channel !== 'IN_EFATURA') {
@@ -5712,6 +5717,14 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             };
             if (existing) {
               await (this.prisma as any).eFaturaInbox.update({ where: { id: existing.id }, data });
+              // Tür kararı değiştiyse (e-Fatura sanılan belge e-Arşiv çıktı) aktarılmış FM belgesinin türü de düzelsin
+              //   (KE42026000000001 — Zeki Özkaynak; e-SMM'ye dokunulmaz).
+              if (existing.documentId && (docType === 'E_ARSIV' || docType === 'E_FATURA')) {
+                await (this.prisma as any).invoiceAccountingDocument.updateMany({
+                  where: { id: existing.documentId, tenantId, documentType: { in: ['E_FATURA', 'E_ARSIV'] }, NOT: { documentType: docType } },
+                  data: { documentType: docType },
+                }).catch(() => {});
+              }
               if (existing.documentId && storedVisual) {
                 await this.refreshProviderDocumentVisual(tenantId, existing.documentId, taxpayer, cfg, payload)
                   .catch((e: any) => this.logger.warn(`Aktarilmis e-fatura gorseli yenilenemedi: ${e?.message || e}`));
