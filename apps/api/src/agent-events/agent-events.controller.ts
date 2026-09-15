@@ -47,8 +47,13 @@ export class AgentEventsController {
    */
   @Get('version/latest')
   async latestVersion() {
-    // agent-runtime.js'in baş kısmından AGENT_VERSION'u dinamik oku.
+    // agent-runtime.js'ten AGENT_VERSION'u dinamik oku.
     // Böylece her deploy'da otomatik güncel kalır, manuel constant tutulması gerekmez.
+    // KÖK (2026-09-15): dosyanın yalnız ilk 4000 karakteri okunuyordu; başlıktaki sürüm notları
+    //   büyüyünce AGENT_VERSION satırı (≈5.800. karakter) pencerenin DIŞINDA kaldı → uç "unknown"
+    //   döndü → açık Luca sayfasındaki ESKİ runtime kendini hiç güncellemedi (Kadir Ceylan Korkmaz
+    //   Z raporu aktarımı v1.47.42 yayına rağmen v1.47.41 ile koştu). Artık dosyanın tamamı
+    //   okunur; aday yollar /agent/runtime.js ucuyla aynı.
     try {
       const fs = await import('fs');
       const path = await import('path');
@@ -56,12 +61,14 @@ export class AgentEventsController {
         path.resolve(process.cwd(), 'apps/api/public/agent-runtime.js'),
         path.resolve(process.cwd(), 'public/agent-runtime.js'),
         path.resolve(__dirname, '../../public/agent-runtime.js'),
+        path.resolve(__dirname, '../../../public/agent-runtime.js'),
+        path.resolve(__dirname, '../../../../public/agent-runtime.js'),
       ];
       let runtimeContent = '';
       for (const p of candidatePaths) {
         try {
           if (fs.existsSync(p)) {
-            runtimeContent = fs.readFileSync(p, 'utf8').slice(0, 4000);
+            runtimeContent = fs.readFileSync(p, 'utf8');
             break;
           }
         } catch {}
