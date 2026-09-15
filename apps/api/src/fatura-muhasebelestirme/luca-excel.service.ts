@@ -282,23 +282,28 @@ export function buildAccountPlanCsv(
   return Buffer.concat(lines);
 }
 
-/** İşletme HIZLI FİŞ CSV kodlaması (2026-09-15, AYTEKİN ÖZDEMİR bulgusu): Luca şablonu cp1254 iner ama YÜKLEME okuyucusu
- *  Türkçe harfli "Soyadı Ünvan"ı ("GÜNYER OTOMOTİV…", "ESENYURT … TİC.A.Ş") "özel karakter bulunduramaz" diye reddetti;
- *  yalnız ASCII adlar (Z RAPORU) geçiyordu → cp1254 baytları UTF-8 okunup çöp oluyor. Varsayılan artık UTF-8 (BOM'suz).
- *  LUCA_ISLETME_CSV_KODLAMA = utf8 | utf8bom | win1254 (geri dönüş). LUCA_ISLETME_UNVAN_ASCII=1 → ünvanda Türkçe harfler
- *  ASCII'ye katlanır (İ→I, Ş→S …) — Luca'nın denetimi Türkçe harfi de reddederse son çare. */
+/** İşletme HIZLI FİŞ CSV kodlaması (2026-09-15, AYTEKİN ÖZDEMİR bulgusu): Luca yükleme okuyucusu cp1254 okur (UTF-8 gönderince
+ *  KATEGORİ "Defter Fişleri" eşleşmedi) ama "Soyadı Ünvan" denetimi Türkçe harfli adı ("GÜNYER OTOMOTİV…", "İHSAN KUNUR")
+ *  "özel karakter bulunduramaz" diye reddediyor; yalnız ASCII adlar (Z RAPORU) geçiyordu. Varsayılan cp1254 + ünvanda
+ *  Türkçe harf katlama. LUCA_ISLETME_CSV_KODLAMA = win1254 (varsayılan) | utf8 | utf8bom.
+ *  LUCA_ISLETME_UNVAN_ASCII: 'I' = yalnız İ→I (Luca'nın beyaz listesinde büyük İ eksik olabilir), '1' (varsayılan) = tüm
+ *  Türkçe harfler ASCII, '2' = harfler + noktalama boşluğa, '0' = kapalı. */
 function isletmeCsvKodlama(): 'utf8' | 'utf8bom' | 'win1254' {
-  const v = String(process.env.LUCA_ISLETME_CSV_KODLAMA || 'utf8').trim().toLowerCase();
-  return v === 'win1254' || v === 'cp1254' ? 'win1254' : v === 'utf8bom' ? 'utf8bom' : 'utf8';
+  const v = String(process.env.LUCA_ISLETME_CSV_KODLAMA || 'win1254').trim().toLowerCase();
+  return v === 'utf8' ? 'utf8' : v === 'utf8bom' ? 'utf8bom' : 'win1254';
 }
 function isletmeCsvKodla(metin: string): Buffer {
   return isletmeCsvKodlama() === 'win1254' ? iconv.encode(metin, 'win1254') : Buffer.from(metin, 'utf8');
 }
 export function isletmeUnvanDuzelt(ad: string): string {
-  const s = String(ad || '').replace(/[\r\n\t]+/g, ' ').replace(/\s+/g, ' ').trim();
-  if (process.env.LUCA_ISLETME_UNVAN_ASCII !== '1') return s;
-  const tablo: Record<string, string> = { 'İ': 'I', 'I': 'I', 'ı': 'i', 'Ş': 'S', 'ş': 's', 'Ğ': 'G', 'ğ': 'g', 'Ü': 'U', 'ü': 'u', 'Ö': 'O', 'ö': 'o', 'Ç': 'C', 'ç': 'c' };
-  return s.replace(/[İıŞşĞğÜüÖöÇç]/g, (c) => tablo[c] || c);
+  let s = String(ad || '').replace(/[\r\n\t]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const kip = String(process.env.LUCA_ISLETME_UNVAN_ASCII ?? '1').trim();
+  if (kip === '0') return s;
+  if (kip.toUpperCase() === 'I') return s.replace(/İ/g, 'I');
+  const tablo: Record<string, string> = { 'İ': 'I', 'ı': 'i', 'Ş': 'S', 'ş': 's', 'Ğ': 'G', 'ğ': 'g', 'Ü': 'U', 'ü': 'u', 'Ö': 'O', 'ö': 'o', 'Ç': 'C', 'ç': 'c' };
+  s = s.replace(/[İıŞşĞğÜüÖöÇç]/g, (c) => tablo[c] || c);
+  if (kip === '2') s = s.replace(/[^A-Za-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return s;
 }
 
 export function buildLucaIsletmeHizliFisCsv(payload: BatchPayload): Buffer {
