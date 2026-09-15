@@ -160,7 +160,7 @@ function MatchRow({
             return;
           } catch { /* proxy başarısız → CDN fallback */ }
         }
-        if (!cancelled) setImageUrl(resp?.url || null);
+        if (!cancelled) setImageUrl(resp?.url && /^https?:\/\//i.test(String(resp.url)) ? resp.url : null); // fm://… img'e verilmez
       })
       .catch(() => {
         if (!cancelled) setImageUrl(null);

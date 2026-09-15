@@ -253,7 +253,8 @@ export function OcrReviewPanel({
             } catch { /* proxy başarısız → CDN fallback */ }
           }
           if (cancelled) return;
-          if (r?.url) {
+          // Yalnız gerçek http(s) bağlantısı img'e verilir; FM satırlarında `fm://…` gelir (kırık görsel yerine hata ekranı).
+          if (r?.url && /^https?:\/\//i.test(String(r.url))) {
             setPreviewUrl(r.url);
           } else {
             throw new Error('görsel url yok');
