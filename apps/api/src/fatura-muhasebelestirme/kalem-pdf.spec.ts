@@ -10,7 +10,7 @@
 import { parseUblInvoice } from './ubl-parse';
 import {
   kalemPdfAcikMi, xmlKalemsizMi, kalemPdfGerekliMi, kalemPdfYanitiCoz, kalemPdfBirlestir, kalemPdfTamamla,
-  aiMatrahGuvenTavani, kalemPdfPromptu, xmlMatrahi, KalemPdfAiCagri, pdfDigerVergileriUygula, pdfDigerVergiKodu,
+  aiMatrahGuvenTavani, kalemPdfPromptu, xmlMatrahi, KalemPdfAiCagri, pdfDigerVergileriUygula, pdfDigerVergiKodu, odenecekDenklemiTutmuyorMu,
 } from './kalem-pdf';
 
 /** Paraşüt gelen e-Fatura ÖZETİNDEN üretilen sentetik UBL (parasutInboundEInvoiceXml ile aynı biçim — kalem YOK). */
@@ -211,6 +211,15 @@ describe('kalem-pdf — KDV dışı vergiler PDF\'ten (2026-09-15 Zeki Özkaynak
     expect(r?.oran).toBe(20);
     expect(r?.yeniMatrah).toBe(280.04);
     expect(pre._ubl.digerVergiler.map((v: any) => v.kod)).toEqual(['4080', '8006']);
+  });
+  it('B durumu: özet matrah doğru, ödenecek = matrah + KDV + ÖİV + telsiz (GB2…357170) → matrah kalır, vergiler eklenir', () => {
+    const pre: any = { kdv: [{ oran: 20, matrah: 279.88, kdv: 55.98 }], toplam: 390.5, kalemler: [{ ad: 'Mobil İletişim Hizmet Bedeli', tutar: 279.88, oran: 20 }], _ubl: { matrah: 279.88, kdvTutari: 55.98, kdvBreakdown: [{ rate: 20, base: 279.88, amount: 55.98 }], toplamTutar: 390.5, odenecekTutar: 390.5 } };
+    expect(odenecekDenklemiTutmuyorMu(pre)).toBe(true);
+    const r = pdfDigerVergileriUygula(pre, { kalemler: [], giderTuru: 'telefon', digerVergiler: [{ ad: 'Özel İletişim Vergisi', tutar: 27.99 }, { ad: 'Telsiz Kullanım Ücreti', tutar: 26.65 }] });
+    expect(r).toEqual({ toplam: 54.64, adet: 2, oran: 20, eskiMatrah: 279.88, yeniMatrah: 279.88 });
+    expect(pre._ubl.digerVergiToplam).toBe(54.64);
+    expect(pre._ubl.kdvBreakdown).toEqual([{ rate: 20, base: 279.88, amount: 55.98 }]);
+    expect(odenecekDenklemiTutmuyorMu(pre)).toBe(false);
   });
   it('denklem tutmuyorsa (XML zaten doğru, PDF vergisi yanlış) HİÇBİR ŞEY değişmez; XML kendi vergisini biliyorsa da dokunulmaz', () => {
     const pre: any = { kdv: [{ oran: 20, matrah: 1000, kdv: 200 }], toplam: 1200, kalemler: [], _ubl: { matrah: 1000, kdvBreakdown: [{ rate: 20, base: 1000, amount: 200 }] } };

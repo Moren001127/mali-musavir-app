@@ -64,6 +64,10 @@ export type ParsedProviderInvoice = {
   /** PayableAmount − fatura tutarı: önceki dönem bakiyesi (İGDAŞ) ya da ERP yuvarlaması; fiş fatura tutarıyla kurulur (2026-09-15). */
   odenecekFarki?: number;
   odenecekFarkiNeden?: 'yuvarlama' | 'bakiye';
+  /** KDVK 23/f özel matrah (tütün/alkol "KDV Dahil"): KDV tabanı perakende fiyat, mal bedeli TaxExclusive (2026-09-15). */
+  ozelMatrah?: { kdvTabani: number; malBedeli: number };
+  /** ÖİV ödenecek farkından çıkarıldı (Paraşüt özet XML'i ÖİV'i bilmiyor; telekom satıcı, fark = tabanın %10'u) (2026-09-15). */
+  oivCikarim?: boolean;
   /** İskonto: kalem düzeyi (satır AllowanceCharge) + belge düzeyi (kalemlere oransal dağıtıldı). */
   iskonto?: { kalem: number; belge: number; toplam: number };
   toplamTutar?: number | null;
@@ -391,7 +395,15 @@ export function parseUblInvoice(xml: string, warn?: (msg: string) => void): Pars
     const taxSubs = taxTotals.flatMap((tt) => asArray(tt?.TaxSubtotal));
     const digerVergiler: Array<{ kod: string; ad: string; tutar: number; oran?: number }> = [];
     const subMap = new Map<number, { base: number; amount: number }>();
+    // ÖZEL MATRAH SİNYALİ (KDVK 23/f — tütün/alkol): KDV şema adı "KDV Dahil" ya da muafiyet kodu 80x → KDV tabanı perakende fiyat,
+    //   mal bedeli TaxExclusive (aşağıdaki denklem çözümünde 'ozel' varyantı yalnız bu sinyalle denenir; 2026-09-15).
+    let ozelMatrahSinyali = false;
     for (const sub of taxSubs) {
+      {
+        const kdvSema: any = sub?.TaxCategory?.TaxScheme || sub?.TaxScheme || null;
+        const muafiyet = String(txt(sub?.TaxCategory?.TaxExemptionReasonCode) || '').trim();
+        if (/kdv\s*dahil/i.test(String(txt(kdvSema?.Name) || '')) || /^80\d$/.test(muafiyet)) ozelMatrahSinyali = true;
+      }
       if (!isKdvTaxSubtotal(sub)) {
         const scheme: any = sub?.TaxCategory?.TaxScheme || sub?.TaxScheme || null;
         const kod = normalizeTaxTypeCode(scheme?.TaxTypeCode) || '????';
@@ -410,7 +422,7 @@ export function parseUblInvoice(xml: string, warn?: (msg: string) => void): Pars
       if (a != null) cur.amount += a;
       subMap.set(key, cur);
     }
-    const digerVergiToplam = round2(digerVergiler.reduce((s, d) => s + d.tutar, 0));
+    let digerVergiToplam = round2(digerVergiler.reduce((s, d) => s + d.tutar, 0));
     let kdvBreakdown = [...subMap.entries()]
       .filter(([, v]) => v.base > 0 || v.amount > 0)
       .map(([rate, v]) => ({ rate, base: round2(v.base), amount: round2(v.amount) }));
@@ -478,31 +490,59 @@ export function parseUblInvoice(xml: string, warn?: (msg: string) => void): Pars
     const stopajTutari = stopajSum > 0 ? round2(stopajSum) : undefined;
     const tevkifatOrani = tevkifatKdv ? resolveTevkifatOrani(kdvTutari, tevkifatKdv, tevkifatYuzde) : undefined;
 
-    // ── ÖDENECEK TUTAR / KDV MATRAHI DENKLEM ÇÖZÜMÜ (2026-09-15, canlı bulgular) ──
-    //   Üç ayrı ERP alışkanlığı aynı "Tutar tutarsız" engeline düşüyordu:
-    //   (a) ÖTV / BTV (elektrik tüketim vergisi) KDV MATRAHININ İÇİNDE (KDVK 24/b): KDV TaxableAmount = mal bedeli + vergi;
-    //       kırılım tabanı matrah sayılınca vergi çift sayılıyordu (HAS OTOMOTİV kamyon 3.749.340,84 + 749.868,17 + 144.844,31
-    //       = 4.644.053,32 ≠ 4.499.209,01; CK Boğaziçi elektrik BTV 30,90 aynı).
-    //   (b) PayableAmount ÖNCEKİ DÖNEM BAKİYESİNİ içeriyor (İGDAŞ: fatura 50,87, ödenecek 438,00 = 387,75 cari borç…).
-    //   (c) PayableRoundingAmount işareti/anlamı ERP'ye göre değişiyor (Superonline +0,06 = aslında −0,06; CK Boğaziçi
-    //       alana fatura tutarını yazıyor). Eski "ham − yuvarlama" tek yolu 12 kuruş / 1.418 ₺ sahte fark üretiyordu.
-    //   ÇÖZÜM — faturanın kendi denklemi: mal bedeli + KDV + diğer vergi − tevkifat − stopaj (ya da diğer vergi tabanın
-    //   içindeyse taban + KDV − kesinti). Adaylar sırayla: ödenecek(ham − r) · ham · ham + r · TaxInclusiveAmount; önce
-    //   ±0,05 (tam), sonra ±0,50 (kuruş yuvarlaması) toleransıyla ilk tutan aday "fatura tutarı" olur. Vergi tabanın
-    //   içindeyse tabanlar oran payına göre arındırılır (digerVergiMatrahaDahil); seçilen aday ham ödenecekten farklıysa
-    //   fark odenecekFarki (≤ 2 ₺ yuvarlama, üstü bakiye) olarak bilgi amaçlı saklanır. Muhasebe fişi FATURA tutarıyla
-    //   kurulur; önceki dönem borcu bu belgenin konusu değildir. ÖİV / konaklama / damga KDV matrahına girmez → (a) tutmaz.
+    // ── ÖDENECEK TUTAR / KDV MATRAHI DENKLEM ÇÖZÜMÜ (2026-09-15, canlı bulgular — ikinci sürüm) ──
+    //   ERP alışkanlıkları aynı "Tutar tutarsız" engeline düşüyordu:
+    //   (a) ÖTV / BTV KDV MATRAHININ İÇİNDE (KDVK 24/b): KDV TaxableAmount = mal bedeli + vergi (HAS OTOMOTİV, CK Boğaziçi).
+    //   (b) PayableAmount ÖNCEKİ DÖNEM BAKİYESİNİ içeriyor (İGDAŞ 50,87 fatura / 438,00 ödenecek).
+    //   (c) PayableRoundingAmount işareti/anlamı ERP'ye göre değişiyor (Superonline +0,06 = −0,06; CK Boğaziçi alana fatura tutarı yazıyor);
+    //       CK'da ayrıca "önceki yuvarlama" ±1 ₺ (TaxInclusive = hesap − 0,83).
+    //   (d) TaxTotal/TaxAmount kırılım toplamından ŞİŞKİN (Turkcell 98,41 vs 88,88) → KDV kırılımdan.
+    //   (e) ÖZEL MATRAH (KDVK 23/f tütün/alkol: "KDV Dahil", muafiyet 806): KDV tabanı perakende fiyat, mal bedeli TaxExclusive
+    //       (Sabri Aksoy N05…: 68.671,73 + 14.518,32 = 83.190,05; taban 72.591,68).
+    //   (f) KDV'SİZ KALEM (depozito, Sabri Aksoy EAG…): TaxExclusive − Σtaban = 180 → %0 kırılım satırı; ayrıca aynı tabanı tekrar eden
+    //       %0 muafiyet satırı (351) çift sayılıyordu → atılır.
+    //   (g) ÖİV ÇIKARIMI: Paraşüt özet XML'i ÖİV'i bilmiyor; ödenecek − (matrah + KDV) = tabanın tam %10'u ve satıcı telekom → ÖİV.
+    //   ÇÖZÜM — faturanın denklemi (mal bedeli + KDV + diğer vergi − tevkifat − stopaj) için VARYANTLAR (muhafazakârdan cesura):
+    //   [taban, kdvTutari] → [taban, kdv kırılım] → [diğer vergi tabanın içinde] → [çift %0 satırı atılmış] → [TaxExclusive mal bedeli:
+    //   özel matrah / KDV'siz kalem] → [ÖİV çıkarımı]; ADAYLAR: ödenecek(ham − r) · ham · ham + r · TaxInclusiveAmount; TOLERANS
+    //   ±0,05 (tam) → ±0,50 (kuruş) → ±2,00 (yalnız ham/TaxInclusive; CK önceki+güncel yuvarlama). Gevşek toleransta ödenecek =
+    //   denklemin kendisi, fark yuvarlama olarak bilgi notu; ≤2 ₺ yuvarlama, üstü bakiye. Tutmazsa hiçbir şey değişmez.
     let digerVergiMatrahaDahil = false;
     let matrahOut = matrah;
     let odenecekFarki: number | undefined;
     let odenecekFarkiNeden: 'yuvarlama' | 'bakiye' | undefined;
+    let ozelMatrah: { kdvTabani: number; malBedeli: number } | undefined;
+    let oivCikarim = false;
     if (odenecekHam != null && kdvTutari != null) {
       const kesinti = round2((tevkifatKdvSum > 0 ? tevkifatKdvSum : 0) + (stopajSum > 0 ? stopajSum : 0));
-      const tabanToplam = kdvBreakdown.length ? round2(kdvBreakdown.reduce((s, b) => s + b.base, 0)) : null;
-      const malBedeli = tabanToplam != null ? tabanToplam : (matrah ?? 0);
-      const dahilMumkun = digerVergiToplam > 0 && tabanToplam != null && tabanToplam > digerVergiToplam;
-      const eqNormal = round2(malBedeli + kdvTutari + digerVergiToplam - kesinti);
-      const eqDahil = dahilMumkun ? round2((tabanToplam as number) + kdvTutari - kesinti) : null;
+      const bdSum = (bd: Array<{ rate: number; base: number; amount: number }>) => round2(bd.reduce((t, b) => t + b.base, 0));
+      const kdvBd = round2(kdvBreakdown.reduce((t, b) => t + b.amount, 0));
+      // Çift %0 satırı: oran 0 & tutar 0 & tabanı başka bir oranın tabanına eşit → muafiyet tekrarı (EAG 351), ayrı mal değil.
+      const bdCiftsiz = kdvBreakdown.filter((b) => !(b.rate === 0 && b.amount === 0 && kdvBreakdown.some((o) => o !== b && o.rate > 0 && Math.abs(o.base - b.base) <= 0.05)));
+      const saticiAdFold = String(txt(supplier?.PartyName?.Name) || txt(supplier?.PartyLegalEntity?.RegistrationName) || '').replace(/İ/g, 'i').toLowerCase().replace(/\u0307/g, '');
+      const telekomSatici = /telekom|turkcell|vodafone|ttnet|superonline|tt mobil|iletisim|iletişim|netgsm|turknet|türknet/.test(saticiAdFold);
+      type Varyant = { ad: string; bd: typeof kdvBreakdown; kdv: number; mal: number; diger: number; dahil?: boolean; ozel?: boolean; kdvsizKalem?: number; oiv?: number };
+      const varyantlar: Varyant[] = [];
+      const ekle = (v: Varyant) => varyantlar.push(v);
+      for (const [bdAd, bd] of [['', kdvBreakdown], ['ciftsiz', bdCiftsiz]] as Array<[string, typeof kdvBreakdown]>) {
+        if (bdAd === 'ciftsiz' && bd.length === kdvBreakdown.length) continue; // fark yok
+        const taban = bd.length ? bdSum(bd) : (matrah ?? 0);
+        for (const [kdvAd, kdvV] of [['', kdvTutari], ['bd', kdvBd]] as Array<[string, number]>) {
+          if (kdvAd === 'bd' && (!(kdvBd > 0) || Math.abs(kdvBd - kdvTutari) <= 0.05)) continue;
+          ekle({ ad: `${bdAd}${kdvAd}`, bd, kdv: kdvV, mal: taban, diger: digerVergiToplam });
+          if (digerVergiToplam > 0 && taban > digerVergiToplam) ekle({ ad: `${bdAd}${kdvAd}-dahil`, bd, kdv: kdvV, mal: round2(taban - digerVergiToplam), diger: digerVergiToplam, dahil: true });
+          if (matrah != null && matrah > 0 && Math.abs(matrah - taban) > 0.05 && bd.length) {
+            if (taban > matrah) { if (ozelMatrahSinyali) ekle({ ad: `${bdAd}${kdvAd}-ozel`, bd, kdv: kdvV, mal: matrah, diger: digerVergiToplam, ozel: true }); }
+            else ekle({ ad: `${bdAd}${kdvAd}-kdvsiz`, bd, kdv: kdvV, mal: matrah, diger: digerVergiToplam, kdvsizKalem: round2(matrah - taban) });
+          }
+        }
+      }
+      // ÖİV çıkarımı (yalnız diğer vergi yokken, telekom satıcı, tek oran): fark = tabanın %10'u
+      if (!(digerVergiToplam > 0) && telekomSatici && kdvBreakdown.length === 1) {
+        const taban = kdvBreakdown[0].base;
+        const oiv = round2(taban * 0.10);
+        if (oiv > 0) ekle({ ad: 'oiv', bd: kdvBreakdown, kdv: kdvTutari, mal: taban, diger: oiv, oiv });
+      }
       type Aday = { t: number; kaynak: 'odenecek' | 'ham' | 'ham+r' | 'taxInclusive' };
       const adaylar: Aday[] = [];
       const aday = (t: number | null | undefined, kaynak: Aday['kaynak']) => {
@@ -514,31 +554,52 @@ export function parseUblInvoice(xml: string, warn?: (msg: string) => void): Pars
       aday(odenecekHam, 'ham');
       if (odenecekYuvarlama) aday(odenecekHam + odenecekYuvarlama, 'ham+r');
       aday(taxInclusiveRaw, 'taxInclusive');
-      let secim: (Aday & { dahil: boolean }) | null = null;
-      for (const tol of [0.05, 0.5]) {
-        for (const a of adaylar) {
-          if (Math.abs(eqNormal - a.t) <= tol) { secim = { ...a, dahil: false }; break; }
-          if (eqDahil != null && Math.abs(eqDahil - a.t) <= tol) { secim = { ...a, dahil: true }; break; }
+      let secim: { v: Varyant; a: Aday; tol: number; eq: number } | null = null;
+      for (const tol of [0.05, 0.5, 2]) {
+        for (const v of varyantlar) {
+          const eq = round2(v.mal + v.kdv + v.diger - kesinti);
+          for (const a of adaylar) {
+            if (tol > 0.5 && a.kaynak !== 'ham' && a.kaynak !== 'taxInclusive') continue;
+            if (Math.abs(eq - a.t) <= tol) { secim = { v, a, tol, eq }; break; }
+          }
+          if (secim) break;
         }
         if (secim) break;
       }
       if (secim) {
-        if (secim.dahil && tabanToplam != null) {
+        const { v, a, tol, eq } = secim;
+        if (v.bd !== kdvBreakdown) kdvBreakdown = v.bd;
+        if (Math.abs(v.kdv - kdvTutari) > 0.005) kdvTutari = v.kdv;
+        if (v.dahil) {
+          const tabanToplam = bdSum(kdvBreakdown);
           let kalan = digerVergiToplam;
           kdvBreakdown = kdvBreakdown.map((b, i, arr) => {
             const pay = i === arr.length - 1 ? kalan : round2(digerVergiToplam * (b.base / tabanToplam));
             kalan = round2(kalan - pay);
             return { ...b, base: round2(b.base - pay) };
           });
-          matrahOut = round2(tabanToplam - digerVergiToplam);
           digerVergiMatrahaDahil = true;
         }
-        if (secim.kaynak !== 'odenecek') {
-          odenecekTutar = secim.t;
-          const fark = round2(odenecekHam - secim.t);
+        if (v.ozel && matrah != null) {
+          // ÖZEL MATRAH: mal bedeli TaxExclusive; KDV tabanı (perakende) ocrData'da saklanır; kırılım tabanı mal bedeline çekilir.
+          ozelMatrah = { kdvTabani: bdSum(kdvBreakdown), malBedeli: round2(matrah) };
+          const tabanToplam = bdSum(kdvBreakdown);
+          kdvBreakdown = kdvBreakdown.map((b) => ({ ...b, base: round2(matrah! * (b.base / tabanToplam)) }));
+        }
+        if (v.kdvsizKalem && v.kdvsizKalem > 0) kdvBreakdown = [...kdvBreakdown, { rate: 0, base: v.kdvsizKalem, amount: 0 }];
+        if (v.oiv) {
+          digerVergiler.push({ kod: '4080', ad: 'Özel İletişim Vergisi (ödenecek farkından çıkarım)', tutar: v.oiv, oran: 10 });
+          digerVergiToplam = round2(digerVergiToplam + v.oiv);
+          oivCikarim = true;
+        }
+        matrahOut = round2(v.mal); // kdvsiz varyantında mal = TaxExclusive (KDV'siz kalem zaten içinde)
+        const hedefOdenecek = tol <= 0.05 ? a.t : eq;
+        if (a.kaynak !== 'odenecek' || Math.abs(hedefOdenecek - (odenecekTutar ?? -1)) > 0.005) {
+          odenecekTutar = hedefOdenecek;
+          const fark = round2(odenecekHam - hedefOdenecek);
           if (Math.abs(fark) >= 0.01) {
             odenecekFarki = fark;
-            odenecekFarkiNeden = Math.abs(fark) <= 2 ? 'yuvarlama' : 'bakiye';
+            odenecekFarkiNeden = Math.abs(fark) <= 5 ? 'yuvarlama' : 'bakiye'; // Turkcell 977,68 → 980 (2,32) yuvarlama sayılır
           }
         }
       }
@@ -612,6 +673,8 @@ export function parseUblInvoice(xml: string, warn?: (msg: string) => void): Pars
       ...(digerVergiler.length ? { digerVergiler, digerVergiToplam } : {}),
       ...(digerVergiMatrahaDahil ? { digerVergiMatrahaDahil: true } : {}),
       ...(odenecekFarki != null ? { odenecekFarki, odenecekFarkiNeden } : {}),
+      ...(ozelMatrah ? { ozelMatrah } : {}),
+      ...(oivCikarim ? { oivCikarim: true } : {}),
       ...(iskontoToplam > 0 ? { iskonto: { kalem: round2(kalemIskonto), belge: belgeIskonto, toplam: iskontoToplam } } : {}),
       toplamTutar,
       ...(odenecekTutar != null ? { odenecekTutar } : {}),
@@ -667,6 +730,8 @@ export function ublOcrDataFields(p: ParsedProviderInvoice | null | undefined): R
     ...(Array.isArray(p.digerVergiler) && p.digerVergiler.length ? { digerVergiler: p.digerVergiler, digerVergiToplam: p.digerVergiToplam || 0 } : { digerVergiToplam: 0 }),
     ...(p.digerVergiMatrahaDahil ? { digerVergiMatrahaDahil: true } : {}),
     ...(p.odenecekFarki != null ? { odenecekFarki: p.odenecekFarki, odenecekFarkiNeden: p.odenecekFarkiNeden || 'yuvarlama' } : {}),
+    ...(p.ozelMatrah ? { ozelMatrah: p.ozelMatrah } : {}),
+    ...(p.oivCikarim ? { oivCikarim: true } : {}),
     ...(p.iskonto ? { iskonto: p.iskonto } : {}),
     paraBirimi: p.paraBirimi || 'TL',
     ...(p.kur != null ? { kur: p.kur } : {}),
@@ -684,7 +749,7 @@ export function ublOcrDataFields(p: ParsedProviderInvoice | null | undefined): R
 export const UBL_ONLY_OCR_FIELDS = [
   'odenecekTutar', 'odenecekYuvarlama', 'digerVergiToplam', 'digerVergiler', 'belgeDurumu', 'parserVersion',
   'tevkifatKodu', 'tevkifatYuzde', 'tevkifatUygulanmamis', 'tevkifatCikarim', 'iskonto', 'kur', 'faturaTipi', 'digerVergiMatrahaDahil',
-  'odenecekFarki', 'odenecekFarkiNeden',
+  'odenecekFarki', 'odenecekFarkiNeden', 'ozelMatrah', 'oivCikarim',
 ] as const;
 
 /** Spread ile ocrData'ya yazılır: `{ ...eski, ...clearUblOnlyOcrFields(), ...yeni }` → bayat UBL alanı kalmaz. */

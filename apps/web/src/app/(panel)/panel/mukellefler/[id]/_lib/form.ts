@@ -48,6 +48,8 @@ export type FormState = {
   faaliyetAciklama: string;
   ticaretSicilNo: string;
   mersisNo: string;
+  /** Şahıs firmasında TCKN yanında ikinci vergi kimlik no (10 hane) — Z raporu/ÖKC fişlerinde VKN yazar (2026-09-15). */
+  vergiKimlikNo: string;
   odaSicilNo: string;
   bagkurSicilNo: string;
   kepAdresi: string;
@@ -83,6 +85,7 @@ export function emptyForm(): FormState {
     faaliyetAciklama: '',
     ticaretSicilNo: '',
     mersisNo: '',
+    vergiKimlikNo: '',
     odaSicilNo: '',
     bagkurSicilNo: '',
     kepAdresi: '',

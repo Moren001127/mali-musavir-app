@@ -146,6 +146,16 @@ export function BilgilerTab({
                 required
               />
             </Satir>
+            {!tuzel && (
+              <Satir etiket="Vergi kimlik no" ipucu="Varsa, 10 hane. Z raporu / ÖKC fişi ve bazı faturalarda TCKN yerine bu numara yazar; sahiplik kontrolünde ikisi de kabul edilir.">
+                <AlanGirdi
+                  inputMode="numeric"
+                  value={form.vergiKimlikNo}
+                  onChange={(e) => setForm((p) => ({ ...p, vergiKimlikNo: e.target.value.replace(/\D/g, '').slice(0, 10) }))}
+                  maxLength={10}
+                />
+              </Satir>
+            )}
             <Satir etiket="Vergi dairesi" zorunlu>
               <AlanGirdi value={form.taxOffice} onChange={alan('taxOffice')} required />
             </Satir>

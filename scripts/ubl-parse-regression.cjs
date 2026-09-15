@@ -522,8 +522,8 @@ ${line(2, 'Deterjan', 1, 1000, 1000, `<cac:TaxTotal><cbc:TaxAmount currencyID="T
   assert(p.digerVergiMatrahaDahil === true, '17: BTV tabana dahil');
   approx(p.kdvBreakdown[0].base, 1151.29, '17: taban BTV arındırılmış');
   approx(p.matrah, 1151.29, '17: matrah = enerji bedeli');
-  approx(p.odenecekTutar, 1418.46, '17: ödenecek = fatura tutarı (TaxInclusive)');
-  approx(p.odenecekFarki, 1.54, '17: güncel yuvarlama 1,54');
+  approx(p.odenecekTutar, 1418.63, '17: ödenecek = denklem (gevşek toleransta yuvarlama fişe girmez)');
+  approx(p.odenecekFarki, 1.37, '17: yuvarlama 1,37 (önceki −0,17 + güncel 1,54)');
   assert(p.odenecekFarkiNeden === 'yuvarlama', '17: neden yuvarlama');
   assert(Math.abs(p.matrah + p.kdvTutari + p.digerVergiToplam - p.odenecekTutar) <= 0.5, '17: denklem ±0,50 (önceki yuvarlama 0,17)');
 }
@@ -551,5 +551,109 @@ ${line(2, 'Deterjan', 1, 1000, 1000, `<cac:TaxTotal><cbc:TaxAmount currencyID="T
   approx(p.matrah + p.kdvTutari, 19296.05, '18: denklem');
 }
 
+// 19) TaxTotal/TaxAmount kırılımdan ŞİŞKİN + TaxExclusive=TaxInclusive + PayableRounding alanına fatura tutarı (Turkcell BEA2026020373433).
+{
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<Invoice>
+  <ID>BEA2026020373433</ID><ProfileID>EARSIVFATURA</ProfileID><IssueDate>2026-08-05</IssueDate><DocumentCurrencyCode>TRY</DocumentCurrencyCode>
+  <AccountingSupplierParty><Party><PartyName><Name>Turkcell Iletisim Hizmetleri A.S.</Name></PartyName><PartyIdentification><ID schemeID="VKN">8770013406</ID></PartyIdentification></Party></AccountingSupplierParty>
+  <AccountingCustomerParty><Party><PartyName><Name>ERCAN ÖZTAMUR</Name></PartyName><PartyIdentification><ID schemeID="TCKN">11111111111</ID></PartyIdentification></Party></AccountingCustomerParty>
+  <TaxTotal><TaxAmount currencyID="TRY">98.41</TaxAmount><TaxSubtotal><TaxableAmount currencyID="TRY">888.76</TaxableAmount><TaxAmount currencyID="TRY">88.88</TaxAmount><Percent>10</Percent><TaxCategory><TaxScheme><Name>KDV8</Name><TaxTypeCode>0015</TaxTypeCode></TaxScheme></TaxCategory></TaxSubtotal></TaxTotal>
+  <LegalMonetaryTotal>
+    <LineExtensionAmount currencyID="TRY">888.76</LineExtensionAmount>
+    <TaxExclusiveAmount currencyID="TRY">977.68</TaxExclusiveAmount>
+    <TaxInclusiveAmount currencyID="TRY">977.68</TaxInclusiveAmount>
+    <PayableRoundingAmount currencyID="TRY">977.68</PayableRoundingAmount>
+    <PayableAmount currencyID="TRY">980</PayableAmount>
+  </LegalMonetaryTotal>
+</Invoice>`;
+  const p = parseUblInvoice(xml);
+  assert(p, '19: parse null');
+  approx(p.kdvTutari, 88.88, '19: KDV kırılımdan');
+  approx(p.matrah, 888.76, '19: matrah taban');
+  approx(p.odenecekTutar, 977.68, '19: ödenecek fatura tutarı');
+  approx(p.odenecekFarki, 2.32, '19: yuvarlama 2,32');
+  assert(p.odenecekFarkiNeden === 'yuvarlama', '19: neden yuvarlama');
+}
+
+// 20) KDV'SİZ KALEM (depozito 180) + aynı tabanı tekrar eden %0 muafiyet satırı (Sabri Aksoy EAG2026000002056).
+{
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<Invoice>
+  <ID>EAG2026000002056</ID><ProfileID>EARSIVFATURA</ProfileID><IssueDate>2026-08-05</IssueDate><DocumentCurrencyCode>TRY</DocumentCurrencyCode>
+  <AccountingSupplierParty><Party><PartyName><Name>SATICI</Name></PartyName><PartyIdentification><ID schemeID="VKN">1111111111</ID></PartyIdentification></Party></AccountingSupplierParty>
+  <AccountingCustomerParty><Party><PartyName><Name>SABRİ AKSOY</Name></PartyName><PartyIdentification><ID schemeID="TCKN">22222222222</ID></PartyIdentification></Party></AccountingCustomerParty>
+  <AllowanceCharge><ChargeIndicator>true</ChargeIndicator><AllowanceChargeReason>Satış Depozito Tutarı</AllowanceChargeReason><Amount currencyID="TRY">180.00</Amount></AllowanceCharge>
+  <TaxTotal><TaxAmount currencyID="TRY">318.00</TaxAmount>
+    <TaxSubtotal><TaxableAmount currencyID="TRY">1590.00</TaxableAmount><TaxAmount currencyID="TRY">318.00</TaxAmount><Percent>20.00</Percent><TaxCategory><TaxScheme><Name>KDV</Name><TaxTypeCode>0015</TaxTypeCode></TaxScheme></TaxCategory></TaxSubtotal>
+    <TaxSubtotal><TaxableAmount currencyID="TRY">1590.00</TaxableAmount><TaxAmount currencyID="TRY">0</TaxAmount><Percent>0</Percent><TaxCategory><TaxExemptionReasonCode>351</TaxExemptionReasonCode><TaxExemptionReason>İSTISNA OLMAYAN DIĞER</TaxExemptionReason><TaxScheme><Name>KDV</Name><TaxTypeCode>0015</TaxTypeCode></TaxScheme></TaxCategory></TaxSubtotal>
+  </TaxTotal>
+  <LegalMonetaryTotal>
+    <LineExtensionAmount currencyID="TRY">1770.00</LineExtensionAmount>
+    <TaxExclusiveAmount currencyID="TRY">1770.00</TaxExclusiveAmount>
+    <TaxInclusiveAmount currencyID="TRY">2088.00</TaxInclusiveAmount>
+    <PayableAmount currencyID="TRY">2088.00</PayableAmount>
+  </LegalMonetaryTotal>
+</Invoice>`;
+  const p = parseUblInvoice(xml);
+  assert(p, '20: parse null');
+  approx(p.matrah, 1770, '20: matrah = 1590 + 180 depozito');
+  const bd = p.kdvBreakdown || [];
+  assert(bd.length === 2 && bd.some((b) => b.rate === 20 && Math.abs(b.base - 1590) < 0.01) && bd.some((b) => b.rate === 0 && Math.abs(b.base - 180) < 0.01), `20: kırılım %20 1590 + %0 180 (bulundu ${JSON.stringify(bd)})`);
+  approx(p.odenecekTutar, 2088, '20: ödenecek');
+  assert(p.odenecekFarki == null, '20: fark yok');
+}
+
+// 21) ÖZEL MATRAH KDVK 23/f (tütün "KDV Dahil", muafiyet 806) — Sabri Aksoy N052026000001173: mal bedeli TaxExclusive, KDV perakende tabandan.
+{
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<Invoice>
+  <ID>N052026000001173</ID><ProfileID>EARSIVFATURA</ProfileID><IssueDate>2026-08-05</IssueDate><DocumentCurrencyCode>TRY</DocumentCurrencyCode>
+  <AccountingSupplierParty><Party><PartyName><Name>TÜTÜN DAĞITIM A.Ş.</Name></PartyName><PartyIdentification><ID schemeID="VKN">1111111111</ID></PartyIdentification></Party></AccountingSupplierParty>
+  <AccountingCustomerParty><Party><PartyName><Name>SABRİ AKSOY</Name></PartyName><PartyIdentification><ID schemeID="TCKN">22222222222</ID></PartyIdentification></Party></AccountingCustomerParty>
+  <TaxTotal><TaxAmount currencyID="TRY">14518.32</TaxAmount><TaxSubtotal><TaxableAmount currencyID="TRY">72591.68</TaxableAmount><TaxAmount currencyID="TRY">14518.32</TaxAmount><Percent>20</Percent><TaxCategory><TaxExemptionReasonCode>806</TaxExemptionReasonCode><TaxExemptionReason>Tütün mamülleri ve bazi alkollü içkiler.</TaxExemptionReason><TaxScheme><Name>KDV Dahil</Name><TaxTypeCode>0015</TaxTypeCode></TaxScheme></TaxCategory></TaxSubtotal></TaxTotal>
+  <LegalMonetaryTotal>
+    <LineExtensionAmount currencyID="TRY">83190.05</LineExtensionAmount>
+    <TaxExclusiveAmount currencyID="TRY">68671.73</TaxExclusiveAmount>
+    <TaxInclusiveAmount currencyID="TRY">83190.05</TaxInclusiveAmount>
+    <PayableAmount currencyID="TRY">83190.05</PayableAmount>
+  </LegalMonetaryTotal>
+</Invoice>`;
+  const p = parseUblInvoice(xml);
+  assert(p, '21: parse null');
+  approx(p.matrah, 68671.73, '21: mal bedeli TaxExclusive');
+  approx(p.kdvBreakdown[0].base, 68671.73, '21: kırılım tabanı mal bedeline çekildi');
+  approx(p.kdvTutari, 14518.32, '21: KDV değişmez');
+  assert(p.ozelMatrah && Math.abs(p.ozelMatrah.kdvTabani - 72591.68) < 0.01, '21: ozelMatrah.kdvTabani 72.591,68');
+  approx(p.matrah + p.kdvTutari, 83190.05, '21: denklem');
+  const f = ublOcrDataFields(p);
+  assert(f.ozelMatrah && f.ozelMatrah.malBedeli === 68671.73, '21: ocrData.ozelMatrah');
+}
+
+// 22) ÖİV ÇIKARIMI — Paraşüt özet XML (ÖİV yok), telekom satıcı, ödenecek − (matrah + KDV) = tabanın %10'u (Zeki P012026003122101).
+{
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<Invoice>
+  <ID>P012026003122101</ID><ProfileID>TICARIFATURA</ProfileID><IssueDate>2026-07-31</IssueDate><DocumentCurrencyCode>TRY</DocumentCurrencyCode>
+  <AccountingSupplierParty><Party><PartyName><Name>Türk Telekomünikasyon A.Ş</Name></PartyName><PartyIdentification><ID schemeID="VKN">8760052205</ID></PartyIdentification></Party></AccountingSupplierParty>
+  <AccountingCustomerParty><Party><PartyName><Name>ZEKİ ÖZKAYNAK</Name></PartyName><PartyIdentification><ID schemeID="TCKN">65647060374</ID></PartyIdentification></Party></AccountingCustomerParty>
+  <TaxTotal><TaxAmount currencyID="TRY">43.73</TaxAmount><TaxSubtotal><TaxableAmount currencyID="TRY">218.65</TaxableAmount><TaxAmount currencyID="TRY">43.73</TaxAmount><TaxCategory><Percent>20</Percent><TaxScheme><Name>KDV</Name><TaxTypeCode>0015</TaxTypeCode></TaxScheme></TaxCategory></TaxSubtotal></TaxTotal>
+  <LegalMonetaryTotal>
+    <TaxExclusiveAmount currencyID="TRY">218.65</TaxExclusiveAmount>
+    <TaxInclusiveAmount currencyID="TRY">284.25</TaxInclusiveAmount>
+    <PayableAmount currencyID="TRY">284.25</PayableAmount>
+  </LegalMonetaryTotal>
+</Invoice>`;
+  const p = parseUblInvoice(xml);
+  assert(p, '22: parse null');
+  assert(p.oivCikarim === true, '22: oivCikarim');
+  approx(p.digerVergiToplam, 21.87, '22: ÖİV 21,87');
+  assert(p.digerVergiler && p.digerVergiler[0].kod === '4080', '22: ÖİV kodu 4080');
+  approx(p.matrah + p.kdvTutari + p.digerVergiToplam, 284.25, '22: denklem');
+  // Karşıt: telekom olmayan satıcı → çıkarım YOK
+  const q = parseUblInvoice(xml.replace('Türk Telekomünikasyon A.Ş', 'KIRTASİYE LTD'));
+  assert(q && !q.oivCikarim, '22b: telekom değilse çıkarım yok');
+}
+
 if (failed) { console.error(`[ubl-parse] ${failed} hata`); process.exit(1); }
-console.log('[ubl-parse] OK — tevkifatlı satış, telekom karışık vergi, iade/iptal (not karar vermez), iskonto, döviz, vergi türü süzgeci, kısmi tevkifat, e-SMM stopaj, yuvarlama, çok oranlı kdvOrani, tevkifat çıkarımı (sentetik XML), alt toplamsız tevkifat aritmetiği, ÖTV/BTV KDV-matrahı arındırma, bakiye/yuvarlama ödenecek çözümü, TaxableAmount eksik taban türetme');
+console.log('[ubl-parse] OK — tevkifatlı satış, telekom karışık vergi, iade/iptal (not karar vermez), iskonto, döviz, vergi türü süzgeci, kısmi tevkifat, e-SMM stopaj, yuvarlama, çok oranlı kdvOrani, tevkifat çıkarımı (sentetik XML), alt toplamsız tevkifat aritmetiği, ÖTV/BTV KDV-matrahı arındırma, bakiye/yuvarlama ödenecek çözümü, TaxableAmount eksik taban türetme, şişkin TaxTotal, KDVsiz kalem/çift %0, özel matrah 23/f, ÖİV çıkarımı');

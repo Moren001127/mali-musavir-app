@@ -216,6 +216,7 @@ export class TaxpayersService {
         kurumTuru: true,
         ticaretSicilNo: true,
         mersisNo: true,
+        vergiKimlikNo: true,
         odaSicilNo: true,
         bagkurSicilNo: true,
         kepAdresi: true,

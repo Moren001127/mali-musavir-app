@@ -209,6 +209,9 @@ model Taxpayer {
   // Faz 2 (PLAN/15): KDV kısmi tevkifatta "belirlenmiş alıcı" ayrımı — mükellefin kendi kurum türü
   //   (ALIŞ faturasında alıcı = mükellef). kamu | banka | belediye | universite | kit | diger | null(bilinmiyor)
   kurumTuru         String?
+  // Sahis firmasinda TCKN'nin YANINDA ayrica vergi kimlik numarasi (10 hane) varsa — OKC/Z raporu ve bazi faturalarda VKN yazar;
+  // sahiplik/yon eslesmesinde ikinci kimlik olarak kabul edilir (2026-09-15, KADIR CEYLAN KORKMAZ Z raporlari).
+  vergiKimlikNo     String?
   // PLAN/16 §F: kısa sektör etiketi ("gıda", "inşaat", "nakliye"…) — Mükellefler listesi "Faaliyet" sütunu + motor beslemesi
   sektorEtiketi     String?
 

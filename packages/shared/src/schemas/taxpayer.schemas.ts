@@ -71,6 +71,8 @@ export const CreateTaxpayerSchema = z.object({
   faaliyetAciklama: z.string().max(300).optional().nullable().or(z.literal('')),
   ticaretSicilNo: z.string().max(50).optional().nullable().or(z.literal('')),
   mersisNo: z.string().max(20).optional().nullable().or(z.literal('')),
+  // 2026-09-15: şahıs firmasında TCKN yanında ikinci kimlik (VKN, 10 hane) — ÖKC/Z raporu sahiplik eşleşmesi
+  vergiKimlikNo: z.string().max(11).regex(/^\d{10,11}$/, 'VKN 10 hane olmalı').optional().nullable().or(z.literal('')),
   odaSicilNo: z.string().max(50).optional().nullable().or(z.literal('')),
   bagkurSicilNo: z.string().max(50).optional().nullable().or(z.literal('')),
   kepAdresi: z.string().email('Geçerli KEP adresi giriniz').optional().nullable().or(z.literal('')),
@@ -125,6 +127,8 @@ export const UpdateTaxpayerSchema = z.object({
   faaliyetAciklama: z.string().max(300).optional().nullable().or(z.literal('')),
   ticaretSicilNo: z.string().max(50).optional().nullable().or(z.literal('')),
   mersisNo: z.string().max(20).optional().nullable().or(z.literal('')),
+  // 2026-09-15: şahıs firmasında TCKN yanında ikinci kimlik (VKN, 10 hane) — ÖKC/Z raporu sahiplik eşleşmesi
+  vergiKimlikNo: z.string().max(11).regex(/^\d{10,11}$/, 'VKN 10 hane olmalı').optional().nullable().or(z.literal('')),
   odaSicilNo: z.string().max(50).optional().nullable().or(z.literal('')),
   bagkurSicilNo: z.string().max(50).optional().nullable().or(z.literal('')),
   kepAdresi: z.string().email('Gecerli KEP adresi giriniz').optional().nullable().or(z.literal('')),

@@ -112,6 +112,7 @@ export default function MukellefDetayPage() {
       faaliyetAciklama: (taxpayer as any).faaliyetAciklama ?? '',
       ticaretSicilNo: (taxpayer as any).ticaretSicilNo ?? '',
       mersisNo: (taxpayer as any).mersisNo ?? '',
+      vergiKimlikNo: (taxpayer as any).vergiKimlikNo ?? '',
       odaSicilNo: (taxpayer as any).odaSicilNo ?? '',
       bagkurSicilNo: (taxpayer as any).bagkurSicilNo ?? '',
       kepAdresi: (taxpayer as any).kepAdresi ?? '',

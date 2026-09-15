@@ -1139,8 +1139,30 @@ export class PortalAutomationService {
         isProcessable: !blocked,
         blockedReason: blocked ? (onayBekliyor ? 'Onay bekleyen (imzasiz) fatura islenmez' : /silin/i.test(onayDurumu) ? 'Silinmis fatura islenmez' : 'Iptal/itiraz/reddedilen fatura islenmez') : null,
         sourceRefId,
+        // AKTARIM ÖNCESİ TUTAR (2026-09-15, Muzaffer Bey ERDOĞAN BALÇIK: "sorgulama tutarları getirmiyor"): GİB liste API'si tutar
+        //   vermez; indirilmiş HTML'den ayrıştırılıp raw.tutarlar'a önbelleklenir (aşağıda). Muhasebe belgesi varsa o esastır.
+        _storageKey: doc.storageKey || null,
+        _tutarlar: raw.tutarlar && typeof raw.tutarlar === 'object' ? raw.tutarlar : null,
       };
     });
+    // Belgesi olmayan, HTML'i indirilmiş satırlar: tutarları dosyadan oku (istek başına en çok 40; gerisi sonraki yenilemede).
+    //   Sonuç portal_documents.raw.tutarlar'a yazılır → bir sonraki listede dosya okunmaz.
+    {
+      const okunacak = rows.filter((r: any) => r._storageKey && !r._tutarlar).slice(0, 40);
+      for (const r of okunacak) {
+        try {
+          const b64 = await this.storage.getBuffer(r._storageKey).then((b) => b.toString('base64'));
+          const t = await this.parseEarsivPayloadBase64(b64);
+          const tutarlar = { kdvHaric: t?.matrah ?? null, kdv: t?.kdvTutari ?? null, toplam: t?.total ?? null, okundu: new Date().toISOString() };
+          r._tutarlar = tutarlar;
+          const mevcut: any = docs.find((d: any) => d.id === r.portalDocumentId);
+          const rawEski = mevcut?.raw && typeof mevcut.raw === 'object' ? mevcut.raw : {};
+          await (this.prisma as any).portalDocument.update({ where: { id: r.portalDocumentId }, data: { raw: { ...rawEski, tutarlar } } }).catch(() => null);
+        } catch (e: any) {
+          r._tutarlar = { kdvHaric: null, kdv: null, toplam: null, okundu: new Date().toISOString(), hata: String(e?.message || e).slice(0, 120) };
+        }
+      }
+    }
     // KAYNAKLAR-ARASI EŞLEŞME (Gülşen Haziran bulgusu): ayni fatura Fatura Merkezi'ne GİB yerine
     //   entegratör yolundan (örn. TÜRMOB) gelmiş ve işlenmiş/Luca'ya aktarılmış olabilir. Eski
     //   sorgu yalnız source='gib-earsiv-api' kayıtlarına baktığından bu belgeler AKTARIM sütununda
@@ -1189,14 +1211,17 @@ export class PortalAutomationService {
       const importedByDownload = !!acc && ['POSTED', 'POSTING'].includes(String(acc.lucaStatus || ''));
       // Muhasebe belgesinden tutar (matrah / KDV / genel toplam) — listede göstermek için.
       const ocr = acc?.ocrData && typeof acc.ocrData === 'object' ? acc.ocrData : null;
+      const dosyaTutar: any = row._tutarlar || null;
+      const { _storageKey, _tutarlar, ...temiz } = row;
       return {
-        ...row,
+        ...temiz,
         muhasebeBelgeId: acc?.id || null,
         muhasebeDurumu: acc?.status || null,
         lucaDurumu: acc?.lucaStatus || null,
-        kdvHaric: ocr ? num(ocr.matrah) : null,
-        kdv: ocr ? num(ocr.kdvTutari) : null,
-        toplam: acc ? num(acc.totalAmount) : null,
+        kdvHaric: ocr ? num(ocr.matrah) : (dosyaTutar ? num(dosyaTutar.kdvHaric) : null),
+        kdv: ocr ? num(ocr.kdvTutari) : (dosyaTutar ? num(dosyaTutar.kdv) : null),
+        toplam: acc ? num(acc.totalAmount) : (dosyaTutar ? num(dosyaTutar.toplam) : null),
+        tutarKaynak: acc ? 'belge' : (dosyaTutar && dosyaTutar.toplam != null ? 'dosya' : null),
         zatenVar: !!acc,
         aktarildi: importedByDownload,
       };

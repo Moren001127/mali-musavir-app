@@ -2070,7 +2070,9 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
                 const islKayit = isIsletme && sinif.ok ? (kayitAltKisaAd(sinif.altAd) || islKt) : '';
                 const islAltFull = sinif.altAd;
                 const islMain = sinif.ktAd;
-                const firma = (sat ? d.customerName : d.vendorName) || '—';
+                // Z RAPORU: karşı taraf yok → FİRMA sütununda 'Z RAPORU' (Muzaffer Bey 2026-09-15; eski belgelerde customerName boş).
+                const zRapor = String(d.documentType || '').toUpperCase() === 'Z_RAPORU';
+                const firma = (sat ? d.customerName : d.vendorName) || (zRapor ? 'Z RAPORU' : '—');
                 const vkn = sat ? d.buyerVkn : d.sellerVkn;
                 // HESAP KODU sütunu = SADECE matrah/gider kodu. Gider boşsa KDV/cari koduna DÜŞME →
                 //   boş kalsın (kullanıcı: gider kodu boşsa bu sütun da boş olmalı).
@@ -3861,7 +3863,7 @@ function ScreenKurallar({ taxpayerId, period }: { taxpayerId: string; period: st
           istisnalar.map((d) => {
             const du = deriveDurum(d);
             const sat = (d.invoiceKind || 'ALIS') === 'SATIS';
-            const firma = (sat ? d.customerName : d.vendorName) || '(firma yok)';
+            const firma = (sat ? d.customerName : d.vendorName) || (String(d.documentType || '').toUpperCase() === 'Z_RAPORU' ? 'Z RAPORU' : '(firma yok)');
             const ini = firma.replace(/[^A-Za-zÇĞİÖŞÜ ]/g, '').split(' ').map((w: string) => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase() || '??';
             return (
               <div key={d.id} className="lrow">
@@ -5003,7 +5005,7 @@ function ScreenAktarilanlar({ taxpayerId, period, mode = 'bekleyen', isIsletme =
   const grpLabel = (g: string) => g === 'matrah' ? 'Matrah' : g === 'vergi' ? 'KDV' : g === 'vergi-sorumlu' ? 'Sorumlu Sıf. KDV' : g === 'cari' ? 'Cari' : g === 'tevkifat' ? 'Tevkifat' : g === 'diger_vergi' ? 'KDV dışı vergi' : (g || '—');
   const renderRow = (d: any) => {
     const sat = (d.invoiceKind || 'ALIS') === 'SATIS';
-    const firma = (sat ? d.customerName : d.vendorName) || '—';
+    const firma = (sat ? d.customerName : d.vendorName) || (String(d.documentType || '').toUpperCase() === 'Z_RAPORU' ? 'Z RAPORU' : '—');
     const code = (() => {
       const ls = Array.isArray(d.lines) ? d.lines : [];
       return accountCodeOnly((ls.find((l: any) => String(l.group) === 'matrah' && l.accountCode) || ls.find((l: any) => l.accountCode))?.accountCode || '');

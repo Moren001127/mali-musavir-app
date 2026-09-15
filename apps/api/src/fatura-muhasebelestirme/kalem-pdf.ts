@@ -79,6 +79,21 @@ export function kalemPdfGerekliMi(preParsed: any, provXmlVar: boolean, env: Node
   return !!provXmlVar && !!preParsed && xmlKalemsizMi(preParsed) && kalemPdfAcikMi(env);
 }
 
+/** Özet/sentetik XML'de ödenecek denklemi tutmuyor mu? (Σtaban + KDV + diğer − tevkifat − stopaj ≠ ödenecek, ±0,50) — 2026-09-15:
+ *  Paraşüt /e_invoices özeti ÖİV/telsizi bilmediğinde PDF'ten KDV dışı vergileri okumak için kapı. */
+export function odenecekDenklemiTutmuyorMu(preParsed: any): boolean {
+  const ubl: any = preParsed?._ubl || null;
+  if (!ubl) return false;
+  const odenecek = Number(ubl.odenecekTutar);
+  if (!(odenecek > 0)) return false;
+  const bd = Array.isArray(ubl.kdvBreakdown) ? ubl.kdvBreakdown : [];
+  const taban = bd.length ? bd.reduce((t: number, b: any) => t + (Number(b?.base) || 0), 0) : (Number(ubl.matrah) || 0);
+  const kdv = Number(ubl.kdvTutari) || 0;
+  const diger = Number(ubl.digerVergiToplam) || 0;
+  const kesinti = (Number(ubl.tevkifatKdv) || 0) + (Number(ubl.stopajTutari) || 0);
+  return Math.abs(r2(taban + kdv + diger - kesinti) - odenecek) > 0.5;
+}
+
 /** XML'den gelen KDV hariç matrah (kdv[] kırılımı toplamı; yoksa _ubl.matrah). */
 export function xmlMatrahi(preParsed: any): number {
   const kd = Array.isArray(preParsed?.kdv) ? preParsed.kdv : [];
@@ -169,10 +184,20 @@ export function pdfDigerVergileriUygula(preParsed: any, okunan: KalemPdfOkunan |
   const eskiMatrah = r2(Number(kd[0]?.matrah) || 0);
   const kdv = r2(Number(kd[0]?.kdv) || 0);
   const toplam = r2(liste.reduce((s, v) => s + v.tutar, 0));
-  const yeniMatrah = r2(eskiMatrah - toplam);
-  if (!(eskiMatrah > 0) || !(kdv > 0) || !(yeniMatrah > 0)) return null;
-  const oran = [20, 10, 1, 18, 8].find((r) => Math.abs(yeniMatrah * r / 100 - kdv) <= Math.max(0.05, kdv * 0.01));
-  if (!oran) return null;
+  if (!(eskiMatrah > 0) || !(kdv > 0)) return null;
+  const tol = Math.max(0.05, kdv * 0.01);
+  const oranBul = (m: number) => [20, 10, 1, 18, 8].find((r) => Math.abs(m * r / 100 - kdv) <= tol);
+  // A) vergiler MATRAHIN İÇİNDE (özet matrah = toplam − KDV; TT Mobil GB2…653071): matrah düşer.
+  // B) vergiler MATRAHIN DIŞINDA (özet matrah doğru, ödenecek = matrah + KDV + Σ; GB2…357170): matrah kalır, vergiler eklenir.
+  const yeniMatrahA = r2(eskiMatrah - toplam);
+  const oranA = yeniMatrahA > 0 ? oranBul(yeniMatrahA) : undefined;
+  const odenecek = Number(ubl?.odenecekTutar ?? preParsed.toplam) || 0;
+  const oranB = oranBul(eskiMatrah);
+  const bTutar = !!oranB && odenecek > 0 && Math.abs(r2(eskiMatrah + kdv + toplam) - odenecek) <= 0.5;
+  let oran: number | undefined; let yeniMatrah: number;
+  if (bTutar) { oran = oranB; yeniMatrah = eskiMatrah; }
+  else if (oranA) { oran = oranA; yeniMatrah = yeniMatrahA; }
+  else return null;
   preParsed.kdv = [{ oran, matrah: yeniMatrah, kdv }];
   if (ubl) {
     ubl.kdvBreakdown = [{ rate: oran, base: yeniMatrah, amount: kdv }];
@@ -183,7 +208,7 @@ export function pdfDigerVergileriUygula(preParsed: any, okunan: KalemPdfOkunan |
     ubl.digerVergiKaynak = 'pdf';
   }
   preParsed._pdfDigerVergiler = liste;
-  return { toplam, adet: liste.length, oran, eskiMatrah, yeniMatrah };
+  return { toplam, adet: liste.length, oran: oran as number, eskiMatrah, yeniMatrah };
 }
 
 /**
@@ -221,9 +246,10 @@ export async function kalemPdfTamamla(
   preParsed: any,
   dosya: KalemPdfDosya | null | undefined,
   aiCagri: KalemPdfAiCagri,
-  opts: { yon: 'ALIS' | 'SATIS'; belgeNo?: string | null; env?: NodeJS.ProcessEnv; modeller?: Array<string | undefined>; timeoutMs?: number; sapmaEsigi?: number },
+  opts: { yon: 'ALIS' | 'SATIS'; belgeNo?: string | null; env?: NodeJS.ProcessEnv; modeller?: Array<string | undefined>; timeoutMs?: number; sapmaEsigi?: number; zorla?: boolean },
 ): Promise<KalemPdfSonuc | null> {
-  if (!kalemPdfGerekliMi(preParsed, true, opts.env || process.env)) return null;
+  // zorla (2026-09-15): XML kalemli olsa da ödenecek denklemi tutmuyorsa (Paraşüt özeti ÖİV/telsizi bilmez) PDF okunur.
+  if (!(opts.zorla && kalemPdfAcikMi(opts.env || process.env)) && !kalemPdfGerekliMi(preParsed, true, opts.env || process.env)) return null;
   if (!dosya) return null;
   if (dosya.tur === 'pdf-metin' && String(dosya.metin || '').trim().length <= 80) return null; // taranmış/şifreli PDF: metin yok
   if (dosya.tur === 'gorsel' && String(dosya.base64 || '').length < 100) return null;

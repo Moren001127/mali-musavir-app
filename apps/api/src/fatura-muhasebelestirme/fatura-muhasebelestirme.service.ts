@@ -21,7 +21,7 @@ import { planAdaylariHazirla, planAdayKodSeti, SATIS_GELIR_HESABI_KURALI, PLAN_A
 import { ogrenilmisKararSec, adCozumAdaylari, kodKategori, mevzuatUygunMu, planYaprakHaritasi, HizliYolKarar, HizliYolSecim } from './ogrenme-hizli-yol';
 import { parseUblInvoice, ublOcrDataFields, clearUblOnlyOcrFields, resolveTevkifatOrani, kdvDisiVergiOivMi, ParsedProviderInvoice } from './ubl-parse';
 // PLAN/15 Faz 6 (2026-09-13): kalemsiz sağlayıcı XML'inde (Paraşüt özeti gibi) kalemler belgenin PDF/görselinden tamamlanır (saf modül).
-import { kalemPdfGerekliMi, kalemPdfTamamla, aiMatrahGuvenTavani, KalemPdfDosya, KalemKaynak } from './kalem-pdf';
+import { kalemPdfGerekliMi, kalemPdfTamamla, aiMatrahGuvenTavani, odenecekDenklemiTutmuyorMu, KalemPdfDosya, KalemKaynak } from './kalem-pdf';
 import { VendorMemoryService } from '../vendor-memory/vendor-memory.service';
 import { MihsapService } from '../mihsap/mihsap.service';
 import { PortalAutomationService } from '../portal-automation/portal-automation.service';
@@ -495,6 +495,18 @@ function parseDate(value: string | null | undefined) {
   const nd = new Date(s);
   if (Number.isNaN(nd.getTime())) return null;
   return new Date(Date.UTC(nd.getFullYear(), nd.getMonth(), nd.getDate()));
+}
+
+/** Mükellefin KİMLİK SETİ (2026-09-15): taxNumber (şifreli olabilir) + identityNumber + vergiKimlikNo (şahıs firmasında TCKN'nin
+ *  yanındaki VKN — KADİR CEYLAN KORKMAZ Z raporlarında VKN 5780978427 yazıyor, kartta TCKN). Sahiplik/yön eşleşmesi bu setle yapılır. */
+function mukellefKimlikSeti(tp: any): Set<string> {
+  const out = new Set<string>();
+  for (const ham of [tp?.taxNumber, tp?.identityNumber, tp?.vergiKimlikNo]) {
+    if (!ham) continue;
+    const v = String(tryDecrypt(ham) || ham || '').replace(/\D/g, '');
+    if (v.length === 10 || v.length === 11) out.add(v);
+  }
+  return out;
 }
 
 function money(value: string | number | null | undefined) {
@@ -7185,6 +7197,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       odenecekTutar: ocrData?.odenecekTutar,
       digerVergiToplam: ocrData?.digerVergiToplam,
       digerVergiMatrahaDahil: ocrData?.digerVergiMatrahaDahil === true,
+      ozelMatrah: ocrData?.ozelMatrah && typeof ocrData.ozelMatrah === 'object' ? ocrData.ozelMatrah : null,
       odenecekFarki: ocrData?.odenecekFarki,
       odenecekFarkiNeden: ocrData?.odenecekFarkiNeden,
       tevkifatKdv: this.numFromOcr(ocrData?.tevkifatKdv) || this.numFromOcr(ocrData?.kdvTevkifat) || 0,
@@ -13575,11 +13588,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         const kart = money(opts.kart) || zero();
         if (nakit.gt(0) && kart.gt(0)) {
           return [
-            { group: 'cari', accountCode: '100.01.001', description: 'Kasa (nakit tahsilat)', debit: nakit, credit: zero(), orderNo: startOrder },
-            { group: 'cari', accountCode: '108.01.001', description: 'POS / kredi kartı tahsilat', debit: kart, credit: zero(), orderNo: startOrder + 1 },
+            { group: 'cari', accountCode: '100.01.001', description: 'Z RAPORU — nakit tahsilat (Kasa)', debit: nakit, credit: zero(), orderNo: startOrder },
+            { group: 'cari', accountCode: '108.01.001', description: 'Z RAPORU — kredi kartı tahsilat (POS)', debit: kart, credit: zero(), orderNo: startOrder + 1 },
           ];
         }
-        return [{ group: 'cari', accountCode: '100.01.001', description: 'Kasa (günlük tahsilat)', debit: t, credit: zero(), orderNo: startOrder }];
+        return [{ group: 'cari', accountCode: '100.01.001', description: 'Z RAPORU — günlük tahsilat (Kasa)', debit: t, credit: zero(), orderNo: startOrder }];
       }
       return [{ group: 'cari', accountCode: cariCode, description: opts.vendorName || 'Cari hesap', debit: isSale ? t : zero(), credit: isSale ? zero() : t, orderNo: startOrder }];
     };
@@ -14061,6 +14074,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     digerVergiToplam?: any;
     /** ÖTV KDV matrahına dahildi, kırılım tabanı arındırıldı (ocrData.digerVergiMatrahaDahil) → KDV_MATH yasal tabanla (taban + ÖTV) hesaplar (2026-09-15). */
     digerVergiMatrahaDahil?: boolean;
+    /** KDVK 23/f özel matrah (tütün/alkol "KDV Dahil"): KDV perakende tabandan hesaplanır, mal bedeli TaxExclusive (2026-09-15). */
+    ozelMatrah?: { kdvTabani?: number; malBedeli?: number } | null;
     /** PayableAmount − fatura tutarı (ocrData.odenecekFarki): önceki dönem bakiyesi ya da ERP yuvarlaması → BİLGİ notu (2026-09-15). */
     odenecekFarki?: any;
     odenecekFarkiNeden?: string | null;
@@ -14264,22 +14279,23 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     if (opts.taxpayerId) {
       const taxpayer = await (this.prisma as any).taxpayer.findFirst({
         where: { id: opts.taxpayerId, tenantId: opts.tenantId },
-        select: { taxNumber: true, companyName: true, firstName: true, lastName: true },
+        select: { taxNumber: true, vergiKimlikNo: true, companyName: true, firstName: true, lastName: true },
       });
-      if (taxpayer?.taxNumber) {
-        // taxNumber şifreli olabilir
-        const ownVkn = String(tryDecrypt(taxpayer.taxNumber) || taxpayer.taxNumber).replace(/\D/g, '');
+      // KİMLİK SETİ (2026-09-15): TCKN + kartta tanımlı ikinci VKN (şahıs firması) — Z raporundaki VKN kabul edilir.
+      const ownIds = mukellefKimlikSeti(taxpayer);
+      if (ownIds.size) {
         const isSale = String(opts.invoiceKind || '').toUpperCase() === 'SATIS';
         const expectedVkn = isSale
           ? String(opts.sellerVkn || '').replace(/\D/g, '')
           : String(opts.buyerVkn || '').replace(/\D/g, '');
-        if (ownVkn && expectedVkn && ownVkn !== expectedVkn) {
+        if (expectedVkn && !ownIds.has(expectedVkn)) {
           const ownerName = taxpayer.companyName || `${taxpayer.firstName || ''} ${taxpayer.lastName || ''}`.trim();
+          const beklenen = [...ownIds].join(' / ');
           issues.push({
             code: 'OWNERSHIP_MISMATCH',
             severity: 'ERROR',
-            message: `Bu belge ${ownerName || 'mükellefin'} VKN/TC'sine ait değil. ${isSale ? 'Satıcı' : 'Alıcı'} VKN ${expectedVkn} → beklenen ${ownVkn}.`,
-            expected: ownVkn,
+            message: `Bu belge ${ownerName || 'mükellefin'} VKN/TC'sine ait değil. ${isSale ? 'Satıcı' : 'Alıcı'} VKN ${expectedVkn} → beklenen ${beklenen}. (Şahıs firmasının ayrı VKN'si varsa mükellef kartına "Vergi kimlik no" olarak girin.)`,
+            expected: beklenen,
             actual: expectedVkn,
           });
         }
@@ -14300,7 +14316,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const base = Number(b?.base || 0);
       const amount = Number(b?.amount || 0);
       if (base <= 0 || amount <= 0 || !stdRates.has(Math.round(rate))) continue;
-      const yasalTaban = base + (_dahilDiger > 0 && _tabanToplam > 0 ? _dahilDiger * (base / _tabanToplam) : 0);
+      let yasalTaban = base + (_dahilDiger > 0 && _tabanToplam > 0 ? _dahilDiger * (base / _tabanToplam) : 0);
+      // ÖZEL MATRAH (KDVK 23/f, 2026-09-15 Sabri Aksoy tütün): KDV perakende tabandan (ocrData.ozelMatrah.kdvTabani), mal bedelinden değil.
+      const _ozelTaban = Number(opts.ozelMatrah?.kdvTabani || 0);
+      if (_ozelTaban > 0 && _tabanToplam > 0) yasalTaban = _ozelTaban * (base / _tabanToplam);
       const expectedFull = yasalTaban * rate / 100;
       if (amount > expectedFull * 1.02 + 0.5) {
         issues.push({
@@ -15264,7 +15283,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   (yalnız Paraşüt değil). Kapatma (deploy gerektirmez): FM_KALEM_PDF=off → eski davranış.
     let kalemKaynak: KalemKaynak | null = null;
     let kalemPdfBilgi: { kalemToplam: number; xmlMatrah: number; sapmaYuzde: number | null; dosya: string } | null = null;
-    if (provXml && preParsed && kalemPdfGerekliMi(preParsed, true)) {
+    // ZORLA (2026-09-15): XML kalemli ama ödenecek denklemi tutmuyorsa (Paraşüt özeti ÖİV/telsizi bilmez — Zeki GB2…357170) PDF yine okunur.
+    const kalemPdfZorla = !!(provXml && preParsed && !kalemPdfGerekliMi(preParsed, true) && odenecekDenklemiTutmuyorMu(preParsed));
+    if (provXml && preParsed && (kalemPdfGerekliMi(preParsed, true) || kalemPdfZorla)) {
       try {
         const dosya = await this.kalemDosyasiniGetir(tenantId, d);
         if (!dosya) {
@@ -15275,6 +15296,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             yon: d.invoiceKind === 'SATIS' ? 'SATIS' : 'ALIS',
             belgeNo: d.belgeNo || null,
             modeller: [MAX_MODEL_CHEAP, undefined], // 1) hızlı model 2) kalem gelmezse güçlü model (varsayılan Sonnet)
+            zorla: kalemPdfZorla,
           });
           if (r) {
             kalemKaynak = r.kalemKaynak;
@@ -15362,6 +15384,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     let mukellefBilgi = '';
     let isIsletmeMukellef = false;
     let ownVkn = ''; // mükellefin kendi VKN/TCKN'si → faturanın YÖNÜNÜ (alış/satış) türetmek için
+    let ownIds = new Set<string>(); // kimlik seti (TCKN + kartta tanımlı ikinci VKN) — 2026-09-15
     let ownAd = '';  // mükellefin kendi ünvanı → "satıcı/alıcı adı mükellefin kendisi mi" güvenlik ağı için
     let tpNace = '';      // isletmeAutoKayitTuru için
     let tpFaaliyet = '';  // isletmeAutoKayitTuru için
@@ -15369,11 +15392,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     if (d.taxpayerId) {
       const tp = await (this.prisma as any).taxpayer.findFirst({
         where: { id: d.taxpayerId, tenantId },
-        select: { companyName: true, firstName: true, lastName: true, naceKodu: true, faaliyetAciklama: true, defterTuru: true, mihsapDefterTuru: true, taxNumber: true, identityNumber: true, sektorEtiketi: true, kurumTuru: true },
+        select: { companyName: true, firstName: true, lastName: true, naceKodu: true, faaliyetAciklama: true, defterTuru: true, mihsapDefterTuru: true, taxNumber: true, identityNumber: true, vergiKimlikNo: true, sektorEtiketi: true, kurumTuru: true },
       }).catch(() => null);
       if (tp) {
         tpForAsset = tp;
         ownVkn = String(tryDecrypt(tp.taxNumber) || tp.taxNumber || tryDecrypt(tp.identityNumber) || tp.identityNumber || '').replace(/\D/g, '');
+        ownIds = mukellefKimlikSeti(tp);
         const ad = String(tp.companyName || `${tp.firstName || ''} ${tp.lastName || ''}`).trim();
         ownAd = ad;
         isIsletmeMukellef = isIsletmeLedger(tp.defterTuru, tp.mihsapDefterTuru);
@@ -15499,6 +15523,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           aliciAd: null,
           aliciVkn: null,
           toplam: azTotal || null,
+          // KDV TUTARI (kırılım yoksa kurtarma için — Azure Z raporu "single-rate varsayımı" yalnız kdvTutari verir, 2026-09-15).
+          kdvTutari: az.kdvTutari != null ? this.numFromOcr(az.kdvTutari) : null,
           kategori: az.kategori || undefined,
           kdv: azBd.map((b: any) => {
             const rate = Number(b.oran) || 0;
@@ -15740,7 +15766,15 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     if (!breakdown.length) {
       const toplam = Number(parsed.toplam) || 0;
       const oran = Number((Array.isArray(parsed.kdv) ? parsed.kdv : []).find((x: any) => Number(x?.oran) > 0)?.oran) || 0;
-      if (toplam > 0 && oran > 0) {
+      // KURTARMA-2 (2026-09-15, KADİR CEYLAN KORKMAZ Z raporu 01498): Azure yalnız TOPLAM 3.100,00 + KDV 281,82 verdi, kırılım/oran
+      //   yok → "KDV kırılımı okunamadı" ile belge FAILED kalıyordu. Matrah = toplam − KDV, oran tutardan (standart orana yuvarlanırsa).
+      const kdvT = this.numFromOcr(parsed.kdvTutari);
+      if (toplam > 0 && kdvT > 0 && kdvT < toplam && !oran) {
+        const base = Math.round((toplam - kdvT) * 100) / 100;
+        const oranTahmin = Math.round((kdvT / base) * 100);
+        if ([1, 8, 10, 18, 20].includes(oranTahmin)) breakdown = [{ rate: oranTahmin, base, amount: kdvT }];
+      }
+      if (!breakdown.length && toplam > 0 && oran > 0) {
         const base = Math.round((toplam / (1 + oran / 100)) * 100) / 100;
         breakdown = [{ rate: oran, base, amount: Math.round((toplam - base) * 100) / 100 }];
       }
@@ -15759,14 +15793,15 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // ENTEGRATÖR XML'inde yön zaten kanaldan KESİN (d.invoiceKind) — görüntü/VKN tahmini ile EZME
     //   (özel XSLT görselinde mükellef satıcı gibi görünüp yönü ters çeviriyordu).
     let kind: 'ALIS' | 'SATIS' = (String(d.invoiceKind || 'ALIS') === 'SATIS' ? 'SATIS' : 'ALIS');
+    const kendiMi = (v: string) => !!v && (v === ownVkn || ownIds.has(v));
     if (!provXml) {
-      if (ownVkn && vknOk(aiSaticiVkn) && ownVkn === aiSaticiVkn) kind = 'SATIS';
-      else if (ownVkn && vknOk(aiAliciVkn) && ownVkn === aiAliciVkn) kind = 'ALIS';
-    } else if (kind === 'ALIS' && ownVkn) {
+      if (vknOk(aiSaticiVkn) && kendiMi(aiSaticiVkn)) kind = 'SATIS';
+      else if (vknOk(aiAliciVkn) && kendiMi(aiAliciVkn)) kind = 'ALIS';
+    } else if (kind === 'ALIS' && (ownVkn || ownIds.size)) {
       // Ters UBL koruması: ALIŞ'ta satıcı=mükellef geldiyse gerçek cari = alıcı tarafıdır → çevir.
       const sV = String(parsed.saticiVkn || '').replace(/\D/g, '');
       const aV = String(parsed.aliciVkn || '').replace(/\D/g, '');
-      if (sV && sV === ownVkn && (aV ? aV !== ownVkn : !!parsed.aliciAd)) {
+      if (sV && kendiMi(sV) && (aV ? !kendiMi(aV) : !!parsed.aliciAd)) {
         const ts = parsed.saticiAd, tsv = parsed.saticiVkn;
         parsed.saticiAd = parsed.aliciAd; parsed.saticiVkn = parsed.aliciVkn;
         parsed.aliciAd = ts; parsed.aliciVkn = tsv;
@@ -15819,7 +15854,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       : Math.round((matrah + kdv + digerVergiToplam) * 100) / 100;
     // Karşı taraf (cari) adı: satışta ALICI, alışta SATICI (yukarıdaki AD-bazlı güvenlik ağı taraf
     //   bilgisini zaten tutarlı hale getirdi — parsed.saticiAd/aliciAd artık mükellefle çakışmaz).
-    const counterName = String((isSale ? parsed.aliciAd : parsed.saticiAd) || '').trim();
+    const _zRepAd = kind === 'SATIS' && String(this.mapOcrBelgeTipi(parsed.belgeTuru) || (d as any).documentType || '').toUpperCase() === 'Z_RAPORU';
+    // Z RAPORU: karşı taraf yok (günlük nakit/kart tahsilatı) → listede FİRMA/cari sütunu boş kalıyordu; "Z RAPORU" yazılır (2026-09-15).
+    const counterName = String((isSale ? parsed.aliciAd : parsed.saticiAd) || '').trim() || (_zRepAd ? 'Z RAPORU' : '');
     // Belge türü: önce GERÇEK METİNDEN (e-Arşiv/e-Fatura ibaresi). HTML yoksa (resim/JPG fatura)
     //   Azure'un OKUDUĞU ham metinden ("e-Arşiv Fatura", "Senaryo: EARSIVFATURA" yazısı), son çare AI.
     const mappedType = this.docTypeFromText(html || azureText || parsed._azureText || '') || this.mapOcrBelgeTipi(parsed.belgeTuru) || normalizeDocumentType((d as any).documentType);
