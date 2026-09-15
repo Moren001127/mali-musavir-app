@@ -6384,12 +6384,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         // Dosya türü LİNKTEN (2026-09-15): Mihsap "XML" kaynaklı e-Faturayı da .jpg görüntü olarak sunuyor → mimeType
         //   application/xml yazılıyordu (dosya JPEG). Link uzantısı esas, orjDosyaTuru yedek.
         const linkExt = (String(inv.mihsapFileLink || '').match(/\.(jpe?g|png|pdf|xml)(?:\?|$)/i) || [])[1]?.toLowerCase() || '';
-        const mimeType = linkExt === 'jpg' || linkExt === 'jpeg' || ext === 'JPEG' || ext === 'JPG' ? 'image/jpeg'
+        const mimeType = linkExt === 'jpg' || linkExt === 'jpeg' || ext === 'JPEG' || ext === 'JPG' || ext === 'IMAGE' ? 'image/jpeg'
           : linkExt === 'png' || ext === 'PNG' ? 'image/png'
           : linkExt === 'pdf' || ext === 'PDF' ? 'application/pdf'
           : linkExt === 'xml' || ext === 'XML' ? 'application/xml'
           : 'application/pdf';
-        const dosyaUzanti = linkExt || ext.toLowerCase() || 'pdf';
+        const dosyaUzanti = linkExt || (ext === 'IMAGE' ? 'jpg' : ext.toLowerCase()) || 'pdf';
         // Tarih: Mihsap satırında makul tarih yoksa (raw._tarihBelirsiz) BOŞ bırakılır → okuma görselden bulur.
         const mihsapTarihi = (inv.raw as any)?._tarihBelirsiz ? null : (inv.faturaTarihi || null);
 

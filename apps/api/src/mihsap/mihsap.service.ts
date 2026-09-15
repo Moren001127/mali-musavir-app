@@ -938,13 +938,13 @@ export class MihsapService implements OnModuleInit {
       select: {
         id: true, invoiceKind: true, documentType: true, belgeNo: true, seriNo: true, faturaTarihi: true, createdAt: true,
         sellerVkn: true, buyerVkn: true, vendorName: true, customerName: true, totalAmount: true,
-        s3Key: true, originalName: true, mimeType: true, sizeBytes: true, lucaStatus: true, source: true,
+        s3Key: true, originalName: true, mimeType: true, sizeBytes: true, lucaStatus: true, source: true, sourceRefId: true,
       },
       orderBy: { faturaTarihi: 'asc' },
     });
     const mevcut: any[] = await (this.prisma as any).mihsapInvoice.findMany({
       where: { tenantId: params.tenantId, mukellefId: params.mukellefId, donem: params.donem },
-      select: { mihsapId: true, faturaNo: true, faturaTuru: true, kaynak: true },
+      select: { id: true, mihsapId: true, faturaNo: true, faturaTuru: true, kaynak: true },
     });
     const fmVar = new Set<string>(mevcut.filter((r) => this.isFmArsivKaydi(r)).map((r) => String(r.mihsapId)));
     // Mihsap kaynaklı (aynı dönem) fatura no + yön → FM kopyası mükerrer olur, eklenmez
@@ -952,9 +952,35 @@ export class MihsapService implements OnModuleInit {
       mevcut.filter((r) => !this.isFmArsivKaydi(r) && String(r.kaynak || 'arsiv') !== 'bekleyen')
         .map((r) => `${MihsapService.faturaNoAnahtar(r.faturaNo)}|${String(r.faturaTuru || '').toUpperCase() === 'SATIS' ? 'SATIS' : 'ALIS'}`),
     );
-    let added = 0, skipped = 0, mukerrer = 0;
+    let added = 0, skipped = 0, mukerrer = 0, islendi = 0;
     for (const d of docs) {
       const mihsapId = `fm:${d.id}`;
+      // MİHSAP KAYNAKLI belge (2026-09-15, NÜLÜFER/AYTEKİN KDV Kontrol bulgusu): belgenin kendi Mihsap satırı (Gelen Belgeler,
+      //   kaynak 'bekleyen') zaten var → o satır İŞLENDİ ('arsiv') durumuna geçer; ayrıca FM kopyası (fm:<id>) AÇILMAZ.
+      //   Eskiden ikisi birden İşlenen Faturalar/KDV Kontrol'e giriyor (mükerrer) ve FM kopyasının dosyası "mihsap:<id>"
+      //   sanal anahtarı yüzünden okunamıyordu (KDV Kontrol'de kırık görsel + OCR HATA).
+      if (String(d.source || '') === 'mihsap' && d.sourceRefId) {
+        const orj = await (this.prisma as any).mihsapInvoice.findFirst({ where: { tenantId: params.tenantId, mihsapId: String(d.sourceRefId) } });
+        if (orj) {
+          const onay = d.lucaStatus === 'MANUAL_DONE' ? 'ELLE_ISLENDI' : 'LUCAYA_AKTARILDI';
+          const guncelle: any = { raw: { ...((orj.raw as any) || {}), fmDocumentId: d.id, fmLucaStatus: d.lucaStatus } };
+          if (String(orj.kaynak || '') !== 'arsiv') guncelle.kaynak = 'arsiv';
+          if (orj.onayDurumu !== onay) guncelle.onayDurumu = onay;
+          if (!String(orj.faturaNo || '').trim() && d.belgeNo) guncelle.faturaNo = String(d.belgeNo);
+          if (orj.donem !== params.donem) guncelle.donem = params.donem; // FM okuması tarihi düzeltmiş olabilir → İşlenen Faturalar doğru ayda
+          await (this.prisma as any).mihsapInvoice.update({ where: { id: orj.id }, data: guncelle }).catch((e: any) => this.logger.warn(`Mihsap satırı işlendi'ye alınamadı (${orj.id}): ${e?.message || e}`));
+          islendi++;
+          // Eski FM kopyası varsa ve KDV Kontrol görseli bağlı değilse sil (mükerrer kalmasın)
+          if (fmVar.has(mihsapId)) {
+            const fmRow = mevcut.find((r) => String(r.mihsapId) === mihsapId);
+            if (fmRow?.id) {
+              const bagli = await (this.prisma as any).receiptImage.count({ where: { s3Key: `mihsap://${fmRow.id}` } }).catch(() => 1);
+              if (!bagli) { await (this.prisma as any).mihsapInvoice.delete({ where: { id: fmRow.id } }).catch(() => null); fmVar.delete(mihsapId); }
+            }
+          }
+          continue;
+        }
+      }
       if (fmVar.has(mihsapId)) { skipped++; continue; }
       if (!d.s3Key) { skipped++; continue; } // dosyasız belge yedeklenemez
       const isSale = String(d.invoiceKind || '').toUpperCase() === 'SATIS';
@@ -995,7 +1021,7 @@ export class MihsapService implements OnModuleInit {
         this.logger.warn(`FM arşiv kaydı yazılamadı (${d.id}): ${e?.message || e}`);
       }
     }
-    this.logger.log(`FM Arşivim → İşlenen Faturalar (${params.mukellefId} ${params.donem}${params.faturaTuru ? ' ' + params.faturaTuru : ''}): ${docs.length} belge, ${added} yeni, ${skipped} mevcut/dosyasız, ${mukerrer} Mihsap'ta zaten var`);
+    this.logger.log(`FM Arşivim → İşlenen Faturalar (${params.mukellefId} ${params.donem}${params.faturaTuru ? ' ' + params.faturaTuru : ''}): ${docs.length} belge, ${added} yeni, ${islendi} Mihsap satırı işlendi, ${skipped} mevcut/dosyasız, ${mukerrer} Mihsap'ta zaten var`);
     // Yedeklenmemiş eski satırlar da yakalansın diye kayıt varsa (yeni eklenmese bile) tetiklenir; kütük mükerreri engeller.
     if (params.triggerDrive && (added > 0 || docs.length > 0) && this.eventBus) {
       try { this.eventBus.emit('Mihsap.InvoicesFetched', { tenantId: params.tenantId, mukellefId: params.mukellefId, donem: params.donem }); } catch { /* yut */ }
@@ -1011,6 +1037,12 @@ export class MihsapService implements OnModuleInit {
       select: { s3Key: true, originalName: true, mimeType: true, belgeNo: true },
     });
     if (!doc?.s3Key) throw new BadRequestException(`FM belgesi bulunamadı ya da dosyası yok (${docId})`);
+    // Mihsap'tan köprülenmiş belge: dosya bizim depoda değil, Mihsap CDN'de (s3Key "mihsap:<mihsapId>") → oradan (2026-09-15).
+    if (/^mihsap:/.test(String(doc.s3Key))) {
+      const orj = await (this.prisma as any).mihsapInvoice.findFirst({ where: { tenantId, mihsapId: String(doc.s3Key).replace(/^mihsap:/, ''), NOT: { mihsapFileLink: { startsWith: 'fm://' } } }, select: { id: true } });
+      if (!orj) throw new BadRequestException(`FM belgesinin Mihsap kaynağı bulunamadı (${doc.s3Key})`);
+      return this.getInvoiceFile(tenantId, orj.id);
+    }
     const buffer = await this.storage.getBuffer(doc.s3Key);
     const base = this.sanitizeFileBase(inv.faturaNo || doc.belgeNo || docId);
     const mime = String(doc.mimeType || '');
@@ -1223,8 +1255,13 @@ export class MihsapService implements OnModuleInit {
     const inv = await (this.prisma as any).mihsapInvoice.findUnique({ where: { id: invoiceId } });
     if (!inv || inv.tenantId !== tenantId) return null;
 
-    // FM Arşivim kaynaklı kayıt: dosya bizim depoda → imzalı (presigned) bağlantı
+    // FM Arşivim kaynaklı kayıt: dosya bizim depoda → imzalı (presigned) bağlantı; Mihsap'tan köprülenmişse (storageKey
+    //   "mihsap:<id>") dosya Mihsap CDN'de → orijinal satırın bağlantısı (2026-09-15).
     if (this.isFmArsivKaydi(inv) && inv.storageKey) {
+      if (/^mihsap:/.test(String(inv.storageKey))) {
+        const orj = await (this.prisma as any).mihsapInvoice.findFirst({ where: { tenantId, mihsapId: String(inv.storageKey).replace(/^mihsap:/, ''), NOT: { mihsapFileLink: { startsWith: 'fm://' } } }, select: { mihsapFileLink: true } });
+        return orj?.mihsapFileLink || null;
+      }
       try { return await this.storage.getPresignedInlineUrl(inv.storageKey, `${inv.faturaNo || 'belge'}`); } catch { return null; }
     }
     // MIHSAP CDN URL'i (auth gerektirmez, path hash ile korumalı)
