@@ -8760,6 +8760,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       if (uyariOzet(d.ocrData?.uyarilar).kararBekliyor) { skippedDemirbas++; return false; }
       const lines = d.lines || [];
       if (isIsletme) {
+        // İŞLETME sabit kıymet (2026-09-15, Muzaffer Bey: "sabit kıymet alışını aktarmıyoruz, Luca'ya manuel işliyoruz"):
+        //   kayıt türü Sabit Kıymet Alışı (13) / Ek Maliyet (10) olan belge CSV'ye girmez.
+        const islSk = isletmeWithBelgeDefaults(d);
+        const islSatirlar: any[] = Array.isArray(islSk?.satirlar) && islSk.satirlar.length ? islSk.satirlar : [islSk];
+        if (islSatirlar.some((r: any) => /^(13|10)$/.test(String(r?.kayitTuruKod || '')))) { skippedDemirbas++; return false; }
         if (isletmeDocumentReady(d).ok) return true;
         skippedBalance++; return false;
       }
@@ -8774,7 +8779,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const parts = [
         skippedCount > 0 ? `${skippedCount} belge veri kontrolü hatası` : '',
         skippedBalance > 0 ? `${skippedBalance} belge dengesiz/eksik kod` : '',
-        skippedDemirbas > 0 ? `${skippedDemirbas} belge demirbaş kararı bekliyor` : '',
+        skippedDemirbas > 0 ? `${skippedDemirbas} belge demirbaş (Luca'ya elle işlenir / karar bekliyor)` : '',
         skippedElleIslendi > 0 ? `${skippedElleIslendi} belge Luca'da elle işlendi (gönderilmez)` : '',
       ].filter(Boolean).join(', ');
       const extra = parts ? ` (${parts} nedeniyle hariç tutuldu — Gelen Belgeler'de düzelt)` : '';
