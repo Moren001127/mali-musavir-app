@@ -11192,7 +11192,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         if (res.ok) return { ok: true, status: res.status, buf, text: () => bodyStr };
         last = { status: res.status, body: bodyStr };
         if (is429(res.status, bodyStr) && attempt < backoff.length) {
-          this.logger.warn(`Turkcell 429 — ${backoff[attempt]}ms bekleyip tekrar (deneme ${attempt + 1})`);
+          // TEŞHİS (2026-09-15, Yavuz Özkan: sayfa 1 bile 429): Turkcell'in gövdesi/başlıkları limitin türünü söyler (Retry-After, X-RateLimit-*).
+          const basliklar: string[] = [];
+          try { res.headers.forEach((v, k) => { if (/retry|rate|limit|quota|remaining|reset/i.test(k)) basliklar.push(`${k}=${v}`); }); } catch {}
+          this.logger.warn(`Turkcell 429 — ${backoff[attempt]}ms bekleyip tekrar (deneme ${attempt + 1}) · gövde=${bodyStr.replace(/\s+/g, ' ').slice(0, 300)} · başlık=${basliklar.join(' ') || '-'} · url=${url.replace(/^https?:\/\/[^/]+/, '').slice(0, 120)}`);
           await tsleep(backoff[attempt]);
           continue;
         }
