@@ -168,7 +168,10 @@ export async function buildLucaImportExcel(payload: BatchPayload): Promise<Buffe
     const isTlPara = paraBirimi === 'TL' || String(paraBirimi).toUpperCase() === 'TRY';
     const kurNum = Number(String(inv.exchangeRate ?? '').replace(',', '.'));
     const kurGecerli = !isTlPara && Number.isFinite(kurNum) && kurNum > 0 && kurNum !== 1;
-    const detayBase = inv.vendorName || inv.customerName || '-';
+    // KARŞI TARAF (2026-09-15, NMS LOJİSTİK Ağustos satışları): satış faturasında satıcı = mükellefin kendisi → fiş açıklamasına
+    //   hep "NMS LOJİSTİK" yazılıyordu. Satışta MÜŞTERİ, alışta SATICI adı yazılır.
+    const invIsSale = String(inv.invoiceKind || 'ALIS').toUpperCase() === 'SATIS';
+    const detayBase = (invIsSale ? (inv.customerName || inv.vendorName) : (inv.vendorName || inv.customerName)) || '-';
 
     for (const line of (inv.lines || [])) {
       const debit = parseAmount(line.debit);

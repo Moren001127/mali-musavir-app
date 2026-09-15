@@ -8572,7 +8572,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const payload: any = {
       mode: 'BATCH_EXCEL', format: isIsletme ? 'ISLETME_CSV' : 'BATCH_EXCEL', direction: kind,
       period: q.period || '', totalCount: docs.length,
-      fisAciklama: `${kind === 'SATIS' ? 'SATIŞ' : 'ALIŞ'} faturaları — ${q.period || ''} (${docs.length} belge)`,
+      fisAciklama: `${kind === 'SATIS' ? 'SATIŞ' : 'ALIŞ'} faturaları - ${q.period || ''} (${docs.length} belge)`, // düz tire: uzun tire Luca'da '?' görünüyordu (2026-09-15)
       invoices: docs.map(toInvoicePayload),
     };
     const yon = kind === 'SATIS' ? 'satis' : 'alis';
@@ -8747,7 +8747,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             direction: g.kind,
             period: dominantPeriod,
             totalCount: g.docs.length,
-            fisAciklama: `${kindLabel} faturaları — ${dominantPeriod} (${g.docs.length} belge)`,
+            fisAciklama: `${kindLabel} faturaları - ${dominantPeriod} (${g.docs.length} belge)`,
             invoices: g.docs.map(toInvoicePayload),
           },
         },
