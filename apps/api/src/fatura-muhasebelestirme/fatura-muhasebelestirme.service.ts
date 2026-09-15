@@ -987,7 +987,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       },
       include: { lines: { orderBy: { orderNo: 'asc' } } },
       orderBy: { createdAt: 'desc' },
-      take: Math.min(Math.max(opts.limit || 100, 1), 500),
+      // 2026-09-15: Gelen Faturalar dönemsiz (Mihsap Gelen Belgeler gibi) → tek mükellefin bütün bekleyenleri; tavan 2.000.
+      take: Math.min(Math.max(opts.limit || 100, 1), 2000),
     });
     // GÜVEN SKORU (iyileştirme #1): her belgeye deterministik güven ekle → müşavir yalnız "bakılmalı"
     //   olanları görsün, "güvenli"leri toplu onaylasın. Ekstra AI çağrısı YOK; mevcut sinyaller:
@@ -15349,15 +15350,19 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // MİHSAP ÇAPRAZ TEYİT (2026-09-15): Mihsap satırı toplam/tevkifat/dönem bilgisi taşır. ÖZ ELA'da 13 tevkifatlı satış
     //   Azure hızlı-yolunda yarım okunmuştu (tevkifat sonrası NET KDV tam KDV sanılıp matrah geri hesaplandı:
     //   75.502 → 37.751). Bu bilgi hızlı-yol kabulünde ve AI talimatında ipucu olarak kullanılır.
-    const mihsapSatir: { toplamTutar: any; faturaTuru: string | null; donem: string | null; raw: any } | null =
+    const mihsapSatir: { toplamTutar: any; faturaTuru: string | null; donem: string | null; faturaTarihi: Date | null; raw: any } | null =
       d.source === 'mihsap' && d.sourceRefId
         ? await (this.prisma as any).mihsapInvoice.findFirst({
             where: { tenantId, mihsapId: String(d.sourceRefId) },
-            select: { toplamTutar: true, faturaTuru: true, donem: true, raw: true },
+            select: { toplamTutar: true, faturaTuru: true, donem: true, faturaTarihi: true, raw: true },
           }).catch(() => null)
         : null;
     const mihsapTevkifatli = !!mihsapSatir && (/TEVKIFAT/i.test(String(mihsapSatir.faturaTuru || '')) || mihsapSatir.raw?.tevkifatliMi === true);
     const mihsapToplam = mihsapSatir ? (Number(String(mihsapSatir.toplamTutar ?? '')) || 0) : 0;
+    // Mihsap'ın kendi tarihi (mükellefin girdiği/Mihsap OCR'ı) — görselden tarih okunamazsa dönem yer tutucusundan ÖNCE bu kullanılır
+    //   (NÜLÜFER 0044: fiş metninde tarih satırı okunamadı, Mihsap "04-08-2026" diyordu ama 01.08 yer tutucu yazılmıştı).
+    const mihsapTarih = mihsapSatir && !mihsapSatir.raw?._tarihBelirsiz && mihsapSatir.faturaTarihi
+      ? this.makulTarih(new Date(mihsapSatir.faturaTarihi)) : null;
 
     // Belge içeriğini fileUrl mantığıyla getir — Mihsap CDN indirme + XML→HTML render
     // ORADA çalışıyor (belge görüntüsü açılıyor). Eski özel indirme yolu "dosya yok"
@@ -16219,7 +16224,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         isFixedAsset: faDetForUyari.is,
       });
       const tarihOkunan = this.makulTarih(parseDate(parsed.tarih));
-      const tarihDonemden = !tarihOkunan && !this.makulTarih(d.faturaTarihi ? new Date(d.faturaTarihi) : null) && /^\d{4}-\d{2}$/.test(String(mihsapSatir?.donem || ''));
+      const mevcutMakul = this.makulTarih(d.faturaTarihi ? new Date(d.faturaTarihi) : null);
+      const tarihMihsaptan = !tarihOkunan && !mevcutMakul && !!mihsapTarih;
+      const tarihDonemden = !tarihOkunan && !mevcutMakul && !mihsapTarih && /^\d{4}-\d{2}$/.test(String(mihsapSatir?.donem || ''));
       await tx.invoiceAccountingDocument.update({
         where: { id: d.id },
         data: {
@@ -16230,7 +16237,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           belgeNo: (zNoDet && !String(parsed.belgeNo || d.belgeNo || '').endsWith(zNoDet) ? zNoDet : null) || (parsed.belgeNo ? String(parsed.belgeNo) : null) || d.belgeNo || null,
           // Tarih (2026-09-15): yalnız MAKUL tarih yazılır (2004/2724 gibi okuma çöpü belgeyi dönem dışına atıyordu). Hiç makul
           //   tarih yoksa Mihsap belgesinde dönemin ilk günü YER TUTUCU + ocrData.tarihKaynak='mihsap-donem' (uyarı üretir).
-          ...(tarihOkunan ? { faturaTarihi: tarihOkunan } : tarihDonemden ? { faturaTarihi: new Date(`${mihsapSatir!.donem}-01T00:00:00Z`) } : {}),
+          ...(tarihOkunan ? { faturaTarihi: tarihOkunan } : tarihMihsaptan ? { faturaTarihi: mihsapTarih! } : tarihDonemden ? { faturaTarihi: new Date(`${mihsapSatir!.donem}-01T00:00:00Z`) } : {}),
           // GERÇEK iki tarafın VKN'si → sahiplik/yön kontrolü çalışır.
           ...(vknOk(aiSaticiVkn) ? { sellerVkn: aiSaticiVkn } : {}),
           ...(vknOk(aiAliciVkn) ? { buyerVkn: aiAliciVkn } : {}),

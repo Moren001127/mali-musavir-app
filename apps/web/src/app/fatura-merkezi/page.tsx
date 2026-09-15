@@ -991,14 +991,17 @@ function Check({ checked, onToggle, disabled, title }: { checked?: boolean; onTo
 }
 
 /** Belge listesi ortak sorgusu — aynı queryKey ekranlar arası cache paylaşır */
-function useDocuments(taxpayerId: string, period: string) {
+function useDocuments(taxpayerId: string, period: string, status?: 'PENDING') {
+  // period='all' (2026-09-15): Gelen Faturalar DÖNEMSİZ — Mihsap Gelen Belgeler gibi bütün bekleyenler tek listede
+  //   (Muzaffer Bey: "gelen faturalarda tarih filtresi olmasın, karışıklık olmasın"). Sunucu period almayınca süzmez.
+  const tum = period === 'all';
   return useQuery({
-    queryKey: ['fm2', 'documents', taxpayerId, period],
+    queryKey: ['fm2', 'documents', taxpayerId, period, status || ''],
     // Hatayı YUTMA — react-query isError versin ki "Yüklenemedi, tekrar dene" gösterelim
     // (eskiden catch([]) ile ağ hatası "veri yok" gibi görünüyordu).
     queryFn: async () => {
       const r = await api.get('/fatura-muhasebelestirme/documents', {
-        params: { taxpayerId: taxpayerId || undefined, period, limit: 300 },
+        params: { taxpayerId: taxpayerId || undefined, period: tum ? undefined : period, status, limit: tum ? 2000 : 300 },
       });
       return Array.isArray(r.data) ? r.data : [];
     },
@@ -1158,6 +1161,16 @@ export default function FaturaMerkeziPage() {
         .catch(() => ({})),
   });
   const sum: any = summaryQ.data || {};
+  // Gelen Faturalar dönemsiz olduğu için Alış/Satış rozetleri de dönemsiz sayılır (liste ile rozet aynı sayıyı desin).
+  const summaryTumQ = useQuery({
+    queryKey: ['fm2', 'summary', taxpayerId, taxpayerId ? 'all' : period],
+    queryFn: () =>
+      api
+        .get('/fatura-muhasebelestirme/summary', { params: { taxpayerId: taxpayerId || undefined, ...(taxpayerId ? {} : { period }) } })
+        .then((r) => r.data || {})
+        .catch(() => ({})),
+  });
+  const sumTum: any = summaryTumQ.data || {};
   const badge = (n: any) => (Number(n) > 0 ? <span className="ct">{Number(n)}</span> : null);
 
   const go = (s: string) => setScreen(s);
@@ -1189,8 +1202,8 @@ export default function FaturaMerkeziPage() {
       <div className={`nitem${screen === 'efaturaSorgu' ? ' on' : ''}${efaturaKilit ? ' off' : ''}`} style={{ ['--icc' as any]: '#2563eb' }} onClick={() => sorguGit('efaturaSorgu')} title={efaturaKilit ? 'Kilitli: bu mükellef e-Fatura mükellefi değil — GİB e-Arşiv Sorgu kullanılır' : undefined}><Ico html={I.plug} /> e-Fatura Sorgu{efaturaKilit ? <span className="nlock" aria-label="kilitli">🔒</span> : null}</div>
       <div className={`nitem${screen === 'faturaKes' ? ' on' : ''}`} style={{ ['--icc' as any]: '#b45309' }} onClick={() => go('faturaKes')}><Ico html={I.file} /> Fatura Kes</div>
       <div className={`nitem${screen === 'faturalar' || screen === 'satis' ? ' on' : ''}`} style={{ ['--icc' as any]: '#15803d' }} onClick={() => go('faturalar')}><Ico html={I.file} /> Gelen Faturalar</div>
-      <div className={`nsub${screen === 'faturalar' ? ' on' : ''}`} onClick={() => go('faturalar')}><span className="d" /> Alış Faturaları {badge(sum.alisPending)}</div>
-      <div className={`nsub${screen === 'satis' ? ' on' : ''}`} onClick={() => go('satis')}><span className="d" /> Satış Faturaları {badge(sum.satisPending)}</div>
+      <div className={`nsub${screen === 'faturalar' ? ' on' : ''}`} onClick={() => go('faturalar')}><span className="d" /> Alış Faturaları {badge(sumTum.alisPending)}</div>
+      <div className={`nsub${screen === 'satis' ? ' on' : ''}`} onClick={() => go('satis')}><span className="d" /> Satış Faturaları {badge(sumTum.satisPending)}</div>
       <div className={`nitem${screen === 'muhasebe' ? ' on' : ''}`} style={{ ['--icc' as any]: '#7c3aed' }} onClick={() => go('muhasebe')}><Ico html={I.ledger} /> Muhasebeleştir {badge(sum.pending)}</div>
       <div className={`nitem${screen === 'aktarilanlar' ? ' on' : ''}`} style={{ ['--icc' as any]: '#0891b2' }} onClick={() => go('aktarilanlar')}><Ico html={I.check} /> Aktarım {badge(Math.max(0, (Number(sum.approved) || 0) - (Number(sum.posted) || 0)))}</div>
       <div className={`nitem${screen === 'arsiv' ? ' on' : ''}`} style={{ ['--icc' as any]: '#d97706' }} onClick={() => go('arsiv')}><Ico html={I.ledger} /> Arşivim {badge(sum.posted)}</div>
@@ -1243,10 +1256,18 @@ export default function FaturaMerkeziPage() {
                   icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /></svg>}
                 />
               </div>
-              <div className="ctxpick">
-                <span className="ctxpick-l">Dönem</span>
-                <FmPeriod value={period} onChange={setPeriod} />
-              </div>
+              {/* Gelen Faturalar (bekleyen alış/satış) DÖNEMSİZ — Mihsap Gelen Belgeler gibi; seçici burada gösterilmez. */}
+              {!((screen === 'faturalar' || screen === 'satis') && taxpayerId) ? (
+                <div className="ctxpick">
+                  <span className="ctxpick-l">Dönem</span>
+                  <FmPeriod value={period} onChange={setPeriod} />
+                </div>
+              ) : (
+                <div className="ctxpick" title="Gelen Faturalar dönem süzmez: Mihsap Gelen Belgeler gibi bütün bekleyen belgeler tek listede">
+                  <span className="ctxpick-l">Dönem</span>
+                  <span className="mu" style={{ fontSize: 13, fontWeight: 600, padding: '6px 2px' }}>Tüm dönemler</span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -1327,7 +1348,8 @@ function gfKumeOf(d: any, du: { cat: string }, guven: GfGuven): GfKume {
 }
 function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false, taxpayerNace = '', taxpayerFaaliyet = '', onOpenSorgu, onOpenMuhasebe }: { taxpayerId: string; period: string; kind?: 'ALIS' | 'SATIS'; isIsletme?: boolean; taxpayerNace?: string; taxpayerFaaliyet?: string; onOpenSorgu?: () => void; onOpenMuhasebe?: (id: string) => void }) {
   const qc = useQueryClient();
-  const docsQ = useDocuments(taxpayerId, period);
+  // Mükellef seçiliyken DÖNEMSİZ (Mihsap Gelen Belgeler gibi); "Tüm mükellefler" görünümü ağır kaçmasın diye dönemli kalır.
+  const docsQ = useDocuments(taxpayerId, taxpayerId ? 'all' : period, 'PENDING');
   const all: any[] = docsQ.data || [];
   // PLAN16-B: "Oto-eşleşme karnesi" kutusu KALDIRILDI (kullanıcı kararı) — yerine "Ne yapmam gerekiyor" şeridi
   //   + belge bazında güven rozeti. Backend ucu (eslesme-karnesi) duruyor, bu ekran çağırmıyor.
@@ -1378,8 +1400,8 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
   };
   // Faz 2 — iptal/red/taslak sayacı (belge oluşturulmayan inbox satırları + CANCELLED belgeler).
   const iptalSayacQ = useQuery({
-    queryKey: ['fm2', 'iptal-sayac', taxpayerId, period],
-    queryFn: () => api.get('/fatura-muhasebelestirme/documents/iptal-sayac', { params: { taxpayerId: taxpayerId || undefined, period } }).then((r) => r.data || null).catch(() => null),
+    queryKey: ['fm2', 'iptal-sayac', taxpayerId, taxpayerId ? 'all' : period],
+    queryFn: () => api.get('/fatura-muhasebelestirme/documents/iptal-sayac', { params: { taxpayerId: taxpayerId || undefined, ...(taxpayerId ? {} : { period }) } }).then((r) => r.data || null).catch(() => null),
     enabled: !!taxpayerId,
   });
   const iptalSayac: any = iptalSayacQ.data;
@@ -1478,10 +1500,8 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
     mutationFn: () => api.post('/fatura-muhasebelestirme/import-from-mihsap', { taxpayerId, donem: period, faturaTuru: kind }).then((r) => r.data),
     onSuccess: (r: any) => {
       const yeni = Number(r?.created || 0); const tekrar = Number(r?.reprocessed || 0); const zaten = Number(r?.skipped || 0); const hata = Number(r?.failed || 0);
-      // Gelen Belgeler dönemsizdir: başka aya düşen belgeler (örn. Temmuz fişleri) kendi dönem listesinde görünür → söyle.
-      const digerDonem = Object.entries((r?.donemler || {}) as Record<string, number>).filter(([dn]) => dn !== period);
-      const digerNot = digerDonem.length ? ` ${digerDonem.map(([dn, n]) => `${n} belge ${dn} döneminde`).join(', ')} (o dönemi seçince görünür).` : '';
-      if (yeni || tekrar) toast.success(`Mihsap'tan ${yeni} yeni belge çekildi${tekrar ? `, ${tekrar} yeniden okunuyor` : ''}${zaten ? ` (${zaten} zaten vardı)` : ''}. Okuma arka planda.${digerNot}`, { duration: digerNot ? 12000 : 8000 });
+      // Gelen Belgeler dönemsizdir; liste de dönemsiz → çekilen her belge bu listede (dönem notu gerekmez).
+      if (yeni || tekrar) toast.success(`Mihsap'tan ${yeni} yeni belge çekildi${tekrar ? `, ${tekrar} yeniden okunuyor` : ''}${zaten ? ` (${zaten} zaten vardı)` : ''}. Okuma arka planda.`, { duration: 8000 });
       else toast(`Mihsap'ta onay bekleyen yeni ${kind === 'SATIS' ? 'satış' : 'alış'} belgesi yok${zaten ? ` (${zaten} zaten aktarılmış)` : ''}.`, { duration: 6000 });
       if (hata) toast.error(`${hata} belge aktarılamadı: ${(r?.errors || []).slice(0, 2).join(' · ')}`);
       qc.invalidateQueries({ queryKey: ['fm2'] });
@@ -1624,8 +1644,8 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
   // durumu gösterir; okuma sunucuda sürdüğü için kapanmaz.
   const ocrProgQ = useQuery({
     // #11: sayaç KIND'e göre — satış okurken satış adedini, alış okurken alış adedini göstersin (toplam değil).
-    queryKey: ['fm-ocr-progress', taxpayerId, period, kind],
-    queryFn: async () => (await api.get('/fatura-muhasebelestirme/ocr-progress', { params: { taxpayerId, period, kind } })).data,
+    queryKey: ['fm-ocr-progress', taxpayerId, taxpayerId ? 'all' : period, kind],
+    queryFn: async () => (await api.get('/fatura-muhasebelestirme/ocr-progress', { params: { taxpayerId, kind, ...(taxpayerId ? {} : { period }) } })).data,
     enabled: !!taxpayerId,
     // Okuma AKTİFKEN hızlı (3sn); boştayken seyrelt (15sn) → çoklu bilgisayarda gereksiz yük düşer,
     //   başka makinede başlayan okuma yine (15sn içinde) yakalanır. Cache'ten güncel duruma bakılır.
@@ -1778,7 +1798,7 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
   return (
     <section className="screen">
       <div className="h2">{kind === 'SATIS' ? 'Bekleyen Satış Faturaları' : 'Bekleyen Alış Faturaları'}</div>
-      <div className="sub">{kind === 'SATIS' ? 'Mükellefin kestiği satış faturaları — kuralla otomatik eşleşir.' : 'Entegratörden çekilen gelen faturalar — kuralla otomatik eşleşir, sadece eksik/çelişkili olana bakarsın.'}</div>
+      <div className="sub">{kind === 'SATIS' ? 'Mükellefin kestiği satış faturaları — kuralla otomatik eşleşir.' : 'Entegratörden çekilen gelen faturalar — kuralla otomatik eşleşir, sadece eksik/çelişkili olana bakarsın.'} <b>Bütün dönemler</b> tek listede (Mihsap Gelen Belgeler gibi); onaylanan belge Muhasebeleştir/Aktarım'a geçer.</div>
       {/* PLAN16-B — "NE YAPMAM GEREKİYOR" şeridi: 4 küme sayacı (tıkla süz, tekrar tıkla kalkar) + "Hazır olanları onayla". */}
       {docsAll.length > 0 && (
         <div className="card gf-strip">
@@ -1851,7 +1871,7 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
           <h3>{docsQ.isLoading ? 'Yükleniyor…' : <>{docs.length} belge{sel.size > 0 ? <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--accent)' }}> · {sel.size} seçili</span> : null}{(gorevF || durumF !== 'all') && docs.length !== docsAll.length ? <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)' }}> · süzgeç: {docsAll.length} içinden</span> : null}</>}</h3><div className="sp" />
           <input ref={fileRef} type="file" multiple accept=".pdf,.jpg,.jpeg,.jpe,.jfif,.png,.webp,.gif,.tif,.tiff,.bmp,.heic,.heif,.avif,.xml,.ubl,.zip" style={{ display: 'none' }} onChange={(e) => { const files = Array.from(e.currentTarget.files || []); e.currentTarget.value = ''; if (files.length) uploadMut.mutate(files); }} />
           <button className="btn sm upload" disabled={!taxpayerId || uploadMut.isPending} onClick={() => setUploadPick(true)} title={!taxpayerId ? 'Önce mükellef seç' : 'Gelir/Gider seç, sonra JPEG / PDF / XML belge yükle'}><Ico html={I.upload} size={13} /> {uploadMut.isPending ? 'Yükleniyor…' : 'Belge Yükle'}</button>
-          <button className="btn sm upload" disabled={!taxpayerId || mihsapCekMut.isPending} onClick={() => mihsapCekMut.mutate()} title={!taxpayerId ? 'Önce mükellef seç' : `Mihsap'ta onay bekleyen (Gelen Belgeler) ${kind === 'SATIS' ? 'satış' : 'alış'} faturalarını bu listeye çeker · dönem ${period}`}><Ico html={I.upload} size={13} /> {mihsapCekMut.isPending ? "Mihsap'tan çekiliyor…" : "Mihsap'tan çek"}</button>
+          <button className="btn sm upload" disabled={!taxpayerId || mihsapCekMut.isPending} onClick={() => mihsapCekMut.mutate()} title={!taxpayerId ? 'Önce mükellef seç' : `Mihsap'ta onay bekleyen (Gelen Belgeler) ${kind === 'SATIS' ? 'satış' : 'alış'} faturalarını bu listeye çeker (bütün dönemler)`}><Ico html={I.upload} size={13} /> {mihsapCekMut.isPending ? "Mihsap'tan çekiliyor…" : "Mihsap'tan çek"}</button>
           {uploadPick && (
             <div onMouseDown={() => setUploadPick(false)} style={{ position: 'fixed', inset: 0, zIndex: 10000, background: 'rgba(15,23,42,0.55)', display: 'grid', placeItems: 'center', padding: 16 }}>
               <div onMouseDown={(e) => e.stopPropagation()} style={{ width: 'min(440px, 96vw)', background: '#fff', color: '#1a1a1a', borderRadius: 16, padding: '24px 26px', boxShadow: '0 24px 70px rgba(0,0,0,0.45)' }}>
@@ -2041,7 +2061,7 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
         {kind === 'ALIS' && missing.length > 0 && (
           <div className="eksikbelge" title="Bu satıcılar son aylarda düzenli alış faturası gönderdi ama bu dönem henüz yok — eksik belge olabilir.">
             <Ico html={I.info} size={14} />
-            <span><b>{missing.length}</b> satıcıdan bu dönem belge gelmemiş olabilir (düzenli geliyordu): {missing.slice(0, 8).map((m: any) => m.name).join(', ')}{missing.length > 8 ? ` +${missing.length - 8}` : ''}</span>
+            <span><b>{periodLabel(period)}</b>: <b>{missing.length}</b> satıcıdan belge gelmemiş olabilir (düzenli geliyordu): {missing.slice(0, 8).map((m: any) => m.name).join(', ')}{missing.length > 8 ? ` +${missing.length - 8}` : ''}</span>
           </div>
         )}
         {kind === 'SATIS' && noGaps && noGaps.toplamEksik > 0 && (
@@ -2059,7 +2079,7 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
                 }
                 return (
                   <span key={s.seri}>
-                    <b>{s.eksikToplam} satış faturası eksik görünüyor</b> ({s.seri} serisinde şu numaralar yok): <b>{nolar.join(', ')}</b>
+                    <b>{periodLabel(period)}: {s.eksikToplam} satış faturası eksik görünüyor</b> ({s.seri} serisinde şu numaralar yok): <b>{nolar.join(', ')}</b>
                     {ocrProg?.active ? ' — okuma sürüyor, bitince kesinleşir.' : ' — kesilmemiş, iptal edilmiş ya da sisteme gelmemiş olabilir.'}
                   </span>
                 );
