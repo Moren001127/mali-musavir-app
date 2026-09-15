@@ -38,6 +38,7 @@ const { parseUblInvoice, isKdvTaxSubtotal, ublOcrDataFields, distributeDocumentD
 ));
 
 let failed = 0;
+
 function assert(ok, msg) { if (!ok) { console.error(`[ubl-parse] FAIL: ${msg}`); failed++; } }
 function approx(a, b, msg) { assert(Math.abs(Number(a) - Number(b)) < 0.005, `${msg}: ${a} != ${b}`); }
 
@@ -336,5 +337,70 @@ ${line(2, 'Deterjan', 1, 1000, 1000, `<cac:TaxTotal><cbc:TaxAmount currencyID="T
   assert(merged.odenecekTutar === undefined && merged.digerVergiToplam === undefined && merged.matrah === 1000, '11: spread ile bayat alan temizlenir, yeni alan kalır');
 }
 
+// 12) TEVKİFAT ÇIKARIMI (2026-09-15): Paraşüt sentetik XML — WithholdingTaxTotal yok, ödenecek = matrah + KDV − KDV×2/10.
+{
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<Invoice>
+  <ID>ZE22026000000009</ID><UUID>289014721</UUID><ProfileID>TICARIFATURA</ProfileID><IssueDate>2026-08-01</IssueDate>
+  <DocumentCurrencyCode>TRY</DocumentCurrencyCode>
+  <AccountingSupplierParty><Party><PartyName><Name>Mükellef</Name></PartyName><PartyIdentification><ID schemeID="TCKN">65647060374</ID></PartyIdentification></Party></AccountingSupplierParty>
+  <AccountingCustomerParty><Party><PartyName><Name>CASALİNDA HASIR</Name></PartyName><PartyIdentification><ID schemeID="VKN">2030651445</ID></PartyIdentification></Party></AccountingCustomerParty>
+  <TaxTotal><TaxAmount currencyID="TRY">3800.00</TaxAmount></TaxTotal>
+  <LegalMonetaryTotal>
+    <TaxExclusiveAmount currencyID="TRY">19000.00</TaxExclusiveAmount>
+    <TaxInclusiveAmount currencyID="TRY">22040.00</TaxInclusiveAmount>
+    <PayableAmount currencyID="TRY">22040.00</PayableAmount>
+  </LegalMonetaryTotal>
+</Invoice>`;
+  const p = parseUblInvoice(xml);
+  assert(p, '12: parse null');
+  approx(p.matrah, 19000, '12: matrah');
+  approx(p.kdvTutari, 3800, '12: KDV TAM kalır (tevkifat düşülmez)');
+  approx(p.tevkifatKdv, 760, '12: tevkifatKdv çıkarımı 760');
+  assert(p.tevkifatYuzde === 20, `12: tevkifatYuzde 20 (bulundu ${p.tevkifatYuzde})`);
+  approx(p.tevkifatOrani, 0.2, '12: tevkifatOrani 0,2');
+  assert(p.tevkifatCikarim === true, '12: tevkifatCikarim bayrağı');
+  approx(p.odenecekTutar, 22040, '12: odenecekTutar');
+  const f = ublOcrDataFields(p);
+  assert(f.tevkifatHint === true, '12: ocrData.tevkifatHint');
+  approx(f.tevkifatKdv, 760, '12: ocrData.tevkifatKdv');
+  assert(f.tevkifatCikarim === true, '12: ocrData.tevkifatCikarim');
+  // Karşıt durum: fark KDV'nin x/10'u DEĞİL (ör. 500) → çıkarım YOK
+  const p2 = parseUblInvoice(xml.replace('22040.00', '22300.00').replace('22040.00', '22300.00'));
+  assert(p2 && !p2.tevkifatKdv && !p2.tevkifatCikarim, '12b: x/10 olmayan fark tevkifat sayılmaz');
+  // Tevkifatsız normal belge (ödenecek = matrah + KDV) → çıkarım YOK
+  const p3 = parseUblInvoice(xml.replace(/22040\.00/g, '22800.00'));
+  assert(p3 && !p3.tevkifatKdv && !p3.tevkifatCikarim, '12c: tam ödenecekte tevkifat yok');
+}
+
+// 13) ALT TOPLAMSIZ TaxTotal + WithholdingTaxTotal (2026-09-15): TaxAmount TAM KDV ise düşülmez; tevkifatı da kapsıyorsa düşülür.
+{
+  const govde = (taxAmount, odenecek) => `<?xml version="1.0" encoding="UTF-8"?>
+<Invoice>
+  <ID>SNT2026000000001</ID><ProfileID>TICARIFATURA</ProfileID><IssueDate>2026-08-01</IssueDate><DocumentCurrencyCode>TRY</DocumentCurrencyCode>
+  <AccountingSupplierParty><Party><PartyName><Name>SATICI</Name></PartyName><PartyIdentification><ID schemeID="VKN">1111111111</ID></PartyIdentification></Party></AccountingSupplierParty>
+  <AccountingCustomerParty><Party><PartyName><Name>ALICI</Name></PartyName><PartyIdentification><ID schemeID="VKN">2222222222</ID></PartyIdentification></Party></AccountingCustomerParty>
+  <TaxTotal><TaxAmount currencyID="TRY">${taxAmount}</TaxAmount></TaxTotal>
+  <WithholdingTaxTotal><TaxAmount currencyID="TRY">400.00</TaxAmount><TaxSubtotal><TaxableAmount currencyID="TRY">2000.00</TaxableAmount><TaxAmount currencyID="TRY">400.00</TaxAmount><TaxCategory><Percent>20</Percent><TaxScheme><Name>KDV Tevkifatı</Name></TaxScheme></TaxCategory></TaxSubtotal></WithholdingTaxTotal>
+  <LegalMonetaryTotal>
+    <TaxExclusiveAmount currencyID="TRY">10000.00</TaxExclusiveAmount>
+    <TaxInclusiveAmount currencyID="TRY">12000.00</TaxInclusiveAmount>
+    <PayableAmount currencyID="TRY">${odenecek}</PayableAmount>
+  </LegalMonetaryTotal>
+</Invoice>`;
+  // a) TaxAmount = TAM KDV (2000): denklem 10000 + 2000 − 400 = 11600 tutar → KDV 2000 KALIR
+  const pa = parseUblInvoice(govde('2000.00', '11600.00'));
+  assert(pa, '13a: parse null');
+  approx(pa.kdvTutari, 2000, '13a: tam KDV düşülmez');
+  approx(pa.tevkifatKdv, 400, '13a: tevkifat 400');
+  assert(pa.tevkifatYuzde === 20, '13a: yüzde 20');
+  assert(!pa.tevkifatCikarim, '13a: açık veri, çıkarım değil');
+  // b) TaxAmount tevkifatı da KAPSIYOR (2400 = 2000 + 400): denklem tutmaz → 400 düşülür → KDV 2000
+  const pb = parseUblInvoice(govde('2400.00', '11600.00'));
+  assert(pb, '13b: parse null');
+  approx(pb.kdvTutari, 2000, '13b: kapsayan TaxAmount\'tan tevkifat düşülür');
+  approx(pb.tevkifatKdv, 400, '13b: tevkifat 400');
+}
+
 if (failed) { console.error(`[ubl-parse] ${failed} hata`); process.exit(1); }
-console.log('[ubl-parse] OK — tevkifatlı satış, telekom karışık vergi, iade/iptal (not karar vermez), iskonto, döviz, vergi türü süzgeci, kısmi tevkifat, e-SMM stopaj, yuvarlama, çok oranlı kdvOrani');
+console.log('[ubl-parse] OK — tevkifatlı satış, telekom karışık vergi, iade/iptal (not karar vermez), iskonto, döviz, vergi türü süzgeci, kısmi tevkifat, e-SMM stopaj, yuvarlama, çok oranlı kdvOrani, tevkifat çıkarımı (sentetik XML), alt toplamsız tevkifat aritmetiği');

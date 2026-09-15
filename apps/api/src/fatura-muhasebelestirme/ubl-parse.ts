@@ -40,6 +40,8 @@ export type ParsedProviderInvoice = {
    *  (tevkifat düşülmemiş) → satıcı tevkifatı UYGULAMAMIŞ; belge tam KDV ile ödenecek. tevkifatKdv 0'a çekilir, kod/yüzde bilgi olarak
    *  kalır ve bu bayrak + beyan edilen tutar (uyarı katmanı TEVKIFAT_UYGULANMAMIS) döner. */
   tevkifatUygulanmamis?: { kod?: string; yuzde?: number; beyanEdilen: number };
+  /** Tevkifat WithholdingTaxTotal'dan değil ödenecek tutar denkleminden ÇIKARILDI (sentetik/eksik UBL; 2026-09-15). */
+  tevkifatCikarim?: boolean;
   /** SMM gelir vergisi stopajı (UBL WithholdingTaxTotal, TaxTypeCode 0003/0011 — KDV tevkifatı DEĞİL). */
   stopajTutari?: number;
   /** Belge türü ipucu: e-SMM (ProfileID ESERBESTMESLEKMAKBUZU / CreditNoteTypeCode SERBESTMESLEKMAKBUZU). */
@@ -427,10 +429,36 @@ export function parseUblInvoice(xml: string, warn?: (msg: string) => void): Pars
       tevkifatUygulanmamis = { ...(tevkifatKodu ? { kod: tevkifatKodu } : {}), ...(tevkifatYuzde != null ? { yuzde: tevkifatYuzde } : {}), beyanEdilen: round2(tevkifatKdvSum) };
       tevkifatKdvSum = 0;
     }
+    // ── TEVKİFAT ÇIKARIMI (2026-09-15 canlı bulgu — Zeki Özkaynak, Paraşüt satış faturaları) ──
+    //   Paraşüt liste verisinden üretilen SENTETİK XML'de WithholdingTaxTotal YOK; ödenecek 22.040 ama matrah 19.000 +
+    //   KDV 3.800 = 22.800 → 760 fark = KDV × 2/10. Belge "Tutar tutarsız / Çelişki" engeline düşüyor, tevkifat anlaşılmıyordu.
+    //   Kural: WithholdingTaxTotal ve stopaj yokken ödenecek = matrah + KDV + diğer vergi − X ve X, KDV'nin TAM x/10'u
+    //   (1..10/10, tolerans 0,05 ₺) ise KDV tevkifatı sayılır (yüzde = x·10, kod bilinmez). İskonto denkleme girmez
+    //   (matrah zaten net), ÖTV/ÖİV ödenecek tutarı artırır, azaltmaz → yanlış pozitif ihtimali düşük.
+    //   Bu yolda TaxTotal tevkifatı KAPSAMAZ; aşağıdaki "kdvTutari − tevkifat" düzeltmesi uygulanmaz (KDV tam kalır).
+    let tevkifatCikarim = false;
+    if (!(tevkifatKdvSum > 0) && !(stopajSum > 0) && odenecekTutar != null && matrah != null && kdvTutari != null && kdvTutari > 0) {
+      const fark = round2(round2(matrah + kdvTutari + digerVergiToplam) - odenecekTutar);
+      if (fark > 0.05) {
+        for (let pay = 1; pay <= 10; pay++) {
+          if (Math.abs(fark - round2((kdvTutari * pay) / 10)) <= 0.05) {
+            tevkifatKdvSum = fark;
+            tevkifatYuzde = pay * 10;
+            tevkifatCikarim = true;
+            break;
+          }
+        }
+      }
+    }
     // TEVKİFAT KDV'yi kdvTutari'ye KATMA (gevşek TaxTotal eşleşmesi WithholdingTaxTotal'ı kapsayabilir).
-    if (tevkifatKdvSum > 0 && kdvTutari != null) {
+    //   Kırılım yoksa ARİTMETİK karar (2026-09-15): TaxAmount zaten TAM KDV ise (matrah + KDV + diğer − tevkifat = ödenecek)
+    //   düşülmez; yalnız TaxAmount tevkifatı da kapsıyorsa (denklem tutmuyorsa) düşülür. Alt toplamsız sentetik/özet
+    //   UBL'de (Paraşüt) tam KDV 3.800'den 760 düşülüp 3.040 kalıyor, fiş yanlış kuruluyordu.
+    if (tevkifatKdvSum > 0 && kdvTutari != null && !tevkifatCikarim) {
       const bdSum = kdvBreakdown.reduce((s, b) => s + b.amount, 0);
-      kdvTutari = bdSum > 0 ? round2(bdSum) : Math.max(0, round2(kdvTutari - tevkifatKdvSum));
+      const tamKdvDenklemi = odenecekTutar != null && matrah != null
+        && Math.abs(round2(matrah + kdvTutari + digerVergiToplam - tevkifatKdvSum) - odenecekTutar) <= 0.05;
+      kdvTutari = bdSum > 0 ? round2(bdSum) : tamKdvDenklemi ? kdvTutari : Math.max(0, round2(kdvTutari - tevkifatKdvSum));
     }
     const tevkifatKdv = tevkifatKdvSum > 0 ? round2(tevkifatKdvSum) : undefined;
     const stopajTutari = stopajSum > 0 ? round2(stopajSum) : undefined;
@@ -495,6 +523,7 @@ export function parseUblInvoice(xml: string, warn?: (msg: string) => void): Pars
       ...(tevkifatYuzde != null ? { tevkifatYuzde } : {}),
       ...(tevkifatOrani != null ? { tevkifatOrani } : {}),
       ...(tevkifatUygulanmamis ? { tevkifatUygulanmamis } : {}),
+      ...(tevkifatCikarim ? { tevkifatCikarim: true } : {}),
       ...(stopajTutari != null ? { stopajTutari } : {}),
       ...(documentType ? { documentType } : {}),
       iade,
@@ -537,6 +566,7 @@ export function ublOcrDataFields(p: ParsedProviderInvoice | null | undefined): R
     ...(p.tevkifatYuzde != null ? { tevkifatYuzde: p.tevkifatYuzde } : {}),
     // Tevkifat bloğu var ama ödenecekten düşülmemiş (satıcı uygulamamış) — uyarı katmanı TEVKIFAT_UYGULANMAMIS üretir; fiş normal kurulur.
     ...(p.tevkifatUygulanmamis ? { tevkifatUygulanmamis: p.tevkifatUygulanmamis } : {}),
+    ...(p.tevkifatCikarim ? { tevkifatCikarim: true } : {}),
     // SMM stopajı (UBL 0003/0011) — KDV tevkifatından AYRI; linesFromAmounts 'kesinti' 360 satırını bundan kurar.
     ...(Number(p.stopajTutari) > 0 ? { stopajTutari: Number(p.stopajTutari) } : {}),
     isReturn: p.iade === true,
@@ -559,7 +589,7 @@ export function ublOcrDataFields(p: ParsedProviderInvoice | null | undefined): R
  */
 export const UBL_ONLY_OCR_FIELDS = [
   'odenecekTutar', 'odenecekYuvarlama', 'digerVergiToplam', 'digerVergiler', 'belgeDurumu', 'parserVersion',
-  'tevkifatKodu', 'tevkifatYuzde', 'tevkifatUygulanmamis', 'iskonto', 'kur', 'faturaTipi',
+  'tevkifatKodu', 'tevkifatYuzde', 'tevkifatUygulanmamis', 'tevkifatCikarim', 'iskonto', 'kur', 'faturaTipi',
 ] as const;
 
 /** Spread ile ocrData'ya yazılır: `{ ...eski, ...clearUblOnlyOcrFields(), ...yeni }` → bayat UBL alanı kalmaz. */

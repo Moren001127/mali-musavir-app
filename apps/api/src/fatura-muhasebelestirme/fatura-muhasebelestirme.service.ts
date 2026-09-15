@@ -10,12 +10,15 @@ import { OcrService, OcrResult } from '../kdv-control/ocr';
 import { KdvControlService } from '../kdv-control/kdv-control.service';
 import { EarsivRenderService } from '../earsiv/earsiv-render.service';
 import { encrypt, tryDecrypt } from '../common/crypto';
-import { claudeTextViaMax, MAX_MODEL_CHEAP, MAX_MODEL_DEFAULT } from '../common/max-inference';
+import { MAX_MODEL_CHEAP, MAX_MODEL_DEFAULT } from '../common/max-inference';
+// 2026-09-15: FM AI çağrıları (okuma/kalem/sınıf/yorum) tek kapıdan — FM_AI_SAGLAYICI=openai → gpt-4o-mini, boş → Max (bugünkü yol).
+import { fmTextAi } from '../common/fm-ai';
+import { saticiHafizasiKarari, HafizaOrnegi, SaticiHafizasiKarari, saticiHafizasiModu } from './satici-hafizasi';
 import { buildLucaImportExcel, buildLucaIsletmeHizliFisCsv } from './luca-excel.service';
 import { reconcileMatrahSplit } from './kalem-split';
 // PLAN/15 Faz 1-B (2026-09-12): plan adayları TEK kaynaktan (yön sıralı + rol etiketli + grup tavanlı) + satış gelir kuralı sabiti.
 import { planAdaylariHazirla, planAdayKodSeti, SATIS_GELIR_HESABI_KURALI, PLAN_ADAY_ROL_ACIKLAMASI } from './plan-adaylari';
-import { ogrenilmisKararSec, adCozumAdaylari, kodKategori, HizliYolKarar, HizliYolSecim } from './ogrenme-hizli-yol';
+import { ogrenilmisKararSec, adCozumAdaylari, kodKategori, mevzuatUygunMu, planYaprakHaritasi, HizliYolKarar, HizliYolSecim } from './ogrenme-hizli-yol';
 import { parseUblInvoice, ublOcrDataFields, clearUblOnlyOcrFields, resolveTevkifatOrani, ParsedProviderInvoice } from './ubl-parse';
 // PLAN/15 Faz 6 (2026-09-13): kalemsiz sağlayıcı XML'inde (Paraşüt özeti gibi) kalemler belgenin PDF/görselinden tamamlanır (saf modül).
 import { kalemPdfGerekliMi, kalemPdfTamamla, aiMatrahGuvenTavani, KalemPdfDosya, KalemKaynak } from './kalem-pdf';
@@ -552,8 +555,22 @@ type ClassifyResult = {
 };
 
 /** Classify yolu ek girdileri (PLAN/15 Faz 1-B): kelime kuralı İPUCU (AI körü körüne kopyalamasın),
- *  plan aday kod kümesi (dönen kodun geçerliliği), güçlü model isteği (Sonnet eskalasyonu — iç kullanım). */
-type ClassifyEk = { ipucu?: string; planKodlari?: Set<string>; strongModel?: boolean };
+ *  plan aday kod kümesi (dönen kodun geçerliliği), güçlü model isteği (Sonnet eskalasyonu — iç kullanım).
+ *  hafizaIpucu (2026-09-15): satıcı hafızası uygulanamadığında AI'ya tek satır özet ("önceki N faturada genelde X hesabı"). */
+type ClassifyEk = { ipucu?: string; hafizaIpucu?: string; planKodlari?: Set<string>; strongModel?: boolean };
+
+/** SATICI HAFIZASI sonucu (2026-09-15, satici-hafizasi.ts) — servis katmanı (plan/mevzuat doğrulaması sonrası).
+ *  uygula:true → AI çağrısı ATLANIR, alanlar ocrData'ya AI'ın yazdığı adlarla (giderTuru/matrahKategori/aiMatrahKodu) yazılır.
+ *  uygula:false → ipucu (varsa) AI prompt'una eklenir. iz: ocrData.hafiza (ekranda görünürlük). */
+type SaticiHafizasiSonucu = {
+  uygula: boolean;
+  hesapKodu: string | null;
+  matrahKategori: string | null;
+  giderTuru: string | null;
+  guven: 'yuksek' | 'orta';
+  ipucu?: string;
+  iz: { ornek: number; benzerlik: number; neden: string; hesap: string | null; satici: string; tarih: string; mod: 'acik' | 'ipucu' };
+};
 
 /** Kalıcı belge kuyruğu kancası (2026-09-13) — BelgeKuyrukService bu sözleşmeyle kendini bağlar (kuyrukBagla).
  *  Bu dosya belge-kuyruk.service'i import ETMEZ (dosya-düzeyi döngü olmasın). */
@@ -619,7 +636,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   private readonly classifyBatchDebounceMs = Math.max(0, Number(process.env.MAX_CLASSIFY_BATCH_MS || 8000)); // 2026-09-13: 1,5→8 sn (grup=1 kalıyordu)
   private readonly classifyBatchBuffers = new Map<string, {
     // ipucu: belge-bazlı kelime kuralı ipucu (PLAN/15 Faz 1-B) — parti anahtarına GİRMEZ (partiler bölünmesin), belge bloğuna yazılır.
-    items: Array<{ contentText: string; resolve: (v: ClassifyResult | null) => void; ipucu?: string }>;
+    items: Array<{ contentText: string; resolve: (v: ClassifyResult | null) => void; ipucu?: string; hafizaIpucu?: string }>;
     timer: NodeJS.Timeout | null;
     shared: { mukellefBilgi: string; isIsletme: boolean; invoiceKind?: 'ALIS' | 'SATIS'; planAdaylar?: string; planKodlari?: Set<string>; strong?: boolean };
   }>();
@@ -3639,7 +3656,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       where: { id: documentId, tenantId },
       // sellerVkn/buyerVkn (2026-09-13): öğrenme hızlı yolu + işletme hafızası (islVkn) karşı taraf VKN'sini buradan okur;
       //   eskiden seçilmiyordu → islVkn hep boş kalıyor, pickIsletmeMemory hiç çalışmıyordu.
-      select: { id: true, taxpayerId: true, invoiceKind: true, documentType: true, vendorName: true, customerName: true, sellerVkn: true, buyerVkn: true, ocrData: true },
+      // belgeNo/totalAmount (2026-09-15): satıcı hafızası (log etiketi + tutar aralığı; matrah yoksa toplam).
+      select: { id: true, taxpayerId: true, invoiceKind: true, documentType: true, vendorName: true, customerName: true, sellerVkn: true, buyerVkn: true, ocrData: true, belgeNo: true, totalAmount: true },
     }).catch(() => null);
     if (!doc) return;
     const od: any = doc.ocrData || {};
@@ -3724,19 +3742,22 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   mükellefler arası baskın ad) Max HİÇ ÇAĞRILMAZ; kategori koddan, hesap aiMatrahKodu'na (rematch uygular),
     //   ocrData.ogrenmeKaynak ölçüm izi. Yalnız bilanço + plan var + imza var. Mevzuat ağı saf modülde.
     let ogrenmeSecimi: HizliYolSecim | null = null;
+    // had-üstü demirbaş tespiti (içerik+faaliyet): öğrenilmiş/hafıza kodu 25x değilse saf modül reddeder.
+    // rematch ile aynı: had (VUK 313) yalnız ALIŞ'ta; satışta kendi sabit kıymetinin çıkışı tutardan bağımsız demirbaş.
+    const hyDemirbas = (() => { try { const fa = this.detectFixedAsset(od, tpRow, kind); return fa.is && !(kind !== 'SATIS' && this.demirbasHaddiAltinda(od, fa.reason, undefined)); } catch { return false; } })();
     if (doc.taxpayerId && !isIsletme && planSatirlari.length) {
       const hyVkn = String((kind === 'SATIS' ? doc.buyerVkn : doc.sellerVkn) || od?.[kind === 'SATIS' ? 'aliciVkn' : 'saticiVkn'] || '').replace(/\D/g, '');
       const hyImza = VendorMemoryService.buildIcerikImza((Array.isArray(od.kalemler) ? od.kalemler : []).map((k: any) => k?.ad));
       if (hyVkn && hyImza) {
         ogrenmeSecimi = await this.ogrenilmisHizliYol(tenantId, doc.taxpayerId, hyVkn, hyImza, {
           yon: kind, plan: planSatirlari, imzaZorunlu: true,
-          // had-üstü demirbaş tespiti (içerik+faaliyet): öğrenilmiş kod 25x değilse saf modül reddeder
-          // rematch ile aynı: had (VUK 313) yalnız ALIŞ'ta; satışta kendi sabit kıymetinin çıkışı tutardan bağımsız demirbaş.
-          demirbas: (() => { try { const fa = this.detectFixedAsset(od, tpRow, kind); return fa.is && !(kind !== 'SATIS' && this.demirbasHaddiAltinda(od, fa.reason, undefined)); } catch { return false; } })(),
+          demirbas: hyDemirbas,
         }).catch(() => null);
       }
     }
     let c: any = null;
+    // SATICI HAFIZASI (2026-09-15): öğrenme hızlı yolu seçemediyse ve kelime kuralı atlamıyorsa, AI'dan HEMEN ÖNCE.
+    let hafizaSonucu: SaticiHafizasiSonucu | null = null;
     if (ogrenmeSecimi) {
       c = {
         giderTuru: detC?.giderTuru || od?.giderTuru || String(ogrenmeSecimi.ad || '').toLocaleLowerCase('tr-TR').slice(0, 40),
@@ -3750,6 +3771,26 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       c = detC;
       this.logger.log(`[CLS-SKIP] det icerik=${detC.kategori} → Max ATLANDI (FM_DET_ATLA=1) doc=${documentId}`);
     } else {
+      // SATICI HAFIZASI (2026-09-15): aynı satıcının önceki faturaları (üç şart: ≥2 aynı sınıf + kalem benzer + tutar aralıkta)
+      //   → AI ATLANIR; uygulanamazsa özet AI'ya tek satır ipucu. Hesap kodu mükellef planına özgü → aynı mükellefte aranır.
+      hafizaSonucu = await this.saticiHafizasiDene(
+        tenantId,
+        { id: doc.id, belgeNo: doc.belgeNo, taxpayerId: doc.taxpayerId, invoiceKind: kind, sellerVkn: doc.sellerVkn || od?.saticiVkn, buyerVkn: doc.buyerVkn || od?.aliciVkn, vendorName: doc.vendorName, customerName: doc.customerName },
+        {
+          kalemAdlari: (Array.isArray(od.kalemler) ? od.kalemler : []).map((k: any) => String(k?.ad || '').trim()).filter(Boolean),
+          tutar: Number(od.matrah) > 0 ? Number(od.matrah) : (Number(doc.totalAmount) || 0),
+        },
+        { isIsletme, plan: planSatirlari.length ? planSatirlari : null, demirbas: hyDemirbas },
+      ).catch(() => null);
+      if (hafizaSonucu?.uygula) {
+        c = {
+          giderTuru: hafizaSonucu.giderTuru || detC?.giderTuru || od?.giderTuru || '',
+          kategori: hafizaSonucu.matrahKategori || detC?.kategori || (hafizaSonucu.hesapKodu ? kodKategori(hafizaSonucu.hesapKodu, kind) : '') || od?.matrahKategori || '',
+          matrahHesapKodu: hafizaSonucu.hesapKodu || undefined,
+          guven: hafizaSonucu.guven,
+          muhasebeNeden: `Bu satıcının önceki faturalarıyla aynı sınıflandırma (satıcı hafızası: ${hafizaSonucu.iz.neden}) — AI atlandı.`,
+        };
+      } else {
       if (detC) this.logger.log(`[CLS-IPUCU] det kategori=${detC.kategori} → AI'a ipucu verildi doc=${documentId}`);
       // KOALESANS (doğrulama düzeltmesi 2026-09-13): burası TEKİL aiClassifyAccounting çağırıyordu → kalıcı kuyruk
       //   partisi (10 belge aynı anda) yine 10 ayrı Max çağrısına dönüyordu (kapı 3, her biri 95-153 sn ≈ 8 dk/parti).
@@ -3757,6 +3798,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       //   çağrısında birleştirir (aiReadDocument ile aynı yol; Sonnet eskalasyonu + tek-tek fallback flush içinde).
       c = await this.aiClassifyAccountingCoalesced(content, mukellefBilgi, isIsletme, kind, planMetni || undefined, {
         ipucu: detC ? `kategori=${detC.kategori}, gider türü=${detC.giderTuru}` : undefined,
+        hafizaIpucu: hafizaSonucu?.ipucu,
         planKodlari,
         strongModel: secenek.guclu === true,
       }).catch(() => null);
@@ -3764,6 +3806,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       if (c?.eskalasyonAdayi && !secenek.guclu) this.gucluTuruKuyrugaAl(tenantId, doc.taxpayerId, documentId);
       // AI boş/hatalı → eski ipucu sonucu yedek (davranış eskisinden kötü olmasın).
       if (!c && detC) { c = detC; this.logger.warn(`[CLS-IPUCU] AI yanıt vermedi → kelime kuralı yedek kullanıldı (${detC.kategori}) doc=${documentId}`); }
+      }
     }
     // A.8 — Max çağrısı ~100 sn sürebilir; bu arada revalidate (uyarilar), sahip kararları (demirbasKarar/mukerrerKarar),
     //   editör düzeltmeleri ocrData'ya yazılmış olabilir. Baştaki `od` kopyasıyla yazmak bunları EZİYORDU → yazmadan
@@ -3786,14 +3829,19 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         const aiKod = String(c.matrahHesapKodu || '').trim();
         // GÖREV B: öğrenilmiş kod aday tavanı (150) dışında kalabilir — plan yaprağı saf modülde doğrulandı.
         const ogrenilmisKod = !!(ogrenmeSecimi && ogrenmeSecimi.kod === aiKod);
-        if (aiKod && ((planKodlari && planKodlari.has(aiKod)) || ogrenilmisKod)) {
+        // SATICI HAFIZASI (2026-09-15): kod aday tavanı dışında kalabilir — güncel plan yaprağı + mevzuat saticiHafizasiDene'de doğrulandı.
+        const hafizaKod = !!(hafizaSonucu?.uygula && hafizaSonucu.hesapKodu === aiKod);
+        if (aiKod && ((planKodlari && planKodlari.has(aiKod)) || ogrenilmisKod || hafizaKod)) {
           patch.aiMatrahKodu = aiKod;
           if (c.guven) patch.aiMatrahGuven = c.guven;
           // PLAN/15 Faz 6 (2026-09-13): kalemler PDF/görselden tamamlanmış belgede (ocrData.kalemKaynak pdf/pdf-tahmin) güven en fazla 'orta'.
           if (patch.aiMatrahGuven) patch.aiMatrahGuven = aiMatrahGuvenTavani(patch.aiMatrahGuven, od?.kalemKaynak);
-          if (!ogrenilmisKod) this.logger.log(`[CLS-PLAN] AI matrah hesabı=${aiKod} guven=${c.guven || '-'} doc=${documentId}`);
+          if (!ogrenilmisKod && !hafizaKod) this.logger.log(`[CLS-PLAN] AI matrah hesabı=${aiKod} guven=${c.guven || '-'} doc=${documentId}`);
         }
       }
+      // SATICI HAFIZASI (2026-09-15) görünürlük: sınıfın kaynağı + hafıza izi (ekran ocrData'yı olduğu gibi alır; list()/get() tam belge döner).
+      patch.sinifKaynak = hafizaSonucu?.uygula ? 'satici-hafizasi' : ogrenmeSecimi ? 'ogrenilmis' : (detC && c === detC) ? 'kelime-kurali' : 'ai';
+      patch.hafiza = hafizaSonucu?.uygula ? hafizaSonucu.iz : null;
     }
     // GÖREV B (2026-09-13) ölçüm izi: hızlı yol seçtiyse {kaynak, kural, kod, neden}; Max çalıştıysa null (bayat iz rematch'i yanıltmasın).
     if (!isIsletme) patch.ogrenmeKaynak = ogrenmeSecimi ? { kaynak: ogrenmeSecimi.kaynak, kural: ogrenmeSecimi.kural, kod: ogrenmeSecimi.kod, guven: ogrenmeSecimi.guven, neden: ogrenmeSecimi.neden, tarih: new Date().toISOString() } : null;
@@ -11410,6 +11458,44 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const edType = String(item?.relationships?.active_e_document?.data?.type || '').trim();
     const isEArsiv = direction === 'SATIS' && edType === 'e_archives';
     const profileId = isEArsiv ? 'EARSIVFATURA' : 'TICARIFATURA';
+    // ── TEVKİFAT / STOPAJ / ÖTV / ÖİV (2026-09-15 canlı bulgu — Zeki Özkaynak satış faturaları) ──
+    //   Paraşüt liste alanları (apidocs swagger): total_vat_withholding "Tevkifat", withholding "Stopaj",
+    //   total_excise_duty ÖTV, total_communications_tax ÖİV; net_total "Genel Toplam" = ÖDENECEK (kesintiler
+    //   DÜŞÜLMÜŞ). Sentetik XML'e WithholdingTaxTotal yazılmayınca ayrıştırıcı tevkifatı görmüyor, 18 belge
+    //   "Tutar tutarsız" engeline düşüyordu. UBL-TR kuralı: TaxInclusiveAmount = KDV DAHİL toplam,
+    //   PayableAmount = kesinti sonrası ödenecek (ayrıştırıcı "ödenecek = KDV dahil" görürse tevkifatı
+    //   UYGULANMAMIŞ sayar → iki tutar ayrı yazılır). Kesinti yoksa XML bugünkü haliyle AYNI kalır.
+    const cur = this.xmlEscape(currency);
+    const kdvTevkifat = Math.max(0, this.parasutNumber(attrs.total_vat_withholding));
+    const stopaj = Math.max(0, this.parasutNumber(attrs.withholding));
+    const otv = Math.max(0, this.parasutNumber(attrs.total_excise_duty));
+    const oiv = Math.max(0, this.parasutNumber(attrs.total_communications_tax));
+    const vergiToplam = totalVat + otv + oiv;
+    const kesintiVar = kdvTevkifat > 0.005 || stopaj > 0.005;
+    const kdvDahil = kesintiVar && Number.isFinite(taxExclusive) && taxExclusive > 0 ? taxExclusive + vergiToplam : total;
+    // Tevkifat yüzdesi tutardan (760/3800 = 2/10 → 20); tam x/10 değilse yüzde yazılmaz (ayrıştırıcı oranı tutardan alır).
+    let tevkifatYuzde = 0;
+    if (kdvTevkifat > 0 && totalVat > 0) {
+      const pay = Math.round((kdvTevkifat / totalVat) * 10);
+      if (pay >= 1 && pay <= 10 && Math.abs((totalVat * pay) / 10 - kdvTevkifat) <= 0.05) tevkifatYuzde = pay * 10;
+    }
+    const stopajKodu = ownTaxNo.length === 11 ? '0003' : '0011'; // şahıs → GV stopajı, şirket → KV stopajı
+    const withholdingXml = [
+      kdvTevkifat > 0.005
+        ? `<WithholdingTaxTotal><TaxAmount currencyID="${cur}">${this.parasutMoney(kdvTevkifat)}</TaxAmount><TaxSubtotal><TaxableAmount currencyID="${cur}">${this.parasutMoney(totalVat)}</TaxableAmount><TaxAmount currencyID="${cur}">${this.parasutMoney(kdvTevkifat)}</TaxAmount><TaxCategory>${tevkifatYuzde ? `<Percent>${tevkifatYuzde}</Percent>` : ''}<TaxScheme><Name>KDV Tevkifatı</Name></TaxScheme></TaxCategory></TaxSubtotal></WithholdingTaxTotal>`
+        : '',
+      stopaj > 0.005
+        ? `<WithholdingTaxTotal><TaxAmount currencyID="${cur}">${this.parasutMoney(stopaj)}</TaxAmount><TaxSubtotal><TaxableAmount currencyID="${cur}">${this.parasutMoney(taxExclusive)}</TaxableAmount><TaxAmount currencyID="${cur}">${this.parasutMoney(stopaj)}</TaxAmount><TaxCategory>${this.parasutNumber(attrs.withholding_rate) > 0 ? `<Percent>${this.parasutNumber(attrs.withholding_rate)}</Percent>` : ''}<TaxScheme><Name>${stopajKodu === '0003' ? 'Gelir Vergisi Stopajı' : 'Kurumlar Vergisi Stopajı'}</Name><TaxTypeCode>${stopajKodu}</TaxTypeCode></TaxScheme></TaxCategory></TaxSubtotal></WithholdingTaxTotal>`
+        : '',
+    ].filter(Boolean).join('\n  ');
+    // KDV dışı vergi varsa alt toplamlar (0015 KDV / 0071 ÖTV / 4171 ÖİV) → ayrıştırıcı KDV'yi yalnız KDV kırılımından alır.
+    const taxTotalXml = otv > 0.005 || oiv > 0.005
+      ? `<TaxTotal><TaxAmount currencyID="${cur}">${this.parasutMoney(vergiToplam)}</TaxAmount>`
+        + `<TaxSubtotal><TaxableAmount currencyID="${cur}">${this.parasutMoney(taxExclusive)}</TaxableAmount><TaxAmount currencyID="${cur}">${this.parasutMoney(totalVat)}</TaxAmount><TaxCategory><TaxScheme><Name>KDV</Name><TaxTypeCode>0015</TaxTypeCode></TaxScheme></TaxCategory></TaxSubtotal>`
+        + (otv > 0.005 ? `<TaxSubtotal><TaxAmount currencyID="${cur}">${this.parasutMoney(otv)}</TaxAmount><TaxCategory><TaxScheme><Name>ÖTV</Name><TaxTypeCode>0071</TaxTypeCode></TaxScheme></TaxCategory></TaxSubtotal>` : '')
+        + (oiv > 0.005 ? `<TaxSubtotal><TaxAmount currencyID="${cur}">${this.parasutMoney(oiv)}</TaxAmount><TaxCategory><TaxScheme><Name>ÖİV</Name><TaxTypeCode>4171</TaxTypeCode></TaxScheme></TaxCategory></TaxSubtotal>` : '')
+        + `</TaxTotal>`
+      : `<TaxTotal><TaxAmount currencyID="${cur}">${this.parasutMoney(totalVat)}</TaxAmount></TaxTotal>`;
 
     return `<?xml version="1.0" encoding="UTF-8"?>
 <Invoice>
@@ -11417,14 +11503,15 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   ${uuid ? `<UUID>${this.xmlEscape(uuid)}</UUID>` : ''}
   <ProfileID>${profileId}</ProfileID>
   ${issueDate ? `<IssueDate>${this.xmlEscape(issueDate)}</IssueDate>` : ''}
-  <DocumentCurrencyCode>${this.xmlEscape(currency)}</DocumentCurrencyCode>
+  <DocumentCurrencyCode>${cur}</DocumentCurrencyCode>
   ${this.syntheticParasutPartyXml('AccountingSupplierParty', supplier.name, supplier.taxNo)}
   ${this.syntheticParasutPartyXml('AccountingCustomerParty', customer.name, customer.taxNo)}
-  <TaxTotal><TaxAmount currencyID="${this.xmlEscape(currency)}">${this.parasutMoney(totalVat)}</TaxAmount></TaxTotal>
+  ${taxTotalXml}
+  ${withholdingXml}
   <LegalMonetaryTotal>
-    <TaxExclusiveAmount currencyID="${this.xmlEscape(currency)}">${this.parasutMoney(taxExclusive)}</TaxExclusiveAmount>
-    <TaxInclusiveAmount currencyID="${this.xmlEscape(currency)}">${this.parasutMoney(total)}</TaxInclusiveAmount>
-    <PayableAmount currencyID="${this.xmlEscape(currency)}">${this.parasutMoney(total)}</PayableAmount>
+    <TaxExclusiveAmount currencyID="${cur}">${this.parasutMoney(taxExclusive)}</TaxExclusiveAmount>
+    <TaxInclusiveAmount currencyID="${cur}">${this.parasutMoney(kdvDahil)}</TaxInclusiveAmount>
+    <PayableAmount currencyID="${cur}">${this.parasutMoney(total)}</PayableAmount>
   </LegalMonetaryTotal>
 </Invoice>`;
   }
@@ -14948,7 +15035,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             || (ubl.iade == null && ubl.documentType !== 'E_SMM' && (/<\w*:?CreditNote[\s>]/i.test(xml) || /<[^>]*InvoiceTypeCode[^>]*>\s*[İI]ADE/i.test(xml)))
             || /<[^>]*InvoiceTypeCode[^>]*>\s*[İI]PTAL/i.test(xml),
           // TEVKİFAT: belgede tevkifat/WithholdingTax geçiyorsa (e-Arşiv "Fatura Tipi: TEVKIFAT").
-          tevkifat: /TEVK[İIiı]FAT|WithholdingTax/i.test(xml),
+          //   Sentetik/eksik UBL'de ayrıştırıcı tevkifatı ödenecek tutar denkleminden ÇIKARABİLİR (tevkifatCikarim) → o da sayılır.
+          tevkifat: /TEVK[İIiı]FAT|WithholdingTax/i.test(xml) || (Number(ubl.tevkifatKdv) || 0) > 0,
           // TEVKİFAT TUTARI (UBL WithholdingTaxTotal): satışta 391'e NET KDV (hesaplanan − tevkifat) gider;
           //   tevkifatOrani buradan çıkar → "tevkifat tutarı okunamadı" çelişkisi (TEVKIFAT_NET_NEEDED) biter.
           tevkifatKdv: ubl.tevkifatKdv,
@@ -14980,7 +15068,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         if (!dosya) {
           this.logger.log(`[KALEM-PDF] belge=${d.belgeNo || documentId} XML kalemsiz ama PDF/görsel yok → kalem tamamlanamadı`);
         } else {
-          const r = await kalemPdfTamamla(preParsed, dosya, (p) => claudeTextViaMax(p), {
+          // 2026-09-15: AI kapısı fmTextAi (amac=kalem) — OpenAI seçiliyse model env'den (hızlı/güçlü), Max'te eski modeller.
+          const r = await kalemPdfTamamla(preParsed, dosya, (p) => fmTextAi({ ...p, amac: 'kalem' }), {
             yon: d.invoiceKind === 'SATIS' ? 'SATIS' : 'ALIS',
             belgeNo: d.belgeNo || null,
             modeller: [MAX_MODEL_CHEAP, undefined], // 1) hızlı model 2) kalem gelmezse güçlü model (varsayılan Sonnet)
@@ -15231,10 +15320,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       //   doğruluğu zengin prompt + keyword güvenlik-ağı + öğrenme sağlar. (İleride: belirsiz belgeyi Sonnet'e
       //   eskale eden İKİ-AŞAMALI okuma — güven-skoruyla.)
       const model = attempt >= 3 ? undefined : MAX_MODEL_CHEAP; // 3. deneme: Sonnet (varsayılan)
-      const res = await claudeTextViaMax(
+      // 2026-09-15: fmTextAi (amac=okuma) — OpenAI'de model env'den; 3. deneme (model=undefined=Sonnet) güçlü OpenAI modeli.
+      const res = await fmTextAi(
         (isImage && !useAzureText)
-          ? { prompt: callPrompt, images: [{ base64: imgBuf!.toString('base64'), mediaType: imgMedia }], timeoutMs: 75000, model }
-          : { prompt: callPrompt, timeoutMs: 85000, model },
+          ? { prompt: callPrompt, images: [{ base64: imgBuf!.toString('base64'), mediaType: imgMedia }], timeoutMs: 75000, model, amac: 'okuma' }
+          : { prompt: callPrompt, timeoutMs: 85000, model, amac: 'okuma' },
       );
       if (!res.ok || !res.text) {
         reason = res.error || 'okunamadı';
@@ -15265,10 +15355,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       // GLOBAL stall-koruması: eskalasyon YALNIZ hesap BOŞ (AI seçemedi — objektif, düşük hacim) VEYA
       //   güven ÇOK düşükse (<0.4 / "dusuk"). Böylece çok-mükellefte Sonnet yükü patlamaz (toplu-stall önlenir).
       if (_kodBos || _guvenDusuk || (Number.isFinite(_g) && _g < 0.4)) {
-        const res2: any = await claudeTextViaMax(
+        // 2026-09-15: okuma ESKALASYONU (amac=okuma; model=undefined=Sonnet → OpenAI'de güçlü model) — 'sinifGuclu' DEĞİL.
+        const res2: any = await fmTextAi(
           (isImage && !useAzureText)
-            ? { prompt: callPrompt, images: [{ base64: imgBuf!.toString('base64'), mediaType: imgMedia }], timeoutMs: 90000, model: undefined }
-            : { prompt: callPrompt, timeoutMs: 95000, model: undefined },
+            ? { prompt: callPrompt, images: [{ base64: imgBuf!.toString('base64'), mediaType: imgMedia }], timeoutMs: 90000, model: undefined, amac: 'okuma' }
+            : { prompt: callPrompt, timeoutMs: 95000, model: undefined, amac: 'okuma' },
         ).catch(() => null);
         if (res2?.ok && res2.text) {
           try { const m2 = res2.text.match(/\{[\s\S]*\}/); const p2 = m2 ? JSON.parse(m2[0]) : null; if (p2) { parsed = p2; (parsed as any)._sonnetEskale = true; } } catch { /* Sonnet çözülemedi → Haiku sonucunu KORU */ }
@@ -15288,6 +15379,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   AI çalışsın, eşleştirmeyi içeriğe göre yapsın.") 632/IPHONE/demirbaş yanlışları ayrı korumalarda.
     // GÖREV B (2026-09-13): öğrenme hızlı yolu seçimi — ocrData.ogrenmeKaynak + aiMatrahKodu yazımında kullanılır.
     let ogrenmeSecimiOkuma: HizliYolSecim | null = null;
+    // SATICI HAFIZASI (2026-09-15): inline sınıflandırmada hafıza seçimi — ocrData.sinifKaynak/hafiza/aiMatrahKodu yazımında kullanılır.
+    let hafizaOkuma: SaticiHafizasiSonucu | null = null;
+    let sinifKaynakOkuma: 'ai' | 'kelime-kurali' | null = null;
     if (parsed === preParsed && d.taxpayerId) {
       // TEMİZ içerik: HTML-HIZLI yolunda _htmlText zaten script/style atılmış + 8000 char (sınıflandırma
       //   AI'ı 23KB ham HTML gürültüsünde boğuluyordu → NULL/boş kategori). Önce onu kullan; yoksa eski yol.
@@ -15337,22 +15431,40 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       //   Eskiden burada yalnız "aynı mükellef + imza + onay≥2" bakılıyor, kod planda yoksa/mevzuata aykırıysa da Max
       //   atlanıyordu (rematch sonra boş bırakıyordu). Artık: kod planda yaprak + mevzuat ağı + ad çözümü (HAFIZA_AD)
       //   + mükellefler arası baskın ad; seçim ocrData.aiMatrahKodu/ogrenmeKaynak'a yazılır, rematch uygular.
+      // Had-üstü demirbaş tespiti (içerik+faaliyet) — öğrenme hızlı yolu + satıcı hafızası mevzuat ağı için ortak (2026-09-15).
+      const hyYon: 'ALIS' | 'SATIS' = d.invoiceKind === 'SATIS' ? 'SATIS' : 'ALIS';
+      const hyOcr = { ...((d.ocrData as any) || {}), kalemler: parsed.kalemler, giderTuru: parsed.giderTuru };
+      const hyDemirbas = (() => { try { const fa = this.detectFixedAsset(hyOcr, tpForAsset, hyYon); return fa.is && !(hyYon !== 'SATIS' && this.demirbasHaddiAltinda(hyOcr, fa.reason, undefined)); } catch { return false; } })();
+      const planSatirlariOku = planNameByCode.size ? [...planNameByCode.entries()].map(([code, name]) => ({ code, name })) : [];
       if (!detAtla && !isIsletmeMukellef && d.taxpayerId && planNameByCode.size) {
         try {
           const vkn = String((d.invoiceKind === 'SATIS' ? (d.buyerVkn || parsed.aliciVkn) : (d.sellerVkn || parsed.saticiVkn)) || '').replace(/\D/g, '');
           const imza = VendorMemoryService.buildIcerikImza(Array.isArray(parsed.kalemler) ? parsed.kalemler.map((k: any) => k?.ad) : []);
           if (vkn && imza) {
-            const hyYon: 'ALIS' | 'SATIS' = d.invoiceKind === 'SATIS' ? 'SATIS' : 'ALIS';
-            const hyOcr = { ...((d.ocrData as any) || {}), kalemler: parsed.kalemler, giderTuru: parsed.giderTuru };
-            const hyDemirbas = (() => { try { const fa = this.detectFixedAsset(hyOcr, tpForAsset, hyYon); return fa.is && !(hyYon !== 'SATIS' && this.demirbasHaddiAltinda(hyOcr, fa.reason, undefined)); } catch { return false; } })();
             ogrenmeSecimiOkuma = await this.ogrenilmisHizliYol(tenantId, d.taxpayerId, vkn, imza, {
               yon: hyYon, imzaZorunlu: true, demirbas: hyDemirbas,
-              plan: [...planNameByCode.entries()].map(([code, name]) => ({ code, name })),
+              plan: planSatirlariOku,
             });
             ogrenilmisAtla = !!ogrenmeSecimiOkuma;
           }
         } catch { /* hafıza okunamadıysa normal AI yoluna düş */ }
       }
+      // SATICI HAFIZASI (2026-09-15): öğrenme hızlı yolu seçemediyse ve kelime kuralı atlamıyorsa, AI'dan HEMEN ÖNCE
+      //   (runQueuedClassify ile aynı ortak nokta: saticiHafizasiDene). Tutar = XML KDV kırılımı matrahı, yoksa toplam.
+      if (!detAtla && !ogrenilmisAtla && d.taxpayerId) {
+        const hafizaTutar = (() => {
+          const kd = Array.isArray(parsed.kdv) ? parsed.kdv : [];
+          const s = kd.reduce((a: number, b: any) => a + (Number(b?.matrah) || 0), 0);
+          return s > 0 ? s : (Number(parsed.toplam) || Number(d.totalAmount) || 0);
+        })();
+        hafizaOkuma = await this.saticiHafizasiDene(
+          tenantId,
+          { id: d.id, belgeNo: d.belgeNo, taxpayerId: d.taxpayerId, invoiceKind: hyYon, sellerVkn: d.sellerVkn || parsed.saticiVkn, buyerVkn: d.buyerVkn || parsed.aliciVkn, vendorName: d.vendorName || parsed.saticiAd, customerName: d.customerName || parsed.aliciAd },
+          { kalemAdlari: detAdlar, tutar: hafizaTutar, aciklama: typeof parsed._pdfGiderTuru === 'string' ? parsed._pdfGiderTuru : undefined },
+          { isIsletme: isIsletmeMukellef, plan: planSatirlariOku.length ? planSatirlariOku : null, demirbas: hyDemirbas },
+        ).catch(() => null);
+      }
+      const hafizaAtla = !!hafizaOkuma?.uygula;
       // Kelime kuralı sonucu (yedek / eski atlama): muhasebeNeden'siz kalmasın diye deterministik kısa gerekçe.
       const detSonuc = detHit
         ? {
@@ -15372,17 +15484,27 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             matrahHesapKodu: ogrenmeSecimiOkuma.kod,
             muhasebeNeden: `${ogrenmeSecimiOkuma.neden} — öğrenilmiş karar uygulandı (AI atlandı).`,
           }
+        : hafizaAtla && hafizaOkuma
+        ? {
+            // SATICI HAFIZASI (2026-09-15): AI'ın yazdığı alan adlarının AYNISI (giderTuru/kategori/matrahHesapKodu → ocrData).
+            giderTuru: hafizaOkuma.giderTuru || detHit?.giderTuru || parsed.giderTuru || '',
+            kategori: hafizaOkuma.matrahKategori || detHit?.kategori || (hafizaOkuma.hesapKodu ? kodKategori(hafizaOkuma.hesapKodu, hyYon) : '') || '',
+            matrahHesapKodu: hafizaOkuma.hesapKodu || undefined,
+            muhasebeNeden: `Bu satıcının önceki faturalarıyla aynı sınıflandırma (satıcı hafızası: ${hafizaOkuma.iz.neden}) — AI atlandı.`,
+          }
         : await this.aiClassifyAccountingCoalesced(contentText, mukellefBilgi, isIsletmeMukellef, d.invoiceKind === 'SATIS' ? 'SATIS' : 'ALIS', planAdaylar, {
             ipucu: detHit ? `kategori=${detHit.kategori}, gider türü=${detHit.giderTuru}` : undefined,
+            hafizaIpucu: hafizaOkuma?.ipucu, // satıcı hafızası uygulanamadıysa tek satır özet
             planKodlari: planLeafSet.size ? planLeafSet : undefined,
           }).catch(() => null);
       // 2026-09-13: toplu Haiku sonucu zayıfsa Sonnet ikinci turu kuyruğa (okuma işçisi beklemez).
       if ((c as any)?.eskalasyonAdayi) this.gucluTuruKuyrugaAl(tenantId, d.taxpayerId, d.id);
       if (detAtla) this.logger.log(`[CLS-SKIP] det icerik=${detHit!.kategori} (${detAdlar.length} kalem) → Max ATLANDI (FM_DET_ATLA=1) belge=${d.belgeNo || d.id}`);
-      else if (detHit && !ogrenilmisAtla) this.logger.log(`[CLS-IPUCU] det kategori=${detHit.kategori} (${detAdlar.length} kalem) → AI'a ipucu verildi belge=${d.belgeNo || d.id}`);
+      else if (detHit && !ogrenilmisAtla && !hafizaAtla) this.logger.log(`[CLS-IPUCU] det kategori=${detHit.kategori} (${detAdlar.length} kalem) → AI'a ipucu verildi belge=${d.belgeNo || d.id}`);
       if (ogrenilmisAtla) this.logger.log(`[CLS-SKIP-LEARNED] satici+icerik ogrenilmis (${ogrenmeSecimiOkuma?.kaynak}/${ogrenmeSecimiOkuma?.kural}) → Max ATLANDI kod=${ogrenmeSecimiOkuma?.kod} belge=${d.belgeNo || d.id} sayac=${JSON.stringify(this.hizliYolSayac)}`);
       // AI boş/hatalı döndüyse kelime kuralı sonucu YEDEK (davranış eskisinden kötü olmasın).
       if (!c && detSonuc && !ogrenilmisAtla) { c = detSonuc; this.logger.warn(`[CLS-IPUCU] AI yanıt vermedi → kelime kuralı yedek kullanıldı (${detHit!.kategori}) belge=${d.belgeNo || d.id}`); }
+      if (c) sinifKaynakOkuma = (detAtla || (detSonuc && c === detSonuc)) ? 'kelime-kurali' : 'ai';
       if (c) {
         if (!parsed.giderTuru && c.giderTuru) parsed.giderTuru = c.giderTuru;
         if (!parsed.kategori && c.kategori) parsed.kategori = c.kategori;
@@ -15683,16 +15805,22 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           ocrData: { ...((d.ocrData as any) || {}), matrah, kdvTutari: kdv, kdvOrani: breakdown[0].rate, kdvBreakdown: breakdown.map((b: any) => ({ oran: b.rate, matrah: b.base, tutar: b.amount })), matrahKategori: typeof parsed.kategori === 'string' ? parsed.kategori : undefined, giderTuru: typeof parsed.giderTuru === 'string' ? parsed.giderTuru.slice(0, 40) : undefined, muhasebeNeden: this.cleanBaseNeden(parsed.muhasebeNeden).slice(0, 300) || undefined, aiYorum: this.cleanBaseNeden(parsed.muhasebeNeden).slice(0, 400) || undefined, aiMatrahKodu: (() => {
                 const aiKod = typeof parsed.matrahHesapKodu === 'string' ? String(parsed.matrahHesapKodu).trim() : '';
                 // GÖREV B: öğrenilmiş kod (hızlı yol) aday listesi tavanının dışında kalabilir — plan yaprağı saf modülde doğrulandı.
-                return (aiKod && (planLeafSet.has(aiKod) || (ogrenmeSecimiOkuma && ogrenmeSecimiOkuma.kod === aiKod))) ? aiKod : undefined;
+                // SATICI HAFIZASI (2026-09-15): hafıza kodu da aday tavanı dışında kalabilir — güncel plan yaprağı + mevzuat saticiHafizasiDene'de doğrulandı.
+                return (aiKod && (planLeafSet.has(aiKod) || (ogrenmeSecimiOkuma && ogrenmeSecimiOkuma.kod === aiKod) || (hafizaOkuma?.uygula && hafizaOkuma.hesapKodu === aiKod))) ? aiKod : undefined;
               })(),
               // GÖREV B (2026-09-13) ölçüm izi: hızlı yol seçtiyse {kaynak, kural, kod, neden}; Max çalıştıysa null (bayat iz kalmasın).
               ogrenmeKaynak: ogrenmeSecimiOkuma ? { kaynak: ogrenmeSecimiOkuma.kaynak, kural: ogrenmeSecimiOkuma.kural, kod: ogrenmeSecimiOkuma.kod, guven: ogrenmeSecimiOkuma.guven, neden: ogrenmeSecimiOkuma.neden, tarih: new Date().toISOString() } : null,
+              // SATICI HAFIZASI (2026-09-15) görünürlük: sınıfın kaynağı ('satici-hafizasi' | 'ogrenilmis' | 'kelime-kurali' | 'ai') + hafıza izi
+              //   (uygulanmadıysa null → bayat iz kalmasın). Ekran ocrData'yı olduğu gibi alır (list()/get() tam belge döner).
+              sinifKaynak: hafizaOkuma?.uygula ? 'satici-hafizasi' : ogrenmeSecimiOkuma ? 'ogrenilmis' : (sinifKaynakOkuma || 'ai'),
+              hafiza: hafizaOkuma?.uygula ? hafizaOkuma.iz : null,
               ...(ogrenmeSecimiOkuma ? { aiMatrahGuven: 'yuksek' } : {}),
+              ...(hafizaOkuma?.uygula ? { aiMatrahGuven: hafizaOkuma.guven } : {}),
               // PLAN/15 Faz 6: kalemler PDF/görselden tamamlandıysa kaynağı yaz ('pdf' | 'pdf-tahmin'); tamamlanmadıysa
               //   bayat iz kalmasın (undefined → alan silinir). Güven bu belgede en fazla 'orta' (öğrenilmiş 'yuksek' dahil).
               kalemKaynak: kalemKaynak || undefined,
               kalemPdfBilgi: kalemKaynak && kalemPdfBilgi ? kalemPdfBilgi : undefined,
-              ...(kalemKaynak ? { aiMatrahGuven: aiMatrahGuvenTavani(ogrenmeSecimiOkuma ? 'yuksek' : (d.ocrData as any)?.aiMatrahGuven, kalemKaynak) } : {}),
+              ...(kalemKaynak ? { aiMatrahGuven: aiMatrahGuvenTavani(ogrenmeSecimiOkuma ? 'yuksek' : (hafizaOkuma?.uygula ? hafizaOkuma.guven : (d.ocrData as any)?.aiMatrahGuven), kalemKaynak) } : {}),
               kalemler: Array.isArray(parsed.kalemler) ? parsed.kalemler.slice(0, 30).map((k: any) => { const h = typeof k?.hesap === 'string' ? String(k.hesap).trim() : ''; return { ad: String(k?.ad || '').slice(0, 80), tutar: Number(k?.tutar) || 0, oran: Number(k?.oran) || 0, ...(h && planLeafSet.has(h) ? { hesap: h } : {}) }; }).filter((k: any) => k.ad) : undefined, ...(islSinifAi ? { isletme: islSinifAi } : {}), ...((parsed as any)?._ubl ? ublOcrDataFields((parsed as any)._ubl) : clearUblOnlyOcrFields()), isReturn: isReturnDet, kalemSplit: kalemSplitApplied || undefined, tevkifatHint: parsed.tevkifat === true || tevkifatOrani > 0 || /tevkifat/i.test(String(html || '')), tevkifatOrani: tevkifatOrani || 0, tevkifatKdv: tevkKdv || 0, ...(smmStopaj > 0 ? { stopajTutari: smmStopaj } : {}), engine: parsed._azure ? 'azure-read' : (parsed === preParsed ? 'ubl-xml' : 'max-vision'),
             readMode: parsed === preParsed ? 'ubl-xml' : (isImage ? 'image' : /pdf/i.test(imgMedia) ? 'pdf-text' : /xml/i.test(imgMedia) ? 'xml-text' : 'html'),
             ...(!preParsed && imgBuf && /xml/i.test(imgMedia) ? { xmlHead: imgBuf.toString('utf8').slice(0, 220).replace(/\s+/g, ' ') } : {}),
@@ -15769,6 +15897,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     return [
       // PLAN/15 Faz 1-B (2026-09-12): kelime kuralı sonucu artık AI'ı ATLATMAZ, yalnız ipucu olarak verilir.
       ek?.ipucu ? `KELİME KURALI İPUCU: ${ek.ipucu} — mükellef faaliyetine göre farklı düşünüyorsan kendi kararını ver, ipucuyu körü körüne kopyalama.` : '',
+      // SATICI HAFIZASI (2026-09-15): hafıza uygulanamadıysa önceki faturaların özeti tek satır ipucu (metin satici-hafizasi.ts'de kurulur).
+      ek?.hafizaIpucu ? String(ek.hafizaIpucu) : '',
       // Sonnet eskalasyonu (guven==='dusuk' | kod boş/geçersiz): aynı prompt + dikkat uyarısı.
       ek?.strongModel ? 'ÖNCEKİ DENEME DÜŞÜK GÜVENLİ; daha dikkatli karar ver — niteliği ve hesap planındaki rolü ([köşeli parantez]) yeniden değerlendir.' : '',
       'giderTuru: ALIŞ ise faturadaki ANA mal/hizmetin kısa adı (yakıt/motorin→"akaryakıt"; ayrıca "elektrik","su","doğalgaz","telefon","internet","kira","kırtasiye","danışmanlık","nakliye","yedek parça","bakım onarım","yemek","temizlik","sigorta","reklam" vb). Net değilse "". SATIŞ ise "".',
@@ -15863,14 +15993,15 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     planAdaylar?: string,
     // PLAN/15 Faz 1-B: belge-bazlı kelime kuralı ipuçları (belge bloğuna yazılır; parti anahtarını bölmez).
     // strongModel (2026-09-13): Sonnet ikinci turu — CLASSIFY_GUCLU partisi (aynı prompt + "önceki deneme düşük güvenli" notu).
-    ek?: { ipucular?: Array<string | undefined>; strongModel?: boolean },
+    ek?: { ipucular?: Array<string | undefined>; hafizaIpuclari?: Array<string | undefined>; strongModel?: boolean },
   ): Promise<Array<ClassifyResult | null>> {
     const n = contents.length;
     const strong = ek?.strongModel === true;
     if (!n) return [];
     const ipucular = ek?.ipucular || [];
+    const hafizaIpuclari = ek?.hafizaIpuclari || []; // SATICI HAFIZASI (2026-09-15): belge bloğuna tek satır
     const docBlocks = contents
-      .map((c, i) => `=== BELGE ${i + 1} ===\n${ipucular[i] ? `KELİME KURALI İPUCU (bu belge): ${ipucular[i]} — mükellef faaliyetine göre farklı düşünüyorsan kendi kararını ver, ipucuyu körü körüne kopyalama.\n` : ''}${String(c || '').replace(/\s+/g, ' ').trim().slice(0, 6000)}`)
+      .map((c, i) => `=== BELGE ${i + 1} ===\n${ipucular[i] ? `KELİME KURALI İPUCU (bu belge): ${ipucular[i]} — mükellef faaliyetine göre farklı düşünüyorsan kendi kararını ver, ipucuyu körü körüne kopyalama.\n` : ''}${hafizaIpuclari[i] ? `${hafizaIpuclari[i]} (bu belge)\n` : ''}${String(c || '').replace(/\s+/g, ' ').trim().slice(0, 6000)}`)
       .join('\n\n');
     const prompt = [
       `Aşağıda ${n} adet Türk e-Fatura/e-Arşiv belgesinin metin içeriği var (1..${n} numaralı). HER BİRİNİ ayrı ayrı, bir MALİ MÜŞAVİR gibi değerlendir. Tüm kurallar HER belge için ayrı geçerlidir.`,
@@ -15889,7 +16020,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       // 2026-09-13 canlı ölçüm (20 okuma işçisi): eşzamanlı çağrılarda parti 190-260 sn sürdü; 140 sn tavanı timeout →
       //   "uyumsuz dönen=0" → tek-tek fallback (10 ayrı çağrı) sarmalına giriyordu. Tavan 300 sn (MAX_CLASSIFY_BATCH_TIMEOUT_MS).
       const tmo = Math.min(this.classifyTimeoutMs + n * 15000, Math.max(140000, Number(process.env.MAX_CLASSIFY_BATCH_TIMEOUT_MS || 300000)));
-      res = await claudeTextViaMax({ prompt, timeoutMs: strong ? Math.min(tmo + 40000, 200000) : tmo, model: strong ? MAX_MODEL_DEFAULT : MAX_MODEL_CHEAP }).catch(() => null);
+      // 2026-09-15: fmTextAi — toplu sınıflandırma (amac=sinif); Sonnet ikinci turu (strong) amac=sinifGuclu (FM_AI_GUCLU_SAGLAYICI).
+      res = await fmTextAi({ prompt, timeoutMs: strong ? Math.min(tmo + 40000, 200000) : tmo, model: strong ? MAX_MODEL_DEFAULT : MAX_MODEL_CHEAP, amac: strong ? 'sinifGuclu' : 'sinif' }).catch(() => null);
     } finally {
       releaseSlot();
     }
@@ -15942,7 +16074,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         this.classifyBatchBuffers.set(key, buf);
       }
       if (!buf.shared.planKodlari && ek?.planKodlari) buf.shared.planKodlari = ek.planKodlari;
-      buf.items.push({ contentText, resolve, ipucu: ek?.ipucu });
+      buf.items.push({ contentText, resolve, ipucu: ek?.ipucu, hafizaIpucu: ek?.hafizaIpucu });
       if (buf.items.length >= this.classifyBatchSize) {
         if (buf.timer) { clearTimeout(buf.timer); buf.timer = null; }
         void this.flushClassifyBatch(key).catch(() => {});
@@ -15967,7 +16099,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       try {
         results = await this.aiClassifyAccountingMulti(
           items.map((i) => i.contentText), buf.shared.mukellefBilgi, buf.shared.isIsletme, buf.shared.invoiceKind, buf.shared.planAdaylar,
-          { ipucular: items.map((i) => i.ipucu), strongModel: !!buf.shared.strong },
+          { ipucular: items.map((i) => i.ipucu), hafizaIpuclari: items.map((i) => i.hafizaIpucu), strongModel: !!buf.shared.strong },
         );
       } catch { results = []; }
       if (Array.isArray(results) && results.length === items.length) {
@@ -15997,7 +16129,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         await Promise.all(yarilar.map(async (idx) => {
           let yr: Array<ClassifyResult | null> = [];
           try {
-            yr = await this.aiClassifyAccountingMulti(idx.map((i) => items[i].contentText), buf.shared.mukellefBilgi, buf.shared.isIsletme, buf.shared.invoiceKind, buf.shared.planAdaylar, { ipucular: idx.map((i) => items[i].ipucu), strongModel: !!buf.shared.strong });
+            yr = await this.aiClassifyAccountingMulti(idx.map((i) => items[i].contentText), buf.shared.mukellefBilgi, buf.shared.isIsletme, buf.shared.invoiceKind, buf.shared.planAdaylar, { ipucular: idx.map((i) => items[i].ipucu), hafizaIpuclari: idx.map((i) => items[i].hafizaIpucu), strongModel: !!buf.shared.strong });
           } catch { yr = []; }
           if (Array.isArray(yr) && yr.length === idx.length) {
             idx.forEach((i, k) => {
@@ -16008,7 +16140,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           }
           this.logger.warn(`[CLS-BATCH] yarım parti de uyumsuz (${idx.length}) → tek-tek`);
           await Promise.all(idx.map(async (i) => {
-            const r = await this.aiClassifyAccounting(items[i].contentText, buf.shared.mukellefBilgi, buf.shared.isIsletme, buf.shared.invoiceKind, buf.shared.planAdaylar, { ipucu: items[i].ipucu, planKodlari: buf.shared.planKodlari, strongModel: !!buf.shared.strong }).catch(() => null);
+            const r = await this.aiClassifyAccounting(items[i].contentText, buf.shared.mukellefBilgi, buf.shared.isIsletme, buf.shared.invoiceKind, buf.shared.planAdaylar, { ipucu: items[i].ipucu, hafizaIpucu: items[i].hafizaIpucu, planKodlari: buf.shared.planKodlari, strongModel: !!buf.shared.strong }).catch(() => null);
             resolveAt(i, r);
           }));
         }));
@@ -16016,7 +16148,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       }
       this.logger.warn(`[CLS-BATCH] uyumsuz (istenen=${items.length} donen=${Array.isArray(results) ? results.length : 0}) → tek-tek fallback`);
       await Promise.all(items.map(async (it, i) => {
-        const r = await this.aiClassifyAccounting(it.contentText, buf.shared.mukellefBilgi, buf.shared.isIsletme, buf.shared.invoiceKind, buf.shared.planAdaylar, { ipucu: it.ipucu, planKodlari: buf.shared.planKodlari, strongModel: !!buf.shared.strong }).catch(() => null);
+        const r = await this.aiClassifyAccounting(it.contentText, buf.shared.mukellefBilgi, buf.shared.isIsletme, buf.shared.invoiceKind, buf.shared.planAdaylar, { ipucu: it.ipucu, hafizaIpucu: it.hafizaIpucu, planKodlari: buf.shared.planKodlari, strongModel: !!buf.shared.strong }).catch(() => null);
         resolveAt(i, r);
       }));
     } catch {
@@ -16056,7 +16188,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     try {
       const denemeSayisi = strong ? 1 : 2;
       for (let att = 1; att <= denemeSayisi && (!res || !res.ok || !res.text); att++) {
-        res = await claudeTextViaMax({ prompt, timeoutMs: this.classifyTimeoutMs, model: strong ? MAX_MODEL_DEFAULT : MAX_MODEL_CHEAP }).catch(() => null);
+        // 2026-09-15: fmTextAi — tekil sınıflandırma (amac=sinif); Sonnet eskalasyonu (strong) amac=sinifGuclu.
+        res = await fmTextAi({ prompt, timeoutMs: this.classifyTimeoutMs, model: strong ? MAX_MODEL_DEFAULT : MAX_MODEL_CHEAP, amac: strong ? 'sinifGuclu' : 'sinif' }).catch(() => null);
         if ((!res || !res.ok || !res.text) && att < denemeSayisi) await new Promise((r) => setTimeout(r, /rate|429|limit|overload|too many/i.test(String(res?.error || '')) ? 3500 : 600));
       }
     } finally {
@@ -16279,7 +16412,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             'ADAYLAR (kod = ad):', ...oneriAdaylari,
             'ÇIKTI — TAM OLARAK tek satır, başka hiçbir şey yazma: ONERILEN_HESAP: <listedeki tek kod ya da YOK>',
           ].join('\n');
-          const oRes = await claudeTextViaMax({ prompt: oneriPrompt, timeoutMs: 30000, model: MAX_MODEL_CHEAP }).catch(() => null);
+          const oRes = await fmTextAi({ prompt: oneriPrompt, timeoutMs: 30000, model: MAX_MODEL_CHEAP, amac: 'yorum' }).catch(() => null); // 2026-09-15: fmTextAi (yorum/öneri)
           const oM = oRes && oRes.ok && oRes.text ? String(oRes.text).match(/ONERILEN_HESAP\s*:?\s*([0-9][0-9.]*|YOK)/i) : null;
           const oKod = oM && !/^YOK$/i.test(oM[1]) ? String(oM[1]).trim() : '';
           if (oKod && planYaprakMi(oKod) && oneriYonRe.test(oKod)) {
@@ -16346,7 +16479,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   üretilir; denetim kararı artık üretilmez (denetim = null). Onay kapıları da bu null'a göre pasif.
     // Zengin AI yorumunu üret + cache'le (ortak iç fonksiyon).
     const uretVeCachele = async (): Promise<{ text: string; denetim: any }> => {
-      const yRes = await claudeTextViaMax({ prompt, timeoutMs: 30000, model: MAX_MODEL_CHEAP }).catch(() => null);
+      const yRes = await fmTextAi({ prompt, timeoutMs: 30000, model: MAX_MODEL_CHEAP, amac: 'yorum' }).catch(() => null); // 2026-09-15: fmTextAi (zengin yorum)
       const rawText = yRes && yRes.ok && yRes.text ? String(yRes.text) : '';
       const text = this.cleanRichMuhasebeNeden(rawText, hesapStr, isSale, isReturn);
       const denetim = null;
@@ -16437,7 +16570,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       'HESAP PLANI:',
       liste,
     ].join('\n');
-    const res = await claudeTextViaMax({ prompt, timeoutMs: 30000, model: MAX_MODEL_CHEAP }).catch(() => null);
+    // 2026-09-15: fmTextAi — gider hesabı seçimi bir SINIFLANDIRMA çağrısıdır (amac=sinif; [AI-GIDER] logu), yorum değil.
+    const res = await fmTextAi({ prompt, timeoutMs: 30000, model: MAX_MODEL_CHEAP, amac: 'sinif' }).catch(() => null);
     if (!res || !res.ok || !res.text) return null;
     let kod = ''; let guven = '';
     try { const m = res.text.match(/\{[\s\S]*\}/); const j = m ? JSON.parse(m[0]) : null; kod = String(j?.kod || '').trim(); guven = String(j?.guven || '').trim().toLowerCase(); } catch { return null; }
@@ -17773,6 +17907,119 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
 
   /** ÖĞRENME HIZLI YOLU sayacı (GÖREV B, 2026-09-13) — log + ölçüm: kaç belge Max'siz sınıflandı. */
   private hizliYolSayac = { hafiza: 0, hafizaAd: 0, capraz: 0, bos: 0 };
+
+  /** SATICI HAFIZASI sayacı (2026-09-15) — uygulandı / ipucu (gölge modda uygulanırdı) / uygulanmadı. */
+  private saticiHafizasiSayac = { uygulandi: 0, ipucu: 0, uygulanmadi: 0 };
+
+  /**
+   * SATICI HAFIZASI (2026-09-15) — aynı satıcının önceki faturalarından AI'ya SORMADAN sınıflandırma (saf kural: satici-hafizasi.ts).
+   *   Öğrenme hızlı yolu (ogrenilmisHizliYol: sahip-onaylı vendor_memory + birebir içerik imzası) seçemediğinde çalışır;
+   *   AI çağrısından HEMEN ÖNCE tek ortak nokta (runQueuedClassify + aiReadDocument inline sınıflandırma).
+   *   Örnekler: aynı tenant + aynı MÜKELLEF (hesap kodu mükellefin planına özgüdür) + karşı taraf VKN'si (ALIŞ→sellerVkn,
+   *   SATIŞ→buyerVkn; VKN boşsa ad eşleşmesi) + aynı yön, son 12 ay, status APPROVED/READY/NEEDS_REVIEW, sınıfı dolu,
+   *   en çok 30 (yeniye göre). Hesap kodu = matrah satırının kodu (yoksa ocrData.aiMatrahKodu); onaylı = APPROVED ya da
+   *   matrah satırı kaynak=KULLANICI (tek-düzeltmede-öğren). KENDİ KENDİNİ BESLEME YOK: sinifKaynak='satici-hafizasi' ile
+   *   sınıflanmış belge onaylanmadı/düzeltilmediyse örnek sayılmaz.
+   *   Karar uygula:true ise ek doğrulama: bilançoda kod güncel planda KAYDEDİLEBİLİR yaprak + mevzuat ağı (alışta 6xx yok,
+   *   satışta 7xx/15x/25x yok, had-üstü demirbaşta yalnız 25x); geçmezse uygulanmaz (ipucu kalır). Demirbaş/tevkifat/mükerrer
+   *   kontrolleri (rematch + revalidate) hafıza uygulanan belgede de aynen sonra çalışır (aiMatrahKodu 'AI' seçimi gibi işlenir).
+   *   FM_SATICI_HAFIZASI=off → hiç bakılmaz; =ipucu → gölge mod (karar log'a, uygulanmaz, AI ipucu alır).
+   */
+  private async saticiHafizasiDene(
+    tenantId: string,
+    belge: { id: string; belgeNo?: string | null; taxpayerId: string | null; invoiceKind: string | null; sellerVkn?: string | null; buyerVkn?: string | null; vendorName?: string | null; customerName?: string | null },
+    yeni: { kalemAdlari: string[]; tutar: number; aciklama?: string },
+    opts: { isIsletme: boolean; plan?: Array<{ code: string; name: string }> | null; demirbas?: boolean },
+  ): Promise<SaticiHafizasiSonucu | null> {
+    const mod = saticiHafizasiModu();
+    if (mod === 'kapali' || !belge?.taxpayerId) return null;
+    const kind: 'ALIS' | 'SATIS' = belge.invoiceKind === 'SATIS' ? 'SATIS' : 'ALIS';
+    const vkn = String((kind === 'SATIS' ? belge.buyerVkn : belge.sellerVkn) || '').replace(/\D/g, '');
+    const vknGecerli = vkn.length === 10 || vkn.length === 11;
+    const ad = String((kind === 'SATIS' ? belge.customerName : belge.vendorName) || '').replace(/\s+/g, ' ').trim();
+    if (!vknGecerli && ad.length < 4) return null;
+    const since = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000);
+    const rows: any[] = await (this.prisma as any).invoiceAccountingDocument.findMany({
+      where: {
+        tenantId,
+        taxpayerId: belge.taxpayerId,
+        invoiceKind: kind,
+        id: { not: belge.id },
+        status: { in: ['APPROVED', 'READY', 'NEEDS_REVIEW'] },
+        OR: [{ faturaTarihi: { gte: since } }, { faturaTarihi: null, createdAt: { gte: since } }],
+        ...(vknGecerli
+          ? (kind === 'SATIS' ? { buyerVkn: vkn } : { sellerVkn: vkn })
+          : (kind === 'SATIS' ? { customerName: { equals: ad, mode: 'insensitive' } } : { vendorName: { equals: ad, mode: 'insensitive' } })),
+      },
+      select: {
+        id: true, status: true, totalAmount: true, faturaTarihi: true, createdAt: true, ocrData: true,
+        lines: { where: { group: 'matrah' }, orderBy: { orderNo: 'asc' }, select: { accountCode: true, kaynak: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 30,
+    }).catch(() => []);
+    const saticiEtiketi = vknGecerli ? vkn : ad;
+    const ornekler: HafizaOrnegi[] = [];
+    for (const r of rows || []) {
+      const od: any = r?.ocrData || {};
+      const satirlar: any[] = Array.isArray(r?.lines) ? r.lines : [];
+      const kullaniciDuzeltti = satirlar.some((l) => String(l?.kaynak || '').toUpperCase() === 'KULLANICI');
+      const onayli = r.status === 'APPROVED' || kullaniciDuzeltti;
+      if (String(od.sinifKaynak || '') === 'satici-hafizasi' && !onayli) continue; // hafızanın kendi kararı kanıt değildir
+      const satirKodu = String(satirlar.find((l) => String(l?.accountCode || '').trim())?.accountCode || '').trim();
+      const hesapKodu = opts.isIsletme ? null : (satirKodu || String(od.aiMatrahKodu || '').trim() || null);
+      const matrahKategori = String(od.matrahKategori || od.kategori || '').trim() || null;
+      const giderTuru = String(od.giderTuru || '').trim() || null;
+      if (!hesapKodu && !matrahKategori && !giderTuru) continue;
+      const kalemAdlari = (Array.isArray(od.kalemler) ? od.kalemler : []).map((k: any) => String(k?.ad || '').trim()).filter(Boolean);
+      const tutar = Number(od.matrah) > 0 ? Number(od.matrah) : (Number(r.totalAmount) || 0);
+      const tarih = r.faturaTarihi ? new Date(r.faturaTarihi).toISOString() : (r.createdAt ? new Date(r.createdAt).toISOString() : '');
+      ornekler.push({ hesapKodu, matrahKategori, giderTuru, kalemAdlari, tutar, tarih, onayli });
+    }
+    const etiket = `belge=${belge.belgeNo || belge.id} satıcı=${saticiEtiketi}`;
+    if (!ornekler.length) return null;
+    const ayar = {
+      enAzOrnek: Number(process.env.FM_SATICI_HAFIZASI_EN_AZ_ORNEK) || undefined,
+      benzerlikEsigi: Number(process.env.FM_SATICI_HAFIZASI_BENZERLIK) || undefined,
+      enAzOnayli: Number(process.env.FM_SATICI_HAFIZASI_EN_AZ_ONAYLI) || undefined,
+    };
+    const karar: SaticiHafizasiKarari = saticiHafizasiKarari(yeni, ornekler, ayar);
+    let uygula = karar.uygula;
+    let neden = karar.neden;
+    let hesapKodu = String(karar.hesapKodu || '').trim() || null;
+    if (uygula && !opts.isIsletme) {
+      // Bilanço: kod güncel planda kaydedilebilir yaprak + mevzuat ağı. Plan verilmemişse kod uygulanmaz (kategori/gider türü kalır).
+      if (hesapKodu && opts.plan && opts.plan.length) {
+        const yapraklar = planYaprakHaritasi(opts.plan);
+        if (!yapraklar.has(hesapKodu)) { uygula = false; neden = `hesap ${hesapKodu} güncel planda kaydedilebilir yaprak değil`; }
+        else if (!mevzuatUygunMu(hesapKodu, kind, !!opts.demirbas)) { uygula = false; neden = `hesap ${hesapKodu} mevzuat ağından geçmedi (yön=${kind}${opts.demirbas ? ', had-üstü demirbaş' : ''})`; }
+      } else if (hesapKodu && !(opts.plan && opts.plan.length)) {
+        hesapKodu = null; // plan yok → kod doğrulanamaz; yalnız kategori/gider türü uygulanır
+        if (!karar.matrahKategori && !karar.giderTuru) { uygula = false; neden = 'plan yok, kod doğrulanamadı'; }
+      } else if (!hesapKodu && !karar.matrahKategori && !karar.giderTuru) { uygula = false; neden = 'sınıf bilgisi boş'; }
+    } else if (uygula && opts.isIsletme) {
+      hesapKodu = null; // işletme defterinde hesap planı yok — yalnız kategori/gider türü
+      if (!karar.matrahKategori && !karar.giderTuru) { uygula = false; neden = 'işletme: gider türü/kategori boş'; }
+    }
+    const iz: SaticiHafizasiSonucu['iz'] = {
+      ornek: karar.ornekSayisi, benzerlik: karar.benzerlik, neden, hesap: hesapKodu, satici: saticiEtiketi, tarih: new Date().toISOString(),
+      mod: mod === 'ipucu' ? 'ipucu' : 'acik',
+    };
+    const ozet = `(${karar.ornekSayisi} örnek, benzerlik %${Math.round((karar.benzerlik || 0) * 100)})`;
+    if (uygula && mod === 'ipucu') {
+      this.saticiHafizasiSayac.ipucu++;
+      this.logger.log(`[SATICI-HAFIZASI] (ipucu modu) ${etiket} → uygulanırdı: hesap ${hesapKodu || '-'} / ${karar.giderTuru || karar.matrahKategori || '-'} ${ozet} — AI çağrılıyor, ipucu verildi`);
+      return { uygula: false, hesapKodu, matrahKategori: karar.matrahKategori ?? null, giderTuru: karar.giderTuru ?? null, guven: karar.guven || 'orta', ipucu: karar.ipucu, iz };
+    }
+    if (uygula) {
+      this.saticiHafizasiSayac.uygulandi++;
+      this.logger.log(`[SATICI-HAFIZASI] ${etiket} → hesap ${hesapKodu || '-'} / ${karar.giderTuru || karar.matrahKategori || '-'} ${ozet} — AI ATLANDI (${neden}) sayaç=${JSON.stringify(this.saticiHafizasiSayac)}`);
+      return { uygula: true, hesapKodu, matrahKategori: karar.matrahKategori ?? null, giderTuru: karar.giderTuru ?? null, guven: karar.guven || 'orta', ipucu: karar.ipucu, iz };
+    }
+    this.saticiHafizasiSayac.uygulanmadi++;
+    this.logger.log(`[SATICI-HAFIZASI] ${etiket} uygulanmadı: ${neden} ${ozet}${karar.ipucu ? ' — AI\'ya ipucu verildi' : ''}`);
+    return { uygula: false, hesapKodu: null, matrahKategori: null, giderTuru: null, guven: 'orta', ipucu: karar.ipucu, iz };
+  }
 
   /**
    * ÖĞRENME HIZLI YOLU (GÖREV B, 2026-09-13): satıcı VKN + içerik imzası → öğrenilmiş hesap; saf kural ogrenme-hizli-yol.ts.
