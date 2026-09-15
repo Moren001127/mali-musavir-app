@@ -400,10 +400,15 @@ export class MihsapService implements OnModuleInit {
     startDate: string,
     endDate: string,
   ): Promise<{ total: number; items: MihsapInvoiceSummary[] }> {
+    // GELEN BELGELER (bekleyen) DÖNEMSİZDİR (2026-09-15): Mihsap ekranı bütün ayları tek listede gösterir
+    //   (ÖZ ELA: Mihsap 56, Ağustos süzgeçli çekim 53 — Temmuz fişleri dışarıda kalıyordu). Bekleyen çekiminde
+    //   tarih süzgeci gönderilmez; her belge kendi tarihinden dönemine yerleşir (downloadAndStore).
+    //   Arşiv (onaylanmış) çekimi dönemli kalır.
+    const bekleyenCekim = (params.kaynak || 'arsiv') === 'bekleyen';
     const baseValueList = [
       { alanId: FIELD.FATURA_TURU, operator: 'Equals', values: [params.faturaTuru] },
       { alanId: FIELD.MUKELLEF_ID, operator: 'Equals', values: [String(params.mukellefMihsapId)] },
-      { alanId: FIELD.FATURA_TARIHI, operator: 'Between', values: [startDate, endDate] },
+      ...(bekleyenCekim ? [] : [{ alanId: FIELD.FATURA_TARIHI, operator: 'Between', values: [startDate, endDate] }]),
     ];
     const buildBody = (includeOnayDurumu: boolean) => ({
       sortAlanlari: [
@@ -597,7 +602,29 @@ export class MihsapService implements OnModuleInit {
     const existing = await (this.prisma as any).mihsapInvoice.findUnique({
       where: { mihsapId: String(mihsapInternalId) },
     });
+    // TARİH (2026-09-15): önce faturaTarihiStr (Türkiye günü, "01-08-2026"); ISO alan UTC'ye kaymış gelir
+    //   ("2026-07-31T21:00Z" = 1 Ağustos 00:00 TR → Temmuz sayılıyordu). Mihsap OCR'ının bozuk tarihi
+    //   ("31.10.272419878" → yıl 2724) ve tarihsiz belge → makul tarih YOK → dönemin ilk günü YER TUTUCU
+    //   (raw._tarihBelirsiz=true; Fatura Merkezi okuması gerçek tarihi görselden bulur, bulamazsa uyarır).
+    const makulTarih = this.mihsapTarihCoz(item);
+    const donemEtiketi = kaynak === 'bekleyen'
+      ? (makulTarih ? makulTarih.toISOString().slice(0, 7) : (this.mihsapDonemEtiketi(item) || donem))
+      : donem;
+    const faturaTarihi = makulTarih
+      || new Date(Date.UTC(Number(donemEtiketi.slice(0, 4)), Number(donemEtiketi.slice(5, 7)) - 1, 1));
+    const rawKayit: any = makulTarih ? item : { ...item, _tarihBelirsiz: true };
+
     if (existing?.mihsapFileLink) {
+      // Eski kayıt UTC kaymalı / bozuk tarihle ya da yanlış dönemde yazılmış olabilir → yalnız tarih/dönem tazelenir.
+      const duzelt: any = {};
+      if (String(existing.donem || '') !== donemEtiketi) duzelt.donem = donemEtiketi;
+      if (!existing.faturaTarihi || new Date(existing.faturaTarihi).getTime() !== faturaTarihi.getTime()) duzelt.faturaTarihi = faturaTarihi;
+      if (Object.keys(duzelt).length) {
+        await (this.prisma as any).mihsapInvoice.update({
+          where: { mihsapId: String(mihsapInternalId) },
+          data: { ...duzelt, raw: rawKayit },
+        }).catch(() => null);
+      }
       return { stored: false, skipped: true, reason: 'already-stored' };
     }
 
@@ -606,19 +633,13 @@ export class MihsapService implements OnModuleInit {
     const storageKey: string | undefined = undefined;
     const storageUrl: string | undefined = undefined;
 
-    const faturaTarihi = item.faturaTarihi
-      ? new Date(item.faturaTarihi)
-      : item.faturaTarihiStr
-        ? this.parseTrDate(item.faturaTarihiStr)
-        : new Date();
-
     await (this.prisma as any).mihsapInvoice.upsert({
       where: { mihsapId: String(item.id) },
       update: {
         tenantId,
         mukellefId,
         mukellefMihsapId: String(item.userFirmaBilgisiId),
-        donem,
+        donem: donemEtiketi,
         faturaTuru: item.faturaTuru,
         belgeTuru: item.belgeTuru,
         faturaNo: item.faturaNo,
@@ -632,14 +653,14 @@ export class MihsapService implements OnModuleInit {
         orjDosyaTuru: item.orjDosyaTuru || null,
         mihsapFileLink: item.fileLink || item.fileDownloadLink || null,
         ...(kaynak ? { kaynak } : {}),
-        raw: item as any,
+        raw: rawKayit,
         ...(storageKey ? { storageKey, storageUrl, downloadedAt: new Date() } : {}),
       },
       create: {
         tenantId,
         mukellefId,
         mukellefMihsapId: String(item.userFirmaBilgisiId),
-        donem,
+        donem: donemEtiketi,
         faturaTuru: item.faturaTuru,
         belgeTuru: item.belgeTuru,
         faturaNo: item.faturaNo,
@@ -657,7 +678,7 @@ export class MihsapService implements OnModuleInit {
         mihsapFileLink: item.fileLink || item.fileDownloadLink || null,
         kaynak: kaynak || null,
         downloadedAt: storageKey ? new Date() : null,
-        raw: item as any,
+        raw: rawKayit,
       },
     });
 
@@ -665,10 +686,29 @@ export class MihsapService implements OnModuleInit {
     return { stored: !!(storageKey || item.fileLink || item.fileDownloadLink) };
   }
 
-  private parseTrDate(s: string): Date {
-    const m = s.match(/^(\d{2})[-.\/](\d{2})[-.\/](\d{4})/);
-    if (m) return new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
-    return new Date();
+  /** Mihsap tarih alanlarından MAKUL takvim günü (UTC gece yarısı) — 2000..gelecek yıl dışı / bozuk → null.
+   *  Sıra: faturaTarihiStr ("01-08-2026", Türkiye günü) → ISO faturaTarihi (+3 saat: Türkiye günü). */
+  private mihsapTarihCoz(item: any): Date | null {
+    const yilUst = new Date().getUTCFullYear() + 1;
+    const makul = (y: number, mo: number, d: number) => y >= 2000 && y <= yilUst && mo >= 1 && mo <= 12 && d >= 1 && d <= 31;
+    const str = String(item?.faturaTarihiStr || '').trim();
+    const m = str.match(/^(\d{1,2})[-.\/](\d{1,2})[-.\/](\d{4})$/);
+    if (m && makul(Number(m[3]), Number(m[2]), Number(m[1]))) return new Date(Date.UTC(Number(m[3]), Number(m[2]) - 1, Number(m[1])));
+    if (item?.faturaTarihi) {
+      const t = new Date(item.faturaTarihi);
+      if (!Number.isNaN(t.getTime())) {
+        const tr = new Date(t.getTime() + 3 * 3600 * 1000);
+        if (makul(tr.getUTCFullYear(), tr.getUTCMonth() + 1, tr.getUTCDate())) return new Date(Date.UTC(tr.getUTCFullYear(), tr.getUTCMonth(), tr.getUTCDate()));
+      }
+    }
+    return null;
+  }
+
+  /** Mihsap kaydının kendi dönem alanları (donemYil/donemAy) → "YYYY-MM"; yoksa null. */
+  private mihsapDonemEtiketi(item: any): string | null {
+    const yil = Number(item?.donemYil), ay = Number(item?.donemAy);
+    if (yil >= 2000 && yil <= new Date().getUTCFullYear() + 1 && ay >= 1 && ay <= 12) return `${yil}-${String(ay).padStart(2, '0')}`;
+    return null;
   }
 
   /** Belirli bir dönemin tüm MIHSAP fatura kayıtlarını siler (yeniden çekme öncesi) */
@@ -789,7 +829,9 @@ export class MihsapService implements OnModuleInit {
           ? (retriable
               ? `${params.donem} dönemi: Mihsap oturumu (token) tazelenince otomatik tamamlanacak — Mihsap sekmesini bir kez açmanız yeterli.`
               : `${params.donem} dönemi: ${String(errorMsg).slice(0, 300)}`)
-          : `${params.donem} dönemi: ${fetched} fatura çekildi → ${hedefModul}.`;
+          : isBekleyen
+            ? `Gelen Belgeler (bütün dönemler): ${fetched} belge çekildi → ${hedefModul}.`
+            : `${params.donem} dönemi: ${fetched} fatura çekildi → ${hedefModul}.`;
         await this.notifications.createForTenant({
           tenantId: params.tenantId,
           type: NOTIFICATION_TYPES.MIHSAP_RESULT,

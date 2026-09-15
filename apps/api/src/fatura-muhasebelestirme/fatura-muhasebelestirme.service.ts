@@ -4710,6 +4710,52 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
 
   // Belge türünü doğrudan FATURA METNİNDEN tespit et (OCR motorunun belgeTipi alanından
   // daha güvenilir — e-Arşiv faturada "Senaryo: EARSIVFATURA" yazar). "Diğer" hatasını önler.
+  /** Makul belge tarihi: 2015..gelecek yıl; dışı (OCR çöpü: 1904/2724/2004) → null (2026-09-15). */
+  private makulTarih(t: Date | null | undefined): Date | null {
+    if (!t || Number.isNaN(t.getTime())) return null;
+    const y = t.getUTCFullYear();
+    return y >= 2015 && y <= new Date().getUTCFullYear() + 1 ? t : null;
+  }
+
+  /** Görsel/fiş metninden TEK SATIRDA "GG AA YYYY" / "GG.AA.YYYY" / "GG-AA-YYYY" (4 haneli yıl) tarih (2026-09-15).
+   *  Etiketli satır ("Fatura/Düzenleme Tarihi") önce; "Sipariş/İrsaliye/Vade/Son ödeme" satırları atlanır; yoksa ilk makul tarih.
+   *  KÖK: OCR motorunun yedek deseni satır sonunu aşıyordu ("ADA NO:7 8⏎04 08 2026" → 07.08.2004; ŞEKERCİ PETROL fişleri
+   *  Ağustos listesinden düşmüştü). Dönüş GG.AA.YYYY ya da null. */
+  private fisTarihiMetinden(metin: string): string | null {
+    const yilUst = new Date().getUTCFullYear() + 1;
+    let ilk: string | null = null;
+    let etiketli: string | null = null;
+    for (const satir of String(metin || '').split(/\r?\n/)) {
+      const s = satir.trim();
+      if (!s) continue;
+      const m = s.match(/(?:^|[^\d])(\d{1,2})[ .\-\/](\d{1,2})[ .\-\/](20\d{2})(?!\d)/);
+      if (!m) continue;
+      const d = Number(m[1]), mo = Number(m[2]), y = Number(m[3]);
+      if (y < 2015 || y > yilUst || mo < 1 || mo > 12 || d < 1 || d > 31) continue;
+      const folded = s.replace(/İ/g, 'I').replace(/ı/g, 'i').toUpperCase();
+      if (/SIPARI|IRSALIYE|VADE|SON ODEME|SON ÖDEME|TESLIM|KURULU|SICIL|MERSIS/.test(folded)) continue;
+      const out = `${String(d).padStart(2, '0')}.${String(mo).padStart(2, '0')}.${y}`;
+      if (/FATURA TARIH|DUZENLE|DÜZENLE|BELGE TARIH|FIS TARIH|FİŞ TARIH/.test(folded)) return out;
+      if (!etiketli && /TARIH/.test(folded)) etiketli = out;
+      if (!ilk) ilk = out;
+    }
+    return etiketli || ilk;
+  }
+
+  /** OCR motorunun tarihi + metin doğrulaması: motor tarihi makulse ve metinde tek satırda görünüyorsa (ya da metinden tarih
+   *  çıkmadıysa) motor; aksi halde metinden bulunan tarih (2026-09-15). */
+  private fisTarihiSec(motorTarihi: string | null, metin: string): string | null {
+    const kendi = this.fisTarihiMetinden(metin);
+    const motorMakul = this.makulTarih(parseDate(motorTarihi || null));
+    if (motorMakul && motorTarihi) {
+      if (!kendi || kendi === motorTarihi) return motorTarihi;
+      const d = motorMakul.getUTCDate(), mo = motorMakul.getUTCMonth() + 1, y = motorMakul.getUTCFullYear();
+      const desen = new RegExp(`(?:^|[^\\d])0?${d}[ .\\-\\/]0?${mo}[ .\\-\\/](?:${y}|${String(y).slice(2)})(?!\\d)`, 'm');
+      if (desen.test(String(metin || ''))) return motorTarihi;
+    }
+    return kendi;
+  }
+
   private docTypeFromText(text?: string | null): string | null {
     const s = String(text || '').toUpperCase();
     if (!s) return null;
@@ -6252,7 +6298,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // YALNIZ MİHSAP "GELEN BELGELER" (onay bekleyen, kaynak='bekleyen') köprülenir (2026-09-15, Muzaffer Bey: "sadece Mihsap'ta
     //   onay bekleyen faturaları aktaracak"). 'arsiv' (İşlenen Faturalar) ve 'fm-arsiv' satırları zaten işlenmiş belgelerdir →
     //   bekleyen listesine düşmemeli (eskiden kaynak süzgeci yoktu).
-    const where: any = { tenantId, mukellefId: opts.taxpayerId, donem: opts.donem, kaynak: 'bekleyen' };
+    // DÖNEMSİZ (2026-09-15): Gelen Belgeler bütün ayları taşır → bekleyen satırların HEPSİ köprülenir; her belge kendi
+    //   tarihinden dönemine düşer (ÖZ ELA: Ağustos ekranından çekince Temmuz fişleri de gelir, Temmuz listesinde görünür).
+    const where: any = { tenantId, mukellefId: opts.taxpayerId, kaynak: 'bekleyen' };
     const allRows = await (this.prisma as any).mihsapInvoice.findMany({
       where,
       take: 3000,
@@ -6269,6 +6317,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     let skipped = 0;
     let failed = 0;
     const errors: string[] = [];
+    // Dönem başına yeni belge sayısı (ekrana "3 belge Temmuz döneminde" diyebilmek için).
+    const donemler: Record<string, number> = {};
 
     for (const inv of rows) {
       try {
@@ -6298,9 +6348,17 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           : 'DIGER';
 
         const ext = String(inv.orjDosyaTuru || '').toUpperCase();
-        const mimeType = ext === 'JPEG' || ext === 'JPG' ? 'image/jpeg'
-          : ext === 'XML' ? 'application/xml'
+        // Dosya türü LİNKTEN (2026-09-15): Mihsap "XML" kaynaklı e-Faturayı da .jpg görüntü olarak sunuyor → mimeType
+        //   application/xml yazılıyordu (dosya JPEG). Link uzantısı esas, orjDosyaTuru yedek.
+        const linkExt = (String(inv.mihsapFileLink || '').match(/\.(jpe?g|png|pdf|xml)(?:\?|$)/i) || [])[1]?.toLowerCase() || '';
+        const mimeType = linkExt === 'jpg' || linkExt === 'jpeg' || ext === 'JPEG' || ext === 'JPG' ? 'image/jpeg'
+          : linkExt === 'png' || ext === 'PNG' ? 'image/png'
+          : linkExt === 'pdf' || ext === 'PDF' ? 'application/pdf'
+          : linkExt === 'xml' || ext === 'XML' ? 'application/xml'
           : 'application/pdf';
+        const dosyaUzanti = linkExt || ext.toLowerCase() || 'pdf';
+        // Tarih: Mihsap satırında makul tarih yoksa (raw._tarihBelirsiz) BOŞ bırakılır → okuma görselden bulur.
+        const mihsapTarihi = (inv.raw as any)?._tarihBelirsiz ? null : (inv.faturaTarihi || null);
 
         const doc = await (this.prisma as any).invoiceAccountingDocument.create({
           data: {
@@ -6312,12 +6370,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             invoiceKind,
             // OCR arka planda yevmiye uretene kadar PROCESSING; bitince NEEDS_REVIEW
             status: 'PROCESSING',
-            originalName: `${inv.faturaNo || inv.mihsapId}.${ext.toLowerCase() || 'pdf'}`,
+            originalName: `${inv.faturaNo || inv.mihsapId}.${dosyaUzanti}`,
             mimeType,
             sizeBytes: 1,
             s3Key: inv.storageKey || inv.storageUrl || `mihsap:${inv.mihsapId}`,
             belgeNo: inv.faturaNo || null,
-            faturaTarihi: inv.faturaTarihi || null,
+            faturaTarihi: mihsapTarihi,
             // Mihsap'tan VKN ALMA: firmaKimlikNo = HESAP SAHİBİNİN numarası (karşı taraf değil)
             // — tüm satırlarda aynı çıkıyordu. Gerçek satıcı/alıcı VKN'si GÖRÜNTÜDEN (OCR/AI) gelir.
             sellerVkn: null,
@@ -6333,14 +6391,16 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         });
         this.enqueueMihsapDocumentOcr(tenantId, doc.id, inv.id, invoiceKind);
         created++;
+        const dn = String(inv.donem || opts.donem);
+        donemler[dn] = (donemler[dn] || 0) + 1;
       } catch (e: any) {
         failed++;
         if (errors.length < 5) errors.push(`${inv.faturaNo || inv.mihsapId}: ${e?.message}`);
       }
     }
 
-    this.logger.log(`importFromMihsap [${opts.taxpayerId}/${opts.donem}]: scan=${rows.length} created=${created} reprocessed=${reprocessed} skipped=${skipped} failed=${failed}`);
-    return { scanned: rows.length, created, reprocessed, skipped, failed, errors };
+    this.logger.log(`importFromMihsap [${opts.taxpayerId}/${opts.donem}]: scan=${rows.length} created=${created} reprocessed=${reprocessed} skipped=${skipped} failed=${failed} donemler=${JSON.stringify(donemler)}`);
+    return { scanned: rows.length, created, reprocessed, skipped, failed, errors, donemler };
   }
 
   async fileUrl(tenantId: string, id: string) {
@@ -6869,6 +6929,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       //   sınıfını ARTIK EZMESİN (auto-sınıf tazelenir, elle-düzeltme korunur).
       data.ocrData = { ...curOcr, isletme: { ...body.isletme, userEdited: true } };
     }
+    // TARIH_BELIRSIZ (2026-09-15): tarih elle düzeltilince "dönemin ilk günü yer tutucu" damgası (ve uyarısı) kalkar.
+    if ('faturaTarihi' in body && (before as any)?.ocrData?.tarihKaynak) {
+      const { tarihKaynak: _tk, ...kalan } = (data.ocrData || (before as any).ocrData || {}) as any;
+      data.ocrData = kalan;
+    }
     // Tevkifat işlem türü (Mihsap tarzı editör): kullanıcının seçtiği resmi kod + oran kalıcılaşır.
     if ('tevkifat' in body && body.tevkifat && typeof body.tevkifat === 'object') {
       const curOcr2: any = data.ocrData || (before as any)?.ocrData || {};
@@ -7297,6 +7362,17 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       // — TEVKIFAT_UYGULANMAMIS (uyarı): UBL'de WithholdingTaxTotal dolu ama PayableAmount = KDV dahil toplam (satıcı düşmemiş).
       //   CANLI BULGU (BRN2026000000483, 2026-09-12): fiş tevkifatlı kurulunca 11.600 ≠ 12.000 'Tutar tutarsız' ENGELİ çıkıyordu. Artık fiş
       //   normal alış olarak kurulur (ubl-parse tevkifatKdv=0), sahip bilgilendirilir; isterse 'Tevkifat fişini kur' ile tevkifatlı işler.
+      // — TARIH_BELIRSIZ (uyarı): görselden makul tarih okunamadı, Mihsap döneminin ilk günü yer tutucu yazıldı (2026-09-15).
+      if (ocrData?.tarihKaynak === 'mihsap-donem') {
+        turetilen.push(uyariYap({
+          kod: UYARI_KOD.TARIH_BELIRSIZ,
+          seviye: 'uyari',
+          baslik: 'Tarih okunamadı — dönemin ilk günü yazıldı',
+          aciklama: 'Belge görselinden makul bir tarih okunamadı; Mihsap dönemi esas alınıp ayın ilk günü yer tutucu olarak yazıldı.',
+          oneri: 'Belgeyi açıp gerçek tarihi yazın; düzeltince bu uyarı kalkar (Luca fişine yer tutucu tarih gitmesin).',
+          kaynak: 'dogrulama',
+        }));
+      }
       const tevkUyg: any = ocrData?.tevkifatUygulanmamis;
       if (tevkUyg && Number(tevkUyg.beyanEdilen) > 0) {
         const kuralU = tevkifatKuralBul(String(tevkUyg.kod || ''));
@@ -15265,11 +15341,23 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       where: { tenantId, id: documentId },
       // sellerVkn/buyerVkn (2026-09-13 doğrulayıcı bulgusu): öğrenme hızlı yolu + işletme hafızası bu okuma yolunda d.sellerVkn/buyerVkn
       //   okuyordu ama alanlar SEÇİLMİYORDU (parsed.saticiVergiNo da yok, doğrusu saticiVkn) → VKN hep boş, hızlı yol hiç çalışmıyordu.
-      select: { id: true, status: true, taxpayerId: true, invoiceKind: true, documentType: true, totalAmount: true, vendorName: true, customerName: true, belgeNo: true, source: true, sourceRefId: true, mimeType: true, s3Key: true, ocrData: true, sellerVkn: true, buyerVkn: true },
+      select: { id: true, status: true, taxpayerId: true, invoiceKind: true, documentType: true, totalAmount: true, vendorName: true, customerName: true, belgeNo: true, source: true, sourceRefId: true, mimeType: true, faturaTarihi: true, s3Key: true, ocrData: true, sellerVkn: true, buyerVkn: true },
     });
     if (!d) throw new NotFoundException('Belge bulunamadı');
     if (d.status === 'APPROVED') return { ok: false, reason: 'onaylı' };
     fmAiBaglamGuncelle({ taxpayerId: d.taxpayerId || undefined, belgeNo: d.belgeNo || documentId });
+    // MİHSAP ÇAPRAZ TEYİT (2026-09-15): Mihsap satırı toplam/tevkifat/dönem bilgisi taşır. ÖZ ELA'da 13 tevkifatlı satış
+    //   Azure hızlı-yolunda yarım okunmuştu (tevkifat sonrası NET KDV tam KDV sanılıp matrah geri hesaplandı:
+    //   75.502 → 37.751). Bu bilgi hızlı-yol kabulünde ve AI talimatında ipucu olarak kullanılır.
+    const mihsapSatir: { toplamTutar: any; faturaTuru: string | null; donem: string | null; raw: any } | null =
+      d.source === 'mihsap' && d.sourceRefId
+        ? await (this.prisma as any).mihsapInvoice.findFirst({
+            where: { tenantId, mihsapId: String(d.sourceRefId) },
+            select: { toplamTutar: true, faturaTuru: true, donem: true, raw: true },
+          }).catch(() => null)
+        : null;
+    const mihsapTevkifatli = !!mihsapSatir && (/TEVKIFAT/i.test(String(mihsapSatir.faturaTuru || '')) || mihsapSatir.raw?.tevkifatliMi === true);
+    const mihsapToplam = mihsapSatir ? (Number(String(mihsapSatir.toplamTutar ?? '')) || 0) : 0;
 
     // Belge içeriğini fileUrl mantığıyla getir — Mihsap CDN indirme + XML→HTML render
     // ORADA çalışıyor (belge görüntüsü açılıyor). Eski özel indirme yolu "dosya yok"
@@ -15585,10 +15673,21 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       //   yavaş Max-vision'a eskale olur (okuma hızlanır). Yanlış okumayı sonraki denge/KDV-matematik
       //   doğrulaması yakalar. ⚠️ KULLANICI TALİMATI: ocr.service.extractFromImage / KDV Kontrol gibi
       //   DİĞER OCR yerlerindeki eşiklere DOKUNULMADI (extractFromImage'a eşik parametresi geçilmiyor).
-      if (az && /azure/i.test(String(az.engine || '')) && (Number(az.confidence) || 0) >= 0.3 && azHasAmt) {
+      // TEVKİFATLI belgede hızlı-yol KABUL EDİLMEZ (HTML hızlı-yolundaki kuralın aynısı): Azure kırılımı tevkifat sonrası
+      //   NET KDV'yi tam KDV sanıp matrahı geri hesaplıyor (ÖZ ELA CLL…166: matrah 75.502 → 37.751, toplam 83.052 → 45.301).
+      //   Metin AI'ya verilir (ucuz metin okuması) → tevkifatKdv/oran belgeden okunur. Mihsap toplamı biliniyorsa Azure
+      //   toplamı onunla tutmalı (1 TL / %1 pay) — tutmuyorsa hızlı-yol yine reddedilir (2026-09-15).
+      const azMetin = String(az?.rawText || '');
+      const azTevkifat = /TEVK[İIiı]FAT|WithholdingTax/i.test(azMetin) || mihsapTevkifatli;
+      const azMihsapUyumsuz = mihsapToplam > 0 && azTotal > 0 && Math.abs(azTotal - mihsapToplam) > Math.max(1, mihsapToplam * 0.01);
+      if (az && (azTevkifat || azMihsapUyumsuz)) {
+        this.logger.log(`[AZURE-HIZLI-YOL] atlandı (${d.belgeNo || documentId}): ${azTevkifat ? 'tevkifat' : ''}${azMihsapUyumsuz ? ` Mihsap toplam ${mihsapToplam} ≠ Azure ${azTotal}` : ''} → AI metin okuması`);
+      }
+      if (az && /azure/i.test(String(az.engine || '')) && (Number(az.confidence) || 0) >= 0.3 && azHasAmt && !azTevkifat && !azMihsapUyumsuz) {
         preParsed = {
           belgeNo: az.belgeNo || null,
-          tarih: az.date || null,
+          // Tarih: metinden tek satırlık GG AA YYYY doğrulaması (motorun yedek deseni satır sonunu aşıyordu → 07.08.2004).
+          tarih: this.fisTarihiSec(az.date || null, azMetin),
           saticiAd: az.satici || null,
           saticiVkn: az.saticiVkn || null,
           aliciAd: null,
@@ -15615,7 +15714,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     //   → text okuma vision'dan çok HIZLI + alt-süreç hafif (OOM riski az). Görüntü-vision yalnız Azure
     //   metni yoksa. Yanlış okumayı denge/KDV-matematik doğrulaması yakalar. (Kullanıcı: "okuma yavaş".)
     const useAzureText = azureText.length > 80;
-    const callPrompt = useAzureText ? (prompt + '\n\nBELGE METNİ (OCR ile okundu):\n' + azureText.slice(0, 20000)) : prompt;
+    const mihsapIpucu = mihsapSatir && (mihsapTevkifatli || mihsapToplam > 0)
+      ? `\n\nMİHSAP KAYDI (mükellefin yüklediği başlık bilgisi):${mihsapTevkifatli ? ' Bu belge TEVKİFATLI — KDV tevkifat oranını ve "Hesaplanan KDV Tevkifat" tutarını MUTLAKA oku (tevkifatKdv > 0).' : ''}${mihsapToplam > 0 ? ` Ödenecek/toplam tutar yaklaşık ${mihsapToplam.toFixed(2)} TL — okuduğunla tutmuyorsa belgeyi yeniden kontrol et.` : ''}`
+      : '';
+    const callPrompt = (useAzureText ? (prompt + '\n\nBELGE METNİ (OCR ile okundu):\n' + azureText.slice(0, 20000)) : prompt) + mihsapIpucu;
     for (let attempt = 1; attempt <= 3 && !parsed; attempt++) {
       // NOT (2026-08-11 test bulgusu): "pilotta HER okuma Sonnet" toplu okumada hız-limitine takılıp
       //   STALL ediyor (5 belge 3+ dk "sırada"). Deploy edilebilir olması için okuma Haiku'da kalır (hızlı);
@@ -16116,6 +16218,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         tevkifatVar: parsed.tevkifat === true || tevkifatOrani > 0 || /tevkifat/i.test(String(html || '')),
         isFixedAsset: faDetForUyari.is,
       });
+      const tarihOkunan = this.makulTarih(parseDate(parsed.tarih));
+      const tarihDonemden = !tarihOkunan && !this.makulTarih(d.faturaTarihi ? new Date(d.faturaTarihi) : null) && /^\d{4}-\d{2}$/.test(String(mihsapSatir?.donem || ''));
       await tx.invoiceAccountingDocument.update({
         where: { id: d.id },
         data: {
@@ -16124,7 +16228,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           ...(mappedType ? { documentType: mappedType } : {}),
           // Z NO metinden (baştaki sıfırlar OCR'da düşebilir: "483" vs görselden "01483" → mevcut no Z NO ile bitiyorsa mevcut kalır).
           belgeNo: (zNoDet && !String(parsed.belgeNo || d.belgeNo || '').endsWith(zNoDet) ? zNoDet : null) || (parsed.belgeNo ? String(parsed.belgeNo) : null) || d.belgeNo || null,
-          ...(parseDate(parsed.tarih) ? { faturaTarihi: parseDate(parsed.tarih) } : {}),
+          // Tarih (2026-09-15): yalnız MAKUL tarih yazılır (2004/2724 gibi okuma çöpü belgeyi dönem dışına atıyordu). Hiç makul
+          //   tarih yoksa Mihsap belgesinde dönemin ilk günü YER TUTUCU + ocrData.tarihKaynak='mihsap-donem' (uyarı üretir).
+          ...(tarihOkunan ? { faturaTarihi: tarihOkunan } : tarihDonemden ? { faturaTarihi: new Date(`${mihsapSatir!.donem}-01T00:00:00Z`) } : {}),
           // GERÇEK iki tarafın VKN'si → sahiplik/yön kontrolü çalışır.
           ...(vknOk(aiSaticiVkn) ? { sellerVkn: aiSaticiVkn } : {}),
           ...(vknOk(aiAliciVkn) ? { buyerVkn: aiAliciVkn } : {}),
@@ -16152,6 +16258,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
               kalemPdfBilgi: kalemKaynak && kalemPdfBilgi ? kalemPdfBilgi : undefined,
               ...(kalemKaynak ? { aiMatrahGuven: aiMatrahGuvenTavani(ogrenmeSecimiOkuma ? 'yuksek' : (hafizaOkuma?.uygula ? hafizaOkuma.guven : (d.ocrData as any)?.aiMatrahGuven), kalemKaynak) } : {}),
               kalemler: Array.isArray(parsed.kalemler) ? parsed.kalemler.slice(0, 30).map((k: any) => { const h = typeof k?.hesap === 'string' ? String(k.hesap).trim() : ''; return { ad: String(k?.ad || '').slice(0, 80), tutar: Number(k?.tutar) || 0, oran: Number(k?.oran) || 0, ...(h && planLeafSet.has(h) ? { hesap: h } : {}) }; }).filter((k: any) => k.ad) : undefined, ...(islSinifAi ? { isletme: islSinifAi } : {}), ...((parsed as any)?._ubl ? ublOcrDataFields((parsed as any)._ubl) : clearUblOnlyOcrFields()), isReturn: isReturnDet, ...(iadeTuruDet ? { iadeTuru: iadeTuruDet } : {}), kalemSplit: kalemSplitApplied || undefined, tevkifatHint: parsed.tevkifat === true || tevkifatOrani > 0 || /tevkifat/i.test(String(html || '')), tevkifatOrani: tevkifatOrani || 0, tevkifatKdv: tevkKdv || 0, ...(smmStopaj > 0 ? { stopajTutari: smmStopaj } : {}), engine: parsed._azure ? 'azure-read' : (parsed === preParsed ? 'ubl-xml' : 'max-vision'),
+            ...(tarihDonemden ? { tarihKaynak: 'mihsap-donem' } : {}),
             readMode: parsed === preParsed ? 'ubl-xml' : (isImage ? 'image' : /pdf/i.test(imgMedia) ? 'pdf-text' : /xml/i.test(imgMedia) ? 'xml-text' : 'html'),
             ...(!preParsed && imgBuf && /xml/i.test(imgMedia) ? { xmlHead: imgBuf.toString('utf8').slice(0, 220).replace(/\s+/g, ' ') } : {}),
             // uyarilar KOŞULSUZ yazılır: yeni okuma uyarı üretmediyse ESKİ okumanın bayat uyarısı

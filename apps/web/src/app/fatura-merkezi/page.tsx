@@ -1478,7 +1478,10 @@ function ScreenFaturalar({ taxpayerId, period, kind = 'ALIS', isIsletme = false,
     mutationFn: () => api.post('/fatura-muhasebelestirme/import-from-mihsap', { taxpayerId, donem: period, faturaTuru: kind }).then((r) => r.data),
     onSuccess: (r: any) => {
       const yeni = Number(r?.created || 0); const tekrar = Number(r?.reprocessed || 0); const zaten = Number(r?.skipped || 0); const hata = Number(r?.failed || 0);
-      if (yeni || tekrar) toast.success(`Mihsap'tan ${yeni} yeni belge çekildi${tekrar ? `, ${tekrar} yeniden okunuyor` : ''}${zaten ? ` (${zaten} zaten vardı)` : ''}. Okuma arka planda.`, { duration: 8000 });
+      // Gelen Belgeler dönemsizdir: başka aya düşen belgeler (örn. Temmuz fişleri) kendi dönem listesinde görünür → söyle.
+      const digerDonem = Object.entries((r?.donemler || {}) as Record<string, number>).filter(([dn]) => dn !== period);
+      const digerNot = digerDonem.length ? ` ${digerDonem.map(([dn, n]) => `${n} belge ${dn} döneminde`).join(', ')} (o dönemi seçince görünür).` : '';
+      if (yeni || tekrar) toast.success(`Mihsap'tan ${yeni} yeni belge çekildi${tekrar ? `, ${tekrar} yeniden okunuyor` : ''}${zaten ? ` (${zaten} zaten vardı)` : ''}. Okuma arka planda.${digerNot}`, { duration: digerNot ? 12000 : 8000 });
       else toast(`Mihsap'ta onay bekleyen yeni ${kind === 'SATIS' ? 'satış' : 'alış'} belgesi yok${zaten ? ` (${zaten} zaten aktarılmış)` : ''}.`, { duration: 6000 });
       if (hata) toast.error(`${hata} belge aktarılamadı: ${(r?.errors || []).slice(0, 2).join(' · ')}`);
       qc.invalidateQueries({ queryKey: ['fm2'] });

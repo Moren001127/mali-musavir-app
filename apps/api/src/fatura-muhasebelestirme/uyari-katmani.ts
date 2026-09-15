@@ -60,6 +60,8 @@ export const UYARI_KOD = {
   STOPAJ_EKSIK: 'STOPAJ_EKSIK',
   HESAP_KODU: 'HESAP_KODU',
   HAFIZA_CELISKI: 'HAFIZA_CELISKI',
+  /** Görselden makul tarih okunamadı; Mihsap döneminin ilk günü yer tutucu yazıldı (2026-09-15). */
+  TARIH_BELIRSIZ: 'TARIH_BELIRSIZ',
 } as const;
 
 export function seviyeToSiddet(s: UyariSeviye): UyariSiddet {
