@@ -169,6 +169,9 @@ export function dogrulamaUyarilari(issues: Array<{ code: string; severity: strin
       case 'DOCUMENT_CANCELLED':
         ekle(UYARI_KOD.IPTAL, 'engel', 'İptal / taslak belge', msg, 'Belge muhasebeleştirilmez; yanlışsa belge durumunu düzeltin.');
         break;
+      case 'ENTEGRATOR_ISARETI':
+        ekle('ENTEGRATOR_ISARETI', 'uyari', 'Entegratör iptal/itiraz işareti', msg, 'Entegratör portalında belgenin iptal/itiraz durumunu kontrol edin; sorun yoksa belgeyi normal işleyin.');
+        break;
       case 'OWNERSHIP_MISMATCH':
         ekle(UYARI_KOD.SAHIPLIK_TERS, sev, 'Sahiplik / yön şüphesi', msg, 'Belgenin yönünü (alış/satış) ve mükellefi kontrol edin.');
         break;

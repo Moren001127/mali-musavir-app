@@ -5979,9 +5979,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         alreadyQueued++;
         continue;
       }
+      let saglayiciUyari: string | null = null;
       {
         const eng = this.belgeDurumuEngelli(raw);
         if (eng.engelli) { skipped++; iptalAtlanan++; continue; }
+        if (eng.uyari) { saglayiciUyari = eng.uyari; this.logger.warn(`[AKTAR] ${row.faturaNo || row.id}: ${eng.uyari} → aktarılıyor, belgeye uyarı yazılacak`); }
       }
       let storedVisual = raw?.originalVisual;
       let hasOriginalVisual = this.hasOriginalProviderVisual(storedVisual, provider);
@@ -6089,8 +6091,15 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             ? 'TURMOB orijinal XML indirilemedi; liste ozetiyle muhasebe kaydi olusturuldu.'
             : null,
           originalVisual: storedVisual || raw?.originalVisual || null,
+          ...(saglayiciUyari ? { iptalItirazNotu: saglayiciUyari } : {}),
         };
         const total = parsed ? (parsed.toplamTutar ?? ((parsed.matrah || 0) + (parsed.kdvTutari || 0))) : null;
+        // Sağlayıcı iptal/itiraz BAYRAĞI (metinsiz): belge oluşturuldu, uyarı ocrData'ya (doğrulama ENTEGRATOR_ISARETI uyarısı üretir).
+        if (saglayiciUyari && result.document?.id) {
+          const isaret = JSON.stringify({ kaynak: provider, deger: String(raw?.iptalItiraz ?? ''), not: saglayiciUyari, tarih: new Date().toISOString() });
+          await (this.prisma as any).$executeRaw`UPDATE invoice_accounting_documents SET "ocrData" = jsonb_set(COALESCE("ocrData", '{}'::jsonb), '{saglayiciIsareti}', ${isaret}::jsonb) WHERE id = ${result.document.id}`
+            .catch((e: any) => this.logger.warn(`[AKTAR] sağlayıcı işareti yazılamadı ${row.faturaNo || row.id}: ${e?.message || e}`));
+        }
         await (this.prisma as any).eFaturaInbox.update({
           where: { id: row.id },
           data: {
@@ -7140,6 +7149,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       digerVergiToplam: ocrData?.digerVergiToplam,
       tevkifatKdv: this.numFromOcr(ocrData?.tevkifatKdv) || this.numFromOcr(ocrData?.kdvTevkifat) || 0,
       belgeDurumu: ocrData?.belgeDurumu,
+      saglayiciIsareti: ocrData?.saglayiciIsareti?.not ? String(ocrData.saglayiciIsareti.not) : null,
       stopajTutari: this.numFromOcr(ocrData?.stopajTutari) || 0,
       isletme: isIsletmeDoc,
     });
@@ -12860,7 +12870,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
    *  Gerileme denetimi A.3: eski geniş kalıp (/iptal|itiraz|red|cancel|reject/) "Kredi", "Onaylandı (Redirect)" gibi
    *  metinlere de takılıyor, "İptal Talebi Reddedildi" (talep reddedildi = belge GEÇERLİ) belgeyi engelliyordu.
    *  Artık KELİME sınırlı kalıp + talep-reddi istisnası. */
-  private belgeDurumuEngelli(raw: any, belgeDurumu?: string | null): { engelli: boolean; neden: string } {
+  private belgeDurumuEngelli(raw: any, belgeDurumu?: string | null): { engelli: boolean; neden: string; uyari?: string } {
     const bd = String(belgeDurumu || raw?.belgeDurumu || '').toLowerCase();
     if (bd === 'iptal') return { engelli: true, neden: 'iptal' };
     if (bd === 'taslak') return { engelli: true, neden: 'taslak' };
@@ -12874,15 +12884,21 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // "iptal/red talebi kabul edildi/onaylandı" → belge iptal/red olmuştur.
     const talepKabul = /\b(iptal|red|itiraz)\s*(talebi|talep|istegi|basvurusu)\s*(kabul|onaylan)/;
     // Sınırlı engel kalıpları (kelime sınırlı): iptal | reddedil(di) | red edil(di) | rejected | cancel(l)ed | iptal edildi.
-    const engelRe = /\b(iptal|reddedil\w*|red edil\w*|rejected|cancel(?:l)?ed|iptal edildi)\b/;
+    const engelRe = /\b(iptal|reddedil\w*|reddett\w*|red edil\w*|rejected|cancel(?:l)?ed|iptal edildi)\b/; // reddett* (2026-09-15): "Alıcı Reddetti" de engel
     const approvalEngel = !talepReddi.test(approval) && (engelRe.test(approval) || talepKabul.test(approval));
     if (approvalEngel) return { engelli: true, neden: 'iptal/red' };
     // iptalItiraz alanı: "Yok/No/None/Hayır/-" değer YOK demektir; talep reddi istisnası burada da geçerli.
     const itirazYok = !itiraz || /^(yok|no|none|hayir|-|0|false)$/.test(itiraz);
     if (!itirazYok && !talepReddi.test(itiraz)) {
       if (engelRe.test(itiraz) || talepKabul.test(itiraz)) return { engelli: true, neden: 'iptal/red' };
-      // TÜRMOB IptalItirazDurumu bayrak ('1' / 'true' / 'Evet') olarak gelebiliyor (canlı: iptalItiraz='1' 1 belge); "itiraz edildi" de engel.
-      if (/^(1|true|evet)$/.test(itiraz) || /\bitiraz\b/.test(itiraz)) return { engelli: true, neden: 'iptal/itiraz' };
+      if (/\bitiraz\b/.test(itiraz)) return { engelli: true, neden: 'iptal/itiraz' };
+      // TÜRMOB IptalItirazDurumu çıplak bayrak ('1' / 'true' / 'Evet'): anlamı belirsiz (canlı 2026-09-15 ÖZ ELA SN22026000000267:
+      //   DurumAdi "Onaylandı", FaturaTipiAdi IADE, KepItirazDurumu=false ama IptalItirazDurumu=1 — sistemdeki tek örnek). Eskiden
+      //   sessizce ENGEL sayılıp belge oluşturulmuyordu; ekran ise satırı "aktarılabilir" gösteriyordu (Muzaffer Bey: "aktarılmıyor").
+      //   Kural: metinsiz bayrak ENGEL DEĞİL → aktarılır + belgede uyarı (sahip karar verir); iptal/red/itiraz METNİ yine engel.
+      if (/^(1|true|evet)$/.test(itiraz)) {
+        return { engelli: false, neden: '', uyari: `Entegratör iptal/itiraz işareti (${String(raw?.iptalItiraz)}) — durum metni yok, belge "${String(raw?.approvalStatus || '')}" görünüyor; portalda iptal/itiraz durumunu kontrol edin.` };
+      }
     }
     if (/\b(taslak|draft)\b/.test(`${approval} ${itiraz}`)) return { engelli: true, neden: 'taslak' };
     if (/\bgib\b.*\bhata\b|\bhata\b.*\bgib\b|gib error|\berror\b/.test(approval)) return { engelli: true, neden: 'gib-hata' };
@@ -13909,6 +13925,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     digerVergiToplam?: any;
     tevkifatKdv?: any;
     belgeDurumu?: string | null;
+    /** Aktarımda sağlayıcının metinsiz iptal/itiraz bayrağı (ocrData.saglayiciIsareti.not) → UYARI, engel değil (2026-09-15). */
+    saglayiciIsareti?: string | null;
     /** SMM gelir vergisi stopajı (alışta ödenecek = brüt + KDV − stopaj). */
     stopajTutari?: any;
     /** Faz 2 — demirbaş sahip kararı (ocrData.demirbasKarar.karar): elle_islendi | yine_de_isle | demirbas_degil | null. */
@@ -14066,6 +14084,11 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           ? 'Belge İPTAL edilmiş görünüyor (fatura tipi/notu) — muhasebeleştirilmez. Yanlışsa belge durumunu düzeltin.'
           : 'Belge TASLAK görünüyor — onaylı belge değil, muhasebeleştirilmez.',
       });
+    }
+
+    // ── 3d) ENTEGRATOR_ISARETI — sağlayıcı listesinde metinsiz iptal/itiraz bayrağı (uyarı; sahip karar verir).
+    if (opts.saglayiciIsareti) {
+      issues.push({ code: 'ENTEGRATOR_ISARETI', severity: 'WARNING', message: opts.saglayiciIsareti });
     }
 
     // ── 4) OWNERSHIP_MISMATCH — VKN/TC sahiplik kontrolü
@@ -15387,10 +15410,16 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       //   AI'ı 23KB ham HTML gürültüsünde boğuluyordu → NULL/boş kategori). Önce onu kullan; yoksa eski yol.
       // PLAN/15 Faz 6: kalemler PDF/görselden tamamlandıysa (kalem-pdf.ts) kalem adları içeriğin BAŞINA konur — kalemsiz
       //   özet XML'in metninde içerik yoktur; sınıflandırma AI'ı kalemleri görsün (9000 karakter kesintisinden önce).
-      const contentText = [
-        parsed._kalemMetni ? `Fatura kalemleri (belgenin ${kalemPdfBilgi?.dosya === 'gorsel' ? 'görselinden' : 'PDF\'inden'} okundu): ${parsed._kalemMetni}` : '',
-        (parsed._htmlText || parsed._azureText || (imgBuf ? imgBuf.toString('utf8') : (html || ''))),
-      ].filter(Boolean).join('\n').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 9000);
+      // CANLI BULGU (2026-09-15, ÖZ ELA / GİTO GIDA): UBL XML'inde ilk 9000 karakter imza sertifikası + gömülü XSLT base64'ten
+      //   oluşuyor; KALEMLER kesimin dışında kalıyordu. Model yalnız sertifikadaki entegratör adını görüp "Uyumsoft yazılım
+      //   hizmeti" / "İş Net telekomünikasyon" diye sınıflıyordu (servis taşımacılığı → 770.01.036 PROGRAM VE YAZILIM,
+      //   akaryakıt yansıtma → 770.01.026 TELEFON, kazandibi → yazılım). Artık XML belgede içerik AYRIŞTIRILMIŞ alanlardan
+      //   kurulur (taraflar + kalemler + tutarlar) ve ham metindeki uzun base64 blokları atılır (sinifIcerikMetni).
+      const contentText = this.sinifIcerikMetni(parsed, {
+        kalemMetniKaynak: parsed._kalemMetni ? (kalemPdfBilgi?.dosya === 'gorsel' ? 'görselinden' : 'PDF\'inden') : null,
+        hamMetin: parsed._htmlText || parsed._azureText || (imgBuf ? imgBuf.toString('utf8') : (html || '')),
+        yon: d.invoiceKind === 'SATIS' ? 'SATIS' : 'ALIS',
+      });
       // KELİME KURALI (giderIcerikSinifla): e-Fatura/e-Arşiv'de kalemler AI'sız (XML/HTML) okunuyor; İÇERİK
       //   net bir gider türüne (nakliye/akaryakıt/elektrik/kira/kargo/müşavirlik…) uyuyorsa detHit dolar
       //   (yalnız HER kalem tanınan ve AYNI hint'i veren gider ise — HOMOJEN). İşletme defteri ve SATIŞ hariç.
@@ -16233,6 +16262,54 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     // şifreli / encrypted / okunama(dı) / açıklanama(dı) / belirlenem(edi) / tespit edilem / anlaşılam / çözülem / deşifre / decode
     if (/(sifre|desifre|encrypt|decode|okunama|aciklanama|belirlenem|tespit edilem|anlasilam|cozulem|incelene?med)/.test(norm)) return '';
     return t;
+  }
+
+  /**
+   * SINIFLANDIRMA İÇERİK METNİ (2026-09-15): AI'ya giden belge metni.
+   *  - Ayrıştırılmış alanlar ÖNCE: satıcı/alıcı, belge no/tarih, KALEMLER (ad · tutar · KDV oranı), matrah/KDV/toplam, tevkifat/iade.
+   *  - PDF/görselden tamamlanan kalemler (_kalemMetni) aynı blokta.
+   *  - Ham metin (HTML/Azure/XML) SONDA ve TEMİZ: etiketler atılır, ≥120 karakterlik base64/imza blokları atılır
+   *    (UBL imza sertifikası + gömülü XSLT), toplam 9000 karakter sınırı korunur.
+   *  Eski davranış: ham XML'in ilk 9000 karakteri (imza + XSLT) → kalemler görünmüyor, model entegratör adına göre sınıflıyordu.
+   */
+  private sinifIcerikMetni(
+    parsed: any,
+    opts: { kalemMetniKaynak: string | null; hamMetin: string; yon: 'ALIS' | 'SATIS' },
+  ): string {
+    const tl = (n: any) => (Number.isFinite(Number(n)) ? Number(n).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '');
+    const kalemler: any[] = Array.isArray(parsed?.kalemler) ? parsed.kalemler : [];
+    const ozet: string[] = [];
+    if (parsed?.saticiAd || parsed?.aliciAd) {
+      ozet.push(`Satıcı: ${String(parsed?.saticiAd || '?')}${parsed?.saticiVkn ? ` (VKN ${parsed.saticiVkn})` : ''} · Alıcı: ${String(parsed?.aliciAd || '?')}${parsed?.aliciVkn ? ` (VKN ${parsed.aliciVkn})` : ''}`);
+    }
+    if (parsed?.belgeNo || parsed?.tarih) ozet.push(`Belge: ${String(parsed?.belgeNo || '?')} · Tarih: ${String(parsed?.tarih || '?')} · Yön: ${opts.yon === 'SATIS' ? 'SATIŞ (mükellef kesti)' : 'ALIŞ (mükellef aldı)'}`);
+    if (opts.kalemMetniKaynak && parsed?._kalemMetni) {
+      ozet.push(`Fatura kalemleri (belgenin ${opts.kalemMetniKaynak} okundu): ${String(parsed._kalemMetni)}`);
+    } else if (kalemler.length) {
+      const satirlar = kalemler.slice(0, 40).map((k: any, i: number) => {
+        const ad = String(k?.ad || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+        const tutar = tl(k?.tutar);
+        const oran = Number(k?.oran);
+        return `${i + 1}) ${ad}${tutar ? ` — ${tutar} TL` : ''}${Number.isFinite(oran) && oran > 0 ? ` (KDV %${oran})` : ''}`;
+      });
+      ozet.push(`Fatura kalemleri (${kalemler.length}): ${satirlar.join(' | ')}${kalemler.length > 40 ? ' | …' : ''}`);
+    }
+    const kdv: any[] = Array.isArray(parsed?.kdv) ? parsed.kdv : [];
+    const matrah = kdv.reduce((a: number, b: any) => a + (Number(b?.matrah) || 0), 0);
+    const kdvToplam = kdv.reduce((a: number, b: any) => a + (Number(b?.kdv) || 0), 0);
+    if (matrah > 0 || kdvToplam > 0 || Number(parsed?.toplam) > 0) {
+      ozet.push(`Matrah: ${tl(matrah)} TL · KDV: ${tl(kdvToplam)} TL · Toplam: ${tl(parsed?.toplam)} TL${Number(parsed?.tevkifatKdv) > 0 ? ` · KDV tevkifatı: ${tl(parsed.tevkifatKdv)} TL` : ''}${parsed?.iade === true ? ' · İADE FATURASI' : ''}`);
+    }
+    const ham = String(opts.hamMetin || '')
+      .replace(/<[^>]+>/g, ' ')
+      // base64 / imza / XSLT blokları (uzun harf-rakam dizileri) — içerik değil, gürültü.
+      .replace(/[A-Za-z0-9+/=]{120,}/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const bas = ozet.length ? `BELGE ÖZETİ (XML'den ayrıştırıldı — içerik/hesap kararında ESAS bu kalemlerdir):\n${ozet.join('\n')}` : '';
+    const kalanBoyut = Math.max(1500, 9000 - bas.length);
+    return [bas, ham ? `Ham belge metni (yardımcı; imza/entegratör bilgileri içerik DEĞİLDİR): ${ham.slice(0, kalanBoyut)}` : '']
+      .filter(Boolean).join('\n').trim().slice(0, 9000);
   }
 
   private buildMuhasebeNeden(faaliyet: string, isSale: boolean, kat: string, giderTuru: string, matrahAcc: any, isReturn: boolean): string {
