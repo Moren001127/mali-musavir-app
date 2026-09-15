@@ -17330,8 +17330,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       //   var ama eşleştirmedi"). İade'de her iki grubu + her iki tarafın adını dene.
       // İADE TÜRÜ (2026-09-15): alıştan iade (mükellef kesti) → önce SATICI (320); satıştan iade → önce MÜŞTERİ (120).
       const iadeTuruRm = isReturn ? this.iadeTuruSaf(doc.invoiceKind, doc.ocrData, isSale ? doc.buyerVkn : doc.sellerVkn, true) : null;
+      //   Grup KESİN: alıştan iade satıcı carisine (320), satıştan iade müşteri carisine (120) — yanlış gruptaki ad eşleşmesi
+      //   korunmaz (ÖMER ÖZEN GIB2026000000463: alıştan iade 120.01.Ö003'e gitmişti, planda 320.01.Ö001 VKN'li duruyordu).
       const cariPrefixes = isReturn
-        ? (iadeTuruRm === 'alistan' ? ['320', '329', '331', '120'] : ['120', '320', '329', '331'])
+        ? (iadeTuruRm === 'alistan' ? ['320', '329', '331'] : ['120'])
         : (isSale ? ['120'] : ['320', '329', '331']);
       const cariNames = isReturn ? [doc.customerName, doc.vendorName].filter(Boolean) : [vendorName];
       // CARI seçim ÖNCELİĞİ (kullanıcı bulgusu: MERT REKLAM faturası → yanlış "AKILLI KARTUŞ" cari):
@@ -17730,7 +17732,8 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
           const curVknOk = !!curAcc && !!svkn && normVkn((curAcc as any).vkn) === svkn;
           const curNameOk = !!curAcc && cariNames.some((nm: any) => nm && this.nameMatchScore(String(nm), String((curAcc as any).accountName || '')) > 0);
           const curIsPick = !!curAcc && !!cariMatch && String((curAcc as any).accountCode) === String((cariMatch as any).accountCode);
-          if (current && (curVknOk || curNameOk || curIsPick)) {
+          const curOnekUygun = !current || !isReturn || cariPrefixes.some((p) => current.startsWith(p)); // iadede grup dışı cari korunmaz
+          if (current && curOnekUygun && (curVknOk || curNameOk || curIsPick)) {
             // KAYNAK YÜKSELTME (ölçüm bulgusu 2026-08-20): kod DOĞRU olduğu için satıra hiç
             //   dokunulmuyordu → plana VKN yazılsa bile satır 'ISIM' etiketiyle kalıyordu.
             //   Bu etiket sadece kozmetik değil: güven skoru (computeDocConfidence) ve CARİ
@@ -17752,6 +17755,17 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             data: cariMatch
               ? { accountCode: (cariMatch as any).accountCode, description: (cariMatch as any).accountName, kaynak: cariKaynak || 'KURAL' }
               : { accountCode: '', description: '', kaynak: null },
+          });
+          continue;
+        }
+        // ALIŞTAN İADE matrahı (2026-09-15): mükellefin kestiği iade satış GELİRİ değildir → 6xx kalamaz; alış seçimi (match:
+        //   kategori/AI stok-gider) varsa ona, yoksa boşalt (PERİHAN AAA2026000000080: 600.01.001 MALZEMELİ İŞÇİLİK GELİRİ kalıyordu).
+        if (group === 'matrah' && isSale && isReturn && iadeTuruRm === 'alistan' && /^6/.test(current)
+            && String(line.kaynak || '').toUpperCase() !== 'KULLANICI') {
+          const matchCode = match ? String((match as any).accountCode) : '';
+          await (this.prisma as any).invoiceAccountingLine.update({
+            where: { id: line.id },
+            data: matchCode ? { accountCode: matchCode, description: String((match as any).accountName || 'Alıştan iade'), kaynak: (match as any)?._kaynak || 'KURAL' } : { accountCode: '', description: 'Alıştan iade', kaynak: null },
           });
           continue;
         }
