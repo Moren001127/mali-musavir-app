@@ -39,8 +39,9 @@ export const GorevKarti = forwardRef<
     escNonce: number;
     maxBagli?: boolean;
     koordinatorNotu: string;
+    className?: string;
   }
->(function GorevKarti({ ajanlar, mukellefler, komutTaslak, kosular, odakNonce, escNonce, maxBagli, koordinatorNotu }, ref) {
+>(function GorevKarti({ ajanlar, mukellefler, komutTaslak, kosular, odakNonce, escNonce, maxBagli, koordinatorNotu, className = '' }, ref) {
   const ajan = ajanlar.find((a) => a.id === KOORDINATOR);
   const [gorev, setGorev] = useState('');
   const [taxpayerId, setTaxpayerId] = useState('');
@@ -143,7 +144,7 @@ export const GorevKarti = forwardRef<
         </span>
       }
       style={{ scrollMarginTop: 16 }}
-      className=""
+      className={className}
     >
       <div
         ref={(el) => {
@@ -166,9 +167,9 @@ export const GorevKarti = forwardRef<
                 calistir();
               }
             }}
-            rows={3}
+            rows={7}
             placeholder={listening ? 'Dinliyorum…' : 'Örn: Ömer Özen’in Ağustos 2026 KDV kontrolünü yap · Zeyrek Lojistik’in Ağustos faturalarını işle · Öz Ela’nın son tebligatları ne?'}
-            className="min-h-[88px] w-full resize-none bg-transparent px-3.5 py-3 pr-24 text-[13.5px] leading-relaxed outline-none"
+            className="min-h-[190px] w-full resize-y bg-transparent px-4 py-3.5 pr-24 text-[14px] leading-relaxed outline-none"
             style={{ color: TEXT }}
           />
           <button

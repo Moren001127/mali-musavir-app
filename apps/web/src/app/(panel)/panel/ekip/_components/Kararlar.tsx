@@ -235,6 +235,7 @@ export function SizdenBeklenenKutu({
   onCevapla,
   calisiyor,
   yukleniyor,
+  className = '',
 }: {
   kalemler: BekleyenKalem[];
   onaylar: EkipOnay[];
@@ -244,10 +245,11 @@ export function SizdenBeklenenKutu({
   onCevapla: (vaka: Vaka, metin: string) => void;
   calisiyor: boolean;
   yukleniyor: boolean;
+  className?: string;
 }) {
   const onayHaritasi = useMemo(() => new Map(onaylar.map((o) => [o.previewId, o])), [onaylar]);
   return (
-    <Kutu baslik="Sizden beklenen" aciklama="Portal, WhatsApp ve sesten gelen tüm kararlar" renk={GOLD} sag={kalemler.length ? <Rozet metin={`${kalemler.length} bekliyor`} /> : <Rozet metin="bekleyen yok" renk={OK} />}>
+    <Kutu baslik="Sizden beklenen" aciklama="Portal, WhatsApp ve sesten gelen tüm kararlar" renk={GOLD} className={className} sag={kalemler.length ? <Rozet metin={`${kalemler.length} bekliyor`} /> : <Rozet metin="bekleyen yok" renk={OK} />}>
       {yukleniyor && !kalemler.length ? (
         <div className="py-4 text-[12px]" style={{ color: MUTED }}>
           Yükleniyor…

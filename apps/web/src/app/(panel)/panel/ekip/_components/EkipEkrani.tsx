@@ -328,15 +328,16 @@ export function EkipEkrani() {
         </div>
       )}
 
+      {/* Genel bakış: sütunlar aynı boyda — sağ sütun uzayınca soldaki "Sizden beklenen" alta kadar esner (Muzaffer Bey: "aşağıda boşluk olmuş") */}
       {sekme === 'genel' && (
-        <div className="grid min-w-0 items-start gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
+        <div className="grid min-w-0 items-stretch gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
           <div className="flex min-w-0 flex-col gap-4">
             <GorevKarti ref={komutRef} ajanlar={ajanlar} mukellefler={mukellefler} komutTaslak={komutTaslak} kosular={kosular} odakNonce={odakNonce} escNonce={escNonce} maxBagli={durumS.data?.maxBagli} koordinatorNotu={koordinatorNotu} />
-            <SizdenBeklenenKutu kalemler={bekleyenler} onaylar={onaylar} ajanAd={ajanAd} mukellefAd={mukellefAd} onBitti={tazele} onCevapla={vakayaCevapla} calisiyor={!!kosular.aktifKosu} yukleniyor={genelS.isLoading && !genelS.data} />
+            <SizdenBeklenenKutu className="flex-1" kalemler={bekleyenler} onaylar={onaylar} ajanAd={ajanAd} mukellefAd={mukellefAd} onBitti={tazele} onCevapla={vakayaCevapla} calisiyor={!!kosular.aktifKosu} yukleniyor={genelS.isLoading && !genelS.data} />
           </div>
           <div className="flex min-w-0 flex-col gap-4">
             <SuAnKutu kosu={sonKosu} vakalar={genelVakalar} ajanAd={ajanAd} mukellefAd={mukellefAd} onIzle={isiAc} onDurdur={(h) => void durdur(h)} />
-            <BugunKutu vakalar={genelVakalar} oneriler={oneriler} ajanAd={ajanAd} onSec={isiAc} onTumu={() => setSekme('isler')} onTaslak={taslakVer} onPano={() => setSekme('pano')} />
+            <BugunKutu className="flex-1" vakalar={genelVakalar} oneriler={oneriler} ajanAd={ajanAd} onSec={isiAc} onTumu={() => setSekme('isler')} onTaslak={taslakVer} onPano={() => setSekme('pano')} />
           </div>
         </div>
       )}

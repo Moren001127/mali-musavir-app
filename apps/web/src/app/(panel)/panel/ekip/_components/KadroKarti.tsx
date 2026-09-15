@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import type { Ajan, EkipOnay } from '@/lib/ekip';
 import type { Kosu } from './kosular';
-import { Avatar, CARD_BG, CARD_BORDER, GOLD, KIRMIZI, MAVI, MUTED, Rozet, TEXT } from './Tema';
+import { Avatar, GOLD, KIRMIZI, MAVI, MUTED, Nokta, Rozet, TEXT, ajanRengi } from './Tema';
 import { AJAN_UNVAN, ajanKisaAd, ajanKisaltma, saatKisa, sayacMetni, tarihKisa } from './ortak';
 
 function suAn(ajan: Ajan, kosu: Kosu | undefined, mukellefAd: (id?: string | null) => string | undefined, simdi: number): { metin: string; durum: 'calisiyor' | 'hata' | 'bos' } {
@@ -32,7 +32,8 @@ function sonIsEtiketi(iso?: string | null): string {
 
 /**
  * Kadro sekmesi — 12 personel kartı (4 sütun): avatar · ad · unvan · ne yapar · şu an / son iş · bugün · 7 gün.
- * Çalışan kart mavi gradyanlı (Bütçe KPI vurgu kalıbı); Koordinatör altın halkalı.
+ * Her kart personelin kendi tonunda (Tema.AJAN_RENK): üst şerit + köşe parıltısı + gradyan zemin + avatar halkası (Bütçe KPI vurgu kalıbı).
+ * Çalışan kart daha parlak (koyu gradyan, nabızlı avatar, "çalışıyor" rozeti); boşta olan sakin.
  */
 export function KadroKarti({ ajanlar, onaylar, kosular, mukellefAd, yukleniyor, haftalikIs, bugunKosu }: { ajanlar: Ajan[]; onaylar: EkipOnay[]; kosular: Map<string, Kosu>; mukellefAd: (id?: string | null) => string | undefined; yukleniyor?: boolean; haftalikIs: Map<string, number>; bugunKosu: number }) {
   const [simdi, setSimdi] = useState(() => Date.now());
@@ -75,38 +76,42 @@ export function KadroKarti({ ajanlar, onaylar, kosular, mukellefAd, yukleniyor, 
           const d = durumlar[i];
           const onay = bekleyenOnay(a);
           const calisiyor = d.durum === 'calisiyor';
-          const koordinator = a.id === 'koordinator';
+          const renk = ajanRengi(a.id);
           return (
             <div
               key={a.id}
               data-ajan={a.id}
               className="relative overflow-hidden rounded-2xl px-4 py-3.5"
               style={{
-                background: calisiyor ? `linear-gradient(140deg, ${MAVI}24, rgba(255,255,255,0.01) 60%)` : CARD_BG,
-                border: `1px solid ${calisiyor ? `${MAVI}4d` : CARD_BORDER}`,
-                boxShadow: '0 14px 32px rgba(0,0,0,0.20)',
+                background: `linear-gradient(140deg, ${renk}${calisiyor ? '30' : '1c'}, rgba(255,255,255,0.012) ${calisiyor ? '70%' : '62%'})`,
+                border: `1px solid ${renk}${calisiyor ? '66' : '3a'}`,
+                boxShadow: calisiyor ? `0 14px 32px rgba(0,0,0,0.22), 0 0 0 1px ${renk}22` : '0 14px 32px rgba(0,0,0,0.20)',
               }}
               title={`${a.ad} — ${a.unvan}${d.metin ? `\nşu an: ${d.metin}` : '\nboşta'}`}
             >
-              {calisiyor && <div className="pointer-events-none absolute -right-6 -top-8 h-24 w-24 rounded-full opacity-[0.18]" style={{ background: `radial-gradient(circle, ${MAVI}, transparent 68%)` }} />}
+              {/* Üst renk şeridi (Kutu kalıbı) + köşe parıltısı (KPI kalıbı) */}
+              <div className="pointer-events-none absolute inset-x-0 top-0 h-px" style={{ background: `linear-gradient(90deg, ${renk}b3, ${renk}33 60%, transparent)` }} />
+              <div className={`pointer-events-none absolute -right-6 -top-8 h-24 w-24 rounded-full ${calisiyor ? 'opacity-[0.30] animate-pulse' : 'opacity-[0.16]'}`} style={{ background: `radial-gradient(circle, ${renk}, transparent 68%)` }} />
               <div className="relative flex items-center gap-2.5">
-                <Avatar kisaltma={ajanKisaltma(a.id, a.ad)} ton={calisiyor ? 'mavi' : koordinator ? 'gold' : 'gri'} boyut={34} nabiz={calisiyor} />
+                <Avatar kisaltma={ajanKisaltma(a.id, a.ad)} renk={renk} boyut={34} nabiz={calisiyor} />
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-[13px] font-semibold" style={{ color: TEXT }}>
                     {ajanKisaAd(a.id, a.ad)}
                   </div>
-                  <div className="truncate text-[11px]" style={{ color: MUTED }}>
+                  <div className="truncate text-[11px] font-medium" style={{ color: renk }}>
                     {AJAN_UNVAN[a.id] || a.unvan}
                   </div>
                 </div>
+                {calisiyor && <Rozet metin="çalışıyor" renk={MAVI} />}
                 {onay > 0 && <Rozet metin={`${onay} onay`} renk={GOLD} />}
               </div>
               <div className="relative mt-2.5 min-h-[34px] text-[11.5px] leading-relaxed" style={{ color: MUTED }}>
                 {a.aciklama || AJAN_UNVAN[a.id] || a.unvan}
               </div>
               <div className="relative mt-2.5 flex items-center justify-between gap-2 text-[11px]" style={{ color: MUTED }}>
-                <span className="min-w-0 truncate" style={{ color: calisiyor ? MAVI : d.durum === 'hata' ? KIRMIZI : MUTED }}>
-                  {calisiyor ? `çalışıyor · ${d.metin}` : d.durum === 'hata' ? 'son iş yarım kaldı' : sonIsEtiketi(a.sonKosu?.createdAt)}
+                <span className="inline-flex min-w-0 items-center gap-1.5" style={{ color: calisiyor ? TEXT : d.durum === 'hata' ? KIRMIZI : MUTED }}>
+                  {calisiyor && <Nokta renk={MAVI} nabiz />}
+                  <span className="truncate">{calisiyor ? d.metin : d.durum === 'hata' ? 'son iş yarım kaldı' : sonIsEtiketi(a.sonKosu?.createdAt)}</span>
                 </span>
                 <span className="flex-shrink-0 tabular-nums">
                   bugün <b style={{ color: TEXT }}>{a.bugunKosu ?? 0}</b> · 7 gün <b style={{ color: TEXT }}>{haftalikIs.get(a.id) || 0}</b>

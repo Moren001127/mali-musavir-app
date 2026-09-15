@@ -1,7 +1,7 @@
 'use client';
 
 import type { CSSProperties, ReactNode } from 'react';
-import { CARD_BORDER, GOLD, KIRMIZI, MAVI, MUTED, OK, ROW_SEP, TEXT } from '../../butce/ui';
+import { CARD_BORDER, GOLD, KIRMIZI, MAVI, MOR, MUTED, OK, ROW_SEP, TEXT, TURUNCU } from '../../butce/ui';
 
 /**
  * EKİP — TASARIM DİLİ = Kişisel Bütçe / Cari Kasa (Muzaffer Bey 2026-09-15: "Bütçe / Cari Kasa gibi").
@@ -16,10 +16,33 @@ export type AvatarTonu = 'gold' | 'mavi' | 'gri' | 'kirmizi';
 
 const AVATAR_RENK: Record<AvatarTonu, string> = { gold: GOLD, mavi: MAVI, gri: MUTED, kirmizi: KIRMIZI };
 
-/** Personel avatarı: iki harf, nötr daire; çalışıyorsa mavi halka (nabız), Koordinatör altın. */
-export function Avatar({ kisaltma, ton = 'gri', boyut = 28, nabiz = false, title }: { kisaltma: string; ton?: AvatarTonu; boyut?: number; nabiz?: boolean; title?: string }) {
-  const renk = AVATAR_RENK[ton];
-  const vurgulu = ton !== 'gri';
+/**
+ * Kadro renkleri — her personelin kendi tonu (Muzaffer Bey 2026-09-15: "kadro tablosunu renklendir, uygun renk tonları olsun").
+ * Bütçe paletinin 5 rengi + aynı doygunluk/açıklıkta 7 komşu ton; komşu kartlar birbirine yakın düşmesin diye kadro sırasına göre dağıtıldı.
+ * Yalnız Kadro kartı ve avatarı kullanır; akış/iş panelinde renk anlam taşımaya devam eder (mavi sürüyor, yeşil bitti…).
+ */
+export const AJAN_RENK: Record<string, string> = {
+  koordinator: GOLD, // ofis müdürü — altın
+  fatura: TURUNCU, // fatura işleme — turuncu
+  'banka-kasa': OK, // banka ve kasa — yeşil
+  beyanname: MAVI, // beyanname ve KDV — mavi
+  'bordro-sgk': MOR, // bordro ve SGK — mor
+  edefter: '#72cdbd', // e-Defter — turkuaz
+  'luca-operator': '#9da8b7', // Luca ekranı — çelik
+  denetci: '#d59bd9', // dönem denetimi — leylak
+  analist: '#a9c98c', // mali analiz — adaçayı
+  mevzuat: '#94a8ec', // mevzuat — lavanta
+  risk: '#f09aa8', // risk puanı — gül
+  musteri: '#e8a98a', // müşteri ilişkileri — şeftali
+};
+export function ajanRengi(id: string): string {
+  return AJAN_RENK[id] || '#9da8b7';
+}
+
+/** Personel avatarı: iki harf, nötr daire; çalışıyorsa mavi halka (nabız), Koordinatör altın. `renk` verilirse ton yerine o kullanılır (Kadro kartı). */
+export function Avatar({ kisaltma, ton = 'gri', renk: ozelRenk, boyut = 28, nabiz = false, title }: { kisaltma: string; ton?: AvatarTonu; renk?: string; boyut?: number; nabiz?: boolean; title?: string }) {
+  const renk = ozelRenk || AVATAR_RENK[ton];
+  const vurgulu = !!ozelRenk || ton !== 'gri';
   return (
     <span
       title={title}
@@ -29,9 +52,9 @@ export function Avatar({ kisaltma, ton = 'gri', boyut = 28, nabiz = false, title
         height: boyut,
         fontSize: Math.max(9, Math.round(boyut * 0.36)),
         color: vurgulu ? renk : MUTED,
-        background: 'rgba(255,255,255,0.04)',
+        background: ozelRenk ? `${renk}1a` : 'rgba(255,255,255,0.04)',
         border: `1px solid ${vurgulu ? `${renk}80` : CARD_BORDER}`,
-        boxShadow: ton === 'mavi' ? `0 0 0 3px ${MAVI}1f` : 'none',
+        boxShadow: ton === 'mavi' || (ozelRenk && nabiz) ? `0 0 0 3px ${renk}1f` : 'none',
       }}
     >
       {kisaltma}

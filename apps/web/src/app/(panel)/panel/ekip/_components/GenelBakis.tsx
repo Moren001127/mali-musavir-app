@@ -184,6 +184,7 @@ export function BugunKutu({
   onTumu,
   onTaslak,
   onPano,
+  className = '',
 }: {
   vakalar: Vaka[] | undefined;
   oneriler: Oneri[];
@@ -192,6 +193,7 @@ export function BugunKutu({
   onTumu: () => void;
   onTaslak: (t: Omit<KomutTaslak, 'nonce'>) => void;
   onPano: () => void;
+  className?: string;
 }) {
   const bitenler = useMemo(() => (vakalar || []).filter((v) => v.kutu === 'bitti' && bugunMu(v.guncellendi)).sort((a, b) => new Date(b.guncellendi).getTime() - new Date(a.guncellendi).getTime()).slice(0, 5), [vakalar]);
   return (
@@ -199,6 +201,7 @@ export function BugunKutu({
       baslik="Bugün"
       aciklama="Bitenler ve Koordinatör’ün önerdiği sıradaki işler"
       renk={OK}
+      className={className}
       sag={
         <Dugme tur="sade" onClick={onTumu}>
           Tümü →
