@@ -414,6 +414,15 @@ export function parseUblInvoice(xml: string, warn?: (msg: string) => void): Pars
     let kdvBreakdown = [...subMap.entries()]
       .filter(([, v]) => v.base > 0 || v.amount > 0)
       .map(([rate, v]) => ({ rate, base: round2(v.base), amount: round2(v.amount) }));
+    // TAXABLEAMOUNT EKSİK (2026-09-15 canlı bulgu — GİTO EFA2026000000215: TaxSubtotal'da yalnız TaxAmount 191,05 %1, taban yok →
+    //   matrah 0, "Tutar tutarsız" ENGEL): taban KDV tutarı / oran ile türetilir; tek oranlıysa ve TaxExclusiveAmount ±1 ₺ uyuyorsa
+    //   belge matrahı (tam değer) kullanılır.
+    if (kdvBreakdown.some((b) => b.base <= 0 && b.amount > 0 && b.rate > 0)) {
+      kdvBreakdown = kdvBreakdown.map((b) => (b.base <= 0 && b.amount > 0 && b.rate > 0) ? { ...b, base: round2((b.amount * 100) / b.rate) } : b);
+      if (kdvBreakdown.length === 1 && matrah != null && matrah > 0 && Math.abs(matrah - kdvBreakdown[0].base) <= 1) {
+        kdvBreakdown = [{ ...kdvBreakdown[0], base: round2(matrah) }];
+      }
+    }
     // Belge TaxSubtotal tek-oran döndü ama KALEMLERDE birden çok oran var → kalemleri oran-bazlı topla.
     const kalemRates = new Set(rawKalemler.map((k) => Math.round(Number(k.oran) || 0)).filter((r) => r > 0));
     if (kdvBreakdown.length < 2 && kalemRates.size >= 2) {

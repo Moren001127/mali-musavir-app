@@ -528,5 +528,28 @@ ${line(2, 'Deterjan', 1, 1000, 1000, `<cac:TaxTotal><cbc:TaxAmount currencyID="T
   assert(Math.abs(p.matrah + p.kdvTutari + p.digerVergiToplam - p.odenecekTutar) <= 0.5, '17: denklem ±0,50 (önceki yuvarlama 0,17)');
 }
 
+// 18) TaxSubtotal'da TaxableAmount YOK (2026-09-15 GİTO EFA2026000000215): taban KDV/oran'dan, tek oranda TaxExclusive ile hizalanır.
+{
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<Invoice>
+  <ID>EFA2026000000215</ID><ProfileID>TEMELFATURA</ProfileID><IssueDate>2026-08-05</IssueDate><DocumentCurrencyCode>TRY</DocumentCurrencyCode>
+  <AccountingSupplierParty><Party><PartyName><Name>SATICI</Name></PartyName><PartyIdentification><ID schemeID="VKN">1111111111</ID></PartyIdentification></Party></AccountingSupplierParty>
+  <AccountingCustomerParty><Party><PartyName><Name>GİTO</Name></PartyName><PartyIdentification><ID schemeID="VKN">2222222222</ID></PartyIdentification></Party></AccountingCustomerParty>
+  <TaxTotal><TaxAmount currencyID="TRY">191.05</TaxAmount><TaxSubtotal><TaxAmount currencyID="TRY">191.05</TaxAmount><Percent>1</Percent><TaxCategory><TaxScheme><Name>KDV</Name><TaxTypeCode>0015</TaxTypeCode></TaxScheme></TaxCategory></TaxSubtotal></TaxTotal>
+  <LegalMonetaryTotal>
+    <LineExtensionAmount currencyID="TRY">19105</LineExtensionAmount>
+    <TaxExclusiveAmount currencyID="TRY">19105</TaxExclusiveAmount>
+    <TaxInclusiveAmount currencyID="TRY">19296.05</TaxInclusiveAmount>
+    <PayableAmount currencyID="TRY">19296.05</PayableAmount>
+  </LegalMonetaryTotal>
+</Invoice>`;
+  const p = parseUblInvoice(xml);
+  assert(p, '18: parse null');
+  assert(p.kdvBreakdown && p.kdvBreakdown.length === 1, '18: tek oran');
+  approx(p.kdvBreakdown[0].base, 19105, '18: taban TaxExclusive ile hizalandı');
+  approx(p.kdvBreakdown[0].amount, 191.05, '18: KDV');
+  approx(p.matrah + p.kdvTutari, 19296.05, '18: denklem');
+}
+
 if (failed) { console.error(`[ubl-parse] ${failed} hata`); process.exit(1); }
-console.log('[ubl-parse] OK — tevkifatlı satış, telekom karışık vergi, iade/iptal (not karar vermez), iskonto, döviz, vergi türü süzgeci, kısmi tevkifat, e-SMM stopaj, yuvarlama, çok oranlı kdvOrani, tevkifat çıkarımı (sentetik XML), alt toplamsız tevkifat aritmetiği, ÖTV/BTV KDV-matrahı arındırma, bakiye/yuvarlama ödenecek çözümü');
+console.log('[ubl-parse] OK — tevkifatlı satış, telekom karışık vergi, iade/iptal (not karar vermez), iskonto, döviz, vergi türü süzgeci, kısmi tevkifat, e-SMM stopaj, yuvarlama, çok oranlı kdvOrani, tevkifat çıkarımı (sentetik XML), alt toplamsız tevkifat aritmetiği, ÖTV/BTV KDV-matrahı arındırma, bakiye/yuvarlama ödenecek çözümü, TaxableAmount eksik taban türetme');
