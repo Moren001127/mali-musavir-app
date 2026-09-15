@@ -138,7 +138,7 @@ async function sseKosu(res, govde) {
   AJANLAR[0].suAn = null;
   yaz({ type: 'done', isId: id, model: 'claude-sonnet-4-6', durationMs: bitis - bas, toolUses, kuruTestYapilacaktilar: kok.result.kuruTestYapilacaktilar, onayBekleyen: [], ogrenilen: [] });
   res.end();
-  // Çocuk 7 sn sonra biter
+  // Çocuk 16 sn sonra biter (canlı adımlar görülsün)
   setTimeout(() => {
     const c = ISLER.get(cocukId);
     if (!c || c.status !== 'running') return;
@@ -156,7 +156,7 @@ async function sseKosu(res, govde) {
     vaka.adimlar.push({ tip: 'bildirim', id: `b-${cocukId}`, tur: 'istek', baslik: '4 incele satırı sizin kararınızı bekliyor (KDV Kontrol › Ömer Özen › Ağustos 2026)', govde: 'PLATFORM AKARYAKIT 12.09 · BİM 21.08 · OPET 30.08 · ULUSOY 14.08', durum: 'acik', baslangic: iso(cbit) });
     vaka.acikKalemler = [{ tip: 'istek', id: `b-${cocukId}`, baslik: '4 incele satırı sizin kararınızı bekliyor (KDV Kontrol › Ömer Özen › Ağustos 2026)', kaynak: 'bildirim', confirmationText: null }];
     AJANLAR[3].suAn = null;
-  }, 7000);
+  }, 16000);
 }
 
 function sayaclar() {
@@ -189,7 +189,23 @@ function ekipUclari(yol, yontem, q, govde, jsonGonder, res) {
   const isM = /^\/ekip\/isler\/([^/]+)$/.exec(yol);
   if (yontem === 'GET' && isM) {
     const is = ISLER.get(isM[1]);
-    return is ? jsonGonder(res, 200, is) : jsonGonder(res, 404, { message: 'iş yok' });
+    if (!is) return jsonGonder(res, 404, { message: 'iş yok' });
+    // Koşu sürerken canlı adımlar (gerçek API: payload.canli) — geçen süreye göre adım adım açılır, sonuncusu "sürüyor"
+    if (is.status === 'running' && is.ajanId === 'beyanname') {
+      const bas = new Date(is.startedAt).getTime();
+      const gecen = simdi().getTime() - bas;
+      const plan = [['get_taxpayer', { taxpayerId: is.taxpayerId }, 1200], ['kdv_kontrol_oturum_bul_olustur', { taxpayerId: is.taxpayerId, donem: '2026/08' }, 1500], ['kdv_kontrol_luca_cek', { sessionId: 's-omer' }, 2500], ['kdv_kontrol_fatura_bagla', { sessionId: 's-omer' }, 1800], ['kdv_kontrol_ocr_baslat', { sessionId: 's-omer' }, 900], ['kdv_kontrol_ocr_bekle', { sessionId: 's-omer', maxSaniye: 60 }, 9000]];
+      const adimlar = [];
+      let t = 0;
+      for (const [ad, args, sure] of plan) {
+        if (t > gecen) break;
+        const bitti = t + sure <= gecen;
+        adimlar.push({ ad, args, basladi: iso(bas + t), bitti: bitti ? iso(bas + t + sure) : undefined, durum: bitti ? (ad === 'kdv_kontrol_luca_cek' && is.dryRun ? 'kuru' : 'bitti') : 'suruyor' });
+        t += sure;
+      }
+      return jsonGonder(res, 200, { ...is, canli: { adimlar, guncellendi: iso(simdi().getTime()) } });
+    }
+    return jsonGonder(res, 200, is);
   }
   const iptalM = /^\/ekip\/isler\/([^/]+)\/iptal$/.exec(yol);
   if (yontem === 'POST' && iptalM) {

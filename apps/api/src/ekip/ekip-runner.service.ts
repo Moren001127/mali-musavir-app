@@ -211,6 +211,68 @@ export type EkipAkisOlayi =
     }
   | { type: 'error'; error: string; isId?: string };
 
+/**
+ * CANLI ADIM (2026-09-15; Muzaffer Bey: "iş devam ederken aşamaları daha açık ama kısa yazsın"): koşu sürerken her araç çağrısı
+ * başlarken/biterken payload.canli = {adimlar, guncellendi} yazılır; portal iş paneli 8 sn'de bir GET /ekip/isler/:id ile okur.
+ * Arka planda koşan personelin adımları başka türlü görünmüyordu (SSE yalnız portaldan başlatılan koşuya akar; result bitince yazılır).
+ */
+export interface CanliAdim {
+  ad: string;
+  /** Yalnız düz alanlar (metin ≤160 kr, sayı, boolean, kısa dizi); '__' ile başlayan iç alanlar atılır. */
+  args?: Record<string, unknown>;
+  basladi: string;
+  bitti?: string;
+  durum: 'suruyor' | 'bitti' | 'hata' | 'kuru' | 'onay' | 'red';
+}
+/** payload.canli en çok bu kadar adım tutar (eski adımlar düşer; tam liste bitince result.toolUses'ta). */
+const CANLI_ADIM_TAVANI = 60;
+
+function canliArgOzeti(args: any): Record<string, unknown> | undefined {
+  if (!args || typeof args !== 'object') return undefined;
+  const o: Record<string, unknown> = {};
+  let n = 0;
+  for (const [k, v] of Object.entries(args)) {
+    if (k.startsWith('__')) continue;
+    if (typeof v === 'string') o[k] = v.length > 160 ? `${v.slice(0, 159)}…` : v;
+    else if (typeof v === 'number' || typeof v === 'boolean') o[k] = v;
+    else if (Array.isArray(v) && v.length <= 5 && v.every((x) => typeof x === 'string' || typeof x === 'number')) o[k] = v;
+    else continue;
+    if (++n >= 12) break;
+  }
+  return n ? o : undefined;
+}
+
+/** Canlı adım listesi + sıralı yazım kuyruğu (sonraki yazım öncekini bekler → başladı/bitti sırası bozulmaz; yazım hatası koşuyu bozmaz). */
+export class CanliAdimYazici {
+  readonly adimlar: CanliAdim[] = [];
+  private kuyruk: Promise<void> = Promise.resolve();
+  constructor(private readonly yaz: (adimlar: CanliAdim[]) => Promise<void>) {}
+  baslat(ad: string, args: any): CanliAdim {
+    const a: CanliAdim = { ad, args: canliArgOzeti(args), basladi: new Date().toISOString(), durum: 'suruyor' };
+    this.adimlar.push(a);
+    this.gonder();
+    return a;
+  }
+  bitir(a: CanliAdim, durum: 'bitti' | 'hata'): void {
+    a.durum = durum;
+    a.bitti = new Date().toISOString();
+    this.gonder();
+  }
+  ekle(ad: string, args: any, durum: 'kuru' | 'onay' | 'red'): void {
+    const t = new Date().toISOString();
+    this.adimlar.push({ ad, args: canliArgOzeti(args), basladi: t, bitti: t, durum });
+    this.gonder();
+  }
+  /** Son yazım bitene kadar bekler (koşu kapanışında). */
+  bekle(): Promise<void> {
+    return this.kuyruk;
+  }
+  private gonder(): void {
+    const kopya = this.adimlar.slice(-CANLI_ADIM_TAVANI).map((a) => ({ ...a }));
+    this.kuyruk = this.kuyruk.then(() => this.yaz(kopya)).catch(() => undefined);
+  }
+}
+
 /** calistir() içindeki tek portal aracının koşu bağlamı — portalAracIsleyici bunun üzerinden çalışır (spec'te sahte kurulur). */
 interface KosuBaglami {
   p: EkipCalistirParametreleri;
@@ -222,6 +284,8 @@ interface KosuBaglami {
   toolUses: Array<{ name: string; args: any }>;
   kuruTestYapilacaktilar: YapilacakIs[];
   onayBekleyen: OnayBekleyen[];
+  /** Canlı adım yazıcısı (spec'te verilmez). */
+  canli?: CanliAdimYazici;
 }
 
 export interface EkipKosuSonucu {
@@ -279,6 +343,20 @@ export class EkipRunnerService implements OnApplicationShutdown {
     const t = this.nabizlar.get(isId);
     if (t) clearInterval(t);
     this.nabizlar.delete(isId);
+  }
+
+  /** Canlı adım yazıcısı: payload.canli'yi yalnız iş hâlâ running iken günceller (sahte prisma'da yazmaz). */
+  private canliYazici(isId: string): CanliAdimYazici {
+    const yazabilir = typeof (this.prisma as any)?.$executeRaw === 'function';
+    return new CanliAdimYazici(async (adimlar) => {
+      if (!yazabilir) return;
+      try {
+        const canli = JSON.stringify({ adimlar, guncellendi: new Date().toISOString() });
+        await (this.prisma as any).$executeRaw`UPDATE agent_commands SET payload = jsonb_set(COALESCE(payload, '{}'::jsonb), '{canli}', ${canli}::jsonb) WHERE id = ${isId} AND status = 'running'`;
+      } catch (e: any) {
+        this.logger.warn(`[ekip] canlı adım yazılamadı ${isId}: ${e?.message || e}`);
+      }
+    });
   }
 
   /** Kapanış drenajı: süren koşular bitene kadar bekle (tavan EKIP_KAPANIS_BEKLEME_SN). */
@@ -732,7 +810,8 @@ export class EkipRunnerService implements OnApplicationShutdown {
   async isGetir(tenantId: string, id: string) {
     // 'ekip:' gerçek koşu, 'ekiptest:' geliştirici test koşusu — kimlikle okumada ikisi de bulunur (listeler yalnız 'ekip:' görür).
     const r = await (this.prisma as any).agentCommand.findFirst({ where: { id, tenantId, OR: [{ agent: { startsWith: 'ekip:' } }, { agent: { startsWith: 'ekiptest:' } }] } });
-    return r ? { ...this.isOzeti(r), result: r.result || null } : null;
+    // canli: koşu sürerken yazılan adımlar (CanliAdimYazici); bitince result.toolUses tam liste olduğundan verilmez
+    return r ? { ...this.isOzeti(r), result: r.result || null, canli: r.status === 'running' && r.payload?.canli ? r.payload.canli : null } : null;
   }
 
   private isOzeti(r: any) {
@@ -1117,7 +1196,7 @@ export class EkipRunnerService implements OnApplicationShutdown {
    * Sıra: mükellef bağı → kademe kontrolü → dışarı gönderim onayı → çalıştır.
    */
   private portalAracIsleyici(k: KosuBaglami) {
-    const { p, ajan, isId, dryRun, ctx, emit, toolUses, kuruTestYapilacaktilar, onayBekleyen } = k;
+    const { p, ajan, isId, dryRun, ctx, emit, toolUses, kuruTestYapilacaktilar, onayBekleyen, canli } = k;
     // Mükellef bağı bir kez kurulur: görevle geldiyse zaten var; yoksa ilk geçerli cuid'li araç çağrısından.
     let mukellefBagiDenendi = Boolean(ctx.taxpayerId);
     const mukellefBagiKur = async (args: any) => {
@@ -1147,6 +1226,7 @@ export class EkipRunnerService implements OnApplicationShutdown {
         kuruTestYapilacaktilar.push(kayit);
         toolUses.push({ name, args: { ...args, __kuruTest: true, __test: true } });
         emit({ type: 'kuruTest', name, args, kademe: erisim.kademe });
+        canli?.ekle(name, args, 'kuru');
         return cevap({ kuruTest: true, yapilacakti: { name, args }, mesaj: 'TEST koşusu: portala yazılmaz, mesaj/onay/bildirim düşmez; raporunda "yapılacaktı" yaz.' });
       }
       if (!erisim.acik) {
@@ -1155,9 +1235,11 @@ export class EkipRunnerService implements OnApplicationShutdown {
           kuruTestYapilacaktilar.push(kayit);
           toolUses.push({ name, args: { ...args, __kuruTest: true } });
           emit({ type: 'kuruTest', name, args, kademe: erisim.kademe });
+          canli?.ekle(name, args, 'kuru');
           return cevap({ kuruTest: true, yapilacakti: { name, args }, mesaj: erisim.mesaj });
         }
         emit({ type: 'red', name, neden: erisim.neden || 'kapali', mesaj: erisim.mesaj || 'kapalı' });
+        canli?.ekle(name, args, 'red');
         return cevap({ ok: false, error: erisim.mesaj, neden: erisim.neden });
       }
 
@@ -1165,6 +1247,7 @@ export class EkipRunnerService implements OnApplicationShutdown {
       const mihsapRet = ekipMihsapKomutuYasagi(name, args);
       if (mihsapRet) {
         emit({ type: 'red', name, neden: 'mihsap_kapali', mesaj: mihsapRet });
+        canli?.ekle(name, args, 'red');
         return cevap({ ok: false, error: mihsapRet, neden: 'mihsap_kapali' });
       }
 
@@ -1175,6 +1258,7 @@ export class EkipRunnerService implements OnApplicationShutdown {
           onayBekleyen.push(onay);
           toolUses.push({ name, args: { ...args, __onayBekliyor: onay.previewId } });
           emit({ type: 'onay', name, previewId: onay.previewId, confirmationText: onay.confirmationText });
+          canli?.ekle(name, args, 'onay');
           this.dinleyicilereBildir({ tur: 'onay', kosu: this.kosuBilgisi(p, ajan, isId), onay });
           return cevap({
             onayBekliyor: true,
@@ -1191,6 +1275,7 @@ export class EkipRunnerService implements OnApplicationShutdown {
       // 3) ÇALIŞTIR
       toolUses.push({ name, args });
       emit({ type: 'tool', name, args });
+      const canliAdim = canli?.baslat(name, args);
       try {
         let r: any;
         if (name.startsWith('ekip_')) r = await this.ekipAraciCalistir(name, args, p, isId);
@@ -1217,8 +1302,10 @@ export class EkipRunnerService implements OnApplicationShutdown {
             });
           }
         } else r = { ok: false, error: `Çalıştırıcı bulunamadı: ${name}` };
+        if (canliAdim) canli!.bitir(canliAdim, r && typeof r === 'object' && (r.ok === false || r.error) ? 'hata' : 'bitti');
         return cevap(r);
       } catch (e: any) {
+        if (canliAdim) canli!.bitir(canliAdim, 'hata');
         return cevap({ ok: false, error: e?.message || String(e) });
       }
     };
@@ -1293,6 +1380,7 @@ export class EkipRunnerService implements OnApplicationShutdown {
     const started = Date.now();
     let answer = '';
     const toolUses: Array<{ name: string; args: any }> = [];
+    const canli = this.canliYazici(isId);
     const kuruTestYapilacaktilar: YapilacakIs[] = [];
     const onayBekleyen: OnayBekleyen[] = [];
     let costUsd = 0;
@@ -1315,7 +1403,7 @@ export class EkipRunnerService implements OnApplicationShutdown {
         'portal',
         'Moren portal / Luca / ekip aracı. name=araç adı, args=parametre nesnesi. Yalnızca sistem mesajında listelenen adlar geçerlidir.',
         { name: z.string(), args: z.record(z.any()).optional() },
-        this.portalAracIsleyici({ p, ajan, isId, dryRun, ctx, emit, toolUses, kuruTestYapilacaktilar, onayBekleyen }),
+        this.portalAracIsleyici({ p, ajan, isId, dryRun, ctx, emit, toolUses, kuruTestYapilacaktilar, onayBekleyen, canli }),
       );
 
       const server = sdk.createSdkMcpServer({ name: 'portal', version: '1.0.0', tools: [portalTool] });
@@ -1361,6 +1449,7 @@ export class EkipRunnerService implements OnApplicationShutdown {
       if (p.signal) p.signal.removeEventListener('abort', disSinyalIptali);
       this.nabizDurdur(isId);
       this.calisanKosular.delete(isId);
+      await canli.bekle(); // kuyruktaki son canlı adım yazımı, iş dosyası kapanmadan önce bitsin
     }
 
     // DURDURULDU: SDK AbortError ya da döngüden çıkış — hangi yoldan gelirse gelsin tek metin, iş failed.

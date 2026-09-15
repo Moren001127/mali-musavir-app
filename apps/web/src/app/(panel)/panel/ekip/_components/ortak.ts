@@ -725,38 +725,132 @@ function argMetni(v: unknown): string {
   return '';
 }
 
+/* ─── Adım metni sadeleştirme (2026-09-15; Muzaffer Bey: "iş devam ederken aşamaları daha açık ama kısa yazsın") ─── */
+
+/** Yönelme eki, kesme işaretiyle: "KDV/Beyanname Uzmanı" → "’na", "Luca Operatörü" → "’ne", "Mali Analist" → "’e", "Luca" → "’ya". */
+export function yonelmeEki(ad: string): string {
+  const s = String(ad || '').trim();
+  const harfler = s.toLocaleLowerCase('tr-TR').replace(/[^a-zçğıöşü]/g, '');
+  const sonHarf = harfler.slice(-1);
+  const sonUnlu = [...harfler].reverse().find((h) => 'aeıioöuü'.includes(h)) || 'e';
+  const kalin = 'aıou'.includes(sonUnlu);
+  const unluyleBitiyor = 'aeıioöuü'.includes(sonHarf);
+  // ı/i/u/ü ile biten adlar burada iyelikli bileşik (Uzmanı, Sorumlusu) → n kaynaştırma; a/e/o/ö ile bitenler (Luca) → y
+  const kaynastirma = unluyleBitiyor ? ('ıiuü'.includes(sonHarf) ? 'n' : 'y') : '';
+  return `’${kaynastirma}${kalin ? 'a' : 'e'}`;
+}
+
+const HUKUKI_EKLER = new Set(['SANAYİ', 'SANAYI', 'SAN', 'TİCARET', 'TICARET', 'TİC', 'TIC', 'LİMİTED', 'LIMITED', 'LTD', 'ŞİRKETİ', 'SIRKETI', 'ŞTİ', 'STI', 'ANONİM', 'ANONIM', 'AŞ', 'A.Ş', 'A.S', 'VE']);
+
+/** Firma adını kısaltır: hukuki ekler (SAN. TİC. LTD. ŞTİ., A.Ş., VE) düşer, en çok 4 kelime. "GFİT PLATFORM VİNÇ NAKLİYE HİZMETLERİ TİCARET LİMİTED ŞİRKETİ" → "GFİT PLATFORM VİNÇ NAKLİYE". */
+export function firmaKisalt(ad: string, kelimeTavani = 4): string {
+  const parcalar = String(ad || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(' ')
+    .filter((t) => !HUKUKI_EKLER.has(t.toLocaleUpperCase('tr-TR').replace(/\.+$/, '')));
+  if (!parcalar.length) return String(ad || '').trim();
+  return parcalar.length > kelimeTavani ? `${parcalar.slice(0, kelimeTavani).join(' ')}…` : parcalar.join(' ');
+}
+
+function firmaAnahtari(ad: string): string {
+  return String(ad || '')
+    .toLocaleUpperCase('tr-TR')
+    .replace(/[^A-ZÇĞİÖŞÜ0-9 ]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** İki firma adı aynı mı (noktalama/boşluk farkı ve biri diğerinin başlangıcıysa aynı sayılır). */
+export function ayniFirma(a?: string | null, b?: string | null): boolean {
+  const x = firmaAnahtari(a || '');
+  const y = firmaAnahtari(b || '');
+  if (!x || !y) return false;
+  return x === y || x.startsWith(`${y} `) || y.startsWith(`${x} `) || firmaAnahtari(firmaKisalt(x, 99)) === firmaAnahtari(firmaKisalt(y, 99));
+}
+
+/** Metnin içinde geçen mükellef adını (en az ilk 2 kelimesi eşleşiyorsa, hukuki ekleriyle birlikte) çıkarır. */
+function mukellefAdiniCikar(metin: string, mukellefAd?: string | null): string {
+  if (!mukellefAd) return metin;
+  const adKelimeleri = firmaAnahtari(mukellefAd).split(' ').filter(Boolean);
+  if (!adKelimeleri.length) return metin;
+  const kelimeler = metin.split(/\s+/);
+  const anahtar = (k: string) => firmaAnahtari(k);
+  for (let i = 0; i < kelimeler.length; i++) {
+    let n = 0;
+    while (n < adKelimeleri.length && i + n < kelimeler.length && anahtar(kelimeler[i + n]) === adKelimeleri[n]) n++;
+    if (n >= Math.min(2, adKelimeleri.length) && n > 0) {
+      let son = i + n;
+      while (son < kelimeler.length && HUKUKI_EKLER.has(anahtar(kelimeler[son]).replace(/\.+$/, ''))) son++;
+      return [...kelimeler.slice(0, i), ...kelimeler.slice(son)].join(' ').replace(/\s{2,}/g, ' ').trim();
+    }
+  }
+  return metin;
+}
+
+/**
+ * Görev / atama cümlesini ekran için sadeleştirir: kimlik ("(taxpayerId: …)"), reçete kodu ("(R1)", "R1"), "Bugün: …" düşer;
+ * "Mükellef: <tam unvan>" panelin mükellefiyse tamamen, değilse kısaltılarak kalır; "Dönem: 2026/08" → "Dönem: Ağu 2026";
+ * cümleler " · " ile birleşir. Ör: "KDV Kontrol (R1). Mükellef: GFİT … ŞİRKETİ (taxpayerId: cm…). Dönem: 2026/08. Bugün: 2026-09-14. İstenen: KDV kontrolü. Canlı."
+ * → "KDV Kontrol · Dönem: Ağu 2026 · İstenen: KDV kontrolü · Canlı".
+ */
+export function gorevSadelestir(gorev: string, mukellefAd?: string | null, tavan = 96): string {
+  let s = konuKisalt(gorev, 4000)
+    .replace(/^İŞ ATAMASI\s*(?:→|->)\s*/i, '')
+    .replace(/\s*\((?:taxpayerId|mükellef id|mukellef id|id)\s*:[^)]*\)/gi, '')
+    .replace(/\s*\(R\d{1,2}[a-z]?\)/g, '')
+    .replace(/(^|\s)R\d{1,2}[a-z]?(?=\s|$|[.,])/g, '$1')
+    .replace(/\bBugün\s*:\s*\d{4}-\d{2}-\d{2}\.?/gi, '');
+  // "Mükellef: <unvan>" — unvan, sonraki alana ("Dönem:" gibi), Büyük-küçük harfli yeni cümleye ya da sayıya kadar sürer (LTD. ŞTİ. içindeki noktalar bölmez)
+  s = s.replace(/Mükellef\s*:\s*(.+?)(?=\.\s+[A-ZÇĞİÖŞÜ][^:.]{1,24}:|\.\s+[A-ZÇĞİÖŞÜ][a-zçğıöşü]|\.\s+\d|\.\s*$|$)/i, (_, ad: string) => (ayniFirma(ad, mukellefAd) ? '' : `Mükellef: ${firmaKisalt(ad.trim())}`));
+  // "Dönem: 2026/08" → "Ağu 2026" (etiket gereksiz; ay-yıl kendini anlatır); tek başına "2026/08" de aynı
+  s = s
+    .replace(/\bDönem\s*:\s*(?=\d{4}[\/-]\d{2})/gi, '')
+    .replace(/\b(\d{4})[\/-](\d{2})(?![\d-])/g, (_, y, m) => (Number(m) >= 1 && Number(m) <= 12 ? donemEtiketi(`${y}-${m}`) : `${y}/${m}`));
+  s = mukellefAdiniCikar(s, mukellefAd);
+  const cumleler = s
+    .split(/\.\s+|\.$|\s+·\s+/)
+    .map((c) => c.replace(/\s{2,}/g, ' ').replace(/^[\s·,;:-]+|[\s·,;:.-]+$/g, '').trim())
+    .filter(Boolean);
+  const sonuc = cumleler.join(' · ');
+  return sonuc.length > tavan ? `${sonuc.slice(0, tavan - 1).trimEnd()}…` : sonuc;
+}
+
 /**
  * Araç çağrısı → insan dili adım açıklaması. Ham JSON gösterilmez; yalnız anlamlı alanlar (mükellef, dönem, arama, sayı).
- * Ör: list_taxpayers {search:'Öz Ela'} → "Mükellef listesi · 'Öz Ela' arandı"; ekip_ajan_baslat {ajanId:'beyanname', gorev} → "Beyanname Uzmanı'na verildi · <görev ilk 70>".
+ * Ör: list_taxpayers {search:'Öz Ela'} → "Mükellef listesi · 'Öz Ela' arandı"; ekip_ajan_baslat {ajanId:'beyanname', gorev} → "KDV/Beyanname Uzmanı’na verildi · KDV Kontrol · Dönem: Ağu 2026".
+ * `secenek.mukellefAd/mukellefId`: panelin mükellefi — adım metninde tekrar yazılmaz (başlıkta zaten var); başka mükellefse kısaltılıp yazılır.
  */
-export function adimAciklamasi(name: string, args: any, mukellefAd?: (id?: string | null) => string | undefined, ajanAd?: (id: string) => string): { baslik: string; ayrinti: string } {
+export function adimAciklamasi(name: string, args: any, mukellefAd?: (id?: string | null) => string | undefined, ajanAd?: (id: string) => string, secenek?: { mukellefId?: string | null; mukellefAd?: string | null }): { baslik: string; ayrinti: string } {
   const a = args && typeof args === 'object' ? args : {};
   const parcalar: string[] = [];
   if (name === 'ekip_ajan_baslat') {
     const hedef = ajanAd ? ajanAd(String(a.ajanId || '')) : String(a.ajanId || '');
-    // v5 (2026-09-15): görev cümlesindeki kimlik/reçete kodu ekranda yazılmaz — "(taxpayerId: …)", "(R1)"
-    const gorev = String(a.gorev || '')
-      .split('\n')[0]
-      .replace(/\s*\((?:taxpayerId|mükellef id|id)\s*:[^)]*\)/gi, '')
-      .replace(/\s*\(R\d{1,2}[a-z]?\)/g, '')
-      .replace(/\s{2,}/g, ' ')
-      .trim();
-    return { baslik: `${hedef || 'Personel'}’e verildi`, ayrinti: gorev.length > 90 ? `${gorev.slice(0, 89)}…` : gorev };
+    return { baslik: `${hedef || 'Personel'}${yonelmeEki(hedef || 'Personel')} verildi`, ayrinti: gorevSadelestir(String(a.gorev || ''), secenek?.mukellefAd, 90) };
   }
   if (name === 'create_pending_action') {
     const baslik = String(a.title || a.baslik || '').trim();
     const tur = String(a.tur || '').toLowerCase();
     const atama = /^İŞ ATAMASI/i.test(baslik);
-    const turAd = atama ? 'Atama kaydı düşüldü' : tur === 'istek' ? 'Sizden istenen' : tur === 'onay' ? 'Onayınıza sunuldu' : 'Not düşüldü';
-    const govde = atama ? baslik.replace(/^İŞ ATAMASI\s*(?:→|->)\s*/i, '') : baslik;
-    return { baslik: turAd, ayrinti: govde.length > 90 ? `${govde.slice(0, 89)}…` : govde };
+    if (atama) {
+      // "İŞ ATAMASI → beyanname: R1 GFİT PLATFORM … Ağustos 2026 canlı" → "KDV/Beyanname Uzmanı · Ağustos 2026 · canlı"
+      const govde = baslik.replace(/^İŞ ATAMASI\s*(?:→|->)\s*/i, '');
+      const m = govde.match(/^([a-z][a-z0-9-]*)\s*:\s*(.*)$/i);
+      const kim = m ? (ajanAd ? ajanAd(m[1]) : m[1]) : '';
+      const kalan = gorevSadelestir(m ? m[2] : govde, secenek?.mukellefAd, 80);
+      return { baslik: 'Atama kayda geçirildi', ayrinti: [kim, kalan].filter(Boolean).join(' · ') };
+    }
+    const turAd = tur === 'istek' ? 'Sizden istenen' : tur === 'onay' ? 'Onayınıza sunuldu' : 'Not düşüldü';
+    return { baslik: turAd, ayrinti: baslik.length > 90 ? `${baslik.slice(0, 89)}…` : baslik };
   }
-  const mukellef = a.taxpayerId && mukellefAd ? mukellefAd(String(a.taxpayerId)) : undefined;
-  if (mukellef) parcalar.push(mukellef);
+  const mukellefId = a.taxpayerId ? String(a.taxpayerId) : '';
+  const mukellef = mukellefId && mukellefAd ? mukellefAd(mukellefId) : undefined;
+  // Panelin mükellefi başlıkta zaten var → adımda tekrar yazılmaz; başka mükellefse kısa unvan
+  if (mukellef && !(secenek?.mukellefId && secenek.mukellefId === mukellefId) && !ayniFirma(mukellef, secenek?.mukellefAd)) parcalar.push(firmaKisalt(mukellef));
   const arama = argMetni(a.search ?? a.query ?? a.q);
   if (arama) parcalar.push(`'${arama.length > 40 ? `${arama.slice(0, 39)}…` : arama}' arandı`);
   const donem = argMetni(a.donem ?? a.period ?? a.ay ?? a.donemler);
-  if (donem) parcalar.push(/^\d{4}-\d{2}$/.test(donem) ? donemEtiketi(donem) : donem);
+  if (donem) parcalar.push(/^\d{4}[-/]\d{2}$/.test(donem) ? donemEtiketi(donem.replace('/', '-')) : donem);
   if (a.year && a.month) parcalar.push(donemEtiketi(`${a.year}-${String(a.month).padStart(2, '0')}`));
   if (a.limit && !a.taxpayerId && !a.sessionId) parcalar.push(`en çok ${a.limit}`);
   if (a.previewId) parcalar.push(`#${a.previewId}`);

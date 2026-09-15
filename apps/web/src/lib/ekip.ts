@@ -109,6 +109,17 @@ export interface IsDosyasi {
   onayBekleyenSayisi?: number;
   ogrenilenSayisi?: number;
   raporOzet?: string | null;
+  /** Koşu SÜRERKEN sunucunun yazdığı adımlar (payload.canli; yalnız status=running iken gelir, bitince result.toolUses tam liste). */
+  canli?: { adimlar: CanliAdim[]; guncellendi: string } | null;
+}
+
+/** Canlı adım (ekip-runner CanliAdimYazici): araç adı + kısa argümanlar + başladı/bitti + durum. */
+export interface CanliAdim {
+  ad: string;
+  args?: Record<string, unknown>;
+  basladi: string;
+  bitti?: string | null;
+  durum: 'suruyor' | 'bitti' | 'hata' | 'kuru' | 'onay' | 'red';
 }
 
 export type AsamaDurumu = 'tamam' | 'eksik' | 'yok';

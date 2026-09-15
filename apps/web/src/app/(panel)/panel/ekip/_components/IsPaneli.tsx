@@ -2,15 +2,18 @@
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, Loader2, X, Square, Send, MessageSquareReply, RotateCcw, ChevronDown, AlertTriangle, GraduationCap, HelpCircle, FlaskConical } from 'lucide-react';
+import { Check, Loader2, X, Square, Send, MessageSquareReply, RotateCcw, ChevronDown, AlertTriangle, GraduationCap, HelpCircle, FlaskConical, Clock, Ban } from 'lucide-react';
 import { toast } from 'sonner';
-import { getIs, iptalEt, sabahOzetiUret, isZamanAsimi, type IsDosyasi, type Vaka, type VakaAdim, type VakaAdimIs } from '@/lib/ekip';
+import { getIs, iptalEt, sabahOzetiUret, isZamanAsimi, type CanliAdim, type IsDosyasi, type Vaka, type VakaAdim, type VakaAdimIs } from '@/lib/ekip';
 import type { KomutTaslak } from './GorevKarti';
 import { DURDURULDU_METNI, type Adim, type Kosu, type KosularApi } from './kosular';
 import { OnayTeyit } from './OnayBekleyenler';
 import { AcikKalemKarti, YerelOnay } from './Kararlar';
 import { Avatar, Bos, CARD_BORDER, Dugme, GOLD, IcKutu, Ilerleme, KIRMIZI, Kutu, MAVI, MOR, MUTED, OK, ROW_SEP, Rozet, TEXT, TURUNCU } from './Tema';
-import { adimAciklamasi, ajanKisaAd, ajanKisaltma, ajanTamAd, aracAdi, cevapAyristir, kaynakEtiketi, konuKisalt, raporBolumleri, saatKisa, sayacMetni, sureKisa, yokMu, type RaporBolumu } from './ortak';
+import { adimAciklamasi, ajanKisaAd, ajanKisaltma, ajanTamAd, aracAdi, cevapAyristir, gorevSadelestir, kaynakEtiketi, konuKisalt, raporBolumleri, saatKisa, sayacMetni, sureKisa, yokMu, type RaporBolumu } from './ortak';
+
+/** Adım metinlerinde panelin mükellefi tekrar yazılmasın diye adimAciklamasi'ne geçen bağlam. */
+type AdimSecenek = { mukellefId?: string | null; mukellefAd?: string | null };
 
 /* ─────────────────────────── aşamalar ─────────────────────────── */
 
@@ -80,19 +83,20 @@ function ZamanSatiri({ saat, kisaltma, ton, baslik, alt, sonuc, devir, nabiz, ch
 }
 
 /** Yerel koşu adımı → zaman çizgisi satırı. */
-function YerelAdim({ adim, mukellefAd, ajanAd, ajanId }: { adim: Adim; mukellefAd: (id?: string | null) => string | undefined; ajanAd: (id: string) => string; ajanId: string }) {
+function YerelAdim({ adim, mukellefAd, ajanAd, ajanId, secenek, simdi }: { adim: Adim; mukellefAd: (id?: string | null) => string | undefined; ajanAd: (id: string) => string; ajanId: string; secenek?: AdimSecenek; simdi?: number }) {
   const saat = saatKisa(adim.zaman).slice(0, 5);
   const kisaltma = ajanKisaltma(ajanId);
   const ton = ajanId === 'koordinator' ? 'gold' : 'mavi';
   const ajanAdi = ajanTamAd(ajanId, ajanAd(ajanId));
   if (adim.tip === 'arac') {
     const calisiyor = adim.durum === 'calisiyor';
-    const { baslik, ayrinti } = adimAciklamasi(adim.ad, adim.args, mukellefAd, ajanAd);
+    const { baslik, ayrinti } = adimAciklamasi(adim.ad, adim.args, mukellefAd, ajanAd, secenek);
     const devir = adim.ad === 'ekip_ajan_baslat';
-    return <ZamanSatiri saat={saat} kisaltma={kisaltma} ton={calisiyor ? 'mavi' : ton} baslik={baslik} alt={ajanAdi} sonuc={calisiyor ? <span style={{ color: MAVI }}>sürüyor…</span> : ayrinti} devir={devir} nabiz={calisiyor} />;
+    const gecen = calisiyor && simdi ? sayacMetni(simdi - adim.zaman) : '';
+    return <ZamanSatiri saat={saat} kisaltma={kisaltma} ton={calisiyor ? 'mavi' : ton} baslik={baslik} alt={ajanAdi} sonuc={calisiyor ? <span style={{ color: MAVI }}>sürüyor…{gecen ? ` ${gecen}` : ''}</span> : ayrinti} devir={devir} nabiz={calisiyor} />;
   }
   if (adim.tip === 'kuruTest') {
-    const { baslik, ayrinti } = adimAciklamasi(adim.ad, adim.args, mukellefAd, ajanAd);
+    const { baslik, ayrinti } = adimAciklamasi(adim.ad, adim.args, mukellefAd, ajanAd, secenek);
     return <ZamanSatiri saat={saat} kisaltma={kisaltma} ton={ton} baslik={`Kuru test — yapılmadı: ${baslik}`} alt={ajanAdi} sonuc={ayrinti} />;
   }
   if (adim.tip === 'red') {
@@ -101,29 +105,90 @@ function YerelAdim({ adim, mukellefAd, ajanAd, ajanId }: { adim: Adim; mukellefA
   return <ZamanSatiri saat={saat} kisaltma={kisaltma} ton={ton} baslik={`Onayınıza sunuldu${adim.previewId ? ` · #${adim.previewId}` : ''}`} alt={aracAdi(adim.ad)} sonuc={adim.sonuc ? <span style={{ color: adim.sonuc.startsWith('Hata') ? KIRMIZI : OK }}>{adim.sonuc}</span> : undefined} />;
 }
 
-/** Sunucu vakasındaki personel (çocuk) adımı — açılınca araçları getirir; raporu üst bileşene verir. */
-function PersonelAdimi({ adim, ajanAd, mukellefAd, acikVarsayilan, onRapor }: { adim: VakaAdimIs; ajanAd: (id: string) => string; mukellefAd: (id?: string | null) => string | undefined; acikVarsayilan?: boolean; onRapor?: (isId: string, is: IsDosyasi) => void }) {
+/** Canlı adımın simgesi: sürüyor (dönen) · bitti ✓ · hata ✕ · kuru test (şişe) · onay bekliyor (saat) · reddedildi (yasak). */
+function CanliAdimSimgesi({ durum }: { durum: CanliAdim['durum'] }) {
+  if (durum === 'suruyor') return <Loader2 size={11} className="flex-shrink-0 animate-spin" style={{ color: MAVI }} />;
+  if (durum === 'hata') return <X size={11} className="flex-shrink-0" style={{ color: KIRMIZI }} />;
+  if (durum === 'kuru') return <FlaskConical size={11} className="flex-shrink-0" style={{ color: TURUNCU }} />;
+  if (durum === 'onay') return <Clock size={11} className="flex-shrink-0" style={{ color: GOLD }} />;
+  if (durum === 'red') return <Ban size={11} className="flex-shrink-0" style={{ color: KIRMIZI }} />;
+  return <Check size={11} className="flex-shrink-0" style={{ color: OK }} />;
+}
+
+/**
+ * Koşu sürerken sunucudan gelen canlı adımlar (IsDosyasi.canli, 8 sn'de bir tazelenir): kısa ad + kısa ayrıntı; süren adımda sayaç.
+ * (Muzaffer Bey 2026-09-15: "iş devam ederken aşamaları daha açık ama kısa yazsın".)
+ */
+function CanliAdimlar({ adimlar, simdi, mukellefAd, ajanAd, secenek }: { adimlar: CanliAdim[]; simdi: number; mukellefAd: (id?: string | null) => string | undefined; ajanAd: (id: string) => string; secenek?: AdimSecenek }) {
+  return (
+    <>
+      {adimlar.map((a, i) => {
+        const { baslik, ayrinti } = adimAciklamasi(a.ad, a.args, mukellefAd, ajanAd, secenek);
+        const suruyor = a.durum === 'suruyor';
+        const bas = new Date(a.basladi).getTime();
+        const bit = a.bitti ? new Date(a.bitti).getTime() : 0;
+        const sureMs = suruyor ? simdi - bas : bit && bas ? bit - bas : 0;
+        const sagYazi = suruyor ? `sürüyor · ${sayacMetni(sureMs)}` : a.durum === 'hata' ? 'olmadı' : a.durum === 'kuru' ? 'kuru test — yapılmadı' : a.durum === 'onay' ? 'onayınızda' : a.durum === 'red' ? 'kapalı araç' : sureMs >= 3000 ? sureKisa(sureMs) : '';
+        return (
+          <div key={`${a.basladi}-${i}`} className="flex min-w-0 items-center gap-2 text-[12px]">
+            <CanliAdimSimgesi durum={a.durum} />
+            <span className="flex-shrink-0" style={{ color: suruyor ? MAVI : a.durum === 'hata' || a.durum === 'red' ? KIRMIZI : TEXT, fontWeight: suruyor ? 600 : 500 }}>
+              {baslik}
+            </span>
+            {ayrinti && (
+              <span className="min-w-0 truncate" style={{ color: MUTED }}>
+                {ayrinti}
+              </span>
+            )}
+            {sagYazi && (
+              <span className="ml-auto flex-shrink-0 tabular-nums text-[11px]" style={{ color: suruyor ? MAVI : MUTED }}>
+                {sagYazi}
+              </span>
+            )}
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+/** Sunucu vakasındaki personel (çocuk) adımı — açılınca araçları getirir; koşarken canlı adımlar; raporu üst bileşene verir. */
+function PersonelAdimi({ adim, ajanAd, mukellefAd, acikVarsayilan, onRapor, secenek, simdi }: { adim: VakaAdimIs; ajanAd: (id: string) => string; mukellefAd: (id?: string | null) => string | undefined; acikVarsayilan?: boolean; onRapor?: (isId: string, is: IsDosyasi) => void; secenek?: AdimSecenek; simdi: number }) {
   const [acik, setAcik] = useState(!!acikVarsayilan);
   const bitti = adim.durum === 'done' || adim.durum === 'failed';
-  const { data } = useQuery({ queryKey: ['ekip-is', adim.isId], queryFn: () => getIs(adim.isId), enabled: acik || bitti, staleTime: 15_000, retry: 1, refetchInterval: bitti ? false : 8_000 });
-  const sure = adim.baslangic && adim.bitis ? sureKisa(new Date(adim.bitis).getTime() - new Date(adim.baslangic).getTime()) : '';
-  const durumAd = adim.durum === 'running' ? 'çalışıyor' : adim.durum === 'failed' ? 'yapamadı' : adim.durum === 'done' ? 'bitirdi' : 'sırada';
+  const kosuyor = adim.durum === 'running';
+  const { data } = useQuery({ queryKey: ['ekip-is', adim.isId], queryFn: () => getIs(adim.isId), enabled: acik || bitti || kosuyor, staleTime: 15_000, retry: 1, refetchInterval: bitti ? false : 8_000 });
+  const basMs = adim.baslangic ? new Date(adim.baslangic).getTime() : 0;
+  const sure = adim.baslangic && adim.bitis ? sureKisa(new Date(adim.bitis).getTime() - basMs) : kosuyor && basMs ? sayacMetni(simdi - basMs) : '';
+  const durumAd = kosuyor ? 'çalışıyor' : adim.durum === 'failed' ? 'yapamadı' : adim.durum === 'done' ? 'bitirdi' : 'sırada';
   const araclar = data?.result?.toolUses || [];
+  const canliAdimlar = kosuyor ? data?.canli?.adimlar || [] : [];
+  const suAn = canliAdimlar.length ? canliAdimlar[canliAdimlar.length - 1] : null;
   useEffect(() => {
     if (data && onRapor) onRapor(adim.isId, data);
   }, [data]); // eslint-disable-line react-hooks/exhaustive-deps
   const ad = ajanTamAd(adim.ajanId, ajanAd(adim.ajanId));
+  const gorevOzeti = gorevSadelestir(adim.baslik, secenek?.mukellefAd, 90);
   return (
     <ZamanSatiri
       saat={saatKisa(adim.baslangic).slice(0, 5)}
       kisaltma={ajanKisaltma(adim.ajanId)}
-      ton={adim.durum === 'failed' ? 'kirmizi' : adim.durum === 'running' ? 'mavi' : 'gri'}
-      nabiz={adim.durum === 'running'}
+      ton={adim.durum === 'failed' ? 'kirmizi' : kosuyor ? 'mavi' : 'gri'}
+      nabiz={kosuyor}
       baslik={`${ad} ${durumAd}`}
-      alt={adim.baslik}
+      alt={
+        kosuyor && suAn ? (
+          <>
+            <span style={{ color: MAVI }}>{suAn.durum === 'suruyor' ? 'şu an' : 'son adım'}: {adimAciklamasi(suAn.ad, suAn.args, mukellefAd, ajanAd, secenek).baslik}</span>
+            {gorevOzeti ? ` · ${gorevOzeti}` : ''}
+          </>
+        ) : (
+          gorevOzeti
+        )
+      }
       sonuc={
         <span className="inline-flex flex-wrap items-center justify-end gap-1.5">
-          {sure && <span className="tabular-nums">{sure}</span>}
+          {sure && <span className="tabular-nums" style={{ color: kosuyor ? MAVI : MUTED }}>{sure}</span>}
           {!adim.kuru && <Rozet metin="canlı" renk={KIRMIZI} />}
           <button type="button" onClick={() => setAcik((a) => !a)} className="inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[11px] hover:bg-white/5" style={{ color: MUTED }}>
             {acik ? 'gizle' : 'adımları'} <ChevronDown size={11} className="transition-transform" style={{ transform: acik ? 'rotate(180deg)' : 'none' }} />
@@ -143,23 +208,25 @@ function PersonelAdimi({ adim, ajanAd, mukellefAd, acikVarsayilan, onRapor }: { 
               <Loader2 size={11} className="animate-spin" /> adımlar yükleniyor
             </span>
           )}
-          {araclar.map((t, i) => {
-            const { baslik, ayrinti } = adimAciklamasi(t.name, t.args, mukellefAd, ajanAd);
-            return (
-              <div key={i} className="flex min-w-0 items-baseline gap-2 text-[12px]">
-                <Check size={11} className="flex-shrink-0 self-center" style={{ color: OK }} />
-                <span style={{ color: TEXT }}>{baslik}</span>
-                {ayrinti && (
-                  <span className="min-w-0 truncate" style={{ color: MUTED }}>
-                    {ayrinti}
-                  </span>
-                )}
-              </div>
-            );
-          })}
-          {data && !araclar.length && adim.durum === 'running' && (
-            <span className="text-[11.5px]" style={{ color: MUTED }}>
-              Adımlar bitince görünür (personel çalışırken canlı akış yalnız Koordinatör için).
+          {canliAdimlar.length > 0 && <CanliAdimlar adimlar={canliAdimlar} simdi={simdi} mukellefAd={mukellefAd} ajanAd={ajanAd} secenek={secenek} />}
+          {!canliAdimlar.length &&
+            araclar.map((t, i) => {
+              const { baslik, ayrinti } = adimAciklamasi(t.name, t.args, mukellefAd, ajanAd, secenek);
+              return (
+                <div key={i} className="flex min-w-0 items-baseline gap-2 text-[12px]">
+                  <Check size={11} className="flex-shrink-0 self-center" style={{ color: OK }} />
+                  <span style={{ color: TEXT }}>{baslik}</span>
+                  {ayrinti && (
+                    <span className="min-w-0 truncate" style={{ color: MUTED }}>
+                      {ayrinti}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          {data && !araclar.length && !canliAdimlar.length && kosuyor && (
+            <span className="inline-flex items-center gap-1.5 text-[11.5px]" style={{ color: MUTED }}>
+              <Loader2 size={11} className="animate-spin" style={{ color: MAVI }} /> {ad} ilk adımı atıyor; adımlar burada yazılacak.
             </span>
           )}
         </div>
@@ -394,7 +461,18 @@ export function IsPaneli({ kosu, vaka, kosular, ajanAd, mukellefAd, onTaslak, on
   const kokS = useQuery({ queryKey: ['ekip-is', kokAdim?.isId], queryFn: () => getIs(kokAdim!.isId), enabled: kokGetirilsin, staleTime: 15_000, retry: 1, refetchInterval: sunucuCalisiyor ? 8_000 : false });
   const kokIs: IsDosyasi | undefined = kokS.data;
 
-  const yerelAdimlar: Adim[] = kosu ? kosu.adimlar : (kokIs?.result?.toolUses || []).map((t, i) => ({ tip: 'arac' as const, ad: t.name, args: t.args, zaman: kokIs?.startedAt ? new Date(kokIs.startedAt).getTime() + i : Date.now(), durum: 'bitti' as const }));
+  // Kök koşu bu sekmede başlatılmadıysa (başka sekme / WhatsApp / ses): bitmişse result.toolUses, sürüyorsa sunucunun canlı adımları
+  const yerelAdimlar: Adim[] = kosu
+    ? kosu.adimlar
+    : kokIs?.canli?.adimlar?.length && kokIs.status === 'running'
+      ? kokIs.canli.adimlar.map((a): Adim => {
+          const zaman = new Date(a.basladi).getTime() || Date.now();
+          if (a.durum === 'kuru') return { tip: 'kuruTest', ad: a.ad, args: a.args, zaman };
+          if (a.durum === 'red') return { tip: 'red', ad: a.ad, neden: 'kapalı araç', zaman };
+          if (a.durum === 'onay') return { tip: 'onay', ad: a.ad, args: a.args, zaman };
+          return { tip: 'arac', ad: a.ad, args: a.args, zaman, durum: a.durum === 'suruyor' ? 'calisiyor' : 'bitti' };
+        })
+      : (kokIs?.result?.toolUses || []).map((t, i) => ({ tip: 'arac' as const, ad: t.name, args: t.args, zaman: kokIs?.startedAt ? new Date(kokIs.startedAt).getTime() + i : Date.now(), durum: 'bitti' as const }));
   const koordinatorRaporu = (kosu?.bitti && !yerelCevapBos ? kosu.cevap : '') || kokIs?.result?.rapor || kokAdim?.raporOzet || '';
   const hata = kosu?.hata || kokIs?.hata || (kokAdim?.durum === 'failed' ? kokAdim.hata || 'Hata' : '');
 
@@ -420,6 +498,8 @@ export function IsPaneli({ kosu, vaka, kosular, ajanAd, mukellefAd, onTaslak, on
   const kimde = vaka?.kimde.ajanId || kosu?.ajanId || 'koordinator';
   const konu = vaka?.konu || konuKisalt(kosu?.gorev || '', 110);
   const mukellef = vaka?.mukellef?.ad || mukellefAd(kosu?.taxpayerId);
+  /** Adım metinlerinde panelin mükellefi tekrar yazılmaz (başlıkta var). */
+  const secenek: AdimSecenek = { mukellefId: vaka?.mukellef?.id || kosu?.taxpayerId || null, mukellefAd: mukellef || null };
   const kuru = kosu ? kosu.dryRun : vaka ? vaka.kuru : kokIs ? kokIs.dryRun : true;
   const kaynak = kosu?.kaynak === 'sabahOzeti' ? { ad: 'sabah özeti', ikon: '' } : kaynakEtiketi(kokIs?.kaynak || null);
   const sabahOzetiMi = kosu?.kaynak === 'sabahOzeti';
@@ -501,11 +581,16 @@ export function IsPaneli({ kosu, vaka, kosular, ajanAd, mukellefAd, onTaslak, on
   const yuzde = hata ? Math.round((tamamlanan / asamaListesi.length) * 100) : bitti && (!personelVar || personelBitti) ? 100 : Math.round(((tamamlanan + (calisiyor ? 0.5 : 0)) / asamaListesi.length) * 100);
   const calisanAdim = yerelAdimlar.find((a) => a.tip === 'arac' && a.durum === 'calisiyor');
   const calisanPersonel = personelAdimlari.find((a) => a.durum === 'running');
+  // Personelin canlı adımı (PersonelAdimi'nin 8 sn'lik sorgusundan onRapor ile gelir): "Beyanname: Luca çekimi başlatıldı · 01:12"
+  const calisanPersonelCanli = calisanPersonel ? personelRaporlari[calisanPersonel.isId]?.canli?.adimlar : undefined;
+  const sonCanliAdim = calisanPersonelCanli?.length ? calisanPersonelCanli[calisanPersonelCanli.length - 1] : null;
   const suAnMetni = calisiyor
     ? calisanAdim
-      ? `Koordinatör: ${adimAciklamasi(calisanAdim.ad, calisanAdim.args, mukellefAd, ajanAd).baslik}`
+      ? `Koordinatör: ${adimAciklamasi(calisanAdim.ad, calisanAdim.args, mukellefAd, ajanAd, secenek).baslik}${calisanAdim.zaman ? ` · ${sayacMetni(simdi - calisanAdim.zaman)}` : ''}`
       : calisanPersonel
-        ? `${ajanTamAd(calisanPersonel.ajanId, ajanAd(calisanPersonel.ajanId))} çalışıyor — ${calisanPersonel.baslik}`
+        ? sonCanliAdim
+          ? `${ajanKisaAd(calisanPersonel.ajanId, ajanAd(calisanPersonel.ajanId))}: ${adimAciklamasi(sonCanliAdim.ad, sonCanliAdim.args, mukellefAd, ajanAd, secenek).baslik}${sonCanliAdim.durum === 'suruyor' ? ` · ${sayacMetni(simdi - new Date(sonCanliAdim.basladi).getTime())}` : ' ✓ — sıradaki adıma geçiyor'}`
+          : `${ajanTamAd(calisanPersonel.ajanId, ajanAd(calisanPersonel.ajanId))} çalışıyor — ${gorevSadelestir(calisanPersonel.baslik, mukellef, 80)}`
         : kosu && !kosu.isId
           ? 'Koordinatör göreve başlıyor'
           : 'Koordinatör düşünüyor'
@@ -682,7 +767,7 @@ export function IsPaneli({ kosu, vaka, kosular, ajanAd, mukellefAd, onTaslak, on
               <IcKutu baslik={<span className="inline-flex items-center gap-1.5"><FlaskConical size={11} /> Kuru test — yapılacaktı ({kuruListesi.length})</span>} renk={TURUNCU} className="mt-3">
                 <ul className="flex flex-col gap-1 text-[12.5px]" style={{ color: TEXT }}>
                   {kuruListesi.map((t, i) => {
-                    const { baslik, ayrinti } = adimAciklamasi(t.name, t.args, mukellefAd, ajanAd);
+                    const { baslik, ayrinti } = adimAciklamasi(t.name, t.args, mukellefAd, ajanAd, secenek);
                     return (
                       <li key={i} className="flex gap-2">
                         <span className="mt-[7px] h-1.5 w-1.5 flex-shrink-0 rounded-full" style={{ background: TURUNCU }} />
@@ -740,10 +825,10 @@ export function IsPaneli({ kosu, vaka, kosular, ajanAd, mukellefAd, onTaslak, on
                 </li>
               )}
               {yerelAdimlar.map((a, i) => (
-                <YerelAdim key={`${a.zaman}-${i}`} adim={a} mukellefAd={mukellefAd} ajanAd={ajanAd} ajanId={kosu?.ajanId || kokAdim?.ajanId || 'koordinator'} />
+                <YerelAdim key={`${a.zaman}-${i}`} adim={a} mukellefAd={mukellefAd} ajanAd={ajanAd} ajanId={kosu?.ajanId || kokAdim?.ajanId || 'koordinator'} secenek={secenek} simdi={simdi} />
               ))}
               {personelAdimlari.map((a) => (
-                <PersonelAdimi key={a.isId} adim={a} ajanAd={ajanAd} mukellefAd={mukellefAd} acikVarsayilan={a.durum === 'running'} onRapor={personelRaporAl} />
+                <PersonelAdimi key={a.isId} adim={a} ajanAd={ajanAd} mukellefAd={mukellefAd} acikVarsayilan={a.durum === 'running'} onRapor={personelRaporAl} secenek={secenek} simdi={simdi} />
               ))}
               {bildirimAdimlari.map((a, i) =>
                 a.tip === 'onay' ? (
