@@ -5288,7 +5288,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     if (!opts.taxpayerId) throw new BadRequestException('taxpayerId gerekli');
     const taxpayer = await (this.prisma as any).taxpayer.findFirst({
       where: { id: opts.taxpayerId, tenantId },
-      select: { id: true, companyName: true, taxNumber: true },
+      select: { id: true, companyName: true, firstName: true, lastName: true, taxNumber: true }, // firstName/lastName (2026-09-15): şahıs mükellefte sentetik XML tarafı 'Mükellef' kalmasın
     });
     if (!taxpayer) throw new NotFoundException('Mukellef bulunamadi');
 
@@ -5755,7 +5755,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
     const skipMatching = opts.skipMatching !== false;
     const taxpayer = await (this.prisma as any).taxpayer.findFirst({
       where: { id: opts.taxpayerId, tenantId },
-      select: { id: true, companyName: true, taxNumber: true },
+      select: { id: true, companyName: true, firstName: true, lastName: true, taxNumber: true }, // firstName/lastName (2026-09-15): şahıs mükellefte sentetik XML tarafı 'Mükellef' kalmasın
     });
     if (!taxpayer) throw new NotFoundException('Mukellef bulunamadi');
 
@@ -9056,7 +9056,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       if (!cfg || !cfg.username || !cfg.password) return;
       const taxpayer = await (this.prisma as any).taxpayer.findFirst({
         where: { id: taxpayerId, tenantId },
-        select: { id: true, companyName: true, taxNumber: true },
+        select: { id: true, companyName: true, firstName: true, lastName: true, taxNumber: true }, // firstName/lastName (2026-09-15): şahıs mükellefte sentetik XML tarafı 'Mükellef' kalmasın
       });
       if (!taxpayer) return;
       const period = this.monthRange(opts.period);

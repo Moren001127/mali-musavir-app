@@ -5,7 +5,10 @@
  *   XML alanları anında çıkıyor, süre Max aboneliği (Claude Agent SDK alt-süreci → claudeTextViaMax) üzerinden
  *   yapılan 2–3 çağrıya gidiyor (kalem tamamlama, sınıflandırma, yorum) — her Max çağrısı 60–150 sn.
  *   Aylık 560 belge; hedef 10.000 belge/ay. Muzaffer Bey'in kararı (D): OpenAI gpt-4o-mini + Max yedek.
- *   Ek (koordinatör, aynı gün): Gemini seçeneği (GEMINI_API_KEY Railway'de mevcut; gemini-2.5-flash bu hesapta 404 → KULLANMA).
+ *   Ek (koordinatör, aynı gün): Gemini seçeneği (GEMINI_API_KEY Railway'de mevcut; gemini-2.5-flash "yeni kullanıcılara kapalı" 404 → KULLANMA).
+ *   CANLI KARŞILAŞTIRMA (2026-09-15, 30 belge, Max Haiku ile hesap kodu uyumu): gpt-4o-mini 16/20 (2 bariz hata), gemini-3.1-flash-lite
+ *   18/20 (~1 sn/çağrı), gemini-3-flash-preview 19/20 (yavaş, 75 sn zaman aşımı gördü), gemini-3.8-flash 19/20 (~3,7 sn/çağrı,
+ *   30 belge $0,08) → VARSAYILAN gemini-3.8-flash; Railway'de FM_AI_SAGLAYICI=gemini. Güçlü tur Max (Sonnet) kaldı.
  *
  * KURAL: `claudeTextViaMax` ile AYNI girdi/çıktı biçimi (MaxTextResult) — çağıranlar yalnız `amac` ekler.
  *   Deploy sonrası ortam değişkeni verilmeden HİÇBİR ŞEY DEĞİŞMEZ (FM_AI_SAGLAYICI boş → bugünkü Max yolu).
@@ -15,7 +18,7 @@
  *   FM_AI_GUCLU_SAGLAYICI  = max (varsayılan) | openai | gemini    'sinifGuclu' (Sonnet eskalasyonu) sağlayıcısı
  *   FM_OPENAI_MODEL        = gpt-4o-mini (varsayılan)             OpenAI hızlı model
  *   FM_OPENAI_GUCLU_MODEL  = gpt-4.1-mini (varsayılan)            OpenAI güçlü model (sinifGuclu + Sonnet istenen çağrılar)
- *   FM_GEMINI_MODEL        = gemini-3.1-flash-lite (varsayılan)   Gemini hızlı model
+ *   FM_GEMINI_MODEL        = gemini-3.8-flash (varsayılan)        Gemini hızlı model (3.1-flash-lite: 3× hızlı ama 18/20)
  *   FM_GEMINI_GUCLU_MODEL  = gemini-3-flash-preview (varsayılan)  Gemini güçlü model
  *   FM_AI_YEDEK            = max (varsayılan) | off               sağlayıcı başarısızsa Max'e düş / düşme (ok:false)
  *   FM_AI_ANONIM           = 1 → prompt gönderilmeden VKN/TCKN, belge no, tarih maskelenir (varsayılan kapalı; okuma
@@ -42,7 +45,7 @@ export type FmAiParams = MaxParams & { amac: FmAiAmac };
 
 export const FM_OPENAI_MODEL_VARSAYILAN = 'gpt-4o-mini';
 export const FM_OPENAI_GUCLU_MODEL_VARSAYILAN = 'gpt-4.1-mini';
-export const FM_GEMINI_MODEL_VARSAYILAN = 'gemini-3.1-flash-lite';
+export const FM_GEMINI_MODEL_VARSAYILAN = 'gemini-3.8-flash';
 export const FM_GEMINI_GUCLU_MODEL_VARSAYILAN = 'gemini-3-flash-preview';
 export const FM_AI_TIMEOUT_MS_VARSAYILAN = 60000;
 const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';

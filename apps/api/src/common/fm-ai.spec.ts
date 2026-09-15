@@ -32,7 +32,7 @@ function jsonYanit(status: number, body: any): any {
 const openAiGovde = (text: string, model = 'gpt-4o-mini-2024-07-18', giris = 1000, cikis = 200) => ({
   model, choices: [{ message: { role: 'assistant', content: text }, finish_reason: 'stop' }], usage: { prompt_tokens: giris, completion_tokens: cikis },
 });
-const geminiGovde = (text: string, model = 'gemini-3.1-flash-lite', giris = 1000, cikis = 200) => ({
+const geminiGovde = (text: string, model = 'gemini-3.8-flash', giris = 1000, cikis = 200) => ({
   modelVersion: model, candidates: [{ content: { role: 'model', parts: [{ text }] }, finishReason: 'STOP' }], usageMetadata: { promptTokenCount: giris, candidatesTokenCount: cikis },
 });
 
@@ -63,7 +63,7 @@ describe('fm-ai — sağlayıcı seçimi', () => {
     expect(fmAiSaglayiciSec('sinifGuclu', 'claude-sonnet-4-6', { FM_AI_GUCLU_SAGLAYICI: 'openai' } as any)).toEqual({ saglayici: 'openai', model: FM_OPENAI_GUCLU_MODEL_VARSAYILAN, guclu: true });
     expect(fmAiSaglayiciSec('sinifGuclu', 'claude-sonnet-4-6', { FM_AI_GUCLU_SAGLAYICI: 'gemini', FM_GEMINI_GUCLU_MODEL: 'gemini-3-flash-preview' } as any)).toEqual({ saglayici: 'gemini', model: 'gemini-3-flash-preview', guclu: true });
   });
-  it('FM_AI_SAGLAYICI=gemini → gemini-3.1-flash-lite (hızlı) / gemini-3-flash-preview (güçlü)', () => {
+  it('FM_AI_SAGLAYICI=gemini → gemini-3.8-flash (hızlı) / gemini-3-flash-preview (güçlü)', () => {
     const env: any = { FM_AI_SAGLAYICI: 'gemini' };
     expect(fmAiSaglayiciSec('sinif', 'claude-haiku-4-5-20251001', env)).toEqual({ saglayici: 'gemini', model: FM_GEMINI_MODEL_VARSAYILAN, guclu: false });
     expect(fmAiSaglayiciSec('okuma', undefined, env).model).toBe(FM_GEMINI_GUCLU_MODEL_VARSAYILAN);
@@ -239,9 +239,9 @@ describe('fm-ai — fmTextAi (fetch sahte)', () => {
     const f = jest.fn(async () => jsonYanit(200, geminiGovde('```json\n{"kategori":"pazarlama"}\n```')));
     (globalThis as any).fetch = f;
     const r = await fmTextAi({ prompt: 'sınıfla', system: 'SYS', model: 'claude-haiku-4-5-20251001', amac: 'sinif', images: [{ base64: 'B'.repeat(200), mediaType: 'image/jpeg' }] });
-    expect(r).toEqual({ ok: true, text: '{"kategori":"pazarlama"}', model: 'gemini-3.1-flash-lite', costUsd: geminiMaliyetUsd('gemini-3.1-flash-lite', 1000, 200) });
+    expect(r).toEqual({ ok: true, text: '{"kategori":"pazarlama"}', model: 'gemini-3.8-flash', costUsd: geminiMaliyetUsd('gemini-3.8-flash', 1000, 200) });
     const [url, init] = (f as jest.Mock).mock.calls[0];
-    expect(url).toBe('https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent');
+    expect(url).toBe('https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent');
     expect(url).not.toContain('gm-test'); // anahtar URL'de taşınmaz
     expect(init.headers['x-goog-api-key']).toBe('gm-test');
     const body = JSON.parse(init.body);
