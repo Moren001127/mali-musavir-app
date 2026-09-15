@@ -12901,6 +12901,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       }
     }
     if (/\b(taslak|draft)\b/.test(`${approval} ${itiraz}`)) return { engelli: true, neden: 'taslak' };
+    if (/\bsilin(mis|di)\b/.test(approval)) return { engelli: true, neden: 'silinmis' }; // GİB e-Arşiv "Silinmiş" (2026-09-15)
     if (/\bgib\b.*\bhata\b|\bhata\b.*\bgib\b|gib error|\berror\b/.test(approval)) return { engelli: true, neden: 'gib-hata' };
     return { engelli: false, neden: '' };
   }

@@ -2626,7 +2626,7 @@ function ScreenSorgu({ taxpayerId, period, source, onOpenEntegrator }: { taxpaye
   const efaturaCanImport = (r: any) => {
     if (efaturaIsTransferred(r)) return false;
     const raw = r?.rawJson && typeof r.rawJson === 'object' ? r.rawJson : {};
-    return !/iptal|itiraz|red|cancel/i.test(`${raw?.approvalStatus || ''} ${raw?.iptalItiraz || ''}`);
+    return !/iptal|itiraz|red|cancel|silin/i.test(`${raw?.approvalStatus || ''} ${raw?.iptalItiraz || ''}`); // silin (2026-09-15): GİB "Silinmiş" aktarılmaz
   };
   const efaturaTransferableRows = efaturaRows.filter(efaturaCanImport);
   const efaturaTransferableIds = efaturaTransferableRows.map((r) => String(r.id || '').trim()).filter(Boolean);

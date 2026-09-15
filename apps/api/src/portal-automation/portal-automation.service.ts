@@ -1104,7 +1104,9 @@ export class PortalAutomationService {
         portalRow.tarih ||
         '',
       ));
-      const blocked = /iptal|itiraz|red|reddedil|cancel/i.test(`${onayDurumu} ${iptalDurumu}`);
+      // "Silinmiş/Silindi" (2026-09-15 canlı bulgu, EDELER Ağustos): GİB portalında silinen belge onay durumu "Silinmiş" gelir;
+      //   eski süzgeç yalnız iptal/itiraz/red bakıyordu → aktarılabilir sayılıyordu. Silinmiş belge de işlenmez.
+      const blocked = /iptal|itiraz|red|reddedil|cancel|silin/i.test(`${onayDurumu} ${iptalDurumu}`);
       return {
         id: doc.id,
         portalDocumentId: doc.id,
@@ -1122,7 +1124,7 @@ export class PortalAutomationService {
         aktarimDurumu: doc.storageKey ? 'indirildi' : 'sorgulandi',
         sorguMode: String(raw.mode || portalRow.mode || 'query'),
         isProcessable: !blocked,
-        blockedReason: blocked ? 'Iptal/itiraz/reddedilen fatura islenmez' : null,
+        blockedReason: blocked ? (/silin/i.test(onayDurumu) ? 'Silinmis fatura islenmez' : 'Iptal/itiraz/reddedilen fatura islenmez') : null,
         sourceRefId,
       };
     });

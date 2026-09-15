@@ -10,7 +10,7 @@ jest.mock('./max-inference', () => ({
 
 import { claudeTextViaMax } from './max-inference';
 import {
-  fmTextAi, fmAiSaglayiciSec, openAiMaliyetUsd, geminiMaliyetUsd, anonimlestir, fmAnonimUygulanirMi, kodCitiSoy,
+  fmTextAi, fmAiSaglayiciSec, openAiMaliyetUsd, geminiMaliyetUsd, anonimlestir, fmAnonimUygulanirMi, kodCitiSoy, geminiDusunmeAyari,
   FM_OPENAI_MODEL_VARSAYILAN, FM_OPENAI_GUCLU_MODEL_VARSAYILAN, FM_GEMINI_MODEL_VARSAYILAN, FM_GEMINI_GUCLU_MODEL_VARSAYILAN,
 } from './fm-ai';
 
@@ -109,6 +109,13 @@ describe('fm-ai — anonimleştirme', () => {
     expect(fmAnonimUygulanirMi('okuma', { FM_AI_ANONIM: '1' } as any)).toBe(false);
     expect(fmAnonimUygulanirMi('okuma', { FM_AI_ANONIM: '1', FM_AI_ANONIM_OKUMA: '1' } as any)).toBe(true);
   });
+  it('Gemini düşünme ayarı: varsayılan thinkingBudget 0; low/medium/high seviye; auto boş', () => {
+    expect(geminiDusunmeAyari({})).toEqual({ thinkingConfig: { thinkingBudget: 0 } });
+    expect(geminiDusunmeAyari({ FM_GEMINI_DUSUNME: '0' })).toEqual({ thinkingConfig: { thinkingBudget: 0 } });
+    expect(geminiDusunmeAyari({ FM_GEMINI_DUSUNME: 'low' })).toEqual({ thinkingConfig: { thinkingLevel: 'LOW' } });
+    expect(geminiDusunmeAyari({ FM_GEMINI_DUSUNME: 'auto' })).toEqual({});
+  });
+
   it('kod çiti soyma: ```json … ``` → iç metin', () => {
     expect(kodCitiSoy('```json\n{"a":1}\n```')).toBe('{"a":1}');
     expect(kodCitiSoy('{"a":1}')).toBe('{"a":1}');

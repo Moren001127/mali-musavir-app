@@ -23,6 +23,10 @@
  *   FM_AI_YEDEK            = max (varsayılan) | off               sağlayıcı başarısızsa Max'e düş / düşme (ok:false)
  *   FM_AI_ANONIM           = 1 → prompt gönderilmeden VKN/TCKN, belge no, tarih maskelenir (varsayılan kapalı; okuma
  *                            amacında uygulanmaz — okuma bu alanları çıkarır; FM_AI_ANONIM_OKUMA=1 zorlar)
+ *   FM_GEMINI_DUSUNME      = 0 (varsayılan) | low | medium | high | auto   Gemini "düşünme" (thinking) bütçesi. CANLI BULGU (2026-09-15):
+ *                            3.x flash modelleri varsayılan olarak DÜŞÜNÜR; düşünme token'ları çıktı fiyatından faturalanır ve
+ *                            candidatesTokenCount'ta GÖRÜNMEZ (thoughtsTokenCount) → AI Studio 175 TL gösterirken log 30 TL diyordu.
+ *                            Sınıflandırma/kalem/yorum için düşünme gereksiz (aynı cevap, daha hızlı) → thinkingBudget 0.
  *   FM_OPENAI_TIMEOUT_MS   = 60000 (varsayılan)                   çağıran timeoutMs vermediyse (Gemini için de)
  *   FM_AI_TEKRAR_BEKLEME_MS= 2000 (varsayılan)                    429/5xx/ağ hatasında tek tekrar öncesi bekleme
  *   MOREN_AI_ALLOW_OPENAI_API=1 + OPENAI_API_KEY                  OpenAI kapısı (voice.service.ts ile aynı) — yoksa Max'e düşer
@@ -289,10 +293,19 @@ export async function openAiMetinCagrisi(p: CagriGirdisi): Promise<SaglayiciYani
  * Anahtar `x-goog-api-key` başlığıyla gider (URL sorgu parametresinde anahtar taşınmaz — log/izleme sızıntısı olmasın;
  * Google REST API her iki yolu da kabul eder). Görseller inline_data (mime_type + base64).
  */
-export async function geminiMetinCagrisi(p: CagriGirdisi): Promise<SaglayiciYaniti> {
+/** FM_GEMINI_DUSUNME → generationConfig.thinkingConfig (0 = düşünme kapalı; low/medium/high = seviye; auto = model varsayılanı). */
+export function geminiDusunmeAyari(env: NodeJS.ProcessEnv = process.env): Record<string, any> {
+  const v = String(env.FM_GEMINI_DUSUNME ?? '0').trim().toLowerCase();
+  if (v === 'auto' || v === 'model') return {};
+  if (v === 'low' || v === 'medium' || v === 'high') return { thinkingConfig: { thinkingLevel: v.toUpperCase() } };
+  return { thinkingConfig: { thinkingBudget: 0 } };
+}
+
+export async function geminiMetinCagrisi(p: CagriGirdisi, dusunmeAyari?: Record<string, any>): Promise<SaglayiciYaniti> {
   const model = p.model;
   const bos: SaglayiciYaniti = { ok: false, text: '', model, girisToken: 0, cikisToken: 0, costUsd: 0 };
   const gorseller = temizGorseller(p.images);
+  const dusunme = dusunmeAyari ?? geminiDusunmeAyari();
   const body: any = {
     systemInstruction: { parts: [{ text: p.system ?? VARSAYILAN_SISTEM }] },
     contents: [{
@@ -302,7 +315,7 @@ export async function geminiMetinCagrisi(p: CagriGirdisi): Promise<SaglayiciYani
         ...gorseller.map((im) => ({ inline_data: { mime_type: im.mediaType, data: im.data } })),
       ],
     }],
-    generationConfig: { temperature: 0, ...(p.maxTokens && p.maxTokens > 0 ? { maxOutputTokens: p.maxTokens } : {}) },
+    generationConfig: { temperature: 0, ...(p.maxTokens && p.maxTokens > 0 ? { maxOutputTokens: p.maxTokens } : {}), ...dusunme },
   };
   const hardMs = Math.max(3000, Number(p.timeoutMs) || Number(process.env.FM_OPENAI_TIMEOUT_MS) || FM_AI_TIMEOUT_MS_VARSAYILAN);
   const r = await zamanAsimliFetch(p.fetchFn || fetch, GEMINI_URL(model), {
@@ -316,6 +329,11 @@ export async function geminiMetinCagrisi(p: CagriGirdisi): Promise<SaglayiciYani
   if (!res.ok) {
     const errText = await res.text().catch(() => '');
     const status = Number(res.status) || 0;
+    // Model düşünme ayarını kabul etmiyorsa (400 "thinking …") aynı çağrıyı ayarsız bir kez tekrarla (Max'e düşme).
+    if (status === 400 && Object.keys(dusunme).length && /thinking/i.test(errText)) {
+      logger.warn(`[FM-AI] gemini model=${model} düşünme ayarını kabul etmedi (${String(errText).replace(/\s+/g, ' ').slice(0, 120)}) → ayarsız tekrar`);
+      return geminiMetinCagrisi(p, {});
+    }
     return { ...bos, error: `Gemini HTTP ${status}: ${String(errText || '').replace(/\s+/g, ' ').slice(0, 300)}`, tekrarlanabilir: status === 429 || status >= 500, httpStatus: status };
   }
   const data: any = await res.json().catch(() => null);
@@ -323,8 +341,11 @@ export async function geminiMetinCagrisi(p: CagriGirdisi): Promise<SaglayiciYani
   const text = kodCitiSoy(parts.map((x: any) => String(x?.text || '')).join(''));
   const gercekModel = String(data?.modelVersion || model);
   const girisToken = Number(data?.usageMetadata?.promptTokenCount) || 0;
-  const cikisToken = Number(data?.usageMetadata?.candidatesTokenCount) || 0;
+  // DÜŞÜNME token'ları (thoughtsTokenCount) çıktı fiyatından faturalanır → maliyete ve çıkış sayısına dahil (2026-09-15).
+  const dusunmeToken = Number(data?.usageMetadata?.thoughtsTokenCount) || 0;
+  const cikisToken = (Number(data?.usageMetadata?.candidatesTokenCount) || 0) + dusunmeToken;
   const costUsd = geminiMaliyetUsd(gercekModel, girisToken, cikisToken);
+  if (dusunmeToken > 0) logger.log(`[FM-AI] gemini model=${gercekModel} düşünme=${dusunmeToken} token (FM_GEMINI_DUSUNME=${String(process.env.FM_GEMINI_DUSUNME ?? '0')})`);
   if (!text) {
     const finish = String(data?.candidates?.[0]?.finishReason || data?.promptFeedback?.blockReason || '');
     return { ...bos, model: gercekModel, girisToken, cikisToken, costUsd, error: `Gemini boş yanıt döndü${finish ? ` (${finish})` : ''}` };

@@ -63,5 +63,6 @@ describe('belgeDurumuEngelli — çıplak bayrak', () => {
     expect(svc.belgeDurumuEngelli({ approvalStatus: 'Iptal', iptalItiraz: 'Yok' }).engelli).toBe(true);
     expect(svc.belgeDurumuEngelli({ approvalStatus: 'Onaylandı', iptalItiraz: '0' })).toEqual({ engelli: false, neden: '' });
     expect(svc.belgeDurumuEngelli({ approvalStatus: 'Onaylandı', iptalItiraz: 'İptal talebi reddedildi' }).engelli).toBe(false);
+    expect(svc.belgeDurumuEngelli({ approvalStatus: 'Silinmiş', iptalItiraz: 'Yok' })).toEqual({ engelli: true, neden: 'silinmis' }); // GİB e-Arşiv silinen belge
   });
 });
