@@ -7503,7 +7503,15 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       }
       // — IADE (bilgi; hata varsa dogrulamaUyarilari engel üretir) —
       if (isReturn && !validation.issues.some((i: any) => i.code === 'RETURN_NEEDS_REVERSAL' || i.code === 'RETURN_DIRECTION_REVERSED')) {
-        turetilen.push(uyariYap({ kod: UYARI_KOD.IADE, seviye: 'bilgi', baslik: 'İade belgesi', aciklama: `${isSaleDoc ? 'Satıştan' : 'Alıştan'} iade — ters kayıt kuruldu (${isSaleDoc ? '610 / 391-iade / cari alacak' : 'cari borç / stok-gider alacak'}).`, kaynak: 'dogrulama' }));
+        // Metin iade TÜRÜNE göre (2026-09-15): gelen iade = satıştan iade (610 borç / 191-iade borç / müşteri alacak);
+        //   mükellefin kestiği iade = alıştan iade (satıcı borç / stok-gider alacak / 391-iade alacak); nihai tüketici e-Arşiv iadesi ayrı.
+        const iadeTuruBilgi = this.iadeTuruSaf(doc.invoiceKind, ocrData, isSaleDoc ? doc.buyerVkn : doc.sellerVkn, true);
+        const iadeAciklama = iadeTuruBilgi === 'alistan'
+          ? 'Alıştan iade (mükellef kesti) — satıcı borç / stok-gider ve iade KDV alacak.'
+          : isSaleDoc
+            ? 'Satıştan iade (nihai tüketiciye e-Arşiv) — 610 ve iade KDV borç / müşteri alacak.'
+            : 'Satıştan iade (gelen) — 610 ve iade KDV borç / müşteri alacak.';
+        turetilen.push(uyariYap({ kod: UYARI_KOD.IADE, seviye: 'bilgi', baslik: 'İade belgesi', aciklama: iadeAciklama, kaynak: 'dogrulama' }));
       }
       // — KALEM_PDF_TAHMIN (bilgi; PLAN/15 Faz 6, 2026-09-13): sağlayıcı XML'i kalemsizdi, kalemler belgenin PDF/görselinden
       //   okundu ama kalem toplamı XML matrahından ±%5'ten fazla sapıyor (ocrData.kalemKaynak='pdf-tahmin'). Tutarlar
@@ -14200,7 +14208,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       issues.push({
         code: 'RETURN_NEEDS_REVERSAL',
         severity: 'ERROR',
-        message: 'İade faturası — iade hesabı yok: satıştan iadede 610 + "iade" KDV (cari alacak), alıştan iadede orijinal stok/gider + "iade" 391 (cari borç) olmalı. Satırları düzeltin, sonra onaylayın.',
+        message: 'İade faturası — planda iade hesabı yok: satıştan iadede 610 + "iade" adlı 191, alıştan iadede orijinal stok/gider + "iade" adlı 391 gerekir. Hesap Planından iade KDV hesabını açıp Lucaya gönderin, sonra "Kodları düzelt"; hesap yokken belge işlenmez.',
       });
     }
     // ── 7b) RETURN_DIRECTION_REVERSED — iade belgede yön TERS (Faz 0). İade satırı (610/İADE-KDV) konmuş
@@ -16865,6 +16873,10 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       //   İADELER), KDV adında "İADE" geçen 191/391 ("SATIŞTAN İADE İNDİRİLECEK KDV"). Kullanıcı:
       //   "610 var, 191 satıştan iade ind. KDV var, niye seçmiyor". İade hesabı yoksa boş (kullanıcı ekler).
       const isReturn = (doc.ocrData as any)?.isReturn === true;
+      // İADE TÜRÜ (2026-09-15): alıştan iade (mükellef kesti) belge SATIS görünür ama muhasebesi ALIŞ mantığındadır
+      //   (matrah stok/gider, cari 320, KDV 391-iade); AI'ın 6xx gelir seçimi burada KABUL EDİLMEZ.
+      const iadeTuruRm: 'alistan' | 'satistan' | null = isReturn ? this.iadeTuruSaf(doc.invoiceKind, doc.ocrData, isSale ? doc.buyerVkn : doc.sellerVkn, true) : null;
+      const alistanIadeDoc = isSale && iadeTuruRm === 'alistan';
       const _hasIade = (n: any) => { const u = String(n || '').toLocaleUpperCase('tr-TR'); return u.includes('İADE') || u.includes('IADE'); };
       // YÖNE GÖRE İADE: (a) SATIŞTAN iade (alış görünümlü, !isSale) → matrah 610 (SATIŞTAN İADELER),
       //   KDV 191 "satıştan iade indirilecek KDV". (b) ALIŞTAN iade (satış görünümlü, isSale, mükellef
@@ -17090,7 +17102,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       // SEMANTİK MOTOR: satışta da AI'ın plandan DOĞRUDAN seçtiği gelir hesabını (6xx: 600/601/602/649…) kullan
       //   (pilotta) — prim/ciro→602, ihracat→601 gibi. ALIŞ mantığı aynı (6xx reddi: 60x gelir / 63x yansıtma).
       const _aiCand = (aiKod && isPostableLeaf(aiKod) && !(faDet.is && !/^25/.test(aiKod))
-        && (!isSale ? !/^6/.test(aiKod) : (_semMotor && /^6/.test(aiKod))))
+        && ((!isSale || alistanIadeDoc) ? !/^6/.test(aiKod) : (_semMotor && /^6/.test(aiKod))))
         ? accounts.find((a: any) => String(a.accountCode || '') === aiKod) : null;
       // ARAÇ-ÇELİŞKİ (PLAN/15 Faz 1, 2026-09-12 — sahip kararı "hesap silinmez, öneri sunulur"): AI okuma anında
       //   araç-adlı hesap (740 ARAÇ BAKIM) seçmiş ve mükellef+fatura araç-dışıysa (_aracBaglamYok) kod artık
@@ -17329,7 +17341,6 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       //   ALIŞ görünüp cari 120'de olunca 320'de aranıp bulunamıyordu (kullanıcı: "carisi Luca'da
       //   var ama eşleştirmedi"). İade'de her iki grubu + her iki tarafın adını dene.
       // İADE TÜRÜ (2026-09-15): alıştan iade (mükellef kesti) → önce SATICI (320); satıştan iade → önce MÜŞTERİ (120).
-      const iadeTuruRm = isReturn ? this.iadeTuruSaf(doc.invoiceKind, doc.ocrData, isSale ? doc.buyerVkn : doc.sellerVkn, true) : null;
       //   Grup KESİN: alıştan iade satıcı carisine (320), satıştan iade müşteri carisine (120) — yanlış gruptaki ad eşleşmesi
       //   korunmaz (ÖMER ÖZEN GIB2026000000463: alıştan iade 120.01.Ö003'e gitmişti, planda 320.01.Ö001 VKN'li duruyordu).
       const cariPrefixes = isReturn
@@ -17629,10 +17640,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         //   iade hesabı varsa ata (RETURN_NEEDS_REVERSAL uyarısı da kalkar), yoksa boş bırak (kullanıcı
         //   ekler). Tevkifat iade'de boşalır. Cari (karşı taraf) normal akışta kalır — iade aynı cariye işlenir.
         if (isReturn && (group === 'matrah' || group === 'vergi' || group === 'tevkifat')) {
-          // İADE-KDV yedeği (2026-09-15): planda "İADE" adlı 191/391 yoksa satırı BOŞ bırakma — oranın normal KDV hesabını
-          //   "… — İADE" açıklamasıyla ata (hasReturnLine açıklamadaki İADE'yi tanır; RETURN_NEEDS_REVERSAL sahte engel olmaz).
-          const vergiYedek = group === 'vergi' && !returnVergi ? vergiForRate(lineRate) : null;
-          const ret = group === 'matrah' ? returnMatrah : group === 'vergi' ? (returnVergi || vergiYedek) : null;
+          // İADE-KDV: planda "İADE" adlı 191/391 YOKSA satır BOŞ kalır (Muzaffer Bey 2026-09-15: "doğru hesap yoksa işlemeyecek");
+          //   normal 391/191'e düşürme YOK — kullanıcı Hesap Planı'ndan iade KDV hesabını açar, sonra "Kodları düzelt".
+          const ret = group === 'matrah' ? returnMatrah : group === 'vergi' ? returnVergi : null;
           // ALIŞTAN İADE matrahı (returnMatrah null, satış görünümlü): 610 DEĞİL — orijinal stok/gider
           //   (153/770). Bu satırı normal matrah akışına BIRAK (continue etme); matrahForRate
           //   saleMatrahDefault=categoryMatrah'ı atar. returnMatrah yalnız SATIŞTAN iade'de dolu (610).
@@ -17641,7 +17651,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             if (String(line.accountCode || '') !== want) {
               await (this.prisma as any).invoiceAccountingLine.update({
                 where: { id: line.id },
-                data: want ? { accountCode: want, description: vergiYedek && ret === vergiYedek ? `${(ret as any).accountName} — İADE` : (ret as any).accountName, kaynak: 'KURAL' } : { accountCode: '', description: '', kaynak: null },
+                data: want ? { accountCode: want, description: (ret as any).accountName, kaynak: 'KURAL' } : { accountCode: '', description: group === 'vergi' ? 'İade KDV hesabı planda yok' : '', kaynak: null },
               });
             }
             continue;
@@ -17760,13 +17770,16 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         }
         // ALIŞTAN İADE matrahı (2026-09-15): mükellefin kestiği iade satış GELİRİ değildir → 6xx kalamaz; alış seçimi (match:
         //   kategori/AI stok-gider) varsa ona, yoksa boşalt (PERİHAN AAA2026000000080: 600.01.001 MALZEMELİ İŞÇİLİK GELİRİ kalıyordu).
-        if (group === 'matrah' && isSale && isReturn && iadeTuruRm === 'alistan' && /^6/.test(current)
+        if (group === 'matrah' && alistanIadeDoc && /^6/.test(current)
             && String(line.kaynak || '').toUpperCase() !== 'KULLANICI') {
-          const matchCode = match ? String((match as any).accountCode) : '';
+          const alisAday: any = (match && !/^6/.test(String((match as any).accountCode || ''))) ? match
+            : (categoryMatrah && !/^6/.test(String((categoryMatrah as any).accountCode || ''))) ? categoryMatrah : null;
+          const matchCode = alisAday ? String(alisAday.accountCode) : '';
           await (this.prisma as any).invoiceAccountingLine.update({
             where: { id: line.id },
-            data: matchCode ? { accountCode: matchCode, description: String((match as any).accountName || 'Alıştan iade'), kaynak: (match as any)?._kaynak || 'KURAL' } : { accountCode: '', description: 'Alıştan iade', kaynak: null },
+            data: matchCode ? { accountCode: matchCode, description: String(alisAday.accountName || 'Alıştan iade'), kaynak: alisAday._kaynak || 'KURAL' } : { accountCode: '', description: 'Alıştan iade', kaynak: null },
           });
+          this.logger.log(`[IADE] ${doc.belgeNo || doc.id}: alıştan iade matrahı ${current} (gelir) → ${matchCode || 'BOŞ'}`);
           continue;
         }
         // MATRAH özel (SATIŞ tevkifat-lik): mevcut 600 hesabının tevkifat-liği belgeyle çelişiyorsa
