@@ -18,13 +18,15 @@
       },
       "env": {
         "EXPO_PUBLIC_API_URL": "https://mali-musavir-app-production.up.railway.app/api/v1"
-      }
+      },
+      "channel": "preview"
     },
     "production": {
       "autoIncrement": true,
       "env": {
         "EXPO_PUBLIC_API_URL": "https://mali-musavir-app-production.up.railway.app/api/v1"
-      }
+      },
+      "channel": "production"
     }
   },
   "submit": {

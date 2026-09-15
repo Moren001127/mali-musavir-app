@@ -85,6 +85,15 @@
         "projectId": "123489bc-aff1-4fd0-a4f4-901c7b1f91bb"
       }
     },
-    "owner": "moren123"
+    "owner": "moren123",
+    "updates": {
+      "url": "https://u.expo.dev/123489bc-aff1-4fd0-a4f4-901c7b1f91bb",
+      "enabled": true,
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    }
   }
 }
