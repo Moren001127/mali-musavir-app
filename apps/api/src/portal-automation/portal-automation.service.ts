@@ -345,6 +345,16 @@ export class PortalAutomationService {
     private notifications: NotificationsService,
   ) {}
 
+  /**
+   * AKTAR → OKU kancası (2026-09-15 canlı bulgu — ÖMER ÖZEN 42 satış belgesi "Kod eksik" bekliyordu): GİB e-Arşiv portal
+   * aktarımı belgeyi doğrudan oluşturuyor, e-Fatura yolundaki otomatik AI okuması (aktarSonrasiOkumaKuyruga) burada YOKTU.
+   * FaturaMuhasebelestirmeService (bu modülü zaten içe alır; ters yönde DI döngü olur) açılışta kancayı kaydeder.
+   */
+  private aktarSonrasiOkumaKancasi: ((tenantId: string, documentIds: string[], kaynak: string) => Promise<number>) | null = null;
+  setAktarSonrasiOkumaKancasi(fn: (tenantId: string, documentIds: string[], kaynak: string) => Promise<number>) {
+    this.aktarSonrasiOkumaKancasi = fn;
+  }
+
   private isTemporaryTaxType(type?: string | null) {
     return /^(GECICI_VERGI|GGECICI|KGECICI)$/i.test(String(type || ''));
   }
@@ -1411,6 +1421,7 @@ export class PortalAutomationService {
     let processed = 0;
     let imported = 0;
     let skipped = 0;
+    const okunacakBelgeler: string[] = []; // AKTAR → OKU: bu aktarımda oluşan/yenilenen belgeler (okunmamışlar kuyruğa)
     const selectedRefs = new Set((Array.isArray(opts.selectedRefs) ? opts.selectedRefs : [])
       .map((v) => String(v || '').trim())
       .filter(Boolean));
@@ -1458,7 +1469,7 @@ export class PortalAutomationService {
       const before = await (this.prisma as any).invoiceAccountingDocument.count({
         where: { tenantId, taxpayerId: doc.taxpayerId, source: 'gib-earsiv-api' },
       }).catch(() => 0);
-      await this.importEarsivPortalDocumentToAccounting(
+      const olusan = await this.importEarsivPortalDocumentToAccounting(
         tenantId,
         doc.jobId || '',
         {
@@ -1483,8 +1494,16 @@ export class PortalAutomationService {
         where: { tenantId, taxpayerId: doc.taxpayerId, source: 'gib-earsiv-api' },
       }).catch(() => before);
       if (after > before) imported++;
+      if (olusan?.id) okunacakBelgeler.push(String(olusan.id));
     }
-    return { processed, imported, skipped, totalPortalDocuments: docs.length };
+    // AKTAR → OKU (2026-09-15): e-Fatura aktarımıyla aynı — okunmamış belgeler kalıcı kuyrukta AI ile okunur, sonra sınıflanır.
+    if (okunacakBelgeler.length && this.aktarSonrasiOkumaKancasi) {
+      void this.aktarSonrasiOkumaKancasi(tenantId, okunacakBelgeler, 'gib e-arşiv aktar')
+        .catch((e: any) => this.logger.warn(`[AKTAR-OKU] gib e-arşiv: kuyruğa alınamadı: ${e?.message || e}`));
+    } else if (okunacakBelgeler.length) {
+      this.logger.warn(`[AKTAR-OKU] gib e-arşiv: kanca kayıtlı değil — ${okunacakBelgeler.length} belge okunmadan bekliyor`);
+    }
+    return { processed, imported, skipped, totalPortalDocuments: docs.length, okumaKuyruguna: okunacakBelgeler.length };
   }
 
   async cancelJob(tenantId: string, jobId: string, reason = 'Kullanici iptal etti') {

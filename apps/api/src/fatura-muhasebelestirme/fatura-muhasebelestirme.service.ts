@@ -680,6 +680,12 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
   ) {}
 
   onModuleInit() {
+    // AKTAR → OKU kancası (2026-09-15): GİB e-Arşiv portal aktarımı da (portal-automation) e-Fatura gibi otomatik okumaya girsin.
+    try {
+      this.portalAutomation.setAktarSonrasiOkumaKancasi((tenantId, ids, kaynak) => this.aktarSonrasiOkumaKuyruga(tenantId, ids, kaynak));
+    } catch (e: any) {
+      this.logger.warn(`[AKTAR-OKU] gib e-arşiv kancası kaydedilemedi: ${e?.message || e}`);
+    }
     // Sunucu restart'ı in-memory OCR kuyruğunu siler → "AI ile oku"ya basılmış ama henüz
     // okunmamış belgeler PENDING'de öksüz kalıyor (kullanıcı "okunamadı" görüyor). Başlangıçta
     // (kısa gecikme sonra, app tam ayağa kalksın) + periyodik olarak öksüzleri kurtar.
