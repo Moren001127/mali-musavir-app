@@ -86,7 +86,7 @@
   //   Luca'nın beklediği adlarla TEK SEFERDE hizalanır (her denemede tek sütun hatası okumak yerine).
   // v1.47.48 (2026-09-15): firma onay düğmesi regex'indeki `\b` sınırları kaynakta gerçek backspace (0x08) baytına
   //   dönüşmüştü (sec/aç/ac seçenekleri ölüydü) → düzeltildi.
-  const AGENT_VERSION = '1.47.50';
+  const AGENT_VERSION = '1.47.51';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -3082,11 +3082,13 @@
                         const ham = new Uint8Array(await dosya0.arrayBuffer());
                         let csvMetin = ''; try { csvMetin = new TextDecoder('windows-1254').decode(ham); } catch { csvMetin = new TextDecoder().decode(ham); }
                         const anahtar = (v) => String(v || '').replace(/İ/g, 'i').replace(/I/g, 'ı').toLowerCase().replace(/[^a-z0-9çğıöşü]+/g, '');
-                        const etiketler = (json, prop) => { const j = dbListeler[json]; return Array.isArray(j) ? j.map((x) => String((x && (x[prop] || x.label || x.ad || x.aciklama || x.tanim || x.kayitTuru)) || '')).filter(Boolean) : []; };
+                        // v1.47.51: gelir+gider listeleri aynı etiketi taşıyabilir ("e-Arşiv Fatura" iki listede) → tekilleştir, yoksa "tek aday" önek eşleşmesi çalışmaz
+                        const etiketler = (json, prop) => { const j = dbListeler[json]; return Array.isArray(j) ? [...new Set(j.map((x) => String((x && (x[prop] || x.label || x.ad || x.aciklama || x.tanim || x.kayitTuru)) || '')).filter(Boolean))] : []; };
+                        const tekil = (arr) => [...new Set(arr)];
                         const sutunListe = {
-                          'KAYIT ALT TÜRÜ': [...etiketler('gider_kayit_alt_turleri', 'kayitTuru'), ...etiketler('gelir_kayit_alt_turleri', 'kayitTuru')],
-                          'BELGE TÜRÜ(DB)': [...etiketler('gider_belge_turleri', 'giderBelgeTuru'), ...etiketler('gelir_belge_turleri', 'gelirBelgeTuru')],
-                          'ALIŞ/SATIŞ TÜRÜ': [...etiketler('alis_turleri', 'ad'), ...etiketler('satis_turleri', 'aciklama')],
+                          'KAYIT ALT TÜRÜ': tekil([...etiketler('gider_kayit_alt_turleri', 'kayitTuru'), ...etiketler('gelir_kayit_alt_turleri', 'kayitTuru')]),
+                          'BELGE TÜRÜ(DB)': tekil([...etiketler('gider_belge_turleri', 'giderBelgeTuru'), ...etiketler('gelir_belge_turleri', 'gelirBelgeTuru')]),
+                          'ALIŞ/SATIŞ TÜRÜ': tekil([...etiketler('alis_turleri', 'ad'), ...etiketler('satis_turleri', 'aciklama')]),
                           'STOPAJ KODU': etiketler('stopaj_oranlari', 'aciklama'),
                         };
                         const bol = (satir) => { const out = []; let cur = ''; let q = false; for (let i = 0; i < satir.length; i++) { const ch = satir[i]; if (q) { if (ch === '"') { if (satir[i + 1] === '"') { cur += '"'; i++; } else q = false; } else cur += ch; } else if (ch === '"') q = true; else if (ch === ';') { out.push(cur); cur = ''; } else cur += ch; } out.push(cur); return out; };
