@@ -2686,7 +2686,10 @@ function ScreenSorgu({ taxpayerId, period, source, onOpenEntegrator }: { taxpaye
   const efaturaCanImport = (r: any) => {
     if (efaturaIsTransferred(r)) return false;
     const raw = r?.rawJson && typeof r.rawJson === 'object' ? r.rawJson : {};
-    return !/iptal|itiraz|red|cancel|silin/i.test(`${raw?.approvalStatus || ''} ${raw?.iptalItiraz || ''}`); // silin (2026-09-15): GİB "Silinmiş" aktarılmaz
+    // TÜRKÇE 'İ' TUZAĞI (2026-09-15, ŞENNİK SN22026000000267 "İptal (TÜRMOB etiketi)"): /i bayrağı 'İ' (U+0130) harfini 'i'ye katlamaz →
+    //   satır "İptal" görünürken sayaç "aktarılabilir" sayıyordu. tr-TR küçük harfe çevirip bak. silin: GİB "Silinmiş" aktarılmaz.
+    const durumMetni = `${raw?.approvalStatus || ''} ${raw?.iptalItiraz || ''}`.toLocaleLowerCase('tr-TR');
+    return !/iptal|itiraz|red|cancel|silin/.test(durumMetni);
   };
   const efaturaTransferableRows = efaturaRows.filter(efaturaCanImport);
   const efaturaTransferableIds = efaturaTransferableRows.map((r) => String(r.id || '').trim()).filter(Boolean);
