@@ -938,7 +938,8 @@ export class MihsapService implements OnModuleInit {
       }
     }
     this.logger.log(`FM Arşivim → İşlenen Faturalar (${params.mukellefId} ${params.donem}${params.faturaTuru ? ' ' + params.faturaTuru : ''}): ${docs.length} belge, ${added} yeni, ${skipped} mevcut/dosyasız, ${mukerrer} Mihsap'ta zaten var`);
-    if (params.triggerDrive && added > 0 && this.eventBus) {
+    // Yedeklenmemiş eski satırlar da yakalansın diye kayıt varsa (yeni eklenmese bile) tetiklenir; kütük mükerreri engeller.
+    if (params.triggerDrive && (added > 0 || docs.length > 0) && this.eventBus) {
       try { this.eventBus.emit('Mihsap.InvoicesFetched', { tenantId: params.tenantId, mukellefId: params.mukellefId, donem: params.donem }); } catch { /* yut */ }
     }
     return { total: docs.length, added, skipped, mukerrer };
