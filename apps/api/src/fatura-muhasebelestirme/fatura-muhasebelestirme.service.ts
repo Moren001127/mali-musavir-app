@@ -16224,7 +16224,9 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
         isFixedAsset: faDetForUyari.is,
       });
       const tarihOkunan = this.makulTarih(parseDate(parsed.tarih));
-      const mevcutMakul = this.makulTarih(d.faturaTarihi ? new Date(d.faturaTarihi) : null);
+      // Mevcut tarih dönem YER TUTUCUSU ise (önceki okuma) makul sayılmaz → daha iyi kaynak (görsel/Mihsap) onu değiştirebilsin.
+      const mevcutYerTutucu = (d.ocrData as any)?.tarihKaynak === 'mihsap-donem';
+      const mevcutMakul = mevcutYerTutucu ? null : this.makulTarih(d.faturaTarihi ? new Date(d.faturaTarihi) : null);
       const tarihMihsaptan = !tarihOkunan && !mevcutMakul && !!mihsapTarih;
       const tarihDonemden = !tarihOkunan && !mevcutMakul && !mihsapTarih && /^\d{4}-\d{2}$/.test(String(mihsapSatir?.donem || ''));
       await tx.invoiceAccountingDocument.update({
@@ -16265,7 +16267,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
               kalemPdfBilgi: kalemKaynak && kalemPdfBilgi ? kalemPdfBilgi : undefined,
               ...(kalemKaynak ? { aiMatrahGuven: aiMatrahGuvenTavani(ogrenmeSecimiOkuma ? 'yuksek' : (hafizaOkuma?.uygula ? hafizaOkuma.guven : (d.ocrData as any)?.aiMatrahGuven), kalemKaynak) } : {}),
               kalemler: Array.isArray(parsed.kalemler) ? parsed.kalemler.slice(0, 30).map((k: any) => { const h = typeof k?.hesap === 'string' ? String(k.hesap).trim() : ''; return { ad: String(k?.ad || '').slice(0, 80), tutar: Number(k?.tutar) || 0, oran: Number(k?.oran) || 0, ...(h && planLeafSet.has(h) ? { hesap: h } : {}) }; }).filter((k: any) => k.ad) : undefined, ...(islSinifAi ? { isletme: islSinifAi } : {}), ...((parsed as any)?._ubl ? ublOcrDataFields((parsed as any)._ubl) : clearUblOnlyOcrFields()), isReturn: isReturnDet, ...(iadeTuruDet ? { iadeTuru: iadeTuruDet } : {}), kalemSplit: kalemSplitApplied || undefined, tevkifatHint: parsed.tevkifat === true || tevkifatOrani > 0 || /tevkifat/i.test(String(html || '')), tevkifatOrani: tevkifatOrani || 0, tevkifatKdv: tevkKdv || 0, ...(smmStopaj > 0 ? { stopajTutari: smmStopaj } : {}), engine: parsed._azure ? 'azure-read' : (parsed === preParsed ? 'ubl-xml' : 'max-vision'),
-            ...(tarihDonemden ? { tarihKaynak: 'mihsap-donem' } : {}),
+            ...(tarihDonemden ? { tarihKaynak: 'mihsap-donem' } : (tarihOkunan || tarihMihsaptan) ? { tarihKaynak: null } : {}),
             readMode: parsed === preParsed ? 'ubl-xml' : (isImage ? 'image' : /pdf/i.test(imgMedia) ? 'pdf-text' : /xml/i.test(imgMedia) ? 'xml-text' : 'html'),
             ...(!preParsed && imgBuf && /xml/i.test(imgMedia) ? { xmlHead: imgBuf.toString('utf8').slice(0, 220).replace(/\s+/g, ' ') } : {}),
             // uyarilar KOŞULSUZ yazılır: yeni okuma uyarı üretmediyse ESKİ okumanın bayat uyarısı
