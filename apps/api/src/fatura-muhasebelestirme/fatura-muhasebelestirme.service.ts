@@ -5640,7 +5640,7 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
             const docType = payload.providerDocType || this.documentTypeFromProviderXml(payload.xml);
             // TANI (2026-09-15): tür kararı — Paraşüt KE42026000000001 e_archives olduğu halde E_FATURA sayılıyordu.
             if (cfg.provider === 'PARASUT') {
-              const profil = (String(payload.xml || '').match(/<(?:[\w.-]+:)?ProfileID[^>]*>\s*([^<]+)</i) || [])[1] || '-';
+              const profil = (String(payload.xml || '').match(/<(?:[\w.-]+:)?ProfileID\b[^>]*>\s*([^<]+)</i) || [])[1] || '-';
               this.logger.log(`[PARASUT] ${parsed.faturaNo || payload.externalId}: tür=${docType} profil=${profil} providerDocType=${payload.providerDocType || '-'} xml=${String(payload.xml || '').length}B`);
             }
             // ALIS kanali: entegratorun GELEN kutusundan ne geldiyse mukellefin alis belgesidir.
@@ -11520,11 +11520,19 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
       const edType = String(ed?.type || '').trim(); // 'e_invoices' | 'e_archives'
       if (!edId || !/^e_(invoices|archives)$/.test(edType)) return null;
       const base = baseUrl.replace(/\/+$/, '');
-      // 1) PDF URL al (Paraşüt link ~1 saat geçerli)
-      const metaRes = await fetch(`${base}/${firmaNo}/${edType}/${edId}/pdf`, {
-        headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' },
-      });
-      if (!metaRes.ok) { this.logger.warn(`Parasut PDF meta ${edType}/${edId}: HTTP ${metaRes.status} ${(await metaRes.text().catch(() => '')).slice(0, 160)}`); return null; }
+      // 1) PDF URL al (Paraşüt link ~1 saat geçerli). HIZ SINIRI (2026-09-15, Zeki Özkaynak): liste + PDF çağrıları
+      //   üst üste 429 "Try again in N seconds" yiyordu → PDF'lerin çoğu inmiyor, belge "orijinal görüntü yok" kalıyordu.
+      //   Söylenen süre kadar bekleyip en çok 4 kez yeniden dene.
+      let metaRes: Response | null = null;
+      for (let deneme = 0; deneme < 4; deneme++) {
+        metaRes = await fetch(`${base}/${firmaNo}/${edType}/${edId}/pdf`, {
+          headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' },
+        });
+        if (metaRes.status !== 429) break;
+        const bekle = Number((await metaRes.text().catch(() => '')).match(/(\d+)\s*second/)?.[1] || 5);
+        await new Promise((r) => setTimeout(r, Math.min(30, bekle) * 1000 + 500));
+      }
+      if (!metaRes || !metaRes.ok) { this.logger.warn(`Parasut PDF meta ${edType}/${edId}: HTTP ${metaRes?.status} ${metaRes ? (await metaRes.text().catch(() => '')).slice(0, 160) : ''}`); return null; }
       const meta: any = await metaRes.json().catch(() => ({}));
       const url = meta?.data?.attributes?.url;
       if (!url) { this.logger.warn(`Parasut PDF meta ${edType}/${edId}: url yok (${JSON.stringify(meta).slice(0, 160)})`); return null; }
@@ -13110,12 +13118,14 @@ export class FaturaMuhasebelestirmeService implements OnModuleInit, OnModuleDest
    * Dogrusu: UBL-TR'de belge turunu ProfileID alani soyler (EARSIVFATURA / TEMELFATURA /
    * TICARIFATURA / IHRACAT ...). Serbest metin (e-posta, adres, not) ASLA olcut degildir.
    */
+  // KOK (2026-09-15, ZEKI OZKAYNAK KE42026000000001): regex'lerdeki `\b` kelime siniri kaynakta GERCEK backspace
+  //   baytina (0x08) donusmustu -> ProfileID hicbir zaman eslesmiyor, her belge E_FATURA sayiliyordu (e-Arsiv kanali bos).
   private documentTypeFromProviderXml(xml: string) {
-    const profile = (xml.match(/<(?:[\w.-]+:)?ProfileID[^>]*>\s*([^<]+)</i) || [])[1] || '';
+    const profile = (xml.match(/<(?:[\w.-]+:)?ProfileID\b[^>]*>\s*([^<]+)</i) || [])[1] || '';
     if (/EARSIV|EARCHIVE/i.test(profile)) return 'E_ARSIV';
     // ProfileID e-arsiv demiyorsa yalniz BELGE TURU alanlarina bak (yine serbest metne degil).
-    if (/<(?:[\w.-]+:)?InvoiceTypeCode[^>]*>\s*EARSIV/i.test(xml)) return 'E_ARSIV';
-    if (/<(?:[\w.-]+:)?ArchiveInvoice/i.test(xml)) return 'E_ARSIV';
+    if (/<(?:[\w.-]+:)?InvoiceTypeCode\b[^>]*>\s*EARSIV/i.test(xml)) return 'E_ARSIV';
+    if (/<(?:[\w.-]+:)?ArchiveInvoice\b/i.test(xml)) return 'E_ARSIV';
     return 'E_FATURA';
   }
 

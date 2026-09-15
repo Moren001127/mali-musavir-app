@@ -84,7 +84,9 @@
   // v1.47.47 (2026-09-15): İŞLETME CSV — Luca'nın Defter-Beyan değer listeleri (belge türü, satış/alış türü, kayıt (alt)
   //   türü, stopaj) yüklemeden önce isletme/defter_beyan_json.jq'dan çekilip snapshot'a yazılır → CSV sütun adları
   //   Luca'nın beklediği adlarla TEK SEFERDE hizalanır (her denemede tek sütun hatası okumak yerine).
-  const AGENT_VERSION = '1.47.47';
+  // v1.47.48 (2026-09-15): firma onay düğmesi regex'indeki `\b` sınırları kaynakta gerçek backspace (0x08) baytına
+  //   dönüşmüştü (sec/aç/ac seçenekleri ölüydü) → düzeltildi.
+  const AGENT_VERSION = '1.47.48';
   const AGENT_INSTANCE_ID = 'mai_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
 
   // === VERSION-AWARE RELOAD ===
@@ -9655,7 +9657,7 @@
         // Negatif eleme: kapat/iptal/çık olanları reddet
         if (/iptal|kapat|cancel|close|geri|exit|cikis/.test(txt)) continue;
         // Pozitif: tamam/seç/onay/değiştir/aç/giriş/sec/sirket
-        if (/tamam|onay|sec|seç|değiştir|degistir|aç|ac|giriş|giris|sirket\s*sec|sirketsec|btnsec|btnonay|btntamam/.test(txt)) {
+        if (/tamam|onay|sec\b|seç|değiştir|degistir|aç\b|ac\b|giriş|giris|sirket\s*sec|sirketsec|btnsec|btnonay|btntamam/.test(txt)) {
           candidates.push({ btn: b, score: 2, txt: txt.slice(0, 40) });
           continue;
         }
