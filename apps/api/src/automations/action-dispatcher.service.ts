@@ -477,7 +477,7 @@ export class ActionDispatcherService {
         mukellefId: taxpayerId,
         donem,
         faturaTuru: faturaTuru || null,
-        triggerDrive: !mihsapVar || results.every((r) => !r.ok),
+        triggerDrive: true,
       });
       results.push({ tur: 'FM_ARSIV', bulunan: fmArsiv.total, cekilen: fmArsiv.added, mukerrer: fmArsiv.mukerrer, ok: true });
     } catch (err: any) {

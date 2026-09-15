@@ -111,8 +111,8 @@ export class MihsapController {
       mukellefId: body.mukellefId,
       donem: body.donem,
       faturaTuru: body.faturaTuru || null,
-      // Mihsap çekimi Drive olayını zaten yayınlar; Mihsap yoksa/hata verdiyse FM aktarımı yayınlasın.
-      triggerDrive: !mihsap,
+      // FM'den yeni satır eklendiyse Drive yeniden tetiklenir (Mihsap çekiminin olayı FM satırlarından önce yayınlanmış olabilir).
+      triggerDrive: true,
     });
     if (mihsapHata && !fm.added && !fm.total) throw new BadRequestException(mihsapHata);
     return { ...(mihsap || { jobId: null, total: 0, fetched: 0 }), errorMsg: mihsapHata || mihsap?.errorMsg || null, fmArsiv: fm };

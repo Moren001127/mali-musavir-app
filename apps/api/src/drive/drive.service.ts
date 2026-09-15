@@ -556,7 +556,12 @@ export class DriveService implements OnModuleInit, OnModuleDestroy {
         donem: params.donem ?? null,
       },
     });
-    if (running) return { jobId: running.id, already: true };
+    if (running) {
+      // 2026-09-15: aynı mükellef+dönem için iş sürerken yeni tetik geldiyse (Mihsap çekimi bitince FM Arşivim satırları
+      //   eklendi vb.) süren işin listesi eski olabilir → iş bitince bir tur daha koş.
+      this.yenidenKos.add(`${params.tenantId}|${params.mukellefId ?? ''}|${params.donem ?? ''}`);
+      return { jobId: running.id, already: true };
+    }
 
     const job = await (this.prisma as any).driveBackupJob.create({
       data: {
@@ -574,6 +579,9 @@ export class DriveService implements OnModuleInit, OnModuleDestroy {
     );
     return { jobId: job.id };
   }
+
+  /** Süren iş varken gelen tetikler — iş bitince aynı kapsam bir kez daha taranır. */
+  private readonly yenidenKos = new Set<string>();
 
   private async runBackup(
     jobId: string,
@@ -655,6 +663,11 @@ export class DriveService implements OnModuleInit, OnModuleDestroy {
     this.logger.log(
       `Drive yedek ${jobId} bitti: ${backedUp} yeni, ${skipped} zaten var, ${failed} hata / ${total}`,
     );
+    const anahtar = `${tenantId}|${mukellefId ?? ''}|${donem ?? ''}`;
+    if (this.yenidenKos.delete(anahtar) && !errorMsg) {
+      this.logger.log(`Drive yedek: iş sürerken yeni tetik gelmişti → aynı kapsam yeniden taranıyor (${anahtar})`);
+      await this.startBackup({ tenantId, mukellefId, donem, auto: true }).catch(() => null);
+    }
   }
 
   private async backupOne(
